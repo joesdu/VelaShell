@@ -9,11 +9,18 @@ public class MainWindowViewModel : ReactiveObject
     private TabBarViewModel _tabBar;
     private StatusBarViewModel _statusBar;
 
+    // SFTP/File management views derived from design
+    private FileBrowserViewModel _fileBrowser;
+    private FileTransferViewModel _fileTransfer;
+
     public MainWindowViewModel()
     {
         _sidebar = new SidebarViewModel();
         _tabBar = new TabBarViewModel();
         _statusBar = new StatusBarViewModel();
+
+        _fileBrowser = new FileBrowserViewModel(null, System.Guid.Empty);
+        _fileTransfer = new FileTransferViewModel(null);
 
         OpenSettingsCommand = ReactiveCommand.Create(() => { });
     }
@@ -34,6 +41,18 @@ public class MainWindowViewModel : ReactiveObject
     {
         get => _statusBar;
         set => this.RaiseAndSetIfChanged(ref _statusBar, value);
+    }
+
+    public FileBrowserViewModel FileBrowser
+    {
+        get => _fileBrowser;
+        set => this.RaiseAndSetIfChanged(ref _fileBrowser, value);
+    }
+
+    public FileTransferViewModel FileTransfer
+    {
+        get => _fileTransfer;
+        set => this.RaiseAndSetIfChanged(ref _fileTransfer, value);
     }
 
     public ReactiveCommand<Unit, Unit> OpenSettingsCommand { get; }

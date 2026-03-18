@@ -12,6 +12,7 @@
         Width="1440" Height="900"
         MinWidth="800" MinHeight="500"
         Background="{DynamicResource PulseBgPage}"
+        ExtendClientAreaToDecorationsHint="True"
         WindowStartupLocation="CenterScreen">
 
   <Window.KeyBindings>
@@ -35,22 +36,29 @@
               Width="1"
               Background="{DynamicResource PulseBorderPrimary}" />
 
-      <!-- Main area (tab bar + terminal) -->
-      <Grid Grid.Column="2" RowDefinitions="36,*">
+      <!-- Main area (terminal, file browser) -->
+      <Grid Grid.Column="2" RowDefinitions="*,1,220">
 
-        <!-- Tab bar -->
-        <views:TabBarView Grid.Row="0" DataContext="{Binding TabBar}" />
+        <!-- Top Area (Terminal and Tabs) -->
+        <Grid Grid.Row="0" RowDefinitions="36,*">
+          <!-- Tab bar -->
+          <views:TabBarView Grid.Row="0" DataContext="{Binding TabBar}" />
 
-        <!-- Terminal area placeholder -->
-        <Border Grid.Row="1"
-                Background="{DynamicResource PulseBgPage}">
-          <TextBlock Text="{x:Static res:Strings.AppName}"
-                     Foreground="{DynamicResource PulseTextMuted}"
-                     FontSize="24"
-                     HorizontalAlignment="Center"
-                     VerticalAlignment="Center"
-                     Opacity="0.3" />
-        </Border>
+          <!-- Terminal Content -->
+          <Border Grid.Row="1"
+                  Background="{DynamicResource PulseBgTerminal}">
+            <Grid>
+               <!-- Terminal view will be injected here -->
+               <views:TerminalTabView DataContext="{Binding TabBar.ActiveTab}" />
+            </Grid>
+          </Border>
+        </Grid>
+
+        <!-- Right horizontal splitter -->
+        <GridSplitter Grid.Row="1" Height="1" Background="{DynamicResource PulseBorderPrimary}" HorizontalAlignment="Stretch"/>
+
+        <!-- Bottom Area (Files) -->
+        <views:FileBrowserView Grid.Row="2" DataContext="{Binding FileBrowser}" />
 
       </Grid>
     </Grid>
@@ -161,11 +169,32 @@
 
             </StackPanel>
 
-            <!-- Right: terminal type + window size + encoding -->
+            <!-- Right: CPU + Mem + Net + window size + encoding -->
             <StackPanel Grid.Column="2"
                         Orientation="Horizontal"
                         Spacing="12"
                         VerticalAlignment="Center">
+              <TextBlock Text="{Binding CpuUsage}"
+                         Foreground="{DynamicResource PulseTextMuted}"
+                         FontFamily="{DynamicResource PulseTerminalFont}"
+                         FontSize="10"
+                         VerticalAlignment="Center" />
+              <TextBlock Text="{Binding MemUsage}"
+                         Foreground="{DynamicResource PulseTextMuted}"
+                         FontFamily="{DynamicResource PulseTerminalFont}"
+                         FontSize="10"
+                         VerticalAlignment="Center" />
+              <TextBlock Text="{Binding NetUsage}"
+                         Foreground="{DynamicResource PulseTextMuted}"
+                         FontFamily="{DynamicResource PulseTerminalFont}"
+                         FontSize="10"
+                         VerticalAlignment="Center" />
+
+              <!-- Divider -->
+              <Border Width="1" Height="12"
+                      Background="{DynamicResource PulseBorderSecondary}"
+                      VerticalAlignment="Center" />
+
               <TextBlock Text="{Binding TerminalType}"
                          Foreground="{DynamicResource PulseTextMuted}"
                          FontFamily="{DynamicResource PulseTerminalFont}"
@@ -176,6 +205,12 @@
                          FontFamily="{DynamicResource PulseTerminalFont}"
                          FontSize="10"
                          VerticalAlignment="Center" />
+
+              <!-- Divider -->
+              <Border Width="1" Height="12"
+                      Background="{DynamicResource PulseBorderSecondary}"
+                      VerticalAlignment="Center" />
+
               <TextBlock Text="{Binding Encoding}"
                          Foreground="{DynamicResource PulseTextMuted}"
                          FontFamily="{DynamicResource PulseTerminalFont}"

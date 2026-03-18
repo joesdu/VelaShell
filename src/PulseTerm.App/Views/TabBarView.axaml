@@ -112,7 +112,7 @@
       </ItemsControl>
 
       <!-- Add tab button (32x32, bottom-aligned) -->
-      <Button DockPanel.Dock="Right"
+      <Button DockPanel.Dock="Left"
               Command="{Binding AddTabCommand}"
               ToolTip.Tip="{x:Static res:Strings.NewTab}"
               Background="Transparent"
@@ -127,12 +127,14 @@
                   Foreground="{DynamicResource PulseTextTertiary}" />
       </Button>
 
-      <!-- Spacer fills remaining width with bg-page -->
-      <Border DockPanel.Dock="Right"
-              HorizontalAlignment="Stretch"
+      <!-- Spacer fills remaining width with bg-page / spacer for Window controls -->
+      <Border HorizontalAlignment="Stretch"
               Height="32"
               VerticalAlignment="Bottom"
-              Background="{DynamicResource PulseTabInactiveBg}" />
+              Background="{DynamicResource PulseTabInactiveBg}">
+          <!-- Optional: reserve space for Windows title bar buttons -->
+          <Border.IsHitTestVisible>False</Border.IsHitTestVisible>
+      </Border>
 
     </DockPanel>
   </Border>

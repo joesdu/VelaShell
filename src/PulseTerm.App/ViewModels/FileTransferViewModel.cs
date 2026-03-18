@@ -12,9 +12,9 @@ public class FileTransferViewModel : ReactiveObject
 {
     private readonly ITransferManager _transferManager;
 
-    public FileTransferViewModel(ITransferManager transferManager)
+    public FileTransferViewModel(ITransferManager? transferManager)
     {
-        _transferManager = transferManager ?? throw new ArgumentNullException(nameof(transferManager));
+        _transferManager = transferManager!;
 
         Transfers = new ObservableCollection<TransferItemViewModel>();
 
@@ -46,7 +46,7 @@ public class FileTransferViewModel : ReactiveObject
         if (item == null) return;
 
         item.Status = TransferStatus.Cancelled;
-        _transferManager.CancelTransferAsync(transferId);
+        _transferManager?.CancelTransferAsync(transferId);
     }
 
     private void RetryTransfer(Guid transferId)

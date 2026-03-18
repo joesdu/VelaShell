@@ -19,11 +19,12 @@ public class FileBrowserViewModel : ReactiveObject
     private bool _isVisible;
     private string? _errorMessage;
 
-    public FileBrowserViewModel(ISftpService sftpService, Guid sessionId)
+    public FileBrowserViewModel(ISftpService? sftpService, Guid sessionId)
     {
-        _sftpService = sftpService ?? throw new ArgumentNullException(nameof(sftpService));
+        _sftpService = sftpService!;
         _sessionId = sessionId;
         _currentPath = "/";
+        _isVisible = true;
 
         Files = new ObservableCollection<RemoteFileInfoViewModel>();
         SelectedFiles = new ObservableCollection<RemoteFileInfoViewModel>();
@@ -79,6 +80,13 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task NavigateToAsync(string path, CancellationToken ct = default)
     {
+        if (_sftpService is null)
+        {
+            ErrorMessage = null;
+            CurrentPath = path;
+            return;
+        }
+
         try
         {
             ErrorMessage = null;
@@ -124,6 +132,11 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task DeleteAsync(CancellationToken ct = default)
     {
+        if (_sftpService is null)
+        {
+            return;
+        }
+
         try
         {
             ErrorMessage = null;
@@ -144,6 +157,11 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task CreateFolderAsync(CancellationToken ct = default)
     {
+        if (_sftpService is null)
+        {
+            return;
+        }
+
         try
         {
             ErrorMessage = null;

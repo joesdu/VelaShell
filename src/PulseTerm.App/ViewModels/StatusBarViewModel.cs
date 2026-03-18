@@ -22,6 +22,11 @@ public class StatusBarViewModel : ReactiveObject, IDisposable
     private string _uptime;
     private bool _isConnected;
 
+    // Performance metrics for Status Bar Right Area
+    private string _cpuUsage;
+    private string _memUsage;
+    private string _netUsage;
+
     private IDisposable? _uptimeSubscription;
     private DateTimeOffset _uptimeStart;
 
@@ -42,6 +47,10 @@ public class StatusBarViewModel : ReactiveObject, IDisposable
         _encoding = "UTF-8";
         _uptime = string.Empty;
         _isConnected = false;
+
+        _cpuUsage = "CPU: 0%";
+        _memUsage = "MEM: 0%";
+        _netUsage = "NET: 0 B/s";
     }
 
     public string StatusText
@@ -100,6 +109,24 @@ public class StatusBarViewModel : ReactiveObject, IDisposable
     {
         get => _isConnected;
         private set => this.RaiseAndSetIfChanged(ref _isConnected, value);
+    }
+
+    public string CpuUsage
+    {
+        get => _cpuUsage;
+        set => this.RaiseAndSetIfChanged(ref _cpuUsage, value);
+    }
+
+    public string MemUsage
+    {
+        get => _memUsage;
+        set => this.RaiseAndSetIfChanged(ref _memUsage, value);
+    }
+
+    public string NetUsage
+    {
+        get => _netUsage;
+        set => this.RaiseAndSetIfChanged(ref _netUsage, value);
     }
 
     public void StartUptimeTimer()
