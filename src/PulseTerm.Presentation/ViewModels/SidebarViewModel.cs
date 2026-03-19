@@ -1,9 +1,9 @@
 using System.Reactive;
 using ReactiveUI;
 
-namespace PulseTerm.App.ViewModels;
+namespace PulseTerm.Presentation.ViewModels;
 
-public class SidebarViewModel : ReactiveObject
+public sealed class SidebarViewModel : ReactiveObject
 {
     private string _quickConnectText;
     private SessionTreeViewModel? _sessionTree;
@@ -11,7 +11,6 @@ public class SidebarViewModel : ReactiveObject
     public SidebarViewModel()
     {
         _quickConnectText = string.Empty;
-
         QuickConnect = new QuickConnectViewModel();
         RecentConnections = new RecentConnectionsViewModel();
 
@@ -37,6 +36,8 @@ public class SidebarViewModel : ReactiveObject
     }
 
     public ReactiveCommand<Unit, Unit> QuickConnectCommand { get; }
+
     public ReactiveCommand<Unit, Unit> SettingsCommand { get; }
+
     public ReactiveCommand<Unit, Unit> NotificationsCommand { get; }
 }

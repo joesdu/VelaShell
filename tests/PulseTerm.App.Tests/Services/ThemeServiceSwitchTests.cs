@@ -78,6 +78,17 @@ public class ThemeServiceSwitchTests
 
     [Fact]
     [Trait("Category", "Theme")]
+    public void SetTheme_System_ChangesCurrentTheme()
+    {
+        var sut = new ThemeService("dark");
+
+        sut.SetTheme("system");
+
+        sut.CurrentTheme.Should().Be("system");
+    }
+
+    [Fact]
+    [Trait("Category", "Theme")]
     public void Constructor_DefaultsToValid_Theme()
     {
         var darkSut = new ThemeService("dark");
@@ -85,6 +96,9 @@ public class ThemeServiceSwitchTests
 
         var lightSut = new ThemeService("light");
         lightSut.CurrentTheme.Should().Be("light");
+
+        var systemSut = new ThemeService("system");
+        systemSut.CurrentTheme.Should().Be("system");
     }
 
     [Fact]

@@ -1,9 +1,9 @@
 using System.Reactive.Linq;
 using FluentAssertions;
 using NSubstitute;
-using PulseTerm.App.ViewModels;
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
+using PulseTerm.Presentation.ViewModels;
 
 namespace PulseTerm.App.Tests.ViewModels;
 

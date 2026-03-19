@@ -24,7 +24,7 @@ public class FileBrowserViewModel : ReactiveObject
         _sftpService = sftpService!;
         _sessionId = sessionId;
         _currentPath = "/";
-        _isVisible = true;
+        _isVisible = false;
 
         Files = new ObservableCollection<RemoteFileInfoViewModel>();
         SelectedFiles = new ObservableCollection<RemoteFileInfoViewModel>();

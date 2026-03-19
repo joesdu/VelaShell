@@ -1,4 +1,3 @@
-using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive;
@@ -6,9 +5,9 @@ using System.Reactive.Linq;
 using PulseTerm.Core.Models;
 using ReactiveUI;
 
-namespace PulseTerm.App.ViewModels;
+namespace PulseTerm.Presentation.ViewModels;
 
-public class RecentConnectionsViewModel : ReactiveObject
+public sealed class RecentConnectionsViewModel : ReactiveObject
 {
     private const int MaxRecentConnections = 10;
     private SessionProfile? _selectedConnection;
@@ -18,7 +17,7 @@ public class RecentConnectionsViewModel : ReactiveObject
         Connections = new ObservableCollection<SessionProfile>();
 
         var hasSelection = this.WhenAnyValue(x => x.SelectedConnection)
-            .Select(s => s != null);
+            .Select(selection => selection is not null);
 
         ReconnectCommand = ReactiveCommand.Create(() => { }, hasSelection);
         ClearCommand = ReactiveCommand.Create(ClearAll);
@@ -33,12 +32,13 @@ public class RecentConnectionsViewModel : ReactiveObject
     }
 
     public ReactiveCommand<Unit, Unit> ReconnectCommand { get; }
+
     public ReactiveCommand<Unit, Unit> ClearCommand { get; }
 
     public void AddRecent(SessionProfile profile)
     {
-        var existing = Connections.FirstOrDefault(c => c.Id == profile.Id);
-        if (existing != null)
+        var existing = Connections.FirstOrDefault(connection => connection.Id == profile.Id);
+        if (existing is not null)
         {
             Connections.Remove(existing);
         }

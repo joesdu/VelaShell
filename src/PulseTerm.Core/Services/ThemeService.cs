@@ -2,7 +2,7 @@ namespace PulseTerm.Core.Services;
 
 public class ThemeService : IThemeService
 {
-    private static readonly HashSet<string> ValidThemes = new(StringComparer.OrdinalIgnoreCase) { "dark", "light" };
+    private static readonly HashSet<string> ValidThemes = new(StringComparer.OrdinalIgnoreCase) { "dark", "light", "system" };
 
     private string _currentTheme;
 
@@ -20,7 +20,7 @@ public class ThemeService : IThemeService
         var normalized = themeName.ToLowerInvariant();
 
         if (!ValidThemes.Contains(normalized))
-            throw new ArgumentException($"Invalid theme: '{themeName}'. Valid themes: dark, light.", nameof(themeName));
+            throw new ArgumentException($"Invalid theme: '{themeName}'. Valid themes: dark, light, system.", nameof(themeName));
 
         if (_currentTheme == normalized)
             return;

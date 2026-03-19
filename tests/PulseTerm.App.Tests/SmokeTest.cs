@@ -1,10 +1,8 @@
-using Avalonia.Headless.XUnit;
-
 namespace PulseTerm.App.Tests;
 
 public class SmokeTest
 {
-    [AvaloniaFact]
+    [Fact]
     public void SmokeTest_AppInitializes()
     {
         var app = new App();

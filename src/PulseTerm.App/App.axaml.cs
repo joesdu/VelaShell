@@ -25,7 +25,7 @@ public partial class App : Application
             .AddPulseTermPresentation()
             .AddPulseTermControls()
             .AddPulseTermInfrastructure()
-            .AddSingleton<IThemeService>(_ => new ThemeService("dark"))
+            .AddSingleton<IThemeService>(_ => new ThemeService("system"))
             .AddSingleton<MainWindowViewModel>()
             .BuildServiceProvider();
 
@@ -61,6 +61,7 @@ public partial class App : Application
         RequestedThemeVariant = themeName.ToLowerInvariant() switch
         {
             "light" => ThemeVariant.Light,
+            "system" => ThemeVariant.Default,
             _ => ThemeVariant.Dark,
         };
     }

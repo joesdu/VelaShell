@@ -3,15 +3,6 @@
 
     <!-- PulseTerm Dark Theme — Design tokens from PulseTerm-zh.pen variables -->
 
-    <!-- Background tokens -->
-    <SolidColorBrush x:Key="PulseBgPage"     Color="#0A0E14" />
-    <SolidColorBrush x:Key="PulseBgSidebar"  Color="#0D1117" />
-    <SolidColorBrush x:Key="PulseBgTerminal" Color="#080C12" />
-    <SolidColorBrush x:Key="PulseBgSurface"  Color="#111620" />
-    <SolidColorBrush x:Key="PulseBgActive"   Color="#1C2A3F" />
-    <SolidColorBrush x:Key="PulseBgHover"    Color="#1A2233" />
-    <SolidColorBrush x:Key="PulseBgInput"    Color="#151B26" />
-
     <!-- Accent tokens -->
     <SolidColorBrush x:Key="PulseAccentText" Color="#00D4AA" />
 
@@ -19,10 +10,6 @@
     <SolidColorBrush x:Key="PulseWarning" Color="#FDCB6E" />
     <SolidColorBrush x:Key="PulseError"   Color="#FF6B6B" />
     <SolidColorBrush x:Key="PulseInfo"    Color="#74B9FF" />
-
-    <!-- Tab tokens -->
-    <SolidColorBrush x:Key="PulseTabActiveBg"   Color="#111620" />
-    <SolidColorBrush x:Key="PulseTabInactiveBg" Color="#0A0E14" />
 
     <!-- Terminal color tokens -->
     <SolidColorBrush x:Key="PulseTermWhite"   Color="#E0E6ED" />

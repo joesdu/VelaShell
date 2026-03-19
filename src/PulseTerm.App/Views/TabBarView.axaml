@@ -2,7 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="using:PulseTerm.App.ViewModels"
+             xmlns:vm="using:PulseTerm.Presentation.ViewModels"
              xmlns:res="clr-namespace:PulseTerm.Core.Resources;assembly=PulseTerm.Core"
              mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="36"
              x:Class="PulseTerm.App.Views.TabBarView"

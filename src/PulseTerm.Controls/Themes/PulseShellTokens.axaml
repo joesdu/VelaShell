@@ -1,0 +1,27 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="PulseBgPage" Color="#0A0E14" />
+      <SolidColorBrush x:Key="PulseBgSidebar" Color="#0D1117" />
+      <SolidColorBrush x:Key="PulseBgTerminal" Color="#080C12" />
+      <SolidColorBrush x:Key="PulseBgSurface" Color="#111620" />
+      <SolidColorBrush x:Key="PulseBgActive" Color="#1C2A3F" />
+      <SolidColorBrush x:Key="PulseBgHover" Color="#1A2233" />
+      <SolidColorBrush x:Key="PulseBgInput" Color="#151B26" />
+      <SolidColorBrush x:Key="PulseTabActiveBg" Color="#111620" />
+      <SolidColorBrush x:Key="PulseTabInactiveBg" Color="#0A0E14" />
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Light">
+      <SolidColorBrush x:Key="PulseBgPage" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="PulseBgSidebar" Color="#F6F8FA" />
+      <SolidColorBrush x:Key="PulseBgTerminal" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="PulseBgSurface" Color="#F0F3F6" />
+      <SolidColorBrush x:Key="PulseBgActive" Color="#0969DA1A" />
+      <SolidColorBrush x:Key="PulseBgHover" Color="#D0D7DE33" />
+      <SolidColorBrush x:Key="PulseBgInput" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="PulseTabActiveBg" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="PulseTabInactiveBg" Color="#F6F8FA" />
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

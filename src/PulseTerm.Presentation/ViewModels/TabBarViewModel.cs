@@ -1,12 +1,10 @@
-using System;
 using System.Collections.ObjectModel;
 using System.Reactive;
-using System.Reactive.Linq;
 using ReactiveUI;
 
-namespace PulseTerm.App.ViewModels;
+namespace PulseTerm.Presentation.ViewModels;
 
-public class TabBarViewModel : ReactiveObject
+public sealed class TabBarViewModel : ReactiveObject
 {
     private TabViewModel? _activeTab;
 
@@ -29,19 +27,30 @@ public class TabBarViewModel : ReactiveObject
         get => _activeTab;
         set
         {
-            if (_activeTab != null)
+            if (_activeTab is not null)
+            {
                 _activeTab.IsActive = false;
+            }
+
             this.RaiseAndSetIfChanged(ref _activeTab, value);
-            if (_activeTab != null)
+
+            if (_activeTab is not null)
+            {
                 _activeTab.IsActive = true;
+            }
         }
     }
 
     public ReactiveCommand<Unit, Unit> AddTabCommand { get; }
+
     public ReactiveCommand<TabViewModel, Unit> CloseTabCommand { get; }
+
     public ReactiveCommand<TabViewModel, Unit> SelectTabCommand { get; }
+
     public ReactiveCommand<Unit, Unit> CloseActiveTabCommand { get; }
+
     public ReactiveCommand<Unit, Unit> NextTabCommand { get; }
+
     public ReactiveCommand<Unit, Unit> PreviousTabCommand { get; }
 
     private void AddTab()
@@ -54,33 +63,37 @@ public class TabBarViewModel : ReactiveObject
     private void CloseTab(TabViewModel tab)
     {
         var index = Tabs.IndexOf(tab);
-        if (index < 0) return;
+        if (index < 0)
+        {
+            return;
+        }
 
         Tabs.RemoveAt(index);
 
-        if (ActiveTab == tab)
+        if (ActiveTab != tab)
         {
-            if (Tabs.Count == 0)
-            {
-                ActiveTab = null;
-            }
-            else
-            {
-                ActiveTab = Tabs[Math.Min(index, Tabs.Count - 1)];
-            }
+            return;
         }
+
+        ActiveTab = Tabs.Count == 0
+            ? null
+            : Tabs[Math.Min(index, Tabs.Count - 1)];
     }
 
     private void CloseActiveTab()
     {
-        if (ActiveTab != null)
+        if (ActiveTab is not null)
+        {
             CloseTab(ActiveTab);
+        }
     }
 
     private void NextTab()
     {
-        if (Tabs.Count == 0 || ActiveTab == null)
+        if (Tabs.Count == 0 || ActiveTab is null)
+        {
             return;
+        }
 
         var index = Tabs.IndexOf(ActiveTab);
         ActiveTab = Tabs[(index + 1) % Tabs.Count];
@@ -88,8 +101,10 @@ public class TabBarViewModel : ReactiveObject
 
     private void PreviousTab()
     {
-        if (Tabs.Count == 0 || ActiveTab == null)
+        if (Tabs.Count == 0 || ActiveTab is null)
+        {
             return;
+        }
 
         var index = Tabs.IndexOf(ActiveTab);
         ActiveTab = Tabs[(index - 1 + Tabs.Count) % Tabs.Count];

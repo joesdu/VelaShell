@@ -1,11 +1,10 @@
-using System;
 using System.Reactive;
 using System.Reactive.Linq;
 using ReactiveUI;
 
-namespace PulseTerm.App.ViewModels;
+namespace PulseTerm.Presentation.ViewModels;
 
-public class QuickConnectViewModel : ReactiveObject
+public sealed class QuickConnectViewModel : ReactiveObject
 {
     private string _input;
     private string _parsedHost;
@@ -83,6 +82,7 @@ public class QuickConnectViewModel : ReactiveObject
             {
                 port = parsedPort;
             }
+
             remaining = remaining.Substring(0, colonIndex);
         }
 

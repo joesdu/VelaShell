@@ -1,11 +1,10 @@
-using System;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Resources;
 using ReactiveUI;
 
-namespace PulseTerm.App.ViewModels;
+namespace PulseTerm.Presentation.ViewModels;
 
-public class TabViewModel : ReactiveObject
+public sealed class TabViewModel : ReactiveObject
 {
     private string _title;
     private SessionStatus _connectionStatus;

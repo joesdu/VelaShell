@@ -1,6 +1,7 @@
 using System.Reactive.Concurrency;
 using FluentAssertions;
 using PulseTerm.App.ViewModels;
+using PulseTerm.Presentation.ViewModels;
 using ReactiveUI.Builder;
 
 namespace PulseTerm.App.Tests.ViewModels;

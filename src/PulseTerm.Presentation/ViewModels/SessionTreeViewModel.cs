@@ -1,21 +1,19 @@
-using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
-using System.Threading.Tasks;
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
 using ReactiveUI;
 
-namespace PulseTerm.App.ViewModels;
+namespace PulseTerm.Presentation.ViewModels;
 
-public class SessionTreeViewModel : ReactiveObject
+public sealed class SessionTreeViewModel : ReactiveObject
 {
     private readonly ISessionRepository _repository;
-    private SessionTreeNodeViewModel? _selectedNode;
     private readonly Dictionary<Guid, SessionProfile> _sessionCache = new();
+    private SessionTreeNodeViewModel? _selectedNode;
     private bool _hasNoSessions;
 
     public SessionTreeViewModel(ISessionRepository repository)
@@ -27,7 +25,7 @@ public class SessionTreeViewModel : ReactiveObject
         LoadCommand = ReactiveCommand.CreateFromTask(LoadTreeAsync);
 
         var hasSelectedSession = this.WhenAnyValue(x => x.SelectedNode)
-            .Select(n => n is { IsGroup: false });
+            .Select(node => node is { IsGroup: false });
 
         ConnectCommand = ReactiveCommand.Create<Unit>(_ => { }, hasSelectedSession);
         EditSessionCommand = ReactiveCommand.Create<Unit>(_ => { }, hasSelectedSession);
@@ -51,22 +49,24 @@ public class SessionTreeViewModel : ReactiveObject
     }
 
     public ReactiveCommand<Unit, Unit> LoadCommand { get; }
+
     public ReactiveCommand<Unit, Unit> ConnectCommand { get; }
+
     public ReactiveCommand<Unit, Unit> EditSessionCommand { get; }
+
     public ReactiveCommand<Unit, Unit> DeleteSessionCommand { get; }
 
     public void AddSession(SessionProfile session)
     {
         _sessionCache[session.Id] = session;
 
-        var groupNode = Nodes.FirstOrDefault(n => n.IsGroup && n.Id == session.GroupId);
-        if (groupNode != null)
+        var groupNode = Nodes.FirstOrDefault(node => node.IsGroup && node.Id == session.GroupId);
+        if (groupNode is not null)
         {
-            var childNode = new SessionTreeNodeViewModel(session.Id, session.Name, isGroup: false);
-            groupNode.Children.Add(childNode);
+            groupNode.Children.Add(new SessionTreeNodeViewModel(session.Id, session.Name, false));
         }
 
-        HasNoSessions = !Nodes.Any(g => g.Children.Count > 0);
+        HasNoSessions = !Nodes.Any(group => group.Children.Count > 0);
     }
 
     public void MoveSessionToGroup(Guid sessionId, Guid targetGroupId)
@@ -76,26 +76,31 @@ public class SessionTreeViewModel : ReactiveObject
 
         foreach (var group in Nodes)
         {
-            var child = group.Children.FirstOrDefault(c => c.Id == sessionId);
-            if (child != null)
+            var child = group.Children.FirstOrDefault(node => node.Id == sessionId);
+            if (child is null)
             {
-                sourceNode = child;
-                sourceGroup = group;
-                break;
+                continue;
             }
+
+            sourceNode = child;
+            sourceGroup = group;
+            break;
         }
 
-        if (sourceNode == null || sourceGroup == null) return;
+        if (sourceNode is null || sourceGroup is null)
+        {
+            return;
+        }
 
         sourceGroup.Children.Remove(sourceNode);
 
-        var targetGroup = Nodes.FirstOrDefault(n => n.IsGroup && n.Id == targetGroupId);
+        var targetGroup = Nodes.FirstOrDefault(node => node.IsGroup && node.Id == targetGroupId);
         targetGroup?.Children.Add(sourceNode);
 
         if (_sessionCache.TryGetValue(sessionId, out var session))
         {
             session.GroupId = targetGroupId;
-            _repository.SaveSessionAsync(session);
+            _ = _repository.SaveSessionAsync(session);
         }
     }
 
@@ -105,31 +110,34 @@ public class SessionTreeViewModel : ReactiveObject
         _sessionCache.Clear();
 
         var groups = await _repository.GetAllGroupsAsync();
-
-        foreach (var group in groups.OrderBy(g => g.SortOrder))
+        foreach (var group in groups.OrderBy(item => item.SortOrder))
         {
-            var groupNode = new SessionTreeNodeViewModel(group.Id, group.Name, isGroup: true);
+            var groupNode = new SessionTreeNodeViewModel(group.Id, group.Name, true);
 
             foreach (var sessionId in group.Sessions)
             {
                 var session = await _repository.GetSessionAsync(sessionId);
-                if (session != null)
+                if (session is null)
                 {
-                    _sessionCache[session.Id] = session;
-                    var sessionNode = new SessionTreeNodeViewModel(session.Id, session.Name, isGroup: false);
-                    groupNode.Children.Add(sessionNode);
+                    continue;
                 }
+
+                _sessionCache[session.Id] = session;
+                groupNode.Children.Add(new SessionTreeNodeViewModel(session.Id, session.Name, false));
             }
 
             Nodes.Add(groupNode);
         }
 
-        HasNoSessions = !Nodes.Any(g => g.Children.Count > 0);
+        HasNoSessions = !Nodes.Any(group => group.Children.Count > 0);
     }
 
     private async Task DeleteSelectedSessionAsync()
     {
-        if (SelectedNode == null || SelectedNode.IsGroup) return;
+        if (SelectedNode is null || SelectedNode.IsGroup)
+        {
+            return;
+        }
 
         var sessionId = SelectedNode.Id;
         await _repository.DeleteSessionAsync(sessionId);
@@ -137,15 +145,17 @@ public class SessionTreeViewModel : ReactiveObject
 
         foreach (var group in Nodes)
         {
-            var child = group.Children.FirstOrDefault(c => c.Id == sessionId);
-            if (child != null)
+            var child = group.Children.FirstOrDefault(node => node.Id == sessionId);
+            if (child is null)
             {
-                group.Children.Remove(child);
-                break;
+                continue;
             }
+
+            group.Children.Remove(child);
+            break;
         }
 
         SelectedNode = null;
-        HasNoSessions = !Nodes.Any(g => g.Children.Count > 0);
+        HasNoSessions = !Nodes.Any(group => group.Children.Count > 0);
     }
 }

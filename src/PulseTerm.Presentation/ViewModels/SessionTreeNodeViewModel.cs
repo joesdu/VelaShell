@@ -1,11 +1,10 @@
-using System;
 using System.Collections.ObjectModel;
 using PulseTerm.Core.Models;
 using ReactiveUI;
 
-namespace PulseTerm.App.ViewModels;
+namespace PulseTerm.Presentation.ViewModels;
 
-public class SessionTreeNodeViewModel : ReactiveObject
+public sealed class SessionTreeNodeViewModel : ReactiveObject
 {
     private string _name;
     private bool _isExpanded;
