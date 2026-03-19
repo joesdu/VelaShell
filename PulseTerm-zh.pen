@@ -3686,7 +3686,7 @@
         {
           "type": "frame",
           "id": "9Ralg",
-          "x": 350,
+          "x": 360,
           "y": 1040,
           "name": "文件传输提示组件（暗色）",
           "width": 280,
@@ -3947,7 +3947,7 @@
         {
           "type": "frame",
           "id": "fuXS7",
-          "x": 1050,
+          "x": 1080,
           "y": 1040,
           "name": "隧道管理面板",
           "width": 320,
@@ -4553,7 +4553,7 @@
         {
           "type": "frame",
           "id": "EP3Gd",
-          "x": 1450,
+          "x": 1460,
           "y": 1040,
           "name": "系统资源监控面板",
           "width": 280,
@@ -11166,267 +11166,6 @@
                   "content": "UTF-8",
                   "fontFamily": "JetBrains Mono",
                   "fontSize": 10,
-                  "fontWeight": "normal"
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "type": "frame",
-          "id": "LJ0FA",
-          "x": 700,
-          "y": 1040,
-          "name": "文件传输提示组件（亮色）",
-          "width": 280,
-          "fill": "$bg-surface",
-          "cornerRadius": 6,
-          "stroke": {
-            "align": "outside",
-            "thickness": 1,
-            "fill": "$border-secondary"
-          },
-          "effect": {
-            "type": "shadow",
-            "shadowType": "outer",
-            "color": "#00000060",
-            "offset": {
-              "x": 0,
-              "y": 4
-            },
-            "blur": 16
-          },
-          "layout": "vertical",
-          "children": [
-            {
-              "type": "frame",
-              "id": "4QvJc",
-              "name": "tpHeader",
-              "width": "fill_container",
-              "height": 32,
-              "stroke": {
-                "align": "inside",
-                "thickness": {
-                  "bottom": 1
-                },
-                "fill": "$border-primary"
-              },
-              "padding": [
-                0,
-                12
-              ],
-              "justifyContent": "space_between",
-              "alignItems": "center",
-              "children": [
-                {
-                  "type": "frame",
-                  "id": "OCte4",
-                  "name": "tpTitle",
-                  "gap": 6,
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "icon_font",
-                      "id": "8v1eY",
-                      "name": "tpIcon",
-                      "width": 12,
-                      "height": 12,
-                      "iconFontName": "arrow-up-down",
-                      "iconFontFamily": "lucide",
-                      "fill": "$accent"
-                    },
-                    {
-                      "type": "text",
-                      "id": "e00kw",
-                      "name": "tpLabel",
-                      "fill": "$text-primary",
-                      "content": "传输",
-                      "fontFamily": "JetBrains Mono",
-                      "fontSize": 11,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "frame",
-                      "id": "LpE3t",
-                      "name": "tpBadge",
-                      "fill": "$accent",
-                      "cornerRadius": 8,
-                      "padding": [
-                        1,
-                        6
-                      ],
-                      "justifyContent": "center",
-                      "alignItems": "center",
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "AAPsk",
-                          "name": "tpBadgeText",
-                          "fill": "$accent-text",
-                          "content": "2",
-                          "fontFamily": "JetBrains Mono",
-                          "fontSize": 9,
-                          "fontWeight": "600"
-                        }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  "type": "icon_font",
-                  "id": "MmvBA",
-                  "name": "tpClose",
-                  "width": 12,
-                  "height": 12,
-                  "iconFontName": "x",
-                  "iconFontFamily": "lucide",
-                  "fill": "$text-tertiary"
-                }
-              ]
-            },
-            {
-              "type": "frame",
-              "id": "HenE0",
-              "name": "tpItem1",
-              "width": "fill_container",
-              "stroke": {
-                "align": "inside",
-                "thickness": {
-                  "bottom": 1
-                },
-                "fill": "$border-primary"
-              },
-              "layout": "vertical",
-              "gap": 4,
-              "padding": [
-                8,
-                12
-              ],
-              "children": [
-                {
-                  "type": "frame",
-                  "id": "IUlrY",
-                  "name": "tpItem1Row",
-                  "width": "fill_container",
-                  "justifyContent": "space_between",
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "GyXpw",
-                      "name": "tpItem1Name",
-                      "fill": "$text-primary",
-                      "content": "backup-2025.tar.gz",
-                      "fontFamily": "JetBrains Mono",
-                      "fontSize": 10,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "text",
-                      "id": "rBZPn",
-                      "name": "tpItem1Pct",
-                      "fill": "$accent",
-                      "content": "67%",
-                      "fontFamily": "JetBrains Mono",
-                      "fontSize": 10,
-                      "fontWeight": "500"
-                    }
-                  ]
-                },
-                {
-                  "type": "frame",
-                  "id": "glJOd",
-                  "name": "tpItem1Bar",
-                  "width": "fill_container",
-                  "height": 3,
-                  "fill": "$border-primary",
-                  "cornerRadius": 2,
-                  "layout": "none",
-                  "children": [
-                    {
-                      "type": "frame",
-                      "id": "n1qj9",
-                      "x": 0,
-                      "y": 0,
-                      "name": "tpItem1Fill",
-                      "width": 188,
-                      "height": 3,
-                      "fill": "$accent",
-                      "cornerRadius": 2
-                    }
-                  ]
-                },
-                {
-                  "type": "text",
-                  "id": "Q1jgR",
-                  "name": "tpItem1Info",
-                  "fill": "$text-muted",
-                  "content": "142 MB / 212 MB  •  4.2 MB/s  •  ↑ 上传中",
-                  "fontFamily": "JetBrains Mono",
-                  "fontSize": 9,
-                  "fontWeight": "normal"
-                }
-              ]
-            },
-            {
-              "type": "frame",
-              "id": "4c9iM",
-              "name": "tpItem2",
-              "width": "fill_container",
-              "layout": "vertical",
-              "gap": 4,
-              "padding": [
-                8,
-                12
-              ],
-              "children": [
-                {
-                  "type": "frame",
-                  "id": "lhJi6",
-                  "name": "tpItem2Row",
-                  "width": "fill_container",
-                  "justifyContent": "space_between",
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "KvLWP",
-                      "name": "tpItem2Name",
-                      "fill": "$text-primary",
-                      "content": "deploy.sh",
-                      "fontFamily": "JetBrains Mono",
-                      "fontSize": 10,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "text",
-                      "id": "PcjdO",
-                      "name": "tpItem2Done",
-                      "fill": "$status-connected",
-                      "content": "完成",
-                      "fontFamily": "JetBrains Mono",
-                      "fontSize": 10,
-                      "fontWeight": "500"
-                    }
-                  ]
-                },
-                {
-                  "type": "frame",
-                  "id": "zZJcV",
-                  "name": "tpItem2Bar",
-                  "width": "fill_container",
-                  "height": 3,
-                  "fill": "$accent",
-                  "cornerRadius": 2
-                },
-                {
-                  "type": "text",
-                  "id": "WWcPT",
-                  "name": "tpItem2Info",
-                  "fill": "$text-muted",
-                  "content": "1.2 KB  •  已完成  •  ↓ 已下载",
-                  "fontFamily": "JetBrains Mono",
-                  "fontSize": 9,
                   "fontWeight": "normal"
                 }
               ]
@@ -29828,7 +29567,7 @@
     {
       "type": "text",
       "id": "GywSF",
-      "x": 350,
+      "x": 360,
       "y": 1000,
       "name": "标注 - 文件传输提示组件（暗色）",
       "fill": "#888888",
@@ -29839,20 +29578,8 @@
     },
     {
       "type": "text",
-      "id": "HTrmo",
-      "x": 700,
-      "y": 1000,
-      "name": "标注 - 文件传输提示组件（亮色）",
-      "fill": "#888888",
-      "content": "文件传输提示组件 (亮色)",
-      "fontFamily": "Inter",
-      "fontSize": 18,
-      "fontWeight": "normal"
-    },
-    {
-      "type": "text",
       "id": "vvXDb",
-      "x": 1050,
+      "x": 1080,
       "y": 1000,
       "name": "标注 - 隧道管理面板",
       "fill": "#888888",
@@ -29864,7 +29591,7 @@
     {
       "type": "text",
       "id": "HUXef",
-      "x": 1450,
+      "x": 1460,
       "y": 1000,
       "name": "标注 - 系统资源监控面板",
       "fill": "#888888",
