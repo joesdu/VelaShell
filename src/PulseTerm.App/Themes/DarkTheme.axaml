@@ -13,25 +13,7 @@
     <SolidColorBrush x:Key="PulseBgInput"    Color="#151B26" />
 
     <!-- Accent tokens -->
-    <SolidColorBrush x:Key="PulseAccent"    Color="#00D4AA" />
-    <SolidColorBrush x:Key="PulseAccentDim" Color="#00D4AA30" />
-    <!-- accent-text is dark (text on accent bg) -->
     <SolidColorBrush x:Key="PulseAccentText" Color="#00D4AA" />
-
-    <!-- Text tokens -->
-    <SolidColorBrush x:Key="PulseTextPrimary"   Color="#E0E6ED" />
-    <SolidColorBrush x:Key="PulseTextSecondary" Color="#8B9BB4" />
-    <SolidColorBrush x:Key="PulseTextTertiary"  Color="#5A6A80" />
-    <SolidColorBrush x:Key="PulseTextMuted"     Color="#3D4F63" />
-
-    <!-- Border tokens -->
-    <SolidColorBrush x:Key="PulseBorderPrimary"   Color="#1E2A3A" />
-    <SolidColorBrush x:Key="PulseBorderSecondary" Color="#253345" />
-
-    <!-- Status tokens -->
-    <SolidColorBrush x:Key="PulseStatusConnected"    Color="#00D4AA" />
-    <SolidColorBrush x:Key="PulseStatusConnecting"   Color="#FDCB6E" />
-    <SolidColorBrush x:Key="PulseStatusDisconnected" Color="#FF6B6B" />
 
     <!-- Semantic tokens -->
     <SolidColorBrush x:Key="PulseWarning" Color="#FDCB6E" />
@@ -50,8 +32,5 @@
     <SolidColorBrush x:Key="PulseTermYellow"  Color="#FDCB6E" />
     <SolidColorBrush x:Key="PulseTermRed"     Color="#FF6B6B" />
     <SolidColorBrush x:Key="PulseTermMagenta" Color="#D980FA" />
-
-    <!-- Font tokens -->
-    <FontFamily x:Key="PulseTerminalFont">JetBrains Mono, Cascadia Mono, Consolas, monospace</FontFamily>
 
 </ResourceDictionary>

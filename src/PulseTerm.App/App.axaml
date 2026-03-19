@@ -11,6 +11,7 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceInclude Source="avares://PulseTerm.Controls/Themes/Generic.axaml" />
+                <ResourceInclude Source="avares://PulseTerm.Controls/Themes/PulseTokens.axaml" />
             </ResourceDictionary.MergedDictionaries>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Dark">

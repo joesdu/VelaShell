@@ -1,0 +1,33 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="PulseAccent" Color="#00D4AA" />
+      <SolidColorBrush x:Key="PulseAccentDim" Color="#00D4AA30" />
+      <SolidColorBrush x:Key="PulseTextPrimary" Color="#E0E6ED" />
+      <SolidColorBrush x:Key="PulseTextSecondary" Color="#8B9BB4" />
+      <SolidColorBrush x:Key="PulseTextTertiary" Color="#5A6A80" />
+      <SolidColorBrush x:Key="PulseTextMuted" Color="#3D4F63" />
+      <SolidColorBrush x:Key="PulseBorderPrimary" Color="#1E2A3A" />
+      <SolidColorBrush x:Key="PulseBorderSecondary" Color="#253345" />
+      <SolidColorBrush x:Key="PulseStatusConnected" Color="#00D4AA" />
+      <SolidColorBrush x:Key="PulseStatusConnecting" Color="#FDCB6E" />
+      <SolidColorBrush x:Key="PulseStatusDisconnected" Color="#FF6B6B" />
+      <FontFamily x:Key="PulseTerminalFont">JetBrains Mono, Cascadia Mono, Consolas, monospace</FontFamily>
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Light">
+      <SolidColorBrush x:Key="PulseAccent" Color="#00A88A" />
+      <SolidColorBrush x:Key="PulseAccentDim" Color="#00A88A1A" />
+      <SolidColorBrush x:Key="PulseTextPrimary" Color="#24292F" />
+      <SolidColorBrush x:Key="PulseTextSecondary" Color="#57606A" />
+      <SolidColorBrush x:Key="PulseTextTertiary" Color="#6E7781" />
+      <SolidColorBrush x:Key="PulseTextMuted" Color="#8C959F" />
+      <SolidColorBrush x:Key="PulseBorderPrimary" Color="#D0D7DE" />
+      <SolidColorBrush x:Key="PulseBorderSecondary" Color="#E1E4E8" />
+      <SolidColorBrush x:Key="PulseStatusConnected" Color="#00A88A" />
+      <SolidColorBrush x:Key="PulseStatusConnecting" Color="#BF8700" />
+      <SolidColorBrush x:Key="PulseStatusDisconnected" Color="#CF222E" />
+      <FontFamily x:Key="PulseTerminalFont">JetBrains Mono, Cascadia Mono, Consolas, monospace</FontFamily>
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

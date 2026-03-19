@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:PulseTerm.App.ViewModels"
+        xmlns:pvm="using:PulseTerm.Presentation.ViewModels"
         xmlns:views="using:PulseTerm.App.Views"
         xmlns:res="clr-namespace:PulseTerm.Core.Resources;assembly=PulseTerm.Core"
         mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="900"
@@ -72,8 +73,8 @@
             Padding="12,0"
             DataContext="{Binding StatusBar}">
       <Border.DataTemplates>
-        <DataTemplate DataType="vm:StatusBarViewModel"
-                      x:DataType="vm:StatusBarViewModel">
+        <DataTemplate DataType="pvm:StatusBarViewModel"
+                      x:DataType="pvm:StatusBarViewModel">
           <Grid ColumnDefinitions="Auto,*,Auto">
 
             <!-- Left: wifi icon + connection + latency + uptime -->

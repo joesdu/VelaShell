@@ -3,6 +3,7 @@ using FluentAssertions;
 using PulseTerm.App.ViewModels;
 using PulseTerm.Core.Localization;
 using PulseTerm.Core.Services;
+using PulseTerm.Presentation.ViewModels;
 
 namespace PulseTerm.App.Tests.Integration;
 

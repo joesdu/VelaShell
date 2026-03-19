@@ -1,4 +1,5 @@
 using System.Reactive;
+using PulseTerm.Presentation.ViewModels;
 using ReactiveUI;
 
 namespace PulseTerm.App.ViewModels;

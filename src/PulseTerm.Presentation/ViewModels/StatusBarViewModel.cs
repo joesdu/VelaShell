@@ -1,13 +1,12 @@
-using System;
 using System.Reactive.Concurrency;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using PulseTerm.Core.Resources;
 using ReactiveUI;
 
-namespace PulseTerm.App.ViewModels;
+namespace PulseTerm.Presentation.ViewModels;
 
-public class StatusBarViewModel : ReactiveObject, IDisposable
+public sealed class StatusBarViewModel : ReactiveObject, IDisposable
 {
     private readonly IScheduler _scheduler;
     private readonly CompositeDisposable _disposables = new();
@@ -21,8 +20,6 @@ public class StatusBarViewModel : ReactiveObject, IDisposable
     private string _encoding;
     private string _uptime;
     private bool _isConnected;
-
-    // Performance metrics for Status Bar Right Area
     private string _cpuUsage;
     private string _memUsage;
     private string _netUsage;
@@ -43,11 +40,9 @@ public class StatusBarViewModel : ReactiveObject, IDisposable
         _status = Strings.Disconnected;
         _latency = string.Empty;
         _terminalType = "xterm-256color";
-        _windowSize = "80\u00D724";
+        _windowSize = "80×24";
         _encoding = "UTF-8";
         _uptime = string.Empty;
-        _isConnected = false;
-
         _cpuUsage = "CPU: 0%";
         _memUsage = "MEM: 0%";
         _netUsage = "NET: 0 B/s";
