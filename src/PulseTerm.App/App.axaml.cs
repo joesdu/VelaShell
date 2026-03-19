@@ -2,29 +2,46 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
+using Microsoft.Extensions.DependencyInjection;
+using PulseTerm.Controls.DependencyInjection;
+using PulseTerm.Infrastructure.DependencyInjection;
 using PulseTerm.App.ViewModels;
 using PulseTerm.App.Views;
+using PulseTerm.Presentation.DependencyInjection;
 using PulseTerm.Core.Services;
 
 namespace PulseTerm.App;
 
 public partial class App : Application
 {
-    public static IThemeService ThemeService { get; } = new ThemeService("dark");
+    private ServiceProvider? _serviceProvider;
+    private IThemeService? _themeService;
 
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
 
-        ThemeService.ThemeChanged += OnThemeChanged;
-        ApplyThemeVariant(ThemeService.CurrentTheme);
+        _serviceProvider = new ServiceCollection()
+            .AddPulseTermPresentation()
+            .AddPulseTermControls()
+            .AddPulseTermInfrastructure()
+            .AddSingleton<IThemeService>(_ => new ThemeService("dark"))
+            .AddSingleton<MainWindowViewModel>()
+            .BuildServiceProvider();
+
+        _themeService = _serviceProvider.GetRequiredService<IThemeService>();
+
+        _themeService.ThemeChanged += OnThemeChanged;
+        ApplyThemeVariant(_themeService.CurrentTheme);
     }
 
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var viewModel = new MainWindowViewModel();
+            var viewModel = _serviceProvider?.GetRequiredService<MainWindowViewModel>()
+                ?? new MainWindowViewModel();
+
             desktop.MainWindow = new MainWindow
             {
                 DataContext = viewModel

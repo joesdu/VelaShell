@@ -31,5 +31,8 @@
   <ItemGroup>
     <ProjectReference Include="..\PulseTerm.Core\PulseTerm.Core.csproj" />
     <ProjectReference Include="..\PulseTerm.Terminal\PulseTerm.Terminal.csproj" />
+    <ProjectReference Include="..\PulseTerm.Presentation\PulseTerm.Presentation.csproj" />
+    <ProjectReference Include="..\PulseTerm.Controls\PulseTerm.Controls.csproj" />
+    <ProjectReference Include="..\PulseTerm.Infrastructure\PulseTerm.Infrastructure.csproj" />
   </ItemGroup>
 </Project>
