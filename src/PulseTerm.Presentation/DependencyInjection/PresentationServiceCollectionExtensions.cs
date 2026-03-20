@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using ReactiveUI;
+using PulseTerm.Presentation.Services;
 using PulseTerm.Presentation.ViewModels;
 
 namespace PulseTerm.Presentation.DependencyInjection;
@@ -14,6 +15,8 @@ public static class PresentationServiceCollectionExtensions
         services.AddSingleton<StatusBarViewModel>();
         services.AddSingleton<TabBarViewModel>();
         services.AddSingleton<SidebarViewModel>();
+        services.AddSingleton<IConnectionWorkflowService, ConnectionWorkflowService>();
+        services.AddSingleton<ITunnelWorkflowService, TunnelWorkflowService>();
 
         return services;
     }

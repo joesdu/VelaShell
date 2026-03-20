@@ -1,6 +1,7 @@
 using FluentAssertions;
 using NSubstitute;
 using PulseTerm.Core.Ssh;
+using PulseTerm.Infrastructure.Ssh;
 using Renci.SshNet;
 using Renci.SshNet.Common;
 using Xunit;

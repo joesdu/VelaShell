@@ -4,6 +4,7 @@ using FluentAssertions;
 using NSubstitute;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Ssh;
+using PulseTerm.Infrastructure.Ssh;
 using Xunit.Abstractions;
 
 namespace PulseTerm.App.Tests.Integration;

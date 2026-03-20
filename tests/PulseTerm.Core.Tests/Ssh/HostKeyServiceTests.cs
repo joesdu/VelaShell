@@ -2,6 +2,7 @@ using FluentAssertions;
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Ssh;
+using PulseTerm.Infrastructure.Ssh;
 using Xunit;
 
 namespace PulseTerm.Core.Tests.Ssh;

@@ -1,6 +1,7 @@
+using PulseTerm.Core.Ssh;
 using Renci.SshNet;
 
-namespace PulseTerm.Core.Ssh;
+namespace PulseTerm.Infrastructure.Ssh;
 
 public class ShellStreamWrapper : IShellStreamWrapper
 {
@@ -44,6 +45,6 @@ public class ShellStreamWrapper : IShellStreamWrapper
 
     public void Dispose()
     {
-        _stream?.Dispose();
+        _stream.Dispose();
     }
 }

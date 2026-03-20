@@ -1,7 +1,8 @@
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
+using PulseTerm.Core.Ssh;
 
-namespace PulseTerm.Core.Ssh;
+namespace PulseTerm.Infrastructure.Ssh;
 
 public class HostKeyService : IHostKeyService
 {
@@ -99,9 +100,9 @@ public class HostKeyService : IHostKeyService
     {
         return await _dataStore.LoadAsync<KnownHostData>(_dataPath, cancellationToken).ConfigureAwait(false) ?? new KnownHostData();
     }
-}
 
-internal class KnownHostData
-{
-    public List<KnownHost> Hosts { get; set; } = new();
+    internal class KnownHostData
+    {
+        public List<KnownHost> Hosts { get; set; } = new();
+    }
 }

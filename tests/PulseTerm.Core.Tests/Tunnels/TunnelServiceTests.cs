@@ -3,6 +3,7 @@ using NSubstitute;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Ssh;
 using PulseTerm.Core.Tunnels;
+using PulseTerm.Infrastructure.Tunnels;
 using Xunit;
 
 namespace PulseTerm.Core.Tests.Tunnels;

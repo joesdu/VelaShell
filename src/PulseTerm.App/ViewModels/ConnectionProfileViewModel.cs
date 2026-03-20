@@ -1,13 +1,16 @@
 using System;
 using System.Reactive;
 using System.Reactive.Linq;
+using System.Threading.Tasks;
 using PulseTerm.Core.Models;
+using PulseTerm.Presentation.Services;
 using ReactiveUI;
 
 namespace PulseTerm.App.ViewModels;
 
 public class ConnectionProfileViewModel : ReactiveObject
 {
+    private readonly IConnectionWorkflowService? _connectionWorkflowService;
     private string _name = string.Empty;
     private string _host = string.Empty;
     private int _port = 22;
@@ -19,11 +22,16 @@ public class ConnectionProfileViewModel : ReactiveObject
     private Guid? _groupId;
     private bool _isPasswordAuth = true;
     private bool _isKeyAuth;
+    private bool _isBusy;
+    private string? _errorMessage;
+    private bool? _lastTestSucceeded;
 
     private readonly Guid _profileId;
 
-    public ConnectionProfileViewModel(SessionProfile? existing = null)
+    public ConnectionProfileViewModel(SessionProfile? existing = null, IConnectionWorkflowService? connectionWorkflowService = null)
     {
+        _connectionWorkflowService = connectionWorkflowService;
+
         if (existing != null)
         {
             _profileId = existing.Id;
@@ -51,18 +59,20 @@ public class ConnectionProfileViewModel : ReactiveObject
                 IsKeyAuth = method == AuthMethod.PrivateKey;
             });
 
-        var canSave = this.WhenAnyValue(
+        var canExecute = this.WhenAnyValue(
             x => x.Host,
             x => x.Username,
             x => x.Port,
-            (host, username, port) =>
+            x => x.IsBusy,
+            (host, username, port, isBusy) =>
+                !isBusy &&
                 !string.IsNullOrWhiteSpace(host) &&
                 !string.IsNullOrWhiteSpace(username) &&
                 port >= 1 && port <= 65535);
 
-        SaveCommand = ReactiveCommand.Create(BuildProfile, canSave);
+        SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync, canExecute);
         CancelCommand = ReactiveCommand.Create(() => (SessionProfile?)null);
-        TestConnectionCommand = ReactiveCommand.Create(() => { }, canSave);
+        TestConnectionCommand = ReactiveCommand.CreateFromTask(TestConnectionAsync, canExecute);
         BrowseKeyFileCommand = ReactiveCommand.Create(() => { });
     }
 
@@ -132,12 +142,79 @@ public class ConnectionProfileViewModel : ReactiveObject
         private set => this.RaiseAndSetIfChanged(ref _isKeyAuth, value);
     }
 
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set => this.RaiseAndSetIfChanged(ref _isBusy, value);
+    }
+
+    public string? ErrorMessage
+    {
+        get => _errorMessage;
+        private set => this.RaiseAndSetIfChanged(ref _errorMessage, value);
+    }
+
+    public bool? LastTestSucceeded
+    {
+        get => _lastTestSucceeded;
+        private set => this.RaiseAndSetIfChanged(ref _lastTestSucceeded, value);
+    }
+
     public ReactiveCommand<Unit, SessionProfile?> SaveCommand { get; }
     public ReactiveCommand<Unit, SessionProfile?> CancelCommand { get; }
     public ReactiveCommand<Unit, Unit> TestConnectionCommand { get; }
     public ReactiveCommand<Unit, Unit> BrowseKeyFileCommand { get; }
 
-    private SessionProfile? BuildProfile()
+    private async Task<SessionProfile?> SaveAsync()
+    {
+        try
+        {
+            IsBusy = true;
+            ErrorMessage = null;
+
+            var profile = BuildProfile();
+            if (_connectionWorkflowService is null)
+            {
+                return profile;
+            }
+
+            return await _connectionWorkflowService.SaveProfileAsync(profile).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            return null;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task TestConnectionAsync()
+    {
+        if (_connectionWorkflowService is null)
+        {
+            LastTestSucceeded = null;
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            ErrorMessage = null;
+
+            var result = await _connectionWorkflowService.TestConnectionAsync(BuildProfile()).ConfigureAwait(false);
+            LastTestSucceeded = result.Success;
+            ErrorMessage = result.ErrorMessage;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private SessionProfile BuildProfile()
     {
         return new SessionProfile
         {

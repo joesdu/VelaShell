@@ -29,6 +29,12 @@ public class SessionRepository : ISessionRepository
         return data.Groups;
     }
 
+    public async Task<List<SessionProfile>> GetAllSessionsAsync()
+    {
+        var data = await LoadDataAsync().ConfigureAwait(false);
+        return data.Sessions;
+    }
+
     public async Task<SessionProfile?> GetSessionAsync(Guid id)
     {
         var data = await LoadDataAsync().ConfigureAwait(false);

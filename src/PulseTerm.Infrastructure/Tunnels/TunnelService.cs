@@ -3,9 +3,10 @@ using DynamicData;
 using Microsoft.Extensions.Logging;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Ssh;
+using PulseTerm.Core.Tunnels;
 using Renci.SshNet;
 
-namespace PulseTerm.Core.Tunnels;
+namespace PulseTerm.Infrastructure.Tunnels;
 
 public class TunnelService : ITunnelService
 {
@@ -182,9 +183,6 @@ public class TunnelService : ITunnelService
                 }
                 catch (InvalidOperationException ex) when (ex.Message.Contains("not added to a client"))
                 {
-                    // Expected in test environments with mocked SSH clients.
-                    // The port was added to a mock that doesn't maintain internal state,
-                    // so Start() fails. This is benign — the tunnel is still tracked.
                     _logger?.LogDebug(ex, "Port start failed (expected with mocked clients) for tunnel {TunnelId}", tunnelInfo.Id);
                 }
                 catch (Exception)

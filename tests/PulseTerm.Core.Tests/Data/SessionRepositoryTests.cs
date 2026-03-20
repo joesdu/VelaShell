@@ -59,6 +59,23 @@ public class SessionRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetAllSessionsAsync_ReturnsPersistedSessions()
+    {
+        var repo = new SessionRepository(_dataStore, _sessionsPath);
+        var first = new SessionProfile { Id = Guid.NewGuid(), Name = "A", Host = "a.example.com" };
+        var second = new SessionProfile { Id = Guid.NewGuid(), Name = "B", Host = "b.example.com" };
+
+        await repo.SaveSessionAsync(first);
+        await repo.SaveSessionAsync(second);
+
+        var sessions = await repo.GetAllSessionsAsync();
+
+        sessions.Should().HaveCount(2);
+        sessions.Should().Contain(session => session.Id == first.Id);
+        sessions.Should().Contain(session => session.Id == second.Id);
+    }
+
+    [Fact]
     public async Task SaveSessionAsync_ExistingSession_ShouldUpdate()
     {
         var repo = new SessionRepository(_dataStore, _sessionsPath);

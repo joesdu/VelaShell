@@ -2,19 +2,20 @@ using System.Collections.Concurrent;
 using DynamicData;
 using Microsoft.Extensions.Logging;
 using PulseTerm.Core.Models;
+using PulseTerm.Core.Ssh;
 
-namespace PulseTerm.Core.Ssh;
+namespace PulseTerm.Infrastructure.Ssh;
 
 public class SshConnectionService : ISshConnectionService
 {
     private readonly ILogger<SshConnectionService>? _logger;
-    private readonly Func<Models.ConnectionInfo, ISshClientWrapper> _clientFactory;
+    private readonly Func<ConnectionInfo, ISshClientWrapper> _clientFactory;
     private readonly SourceList<SshSession> _sessions = new();
     private readonly ConcurrentDictionary<Guid, ISshClientWrapper> _clients = new();
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
 
     public SshConnectionService(
-        Func<Models.ConnectionInfo, ISshClientWrapper> clientFactory,
+        Func<ConnectionInfo, ISshClientWrapper> clientFactory,
         ILogger<SshConnectionService>? logger = null)
     {
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
@@ -23,7 +24,7 @@ public class SshConnectionService : ISshConnectionService
 
     public IObservableList<SshSession> Sessions => _sessions.AsObservableList();
 
-    public async Task<SshSession> ConnectAsync(Models.ConnectionInfo connectionInfo, CancellationToken cancellationToken = default)
+    public async Task<SshSession> ConnectAsync(ConnectionInfo connectionInfo, CancellationToken cancellationToken = default)
     {
         await _connectionLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -36,7 +37,7 @@ public class SshConnectionService : ISshConnectionService
         }
     }
 
-    private async Task<SshSession> ConnectInternalAsync(Models.ConnectionInfo connectionInfo, CancellationToken cancellationToken)
+    private async Task<SshSession> ConnectInternalAsync(ConnectionInfo connectionInfo, CancellationToken cancellationToken)
     {
         var session = new SshSession
         {

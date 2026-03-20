@@ -1,7 +1,8 @@
+using PulseTerm.Core.Ssh;
 using Renci.SshNet;
 using Renci.SshNet.Sftp;
 
-namespace PulseTerm.Core.Ssh;
+namespace PulseTerm.Infrastructure.Ssh;
 
 public class SftpClientWrapper : ISftpClientWrapper
 {
