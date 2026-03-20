@@ -25,12 +25,11 @@
   </Window.KeyBindings>
 
   <Grid RowDefinitions="*,Auto">
-
     <!-- Row 0: Content area (sidebar + main) -->
     <Grid Grid.Row="0" ColumnDefinitions="260,Auto,*">
 
       <!-- Sidebar -->
-      <views:SidebarView Grid.Column="0" DataContext="{Binding Sidebar}" />
+      <views:SidebarView x:Name="SidebarHost" Grid.Column="0" DataContext="{Binding Sidebar}" />
 
       <!-- Sidebar border -->
       <Border Grid.Column="1"
@@ -49,8 +48,7 @@
           <Border Grid.Row="1"
                   Background="{DynamicResource PulseBgTerminal}">
             <Grid>
-               <!-- Terminal view will be injected here -->
-               <views:TerminalTabView DataContext="{Binding TabBar.ActiveTab}" />
+              <views:TerminalTabView DataContext="{Binding ActiveTerminalTab}" />
             </Grid>
           </Border>
         </Grid>

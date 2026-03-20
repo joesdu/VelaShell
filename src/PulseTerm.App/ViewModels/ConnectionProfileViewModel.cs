@@ -178,7 +178,7 @@ public class ConnectionProfileViewModel : ReactiveObject
                 return profile;
             }
 
-            return await _connectionWorkflowService.SaveProfileAsync(profile).ConfigureAwait(false);
+            return await _connectionWorkflowService.SaveProfileAsync(profile);
         }
         catch (Exception ex)
         {
@@ -204,7 +204,7 @@ public class ConnectionProfileViewModel : ReactiveObject
             IsBusy = true;
             ErrorMessage = null;
 
-            var result = await _connectionWorkflowService.TestConnectionAsync(BuildProfile()).ConfigureAwait(false);
+            var result = await _connectionWorkflowService.TestConnectionAsync(BuildProfile());
             LastTestSucceeded = result.Success;
             ErrorMessage = result.ErrorMessage;
         }

@@ -1,0 +1,66 @@
+using FluentAssertions;
+using NSubstitute;
+using PulseTerm.App.ViewModels;
+using PulseTerm.Core.Models;
+using PulseTerm.Core.Resources;
+using PulseTerm.Core.Ssh;
+using PulseTerm.Presentation.Services;
+using PulseTerm.Terminal;
+
+namespace PulseTerm.App.Tests.ViewModels;
+
+public sealed class MainWindowSshFeatureTests
+{
+    [Fact]
+    public async Task ConnectProfileAsync_AddsTerminalTab_AndUpdatesStatusBar()
+    {
+        var workflow = Substitute.For<IConnectionWorkflowService>();
+        var sshConnectionService = Substitute.For<ISshConnectionService>();
+        var sshClient = Substitute.For<ISshClientWrapper>();
+        var shellStream = Substitute.For<IShellStreamWrapper>();
+        var terminal = Substitute.For<ITerminalEmulator>();
+
+        shellStream.CanRead.Returns(false);
+
+        var profile = new SessionProfile
+        {
+            Name = "Prod",
+            Host = "prod.example.com",
+            Port = 22,
+            Username = "root",
+            AuthMethod = AuthMethod.Password,
+            Password = "secret"
+        };
+
+        var session = new SshSession
+        {
+            SessionId = Guid.NewGuid(),
+            ConnectionInfo = new ConnectionInfo
+            {
+                Host = profile.Host,
+                Port = profile.Port,
+                Username = profile.Username,
+                AuthMethod = profile.AuthMethod,
+                Password = profile.Password
+            },
+            Status = SessionStatus.Connected
+        };
+
+        workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>()).Returns(session);
+        sshConnectionService.GetClient(session.SessionId).Returns(sshClient);
+        sshClient.CreateShellStream("xterm-256color", 120, 32, 0, 0, 4096, null).Returns(shellStream);
+
+        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => terminal);
+
+        var tab = await vm.ConnectProfileAsync(profile);
+
+        tab.Should().NotBeNull();
+        tab.Title.Should().Be("Prod");
+        tab.ConnectionStatus.Should().Be(SessionStatus.Connected);
+        vm.TabBar.ActiveTab.Should().BeSameAs(tab);
+        vm.TabBar.Tabs.Should().ContainSingle();
+        vm.StatusBar.ConnectionInfo.Should().Be("SSH • root@prod.example.com:22");
+        vm.StatusBar.Status.Should().Be(Strings.Connected);
+        vm.Sidebar.RecentConnections.Connections.Should().ContainSingle();
+    }
+}

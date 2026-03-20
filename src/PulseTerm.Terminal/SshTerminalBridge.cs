@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
@@ -32,6 +33,32 @@ public class SshTerminalBridge : IDisposable
             throw new InvalidOperationException("Bridge already started");
 
         _readTask = Task.Run(ReadLoopAsync);
+        _ = Task.Run(PrimeShellAsync);
+    }
+
+    private async Task PrimeShellAsync()
+    {
+        try
+        {
+            if (_disposed || !_shellStream.CanWrite)
+            {
+                return;
+            }
+
+            var data = Encoding.UTF8.GetBytes("\n");
+            await _shellStream.WriteAsync(data, 0, data.Length, _cts.Token).ConfigureAwait(false);
+            _shellStream.Flush();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (Exception ex)
+        {
+            Error?.Invoke(ex);
+        }
     }
 
     private async Task ReadLoopAsync()
@@ -84,6 +111,7 @@ public class SshTerminalBridge : IDisposable
         try
         {
             await _shellStream.WriteAsync(data, 0, data.Length, CancellationToken.None).ConfigureAwait(false);
+            _shellStream.Flush();
         }
         catch (ObjectDisposedException)
         {

@@ -5,6 +5,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using PulseTerm.App.Services;
 using PulseTerm.App.ViewModels;
 
@@ -25,6 +27,18 @@ public partial class TerminalTabView : UserControl
         InitializeComponent();
 
         Focusable = true;
+        AttachedToVisualTree += OnAttachedToVisualTree;
+    }
+
+    private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        FocusTerminal();
+    }
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        FocusTerminal();
+        base.OnPointerPressed(e);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -132,6 +146,20 @@ public partial class TerminalTabView : UserControl
             return sb.ToString();
         }
         return string.Empty;
+    }
+
+    private void FocusTerminal()
+    {
+        if (DataContext is not TerminalTabViewModel vm)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            Focus();
+            vm.TerminalEmulator.Control.Focus();
+        }, DispatcherPriority.Input);
     }
 
     private static Services.KeyModifiers MapModifiers(Avalonia.Input.KeyModifiers avaloniaModifiers)

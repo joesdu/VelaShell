@@ -70,6 +70,41 @@ public class TerminalBridgeTests
     }
 
     [Fact]
+    public void UserInput_FlushesAfterWrite()
+    {
+        _shellStream.CanRead.Returns(false);
+        _shellStream.CanWrite.Returns(true);
+        _shellStream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+
+        var testData = Encoding.UTF8.GetBytes("hello");
+        _terminal.UserInput += Raise.Event<Action<byte[]>>(testData);
+
+        Thread.Sleep(100);
+
+        _shellStream.Received().Flush();
+    }
+
+    [Fact]
+    public void Start_WhenWritable_PrimesShellForInitialPrompt()
+    {
+        _shellStream.CanRead.Returns(false);
+        _shellStream.CanWrite.Returns(true);
+        _shellStream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        bridge.Start();
+
+        Thread.Sleep(100);
+
+        _shellStream.Received().WriteAsync(Arg.Is<byte[]>(bytes => bytes.Length == 1 && bytes[0] == (byte)'\n'), 0, 1, Arg.Any<CancellationToken>());
+        _shellStream.Received().Flush();
+    }
+
+    [Fact]
     public void UserInput_WhenDisposed_DoesNotWriteToShellStream()
     {
         _shellStream.CanRead.Returns(false);

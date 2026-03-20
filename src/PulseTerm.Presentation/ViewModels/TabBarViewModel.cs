@@ -53,11 +53,18 @@ public sealed class TabBarViewModel : ReactiveObject
 
     public ReactiveCommand<Unit, Unit> PreviousTabCommand { get; }
 
+    public void AddTab(TabViewModel tab)
+    {
+        ArgumentNullException.ThrowIfNull(tab);
+
+        Tabs.Add(tab);
+        ActiveTab = tab;
+    }
+
     private void AddTab()
     {
         var tab = new TabViewModel();
-        Tabs.Add(tab);
-        ActiveTab = tab;
+        AddTab(tab);
     }
 
     private void CloseTab(TabViewModel tab)

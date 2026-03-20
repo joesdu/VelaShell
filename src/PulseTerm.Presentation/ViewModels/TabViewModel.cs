@@ -4,7 +4,7 @@ using ReactiveUI;
 
 namespace PulseTerm.Presentation.ViewModels;
 
-public sealed class TabViewModel : ReactiveObject
+public class TabViewModel : ReactiveObject
 {
     private string _title;
     private SessionStatus _connectionStatus;

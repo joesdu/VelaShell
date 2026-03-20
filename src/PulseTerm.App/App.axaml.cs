@@ -1,3 +1,4 @@
+using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -14,6 +15,8 @@ namespace PulseTerm.App;
 
 public partial class App : Application
 {
+    public IServiceProvider? Services => _serviceProvider;
+
     private ServiceProvider? _serviceProvider;
     private IThemeService? _themeService;
 

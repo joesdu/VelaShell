@@ -206,7 +206,7 @@ public class QuickCommandsViewModel : ReactiveObject
         RefreshCategories();
         ApplyFilter();
 
-        _ = SaveCustomCommandsAsync();
+        SaveCustomCommandsAsync().GetAwaiter().GetResult();
     }
 
     private void DeleteCommand(QuickCommandViewModel command)
@@ -219,7 +219,7 @@ public class QuickCommandsViewModel : ReactiveObject
 
         RefreshCategories();
 
-        _ = SaveCustomCommandsAsync();
+        SaveCustomCommandsAsync().GetAwaiter().GetResult();
     }
 
     private void BeginEdit(QuickCommandViewModel command)
@@ -252,7 +252,7 @@ public class QuickCommandsViewModel : ReactiveObject
         RefreshCategories();
         ApplyFilter();
 
-        _ = SaveCustomCommandsAsync();
+        SaveCustomCommandsAsync().GetAwaiter().GetResult();
     }
 
     private void CancelEdit()

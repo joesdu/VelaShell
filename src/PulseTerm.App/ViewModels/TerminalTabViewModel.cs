@@ -3,27 +3,27 @@ using System.Reactive;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Resources;
 using PulseTerm.Core.Ssh;
+using PulseTerm.Presentation.ViewModels;
 using PulseTerm.Terminal;
 using ReactiveUI;
 
 namespace PulseTerm.App.ViewModels;
 
-public class TerminalTabViewModel : ReactiveObject, IDisposable
+public class TerminalTabViewModel : TabViewModel, IDisposable
 {
-    private string _title;
-    private SessionStatus _connectionStatus;
     private TimeSpan? _latency;
     private bool _isConnected;
     private int _reconnectAttempts;
     private bool _disposed;
+    private bool _started;
 
     public TerminalTabViewModel(ITerminalEmulator terminalEmulator, IShellStreamWrapper shellStream)
     {
         TerminalEmulator = terminalEmulator ?? throw new ArgumentNullException(nameof(terminalEmulator));
         ShellStream = shellStream ?? throw new ArgumentNullException(nameof(shellStream));
 
-        _title = Strings.NewTab;
-        _connectionStatus = SessionStatus.Disconnected;
+        Title = Strings.NewTab;
+        ConnectionStatus = SessionStatus.Disconnected;
 
         Bridge = new SshTerminalBridge(terminalEmulator, shellStream);
 
@@ -35,7 +35,7 @@ public class TerminalTabViewModel : ReactiveObject, IDisposable
         OpenQuickCommandsCommand = ReactiveCommand.Create(() => { });
     }
 
-    public Guid Id { get; } = Guid.NewGuid();
+    public Guid SessionId { get; init; }
 
     public ITerminalEmulator TerminalEmulator { get; }
 
@@ -43,18 +43,12 @@ public class TerminalTabViewModel : ReactiveObject, IDisposable
 
     public SshTerminalBridge Bridge { get; }
 
-    public string Title
+    public new SessionStatus ConnectionStatus
     {
-        get => _title;
-        set => this.RaiseAndSetIfChanged(ref _title, value);
-    }
-
-    public SessionStatus ConnectionStatus
-    {
-        get => _connectionStatus;
+        get => base.ConnectionStatus;
         set
         {
-            this.RaiseAndSetIfChanged(ref _connectionStatus, value);
+            base.ConnectionStatus = value;
             IsConnected = value == SessionStatus.Connected;
         }
     }
@@ -87,6 +81,17 @@ public class TerminalTabViewModel : ReactiveObject, IDisposable
     public ReactiveCommand<Unit, Unit> ToggleBroadcastCommand { get; }
     public ReactiveCommand<Unit, Unit> OpenTunnelCommand { get; }
     public ReactiveCommand<Unit, Unit> OpenQuickCommandsCommand { get; }
+
+    public void Start()
+    {
+        if (_started)
+        {
+            return;
+        }
+
+        Bridge.Start();
+        _started = true;
+    }
 
     public void IncrementReconnectAttempt()
     {

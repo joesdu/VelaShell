@@ -25,6 +25,7 @@
           <DataTemplate x:DataType="vm:TabViewModel">
             <!-- Tab button: active vs inactive -->
             <Button Background="Transparent"
+                    Classes.active="{Binding IsActive}"
                     Padding="0"
                     CornerRadius="0"
                     Height="32"
@@ -50,6 +51,7 @@
 
               <!-- Top accent border for active, invisible for inactive -->
               <Border BorderThickness="0,2,0,0"
+                      Classes.active-border="{Binding IsActive}"
                       Padding="14,0">
                 <Border.Styles>
                   <Style Selector="Border.active-border">
@@ -71,6 +73,7 @@
 
                   <!-- Title -->
                   <TextBlock Grid.Column="1"
+                             Classes.active-text="{Binding IsActive}"
                              Text="{Binding Title}"
                              FontFamily="{DynamicResource PulseTerminalFont}"
                              FontSize="11"

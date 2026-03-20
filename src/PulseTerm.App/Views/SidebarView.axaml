@@ -102,6 +102,7 @@
                   Width="24" Height="24"
                   CornerRadius="3"
                   Cursor="Hand"
+                  Click="OpenConnectionProfile_Click"
                   ToolTip.Tip="{x:Static res:Strings.Sessions}">
             <PathIcon Width="13" Height="13"
                       Data="M12 5v14M5 12h14"
