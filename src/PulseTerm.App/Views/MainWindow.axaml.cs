@@ -20,7 +20,26 @@ public partial class MainWindow : Window
         if (this.FindControl<SidebarView>("SidebarHost") is { } sidebar)
         {
             sidebar.OpenConnectionProfileRequested += OnOpenConnectionProfileRequested;
+            sidebar.ConnectRequested += OnSidebarConnectRequested;
         }
+
+        Opened += OnWindowOpened;
+    }
+
+    private async void OnWindowOpened(object? sender, EventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+            await vm.InitializeAsync();
+    }
+
+    private async void OnSidebarConnectRequested(object? sender, SessionProfile profile)
+    {
+        if (DataContext is not MainWindowViewModel vm)
+            return;
+
+        var tab = await vm.TryConnectProfileAsync(profile);
+        if (tab is null && vm.LastConnectionError is { Length: > 0 } error)
+            await ShowConnectionErrorAsync(error);
     }
 
     private async void OnOpenConnectionProfileRequested(object? sender, EventArgs e)

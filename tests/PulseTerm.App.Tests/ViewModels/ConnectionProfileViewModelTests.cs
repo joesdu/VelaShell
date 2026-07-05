@@ -9,6 +9,16 @@ namespace PulseTerm.App.Tests.ViewModels;
 
 public sealed class ConnectionProfileViewModelTests
 {
+    [Theory]
+    [InlineData("pä中文ss123", "pss123")]
+    [InlineData("secret!", "secret!")]
+    [InlineData("密码", "")]
+    public void Password_StripsNonAsciiCharacters(string input, string expected)
+    {
+        var vm = new ConnectionProfileViewModel { Password = input };
+        vm.Password.Should().Be(expected);
+    }
+
     [Fact]
     public async Task SaveCommand_UsesWorkflowServiceAndReturnsSavedProfile()
     {

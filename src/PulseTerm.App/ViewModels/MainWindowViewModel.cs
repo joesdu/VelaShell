@@ -24,6 +24,7 @@ public class MainWindowViewModel : ReactiveObject
     private readonly IConnectionWorkflowService? _connectionWorkflowService;
     private readonly ISshConnectionService? _sshConnectionService;
     private readonly ISettingsService? _settingsService;
+    private readonly ISessionRepository? _sessionRepository;
     private readonly Func<ITerminalEmulator> _terminalEmulatorFactory;
     private readonly TerminalDockFactory _dockFactory;
     private SidebarViewModel _sidebar;
@@ -40,11 +41,13 @@ public class MainWindowViewModel : ReactiveObject
         IConnectionWorkflowService? connectionWorkflowService = null,
         ISshConnectionService? sshConnectionService = null,
         Func<ITerminalEmulator>? terminalEmulatorFactory = null,
-        ISettingsService? settingsService = null)
+        ISettingsService? settingsService = null,
+        ISessionRepository? sessionRepository = null)
     {
         _connectionWorkflowService = connectionWorkflowService;
         _sshConnectionService = sshConnectionService;
         _settingsService = settingsService;
+        _sessionRepository = sessionRepository;
         _terminalEmulatorFactory = terminalEmulatorFactory ?? (() => new PulseTerminalControl());
 
         _dockFactory = new TerminalDockFactory();
@@ -75,6 +78,27 @@ public class MainWindowViewModel : ReactiveObject
     public CommandPaletteViewModel CommandPalette { get; }
 
     public ReactiveCommand<Unit, Unit> OpenCommandPaletteCommand { get; }
+
+    /// <summary>
+    /// Loads persisted connection profiles from disk into the sidebar so saved connections
+    /// survive restarts and can be reused without re-entering their details.
+    /// </summary>
+    public async Task InitializeAsync()
+    {
+        if (_sessionRepository is null)
+            return;
+
+        try
+        {
+            var sessions = await _sessionRepository.GetAllSessionsAsync();
+            foreach (var session in sessions)
+                Sidebar.RecentConnections.AddRecent(session);
+        }
+        catch
+        {
+            // A corrupt or missing store must not prevent the app from starting.
+        }
+    }
 
     private IReadOnlyList<CommandPaletteItem> BuildPaletteItems()
     {

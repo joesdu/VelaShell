@@ -1,6 +1,7 @@
 using FluentAssertions;
 using NSubstitute;
 using PulseTerm.App.ViewModels;
+using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Resources;
 using PulseTerm.Core.Ssh;
@@ -92,6 +93,23 @@ public sealed class MainWindowSshFeatureTests
         vm.TabBar.Tabs.Should().BeEmpty();
         vm.LastConnectionError.Should().NotBeNullOrEmpty();
         vm.LastConnectionError.Should().Contain("认证失败");
+    }
+
+    [Fact]
+    public async Task InitializeAsync_LoadsSavedSessions_IntoRecentConnections()
+    {
+        var repository = Substitute.For<ISessionRepository>();
+        repository.GetAllSessionsAsync().Returns(new List<SessionProfile>
+        {
+            new() { Name = "Prod", Host = "prod.example.com", Port = 22, Username = "root" },
+            new() { Name = "Dev", Host = "dev.example.com", Port = 22, Username = "pi" },
+        });
+
+        var vm = new MainWindowViewModel(sessionRepository: repository);
+
+        await vm.InitializeAsync();
+
+        vm.Sidebar.RecentConnections.Connections.Should().HaveCount(2);
     }
 
     // Named to match SSH.NET's SshAuthenticationException so the VM's type-name mapping applies.

@@ -109,7 +109,22 @@ public class ConnectionProfileViewModel : ReactiveObject
     public string? Password
     {
         get => _password;
-        set => this.RaiseAndSetIfChanged(ref _password, value);
+        // Strip any non-ASCII characters (e.g. pasted Chinese) — passwords are ASCII-only.
+        set => this.RaiseAndSetIfChanged(ref _password, StripNonAscii(value));
+    }
+
+    private static string? StripNonAscii(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+        Span<char> buffer = value.Length <= 256 ? stackalloc char[value.Length] : new char[value.Length];
+        int n = 0;
+        foreach (char c in value)
+        {
+            if (c is >= ' ' and <= '~')
+                buffer[n++] = c;
+        }
+        return n == value.Length ? value : new string(buffer[..n]);
     }
 
     public string? PrivateKeyPath

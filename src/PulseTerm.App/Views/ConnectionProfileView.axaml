@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:PulseTerm.App.ViewModels"
+        xmlns:behaviors="using:PulseTerm.App.Behaviors"
         xmlns:res="clr-namespace:PulseTerm.Core.Resources;assembly=PulseTerm.Core"
         xmlns:models="clr-namespace:PulseTerm.Core.Models;assembly=PulseTerm.Core"
         mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="600"
@@ -146,6 +147,7 @@
         <StackPanel IsVisible="{Binding IsPasswordAuth}">
           <TextBlock Classes="field-label" Text="{x:Static res:Strings.Password}" />
           <TextBox Text="{Binding Password}"
+                   behaviors:AsciiOnlyInput.IsEnabled="True"
                    PasswordChar="&#x2022;"
                    RevealPassword="False" />
         </StackPanel>

@@ -32,33 +32,9 @@ public class SshTerminalBridge : IDisposable
         if (Interlocked.CompareExchange(ref _started, 1, 0) != 0)
             throw new InvalidOperationException("Bridge already started");
 
+        // Only start reading. Do NOT prime the shell with a newline — the server already sends
+        // its banner and prompt on connect, so an extra '\n' produces a duplicate prompt line.
         _readTask = Task.Run(ReadLoopAsync);
-        _ = Task.Run(PrimeShellAsync);
-    }
-
-    private async Task PrimeShellAsync()
-    {
-        try
-        {
-            if (_disposed || !_shellStream.CanWrite)
-            {
-                return;
-            }
-
-            var data = Encoding.UTF8.GetBytes("\n");
-            await _shellStream.WriteAsync(data, 0, data.Length, _cts.Token).ConfigureAwait(false);
-            _shellStream.Flush();
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (ObjectDisposedException)
-        {
-        }
-        catch (Exception ex)
-        {
-            Error?.Invoke(ex);
-        }
     }
 
     private async Task ReadLoopAsync()

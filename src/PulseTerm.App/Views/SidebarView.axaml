@@ -208,7 +208,9 @@
                 <Border Height="32"
                         Padding="12,0"
                         Cursor="Hand"
-                        Background="Transparent">
+                        Background="Transparent"
+                        ToolTip.Tip="双击连接"
+                        DoubleTapped="RecentConnection_DoubleTapped">
                   <Border.Styles>
                     <Style Selector="Border:pointerover">
                       <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />

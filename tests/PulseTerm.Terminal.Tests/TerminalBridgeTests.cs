@@ -88,7 +88,7 @@ public class TerminalBridgeTests
     }
 
     [Fact]
-    public void Start_WhenWritable_PrimesShellForInitialPrompt()
+    public void Start_DoesNotPrimeShell_SoTheInitialPromptIsNotDuplicated()
     {
         _shellStream.CanRead.Returns(false);
         _shellStream.CanWrite.Returns(true);
@@ -100,8 +100,9 @@ public class TerminalBridgeTests
 
         Thread.Sleep(100);
 
-        _shellStream.Received().WriteAsync(Arg.Is<byte[]>(bytes => bytes.Length == 1 && bytes[0] == (byte)'\n'), 0, 1, Arg.Any<CancellationToken>());
-        _shellStream.Received().Flush();
+        // The server already emits its banner + prompt on connect; sending an extra newline
+        // would produce a duplicate prompt line, so Start must not write anything.
+        _shellStream.DidNotReceive().WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
