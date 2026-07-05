@@ -1,230 +1,107 @@
-# PulseTerm 工程化计划
+# PulseTerm 项目进展与参考文档
 
-## 1. 当前结论
+> 本文件记录已完成的工作、当前架构、关键文件索引与后续待办,供后续开发参考。
+> 最近更新:2026-07-06。
 
-- 现有仓库不是空白工程，已经有 `PulseTerm.App`、`PulseTerm.Core`、`PulseTerm.Terminal` 及对应测试项目。
-- `PulseTerm-zh.pen` 是可读的 `.pen` JSON 文档；虽然本次 `pencil` 连接不上本地编辑器，但通过静态解析已确认设计稿包含：
-  - 主界面（侧边栏 / 多标签终端 / 文件区 / 状态栏）
-  - 设置中心（常规 / 外观 / 终端 / 密钥管理 / 快捷键 / 文件传输 / 关于 / 安全审计 / 代码片段）
-  - 命令面板、快捷命令面板、隧道管理、连接诊断、文件传输提示等独立面板
-  - 完整的 dark/light 主题变量
-- 现有三层结构可以作为起点，但不足以长期支撑：
-  - 大量自定义控件
-  - 动态主题与主题色切换
-  - 复杂终端渲染与输入输出
-  - 平台能力、持久化、后台任务、国际化的边界清晰化
+## 1. 技术栈现状
 
-## 2. 目标架构原则
+| 项 | 版本/说明 |
+|----|-----------|
+| .NET | net10.0 |
+| UI 框架 | **Avalonia 12.0.5**(已从 11.x 升级) |
+| MVVM | ReactiveUI 23.2.28 / ReactiveUI.Avalonia 12.0.3 |
+| 停靠框架 | Dock.Avalonia 12.0.0.2(+ Themes.Fluent、Model.ReactiveUI) |
+| SSH/SFTP | SSH.NET 2025.1.0 |
+| 持久化 | JSON(`~/.pulseterm/*.json`),LiteDB 预留未启用 |
+| 打包 | Velopack 1.2.0 |
+| 测试 | **MSTest 3.11.1**(已从 xUnit 全量迁移;FluentAssertions 已移除) |
 
-1. **UI 与业务彻底解耦**：Avalonia 视图、ViewModel、终端引擎、SSH/持久化分层明确。
-2. **自定义控件独立成库**：避免所有视觉资产和控件挤在 `PulseTerm.App` 中。
-3. **主题运行时热切换**：深浅色、系统跟随、主题色修改都要求实时生效。
-4. **国际化优先设计**：资源、格式化、文化切换路径要预留完整。
-5. **终端高性能优先**：解析、绘制、I/O、后台传输彼此隔离，避免 UI 线程成为瓶颈。
-6. **解决方案级治理**：统一构建参数、统一命名规则、统一测试结构。
+## 2. 解决方案分层
 
-## 3. 推荐目标项目结构
-
-```text
+```
 src/
-├── PulseTerm.App/                # Avalonia 启动入口、桌面生命周期、DI 组合根
-├── PulseTerm.Presentation/       # ViewModel、导航、应用状态编排、命令协调
-├── PulseTerm.Controls/           # 自定义控件、样式、行为、设计 token 映射
-├── PulseTerm.Terminal/           # 终端引擎、ANSI/OSC/CSI 解析、渲染模型、选择/链接识别
-├── PulseTerm.Core/               # 领域模型、应用抽象、跨层契约
-└── PulseTerm.Infrastructure/     # SSH.NET、JSON/LiteDB、文件系统、平台主题、后台服务
-
-tests/
-├── PulseTerm.App.Tests/
-├── PulseTerm.Presentation.Tests/
-├── PulseTerm.Controls.Tests/
-├── PulseTerm.Terminal.Tests/
-├── PulseTerm.Core.Tests/
-└── PulseTerm.Infrastructure.Tests/
+├── PulseTerm.App/            桌面入口、DI 组合根、视图(axaml)、App 层 ViewModel、停靠、行为
+├── PulseTerm.Presentation/   跨层 ViewModel、连接/隧道工作流服务
+├── PulseTerm.Controls/       自定义控件与设计 token(PulseTokens/PulseShellTokens/Generic)
+├── PulseTerm.Terminal/       ★ 自研 VT 终端引擎 + 自绘渲染控件
+├── PulseTerm.Core/           领域模型、抽象契约、数据存储、SSH/SFTP 封装接口、本地化
+└── PulseTerm.Infrastructure/ SSH.NET/SFTP/隧道实现、存储路径、DI 扩展
+tests/  6 个 MSTest 项目(见 §7)
+解决方案文件:仓库根目录 PulseTerm.slnx(注意:曾在 src/ 下,VS 打开后移到了根目录)
 ```
 
-### 项目职责说明
+## 3. 自研终端引擎(核心,替换了坏掉的 AvaloniaTerminal)
 
-#### `PulseTerm.App`
-- 只保留桌面应用入口职责：`Program.cs`、`App.axaml`、主窗口宿主、平台生命周期。
-- 不直接承载复杂业务逻辑。
-- 依赖 `Presentation` 与 `Controls`，由它负责把服务组装起来。
+彻底移除第三方 `AvaloniaTerminal 1.0.0-alpha.7`,改为手写 VT 引擎。位于 `src/PulseTerm.Terminal/Emulation/` 与 `Rendering/`:
 
-#### `PulseTerm.Presentation`
-- 承载 ViewModel、导航状态、工作区编排、窗口/对话框协调。
-- 负责把 `Core` + `Infrastructure` + `Terminal` 的能力投影到 UI。
-- 不直接依赖具体的 Avalonia Window 生命周期对象。
+- `VtParser.cs` — Paul Williams DEC ANSI 状态机(Ground/Escape/CSI/OSC/DCS…)+ 独立 VT52 语法路径;消费 Unicode 标量,派发到 `IVtActions`。
+- `TerminalScreen.cs` + `TerminalRow/TerminalCell/CellFlags/TerminalColor` — 网格、主/备屏、滚动区域(DECSTBM)、scrollback、光标、tab stops。
+- `TerminalEmulator.cs` — 仿真器大脑(实现 `IVtActions`):SGR(16/256/truecolor)、光标/擦除/插删行列、模式(DECAWM/DECOM/应用键盘/插入/括号粘贴/鼠标跟踪…)、DEC 线绘字符集、DA/DSR 应答、备用屏。
+- `TerminalType.cs` — **vt52/100/102/220/320/340/420/520/xterm/xterm-256color** 十种 profile,各自 TERM 名 + Device Attributes 应答;`FromTermName`/`ToTermName`;**xterm-256color 为默认**。
+- `Utf8Sink.cs` — 增量解码,**可配置任意编码**(UTF-8 默认,GBK/Big5 等);`CharWidth.cs` — wcwidth(CJK 双宽);`TerminalPalette.cs` — 256 色 + 设计稿 term-* 配色;`Charsets.cs` — DEC 线绘映射;`InputEncoder.cs` — 按键→字节(应用光标键、xterm 修饰键、VT52)。
+- `Rendering/PulseTerminalControl.cs` — 纯自绘 Avalonia `Control`:glyph 渲染、光标、选区、滚轮回溯、剪贴板(含括号粘贴);**同时实现旧 `ITerminalEmulator` 接口**以无缝接回 `SshTerminalBridge` 与视图。默认网格 120×32;`ApplyLayoutSize` 拒绝 <2 列/行的早期布局(修过"横幅每字一行"bug)。
 
-#### `PulseTerm.Controls`
-- 承载所有可复用自定义控件与视觉基础设施。
-- 重点包括：
-  - 会话树节点控件
-  - 终端标签项
-  - 终端工具栏按钮组
-  - 文件列表行 / 文件传输项 / 隧道项
-  - 设置导航项 / 指标 Chip / 浮层面板外壳
-  - 主题 token、颜色映射、资源字典、样式选择器、行为
-- **结论：需要单独组件代码库。**
-  - 否则 `App` 会迅速膨胀成“视图 + 控件 + 样式 + 资源”的耦合体。
-  - 后续如果你要做控件预览、快照测试、主题回归测试，也更适合单独成库。
+## 4. SSH / PTY
 
-#### `PulseTerm.Terminal`
-- 作为性能敏感模块单独演进。
-- 目标职责：
-  - ANSI 转义序列解析
-  - 终端缓冲区模型（主缓冲/滚动回溯）
-  - 文本属性层（颜色、粗体、错误高亮、URL/linkify）
-  - 选择复制、矩形选择、多行粘贴输入
-  - 逐字输出 / 整行输出 / 粘贴输入体验
-  - 兼容 Ubuntu / CentOS 等进度条刷新模式
-- 当前仓库使用 `AvaloniaTerminal`，建议把它视作**过渡实现**，通过抽象逐步替换为自研控件与渲染层。
+- `SshTerminalBridge` 只读循环,**不再向 shell 预写 `\n`**(修过"末行提示符重复"bug)。
+- **PTY 实时改窗**:`IShellStreamWrapper.Resize` → `ShellStream.ChangeWindowSize`;`ITerminalEmulator.PtySizeChanged(cols,rows)` 由控件布局时抛出,`TerminalTabViewModel` 后台线程转发给 PTY。
+- **连接失败不崩溃**:`MainWindowViewModel.TryConnectProfileAsync` 捕获认证/网络/超时异常,映射中文提示写入状态栏 + `LastConnectionError`;交互式连接失败弹错误对话框。`Program.cs` 装了 `TaskScheduler.UnobservedTaskException`/`AppDomain.UnhandledException` 兜底。
+- **连接持久化**:保存本就写盘(`ConnectionWorkflowService.SaveProfileAsync`→`SessionRepository`→`~/.pulseterm/sessions.json`);新增 `MainWindowViewModel.InitializeAsync` 启动时加载到侧栏"最近连接";侧栏最近项**双击重连**;命令面板也可连。
+- **新建连接密码框仅限 ASCII**:`Behaviors/AsciiOnlyInput.cs` 拦截 IME/中文 TextInput + VM setter 剥离粘贴的非 ASCII。
 
-#### `PulseTerm.Core`
-- 只放稳定模型与抽象：
-  - 会话 / 隧道 / 传输 / 设置 / 主题 / 本地化模型
-  - 终端相关契约（buffer、parser、link detector、selection service 抽象）
-  - 跨层接口（仓储、SSH 会话、主题服务、语言服务、后台任务调度器）
-- 避免继续把具体 SSH.NET 或存储实现塞进去。
+## 5. 停靠 / 分屏(Dock.Avalonia)
 
-#### `PulseTerm.Infrastructure`
-- 实现 `Core` 中定义的基础设施接口：
-  - SSH.NET / SFTP / 隧道
-  - JSON / LiteDB 持久化
-  - 配置存储
-  - 系统主题监听
-  - 平台集成
-  - 后台文件传输与任务调度
+- `Docking/TerminalDocument.cs`(包装 `TerminalTabViewModel`)、`Docking/TerminalDockFactory.cs`(RootDock→DocumentDock,`AddTerminal`/`OnDockableClosed`)。
+- `MainWindow.axaml` 用 `<dock:DockControl Layout="{Binding Layout}">` 承载,`TerminalDocument`→`TerminalTabView` 模板。标签可拖动重排、**撕出成浮动窗口**、**边缘拖放二分/四分分屏**。
+- `Controls/ReparentingHost.cs` — 解决分屏/撕下时"同一控件被两个 ContentPresenter 领养"崩溃:自绘终端控件是共享单实例,该 Decorator 在挂载时先从旧父级摘除再领养,保证任一时刻只有一个父级。
+- `App.axaml` 挂 `DockFluentTheme` + `Themes/DockStyles.axaml`(token 覆盖)。
+- `Logging/FilteringLogSink.cs` — 过滤 Dock 的无害 `DockCapability … Value is null` 绑定诊断噪音(仅丢弃 Binding 区域含该标记的消息,其余透传)。
 
-## 4. 关键技术设计
+## 6. UI / 视图与设置
 
-### 4.1 自定义控件策略
+- **状态栏跟随激活 Tab**:每个 `TerminalTabViewModel` 携带 `ConnectionSummary/TerminalTypeName/EncodingName`;`UpdateStatusBarForActiveTab` 投影连接串/状态/类型/编码/尺寸/延迟;订阅 `ActiveTerminalTab` 变化 + Dock `ActiveDockableChanged`/`FocusedDockableChanged` → 切换标签/窗格实时更新左下角。
+- **自绘窗口壳**:Avalonia 12 用 `WindowDecorations="None"`(替代已移除的 `ExtendClientAreaChromeHints`)+ `ExtendClientAreaToDecorationsHint`;`MainWindow.axaml.cs` 自绘可拖动标题栏(`BeginMoveDrag`)+ 最小化/最大化/关闭;根容器 `Margin` 绑 `OffScreenMargin` 防最大化裁切。
+- **命令面板(Ctrl+P / Ctrl+K)**:`ViewModels/CommandPaletteItem.cs`(+Group)、`CommandPaletteViewModel.cs`(模糊子序列搜索、分类分组、上下循环导航、执行/关闭)、`Views/CommandPaletteView.axaml(.cs)`;`MainWindow` 半透明遮罩浮层,条目=最近会话(Enter 连接)+ 全局命令。
+- **终端类型/编码设置项**:`AppSettings.TerminalType`(默认 xterm-256color)/`TerminalEncoding`(默认 UTF-8);`SettingsViewModel`/`SettingsView` 两个下拉;`Program.cs` 注册 `CodePagesEncodingProvider`(GBK/Big5);连接时 `MainWindowViewModel.ConfigureTerminal` 应用到 PTY 的 TERM 与控件。`ISettingsService`/`JsonDataStore` 已入 DI。
+- 快捷命令面板、隧道管理面板此前已有完整 View+VM。
 
-优先级从高到低：
+## 7. 测试(已全量迁移到 MSTest)
 
-1. **终端控件族**
-   - `TerminalSurface`
-   - `TerminalTextLayer`
-   - `TerminalSelectionLayer`
-   - `TerminalInputOverlay`
-   - `TerminalScrollBar`
-2. **Shell 控件族**
-   - `SessionTreeView`
-   - `SessionTreeItem`
-   - `TerminalTabStrip`
-   - `StatusMetricChip`
-   - `DockPanelShell`
-3. **业务面板控件族**
-   - `FileTransferItemControl`
-   - `TunnelCardControl`
-   - `QuickCommandList`
-   - `CommandPaletteResultItem`
-   - `SettingsNavItem`
+- 6 个测试项目:`Controls.Tests`(1)、`Infrastructure.Tests`(1)、`Presentation.Tests`(13)、`Terminal.Tests`(58)、`Core.Tests`(116)、`App.Tests`(170)。**合计 359 通过 / 0 失败**。
+- 已移除 `xunit`/`xunit.v3`/`FluentAssertions`/`Avalonia.Headless.XUnit`;改用 `MSTest.TestFramework`+`MSTest.TestAdapter` 3.11.1,全局 `using Microsoft.VisualStudio.TestTools.UnitTesting`。
+- 转换约定(供新增测试参考):`[Fact]`→`[TestMethod]`;`[Theory]`+`[InlineData]`→`[DataTestMethod]`+`[DataRow]`;`[Trait("Category","X")]`→`[TestCategory("X")]`;每类 `[TestClass]`;`ITestOutputHelper`→`public TestContext TestContext {get;set;}`;`IAsyncLifetime`→`[TestInitialize]`/`[TestCleanup]`。
+- 断言:MSTest `Assert.AreEqual(EXPECTED, ACTUAL)`(期望在前);异常用 `Assert.ThrowsExactly`/`Assert.ThrowsExactlyAsync`;字符串用 `StringAssert`;序列用 `CollectionAssert`。
+- 注意点:`long`/`uint` 期望值要带后缀(`AreEqual(object,object)` 类型严格);`bool?` 用 `x == true`;非记录类型对象等价用 JSON 序列化比较。
+- 测试**不渲染** Avalonia(控件只 `new`),故无需 headless 包;`App.Tests/ModuleInit.cs` 用 `[ModuleInitializer]` 初始化 ReactiveUI 调度器,保留。
+- 集成测试(`SshIntegrationTests` 需 Docker+SSH 服务器、`CrossPlatformPublishTests` 需 `PULSETERM_PUBLISH_TESTS=1`)按环境早退跳过。
 
-### 4.2 主题系统
+## 8. 关键约定 / 已知坑
 
-- 采用三层主题模型：
-  1. **ThemeVariant**：Dark / Light / System
-  2. **AccentColor**：主题色动态覆盖
-  3. **Semantic Tokens**：`bg-page`、`text-primary`、`status-connected` 等
-- 设计稿中的 `.pen` variables 作为语义 token 来源。
-- `Controls` 负责 token 到 Avalonia `DynamicResource` 的映射。
-- `Infrastructure` 负责系统主题监听；`Presentation` 负责设置变更广播。
+- 构建/测试用根目录 `PulseTerm.slnx`。运行 App 后 DLL 被占用会导致构建报"文件被锁定"——先停掉运行实例。
+- Bash 工具用 Git Bash;不要用 `Read`/`Grep` 直接读 `.pen`(加密,只能走 pencil MCP)。
+- 记忆索引见 `C:\Users\Joe\.claude\projects\G--PulseTerm\memory\`(terminal-engine、docking)。
 
-### 4.3 国际化
+## 9. 后续待办(未完成)
 
-- 保留 `.resx` 路线；它对 .NET/Avalonia 最稳妥。
-- 将语言切换能力设计成服务接口，但 UI 是否热切换可以分阶段：
-  - 第一阶段：启动时应用 + 设置持久化
-  - 第二阶段：运行时热切换 UI
+**优先(设置子页补全)** —— 设计稿里这些设置分区尚未实现视图:外观 / 快捷键 / 文件传输 / 关于 / 安全审计 / 密钥管理 / 代码片段。
 
-### 4.4 终端渲染与高性能
+**设计稿其余面板组件化**:系统资源监控、连接诊断中心、运维编排中心(多主机批量执行)、主机信任中心、会话录制与回放、文件传输提示 toast、会话右键菜单。
 
-- 必须把以下能力拆开，避免一个“超级 TerminalControl”：
-  - SSH 输入输出桥接
-  - ANSI parser
-  - 屏幕/scrollback buffer
-  - 高亮/链接识别
-  - 绘制层
-  - 用户输入编辑缓冲
-- 原则：
-  - I/O 不阻塞 UI 线程
-  - parser 可后台运行
-  - UI 线程只负责最终渲染快照提交
-  - 文件传输、隧道监控、诊断面板通过独立后台服务驱动
+**终端/体验增强**:
+- 分屏 Dock 的设计 token 精细化样式(当前 `DockStyles.axaml` 只覆盖了主要面。)
+- 布局持久化(Dock 布局保存/恢复);`Ctrl+T` 目前只加空 TabBar 标签、无 dock 文档(小瑕疵)。
+- sixel / DECRQSS / OSC 52 剪贴板;运行时热切终端类型(当前仅连接时生效)。
+- CJK 内嵌字体(设计用 JetBrains Mono,未指定中文回退字体)。
 
-### 4.5 持久化
+**安全**:已保存连接(含密码)当前**明文**存于 `sessions.json`,建议加本地加密(DPAPI/AES)。会话树(设计的分组保存归宿)尚未接线,当前落在"最近连接"(上限 10)。
 
-- **配置 / 用户偏好 / 最近状态**：优先 JSON
-- **需要更强查询与索引的数据**（会话片段、传输记录、密钥索引）可逐步引入 LiteDB
-- 建议分层：
-  - JSON：settings / theme / language / layout / quick commands
-  - LiteDB：session metadata / transfer history / diagnostics snapshots（后续阶段）
+**窗口**:`WindowDecorations="None"` 下边缘缩放需实机确认;若不可用改 `BorderOnly`。
 
-## 5. 分阶段实施计划
+## 10. 设计稿分析已记录的问题(供实现时对照)
 
-### Phase 0 — 工程底座调整
-- 补齐解决方案级构建治理（共享 props、文档、项目边界）
-- 新建 `Presentation`、`Controls`、`Infrastructure` 项目
-- 让解决方案在新结构下仍可编译
-
-### Phase 1 — 重新划分边界
-- 把 `App` 中的 ViewModel 移入 `Presentation`
-- 把主题资源与可复用样式迁入 `Controls`
-- 把 `Core` 里的具体基础设施实现迁往 `Infrastructure`
-
-### Phase 2 — 主题与国际化升级
-- 支持 Dark / Light / System
-- 支持主题色热更新
-- 统一资源和 token 管理
-- 补齐语言设置及持久化路径
-
-### Phase 3 — 终端能力重构
-- 为 `AvaloniaTerminal` 增加适配层，避免直接绑定第三方实现
-- 引入自研 scrollback、linkify、selection、paste pipeline
-- 处理 ANSI 与常见 Linux 进度条刷新行为
-
-### Phase 4 — Shell 与面板组件化
-- 会话树、终端标签栏、文件浏览器、状态栏、浮层面板统一组件化
-- 建立控件测试与样式回归测试
-
-### Phase 5 — 基础设施强化
-- 后台文件传输任务编排
-- SSH / SFTP / Tunnel 服务边界清理
-- 系统主题监听与平台适配
-
-### Phase 6 — 稳定性与质量
-- 单元测试、Avalonia Headless 测试、终端 parser 测试、快照测试
-- 性能 profiling 与 UI 卡顿治理
-
-## 6. 本轮立即执行内容
-
-1. 写入本计划文件。
-2. 创建新的目标项目骨架：`Presentation`、`Controls`、`Infrastructure`。
-3. 更新解决方案文件，把新项目纳入统一管理。
-4. 增加一份架构蓝图文档，明确每个项目的职责与迁移方向。
-5. 验证新解可以成功构建。
-
-## 7. 本轮之后的首批迁移建议
-
-优先迁移顺序：
-
-1. `ViewModels/*` → `PulseTerm.Presentation`
-2. `Themes/*` 与可复用样式 → `PulseTerm.Controls`
-3. `ThemeService` / 系统主题监听抽象重构
-4. `Data/*`、SSH.NET 实现、配置存储 → `PulseTerm.Infrastructure`
-5. `TerminalTabView` 对终端引擎的直接依赖改为接口依赖
-
-## 8. 对“是否需要单独组件库”的明确回答
-
-**需要，而且建议现在就建立。**
-
-原因：
-
-- 你的产品不是普通 CRUD 桌面应用，界面大量依赖自定义视觉与交互。
-- 主题、终端外壳、会话树、文件项、隧道卡片、命令面板都具备高度复用性。
-- 单独控件库能让：
-  - UI 结构更清晰
-  - 样式与业务解耦
-  - 控件测试更容易
-  - 后续设计调整成本更低
-  - 未来做独立 Demo / Preview / Storybook 风格工具更方便
+- 设置-终端 缺终端类型/编码选择器(已在代码补上)。
+- term-* 只定义 8 个 ANSI 色,无 bright/256(引擎侧已补全)。
+- 未指定 CJK/双宽回退字体。
+- 终端交互(光标样式、选区色、终端内搜索、分屏)设计未建模。
+- 亮色主题 `bg-terminal=#1E1E2E` 仍为深色(疑似有意)。
+- Logo 有一个 `enabled:false` 残留图标;文件列表"修改时间"列无固定宽度。
