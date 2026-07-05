@@ -41,6 +41,15 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     public Guid SessionId { get; init; }
 
+    /// <summary>Status-bar connection summary for this tab, e.g. "SSH • root@host:22".</summary>
+    public string ConnectionSummary { get; init; } = string.Empty;
+
+    /// <summary>The terminal emulation type advertised for this session.</summary>
+    public string TerminalTypeName { get; init; } = "xterm-256color";
+
+    /// <summary>The character encoding used for this session.</summary>
+    public string EncodingName { get; init; } = "UTF-8";
+
     public ITerminalEmulator TerminalEmulator { get; }
 
     public IShellStreamWrapper ShellStream { get; }

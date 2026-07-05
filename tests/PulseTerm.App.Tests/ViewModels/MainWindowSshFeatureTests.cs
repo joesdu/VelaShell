@@ -112,6 +112,33 @@ public sealed class MainWindowSshFeatureTests
         vm.Sidebar.RecentConnections.Connections.Should().HaveCount(2);
     }
 
+    [Fact]
+    public void StatusBar_FollowsActiveTab_ConnectionInfo()
+    {
+        var vm = new MainWindowViewModel();
+
+        var tabA = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>(), Substitute.For<IShellStreamWrapper>())
+        {
+            Title = "A",
+            ConnectionStatus = SessionStatus.Connected,
+            ConnectionSummary = "SSH • a@host-a:22",
+        };
+        var tabB = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>(), Substitute.For<IShellStreamWrapper>())
+        {
+            Title = "B",
+            ConnectionStatus = SessionStatus.Connected,
+            ConnectionSummary = "SSH • b@host-b:22",
+        };
+
+        vm.TabBar.AddTab(tabA);
+        vm.TabBar.AddTab(tabB); // B becomes active
+
+        vm.StatusBar.ConnectionInfo.Should().Be("SSH • b@host-b:22");
+
+        vm.TabBar.ActiveTab = tabA; // switch back to A
+        vm.StatusBar.ConnectionInfo.Should().Be("SSH • a@host-a:22");
+    }
+
     // Named to match SSH.NET's SshAuthenticationException so the VM's type-name mapping applies.
     private sealed class SshAuthenticationException : Exception
     {

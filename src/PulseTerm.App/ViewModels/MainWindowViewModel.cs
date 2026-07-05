@@ -54,6 +54,8 @@ public class MainWindowViewModel : ReactiveObject
         Layout = _dockFactory.CreateLayout();
         _dockFactory.InitLayout(Layout);
         _dockFactory.DocumentClosed += OnDocumentClosed;
+        _dockFactory.ActiveDockableChanged += OnActiveDockableChanged;
+        _dockFactory.FocusedDockableChanged += OnFocusedDockableChanged;
 
         _sidebar = new SidebarViewModel();
         _tabBar = new TabBarViewModel();
@@ -67,6 +69,15 @@ public class MainWindowViewModel : ReactiveObject
             {
                 ActiveTerminalTab = activeTab as TerminalTabViewModel;
             });
+
+        // Keep the status bar in sync with the active tab: refresh when the active tab changes,
+        // and when that tab's own connection state / latency changes.
+        this.WhenAnyValue(x => x.ActiveTerminalTab)
+            .Select(tab => tab is null
+                ? Observable.Return(Unit.Default)
+                : tab.WhenAnyValue(t => t.ConnectionStatus, t => t.Latency).Select(_ => Unit.Default))
+            .Switch()
+            .Subscribe(_ => UpdateStatusBarForActiveTab());
 
         OpenSettingsCommand = ReactiveCommand.Create(() => { });
 
@@ -159,6 +170,9 @@ public class MainWindowViewModel : ReactiveObject
             SessionId = session.SessionId,
             Title = string.IsNullOrWhiteSpace(profile.Name) ? profile.Host : profile.Name,
             ConnectionStatus = SessionStatus.Connected,
+            ConnectionSummary = $"SSH • {profile.Username}@{profile.Host}:{profile.Port}",
+            TerminalTypeName = terminalType.ToTermName(),
+            EncodingName = string.IsNullOrWhiteSpace(settings.TerminalEncoding) ? "UTF-8" : settings.TerminalEncoding,
         };
 
         terminalTab.Start();
@@ -167,7 +181,8 @@ public class MainWindowViewModel : ReactiveObject
         _dockFactory.AddTerminal(new TerminalDocument(terminalTab));
 
         Sidebar.RecentConnections.AddRecent(profile);
-        UpdateStatusBar(profile, session);
+        StatusBar.ResetUptime();
+        UpdateStatusBarForActiveTab();
         LastConnectionError = null;
 
         return terminalTab;
@@ -248,16 +263,31 @@ public class MainWindowViewModel : ReactiveObject
         }
     }
 
-    private void UpdateStatusBar(SessionProfile profile, SshSession session)
+    /// <summary>
+    /// Projects the currently active terminal tab's connection details onto the status bar so
+    /// the bottom-left indicator always reflects the tab the user is looking at.
+    /// </summary>
+    private void UpdateStatusBarForActiveTab()
     {
-        StatusBar.Status = Strings.Connected;
-        StatusBar.StatusText = Strings.Connected;
-        StatusBar.ConnectionInfo = $"SSH • {profile.Username}@{profile.Host}:{profile.Port}";
-        StatusBar.TerminalType = "xterm-256color";
-        StatusBar.WindowSize = "120×32";
-        StatusBar.Encoding = "UTF-8";
-        StatusBar.Latency = string.Empty;
-        StatusBar.ResetUptime();
+        var tab = ActiveTerminalTab;
+        if (tab is null)
+        {
+            StatusBar.Status = Strings.Ready;
+            StatusBar.StatusText = Strings.Ready;
+            StatusBar.ConnectionInfo = string.Empty;
+            StatusBar.Latency = string.Empty;
+            StatusBar.WindowSize = string.Empty;
+            return;
+        }
+
+        bool connected = tab.ConnectionStatus == SessionStatus.Connected;
+        StatusBar.Status = connected ? Strings.Connected : Strings.Disconnected;
+        StatusBar.StatusText = StatusBar.Status;
+        StatusBar.ConnectionInfo = tab.ConnectionSummary;
+        StatusBar.TerminalType = tab.TerminalTypeName;
+        StatusBar.Encoding = tab.EncodingName;
+        StatusBar.WindowSize = $"{tab.TerminalEmulator.Columns}×{tab.TerminalEmulator.Rows}";
+        StatusBar.Latency = tab.Latency is { } latency ? $"{(int)latency.TotalMilliseconds} ms" : string.Empty;
     }
 
     public SidebarViewModel Sidebar
@@ -288,6 +318,22 @@ public class MainWindowViewModel : ReactiveObject
 
     /// <summary>The Dock.Avalonia layout hosting terminal documents (draggable, floatable, splittable).</summary>
     public IRootDock Layout { get; }
+
+    private void OnActiveDockableChanged(object? sender, Dock.Model.Core.Events.ActiveDockableChangedEventArgs e)
+        => SetActiveFromDockable(e.Dockable);
+
+    private void OnFocusedDockableChanged(object? sender, Dock.Model.Core.Events.FocusedDockableChangedEventArgs e)
+        => SetActiveFromDockable(e.Dockable);
+
+    private void SetActiveFromDockable(Dock.Model.Core.IDockable? dockable)
+    {
+        if (dockable is TerminalDocument document && TabBar.Tabs.Contains(document.Terminal))
+        {
+            ActiveTerminalTab = document.Terminal;
+            if (!ReferenceEquals(TabBar.ActiveTab, document.Terminal))
+                TabBar.ActiveTab = document.Terminal;
+        }
+    }
 
     private void OnDocumentClosed(TerminalDocument document)
     {
