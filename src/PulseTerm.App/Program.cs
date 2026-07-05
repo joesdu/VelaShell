@@ -40,9 +40,18 @@ internal static class Program
 
     // Avalonia configuration, don't remove; also used by visual designer.
     public static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<App>()
+    {
+        var builder = AppBuilder.Configure<App>()
             .UsePlatformDetect()
             .WithInterFont()
             .LogToTrace()
             .UseReactiveUI(builder => { });
+
+        // Silence Dock.Avalonia's benign "DockCapability" binding warnings while keeping all
+        // other diagnostics. LogToTrace has already installed the trace sink at this point.
+        if (Avalonia.Logging.Logger.Sink is { } sink and not Logging.FilteringLogSink)
+            Avalonia.Logging.Logger.Sink = new Logging.FilteringLogSink(sink);
+
+        return builder;
+    }
 }
