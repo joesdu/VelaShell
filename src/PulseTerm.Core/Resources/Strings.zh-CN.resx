@@ -215,6 +215,12 @@
   <data name="ScrollbackLines" xml:space="preserve">
     <value>回滚行数</value>
   </data>
+  <data name="TerminalType" xml:space="preserve">
+    <value>终端类型</value>
+  </data>
+  <data name="TerminalEncoding" xml:space="preserve">
+    <value>字符编码</value>
+  </data>
   
   <!-- Auth (7) -->
   <data name="Password" xml:space="preserve">

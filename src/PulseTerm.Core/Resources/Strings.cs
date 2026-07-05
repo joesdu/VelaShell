@@ -29,6 +29,8 @@ public static class Strings
     public static string Size => ResourceManager.GetString(nameof(Size), CultureInfo.CurrentUICulture) ?? nameof(Size);
     public static string Permissions => ResourceManager.GetString(nameof(Permissions), CultureInfo.CurrentUICulture) ?? nameof(Permissions);
     public static string Modified => ResourceManager.GetString(nameof(Modified), CultureInfo.CurrentUICulture) ?? nameof(Modified);
+    public static string TerminalType => ResourceManager.GetString(nameof(TerminalType), CultureInfo.CurrentUICulture) ?? nameof(TerminalType);
+    public static string TerminalEncoding => ResourceManager.GetString(nameof(TerminalEncoding), CultureInfo.CurrentUICulture) ?? nameof(TerminalEncoding);
     public static string Upload => ResourceManager.GetString(nameof(Upload), CultureInfo.CurrentUICulture) ?? nameof(Upload);
     public static string Download => ResourceManager.GetString(nameof(Download), CultureInfo.CurrentUICulture) ?? nameof(Download);
     public static string Refresh => ResourceManager.GetString(nameof(Refresh), CultureInfo.CurrentUICulture) ?? nameof(Refresh);

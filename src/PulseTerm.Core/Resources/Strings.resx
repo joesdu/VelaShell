@@ -215,6 +215,12 @@
   <data name="ScrollbackLines" xml:space="preserve">
     <value>Scrollback Lines</value>
   </data>
+  <data name="TerminalType" xml:space="preserve">
+    <value>Terminal Type</value>
+  </data>
+  <data name="TerminalEncoding" xml:space="preserve">
+    <value>Encoding</value>
+  </data>
   
   <!-- Auth (7) -->
   <data name="Password" xml:space="preserve">

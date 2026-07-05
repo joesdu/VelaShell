@@ -1,0 +1,517 @@
+using System.Globalization;
+using System.Text;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Input.Platform;
+using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Media.Immutable;
+using Avalonia.Threading;
+using PulseTerm.Terminal.Emulation;
+
+namespace PulseTerm.Terminal.Rendering;
+
+/// <summary>
+/// A fully self-drawn terminal control. It owns a <see cref="TerminalEmulator"/>, renders the
+/// screen buffer with cached glyph runs, and translates keyboard / mouse / clipboard input into
+/// host bytes. Implements <see cref="ITerminalEmulator"/> so it drops straight into the existing
+/// <c>SshTerminalBridge</c> and views without any changes to the wiring.
+/// </summary>
+public sealed class PulseTerminalControl : Control, ITerminalEmulator
+{
+    private readonly TerminalEmulator _emulator;
+    private readonly Dictionary<uint, ImmutableSolidColorBrush> _brushCache = new();
+
+    private FontFamily _fontFamily = new("JetBrains Mono, Cascadia Mono, Consolas, Microsoft YaHei, Segoe UI, monospace");
+    private double _fontSize = 14;
+    private double _cellWidth = 8;
+    private double _cellHeight = 16;
+    private double _baselineOffset;
+
+    private int _scrollOffset;            // lines scrolled up from the bottom (0 = live)
+    private bool _hasFocus;
+
+    // Selection (linear), in absolute-row space.
+    private (int Row, int Col)? _selectionAnchor;
+    private (int Row, int Col)? _selectionCaret;
+    private bool _selecting;
+
+    public PulseTerminalControl()
+        : this(new TerminalEmulator())
+    {
+    }
+
+    public PulseTerminalControl(TerminalEmulator emulator)
+    {
+        _emulator = emulator;
+        Focusable = true;
+        ClipToBounds = true;
+
+        ApplyDesignPalette(_emulator.Palette);
+        RecomputeMetrics();
+
+        _emulator.Updated += OnEmulatorUpdated;
+        _emulator.Response += bytes => UserInput?.Invoke(bytes);
+    }
+
+    // ---- ITerminalEmulator --------------------------------------------------
+
+    public event Action<byte[]>? UserInput;
+
+    public event Action<int, int>? PtySizeChanged;
+
+    public event Action<string>? TitleChanged
+    {
+        add => _emulator.TitleChanged += value;
+        remove => _emulator.TitleChanged -= value;
+    }
+
+    public TerminalEmulator Emulator => _emulator;
+
+    public void Feed(byte[] data) => _emulator.Feed(data);
+
+    public void Resize(int cols, int rows)
+    {
+        _emulator.Resize(cols, rows);
+        _scrollOffset = 0;
+        InvalidateVisual();
+    }
+
+    public void WriteInput(byte[] data) => UserInput?.Invoke(data);
+
+    public string GetBufferLine(int row) => _emulator.Screen.ActiveLine(row).GetText();
+
+    public int CursorRow => _emulator.CursorY;
+    public int CursorCol => _emulator.CursorX;
+
+    public int ScrollbackLines
+    {
+        get => _emulator.Screen.MaxScrollback;
+        set => _emulator.Screen.MaxScrollback = value;
+    }
+
+    public Control Control => this;
+    public int Columns => _emulator.Columns;
+    public int Rows => _emulator.Rows;
+
+    // Legacy interface members: kept for source compatibility with existing bindings.
+    public ScrollbackBuffer ScrollbackBuffer { get; } = new(1);
+    public int TotalLines => _emulator.Screen.TotalRows;
+    public int ViewportRow => Math.Max(0, _emulator.Screen.TotalRows - _emulator.Rows - _scrollOffset);
+
+    public TerminalType TerminalType
+    {
+        get => _emulator.Type;
+        set => _emulator.SetTerminalType(value);
+    }
+
+    /// <summary>Sets the host-output charset (UTF-8 default; GBK/Big5/etc. supported).</summary>
+    public void SetEncoding(System.Text.Encoding encoding) => _emulator.SetEncoding(encoding);
+
+    public FontFamily FontFamily
+    {
+        get => _fontFamily;
+        set { _fontFamily = value; RecomputeMetrics(); RelayoutFromBounds(); InvalidateVisual(); }
+    }
+
+    public double FontSize
+    {
+        get => _fontSize;
+        set { _fontSize = value; RecomputeMetrics(); RelayoutFromBounds(); InvalidateVisual(); }
+    }
+
+    public void Dispose()
+    {
+        _emulator.Updated -= OnEmulatorUpdated;
+    }
+
+    private void OnEmulatorUpdated()
+    {
+        // New output snaps the viewport back to the live bottom.
+        _scrollOffset = 0;
+        if (Dispatcher.UIThread.CheckAccess())
+            InvalidateVisual();
+        else
+            Dispatcher.UIThread.Post(InvalidateVisual);
+    }
+
+    // ---- Palette ------------------------------------------------------------
+
+    /// <summary>Seeds the palette with the PulseTerm design's dark-theme terminal colors.</summary>
+    public static void ApplyDesignPalette(TerminalPalette palette)
+    {
+        palette.DefaultForeground = Rgba.FromRgb(0xE0, 0xE6, 0xED);   // text-primary
+        palette.DefaultBackground = Rgba.FromRgb(0x08, 0x0C, 0x12);   // bg-terminal
+        palette.CursorColor = Rgba.FromRgb(0x00, 0xD4, 0xAA);         // accent
+        palette.SelectionBackground = new Rgba(0x99, 0x1C, 0x2A, 0x3F);
+
+        palette.SetAnsi(0, Rgba.FromRgb(0x0A, 0x0E, 0x14));  // black
+        palette.SetAnsi(1, Rgba.FromRgb(0xFF, 0x6B, 0x6B));  // red   (term-red)
+        palette.SetAnsi(2, Rgba.FromRgb(0x69, 0xFF, 0x94));  // green (term-green)
+        palette.SetAnsi(3, Rgba.FromRgb(0xFD, 0xCB, 0x6E));  // yellow(term-yellow)
+        palette.SetAnsi(4, Rgba.FromRgb(0x74, 0xB9, 0xFF));  // blue  (term-blue)
+        palette.SetAnsi(5, Rgba.FromRgb(0xD9, 0x80, 0xFA));  // magenta(term-magenta)
+        palette.SetAnsi(6, Rgba.FromRgb(0x00, 0xD4, 0xAA));  // cyan  (term-cyan)
+        palette.SetAnsi(7, Rgba.FromRgb(0xE0, 0xE6, 0xED));  // white (term-white)
+        palette.SetAnsi(8, Rgba.FromRgb(0x3D, 0x4F, 0x63));  // bright black
+        palette.SetAnsi(9, Rgba.FromRgb(0xFF, 0x8A, 0x8A));
+        palette.SetAnsi(10, Rgba.FromRgb(0x9B, 0xFF, 0xB6));
+        palette.SetAnsi(11, Rgba.FromRgb(0xFF, 0xE0, 0x9B));
+        palette.SetAnsi(12, Rgba.FromRgb(0xA5, 0xD1, 0xFF));
+        palette.SetAnsi(13, Rgba.FromRgb(0xE9, 0xB0, 0xFF));
+        palette.SetAnsi(14, Rgba.FromRgb(0x6B, 0xFF, 0xE8));
+        palette.SetAnsi(15, Rgba.FromRgb(0xFF, 0xFF, 0xFF));
+    }
+
+    private ImmutableSolidColorBrush BrushFor(Rgba c)
+    {
+        if (_brushCache.TryGetValue(c.Packed, out var brush))
+            return brush;
+        brush = new ImmutableSolidColorBrush(Color.FromArgb(c.A, c.R, c.G, c.B));
+        _brushCache[c.Packed] = brush;
+        return brush;
+    }
+
+    // ---- Metrics & layout ---------------------------------------------------
+
+    private void RecomputeMetrics()
+    {
+        var typeface = new Typeface(_fontFamily);
+        var probe = new FormattedText("0", CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+            typeface, _fontSize, Brushes.White);
+        _cellWidth = Math.Max(1, Math.Round(probe.WidthIncludingTrailingWhitespace));
+        _cellHeight = Math.Max(1, Math.Ceiling(probe.Height));
+        _baselineOffset = probe.Baseline;
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        var result = base.ArrangeOverride(finalSize);
+        RelayoutFromBounds();
+        return result;
+    }
+
+    private void RelayoutFromBounds()
+    {
+        if (_cellWidth <= 0 || _cellHeight <= 0)
+            return;
+        int cols = Math.Max(1, (int)(Bounds.Width / _cellWidth));
+        int rows = Math.Max(1, (int)(Bounds.Height / _cellHeight));
+        if (cols == _emulator.Columns && rows == _emulator.Rows)
+            return;
+        _emulator.Resize(cols, rows);
+        PtySizeChanged?.Invoke(cols, rows);
+        InvalidateVisual();
+    }
+
+    // ---- Rendering ----------------------------------------------------------
+
+    public override void Render(DrawingContext context)
+    {
+        var screen = _emulator.Screen;
+        var palette = _emulator.Palette;
+
+        context.FillRectangle(BrushFor(palette.DefaultBackground), new Rect(Bounds.Size));
+
+        int rows = screen.Rows;
+        int cols = screen.Columns;
+        int topAbsolute = Math.Max(0, screen.TotalRows - rows - _scrollOffset);
+
+        var sel = NormalizedSelection();
+
+        for (int screenRow = 0; screenRow < rows; screenRow++)
+        {
+            int absoluteRow = topAbsolute + screenRow;
+            if (absoluteRow >= screen.TotalRows)
+                break;
+            var line = screen.ViewLine(absoluteRow);
+            double y = screenRow * _cellHeight;
+            RenderLine(context, palette, line, cols, y, absoluteRow, sel);
+        }
+
+        if (_scrollOffset == 0)
+            RenderCursor(context, screen, palette, topAbsolute);
+    }
+
+    private void RenderLine(DrawingContext context, TerminalPalette palette, TerminalRow line,
+        int cols, double y, int absoluteRow, ((int Row, int Col) Start, (int Row, int Col) End)? sel)
+    {
+        int col = 0;
+        while (col < cols)
+        {
+            TerminalCell cell = line[col];
+            if (cell.IsWideTrailing)
+            {
+                col++;
+                continue;
+            }
+
+            int width = cell.Rune == 0 ? 1 : Math.Max(1, CharWidth.Of(cell.Rune));
+            bool inverse = (cell.Flags & CellFlags.Inverse) != 0 ^ _emulator.Modes.ReverseVideo;
+            bool bold = (cell.Flags & CellFlags.Bold) != 0;
+
+            Rgba fg = palette.Resolve(cell.Foreground, isBackground: false, bold);
+            Rgba bg = palette.Resolve(cell.Background, isBackground: true, bold: false);
+            if (inverse)
+                (fg, bg) = (bg, fg);
+            if (IsSelected(sel, absoluteRow, col))
+            {
+                bg = palette.SelectionBackground;
+            }
+
+            var cellRect = new Rect(col * _cellWidth, y, _cellWidth * width, _cellHeight);
+            if (!bg.Equals(palette.DefaultBackground))
+                context.FillRectangle(BrushFor(bg), cellRect);
+
+            if (cell.Rune != 0 && (cell.Flags & CellFlags.Invisible) == 0)
+            {
+                var typeface = new Typeface(_fontFamily,
+                    (cell.Flags & CellFlags.Italic) != 0 ? FontStyle.Italic : FontStyle.Normal,
+                    bold ? FontWeight.Bold : FontWeight.Normal);
+                var ft = new FormattedText(cell.GetText(), CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight, typeface, _fontSize, BrushFor(fg));
+                double gx = col * _cellWidth;
+                context.DrawText(ft, new Point(gx, y));
+            }
+
+            if ((cell.Flags & (CellFlags.Underline | CellFlags.DoubleUnderline)) != 0)
+            {
+                double uy = y + _cellHeight - 1.5;
+                context.DrawLine(new Pen(BrushFor(fg), 1),
+                    new Point(col * _cellWidth, uy), new Point((col + width) * _cellWidth, uy));
+            }
+            if ((cell.Flags & CellFlags.Strikethrough) != 0)
+            {
+                double sy = y + _cellHeight / 2;
+                context.DrawLine(new Pen(BrushFor(fg), 1),
+                    new Point(col * _cellWidth, sy), new Point((col + width) * _cellWidth, sy));
+            }
+
+            col += width;
+        }
+    }
+
+    private void RenderCursor(DrawingContext context, TerminalScreen screen, TerminalPalette palette, int topAbsolute)
+    {
+        if (!_emulator.Modes.CursorVisible)
+            return;
+        int cursorAbsolute = screen.TotalRows - screen.Rows + screen.CursorY;
+        int screenRow = cursorAbsolute - topAbsolute;
+        if (screenRow < 0 || screenRow >= screen.Rows)
+            return;
+
+        double x = screen.CursorX * _cellWidth;
+        double y = screenRow * _cellHeight;
+        var rect = new Rect(x, y, _cellWidth, _cellHeight);
+        var cursorBrush = BrushFor(palette.CursorColor);
+
+        if (_hasFocus)
+        {
+            context.FillRectangle(cursorBrush, rect);
+            // Redraw the glyph under the cursor in the background color for contrast.
+            var cell = screen.GetCell(screen.CursorX, screen.CursorY);
+            if (cell.Rune != 0)
+            {
+                var ft = new FormattedText(cell.GetText(), CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight, new Typeface(_fontFamily), _fontSize,
+                    BrushFor(palette.DefaultBackground));
+                context.DrawText(ft, new Point(x, y));
+            }
+        }
+        else
+        {
+            context.DrawRectangle(new Pen(cursorBrush, 1), rect);
+        }
+    }
+
+    // ---- Selection ----------------------------------------------------------
+
+    private ((int Row, int Col) Start, (int Row, int Col) End)? NormalizedSelection()
+    {
+        if (_selectionAnchor is not { } a || _selectionCaret is not { } c)
+            return null;
+        if (a.Row < c.Row || (a.Row == c.Row && a.Col <= c.Col))
+            return (a, c);
+        return (c, a);
+    }
+
+    private static bool IsSelected(((int Row, int Col) Start, (int Row, int Col) End)? sel, int row, int col)
+    {
+        if (sel is not { } s)
+            return false;
+        if (row < s.Start.Row || row > s.End.Row)
+            return false;
+        if (row == s.Start.Row && col < s.Start.Col)
+            return false;
+        if (row == s.End.Row && col >= s.End.Col)
+            return false;
+        return true;
+    }
+
+    public string GetSelectedText()
+    {
+        var sel = NormalizedSelection();
+        if (sel is not { } s)
+            return string.Empty;
+        var screen = _emulator.Screen;
+        var sb = new StringBuilder();
+        for (int row = s.Start.Row; row <= s.End.Row && row < screen.TotalRows; row++)
+        {
+            var line = screen.ViewLine(row);
+            int from = row == s.Start.Row ? s.Start.Col : 0;
+            int to = row == s.End.Row ? s.End.Col : line.Columns;
+            for (int col = Math.Max(0, from); col < Math.Min(line.Columns, to); col++)
+            {
+                var cell = line[col];
+                if (!cell.IsWideTrailing)
+                    sb.Append(cell.Rune == 0 ? " " : char.ConvertFromUtf32(cell.Rune));
+            }
+            if (row != s.End.Row)
+                sb.Append('\n');
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    private (int Row, int Col) PointToCell(Point p)
+    {
+        int screenRow = (int)(p.Y / _cellHeight);
+        int col = (int)(p.X / _cellWidth);
+        int topAbsolute = Math.Max(0, _emulator.Screen.TotalRows - _emulator.Rows - _scrollOffset);
+        return (topAbsolute + screenRow, Math.Clamp(col, 0, _emulator.Columns));
+    }
+
+    // ---- Input --------------------------------------------------------------
+
+    protected override void OnGotFocus(Avalonia.Input.GotFocusEventArgs e)
+    {
+        base.OnGotFocus(e);
+        _hasFocus = true;
+        InvalidateVisual();
+    }
+
+    protected override void OnLostFocus(RoutedEventArgs e)
+    {
+        base.OnLostFocus(e);
+        _hasFocus = false;
+        InvalidateVisual();
+    }
+
+    protected override void OnTextInput(TextInputEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(e.Text))
+        {
+            var bytes = InputEncoder.EncodeText(e.Text);
+            if (bytes.Length > 0)
+            {
+                UserInput?.Invoke(bytes);
+                ClearSelection();
+                e.Handled = true;
+            }
+        }
+        base.OnTextInput(e);
+    }
+
+    protected override async void OnKeyDown(KeyEventArgs e)
+    {
+        // Clipboard shortcuts.
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            if (e.Key == Key.C) { await CopyAsync(); e.Handled = true; return; }
+            if (e.Key == Key.V) { await PasteAsync(); e.Handled = true; return; }
+        }
+
+        var encoded = InputEncoder.Encode(e.Key, e.KeyModifiers, _emulator.Modes, _emulator.Type);
+        if (encoded is { Length: > 0 })
+        {
+            UserInput?.Invoke(encoded);
+            _scrollOffset = 0;
+            ClearSelection();
+            e.Handled = true;
+        }
+
+        base.OnKeyDown(e);
+    }
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        Focus();
+        var point = e.GetPosition(this);
+        var props = e.GetCurrentPoint(this).Properties;
+        if (props.IsLeftButtonPressed)
+        {
+            _selecting = true;
+            _selectionAnchor = PointToCell(point);
+            _selectionCaret = _selectionAnchor;
+            InvalidateVisual();
+        }
+        else if (props.IsRightButtonPressed)
+        {
+            // Right click pastes, matching common terminal behavior.
+            _ = PasteAsync();
+        }
+        e.Handled = true;
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        if (_selecting)
+        {
+            _selectionCaret = PointToCell(e.GetPosition(this));
+            InvalidateVisual();
+        }
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        _selecting = false;
+    }
+
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        base.OnPointerWheelChanged(e);
+        int delta = (int)(e.Delta.Y * 3);
+        int maxOffset = _emulator.Screen.ScrollbackCount;
+        _scrollOffset = Math.Clamp(_scrollOffset + delta, 0, maxOffset);
+        InvalidateVisual();
+        e.Handled = true;
+    }
+
+    private void ClearSelection()
+    {
+        _selectionAnchor = null;
+        _selectionCaret = null;
+    }
+
+    private async Task CopyAsync()
+    {
+        var text = GetSelectedText();
+        if (string.IsNullOrEmpty(text))
+            return;
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is not null)
+            await clipboard.SetTextAsync(text);
+    }
+
+    private async Task PasteAsync()
+    {
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is null)
+            return;
+        var text = await clipboard.TryGetTextAsync();
+        if (string.IsNullOrEmpty(text))
+            return;
+
+        var payload = new StringBuilder();
+        if (_emulator.Modes.BracketedPaste)
+            payload.Append("\x1b[200~");
+        payload.Append(text.Replace("\r\n", "\r").Replace('\n', '\r'));
+        if (_emulator.Modes.BracketedPaste)
+            payload.Append("\x1b[201~");
+
+        UserInput?.Invoke(Encoding.UTF8.GetBytes(payload.ToString()));
+    }
+}

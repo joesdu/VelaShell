@@ -2,12 +2,16 @@ using System;
 using System.Reactive;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text;
+using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Resources;
 using PulseTerm.Core.Ssh;
+using PulseTerm.Terminal.Emulation;
 using PulseTerm.Presentation.ViewModels;
 using PulseTerm.Presentation.Services;
 using PulseTerm.Terminal;
+using PulseTerm.Terminal.Rendering;
 using ReactiveUI;
 using System.Reactive.Linq;
 
@@ -17,6 +21,7 @@ public class MainWindowViewModel : ReactiveObject
 {
     private readonly IConnectionWorkflowService? _connectionWorkflowService;
     private readonly ISshConnectionService? _sshConnectionService;
+    private readonly ISettingsService? _settingsService;
     private readonly Func<ITerminalEmulator> _terminalEmulatorFactory;
     private SidebarViewModel _sidebar;
     private TabBarViewModel _tabBar;
@@ -30,11 +35,13 @@ public class MainWindowViewModel : ReactiveObject
     public MainWindowViewModel(
         IConnectionWorkflowService? connectionWorkflowService = null,
         ISshConnectionService? sshConnectionService = null,
-        Func<ITerminalEmulator>? terminalEmulatorFactory = null)
+        Func<ITerminalEmulator>? terminalEmulatorFactory = null,
+        ISettingsService? settingsService = null)
     {
         _connectionWorkflowService = connectionWorkflowService;
         _sshConnectionService = sshConnectionService;
-        _terminalEmulatorFactory = terminalEmulatorFactory ?? (() => new AvaloniaTerminalEmulator());
+        _settingsService = settingsService;
+        _terminalEmulatorFactory = terminalEmulatorFactory ?? (() => new PulseTerminalControl());
 
         _sidebar = new SidebarViewModel();
         _tabBar = new TabBarViewModel();
@@ -65,8 +72,13 @@ public class MainWindowViewModel : ReactiveObject
         var client = _sshConnectionService.GetClient(session.SessionId)
             ?? throw new InvalidOperationException("SSH client was not created for the session.");
 
+        var settings = _settingsService is not null
+            ? await _settingsService.GetSettingsAsync()
+            : new AppSettings();
+        var terminalType = TerminalTypeExtensions.FromTermName(settings.TerminalType);
+
         var shellStream = client.CreateShellStream(
-            terminalName: "xterm-256color",
+            terminalName: terminalType.ToTermName(),
             columns: 120,
             rows: 32,
             width: 0,
@@ -74,6 +86,7 @@ public class MainWindowViewModel : ReactiveObject
             bufferSize: 4096);
 
         var terminalEmulator = _terminalEmulatorFactory();
+        ConfigureTerminal(terminalEmulator, settings, terminalType);
         var terminalTab = new TerminalTabViewModel(terminalEmulator, shellStream)
         {
             SessionId = session.SessionId,
@@ -89,6 +102,36 @@ public class MainWindowViewModel : ReactiveObject
         UpdateStatusBar(profile, session);
 
         return terminalTab;
+    }
+
+    private static void ConfigureTerminal(ITerminalEmulator emulator, AppSettings settings, TerminalType terminalType)
+    {
+        emulator.ScrollbackLines = settings.ScrollbackLines;
+
+        if (emulator is PulseTerminalControl control)
+        {
+            control.TerminalType = terminalType;
+            control.SetEncoding(ResolveEncoding(settings.TerminalEncoding));
+            if (!string.IsNullOrWhiteSpace(settings.TerminalFont))
+                control.FontFamily = new Avalonia.Media.FontFamily(
+                    $"{settings.TerminalFont}, JetBrains Mono, Cascadia Mono, Consolas, Microsoft YaHei, monospace");
+            if (settings.TerminalFontSize > 0)
+                control.FontSize = settings.TerminalFontSize;
+        }
+    }
+
+    private static Encoding ResolveEncoding(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return Encoding.UTF8;
+        try
+        {
+            return Encoding.GetEncoding(name);
+        }
+        catch (ArgumentException)
+        {
+            return Encoding.UTF8;
+        }
     }
 
     private void UpdateStatusBar(SessionProfile profile, SshSession session)

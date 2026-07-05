@@ -106,6 +106,20 @@
                     SelectedItem="{Binding Theme}" />
         </StackPanel>
 
+        <!-- Terminal Type -->
+        <StackPanel>
+          <TextBlock Classes="field-label" Text="{x:Static res:Strings.TerminalType}" />
+          <ComboBox ItemsSource="{Binding AvailableTerminalTypes}"
+                    SelectedItem="{Binding TerminalType}" />
+        </StackPanel>
+
+        <!-- Terminal Encoding -->
+        <StackPanel>
+          <TextBlock Classes="field-label" Text="{x:Static res:Strings.TerminalEncoding}" />
+          <ComboBox ItemsSource="{Binding AvailableEncodings}"
+                    SelectedItem="{Binding TerminalEncoding}" />
+        </StackPanel>
+
         <!-- Terminal Font -->
         <StackPanel>
           <TextBlock Classes="field-label" Text="{x:Static res:Strings.Font}" />

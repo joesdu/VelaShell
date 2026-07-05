@@ -1,5 +1,6 @@
 using System;
 using System.Reactive;
+using System.Threading.Tasks;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Resources;
 using PulseTerm.Core.Ssh;
@@ -26,6 +27,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         ConnectionStatus = SessionStatus.Disconnected;
 
         Bridge = new SshTerminalBridge(terminalEmulator, shellStream);
+
+        // Keep the remote PTY size in sync with the local terminal grid.
+        TerminalEmulator.PtySizeChanged += OnPtySizeChanged;
 
         SearchCommand = ReactiveCommand.Create(() => { });
         CopyCommand = ReactiveCommand.Create(() => { });
@@ -93,6 +97,25 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         _started = true;
     }
 
+    private void OnPtySizeChanged(int columns, int rows)
+    {
+        if (_disposed || !ShellStream.CanWrite)
+            return;
+
+        // Off-load the channel request so a resize never stalls the UI thread.
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                ShellStream.Resize(columns, rows);
+            }
+            catch
+            {
+                // A resize on a torn-down or unsupported channel is non-fatal.
+            }
+        });
+    }
+
     public void IncrementReconnectAttempt()
     {
         ReconnectAttempts++;
@@ -110,6 +133,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
         _disposed = true;
 
+        TerminalEmulator.PtySizeChanged -= OnPtySizeChanged;
         Bridge.Dispose();
         TerminalEmulator.Dispose();
     }

@@ -22,6 +22,12 @@ public interface ITerminalEmulator : IDisposable
     /// Event fired when user types input (to send to SSH)
     /// </summary>
     event Action<byte[]>? UserInput;
+
+    /// <summary>
+    /// Raised when the terminal's character-cell grid changes size (e.g. the control was
+    /// laid out at a new size) so the host PTY can be resized to match. Args: (columns, rows).
+    /// </summary>
+    event Action<int, int>? PtySizeChanged;
     
     /// <summary>
     /// Programmatically send input bytes as if the user typed them

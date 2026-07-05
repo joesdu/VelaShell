@@ -9,6 +9,7 @@ using PulseTerm.Infrastructure.DependencyInjection;
 using PulseTerm.App.ViewModels;
 using PulseTerm.App.Views;
 using PulseTerm.Presentation.DependencyInjection;
+using PulseTerm.Core.Data;
 using PulseTerm.Core.Services;
 
 namespace PulseTerm.App;
@@ -29,6 +30,9 @@ public partial class App : Application
             .AddPulseTermControls()
             .AddPulseTermInfrastructure()
             .AddSingleton<IThemeService>(_ => new ThemeService("system"))
+            .AddSingleton<JsonDataStore>()
+            .AddSingleton<ISettingsService, SettingsService>()
+            .AddSingleton<SettingsViewModel>()
             .AddSingleton<MainWindowViewModel>()
             .BuildServiceProvider();
 

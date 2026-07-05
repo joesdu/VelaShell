@@ -43,6 +43,14 @@ public class ShellStreamWrapper : IShellStreamWrapper
         _stream.Flush();
     }
 
+    public void Resize(int columns, int rows)
+    {
+        if (columns <= 0 || rows <= 0)
+            return;
+        // SSH.NET sends a "window-change" channel request to the server.
+        _stream.ChangeWindowSize((uint)columns, (uint)rows, 0, 0);
+    }
+
     public void Dispose()
     {
         _stream.Dispose();

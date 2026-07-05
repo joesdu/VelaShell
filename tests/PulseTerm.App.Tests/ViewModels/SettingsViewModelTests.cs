@@ -33,7 +33,9 @@ public class SettingsViewModelTests
             TerminalFont = "Fira Code",
             TerminalFontSize = 16,
             ScrollbackLines = 5000,
-            DefaultPort = 2222
+            DefaultPort = 2222,
+            TerminalType = "vt220",
+            TerminalEncoding = "GBK"
         };
         _settingsService.GetSettingsAsync().Returns(settings);
 
@@ -46,6 +48,8 @@ public class SettingsViewModelTests
         vm.TerminalFontSize.Should().Be(16);
         vm.ScrollbackLines.Should().Be(5000);
         vm.DefaultPort.Should().Be(2222);
+        vm.TerminalType.Should().Be("vt220");
+        vm.TerminalEncoding.Should().Be("GBK");
     }
 
     [Fact]
@@ -59,6 +63,8 @@ public class SettingsViewModelTests
         vm.TerminalFontSize = 18;
         vm.ScrollbackLines = 20000;
         vm.DefaultPort = 8022;
+        vm.TerminalType = "xterm-256color";
+        vm.TerminalEncoding = "UTF-8";
 
         await vm.SaveCommand.Execute().FirstAsync();
 
@@ -69,7 +75,9 @@ public class SettingsViewModelTests
                 s.TerminalFont == "Cascadia Code" &&
                 s.TerminalFontSize == 18 &&
                 s.ScrollbackLines == 20000 &&
-                s.DefaultPort == 8022));
+                s.DefaultPort == 8022 &&
+                s.TerminalType == "xterm-256color" &&
+                s.TerminalEncoding == "UTF-8"));
     }
 
     [Fact]

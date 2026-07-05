@@ -18,6 +18,8 @@ public class SettingsViewModel : ReactiveObject
     private int _terminalFontSize = 14;
     private int _scrollbackLines = 10000;
     private int _defaultPort = 22;
+    private string _terminalType = "xterm-256color";
+    private string _terminalEncoding = "UTF-8";
 
     public SettingsViewModel(ISettingsService settingsService, IThemeService themeService)
     {
@@ -65,9 +67,32 @@ public class SettingsViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _defaultPort, value);
     }
 
+    public string TerminalType
+    {
+        get => _terminalType;
+        set => this.RaiseAndSetIfChanged(ref _terminalType, value);
+    }
+
+    public string TerminalEncoding
+    {
+        get => _terminalEncoding;
+        set => this.RaiseAndSetIfChanged(ref _terminalEncoding, value);
+    }
+
     public string[] AvailableLanguages { get; } = new[] { "en", "zh-CN" };
 
     public string[] AvailableThemes { get; } = new[] { "dark", "light" };
+
+    // xterm-256color is the primary/recommended profile and is listed first.
+    public string[] AvailableTerminalTypes { get; } = new[]
+    {
+        "xterm-256color", "xterm", "vt520", "vt420", "vt340", "vt320", "vt220", "vt102", "vt100", "vt52"
+    };
+
+    public string[] AvailableEncodings { get; } = new[]
+    {
+        "UTF-8", "GBK", "GB18030", "Big5", "Shift_JIS", "EUC-KR", "ISO-8859-1"
+    };
 
     public ReactiveCommand<Unit, Unit> LoadCommand { get; }
     public ReactiveCommand<Unit, Unit> SaveCommand { get; }
@@ -82,6 +107,8 @@ public class SettingsViewModel : ReactiveObject
         TerminalFontSize = settings.TerminalFontSize;
         ScrollbackLines = settings.ScrollbackLines;
         DefaultPort = settings.DefaultPort;
+        TerminalType = settings.TerminalType;
+        TerminalEncoding = settings.TerminalEncoding;
     }
 
     private async Task SaveAsync()
@@ -93,7 +120,9 @@ public class SettingsViewModel : ReactiveObject
             TerminalFont = TerminalFont,
             TerminalFontSize = TerminalFontSize,
             ScrollbackLines = ScrollbackLines,
-            DefaultPort = DefaultPort
+            DefaultPort = DefaultPort,
+            TerminalType = TerminalType,
+            TerminalEncoding = TerminalEncoding
         };
 
         await _settingsService.SaveSettingsAsync(settings);
