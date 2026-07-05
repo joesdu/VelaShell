@@ -30,6 +30,7 @@ public class MainWindowViewModel : ReactiveObject
     private TabBarViewModel _tabBar;
     private StatusBarViewModel _statusBar;
     private TerminalTabViewModel? _activeTerminalTab;
+    private string? _lastConnectionError;
 
     // SFTP/File management views derived from design
     private FileBrowserViewModel _fileBrowser;
@@ -87,7 +88,7 @@ public class MainWindowViewModel : ReactiveObject
             items.Add(new CommandPaletteItem(
                 category: "会话",
                 title: title,
-                invoke: () => _ = ConnectProfileAsync(captured),
+                invoke: () => _ = TryConnectProfileAsync(captured),
                 hint: "Enter 连接",
                 isSession: true));
         }
@@ -143,8 +144,54 @@ public class MainWindowViewModel : ReactiveObject
 
         Sidebar.RecentConnections.AddRecent(profile);
         UpdateStatusBar(profile, session);
+        LastConnectionError = null;
 
         return terminalTab;
+    }
+
+    /// <summary>
+    /// Connects without ever letting a failure escape to the caller. Authentication failures,
+    /// unreachable hosts and the like are captured in <see cref="LastConnectionError"/> and
+    /// reflected in the status bar instead of crashing the app.
+    /// </summary>
+    public async Task<TerminalTabViewModel?> TryConnectProfileAsync(SessionProfile profile, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await ConnectProfileAsync(profile, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            LastConnectionError = DescribeConnectionError(ex, profile);
+            StatusBar.Status = LastConnectionError;
+            return null;
+        }
+    }
+
+    /// <summary>The most recent connection error message, or null if the last attempt succeeded.</summary>
+    public string? LastConnectionError
+    {
+        get => _lastConnectionError;
+        private set => this.RaiseAndSetIfChanged(ref _lastConnectionError, value);
+    }
+
+    private static string DescribeConnectionError(Exception ex, SessionProfile profile)
+    {
+        var target = string.IsNullOrWhiteSpace(profile.Host) ? profile.Name : $"{profile.Username}@{profile.Host}:{profile.Port}";
+        // Match by type name so PulseTerm.App need not reference SSH.NET directly.
+        return ex.GetType().Name switch
+        {
+            "SshAuthenticationException" => $"认证失败：{target} 的用户名、密码或密钥不正确。",
+            "SshConnectionException" => $"连接失败：无法与 {target} 建立 SSH 会话。",
+            "SocketException" => $"网络错误：无法连接到 {target}，请检查主机与端口。",
+            "SshOperationTimeoutException" => $"连接超时：{target} 未响应。",
+            "ProxyException" => $"代理错误：无法通过代理连接到 {target}。",
+            _ => $"连接 {target} 失败：{ex.Message}",
+        };
     }
 
     private static void ConfigureTerminal(ITerminalEmulator emulator, AppSettings settings, TerminalType terminalType)

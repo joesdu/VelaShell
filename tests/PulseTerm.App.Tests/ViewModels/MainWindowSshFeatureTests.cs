@@ -63,4 +63,40 @@ public sealed class MainWindowSshFeatureTests
         vm.StatusBar.Status.Should().Be(Strings.Connected);
         vm.Sidebar.RecentConnections.Connections.Should().ContainSingle();
     }
+
+    [Fact]
+    public async Task TryConnectProfileAsync_AuthFailure_DoesNotThrow_AndReportsError()
+    {
+        var workflow = Substitute.For<IConnectionWorkflowService>();
+        var sshConnectionService = Substitute.For<ISshConnectionService>();
+
+        var profile = new SessionProfile
+        {
+            Name = "Prod",
+            Host = "prod.example.com",
+            Port = 22,
+            Username = "root",
+            AuthMethod = AuthMethod.Password,
+            Password = "wrong"
+        };
+
+        // Simulate SSH.NET rejecting the password (matched by type name in the VM).
+        workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>())
+            .Returns<Task<SshSession>>(_ => throw new SshAuthenticationException("Permission denied (password)."));
+
+        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => Substitute.For<ITerminalEmulator>());
+
+        var tab = await vm.TryConnectProfileAsync(profile);
+
+        tab.Should().BeNull();
+        vm.TabBar.Tabs.Should().BeEmpty();
+        vm.LastConnectionError.Should().NotBeNullOrEmpty();
+        vm.LastConnectionError.Should().Contain("认证失败");
+    }
+
+    // Named to match SSH.NET's SshAuthenticationException so the VM's type-name mapping applies.
+    private sealed class SshAuthenticationException : Exception
+    {
+        public SshAuthenticationException(string message) : base(message) { }
+    }
 }

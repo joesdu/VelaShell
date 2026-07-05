@@ -38,7 +38,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     private bool _selecting;
 
     public PulseTerminalControl()
-        : this(new TerminalEmulator())
+        : this(new TerminalEmulator(120, 32))
     {
     }
 
@@ -188,18 +188,30 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     protected override Size ArrangeOverride(Size finalSize)
     {
         var result = base.ArrangeOverride(finalSize);
-        RelayoutFromBounds();
+        ApplyLayoutSize(finalSize);
         return result;
     }
 
-    private void RelayoutFromBounds()
+    private void RelayoutFromBounds() => ApplyLayoutSize(Bounds.Size);
+
+    private void ApplyLayoutSize(Size size)
     {
         if (_cellWidth <= 0 || _cellHeight <= 0)
             return;
-        int cols = Math.Max(1, (int)(Bounds.Width / _cellWidth));
-        int rows = Math.Max(1, (int)(Bounds.Height / _cellHeight));
+
+        int cols = (int)(size.Width / _cellWidth);
+        int rows = (int)(size.Height / _cellHeight);
+
+        // Ignore early/degenerate layout passes (zero or sub-cell size). Collapsing the grid
+        // to a single column here is what made the login banner render one char per line: every
+        // subsequent character autowrapped. Keep the current (or default 120x32) grid until a
+        // real size arrives.
+        if (cols < 2 || rows < 2)
+            return;
+
         if (cols == _emulator.Columns && rows == _emulator.Rows)
             return;
+
         _emulator.Resize(cols, rows);
         PtySizeChanged?.Invoke(cols, rows);
         InvalidateVisual();
