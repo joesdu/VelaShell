@@ -395,14 +395,14 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
     // ---- Input --------------------------------------------------------------
 
-    protected override void OnGotFocus(Avalonia.Input.GotFocusEventArgs e)
+    protected override void OnGotFocus(FocusChangedEventArgs e)
     {
         base.OnGotFocus(e);
         _hasFocus = true;
         InvalidateVisual();
     }
 
-    protected override void OnLostFocus(RoutedEventArgs e)
+    protected override void OnLostFocus(FocusChangedEventArgs e)
     {
         base.OnLostFocus(e);
         _hasFocus = false;

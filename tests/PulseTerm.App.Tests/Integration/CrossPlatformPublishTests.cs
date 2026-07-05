@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using FluentAssertions;
-using Xunit.Abstractions;
 
 namespace PulseTerm.App.Tests.Integration;
 

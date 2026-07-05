@@ -5,7 +5,6 @@ using NSubstitute;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Ssh;
 using PulseTerm.Infrastructure.Ssh;
-using Xunit.Abstractions;
 
 namespace PulseTerm.App.Tests.Integration;
 
@@ -23,8 +22,8 @@ public class SshIntegrationTests : IAsyncLifetime
 
     public SshIntegrationTests(ITestOutputHelper output) => _output = output;
 
-    public Task InitializeAsync() => Task.CompletedTask;
-    public Task DisposeAsync() => Task.CompletedTask;
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     private static bool DetectDocker()
     {
