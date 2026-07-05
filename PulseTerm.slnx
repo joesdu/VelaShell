@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/tests/">
+    <Project Path="./tests/PulseTerm.App.Tests/PulseTerm.App.Tests.csproj" />
+    <Project Path="./tests/PulseTerm.Controls.Tests/PulseTerm.Controls.Tests.csproj" />
+    <Project Path="./tests/PulseTerm.Core.Tests/PulseTerm.Core.Tests.csproj" />
+    <Project Path="./tests/PulseTerm.Infrastructure.Tests/PulseTerm.Infrastructure.Tests.csproj" />
+    <Project Path="./tests/PulseTerm.Presentation.Tests/PulseTerm.Presentation.Tests.csproj" />
+    <Project Path="./tests/PulseTerm.Terminal.Tests/PulseTerm.Terminal.Tests.csproj" />
+  </Folder>
+  <Project Path="./src/PulseTerm.App/PulseTerm.App.csproj" />
+  <Project Path="./src/PulseTerm.Controls/PulseTerm.Controls.csproj" />
+  <Project Path="./src/PulseTerm.Core/PulseTerm.Core.csproj" />
+  <Project Path="./src/PulseTerm.Infrastructure/PulseTerm.Infrastructure.csproj" />
+  <Project Path="./src/PulseTerm.Presentation/PulseTerm.Presentation.csproj" />
+  <Project Path="./src/PulseTerm.Terminal/PulseTerm.Terminal.csproj" />
+</Solution>
