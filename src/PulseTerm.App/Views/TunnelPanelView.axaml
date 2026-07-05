@@ -94,7 +94,7 @@
             <TextBlock Classes="label" Text="{x:Static res:Strings.Name}" />
             <TextBox Classes="tunnel-input"
                      Text="{Binding NewTunnelName}"
-                     Watermark="my-tunnel" />
+                     PlaceholderText="my-tunnel" />
           </StackPanel>
 
           <!-- Local Host/Port row -->
@@ -104,11 +104,11 @@
               <TextBox Grid.Column="0"
                        Classes="tunnel-input"
                        Text="{Binding NewLocalHost}"
-                       Watermark="localhost" />
+                       PlaceholderText="localhost" />
               <TextBox Grid.Column="2"
                        Classes="tunnel-input"
                        Text="{Binding NewLocalPort}"
-                       Watermark="{x:Static res:Strings.LocalPort}" />
+                       PlaceholderText="{x:Static res:Strings.LocalPort}" />
             </Grid>
           </StackPanel>
 
@@ -119,11 +119,11 @@
               <TextBox Grid.Column="0"
                        Classes="tunnel-input"
                        Text="{Binding NewRemoteHost}"
-                       Watermark="host" />
+                       PlaceholderText="host" />
               <TextBox Grid.Column="2"
                        Classes="tunnel-input"
                        Text="{Binding NewRemotePort}"
-                       Watermark="{x:Static res:Strings.Port}" />
+                       PlaceholderText="{x:Static res:Strings.Port}" />
             </Grid>
           </StackPanel>
 

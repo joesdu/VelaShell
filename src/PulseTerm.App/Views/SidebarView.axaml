@@ -179,7 +179,7 @@
                       Margin="0,0,8,0" />
             <TextBox Grid.Column="1"
                      Text="{Binding QuickConnect.Input, Mode=TwoWay}"
-                     Watermark="用户名@主机名:端口"
+                     PlaceholderText="用户名@主机名:端口"
                      Background="Transparent"
                      BorderThickness="0"
                      Foreground="{DynamicResource PulseTextSecondary}"

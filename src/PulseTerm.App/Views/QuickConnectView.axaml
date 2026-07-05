@@ -17,7 +17,7 @@
     <Grid ColumnDefinitions="*,Auto">
       <TextBox Grid.Column="0"
                Text="{Binding Input, Mode=TwoWay}"
-               Watermark="{x:Static res:Strings.QuickConnectPlaceholder}"
+               PlaceholderText="{x:Static res:Strings.QuickConnectPlaceholder}"
                Background="{DynamicResource PulseBgInput}"
                Foreground="{DynamicResource PulseTextPrimary}"
                BorderBrush="{DynamicResource PulseBorderPrimary}"

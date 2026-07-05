@@ -62,7 +62,7 @@
               Padding="8,4">
         <TextBox Classes="cmd-input"
                  Text="{Binding SearchQuery}"
-                 Watermark="{x:Static res:Strings.SearchCommands}" />
+                 PlaceholderText="{x:Static res:Strings.SearchCommands}" />
       </Border>
 
       <!-- Add Command form (bottom, toggled) -->
@@ -82,7 +82,7 @@
             <TextBlock Classes="label" Text="{x:Static res:Strings.Name}" />
             <TextBox Classes="cmd-input"
                      Text="{Binding NewName}"
-                     Watermark="{x:Static res:Strings.Name}" />
+                     PlaceholderText="{x:Static res:Strings.Name}" />
           </StackPanel>
 
           <!-- Category -->
@@ -90,7 +90,7 @@
             <TextBlock Classes="label" Text="{x:Static res:Strings.Category}" />
             <TextBox Classes="cmd-input"
                      Text="{Binding NewCategory}"
-                     Watermark="{x:Static res:Strings.Category}" />
+                     PlaceholderText="{x:Static res:Strings.Category}" />
           </StackPanel>
 
           <!-- Command -->
@@ -98,7 +98,7 @@
             <TextBlock Classes="label" Text="{x:Static res:Strings.Command}" />
             <TextBox Classes="cmd-input"
                      Text="{Binding NewCommandText}"
-                     Watermark="{x:Static res:Strings.Command}"
+                     PlaceholderText="{x:Static res:Strings.Command}"
                      FontFamily="Cascadia Mono,Consolas,Menlo,monospace" />
           </StackPanel>
 
@@ -107,7 +107,7 @@
             <TextBlock Classes="label" Text="{x:Static res:Strings.Description}" />
             <TextBox Classes="cmd-input"
                      Text="{Binding NewDescription}"
-                     Watermark="{x:Static res:Strings.Description}" />
+                     PlaceholderText="{x:Static res:Strings.Description}" />
           </StackPanel>
 
           <!-- Save / Cancel buttons -->

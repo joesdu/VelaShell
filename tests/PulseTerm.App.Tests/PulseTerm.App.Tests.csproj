@@ -5,6 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- xUnit1051 is a v3 best-practice nag about passing a test CancellationToken to async
+         calls; not relevant for these NSubstitute unit tests and server-gated integration tests. -->
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

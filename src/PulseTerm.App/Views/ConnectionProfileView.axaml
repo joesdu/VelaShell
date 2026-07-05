@@ -115,7 +115,7 @@
         <!-- Host -->
         <StackPanel>
           <TextBlock Classes="field-label" Text="{x:Static res:Strings.Host}" />
-          <TextBox Text="{Binding Host}" Watermark="192.168.1.1" />
+          <TextBox Text="{Binding Host}" PlaceholderText="192.168.1.1" />
         </StackPanel>
 
         <!-- Port -->
@@ -131,7 +131,7 @@
         <!-- Username -->
         <StackPanel>
           <TextBlock Classes="field-label" Text="{x:Static res:Strings.Username}" />
-          <TextBox Text="{Binding Username}" Watermark="root" />
+          <TextBox Text="{Binding Username}" PlaceholderText="root" />
         </StackPanel>
 
         <!-- Auth Method -->
