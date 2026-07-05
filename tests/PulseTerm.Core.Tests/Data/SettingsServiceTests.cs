@@ -1,11 +1,10 @@
-using FluentAssertions;
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
-using Xunit;
 
 namespace PulseTerm.Core.Tests.Data;
 
-[Trait("Category", "DataStore")]
+[TestClass]
+[TestCategory("DataStore")]
 public class SettingsServiceTests : IDisposable
 {
     private readonly string _testDirectory;
@@ -26,23 +25,23 @@ public class SettingsServiceTests : IDisposable
         }
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetSettingsAsync_FileDoesNotExist_ShouldReturnDefaultSettings()
     {
         var service = new SettingsService(_dataStore, _testDirectory);
 
         var settings = await service.GetSettingsAsync();
 
-        settings.Should().NotBeNull();
-        settings.Language.Should().Be("en");
-        settings.Theme.Should().Be("dark");
-        settings.TerminalFont.Should().Be("JetBrains Mono");
-        settings.TerminalFontSize.Should().Be(14);
-        settings.ScrollbackLines.Should().Be(10000);
-        settings.DefaultPort.Should().Be(22);
+        Assert.IsNotNull(settings);
+        Assert.AreEqual("en", settings.Language);
+        Assert.AreEqual("dark", settings.Theme);
+        Assert.AreEqual("JetBrains Mono", settings.TerminalFont);
+        Assert.AreEqual(14, settings.TerminalFontSize);
+        Assert.AreEqual(10000, settings.ScrollbackLines);
+        Assert.AreEqual(22, settings.DefaultPort);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task SaveAndGetSettings_ShouldPersist()
     {
         var service = new SettingsService(_dataStore, _testDirectory);
@@ -59,24 +58,26 @@ public class SettingsServiceTests : IDisposable
         await service.SaveSettingsAsync(settings);
         var retrieved = await service.GetSettingsAsync();
 
-        retrieved.Should().BeEquivalentTo(settings);
+        Assert.AreEqual(
+            System.Text.Json.JsonSerializer.Serialize(settings),
+            System.Text.Json.JsonSerializer.Serialize(retrieved));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetStateAsync_FileDoesNotExist_ShouldReturnDefaultState()
     {
         var service = new SettingsService(_dataStore, _testDirectory);
 
         var state = await service.GetStateAsync();
 
-        state.Should().NotBeNull();
-        state.RecentConnections.Should().BeEmpty();
-        state.WindowPosition.Should().BeNull();
-        state.WindowSize.Should().BeNull();
-        state.LastActiveTab.Should().BeNull();
+        Assert.IsNotNull(state);
+        Assert.AreEqual(0, state.RecentConnections.Count());
+        Assert.IsNull(state.WindowPosition);
+        Assert.IsNull(state.WindowSize);
+        Assert.IsNull(state.LastActiveTab);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task SaveAndGetState_ShouldPersist()
     {
         var service = new SettingsService(_dataStore, _testDirectory);
@@ -91,10 +92,12 @@ public class SettingsServiceTests : IDisposable
         await service.SaveStateAsync(state);
         var retrieved = await service.GetStateAsync();
 
-        retrieved.Should().BeEquivalentTo(state);
+        Assert.AreEqual(
+            System.Text.Json.JsonSerializer.Serialize(state),
+            System.Text.Json.JsonSerializer.Serialize(retrieved));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task SaveSettings_UpdatesExisting_ShouldOverwrite()
     {
         var service = new SettingsService(_dataStore, _testDirectory);
@@ -105,11 +108,11 @@ public class SettingsServiceTests : IDisposable
         await service.SaveSettingsAsync(settings2);
         var retrieved = await service.GetSettingsAsync();
 
-        retrieved.Language.Should().Be("zh");
-        retrieved.Theme.Should().Be("light");
+        Assert.AreEqual("zh", retrieved.Language);
+        Assert.AreEqual("light", retrieved.Theme);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task SaveState_UpdatesRecentConnections_ShouldPersist()
     {
         var service = new SettingsService(_dataStore, _testDirectory);
@@ -123,12 +126,12 @@ public class SettingsServiceTests : IDisposable
         await service.SaveStateAsync(state);
         var retrieved = await service.GetStateAsync();
 
-        retrieved.RecentConnections.Should().HaveCount(2);
-        retrieved.RecentConnections.Should().Contain("session1");
-        retrieved.RecentConnections.Should().Contain("session2");
+        Assert.AreEqual(2, retrieved.RecentConnections.Count());
+        Assert.IsTrue(retrieved.RecentConnections.Contains("session1"));
+        Assert.IsTrue(retrieved.RecentConnections.Contains("session2"));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task SettingsAndState_ShouldBeStoredSeparately()
     {
         var service = new SettingsService(_dataStore, _testDirectory);
@@ -141,12 +144,12 @@ public class SettingsServiceTests : IDisposable
         var retrievedSettings = await service.GetSettingsAsync();
         var retrievedState = await service.GetStateAsync();
 
-        retrievedSettings.Language.Should().Be("fr");
-        retrievedState.LastActiveTab.Should().Be("tab1");
+        Assert.AreEqual("fr", retrievedSettings.Language);
+        Assert.AreEqual("tab1", retrievedState.LastActiveTab);
     }
 
-    [Fact]
-    [Trait("Category", "EdgeCase")]
+    [TestMethod]
+    [TestCategory("EdgeCase")]
     public async Task WindowState_PersistsPositionAndSize_AcrossReloads()
     {
         var service1 = new SettingsService(_dataStore, _testDirectory);
@@ -161,11 +164,11 @@ public class SettingsServiceTests : IDisposable
         var service2 = new SettingsService(_dataStore, _testDirectory);
         var retrieved = await service2.GetStateAsync();
 
-        retrieved.WindowPosition.Should().NotBeNull();
-        retrieved.WindowPosition!.X.Should().Be(150);
-        retrieved.WindowPosition.Y.Should().Be(250);
-        retrieved.WindowSize.Should().NotBeNull();
-        retrieved.WindowSize!.Width.Should().Be(1280);
-        retrieved.WindowSize.Height.Should().Be(720);
+        Assert.IsNotNull(retrieved.WindowPosition);
+        Assert.AreEqual(150, retrieved.WindowPosition!.X);
+        Assert.AreEqual(250, retrieved.WindowPosition.Y);
+        Assert.IsNotNull(retrieved.WindowSize);
+        Assert.AreEqual(1280, retrieved.WindowSize!.Width);
+        Assert.AreEqual(720, retrieved.WindowSize.Height);
     }
 }

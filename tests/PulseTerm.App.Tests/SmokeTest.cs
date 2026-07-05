@@ -1,11 +1,12 @@
 namespace PulseTerm.App.Tests;
 
+[TestClass]
 public class SmokeTest
 {
-    [Fact]
+    [TestMethod]
     public void SmokeTest_AppInitializes()
     {
         var app = new App();
-        Assert.NotNull(app);
+        Assert.IsNotNull(app);
     }
 }

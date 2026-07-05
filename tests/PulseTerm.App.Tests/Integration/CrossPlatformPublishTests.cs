@@ -1,18 +1,17 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using FluentAssertions;
 
 namespace PulseTerm.App.Tests.Integration;
 
-[Collection("IntegrationTests")]
+[TestClass]
 public class CrossPlatformPublishTests : IDisposable
 {
     private readonly string _publishOutputDir;
-    private readonly ITestOutputHelper _output;
 
-    public CrossPlatformPublishTests(ITestOutputHelper output)
+    public TestContext TestContext { get; set; } = null!;
+
+    public CrossPlatformPublishTests()
     {
-        _output = output;
         _publishOutputDir = Path.Combine(Path.GetTempPath(), $"pulseterm_publish_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_publishOutputDir);
     }
@@ -85,20 +84,20 @@ public class CrossPlatformPublishTests : IDisposable
         // Only run when PULSETERM_PUBLISH_TESTS=1 environment variable is set.
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("PULSETERM_PUBLISH_TESTS")))
         {
-            _output.WriteLine($"[SKIP] Publish tests are opt-in. Set PULSETERM_PUBLISH_TESTS=1 to enable. (RID: {rid})");
+            TestContext.WriteLine($"[SKIP] Publish tests are opt-in. Set PULSETERM_PUBLISH_TESTS=1 to enable. (RID: {rid})");
             return true;
         }
 
         if (!IsNativeRid(rid))
         {
-            _output.WriteLine($"[SKIP] Skipping publish test for {rid}: current platform is {RuntimeInformation.RuntimeIdentifier}. Cross-compilation for non-native RIDs may not be supported without additional workloads.");
+            TestContext.WriteLine($"[SKIP] Skipping publish test for {rid}: current platform is {RuntimeInformation.RuntimeIdentifier}. Cross-compilation for non-native RIDs may not be supported without additional workloads.");
             return true;
         }
         return false;
     }
 
-    [Fact]
-    [Trait("Category", "CrossPlatform")]
+    [TestMethod]
+    [TestCategory("CrossPlatform")]
     public void Publish_OsxArm64_Succeeds()
     {
         const string rid = "osx-arm64";
@@ -106,17 +105,17 @@ public class CrossPlatformPublishTests : IDisposable
 
         var (exitCode, stdout, stderr) = RunDotnetPublish(rid);
 
-        exitCode.Should().Be(0,
+        Assert.AreEqual(0, exitCode,
             $"dotnet publish for {rid} should succeed.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 
         var outputDir = Path.Combine(_publishOutputDir, rid);
-        Directory.Exists(outputDir).Should().BeTrue();
-        Directory.GetFiles(outputDir).Should().NotBeEmpty(
+        Assert.IsTrue(Directory.Exists(outputDir));
+        Assert.IsTrue(Directory.GetFiles(outputDir).Any(),
             $"publish output for {rid} should contain files");
     }
 
-    [Fact]
-    [Trait("Category", "CrossPlatform")]
+    [TestMethod]
+    [TestCategory("CrossPlatform")]
     public void Publish_WinX64_Succeeds()
     {
         const string rid = "win-x64";
@@ -124,17 +123,17 @@ public class CrossPlatformPublishTests : IDisposable
 
         var (exitCode, stdout, stderr) = RunDotnetPublish(rid);
 
-        exitCode.Should().Be(0,
+        Assert.AreEqual(0, exitCode,
             $"dotnet publish for {rid} should succeed.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 
         var outputDir = Path.Combine(_publishOutputDir, rid);
-        Directory.Exists(outputDir).Should().BeTrue();
-        Directory.GetFiles(outputDir).Should().NotBeEmpty(
+        Assert.IsTrue(Directory.Exists(outputDir));
+        Assert.IsTrue(Directory.GetFiles(outputDir).Any(),
             $"publish output for {rid} should contain files");
     }
 
-    [Fact]
-    [Trait("Category", "CrossPlatform")]
+    [TestMethod]
+    [TestCategory("CrossPlatform")]
     public void Publish_LinuxX64_Succeeds()
     {
         const string rid = "linux-x64";
@@ -142,12 +141,12 @@ public class CrossPlatformPublishTests : IDisposable
 
         var (exitCode, stdout, stderr) = RunDotnetPublish(rid);
 
-        exitCode.Should().Be(0,
+        Assert.AreEqual(0, exitCode,
             $"dotnet publish for {rid} should succeed.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 
         var outputDir = Path.Combine(_publishOutputDir, rid);
-        Directory.Exists(outputDir).Should().BeTrue();
-        Directory.GetFiles(outputDir).Should().NotBeEmpty(
+        Assert.IsTrue(Directory.Exists(outputDir));
+        Assert.IsTrue(Directory.GetFiles(outputDir).Any(),
             $"publish output for {rid} should contain files");
     }
 }

@@ -1,5 +1,4 @@
 using System.Reactive.Linq;
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.App.ViewModels;
 using PulseTerm.Core.Models;
@@ -7,6 +6,7 @@ using PulseTerm.Core.Tunnels;
 
 namespace PulseTerm.App.Tests.ViewModels;
 
+[TestClass]
 public class TunnelPanelViewModelTests
 {
     private readonly ITunnelService _tunnelService;
@@ -49,8 +49,8 @@ public class TunnelPanelViewModelTests
         };
     }
 
-    [Fact]
-    [Trait("Category", "TunnelUI")]
+    [TestMethod]
+    [TestCategory("TunnelUI")]
     public async Task CreateTunnel_WithValidForm_AddsTunnelToList()
     {
         var tunnelInfo = CreateTunnelInfo();
@@ -66,21 +66,21 @@ public class TunnelPanelViewModelTests
 
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
 
-        _vm.Tunnels.Should().HaveCount(1);
-        _vm.Tunnels[0].Name.Should().Be("test-tunnel");
-        _vm.Tunnels[0].LocalPort.Should().Be(3306);
-        _vm.Tunnels[0].RemoteHost.Should().Be("db-server");
+        Assert.AreEqual(1, _vm.Tunnels.Count());
+        Assert.AreEqual("test-tunnel", _vm.Tunnels[0].Name);
+        Assert.AreEqual(3306u, _vm.Tunnels[0].LocalPort);
+        Assert.AreEqual("db-server", _vm.Tunnels[0].RemoteHost);
     }
 
-    [Theory]
-    [Trait("Category", "TunnelUI")]
-    [InlineData(0, 3306, false)]
-    [InlineData(3306, 0, false)]
-    [InlineData(-1, 3306, false)]
-    [InlineData(3306, -1, false)]
-    [InlineData(65536, 3306, false)]
-    [InlineData(3306, 65536, false)]
-    [InlineData(3306, 3306, true)]
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    [DataRow(0, 3306, false)]
+    [DataRow(3306, 0, false)]
+    [DataRow(-1, 3306, false)]
+    [DataRow(3306, -1, false)]
+    [DataRow(65536, 3306, false)]
+    [DataRow(3306, 65536, false)]
+    [DataRow(3306, 3306, true)]
     public void CreateTunnel_ValidatesPortRange(int localPort, int remotePort, bool expectedValid)
     {
         _vm.NewTunnelName = "test";
@@ -89,11 +89,11 @@ public class TunnelPanelViewModelTests
         _vm.NewRemoteHost = "remote";
         _vm.NewRemotePort = remotePort;
 
-        _vm.IsFormValid.Should().Be(expectedValid);
+        Assert.AreEqual(expectedValid, _vm.IsFormValid);
     }
 
-    [Fact]
-    [Trait("Category", "TunnelUI")]
+    [TestMethod]
+    [TestCategory("TunnelUI")]
     public async Task StopTunnel_ChangesTunnelStatusToStopped()
     {
         var tunnelInfo = CreateTunnelInfo(status: TunnelStatus.Active);
@@ -108,16 +108,16 @@ public class TunnelPanelViewModelTests
 
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
 
-        _vm.Tunnels[0].Status.Should().Be(TunnelStatus.Active);
+        Assert.AreEqual(TunnelStatus.Active, _vm.Tunnels[0].Status);
 
         await _vm.StopTunnelCommand.Execute(tunnelInfo.Id).FirstAsync();
 
-        _vm.Tunnels[0].Status.Should().Be(TunnelStatus.Stopped);
+        Assert.AreEqual(TunnelStatus.Stopped, _vm.Tunnels[0].Status);
         await _tunnelService.Received(1).StopTunnelAsync(tunnelInfo.Id, Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    [Trait("Category", "TunnelUI")]
+    [TestMethod]
+    [TestCategory("TunnelUI")]
     public async Task DeleteTunnel_RemovesTunnelFromList()
     {
         var tunnelInfo = CreateTunnelInfo(status: TunnelStatus.Active);
@@ -131,22 +131,22 @@ public class TunnelPanelViewModelTests
         _vm.NewRemotePort = 3306;
 
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
-        _vm.Tunnels.Should().HaveCount(1);
+        Assert.AreEqual(1, _vm.Tunnels.Count());
 
         await _vm.DeleteTunnelCommand.Execute(tunnelInfo.Id).FirstAsync();
 
-        _vm.Tunnels.Should().BeEmpty();
+        Assert.AreEqual(0, _vm.Tunnels.Count());
         await _tunnelService.Received(1).StopTunnelAsync(tunnelInfo.Id, Arg.Any<CancellationToken>());
     }
 
-    [Theory]
-    [Trait("Category", "TunnelUI")]
-    [InlineData("", "localhost", 3306, "remote", 3306, false)]
-    [InlineData("test", "", 3306, "remote", 3306, false)]
-    [InlineData("test", "localhost", 0, "remote", 3306, false)]
-    [InlineData("test", "localhost", 3306, "", 3306, false)]
-    [InlineData("test", "localhost", 3306, "remote", 0, false)]
-    [InlineData("test", "localhost", 3306, "remote", 3306, true)]
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    [DataRow("", "localhost", 3306, "remote", 3306, false)]
+    [DataRow("test", "", 3306, "remote", 3306, false)]
+    [DataRow("test", "localhost", 0, "remote", 3306, false)]
+    [DataRow("test", "localhost", 3306, "", 3306, false)]
+    [DataRow("test", "localhost", 3306, "remote", 0, false)]
+    [DataRow("test", "localhost", 3306, "remote", 3306, true)]
     public void PortValidation_RequiredFieldsMustBeNonEmptyNonZero(
         string name, string localHost, int localPort, string remoteHost, int remotePort, bool expectedValid)
     {
@@ -156,11 +156,11 @@ public class TunnelPanelViewModelTests
         _vm.NewRemoteHost = remoteHost;
         _vm.NewRemotePort = remotePort;
 
-        _vm.IsFormValid.Should().Be(expectedValid);
+        Assert.AreEqual(expectedValid, _vm.IsFormValid);
     }
 
-    [Fact]
-    [Trait("Category", "TunnelUI")]
+    [TestMethod]
+    [TestCategory("TunnelUI")]
     public async Task CreateTunnel_RemoteForward_UsesCorrectServiceMethod()
     {
         var tunnelInfo = CreateTunnelInfo(type: TunnelType.RemoteForward);
@@ -178,11 +178,11 @@ public class TunnelPanelViewModelTests
 
         await _tunnelService.Received(1).CreateRemoteForwardAsync(_sessionId, Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>());
         await _tunnelService.DidNotReceive().CreateLocalForwardAsync(_sessionId, Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>());
-        _vm.Tunnels.Should().HaveCount(1);
+        Assert.AreEqual(1, _vm.Tunnels.Count());
     }
 
-    [Fact]
-    [Trait("Category", "TunnelUI")]
+    [TestMethod]
+    [TestCategory("TunnelUI")]
     public void TunnelItemViewModel_DisplayFormat_IsCorrect()
     {
         var tunnelInfo = CreateTunnelInfo(
@@ -193,23 +193,23 @@ public class TunnelPanelViewModelTests
 
         var itemVm = new TunnelItemViewModel(tunnelInfo);
 
-        itemVm.DisplayRoute.Should().Be("localhost:3306 → db-server:3306");
-        itemVm.TypeBadge.Should().Be("L");
+        Assert.AreEqual("localhost:3306 → db-server:3306", itemVm.DisplayRoute);
+        Assert.AreEqual("L", itemVm.TypeBadge);
     }
 
-    [Theory]
-    [Trait("Category", "TunnelUI")]
-    [InlineData(0, "0 B")]
-    [InlineData(1024, "1.0 KB")]
-    [InlineData(1048576, "1.0 MB")]
-    [InlineData(1073741824, "1.0 GB")]
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    [DataRow(0, "0 B")]
+    [DataRow(1024, "1.0 KB")]
+    [DataRow(1048576, "1.0 MB")]
+    [DataRow(1073741824, "1.0 GB")]
     public void TunnelItemViewModel_BytesTransferred_FormatsCorrectly(long bytes, string expected)
     {
-        TunnelItemViewModel.FormatBytes(bytes).Should().Be(expected);
+        Assert.AreEqual(expected, TunnelItemViewModel.FormatBytes(bytes));
     }
 
-    [Fact]
-    [Trait("Category", "TunnelUI")]
+    [TestMethod]
+    [TestCategory("TunnelUI")]
     public async Task CreateTunnel_ResetsFormAfterSuccess()
     {
         var tunnelInfo = CreateTunnelInfo();
@@ -224,11 +224,11 @@ public class TunnelPanelViewModelTests
 
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
 
-        _vm.NewTunnelName.Should().BeEmpty();
-        _vm.NewLocalHost.Should().Be("localhost");
-        _vm.NewLocalPort.Should().Be(0);
-        _vm.NewRemoteHost.Should().BeEmpty();
-        _vm.NewRemotePort.Should().Be(0);
-        _vm.NewTunnelType.Should().Be(TunnelType.LocalForward);
+        Assert.AreEqual(string.Empty, _vm.NewTunnelName);
+        Assert.AreEqual("localhost", _vm.NewLocalHost);
+        Assert.AreEqual(0, _vm.NewLocalPort);
+        Assert.AreEqual(string.Empty, _vm.NewRemoteHost);
+        Assert.AreEqual(0, _vm.NewRemotePort);
+        Assert.AreEqual(TunnelType.LocalForward, _vm.NewTunnelType);
     }
 }

@@ -1,5 +1,4 @@
 using System.Reactive.Linq;
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.App.ViewModels;
 using PulseTerm.Core.Data;
@@ -7,6 +6,7 @@ using PulseTerm.Core.Models;
 
 namespace PulseTerm.App.Tests.ViewModels;
 
+[TestClass]
 public class QuickCommandsViewModelTests : IDisposable
 {
     private readonly JsonDataStore _dataStore;
@@ -35,71 +35,71 @@ public class QuickCommandsViewModelTests : IDisposable
             Directory.Delete(_testDirectory, true);
     }
 
-    [Fact]
-    [Trait("Category", "QuickCommands")]
+    [TestMethod]
+    [TestCategory("QuickCommands")]
     public void BuiltInDefaults_ContainExpectedCommands()
     {
         var names = _vm.AllCommands.Select(c => c.Name).ToList();
 
-        names.Should().Contain("htop");
-        names.Should().Contain("top");
-        names.Should().Contain("df -h");
-        names.Should().Contain("free -m");
-        names.Should().Contain("docker ps");
-        names.Should().Contain("docker stats");
-        names.Should().Contain("netstat -tlnp");
-        names.Should().Contain("ss -tlnp");
-        names.Should().Contain("systemctl status");
-        names.Should().Contain("journalctl -f");
+        Assert.IsTrue(names.Contains("htop"));
+        Assert.IsTrue(names.Contains("top"));
+        Assert.IsTrue(names.Contains("df -h"));
+        Assert.IsTrue(names.Contains("free -m"));
+        Assert.IsTrue(names.Contains("docker ps"));
+        Assert.IsTrue(names.Contains("docker stats"));
+        Assert.IsTrue(names.Contains("netstat -tlnp"));
+        Assert.IsTrue(names.Contains("ss -tlnp"));
+        Assert.IsTrue(names.Contains("systemctl status"));
+        Assert.IsTrue(names.Contains("journalctl -f"));
 
-        _vm.AllCommands.Should().HaveCount(10);
-        _vm.AllCommands.Should().OnlyContain(c => c.IsBuiltIn);
+        Assert.AreEqual(10, _vm.AllCommands.Count());
+        Assert.IsTrue(_vm.AllCommands.All(c => c.IsBuiltIn));
     }
 
-    [Fact]
-    [Trait("Category", "QuickCommands")]
+    [TestMethod]
+    [TestCategory("QuickCommands")]
     public void SearchQuery_FiltersByName_CaseInsensitive()
     {
         _vm.SearchQuery = "DOCKER";
 
-        _vm.FilteredCommands.Should().HaveCount(2);
-        _vm.FilteredCommands.Should().OnlyContain(c => c.Name.Contains("docker"));
+        Assert.AreEqual(2, _vm.FilteredCommands.Count());
+        Assert.IsTrue(_vm.FilteredCommands.All(c => c.Name.Contains("docker")));
     }
 
-    [Fact]
-    [Trait("Category", "QuickCommands")]
+    [TestMethod]
+    [TestCategory("QuickCommands")]
     public void SearchQuery_FiltersByDescriptionAndCommandText()
     {
         _vm.SearchQuery = "process";
 
-        _vm.FilteredCommands.Should().Contain(c => c.Name == "htop");
-        _vm.FilteredCommands.Should().Contain(c => c.Name == "top");
+        Assert.IsTrue(_vm.FilteredCommands.Any(c => c.Name == "htop"));
+        Assert.IsTrue(_vm.FilteredCommands.Any(c => c.Name == "top"));
 
         _vm.SearchQuery = "systemctl";
 
-        _vm.FilteredCommands.Should().HaveCount(1);
-        _vm.FilteredCommands[0].Name.Should().Be("systemctl status");
+        Assert.AreEqual(1, _vm.FilteredCommands.Count());
+        Assert.AreEqual("systemctl status", _vm.FilteredCommands[0].Name);
     }
 
-    [Fact]
-    [Trait("Category", "QuickCommands")]
+    [TestMethod]
+    [TestCategory("QuickCommands")]
     public void ExecuteCommand_InvokesCallbackWithCommandText()
     {
         var htopVm = _vm.AllCommands.First(c => c.Name == "htop");
 
         _vm.ExecuteCommandCommand.Execute(htopVm).Subscribe();
 
-        _executedCommand.Should().Be("htop");
+        Assert.AreEqual("htop", _executedCommand);
     }
 
-    [Fact]
-    [Trait("Category", "QuickCommands")]
+    [TestMethod]
+    [TestCategory("QuickCommands")]
     public void AddCommand_AddsCustomCommandToListAndPersists()
     {
         _vm.AddCommandCommand.Execute().Subscribe();
 
-        _vm.IsAddingCommand.Should().BeTrue();
-        _vm.NewCategory.Should().Be("Custom");
+        Assert.IsTrue(_vm.IsAddingCommand);
+        Assert.AreEqual("Custom", _vm.NewCategory);
 
         _vm.NewName = "my-cmd";
         _vm.NewCommandText = "echo hello";
@@ -107,19 +107,19 @@ public class QuickCommandsViewModelTests : IDisposable
 
         _vm.SaveNewCommandCommand.Execute().Subscribe();
 
-        _vm.AllCommands.Should().HaveCount(11);
-        _vm.IsAddingCommand.Should().BeFalse();
+        Assert.AreEqual(11, _vm.AllCommands.Count());
+        Assert.IsFalse(_vm.IsAddingCommand);
 
         var added = _vm.AllCommands.Last();
-        added.Name.Should().Be("my-cmd");
-        added.CommandText.Should().Be("echo hello");
-        added.Description.Should().Be("Says hello");
-        added.Category.Should().Be("Custom");
-        added.IsBuiltIn.Should().BeFalse();
+        Assert.AreEqual("my-cmd", added.Name);
+        Assert.AreEqual("echo hello", added.CommandText);
+        Assert.AreEqual("Says hello", added.Description);
+        Assert.AreEqual("Custom", added.Category);
+        Assert.IsFalse(added.IsBuiltIn);
     }
 
-    [Fact]
-    [Trait("Category", "QuickCommands")]
+    [TestMethod]
+    [TestCategory("QuickCommands")]
     public void DeleteCommand_RemovesCustomCommand_ButNotBuiltIn()
     {
         _vm.AddCommandCommand.Execute().Subscribe();
@@ -131,56 +131,56 @@ public class QuickCommandsViewModelTests : IDisposable
         var customCmd = _vm.AllCommands.First(c => c.Name == "temp-cmd");
         _vm.DeleteCommandCommand.Execute(customCmd).Subscribe();
 
-        _vm.AllCommands.Should().NotContain(c => c.Name == "temp-cmd");
-        _vm.AllCommands.Should().HaveCount(10);
+        Assert.IsFalse(_vm.AllCommands.Any(c => c.Name == "temp-cmd"));
+        Assert.AreEqual(10, _vm.AllCommands.Count());
 
         var builtIn = _vm.AllCommands.First(c => c.Name == "htop");
         _vm.DeleteCommandCommand.Execute(builtIn).Subscribe();
 
-        _vm.AllCommands.Should().Contain(c => c.Name == "htop");
-        _vm.AllCommands.Should().HaveCount(10);
+        Assert.IsTrue(_vm.AllCommands.Any(c => c.Name == "htop"));
+        Assert.AreEqual(10, _vm.AllCommands.Count());
     }
 
-    [Fact]
-    [Trait("Category", "QuickCommands")]
+    [TestMethod]
+    [TestCategory("QuickCommands")]
     public void SearchQuery_EmptyString_ShowsAllCommands()
     {
         _vm.SearchQuery = "docker";
-        _vm.FilteredCommands.Should().HaveCount(2);
+        Assert.AreEqual(2, _vm.FilteredCommands.Count());
 
         _vm.SearchQuery = "";
-        _vm.FilteredCommands.Should().HaveCount(10);
+        Assert.AreEqual(10, _vm.FilteredCommands.Count());
     }
 
-    [Fact]
-    [Trait("Category", "QuickCommands")]
+    [TestMethod]
+    [TestCategory("QuickCommands")]
     public void Categories_ContainAllDistinctCategories()
     {
-        _vm.Categories.Should().Contain("System Monitor");
-        _vm.Categories.Should().Contain("Network");
-        _vm.Categories.Should().Contain("Docker");
-        _vm.Categories.Should().Contain("System");
-        _vm.Categories.Should().HaveCount(4);
+        Assert.IsTrue(_vm.Categories.Contains("System Monitor"));
+        Assert.IsTrue(_vm.Categories.Contains("Network"));
+        Assert.IsTrue(_vm.Categories.Contains("Docker"));
+        Assert.IsTrue(_vm.Categories.Contains("System"));
+        Assert.AreEqual(4, _vm.Categories.Count());
     }
 
-    [Fact]
-    [Trait("Category", "QuickCommands")]
+    [TestMethod]
+    [TestCategory("QuickCommands")]
     public void BuiltInCommand_CannotBeModified()
     {
         var htop = _vm.AllCommands.First(c => c.Name == "htop");
 
         htop.Name = "modified";
-        htop.Name.Should().Be("htop");
+        Assert.AreEqual("htop", htop.Name);
 
         htop.CommandText = "modified";
-        htop.CommandText.Should().Be("htop");
+        Assert.AreEqual("htop", htop.CommandText);
 
         htop.Description = "modified";
-        htop.Description.Should().Be("Interactive process viewer");
+        Assert.AreEqual("Interactive process viewer", htop.Description);
     }
 
-    [Fact]
-    [Trait("Category", "QuickCommands")]
+    [TestMethod]
+    [TestCategory("QuickCommands")]
     public async Task LoadCustomCommands_RestoresPersistedCommands()
     {
         _vm.AddCommandCommand.Execute().Subscribe();
@@ -198,20 +198,20 @@ public class QuickCommandsViewModelTests : IDisposable
             _testDataPath);
         await vm2.LoadCustomCommandsAsync();
 
-        vm2.AllCommands.Should().HaveCount(11);
+        Assert.AreEqual(11, vm2.AllCommands.Count());
         var restored = vm2.AllCommands.First(c => c.Name == "persisted-cmd");
-        restored.CommandText.Should().Be("uptime");
-        restored.IsBuiltIn.Should().BeFalse();
+        Assert.AreEqual("uptime", restored.CommandText);
+        Assert.IsFalse(restored.IsBuiltIn);
     }
 
-    [Fact]
-    [Trait("Category", "QuickCommands")]
+    [TestMethod]
+    [TestCategory("QuickCommands")]
     public void CancelAdd_HidesAddForm()
     {
         _vm.AddCommandCommand.Execute().Subscribe();
-        _vm.IsAddingCommand.Should().BeTrue();
+        Assert.IsTrue(_vm.IsAddingCommand);
 
         _vm.CancelAddCommand.Execute().Subscribe();
-        _vm.IsAddingCommand.Should().BeFalse();
+        Assert.IsFalse(_vm.IsAddingCommand);
     }
 }

@@ -1,13 +1,12 @@
-using FluentAssertions;
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Ssh;
 using PulseTerm.Infrastructure.Ssh;
-using Xunit;
 
 namespace PulseTerm.Core.Tests.Ssh;
 
-[Trait("Category", "HostKey")]
+[TestClass]
+[TestCategory("HostKey")]
 public class HostKeyServiceTests : IDisposable
 {
     private readonly string _testDirectory;
@@ -32,39 +31,39 @@ public class HostKeyServiceTests : IDisposable
         }
     }
 
-    [Fact]
-    [Trait("Category", "HostKey")]
+    [TestMethod]
+    [TestCategory("HostKey")]
     public async Task VerifyHostKeyAsync_UnknownHost_ReturnsUnknown()
     {
         var result = await _sut.VerifyHostKeyAsync("example.com", 22, "ssh-rsa", "SHA256:abc123");
 
-        result.Should().Be(HostKeyVerification.Unknown);
+        Assert.AreEqual(HostKeyVerification.Unknown, result);
     }
 
-    [Fact]
-    [Trait("Category", "HostKey")]
+    [TestMethod]
+    [TestCategory("HostKey")]
     public async Task TrustHostKey_ThenVerify_ReturnsTrusted()
     {
         await _sut.TrustHostKeyAsync("example.com", 22, "ssh-rsa", "SHA256:abc123");
 
         var result = await _sut.VerifyHostKeyAsync("example.com", 22, "ssh-rsa", "SHA256:abc123");
 
-        result.Should().Be(HostKeyVerification.Trusted);
+        Assert.AreEqual(HostKeyVerification.Trusted, result);
     }
 
-    [Fact]
-    [Trait("Category", "HostKey")]
+    [TestMethod]
+    [TestCategory("HostKey")]
     public async Task VerifyHostKeyAsync_FingerprintChanged_ReturnsChanged()
     {
         await _sut.TrustHostKeyAsync("example.com", 22, "ssh-rsa", "SHA256:original");
 
         var result = await _sut.VerifyHostKeyAsync("example.com", 22, "ssh-rsa", "SHA256:different");
 
-        result.Should().Be(HostKeyVerification.Changed);
+        Assert.AreEqual(HostKeyVerification.Changed, result);
     }
 
-    [Fact]
-    [Trait("Category", "HostKey")]
+    [TestMethod]
+    [TestCategory("HostKey")]
     public async Task RemoveKnownHostAsync_RemovesTrustedHost()
     {
         await _sut.TrustHostKeyAsync("example.com", 22, "ssh-rsa", "SHA256:abc123");
@@ -72,11 +71,11 @@ public class HostKeyServiceTests : IDisposable
         await _sut.RemoveKnownHostAsync("example.com", 22);
 
         var result = await _sut.VerifyHostKeyAsync("example.com", 22, "ssh-rsa", "SHA256:abc123");
-        result.Should().Be(HostKeyVerification.Unknown);
+        Assert.AreEqual(HostKeyVerification.Unknown, result);
     }
 
-    [Fact]
-    [Trait("Category", "HostKey")]
+    [TestMethod]
+    [TestCategory("HostKey")]
     public async Task GetKnownHostsAsync_ReturnsAllTrustedHosts()
     {
         await _sut.TrustHostKeyAsync("host1.com", 22, "ssh-rsa", "SHA256:aaa");
@@ -84,13 +83,13 @@ public class HostKeyServiceTests : IDisposable
 
         var hosts = await _sut.GetKnownHostsAsync();
 
-        hosts.Should().HaveCount(2);
-        hosts.Should().Contain(h => h.Host == "host1.com" && h.Port == 22);
-        hosts.Should().Contain(h => h.Host == "host2.com" && h.Port == 2222);
+        Assert.AreEqual(2, hosts.Count());
+        Assert.IsTrue(hosts.Any(h => h.Host == "host1.com" && h.Port == 22));
+        Assert.IsTrue(hosts.Any(h => h.Host == "host2.com" && h.Port == 2222));
     }
 
-    [Fact]
-    [Trait("Category", "HostKey")]
+    [TestMethod]
+    [TestCategory("HostKey")]
     public async Task TrustHostKeyAsync_SameHostDifferentPort_StoresBoth()
     {
         await _sut.TrustHostKeyAsync("example.com", 22, "ssh-rsa", "SHA256:aaa");
@@ -98,11 +97,11 @@ public class HostKeyServiceTests : IDisposable
 
         var hosts = await _sut.GetKnownHostsAsync();
 
-        hosts.Should().HaveCount(2);
+        Assert.AreEqual(2, hosts.Count());
     }
 
-    [Fact]
-    [Trait("Category", "HostKey")]
+    [TestMethod]
+    [TestCategory("HostKey")]
     public async Task TrustHostKeyAsync_UpdatesLastSeenAt_OnRepeatedTrust()
     {
         await _sut.TrustHostKeyAsync("example.com", 22, "ssh-rsa", "SHA256:abc123");
@@ -113,13 +112,13 @@ public class HostKeyServiceTests : IDisposable
         await _sut.TrustHostKeyAsync("example.com", 22, "ssh-rsa", "SHA256:abc123");
 
         var hostsAfter = await _sut.GetKnownHostsAsync();
-        hostsAfter.Should().ContainSingle();
-        hostsAfter.Single().FirstSeenAt.Should().Be(firstSeenBefore);
-        hostsAfter.Single().LastSeenAt.Should().BeOnOrAfter(firstSeenBefore);
+        Assert.AreEqual(1, hostsAfter.Count());
+        Assert.AreEqual(firstSeenBefore, hostsAfter.Single().FirstSeenAt);
+        Assert.IsTrue(hostsAfter.Single().LastSeenAt >= firstSeenBefore);
     }
 
-    [Fact]
-    [Trait("Category", "HostKey")]
+    [TestMethod]
+    [TestCategory("HostKey")]
     public async Task Persistence_DataSurvivesNewServiceInstance()
     {
         await _sut.TrustHostKeyAsync("example.com", 22, "ssh-rsa", "SHA256:abc123");
@@ -127,15 +126,13 @@ public class HostKeyServiceTests : IDisposable
         var newService = new HostKeyService(_dataStore, _knownHostsPath);
         var result = await newService.VerifyHostKeyAsync("example.com", 22, "ssh-rsa", "SHA256:abc123");
 
-        result.Should().Be(HostKeyVerification.Trusted);
+        Assert.AreEqual(HostKeyVerification.Trusted, result);
     }
 
-    [Fact]
-    [Trait("Category", "HostKey")]
+    [TestMethod]
+    [TestCategory("HostKey")]
     public async Task RemoveKnownHostAsync_NonExistentHost_DoesNotThrow()
     {
-        var act = async () => await _sut.RemoveKnownHostAsync("nonexistent.com", 22);
-
-        await act.Should().NotThrowAsync();
+        await _sut.RemoveKnownHostAsync("nonexistent.com", 22);
     }
 }

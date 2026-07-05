@@ -2,15 +2,16 @@ using PulseTerm.Infrastructure.Persistence;
 
 namespace PulseTerm.Infrastructure.Tests;
 
+[TestClass]
 public sealed class PulseTermStoragePathsTests
 {
-    [Fact]
+    [TestMethod]
     public void Paths_AreGenerated_Under_PulseTerm_Root()
     {
         var paths = new PulseTermStoragePaths();
 
-        Assert.Contains("PulseTerm", paths.RootDirectory, StringComparison.OrdinalIgnoreCase);
-        Assert.EndsWith("settings.json", paths.SettingsFile, StringComparison.OrdinalIgnoreCase);
-        Assert.EndsWith("pulseterm.db", paths.LiteDbFile, StringComparison.OrdinalIgnoreCase);
+        StringAssert.Contains(paths.RootDirectory, "PulseTerm", StringComparison.OrdinalIgnoreCase);
+        StringAssert.EndsWith(paths.SettingsFile, "settings.json", StringComparison.OrdinalIgnoreCase);
+        StringAssert.EndsWith(paths.LiteDbFile, "pulseterm.db", StringComparison.OrdinalIgnoreCase);
     }
 }

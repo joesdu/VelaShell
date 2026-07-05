@@ -1,4 +1,3 @@
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
@@ -7,12 +6,13 @@ using PulseTerm.Presentation.Services;
 
 namespace PulseTerm.Presentation.Tests.Services;
 
+[TestClass]
 public sealed class ConnectionWorkflowServiceTests
 {
     private readonly ISessionRepository _sessionRepository = Substitute.For<ISessionRepository>();
     private readonly ISshConnectionService _sshConnectionService = Substitute.For<ISshConnectionService>();
 
-    [Fact]
+    [TestMethod]
     public async Task SaveProfileAsync_PersistsProfile()
     {
         var service = CreateService();
@@ -20,11 +20,11 @@ public sealed class ConnectionWorkflowServiceTests
 
         var result = await service.SaveProfileAsync(profile);
 
-        result.Should().BeSameAs(profile);
+        Assert.AreSame(profile, result);
         await _sessionRepository.Received(1).SaveSessionAsync(profile);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ConnectProfileAsync_SavesLastConnectedAt()
     {
         var service = CreateService();
@@ -47,12 +47,12 @@ public sealed class ConnectionWorkflowServiceTests
 
         var result = await service.ConnectProfileAsync(profile);
 
-        result.Should().BeSameAs(session);
-        profile.LastConnectedAt.Should().NotBeNull();
+        Assert.AreSame(session, result);
+        Assert.IsNotNull(profile.LastConnectedAt);
         await _sessionRepository.Received(1).SaveSessionAsync(profile);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task TestConnectionAsync_WhenConnectFails_ReturnsFailureResult()
     {
         var service = CreateService();
@@ -62,11 +62,11 @@ public sealed class ConnectionWorkflowServiceTests
 
         var result = await service.TestConnectionAsync(profile);
 
-        result.Success.Should().BeFalse();
-        result.ErrorMessage.Should().Be("boom");
+        Assert.IsFalse(result.Success);
+        Assert.AreEqual("boom", result.ErrorMessage);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetSavedProfilesAsync_ReturnsSortedProfiles()
     {
         var service = CreateService();
@@ -76,8 +76,8 @@ public sealed class ConnectionWorkflowServiceTests
 
         var result = await service.GetSavedProfilesAsync();
 
-        result[0].Should().BeSameAs(second);
-        result[1].Should().BeSameAs(first);
+        Assert.AreSame(second, result[0]);
+        Assert.AreSame(first, result[1]);
     }
 
     private ConnectionWorkflowService CreateService() => new(_sessionRepository, _sshConnectionService);

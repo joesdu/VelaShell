@@ -2,13 +2,14 @@ using PulseTerm.Presentation;
 
 namespace PulseTerm.Presentation.Tests;
 
+[TestClass]
 public sealed class WorkspaceHostViewModelTests
 {
-    [Fact]
+    [TestMethod]
     public void Title_Defaults_ToWorkspaceTitle()
     {
         var viewModel = new WorkspaceHostViewModel();
 
-        Assert.Equal("PulseTerm Workspace", viewModel.Title);
+        Assert.AreEqual("PulseTerm Workspace", viewModel.Title);
     }
 }

@@ -1,12 +1,10 @@
-using FluentAssertions;
-using NSubstitute;
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
-using Xunit;
 
 namespace PulseTerm.Core.Tests.Data;
 
-[Trait("Category", "DataStore")]
+[TestClass]
+[TestCategory("DataStore")]
 public class SessionRepositoryTests : IDisposable
 {
     private readonly string _testDirectory;
@@ -29,17 +27,17 @@ public class SessionRepositoryTests : IDisposable
         }
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetAllGroupsAsync_FileDoesNotExist_ShouldReturnEmptyList()
     {
         var repo = new SessionRepository(_dataStore, _sessionsPath);
 
         var groups = await repo.GetAllGroupsAsync();
 
-        groups.Should().BeEmpty();
+        Assert.AreEqual(0, groups.Count());
     }
 
-    [Fact]
+    [TestMethod]
     public async Task SaveSessionAsync_NewSession_ShouldAddToList()
     {
         var repo = new SessionRepository(_dataStore, _sessionsPath);
@@ -53,12 +51,12 @@ public class SessionRepositoryTests : IDisposable
         await repo.SaveSessionAsync(session);
         var retrieved = await repo.GetSessionAsync(session.Id);
 
-        retrieved.Should().NotBeNull();
-        retrieved!.Name.Should().Be("Test Server");
-        retrieved.Host.Should().Be("192.168.1.100");
+        Assert.IsNotNull(retrieved);
+        Assert.AreEqual("Test Server", retrieved!.Name);
+        Assert.AreEqual("192.168.1.100", retrieved.Host);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetAllSessionsAsync_ReturnsPersistedSessions()
     {
         var repo = new SessionRepository(_dataStore, _sessionsPath);
@@ -70,12 +68,12 @@ public class SessionRepositoryTests : IDisposable
 
         var sessions = await repo.GetAllSessionsAsync();
 
-        sessions.Should().HaveCount(2);
-        sessions.Should().Contain(session => session.Id == first.Id);
-        sessions.Should().Contain(session => session.Id == second.Id);
+        Assert.AreEqual(2, sessions.Count());
+        Assert.IsTrue(sessions.Any(session => session.Id == first.Id));
+        Assert.IsTrue(sessions.Any(session => session.Id == second.Id));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task SaveSessionAsync_ExistingSession_ShouldUpdate()
     {
         var repo = new SessionRepository(_dataStore, _sessionsPath);
@@ -91,20 +89,20 @@ public class SessionRepositoryTests : IDisposable
         await repo.SaveSessionAsync(session);
         var retrieved = await repo.GetSessionAsync(session.Id);
 
-        retrieved!.Name.Should().Be("Updated");
+        Assert.AreEqual("Updated", retrieved!.Name);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetSessionAsync_NonExistentId_ShouldReturnNull()
     {
         var repo = new SessionRepository(_dataStore, _sessionsPath);
 
         var result = await repo.GetSessionAsync(Guid.NewGuid());
 
-        result.Should().BeNull();
+        Assert.IsNull(result);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task DeleteSessionAsync_ShouldRemoveSessionAndUpdateGroups()
     {
         var repo = new SessionRepository(_dataStore, _sessionsPath);
@@ -124,11 +122,11 @@ public class SessionRepositoryTests : IDisposable
         var retrievedSession = await repo.GetSessionAsync(sessionId);
         var groups = await repo.GetAllGroupsAsync();
 
-        retrievedSession.Should().BeNull();
-        groups.First().Sessions.Should().NotContain(sessionId);
+        Assert.IsNull(retrievedSession);
+        Assert.IsFalse(groups.First().Sessions.Contains(sessionId));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task SaveGroupAsync_NewGroup_ShouldAddToList()
     {
         var repo = new SessionRepository(_dataStore, _sessionsPath);
@@ -143,12 +141,12 @@ public class SessionRepositoryTests : IDisposable
         await repo.SaveGroupAsync(group);
         var groups = await repo.GetAllGroupsAsync();
 
-        groups.Should().ContainSingle();
-        groups.First().Name.Should().Be("Production");
-        groups.First().Icon.Should().Be("server");
+        Assert.AreEqual(1, groups.Count());
+        Assert.AreEqual("Production", groups.First().Name);
+        Assert.AreEqual("server", groups.First().Icon);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task SaveGroupAsync_ExistingGroup_ShouldUpdate()
     {
         var repo = new SessionRepository(_dataStore, _sessionsPath);
@@ -165,11 +163,11 @@ public class SessionRepositoryTests : IDisposable
         await repo.SaveGroupAsync(group);
         var groups = await repo.GetAllGroupsAsync();
 
-        groups.First().Name.Should().Be("Updated");
-        groups.First().SortOrder.Should().Be(5);
+        Assert.AreEqual("Updated", groups.First().Name);
+        Assert.AreEqual(5, groups.First().SortOrder);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task DeleteGroupAsync_ShouldRemoveGroupAndClearSessionGroupIds()
     {
         var repo = new SessionRepository(_dataStore, _sessionsPath);
@@ -189,11 +187,11 @@ public class SessionRepositoryTests : IDisposable
         var groups = await repo.GetAllGroupsAsync();
         var retrievedSession = await repo.GetSessionAsync(session.Id);
 
-        groups.Should().BeEmpty();
-        retrievedSession!.GroupId.Should().BeNull();
+        Assert.AreEqual(0, groups.Count());
+        Assert.IsNull(retrievedSession!.GroupId);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task MultipleSessionsAndGroups_ShouldPersistCorrectly()
     {
         var repo = new SessionRepository(_dataStore, _sessionsPath);
@@ -211,8 +209,8 @@ public class SessionRepositoryTests : IDisposable
         var retrievedSession1 = await repo.GetSessionAsync(session1.Id);
         var retrievedSession2 = await repo.GetSessionAsync(session2.Id);
 
-        groups.Should().HaveCount(2);
-        retrievedSession1!.GroupId.Should().Be(group1.Id);
-        retrievedSession2!.GroupId.Should().Be(group2.Id);
+        Assert.AreEqual(2, groups.Count());
+        Assert.AreEqual(group1.Id, retrievedSession1!.GroupId);
+        Assert.AreEqual(group2.Id, retrievedSession2!.GroupId);
     }
 }

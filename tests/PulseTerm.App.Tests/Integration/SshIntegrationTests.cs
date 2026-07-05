@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Net.Sockets;
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Ssh;
@@ -8,8 +7,8 @@ using PulseTerm.Infrastructure.Ssh;
 
 namespace PulseTerm.App.Tests.Integration;
 
-[Collection("IntegrationTests")]
-public class SshIntegrationTests : IAsyncLifetime
+[TestClass]
+public class SshIntegrationTests
 {
     private const string TestHost = "localhost";
     private const int TestPort = 2222;
@@ -18,12 +17,13 @@ public class SshIntegrationTests : IAsyncLifetime
 
     private static readonly Lazy<bool> DockerAvailable = new(DetectDocker);
 
-    private readonly ITestOutputHelper _output;
+    public TestContext TestContext { get; set; } = null!;
 
-    public SshIntegrationTests(ITestOutputHelper output) => _output = output;
+    [TestInitialize]
+    public Task Init() => Task.CompletedTask;
 
-    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    [TestCleanup]
+    public Task Cleanup() => Task.CompletedTask;
 
     private static bool DetectDocker()
     {
@@ -84,7 +84,7 @@ public class SshIntegrationTests : IAsyncLifetime
     {
         if (!DockerAvailable.Value)
         {
-            _output.WriteLine("[SKIP] Docker is not available. Run 'docker compose -f docker-compose.test.yml up -d' to enable SSH integration tests.");
+            TestContext.WriteLine("[SKIP] Docker is not available. Run 'docker compose -f docker-compose.test.yml up -d' to enable SSH integration tests.");
             return true;
         }
         return false;
@@ -96,7 +96,7 @@ public class SshIntegrationTests : IAsyncLifetime
             return true;
         if (!IsSshServerReachable())
         {
-            _output.WriteLine($"[SKIP] SSH test server not reachable at {TestHost}:{TestPort}. Run 'docker compose -f docker-compose.test.yml up -d' to start it.");
+            TestContext.WriteLine($"[SKIP] SSH test server not reachable at {TestHost}:{TestPort}. Run 'docker compose -f docker-compose.test.yml up -d' to start it.");
             return true;
         }
         return false;
@@ -119,8 +119,8 @@ public class SshIntegrationTests : IAsyncLifetime
         };
     }
 
-    [Fact]
-    [Trait("Category", "DockerIntegration")]
+    [TestMethod]
+    [TestCategory("DockerIntegration")]
     public async Task ConnectAsync_WithValidCredentials_EstablishesSession()
     {
         if (SkipIfSshServerUnavailable()) return;
@@ -134,16 +134,16 @@ public class SshIntegrationTests : IAsyncLifetime
 
         var session = await service.ConnectAsync(connectionInfo);
 
-        session.Should().NotBeNull();
-        session.Status.Should().Be(SessionStatus.Connected);
-        session.ConnectionInfo.Host.Should().Be(TestHost);
-        session.ConnectionInfo.Port.Should().Be(TestPort);
+        Assert.IsNotNull(session);
+        Assert.AreEqual(SessionStatus.Connected, session.Status);
+        Assert.AreEqual(TestHost, session.ConnectionInfo.Host);
+        Assert.AreEqual(TestPort, session.ConnectionInfo.Port);
 
         await service.DisposeAsync();
     }
 
-    [Fact]
-    [Trait("Category", "DockerIntegration")]
+    [TestMethod]
+    [TestCategory("DockerIntegration")]
     public async Task ConnectAsync_WithInvalidPassword_ThrowsAndSetsErrorStatus()
     {
         if (SkipIfSshServerUnavailable()) return;
@@ -155,15 +155,14 @@ public class SshIntegrationTests : IAsyncLifetime
         var connectionInfo = CreateTestConnectionInfo(password: "wrongpassword");
         var service = new SshConnectionService(_ => mockClient);
 
-        var act = () => service.ConnectAsync(connectionInfo);
-
-        await act.Should().ThrowAsync<Renci.SshNet.Common.SshAuthenticationException>();
+        await Assert.ThrowsExactlyAsync<Renci.SshNet.Common.SshAuthenticationException>(
+            () => service.ConnectAsync(connectionInfo));
 
         await service.DisposeAsync();
     }
 
-    [Fact]
-    [Trait("Category", "DockerIntegration")]
+    [TestMethod]
+    [TestCategory("DockerIntegration")]
     public async Task ConnectAsync_WithUnreachableHost_ThrowsConnectionError()
     {
         if (SkipIfSshServerUnavailable()) return;
@@ -175,15 +174,14 @@ public class SshIntegrationTests : IAsyncLifetime
         var connectionInfo = CreateTestConnectionInfo(host: "192.0.2.1", port: 9999);
         var service = new SshConnectionService(_ => mockClient);
 
-        var act = () => service.ConnectAsync(connectionInfo);
-
-        await act.Should().ThrowAsync<SocketException>();
+        await Assert.ThrowsExactlyAsync<SocketException>(
+            () => service.ConnectAsync(connectionInfo));
 
         await service.DisposeAsync();
     }
 
-    [Fact]
-    [Trait("Category", "DockerIntegration")]
+    [TestMethod]
+    [TestCategory("DockerIntegration")]
     public async Task DisconnectAsync_AfterConnect_ChangesSessionStatus()
     {
         if (SkipIfSshServerUnavailable()) return;
@@ -196,18 +194,18 @@ public class SshIntegrationTests : IAsyncLifetime
         var service = new SshConnectionService(_ => mockClient);
 
         var session = await service.ConnectAsync(connectionInfo);
-        session.Status.Should().Be(SessionStatus.Connected);
+        Assert.AreEqual(SessionStatus.Connected, session.Status);
 
         await service.DisconnectAsync(session.SessionId);
-        session.Status.Should().Be(SessionStatus.Disconnected);
+        Assert.AreEqual(SessionStatus.Disconnected, session.Status);
 
         mockClient.Received(1).Disconnect();
 
         await service.DisposeAsync();
     }
 
-    [Fact]
-    [Trait("Category", "DockerIntegration")]
+    [TestMethod]
+    [TestCategory("DockerIntegration")]
     public async Task MultipleSessions_CanConnectConcurrently()
     {
         if (SkipIfSshServerUnavailable()) return;
@@ -229,16 +227,16 @@ public class SshIntegrationTests : IAsyncLifetime
         var session1 = await service.ConnectAsync(conn1);
         var session2 = await service.ConnectAsync(conn2);
 
-        session1.SessionId.Should().NotBe(session2.SessionId);
-        session1.Status.Should().Be(SessionStatus.Connected);
-        session2.Status.Should().Be(SessionStatus.Connected);
-        clients.Should().HaveCount(2);
+        Assert.AreNotEqual(session2.SessionId, session1.SessionId);
+        Assert.AreEqual(SessionStatus.Connected, session1.Status);
+        Assert.AreEqual(SessionStatus.Connected, session2.Status);
+        Assert.AreEqual(2, clients.Count());
 
         await service.DisposeAsync();
     }
 
-    [Fact]
-    [Trait("Category", "DockerIntegration")]
+    [TestMethod]
+    [TestCategory("DockerIntegration")]
     public async Task ConnectAsync_SessionAppearsInSessionsList()
     {
         if (SkipIfSshServerUnavailable()) return;
@@ -252,15 +250,15 @@ public class SshIntegrationTests : IAsyncLifetime
 
         var session = await service.ConnectAsync(connectionInfo);
 
-        service.Sessions.Count.Should().Be(1);
-        service.GetSession(session.SessionId).Should().NotBeNull();
-        service.GetSession(session.SessionId)!.Status.Should().Be(SessionStatus.Connected);
+        Assert.AreEqual(1, service.Sessions.Count);
+        Assert.IsNotNull(service.GetSession(session.SessionId));
+        Assert.AreEqual(SessionStatus.Connected, service.GetSession(session.SessionId)!.Status);
 
         await service.DisposeAsync();
     }
 
-    [Fact]
-    [Trait("Category", "DockerIntegration")]
+    [TestMethod]
+    [TestCategory("DockerIntegration")]
     public async Task ConnectAsync_WithPrivateKeyAuth_CreatesSession()
     {
         if (SkipIfSshServerUnavailable()) return;
@@ -282,15 +280,15 @@ public class SshIntegrationTests : IAsyncLifetime
 
         var session = await service.ConnectAsync(connectionInfo);
 
-        session.Should().NotBeNull();
-        session.Status.Should().Be(SessionStatus.Connected);
-        session.ConnectionInfo.AuthMethod.Should().Be(AuthMethod.PrivateKey);
+        Assert.IsNotNull(session);
+        Assert.AreEqual(SessionStatus.Connected, session.Status);
+        Assert.AreEqual(AuthMethod.PrivateKey, session.ConnectionInfo.AuthMethod);
 
         await service.DisposeAsync();
     }
 
-    [Fact]
-    [Trait("Category", "DockerIntegration")]
+    [TestMethod]
+    [TestCategory("DockerIntegration")]
     public async Task DisposeAsync_DisconnectsAllActiveSessions()
     {
         if (SkipIfSshServerUnavailable()) return;
@@ -310,7 +308,7 @@ public class SshIntegrationTests : IAsyncLifetime
         await service.ConnectAsync(CreateTestConnectionInfo());
         await service.ConnectAsync(CreateTestConnectionInfo());
 
-        clients.Should().HaveCount(2);
+        Assert.AreEqual(2, clients.Count());
 
         await service.DisposeAsync();
 
@@ -321,13 +319,13 @@ public class SshIntegrationTests : IAsyncLifetime
         }
     }
 
-    [Fact]
-    [Trait("Category", "DockerIntegration")]
+    [TestMethod]
+    [TestCategory("DockerIntegration")]
     public void DockerDetection_ReturnsConsistentResult()
     {
         var result1 = DockerAvailable.Value;
         var result2 = DockerAvailable.Value;
 
-        result1.Should().Be(result2, "Docker detection should be deterministic");
+        Assert.AreEqual(result2, result1, "Docker detection should be deterministic");
     }
 }

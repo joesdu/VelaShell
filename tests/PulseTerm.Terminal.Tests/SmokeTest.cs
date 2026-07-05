@@ -1,10 +1,11 @@
 namespace PulseTerm.Terminal.Tests;
 
+[TestClass]
 public class SmokeTest
 {
-    [Fact]
+    [TestMethod]
     public void SmokeTest_TerminalLibraryLoads()
     {
-        Assert.True(true);
+        Assert.IsTrue(true);
     }
 }

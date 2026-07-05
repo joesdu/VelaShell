@@ -1,13 +1,12 @@
 using System.Text;
-using FluentAssertions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using PulseTerm.Core.Ssh;
-using Xunit;
 
 namespace PulseTerm.Terminal.Tests;
 
-[Trait("Category", "TerminalBridge")]
+[TestClass]
+[TestCategory("TerminalBridge")]
 public class TerminalBridgeTests
 {
     private readonly ITerminalEmulator _terminal;
@@ -19,21 +18,23 @@ public class TerminalBridgeTests
         _shellStream = Substitute.For<IShellStreamWrapper>();
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_NullTerminal_ThrowsArgumentNullException()
     {
         var act = () => new SshTerminalBridge(null!, _shellStream);
-        act.Should().Throw<ArgumentNullException>().WithParameterName("terminal");
+        var ex = Assert.ThrowsExactly<ArgumentNullException>(act);
+        Assert.AreEqual("terminal", ex.ParamName);
     }
 
-    [Fact]
+    [TestMethod]
     public void Constructor_NullShellStream_ThrowsArgumentNullException()
     {
         var act = () => new SshTerminalBridge(_terminal, null!);
-        act.Should().Throw<ArgumentNullException>().WithParameterName("shellStream");
+        var ex = Assert.ThrowsExactly<ArgumentNullException>(act);
+        Assert.AreEqual("shellStream", ex.ParamName);
     }
 
-    [Fact]
+    [TestMethod]
     public void Start_CalledTwice_ThrowsInvalidOperationException()
     {
         _shellStream.CanRead.Returns(false);
@@ -42,10 +43,11 @@ public class TerminalBridgeTests
         bridge.Start();
 
         var act = () => bridge.Start();
-        act.Should().Throw<InvalidOperationException>().WithMessage("*already started*");
+        var ex = Assert.ThrowsExactly<InvalidOperationException>(act);
+        StringAssert.Contains(ex.Message, "already started");
     }
 
-    [Fact]
+    [TestMethod]
     public void UserInput_WritesToShellStream()
     {
         _shellStream.CanRead.Returns(false);
@@ -69,7 +71,7 @@ public class TerminalBridgeTests
             Arg.Any<CancellationToken>());
     }
 
-    [Fact]
+    [TestMethod]
     public void UserInput_FlushesAfterWrite()
     {
         _shellStream.CanRead.Returns(false);
@@ -87,7 +89,7 @@ public class TerminalBridgeTests
         _shellStream.Received().Flush();
     }
 
-    [Fact]
+    [TestMethod]
     public void Start_DoesNotPrimeShell_SoTheInitialPromptIsNotDuplicated()
     {
         _shellStream.CanRead.Returns(false);
@@ -105,7 +107,7 @@ public class TerminalBridgeTests
         _shellStream.DidNotReceive().WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
-    [Fact]
+    [TestMethod]
     public void UserInput_WhenDisposed_DoesNotWriteToShellStream()
     {
         _shellStream.CanRead.Returns(false);
@@ -121,7 +123,7 @@ public class TerminalBridgeTests
             Arg.Any<CancellationToken>());
     }
 
-    [Fact]
+    [TestMethod]
     public void UserInput_WhenStreamCannotWrite_DoesNotWrite()
     {
         _shellStream.CanRead.Returns(false);
@@ -141,7 +143,7 @@ public class TerminalBridgeTests
             Arg.Any<CancellationToken>());
     }
 
-    [Fact]
+    [TestMethod]
     public void ReadLoop_WhenCanReadFalse_ExitsImmediately()
     {
         _shellStream.CanRead.Returns(false);
@@ -159,7 +161,7 @@ public class TerminalBridgeTests
             Arg.Any<CancellationToken>());
     }
 
-    [Fact]
+    [TestMethod]
     public void ReadLoop_WhenReadReturnsZero_ExitsGracefully()
     {
         _shellStream.CanRead.Returns(true);
@@ -174,7 +176,7 @@ public class TerminalBridgeTests
         _terminal.DidNotReceive().Feed(Arg.Any<byte[]>());
     }
 
-    [Fact]
+    [TestMethod]
     public void ReadLoop_WhenExceptionOccurs_FiresErrorEvent()
     {
         var expectedException = new IOException("connection lost");
@@ -190,11 +192,11 @@ public class TerminalBridgeTests
 
         Thread.Sleep(500);
 
-        capturedError.Should().NotBeNull();
-        capturedError.Should().BeSameAs(expectedException);
+        Assert.IsNotNull(capturedError);
+        Assert.AreSame(expectedException, capturedError);
     }
 
-    [Fact]
+    [TestMethod]
     public void Dispose_CancelsReadLoopAndDisposesStream()
     {
         _shellStream.CanRead.Returns(true);
@@ -218,23 +220,18 @@ public class TerminalBridgeTests
         _shellStream.Received().Dispose();
     }
 
-    [Fact]
+    [TestMethod]
     public void Dispose_CalledMultipleTimes_DoesNotThrow()
     {
         _shellStream.CanRead.Returns(false);
 
         var bridge = new SshTerminalBridge(_terminal, _shellStream);
 
-        var act = () =>
-        {
-            bridge.Dispose();
-            bridge.Dispose();
-        };
-
-        act.Should().NotThrow();
+        bridge.Dispose();
+        bridge.Dispose();
     }
 
-    [Fact]
+    [TestMethod]
     public void UserInput_WriteThrowsObjectDisposed_DoesNotPropagate()
     {
         _shellStream.CanRead.Returns(false);
@@ -252,10 +249,10 @@ public class TerminalBridgeTests
         Thread.Sleep(200);
 
         // ObjectDisposedException is swallowed per WriteUserInputAsync contract
-        capturedError.Should().BeNull();
+        Assert.IsNull(capturedError);
     }
 
-    [Fact]
+    [TestMethod]
     public void UserInput_WriteThrowsGenericException_FiresErrorEvent()
     {
         var expectedException = new InvalidOperationException("write failed");
@@ -273,7 +270,7 @@ public class TerminalBridgeTests
 
         Thread.Sleep(200);
 
-        capturedError.Should().NotBeNull();
-        capturedError.Should().BeSameAs(expectedException);
+        Assert.IsNotNull(capturedError);
+        Assert.AreSame(expectedException, capturedError);
     }
 }

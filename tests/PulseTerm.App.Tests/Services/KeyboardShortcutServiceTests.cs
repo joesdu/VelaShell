@@ -1,12 +1,12 @@
-using FluentAssertions;
 using PulseTerm.App.Services;
 
 namespace PulseTerm.App.Tests.Services;
 
+[TestClass]
 public class KeyboardShortcutServiceTests
 {
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_CtrlShiftC_InTerminal_ReturnsCopy()
     {
         var service = new KeyboardShortcutService(isMacOS: false);
@@ -16,11 +16,11 @@ public class KeyboardShortcutServiceTests
             KeyCode.C,
             ShortcutContext.Terminal);
 
-        action.Should().Be(ShortcutAction.Copy);
+        Assert.AreEqual(ShortcutAction.Copy, action);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_CtrlShiftV_InTerminal_ReturnsPaste()
     {
         var service = new KeyboardShortcutService(isMacOS: false);
@@ -30,99 +30,99 @@ public class KeyboardShortcutServiceTests
             KeyCode.V,
             ShortcutContext.Terminal);
 
-        action.Should().Be(ShortcutAction.Paste);
+        Assert.AreEqual(ShortcutAction.Paste, action);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_CtrlT_InGlobal_ReturnsNewTab()
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
         var action = service.Resolve(KeyModifiers.Ctrl, KeyCode.T, ShortcutContext.Global);
 
-        action.Should().Be(ShortcutAction.NewTab);
+        Assert.AreEqual(ShortcutAction.NewTab, action);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_CtrlW_InGlobal_ReturnsCloseTab()
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
         var action = service.Resolve(KeyModifiers.Ctrl, KeyCode.W, ShortcutContext.Global);
 
-        action.Should().Be(ShortcutAction.CloseTab);
+        Assert.AreEqual(ShortcutAction.CloseTab, action);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_CtrlC_InTerminal_ReturnsSendInterrupt()
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
         var action = service.Resolve(KeyModifiers.Ctrl, KeyCode.C, ShortcutContext.Terminal);
 
-        action.Should().Be(ShortcutAction.SendInterrupt);
+        Assert.AreEqual(ShortcutAction.SendInterrupt, action);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_MacOS_CmdC_InTerminal_ReturnsCopy()
     {
         var service = new KeyboardShortcutService(isMacOS: true);
 
         var action = service.Resolve(KeyModifiers.Meta, KeyCode.C, ShortcutContext.Terminal);
 
-        action.Should().Be(ShortcutAction.Copy);
+        Assert.AreEqual(ShortcutAction.Copy, action);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_MacOS_CmdV_InTerminal_ReturnsPaste()
     {
         var service = new KeyboardShortcutService(isMacOS: true);
 
         var action = service.Resolve(KeyModifiers.Meta, KeyCode.V, ShortcutContext.Terminal);
 
-        action.Should().Be(ShortcutAction.Paste);
+        Assert.AreEqual(ShortcutAction.Paste, action);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_MacOS_CmdT_InGlobal_ReturnsNewTab()
     {
         var service = new KeyboardShortcutService(isMacOS: true);
 
         var action = service.Resolve(KeyModifiers.Meta, KeyCode.T, ShortcutContext.Global);
 
-        action.Should().Be(ShortcutAction.NewTab);
+        Assert.AreEqual(ShortcutAction.NewTab, action);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_MacOS_CtrlC_InTerminal_ReturnsSendInterrupt()
     {
         var service = new KeyboardShortcutService(isMacOS: true);
 
         var action = service.Resolve(KeyModifiers.Ctrl, KeyCode.C, ShortcutContext.Terminal);
 
-        action.Should().Be(ShortcutAction.SendInterrupt);
+        Assert.AreEqual(ShortcutAction.SendInterrupt, action);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_CtrlTab_InGlobal_ReturnsNextTab()
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
         var action = service.Resolve(KeyModifiers.Ctrl, KeyCode.Tab, ShortcutContext.Global);
 
-        action.Should().Be(ShortcutAction.NextTab);
+        Assert.AreEqual(ShortcutAction.NextTab, action);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_CtrlShiftTab_InGlobal_ReturnsPreviousTab()
     {
         var service = new KeyboardShortcutService(isMacOS: false);
@@ -132,55 +132,55 @@ public class KeyboardShortcutServiceTests
             KeyCode.Tab,
             ShortcutContext.Global);
 
-        action.Should().Be(ShortcutAction.PreviousTab);
+        Assert.AreEqual(ShortcutAction.PreviousTab, action);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_CtrlComma_InGlobal_ReturnsOpenSettings()
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
         var action = service.Resolve(KeyModifiers.Ctrl, KeyCode.Comma, ShortcutContext.Global);
 
-        action.Should().Be(ShortcutAction.OpenSettings);
+        Assert.AreEqual(ShortcutAction.OpenSettings, action);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_MacOS_CmdComma_InGlobal_ReturnsOpenSettings()
     {
         var service = new KeyboardShortcutService(isMacOS: true);
 
         var action = service.Resolve(KeyModifiers.Meta, KeyCode.Comma, ShortcutContext.Global);
 
-        action.Should().Be(ShortcutAction.OpenSettings);
+        Assert.AreEqual(ShortcutAction.OpenSettings, action);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_UnmappedKey_ReturnsNone()
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
         var action = service.Resolve(KeyModifiers.Alt, KeyCode.T, ShortcutContext.Global);
 
-        action.Should().Be(ShortcutAction.None);
+        Assert.AreEqual(ShortcutAction.None, action);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void IsMacOS_ReturnsConstructorValue()
     {
         var macService = new KeyboardShortcutService(isMacOS: true);
         var winService = new KeyboardShortcutService(isMacOS: false);
 
-        macService.IsMacOS.Should().BeTrue();
-        winService.IsMacOS.Should().BeFalse();
+        Assert.IsTrue(macService.IsMacOS);
+        Assert.IsFalse(winService.IsMacOS);
     }
 
-    [Fact]
-    [Trait("Category", "Keyboard")]
+    [TestMethod]
+    [TestCategory("Keyboard")]
     public void Resolve_GlobalShortcuts_AlsoWorkInTerminalContext()
     {
         var service = new KeyboardShortcutService(isMacOS: false);
@@ -188,7 +188,7 @@ public class KeyboardShortcutServiceTests
         var newTab = service.Resolve(KeyModifiers.Ctrl, KeyCode.T, ShortcutContext.Terminal);
         var closeTab = service.Resolve(KeyModifiers.Ctrl, KeyCode.W, ShortcutContext.Terminal);
 
-        newTab.Should().Be(ShortcutAction.NewTab);
-        closeTab.Should().Be(ShortcutAction.CloseTab);
+        Assert.AreEqual(ShortcutAction.NewTab, newTab);
+        Assert.AreEqual(ShortcutAction.CloseTab, closeTab);
     }
 }

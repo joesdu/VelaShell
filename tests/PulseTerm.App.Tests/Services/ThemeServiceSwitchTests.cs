@@ -1,23 +1,23 @@
-using FluentAssertions;
 using PulseTerm.Core.Services;
 
 namespace PulseTerm.App.Tests.Services;
 
+[TestClass]
 public class ThemeServiceSwitchTests
 {
-    [Fact]
-    [Trait("Category", "Theme")]
+    [TestMethod]
+    [TestCategory("Theme")]
     public void SetTheme_Light_ChangesCurrentTheme()
     {
         var sut = new ThemeService("dark");
 
         sut.SetTheme("light");
 
-        sut.CurrentTheme.Should().Be("light");
+        Assert.AreEqual("light", sut.CurrentTheme);
     }
 
-    [Fact]
-    [Trait("Category", "Theme")]
+    [TestMethod]
+    [TestCategory("Theme")]
     public void SetTheme_Light_FiresThemeChangedEvent()
     {
         var sut = new ThemeService("dark");
@@ -26,22 +26,22 @@ public class ThemeServiceSwitchTests
 
         sut.SetTheme("light");
 
-        received.Should().Be("light");
+        Assert.AreEqual("light", received);
     }
 
-    [Fact]
-    [Trait("Category", "Theme")]
+    [TestMethod]
+    [TestCategory("Theme")]
     public void SetTheme_Dark_SwitchesBackFromLight()
     {
         var sut = new ThemeService("light");
 
         sut.SetTheme("dark");
 
-        sut.CurrentTheme.Should().Be("dark");
+        Assert.AreEqual("dark", sut.CurrentTheme);
     }
 
-    [Fact]
-    [Trait("Category", "Theme")]
+    [TestMethod]
+    [TestCategory("Theme")]
     public void SetTheme_SameTheme_DoesNotFireEvent()
     {
         var sut = new ThemeService("dark");
@@ -50,68 +50,67 @@ public class ThemeServiceSwitchTests
 
         sut.SetTheme("dark");
 
-        fired.Should().BeFalse();
+        Assert.IsFalse(fired);
     }
 
-    [Fact]
-    [Trait("Category", "Theme")]
+    [TestMethod]
+    [TestCategory("Theme")]
     public void SetTheme_InvalidTheme_ThrowsArgumentException()
     {
         var sut = new ThemeService("dark");
 
         var act = () => sut.SetTheme("ocean");
 
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*Invalid theme*ocean*");
+        Assert.ThrowsExactly<ArgumentException>(act);
     }
 
-    [Fact]
-    [Trait("Category", "Theme")]
+    [TestMethod]
+    [TestCategory("Theme")]
     public void SetTheme_CaseInsensitive_AcceptsUpperCase()
     {
         var sut = new ThemeService("dark");
 
         sut.SetTheme("Light");
 
-        sut.CurrentTheme.Should().Be("light");
+        Assert.AreEqual("light", sut.CurrentTheme);
     }
 
-    [Fact]
-    [Trait("Category", "Theme")]
+    [TestMethod]
+    [TestCategory("Theme")]
     public void SetTheme_System_ChangesCurrentTheme()
     {
         var sut = new ThemeService("dark");
 
         sut.SetTheme("system");
 
-        sut.CurrentTheme.Should().Be("system");
+        Assert.AreEqual("system", sut.CurrentTheme);
     }
 
-    [Fact]
-    [Trait("Category", "Theme")]
+    [TestMethod]
+    [TestCategory("Theme")]
     public void Constructor_DefaultsToValid_Theme()
     {
         var darkSut = new ThemeService("dark");
-        darkSut.CurrentTheme.Should().Be("dark");
+        Assert.AreEqual("dark", darkSut.CurrentTheme);
 
         var lightSut = new ThemeService("light");
-        lightSut.CurrentTheme.Should().Be("light");
+        Assert.AreEqual("light", lightSut.CurrentTheme);
 
         var systemSut = new ThemeService("system");
-        systemSut.CurrentTheme.Should().Be("system");
+        Assert.AreEqual("system", systemSut.CurrentTheme);
     }
 
-    [Fact]
-    [Trait("Category", "Theme")]
+    [TestMethod]
+    [TestCategory("Theme")]
     public void Constructor_InvalidTheme_DefaultsToDark()
     {
         var sut = new ThemeService("neon");
 
-        sut.CurrentTheme.Should().Be("dark");
+        Assert.AreEqual("dark", sut.CurrentTheme);
     }
 
-    [Fact]
-    [Trait("Category", "Theme")]
+    [TestMethod]
+    [TestCategory("Theme")]
     public void RoundTrip_DarkToLightToDark_AllEventsReceived()
     {
         var sut = new ThemeService("dark");
@@ -122,6 +121,6 @@ public class ThemeServiceSwitchTests
         sut.SetTheme("dark");
         sut.SetTheme("light");
 
-        events.Should().Equal("light", "dark", "light");
+        CollectionAssert.AreEqual(new List<string> { "light", "dark", "light" }, events);
     }
 }

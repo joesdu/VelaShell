@@ -1,4 +1,3 @@
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.App.ViewModels;
 using PulseTerm.Core.Models;
@@ -7,6 +6,7 @@ using PulseTerm.Terminal;
 
 namespace PulseTerm.App.Tests.ViewModels;
 
+[TestClass]
 public class TerminalTabViewModelTests
 {
     private readonly ITerminalEmulator _terminalEmulator;
@@ -20,88 +20,88 @@ public class TerminalTabViewModelTests
         _vm = new TerminalTabViewModel(_terminalEmulator, _shellStream);
     }
 
-    [Fact]
-    [Trait("Category", "TerminalTab")]
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public void Constructor_SetsDefaultTitle()
     {
-        _vm.Title.Should().NotBeNullOrEmpty();
+        Assert.IsFalse(string.IsNullOrEmpty(_vm.Title));
     }
 
-    [Fact]
-    [Trait("Category", "TerminalTab")]
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public void Constructor_SetsDefaultConnectionStatus_ToDisconnected()
     {
-        _vm.ConnectionStatus.Should().Be(SessionStatus.Disconnected);
-        _vm.IsConnected.Should().BeFalse();
+        Assert.AreEqual(SessionStatus.Disconnected, _vm.ConnectionStatus);
+        Assert.IsFalse(_vm.IsConnected);
     }
 
-    [Fact]
-    [Trait("Category", "TerminalTab")]
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public void ConnectionStatus_Connected_SetsIsConnectedTrue()
     {
         _vm.ConnectionStatus = SessionStatus.Connected;
 
-        _vm.IsConnected.Should().BeTrue();
+        Assert.IsTrue(_vm.IsConnected);
     }
 
-    [Fact]
-    [Trait("Category", "TerminalTab")]
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public void ConnectionStatus_Disconnected_SetsIsConnectedFalse()
     {
         _vm.ConnectionStatus = SessionStatus.Connected;
         _vm.ConnectionStatus = SessionStatus.Disconnected;
 
-        _vm.IsConnected.Should().BeFalse();
+        Assert.IsFalse(_vm.IsConnected);
     }
 
-    [Fact]
-    [Trait("Category", "TerminalTab")]
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public void IncrementReconnectAttempt_IncrementsCounter()
     {
-        _vm.ReconnectAttempts.Should().Be(0);
+        Assert.AreEqual(0, _vm.ReconnectAttempts);
 
         _vm.IncrementReconnectAttempt();
-        _vm.ReconnectAttempts.Should().Be(1);
+        Assert.AreEqual(1, _vm.ReconnectAttempts);
 
         _vm.IncrementReconnectAttempt();
-        _vm.ReconnectAttempts.Should().Be(2);
+        Assert.AreEqual(2, _vm.ReconnectAttempts);
     }
 
-    [Fact]
-    [Trait("Category", "TerminalTab")]
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public void ResetReconnectAttempts_ResetsToZero()
     {
         _vm.IncrementReconnectAttempt();
         _vm.IncrementReconnectAttempt();
-        _vm.ReconnectAttempts.Should().Be(2);
+        Assert.AreEqual(2, _vm.ReconnectAttempts);
 
         _vm.ResetReconnectAttempts();
 
-        _vm.ReconnectAttempts.Should().Be(0);
+        Assert.AreEqual(0, _vm.ReconnectAttempts);
     }
 
-    [Fact]
-    [Trait("Category", "TerminalTab")]
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public void CanReconnect_UnderMax_ReturnsTrue()
     {
-        _vm.CanReconnect.Should().BeTrue();
+        Assert.IsTrue(_vm.CanReconnect);
 
         _vm.IncrementReconnectAttempt();
-        _vm.CanReconnect.Should().BeTrue();
+        Assert.IsTrue(_vm.CanReconnect);
     }
 
-    [Fact]
-    [Trait("Category", "TerminalTab")]
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public void CanReconnect_AtMax_ReturnsFalse()
     {
         for (var i = 0; i < _vm.MaxReconnectAttempts; i++)
             _vm.IncrementReconnectAttempt();
 
-        _vm.CanReconnect.Should().BeFalse();
+        Assert.IsFalse(_vm.CanReconnect);
     }
 
-    [Fact]
-    [Trait("Category", "TerminalTab")]
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public void Dispose_DisposesBridgeAndTerminalEmulator()
     {
         _vm.Dispose();
@@ -109,8 +109,8 @@ public class TerminalTabViewModelTests
         _terminalEmulator.Received(1).Dispose();
     }
 
-    [Fact]
-    [Trait("Category", "TerminalTab")]
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public void Dispose_CalledTwice_OnlyDisposesOnce()
     {
         _vm.Dispose();
@@ -119,36 +119,36 @@ public class TerminalTabViewModelTests
         _terminalEmulator.Received(1).Dispose();
     }
 
-    [Fact]
-    [Trait("Category", "TerminalTab")]
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public void Constructor_InitializesAllCommands()
     {
-        _vm.SearchCommand.Should().NotBeNull();
-        _vm.CopyCommand.Should().NotBeNull();
-        _vm.SplitCommand.Should().NotBeNull();
-        _vm.ToggleBroadcastCommand.Should().NotBeNull();
-        _vm.OpenTunnelCommand.Should().NotBeNull();
-        _vm.OpenQuickCommandsCommand.Should().NotBeNull();
+        Assert.IsNotNull(_vm.SearchCommand);
+        Assert.IsNotNull(_vm.CopyCommand);
+        Assert.IsNotNull(_vm.SplitCommand);
+        Assert.IsNotNull(_vm.ToggleBroadcastCommand);
+        Assert.IsNotNull(_vm.OpenTunnelCommand);
+        Assert.IsNotNull(_vm.OpenQuickCommandsCommand);
     }
 
-    [Fact]
-    [Trait("Category", "TerminalTab")]
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public void Constructor_StoresTerminalEmulatorAndShellStream()
     {
-        _vm.TerminalEmulator.Should().BeSameAs(_terminalEmulator);
-        _vm.ShellStream.Should().BeSameAs(_shellStream);
-        _vm.Bridge.Should().NotBeNull();
+        Assert.AreSame(_terminalEmulator, _vm.TerminalEmulator);
+        Assert.AreSame(_shellStream, _vm.ShellStream);
+        Assert.IsNotNull(_vm.Bridge);
     }
 
-    [Fact]
-    [Trait("Category", "TerminalTab")]
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public void Id_IsUniquePerInstance()
     {
         var vm2 = new TerminalTabViewModel(
             Substitute.For<ITerminalEmulator>(),
             Substitute.For<IShellStreamWrapper>());
 
-        _vm.Id.Should().NotBe(vm2.Id);
-        _vm.Id.Should().NotBe(Guid.Empty);
+        Assert.AreNotEqual(vm2.Id, _vm.Id);
+        Assert.AreNotEqual(Guid.Empty, _vm.Id);
     }
 }

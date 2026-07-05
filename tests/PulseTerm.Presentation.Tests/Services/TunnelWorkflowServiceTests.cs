@@ -1,4 +1,3 @@
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Tunnels;
@@ -6,9 +5,10 @@ using PulseTerm.Presentation.Services;
 
 namespace PulseTerm.Presentation.Tests.Services;
 
+[TestClass]
 public sealed class TunnelWorkflowServiceTests
 {
-    [Fact]
+    [TestMethod]
     public async Task CreateTunnelAsync_LocalForward_UsesLocalForwardPath()
     {
         var tunnelService = Substitute.For<ITunnelService>();
@@ -22,11 +22,11 @@ public sealed class TunnelWorkflowServiceTests
 
         var created = await workflow.CreateTunnelAsync(sessionId, config);
 
-        created.Should().BeSameAs(result);
+        Assert.AreSame(result, created);
         await tunnelService.Received(1).CreateLocalForwardAsync(sessionId, config, Arg.Any<CancellationToken>());
     }
 
-    [Fact]
+    [TestMethod]
     public async Task StopTunnelAsync_ForwardsCall()
     {
         var tunnelService = Substitute.For<ITunnelService>();

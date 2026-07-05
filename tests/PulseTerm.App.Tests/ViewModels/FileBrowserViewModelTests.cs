@@ -1,5 +1,4 @@
 using System.Reactive.Linq;
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.App.ViewModels;
 using PulseTerm.Core.Models;
@@ -7,6 +6,7 @@ using PulseTerm.Core.Sftp;
 
 namespace PulseTerm.App.Tests.ViewModels;
 
+[TestClass]
 public class FileBrowserViewModelTests
 {
     private readonly ISftpService _sftpService;
@@ -60,8 +60,8 @@ public class FileBrowserViewModelTests
         };
     }
 
-    [Fact]
-    [Trait("Category", "FileBrowser")]
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public async Task ListDirectory_PopulatesFilesCollection()
     {
         var testFiles = CreateTestFiles();
@@ -71,14 +71,14 @@ public class FileBrowserViewModelTests
         _vm.CurrentPath = "/home/user";
         await _vm.RefreshCommand.Execute().FirstAsync();
 
-        _vm.Files.Should().HaveCount(3);
-        _vm.Files[0].Name.Should().Be("documents");
-        _vm.Files[1].Name.Should().Be("readme.txt");
-        _vm.Files[2].Name.Should().Be("photo.jpg");
+        Assert.AreEqual(3, _vm.Files.Count());
+        Assert.AreEqual("documents", _vm.Files[0].Name);
+        Assert.AreEqual("readme.txt", _vm.Files[1].Name);
+        Assert.AreEqual("photo.jpg", _vm.Files[2].Name);
     }
 
-    [Fact]
-    [Trait("Category", "FileBrowser")]
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public async Task NavigateIntoFolder_UpdatesCurrentPath()
     {
         var rootFiles = CreateTestFiles();
@@ -104,13 +104,13 @@ public class FileBrowserViewModelTests
 
         await _vm.NavigateToCommand.Execute("/home/user/documents").FirstAsync();
 
-        _vm.CurrentPath.Should().Be("/home/user/documents");
-        _vm.Files.Should().HaveCount(1);
-        _vm.Files[0].Name.Should().Be("report.pdf");
+        Assert.AreEqual("/home/user/documents", _vm.CurrentPath);
+        Assert.AreEqual(1, _vm.Files.Count());
+        Assert.AreEqual("report.pdf", _vm.Files[0].Name);
     }
 
-    [Fact]
-    [Trait("Category", "FileBrowser")]
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public async Task GoUp_NavigatesToParentDirectory()
     {
         _sftpService.ListDirectoryAsync(_sessionId, Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -119,11 +119,11 @@ public class FileBrowserViewModelTests
         _vm.CurrentPath = "/home/user/documents";
         await _vm.GoUpCommand.Execute().FirstAsync();
 
-        _vm.CurrentPath.Should().Be("/home/user");
+        Assert.AreEqual("/home/user", _vm.CurrentPath);
     }
 
-    [Fact]
-    [Trait("Category", "FileBrowser")]
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public async Task Refresh_RelistsCurrentDirectory()
     {
         var firstList = CreateTestFiles();
@@ -133,7 +133,7 @@ public class FileBrowserViewModelTests
         _vm.CurrentPath = "/home/user";
         await _vm.RefreshCommand.Execute().FirstAsync();
 
-        _vm.Files.Should().HaveCount(3);
+        Assert.AreEqual(3, _vm.Files.Count());
 
         var secondList = new List<RemoteFileInfo>
         {
@@ -145,23 +145,23 @@ public class FileBrowserViewModelTests
 
         await _vm.RefreshCommand.Execute().FirstAsync();
 
-        _vm.Files.Should().HaveCount(2);
+        Assert.AreEqual(2, _vm.Files.Count());
     }
 
-    [Theory]
-    [Trait("Category", "FileBrowser")]
-    [InlineData(0, "0 B")]
-    [InlineData(500, "500.0 B")]
-    [InlineData(1230, "1.2 KB")]
-    [InlineData(3565158, "3.4 MB")]
-    [InlineData(1181116006, "1.1 GB")]
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    [DataRow(0, "0 B")]
+    [DataRow(500, "500.0 B")]
+    [DataRow(1230, "1.2 KB")]
+    [DataRow(3565158, "3.4 MB")]
+    [DataRow(1181116006, "1.1 GB")]
     public void FormatSize_ReturnsHumanReadable(long bytes, string expected)
     {
-        RemoteFileInfoViewModel.FormatSize(bytes).Should().Be(expected);
+        Assert.AreEqual(expected, RemoteFileInfoViewModel.FormatSize(bytes));
     }
 
-    [Fact]
-    [Trait("Category", "FileBrowser")]
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public void RemoteFileInfoViewModel_ExposesPermissions()
     {
         var fileInfo = new RemoteFileInfo
@@ -178,28 +178,28 @@ public class FileBrowserViewModelTests
 
         var vm = new RemoteFileInfoViewModel(fileInfo);
 
-        vm.Permissions.Should().Be("-rwxr-xr-x");
-        vm.IsDirectory.Should().BeFalse();
-        vm.Icon.Should().Be("file");
+        Assert.AreEqual("-rwxr-xr-x", vm.Permissions);
+        Assert.IsFalse(vm.IsDirectory);
+        Assert.AreEqual("file", vm.Icon);
     }
 
-    [Fact]
-    [Trait("Category", "FileBrowser")]
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public void ToggleVisibility_TogglesIsVisible()
     {
-        _vm.IsVisible.Should().BeFalse();
+        Assert.IsFalse(_vm.IsVisible);
 
         _vm.ToggleVisibilityCommand.Execute().Subscribe();
 
-        _vm.IsVisible.Should().BeTrue();
+        Assert.IsTrue(_vm.IsVisible);
 
         _vm.ToggleVisibilityCommand.Execute().Subscribe();
 
-        _vm.IsVisible.Should().BeFalse();
+        Assert.IsFalse(_vm.IsVisible);
     }
 
-    [Fact]
-    [Trait("Category", "FileBrowser")]
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public async Task ErrorHandling_SetsErrorMessage()
     {
         _sftpService.ListDirectoryAsync(_sessionId, "/forbidden", Arg.Any<CancellationToken>())
@@ -210,12 +210,12 @@ public class FileBrowserViewModelTests
 
         await _vm.NavigateToCommand.Execute("/forbidden").FirstAsync();
 
-        _vm.ErrorMessage.Should().NotBeNullOrEmpty();
-        _vm.ErrorMessage.Should().Contain("Permission denied");
+        Assert.IsFalse(string.IsNullOrEmpty(_vm.ErrorMessage));
+        StringAssert.Contains(_vm.ErrorMessage, "Permission denied");
     }
 
-    [Fact]
-    [Trait("Category", "FileBrowser")]
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public void RemoteFileInfoViewModel_DirectoryShowsDash()
     {
         var dirInfo = new RemoteFileInfo
@@ -232,13 +232,13 @@ public class FileBrowserViewModelTests
 
         var vm = new RemoteFileInfoViewModel(dirInfo);
 
-        vm.FormattedSize.Should().Be("--");
-        vm.IsDirectory.Should().BeTrue();
-        vm.Icon.Should().Be("folder");
+        Assert.AreEqual("--", vm.FormattedSize);
+        Assert.IsTrue(vm.IsDirectory);
+        Assert.AreEqual("folder", vm.Icon);
     }
 
-    [Fact]
-    [Trait("Category", "FileBrowser")]
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public async Task GoUp_AtRoot_StaysAtRoot()
     {
         _sftpService.ListDirectoryAsync(_sessionId, "/", Arg.Any<CancellationToken>())
@@ -247,6 +247,6 @@ public class FileBrowserViewModelTests
         _vm.CurrentPath = "/";
         await _vm.GoUpCommand.Execute().FirstAsync();
 
-        _vm.CurrentPath.Should().Be("/");
+        Assert.AreEqual("/", _vm.CurrentPath);
     }
 }

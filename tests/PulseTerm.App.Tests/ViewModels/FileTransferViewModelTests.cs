@@ -1,5 +1,4 @@
 using System.Reactive.Linq;
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.App.ViewModels;
 using PulseTerm.Core.Models;
@@ -7,6 +6,7 @@ using PulseTerm.Core.Sftp;
 
 namespace PulseTerm.App.Tests.ViewModels;
 
+[TestClass]
 public class FileTransferViewModelTests
 {
     private readonly ITransferManager _transferManager;
@@ -36,8 +36,8 @@ public class FileTransferViewModelTests
         };
     }
 
-    [Fact]
-    [Trait("Category", "FileTransfer")]
+    [TestMethod]
+    [TestCategory("FileTransfer")]
     public void TransferAdded_AppearsInTransfersCollection()
     {
         // Arrange
@@ -47,12 +47,12 @@ public class FileTransferViewModelTests
         _vm.AddTransfer(task);
 
         // Assert
-        _vm.Transfers.Should().HaveCount(1);
-        _vm.Transfers[0].FileName.Should().Be("file.txt");
+        Assert.AreEqual(1, _vm.Transfers.Count());
+        Assert.AreEqual("file.txt", _vm.Transfers[0].FileName);
     }
 
-    [Fact]
-    [Trait("Category", "FileTransfer")]
+    [TestMethod]
+    [TestCategory("FileTransfer")]
     public void ProgressUpdate_ChangesTransferItemProgress()
     {
         // Arrange
@@ -73,13 +73,13 @@ public class FileTransferViewModelTests
         item.UpdateProgress(progress);
 
         // Assert
-        item.Progress.Should().Be(50);
-        item.TransferredBytes.Should().Be(512_000);
-        item.TotalSize.Should().Be(1_024_000);
+        Assert.AreEqual(50, item.Progress);
+        Assert.AreEqual(512_000L, item.TransferredBytes);
+        Assert.AreEqual(1_024_000L, item.TotalSize);
     }
 
-    [Fact]
-    [Trait("Category", "FileTransfer")]
+    [TestMethod]
+    [TestCategory("FileTransfer")]
     public void CancelTransfer_UpdatesStatusToCancelled()
     {
         // Arrange
@@ -92,11 +92,11 @@ public class FileTransferViewModelTests
         _vm.CancelTransferCommand.Execute(task.Id).Subscribe();
 
         // Assert
-        _vm.Transfers[0].Status.Should().Be(TransferStatus.Cancelled);
+        Assert.AreEqual(TransferStatus.Cancelled, _vm.Transfers[0].Status);
     }
 
-    [Fact]
-    [Trait("Category", "FileTransfer")]
+    [TestMethod]
+    [TestCategory("FileTransfer")]
     public void ClearCompleted_RemovesCompletedItemsFromList()
     {
         // Arrange
@@ -107,30 +107,30 @@ public class FileTransferViewModelTests
         _vm.AddTransfer(active);
         _vm.AddTransfer(completed1);
         _vm.AddTransfer(completed2);
-        _vm.Transfers.Should().HaveCount(3);
+        Assert.AreEqual(3, _vm.Transfers.Count());
 
         // Act
         _vm.ClearCompletedCommand.Execute().Subscribe();
 
         // Assert
-        _vm.Transfers.Should().HaveCount(1);
-        _vm.Transfers[0].FileName.Should().Be("file.txt");
+        Assert.AreEqual(1, _vm.Transfers.Count());
+        Assert.AreEqual("file.txt", _vm.Transfers[0].FileName);
     }
 
-    [Theory]
-    [Trait("Category", "FileTransfer")]
-    [InlineData(0, "0 B/s")]
-    [InlineData(512, "512 B/s")]
-    [InlineData(1_230, "1.2 KB/s")]
-    [InlineData(3_670_016, "3.5 MB/s")]
-    [InlineData(1_181_116_006, "1.1 GB/s")]
+    [TestMethod]
+    [TestCategory("FileTransfer")]
+    [DataRow(0, "0 B/s")]
+    [DataRow(512, "512 B/s")]
+    [DataRow(1_230, "1.2 KB/s")]
+    [DataRow(3_670_016, "3.5 MB/s")]
+    [DataRow(1_181_116_006, "1.1 GB/s")]
     public void SpeedFormatting_ReturnsHumanReadable(double bytesPerSecond, string expected)
     {
-        TransferItemViewModel.FormatSpeed(bytesPerSecond).Should().Be(expected);
+        Assert.AreEqual(expected, TransferItemViewModel.FormatSpeed(bytesPerSecond));
     }
 
-    [Fact]
-    [Trait("Category", "FileTransfer")]
+    [TestMethod]
+    [TestCategory("FileTransfer")]
     public void Direction_ShowsCorrectArrow()
     {
         // Arrange & Act
@@ -141,12 +141,12 @@ public class FileTransferViewModelTests
         _vm.AddTransfer(download);
 
         // Assert
-        _vm.Transfers[0].Direction.Should().Be("↑");
-        _vm.Transfers[1].Direction.Should().Be("↓");
+        Assert.AreEqual("↑", _vm.Transfers[0].Direction);
+        Assert.AreEqual("↓", _vm.Transfers[1].Direction);
     }
 
-    [Fact]
-    [Trait("Category", "FileTransfer")]
+    [TestMethod]
+    [TestCategory("FileTransfer")]
     public void RetryTransfer_RequeuesFailedTransfer()
     {
         // Arrange
@@ -154,17 +154,17 @@ public class FileTransferViewModelTests
         _transferManager.QueueTransferAsync(Arg.Any<TransferTask>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
         _vm.AddTransfer(task);
-        _vm.Transfers[0].Status.Should().Be(TransferStatus.Failed);
+        Assert.AreEqual(TransferStatus.Failed, _vm.Transfers[0].Status);
 
         // Act
         _vm.RetryTransferCommand.Execute(task.Id).Subscribe();
 
         // Assert
-        _vm.Transfers[0].Status.Should().Be(TransferStatus.Queued);
+        Assert.AreEqual(TransferStatus.Queued, _vm.Transfers[0].Status);
     }
 
-    [Fact]
-    [Trait("Category", "FileTransfer")]
+    [TestMethod]
+    [TestCategory("FileTransfer")]
     public void TimeRemainingFormatting_ShowsReadableString()
     {
         // Arrange
@@ -185,11 +185,11 @@ public class FileTransferViewModelTests
         item.UpdateProgress(progress);
 
         // Assert
-        item.TimeRemaining.Should().Be("1m 5s");
+        Assert.AreEqual("1m 5s", item.TimeRemaining);
     }
 
-    [Fact]
-    [Trait("Category", "FileTransfer")]
+    [TestMethod]
+    [TestCategory("FileTransfer")]
     public void MultipleTransfers_TrackedIndependently()
     {
         // Arrange
@@ -201,8 +201,8 @@ public class FileTransferViewModelTests
         _vm.AddTransfer(task2);
 
         // Assert
-        _vm.Transfers.Should().HaveCount(2);
-        _vm.Transfers[0].FileName.Should().Be("alpha.zip");
-        _vm.Transfers[1].FileName.Should().Be("beta.tar.gz");
+        Assert.AreEqual(2, _vm.Transfers.Count());
+        Assert.AreEqual("alpha.zip", _vm.Transfers[0].FileName);
+        Assert.AreEqual("beta.tar.gz", _vm.Transfers[1].FileName);
     }
 }

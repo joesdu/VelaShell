@@ -1,17 +1,16 @@
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.Core.Ssh;
 using PulseTerm.Infrastructure.Ssh;
 using Renci.SshNet;
 using Renci.SshNet.Common;
-using Xunit;
 
 namespace PulseTerm.Core.Tests.Ssh;
 
-[Trait("Category", "SshConnection")]
+[TestClass]
+[TestCategory("SshConnection")]
 public class SshClientWrapperTests
 {
-    [Fact]
+    [TestMethod]
     public void IsConnected_WhenClientConnected_ReturnsTrue()
     {
         var mockClient = Substitute.For<SshClient>(
@@ -20,10 +19,10 @@ public class SshClientWrapperTests
 
         var wrapper = new SshClientWrapper(mockClient);
 
-        wrapper.IsConnected.Should().BeTrue();
+        Assert.IsTrue(wrapper.IsConnected);
     }
 
-    [Fact]
+    [TestMethod]
     public void Disconnect_CallsClientDisconnect()
     {
         var mockClient = Substitute.For<SshClient>(
@@ -35,7 +34,7 @@ public class SshClientWrapperTests
         mockClient.Received(1).Disconnect();
     }
 
-    [Fact]
+    [TestMethod]
     public void Dispose_DisposesClient()
     {
         var mockClient = Substitute.For<SshClient>(

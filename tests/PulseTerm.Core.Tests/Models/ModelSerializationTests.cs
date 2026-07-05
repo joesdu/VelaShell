@@ -1,11 +1,10 @@
 using System.Text.Json;
-using FluentAssertions;
 using PulseTerm.Core.Models;
-using Xunit;
 
 namespace PulseTerm.Core.Tests.Models;
 
-[Trait("Category", "DataStore")]
+[TestClass]
+[TestCategory("DataStore")]
 public class ModelSerializationTests
 {
     private readonly JsonSerializerOptions _options = new()
@@ -14,7 +13,7 @@ public class ModelSerializationTests
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    [Fact]
+    [TestMethod]
     public void SessionProfile_ShouldSerializeWithCamelCase()
     {
         var session = new SessionProfile
@@ -35,19 +34,19 @@ public class ModelSerializationTests
 
         var json = JsonSerializer.Serialize(session, _options);
 
-        json.Should().Contain("\"name\":");
-        json.Should().Contain("\"host\":");
-        json.Should().Contain("\"username\":");
-        json.Should().Contain("\"password\":");
-        json.Should().Contain("\"privateKeyPath\":");
-        json.Should().Contain("\"privateKeyPassphrase\":");
-        json.Should().Contain("\"groupId\":");
-        json.Should().Contain("\"lastConnectedAt\":");
-        json.Should().NotContain("\"Name\":");
-        json.Should().NotContain("\"Host\":");
+        StringAssert.Contains(json, "\"name\":");
+        StringAssert.Contains(json, "\"host\":");
+        StringAssert.Contains(json, "\"username\":");
+        StringAssert.Contains(json, "\"password\":");
+        StringAssert.Contains(json, "\"privateKeyPath\":");
+        StringAssert.Contains(json, "\"privateKeyPassphrase\":");
+        StringAssert.Contains(json, "\"groupId\":");
+        StringAssert.Contains(json, "\"lastConnectedAt\":");
+        Assert.IsFalse(json.Contains("\"Name\":"));
+        Assert.IsFalse(json.Contains("\"Host\":"));
     }
 
-    [Fact]
+    [TestMethod]
     public void SessionProfile_ShouldDeserializeCorrectly()
     {
         var id = Guid.NewGuid();
@@ -71,22 +70,22 @@ public class ModelSerializationTests
 
         var session = JsonSerializer.Deserialize<SessionProfile>(json, _options);
 
-        session.Should().NotBeNull();
-        session!.Id.Should().Be(id);
-        session.Name.Should().Be("Test Server");
-        session.Host.Should().Be("192.168.1.100");
-        session.Port.Should().Be(2222);
-        session.Username.Should().Be("admin");
-        session.AuthMethod.Should().Be(AuthMethod.Password);
-        session.Password.Should().Be("secret123");
-        session.PrivateKeyPath.Should().Be("/path/to/key");
-        session.PrivateKeyPassphrase.Should().Be("passphrase");
-        session.GroupId.Should().Be(groupId);
-        session.LastConnectedAt.Should().Be(new DateTime(2026, 3, 5, 12, 0, 0, DateTimeKind.Utc));
-        session.Tags.Should().BeEquivalentTo(new[] { "production", "critical" });
+        Assert.IsNotNull(session);
+        Assert.AreEqual(id, session!.Id);
+        Assert.AreEqual("Test Server", session.Name);
+        Assert.AreEqual("192.168.1.100", session.Host);
+        Assert.AreEqual(2222, session.Port);
+        Assert.AreEqual("admin", session.Username);
+        Assert.AreEqual(AuthMethod.Password, session.AuthMethod);
+        Assert.AreEqual("secret123", session.Password);
+        Assert.AreEqual("/path/to/key", session.PrivateKeyPath);
+        Assert.AreEqual("passphrase", session.PrivateKeyPassphrase);
+        Assert.AreEqual(groupId, session.GroupId);
+        Assert.AreEqual(new DateTime(2026, 3, 5, 12, 0, 0, DateTimeKind.Utc), session.LastConnectedAt);
+        CollectionAssert.AreEquivalent(new[] { "production", "critical" }.ToList(), session.Tags.ToList());
     }
 
-    [Fact]
+    [TestMethod]
     public void AppSettings_ShouldSerializeWithCamelCase()
     {
         var settings = new AppSettings
@@ -101,15 +100,15 @@ public class ModelSerializationTests
 
         var json = JsonSerializer.Serialize(settings, _options);
 
-        json.Should().Contain("\"language\":");
-        json.Should().Contain("\"theme\":");
-        json.Should().Contain("\"terminalFont\":");
-        json.Should().Contain("\"terminalFontSize\":");
-        json.Should().Contain("\"scrollbackLines\":");
-        json.Should().Contain("\"defaultPort\":");
+        StringAssert.Contains(json, "\"language\":");
+        StringAssert.Contains(json, "\"theme\":");
+        StringAssert.Contains(json, "\"terminalFont\":");
+        StringAssert.Contains(json, "\"terminalFontSize\":");
+        StringAssert.Contains(json, "\"scrollbackLines\":");
+        StringAssert.Contains(json, "\"defaultPort\":");
     }
 
-    [Fact]
+    [TestMethod]
     public void AppSettings_ShouldDeserializeCorrectly()
     {
         var json = """
@@ -125,16 +124,16 @@ public class ModelSerializationTests
 
         var settings = JsonSerializer.Deserialize<AppSettings>(json, _options);
 
-        settings.Should().NotBeNull();
-        settings!.Language.Should().Be("zh");
-        settings.Theme.Should().Be("light");
-        settings.TerminalFont.Should().Be("Consolas");
-        settings.TerminalFontSize.Should().Be(16);
-        settings.ScrollbackLines.Should().Be(5000);
-        settings.DefaultPort.Should().Be(2222);
+        Assert.IsNotNull(settings);
+        Assert.AreEqual("zh", settings!.Language);
+        Assert.AreEqual("light", settings.Theme);
+        Assert.AreEqual("Consolas", settings.TerminalFont);
+        Assert.AreEqual(16, settings.TerminalFontSize);
+        Assert.AreEqual(5000, settings.ScrollbackLines);
+        Assert.AreEqual(2222, settings.DefaultPort);
     }
 
-    [Fact]
+    [TestMethod]
     public void AppState_ShouldSerializeWithNestedObjects()
     {
         var state = new AppState
@@ -147,17 +146,17 @@ public class ModelSerializationTests
 
         var json = JsonSerializer.Serialize(state, _options);
 
-        json.Should().Contain("\"recentConnections\":");
-        json.Should().Contain("\"windowPosition\":");
-        json.Should().Contain("\"windowSize\":");
-        json.Should().Contain("\"lastActiveTab\":");
-        json.Should().Contain("\"x\":");
-        json.Should().Contain("\"y\":");
-        json.Should().Contain("\"width\":");
-        json.Should().Contain("\"height\":");
+        StringAssert.Contains(json, "\"recentConnections\":");
+        StringAssert.Contains(json, "\"windowPosition\":");
+        StringAssert.Contains(json, "\"windowSize\":");
+        StringAssert.Contains(json, "\"lastActiveTab\":");
+        StringAssert.Contains(json, "\"x\":");
+        StringAssert.Contains(json, "\"y\":");
+        StringAssert.Contains(json, "\"width\":");
+        StringAssert.Contains(json, "\"height\":");
     }
 
-    [Fact]
+    [TestMethod]
     public void ServerGroup_ShouldSerializeWithSessionsList()
     {
         var group = new ServerGroup
@@ -171,14 +170,14 @@ public class ModelSerializationTests
 
         var json = JsonSerializer.Serialize(group, _options);
 
-        json.Should().Contain("\"id\":");
-        json.Should().Contain("\"name\":");
-        json.Should().Contain("\"icon\":");
-        json.Should().Contain("\"sortOrder\":");
-        json.Should().Contain("\"sessions\":");
+        StringAssert.Contains(json, "\"id\":");
+        StringAssert.Contains(json, "\"name\":");
+        StringAssert.Contains(json, "\"icon\":");
+        StringAssert.Contains(json, "\"sortOrder\":");
+        StringAssert.Contains(json, "\"sessions\":");
     }
 
-    [Fact]
+    [TestMethod]
     public void KnownHost_ShouldSerializeWithDates()
     {
         var host = new KnownHost
@@ -192,14 +191,14 @@ public class ModelSerializationTests
 
         var json = JsonSerializer.Serialize(host, _options);
 
-        json.Should().Contain("\"hostKey\":");
-        json.Should().Contain("\"fingerprint\":");
-        json.Should().Contain("\"algorithm\":");
-        json.Should().Contain("\"firstSeenAt\":");
-        json.Should().Contain("\"lastSeenAt\":");
+        StringAssert.Contains(json, "\"hostKey\":");
+        StringAssert.Contains(json, "\"fingerprint\":");
+        StringAssert.Contains(json, "\"algorithm\":");
+        StringAssert.Contains(json, "\"firstSeenAt\":");
+        StringAssert.Contains(json, "\"lastSeenAt\":");
     }
 
-    [Fact]
+    [TestMethod]
     public void SessionProfile_RoundTripSerialization_ShouldPreserveAllProperties()
     {
         var original = new SessionProfile
@@ -221,10 +220,12 @@ public class ModelSerializationTests
         var json = JsonSerializer.Serialize(original, _options);
         var deserialized = JsonSerializer.Deserialize<SessionProfile>(json, _options);
 
-        deserialized.Should().BeEquivalentTo(original);
+        Assert.AreEqual(
+            JsonSerializer.Serialize(original, _options),
+            JsonSerializer.Serialize(deserialized, _options));
     }
 
-    [Fact]
+    [TestMethod]
     public void AppSettings_RoundTripSerialization_ShouldPreserveAllProperties()
     {
         var original = new AppSettings
@@ -240,6 +241,8 @@ public class ModelSerializationTests
         var json = JsonSerializer.Serialize(original, _options);
         var deserialized = JsonSerializer.Deserialize<AppSettings>(json, _options);
 
-        deserialized.Should().BeEquivalentTo(original);
+        Assert.AreEqual(
+            JsonSerializer.Serialize(original, _options),
+            JsonSerializer.Serialize(deserialized, _options));
     }
 }

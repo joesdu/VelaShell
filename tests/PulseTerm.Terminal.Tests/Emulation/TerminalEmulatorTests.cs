@@ -1,11 +1,10 @@
 using System.Text;
-using FluentAssertions;
 using PulseTerm.Terminal.Emulation;
-using Xunit;
 
 namespace PulseTerm.Terminal.Tests.Emulation;
 
-[Trait("Category", "Emulator")]
+[TestClass]
+[TestCategory("Emulator")]
 public class TerminalEmulatorTests
 {
     private static TerminalEmulator New(int cols = 20, int rows = 6, TerminalType type = TerminalType.XtermusColor256)
@@ -15,111 +14,111 @@ public class TerminalEmulatorTests
 
     private static string Line(TerminalEmulator e, int row) => e.Screen.ActiveLine(row).GetText();
 
-    [Fact]
+    [TestMethod]
     public void Print_WritesTextAndAdvancesCursor()
     {
         var e = New();
         Feed(e, "hello");
-        Line(e, 0).Should().Be("hello");
-        e.CursorX.Should().Be(5);
-        e.CursorY.Should().Be(0);
+        Assert.AreEqual("hello", Line(e, 0));
+        Assert.AreEqual(5, e.CursorX);
+        Assert.AreEqual(0, e.CursorY);
     }
 
-    [Fact]
+    [TestMethod]
     public void CarriageReturnLineFeed_MovesToNextRow()
     {
         var e = New();
         Feed(e, "ab\r\ncd");
-        Line(e, 0).Should().Be("ab");
-        Line(e, 1).Should().Be("cd");
-        e.CursorY.Should().Be(1);
-        e.CursorX.Should().Be(2);
+        Assert.AreEqual("ab", Line(e, 0));
+        Assert.AreEqual("cd", Line(e, 1));
+        Assert.AreEqual(1, e.CursorY);
+        Assert.AreEqual(2, e.CursorX);
     }
 
-    [Fact]
+    [TestMethod]
     public void Autowrap_WrapsAtRightMargin()
     {
         var e = New(cols: 4, rows: 4);
         Feed(e, "abcdef");
-        Line(e, 0).Should().Be("abcd");
-        Line(e, 1).Should().Be("ef");
+        Assert.AreEqual("abcd", Line(e, 0));
+        Assert.AreEqual("ef", Line(e, 1));
     }
 
-    [Fact]
+    [TestMethod]
     public void CursorPosition_CsiH_IsOneBased()
     {
         var e = New();
         Feed(e, "\x1b[2;3HX");
-        Line(e, 1).Should().Be("  X");   // row 2, col 3
-        e.CursorY.Should().Be(1);
+        Assert.AreEqual("  X", Line(e, 1));   // row 2, col 3
+        Assert.AreEqual(1, e.CursorY);
     }
 
-    [Fact]
+    [TestMethod]
     public void EraseInLine_FromCursor_ClearsToEnd()
     {
         var e = New();
         Feed(e, "abcdef\x1b[4G\x1b[0K"); // move to col 4, erase to end
-        Line(e, 0).Should().Be("abc");
+        Assert.AreEqual("abc", Line(e, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void EraseInDisplay_All_ClearsScreen()
     {
         var e = New();
         Feed(e, "line1\r\nline2\x1b[2J");
-        Line(e, 0).Should().BeEmpty();
-        Line(e, 1).Should().BeEmpty();
+        Assert.AreEqual(string.Empty, Line(e, 0));
+        Assert.AreEqual(string.Empty, Line(e, 1));
     }
 
-    [Fact]
+    [TestMethod]
     public void DeleteChars_ShiftsRemainderLeft()
     {
         var e = New();
         Feed(e, "abcdef\x1b[1G\x1b[2P"); // home, delete 2 chars
-        Line(e, 0).Should().Be("cdef");
+        Assert.AreEqual("cdef", Line(e, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void InsertChars_ShiftsRemainderRight()
     {
         var e = New();
         Feed(e, "abcdef\x1b[1G\x1b[2@");
-        Line(e, 0).Should().Be("  abcdef");
+        Assert.AreEqual("  abcdef", Line(e, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void Sgr_256Color_SetsIndexedForeground()
     {
         var e = New();
         Feed(e, "\x1b[38;5;196mX");
         var cell = e.Screen.GetCell(0, 0);
-        cell.Foreground.Kind.Should().Be(TerminalColorKind.Indexed);
-        cell.Foreground.Index.Should().Be(196);
+        Assert.AreEqual(TerminalColorKind.Indexed, cell.Foreground.Kind);
+        Assert.AreEqual(196, cell.Foreground.Index);
     }
 
-    [Fact]
+    [TestMethod]
     public void Sgr_Truecolor_SetsRgbForeground()
     {
         var e = New();
         Feed(e, "\x1b[38;2;10;20;30mX");
         var cell = e.Screen.GetCell(0, 0);
-        cell.Foreground.Kind.Should().Be(TerminalColorKind.Rgb);
-        cell.Foreground.R.Should().Be(10);
-        cell.Foreground.G.Should().Be(20);
-        cell.Foreground.B.Should().Be(30);
+        Assert.AreEqual(TerminalColorKind.Rgb, cell.Foreground.Kind);
+        Assert.AreEqual(10, cell.Foreground.R);
+        Assert.AreEqual(20, cell.Foreground.G);
+        Assert.AreEqual(30, cell.Foreground.B);
     }
 
-    [Fact]
+    [TestMethod]
     public void Sgr_BoldAndBasicColor_AppliesFlags()
     {
         var e = New();
         Feed(e, "\x1b[1;31mX");
         var cell = e.Screen.GetCell(0, 0);
-        cell.Flags.Should().HaveFlag(CellFlags.Bold);
-        cell.Foreground.Index.Should().Be(1);
+        Assert.IsTrue(cell.Flags.HasFlag(CellFlags.Bold));
+        Assert.AreEqual(1, cell.Foreground.Index);
     }
 
-    [Fact]
+    [TestMethod]
     public void ScrollRegion_ScrollsWithinMargins()
     {
         var e = New(cols: 6, rows: 5);
@@ -128,101 +127,101 @@ public class TerminalEmulatorTests
         Feed(e, "def\r\n");             // row3
         Feed(e, "ghi\r\n");             // row4
         Feed(e, "jkl");                 // triggers scroll within region
-        Line(e, 0).Should().BeEmpty();  // row1 untouched (outside region)
-        Line(e, 1).Should().Be("def");
-        Line(e, 2).Should().Be("ghi");
-        Line(e, 3).Should().Be("jkl");
+        Assert.AreEqual(string.Empty, Line(e, 0));  // row1 untouched (outside region)
+        Assert.AreEqual("def", Line(e, 1));
+        Assert.AreEqual("ghi", Line(e, 2));
+        Assert.AreEqual("jkl", Line(e, 3));
     }
 
-    [Fact]
+    [TestMethod]
     public void FullScreenScroll_PushesToScrollback()
     {
         var e = New(cols: 4, rows: 2);
         Feed(e, "a\r\nb\r\nc");
-        e.Screen.ScrollbackCount.Should().BeGreaterThan(0);
+        Assert.IsTrue(e.Screen.ScrollbackCount > 0);
         // Newest lines occupy the active screen.
-        Line(e, 1).Should().Be("c");
+        Assert.AreEqual("c", Line(e, 1));
     }
 
-    [Fact]
+    [TestMethod]
     public void AlternateScreen_SwitchAndRestore()
     {
         var e = New();
         Feed(e, "main");
         Feed(e, "\x1b[?1049h");         // enter alt
-        e.IsAlternateScreen.Should().BeTrue();
-        Line(e, 0).Should().BeEmpty();
+        Assert.IsTrue(e.IsAlternateScreen);
+        Assert.AreEqual(string.Empty, Line(e, 0));
         Feed(e, "\x1b[?1049l");         // exit alt
-        e.IsAlternateScreen.Should().BeFalse();
-        Line(e, 0).Should().Be("main");
+        Assert.IsFalse(e.IsAlternateScreen);
+        Assert.AreEqual("main", Line(e, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void PrimaryDeviceAttributes_XtermTypeReplies()
     {
         var e = New(type: TerminalType.XtermusColor256);
         string? reply = null;
         e.Response += b => reply = Encoding.ASCII.GetString(b);
         Feed(e, "\x1b[c");
-        reply.Should().Be("\x1b[?64;1;2;6;9;15;18;21;22c");
+        Assert.AreEqual("\x1b[?64;1;2;6;9;15;18;21;22c", reply);
     }
 
-    [Fact]
+    [TestMethod]
     public void PrimaryDeviceAttributes_Vt220Replies()
     {
         var e = New(type: TerminalType.Vt220);
         string? reply = null;
         e.Response += b => reply = Encoding.ASCII.GetString(b);
         Feed(e, "\x1b[c");
-        reply.Should().Be("\x1b[?62;1;2;6;7;8;9c");
+        Assert.AreEqual("\x1b[?62;1;2;6;7;8;9c", reply);
     }
 
-    [Fact]
+    [TestMethod]
     public void CursorPositionReport_Dsr6_ReportsPosition()
     {
         var e = New();
         string? reply = null;
         e.Response += b => reply = Encoding.ASCII.GetString(b);
         Feed(e, "\x1b[3;5H\x1b[6n");
-        reply.Should().Be("\x1b[3;5R");
+        Assert.AreEqual("\x1b[3;5R", reply);
     }
 
-    [Fact]
+    [TestMethod]
     public void Utf8WideChar_OccupiesTwoCells()
     {
         var e = New();
         Feed(e, "中X");
-        e.Screen.GetCell(0, 0).Rune.Should().Be('中');
-        e.Screen.GetCell(1, 0).IsWideTrailing.Should().BeTrue();
-        e.Screen.GetCell(2, 0).Rune.Should().Be('X');
-        e.CursorX.Should().Be(3);
+        Assert.AreEqual((int)'中', e.Screen.GetCell(0, 0).Rune);
+        Assert.IsTrue(e.Screen.GetCell(1, 0).IsWideTrailing);
+        Assert.AreEqual((int)'X', e.Screen.GetCell(2, 0).Rune);
+        Assert.AreEqual(3, e.CursorX);
     }
 
-    [Fact]
+    [TestMethod]
     public void DecLineDrawing_MapsToBoxGlyphs()
     {
         var e = New();
         Feed(e, "\x1b(0q\x1b(B");   // select special graphics, print 'q', reset
-        e.Screen.GetCell(0, 0).Rune.Should().Be('─');
+        Assert.AreEqual((int)'─', e.Screen.GetCell(0, 0).Rune);
     }
 
-    [Fact]
+    [TestMethod]
     public void Backspace_MovesCursorLeft()
     {
         var e = New();
         Feed(e, "abc\b\b");
-        e.CursorX.Should().Be(1);
+        Assert.AreEqual(1, e.CursorX);
     }
 
-    [Fact]
+    [TestMethod]
     public void InsertMode_ShiftsExistingText()
     {
         var e = New();
         Feed(e, "world\x1b[1G\x1b[4hAB");
-        Line(e, 0).Should().Be("ABworld");
+        Assert.AreEqual("ABworld", Line(e, 0));
     }
 
-    [Fact]
+    [TestMethod]
     public void SetEncoding_Gbk_DecodesChineseBytes()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
@@ -230,28 +229,28 @@ public class TerminalEmulatorTests
         e.SetEncoding(Encoding.GetEncoding("GBK"));
         // "中文" in GBK.
         e.Feed(new byte[] { 0xD6, 0xD0, 0xCE, 0xC4 });
-        e.Screen.GetCell(0, 0).Rune.Should().Be('中');
-        e.Screen.GetCell(2, 0).Rune.Should().Be('文');
+        Assert.AreEqual((int)'中', e.Screen.GetCell(0, 0).Rune);
+        Assert.AreEqual((int)'文', e.Screen.GetCell(2, 0).Rune);
     }
 
-    [Theory]
-    [InlineData("xterm-256color", TerminalType.XtermusColor256)]
-    [InlineData("vt220", TerminalType.Vt220)]
-    [InlineData("vt52", TerminalType.Vt52)]
-    [InlineData("unknown-term", TerminalType.XtermusColor256)]
+    [TestMethod]
+    [DataRow("xterm-256color", TerminalType.XtermusColor256)]
+    [DataRow("vt220", TerminalType.Vt220)]
+    [DataRow("vt52", TerminalType.Vt52)]
+    [DataRow("unknown-term", TerminalType.XtermusColor256)]
     public void FromTermName_ParsesKnownProfiles(string term, TerminalType expected)
     {
-        TerminalTypeExtensions.FromTermName(term).Should().Be(expected);
+        Assert.AreEqual(expected, TerminalTypeExtensions.FromTermName(term));
     }
 
-    [Fact]
+    [TestMethod]
     public void ReverseIndex_ScrollsDownAtTop()
     {
         var e = New(cols: 4, rows: 3);
         Feed(e, "a\r\nb\r\nc");        // rows a,b,c
         Feed(e, "\x1b[1;1H");          // home
         Feed(e, "\x1bM");              // reverse index -> scroll down
-        Line(e, 0).Should().BeEmpty();
-        Line(e, 1).Should().Be("a");
+        Assert.AreEqual(string.Empty, Line(e, 0));
+        Assert.AreEqual("a", Line(e, 1));
     }
 }

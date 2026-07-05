@@ -1,38 +1,38 @@
-using FluentAssertions;
 using PulseTerm.Core.Resources;
 using PulseTerm.Presentation.ViewModels;
 
 namespace PulseTerm.Presentation.Tests.ViewModels;
 
+[TestClass]
 public sealed class StatusBarViewModelTests
 {
-    [Fact]
+    [TestMethod]
     public void Constructor_SetsDefaultValues()
     {
         var vm = new StatusBarViewModel();
 
-        vm.StatusText.Should().Be(Strings.Ready);
-        vm.ConnectionInfo.Should().BeEmpty();
-        vm.Status.Should().Be(Strings.Disconnected);
-        vm.Latency.Should().BeEmpty();
-        vm.TerminalType.Should().Be("xterm-256color");
-        vm.WindowSize.Should().Be("80×24");
-        vm.Encoding.Should().Be("UTF-8");
-        vm.Uptime.Should().BeEmpty();
-        vm.IsConnected.Should().BeFalse();
+        Assert.AreEqual(Strings.Ready, vm.StatusText);
+        Assert.AreEqual(string.Empty, vm.ConnectionInfo);
+        Assert.AreEqual(Strings.Disconnected, vm.Status);
+        Assert.AreEqual(string.Empty, vm.Latency);
+        Assert.AreEqual("xterm-256color", vm.TerminalType);
+        Assert.AreEqual("80×24", vm.WindowSize);
+        Assert.AreEqual("UTF-8", vm.Encoding);
+        Assert.AreEqual(string.Empty, vm.Uptime);
+        Assert.IsFalse(vm.IsConnected);
     }
 
-    [Fact]
+    [TestMethod]
     public void SetStatus_Connected_UpdatesIsConnected()
     {
         var vm = new StatusBarViewModel();
 
         vm.Status = Strings.Connected;
 
-        vm.IsConnected.Should().BeTrue();
+        Assert.IsTrue(vm.IsConnected);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task StartUptimeTimer_UpdatesUptimeProperty()
     {
         var vm = new StatusBarViewModel();
@@ -40,7 +40,7 @@ public sealed class StatusBarViewModelTests
         vm.StartUptimeTimer();
         await Task.Delay(1500);
 
-        vm.Uptime.Should().NotBeEmpty();
+        Assert.IsFalse(string.IsNullOrEmpty(vm.Uptime));
         vm.StopUptimeTimer();
     }
 }

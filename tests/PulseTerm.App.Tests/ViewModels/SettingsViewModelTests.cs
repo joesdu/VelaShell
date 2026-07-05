@@ -1,5 +1,4 @@
 using System.Reactive.Linq;
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.App.ViewModels;
 using PulseTerm.Core.Data;
@@ -9,6 +8,7 @@ using PulseTerm.Core.Ssh;
 
 namespace PulseTerm.App.Tests.ViewModels;
 
+[TestClass]
 public class SettingsViewModelTests
 {
     private readonly ISettingsService _settingsService;
@@ -22,8 +22,8 @@ public class SettingsViewModelTests
 
     private SettingsViewModel CreateVm() => new(_settingsService, _themeService);
 
-    [Fact]
-    [Trait("Category", "Settings")]
+    [TestMethod]
+    [TestCategory("Settings")]
     public async Task LoadCommand_LoadsSettingsFromService()
     {
         var settings = new AppSettings
@@ -42,18 +42,18 @@ public class SettingsViewModelTests
         var vm = CreateVm();
         await vm.LoadCommand.Execute().FirstAsync();
 
-        vm.Language.Should().Be("zh-CN");
-        vm.Theme.Should().Be("light");
-        vm.TerminalFont.Should().Be("Fira Code");
-        vm.TerminalFontSize.Should().Be(16);
-        vm.ScrollbackLines.Should().Be(5000);
-        vm.DefaultPort.Should().Be(2222);
-        vm.TerminalType.Should().Be("vt220");
-        vm.TerminalEncoding.Should().Be("GBK");
+        Assert.AreEqual("zh-CN", vm.Language);
+        Assert.AreEqual("light", vm.Theme);
+        Assert.AreEqual("Fira Code", vm.TerminalFont);
+        Assert.AreEqual(16, vm.TerminalFontSize);
+        Assert.AreEqual(5000, vm.ScrollbackLines);
+        Assert.AreEqual(2222, vm.DefaultPort);
+        Assert.AreEqual("vt220", vm.TerminalType);
+        Assert.AreEqual("GBK", vm.TerminalEncoding);
     }
 
-    [Fact]
-    [Trait("Category", "Settings")]
+    [TestMethod]
+    [TestCategory("Settings")]
     public async Task SaveCommand_PersistsToService()
     {
         var vm = CreateVm();
@@ -80,8 +80,8 @@ public class SettingsViewModelTests
                 s.TerminalEncoding == "UTF-8"));
     }
 
-    [Fact]
-    [Trait("Category", "Settings")]
+    [TestMethod]
+    [TestCategory("Settings")]
     public async Task SaveCommand_AppliesTheme()
     {
         var vm = CreateVm();
@@ -92,8 +92,8 @@ public class SettingsViewModelTests
         _themeService.Received(1).SetTheme("light");
     }
 
-    [Fact]
-    [Trait("Category", "Settings")]
+    [TestMethod]
+    [TestCategory("Settings")]
     public void ConnectionProfile_ValidatesRequiredFields()
     {
         var vm = new ConnectionProfileViewModel();
@@ -104,47 +104,47 @@ public class SettingsViewModelTests
         var canExecute = false;
         vm.SaveCommand.CanExecute.Subscribe(x => canExecute = x);
 
-        canExecute.Should().BeFalse();
+        Assert.IsFalse(canExecute);
     }
 
-    [Fact]
-    [Trait("Category", "Settings")]
+    [TestMethod]
+    [TestCategory("Settings")]
     public void ConnectionProfile_AuthMethodToggle_SwitchesVisibility()
     {
         var vm = new ConnectionProfileViewModel();
 
         // Default is Password
-        vm.IsPasswordAuth.Should().BeTrue();
-        vm.IsKeyAuth.Should().BeFalse();
+        Assert.IsTrue(vm.IsPasswordAuth);
+        Assert.IsFalse(vm.IsKeyAuth);
 
         vm.AuthMethod = AuthMethod.PrivateKey;
 
-        vm.IsPasswordAuth.Should().BeFalse();
-        vm.IsKeyAuth.Should().BeTrue();
+        Assert.IsFalse(vm.IsPasswordAuth);
+        Assert.IsTrue(vm.IsKeyAuth);
 
         vm.AuthMethod = AuthMethod.Password;
 
-        vm.IsPasswordAuth.Should().BeTrue();
-        vm.IsKeyAuth.Should().BeFalse();
+        Assert.IsTrue(vm.IsPasswordAuth);
+        Assert.IsFalse(vm.IsKeyAuth);
     }
 
-    [Fact]
-    [Trait("Category", "Settings")]
+    [TestMethod]
+    [TestCategory("Settings")]
     public void HostKeyPrompt_TrustCommand_SetsResultTrue()
     {
         var vm = new HostKeyPromptViewModel(
             "example.com", 22, "ssh-ed25519",
             "SHA256:abc123def456", HostKeyVerification.Unknown);
 
-        vm.Result.Should().BeNull();
+        Assert.IsNull(vm.Result);
 
         vm.TrustCommand.Execute().Subscribe();
 
-        vm.Result.Should().BeTrue();
+        Assert.IsTrue(vm.Result == true);
     }
 
-    [Fact]
-    [Trait("Category", "Settings")]
+    [TestMethod]
+    [TestCategory("Settings")]
     public void HostKeyPrompt_RejectCommand_SetsResultFalse()
     {
         var vm = new HostKeyPromptViewModel(
@@ -153,28 +153,28 @@ public class SettingsViewModelTests
 
         vm.RejectCommand.Execute().Subscribe();
 
-        vm.Result.Should().BeFalse();
+        Assert.IsTrue(vm.Result == false);
     }
 
-    [Fact]
-    [Trait("Category", "Settings")]
+    [TestMethod]
+    [TestCategory("Settings")]
     public void HostKeyPrompt_ChangedKey_ShowsWarning()
     {
         var vmChanged = new HostKeyPromptViewModel(
             "server.local", 22, "ssh-ed25519",
             "SHA256:changed123", HostKeyVerification.Changed);
 
-        vmChanged.IsChanged.Should().BeTrue();
+        Assert.IsTrue(vmChanged.IsChanged);
 
         var vmUnknown = new HostKeyPromptViewModel(
             "server.local", 22, "ssh-ed25519",
             "SHA256:unknown456", HostKeyVerification.Unknown);
 
-        vmUnknown.IsChanged.Should().BeFalse();
+        Assert.IsFalse(vmUnknown.IsChanged);
     }
 
-    [Fact]
-    [Trait("Category", "Settings")]
+    [TestMethod]
+    [TestCategory("Settings")]
     public void ConnectionProfile_PortValidation_AcceptsValidRange()
     {
         var vm = new ConnectionProfileViewModel();
@@ -185,21 +185,21 @@ public class SettingsViewModelTests
         vm.Port = 22;
         var canExecute = false;
         vm.SaveCommand.CanExecute.Subscribe(x => canExecute = x);
-        canExecute.Should().BeTrue();
+        Assert.IsTrue(canExecute);
 
         // Port 0 — invalid
         vm.Port = 0;
         vm.SaveCommand.CanExecute.Subscribe(x => canExecute = x);
-        canExecute.Should().BeFalse();
+        Assert.IsFalse(canExecute);
 
         // Port 65535 — valid max
         vm.Port = 65535;
         vm.SaveCommand.CanExecute.Subscribe(x => canExecute = x);
-        canExecute.Should().BeTrue();
+        Assert.IsTrue(canExecute);
     }
 
-    [Fact]
-    [Trait("Category", "Settings")]
+    [TestMethod]
+    [TestCategory("Settings")]
     public void ConnectionProfile_SaveCommand_ReturnsProfile()
     {
         var vm = new ConnectionProfileViewModel();
@@ -213,12 +213,12 @@ public class SettingsViewModelTests
         SessionProfile? result = null;
         vm.SaveCommand.Execute().Subscribe(profile => result = profile);
 
-        result.Should().NotBeNull();
-        result!.Name.Should().Be("My Server");
-        result.Host.Should().Be("192.168.1.100");
-        result.Port.Should().Be(2222);
-        result.Username.Should().Be("deploy");
-        result.AuthMethod.Should().Be(AuthMethod.PrivateKey);
-        result.PrivateKeyPath.Should().Be("/home/user/.ssh/id_rsa");
+        Assert.IsNotNull(result);
+        Assert.AreEqual("My Server", result!.Name);
+        Assert.AreEqual("192.168.1.100", result.Host);
+        Assert.AreEqual(2222, result.Port);
+        Assert.AreEqual("deploy", result.Username);
+        Assert.AreEqual(AuthMethod.PrivateKey, result.AuthMethod);
+        Assert.AreEqual("/home/user/.ssh/id_rsa", result.PrivateKeyPath);
     }
 }

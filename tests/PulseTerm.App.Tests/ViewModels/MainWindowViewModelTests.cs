@@ -1,11 +1,11 @@
 using System.Reactive.Concurrency;
-using FluentAssertions;
 using PulseTerm.App.ViewModels;
 using PulseTerm.Presentation.ViewModels;
 using ReactiveUI.Builder;
 
 namespace PulseTerm.App.Tests.ViewModels;
 
+[TestClass]
 public class MainWindowViewModelTests
 {
     static MainWindowViewModelTests()
@@ -22,26 +22,27 @@ public class MainWindowViewModelTests
             // Already initialized
         }
     }
-    [Fact]
-    [Trait("Category", "UI")]
+
+    [TestMethod]
+    [TestCategory("UI")]
     public void MainWindowViewModel_Initializes_WithAllSubViewModels()
     {
         var vm = new MainWindowViewModel();
 
-        vm.Sidebar.Should().NotBeNull();
-        vm.TabBar.Should().NotBeNull();
-        vm.StatusBar.Should().NotBeNull();
+        Assert.IsNotNull(vm.Sidebar);
+        Assert.IsNotNull(vm.TabBar);
+        Assert.IsNotNull(vm.StatusBar);
     }
 
-    [Fact]
-    [Trait("Category", "UI")]
+    [TestMethod]
+    [TestCategory("UI")]
     public void SidebarViewModel_Initializes_WithCommands()
     {
         var vm = new SidebarViewModel();
 
-        vm.QuickConnectCommand.Should().NotBeNull();
-        vm.SettingsCommand.Should().NotBeNull();
-        vm.NotificationsCommand.Should().NotBeNull();
-        vm.QuickConnectText.Should().BeEmpty();
+        Assert.IsNotNull(vm.QuickConnectCommand);
+        Assert.IsNotNull(vm.SettingsCommand);
+        Assert.IsNotNull(vm.NotificationsCommand);
+        Assert.AreEqual(string.Empty, vm.QuickConnectText);
     }
 }

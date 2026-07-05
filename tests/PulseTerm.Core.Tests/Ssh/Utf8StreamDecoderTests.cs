@@ -1,14 +1,13 @@
-using FluentAssertions;
-using Xunit;
 using PulseTerm.Core.Ssh;
 using System.Text;
 
 namespace PulseTerm.Core.Tests.Ssh;
 
-[Trait("Category", "SshConnection")]
+[TestClass]
+[TestCategory("SshConnection")]
 public class Utf8StreamDecoderTests
 {
-    [Fact]
+    [TestMethod]
     public void DecodeBytes_CompleteUtf8Sequences_ReturnsCorrectString()
     {
         var decoder = new Utf8StreamDecoder();
@@ -16,10 +15,10 @@ public class Utf8StreamDecoderTests
 
         var result = decoder.DecodeBytes(input);
 
-        result.Should().Be("Hello World");
+        Assert.AreEqual("Hello World", result);
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodeBytes_EmptyInput_ReturnsEmptyString()
     {
         var decoder = new Utf8StreamDecoder();
@@ -27,79 +26,79 @@ public class Utf8StreamDecoderTests
 
         var result = decoder.DecodeBytes(input);
 
-        result.Should().BeEmpty();
+        Assert.AreEqual(string.Empty, result);
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodeBytes_Split2ByteChar_BuffersAndCompletes()
     {
         var decoder = new Utf8StreamDecoder();
         var fullChar = "é";
         var bytes = Encoding.UTF8.GetBytes(fullChar);
-        bytes.Length.Should().Be(2);
+        Assert.AreEqual(2, bytes.Length);
 
         var result1 = decoder.DecodeBytes(new[] { bytes[0] });
-        result1.Should().BeEmpty();
+        Assert.AreEqual(string.Empty, result1);
 
         var result2 = decoder.DecodeBytes(new[] { bytes[1] });
-        result2.Should().Be(fullChar);
+        Assert.AreEqual(fullChar, result2);
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodeBytes_Split3ByteCjkChar_BuffersAndCompletes()
     {
         var decoder = new Utf8StreamDecoder();
         var cjkChar = "你";
         var bytes = Encoding.UTF8.GetBytes(cjkChar);
-        bytes.Length.Should().Be(3);
+        Assert.AreEqual(3, bytes.Length);
 
         var result1 = decoder.DecodeBytes(new[] { bytes[0] });
-        result1.Should().BeEmpty();
+        Assert.AreEqual(string.Empty, result1);
 
         var result2 = decoder.DecodeBytes(new[] { bytes[1] });
-        result2.Should().BeEmpty();
+        Assert.AreEqual(string.Empty, result2);
 
         var result3 = decoder.DecodeBytes(new[] { bytes[2] });
-        result3.Should().Be(cjkChar);
+        Assert.AreEqual(cjkChar, result3);
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodeBytes_Split3ByteCjkChar_TwoBytesThenOne_BuffersAndCompletes()
     {
         var decoder = new Utf8StreamDecoder();
         var cjkChar = "好";
         var bytes = Encoding.UTF8.GetBytes(cjkChar);
-        bytes.Length.Should().Be(3);
+        Assert.AreEqual(3, bytes.Length);
 
         var result1 = decoder.DecodeBytes(new[] { bytes[0], bytes[1] });
-        result1.Should().BeEmpty();
+        Assert.AreEqual(string.Empty, result1);
 
         var result2 = decoder.DecodeBytes(new[] { bytes[2] });
-        result2.Should().Be(cjkChar);
+        Assert.AreEqual(cjkChar, result2);
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodeBytes_Split4ByteEmoji_BuffersAndCompletes()
     {
         var decoder = new Utf8StreamDecoder();
         var emoji = "😀";
         var bytes = Encoding.UTF8.GetBytes(emoji);
-        bytes.Length.Should().Be(4);
+        Assert.AreEqual(4, bytes.Length);
 
         var result1 = decoder.DecodeBytes(new[] { bytes[0] });
-        result1.Should().BeEmpty();
+        Assert.AreEqual(string.Empty, result1);
 
         var result2 = decoder.DecodeBytes(new[] { bytes[1] });
-        result2.Should().BeEmpty();
+        Assert.AreEqual(string.Empty, result2);
 
         var result3 = decoder.DecodeBytes(new[] { bytes[2] });
-        result3.Should().BeEmpty();
+        Assert.AreEqual(string.Empty, result3);
 
         var result4 = decoder.DecodeBytes(new[] { bytes[3] });
-        result4.Should().Be(emoji);
+        Assert.AreEqual(emoji, result4);
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodeBytes_MixedCompleteAndSplit_DecodesCorrectly()
     {
         var decoder = new Utf8StreamDecoder();
@@ -107,13 +106,13 @@ public class Utf8StreamDecoderTests
         var bytes = Encoding.UTF8.GetBytes(text);
 
         var result1 = decoder.DecodeBytes(bytes.Take(7).ToArray());
-        result1.Should().Be("Hello");
+        Assert.AreEqual("Hello", result1);
 
         var result2 = decoder.DecodeBytes(bytes.Skip(7).ToArray());
-        result2.Should().Be("你");
+        Assert.AreEqual("你", result2);
     }
 
-    [Fact]
+    [TestMethod]
     public void DecodeBytes_MultipleSplitSequences_BuffersCorrectly()
     {
         var decoder = new Utf8StreamDecoder();
@@ -125,16 +124,16 @@ public class Utf8StreamDecoderTests
             var result = decoder.DecodeBytes(new[] { b });
             if (result.Length > 0)
             {
-                result.Should().MatchRegex("^[你好世]$");
+                Assert.IsTrue(System.Text.RegularExpressions.Regex.IsMatch(result, "^[你好世]$"));
             }
         }
 
         var finalResult = decoder.DecodeBytes(new[] { bytes.Last() });
-        finalResult.Should().Be("界");
+        Assert.AreEqual("界", finalResult);
     }
 
-    [Fact]
-    [Trait("Category", "EdgeCase")]
+    [TestMethod]
+    [TestCategory("EdgeCase")]
     public void DecodeBytes_InvalidUtf8_ProducesReplacementCharacter()
     {
         var decoder = new Utf8StreamDecoder();
@@ -146,11 +145,11 @@ public class Utf8StreamDecoderTests
         // Flush to force any buffered invalid bytes to emit
         result += decoder.Flush();
 
-        result.Should().Contain("\uFFFD");
+        StringAssert.Contains(result, "�");
     }
 
-    [Fact]
-    [Trait("Category", "EdgeCase")]
+    [TestMethod]
+    [TestCategory("EdgeCase")]
     public void Flush_IncompleteSequence_ProducesReplacementCharacter()
     {
         var decoder = new Utf8StreamDecoder();
@@ -158,9 +157,9 @@ public class Utf8StreamDecoderTests
         // First byte of a 3-byte sequence (0xE4 starts 你)
         var incompleteBytes = new byte[] { 0xE4 };
         var result = decoder.DecodeBytes(incompleteBytes);
-        result.Should().BeEmpty();
+        Assert.AreEqual(string.Empty, result);
 
         var flushed = decoder.Flush();
-        flushed.Should().Contain("\uFFFD");
+        StringAssert.Contains(flushed, "�");
     }
 }

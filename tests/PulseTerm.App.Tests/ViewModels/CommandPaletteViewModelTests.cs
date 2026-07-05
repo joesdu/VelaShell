@@ -1,8 +1,8 @@
-using FluentAssertions;
 using PulseTerm.App.ViewModels;
 
 namespace PulseTerm.App.Tests.ViewModels;
 
+[TestClass]
 public class CommandPaletteViewModelTests
 {
     private static CommandPaletteViewModel CreateVm(out int[] runCount, params (string cat, string title)[] items)
@@ -18,56 +18,56 @@ public class CommandPaletteViewModelTests
         return new CommandPaletteViewModel(() => built);
     }
 
-    [Fact]
-    [Trait("Category", "CommandPalette")]
+    [TestMethod]
+    [TestCategory("CommandPalette")]
     public void Open_LoadsItemsGroupedByCategory_AndSelectsFirst()
     {
         var vm = CreateVm(out _, ("会话", "web-01"), ("会话", "db-01"), ("命令", "打开设置"));
         vm.Open();
 
-        vm.IsOpen.Should().BeTrue();
-        vm.Groups.Should().HaveCount(2);
-        vm.Groups[0].Category.Should().Be("会话");
-        vm.Groups[0].Items.Should().HaveCount(2);
-        vm.ResultCount.Should().Be(3);
-        vm.SelectedItem!.Title.Should().Be("web-01");
-        vm.SelectedItem.IsSelected.Should().BeTrue();
+        Assert.IsTrue(vm.IsOpen);
+        Assert.AreEqual(2, vm.Groups.Count());
+        Assert.AreEqual("会话", vm.Groups[0].Category);
+        Assert.AreEqual(2, vm.Groups[0].Items.Count());
+        Assert.AreEqual(3, vm.ResultCount);
+        Assert.AreEqual("web-01", vm.SelectedItem!.Title);
+        Assert.IsTrue(vm.SelectedItem.IsSelected);
     }
 
-    [Fact]
-    [Trait("Category", "CommandPalette")]
+    [TestMethod]
+    [TestCategory("CommandPalette")]
     public void Query_FiltersItems_CaseInsensitiveAndFuzzy()
     {
         var vm = CreateVm(out _, ("命令", "打开设置"), ("命令", "新建 SSH 连接"), ("会话", "web-prod-01"));
         vm.Open();
 
         vm.Query = "web";
-        vm.ResultCount.Should().Be(1);
-        vm.SelectedItem!.Title.Should().Be("web-prod-01");
+        Assert.AreEqual(1, vm.ResultCount);
+        Assert.AreEqual("web-prod-01", vm.SelectedItem!.Title);
 
         // Fuzzy subsequence: "ssh" matches "新建 SSH 连接".
         vm.Query = "ssh";
-        vm.ResultCount.Should().Be(1);
-        vm.SelectedItem!.Title.Should().Be("新建 SSH 连接");
+        Assert.AreEqual(1, vm.ResultCount);
+        Assert.AreEqual("新建 SSH 连接", vm.SelectedItem!.Title);
     }
 
-    [Fact]
-    [Trait("Category", "CommandPalette")]
+    [TestMethod]
+    [TestCategory("CommandPalette")]
     public void MoveDownAndUp_WrapsSelection()
     {
         var vm = CreateVm(out _, ("命令", "a"), ("命令", "b"), ("命令", "c"));
         vm.Open();
 
-        vm.SelectedItem!.Title.Should().Be("a");
+        Assert.AreEqual("a", vm.SelectedItem!.Title);
         vm.MoveDown();
-        vm.SelectedItem!.Title.Should().Be("b");
+        Assert.AreEqual("b", vm.SelectedItem!.Title);
         vm.MoveUp();
         vm.MoveUp();
-        vm.SelectedItem!.Title.Should().Be("c"); // wrapped past the top
+        Assert.AreEqual("c", vm.SelectedItem!.Title); // wrapped past the top
     }
 
-    [Fact]
-    [Trait("Category", "CommandPalette")]
+    [TestMethod]
+    [TestCategory("CommandPalette")]
     public void ExecuteSelected_InvokesActionAndCloses()
     {
         var vm = CreateVm(out var runs, ("命令", "a"), ("命令", "b"));
@@ -76,13 +76,13 @@ public class CommandPaletteViewModelTests
 
         vm.ExecuteSelected();
 
-        runs[1].Should().Be(1);
-        runs[0].Should().Be(0);
-        vm.IsOpen.Should().BeFalse();
+        Assert.AreEqual(1, runs[1]);
+        Assert.AreEqual(0, runs[0]);
+        Assert.IsFalse(vm.IsOpen);
     }
 
-    [Fact]
-    [Trait("Category", "CommandPalette")]
+    [TestMethod]
+    [TestCategory("CommandPalette")]
     public void Activate_SelectsThenRunsItem()
     {
         var vm = CreateVm(out var runs, ("命令", "a"), ("命令", "b"));
@@ -91,12 +91,12 @@ public class CommandPaletteViewModelTests
 
         vm.Activate(target);
 
-        runs[1].Should().Be(1);
-        vm.IsOpen.Should().BeFalse();
+        Assert.AreEqual(1, runs[1]);
+        Assert.IsFalse(vm.IsOpen);
     }
 
-    [Fact]
-    [Trait("Category", "CommandPalette")]
+    [TestMethod]
+    [TestCategory("CommandPalette")]
     public void Open_RefreshesFromProvider()
     {
         var source = new List<CommandPaletteItem>
@@ -106,10 +106,10 @@ public class CommandPaletteViewModelTests
         var vm = new CommandPaletteViewModel(() => source);
 
         vm.Open();
-        vm.ResultCount.Should().Be(1);
+        Assert.AreEqual(1, vm.ResultCount);
 
         source.Add(new CommandPaletteItem("命令", "two", () => { }));
         vm.Open();
-        vm.ResultCount.Should().Be(2);
+        Assert.AreEqual(2, vm.ResultCount);
     }
 }

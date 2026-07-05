@@ -1,5 +1,4 @@
 using System.Reactive.Linq;
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.App.ViewModels;
 using PulseTerm.Core.Models;
@@ -7,19 +6,20 @@ using PulseTerm.Presentation.Services;
 
 namespace PulseTerm.App.Tests.ViewModels;
 
+[TestClass]
 public sealed class ConnectionProfileViewModelTests
 {
-    [Theory]
-    [InlineData("pä中文ss123", "pss123")]
-    [InlineData("secret!", "secret!")]
-    [InlineData("密码", "")]
+    [TestMethod]
+    [DataRow("pä中文ss123", "pss123")]
+    [DataRow("secret!", "secret!")]
+    [DataRow("密码", "")]
     public void Password_StripsNonAsciiCharacters(string input, string expected)
     {
         var vm = new ConnectionProfileViewModel { Password = input };
-        vm.Password.Should().Be(expected);
+        Assert.AreEqual(expected, vm.Password);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task SaveCommand_UsesWorkflowServiceAndReturnsSavedProfile()
     {
         var workflow = Substitute.For<IConnectionWorkflowService>();
@@ -40,11 +40,11 @@ public sealed class ConnectionProfileViewModelTests
 
         var result = await vm.SaveCommand.Execute().FirstAsync();
 
-        result.Should().BeSameAs(expected);
+        Assert.AreSame(expected, result);
         await workflow.Received(1).SaveProfileAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>());
     }
 
-    [Fact]
+    [TestMethod]
     public async Task TestConnectionCommand_StoresSuccessState()
     {
         var workflow = Substitute.For<IConnectionWorkflowService>();
@@ -55,8 +55,8 @@ public sealed class ConnectionProfileViewModelTests
 
         await vm.TestConnectionCommand.Execute().FirstAsync();
 
-        vm.LastTestSucceeded.Should().BeTrue();
-        vm.ErrorMessage.Should().BeNull();
+        Assert.IsTrue(vm.LastTestSucceeded == true);
+        Assert.IsNull(vm.ErrorMessage);
     }
 
     private static ConnectionProfileViewModel CreateValidViewModel(IConnectionWorkflowService workflow)

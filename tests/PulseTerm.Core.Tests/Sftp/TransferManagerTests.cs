@@ -1,14 +1,13 @@
-using FluentAssertions;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Sftp;
-using Xunit;
 
 namespace PulseTerm.Core.Tests.Sftp;
 
-[Trait("Category", "Sftp")]
+[TestClass]
+[TestCategory("Sftp")]
 public class TransferManagerTests
 {
-    [Fact]
+    [TestMethod]
     public async Task QueueTransferAsync_AddsTransferToQueue()
     {
         using var manager = new TransferManager(SlowExecutor());
@@ -18,11 +17,11 @@ public class TransferManagerTests
         await Task.Delay(20);
 
         var retrieved = manager.GetTransfer(task.Id);
-        retrieved.Should().NotBeNull();
-        retrieved!.Id.Should().Be(task.Id);
+        Assert.IsNotNull(retrieved);
+        Assert.AreEqual(task.Id, retrieved!.Id);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task QueueTransferAsync_RespectsMaxConcurrentLimit()
     {
         using var manager = new TransferManager(SlowExecutor()) { MaxConcurrentTransfers = 3 };
@@ -40,12 +39,12 @@ public class TransferManagerTests
         var activeCount = manager.ActiveTransfers.Count;
         var queuedCount = manager.QueuedTransfers.Count;
         var totalInSystem = activeCount + queuedCount;
-        
-        activeCount.Should().BeLessThanOrEqualTo(3, "because max concurrent is 3");
-        totalInSystem.Should().BeGreaterThan(0, "because transfers should still be in progress");
+
+        Assert.IsTrue(activeCount <= 3, "because max concurrent is 3");
+        Assert.IsTrue(totalInSystem > 0, "because transfers should still be in progress");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task QueueTransferAsync_WithConcurrentLimit_OnlyThreeRunSimultaneously()
     {
         using var manager = new TransferManager(SlowExecutor()) { MaxConcurrentTransfers = 3 };
@@ -60,10 +59,10 @@ public class TransferManagerTests
 
         await Task.Delay(200);
 
-        manager.ActiveTransfers.Count.Should().BeLessThanOrEqualTo(3);
+        Assert.IsTrue(manager.ActiveTransfers.Count <= 3);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task CancelTransferAsync_CancelsSpecificTransfer()
     {
         using var manager = new TransferManager();
@@ -73,10 +72,10 @@ public class TransferManagerTests
         await manager.CancelTransferAsync(task.Id);
 
         var cancelledTask = manager.GetTransfer(task.Id);
-        cancelledTask?.Status.Should().Be(TransferStatus.Cancelled);
+        Assert.AreEqual(TransferStatus.Cancelled, cancelledTask?.Status);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetTransfer_ReturnsCorrectTransferTask()
     {
         using var manager = new TransferManager();
@@ -85,13 +84,13 @@ public class TransferManagerTests
         await manager.QueueTransferAsync(task);
         var retrieved = manager.GetTransfer(task.Id);
 
-        retrieved.Should().NotBeNull();
-        retrieved!.Id.Should().Be(task.Id);
-        retrieved.LocalPath.Should().Be(task.LocalPath);
-        retrieved.RemotePath.Should().Be(task.RemotePath);
+        Assert.IsNotNull(retrieved);
+        Assert.AreEqual(task.Id, retrieved!.Id);
+        Assert.AreEqual(task.LocalPath, retrieved.LocalPath);
+        Assert.AreEqual(task.RemotePath, retrieved.RemotePath);
     }
 
-    [Fact]
+    [TestMethod]
     public void GetTransfer_WhenNotFound_ReturnsNull()
     {
         using var manager = new TransferManager();
@@ -99,14 +98,14 @@ public class TransferManagerTests
 
         var result = manager.GetTransfer(nonExistentId);
 
-        result.Should().BeNull();
+        Assert.IsNull(result);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ActiveTransfers_ReflectsCurrentlyRunningTransfers()
     {
         using var manager = new TransferManager(SlowExecutor()) { MaxConcurrentTransfers = 2 };
-        
+
         var task1 = CreateTransferTask(TransferType.Upload);
         var task2 = CreateTransferTask(TransferType.Download);
         var task3 = CreateTransferTask(TransferType.Upload);
@@ -117,25 +116,25 @@ public class TransferManagerTests
 
         await Task.Delay(100);
 
-        manager.ActiveTransfers.Count.Should().BeLessThanOrEqualTo(2);
+        Assert.IsTrue(manager.ActiveTransfers.Count <= 2);
     }
 
-    [Fact]
+    [TestMethod]
     public void MaxConcurrentTransfers_DefaultsToThree()
     {
         using var manager = new TransferManager();
 
-        manager.MaxConcurrentTransfers.Should().Be(3);
+        Assert.AreEqual(3, manager.MaxConcurrentTransfers);
     }
 
-    [Fact]
+    [TestMethod]
     public void MaxConcurrentTransfers_CanBeChanged()
     {
         using var manager = new TransferManager();
 
         manager.MaxConcurrentTransfers = 5;
 
-        manager.MaxConcurrentTransfers.Should().Be(5);
+        Assert.AreEqual(5, manager.MaxConcurrentTransfers);
     }
 
     private static TransferExecutor SlowExecutor(int delayMs = 2000)

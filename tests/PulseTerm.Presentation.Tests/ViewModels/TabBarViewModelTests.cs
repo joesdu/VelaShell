@@ -1,32 +1,32 @@
-using FluentAssertions;
 using PulseTerm.Presentation.ViewModels;
 
 namespace PulseTerm.Presentation.Tests.ViewModels;
 
+[TestClass]
 public sealed class TabBarViewModelTests
 {
-    [Fact]
+    [TestMethod]
     public void AddTab_AddsToCollection()
     {
         var vm = new TabBarViewModel();
 
         vm.AddTabCommand.Execute().Subscribe();
 
-        vm.Tabs.Should().HaveCount(1);
+        Assert.AreEqual(1, vm.Tabs.Count());
     }
 
-    [Fact]
+    [TestMethod]
     public void AddTab_SetsAsActive()
     {
         var vm = new TabBarViewModel();
 
         vm.AddTabCommand.Execute().Subscribe();
 
-        vm.ActiveTab.Should().NotBeNull();
-        vm.ActiveTab.Should().BeSameAs(vm.Tabs[0]);
+        Assert.IsNotNull(vm.ActiveTab);
+        Assert.AreSame(vm.Tabs[0], vm.ActiveTab);
     }
 
-    [Fact]
+    [TestMethod]
     public void CloseTab_RemovesFromCollection()
     {
         var vm = new TabBarViewModel();
@@ -35,6 +35,6 @@ public sealed class TabBarViewModelTests
 
         vm.CloseTabCommand.Execute(tab).Subscribe();
 
-        vm.Tabs.Should().BeEmpty();
+        Assert.AreEqual(0, vm.Tabs.Count());
     }
 }

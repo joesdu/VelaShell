@@ -1,11 +1,10 @@
-using FluentAssertions;
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
-using Xunit;
 
 namespace PulseTerm.Core.Tests.Data;
 
-[Trait("Category", "DataStore")]
+[TestClass]
+[TestCategory("DataStore")]
 public class JsonDataStoreTests : IDisposable
 {
     private readonly string _testDirectory;
@@ -26,7 +25,7 @@ public class JsonDataStoreTests : IDisposable
         }
     }
 
-    [Fact]
+    [TestMethod]
     public async Task SaveAndLoad_SessionProfile_ShouldRoundTripSuccessfully()
     {
         var filePath = Path.Combine(_testDirectory, "session.json");
@@ -44,15 +43,15 @@ public class JsonDataStoreTests : IDisposable
         await _dataStore.SaveAsync(filePath, session);
         var loaded = await _dataStore.LoadAsync<SessionProfile>(filePath);
 
-        loaded.Should().NotBeNull();
-        loaded!.Id.Should().Be(session.Id);
-        loaded.Name.Should().Be(session.Name);
-        loaded.Host.Should().Be(session.Host);
-        loaded.Password.Should().Be(session.Password);
-        loaded.PrivateKeyPath.Should().Be(session.PrivateKeyPath);
+        Assert.IsNotNull(loaded);
+        Assert.AreEqual(session.Id, loaded!.Id);
+        Assert.AreEqual(session.Name, loaded.Name);
+        Assert.AreEqual(session.Host, loaded.Host);
+        Assert.AreEqual(session.Password, loaded.Password);
+        Assert.AreEqual(session.PrivateKeyPath, loaded.PrivateKeyPath);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task SaveAndLoad_AppSettings_ShouldRoundTripSuccessfully()
     {
         var filePath = Path.Combine(_testDirectory, "settings.json");
@@ -69,22 +68,24 @@ public class JsonDataStoreTests : IDisposable
         await _dataStore.SaveAsync(filePath, settings);
         var loaded = await _dataStore.LoadAsync<AppSettings>(filePath);
 
-        loaded.Should().BeEquivalentTo(settings);
+        Assert.AreEqual(
+            System.Text.Json.JsonSerializer.Serialize(settings),
+            System.Text.Json.JsonSerializer.Serialize(loaded));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Load_FileDoesNotExist_ShouldReturnNewInstance()
     {
         var filePath = Path.Combine(_testDirectory, "nonexistent.json");
 
         var result = await _dataStore.LoadAsync<AppSettings>(filePath);
 
-        result.Should().NotBeNull();
-        result!.Language.Should().Be("en");
-        result.Theme.Should().Be("dark");
+        Assert.IsNotNull(result);
+        Assert.AreEqual("en", result!.Language);
+        Assert.AreEqual("dark", result.Theme);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Load_InvalidJson_ShouldReturnDefaultsInsteadOfThrowing()
     {
         var filePath = Path.Combine(_testDirectory, "invalid.json");
@@ -92,12 +93,12 @@ public class JsonDataStoreTests : IDisposable
 
         var result = await _dataStore.LoadAsync<AppSettings>(filePath);
 
-        result.Should().NotBeNull();
-        result!.Language.Should().Be("en");
-        result.Theme.Should().Be("dark");
+        Assert.IsNotNull(result);
+        Assert.AreEqual("en", result!.Language);
+        Assert.AreEqual("dark", result.Theme);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Save_CreatesDirectoryIfNotExists()
     {
         var subDir = Path.Combine(_testDirectory, "nested", "path");
@@ -106,11 +107,11 @@ public class JsonDataStoreTests : IDisposable
 
         await _dataStore.SaveAsync(filePath, settings);
 
-        File.Exists(filePath).Should().BeTrue();
-        Directory.Exists(subDir).Should().BeTrue();
+        Assert.IsTrue(File.Exists(filePath));
+        Assert.IsTrue(Directory.Exists(subDir));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Save_ProducesCamelCaseJson()
     {
         var filePath = Path.Combine(_testDirectory, "settings.json");
@@ -123,12 +124,12 @@ public class JsonDataStoreTests : IDisposable
         await _dataStore.SaveAsync(filePath, settings);
         var json = await File.ReadAllTextAsync(filePath);
 
-        json.Should().Contain("\"terminalFont\":");
-        json.Should().Contain("\"terminalFontSize\":");
-        json.Should().NotContain("\"TerminalFont\":");
+        StringAssert.Contains(json, "\"terminalFont\":");
+        StringAssert.Contains(json, "\"terminalFontSize\":");
+        Assert.IsFalse(json.Contains("\"TerminalFont\":"));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Save_ProducesIndentedJson()
     {
         var filePath = Path.Combine(_testDirectory, "settings.json");
@@ -137,11 +138,11 @@ public class JsonDataStoreTests : IDisposable
         await _dataStore.SaveAsync(filePath, settings);
         var json = await File.ReadAllTextAsync(filePath);
 
-        json.Should().Contain("\n");
-        json.Should().Contain("  ");
+        StringAssert.Contains(json, "\n");
+        StringAssert.Contains(json, "  ");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ConcurrentSave_ShouldNotCorruptFile()
     {
         var filePath = Path.Combine(_testDirectory, "concurrent.json");
@@ -156,11 +157,11 @@ public class JsonDataStoreTests : IDisposable
         await Task.WhenAll(tasks);
 
         var loaded = await _dataStore.LoadAsync<AppSettings>(filePath);
-        loaded.Should().NotBeNull();
-        loaded!.TerminalFontSize.Should().BeInRange(0, 9);
+        Assert.IsNotNull(loaded);
+        Assert.IsTrue(loaded!.TerminalFontSize >= 0 && loaded.TerminalFontSize <= 9);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task Save_UsesExclusiveFileAccess()
     {
         var filePath = Path.Combine(_testDirectory, "exclusive.json");
@@ -169,10 +170,10 @@ public class JsonDataStoreTests : IDisposable
         await _dataStore.SaveAsync(filePath, settings);
 
         var fileInfo = new FileInfo(filePath);
-        fileInfo.Exists.Should().BeTrue();
+        Assert.IsTrue(fileInfo.Exists);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task MultipleInstances_DifferentPaths_ShouldWorkConcurrently()
     {
         var filePath1 = Path.Combine(_testDirectory, "file1.json");
@@ -188,12 +189,12 @@ public class JsonDataStoreTests : IDisposable
         var loaded1 = await _dataStore.LoadAsync<AppSettings>(filePath1);
         var loaded2 = await _dataStore.LoadAsync<AppSettings>(filePath2);
 
-        loaded1!.Language.Should().Be("en");
-        loaded2!.Language.Should().Be("zh");
+        Assert.AreEqual("en", loaded1!.Language);
+        Assert.AreEqual("zh", loaded2!.Language);
     }
 
-    [Fact]
-    [Trait("Category", "EdgeCase")]
+    [TestMethod]
+    [TestCategory("EdgeCase")]
     public async Task Load_TruncatedJson_ShouldReturnDefaults()
     {
         var filePath = Path.Combine(_testDirectory, "truncated.json");
@@ -201,12 +202,12 @@ public class JsonDataStoreTests : IDisposable
 
         var result = await _dataStore.LoadAsync<AppSettings>(filePath);
 
-        result.Should().NotBeNull();
-        result!.Language.Should().Be("en");
+        Assert.IsNotNull(result);
+        Assert.AreEqual("en", result!.Language);
     }
 
-    [Fact]
-    [Trait("Category", "EdgeCase")]
+    [TestMethod]
+    [TestCategory("EdgeCase")]
     public async Task Load_EmptyJsonFile_ShouldReturnDefaults()
     {
         var filePath = Path.Combine(_testDirectory, "empty.json");
@@ -214,7 +215,7 @@ public class JsonDataStoreTests : IDisposable
 
         var result = await _dataStore.LoadAsync<AppSettings>(filePath);
 
-        result.Should().NotBeNull();
-        result!.Language.Should().Be("en");
+        Assert.IsNotNull(result);
+        Assert.AreEqual("en", result!.Language);
     }
 }

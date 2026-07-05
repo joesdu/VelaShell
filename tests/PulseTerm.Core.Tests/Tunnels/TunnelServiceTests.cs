@@ -1,14 +1,13 @@
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Ssh;
 using PulseTerm.Core.Tunnels;
 using PulseTerm.Infrastructure.Tunnels;
-using Xunit;
 
 namespace PulseTerm.Core.Tests.Tunnels;
 
-[Trait("Category", "Tunnel")]
+[TestClass]
+[TestCategory("Tunnel")]
 public class TunnelServiceTests
 {
     private readonly ISshConnectionService _mockConnectionService;
@@ -38,7 +37,7 @@ public class TunnelServiceTests
         _mockClientWrapper.IsConnected.Returns(true);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task CreateLocalForwardAsync_CreatesActiveTunnel()
     {
         var config = new TunnelConfig
@@ -54,15 +53,15 @@ public class TunnelServiceTests
         var service = new TunnelService(_mockConnectionService, (sessionId) => _mockClientWrapper);
         var tunnel = await service.CreateLocalForwardAsync(_sessionId, config);
 
-        tunnel.Should().NotBeNull();
-        tunnel.Id.Should().NotBe(Guid.Empty);
-        tunnel.Config.Should().Be(config);
-        tunnel.Status.Should().Be(TunnelStatus.Active);
-        tunnel.SessionId.Should().Be(_sessionId);
-        tunnel.CreatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(1));
+        Assert.IsNotNull(tunnel);
+        Assert.AreNotEqual(Guid.Empty, tunnel.Id);
+        Assert.AreEqual(config, tunnel.Config);
+        Assert.AreEqual(TunnelStatus.Active, tunnel.Status);
+        Assert.AreEqual(_sessionId, tunnel.SessionId);
+        Assert.IsTrue((DateTime.UtcNow - tunnel.CreatedAt).Duration() <= TimeSpan.FromSeconds(1));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task CreateRemoteForwardAsync_CreatesActiveTunnel()
     {
         var config = new TunnelConfig
@@ -78,14 +77,14 @@ public class TunnelServiceTests
         var service = new TunnelService(_mockConnectionService, (sessionId) => _mockClientWrapper);
         var tunnel = await service.CreateRemoteForwardAsync(_sessionId, config);
 
-        tunnel.Should().NotBeNull();
-        tunnel.Id.Should().NotBe(Guid.Empty);
-        tunnel.Config.Should().Be(config);
-        tunnel.Status.Should().Be(TunnelStatus.Active);
-        tunnel.SessionId.Should().Be(_sessionId);
+        Assert.IsNotNull(tunnel);
+        Assert.AreNotEqual(Guid.Empty, tunnel.Id);
+        Assert.AreEqual(config, tunnel.Config);
+        Assert.AreEqual(TunnelStatus.Active, tunnel.Status);
+        Assert.AreEqual(_sessionId, tunnel.SessionId);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task StopTunnelAsync_ChangesTunnelStatusToStopped()
     {
         var config = new TunnelConfig
@@ -105,10 +104,10 @@ public class TunnelServiceTests
 
         var activeTunnels = service.GetActiveTunnels(_sessionId);
         var stoppedTunnel = activeTunnels.Items.FirstOrDefault(t => t.Id == tunnel.Id);
-        stoppedTunnel?.Status.Should().Be(TunnelStatus.Stopped);
+        Assert.AreEqual(TunnelStatus.Stopped, stoppedTunnel?.Status);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetActiveTunnels_ReturnsOnlyActiveTunnels()
     {
         var config1 = new TunnelConfig
@@ -136,12 +135,12 @@ public class TunnelServiceTests
         var tunnel2 = await service.CreateLocalForwardAsync(_sessionId, config2);
 
         var activeTunnels = service.GetActiveTunnels(_sessionId);
-        activeTunnels.Count.Should().Be(2);
-        activeTunnels.Items.Should().Contain(t => t.Id == tunnel1.Id);
-        activeTunnels.Items.Should().Contain(t => t.Id == tunnel2.Id);
+        Assert.AreEqual(2, activeTunnels.Count);
+        Assert.IsTrue(activeTunnels.Items.Any(t => t.Id == tunnel1.Id));
+        Assert.IsTrue(activeTunnels.Items.Any(t => t.Id == tunnel2.Id));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task IndividualTunnelFailure_DoesNotAffectOtherTunnels()
     {
         var config1 = new TunnelConfig
@@ -174,11 +173,11 @@ public class TunnelServiceTests
         var stoppedTunnel = activeTunnels.Items.FirstOrDefault(t => t.Id == tunnel1.Id);
         var activeTunnel = activeTunnels.Items.FirstOrDefault(t => t.Id == tunnel2.Id);
 
-        stoppedTunnel?.Status.Should().Be(TunnelStatus.Stopped);
-        activeTunnel?.Status.Should().Be(TunnelStatus.Active);
+        Assert.AreEqual(TunnelStatus.Stopped, stoppedTunnel?.Status);
+        Assert.AreEqual(TunnelStatus.Active, activeTunnel?.Status);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task TunnelConfig_StoredForReconnectRecreation()
     {
         var config = new TunnelConfig
@@ -194,12 +193,12 @@ public class TunnelServiceTests
         var service = new TunnelService(_mockConnectionService, (sessionId) => _mockClientWrapper);
         var tunnel = await service.CreateLocalForwardAsync(_sessionId, config);
 
-        tunnel.Config.Should().NotBeNull();
-        tunnel.Config.Type.Should().Be(TunnelType.LocalForward);
-        tunnel.Config.Name.Should().Be("DB Tunnel");
-        tunnel.Config.LocalHost.Should().Be("127.0.0.1");
-        tunnel.Config.LocalPort.Should().Be(5432);
-        tunnel.Config.RemoteHost.Should().Be("db.example.com");
-        tunnel.Config.RemotePort.Should().Be(5432);
+        Assert.IsNotNull(tunnel.Config);
+        Assert.AreEqual(TunnelType.LocalForward, tunnel.Config.Type);
+        Assert.AreEqual("DB Tunnel", tunnel.Config.Name);
+        Assert.AreEqual("127.0.0.1", tunnel.Config.LocalHost);
+        Assert.AreEqual(5432u, tunnel.Config.LocalPort);
+        Assert.AreEqual("db.example.com", tunnel.Config.RemoteHost);
+        Assert.AreEqual(5432u, tunnel.Config.RemotePort);
     }
 }

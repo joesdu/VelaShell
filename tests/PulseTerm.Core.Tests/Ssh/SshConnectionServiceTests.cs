@@ -1,16 +1,15 @@
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Ssh;
 using PulseTerm.Infrastructure.Ssh;
-using Xunit;
 
 namespace PulseTerm.Core.Tests.Ssh;
 
-[Trait("Category", "SshConnection")]
+[TestClass]
+[TestCategory("SshConnection")]
 public class SshConnectionServiceTests
 {
-    [Fact]
+    [TestMethod]
     public async Task ConnectAsync_WithPassword_ReturnsConnectedSession()
     {
         var mockClientWrapper = Substitute.For<ISshClientWrapper>();
@@ -28,13 +27,13 @@ public class SshConnectionServiceTests
         var service = new SshConnectionService(_ => mockClientWrapper);
         var session = await service.ConnectAsync(connectionInfo);
 
-        session.Should().NotBeNull();
-        session.Status.Should().Be(SessionStatus.Connected);
-        session.ConnectionInfo.Should().Be(connectionInfo);
+        Assert.IsNotNull(session);
+        Assert.AreEqual(SessionStatus.Connected, session.Status);
+        Assert.AreEqual(connectionInfo, session.ConnectionInfo);
         await mockClientWrapper.Received(1).ConnectAsync(Arg.Any<CancellationToken>());
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ConnectAsync_WithPrivateKey_ReturnsConnectedSession()
     {
         var mockClientWrapper = Substitute.For<ISshClientWrapper>();
@@ -52,12 +51,12 @@ public class SshConnectionServiceTests
         var service = new SshConnectionService(_ => mockClientWrapper);
         var session = await service.ConnectAsync(connectionInfo);
 
-        session.Should().NotBeNull();
-        session.Status.Should().Be(SessionStatus.Connected);
+        Assert.IsNotNull(session);
+        Assert.AreEqual(SessionStatus.Connected, session.Status);
         await mockClientWrapper.Received(1).ConnectAsync(Arg.Any<CancellationToken>());
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ConnectAsync_AuthFailure_ThrowsSshAuthenticationException()
     {
         var mockClientWrapper = Substitute.For<ISshClientWrapper>();
@@ -75,11 +74,11 @@ public class SshConnectionServiceTests
 
         var service = new SshConnectionService(_ => mockClientWrapper);
 
-        await Assert.ThrowsAsync<Renci.SshNet.Common.SshAuthenticationException>(
+        await Assert.ThrowsExactlyAsync<Renci.SshNet.Common.SshAuthenticationException>(
             async () => await service.ConnectAsync(connectionInfo));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ConnectAsync_ConnectionRefused_ThrowsSshConnectionException()
     {
         var mockClientWrapper = Substitute.For<ISshClientWrapper>();
@@ -97,11 +96,11 @@ public class SshConnectionServiceTests
 
         var service = new SshConnectionService(_ => mockClientWrapper);
 
-        await Assert.ThrowsAsync<Renci.SshNet.Common.SshConnectionException>(
+        await Assert.ThrowsExactlyAsync<Renci.SshNet.Common.SshConnectionException>(
             async () => await service.ConnectAsync(connectionInfo));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task DisconnectAsync_ExistingSession_DisconnectsSuccessfully()
     {
         var mockClientWrapper = Substitute.For<ISshClientWrapper>();
@@ -122,10 +121,10 @@ public class SshConnectionServiceTests
         await service.DisconnectAsync(session.SessionId);
 
         mockClientWrapper.Received(1).Disconnect();
-        session.Status.Should().Be(SessionStatus.Disconnected);
+        Assert.AreEqual(SessionStatus.Disconnected, session.Status);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ConnectAsync_ConcurrentSessions_BothSucceed()
     {
         var mockClient1 = Substitute.For<ISshClientWrapper>();
@@ -158,13 +157,13 @@ public class SshConnectionServiceTests
         var session1 = await service.ConnectAsync(connectionInfo1);
         var session2 = await service.ConnectAsync(connectionInfo2);
 
-        session1.Should().NotBeNull();
-        session2.Should().NotBeNull();
-        session1.SessionId.Should().NotBe(session2.SessionId);
-        service.Sessions.Count.Should().Be(2);
+        Assert.IsNotNull(session1);
+        Assert.IsNotNull(session2);
+        Assert.AreNotEqual(session2.SessionId, session1.SessionId);
+        Assert.AreEqual(2, service.Sessions.Count);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ConnectAsync_FactoryReceivesConnectionInfo()
     {
         var mockClientWrapper = Substitute.For<ISshClientWrapper>();
@@ -188,10 +187,10 @@ public class SshConnectionServiceTests
 
         await service.ConnectAsync(connectionInfo);
 
-        receivedInfo.Should().Be(connectionInfo);
+        Assert.AreEqual(connectionInfo, receivedInfo);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetClient_AfterConnect_ReturnsClient()
     {
         var mockClientWrapper = Substitute.For<ISshClientWrapper>();
@@ -210,19 +209,19 @@ public class SshConnectionServiceTests
         var session = await service.ConnectAsync(connectionInfo);
 
         var client = service.GetClient(session.SessionId);
-        client.Should().BeSameAs(mockClientWrapper);
+        Assert.AreSame(mockClientWrapper, client);
     }
 
-    [Fact]
+    [TestMethod]
     public void GetClient_UnknownSessionId_ReturnsNull()
     {
         var service = new SshConnectionService(_ => Substitute.For<ISshClientWrapper>());
 
         var client = service.GetClient(Guid.NewGuid());
-        client.Should().BeNull();
+        Assert.IsNull(client);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ConnectAsync_Failure_DisposesClient()
     {
         var mockClientWrapper = Substitute.For<ISshClientWrapper>();
@@ -240,13 +239,13 @@ public class SshConnectionServiceTests
 
         var service = new SshConnectionService(_ => mockClientWrapper);
 
-        await Assert.ThrowsAsync<Renci.SshNet.Common.SshConnectionException>(
+        await Assert.ThrowsExactlyAsync<Renci.SshNet.Common.SshConnectionException>(
             async () => await service.ConnectAsync(connectionInfo));
 
         mockClientWrapper.Received(1).Dispose();
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ConnectAsync_Failure_RemovesSessionFromList()
     {
         var mockClientWrapper = Substitute.For<ISshClientWrapper>();
@@ -264,13 +263,13 @@ public class SshConnectionServiceTests
 
         var service = new SshConnectionService(_ => mockClientWrapper);
 
-        await Assert.ThrowsAsync<Renci.SshNet.Common.SshConnectionException>(
+        await Assert.ThrowsExactlyAsync<Renci.SshNet.Common.SshConnectionException>(
             async () => await service.ConnectAsync(connectionInfo));
 
-        service.Sessions.Count.Should().Be(0);
+        Assert.AreEqual(0, service.Sessions.Count);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task DisposeAsync_DisconnectsAndDisposesAllClients()
     {
         var mockClient1 = Substitute.For<ISshClientWrapper>();
@@ -311,8 +310,8 @@ public class SshConnectionServiceTests
         mockClient2.Received(1).Dispose();
     }
 
-    [Fact]
-    [Trait("Category", "EdgeCase")]
+    [TestMethod]
+    [TestCategory("EdgeCase")]
     public async Task ConnectAsync_CancellationToken_ThrowsTimeoutException()
     {
         var mockClientWrapper = Substitute.For<ISshClientWrapper>();
@@ -333,16 +332,16 @@ public class SshConnectionServiceTests
 
         var service = new SshConnectionService(_ => mockClientWrapper);
 
-        var ex = await Assert.ThrowsAsync<TimeoutException>(
+        var ex = await Assert.ThrowsExactlyAsync<TimeoutException>(
             async () => await service.ConnectAsync(connectionInfo));
 
-        ex.Message.Should().Contain("slow.example.com");
-        ex.Message.Should().Contain("timed out");
-        service.Sessions.Count.Should().Be(0);
+        StringAssert.Contains(ex.Message, "slow.example.com");
+        StringAssert.Contains(ex.Message, "timed out");
+        Assert.AreEqual(0, service.Sessions.Count);
     }
 
-    [Fact]
-    [Trait("Category", "EdgeCase")]
+    [TestMethod]
+    [TestCategory("EdgeCase")]
     public async Task RapidConnectDisconnect_NoRaceCondition()
     {
         var mockClient = Substitute.For<ISshClientWrapper>();
@@ -362,12 +361,12 @@ public class SshConnectionServiceTests
         var session = await service.ConnectAsync(connectionInfo);
         await service.DisconnectAsync(session.SessionId);
 
-        session.Status.Should().Be(SessionStatus.Disconnected);
-        service.GetClient(session.SessionId).Should().BeNull();
+        Assert.AreEqual(SessionStatus.Disconnected, session.Status);
+        Assert.IsNull(service.GetClient(session.SessionId));
     }
 
-    [Fact]
-    [Trait("Category", "EdgeCase")]
+    [TestMethod]
+    [TestCategory("EdgeCase")]
     public async Task DisconnectAsync_AlreadyDisconnected_DoesNotThrow()
     {
         var mockClient = Substitute.For<ISshClientWrapper>();
@@ -388,6 +387,6 @@ public class SshConnectionServiceTests
         await service.DisconnectAsync(session.SessionId);
         await service.DisconnectAsync(session.SessionId);
 
-        session.Status.Should().Be(SessionStatus.Disconnected);
+        Assert.AreEqual(SessionStatus.Disconnected, session.Status);
     }
 }

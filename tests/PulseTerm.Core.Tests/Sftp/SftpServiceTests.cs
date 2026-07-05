@@ -1,4 +1,3 @@
-using FluentAssertions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using PulseTerm.Core.Models;
@@ -6,12 +5,12 @@ using PulseTerm.Core.Sftp;
 using PulseTerm.Core.Ssh;
 using Renci.SshNet.Sftp;
 using Renci.SshNet.Common;
-using Xunit;
 using ConnectionInfo = PulseTerm.Core.Models.ConnectionInfo;
 
 namespace PulseTerm.Core.Tests.Sftp;
 
-[Trait("Category", "Sftp")]
+[TestClass]
+[TestCategory("Sftp")]
 public class SftpServiceTests
 {
     private readonly ISshConnectionService _connectionService;
@@ -44,7 +43,7 @@ public class SftpServiceTests
         _sftpService = new SftpService(_connectionService, () => _sftpClient);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ListDirectoryAsync_ReturnsRemoteFileInfoArray()
     {
         // Arrange
@@ -61,19 +60,19 @@ public class SftpServiceTests
         var result = await _sftpService.ListDirectoryAsync(_sessionId, "/home/user");
 
         // Assert
-        result.Should().HaveCount(2);
-        result[0].Name.Should().Be("file1.txt");
-        result[0].FullPath.Should().Be("/home/user/file1.txt");
-        result[0].Size.Should().Be(1024);
-        result[0].IsDirectory.Should().BeFalse();
-        result[0].Permissions.Should().Contain("rw-r--r--");
+        Assert.AreEqual(2, result.Count());
+        Assert.AreEqual("file1.txt", result[0].Name);
+        Assert.AreEqual("/home/user/file1.txt", result[0].FullPath);
+        Assert.AreEqual(1024L, result[0].Size);
+        Assert.IsFalse(result[0].IsDirectory);
+        StringAssert.Contains(result[0].Permissions, "rw-r--r--");
 
-        result[1].Name.Should().Be("dir1");
-        result[1].IsDirectory.Should().BeTrue();
-        result[1].Permissions.Should().Contain("rwxr-xr-x");
+        Assert.AreEqual("dir1", result[1].Name);
+        Assert.IsTrue(result[1].IsDirectory);
+        StringAssert.Contains(result[1].Permissions, "rwxr-xr-x");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task UploadFileAsync_VerifiesBytesWritten()
     {
         // Arrange
@@ -87,7 +86,7 @@ public class SftpServiceTests
         _sftpClient.UploadAsync(
             Arg.Any<Stream>(),
             remotePath,
-            Arg.Do<Action<ulong>?>(callback => 
+            Arg.Do<Action<ulong>?>(callback =>
             {
                 if (callback != null)
                 {
@@ -101,7 +100,7 @@ public class SftpServiceTests
         var progressReports = new List<TransferProgress>();
 
         // Act
-        await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, 
+        await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath,
             new SynchronousProgress<TransferProgress>(p => progressReports.Add(p)));
 
         // Assert
@@ -111,12 +110,12 @@ public class SftpServiceTests
             Arg.Any<Action<ulong>?>(),
             Arg.Any<CancellationToken>());
 
-        progressReports.Should().NotBeEmpty("because progress should be reported during upload");
+        Assert.IsTrue(progressReports.Any(), "because progress should be reported during upload");
 
         File.Delete(localPath);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task DownloadFileAsync_VerifiesBytesRead()
     {
         // Arrange
@@ -160,15 +159,15 @@ public class SftpServiceTests
             Arg.Any<Action<ulong>?>(),
             Arg.Any<CancellationToken>());
 
-        File.Exists(localPath).Should().BeTrue();
-        progressReports.Should().NotBeEmpty();
-        progressReports.Last().BytesTransferred.Should().Be(2048);
+        Assert.IsTrue(File.Exists(localPath));
+        Assert.IsTrue(progressReports.Any());
+        Assert.AreEqual(2048L, progressReports.Last().BytesTransferred);
 
         if (File.Exists(localPath))
             File.Delete(localPath);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task DeleteAsync_DeletesFile()
     {
         // Arrange
@@ -187,7 +186,7 @@ public class SftpServiceTests
         _sftpClient.DidNotReceive().DeleteDirectory(Arg.Any<string>());
     }
 
-    [Fact]
+    [TestMethod]
     public async Task CreateDirectoryAsync_CreatesDirectory()
     {
         // Arrange
@@ -200,7 +199,7 @@ public class SftpServiceTests
         _sftpClient.Received(1).CreateDirectory(remotePath);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task DeleteAsync_WithDirectory_DeletesDirectory()
     {
         // Arrange
@@ -219,7 +218,7 @@ public class SftpServiceTests
         _sftpClient.DidNotReceive().DeleteFile(Arg.Any<string>());
     }
 
-    [Fact]
+    [TestMethod]
     public async Task DeleteAsync_WhenPathNotFound_ThrowsFileNotFoundException()
     {
         // Arrange
@@ -227,11 +226,11 @@ public class SftpServiceTests
         _sftpClient.Exists(remotePath).Returns(false);
 
         // Act & Assert
-        await Assert.ThrowsAsync<FileNotFoundException>(
+        await Assert.ThrowsExactlyAsync<FileNotFoundException>(
             () => _sftpService.DeleteAsync(_sessionId, remotePath));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ListDirectoryAsync_OwnerAndGroup_AreNotBooleanStrings()
     {
         // Arrange
@@ -246,15 +245,15 @@ public class SftpServiceTests
         var result = await _sftpService.ListDirectoryAsync(_sessionId, "/home/user");
 
         // Assert
-        result[0].Owner.Should().Be("1000");
-        result[0].Group.Should().Be("1000");
-        result[0].Owner.Should().NotBe("True");
-        result[0].Owner.Should().NotBe("False");
-        result[0].Group.Should().NotBe("True");
-        result[0].Group.Should().NotBe("False");
+        Assert.AreEqual("1000", result[0].Owner);
+        Assert.AreEqual("1000", result[0].Group);
+        Assert.AreNotEqual("True", result[0].Owner);
+        Assert.AreNotEqual("False", result[0].Owner);
+        Assert.AreNotEqual("True", result[0].Group);
+        Assert.AreNotEqual("False", result[0].Group);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task DisposeAsync_DisconnectsAndDisposesAllClients()
     {
         // Arrange — trigger client caching by calling any method
@@ -272,7 +271,7 @@ public class SftpServiceTests
         _sftpClient.Received(1).Dispose();
     }
 
-    [Fact]
+    [TestMethod]
     public async Task ListDirectoryAsync_WhenPermissionDenied_ThrowsException()
     {
         // Arrange
@@ -280,11 +279,11 @@ public class SftpServiceTests
             .Throws(new SftpPermissionDeniedException("Permission denied"));
 
         // Act & Assert
-        await Assert.ThrowsAsync<SftpPermissionDeniedException>(
+        await Assert.ThrowsExactlyAsync<SftpPermissionDeniedException>(
             () => _sftpService.ListDirectoryAsync(_sessionId, "/root/restricted"));
     }
 
-    [Fact]
+    [TestMethod]
     public async Task UploadFileAsync_WithProgressCallback_FiresCorrectPercentages()
     {
         // Arrange
@@ -317,17 +316,17 @@ public class SftpServiceTests
             new SynchronousProgress<TransferProgress>(p => progressReports.Add(p)));
 
         // Assert
-        progressReports.Should().HaveCountGreaterThanOrEqualTo(4);
-        progressReports.Should().Contain(p => p.Percentage >= 25 && p.Percentage < 35);
-        progressReports.Should().Contain(p => p.Percentage >= 50 && p.Percentage < 60);
-        progressReports.Should().Contain(p => p.Percentage >= 75 && p.Percentage < 85);
-        progressReports.Last().Percentage.Should().Be(100);
+        Assert.IsTrue(progressReports.Count() >= 4);
+        Assert.IsTrue(progressReports.Any(p => p.Percentage >= 25 && p.Percentage < 35));
+        Assert.IsTrue(progressReports.Any(p => p.Percentage >= 50 && p.Percentage < 60));
+        Assert.IsTrue(progressReports.Any(p => p.Percentage >= 75 && p.Percentage < 85));
+        Assert.AreEqual(100, progressReports.Last().Percentage);
 
         // Cleanup
         File.Delete(localPath);
     }
 
-    [Fact]
+    [TestMethod]
     public async Task GetFileInfoAsync_ReturnsFileInformation()
     {
         // Arrange
@@ -341,11 +340,11 @@ public class SftpServiceTests
         var result = await _sftpService.GetFileInfoAsync(_sessionId, remotePath);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Name.Should().Be("info.txt");
-        result.FullPath.Should().Be(remotePath);
-        result.Size.Should().Be(4096);
-        result.IsDirectory.Should().BeFalse();
+        Assert.IsNotNull(result);
+        Assert.AreEqual("info.txt", result.Name);
+        Assert.AreEqual(remotePath, result.FullPath);
+        Assert.AreEqual(4096L, result.Size);
+        Assert.IsFalse(result.IsDirectory);
     }
 
     private class SynchronousProgress<T> : IProgress<T>
@@ -363,15 +362,15 @@ public class SftpServiceTests
         file.Length.Returns(length);
         file.IsDirectory.Returns(isDirectory);
         file.LastWriteTime.Returns(DateTime.UtcNow);
-        
+
         file.OwnerCanRead.Returns(permissions.Length > 0 && permissions[0] == 'r');
         file.OwnerCanWrite.Returns(permissions.Length > 1 && permissions[1] == 'w');
         file.OwnerCanExecute.Returns(permissions.Length > 2 && permissions[2] == 'x');
-        
+
         file.GroupCanRead.Returns(permissions.Length > 3 && permissions[3] == 'r');
         file.GroupCanWrite.Returns(permissions.Length > 4 && permissions[4] == 'w');
         file.GroupCanExecute.Returns(permissions.Length > 5 && permissions[5] == 'x');
-        
+
         file.OthersCanRead.Returns(permissions.Length > 6 && permissions[6] == 'r');
         file.OthersCanWrite.Returns(permissions.Length > 7 && permissions[7] == 'w');
         file.OthersCanExecute.Returns(permissions.Length > 8 && permissions[8] == 'x');

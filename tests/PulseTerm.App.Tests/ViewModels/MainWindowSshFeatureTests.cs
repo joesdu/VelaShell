@@ -1,4 +1,3 @@
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.App.ViewModels;
 using PulseTerm.Core.Data;
@@ -10,9 +9,10 @@ using PulseTerm.Terminal;
 
 namespace PulseTerm.App.Tests.ViewModels;
 
+[TestClass]
 public sealed class MainWindowSshFeatureTests
 {
-    [Fact]
+    [TestMethod]
     public async Task ConnectProfileAsync_AddsTerminalTab_AndUpdatesStatusBar()
     {
         var workflow = Substitute.For<IConnectionWorkflowService>();
@@ -55,17 +55,17 @@ public sealed class MainWindowSshFeatureTests
 
         var tab = await vm.ConnectProfileAsync(profile);
 
-        tab.Should().NotBeNull();
-        tab.Title.Should().Be("Prod");
-        tab.ConnectionStatus.Should().Be(SessionStatus.Connected);
-        vm.TabBar.ActiveTab.Should().BeSameAs(tab);
-        vm.TabBar.Tabs.Should().ContainSingle();
-        vm.StatusBar.ConnectionInfo.Should().Be("SSH • root@prod.example.com:22");
-        vm.StatusBar.Status.Should().Be(Strings.Connected);
-        vm.Sidebar.RecentConnections.Connections.Should().ContainSingle();
+        Assert.IsNotNull(tab);
+        Assert.AreEqual("Prod", tab.Title);
+        Assert.AreEqual(SessionStatus.Connected, tab.ConnectionStatus);
+        Assert.AreSame(tab, vm.TabBar.ActiveTab);
+        Assert.AreEqual(1, vm.TabBar.Tabs.Count());
+        Assert.AreEqual("SSH • root@prod.example.com:22", vm.StatusBar.ConnectionInfo);
+        Assert.AreEqual(Strings.Connected, vm.StatusBar.Status);
+        Assert.AreEqual(1, vm.Sidebar.RecentConnections.Connections.Count());
     }
 
-    [Fact]
+    [TestMethod]
     public async Task TryConnectProfileAsync_AuthFailure_DoesNotThrow_AndReportsError()
     {
         var workflow = Substitute.For<IConnectionWorkflowService>();
@@ -89,13 +89,13 @@ public sealed class MainWindowSshFeatureTests
 
         var tab = await vm.TryConnectProfileAsync(profile);
 
-        tab.Should().BeNull();
-        vm.TabBar.Tabs.Should().BeEmpty();
-        vm.LastConnectionError.Should().NotBeNullOrEmpty();
-        vm.LastConnectionError.Should().Contain("认证失败");
+        Assert.IsNull(tab);
+        Assert.AreEqual(0, vm.TabBar.Tabs.Count());
+        Assert.IsFalse(string.IsNullOrEmpty(vm.LastConnectionError));
+        StringAssert.Contains(vm.LastConnectionError, "认证失败");
     }
 
-    [Fact]
+    [TestMethod]
     public async Task InitializeAsync_LoadsSavedSessions_IntoRecentConnections()
     {
         var repository = Substitute.For<ISessionRepository>();
@@ -109,10 +109,10 @@ public sealed class MainWindowSshFeatureTests
 
         await vm.InitializeAsync();
 
-        vm.Sidebar.RecentConnections.Connections.Should().HaveCount(2);
+        Assert.AreEqual(2, vm.Sidebar.RecentConnections.Connections.Count());
     }
 
-    [Fact]
+    [TestMethod]
     public void StatusBar_FollowsActiveTab_ConnectionInfo()
     {
         var vm = new MainWindowViewModel();
@@ -133,10 +133,10 @@ public sealed class MainWindowSshFeatureTests
         vm.TabBar.AddTab(tabA);
         vm.TabBar.AddTab(tabB); // B becomes active
 
-        vm.StatusBar.ConnectionInfo.Should().Be("SSH • b@host-b:22");
+        Assert.AreEqual("SSH • b@host-b:22", vm.StatusBar.ConnectionInfo);
 
         vm.TabBar.ActiveTab = tabA; // switch back to A
-        vm.StatusBar.ConnectionInfo.Should().Be("SSH • a@host-a:22");
+        Assert.AreEqual("SSH • a@host-a:22", vm.StatusBar.ConnectionInfo);
     }
 
     // Named to match SSH.NET's SshAuthenticationException so the VM's type-name mapping applies.

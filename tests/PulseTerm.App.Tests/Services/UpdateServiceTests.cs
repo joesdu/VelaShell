@@ -1,9 +1,9 @@
-using FluentAssertions;
 using PulseTerm.App.Services;
 using Velopack.Locators;
 
 namespace PulseTerm.App.Tests.Services;
 
+[TestClass]
 public class UpdateServiceTests : IDisposable
 {
     private readonly string _tempDir;
@@ -22,71 +22,70 @@ public class UpdateServiceTests : IDisposable
             Directory.Delete(_tempDir, true);
     }
 
-    [Fact]
-    [Trait("Category", "Update")]
+    [TestMethod]
+    [TestCategory("Update")]
     public void CurrentVersion_WhenNotInstalled_ReturnsAssemblyVersion()
     {
         var service = new UpdateService("https://example.com/updates", _locator);
 
-        service.CurrentVersion.Should().NotBeNullOrEmpty();
+        Assert.IsFalse(string.IsNullOrEmpty(service.CurrentVersion));
     }
 
-    [Fact]
-    [Trait("Category", "Update")]
+    [TestMethod]
+    [TestCategory("Update")]
     public void AvailableVersion_Initially_IsNull()
     {
         var service = new UpdateService("https://example.com/updates", _locator);
 
-        service.AvailableVersion.Should().BeNull();
+        Assert.IsNull(service.AvailableVersion);
     }
 
-    [Fact]
-    [Trait("Category", "Update")]
+    [TestMethod]
+    [TestCategory("Update")]
     public async Task CheckForUpdateAsync_WhenNetworkUnavailable_ReturnsFalse()
     {
         var service = new UpdateService("https://invalid.test.example.com/updates", _locator);
 
         var result = await service.CheckForUpdateAsync();
 
-        result.Should().BeFalse();
+        Assert.IsFalse(result);
     }
 
-    [Fact]
-    [Trait("Category", "Update")]
+    [TestMethod]
+    [TestCategory("Update")]
     public async Task DownloadUpdateAsync_WhenNoUpdateAvailable_CompletesWithoutError()
     {
         var service = new UpdateService("https://example.com/updates", _locator);
 
-        var act = () => service.DownloadUpdateAsync();
-        await act.Should().NotThrowAsync();
+        await service.DownloadUpdateAsync();
     }
 
-    [Fact]
-    [Trait("Category", "Update")]
+    [TestMethod]
+    [TestCategory("Update")]
     public void ApplyUpdateAndRestart_WhenNoUpdateAvailable_ThrowsInvalidOperation()
     {
         var service = new UpdateService("https://example.com/updates", _locator);
 
         var act = () => service.ApplyUpdateAndRestart();
 
-        act.Should().Throw<InvalidOperationException>();
+        Assert.ThrowsExactly<InvalidOperationException>(act);
     }
 
-    [Fact]
-    [Trait("Category", "Update")]
+    [TestMethod]
+    [TestCategory("Update")]
     public void Constructor_WithNullUrl_ThrowsArgumentNullException()
     {
         var act = () => new UpdateService(null!, _locator);
 
-        act.Should().Throw<ArgumentNullException>();
+        Assert.ThrowsExactly<ArgumentNullException>(act);
     }
 
-    [Fact]
-    [Trait("Category", "Update")]
+    [TestMethod]
+    [TestCategory("Update")]
     public void ImplementsIUpdateService()
     {
         var service = new UpdateService("https://example.com/updates", _locator);
 
-        service.Should().BeAssignableTo<IUpdateService>();
+        Assert.IsInstanceOfType(service, typeof(IUpdateService));
     }
 }

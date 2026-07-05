@@ -1,10 +1,11 @@
 namespace PulseTerm.Core.Tests;
 
+[TestClass]
 public class SmokeTest
 {
-    [Fact]
+    [TestMethod]
     public void SmokeTest_CoreLibraryLoads()
     {
-        Assert.True(true);
+        Assert.IsTrue(true);
     }
 }

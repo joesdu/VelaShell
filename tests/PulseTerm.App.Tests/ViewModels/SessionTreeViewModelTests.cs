@@ -1,5 +1,4 @@
 using System.Reactive.Linq;
-using FluentAssertions;
 using NSubstitute;
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
@@ -7,6 +6,7 @@ using PulseTerm.Presentation.ViewModels;
 
 namespace PulseTerm.App.Tests.ViewModels;
 
+[TestClass]
 public class SessionTreeViewModelTests
 {
     private readonly ISessionRepository _repository;
@@ -42,16 +42,16 @@ public class SessionTreeViewModelTests
         };
     }
 
-    [Fact]
-    [Trait("Category", "SessionTree")]
+    [TestMethod]
+    [TestCategory("SessionTree")]
     public void Constructor_InitializesWithEmptyNodes()
     {
-        _vm.Nodes.Should().BeEmpty();
-        _vm.SelectedNode.Should().BeNull();
+        Assert.AreEqual(0, _vm.Nodes.Count());
+        Assert.IsNull(_vm.SelectedNode);
     }
 
-    [Fact]
-    [Trait("Category", "SessionTree")]
+    [TestMethod]
+    [TestCategory("SessionTree")]
     public async Task LoadCommand_PopulatesTreeFromRepository()
     {
         var session1 = CreateSession("WebServer");
@@ -64,16 +64,16 @@ public class SessionTreeViewModelTests
 
         await _vm.LoadCommand.Execute().FirstAsync();
 
-        _vm.Nodes.Should().HaveCount(1);
-        _vm.Nodes[0].Name.Should().Be("Production");
-        _vm.Nodes[0].IsGroup.Should().BeTrue();
-        _vm.Nodes[0].Children.Should().HaveCount(2);
-        _vm.Nodes[0].Children[0].Name.Should().Be("WebServer");
-        _vm.Nodes[0].Children[1].Name.Should().Be("DbServer");
+        Assert.AreEqual(1, _vm.Nodes.Count());
+        Assert.AreEqual("Production", _vm.Nodes[0].Name);
+        Assert.IsTrue(_vm.Nodes[0].IsGroup);
+        Assert.AreEqual(2, _vm.Nodes[0].Children.Count());
+        Assert.AreEqual("WebServer", _vm.Nodes[0].Children[0].Name);
+        Assert.AreEqual("DbServer", _vm.Nodes[0].Children[1].Name);
     }
 
-    [Fact]
-    [Trait("Category", "SessionTree")]
+    [TestMethod]
+    [TestCategory("SessionTree")]
     public async Task LoadCommand_OrdersGroupsBySortOrder()
     {
         var group1 = CreateGroup("Staging", 1);
@@ -83,13 +83,13 @@ public class SessionTreeViewModelTests
 
         await _vm.LoadCommand.Execute().FirstAsync();
 
-        _vm.Nodes.Should().HaveCount(2);
-        _vm.Nodes[0].Name.Should().Be("Production");
-        _vm.Nodes[1].Name.Should().Be("Staging");
+        Assert.AreEqual(2, _vm.Nodes.Count());
+        Assert.AreEqual("Production", _vm.Nodes[0].Name);
+        Assert.AreEqual("Staging", _vm.Nodes[1].Name);
     }
 
-    [Fact]
-    [Trait("Category", "SessionTree")]
+    [TestMethod]
+    [TestCategory("SessionTree")]
     public void AddSession_AddsToCorrectGroup()
     {
         var groupId = Guid.NewGuid();
@@ -105,12 +105,12 @@ public class SessionTreeViewModelTests
 
         _vm.AddSession(session);
 
-        groupNode.Children.Should().HaveCount(1);
-        groupNode.Children[0].Name.Should().Be("NewServer");
+        Assert.AreEqual(1, groupNode.Children.Count());
+        Assert.AreEqual("NewServer", groupNode.Children[0].Name);
     }
 
-    [Fact]
-    [Trait("Category", "SessionTree")]
+    [TestMethod]
+    [TestCategory("SessionTree")]
     public void MoveSessionToGroup_MovesNodeBetweenGroups()
     {
         var sourceGroupId = Guid.NewGuid();
@@ -125,17 +125,17 @@ public class SessionTreeViewModelTests
         var session = new SessionProfile { Id = Guid.NewGuid(), Name = "MoveMe", GroupId = sourceGroupId };
         _vm.AddSession(session);
 
-        sourceGroup.Children.Should().HaveCount(1);
+        Assert.AreEqual(1, sourceGroup.Children.Count());
 
         _vm.MoveSessionToGroup(session.Id, targetGroupId);
 
-        sourceGroup.Children.Should().BeEmpty();
-        targetGroup.Children.Should().HaveCount(1);
-        targetGroup.Children[0].Name.Should().Be("MoveMe");
+        Assert.AreEqual(0, sourceGroup.Children.Count());
+        Assert.AreEqual(1, targetGroup.Children.Count());
+        Assert.AreEqual("MoveMe", targetGroup.Children[0].Name);
     }
 
-    [Fact]
-    [Trait("Category", "SessionTree")]
+    [TestMethod]
+    [TestCategory("SessionTree")]
     public async Task DeleteSessionCommand_RemovesSelectedSession()
     {
         var session = CreateSession("ToDelete");
@@ -149,13 +149,13 @@ public class SessionTreeViewModelTests
         _vm.SelectedNode = _vm.Nodes[0].Children[0];
         await _vm.DeleteSessionCommand.Execute().FirstAsync();
 
-        _vm.Nodes[0].Children.Should().BeEmpty();
-        _vm.SelectedNode.Should().BeNull();
+        Assert.AreEqual(0, _vm.Nodes[0].Children.Count());
+        Assert.IsNull(_vm.SelectedNode);
         await _repository.Received(1).DeleteSessionAsync(session.Id);
     }
 
-    [Fact]
-    [Trait("Category", "SessionTree")]
+    [TestMethod]
+    [TestCategory("SessionTree")]
     public void SelectedNode_RaisesPropertyChanged()
     {
         var node = new SessionTreeNodeViewModel(Guid.NewGuid(), "Test", isGroup: false);
@@ -170,42 +170,42 @@ public class SessionTreeViewModelTests
 
         _vm.SelectedNode = node;
 
-        changed.Should().BeTrue();
-        _vm.SelectedNode.Should().BeSameAs(node);
+        Assert.IsTrue(changed);
+        Assert.AreSame(node, _vm.SelectedNode);
     }
 
-    [Fact]
-    [Trait("Category", "SessionTree")]
+    [TestMethod]
+    [TestCategory("SessionTree")]
     public void SessionTreeNodeViewModel_DefaultStatus_IsDisconnected()
     {
         var node = new SessionTreeNodeViewModel(Guid.NewGuid(), "Server1", isGroup: false);
 
-        node.Status.Should().Be(SessionStatus.Disconnected);
-        node.IsGroup.Should().BeFalse();
-        node.IsExpanded.Should().BeFalse();
+        Assert.AreEqual(SessionStatus.Disconnected, node.Status);
+        Assert.IsFalse(node.IsGroup);
+        Assert.IsFalse(node.IsExpanded);
     }
 
-    [Fact]
-    [Trait("Category", "SessionTree")]
+    [TestMethod]
+    [TestCategory("SessionTree")]
     public void SessionTreeNodeViewModel_GroupNode_DefaultsExpanded()
     {
         var node = new SessionTreeNodeViewModel(Guid.NewGuid(), "MyGroup", isGroup: true);
 
-        node.IsGroup.Should().BeTrue();
-        node.IsExpanded.Should().BeTrue();
-        node.Children.Should().BeEmpty();
+        Assert.IsTrue(node.IsGroup);
+        Assert.IsTrue(node.IsExpanded);
+        Assert.AreEqual(0, node.Children.Count());
     }
 
-    [Fact]
-    [Trait("Category", "EdgeCase")]
+    [TestMethod]
+    [TestCategory("EdgeCase")]
     public void HasNoSessions_DefaultsToTrue_WhenNoSessionsLoaded()
     {
-        _vm.HasNoSessions.Should().BeTrue();
-        _vm.EmptyStateMessage.Should().Be("Add your first connection");
+        Assert.IsTrue(_vm.HasNoSessions);
+        Assert.AreEqual("Add your first connection", _vm.EmptyStateMessage);
     }
 
-    [Fact]
-    [Trait("Category", "EdgeCase")]
+    [TestMethod]
+    [TestCategory("EdgeCase")]
     public async Task HasNoSessions_FalseAfterLoadingSessionsFromRepository()
     {
         var session = CreateSession("WebServer");
@@ -216,11 +216,11 @@ public class SessionTreeViewModelTests
 
         await _vm.LoadCommand.Execute().FirstAsync();
 
-        _vm.HasNoSessions.Should().BeFalse();
+        Assert.IsFalse(_vm.HasNoSessions);
     }
 
-    [Fact]
-    [Trait("Category", "EdgeCase")]
+    [TestMethod]
+    [TestCategory("EdgeCase")]
     public async Task HasNoSessions_TrueWhenAllSessionsDeleted()
     {
         var session = CreateSession("OnlyServer");
@@ -230,11 +230,11 @@ public class SessionTreeViewModelTests
         _repository.GetSessionAsync(session.Id).Returns(Task.FromResult<SessionProfile?>(session));
 
         await _vm.LoadCommand.Execute().FirstAsync();
-        _vm.HasNoSessions.Should().BeFalse();
+        Assert.IsFalse(_vm.HasNoSessions);
 
         _vm.SelectedNode = _vm.Nodes[0].Children[0];
         await _vm.DeleteSessionCommand.Execute().FirstAsync();
 
-        _vm.HasNoSessions.Should().BeTrue();
+        Assert.IsTrue(_vm.HasNoSessions);
     }
 }

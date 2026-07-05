@@ -2,9 +2,10 @@ using PulseTerm.Controls.Controls;
 
 namespace PulseTerm.Controls.Tests;
 
+[TestClass]
 public sealed class StatusMetricChipTests
 {
-    [Fact]
+    [TestMethod]
     public void Label_And_Value_CanBeAssigned()
     {
         var control = new StatusMetricChip
@@ -13,7 +14,7 @@ public sealed class StatusMetricChipTests
             Value = "24ms"
         };
 
-        Assert.Equal("Latency", control.Label);
-        Assert.Equal("24ms", control.Value);
+        Assert.AreEqual("Latency", control.Label);
+        Assert.AreEqual("24ms", control.Value);
     }
 }
