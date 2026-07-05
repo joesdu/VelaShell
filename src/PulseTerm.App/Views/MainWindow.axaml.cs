@@ -2,6 +2,8 @@ using System;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,6 +33,25 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
             await vm.InitializeAsync();
     }
+
+    // ---- Custom window chrome ----------------------------------------------
+
+    private void TitleBar_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginMoveDrag(e);
+    }
+
+    private void TitleBar_DoubleTapped(object? sender, TappedEventArgs e) => ToggleMaximize();
+
+    private void Minimize_Click(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void MaximizeRestore_Click(object? sender, RoutedEventArgs e) => ToggleMaximize();
+
+    private void Close_Click(object? sender, RoutedEventArgs e) => Close();
+
+    private void ToggleMaximize() =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
     private async void OnSidebarConnectRequested(object? sender, SessionProfile profile)
     {
