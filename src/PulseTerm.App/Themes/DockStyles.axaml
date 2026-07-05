@@ -1,0 +1,20 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:dc="using:Dock.Avalonia.Controls">
+
+    <!-- Re-skin the Dock.Avalonia Fluent theme with PulseTerm design tokens so the
+         docking chrome matches the rest of the app in both dark and light variants. -->
+
+    <Style Selector="dc|DockControl">
+        <Setter Property="Background" Value="{DynamicResource PulseBgPage}" />
+    </Style>
+
+    <Style Selector="dc|DocumentControl">
+        <Setter Property="Background" Value="{DynamicResource PulseBgTerminal}" />
+    </Style>
+
+    <Style Selector="dc|DocumentControl /template/ Border#PART_Border">
+        <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderPrimary}" />
+    </Style>
+
+</Styles>

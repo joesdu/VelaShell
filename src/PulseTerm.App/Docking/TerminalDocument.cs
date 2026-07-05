@@ -1,0 +1,25 @@
+using Dock.Model.ReactiveUI.Controls;
+using PulseTerm.App.ViewModels;
+
+namespace PulseTerm.App.Docking;
+
+/// <summary>
+/// A Dock document that hosts a single SSH terminal tab. Wrapping the terminal (rather than
+/// making <see cref="TerminalTabViewModel"/> itself a dockable) keeps the presentation/tab model
+/// independent of the docking framework, so the existing tab collection and tests are unaffected.
+/// The visual is resolved by a DataTemplate matched to this type.
+/// </summary>
+public sealed class TerminalDocument : Document
+{
+    public TerminalDocument(TerminalTabViewModel terminal)
+    {
+        Terminal = terminal;
+        Id = terminal.Id.ToString("N");
+        Title = terminal.Title;
+        CanClose = true;
+        CanFloat = true;
+        CanPin = false;
+    }
+
+    public TerminalTabViewModel Terminal { get; }
+}

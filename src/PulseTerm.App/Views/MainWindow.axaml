@@ -5,6 +5,8 @@
         xmlns:vm="using:PulseTerm.App.ViewModels"
         xmlns:pvm="using:PulseTerm.Presentation.ViewModels"
         xmlns:views="using:PulseTerm.App.Views"
+        xmlns:docking="using:PulseTerm.App.Docking"
+        xmlns:dock="using:Dock.Avalonia.Controls"
         xmlns:res="clr-namespace:PulseTerm.Core.Resources;assembly=PulseTerm.Core"
         mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="900"
         x:Class="PulseTerm.App.Views.MainWindow"
@@ -39,19 +41,15 @@
       <!-- Main area (terminal, file browser) -->
       <Grid Grid.Column="2" RowDefinitions="*,1,220">
 
-        <!-- Top Area (Terminal and Tabs) -->
-        <Grid Grid.Row="0" RowDefinitions="36,*">
-          <!-- Tab bar -->
-          <views:TabBarView Grid.Row="0" DataContext="{Binding TabBar}" />
-
-          <!-- Terminal Content -->
-          <Border Grid.Row="1"
-                  Background="{DynamicResource PulseBgTerminal}">
-            <Grid>
-              <views:TerminalTabView DataContext="{Binding ActiveTerminalTab}" />
-            </Grid>
-          </Border>
-        </Grid>
+        <!-- Top Area: dockable terminal documents (drag to reorder, tear off to a new
+             floating window, or drop on an edge to split — provided by Dock.Avalonia). -->
+        <dock:DockControl Grid.Row="0" Layout="{Binding Layout}">
+          <dock:DockControl.DataTemplates>
+            <DataTemplate DataType="docking:TerminalDocument">
+              <views:TerminalTabView DataContext="{Binding Terminal}" />
+            </DataTemplate>
+          </dock:DockControl.DataTemplates>
+        </dock:DockControl>
 
         <!-- Right horizontal splitter -->
         <GridSplitter Grid.Row="1" Height="1" Background="{DynamicResource PulseBorderPrimary}" HorizontalAlignment="Stretch"/>

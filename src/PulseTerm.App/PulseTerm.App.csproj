@@ -25,6 +25,9 @@
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3" />
     <PackageReference Include="ReactiveUI.Avalonia" Version="11.4.7" />
+    <PackageReference Include="Dock.Avalonia" Version="11.3.12" />
+    <PackageReference Include="Dock.Avalonia.Themes.Fluent" Version="11.3.12" />
+    <PackageReference Include="Dock.Model.ReactiveUI" Version="11.3.12" />
     <PackageReference Include="Velopack" Version="0.0.1298" />
   </ItemGroup>
 

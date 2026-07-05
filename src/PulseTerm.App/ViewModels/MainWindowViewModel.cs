@@ -3,6 +3,8 @@ using System.Reactive;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Text;
+using Dock.Model.Controls;
+using PulseTerm.App.Docking;
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Resources;
@@ -23,6 +25,7 @@ public class MainWindowViewModel : ReactiveObject
     private readonly ISshConnectionService? _sshConnectionService;
     private readonly ISettingsService? _settingsService;
     private readonly Func<ITerminalEmulator> _terminalEmulatorFactory;
+    private readonly TerminalDockFactory _dockFactory;
     private SidebarViewModel _sidebar;
     private TabBarViewModel _tabBar;
     private StatusBarViewModel _statusBar;
@@ -42,6 +45,11 @@ public class MainWindowViewModel : ReactiveObject
         _sshConnectionService = sshConnectionService;
         _settingsService = settingsService;
         _terminalEmulatorFactory = terminalEmulatorFactory ?? (() => new PulseTerminalControl());
+
+        _dockFactory = new TerminalDockFactory();
+        Layout = _dockFactory.CreateLayout();
+        _dockFactory.InitLayout(Layout);
+        _dockFactory.DocumentClosed += OnDocumentClosed;
 
         _sidebar = new SidebarViewModel();
         _tabBar = new TabBarViewModel();
@@ -97,6 +105,7 @@ public class MainWindowViewModel : ReactiveObject
         terminalTab.Start();
         TabBar.AddTab(terminalTab);
         ActiveTerminalTab = terminalTab;
+        _dockFactory.AddTerminal(new TerminalDocument(terminalTab));
 
         Sidebar.RecentConnections.AddRecent(profile);
         UpdateStatusBar(profile, session);
@@ -171,6 +180,19 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     public bool HasActiveTerminalTab => ActiveTerminalTab is not null;
+
+    /// <summary>The Dock.Avalonia layout hosting terminal documents (draggable, floatable, splittable).</summary>
+    public IRootDock Layout { get; }
+
+    private void OnDocumentClosed(TerminalDocument document)
+    {
+        var tab = document.Terminal;
+        if (TabBar.Tabs.Contains(tab))
+        {
+            TabBar.CloseTabCommand.Execute(tab).Subscribe();
+        }
+        tab.Dispose();
+    }
 
     public FileBrowserViewModel FileBrowser
     {
