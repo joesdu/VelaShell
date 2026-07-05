@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:PulseTerm.App.ViewModels"
              xmlns:views="using:PulseTerm.App.Views"
+             xmlns:controls="using:PulseTerm.App.Controls"
              xmlns:res="clr-namespace:PulseTerm.Core.Resources;assembly=PulseTerm.Core"
              mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="800"
              x:Class="PulseTerm.App.Views.TerminalTabView"
@@ -22,7 +23,7 @@
       <Border Grid.Column="0"
               Background="{DynamicResource PulseBgTerminal}"
               ClipToBounds="True">
-        <ContentControl Content="{Binding TerminalEmulator.Control}" />
+        <controls:ReparentingHost Target="{Binding TerminalEmulator.Control}" />
       </Border>
 
       <!-- Scrollbar for scrollback navigation -->
