@@ -24,6 +24,8 @@
     <KeyBinding Gesture="Ctrl+Tab" Command="{Binding TabBar.NextTabCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+Tab" Command="{Binding TabBar.PreviousTabCommand}" />
     <KeyBinding Gesture="Ctrl+OemComma" Command="{Binding OpenSettingsCommand}" />
+    <KeyBinding Gesture="Ctrl+P" Command="{Binding OpenCommandPaletteCommand}" />
+    <KeyBinding Gesture="Ctrl+K" Command="{Binding OpenCommandPaletteCommand}" />
   </Window.KeyBindings>
 
   <Grid RowDefinitions="*,Auto">
@@ -220,6 +222,29 @@
       </Border.DataTemplates>
       <ContentControl Content="{Binding}" />
     </Border>
+
+    <!-- Command palette overlay (Ctrl+P / Ctrl+K). Backdrop click or Esc closes it. -->
+    <Grid Grid.Row="0" Grid.RowSpan="2"
+          IsVisible="{Binding CommandPalette.IsOpen}">
+      <Grid.Styles>
+        <Style Selector="Button.backdrop /template/ ContentPresenter#PART_ContentPresenter">
+          <Setter Property="Background" Value="#66000000" />
+        </Style>
+        <Style Selector="Button.backdrop:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+          <Setter Property="Background" Value="#66000000" />
+        </Style>
+      </Grid.Styles>
+      <Button Classes="backdrop"
+              Command="{Binding CommandPalette.CloseCommand}"
+              Background="#66000000"
+              BorderThickness="0"
+              CornerRadius="0"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch" />
+      <views:CommandPaletteView DataContext="{Binding CommandPalette}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Top" />
+    </Grid>
 
   </Grid>
 </Window>

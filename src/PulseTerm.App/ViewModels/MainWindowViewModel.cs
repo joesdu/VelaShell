@@ -65,6 +65,40 @@ public class MainWindowViewModel : ReactiveObject
             });
 
         OpenSettingsCommand = ReactiveCommand.Create(() => { });
+
+        CommandPalette = new CommandPaletteViewModel(BuildPaletteItems);
+        OpenCommandPaletteCommand = ReactiveCommand.Create(() => CommandPalette.Open());
+    }
+
+    /// <summary>The Ctrl+P / Ctrl+K command palette overlay.</summary>
+    public CommandPaletteViewModel CommandPalette { get; }
+
+    public ReactiveCommand<Unit, Unit> OpenCommandPaletteCommand { get; }
+
+    private IReadOnlyList<CommandPaletteItem> BuildPaletteItems()
+    {
+        var items = new List<CommandPaletteItem>();
+
+        // Sessions from recent connections — Enter connects.
+        foreach (var profile in Sidebar.RecentConnections.Connections)
+        {
+            var captured = profile;
+            var title = string.IsNullOrWhiteSpace(captured.Name) ? captured.Host : captured.Name;
+            items.Add(new CommandPaletteItem(
+                category: "会话",
+                title: title,
+                invoke: () => _ = ConnectProfileAsync(captured),
+                hint: "Enter 连接",
+                isSession: true));
+        }
+
+        // Global actions.
+        items.Add(new CommandPaletteItem("命令", "新建 SSH 连接",
+            () => Sidebar.QuickConnectCommand.Execute().Subscribe(), hint: "Ctrl+N"));
+        items.Add(new CommandPaletteItem("命令", "打开设置",
+            () => OpenSettingsCommand.Execute().Subscribe(), hint: "Ctrl+,"));
+
+        return items;
     }
 
     public async Task<TerminalTabViewModel> ConnectProfileAsync(SessionProfile profile, CancellationToken cancellationToken = default)
