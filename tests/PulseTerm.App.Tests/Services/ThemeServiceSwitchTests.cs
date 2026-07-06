@@ -123,4 +123,63 @@ public class ThemeServiceSwitchTests
 
         CollectionAssert.AreEqual(new List<string> { "light", "dark", "light" }, events);
     }
+
+    [TestMethod]
+    [TestCategory("Theme")]
+    public void SetAccent_ValidHex_UpdatesAndFires()
+    {
+        var sut = new ThemeService("dark");
+        string? received = "unset";
+        sut.AccentChanged += hex => received = hex;
+
+        sut.SetAccent("#FF8800");
+
+        Assert.AreEqual("#FF8800", sut.AccentColor);
+        Assert.AreEqual("#FF8800", received);
+    }
+
+    [TestMethod]
+    [TestCategory("Theme")]
+    public void SetAccent_NormalizesMissingHashAndCase()
+    {
+        var sut = new ThemeService();
+
+        sut.SetAccent("00d4aa");
+
+        Assert.AreEqual("#00D4AA", sut.AccentColor);
+    }
+
+    [TestMethod]
+    [TestCategory("Theme")]
+    public void SetAccent_EmptyOrNull_ClearsToThemeDefault()
+    {
+        var sut = new ThemeService("dark", "#00D4AA");
+
+        sut.SetAccent("");
+
+        Assert.IsNull(sut.AccentColor);
+    }
+
+    [TestMethod]
+    [TestCategory("Theme")]
+    public void SetAccent_Invalid_Throws()
+    {
+        var sut = new ThemeService();
+
+        Assert.ThrowsExactly<ArgumentException>(() => sut.SetAccent("#12"));
+        Assert.ThrowsExactly<ArgumentException>(() => sut.SetAccent("nothex"));
+    }
+
+    [TestMethod]
+    [TestCategory("Theme")]
+    public void SetAccent_SameValue_DoesNotFireAgain()
+    {
+        var sut = new ThemeService("dark", "#00D4AA");
+        var count = 0;
+        sut.AccentChanged += _ => count++;
+
+        sut.SetAccent("#00D4AA");
+
+        Assert.AreEqual(0, count);
+    }
 }

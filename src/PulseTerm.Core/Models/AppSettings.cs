@@ -5,6 +5,9 @@ public class AppSettings
     public string Language { get; set; } = "en";
     
     public string Theme { get; set; } = "dark";
+
+    /// <summary>Accent-color override as a hex string (e.g. "#00D4AA"); empty = use theme default.</summary>
+    public string AccentColor { get; set; } = "";
     
     public string TerminalFont { get; set; } = "JetBrains Mono";
     

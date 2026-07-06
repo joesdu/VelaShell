@@ -2,6 +2,7 @@ using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using Avalonia.Styling;
 using Microsoft.Extensions.DependencyInjection;
 using PulseTerm.Controls.DependencyInjection;
@@ -39,7 +40,9 @@ public partial class App : Application
         _themeService = _serviceProvider.GetRequiredService<IThemeService>();
 
         _themeService.ThemeChanged += OnThemeChanged;
+        _themeService.AccentChanged += ApplyAccent;
         ApplyThemeVariant(_themeService.CurrentTheme);
+        ApplyAccent(_themeService.AccentColor);
     }
 
     public override void OnFrameworkInitializationCompleted()
@@ -71,5 +74,27 @@ public partial class App : Application
             "system" => ThemeVariant.Default,
             _ => ThemeVariant.Dark,
         };
+    }
+
+    /// <summary>
+    /// Applies the accent-color override live by shadowing the themed accent brushes at the
+    /// application level; every <c>DynamicResource PulseAccent</c> updates without a restart (#3).
+    /// A null/empty value removes the override and restores the theme's default accent.
+    /// </summary>
+    private void ApplyAccent(string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex))
+        {
+            Resources.Remove("PulseAccent");
+            Resources.Remove("PulseAccentDim");
+            return;
+        }
+
+        if (!Color.TryParse(hex, out var color))
+            return;
+
+        Resources["PulseAccent"] = new SolidColorBrush(color);
+        // Dim variant: same hue at ~19% opacity, matching the design's #RRGGBB30 tokens.
+        Resources["PulseAccentDim"] = new SolidColorBrush(new Color(0x30, color.R, color.G, color.B));
     }
 }
