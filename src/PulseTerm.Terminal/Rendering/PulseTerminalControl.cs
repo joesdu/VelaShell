@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Avalonia.Threading;
 using PulseTerm.Terminal.Emulation;
+using PulseTerm.Terminal.Semantics;
 
 namespace PulseTerm.Terminal.Rendering;
 
@@ -21,6 +22,7 @@ namespace PulseTerm.Terminal.Rendering;
 public sealed class PulseTerminalControl : Control, ITerminalEmulator
 {
     private readonly TerminalEmulator _emulator;
+    private readonly SemanticMatcher _semanticMatcher = new();
     private readonly Dictionary<uint, ImmutableSolidColorBrush> _brushCache = new();
 
     // Cache of shaped, colored glyphs keyed by (rune, combining, foreground, style). Terminal
@@ -550,6 +552,21 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         Focus();
         var point = e.GetPosition(this);
         var props = e.GetCurrentPoint(this).Properties;
+
+        // Ctrl+click on a detected URL opens it in the default browser (#9).
+        if (props.IsLeftButtonPressed && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            var (row, col) = PointToCell(point);
+            string lineText = row < _emulator.Screen.TotalRows ? _emulator.Screen.ViewLine(row).GetText() : string.Empty;
+            var url = _semanticMatcher.UrlAt(lineText, col);
+            if (url is not null)
+            {
+                OpenLink(url);
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (props.IsLeftButtonPressed)
         {
             _selecting = true;
@@ -621,6 +638,15 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     {
         _selectionAnchor = null;
         _selectionCaret = null;
+    }
+
+    private async void OpenLink(string url)
+    {
+        var top = TopLevel.GetTopLevel(this);
+        if (top is null)
+            return;
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            await top.Launcher.LaunchUriAsync(uri);
     }
 
     private async Task CopyAsync()
