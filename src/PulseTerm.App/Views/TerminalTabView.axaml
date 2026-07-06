@@ -26,13 +26,13 @@
         <controls:ReparentingHost Target="{Binding TerminalEmulator.Control}" />
       </Border>
 
-      <!-- Scrollbar for scrollback navigation -->
+      <!-- Scrollbar for scrollback navigation (driven from code-behind against the
+           shared terminal control, since the control is reparented across split panes). -->
       <ScrollBar Grid.Column="1"
+                 x:Name="ScrollBarView"
                  Orientation="Vertical"
                  Minimum="0"
-                 Maximum="{Binding TerminalEmulator.TotalLines}"
-                 Value="{Binding TerminalEmulator.ViewportRow}"
-                 ViewportSize="{Binding TerminalEmulator.Rows}"
+                 AllowAutoHide="False"
                  Background="{DynamicResource PulseBgSurface}"
                  Width="12"
                  Opacity="0.6" />

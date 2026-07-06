@@ -37,7 +37,46 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     private double _baselineOffset;
 
     private int _scrollOffset;            // lines scrolled up from the bottom (0 = live)
+    private int _lastScrollbackCount;     // scrollback size at the previous output update
     private bool _hasFocus;
+
+    /// <summary>When true, releasing a selection copies it to the clipboard automatically.</summary>
+    public bool CopyOnSelect { get; set; } = true;
+
+    /// <summary>Raised whenever the scroll position or scrollable extent changes.</summary>
+    public event Action? ScrollChanged;
+
+    /// <summary>Maximum lines that can be scrolled up (size of the scrollback history).</summary>
+    public int MaxScrollOffset => _emulator.Screen.ScrollbackCount;
+
+    /// <summary>Lines currently scrolled up from the live bottom (0 = following output).</summary>
+    public int ScrollOffset
+    {
+        get => _scrollOffset;
+        set
+        {
+            int clamped = Math.Clamp(value, 0, MaxScrollOffset);
+            if (clamped == _scrollOffset)
+                return;
+            _scrollOffset = clamped;
+            InvalidateVisual();
+            ScrollChanged?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// Computes the scroll offset to keep the same history content visible after new lines were
+    /// pushed into scrollback. At the live bottom (offset 0) the view follows output; when the
+    /// user has scrolled up, the offset grows with the scrollback so the view stays pinned.
+    /// </summary>
+    internal static int PinScrollOffset(int currentOffset, int lastScrollback, int newScrollback)
+    {
+        if (currentOffset <= 0)
+            return 0;
+        int growth = newScrollback - lastScrollback;
+        int pinned = growth > 0 ? currentOffset + growth : currentOffset;
+        return Math.Clamp(pinned, 0, Math.Max(0, newScrollback));
+    }
 
     // Selection (linear), in absolute-row space.
     private (int Row, int Col)? _selectionAnchor;
@@ -82,7 +121,9 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     {
         _emulator.Resize(cols, rows);
         _scrollOffset = 0;
+        _lastScrollbackCount = _emulator.Screen.ScrollbackCount;
         InvalidateVisual();
+        ScrollChanged?.Invoke();
     }
 
     public void WriteInput(byte[] data) => UserInput?.Invoke(data);
@@ -135,12 +176,21 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
     private void OnEmulatorUpdated()
     {
-        // New output snaps the viewport back to the live bottom.
-        _scrollOffset = 0;
         if (Dispatcher.UIThread.CheckAccess())
-            InvalidateVisual();
+            ApplyOutputUpdate();
         else
-            Dispatcher.UIThread.Post(InvalidateVisual);
+            Dispatcher.UIThread.Post(ApplyOutputUpdate);
+    }
+
+    private void ApplyOutputUpdate()
+    {
+        // Follow output only when already at the bottom; otherwise keep the user's history
+        // view pinned so background output doesn't yank them back down (fixes #15).
+        int scrollback = _emulator.Screen.ScrollbackCount;
+        _scrollOffset = PinScrollOffset(_scrollOffset, _lastScrollbackCount, scrollback);
+        _lastScrollbackCount = scrollback;
+        InvalidateVisual();
+        ScrollChanged?.Invoke();
     }
 
     // ---- Palette ------------------------------------------------------------
@@ -463,6 +513,15 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
             if (e.Key == Key.V) { await PasteAsync(); e.Handled = true; return; }
         }
 
+        // Shift+Insert pastes (classic X11 / terminal convention). Intercept before the
+        // encoder, which would otherwise send this as a CSI 2~ sequence.
+        if (e.Key == Key.Insert && e.KeyModifiers == KeyModifiers.Shift)
+        {
+            await PasteAsync();
+            e.Handled = true;
+            return;
+        }
+
         var encoded = InputEncoder.Encode(e.Key, e.KeyModifiers, _emulator.Modes, _emulator.Type);
         if (encoded is { Length: > 0 })
         {
@@ -509,7 +568,14 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        _selecting = false;
+        if (_selecting)
+        {
+            _selecting = false;
+            // Select-to-copy: releasing a non-empty selection copies it, so the user never
+            // needs a copy shortcut (design §8). A plain click has an empty selection and no-ops.
+            if (CopyOnSelect)
+                _ = CopyAsync();
+        }
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -519,6 +585,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         int maxOffset = _emulator.Screen.ScrollbackCount;
         _scrollOffset = Math.Clamp(_scrollOffset + delta, 0, maxOffset);
         InvalidateVisual();
+        ScrollChanged?.Invoke();
         e.Handled = true;
     }
 

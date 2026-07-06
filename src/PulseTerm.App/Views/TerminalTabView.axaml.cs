@@ -2,6 +2,7 @@ using System;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Markup.Xaml;
@@ -9,12 +10,15 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using PulseTerm.App.Services;
 using PulseTerm.App.ViewModels;
+using PulseTerm.Terminal.Rendering;
 
 namespace PulseTerm.App.Views;
 
 public partial class TerminalTabView : UserControl
 {
     private readonly IKeyboardShortcutService _shortcutService;
+    private PulseTerminalControl? _termControl;
+    private bool _syncingScrollBar;
 
     public TerminalTabView()
         : this(new KeyboardShortcutService())
@@ -28,11 +32,77 @@ public partial class TerminalTabView : UserControl
 
         Focusable = true;
         AttachedToVisualTree += OnAttachedToVisualTree;
+        DetachedFromVisualTree += OnDetachedFromVisualTree;
+        DataContextChanged += (_, _) => HookTerminalControl();
+
+        if (ScrollBarView is not null)
+            ScrollBarView.Scroll += OnScrollBarScroll;
     }
 
     private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
+        HookTerminalControl();
         FocusTerminal();
+    }
+
+    private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (_termControl is not null)
+            _termControl.ScrollChanged -= OnTerminalScrollChanged;
+        _termControl = null;
+    }
+
+    // The terminal control is a single shared instance reparented across split panes, so each
+    // view (re)binds the scrollbar to whichever control it currently hosts.
+    private void HookTerminalControl()
+    {
+        var ctrl = (DataContext as TerminalTabViewModel)?.TerminalEmulator.Control as PulseTerminalControl;
+        if (ReferenceEquals(ctrl, _termControl))
+        {
+            SyncScrollBar();
+            return;
+        }
+
+        if (_termControl is not null)
+            _termControl.ScrollChanged -= OnTerminalScrollChanged;
+        _termControl = ctrl;
+        if (_termControl is not null)
+            _termControl.ScrollChanged += OnTerminalScrollChanged;
+
+        SyncScrollBar();
+    }
+
+    private void OnTerminalScrollChanged() => SyncScrollBar();
+
+    private void SyncScrollBar()
+    {
+        if (ScrollBarView is null || _termControl is null)
+            return;
+
+        _syncingScrollBar = true;
+        try
+        {
+            int max = _termControl.MaxScrollOffset;
+            ScrollBarView.Maximum = max;
+            ScrollBarView.ViewportSize = Math.Max(1, _termControl.Rows);
+            // Thumb sits at the bottom when following live output (offset 0) and at the top
+            // when fully scrolled back into history.
+            ScrollBarView.Value = max - _termControl.ScrollOffset;
+            ScrollBarView.IsEnabled = max > 0;
+        }
+        finally
+        {
+            _syncingScrollBar = false;
+        }
+    }
+
+    private void OnScrollBarScroll(object? sender, ScrollEventArgs e)
+    {
+        if (_syncingScrollBar || _termControl is null || ScrollBarView is null)
+            return;
+
+        int max = _termControl.MaxScrollOffset;
+        _termControl.ScrollOffset = max - (int)Math.Round(ScrollBarView.Value);
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)

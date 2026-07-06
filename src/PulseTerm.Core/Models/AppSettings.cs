@@ -10,7 +10,7 @@ public class AppSettings
     
     public int TerminalFontSize { get; set; } = 14;
     
-    public int ScrollbackLines { get; set; } = 10000;
+    public int ScrollbackLines { get; set; } = 50000;
 
     public int DefaultPort { get; set; } = 22;
 

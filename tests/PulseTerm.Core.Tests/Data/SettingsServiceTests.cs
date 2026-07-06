@@ -37,7 +37,7 @@ public class SettingsServiceTests : IDisposable
         Assert.AreEqual("dark", settings.Theme);
         Assert.AreEqual("JetBrains Mono", settings.TerminalFont);
         Assert.AreEqual(14, settings.TerminalFontSize);
-        Assert.AreEqual(10000, settings.ScrollbackLines);
+        Assert.AreEqual(50000, settings.ScrollbackLines);
         Assert.AreEqual(22, settings.DefaultPort);
     }
 
