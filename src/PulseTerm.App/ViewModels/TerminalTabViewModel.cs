@@ -143,7 +143,15 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         _disposed = true;
 
         TerminalEmulator.PtySizeChanged -= OnPtySizeChanged;
-        Bridge.Dispose();
+
+        // Instant, UI-safe teardown so the tab closes immediately: this only unhooks the
+        // emulator's Updated handler, no network I/O.
         TerminalEmulator.Dispose();
+
+        // Network teardown (cancel the read loop, close the SSH channel) can block for up to a
+        // couple of seconds, so run it off the caller's (UI) thread — the tab is already gone.
+        // Fixes the "closing a tab freezes the UI" problem (#18). Bridge.Dispose is idempotent.
+        var bridge = Bridge;
+        Task.Run(bridge.Dispose);
     }
 }
