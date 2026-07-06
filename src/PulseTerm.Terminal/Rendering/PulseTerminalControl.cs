@@ -23,6 +23,13 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     private readonly TerminalEmulator _emulator;
     private readonly Dictionary<uint, ImmutableSolidColorBrush> _brushCache = new();
 
+    // Cache of shaped, colored glyphs keyed by (rune, combining, foreground, style). Terminal
+    // output draws from a tiny alphabet, so hit rate is ~100% and per-frame text shaping —
+    // the dominant render cost — effectively disappears. Cleared when the font/size changes.
+    private readonly Dictionary<GlyphKey, FormattedText> _glyphCache = new();
+
+    private readonly record struct GlyphKey(int Rune, string? Combining, uint Foreground, int Style);
+
     private FontFamily _fontFamily = new("JetBrains Mono, Cascadia Mono, Consolas, Microsoft YaHei, Segoe UI, monospace");
     private double _fontSize = 14;
     private double _cellWidth = 8;
@@ -173,6 +180,31 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         return brush;
     }
 
+    /// <summary>
+    /// Returns a cached <see cref="FormattedText"/> for a single cell's glyph. Each glyph is
+    /// still drawn at its own grid position by the caller, so wide (CJK) cells and monospace
+    /// alignment are preserved exactly; only the expensive shaping is amortized.
+    /// </summary>
+    private FormattedText GlyphFor(in TerminalCell cell, Rgba fg, bool bold, bool italic)
+    {
+        int style = (bold ? 1 : 0) | (italic ? 2 : 0);
+        var key = new GlyphKey(cell.Rune, cell.Combining, fg.Packed, style);
+        if (_glyphCache.TryGetValue(key, out var cached))
+            return cached;
+
+        // Bound the cache; a full clear is fine because it refills within a frame or two.
+        if (_glyphCache.Count > 8192)
+            _glyphCache.Clear();
+
+        var typeface = new Typeface(_fontFamily,
+            italic ? FontStyle.Italic : FontStyle.Normal,
+            bold ? FontWeight.Bold : FontWeight.Normal);
+        var ft = new FormattedText(cell.GetText(), CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight, typeface, _fontSize, BrushFor(fg));
+        _glyphCache[key] = ft;
+        return ft;
+    }
+
     // ---- Metrics & layout ---------------------------------------------------
 
     private void RecomputeMetrics()
@@ -183,6 +215,9 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         _cellWidth = Math.Max(1, Math.Round(probe.WidthIncludingTrailingWhitespace));
         _cellHeight = Math.Max(1, Math.Ceiling(probe.Height));
         _baselineOffset = probe.Baseline;
+
+        // Cached glyphs are bound to the old typeface/size; drop them on any metric change.
+        _glyphCache.Clear();
     }
 
     protected override Size ArrangeOverride(Size finalSize)
@@ -278,11 +313,8 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
             if (cell.Rune != 0 && (cell.Flags & CellFlags.Invisible) == 0)
             {
-                var typeface = new Typeface(_fontFamily,
-                    (cell.Flags & CellFlags.Italic) != 0 ? FontStyle.Italic : FontStyle.Normal,
-                    bold ? FontWeight.Bold : FontWeight.Normal);
-                var ft = new FormattedText(cell.GetText(), CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight, typeface, _fontSize, BrushFor(fg));
+                bool italic = (cell.Flags & CellFlags.Italic) != 0;
+                var ft = GlyphFor(cell, fg, bold, italic);
                 double gx = col * _cellWidth;
                 context.DrawText(ft, new Point(gx, y));
             }
@@ -325,9 +357,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
             var cell = screen.GetCell(screen.CursorX, screen.CursorY);
             if (cell.Rune != 0)
             {
-                var ft = new FormattedText(cell.GetText(), CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight, new Typeface(_fontFamily), _fontSize,
-                    BrushFor(palette.DefaultBackground));
+                var ft = GlyphFor(cell, palette.DefaultBackground, bold: false, italic: false);
                 context.DrawText(ft, new Point(x, y));
             }
         }
