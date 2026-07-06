@@ -52,9 +52,22 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     public Guid SessionId { get; set; }
 
+    /// <summary>The profile this tab was connected with, used to reconnect in place (#19).</summary>
+    public SessionProfile? Profile { get; set; }
+
     /// <summary>Raised when the session drops (remote closed the channel) so the UI can show the
     /// disconnected overlay and offer reconnect (#19).</summary>
     public event EventHandler? Disconnected;
+
+    /// <summary>Raised when the user asks to reconnect a disconnected tab (Enter / Ctrl+R).</summary>
+    public event EventHandler? ReconnectRequested;
+
+    /// <summary>Requests a reconnect, but only from the disconnected state (no-op otherwise).</summary>
+    public void RequestReconnect()
+    {
+        if (ConnectionStatus == SessionStatus.Disconnected)
+            ReconnectRequested?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>Status-bar connection summary for this tab, e.g. "SSH • root@host:22".</summary>
     public string ConnectionSummary { get; init; } = string.Empty;

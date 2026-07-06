@@ -5,11 +5,13 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using PulseTerm.App.Services;
 using PulseTerm.App.ViewModels;
+using PulseTerm.Core.Models;
 using PulseTerm.Terminal.Rendering;
 
 namespace PulseTerm.App.Views;
@@ -37,6 +39,26 @@ public partial class TerminalTabView : UserControl
 
         if (ScrollBarView is not null)
             ScrollBarView.Scroll += OnScrollBarScroll;
+
+        // Tunnel so a disconnected tab can catch Enter / Ctrl+R for reconnect before the
+        // terminal control (which normally consumes keys to send to the PTY) sees them.
+        AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+    }
+
+    private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (DataContext is not TerminalTabViewModel vm || vm.ConnectionStatus != SessionStatus.Disconnected)
+            return;
+
+        var reconnect =
+            (e.Key == Key.Enter && e.KeyModifiers == Avalonia.Input.KeyModifiers.None) ||
+            (e.Key == Key.R && e.KeyModifiers == Avalonia.Input.KeyModifiers.Control);
+
+        if (reconnect)
+        {
+            vm.RequestReconnect();
+            e.Handled = true;
+        }
     }
 
     private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)

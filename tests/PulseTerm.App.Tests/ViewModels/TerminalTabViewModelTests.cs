@@ -243,4 +243,20 @@ public class TerminalTabViewModelTests
 
         Assert.IsFalse(raised);
     }
+
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void RequestReconnect_OnlyFiresWhenDisconnected()
+    {
+        var count = 0;
+        _vm.ReconnectRequested += (_, _) => count++;
+
+        _vm.ConnectionStatus = SessionStatus.Connected;
+        _vm.RequestReconnect(); // must be ignored while connected
+        Assert.AreEqual(0, count);
+
+        _vm.ConnectionStatus = SessionStatus.Disconnected;
+        _vm.RequestReconnect();
+        Assert.AreEqual(1, count);
+    }
 }

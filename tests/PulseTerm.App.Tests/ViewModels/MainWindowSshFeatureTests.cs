@@ -96,6 +96,81 @@ public sealed class MainWindowSshFeatureTests
     }
 
     [TestMethod]
+    public async Task ReconnectTabAsync_ReusesSameTab_AndRestoresConnectedState()
+    {
+        var workflow = Substitute.For<IConnectionWorkflowService>();
+        var sshConnectionService = Substitute.For<ISshConnectionService>();
+        var sshClient = Substitute.For<ISshClientWrapper>();
+        var shellStream = Substitute.For<IShellStreamWrapper>();
+        shellStream.CanRead.Returns(false);
+        var terminal = Substitute.For<ITerminalEmulator>();
+
+        var profile = new SessionProfile
+        {
+            Name = "Prod",
+            Host = "prod.example.com",
+            Port = 22,
+            Username = "root",
+            AuthMethod = AuthMethod.Password,
+            Password = "secret"
+        };
+
+        var session = new SshSession
+        {
+            SessionId = Guid.NewGuid(),
+            ConnectionInfo = new ConnectionInfo
+            {
+                Host = profile.Host,
+                Port = profile.Port,
+                Username = profile.Username,
+                AuthMethod = profile.AuthMethod,
+                Password = profile.Password
+            },
+            Status = SessionStatus.Connected
+        };
+
+        workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>()).Returns(session);
+        sshConnectionService.GetClient(session.SessionId).Returns(sshClient);
+        sshClient.CreateShellStream("xterm-256color", 120, 32, 0, 0, 4096, null).Returns(shellStream);
+
+        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => terminal);
+        var tab = await vm.ConnectProfileAsync(profile);
+        Assert.AreEqual(SessionStatus.Connected, tab.ConnectionStatus);
+
+        // The remote drops (exit / reboot).
+        tab.MarkDisconnected();
+        Assert.AreEqual(SessionStatus.Disconnected, tab.ConnectionStatus);
+
+        // Reconnect in place — same tab, not a new one.
+        await vm.ReconnectTabAsync(tab);
+
+        Assert.AreEqual(SessionStatus.Connected, tab.ConnectionStatus);
+        Assert.AreEqual(1, vm.TabBar.Tabs.Count());
+        Assert.AreSame(tab, vm.TabBar.Tabs.First());
+    }
+
+    [TestMethod]
+    public async Task ReconnectTabAsync_WhenAlreadyConnected_IsNoOp()
+    {
+        var workflow = Substitute.For<IConnectionWorkflowService>();
+        var sshConnectionService = Substitute.For<ISshConnectionService>();
+        var terminal = Substitute.For<ITerminalEmulator>();
+
+        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => terminal);
+        var tab = new TerminalTabViewModel(terminal)
+        {
+            ConnectionStatus = SessionStatus.Connected,
+            Profile = new SessionProfile { Host = "h", Port = 22, Username = "u" }
+        };
+
+        await vm.ReconnectTabAsync(tab);
+
+        // No connect attempt should have been made.
+        await workflow.DidNotReceive().ConnectProfileAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>());
+        Assert.AreEqual(SessionStatus.Connected, tab.ConnectionStatus);
+    }
+
+    [TestMethod]
     public async Task InitializeAsync_LoadsSavedSessions_IntoRecentConnections()
     {
         var repository = Substitute.For<ISessionRepository>();

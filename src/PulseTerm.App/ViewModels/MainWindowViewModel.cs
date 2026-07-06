@@ -163,7 +163,9 @@ public class MainWindowViewModel : ReactiveObject
             ConnectionSummary = $"SSH • {profile.Username}@{profile.Host}:{profile.Port}",
             TerminalTypeName = terminalType.ToTermName(),
             EncodingName = string.IsNullOrWhiteSpace(settings.TerminalEncoding) ? "UTF-8" : settings.TerminalEncoding,
+            Profile = profile,
         };
+        terminalTab.ReconnectRequested += (_, _) => _ = ReconnectTabAsync(terminalTab);
         var document = new TerminalDocument(terminalTab);
         TabBar.AddTab(terminalTab);
         ActiveTerminalTab = terminalTab;
@@ -203,6 +205,66 @@ public class MainWindowViewModel : ReactiveObject
         LastConnectionError = null;
 
         return terminalTab;
+    }
+
+    /// <summary>
+    /// Reconnects a dropped session in place: it reuses the same tab, emulator and scrollback
+    /// buffer, only rebuilding the transport. Triggered by Enter / Ctrl+R on a disconnected tab
+    /// (or after exit/reboot) instead of forcing the user to open a fresh tab (#19).
+    /// </summary>
+    public async Task ReconnectTabAsync(TerminalTabViewModel tab, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(tab);
+
+        if (tab.Profile is null || _connectionWorkflowService is null || _sshConnectionService is null)
+            return;
+
+        // Ignore reconnect requests while already connecting or connected.
+        if (tab.ConnectionStatus is SessionStatus.Connecting or SessionStatus.Connected)
+            return;
+
+        tab.ConnectionStatus = SessionStatus.Connecting;
+        tab.DetachTransport();
+        UpdateStatusBarForActiveTab();
+
+        try
+        {
+            var settings = _settingsService is not null
+                ? await _settingsService.GetSettingsAsync()
+                : new AppSettings();
+            var terminalType = TerminalTypeExtensions.FromTermName(settings.TerminalType);
+
+            var session = await _connectionWorkflowService.ConnectProfileAsync(tab.Profile, cancellationToken);
+            var client = _sshConnectionService.GetClient(session.SessionId)
+                ?? throw new InvalidOperationException("SSH client was not created for the session.");
+
+            var shellStream = client.CreateShellStream(
+                terminalName: terminalType.ToTermName(),
+                columns: 120,
+                rows: 32,
+                width: 0,
+                height: 0,
+                bufferSize: 4096);
+
+            tab.SessionId = session.SessionId;
+            tab.AttachTransport(shellStream);
+            tab.Start();
+            tab.ConnectionStatus = SessionStatus.Connected;
+
+            StatusBar.ResetUptime();
+            UpdateStatusBarForActiveTab();
+            LastConnectionError = null;
+        }
+        catch (OperationCanceledException)
+        {
+            tab.MarkDisconnected();
+        }
+        catch (Exception ex)
+        {
+            tab.MarkDisconnected();
+            LastConnectionError = DescribeConnectionError(ex, tab.Profile);
+            StatusBar.Status = LastConnectionError;
+        }
     }
 
     private void RemoveTerminalTab(TerminalTabViewModel tab, TerminalDocument document)
