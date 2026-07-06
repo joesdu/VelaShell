@@ -506,6 +506,16 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
     protected override async void OnKeyDown(KeyEventArgs e)
     {
+        // While an IME is composing (e.g. picking a Chinese candidate), the keys it consumes are
+        // delivered as ImeProcessed. Encoding them would send stray ESC / arrows / Enter to the
+        // PTY — which is what made typing Chinese into htop's F3 search kill htop (#14a). The
+        // committed text still arrives separately via OnTextInput.
+        if (e.Key == Key.ImeProcessed)
+        {
+            base.OnKeyDown(e);
+            return;
+        }
+
         // Clipboard shortcuts.
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
         {
