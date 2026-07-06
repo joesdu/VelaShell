@@ -34,8 +34,13 @@ public sealed class TerminalEmulator : IVtActions
     private bool _pendingWrap;                           // deferred autowrap at end of line
     private bool[] _tabStops;
 
-    // Saved cursor (DECSC / DECRC)
+    // Saved cursor (DECSC / DECRC, CSI s/u, DECSET 1048)
     private SavedCursor? _saved;
+
+    // Separate save slot for the alternate-screen switch (DECSET 1049). Keeping it distinct from
+    // _saved is what xterm does: an app running in the alt screen (e.g. nano) uses DECSC/DECRC
+    // freely without clobbering the main-screen cursor that must be restored on exit (#14b).
+    private SavedCursor? _altSaved;
 
     private struct SavedCursor
     {
@@ -626,7 +631,8 @@ public sealed class TerminalEmulator : IVtActions
 
         if (enable)
         {
-            if (saveCursor) SaveCursor();
+            // Save the MAIN cursor into the dedicated alt slot before switching.
+            if (saveCursor) _altSaved = CaptureCursor();
             _altScreen = new TerminalScreen(_mainScreen.Columns, _mainScreen.Rows, maxScrollback: 0);
             _altScreen.ResetToBlank(Blank());
             _alternate = true;
@@ -638,29 +644,28 @@ public sealed class TerminalEmulator : IVtActions
             _altScreen = null;
             _alternate = false;
             _screen = _mainScreen;
-            if (saveCursor) RestoreCursor();
+            // Restore the main cursor from the dedicated alt slot — never from _saved, which the
+            // alt-screen app may have overwritten via DECSC.
+            if (saveCursor) ApplyCursor(_altSaved);
         }
         _pendingWrap = false;
     }
 
-    private void SaveCursor()
+    private SavedCursor CaptureCursor() => new()
     {
-        _saved = new SavedCursor
-        {
-            X = _screen.CursorX,
-            Y = _screen.CursorY,
-            Fg = _fg,
-            Bg = _bg,
-            Flags = _flags,
-            Gl = _gl,
-            DecGraphics = (bool[])_decGraphics.Clone(),
-            OriginMode = Modes.OriginMode,
-        };
-    }
+        X = _screen.CursorX,
+        Y = _screen.CursorY,
+        Fg = _fg,
+        Bg = _bg,
+        Flags = _flags,
+        Gl = _gl,
+        DecGraphics = (bool[])_decGraphics.Clone(),
+        OriginMode = Modes.OriginMode,
+    };
 
-    private void RestoreCursor()
+    private void ApplyCursor(SavedCursor? saved)
     {
-        if (_saved is not { } s)
+        if (saved is not { } s)
         {
             _screen.SetCursor(0, 0);
             return;
@@ -671,6 +676,10 @@ public sealed class TerminalEmulator : IVtActions
         Modes.OriginMode = s.OriginMode;
         _pendingWrap = false;
     }
+
+    private void SaveCursor() => _saved = CaptureCursor();
+
+    private void RestoreCursor() => ApplyCursor(_saved);
 
     private void FillScreenWithE()
     {
@@ -688,6 +697,7 @@ public sealed class TerminalEmulator : IVtActions
         _gl = 0;
         Array.Clear(_decGraphics, 0, _decGraphics.Length);
         _saved = null;
+        _altSaved = null;
         _pendingWrap = false;
     }
 
