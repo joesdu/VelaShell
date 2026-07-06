@@ -151,4 +151,96 @@ public class TerminalTabViewModelTests
         Assert.AreNotEqual(vm2.Id, _vm.Id);
         Assert.AreNotEqual(Guid.Empty, _vm.Id);
     }
+
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void ConnectingConstructor_HasNoTransportYet()
+    {
+        var vm = new TerminalTabViewModel(_terminalEmulator);
+
+        Assert.IsNull(vm.Bridge);
+        Assert.IsNull(vm.ShellStream);
+        Assert.AreEqual(SessionStatus.Disconnected, vm.ConnectionStatus);
+    }
+
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void Start_WithoutTransport_IsNoOp()
+    {
+        var vm = new TerminalTabViewModel(_terminalEmulator);
+
+        vm.Start(); // must not throw with no transport attached
+
+        Assert.IsNull(vm.Bridge);
+    }
+
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void AttachTransport_WiresBridgeAndShellStream()
+    {
+        var vm = new TerminalTabViewModel(_terminalEmulator);
+        var stream = Substitute.For<IShellStreamWrapper>();
+
+        vm.AttachTransport(stream);
+
+        Assert.IsNotNull(vm.Bridge);
+        Assert.AreSame(stream, vm.ShellStream);
+    }
+
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void AttachTransport_Null_Throws()
+    {
+        var vm = new TerminalTabViewModel(_terminalEmulator);
+
+        Assert.ThrowsExactly<ArgumentNullException>(() => vm.AttachTransport(null!));
+    }
+
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void AttachTransport_AfterDisposed_Throws()
+    {
+        var vm = new TerminalTabViewModel(_terminalEmulator);
+        vm.Dispose();
+
+        Assert.ThrowsExactly<ObjectDisposedException>(
+            () => vm.AttachTransport(Substitute.For<IShellStreamWrapper>()));
+    }
+
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void DetachTransport_ClearsBridgeAndShellStream()
+    {
+        _vm.DetachTransport();
+
+        Assert.IsNull(_vm.Bridge);
+        Assert.IsNull(_vm.ShellStream);
+    }
+
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void MarkDisconnected_SetsStatus_AndRaisesEvent()
+    {
+        _vm.ConnectionStatus = SessionStatus.Connected;
+        var raised = false;
+        _vm.Disconnected += (_, _) => raised = true;
+
+        _vm.MarkDisconnected();
+
+        Assert.AreEqual(SessionStatus.Disconnected, _vm.ConnectionStatus);
+        Assert.IsFalse(_vm.IsConnected);
+        Assert.IsTrue(raised);
+    }
+
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void MarkDisconnected_WhenAlreadyDisconnected_DoesNotRaise()
+    {
+        var raised = false;
+        _vm.Disconnected += (_, _) => raised = true;
+
+        _vm.MarkDisconnected(); // already Disconnected from construction
+
+        Assert.IsFalse(raised);
+    }
 }

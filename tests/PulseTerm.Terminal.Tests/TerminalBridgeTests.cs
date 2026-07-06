@@ -221,6 +221,48 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
+    public void ReadLoop_WhenRemoteCloses_FiresClosed()
+    {
+        _shellStream.CanRead.Returns(true);
+        _shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(0)); // EOF => remote closed the channel
+
+        var closed = false;
+        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        bridge.Closed += () => closed = true;
+        bridge.Start();
+
+        Thread.Sleep(200);
+
+        Assert.IsTrue(closed);
+    }
+
+    [TestMethod]
+    public void Dispose_DoesNotFireClosed()
+    {
+        _shellStream.CanRead.Returns(true);
+        _shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(async callInfo =>
+            {
+                var ct = callInfo.ArgAt<CancellationToken>(3);
+                await Task.Delay(Timeout.Infinite, ct);
+                return 0;
+            });
+
+        var closed = false;
+        var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        bridge.Closed += () => closed = true;
+        bridge.Start();
+
+        Thread.Sleep(100);
+        bridge.Dispose(); // intentional teardown must not look like a remote close
+
+        Thread.Sleep(100);
+
+        Assert.IsFalse(closed);
+    }
+
+    [TestMethod]
     public void Dispose_CalledMultipleTimes_DoesNotThrow()
     {
         _shellStream.CanRead.Returns(false);

@@ -27,6 +27,14 @@ public class SshTerminalBridge : IDisposable
 
     public event Action<Exception>? Error;
 
+    /// <summary>
+    /// Raised when the remote side closes the channel (e.g. the shell ran <c>exit</c> or the
+    /// server rebooted): the read loop ended on its own rather than via <see cref="Dispose"/>.
+    /// Lets the session transition to a disconnected state that can be reconnected in place.
+    /// Not raised during intentional teardown. Fired on the read thread — marshal as needed.
+    /// </summary>
+    public event Action? Closed;
+
     public SshTerminalBridge(ITerminalEmulator terminal, IShellStreamWrapper shellStream)
     {
         _terminal = terminal ?? throw new ArgumentNullException(nameof(terminal));
@@ -50,6 +58,7 @@ public class SshTerminalBridge : IDisposable
     {
         // A larger read buffer means fewer awaits and larger natural batches.
         var buffer = new byte[16384];
+        bool remoteClosed = false;
 
         try
         {
@@ -58,7 +67,11 @@ public class SshTerminalBridge : IDisposable
                 var bytesRead = await _shellStream.ReadAsync(buffer, 0, buffer.Length, _cts.Token).ConfigureAwait(false);
 
                 if (bytesRead == 0)
+                {
+                    // EOF: the remote closed the channel (exit / reboot / dropped connection).
+                    remoteClosed = true;
                     break;
+                }
 
                 var data = new byte[bytesRead];
                 Array.Copy(buffer, data, bytesRead);
@@ -67,6 +80,10 @@ public class SshTerminalBridge : IDisposable
                 // thread keeps pace with the network while the UI drains at frame rate.
                 EnqueueForFeed(data);
             }
+
+            // Loop also exits when the stream reports it can no longer be read.
+            if (!_cts.Token.IsCancellationRequested)
+                remoteClosed = true;
         }
         catch (OperationCanceledException)
         {
@@ -78,8 +95,13 @@ public class SshTerminalBridge : IDisposable
         }
         catch (Exception ex)
         {
+            remoteClosed = true;
             Error?.Invoke(ex);
         }
+
+        // Signal a remote-initiated close, but not our own Dispose()-driven teardown.
+        if (remoteClosed && !_disposed)
+            Closed?.Invoke();
     }
 
     private void EnqueueForFeed(byte[] data)

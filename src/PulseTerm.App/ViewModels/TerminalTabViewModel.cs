@@ -1,6 +1,7 @@
 using System;
 using System.Reactive;
 using System.Threading.Tasks;
+using Avalonia.Threading;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Resources;
 using PulseTerm.Core.Ssh;
@@ -18,17 +19,20 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     private bool _disposed;
     private bool _started;
 
-    public TerminalTabViewModel(ITerminalEmulator terminalEmulator, IShellStreamWrapper shellStream)
+    /// <summary>
+    /// Creates a tab that owns the terminal emulator but has no live transport yet. Used to show
+    /// the tab immediately in a "connecting" state; call <see cref="AttachTransport"/> once the
+    /// shell stream is available (#17), and again to reconnect in place (#19).
+    /// </summary>
+    public TerminalTabViewModel(ITerminalEmulator terminalEmulator)
     {
         TerminalEmulator = terminalEmulator ?? throw new ArgumentNullException(nameof(terminalEmulator));
-        ShellStream = shellStream ?? throw new ArgumentNullException(nameof(shellStream));
 
         Title = Strings.NewTab;
         ConnectionStatus = SessionStatus.Disconnected;
 
-        Bridge = new SshTerminalBridge(terminalEmulator, shellStream);
-
-        // Keep the remote PTY size in sync with the local terminal grid.
+        // Keep the remote PTY size in sync with the local terminal grid. This is tied to the
+        // emulator, not the transport, so it survives reconnects.
         TerminalEmulator.PtySizeChanged += OnPtySizeChanged;
 
         SearchCommand = ReactiveCommand.Create(() => { });
@@ -39,7 +43,18 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         OpenQuickCommandsCommand = ReactiveCommand.Create(() => { });
     }
 
-    public Guid SessionId { get; init; }
+    /// <summary>Creates a tab and attaches a live transport immediately (the established-connection case).</summary>
+    public TerminalTabViewModel(ITerminalEmulator terminalEmulator, IShellStreamWrapper shellStream)
+        : this(terminalEmulator)
+    {
+        AttachTransport(shellStream ?? throw new ArgumentNullException(nameof(shellStream)));
+    }
+
+    public Guid SessionId { get; set; }
+
+    /// <summary>Raised when the session drops (remote closed the channel) so the UI can show the
+    /// disconnected overlay and offer reconnect (#19).</summary>
+    public event EventHandler? Disconnected;
 
     /// <summary>Status-bar connection summary for this tab, e.g. "SSH • root@host:22".</summary>
     public string ConnectionSummary { get; init; } = string.Empty;
@@ -52,9 +67,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     public ITerminalEmulator TerminalEmulator { get; }
 
-    public IShellStreamWrapper ShellStream { get; }
+    public IShellStreamWrapper? ShellStream { get; private set; }
 
-    public SshTerminalBridge Bridge { get; }
+    public SshTerminalBridge? Bridge { get; private set; }
 
     public new SessionStatus ConnectionStatus
     {
@@ -97,7 +112,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     public void Start()
     {
-        if (_started)
+        if (_started || Bridge is null)
         {
             return;
         }
@@ -106,9 +121,64 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         _started = true;
     }
 
+    /// <summary>
+    /// Attaches a live shell stream and prepares I/O pumping (call <see cref="Start"/> after).
+    /// Any previous transport is torn down in the background first, so this doubles as the
+    /// reconnect entry point that reuses the same tab and scrollback buffer (#19).
+    /// </summary>
+    public void AttachTransport(IShellStreamWrapper shellStream)
+    {
+        ArgumentNullException.ThrowIfNull(shellStream);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        DetachTransport();
+
+        ShellStream = shellStream;
+        var bridge = new SshTerminalBridge(TerminalEmulator, shellStream);
+        bridge.Closed += OnBridgeClosed;
+        Bridge = bridge;
+        _started = false;
+    }
+
+    /// <summary>Tears down the current transport off the UI thread, keeping the tab and buffer intact.</summary>
+    public void DetachTransport()
+    {
+        var bridge = Bridge;
+        if (bridge is null)
+            return;
+
+        bridge.Closed -= OnBridgeClosed;
+        Bridge = null;
+        ShellStream = null;
+        _started = false;
+
+        // Bridge.Dispose also disposes the shell stream; run it off the caller's thread.
+        Task.Run(bridge.Dispose);
+    }
+
+    private void OnBridgeClosed()
+    {
+        // Fired on the read thread; marshal the reactive status change to the UI thread.
+        if (Dispatcher.UIThread.CheckAccess())
+            MarkDisconnected();
+        else
+            Dispatcher.UIThread.Post(MarkDisconnected);
+    }
+
+    /// <summary>Transitions the tab to the disconnected state and notifies listeners (idempotent).</summary>
+    public void MarkDisconnected()
+    {
+        if (_disposed || ConnectionStatus == SessionStatus.Disconnected)
+            return;
+
+        ConnectionStatus = SessionStatus.Disconnected;
+        Disconnected?.Invoke(this, EventArgs.Empty);
+    }
+
     private void OnPtySizeChanged(int columns, int rows)
     {
-        if (_disposed || !ShellStream.CanWrite)
+        var stream = ShellStream;
+        if (_disposed || stream is null || !stream.CanWrite)
             return;
 
         // Off-load the channel request so a resize never stalls the UI thread.
@@ -116,7 +186,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         {
             try
             {
-                ShellStream.Resize(columns, rows);
+                stream.Resize(columns, rows);
             }
             catch
             {
@@ -152,6 +222,11 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         // couple of seconds, so run it off the caller's (UI) thread — the tab is already gone.
         // Fixes the "closing a tab freezes the UI" problem (#18). Bridge.Dispose is idempotent.
         var bridge = Bridge;
-        Task.Run(bridge.Dispose);
+        if (bridge is not null)
+        {
+            bridge.Closed -= OnBridgeClosed;
+            Bridge = null;
+            Task.Run(bridge.Dispose);
+        }
     }
 }
