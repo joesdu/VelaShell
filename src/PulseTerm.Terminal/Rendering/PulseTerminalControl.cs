@@ -588,9 +588,27 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         }
     }
 
+    /// <summary>Raised when the font size changes via Ctrl+wheel zoom, so the host can persist it.</summary>
+    public event Action<double>? FontSizeChanged;
+
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
+
+        // Ctrl+wheel zooms the font instead of scrolling (#21). Changing FontSize recomputes the
+        // cell metrics, reflows the grid and resizes the PTY.
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            double next = Math.Clamp(_fontSize + (e.Delta.Y > 0 ? 1 : -1), 6, 40);
+            if (Math.Abs(next - _fontSize) > 0.01)
+            {
+                FontSize = next;
+                FontSizeChanged?.Invoke(next);
+            }
+            e.Handled = true;
+            return;
+        }
+
         int delta = (int)(e.Delta.Y * 3);
         int maxOffset = _emulator.Screen.ScrollbackCount;
         _scrollOffset = Math.Clamp(_scrollOffset + delta, 0, maxOffset);
