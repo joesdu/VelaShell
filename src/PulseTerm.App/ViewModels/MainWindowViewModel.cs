@@ -146,39 +146,56 @@ public class MainWindowViewModel : ReactiveObject
             throw new InvalidOperationException("SSH connection services are not configured.");
         }
 
-        var session = await _connectionWorkflowService.ConnectProfileAsync(profile, cancellationToken);
-        var client = _sshConnectionService.GetClient(session.SessionId)
-            ?? throw new InvalidOperationException("SSH client was not created for the session.");
-
         var settings = _settingsService is not null
             ? await _settingsService.GetSettingsAsync()
             : new AppSettings();
         var terminalType = TerminalTypeExtensions.FromTermName(settings.TerminalType);
 
-        var shellStream = client.CreateShellStream(
-            terminalName: terminalType.ToTermName(),
-            columns: 120,
-            rows: 32,
-            width: 0,
-            height: 0,
-            bufferSize: 4096);
-
+        // Show the tab immediately in a connecting state, then perform the (already async, non-UI-
+        // blocking) handshake. A slow or timing-out connection no longer looks like a frozen app,
+        // and the user gets a visible, closable tab right away (#17).
         var terminalEmulator = _terminalEmulatorFactory();
         ConfigureTerminal(terminalEmulator, settings, terminalType);
-        var terminalTab = new TerminalTabViewModel(terminalEmulator, shellStream)
+        var terminalTab = new TerminalTabViewModel(terminalEmulator)
         {
-            SessionId = session.SessionId,
             Title = string.IsNullOrWhiteSpace(profile.Name) ? profile.Host : profile.Name,
-            ConnectionStatus = SessionStatus.Connected,
+            ConnectionStatus = SessionStatus.Connecting,
             ConnectionSummary = $"SSH • {profile.Username}@{profile.Host}:{profile.Port}",
             TerminalTypeName = terminalType.ToTermName(),
             EncodingName = string.IsNullOrWhiteSpace(settings.TerminalEncoding) ? "UTF-8" : settings.TerminalEncoding,
         };
-
-        terminalTab.Start();
+        var document = new TerminalDocument(terminalTab);
         TabBar.AddTab(terminalTab);
         ActiveTerminalTab = terminalTab;
-        _dockFactory.AddTerminal(new TerminalDocument(terminalTab));
+        _dockFactory.AddTerminal(document);
+        UpdateStatusBarForActiveTab();
+
+        try
+        {
+            var session = await _connectionWorkflowService.ConnectProfileAsync(profile, cancellationToken);
+            var client = _sshConnectionService.GetClient(session.SessionId)
+                ?? throw new InvalidOperationException("SSH client was not created for the session.");
+
+            var shellStream = client.CreateShellStream(
+                terminalName: terminalType.ToTermName(),
+                columns: 120,
+                rows: 32,
+                width: 0,
+                height: 0,
+                bufferSize: 4096);
+
+            terminalTab.SessionId = session.SessionId;
+            terminalTab.AttachTransport(shellStream);
+            terminalTab.Start();
+            terminalTab.ConnectionStatus = SessionStatus.Connected;
+        }
+        catch
+        {
+            // The handshake failed (auth/network/timeout): retract the connecting tab so the
+            // caller sees a clean failure instead of a dead tab.
+            RemoveTerminalTab(terminalTab, document);
+            throw;
+        }
 
         Sidebar.RecentConnections.AddRecent(profile);
         StatusBar.ResetUptime();
@@ -186,6 +203,19 @@ public class MainWindowViewModel : ReactiveObject
         LastConnectionError = null;
 
         return terminalTab;
+    }
+
+    private void RemoveTerminalTab(TerminalTabViewModel tab, TerminalDocument document)
+    {
+        if (TabBar.Tabs.Contains(tab))
+            TabBar.CloseTabCommand.Execute(tab).Subscribe();
+
+        _dockFactory.RemoveTerminal(document);
+
+        if (ReferenceEquals(ActiveTerminalTab, tab))
+            ActiveTerminalTab = TabBar.ActiveTab as TerminalTabViewModel;
+
+        tab.Dispose();
     }
 
     /// <summary>

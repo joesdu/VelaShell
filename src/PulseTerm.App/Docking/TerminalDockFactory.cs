@@ -56,6 +56,18 @@ public sealed class TerminalDockFactory : Factory
             SetFocusedDockable(_rootDock, document);
     }
 
+    /// <summary>
+    /// Removes a terminal document from the workspace without raising <see cref="DocumentClosed"/>
+    /// (unlike a user-initiated close). Used to retract a "connecting" tab when the handshake fails.
+    /// </summary>
+    public void RemoveTerminal(TerminalDocument document)
+    {
+        if (_documentDock is null)
+            return;
+
+        RemoveDockable(document, collapse: false);
+    }
+
     public override void OnDockableClosed(IDockable? dockable)
     {
         base.OnDockableClosed(dockable);
