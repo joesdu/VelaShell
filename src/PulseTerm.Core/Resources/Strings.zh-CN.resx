@@ -398,4 +398,7 @@
   <data name="FilePath" xml:space="preserve">
     <value>路径</value>
   </data>
+  <data name="Reconnect" xml:space="preserve">
+    <value>重新连接</value>
+  </data>
 </root>

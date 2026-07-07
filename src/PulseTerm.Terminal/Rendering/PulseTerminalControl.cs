@@ -421,6 +421,19 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
                 bg = palette.SelectionBackground;
             }
 
+            if (_searchHighlights is not null &&
+                _searchHighlights.TryGetValue(absoluteRow, out var searchSpans))
+            {
+                foreach (var span in searchSpans)
+                {
+                    if (col >= span.Start && col < span.End)
+                    {
+                        bg = span.Current ? SearchCurrentBg : SearchMatchBg;
+                        break;
+                    }
+                }
+            }
+
             // Recolor only text the program left in the default color, so explicit SGR colors
             // (ls --color, git, prompts) are never overridden. URLs and IPs also get an underline
             // to signal they are Ctrl+clickable.
@@ -590,6 +603,46 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     /// <summary>Searches the whole buffer (scrollback + screen), case-insensitive (spec §5.3).</summary>
     public IReadOnlyList<BufferSearchHit> SearchBuffer(string query) =>
         BufferSearch.FindAll(_emulator.Screen, query);
+
+    // ---- Search highlights (spec §5.3: 命中项高亮) --------------------------
+
+    private static readonly Rgba SearchMatchBg = new(0x59, 0xFD, 0xCB, 0x6E);   // amber, ~35%
+    private static readonly Rgba SearchCurrentBg = new(0x73, 0x00, 0xD4, 0xAA); // accent, ~45%
+
+    /// <summary>Search spans per absolute buffer row; the current hit is tinted differently.</summary>
+    private Dictionary<int, List<(int Start, int End, bool Current)>>? _searchHighlights;
+
+    /// <summary>Paints every search hit (amber) with the current one in accent. Rows are
+    /// absolute buffer rows, so highlights stay attached while scrolling.</summary>
+    public void SetSearchHighlights(IReadOnlyList<BufferSearchHit> hits, int currentIndex)
+    {
+        if (hits.Count == 0)
+        {
+            ClearSearchHighlights();
+            return;
+        }
+
+        var map = new Dictionary<int, List<(int, int, bool)>>();
+        for (int i = 0; i < hits.Count; i++)
+        {
+            var hit = hits[i];
+            if (!map.TryGetValue(hit.Row, out var spans))
+                map[hit.Row] = spans = new List<(int, int, bool)>();
+            spans.Add((hit.StartCol, hit.StartCol + hit.Length, i == currentIndex));
+        }
+
+        _searchHighlights = map;
+        InvalidateVisual();
+    }
+
+    public void ClearSearchHighlights()
+    {
+        if (_searchHighlights is null)
+            return;
+
+        _searchHighlights = null;
+        InvalidateVisual();
+    }
 
     /// <summary>Scrolls a search hit into view (roughly centered) and selects it so the
     /// existing selection highlight marks the match.</summary>

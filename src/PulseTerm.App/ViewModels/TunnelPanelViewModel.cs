@@ -15,6 +15,7 @@ public class TunnelPanelViewModel : ReactiveObject
 {
     private readonly ITunnelService _tunnelService;
     private readonly Guid _sessionId;
+    private readonly Func<Task<IReadOnlyList<SessionProfile>>>? _savedProfilesProvider;
 
     private TunnelType _newTunnelType;
     private string _newLocalHost = "localhost";
@@ -23,14 +24,18 @@ public class TunnelPanelViewModel : ReactiveObject
     private int _newRemotePort;
     private string _newTunnelName = string.Empty;
     private string? _errorMessage;
+    private SessionProfile? _selectedTarget;
 
-    public TunnelPanelViewModel(ITunnelService tunnelService, Guid sessionId)
+    public TunnelPanelViewModel(ITunnelService tunnelService, Guid sessionId,
+        Func<Task<IReadOnlyList<SessionProfile>>>? savedProfilesProvider = null)
     {
         _tunnelService = tunnelService ?? throw new ArgumentNullException(nameof(tunnelService));
         _sessionId = sessionId;
+        _savedProfilesProvider = savedProfilesProvider;
         SessionId = sessionId;
 
         Tunnels = new ObservableCollection<TunnelItemViewModel>();
+        SavedTargets = new ObservableCollection<SessionProfile>();
 
         var canCreate = this.WhenAnyValue(
             vm => vm.NewTunnelName,
@@ -49,6 +54,54 @@ public class TunnelPanelViewModel : ReactiveObject
         StopTunnelCommand = ReactiveCommand.CreateFromTask<Guid>(StopTunnelAsync);
         StartTunnelCommand = ReactiveCommand.CreateFromTask<Guid>(StartTunnelAsync);
         DeleteTunnelCommand = ReactiveCommand.CreateFromTask<Guid>(DeleteTunnelAsync);
+        ResetFormCommand = ReactiveCommand.Create(() => { ErrorMessage = null; ResetForm(); });
+    }
+
+    /// <summary>Saved SSH profiles offered as forward targets (用户反馈 #4: 远程地址从资源
+    /// 管理器已保存的会话中选择). Refreshed each time the panel opens.</summary>
+    public ObservableCollection<SessionProfile> SavedTargets { get; }
+
+    /// <summary>Selecting a saved profile fills the remote host (the service port stays manual —
+    /// the profile's port is its SSH port, not the forwarded service's).</summary>
+    public SessionProfile? SelectedTarget
+    {
+        get => _selectedTarget;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _selectedTarget, value);
+            if (value is not null)
+                NewRemoteHost = value.Host;
+        }
+    }
+
+    /// <summary>Loads the saved profiles into <see cref="SavedTargets"/> (best-effort).</summary>
+    public async Task LoadSavedTargetsAsync()
+    {
+        if (_savedProfilesProvider is null)
+            return;
+
+        try
+        {
+            var profiles = await _savedProfilesProvider();
+            SavedTargets.Clear();
+            foreach (var profile in profiles)
+                SavedTargets.Add(profile);
+        }
+        catch
+        {
+            // The picker is a convenience; the host can still be typed manually.
+        }
+    }
+
+    /// <summary>ComboBox adapter: 0 = 本地转发 (local forward), 1 = 远程转发 (remote forward).</summary>
+    public int NewTunnelTypeIndex
+    {
+        get => NewTunnelType == TunnelType.RemoteForward ? 1 : 0;
+        set
+        {
+            NewTunnelType = value == 1 ? TunnelType.RemoteForward : TunnelType.LocalForward;
+            this.RaisePropertyChanged();
+        }
     }
 
     /// <summary>The SSH session these tunnels belong to.</summary>
@@ -109,6 +162,9 @@ public class TunnelPanelViewModel : ReactiveObject
     public ReactiveCommand<Guid, Unit> StopTunnelCommand { get; }
     public ReactiveCommand<Guid, Unit> StartTunnelCommand { get; }
     public ReactiveCommand<Guid, Unit> DeleteTunnelCommand { get; }
+
+    /// <summary>取消 button: clears the form and any error.</summary>
+    public ReactiveCommand<Unit, Unit> ResetFormCommand { get; }
 
     private async Task CreateTunnelAsync(CancellationToken ct)
     {
@@ -238,6 +294,7 @@ public class TunnelPanelViewModel : ReactiveObject
         NewLocalPort = 0;
         NewRemoteHost = string.Empty;
         NewRemotePort = 0;
-        NewTunnelType = TunnelType.LocalForward;
+        SelectedTarget = null;
+        NewTunnelTypeIndex = 0;
     }
 }

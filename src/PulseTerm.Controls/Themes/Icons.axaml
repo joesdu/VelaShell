@@ -34,6 +34,10 @@
   <StreamGeometry x:Key="Icon.history">M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M12 7v5l4 2</StreamGeometry>
   <StreamGeometry x:Key="Icon.folder-plus">M12 10v6 M9 13h6 M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.file">M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z M14 2v4a2 2 0 0 0 2 2h4</StreamGeometry>
+  <StreamGeometry x:Key="Icon.unplug">M19 5l3-3 M2 22l3-3 M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z M7.5 13.5 10 11 M13.5 7.5 11 10 M12 6l2.3-2.3a2.4 2.4 0 0 1 3.4 0l2.6 2.6a2.4 2.4 0 0 1 0 3.4L18 12l-6-6Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.trash-2">M10 11v6 M14 11v6 M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6 M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2</StreamGeometry>
+  <StreamGeometry x:Key="Icon.play">M6 3 20 12 6 21 6 3Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.square">M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.eye">M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0 M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.eye-off">M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49 M14.084 14.158a3 3 0 0 1-4.242-4.242 M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143 M2 2l20 20</StreamGeometry>
 </ResourceDictionary>

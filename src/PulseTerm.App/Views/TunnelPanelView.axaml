@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:PulseTerm.App.ViewModels"
              xmlns:pc="using:PulseTerm.Controls.Controls"
+             xmlns:models="clr-namespace:PulseTerm.Core.Models;assembly=PulseTerm.Core"
              mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="320"
              x:Class="PulseTerm.App.Views.TunnelPanelView"
              x:DataType="vm:TunnelPanelViewModel">
@@ -71,7 +72,7 @@
                     BorderBrush="{DynamicResource PulseBorderPrimary}"
                     BorderThickness="0,0,0,1">
               <StackPanel Spacing="6">
-                <Grid ColumnDefinitions="*,Auto">
+                <Grid ColumnDefinitions="*,Auto,4,Auto,2,Auto">
                   <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Ellipse Width="7" Height="7" VerticalAlignment="Center"
                              Classes.active="{Binding IsActive}">
@@ -98,6 +99,37 @@
                                FontFamily="{DynamicResource PulseTerminalFont}"
                                FontSize="9" FontWeight="Medium" />
                   </Border>
+                  <!-- Stop (active) / start (stopped) toggle -->
+                  <Button Grid.Column="3" Width="20" Height="20" Padding="0" CornerRadius="3"
+                          Background="Transparent" Cursor="Hand"
+                          IsVisible="{Binding IsActive}"
+                          ToolTip.Tip="停止隧道"
+                          Command="{Binding $parent[ItemsControl].((vm:TunnelPanelViewModel)DataContext).StopTunnelCommand}"
+                          CommandParameter="{Binding Id}">
+                    <pc:LucideIcon Width="10" Height="10"
+                                   Data="{StaticResource Icon.square}"
+                                   Foreground="{DynamicResource PulseTextTertiary}" />
+                  </Button>
+                  <Button Grid.Column="3" Width="20" Height="20" Padding="0" CornerRadius="3"
+                          Background="Transparent" Cursor="Hand"
+                          IsVisible="{Binding !IsActive}"
+                          ToolTip.Tip="启动隧道"
+                          Command="{Binding $parent[ItemsControl].((vm:TunnelPanelViewModel)DataContext).StartTunnelCommand}"
+                          CommandParameter="{Binding Id}">
+                    <pc:LucideIcon Width="10" Height="10"
+                                   Data="{StaticResource Icon.play}"
+                                   Foreground="{DynamicResource PulseStatusConnected}" />
+                  </Button>
+                  <!-- Delete (stops first when active) -->
+                  <Button Grid.Column="5" Width="20" Height="20" Padding="0" CornerRadius="3"
+                          Background="Transparent" Cursor="Hand"
+                          ToolTip.Tip="删除隧道"
+                          Command="{Binding $parent[ItemsControl].((vm:TunnelPanelViewModel)DataContext).DeleteTunnelCommand}"
+                          CommandParameter="{Binding Id}">
+                    <pc:LucideIcon Width="10" Height="10"
+                                   Data="{StaticResource Icon.trash-2}"
+                                   Foreground="{DynamicResource PulseStatusDisconnected}" />
+                  </Button>
                 </Grid>
                 <TextBlock Text="{Binding DisplayRoute}"
                            Foreground="{DynamicResource PulseTextMuted}"
@@ -121,16 +153,48 @@
                      FontSize="11" FontWeight="Medium" VerticalAlignment="Center" />
         </StackPanel>
 
-        <Grid ColumnDefinitions="*,8,80,8,*" RowDefinitions="Auto,4,Auto">
+        <Grid ColumnDefinitions="*,8,110" RowDefinitions="Auto,4,Auto">
           <TextBlock Grid.Row="0" Grid.Column="0" Classes="form-label" Text="名称" />
           <TextBox   Grid.Row="2" Grid.Column="0" Text="{Binding NewTunnelName}" PlaceholderText="MySQL 转发" />
-          <TextBlock Grid.Row="0" Grid.Column="2" Classes="form-label" Text="本地端口" />
-          <TextBox   Grid.Row="2" Grid.Column="2" Text="{Binding NewLocalPort}" PlaceholderText="3306" />
-          <TextBlock Grid.Row="0" Grid.Column="4" Classes="form-label" Text="远程地址" />
-          <Grid      Grid.Row="2" Grid.Column="4" ColumnDefinitions="*,4,56">
-            <TextBox Grid.Column="0" Text="{Binding NewRemoteHost}" PlaceholderText="host" />
-            <TextBox Grid.Column="2" Text="{Binding NewRemotePort}" PlaceholderText="port" />
-          </Grid>
+          <TextBlock Grid.Row="0" Grid.Column="2" Classes="form-label" Text="类型" />
+          <ComboBox  Grid.Row="2" Grid.Column="2"
+                     MinHeight="26" FontSize="11"
+                     FontFamily="{DynamicResource PulseTerminalFont}"
+                     HorizontalAlignment="Stretch"
+                     SelectedIndex="{Binding NewTunnelTypeIndex}">
+            <ComboBoxItem Content="本地转发" />
+            <ComboBoxItem Content="远程转发" />
+          </ComboBox>
+        </Grid>
+
+        <!-- 远程主机从资源管理器已保存的会话中选择（用户反馈 #4）；服务端口手动填写。 -->
+        <Grid ColumnDefinitions="80,8,*,8,56" RowDefinitions="Auto,4,Auto">
+          <TextBlock Grid.Row="0" Grid.Column="0" Classes="form-label" Text="本地端口" />
+          <TextBox   Grid.Row="2" Grid.Column="0" Text="{Binding NewLocalPort}" PlaceholderText="3306" />
+          <TextBlock Grid.Row="0" Grid.Column="2" Classes="form-label" Text="远程主机（已保存会话）" />
+          <ComboBox  Grid.Row="2" Grid.Column="2"
+                     MinHeight="26" FontSize="11"
+                     FontFamily="{DynamicResource PulseTerminalFont}"
+                     HorizontalAlignment="Stretch"
+                     PlaceholderText="选择会话"
+                     ItemsSource="{Binding SavedTargets}"
+                     SelectedItem="{Binding SelectedTarget}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="models:SessionProfile">
+                <TextBlock FontFamily="{DynamicResource PulseTerminalFont}" FontSize="11">
+                  <TextBlock.Text>
+                    <MultiBinding StringFormat="{}{0} ({1}@{2})">
+                      <Binding Path="Name" />
+                      <Binding Path="Username" />
+                      <Binding Path="Host" />
+                    </MultiBinding>
+                  </TextBlock.Text>
+                </TextBlock>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <TextBlock Grid.Row="0" Grid.Column="4" Classes="form-label" Text="端口" />
+          <TextBox   Grid.Row="2" Grid.Column="4" Text="{Binding NewRemotePort}" PlaceholderText="port" />
         </Grid>
 
         <TextBlock Text="{Binding ErrorMessage}"
@@ -140,7 +204,8 @@
 
         <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
           <Button Padding="10,4" CornerRadius="3" Background="Transparent"
-                  BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1">
+                  BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1"
+                  Command="{Binding ResetFormCommand}">
             <TextBlock Text="取消"
                        Foreground="{DynamicResource PulseTextSecondary}"
                        FontFamily="{DynamicResource PulseUiFont}" FontSize="11" />

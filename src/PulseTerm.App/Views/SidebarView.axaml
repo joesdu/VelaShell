@@ -10,8 +10,14 @@
              x:Class="PulseTerm.App.Views.SidebarView"
              x:DataType="vm:SidebarViewModel">
 
-  <Grid Background="{DynamicResource PulseBgSidebar}"
-        RowDefinitions="36,*,320,40">
+  <Grid Background="{DynamicResource PulseBgSidebar}">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="36" />
+      <RowDefinition Height="*" MinHeight="120" />
+      <RowDefinition Height="5" />
+      <RowDefinition Height="320" MinHeight="140" />
+      <RowDefinition Height="40" />
+    </Grid.RowDefinitions>
 
     <!-- Row 1: Toolbar (36px) -->
     <Border Grid.Row="0"
@@ -72,10 +78,15 @@
                              Padding="0,8,0,8" />
     </ScrollViewer>
 
-    <!-- Row 3: Quick Connect + Recent (320px) -->
-    <Border Grid.Row="2"
-            BorderThickness="0,1,0,0"
-            BorderBrush="{DynamicResource PulseBorderPrimary}">
+    <!-- Splitter between session tree and quick connect: 5px transparent grab area drawn
+         as a 1px line so the two sections' heights are drag-adjustable. -->
+    <Border Grid.Row="2" Height="1" VerticalAlignment="Center"
+            Background="{DynamicResource PulseBorderPrimary}" />
+    <GridSplitter Grid.Row="2" Background="Transparent" ResizeDirection="Rows"
+                  HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+
+    <!-- Row 3: Quick Connect + Recent (default 320px, drag-resizable) -->
+    <Border Grid.Row="3">
       <Grid RowDefinitions="36,32,24,*">
 
         <!-- Quick Connect header -->
@@ -192,7 +203,7 @@
     </Border>
 
     <!-- Row 4: Sidebar Footer (40px) -->
-    <Border Grid.Row="3"
+    <Border Grid.Row="4"
             BorderThickness="0,1,0,0"
             BorderBrush="{DynamicResource PulseBorderPrimary}"
             Padding="12,0">

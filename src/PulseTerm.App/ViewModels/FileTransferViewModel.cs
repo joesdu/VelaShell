@@ -15,6 +15,8 @@ public class FileTransferViewModel : ReactiveObject
     private readonly ITransferManager _transferManager;
     private bool _isPanelVisible;
     private IDisposable? _autoHide;
+    private bool _isPointerOver;
+    private bool _hidePending;
 
     public FileTransferViewModel(ITransferManager? transferManager)
     {
@@ -56,18 +58,51 @@ public class FileTransferViewModel : ReactiveObject
     }
 
     /// <summary>Call when a task finishes; once nothing is active the toast lingers ~3s
-    /// showing the completed state, then fades out (spec §9.4).</summary>
+    /// showing the completed state, then fades out (spec §9.4). While the pointer is inside
+    /// the toast the countdown is held — it only starts (or restarts) after the pointer leaves.</summary>
     public void NotifyTaskSettled()
     {
         this.RaisePropertyChanged(nameof(ActiveCount));
         _autoHide?.Dispose();
-        if (ActiveCount > 0)
-            return;
+        _autoHide = null;
 
+        if (ActiveCount > 0)
+        {
+            _hidePending = false;
+            return;
+        }
+
+        _hidePending = true;
+        if (!_isPointerOver)
+            ScheduleAutoHide();
+    }
+
+    /// <summary>Called by the view on pointer enter/leave: entering pauses any pending
+    /// auto-hide so the user can inspect results; leaving resumes the 3s countdown.</summary>
+    public void SetPointerOver(bool isOver)
+    {
+        _isPointerOver = isOver;
+
+        if (isOver)
+        {
+            _autoHide?.Dispose();
+            _autoHide = null;
+            return;
+        }
+
+        if (_hidePending && ActiveCount == 0)
+            ScheduleAutoHide();
+    }
+
+    private void ScheduleAutoHide()
+    {
         _autoHide = Avalonia.Threading.DispatcherTimer.RunOnce(() =>
         {
-            if (ActiveCount == 0)
+            if (ActiveCount == 0 && !_isPointerOver)
+            {
                 IsPanelVisible = false;
+                _hidePending = false;
+            }
         }, TimeSpan.FromSeconds(3));
     }
 

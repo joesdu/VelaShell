@@ -237,12 +237,18 @@ public class MainWindowViewModel : ReactiveObject
 
         if (TunnelPanel is null || TunnelPanel.SessionId != tab.SessionId)
         {
-            TunnelPanel = new TunnelPanelViewModel(_tunnelService, tab.SessionId)
+            // Saved sessions feed the remote-host picker (用户反馈 #4).
+            Func<Task<IReadOnlyList<SessionProfile>>>? targets = _sessionRepository is null
+                ? null
+                : async () => await _sessionRepository.GetAllSessionsAsync();
+
+            TunnelPanel = new TunnelPanelViewModel(_tunnelService, tab.SessionId, targets)
             {
                 NewLocalHost = "127.0.0.1",
             };
         }
 
+        _ = TunnelPanel.LoadSavedTargetsAsync();
         IsTunnelPanelOpen = true;
     }
     /// <summary>The self-drawn terminal control of the active tab, when it is one.</summary>

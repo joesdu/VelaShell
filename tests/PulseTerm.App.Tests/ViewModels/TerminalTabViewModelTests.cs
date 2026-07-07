@@ -123,12 +123,8 @@ public class TerminalTabViewModelTests
     [TestCategory("TerminalTab")]
     public void Constructor_InitializesAllCommands()
     {
-        Assert.IsNotNull(_vm.SearchCommand);
-        Assert.IsNotNull(_vm.CopyCommand);
-        Assert.IsNotNull(_vm.SplitCommand);
-        Assert.IsNotNull(_vm.ToggleBroadcastCommand);
-        Assert.IsNotNull(_vm.OpenTunnelCommand);
-        Assert.IsNotNull(_vm.OpenQuickCommandsCommand);
+        Assert.IsNotNull(_vm.DisconnectCommand);
+        Assert.IsNotNull(_vm.ReconnectCommand);
     }
 
     [TestMethod]

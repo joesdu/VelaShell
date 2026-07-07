@@ -54,15 +54,22 @@
     <!-- Shell: content + status bar + palette overlay -->
     <Grid Grid.Row="1" RowDefinitions="*,Auto">
     <!-- Row 0: Content area (sidebar + main) -->
-    <Grid Grid.Row="0" ColumnDefinitions="260,Auto,*">
+    <Grid Grid.Row="0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="260" MinWidth="180" MaxWidth="520" />
+        <ColumnDefinition Width="5" />
+        <ColumnDefinition Width="*" MinWidth="400" />
+      </Grid.ColumnDefinitions>
 
       <!-- Sidebar -->
       <views:SidebarView x:Name="SidebarHost" Grid.Column="0" DataContext="{Binding Sidebar}" />
 
-      <!-- Sidebar border -->
-      <Border Grid.Column="1"
-              Width="1"
+      <!-- Sidebar splitter: 5px transparent grab area drawn as a 1px line, so the sidebar
+           width is drag-adjustable. -->
+      <Border Grid.Column="1" Width="1" HorizontalAlignment="Center"
               Background="{DynamicResource PulseBorderPrimary}" />
+      <GridSplitter Grid.Column="1" Background="Transparent" ResizeDirection="Columns"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 
       <!-- Main area (terminal, file browser). The file rows start collapsed (0) and are
            opened/restored from code-behind when FileBrowser.IsVisible changes (§6 可折叠/拖高). -->

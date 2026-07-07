@@ -62,13 +62,15 @@
         </Setter>
     </Style>
 
+    <!-- Tabs stretch to the full strip height so no bg-page sliver shows between the menu
+         bar's divider and the tab tops (用户反馈：标签与菜单分割线之间的空隙). -->
     <Style Selector="dc|DocumentTabStripItem">
         <Setter Property="Background" Value="{DynamicResource PulseTabInactiveBg}" />
         <Setter Property="Foreground" Value="{DynamicResource PulseTextTertiary}" />
         <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
         <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0,2,0,0" />
-        <Setter Property="VerticalAlignment" Value="Bottom" />
+        <Setter Property="VerticalAlignment" Value="Stretch" />
     </Style>
 
     <!-- Token-styled tooltips (small-flyout spec: bg-surface + border-secondary + corner 6). -->

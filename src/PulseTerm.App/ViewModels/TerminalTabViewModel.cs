@@ -35,12 +35,14 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         // emulator, not the transport, so it survives reconnects.
         TerminalEmulator.PtySizeChanged += OnPtySizeChanged;
 
-        SearchCommand = ReactiveCommand.Create(() => { });
-        CopyCommand = ReactiveCommand.Create(() => { });
-        SplitCommand = ReactiveCommand.Create(() => { });
-        ToggleBroadcastCommand = ReactiveCommand.Create(() => { });
-        OpenTunnelCommand = ReactiveCommand.Create(() => { });
-        OpenQuickCommandsCommand = ReactiveCommand.Create(() => { });
+        // Toolbar quick actions (用户反馈 #5): tear the transport down but keep the tab,
+        // or ask the owner to reconnect in place (#19 flow).
+        DisconnectCommand = ReactiveCommand.Create(
+            () => { DetachTransport(); MarkDisconnected(); },
+            this.WhenAnyValue(x => x.IsConnected));
+        ReconnectCommand = ReactiveCommand.Create(
+            RequestReconnect,
+            this.WhenAnyValue(x => x.IsConnected, connected => !connected));
     }
 
     /// <summary>Creates a tab and attaches a live transport immediately (the established-connection case).</summary>
@@ -119,12 +121,11 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     public bool CanReconnect => ReconnectAttempts < MaxReconnectAttempts;
 
-    public ReactiveCommand<Unit, Unit> SearchCommand { get; }
-    public ReactiveCommand<Unit, Unit> CopyCommand { get; }
-    public ReactiveCommand<Unit, Unit> SplitCommand { get; }
-    public ReactiveCommand<Unit, Unit> ToggleBroadcastCommand { get; }
-    public ReactiveCommand<Unit, Unit> OpenTunnelCommand { get; }
-    public ReactiveCommand<Unit, Unit> OpenQuickCommandsCommand { get; }
+    /// <summary>Disconnects the live transport, keeping the tab (and its buffer) for reconnect.</summary>
+    public ReactiveCommand<Unit, Unit> DisconnectCommand { get; }
+
+    /// <summary>Requests an in-place reconnect of a disconnected tab (same as Enter / Ctrl+R).</summary>
+    public ReactiveCommand<Unit, Unit> ReconnectCommand { get; }
 
     public void Start()
     {

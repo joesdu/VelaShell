@@ -101,6 +101,7 @@ public partial class TerminalTabView : UserControl
         SearchBar.IsVisible = false;
         _searchHits = Array.Empty<PulseTerm.Terminal.BufferSearchHit>();
         _searchIndex = -1;
+        _termControl?.ClearSearchHighlights();
         FocusTerminal();
     }
 
@@ -128,6 +129,9 @@ public partial class TerminalTabView : UserControl
         SearchCount.Text = _searchHits.Count == 0
             ? (string.IsNullOrEmpty(SearchBox.Text) ? "" : "无匹配")
             : $"{_searchIndex + 1}/{_searchHits.Count}";
+
+        // All hits get a persistent highlight; the current one is tinted accent (§5.3).
+        _termControl?.SetSearchHighlights(_searchHits, _searchIndex);
 
         if (_searchIndex >= 0 && _termControl is not null)
             _termControl.ShowHit(_searchHits[_searchIndex]);

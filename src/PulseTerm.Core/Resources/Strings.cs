@@ -140,4 +140,5 @@ public static class Strings
     public static string File => ResourceManager.GetString(nameof(File), CultureInfo.CurrentUICulture) ?? nameof(File);
     public static string Folder => ResourceManager.GetString(nameof(Folder), CultureInfo.CurrentUICulture) ?? nameof(Folder);
     public static string FilePath => ResourceManager.GetString(nameof(FilePath), CultureInfo.CurrentUICulture) ?? nameof(FilePath);
+    public static string Reconnect => ResourceManager.GetString(nameof(Reconnect), CultureInfo.CurrentUICulture) ?? nameof(Reconnect);
 }
