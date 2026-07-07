@@ -12,6 +12,7 @@ using PulseTerm.Core.Ssh;
 using PulseTerm.Terminal.Emulation;
 using PulseTerm.Presentation.ViewModels;
 using PulseTerm.Presentation.Services;
+using PulseTerm.Presentation.Commands;
 using PulseTerm.Terminal;
 using PulseTerm.Terminal.Rendering;
 using ReactiveUI;
@@ -83,7 +84,46 @@ public class MainWindowViewModel : ReactiveObject
 
         CommandPalette = new CommandPaletteViewModel(BuildPaletteItems);
         OpenCommandPaletteCommand = ReactiveCommand.Create(() => CommandPalette.Open());
+
+        RegisterCommands();
+        RunCommand = ReactiveCommand.Create<string>(id => Commands.Execute(id));
     }
+
+    /// <summary>
+    /// The single command source shared by the menu bar, command palette and shortcuts
+    /// (design spec §4A.1) — every entry point shows the same name, hint and behavior.
+    /// </summary>
+    public ICommandRegistry Commands { get; } = new CommandRegistry();
+
+    /// <summary>Executes a registry command by id (used by menu entries via CommandParameter).</summary>
+    public ReactiveCommand<string, Unit> RunCommand { get; private set; } = null!;
+
+    private void RegisterCommands()
+    {
+        Commands.Register(new CommandDescriptor("session.new", "新建 SSH 连接", "会话",
+            () => Sidebar.QuickConnectCommand.Execute().Subscribe(), Shortcut: "Ctrl+N", Icon: "Icon.plus"));
+        Commands.Register(new CommandDescriptor("session.close", "关闭当前会话", "会话",
+            () => TabBar.CloseActiveTabCommand.Execute().Subscribe(),
+            CanExecute: () => TabBar.ActiveTab is not null, Shortcut: "Ctrl+W"));
+        Commands.Register(new CommandDescriptor("session.reconnect", "重连", "操作",
+            () => { if (ActiveTerminalTab is { } tab) _ = ReconnectTabAsync(tab); },
+            CanExecute: () => ActiveTerminalTab?.ConnectionStatus == SessionStatus.Disconnected,
+            Shortcut: "Ctrl+R"));
+        Commands.Register(new CommandDescriptor("edit.copy", "复制", "编辑",
+            () => { if (ActiveTerminalControl is { } c) _ = c.CopyAsync(); },
+            CanExecute: () => ActiveTerminalControl is not null, Shortcut: "Ctrl+Shift+C", Icon: "Icon.copy"));
+        Commands.Register(new CommandDescriptor("edit.paste", "粘贴", "编辑",
+            () => { if (ActiveTerminalControl is { } c) _ = c.PasteAsync(); },
+            CanExecute: () => ActiveTerminalControl is not null, Shortcut: "Ctrl+Shift+V"));
+        Commands.Register(new CommandDescriptor("app.settings", "打开设置", "编辑",
+            () => OpenSettingsCommand.Execute().Subscribe(), Shortcut: "Ctrl+,", Icon: "Icon.settings"));
+        Commands.Register(new CommandDescriptor("app.palette", "命令面板", "搜索",
+            () => CommandPalette.Open(), Shortcut: "Ctrl+P", Icon: "Icon.zap"));
+    }
+
+    /// <summary>The self-drawn terminal control of the active tab, when it is one.</summary>
+    private PulseTerminalControl? ActiveTerminalControl =>
+        ActiveTerminalTab?.TerminalEmulator.Control as PulseTerminalControl;
 
     /// <summary>The Ctrl+P / Ctrl+K command palette overlay.</summary>
     public CommandPaletteViewModel CommandPalette { get; }
@@ -128,11 +168,13 @@ public class MainWindowViewModel : ReactiveObject
                 isSession: true));
         }
 
-        // Global actions.
-        items.Add(new CommandPaletteItem("命令", "新建 SSH 连接",
-            () => Sidebar.QuickConnectCommand.Execute().Subscribe(), hint: "Ctrl+N"));
-        items.Add(new CommandPaletteItem("命令", "打开设置",
-            () => OpenSettingsCommand.Execute().Subscribe(), hint: "Ctrl+,"));
+        // Global actions come from the shared command registry (menu/palette/shortcut parity).
+        foreach (var command in Commands.All)
+        {
+            var captured = command;
+            items.Add(new CommandPaletteItem("命令", captured.Title,
+                () => Commands.Execute(captured.Id), hint: captured.Shortcut));
+        }
 
         return items;
     }

@@ -649,7 +649,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
             await top.Launcher.LaunchUriAsync(uri);
     }
 
-    private async Task CopyAsync()
+    public async Task CopyAsync()
     {
         var text = GetSelectedText();
         if (string.IsNullOrEmpty(text))
@@ -659,7 +659,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
             await clipboard.SetTextAsync(text);
     }
 
-    private async Task PasteAsync()
+    public async Task PasteAsync()
     {
         var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
         if (clipboard is null)

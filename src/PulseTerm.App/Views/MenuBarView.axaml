@@ -151,7 +151,7 @@
                     FlyoutPresenterTheme="{StaticResource PulseMenuFlyoutPresenter}">
               <StackPanel>
                 <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click"
-                        Command="{Binding Sidebar.QuickConnectCommand}">
+                        Command="{Binding RunCommand}" CommandParameter="session.new">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+N" />
                     <TextBlock Classes="entry-label" Text="新建 SSH 连接" />
@@ -165,7 +165,7 @@
                 </Button>
                 <Border Height="1" Margin="0,4" Background="{DynamicResource PulseBorderPrimary}" />
                 <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click"
-                        Command="{Binding TabBar.CloseActiveTabCommand}">
+                        Command="{Binding RunCommand}" CommandParameter="session.close">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+W" />
                     <TextBlock Classes="entry-label" Text="关闭当前会话" />
@@ -184,13 +184,13 @@
             <Flyout Placement="BottomEdgeAlignedLeft"
                     FlyoutPresenterTheme="{StaticResource PulseMenuFlyoutPresenter}">
               <StackPanel>
-                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="edit.copy">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+Shift+C" />
                     <TextBlock Classes="entry-label" Text="复制" />
                   </DockPanel>
                 </Button>
-                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="edit.paste">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+Shift+V" />
                     <TextBlock Classes="entry-label" Text="粘贴" />
@@ -201,7 +201,7 @@
                 </Button>
                 <Border Height="1" Margin="0,4" Background="{DynamicResource PulseBorderPrimary}" />
                 <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click"
-                        Command="{Binding OpenSettingsCommand}">
+                        Command="{Binding RunCommand}" CommandParameter="app.settings">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+," />
                     <TextBlock Classes="entry-label" Text="首选项" />
@@ -217,7 +217,7 @@
             <Flyout Placement="BottomEdgeAlignedLeft"
                     FlyoutPresenterTheme="{StaticResource PulseMenuFlyoutPresenter}">
               <StackPanel>
-                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="session.reconnect">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+R" />
                     <TextBlock Classes="entry-label" Text="重连" />
