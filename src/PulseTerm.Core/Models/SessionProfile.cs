@@ -15,7 +15,10 @@ public class SessionProfile
     public AuthMethod AuthMethod { get; set; } = AuthMethod.Password;
     
     public string? Password { get; set; }
-    
+
+    /// <summary>是否记住密码(AES-256 加密落盘);为 false 时密码仅用于本次连接,不持久化。</summary>
+    public bool RememberPassword { get; set; } = true;
+
     public string? PrivateKeyPath { get; set; }
     
     public string? PrivateKeyPassphrase { get; set; }

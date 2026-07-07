@@ -73,6 +73,8 @@ public class MainWindowViewModel : ReactiveObject
         _dockFactory.FocusedDockableChanged += OnFocusedDockableChanged;
 
         _sidebar = new SidebarViewModel(recentConnectionService);
+        if (sessionRepository is not null)
+            _sidebar.SessionTree = new SessionTreeViewModel(sessionRepository);
         _tabBar = new TabBarViewModel();
         _statusBar = new StatusBarViewModel();
 
@@ -123,7 +125,7 @@ public class MainWindowViewModel : ReactiveObject
     private void RegisterCommands()
     {
         Commands.Register(new CommandDescriptor("session.new", "新建 SSH 连接", "会话",
-            () => Sidebar.QuickConnectCommand.Execute().Subscribe(), Shortcut: "Ctrl+N", Icon: "Icon.plus"));
+            () => NewConnectionRequested?.Invoke(this, EventArgs.Empty), Shortcut: "Ctrl+N", Icon: "Icon.plus"));
         Commands.Register(new CommandDescriptor("session.close", "关闭当前会话", "会话",
             () => TabBar.CloseActiveTabCommand.Execute().Subscribe(),
             CanExecute: () => TabBar.ActiveTab is not null, Shortcut: "Ctrl+W"));
@@ -213,6 +215,9 @@ public class MainWindowViewModel : ReactiveObject
     /// <summary>Raised when the user asks for in-terminal search via menu/palette; the window
     /// forwards it to the active terminal view's search bar (§5.3).</summary>
     public event EventHandler? TerminalSearchRequested;
+
+    /// <summary>Ctrl+N / 菜单 / 命令面板“新建 SSH 连接” —— 由窗口打开新建连接弹窗。</summary>
+    public event EventHandler? NewConnectionRequested;
     /// <summary>Tunnel manager panel for the active session (design fuXS7, spec §10).</summary>
     public TunnelPanelViewModel? TunnelPanel
     {
@@ -334,6 +339,23 @@ public class MainWindowViewModel : ReactiveObject
     public async Task InitializeAsync()
     {
         await Sidebar.RecentConnections.RefreshAsync();
+        await RefreshSessionTreeAsync();
+    }
+
+    /// <summary>重新加载资源管理器会话树(新建/编辑/删除配置后调用)。</summary>
+    public async Task RefreshSessionTreeAsync()
+    {
+        if (Sidebar.SessionTree is { } tree)
+        {
+            try
+            {
+                await tree.LoadCommand.Execute();
+            }
+            catch
+            {
+                // 树加载失败不影响其余启动流程。
+            }
+        }
     }
 
     private IReadOnlyList<CommandPaletteItem> BuildPaletteItems()

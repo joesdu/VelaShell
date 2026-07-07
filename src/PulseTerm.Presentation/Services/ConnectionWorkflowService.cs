@@ -35,8 +35,9 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
         ArgumentNullException.ThrowIfNull(profile);
         cancellationToken.ThrowIfCancellationRequested();
 
-        ValidateProfile(profile);
-        await _sessionRepository.SaveSessionAsync(profile).ConfigureAwait(false);
+        // 保存不要求凭据 —— 未勾选“记住密码”的配置在连接时再询问。
+        ValidateProfile(profile, requireCredentials: false);
+        await _sessionRepository.SaveSessionAsync(WithPersistablePassword(profile)).ConfigureAwait(false);
         return profile;
     }
 
@@ -79,10 +80,36 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
         }
 
         profile.LastConnectedAt = DateTime.UtcNow;
-        await _sessionRepository.SaveSessionAsync(profile).ConfigureAwait(false);
+        await _sessionRepository.SaveSessionAsync(WithPersistablePassword(profile)).ConfigureAwait(false);
         await RecordHistoryAsync(profile, startedAt, success: true).ConfigureAwait(false);
 
         return session;
+    }
+
+    /// <summary>“记住密码”未勾选时,持久化副本不包含密码/口令(仅本次连接使用)。</summary>
+    private static SessionProfile WithPersistablePassword(SessionProfile profile)
+    {
+        if (profile.RememberPassword)
+        {
+            return profile;
+        }
+
+        return new SessionProfile
+        {
+            Id = profile.Id,
+            Name = profile.Name,
+            Host = profile.Host,
+            Port = profile.Port,
+            Username = profile.Username,
+            AuthMethod = profile.AuthMethod,
+            Password = null,
+            PrivateKeyPath = profile.PrivateKeyPath,
+            PrivateKeyPassphrase = profile.PrivateKeyPassphrase,
+            GroupId = profile.GroupId,
+            LastConnectedAt = profile.LastConnectedAt,
+            Tags = [.. profile.Tags],
+            RememberPassword = false,
+        };
     }
 
     /// <summary>连接结果写入连接历史(SonnetDB 时序),失败不影响主流程。</summary>
@@ -140,7 +167,7 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
         };
     }
 
-    private static void ValidateProfile(SessionProfile profile)
+    private static void ValidateProfile(SessionProfile profile, bool requireCredentials = true)
     {
         if (string.IsNullOrWhiteSpace(profile.Name))
         {
@@ -160,6 +187,11 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
         if (profile.Port is < 1 or > 65535)
         {
             throw new ArgumentOutOfRangeException(nameof(profile), "Port must be between 1 and 65535.");
+        }
+
+        if (!requireCredentials)
+        {
+            return;
         }
 
         if (profile.AuthMethod == AuthMethod.Password && string.IsNullOrWhiteSpace(profile.Password))

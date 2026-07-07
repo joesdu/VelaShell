@@ -80,7 +80,8 @@
                   Height="28"
                   Padding="36,0,12,0"
                   Cursor="Hand"
-                  Background="Transparent">
+                  Background="Transparent"
+                  DoubleTapped="Session_DoubleTapped">
             <Border.Styles>
               <Style Selector="Border:pointerover">
                 <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />

@@ -54,13 +54,12 @@ public class SessionTreeViewModelTests
     [TestCategory("SessionTree")]
     public async Task LoadCommand_PopulatesTreeFromRepository()
     {
-        var session1 = CreateSession("WebServer");
-        var session2 = CreateSession("DbServer");
-        var group = CreateGroup("Production", 0, session1.Id, session2.Id);
+        var group = CreateGroup("Production", 0);
+        var session1 = CreateSession("WebServer", group.Id);
+        var session2 = CreateSession("DbServer", group.Id);
 
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group }));
-        _repository.GetSessionAsync(session1.Id).Returns(Task.FromResult<SessionProfile?>(session1));
-        _repository.GetSessionAsync(session2.Id).Returns(Task.FromResult<SessionProfile?>(session2));
+        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { session1, session2 }));
 
         await _vm.LoadCommand.Execute().FirstAsync();
 
@@ -68,8 +67,9 @@ public class SessionTreeViewModelTests
         Assert.AreEqual("Production", _vm.Nodes[0].Name);
         Assert.IsTrue(_vm.Nodes[0].IsGroup);
         Assert.AreEqual(2, _vm.Nodes[0].Children.Count());
-        Assert.AreEqual("WebServer", _vm.Nodes[0].Children[0].Name);
-        Assert.AreEqual("DbServer", _vm.Nodes[0].Children[1].Name);
+        // 组内按名称排序。
+        Assert.AreEqual("DbServer", _vm.Nodes[0].Children[0].Name);
+        Assert.AreEqual("WebServer", _vm.Nodes[0].Children[1].Name);
     }
 
     [TestMethod]
@@ -80,12 +80,31 @@ public class SessionTreeViewModelTests
         var group2 = CreateGroup("Production", 0);
 
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group1, group2 }));
+        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile>()));
 
         await _vm.LoadCommand.Execute().FirstAsync();
 
         Assert.AreEqual(2, _vm.Nodes.Count());
         Assert.AreEqual("Production", _vm.Nodes[0].Name);
         Assert.AreEqual("Staging", _vm.Nodes[1].Name);
+    }
+
+    [TestMethod]
+    [TestCategory("SessionTree")]
+    public async Task LoadCommand_PutsUngroupedSessions_UnderUngroupedNode()
+    {
+        var orphan = CreateSession("Orphan");
+
+        _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup>()));
+        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { orphan }));
+
+        await _vm.LoadCommand.Execute().FirstAsync();
+
+        Assert.AreEqual(1, _vm.Nodes.Count());
+        Assert.AreEqual("未分组", _vm.Nodes[0].Name);
+        Assert.AreEqual(1, _vm.Nodes[0].Children.Count());
+        Assert.AreEqual("Orphan", _vm.Nodes[0].Children[0].Name);
+        Assert.IsFalse(_vm.HasNoSessions);
     }
 
     [TestMethod]
@@ -138,11 +157,11 @@ public class SessionTreeViewModelTests
     [TestCategory("SessionTree")]
     public async Task DeleteSessionCommand_RemovesSelectedSession()
     {
-        var session = CreateSession("ToDelete");
-        var group = CreateGroup("Group", 0, session.Id);
+        var group = CreateGroup("Group", 0);
+        var session = CreateSession("ToDelete", group.Id);
 
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group }));
-        _repository.GetSessionAsync(session.Id).Returns(Task.FromResult<SessionProfile?>(session));
+        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { session }));
 
         await _vm.LoadCommand.Execute().FirstAsync();
 
@@ -208,11 +227,11 @@ public class SessionTreeViewModelTests
     [TestCategory("EdgeCase")]
     public async Task HasNoSessions_FalseAfterLoadingSessionsFromRepository()
     {
-        var session = CreateSession("WebServer");
-        var group = CreateGroup("Production", 0, session.Id);
+        var group = CreateGroup("Production", 0);
+        var session = CreateSession("WebServer", group.Id);
 
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group }));
-        _repository.GetSessionAsync(session.Id).Returns(Task.FromResult<SessionProfile?>(session));
+        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { session }));
 
         await _vm.LoadCommand.Execute().FirstAsync();
 
@@ -223,11 +242,11 @@ public class SessionTreeViewModelTests
     [TestCategory("EdgeCase")]
     public async Task HasNoSessions_TrueWhenAllSessionsDeleted()
     {
-        var session = CreateSession("OnlyServer");
-        var group = CreateGroup("Production", 0, session.Id);
+        var group = CreateGroup("Production", 0);
+        var session = CreateSession("OnlyServer", group.Id);
 
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group }));
-        _repository.GetSessionAsync(session.Id).Returns(Task.FromResult<SessionProfile?>(session));
+        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { session }));
 
         await _vm.LoadCommand.Execute().FirstAsync();
         Assert.IsFalse(_vm.HasNoSessions);

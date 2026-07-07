@@ -27,9 +27,32 @@ public sealed class SessionTreeViewModel : ReactiveObject
         var hasSelectedSession = this.WhenAnyValue(x => x.SelectedNode)
             .Select(node => node is { IsGroup: false });
 
-        ConnectCommand = ReactiveCommand.Create<Unit>(_ => { }, hasSelectedSession);
-        EditSessionCommand = ReactiveCommand.Create<Unit>(_ => { }, hasSelectedSession);
+        ConnectCommand = ReactiveCommand.Create(() => RaiseForSelected(ConnectRequested), hasSelectedSession);
+        EditSessionCommand = ReactiveCommand.Create(() => RaiseForSelected(EditRequested), hasSelectedSession);
         DeleteSessionCommand = ReactiveCommand.CreateFromTask(DeleteSelectedSessionAsync, hasSelectedSession);
+    }
+
+    /// <summary>右键“连接”或双击会话时触发,由宿主发起 SSH 连接。</summary>
+    public event Action<SessionProfile>? ConnectRequested;
+
+    /// <summary>右键“编辑”时触发,由宿主打开连接配置弹窗。</summary>
+    public event Action<SessionProfile>? EditRequested;
+
+    private void RaiseForSelected(Action<SessionProfile>? handler)
+    {
+        if (SelectedNode is { IsGroup: false } node && _sessionCache.TryGetValue(node.Id, out var session))
+        {
+            handler?.Invoke(session);
+        }
+    }
+
+    /// <summary>视图双击会话行时调用:选中并触发连接。</summary>
+    public void RequestConnect(Guid sessionId)
+    {
+        if (_sessionCache.TryGetValue(sessionId, out var session))
+        {
+            ConnectRequested?.Invoke(session);
+        }
     }
 
     public ObservableCollection<SessionTreeNodeViewModel> Nodes { get; }
@@ -109,24 +132,41 @@ public sealed class SessionTreeViewModel : ReactiveObject
         Nodes.Clear();
         _sessionCache.Clear();
 
+        // 以会话的 GroupId 为唯一事实来源分组;无分组的会话归入“未分组”节点。
         var groups = await _repository.GetAllGroupsAsync();
+        var sessions = await _repository.GetAllSessionsAsync();
+        var byGroup = sessions
+            .Where(session => session.GroupId is not null)
+            .GroupBy(session => session.GroupId!.Value)
+            .ToDictionary(grouping => grouping.Key, grouping => grouping.ToList());
+        var ungrouped = sessions.Where(session => session.GroupId is null).ToList();
+
         foreach (var group in groups.OrderBy(item => item.SortOrder))
         {
             var groupNode = new SessionTreeNodeViewModel(group.Id, group.Name, true);
 
-            foreach (var sessionId in group.Sessions)
+            if (byGroup.TryGetValue(group.Id, out var members))
             {
-                var session = await _repository.GetSessionAsync(sessionId);
-                if (session is null)
+                foreach (var session in members.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
                 {
-                    continue;
+                    _sessionCache[session.Id] = session;
+                    groupNode.Children.Add(new SessionTreeNodeViewModel(session.Id, session.Name, false));
                 }
-
-                _sessionCache[session.Id] = session;
-                groupNode.Children.Add(new SessionTreeNodeViewModel(session.Id, session.Name, false));
             }
 
             Nodes.Add(groupNode);
+        }
+
+        if (ungrouped.Count > 0)
+        {
+            var ungroupedNode = new SessionTreeNodeViewModel(Guid.Empty, "未分组", true);
+            foreach (var session in ungrouped.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                _sessionCache[session.Id] = session;
+                ungroupedNode.Children.Add(new SessionTreeNodeViewModel(session.Id, session.Name, false));
+            }
+
+            Nodes.Add(ungroupedNode);
         }
 
         HasNoSessions = !Nodes.Any(group => group.Children.Count > 0);

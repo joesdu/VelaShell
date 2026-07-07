@@ -82,6 +82,21 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
         {
             vm.TerminalSearchRequested += OnTerminalSearchRequested;
+            vm.NewConnectionRequested += (_, _) => _ = OpenProfileDialogAsync(existing: null);
+
+            // 资源管理器树:右键连接/双击连接 + 右键编辑。
+            if (vm.Sidebar.SessionTree is { } tree)
+            {
+                tree.ConnectRequested += profile => Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
+                {
+                    var tab = await vm.TryConnectProfileAsync(profile);
+                    if (tab is null && vm.LastConnectionError is { Length: > 0 } error)
+                        await ShowConnectionErrorAsync(error);
+                });
+                tree.EditRequested += profile => Avalonia.Threading.Dispatcher.UIThread.Post(
+                    () => _ = OpenProfileDialogAsync(profile));
+            }
+
             await vm.InitializeAsync();
         }
     }
@@ -111,7 +126,11 @@ public partial class MainWindow : Window
             await ShowConnectionErrorAsync(error);
     }
 
-    private async void OnOpenConnectionProfileRequested(object? sender, EventArgs e)
+    private void OnOpenConnectionProfileRequested(object? sender, EventArgs e)
+        => _ = OpenProfileDialogAsync(existing: null);
+
+    /// <summary>打开“新建连接”弹窗;传入 existing 时为编辑既有配置。</summary>
+    private async Task OpenProfileDialogAsync(SessionProfile? existing)
     {
         if (DataContext is not MainWindowViewModel mainWindowViewModel)
         {
@@ -124,7 +143,9 @@ public partial class MainWindow : Window
         }
 
         var connectionProfileViewModel = new ConnectionProfileViewModel(
-            connectionWorkflowService: app.Services.GetService<IConnectionWorkflowService>());
+            existing: existing,
+            connectionWorkflowService: app.Services.GetService<IConnectionWorkflowService>(),
+            sessionRepository: app.Services.GetService<PulseTerm.Core.Data.ISessionRepository>());
 
         var dialog = new ConnectionProfileView
         {
@@ -133,6 +154,15 @@ public partial class MainWindow : Window
 
         var profile = await dialog.ShowDialog<SessionProfile?>(this);
         if (profile is null)
+        {
+            return;
+        }
+
+        // 保存/连接均已持久化配置 —— 资源管理器树同步刷新。
+        await mainWindowViewModel.RefreshSessionTreeAsync();
+
+        // 仅“连接”按钮触发实际连接;“保存”只落库。
+        if (!connectionProfileViewModel.ConnectAfterClose)
         {
             return;
         }

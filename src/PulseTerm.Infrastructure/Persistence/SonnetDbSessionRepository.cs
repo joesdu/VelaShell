@@ -127,11 +127,25 @@ public sealed class SonnetDbSessionRepository : ISessionRepository
         }).ConfigureAwait(false);
     }
 
+    /// <summary>返回加密副本 —— 不得修改调用方持有的实例(其明文密码仍用于活动连接)。</summary>
     private SessionProfile Protect(SessionProfile profile)
     {
-        profile.Password = _protector.Protect(profile.Password);
-        profile.PrivateKeyPassphrase = _protector.Protect(profile.PrivateKeyPassphrase);
-        return profile;
+        return new SessionProfile
+        {
+            Id = profile.Id,
+            Name = profile.Name,
+            Host = profile.Host,
+            Port = profile.Port,
+            Username = profile.Username,
+            AuthMethod = profile.AuthMethod,
+            Password = _protector.Protect(profile.Password),
+            PrivateKeyPath = profile.PrivateKeyPath,
+            PrivateKeyPassphrase = _protector.Protect(profile.PrivateKeyPassphrase),
+            GroupId = profile.GroupId,
+            LastConnectedAt = profile.LastConnectedAt,
+            Tags = [.. profile.Tags],
+            RememberPassword = profile.RememberPassword,
+        };
     }
 
     private SessionProfile Unprotect(SessionProfile profile)
