@@ -587,6 +587,42 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
+    /// <summary>§6 drag-out ("拖拽列表项到本地=下载"): downloads the given rows into a fresh
+    /// per-drag temp folder (progress in the transfer toast) and returns the resulting local
+    /// paths, which the view hands to the OS drag operation. The OS then copies those temp
+    /// files to wherever the user drops them.</summary>
+    public async Task<IReadOnlyList<string>> PrepareDragOutAsync(IReadOnlyList<RemoteFileInfoViewModel> items, CancellationToken ct = default)
+    {
+        if (_sftpService is null || items is null)
+            return Array.Empty<string>();
+
+        var targets = items.Where(f => !f.IsParentEntry).ToList();
+        if (targets.Count == 0)
+            return Array.Empty<string>();
+
+        var tempDir = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(), "PulseTerm", "dragout", Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(tempDir);
+
+        var localPaths = new List<string>();
+        try
+        {
+            ErrorMessage = null;
+            foreach (var item in targets)
+            {
+                await DownloadRemoteEntryAsync(item.FullPath, item.Name, item.IsDirectory, tempDir, ct);
+                localPaths.Add(System.IO.Path.Combine(tempDir, item.Name));
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            return Array.Empty<string>();
+        }
+
+        return localPaths;
+    }
+
     private async Task DownloadSelectedAsync(CancellationToken ct = default)
     {
         if (_sftpService is null || PickFolderForDownload is null)

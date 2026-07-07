@@ -712,6 +712,26 @@ public class FileBrowserViewModelTests
 
     [TestMethod]
     [TestCategory("FileBrowser")]
+    public async Task PrepareDragOut_DownloadsToTempAndReturnsLocalPaths()
+    {
+        var files = CreateTestFiles();
+        var targets = new List<RemoteFileInfoViewModel>
+        {
+            RemoteFileInfoViewModel.CreateParentEntry("/home"), // must be skipped
+            new RemoteFileInfoViewModel(files[1]),              // readme.txt
+        };
+
+        var paths = await _vm.PrepareDragOutAsync(targets);
+
+        Assert.AreEqual(1, paths.Count);
+        StringAssert.EndsWith(paths[0], "readme.txt");
+        await _sftpService.Received(1).DownloadFileAsync(
+            _sessionId, "/home/user/readme.txt", paths[0],
+            Arg.Any<IProgress<TransferProgress>?>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public async Task DownloadSelected_DownloadsAllFilesIntoPickedFolder()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), $"pulse-batch-{Guid.NewGuid():N}");
