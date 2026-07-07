@@ -322,14 +322,24 @@ public sealed class TerminalScreen
                 line.Resize(columns, blank);
         }
 
-        // Row resize: when shrinking, push top lines above the cursor into scrollback;
-        // when growing, pull lines back from scrollback if available.
+        // Row resize: when shrinking, discard only genuinely blank bottom rows; everything
+        // else retires from the top into scrollback. (This used to drop ANY row below the
+        // cursor — during drag-resize storms, where the cursor can sit mid-buffer, that
+        // silently ate real content a few rows per shrink.) When growing, pull lines back
+        // from scrollback if available.
         if (rows < Rows)
         {
             int remove = Rows - rows;
-            // Prefer removing lines below the cursor; otherwise retire from the top.
-            int belowCursor = Rows - 1 - CursorY;
-            int fromBottom = Math.Min(remove, belowCursor);
+
+            int blankBottom = 0;
+            for (int y = Rows - 1; y > CursorY && blankBottom < remove; y--)
+            {
+                if (_lines[y].Wrapped || _lines[y].LastNonBlank() >= 0)
+                    break;
+                blankBottom++;
+            }
+
+            int fromBottom = blankBottom;
             int fromTop = remove - fromBottom;
 
             var next = new TerminalRow[rows];

@@ -159,6 +159,65 @@ public class ResizePreservationTests
     }
 
     [TestMethod]
+    public void RowShrink_ContentBelowCursor_RetiresToScrollbackNotDropped()
+    {
+        var e = New(cols: 20, rows: 6);
+        Feed(e, "one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix");
+        Feed(e, "\u001b[2;1H"); // cursor to row 2 — real content sits below it
+
+        e.Resize(20, 3); // rows-only shrink takes the non-reflow path
+
+        var all = new List<string>();
+        for (int r = 0; r < e.Screen.TotalRows; r++)
+            all.Add(e.Screen.ViewLine(r).GetText());
+
+        // The rows below the cursor held content, so nothing may be discarded.
+        CollectionAssert.Contains(all, "one");
+        CollectionAssert.Contains(all, "six");
+    }
+
+    [TestMethod]
+    public void GradualDragResizeStorm_PreservesAllContent()
+    {
+        // Mirrors the real drag path: the layout shrinks/grows a cell at a time through many
+        // intermediate grids (cols AND rows), with readline redraws landing in between.
+        var e = New(cols: 120, rows: 32);
+        string[] motd =
+        {
+            "Linux NanoPi-R2S 6.1.63 #218 SMP Thu Nov 30 20:48:04 CST 2023 aarch64",
+            "The programs included with the Debian GNU/Linux system are free software;",
+            "the exact distribution terms for each program are described in the",
+            "individual files in /usr/share/doc/*/copyright.",
+            "Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent",
+            "permitted by applicable law.",
+        };
+        Feed(e, string.Join("\r\n", motd) + "\r\n");
+        Feed(e, "pi@NanoPi-R2S:~$ ");
+
+        for (int cycle = 0; cycle < 3; cycle++)
+        {
+            int rows = 32;
+            for (int cols = 120; cols >= 24; cols -= 8)
+                e.Resize(cols, rows = Math.Max(6, rows - 2));
+            Feed(e, "\r\u001b[Kpi@NanoPi-R2S:~$ ");
+
+            for (int cols = 24; cols <= 120; cols += 8)
+                e.Resize(cols, rows = Math.Min(32, rows + 2));
+            Feed(e, "\r\u001b[Kpi@NanoPi-R2S:~$ ");
+        }
+
+        var all = new List<string>();
+        for (int r = 0; r < e.Screen.TotalRows; r++)
+            all.Add(e.Screen.ViewLine(r).GetText());
+        var joined = string.Join("\n", all);
+
+        foreach (var line in motd)
+            Assert.IsTrue(joined.Contains(line), $"MOTD line lost: {line}");
+        Assert.AreEqual(1, all.Count(l => l.Contains("pi@NanoPi-R2S:~$")),
+            "prompt fragments were duplicated");
+    }
+
+    [TestMethod]
     public void ViewLine_OutOfRangeRows_ClampInsteadOfThrow()
     {
         var e = New(cols: 10, rows: 3);
