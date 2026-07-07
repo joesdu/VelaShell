@@ -29,7 +29,7 @@ public partial class MainWindow : Window
         if (this.FindControl<SidebarView>("SidebarHost") is { } sidebar)
         {
             sidebar.OpenConnectionProfileRequested += OnOpenConnectionProfileRequested;
-            sidebar.ConnectRequested += OnSidebarConnectRequested;
+            sidebar.RecentConnectRequested += OnSidebarRecentConnectRequested;
         }
 
         DataContextChanged += (_, _) => HookFileBrowserVisibility();
@@ -101,12 +101,12 @@ public partial class MainWindow : Window
 
     // The window uses the native OS title bar per design spec §2 — no custom chrome.
 
-    private async void OnSidebarConnectRequested(object? sender, SessionProfile profile)
+    private async void OnSidebarRecentConnectRequested(object? sender, RecentConnectionEntry entry)
     {
         if (DataContext is not MainWindowViewModel vm)
             return;
 
-        var tab = await vm.TryConnectProfileAsync(profile);
+        var tab = await vm.TryConnectRecentAsync(entry);
         if (tab is null && vm.LastConnectionError is { Length: > 0 } error)
             await ShowConnectionErrorAsync(error);
     }

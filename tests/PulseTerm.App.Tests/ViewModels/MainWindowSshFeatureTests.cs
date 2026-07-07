@@ -51,7 +51,15 @@ public sealed class MainWindowSshFeatureTests
         sshConnectionService.GetClient(session.SessionId).Returns(sshClient);
         sshClient.CreateShellStream("xterm-256color", 120, 32, 0, 0, 4096, null).Returns(shellStream);
 
-        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => terminal);
+        // 连接历史由工作流写入 SonnetDB;侧边栏“最近连接”刷新时从服务读取。
+        var recents = Substitute.For<IRecentConnectionService>();
+        recents.GetRecentAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<RecentConnectionEntry>
+            {
+                new() { ProfileId = profile.Id, Name = "Prod", GroupName = "生产环境", Host = profile.Host, Port = 22, Username = "root" },
+            });
+
+        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => terminal, recentConnectionService: recents);
 
         var tab = await vm.ConnectProfileAsync(profile);
 
@@ -63,6 +71,7 @@ public sealed class MainWindowSshFeatureTests
         Assert.AreEqual("SSH • root@prod.example.com:22", vm.StatusBar.ConnectionInfo);
         Assert.AreEqual(Strings.Connected, vm.StatusBar.Status);
         Assert.AreEqual(1, vm.Sidebar.RecentConnections.Connections.Count());
+        Assert.AreEqual("Prod - 生产环境", vm.Sidebar.RecentConnections.Connections[0].DisplayName);
     }
 
     [TestMethod]
@@ -171,20 +180,25 @@ public sealed class MainWindowSshFeatureTests
     }
 
     [TestMethod]
-    public async Task InitializeAsync_LoadsSavedSessions_IntoRecentConnections()
+    public async Task InitializeAsync_LoadsRecentHistory_IntoRecentConnections()
     {
-        var repository = Substitute.For<ISessionRepository>();
-        repository.GetAllSessionsAsync().Returns(new List<SessionProfile>
-        {
-            new() { Name = "Prod", Host = "prod.example.com", Port = 22, Username = "root" },
-            new() { Name = "Dev", Host = "dev.example.com", Port = 22, Username = "pi" },
-        });
+        var recents = Substitute.For<IRecentConnectionService>();
+        recents.GetRecentAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<RecentConnectionEntry>
+            {
+                new() { Name = "Prod", GroupName = "生产环境", Host = "prod.example.com", Port = 22, Username = "root", ConnectedAt = DateTimeOffset.Now.AddHours(-2) },
+                new() { Name = "Dev", Host = "dev.example.com", Port = 22, Username = "pi", ConnectedAt = DateTimeOffset.Now.AddDays(-3) },
+            });
 
-        var vm = new MainWindowViewModel(sessionRepository: repository);
+        var vm = new MainWindowViewModel(recentConnectionService: recents);
 
         await vm.InitializeAsync();
 
         Assert.AreEqual(2, vm.Sidebar.RecentConnections.Connections.Count());
+        Assert.AreEqual("Prod - 生产环境", vm.Sidebar.RecentConnections.Connections[0].DisplayName);
+        Assert.AreEqual("2 小时前", vm.Sidebar.RecentConnections.Connections[0].RelativeTime);
+        Assert.AreEqual("Dev", vm.Sidebar.RecentConnections.Connections[1].DisplayName);
+        Assert.AreEqual("3 天前", vm.Sidebar.RecentConnections.Connections[1].RelativeTime);
     }
 
     [TestMethod]

@@ -53,7 +53,8 @@ public class MainWindowViewModel : ReactiveObject
         ISftpService? sftpService = null,
         ITransferManager? transferManager = null,
         PulseTerm.Core.Tunnels.ITunnelService? tunnelService = null,
-        PulseTerm.Core.Services.ISessionMetricsService? metricsService = null)
+        PulseTerm.Core.Services.ISessionMetricsService? metricsService = null,
+        IRecentConnectionService? recentConnectionService = null)
     {
         _connectionWorkflowService = connectionWorkflowService;
         _sshConnectionService = sshConnectionService;
@@ -71,7 +72,7 @@ public class MainWindowViewModel : ReactiveObject
         _dockFactory.ActiveDockableChanged += OnActiveDockableChanged;
         _dockFactory.FocusedDockableChanged += OnFocusedDockableChanged;
 
-        _sidebar = new SidebarViewModel();
+        _sidebar = new SidebarViewModel(recentConnectionService);
         _tabBar = new TabBarViewModel();
         _statusBar = new StatusBarViewModel();
 
@@ -327,24 +328,12 @@ public class MainWindowViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> OpenCommandPaletteCommand { get; }
 
     /// <summary>
-    /// Loads persisted connection profiles from disk into the sidebar so saved connections
-    /// survive restarts and can be reused without re-entering their details.
+    /// Loads the persisted recent-connection history (SonnetDB) into the sidebar so it
+    /// survives restarts.
     /// </summary>
     public async Task InitializeAsync()
     {
-        if (_sessionRepository is null)
-            return;
-
-        try
-        {
-            var sessions = await _sessionRepository.GetAllSessionsAsync();
-            foreach (var session in sessions)
-                Sidebar.RecentConnections.AddRecent(session);
-        }
-        catch
-        {
-            // A corrupt or missing store must not prevent the app from starting.
-        }
+        await Sidebar.RecentConnections.RefreshAsync();
     }
 
     private IReadOnlyList<CommandPaletteItem> BuildPaletteItems()
@@ -352,14 +341,14 @@ public class MainWindowViewModel : ReactiveObject
         var items = new List<CommandPaletteItem>();
 
         // Sessions from recent connections — Enter connects.
-        foreach (var profile in Sidebar.RecentConnections.Connections)
+        foreach (var item in Sidebar.RecentConnections.Connections)
         {
-            var captured = profile;
-            var title = string.IsNullOrWhiteSpace(captured.Name) ? captured.Host : captured.Name;
+            var captured = item.Entry;
+            var title = string.IsNullOrWhiteSpace(item.DisplayName) ? captured.Host : item.DisplayName;
             items.Add(new CommandPaletteItem(
                 category: "会话",
                 title: title,
-                invoke: () => _ = TryConnectProfileAsync(captured),
+                invoke: () => _ = TryConnectRecentAsync(captured),
                 hint: "Enter 连接",
                 isSession: true));
         }
@@ -445,7 +434,8 @@ public class MainWindowViewModel : ReactiveObject
             throw;
         }
 
-        Sidebar.RecentConnections.AddRecent(profile);
+        // 连接历史已由工作流写入 SonnetDB,这里刷新侧边栏“最近连接”。
+        await Sidebar.RecentConnections.RefreshAsync();
         StatusBar.ResetUptime();
         UpdateStatusBarForActiveTab();
         LastConnectionError = null;
@@ -556,6 +546,39 @@ public class MainWindowViewModel : ReactiveObject
             StatusBar.Status = LastConnectionError;
             return null;
         }
+    }
+
+    /// <summary>
+    /// Connects a sidebar "最近连接" entry: resolves the saved profile by id when available,
+    /// otherwise reconstructs an ad-hoc profile from the recorded host/port/username.
+    /// </summary>
+    public async Task<TerminalTabViewModel?> TryConnectRecentAsync(RecentConnectionEntry entry, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        SessionProfile? profile = null;
+        if (entry.ProfileId is { } profileId && _sessionRepository is not null)
+        {
+            try
+            {
+                profile = await _sessionRepository.GetSessionAsync(profileId);
+            }
+            catch
+            {
+                // 配置读取失败时退回到临时档案。
+            }
+        }
+
+        profile ??= new SessionProfile
+        {
+            Name = entry.Name,
+            Host = entry.Host,
+            Port = entry.Port,
+            Username = entry.Username,
+            AuthMethod = AuthMethod.Password,
+        };
+
+        return await TryConnectProfileAsync(profile, cancellationToken);
     }
 
     /// <summary>The most recent connection error message, or null if the last attempt succeeded.</summary>

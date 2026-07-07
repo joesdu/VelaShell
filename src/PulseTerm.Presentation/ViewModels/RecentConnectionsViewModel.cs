@@ -1,59 +1,85 @@
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Reactive;
-using System.Reactive.Linq;
-using PulseTerm.Core.Models;
+using PulseTerm.Core.Data;
 using ReactiveUI;
 
 namespace PulseTerm.Presentation.ViewModels;
 
+/// <summary>
+/// 侧边栏“最近连接”列表:数据来自 SonnetDB 连接历史(<see cref="IRecentConnectionService"/>),
+/// 按时间倒序、同一目标去重,最多展示 <see cref="MaxRecentConnections"/> 条。
+/// </summary>
 public sealed class RecentConnectionsViewModel : ReactiveObject
 {
     private const int MaxRecentConnections = 10;
-    private SessionProfile? _selectedConnection;
 
-    public RecentConnectionsViewModel()
+    private readonly IRecentConnectionService? _recentConnectionService;
+    private bool _isLoading;
+
+    public RecentConnectionsViewModel(IRecentConnectionService? recentConnectionService = null)
     {
-        Connections = new ObservableCollection<SessionProfile>();
+        _recentConnectionService = recentConnectionService;
+        Connections = new ObservableCollection<RecentConnectionItemViewModel>();
 
-        var hasSelection = this.WhenAnyValue(x => x.SelectedConnection)
-            .Select(selection => selection is not null);
-
-        ReconnectCommand = ReactiveCommand.Create(() => { }, hasSelection);
-        ClearCommand = ReactiveCommand.Create(ClearAll);
+        RefreshCommand = ReactiveCommand.CreateFromTask(RefreshAsync);
+        ClearCommand = ReactiveCommand.CreateFromTask(ClearAllAsync);
     }
 
-    public ObservableCollection<SessionProfile> Connections { get; }
+    public ObservableCollection<RecentConnectionItemViewModel> Connections { get; }
 
-    public SessionProfile? SelectedConnection
+    public bool IsLoading
     {
-        get => _selectedConnection;
-        set => this.RaiseAndSetIfChanged(ref _selectedConnection, value);
+        get => _isLoading;
+        private set => this.RaiseAndSetIfChanged(ref _isLoading, value);
     }
 
-    public ReactiveCommand<Unit, Unit> ReconnectCommand { get; }
+    /// <summary>快速连接头部 history 按钮:重新加载最近连接。</summary>
+    public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
 
     public ReactiveCommand<Unit, Unit> ClearCommand { get; }
 
-    public void AddRecent(SessionProfile profile)
+    /// <summary>从连接历史重新加载列表;存储故障时保留现有内容,不影响主流程。</summary>
+    public async Task RefreshAsync()
     {
-        var existing = Connections.FirstOrDefault(connection => connection.Id == profile.Id);
-        if (existing is not null)
+        if (_recentConnectionService is null)
         {
-            Connections.Remove(existing);
+            return;
         }
 
-        Connections.Insert(0, profile);
-
-        while (Connections.Count > MaxRecentConnections)
+        IsLoading = true;
+        try
         {
-            Connections.RemoveAt(Connections.Count - 1);
+            var entries = await _recentConnectionService.GetRecentAsync(MaxRecentConnections).ConfigureAwait(true);
+            Connections.Clear();
+            foreach (var entry in entries)
+            {
+                Connections.Add(new RecentConnectionItemViewModel(entry));
+            }
+        }
+        catch
+        {
+            // 历史读取失败不影响侧边栏其余功能。
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 
-    private void ClearAll()
+    private async Task ClearAllAsync()
     {
+        if (_recentConnectionService is not null)
+        {
+            try
+            {
+                await _recentConnectionService.ClearAsync().ConfigureAwait(true);
+            }
+            catch
+            {
+                return;
+            }
+        }
+
         Connections.Clear();
-        SelectedConnection = null;
     }
 }
