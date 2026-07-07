@@ -23,6 +23,7 @@ public class FileBrowserViewModel : ReactiveObject
     {
         _sftpService = sftpService!;
         _sessionId = sessionId;
+        SessionId = sessionId;
         _currentPath = "/";
         _isVisible = false;
 
@@ -38,6 +39,9 @@ public class FileBrowserViewModel : ReactiveObject
         CreateFolderCommand = ReactiveCommand.CreateFromTask(CreateFolderAsync);
         ToggleVisibilityCommand = ReactiveCommand.Create(ToggleVisibility);
     }
+
+    /// <summary>The SSH session this browser is rooted at.</summary>
+    public Guid SessionId { get; }
 
     public ObservableCollection<RemoteFileInfoViewModel> Files { get; }
 

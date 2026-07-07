@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Ssh;
+using PulseTerm.Core.Sftp;
 using PulseTerm.Core.Tunnels;
 using PulseTerm.Infrastructure.Ssh;
 using PulseTerm.Infrastructure.Tunnels;
@@ -32,6 +33,24 @@ public static class InfrastructureServiceCollectionExtensions
             return new SshConnectionService(connectionInfo => CreateSshClientWrapper(connectionInfo));
         });
 
+        services.AddSingleton<ISftpService>(serviceProvider =>
+        {
+            var connectionService = serviceProvider.GetRequiredService<ISshConnectionService>();
+            // A dedicated SFTP channel per session, built from the same credentials.
+            return new SftpService(connectionService, session =>
+            {
+                var authMethods = CreateAuthenticationMethods(session.ConnectionInfo);
+                var info = new Renci.SshNet.ConnectionInfo(
+                    session.ConnectionInfo.Host,
+                    session.ConnectionInfo.Port,
+                    session.ConnectionInfo.Username,
+                    authMethods);
+                info.Timeout = TimeSpan.FromSeconds(10);
+                return new SftpClientWrapper(new SftpClient(info));
+            });
+        });
+
+        services.AddSingleton<ITransferManager, TransferManager>();
         services.AddSingleton<ITunnelService>(serviceProvider =>
         {
             var connectionService = serviceProvider.GetRequiredService<ISshConnectionService>();

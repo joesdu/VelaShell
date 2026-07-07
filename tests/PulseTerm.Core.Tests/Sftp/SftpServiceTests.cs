@@ -40,7 +40,7 @@ public class SftpServiceTests
 
         _connectionService.GetSession(_sessionId).Returns(session);
         _sftpClient.IsConnected.Returns(true);
-        _sftpService = new SftpService(_connectionService, () => _sftpClient);
+        _sftpService = new SftpService(_connectionService, _ => _sftpClient);
     }
 
     [TestMethod]

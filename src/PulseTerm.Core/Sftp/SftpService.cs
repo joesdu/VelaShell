@@ -10,9 +10,9 @@ public class SftpService : ISftpService
 {
     private readonly ISshConnectionService _connectionService;
     private readonly ConcurrentDictionary<Guid, ISftpClientWrapper> _sftpClients = new();
-    private readonly Func<ISftpClientWrapper>? _sftpClientFactory;
+    private readonly Func<SshSession, ISftpClientWrapper>? _sftpClientFactory;
 
-    public SftpService(ISshConnectionService connectionService, Func<ISftpClientWrapper>? sftpClientFactory = null)
+    public SftpService(ISshConnectionService connectionService, Func<SshSession, ISftpClientWrapper>? sftpClientFactory = null)
     {
         _connectionService = connectionService ?? throw new ArgumentNullException(nameof(connectionService));
         _sftpClientFactory = sftpClientFactory;
@@ -168,7 +168,7 @@ public class SftpService : ISftpService
             throw new InvalidOperationException("SFTP client factory not configured");
         }
 
-        var client = _sftpClientFactory();
+        var client = _sftpClientFactory(session);
         await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
 
         _sftpClients[sessionId] = client;

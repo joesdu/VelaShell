@@ -8,6 +8,7 @@ using PulseTerm.App.Docking;
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Resources;
+using PulseTerm.Core.Sftp;
 using PulseTerm.Core.Ssh;
 using PulseTerm.Terminal.Emulation;
 using PulseTerm.Presentation.ViewModels;
@@ -26,6 +27,7 @@ public class MainWindowViewModel : ReactiveObject
     private readonly ISshConnectionService? _sshConnectionService;
     private readonly ISettingsService? _settingsService;
     private readonly ISessionRepository? _sessionRepository;
+    private readonly ISftpService? _sftpService;
     private readonly Func<ITerminalEmulator> _terminalEmulatorFactory;
     private readonly TerminalDockFactory _dockFactory;
     private SidebarViewModel _sidebar;
@@ -43,12 +45,14 @@ public class MainWindowViewModel : ReactiveObject
         ISshConnectionService? sshConnectionService = null,
         Func<ITerminalEmulator>? terminalEmulatorFactory = null,
         ISettingsService? settingsService = null,
-        ISessionRepository? sessionRepository = null)
+        ISessionRepository? sessionRepository = null,
+        ISftpService? sftpService = null)
     {
         _connectionWorkflowService = connectionWorkflowService;
         _sshConnectionService = sshConnectionService;
         _settingsService = settingsService;
         _sessionRepository = sessionRepository;
+        _sftpService = sftpService;
         _terminalEmulatorFactory = terminalEmulatorFactory ?? (() => new PulseTerminalControl());
 
         _dockFactory = new TerminalDockFactory();
@@ -69,6 +73,7 @@ public class MainWindowViewModel : ReactiveObject
             .Subscribe(activeTab =>
             {
                 ActiveTerminalTab = activeTab as TerminalTabViewModel;
+                RebindFileBrowser();
             });
 
         // Keep the status bar in sync with the active tab: refresh when the active tab changes,
@@ -121,6 +126,25 @@ public class MainWindowViewModel : ReactiveObject
             () => CommandPalette.Open(), Shortcut: "Ctrl+P", Icon: "Icon.zap"));
     }
 
+    /// <summary>
+    /// Points the SFTP file browser at the active tab's session (#22). Each connected tab gets
+    /// a browser rooted at its own session; without a connected session the panel shows empty.
+    /// </summary>
+    private void RebindFileBrowser()
+    {
+        if (_sftpService is null)
+            return;
+
+        var tab = ActiveTerminalTab;
+        if (tab is null || tab.SessionId == Guid.Empty)
+            return;
+
+        if (FileBrowser.SessionId == tab.SessionId)
+            return;
+
+        FileBrowser = new FileBrowserViewModel(_sftpService, tab.SessionId);
+        FileBrowser.RefreshCommand.Execute().Subscribe(_ => { }, _ => { });
+    }
     /// <summary>The self-drawn terminal control of the active tab, when it is one.</summary>
     private PulseTerminalControl? ActiveTerminalControl =>
         ActiveTerminalTab?.TerminalEmulator.Control as PulseTerminalControl;
