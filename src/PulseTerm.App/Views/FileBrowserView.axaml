@@ -119,7 +119,16 @@
                 BorderBrush="{DynamicResource PulseBorderPrimary}"
                 BorderThickness="0,0,0,1"
                 Padding="14,0">
-          <Grid ColumnDefinitions="*,100,110,140">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="{Binding NameColumnWidth}" MinWidth="180" />
+              <ColumnDefinition Width="6" />
+              <ColumnDefinition Width="{Binding SizeColumnWidth}" MinWidth="70" />
+              <ColumnDefinition Width="6" />
+              <ColumnDefinition Width="{Binding PermissionsColumnWidth}" MinWidth="80" />
+              <ColumnDefinition Width="6" />
+              <ColumnDefinition Width="{Binding ModifiedColumnWidth}" MinWidth="110" />
+            </Grid.ColumnDefinitions>
             <Button Grid.Column="0" Classes="col-header"
                     Command="{Binding SortCommand}" CommandParameter="name">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -131,7 +140,13 @@
                            FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
               </StackPanel>
             </Button>
-            <Button Grid.Column="1" Classes="col-header"
+                          <Border Grid.Column="1"
+                            Background="Transparent"
+                            Cursor="SizeWestEast"
+                            Tag="NameSize"
+                            PointerPressed="OnColumnSplitterPressed"
+                            PointerReleased="OnColumnSplitterReleased" />
+                          <Button Grid.Column="2" Classes="col-header"
                     Command="{Binding SortCommand}" CommandParameter="size">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="{x:Static res:Strings.Size}"
@@ -142,7 +157,13 @@
                            FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
               </StackPanel>
             </Button>
-            <Button Grid.Column="2" Classes="col-header"
+                          <Border Grid.Column="3"
+                            Background="Transparent"
+                            Cursor="SizeWestEast"
+                            Tag="SizePermissions"
+                            PointerPressed="OnColumnSplitterPressed"
+                            PointerReleased="OnColumnSplitterReleased" />
+                          <Button Grid.Column="4" Classes="col-header"
                     Command="{Binding SortCommand}" CommandParameter="permissions">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="{x:Static res:Strings.Permissions}"
@@ -153,7 +174,13 @@
                            FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
               </StackPanel>
             </Button>
-            <Button Grid.Column="3" Classes="col-header"
+                          <Border Grid.Column="5"
+                            Background="Transparent"
+                            Cursor="SizeWestEast"
+                            Tag="PermissionsModified"
+                            PointerPressed="OnColumnSplitterPressed"
+                            PointerReleased="OnColumnSplitterReleased" />
+                          <Button Grid.Column="6" Classes="col-header"
                     Command="{Binding SortCommand}" CommandParameter="modified">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="{x:Static res:Strings.Modified}"
@@ -240,41 +267,54 @@
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).NewFileCommand}" />
                     </ContextMenu>
                   </Border.ContextMenu>
-                  <Grid ColumnDefinitions="*,100,110,140">
-                    <StackPanel Grid.Column="0"
-                                Orientation="Horizontal"
-                                Spacing="6"
-                                VerticalAlignment="Center">
+                  <Grid ClipToBounds="True">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).NameColumnWidth}" MinWidth="180" />
+                      <ColumnDefinition Width="6" />
+                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).SizeColumnWidth}" MinWidth="70" />
+                      <ColumnDefinition Width="6" />
+                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).PermissionsColumnWidth}" MinWidth="80" />
+                      <ColumnDefinition Width="6" />
+                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).ModifiedColumnWidth}" MinWidth="110" />
+                    </Grid.ColumnDefinitions>
+                    <Grid Grid.Column="0" ClipToBounds="True" VerticalAlignment="Center">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                      </Grid.ColumnDefinitions>
                       <PathIcon Width="14"
                                 Height="14"
                                 Foreground="{DynamicResource PulseTextTertiary}"
                                 IsVisible="{Binding IsDirectory}"
+                                Margin="0,0,6,0"
                                 Data="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
                       <PathIcon Width="14"
                                 Height="14"
                                 Foreground="{DynamicResource PulseTextTertiary}"
                                 IsVisible="{Binding !IsDirectory}"
+                                Margin="0,0,6,0"
                                 Data="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z" />
-                      <TextBlock Text="{Binding Name}"
+                      <TextBlock Grid.Column="1"
+                                 Text="{Binding Name}"
                                  Foreground="{DynamicResource PulseTextPrimary}"
                                  FontSize="11"
                                  VerticalAlignment="Center"
                                  TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
+                    </Grid>
 
-                    <TextBlock Grid.Column="1"
+                    <TextBlock Grid.Column="2"
                                Text="{Binding FormattedSize}"
                                Foreground="{DynamicResource PulseTextSecondary}"
                                FontFamily="{DynamicResource PulseTerminalFont}"
                                FontSize="11"
                                VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="2"
+                    <TextBlock Grid.Column="4"
                                Text="{Binding Permissions}"
                                Foreground="{DynamicResource PulseTextSecondary}"
                                FontFamily="{DynamicResource PulseTerminalFont}"
                                FontSize="11"
                                VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="3"
+                    <TextBlock Grid.Column="6"
                                Text="{Binding FormattedModifiedTime}"
                                Foreground="{DynamicResource PulseTextSecondary}"
                                FontFamily="{DynamicResource PulseTerminalFont}"

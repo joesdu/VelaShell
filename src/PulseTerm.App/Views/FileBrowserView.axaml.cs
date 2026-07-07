@@ -1,13 +1,16 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using PulseTerm.App.ViewModels;
 
@@ -15,6 +18,21 @@ namespace PulseTerm.App.Views;
 
 public partial class FileBrowserView : UserControl
 {
+    private const double MinNameWidth = 180;
+    private const double MinSizeWidth = 70;
+    private const double MinPermissionsWidth = 80;
+    private const double MinModifiedWidth = 110;
+
+    private string? _activeSplitter;
+    private double _dragStartX;
+    private double _startNameWidth;
+    private double _startSizeWidth;
+    private double _startPermissionsWidth;
+    private double _startModifiedWidth;
+
+    private static readonly FontFamily TerminalFont = new("JetBrains Mono, Cascadia Mono, Consolas, monospace");
+    private static readonly Typeface TerminalTypeface = new(TerminalFont);
+
     public FileBrowserView()
     {
         InitializeComponent();
@@ -41,6 +59,197 @@ public partial class FileBrowserView : UserControl
             fileList.AddHandler(DragDrop.DragOverEvent, OnFileListDragOver);
             fileList.AddHandler(DragDrop.DropEvent, OnFileListDrop);
         }
+
+        AddHandler(PointerMovedEvent, OnColumnSplitterPointerMoved, RoutingStrategies.Tunnel);
+        AddHandler(PointerReleasedEvent, OnColumnSplitterReleased, RoutingStrategies.Tunnel);
+    }
+
+    private void OnColumnSplitterPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is not FileBrowserViewModel vm || sender is not Control { Tag: string tag })
+            return;
+
+        // Use ClickCount here so auto-fit still works even when pointer handling/capture is active.
+        if (e.ClickCount >= 2)
+        {
+            AutoFitColumnBySplitterTag(vm, tag);
+            e.Handled = true;
+            return;
+        }
+
+        _activeSplitter = tag;
+        _dragStartX = e.GetPosition(this).X;
+        _startNameWidth = vm.NameColumnWidth.Value;
+        _startSizeWidth = vm.SizeColumnWidth.Value;
+        _startPermissionsWidth = vm.PermissionsColumnWidth.Value;
+        _startModifiedWidth = vm.ModifiedColumnWidth.Value;
+
+        e.Pointer.Capture(this);
+        e.Handled = true;
+    }
+
+    private void OnColumnSplitterPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_activeSplitter is null || DataContext is not FileBrowserViewModel vm)
+            return;
+
+        var delta = e.GetPosition(this).X - _dragStartX;
+
+        switch (_activeSplitter)
+        {
+            case "NameSize":
+                ApplyAdjacentResize(_startNameWidth, _startSizeWidth, MinNameWidth, MinSizeWidth,
+                    delta, (left, right) =>
+                    {
+                        vm.NameColumnWidth = new GridLength(left);
+                        vm.SizeColumnWidth = new GridLength(right);
+                    });
+                break;
+
+            case "SizePermissions":
+                ApplyAdjacentResize(_startSizeWidth, _startPermissionsWidth, MinSizeWidth, MinPermissionsWidth,
+                    delta, (left, right) =>
+                    {
+                        vm.SizeColumnWidth = new GridLength(left);
+                        vm.PermissionsColumnWidth = new GridLength(right);
+                    });
+                break;
+
+            case "PermissionsModified":
+                ApplyAdjacentResize(_startPermissionsWidth, _startModifiedWidth, MinPermissionsWidth, MinModifiedWidth,
+                    delta, (left, right) =>
+                    {
+                        vm.PermissionsColumnWidth = new GridLength(left);
+                        vm.ModifiedColumnWidth = new GridLength(right);
+                    });
+                break;
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnColumnSplitterReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_activeSplitter is null)
+            return;
+
+        _activeSplitter = null;
+        e.Pointer.Capture(null);
+        e.Handled = true;
+    }
+
+    private void AutoFitColumnBySplitterTag(FileBrowserViewModel vm, string tag)
+    {
+        switch (tag)
+        {
+            case "NameSize":
+                {
+                    var targetName = EstimateAutoWidthForName(vm);
+                    var delta = targetName - vm.NameColumnWidth.Value;
+                    ApplyAdjacentResize(vm.NameColumnWidth.Value, vm.SizeColumnWidth.Value, MinNameWidth, MinSizeWidth,
+                        delta, (left, right) =>
+                        {
+                            vm.NameColumnWidth = new GridLength(left);
+                            vm.SizeColumnWidth = new GridLength(right);
+                        });
+                    break;
+                }
+            case "SizePermissions":
+                {
+                    var targetSize = EstimateAutoWidthForSize(vm);
+                    var delta = targetSize - vm.SizeColumnWidth.Value;
+                    ApplyAdjacentResize(vm.SizeColumnWidth.Value, vm.PermissionsColumnWidth.Value, MinSizeWidth, MinPermissionsWidth,
+                        delta, (left, right) =>
+                        {
+                            vm.SizeColumnWidth = new GridLength(left);
+                            vm.PermissionsColumnWidth = new GridLength(right);
+                        });
+                    break;
+                }
+            case "PermissionsModified":
+                {
+                    var targetPerm = EstimateAutoWidthForPermissions(vm);
+                    var delta = targetPerm - vm.PermissionsColumnWidth.Value;
+                    ApplyAdjacentResize(vm.PermissionsColumnWidth.Value, vm.ModifiedColumnWidth.Value, MinPermissionsWidth, MinModifiedWidth,
+                        delta, (left, right) =>
+                        {
+                            vm.PermissionsColumnWidth = new GridLength(left);
+                            vm.ModifiedColumnWidth = new GridLength(right);
+                        });
+                    break;
+                }
+        }
+    }
+
+    private static double EstimateAutoWidthForName(FileBrowserViewModel vm)
+    {
+        var header = MeasureTextWidth("文件名", 10);
+        var rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.Name ?? string.Empty, 11)) : 0;
+
+        // Name column also has a leading icon area (14px icon + 6px gap) and breathing room.
+        var estimated = Math.Max(header, rows) + 24 + 10;
+        return Math.Clamp(estimated, MinNameWidth, 760);
+    }
+
+    private static double EstimateAutoWidthForSize(FileBrowserViewModel vm)
+    {
+        var header = MeasureTextWidth("大小", 10);
+        var rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.FormattedSize ?? string.Empty, 11)) : 0;
+        var estimated = Math.Max(header, rows) + 8;
+        return Math.Clamp(estimated, MinSizeWidth, 260);
+    }
+
+    private static double EstimateAutoWidthForPermissions(FileBrowserViewModel vm)
+    {
+        var header = MeasureTextWidth("权限", 10);
+        var rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.Permissions ?? string.Empty, 11)) : 0;
+        var estimated = Math.Max(header, rows) + 8;
+        return Math.Clamp(estimated, MinPermissionsWidth, 300);
+    }
+
+    private static double MeasureTextWidth(string text, double fontSize)
+    {
+        var ft = new FormattedText(
+            text,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            TerminalTypeface,
+            fontSize,
+            Brushes.White);
+
+        return Math.Ceiling(ft.WidthIncludingTrailingWhitespace);
+    }
+
+    private static void ApplyAdjacentResize(
+        double leftStart,
+        double rightStart,
+        double leftMin,
+        double rightMin,
+        double delta,
+        Action<double, double> apply)
+    {
+        var newLeft = leftStart + delta;
+        var newRight = rightStart - delta;
+
+        if (newLeft < leftMin)
+        {
+            var deficit = leftMin - newLeft;
+            newLeft = leftMin;
+            newRight -= deficit;
+        }
+
+        if (newRight < rightMin)
+        {
+            var deficit = rightMin - newRight;
+            newRight = rightMin;
+            newLeft -= deficit;
+        }
+
+        // If both mins can't be satisfied simultaneously (pathological), abort this move tick.
+        if (newLeft < leftMin || newRight < rightMin)
+            return;
+
+        apply(newLeft, newRight);
     }
 
     /// <summary>Double-clicking a row descends into a directory (files are left to the toolbar

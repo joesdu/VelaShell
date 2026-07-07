@@ -23,6 +23,10 @@ public class FileBrowserViewModel : ReactiveObject
     private bool _isDeleteProgressVisible;
     private double _deleteProgressPercent;
     private bool _isDeleteProgressIndeterminate;
+    private Avalonia.Controls.GridLength _nameColumnWidth = new(320);
+    private Avalonia.Controls.GridLength _sizeColumnWidth = new(100);
+    private Avalonia.Controls.GridLength _permissionsColumnWidth = new(110);
+    private Avalonia.Controls.GridLength _modifiedColumnWidth = new(140);
     private string _sortColumn = "name";
     private bool _sortDescending;
 
@@ -93,6 +97,37 @@ public class FileBrowserViewModel : ReactiveObject
     {
         get => _errorMessage;
         set => this.RaiseAndSetIfChanged(ref _errorMessage, value);
+    }
+
+    public Avalonia.Controls.GridLength NameColumnWidth
+    {
+        get => _nameColumnWidth;
+        set => this.RaiseAndSetIfChanged(ref _nameColumnWidth, ClampColumnWidth(value, 180));
+    }
+
+    public Avalonia.Controls.GridLength SizeColumnWidth
+    {
+        get => _sizeColumnWidth;
+        set => this.RaiseAndSetIfChanged(ref _sizeColumnWidth, ClampColumnWidth(value, 70));
+    }
+
+    public Avalonia.Controls.GridLength PermissionsColumnWidth
+    {
+        get => _permissionsColumnWidth;
+        set => this.RaiseAndSetIfChanged(ref _permissionsColumnWidth, ClampColumnWidth(value, 80));
+    }
+
+    public Avalonia.Controls.GridLength ModifiedColumnWidth
+    {
+        get => _modifiedColumnWidth;
+        set => this.RaiseAndSetIfChanged(ref _modifiedColumnWidth, ClampColumnWidth(value, 110));
+    }
+
+    private static Avalonia.Controls.GridLength ClampColumnWidth(Avalonia.Controls.GridLength value, double min)
+    {
+        // We only support pixel-sized user-resizable columns here.
+        var px = value.IsAbsolute ? value.Value : min;
+        return new Avalonia.Controls.GridLength(Math.Max(min, px));
     }
 
     /// <summary>Whether the loading overlay should show a delete progress bar.</summary>
