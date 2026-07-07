@@ -20,6 +20,9 @@ public class FileBrowserViewModel : ReactiveObject
     private bool _isVisible;
     private string? _errorMessage;
     private string _busyText = "加载中…";
+    private bool _isDeleteProgressVisible;
+    private double _deleteProgressPercent;
+    private bool _isDeleteProgressIndeterminate;
     private string _sortColumn = "name";
     private bool _sortDescending;
 
@@ -90,6 +93,27 @@ public class FileBrowserViewModel : ReactiveObject
     {
         get => _errorMessage;
         set => this.RaiseAndSetIfChanged(ref _errorMessage, value);
+    }
+
+    /// <summary>Whether the loading overlay should show a delete progress bar.</summary>
+    public bool IsDeleteProgressVisible
+    {
+        get => _isDeleteProgressVisible;
+        private set => this.RaiseAndSetIfChanged(ref _isDeleteProgressVisible, value);
+    }
+
+    /// <summary>Delete progress percentage [0,100] for the overlay progress bar.</summary>
+    public double DeleteProgressPercent
+    {
+        get => _deleteProgressPercent;
+        private set => this.RaiseAndSetIfChanged(ref _deleteProgressPercent, value);
+    }
+
+    /// <summary>When true, delete progress is shown as indeterminate (e.g., before total is known).</summary>
+    public bool IsDeleteProgressIndeterminate
+    {
+        get => _isDeleteProgressIndeterminate;
+        private set => this.RaiseAndSetIfChanged(ref _isDeleteProgressIndeterminate, value);
     }
 
     public ReactiveCommand<string, Unit> NavigateToCommand { get; }
@@ -544,10 +568,25 @@ public class FileBrowserViewModel : ReactiveObject
         {
             ErrorMessage = null;
             BusyText = file.IsDirectory ? "正在删除文件夹…" : "正在删除…";
+            IsDeleteProgressVisible = true;
+            IsDeleteProgressIndeterminate = true;
+            DeleteProgressPercent = 0;
             IsLoading = true;
 
             var progress = new Progress<SftpDeleteProgress>(p =>
-                BusyText = $"正在删除… 已删除 {p.DeletedCount} 项");
+            {
+                if (p.TotalCount > 0)
+                {
+                    IsDeleteProgressIndeterminate = false;
+                    DeleteProgressPercent = p.Percentage;
+                    BusyText = $"正在删除… 已删除 {p.DeletedCount}/{p.TotalCount} 项";
+                }
+                else
+                {
+                    IsDeleteProgressIndeterminate = true;
+                    BusyText = $"正在删除… 已删除 {p.DeletedCount} 项";
+                }
+            });
 
             await _sftpService.DeleteAsync(_sessionId, file.FullPath, progress, ct);
             await RefreshAsync(ct);
@@ -558,6 +597,9 @@ public class FileBrowserViewModel : ReactiveObject
         }
         finally
         {
+            IsDeleteProgressVisible = false;
+            IsDeleteProgressIndeterminate = false;
+            DeleteProgressPercent = 0;
             IsLoading = false;
         }
     }

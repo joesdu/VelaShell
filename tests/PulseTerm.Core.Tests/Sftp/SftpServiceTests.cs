@@ -295,8 +295,11 @@ public class SftpServiceTests
         _sftpClient.Received(1).DeleteDirectory("/home/user/proj/sub");
         _sftpClient.Received(1).DeleteDirectory(dir);
 
-        Assert.AreEqual(4, reports.Count);                 // 2 files + 2 directories
+        Assert.AreEqual(5, reports.Count);                 // initial 0/total + 2 files + 2 directories
+        Assert.AreEqual(0, reports[0].DeletedCount);
+        Assert.AreEqual(4, reports[0].TotalCount);
         Assert.AreEqual(4, reports[^1].DeletedCount);
+        Assert.AreEqual(4, reports[^1].TotalCount);
     }
 
     [TestMethod]

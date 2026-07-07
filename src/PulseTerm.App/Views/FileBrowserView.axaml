@@ -297,11 +297,25 @@
               Opacity="0.8"
               HorizontalAlignment="Stretch"
               VerticalAlignment="Stretch">
-        <TextBlock Text="{Binding BusyText}"
-                   Foreground="{DynamicResource PulseTextSecondary}"
-                   HorizontalAlignment="Center"
-                   VerticalAlignment="Center"
-                   FontSize="13" />
+        <StackPanel HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Width="300"
+              Spacing="8">
+          <TextBlock Text="{Binding BusyText}"
+               Foreground="{DynamicResource PulseTextSecondary}"
+               HorizontalAlignment="Center"
+               TextAlignment="Center"
+               FontSize="13" />
+          <ProgressBar IsVisible="{Binding IsDeleteProgressVisible}"
+                 IsIndeterminate="{Binding IsDeleteProgressIndeterminate}"
+                 Minimum="0"
+                 Maximum="100"
+                 Value="{Binding DeleteProgressPercent}"
+                 Height="6"
+                 CornerRadius="3"
+                 Background="{DynamicResource PulseBorderPrimary}"
+                 Foreground="{DynamicResource PulseAccent}" />
+        </StackPanel>
       </Border>
     </Panel>
   </Border>

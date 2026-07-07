@@ -29,7 +29,7 @@ public class SftpService : ISftpService
             .ToList();
     }
 
-    public async Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, 
+    public async Task UploadFileAsync(Guid sessionId, string localPath, string remotePath,
         IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
@@ -40,14 +40,14 @@ public class SftpService : ISftpService
         var stopwatch = Stopwatch.StartNew();
 
         await using var fileStream = File.OpenRead(localPath);
-        
+
         await client.UploadAsync(fileStream, remotePath, bytesTransferred =>
         {
             ReportProgress(progress, fileName, (long)bytesTransferred, totalBytes, stopwatch);
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, 
+    public async Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath,
         IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
@@ -59,7 +59,7 @@ public class SftpService : ISftpService
         var stopwatch = Stopwatch.StartNew();
 
         await using var fileStream = File.Create(localPath);
-        
+
         await client.DownloadAsync(remotePath, fileStream, bytesTransferred =>
         {
             ReportProgress(progress, fileName, (long)bytesTransferred, totalBytes, stopwatch);
@@ -80,16 +80,39 @@ public class SftpService : ISftpService
             var name = GetUnixFileName(remotePath);
             var entry = client.ListDirectory(parentDir).FirstOrDefault(f => f.Name == name);
             bool isDirectory = entry != null && entry.IsDirectory;
+            int total = CountEntries(client, remotePath, isDirectory, cancellationToken);
+
+            // Emit a "0 / total" tick so the UI can immediately switch to determinate progress.
+            progress?.Report(new SftpDeleteProgress(0, total, remotePath));
 
             int deleted = 0;
-            DeleteEntry(client, remotePath, isDirectory, ref deleted, progress, cancellationToken);
+            DeleteEntry(client, remotePath, isDirectory, total, ref deleted, progress, cancellationToken);
         }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Depth-first delete: a directory's children are removed before the directory itself,
     /// since SFTP <c>rmdir</c> only succeeds on empty directories. Reports one tick per removed entry.</summary>
+    private static int CountEntries(ISftpClientWrapper client, string path, bool isDirectory, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!isDirectory)
+            return 1;
+
+        var total = 1; // include the directory itself
+        foreach (var child in client.ListDirectory(path))
+        {
+            if (child.Name == "." || child.Name == "..")
+                continue;
+
+            total += CountEntries(client, child.FullName, child.IsDirectory, cancellationToken);
+        }
+
+        return total;
+    }
+
     private static void DeleteEntry(ISftpClientWrapper client, string path, bool isDirectory,
-        ref int deleted, IProgress<SftpDeleteProgress>? progress, CancellationToken cancellationToken)
+        int total, ref int deleted, IProgress<SftpDeleteProgress>? progress, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -99,7 +122,7 @@ public class SftpService : ISftpService
             {
                 if (child.Name == "." || child.Name == "..")
                     continue;
-                DeleteEntry(client, child.FullName, child.IsDirectory, ref deleted, progress, cancellationToken);
+                DeleteEntry(client, child.FullName, child.IsDirectory, total, ref deleted, progress, cancellationToken);
             }
 
             client.DeleteDirectory(path);
@@ -110,7 +133,7 @@ public class SftpService : ISftpService
         }
 
         deleted++;
-        progress?.Report(new SftpDeleteProgress(deleted, path));
+        progress?.Report(new SftpDeleteProgress(deleted, total, path));
     }
 
     public async Task CreateDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
@@ -307,15 +330,15 @@ public class SftpService : ISftpService
     private static string FormatPermissions(ISftpFile file)
     {
         var perms = file.IsDirectory ? "d" : "-";
-        
+
         perms += file.OwnerCanRead ? "r" : "-";
         perms += file.OwnerCanWrite ? "w" : "-";
         perms += file.OwnerCanExecute ? "x" : "-";
-        
+
         perms += file.GroupCanRead ? "r" : "-";
         perms += file.GroupCanWrite ? "w" : "-";
         perms += file.GroupCanExecute ? "x" : "-";
-        
+
         perms += file.OthersCanRead ? "r" : "-";
         perms += file.OthersCanWrite ? "w" : "-";
         perms += file.OthersCanExecute ? "x" : "-";

@@ -480,6 +480,34 @@ public class FileBrowserViewModelTests
 
     [TestMethod]
     [TestCategory("FileBrowser")]
+    public async Task Delete_WhenProgressReported_UpdatesDeleteProgressBarState()
+    {
+        _vm.ConfirmDelete = _ => Task.FromResult(true);
+        _sftpService.ListDirectoryAsync(_sessionId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new List<RemoteFileInfo>()));
+
+        IProgress<SftpDeleteProgress>? capturedProgress = null;
+
+        _sftpService.DeleteAsync(_sessionId, "/home/user/readme.txt",
+                Arg.Any<IProgress<SftpDeleteProgress>?>(), Arg.Any<CancellationToken>())
+            .Returns(async ci =>
+            {
+                capturedProgress = ci.ArgAt<IProgress<SftpDeleteProgress>?>(2);
+                capturedProgress?.Report(new SftpDeleteProgress(2, 4, "/home/user/readme.txt"));
+                await Task.CompletedTask;
+            });
+
+        var file = new RemoteFileInfoViewModel(CreateTestFiles()[1]);
+        await _vm.DeleteItemCommand.Execute(file).FirstAsync();
+
+        Assert.IsNotNull(capturedProgress);
+        Assert.IsFalse(_vm.IsDeleteProgressVisible); // hidden again after completion
+        Assert.AreEqual(0d, _vm.DeleteProgressPercent);
+        Assert.IsFalse(_vm.IsDeleteProgressIndeterminate);
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public async Task Delete_WhenDeclined_DoesNothing()
     {
         _vm.ConfirmDelete = _ => Task.FromResult(false);

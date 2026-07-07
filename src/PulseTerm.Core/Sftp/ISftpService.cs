@@ -2,9 +2,13 @@ using PulseTerm.Core.Models;
 
 namespace PulseTerm.Core.Sftp;
 
-/// <summary>Progress of a (possibly recursive) delete: how many entries have been removed so far
-/// and the path most recently deleted.</summary>
-public readonly record struct SftpDeleteProgress(int DeletedCount, string CurrentPath);
+/// <summary>Progress of a (possibly recursive) delete: how many entries are deleted so far, the
+/// total entries expected to be deleted, and the path most recently deleted.</summary>
+public readonly record struct SftpDeleteProgress(int DeletedCount, int TotalCount, string CurrentPath)
+{
+    /// <summary>Delete progress percentage in [0, 100].</summary>
+    public int Percentage => TotalCount <= 0 ? 0 : (int)Math.Clamp((double)DeletedCount * 100 / TotalCount, 0, 100);
+}
 
 public interface ISftpService : IAsyncDisposable
 {
