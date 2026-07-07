@@ -7,6 +7,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.VisualTree;
 using System.Linq;
+using System.Reactive.Linq;
 using Avalonia.Media;
 using Microsoft.Extensions.DependencyInjection;
 using PulseTerm.App.ViewModels;
@@ -30,6 +31,7 @@ public partial class MainWindow : Window
         {
             sidebar.OpenConnectionProfileRequested += OnOpenConnectionProfileRequested;
             sidebar.RecentConnectRequested += OnSidebarRecentConnectRequested;
+            sidebar.SettingsRequested += (_, _) => _ = OpenSettingsAsync();
         }
 
         DataContextChanged += (_, _) => HookFileBrowserVisibility();
@@ -83,6 +85,7 @@ public partial class MainWindow : Window
         {
             vm.TerminalSearchRequested += OnTerminalSearchRequested;
             vm.NewConnectionRequested += (_, _) => _ = OpenProfileDialogAsync(existing: null);
+            vm.SettingsRequested += (_, _) => _ = OpenSettingsAsync();
             vm.InteractiveAuthenticator = PromptCredentialsAsync;
 
             // 资源管理器树:右键连接/双击连接 + 右键编辑。
@@ -174,6 +177,20 @@ public partial class MainWindow : Window
         {
             await ShowConnectionErrorAsync(error);
         }
+    }
+
+    /// <summary>打开设置窗口(设计 §14):DI 单例 VM,打开时重新加载持久化设置。</summary>
+    private async Task OpenSettingsAsync()
+    {
+        if (App.Current is not App app
+            || app.Services?.GetService<SettingsViewModel>() is not { } settingsViewModel)
+        {
+            return;
+        }
+
+        await settingsViewModel.LoadCommand.Execute();
+        var dialog = new SettingsView { DataContext = settingsViewModel };
+        await dialog.ShowDialog(this);
     }
 
     /// <summary>

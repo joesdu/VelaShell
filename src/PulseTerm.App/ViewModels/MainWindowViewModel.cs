@@ -104,7 +104,7 @@ public class MainWindowViewModel : ReactiveObject
 
         StartStatusMetricsPolling();
 
-        OpenSettingsCommand = ReactiveCommand.Create(() => { });
+        OpenSettingsCommand = ReactiveCommand.Create(() => SettingsRequested?.Invoke(this, EventArgs.Empty));
 
         CommandPalette = new CommandPaletteViewModel(BuildPaletteItems);
         OpenCommandPaletteCommand = ReactiveCommand.Create(() => CommandPalette.Open());
@@ -218,6 +218,9 @@ public class MainWindowViewModel : ReactiveObject
 
     /// <summary>Ctrl+N / 菜单 / 命令面板“新建 SSH 连接” —— 由窗口打开新建连接弹窗。</summary>
     public event EventHandler? NewConnectionRequested;
+
+    /// <summary>Ctrl+, / 菜单 / 侧边栏齿轮“打开设置” —— 由窗口打开设置窗口。</summary>
+    public event EventHandler? SettingsRequested;
     /// <summary>Tunnel manager panel for the active session (design fuXS7, spec §10).</summary>
     public TunnelPanelViewModel? TunnelPanel
     {

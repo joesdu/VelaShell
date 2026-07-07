@@ -131,6 +131,31 @@ public sealed class SonnetDbPersistenceTests : IDisposable
     }
 
     [TestMethod]
+    public async Task SettingsService_PersistsNestedOptionGroups()
+    {
+        var service = new SonnetDbSettingsService(_engine);
+        var settings = await service.GetSettingsAsync();
+        settings.General.AutoReconnect = false;
+        settings.General.ReconnectIntervalSeconds = 15;
+        settings.Appearance.CursorColor = "#FF00FF";
+        settings.TerminalBehavior.CopyOnSelect = true;
+        settings.Transfer.ConflictPolicy = "rename";
+        settings.Security.AlertWebhook = true;
+        settings.Keys.DefaultKeyName = "id_ed25519";
+        await service.SaveSettingsAsync(settings);
+
+        var reloaded = await service.GetSettingsAsync();
+        Assert.IsFalse(reloaded.General.AutoReconnect);
+        Assert.AreEqual(15, reloaded.General.ReconnectIntervalSeconds);
+        Assert.AreEqual("#FF00FF", reloaded.Appearance.CursorColor);
+        Assert.IsTrue(reloaded.TerminalBehavior.CopyOnSelect);
+        Assert.AreEqual("rename", reloaded.Transfer.ConflictPolicy);
+        Assert.IsTrue(reloaded.Security.AlertWebhook);
+        Assert.AreEqual("id_ed25519", reloaded.Keys.DefaultKeyName);
+        Assert.AreEqual(8, reloaded.Appearance.AnsiNormal.Count);
+    }
+
+    [TestMethod]
     public async Task HostKeyService_TrustAndVerify_Works()
     {
         var service = new SonnetDbHostKeyService(_engine);

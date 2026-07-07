@@ -224,7 +224,7 @@
                   Background="Transparent"
                   Padding="0"
                   CornerRadius="3"
-                  Command="{Binding SettingsCommand}"
+                  Click="OpenSettings_Click"
                   ToolTip.Tip="{x:Static res:Strings.Settings}"
                   Cursor="Hand">
             <PathIcon Width="13" Height="13"

@@ -1,0 +1,225 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PulseTerm.App.ViewModels"
+             xmlns:conv="using:PulseTerm.App.Converters"
+             x:Class="PulseTerm.App.Views.Settings.AppearanceSettingsPage"
+             x:DataType="vm:SettingsViewModel">
+
+  <StackPanel Spacing="14">
+    <StackPanel Spacing="2">
+      <TextBlock Classes="page-title" Text="外观" />
+      <TextBlock Classes="page-subtitle" Text="// 自定义应用程序的视觉风格" />
+    </StackPanel>
+
+    <!-- 主题 -->
+    <TextBlock Classes="section-title" Text="主题" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="主题模式" />
+        <TextBlock Classes="row-desc" Text="// 选择亮色、暗色或跟随系统" />
+      </StackPanel>
+      <ComboBox Grid.Column="1" Width="140" SelectedIndex="{Binding ThemeIndex}" VerticalAlignment="Center">
+        <ComboBoxItem Content="暗色模式" />
+        <ComboBoxItem Content="亮色模式" />
+        <ComboBoxItem Content="跟随系统" />
+      </ComboBox>
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="自适应窗口标题栏颜色" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Appearance.AdaptiveTitleBar}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="主题色" />
+        <TextBlock Classes="row-desc" Text="// 应用程序的强调色(留空用主题默认)" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <ItemsControl ItemsSource="{Binding AccentSwatches}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="8" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <Button Width="24" Height="24" CornerRadius="12" Padding="0"
+                      Cursor="Hand"
+                      Background="{Binding Converter={x:Static conv:StringToBrushConverter.Instance}}"
+                      Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).SetAccentCommand}"
+                      CommandParameter="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBox Width="86" Text="{Binding AccentColor}" Watermark="#00D4AA" />
+      </StackPanel>
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 字体 -->
+    <TextBlock Classes="section-title" Text="字体" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="界面字体" />
+        <TextBlock Classes="row-desc" Text="// 菜单、标签页等 UI 元素的字体" />
+      </StackPanel>
+      <TextBox Grid.Column="1" Width="140" Text="{Binding Appearance.UiFont}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="界面字号" />
+        <TextBlock Classes="row-desc" Text="// UI 元素的默认字体大小" />
+      </StackPanel>
+      <NumericUpDown Grid.Column="1" Width="80" Value="{Binding Appearance.UiFontSize}" Minimum="9" Maximum="24" Increment="1" FormatString="0" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 窗口 -->
+    <TextBlock Classes="section-title" Text="窗口" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="窗口透明度" />
+        <TextBlock Classes="row-desc" Text="// 调整窗口背景的透明程度" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <Slider Width="120" Minimum="50" Maximum="100"
+                Value="{Binding Appearance.WindowOpacityPercent}" VerticalAlignment="Center" />
+        <NumericUpDown Width="70" Value="{Binding Appearance.WindowOpacityPercent}" Minimum="50" Maximum="100" Increment="5" FormatString="0" />
+      </StackPanel>
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="标签栏位置" />
+        <TextBlock Classes="row-desc" Text="// 标签页栏显示在窗口的位置" />
+      </StackPanel>
+      <ComboBox Grid.Column="1" Width="140" SelectedIndex="{Binding TabBarPositionIndex}" VerticalAlignment="Center">
+        <ComboBoxItem Content="顶部" />
+        <ComboBoxItem Content="底部" />
+      </ComboBox>
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="显示菜单栏" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Appearance.ShowMenuBar}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="侧边栏位置" />
+        <TextBlock Classes="row-desc" Text="// 侧边栏显示在窗口的左侧或右侧" />
+      </StackPanel>
+      <ComboBox Grid.Column="1" Width="140" SelectedIndex="{Binding SidebarPositionIndex}" VerticalAlignment="Center">
+        <ComboBoxItem Content="左侧" />
+        <ComboBoxItem Content="右侧" />
+      </ComboBox>
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="启动时窗口状态" />
+        <TextBlock Classes="row-desc" Text="// 应用启动时的窗口大小行为" />
+      </StackPanel>
+      <ComboBox Grid.Column="1" Width="140" SelectedIndex="{Binding WindowStateIndex}" VerticalAlignment="Center">
+        <ComboBoxItem Content="记住上次" />
+        <ComboBoxItem Content="最大化" />
+        <ComboBoxItem Content="默认大小" />
+      </ComboBox>
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 终端颜色 -->
+    <TextBlock Classes="section-title" Text="终端颜色" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="前景色" />
+        <TextBlock Classes="row-desc" Text="// 终端默认文本颜色" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <Border Width="24" Height="24" CornerRadius="4"
+                BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1"
+                Background="{Binding Appearance.TerminalForeground, Converter={x:Static conv:StringToBrushConverter.Instance}}" />
+        <TextBox Width="100" Text="{Binding Appearance.TerminalForeground}" />
+      </StackPanel>
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="背景色" />
+        <TextBlock Classes="row-desc" Text="// 终端背景颜色" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <Border Width="24" Height="24" CornerRadius="4"
+                BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1"
+                Background="{Binding Appearance.TerminalBackground, Converter={x:Static conv:StringToBrushConverter.Instance}}" />
+        <TextBox Width="100" Text="{Binding Appearance.TerminalBackground}" />
+      </StackPanel>
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="光标颜色" />
+        <TextBlock Classes="row-desc" Text="// 终端光标的颜色" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <Border Width="24" Height="24" CornerRadius="4"
+                BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1"
+                Background="{Binding Appearance.CursorColor, Converter={x:Static conv:StringToBrushConverter.Instance}}" />
+        <TextBox Width="100" Text="{Binding Appearance.CursorColor}" />
+      </StackPanel>
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="选区颜色" />
+        <TextBlock Classes="row-desc" Text="// 终端文本选中时的背景颜色" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <Border Width="24" Height="24" CornerRadius="4"
+                BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1"
+                Background="{Binding Appearance.SelectionColor, Converter={x:Static conv:StringToBrushConverter.Instance}}" />
+        <TextBox Width="100" Text="{Binding Appearance.SelectionColor}" />
+      </StackPanel>
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- ANSI 调色板 -->
+    <TextBlock Classes="section-title" Text="ANSI 调色板" />
+    <StackPanel Spacing="2">
+      <TextBlock Classes="row-label" Text="终端 ANSI 16 色" />
+      <TextBlock Classes="row-desc" Text="// 终端中使用的标准 16 色方案" />
+    </StackPanel>
+    <StackPanel Orientation="Horizontal" Spacing="8">
+      <TextBlock Classes="row-desc" Text="普通" Width="30" VerticalAlignment="Center" />
+      <ItemsControl ItemsSource="{Binding Appearance.AnsiNormal}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Horizontal" Spacing="6" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="x:String">
+            <Border Width="28" Height="28" CornerRadius="4"
+                    BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1"
+                    ToolTip.Tip="{Binding}"
+                    Background="{Binding Converter={x:Static conv:StringToBrushConverter.Instance}}" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+    <StackPanel Orientation="Horizontal" Spacing="8">
+      <TextBlock Classes="row-desc" Text="明亮" Width="30" VerticalAlignment="Center" />
+      <ItemsControl ItemsSource="{Binding Appearance.AnsiBright}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Horizontal" Spacing="6" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="x:String">
+            <Border Width="28" Height="28" CornerRadius="4"
+                    BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1"
+                    ToolTip.Tip="{Binding}"
+                    Background="{Binding Converter={x:Static conv:StringToBrushConverter.Instance}}" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </StackPanel>
+</UserControl>

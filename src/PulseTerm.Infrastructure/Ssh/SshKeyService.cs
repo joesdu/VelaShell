@@ -1,0 +1,226 @@
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text;
+using PulseTerm.Core.Ssh;
+
+namespace PulseTerm.Infrastructure.Ssh;
+
+/// <summary>
+/// 基于 ~/.ssh 目录的密钥管理:以 *.pub 公钥文件枚举密钥对,
+/// 类型与 SHA256 指纹从公钥 blob 解析(与 OpenSSH `ssh-keygen -lf` 口径一致)。
+/// </summary>
+public sealed class SshKeyService : ISshKeyService
+{
+    private readonly string _sshDirectory;
+
+    public SshKeyService(string? sshDirectory = null)
+    {
+        _sshDirectory = sshDirectory ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh");
+    }
+
+    public Task<List<SshKeyInfo>> ListKeysAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.Run(() =>
+        {
+            var keys = new List<SshKeyInfo>();
+            if (!Directory.Exists(_sshDirectory))
+            {
+                return keys;
+            }
+
+            foreach (var pubFile in Directory.EnumerateFiles(_sshDirectory, "*.pub").OrderBy(f => f))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var name = Path.GetFileNameWithoutExtension(pubFile);
+                var privatePath = Path.Combine(_sshDirectory, name);
+                var info = TryParsePublicKey(name, privatePath, pubFile);
+                if (info is not null)
+                {
+                    keys.Add(info);
+                }
+            }
+
+            return keys;
+        }, cancellationToken);
+    }
+
+    public async Task<SshKeyInfo?> ImportKeyAsync(string sourcePrivateKeyPath, CancellationToken cancellationToken = default)
+    {
+        Directory.CreateDirectory(_sshDirectory);
+        var name = Path.GetFileName(sourcePrivateKeyPath);
+        if (name.EndsWith(".pub", StringComparison.OrdinalIgnoreCase))
+        {
+            name = Path.GetFileNameWithoutExtension(name);
+            sourcePrivateKeyPath = sourcePrivateKeyPath[..^4];
+        }
+
+        var targetPrivate = Path.Combine(_sshDirectory, name);
+        if (File.Exists(targetPrivate))
+        {
+            return null;
+        }
+
+        if (File.Exists(sourcePrivateKeyPath))
+        {
+            File.Copy(sourcePrivateKeyPath, targetPrivate);
+        }
+
+        var sourcePub = sourcePrivateKeyPath + ".pub";
+        var targetPub = targetPrivate + ".pub";
+        if (File.Exists(sourcePub) && !File.Exists(targetPub))
+        {
+            File.Copy(sourcePub, targetPub);
+        }
+
+        var keys = await ListKeysAsync(cancellationToken).ConfigureAwait(false);
+        return keys.FirstOrDefault(k => k.Name == name)
+            ?? new SshKeyInfo(name, "未知", string.Empty, targetPrivate, null);
+    }
+
+    public Task<SshKeyInfo> GenerateRsaKeyAsync(string name, int bits = 4096, CancellationToken cancellationToken = default)
+    {
+        return Task.Run(() =>
+        {
+            if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            {
+                throw new ArgumentException("密钥名称无效。", nameof(name));
+            }
+
+            Directory.CreateDirectory(_sshDirectory);
+            var privatePath = Path.Combine(_sshDirectory, name);
+            var publicPath = privatePath + ".pub";
+            if (File.Exists(privatePath) || File.Exists(publicPath))
+            {
+                throw new IOException($"密钥 {name} 已存在。");
+            }
+
+            using var rsa = RSA.Create(bits);
+            File.WriteAllText(privatePath, rsa.ExportRSAPrivateKeyPem() + Environment.NewLine);
+            if (!OperatingSystem.IsWindows())
+            {
+                File.SetUnixFileMode(privatePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+
+            var parameters = rsa.ExportParameters(false);
+            var blob = BuildRsaPublicBlob(parameters);
+            var publicLine = $"ssh-rsa {Convert.ToBase64String(blob)} pulseterm@{Environment.MachineName}";
+            File.WriteAllText(publicPath, publicLine + Environment.NewLine);
+
+            return new SshKeyInfo(name, $"RSA {bits}", Fingerprint(blob), privatePath, publicLine);
+        }, cancellationToken);
+    }
+
+    public Task DeleteKeyAsync(string name, CancellationToken cancellationToken = default)
+    {
+        return Task.Run(() =>
+        {
+            var privatePath = Path.Combine(_sshDirectory, name);
+            var publicPath = privatePath + ".pub";
+            if (File.Exists(privatePath))
+            {
+                File.Delete(privatePath);
+            }
+
+            if (File.Exists(publicPath))
+            {
+                File.Delete(publicPath);
+            }
+        }, cancellationToken);
+    }
+
+    private static SshKeyInfo? TryParsePublicKey(string name, string privatePath, string pubFile)
+    {
+        try
+        {
+            var line = File.ReadAllText(pubFile).Trim();
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2)
+            {
+                return null;
+            }
+
+            var blob = Convert.FromBase64String(parts[1]);
+            return new SshKeyInfo(name, DescribeType(parts[0], blob), Fingerprint(blob), privatePath, line);
+        }
+        catch (Exception ex) when (ex is IOException or FormatException)
+        {
+            return null;
+        }
+    }
+
+    private static string Fingerprint(byte[] blob)
+        => "SHA256:" + Convert.ToBase64String(SHA256.HashData(blob)).TrimEnd('=');
+
+    private static string DescribeType(string algorithm, byte[] blob)
+    {
+        return algorithm switch
+        {
+            "ssh-rsa" => $"RSA {TryGetRsaBits(blob)}",
+            "ssh-ed25519" => "ED25519",
+            "ecdsa-sha2-nistp256" => "ECDSA 256",
+            "ecdsa-sha2-nistp384" => "ECDSA 384",
+            "ecdsa-sha2-nistp521" => "ECDSA 521",
+            "ssh-dss" => "DSA",
+            _ => algorithm,
+        };
+    }
+
+    /// <summary>从 ssh-rsa 公钥 blob(string algo, mpint e, mpint n)读取模数位数。</summary>
+    private static int TryGetRsaBits(byte[] blob)
+    {
+        try
+        {
+            var offset = 0;
+            ReadChunk(blob, ref offset); // algorithm name
+            ReadChunk(blob, ref offset); // exponent
+            var modulus = ReadChunk(blob, ref offset);
+            var length = modulus.Length;
+            if (length > 0 && modulus[0] == 0)
+            {
+                length--; // mpint 前导零
+            }
+
+            return length * 8;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return 0;
+        }
+    }
+
+    private static byte[] ReadChunk(byte[] blob, ref int offset)
+    {
+        var length = BinaryPrimitives.ReadInt32BigEndian(blob.AsSpan(offset, 4));
+        offset += 4;
+        var chunk = blob.AsSpan(offset, length).ToArray();
+        offset += length;
+        return chunk;
+    }
+
+    /// <summary>构造 OpenSSH ssh-rsa 公钥 blob:string "ssh-rsa" ‖ mpint e ‖ mpint n。</summary>
+    private static byte[] BuildRsaPublicBlob(RSAParameters parameters)
+    {
+        using var stream = new MemoryStream();
+        WriteChunk(stream, Encoding.ASCII.GetBytes("ssh-rsa"));
+        WriteChunk(stream, ToMpint(parameters.Exponent!));
+        WriteChunk(stream, ToMpint(parameters.Modulus!));
+        return stream.ToArray();
+    }
+
+    private static byte[] ToMpint(byte[] value)
+    {
+        // 最高位为 1 时补前导零,保持无符号语义。
+        return value.Length > 0 && (value[0] & 0x80) != 0
+            ? [0, .. value]
+            : value;
+    }
+
+    private static void WriteChunk(MemoryStream stream, byte[] data)
+    {
+        Span<byte> lengthBytes = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(lengthBytes, data.Length);
+        stream.Write(lengthBytes);
+        stream.Write(data);
+    }
+}

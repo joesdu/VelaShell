@@ -1,0 +1,182 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PulseTerm.App.ViewModels"
+             x:Class="PulseTerm.App.Views.Settings.TerminalSettingsPage"
+             x:DataType="vm:SettingsViewModel">
+
+  <StackPanel Spacing="14">
+    <StackPanel Spacing="2">
+      <TextBlock Classes="page-title" Text="终端" />
+      <TextBlock Classes="page-subtitle" Text="// 配置终端的显示和行为" />
+    </StackPanel>
+
+    <!-- 字体与显示 -->
+    <TextBlock Classes="section-title" Text="字体与显示" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="终端字体" />
+        <TextBlock Classes="row-desc" Text="// 终端中使用的等宽字体" />
+      </StackPanel>
+      <TextBox Grid.Column="1" Width="160" Text="{Binding TerminalFont}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="字号" VerticalAlignment="Center" />
+      <NumericUpDown Grid.Column="1" Width="80" Value="{Binding TerminalFontSize}" Minimum="8" Maximum="72" Increment="1" FormatString="0" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="行高" />
+        <TextBlock Classes="row-desc" Text="// 行间距倍数,1.0 为默认" />
+      </StackPanel>
+      <NumericUpDown Grid.Column="1" Width="80" Value="{Binding TerminalBehavior.LineHeight}" Minimum="0.8" Maximum="2.0" Increment="0.1" FormatString="0.0" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="启用连字 (Ligatures)" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.Ligatures}" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 终端类型与编码(既有能力) -->
+    <TextBlock Classes="section-title" Text="终端类型与编码" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="终端类型 (TERM)" />
+        <TextBlock Classes="row-desc" Text="// 向远端通告的终端能力档" />
+      </StackPanel>
+      <ComboBox Grid.Column="1" Width="160" ItemsSource="{Binding AvailableTerminalTypes}"
+                SelectedItem="{Binding TerminalType}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="输出编码" />
+        <TextBlock Classes="row-desc" Text="// 解析远端输出使用的字符编码" />
+      </StackPanel>
+      <ComboBox Grid.Column="1" Width="160" ItemsSource="{Binding AvailableEncodings}"
+                SelectedItem="{Binding TerminalEncoding}" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 光标 -->
+    <TextBlock Classes="section-title" Text="光标" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="光标样式" />
+        <TextBlock Classes="row-desc" Text="// 终端光标的显示形状" />
+      </StackPanel>
+      <ComboBox Grid.Column="1" Width="140" SelectedIndex="{Binding CursorStyleIndex}" VerticalAlignment="Center">
+        <ComboBoxItem Content="竖线 (Bar)" />
+        <ComboBoxItem Content="方块 (Block)" />
+        <ComboBoxItem Content="下划线" />
+      </ComboBox>
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="光标闪烁" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.CursorBlink}" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 提示音与通知 -->
+    <TextBlock Classes="section-title" Text="提示音与通知" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="终端 Bell" />
+        <TextBlock Classes="row-desc" Text="// 收到 Bell 字符时的行为" />
+      </StackPanel>
+      <ComboBox Grid.Column="1" Width="140" SelectedIndex="{Binding BellModeIndex}" VerticalAlignment="Center">
+        <ComboBoxItem Content="系统提示音" />
+        <ComboBoxItem Content="静音" />
+        <ComboBoxItem Content="视觉闪烁" />
+      </ComboBox>
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="标签闪烁提醒" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.TabFlashAlert}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="视觉闪烁" />
+        <TextBlock Classes="row-desc" Text="// 用屏幕闪烁代替声音提示" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.VisualBell}" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 滚动 -->
+    <TextBlock Classes="section-title" Text="滚动" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="有输出时自动滚动" />
+        <TextBlock Classes="row-desc" Text="// 新输出时自动滚动到底部" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.ScrollOnOutput}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="按键时自动滚动到底部" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.ScrollOnKeystroke}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="回滚缓冲行数" />
+        <TextBlock Classes="row-desc" Text="// 终端可回滚查看的最大行数" />
+      </StackPanel>
+      <NumericUpDown Grid.Column="1" Width="100" Value="{Binding ScrollbackLines}" Minimum="100" Maximum="200000" Increment="1000" FormatString="0" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 选择与复制 -->
+    <TextBlock Classes="section-title" Text="选择与复制" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="选中即复制" />
+        <TextBlock Classes="row-desc" Text="// 选中文本后自动复制到剪贴板" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.CopyOnSelect}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="右键粘贴" />
+        <TextBlock Classes="row-desc" Text="// 右键点击终端时粘贴剪贴板内容" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.RightClickPaste}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="复制时去除尾部空格" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.TrimTrailingWhitespaceOnCopy}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="双击选择整个单词" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.DoubleClickSelectsWord}" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 输入 -->
+    <TextBlock Classes="section-title" Text="输入" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="粘贴时确认多行内容" />
+        <TextBlock Classes="row-desc" Text="// 粘贴包含换行符的内容时弹出确认" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.ConfirmMultilinePaste}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="输入法支持 (IME)" />
+        <TextBlock Classes="row-desc" Text="// 启用中文/日文等输入法的内联输入" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.ImeSupport}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="发送 Ctrl+C 中断信号" />
+        <TextBlock Classes="row-desc" Text="// 有选中文本时 Ctrl+C 复制而非中断" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.CtrlCCopiesWhenSelected}" VerticalAlignment="Center" />
+    </Grid>
+  </StackPanel>
+</UserControl>

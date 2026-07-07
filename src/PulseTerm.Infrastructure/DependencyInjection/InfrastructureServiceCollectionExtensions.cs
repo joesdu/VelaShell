@@ -52,6 +52,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IRecentConnectionService, SonnetDbRecentConnectionService>();
         services.AddSingleton<IAuditLogService, SonnetDbAuditLogService>();
         services.AddSingleton<IAppDataStore, SonnetDbAppDataStore>();
+        services.AddSingleton<PulseTerm.Core.Ssh.ISshKeyService>(_ => new SshKeyService());
 
         services.AddSingleton<ISshConnectionService>(serviceProvider =>
         {
