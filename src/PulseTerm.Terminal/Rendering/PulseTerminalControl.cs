@@ -443,6 +443,25 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         return true;
     }
 
+    /// <summary>Searches the whole buffer (scrollback + screen), case-insensitive (spec §5.3).</summary>
+    public IReadOnlyList<BufferSearchHit> SearchBuffer(string query) =>
+        BufferSearch.FindAll(_emulator.Screen, query);
+
+    /// <summary>Scrolls a search hit into view (roughly centered) and selects it so the
+    /// existing selection highlight marks the match.</summary>
+    public void ShowHit(BufferSearchHit hit)
+    {
+        _selectionAnchor = (hit.Row, hit.StartCol);
+        _selectionCaret = (hit.Row, hit.StartCol + hit.Length);
+
+        int totalRows = _emulator.Screen.TotalRows;
+        int rows = _emulator.Rows;
+        int desiredTop = Math.Max(0, hit.Row - rows / 2);
+        int maxTop = Math.Max(0, totalRows - rows);
+        ScrollOffset = maxTop - Math.Min(desiredTop, maxTop);
+        InvalidateVisual();
+    }
+
     public string GetSelectedText()
     {
         var sel = NormalizedSelection();

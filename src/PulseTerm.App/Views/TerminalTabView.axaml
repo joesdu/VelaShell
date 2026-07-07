@@ -5,6 +5,7 @@
              xmlns:vm="using:PulseTerm.App.ViewModels"
              xmlns:views="using:PulseTerm.App.Views"
              xmlns:controls="using:PulseTerm.App.Controls"
+             xmlns:pc="using:PulseTerm.Controls.Controls"
              xmlns:res="clr-namespace:PulseTerm.Core.Resources;assembly=PulseTerm.Core"
              mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="800"
              x:Class="PulseTerm.App.Views.TerminalTabView"
@@ -12,9 +13,56 @@
 
   <Grid RowDefinitions="Auto,*">
 
-    <!-- Row 0: Toolbar -->
-    <views:TerminalToolbarView Grid.Row="0"
-                               DataContext="{Binding}" />
+    <!-- Row 0: Toolbar + in-terminal search bar (spec §5.3, Ctrl+F) -->
+    <StackPanel Grid.Row="0">
+      <views:TerminalToolbarView DataContext="{Binding}" />
+
+      <Border x:Name="SearchBar"
+              IsVisible="False"
+              Background="{DynamicResource PulseBgSurface}"
+              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              BorderThickness="0,0,0,1"
+              Padding="14,4">
+        <Grid ColumnDefinitions="Auto,8,240,8,Auto,4,Auto,4,Auto,8,Auto">
+          <pc:LucideIcon Grid.Column="0" Width="12" Height="12"
+                         Data="{StaticResource Icon.search}"
+                         Foreground="{DynamicResource PulseTextTertiary}"
+                         VerticalAlignment="Center" />
+          <TextBox x:Name="SearchBox" Grid.Column="2"
+                   MinHeight="24" Padding="8,2" CornerRadius="3"
+                   FontFamily="{DynamicResource PulseTerminalFont}" FontSize="11"
+                   Background="{DynamicResource PulseBgInput}"
+                   Foreground="{DynamicResource PulseTextPrimary}"
+                   BorderBrush="{DynamicResource PulseBorderPrimary}"
+                   PlaceholderText="在终端中查找" />
+          <TextBlock x:Name="SearchCount" Grid.Column="4"
+                     Foreground="{DynamicResource PulseTextMuted}"
+                     FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10"
+                     VerticalAlignment="Center" />
+          <Button x:Name="SearchPrev" Grid.Column="6"
+                  Width="22" Height="22" Padding="0" Background="Transparent" CornerRadius="3"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                  ToolTip.Tip="上一个 (Shift+Enter)">
+            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.chevron-left}"
+                           Foreground="{DynamicResource PulseTextTertiary}" />
+          </Button>
+          <Button x:Name="SearchNext" Grid.Column="8"
+                  Width="22" Height="22" Padding="0" Background="Transparent" CornerRadius="3"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                  ToolTip.Tip="下一个 (Enter)">
+            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.chevron-right}"
+                           Foreground="{DynamicResource PulseTextTertiary}" />
+          </Button>
+          <Button x:Name="SearchClose" Grid.Column="10"
+                  Width="22" Height="22" Padding="0" Background="Transparent" CornerRadius="3"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                  ToolTip.Tip="关闭 (Esc)">
+            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.x}"
+                           Foreground="{DynamicResource PulseTextTertiary}" />
+          </Button>
+        </Grid>
+      </Border>
+    </StackPanel>
 
     <!-- Row 1: Terminal area with scrollbar -->
     <Grid Grid.Row="1" ColumnDefinitions="*,Auto">

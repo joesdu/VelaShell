@@ -40,13 +40,34 @@ public partial class TerminalTabView : UserControl
         if (ScrollBarView is not null)
             ScrollBarView.Scroll += OnScrollBarScroll;
 
-        // Tunnel so a disconnected tab can catch Enter / Ctrl+R for reconnect before the
-        // terminal control (which normally consumes keys to send to the PTY) sees them.
+        // Tunnel so a disconnected tab can catch Enter / Ctrl+R for reconnect (and Ctrl+F can
+        // open search) before the terminal control consumes the keys for the PTY.
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+
+        SearchBox.TextChanged += (_, _) => RunSearch();
+        SearchNext.Click += (_, _) => MoveHit(+1);
+        SearchPrev.Click += (_, _) => MoveHit(-1);
+        SearchClose.Click += (_, _) => CloseSearch();
+        SearchBox.KeyDown += OnSearchBoxKeyDown;
     }
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
+        // Ctrl+F toggles the in-terminal search bar (spec §5.3).
+        if (e.Key == Key.F && e.KeyModifiers == Avalonia.Input.KeyModifiers.Control)
+        {
+            OpenSearch();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Escape && SearchBar.IsVisible)
+        {
+            CloseSearch();
+            e.Handled = true;
+            return;
+        }
+
         if (DataContext is not TerminalTabViewModel vm || vm.ConnectionStatus != SessionStatus.Disconnected)
             return;
 
@@ -57,6 +78,71 @@ public partial class TerminalTabView : UserControl
         if (reconnect)
         {
             vm.RequestReconnect();
+            e.Handled = true;
+        }
+    }
+
+    // ---- In-terminal search (spec §5.3) ------------------------------------
+
+    private IReadOnlyList<PulseTerm.Terminal.BufferSearchHit> _searchHits =
+        Array.Empty<PulseTerm.Terminal.BufferSearchHit>();
+    private int _searchIndex = -1;
+
+    private void OpenSearch()
+    {
+        SearchBar.IsVisible = true;
+        SearchBox.Focus();
+        SearchBox.SelectAll();
+        RunSearch();
+    }
+
+    private void CloseSearch()
+    {
+        SearchBar.IsVisible = false;
+        _searchHits = Array.Empty<PulseTerm.Terminal.BufferSearchHit>();
+        _searchIndex = -1;
+        FocusTerminal();
+    }
+
+    private void RunSearch()
+    {
+        if (_termControl is null || !SearchBar.IsVisible)
+            return;
+
+        var query = SearchBox.Text ?? string.Empty;
+        _searchHits = _termControl.SearchBuffer(query);
+        _searchIndex = _searchHits.Count > 0 ? 0 : -1;
+        ShowCurrentHit();
+    }
+
+    private void MoveHit(int delta)
+    {
+        if (_searchHits.Count == 0)
+            return;
+        _searchIndex = ((_searchIndex + delta) % _searchHits.Count + _searchHits.Count) % _searchHits.Count;
+        ShowCurrentHit();
+    }
+
+    private void ShowCurrentHit()
+    {
+        SearchCount.Text = _searchHits.Count == 0
+            ? (string.IsNullOrEmpty(SearchBox.Text) ? "" : "无匹配")
+            : $"{_searchIndex + 1}/{_searchHits.Count}";
+
+        if (_searchIndex >= 0 && _termControl is not null)
+            _termControl.ShowHit(_searchHits[_searchIndex]);
+    }
+
+    private void OnSearchBoxKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            MoveHit(e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Shift) ? -1 : +1);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            CloseSearch();
             e.Handled = true;
         }
     }
