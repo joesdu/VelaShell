@@ -12,11 +12,16 @@ using Microsoft.Extensions.DependencyInjection;
 using PulseTerm.App.ViewModels;
 using PulseTerm.Core.Models;
 using PulseTerm.Presentation.Services;
+using ReactiveUI;
 
 namespace PulseTerm.App.Views;
 
 public partial class MainWindow : Window
 {
+    /// <summary>File panel height restored when the panel reopens (§6: default 220px, drag to grow).</summary>
+    private double _lastFileRowHeight = 220;
+    private IDisposable? _fileBrowserVisibilitySub;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -27,7 +32,49 @@ public partial class MainWindow : Window
             sidebar.ConnectRequested += OnSidebarConnectRequested;
         }
 
+        DataContextChanged += (_, _) => HookFileBrowserVisibility();
         Opened += OnWindowOpened;
+    }
+
+    /// <summary>Collapses/expands the file-panel rows as FileBrowser.IsVisible flips. WhenAnyValue
+    /// tracks through the FileBrowser property itself, so per-tab rebinds re-subscribe automatically.</summary>
+    private void HookFileBrowserVisibility()
+    {
+        _fileBrowserVisibilitySub?.Dispose();
+        _fileBrowserVisibilitySub = null;
+
+        if (DataContext is not MainWindowViewModel vm)
+            return;
+
+        _fileBrowserVisibilitySub = vm
+            .WhenAnyValue(x => x.FileBrowser.IsVisible)
+            .Subscribe(visible => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetFileRowsVisible(visible)));
+    }
+
+    private void SetFileRowsVisible(bool visible)
+    {
+        if (this.FindControl<Grid>("MainAreaGrid") is not { RowDefinitions.Count: >= 3 } grid)
+            return;
+
+        var splitterRow = grid.RowDefinitions[1];
+        var fileRow = grid.RowDefinitions[2];
+
+        if (visible)
+        {
+            splitterRow.Height = new GridLength(5);
+            fileRow.MinHeight = 120;
+            fileRow.Height = new GridLength(Math.Max(_lastFileRowHeight, 120));
+        }
+        else
+        {
+            // Remember the user's dragged height so reopening restores it.
+            if (fileRow.Height.IsAbsolute && fileRow.Height.Value > 0)
+                _lastFileRowHeight = fileRow.Height.Value;
+
+            fileRow.MinHeight = 0;
+            fileRow.Height = new GridLength(0);
+            splitterRow.Height = new GridLength(0);
+        }
     }
 
     private async void OnWindowOpened(object? sender, EventArgs e)

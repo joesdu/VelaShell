@@ -64,8 +64,14 @@
               Width="1"
               Background="{DynamicResource PulseBorderPrimary}" />
 
-      <!-- Main area (terminal, file browser) -->
-      <Grid Grid.Column="2" RowDefinitions="*,1,220">
+      <!-- Main area (terminal, file browser). The file rows start collapsed (0) and are
+           opened/restored from code-behind when FileBrowser.IsVisible changes (§6 可折叠/拖高). -->
+      <Grid Grid.Column="2" x:Name="MainAreaGrid">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="*" MinHeight="150" />
+          <RowDefinition Height="0" />
+          <RowDefinition Height="0" />
+        </Grid.RowDefinitions>
 
         <!-- Top Area: dockable terminal documents (drag to reorder, tear off to a new
              floating window, or drop on an edge to split — provided by Dock.Avalonia). -->
@@ -77,8 +83,12 @@
           </dock:DockControl.DataTemplates>
         </dock:DockControl>
 
-        <!-- Right horizontal splitter -->
-        <GridSplitter Grid.Row="1" Height="1" Background="{DynamicResource PulseBorderPrimary}" HorizontalAlignment="Stretch"/>
+        <!-- Horizontal splitter: a 5px transparent grab area drawn as a 1px line, so the
+             panel is draggable without a heavy divider. -->
+        <Border Grid.Row="1" Height="1" VerticalAlignment="Center"
+                Background="{DynamicResource PulseBorderPrimary}" />
+        <GridSplitter Grid.Row="1" Background="Transparent" ResizeDirection="Rows"
+                      HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 
         <!-- Bottom Area (Files) -->
         <views:FileBrowserView Grid.Row="2" DataContext="{Binding FileBrowser}" />
