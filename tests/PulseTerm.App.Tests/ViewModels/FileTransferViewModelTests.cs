@@ -141,8 +141,8 @@ public class FileTransferViewModelTests
         _vm.AddTransfer(download);
 
         // Assert
-        Assert.AreEqual("↑", _vm.Transfers[0].Direction);
-        Assert.AreEqual("↓", _vm.Transfers[1].Direction);
+        Assert.AreEqual("↓", _vm.Transfers[0].Direction);
+        Assert.AreEqual("↑", _vm.Transfers[1].Direction);
     }
 
     [TestMethod]
@@ -202,7 +202,7 @@ public class FileTransferViewModelTests
 
         // Assert
         Assert.AreEqual(2, _vm.Transfers.Count());
-        Assert.AreEqual("alpha.zip", _vm.Transfers[0].FileName);
-        Assert.AreEqual("beta.tar.gz", _vm.Transfers[1].FileName);
+        Assert.AreEqual("beta.tar.gz", _vm.Transfers[0].FileName);
+        Assert.AreEqual("alpha.zip", _vm.Transfers[1].FileName);
     }
 }

@@ -78,7 +78,8 @@ public class FileTransferViewModel : ReactiveObject
     public void AddTransfer(TransferTask task)
     {
         var item = new TransferItemViewModel(task);
-        Transfers.Add(item);
+        // New tasks appear at the top so active uploads are visible without scrolling.
+        Transfers.Insert(0, item);
     }
 
     public TransferItemViewModel? FindTransfer(Guid transferId)

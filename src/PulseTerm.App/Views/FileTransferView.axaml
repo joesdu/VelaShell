@@ -57,61 +57,65 @@
         </Grid>
       </Border>
 
-      <!-- Transfer rows -->
-      <ItemsControl ItemsSource="{Binding Transfers}">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="vm:TransferItemViewModel">
-            <Border Padding="12,8"
-                    BorderBrush="{DynamicResource PulseBorderPrimary}"
-                    BorderThickness="0,0,0,1">
-              <StackPanel Spacing="4">
+      <!-- Transfer rows: keep panel height bounded (~5 rows) and scroll overflow. -->
+      <ScrollViewer VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollBarVisibility="Disabled"
+                    MaxHeight="280">
+        <ItemsControl ItemsSource="{Binding Transfers}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:TransferItemViewModel">
+              <Border Padding="12,8"
+                      BorderBrush="{DynamicResource PulseBorderPrimary}"
+                      BorderThickness="0,0,0,1">
+                <StackPanel Spacing="4">
 
-                <!-- Name / percentage -->
-                <Grid ColumnDefinitions="*,Auto">
-                  <TextBlock Grid.Column="0"
-                             Text="{Binding FileName}"
-                             Foreground="{DynamicResource PulseTextPrimary}"
+                  <!-- Name / percentage -->
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0"
+                               Text="{Binding FileName}"
+                               Foreground="{DynamicResource PulseTextPrimary}"
+                               FontFamily="{DynamicResource PulseTerminalFont}"
+                               FontSize="10" FontWeight="Medium"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding ProgressText}"
+                               FontFamily="{DynamicResource PulseTerminalFont}"
+                               FontSize="10" FontWeight="Medium"
+                               Classes.done="{Binding IsCompleted}"
+                               Classes.failed="{Binding IsFailed}">
+                      <TextBlock.Styles>
+                        <Style Selector="TextBlock">
+                          <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+                        </Style>
+                        <Style Selector="TextBlock.done">
+                          <Setter Property="Foreground" Value="{DynamicResource PulseStatusConnected}" />
+                        </Style>
+                        <Style Selector="TextBlock.failed">
+                          <Setter Property="Foreground" Value="{DynamicResource PulseError}" />
+                        </Style>
+                      </TextBlock.Styles>
+                    </TextBlock>
+                  </Grid>
+
+                  <!-- Progress bar: 3px track border-primary + accent fill -->
+                  <ProgressBar Minimum="0" Maximum="100"
+                               Value="{Binding Progress}"
+                               Height="3" MinHeight="3"
+                               CornerRadius="2"
+                               Background="{DynamicResource PulseBorderPrimary}"
+                               Foreground="{DynamicResource PulseAccent}" />
+
+                  <!-- Detail line -->
+                  <TextBlock Text="{Binding InfoLine}"
+                             Foreground="{DynamicResource PulseTextMuted}"
                              FontFamily="{DynamicResource PulseTerminalFont}"
-                             FontSize="10" FontWeight="Medium"
-                             TextTrimming="CharacterEllipsis" />
-                  <TextBlock Grid.Column="1"
-                             Text="{Binding ProgressText}"
-                             FontFamily="{DynamicResource PulseTerminalFont}"
-                             FontSize="10" FontWeight="Medium"
-                             Classes.done="{Binding IsCompleted}"
-                             Classes.failed="{Binding IsFailed}">
-                    <TextBlock.Styles>
-                      <Style Selector="TextBlock">
-                        <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
-                      </Style>
-                      <Style Selector="TextBlock.done">
-                        <Setter Property="Foreground" Value="{DynamicResource PulseStatusConnected}" />
-                      </Style>
-                      <Style Selector="TextBlock.failed">
-                        <Setter Property="Foreground" Value="{DynamicResource PulseError}" />
-                      </Style>
-                    </TextBlock.Styles>
-                  </TextBlock>
-                </Grid>
-
-                <!-- Progress bar: 3px track border-primary + accent fill -->
-                <ProgressBar Minimum="0" Maximum="100"
-                             Value="{Binding Progress}"
-                             Height="3" MinHeight="3"
-                             CornerRadius="2"
-                             Background="{DynamicResource PulseBorderPrimary}"
-                             Foreground="{DynamicResource PulseAccent}" />
-
-                <!-- Detail line -->
-                <TextBlock Text="{Binding InfoLine}"
-                           Foreground="{DynamicResource PulseTextMuted}"
-                           FontFamily="{DynamicResource PulseTerminalFont}"
-                           FontSize="9" />
-              </StackPanel>
-            </Border>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
+                             FontSize="9" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
 
     </StackPanel>
   </Border>
