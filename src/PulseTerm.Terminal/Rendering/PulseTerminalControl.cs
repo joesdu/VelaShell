@@ -25,6 +25,15 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     private readonly SemanticMatcher _semanticMatcher = new();
     private readonly Dictionary<uint, ImmutableSolidColorBrush> _brushCache = new();
 
+    // Client-side semantic coloring (URLs, IPs, error/warning/success words, option flags, numbers)
+    // for text the remote program left in the default color, so plain logs/MOTD get highlighted
+    // without ever clobbering explicit SGR colors (ls --color, git, etc.). Regex results are cached
+    // by line text since the visible lines are re-scanned every frame (cursor blink, output).
+    private readonly Dictionary<string, IReadOnlyList<SemanticSpan>> _semanticSpanCache = new();
+
+    /// <summary>Toggles client-side semantic highlighting of default-colored output.</summary>
+    public bool SemanticHighlightingEnabled { get; set; } = true;
+
     // Cache of shaped, colored glyphs keyed by (rune, combining, foreground, style). Terminal
     // output draws from a tiny alphabet, so hit rate is ~100% and per-frame text shaping —
     // the dominant render cost — effectively disappears. Cleared when the font/size changes.
@@ -336,6 +345,8 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     private void RenderLine(DrawingContext context, TerminalPalette palette, TerminalRow line,
         int cols, double y, int absoluteRow, ((int Row, int Col) Start, (int Row, int Col) End)? sel)
     {
+        var semantic = SemanticHighlightingEnabled ? ComputeSemanticColumns(line, cols) : null;
+
         int col = 0;
         while (col < cols)
         {
@@ -359,6 +370,16 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
                 bg = palette.SelectionBackground;
             }
 
+            // Recolor only text the program left in the default color, so explicit SGR colors
+            // (ls --color, git, prompts) are never overridden. URLs and IPs also get an underline
+            // to signal they are Ctrl+clickable.
+            bool semanticUnderline = false;
+            if (semantic is not null && !inverse && cell.Foreground.IsDefault && semantic[col] is { } kind)
+            {
+                fg = SemanticColor(palette, kind);
+                semanticUnderline = kind is SemanticKind.Url or SemanticKind.IpAddress;
+            }
+
             var cellRect = new Rect(col * _cellWidth, y, _cellWidth * width, _cellHeight);
             if (!bg.Equals(palette.DefaultBackground))
                 context.FillRectangle(BrushFor(bg), cellRect);
@@ -371,7 +392,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
                 context.DrawText(ft, new Point(gx, y));
             }
 
-            if ((cell.Flags & (CellFlags.Underline | CellFlags.DoubleUnderline)) != 0)
+            if ((cell.Flags & (CellFlags.Underline | CellFlags.DoubleUnderline)) != 0 || semanticUnderline)
             {
                 double uy = y + _cellHeight - 1.5;
                 context.DrawLine(new Pen(BrushFor(fg), 1),
@@ -387,6 +408,78 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
             col += width;
         }
     }
+
+    /// <summary>
+    /// Builds a per-column map of semantic kinds for a line: reconstructs the line text (mapping
+    /// each character back to its source column so wide runes line up), matches it, and marks the
+    /// columns each span covers. Returns null when highlighting yields nothing for the line.
+    /// </summary>
+    private SemanticKind?[]? ComputeSemanticColumns(TerminalRow line, int cols)
+    {
+        int lastNonBlank = -1;
+        for (int i = 0; i < cols; i++)
+            if (line[i].Rune != 0)
+                lastNonBlank = i;
+        if (lastNonBlank < 0)
+            return null;
+
+        var sb = new System.Text.StringBuilder(lastNonBlank + 1);
+        var colByChar = new List<int>(lastNonBlank + 1);
+        for (int i = 0; i <= lastNonBlank; i++)
+        {
+            TerminalCell cell = line[i];
+            if (cell.IsWideTrailing)
+                continue;
+            int before = sb.Length;
+            cell.AppendText(sb);
+            for (int k = before; k < sb.Length; k++)
+                colByChar.Add(i);
+        }
+
+        var spans = SemanticSpansFor(sb.ToString());
+        if (spans.Count == 0)
+            return null;
+
+        var byColumn = new SemanticKind?[cols];
+        foreach (var span in spans)
+        {
+            int end = Math.Min(span.End, colByChar.Count);
+            for (int ci = span.Start; ci < end; ci++)
+            {
+                int c = colByChar[ci];
+                if (c >= 0 && c < cols)
+                    byColumn[c] = span.Kind;
+            }
+        }
+        return byColumn;
+    }
+
+    private IReadOnlyList<SemanticSpan> SemanticSpansFor(string text)
+    {
+        if (_semanticSpanCache.TryGetValue(text, out var cached))
+            return cached;
+
+        // Bound the cache; terminal output has huge line variety, so just reset when it grows.
+        if (_semanticSpanCache.Count > 1024)
+            _semanticSpanCache.Clear();
+
+        var spans = _semanticMatcher.Match(text);
+        _semanticSpanCache[text] = spans;
+        return spans;
+    }
+
+    /// <summary>Maps a semantic kind to a themeable ANSI color (respects the active .pen palette).</summary>
+    private static Rgba SemanticColor(TerminalPalette palette, SemanticKind kind) => kind switch
+    {
+        SemanticKind.Error => palette[9],       // bright red
+        SemanticKind.Warning => palette[11],    // bright yellow
+        SemanticKind.Success => palette[10],    // bright green
+        SemanticKind.Url => palette[12],        // bright blue
+        SemanticKind.IpAddress => palette[14],  // bright cyan
+        SemanticKind.Option => palette[13],     // bright magenta
+        SemanticKind.Number => palette[6],      // cyan
+        _ => palette.DefaultForeground,
+    };
 
     private void RenderCursor(DrawingContext context, TerminalScreen screen, TerminalPalette palette, int topAbsolute)
     {

@@ -9,7 +9,10 @@ public enum SemanticKind
     Url,
     Error,
     Warning,
+    Success,
     IpAddress,
+    Option,
+    Number,
 }
 
 /// <summary>A matched region within a single line, in character offsets.</summary>
@@ -35,12 +38,26 @@ public sealed partial class SemanticMatcher
     [GeneratedRegex(@"\b(?:error|errors|failed|failure|fatal|panic|exception|denied)\b", RegexOptions.IgnoreCase)]
     private static partial Regex ErrorRegex();
 
-    [GeneratedRegex(@"\b(?:warn|warning|deprecated)\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(?:warn|warning|deprecated|caution|notice)\b", RegexOptions.IgnoreCase)]
     private static partial Regex WarningRegex();
+
+    [GeneratedRegex(@"\b(?:success|successful|successfully|succeeded|ok|done|enabled|active|running|started|listening|pass|passed|ready|healthy|online|connected)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex SuccessRegex();
+
+    // Command-line option flags such as -x, --now, --color=auto. Anchored so it never fires
+    // inside a word or a hyphenated term (well-known, re-run).
+    [GeneratedRegex(@"(?<![\w-])--?[A-Za-z][\w-]*")]
+    private static partial Regex OptionRegex();
+
+    // Standalone numbers, including dotted/colon groups (ports, counts, timestamps like 22:37:41).
+    // IP addresses win via priority, so they are not fragmented into numbers.
+    [GeneratedRegex(@"\b\d+(?:[.:]\d+)*\b")]
+    private static partial Regex NumberRegex();
 
     /// <summary>
     /// Returns non-overlapping spans for the line, ordered by start offset. When regions overlap
-    /// (e.g. an IP inside a URL), the higher-priority kind wins: Url &gt; Error &gt; Warning &gt; IpAddress.
+    /// (e.g. digits inside an IP, or an IP inside a URL) the higher-priority kind wins:
+    /// Url &gt; IpAddress &gt; Error &gt; Warning &gt; Success &gt; Option &gt; Number.
     /// </summary>
     public IReadOnlyList<SemanticSpan> Match(string? line)
     {
@@ -49,9 +66,12 @@ public sealed partial class SemanticMatcher
 
         var raw = new List<SemanticSpan>();
         Collect(raw, UrlRegex(), line, SemanticKind.Url);
+        Collect(raw, IpRegex(), line, SemanticKind.IpAddress);
         Collect(raw, ErrorRegex(), line, SemanticKind.Error);
         Collect(raw, WarningRegex(), line, SemanticKind.Warning);
-        Collect(raw, IpRegex(), line, SemanticKind.IpAddress);
+        Collect(raw, SuccessRegex(), line, SemanticKind.Success);
+        Collect(raw, OptionRegex(), line, SemanticKind.Option);
+        Collect(raw, NumberRegex(), line, SemanticKind.Number);
 
         // Higher priority first, then earliest, so the greedy pass below keeps the best match.
         raw.Sort((a, b) =>
@@ -106,8 +126,11 @@ public sealed partial class SemanticMatcher
     private static int Priority(SemanticKind kind) => kind switch
     {
         SemanticKind.Url => 0,
-        SemanticKind.Error => 1,
-        SemanticKind.Warning => 2,
-        _ => 3,
+        SemanticKind.IpAddress => 1,
+        SemanticKind.Error => 2,
+        SemanticKind.Warning => 3,
+        SemanticKind.Success => 4,
+        SemanticKind.Option => 5,
+        _ => 6, // Number
     };
 }

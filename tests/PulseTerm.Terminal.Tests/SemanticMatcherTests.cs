@@ -61,6 +61,48 @@ public class SemanticMatcherTests
     }
 
     [TestMethod]
+    public void Match_FindsSuccessKeyword()
+    {
+        var spans = _matcher.Match("cockpit.service is now active and running");
+        Assert.IsTrue(spans.Any(s => s.Kind == SemanticKind.Success));
+    }
+
+    [TestMethod]
+    public void Match_FindsOptionFlag()
+    {
+        const string line = "systemctl enable --now cockpit.socket";
+        var spans = _matcher.Match(line);
+        var option = spans.Single(s => s.Kind == SemanticKind.Option);
+        Assert.AreEqual("--now", line.Substring(option.Start, option.Length));
+    }
+
+    [TestMethod]
+    public void Match_OptionDoesNotFireInsideHyphenatedWord()
+    {
+        var spans = _matcher.Match("a well-known re-run host");
+        Assert.IsFalse(spans.Any(s => s.Kind == SemanticKind.Option));
+    }
+
+    [TestMethod]
+    public void Match_FindsStandaloneNumber()
+    {
+        const string line = "There were 38 failed login attempts";
+        var spans = _matcher.Match(line);
+        var number = spans.Single(s => s.Kind == SemanticKind.Number);
+        Assert.AreEqual("38", line.Substring(number.Start, number.Length));
+    }
+
+    [TestMethod]
+    public void Match_IpAddress_IsNotFragmentedIntoNumbers()
+    {
+        var spans = _matcher.Match("login from 10.10.10.1 on ssh");
+
+        Assert.IsTrue(spans.Any(s => s.Kind == SemanticKind.IpAddress));
+        // The dotted quad must stay a single IP span, not split into number spans.
+        Assert.IsFalse(spans.Any(s => s.Kind == SemanticKind.Number));
+    }
+
+    [TestMethod]
     public void Match_EmptyLine_ReturnsNothing()
     {
         Assert.AreEqual(0, _matcher.Match("").Count);
