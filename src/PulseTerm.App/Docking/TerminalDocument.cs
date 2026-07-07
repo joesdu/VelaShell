@@ -17,7 +17,9 @@ public sealed class TerminalDocument : Document
         Id = terminal.Id.ToString("N");
         Title = terminal.Title;
         CanClose = true;
-        CanFloat = true;
+        // Floating is disabled by product decision (用户反馈): tabs only rearrange and split
+        // inside the main window; tearing off into separate windows added confusion, not value.
+        CanFloat = false;
         CanPin = false;
     }
 

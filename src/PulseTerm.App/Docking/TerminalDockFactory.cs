@@ -1,4 +1,3 @@
-using Dock.Avalonia.Controls;
 using Dock.Model.Controls;
 using Dock.Model.Core;
 using Dock.Model.ReactiveUI;
@@ -8,25 +7,14 @@ namespace PulseTerm.App.Docking;
 
 /// <summary>
 /// Builds and drives the terminal workspace layout: a single <see cref="DocumentDock"/> whose
-/// documents are draggable, splittable and can be torn off into floating windows (Dock.Avalonia
-/// provides the drag/float/split behavior). Terminals are added and removed at runtime.
+/// documents are draggable and splittable inside the main window (Dock.Avalonia provides the
+/// drag/split behavior; floating windows are disabled by product decision). Terminals are
+/// added and removed at runtime.
 /// </summary>
 public sealed class TerminalDockFactory : Factory
 {
     private IDocumentDock? _documentDock;
     private IRootDock? _rootDock;
-
-    public TerminalDockFactory()
-    {
-        // Without a host-window locator, "Float" removes the document from the layout but
-        // never creates a window to show it in — the tab just vanished (用户反馈). HostWindow
-        // is Dock.Avalonia's standard floating chrome.
-        DefaultHostWindowLocator = () => new HostWindow();
-        HostWindowLocator = new Dictionary<string, Func<IHostWindow?>>
-        {
-            [nameof(IDockWindow)] = () => new HostWindow(),
-        };
-    }
 
     public IDocumentDock? DocumentDock => _documentDock;
 
