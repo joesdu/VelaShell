@@ -12,6 +12,25 @@ public class RemoteFileInfoViewModel
         _model = model ?? throw new ArgumentNullException(nameof(model));
     }
 
+    /// <summary>The synthetic ".." first row (§6): navigates to the parent directory on
+    /// activation and offers no file operations.</summary>
+    public static RemoteFileInfoViewModel CreateParentEntry(string parentPath) =>
+        new(new RemoteFileInfo
+        {
+            Name = "..",
+            FullPath = parentPath,
+            Size = 0,
+            Permissions = string.Empty,
+            IsDirectory = true,
+            LastModified = DateTime.MinValue,
+            Owner = string.Empty,
+            Group = string.Empty,
+        })
+        { IsParentEntry = true };
+
+    /// <summary>True only for the synthetic ".." row.</summary>
+    public bool IsParentEntry { get; private init; }
+
     public string Name => _model.Name;
 
     public string FullPath => _model.FullPath;
@@ -22,9 +41,9 @@ public class RemoteFileInfoViewModel
 
     public string Icon => _model.IsDirectory ? "folder" : "file";
 
-    public string FormattedSize => _model.IsDirectory ? "--" : FormatSize(_model.Size);
+    public string FormattedSize => IsParentEntry ? string.Empty : _model.IsDirectory ? "--" : FormatSize(_model.Size);
 
-    public string FormattedModifiedTime => FormatRelativeTime(_model.LastModified);
+    public string FormattedModifiedTime => IsParentEntry ? string.Empty : FormatRelativeTime(_model.LastModified);
 
     public long SizeBytes => _model.Size;
 

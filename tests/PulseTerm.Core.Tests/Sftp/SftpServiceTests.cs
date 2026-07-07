@@ -85,6 +85,27 @@ public class SftpServiceTests
     }
 
     [TestMethod]
+    public async Task SetPermissionsAsync_CallsChangePermissionsOnClient()
+    {
+        await _sftpService.SetPermissionsAsync(_sessionId, "/home/user/run.sh", 755);
+
+        _sftpClient.Received(1).ChangePermissions("/home/user/run.sh", 755);
+    }
+
+    [TestMethod]
+    [DataRow((short)-1)]
+    [DataRow((short)778)]   // last digit > 7
+    [DataRow((short)787)]   // middle digit > 7
+    [DataRow((short)800)]   // leading digit > 7
+    public async Task SetPermissionsAsync_RejectsNonOctalModes(short mode)
+    {
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(
+            () => _sftpService.SetPermissionsAsync(_sessionId, "/home/user/run.sh", mode));
+
+        _sftpClient.DidNotReceive().ChangePermissions(Arg.Any<string>(), Arg.Any<short>());
+    }
+
+    [TestMethod]
     public async Task CreateFileAsync_UploadsAnEmptyStream()
     {
         await _sftpService.CreateFileAsync(_sessionId, "/home/user/empty.txt");

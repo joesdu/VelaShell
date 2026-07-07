@@ -13,6 +13,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using PulseTerm.App.ViewModels;
+using PulseTerm.Core.Resources;
 
 namespace PulseTerm.App.Views;
 
@@ -44,10 +45,13 @@ public partial class FileBrowserView : UserControl
             vm.PickFilesForUpload = PickFilesAsync;
             vm.PickFolderForUpload = PickFolderAsync;
             vm.PickSavePathForDownload = PickSavePathAsync;
+            vm.PickFolderForDownload = PickDownloadFolderAsync;
             vm.PromptForText = PromptForTextAsync;
             vm.CopyToClipboard = CopyToClipboardAsync;
             vm.ShowFileProperties = ShowFilePropertiesAsync;
+            vm.PromptForPermissions = PromptForPermissionsAsync;
             vm.ConfirmDelete = ConfirmAsync;
+            vm.OpenLocalFile = OpenLocalFileAsync;
         };
 
         // Accept dropping local files/folders onto the list to upload into CurrentPath.
@@ -201,18 +205,28 @@ public partial class FileBrowserView : UserControl
         return Math.Clamp(value, min, max);
     }
 
-    /// <summary>Double-clicking a row descends into a directory (files are left to the toolbar
-    /// download action, which needs a save target).</summary>
+    /// <summary>Double-clicking a row descends into a directory, or downloads a file to a temp
+    /// folder and opens it with the OS default program (§6).</summary>
     private void OnFileDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (DataContext is not FileBrowserViewModel vm)
             return;
 
         var row = (e.Source as Control)?.DataContext as RemoteFileInfoViewModel;
-        if (row is null || !row.IsDirectory)
+        if (row is null)
             return;
 
         vm.ActivateCommand.Execute(row).Subscribe(_ => { }, _ => { });
+    }
+
+    /// <summary>Opens a downloaded local file with the platform default handler.</summary>
+    private async Task OpenLocalFileAsync(string localPath)
+    {
+        var top = TopLevel.GetTopLevel(this);
+        if (top is null)
+            return;
+
+        await top.Launcher.LaunchFileInfoAsync(new System.IO.FileInfo(localPath));
     }
 
     private async Task<IReadOnlyList<string>> PickFilesAsync()
@@ -223,7 +237,7 @@ public partial class FileBrowserView : UserControl
 
         var files = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "选择要上传的文件",
+            Title = Strings.SelectFilesToUpload,
             AllowMultiple = true,
         });
 
@@ -242,7 +256,23 @@ public partial class FileBrowserView : UserControl
 
         var folders = await top.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "选择要上传的文件夹",
+            Title = Strings.SelectFolderToUpload,
+            AllowMultiple = false,
+        });
+
+        return folders.FirstOrDefault()?.TryGetLocalPath();
+    }
+
+    /// <summary>Picks the local destination folder for folder/batch downloads.</summary>
+    private async Task<string?> PickDownloadFolderAsync()
+    {
+        var top = TopLevel.GetTopLevel(this);
+        if (top is null)
+            return null;
+
+        var folders = await top.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = Strings.SelectDownloadFolder,
             AllowMultiple = false,
         });
 
@@ -297,7 +327,7 @@ public partial class FileBrowserView : UserControl
 
         var file = await top.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "保存到本地",
+            Title = Strings.SaveToLocal,
             SuggestedFileName = suggestedName,
         });
 
@@ -312,8 +342,8 @@ public partial class FileBrowserView : UserControl
             return null;
 
         var textBox = new TextBox { Text = initialValue, MinWidth = 340 };
-        var okButton = new Button { Content = "确定", IsDefault = true, MinWidth = 72 };
-        var cancelButton = new Button { Content = "取消", IsCancel = true, MinWidth = 72 };
+        var okButton = new Button { Content = Strings.OK, IsDefault = true, MinWidth = 72 };
+        var cancelButton = new Button { Content = Strings.Cancel, IsCancel = true, MinWidth = 72 };
 
         string? result = null;
         var dialog = new Window
@@ -356,13 +386,13 @@ public partial class FileBrowserView : UserControl
         if (TopLevel.GetTopLevel(this) is not Window owner)
             return false;
 
-        var confirmButton = new Button { Content = "删除", MinWidth = 72 };
-        var cancelButton = new Button { Content = "取消", IsCancel = true, IsDefault = true, MinWidth = 72 };
+        var confirmButton = new Button { Content = Strings.Delete, MinWidth = 72 };
+        var cancelButton = new Button { Content = Strings.Cancel, IsCancel = true, IsDefault = true, MinWidth = 72 };
 
         bool result = false;
         var dialog = new Window
         {
-            Title = "确认删除",
+            Title = Strings.ConfirmDeleteTitle,
             CanResize = false,
             ShowInTaskbar = false,
             SizeToContent = SizeToContent.WidthAndHeight,
@@ -409,16 +439,16 @@ public partial class FileBrowserView : UserControl
         void AddRow(string label, string value) =>
             rows.Children.Add(new TextBlock { Text = $"{label}：{value}" });
 
-        AddRow("名称", file.Name);
-        AddRow("路径", file.FullPath);
-        AddRow("类型", file.IsDirectory ? "文件夹" : "文件");
-        AddRow("大小", file.FormattedSize);
-        AddRow("权限", file.Permissions);
-        AddRow("修改时间", file.FormattedModifiedTime);
+        AddRow(Strings.Name, file.Name);
+        AddRow(Strings.FilePath, file.FullPath);
+        AddRow(Strings.FileType, file.IsDirectory ? Strings.Folder : Strings.File);
+        AddRow(Strings.Size, file.FormattedSize);
+        AddRow(Strings.Permissions, file.Permissions);
+        AddRow(Strings.Modified, file.FormattedModifiedTime);
 
         var okButton = new Button
         {
-            Content = "确定",
+            Content = Strings.OK,
             IsDefault = true,
             IsCancel = true,
             MinWidth = 72,
@@ -427,7 +457,7 @@ public partial class FileBrowserView : UserControl
 
         var dialog = new Window
         {
-            Title = "属性",
+            Title = Strings.Properties,
             CanResize = false,
             ShowInTaskbar = false,
             SizeToContent = SizeToContent.WidthAndHeight,
@@ -442,5 +472,111 @@ public partial class FileBrowserView : UserControl
 
         okButton.Click += (_, _) => dialog.Close();
         await dialog.ShowDialog(owner);
+    }
+
+    /// <summary>chmod editor (§6 context menu): a 3×3 rwx checkbox grid with a live octal readout.
+    /// Returns the chosen mode as three octal digits in decimal (e.g. 755), or null if cancelled.</summary>
+    private async Task<short?> PromptForPermissionsAsync(RemoteFileInfoViewModel file)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner)
+            return null;
+
+        // "drwxr-xr-x" → 9 rwx flags; anything malformed falls back to all-off.
+        var flags = new bool[9];
+        var perms = file.Permissions;
+        if (perms.Length == 10)
+        {
+            for (var i = 0; i < 9; i++)
+                flags[i] = perms[i + 1] != '-';
+        }
+
+        var grid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto"),
+        };
+
+        void Place(Control control, int row, int column)
+        {
+            Grid.SetRow(control, row);
+            Grid.SetColumn(control, column);
+            control.Margin = new Thickness(8, 4);
+            grid.Children.Add(control);
+        }
+
+        string[] columnHeaders = { Strings.PermissionRead, Strings.PermissionWrite, Strings.PermissionExecute };
+        string[] rowHeaders = { Strings.PermissionOwner, Strings.PermissionGroup, Strings.PermissionOthers };
+
+        for (var c = 0; c < 3; c++)
+            Place(new TextBlock { Text = columnHeaders[c], FontWeight = Avalonia.Media.FontWeight.Medium }, 0, c + 1);
+
+        var octalText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+        var boxes = new CheckBox[9];
+
+        short CurrentMode()
+        {
+            short mode = 0;
+            for (var g = 0; g < 3; g++)
+            {
+                var digit = (boxes[g * 3].IsChecked == true ? 4 : 0)
+                          + (boxes[g * 3 + 1].IsChecked == true ? 2 : 0)
+                          + (boxes[g * 3 + 2].IsChecked == true ? 1 : 0);
+                mode = (short)(mode * 10 + digit);
+            }
+
+            return mode;
+        }
+
+        void RefreshOctal() => octalText.Text = $"chmod {CurrentMode():000}  {file.Name}";
+
+        for (var r = 0; r < 3; r++)
+        {
+            Place(new TextBlock { Text = rowHeaders[r], VerticalAlignment = VerticalAlignment.Center }, r + 1, 0);
+            for (var c = 0; c < 3; c++)
+            {
+                var box = new CheckBox { IsChecked = flags[r * 3 + c] };
+                box.IsCheckedChanged += (_, _) => RefreshOctal();
+                boxes[r * 3 + c] = box;
+                Place(box, r + 1, c + 1);
+            }
+        }
+
+        RefreshOctal();
+
+        var okButton = new Button { Content = Strings.OK, IsDefault = true, MinWidth = 72 };
+        var cancelButton = new Button { Content = Strings.Cancel, IsCancel = true, MinWidth = 72 };
+
+        short? result = null;
+        var dialog = new Window
+        {
+            Title = Strings.ChangePermissions,
+            CanResize = false,
+            ShowInTaskbar = false,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 12,
+                Children =
+                {
+                    grid,
+                    octalText,
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 8,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Children = { cancelButton, okButton },
+                    },
+                },
+            },
+        };
+
+        okButton.Click += (_, _) => { result = CurrentMode(); dialog.Close(); };
+        cancelButton.Click += (_, _) => { result = null; dialog.Close(); };
+
+        await dialog.ShowDialog(owner);
+        return result;
     }
 }

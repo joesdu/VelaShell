@@ -30,6 +30,10 @@ public interface ISftpService : IAsyncDisposable
 
     /// <summary>Renames or moves a remote entry (SFTP rename doubles as move).</summary>
     Task RenameAsync(Guid sessionId, string oldPath, string newPath, CancellationToken cancellationToken = default);
+
+    /// <summary>Changes a remote entry's permissions (chmod). <paramref name="octalMode"/> is
+    /// three octal digits written as a decimal number (e.g. 755, 644), matching `chmod` notation.</summary>
+    Task SetPermissionsAsync(Guid sessionId, string remotePath, short octalMode, CancellationToken cancellationToken = default);
     Task<RemoteFileInfo> GetFileInfoAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default);
 
     /// <summary>The session's SFTP working directory (the account's home directory right after

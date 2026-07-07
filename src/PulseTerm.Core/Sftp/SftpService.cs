@@ -171,6 +171,20 @@ public class SftpService : ISftpService
         }, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task SetPermissionsAsync(Guid sessionId, string remotePath, short octalMode, CancellationToken cancellationToken = default)
+    {
+        if (octalMode < 0 || octalMode > 777 || octalMode % 10 > 7 || octalMode / 10 % 10 > 7)
+        {
+            throw new ArgumentOutOfRangeException(nameof(octalMode), octalMode, "Mode must be three octal digits (000-777).");
+        }
+
+        var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        await Task.Run(() =>
+        {
+            client.ChangePermissions(remotePath, octalMode);
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<RemoteFileInfo> GetFileInfoAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
     {
         var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);

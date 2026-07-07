@@ -26,4 +26,8 @@ public interface ISftpClientWrapper : IDisposable
     void CreateDirectory(string path);
     void RenameFile(string oldPath, string newPath);
     bool Exists(string path);
+
+    /// <summary>Changes a remote entry's permissions. <paramref name="mode"/> uses SSH.NET's
+    /// convention: three octal digits written as a decimal number (e.g. 755, 644).</summary>
+    void ChangePermissions(string path, short mode);
 }

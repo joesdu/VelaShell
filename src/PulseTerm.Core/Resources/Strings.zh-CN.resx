@@ -288,4 +288,114 @@
   <data name="Passphrase" xml:space="preserve">
     <value>密码短语</value>
   </data>
+
+  <!-- File Browser / SFTP (§6) -->
+  <data name="UploadFilesHere" xml:space="preserve">
+    <value>上传文件到当前目录</value>
+  </data>
+  <data name="UploadFolderHere" xml:space="preserve">
+    <value>上传文件夹到当前目录</value>
+  </data>
+  <data name="NewFolder" xml:space="preserve">
+    <value>新建文件夹</value>
+  </data>
+  <data name="NewFile" xml:space="preserve">
+    <value>新建文件</value>
+  </data>
+  <data name="Rename" xml:space="preserve">
+    <value>重命名</value>
+  </data>
+  <data name="MoveTo" xml:space="preserve">
+    <value>移动到…</value>
+  </data>
+  <data name="MoveToPrompt" xml:space="preserve">
+    <value>移动到（目标完整路径）</value>
+  </data>
+  <data name="CopyFilePath" xml:space="preserve">
+    <value>复制文件路径</value>
+  </data>
+  <data name="CopyFileName" xml:space="preserve">
+    <value>复制文件名称</value>
+  </data>
+  <data name="Properties" xml:space="preserve">
+    <value>属性</value>
+  </data>
+  <data name="ChangePermissions" xml:space="preserve">
+    <value>权限 (chmod)…</value>
+  </data>
+  <data name="PermissionOwner" xml:space="preserve">
+    <value>所有者</value>
+  </data>
+  <data name="PermissionGroup" xml:space="preserve">
+    <value>用户组</value>
+  </data>
+  <data name="PermissionOthers" xml:space="preserve">
+    <value>其他</value>
+  </data>
+  <data name="PermissionRead" xml:space="preserve">
+    <value>读取</value>
+  </data>
+  <data name="PermissionWrite" xml:space="preserve">
+    <value>写入</value>
+  </data>
+  <data name="PermissionExecute" xml:space="preserve">
+    <value>执行</value>
+  </data>
+  <data name="ShowHiddenFiles" xml:space="preserve">
+    <value>显示隐藏文件</value>
+  </data>
+  <data name="ParentDirectory" xml:space="preserve">
+    <value>上级目录</value>
+  </data>
+  <data name="DownloadSelected" xml:space="preserve">
+    <value>下载选中项</value>
+  </data>
+  <data name="DeleteSelected" xml:space="preserve">
+    <value>删除选中项</value>
+  </data>
+  <data name="ConfirmDeleteTitle" xml:space="preserve">
+    <value>确认删除</value>
+  </data>
+  <data name="ConfirmDeleteFile" xml:space="preserve">
+    <value>确定要删除文件“{0}”吗？此操作不可撤销。</value>
+  </data>
+  <data name="ConfirmDeleteFolder" xml:space="preserve">
+    <value>确定要删除文件夹“{0}”及其全部内容吗？此操作不可撤销。</value>
+  </data>
+  <data name="ConfirmDeleteMultiple" xml:space="preserve">
+    <value>确定要删除选中的 {0} 项吗？此操作不可撤销。</value>
+  </data>
+  <data name="Loading" xml:space="preserve">
+    <value>加载中…</value>
+  </data>
+  <data name="Deleting" xml:space="preserve">
+    <value>正在删除…</value>
+  </data>
+  <data name="DeletingProgress" xml:space="preserve">
+    <value>正在删除… 已删除 {0}/{1} 项</value>
+  </data>
+  <data name="SelectFilesToUpload" xml:space="preserve">
+    <value>选择要上传的文件</value>
+  </data>
+  <data name="SelectFolderToUpload" xml:space="preserve">
+    <value>选择要上传的文件夹</value>
+  </data>
+  <data name="SelectDownloadFolder" xml:space="preserve">
+    <value>选择保存位置</value>
+  </data>
+  <data name="SaveToLocal" xml:space="preserve">
+    <value>保存到本地</value>
+  </data>
+  <data name="FileType" xml:space="preserve">
+    <value>类型</value>
+  </data>
+  <data name="File" xml:space="preserve">
+    <value>文件</value>
+  </data>
+  <data name="Folder" xml:space="preserve">
+    <value>文件夹</value>
+  </data>
+  <data name="FilePath" xml:space="preserve">
+    <value>路径</value>
+  </data>
 </root>

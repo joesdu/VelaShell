@@ -102,4 +102,42 @@ public static class Strings
     public static string Name => ResourceManager.GetString(nameof(Name), CultureInfo.CurrentUICulture) ?? nameof(Name);
     public static string Group => ResourceManager.GetString(nameof(Group), CultureInfo.CurrentUICulture) ?? nameof(Group);
     public static string Passphrase => ResourceManager.GetString(nameof(Passphrase), CultureInfo.CurrentUICulture) ?? nameof(Passphrase);
+
+    // File browser / SFTP (§6)
+    public static string UploadFilesHere => ResourceManager.GetString(nameof(UploadFilesHere), CultureInfo.CurrentUICulture) ?? nameof(UploadFilesHere);
+    public static string UploadFolderHere => ResourceManager.GetString(nameof(UploadFolderHere), CultureInfo.CurrentUICulture) ?? nameof(UploadFolderHere);
+    public static string NewFolder => ResourceManager.GetString(nameof(NewFolder), CultureInfo.CurrentUICulture) ?? nameof(NewFolder);
+    public static string NewFile => ResourceManager.GetString(nameof(NewFile), CultureInfo.CurrentUICulture) ?? nameof(NewFile);
+    public static string Rename => ResourceManager.GetString(nameof(Rename), CultureInfo.CurrentUICulture) ?? nameof(Rename);
+    public static string MoveTo => ResourceManager.GetString(nameof(MoveTo), CultureInfo.CurrentUICulture) ?? nameof(MoveTo);
+    public static string MoveToPrompt => ResourceManager.GetString(nameof(MoveToPrompt), CultureInfo.CurrentUICulture) ?? nameof(MoveToPrompt);
+    public static string CopyFilePath => ResourceManager.GetString(nameof(CopyFilePath), CultureInfo.CurrentUICulture) ?? nameof(CopyFilePath);
+    public static string CopyFileName => ResourceManager.GetString(nameof(CopyFileName), CultureInfo.CurrentUICulture) ?? nameof(CopyFileName);
+    public static string Properties => ResourceManager.GetString(nameof(Properties), CultureInfo.CurrentUICulture) ?? nameof(Properties);
+    public static string ChangePermissions => ResourceManager.GetString(nameof(ChangePermissions), CultureInfo.CurrentUICulture) ?? nameof(ChangePermissions);
+    public static string PermissionOwner => ResourceManager.GetString(nameof(PermissionOwner), CultureInfo.CurrentUICulture) ?? nameof(PermissionOwner);
+    public static string PermissionGroup => ResourceManager.GetString(nameof(PermissionGroup), CultureInfo.CurrentUICulture) ?? nameof(PermissionGroup);
+    public static string PermissionOthers => ResourceManager.GetString(nameof(PermissionOthers), CultureInfo.CurrentUICulture) ?? nameof(PermissionOthers);
+    public static string PermissionRead => ResourceManager.GetString(nameof(PermissionRead), CultureInfo.CurrentUICulture) ?? nameof(PermissionRead);
+    public static string PermissionWrite => ResourceManager.GetString(nameof(PermissionWrite), CultureInfo.CurrentUICulture) ?? nameof(PermissionWrite);
+    public static string PermissionExecute => ResourceManager.GetString(nameof(PermissionExecute), CultureInfo.CurrentUICulture) ?? nameof(PermissionExecute);
+    public static string ShowHiddenFiles => ResourceManager.GetString(nameof(ShowHiddenFiles), CultureInfo.CurrentUICulture) ?? nameof(ShowHiddenFiles);
+    public static string ParentDirectory => ResourceManager.GetString(nameof(ParentDirectory), CultureInfo.CurrentUICulture) ?? nameof(ParentDirectory);
+    public static string DownloadSelected => ResourceManager.GetString(nameof(DownloadSelected), CultureInfo.CurrentUICulture) ?? nameof(DownloadSelected);
+    public static string DeleteSelected => ResourceManager.GetString(nameof(DeleteSelected), CultureInfo.CurrentUICulture) ?? nameof(DeleteSelected);
+    public static string ConfirmDeleteTitle => ResourceManager.GetString(nameof(ConfirmDeleteTitle), CultureInfo.CurrentUICulture) ?? nameof(ConfirmDeleteTitle);
+    public static string ConfirmDeleteFile => ResourceManager.GetString(nameof(ConfirmDeleteFile), CultureInfo.CurrentUICulture) ?? nameof(ConfirmDeleteFile);
+    public static string ConfirmDeleteFolder => ResourceManager.GetString(nameof(ConfirmDeleteFolder), CultureInfo.CurrentUICulture) ?? nameof(ConfirmDeleteFolder);
+    public static string ConfirmDeleteMultiple => ResourceManager.GetString(nameof(ConfirmDeleteMultiple), CultureInfo.CurrentUICulture) ?? nameof(ConfirmDeleteMultiple);
+    public static string Loading => ResourceManager.GetString(nameof(Loading), CultureInfo.CurrentUICulture) ?? nameof(Loading);
+    public static string Deleting => ResourceManager.GetString(nameof(Deleting), CultureInfo.CurrentUICulture) ?? nameof(Deleting);
+    public static string DeletingProgress => ResourceManager.GetString(nameof(DeletingProgress), CultureInfo.CurrentUICulture) ?? nameof(DeletingProgress);
+    public static string SelectFilesToUpload => ResourceManager.GetString(nameof(SelectFilesToUpload), CultureInfo.CurrentUICulture) ?? nameof(SelectFilesToUpload);
+    public static string SelectFolderToUpload => ResourceManager.GetString(nameof(SelectFolderToUpload), CultureInfo.CurrentUICulture) ?? nameof(SelectFolderToUpload);
+    public static string SelectDownloadFolder => ResourceManager.GetString(nameof(SelectDownloadFolder), CultureInfo.CurrentUICulture) ?? nameof(SelectDownloadFolder);
+    public static string SaveToLocal => ResourceManager.GetString(nameof(SaveToLocal), CultureInfo.CurrentUICulture) ?? nameof(SaveToLocal);
+    public static string FileType => ResourceManager.GetString(nameof(FileType), CultureInfo.CurrentUICulture) ?? nameof(FileType);
+    public static string File => ResourceManager.GetString(nameof(File), CultureInfo.CurrentUICulture) ?? nameof(File);
+    public static string Folder => ResourceManager.GetString(nameof(Folder), CultureInfo.CurrentUICulture) ?? nameof(Folder);
+    public static string FilePath => ResourceManager.GetString(nameof(FilePath), CultureInfo.CurrentUICulture) ?? nameof(FilePath);
 }

@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:PulseTerm.App.ViewModels"
              xmlns:res="clr-namespace:PulseTerm.Core.Resources;assembly=PulseTerm.Core"
+             xmlns:loc="using:PulseTerm.App.Localization"
              xmlns:pc="using:PulseTerm.Controls.Controls"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="220"
              x:Class="PulseTerm.App.Views.FileBrowserView"
@@ -32,6 +33,23 @@
     <Style Selector="Button.col-header:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
     </Style>
+    <!-- Breadcrumb segment: quiet inline button that lights up as a link on hover (§6 header). -->
+    <Style Selector="Button.crumb">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="2,1" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+    <Style Selector="Button.crumb:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+      <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+    </Style>
   </UserControl.Styles>
 
   <Border BorderThickness="0,1,0,0"
@@ -59,12 +77,31 @@
                            Data="{StaticResource Icon.folder-open}"
                            Foreground="{DynamicResource PulseAccent}"
                            VerticalAlignment="Center" />
-            <TextBlock Text="{Binding CurrentPath}"
-                       Foreground="{DynamicResource PulseTextPrimary}"
-                       FontFamily="{DynamicResource PulseTerminalFont}"
-                       FontSize="11" FontWeight="Medium"
-                       VerticalAlignment="Center"
-                       TextTrimming="CharacterEllipsis" />
+            <!-- Clickable breadcrumb (§6): "/" root, then each segment navigates to its level. -->
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True">
+              <Button Classes="crumb" Content="/"
+                      Command="{Binding NavigateToCommand}" CommandParameter="/" />
+              <ItemsControl ItemsSource="{Binding Breadcrumbs}" VerticalAlignment="Center">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:BreadcrumbSegment">
+                    <StackPanel Orientation="Horizontal">
+                      <Button Classes="crumb" Content="{Binding Name}"
+                              Command="{Binding $parent[ItemsControl].((vm:FileBrowserViewModel)DataContext).NavigateToCommand}"
+                              CommandParameter="{Binding Path}" />
+                      <TextBlock Text="/"
+                                 Foreground="{DynamicResource PulseTextMuted}"
+                                 FontFamily="{DynamicResource PulseTerminalFont}"
+                                 FontSize="11" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
           </StackPanel>
 
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
@@ -85,6 +122,29 @@
             </Button>
             <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    Command="{Binding NewFolderCommand}"
+                    ToolTip.Tip="{loc:Localize NewFolder}">
+              <pc:LucideIcon Width="13" Height="13"
+                             Data="{StaticResource Icon.folder-plus}"
+                             Foreground="{DynamicResource PulseTextTertiary}" />
+            </Button>
+            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    Command="{Binding ToggleHiddenFilesCommand}"
+                    ToolTip.Tip="{loc:Localize ShowHiddenFiles}">
+              <Panel>
+                <pc:LucideIcon Width="13" Height="13"
+                               IsVisible="{Binding ShowHiddenFiles}"
+                               Data="{StaticResource Icon.eye}"
+                               Foreground="{DynamicResource PulseAccent}" />
+                <pc:LucideIcon Width="13" Height="13"
+                               IsVisible="{Binding !ShowHiddenFiles}"
+                               Data="{StaticResource Icon.eye-off}"
+                               Foreground="{DynamicResource PulseTextTertiary}" />
+              </Panel>
+            </Button>
+            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                     Command="{Binding RefreshCommand}"
                     ToolTip.Tip="{x:Static res:Strings.Refresh}">
               <pc:LucideIcon Width="13" Height="13"
@@ -94,7 +154,7 @@
             <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                     Command="{Binding GoUpCommand}"
-                    ToolTip.Tip="上级目录">
+                    ToolTip.Tip="{loc:Localize ParentDirectory}">
               <pc:LucideIcon Width="13" Height="13"
                              Data="{StaticResource Icon.corner-left-up}"
                              Foreground="{DynamicResource PulseTextTertiary}" />
@@ -213,10 +273,10 @@
           </ListBox.Styles>
           <ListBox.ContextMenu>
             <ContextMenu x:DataType="vm:FileBrowserViewModel">
-              <MenuItem Header="上传到当前文件夹" Command="{Binding UploadCommand}" />
-              <MenuItem Header="上传文件夹到当前目录" Command="{Binding UploadFolderCommand}" />
-              <MenuItem Header="新建文件夹" Command="{Binding NewFolderCommand}" />
-              <MenuItem Header="新建文件" Command="{Binding NewFileCommand}" />
+              <MenuItem Header="{loc:Localize UploadFilesHere}" Command="{Binding UploadCommand}" />
+              <MenuItem Header="{loc:Localize UploadFolderHere}" Command="{Binding UploadFolderCommand}" />
+              <MenuItem Header="{loc:Localize NewFolder}" Command="{Binding NewFolderCommand}" />
+              <MenuItem Header="{loc:Localize NewFile}" Command="{Binding NewFileCommand}" />
             </ContextMenu>
           </ListBox.ContextMenu>
           <ListBox.ItemTemplate>
@@ -233,37 +293,52 @@
                   </Border.Styles>
                   <Border.ContextMenu>
                     <ContextMenu x:DataType="vm:RemoteFileInfoViewModel">
-                      <MenuItem Header="下载"
-                                IsVisible="{Binding !IsDirectory}"
+                      <MenuItem Header="{loc:Localize Download}"
+                                IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DownloadItemCommand}"
                                 CommandParameter="{Binding}" />
-                      <MenuItem Header="重命名"
+                      <MenuItem Header="{loc:Localize Rename}"
+                                IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).RenameCommand}"
                                 CommandParameter="{Binding}" />
-                      <MenuItem Header="移动"
+                      <MenuItem Header="{loc:Localize MoveTo}"
+                                IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).MoveCommand}"
                                 CommandParameter="{Binding}" />
-                      <MenuItem Header="复制文件路径"
+                      <MenuItem Header="{loc:Localize ChangePermissions}"
+                                IsVisible="{Binding !IsParentEntry}"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).ChmodCommand}"
+                                CommandParameter="{Binding}" />
+                      <MenuItem Header="{loc:Localize CopyFilePath}"
+                                IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).CopyPathCommand}"
                                 CommandParameter="{Binding}" />
-                      <MenuItem Header="复制文件名称"
+                      <MenuItem Header="{loc:Localize CopyFileName}"
+                                IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).CopyNameCommand}"
                                 CommandParameter="{Binding}" />
-                      <MenuItem Header="属性"
+                      <MenuItem Header="{loc:Localize Properties}"
+                                IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).PropertiesCommand}"
                                 CommandParameter="{Binding}" />
-                      <Separator />
-                      <MenuItem Header="删除"
+                      <Separator IsVisible="{Binding !IsParentEntry}" />
+                      <MenuItem Header="{loc:Localize Delete}"
+                                IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DeleteItemCommand}"
                                 CommandParameter="{Binding}" />
+                      <Separator IsVisible="{Binding !IsParentEntry}" />
+                      <MenuItem Header="{loc:Localize DownloadSelected}"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DownloadSelectedCommand}" />
+                      <MenuItem Header="{loc:Localize DeleteSelected}"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DeleteSelectedCommand}" />
                       <Separator />
-                      <MenuItem Header="上传到当前文件夹"
+                      <MenuItem Header="{loc:Localize UploadFilesHere}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).UploadCommand}" />
-                      <MenuItem Header="上传文件夹到当前目录"
+                      <MenuItem Header="{loc:Localize UploadFolderHere}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).UploadFolderCommand}" />
-                      <MenuItem Header="新建文件夹"
+                      <MenuItem Header="{loc:Localize NewFolder}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).NewFolderCommand}" />
-                      <MenuItem Header="新建文件"
+                      <MenuItem Header="{loc:Localize NewFile}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).NewFileCommand}" />
                     </ContextMenu>
                   </Border.ContextMenu>

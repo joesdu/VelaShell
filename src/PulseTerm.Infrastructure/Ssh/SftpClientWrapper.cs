@@ -130,6 +130,12 @@ public class SftpClientWrapper : ISftpClientWrapper
         return _client.Exists(path);
     }
 
+    public void ChangePermissions(string path, short mode)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _client.ChangePermissions(path, mode);
+    }
+
     protected virtual void Dispose(bool disposing)
     {
         if (!_disposed)
