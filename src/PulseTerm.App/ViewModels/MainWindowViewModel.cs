@@ -29,6 +29,7 @@ public class MainWindowViewModel : ReactiveObject
     private readonly ISessionRepository? _sessionRepository;
     private readonly ISftpService? _sftpService;
     private readonly PulseTerm.Core.Tunnels.ITunnelService? _tunnelService;
+    private readonly PulseTerm.Core.Services.ISessionMetricsService? _metricsService;
     private TunnelPanelViewModel? _tunnelPanel;
     private bool _isTunnelPanelOpen;
     private readonly Func<ITerminalEmulator> _terminalEmulatorFactory;
@@ -51,7 +52,8 @@ public class MainWindowViewModel : ReactiveObject
         ISessionRepository? sessionRepository = null,
         ISftpService? sftpService = null,
         ITransferManager? transferManager = null,
-        PulseTerm.Core.Tunnels.ITunnelService? tunnelService = null)
+        PulseTerm.Core.Tunnels.ITunnelService? tunnelService = null,
+        PulseTerm.Core.Services.ISessionMetricsService? metricsService = null)
     {
         _connectionWorkflowService = connectionWorkflowService;
         _sshConnectionService = sshConnectionService;
@@ -59,6 +61,7 @@ public class MainWindowViewModel : ReactiveObject
         _sessionRepository = sessionRepository;
         _sftpService = sftpService;
         _tunnelService = tunnelService;
+        _metricsService = metricsService;
         _terminalEmulatorFactory = terminalEmulatorFactory ?? (() => new PulseTerminalControl());
 
         _dockFactory = new TerminalDockFactory();
@@ -312,6 +315,8 @@ public class MainWindowViewModel : ReactiveObject
             terminalTab.AttachTransport(shellStream);
             terminalTab.Start();
             terminalTab.ConnectionStatus = SessionStatus.Connected;
+            if (_metricsService is not null)
+                terminalTab.ResourceMonitor = new ResourceMonitorViewModel(_metricsService, session.SessionId, terminalTab.Title);
         }
         catch
         {
@@ -372,6 +377,8 @@ public class MainWindowViewModel : ReactiveObject
             tab.AttachTransport(shellStream);
             tab.Start();
             tab.ConnectionStatus = SessionStatus.Connected;
+            if (_metricsService is not null)
+                tab.ResourceMonitor = new ResourceMonitorViewModel(_metricsService, session.SessionId, tab.Title);
 
             StatusBar.ResetUptime();
             UpdateStatusBarForActiveTab();

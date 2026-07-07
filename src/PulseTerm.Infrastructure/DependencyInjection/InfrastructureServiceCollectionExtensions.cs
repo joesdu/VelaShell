@@ -51,6 +51,9 @@ public static class InfrastructureServiceCollectionExtensions
         });
 
         services.AddSingleton<ITransferManager, TransferManager>();
+
+        services.AddSingleton<PulseTerm.Core.Services.ISessionMetricsService>(sp =>
+            new SessionMetricsService(sp.GetRequiredService<ISshConnectionService>()));
         services.AddSingleton<ITunnelService>(serviceProvider =>
         {
             var connectionService = serviceProvider.GetRequiredService<ISshConnectionService>();

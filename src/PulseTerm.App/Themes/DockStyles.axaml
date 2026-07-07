@@ -3,7 +3,8 @@
         xmlns:dc="using:Dock.Avalonia.Controls"
         xmlns:docking="using:PulseTerm.App.Docking"
         xmlns:conv="using:PulseTerm.App.Converters"
-        xmlns:pc="using:PulseTerm.Controls.Controls">
+        xmlns:pc="using:PulseTerm.Controls.Controls"
+        xmlns:views="using:PulseTerm.App.Views">
 
     <!-- Re-skin the Dock.Avalonia document tab strip to match design frame nunbT exactly:
          36px bg-page bar; 32px tabs padding [0,14]; active = tab-active bg + 2px accent top
@@ -32,6 +33,20 @@
                          Fill="{Binding Terminal.ConnectionStatus, Converter={x:Static conv:SessionStatusToBrushConverter.Instance}}" />
             </DataTemplate>
         </Setter>
+        <!-- Tab title. Hovering the NAME for >400ms floats the session's resource panel at the
+             pointer; leaving hides it (§4B.4/§11 — the spec anchors hover on the tab name). -->
+        <Setter Property="HeaderTemplate">
+            <DataTemplate x:DataType="docking:TerminalDocument">
+                <TextBlock Text="{Binding Title}"
+                           VerticalAlignment="Center"
+                           ToolTip.ShowDelay="400"
+                           ToolTip.Placement="Pointer">
+                    <ToolTip.Tip>
+                        <views:ResourceMonitorView DataContext="{Binding Terminal.ResourceMonitor}" />
+                    </ToolTip.Tip>
+                </TextBlock>
+            </DataTemplate>
+        </Setter>
         <!-- Close x per design: lucide x, 12px. -->
         <Setter Property="CloseTemplate">
             <DataTemplate x:DataType="docking:TerminalDocument">
@@ -54,6 +69,17 @@
         <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0,2,0,0" />
         <Setter Property="VerticalAlignment" Value="Bottom" />
+    </Style>
+
+    <!-- Token-styled tooltips (small-flyout spec: bg-surface + border-secondary + corner 6). -->
+    <Style Selector="ToolTip">
+        <Setter Property="Background" Value="{DynamicResource PulseBgSurface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderSecondary}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+        <Setter Property="FontSize" Value="11" />
     </Style>
 
     <Style Selector="dc|DocumentTabStripItem:pointerover:not(:selected):not(:dragging)">

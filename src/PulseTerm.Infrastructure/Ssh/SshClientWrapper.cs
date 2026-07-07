@@ -78,6 +78,19 @@ public class SshClientWrapper : ISshClientWrapper
         return new ShellStreamWrapper(shellStream);
     }
 
+    public Task<string> RunCommandAsync(string commandText, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        // SSH.NET SshCommand is synchronous; run it off the caller's thread.
+        return Task.Run(() =>
+        {
+            using var command = _client.CreateCommand(commandText);
+            command.CommandTimeout = TimeSpan.FromSeconds(10);
+            return command.Execute();
+        }, cancellationToken);
+    }
+
     public void AddForwardedPort(ForwardedPort port)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
