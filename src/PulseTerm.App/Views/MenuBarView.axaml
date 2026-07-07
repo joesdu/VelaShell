@@ -248,7 +248,7 @@
             <Flyout Placement="BottomEdgeAlignedLeft"
                     FlyoutPresenterTheme="{StaticResource PulseMenuFlyoutPresenter}">
               <StackPanel>
-                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="search.terminal">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+F" />
                     <TextBlock Classes="entry-label" Text="终端内查找" />
@@ -320,7 +320,7 @@
 
       <!-- Right: global action buttons (GQQwj, gap 4, 24×22, icon 12) -->
       <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-        <Button Theme="{StaticResource PulseMenuActionButton}" ToolTip.Tip="终端搜索" IsEnabled="False">
+        <Button Theme="{StaticResource PulseMenuActionButton}" ToolTip.Tip="终端搜索 (Ctrl+F)" Command="{Binding RunCommand}" CommandParameter="search.terminal">
           <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.search}"
                          Foreground="{DynamicResource PulseTextMuted}" />
         </Button>

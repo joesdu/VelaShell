@@ -5,6 +5,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.VisualTree;
+using System.Linq;
 using Avalonia.Media;
 using Microsoft.Extensions.DependencyInjection;
 using PulseTerm.App.ViewModels;
@@ -31,7 +33,23 @@ public partial class MainWindow : Window
     private async void OnWindowOpened(object? sender, EventArgs e)
     {
         if (DataContext is MainWindowViewModel vm)
+        {
+            vm.TerminalSearchRequested += OnTerminalSearchRequested;
             await vm.InitializeAsync();
+        }
+    }
+
+    /// <summary>Menu/palette 终端内查找 → opens the visible terminal view's search bar.</summary>
+    private void OnTerminalSearchRequested(object? sender, EventArgs e)
+    {
+        foreach (var view in this.GetVisualDescendants().OfType<TerminalTabView>())
+        {
+            if (view.IsEffectivelyVisible)
+            {
+                view.OpenSearch();
+                return;
+            }
+        }
     }
 
     // The window uses the native OS title bar per design spec §2 — no custom chrome.

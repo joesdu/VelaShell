@@ -126,6 +126,9 @@ public class MainWindowViewModel : ReactiveObject
         Commands.Register(new CommandDescriptor("edit.paste", "粘贴", "编辑",
             () => { if (ActiveTerminalControl is { } c) _ = c.PasteAsync(); },
             CanExecute: () => ActiveTerminalControl is not null, Shortcut: "Ctrl+Shift+V"));
+        Commands.Register(new CommandDescriptor("search.terminal", "终端内查找", "搜索",
+            () => TerminalSearchRequested?.Invoke(this, EventArgs.Empty),
+            CanExecute: () => ActiveTerminalTab is not null, Shortcut: "Ctrl+F", Icon: "Icon.search"));
         Commands.Register(new CommandDescriptor("tools.tunnel", "隧道管理", "工具",
             ToggleTunnelPanel,
             CanExecute: () => ActiveTerminalTab is not null, Shortcut: "Ctrl+Shift+T", Icon: "Icon.route"));
@@ -157,6 +160,9 @@ public class MainWindowViewModel : ReactiveObject
         };
         FileBrowser.RefreshCommand.Execute().Subscribe(_ => { }, _ => { });
     }
+    /// <summary>Raised when the user asks for in-terminal search via menu/palette; the window
+    /// forwards it to the active terminal view's search bar (§5.3).</summary>
+    public event EventHandler? TerminalSearchRequested;
     /// <summary>Tunnel manager panel for the active session (design fuXS7, spec §10).</summary>
     public TunnelPanelViewModel? TunnelPanel
     {

@@ -88,7 +88,7 @@ public partial class TerminalTabView : UserControl
         Array.Empty<PulseTerm.Terminal.BufferSearchHit>();
     private int _searchIndex = -1;
 
-    private void OpenSearch()
+    internal void OpenSearch()
     {
         SearchBar.IsVisible = true;
         SearchBox.Focus();
