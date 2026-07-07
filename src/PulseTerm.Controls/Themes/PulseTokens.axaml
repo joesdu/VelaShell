@@ -13,6 +13,9 @@
       <SolidColorBrush x:Key="PulseStatusConnected" Color="#00D4AA" />
       <SolidColorBrush x:Key="PulseStatusConnecting" Color="#FDCB6E" />
       <SolidColorBrush x:Key="PulseStatusDisconnected" Color="#FF6B6B" />
+      <!-- File browser rows (design frame dyuii): amber folder icon, blue directory names. -->
+      <SolidColorBrush x:Key="PulseFileFolderIcon" Color="#FDCB6E" />
+      <SolidColorBrush x:Key="PulseFileDirName" Color="#74B9FF" />
       <FontFamily x:Key="PulseTerminalFont">JetBrains Mono, Cascadia Mono, Consolas, monospace</FontFamily>
       <FontFamily x:Key="PulseUiFont">fonts:Inter#Inter, Segoe UI, Microsoft YaHei, sans-serif</FontFamily>
     </ResourceDictionary>
@@ -28,6 +31,9 @@
       <SolidColorBrush x:Key="PulseStatusConnected" Color="#00A88A" />
       <SolidColorBrush x:Key="PulseStatusConnecting" Color="#BF8700" />
       <SolidColorBrush x:Key="PulseStatusDisconnected" Color="#CF222E" />
+      <!-- File browser rows: light-theme equivalents of the dyuii row colors. -->
+      <SolidColorBrush x:Key="PulseFileFolderIcon" Color="#BF8700" />
+      <SolidColorBrush x:Key="PulseFileDirName" Color="#0969DA" />
       <FontFamily x:Key="PulseTerminalFont">JetBrains Mono, Cascadia Mono, Consolas, monospace</FontFamily>
       <FontFamily x:Key="PulseUiFont">fonts:Inter#Inter, Segoe UI, Microsoft YaHei, sans-serif</FontFamily>
     </ResourceDictionary>

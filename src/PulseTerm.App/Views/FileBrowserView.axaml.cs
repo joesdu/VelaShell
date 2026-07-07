@@ -152,7 +152,7 @@ public partial class FileBrowserView : UserControl
     private static double EstimateAutoWidthForName(FileBrowserViewModel vm)
     {
         var header = MeasureTextWidth("文件名", 10);
-        var rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.Name ?? string.Empty, 11)) : 0;
+        var rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.DisplayName ?? string.Empty, 11)) : 0;
 
         // Name column also has a leading icon area (14px icon + 6px gap) and breathing room.
         var estimated = Math.Max(header, rows) + 24 + 10;

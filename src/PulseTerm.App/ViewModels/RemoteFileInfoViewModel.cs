@@ -31,7 +31,14 @@ public class RemoteFileInfoViewModel
     /// <summary>True only for the synthetic ".." row.</summary>
     public bool IsParentEntry { get; private init; }
 
+    /// <summary>A real directory row (excludes the synthetic ".." row) — drives the amber
+    /// folder icon and blue name styling from design dyuii.</summary>
+    public bool IsRegularDirectory => IsDirectory && !IsParentEntry;
+
     public string Name => _model.Name;
+
+    /// <summary>List display name (design dyuii): directories carry a trailing slash.</summary>
+    public string DisplayName => IsParentEntry ? ".." : IsDirectory ? Name + "/" : Name;
 
     public string FullPath => _model.FullPath;
 
@@ -41,9 +48,10 @@ public class RemoteFileInfoViewModel
 
     public string Icon => _model.IsDirectory ? "folder" : "file";
 
-    public string FormattedSize => IsParentEntry ? string.Empty : _model.IsDirectory ? "--" : FormatSize(_model.Size);
+    // Directories show their reported size too (design dyuii lists "4.0 KB" for folders).
+    public string FormattedSize => IsParentEntry ? string.Empty : FormatSize(_model.Size);
 
-    public string FormattedModifiedTime => IsParentEntry ? string.Empty : FormatRelativeTime(_model.LastModified);
+    public string FormattedModifiedTime => IsParentEntry ? string.Empty : FormatModifiedTime(_model.LastModified);
 
     public long SizeBytes => _model.Size;
 
@@ -58,24 +66,16 @@ public class RemoteFileInfoViewModel
         return $"{bytes / Math.Pow(1024, i):F1} {units[i]}";
     }
 
-    public static string FormatRelativeTime(DateTime dateTime)
+    /// <summary>ls -l style timestamp per design dyuii ("Jan 12 09:15"): time within the current
+    /// year, otherwise the year replaces the clock.</summary>
+    public static string FormatModifiedTime(DateTime dateTime)
     {
-        var now = DateTime.UtcNow;
-        var local = dateTime.Kind == DateTimeKind.Utc ? dateTime : dateTime.ToUniversalTime();
-        var elapsed = now - local;
+        var local = dateTime.Kind == DateTimeKind.Unspecified
+            ? dateTime
+            : dateTime.ToLocalTime();
 
-        if (elapsed.TotalSeconds < 60) return "just now";
-        if (elapsed.TotalMinutes < 60)
-        {
-            var mins = (int)elapsed.TotalMinutes;
-            return mins == 1 ? "1 minute ago" : $"{mins} minutes ago";
-        }
-        if (elapsed.TotalHours < 24)
-        {
-            var hours = (int)elapsed.TotalHours;
-            return hours == 1 ? "1 hour ago" : $"{hours} hours ago";
-        }
-
-        return dateTime.ToString("MMM d, yyyy");
+        return local.Year == DateTime.Now.Year
+            ? local.ToString("MMM d HH:mm")
+            : local.ToString("MMM d, yyyy");
     }
 }

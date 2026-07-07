@@ -194,7 +194,7 @@
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="{x:Static res:Strings.FileName}"
                            Foreground="{DynamicResource PulseTextMuted}"
-                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" LetterSpacing="1" />
                 <TextBlock Text="{Binding NameSortGlyph}"
                            Foreground="{DynamicResource PulseAccent}"
                            FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
@@ -211,7 +211,7 @@
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="{x:Static res:Strings.Size}"
                            Foreground="{DynamicResource PulseTextMuted}"
-                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" LetterSpacing="1" />
                 <TextBlock Text="{Binding SizeSortGlyph}"
                            Foreground="{DynamicResource PulseAccent}"
                            FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
@@ -228,7 +228,7 @@
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="{x:Static res:Strings.Permissions}"
                            Foreground="{DynamicResource PulseTextMuted}"
-                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" LetterSpacing="1" />
                 <TextBlock Text="{Binding PermissionsSortGlyph}"
                            Foreground="{DynamicResource PulseAccent}"
                            FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
@@ -245,7 +245,7 @@
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="{x:Static res:Strings.Modified}"
                            Foreground="{DynamicResource PulseTextMuted}"
-                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" LetterSpacing="1" />
                 <TextBlock Text="{Binding ModifiedSortGlyph}"
                            Foreground="{DynamicResource PulseAccent}"
                            FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
@@ -270,6 +270,13 @@
               <Setter Property="Margin" Value="0" />
               <Setter Property="MinHeight" Value="0" />
             </Style>
+            <!-- Spec §6: selected rows use bg-hover, replacing the theme's default blue. -->
+            <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+              <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+            </Style>
+            <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
+              <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+            </Style>
           </ListBox.Styles>
           <ListBox.ContextMenu>
             <ContextMenu x:DataType="vm:FileBrowserViewModel">
@@ -281,14 +288,21 @@
           </ListBox.ContextMenu>
           <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:RemoteFileInfoViewModel">
+                <!-- Row per design dyuii: 28px, padding [0,14], 1px bottom border; the ".."
+                     parent row is tinted bg-hover and has no divider. -->
                 <Border Background="Transparent"
-                        BorderBrush="{DynamicResource PulseBorderSecondary}"
+                        BorderBrush="{DynamicResource PulseBorderPrimary}"
                         BorderThickness="0,0,0,1"
-                        Height="32"
-                        Padding="12,0">
+                        Height="28"
+                        Padding="14,0"
+                        Classes.parent="{Binding IsParentEntry}">
                   <Border.Styles>
                     <Style Selector="Border:pointerover">
                       <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+                    </Style>
+                    <Style Selector="Border.parent">
+                      <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+                      <Setter Property="BorderThickness" Value="0" />
                     </Style>
                   </Border.Styles>
                   <Border.ContextMenu>
@@ -357,41 +371,53 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                       </Grid.ColumnDefinitions>
-                      <PathIcon Width="14"
-                                Height="14"
-                                Foreground="{DynamicResource PulseTextTertiary}"
-                                IsVisible="{Binding IsDirectory}"
-                                Margin="0,0,6,0"
-                                Data="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
-                      <PathIcon Width="14"
-                                Height="14"
-                                Foreground="{DynamicResource PulseTextTertiary}"
-                                IsVisible="{Binding !IsDirectory}"
-                                Margin="0,0,6,0"
-                                Data="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z" />
+                      <!-- Design dyuii icons: amber folder, muted file, corner-left-up for ".." -->
+                      <pc:LucideIcon Width="13" Height="13"
+                                     Foreground="{DynamicResource PulseFileFolderIcon}"
+                                     IsVisible="{Binding IsRegularDirectory}"
+                                     Margin="0,0,7,0"
+                                     Data="{StaticResource Icon.folder}" />
+                      <pc:LucideIcon Width="13" Height="13"
+                                     Foreground="{DynamicResource PulseTextTertiary}"
+                                     IsVisible="{Binding !IsDirectory}"
+                                     Margin="0,0,7,0"
+                                     Data="{StaticResource Icon.file}" />
+                      <pc:LucideIcon Width="13" Height="13"
+                                     Foreground="{DynamicResource PulseTextTertiary}"
+                                     IsVisible="{Binding IsParentEntry}"
+                                     Margin="0,0,7,0"
+                                     Data="{StaticResource Icon.corner-left-up}" />
                       <TextBlock Grid.Column="1"
-                                 Text="{Binding Name}"
-                                 Foreground="{DynamicResource PulseTextPrimary}"
+                                 Text="{Binding DisplayName}"
+                                 Foreground="{DynamicResource PulseTextSecondary}"
+                                 FontFamily="{DynamicResource PulseTerminalFont}"
                                  FontSize="11"
                                  VerticalAlignment="Center"
-                                 TextTrimming="CharacterEllipsis" />
+                                 TextTrimming="CharacterEllipsis"
+                                 Classes.dir="{Binding IsRegularDirectory}">
+                        <TextBlock.Styles>
+                          <Style Selector="TextBlock.dir">
+                            <Setter Property="Foreground" Value="{DynamicResource PulseFileDirName}" />
+                          </Style>
+                        </TextBlock.Styles>
+                      </TextBlock>
                     </Grid>
 
                     <TextBlock Grid.Column="2"
                                Text="{Binding FormattedSize}"
-                               Foreground="{DynamicResource PulseTextSecondary}"
+                               Foreground="{DynamicResource PulseTextTertiary}"
                                FontFamily="{DynamicResource PulseTerminalFont}"
                                FontSize="11"
                                VerticalAlignment="Center" />
                     <TextBlock Grid.Column="4"
                                Text="{Binding Permissions}"
-                               Foreground="{DynamicResource PulseTextSecondary}"
+                               Foreground="{DynamicResource PulseTextTertiary}"
                                FontFamily="{DynamicResource PulseTerminalFont}"
                                FontSize="11"
                                VerticalAlignment="Center" />
                     <TextBlock Grid.Column="6"
                                Text="{Binding FormattedModifiedTime}"
-                               Foreground="{DynamicResource PulseTextSecondary}"
+                               Foreground="{DynamicResource PulseTextTertiary}"
                                FontFamily="{DynamicResource PulseTerminalFont}"
                                FontSize="11"
                                VerticalAlignment="Center"

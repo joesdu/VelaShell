@@ -34,7 +34,7 @@ public class FileBrowserViewModel : ReactiveObject
     private double _deleteProgressPercent;
     private bool _isDeleteProgressIndeterminate;
     private bool _showHiddenFiles;
-    private Avalonia.Controls.GridLength _nameColumnWidth = new(320);
+    private Avalonia.Controls.GridLength _nameColumnWidth = new(280);
     private Avalonia.Controls.GridLength _sizeColumnWidth = new(100);
     private Avalonia.Controls.GridLength _permissionsColumnWidth = new(110);
     private string _sortColumn = "name";
