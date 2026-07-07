@@ -187,6 +187,7 @@
           <ListBox.ContextMenu>
             <ContextMenu x:DataType="vm:FileBrowserViewModel">
               <MenuItem Header="上传到当前文件夹" Command="{Binding UploadCommand}" />
+              <MenuItem Header="上传文件夹到当前目录" Command="{Binding UploadFolderCommand}" />
               <MenuItem Header="新建文件夹" Command="{Binding NewFolderCommand}" />
               <MenuItem Header="新建文件" Command="{Binding NewFileCommand}" />
             </ContextMenu>
@@ -231,6 +232,8 @@
                       <Separator />
                       <MenuItem Header="上传到当前文件夹"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).UploadCommand}" />
+                      <MenuItem Header="上传文件夹到当前目录"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).UploadFolderCommand}" />
                       <MenuItem Header="新建文件夹"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).NewFolderCommand}" />
                       <MenuItem Header="新建文件"

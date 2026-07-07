@@ -504,4 +504,92 @@ public class FileBrowserViewModelTests
             Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<string>(),
             Arg.Any<IProgress<TransferProgress>?>(), Arg.Any<CancellationToken>());
     }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task UploadCommand_MultiSelect_UploadsAllChosenFiles()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"pulse-upload-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+        try
+        {
+            var fileA = Path.Combine(tempRoot, "a.txt");
+            var fileB = Path.Combine(tempRoot, "b.log");
+            await File.WriteAllTextAsync(fileA, "A");
+            await File.WriteAllTextAsync(fileB, "B");
+
+            _vm.CurrentPath = "/home/user";
+            _vm.PickFilesForUpload = () => Task.FromResult<IReadOnlyList<string>>(new[] { fileA, fileB });
+            _sftpService.ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new List<RemoteFileInfo>()));
+
+            await _vm.UploadCommand.Execute().FirstAsync();
+
+            await _sftpService.Received(1).UploadFileAsync(
+                _sessionId,
+                fileA,
+                "/home/user/a.txt",
+                Arg.Any<IProgress<TransferProgress>?>(),
+                Arg.Any<CancellationToken>());
+            await _sftpService.Received(1).UploadFileAsync(
+                _sessionId,
+                fileB,
+                "/home/user/b.log",
+                Arg.Any<IProgress<TransferProgress>?>(),
+                Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, true);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task UploadFolderCommand_RecursivelyUploadsFolderTree()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"pulse-folder-upload-{Guid.NewGuid():N}");
+        var folder = Path.Combine(tempRoot, "assets");
+        var nested = Path.Combine(folder, "nested");
+
+        Directory.CreateDirectory(nested);
+        try
+        {
+            var rootFile = Path.Combine(folder, "root.txt");
+            var nestedFile = Path.Combine(nested, "child.txt");
+            await File.WriteAllTextAsync(rootFile, "root");
+            await File.WriteAllTextAsync(nestedFile, "child");
+
+            _vm.CurrentPath = "/home/user";
+            _vm.PickFolderForUpload = () => Task.FromResult<string?>(folder);
+            _sftpService.ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new List<RemoteFileInfo>()));
+
+            await _vm.UploadFolderCommand.Execute().FirstAsync();
+
+            await _sftpService.Received(1)
+                .EnsureDirectoryAsync(_sessionId, "/home/user/assets", Arg.Any<CancellationToken>());
+            await _sftpService.Received(1)
+                .EnsureDirectoryAsync(_sessionId, "/home/user/assets/nested", Arg.Any<CancellationToken>());
+
+            await _sftpService.Received(1).UploadFileAsync(
+                _sessionId,
+                rootFile,
+                "/home/user/assets/root.txt",
+                Arg.Any<IProgress<TransferProgress>?>(),
+                Arg.Any<CancellationToken>());
+            await _sftpService.Received(1).UploadFileAsync(
+                _sessionId,
+                nestedFile,
+                "/home/user/assets/nested/child.txt",
+                Arg.Any<IProgress<TransferProgress>?>(),
+                Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, true);
+        }
+    }
 }

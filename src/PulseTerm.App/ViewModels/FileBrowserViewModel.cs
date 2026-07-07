@@ -40,6 +40,7 @@ public class FileBrowserViewModel : ReactiveObject
         RefreshCommand = ReactiveCommand.CreateFromTask(RefreshAsync);
         LoadInitialCommand = ReactiveCommand.CreateFromTask(LoadInitialAsync);
         UploadCommand = ReactiveCommand.CreateFromTask(UploadAsync);
+        UploadFolderCommand = ReactiveCommand.CreateFromTask(UploadFolderAsync);
         NewFolderCommand = ReactiveCommand.CreateFromTask(NewFolderAsync);
         NewFileCommand = ReactiveCommand.CreateFromTask(NewFileAsync);
         DownloadItemCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(DownloadItemAsync);
@@ -102,6 +103,9 @@ public class FileBrowserViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> LoadInitialCommand { get; }
     /// <summary>Uploads OS-picked files into the current directory (toolbar + right-click).</summary>
     public ReactiveCommand<Unit, Unit> UploadCommand { get; }
+
+    /// <summary>Uploads an OS-picked folder (recursively) into the current directory.</summary>
+    public ReactiveCommand<Unit, Unit> UploadFolderCommand { get; }
 
     // Right-click context-menu actions (spec: file operations live in the SFTP context menu).
     public ReactiveCommand<Unit, Unit> NewFolderCommand { get; }
@@ -275,8 +279,11 @@ public class FileBrowserViewModel : ReactiveObject
         await NavigateToAsync(CurrentPath, ct);
     }
 
-    /// <summary>Set by the view: opens the OS file picker and returns local paths to upload.</summary>
+    /// <summary>Set by the view: opens the OS file picker (multi-select) and returns local paths.</summary>
     public Func<Task<IReadOnlyList<string>>>? PickFilesForUpload { get; set; }
+
+    /// <summary>Set by the view: opens the OS folder picker and returns the chosen folder, or null.</summary>
+    public Func<Task<string?>>? PickFolderForUpload { get; set; }
 
     /// <summary>Set by the view: asks where to save a download (arg = suggested file name).</summary>
     public Func<string, Task<string?>>? PickSavePathForDownload { get; set; }
@@ -304,14 +311,60 @@ public class FileBrowserViewModel : ReactiveObject
             return;
 
         var files = await PickFilesForUpload();
-        foreach (var localPath in files)
+        await UploadLocalPathsAsync(files, ct);
+    }
+
+    private async Task UploadFolderAsync(CancellationToken ct = default)
+    {
+        if (_sftpService is null || PickFolderForUpload is null)
+            return;
+
+        var folder = await PickFolderForUpload();
+        if (string.IsNullOrEmpty(folder))
+            return;
+
+        await UploadLocalPathsAsync(new[] { folder }, ct);
+    }
+
+    /// <summary>Uploads any mix of local files and folders into the current directory, recursing
+    /// into folders (creating the matching remote directories). Shared by the upload menu items and
+    /// drag-and-drop, so multi-select and dropped folders all funnel through here.</summary>
+    public async Task UploadLocalPathsAsync(IReadOnlyList<string> localPaths, CancellationToken ct = default)
+    {
+        if (_sftpService is null || localPaths is null || localPaths.Count == 0)
+            return;
+
+        try
         {
-            var name = System.IO.Path.GetFileName(localPath);
-            var remotePath = CurrentPath.TrimEnd('/') + "/" + name;
-            await RunTransferAsync(TransferType.Upload, localPath, remotePath, ct);
+            ErrorMessage = null;
+            foreach (var path in localPaths)
+                await UploadEntryAsync(path, CurrentPath, ct);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
         }
 
         await RefreshAsync(ct);
+    }
+
+    private async Task UploadEntryAsync(string localPath, string remoteDir, CancellationToken ct)
+    {
+        if (System.IO.Directory.Exists(localPath))
+        {
+            var name = System.IO.Path.GetFileName(
+                localPath.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
+            var remoteSub = CombinePath(remoteDir, name);
+            await _sftpService.EnsureDirectoryAsync(_sessionId, remoteSub, ct);
+
+            foreach (var child in System.IO.Directory.EnumerateFileSystemEntries(localPath))
+                await UploadEntryAsync(child, remoteSub, ct);
+        }
+        else if (System.IO.File.Exists(localPath))
+        {
+            var remotePath = CombinePath(remoteDir, System.IO.Path.GetFileName(localPath));
+            await RunTransferAsync(TransferType.Upload, localPath, remotePath, ct);
+        }
     }
 
     private async Task DownloadItemAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)

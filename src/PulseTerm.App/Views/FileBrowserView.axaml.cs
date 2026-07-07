@@ -26,12 +26,21 @@ public partial class FileBrowserView : UserControl
                 return;
 
             vm.PickFilesForUpload = PickFilesAsync;
+            vm.PickFolderForUpload = PickFolderAsync;
             vm.PickSavePathForDownload = PickSavePathAsync;
             vm.PromptForText = PromptForTextAsync;
             vm.CopyToClipboard = CopyToClipboardAsync;
             vm.ShowFileProperties = ShowFilePropertiesAsync;
             vm.ConfirmDelete = ConfirmAsync;
         };
+
+        // Accept dropping local files/folders onto the list to upload into CurrentPath.
+        if (this.FindControl<ListBox>("FileList") is { } fileList)
+        {
+            DragDrop.SetAllowDrop(fileList, true);
+            fileList.AddHandler(DragDrop.DragOverEvent, OnFileListDragOver);
+            fileList.AddHandler(DragDrop.DropEvent, OnFileListDrop);
+        }
     }
 
     /// <summary>Double-clicking a row descends into a directory (files are left to the toolbar
@@ -64,6 +73,61 @@ public partial class FileBrowserView : UserControl
             .Select(f => f.TryGetLocalPath())
             .Where(p => !string.IsNullOrEmpty(p))
             .Select(p => p!)
+            .ToList();
+    }
+
+    private async Task<string?> PickFolderAsync()
+    {
+        var top = TopLevel.GetTopLevel(this);
+        if (top is null)
+            return null;
+
+        var folders = await top.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "选择要上传的文件夹",
+            AllowMultiple = false,
+        });
+
+        return folders.FirstOrDefault()?.TryGetLocalPath();
+    }
+
+    private void OnFileListDragOver(object? sender, DragEventArgs e)
+    {
+        if (DataContext is not FileBrowserViewModel)
+        {
+            e.DragEffects = DragDropEffects.None;
+            return;
+        }
+
+        var paths = ExtractLocalPaths(e);
+        e.DragEffects = paths.Count > 0 ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void OnFileListDrop(object? sender, DragEventArgs e)
+    {
+        if (DataContext is not FileBrowserViewModel vm)
+            return;
+
+        var paths = ExtractLocalPaths(e);
+        if (paths.Count == 0)
+            return;
+
+        await vm.UploadLocalPathsAsync(paths);
+        e.Handled = true;
+    }
+
+    private static IReadOnlyList<string> ExtractLocalPaths(DragEventArgs e)
+    {
+        var items = e.DataTransfer.TryGetFiles();
+        if (items is null || items.Length == 0)
+            return Array.Empty<string>();
+
+        return items
+            .Select(i => i.TryGetLocalPath())
+            .Where(p => !string.IsNullOrEmpty(p))
+            .Select(p => p!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 

@@ -129,6 +129,16 @@ public class SftpService : ISftpService
         await client.UploadAsync(empty, remotePath, null, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task EnsureDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
+    {
+        var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        await Task.Run(() =>
+        {
+            if (!client.Exists(remotePath))
+                client.CreateDirectory(remotePath);
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task RenameAsync(Guid sessionId, string oldPath, string newPath, CancellationToken cancellationToken = default)
     {
         var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);

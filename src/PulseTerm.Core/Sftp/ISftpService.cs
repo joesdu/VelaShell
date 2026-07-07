@@ -20,6 +20,10 @@ public interface ISftpService : IAsyncDisposable
     /// <summary>Creates an empty file at the given remote path.</summary>
     Task CreateFileAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default);
 
+    /// <summary>Creates a directory if it does not already exist (idempotent). Used when uploading
+    /// a folder tree so re-creating an existing subdirectory is not an error.</summary>
+    Task EnsureDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default);
+
     /// <summary>Renames or moves a remote entry (SFTP rename doubles as move).</summary>
     Task RenameAsync(Guid sessionId, string oldPath, string newPath, CancellationToken cancellationToken = default);
     Task<RemoteFileInfo> GetFileInfoAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default);
