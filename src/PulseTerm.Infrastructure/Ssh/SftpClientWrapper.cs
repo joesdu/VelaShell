@@ -118,6 +118,12 @@ public class SftpClientWrapper : ISftpClientWrapper
         _client.CreateDirectory(path);
     }
 
+    public void RenameFile(string oldPath, string newPath)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _client.RenameFile(oldPath, newPath);
+    }
+
     public bool Exists(string path)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

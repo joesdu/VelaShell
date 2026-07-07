@@ -71,10 +71,11 @@ public class FileBrowserViewModelTests
         _vm.CurrentPath = "/home/user";
         await _vm.RefreshCommand.Execute().FirstAsync();
 
+        // Default order is name-ascending with directories grouped first.
         Assert.AreEqual(3, _vm.Files.Count());
         Assert.AreEqual("documents", _vm.Files[0].Name);
-        Assert.AreEqual("readme.txt", _vm.Files[1].Name);
-        Assert.AreEqual("photo.jpg", _vm.Files[2].Name);
+        Assert.AreEqual("photo.jpg", _vm.Files[1].Name);
+        Assert.AreEqual("readme.txt", _vm.Files[2].Name);
     }
 
     [TestMethod]
@@ -107,6 +108,102 @@ public class FileBrowserViewModelTests
         Assert.AreEqual("/home/user/documents", _vm.CurrentPath);
         Assert.AreEqual(1, _vm.Files.Count());
         Assert.AreEqual("report.pdf", _vm.Files[0].Name);
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task Activate_OnDirectory_NavigatesInto()
+    {
+        _sftpService.ListDirectoryAsync(_sessionId, "/home/user/documents", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new List<RemoteFileInfo>()));
+
+        var dir = new RemoteFileInfoViewModel(CreateTestFiles()[0]); // "documents", IsDirectory
+        await _vm.ActivateCommand.Execute(dir).FirstAsync();
+
+        Assert.AreEqual("/home/user/documents", _vm.CurrentPath);
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task Activate_OnFile_DoesNotNavigate()
+    {
+        var file = new RemoteFileInfoViewModel(CreateTestFiles()[1]); // "readme.txt", not a directory
+        await _vm.ActivateCommand.Execute(file).FirstAsync();
+
+        Assert.AreEqual("/", _vm.CurrentPath);
+        await _sftpService.DidNotReceive().ListDirectoryAsync(
+            Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task LoadInitial_NavigatesToWorkingDirectory()
+    {
+        _sftpService.GetWorkingDirectoryAsync(_sessionId, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("/root"));
+        _sftpService.ListDirectoryAsync(_sessionId, "/root", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new List<RemoteFileInfo>()));
+
+        await _vm.LoadInitialCommand.Execute().FirstAsync();
+
+        Assert.AreEqual("/root", _vm.CurrentPath);
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task LoadInitial_FallsBackToRoot_WhenWorkingDirectoryUnavailable()
+    {
+        _sftpService.GetWorkingDirectoryAsync(_sessionId, Arg.Any<CancellationToken>())
+            .Returns<Task<string>>(_ => throw new InvalidOperationException("no cwd"));
+        _sftpService.ListDirectoryAsync(_sessionId, "/", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new List<RemoteFileInfo>()));
+
+        await _vm.LoadInitialCommand.Execute().FirstAsync();
+
+        Assert.AreEqual("/", _vm.CurrentPath);
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task Sort_BySize_OrdersAscending_WithDirectoriesFirst()
+    {
+        _sftpService.ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(CreateTestFiles()));
+
+        _vm.CurrentPath = "/home/user";
+        await _vm.RefreshCommand.Execute().FirstAsync();
+
+        // Default sort is name-ascending: directory first, then files by name.
+        Assert.AreEqual("documents", _vm.Files[0].Name);
+
+        _vm.SortCommand.Execute("size").Subscribe();
+
+        Assert.AreEqual("documents", _vm.Files[0].Name);          // directory stays grouped on top
+        Assert.AreEqual("readme.txt", _vm.Files[1].Name);          // 1234 bytes
+        Assert.AreEqual("photo.jpg", _vm.Files[2].Name);           // 3567890 bytes
+        Assert.AreEqual("size", _vm.SortColumn);
+        Assert.IsFalse(_vm.SortDescending);
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task Sort_SameColumnTwice_FlipsDirection()
+    {
+        _sftpService.ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(CreateTestFiles()));
+
+        _vm.CurrentPath = "/home/user";
+        await _vm.RefreshCommand.Execute().FirstAsync();
+
+        _vm.SortCommand.Execute("size").Subscribe();
+        Assert.IsFalse(_vm.SortDescending);
+
+        _vm.SortCommand.Execute("size").Subscribe();
+        Assert.IsTrue(_vm.SortDescending);
+        Assert.AreEqual("documents", _vm.Files[0].Name);           // directory still first
+        Assert.AreEqual("photo.jpg", _vm.Files[1].Name);           // largest file first
+        Assert.AreEqual("readme.txt", _vm.Files[2].Name);
+        Assert.AreEqual(" ▼", _vm.SizeSortGlyph);
     }
 
     [TestMethod]
@@ -248,5 +345,135 @@ public class FileBrowserViewModelTests
         await _vm.GoUpCommand.Execute().FirstAsync();
 
         Assert.AreEqual("/", _vm.CurrentPath);
+    }
+
+    // --- Right-click context-menu actions ---
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task NewFolder_PromptsAndCreatesUnderCurrentPath()
+    {
+        _vm.CurrentPath = "/home/user";
+        _vm.PromptForText = (_, _) => Task.FromResult<string?>("docs");
+        _sftpService.ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new List<RemoteFileInfo>()));
+
+        await _vm.NewFolderCommand.Execute().FirstAsync();
+
+        await _sftpService.Received(1)
+            .CreateDirectoryAsync(_sessionId, "/home/user/docs", Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task NewFolder_Cancelled_DoesNothing()
+    {
+        _vm.PromptForText = (_, _) => Task.FromResult<string?>(null);
+
+        await _vm.NewFolderCommand.Execute().FirstAsync();
+
+        await _sftpService.DidNotReceive()
+            .CreateDirectoryAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task NewFile_PromptsAndCreatesUnderCurrentPath()
+    {
+        _vm.CurrentPath = "/home/user";
+        _vm.PromptForText = (_, _) => Task.FromResult<string?>("notes.txt");
+        _sftpService.ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new List<RemoteFileInfo>()));
+
+        await _vm.NewFileCommand.Execute().FirstAsync();
+
+        await _sftpService.Received(1)
+            .CreateFileAsync(_sessionId, "/home/user/notes.txt", Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task Rename_RenamesWithinParentDirectory()
+    {
+        _vm.PromptForText = (_, _) => Task.FromResult<string?>("renamed.txt");
+        _sftpService.ListDirectoryAsync(_sessionId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new List<RemoteFileInfo>()));
+
+        var file = new RemoteFileInfoViewModel(CreateTestFiles()[1]); // /home/user/readme.txt
+        await _vm.RenameCommand.Execute(file).FirstAsync();
+
+        await _sftpService.Received(1)
+            .RenameAsync(_sessionId, "/home/user/readme.txt", "/home/user/renamed.txt", Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task Move_RenamesToDestinationPath()
+    {
+        _vm.PromptForText = (_, _) => Task.FromResult<string?>("/tmp/moved.txt");
+        _sftpService.ListDirectoryAsync(_sessionId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new List<RemoteFileInfo>()));
+
+        var file = new RemoteFileInfoViewModel(CreateTestFiles()[1]); // /home/user/readme.txt
+        await _vm.MoveCommand.Execute(file).FirstAsync();
+
+        await _sftpService.Received(1)
+            .RenameAsync(_sessionId, "/home/user/readme.txt", "/tmp/moved.txt", Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task CopyPath_And_CopyName_WriteToClipboard()
+    {
+        string? copied = null;
+        _vm.CopyToClipboard = text => { copied = text; return Task.CompletedTask; };
+        var file = new RemoteFileInfoViewModel(CreateTestFiles()[1]); // readme.txt
+
+        await _vm.CopyPathCommand.Execute(file).FirstAsync();
+        Assert.AreEqual("/home/user/readme.txt", copied);
+
+        await _vm.CopyNameCommand.Execute(file).FirstAsync();
+        Assert.AreEqual("readme.txt", copied);
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task Properties_InvokesViewCallback()
+    {
+        RemoteFileInfoViewModel? shown = null;
+        _vm.ShowFileProperties = f => { shown = f; return Task.CompletedTask; };
+        var file = new RemoteFileInfoViewModel(CreateTestFiles()[0]);
+
+        await _vm.PropertiesCommand.Execute(file).FirstAsync();
+
+        Assert.AreSame(file, shown);
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task DownloadItem_OnFile_DownloadsToChosenPath()
+    {
+        _vm.PickSavePathForDownload = _ => Task.FromResult<string?>("C:/local/readme.txt");
+        var file = new RemoteFileInfoViewModel(CreateTestFiles()[1]); // /home/user/readme.txt
+
+        await _vm.DownloadItemCommand.Execute(file).FirstAsync();
+
+        await _sftpService.Received(1).DownloadFileAsync(
+            _sessionId, "/home/user/readme.txt", "C:/local/readme.txt",
+            Arg.Any<IProgress<TransferProgress>?>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task DownloadItem_OnDirectory_DoesNothing()
+    {
+        _vm.PickSavePathForDownload = _ => Task.FromResult<string?>("C:/local/docs");
+        var dir = new RemoteFileInfoViewModel(CreateTestFiles()[0]); // documents (directory)
+
+        await _vm.DownloadItemCommand.Execute(dir).FirstAsync();
+
+        await _sftpService.DidNotReceive().DownloadFileAsync(
+            Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<IProgress<TransferProgress>?>(), Arg.Any<CancellationToken>());
     }
 }

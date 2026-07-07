@@ -44,6 +44,59 @@ public class SftpServiceTests
     }
 
     [TestMethod]
+    public async Task GetWorkingDirectoryAsync_ReturnsClientWorkingDirectory()
+    {
+        _sftpClient.WorkingDirectory.Returns("/home/testuser");
+
+        var result = await _sftpService.GetWorkingDirectoryAsync(_sessionId);
+
+        Assert.AreEqual("/home/testuser", result);
+    }
+
+    [TestMethod]
+    public async Task CloseSessionAsync_DisconnectsAndDisposesClient()
+    {
+        // Open a channel so it gets cached, then close it.
+        _sftpClient.ListDirectoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IEnumerable<ISftpFile>>(new List<ISftpFile>()));
+        await _sftpService.ListDirectoryAsync(_sessionId, "/");
+
+        await _sftpService.CloseSessionAsync(_sessionId);
+
+        _sftpClient.Received(1).Disconnect();
+        _sftpClient.Received(1).Dispose();
+    }
+
+    [TestMethod]
+    public async Task CloseSessionAsync_UnknownSession_IsNoOp()
+    {
+        await _sftpService.CloseSessionAsync(Guid.NewGuid());
+
+        _sftpClient.DidNotReceive().Disconnect();
+        _sftpClient.DidNotReceive().Dispose();
+    }
+
+    [TestMethod]
+    public async Task RenameAsync_CallsRenameFileOnClient()
+    {
+        await _sftpService.RenameAsync(_sessionId, "/home/user/old.txt", "/home/user/new.txt");
+
+        _sftpClient.Received(1).RenameFile("/home/user/old.txt", "/home/user/new.txt");
+    }
+
+    [TestMethod]
+    public async Task CreateFileAsync_UploadsAnEmptyStream()
+    {
+        await _sftpService.CreateFileAsync(_sessionId, "/home/user/empty.txt");
+
+        await _sftpClient.Received(1).UploadAsync(
+            Arg.Any<Stream>(),
+            "/home/user/empty.txt",
+            Arg.Any<Action<ulong>?>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
     public async Task ListDirectoryAsync_ReturnsRemoteFileInfoArray()
     {
         // Arrange

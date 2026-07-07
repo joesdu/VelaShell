@@ -132,6 +132,9 @@ public class MainWindowViewModel : ReactiveObject
         Commands.Register(new CommandDescriptor("tools.tunnel", "隧道管理", "工具",
             ToggleTunnelPanel,
             CanExecute: () => ActiveTerminalTab is not null, Shortcut: "Ctrl+Shift+T", Icon: "Icon.route"));
+        Commands.Register(new CommandDescriptor("tools.files", "SFTP 文件管理器", "工具",
+            ToggleFileBrowser,
+            CanExecute: () => ActiveTerminalTab is not null, Shortcut: "Ctrl+Shift+F", Icon: "Icon.folder"));
         Commands.Register(new CommandDescriptor("edit.clear", "清屏", "编辑",
             () => ActiveTerminalTab?.TerminalEmulator.WriteInput(new byte[] { 0x0C }),
             CanExecute: () => ActiveTerminalTab?.ConnectionStatus == SessionStatus.Connected));
@@ -157,11 +160,44 @@ public class MainWindowViewModel : ReactiveObject
         if (FileBrowser.SessionId == tab.SessionId)
             return;
 
+        // Carry the open/closed state across the rebind so switching to (or connecting) a tab
+        // never silently hides a panel the user had opened.
+        var wasVisible = FileBrowser.IsVisible;
         FileBrowser = new FileBrowserViewModel(_sftpService, tab.SessionId)
         {
             TransferSink = FileTransfer,
+            IsVisible = wasVisible,
         };
-        FileBrowser.RefreshCommand.Execute().Subscribe(_ => { }, _ => { });
+        if (wasVisible)
+            FileBrowser.RefreshCommand.Execute().Subscribe(_ => { }, _ => { });
+    }
+
+    /// <summary>Toggles the SFTP panel for the active session (#22, spec §9). Opening it binds the
+    /// browser to the current session (if not already) and loads the initial listing.</summary>
+    public void ToggleFileBrowser()
+    {
+        // Ensure the browser points at the active tab's (now-connected) session before showing it.
+        // The active-tab subscription can't do this on its own because the session id is assigned
+        // after the tab is activated, so we rebind on demand here as well.
+        RebindFileBrowser();
+
+        FileBrowser.IsVisible = !FileBrowser.IsVisible;
+        if (FileBrowser.IsVisible && FileBrowser.SessionId != Guid.Empty)
+            FileBrowser.RefreshCommand.Execute().Subscribe(_ => { }, _ => { });
+    }
+
+    /// <summary>Called once a session finishes connecting: binds the file browser to it and shows
+    /// the listing. Per spec §9 the file area is part of the session view (visible by default,
+    /// collapsible), so a fresh connection surfaces its files without the user hunting for a toggle.</summary>
+    private void ShowFileBrowserForActiveSession()
+    {
+        RebindFileBrowser();
+
+        if (_sftpService is null || FileBrowser.SessionId == Guid.Empty)
+            return;
+
+        FileBrowser.IsVisible = true;
+        FileBrowser.LoadInitialCommand.Execute().Subscribe(_ => { }, _ => { });
     }
     /// <summary>Raised when the user asks for in-terminal search via menu/palette; the window
     /// forwards it to the active terminal view's search bar (§5.3).</summary>
@@ -312,6 +348,11 @@ public class MainWindowViewModel : ReactiveObject
             terminalTab.AttachTransport(shellStream);
             terminalTab.Start();
             terminalTab.ConnectionStatus = SessionStatus.Connected;
+
+            // The session id only exists now, after the handshake — the active-tab subscription
+            // fired before it was assigned, so bind the SFTP browser here (and show + load it) or
+            // it stays bound to the empty placeholder and never loads a listing (#22).
+            ShowFileBrowserForActiveSession();
         }
         catch
         {
@@ -372,6 +413,9 @@ public class MainWindowViewModel : ReactiveObject
             tab.AttachTransport(shellStream);
             tab.Start();
             tab.ConnectionStatus = SessionStatus.Connected;
+
+            // Reconnect mints a fresh session id; rebind the SFTP browser to it and reload (#22).
+            ShowFileBrowserForActiveSession();
 
             StatusBar.ResetUptime();
             UpdateStatusBarForActiveTab();
@@ -556,7 +600,25 @@ public class MainWindowViewModel : ReactiveObject
         {
             TabBar.CloseTabCommand.Execute(tab).Subscribe();
         }
+        CloseSftpForTab(tab);
         tab.Dispose();
+    }
+
+    /// <summary>Tears down the SFTP channel bound to a closing tab's session and, if the browser is
+    /// still showing that session, unbinds and hides it — closing the SSH tab must not leave a live,
+    /// operable SFTP panel behind (#22).</summary>
+    private void CloseSftpForTab(TerminalTabViewModel tab)
+    {
+        if (_sftpService is null || tab.SessionId == Guid.Empty)
+            return;
+
+        var closedSessionId = tab.SessionId;
+        _ = _sftpService.CloseSessionAsync(closedSessionId);
+
+        // The active-tab change from closing may have already rebound the browser to another
+        // session; only reset when it still points at the one we just closed.
+        if (FileBrowser.SessionId == closedSessionId)
+            FileBrowser = new FileBrowserViewModel(_sftpService, Guid.Empty);
     }
 
     public FileBrowserViewModel FileBrowser

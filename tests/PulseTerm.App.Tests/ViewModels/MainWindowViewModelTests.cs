@@ -36,6 +36,33 @@ public class MainWindowViewModelTests
 
     [TestMethod]
     [TestCategory("UI")]
+    public void ToolsFilesCommand_IsRegistered_WithShortcut()
+    {
+        var vm = new MainWindowViewModel();
+
+        var command = vm.Commands.Find("tools.files");
+
+        Assert.IsNotNull(command, "SFTP file manager command must be wired so the panel can be opened.");
+        Assert.AreEqual("Ctrl+Shift+F", command.Shortcut);
+    }
+
+    [TestMethod]
+    [TestCategory("UI")]
+    public void ToggleFileBrowser_FlipsPanelVisibility()
+    {
+        var vm = new MainWindowViewModel();
+
+        Assert.IsFalse(vm.FileBrowser.IsVisible);
+
+        vm.ToggleFileBrowser();
+        Assert.IsTrue(vm.FileBrowser.IsVisible);
+
+        vm.ToggleFileBrowser();
+        Assert.IsFalse(vm.FileBrowser.IsVisible);
+    }
+
+    [TestMethod]
+    [TestCategory("UI")]
     public void SidebarViewModel_Initializes_WithCommands()
     {
         var vm = new SidebarViewModel();

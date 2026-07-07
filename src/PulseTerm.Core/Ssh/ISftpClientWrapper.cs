@@ -24,5 +24,6 @@ public interface ISftpClientWrapper : IDisposable
     void DeleteFile(string path);
     void DeleteDirectory(string path);
     void CreateDirectory(string path);
+    void RenameFile(string oldPath, string newPath);
     bool Exists(string path);
 }

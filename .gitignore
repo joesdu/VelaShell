@@ -366,3 +366,5 @@ FodyWeavers.xsd
 .idea/
 
 /obdata
+.omc
+.sisyphus
