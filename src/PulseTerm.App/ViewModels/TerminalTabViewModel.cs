@@ -189,7 +189,26 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             return;
 
         ConnectionStatus = SessionStatus.Disconnected;
+        FeedDisconnectNotice();
         Disconnected?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Prints a red "connection closed" banner plus the reconnect hint into the
+    /// terminal, so the user knows Enter / the Reconnect button will bring the session back
+    /// (用户反馈 #1). Runs for both manual disconnects and remote closes.</summary>
+    private void FeedDisconnectNotice()
+    {
+        var notice =
+            "\r\n\u001b[0m\u001b[31m● " + Strings.TerminalDisconnectedNotice + "\u001b[0m\r\n" +
+            "\u001b[90m" + Strings.TerminalReconnectHint + "\u001b[0m\r\n";
+        try
+        {
+            TerminalEmulator.Feed(System.Text.Encoding.UTF8.GetBytes(notice));
+        }
+        catch
+        {
+            // Purely cosmetic; never let the hint break the disconnect flow.
+        }
     }
 
     private void OnPtySizeChanged(int columns, int rows)

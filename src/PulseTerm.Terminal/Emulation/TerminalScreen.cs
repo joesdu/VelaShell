@@ -57,6 +57,9 @@ public sealed class TerminalScreen
     /// </summary>
     public TerminalRow ViewLine(int absoluteRow)
     {
+        // Callers can hold stale row indexes (a selection made before a resize, a pointer
+        // dragged past the top edge); clamp instead of throwing.
+        absoluteRow = Math.Clamp(absoluteRow, 0, TotalRows - 1);
         if (absoluteRow < _scrollback.Count)
             return _scrollback[absoluteRow];
         return _lines[absoluteRow - _scrollback.Count];

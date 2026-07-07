@@ -426,6 +426,10 @@ public class MainWindowViewModel : ReactiveObject
                 height: 0,
                 bufferSize: 4096);
 
+            // Full-reset (RIS) the emulator before the new session's output arrives, so the
+            // fresh MOTD doesn't append after the old buffer's content (用户反馈 #1).
+            tab.TerminalEmulator.Feed("\u001bc"u8.ToArray());
+
             tab.SessionId = session.SessionId;
             tab.AttachTransport(shellStream);
             tab.Start();

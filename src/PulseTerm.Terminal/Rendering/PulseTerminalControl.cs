@@ -141,6 +141,9 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         _emulator.Resize(cols, rows);
         _scrollOffset = 0;
         _lastScrollbackCount = _emulator.Screen.ScrollbackCount;
+        // Row indexes in the selection are absolute and shift on resize; drop it rather than
+        // let a stale range mark (or copy) the wrong text.
+        ClearSelection();
         InvalidateVisual();
         ScrollChanged?.Invoke();
     }
@@ -688,7 +691,10 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         int screenRow = (int)(p.Y / _cellHeight);
         int col = (int)(p.X / _cellWidth);
         int topAbsolute = Math.Max(0, _emulator.Screen.TotalRows - _emulator.Rows - _scrollOffset);
-        return (topAbsolute + screenRow, Math.Clamp(col, 0, _emulator.Columns));
+        // Clamp the row: while the pointer is captured a drag can leave the control (negative
+        // p.Y), and a negative absolute row used to crash selection copy (#用户反馈).
+        int row = Math.Clamp(topAbsolute + screenRow, 0, Math.Max(0, _emulator.Screen.TotalRows - 1));
+        return (row, Math.Clamp(col, 0, _emulator.Columns));
     }
 
     // ---- Input --------------------------------------------------------------

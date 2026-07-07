@@ -401,4 +401,10 @@
   <data name="Reconnect" xml:space="preserve">
     <value>Reconnect</value>
   </data>
+  <data name="TerminalDisconnectedNotice" xml:space="preserve">
+    <value>Connection closed.</value>
+  </data>
+  <data name="TerminalReconnectHint" xml:space="preserve">
+    <value>Press Enter (or the Reconnect button above) to reconnect.</value>
+  </data>
 </root>
