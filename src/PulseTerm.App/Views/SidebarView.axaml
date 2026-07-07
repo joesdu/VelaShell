@@ -11,58 +11,10 @@
              x:DataType="vm:SidebarViewModel">
 
   <Grid Background="{DynamicResource PulseBgSidebar}"
-        RowDefinitions="42,36,*,320,40">
-
-    <!-- Row 0: Logo Bar (42px) -->
-    <Border Grid.Row="0"
-            BorderThickness="0,0,0,1"
-            BorderBrush="{DynamicResource PulseBorderPrimary}"
-            Padding="16,0">
-      <StackPanel Orientation="Horizontal"
-                  Spacing="10"
-                  VerticalAlignment="Center">
-
-        <!-- Logo Icon: gradient rounded rect + pulse line -->
-        <Border Width="18" Height="18"
-                CornerRadius="4">
-          <Border.Background>
-            <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-              <GradientStop Color="#00D4AA" Offset="0" />
-              <GradientStop Color="#00A88A" Offset="1" />
-            </LinearGradientBrush>
-          </Border.Background>
-          <!-- Pulse line SVG approximation via Path -->
-          <Canvas Width="12" Height="8"
-                  HorizontalAlignment="Center"
-                  VerticalAlignment="Center">
-            <Path Canvas.Left="0" Canvas.Top="0"
-                  Stroke="#0A0E14"
-                  StrokeThickness="1.5"
-                  StrokeJoin="Round"
-                  StrokeLineCap="Round"
-                  Data="M0,4 L2,4 L4,0 L6,8 L8,2 L10,4 L12,4" />
-          </Canvas>
-        </Border>
-
-        <!-- App name -->
-        <TextBlock Text="PulseTerm"
-                   Foreground="{DynamicResource PulseTextPrimary}"
-                   FontFamily="{DynamicResource PulseTerminalFont}"
-                   FontSize="14"
-                   FontWeight="SemiBold"
-                   VerticalAlignment="Center" />
-
-        <!-- Version -->
-        <TextBlock Text="v1.0"
-                   Foreground="{DynamicResource PulseTextMuted}"
-                   FontFamily="{DynamicResource PulseTerminalFont}"
-                   FontSize="10"
-                   VerticalAlignment="Center" />
-      </StackPanel>
-    </Border>
+        RowDefinitions="36,*,320,40">
 
     <!-- Row 1: Toolbar (36px) -->
-    <Border Grid.Row="1"
+    <Border Grid.Row="0"
             BorderThickness="0,0,0,1"
             BorderBrush="{DynamicResource PulseBorderPrimary}"
             Padding="12,0">
@@ -70,7 +22,7 @@
 
         <!-- "会话" label -->
         <TextBlock Grid.Column="0"
-                   Text="会话"
+                   Text="资源管理器"
                    Foreground="{DynamicResource PulseTextSecondary}"
                    FontFamily="{DynamicResource PulseTerminalFont}"
                    FontSize="11"
@@ -84,17 +36,6 @@
                     Spacing="4"
                     VerticalAlignment="Center">
 
-          <!-- Sync button (accent-dim bg) -->
-          <Border Width="24" Height="24"
-                  CornerRadius="3"
-                  Background="{DynamicResource PulseAccentDim}"
-                  Cursor="Hand">
-            <PathIcon Width="13" Height="13"
-                      Data="M2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10S2 17.523 2 12zm9-4v4.414l3.293 3.293 1.414-1.414L13 11.586V8h-2z"
-                      Foreground="{DynamicResource PulseAccent}"
-                      HorizontalAlignment="Center"
-                      VerticalAlignment="Center" />
-          </Border>
 
           <!-- Add button -->
           <Button Background="Transparent"
@@ -124,7 +65,7 @@
     </Border>
 
     <!-- Row 2: Session Tree (fills remaining space) -->
-    <ScrollViewer Grid.Row="2"
+    <ScrollViewer Grid.Row="1"
                   VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled">
       <views:SessionTreeView DataContext="{Binding SessionTree}"
@@ -132,7 +73,7 @@
     </ScrollViewer>
 
     <!-- Row 3: Quick Connect + Recent (320px) -->
-    <Border Grid.Row="3"
+    <Border Grid.Row="2"
             BorderThickness="0,1,0,0"
             BorderBrush="{DynamicResource PulseBorderPrimary}">
       <Grid RowDefinitions="36,32,24,*">
@@ -251,7 +192,7 @@
     </Border>
 
     <!-- Row 4: Sidebar Footer (40px) -->
-    <Border Grid.Row="4"
+    <Border Grid.Row="3"
             BorderThickness="0,1,0,0"
             BorderBrush="{DynamicResource PulseBorderPrimary}"
             Padding="12,0">
