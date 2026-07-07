@@ -17,6 +17,7 @@ public class SettingsViewModel : ReactiveObject
     private string _language = "en";
     private string _theme = "dark";
     private string _accentColor = "";
+    private int _selectedSectionIndex;
     private string _terminalFont = "JetBrains Mono";
     private int _terminalFontSize = 14;
     private int _scrollbackLines = 10000;
@@ -81,6 +82,15 @@ public class SettingsViewModel : ReactiveObject
     {
         get => _terminalEncoding;
         set => this.RaiseAndSetIfChanged(ref _terminalEncoding, value);
+    }
+
+    /// <summary>Left-nav sections per design §14 (subset implemented; rest are placeholders).</summary>
+    public string[] SectionNames { get; } = new[] { "常规", "外观", "终端", "快捷键", "关于" };
+
+    public int SelectedSectionIndex
+    {
+        get => _selectedSectionIndex;
+        set => this.RaiseAndSetIfChanged(ref _selectedSectionIndex, value);
     }
 
     public string[] AvailableLanguages { get; } = new[] { "en", "zh-CN" };
