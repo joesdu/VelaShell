@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:PulseTerm.App.ViewModels"
              xmlns:res="clr-namespace:PulseTerm.Core.Resources;assembly=PulseTerm.Core"
+             xmlns:pc="using:PulseTerm.Controls.Controls"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="220"
              x:Class="PulseTerm.App.Views.FileBrowserView"
              x:DataType="vm:FileBrowserViewModel">
@@ -22,7 +23,7 @@
 
   <Border BorderThickness="0,1,0,0"
           BorderBrush="{DynamicResource PulseBorderPrimary}"
-          Background="{DynamicResource PulseBgSurface}"
+          Background="{DynamicResource PulseBgPage}"
           IsVisible="{Binding IsVisible}"
           MinHeight="120"
           Height="220">
@@ -30,71 +31,88 @@
     <Panel>
       <DockPanel>
 
-      <Grid DockPanel.Dock="Top"
-            ColumnDefinitions="Auto,*,Auto"
-            Background="{DynamicResource PulseBgPage}"
-            Height="36">
+      <!-- Header per design frame cKZr7: 36px, padding [0,14], bottom border;
+           left = folder-open 14 accent + path (JB Mono 11 medium); right = accent-dim
+           upload pill + 24×24 refresh. -->
+      <Border DockPanel.Dock="Top"
+              Height="36"
+              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              BorderThickness="0,0,0,1"
+              Padding="14,0">
+        <Grid ColumnDefinitions="Auto,*,Auto">
 
-        <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="4,0">
-          <Button Classes="toolbar-btn"
-                  Command="{Binding GoUpCommand}"
-                  ToolTip.Tip="Go Up">
-            <PathIcon Data="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"
-                      Width="14" Height="14"
-                      Foreground="{DynamicResource PulseTextSecondary}" />
-          </Button>
-          <Button Classes="toolbar-btn"
-                  Command="{Binding RefreshCommand}"
-                  ToolTip.Tip="{x:Static res:Strings.Refresh}">
-            <PathIcon Data="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
-                      Width="14" Height="14"
-                      Foreground="{DynamicResource PulseTextSecondary}" />
-          </Button>
-        </StackPanel>
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <pc:LucideIcon Width="14" Height="14"
+                           Data="{StaticResource Icon.folder-open}"
+                           Foreground="{DynamicResource PulseAccent}"
+                           VerticalAlignment="Center" />
+            <TextBlock Text="{Binding CurrentPath}"
+                       Foreground="{DynamicResource PulseTextPrimary}"
+                       FontFamily="{DynamicResource PulseTerminalFont}"
+                       FontSize="11" FontWeight="Medium"
+                       VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" />
+          </StackPanel>
 
-        <Border Grid.Column="1"
-                Background="{DynamicResource PulseBgSurface}"
-                CornerRadius="4"
-                Margin="4,5"
-                Padding="8,0">
-          <TextBlock Text="{Binding CurrentPath}"
-                     Foreground="{DynamicResource PulseTextPrimary}"
-                     FontSize="12"
-                     VerticalAlignment="Center"
-                     TextTrimming="CharacterEllipsis" />
-        </Border>
-
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="4,0">
-          <Button Classes="toolbar-btn"
-                  Command="{Binding UploadCommand}"
-                  ToolTip.Tip="{x:Static res:Strings.Upload}">
-            <PathIcon Data="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"
-                      Width="14" Height="14"
-                      Foreground="{DynamicResource PulseTextSecondary}" />
-          </Button>
-          <Button Classes="toolbar-btn"
-                  Command="{Binding DownloadCommand}"
-                  ToolTip.Tip="{x:Static res:Strings.Download}">
-            <PathIcon Data="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"
-                      Width="14" Height="14"
-                      Foreground="{DynamicResource PulseTextSecondary}" />
-          </Button>
-          <Button Classes="toolbar-btn"
-                  Command="{Binding CreateFolderCommand}"
-                  ToolTip.Tip="New Folder">
-            <PathIcon Data="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"
-                      Width="14" Height="14"
-                      Foreground="{DynamicResource PulseTextSecondary}" />
-          </Button>
-          <Button Classes="toolbar-btn"
-                  Command="{Binding DeleteCommand}"
-                  ToolTip.Tip="{x:Static res:Strings.Delete}">
-            <PathIcon Data="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
-                      Width="14" Height="14"
-                      Foreground="{DynamicResource PulseTextSecondary}" />
-          </Button>
-        </StackPanel>
-      </Grid>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <Button Height="24" Padding="8,0" CornerRadius="3" Cursor="Hand"
+                    Background="{DynamicResource PulseAccentDim}"
+                    Command="{Binding UploadCommand}"
+                    ToolTip.Tip="{x:Static res:Strings.Upload}">
+              <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <pc:LucideIcon Width="12" Height="12"
+                               Data="{StaticResource Icon.upload}"
+                               Foreground="{DynamicResource PulseAccent}" />
+                <TextBlock Text="{x:Static res:Strings.Upload}"
+                           Foreground="{DynamicResource PulseAccent}"
+                           FontFamily="{DynamicResource PulseTerminalFont}"
+                           FontSize="10" FontWeight="Medium"
+                           VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    Command="{Binding RefreshCommand}"
+                    ToolTip.Tip="{x:Static res:Strings.Refresh}">
+              <pc:LucideIcon Width="13" Height="13"
+                             Data="{StaticResource Icon.refresh-cw}"
+                             Foreground="{DynamicResource PulseTextTertiary}" />
+            </Button>
+            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    Command="{Binding GoUpCommand}"
+                    ToolTip.Tip="上级目录">
+              <pc:LucideIcon Width="13" Height="13"
+                             Data="{StaticResource Icon.corner-left-up}"
+                             Foreground="{DynamicResource PulseTextTertiary}" />
+            </Button>
+            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    Command="{Binding CreateFolderCommand}"
+                    ToolTip.Tip="新建文件夹">
+              <pc:LucideIcon Width="13" Height="13"
+                             Data="{StaticResource Icon.folder}"
+                             Foreground="{DynamicResource PulseTextTertiary}" />
+            </Button>
+            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    Command="{Binding DownloadCommand}"
+                    ToolTip.Tip="{x:Static res:Strings.Download}">
+              <pc:LucideIcon Width="13" Height="13"
+                             Data="{StaticResource Icon.arrow-up-down}"
+                             Foreground="{DynamicResource PulseTextTertiary}" />
+            </Button>
+            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    Command="{Binding DeleteCommand}"
+                    ToolTip.Tip="{x:Static res:Strings.Delete}">
+              <pc:LucideIcon Width="13" Height="13"
+                             Data="{StaticResource Icon.x}"
+                             Foreground="{DynamicResource PulseTextTertiary}" />
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
 
       <Border DockPanel.Dock="Top"
               IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
@@ -105,13 +123,13 @@
                    FontSize="11" />
       </Border>
 
-      <Grid RowDefinitions="28,*">
+      <Grid RowDefinitions="26,*">
 
         <Border Grid.Row="0"
-                Background="{DynamicResource PulseBgPage}"
+                Background="{DynamicResource PulseBgSurface}"
                 BorderBrush="{DynamicResource PulseBorderPrimary}"
                 BorderThickness="0,0,0,1"
-                Padding="12,0">
+                Padding="14,0">
           <Grid ColumnDefinitions="*,100,110,140">
             <TextBlock Grid.Column="0"
                        Text="{x:Static res:Strings.FileName}"
