@@ -291,7 +291,19 @@ public sealed class TerminalScreen
         if (columns == Columns && rows == Rows)
             return;
 
-        // Column resize: grow/shrink every active and history row in place.
+        // Column changes on the primary screen reflow the whole buffer (the mainstream
+        // approach — Windows Terminal / iTerm2 / VTE / kitty): soft-wrapped rows are joined
+        // back into logical lines and re-wrapped at the new width, so narrowing never
+        // destroys content and widening re-joins it. The alternate screen (MaxScrollback
+        // 0 — htop/vim/tmux) is NOT reflowed: those programs repaint themselves on
+        // SIGWINCH, matching every mainstream terminal.
+        if (columns != Columns && MaxScrollback > 0)
+        {
+            ReflowResize(columns, rows, blank);
+            return;
+        }
+
+        // Alternate screen column resize: hard grow/shrink each row in place.
         if (columns != Columns)
         {
             foreach (var line in _lines)
@@ -351,5 +363,165 @@ public sealed class TerminalScreen
         ScrollBottom = Rows - 1;
         CursorX = Math.Clamp(CursorX, 0, Columns - 1);
         CursorY = Math.Clamp(CursorY, 0, Rows - 1);
+    }
+
+    // ---- Reflow (primary-screen column resize) -------------------------------
+
+    /// <summary>
+    /// Rebuilds the entire buffer at a new width: physical rows are joined into logical
+    /// lines along their <see cref="TerminalRow.Wrapped"/> flags, each logical line is
+    /// re-wrapped to <paramref name="newCols"/> (wide characters kept atomic), and the
+    /// result is split back into scrollback + a bottom-anchored screen. The cursor is
+    /// carried through as (logical line, cell offset) so it lands on the same character.
+    /// </summary>
+    private void ReflowResize(int newCols, int newRows, in TerminalCell blank)
+    {
+        int cursorAbs = _scrollback.Count + CursorY;
+
+        // 1. Flatten scrollback + screen into one physical row list.
+        var physical = new List<TerminalRow>(_scrollback.Count + Rows);
+        physical.AddRange(_scrollback);
+        physical.AddRange(_lines);
+
+        // Drop trailing blank, unwrapped rows below the cursor — they're just the unused
+        // bottom of the screen and would otherwise pad the scrollback with empties.
+        while (physical.Count > cursorAbs + 1)
+        {
+            var last = physical[^1];
+            if (last.Wrapped || last.LastNonBlank() >= 0)
+                break;
+            physical.RemoveAt(physical.Count - 1);
+        }
+
+        // 2. Re-emit logical lines at the new width.
+        var rebuilt = new List<TerminalRow>(physical.Count);
+        int newCursorRow = -1, newCursorCol = 0;
+
+        int i = 0;
+        while (i < physical.Count)
+        {
+            // A logical line spans [i..j]: every row but the last carries the Wrapped flag.
+            int j = i;
+            while (j < physical.Count - 1 && physical[j].Wrapped)
+                j++;
+
+            // Collect its cells: wrapped segments contribute their full width, the final
+            // segment is trimmed at the last non-blank cell (extended to cover the cursor).
+            var cells = new List<TerminalCell>();
+            int cursorOffset = -1;
+            for (int r = i; r <= j; r++)
+            {
+                var row = physical[r];
+                int len = r < j ? row.Columns : row.LastNonBlank() + 1;
+                if (r == cursorAbs)
+                {
+                    int cursorCol = Math.Min(CursorX, row.Columns - 1);
+                    len = Math.Max(len, cursorCol + 1);
+                    cursorOffset = cells.Count + cursorCol;
+                }
+                for (int c = 0; c < len; c++)
+                    cells.Add(row[c]);
+            }
+
+            EmitLogicalLine(cells, cursorOffset, newCols, blank, rebuilt, ref newCursorRow, ref newCursorCol);
+            i = j + 1;
+        }
+
+        if (rebuilt.Count == 0)
+            rebuilt.Add(NewBlankRow(newCols, blank));
+        if (newCursorRow < 0)
+        {
+            newCursorRow = rebuilt.Count - 1;
+            newCursorCol = 0;
+        }
+
+        // 3. Split back: the screen is the bottom-most newRows rows (content stays anchored
+        //    at the bottom like every terminal), but never above the cursor.
+        int screenStart = Math.Max(0, rebuilt.Count - newRows);
+        if (newCursorRow < screenStart)
+            screenStart = newCursorRow;
+
+        _scrollback.Clear();
+        for (int r = 0; r < screenStart; r++)
+            _scrollback.Add(rebuilt[r]);
+        while (_scrollback.Count > MaxScrollback)
+        {
+            _scrollback.RemoveAt(0);
+        }
+
+        var lines = new TerminalRow[newRows];
+        int idx = 0;
+        for (int r = screenStart; r < rebuilt.Count && idx < newRows; r++, idx++)
+            lines[idx] = rebuilt[r];
+        for (; idx < newRows; idx++)
+            lines[idx] = NewBlankRow(newCols, blank);
+        _lines = lines;
+
+        Columns = newCols;
+        Rows = newRows;
+        ScrollTop = 0;
+        ScrollBottom = newRows - 1;
+        CursorY = Math.Clamp(newCursorRow - screenStart, 0, newRows - 1);
+        CursorX = Math.Clamp(newCursorCol, 0, newCols - 1);
+    }
+
+    /// <summary>Wraps one logical line's cells into rows of <paramref name="cols"/>, keeping
+    /// wide-character lead/trail pairs on the same row, marking every produced row but the
+    /// last as soft-wrapped, and reporting where <paramref name="cursorOffset"/> landed.</summary>
+    private static void EmitLogicalLine(List<TerminalCell> cells, int cursorOffset, int cols,
+        in TerminalCell blank, List<TerminalRow> output, ref int cursorRow, ref int cursorCol)
+    {
+        var row = NewBlankRow(cols, blank);
+        output.Add(row);
+        int col = 0;
+
+        for (int k = 0; k < cells.Count; k++)
+        {
+            var cell = cells[k];
+            // A wide pair (lead + trailing marker) must stay together on one row.
+            bool wide = cols >= 2 && !cell.IsWideTrailing &&
+                        k + 1 < cells.Count && cells[k + 1].IsWideTrailing;
+            int need = wide ? 2 : 1;
+
+            if (col + need > cols)
+            {
+                row.Wrapped = true;
+                row = NewBlankRow(cols, blank);
+                output.Add(row);
+                col = 0;
+            }
+
+            if (k == cursorOffset)
+            {
+                cursorRow = output.Count - 1;
+                cursorCol = col;
+            }
+
+            row[col++] = cell;
+            if (wide)
+            {
+                if (k + 1 == cursorOffset)
+                {
+                    cursorRow = output.Count - 1;
+                    cursorCol = col - 1;
+                }
+                row[col++] = cells[k + 1];
+                k++;
+            }
+        }
+
+        // A cursor sitting on the (blank) cell right past the collected content.
+        if (cursorOffset == cells.Count && cursorOffset >= 0)
+        {
+            cursorRow = output.Count - 1;
+            cursorCol = Math.Min(col, cols - 1);
+        }
+    }
+
+    private static TerminalRow NewBlankRow(int cols, in TerminalCell blank)
+    {
+        var row = new TerminalRow(cols);
+        row.Fill(blank);
+        return row;
     }
 }

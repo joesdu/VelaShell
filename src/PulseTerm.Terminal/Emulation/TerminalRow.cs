@@ -3,27 +3,22 @@ using System.Text;
 namespace PulseTerm.Terminal.Emulation;
 
 /// <summary>
-/// One row of the terminal grid: a logical width over a persistent cell buffer, plus a
-/// "wrapped" flag used to reflow soft-wrapped lines on resize and to join lines for copy.
-/// Narrowing only shrinks the logical width — the hidden tail cells are kept — so a
-/// transient shrink (e.g. the tab-drag preview squeezing the shared control) restores the
-/// text when the row grows back instead of erasing it (用户反馈：拖动标签后文字消失).
+/// One row of the terminal grid: a fixed-length array of <see cref="TerminalCell"/> plus
+/// a "wrapped" flag used to reflow soft-wrapped lines on resize and to join lines for copy.
 /// </summary>
 public sealed class TerminalRow
 {
     private TerminalCell[] _cells;
-    private int _width;
 
     public TerminalRow(int columns)
     {
         _cells = new TerminalCell[columns];
-        _width = columns;
     }
 
     /// <summary>True when the line was ended by autowrap rather than an explicit newline.</summary>
     public bool Wrapped { get; set; }
 
-    public int Columns => _width;
+    public int Columns => _cells.Length;
 
     public ref TerminalCell CellRef(int col) => ref _cells[col];
 
@@ -35,8 +30,6 @@ public sealed class TerminalRow
 
     public void Fill(in TerminalCell cell)
     {
-        // Fill the whole backing buffer, not just the visible width: an explicit clear must
-        // also kill any preserved (hidden) tail so it can't resurface on a later grow.
         for (int i = 0; i < _cells.Length; i++)
             _cells[i] = cell;
         Wrapped = false;
@@ -48,55 +41,55 @@ public sealed class TerminalRow
             _cells[i] = cell;
     }
 
+    /// <summary>Hard grow/shrink to an exact width. Only used where reflow doesn't apply
+    /// (the alternate screen, whose programs fully redraw on resize) — the main screen is
+    /// resized via <see cref="TerminalScreen"/> reflow, which preserves content.</summary>
     public void Resize(int columns, in TerminalCell blank)
     {
-        if (columns == _width)
+        if (columns == _cells.Length)
             return;
-
-        if (columns > _cells.Length)
-        {
-            // Genuine growth beyond anything this row has held: extend and blank the new area.
-            var next = new TerminalCell[columns];
-            Array.Copy(_cells, next, _cells.Length);
-            for (int i = _cells.Length; i < columns; i++)
-                next[i] = blank;
-            _cells = next;
-        }
-
-        // Shrinking (or re-growing within capacity) only moves the logical width; cells beyond
-        // it keep their content and reappear when the row widens again.
-        _width = columns;
+        var next = new TerminalCell[columns];
+        int copy = Math.Min(columns, _cells.Length);
+        Array.Copy(_cells, next, copy);
+        for (int i = copy; i < columns; i++)
+            next[i] = blank;
+        _cells = next;
     }
 
     /// <summary>Deletes <paramref name="count"/> cells at <paramref name="col"/>, shifting the tail left.</summary>
     public void DeleteCells(int col, int count, in TerminalCell blank)
     {
-        if (count <= 0 || col >= _width)
+        if (count <= 0 || col >= _cells.Length)
             return;
-        count = Math.Min(count, _width - col);
-        Array.Copy(_cells, col + count, _cells, col, _width - col - count);
-        FillRange(_width - count, _width, blank);
+        count = Math.Min(count, _cells.Length - col);
+        Array.Copy(_cells, col + count, _cells, col, _cells.Length - col - count);
+        FillRange(_cells.Length - count, _cells.Length, blank);
     }
 
     /// <summary>Inserts <paramref name="count"/> blank cells at <paramref name="col"/>, shifting the tail right.</summary>
     public void InsertCells(int col, int count, in TerminalCell blank)
     {
-        if (count <= 0 || col >= _width)
+        if (count <= 0 || col >= _cells.Length)
             return;
-        count = Math.Min(count, _width - col);
-        Array.Copy(_cells, col, _cells, col + count, _width - col - count);
+        count = Math.Min(count, _cells.Length - col);
+        Array.Copy(_cells, col, _cells, col + count, _cells.Length - col - count);
         FillRange(col, col + count, blank);
     }
 
-    /// <summary>Text of the visible row up to the last non-blank cell (trailing blanks trimmed).</summary>
+    /// <summary>Index of the last cell with content, or -1 for an all-blank row.</summary>
+    public int LastNonBlank()
+    {
+        for (int i = _cells.Length - 1; i >= 0; i--)
+            if (_cells[i].Rune != 0)
+                return i;
+        return -1;
+    }
+
+    /// <summary>Text of the row up to the last non-blank cell (trailing blanks trimmed).</summary>
     public string GetText()
     {
-        var sb = new StringBuilder(_width);
-        int lastNonBlank = -1;
-        for (int i = 0; i < _width; i++)
-            if (_cells[i].Rune != 0)
-                lastNonBlank = i;
-
+        var sb = new StringBuilder(_cells.Length);
+        int lastNonBlank = LastNonBlank();
         for (int i = 0; i <= lastNonBlank; i++)
             _cells[i].AppendText(sb);
         return sb.ToString();
@@ -104,7 +97,7 @@ public sealed class TerminalRow
 
     public TerminalRow Clone()
     {
-        var clone = new TerminalRow(_cells.Length) { Wrapped = Wrapped, _width = _width };
+        var clone = new TerminalRow(_cells.Length) { Wrapped = Wrapped };
         Array.Copy(_cells, clone._cells, _cells.Length);
         return clone;
     }
