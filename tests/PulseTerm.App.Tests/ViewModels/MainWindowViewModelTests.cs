@@ -1,6 +1,10 @@
 using System.Reactive.Concurrency;
+using NSubstitute;
 using PulseTerm.App.ViewModels;
+using PulseTerm.Core.Data;
+using PulseTerm.Core.Models;
 using PulseTerm.Presentation.ViewModels;
+using PulseTerm.Terminal;
 using ReactiveUI.Builder;
 
 namespace PulseTerm.App.Tests.ViewModels;
@@ -59,6 +63,29 @@ public class MainWindowViewModelTests
 
         vm.ToggleFileBrowser();
         Assert.IsFalse(vm.FileBrowser.IsVisible);
+    }
+
+    [TestMethod]
+    [TestCategory("UI")]
+    public void SettingsSaved_ReappliesScrollbackToOpenTabs()
+    {
+        var settingsService = Substitute.For<ISettingsService>();
+        var emulator = Substitute.For<ITerminalEmulator>();
+        var vm = new MainWindowViewModel(settingsService: settingsService);
+
+        var tab = new TerminalTabViewModel(emulator);
+        vm.TabBar.Tabs.Add(tab);
+
+        // Saving settings must re-apply live values to already-open terminals (#3/#15/#21).
+        settingsService.SettingsSaved += Raise.Event<Action<AppSettings>>(
+            new AppSettings { ScrollbackLines = 88_000 });
+
+        // The re-apply is marshalled through RxApp.MainThreadScheduler, which other test
+        // classes may have initialized to an asynchronous scheduler — allow it to land.
+        SpinWait.SpinUntil(() => emulator.ScrollbackLines == 88_000, TimeSpan.FromSeconds(5));
+        Assert.AreEqual(88_000, emulator.ScrollbackLines);
+
+        tab.Dispose();
     }
 
     [TestMethod]

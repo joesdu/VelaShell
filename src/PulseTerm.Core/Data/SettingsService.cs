@@ -27,9 +27,12 @@ public class SettingsService : ISettingsService
         return await _dataStore.LoadAsync<AppSettings>(_settingsPath).ConfigureAwait(false) ?? new AppSettings();
     }
 
+    public event Action<AppSettings>? SettingsSaved;
+
     public async Task SaveSettingsAsync(AppSettings settings)
     {
         await _dataStore.SaveAsync(_settingsPath, settings).ConfigureAwait(false);
+        SettingsSaved?.Invoke(settings);
     }
 
     public async Task<AppState> GetStateAsync()

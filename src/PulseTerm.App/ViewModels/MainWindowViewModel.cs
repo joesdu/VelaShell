@@ -94,6 +94,11 @@ public class MainWindowViewModel : ReactiveObject
             .Switch()
             .Subscribe(_ => UpdateStatusBarForActiveTab());
 
+        // Saved settings re-apply to every open terminal immediately (#3/#15/#21) — scrollback,
+        // font, size and encoding change live; TERM stays per-session (negotiated at connect).
+        if (_settingsService is not null)
+            _settingsService.SettingsSaved += OnSettingsSaved;
+
         OpenSettingsCommand = ReactiveCommand.Create(() => { });
 
         CommandPalette = new CommandPaletteViewModel(BuildPaletteItems);
@@ -501,11 +506,21 @@ public class MainWindowViewModel : ReactiveObject
 
     private static void ConfigureTerminal(ITerminalEmulator emulator, AppSettings settings, TerminalType terminalType)
     {
+        if (emulator is PulseTerminalControl control)
+            control.TerminalType = terminalType;
+
+        ApplyLiveTerminalSettings(emulator, settings);
+    }
+
+    /// <summary>The settings that are safe to change on a live session: scrollback depth, font,
+    /// font size and host-output encoding. Applied at tab creation and re-applied to every open
+    /// tab whenever settings are saved (#3/#15/#21).</summary>
+    private static void ApplyLiveTerminalSettings(ITerminalEmulator emulator, AppSettings settings)
+    {
         emulator.ScrollbackLines = settings.ScrollbackLines;
 
         if (emulator is PulseTerminalControl control)
         {
-            control.TerminalType = terminalType;
             control.SetEncoding(ResolveEncoding(settings.TerminalEncoding));
             if (!string.IsNullOrWhiteSpace(settings.TerminalFont))
                 control.FontFamily = new Avalonia.Media.FontFamily(
@@ -513,6 +528,18 @@ public class MainWindowViewModel : ReactiveObject
             if (settings.TerminalFontSize > 0)
                 control.FontSize = settings.TerminalFontSize;
         }
+    }
+
+    private void OnSettingsSaved(AppSettings settings)
+    {
+        // SaveSettingsAsync may complete on a thread-pool continuation; font/size touch layout,
+        // so marshal onto the UI thread (the main scheduler is the Avalonia dispatcher).
+        RxSchedulers.MainThreadScheduler.Schedule(Unit.Default, (_, _) =>
+        {
+            foreach (var tab in TabBar.Tabs.OfType<TerminalTabViewModel>())
+                ApplyLiveTerminalSettings(tab.TerminalEmulator, settings);
+            return System.Reactive.Disposables.Disposable.Empty;
+        });
     }
 
     private static Encoding ResolveEncoding(string? name)

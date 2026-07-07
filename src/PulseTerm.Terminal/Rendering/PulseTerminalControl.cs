@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.Input.TextInput;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
@@ -115,6 +116,8 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
         _emulator.Updated += OnEmulatorUpdated;
         _emulator.Response += bytes => UserInput?.Invoke(bytes);
+
+        AddHandler(TextInputMethodClientRequestedEvent, OnTextInputMethodClientRequested);
     }
 
     // ---- ITerminalEmulator --------------------------------------------------
@@ -207,6 +210,49 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         _lastScrollbackCount = scrollback;
         InvalidateVisual();
         ScrollChanged?.Invoke();
+        _imeClient?.NotifyCursorMoved();
+    }
+
+    // ---- IME ------------------------------------------------------------------
+
+    private TerminalImeClient? _imeClient;
+
+    /// <summary>Hands the OS input method a client anchored at the terminal cursor, so the IME
+    /// candidate window (Chinese/Japanese/Korean composition) opens next to where the text will
+    /// land instead of at the window corner (#14b).</summary>
+    private void OnTextInputMethodClientRequested(object? sender, TextInputMethodClientRequestedEventArgs e)
+    {
+        _imeClient ??= new TerminalImeClient(this);
+        e.Client = _imeClient;
+    }
+
+    /// <summary>The cursor cell's rectangle in control coordinates (same math as RenderCursor).</summary>
+    internal Rect GetImeCursorRect()
+    {
+        var screen = _emulator.Screen;
+        int topAbsolute = screen.TotalRows - screen.Rows - _scrollOffset;
+        int cursorAbsolute = screen.TotalRows - screen.Rows + screen.CursorY;
+        int screenRow = cursorAbsolute - topAbsolute;
+        return new Rect(screen.CursorX * _cellWidth, screenRow * _cellHeight, _cellWidth, _cellHeight);
+    }
+
+    /// <summary>Minimal IME client: no preedit-in-buffer, no surrounding text — the terminal is
+    /// not an editable document; committed text arrives through OnTextInput as host bytes. Only
+    /// the cursor rectangle matters, to position the candidate window.</summary>
+    private sealed class TerminalImeClient : TextInputMethodClient
+    {
+        private readonly PulseTerminalControl _owner;
+
+        public TerminalImeClient(PulseTerminalControl owner) => _owner = owner;
+
+        public override Visual TextViewVisual => _owner;
+        public override bool SupportsPreedit => false;
+        public override bool SupportsSurroundingText => false;
+        public override string SurroundingText => string.Empty;
+        public override Rect CursorRectangle => _owner.GetImeCursorRect();
+        public override TextSelection Selection { get => default; set { } }
+
+        public void NotifyCursorMoved() => RaiseCursorRectangleChanged();
     }
 
     // ---- Palette ------------------------------------------------------------
