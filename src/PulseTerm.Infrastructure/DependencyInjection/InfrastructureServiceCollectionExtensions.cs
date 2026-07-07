@@ -21,12 +21,37 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddSingleton<PulseTermStoragePaths>();
         services.AddSingleton<JsonDataStore>();
+
+        // 所有持久化统一走嵌入式 SonnetDB(文档集合 + 时序 measurement)。
+        services.AddSingleton<SonnetDbEngine>(serviceProvider =>
+            new SonnetDbEngine(serviceProvider.GetRequiredService<PulseTermStoragePaths>()));
+        services.AddSingleton<ISecretProtector>(serviceProvider =>
+            new AesSecretProtector(serviceProvider.GetRequiredService<PulseTermStoragePaths>()));
         services.AddSingleton<ISessionRepository>(serviceProvider =>
         {
             var paths = serviceProvider.GetRequiredService<PulseTermStoragePaths>();
-            var dataStore = serviceProvider.GetRequiredService<JsonDataStore>();
-            return new SessionRepository(dataStore, paths.SessionsFile);
+            return new SonnetDbSessionRepository(
+                serviceProvider.GetRequiredService<SonnetDbEngine>(),
+                serviceProvider.GetRequiredService<ISecretProtector>(),
+                paths.SessionsFile);
         });
+        services.AddSingleton<ISettingsService>(serviceProvider =>
+        {
+            var paths = serviceProvider.GetRequiredService<PulseTermStoragePaths>();
+            return new SonnetDbSettingsService(
+                serviceProvider.GetRequiredService<SonnetDbEngine>(),
+                [paths.RootDirectory, paths.LegacyDotDirectory]);
+        });
+        services.AddSingleton<PulseTerm.Core.Ssh.IHostKeyService>(serviceProvider =>
+        {
+            var paths = serviceProvider.GetRequiredService<PulseTermStoragePaths>();
+            return new SonnetDbHostKeyService(
+                serviceProvider.GetRequiredService<SonnetDbEngine>(),
+                Path.Combine(paths.LegacyDotDirectory, "known_hosts.json"));
+        });
+        services.AddSingleton<IRecentConnectionService, SonnetDbRecentConnectionService>();
+        services.AddSingleton<IAuditLogService, SonnetDbAuditLogService>();
+        services.AddSingleton<IAppDataStore, SonnetDbAppDataStore>();
 
         services.AddSingleton<ISshConnectionService>(serviceProvider =>
         {

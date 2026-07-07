@@ -3,15 +3,17 @@ using NSubstitute;
 using PulseTerm.App.ViewModels;
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
+using PulseTerm.Infrastructure.Persistence;
 
 namespace PulseTerm.App.Tests.ViewModels;
 
 [TestClass]
 public class QuickCommandsViewModelTests : IDisposable
 {
-    private readonly JsonDataStore _dataStore;
+    private readonly SonnetDbEngine _engine;
+    private readonly IAppDataStore _dataStore;
     private readonly string _testDirectory;
-    private readonly string _testDataPath;
+    private readonly string _legacyDataPath;
     private readonly QuickCommandsViewModel _vm;
     private string? _executedCommand;
 
@@ -19,18 +21,20 @@ public class QuickCommandsViewModelTests : IDisposable
     {
         _testDirectory = Path.Combine(Path.GetTempPath(), $"pulseterm_qctest_{Guid.NewGuid()}");
         Directory.CreateDirectory(_testDirectory);
-        _testDataPath = Path.Combine(_testDirectory, "quick-commands.json");
+        _legacyDataPath = Path.Combine(_testDirectory, "quick-commands.json");
 
-        _dataStore = new JsonDataStore();
+        _engine = new SonnetDbEngine(Path.Combine(_testDirectory, "sonnetdb"));
+        _dataStore = new SonnetDbAppDataStore(_engine);
         _executedCommand = null;
         _vm = new QuickCommandsViewModel(
             _dataStore,
             cmd => _executedCommand = cmd,
-            _testDataPath);
+            _legacyDataPath);
     }
 
     public void Dispose()
     {
+        _engine.Dispose();
         if (Directory.Exists(_testDirectory))
             Directory.Delete(_testDirectory, true);
     }
@@ -195,7 +199,7 @@ public class QuickCommandsViewModelTests : IDisposable
         var vm2 = new QuickCommandsViewModel(
             _dataStore,
             null,
-            _testDataPath);
+            _legacyDataPath);
         await vm2.LoadCustomCommandsAsync();
 
         Assert.AreEqual(11, vm2.AllCommands.Count());

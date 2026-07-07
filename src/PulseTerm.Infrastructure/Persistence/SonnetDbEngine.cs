@@ -1,0 +1,213 @@
+using System.Collections.Concurrent;
+using SonnetDB.Catalog;
+using SonnetDB.Documents;
+using SonnetDB.Engine;
+using SonnetDB.Model;
+using SonnetDB.Sql.Execution;
+using SonnetDB.Storage.Format;
+
+namespace PulseTerm.Infrastructure.Persistence;
+
+/// <summary>
+/// 嵌入式 SonnetDB 引擎的单例封装:负责打开数据库、初始化文档集合与时序 measurement,
+/// 并对上层仓储提供带锁的文档/时序访问原语。
+///
+/// 数据模型:
+///  - 文档集合(业务数据,JSON):session_groups、session_profiles($.groupId 索引)、
+///    app_config(settings/state 单文档)、known_hosts、ui_config、quick_commands。
+///  - 时序 measurement(时间相关数据):conn_history(最近连接)、audit_log(安全审计)。
+/// </summary>
+public sealed class SonnetDbEngine : IDisposable
+{
+    public const string GroupsCollection = "session_groups";
+    public const string ProfilesCollection = "session_profiles";
+    public const string ConfigCollection = "app_config";
+    public const string KnownHostsCollection = "known_hosts";
+    public const string UiConfigCollection = "ui_config";
+    public const string QuickCommandsCollection = "quick_commands";
+
+    public const string ConnHistoryMeasurement = "conn_history";
+    public const string AuditLogMeasurement = "audit_log";
+
+    private readonly Tsdb _db;
+    private readonly ConcurrentDictionary<string, DocumentCollectionStore> _stores = new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private bool _disposed;
+
+    public SonnetDbEngine(PulseTermStoragePaths paths)
+        : this((paths ?? throw new ArgumentNullException(nameof(paths))).SonnetDbDirectory)
+    {
+    }
+
+    public SonnetDbEngine(string rootDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(rootDirectory))
+        {
+            throw new ArgumentException("SonnetDB root directory is required.", nameof(rootDirectory));
+        }
+
+        Directory.CreateDirectory(rootDirectory);
+        _db = Tsdb.Open(new TsdbOptions { RootDirectory = rootDirectory });
+        EnsureSchema();
+    }
+
+    /// <summary>在引擎锁内执行文档集合操作。</summary>
+    public async Task<T> WithCollectionAsync<T>(string collection, Func<DocumentCollectionStore, T> action, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            return action(OpenStore(collection));
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>写入一条时序数据点。</summary>
+    public async Task WritePointAsync(
+        string measurement,
+        DateTimeOffset timestamp,
+        IReadOnlyDictionary<string, string> tags,
+        IReadOnlyDictionary<string, FieldValue> fields,
+        CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            _db.Write(Point.Create(measurement, timestamp.ToUnixTimeMilliseconds(), tags, fields));
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>执行时序 SQL 查询(SELECT)。</summary>
+    public async Task<SelectExecutionResult> QueryAsync(string sql, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            return SqlExecutor.Execute(_db, sql) switch
+            {
+                SelectExecutionResult select => select,
+                var other => throw new InvalidOperationException(
+                    $"Expected a SELECT result but got {other?.GetType().Name ?? "null"} for: {sql}"),
+            };
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>删除并重建一个 measurement(用于清空历史)。</summary>
+    public async Task ResetMeasurementAsync(string measurement, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            _db.DropMeasurement(measurement);
+            CreateMeasurementIfMissing(measurement);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public void Dispose()
+    {
+        _gate.Wait();
+        try
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            foreach (var store in _stores.Values)
+            {
+                store.Dispose();
+            }
+
+            _stores.Clear();
+            _db.Dispose();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private DocumentCollectionStore OpenStore(string collection)
+        => _stores.GetOrAdd(collection, name =>
+        {
+            CreateCollectionIfMissing(name);
+            return _db.Documents.Open(name);
+        });
+
+    private void EnsureSchema()
+    {
+        CreateCollectionIfMissing(GroupsCollection);
+        CreateCollectionIfMissing(ProfilesCollection, new DocumentPathIndexDefinition("idx_group", "$.groupId"));
+        CreateCollectionIfMissing(ConfigCollection);
+        CreateCollectionIfMissing(KnownHostsCollection);
+        CreateCollectionIfMissing(UiConfigCollection);
+        CreateCollectionIfMissing(QuickCommandsCollection);
+
+        CreateMeasurementIfMissing(ConnHistoryMeasurement);
+        CreateMeasurementIfMissing(AuditLogMeasurement);
+    }
+
+    private void CreateCollectionIfMissing(string name, params DocumentPathIndexDefinition[] indexes)
+    {
+        if (_db.Documents.Catalog.TryGet(name) is null)
+        {
+            _db.Documents.Create(DocumentCollectionSchema.Create(name, indexes.Length == 0 ? null : indexes));
+        }
+    }
+
+    private void CreateMeasurementIfMissing(string name)
+    {
+        if (_db.Measurements.Contains(name))
+        {
+            return;
+        }
+
+        var schema = name switch
+        {
+            ConnHistoryMeasurement => MeasurementSchema.Create(name,
+            [
+                new MeasurementColumn("profile_id", MeasurementColumnRole.Tag, FieldType.String),
+                new MeasurementColumn("host", MeasurementColumnRole.Tag, FieldType.String),
+                new MeasurementColumn("username", MeasurementColumnRole.Tag, FieldType.String),
+                new MeasurementColumn("name", MeasurementColumnRole.Field, FieldType.String),
+                new MeasurementColumn("group_name", MeasurementColumnRole.Field, FieldType.String),
+                new MeasurementColumn("port", MeasurementColumnRole.Field, FieldType.Int64),
+                new MeasurementColumn("success", MeasurementColumnRole.Field, FieldType.Boolean),
+                new MeasurementColumn("duration_ms", MeasurementColumnRole.Field, FieldType.Int64),
+            ]),
+            AuditLogMeasurement => MeasurementSchema.Create(name,
+            [
+                new MeasurementColumn("category", MeasurementColumnRole.Tag, FieldType.String),
+                new MeasurementColumn("action", MeasurementColumnRole.Tag, FieldType.String),
+                new MeasurementColumn("profile_id", MeasurementColumnRole.Tag, FieldType.String),
+                new MeasurementColumn("detail", MeasurementColumnRole.Field, FieldType.String),
+            ]),
+            _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown measurement."),
+        };
+
+        _db.CreateMeasurement(schema);
+    }
+
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+}

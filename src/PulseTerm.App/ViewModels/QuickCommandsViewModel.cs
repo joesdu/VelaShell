@@ -13,8 +13,11 @@ namespace PulseTerm.App.ViewModels;
 
 public class QuickCommandsViewModel : ReactiveObject
 {
-    private readonly JsonDataStore _dataStore;
-    private readonly string _dataPath;
+    private const string Collection = "quick_commands";
+    private const string DocumentId = "commands";
+
+    private readonly IAppDataStore _dataStore;
+    private readonly string? _legacyDataPath;
     private readonly Action<string>? _executeCallback;
 
     private string _searchQuery = string.Empty;
@@ -26,22 +29,15 @@ public class QuickCommandsViewModel : ReactiveObject
     private QuickCommandViewModel? _editingCommand;
 
     public QuickCommandsViewModel(
-        JsonDataStore dataStore,
+        IAppDataStore dataStore,
         Action<string>? executeCallback = null,
-        string? dataPath = null)
+        string? legacyDataPath = null)
     {
         _dataStore = dataStore ?? throw new ArgumentNullException(nameof(dataStore));
         _executeCallback = executeCallback;
-
-        if (string.IsNullOrEmpty(dataPath))
-        {
-            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            _dataPath = System.IO.Path.Combine(userProfile, ".pulseterm", "quick-commands.json");
-        }
-        else
-        {
-            _dataPath = dataPath;
-        }
+        _legacyDataPath = legacyDataPath ?? System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".pulseterm", "quick-commands.json");
 
         AllCommands = new ObservableCollection<QuickCommandViewModel>();
         FilteredCommands = new ObservableCollection<QuickCommandViewModel>();
@@ -147,7 +143,8 @@ public class QuickCommandsViewModel : ReactiveObject
 
     public async Task LoadCustomCommandsAsync()
     {
-        var data = await _dataStore.LoadAsync<QuickCommandData>(_dataPath);
+        var data = await _dataStore.GetAsync<QuickCommandData>(Collection, DocumentId)
+            ?? await TryImportLegacyAsync();
         if (data?.Commands != null)
         {
             foreach (var cmd in data.Commands)
@@ -161,6 +158,34 @@ public class QuickCommandsViewModel : ReactiveObject
         ApplyFilter();
     }
 
+    /// <summary>首次运行时从旧版 quick-commands.json 一次性导入到 SonnetDB。</summary>
+    private async Task<QuickCommandData?> TryImportLegacyAsync()
+    {
+        if (string.IsNullOrEmpty(_legacyDataPath) || !System.IO.File.Exists(_legacyDataPath))
+            return null;
+
+        try
+        {
+            var json = await System.IO.File.ReadAllTextAsync(_legacyDataPath);
+            var data = System.Text.Json.JsonSerializer.Deserialize<QuickCommandData>(json,
+                new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+                    PropertyNameCaseInsensitive = true,
+                });
+            if (data is not null)
+            {
+                await _dataStore.UpsertAsync(Collection, DocumentId, data);
+            }
+
+            return data;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or System.IO.IOException)
+        {
+            return null;
+        }
+    }
+
     private async Task SaveCustomCommandsAsync()
     {
         var customCommands = AllCommands
@@ -169,7 +194,7 @@ public class QuickCommandsViewModel : ReactiveObject
             .ToList();
 
         var data = new QuickCommandData { Commands = customCommands };
-        await _dataStore.SaveAsync(_dataPath, data);
+        await _dataStore.UpsertAsync(Collection, DocumentId, data);
     }
 
     private void ExecuteCommand(QuickCommandViewModel command)

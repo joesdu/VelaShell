@@ -32,11 +32,7 @@ public partial class App : Application
             .AddPulseTermInfrastructure()
             .AddSingleton<IThemeService>(_ => new ThemeService("system"))
             .AddSingleton<PulseTerm.Core.Localization.ILocalizationService, PulseTerm.Core.Localization.LocalizationService>()
-            .AddSingleton<PulseTerm.Core.Ssh.IHostKeyService>(sp =>
-                new PulseTerm.Infrastructure.Ssh.HostKeyService(sp.GetRequiredService<JsonDataStore>()))
             .AddSingleton<Services.IKeyboardShortcutService, Services.KeyboardShortcutService>()
-            .AddSingleton<JsonDataStore>()
-            .AddSingleton<ISettingsService, SettingsService>()
             .AddSingleton<SettingsViewModel>()
             .AddSingleton<MainWindowViewModel>()
             .BuildServiceProvider();
@@ -66,6 +62,9 @@ public partial class App : Application
             {
                 DataContext = viewModel
             };
+
+            // 退出时释放容器,确保 SonnetDB 引擎正常关闭(WAL/段刷盘)。
+            desktop.Exit += (_, _) => _serviceProvider?.Dispose();
         }
 
         base.OnFrameworkInitializationCompleted();

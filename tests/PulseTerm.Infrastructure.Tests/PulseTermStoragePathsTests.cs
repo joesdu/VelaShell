@@ -12,6 +12,8 @@ public sealed class PulseTermStoragePathsTests
 
         StringAssert.Contains(paths.RootDirectory, "PulseTerm", StringComparison.OrdinalIgnoreCase);
         StringAssert.EndsWith(paths.SettingsFile, "settings.json", StringComparison.OrdinalIgnoreCase);
-        StringAssert.EndsWith(paths.LiteDbFile, "pulseterm.db", StringComparison.OrdinalIgnoreCase);
+        StringAssert.EndsWith(paths.SonnetDbDirectory, "sonnetdb", StringComparison.OrdinalIgnoreCase);
+        StringAssert.EndsWith(paths.SecretKeyFile, "secret.key", StringComparison.OrdinalIgnoreCase);
+        StringAssert.EndsWith(paths.LegacyDotDirectory, ".pulseterm", StringComparison.OrdinalIgnoreCase);
     }
 }

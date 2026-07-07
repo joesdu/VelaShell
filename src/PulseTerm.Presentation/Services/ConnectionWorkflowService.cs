@@ -8,11 +8,16 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
 {
     private readonly ISessionRepository _sessionRepository;
     private readonly ISshConnectionService _sshConnectionService;
+    private readonly IRecentConnectionService? _recentConnections;
 
-    public ConnectionWorkflowService(ISessionRepository sessionRepository, ISshConnectionService sshConnectionService)
+    public ConnectionWorkflowService(
+        ISessionRepository sessionRepository,
+        ISshConnectionService sshConnectionService,
+        IRecentConnectionService? recentConnections = null)
     {
         _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
         _sshConnectionService = sshConnectionService ?? throw new ArgumentNullException(nameof(sshConnectionService));
+        _recentConnections = recentConnections;
     }
 
     public async Task<IReadOnlyList<SessionProfile>> GetSavedProfilesAsync(CancellationToken cancellationToken = default)
@@ -59,14 +64,63 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
         ArgumentNullException.ThrowIfNull(profile);
 
         ValidateProfile(profile);
-        var session = await _sshConnectionService
-            .ConnectAsync(BuildConnectionInfo(profile), cancellationToken)
-            .ConfigureAwait(false);
+        var startedAt = DateTimeOffset.UtcNow;
+        SshSession session;
+        try
+        {
+            session = await _sshConnectionService
+                .ConnectAsync(BuildConnectionInfo(profile), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            await RecordHistoryAsync(profile, startedAt, success: false).ConfigureAwait(false);
+            throw;
+        }
 
         profile.LastConnectedAt = DateTime.UtcNow;
         await _sessionRepository.SaveSessionAsync(profile).ConfigureAwait(false);
+        await RecordHistoryAsync(profile, startedAt, success: true).ConfigureAwait(false);
 
         return session;
+    }
+
+    /// <summary>连接结果写入连接历史(SonnetDB 时序),失败不影响主流程。</summary>
+    private async Task RecordHistoryAsync(SessionProfile profile, DateTimeOffset startedAt, bool success)
+    {
+        if (_recentConnections is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var groupName = string.Empty;
+            if (profile.GroupId is { } groupId)
+            {
+                var groups = await _sessionRepository.GetAllGroupsAsync().ConfigureAwait(false);
+                groupName = groups.FirstOrDefault(g => g.Id == groupId)?.Name ?? string.Empty;
+            }
+
+            await _recentConnections.RecordAsync(new RecentConnectionEntry
+            {
+                ProfileId = profile.Id,
+                Name = string.IsNullOrWhiteSpace(profile.Name)
+                    ? $"{profile.Username}@{profile.Host}"
+                    : profile.Name,
+                GroupName = groupName,
+                Host = profile.Host,
+                Port = profile.Port,
+                Username = profile.Username,
+                ConnectedAt = startedAt,
+                Success = success,
+                DurationMs = (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds,
+            }).ConfigureAwait(false);
+        }
+        catch
+        {
+            // 历史记录失败不阻塞连接。
+        }
     }
 
     public Task DisconnectAsync(Guid sessionId, CancellationToken cancellationToken = default)
