@@ -78,11 +78,23 @@
                          Foreground="{DynamicResource PulseTextTertiary}" VerticalAlignment="Center" />
           <TextBlock Text="{Binding MemUsage}" Foreground="{DynamicResource PulseTextSecondary}" />
         </StackPanel>
+        <!-- Android-style link speed: one arrow for the dominant direction, accent-colored
+             while traffic is actually flowing, plus that direction's rate. -->
         <StackPanel Orientation="Horizontal" Spacing="4"
-                    IsVisible="{Binding NetUsage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-          <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.arrow-up-down}"
-                         Foreground="{DynamicResource PulseTextTertiary}" VerticalAlignment="Center" />
-          <TextBlock Text="{Binding NetUsage}" Foreground="{DynamicResource PulseTextSecondary}" />
+                    IsVisible="{Binding NetSpeed, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <TextBlock Text="{Binding NetArrow}"
+                     FontWeight="SemiBold"
+                     Classes.net-active="{Binding IsNetActive}">
+            <TextBlock.Styles>
+              <Style Selector="TextBlock">
+                <Setter Property="Foreground" Value="{DynamicResource PulseTextTertiary}" />
+              </Style>
+              <Style Selector="TextBlock.net-active">
+                <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+              </Style>
+            </TextBlock.Styles>
+          </TextBlock>
+          <TextBlock Text="{Binding NetSpeed}" Foreground="{DynamicResource PulseTextSecondary}" />
         </StackPanel>
         <Border Classes="divider" />
         <TextBlock Text="{Binding Encoding}"

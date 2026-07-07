@@ -43,9 +43,10 @@ public sealed class StatusBarViewModel : ReactiveObject, IDisposable
         _windowSize = "80×24";
         _encoding = "UTF-8";
         _uptime = string.Empty;
-        _cpuUsage = "CPU: 0%";
-        _memUsage = "MEM: 0%";
-        _netUsage = "NET: 0 B/s";
+        // Live metrics segments stay hidden until the first real sample arrives.
+        _cpuUsage = string.Empty;
+        _memUsage = string.Empty;
+        _netUsage = string.Empty;
     }
 
     public string StatusText
@@ -122,6 +123,77 @@ public sealed class StatusBarViewModel : ReactiveObject, IDisposable
     {
         get => _netUsage;
         set => this.RaiseAndSetIfChanged(ref _netUsage, value);
+    }
+
+    private string _netArrow = "↓";
+    private string _netSpeed = string.Empty;
+    private bool _isNetActive;
+
+    /// <summary>"↑" while upload dominates, "↓" while download dominates (Android-style:
+    /// one arrow + the dominant direction's rate).</summary>
+    public string NetArrow
+    {
+        get => _netArrow;
+        private set => this.RaiseAndSetIfChanged(ref _netArrow, value);
+    }
+
+    /// <summary>The dominant direction's rate, e.g. "4.2 MB/s". Empty hides the segment.</summary>
+    public string NetSpeed
+    {
+        get => _netSpeed;
+        private set => this.RaiseAndSetIfChanged(ref _netSpeed, value);
+    }
+
+    /// <summary>True while real traffic is flowing — the view paints the arrow in the accent
+    /// color, falling back to muted when the link is idle.</summary>
+    public bool IsNetActive
+    {
+        get => _isNetActive;
+        private set => this.RaiseAndSetIfChanged(ref _isNetActive, value);
+    }
+
+    /// <summary>Feeds one network sample (bytes/second per direction). Shows the dominant
+    /// direction's arrow and rate; below the activity threshold the arrow stays muted.</summary>
+    public void UpdateNetwork(double rxBytesPerSec, double txBytesPerSec, bool hasRates)
+    {
+        if (!hasRates)
+        {
+            NetArrow = "↓";
+            NetSpeed = "0 B/s";
+            IsNetActive = false;
+            return;
+        }
+
+        // Keepalives/echo traffic hovers under this; don't light the arrow for noise.
+        const double activeThreshold = 512;
+
+        bool uploadDominates = txBytesPerSec > rxBytesPerSec;
+        double rate = uploadDominates ? txBytesPerSec : rxBytesPerSec;
+
+        NetArrow = uploadDominates ? "↑" : "↓";
+        NetSpeed = FormatRate(rate);
+        IsNetActive = rate >= activeThreshold;
+    }
+
+    /// <summary>Clears the live metrics segments (no connected session).</summary>
+    public void ClearSessionMetrics()
+    {
+        CpuUsage = string.Empty;
+        MemUsage = string.Empty;
+        NetSpeed = string.Empty;
+        IsNetActive = false;
+    }
+
+    public static string FormatRate(double bytesPerSec)
+    {
+        const double kb = 1024, mb = kb * 1024, gb = mb * 1024;
+        return bytesPerSec switch
+        {
+            >= gb => $"{bytesPerSec / gb:F1} GB/s",
+            >= mb => $"{bytesPerSec / mb:F1} MB/s",
+            >= kb => $"{bytesPerSec / kb:F1} KB/s",
+            _ => $"{bytesPerSec:F0} B/s",
+        };
     }
 
     public void StartUptimeTimer()

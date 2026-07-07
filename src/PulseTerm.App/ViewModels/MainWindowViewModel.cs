@@ -99,6 +99,8 @@ public class MainWindowViewModel : ReactiveObject
         if (_settingsService is not null)
             _settingsService.SettingsSaved += OnSettingsSaved;
 
+        StartStatusMetricsPolling();
+
         OpenSettingsCommand = ReactiveCommand.Create(() => { });
 
         CommandPalette = new CommandPaletteViewModel(BuildPaletteItems);
@@ -254,6 +256,68 @@ public class MainWindowViewModel : ReactiveObject
     /// <summary>The self-drawn terminal control of the active tab, when it is one.</summary>
     private PulseTerminalControl? ActiveTerminalControl =>
         ActiveTerminalTab?.TerminalEmulator.Control as PulseTerminalControl;
+
+    // ---- Status-bar live metrics (spec §7: cpu / memory / net for the active session) ----
+
+    private Avalonia.Threading.DispatcherTimer? _statusMetricsTimer;
+    private bool _statusMetricsPolling;
+
+    /// <summary>Polls the active session's metrics once a second into the status bar. The
+    /// probe runs on a dedicated SSH exec channel, so it never touches the terminal stream;
+    /// consecutive samples give the collector real instantaneous CPU% and network rates.</summary>
+    private void StartStatusMetricsPolling()
+    {
+        // Headless unit tests construct this VM without an Avalonia application; skip there.
+        if (_metricsService is null || Avalonia.Application.Current is null)
+            return;
+
+        _statusMetricsTimer = new Avalonia.Threading.DispatcherTimer(
+            TimeSpan.FromSeconds(1),
+            Avalonia.Threading.DispatcherPriority.Background,
+            (_, _) => _ = PollStatusMetricsAsync());
+        _statusMetricsTimer.Start();
+    }
+
+    private async Task PollStatusMetricsAsync()
+    {
+        if (_statusMetricsPolling || _metricsService is null)
+            return;
+
+        var tab = ActiveTerminalTab;
+        if (tab is null || tab.SessionId == Guid.Empty || tab.ConnectionStatus != SessionStatus.Connected)
+        {
+            StatusBar.ClearSessionMetrics();
+            return;
+        }
+
+        _statusMetricsPolling = true;
+        try
+        {
+            var metrics = await _metricsService.GetMetricsAsync(tab.SessionId);
+
+            // The user may have switched tabs while the probe ran; don't show stale data.
+            if (!ReferenceEquals(ActiveTerminalTab, tab))
+                return;
+
+            if (metrics is null)
+            {
+                StatusBar.ClearSessionMetrics();
+                return;
+            }
+
+            StatusBar.CpuUsage = $"{metrics.CpuPercent:F0}%";
+            StatusBar.MemUsage = $"{metrics.MemUsedBytes / 1073741824.0:F1}G";
+            StatusBar.UpdateNetwork(metrics.NetRxBytesPerSec, metrics.NetTxBytesPerSec, metrics.HasNetRates);
+        }
+        catch
+        {
+            // Never let a failed probe surface in the UI loop; the next tick retries.
+        }
+        finally
+        {
+            _statusMetricsPolling = false;
+        }
+    }
 
     /// <summary>The Ctrl+P / Ctrl+K command palette overlay.</summary>
     public CommandPaletteViewModel CommandPalette { get; }

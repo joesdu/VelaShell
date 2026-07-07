@@ -56,4 +56,38 @@ public class SessionMetricsTests
         Assert.IsNull(SessionMetrics.Parse(""));
         Assert.IsNull(SessionMetrics.Parse("command not found"));
     }
+
+    [TestMethod]
+    public void Parse_CpuStatLine_ExposesJiffyCounters()
+    {
+        // cpu user nice system idle iowait irq softirq
+        var m = SessionMetrics.Parse(SampleOutput + "__S__\ncpu  100 0 50 800 40 5 5\n");
+
+        Assert.IsNotNull(m);
+        Assert.IsTrue(m.HasCpuCounters);
+        Assert.AreEqual(1000, m.CpuTotalJiffies);
+        Assert.AreEqual(840, m.CpuIdleJiffies); // idle + iowait
+    }
+
+    [TestMethod]
+    public void Parse_NetCounters_ExposeCumulativeBytes()
+    {
+        var m = SessionMetrics.Parse(SampleOutput + "__N__\n123456789 987654321\n");
+
+        Assert.IsNotNull(m);
+        Assert.IsTrue(m.HasNetCounters);
+        Assert.AreEqual(123456789L, m.NetRxTotalBytes);
+        Assert.AreEqual(987654321L, m.NetTxTotalBytes);
+        Assert.IsFalse(m.HasNetRates); // rates only exist after a second sample
+    }
+
+    [TestMethod]
+    public void Parse_MissingCounterSections_LeavesCountersUnavailable()
+    {
+        var m = SessionMetrics.Parse(SampleOutput);
+
+        Assert.IsNotNull(m);
+        Assert.IsFalse(m.HasCpuCounters);
+        Assert.IsFalse(m.HasNetCounters);
+    }
 }

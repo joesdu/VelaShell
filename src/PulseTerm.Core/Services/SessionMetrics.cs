@@ -4,15 +4,32 @@ namespace PulseTerm.Core.Services;
 public sealed class SessionMetrics
 {
     public int CpuCores { get; init; }
-    /// <summary>0-100. Derived from 1-minute load average over core count (portable one-shot
-    /// approximation; a two-sample /proc/stat delta would need a stateful collector).</summary>
-    public double CpuPercent { get; init; }
+
+    /// <summary>0-100. Parsed as the 1-minute load-average approximation; when the collector
+    /// holds a previous /proc/stat sample it overwrites this with the real instantaneous
+    /// busy percentage from the two-sample jiffies delta (much fresher — loadavg lags by
+    /// design, which read as "刷新慢" in the resource panel).</summary>
+    public double CpuPercent { get; set; }
     public long MemTotalBytes { get; init; }
     public long MemUsedBytes { get; init; }
     public long DiskTotalBytes { get; init; }
     public long DiskUsedBytes { get; init; }
     public string OsVersion { get; init; } = "";
     public string Kernel { get; init; } = "";
+
+    // Raw cumulative counters used by the stateful collector to compute deltas.
+    public bool HasCpuCounters { get; init; }
+    public long CpuTotalJiffies { get; init; }
+    public long CpuIdleJiffies { get; init; }
+    public bool HasNetCounters { get; init; }
+    public long NetRxTotalBytes { get; init; }
+    public long NetTxTotalBytes { get; init; }
+
+    /// <summary>Instantaneous network rates (bytes/s), filled by the collector from the
+    /// previous sample; false until a second sample exists.</summary>
+    public bool HasNetRates { get; set; }
+    public double NetRxBytesPerSec { get; set; }
+    public double NetTxBytesPerSec { get; set; }
 
     public double MemPercent => MemTotalBytes > 0 ? MemUsedBytes * 100.0 / MemTotalBytes : 0;
     public double DiskPercent => DiskTotalBytes > 0 ? DiskUsedBytes * 100.0 / DiskTotalBytes : 0;
@@ -61,7 +78,39 @@ public sealed class SessionMetrics
         var os = Section("__O__");
         var kernel = Section("__K__");
 
-        if (cores == 1 && memTotal == 0 && diskTotal == 0 && os.Length == 0 && kernel.Length == 0)
+        // __S__: the aggregate "cpu  user nice system idle iowait irq ..." line of /proc/stat.
+        long cpuTotal = 0, cpuIdle = 0;
+        bool hasCpuCounters = false;
+        var statParts = Section("__S__").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (statParts.Length >= 5 && statParts[0] == "cpu")
+        {
+            for (int i = 1; i < statParts.Length; i++)
+            {
+                if (long.TryParse(statParts[i], out var v))
+                    cpuTotal += v;
+            }
+
+            long.TryParse(statParts[4], out var idle);              // idle
+            long iowait = 0;
+            if (statParts.Length > 5)
+                long.TryParse(statParts[5], out iowait);            // iowait counts as idle
+            cpuIdle = idle + iowait;
+            hasCpuCounters = cpuTotal > 0;
+        }
+
+        // __N__: cumulative rx/tx bytes summed over all non-loopback interfaces.
+        long netRx = 0, netTx = 0;
+        bool hasNetCounters = false;
+        var netParts = Section("__N__").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (netParts.Length >= 2 &&
+            long.TryParse(netParts[0], out netRx) &&
+            long.TryParse(netParts[1], out netTx))
+        {
+            hasNetCounters = true;
+        }
+
+        if (cores == 1 && memTotal == 0 && diskTotal == 0 && os.Length == 0 && kernel.Length == 0
+            && !hasCpuCounters && !hasNetCounters)
             return null;
 
         return new SessionMetrics
@@ -74,16 +123,26 @@ public sealed class SessionMetrics
             DiskUsedBytes = diskUsed,
             OsVersion = os,
             Kernel = kernel,
+            HasCpuCounters = hasCpuCounters,
+            CpuTotalJiffies = cpuTotal,
+            CpuIdleJiffies = cpuIdle,
+            HasNetCounters = hasNetCounters,
+            NetRxTotalBytes = netRx,
+            NetTxTotalBytes = netTx,
         };
     }
 
     /// <summary>One-shot probe: each section is delimited so a partial failure of any single
-    /// probe doesn't break the rest. Linux-oriented (spec targets Ubuntu/CentOS).</summary>
+    /// probe doesn't break the rest. Linux-oriented (spec targets Ubuntu/CentOS). __S__/__N__
+    /// export raw cumulative counters; the collector turns consecutive samples into
+    /// instantaneous CPU% and network rates.</summary>
     public const string MetricsCommand =
         "echo __P__; nproc 2>/dev/null; " +
         "echo __L__; cat /proc/loadavg 2>/dev/null; " +
         "echo __M__; free -b 2>/dev/null | awk 'NR==2{print $2\" \"$3}'; " +
         "echo __D__; df -B1 --output=size,used / 2>/dev/null | tail -1; " +
         "echo __O__; . /etc/os-release 2>/dev/null && echo \"$PRETTY_NAME\"; " +
-        "echo __K__; uname -r 2>/dev/null";
+        "echo __K__; uname -r 2>/dev/null; " +
+        "echo __S__; grep -m1 '^cpu ' /proc/stat 2>/dev/null; " +
+        "echo __N__; awk -F: 'NR>2 {gsub(/^ +/,\"\",$1); if ($1!=\"lo\") {split($2,f,\" \"); rx+=f[1]; tx+=f[9]}} END {print rx+0\" \"tx+0}' /proc/net/dev 2>/dev/null";
 }
