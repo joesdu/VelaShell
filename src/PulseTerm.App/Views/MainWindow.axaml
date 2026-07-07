@@ -25,6 +25,7 @@
     <KeyBinding Gesture="Ctrl+OemComma" Command="{Binding OpenSettingsCommand}" />
     <KeyBinding Gesture="Ctrl+P" Command="{Binding OpenCommandPaletteCommand}" />
     <KeyBinding Gesture="Ctrl+K" Command="{Binding OpenCommandPaletteCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+T" Command="{Binding RunCommand}" CommandParameter="tools.tunnel" />
   </Window.KeyBindings>
 
   <!-- Native OS title bar (design spec §2): the client area starts with the menu bar row. -->

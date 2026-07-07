@@ -271,7 +271,7 @@
             <Flyout Placement="BottomEdgeAlignedLeft"
                     FlyoutPresenterTheme="{StaticResource PulseMenuFlyoutPresenter}">
               <StackPanel>
-                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="tools.tunnel">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+Shift+T" />
                     <TextBlock Classes="entry-label" Text="隧道管理" />
@@ -332,7 +332,7 @@
           <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.columns-2}"
                          Foreground="{DynamicResource PulseTextMuted}" />
         </Button>
-        <Button Theme="{StaticResource PulseMenuActionButton}" ToolTip.Tip="隧道" IsEnabled="False">
+        <Button Theme="{StaticResource PulseMenuActionButton}" ToolTip.Tip="隧道 (Ctrl+Shift+T)" Command="{Binding RunCommand}" CommandParameter="tools.tunnel">
           <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.route}"
                          Foreground="{DynamicResource PulseTextMuted}" />
         </Button>
