@@ -46,7 +46,8 @@ public class MainWindowViewModel : ReactiveObject
         Func<ITerminalEmulator>? terminalEmulatorFactory = null,
         ISettingsService? settingsService = null,
         ISessionRepository? sessionRepository = null,
-        ISftpService? sftpService = null)
+        ISftpService? sftpService = null,
+        ITransferManager? transferManager = null)
     {
         _connectionWorkflowService = connectionWorkflowService;
         _sshConnectionService = sshConnectionService;
@@ -67,7 +68,7 @@ public class MainWindowViewModel : ReactiveObject
         _statusBar = new StatusBarViewModel();
 
         _fileBrowser = new FileBrowserViewModel(null, System.Guid.Empty);
-        _fileTransfer = new FileTransferViewModel(null);
+        _fileTransfer = new FileTransferViewModel(transferManager);
 
         _tabBar.WhenAnyValue(tabBar => tabBar.ActiveTab)
             .Subscribe(activeTab =>

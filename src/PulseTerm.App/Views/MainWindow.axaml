@@ -30,6 +30,14 @@
   <!-- Native OS title bar (design spec §2): the client area starts with the menu bar row. -->
   <Grid RowDefinitions="Auto,*">
 
+    <!-- Floating transfer toast (design frame 9Ralg): top-right, non-modal, exists only
+         while transfers are running (spec §9). -->
+    <views:FileTransferView Grid.Row="1"
+                            DataContext="{Binding FileTransfer}"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Margin="0,12,16,0"
+                            ZIndex="50" />
     <!-- Menu bar (design frame TSiDh): text menus + global action buttons -->
     <views:MenuBarView Grid.Row="0" DataContext="{Binding}" />
 

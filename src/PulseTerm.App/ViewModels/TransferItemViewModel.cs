@@ -65,6 +65,8 @@ public class TransferItemViewModel : ReactiveObject
             this.RaisePropertyChanged(nameof(IsActive));
             this.RaisePropertyChanged(nameof(IsFailed));
             this.RaisePropertyChanged(nameof(IsCompleted));
+            this.RaisePropertyChanged(nameof(ProgressText));
+            this.RaisePropertyChanged(nameof(InfoLine));
         }
     }
 
@@ -91,6 +93,42 @@ public class TransferItemViewModel : ReactiveObject
         TotalSize = progress.TotalBytes;
         Speed = FormatSpeed(progress.SpeedBytesPerSecond);
         TimeRemaining = FormatTimeRemaining(progress.EstimatedTimeRemaining);
+        this.RaisePropertyChanged(nameof(InfoLine));
+        this.RaisePropertyChanged(nameof(ProgressText));
+    }
+
+    /// <summary>Right-hand status: "67%" while running, "完成" when done, "失败" on error.</summary>
+    public string ProgressText => _status switch
+    {
+        TransferStatus.Completed => "完成",
+        TransferStatus.Failed => "失败",
+        _ => $"{_progress}%",
+    };
+
+    /// <summary>Detail line per design 9Ralg: "142 MB / 212 MB  •  4.2 MB/s  •  ↑ 上传中".</summary>
+    public string InfoLine
+    {
+        get
+        {
+            var action = _task.Type == TransferType.Upload ? "↑ 上传中" : "↓ 下载中";
+            if (_status == TransferStatus.Completed)
+                action = _task.Type == TransferType.Upload ? "↑ 已上传" : "↓ 已下载";
+            else if (_status == TransferStatus.Failed)
+                action = "失败";
+
+            return _status == TransferStatus.Completed
+                ? $"{FormatBytes(_totalSize)}  •  已完成  •  {action}"
+                : $"{FormatBytes(_transferredBytes)} / {FormatBytes(_totalSize)}  •  {_speed}  •  {action}";
+        }
+    }
+
+    public static string FormatBytes(long bytes)
+    {
+        if (bytes <= 0) return "0 B";
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        int i = Math.Min((int)Math.Floor(Math.Log(bytes, 1024)), units.Length - 1);
+        double value = bytes / Math.Pow(1024, i);
+        return i == 0 ? $"{bytes} B" : $"{value:F1} {units[i]}";
     }
 
     public static string FormatSpeed(double bytesPerSecond)
