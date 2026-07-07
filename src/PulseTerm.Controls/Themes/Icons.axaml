@@ -30,5 +30,6 @@
   <StreamGeometry x:Key="Icon.user">M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2 M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.terminal">M4 17l6-6-6-6 M12 19h8</StreamGeometry>
   <StreamGeometry x:Key="Icon.timer">M10 2h4 M12 14l3-3 M20 14a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.circle-plus">M12 8v8 M8 12h8 M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.history">M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M12 7v5l4 2</StreamGeometry>
 </ResourceDictionary>

@@ -38,6 +38,14 @@
                             VerticalAlignment="Top"
                             Margin="0,12,16,0"
                             ZIndex="50" />
+    <!-- Tunnel manager panel (design frame fuXS7): non-modal, toggled by tools.tunnel
+         (menu route button / Ctrl+Shift+T), anchored below the menu bar on the right. -->
+    <Panel Grid.Row="1" ZIndex="60"
+           HorizontalAlignment="Right" VerticalAlignment="Top"
+           Margin="0,8,48,0"
+           IsVisible="{Binding IsTunnelPanelOpen}">
+      <views:TunnelPanelView DataContext="{Binding TunnelPanel}" />
+    </Panel>
     <!-- Menu bar (design frame TSiDh): text menus + global action buttons -->
     <views:MenuBarView Grid.Row="0" DataContext="{Binding}" />
 

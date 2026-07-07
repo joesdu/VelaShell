@@ -28,6 +28,9 @@ public class MainWindowViewModel : ReactiveObject
     private readonly ISettingsService? _settingsService;
     private readonly ISessionRepository? _sessionRepository;
     private readonly ISftpService? _sftpService;
+    private readonly PulseTerm.Core.Tunnels.ITunnelService? _tunnelService;
+    private TunnelPanelViewModel? _tunnelPanel;
+    private bool _isTunnelPanelOpen;
     private readonly Func<ITerminalEmulator> _terminalEmulatorFactory;
     private readonly TerminalDockFactory _dockFactory;
     private SidebarViewModel _sidebar;
@@ -47,13 +50,15 @@ public class MainWindowViewModel : ReactiveObject
         ISettingsService? settingsService = null,
         ISessionRepository? sessionRepository = null,
         ISftpService? sftpService = null,
-        ITransferManager? transferManager = null)
+        ITransferManager? transferManager = null,
+        PulseTerm.Core.Tunnels.ITunnelService? tunnelService = null)
     {
         _connectionWorkflowService = connectionWorkflowService;
         _sshConnectionService = sshConnectionService;
         _settingsService = settingsService;
         _sessionRepository = sessionRepository;
         _sftpService = sftpService;
+        _tunnelService = tunnelService;
         _terminalEmulatorFactory = terminalEmulatorFactory ?? (() => new PulseTerminalControl());
 
         _dockFactory = new TerminalDockFactory();
@@ -121,6 +126,9 @@ public class MainWindowViewModel : ReactiveObject
         Commands.Register(new CommandDescriptor("edit.paste", "粘贴", "编辑",
             () => { if (ActiveTerminalControl is { } c) _ = c.PasteAsync(); },
             CanExecute: () => ActiveTerminalControl is not null, Shortcut: "Ctrl+Shift+V"));
+        Commands.Register(new CommandDescriptor("tools.tunnel", "隧道管理", "工具",
+            ToggleTunnelPanel,
+            CanExecute: () => ActiveTerminalTab is not null, Shortcut: "Ctrl+Shift+T", Icon: "Icon.route"));
         Commands.Register(new CommandDescriptor("app.settings", "打开设置", "编辑",
             () => OpenSettingsCommand.Execute().Subscribe(), Shortcut: "Ctrl+,", Icon: "Icon.settings"));
         Commands.Register(new CommandDescriptor("app.palette", "命令面板", "搜索",
@@ -148,6 +156,41 @@ public class MainWindowViewModel : ReactiveObject
             TransferSink = FileTransfer,
         };
         FileBrowser.RefreshCommand.Execute().Subscribe(_ => { }, _ => { });
+    }
+    /// <summary>Tunnel manager panel for the active session (design fuXS7, spec §10).</summary>
+    public TunnelPanelViewModel? TunnelPanel
+    {
+        get => _tunnelPanel;
+        private set => this.RaiseAndSetIfChanged(ref _tunnelPanel, value);
+    }
+
+    public bool IsTunnelPanelOpen
+    {
+        get => _isTunnelPanelOpen;
+        set => this.RaiseAndSetIfChanged(ref _isTunnelPanelOpen, value);
+    }
+
+    /// <summary>Singleton toggle (spec §17.2): reopening focuses the existing panel.</summary>
+    public void ToggleTunnelPanel()
+    {
+        if (IsTunnelPanelOpen)
+        {
+            IsTunnelPanelOpen = false;
+            return;
+        }
+
+        if (_tunnelService is null || ActiveTerminalTab is not { } tab || tab.SessionId == Guid.Empty)
+            return;
+
+        if (TunnelPanel is null || TunnelPanel.SessionId != tab.SessionId)
+        {
+            TunnelPanel = new TunnelPanelViewModel(_tunnelService, tab.SessionId)
+            {
+                NewLocalHost = "127.0.0.1",
+            };
+        }
+
+        IsTunnelPanelOpen = true;
     }
     /// <summary>The self-drawn terminal control of the active tab, when it is one.</summary>
     private PulseTerminalControl? ActiveTerminalControl =>

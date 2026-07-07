@@ -28,6 +28,7 @@ public class TunnelPanelViewModel : ReactiveObject
     {
         _tunnelService = tunnelService ?? throw new ArgumentNullException(nameof(tunnelService));
         _sessionId = sessionId;
+        SessionId = sessionId;
 
         Tunnels = new ObservableCollection<TunnelItemViewModel>();
 
@@ -49,6 +50,9 @@ public class TunnelPanelViewModel : ReactiveObject
         StartTunnelCommand = ReactiveCommand.CreateFromTask<Guid>(StartTunnelAsync);
         DeleteTunnelCommand = ReactiveCommand.CreateFromTask<Guid>(DeleteTunnelAsync);
     }
+
+    /// <summary>The SSH session these tunnels belong to.</summary>
+    public Guid SessionId { get; }
 
     public ObservableCollection<TunnelItemViewModel> Tunnels { get; }
 

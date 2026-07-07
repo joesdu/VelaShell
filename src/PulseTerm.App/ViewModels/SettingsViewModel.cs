@@ -24,10 +24,11 @@ public class SettingsViewModel : ReactiveObject
     private string _terminalType = "xterm-256color";
     private string _terminalEncoding = "UTF-8";
 
-    public SettingsViewModel(ISettingsService settingsService, IThemeService themeService)
+    public SettingsViewModel(ISettingsService settingsService, IThemeService themeService, ILocalizationService? localizationService = null)
     {
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
+        _localizationService = localizationService;
 
         LoadCommand = ReactiveCommand.CreateFromTask(LoadAsync);
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync);
@@ -113,6 +114,7 @@ public class SettingsViewModel : ReactiveObject
         var settings = await _settingsService.GetSettingsAsync();
         Language = settings.Language;
         Theme = settings.Theme;
+        AccentColor = settings.AccentColor;
         TerminalFont = settings.TerminalFont;
         TerminalFontSize = settings.TerminalFontSize;
         ScrollbackLines = settings.ScrollbackLines;
@@ -127,6 +129,7 @@ public class SettingsViewModel : ReactiveObject
         {
             Language = Language,
             Theme = Theme,
+            AccentColor = AccentColor,
             TerminalFont = TerminalFont,
             TerminalFontSize = TerminalFontSize,
             ScrollbackLines = ScrollbackLines,
@@ -136,6 +139,10 @@ public class SettingsViewModel : ReactiveObject
         };
 
         await _settingsService.SaveSettingsAsync(settings);
+
+        // Apply live — theme, accent and language all take effect without restart (#2/#3/#4).
         _themeService.SetTheme(Theme);
+        try { _themeService.SetAccent(AccentColor); } catch (ArgumentException) { /* invalid hex: keep previous */ }
+        _localizationService?.SetLanguage(Language);
     }
 }
