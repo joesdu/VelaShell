@@ -307,6 +307,8 @@ public class MainWindowViewModel : ReactiveObject
 
             StatusBar.CpuUsage = $"{metrics.CpuPercent:F2}%";
             StatusBar.MemUsage = $"{metrics.MemPercent:F1}%";
+            StatusBar.SwapUsage = metrics.SwapTotalBytes > 0 ? $"{metrics.SwapPercent:F1}%" : "--";
+            StatusBar.DiskUsage = metrics.DiskTotalBytes > 0 ? $"{metrics.DiskPercent:F1}%" : "--";
             StatusBar.UpdateNetwork(metrics.NetRxBytesPerSec, metrics.NetTxBytesPerSec, metrics.HasNetRates);
         }
         catch

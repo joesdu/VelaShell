@@ -82,6 +82,29 @@ public class SessionMetricsTests
     }
 
     [TestMethod]
+    public void Parse_SwapValues_ExposeTotalsAndPercent()
+    {
+        // __M__ carries "memTotal memUsed swapTotal swapUsed".
+        var m = SessionMetrics.Parse(
+            "__P__\n4\n__L__\n0.5 0.4 0.3\n__M__\n1000 500 2048 512\n__D__\n__O__\nx\n__K__\n");
+
+        Assert.IsNotNull(m);
+        Assert.AreEqual(2048L, m.SwapTotalBytes);
+        Assert.AreEqual(512L, m.SwapUsedBytes);
+        Assert.AreEqual(25.0, m.SwapPercent, 0.1);
+    }
+
+    [TestMethod]
+    public void Parse_TwoValueMemSection_LeavesSwapAtZero()
+    {
+        var m = SessionMetrics.Parse(SampleOutput); // legacy "total used" pair only
+
+        Assert.IsNotNull(m);
+        Assert.AreEqual(0, m.SwapTotalBytes);
+        Assert.AreEqual(0, m.SwapPercent);
+    }
+
+    [TestMethod]
     public void Parse_MissingCounterSections_LeavesCountersUnavailable()
     {
         var m = SessionMetrics.Parse(SampleOutput);

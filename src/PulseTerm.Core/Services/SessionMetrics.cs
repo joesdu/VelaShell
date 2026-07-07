@@ -12,6 +12,8 @@ public sealed class SessionMetrics
     public double CpuPercent { get; set; }
     public long MemTotalBytes { get; init; }
     public long MemUsedBytes { get; init; }
+    public long SwapTotalBytes { get; init; }
+    public long SwapUsedBytes { get; init; }
     public long DiskTotalBytes { get; init; }
     public long DiskUsedBytes { get; init; }
     public string OsVersion { get; init; } = "";
@@ -32,6 +34,7 @@ public sealed class SessionMetrics
     public double NetTxBytesPerSec { get; set; }
 
     public double MemPercent => MemTotalBytes > 0 ? MemUsedBytes * 100.0 / MemTotalBytes : 0;
+    public double SwapPercent => SwapTotalBytes > 0 ? SwapUsedBytes * 100.0 / SwapTotalBytes : 0;
     public double DiskPercent => DiskTotalBytes > 0 ? DiskUsedBytes * 100.0 / DiskTotalBytes : 0;
 
     /// <summary>
@@ -59,12 +62,17 @@ public sealed class SessionMetrics
         if (loadParts.Length > 0)
             double.TryParse(loadParts[0], System.Globalization.CultureInfo.InvariantCulture, out load1);
 
-        long memTotal = 0, memUsed = 0;
+        long memTotal = 0, memUsed = 0, swapTotal = 0, swapUsed = 0;
         var memParts = Section("__M__").Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (memParts.Length >= 2)
         {
             long.TryParse(memParts[0], out memTotal);
             long.TryParse(memParts[1], out memUsed);
+        }
+        if (memParts.Length >= 4)
+        {
+            long.TryParse(memParts[2], out swapTotal);
+            long.TryParse(memParts[3], out swapUsed);
         }
 
         long diskTotal = 0, diskUsed = 0;
@@ -119,6 +127,8 @@ public sealed class SessionMetrics
             CpuPercent = Math.Clamp(load1 / cores * 100.0, 0, 100),
             MemTotalBytes = memTotal,
             MemUsedBytes = memUsed,
+            SwapTotalBytes = swapTotal,
+            SwapUsedBytes = swapUsed,
             DiskTotalBytes = diskTotal,
             DiskUsedBytes = diskUsed,
             OsVersion = os,
@@ -142,7 +152,7 @@ public sealed class SessionMetrics
         // htop-style used = total − free − buffers − cached − reclaimable slab. `free`'s own
         // "used" column changed meaning in procps 4.x (total − available), which reads ~2x
         // higher than what users compare against (用户反馈: htop 99M vs our 19%).
-        "echo __M__; awk '/^MemTotal:/{t=$2} /^MemFree:/{f=$2} /^Buffers:/{b=$2} /^Cached:/{c=$2} /^SReclaimable:/{s=$2} END{if(t>0){u=t-f-b-c-s; if(u<0)u=0; print t*1024\" \"u*1024}}' /proc/meminfo 2>/dev/null; " +
+        "echo __M__; awk '/^MemTotal:/{t=$2} /^MemFree:/{f=$2} /^Buffers:/{b=$2} /^Cached:/{c=$2} /^SReclaimable:/{s=$2} /^SwapTotal:/{st=$2} /^SwapFree:/{sf=$2} END{if(t>0){u=t-f-b-c-s; if(u<0)u=0; print t*1024\" \"u*1024\" \"st*1024\" \"(st-sf)*1024}}' /proc/meminfo 2>/dev/null; " +
         "echo __D__; df -B1 --output=size,used / 2>/dev/null | tail -1; " +
         "echo __O__; . /etc/os-release 2>/dev/null && echo \"$PRETTY_NAME\"; " +
         "echo __K__; uname -r 2>/dev/null; " +

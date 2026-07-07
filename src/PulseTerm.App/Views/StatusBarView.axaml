@@ -72,6 +72,16 @@
                          Foreground="{DynamicResource PulseTextTertiary}" VerticalAlignment="Center" />
           <TextBlock Text="{Binding MemUsage}" Foreground="{DynamicResource PulseTextSecondary}" />
         </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="Swap">
+          <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.arrow-right-left}"
+                         Foreground="{DynamicResource PulseTextTertiary}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding SwapUsage}" Foreground="{DynamicResource PulseTextSecondary}" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="Disk (/)">
+          <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.hard-drive}"
+                         Foreground="{DynamicResource PulseTextTertiary}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding DiskUsage}" Foreground="{DynamicResource PulseTextSecondary}" />
+        </StackPanel>
         <!-- The original arrow-up-down glyph, rebuilt from its two halves so each direction
              lights up (accent) independently while traffic flows that way; the readout shows
              the dominant direction's rate (Android-style). -->

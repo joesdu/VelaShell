@@ -126,6 +126,23 @@ public sealed class StatusBarViewModel : ReactiveObject, IDisposable
         set => this.RaiseAndSetIfChanged(ref _netUsage, value);
     }
 
+    private string _swapUsage = "--";
+    private string _diskUsage = "--";
+
+    /// <summary>Swap usage percent; "--" when the host has no swap or no session is live.</summary>
+    public string SwapUsage
+    {
+        get => _swapUsage;
+        set => this.RaiseAndSetIfChanged(ref _swapUsage, value);
+    }
+
+    /// <summary>Root filesystem usage percent; "--" without a live session.</summary>
+    public string DiskUsage
+    {
+        get => _diskUsage;
+        set => this.RaiseAndSetIfChanged(ref _diskUsage, value);
+    }
+
     private string _netSpeed = "0 B/s";
     private bool _isNetUpActive;
     private bool _isNetDownActive;
@@ -178,6 +195,8 @@ public sealed class StatusBarViewModel : ReactiveObject, IDisposable
     {
         CpuUsage = "--";
         MemUsage = "--";
+        SwapUsage = "--";
+        DiskUsage = "--";
         NetSpeed = "0 B/s";
         IsNetUpActive = false;
         IsNetDownActive = false;
