@@ -11,14 +11,11 @@
              x:Class="PulseTerm.App.Views.TerminalTabView"
              x:DataType="vm:TerminalTabViewModel">
 
-  <Grid RowDefinitions="Auto,*,Auto">
+  <Grid RowDefinitions="*,Auto">
 
-    <!-- Row 0: Toolbar -->
-    <views:TerminalToolbarView Grid.Row="0" DataContext="{Binding}" />
-
-    <!-- Row 2: in-terminal search bar (spec §5.3, Ctrl+F) — docked at the bottom of this
+    <!-- Row 1: in-terminal search bar (spec §5.3, Ctrl+F) — docked at the bottom of this
          tab (per-tab scope; it only searches this tab's buffer). -->
-    <Border Grid.Row="2"
+    <Border Grid.Row="1"
               x:Name="SearchBar"
               IsVisible="False"
               Background="{DynamicResource PulseBgSurface}"
@@ -65,8 +62,8 @@
         </Grid>
       </Border>
 
-    <!-- Row 1: Terminal area with scrollbar -->
-    <Grid Grid.Row="1" ColumnDefinitions="*,Auto">
+    <!-- Row 0: Terminal area with scrollbar -->
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
 
       <!-- Terminal emulator control -->
       <Border Grid.Column="0"

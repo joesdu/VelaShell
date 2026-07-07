@@ -19,26 +19,46 @@
         <Setter Property="Background" Value="{DynamicResource PulseBgTerminal}" />
     </Style>
 
-    <!-- Kill Dock's active-pane indicator strip (a 2px line under the tab strip: gray when
-         inactive, Fluent-blue when the pane has focus). The design has no such element —
-         the active tab's own accent top line already marks focus, and the active tab is
-         meant to merge seamlessly into the terminal below (nunbT). -->
+    <!-- No border around the document content area — the terminal fills its pane edge to
+         edge (nunbT). -->
     <Style Selector="dc|DocumentControl /template/ Border#PART_Border">
         <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
     </Style>
-    <Style Selector="dc|DocumentControl[IsActive=true] /template/ Border#PART_Border">
-        <Setter Property="BorderBrush" Value="Transparent" />
+
+    <!-- The 1px line under the tab strip is a plain themed divider (用户要求): same brush
+         whether or not the pane has focus — no click feedback, no Fluent-blue active state. -->
+    <Style Selector="dc|DocumentControl /template/ Panel#PART_DocumentSeperator">
+        <Setter Property="Background" Value="{DynamicResource PulseBorderPrimary}" />
+    </Style>
+    <Style Selector="dc|DocumentControl:active /template/ Panel#PART_DocumentSeperator">
+        <Setter Property="Background" Value="{DynamicResource PulseBorderPrimary}" />
     </Style>
 
+    <!-- 35px strip + the 1px separator below = 36px total, so the divider lands on the same
+         horizontal line as the sidebar header's bottom border (which is drawn INSIDE its
+         36px row) — they used to sit 1px apart (用户反馈). -->
     <Style Selector="dc|DocumentTabStrip">
         <Setter Property="Background" Value="{DynamicResource PulseBgPage}" />
-        <Setter Property="MinHeight" Value="36" />
-        <!-- Status dot (7px) in front of the title, colored by the session state. -->
+        <Setter Property="MinHeight" Value="35" />
+    </Style>
+
+    <!-- The tab templates MUST be set on DocumentControl, not on the strip: the control's
+         template forwards them to the strip via TemplateBinding (a local value), so setters
+         aimed at the strip never applied — which is why the default Dock close glyph kept
+         showing no matter what the strip style said. -->
+    <Style Selector="dc|DocumentControl">
+        <!-- Status dot (7px) in front of the title, colored by the session state. Nudged up
+             1px: the mono title's descender pulls its visual center above the geometric one,
+             so a dead-center dot reads as sitting low (用户反馈). -->
         <Setter Property="IconTemplate">
             <DataTemplate x:DataType="docking:TerminalDocument">
                 <Ellipse Width="7" Height="7" VerticalAlignment="Center"
-                         Fill="{Binding Terminal.ConnectionStatus, Converter={x:Static conv:SessionStatusToBrushConverter.Instance}}" />
+                         Fill="{Binding Terminal.ConnectionStatus, Converter={x:Static conv:SessionStatusToBrushConverter.Instance}}">
+                    <Ellipse.RenderTransform>
+                        <TranslateTransform Y="-1" />
+                    </Ellipse.RenderTransform>
+                </Ellipse>
             </DataTemplate>
         </Setter>
         <!-- Tab title. Hovering the NAME for >400ms floats the session's resource panel at the
@@ -55,14 +75,14 @@
                 </TextBlock>
             </DataTemplate>
         </Setter>
-        <!-- Close x per design: lucide x, 12px. -->
+        <!-- Close x: 11px lucide x, sized to sit quietly beside the 11px tab title. -->
         <Setter Property="CloseTemplate">
             <DataTemplate x:DataType="docking:TerminalDocument">
                 <Button Background="Transparent" Padding="0" Width="14" Height="14"
                         HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                         Command="{Binding Owner.Factory.CloseDockable}"
                         CommandParameter="{Binding}">
-                    <pc:LucideIcon Width="12" Height="12"
+                    <pc:LucideIcon Width="11" Height="11"
                                    Data="{StaticResource Icon.x}"
                                    Foreground="{DynamicResource PulseTextTertiary}" />
                 </Button>

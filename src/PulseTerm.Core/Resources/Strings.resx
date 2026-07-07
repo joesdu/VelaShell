@@ -405,6 +405,6 @@
     <value>Connection closed.</value>
   </data>
   <data name="TerminalReconnectHint" xml:space="preserve">
-    <value>Press Enter (or the Reconnect button above) to reconnect.</value>
+    <value>Press Enter to reconnect.</value>
   </data>
 </root>

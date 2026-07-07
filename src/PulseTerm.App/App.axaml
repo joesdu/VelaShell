@@ -30,6 +30,11 @@
             <sys:Double x:Key="DockTabContentSpacing">8</sys:Double>
             <sys:Double x:Key="DockDocumentTabHeaderContentSpacing">8</sys:Double>
             <sys:Double x:Key="DockDocumentTabItemSeparatorOpacity">0</sys:Double>
+
+            <!-- Tab-strip separator (PART_DocumentSeperator): kept as a purely decorative 1px
+                 line between the tabs and the per-tab toolbar below. Its focus-driven color
+                 change (gray → accent-blue) is neutralized in DockStyles.axaml. -->
+            <sys:Double x:Key="DockDocumentTabStripSeparatorSize">1</sys:Double>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Dark">
                     <ResourceDictionary.MergedDictionaries>
