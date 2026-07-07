@@ -22,13 +22,11 @@ public partial class FileBrowserView : UserControl
     private const double MinSizeWidth = 70;
     private const double MinPermissionsWidth = 80;
     private const double MinModifiedWidth = 110;
-
     private string? _activeSplitter;
     private double _dragStartX;
     private double _startNameWidth;
     private double _startSizeWidth;
     private double _startPermissionsWidth;
-    private double _startModifiedWidth;
 
     private static readonly FontFamily TerminalFont = new("JetBrains Mono, Cascadia Mono, Consolas, monospace");
     private static readonly Typeface TerminalTypeface = new(TerminalFont);
@@ -82,7 +80,6 @@ public partial class FileBrowserView : UserControl
         _startNameWidth = vm.NameColumnWidth.Value;
         _startSizeWidth = vm.SizeColumnWidth.Value;
         _startPermissionsWidth = vm.PermissionsColumnWidth.Value;
-        _startModifiedWidth = vm.ModifiedColumnWidth.Value;
 
         e.Pointer.Capture(this);
         e.Handled = true;
@@ -98,30 +95,15 @@ public partial class FileBrowserView : UserControl
         switch (_activeSplitter)
         {
             case "NameSize":
-                ApplyAdjacentResize(_startNameWidth, _startSizeWidth, MinNameWidth, MinSizeWidth,
-                    delta, (left, right) =>
-                    {
-                        vm.NameColumnWidth = new GridLength(left);
-                        vm.SizeColumnWidth = new GridLength(right);
-                    });
+                vm.NameColumnWidth = new GridLength(ClampColumnWidth(_startNameWidth + delta, MinNameWidth, GetMaxNameWidth(vm)));
                 break;
 
             case "SizePermissions":
-                ApplyAdjacentResize(_startSizeWidth, _startPermissionsWidth, MinSizeWidth, MinPermissionsWidth,
-                    delta, (left, right) =>
-                    {
-                        vm.SizeColumnWidth = new GridLength(left);
-                        vm.PermissionsColumnWidth = new GridLength(right);
-                    });
+                vm.SizeColumnWidth = new GridLength(ClampColumnWidth(_startSizeWidth + delta, MinSizeWidth, GetMaxSizeWidth(vm)));
                 break;
 
             case "PermissionsModified":
-                ApplyAdjacentResize(_startPermissionsWidth, _startModifiedWidth, MinPermissionsWidth, MinModifiedWidth,
-                    delta, (left, right) =>
-                    {
-                        vm.PermissionsColumnWidth = new GridLength(left);
-                        vm.ModifiedColumnWidth = new GridLength(right);
-                    });
+                vm.PermissionsColumnWidth = new GridLength(ClampColumnWidth(_startPermissionsWidth + delta, MinPermissionsWidth, GetMaxPermissionsWidth(vm)));
                 break;
         }
 
@@ -145,37 +127,19 @@ public partial class FileBrowserView : UserControl
             case "NameSize":
                 {
                     var targetName = EstimateAutoWidthForName(vm);
-                    var delta = targetName - vm.NameColumnWidth.Value;
-                    ApplyAdjacentResize(vm.NameColumnWidth.Value, vm.SizeColumnWidth.Value, MinNameWidth, MinSizeWidth,
-                        delta, (left, right) =>
-                        {
-                            vm.NameColumnWidth = new GridLength(left);
-                            vm.SizeColumnWidth = new GridLength(right);
-                        });
+                    vm.NameColumnWidth = new GridLength(ClampColumnWidth(targetName, MinNameWidth, GetMaxNameWidth(vm)));
                     break;
                 }
             case "SizePermissions":
                 {
                     var targetSize = EstimateAutoWidthForSize(vm);
-                    var delta = targetSize - vm.SizeColumnWidth.Value;
-                    ApplyAdjacentResize(vm.SizeColumnWidth.Value, vm.PermissionsColumnWidth.Value, MinSizeWidth, MinPermissionsWidth,
-                        delta, (left, right) =>
-                        {
-                            vm.SizeColumnWidth = new GridLength(left);
-                            vm.PermissionsColumnWidth = new GridLength(right);
-                        });
+                    vm.SizeColumnWidth = new GridLength(ClampColumnWidth(targetSize, MinSizeWidth, GetMaxSizeWidth(vm)));
                     break;
                 }
             case "PermissionsModified":
                 {
                     var targetPerm = EstimateAutoWidthForPermissions(vm);
-                    var delta = targetPerm - vm.PermissionsColumnWidth.Value;
-                    ApplyAdjacentResize(vm.PermissionsColumnWidth.Value, vm.ModifiedColumnWidth.Value, MinPermissionsWidth, MinModifiedWidth,
-                        delta, (left, right) =>
-                        {
-                            vm.PermissionsColumnWidth = new GridLength(left);
-                            vm.ModifiedColumnWidth = new GridLength(right);
-                        });
+                    vm.PermissionsColumnWidth = new GridLength(ClampColumnWidth(targetPerm, MinPermissionsWidth, GetMaxPermissionsWidth(vm)));
                     break;
                 }
         }
@@ -207,6 +171,15 @@ public partial class FileBrowserView : UserControl
         return Math.Clamp(estimated, MinPermissionsWidth, 300);
     }
 
+    private double GetMaxNameWidth(FileBrowserViewModel vm) =>
+        Math.Max(MinNameWidth, Bounds.Width - vm.SizeColumnWidth.Value - vm.PermissionsColumnWidth.Value - MinModifiedWidth - 28);
+
+    private double GetMaxSizeWidth(FileBrowserViewModel vm) =>
+        Math.Max(MinSizeWidth, Bounds.Width - vm.NameColumnWidth.Value - vm.PermissionsColumnWidth.Value - MinModifiedWidth - 28);
+
+    private double GetMaxPermissionsWidth(FileBrowserViewModel vm) =>
+        Math.Max(MinPermissionsWidth, Bounds.Width - vm.NameColumnWidth.Value - vm.SizeColumnWidth.Value - MinModifiedWidth - 28);
+
     private static double MeasureTextWidth(string text, double fontSize)
     {
         var ft = new FormattedText(
@@ -220,36 +193,12 @@ public partial class FileBrowserView : UserControl
         return Math.Ceiling(ft.WidthIncludingTrailingWhitespace);
     }
 
-    private static void ApplyAdjacentResize(
-        double leftStart,
-        double rightStart,
-        double leftMin,
-        double rightMin,
-        double delta,
-        Action<double, double> apply)
+    private static double ClampColumnWidth(double value, double min, double max)
     {
-        var newLeft = leftStart + delta;
-        var newRight = rightStart - delta;
+        if (max < min)
+            return min;
 
-        if (newLeft < leftMin)
-        {
-            var deficit = leftMin - newLeft;
-            newLeft = leftMin;
-            newRight -= deficit;
-        }
-
-        if (newRight < rightMin)
-        {
-            var deficit = rightMin - newRight;
-            newRight = rightMin;
-            newLeft -= deficit;
-        }
-
-        // If both mins can't be satisfied simultaneously (pathological), abort this move tick.
-        if (newLeft < leftMin || newRight < rightMin)
-            return;
-
-        apply(newLeft, newRight);
+        return Math.Clamp(value, min, max);
     }
 
     /// <summary>Double-clicking a row descends into a directory (files are left to the toolbar

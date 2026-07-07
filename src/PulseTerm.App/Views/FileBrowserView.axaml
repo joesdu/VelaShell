@@ -127,7 +127,7 @@
               <ColumnDefinition Width="6" />
               <ColumnDefinition Width="{Binding PermissionsColumnWidth}" MinWidth="80" />
               <ColumnDefinition Width="6" />
-              <ColumnDefinition Width="{Binding ModifiedColumnWidth}" MinWidth="110" />
+              <ColumnDefinition Width="*" MinWidth="110" />
             </Grid.ColumnDefinitions>
             <Button Grid.Column="0" Classes="col-header"
                     Command="{Binding SortCommand}" CommandParameter="name">
@@ -275,7 +275,7 @@
                       <ColumnDefinition Width="6" />
                       <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).PermissionsColumnWidth}" MinWidth="80" />
                       <ColumnDefinition Width="6" />
-                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).ModifiedColumnWidth}" MinWidth="110" />
+                      <ColumnDefinition Width="*" MinWidth="110" />
                     </Grid.ColumnDefinitions>
                     <Grid Grid.Column="0" ClipToBounds="True" VerticalAlignment="Center">
                       <Grid.ColumnDefinitions>

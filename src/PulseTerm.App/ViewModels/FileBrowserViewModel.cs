@@ -26,7 +26,6 @@ public class FileBrowserViewModel : ReactiveObject
     private Avalonia.Controls.GridLength _nameColumnWidth = new(320);
     private Avalonia.Controls.GridLength _sizeColumnWidth = new(100);
     private Avalonia.Controls.GridLength _permissionsColumnWidth = new(110);
-    private Avalonia.Controls.GridLength _modifiedColumnWidth = new(140);
     private string _sortColumn = "name";
     private bool _sortDescending;
 
@@ -115,12 +114,6 @@ public class FileBrowserViewModel : ReactiveObject
     {
         get => _permissionsColumnWidth;
         set => this.RaiseAndSetIfChanged(ref _permissionsColumnWidth, ClampColumnWidth(value, 80));
-    }
-
-    public Avalonia.Controls.GridLength ModifiedColumnWidth
-    {
-        get => _modifiedColumnWidth;
-        set => this.RaiseAndSetIfChanged(ref _modifiedColumnWidth, ClampColumnWidth(value, 110));
     }
 
     private static Avalonia.Controls.GridLength ClampColumnWidth(Avalonia.Controls.GridLength value, double min)
