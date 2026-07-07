@@ -9,7 +9,7 @@
       <SolidColorBrush x:Key="PulseBgActive" Color="#1C2A3F" />
       <SolidColorBrush x:Key="PulseBgHover" Color="#1A2233" />
       <SolidColorBrush x:Key="PulseBgInput" Color="#151B26" />
-      <SolidColorBrush x:Key="PulseTabActiveBg" Color="#111620" />
+      <SolidColorBrush x:Key="PulseTabActiveBg" Color="#080C12" />
       <SolidColorBrush x:Key="PulseTabInactiveBg" Color="#0A0E14" />
     </ResourceDictionary>
     <ResourceDictionary x:Key="Light">
@@ -21,7 +21,7 @@
       <SolidColorBrush x:Key="PulseBgHover" Color="#D0D7DE33" />
       <SolidColorBrush x:Key="PulseBgInput" Color="#FFFFFF" />
       <SolidColorBrush x:Key="PulseTabActiveBg" Color="#FFFFFF" />
-      <SolidColorBrush x:Key="PulseTabInactiveBg" Color="#F6F8FA" />
+      <SolidColorBrush x:Key="PulseTabInactiveBg" Color="#EBEBEF" />
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

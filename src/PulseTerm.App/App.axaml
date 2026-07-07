@@ -1,5 +1,6 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="using:System"
              xmlns:dockFluent="using:Dock.Avalonia.Themes.Fluent"
              x:Class="PulseTerm.App.App"
              RequestedThemeVariant="Dark">
@@ -18,6 +19,17 @@
                 <ResourceInclude Source="avares://PulseTerm.Controls/Themes/PulseShellTokens.axaml" />
                 <ResourceInclude Source="avares://PulseTerm.Controls/Themes/Icons.axaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- Dock document tab metrics per design frame nunbT: 32px tabs, padding [0,14],
+                 JB Mono 11, dot/label/close gap 8. Brushes are themed in DockStyles.axaml. -->
+            <sys:Double x:Key="DockFontSizeNormal">11</sys:Double>
+            <sys:Double x:Key="DockDocumentTabItemMinHeight">32</sys:Double>
+            <sys:Double x:Key="DockDocumentTabItemMinWidth">0</sys:Double>
+            <Thickness x:Key="DockDocumentTabItemPadding">14,0</Thickness>
+            <Thickness x:Key="DockTabContentMargin">0</Thickness>
+            <sys:Double x:Key="DockTabContentSpacing">8</sys:Double>
+            <sys:Double x:Key="DockDocumentTabHeaderContentSpacing">8</sys:Double>
+            <sys:Double x:Key="DockDocumentTabItemSeparatorOpacity">0</sys:Double>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Dark">
                     <ResourceDictionary.MergedDictionaries>

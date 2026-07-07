@@ -1,9 +1,14 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:dc="using:Dock.Avalonia.Controls">
+        xmlns:dc="using:Dock.Avalonia.Controls"
+        xmlns:docking="using:PulseTerm.App.Docking"
+        xmlns:conv="using:PulseTerm.App.Converters"
+        xmlns:pc="using:PulseTerm.Controls.Controls">
 
-    <!-- Re-skin the Dock.Avalonia Fluent theme with PulseTerm design tokens so the
-         docking chrome matches the rest of the app in both dark and light variants. -->
+    <!-- Re-skin the Dock.Avalonia document tab strip to match design frame nunbT exactly:
+         36px bg-page bar; 32px tabs padding [0,14]; active = tab-active bg + 2px accent top
+         line + JB Mono 11 medium text-primary; inactive = tab-inactive bg + text-tertiary;
+         status dot 7px + close x 12px, gap 8. -->
 
     <Style Selector="dc|DockControl">
         <Setter Property="Background" Value="{DynamicResource PulseBgPage}" />
@@ -15,6 +20,52 @@
 
     <Style Selector="dc|DocumentControl /template/ Border#PART_Border">
         <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderPrimary}" />
+    </Style>
+
+    <Style Selector="dc|DocumentTabStrip">
+        <Setter Property="Background" Value="{DynamicResource PulseBgPage}" />
+        <Setter Property="MinHeight" Value="36" />
+        <!-- Status dot (7px) in front of the title, colored by the session state. -->
+        <Setter Property="IconTemplate">
+            <DataTemplate x:DataType="docking:TerminalDocument">
+                <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                         Fill="{Binding Terminal.ConnectionStatus, Converter={x:Static conv:SessionStatusToBrushConverter.Instance}}" />
+            </DataTemplate>
+        </Setter>
+        <!-- Close x per design: lucide x, 12px. -->
+        <Setter Property="CloseTemplate">
+            <DataTemplate x:DataType="docking:TerminalDocument">
+                <Button Background="Transparent" Padding="0" Width="14" Height="14"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        Command="{Binding Owner.Factory.CloseDockable}"
+                        CommandParameter="{Binding}">
+                    <pc:LucideIcon Width="12" Height="12"
+                                   Data="{StaticResource Icon.x}"
+                                   Foreground="{DynamicResource PulseTextTertiary}" />
+                </Button>
+            </DataTemplate>
+        </Setter>
+    </Style>
+
+    <Style Selector="dc|DocumentTabStripItem">
+        <Setter Property="Background" Value="{DynamicResource PulseTabInactiveBg}" />
+        <Setter Property="Foreground" Value="{DynamicResource PulseTextTertiary}" />
+        <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0,2,0,0" />
+        <Setter Property="VerticalAlignment" Value="Bottom" />
+    </Style>
+
+    <Style Selector="dc|DocumentTabStripItem:pointerover:not(:selected):not(:dragging)">
+        <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+        <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+    </Style>
+
+    <Style Selector="dc|DocumentTabStripItem:selected">
+        <Setter Property="Background" Value="{DynamicResource PulseTabActiveBg}" />
+        <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource PulseAccent}" />
+        <Setter Property="FontWeight" Value="Medium" />
     </Style>
 
 </Styles>
