@@ -69,9 +69,23 @@ This split makes it easier to support:
 
 ## Persistence Strategy
 
-- JSON first for settings, layout, quick commands, UI preferences.
-- LiteDB second for richer local indexing/query scenarios.
-- Keep persistence interfaces in `Core`, implementations in `Infrastructure`.
+All persistence goes through **SonnetDB** (https://github.com/IoTSharp/SonnetDB), used as an
+**embedded** multi-model database (`SonnetDB.Core`, opened via `Tsdb.Open` under
+`%LocalAppData%/PulseTerm/sonnetdb`). Legacy JSON files (`sessions.json`, `settings.json`,
+`state.json`, `known_hosts.json`, `quick-commands.json`) are imported once on first run.
+
+- **Document collections** (JSON documents) hold business/config data:
+  `session_groups`, `session_profiles` (indexed by `$.groupId`), `app_config`
+  (settings/state singleton docs), `known_hosts`, `ui_config`, `quick_commands`.
+- **Time-series measurements** hold time-oriented data:
+  `conn_history` (recent connections, powers the sidebar list) and
+  `audit_log` (security auditing).
+- Sensitive fields (passwords, key passphrases) are encrypted at rest with
+  AES-256-GCM via `ISecretProtector` (local key file).
+- Keep persistence interfaces in `Core` (`ISessionRepository`, `ISettingsService`,
+  `IRecentConnectionService`, `IAuditLogService`, `IAppDataStore`, `ISecretProtector`),
+  implementations in `Infrastructure/Persistence` (`SonnetDb*`), all sharing one
+  `SonnetDbEngine` singleton that is disposed on app exit (WAL flush).
 
 ## Migration Rule
 
