@@ -548,26 +548,71 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
+    /// 由窗口注入的交互式身份验证(两步弹窗):补全用户名/密码/密钥后返回更新的配置,
+    /// 取消时返回 null。
+    /// </summary>
+    public Func<SessionProfile, Task<SessionProfile?>>? InteractiveAuthenticator { get; set; }
+
+    /// <summary>缺少连接所需凭据(用户名/密码/私钥)时需要先走登录验证流程。</summary>
+    private static bool RequiresCredentials(SessionProfile profile) =>
+        string.IsNullOrWhiteSpace(profile.Username)
+        || (profile.AuthMethod == AuthMethod.Password && string.IsNullOrEmpty(profile.Password))
+        || (profile.AuthMethod == AuthMethod.PrivateKey && string.IsNullOrWhiteSpace(profile.PrivateKeyPath));
+
+    /// <summary>
     /// Connects without ever letting a failure escape to the caller. Authentication failures,
     /// unreachable hosts and the like are captured in <see cref="LastConnectionError"/> and
     /// reflected in the status bar instead of crashing the app.
+    /// 凭据缺失或认证失败时通过 <see cref="InteractiveAuthenticator"/> 走两步验证弹窗(最多重试 3 次)。
     /// </summary>
     public async Task<TerminalTabViewModel?> TryConnectProfileAsync(SessionProfile profile, CancellationToken cancellationToken = default)
     {
-        try
+        var current = profile;
+
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            return await ConnectProfileAsync(profile, cancellationToken);
+            var needsPrompt = attempt > 0 || RequiresCredentials(current);
+            if (needsPrompt)
+            {
+                if (InteractiveAuthenticator is not { } prompt)
+                {
+                    if (attempt > 0)
+                        return null; // 无法交互重试,保留已记录的错误。
+                }
+                else
+                {
+                    var updated = await prompt(current);
+                    if (updated is null)
+                    {
+                        // 用户取消:不弹连接失败提示。
+                        LastConnectionError = null;
+                        return null;
+                    }
+
+                    current = updated;
+                }
+            }
+
+            try
+            {
+                return await ConnectProfileAsync(current, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
+            catch (Exception ex)
+            {
+                LastConnectionError = DescribeConnectionError(ex, current);
+                StatusBar.Status = LastConnectionError;
+
+                // 仅认证失败进入重试弹窗;其他错误(网络/超时)直接报告。
+                if (ex.GetType().Name != "SshAuthenticationException" || InteractiveAuthenticator is null)
+                    return null;
+            }
         }
-        catch (OperationCanceledException)
-        {
-            return null;
-        }
-        catch (Exception ex)
-        {
-            LastConnectionError = DescribeConnectionError(ex, profile);
-            StatusBar.Status = LastConnectionError;
-            return null;
-        }
+
+        return null;
     }
 
     /// <summary>

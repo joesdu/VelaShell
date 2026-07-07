@@ -55,7 +55,8 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddSingleton<ISshConnectionService>(serviceProvider =>
         {
-            return new SshConnectionService(connectionInfo => CreateSshClientWrapper(connectionInfo));
+            var hostKeyService = serviceProvider.GetRequiredService<PulseTerm.Core.Ssh.IHostKeyService>();
+            return new SshConnectionService(connectionInfo => CreateSshClientWrapper(connectionInfo, hostKeyService));
         });
 
         services.AddSingleton<ISftpService>(serviceProvider =>
@@ -92,7 +93,9 @@ public static class InfrastructureServiceCollectionExtensions
         return services;
     }
 
-    private static ISshClientWrapper CreateSshClientWrapper(PulseConnectionInfo connectionInfo)
+    private static ISshClientWrapper CreateSshClientWrapper(
+        PulseConnectionInfo connectionInfo,
+        PulseTerm.Core.Ssh.IHostKeyService? hostKeyService = null)
     {
         var authMethods = CreateAuthenticationMethods(connectionInfo);
         var sshConnectionInfo = new Renci.SshNet.ConnectionInfo(
@@ -103,6 +106,38 @@ public static class InfrastructureServiceCollectionExtensions
 
         var client = new SshClient(sshConnectionInfo);
         client.ConnectionInfo.Timeout = TimeSpan.FromSeconds(10);
+
+        if (hostKeyService is not null)
+        {
+            // TOFU 策略:首次连接记录指纹(known_hosts,SonnetDB);指纹变化即拒绝,
+            // 防中间人。事件在握手线程上触发,同步等待本地存储是安全的。
+            client.HostKeyReceived += (_, e) =>
+            {
+                var fingerprint = "SHA256:" + Convert.ToBase64String(
+                    System.Security.Cryptography.SHA256.HashData(e.HostKey)).TrimEnd('=');
+
+                var verification = hostKeyService
+                    .VerifyHostKeyAsync(connectionInfo.Host, connectionInfo.Port, e.HostKeyName, fingerprint)
+                    .GetAwaiter().GetResult();
+
+                switch (verification)
+                {
+                    case PulseTerm.Core.Ssh.HostKeyVerification.Trusted:
+                        e.CanTrust = true;
+                        break;
+                    case PulseTerm.Core.Ssh.HostKeyVerification.Unknown:
+                        e.CanTrust = true;
+                        hostKeyService
+                            .TrustHostKeyAsync(connectionInfo.Host, connectionInfo.Port, e.HostKeyName, fingerprint)
+                            .GetAwaiter().GetResult();
+                        break;
+                    default:
+                        // 指纹与记录不符:拒绝连接。
+                        e.CanTrust = false;
+                        break;
+                }
+            };
+        }
 
         return new SshClientWrapper(client);
     }

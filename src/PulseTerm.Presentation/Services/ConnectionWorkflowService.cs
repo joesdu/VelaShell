@@ -9,15 +9,18 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
     private readonly ISessionRepository _sessionRepository;
     private readonly ISshConnectionService _sshConnectionService;
     private readonly IRecentConnectionService? _recentConnections;
+    private readonly IAuditLogService? _auditLog;
 
     public ConnectionWorkflowService(
         ISessionRepository sessionRepository,
         ISshConnectionService sshConnectionService,
-        IRecentConnectionService? recentConnections = null)
+        IRecentConnectionService? recentConnections = null,
+        IAuditLogService? auditLog = null)
     {
         _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
         _sshConnectionService = sshConnectionService ?? throw new ArgumentNullException(nameof(sshConnectionService));
         _recentConnections = recentConnections;
+        _auditLog = auditLog;
     }
 
     public async Task<IReadOnlyList<SessionProfile>> GetSavedProfilesAsync(CancellationToken cancellationToken = default)
@@ -112,9 +115,28 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
         };
     }
 
-    /// <summary>连接结果写入连接历史(SonnetDB 时序),失败不影响主流程。</summary>
+    /// <summary>连接结果写入连接历史与审计日志(SonnetDB 时序),失败不影响主流程。</summary>
     private async Task RecordHistoryAsync(SessionProfile profile, DateTimeOffset startedAt, bool success)
     {
+        if (_auditLog is not null)
+        {
+            try
+            {
+                await _auditLog.WriteAsync(new AuditEntry
+                {
+                    Timestamp = startedAt,
+                    Category = "connection",
+                    Action = success ? "connect" : "connect-failed",
+                    ProfileId = profile.Id,
+                    Detail = $"{profile.Username}@{profile.Host}:{profile.Port}",
+                }).ConfigureAwait(false);
+            }
+            catch
+            {
+                // 审计写入失败不阻塞连接。
+            }
+        }
+
         if (_recentConnections is null)
         {
             return;

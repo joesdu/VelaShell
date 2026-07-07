@@ -83,6 +83,7 @@ public partial class MainWindow : Window
         {
             vm.TerminalSearchRequested += OnTerminalSearchRequested;
             vm.NewConnectionRequested += (_, _) => _ = OpenProfileDialogAsync(existing: null);
+            vm.InteractiveAuthenticator = PromptCredentialsAsync;
 
             // 资源管理器树:右键连接/双击连接 + 右键编辑。
             if (vm.Sidebar.SessionTree is { } tree)
@@ -173,6 +174,59 @@ public partial class MainWindow : Window
         {
             await ShowConnectionErrorAsync(error);
         }
+    }
+
+    /// <summary>
+    /// 登录验证流程(设计:身份验证 第1步/第2步):补全用户名与认证凭据。
+    /// 已信任主机显示其指纹;首次连接提示握手时记录(TOFU)。取消返回 null。
+    /// </summary>
+    private async Task<SessionProfile?> PromptCredentialsAsync(SessionProfile profile)
+    {
+        string? knownFingerprint = null;
+        if (App.Current is App app
+            && app.Services?.GetService<PulseTerm.Core.Ssh.IHostKeyService>() is { } hostKeys)
+        {
+            try
+            {
+                var hosts = await hostKeys.GetKnownHostsAsync();
+                knownFingerprint = hosts
+                    .FirstOrDefault(h => h.Host == profile.Host && h.Port == profile.Port)
+                    ?.Fingerprint;
+            }
+            catch
+            {
+                // 指纹仅用于展示,读取失败不阻塞验证流程。
+            }
+        }
+
+        var viewModel = new AuthenticationDialogViewModel(
+            profile.Host,
+            profile.Port,
+            profile.Username,
+            knownFingerprint,
+            profile.AuthMethod);
+
+        var dialog = new AuthenticationDialogView { DataContext = viewModel };
+        var result = await dialog.ShowDialog<AuthenticationResult?>(this);
+        if (result is null)
+        {
+            return null;
+        }
+
+        profile.Username = result.Username;
+        profile.AuthMethod = result.AuthMethod;
+        if (result.AuthMethod == PulseTerm.Core.Models.AuthMethod.Password)
+        {
+            profile.Password = result.Password;
+            profile.RememberPassword = result.RememberPassword;
+        }
+        else
+        {
+            profile.PrivateKeyPath = result.PrivateKeyPath;
+            profile.PrivateKeyPassphrase = result.PrivateKeyPassphrase;
+        }
+
+        return profile;
     }
 
     private Task ShowConnectionErrorAsync(string message)
