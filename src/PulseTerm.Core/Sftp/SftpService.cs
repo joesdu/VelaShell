@@ -101,6 +101,22 @@ public class SftpService : ISftpService
         }, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task CreateFileAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
+    {
+        var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        using var empty = new MemoryStream();
+        await client.UploadAsync(empty, remotePath, null, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task RenameAsync(Guid sessionId, string oldPath, string newPath, CancellationToken cancellationToken = default)
+    {
+        var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        await Task.Run(() =>
+        {
+            client.RenameFile(oldPath, newPath);
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<RemoteFileInfo> GetFileInfoAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
     {
         var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
@@ -116,6 +132,37 @@ public class SftpService : ISftpService
         }
 
         return MapToRemoteFileInfo(file);
+    }
+
+    public async Task<string> GetWorkingDirectoryAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        return client.WorkingDirectory;
+    }
+
+    public async Task CloseSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        if (!_sftpClients.TryRemove(sessionId, out var client))
+        {
+            return;
+        }
+
+        await Task.Run(() =>
+        {
+            try
+            {
+                if (client.IsConnected)
+                {
+                    client.Disconnect();
+                }
+
+                client.Dispose();
+            }
+            catch
+            {
+                // Best-effort teardown; the tab is already gone.
+            }
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()

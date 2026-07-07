@@ -19,14 +19,27 @@
     <Style Selector="Button.toolbar-btn:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
     </Style>
+    <Style Selector="Button.col-header">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="Button.col-header:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+    </Style>
   </UserControl.Styles>
 
   <Border BorderThickness="0,1,0,0"
           BorderBrush="{DynamicResource PulseBorderPrimary}"
           Background="{DynamicResource PulseBgPage}"
           IsVisible="{Binding IsVisible}"
-          MinHeight="120"
-          Height="220">
+          VerticalAlignment="Stretch"
+          MinHeight="120">
 
     <Panel>
       <DockPanel>
@@ -86,30 +99,6 @@
                              Data="{StaticResource Icon.corner-left-up}"
                              Foreground="{DynamicResource PulseTextTertiary}" />
             </Button>
-            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
-                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                    Command="{Binding CreateFolderCommand}"
-                    ToolTip.Tip="新建文件夹">
-              <pc:LucideIcon Width="13" Height="13"
-                             Data="{StaticResource Icon.folder}"
-                             Foreground="{DynamicResource PulseTextTertiary}" />
-            </Button>
-            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
-                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                    Command="{Binding DownloadCommand}"
-                    ToolTip.Tip="{x:Static res:Strings.Download}">
-              <pc:LucideIcon Width="13" Height="13"
-                             Data="{StaticResource Icon.arrow-up-down}"
-                             Foreground="{DynamicResource PulseTextTertiary}" />
-            </Button>
-            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
-                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                    Command="{Binding DeleteCommand}"
-                    ToolTip.Tip="{x:Static res:Strings.Delete}">
-              <pc:LucideIcon Width="13" Height="13"
-                             Data="{StaticResource Icon.x}"
-                             Foreground="{DynamicResource PulseTextTertiary}" />
-            </Button>
           </StackPanel>
         </Grid>
       </Border>
@@ -131,38 +120,78 @@
                 BorderThickness="0,0,0,1"
                 Padding="14,0">
           <Grid ColumnDefinitions="*,100,110,140">
-            <TextBlock Grid.Column="0"
-                       Text="{x:Static res:Strings.FileName}"
-                       Foreground="{DynamicResource PulseTextMuted}"
-                       FontFamily="{DynamicResource PulseTerminalFont}"
-                       FontSize="10"
-                       VerticalAlignment="Center" />
-            <TextBlock Grid.Column="1"
-                       Text="{x:Static res:Strings.Size}"
-                       Foreground="{DynamicResource PulseTextMuted}"
-                       FontFamily="{DynamicResource PulseTerminalFont}"
-                       FontSize="10"
-                       VerticalAlignment="Center" />
-            <TextBlock Grid.Column="2"
-                       Text="{x:Static res:Strings.Permissions}"
-                       Foreground="{DynamicResource PulseTextMuted}"
-                       FontFamily="{DynamicResource PulseTerminalFont}"
-                       FontSize="10"
-                       VerticalAlignment="Center" />
-            <TextBlock Grid.Column="3"
-                       Text="{x:Static res:Strings.Modified}"
-                       Foreground="{DynamicResource PulseTextMuted}"
-                       FontFamily="{DynamicResource PulseTerminalFont}"
-                       FontSize="10"
-                       VerticalAlignment="Center" />
+            <Button Grid.Column="0" Classes="col-header"
+                    Command="{Binding SortCommand}" CommandParameter="name">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{x:Static res:Strings.FileName}"
+                           Foreground="{DynamicResource PulseTextMuted}"
+                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+                <TextBlock Text="{Binding NameSortGlyph}"
+                           Foreground="{DynamicResource PulseAccent}"
+                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+              </StackPanel>
+            </Button>
+            <Button Grid.Column="1" Classes="col-header"
+                    Command="{Binding SortCommand}" CommandParameter="size">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{x:Static res:Strings.Size}"
+                           Foreground="{DynamicResource PulseTextMuted}"
+                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+                <TextBlock Text="{Binding SizeSortGlyph}"
+                           Foreground="{DynamicResource PulseAccent}"
+                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+              </StackPanel>
+            </Button>
+            <Button Grid.Column="2" Classes="col-header"
+                    Command="{Binding SortCommand}" CommandParameter="permissions">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{x:Static res:Strings.Permissions}"
+                           Foreground="{DynamicResource PulseTextMuted}"
+                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+                <TextBlock Text="{Binding PermissionsSortGlyph}"
+                           Foreground="{DynamicResource PulseAccent}"
+                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+              </StackPanel>
+            </Button>
+            <Button Grid.Column="3" Classes="col-header"
+                    Command="{Binding SortCommand}" CommandParameter="modified">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{x:Static res:Strings.Modified}"
+                           Foreground="{DynamicResource PulseTextMuted}"
+                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+                <TextBlock Text="{Binding ModifiedSortGlyph}"
+                           Foreground="{DynamicResource PulseAccent}"
+                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+              </StackPanel>
+            </Button>
           </Grid>
         </Border>
 
-        <ScrollViewer Grid.Row="1"
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Auto">
-          <ItemsControl ItemsSource="{Binding Files}">
-            <ItemsControl.ItemTemplate>
+        <ListBox Grid.Row="1"
+                 x:Name="FileList"
+                 ItemsSource="{Binding Files}"
+                 SelectedItems="{Binding SelectedFiles}"
+                 SelectionMode="Multiple"
+                 DoubleTapped="OnFileDoubleTapped"
+                 Background="Transparent"
+                 Padding="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+          <ListBox.Styles>
+            <Style Selector="ListBoxItem">
+              <Setter Property="Padding" Value="0" />
+              <Setter Property="Margin" Value="0" />
+              <Setter Property="MinHeight" Value="0" />
+            </Style>
+          </ListBox.Styles>
+          <ListBox.ContextMenu>
+            <ContextMenu x:DataType="vm:FileBrowserViewModel">
+              <MenuItem Header="上传到当前文件夹" Command="{Binding UploadCommand}" />
+              <MenuItem Header="新建文件夹" Command="{Binding NewFolderCommand}" />
+              <MenuItem Header="新建文件" Command="{Binding NewFileCommand}" />
+            </ContextMenu>
+          </ListBox.ContextMenu>
+          <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:RemoteFileInfoViewModel">
                 <Border Background="Transparent"
                         BorderBrush="{DynamicResource PulseBorderSecondary}"
@@ -174,6 +203,36 @@
                       <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
                     </Style>
                   </Border.Styles>
+                  <Border.ContextMenu>
+                    <ContextMenu x:DataType="vm:RemoteFileInfoViewModel">
+                      <MenuItem Header="下载"
+                                IsVisible="{Binding !IsDirectory}"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DownloadItemCommand}"
+                                CommandParameter="{Binding}" />
+                      <MenuItem Header="重命名"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).RenameCommand}"
+                                CommandParameter="{Binding}" />
+                      <MenuItem Header="移动"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).MoveCommand}"
+                                CommandParameter="{Binding}" />
+                      <MenuItem Header="复制文件路径"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).CopyPathCommand}"
+                                CommandParameter="{Binding}" />
+                      <MenuItem Header="复制文件名称"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).CopyNameCommand}"
+                                CommandParameter="{Binding}" />
+                      <MenuItem Header="属性"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).PropertiesCommand}"
+                                CommandParameter="{Binding}" />
+                      <Separator />
+                      <MenuItem Header="上传到当前文件夹"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).UploadCommand}" />
+                      <MenuItem Header="新建文件夹"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).NewFolderCommand}" />
+                      <MenuItem Header="新建文件"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).NewFileCommand}" />
+                    </ContextMenu>
+                  </Border.ContextMenu>
                   <Grid ColumnDefinitions="*,100,110,140">
                     <StackPanel Grid.Column="0"
                                 Orientation="Horizontal"
@@ -218,9 +277,8 @@
                   </Grid>
                 </Border>
               </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </ScrollViewer>
+          </ListBox.ItemTemplate>
+        </ListBox>
 
       </Grid>
 
