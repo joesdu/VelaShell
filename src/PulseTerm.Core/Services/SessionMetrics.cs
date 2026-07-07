@@ -139,7 +139,10 @@ public sealed class SessionMetrics
     public const string MetricsCommand =
         "echo __P__; nproc 2>/dev/null; " +
         "echo __L__; cat /proc/loadavg 2>/dev/null; " +
-        "echo __M__; free -b 2>/dev/null | awk 'NR==2{print $2\" \"$3}'; " +
+        // htop-style used = total − free − buffers − cached − reclaimable slab. `free`'s own
+        // "used" column changed meaning in procps 4.x (total − available), which reads ~2x
+        // higher than what users compare against (用户反馈: htop 99M vs our 19%).
+        "echo __M__; awk '/^MemTotal:/{t=$2} /^MemFree:/{f=$2} /^Buffers:/{b=$2} /^Cached:/{c=$2} /^SReclaimable:/{s=$2} END{if(t>0){u=t-f-b-c-s; if(u<0)u=0; print t*1024\" \"u*1024}}' /proc/meminfo 2>/dev/null; " +
         "echo __D__; df -B1 --output=size,used / 2>/dev/null | tail -1; " +
         "echo __O__; . /etc/os-release 2>/dev/null && echo \"$PRETTY_NAME\"; " +
         "echo __K__; uname -r 2>/dev/null; " +
