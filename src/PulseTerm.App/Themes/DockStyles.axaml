@@ -19,8 +19,16 @@
         <Setter Property="Background" Value="{DynamicResource PulseBgTerminal}" />
     </Style>
 
+    <!-- Kill Dock's active-pane indicator strip (a 2px line under the tab strip: gray when
+         inactive, Fluent-blue when the pane has focus). The design has no such element —
+         the active tab's own accent top line already marks focus, and the active tab is
+         meant to merge seamlessly into the terminal below (nunbT). -->
     <Style Selector="dc|DocumentControl /template/ Border#PART_Border">
-        <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderPrimary}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="dc|DocumentControl[IsActive=true] /template/ Border#PART_Border">
+        <Setter Property="BorderBrush" Value="Transparent" />
     </Style>
 
     <Style Selector="dc|DocumentTabStrip">
