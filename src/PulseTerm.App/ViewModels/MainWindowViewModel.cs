@@ -143,7 +143,10 @@ public class MainWindowViewModel : ReactiveObject
         if (FileBrowser.SessionId == tab.SessionId)
             return;
 
-        FileBrowser = new FileBrowserViewModel(_sftpService, tab.SessionId);
+        FileBrowser = new FileBrowserViewModel(_sftpService, tab.SessionId)
+        {
+            TransferSink = FileTransfer,
+        };
         FileBrowser.RefreshCommand.Execute().Subscribe(_ => { }, _ => { });
     }
     /// <summary>The self-drawn terminal control of the active tab, when it is one.</summary>

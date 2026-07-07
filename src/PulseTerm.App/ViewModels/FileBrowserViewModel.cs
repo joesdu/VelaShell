@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reactive;
 using System.Threading;
 using System.Threading.Tasks;
+using PulseTerm.Core.Models;
 using PulseTerm.Core.Sftp;
 using ReactiveUI;
 
@@ -130,9 +131,86 @@ public class FileBrowserViewModel : ReactiveObject
         await NavigateToAsync(CurrentPath, ct);
     }
 
-    private Task UploadAsync(CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>Set by the view: opens the OS file picker and returns local paths to upload.</summary>
+    public Func<Task<IReadOnlyList<string>>>? PickFilesForUpload { get; set; }
 
-    private Task DownloadAsync(CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>Set by the view: asks where to save a download (arg = suggested file name).</summary>
+    public Func<string, Task<string?>>? PickSavePathForDownload { get; set; }
+
+    /// <summary>The floating transfer toast fed by uploads/downloads started here (spec §9).</summary>
+    public FileTransferViewModel? TransferSink { get; set; }
+
+    private async Task UploadAsync(CancellationToken ct = default)
+    {
+        if (_sftpService is null || PickFilesForUpload is null)
+            return;
+
+        var files = await PickFilesForUpload();
+        foreach (var localPath in files)
+        {
+            var name = System.IO.Path.GetFileName(localPath);
+            var remotePath = CurrentPath.TrimEnd('/') + "/" + name;
+            await RunTransferAsync(TransferType.Upload, localPath, remotePath, ct);
+        }
+
+        await RefreshAsync(ct);
+    }
+
+    private async Task DownloadAsync(CancellationToken ct = default)
+    {
+        if (_sftpService is null || PickSavePathForDownload is null)
+            return;
+
+        var selected = SelectedFiles.FirstOrDefault(f => !f.IsDirectory);
+        if (selected is null)
+            return;
+
+        var localPath = await PickSavePathForDownload(selected.Name);
+        if (string.IsNullOrEmpty(localPath))
+            return;
+
+        var remotePath = CurrentPath.TrimEnd('/') + "/" + selected.Name;
+        await RunTransferAsync(TransferType.Download, localPath, remotePath, ct);
+    }
+
+    /// <summary>Runs one transfer end to end: registers it with the toast, streams progress
+    /// into it, and settles the final state. Failures mark the row red instead of throwing.</summary>
+    private async Task RunTransferAsync(TransferType type, string localPath, string remotePath, CancellationToken ct)
+    {
+        var task = new TransferTask
+        {
+            Id = Guid.NewGuid(),
+            Type = type,
+            LocalPath = localPath,
+            RemotePath = remotePath,
+            Status = TransferStatus.InProgress,
+        };
+
+        TransferSink?.AddTransfer(task);
+        var item = TransferSink?.FindTransfer(task.Id);
+        var progress = new Progress<TransferProgress>(p => item?.UpdateProgress(p));
+
+        try
+        {
+            if (type == TransferType.Upload)
+                await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, progress, ct);
+            else
+                await _sftpService.DownloadFileAsync(_sessionId, remotePath, localPath, progress, ct);
+
+            if (item is not null)
+                item.Status = TransferStatus.Completed;
+        }
+        catch (Exception ex)
+        {
+            if (item is not null)
+                item.Status = TransferStatus.Failed;
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            TransferSink?.NotifyTaskSettled();
+        }
+    }
 
     private async Task DeleteAsync(CancellationToken ct = default)
     {
