@@ -21,6 +21,9 @@ public interface ISshClientWrapper : IDisposable
         int bufferSize,
         IDictionary<TerminalModes, uint>? terminalModeValues = null);
 
+    /// <summary>Runs a one-shot command on the remote host and returns its stdout.</summary>
+    Task<string> RunCommandAsync(string commandText, CancellationToken cancellationToken = default);
+
     void AddForwardedPort(ForwardedPort port);
     void RemoveForwardedPort(ForwardedPort port);
 }

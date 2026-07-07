@@ -43,6 +43,10 @@ public partial class App : Application
 
         _themeService = _serviceProvider.GetRequiredService<IThemeService>();
 
+        // Live-rebinding localized strings ({loc:Localize}) follow the DI service (#4).
+        Localization.LocalizedStrings.Instance.Attach(
+            _serviceProvider.GetRequiredService<PulseTerm.Core.Localization.ILocalizationService>());
+
         _themeService.ThemeChanged += OnThemeChanged;
         _themeService.AccentChanged += ApplyAccent;
         ApplyThemeVariant(_themeService.CurrentTheme);

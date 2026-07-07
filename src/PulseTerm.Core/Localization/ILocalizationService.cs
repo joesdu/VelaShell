@@ -22,4 +22,7 @@ public interface ILocalizationService
     /// </summary>
     /// <param name="language">Language code (e.g., "en", "zh-CN")</param>
     void SetLanguage(string language);
+
+    /// <summary>Raised after the UI language changes, so live-bound text can refresh.</summary>
+    event Action<string>? LanguageChanged;
 }

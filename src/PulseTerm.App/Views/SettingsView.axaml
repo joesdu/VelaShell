@@ -3,21 +3,31 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:PulseTerm.App.ViewModels"
+        xmlns:conv="using:PulseTerm.App.Converters"
         xmlns:res="clr-namespace:PulseTerm.Core.Resources;assembly=PulseTerm.Core"
-        mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="520"
+        mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="560"
         x:Class="PulseTerm.App.Views.SettingsView"
         x:DataType="vm:SettingsViewModel"
         Title="{x:Static res:Strings.Settings}"
-        Width="480" Height="520"
+        Width="720" Height="560"
         CanResize="False"
-        Background="{DynamicResource PulseBgPage}"
+        Background="{DynamicResource PulseBgSurface}"
         WindowStartupLocation="CenterOwner">
+
+  <!-- Settings per design §14: 720px, left nav 200 (bg-sidebar, 1px right border) +
+       right scrollable content; Ctrl+, opens; changes apply live on save. -->
 
   <Window.Styles>
     <Style Selector="TextBlock.field-label">
       <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
       <Setter Property="FontSize" Value="12" />
       <Setter Property="Margin" Value="0,0,0,6" />
+    </Style>
+    <Style Selector="TextBlock.page-title">
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Margin" Value="0,0,0,4" />
     </Style>
     <Style Selector="ComboBox">
       <Setter Property="Background" Value="{DynamicResource PulseBgInput}" />
@@ -41,7 +51,7 @@
     </Style>
     <Style Selector="Button.primary">
       <Setter Property="Background" Value="{DynamicResource PulseAccent}" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseBgPage}" />
+      <Setter Property="Foreground" Value="{DynamicResource PulseAccentText}" />
       <Setter Property="Padding" Value="24,8" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="Cursor" Value="Hand" />
@@ -56,115 +66,156 @@
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
+    <!-- Left nav items -->
+    <Style Selector="ListBox.nav">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Padding" Value="8" />
+    </Style>
+    <Style Selector="ListBox.nav ListBoxItem">
+      <Setter Property="Height" Value="32" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="ListBox.nav ListBoxItem:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+    </Style>
+    <Style Selector="ListBox.nav ListBoxItem:selected /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource PulseBgActive}" />
+    </Style>
+    <Style Selector="ListBox.nav ListBoxItem:selected">
+      <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+    <!-- Shortcut table rows -->
+    <Style Selector="TextBlock.key">
+      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+    </Style>
+    <Style Selector="TextBlock.keydesc">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+    </Style>
   </Window.Styles>
 
-  <DockPanel Margin="24">
+  <Grid ColumnDefinitions="200,*">
 
-    <!-- Header -->
-    <TextBlock DockPanel.Dock="Top"
-               Text="{x:Static res:Strings.Settings}"
-               Foreground="{DynamicResource PulseTextPrimary}"
-               FontSize="20"
-               FontWeight="Bold"
-               Margin="0,0,0,20" />
+    <!-- Left nav (bg-sidebar, right border) -->
+    <Border Grid.Column="0"
+            Background="{DynamicResource PulseBgSidebar}"
+            BorderBrush="{DynamicResource PulseBorderPrimary}"
+            BorderThickness="0,0,1,0">
+      <ListBox Classes="nav"
+               ItemsSource="{Binding SectionNames}"
+               SelectedIndex="{Binding SelectedSectionIndex}" />
+    </Border>
 
-    <!-- Buttons at bottom -->
-    <StackPanel DockPanel.Dock="Bottom"
-                Orientation="Horizontal"
-                HorizontalAlignment="Right"
-                Spacing="12"
-                Margin="0,20,0,0">
-      <Button Classes="secondary"
-              Content="{x:Static res:Strings.Cancel}"
-              Command="{Binding CancelCommand}" />
-      <Button Classes="primary"
-              Content="{x:Static res:Strings.Save}"
-              Command="{Binding SaveCommand}" />
-    </StackPanel>
+    <!-- Right content -->
+    <DockPanel Grid.Column="1" Margin="24,20">
 
-    <!-- Separator -->
-    <Border DockPanel.Dock="Bottom"
-            Height="1"
-            Background="{DynamicResource PulseBorderSecondary}"
-            Margin="0,16,0,0" />
-
-    <!-- Form fields -->
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-      <StackPanel Spacing="16">
-
-        <!-- Language -->
-        <StackPanel>
-          <TextBlock Classes="field-label" Text="{x:Static res:Strings.Language}" />
-          <ComboBox ItemsSource="{Binding AvailableLanguages}"
-                    SelectedItem="{Binding Language}" />
-        </StackPanel>
-
-        <!-- Theme -->
-        <StackPanel>
-          <TextBlock Classes="field-label" Text="{x:Static res:Strings.Theme}" />
-          <ComboBox ItemsSource="{Binding AvailableThemes}"
-                    SelectedItem="{Binding Theme}" />
-        </StackPanel>
-
-        <!-- Accent color override (live, no restart) -->
-        <StackPanel>
-          <TextBlock Classes="field-label" Text="强调色 (如 #00D4AA，留空用主题默认)" />
-          <TextBox Text="{Binding AccentColor}"
-                   PlaceholderText="#00D4AA"
-                   FontFamily="{DynamicResource PulseTerminalFont}" />
-        </StackPanel>
-        <!-- Terminal Type -->
-        <StackPanel>
-          <TextBlock Classes="field-label" Text="{x:Static res:Strings.TerminalType}" />
-          <ComboBox ItemsSource="{Binding AvailableTerminalTypes}"
-                    SelectedItem="{Binding TerminalType}" />
-        </StackPanel>
-
-        <!-- Terminal Encoding -->
-        <StackPanel>
-          <TextBlock Classes="field-label" Text="{x:Static res:Strings.TerminalEncoding}" />
-          <ComboBox ItemsSource="{Binding AvailableEncodings}"
-                    SelectedItem="{Binding TerminalEncoding}" />
-        </StackPanel>
-
-        <!-- Terminal Font -->
-        <StackPanel>
-          <TextBlock Classes="field-label" Text="{x:Static res:Strings.Font}" />
-          <TextBox Text="{Binding TerminalFont}" />
-        </StackPanel>
-
-        <!-- Font Size -->
-        <StackPanel>
-          <TextBlock Classes="field-label" Text="{x:Static res:Strings.FontSize}" />
-          <NumericUpDown Value="{Binding TerminalFontSize}"
-                         Minimum="8"
-                         Maximum="72"
-                         Increment="1"
-                         FormatString="0" />
-        </StackPanel>
-
-        <!-- Scrollback Lines -->
-        <StackPanel>
-          <TextBlock Classes="field-label" Text="{x:Static res:Strings.ScrollbackLines}" />
-          <NumericUpDown Value="{Binding ScrollbackLines}"
-                         Minimum="100"
-                         Maximum="100000"
-                         Increment="1000"
-                         FormatString="0" />
-        </StackPanel>
-
-        <!-- Default Port -->
-        <StackPanel>
-          <TextBlock Classes="field-label" Text="{x:Static res:Strings.DefaultPort}" />
-          <NumericUpDown Value="{Binding DefaultPort}"
-                         Minimum="1"
-                         Maximum="65535"
-                         Increment="1"
-                         FormatString="0" />
-        </StackPanel>
-
+      <!-- Footer buttons -->
+      <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                  HorizontalAlignment="Right" Spacing="12" Margin="0,16,0,0">
+        <Button Classes="secondary" Content="{x:Static res:Strings.Cancel}" Command="{Binding CancelCommand}" />
+        <Button Classes="primary" Content="{x:Static res:Strings.Save}" Command="{Binding SaveCommand}" />
       </StackPanel>
-    </ScrollViewer>
 
-  </DockPanel>
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Panel>
+
+          <!-- 常规 -->
+          <StackPanel Spacing="16"
+                      IsVisible="{Binding SelectedSectionIndex, Converter={x:Static conv:IntEqualsConverter.Instance}, ConverterParameter=0}">
+            <TextBlock Classes="page-title" Text="常规" />
+            <StackPanel>
+              <TextBlock Classes="field-label" Text="{x:Static res:Strings.Language}" />
+              <ComboBox ItemsSource="{Binding AvailableLanguages}" SelectedItem="{Binding Language}" />
+            </StackPanel>
+            <StackPanel>
+              <TextBlock Classes="field-label" Text="{x:Static res:Strings.DefaultPort}" />
+              <NumericUpDown Value="{Binding DefaultPort}" Minimum="1" Maximum="65535" Increment="1" FormatString="0" />
+            </StackPanel>
+          </StackPanel>
+
+          <!-- 外观 -->
+          <StackPanel Spacing="16"
+                      IsVisible="{Binding SelectedSectionIndex, Converter={x:Static conv:IntEqualsConverter.Instance}, ConverterParameter=1}">
+            <TextBlock Classes="page-title" Text="外观" />
+            <StackPanel>
+              <TextBlock Classes="field-label" Text="主题（dark / light / system 跟随系统）" />
+              <ComboBox ItemsSource="{Binding AvailableThemes}" SelectedItem="{Binding Theme}" />
+            </StackPanel>
+            <StackPanel>
+              <TextBlock Classes="field-label" Text="强调色 (如 #00D4AA，留空用主题默认)" />
+              <TextBox Text="{Binding AccentColor}" PlaceholderText="#00D4AA"
+                       FontFamily="{DynamicResource PulseTerminalFont}" />
+            </StackPanel>
+          </StackPanel>
+
+          <!-- 终端 -->
+          <StackPanel Spacing="16"
+                      IsVisible="{Binding SelectedSectionIndex, Converter={x:Static conv:IntEqualsConverter.Instance}, ConverterParameter=2}">
+            <TextBlock Classes="page-title" Text="终端" />
+            <StackPanel>
+              <TextBlock Classes="field-label" Text="{x:Static res:Strings.TerminalType}" />
+              <ComboBox ItemsSource="{Binding AvailableTerminalTypes}" SelectedItem="{Binding TerminalType}" />
+            </StackPanel>
+            <StackPanel>
+              <TextBlock Classes="field-label" Text="{x:Static res:Strings.TerminalEncoding}" />
+              <ComboBox ItemsSource="{Binding AvailableEncodings}" SelectedItem="{Binding TerminalEncoding}" />
+            </StackPanel>
+            <StackPanel>
+              <TextBlock Classes="field-label" Text="{x:Static res:Strings.Font}" />
+              <TextBox Text="{Binding TerminalFont}" />
+            </StackPanel>
+            <StackPanel>
+              <TextBlock Classes="field-label" Text="{x:Static res:Strings.FontSize}" />
+              <NumericUpDown Value="{Binding TerminalFontSize}" Minimum="8" Maximum="72" Increment="1" FormatString="0" />
+            </StackPanel>
+            <StackPanel>
+              <TextBlock Classes="field-label" Text="{x:Static res:Strings.ScrollbackLines}" />
+              <NumericUpDown Value="{Binding ScrollbackLines}" Minimum="100" Maximum="200000" Increment="1000" FormatString="0" />
+            </StackPanel>
+          </StackPanel>
+
+          <!-- 快捷键 (read-only map, spec §16) -->
+          <StackPanel Spacing="10"
+                      IsVisible="{Binding SelectedSectionIndex, Converter={x:Static conv:IntEqualsConverter.Instance}, ConverterParameter=3}">
+            <TextBlock Classes="page-title" Text="快捷键" />
+            <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" >
+              <Grid.Styles>
+                <Style Selector="TextBlock"><Setter Property="Margin" Value="0,4" /></Style>
+              </Grid.Styles>
+              <TextBlock Classes="key" Grid.Row="0" Text="Ctrl+P / Ctrl+K" /><TextBlock Classes="keydesc" Grid.Row="0" Grid.Column="1" Text="命令面板" />
+              <TextBlock Classes="key" Grid.Row="1" Text="Ctrl+T" /><TextBlock Classes="keydesc" Grid.Row="1" Grid.Column="1" Text="新建标签" />
+              <TextBlock Classes="key" Grid.Row="2" Text="Ctrl+W" /><TextBlock Classes="keydesc" Grid.Row="2" Grid.Column="1" Text="关闭当前标签" />
+              <TextBlock Classes="key" Grid.Row="3" Text="Ctrl+Tab / Ctrl+Shift+Tab" /><TextBlock Classes="keydesc" Grid.Row="3" Grid.Column="1" Text="下 / 上一个标签" />
+              <TextBlock Classes="key" Grid.Row="4" Text="Ctrl+F" /><TextBlock Classes="keydesc" Grid.Row="4" Grid.Column="1" Text="终端内搜索" />
+              <TextBlock Classes="key" Grid.Row="5" Text="Ctrl+R / Enter" /><TextBlock Classes="keydesc" Grid.Row="5" Grid.Column="1" Text="断开后原标签重连" />
+              <TextBlock Classes="key" Grid.Row="6" Text="Ctrl+Shift+C / V" /><TextBlock Classes="keydesc" Grid.Row="6" Grid.Column="1" Text="复制 / 粘贴" />
+              <TextBlock Classes="key" Grid.Row="7" Text="Shift+Insert" /><TextBlock Classes="keydesc" Grid.Row="7" Grid.Column="1" Text="粘贴" />
+              <TextBlock Classes="key" Grid.Row="8" Text="Ctrl+Shift+T" /><TextBlock Classes="keydesc" Grid.Row="8" Grid.Column="1" Text="隧道管理" />
+              <TextBlock Classes="key" Grid.Row="9" Text="Ctrl+," /><TextBlock Classes="keydesc" Grid.Row="9" Grid.Column="1" Text="设置" />
+              <TextBlock Classes="key" Grid.Row="10" Text="Ctrl+滚轮" /><TextBlock Classes="keydesc" Grid.Row="10" Grid.Column="1" Text="终端字号缩放" />
+              <TextBlock Classes="key" Grid.Row="11" Text="Ctrl+点击" /><TextBlock Classes="keydesc" Grid.Row="11" Grid.Column="1" Text="打开输出中的链接" />
+            </Grid>
+            <TextBlock Classes="field-label" Text="自定义键位将在后续版本提供。" />
+          </StackPanel>
+
+          <!-- 关于 -->
+          <StackPanel Spacing="12"
+                      IsVisible="{Binding SelectedSectionIndex, Converter={x:Static conv:IntEqualsConverter.Instance}, ConverterParameter=4}">
+            <TextBlock Classes="page-title" Text="关于 PulseTerm" />
+            <TextBlock Classes="keydesc" Text="高性能、跨平台的 SSH / SFTP 终端客户端。" />
+            <TextBlock Classes="keydesc" Text="自研 VT 引擎 · Avalonia UI · SSH.NET · Dock.Avalonia" />
+            <TextBlock Classes="field-label" Text="版本 1.0 (开发中)" />
+          </StackPanel>
+
+        </Panel>
+      </ScrollViewer>
+    </DockPanel>
+  </Grid>
 </Window>

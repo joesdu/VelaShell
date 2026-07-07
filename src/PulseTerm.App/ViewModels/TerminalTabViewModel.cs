@@ -52,6 +52,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     public Guid SessionId { get; set; }
 
+    /// <summary>Resource panel data for this tab (hover >400ms on the tab shows it, §11).</summary>
+    public ResourceMonitorViewModel? ResourceMonitor { get; set; }
+
     /// <summary>The profile this tab was connected with, used to reconnect in place (#19).</summary>
     public SessionProfile? Profile { get; set; }
 

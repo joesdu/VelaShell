@@ -1,0 +1,116 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:PulseTerm.App.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="220"
+             x:Class="PulseTerm.App.Views.ResourceMonitorView"
+             x:DataType="vm:ResourceMonitorViewModel">
+
+  <!-- Resource panel per design frame EP3Gd (spec §11): 280px, padding 12, gap 8; bars 6px
+       corner 3 on bg-active track; CPU=term-blue, RAM=term-yellow, Disk=term-green;
+       >70% turns warning, >90% error. Hosted inside the tab-hover tooltip. -->
+
+  <UserControl.Styles>
+    <Style Selector="TextBlock.row-label">
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource PulseUiFont}" />
+      <Setter Property="FontSize" Value="11" />
+    </Style>
+    <Style Selector="TextBlock.row-value">
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource PulseUiFont}" />
+      <Setter Property="FontSize" Value="11" />
+    </Style>
+    <Style Selector="ProgressBar">
+      <Setter Property="Height" Value="6" />
+      <Setter Property="MinHeight" Value="6" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Background" Value="{DynamicResource PulseBgActive}" />
+      <Setter Property="Minimum" Value="0" />
+      <Setter Property="Maximum" Value="100" />
+    </Style>
+    <Style Selector="ProgressBar.warn">
+      <Setter Property="Foreground" Value="{DynamicResource PulseWarning}" />
+    </Style>
+    <Style Selector="ProgressBar.crit">
+      <Setter Property="Foreground" Value="{DynamicResource PulseError}" />
+    </Style>
+    <Style Selector="TextBlock.info-label">
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource PulseUiFont}" />
+      <Setter Property="FontSize" Value="10" />
+    </Style>
+    <Style Selector="TextBlock.info-value">
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource PulseUiFont}" />
+      <Setter Property="FontSize" Value="10" />
+    </Style>
+  </UserControl.Styles>
+
+  <StackPanel Width="256" Margin="12" Spacing="8">
+
+    <!-- Header: hostname + latency -->
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Text="{Binding HostName}"
+                 Foreground="{DynamicResource PulseTextPrimary}"
+                 FontFamily="{DynamicResource PulseUiFont}"
+                 FontSize="13" FontWeight="Bold" />
+    </Grid>
+
+    <!-- Unavailable placeholder (§11: 若该会话已断开，显示数据不可用) -->
+    <TextBlock Text="数据不可用"
+               Foreground="{DynamicResource PulseTextMuted}"
+               FontFamily="{DynamicResource PulseUiFont}" FontSize="11"
+               IsVisible="{Binding !IsAvailable}" />
+
+    <StackPanel Spacing="8" IsVisible="{Binding IsAvailable}">
+
+      <!-- CPU -->
+      <StackPanel Spacing="4">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Classes="row-label" Text="{Binding CpuLabel}" />
+          <TextBlock Grid.Column="1" Classes="row-value" Text="{Binding CpuText}" />
+        </Grid>
+        <ProgressBar Value="{Binding CpuPercent}"
+                     Foreground="{DynamicResource PulseTermBlue}"
+                     Classes.warn="{Binding CpuWarn}" Classes.crit="{Binding CpuCrit}" />
+      </StackPanel>
+
+      <!-- RAM -->
+      <StackPanel Spacing="4">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Classes="row-label" Text="RAM" />
+          <TextBlock Grid.Column="1" Classes="row-value" Text="{Binding RamText}" />
+        </Grid>
+        <ProgressBar Value="{Binding RamPercent}"
+                     Foreground="{DynamicResource PulseTermYellow}"
+                     Classes.warn="{Binding RamWarn}" Classes.crit="{Binding RamCrit}" />
+      </StackPanel>
+
+      <!-- Disk -->
+      <StackPanel Spacing="4">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Classes="row-label" Text="Disk" />
+          <TextBlock Grid.Column="1" Classes="row-value" Text="{Binding DiskText}" />
+        </Grid>
+        <ProgressBar Value="{Binding DiskPercent}"
+                     Foreground="{DynamicResource PulseTermGreen}"
+                     Classes.warn="{Binding DiskWarn}" Classes.crit="{Binding DiskCrit}" />
+      </StackPanel>
+
+      <!-- System info -->
+      <StackPanel Spacing="4">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Classes="info-label" Text="OS Version" />
+          <TextBlock Grid.Column="1" Classes="info-value" Text="{Binding OsVersion}" />
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Classes="info-label" Text="Kernel" />
+          <TextBlock Grid.Column="1" Classes="info-value" Text="{Binding Kernel}" />
+        </Grid>
+      </StackPanel>
+
+    </StackPanel>
+  </StackPanel>
+</UserControl>
