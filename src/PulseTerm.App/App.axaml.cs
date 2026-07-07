@@ -31,6 +31,10 @@ public partial class App : Application
             .AddPulseTermControls()
             .AddPulseTermInfrastructure()
             .AddSingleton<IThemeService>(_ => new ThemeService("system"))
+            .AddSingleton<PulseTerm.Core.Localization.ILocalizationService, PulseTerm.Core.Localization.LocalizationService>()
+            .AddSingleton<PulseTerm.Core.Ssh.IHostKeyService>(sp =>
+                new PulseTerm.Infrastructure.Ssh.HostKeyService(sp.GetRequiredService<JsonDataStore>()))
+            .AddSingleton<Services.IKeyboardShortcutService, Services.KeyboardShortcutService>()
             .AddSingleton<JsonDataStore>()
             .AddSingleton<ISettingsService, SettingsService>()
             .AddSingleton<SettingsViewModel>()
@@ -47,6 +51,8 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        ApplyPersistedPreferences();
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var viewModel = _serviceProvider?.GetRequiredService<MainWindowViewModel>()
@@ -59,6 +65,31 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>Applies persisted language / theme / accent before the first window shows,
+    /// so the app starts in the user's chosen look without a visible re-theme flash.</summary>
+    private void ApplyPersistedPreferences()
+    {
+        if (_serviceProvider is null)
+            return;
+
+        try
+        {
+            var settings = _serviceProvider.GetRequiredService<ISettingsService>()
+                .GetSettingsAsync().GetAwaiter().GetResult();
+
+            _serviceProvider.GetRequiredService<PulseTerm.Core.Localization.ILocalizationService>()
+                .SetLanguage(settings.Language);
+            if (!string.IsNullOrWhiteSpace(settings.Theme))
+                _themeService?.SetTheme(settings.Theme);
+            if (!string.IsNullOrWhiteSpace(settings.AccentColor))
+                _themeService?.SetAccent(settings.AccentColor);
+        }
+        catch
+        {
+            // Corrupt settings must never block startup; defaults apply.
+        }
     }
 
     private void OnThemeChanged(string themeName)
