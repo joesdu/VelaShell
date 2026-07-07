@@ -211,24 +211,67 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         }
     }
 
+    private readonly object _ptyResizeGate = new();
+    private (int Columns, int Rows)? _pendingPtySize;
+    private bool _ptyResizeSending;
+
+    /// <summary>Forwards grid changes to the SSH channel off the UI thread, strictly in order
+    /// and collapsing bursts to the latest size. The previous fire-and-forget Task.Run per
+    /// event could deliver sizes out of order during drag storms, leaving the remote shell
+    /// with a stale grid — its subsequent prompt redraw then corrupted the buffer.</summary>
     private void OnPtySizeChanged(int columns, int rows)
     {
-        var stream = ShellStream;
-        if (_disposed || stream is null || !stream.CanWrite)
+        if (_disposed || ShellStream is null || !ShellStream.CanWrite)
             return;
 
-        // Off-load the channel request so a resize never stalls the UI thread.
-        _ = Task.Run(() =>
+        lock (_ptyResizeGate)
         {
+            _pendingPtySize = (columns, rows);
+            if (_ptyResizeSending)
+                return;
+            _ptyResizeSending = true;
+        }
+
+        _ = Task.Run(DrainPtyResizeQueue);
+    }
+
+    private void DrainPtyResizeQueue()
+    {
+        while (true)
+        {
+            (int Columns, int Rows) size;
+            lock (_ptyResizeGate)
+            {
+                if (_pendingPtySize is null)
+                {
+                    _ptyResizeSending = false;
+                    return;
+                }
+
+                size = _pendingPtySize.Value;
+                _pendingPtySize = null;
+            }
+
+            var stream = ShellStream;
+            if (_disposed || stream is null || !stream.CanWrite)
+            {
+                lock (_ptyResizeGate)
+                {
+                    _pendingPtySize = null;
+                    _ptyResizeSending = false;
+                }
+                return;
+            }
+
             try
             {
-                stream.Resize(columns, rows);
+                stream.Resize(size.Columns, size.Rows);
             }
             catch
             {
                 // A resize on a torn-down or unsupported channel is non-fatal.
             }
-        });
+        }
     }
 
     public void IncrementReconnectAttempt()

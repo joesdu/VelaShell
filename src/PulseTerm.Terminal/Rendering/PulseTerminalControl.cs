@@ -194,7 +194,6 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     public void Dispose()
     {
         _emulator.Updated -= OnEmulatorUpdated;
-        _ptyNotifyDebounce?.Stop();
     }
 
     private void OnEmulatorUpdated()
@@ -345,11 +344,6 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
     private void RelayoutFromBounds() => ApplyLayoutSize(Bounds.Size);
 
-    // The last grid announced to the PTY, and the debounce that coalesces announcements.
-    private int _notifiedCols;
-    private int _notifiedRows;
-    private DispatcherTimer? _ptyNotifyDebounce;
-
     private void ApplyLayoutSize(Size size)
     {
         if (_cellWidth <= 0 || _cellHeight <= 0)
@@ -368,10 +362,12 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         if (cols == _emulator.Columns && rows == _emulator.Rows)
             return;
 
-        // The local grid reflows immediately so dragging feels live (Windows Terminal does
-        // the same); only the PTY notification is debounced below, so a drag storm sends the
-        // remote shell one WINCH at the settled size instead of dozens — interleaved prompt
-        // redraws at stale widths were what littered the buffer after fast drags.
+        // The local grid reflows immediately so dragging feels live, and the PTY is told
+        // right away too — the mainstream approach. Local and remote must stay in lockstep:
+        // an earlier debounced notify let the remote's beliefs (readline's prompt row math)
+        // lag many reflows behind, so its relative cursor moves and erasures landed on the
+        // wrong rows and progressively destroyed buffer content. The transport layer
+        // serializes the sends in order, collapsing bursts to the latest size.
         _emulator.Resize(cols, rows);
         _scrollOffset = Math.Clamp(_scrollOffset, 0, _emulator.Screen.ScrollbackCount);
         _lastScrollbackCount = _emulator.Screen.ScrollbackCount;
@@ -380,29 +376,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         InvalidateVisual();
         ScrollChanged?.Invoke();
 
-        SchedulePtyNotify();
-    }
-
-    private void SchedulePtyNotify()
-    {
-        if (_ptyNotifyDebounce is null)
-        {
-            _ptyNotifyDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
-            _ptyNotifyDebounce.Tick += (_, _) =>
-            {
-                _ptyNotifyDebounce!.Stop();
-                int cols = _emulator.Columns;
-                int rows = _emulator.Rows;
-                if (cols == _notifiedCols && rows == _notifiedRows)
-                    return;
-                _notifiedCols = cols;
-                _notifiedRows = rows;
-                PtySizeChanged?.Invoke(cols, rows);
-            };
-        }
-
-        _ptyNotifyDebounce.Stop();
-        _ptyNotifyDebounce.Start();
+        PtySizeChanged?.Invoke(cols, rows);
     }
 
     // ---- Rendering ----------------------------------------------------------

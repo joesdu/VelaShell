@@ -1,3 +1,4 @@
+using Dock.Avalonia.Controls;
 using Dock.Model.Controls;
 using Dock.Model.Core;
 using Dock.Model.ReactiveUI;
@@ -14,6 +15,18 @@ public sealed class TerminalDockFactory : Factory
 {
     private IDocumentDock? _documentDock;
     private IRootDock? _rootDock;
+
+    public TerminalDockFactory()
+    {
+        // Without a host-window locator, "Float" removes the document from the layout but
+        // never creates a window to show it in — the tab just vanished (用户反馈). HostWindow
+        // is Dock.Avalonia's standard floating chrome.
+        DefaultHostWindowLocator = () => new HostWindow();
+        HostWindowLocator = new Dictionary<string, Func<IHostWindow?>>
+        {
+            [nameof(IDockWindow)] = () => new HostWindow(),
+        };
+    }
 
     public IDocumentDock? DocumentDock => _documentDock;
 
