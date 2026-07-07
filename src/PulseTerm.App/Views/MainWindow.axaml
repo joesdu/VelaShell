@@ -15,9 +15,6 @@
         Width="1440" Height="900"
         MinWidth="800" MinHeight="500"
         Background="{DynamicResource PulseBgPage}"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="-1"
-        WindowDecorations="None"
         WindowStartupLocation="CenterScreen">
 
   <Window.KeyBindings>
@@ -30,61 +27,11 @@
     <KeyBinding Gesture="Ctrl+K" Command="{Binding OpenCommandPaletteCommand}" />
   </Window.KeyBindings>
 
-  <Window.Styles>
-    <Style Selector="Button.caption">
-      <Setter Property="Width" Value="46" />
-      <Setter Property="Height" Value="34" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
-      <Setter Property="CornerRadius" Value="0" />
-      <Setter Property="Padding" Value="0" />
-      <Setter Property="HorizontalContentAlignment" Value="Center" />
-      <Setter Property="VerticalContentAlignment" Value="Center" />
-    </Style>
-    <Style Selector="Button.caption:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
-    </Style>
-    <Style Selector="Button.caption.close:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="#E81123" />
-    </Style>
-    <Style Selector="Button.caption.close:pointerover TextBlock">
-      <Setter Property="Foreground" Value="White" />
-    </Style>
-  </Window.Styles>
+  <!-- Native OS title bar (design spec §2): the client area starts with the menu bar row. -->
+  <Grid RowDefinitions="Auto,*">
 
-  <!-- Outer layout. OffScreenMargin keeps content inside the visible area when maximized
-       (a client-area-extended window is maximized slightly larger than the work area). -->
-  <Grid RowDefinitions="Auto,*" Margin="{Binding $parent[Window].OffScreenMargin}">
-
-    <!-- Custom draggable title bar with window controls -->
-    <Grid Grid.Row="0" Height="34"
-          ColumnDefinitions="*,Auto"
-          Background="{DynamicResource PulseBgSidebar}"
-          PointerPressed="TitleBar_PointerPressed"
-          DoubleTapped="TitleBar_DoubleTapped">
-      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8"
-                  VerticalAlignment="Center" Margin="12,0">
-        <PathIcon Width="14" Height="14"
-                  Foreground="{DynamicResource PulseAccent}"
-                  Data="M4 17l6-6-6-6M12 19h8" />
-        <TextBlock Text="{x:Static res:Strings.AppName}"
-                   Foreground="{DynamicResource PulseTextPrimary}"
-                   FontFamily="{DynamicResource PulseTerminalFont}"
-                   FontSize="12" FontWeight="SemiBold"
-                   VerticalAlignment="Center" />
-      </StackPanel>
-      <StackPanel Grid.Column="1" Orientation="Horizontal">
-        <Button Classes="caption" Click="Minimize_Click" ToolTip.Tip="最小化">
-          <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="10" Text="&#xE921;" />
-        </Button>
-        <Button Classes="caption" Click="MaximizeRestore_Click" ToolTip.Tip="最大化/还原">
-          <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="10" Text="&#xE922;" />
-        </Button>
-        <Button Classes="caption close" Click="Close_Click" ToolTip.Tip="关闭">
-          <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="10" Text="&#xE8BB;" />
-        </Button>
-      </StackPanel>
-    </Grid>
+    <!-- Menu bar (design frame TSiDh): text menus + global action buttons -->
+    <views:MenuBarView Grid.Row="0" DataContext="{Binding}" />
 
     <!-- Shell: content + status bar + palette overlay -->
     <Grid Grid.Row="1" RowDefinitions="*,Auto">

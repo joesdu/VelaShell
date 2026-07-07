@@ -34,24 +34,7 @@ public partial class MainWindow : Window
             await vm.InitializeAsync();
     }
 
-    // ---- Custom window chrome ----------------------------------------------
-
-    private void TitleBar_PointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-            BeginMoveDrag(e);
-    }
-
-    private void TitleBar_DoubleTapped(object? sender, TappedEventArgs e) => ToggleMaximize();
-
-    private void Minimize_Click(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
-
-    private void MaximizeRestore_Click(object? sender, RoutedEventArgs e) => ToggleMaximize();
-
-    private void Close_Click(object? sender, RoutedEventArgs e) => Close();
-
-    private void ToggleMaximize() =>
-        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    // The window uses the native OS title bar per design spec §2 — no custom chrome.
 
     private async void OnSidebarConnectRequested(object? sender, SessionProfile profile)
     {

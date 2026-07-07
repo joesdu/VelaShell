@@ -14,6 +14,7 @@
       <SolidColorBrush x:Key="PulseStatusConnecting" Color="#FDCB6E" />
       <SolidColorBrush x:Key="PulseStatusDisconnected" Color="#FF6B6B" />
       <FontFamily x:Key="PulseTerminalFont">JetBrains Mono, Cascadia Mono, Consolas, monospace</FontFamily>
+      <FontFamily x:Key="PulseUiFont">fonts:Inter#Inter, Segoe UI, Microsoft YaHei, sans-serif</FontFamily>
     </ResourceDictionary>
     <ResourceDictionary x:Key="Light">
       <SolidColorBrush x:Key="PulseAccent" Color="#00A88A" />
@@ -28,6 +29,7 @@
       <SolidColorBrush x:Key="PulseStatusConnecting" Color="#BF8700" />
       <SolidColorBrush x:Key="PulseStatusDisconnected" Color="#CF222E" />
       <FontFamily x:Key="PulseTerminalFont">JetBrains Mono, Cascadia Mono, Consolas, monospace</FontFamily>
+      <FontFamily x:Key="PulseUiFont">fonts:Inter#Inter, Segoe UI, Microsoft YaHei, sans-serif</FontFamily>
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>
