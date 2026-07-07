@@ -194,7 +194,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     public void Dispose()
     {
         _emulator.Updated -= OnEmulatorUpdated;
-        _layoutResizeDebounce?.Stop();
+        _ptyNotifyDebounce?.Stop();
     }
 
     private void OnEmulatorUpdated()
@@ -345,10 +345,10 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
     private void RelayoutFromBounds() => ApplyLayoutSize(Bounds.Size);
 
-    // The layout grid awaiting the debounce commit (see ApplyLayoutSize).
-    private int _pendingCols;
-    private int _pendingRows;
-    private DispatcherTimer? _layoutResizeDebounce;
+    // The last grid announced to the PTY, and the debounce that coalesces announcements.
+    private int _notifiedCols;
+    private int _notifiedRows;
+    private DispatcherTimer? _ptyNotifyDebounce;
 
     private void ApplyLayoutSize(Size size)
     {
@@ -365,48 +365,44 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         if (cols < 2 || rows < 2)
             return;
 
-        // Debounce resize storms (splitter drags, the tab-drag preview squeezing the shared
-        // control) the way xterm.js/VS Code throttle theirs: only the settled size is
-        // committed, so the remote shell gets one WINCH instead of dozens. Interleaved
-        // redraws at stale widths were what littered the prompt line with duplicated
-        // fragments after fast drags. Returning to the current grid cancels the pending
-        // commit outright — a drag that ends where it started never resizes at all.
-        _pendingCols = cols;
-        _pendingRows = rows;
-
         if (cols == _emulator.Columns && rows == _emulator.Rows)
-        {
-            _layoutResizeDebounce?.Stop();
-            return;
-        }
-
-        if (_layoutResizeDebounce is null)
-        {
-            _layoutResizeDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(125) };
-            _layoutResizeDebounce.Tick += (_, _) =>
-            {
-                _layoutResizeDebounce!.Stop();
-                CommitPendingLayout();
-            };
-        }
-
-        _layoutResizeDebounce.Stop();
-        _layoutResizeDebounce.Start();
-    }
-
-    private void CommitPendingLayout()
-    {
-        if (_pendingCols == _emulator.Columns && _pendingRows == _emulator.Rows)
             return;
 
-        _emulator.Resize(_pendingCols, _pendingRows);
+        // The local grid reflows immediately so dragging feels live (Windows Terminal does
+        // the same); only the PTY notification is debounced below, so a drag storm sends the
+        // remote shell one WINCH at the settled size instead of dozens — interleaved prompt
+        // redraws at stale widths were what littered the buffer after fast drags.
+        _emulator.Resize(cols, rows);
         _scrollOffset = Math.Clamp(_scrollOffset, 0, _emulator.Screen.ScrollbackCount);
         _lastScrollbackCount = _emulator.Screen.ScrollbackCount;
         // Reflow shifts absolute rows; a stale selection would mark (and copy) the wrong text.
         ClearSelection();
-        PtySizeChanged?.Invoke(_pendingCols, _pendingRows);
         InvalidateVisual();
         ScrollChanged?.Invoke();
+
+        SchedulePtyNotify();
+    }
+
+    private void SchedulePtyNotify()
+    {
+        if (_ptyNotifyDebounce is null)
+        {
+            _ptyNotifyDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+            _ptyNotifyDebounce.Tick += (_, _) =>
+            {
+                _ptyNotifyDebounce!.Stop();
+                int cols = _emulator.Columns;
+                int rows = _emulator.Rows;
+                if (cols == _notifiedCols && rows == _notifiedRows)
+                    return;
+                _notifiedCols = cols;
+                _notifiedRows = rows;
+                PtySizeChanged?.Invoke(cols, rows);
+            };
+        }
+
+        _ptyNotifyDebounce.Stop();
+        _ptyNotifyDebounce.Start();
     }
 
     // ---- Rendering ----------------------------------------------------------

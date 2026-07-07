@@ -126,6 +126,39 @@ public class ResizePreservationTests
     }
 
     [TestMethod]
+    public void RepeatedDragResizes_WithPromptRedraws_DoNotLoseContent()
+    {
+        // The reported bug: fast repeated tab drags (resize + readline redrawing the prompt
+        // with "\r ESC[K prompt" on every WINCH) progressively ate the buffer until only a
+        // lone prompt remained. Root causes: EL not clearing the soft-wrap flag, and the
+        // reflow split dropping tail rows to keep the cursor visible.
+        var e = New(cols: 80, rows: 10);
+        Feed(e, "Linux NanoPi-R2S 6.1.63 #218 SMP aarch64\r\n" +
+                "The programs included with the Debian GNU/Linux system are free software;\r\n" +
+                "permitted by applicable law.\r\n");
+        Feed(e, "pi@NanoPi-R2S:~$ ");
+
+        for (int i = 0; i < 6; i++)
+        {
+            e.Resize(60, 8);
+            Feed(e, "\r\u001b[Kpi@NanoPi-R2S:~$ ");   // readline redraw after WINCH
+            e.Resize(80, 10);
+            Feed(e, "\r\u001b[Kpi@NanoPi-R2S:~$ ");
+        }
+
+        var all = new List<string>();
+        for (int r = 0; r < e.Screen.TotalRows; r++)
+            all.Add(e.Screen.ViewLine(r).GetText());
+
+        // The MOTD survives every cycle…
+        Assert.IsTrue(all.Any(l => l.StartsWith("Linux NanoPi-R2S")), "MOTD first line was lost");
+        Assert.IsTrue(all.Any(l => l.Contains("free software")), "MOTD body was lost");
+        // …and redraws don't stack duplicated prompt fragments.
+        Assert.AreEqual(1, all.Count(l => l.Contains("pi@NanoPi-R2S:~$")),
+            "prompt fragments were duplicated");
+    }
+
+    [TestMethod]
     public void ViewLine_OutOfRangeRows_ClampInsteadOfThrow()
     {
         var e = New(cols: 10, rows: 3);

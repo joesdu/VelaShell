@@ -221,6 +221,9 @@ public sealed class TerminalScreen
         {
             case 0:
                 _lines[CursorY].FillRange(CursorX, Columns, blank);
+                // The line no longer continues onto the next row; a stale soft-wrap flag
+                // would make the resize reflow merge unrelated rows (prompt redraw bug).
+                _lines[CursorY].Wrapped = false;
                 for (int y = CursorY + 1; y < Rows; y++)
                     _lines[y].Fill(blank);
                 break;
@@ -244,7 +247,14 @@ public sealed class TerminalScreen
     {
         switch (mode)
         {
-            case 0: _lines[CursorY].FillRange(CursorX, Columns, blank); break;
+            case 0:
+                _lines[CursorY].FillRange(CursorX, Columns, blank);
+                // Erasing to the end of the line severs its soft-wrap continuation — this is
+                // exactly what readline's "\r ESC[K + prompt" redraw emits on every WINCH, and
+                // a stale Wrapped flag here made resize reflows merge the redrawn prompt with
+                // whatever followed (progressively corrupting the buffer on repeated drags).
+                _lines[CursorY].Wrapped = false;
+                break;
             case 1: _lines[CursorY].FillRange(0, CursorX + 1, blank); break;
             case 2: _lines[CursorY].Fill(blank); break;
         }
@@ -436,10 +446,11 @@ public sealed class TerminalScreen
         }
 
         // 3. Split back: the screen is the bottom-most newRows rows (content stays anchored
-        //    at the bottom like every terminal), but never above the cursor.
+        //    at the bottom like every terminal). The split NEVER discards rows: everything
+        //    above the screen goes to scrollback, and a cursor that mapped above the window
+        //    is clamped into it rather than dragging the window up and silently dropping the
+        //    tail rows (that drop is what ate the buffer on repeated drag-resizes).
         int screenStart = Math.Max(0, rebuilt.Count - newRows);
-        if (newCursorRow < screenStart)
-            screenStart = newCursorRow;
 
         _scrollback.Clear();
         for (int r = 0; r < screenStart; r++)
