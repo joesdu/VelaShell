@@ -194,6 +194,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     public void Dispose()
     {
         _emulator.Updated -= OnEmulatorUpdated;
+        _layoutResizeDebounce?.Stop();
     }
 
     private void OnEmulatorUpdated()
@@ -344,6 +345,11 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
     private void RelayoutFromBounds() => ApplyLayoutSize(Bounds.Size);
 
+    // The layout grid awaiting the debounce commit (see ApplyLayoutSize).
+    private int _pendingCols;
+    private int _pendingRows;
+    private DispatcherTimer? _layoutResizeDebounce;
+
     private void ApplyLayoutSize(Size size)
     {
         if (_cellWidth <= 0 || _cellHeight <= 0)
@@ -359,12 +365,48 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         if (cols < 2 || rows < 2)
             return;
 
+        // Debounce resize storms (splitter drags, the tab-drag preview squeezing the shared
+        // control) the way xterm.js/VS Code throttle theirs: only the settled size is
+        // committed, so the remote shell gets one WINCH instead of dozens. Interleaved
+        // redraws at stale widths were what littered the prompt line with duplicated
+        // fragments after fast drags. Returning to the current grid cancels the pending
+        // commit outright — a drag that ends where it started never resizes at all.
+        _pendingCols = cols;
+        _pendingRows = rows;
+
         if (cols == _emulator.Columns && rows == _emulator.Rows)
+        {
+            _layoutResizeDebounce?.Stop();
+            return;
+        }
+
+        if (_layoutResizeDebounce is null)
+        {
+            _layoutResizeDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(125) };
+            _layoutResizeDebounce.Tick += (_, _) =>
+            {
+                _layoutResizeDebounce!.Stop();
+                CommitPendingLayout();
+            };
+        }
+
+        _layoutResizeDebounce.Stop();
+        _layoutResizeDebounce.Start();
+    }
+
+    private void CommitPendingLayout()
+    {
+        if (_pendingCols == _emulator.Columns && _pendingRows == _emulator.Rows)
             return;
 
-        _emulator.Resize(cols, rows);
-        PtySizeChanged?.Invoke(cols, rows);
+        _emulator.Resize(_pendingCols, _pendingRows);
+        _scrollOffset = Math.Clamp(_scrollOffset, 0, _emulator.Screen.ScrollbackCount);
+        _lastScrollbackCount = _emulator.Screen.ScrollbackCount;
+        // Reflow shifts absolute rows; a stale selection would mark (and copy) the wrong text.
+        ClearSelection();
+        PtySizeChanged?.Invoke(_pendingCols, _pendingRows);
         InvalidateVisual();
+        ScrollChanged?.Invoke();
     }
 
     // ---- Rendering ----------------------------------------------------------
@@ -756,7 +798,26 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
             return;
         }
 
-        var encoded = InputEncoder.Encode(e.Key, e.KeyModifiers, _emulator.Modes, _emulator.Type);
+        // View paging (用户反馈): PageUp/PageDown page through the scrollback on the primary
+        // screen (full-screen apps on the alternate screen still receive them as CSI 5~/6~);
+        // the Shift+ variants page everywhere.
+        if (e.Key is Key.PageUp or Key.PageDown &&
+            (e.KeyModifiers == KeyModifiers.Shift ||
+             (e.KeyModifiers == KeyModifiers.None && _emulator.Screen.MaxScrollback > 0)))
+        {
+            int page = Math.Max(1, _emulator.Rows - 1);
+            ScrollOffset += e.Key == Key.PageUp ? page : -page;
+            e.Handled = true;
+            return;
+        }
+
+        // Shift+Home/End jump the shell cursor to line start/end (用户反馈): send the plain
+        // Home/End sequences, which readline binds — the shifted CSI 1;2H/F variants it ignores.
+        var effectiveModifiers = e.KeyModifiers;
+        if (e.Key is Key.Home or Key.End && e.KeyModifiers == KeyModifiers.Shift)
+            effectiveModifiers = KeyModifiers.None;
+
+        var encoded = InputEncoder.Encode(e.Key, effectiveModifiers, _emulator.Modes, _emulator.Type);
         if (encoded is { Length: > 0 })
         {
             UserInput?.Invoke(encoded);
