@@ -465,6 +465,34 @@ public class FileBrowserViewModelTests
 
     [TestMethod]
     [TestCategory("FileBrowser")]
+    public async Task Delete_WhenConfirmed_DeletesItem()
+    {
+        _vm.ConfirmDelete = _ => Task.FromResult(true);
+        _sftpService.ListDirectoryAsync(_sessionId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new List<RemoteFileInfo>()));
+        var file = new RemoteFileInfoViewModel(CreateTestFiles()[1]); // /home/user/readme.txt
+
+        await _vm.DeleteItemCommand.Execute(file).FirstAsync();
+
+        await _sftpService.Received(1).DeleteAsync(_sessionId, "/home/user/readme.txt",
+            Arg.Any<IProgress<SftpDeleteProgress>?>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task Delete_WhenDeclined_DoesNothing()
+    {
+        _vm.ConfirmDelete = _ => Task.FromResult(false);
+        var file = new RemoteFileInfoViewModel(CreateTestFiles()[1]);
+
+        await _vm.DeleteItemCommand.Execute(file).FirstAsync();
+
+        await _sftpService.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<string>(),
+            Arg.Any<IProgress<SftpDeleteProgress>?>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public async Task DownloadItem_OnDirectory_DoesNothing()
     {
         _vm.PickSavePathForDownload = _ => Task.FromResult<string?>("C:/local/docs");

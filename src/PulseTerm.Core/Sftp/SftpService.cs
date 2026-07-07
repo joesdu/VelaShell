@@ -66,7 +66,7 @@ public class SftpService : ISftpService
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task DeleteAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
+    public async Task DeleteAsync(Guid sessionId, string remotePath, IProgress<SftpDeleteProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
         await Task.Run(() =>
@@ -78,18 +78,39 @@ public class SftpService : ISftpService
 
             var parentDir = GetUnixParentDirectory(remotePath);
             var name = GetUnixFileName(remotePath);
-            var entries = client.ListDirectory(parentDir);
-            var entry = entries.FirstOrDefault(f => f.Name == name);
+            var entry = client.ListDirectory(parentDir).FirstOrDefault(f => f.Name == name);
+            bool isDirectory = entry != null && entry.IsDirectory;
 
-            if (entry != null && entry.IsDirectory)
-            {
-                client.DeleteDirectory(remotePath);
-            }
-            else
-            {
-                client.DeleteFile(remotePath);
-            }
+            int deleted = 0;
+            DeleteEntry(client, remotePath, isDirectory, ref deleted, progress, cancellationToken);
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Depth-first delete: a directory's children are removed before the directory itself,
+    /// since SFTP <c>rmdir</c> only succeeds on empty directories. Reports one tick per removed entry.</summary>
+    private static void DeleteEntry(ISftpClientWrapper client, string path, bool isDirectory,
+        ref int deleted, IProgress<SftpDeleteProgress>? progress, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (isDirectory)
+        {
+            foreach (var child in client.ListDirectory(path))
+            {
+                if (child.Name == "." || child.Name == "..")
+                    continue;
+                DeleteEntry(client, child.FullName, child.IsDirectory, ref deleted, progress, cancellationToken);
+            }
+
+            client.DeleteDirectory(path);
+        }
+        else
+        {
+            client.DeleteFile(path);
+        }
+
+        deleted++;
+        progress?.Report(new SftpDeleteProgress(deleted, path));
     }
 
     public async Task CreateDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)

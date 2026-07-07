@@ -272,6 +272,34 @@ public class SftpServiceTests
     }
 
     [TestMethod]
+    public async Task DeleteAsync_RecursivelyDeletesDirectoryContents_AndReportsProgress()
+    {
+        const string dir = "/home/user/proj";
+        var mockDir = CreateMockSftpFile("proj", dir, 0, true, "rwxr-xr-x");
+        var childFile = CreateMockSftpFile("a.txt", "/home/user/proj/a.txt", 10, false, "rw-r--r--");
+        var childSub = CreateMockSftpFile("sub", "/home/user/proj/sub", 0, true, "rwxr-xr-x");
+        var grandchild = CreateMockSftpFile("b.txt", "/home/user/proj/sub/b.txt", 20, false, "rw-r--r--");
+
+        _sftpClient.Exists(dir).Returns(true);
+        _sftpClient.ListDirectory("/home/user").Returns(new[] { mockDir });   // parent listing → proj is a directory
+        _sftpClient.ListDirectory(dir).Returns(new[] { childFile, childSub });
+        _sftpClient.ListDirectory("/home/user/proj/sub").Returns(new[] { grandchild });
+
+        var reports = new List<SftpDeleteProgress>();
+        await _sftpService.DeleteAsync(_sessionId, dir,
+            new SynchronousProgress<SftpDeleteProgress>(reports.Add));
+
+        // Files removed, and each directory removed only after its contents.
+        _sftpClient.Received(1).DeleteFile("/home/user/proj/a.txt");
+        _sftpClient.Received(1).DeleteFile("/home/user/proj/sub/b.txt");
+        _sftpClient.Received(1).DeleteDirectory("/home/user/proj/sub");
+        _sftpClient.Received(1).DeleteDirectory(dir);
+
+        Assert.AreEqual(4, reports.Count);                 // 2 files + 2 directories
+        Assert.AreEqual(4, reports[^1].DeletedCount);
+    }
+
+    [TestMethod]
     public async Task DeleteAsync_WhenPathNotFound_ThrowsFileNotFoundException()
     {
         // Arrange

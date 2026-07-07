@@ -19,6 +19,7 @@ public class FileBrowserViewModel : ReactiveObject
     private bool _isLoading;
     private bool _isVisible;
     private string? _errorMessage;
+    private string _busyText = "加载中…";
     private string _sortColumn = "name";
     private bool _sortDescending;
 
@@ -47,6 +48,7 @@ public class FileBrowserViewModel : ReactiveObject
         CopyPathCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(CopyPathAsync);
         CopyNameCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(CopyNameAsync);
         PropertiesCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(ShowPropertiesAsync);
+        DeleteItemCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(DeleteItemAsync);
         ToggleVisibilityCommand = ReactiveCommand.Create(ToggleVisibility);
         SortCommand = ReactiveCommand.Create<string>(ToggleSort);
     }
@@ -68,6 +70,13 @@ public class FileBrowserViewModel : ReactiveObject
     {
         get => _isLoading;
         set => this.RaiseAndSetIfChanged(ref _isLoading, value);
+    }
+
+    /// <summary>Message shown on the busy overlay (loading a directory, or delete progress).</summary>
+    public string BusyText
+    {
+        get => _busyText;
+        set => this.RaiseAndSetIfChanged(ref _busyText, value);
     }
 
     public bool IsVisible
@@ -103,6 +112,7 @@ public class FileBrowserViewModel : ReactiveObject
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> CopyPathCommand { get; }
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> CopyNameCommand { get; }
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> PropertiesCommand { get; }
+    public ReactiveCommand<RemoteFileInfoViewModel, Unit> DeleteItemCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleVisibilityCommand { get; }
 
     /// <summary>Sorts by a column key ("name" | "size" | "permissions" | "modified"); clicking the
@@ -145,6 +155,7 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             ErrorMessage = null;
+            BusyText = "加载中…";
             IsLoading = true;
             CurrentPath = path;
 
@@ -279,6 +290,10 @@ public class FileBrowserViewModel : ReactiveObject
 
     /// <summary>Set by the view: shows a file's properties in a modal.</summary>
     public Func<RemoteFileInfoViewModel, Task>? ShowFileProperties { get; set; }
+
+    /// <summary>Set by the view: asks the user to confirm a destructive action (arg = message) →
+    /// true to proceed. Used before deleting.</summary>
+    public Func<string, Task<bool>>? ConfirmDelete { get; set; }
 
     /// <summary>The floating transfer toast fed by uploads/downloads started here (spec §9).</summary>
     public FileTransferViewModel? TransferSink { get; set; }
@@ -457,6 +472,41 @@ public class FileBrowserViewModel : ReactiveObject
             return;
 
         await ShowFileProperties(file);
+    }
+
+    private async Task DeleteItemAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
+    {
+        if (_sftpService is null || file is null)
+            return;
+
+        if (ConfirmDelete is not null)
+        {
+            var kind = file.IsDirectory ? "文件夹" : "文件";
+            var ok = await ConfirmDelete($"确定要删除{kind}“{file.Name}”吗？此操作不可撤销。");
+            if (!ok)
+                return;
+        }
+
+        try
+        {
+            ErrorMessage = null;
+            BusyText = file.IsDirectory ? "正在删除文件夹…" : "正在删除…";
+            IsLoading = true;
+
+            var progress = new Progress<SftpDeleteProgress>(p =>
+                BusyText = $"正在删除… 已删除 {p.DeletedCount} 项");
+
+            await _sftpService.DeleteAsync(_sessionId, file.FullPath, progress, ct);
+            await RefreshAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
     }
 
     /// <summary>Joins a directory and a leaf name into a Unix-style remote path.</summary>

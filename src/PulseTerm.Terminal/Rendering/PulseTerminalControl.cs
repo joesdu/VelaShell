@@ -94,6 +94,11 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     private (int Row, int Col)? _selectionCaret;
     private bool _selecting;
 
+    // Mouse reporting to the app (htop/btop/vim/tmux): the button held after a reported press, and
+    // the last cell reported, so drag/motion only emits when the cell actually changes.
+    private TerminalMouseButton? _mouseButtonDown;
+    private (int Col, int Row) _lastMouseReportCell = (-1, -1);
+
     public PulseTerminalControl()
         : this(new TerminalEmulator(120, 32))
     {
@@ -679,6 +684,26 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
             }
         }
 
+        // When the app has enabled mouse tracking, forward the click to it (htop tabs/buttons,
+        // btop, vim, tmux). Holding Shift bypasses reporting so the user can still select text.
+        // Reporting only makes sense on the live screen, not while scrolled into history.
+        if (_emulator.Modes.Mouse != MouseTracking.None && _scrollOffset == 0
+            && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            TerminalMouseButton? button =
+                props.IsLeftButtonPressed ? TerminalMouseButton.Left :
+                props.IsRightButtonPressed ? TerminalMouseButton.Right :
+                props.IsMiddleButtonPressed ? TerminalMouseButton.Middle : null;
+
+            if (button is { } b && SendMouse(TerminalMouseEventType.Press, b, point, e.KeyModifiers))
+            {
+                _mouseButtonDown = b;
+                _lastMouseReportCell = ScreenCell(point);
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (props.IsLeftButtonPressed)
         {
             _selecting = true;
@@ -697,6 +722,28 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
+
+        // Report motion to the app in button-event (?1002, only while a button is down) and
+        // any-event (?1003, always) modes, but only when a cell boundary is crossed.
+        var tracking = _emulator.Modes.Mouse;
+        if (!_selecting && _scrollOffset == 0
+            && tracking is MouseTracking.ButtonEvent or MouseTracking.AnyEvent)
+        {
+            bool held = _mouseButtonDown is not null;
+            if (tracking == MouseTracking.AnyEvent || held)
+            {
+                var position = e.GetPosition(this);
+                var cell = ScreenCell(position);
+                if (cell != _lastMouseReportCell)
+                {
+                    _lastMouseReportCell = cell;
+                    var button = _mouseButtonDown ?? TerminalMouseButton.None;
+                    SendMouse(TerminalMouseEventType.Move, button, position, e.KeyModifiers);
+                }
+            }
+            return;
+        }
+
         if (_selecting)
         {
             _selectionCaret = PointToCell(e.GetPosition(this));
@@ -707,6 +754,17 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+
+        // Complete an app-reported drag/click with a release event.
+        if (_mouseButtonDown is { } down)
+        {
+            SendMouse(TerminalMouseEventType.Release, down, e.GetPosition(this), e.KeyModifiers);
+            _mouseButtonDown = null;
+            _lastMouseReportCell = (-1, -1);
+            e.Handled = true;
+            return;
+        }
+
         if (_selecting)
         {
             _selecting = false;
@@ -738,12 +796,51 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
             return;
         }
 
+        // On the live screen with mouse tracking on, the wheel scrolls the app (htop/btop lists,
+        // less, vim) rather than the local scrollback.
+        if (_emulator.Modes.Mouse != MouseTracking.None && _scrollOffset == 0 && e.Delta.Y != 0)
+        {
+            var button = e.Delta.Y > 0 ? TerminalMouseButton.WheelUp : TerminalMouseButton.WheelDown;
+            if (SendMouse(TerminalMouseEventType.Press, button, e.GetPosition(this), e.KeyModifiers))
+            {
+                e.Handled = true;
+                return;
+            }
+        }
+
         int delta = (int)(e.Delta.Y * 3);
         int maxOffset = _emulator.Screen.ScrollbackCount;
         _scrollOffset = Math.Clamp(_scrollOffset + delta, 0, maxOffset);
         InvalidateVisual();
         ScrollChanged?.Invoke();
         e.Handled = true;
+    }
+
+    /// <summary>Maps a pointer position to a 0-based cell within the visible screen.</summary>
+    private (int Col, int Row) ScreenCell(Point p)
+    {
+        int col = Math.Clamp((int)(p.X / _cellWidth), 0, Math.Max(0, _emulator.Columns - 1));
+        int row = Math.Clamp((int)(p.Y / _cellHeight), 0, Math.Max(0, _emulator.Rows - 1));
+        return (col, row);
+    }
+
+    /// <summary>Encodes a mouse event under the active tracking mode and sends it to the PTY.
+    /// Returns false when the current mode does not report this event.</summary>
+    private bool SendMouse(TerminalMouseEventType type, TerminalMouseButton button, Point p, KeyModifiers mods)
+    {
+        var (col, row) = ScreenCell(p);
+        var bytes = MouseEncoder.Encode(
+            type, button, col, row,
+            mods.HasFlag(KeyModifiers.Shift),
+            mods.HasFlag(KeyModifiers.Alt),
+            mods.HasFlag(KeyModifiers.Control),
+            _emulator.Modes);
+
+        if (bytes is null || bytes.Length == 0)
+            return false;
+
+        UserInput?.Invoke(bytes);
+        return true;
     }
 
     private void ClearSelection()

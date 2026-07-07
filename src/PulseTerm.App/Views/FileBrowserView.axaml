@@ -225,6 +225,10 @@
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).PropertiesCommand}"
                                 CommandParameter="{Binding}" />
                       <Separator />
+                      <MenuItem Header="删除"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DeleteItemCommand}"
+                                CommandParameter="{Binding}" />
+                      <Separator />
                       <MenuItem Header="上传到当前文件夹"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).UploadCommand}" />
                       <MenuItem Header="新建文件夹"
@@ -290,7 +294,7 @@
               Opacity="0.8"
               HorizontalAlignment="Stretch"
               VerticalAlignment="Stretch">
-        <TextBlock Text="Loading..."
+        <TextBlock Text="{Binding BusyText}"
                    Foreground="{DynamicResource PulseTextSecondary}"
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center"

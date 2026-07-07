@@ -30,6 +30,7 @@ public partial class FileBrowserView : UserControl
             vm.PromptForText = PromptForTextAsync;
             vm.CopyToClipboard = CopyToClipboardAsync;
             vm.ShowFileProperties = ShowFilePropertiesAsync;
+            vm.ConfirmDelete = ConfirmAsync;
         };
     }
 
@@ -122,6 +123,48 @@ public partial class FileBrowserView : UserControl
         okButton.Click += (_, _) => { result = textBox.Text; dialog.Close(); };
         cancelButton.Click += (_, _) => { result = null; dialog.Close(); };
         dialog.Opened += (_, _) => { textBox.SelectAll(); textBox.Focus(); };
+
+        await dialog.ShowDialog(owner);
+        return result;
+    }
+
+    /// <summary>Modal yes/no confirmation for destructive actions (delete). Returns true to proceed.</summary>
+    private async Task<bool> ConfirmAsync(string message)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner)
+            return false;
+
+        var confirmButton = new Button { Content = "删除", MinWidth = 72 };
+        var cancelButton = new Button { Content = "取消", IsCancel = true, IsDefault = true, MinWidth = 72 };
+
+        bool result = false;
+        var dialog = new Window
+        {
+            Title = "确认删除",
+            CanResize = false,
+            ShowInTaskbar = false,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 16,
+                Children =
+                {
+                    new TextBlock { Text = message, MaxWidth = 360, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 8,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Children = { cancelButton, confirmButton },
+                    },
+                },
+            },
+        };
+
+        confirmButton.Click += (_, _) => { result = true; dialog.Close(); };
+        cancelButton.Click += (_, _) => { result = false; dialog.Close(); };
 
         await dialog.ShowDialog(owner);
         return result;
