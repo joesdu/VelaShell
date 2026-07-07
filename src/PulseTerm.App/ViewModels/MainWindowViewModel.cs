@@ -305,8 +305,8 @@ public class MainWindowViewModel : ReactiveObject
                 return;
             }
 
-            StatusBar.CpuUsage = $"{metrics.CpuPercent:F0}%";
-            StatusBar.MemUsage = $"{metrics.MemUsedBytes / 1073741824.0:F1}G";
+            StatusBar.CpuUsage = $"{metrics.CpuPercent:F2}%";
+            StatusBar.MemUsage = $"{metrics.MemPercent:F1}%";
             StatusBar.UpdateNetwork(metrics.NetRxBytesPerSec, metrics.NetTxBytesPerSec, metrics.HasNetRates);
         }
         catch

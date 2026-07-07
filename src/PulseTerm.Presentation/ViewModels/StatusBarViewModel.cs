@@ -43,9 +43,10 @@ public sealed class StatusBarViewModel : ReactiveObject, IDisposable
         _windowSize = "80×24";
         _encoding = "UTF-8";
         _uptime = string.Empty;
-        // Live metrics segments stay hidden until the first real sample arrives.
-        _cpuUsage = string.Empty;
-        _memUsage = string.Empty;
+        // The metric segments are always visible; before the first sample (or without a
+        // connected session) they show idle placeholders (用户要求).
+        _cpuUsage = "--";
+        _memUsage = "--";
         _netUsage = string.Empty;
     }
 
@@ -125,63 +126,61 @@ public sealed class StatusBarViewModel : ReactiveObject, IDisposable
         set => this.RaiseAndSetIfChanged(ref _netUsage, value);
     }
 
-    private string _netArrow = "↓";
-    private string _netSpeed = string.Empty;
-    private bool _isNetActive;
+    private string _netSpeed = "0 B/s";
+    private bool _isNetUpActive;
+    private bool _isNetDownActive;
 
-    /// <summary>"↑" while upload dominates, "↓" while download dominates (Android-style:
-    /// one arrow + the dominant direction's rate).</summary>
-    public string NetArrow
-    {
-        get => _netArrow;
-        private set => this.RaiseAndSetIfChanged(ref _netArrow, value);
-    }
-
-    /// <summary>The dominant direction's rate, e.g. "4.2 MB/s". Empty hides the segment.</summary>
+    /// <summary>The dominant direction's rate, e.g. "4.2 MB/s" (Android-style readout).</summary>
     public string NetSpeed
     {
         get => _netSpeed;
         private set => this.RaiseAndSetIfChanged(ref _netSpeed, value);
     }
 
-    /// <summary>True while real traffic is flowing — the view paints the arrow in the accent
-    /// color, falling back to muted when the link is idle.</summary>
-    public bool IsNetActive
+    /// <summary>True while the server is actually uploading — lights the ↑ half of the
+    /// arrow-up-down glyph in the accent color.</summary>
+    public bool IsNetUpActive
     {
-        get => _isNetActive;
-        private set => this.RaiseAndSetIfChanged(ref _isNetActive, value);
+        get => _isNetUpActive;
+        private set => this.RaiseAndSetIfChanged(ref _isNetUpActive, value);
     }
 
-    /// <summary>Feeds one network sample (bytes/second per direction). Shows the dominant
-    /// direction's arrow and rate; below the activity threshold the arrow stays muted.</summary>
+    /// <summary>True while the server is actually downloading — lights the ↓ half.</summary>
+    public bool IsNetDownActive
+    {
+        get => _isNetDownActive;
+        private set => this.RaiseAndSetIfChanged(ref _isNetDownActive, value);
+    }
+
+    /// <summary>Feeds one network sample (bytes/second per direction). Each arrow half lights
+    /// up for its own direction; the readout shows the dominant direction's rate.</summary>
     public void UpdateNetwork(double rxBytesPerSec, double txBytesPerSec, bool hasRates)
     {
         if (!hasRates)
         {
-            NetArrow = "↓";
             NetSpeed = "0 B/s";
-            IsNetActive = false;
+            IsNetUpActive = false;
+            IsNetDownActive = false;
             return;
         }
 
-        // Keepalives/echo traffic hovers under this; don't light the arrow for noise.
+        // Keepalives/echo traffic hovers under this; don't light the arrows for noise.
         const double activeThreshold = 512;
 
-        bool uploadDominates = txBytesPerSec > rxBytesPerSec;
-        double rate = uploadDominates ? txBytesPerSec : rxBytesPerSec;
-
-        NetArrow = uploadDominates ? "↑" : "↓";
-        NetSpeed = FormatRate(rate);
-        IsNetActive = rate >= activeThreshold;
+        IsNetUpActive = txBytesPerSec >= activeThreshold;
+        IsNetDownActive = rxBytesPerSec >= activeThreshold;
+        NetSpeed = FormatRate(Math.Max(rxBytesPerSec, txBytesPerSec));
     }
 
-    /// <summary>Clears the live metrics segments (no connected session).</summary>
+    /// <summary>Resets the metric segments to their idle placeholders (no connected session).
+    /// The segments stay visible so the bar layout never jumps.</summary>
     public void ClearSessionMetrics()
     {
-        CpuUsage = string.Empty;
-        MemUsage = string.Empty;
-        NetSpeed = string.Empty;
-        IsNetActive = false;
+        CpuUsage = "--";
+        MemUsage = "--";
+        NetSpeed = "0 B/s";
+        IsNetUpActive = false;
+        IsNetDownActive = false;
     }
 
     public static string FormatRate(double bytesPerSec)

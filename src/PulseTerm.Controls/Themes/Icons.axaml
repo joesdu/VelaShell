@@ -20,6 +20,10 @@
   <StreamGeometry x:Key="Icon.cpu">M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z M9 9h6v6H9Z M15 2v2 M15 20v2 M2 15h2 M2 9h2 M20 15h2 M20 9h2 M9 2v2 M9 20v2</StreamGeometry>
   <StreamGeometry x:Key="Icon.memory-stick">M6 19v-3 M10 19v-3 M14 19v-3 M18 19v-3 M8 11V9 M16 11V9 M12 11V9 M2 15h20 M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.837V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.837Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.arrow-up-down">M21 16l-4 4-4-4 M17 20V4 M3 8l4-4 4 4 M7 4v16</StreamGeometry>
+  <!-- arrow-up-down split into its two halves (same 24×24 view box) so each direction can be
+       tinted independently while overlaying back into the original glyph (状态栏网速指示). -->
+  <StreamGeometry x:Key="Icon.arrow-up-half">M3 8l4-4 4 4 M7 4v16</StreamGeometry>
+  <StreamGeometry x:Key="Icon.arrow-down-half">M21 16l-4 4-4-4 M17 20V4</StreamGeometry>
   <StreamGeometry x:Key="Icon.folder">M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.folder-open">M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2</StreamGeometry>
   <StreamGeometry x:Key="Icon.corner-left-up">M14 9 9 4 4 9 M20 20h-7a4 4 0 0 1-4-4V4</StreamGeometry>

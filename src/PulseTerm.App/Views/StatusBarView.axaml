@@ -58,44 +58,48 @@
                    IsVisible="{Binding StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       </StackPanel>
 
-      <!-- Right group (gap 12) -->
+      <!-- Right group (gap 12). The live metrics sit LEFT of the fixed-width fields
+           (terminal type / size / encoding) so their varying width never shoves the
+           static text around (用户反馈 #4). -->
       <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.cpu}"
+                         Foreground="{DynamicResource PulseTextTertiary}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding CpuUsage}" Foreground="{DynamicResource PulseTextSecondary}" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.memory-stick}"
+                         Foreground="{DynamicResource PulseTextTertiary}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding MemUsage}" Foreground="{DynamicResource PulseTextSecondary}" />
+        </StackPanel>
+        <!-- The original arrow-up-down glyph, rebuilt from its two halves so each direction
+             lights up (accent) independently while traffic flows that way; the readout shows
+             the dominant direction's rate (Android-style). -->
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <StackPanel.Styles>
+            <Style Selector="pc|LucideIcon.updown">
+              <Setter Property="Foreground" Value="{DynamicResource PulseTextTertiary}" />
+            </Style>
+            <Style Selector="pc|LucideIcon.updown.net-active">
+              <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+            </Style>
+          </StackPanel.Styles>
+          <Panel Width="11" Height="11" VerticalAlignment="Center">
+            <pc:LucideIcon Width="11" Height="11" Classes="updown"
+                           Data="{StaticResource Icon.arrow-up-half}"
+                           Classes.net-active="{Binding IsNetUpActive}" />
+            <pc:LucideIcon Width="11" Height="11" Classes="updown"
+                           Data="{StaticResource Icon.arrow-down-half}"
+                           Classes.net-active="{Binding IsNetDownActive}" />
+          </Panel>
+          <TextBlock Text="{Binding NetSpeed}" Foreground="{DynamicResource PulseTextSecondary}" />
+        </StackPanel>
+        <Border Classes="divider" />
         <TextBlock Text="{Binding TerminalType}"
                    Foreground="{DynamicResource PulseTextMuted}" />
         <Border Classes="divider" />
         <TextBlock Text="{Binding WindowSize}"
                    Foreground="{DynamicResource PulseTextMuted}" />
-        <Border Classes="divider" />
-        <StackPanel Orientation="Horizontal" Spacing="4"
-                    IsVisible="{Binding CpuUsage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-          <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.cpu}"
-                         Foreground="{DynamicResource PulseTextTertiary}" VerticalAlignment="Center" />
-          <TextBlock Text="{Binding CpuUsage}" Foreground="{DynamicResource PulseTextSecondary}" />
-        </StackPanel>
-        <StackPanel Orientation="Horizontal" Spacing="4"
-                    IsVisible="{Binding MemUsage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-          <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.memory-stick}"
-                         Foreground="{DynamicResource PulseTextTertiary}" VerticalAlignment="Center" />
-          <TextBlock Text="{Binding MemUsage}" Foreground="{DynamicResource PulseTextSecondary}" />
-        </StackPanel>
-        <!-- Android-style link speed: one arrow for the dominant direction, accent-colored
-             while traffic is actually flowing, plus that direction's rate. -->
-        <StackPanel Orientation="Horizontal" Spacing="4"
-                    IsVisible="{Binding NetSpeed, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-          <TextBlock Text="{Binding NetArrow}"
-                     FontWeight="SemiBold"
-                     Classes.net-active="{Binding IsNetActive}">
-            <TextBlock.Styles>
-              <Style Selector="TextBlock">
-                <Setter Property="Foreground" Value="{DynamicResource PulseTextTertiary}" />
-              </Style>
-              <Style Selector="TextBlock.net-active">
-                <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
-              </Style>
-            </TextBlock.Styles>
-          </TextBlock>
-          <TextBlock Text="{Binding NetSpeed}" Foreground="{DynamicResource PulseTextSecondary}" />
-        </StackPanel>
         <Border Classes="divider" />
         <TextBlock Text="{Binding Encoding}"
                    Foreground="{DynamicResource PulseTextMuted}" />
