@@ -106,6 +106,13 @@
                     SelectedItem="{Binding Theme}" />
         </StackPanel>
 
+        <!-- Accent color override (live, no restart) -->
+        <StackPanel>
+          <TextBlock Classes="field-label" Text="强调色 (如 #00D4AA，留空用主题默认)" />
+          <TextBox Text="{Binding AccentColor}"
+                   PlaceholderText="#00D4AA"
+                   FontFamily="{DynamicResource PulseTerminalFont}" />
+        </StackPanel>
         <!-- Terminal Type -->
         <StackPanel>
           <TextBlock Classes="field-label" Text="{x:Static res:Strings.TerminalType}" />

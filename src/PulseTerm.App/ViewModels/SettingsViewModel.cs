@@ -2,6 +2,7 @@ using System;
 using System.Reactive;
 using System.Threading.Tasks;
 using PulseTerm.Core.Data;
+using PulseTerm.Core.Localization;
 using PulseTerm.Core.Services;
 using ReactiveUI;
 
@@ -11,9 +12,11 @@ public class SettingsViewModel : ReactiveObject
 {
     private readonly ISettingsService _settingsService;
     private readonly IThemeService _themeService;
+    private readonly ILocalizationService? _localizationService;
 
     private string _language = "en";
     private string _theme = "dark";
+    private string _accentColor = "";
     private string _terminalFont = "JetBrains Mono";
     private int _terminalFontSize = 14;
     private int _scrollbackLines = 10000;
@@ -81,7 +84,14 @@ public class SettingsViewModel : ReactiveObject
 
     public string[] AvailableLanguages { get; } = new[] { "en", "zh-CN" };
 
-    public string[] AvailableThemes { get; } = new[] { "dark", "light" };
+    public string[] AvailableThemes { get; } = new[] { "dark", "light", "system" };
+
+    /// <summary>Accent-color override (hex, e.g. "#00D4AA"); empty uses the theme default.</summary>
+    public string AccentColor
+    {
+        get => _accentColor;
+        set => this.RaiseAndSetIfChanged(ref _accentColor, value);
+    }
 
     // xterm-256color is the primary/recommended profile and is listed first.
     public string[] AvailableTerminalTypes { get; } = new[]
