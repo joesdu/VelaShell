@@ -132,6 +132,9 @@ public class MainWindowViewModel : ReactiveObject
         Commands.Register(new CommandDescriptor("tools.tunnel", "隧道管理", "工具",
             ToggleTunnelPanel,
             CanExecute: () => ActiveTerminalTab is not null, Shortcut: "Ctrl+Shift+T", Icon: "Icon.route"));
+        Commands.Register(new CommandDescriptor("edit.clear", "清屏", "编辑",
+            () => ActiveTerminalTab?.TerminalEmulator.WriteInput(new byte[] { 0x0C }),
+            CanExecute: () => ActiveTerminalTab?.ConnectionStatus == SessionStatus.Connected));
         Commands.Register(new CommandDescriptor("app.settings", "打开设置", "编辑",
             () => OpenSettingsCommand.Execute().Subscribe(), Shortcut: "Ctrl+,", Icon: "Icon.settings"));
         Commands.Register(new CommandDescriptor("app.palette", "命令面板", "搜索",

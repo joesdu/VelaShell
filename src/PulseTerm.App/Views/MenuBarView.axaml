@@ -196,7 +196,7 @@
                     <TextBlock Classes="entry-label" Text="粘贴" />
                   </DockPanel>
                 </Button>
-                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="edit.clear">
                   <TextBlock Classes="entry-label" Text="清屏" />
                 </Button>
                 <Border Height="1" Margin="0,4" Background="{DynamicResource PulseBorderPrimary}" />
