@@ -49,7 +49,6 @@ public partial class FileBrowserView : UserControl
             vm.PromptForText = PromptForTextAsync;
             vm.CopyToClipboard = CopyToClipboardAsync;
             vm.ShowFileProperties = ShowFilePropertiesAsync;
-            vm.PromptForPermissions = PromptForPermissionsAsync;
             vm.ConfirmDelete = ConfirmAsync;
             vm.OpenLocalFile = OpenLocalFileAsync;
         };
@@ -361,56 +360,89 @@ public partial class FileBrowserView : UserControl
             await clipboard.SetTextAsync(text);
     }
 
-    /// <summary>Read-only modal listing a remote entry's metadata.</summary>
-    private async Task ShowFilePropertiesAsync(RemoteFileInfoViewModel file)
+    /// <summary>右键弹菜单前把所指行并入选区(资源管理器惯例):已在多选内则保持
+    /// 多选不变,否则改为仅选中该行 —— 否则"下载/删除"(作用于选中集合)会对着
+    /// 旧选区操作。</summary>
+    private void FileRow_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (TopLevel.GetTopLevel(this) is not Window owner)
+        if (!e.GetCurrentPoint(null).Properties.IsRightButtonPressed)
             return;
 
-        var labelBrush = this.FindResource("PulseTextSecondary") as IBrush;
-        var valueBrush = this.FindResource("PulseTextPrimary") as IBrush;
+        if (sender is not Border { DataContext: RemoteFileInfoViewModel file }
+            || this.FindControl<ListBox>("FileList") is not { } listBox)
+            return;
 
-        var rows = new StackPanel { Spacing = 8 };
-        void AddRow(string label, string value)
+        if (file.IsParentEntry)
+            return;
+
+        if (listBox.SelectedItems is { } selection && !selection.Contains(file))
         {
+            selection.Clear();
+            selection.Add(file);
+        }
+    }
+
+    /// <summary>属性弹窗(参考 WinSCP):基本信息 + rwx 权限矩阵 + 八进制输入合并在一个界面。
+    /// 文本着色一律走 MessageDialog 的 BodyHost 样式类(dim/mono/mono-accent)—— 代码里
+    /// FindResource 取不到主题字典的画刷(会拿到 null 把文字画没,用户反馈的"文字看不见")。
+    /// 确定且权限有变化时返回新 mode(三位八进制按十进制书写,如 755),否则返回 null。</summary>
+    private async Task<short?> ShowFilePropertiesAsync(RemoteFileInfoViewModel file)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner)
+            return null;
+
+        var content = new StackPanel { Spacing = 14, MinWidth = 360 };
+
+        // ── 头部:类型图标 + 名称 ─────────────────────────────────────────────
+        var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+        var typeIcon = new PulseTerm.Controls.Controls.LucideIcon
+        {
+            Width = 18,
+            Height = 18,
+            VerticalAlignment = VerticalAlignment.Center,
+            Data = this.FindResource(file.IsDirectory ? "Icon.folder" : "Icon.file") as Geometry,
+        };
+        typeIcon.Classes.Add(file.IsDirectory ? "folder" : "file");
+        header.Children.Add(typeIcon);
+        header.Children.Add(new TextBlock
+        {
+            Text = file.Name,
+            FontSize = 13,
+            FontWeight = Avalonia.Media.FontWeight.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+        });
+        content.Children.Add(header);
+
+        // ── 基本信息 ────────────────────────────────────────────────────────
+        var rows = new StackPanel { Spacing = 8 };
+        void AddRow(string label, string value, bool mono = true)
+        {
+            if (string.IsNullOrEmpty(value))
+                return;
+
             var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("96,*") };
-            grid.Children.Add(new TextBlock
-            {
-                Text = label,
-                FontSize = 12,
-                Foreground = labelBrush,
-            });
-            var valueText = new TextBlock
-            {
-                Text = value,
-                FontSize = 12,
-                Foreground = valueBrush,
-                FontFamily = TerminalFont,
-                TextWrapping = TextWrapping.Wrap,
-            };
+            var labelText = new TextBlock { Text = label };
+            labelText.Classes.Add("dim");
+            grid.Children.Add(labelText);
+
+            var valueText = new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap };
+            if (mono)
+                valueText.Classes.Add("mono");
             Grid.SetColumn(valueText, 1);
             grid.Children.Add(valueText);
             rows.Children.Add(grid);
         }
 
-        AddRow(Strings.Name, file.Name);
+        AddRow(Strings.FileType, file.IsDirectory ? Strings.Folder : Strings.File, mono: false);
         AddRow(Strings.FilePath, file.FullPath);
-        AddRow(Strings.FileType, file.IsDirectory ? Strings.Folder : Strings.File);
         AddRow(Strings.Size, file.FormattedSize);
-        AddRow(Strings.Permissions, file.Permissions);
         AddRow(Strings.Modified, file.FormattedModifiedTime);
+        AddRow(Strings.PermissionOwner, file.Owner);
+        AddRow(Strings.PermissionGroup, file.Group);
+        content.Children.Add(rows);
 
-        await MessageDialog.ShowCustomAsync(owner, Strings.Properties, rows, showCancel: false);
-    }
-
-    /// <summary>chmod editor (§6 context menu): a 3×3 rwx checkbox grid with a live octal readout.
-    /// Returns the chosen mode as three octal digits in decimal (e.g. 755), or null if cancelled.</summary>
-    private async Task<short?> PromptForPermissionsAsync(RemoteFileInfoViewModel file)
-    {
-        if (TopLevel.GetTopLevel(this) is not Window owner)
-            return null;
-
-        // "drwxr-xr-x" → 9 rwx flags; anything malformed falls back to all-off.
+        // ── 权限矩阵("drwxr-xr-x" → 9 个 rwx 标志;异常串回退为全不勾) ────────
         var flags = new bool[9];
         var perms = file.Permissions;
         if (perms.Length == 10)
@@ -421,7 +453,7 @@ public partial class FileBrowserView : UserControl
 
         var grid = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto"),
+            ColumnDefinitions = new ColumnDefinitions("96,Auto,Auto,Auto"),
             RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto"),
         };
 
@@ -429,34 +461,30 @@ public partial class FileBrowserView : UserControl
         {
             Grid.SetRow(control, row);
             Grid.SetColumn(control, column);
-            control.Margin = new Thickness(8, 4);
+            if (column > 0)
+                control.Margin = new Thickness(0, 4, 24, 4);
+            else
+                control.Margin = new Thickness(0, 4);
             grid.Children.Add(control);
         }
-
-        var headerBrush = this.FindResource("PulseTextPrimary") as IBrush;
-        var labelBrush = this.FindResource("PulseTextSecondary") as IBrush;
-        var accentBrush = this.FindResource("PulseAccent") as IBrush;
 
         string[] columnHeaders = { Strings.PermissionRead, Strings.PermissionWrite, Strings.PermissionExecute };
         string[] rowHeaders = { Strings.PermissionOwner, Strings.PermissionGroup, Strings.PermissionOthers };
 
+        var permTitle = new TextBlock { Text = Strings.Permissions };
+        permTitle.Classes.Add("dim");
+        Place(permTitle, 0, 0);
+
         for (var c = 0; c < 3; c++)
-            Place(new TextBlock
+        {
+            var head = new TextBlock
             {
                 Text = columnHeaders[c],
-                FontSize = 12,
                 FontWeight = Avalonia.Media.FontWeight.Medium,
-                Foreground = headerBrush,
-            }, 0, c + 1);
+            };
+            Place(head, 0, c + 1);
+        }
 
-        // Live "chmod 755 file" echo styled like the design's mono command previews.
-        var octalText = new TextBlock
-        {
-            VerticalAlignment = VerticalAlignment.Center,
-            FontFamily = TerminalFont,
-            FontSize = 11,
-            Foreground = accentBrush,
-        };
         var boxes = new CheckBox[9];
 
         short CurrentMode()
@@ -473,35 +501,85 @@ public partial class FileBrowserView : UserControl
             return mode;
         }
 
-        void RefreshOctal() => octalText.Text = $"chmod {CurrentMode():000}  {file.Name}";
+        // 八进制输入与勾选矩阵双向同步(参考图中的"八进制"输入行)。
+        var octalBox = new TextBox { Width = 90, MaxLength = 3 };
+        var syncing = false;
+
+        void SyncOctalFromBoxes()
+        {
+            if (syncing)
+                return;
+            syncing = true;
+            octalBox.Text = $"{CurrentMode():000}";
+            syncing = false;
+        }
+
+        void SyncBoxesFromOctal()
+        {
+            if (syncing || octalBox.Text is not { Length: 3 } text)
+                return;
+
+            syncing = true;
+            for (var g = 0; g < 3; g++)
+            {
+                if (text[g] is < '0' or > '7')
+                    continue;
+                var digit = text[g] - '0';
+                boxes[g * 3].IsChecked = (digit & 4) != 0;
+                boxes[g * 3 + 1].IsChecked = (digit & 2) != 0;
+                boxes[g * 3 + 2].IsChecked = (digit & 1) != 0;
+            }
+
+            syncing = false;
+        }
 
         for (var r = 0; r < 3; r++)
         {
-            Place(new TextBlock
+            var rowLabel = new TextBlock
             {
                 Text = rowHeaders[r],
-                FontSize = 12,
-                Foreground = labelBrush,
                 VerticalAlignment = VerticalAlignment.Center,
-            }, r + 1, 0);
+            };
+            rowLabel.Classes.Add("dim");
+            Place(rowLabel, r + 1, 0);
             for (var c = 0; c < 3; c++)
             {
-                var box = new CheckBox { IsChecked = flags[r * 3 + c] };
-                box.IsCheckedChanged += (_, _) => RefreshOctal();
+                var box = new CheckBox { IsChecked = flags[r * 3 + c], MinWidth = 0, Padding = new Thickness(0) };
+                box.IsCheckedChanged += (_, _) => SyncOctalFromBoxes();
                 boxes[r * 3 + c] = box;
                 Place(box, r + 1, c + 1);
             }
         }
 
-        RefreshOctal();
+        var initialMode = CurrentMode();
+        SyncOctalFromBoxes();
+        octalBox.TextChanged += (_, _) => SyncBoxesFromOctal();
 
-        var content = new StackPanel
-        {
-            Spacing = 12,
-            Children = { grid, octalText },
-        };
+        content.Children.Add(grid);
 
-        var confirmed = await MessageDialog.ShowCustomAsync(owner, Strings.ChangePermissions, content);
-        return confirmed ? CurrentMode() : null;
+        var octalRow = new Grid { ColumnDefinitions = new ColumnDefinitions("96,*") };
+        var octalLabel = new TextBlock { Text = "八进制", VerticalAlignment = VerticalAlignment.Center };
+        octalLabel.Classes.Add("dim");
+        octalRow.Children.Add(octalLabel);
+        var octalHost = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+        octalHost.Children.Add(octalBox);
+        var chmodEcho = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+        chmodEcho.Classes.Add("mono-accent");
+        void RefreshEcho() => chmodEcho.Text = $"chmod {CurrentMode():000}";
+        RefreshEcho();
+        foreach (var box in boxes)
+            box.IsCheckedChanged += (_, _) => RefreshEcho();
+        octalBox.TextChanged += (_, _) => RefreshEcho();
+        octalHost.Children.Add(chmodEcho);
+        Grid.SetColumn(octalHost, 1);
+        octalRow.Children.Add(octalHost);
+        content.Children.Add(octalRow);
+
+        var confirmed = await MessageDialog.ShowCustomAsync(owner, Strings.Properties, content);
+        if (!confirmed)
+            return null;
+
+        var newMode = CurrentMode();
+        return newMode == initialMode ? null : newMode;
     }
 }

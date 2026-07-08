@@ -47,6 +47,10 @@ public class RemoteFileInfoViewModel
 
     public string Permissions => _model.Permissions;
 
+    public string Owner => _model.Owner;
+
+    public string Group => _model.Group;
+
     public string Icon => _model.IsDirectory ? "folder" : "file";
 
     // Directories show their reported size too (design dyuii lists "4.0 KB" for folders).

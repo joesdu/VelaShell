@@ -72,7 +72,6 @@ public class FileBrowserViewModel : ReactiveObject
         CopyPathCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(CopyPathAsync);
         CopyNameCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(CopyNameAsync);
         PropertiesCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(ShowPropertiesAsync);
-        ChmodCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(ChmodAsync);
         DeleteItemCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(DeleteItemAsync);
         DownloadSelectedCommand = ReactiveCommand.CreateFromTask(DownloadSelectedAsync);
         DeleteSelectedCommand = ReactiveCommand.CreateFromTask(DeleteSelectedAsync);
@@ -229,10 +228,8 @@ public class FileBrowserViewModel : ReactiveObject
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> MoveCommand { get; }
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> CopyPathCommand { get; }
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> CopyNameCommand { get; }
+    /// <summary>属性弹窗(合并了 chmod 权限编辑,确定时应用变更)。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> PropertiesCommand { get; }
-
-    /// <summary>chmod: opens the permission editor and applies the chosen mode (§6 context menu).</summary>
-    public ReactiveCommand<RemoteFileInfoViewModel, Unit> ChmodCommand { get; }
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> DeleteItemCommand { get; }
 
     /// <summary>Batch download of the multi-selection into one picked local folder (§6 multi-select).</summary>
@@ -470,12 +467,10 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>Set by the view: writes text to the OS clipboard (copy path / copy name).</summary>
     public Func<string, Task>? CopyToClipboard { get; set; }
 
-    /// <summary>Set by the view: shows a file's properties in a modal.</summary>
-    public Func<RemoteFileInfoViewModel, Task>? ShowFileProperties { get; set; }
-
-    /// <summary>Set by the view: opens the chmod editor for a file → the new mode as three octal
-    /// digits written in decimal (e.g. 755), or null if cancelled.</summary>
-    public Func<RemoteFileInfoViewModel, Task<short?>>? PromptForPermissions { get; set; }
+    /// <summary>Set by the view: shows the combined properties + permissions modal (参考 WinSCP:
+    /// 属性与权限矩阵在同一弹窗)。Returns the changed mode as three octal digits written in
+    /// decimal (e.g. 755), or null when cancelled / unchanged.</summary>
+    public Func<RemoteFileInfoViewModel, Task<short?>>? ShowFileProperties { get; set; }
 
     /// <summary>Set by the view: asks the user to confirm a destructive action (arg = message) →
     /// true to proceed. Used before deleting.</summary>
@@ -880,16 +875,9 @@ public class FileBrowserViewModel : ReactiveObject
         if (ShowFileProperties is null || file is null || file.IsParentEntry)
             return;
 
-        await ShowFileProperties(file);
-    }
-
-    private async Task ChmodAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
-    {
-        if (_sftpService is null || PromptForPermissions is null || file is null || file.IsParentEntry)
-            return;
-
-        var mode = await PromptForPermissions(file);
-        if (mode is null)
+        // 属性弹窗内含权限矩阵;确定且权限有变化时返回新 mode,由这里落到 chmod。
+        var mode = await ShowFileProperties(file);
+        if (mode is null || _sftpService is null)
             return;
 
         try

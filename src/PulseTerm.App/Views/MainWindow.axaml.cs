@@ -19,8 +19,10 @@ namespace PulseTerm.App.Views;
 
 public partial class MainWindow : Window
 {
-    /// <summary>File panel height restored when the panel reopens (§6: default 300px, drag to grow).</summary>
-    private double _lastFileRowHeight = 300;
+    /// <summary>File panel height restored when the panel reopens (§6 drag to grow). Default 360
+    /// = sidebar recent-connections block (320) + footer (40), so the file panel's top divider
+    /// lands on the same horizontal line as the sidebar's tree/recent splitter (用户反馈).</summary>
+    private double _lastFileRowHeight = 360;
     private IDisposable? _fileBrowserVisibilitySub;
 
     public MainWindow()
@@ -99,6 +101,36 @@ public partial class MainWindow : Window
                 });
                 tree.EditRequested += profile => Avalonia.Threading.Dispatcher.UIThread.Post(
                     () => _ = OpenProfileDialogAsync(profile));
+
+                // 打开 SFTP:先连接(已连接则新开标签),随后展开文件浏览面板。
+                tree.OpenSftpRequested += profile => Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
+                {
+                    var tab = await vm.TryConnectProfileAsync(profile);
+                    if (tab is null)
+                    {
+                        if (vm.LastConnectionError is { Length: > 0 } error)
+                            await ShowConnectionErrorAsync(error);
+                        return;
+                    }
+
+                    if (!vm.FileBrowser.IsVisible)
+                        vm.ToggleFileBrowser();
+                });
+
+                // 端口转发:打开隧道管理面板(全局非模态,见 fuXS7)。
+                tree.PortForwardRequested += _ => Avalonia.Threading.Dispatcher.UIThread.Post(
+                    () => vm.IsTunnelPanelOpen = true);
+
+                // 断开连接:断开该会话所有已连接的终端标签(保留缓冲以便重连)。
+                tree.DisconnectRequested += profile => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    foreach (var tab in vm.TabBar.Tabs.OfType<TerminalTabViewModel>().Where(t =>
+                                 t.SessionId == profile.Id
+                                 && t.ConnectionStatus != PulseTerm.Core.Models.SessionStatus.Disconnected))
+                    {
+                        tab.DisconnectCommand.Execute().Subscribe();
+                    }
+                });
             }
 
             await vm.InitializeAsync();

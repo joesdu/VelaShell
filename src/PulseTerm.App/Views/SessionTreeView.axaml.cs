@@ -22,4 +22,18 @@ public partial class SessionTreeView : UserControl
             viewModel.RequestConnect(node.Id);
         }
     }
+
+    /// <summary>右键弹菜单前先选中所指行:菜单里的命令都作用于 SelectedNode,不选中会
+    /// 对着上一次选择的会话执行。</summary>
+    private void Session_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(null).Properties.IsRightButtonPressed)
+            return;
+
+        if (sender is Control { DataContext: SessionTreeNodeViewModel { IsGroup: false } node }
+            && DataContext is SessionTreeViewModel viewModel)
+        {
+            viewModel.SelectedNode = node;
+        }
+    }
 }

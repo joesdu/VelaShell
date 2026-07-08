@@ -30,6 +30,11 @@ public sealed class SessionTreeViewModel : ReactiveObject
         ConnectCommand = ReactiveCommand.Create(() => RaiseForSelected(ConnectRequested), hasSelectedSession);
         EditSessionCommand = ReactiveCommand.Create(() => RaiseForSelected(EditRequested), hasSelectedSession);
         DeleteSessionCommand = ReactiveCommand.CreateFromTask(DeleteSelectedSessionAsync, hasSelectedSession);
+        DuplicateSessionCommand = ReactiveCommand.CreateFromTask(DuplicateSelectedSessionAsync, hasSelectedSession);
+        OpenSftpCommand = ReactiveCommand.Create(() => RaiseForSelected(OpenSftpRequested), hasSelectedSession);
+        PortForwardCommand = ReactiveCommand.Create(() => RaiseForSelected(PortForwardRequested), hasSelectedSession);
+        DisconnectCommand = ReactiveCommand.Create(() => RaiseForSelected(DisconnectRequested), hasSelectedSession);
+        MoveToGroupCommand = ReactiveCommand.Create<SessionTreeNodeViewModel>(MoveSelectedToGroup);
     }
 
     /// <summary>右键“连接”或双击会话时触发,由宿主发起 SSH 连接。</summary>
@@ -37,6 +42,15 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
     /// <summary>右键“编辑”时触发,由宿主打开连接配置弹窗。</summary>
     public event Action<SessionProfile>? EditRequested;
+
+    /// <summary>右键“打开 SFTP”:由宿主连接会话并展开文件浏览面板。</summary>
+    public event Action<SessionProfile>? OpenSftpRequested;
+
+    /// <summary>右键“端口转发”:由宿主打开隧道管理面板。</summary>
+    public event Action<SessionProfile>? PortForwardRequested;
+
+    /// <summary>右键“断开连接”:由宿主断开该会话已连接的终端标签。</summary>
+    public event Action<SessionProfile>? DisconnectRequested;
 
     private void RaiseForSelected(Action<SessionProfile>? handler)
     {
@@ -71,6 +85,9 @@ public sealed class SessionTreeViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _selectedNode, value);
     }
 
+    /// <summary>分组节点(供“移动到分组”子菜单绑定);随 LoadTreeAsync 同步。</summary>
+    public ObservableCollection<SessionTreeNodeViewModel> GroupNodes { get; } = new();
+
     public ReactiveCommand<Unit, Unit> LoadCommand { get; }
 
     public ReactiveCommand<Unit, Unit> ConnectCommand { get; }
@@ -78,6 +95,18 @@ public sealed class SessionTreeViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> EditSessionCommand { get; }
 
     public ReactiveCommand<Unit, Unit> DeleteSessionCommand { get; }
+
+    /// <summary>复制选中的连接为“<名称> (副本)”并落库。</summary>
+    public ReactiveCommand<Unit, Unit> DuplicateSessionCommand { get; }
+
+    public ReactiveCommand<Unit, Unit> OpenSftpCommand { get; }
+
+    public ReactiveCommand<Unit, Unit> PortForwardCommand { get; }
+
+    public ReactiveCommand<Unit, Unit> DisconnectCommand { get; }
+
+    /// <summary>把选中的会话移动到指定分组节点(参数为“移动到分组”子菜单项)。</summary>
+    public ReactiveCommand<SessionTreeNodeViewModel, Unit> MoveToGroupCommand { get; }
 
     public void AddSession(SessionProfile session)
     {
@@ -122,14 +151,53 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
         if (_sessionCache.TryGetValue(sessionId, out var session))
         {
-            session.GroupId = targetGroupId;
+            // Guid.Empty 是“未分组”虚拟节点:落库必须存 null,否则下次加载时会话会
+            // 因找不到分组而从树里消失。
+            session.GroupId = targetGroupId == Guid.Empty ? null : targetGroupId;
             _ = _repository.SaveSessionAsync(session);
         }
+    }
+
+    private void MoveSelectedToGroup(SessionTreeNodeViewModel? targetGroup)
+    {
+        if (targetGroup is not { IsGroup: true } || SelectedNode is not { IsGroup: false } node)
+        {
+            return;
+        }
+
+        MoveSessionToGroup(node.Id, targetGroup.Id);
+    }
+
+    private async Task DuplicateSelectedSessionAsync()
+    {
+        if (SelectedNode is not { IsGroup: false } node || !_sessionCache.TryGetValue(node.Id, out var source))
+        {
+            return;
+        }
+
+        var copy = new SessionProfile
+        {
+            Name = source.Name + " (副本)",
+            Host = source.Host,
+            Port = source.Port,
+            Username = source.Username,
+            AuthMethod = source.AuthMethod,
+            Password = source.Password,
+            RememberPassword = source.RememberPassword,
+            PrivateKeyPath = source.PrivateKeyPath,
+            PrivateKeyPassphrase = source.PrivateKeyPassphrase,
+            GroupId = source.GroupId,
+            Tags = new List<string>(source.Tags),
+        };
+
+        await _repository.SaveSessionAsync(copy);
+        await LoadTreeAsync();
     }
 
     private async Task LoadTreeAsync()
     {
         Nodes.Clear();
+        GroupNodes.Clear();
         _sessionCache.Clear();
 
         // 以会话的 GroupId 为唯一事实来源分组;无分组的会话归入“未分组”节点。
@@ -155,6 +223,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
             }
 
             Nodes.Add(groupNode);
+            GroupNodes.Add(groupNode);
         }
 
         if (ungrouped.Count > 0)
@@ -168,6 +237,9 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
             Nodes.Add(ungroupedNode);
         }
+
+        // “移动到分组”子菜单始终提供“未分组”落点(树里未必有该虚拟节点)。
+        GroupNodes.Add(new SessionTreeNodeViewModel(Guid.Empty, "未分组", true));
 
         HasNoSessions = !Nodes.Any(group => group.Children.Count > 0);
     }

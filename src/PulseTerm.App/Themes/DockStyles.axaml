@@ -114,6 +114,12 @@
     <Style Selector="NumericUpDown">
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
+    <Style Selector="Button">
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ToggleButton">
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
     <Style Selector="ComboBox">
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>

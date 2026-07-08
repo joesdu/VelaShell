@@ -182,11 +182,13 @@
           ClipToBounds="True">
     <Grid ColumnDefinitions="200,*">
 
-      <!-- 左侧导航 -->
+      <!-- 左侧导航。CornerRadius 跟随外框左侧圆角:方角的 bg-sidebar 背景会盖住外框在
+           圆角处的描边,看起来像边框断开(用户反馈)。 -->
       <Border Grid.Column="0"
               Background="{DynamicResource PulseBgSidebar}"
               BorderBrush="{DynamicResource PulseBorderPrimary}"
-              BorderThickness="0,0,1,0">
+              BorderThickness="0,0,1,0"
+              CornerRadius="8,0,0,8">
         <Grid RowDefinitions="48,*">
           <!-- 导航头(可拖动) -->
           <Border Grid.Row="0" Padding="16,0"
@@ -221,17 +223,6 @@
 
       <!-- 右侧内容 -->
       <Grid Grid.Column="1" RowDefinitions="*,Auto">
-
-        <!-- 关闭按钮悬浮于右上角 -->
-        <Button Grid.Row="0" Width="24" Height="24"
-                Background="Transparent" Padding="0" CornerRadius="3"
-                Cursor="Hand" Command="{Binding CancelCommand}"
-                HorizontalAlignment="Right" VerticalAlignment="Top"
-                Margin="0,16,20,0" ZIndex="10">
-          <PathIcon Width="14" Height="14"
-                    Data="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-                    Foreground="{DynamicResource PulseTextTertiary}" />
-        </Button>
 
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
           <Panel Margin="28,24">

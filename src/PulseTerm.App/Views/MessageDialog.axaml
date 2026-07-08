@@ -19,6 +19,56 @@
        48px 标题栏(可拖动) + 内容区 + 52px 按钮栏,分隔线均为 border-primary。 -->
 
   <Window.Styles>
+    <!-- 标题栏语义图标着色:代码侧只挂类名,画刷交给 DynamicResource(带主题变体解析;
+         代码里的 FindResource 不带变体查不到 ThemeDictionaries 的画刷)。 -->
+    <Style Selector="pc|LucideIcon#KindIcon.info">
+      <Setter Property="Foreground" Value="{DynamicResource PulseInfo}" />
+    </Style>
+    <Style Selector="pc|LucideIcon#KindIcon.success">
+      <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+    </Style>
+    <Style Selector="pc|LucideIcon#KindIcon.warning">
+      <Setter Property="Foreground" Value="{DynamicResource PulseWarning}" />
+    </Style>
+    <Style Selector="pc|LucideIcon#KindIcon.error">
+      <Setter Property="Foreground" Value="{DynamicResource PulseError}" />
+    </Style>
+    <Style Selector="pc|LucideIcon#KindIcon.question">
+      <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+    </Style>
+
+    <!-- 自定义内容区(属性表/权限矩阵等)默认文字样式:调用方只挂类名,不在代码里取画刷。 -->
+    <Style Selector="ContentControl#BodyHost TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="ContentControl#BodyHost TextBlock.dim">
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+    </Style>
+    <Style Selector="ContentControl#BodyHost TextBlock.mono">
+      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+    </Style>
+    <Style Selector="ContentControl#BodyHost TextBlock.mono-accent">
+      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+      <Setter Property="Foreground" Value="{DynamicResource PulseAccentText}" />
+      <Setter Property="FontSize" Value="11" />
+    </Style>
+    <Style Selector="ContentControl#BodyHost pc|LucideIcon.folder">
+      <Setter Property="Foreground" Value="{DynamicResource PulseFileFolderIcon}" />
+    </Style>
+    <Style Selector="ContentControl#BodyHost pc|LucideIcon.file">
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextTertiary}" />
+    </Style>
+    <Style Selector="ContentControl#BodyHost TextBox">
+      <Setter Property="Background" Value="{DynamicResource PulseBgInput}" />
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderPrimary}" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+    </Style>
+
     <Style Selector="Button.dlg-outline">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />

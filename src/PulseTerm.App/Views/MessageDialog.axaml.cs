@@ -86,16 +86,17 @@ public partial class MessageDialog : Window
         MessageText.Text = message;
         MessageText.IsVisible = !string.IsNullOrEmpty(message);
 
-        var (iconKey, brushKey) = kind switch
+        // 画刷经样式类 + DynamicResource 解析(代码里 FindResource 拿不到主题字典画刷)。
+        var (iconKey, kindClass) = kind switch
         {
-            MessageDialogKind.Success => ("Icon.circle-check", "PulseAccent"),
-            MessageDialogKind.Warning => ("Icon.triangle-alert", "PulseWarning"),
-            MessageDialogKind.Error => ("Icon.circle-alert", "PulseError"),
-            MessageDialogKind.Question => ("Icon.circle-help", "PulseAccent"),
-            _ => ("Icon.info", "PulseInfo"),
+            MessageDialogKind.Success => ("Icon.circle-check", "success"),
+            MessageDialogKind.Warning => ("Icon.triangle-alert", "warning"),
+            MessageDialogKind.Error => ("Icon.circle-alert", "error"),
+            MessageDialogKind.Question => ("Icon.circle-help", "question"),
+            _ => ("Icon.info", "info"),
         };
         KindIcon.Data = this.FindResource(iconKey) as Geometry;
-        KindIcon.Foreground = this.FindResource(brushKey) as IBrush;
+        KindIcon.Classes.Add(kindClass);
 
         ConfirmButton.Content = confirmText;
         if (danger)

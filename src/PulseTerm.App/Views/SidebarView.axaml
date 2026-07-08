@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:PulseTerm.Presentation.ViewModels"
              xmlns:views="using:PulseTerm.App.Views"
+             xmlns:pc="using:PulseTerm.Controls.Controls"
              xmlns:res="clr-namespace:PulseTerm.Core.Resources;assembly=PulseTerm.Core"
              mc:Ignorable="d" d:DesignWidth="260" d:DesignHeight="876"
              x:Class="PulseTerm.App.Views.SidebarView"
@@ -42,7 +43,9 @@
                     VerticalAlignment="Center">
 
 
-          <!-- Add button -->
+          <!-- Add button. PathIcon fill-renders its geometry, so lucide's stroke-only
+               paths (plain lines) have zero fill area and were invisible — these two
+               must be LucideIcon (stroke renderer). -->
           <Button Background="Transparent"
                   Padding="0"
                   Width="24" Height="24"
@@ -50,9 +53,9 @@
                   Cursor="Hand"
                   Click="OpenConnectionProfile_Click"
                   ToolTip.Tip="{x:Static res:Strings.Sessions}">
-            <PathIcon Width="13" Height="13"
-                      Data="M12 5v14M5 12h14"
-                      Foreground="{DynamicResource PulseTextTertiary}" />
+            <pc:LucideIcon Width="13" Height="13"
+                           Data="{StaticResource Icon.plus}"
+                           Foreground="{DynamicResource PulseTextTertiary}" />
           </Button>
 
           <!-- More button -->
@@ -61,9 +64,9 @@
                   Width="24" Height="24"
                   CornerRadius="3"
                   Cursor="Hand">
-            <PathIcon Width="13" Height="13"
-                      Data="M5 12h.01M12 12h.01M19 12h.01"
-                      Foreground="{DynamicResource PulseTextTertiary}" />
+            <pc:LucideIcon Width="13" Height="13"
+                           Data="{StaticResource Icon.ellipsis}"
+                           Foreground="{DynamicResource PulseTextTertiary}" />
           </Button>
         </StackPanel>
       </Grid>
