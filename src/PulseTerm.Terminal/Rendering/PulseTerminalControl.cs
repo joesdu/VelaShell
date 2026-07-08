@@ -8,6 +8,7 @@ using Avalonia.Input.TextInput;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
+using Avalonia.Media.TextFormatting;
 using Avalonia.Threading;
 using PulseTerm.Terminal.Emulation;
 using PulseTerm.Terminal.Semantics;
@@ -41,6 +42,29 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     private readonly Dictionary<GlyphKey, FormattedText> _glyphCache = new();
 
     private readonly record struct GlyphKey(int Rune, string? Combining, uint Foreground, int Style);
+
+    // ---- Glyph-run batching -------------------------------------------------
+    // Each visible line is drawn as a handful of GlyphRuns — one per contiguous run of cells
+    // sharing the same font style and foreground — instead of one DrawText per cell. A full-screen
+    // TUI (htop/vim/nano) has thousands of cells; issuing one draw op per cell is what made the
+    // cursor feel sluggish, since every frame recorded thousands of draw operations on the UI
+    // thread. Advances are pinned to the cell width so monospace alignment is exact, spaces are
+    // folded into advances (never drawn), and any glyph the primary font lacks (CJK, symbols) or
+    // any combining sequence falls back to the per-cell FormattedText path so fallback still works.
+    private readonly GlyphTypeface?[] _styleTypefaces = new GlyphTypeface?[4];
+    private bool _styleTypefacesReady;
+    // Latches on the first time the batched GlyphRun path throws at runtime (unexpected platform
+    // behavior), permanently reverting to the proven per-cell FormattedText path so a rendering
+    // API surprise can never leave text missing — it only forfeits the batching speedup.
+    private bool _glyphRunUnsupported;
+    private readonly List<GlyphInfo> _runGlyphs = new();
+    private readonly List<char> _runChars = new();
+    private int _runStyle = -1;              // -1 = no active run; else (bold?1) | (italic?2)
+    private uint _runFg;
+    private ImmutableSolidColorBrush? _runBrush;
+    private int _runStartCol;
+    private int _runPrevCol;
+    private int _runPrevWidth;
 
     private FontFamily _fontFamily = new("JetBrains Mono, Cascadia Mono, Consolas, Microsoft YaHei, Segoe UI, monospace");
     private double _fontSize = 14;
@@ -333,6 +357,90 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
         // Cached glyphs are bound to the old typeface/size; drop them on any metric change.
         _glyphCache.Clear();
+        _styleTypefacesReady = false;
+    }
+
+    /// <summary>Resolves (and caches) the primary <see cref="GlyphTypeface"/> for a bold/italic
+    /// style combination, used by the batched glyph-run path. Null when the platform can't supply
+    /// one, in which case the caller falls back to the per-cell FormattedText path.</summary>
+    private GlyphTypeface? StyleTypeface(int style)
+    {
+        if (!_styleTypefacesReady)
+        {
+            for (int s = 0; s < 4; s++)
+            {
+                var tf = new Typeface(_fontFamily,
+                    (s & 2) != 0 ? FontStyle.Italic : FontStyle.Normal,
+                    (s & 1) != 0 ? FontWeight.Bold : FontWeight.Normal);
+                try { _styleTypefaces[s] = tf.GlyphTypeface; }
+                catch { _styleTypefaces[s] = null; }
+            }
+            _styleTypefacesReady = true;
+        }
+        return _styleTypefaces[style];
+    }
+
+    /// <summary>Adds one glyph to the pending run, starting a fresh run (after flushing the current
+    /// one) whenever the style or foreground changes. Columns skipped since the previous glyph
+    /// (spaces, blanks) are folded into the previous glyph's advance so alignment stays exact.</summary>
+    private void AppendGlyph(DrawingContext context, double y, int style, Rgba fg, int col, int width, ushort glyphId, char ch)
+    {
+        if (_runGlyphs.Count > 0 && (style != _runStyle || fg.Packed != _runFg))
+            FlushGlyphRun(context, y);
+
+        if (_runGlyphs.Count == 0)
+        {
+            _runStyle = style;
+            _runFg = fg.Packed;
+            _runBrush = BrushFor(fg);
+            _runStartCol = col;
+        }
+        else
+        {
+            int gapCells = col - (_runPrevCol + _runPrevWidth);
+            if (gapCells > 0)
+            {
+                var last = _runGlyphs[^1];
+                _runGlyphs[^1] = new GlyphInfo(last.GlyphIndex, last.GlyphCluster,
+                    last.GlyphAdvance + gapCells * _cellWidth, last.GlyphOffset);
+            }
+        }
+
+        _runGlyphs.Add(new GlyphInfo(glyphId, _runChars.Count, width * _cellWidth));
+        _runChars.Add(ch);
+        _runPrevCol = col;
+        _runPrevWidth = width;
+    }
+
+    /// <summary>Emits the pending glyph run (if any) as a single DrawGlyphRun and resets the buffers.</summary>
+    private void FlushGlyphRun(DrawingContext context, double y)
+    {
+        if (_runGlyphs.Count == 0)
+            return;
+
+        var gtf = _runStyle >= 0 ? _styleTypefaces[_runStyle] : null;
+        if (gtf is not null && _runBrush is not null)
+        {
+            try
+            {
+                var run = new GlyphRun(gtf, _fontSize, _runChars.ToArray().AsMemory(),
+                    _runGlyphs.ToArray(),
+                    new Point(_runStartCol * _cellWidth, y + _baselineOffset), 0);
+                context.DrawGlyphRun(_runBrush, run);
+            }
+            catch
+            {
+                // Should never happen, but if the platform rejects our glyph run, stop batching
+                // for the rest of the session and repaint so everything re-renders via the
+                // per-cell FormattedText path (correct, just slower).
+                _glyphRunUnsupported = true;
+                Dispatcher.UIThread.Post(InvalidateVisual);
+            }
+        }
+
+        _runGlyphs.Clear();
+        _runChars.Clear();
+        _runStyle = -1;
     }
 
     protected override Size ArrangeOverride(Size finalSize)
@@ -463,12 +571,26 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
             if (!bg.Equals(palette.DefaultBackground))
                 context.FillRectangle(BrushFor(bg), cellRect);
 
-            if (cell.Rune != 0 && (cell.Flags & CellFlags.Invisible) == 0)
+            // A blank/space/invisible cell draws no glyph; it just leaves a gap the next run's
+            // advance absorbs. Everything else is batched into a GlyphRun when the primary font
+            // covers it, or falls back to a per-cell FormattedText draw (CJK, symbols, combining).
+            if (cell.Rune != 0 && cell.Rune != ' ' && (cell.Flags & CellFlags.Invisible) == 0)
             {
                 bool italic = (cell.Flags & CellFlags.Italic) != 0;
-                var ft = GlyphFor(cell, fg, bold, italic);
-                double gx = col * _cellWidth;
-                context.DrawText(ft, new Point(gx, y));
+                int style = (bold ? 1 : 0) | (italic ? 2 : 0);
+
+                if (!_glyphRunUnsupported && cell.Combining is null && cell.Rune <= 0xFFFF
+                    && StyleTypeface(style) is { } gtf
+                    && gtf.CharacterToGlyphMap.TryGetGlyph(cell.Rune, out ushort glyphId))
+                {
+                    AppendGlyph(context, y, style, fg, col, width, glyphId, (char)cell.Rune);
+                }
+                else
+                {
+                    FlushGlyphRun(context, y);
+                    var ft = GlyphFor(cell, fg, bold, italic);
+                    context.DrawText(ft, new Point(col * _cellWidth, y));
+                }
             }
 
             if ((cell.Flags & (CellFlags.Underline | CellFlags.DoubleUnderline)) != 0 || semanticUnderline)
@@ -486,6 +608,9 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
             col += width;
         }
+
+        // Emit whatever glyphs remain batched for this line (runs never cross line boundaries).
+        FlushGlyphRun(context, y);
     }
 
     /// <summary>
