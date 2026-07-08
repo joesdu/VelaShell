@@ -114,6 +114,35 @@ public class SftpServiceTests
     }
 
     [TestMethod]
+    public async Task UploadFileAsync_WhenCancelledMidTransfer_SurfacesCleanOperationCanceled()
+    {
+        var localPath = Path.Combine(Path.GetTempPath(), $"pulse-up-{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(localPath, "payload");
+        using var cts = new CancellationTokenSource();
+        try
+        {
+            // Simulate the user cancelling mid-transfer: our token registration disposes the source
+            // stream, so the underlying transfer fails with an IOException-style error. The service
+            // must normalise that to a clean OperationCanceledException (never re-throw from the
+            // progress callback, which SSH.NET runs on a detached thread and would crash the app).
+            _sftpClient.UploadAsync(Arg.Any<Stream>(), "/home/user/up.txt",
+                    Arg.Any<Action<ulong>?>(), Arg.Any<CancellationToken>())
+                .Returns(_ =>
+                {
+                    cts.Cancel();
+                    throw new IOException("stream closed by cancellation");
+                });
+
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(
+                () => _sftpService.UploadFileAsync(_sessionId, localPath, "/home/user/up.txt", null, cts.Token));
+        }
+        finally
+        {
+            File.Delete(localPath);
+        }
+    }
+
+    [TestMethod]
     public async Task SetPermissionsAsync_CallsChangePermissionsOnClient()
     {
         await _sftpService.SetPermissionsAsync(_sessionId, "/home/user/run.sh", 755);

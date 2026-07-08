@@ -104,6 +104,7 @@ public static class Strings
     public static string Passphrase => ResourceManager.GetString(nameof(Passphrase), CultureInfo.CurrentUICulture) ?? nameof(Passphrase);
 
     // File browser / SFTP (§6)
+    public static string TransferHistory => ResourceManager.GetString(nameof(TransferHistory), CultureInfo.CurrentUICulture) ?? nameof(TransferHistory);
     public static string UploadFilesHere => ResourceManager.GetString(nameof(UploadFilesHere), CultureInfo.CurrentUICulture) ?? nameof(UploadFilesHere);
     public static string UploadFolderHere => ResourceManager.GetString(nameof(UploadFolderHere), CultureInfo.CurrentUICulture) ?? nameof(UploadFolderHere);
     public static string NewFolder => ResourceManager.GetString(nameof(NewFolder), CultureInfo.CurrentUICulture) ?? nameof(NewFolder);

@@ -288,6 +288,19 @@ public class FileBrowserViewModelTests
 
     [TestMethod]
     [TestCategory("FileBrowser")]
+    public void ShowTransfers_ReopensTransferToast()
+    {
+        var toast = new FileTransferViewModel(Substitute.For<ITransferManager>());
+        _vm.TransferSink = toast;
+        Assert.IsFalse(toast.IsPanelVisible);
+
+        _vm.ShowTransfersCommand.Execute().Subscribe();
+
+        Assert.IsTrue(toast.IsPanelVisible);
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public void ToggleVisibility_TogglesIsVisible()
     {
         Assert.IsFalse(_vm.IsVisible);
@@ -729,6 +742,71 @@ public class FileBrowserViewModelTests
         await _sftpService.Received(1).DownloadFileAsync(
             _sessionId, "/home/user/readme.txt", paths[0],
             Arg.Any<IProgress<TransferProgress>?>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task DownloadSelected_WhenCancelled_StopsRemainingFiles_WithoutError()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"pulse-cancel-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+        try
+        {
+            _vm.PickFolderForDownload = () => Task.FromResult<string?>(tempRoot);
+
+            var files = CreateTestFiles();
+            _vm.SelectedFiles.Add(new RemoteFileInfoViewModel(files[1])); // readme.txt (first)
+            _vm.SelectedFiles.Add(new RemoteFileInfoViewModel(files[2])); // photo.jpg (should be skipped)
+
+            // The first file's transfer is cancelled mid-flight.
+            _sftpService.DownloadFileAsync(_sessionId, "/home/user/readme.txt", Arg.Any<string>(),
+                    Arg.Any<IProgress<TransferProgress>?>(), Arg.Any<CancellationToken>())
+                .Returns<Task>(_ => throw new OperationCanceledException());
+
+            await _vm.DownloadSelectedCommand.Execute().FirstAsync();
+
+            // The batch stops on cancellation: the second file is never attempted...
+            await _sftpService.DidNotReceive().DownloadFileAsync(_sessionId, "/home/user/photo.jpg",
+                Arg.Any<string>(), Arg.Any<IProgress<TransferProgress>?>(), Arg.Any<CancellationToken>());
+            // ...and cancellation is not surfaced as an error.
+            Assert.IsTrue(string.IsNullOrEmpty(_vm.ErrorMessage));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, true);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task CancelDelete_StopsRemainingDeletes_AndKeepsThemListed()
+    {
+        _vm.ConfirmDelete = _ => Task.FromResult(true);
+        _sftpService.ListDirectoryAsync(_sessionId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new List<RemoteFileInfo>()));
+
+        var files = CreateTestFiles();
+        _vm.SelectedFiles.Add(new RemoteFileInfoViewModel(files[1])); // readme.txt (first)
+        _vm.SelectedFiles.Add(new RemoteFileInfoViewModel(files[2])); // photo.jpg (should be skipped)
+
+        // The user hits cancel while the first delete is running.
+        _sftpService.DeleteAsync(_sessionId, "/home/user/readme.txt",
+                Arg.Any<IProgress<SftpDeleteProgress>?>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                var token = ci.ArgAt<CancellationToken>(3);
+                _vm.CancelDeleteCommand.Execute().Subscribe();
+                token.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            });
+
+        await _vm.DeleteSelectedCommand.Execute().FirstAsync();
+
+        await _sftpService.DidNotReceive().DeleteAsync(_sessionId, "/home/user/photo.jpg",
+            Arg.Any<IProgress<SftpDeleteProgress>?>(), Arg.Any<CancellationToken>());
+        Assert.IsTrue(string.IsNullOrEmpty(_vm.ErrorMessage)); // cancellation is not an error
+        Assert.IsFalse(_vm.IsDeleteProgressVisible);           // overlay dismissed afterwards
     }
 
     [TestMethod]

@@ -86,6 +86,9 @@
   <data name="Refresh" xml:space="preserve">
     <value>Refresh</value>
   </data>
+  <data name="TransferHistory" xml:space="preserve">
+    <value>Transfer history</value>
+  </data>
   
   <!-- Tunnel (6) -->
   <data name="LocalForward" xml:space="preserve">

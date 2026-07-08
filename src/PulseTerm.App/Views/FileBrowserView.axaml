@@ -122,6 +122,14 @@
             </Button>
             <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    Command="{Binding ShowTransfersCommand}"
+                    ToolTip.Tip="{x:Static res:Strings.TransferHistory}">
+              <pc:LucideIcon Width="13" Height="13"
+                             Data="{StaticResource Icon.history}"
+                             Foreground="{DynamicResource PulseTextTertiary}" />
+            </Button>
+            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                     Command="{Binding NewFolderCommand}"
                     ToolTip.Tip="{loc:Localize NewFolder}">
               <pc:LucideIcon Width="13" Height="13"
@@ -149,14 +157,6 @@
                     ToolTip.Tip="{x:Static res:Strings.Refresh}">
               <pc:LucideIcon Width="13" Height="13"
                              Data="{StaticResource Icon.refresh-cw}"
-                             Foreground="{DynamicResource PulseTextTertiary}" />
-            </Button>
-            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
-                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                    Command="{Binding GoUpCommand}"
-                    ToolTip.Tip="{loc:Localize ParentDirectory}">
-              <pc:LucideIcon Width="13" Height="13"
-                             Data="{StaticResource Icon.corner-left-up}"
                              Foreground="{DynamicResource PulseTextTertiary}" />
             </Button>
           </StackPanel>
@@ -456,6 +456,13 @@
                  CornerRadius="3"
                  Background="{DynamicResource PulseBorderPrimary}"
                  Foreground="{DynamicResource PulseAccent}" />
+          <!-- Cancel an in-progress delete; already-removed entries stay gone. -->
+          <Button IsVisible="{Binding IsDeleteProgressVisible}"
+                  Content="{x:Static res:Strings.Cancel}"
+                  Command="{Binding CancelDeleteCommand}"
+                  HorizontalAlignment="Center"
+                  Padding="16,4"
+                  Cursor="Hand" />
         </StackPanel>
       </Border>
     </Panel>

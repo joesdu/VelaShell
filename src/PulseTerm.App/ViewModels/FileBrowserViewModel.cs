@@ -40,6 +40,12 @@ public class FileBrowserViewModel : ReactiveObject
     private string _sortColumn = "name";
     private bool _sortDescending;
 
+    /// <summary>Cancels the running transfer batch (upload/download); tripped from the toast.</summary>
+    private CancellationTokenSource? _transferCts;
+
+    /// <summary>Cancels the running delete; tripped from the delete overlay's cancel button.</summary>
+    private CancellationTokenSource? _deleteCts;
+
     public FileBrowserViewModel(ISftpService? sftpService, Guid sessionId)
     {
         _sftpService = sftpService!;
@@ -70,6 +76,8 @@ public class FileBrowserViewModel : ReactiveObject
         DeleteItemCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(DeleteItemAsync);
         DownloadSelectedCommand = ReactiveCommand.CreateFromTask(DownloadSelectedAsync);
         DeleteSelectedCommand = ReactiveCommand.CreateFromTask(DeleteSelectedAsync);
+        CancelDeleteCommand = ReactiveCommand.Create(CancelDelete);
+        ShowTransfersCommand = ReactiveCommand.Create(() => TransferSink?.ShowPanel());
         ToggleVisibilityCommand = ReactiveCommand.Create(ToggleVisibility);
         ToggleHiddenFilesCommand = ReactiveCommand.Create(() => { ShowHiddenFiles = !ShowHiddenFiles; });
         SortCommand = ReactiveCommand.Create<string>(ToggleSort);
@@ -232,6 +240,12 @@ public class FileBrowserViewModel : ReactiveObject
 
     /// <summary>Batch delete of the multi-selection after a single confirmation (§6 multi-select).</summary>
     public ReactiveCommand<Unit, Unit> DeleteSelectedCommand { get; }
+
+    /// <summary>Cancels an in-progress delete, leaving already-deleted entries removed.</summary>
+    public ReactiveCommand<Unit, Unit> CancelDeleteCommand { get; }
+    /// <summary>Reopens the transfer toast so past/active transfers can be reviewed (toolbar button
+    /// next to Upload). Without it the toast auto-hides and there's no way back to the history.</summary>
+    public ReactiveCommand<Unit, Unit> ShowTransfersCommand { get; }
     public ReactiveCommand<Unit, Unit> ToggleVisibilityCommand { get; }
 
     /// <summary>Toggles dotfile visibility (§6 header switch).</summary>
@@ -410,9 +424,14 @@ public class FileBrowserViewModel : ReactiveObject
             System.IO.Directory.CreateDirectory(tempDir);
             var localPath = System.IO.Path.Combine(tempDir, file.Name);
 
-            var ok = await RunTransferAsync(TransferType.Download, localPath, file.FullPath, ct);
+            var plan = new[] { new PlannedFileTransfer(TransferType.Download, localPath, file.FullPath) };
+            var ok = await RunTransferBatchAsync(plan, ct);
             if (ok)
                 await OpenLocalFile(localPath);
+        }
+        catch (OperationCanceledException)
+        {
+            // User cancelled the download; not an error.
         }
         catch (Exception ex)
         {
@@ -500,8 +519,15 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             ErrorMessage = null;
+            var plan = new List<PlannedFileTransfer>();
             foreach (var path in localPaths)
-                await UploadEntryAsync(path, CurrentPath, ct);
+                await BuildUploadPlanAsync(path, CurrentPath, plan, ct);
+
+            await RunTransferBatchAsync(plan, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // User cancelled while the upload was being planned/run; not an error.
         }
         catch (Exception ex)
         {
@@ -511,7 +537,10 @@ public class FileBrowserViewModel : ReactiveObject
         await RefreshAsync(ct);
     }
 
-    private async Task UploadEntryAsync(string localPath, string remoteDir, CancellationToken ct)
+    /// <summary>Walks a local file/folder and appends one planned upload per file into
+    /// <paramref name="plan"/>, creating the matching remote directories as it goes. Planning up
+    /// front gives the toast an accurate remaining-file count and makes the batch cancellable.</summary>
+    private async Task BuildUploadPlanAsync(string localPath, string remoteDir, List<PlannedFileTransfer> plan, CancellationToken ct)
     {
         if (System.IO.Directory.Exists(localPath))
         {
@@ -521,12 +550,12 @@ public class FileBrowserViewModel : ReactiveObject
             await _sftpService.EnsureDirectoryAsync(_sessionId, remoteSub, ct);
 
             foreach (var child in System.IO.Directory.EnumerateFileSystemEntries(localPath))
-                await UploadEntryAsync(child, remoteSub, ct);
+                await BuildUploadPlanAsync(child, remoteSub, plan, ct);
         }
         else if (System.IO.File.Exists(localPath))
         {
             var remotePath = CombinePath(remoteDir, System.IO.Path.GetFileName(localPath));
-            await RunTransferAsync(TransferType.Upload, localPath, remotePath, ct);
+            plan.Add(new PlannedFileTransfer(TransferType.Upload, localPath, remotePath));
         }
     }
 
@@ -547,7 +576,13 @@ public class FileBrowserViewModel : ReactiveObject
             try
             {
                 ErrorMessage = null;
-                await DownloadRemoteEntryAsync(file.FullPath, file.Name, isDirectory: true, localDir, ct);
+                var plan = new List<PlannedFileTransfer>();
+                await BuildDownloadPlanAsync(file.FullPath, file.Name, isDirectory: true, localDir, plan, ct);
+                await RunTransferBatchAsync(plan, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                // User cancelled while the download was being planned/run; not an error.
             }
             catch (Exception ex)
             {
@@ -564,12 +599,16 @@ public class FileBrowserViewModel : ReactiveObject
         if (string.IsNullOrEmpty(localPath))
             return;
 
-        await RunTransferAsync(TransferType.Download, localPath, file.FullPath, ct);
+        var single = new[] { new PlannedFileTransfer(TransferType.Download, localPath, file.FullPath) };
+        await RunTransferBatchAsync(single, ct);
     }
 
-    /// <summary>Downloads a remote file or directory (recursively) into a local directory,
-    /// mirroring the remote structure. Shared by folder download and batch download.</summary>
-    private async Task DownloadRemoteEntryAsync(string remotePath, string name, bool isDirectory, string localDir, CancellationToken ct)
+    /// <summary>Walks a remote file or directory (recursively) and appends one planned download per
+    /// file into <paramref name="plan"/>, mirroring the remote structure into <paramref name="localDir"/>
+    /// (creating the local directories as it goes). Planning up front lets the toast show an accurate
+    /// remaining-file count and lets the whole batch be cancelled. Shared by folder and batch download.</summary>
+    private async Task BuildDownloadPlanAsync(string remotePath, string name, bool isDirectory, string localDir,
+        List<PlannedFileTransfer> plan, CancellationToken ct)
     {
         if (isDirectory)
         {
@@ -578,12 +617,12 @@ public class FileBrowserViewModel : ReactiveObject
 
             var children = await _sftpService.ListDirectoryAsync(_sessionId, remotePath, ct);
             foreach (var child in children)
-                await DownloadRemoteEntryAsync(child.FullPath, child.Name, child.IsDirectory, localSub, ct);
+                await BuildDownloadPlanAsync(child.FullPath, child.Name, child.IsDirectory, localSub, plan, ct);
         }
         else
         {
             var localPath = System.IO.Path.Combine(localDir, name);
-            await RunTransferAsync(TransferType.Download, localPath, remotePath, ct);
+            plan.Add(new PlannedFileTransfer(TransferType.Download, localPath, remotePath));
         }
     }
 
@@ -604,15 +643,21 @@ public class FileBrowserViewModel : ReactiveObject
             System.IO.Path.GetTempPath(), "PulseTerm", "dragout", Guid.NewGuid().ToString("N"));
         System.IO.Directory.CreateDirectory(tempDir);
 
-        var localPaths = new List<string>();
         try
         {
             ErrorMessage = null;
+            var plan = new List<PlannedFileTransfer>();
             foreach (var item in targets)
-            {
-                await DownloadRemoteEntryAsync(item.FullPath, item.Name, item.IsDirectory, tempDir, ct);
-                localPaths.Add(System.IO.Path.Combine(tempDir, item.Name));
-            }
+                await BuildDownloadPlanAsync(item.FullPath, item.Name, item.IsDirectory, tempDir, plan, ct);
+
+            var completed = await RunTransferBatchAsync(plan, ct);
+            if (!completed)
+                return Array.Empty<string>();
+        }
+        catch (OperationCanceledException)
+        {
+            // User cancelled the drag-out download; nothing to hand the OS drag.
+            return Array.Empty<string>();
         }
         catch (Exception ex)
         {
@@ -620,7 +665,8 @@ public class FileBrowserViewModel : ReactiveObject
             return Array.Empty<string>();
         }
 
-        return localPaths;
+        // Hand the OS drag the top-level entries (files or folder roots) the user dragged.
+        return targets.Select(item => System.IO.Path.Combine(tempDir, item.Name)).ToList();
     }
 
     private async Task DownloadSelectedAsync(CancellationToken ct = default)
@@ -639,8 +685,15 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             ErrorMessage = null;
+            var plan = new List<PlannedFileTransfer>();
             foreach (var item in targets)
-                await DownloadRemoteEntryAsync(item.FullPath, item.Name, item.IsDirectory, localDir, ct);
+                await BuildDownloadPlanAsync(item.FullPath, item.Name, item.IsDirectory, localDir, plan, ct);
+
+            await RunTransferBatchAsync(plan, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // User cancelled the batch download; not an error.
         }
         catch (Exception ex)
         {
@@ -648,10 +701,49 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
+    /// <summary>A single file scheduled for transfer, resolved up front so the whole batch can be
+    /// counted and cancelled as one unit.</summary>
+    private sealed record PlannedFileTransfer(TransferType Type, string LocalPath, string RemotePath);
+
+    /// <summary>Runs a batch of planned transfers one after another behind a shared cancellation
+    /// scope that the toast's "cancel remaining" control (and folder-download cancellation) can
+    /// trip. The toast shows the remaining-file count; the return value says whether every file
+    /// completed (false if the user cancelled).</summary>
+    private async Task<bool> RunTransferBatchAsync(IReadOnlyList<PlannedFileTransfer> plan, CancellationToken ct)
+    {
+        if (plan.Count == 0)
+            return true;
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _transferCts = cts;
+        TransferSink?.BeginBatch(plan.Count, cts);
+
+        try
+        {
+            foreach (var item in plan)
+            {
+                await RunTransferAsync(item.Type, item.LocalPath, item.RemotePath, cts.Token);
+                TransferSink?.NotifyBatchItemSettled();
+            }
+
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            // The user cancelled: the file in flight was aborted and the rest were skipped.
+            return false;
+        }
+        finally
+        {
+            TransferSink?.EndBatch();
+            _transferCts = null;
+        }
+    }
+
     /// <summary>Runs one transfer end to end: registers it with the toast, streams progress into
-    /// it, and settles the final state. Failures mark the row red instead of throwing; the return
-    /// value says whether the transfer completed.</summary>
-    private async Task<bool> RunTransferAsync(TransferType type, string localPath, string remotePath, CancellationToken ct)
+    /// it, and settles the final state. A failure marks the row red and returns; a cancellation
+    /// marks the row cancelled, removes any partial local file, and propagates so the batch stops.</summary>
+    private async Task RunTransferAsync(TransferType type, string localPath, string remotePath, CancellationToken ct)
     {
         var task = new TransferTask
         {
@@ -675,19 +767,53 @@ public class FileBrowserViewModel : ReactiveObject
 
             if (item is not null)
                 item.Status = TransferStatus.Completed;
+        }
+        catch (OperationCanceledException)
+        {
+            if (item is not null)
+                item.Status = TransferStatus.Cancelled;
 
-            return true;
+            // A cancelled download leaves a half-written file behind; drop it.
+            if (type == TransferType.Download)
+                TryDeleteLocalFile(localPath);
+
+            throw;
         }
         catch (Exception ex)
         {
             if (item is not null)
                 item.Status = TransferStatus.Failed;
             ErrorMessage = ex.Message;
-            return false;
         }
         finally
         {
             TransferSink?.NotifyTaskSettled();
+        }
+    }
+
+    private static void TryDeleteLocalFile(string localPath)
+    {
+        try
+        {
+            if (System.IO.File.Exists(localPath))
+                System.IO.File.Delete(localPath);
+        }
+        catch
+        {
+            // Best-effort cleanup of a partial download.
+        }
+    }
+
+    private void CancelDelete()
+    {
+        // Guard so a cancellation callback can never crash the app from the cancel button.
+        try
+        {
+            _deleteCts?.Cancel();
+        }
+        catch
+        {
+            // Best-effort: the delete loop stops at its next cancellation check regardless.
         }
     }
 
@@ -862,6 +988,9 @@ public class FileBrowserViewModel : ReactiveObject
     /// per-entry recursive progress is folded into one running "deleted / total" readout.</summary>
     private async Task DeleteManyAsync(IReadOnlyList<RemoteFileInfoViewModel> targets, CancellationToken ct)
     {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _deleteCts = cts;
+
         try
         {
             ErrorMessage = null;
@@ -890,10 +1019,16 @@ public class FileBrowserViewModel : ReactiveObject
                     }
                 });
 
-                await _sftpService.DeleteAsync(_sessionId, targets[i].FullPath, progress, ct);
+                await _sftpService.DeleteAsync(_sessionId, targets[i].FullPath, progress, cts.Token);
             }
 
             await RefreshAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // The user cancelled mid-delete; already-deleted entries stay gone, so re-list to
+            // show what actually remains.
+            await RefreshAsync(CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -901,6 +1036,7 @@ public class FileBrowserViewModel : ReactiveObject
         }
         finally
         {
+            _deleteCts = null;
             IsDeleteProgressVisible = false;
             IsDeleteProgressIndeterminate = false;
             DeleteProgressPercent = 0;

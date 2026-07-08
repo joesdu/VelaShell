@@ -39,21 +39,32 @@
             <Border Background="{DynamicResource PulseAccent}"
                     CornerRadius="8" Padding="6,1"
                     VerticalAlignment="Center"
-                    IsVisible="{Binding ActiveCount}">
-              <TextBlock Text="{Binding ActiveCount}"
+                    IsVisible="{Binding PendingCount}">
+              <TextBlock Text="{Binding PendingCount}"
                          Foreground="{DynamicResource PulseAccentText}"
                          FontFamily="{DynamicResource PulseTerminalFont}"
                          FontSize="9" FontWeight="Medium" />
             </Border>
           </StackPanel>
-          <Button Grid.Column="2"
-                  Background="Transparent" Padding="2" Cursor="Hand"
-                  Command="{Binding HidePanelCommand}"
-                  ToolTip.Tip="收起（任务继续后台执行）">
-            <pc:LucideIcon Width="12" Height="12"
-                           Data="{StaticResource Icon.x}"
-                           Foreground="{DynamicResource PulseTextTertiary}" />
-          </Button>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <!-- Cancel the remaining files in the running batch (aborts the one in flight). -->
+            <Button Background="Transparent" Padding="4,1" Cursor="Hand"
+                    IsVisible="{Binding IsBatchActive}"
+                    Command="{Binding CancelAllCommand}"
+                    ToolTip.Tip="取消剩余传输">
+              <TextBlock Text="取消"
+                         Foreground="{DynamicResource PulseError}"
+                         FontFamily="{DynamicResource PulseTerminalFont}"
+                         FontSize="10" FontWeight="Medium" />
+            </Button>
+            <Button Background="Transparent" Padding="2" Cursor="Hand"
+                    Command="{Binding HidePanelCommand}"
+                    ToolTip.Tip="收起（任务继续后台执行）">
+              <pc:LucideIcon Width="12" Height="12"
+                             Data="{StaticResource Icon.x}"
+                             Foreground="{DynamicResource PulseTextTertiary}" />
+            </Button>
+          </StackPanel>
         </Grid>
       </Border>
 

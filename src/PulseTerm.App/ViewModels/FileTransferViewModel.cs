@@ -4,6 +4,7 @@ using System.Collections.Specialized;
 using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
+using System.Threading;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Sftp;
 using ReactiveUI;
@@ -18,6 +19,11 @@ public class FileTransferViewModel : ReactiveObject
     private bool _isPointerOver;
     private bool _hidePending;
 
+    // Current batch (a folder/multi-file download or upload): the number of files still to finish
+    // and the token source that cancels whatever remains, including the file in flight.
+    private CancellationTokenSource? _batchCts;
+    private int _batchRemaining;
+
     public FileTransferViewModel(ITransferManager? transferManager)
     {
         _transferManager = transferManager!;
@@ -28,13 +34,70 @@ public class FileTransferViewModel : ReactiveObject
         CancelTransferCommand = ReactiveCommand.Create<Guid>(CancelTransfer);
         RetryTransferCommand = ReactiveCommand.Create<Guid>(RetryTransfer);
         ClearCompletedCommand = ReactiveCommand.Create(ClearCompleted);
+        CancelAllCommand = ReactiveCommand.Create(CancelAll);
         HidePanelCommand = ReactiveCommand.Create(() => { IsPanelVisible = false; });
     }
 
     public ObservableCollection<TransferItemViewModel> Transfers { get; }
 
-    /// <summary>Count of in-flight tasks shown in the header badge (design 9Ralg).</summary>
+    /// <summary>Count of in-flight tasks (in progress or queued).</summary>
     public int ActiveCount => Transfers.Count(t => t.IsActive);
+
+    /// <summary>Whether a cancellable batch of transfers is currently running.</summary>
+    public bool IsBatchActive => _batchCts is not null;
+
+    /// <summary>Header badge (design 9Ralg): during a batch this is the number of files still to
+    /// transfer (counting down), otherwise the number of in-flight single transfers. Fixes the
+    /// badge previously being stuck at "1" because files are transferred one at a time.</summary>
+    public int PendingCount => IsBatchActive ? _batchRemaining : ActiveCount;
+
+    /// <summary>Begins a cancellable batch of <paramref name="totalFiles"/> transfers. The header
+    /// then shows the remaining count and a cancel control that trips <paramref name="cts"/>.</summary>
+    public void BeginBatch(int totalFiles, CancellationTokenSource cts)
+    {
+        _batchCts = cts;
+        _batchRemaining = totalFiles;
+        this.RaisePropertyChanged(nameof(IsBatchActive));
+        this.RaisePropertyChanged(nameof(PendingCount));
+    }
+
+    /// <summary>Marks one file of the current batch as finished, decrementing the remaining count.</summary>
+    public void NotifyBatchItemSettled()
+    {
+        if (_batchRemaining > 0)
+            _batchRemaining--;
+        this.RaisePropertyChanged(nameof(PendingCount));
+    }
+
+    /// <summary>Ends the current batch; the toast reverts to its idle badge and resumes auto-hide.</summary>
+    public void EndBatch()
+    {
+        _batchCts = null;
+        _batchRemaining = 0;
+        this.RaisePropertyChanged(nameof(IsBatchActive));
+        this.RaisePropertyChanged(nameof(PendingCount));
+
+        // Re-evaluate auto-hide now that the batch (which suppressed it) is done.
+        NotifyTaskSettled();
+    }
+
+    private void CancelAll()
+    {
+        // Cancel() runs the transfer's cancellation callbacks inline; guard so a misbehaving
+        // callback can never crash the app from the cancel button.
+        try
+        {
+            _batchCts?.Cancel();
+        }
+        catch
+        {
+            // Best-effort: the batch is already tearing down.
+        }
+
+        // Reflect the cancellation immediately; the running file unwinds as its stream closes.
+        foreach (var item in Transfers.Where(t => t.IsActive).ToList())
+            item.Status = TransferStatus.Cancelled;
+    }
 
     /// <summary>
     /// The toast exists only while it has content and wasn't manually collapsed (spec §9):
@@ -48,9 +111,21 @@ public class FileTransferViewModel : ReactiveObject
 
     public ReactiveCommand<Unit, Unit> HidePanelCommand { get; }
 
+    /// <summary>Reopens the transfer toast (from the toolbar "transfer history" button) so past and
+    /// active transfers can be reviewed. Cancels any pending auto-hide and keeps it up until the
+    /// user collapses it with the x.</summary>
+    public void ShowPanel()
+    {
+        _autoHide?.Dispose();
+        _autoHide = null;
+        _hidePending = false;
+        IsPanelVisible = true;
+    }
+
     private void OnTransfersChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         this.RaisePropertyChanged(nameof(ActiveCount));
+        this.RaisePropertyChanged(nameof(PendingCount));
         if (Transfers.Count > 0)
             IsPanelVisible = true;
         else
@@ -63,10 +138,13 @@ public class FileTransferViewModel : ReactiveObject
     public void NotifyTaskSettled()
     {
         this.RaisePropertyChanged(nameof(ActiveCount));
+        this.RaisePropertyChanged(nameof(PendingCount));
         _autoHide?.Dispose();
         _autoHide = null;
 
-        if (ActiveCount > 0)
+        // Keep the toast up while more files in the batch are pending, or while any single
+        // transfer is still in flight.
+        if (ActiveCount > 0 || IsBatchActive)
         {
             _hidePending = false;
             return;
@@ -109,6 +187,10 @@ public class FileTransferViewModel : ReactiveObject
     public ReactiveCommand<Guid, Unit> CancelTransferCommand { get; }
     public ReactiveCommand<Guid, Unit> RetryTransferCommand { get; }
     public ReactiveCommand<Unit, Unit> ClearCompletedCommand { get; }
+
+    /// <summary>Cancels every remaining file in the current batch, aborting the one in flight
+    /// and skipping the rest (spec §9: 取消剩余传输).</summary>
+    public ReactiveCommand<Unit, Unit> CancelAllCommand { get; }
 
     public void AddTransfer(TransferTask task)
     {

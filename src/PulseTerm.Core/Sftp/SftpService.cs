@@ -42,10 +42,24 @@ public class SftpService : ISftpService
 
         await using var fileStream = File.OpenRead(localPath);
 
-        await client.UploadAsync(fileStream, remotePath, bytesTransferred =>
+        // NOTE: SSH.NET invokes this progress callback on a detached thread-pool thread
+        // (ThreadPool.QueueUserWorkItem), so throwing from it would be an unhandled exception that
+        // crashes the process. To cancel the in-flight file we instead dispose our own stream, which
+        // makes the worker's read fail; we normalise that into a clean cancellation below.
+        using (cancellationToken.Register(() => SafeDispose(fileStream)))
         {
-            ReportProgress(progress, fileName, (long)bytesTransferred, totalBytes, stopwatch);
-        }, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await client.UploadAsync(fileStream, remotePath, bytesTransferred =>
+                {
+                    ReportProgress(progress, fileName, (long)bytesTransferred, totalBytes, stopwatch);
+                }, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is not OperationCanceledException)
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
+        }
     }
 
     public async Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath,
@@ -61,10 +75,22 @@ public class SftpService : ISftpService
 
         await using var fileStream = File.Create(localPath);
 
-        await client.DownloadAsync(remotePath, fileStream, bytesTransferred =>
+        // See UploadFileAsync: the callback runs on a detached thread-pool thread, so we cancel by
+        // disposing our own stream (failing the worker's write) rather than throwing from it.
+        using (cancellationToken.Register(() => SafeDispose(fileStream)))
         {
-            ReportProgress(progress, fileName, (long)bytesTransferred, totalBytes, stopwatch);
-        }, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await client.DownloadAsync(remotePath, fileStream, bytesTransferred =>
+                {
+                    ReportProgress(progress, fileName, (long)bytesTransferred, totalBytes, stopwatch);
+                }, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is not OperationCanceledException)
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
+        }
     }
 
     public async Task DeleteAsync(Guid sessionId, string remotePath, IProgress<SftpDeleteProgress>? progress = null, CancellationToken cancellationToken = default)
@@ -346,6 +372,22 @@ public class SftpService : ISftpService
         };
 
         progress.Report(transferProgress);
+    }
+
+    /// <summary>Disposes a stream to abort an in-flight transfer on cancellation. Runs from a
+    /// <see cref="CancellationToken"/> callback, so it must never throw — otherwise
+    /// <see cref="CancellationTokenSource.Cancel()"/> would surface an aggregated exception to
+    /// whoever pressed cancel.</summary>
+    private static void SafeDispose(IDisposable stream)
+    {
+        try
+        {
+            stream.Dispose();
+        }
+        catch
+        {
+            // Best-effort: the transfer will still fail out and be reported as cancelled.
+        }
     }
 
     private static string GetUnixParentDirectory(string remotePath)

@@ -190,6 +190,68 @@ public class FileTransferViewModelTests
 
     [TestMethod]
     [TestCategory("FileTransfer")]
+    public void BeginBatch_ShowsRemainingCount_AndCountsDownAsFilesSettle()
+    {
+        using var cts = new CancellationTokenSource();
+
+        _vm.BeginBatch(3, cts);
+        Assert.IsTrue(_vm.IsBatchActive);
+        Assert.AreEqual(3, _vm.PendingCount); // remaining count, not stuck at 1
+
+        _vm.NotifyBatchItemSettled();
+        Assert.AreEqual(2, _vm.PendingCount);
+
+        _vm.NotifyBatchItemSettled();
+        Assert.AreEqual(1, _vm.PendingCount);
+
+        _vm.EndBatch();
+        Assert.IsFalse(_vm.IsBatchActive);
+        Assert.AreEqual(0, _vm.PendingCount); // falls back to (empty) active count
+    }
+
+    [TestMethod]
+    [TestCategory("FileTransfer")]
+    public void CancelAll_CancelsBatchToken_AndMarksActiveItemsCancelled()
+    {
+        using var cts = new CancellationTokenSource();
+        var running = CreateTask(status: TransferStatus.InProgress);
+        _vm.AddTransfer(running);
+        _vm.BeginBatch(5, cts);
+
+        _vm.CancelAllCommand.Execute().Subscribe();
+
+        Assert.IsTrue(cts.IsCancellationRequested);
+        Assert.AreEqual(TransferStatus.Cancelled, _vm.Transfers[0].Status);
+    }
+
+    [TestMethod]
+    [TestCategory("FileTransfer")]
+    public void ShowPanel_ReopensToast_ForReviewingHistory()
+    {
+        // A finished transfer leaves the toast collapsed but its history retained.
+        _vm.AddTransfer(CreateTask(status: TransferStatus.Completed, remotePath: "/home/user/done.txt"));
+        _vm.HidePanelCommand.Execute().Subscribe();
+        Assert.IsFalse(_vm.IsPanelVisible);
+
+        _vm.ShowPanel();
+
+        Assert.IsTrue(_vm.IsPanelVisible);
+        Assert.AreEqual(1, _vm.Transfers.Count()); // past record still there to review
+    }
+
+    [TestMethod]
+    [TestCategory("FileTransfer")]
+    public void PendingCount_WithoutBatch_FallsBackToActiveCount()
+    {
+        _vm.AddTransfer(CreateTask(status: TransferStatus.InProgress));
+        _vm.AddTransfer(CreateTask(status: TransferStatus.Completed, remotePath: "/home/user/done.txt"));
+
+        Assert.IsFalse(_vm.IsBatchActive);
+        Assert.AreEqual(1, _vm.PendingCount); // one in-flight single transfer
+    }
+
+    [TestMethod]
+    [TestCategory("FileTransfer")]
     public void MultipleTransfers_TrackedIndependently()
     {
         // Arrange
