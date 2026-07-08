@@ -155,6 +155,22 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         bridge.Closed += OnBridgeClosed;
         Bridge = bridge;
         _started = false;
+
+        // The channel was opened at a fixed default grid (120×32). By now the control has usually
+        // already been laid out to the real viewport, but the PtySizeChanged that carried that
+        // size fired while ShellStream was still null and was dropped. Push the emulator's current
+        // grid to the new stream so the remote PTY winsize matches what's visible — otherwise
+        // full-screen apps (htop/nano) read the stale 32-row size and draw their footer mid-screen,
+        // leaving the lower part of the terminal blank.
+        SyncPtySize();
+    }
+
+    /// <summary>Re-sends the emulator's current grid size to the live shell stream, so the remote
+    /// PTY winsize matches the actual viewport rather than the fixed size the channel opened with.</summary>
+    private void SyncPtySize()
+    {
+        if (TerminalEmulator.Columns > 0 && TerminalEmulator.Rows > 0)
+            OnPtySizeChanged(TerminalEmulator.Columns, TerminalEmulator.Rows);
     }
 
     /// <summary>Tears down the current transport off the UI thread, keeping the tab and buffer intact.</summary>
