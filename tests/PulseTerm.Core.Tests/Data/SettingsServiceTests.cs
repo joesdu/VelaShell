@@ -33,7 +33,7 @@ public class SettingsServiceTests : IDisposable
         var settings = await service.GetSettingsAsync();
 
         Assert.IsNotNull(settings);
-        Assert.AreEqual("en", settings.Language);
+        Assert.AreEqual("zh-CN", settings.Language);
         Assert.AreEqual("dark", settings.Theme);
         Assert.AreEqual("JetBrains Mono", settings.TerminalFont);
         Assert.AreEqual(14, settings.TerminalFontSize);

@@ -2,7 +2,7 @@ namespace PulseTerm.Core.Models;
 
 public class AppSettings
 {
-    public string Language { get; set; } = "en";
+    public string Language { get; set; } = "zh-CN";
 
     public string Theme { get; set; } = "dark";
 

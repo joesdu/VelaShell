@@ -81,7 +81,7 @@ public class JsonDataStoreTests : IDisposable
         var result = await _dataStore.LoadAsync<AppSettings>(filePath);
 
         Assert.IsNotNull(result);
-        Assert.AreEqual("en", result!.Language);
+        Assert.AreEqual("zh-CN", result!.Language);
         Assert.AreEqual("dark", result.Theme);
     }
 
@@ -94,7 +94,7 @@ public class JsonDataStoreTests : IDisposable
         var result = await _dataStore.LoadAsync<AppSettings>(filePath);
 
         Assert.IsNotNull(result);
-        Assert.AreEqual("en", result!.Language);
+        Assert.AreEqual("zh-CN", result!.Language);
         Assert.AreEqual("dark", result.Theme);
     }
 
@@ -203,7 +203,7 @@ public class JsonDataStoreTests : IDisposable
         var result = await _dataStore.LoadAsync<AppSettings>(filePath);
 
         Assert.IsNotNull(result);
-        Assert.AreEqual("en", result!.Language);
+        Assert.AreEqual("zh-CN", result!.Language);
     }
 
     [TestMethod]
@@ -216,6 +216,6 @@ public class JsonDataStoreTests : IDisposable
         var result = await _dataStore.LoadAsync<AppSettings>(filePath);
 
         Assert.IsNotNull(result);
-        Assert.AreEqual("en", result!.Language);
+        Assert.AreEqual("zh-CN", result!.Language);
     }
 }

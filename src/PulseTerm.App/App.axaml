@@ -18,6 +18,9 @@
                 <ResourceInclude Source="avares://PulseTerm.Controls/Themes/PulseTokens.axaml" />
                 <ResourceInclude Source="avares://PulseTerm.Controls/Themes/PulseShellTokens.axaml" />
                 <ResourceInclude Source="avares://PulseTerm.Controls/Themes/Icons.axaml" />
+                <!-- Overrides Dock.Avalonia's document tab context menu (must come after the Dock
+                     theme is applied; application resources win over theme resources). -->
+                <ResourceInclude Source="avares://PulseTerm.App/Themes/DockContextMenu.axaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <!-- Dock document tab metrics per design frame nunbT: 32px tabs, padding [0,14],

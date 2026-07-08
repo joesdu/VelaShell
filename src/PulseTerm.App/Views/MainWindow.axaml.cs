@@ -19,8 +19,8 @@ namespace PulseTerm.App.Views;
 
 public partial class MainWindow : Window
 {
-    /// <summary>File panel height restored when the panel reopens (§6: default 220px, drag to grow).</summary>
-    private double _lastFileRowHeight = 220;
+    /// <summary>File panel height restored when the panel reopens (§6: default 300px, drag to grow).</summary>
+    private double _lastFileRowHeight = 300;
     private IDisposable? _fileBrowserVisibilitySub;
 
     public MainWindow()

@@ -149,13 +149,17 @@ public class SshConnectionService : ISshConnectionService
         var clientEntries = _clients.ToArray();
         _clients.Clear();
 
-        foreach (var (sessionId, client) in clientEntries)
+        // Disconnect every session concurrently: each Disconnect() is a blocking network teardown,
+        // so a sequential loop would make app exit take (sessions × teardown) time and stall on any
+        // single unresponsive connection.
+        var teardowns = clientEntries.Select(entry => Task.Run(() =>
         {
+            var (sessionId, client) = entry;
             try
             {
                 if (client.IsConnected)
                 {
-                    await Task.Run(() => client.Disconnect()).ConfigureAwait(false);
+                    client.Disconnect();
                 }
 
                 client.Dispose();
@@ -164,7 +168,9 @@ public class SshConnectionService : ISshConnectionService
             {
                 _logger?.LogWarning(ex, "Error disposing SSH client for session {SessionId}", sessionId);
             }
-        }
+        }));
+
+        await Task.WhenAll(teardowns).ConfigureAwait(false);
 
         _sessions.Dispose();
         GC.SuppressFinalize(this);

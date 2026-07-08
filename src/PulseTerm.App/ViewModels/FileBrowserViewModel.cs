@@ -626,49 +626,6 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
-    /// <summary>§6 drag-out ("拖拽列表项到本地=下载"): downloads the given rows into a fresh
-    /// per-drag temp folder (progress in the transfer toast) and returns the resulting local
-    /// paths, which the view hands to the OS drag operation. The OS then copies those temp
-    /// files to wherever the user drops them.</summary>
-    public async Task<IReadOnlyList<string>> PrepareDragOutAsync(IReadOnlyList<RemoteFileInfoViewModel> items, CancellationToken ct = default)
-    {
-        if (_sftpService is null || items is null)
-            return Array.Empty<string>();
-
-        var targets = items.Where(f => !f.IsParentEntry).ToList();
-        if (targets.Count == 0)
-            return Array.Empty<string>();
-
-        var tempDir = System.IO.Path.Combine(
-            System.IO.Path.GetTempPath(), "PulseTerm", "dragout", Guid.NewGuid().ToString("N"));
-        System.IO.Directory.CreateDirectory(tempDir);
-
-        try
-        {
-            ErrorMessage = null;
-            var plan = new List<PlannedFileTransfer>();
-            foreach (var item in targets)
-                await BuildDownloadPlanAsync(item.FullPath, item.Name, item.IsDirectory, tempDir, plan, ct);
-
-            var completed = await RunTransferBatchAsync(plan, ct);
-            if (!completed)
-                return Array.Empty<string>();
-        }
-        catch (OperationCanceledException)
-        {
-            // User cancelled the drag-out download; nothing to hand the OS drag.
-            return Array.Empty<string>();
-        }
-        catch (Exception ex)
-        {
-            ErrorMessage = ex.Message;
-            return Array.Empty<string>();
-        }
-
-        // Hand the OS drag the top-level entries (files or folder roots) the user dragged.
-        return targets.Select(item => System.IO.Path.Combine(tempDir, item.Name)).ToList();
-    }
-
     private async Task DownloadSelectedAsync(CancellationToken ct = default)
     {
         if (_sftpService is null || PickFolderForDownload is null)

@@ -60,15 +60,6 @@ public partial class FileBrowserView : UserControl
             DragDrop.SetAllowDrop(fileList, true);
             fileList.AddHandler(DragDrop.DragOverEvent, OnFileListDragOver);
             fileList.AddHandler(DragDrop.DropEvent, OnFileListDrop);
-
-            // Drag-out (§6): dragging rows off the list downloads them and hands the temp
-            // files to the OS drag, so dropping into Explorer etc. copies them locally.
-            fileList.AddHandler(PointerPressedEvent, OnFileListPointerPressed,
-                RoutingStrategies.Bubble, handledEventsToo: true);
-            fileList.AddHandler(PointerMovedEvent, OnFileListPointerMoved,
-                RoutingStrategies.Bubble, handledEventsToo: true);
-            fileList.AddHandler(PointerReleasedEvent, OnFileListPointerReleased,
-                RoutingStrategies.Bubble, handledEventsToo: true);
         }
 
         AddHandler(PointerMovedEvent, OnColumnSplitterPointerMoved, RoutingStrategies.Tunnel);
@@ -286,106 +277,6 @@ public partial class FileBrowserView : UserControl
         });
 
         return folders.FirstOrDefault()?.TryGetLocalPath();
-    }
-
-    // --- Drag-out state: armed on row press, fired once the pointer travels past a threshold. ---
-    private PointerPressedEventArgs? _dragOutPressArgs;
-    private RemoteFileInfoViewModel? _dragOutPressRow;
-    private Point _dragOutPressPoint;
-    private bool _dragOutInProgress;
-
-    private void OnFileListPointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        _dragOutPressArgs = null;
-        _dragOutPressRow = null;
-
-        if (_dragOutInProgress || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-            return;
-
-        var row = (e.Source as Control)?.DataContext as RemoteFileInfoViewModel;
-        if (row is null || row.IsParentEntry)
-            return;
-
-        _dragOutPressArgs = e;
-        _dragOutPressRow = row;
-        _dragOutPressPoint = e.GetPosition(this);
-    }
-
-    // Drag-out only begins once the pointer travels this far (DIPs) with the button still held.
-    // Kept deliberately large so an accidental jitter while clicking/double-clicking a folder
-    // never kicks off a recursive folder download to a temp folder.
-    private const double DragOutThreshold = 24;
-
-    private void OnFileListPointerMoved(object? sender, PointerEventArgs e)
-    {
-        if (_dragOutPressArgs is null || _dragOutInProgress || DataContext is not FileBrowserViewModel vm)
-            return;
-
-        // Only a genuine press-and-drag counts; if the button was released (e.g. a plain click or
-        // a double-click), disarm so a later hover never starts a download.
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-        {
-            _dragOutPressArgs = null;
-            _dragOutPressRow = null;
-            return;
-        }
-
-        var delta = e.GetPosition(this) - _dragOutPressPoint;
-        if (Math.Abs(delta.X) < DragOutThreshold && Math.Abs(delta.Y) < DragOutThreshold)
-            return;
-
-        // Dragging a row that is part of the selection drags the whole selection.
-        var pressed = _dragOutPressRow!;
-        var targets = vm.SelectedFiles.Contains(pressed)
-            ? vm.SelectedFiles.ToList()
-            : new List<RemoteFileInfoViewModel> { pressed };
-
-        var pressArgs = _dragOutPressArgs;
-        _dragOutPressArgs = null;
-        _dragOutPressRow = null;
-        _dragOutInProgress = true;
-        _ = StartDragOutAsync(vm, pressArgs!, targets);
-    }
-
-    private void OnFileListPointerReleased(object? sender, PointerReleasedEventArgs e)
-    {
-        _dragOutPressArgs = null;
-        _dragOutPressRow = null;
-    }
-
-    /// <summary>Downloads the dragged rows to a temp folder, then starts the OS drag with the
-    /// local paths. If the user releases the pointer before the download finishes, the drag
-    /// simply never starts (the files stay in temp).</summary>
-    private async Task StartDragOutAsync(FileBrowserViewModel vm, PointerPressedEventArgs pressArgs,
-        IReadOnlyList<RemoteFileInfoViewModel> targets)
-    {
-        try
-        {
-            var localPaths = await vm.PrepareDragOutAsync(targets);
-            if (localPaths.Count == 0)
-                return;
-
-            var top = TopLevel.GetTopLevel(this);
-            if (top is null)
-                return;
-
-            using var dataTransfer = new DataTransfer();
-            foreach (var path in localPaths)
-            {
-                IStorageItem? item = System.IO.Directory.Exists(path)
-                    ? await top.StorageProvider.TryGetFolderFromPathAsync(path)
-                    : await top.StorageProvider.TryGetFileFromPathAsync(path);
-
-                if (item is not null)
-                    dataTransfer.Add(DataTransferItem.CreateFile(item));
-            }
-
-            await DragDrop.DoDragDropAsync(pressArgs, dataTransfer, DragDropEffects.Copy);
-        }
-        finally
-        {
-            _dragOutInProgress = false;
-        }
     }
 
     private void OnFileListDragOver(object? sender, DragEventArgs e)

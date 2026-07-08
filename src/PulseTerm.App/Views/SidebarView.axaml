@@ -84,18 +84,18 @@
     <GridSplitter Grid.Row="2" Background="Transparent" ResizeDirection="Rows"
                   HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 
-    <!-- Row 3: Quick Connect (header + recent list, default 320px, drag-resizable) -->
+    <!-- Row 3: Recent Connections (header + recent list, default 320px, drag-resizable) -->
     <Border Grid.Row="3">
-      <Grid RowDefinitions="36,24,*">
+      <Grid RowDefinitions="36,*">
 
-        <!-- Quick Connect header -->
+        <!-- Recent Connections header -->
         <Border Grid.Row="0"
                 BorderThickness="0,0,0,1"
                 BorderBrush="{DynamicResource PulseBorderPrimary}"
                 Padding="12,0">
           <Grid ColumnDefinitions="*,Auto">
             <TextBlock Grid.Column="0"
-                       Text="快速连接"
+                       Text="最近连接"
                        Foreground="{DynamicResource PulseTextSecondary}"
                        FontFamily="{DynamicResource PulseTerminalFont}"
                        FontSize="11"
@@ -119,16 +119,8 @@
           </Grid>
         </Border>
 
-        <!-- Recent label -->
-        <Border Grid.Row="1" Padding="12,0" VerticalAlignment="Center">
-          <TextBlock Text="// 最近连接"
-                     Foreground="{DynamicResource PulseTextMuted}"
-                     FontFamily="{DynamicResource PulseTerminalFont}"
-                     FontSize="10" />
-        </Border>
-
         <!-- Recent connections list: 名称-分组 + 相对时间 (per design rc1/rc2/rc3) -->
-        <ScrollViewer Grid.Row="2"
+        <ScrollViewer Grid.Row="1"
                       VerticalScrollBarVisibility="Auto">
           <ItemsControl ItemsSource="{Binding RecentConnections.Connections}">
             <ItemsControl.ItemTemplate>

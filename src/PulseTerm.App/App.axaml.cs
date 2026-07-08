@@ -64,10 +64,35 @@ public partial class App : Application
             };
 
             // 退出时释放容器,确保 SonnetDB 引擎正常关闭(WAL/段刷盘)。
-            desktop.Exit += (_, _) => _serviceProvider?.Dispose();
+            desktop.Exit += (_, _) => DisposeServicesOnExit();
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Releases the DI container on shutdown. Teardown disconnects any live SSH/SFTP sessions —
+    /// each <c>Disconnect()</c> is a blocking network round-trip — and flushes the SonnetDB engine.
+    /// The previous code ran this synchronously via <c>Dispose()</c> on the UI thread, so a slow or
+    /// unresponsive connection left the process alive well after the window closed. We now use async
+    /// disposal (also the correct path for the IAsyncDisposable services) bounded by a short timeout,
+    /// so the app exits promptly; the OS reclaims any still-closing sockets on process teardown.
+    /// </summary>
+    private void DisposeServicesOnExit()
+    {
+        var provider = _serviceProvider;
+        _serviceProvider = null;
+        if (provider is null)
+            return;
+
+        try
+        {
+            provider.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2));
+        }
+        catch
+        {
+            // Best-effort shutdown: never block or fault the exit path.
+        }
     }
 
     /// <summary>Applies persisted language / theme / accent before the first window shows,
