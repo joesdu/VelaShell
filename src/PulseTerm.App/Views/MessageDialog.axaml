@@ -9,7 +9,7 @@
         SizeToContent="Height"
         CanResize="False"
         ShowInTaskbar="False"
-        SystemDecorations="None"
+        WindowDecorations="None"
         TransparencyLevelHint="Transparent"
         Background="Transparent"
         WindowStartupLocation="CenterOwner">

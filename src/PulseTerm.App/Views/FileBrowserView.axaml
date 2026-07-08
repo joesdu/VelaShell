@@ -348,14 +348,34 @@
                                          Foreground="{DynamicResource PulseTextTertiary}" />
                         </MenuItem.Icon>
                       </MenuItem>
-                      <Separator />
-                      <MenuItem Header="{loc:Localize Download}"
-                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DownloadSelectedCommand}"
+                      <Separator IsVisible="{Binding IsRegularFile}" />
+                      <!-- 打开 = 文件的主操作(accent):内置 AvaloniaEdit 编辑器,保存即上传。 -->
+                      <MenuItem Header="打开"
+                                IsVisible="{Binding IsRegularFile}"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).OpenItemCommand}"
+                                CommandParameter="{Binding}"
                                 Foreground="{DynamicResource PulseTextPrimary}"
                                 FontWeight="Medium">
                         <MenuItem.Icon>
-                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.download}"
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.file-text}"
                                          Foreground="{DynamicResource PulseAccent}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
+                      <MenuItem Header="使用默认编辑器打开"
+                                IsVisible="{Binding IsRegularFile}"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).OpenWithDefaultEditorCommand}"
+                                CommandParameter="{Binding}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.external-link}"
+                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
+                      <Separator />
+                      <MenuItem Header="{loc:Localize Download}"
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DownloadSelectedCommand}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.download}"
+                                         Foreground="{DynamicResource PulseTextTertiary}" />
                         </MenuItem.Icon>
                       </MenuItem>
                       <MenuItem Header="{loc:Localize UploadFilesHere}"

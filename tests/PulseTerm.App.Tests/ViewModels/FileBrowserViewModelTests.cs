@@ -464,7 +464,7 @@ public class FileBrowserViewModelTests
     public async Task Properties_InvokesViewCallback()
     {
         RemoteFileInfoViewModel? shown = null;
-        _vm.ShowFileProperties = f => { shown = f; return Task.CompletedTask; };
+        _vm.ShowFileProperties = f => { shown = f; return Task.FromResult<short?>(null); };
         var file = new RemoteFileInfoViewModel(CreateTestFiles()[0]);
 
         await _vm.PropertiesCommand.Execute(file).FirstAsync();
@@ -660,16 +660,17 @@ public class FileBrowserViewModelTests
         Assert.AreEqual("/home/user/documents", crumbs[2].Path);
     }
 
+    // 属性弹窗已合并 chmod(参考 WinSCP):ShowFileProperties 返回变更后的 mode,null = 取消/未改。
     [TestMethod]
     [TestCategory("FileBrowser")]
-    public async Task Chmod_AppliesPickedMode()
+    public async Task Properties_WithChangedMode_AppliesChmod()
     {
-        _vm.PromptForPermissions = _ => Task.FromResult<short?>(755);
+        _vm.ShowFileProperties = _ => Task.FromResult<short?>(755);
         _sftpService.ListDirectoryAsync(_sessionId, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new List<RemoteFileInfo>()));
 
         var file = new RemoteFileInfoViewModel(CreateTestFiles()[1]); // /home/user/readme.txt
-        await _vm.ChmodCommand.Execute(file).FirstAsync();
+        await _vm.PropertiesCommand.Execute(file).FirstAsync();
 
         await _sftpService.Received(1)
             .SetPermissionsAsync(_sessionId, "/home/user/readme.txt", 755, Arg.Any<CancellationToken>());
@@ -677,12 +678,12 @@ public class FileBrowserViewModelTests
 
     [TestMethod]
     [TestCategory("FileBrowser")]
-    public async Task Chmod_Cancelled_DoesNothing()
+    public async Task Properties_CancelledOrUnchanged_DoesNotChmod()
     {
-        _vm.PromptForPermissions = _ => Task.FromResult<short?>(null);
+        _vm.ShowFileProperties = _ => Task.FromResult<short?>(null);
 
         var file = new RemoteFileInfoViewModel(CreateTestFiles()[1]);
-        await _vm.ChmodCommand.Execute(file).FirstAsync();
+        await _vm.PropertiesCommand.Execute(file).FirstAsync();
 
         await _sftpService.DidNotReceive()
             .SetPermissionsAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<short>(), Arg.Any<CancellationToken>());
@@ -724,25 +725,7 @@ public class FileBrowserViewModelTests
             Arg.Any<IProgress<SftpDeleteProgress>?>(), Arg.Any<CancellationToken>());
     }
 
-    [TestMethod]
-    [TestCategory("FileBrowser")]
-    public async Task PrepareDragOut_DownloadsToTempAndReturnsLocalPaths()
-    {
-        var files = CreateTestFiles();
-        var targets = new List<RemoteFileInfoViewModel>
-        {
-            RemoteFileInfoViewModel.CreateParentEntry("/home"), // must be skipped
-            new RemoteFileInfoViewModel(files[1]),              // readme.txt
-        };
-
-        var paths = await _vm.PrepareDragOutAsync(targets);
-
-        Assert.AreEqual(1, paths.Count);
-        StringAssert.EndsWith(paths[0], "readme.txt");
-        await _sftpService.Received(1).DownloadFileAsync(
-            _sessionId, "/home/user/readme.txt", paths[0],
-            Arg.Any<IProgress<TransferProgress>?>(), Arg.Any<CancellationToken>());
-    }
+    // PrepareDragOut 测试已随拖出下载功能一并移除(2ef75bf:仅保留右键菜单下载)。
 
     [TestMethod]
     [TestCategory("FileBrowser")]

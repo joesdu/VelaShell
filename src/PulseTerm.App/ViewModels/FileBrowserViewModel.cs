@@ -73,6 +73,8 @@ public class FileBrowserViewModel : ReactiveObject
         CopyNameCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(CopyNameAsync);
         PropertiesCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(ShowPropertiesAsync);
         DeleteItemCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(DeleteItemAsync);
+        OpenItemCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(OpenItemAsync);
+        OpenWithDefaultEditorCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(OpenWithDefaultEditorAsync);
         DownloadSelectedCommand = ReactiveCommand.CreateFromTask(DownloadSelectedAsync);
         DeleteSelectedCommand = ReactiveCommand.CreateFromTask(DeleteSelectedAsync);
         CancelDeleteCommand = ReactiveCommand.Create(CancelDelete);
@@ -231,6 +233,12 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>属性弹窗(合并了 chmod 权限编辑,确定时应用变更)。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> PropertiesCommand { get; }
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> DeleteItemCommand { get; }
+
+    /// <summary>「打开」:下载到临时副本后交给内置 AvaloniaEdit 编辑器(保存即上传)。</summary>
+    public ReactiveCommand<RemoteFileInfoViewModel, Unit> OpenItemCommand { get; }
+
+    /// <summary>「使用默认编辑器打开」:下载到 temp 交给设置里配置的编辑器,保存即上传。</summary>
+    public ReactiveCommand<RemoteFileInfoViewModel, Unit> OpenWithDefaultEditorCommand { get; }
 
     /// <summary>Batch download of the multi-selection into one picked local folder (§6 multi-select).</summary>
     public ReactiveCommand<Unit, Unit> DownloadSelectedCommand { get; }
@@ -436,6 +444,116 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
+    private const long MaxBuiltInEditSize = 5 * 1024 * 1024;
+
+    /// <summary>编辑保存的回传统一走右上角传输浮窗(设计 9Ralg):新增一行上传任务、
+    /// 流式进度、完成/失败落状态,随后浮窗按既有规则自动淡出。失败会向上抛,调用方
+    /// (编辑器状态栏 / 外部编辑会话)据此提示。必须在 UI 线程调用。</summary>
+    private async Task UploadEditedFileAsync(string localPath, string remotePath)
+    {
+        if (_sftpService is null)
+            throw new InvalidOperationException("SFTP 服务不可用。");
+
+        var task = new TransferTask
+        {
+            Id = Guid.NewGuid(),
+            Type = TransferType.Upload,
+            LocalPath = localPath,
+            RemotePath = remotePath,
+            Status = TransferStatus.InProgress,
+        };
+
+        TransferSink?.AddTransfer(task);
+        var item = TransferSink?.FindTransfer(task.Id);
+        var progress = new Progress<TransferProgress>(p => item?.UpdateProgress(p));
+
+        try
+        {
+            await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, progress);
+            if (item is not null)
+                item.Status = TransferStatus.Completed;
+        }
+        catch
+        {
+            if (item is not null)
+                item.Status = TransferStatus.Failed;
+            throw;
+        }
+        finally
+        {
+            TransferSink?.NotifyTaskSettled();
+        }
+    }
+
+    /// <summary>「打开」:文件下载到独占临时目录后,交给视图打开内置编辑器;
+    /// 编辑器保存时通过回调把临时副本上传回原远程路径。</summary>
+    private async Task OpenItemAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
+    {
+        if (_sftpService is null || OpenInBuiltInEditor is null || file is null || !file.IsRegularFile)
+            return;
+
+        if (file.SizeBytes > MaxBuiltInEditSize)
+        {
+            ErrorMessage = "文件超过 5 MB,内置编辑器仅适合小文本;请下载后在本地编辑。";
+            return;
+        }
+
+        try
+        {
+            ErrorMessage = null;
+            var tempDir = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(), "PulseTerm", "builtin-edit",
+                Guid.NewGuid().ToString("N")[..8]);
+            System.IO.Directory.CreateDirectory(tempDir);
+            var localPath = System.IO.Path.Combine(tempDir, file.Name);
+
+            await _sftpService.DownloadFileAsync(_sessionId, file.FullPath, localPath, null, ct);
+
+            var remotePath = file.FullPath;
+            await OpenInBuiltInEditor(file, localPath,
+                () => UploadEditedFileAsync(localPath, remotePath));
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    /// <summary>「使用默认编辑器打开」:交给 ExternalEditSessionManager(下载 → 启动配置的
+    /// 编辑器 → 侦听保存自动上传 → 退出清理 temp)。</summary>
+    private async Task OpenWithDefaultEditorAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
+    {
+        if (_sftpService is null || file is null || !file.IsRegularFile)
+            return;
+
+        var editor = GetDefaultEditorPath is null ? null : await GetDefaultEditorPath();
+        if (string.IsNullOrWhiteSpace(editor))
+        {
+            // 弹窗引导配置(视图实现里含"打开设置"直达);无视图委托时退回面板报错。
+            if (PromptConfigureEditor is not null)
+                await PromptConfigureEditor();
+            else
+                ErrorMessage = "未配置默认编辑器,请在 设置 → 文件传输 → 默认编辑器 中填写(如 notepad)。";
+            return;
+        }
+
+        try
+        {
+            ErrorMessage = null;
+            await Services.ExternalEditSessionManager.OpenAsync(
+                _sftpService, _sessionId, file.FullPath, file.Name, editor,
+                message => Avalonia.Threading.Dispatcher.UIThread.Post(() => ErrorMessage = message),
+                // 保存回传经传输浮窗提示;监听回调在线程池,需切回 UI 线程。
+                uploadAsync: (local, remote) => Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+                    () => UploadEditedFileAsync(local, remote)),
+                cancellationToken: ct);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
     private async Task GoUpAsync(CancellationToken ct = default)
     {
         if (CurrentPath == "/") return;
@@ -478,6 +596,16 @@ public class FileBrowserViewModel : ReactiveObject
 
     /// <summary>Set by the view: opens a local file with the OS default program.</summary>
     public Func<string, Task>? OpenLocalFile { get; set; }
+
+    /// <summary>Set by the view: opens the built-in AvaloniaEdit editor window.
+    /// (file, localTempPath, uploadCallback) — the editor invokes the callback after each save.</summary>
+    public Func<RemoteFileInfoViewModel, string, Func<Task>, Task>? OpenInBuiltInEditor { get; set; }
+
+    /// <summary>Set by the host: resolves the configured default editor (设置 → 文件传输)。</summary>
+    public Func<Task<string?>>? GetDefaultEditorPath { get; set; }
+
+    /// <summary>Set by the view: 未配置默认编辑器时的弹窗引导(含"打开设置"直达)。</summary>
+    public Func<Task>? PromptConfigureEditor { get; set; }
 
     /// <summary>The floating transfer toast fed by uploads/downloads started here (spec §9).</summary>
     public FileTransferViewModel? TransferSink { get; set; }

@@ -66,7 +66,7 @@
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.AlertWebhook}" VerticalAlignment="Center" />
     </Grid>
-    <TextBox Text="{Binding Security.WebhookUrl}" Watermark="https://example.com/hooks/pulseterm"
+    <TextBox Text="{Binding Security.WebhookUrl}" PlaceholderText="https://example.com/hooks/pulseterm"
              IsVisible="{Binding Security.AlertWebhook}" />
   </StackPanel>
 </UserControl>

@@ -9,6 +9,8 @@
     <Application.Styles>
         <FluentTheme />
         <dockFluent:DockFluentTheme />
+        <!-- AvaloniaEdit 的控件模板随其主题提供;缺了它 TextEditor 无模板、内容不渲染。 -->
+        <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
         <StyleInclude Source="avares://PulseTerm.App/Themes/DockStyles.axaml" />
     </Application.Styles>
 

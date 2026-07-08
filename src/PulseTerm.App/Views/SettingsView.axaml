@@ -11,7 +11,7 @@
         Title="设置"
         Width="840" Height="740"
         CanResize="False"
-        SystemDecorations="None"
+        WindowDecorations="None"
         TransparencyLevelHint="Transparent"
         Background="Transparent"
         WindowStartupLocation="CenterOwner">

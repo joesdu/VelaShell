@@ -13,7 +13,7 @@
 
     <!-- 工具栏 -->
     <Grid ColumnDefinitions="200,*,Auto,8,Auto">
-      <TextBox Grid.Column="0" Text="{Binding SshKeys.SearchQuery}" Watermark="搜索密钥..." />
+      <TextBox Grid.Column="0" Text="{Binding SshKeys.SearchQuery}" PlaceholderText="搜索密钥..." />
       <Button Grid.Column="2" Classes="dlg-outline" Content="导入" Click="ImportKey_Click" />
       <Button Grid.Column="4" Classes="dlg-primary" Content="生成密钥"
               Command="{Binding SshKeys.GenerateCommand}" />

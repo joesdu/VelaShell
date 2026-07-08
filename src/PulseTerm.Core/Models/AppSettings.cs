@@ -156,6 +156,10 @@ public class TransferOptions
     public bool ResumeEnabled { get; set; } = true;
     public int TransferMaxRetries { get; set; } = 3;
     public bool AutoCleanTempFiles { get; set; } = true;
+
+    /// <summary>SFTP「使用默认编辑器打开」调用的程序(命令名或完整路径,如 notepad、
+    /// notepad++、"C:\Program Files\Notepad++\notepad++.exe")。空 = 未配置。</summary>
+    public string DefaultEditorPath { get; set; } = "";
 }
 
 /// <summary>设置 - 安全审计(设计 glqQE;策略项持久化,审计数据在 SonnetDB audit_log)。</summary>

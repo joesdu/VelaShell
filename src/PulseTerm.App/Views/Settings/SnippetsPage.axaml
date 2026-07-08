@@ -68,8 +68,8 @@
     <!-- 新建片段 -->
     <TextBlock Classes="section-title" Text="新建片段" />
     <Grid ColumnDefinitions="*,8,*,8,Auto">
-      <TextBox Grid.Column="0" Text="{Binding Snippets.NewName}" Watermark="名称,如 Check Docker Status" />
-      <TextBox Grid.Column="2" Text="{Binding Snippets.NewCommandText}" Watermark="命令,如 systemctl status docker" />
+      <TextBox Grid.Column="0" Text="{Binding Snippets.NewName}" PlaceholderText="名称,如 Check Docker Status" />
+      <TextBox Grid.Column="2" Text="{Binding Snippets.NewCommandText}" PlaceholderText="命令,如 systemctl status docker" />
       <Button Grid.Column="4" Classes="dlg-primary" Content="添加"
               Command="{Binding Snippets.SaveNewCommandCommand}" />
     </Grid>

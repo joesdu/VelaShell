@@ -63,8 +63,13 @@ public partial class App : Application
                 DataContext = viewModel
             };
 
-            // 退出时释放容器,确保 SonnetDB 引擎正常关闭(WAL/段刷盘)。
-            desktop.Exit += (_, _) => DisposeServicesOnExit();
+            // 退出时释放容器,确保 SonnetDB 引擎正常关闭(WAL/段刷盘);
+            // 并清理「默认编辑器打开」遗留的 remote-edit 临时文件。
+            desktop.Exit += (_, _) =>
+            {
+                PulseTerm.App.Services.ExternalEditSessionManager.CleanupAll();
+                DisposeServicesOnExit();
+            };
         }
 
         base.OnFrameworkInitializationCompleted();

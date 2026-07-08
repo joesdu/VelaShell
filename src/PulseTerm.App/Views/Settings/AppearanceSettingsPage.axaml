@@ -50,7 +50,7 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <TextBox Width="86" Text="{Binding AccentColor}" Watermark="#00D4AA" />
+        <TextBox Width="86" Text="{Binding AccentColor}" PlaceholderText="#00D4AA" />
       </StackPanel>
     </Grid>
 

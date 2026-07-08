@@ -180,9 +180,20 @@ public class MainWindowViewModel : ReactiveObject
         {
             TransferSink = FileTransfer,
             IsVisible = wasVisible,
+            GetDefaultEditorPath = QueryDefaultEditorPathAsync,
         };
         if (wasVisible)
             FileBrowser.RefreshCommand.Execute().Subscribe(_ => { }, _ => { });
+    }
+
+    /// <summary>SFTP「使用默认编辑器打开」读取的编辑器命令(设置 → 文件传输 → 默认编辑器)。</summary>
+    private async Task<string?> QueryDefaultEditorPathAsync()
+    {
+        if (_settingsService is null)
+            return null;
+
+        var settings = await _settingsService.GetSettingsAsync();
+        return settings.Transfer.DefaultEditorPath;
     }
 
     /// <summary>Toggles the SFTP panel for the active session (#22, spec §9). Opening it binds the

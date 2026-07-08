@@ -35,6 +35,9 @@ public class RemoteFileInfoViewModel
     /// folder icon and blue name styling from design dyuii.</summary>
     public bool IsRegularDirectory => IsDirectory && !IsParentEntry;
 
+    /// <summary>A real file row — gates the file-only context actions (打开/编辑器打开等)。</summary>
+    public bool IsRegularFile => !IsDirectory && !IsParentEntry;
+
     public string Name => _model.Name;
 
     /// <summary>List display name: the plain entry name. The amber folder icon already marks

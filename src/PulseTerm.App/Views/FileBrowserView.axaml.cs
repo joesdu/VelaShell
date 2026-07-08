@@ -12,6 +12,7 @@ using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Microsoft.Extensions.DependencyInjection;
 using PulseTerm.App.ViewModels;
 using PulseTerm.Core.Resources;
 
@@ -51,6 +52,8 @@ public partial class FileBrowserView : UserControl
             vm.ShowFileProperties = ShowFilePropertiesAsync;
             vm.ConfirmDelete = ConfirmAsync;
             vm.OpenLocalFile = OpenLocalFileAsync;
+            vm.OpenInBuiltInEditor = OpenInBuiltInEditorAsync;
+            vm.PromptConfigureEditor = PromptConfigureEditorAsync;
         };
 
         // Accept dropping local files/folders onto the list to upload into CurrentPath.
@@ -358,6 +361,40 @@ public partial class FileBrowserView : UserControl
         var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
         if (clipboard is not null)
             await clipboard.SetTextAsync(text);
+    }
+
+    /// <summary>未配置默认编辑器:弹窗说明配置位置,确认则直接打开设置窗口(文件传输页)。</summary>
+    private async Task PromptConfigureEditorAsync()
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner)
+            return;
+
+        var openSettings = await MessageDialog.ConfirmAsync(owner, "未配置默认编辑器",
+            "「使用默认编辑器打开」需要先指定编辑器程序:\n" +
+            "Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 gedit);" +
+            "macOS 填应用名(如 Visual Studio Code)。\n\n是否现在打开设置进行配置?",
+            confirmText: "打开设置", kind: MessageDialogKind.Info);
+
+        if (!openSettings)
+            return;
+
+        // 直达 设置 → 文件传输 页(索引 5,对应 SettingsView 的页序)。
+        if (App.Current is App app && app.Services?.GetService<SettingsViewModel>() is { } settingsViewModel)
+            settingsViewModel.SelectedSectionIndex = 5;
+
+        if (owner.DataContext is MainWindowViewModel mainViewModel)
+            mainViewModel.OpenSettingsCommand.Execute().Subscribe();
+    }
+
+    /// <summary>「打开」:非模态弹出内置 AvaloniaEdit 编辑器,保存时经回调上传回服务器。</summary>
+    private Task OpenInBuiltInEditorAsync(RemoteFileInfoViewModel file, string localPath, Func<Task> uploadAsync)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner)
+            return Task.CompletedTask;
+
+        var editor = new RemoteFileEditorView(file.Name, file.FullPath, localPath, uploadAsync);
+        editor.Show(owner);
+        return Task.CompletedTask;
     }
 
     /// <summary>右键弹菜单前把所指行并入选区(资源管理器惯例):已在多选内则保持
