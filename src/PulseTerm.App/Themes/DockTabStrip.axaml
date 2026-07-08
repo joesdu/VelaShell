@@ -1,0 +1,99 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:commands="using:Dock.Avalonia.Commands"
+                    xmlns:dockConverters="using:Dock.Avalonia.Converters"
+                    xmlns:pc="using:PulseTerm.Controls.Controls"
+                    xmlns:conv="using:PulseTerm.App.Converters"
+                    x:Class="PulseTerm.App.Themes.DockTabStripResources"
+                    x:CompileBindings="False">
+
+  <!--
+    Overrides Dock.Avalonia's DockTabStripScrollViewerHorizontal (application resources win over
+    the Dock theme's). The stock theme puts a RepeatButton arrow on EACH side of the tab strip
+    that pops in when tabs overflow — the tabs themselves shift around and the arrows look like
+    stray carets (用户反馈:容易出错、不好看).
+
+    This replacement follows design frame nunbT "Tab Overflow Controls": the tab area is a plain
+    scroll viewport, and a fixed 24px control triplet sits at the far RIGHT end of the strip —
+    scroll-left / scroll-right / tab-list dropdown — visible only while the tabs overflow.
+    The dropdown lists every open tab (active one highlighted) and activates the chosen one.
+  -->
+
+  <commands:ScrollViewerLineCommand x:Key="PulseTabScrollLeftCommand" Direction="Left" />
+  <commands:ScrollViewerLineCommand x:Key="PulseTabScrollRightCommand" Direction="Right" />
+
+  <ControlTheme x:Key="DockTabStripScrollViewerHorizontal" TargetType="ScrollViewer">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <DockPanel>
+
+          <!-- nunbT pZGS4: 24px 圆角3 三连按钮,右端固定,仅溢出时出现 -->
+          <StackPanel DockPanel.Dock="Right"
+                      Orientation="Horizontal"
+                      Spacing="2"
+                      Margin="6,0"
+                      VerticalAlignment="Center">
+            <StackPanel.IsVisible>
+              <MultiBinding Converter="{x:Static conv:WidthOverflowConverter.Instance}">
+                <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Extent.Width" />
+                <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Viewport.Width" />
+              </MultiBinding>
+            </StackPanel.IsVisible>
+
+            <RepeatButton Classes="tab-nav"
+                          Command="{StaticResource PulseTabScrollLeftCommand}"
+                          CommandParameter="{Binding RelativeSource={RelativeSource TemplatedParent}}">
+              <RepeatButton.IsEnabled>
+                <MultiBinding Converter="{x:Static dockConverters:ScrollViewerScrollButtonVisibilityConverter.Instance}"
+                              ConverterParameter="Left">
+                  <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="HorizontalScrollBarVisibility" />
+                  <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Offset.X" />
+                  <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Extent.Width" />
+                  <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Viewport.Width" />
+                </MultiBinding>
+              </RepeatButton.IsEnabled>
+              <pc:LucideIcon Width="14" Height="14"
+                             Data="{DynamicResource Icon.chevron-left}"
+                             Foreground="{DynamicResource PulseTextTertiary}" />
+            </RepeatButton>
+
+            <RepeatButton Classes="tab-nav"
+                          Command="{StaticResource PulseTabScrollRightCommand}"
+                          CommandParameter="{Binding RelativeSource={RelativeSource TemplatedParent}}">
+              <RepeatButton.IsEnabled>
+                <MultiBinding Converter="{x:Static dockConverters:ScrollViewerScrollButtonVisibilityConverter.Instance}"
+                              ConverterParameter="Right">
+                  <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="HorizontalScrollBarVisibility" />
+                  <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Offset.X" />
+                  <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Extent.Width" />
+                  <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Viewport.Width" />
+                </MultiBinding>
+              </RepeatButton.IsEnabled>
+              <pc:LucideIcon Width="14" Height="14"
+                             Data="{DynamicResource Icon.chevron-right}"
+                             Foreground="{DynamicResource PulseTextTertiary}" />
+            </RepeatButton>
+
+            <Button Classes="tab-nav"
+                    Click="TabListDrop_Click"
+                    ToolTip.Tip="所有标签页">
+              <pc:LucideIcon Width="14" Height="14"
+                             Data="{DynamicResource Icon.chevron-down}"
+                             Foreground="{DynamicResource PulseTextTertiary}" />
+            </Button>
+          </StackPanel>
+
+          <!-- 标签区:纯滚动视口,无内嵌箭头 -->
+          <ScrollContentPresenter Name="PART_ContentPresenter">
+            <ScrollContentPresenter.GestureRecognizers>
+              <ScrollGestureRecognizer CanHorizontallyScroll="{Binding CanHorizontallyScroll, ElementName=PART_ContentPresenter}"
+                                       CanVerticallyScroll="{Binding CanVerticallyScroll, ElementName=PART_ContentPresenter}" />
+            </ScrollContentPresenter.GestureRecognizers>
+          </ScrollContentPresenter>
+        </DockPanel>
+      </ControlTemplate>
+    </Setter>
+  </ControlTheme>
+
+</ResourceDictionary>

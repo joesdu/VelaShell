@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:sys="using:System"
              xmlns:dockFluent="using:Dock.Avalonia.Themes.Fluent"
+             xmlns:themes="using:PulseTerm.App.Themes"
              x:Class="PulseTerm.App.App"
              RequestedThemeVariant="Dark">
 
@@ -21,6 +22,11 @@
                 <!-- Overrides Dock.Avalonia's document tab context menu (must come after the Dock
                      theme is applied; application resources win over theme resources). -->
                 <ResourceInclude Source="avares://PulseTerm.App/Themes/DockContextMenu.axaml" />
+                <!-- Overrides Dock's tab-strip ScrollViewer theme: no inline edge arrows; fixed
+                     scroll-left/right + tab-list dropdown at the strip's right end (design nunbT).
+                     Instantiated directly (not ResourceInclude) so its Click handlers bind to the
+                     x:Class code-behind. -->
+                <themes:DockTabStripResources />
             </ResourceDictionary.MergedDictionaries>
 
             <!-- Dock document tab metrics per design frame nunbT: 32px tabs, padding [0,14],
