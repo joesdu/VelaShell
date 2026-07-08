@@ -701,42 +701,6 @@
                 },
                 {
                   "type": "frame",
-                  "id": "wIHgo",
-                  "name": "Quick Connect Input",
-                  "width": "fill_container",
-                  "height": 32,
-                  "fill": "$bg-input",
-                  "gap": 8,
-                  "padding": [
-                    0,
-                    12
-                  ],
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "icon",
-                      "id": "PP95W",
-                      "name": "qiIcon",
-                      "width": 13,
-                      "height": 13,
-                      "icon": "terminal",
-                      "library": "lucide",
-                      "fill": "$text-tertiary"
-                    },
-                    {
-                      "type": "text",
-                      "id": "930cX",
-                      "name": "qiText",
-                      "fill": "$text-muted",
-                      "content": "用户名@主机名:端口",
-                      "fontFamily": "JetBrains Mono",
-                      "fontSize": 11,
-                      "fontWeight": "normal"
-                    }
-                  ]
-                },
-                {
-                  "type": "frame",
                   "id": "RvEM6",
                   "name": "recentLabel",
                   "width": "fill_container",
