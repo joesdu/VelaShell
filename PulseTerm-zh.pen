@@ -28993,6 +28993,193 @@
       "fontFamily": "Inter",
       "fontSize": 18,
       "fontWeight": "normal"
+    },
+    {
+      "type": "frame",
+      "id": "YYSTl",
+      "x": 3520,
+      "y": 1600,
+      "name": "消息确认弹窗",
+      "theme": {
+        "mode": "dark"
+      },
+      "width": 420,
+      "fill": "$bg-surface",
+      "cornerRadius": 8,
+      "stroke": "$border-secondary",
+      "strokeWidth": 1,
+      "strokeAlignment": "outer",
+      "effect": {
+        "type": "shadow",
+        "shadowType": "outer",
+        "color": "#00000080",
+        "offset": {
+          "x": 0,
+          "y": 8
+        },
+        "blur": 32
+      },
+      "layout": "vertical",
+      "children": [
+        {
+          "type": "frame",
+          "id": "zG4pd",
+          "name": "msgHeader",
+          "width": "fill_container",
+          "height": 48,
+          "stroke": "$border-primary",
+          "strokeWidth": {
+            "bottom": 1
+          },
+          "strokeAlignment": "inner",
+          "padding": [
+            0,
+            20
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "x0t7f",
+              "name": "msgHeaderLeft",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "H5puq",
+                  "name": "msgKindIcon",
+                  "width": 15,
+                  "height": 15,
+                  "icon": "triangle-alert",
+                  "library": "lucide",
+                  "fill": "$warning"
+                },
+                {
+                  "type": "text",
+                  "id": "H6lyz",
+                  "name": "msgTitle",
+                  "fill": "$text-primary",
+                  "content": "确认删除",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "icon",
+              "id": "oC9ex",
+              "name": "msgClose",
+              "width": 13,
+              "height": 13,
+              "icon": "x",
+              "library": "lucide",
+              "fill": "$text-tertiary"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "Qwbeo",
+          "name": "msgBody",
+          "width": "fill_container",
+          "layout": "vertical",
+          "padding": [
+            16,
+            20
+          ],
+          "children": [
+            {
+              "type": "text",
+              "id": "WWesk",
+              "name": "msgText",
+              "fill": "$text-secondary",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "确定要删除 nginx.conf 吗?此操作不可撤销。",
+              "lineHeight": 1.6,
+              "fontFamily": "Inter",
+              "fontSize": 12,
+              "fontWeight": "normal"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "HLvdc",
+          "name": "msgFooter",
+          "width": "fill_container",
+          "height": 52,
+          "stroke": "$border-primary",
+          "strokeWidth": {
+            "top": 1
+          },
+          "strokeAlignment": "inner",
+          "gap": 8,
+          "padding": [
+            0,
+            20
+          ],
+          "justifyContent": "end",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "R23pJ1",
+              "name": "msgCancelBtn",
+              "height": 30,
+              "cornerRadius": 4,
+              "stroke": "$border-secondary",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "padding": [
+                0,
+                12
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "VwZYm",
+                  "name": "msgCancelText",
+                  "fill": "$text-secondary",
+                  "content": "取消",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "DWKo6",
+              "name": "msgConfirmBtn",
+              "height": 30,
+              "fill": "$error",
+              "cornerRadius": 4,
+              "padding": [
+                0,
+                14
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "Gmgot",
+                  "name": "msgConfirmText",
+                  "fill": "#0A0E14",
+                  "content": "删除",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "500"
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ],
   "themes": {

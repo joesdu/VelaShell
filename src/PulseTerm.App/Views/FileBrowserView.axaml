@@ -279,11 +279,32 @@
             </Style>
           </ListBox.Styles>
           <ListBox.ContextMenu>
+            <!-- Menu icon groups per design e6klM: neutral rows = 13px text-tertiary strokes. -->
             <ContextMenu x:DataType="vm:FileBrowserViewModel">
-              <MenuItem Header="{loc:Localize UploadFilesHere}" Command="{Binding UploadCommand}" />
-              <MenuItem Header="{loc:Localize UploadFolderHere}" Command="{Binding UploadFolderCommand}" />
-              <MenuItem Header="{loc:Localize NewFolder}" Command="{Binding NewFolderCommand}" />
-              <MenuItem Header="{loc:Localize NewFile}" Command="{Binding NewFileCommand}" />
+              <MenuItem Header="{loc:Localize UploadFilesHere}" Command="{Binding UploadCommand}">
+                <MenuItem.Icon>
+                  <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.upload}"
+                                 Foreground="{DynamicResource PulseTextTertiary}" />
+                </MenuItem.Icon>
+              </MenuItem>
+              <MenuItem Header="{loc:Localize UploadFolderHere}" Command="{Binding UploadFolderCommand}">
+                <MenuItem.Icon>
+                  <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-up}"
+                                 Foreground="{DynamicResource PulseTextTertiary}" />
+                </MenuItem.Icon>
+              </MenuItem>
+              <MenuItem Header="{loc:Localize NewFolder}" Command="{Binding NewFolderCommand}">
+                <MenuItem.Icon>
+                  <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-plus}"
+                                 Foreground="{DynamicResource PulseTextTertiary}" />
+                </MenuItem.Icon>
+              </MenuItem>
+              <MenuItem Header="{loc:Localize NewFile}" Command="{Binding NewFileCommand}">
+                <MenuItem.Icon>
+                  <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.file-plus}"
+                                 Foreground="{DynamicResource PulseTextTertiary}" />
+                </MenuItem.Icon>
+              </MenuItem>
             </ContextMenu>
           </ListBox.ContextMenu>
           <ListBox.ItemTemplate>
@@ -306,54 +327,131 @@
                     </Style>
                   </Border.Styles>
                   <Border.ContextMenu>
+                    <!-- Icon tint groups per design e6klM: 下载 is the row's primary action
+                         (accent icon + text-primary), neutral rows are text-tertiary, and the
+                         destructive rows (删除/删除选中) are error on icon and label alike. -->
                     <ContextMenu x:DataType="vm:RemoteFileInfoViewModel">
                       <MenuItem Header="{loc:Localize Download}"
                                 IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DownloadItemCommand}"
-                                CommandParameter="{Binding}" />
+                                CommandParameter="{Binding}"
+                                Foreground="{DynamicResource PulseTextPrimary}"
+                                FontWeight="Medium">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.download}"
+                                         Foreground="{DynamicResource PulseAccent}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
                       <MenuItem Header="{loc:Localize Rename}"
                                 IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).RenameCommand}"
-                                CommandParameter="{Binding}" />
+                                CommandParameter="{Binding}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.pencil}"
+                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
                       <MenuItem Header="{loc:Localize MoveTo}"
                                 IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).MoveCommand}"
-                                CommandParameter="{Binding}" />
+                                CommandParameter="{Binding}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-input}"
+                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
                       <MenuItem Header="{loc:Localize ChangePermissions}"
                                 IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).ChmodCommand}"
-                                CommandParameter="{Binding}" />
+                                CommandParameter="{Binding}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.shield}"
+                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
                       <MenuItem Header="{loc:Localize CopyFilePath}"
                                 IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).CopyPathCommand}"
-                                CommandParameter="{Binding}" />
+                                CommandParameter="{Binding}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.copy}"
+                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
                       <MenuItem Header="{loc:Localize CopyFileName}"
                                 IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).CopyNameCommand}"
-                                CommandParameter="{Binding}" />
+                                CommandParameter="{Binding}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.clipboard}"
+                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
                       <MenuItem Header="{loc:Localize Properties}"
                                 IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).PropertiesCommand}"
-                                CommandParameter="{Binding}" />
+                                CommandParameter="{Binding}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.info}"
+                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
                       <Separator IsVisible="{Binding !IsParentEntry}" />
                       <MenuItem Header="{loc:Localize Delete}"
                                 IsVisible="{Binding !IsParentEntry}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DeleteItemCommand}"
-                                CommandParameter="{Binding}" />
+                                CommandParameter="{Binding}"
+                                Foreground="{DynamicResource PulseError}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.trash-2}"
+                                         Foreground="{DynamicResource PulseError}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
                       <Separator IsVisible="{Binding !IsParentEntry}" />
                       <MenuItem Header="{loc:Localize DownloadSelected}"
-                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DownloadSelectedCommand}" />
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DownloadSelectedCommand}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.download}"
+                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
                       <MenuItem Header="{loc:Localize DeleteSelected}"
-                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DeleteSelectedCommand}" />
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DeleteSelectedCommand}"
+                                Foreground="{DynamicResource PulseError}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.trash-2}"
+                                         Foreground="{DynamicResource PulseError}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
                       <Separator />
                       <MenuItem Header="{loc:Localize UploadFilesHere}"
-                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).UploadCommand}" />
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).UploadCommand}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.upload}"
+                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
                       <MenuItem Header="{loc:Localize UploadFolderHere}"
-                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).UploadFolderCommand}" />
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).UploadFolderCommand}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-up}"
+                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
                       <MenuItem Header="{loc:Localize NewFolder}"
-                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).NewFolderCommand}" />
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).NewFolderCommand}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-plus}"
+                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
                       <MenuItem Header="{loc:Localize NewFile}"
-                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).NewFileCommand}" />
+                                Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).NewFileCommand}">
+                        <MenuItem.Icon>
+                          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.file-plus}"
+                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
                     </ContextMenu>
                   </Border.ContextMenu>
                   <Grid ClipToBounds="True">

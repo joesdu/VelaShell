@@ -101,6 +101,23 @@
         <Setter Property="VerticalAlignment" Value="Stretch" />
     </Style>
 
+    <!-- Single-line inputs center their text vertically (设计稿所有输入框文本均为垂直居中);
+         the Fluent default leaves the presenter top-aligned, which reads as the text floating
+         high whenever the box is taller than one line (worst in the settings panel's 30px
+         NumericUpDown fields). Multi-line boxes keep top alignment. -->
+    <Style Selector="TextBox">
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBox[AcceptsReturn=True]">
+        <Setter Property="VerticalContentAlignment" Value="Top" />
+    </Style>
+    <Style Selector="NumericUpDown">
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ComboBox">
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
     <!-- Token-styled tooltips (small-flyout spec: bg-surface + border-secondary + corner 6). -->
     <Style Selector="ToolTip">
         <Setter Property="Background" Value="{DynamicResource PulseBgSurface}" />

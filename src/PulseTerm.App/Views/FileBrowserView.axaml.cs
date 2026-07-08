@@ -341,43 +341,7 @@ public partial class FileBrowserView : UserControl
         if (TopLevel.GetTopLevel(this) is not Window owner)
             return null;
 
-        var textBox = new TextBox { Text = initialValue, MinWidth = 340 };
-        var okButton = new Button { Content = Strings.OK, IsDefault = true, MinWidth = 72 };
-        var cancelButton = new Button { Content = Strings.Cancel, IsCancel = true, MinWidth = 72 };
-
-        string? result = null;
-        var dialog = new Window
-        {
-            Title = title,
-            CanResize = false,
-            ShowInTaskbar = false,
-            SizeToContent = SizeToContent.WidthAndHeight,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Content = new StackPanel
-            {
-                Margin = new Thickness(16),
-                Spacing = 12,
-                Children =
-                {
-                    new TextBlock { Text = title },
-                    textBox,
-                    new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 8,
-                        HorizontalAlignment = HorizontalAlignment.Right,
-                        Children = { cancelButton, okButton },
-                    },
-                },
-            },
-        };
-
-        okButton.Click += (_, _) => { result = textBox.Text; dialog.Close(); };
-        cancelButton.Click += (_, _) => { result = null; dialog.Close(); };
-        dialog.Opened += (_, _) => { textBox.SelectAll(); textBox.Focus(); };
-
-        await dialog.ShowDialog(owner);
-        return result;
+        return await MessageDialog.PromptAsync(owner, title, initialValue);
     }
 
     /// <summary>Modal yes/no confirmation for destructive actions (delete). Returns true to proceed.</summary>
@@ -386,40 +350,8 @@ public partial class FileBrowserView : UserControl
         if (TopLevel.GetTopLevel(this) is not Window owner)
             return false;
 
-        var confirmButton = new Button { Content = Strings.Delete, MinWidth = 72 };
-        var cancelButton = new Button { Content = Strings.Cancel, IsCancel = true, IsDefault = true, MinWidth = 72 };
-
-        bool result = false;
-        var dialog = new Window
-        {
-            Title = Strings.ConfirmDeleteTitle,
-            CanResize = false,
-            ShowInTaskbar = false,
-            SizeToContent = SizeToContent.WidthAndHeight,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Content = new StackPanel
-            {
-                Margin = new Thickness(16),
-                Spacing = 16,
-                Children =
-                {
-                    new TextBlock { Text = message, MaxWidth = 360, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
-                    new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 8,
-                        HorizontalAlignment = HorizontalAlignment.Right,
-                        Children = { cancelButton, confirmButton },
-                    },
-                },
-            },
-        };
-
-        confirmButton.Click += (_, _) => { result = true; dialog.Close(); };
-        cancelButton.Click += (_, _) => { result = false; dialog.Close(); };
-
-        await dialog.ShowDialog(owner);
-        return result;
+        return await MessageDialog.ConfirmAsync(owner, Strings.ConfirmDeleteTitle, message,
+            confirmText: Strings.Delete, kind: MessageDialogKind.Warning, danger: true);
     }
 
     private async Task CopyToClipboardAsync(string text)
@@ -435,9 +367,31 @@ public partial class FileBrowserView : UserControl
         if (TopLevel.GetTopLevel(this) is not Window owner)
             return;
 
-        var rows = new StackPanel { Spacing = 6 };
-        void AddRow(string label, string value) =>
-            rows.Children.Add(new TextBlock { Text = $"{label}：{value}" });
+        var labelBrush = this.FindResource("PulseTextSecondary") as IBrush;
+        var valueBrush = this.FindResource("PulseTextPrimary") as IBrush;
+
+        var rows = new StackPanel { Spacing = 8 };
+        void AddRow(string label, string value)
+        {
+            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("96,*") };
+            grid.Children.Add(new TextBlock
+            {
+                Text = label,
+                FontSize = 12,
+                Foreground = labelBrush,
+            });
+            var valueText = new TextBlock
+            {
+                Text = value,
+                FontSize = 12,
+                Foreground = valueBrush,
+                FontFamily = TerminalFont,
+                TextWrapping = TextWrapping.Wrap,
+            };
+            Grid.SetColumn(valueText, 1);
+            grid.Children.Add(valueText);
+            rows.Children.Add(grid);
+        }
 
         AddRow(Strings.Name, file.Name);
         AddRow(Strings.FilePath, file.FullPath);
@@ -446,32 +400,7 @@ public partial class FileBrowserView : UserControl
         AddRow(Strings.Permissions, file.Permissions);
         AddRow(Strings.Modified, file.FormattedModifiedTime);
 
-        var okButton = new Button
-        {
-            Content = Strings.OK,
-            IsDefault = true,
-            IsCancel = true,
-            MinWidth = 72,
-            HorizontalAlignment = HorizontalAlignment.Right,
-        };
-
-        var dialog = new Window
-        {
-            Title = Strings.Properties,
-            CanResize = false,
-            ShowInTaskbar = false,
-            SizeToContent = SizeToContent.WidthAndHeight,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Content = new StackPanel
-            {
-                Margin = new Thickness(16),
-                Spacing = 12,
-                Children = { rows, okButton },
-            },
-        };
-
-        okButton.Click += (_, _) => dialog.Close();
-        await dialog.ShowDialog(owner);
+        await MessageDialog.ShowCustomAsync(owner, Strings.Properties, rows, showCancel: false);
     }
 
     /// <summary>chmod editor (§6 context menu): a 3×3 rwx checkbox grid with a live octal readout.
@@ -504,13 +433,30 @@ public partial class FileBrowserView : UserControl
             grid.Children.Add(control);
         }
 
+        var headerBrush = this.FindResource("PulseTextPrimary") as IBrush;
+        var labelBrush = this.FindResource("PulseTextSecondary") as IBrush;
+        var accentBrush = this.FindResource("PulseAccent") as IBrush;
+
         string[] columnHeaders = { Strings.PermissionRead, Strings.PermissionWrite, Strings.PermissionExecute };
         string[] rowHeaders = { Strings.PermissionOwner, Strings.PermissionGroup, Strings.PermissionOthers };
 
         for (var c = 0; c < 3; c++)
-            Place(new TextBlock { Text = columnHeaders[c], FontWeight = Avalonia.Media.FontWeight.Medium }, 0, c + 1);
+            Place(new TextBlock
+            {
+                Text = columnHeaders[c],
+                FontSize = 12,
+                FontWeight = Avalonia.Media.FontWeight.Medium,
+                Foreground = headerBrush,
+            }, 0, c + 1);
 
-        var octalText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+        // Live "chmod 755 file" echo styled like the design's mono command previews.
+        var octalText = new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            FontFamily = TerminalFont,
+            FontSize = 11,
+            Foreground = accentBrush,
+        };
         var boxes = new CheckBox[9];
 
         short CurrentMode()
@@ -531,7 +477,13 @@ public partial class FileBrowserView : UserControl
 
         for (var r = 0; r < 3; r++)
         {
-            Place(new TextBlock { Text = rowHeaders[r], VerticalAlignment = VerticalAlignment.Center }, r + 1, 0);
+            Place(new TextBlock
+            {
+                Text = rowHeaders[r],
+                FontSize = 12,
+                Foreground = labelBrush,
+                VerticalAlignment = VerticalAlignment.Center,
+            }, r + 1, 0);
             for (var c = 0; c < 3; c++)
             {
                 var box = new CheckBox { IsChecked = flags[r * 3 + c] };
@@ -543,40 +495,13 @@ public partial class FileBrowserView : UserControl
 
         RefreshOctal();
 
-        var okButton = new Button { Content = Strings.OK, IsDefault = true, MinWidth = 72 };
-        var cancelButton = new Button { Content = Strings.Cancel, IsCancel = true, MinWidth = 72 };
-
-        short? result = null;
-        var dialog = new Window
+        var content = new StackPanel
         {
-            Title = Strings.ChangePermissions,
-            CanResize = false,
-            ShowInTaskbar = false,
-            SizeToContent = SizeToContent.WidthAndHeight,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Content = new StackPanel
-            {
-                Margin = new Thickness(16),
-                Spacing = 12,
-                Children =
-                {
-                    grid,
-                    octalText,
-                    new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 8,
-                        HorizontalAlignment = HorizontalAlignment.Right,
-                        Children = { cancelButton, okButton },
-                    },
-                },
-            },
+            Spacing = 12,
+            Children = { grid, octalText },
         };
 
-        okButton.Click += (_, _) => { result = CurrentMode(); dialog.Close(); };
-        cancelButton.Click += (_, _) => { result = null; dialog.Close(); };
-
-        await dialog.ShowDialog(owner);
-        return result;
+        var confirmed = await MessageDialog.ShowCustomAsync(owner, Strings.ChangePermissions, content);
+        return confirmed ? CurrentMode() : null;
     }
 }

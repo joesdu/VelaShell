@@ -246,41 +246,6 @@ public partial class MainWindow : Window
         return profile;
     }
 
-    private Task ShowConnectionErrorAsync(string message)
-    {
-        var okButton = new Button
-        {
-            Content = "确定",
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Padding = new Thickness(20, 6),
-        };
-
-        var dialog = new Window
-        {
-            Title = "连接失败",
-            Width = 420,
-            SizeToContent = SizeToContent.Height,
-            CanResize = false,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Background = this.FindResource("PulseBgSurface") as IBrush ?? Brushes.Transparent,
-            Content = new StackPanel
-            {
-                Margin = new Thickness(24),
-                Spacing = 20,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text = message,
-                        TextWrapping = TextWrapping.Wrap,
-                        Foreground = this.FindResource("PulseTextPrimary") as IBrush ?? Brushes.White,
-                    },
-                    okButton,
-                },
-            },
-        };
-
-        okButton.Click += (_, _) => dialog.Close();
-        return dialog.ShowDialog(this);
-    }
+    private Task ShowConnectionErrorAsync(string message) =>
+        MessageDialog.ShowMessageAsync(this, "连接失败", message, MessageDialogKind.Error);
 }
