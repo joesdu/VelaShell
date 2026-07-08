@@ -150,10 +150,8 @@
             </Panel>
           </Border>
           <!-- 连接线 -->
-          <Border Width="40" Height="2" VerticalAlignment="Center">
-            <Border.Background>
-              <SolidColorBrush Color="#253345" />
-            </Border.Background>
+          <Border Width="40" Height="2" VerticalAlignment="Center"
+                  Background="{DynamicResource PulseBorderSecondary}">
             <Border Background="{DynamicResource PulseAccent}"
                     IsVisible="{Binding IsStep2}" />
           </Border>

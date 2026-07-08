@@ -141,7 +141,23 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         _emulator.Updated += OnEmulatorUpdated;
         _emulator.Response += bytes => UserInput?.Invoke(bytes);
 
+        // 终端配色跟随应用主题(暗=Dracula,亮=Alucard);切换主题时重灌调色板并重绘。
+        ActualThemeVariantChanged += (_, _) => ApplyThemePalette();
+
         AddHandler(TextInputMethodClientRequestedEvent, OnTextInputMethodClientRequested);
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        // ActualThemeVariant 在挂树后才最终确定,构造时灌的是暗色缺省。
+        ApplyThemePalette();
+    }
+
+    private void ApplyThemePalette()
+    {
+        ApplyDesignPalette(_emulator.Palette, light: ActualThemeVariant == Avalonia.Styling.ThemeVariant.Light);
+        InvalidateVisual();
     }
 
     // ---- ITerminalEmulator --------------------------------------------------
@@ -284,29 +300,57 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
     // ---- Palette ------------------------------------------------------------
 
-    /// <summary>Seeds the palette with the PulseTerm design's dark-theme terminal colors.</summary>
-    public static void ApplyDesignPalette(TerminalPalette palette)
+    /// <summary>Seeds the palette for the given theme variant (用户确认的配色):
+    /// dark = Dracula(官方 Windows Terminal 方案,背景改用 #282828),
+    /// light = Alucard(dracula/foot 官方亮色方案)。</summary>
+    public static void ApplyDesignPalette(TerminalPalette palette, bool light = false)
     {
-        palette.DefaultForeground = Rgba.FromRgb(0xE0, 0xE6, 0xED);   // text-primary
-        palette.DefaultBackground = Rgba.FromRgb(0x08, 0x0C, 0x12);   // bg-terminal
-        palette.CursorColor = Rgba.FromRgb(0x00, 0xD4, 0xAA);         // accent
-        palette.SelectionBackground = new Rgba(0x99, 0x1C, 0x2A, 0x3F);
+        if (light)
+        {
+            palette.DefaultForeground = Rgba.FromRgb(0x1F, 0x1F, 0x1F);
+            palette.DefaultBackground = Rgba.FromRgb(0xFF, 0xFB, 0xEB);
+            palette.CursorColor = Rgba.FromRgb(0x1F, 0x1F, 0x1F);
+            palette.SelectionBackground = new Rgba(0x50, 0x64, 0x4A, 0xC9); // alucard blue @31%
 
-        palette.SetAnsi(0, Rgba.FromRgb(0x0A, 0x0E, 0x14));  // black
-        palette.SetAnsi(1, Rgba.FromRgb(0xFF, 0x6B, 0x6B));  // red   (term-red)
-        palette.SetAnsi(2, Rgba.FromRgb(0x69, 0xFF, 0x94));  // green (term-green)
-        palette.SetAnsi(3, Rgba.FromRgb(0xFD, 0xCB, 0x6E));  // yellow(term-yellow)
-        palette.SetAnsi(4, Rgba.FromRgb(0x74, 0xB9, 0xFF));  // blue  (term-blue)
-        palette.SetAnsi(5, Rgba.FromRgb(0xD9, 0x80, 0xFA));  // magenta(term-magenta)
-        palette.SetAnsi(6, Rgba.FromRgb(0x00, 0xD4, 0xAA));  // cyan  (term-cyan)
-        palette.SetAnsi(7, Rgba.FromRgb(0xE0, 0xE6, 0xED));  // white (term-white)
-        palette.SetAnsi(8, Rgba.FromRgb(0x3D, 0x4F, 0x63));  // bright black
-        palette.SetAnsi(9, Rgba.FromRgb(0xFF, 0x8A, 0x8A));
-        palette.SetAnsi(10, Rgba.FromRgb(0x9B, 0xFF, 0xB6));
-        palette.SetAnsi(11, Rgba.FromRgb(0xFF, 0xE0, 0x9B));
-        palette.SetAnsi(12, Rgba.FromRgb(0xA5, 0xD1, 0xFF));
-        palette.SetAnsi(13, Rgba.FromRgb(0xE9, 0xB0, 0xFF));
-        palette.SetAnsi(14, Rgba.FromRgb(0x6B, 0xFF, 0xE8));
+            palette.SetAnsi(0, Rgba.FromRgb(0xFF, 0xFB, 0xEB));  // black = bg(官方映射)
+            palette.SetAnsi(1, Rgba.FromRgb(0xCB, 0x3A, 0x2A));  // red
+            palette.SetAnsi(2, Rgba.FromRgb(0x14, 0x71, 0x0A));  // green
+            palette.SetAnsi(3, Rgba.FromRgb(0x84, 0x6E, 0x15));  // yellow
+            palette.SetAnsi(4, Rgba.FromRgb(0x64, 0x4A, 0xC9));  // blue
+            palette.SetAnsi(5, Rgba.FromRgb(0xA3, 0x14, 0x4D));  // magenta
+            palette.SetAnsi(6, Rgba.FromRgb(0x03, 0x6A, 0x96));  // cyan
+            palette.SetAnsi(7, Rgba.FromRgb(0x1F, 0x1F, 0x1F));  // white = fg(官方映射)
+            palette.SetAnsi(8, Rgba.FromRgb(0x6C, 0x66, 0x4B));  // bright black (comment)
+            palette.SetAnsi(9, Rgba.FromRgb(0xD7, 0x4C, 0x3D));
+            palette.SetAnsi(10, Rgba.FromRgb(0x19, 0x8D, 0x0C));
+            palette.SetAnsi(11, Rgba.FromRgb(0x9E, 0x84, 0x1A));
+            palette.SetAnsi(12, Rgba.FromRgb(0x78, 0x62, 0xD0));
+            palette.SetAnsi(13, Rgba.FromRgb(0xBF, 0x18, 0x5A));
+            palette.SetAnsi(14, Rgba.FromRgb(0x04, 0x7F, 0xB4));
+            palette.SetAnsi(15, Rgba.FromRgb(0x2C, 0x2B, 0x31));
+            return;
+        }
+
+        palette.DefaultForeground = Rgba.FromRgb(0xF8, 0xF8, 0xF2);
+        palette.DefaultBackground = Rgba.FromRgb(0x28, 0x2A, 0x36);
+        palette.CursorColor = Rgba.FromRgb(0xF8, 0xF8, 0xF2);
+        palette.SelectionBackground = new Rgba(0x99, 0x44, 0x47, 0x5A); // dracula selection
+
+        palette.SetAnsi(0, Rgba.FromRgb(0x21, 0x22, 0x2C));  // black
+        palette.SetAnsi(1, Rgba.FromRgb(0xFF, 0x55, 0x55));  // red
+        palette.SetAnsi(2, Rgba.FromRgb(0x50, 0xFA, 0x7B));  // green
+        palette.SetAnsi(3, Rgba.FromRgb(0xF1, 0xFA, 0x8C));  // yellow
+        palette.SetAnsi(4, Rgba.FromRgb(0xBD, 0x93, 0xF9));  // blue (dracula purple)
+        palette.SetAnsi(5, Rgba.FromRgb(0xFF, 0x79, 0xC6));  // magenta (dracula pink)
+        palette.SetAnsi(6, Rgba.FromRgb(0x8B, 0xE9, 0xFD));  // cyan
+        palette.SetAnsi(7, Rgba.FromRgb(0xF8, 0xF8, 0xF2));  // white
+        palette.SetAnsi(8, Rgba.FromRgb(0x62, 0x72, 0xA4));  // bright black (comment)
+        palette.SetAnsi(9, Rgba.FromRgb(0xFF, 0x6E, 0x6E));
+        palette.SetAnsi(10, Rgba.FromRgb(0x69, 0xFF, 0x94));
+        palette.SetAnsi(11, Rgba.FromRgb(0xFF, 0xFF, 0xA5));
+        palette.SetAnsi(12, Rgba.FromRgb(0xD6, 0xAC, 0xFF));
+        palette.SetAnsi(13, Rgba.FromRgb(0xFF, 0x92, 0xDF));
+        palette.SetAnsi(14, Rgba.FromRgb(0xA4, 0xFF, 0xFF));
         palette.SetAnsi(15, Rgba.FromRgb(0xFF, 0xFF, 0xFF));
     }
 

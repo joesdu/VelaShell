@@ -89,19 +89,19 @@ public class AppearanceOptions
     public string SidebarPosition { get; set; } = "left";
     public string StartupWindowState { get; set; } = "remember";
 
-    // 终端颜色
-    public string TerminalForeground { get; set; } = "#C8CCD4";
-    public string TerminalBackground { get; set; } = "#0A0E14";
-    public string CursorColor { get; set; } = "#00D4AA";
-    public string SelectionColor { get; set; } = "#264F78";
+    // 终端颜色(默认 = Dracula 官方 Windows Terminal 方案,用户确认)
+    public string TerminalForeground { get; set; } = "#F8F8F2";
+    public string TerminalBackground { get; set; } = "#282A36";
+    public string CursorColor { get; set; } = "#F8F8F2";
+    public string SelectionColor { get; set; } = "#44475A";
 
-    /// <summary>ANSI 普通 8 色。</summary>
+    /// <summary>ANSI 普通 8 色(Dracula:black/red/green/yellow/blue/purple/cyan/white)。</summary>
     public List<string> AnsiNormal { get; set; } =
-        ["#1E2127", "#E06C75", "#98C379", "#E5C07B", "#61AFEF", "#C678DD", "#56B6C2", "#ABB2BF"];
+        ["#21222C", "#FF5555", "#50FA7B", "#F1FA8C", "#BD93F9", "#FF79C6", "#8BE9FD", "#F8F8F2"];
 
-    /// <summary>ANSI 明亮 8 色。</summary>
+    /// <summary>ANSI 明亮 8 色(Dracula bright)。</summary>
     public List<string> AnsiBright { get; set; } =
-        ["#5C6370", "#FF6B6B", "#69FF94", "#FDCB6E", "#74B9FF", "#D980FA", "#00D4AA", "#E0E6ED"];
+        ["#6272A4", "#FF6E6E", "#69FF94", "#FFFFA5", "#D6ACFF", "#FF92DF", "#A4FFFF", "#FFFFFF"];
 }
 
 /// <summary>设置 - 终端(设计 08FpM;字体/字号/回滚沿用 AppSettings 顶层字段)。</summary>

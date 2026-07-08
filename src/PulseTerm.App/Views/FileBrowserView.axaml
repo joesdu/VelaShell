@@ -52,9 +52,10 @@
     </Style>
   </UserControl.Styles>
 
+  <!-- SFTP 面板底色与终端一致(用户要求,#282A36 家族),而非窗口铬色。 -->
   <Border BorderThickness="0,1,0,0"
           BorderBrush="{DynamicResource PulseBorderPrimary}"
-          Background="{DynamicResource PulseBgPage}"
+          Background="{DynamicResource PulseBgTerminal}"
           IsVisible="{Binding IsVisible}"
           VerticalAlignment="Stretch"
           MinHeight="120">

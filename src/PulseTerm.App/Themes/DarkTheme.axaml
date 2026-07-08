@@ -1,23 +1,23 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- PulseTerm Dark Theme — Design tokens from PulseTerm-zh.pen variables -->
+    <!-- PulseTerm Dark Theme — Dracula palette (用户确认) -->
 
     <!-- Accent tokens -->
-    <SolidColorBrush x:Key="PulseAccentText" Color="#00D4AA" />
+    <SolidColorBrush x:Key="PulseAccentText" Color="#BD93F9" />
 
     <!-- Semantic tokens -->
-    <SolidColorBrush x:Key="PulseWarning" Color="#FDCB6E" />
-    <SolidColorBrush x:Key="PulseError"   Color="#FF6B6B" />
-    <SolidColorBrush x:Key="PulseInfo"    Color="#74B9FF" />
+    <SolidColorBrush x:Key="PulseWarning" Color="#FFB86C" />
+    <SolidColorBrush x:Key="PulseError"   Color="#FF5555" />
+    <SolidColorBrush x:Key="PulseInfo"    Color="#8BE9FD" />
 
     <!-- Terminal color tokens -->
-    <SolidColorBrush x:Key="PulseTermWhite"   Color="#E0E6ED" />
-    <SolidColorBrush x:Key="PulseTermGreen"   Color="#69FF94" />
-    <SolidColorBrush x:Key="PulseTermCyan"    Color="#00D4AA" />
-    <SolidColorBrush x:Key="PulseTermBlue"    Color="#74B9FF" />
-    <SolidColorBrush x:Key="PulseTermYellow"  Color="#FDCB6E" />
-    <SolidColorBrush x:Key="PulseTermRed"     Color="#FF6B6B" />
-    <SolidColorBrush x:Key="PulseTermMagenta" Color="#D980FA" />
+    <SolidColorBrush x:Key="PulseTermWhite"   Color="#F8F8F2" />
+    <SolidColorBrush x:Key="PulseTermGreen"   Color="#50FA7B" />
+    <SolidColorBrush x:Key="PulseTermCyan"    Color="#8BE9FD" />
+    <SolidColorBrush x:Key="PulseTermBlue"    Color="#BD93F9" />
+    <SolidColorBrush x:Key="PulseTermYellow"  Color="#F1FA8C" />
+    <SolidColorBrush x:Key="PulseTermRed"     Color="#FF5555" />
+    <SolidColorBrush x:Key="PulseTermMagenta" Color="#FF79C6" />
 
 </ResourceDictionary>
