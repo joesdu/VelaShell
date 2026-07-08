@@ -319,7 +319,7 @@ public class FileBrowserViewModelTests
 
     [TestMethod]
     [TestCategory("FileBrowser")]
-    public void RemoteFileInfoViewModel_DirectoryShowsSizeAndTrailingSlash()
+    public void RemoteFileInfoViewModel_DirectoryShowsSizeAndPlainName()
     {
         var dirInfo = new RemoteFileInfo
         {
@@ -335,9 +335,10 @@ public class FileBrowserViewModelTests
 
         var vm = new RemoteFileInfoViewModel(dirInfo);
 
-        // Design dyuii: directories list their reported size and carry a trailing slash.
+        // Directories list their reported size; the name is shown plainly (no trailing slash),
+        // since the folder icon already distinguishes directories.
         Assert.AreEqual("4.0 KB", vm.FormattedSize);
-        Assert.AreEqual("docs/", vm.DisplayName);
+        Assert.AreEqual("docs", vm.DisplayName);
         Assert.IsTrue(vm.IsDirectory);
         Assert.IsTrue(vm.IsRegularDirectory);
         Assert.AreEqual("folder", vm.Icon);

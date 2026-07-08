@@ -25,6 +25,12 @@ public interface ISftpClientWrapper : IDisposable
     void DeleteDirectory(string path);
     void CreateDirectory(string path);
     void RenameFile(string oldPath, string newPath);
+
+    /// <summary>Renames/moves a remote entry using the <c>posix-rename@openssh.com</c> extension.
+    /// Some servers reject the plain SSH_FXP_RENAME (SSH_FX_BAD_MESSAGE) — notably for cross-directory
+    /// moves — but accept the POSIX variant.</summary>
+    void PosixRenameFile(string oldPath, string newPath);
+
     bool Exists(string path);
 
     /// <summary>Changes a remote entry's permissions. <paramref name="mode"/> uses SSH.NET's

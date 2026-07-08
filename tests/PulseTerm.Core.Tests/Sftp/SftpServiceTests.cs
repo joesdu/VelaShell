@@ -85,6 +85,35 @@ public class SftpServiceTests
     }
 
     [TestMethod]
+    public async Task RenameAsync_WhenPlainRenameRejected_FallsBackToPosixRename()
+    {
+        // Some servers answer the plain SSH_FXP_RENAME with SSH_FX_BAD_MESSAGE.
+        _sftpClient
+            .When(c => c.RenameFile("/home/user/dir", "/tmp/dir"))
+            .Do(_ => throw new SftpException(StatusCode.BadMessage, "bad message"));
+
+        await _sftpService.RenameAsync(_sessionId, "/home/user/dir", "/tmp/dir");
+
+        _sftpClient.Received(1).PosixRenameFile("/home/user/dir", "/tmp/dir");
+    }
+
+    [TestMethod]
+    public async Task RenameAsync_WhenBothRenamesFail_SurfacesOriginalError()
+    {
+        _sftpClient
+            .When(c => c.RenameFile("/home/user/dir", "/tmp/dir"))
+            .Do(_ => throw new SftpException(StatusCode.BadMessage, "bad message"));
+        _sftpClient
+            .When(c => c.PosixRenameFile("/home/user/dir", "/tmp/dir"))
+            .Do(_ => throw new NotSupportedException("posix-rename not supported"));
+
+        var ex = await Assert.ThrowsExactlyAsync<SftpException>(
+            () => _sftpService.RenameAsync(_sessionId, "/home/user/dir", "/tmp/dir"));
+
+        Assert.AreEqual("bad message", ex.Message);
+    }
+
+    [TestMethod]
     public async Task SetPermissionsAsync_CallsChangePermissionsOnClient()
     {
         await _sftpService.SetPermissionsAsync(_sessionId, "/home/user/run.sh", 755);

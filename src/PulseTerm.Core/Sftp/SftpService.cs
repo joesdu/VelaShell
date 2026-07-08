@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using PulseTerm.Core.Models;
 using PulseTerm.Core.Ssh;
+using Renci.SshNet.Common;
 using Renci.SshNet.Sftp;
 
 namespace PulseTerm.Core.Sftp;
@@ -167,7 +168,25 @@ public class SftpService : ISftpService
         var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
         await Task.Run(() =>
         {
-            client.RenameFile(oldPath, newPath);
+            try
+            {
+                client.RenameFile(oldPath, newPath);
+            }
+            catch (Exception ex) when (ex is SftpException or NotSupportedException)
+            {
+                // Some SFTP servers reject the plain SSH_FXP_RENAME with SSH_FX_BAD_MESSAGE (surfaced
+                // as "bad message") — commonly for cross-directory moves. Retry with the widely
+                // supported posix-rename@openssh.com extension, but surface the original, more
+                // meaningful error if that path is unavailable too.
+                try
+                {
+                    client.PosixRenameFile(oldPath, newPath);
+                }
+                catch
+                {
+                    throw ex;
+                }
+            }
         }, cancellationToken).ConfigureAwait(false);
     }
 

@@ -311,13 +311,27 @@ public partial class FileBrowserView : UserControl
         _dragOutPressPoint = e.GetPosition(this);
     }
 
+    // Drag-out only begins once the pointer travels this far (DIPs) with the button still held.
+    // Kept deliberately large so an accidental jitter while clicking/double-clicking a folder
+    // never kicks off a recursive folder download to a temp folder.
+    private const double DragOutThreshold = 24;
+
     private void OnFileListPointerMoved(object? sender, PointerEventArgs e)
     {
         if (_dragOutPressArgs is null || _dragOutInProgress || DataContext is not FileBrowserViewModel vm)
             return;
 
+        // Only a genuine press-and-drag counts; if the button was released (e.g. a plain click or
+        // a double-click), disarm so a later hover never starts a download.
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            _dragOutPressArgs = null;
+            _dragOutPressRow = null;
+            return;
+        }
+
         var delta = e.GetPosition(this) - _dragOutPressPoint;
-        if (Math.Abs(delta.X) < 8 && Math.Abs(delta.Y) < 8)
+        if (Math.Abs(delta.X) < DragOutThreshold && Math.Abs(delta.Y) < DragOutThreshold)
             return;
 
         // Dragging a row that is part of the selection drags the whole selection.

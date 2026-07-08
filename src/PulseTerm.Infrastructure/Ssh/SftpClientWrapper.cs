@@ -124,6 +124,12 @@ public class SftpClientWrapper : ISftpClientWrapper
         _client.RenameFile(oldPath, newPath);
     }
 
+    public void PosixRenameFile(string oldPath, string newPath)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _client.RenameFile(oldPath, newPath, isPosix: true);
+    }
+
     public bool Exists(string path)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

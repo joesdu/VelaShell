@@ -37,8 +37,9 @@ public class RemoteFileInfoViewModel
 
     public string Name => _model.Name;
 
-    /// <summary>List display name (design dyuii): directories carry a trailing slash.</summary>
-    public string DisplayName => IsParentEntry ? ".." : IsDirectory ? Name + "/" : Name;
+    /// <summary>List display name: the plain entry name. The amber folder icon already marks
+    /// directories, so no trailing slash is appended.</summary>
+    public string DisplayName => IsParentEntry ? ".." : Name;
 
     public string FullPath => _model.FullPath;
 
