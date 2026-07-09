@@ -12,6 +12,15 @@ public partial class SessionTreeView : UserControl
         InitializeComponent();
     }
 
+    /// <summary>单击分组行即切换展开/折叠(设计 FrJPu:chevron 随之翻转)。</summary>
+    private void Group_Tapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is Control { DataContext: SessionTreeNodeViewModel { IsGroup: true } node })
+        {
+            node.IsExpanded = !node.IsExpanded;
+        }
+    }
+
     /// <summary>双击会话行直接连接(分组行仅展开/折叠)。</summary>
     private void Session_DoubleTapped(object? sender, TappedEventArgs e)
     {

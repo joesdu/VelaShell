@@ -246,8 +246,12 @@
         <Grid ColumnDefinitions="*,12,*">
           <StackPanel Grid.Column="0">
             <TextBlock Classes="field-label" Text="会话分组" />
-            <ComboBox ItemsSource="{Binding Groups}"
-                      SelectedItem="{Binding SelectedGroup}" />
+            <!-- 可编辑下拉:选已有分组,或直接输入新分组名(保存时不存在则自动建组)。 -->
+            <ComboBox IsEditable="True"
+                      ItemsSource="{Binding Groups}"
+                      SelectedItem="{Binding SelectedGroup}"
+                      Text="{Binding GroupText}"
+                      PlaceholderText="选择或输入新分组名" />
           </StackPanel>
           <StackPanel Grid.Column="2">
             <TextBlock Classes="field-label" Text="显示名称" />

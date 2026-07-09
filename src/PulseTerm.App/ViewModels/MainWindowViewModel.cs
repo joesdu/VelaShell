@@ -681,6 +681,11 @@ public class MainWindowViewModel : ReactiveObject
         terminalTab.ReconnectRequested += (_, _) => _ = ReconnectTabAsync(terminalTab);
         terminalTab.Disconnected += (_, _) => OnTabDisconnected(terminalTab);
 
+        // 资源管理器树的状态圆点与「活跃/连接中/离线」标签(设计 FrJPu)跟随该配置
+        // 最新标签的连接状态;重连复用同一标签,订阅随标签生命周期存续。
+        terminalTab.WhenAnyValue(x => x.ConnectionStatus)
+            .Subscribe(status => Sidebar.SessionTree?.SetSessionStatus(profile.Id, status));
+
         // 后台标签收到 BEL → 点亮闪烁提醒(设置 → 终端 → 标签闪烁提醒);切回标签时清除。
         if (terminalEmulator is PulseTerminalControl bellSource)
         {
@@ -1224,6 +1229,19 @@ public class MainWindowViewModel : ReactiveObject
         StopSessionLogging(tab);
         CloseSftpForTab(tab);
         tab.Dispose();
+
+        // 关闭标签不会再触发 ConnectionStatus 变更(已 Dispose),这里显式把树上的
+        // 状态圆点复位;同配置还有其他已连接标签时保持"活跃"。
+        if (tab.Profile is { } profile)
+        {
+            var stillConnected = TabBar.Tabs
+                .OfType<TerminalTabViewModel>()
+                .Any(other => !ReferenceEquals(other, tab)
+                    && other.Profile?.Id == profile.Id
+                    && other.ConnectionStatus == SessionStatus.Connected);
+            if (!stillConnected)
+                Sidebar.SessionTree?.SetSessionStatus(profile.Id, SessionStatus.Disconnected);
+        }
     }
 
     /// <summary>Tears down the SFTP channel bound to a closing tab's session and, if the browser is

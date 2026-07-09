@@ -42,6 +42,10 @@ public class ConnectionProfileViewModel : ReactiveObject
     private bool _isAdvancedVisible;
     private string _tagsText = string.Empty;
     private GroupOption? _selectedGroup;
+    private string _groupText = UngroupedName;
+
+    /// <summary>“未分组”选项/输入的显示名;输入等于该名或留空即保存为未分组。</summary>
+    private const string UngroupedName = "未分组";
     private Guid? _jumpHostProfileId;
     private GroupOption? _selectedJumpHost;
 
@@ -57,7 +61,7 @@ public class ConnectionProfileViewModel : ReactiveObject
         _connectionWorkflowService = connectionWorkflowService;
         _sessionRepository = sessionRepository;
 
-        Groups = new ObservableCollection<GroupOption> { new(null, "未分组") };
+        Groups = new ObservableCollection<GroupOption> { new(null, UngroupedName) };
         _selectedGroup = Groups[0];
 
         JumpHostOptions = new ObservableCollection<GroupOption> { new(null, "直连(不使用跳板)") };
@@ -103,7 +107,12 @@ public class ConnectionProfileViewModel : ReactiveObject
             });
 
         this.WhenAnyValue(x => x.SelectedGroup)
-            .Subscribe(option => _groupId = option?.Id);
+            .Subscribe(option =>
+            {
+                _groupId = option?.Id;
+                if (option is not null)
+                    GroupText = option.Name;
+            });
 
         this.WhenAnyValue(x => x.SelectedJumpHost)
             .Subscribe(option => _jumpHostProfileId = option?.Id);
@@ -338,6 +347,14 @@ public class ConnectionProfileViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _selectedGroup, value);
     }
 
+    /// <summary>分组框的可编辑文本:既可从下拉选已有分组,也可直接输入新分组名;
+    /// 保存时由 <see cref="ResolveGroupFromTextAsync"/> 解析(不存在则建组归属)。</summary>
+    public string GroupText
+    {
+        get => _groupText;
+        set => this.RaiseAndSetIfChanged(ref _groupText, value ?? string.Empty);
+    }
+
     /// <summary>“连接”按钮关闭弹窗后,由宿主窗口发起连接。</summary>
     public bool ConnectAfterClose { get; private set; }
 
@@ -356,6 +373,7 @@ public class ConnectionProfileViewModel : ReactiveObject
             IsBusy = true;
             ErrorMessage = null;
 
+            await ResolveGroupFromTextAsync();
             var profile = BuildProfile();
             if (_connectionWorkflowService is null)
             {
@@ -408,6 +426,44 @@ public class ConnectionProfileViewModel : ReactiveObject
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>把分组框文本解析为 GroupId:留空/“未分组”→ null;命中已有分组(不区分
+    /// 大小写)→ 其 Id;否则新建分组落库并归属。无仓储(设计时)只回退未分组,
+    /// 避免产生指向不存在分组的悬空 Id。</summary>
+    private async Task ResolveGroupFromTextAsync()
+    {
+        var text = GroupText.Trim();
+        if (text.Length == 0 || text == UngroupedName)
+        {
+            SelectedGroup = Groups[0];
+            return;
+        }
+
+        var existing = Groups.FirstOrDefault(option => option.Id is not null
+            && string.Equals(option.Name, text, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            SelectedGroup = existing;
+            return;
+        }
+
+        if (_sessionRepository is null)
+        {
+            SelectedGroup = Groups[0];
+            return;
+        }
+
+        var group = new ServerGroup
+        {
+            Name = text,
+            SortOrder = Groups.Count - 1, // 排在已有分组之后(下拉含“未分组”占位,故 -1)。
+        };
+        await _sessionRepository.SaveGroupAsync(group);
+
+        var option = new GroupOption(group.Id, group.Name);
+        Groups.Add(option);
+        SelectedGroup = option;
     }
 
     private SessionProfile BuildProfile()

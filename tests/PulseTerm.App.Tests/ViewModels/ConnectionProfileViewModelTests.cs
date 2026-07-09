@@ -81,6 +81,78 @@ public sealed class ConnectionProfileViewModelTests
         Assert.IsNull(vm.ErrorMessage);
     }
 
+    [TestMethod]
+    public async Task SaveCommand_CreatesNewGroup_WhenGroupTextIsUnknown()
+    {
+        // 分组框输入了不存在的分组名:保存时应新建分组落库,并把配置归入该组。
+        var repository = Substitute.For<PulseTerm.Core.Data.ISessionRepository>();
+        repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup>()));
+        repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile>()));
+
+        var vm = new ConnectionProfileViewModel(sessionRepository: repository)
+        {
+            Host = "h",
+            Port = 22,
+            Username = "root",
+        };
+        await vm.LoadGroupsAsync();
+        vm.GroupText = "生产环境";
+
+        var profile = await vm.SaveCommand.Execute().FirstAsync();
+
+        Assert.IsNotNull(profile);
+        await repository.Received(1).SaveGroupAsync(Arg.Is<ServerGroup>(g => g.Name == "生产环境"));
+        Assert.IsNotNull(profile.GroupId);
+        Assert.IsTrue(vm.Groups.Any(option => option.Name == "生产环境" && option.Id == profile.GroupId));
+    }
+
+    [TestMethod]
+    public async Task SaveCommand_ReusesExistingGroup_WhenGroupTextMatches()
+    {
+        var existing = new ServerGroup { Name = "生产环境" };
+        var repository = Substitute.For<PulseTerm.Core.Data.ISessionRepository>();
+        repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { existing }));
+        repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile>()));
+
+        var vm = new ConnectionProfileViewModel(sessionRepository: repository)
+        {
+            Host = "h",
+            Port = 22,
+            Username = "root",
+        };
+        await vm.LoadGroupsAsync();
+        vm.GroupText = "生产环境";
+
+        var profile = await vm.SaveCommand.Execute().FirstAsync();
+
+        Assert.IsNotNull(profile);
+        Assert.AreEqual(existing.Id, profile.GroupId);
+        await repository.DidNotReceive().SaveGroupAsync(Arg.Any<ServerGroup>());
+    }
+
+    [TestMethod]
+    public async Task SaveCommand_EmptyOrUngroupedText_SavesAsUngrouped()
+    {
+        var repository = Substitute.For<PulseTerm.Core.Data.ISessionRepository>();
+        repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup>()));
+        repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile>()));
+
+        var vm = new ConnectionProfileViewModel(sessionRepository: repository)
+        {
+            Host = "h",
+            Port = 22,
+            Username = "root",
+        };
+        await vm.LoadGroupsAsync();
+        vm.GroupText = "  ";
+
+        var profile = await vm.SaveCommand.Execute().FirstAsync();
+
+        Assert.IsNotNull(profile);
+        Assert.IsNull(profile.GroupId);
+        await repository.DidNotReceive().SaveGroupAsync(Arg.Any<ServerGroup>());
+    }
+
     private static ConnectionProfileViewModel CreateValidViewModel(IConnectionWorkflowService workflow)
     {
         return new ConnectionProfileViewModel(connectionWorkflowService: workflow)

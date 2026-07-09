@@ -17,12 +17,88 @@
     <TreeView.Styles>
       <Style Selector="TreeViewItem">
         <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}" />
+        <Setter Property="IsSelected" Value="{ReflectionBinding IsSelected, Mode=TwoWay}" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="MinHeight" Value="0" />
       </Style>
-      <!-- Remove default selection highlight; we manage it manually -->
+      <!-- Remove default selection highlight; the row Border renders it (设计 FrJPu:bg-active). -->
       <Style Selector="TreeViewItem:selected /template/ Border#PART_LayoutRoot">
         <Setter Property="Background" Value="Transparent" />
+      </Style>
+
+      <!-- 分组行 -->
+      <Style Selector="Border.group">
+        <Setter Property="Background" Value="Transparent" />
+      </Style>
+      <Style Selector="Border.group:pointerover">
+        <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+      </Style>
+
+      <!-- 分组文件夹图标配色:按分组顺序 warning/info/accent 轮换(设计 FrJPu)。 -->
+      <Style Selector="pc|LucideIcon.folder">
+        <Setter Property="Foreground" Value="{DynamicResource PulseWarning}" />
+      </Style>
+      <Style Selector="pc|LucideIcon.folder.info">
+        <Setter Property="Foreground" Value="{DynamicResource PulseInfo}" />
+      </Style>
+      <Style Selector="pc|LucideIcon.folder.accent">
+        <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+      </Style>
+
+      <!-- 会话行:子级缩进 36,根级(未分组)与分组行同缩进 12;选中行 bg-active。 -->
+      <Style Selector="Border.session">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Padding" Value="36,0,12,0" />
+      </Style>
+      <Style Selector="Border.session.rootlevel">
+        <Setter Property="Padding" Value="12,0" />
+      </Style>
+      <Style Selector="Border.session:pointerover">
+        <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+      </Style>
+      <Style Selector="Border.session.selected">
+        <Setter Property="Background" Value="{DynamicResource PulseBgActive}" />
+      </Style>
+
+      <!-- 状态圆点:默认断开(红),connected 绿 / connecting 黄。 -->
+      <Style Selector="Ellipse.dot">
+        <Setter Property="Fill" Value="{DynamicResource PulseStatusDisconnected}" />
+      </Style>
+      <Style Selector="Ellipse.dot.connected">
+        <Setter Property="Fill" Value="{DynamicResource PulseStatusConnected}" />
+      </Style>
+      <Style Selector="Ellipse.dot.connecting">
+        <Setter Property="Fill" Value="{DynamicResource PulseStatusConnecting}" />
+      </Style>
+
+      <!-- 会话名:默认 secondary,选中行转 accent(设计 FrJPu 活跃行)。 -->
+      <Style Selector="TextBlock.sessionName">
+        <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+      </Style>
+      <Style Selector="Border.session.selected TextBlock.sessionName">
+        <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+        <Setter Property="FontWeight" Value="Medium" />
+      </Style>
+
+      <!-- 状态标签胶囊:活跃(accent)/连接中(warning)/离线(error)。
+           注意 Avalonia 颜色是 #AARRGGBB,设计稿 #FDCB6E20 → #20FDCB6E。 -->
+      <Style Selector="Border.tag">
+        <Setter Property="Background" Value="{DynamicResource PulseAccentDim}" />
+      </Style>
+      <Style Selector="Border.tag TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+      </Style>
+      <Style Selector="Border.tag.connecting">
+        <Setter Property="Background" Value="#20FDCB6E" />
+      </Style>
+      <Style Selector="Border.tag.connecting TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource PulseWarning}" />
+      </Style>
+      <Style Selector="Border.tag.offline">
+        <Setter Property="Background" Value="#20FF6B6B" />
+      </Style>
+      <Style Selector="Border.tag.offline TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource PulseError}" />
       </Style>
     </TreeView.Styles>
 
@@ -33,37 +109,41 @@
         <!-- Group row -->
         <Panel>
           <Border IsVisible="{Binding IsGroup}"
+                  Classes="group"
                   Height="30"
                   Padding="12,0"
-                  Background="Transparent"
-                  Cursor="Hand">
+                  Cursor="Hand"
+                  Tapped="Group_Tapped">
             <StackPanel Orientation="Horizontal"
                         Spacing="6"
                         VerticalAlignment="Center">
 
-              <!-- Chevron: down when expanded, right when collapsed -->
-              <PathIcon Width="12" Height="12"
-                        VerticalAlignment="Center"
-                        Foreground="{DynamicResource PulseTextTertiary}">
-                <PathIcon.Styles>
-                  <Style Selector="PathIcon">
-                    <Setter Property="Data" Value="M9 18l6-6-6-6" />
-                  </Style>
-                </PathIcon.Styles>
-              </PathIcon>
+              <!-- Chevron: down when expanded, right when collapsed (设计 FrJPu) -->
+              <pc:LucideIcon Width="12" Height="12"
+                             VerticalAlignment="Center"
+                             Data="{StaticResource Icon.chevron-down}"
+                             Foreground="{DynamicResource PulseTextTertiary}"
+                             IsVisible="{Binding IsExpanded}" />
+              <pc:LucideIcon Width="12" Height="12"
+                             VerticalAlignment="Center"
+                             Data="{StaticResource Icon.chevron-right}"
+                             Foreground="{DynamicResource PulseTextTertiary}"
+                             IsVisible="{Binding !IsExpanded}" />
 
-              <!-- Folder icon -->
-              <PathIcon Width="13" Height="13"
-                        Data="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                        Foreground="{DynamicResource PulseTextTertiary}"
-                        VerticalAlignment="Center" />
+              <!-- Folder icon(按分组轮换配色) -->
+              <pc:LucideIcon Width="13" Height="13"
+                             VerticalAlignment="Center"
+                             Classes="folder"
+                             Classes.info="{Binding IsFolderInfo}"
+                             Classes.accent="{Binding IsFolderAccent}"
+                             Data="{StaticResource Icon.folder}" />
 
               <!-- Group name -->
               <TextBlock Text="{Binding Name}"
                          Foreground="{DynamicResource PulseTextPrimary}"
                          FontFamily="{DynamicResource PulseTerminalFont}"
                          FontSize="12"
-                         FontWeight="SemiBold"
+                         FontWeight="Medium"
                          VerticalAlignment="Center" />
 
               <!-- Child count -->
@@ -78,17 +158,13 @@
 
           <!-- Server / session row -->
           <Border IsVisible="{Binding !IsGroup}"
+                  Classes="session"
+                  Classes.selected="{Binding IsSelected}"
+                  Classes.rootlevel="{Binding IsRootLevel}"
                   Height="28"
-                  Padding="36,0,12,0"
                   Cursor="Hand"
-                  Background="Transparent"
                   DoubleTapped="Session_DoubleTapped"
                   PointerPressed="Session_PointerPressed">
-            <Border.Styles>
-              <Style Selector="Border:pointerover">
-                <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
-              </Style>
-            </Border.Styles>
             <Border.ContextMenu>
               <!-- 完整对齐设计帧 e6klM:连接(accent 主操作)/新标签页/编辑/复制/SFTP/
                    端口转发/会话设置/移动到分组(子菜单)/连接诊断/断开(warning)/删除(error)。
@@ -201,24 +277,40 @@
                 </MenuItem>
               </ContextMenu>
             </Border.ContextMenu>
-            <Grid ColumnDefinitions="Auto,*">
 
-              <!-- Status dot -->
-              <Ellipse Grid.Column="0"
+            <!-- 状态圆点 + 名称 + 状态标签(设计 FrJPu:标签紧随名称,gap 8) -->
+            <StackPanel Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center">
+
+              <Ellipse Classes="dot"
+                       Classes.connected="{Binding IsConnected}"
+                       Classes.connecting="{Binding IsConnecting}"
                        Width="7" Height="7"
-                       Margin="0,0,8,0"
-                       VerticalAlignment="Center"
-                       Fill="{DynamicResource PulseStatusDisconnected}" />
+                       VerticalAlignment="Center" />
 
-              <!-- Server name -->
-              <TextBlock Grid.Column="1"
+              <TextBlock Classes="sessionName"
                          Text="{Binding Name}"
-                         Foreground="{DynamicResource PulseTextSecondary}"
                          FontFamily="{DynamicResource PulseTerminalFont}"
                          FontSize="11"
                          VerticalAlignment="Center"
                          TextTrimming="CharacterEllipsis" />
-            </Grid>
+
+              <Border Classes="tag"
+                      Classes.connecting="{Binding IsConnecting}"
+                      Classes.offline="{Binding IsError}"
+                      IsVisible="{Binding HasStatusTag}"
+                      CornerRadius="2"
+                      Padding="6,1"
+                      VerticalAlignment="Center">
+                <TextBlock Text="{Binding StatusTagText}"
+                           FontFamily="{DynamicResource PulseTerminalFont}"
+                           FontSize="9"
+                           FontWeight="Medium"
+                           VerticalAlignment="Center" />
+              </Border>
+
+            </StackPanel>
           </Border>
         </Panel>
 

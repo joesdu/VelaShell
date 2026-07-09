@@ -13,6 +13,11 @@ public sealed class SessionTreeViewModel : ReactiveObject
 {
     private readonly ISessionRepository _repository;
     private readonly Dictionary<Guid, SessionProfile> _sessionCache = new();
+
+    /// <summary>各配置最近一次上报的连接状态;重建树(LoadTreeAsync)后重放,状态圆点
+    /// 与「活跃/连接中」标签才不会因刷新而回到断开态。</summary>
+    private readonly Dictionary<Guid, SessionStatus> _statusCache = new();
+
     private SessionTreeNodeViewModel? _selectedNode;
     private bool _hasNoSessions;
 
@@ -112,50 +117,109 @@ public sealed class SessionTreeViewModel : ReactiveObject
     {
         _sessionCache[session.Id] = session;
 
-        var groupNode = Nodes.FirstOrDefault(node => node.IsGroup && node.Id == session.GroupId);
-        if (groupNode is not null)
+        var sessionNode = new SessionTreeNodeViewModel(session.Id, session.Name, false);
+        if (session.GroupId is null)
         {
-            groupNode.Children.Add(new SessionTreeNodeViewModel(session.Id, session.Name, false));
+            // 未分组会话直接挂树根(设计 FrJPu),不再有“未分组”目录。
+            sessionNode.IsRootLevel = true;
+            Nodes.Add(sessionNode);
+        }
+        else
+        {
+            var groupNode = Nodes.FirstOrDefault(node => node.IsGroup && node.Id == session.GroupId);
+            if (groupNode is null)
+            {
+                return;
+            }
+
+            groupNode.Children.Add(sessionNode);
         }
 
-        HasNoSessions = !Nodes.Any(group => group.Children.Count > 0);
+        RefreshHasNoSessions();
     }
 
     public void MoveSessionToGroup(Guid sessionId, Guid targetGroupId)
     {
-        SessionTreeNodeViewModel? sourceNode = null;
-        SessionTreeNodeViewModel? sourceGroup = null;
-
-        foreach (var group in Nodes)
-        {
-            var child = group.Children.FirstOrDefault(node => node.Id == sessionId);
-            if (child is null)
-            {
-                continue;
-            }
-
-            sourceNode = child;
-            sourceGroup = group;
-            break;
-        }
-
-        if (sourceNode is null || sourceGroup is null)
+        var sourceNode = FindSessionNode(sessionId, out var sourceGroup);
+        if (sourceNode is null)
         {
             return;
         }
 
-        sourceGroup.Children.Remove(sourceNode);
+        if (sourceGroup is not null)
+        {
+            sourceGroup.Children.Remove(sourceNode);
+        }
+        else
+        {
+            Nodes.Remove(sourceNode);
+        }
 
-        var targetGroup = Nodes.FirstOrDefault(node => node.IsGroup && node.Id == targetGroupId);
-        targetGroup?.Children.Add(sourceNode);
+        if (targetGroupId == Guid.Empty)
+        {
+            // “未分组”落点 = 树根(设计 FrJPu)。
+            sourceNode.IsRootLevel = true;
+            Nodes.Add(sourceNode);
+        }
+        else
+        {
+            var targetGroup = Nodes.FirstOrDefault(node => node.IsGroup && node.Id == targetGroupId);
+            if (targetGroup is not null)
+            {
+                sourceNode.IsRootLevel = false;
+                targetGroup.Children.Add(sourceNode);
+            }
+        }
 
         if (_sessionCache.TryGetValue(sessionId, out var session))
         {
-            // Guid.Empty 是“未分组”虚拟节点:落库必须存 null,否则下次加载时会话会
+            // Guid.Empty 是“未分组”落点:落库必须存 null,否则下次加载时会话会
             // 因找不到分组而从树里消失。
             session.GroupId = targetGroupId == Guid.Empty ? null : targetGroupId;
             _ = _repository.SaveSessionAsync(session);
         }
+    }
+
+    /// <summary>宿主上报某配置的连接状态,驱动状态圆点与「活跃/连接中/离线」标签。</summary>
+    public void SetSessionStatus(Guid sessionId, SessionStatus status)
+    {
+        _statusCache[sessionId] = status;
+
+        var node = FindSessionNode(sessionId, out _);
+        if (node is not null)
+        {
+            node.Status = status;
+        }
+    }
+
+    /// <summary>在树根与各分组下查找会话节点;<paramref name="parentGroup"/> 为 null 表示根级。</summary>
+    private SessionTreeNodeViewModel? FindSessionNode(Guid sessionId, out SessionTreeNodeViewModel? parentGroup)
+    {
+        foreach (var node in Nodes)
+        {
+            if (node.IsGroup)
+            {
+                var child = node.Children.FirstOrDefault(item => item.Id == sessionId);
+                if (child is not null)
+                {
+                    parentGroup = node;
+                    return child;
+                }
+            }
+            else if (node.Id == sessionId)
+            {
+                parentGroup = null;
+                return node;
+            }
+        }
+
+        parentGroup = null;
+        return null;
+    }
+
+    private void RefreshHasNoSessions()
+    {
+        HasNoSessions = !Nodes.Any(node => !node.IsGroup || node.Children.Count > 0);
     }
 
     private void MoveSelectedToGroup(SessionTreeNodeViewModel? targetGroup)
@@ -210,16 +274,20 @@ public sealed class SessionTreeViewModel : ReactiveObject
             .ToDictionary(grouping => grouping.Key, grouping => grouping.ToList());
         var ungrouped = sessions.Where(session => session.GroupId is null).ToList();
 
+        var groupIndex = 0;
         foreach (var group in groups.OrderBy(item => item.SortOrder))
         {
-            var groupNode = new SessionTreeNodeViewModel(group.Id, group.Name, true);
+            var groupNode = new SessionTreeNodeViewModel(group.Id, group.Name, true)
+            {
+                // 文件夹图标按设计 FrJPu 以 warning/info/accent 轮换配色。
+                GroupColorIndex = groupIndex++ % 3,
+            };
 
             if (byGroup.TryGetValue(group.Id, out var members))
             {
                 foreach (var session in members.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
                 {
-                    _sessionCache[session.Id] = session;
-                    groupNode.Children.Add(new SessionTreeNodeViewModel(session.Id, session.Name, false));
+                    groupNode.Children.Add(CreateSessionNode(session, isRootLevel: false));
                 }
             }
 
@@ -227,22 +295,32 @@ public sealed class SessionTreeViewModel : ReactiveObject
             GroupNodes.Add(groupNode);
         }
 
-        if (ungrouped.Count > 0)
+        // 未分组会话直接挂在树根(设计 FrJPu),不再收进“未分组”目录。
+        foreach (var session in ungrouped.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
         {
-            var ungroupedNode = new SessionTreeNodeViewModel(Guid.Empty, "未分组", true);
-            foreach (var session in ungrouped.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
-            {
-                _sessionCache[session.Id] = session;
-                ungroupedNode.Children.Add(new SessionTreeNodeViewModel(session.Id, session.Name, false));
-            }
-
-            Nodes.Add(ungroupedNode);
+            Nodes.Add(CreateSessionNode(session, isRootLevel: true));
         }
 
-        // “移动到分组”子菜单始终提供“未分组”落点(树里未必有该虚拟节点)。
+        // “移动到分组”子菜单始终提供“未分组”落点(即移回树根)。
         GroupNodes.Add(new SessionTreeNodeViewModel(Guid.Empty, "未分组", true));
 
-        HasNoSessions = !Nodes.Any(group => group.Children.Count > 0);
+        RefreshHasNoSessions();
+    }
+
+    private SessionTreeNodeViewModel CreateSessionNode(SessionProfile session, bool isRootLevel)
+    {
+        _sessionCache[session.Id] = session;
+        var node = new SessionTreeNodeViewModel(session.Id, session.Name, false)
+        {
+            IsRootLevel = isRootLevel,
+        };
+
+        if (_statusCache.TryGetValue(session.Id, out var status))
+        {
+            node.Status = status;
+        }
+
+        return node;
     }
 
     private async Task DeleteSelectedSessionAsync()
@@ -255,20 +333,22 @@ public sealed class SessionTreeViewModel : ReactiveObject
         var sessionId = SelectedNode.Id;
         await _repository.DeleteSessionAsync(sessionId);
         _sessionCache.Remove(sessionId);
+        _statusCache.Remove(sessionId);
 
-        foreach (var group in Nodes)
+        var node = FindSessionNode(sessionId, out var parentGroup);
+        if (node is not null)
         {
-            var child = group.Children.FirstOrDefault(node => node.Id == sessionId);
-            if (child is null)
+            if (parentGroup is not null)
             {
-                continue;
+                parentGroup.Children.Remove(node);
             }
-
-            group.Children.Remove(child);
-            break;
+            else
+            {
+                Nodes.Remove(node);
+            }
         }
 
         SelectedNode = null;
-        HasNoSessions = !Nodes.Any(group => group.Children.Count > 0);
+        RefreshHasNoSessions();
     }
 }
