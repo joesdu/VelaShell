@@ -25,6 +25,9 @@ public class SshTerminalBridge : IDisposable
     private readonly List<byte[]> _pending = new();
     private int _flushScheduled;
 
+    // 连接初始化命令的回显抑制器(静默执行);仅在 UI 线程读写(Arm 与 FlushPending 同线程)。
+    private EchoSuppressor? _echoSuppressor;
+
     public event Action<Exception>? Error;
 
     /// <summary>
@@ -43,6 +46,11 @@ public class SshTerminalBridge : IDisposable
 
         _terminal.UserInput += OnUserInput;
     }
+
+    /// <summary>在输出流上剥除即将注入的命令回显(见 <see cref="EchoSuppressor"/>)。
+    /// 回显最多出现两次(内核规范模式 + readline 预输入重绘),窗口过后自动失效。</summary>
+    public void SuppressEchoOnce(byte[] needle)
+        => _echoSuppressor = new EchoSuppressor(needle, maxHits: 2, window: TimeSpan.FromSeconds(10));
 
     public void Start()
     {
@@ -151,6 +159,15 @@ public class SshTerminalBridge : IDisposable
 
         if (_disposed)
             return;
+
+        if (_echoSuppressor is { } suppressor)
+        {
+            combined = suppressor.Process(combined);
+            if (suppressor.Expired)
+                _echoSuppressor = null;
+            if (combined.Length == 0)
+                return;
+        }
 
         try
         {

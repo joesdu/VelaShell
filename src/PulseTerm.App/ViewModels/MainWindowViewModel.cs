@@ -453,6 +453,7 @@ public class MainWindowViewModel : ReactiveObject
             terminalTab.AttachTransport(shellStream);
             terminalTab.Start();
             terminalTab.ConnectionStatus = SessionStatus.Connected;
+            SendStartupCommand(terminalTab, settings);
 
             // The session id only exists now, after the handshake — the active-tab subscription
             // fired before it was assigned, so bind the SFTP browser here (and show + load it) or
@@ -526,6 +527,7 @@ public class MainWindowViewModel : ReactiveObject
             tab.AttachTransport(shellStream);
             tab.Start();
             tab.ConnectionStatus = SessionStatus.Connected;
+            SendStartupCommand(tab, settings);
             if (_metricsService is not null)
                 tab.ResourceMonitor = new ResourceMonitorViewModel(_metricsService, session.SessionId, tab.Title);
 
@@ -546,6 +548,26 @@ public class MainWindowViewModel : ReactiveObject
             LastConnectionError = DescribeConnectionError(ex, tab.Profile);
             StatusBar.Status = LastConnectionError;
         }
+    }
+
+    /// <summary>bash 提示符补行脚本(内置,静默注入):命令输出末尾无换行时,经 DSR(ESC[6n)
+    /// 查询光标列,不在行首则先补一个换行再画提示符(zsh 的默认行为,用户要求)。</summary>
+    private const string PromptNewlineFix =
+        "prompt_nl() { local c; IFS='[;' read -p $'\\e[6n' -d R -rs _ _ c; ((c>1)) && echo; }; PROMPT_COMMAND=prompt_nl";
+
+    /// <summary>连接成功后静默注入初始化命令:内置补行脚本 + 用户配置的"连接后执行命令"
+    /// (设置 → 终端 → 会话)拼接为一行,经回显抑制不在终端显示。PTY 输入由内核缓冲,
+    /// shell 就绪后才会读取,无需等待提示符。</summary>
+    private static void SendStartupCommand(TerminalTabViewModel tab, AppSettings settings)
+    {
+        var user = settings.TerminalBehavior.StartupCommand?.Trim();
+
+        // 旧版本曾把补行脚本作为该设置项的默认值;现已内置,跳过以免重复执行。
+        if (!string.IsNullOrEmpty(user) && user.Contains("PROMPT_COMMAND=prompt_nl", StringComparison.Ordinal))
+            user = null;
+
+        var payload = string.IsNullOrEmpty(user) ? PromptNewlineFix : PromptNewlineFix + "; " + user;
+        tab.SendSilentCommand(payload);
     }
 
     private void RemoveTerminalTab(TerminalTabViewModel tab, TerminalDocument document)

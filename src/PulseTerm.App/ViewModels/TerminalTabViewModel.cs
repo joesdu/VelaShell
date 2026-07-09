@@ -89,6 +89,20 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     public SshTerminalBridge? Bridge { get; private set; }
 
+    /// <summary>把初始化命令注入远端 shell 并静默执行:发送前在桥上装回显抑制器,
+    /// 把 PTY 回显的这一行从输出流剥掉(用户要求不在界面显示)。前导空格让
+    /// HISTCONTROL=ignoreboth 不记历史;抑制针 needle 不含该空格(空格太常见,
+    /// 不适合做流匹配锚点),残留的空格与光标位置由命令本身的补行脚本消化。</summary>
+    public void SendSilentCommand(string command)
+    {
+        var payload = command.Trim();
+        if (Bridge is null || payload.Length == 0)
+            return;
+
+        Bridge.SuppressEchoOnce(System.Text.Encoding.UTF8.GetBytes(payload + "\r\n"));
+        TerminalEmulator.WriteInput(System.Text.Encoding.UTF8.GetBytes(" " + payload + "\n"));
+    }
+
     public new SessionStatus ConnectionStatus
     {
         get => base.ConnectionStatus;

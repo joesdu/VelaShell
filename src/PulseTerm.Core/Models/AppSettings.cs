@@ -128,6 +128,10 @@ public class TerminalBehaviorOptions
     public bool ConfirmMultilinePaste { get; set; } = true;
     public bool ImeSupport { get; set; } = true;
     public bool CtrlCCopiesWhenSelected { get; set; }
+
+    /// <summary>连接/重连成功后追加执行的用户初始化命令(空 = 无)。它会被拼接在内置的
+    /// bash 提示符补行脚本之后,一并静默注入远端 shell(回显被抑制,不在终端显示)。</summary>
+    public string StartupCommand { get; set; } = "";
 }
 
 /// <summary>设置 - 文件传输(设计 HGwa7)。</summary>
