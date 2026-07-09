@@ -94,9 +94,8 @@ public class MainWindowViewModelTests
     {
         var vm = new SidebarViewModel();
 
-        Assert.IsNotNull(vm.QuickConnectCommand);
         Assert.IsNotNull(vm.SettingsCommand);
         Assert.IsNotNull(vm.NotificationsCommand);
-        Assert.AreEqual(string.Empty, vm.QuickConnectText);
+        Assert.IsNotNull(vm.RecentConnections);
     }
 }

@@ -106,7 +106,7 @@
     </Style>
     <Style Selector="Button.dlg-primary">
       <Setter Property="Background" Value="{DynamicResource PulseAccent}" />
-      <Setter Property="Foreground" Value="#0A0E14" />
+      <Setter Property="Foreground" Value="{DynamicResource PulseAccentForeground}" />
       <Setter Property="Height" Value="30" />
       <Setter Property="Padding" Value="14,0" />
       <Setter Property="CornerRadius" Value="4" />

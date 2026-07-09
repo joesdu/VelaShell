@@ -22,7 +22,21 @@
               BorderBrush="{DynamicResource PulseBorderPrimary}"
               BorderThickness="0,1,0,0"
               Padding="14,4">
-        <Grid ColumnDefinitions="Auto,8,240,8,Auto,4,Auto,4,Auto,8,Auto">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="8" />
+            <!-- 搜索输入:弹性加长(窄分屏可收缩,最宽 520,原为固定 240)。 -->
+            <ColumnDefinition Width="*" MinWidth="160" MaxWidth="520" />
+            <ColumnDefinition Width="8" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="4" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="4" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="8" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
           <pc:LucideIcon Grid.Column="0" Width="12" Height="12"
                          Data="{StaticResource Icon.search}"
                          Foreground="{DynamicResource PulseTextTertiary}"

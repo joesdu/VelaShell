@@ -742,6 +742,13 @@ public sealed class TerminalEmulator : IVtActions
 
     // ---- IVtActions: OSC / DCS ---------------------------------------------
 
+    /// <summary>OSC 52:远端程序(tmux/vim 的 yank)请求写系统剪贴板。只支持写方向;
+    /// 查询("?")一律不应答,防止远端读取本地剪贴板内容(安全)。宿主控件订阅后落剪贴板。</summary>
+    public event Action<string>? ClipboardWriteRequested;
+
+    /// <summary>OSC 52 载荷上限(base64 解码后),防远端滥发撑爆剪贴板。</summary>
+    private const int MaxOsc52Bytes = 1024 * 1024;
+
     public void OscDispatch(IReadOnlyList<string> p)
     {
         if (p.Count == 0)
@@ -755,12 +762,83 @@ public sealed class TerminalEmulator : IVtActions
                 if (p.Count > 1)
                     TitleChanged?.Invoke(p[1]);
                 break;
-            // 4 (palette), 8 (hyperlink), 52 (clipboard) intentionally accepted-and-ignored for now.
+            case 52:
+                // 形如 52;c;<base64>(c/p/s… 选区种类一律当系统剪贴板处理)。
+                if (p.Count > 2 && p[2] is { Length: > 0 } payload && payload != "?"
+                    && payload.Length <= MaxOsc52Bytes / 3 * 4 + 4)
+                {
+                    try
+                    {
+                        var text = Encoding.UTF8.GetString(Convert.FromBase64String(payload));
+                        if (text.Length > 0)
+                            ClipboardWriteRequested?.Invoke(text);
+                    }
+                    catch (FormatException)
+                    {
+                        // 非法 base64:按规范静默忽略。
+                    }
+                }
+                break;
+            // 4 (palette), 8 (hyperlink) intentionally accepted-and-ignored for now.
         }
     }
 
     public void DcsDispatch(char prefix, IReadOnlyList<int> parameters, string intermediates, char final, string data)
     {
-        // DECRQSS and sixel are not yet implemented; consumed silently.
+        // DECRQSS(DCS $ q Pt ST):按 xterm 惯例应答 DCS 1 $ r <设定> ST(1=有效,0=无效)。
+        // sixel 仍未实现,静默消费。
+        if (final == 'q' && intermediates == "$")
+        {
+            switch (data)
+            {
+                case "m": // SGR:回报当前画笔属性
+                    Send($"\x1bP1$r{BuildSgrReport()}m\x1b\\");
+                    break;
+                case "r": // DECSTBM:回报当前滚动区域(1 基)
+                    Send($"\x1bP1$r{_screen.ScrollTop + 1};{_screen.ScrollBottom + 1}r\x1b\\");
+                    break;
+                default:
+                    Send("\x1bP0$r\x1b\\");
+                    break;
+            }
+        }
+    }
+
+    /// <summary>把当前画笔状态编码为 SGR 参数串(DECRQSS "m" 应答用),始终以 0 开头。</summary>
+    private string BuildSgrReport()
+    {
+        var sb = new StringBuilder("0");
+        if ((_flags & CellFlags.Bold) != 0) sb.Append(";1");
+        if ((_flags & CellFlags.Dim) != 0) sb.Append(";2");
+        if ((_flags & CellFlags.Italic) != 0) sb.Append(";3");
+        if ((_flags & CellFlags.Underline) != 0) sb.Append(";4");
+        if ((_flags & CellFlags.Blink) != 0) sb.Append(";5");
+        if ((_flags & CellFlags.Inverse) != 0) sb.Append(";7");
+        if ((_flags & CellFlags.Invisible) != 0) sb.Append(";8");
+        if ((_flags & CellFlags.Strikethrough) != 0) sb.Append(";9");
+        AppendSgrColor(sb, _fg, isForeground: true);
+        AppendSgrColor(sb, _bg, isForeground: false);
+        return sb.ToString();
+    }
+
+    private static void AppendSgrColor(StringBuilder sb, TerminalColor color, bool isForeground)
+    {
+        switch (color.Kind)
+        {
+            case TerminalColorKind.Indexed when color.Index < 8:
+                sb.Append(';').Append((isForeground ? 30 : 40) + color.Index);
+                break;
+            case TerminalColorKind.Indexed when color.Index < 16:
+                sb.Append(';').Append((isForeground ? 90 : 100) + color.Index - 8);
+                break;
+            case TerminalColorKind.Indexed:
+                sb.Append(isForeground ? ";38;5;" : ";48;5;").Append(color.Index);
+                break;
+            case TerminalColorKind.Rgb:
+                sb.Append(isForeground ? ";38;2;" : ";48;2;")
+                  .Append(color.R).Append(';').Append(color.G).Append(';').Append(color.B);
+                break;
+            // Default:SGR 0 已覆盖,无需追加。
+        }
     }
 }

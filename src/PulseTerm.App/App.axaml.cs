@@ -221,6 +221,7 @@ public partial class App : Application
         {
             Resources.Remove("PulseAccent");
             Resources.Remove("PulseAccentDim");
+            Resources.Remove("PulseAccentForeground");
             return;
         }
 
@@ -230,5 +231,11 @@ public partial class App : Application
         Resources["PulseAccent"] = new SolidColorBrush(color);
         // Dim variant: same hue at ~19% opacity, matching the design's #RRGGBB30 tokens.
         Resources["PulseAccentDim"] = new SolidColorBrush(new Color(0x30, color.R, color.G, color.B));
+
+        // 自定义强调色的配对前景按亮度自动选:亮底深字、深底浅字,
+        // 避免用户挑深色 accent 后按钮文字(令牌随主题固定)对比不足。
+        double luminance = (0.299 * color.R + 0.587 * color.G + 0.114 * color.B) / 255.0;
+        Resources["PulseAccentForeground"] = new SolidColorBrush(
+            luminance > 0.55 ? Color.Parse("#0A0E14") : Color.Parse("#FFFBEB"));
     }
 }

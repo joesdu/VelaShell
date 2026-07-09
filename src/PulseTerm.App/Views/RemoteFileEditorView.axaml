@@ -31,7 +31,7 @@
     </Style>
     <Style Selector="Button.dlg-primary">
       <Setter Property="Background" Value="{DynamicResource PulseAccent}" />
-      <Setter Property="Foreground" Value="#0A0E14" />
+      <Setter Property="Foreground" Value="{DynamicResource PulseAccentForeground}" />
       <Setter Property="Height" Value="26" />
       <Setter Property="Padding" Value="12,0" />
       <Setter Property="CornerRadius" Value="4" />
@@ -78,7 +78,7 @@
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <pc:LucideIcon Width="12" Height="12"
                                Data="{DynamicResource Icon.save}"
-                               Foreground="#0A0E14" />
+                               Foreground="{DynamicResource PulseAccentForeground}" />
                 <TextBlock Text="保存" VerticalAlignment="Center" />
               </StackPanel>
             </Button>

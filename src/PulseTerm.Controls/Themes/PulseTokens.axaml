@@ -6,6 +6,8 @@
     <ResourceDictionary x:Key="Dark">
       <SolidColorBrush x:Key="PulseAccent" Color="#BD93F9" />
       <SolidColorBrush x:Key="PulseAccentDim" Color="#BD93F930" />
+      <!-- 强调色底上的文字/图标:浅紫底配深字。 -->
+      <SolidColorBrush x:Key="PulseAccentForeground" Color="#0A0E14" />
       <SolidColorBrush x:Key="PulseTextPrimary" Color="#F8F8F2" />
       <SolidColorBrush x:Key="PulseTextSecondary" Color="#B0B8D6" />
       <SolidColorBrush x:Key="PulseTextTertiary" Color="#6272A4" />
@@ -25,6 +27,8 @@
     <ResourceDictionary x:Key="Light">
       <SolidColorBrush x:Key="PulseAccent" Color="#644AC9" />
       <SolidColorBrush x:Key="PulseAccentDim" Color="#644AC91A" />
+      <!-- 亮色主题 accent 是深紫,深字 #0A0E14 对比不足(§10.C),改配浅字。 -->
+      <SolidColorBrush x:Key="PulseAccentForeground" Color="#FFFBEB" />
       <SolidColorBrush x:Key="PulseTextPrimary" Color="#1F1F1F" />
       <SolidColorBrush x:Key="PulseTextSecondary" Color="#4A4636" />
       <SolidColorBrush x:Key="PulseTextTertiary" Color="#6C664B" />

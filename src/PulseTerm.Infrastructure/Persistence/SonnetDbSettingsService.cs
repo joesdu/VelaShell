@@ -16,6 +16,11 @@ public sealed class SonnetDbSettingsService : ISettingsService
     private readonly SonnetDbEngine _engine;
     private readonly IReadOnlyList<string> _legacyDirectories;
 
+    /// <summary>settings 文档的 JSON 缓存:设置是读热点(每次连接/每个传输文件都读),
+    /// 而引擎全局锁串行所有集合操作。缓存序列化文本、按次反序列化,调用方仍各拿独立
+    /// 实例(可安全修改后再保存),读路径却不再进锁/碰盘。保存时同步刷新。</summary>
+    private volatile string? _settingsJsonCache;
+
     public event Action<AppSettings>? SettingsSaved;
 
     public SonnetDbSettingsService(SonnetDbEngine engine, IReadOnlyList<string>? legacyDirectories = null)
@@ -25,12 +30,24 @@ public sealed class SonnetDbSettingsService : ISettingsService
     }
 
     public async Task<AppSettings> GetSettingsAsync()
-        => await GetOrImportAsync<AppSettings>(SettingsDocId, "settings.json").ConfigureAwait(false);
+    {
+        if (_settingsJsonCache is { } cached
+            && SonnetDbJson.Deserialize<AppSettings>(cached) is { } fromCache)
+        {
+            return fromCache;
+        }
+
+        var settings = await GetOrImportAsync<AppSettings>(SettingsDocId, "settings.json").ConfigureAwait(false);
+        _settingsJsonCache = SonnetDbJson.Serialize(settings);
+        return settings;
+    }
 
     public async Task SaveSettingsAsync(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        await UpsertAsync(SettingsDocId, settings).ConfigureAwait(false);
+        var json = SonnetDbJson.Serialize(settings);
+        await UpsertJsonAsync(SettingsDocId, json).ConfigureAwait(false);
+        _settingsJsonCache = json;
         SettingsSaved?.Invoke(settings);
     }
 
@@ -66,9 +83,11 @@ public sealed class SonnetDbSettingsService : ISettingsService
         return new T();
     }
 
-    private async Task UpsertAsync<T>(string docId, T value) where T : class
+    private Task UpsertAsync<T>(string docId, T value) where T : class
+        => UpsertJsonAsync(docId, SonnetDbJson.Serialize(value));
+
+    private async Task UpsertJsonAsync(string docId, string json)
     {
-        var json = SonnetDbJson.Serialize(value);
         await _engine.WithCollectionAsync<object?>(SonnetDbEngine.ConfigCollection, store =>
         {
             store.Upsert(docId, json);

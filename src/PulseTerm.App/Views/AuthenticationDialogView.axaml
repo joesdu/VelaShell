@@ -47,7 +47,7 @@
     </Style>
     <Style Selector="Button.dlg-primary">
       <Setter Property="Background" Value="{DynamicResource PulseAccent}" />
-      <Setter Property="Foreground" Value="#0A0E14" />
+      <Setter Property="Foreground" Value="{DynamicResource PulseAccentForeground}" />
       <Setter Property="Height" Value="32" />
       <Setter Property="Padding" Value="20,0" />
       <Setter Property="CornerRadius" Value="4" />
@@ -68,7 +68,7 @@
     </Style>
     <Style Selector="Button.seg-tab.active">
       <Setter Property="Background" Value="{DynamicResource PulseAccent}" />
-      <Setter Property="Foreground" Value="#0A0E14" />
+      <Setter Property="Foreground" Value="{DynamicResource PulseAccentForeground}" />
       <Setter Property="FontWeight" Value="Medium" />
     </Style>
   </Window.Styles>
@@ -141,11 +141,11 @@
                   Background="{DynamicResource PulseAccent}">
             <Panel>
               <TextBlock Text="1" IsVisible="{Binding IsStep1}"
-                         Foreground="#0A0E14" FontSize="10" FontWeight="SemiBold"
+                         Foreground="{DynamicResource PulseAccentForeground}" FontSize="10" FontWeight="SemiBold"
                          HorizontalAlignment="Center" VerticalAlignment="Center" />
               <PathIcon Width="10" Height="10" IsVisible="{Binding IsStep2}"
                         Data="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
-                        Foreground="#0A0E14"
+                        Foreground="{DynamicResource PulseAccentForeground}"
                         HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Panel>
           </Border>
@@ -173,7 +173,7 @@
                     <Setter Property="Foreground" Value="{DynamicResource PulseTextMuted}" />
                   </Style>
                   <Style Selector="TextBlock.on-accent">
-                    <Setter Property="Foreground" Value="#0A0E14" />
+                    <Setter Property="Foreground" Value="{DynamicResource PulseAccentForeground}" />
                   </Style>
                 </TextBlock.Styles>
                 <Classes.on-accent>
@@ -328,7 +328,7 @@
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <PathIcon Width="12" Height="12"
                           Data="M4 11h12.17l-5.59-5.59L12 4l8 8-8 8-1.41-1.41L16.17 13H4v-2z"
-                          Foreground="#0A0E14" />
+                          Foreground="{DynamicResource PulseAccentForeground}" />
                 <TextBlock Text="下一步" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
@@ -339,7 +339,7 @@
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <PathIcon Width="12" Height="12"
                           Data="M11 7 9.6 8.4l2.6 2.6H2v2h10.2l-2.6 2.6L11 17l5-5-5-5zm9 12h-8v2h8c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-8v2h8v14z"
-                          Foreground="#0A0E14" />
+                          Foreground="{DynamicResource PulseAccentForeground}" />
                 <TextBlock Text="登录" VerticalAlignment="Center" />
               </StackPanel>
             </Button>

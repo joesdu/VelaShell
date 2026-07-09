@@ -101,9 +101,15 @@ public sealed class VtParser
             _intermediates.Clear();
             return;
         }
-        // ESC restarts a sequence from most states.
+        // ESC restarts a sequence from most states. OSC/DCS are the exception: their
+        // terminator ST is ESC \, so the collected payload must be dispatched here —
+        // otherwise a string terminated by ST (instead of BEL) is silently discarded.
         if (rune == 0x1B)
         {
+            if (_state == State.OscString)
+                DispatchOsc();
+            else if (_state == State.DcsPassthrough)
+                DispatchDcs();
             EnterEscape();
             return;
         }
@@ -307,18 +313,12 @@ public sealed class VtParser
 
     private void OscString(int rune)
     {
-        // Terminated by BEL (0x07) or ST (ESC \, handled via Escape state re-entry).
+        // Terminated by BEL (0x07) here, or by ST (ESC \) via the global ESC branch in
+        // Consume — ESC never reaches this handler.
         if (rune == 0x07)
         {
             DispatchOsc();
             _state = State.Ground;
-            return;
-        }
-        if (rune == 0x1B)
-        {
-            // ST is ESC \; peek handled by Escape state. Dispatch now and let ESC restart.
-            DispatchOsc();
-            EnterEscape();
             return;
         }
         if (rune >= 0x20)
@@ -362,7 +362,7 @@ public sealed class VtParser
 
     private void DcsPassthrough(int rune)
     {
-        if (rune == 0x1B) { DispatchDcs(); EnterEscape(); return; }
+        // ST (ESC \) is handled by the global ESC branch in Consume — ESC never reaches here.
         if (rune == 0x07) { DispatchDcs(); _state = State.Ground; return; }
         if (rune >= 0x20 || rune == 0x09 || rune == 0x0A || rune == 0x0D)
             _oscOrDcs.Append(char.ConvertFromUtf32(rune));

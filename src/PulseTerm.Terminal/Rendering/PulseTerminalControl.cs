@@ -224,6 +224,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         _emulator.Updated += OnEmulatorUpdated;
         _emulator.Response += bytes => UserInput?.Invoke(bytes);
         _emulator.Bell += OnBell;
+        _emulator.ClipboardWriteRequested += OnRemoteClipboardWrite;
 
         // 终端配色跟随应用主题(暗=Dracula,亮=Alucard);切换主题时重灌调色板并重绘。
         ActualThemeVariantChanged += (_, _) => ApplyThemePalette();
@@ -349,8 +350,20 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     {
         _emulator.Updated -= OnEmulatorUpdated;
         _emulator.Bell -= OnBell;
+        _emulator.ClipboardWriteRequested -= OnRemoteClipboardWrite;
         _cursorBlinkTimer?.Stop();
         _cursorBlinkTimer = null;
+    }
+
+    /// <summary>OSC 52:远端 yank(tmux/vim)写入系统剪贴板;事件来自 feed 线程,落板走 UI 线程。</summary>
+    private void OnRemoteClipboardWrite(string text)
+    {
+        Dispatcher.UIThread.Post(async () =>
+        {
+            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+            if (clipboard is not null)
+                await clipboard.SetTextAsync(text);
+        });
     }
 
     // ---- Bell (设置 → 终端 → 提示音与通知) ----------------------------------

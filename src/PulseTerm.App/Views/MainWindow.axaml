@@ -18,7 +18,9 @@
         WindowStartupLocation="CenterScreen">
 
   <Window.KeyBindings>
-    <KeyBinding Gesture="Ctrl+T" Command="{Binding TabBar.AddTabCommand}" />
+    <!-- Ctrl+T = 新建标签:标签即 SSH 会话,与 Ctrl+N 一样打开新建连接
+         (旧绑定往已不再显示的 TabBar 集合塞空标签,§10.C 瑕疵)。 -->
+    <KeyBinding Gesture="Ctrl+T" Command="{Binding RunCommand}" CommandParameter="session.new" />
     <KeyBinding Gesture="Ctrl+W" Command="{Binding TabBar.CloseActiveTabCommand}" />
     <KeyBinding Gesture="Ctrl+Tab" Command="{Binding TabBar.NextTabCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+Tab" Command="{Binding TabBar.PreviousTabCommand}" />

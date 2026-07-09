@@ -6,27 +6,15 @@ namespace PulseTerm.Presentation.ViewModels;
 
 public sealed class SidebarViewModel : ReactiveObject
 {
-    private string _quickConnectText;
     private SessionTreeViewModel? _sessionTree;
 
     public SidebarViewModel(IRecentConnectionService? recentConnectionService = null)
     {
-        _quickConnectText = string.Empty;
-        QuickConnect = new QuickConnectViewModel();
         RecentConnections = new RecentConnectionsViewModel(recentConnectionService);
 
-        QuickConnectCommand = ReactiveCommand.Create(() => { });
         SettingsCommand = ReactiveCommand.Create(() => { });
         NotificationsCommand = ReactiveCommand.Create(() => { });
     }
-
-    public string QuickConnectText
-    {
-        get => _quickConnectText;
-        set => this.RaiseAndSetIfChanged(ref _quickConnectText, value);
-    }
-
-    public QuickConnectViewModel QuickConnect { get; }
 
     public RecentConnectionsViewModel RecentConnections { get; }
 
@@ -35,8 +23,6 @@ public sealed class SidebarViewModel : ReactiveObject
         get => _sessionTree;
         set => this.RaiseAndSetIfChanged(ref _sessionTree, value);
     }
-
-    public ReactiveCommand<Unit, Unit> QuickConnectCommand { get; }
 
     public ReactiveCommand<Unit, Unit> SettingsCommand { get; }
 

@@ -253,4 +253,100 @@ public class TerminalEmulatorTests
         Assert.AreEqual(string.Empty, Line(e, 0));
         Assert.AreEqual("a", Line(e, 1));
     }
+
+    // ---- OSC 52(远端写剪贴板) ----
+
+    [TestMethod]
+    public void Osc52_SetClipboard_RaisesClipboardWriteRequested()
+    {
+        var e = New();
+        string? clipboard = null;
+        e.ClipboardWriteRequested += text => clipboard = text;
+
+        var payload = Convert.ToBase64String(Encoding.UTF8.GetBytes("hello 世界"));
+        Feed(e, $"\x1b]52;c;{payload}\x07");
+
+        Assert.AreEqual("hello 世界", clipboard);
+    }
+
+    [TestMethod]
+    public void Osc52_Query_IsIgnored_ForSecurity()
+    {
+        var e = New();
+        string? clipboard = null;
+        string? reply = null;
+        e.ClipboardWriteRequested += text => clipboard = text;
+        e.Response += b => reply = Encoding.ASCII.GetString(b);
+
+        Feed(e, "\x1b]52;c;?\x07");
+
+        Assert.IsNull(clipboard);
+        Assert.IsNull(reply); // 不回读本地剪贴板
+    }
+
+    [TestMethod]
+    public void Osc52_InvalidBase64_IsIgnored()
+    {
+        var e = New();
+        string? clipboard = null;
+        e.ClipboardWriteRequested += text => clipboard = text;
+
+        Feed(e, "\x1b]52;c;not-base64!!\x07");
+
+        Assert.IsNull(clipboard);
+    }
+
+    [TestMethod]
+    public void Osc_TerminatedByStringTerminator_StillDispatches()
+    {
+        // 回归:全局“ESC 重启序列”曾把 ST(ESC \)结尾的 OSC/DCS 整段丢弃,
+        // 只有 BEL 结尾能用(修于 2026-07-09)。
+        var e = New();
+        string? title = null;
+        e.TitleChanged += t => title = t;
+
+        Feed(e, "\x1b]0;my-title\x1b\\");
+
+        Assert.AreEqual("my-title", title);
+    }
+
+    // ---- DECRQSS(DCS $ q Pt ST) ----
+
+    [TestMethod]
+    public void Decrqss_Sgr_ReportsCurrentPen()
+    {
+        var e = New();
+        string? reply = null;
+        e.Response += b => reply = Encoding.ASCII.GetString(b);
+
+        Feed(e, "\x1b[1;31m");            // bold + red
+        Feed(e, "\x1bP$qm\x1b\\");        // DECRQSS "m"
+
+        Assert.AreEqual("\x1bP1$r0;1;31m\x1b\\", reply);
+    }
+
+    [TestMethod]
+    public void Decrqss_Decstbm_ReportsScrollRegion()
+    {
+        var e = New(cols: 20, rows: 6);
+        string? reply = null;
+        e.Response += b => reply = Encoding.ASCII.GetString(b);
+
+        Feed(e, "\x1b[2;4r");             // margins rows 2..4
+        Feed(e, "\x1bP$qr\x1b\\");        // DECRQSS "r"
+
+        Assert.AreEqual("\x1bP1$r2;4r\x1b\\", reply);
+    }
+
+    [TestMethod]
+    public void Decrqss_UnknownRequest_ReportsInvalid()
+    {
+        var e = New();
+        string? reply = null;
+        e.Response += b => reply = Encoding.ASCII.GetString(b);
+
+        Feed(e, "\x1bP$q q\x1b\\");       // DECSCUSR:未实现
+
+        Assert.AreEqual("\x1bP0$r\x1b\\", reply);
+    }
 }
