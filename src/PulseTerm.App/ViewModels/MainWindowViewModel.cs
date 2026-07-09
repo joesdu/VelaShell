@@ -288,14 +288,62 @@ public class MainWindowViewModel : ReactiveObject
     private void StartStatusMetricsPolling()
     {
         // Headless unit tests construct this VM without an Avalonia application; skip there.
-        if (_metricsService is null || Avalonia.Application.Current is null)
+        // 延迟测量(ICMP)不依赖 metrics 服务,所以只要有 UI 就启动计时器。
+        if (Avalonia.Application.Current is null)
             return;
 
         _statusMetricsTimer = new Avalonia.Threading.DispatcherTimer(
             TimeSpan.FromSeconds(1),
             Avalonia.Threading.DispatcherPriority.Background,
-            (_, _) => _ = PollStatusMetricsAsync());
+            (_, _) =>
+            {
+                _ = PollStatusMetricsAsync();
+                _ = PollLatencyAsync();
+            });
         _statusMetricsTimer.Start();
+    }
+
+    private bool _latencyPolling;
+    private int _latencyTick;
+
+    /// <summary>状态栏延迟指示(设计 gzmsb sbLatency,之前缺失):每 3 秒对活动标签的主机
+    /// 发一次 ICMP ping,RTT 写入 tab.Latency(经既有 WhenAnyValue 管道刷新状态栏)。
+    /// 目标禁 ICMP 或解析失败时清空显示,不打扰;不用 TCP 探测以免刷爆 sshd 日志。</summary>
+    private async Task PollLatencyAsync()
+    {
+        if (_latencyPolling || _latencyTick++ % 3 != 0)
+            return;
+
+        var tab = ActiveTerminalTab;
+        if (tab?.Profile is null || tab.ConnectionStatus != SessionStatus.Connected)
+        {
+            if (tab is not null)
+                tab.Latency = null;
+            return;
+        }
+
+        _latencyPolling = true;
+        try
+        {
+            using var ping = new System.Net.NetworkInformation.Ping();
+            var reply = await ping.SendPingAsync(tab.Profile.Host, TimeSpan.FromSeconds(2));
+
+            // 探测期间用户可能切换了标签;不要把结果写到别的会话上。
+            if (!ReferenceEquals(ActiveTerminalTab, tab))
+                return;
+
+            tab.Latency = reply.Status == System.Net.NetworkInformation.IPStatus.Success
+                ? TimeSpan.FromMilliseconds(reply.RoundtripTime)
+                : null;
+        }
+        catch
+        {
+            tab.Latency = null;
+        }
+        finally
+        {
+            _latencyPolling = false;
+        }
     }
 
     private async Task PollStatusMetricsAsync()
@@ -419,11 +467,14 @@ public class MainWindowViewModel : ReactiveObject
         // and the user gets a visible, closable tab right away (#17).
         var terminalEmulator = _terminalEmulatorFactory();
         ConfigureTerminal(terminalEmulator, settings, terminalType);
+        // 状态栏连接指示按设计 gzmsb 显示"SSH • <显示名称>:<端口>"——不暴露用户名与
+        // IP(用户以安全为由要求);未配置名称时才退回主机地址。
+        var displayName = string.IsNullOrWhiteSpace(profile.Name) ? profile.Host : profile.Name;
         var terminalTab = new TerminalTabViewModel(terminalEmulator)
         {
-            Title = string.IsNullOrWhiteSpace(profile.Name) ? profile.Host : profile.Name,
+            Title = displayName,
             ConnectionStatus = SessionStatus.Connecting,
-            ConnectionSummary = $"SSH • {profile.Username}@{profile.Host}:{profile.Port}",
+            ConnectionSummary = $"SSH • {displayName}",
             TerminalTypeName = terminalType.ToTermName(),
             EncodingName = string.IsNullOrWhiteSpace(settings.TerminalEncoding) ? "UTF-8" : settings.TerminalEncoding,
             Profile = profile,
@@ -782,7 +833,8 @@ public class MainWindowViewModel : ReactiveObject
         StatusBar.TerminalType = tab.TerminalTypeName;
         StatusBar.Encoding = tab.EncodingName;
         StatusBar.WindowSize = $"{tab.TerminalEmulator.Columns}×{tab.TerminalEmulator.Rows}";
-        StatusBar.Latency = tab.Latency is { } latency ? $"{(int)latency.TotalMilliseconds} ms" : string.Empty;
+        // 设计 gzmsb sbLatency 的写法是 "Latency: 12ms"(前缀由视图 StringFormat 提供)。
+        StatusBar.Latency = tab.Latency is { } latency ? $"{(int)latency.TotalMilliseconds}ms" : string.Empty;
     }
 
     public SidebarViewModel Sidebar
