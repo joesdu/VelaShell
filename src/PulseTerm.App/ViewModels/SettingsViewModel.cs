@@ -14,8 +14,8 @@ namespace PulseTerm.App.ViewModels;
 /// <summary>设置左侧导航项(图标为 PathIcon 几何)。</summary>
 public sealed record SettingsSection(string Name, string Icon);
 
-/// <summary>关于页的开源依赖条目。</summary>
-public sealed record DependencyInfo(string Name, string License);
+/// <summary>关于页的开源依赖条目(项目主页 + 许可证页面可点击跳转)。</summary>
+public sealed record DependencyInfo(string Name, string License, string Url, string LicenseUrl);
 
 /// <summary>快捷键页的分组与条目(只读展示,自定义键位后续版本提供)。</summary>
 public sealed record ShortcutGroup(string Title, ShortcutItem[] Items);
@@ -234,7 +234,7 @@ public class SettingsViewModel : ReactiveObject
 
     // ———— 关于页(真实构建信息) ————
 
-    public string AppVersion => "v1.0.0";
+    public string AppVersion => "v0.0.5-beta";
     public string AboutFramework => "Avalonia UI 12.0.5";
     public string AboutRuntime => $".NET {Environment.Version.Major}.{Environment.Version.Minor}";
     public string AboutSshLibrary => "SSH.NET 2025.1.0";
@@ -245,12 +245,12 @@ public class SettingsViewModel : ReactiveObject
     /// <summary>开源依赖(真实技术栈)。</summary>
     public DependencyInfo[] AboutDependencies { get; } =
     [
-        new("Avalonia UI", "MIT"),
-        new("SSH.NET", "MIT"),
-        new("Dock.Avalonia", "MIT"),
-        new("ReactiveUI", "MIT"),
-        new("SonnetDB", "Apache-2.0"),
-        new("Velopack", "MIT"),
+        new("Avalonia UI", "MIT", "https://github.com/AvaloniaUI/Avalonia", "https://github.com/AvaloniaUI/Avalonia/blob/main/licence.md"),
+        new("SSH.NET", "MIT", "https://github.com/sshnet/SSH.NET", "https://github.com/sshnet/SSH.NET/blob/develop/LICENSE"),
+        new("Dock.Avalonia", "MIT", "https://github.com/wieslawsoltes/Dock", "https://github.com/wieslawsoltes/Dock/blob/master/LICENSE.TXT"),
+        new("ReactiveUI", "MIT", "https://github.com/reactiveui/ReactiveUI", "https://github.com/reactiveui/ReactiveUI/blob/main/LICENSE"),
+        new("SonnetDB", "MIT", "https://github.com/IoTSharp/SonnetDB", "https://github.com/IoTSharp/SonnetDB/blob/main/LICENSE"),
+        new("Velopack", "MIT", "https://github.com/velopack/velopack", "https://github.com/velopack/velopack/blob/develop/LICENSE"),
     ];
 
     public ReactiveCommand<Unit, Unit> LoadCommand { get; }

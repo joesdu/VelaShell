@@ -4,6 +4,29 @@
              x:Class="PulseTerm.App.Views.Settings.AboutPage"
              x:DataType="vm:SettingsViewModel">
 
+  <UserControl.Styles>
+    <!-- 依赖项可点击链接:项目名 / 许可证 -->
+    <Style Selector="Button.link">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+    </Style>
+    <Style Selector="Button.link /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.link:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <!-- 悬停时项目名/许可证高亮为主题色并加下划线 -->
+    <Style Selector="Button.link:pointerover TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+      <Setter Property="TextDecorations" Value="Underline" />
+    </Style>
+  </UserControl.Styles>
+
   <StackPanel Spacing="14">
     <StackPanel Spacing="2">
       <TextBlock Classes="page-title" Text="关于 PulseTerm" />
@@ -105,15 +128,25 @@
                   <PathIcon Width="13" Height="13"
                             Data="M12 2 2 7v10l10 5 10-5V7L12 2zm0 2.2 7.2 3.6L12 11.4 4.8 7.8 12 4.2zM4 9.5l7 3.5v6.7l-7-3.5V9.5zm9 10.2v-6.7l7-3.5v6.7l-7 3.5z"
                             Foreground="{DynamicResource PulseAccent}" />
-                  <TextBlock Text="{Binding Name}"
-                             Foreground="{DynamicResource PulseTextPrimary}"
-                             FontFamily="{DynamicResource PulseTerminalFont}"
-                             FontSize="11" FontWeight="Medium" VerticalAlignment="Center" />
+                  <!-- 项目名:点击跳转 GitHub 主页 -->
+                  <Button Classes="link" Tag="{Binding Url}" Click="OnOpenLink"
+                          VerticalAlignment="Center"
+                          ToolTip.Tip="{Binding Url}">
+                    <TextBlock Text="{Binding Name}"
+                               Foreground="{DynamicResource PulseTextPrimary}"
+                               FontFamily="{DynamicResource PulseTerminalFont}"
+                               FontSize="11" FontWeight="Medium" />
+                  </Button>
                 </StackPanel>
-                <TextBlock Grid.Column="1" Text="{Binding License}"
-                           Foreground="{DynamicResource PulseTextMuted}"
-                           FontFamily="{DynamicResource PulseTerminalFont}"
-                           FontSize="10" VerticalAlignment="Center" />
+                <!-- 许可证:点击跳转许可证页面 -->
+                <Button Grid.Column="1" Classes="link" Tag="{Binding LicenseUrl}" Click="OnOpenLink"
+                        VerticalAlignment="Center"
+                        ToolTip.Tip="查看许可证">
+                  <TextBlock Text="{Binding License}"
+                             Foreground="{DynamicResource PulseTextMuted}"
+                             FontFamily="{DynamicResource PulseTerminalFont}"
+                             FontSize="10" />
+                </Button>
               </Grid>
             </Border>
           </DataTemplate>
