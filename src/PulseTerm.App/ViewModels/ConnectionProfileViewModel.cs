@@ -42,6 +42,8 @@ public class ConnectionProfileViewModel : ReactiveObject
     private bool _isAdvancedVisible;
     private string _tagsText = string.Empty;
     private GroupOption? _selectedGroup;
+    private Guid? _jumpHostProfileId;
+    private GroupOption? _selectedJumpHost;
 
     private readonly Guid _profileId;
 
@@ -57,6 +59,9 @@ public class ConnectionProfileViewModel : ReactiveObject
 
         Groups = new ObservableCollection<GroupOption> { new(null, "未分组") };
         _selectedGroup = Groups[0];
+
+        JumpHostOptions = new ObservableCollection<GroupOption> { new(null, "直连(不使用跳板)") };
+        _selectedJumpHost = JumpHostOptions[0];
 
         // 新建连接的默认值(设置 → 常规 → 连接默认值 / 密钥管理 → 默认认证密钥)。
         if (existing is null)
@@ -83,6 +88,7 @@ public class ConnectionProfileViewModel : ReactiveObject
             _isKeyAuth = existing.AuthMethod == AuthMethod.PrivateKey;
             _rememberPassword = existing.RememberPassword;
             _tagsText = string.Join(", ", existing.Tags);
+            _jumpHostProfileId = existing.JumpHostProfileId;
         }
         else
         {
@@ -98,6 +104,9 @@ public class ConnectionProfileViewModel : ReactiveObject
 
         this.WhenAnyValue(x => x.SelectedGroup)
             .Subscribe(option => _groupId = option?.Id);
+
+        this.WhenAnyValue(x => x.SelectedJumpHost)
+            .Subscribe(option => _jumpHostProfileId = option?.Id);
 
         var canExecute = this.WhenAnyValue(
             x => x.Host,
@@ -119,7 +128,8 @@ public class ConnectionProfileViewModel : ReactiveObject
         TogglePasswordVisibilityCommand = ReactiveCommand.Create(() => { ShowPassword = !ShowPassword; });
     }
 
-    /// <summary>从仓储加载分组下拉(“未分组” + 全部分组),并选中当前配置的分组。</summary>
+    /// <summary>从仓储加载分组下拉(“未分组” + 全部分组),并选中当前配置的分组;
+    /// 同时装填跳板主机下拉(“直连” + 其余已保存配置)。</summary>
     public async Task LoadGroupsAsync()
     {
         if (_sessionRepository is null)
@@ -145,6 +155,40 @@ public class ConnectionProfileViewModel : ReactiveObject
         catch
         {
             // 分组加载失败时仍可保存为未分组。
+        }
+
+        await LoadJumpHostOptionsAsync();
+    }
+
+    /// <summary>跳板主机候选 = 除自身外的全部已保存配置(跳板需已存凭据才能免交互连上)。</summary>
+    private async Task LoadJumpHostOptionsAsync()
+    {
+        if (_sessionRepository is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var profiles = await _sessionRepository.GetAllSessionsAsync();
+            while (JumpHostOptions.Count > 1)
+            {
+                JumpHostOptions.RemoveAt(JumpHostOptions.Count - 1);
+            }
+
+            foreach (var profile in profiles
+                         .Where(p => p.Id != _profileId)
+                         .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                JumpHostOptions.Add(new GroupOption(profile.Id, profile.Name));
+            }
+
+            SelectedJumpHost = JumpHostOptions.FirstOrDefault(option => option.Id == _jumpHostProfileId)
+                ?? JumpHostOptions[0];
+        }
+        catch
+        {
+            // 跳板列表加载失败时仍可按直连保存。
         }
     }
 
@@ -212,6 +256,15 @@ public class ConnectionProfileViewModel : ReactiveObject
     {
         get => _groupId;
         set => this.RaiseAndSetIfChanged(ref _groupId, value);
+    }
+
+    /// <summary>跳板主机下拉:“直连” + 除自身外的全部已保存配置。</summary>
+    public ObservableCollection<GroupOption> JumpHostOptions { get; }
+
+    public GroupOption? SelectedJumpHost
+    {
+        get => _selectedJumpHost;
+        set => this.RaiseAndSetIfChanged(ref _selectedJumpHost, value);
     }
 
     public bool IsPasswordAuth
@@ -378,6 +431,7 @@ public class ConnectionProfileViewModel : ReactiveObject
             Tags = TagsText
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList(),
+            JumpHostProfileId = _jumpHostProfileId,
         };
     }
 }

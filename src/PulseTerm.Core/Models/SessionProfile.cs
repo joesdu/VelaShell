@@ -24,8 +24,12 @@ public class SessionProfile
     public string? PrivateKeyPassphrase { get; set; }
     
     public Guid? GroupId { get; set; }
-    
+
     public DateTime? LastConnectedAt { get; set; }
-    
+
     public List<string> Tags { get; set; } = new();
+
+    /// <summary>跳板主机(ProxyJump,§12 P1-2):引用另一条已保存配置作为堡垒机;
+    /// 跳板配置自身还可以再配跳板,链式即多段跳。null = 直连。</summary>
+    public Guid? JumpHostProfileId { get; set; }
 }

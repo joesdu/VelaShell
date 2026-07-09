@@ -256,9 +256,15 @@
         </Grid>
 
         <!-- 高级选项内容 -->
-        <StackPanel IsVisible="{Binding IsAdvancedVisible}">
+        <StackPanel IsVisible="{Binding IsAdvancedVisible}" Spacing="4">
           <TextBlock Classes="field-label" Text="标签(逗号分隔)" />
           <TextBox Text="{Binding TagsText}" PlaceholderText="web, 生产" />
+          <TextBlock Classes="field-label" Text="跳板主机(ProxyJump)" Margin="0,8,0,0" />
+          <ComboBox HorizontalAlignment="Stretch"
+                    ItemsSource="{Binding JumpHostOptions}"
+                    SelectedItem="{Binding SelectedJumpHost}" />
+          <TextBlock Text="// 先连跳板、经其端口转发进入本机;跳板配置需已保存凭据,跳板还可再配跳板(链式多段)"
+                     Foreground="{DynamicResource PulseTextMuted}" FontSize="10" TextWrapping="Wrap" />
         </StackPanel>
 
         <!-- 测试/保存反馈 -->

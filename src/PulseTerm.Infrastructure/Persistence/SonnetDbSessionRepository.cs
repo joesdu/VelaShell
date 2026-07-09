@@ -145,6 +145,7 @@ public sealed class SonnetDbSessionRepository : ISessionRepository
             LastConnectedAt = profile.LastConnectedAt,
             Tags = [.. profile.Tags],
             RememberPassword = profile.RememberPassword,
+            JumpHostProfileId = profile.JumpHostProfileId,
         };
     }
 

@@ -155,10 +155,37 @@ public static class InfrastructureServiceCollectionExtensions
         PulseTerm.Core.Ssh.IHostKeyPrompt? hostKeyPrompt = null,
         PulseTerm.Core.Ssh.ISecurityAlertService? securityAlerts = null)
     {
+        // 配了跳板(ProxyJump):逐跳建链,每跳按其逻辑主机做指纹校验。
+        if (connectionInfo.JumpHost is not null)
+        {
+            return new JumpChainSshClientWrapper(connectionInfo,
+                (logical, connectHost, connectPort) => BuildSshClient(
+                    logical, connectHost, connectPort,
+                    hostKeyService, settingsService, hostKeyPrompt, securityAlerts));
+        }
+
+        return new SshClientWrapper(BuildSshClient(
+            connectionInfo, connectionInfo.Host, connectionInfo.Port,
+            hostKeyService, settingsService, hostKeyPrompt, securityAlerts));
+    }
+
+    /// <summary>构建一跳的 SshClient:凭据与主机指纹校验用逻辑连接信息
+    /// <paramref name="connectionInfo"/>(host:port 为 known_hosts 键),实际 socket 连
+    /// <paramref name="connectHost"/>:<paramref name="connectPort"/>(直连时相同,经跳板时
+    /// 是上一跳的本地转发口 —— 指纹绝不能按 127.0.0.1 记录)。</summary>
+    private static SshClient BuildSshClient(
+        PulseConnectionInfo connectionInfo,
+        string connectHost,
+        int connectPort,
+        PulseTerm.Core.Ssh.IHostKeyService? hostKeyService,
+        ISettingsService? settingsService,
+        PulseTerm.Core.Ssh.IHostKeyPrompt? hostKeyPrompt,
+        PulseTerm.Core.Ssh.ISecurityAlertService? securityAlerts)
+    {
         var authMethods = CreateAuthenticationMethods(connectionInfo);
         var sshConnectionInfo = new Renci.SshNet.ConnectionInfo(
-            connectionInfo.Host,
-            connectionInfo.Port,
+            connectHost,
+            connectPort,
             connectionInfo.Username,
             authMethods);
 
@@ -242,7 +269,7 @@ public static class InfrastructureServiceCollectionExtensions
             };
         }
 
-        return new SshClientWrapper(client);
+        return client;
     }
 
     private static AuthenticationMethod[] CreateAuthenticationMethods(PulseConnectionInfo connectionInfo)

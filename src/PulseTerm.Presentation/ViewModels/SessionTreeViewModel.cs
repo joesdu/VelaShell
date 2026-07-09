@@ -188,6 +188,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
             PrivateKeyPassphrase = source.PrivateKeyPassphrase,
             GroupId = source.GroupId,
             Tags = new List<string>(source.Tags),
+            JumpHostProfileId = source.JumpHostProfileId,
         };
 
         await _repository.SaveSessionAsync(copy);

@@ -54,7 +54,7 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
         try
         {
             var session = await _sshConnectionService
-                .ConnectAsync(BuildConnectionInfo(profile), cancellationToken)
+                .ConnectAsync(await BuildConnectionInfoAsync(profile).ConfigureAwait(false), cancellationToken)
                 .ConfigureAwait(false);
 
             await _sshConnectionService.DisconnectAsync(session.SessionId, cancellationToken).ConfigureAwait(false);
@@ -76,7 +76,7 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
         try
         {
             session = await _sshConnectionService
-                .ConnectAsync(BuildConnectionInfo(profile), cancellationToken)
+                .ConnectAsync(await BuildConnectionInfoAsync(profile).ConfigureAwait(false), cancellationToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -131,6 +131,7 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
             Tags = [.. profile.Tags],
             // 保留配置自身的勾选:全局开关只影响是否落盘,不改写每条配置的选择。
             RememberPassword = profile.RememberPassword,
+            JumpHostProfileId = profile.JumpHostProfileId,
         };
     }
 
@@ -194,8 +195,29 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
     public Task DisconnectAsync(Guid sessionId, CancellationToken cancellationToken = default)
         => _sshConnectionService.DisconnectAsync(sessionId, cancellationToken);
 
-    private static ConnectionInfo BuildConnectionInfo(SessionProfile profile)
+    /// <summary>把配置解析成连接信息;JumpHostProfileId 链递归展开为嵌套 JumpHost
+    /// (最多 5 跳,带环检测)。跳板配置必须已保存凭据,否则该跳认证会失败。</summary>
+    private async Task<ConnectionInfo> BuildConnectionInfoAsync(SessionProfile profile)
     {
+        var visited = new HashSet<Guid> { profile.Id };
+        return await BuildChainAsync(profile, visited, depth: 0).ConfigureAwait(false);
+    }
+
+    private async Task<ConnectionInfo> BuildChainAsync(SessionProfile profile, HashSet<Guid> visited, int depth)
+    {
+        ConnectionInfo? jump = null;
+        if (profile.JumpHostProfileId is { } jumpId)
+        {
+            if (depth >= 5)
+                throw new InvalidOperationException("跳板链过长(最多 5 跳)。");
+            if (!visited.Add(jumpId))
+                throw new InvalidOperationException("跳板配置形成了循环引用,请检查跳板主机设置。");
+
+            var jumpProfile = await _sessionRepository.GetSessionAsync(jumpId).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("跳板主机配置不存在(可能已被删除),请重新设置。");
+            jump = await BuildChainAsync(jumpProfile, visited, depth + 1).ConfigureAwait(false);
+        }
+
         return new ConnectionInfo
         {
             Host = profile.Host,
@@ -204,7 +226,8 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
             AuthMethod = profile.AuthMethod,
             Password = profile.Password,
             PrivateKeyPath = profile.PrivateKeyPath,
-            PrivateKeyPassphrase = profile.PrivateKeyPassphrase
+            PrivateKeyPassphrase = profile.PrivateKeyPassphrase,
+            JumpHost = jump,
         };
     }
 
