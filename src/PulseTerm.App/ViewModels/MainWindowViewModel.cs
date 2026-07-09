@@ -151,6 +151,10 @@ public class MainWindowViewModel : ReactiveObject
             () => { if (ActiveTerminalTab is { } tab) _ = ReconnectTabAsync(tab); },
             CanExecute: () => ActiveTerminalTab?.ConnectionStatus == SessionStatus.Disconnected,
             Shortcut: "Ctrl+R"));
+        Commands.Register(new CommandDescriptor("session.clone", "克隆会话", "会话",
+            () => { if (ActiveTerminalTab?.Profile is { } profile) _ = TryConnectProfileAsync(profile); },
+            CanExecute: () => ActiveTerminalTab?.Profile is not null,
+            Shortcut: "Ctrl+Shift+N", Icon: "Icon.copy"));
         Commands.Register(new CommandDescriptor("edit.copy", "复制", "编辑",
             () => { if (ActiveTerminalControl is { } c) _ = c.CopyAsync(); },
             CanExecute: () => ActiveTerminalControl is not null, Shortcut: "Ctrl+Shift+C", Icon: "Icon.copy"));
