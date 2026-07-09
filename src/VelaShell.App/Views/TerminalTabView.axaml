@@ -1,0 +1,172 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:VelaShell.App.ViewModels"
+             xmlns:views="using:VelaShell.App.Views"
+             xmlns:controls="using:VelaShell.App.Controls"
+             xmlns:pc="using:VelaShell.Controls.Controls"
+             xmlns:res="clr-namespace:VelaShell.Core.Resources;assembly=VelaShell.Core"
+             mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="800"
+             x:Class="VelaShell.App.Views.TerminalTabView"
+             x:DataType="vm:TerminalTabViewModel">
+
+  <Grid RowDefinitions="*,Auto">
+
+    <!-- Row 1: in-terminal search bar (spec §5.3, Ctrl+F) — docked at the bottom of this
+         tab (per-tab scope; it only searches this tab's buffer). -->
+    <Border Grid.Row="1"
+              x:Name="SearchBar"
+              IsVisible="False"
+              Background="{DynamicResource PulseBgSurface}"
+              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              BorderThickness="0,1,0,0"
+              Padding="14,4">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="8" />
+            <!-- 搜索输入:弹性加长(窄分屏可收缩,最宽 520,原为固定 240)。 -->
+            <ColumnDefinition Width="*" MinWidth="160" MaxWidth="520" />
+            <ColumnDefinition Width="8" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="4" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="4" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="8" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <pc:LucideIcon Grid.Column="0" Width="12" Height="12"
+                         Data="{StaticResource Icon.search}"
+                         Foreground="{DynamicResource PulseTextTertiary}"
+                         VerticalAlignment="Center" />
+          <TextBox x:Name="SearchBox" Grid.Column="2"
+                   MinHeight="24" Padding="8,2" CornerRadius="3"
+                   FontFamily="{DynamicResource PulseTerminalFont}" FontSize="11"
+                   Background="{DynamicResource PulseBgInput}"
+                   Foreground="{DynamicResource PulseTextPrimary}"
+                   BorderBrush="{DynamicResource PulseBorderPrimary}"
+                   PlaceholderText="在终端中查找" />
+          <TextBlock x:Name="SearchCount" Grid.Column="4"
+                     Foreground="{DynamicResource PulseTextMuted}"
+                     FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10"
+                     VerticalAlignment="Center" />
+          <Button x:Name="SearchPrev" Grid.Column="6"
+                  Width="22" Height="22" Padding="0" Background="Transparent" CornerRadius="3"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                  ToolTip.Tip="上一个 (Shift+Enter)">
+            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.chevron-left}"
+                           Foreground="{DynamicResource PulseTextTertiary}" />
+          </Button>
+          <Button x:Name="SearchNext" Grid.Column="8"
+                  Width="22" Height="22" Padding="0" Background="Transparent" CornerRadius="3"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                  ToolTip.Tip="下一个 (Enter)">
+            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.chevron-right}"
+                           Foreground="{DynamicResource PulseTextTertiary}" />
+          </Button>
+          <Button x:Name="SearchClose" Grid.Column="10"
+                  Width="22" Height="22" Padding="0" Background="Transparent" CornerRadius="3"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                  ToolTip.Tip="关闭 (Esc)">
+            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.x}"
+                           Foreground="{DynamicResource PulseTextTertiary}" />
+          </Button>
+        </Grid>
+      </Border>
+
+    <!-- Row 0: Terminal area with scrollbar -->
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+
+      <!-- Terminal emulator control -->
+      <Border Grid.Column="0"
+              Background="{DynamicResource PulseBgTerminal}"
+              ClipToBounds="True">
+        <controls:ReparentingHost Target="{Binding TerminalEmulator.Control}" />
+      </Border>
+
+      <!-- Scrollbar for scrollback navigation (driven from code-behind against the
+           shared terminal control, since the control is reparented across split panes). -->
+      <ScrollBar Grid.Column="1"
+                 x:Name="ScrollBarView"
+                 Orientation="Vertical"
+                 Minimum="0"
+                 AllowAutoHide="False"
+                 Background="{DynamicResource PulseBgSurface}"
+                 Width="12"
+                 Opacity="0.6" />
+
+      <!-- 标签页内失败/断开覆盖层(设计 yxjmg / dcOverlay):连接失败或掉线时居中显示,
+           提供“重新连接”“关闭标签页”。连接失败不再弹全局对话框,提示只落在所属标签页内。 -->
+      <Border Grid.Column="0"
+              IsVisible="{Binding ShowDisconnectedOverlay}"
+              Background="#66000000"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch">
+        <Border Background="{DynamicResource PulseBgSurface}"
+                BorderBrush="{DynamicResource PulseBorderSecondary}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="32,24"
+                Width="340"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                BoxShadow="0 8 32 0 #80000000">
+          <StackPanel Orientation="Vertical" Spacing="16" HorizontalAlignment="Center">
+
+            <!-- 图标圆底 -->
+            <Border Width="48" Height="48" CornerRadius="24"
+                    Background="#26FF6B6B"
+                    HorizontalAlignment="Center">
+              <pc:LucideIcon Width="22" Height="22"
+                             Data="{StaticResource Icon.wifi-off}"
+                             Foreground="{DynamicResource PulseError}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+
+            <TextBlock Text="{Binding DisconnectOverlayTitle}"
+                       Foreground="{DynamicResource PulseTextPrimary}"
+                       FontSize="16" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" />
+
+            <TextBlock Text="{Binding DisconnectOverlayDetail}"
+                       Foreground="{DynamicResource PulseTextMuted}"
+                       FontFamily="{DynamicResource PulseTerminalFont}"
+                       FontSize="11"
+                       MaxWidth="280"
+                       TextWrapping="Wrap"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center" />
+
+            <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+              <Button Command="{Binding ReconnectCommand}"
+                      Background="{DynamicResource PulseAccent}"
+                      CornerRadius="4" Padding="16,8"
+                      BorderThickness="0">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                  <pc:LucideIcon Width="13" Height="13"
+                                 Data="{StaticResource Icon.refresh-cw}"
+                                 Foreground="#FFFFFF" VerticalAlignment="Center" />
+                  <TextBlock Text="重新连接" Foreground="#FFFFFF"
+                             FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Command="{Binding CloseTabCommand}"
+                      Background="Transparent"
+                      BorderBrush="{DynamicResource PulseBorderSecondary}"
+                      BorderThickness="1"
+                      CornerRadius="4" Padding="16,8">
+                <TextBlock Text="关闭标签页"
+                           Foreground="{DynamicResource PulseTextSecondary}"
+                           FontSize="12" FontWeight="Medium" VerticalAlignment="Center" />
+              </Button>
+            </StackPanel>
+
+          </StackPanel>
+        </Border>
+      </Border>
+
+    </Grid>
+  </Grid>
+</UserControl>

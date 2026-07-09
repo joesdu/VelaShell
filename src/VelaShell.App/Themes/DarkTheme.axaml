@@ -1,0 +1,23 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- VelaShell Dark Theme — Dracula palette (用户确认) -->
+
+    <!-- Accent tokens -->
+    <SolidColorBrush x:Key="PulseAccentText" Color="#BD93F9" />
+
+    <!-- Semantic tokens -->
+    <SolidColorBrush x:Key="PulseWarning" Color="#FFB86C" />
+    <SolidColorBrush x:Key="PulseError"   Color="#FF5555" />
+    <SolidColorBrush x:Key="PulseInfo"    Color="#8BE9FD" />
+
+    <!-- Terminal color tokens -->
+    <SolidColorBrush x:Key="VelaShellWhite"   Color="#F8F8F2" />
+    <SolidColorBrush x:Key="VelaShellGreen"   Color="#50FA7B" />
+    <SolidColorBrush x:Key="VelaShellCyan"    Color="#8BE9FD" />
+    <SolidColorBrush x:Key="VelaShellBlue"    Color="#BD93F9" />
+    <SolidColorBrush x:Key="VelaShellYellow"  Color="#F1FA8C" />
+    <SolidColorBrush x:Key="VelaShellRed"     Color="#FF5555" />
+    <SolidColorBrush x:Key="VelaShellMagenta" Color="#FF79C6" />
+
+</ResourceDictionary>

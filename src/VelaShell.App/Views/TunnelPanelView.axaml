@@ -1,0 +1,230 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:VelaShell.App.ViewModels"
+             xmlns:pc="using:VelaShell.Controls.Controls"
+             xmlns:models="clr-namespace:VelaShell.Core.Models;assembly=VelaShell.Core"
+             mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="320"
+             x:Class="VelaShell.App.Views.TunnelPanelView"
+             x:DataType="vm:TunnelPanelViewModel">
+
+  <!-- Tunnel manager per design frame fuXS7: 320px floating panel, bg-surface, corner 6,
+       1px border-secondary, shadow blur16 y+4 (spec §10). -->
+
+  <UserControl.Styles>
+    <Style Selector="TextBox">
+      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="MinHeight" Value="26" />
+      <Setter Property="Padding" Value="8,4" />
+      <Setter Property="Background" Value="{DynamicResource PulseBgInput}" />
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderPrimary}" />
+      <Setter Property="CornerRadius" Value="3" />
+    </Style>
+    <Style Selector="TextBlock.form-label">
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextMuted}" />
+      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+      <Setter Property="FontSize" Value="9" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Width="320"
+          Background="{DynamicResource PulseBgSurface}"
+          BorderBrush="{DynamicResource PulseBorderSecondary}"
+          BorderThickness="1"
+          CornerRadius="6"
+          BoxShadow="0 4 16 0 #60000000">
+    <StackPanel>
+
+      <!-- Header (32px): route accent + 隧道 + active badge | plus -->
+      <Border Height="32" Padding="12,0"
+              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <pc:LucideIcon Width="12" Height="12"
+                           Data="{StaticResource Icon.route}"
+                           Foreground="{DynamicResource PulseAccent}" />
+            <TextBlock Text="隧道"
+                       Foreground="{DynamicResource PulseTextPrimary}"
+                       FontFamily="{DynamicResource PulseTerminalFont}"
+                       FontSize="11" FontWeight="Medium"
+                       VerticalAlignment="Center" />
+            <Border Background="{DynamicResource PulseAccent}"
+                    CornerRadius="8" Padding="6,1" VerticalAlignment="Center"
+                    IsVisible="{Binding Tunnels.Count}">
+              <TextBlock Text="{Binding Tunnels.Count}"
+                         Foreground="{DynamicResource PulseAccentText}"
+                         FontFamily="{DynamicResource PulseTerminalFont}"
+                         FontSize="9" FontWeight="Medium" />
+            </Border>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- Tunnel rows -->
+      <ItemsControl ItemsSource="{Binding Tunnels}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:TunnelItemViewModel">
+            <Border Padding="12,10"
+                    BorderBrush="{DynamicResource PulseBorderPrimary}"
+                    BorderThickness="0,0,0,1">
+              <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="*,Auto,4,Auto,2,Auto">
+                  <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                             Classes.active="{Binding IsActive}">
+                      <Ellipse.Styles>
+                        <Style Selector="Ellipse">
+                          <Setter Property="Fill" Value="{DynamicResource PulseStatusDisconnected}" />
+                        </Style>
+                        <Style Selector="Ellipse.active">
+                          <Setter Property="Fill" Value="{DynamicResource PulseStatusConnected}" />
+                        </Style>
+                      </Ellipse.Styles>
+                    </Ellipse>
+                    <TextBlock Text="{Binding Name}"
+                               Foreground="{DynamicResource PulseTextPrimary}"
+                               FontFamily="{DynamicResource PulseTerminalFont}"
+                               FontSize="11" FontWeight="Medium"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                  <Border Grid.Column="1"
+                          Background="{DynamicResource PulseAccentDim}"
+                          CornerRadius="2" Padding="6,1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding TypeBadge}"
+                               Foreground="{DynamicResource PulseAccent}"
+                               FontFamily="{DynamicResource PulseTerminalFont}"
+                               FontSize="9" FontWeight="Medium" />
+                  </Border>
+                  <!-- Stop (active) / start (stopped) toggle -->
+                  <Button Grid.Column="3" Width="20" Height="20" Padding="0" CornerRadius="3"
+                          Background="Transparent" Cursor="Hand"
+                          IsVisible="{Binding IsActive}"
+                          ToolTip.Tip="停止隧道"
+                          Command="{Binding $parent[ItemsControl].((vm:TunnelPanelViewModel)DataContext).StopTunnelCommand}"
+                          CommandParameter="{Binding Id}">
+                    <pc:LucideIcon Width="10" Height="10"
+                                   Data="{StaticResource Icon.square}"
+                                   Foreground="{DynamicResource PulseTextTertiary}" />
+                  </Button>
+                  <Button Grid.Column="3" Width="20" Height="20" Padding="0" CornerRadius="3"
+                          Background="Transparent" Cursor="Hand"
+                          IsVisible="{Binding !IsActive}"
+                          ToolTip.Tip="启动隧道"
+                          Command="{Binding $parent[ItemsControl].((vm:TunnelPanelViewModel)DataContext).StartTunnelCommand}"
+                          CommandParameter="{Binding Id}">
+                    <pc:LucideIcon Width="10" Height="10"
+                                   Data="{StaticResource Icon.play}"
+                                   Foreground="{DynamicResource PulseStatusConnected}" />
+                  </Button>
+                  <!-- Delete (stops first when active) -->
+                  <Button Grid.Column="5" Width="20" Height="20" Padding="0" CornerRadius="3"
+                          Background="Transparent" Cursor="Hand"
+                          ToolTip.Tip="删除隧道"
+                          Command="{Binding $parent[ItemsControl].((vm:TunnelPanelViewModel)DataContext).DeleteTunnelCommand}"
+                          CommandParameter="{Binding Id}">
+                    <pc:LucideIcon Width="10" Height="10"
+                                   Data="{StaticResource Icon.trash-2}"
+                                   Foreground="{DynamicResource PulseStatusDisconnected}" />
+                  </Button>
+                </Grid>
+                <TextBlock Text="{Binding DisplayRoute}"
+                           Foreground="{DynamicResource PulseTextMuted}"
+                           FontFamily="{DynamicResource PulseTerminalFont}"
+                           FontSize="10" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <!-- New tunnel form (tunNewForm): 类型/本地端口/远程地址 + 取消/创建 -->
+      <StackPanel Margin="12,10" Spacing="8">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <pc:LucideIcon Width="11" Height="11"
+                         Data="{StaticResource Icon.circle-plus}"
+                         Foreground="{DynamicResource PulseAccent}" VerticalAlignment="Center" />
+          <TextBlock Text="新建隧道"
+                     Foreground="{DynamicResource PulseAccent}"
+                     FontFamily="{DynamicResource PulseUiFont}"
+                     FontSize="11" FontWeight="Medium" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <Grid ColumnDefinitions="*,8,110" RowDefinitions="Auto,4,Auto">
+          <TextBlock Grid.Row="0" Grid.Column="0" Classes="form-label" Text="名称" />
+          <TextBox   Grid.Row="2" Grid.Column="0" Text="{Binding NewTunnelName}" PlaceholderText="MySQL 转发" />
+          <TextBlock Grid.Row="0" Grid.Column="2" Classes="form-label" Text="类型" />
+          <ComboBox  Grid.Row="2" Grid.Column="2"
+                     MinHeight="26" FontSize="11"
+                     FontFamily="{DynamicResource PulseTerminalFont}"
+                     HorizontalAlignment="Stretch"
+                     SelectedIndex="{Binding NewTunnelTypeIndex}">
+            <ComboBoxItem Content="本地转发" />
+            <ComboBoxItem Content="远程转发" />
+          </ComboBox>
+        </Grid>
+
+        <!-- 远程主机从资源管理器已保存的会话中选择（用户反馈 #4）；服务端口手动填写。 -->
+        <Grid ColumnDefinitions="80,8,*,8,56" RowDefinitions="Auto,4,Auto">
+          <TextBlock Grid.Row="0" Grid.Column="0" Classes="form-label" Text="本地端口" />
+          <TextBox   Grid.Row="2" Grid.Column="0" Text="{Binding NewLocalPort}" PlaceholderText="3306" />
+          <TextBlock Grid.Row="0" Grid.Column="2" Classes="form-label" Text="远程主机（已保存会话）" />
+          <ComboBox  Grid.Row="2" Grid.Column="2"
+                     MinHeight="26" FontSize="11"
+                     FontFamily="{DynamicResource PulseTerminalFont}"
+                     HorizontalAlignment="Stretch"
+                     PlaceholderText="选择会话"
+                     ItemsSource="{Binding SavedTargets}"
+                     SelectedItem="{Binding SelectedTarget}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="models:SessionProfile">
+                <TextBlock FontFamily="{DynamicResource PulseTerminalFont}" FontSize="11">
+                  <TextBlock.Text>
+                    <MultiBinding StringFormat="{}{0} ({1}@{2})">
+                      <Binding Path="Name" />
+                      <Binding Path="Username" />
+                      <Binding Path="Host" />
+                    </MultiBinding>
+                  </TextBlock.Text>
+                </TextBlock>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <TextBlock Grid.Row="0" Grid.Column="4" Classes="form-label" Text="端口" />
+          <TextBox   Grid.Row="2" Grid.Column="4" Text="{Binding NewRemotePort}" PlaceholderText="port" />
+        </Grid>
+
+        <TextBlock Text="{Binding ErrorMessage}"
+                   Foreground="{DynamicResource PulseError}"
+                   FontFamily="{DynamicResource PulseTerminalFont}" FontSize="9"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+          <Button Padding="10,4" CornerRadius="3" Background="Transparent"
+                  BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1"
+                  Command="{Binding ResetFormCommand}">
+            <TextBlock Text="取消"
+                       Foreground="{DynamicResource PulseTextSecondary}"
+                       FontFamily="{DynamicResource PulseUiFont}" FontSize="11" />
+          </Button>
+          <Button Padding="10,4" CornerRadius="3"
+                  Background="{DynamicResource PulseAccent}"
+                  Command="{Binding CreateTunnelCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <pc:LucideIcon Width="11" Height="11"
+                             Data="{StaticResource Icon.plus}"
+                             Foreground="{DynamicResource PulseAccentText}" VerticalAlignment="Center" />
+              <TextBlock Text="创建"
+                         Foreground="{DynamicResource PulseAccentText}"
+                         FontFamily="{DynamicResource PulseUiFont}" FontSize="11" FontWeight="Medium" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </StackPanel>
+
+    </StackPanel>
+  </Border>
+</UserControl>

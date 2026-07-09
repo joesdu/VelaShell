@@ -2,10 +2,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$SCRIPT_DIR/../src/PulseTerm.App"
+PROJECT_DIR="$SCRIPT_DIR/../src/VelaShell.App"
 RID="osx-arm64"
 OUTPUT_DIR="$SCRIPT_DIR/../publish/$RID"
 
-echo "Building PulseTerm for $RID..."
+echo "Building VelaShell for $RID..."
 dotnet publish "$PROJECT_DIR" -r "$RID" --self-contained -c Release -o "$OUTPUT_DIR"
 echo "Published to $OUTPUT_DIR"

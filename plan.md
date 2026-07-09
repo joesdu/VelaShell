@@ -1,4 +1,4 @@
-# PulseTerm 项目进展与参考文档
+# VelaShell 项目进展与参考文档
 
 > 本文件记录已完成的工作、当前架构、关键文件索引与后续待办,供后续开发参考。
 > 最近更新:2026-07-09(设置项全量接线 §10;§12 P1 六项功能全部实现 —— 本地终端待实机验证未提交,其余已分特性提交)。
@@ -12,7 +12,7 @@
 | MVVM     | ReactiveUI 23.2.28 / ReactiveUI.Avalonia 12.0.3                                                                                                      |
 | 停靠框架 | Dock.Avalonia 12.0.0.2(+ Themes.Fluent、Model.ReactiveUI)                                                                                            |
 | SSH/SFTP | SSH.NET 2025.1.0                                                                                                                                     |
-| 持久化   | **SonnetDB.Core 3.0.0 嵌入式多模型数据库**(`%LocalAppData%/PulseTerm/sonnetdb`;文档集合 + 时序 measurement;旧 JSON 首次运行一次性导入;LiteDB 已移除) |
+| 持久化   | **SonnetDB.Core 3.0.0 嵌入式多模型数据库**(`%LocalAppData%/VelaShell/sonnetdb`;文档集合 + 时序 measurement;旧 JSON 首次运行一次性导入;LiteDB 已移除) |
 | 打包     | Velopack 1.2.0                                                                                                                                       |
 | 测试     | **MSTest 3.11.1**(已从 xUnit 全量迁移;FluentAssertions 已移除)                                                                                       |
 
@@ -20,19 +20,19 @@
 
 ```
 src/
-├── PulseTerm.App/            桌面入口、DI 组合根、视图(axaml)、App 层 ViewModel、停靠、行为
-├── PulseTerm.Presentation/   跨层 ViewModel、连接/隧道工作流服务
-├── PulseTerm.Controls/       自定义控件与设计 token(PulseTokens/PulseShellTokens/Generic)
-├── PulseTerm.Terminal/       ★ 自研 VT 终端引擎 + 自绘渲染控件
-├── PulseTerm.Core/           领域模型、抽象契约、数据存储、SSH/SFTP 封装接口、本地化
-└── PulseTerm.Infrastructure/ SSH.NET/SFTP/隧道实现、存储路径、DI 扩展
+├── VelaShell.App/            桌面入口、DI 组合根、视图(axaml)、App 层 ViewModel、停靠、行为
+├── VelaShell.Presentation/   跨层 ViewModel、连接/隧道工作流服务
+├── VelaShell.Controls/       自定义控件与设计 token(PulseTokens/PulseShellTokens/Generic)
+├── VelaShell.Terminal/       ★ 自研 VT 终端引擎 + 自绘渲染控件
+├── VelaShell.Core/           领域模型、抽象契约、数据存储、SSH/SFTP 封装接口、本地化
+└── VelaShell.Infrastructure/ SSH.NET/SFTP/隧道实现、存储路径、DI 扩展
 tests/  6 个 MSTest 项目(见 §7)
-解决方案文件:仓库根目录 PulseTerm.slnx(注意:曾在 src/ 下,VS 打开后移到了根目录)
+解决方案文件:仓库根目录 VelaShell.slnx(注意:曾在 src/ 下,VS 打开后移到了根目录)
 ```
 
 ## 3. 自研终端引擎(核心,替换了坏掉的 AvaloniaTerminal)
 
-彻底移除第三方 `AvaloniaTerminal 1.0.0-alpha.7`,改为手写 VT 引擎。位于 `src/PulseTerm.Terminal/Emulation/` 与 `Rendering/`:
+彻底移除第三方 `AvaloniaTerminal 1.0.0-alpha.7`,改为手写 VT 引擎。位于 `src/VelaShell.Terminal/Emulation/` 与 `Rendering/`:
 
 - `VtParser.cs` — Paul Williams DEC ANSI 状态机(Ground/Escape/CSI/OSC/DCS…)+ 独立 VT52 语法路径;消费 Unicode 标量,派发到 `IVtActions`。
 - `TerminalScreen.cs` + `TerminalRow/TerminalCell/CellFlags/TerminalColor` — 网格、主/备屏、滚动区域(DECSTBM)、scrollback、光标、tab stops。
@@ -73,13 +73,13 @@ tests/  6 个 MSTest 项目(见 §7)
 - 断言:MSTest `Assert.AreEqual(EXPECTED, ACTUAL)`(期望在前);异常用 `Assert.ThrowsExactly`/`Assert.ThrowsExactlyAsync`;字符串用 `StringAssert`;序列用 `CollectionAssert`。
 - 注意点:`long`/`uint` 期望值要带后缀(`AreEqual(object,object)` 类型严格);`bool?` 用 `x == true`;非记录类型对象等价用 JSON 序列化比较。
 - 测试**不渲染** Avalonia(控件只 `new`),故无需 headless 包;`App.Tests/ModuleInit.cs` 用 `[ModuleInitializer]` 初始化 ReactiveUI 调度器,保留。
-- 集成测试(`SshIntegrationTests` 需 Docker+SSH 服务器、`CrossPlatformPublishTests` 需 `PULSETERM_PUBLISH_TESTS=1`)按环境早退跳过。
+- 集成测试(`SshIntegrationTests` 需 Docker+SSH 服务器、`CrossPlatformPublishTests` 需 `VELASHELL_PUBLISH_TESTS=1`)按环境早退跳过。
 
 ## 8. 关键约定 / 已知坑
 
-- 构建/测试用根目录 `PulseTerm.slnx`。运行 App 后 DLL 被占用会导致构建报"文件被锁定"——先停掉运行实例。
+- 构建/测试用根目录 `VelaShell.slnx`。运行 App 后 DLL 被占用会导致构建报"文件被锁定"——先停掉运行实例。
 - Bash 工具用 Git Bash;不要用 `Read`/`Grep` 直接读 `.pen`(加密,只能走 pencil MCP)。
-- 记忆索引见 `C:\Users\Joe\.claude\projects\G--PulseTerm\memory\`(terminal-engine、docking、sonnetdb-storage、connect-flow)。
+- 记忆索引见 `C:\Users\Joe\.claude\projects\G--VelaShell\memory\`(terminal-engine、docking、sonnetdb-storage、connect-flow)。
 - SonnetDB 要点:`Tsdb.Open(new TsdbOptions{RootDirectory})`;文档 `db.Documents.Open(name)` 的 Upsert/Get/Scan/Delete;时序 `db.Write(Point.Create(...))` + `SqlExecutor.Execute` SELECT;`FieldType` 在 `SonnetDB.Storage.Format`(是 `Int64` 不是 `Long`);**时序 tag 值不允许空串**(临时连接不写 profile_id);仓储加密必须写副本、不可原地改传入的 profile(内存明文用于活动连接)。
 
 ## 9. 2026-07-08 完成情况(6 次提交,514 测试全绿)

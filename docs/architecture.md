@@ -1,14 +1,14 @@
-# PulseTerm Architecture Blueprint
+# VelaShell Architecture Blueprint
 
 ## Recommended Baseline
 
 ```text
-PulseTerm.App            -> Desktop entry point and composition root
-PulseTerm.Presentation   -> ViewModels, navigation, orchestration
-PulseTerm.Controls       -> Custom controls, styles, tokens, behaviors
-PulseTerm.Terminal       -> Terminal engine, parser, renderer, interaction model
-PulseTerm.Core           -> Stable domain models and contracts
-PulseTerm.Infrastructure -> SSH, storage, platform integration, background work
+VelaShell.App            -> Desktop entry point and composition root
+VelaShell.Presentation   -> ViewModels, navigation, orchestration
+VelaShell.Controls       -> Custom controls, styles, tokens, behaviors
+VelaShell.Terminal       -> Terminal engine, parser, renderer, interaction model
+VelaShell.Core           -> Stable domain models and contracts
+VelaShell.Infrastructure -> SSH, storage, platform integration, background work
 ```
 
 ## Dependency Direction
@@ -30,7 +30,7 @@ Infrastructure -> Terminal (only if an adapter truly belongs here)
 Terminal -> Core
 ```
 
-## Why Split Out `PulseTerm.Controls`
+## Why Split Out `VelaShell.Controls`
 
 - The design file contains many reusable surfaces instead of one-off screens.
 - Theme tokens, shared panel shells, session tree items, terminal tab strip, transfer rows, and tunnel cards should evolve independently from the application bootstrap.
@@ -71,7 +71,7 @@ This split makes it easier to support:
 
 All persistence goes through **SonnetDB** (https://github.com/IoTSharp/SonnetDB), used as an
 **embedded** multi-model database (`SonnetDB.Core`, opened via `Tsdb.Open` under
-`%LocalAppData%/PulseTerm/sonnetdb`). Legacy JSON files (`sessions.json`, `settings.json`,
+`%LocalAppData%/VelaShell/sonnetdb`). Legacy JSON files (`sessions.json`, `settings.json`,
 `state.json`, `known_hosts.json`, `quick-commands.json`) are imported once on first run.
 
 - **Document collections** (JSON documents) hold business/config data:

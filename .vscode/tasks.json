@@ -7,7 +7,7 @@
             "type": "process",
             "args": [
                 "build",
-                "${workspaceFolder}/src/PulseTerm.App/PulseTerm.App.csproj",
+                "${workspaceFolder}/src/VelaShell.App/VelaShell.App.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary;ForceNoAlign"
             ],
@@ -19,7 +19,7 @@
             "type": "process",
             "args": [
                 "publish",
-                "${workspaceFolder}/src/PulseTerm.App/PulseTerm.App.csproj",
+                "${workspaceFolder}/src/VelaShell.App/VelaShell.App.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary;ForceNoAlign"
             ],
@@ -33,7 +33,7 @@
                 "watch",
                 "run",
                 "--project",
-                "${workspaceFolder}/src/PulseTerm.App/PulseTerm.App.csproj"
+                "${workspaceFolder}/src/VelaShell.App/VelaShell.App.csproj"
             ],
             "problemMatcher": "$msCompile"
         }

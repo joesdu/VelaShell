@@ -1,4 +1,4 @@
-# PulseTerm Architectural Decisions
+# VelaShell Architectural Decisions
 
 ## Technology Decisions
 
@@ -125,7 +125,7 @@ public static string PropertyName =>
 - Pattern: `GetString(key) ?? key`
 
 ### File Organization
-**Decision**: Place resources in `src/PulseTerm.Core/Resources/`, localization service in `Localization/`
+**Decision**: Place resources in `src/VelaShell.Core/Resources/`, localization service in `Localization/`
 
 **Rationale**:
 - Resources are content files, separate from code
@@ -163,7 +163,7 @@ public static string PropertyName =>
 
 ### Decision: ConnectionInfo Namespace Collision Handling
 
-**Problem**: `Renci.SshNet.ConnectionInfo` conflicts with `PulseTerm.Core.Models.ConnectionInfo`
+**Problem**: `Renci.SshNet.ConnectionInfo` conflicts with `VelaShell.Core.Models.ConnectionInfo`
 
 **Solution**: Fully qualify parameter types in interfaces/methods:
 ```csharp
@@ -186,11 +186,11 @@ Task<SshSession> ConnectAsync(Models.ConnectionInfo connectionInfo, ...)
 - ✅ Works on all platforms without native dependencies
 - ✅ Sufficient performance for expected data volume (<1000 sessions)
 
-**Storage Location**: `~/.pulseterm/` (cross-platform via `Environment.SpecialFolder.UserProfile`)
+**Storage Location**: `~/.velashell/` (cross-platform via `Environment.SpecialFolder.UserProfile`)
 
 **File Structure**:
 ```
-~/.pulseterm/
+~/.velashell/
 ├── sessions.json    # Sessions + groups (combined)
 ├── settings.json    # User preferences
 ├── state.json       # Runtime state
@@ -239,11 +239,11 @@ Task<SshSession> ConnectAsync(Models.ConnectionInfo connectionInfo, ...)
 ```csharp
 public SessionRepository(JsonDataStore dataStore, string? dataPath = null)
 ```
-- Production: `dataPath = null` → uses `~/.pulseterm/`
+- Production: `dataPath = null` → uses `~/.velashell/`
 - Tests: Pass temp directory → isolated from production data
 
 **IDisposable Pattern in Tests**:
-- Each test gets unique temp directory (`pulseterm_test_{GUID}`)
+- Each test gets unique temp directory (`velashell_test_{GUID}`)
 - Cleanup in `Dispose()` removes test data
 - Prevents test interference (was causing 3 failures before fix)
 
@@ -341,7 +341,7 @@ public TunnelService(
 **Decision**: Use `SourceList<TunnelInfo>` with `AsObservableList()` (matching `SshConnectionService` pattern).
 
 **Rationale**:
-- Consistent with existing PulseTerm observable patterns
+- Consistent with existing VelaShell observable patterns
 - Automatic UI updates when tunnels are created/stopped
 - Per-session isolation via `Dictionary<Guid, SourceList<TunnelInfo>>`
 

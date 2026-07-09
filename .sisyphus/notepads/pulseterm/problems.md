@@ -1,4 +1,4 @@
-# PulseTerm Unresolved Blockers
+# VelaShell Unresolved Blockers
 
 ## Current Blockers
 
@@ -25,7 +25,7 @@ Task 5 (Terminal Spike - CRITICAL PATH) has timed out twice (10 minutes each att
 - AvaloniaTerminal package NOT listed in plan's Task 1 package list
 - Plan references AvaloniaTerminal 1.0.0-alpha.7 but doesn't specify when/how to add it
 - Agent likely blocked trying to implement terminal emulation from scratch without library
-- No source files created in `src/PulseTerm.Terminal/` suggests agent stalled during planning/research phase
+- No source files created in `src/VelaShell.Terminal/` suggests agent stalled during planning/research phase
 
 ### Impact
 - **CRITICAL PATH BLOCKED**: Tasks 8, 9, 12 depend on Task 5 completion
@@ -35,7 +35,7 @@ Task 5 (Terminal Spike - CRITICAL PATH) has timed out twice (10 minutes each att
 ### Proposed Solutions
 
 #### Option A: Add AvaloniaTerminal Package Manually + Retry
-1. Add `<PackageReference Include="AvaloniaTerminal" Version="1.0.0-alpha.7" />` to `src/PulseTerm.Terminal/PulseTerm.Terminal.csproj`
+1. Add `<PackageReference Include="AvaloniaTerminal" Version="1.0.0-alpha.7" />` to `src/VelaShell.Terminal/VelaShell.Terminal.csproj`
 2. Research AvaloniaTerminal API and create minimal working example
 3. Retry delegation with specific implementation guidance
 

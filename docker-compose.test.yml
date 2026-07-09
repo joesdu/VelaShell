@@ -1,8 +1,8 @@
 services:
   openssh-server:
     image: linuxserver/openssh-server:latest
-    container_name: pulseterm-test-ssh
-    hostname: pulseterm-test-ssh
+    container_name: velashell-test-ssh
+    hostname: velashell-test-ssh
     environment:
       - PUID=1000
       - PGID=1000

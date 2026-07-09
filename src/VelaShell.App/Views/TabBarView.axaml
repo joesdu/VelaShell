@@ -1,0 +1,158 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:VelaShell.Presentation.ViewModels"
+             xmlns:res="clr-namespace:VelaShell.Core.Resources;assembly=VelaShell.Core"
+             mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="36"
+             x:Class="VelaShell.App.Views.TabBarView"
+             x:DataType="vm:TabBarViewModel">
+
+  <!-- Tab bar: bg-page, tabs bottom-aligned -->
+  <Border Background="{DynamicResource PulseBgPage}"
+          Height="36">
+    <DockPanel VerticalAlignment="Bottom">
+
+      <!-- Tab strip (bottom-aligned) -->
+      <ItemsControl ItemsSource="{Binding Tabs}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Horizontal"
+                        VerticalAlignment="Bottom" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:TabViewModel">
+            <!-- Tab button: active vs inactive -->
+            <Button Background="Transparent"
+                    Classes.active="{Binding IsActive}"
+                    Padding="0"
+                    CornerRadius="0"
+                    Height="32"
+                    MinWidth="120"
+                    MaxWidth="200"
+                    VerticalAlignment="Bottom"
+                    Cursor="Hand"
+                    Command="{Binding $parent[ItemsControl].((vm:TabBarViewModel)DataContext).SelectTabCommand}"
+                    CommandParameter="{Binding}">
+              <Button.Styles>
+                <!-- Active tab -->
+                <Style Selector="Button.active">
+                  <Setter Property="Background" Value="{DynamicResource PulseBgTerminal}" />
+                </Style>
+                <!-- Inactive tab -->
+                <Style Selector="Button:not(.active)">
+                  <Setter Property="Background" Value="{DynamicResource PulseTabInactiveBg}" />
+                </Style>
+                <Style Selector="Button:pointerover">
+                  <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+                </Style>
+              </Button.Styles>
+
+              <!-- Top accent border for active, invisible for inactive -->
+              <Border BorderThickness="0,2,0,0"
+                      Classes.active-border="{Binding IsActive}"
+                      Padding="14,0">
+                <Border.Styles>
+                  <Style Selector="Border.active-border">
+                    <Setter Property="BorderBrush" Value="{DynamicResource PulseAccent}" />
+                  </Style>
+                  <Style Selector="Border:not(.active-border)">
+                    <Setter Property="BorderBrush" Value="Transparent" />
+                  </Style>
+                </Border.Styles>
+                <Grid ColumnDefinitions="Auto,*,Auto"
+                      VerticalAlignment="Center">
+
+                  <!-- Status dot(收到 BEL 的后台标签以强调色脉冲闪烁提醒) -->
+                  <Ellipse Grid.Column="0"
+                           Width="7" Height="7"
+                           Margin="0,0,8,0"
+                           VerticalAlignment="Center"
+                           Classes.bell-alert="{Binding HasBellAlert}"
+                           Fill="{DynamicResource PulseStatusDisconnected}">
+                    <Ellipse.Styles>
+                      <Style Selector="Ellipse.bell-alert">
+                        <Setter Property="Fill" Value="{DynamicResource PulseAccent}" />
+                        <Style.Animations>
+                          <Animation Duration="0:0:0.9" IterationCount="INFINITE">
+                            <KeyFrame Cue="0%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+                            <KeyFrame Cue="50%"><Setter Property="Opacity" Value="0.25" /></KeyFrame>
+                            <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+                          </Animation>
+                        </Style.Animations>
+                      </Style>
+                    </Ellipse.Styles>
+                  </Ellipse>
+
+                  <!-- Title -->
+                  <TextBlock Grid.Column="1"
+                             Classes.active-text="{Binding IsActive}"
+                             Text="{Binding Title}"
+                             FontFamily="{DynamicResource PulseTerminalFont}"
+                             FontSize="11"
+                             VerticalAlignment="Center"
+                             TextTrimming="CharacterEllipsis"
+                             Margin="0,0,8,0">
+                    <TextBlock.Styles>
+                      <Style Selector="TextBlock.active-text">
+                        <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
+                        <Setter Property="FontWeight" Value="SemiBold" />
+                      </Style>
+                      <Style Selector="TextBlock:not(.active-text)">
+                        <Setter Property="Foreground" Value="{DynamicResource PulseTextTertiary}" />
+                        <Setter Property="FontWeight" Value="Normal" />
+                      </Style>
+                    </TextBlock.Styles>
+                  </TextBlock>
+
+                  <!-- Close button -->
+                  <Button Grid.Column="2"
+                          Command="{Binding $parent[ItemsControl].((vm:TabBarViewModel)DataContext).CloseTabCommand}"
+                          CommandParameter="{Binding}"
+                          ToolTip.Tip="{x:Static res:Strings.CloseTab}"
+                          Background="Transparent"
+                          Padding="2"
+                          Width="16" Height="16"
+                          VerticalAlignment="Center"
+                          Cursor="Hand">
+                    <PathIcon Data="M18 6L6 18M6 6l12 12"
+                              Width="10" Height="10"
+                              Foreground="{DynamicResource PulseTextTertiary}" />
+                  </Button>
+
+                </Grid>
+              </Border>
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <!-- Add tab button (32x32, bottom-aligned) -->
+      <Button DockPanel.Dock="Left"
+              Command="{Binding AddTabCommand}"
+              ToolTip.Tip="{x:Static res:Strings.NewTab}"
+              Background="Transparent"
+              Width="32" Height="32"
+              Padding="0"
+              VerticalAlignment="Bottom"
+              HorizontalContentAlignment="Center"
+              VerticalContentAlignment="Center"
+              Cursor="Hand">
+        <PathIcon Data="M12 5v14M5 12h14"
+                  Width="14" Height="14"
+                  Foreground="{DynamicResource PulseTextTertiary}" />
+      </Button>
+
+      <!-- Spacer fills remaining width with bg-page / spacer for Window controls -->
+      <Border HorizontalAlignment="Stretch"
+              Height="32"
+              VerticalAlignment="Bottom"
+              Background="{DynamicResource PulseTabInactiveBg}">
+          <!-- Optional: reserve space for Windows title bar buttons -->
+          <Border.IsHitTestVisible>False</Border.IsHitTestVisible>
+      </Border>
+
+    </DockPanel>
+  </Border>
+</UserControl>

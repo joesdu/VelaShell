@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\VelaShell.Core\VelaShell.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SonnetDB.Core" Version="3.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9" />
+    <PackageReference Include="SSH.NET" Version="2025.1.0" />
+    <!-- DPAPI(CurrentUser)包裹本地 AES 密钥文件;仅 Windows 运行时可用,其余平台已代码守卫。 -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.9" />
+  </ItemGroup>
+
+</Project>

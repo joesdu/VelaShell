@@ -1,8 +1,8 @@
-# PulseTerm — Full-Featured SSH Terminal Client
+# VelaShell — Full-Featured SSH Terminal Client
 
 ## TL;DR
 
-> **Quick Summary**: Build a complete, cross-platform SSH terminal management desktop application using .NET 8 + Avalonia UI 11.x + ReactiveUI, implementing ALL features from the PulseTerm Penpot design (sidebar session tree, multi-tab terminal, SFTP file browser, file transfer, tunnel management, quick commands, status bar).
+> **Quick Summary**: Build a complete, cross-platform SSH terminal management desktop application using .NET 8 + Avalonia UI 11.x + ReactiveUI, implementing ALL features from the VelaShell Penpot design (sidebar session tree, multi-tab terminal, SFTP file browser, file transfer, tunnel management, quick commands, status bar).
 > 
 > **Deliverables**:
 > - Cross-platform desktop app (Windows, macOS, Linux)
@@ -24,7 +24,7 @@
 ## Context
 
 ### Original Request
-Build a production-ready SSH terminal client (like Termius/FinalShell) matching the PulseTerm-zh.pen design file, using .NET 8 + Avalonia UI. All features from the design must be implemented.
+Build a production-ready SSH terminal client (like Termius/FinalShell) matching the VelaShell-zh.pen design file, using .NET 8 + Avalonia UI. All features from the design must be implemented.
 
 ### Interview Summary
 **Key Discussions**:
@@ -62,24 +62,24 @@ Build a production-ready SSH terminal client (like Termius/FinalShell) matching 
 ## Work Objectives
 
 ### Core Objective
-Build a complete SSH terminal management desktop application matching the PulseTerm Penpot design, with robust terminal emulation, session management, SFTP file operations, tunnel management, and cross-platform packaging.
+Build a complete SSH terminal management desktop application matching the VelaShell Penpot design, with robust terminal emulation, session management, SFTP file operations, tunnel management, and cross-platform packaging.
 
 ### Concrete Deliverables
-- `src/PulseTerm.App/` — Avalonia UI application project
-- `src/PulseTerm.Core/` — Core logic (SSH, models, services)
-- `src/PulseTerm.Terminal/` — Terminal emulation bridge + custom scrollback
-- `tests/PulseTerm.Core.Tests/` — Core unit tests
-- `tests/PulseTerm.Terminal.Tests/` — Terminal tests
-- `tests/PulseTerm.App.Tests/` — UI/ViewModel tests
+- `src/VelaShell.App/` — Avalonia UI application project
+- `src/VelaShell.Core/` — Core logic (SSH, models, services)
+- `src/VelaShell.Terminal/` — Terminal emulation bridge + custom scrollback
+- `tests/VelaShell.Core.Tests/` — Core unit tests
+- `tests/VelaShell.Terminal.Tests/` — Terminal tests
+- `tests/VelaShell.App.Tests/` — UI/ViewModel tests
 - Cross-platform binaries via `dotnet publish` for win-x64, osx-arm64, linux-x64
 - Velopack auto-update integration
 
 ### Definition of Done
-- [ ] `dotnet build src/PulseTerm.sln --warnaserror` → Build succeeded, 0 warnings, 0 errors
+- [ ] `dotnet build src/VelaShell.sln --warnaserror` → Build succeeded, 0 warnings, 0 errors
 - [ ] `dotnet test tests/ --logger "console;verbosity=normal"` → All tests pass
-- [ ] `dotnet publish src/PulseTerm.App -r win-x64 --self-contained -c Release` → Produces runnable binary
-- [ ] `dotnet publish src/PulseTerm.App -r osx-arm64 --self-contained -c Release` → Produces runnable binary
-- [ ] `dotnet publish src/PulseTerm.App -r linux-x64 --self-contained -c Release` → Produces runnable binary
+- [ ] `dotnet publish src/VelaShell.App -r win-x64 --self-contained -c Release` → Produces runnable binary
+- [ ] `dotnet publish src/VelaShell.App -r osx-arm64 --self-contained -c Release` → Produces runnable binary
+- [ ] `dotnet publish src/VelaShell.App -r linux-x64 --self-contained -c Release` → Produces runnable binary
 - [ ] All 7 UI modules from design file are implemented and functional
 - [ ] Dark + Light themes match design tokens
 - [ ] zh-CN + en language support working
@@ -261,20 +261,20 @@ Wave 9 (Final):
 - [ ] 1. Project Scaffold + Build System + Test Infrastructure
 
   **What to do**:
-  - Create .NET 8 solution `PulseTerm.sln` in `src/`
+  - Create .NET 8 solution `VelaShell.sln` in `src/`
   - Create projects:
-    - `src/PulseTerm.App/` — Avalonia application (net8.0, AvaloniaApplication output)
-    - `src/PulseTerm.Core/` — Class library (net8.0)
-    - `src/PulseTerm.Terminal/` — Class library (net8.0)
-    - `tests/PulseTerm.Core.Tests/` — xUnit test project
-    - `tests/PulseTerm.Terminal.Tests/` — xUnit test project
-    - `tests/PulseTerm.App.Tests/` — xUnit test project with Avalonia.Headless.XUnit
+    - `src/VelaShell.App/` — Avalonia application (net8.0, AvaloniaApplication output)
+    - `src/VelaShell.Core/` — Class library (net8.0)
+    - `src/VelaShell.Terminal/` — Class library (net8.0)
+    - `tests/VelaShell.Core.Tests/` — xUnit test project
+    - `tests/VelaShell.Terminal.Tests/` — xUnit test project
+    - `tests/VelaShell.App.Tests/` — xUnit test project with Avalonia.Headless.XUnit
   - Install NuGet packages:
-    - PulseTerm.App: `Avalonia`, `Avalonia.Desktop`, `Avalonia.Themes.Fluent`, `Avalonia.ReactiveUI`, `Microsoft.Extensions.DependencyInjection`
-    - PulseTerm.Core: `SSH.NET`, `System.Text.Json`, `ReactiveUI`, `Microsoft.Extensions.Logging.Abstractions`
-    - PulseTerm.Terminal: `Avalonia`, `ReactiveUI`
+    - VelaShell.App: `Avalonia`, `Avalonia.Desktop`, `Avalonia.Themes.Fluent`, `Avalonia.ReactiveUI`, `Microsoft.Extensions.DependencyInjection`
+    - VelaShell.Core: `SSH.NET`, `System.Text.Json`, `ReactiveUI`, `Microsoft.Extensions.Logging.Abstractions`
+    - VelaShell.Terminal: `Avalonia`, `ReactiveUI`
     - Test projects: `xunit`, `xunit.runner.visualstudio`, `Microsoft.NET.Test.Sdk`, `NSubstitute`, `FluentAssertions`
-    - PulseTerm.App.Tests: additionally `Avalonia.Headless.XUnit`
+    - VelaShell.App.Tests: additionally `Avalonia.Headless.XUnit`
   - Configure project references: App → Core, Terminal; Tests → corresponding src projects
   - Create `docker-compose.test.yml` with `linuxserver/openssh-server` for SSH integration tests
   - Create `.editorconfig` with C# coding standards
@@ -328,7 +328,7 @@ Wave 9 (Final):
 
   **Acceptance Criteria**:
 
-  - [ ] `dotnet build src/PulseTerm.sln --warnaserror` → Build succeeded, 0 warnings, 0 errors
+  - [ ] `dotnet build src/VelaShell.sln --warnaserror` → Build succeeded, 0 warnings, 0 errors
   - [ ] `dotnet test tests/ --logger "console;verbosity=normal"` → 3+ smoke tests pass (one per test project)
   - [ ] Solution has 3 src projects and 3 test projects with correct references
   - [ ] All listed NuGet packages installed at latest stable versions
@@ -342,12 +342,12 @@ Wave 9 (Final):
     Tool: Bash
     Preconditions: .NET 8 SDK installed
     Steps:
-      1. Run: dotnet build src/PulseTerm.sln --warnaserror
+      1. Run: dotnet build src/VelaShell.sln --warnaserror
       2. Assert: exit code 0, output contains "Build succeeded", "0 Warning(s)", "0 Error(s)"
       3. Run: dotnet test tests/ --logger "console;verbosity=normal"
       4. Assert: exit code 0, output contains "Passed!" for each test project
-      5. Run: dotnet publish src/PulseTerm.App -r osx-arm64 --self-contained -c Release --no-build || dotnet publish src/PulseTerm.App -r osx-arm64 --self-contained -c Release
-      6. Assert: publish directory contains PulseTerm.App executable
+      5. Run: dotnet publish src/VelaShell.App -r osx-arm64 --self-contained -c Release --no-build || dotnet publish src/VelaShell.App -r osx-arm64 --self-contained -c Release
+      6. Assert: publish directory contains VelaShell.App executable
     Expected Result: Clean build, all smoke tests pass, publishable binary produced
     Evidence: Build + test output captured
 
@@ -362,22 +362,22 @@ Wave 9 (Final):
   ```
 
   **Commit**: YES
-  - Message: `chore: scaffold PulseTerm solution with test infrastructure`
+  - Message: `chore: scaffold VelaShell solution with test infrastructure`
   - Files: `src/`, `tests/`, `docker-compose.test.yml`, `.editorconfig`, `.gitignore`
-  - Pre-commit: `dotnet build src/PulseTerm.sln --warnaserror && dotnet test tests/`
+  - Pre-commit: `dotnet build src/VelaShell.sln --warnaserror && dotnet test tests/`
 
 ---
 
 - [ ] 2. SSH Connection Service + Wrapper Interfaces + Tests
 
   **What to do**:
-  - Create `ISshClientWrapper` interface in `PulseTerm.Core/Ssh/`:
+  - Create `ISshClientWrapper` interface in `VelaShell.Core/Ssh/`:
     - `ConnectAsync(CancellationToken)`, `Disconnect()`, `IsConnected`, `CreateShellStream(...)`, `AddForwardedPort(...)`, `Dispose()`
   - Create `SshClientWrapper` implementing `ISshClientWrapper` wrapping `SSH.NET.SshClient`
   - Create `ISftpClientWrapper` interface:
     - `ConnectAsync(CancellationToken)`, `ListDirectoryAsync(path)`, `UploadFileAsync(stream, remotePath, progress)`, `DownloadFileAsync(remotePath, stream, progress)`, `DeleteFileAsync(path)`, `GetStatusAsync(path)`, `Dispose()`
   - Create `SftpClientWrapper` implementing `ISftpClientWrapper`
-  - Create `ConnectionInfo` model in `PulseTerm.Core/Models/`:
+  - Create `ConnectionInfo` model in `VelaShell.Core/Models/`:
     - `Host`, `Port`, `Username`, `AuthMethod` (enum: Password, PrivateKey), `Password`, `PrivateKeyPath`, `PrivateKeyPassphrase`
   - Create `ISshConnectionService` interface:
     - `ConnectAsync(ConnectionInfo)` → returns `SshSession`
@@ -388,7 +388,7 @@ Wave 9 (Final):
   - Create `SshSession` model: `Id`, `ConnectionInfo`, `Status` (enum: Connected, Connecting, Disconnected, Error), `ConnectedAt`, `SshClientWrapper`, `SftpClientWrapper`
   - Support auth methods: Password, PrivateKey (RSA, ED25519, ECDSA via `PrivateKeyFile`)
   - Handle connection errors: `SshAuthenticationException`, `SshConnectionException`, `SocketException`, timeouts
-  - Create `Utf8StreamDecoder` in `PulseTerm.Core/Ssh/` — buffers incomplete multi-byte sequences between reads
+  - Create `Utf8StreamDecoder` in `VelaShell.Core/Ssh/` — buffers incomplete multi-byte sequences between reads
   - RED: Write tests for all above → FAIL
   - GREEN: Implement → PASS
   - REFACTOR: Clean up
@@ -446,7 +446,7 @@ Wave 9 (Final):
     Tool: Bash
     Preconditions: Solution builds, NSubstitute available
     Steps:
-      1. Run: dotnet test tests/PulseTerm.Core.Tests --filter "Category=SshConnection" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.Core.Tests --filter "Category=SshConnection" --logger "console;verbosity=detailed"
       2. Assert: exit code 0
       3. Assert: output shows 8+ tests passed, 0 failed
       4. Assert: output includes test names for password auth, key auth, auth failure, connection refused, disconnect, concurrent sessions, utf8 decoder
@@ -457,9 +457,9 @@ Wave 9 (Final):
     Tool: ast_grep_search
     Preconditions: Code written
     Steps:
-      1. Search: pattern "new SshClient($$$)" in C# files under src/PulseTerm.Core/
+      1. Search: pattern "new SshClient($$$)" in C# files under src/VelaShell.Core/
       2. Assert: only found in SshClientWrapper.cs, nowhere else
-      3. Search: pattern "new SftpClient($$$)" in C# files under src/PulseTerm.Core/
+      3. Search: pattern "new SftpClient($$$)" in C# files under src/VelaShell.Core/
       4. Assert: only found in SftpClientWrapper.cs, nowhere else
     Expected Result: Wrapper pattern enforced — no leaky abstractions
     Evidence: ast_grep_search results
@@ -468,7 +468,7 @@ Wave 9 (Final):
     Tool: Bash
     Preconditions: Tests exist for Utf8StreamDecoder
     Steps:
-      1. Run: dotnet test tests/PulseTerm.Core.Tests --filter "FullyQualifiedName~Utf8StreamDecoder" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.Core.Tests --filter "FullyQualifiedName~Utf8StreamDecoder" --logger "console;verbosity=detailed"
       2. Assert: tests for split 3-byte CJK characters pass (e.g., "你" = 0xE4 0xBD 0xA0 split across two reads)
     Expected Result: Decoder buffers partial sequences correctly
     Evidence: Test output captured
@@ -476,21 +476,21 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(ssh): add SSH connection service with wrapper interfaces`
-  - Files: `src/PulseTerm.Core/Ssh/`, `src/PulseTerm.Core/Models/`, `tests/PulseTerm.Core.Tests/Ssh/`
-  - Pre-commit: `dotnet test tests/PulseTerm.Core.Tests --filter "Category=SshConnection"`
+  - Files: `src/VelaShell.Core/Ssh/`, `src/VelaShell.Core/Models/`, `tests/VelaShell.Core.Tests/Ssh/`
+  - Pre-commit: `dotnet test tests/VelaShell.Core.Tests --filter "Category=SshConnection"`
 
 ---
 
 - [ ] 3. JSON Data Store + Session/Config Models + Tests
 
   **What to do**:
-  - Create `JsonDataStore` in `PulseTerm.Core/Data/`:
+  - Create `JsonDataStore` in `VelaShell.Core/Data/`:
     - `LoadAsync<T>(string filePath)` → deserializes JSON file to T
     - `SaveAsync<T>(string filePath, T data)` → serializes T to JSON file
     - File locking: `SemaphoreSlim(1,1)` + `FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None)`
     - Retry: 3× with exponential backoff on `IOException`
     - Uses `System.Text.Json` with `JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }`
-  - Create models in `PulseTerm.Core/Models/`:
+  - Create models in `VelaShell.Core/Models/`:
     - `ServerGroup` — `Id`, `Name`, `Icon`, `SortOrder`, `Sessions` (list)
     - `SessionProfile` — `Id`, `Name`, `Host`, `Port`, `Username`, `AuthMethod`, `Password`, `PrivateKeyPath`, `PrivateKeyPassphrase`, `GroupId`, `LastConnectedAt`, `Tags`
     - `AppSettings` — `Language` (string, default "en"), `Theme` (string, default "dark"), `TerminalFont` (default "JetBrains Mono"), `TerminalFontSize` (default 14), `ScrollbackLines` (default 10000), `DefaultPort` (default 22)
@@ -498,10 +498,10 @@ Wave 9 (Final):
     - `KnownHost` — `HostKey`, `Fingerprint`, `Algorithm`, `FirstSeenAt`, `LastSeenAt`
   - Create `ISessionRepository` interface:
     - `GetAllGroupsAsync()`, `GetSessionAsync(id)`, `SaveSessionAsync(SessionProfile)`, `DeleteSessionAsync(id)`, `SaveGroupAsync(ServerGroup)`, `DeleteGroupAsync(id)`
-  - Create `SessionRepository` using `JsonDataStore` — stores to `~/.pulseterm/sessions.json`
+  - Create `SessionRepository` using `JsonDataStore` — stores to `~/.velashell/sessions.json`
   - Create `ISettingsService`:
     - `GetSettingsAsync()`, `SaveSettingsAsync(AppSettings)`, `GetStateAsync()`, `SaveStateAsync(AppState)`
-  - Create `SettingsService` using `JsonDataStore` — stores to `~/.pulseterm/settings.json` and `~/.pulseterm/state.json`
+  - Create `SettingsService` using `JsonDataStore` — stores to `~/.velashell/settings.json` and `~/.velashell/state.json`
   - RED: Write tests → FAIL
   - GREEN: Implement → PASS
   - REFACTOR: Clean up
@@ -539,7 +539,7 @@ Wave 9 (Final):
 
   - [ ] `dotnet test --filter "Category=DataStore"` → PASS (minimum 10 tests)
   - [ ] Tests cover: save + load roundtrip, concurrent save (SemaphoreSlim prevents corruption), file not found → returns default, invalid JSON → graceful error, all model properties serialize/deserialize correctly
-  - [ ] Data stored in `~/.pulseterm/` directory (or platform-appropriate equivalent)
+  - [ ] Data stored in `~/.velashell/` directory (or platform-appropriate equivalent)
   - [ ] `JsonDataStore` uses `FileShare.None` for exclusive write access
 
   **Agent-Executed QA Scenarios**:
@@ -549,7 +549,7 @@ Wave 9 (Final):
     Tool: Bash
     Preconditions: Solution builds, tests written
     Steps:
-      1. Run: dotnet test tests/PulseTerm.Core.Tests --filter "Category=DataStore" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.Core.Tests --filter "Category=DataStore" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 10+ tests pass
       3. Assert: tests include "SaveAndLoad", "ConcurrentSave", "FileNotFound", "InvalidJson"
     Expected Result: All data store tests pass
@@ -559,7 +559,7 @@ Wave 9 (Final):
     Tool: Bash
     Preconditions: Tests exist for model serialization
     Steps:
-      1. Run: dotnet test tests/PulseTerm.Core.Tests --filter "FullyQualifiedName~Models" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.Core.Tests --filter "FullyQualifiedName~Models" --logger "console;verbosity=detailed"
       2. Assert: SessionProfile, ServerGroup, AppSettings all roundtrip correctly
       3. Assert: camelCase property naming in JSON output
     Expected Result: All model serialization tests pass
@@ -568,15 +568,15 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(core): add JSON data store and session models`
-  - Files: `src/PulseTerm.Core/Data/`, `src/PulseTerm.Core/Models/`, `tests/PulseTerm.Core.Tests/Data/`, `tests/PulseTerm.Core.Tests/Models/`
-  - Pre-commit: `dotnet test tests/PulseTerm.Core.Tests --filter "Category=DataStore"`
+  - Files: `src/VelaShell.Core/Data/`, `src/VelaShell.Core/Models/`, `tests/VelaShell.Core.Tests/Data/`, `tests/VelaShell.Core.Tests/Models/`
+  - Pre-commit: `dotnet test tests/VelaShell.Core.Tests --filter "Category=DataStore"`
 
 ---
 
 - [ ] 4. i18n Infrastructure (.resx Setup)
 
   **What to do**:
-  - Create `PulseTerm.Core/Resources/` directory
+  - Create `VelaShell.Core/Resources/` directory
   - Create `Strings.resx` (English — default) with PublicResXFileCodeGenerator
   - Create `Strings.zh-CN.resx` (Chinese)
   - Add initial string resources for core UI elements:
@@ -590,7 +590,7 @@ Wave 9 (Final):
     - Settings: "Language", "Theme", "Font", "Font Size", "Scrollback Lines"
     - Auth: "Password", "Private Key", "Username", "Host", "Port", "Host Key Verification", "Trust This Host"
   - Add corresponding Chinese translations in `Strings.zh-CN.resx`
-  - Configure `PulseTerm.Core.csproj` to generate strongly-typed resource accessor class
+  - Configure `VelaShell.Core.csproj` to generate strongly-typed resource accessor class
   - Create `ILocalizationService` with `GetString(key)` and `CurrentLanguage` property
   - Create `LocalizationService` that reads from generated `Strings` class based on `CultureInfo`
   - Register in DI
@@ -626,7 +626,7 @@ Wave 9 (Final):
 
   **Acceptance Criteria**:
 
-  - [ ] `dotnet build src/PulseTerm.Core --warnaserror` → PASS
+  - [ ] `dotnet build src/VelaShell.Core --warnaserror` → PASS
   - [ ] `Strings.resx` and `Strings.zh-CN.resx` exist with 40+ string entries each
   - [ ] Generated `Strings` class is accessible from code: `Strings.QuickConnect` returns "Quick Connect"
   - [ ] Tests pass: default culture returns English, zh-CN culture returns Chinese, missing key fallback works
@@ -638,7 +638,7 @@ Wave 9 (Final):
     Tool: Bash
     Preconditions: Solution builds
     Steps:
-      1. Run: dotnet test tests/PulseTerm.Core.Tests --filter "Category=i18n" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.Core.Tests --filter "Category=i18n" --logger "console;verbosity=detailed"
       2. Assert: exit code 0
       3. Assert: English default test passes
       4. Assert: Chinese culture test passes
@@ -648,8 +648,8 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(i18n): add localization infrastructure (zh-CN + en)`
-  - Files: `src/PulseTerm.Core/Resources/`, `tests/PulseTerm.Core.Tests/Resources/`
-  - Pre-commit: `dotnet build src/PulseTerm.Core --warnaserror`
+  - Files: `src/VelaShell.Core/Resources/`, `tests/VelaShell.Core.Tests/Resources/`
+  - Pre-commit: `dotnet build src/VelaShell.Core --warnaserror`
 
 ---
 
@@ -657,7 +657,7 @@ Wave 9 (Final):
 
   **What to do**:
   - **THIS IS THE HIGHEST RISK TASK IN THE ENTIRE PROJECT.** If this spike fails, the terminal approach must pivot.
-  - Create `ITerminalEmulator` interface in `PulseTerm.Terminal/`:
+  - Create `ITerminalEmulator` interface in `VelaShell.Terminal/`:
     - `Feed(byte[] data)` — feed raw bytes from SSH stream
     - `Resize(int cols, int rows)` — resize terminal
     - `UserInput` event → byte[] for sending to SSH
@@ -666,7 +666,7 @@ Wave 9 (Final):
     - `ScrollbackLines` property
     - `Control` property → Avalonia Control for embedding in UI
   - Create `AvaloniaTerminalEmulator` implementing `ITerminalEmulator` wrapping AvaloniaTerminal/XtermSharp
-  - Create `SshTerminalBridge` in `PulseTerm.Terminal/`:
+  - Create `SshTerminalBridge` in `VelaShell.Terminal/`:
     - Connects `ShellStream` ↔ `ITerminalEmulator`
     - Data flow: `ShellStream.ReadAsync → byte[] → Utf8StreamDecoder → ITerminalEmulator.Feed(bytes)`
     - Reverse: `ITerminalEmulator.UserInput → byte[] → ShellStream.WriteAsync`
@@ -737,7 +737,7 @@ Wave 9 (Final):
     Tool: Bash
     Preconditions: Solution builds, SSH wrappers from Task 2 available
     Steps:
-      1. Run: dotnet test tests/PulseTerm.Terminal.Tests --filter "Category=TerminalBridge" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.Terminal.Tests --filter "Category=TerminalBridge" --logger "console;verbosity=detailed"
       2. Assert: exit code 0
       3. Assert: 5+ tests pass including VT100 color, CJK double-width, large output, resize, user input
       4. If ANY test fails: capture failure details, document in .sisyphus/evidence/spike-failure.md
@@ -749,7 +749,7 @@ Wave 9 (Final):
     Preconditions: Code written
     Steps:
       1. Search: pattern "interface ITerminalEmulator" in C# files
-      2. Assert: found in PulseTerm.Terminal/
+      2. Assert: found in VelaShell.Terminal/
       3. Search: pattern "new AvaloniaTerminalEmulator($$$)" outside test files
       4. Assert: only created via DI or factory, not hardcoded in consumers
     Expected Result: Terminal emulator is behind an interface for swappability
@@ -758,15 +758,15 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(terminal): validate SSH↔terminal bridge spike`
-  - Files: `src/PulseTerm.Terminal/`, `tests/PulseTerm.Terminal.Tests/`
-  - Pre-commit: `dotnet test tests/PulseTerm.Terminal.Tests --filter "Category=TerminalBridge"`
+  - Files: `src/VelaShell.Terminal/`, `tests/VelaShell.Terminal.Tests/`
+  - Pre-commit: `dotnet test tests/VelaShell.Terminal.Tests --filter "Category=TerminalBridge"`
 
 ---
 
 - [ ] 6. SFTP Service + Tests
 
   **What to do**:
-  - Create `ISftpService` interface in `PulseTerm.Core/Sftp/`:
+  - Create `ISftpService` interface in `VelaShell.Core/Sftp/`:
     - `ListDirectoryAsync(sessionId, path)` → `List<RemoteFileInfo>`
     - `UploadFileAsync(sessionId, localPath, remotePath, IProgress<TransferProgress>)` → Task
     - `DownloadFileAsync(sessionId, remotePath, localPath, IProgress<TransferProgress>)` → Task
@@ -828,7 +828,7 @@ Wave 9 (Final):
     Tool: Bash
     Preconditions: Solution builds, SSH wrappers available
     Steps:
-      1. Run: dotnet test tests/PulseTerm.Core.Tests --filter "Category=Sftp" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.Core.Tests --filter "Category=Sftp" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 8+ tests pass
       3. Assert: tests include ListDirectory, Upload, Download, Delete, CreateDir, PermissionDenied, ProgressCallback, ConcurrentLimit
     Expected Result: All SFTP service tests pass
@@ -837,15 +837,15 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(sftp): add SFTP service with file operations`
-  - Files: `src/PulseTerm.Core/Sftp/`, `src/PulseTerm.Core/Models/RemoteFileInfo.cs`, `src/PulseTerm.Core/Models/TransferProgress.cs`, `tests/PulseTerm.Core.Tests/Sftp/`
-  - Pre-commit: `dotnet test tests/PulseTerm.Core.Tests --filter "Category=Sftp"`
+  - Files: `src/VelaShell.Core/Sftp/`, `src/VelaShell.Core/Models/RemoteFileInfo.cs`, `src/VelaShell.Core/Models/TransferProgress.cs`, `tests/VelaShell.Core.Tests/Sftp/`
+  - Pre-commit: `dotnet test tests/VelaShell.Core.Tests --filter "Category=Sftp"`
 
 ---
 
 - [ ] 7. Port Forwarding Service + Tests
 
   **What to do**:
-  - Create `ITunnelService` interface in `PulseTerm.Core/Tunnels/`:
+  - Create `ITunnelService` interface in `VelaShell.Core/Tunnels/`:
     - `CreateLocalForwardAsync(sessionId, TunnelConfig)` → `TunnelInfo`
     - `CreateRemoteForwardAsync(sessionId, TunnelConfig)` → `TunnelInfo`
     - `StopTunnelAsync(tunnelId)` → Task
@@ -902,7 +902,7 @@ Wave 9 (Final):
     Tool: Bash
     Preconditions: Solution builds
     Steps:
-      1. Run: dotnet test tests/PulseTerm.Core.Tests --filter "Category=Tunnel" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.Core.Tests --filter "Category=Tunnel" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 6+ tests pass
     Expected Result: All tunnel service tests pass
     Evidence: Test output captured
@@ -910,17 +910,17 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(tunnel): add port forwarding service`
-  - Files: `src/PulseTerm.Core/Tunnels/`, `tests/PulseTerm.Core.Tests/Tunnels/`
-  - Pre-commit: `dotnet test tests/PulseTerm.Core.Tests --filter "Category=Tunnel"`
+  - Files: `src/VelaShell.Core/Tunnels/`, `tests/VelaShell.Core.Tests/Tunnels/`
+  - Pre-commit: `dotnet test tests/VelaShell.Core.Tests --filter "Category=Tunnel"`
 
 ---
 
 - [ ] 8. Theme System + Design Tokens from .pen File
 
   **What to do**:
-  - Create theme ResourceDictionaries in `PulseTerm.App/Themes/`:
+  - Create theme ResourceDictionaries in `VelaShell.App/Themes/`:
     - `DesignTokens.axaml` — shared token keys
-    - `DarkTheme.axaml` — dark theme values from PulseTerm-zh.pen design
+    - `DarkTheme.axaml` — dark theme values from VelaShell-zh.pen design
     - `LightTheme.axaml` — light theme values (invert/lighten dark tokens)
   - Design tokens from .pen file (exact hex values):
     - `$bg-page`: #0D1117 (dark) → map to `PulseBgPage`
@@ -949,7 +949,7 @@ Wave 9 (Final):
   - Configure FluentTheme with ThemeDictionaries in `App.axaml`:
     - Dark variant uses DarkTheme.axaml tokens
     - Light variant uses LightTheme.axaml tokens
-  - Create `IThemeService` in `PulseTerm.Core/Services/`:
+  - Create `IThemeService` in `VelaShell.Core/Services/`:
     - `CurrentTheme` (observable, "dark" or "light")
     - `SetTheme(string themeName)` — switches theme at runtime
   - Font configuration: JetBrains Mono for terminal, Inter for UI
@@ -977,7 +977,7 @@ Wave 9 (Final):
   **References**:
 
   **Pattern References**:
-  - `PulseTerm-zh.pen` design file — ALL color values extracted above come from this file's design tokens
+  - `VelaShell-zh.pen` design file — ALL color values extracted above come from this file's design tokens
 
   **External References**:
   - Avalonia theming: https://docs.avaloniaui.net/docs/basics/user-interface/styling/themes/fluent
@@ -990,7 +990,7 @@ Wave 9 (Final):
 
   **Acceptance Criteria**:
 
-  - [ ] `dotnet build src/PulseTerm.App --warnaserror` → PASS
+  - [ ] `dotnet build src/VelaShell.App --warnaserror` → PASS
   - [ ] DarkTheme.axaml contains ALL 23 design tokens listed above with exact hex values
   - [ ] LightTheme.axaml contains all 23 tokens with appropriate light variants
   - [ ] `App.axaml` configures FluentTheme with ThemeDictionaries for Dark and Light
@@ -1004,9 +1004,9 @@ Wave 9 (Final):
     Tool: Bash
     Preconditions: Solution builds
     Steps:
-      1. Run: dotnet build src/PulseTerm.App --warnaserror
+      1. Run: dotnet build src/VelaShell.App --warnaserror
       2. Assert: exit code 0, no XAML parse errors
-      3. Run: grep -c "PulseAccent\|PulseBgPage\|PulseTextPrimary" src/PulseTerm.App/Themes/DarkTheme.axaml
+      3. Run: grep -c "PulseAccent\|PulseBgPage\|PulseTextPrimary" src/VelaShell.App/Themes/DarkTheme.axaml
       4. Assert: count matches expected number of tokens (23+)
     Expected Result: All theme tokens defined, app builds cleanly
     Evidence: Build output captured
@@ -1025,15 +1025,15 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(theme): add dark/light theme system with design tokens`
-  - Files: `src/PulseTerm.App/Themes/`, `src/PulseTerm.App/App.axaml`, `src/PulseTerm.Core/Services/IThemeService.cs`
-  - Pre-commit: `dotnet build src/PulseTerm.App --warnaserror`
+  - Files: `src/VelaShell.App/Themes/`, `src/VelaShell.App/App.axaml`, `src/VelaShell.Core/Services/IThemeService.cs`
+  - Pre-commit: `dotnet build src/VelaShell.App --warnaserror`
 
 ---
 
 - [ ] 9. Custom Scrollback Buffer Implementation
 
   **What to do**:
-  - Create `ScrollbackBuffer` in `PulseTerm.Terminal/`:
+  - Create `ScrollbackBuffer` in `VelaShell.Terminal/`:
     - Wraps XtermSharp's `Terminal` — intercepts lines that scroll off the top of the visible buffer
     - Configurable max lines (default 10000 from AppSettings.ScrollbackLines)
     - `GetLine(int absoluteRow)` → `TerminalLine` (content + attributes)
@@ -1097,7 +1097,7 @@ Wave 9 (Final):
     Tool: Bash
     Preconditions: Terminal spike (Task 5) completed
     Steps:
-      1. Run: dotnet test tests/PulseTerm.Terminal.Tests --filter "Category=Scrollback" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.Terminal.Tests --filter "Category=Scrollback" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 8+ tests pass
       3. Assert: includes circular wrap test, search test, viewport scroll test
     Expected Result: All scrollback tests pass
@@ -1106,15 +1106,15 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(terminal): add custom scrollback buffer`
-  - Files: `src/PulseTerm.Terminal/ScrollbackBuffer.cs`, `tests/PulseTerm.Terminal.Tests/ScrollbackBufferTests.cs`
-  - Pre-commit: `dotnet test tests/PulseTerm.Terminal.Tests --filter "Category=Scrollback"`
+  - Files: `src/VelaShell.Terminal/ScrollbackBuffer.cs`, `tests/VelaShell.Terminal.Tests/ScrollbackBufferTests.cs`
+  - Pre-commit: `dotnet test tests/VelaShell.Terminal.Tests --filter "Category=Scrollback"`
 
 ---
 
 - [ ] 10. Core UI Shell — MainWindow + Sidebar + Tab Bar
 
   **What to do**:
-  - Create `MainWindow.axaml` in `PulseTerm.App/Views/`:
+  - Create `MainWindow.axaml` in `VelaShell.App/Views/`:
     - 3-column layout: Sidebar (260px fixed) | Terminal Area (flex) | Optional right panel
     - Bottom status bar (24px)
     - Top tab bar above terminal area
@@ -1126,7 +1126,7 @@ Wave 9 (Final):
     - `StatusBar` → `StatusBarViewModel`
     - Commands: `AddTab`, `CloseTab`, `SwitchTab`
   - Create `SidebarView.axaml` + `SidebarViewModel`:
-    - Logo bar: "PulseTerm v1.0" with app icon
+    - Logo bar: "VelaShell v1.0" with app icon
     - Placeholder TreeView for session tree (populated in Task 13)
     - Quick connect input field: `用户名@主机名:端口` format
     - Recent connections list (placeholder, populated in Task 13)
@@ -1166,7 +1166,7 @@ Wave 9 (Final):
   **References**:
 
   **Pattern References**:
-  - `PulseTerm-zh.pen` design file — layout dimensions: sidebar 260px, terminal area 644px, status bar 24px, tab bar height ~36px
+  - `VelaShell-zh.pen` design file — layout dimensions: sidebar 260px, terminal area 644px, status bar 24px, tab bar height ~36px
   - Task 8's theme tokens — ALL `{DynamicResource PulseXxx}` keys defined there
   - Task 3's models — `SessionProfile`, `ServerGroup`, `AppSettings` used by ViewModels
   - Task 4's i18n — `{x:Static res:Strings.QuickConnect}` for localized text
@@ -1186,7 +1186,7 @@ Wave 9 (Final):
 
   - [ ] `dotnet test --filter "Category=UI"` → PASS (minimum 6 tests)
   - [ ] Tests: MainWindowViewModel creates with sidebar/tabs/statusbar, AddTab adds to collection, CloseTab removes, SwitchTab updates ActiveTab, sidebar ViewModel initializes
-  - [ ] `dotnet build src/PulseTerm.App --warnaserror` → PASS (no XAML errors)
+  - [ ] `dotnet build src/VelaShell.App --warnaserror` → PASS (no XAML errors)
   - [ ] MainWindow layout: 3-column grid, sidebar 260px, status bar docked bottom 24px
   - [ ] ALL colors use `{DynamicResource PulseXxx}` — zero hardcoded hex values in AXAML
   - [ ] ALL user-visible text uses `{x:Static}` i18n bindings
@@ -1198,7 +1198,7 @@ Wave 9 (Final):
     Tool: Bash
     Preconditions: Solution builds with theme + models
     Steps:
-      1. Run: dotnet test tests/PulseTerm.App.Tests --filter "Category=UI" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.App.Tests --filter "Category=UI" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 6+ tests pass
     Expected Result: All UI ViewModel tests pass
     Evidence: Test output captured
@@ -1207,7 +1207,7 @@ Wave 9 (Final):
     Tool: Grep
     Preconditions: AXAML files exist
     Steps:
-      1. Search: pattern "#[0-9A-Fa-f]{6}" in *.axaml files under src/PulseTerm.App/Views/
+      1. Search: pattern "#[0-9A-Fa-f]{6}" in *.axaml files under src/VelaShell.App/Views/
       2. Assert: zero matches (all colors should be DynamicResource)
     Expected Result: All colors use theme tokens, not hardcoded hex
     Evidence: grep results
@@ -1215,20 +1215,20 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(ui): add main window shell with sidebar and tab bar`
-  - Files: `src/PulseTerm.App/Views/`, `src/PulseTerm.App/ViewModels/`, `tests/PulseTerm.App.Tests/`
-  - Pre-commit: `dotnet test tests/PulseTerm.App.Tests --filter "Category=UI"`
+  - Files: `src/VelaShell.App/Views/`, `src/VelaShell.App/ViewModels/`, `tests/VelaShell.App.Tests/`
+  - Pre-commit: `dotnet test tests/VelaShell.App.Tests --filter "Category=UI"`
 
 ---
 
 - [ ] 11. Host Key TOFU (Trust-On-First-Use) Service + Tests
 
   **What to do**:
-  - Create `IHostKeyService` in `PulseTerm.Core/Ssh/`:
+  - Create `IHostKeyService` in `VelaShell.Core/Ssh/`:
     - `VerifyHostKeyAsync(host, port, keyType, fingerprint)` → `HostKeyVerification` (enum: Trusted, Unknown, Changed)
     - `TrustHostKeyAsync(host, port, keyType, fingerprint)` → stores in known_hosts
     - `GetKnownHosts()` → `List<KnownHost>`
     - `RemoveKnownHost(host, port)` → Task
-  - Create `HostKeyService` using `JsonDataStore` — stores to `~/.pulseterm/known_hosts.json`
+  - Create `HostKeyService` using `JsonDataStore` — stores to `~/.velashell/known_hosts.json`
   - `KnownHost` model (from Task 3): `Host`, `Port`, `KeyType`, `Fingerprint`, `Algorithm`, `FirstSeenAt`, `LastSeenAt`
   - Integrate into `SshConnectionService`:
     - On connect: `SshClient.HostKeyReceived` event → call `IHostKeyService.VerifyHostKeyAsync`
@@ -1257,7 +1257,7 @@ Wave 9 (Final):
   **References**:
 
   **Pattern References**:
-  - Task 3's `JsonDataStore` — persistence for `~/.pulseterm/known_hosts.json`
+  - Task 3's `JsonDataStore` — persistence for `~/.velashell/known_hosts.json`
   - Task 3's `KnownHost` model
   - Task 2's `SshConnectionService` — integrate host key check
 
@@ -1271,7 +1271,7 @@ Wave 9 (Final):
 
   - [ ] `dotnet test --filter "Category=HostKey"` → PASS (minimum 5 tests)
   - [ ] Tests: first connection → Unknown, trust + reconnect → Trusted, key changed → Changed, remove host, list known hosts
-  - [ ] Known hosts stored in `~/.pulseterm/known_hosts.json`
+  - [ ] Known hosts stored in `~/.velashell/known_hosts.json`
 
   **Agent-Executed QA Scenarios**:
 
@@ -1279,7 +1279,7 @@ Wave 9 (Final):
   Scenario: Host key service tests pass
     Tool: Bash
     Steps:
-      1. Run: dotnet test tests/PulseTerm.Core.Tests --filter "Category=HostKey" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.Core.Tests --filter "Category=HostKey" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 5+ tests pass
     Expected Result: All host key TOFU tests pass
     Evidence: Test output captured
@@ -1287,15 +1287,15 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(ssh): add host key TOFU verification`
-  - Files: `src/PulseTerm.Core/Ssh/HostKeyService.cs`, `src/PulseTerm.Core/Ssh/IHostKeyService.cs`, `tests/PulseTerm.Core.Tests/Ssh/HostKeyServiceTests.cs`
-  - Pre-commit: `dotnet test tests/PulseTerm.Core.Tests --filter "Category=HostKey"`
+  - Files: `src/VelaShell.Core/Ssh/HostKeyService.cs`, `src/VelaShell.Core/Ssh/IHostKeyService.cs`, `tests/VelaShell.Core.Tests/Ssh/HostKeyServiceTests.cs`
+  - Pre-commit: `dotnet test tests/VelaShell.Core.Tests --filter "Category=HostKey"`
 
 ---
 
 - [ ] 12. Terminal Tab Integration (Terminal Control + Toolbar)
 
   **What to do**:
-  - Create `TerminalTabView.axaml` in `PulseTerm.App/Views/`:
+  - Create `TerminalTabView.axaml` in `VelaShell.App/Views/`:
     - Terminal toolbar at top: shows `root@hostname:~` with uptime/latency info
     - Toolbar action buttons: Search, Copy, Split, Tunnel, Quick Commands, Sync Group, Broadcast
     - Terminal control area: embeds `ITerminalEmulator.Control`
@@ -1340,7 +1340,7 @@ Wave 9 (Final):
   - Task 9's `ScrollbackBuffer`
   - Task 2's `SshConnectionService` + `Utf8StreamDecoder`
   - Task 10's `MainWindowViewModel` — tab hosting
-  - `PulseTerm-zh.pen`: Terminal toolbar layout, action buttons
+  - `VelaShell-zh.pen`: Terminal toolbar layout, action buttons
 
   **External References**:
   - SSH.NET keepalive: `client.KeepAliveInterval = TimeSpan.FromSeconds(30)`
@@ -1363,7 +1363,7 @@ Wave 9 (Final):
   Scenario: Terminal ViewModel tests pass
     Tool: Bash
     Steps:
-      1. Run: dotnet test tests/PulseTerm.App.Tests --filter "Category=Terminal" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.App.Tests --filter "Category=Terminal" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 8+ tests pass
     Expected Result: All terminal integration tests pass
     Evidence: Test output captured
@@ -1371,8 +1371,8 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(ui): integrate terminal control with toolbar`
-  - Files: `src/PulseTerm.App/Views/TerminalTab*`, `src/PulseTerm.App/ViewModels/TerminalTab*`
-  - Pre-commit: `dotnet test tests/PulseTerm.App.Tests --filter "Category=Terminal"`
+  - Files: `src/VelaShell.App/Views/TerminalTab*`, `src/VelaShell.App/ViewModels/TerminalTab*`
+  - Pre-commit: `dotnet test tests/VelaShell.App.Tests --filter "Category=Terminal"`
 
 ---
 
@@ -1415,7 +1415,7 @@ Wave 9 (Final):
   - Task 3's `ISessionRepository`, `SessionProfile`, `ServerGroup`
   - Task 10's `SidebarViewModel`
   - Task 2's `SshConnectionService`
-  - `PulseTerm-zh.pen`: Sidebar session tree with groups, status dots, quick connect
+  - `VelaShell-zh.pen`: Sidebar session tree with groups, status dots, quick connect
 
   **External References**:
   - Avalonia TreeView: https://docs.avaloniaui.net/docs/reference/controls/treeview
@@ -1433,7 +1433,7 @@ Wave 9 (Final):
   Scenario: Session tree and quick connect tests pass
     Tool: Bash
     Steps:
-      1. Run: dotnet test tests/PulseTerm.App.Tests --filter "Category=SessionTree" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.App.Tests --filter "Category=SessionTree" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 8+ tests pass
     Expected Result: All session tree tests pass
     Evidence: Test output captured
@@ -1441,8 +1441,8 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(ui): add session tree and quick connect`
-  - Files: `src/PulseTerm.App/Views/SessionTree*`, `src/PulseTerm.App/Views/QuickConnect*`, `src/PulseTerm.App/ViewModels/SessionTree*`, `src/PulseTerm.App/ViewModels/QuickConnect*`
-  - Pre-commit: `dotnet test tests/PulseTerm.App.Tests --filter "Category=SessionTree"`
+  - Files: `src/VelaShell.App/Views/SessionTree*`, `src/VelaShell.App/Views/QuickConnect*`, `src/VelaShell.App/ViewModels/SessionTree*`, `src/VelaShell.App/ViewModels/QuickConnect*`
+  - Pre-commit: `dotnet test tests/VelaShell.App.Tests --filter "Category=SessionTree"`
 
 ---
 
@@ -1501,7 +1501,7 @@ Wave 9 (Final):
   Scenario: Settings and profile tests pass
     Tool: Bash
     Steps:
-      1. Run: dotnet test tests/PulseTerm.App.Tests --filter "Category=Settings" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.App.Tests --filter "Category=Settings" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 6+ tests pass
     Expected Result: All settings tests pass
     Evidence: Test output captured
@@ -1509,15 +1509,15 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(core): add settings and connection profiles`
-  - Files: `src/PulseTerm.App/Views/Settings*`, `src/PulseTerm.App/Views/ConnectionProfile*`, `src/PulseTerm.App/Views/HostKeyPrompt*`, `src/PulseTerm.App/ViewModels/`
-  - Pre-commit: `dotnet test tests/PulseTerm.App.Tests --filter "Category=Settings"`
+  - Files: `src/VelaShell.App/Views/Settings*`, `src/VelaShell.App/Views/ConnectionProfile*`, `src/VelaShell.App/Views/HostKeyPrompt*`, `src/VelaShell.App/ViewModels/`
+  - Pre-commit: `dotnet test tests/VelaShell.App.Tests --filter "Category=Settings"`
 
 ---
 
 - [ ] 15. SFTP File Browser Panel
 
   **What to do**:
-  - Create `FileBrowserView.axaml` in `PulseTerm.App/Views/`:
+  - Create `FileBrowserView.axaml` in `VelaShell.App/Views/`:
     - Bottom panel (220px height, collapsible) below terminal area
     - Path breadcrumb showing current remote path (e.g., `/var/www/html`)
     - DataGrid/ListView with columns: File Name, Size, Permissions, Modified Time
@@ -1565,7 +1565,7 @@ Wave 9 (Final):
   - Task 6's `ISftpService` — all SFTP operations
   - Task 6's `RemoteFileInfo` model — data source
   - Task 10's UI shell — panel hosting
-  - `PulseTerm-zh.pen`: File browser panel at bottom showing `/var/www/html`, columns: 文件名/大小/权限/修改时间
+  - `VelaShell-zh.pen`: File browser panel at bottom showing `/var/www/html`, columns: 文件名/大小/权限/修改时间
 
   **External References**:
   - Avalonia DataGrid: https://docs.avaloniaui.net/docs/reference/controls/datagrid/
@@ -1587,7 +1587,7 @@ Wave 9 (Final):
   Scenario: File browser ViewModel tests pass
     Tool: Bash
     Steps:
-      1. Run: dotnet test tests/PulseTerm.App.Tests --filter "Category=FileBrowser" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.App.Tests --filter "Category=FileBrowser" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 6+ tests pass
     Expected Result: All file browser tests pass
     Evidence: Test output captured
@@ -1595,8 +1595,8 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(ui): add SFTP file browser panel`
-  - Files: `src/PulseTerm.App/Views/FileBrowser*`, `src/PulseTerm.App/ViewModels/FileBrowser*`
-  - Pre-commit: `dotnet test tests/PulseTerm.App.Tests --filter "Category=FileBrowser"`
+  - Files: `src/VelaShell.App/Views/FileBrowser*`, `src/VelaShell.App/ViewModels/FileBrowser*`
+  - Pre-commit: `dotnet test tests/VelaShell.App.Tests --filter "Category=FileBrowser"`
 
 ---
 
@@ -1642,7 +1642,7 @@ Wave 9 (Final):
 
   **Pattern References**:
   - Task 6's `ITransferManager`, `TransferTask`, `TransferProgress`
-  - `PulseTerm-zh.pen`: File transfer panel (280px floating) showing upload/download progress bars, speeds, completion status
+  - `VelaShell-zh.pen`: File transfer panel (280px floating) showing upload/download progress bars, speeds, completion status
 
   **Acceptance Criteria**:
 
@@ -1656,7 +1656,7 @@ Wave 9 (Final):
   Scenario: File transfer ViewModel tests pass
     Tool: Bash
     Steps:
-      1. Run: dotnet test tests/PulseTerm.App.Tests --filter "Category=FileTransfer" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.App.Tests --filter "Category=FileTransfer" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 5+ tests pass
     Expected Result: All file transfer tests pass
     Evidence: Test output captured
@@ -1664,8 +1664,8 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(ui): add file transfer progress panel`
-  - Files: `src/PulseTerm.App/Views/FileTransfer*`, `src/PulseTerm.App/ViewModels/FileTransfer*`
-  - Pre-commit: `dotnet test tests/PulseTerm.App.Tests --filter "Category=FileTransfer"`
+  - Files: `src/VelaShell.App/Views/FileTransfer*`, `src/VelaShell.App/ViewModels/FileTransfer*`
+  - Pre-commit: `dotnet test tests/VelaShell.App.Tests --filter "Category=FileTransfer"`
 
 ---
 
@@ -1707,7 +1707,7 @@ Wave 9 (Final):
 
   **Pattern References**:
   - Task 7's `ITunnelService`, `TunnelConfig`, `TunnelInfo`
-  - `PulseTerm-zh.pen`: Tunnel panel (320px) showing MySQL/Redis port forwards, new tunnel form with type/port fields
+  - `VelaShell-zh.pen`: Tunnel panel (320px) showing MySQL/Redis port forwards, new tunnel form with type/port fields
 
   **Acceptance Criteria**:
 
@@ -1721,7 +1721,7 @@ Wave 9 (Final):
   Scenario: Tunnel panel ViewModel tests pass
     Tool: Bash
     Steps:
-      1. Run: dotnet test tests/PulseTerm.App.Tests --filter "Category=TunnelUI" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.App.Tests --filter "Category=TunnelUI" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 5+ tests pass
     Expected Result: All tunnel UI tests pass
     Evidence: Test output captured
@@ -1729,8 +1729,8 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(ui): add tunnel management panel`
-  - Files: `src/PulseTerm.App/Views/Tunnel*`, `src/PulseTerm.App/ViewModels/Tunnel*`
-  - Pre-commit: `dotnet test tests/PulseTerm.App.Tests --filter "Category=TunnelUI"`
+  - Files: `src/VelaShell.App/Views/Tunnel*`, `src/VelaShell.App/ViewModels/Tunnel*`
+  - Pre-commit: `dotnet test tests/VelaShell.App.Tests --filter "Category=TunnelUI"`
 
 ---
 
@@ -1750,7 +1750,7 @@ Wave 9 (Final):
     - `SelectedCommand` → sends to active terminal via `ITerminalEmulator.UserInput` event
     - Commands: `ExecuteCommand`, `AddCommand`, `EditCommand`, `DeleteCommand`
     - Built-in defaults: `htop`, `top`, `df -h`, `free -m`, `netstat -tlnp`, `docker ps`, `docker stats`, `systemctl status`, `journalctl -f`
-    - Custom commands persisted via `JsonDataStore` to `~/.pulseterm/quick-commands.json`
+    - Custom commands persisted via `JsonDataStore` to `~/.velashell/quick-commands.json`
   - Create `QuickCommand` model: `Id`, `Name`, `Category`, `CommandText`, `Description`, `IsBuiltIn`
   - RED: Write tests → FAIL
   - GREEN: Implement → PASS
@@ -1776,7 +1776,7 @@ Wave 9 (Final):
   **Pattern References**:
   - Task 3's `JsonDataStore` — persist custom commands
   - Task 12's `TerminalTabViewModel` — send command to active terminal
-  - `PulseTerm-zh.pen`: Quick commands panel (300px) showing categorized list with search
+  - `VelaShell-zh.pen`: Quick commands panel (300px) showing categorized list with search
 
   **Acceptance Criteria**:
 
@@ -1790,7 +1790,7 @@ Wave 9 (Final):
   Scenario: Quick commands ViewModel tests pass
     Tool: Bash
     Steps:
-      1. Run: dotnet test tests/PulseTerm.App.Tests --filter "Category=QuickCommands" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.App.Tests --filter "Category=QuickCommands" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 5+ tests pass
     Expected Result: All quick commands tests pass
     Evidence: Test output captured
@@ -1798,8 +1798,8 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(ui): add quick commands panel`
-  - Files: `src/PulseTerm.App/Views/QuickCommands*`, `src/PulseTerm.App/ViewModels/QuickCommands*`, `src/PulseTerm.Core/Models/QuickCommand.cs`
-  - Pre-commit: `dotnet test tests/PulseTerm.App.Tests --filter "Category=QuickCommands"`
+  - Files: `src/VelaShell.App/Views/QuickCommands*`, `src/VelaShell.App/ViewModels/QuickCommands*`, `src/VelaShell.Core/Models/QuickCommand.cs`
+  - Pre-commit: `dotnet test tests/VelaShell.App.Tests --filter "Category=QuickCommands"`
 
 ---
 
@@ -1845,7 +1845,7 @@ Wave 9 (Final):
   **Pattern References**:
   - Task 12's `TerminalTabViewModel` — source for connection info
   - Task 10's `MainWindowViewModel` — hosting container
-  - `PulseTerm-zh.pen`: Status bar (24px) showing SSH info, latency, terminal type, window size, encoding
+  - `VelaShell-zh.pen`: Status bar (24px) showing SSH info, latency, terminal type, window size, encoding
 
   **Acceptance Criteria**:
 
@@ -1860,7 +1860,7 @@ Wave 9 (Final):
   Scenario: Status bar ViewModel tests pass
     Tool: Bash
     Steps:
-      1. Run: dotnet test tests/PulseTerm.App.Tests --filter "Category=StatusBar" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.App.Tests --filter "Category=StatusBar" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 4+ tests pass
     Expected Result: All status bar tests pass
     Evidence: Test output captured
@@ -1868,8 +1868,8 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(ui): add status bar`
-  - Files: `src/PulseTerm.App/Views/StatusBar*`, `src/PulseTerm.App/ViewModels/StatusBar*`
-  - Pre-commit: `dotnet test tests/PulseTerm.App.Tests --filter "Category=StatusBar"`
+  - Files: `src/VelaShell.App/Views/StatusBar*`, `src/VelaShell.App/ViewModels/StatusBar*`
+  - Pre-commit: `dotnet test tests/VelaShell.App.Tests --filter "Category=StatusBar"`
 
 ---
 
@@ -1916,7 +1916,7 @@ Wave 9 (Final):
 
   **Acceptance Criteria**:
 
-  - [ ] `dotnet build src/PulseTerm.App --warnaserror` → PASS
+  - [ ] `dotnet build src/VelaShell.App --warnaserror` → PASS
   - [ ] LightTheme.axaml contains all 23 design tokens with light-appropriate values
   - [ ] Theme switching from dark to light updates all visible UI elements
   - [ ] Status dots still distinguishable against light background
@@ -1927,7 +1927,7 @@ Wave 9 (Final):
   Scenario: Light theme builds and all tokens defined
     Tool: Bash
     Steps:
-      1. Run: dotnet build src/PulseTerm.App --warnaserror
+      1. Run: dotnet build src/VelaShell.App --warnaserror
       2. Assert: exit code 0
       3. Count PulseXxx keys in LightTheme.axaml
       4. Assert: 23+ token definitions present
@@ -1937,8 +1937,8 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(theme): add light theme variant`
-  - Files: `src/PulseTerm.App/Themes/LightTheme.axaml`
-  - Pre-commit: `dotnet build src/PulseTerm.App --warnaserror`
+  - Files: `src/VelaShell.App/Themes/LightTheme.axaml`
+  - Pre-commit: `dotnet build src/VelaShell.App --warnaserror`
 
 ---
 
@@ -2009,7 +2009,7 @@ Wave 9 (Final):
   Scenario: Keyboard shortcut tests pass
     Tool: Bash
     Steps:
-      1. Run: dotnet test tests/PulseTerm.App.Tests --filter "Category=Keyboard" --logger "console;verbosity=detailed"
+      1. Run: dotnet test tests/VelaShell.App.Tests --filter "Category=Keyboard" --logger "console;verbosity=detailed"
       2. Assert: exit code 0, 6+ tests pass
     Expected Result: All keyboard shortcut tests pass
     Evidence: Test output captured
@@ -2017,15 +2017,15 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(ui): add keyboard shortcuts and terminal copy/paste`
-  - Files: `src/PulseTerm.App/Views/TerminalTabView.axaml.cs`, `src/PulseTerm.App/Services/KeyboardService.cs`
-  - Pre-commit: `dotnet test tests/PulseTerm.App.Tests --filter "Category=Keyboard"`
+  - Files: `src/VelaShell.App/Views/TerminalTabView.axaml.cs`, `src/VelaShell.App/Services/KeyboardService.cs`
+  - Pre-commit: `dotnet test tests/VelaShell.App.Tests --filter "Category=Keyboard"`
 
 ---
 
 - [ ] 22. Cross-Platform Packaging + Velopack Auto-Update
 
   **What to do**:
-  - Configure cross-platform publishing in `PulseTerm.App.csproj`:
+  - Configure cross-platform publishing in `VelaShell.App.csproj`:
     - `dotnet publish -r win-x64 --self-contained -c Release` → Windows executable
     - `dotnet publish -r osx-arm64 --self-contained -c Release` → macOS binary
     - `dotnet publish -r linux-x64 --self-contained -c Release` → Linux binary
@@ -2080,7 +2080,7 @@ Wave 9 (Final):
   Scenario: Cross-platform publish succeeds
     Tool: Bash
     Steps:
-      1. Run: dotnet publish src/PulseTerm.App -r osx-arm64 --self-contained -c Release
+      1. Run: dotnet publish src/VelaShell.App -r osx-arm64 --self-contained -c Release
       2. Assert: exit code 0, binary exists
     Expected Result: Publishable binary produced
     Evidence: Publish output captured
@@ -2088,7 +2088,7 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `feat(deploy): add cross-platform packaging with Velopack`
-  - Pre-commit: `dotnet publish src/PulseTerm.App -r osx-arm64 --self-contained -c Release`
+  - Pre-commit: `dotnet publish src/VelaShell.App -r osx-arm64 --self-contained -c Release`
 
 ---
 
@@ -2181,7 +2181,7 @@ Wave 9 (Final):
 
   **Acceptance Criteria**:
 
-  - [ ] `dotnet build src/PulseTerm.sln --warnaserror` → 0 warnings, 0 errors
+  - [ ] `dotnet build src/VelaShell.sln --warnaserror` → 0 warnings, 0 errors
   - [ ] `dotnet test tests/` → ALL pass (100+ tests)
   - [ ] No TODO/FIXME/HACK in source code
   - [ ] App launches cleanly with no saved data
@@ -2193,7 +2193,7 @@ Wave 9 (Final):
   Scenario: Final build and full test suite
     Tool: Bash
     Steps:
-      1. Run: dotnet build src/PulseTerm.sln --warnaserror
+      1. Run: dotnet build src/VelaShell.sln --warnaserror
       2. Assert: 0 warnings, 0 errors
       3. Run: dotnet test tests/
       4. Assert: ALL pass, 100+ total
@@ -2211,12 +2211,12 @@ Wave 9 (Final):
 
   **Commit**: YES
   - Message: `fix: polish, edge cases, and final QA`
-  - Pre-commit: `dotnet build src/PulseTerm.sln --warnaserror && dotnet test tests/`
+  - Pre-commit: `dotnet build src/VelaShell.sln --warnaserror && dotnet test tests/`
 
 ---
 
 | After Task(s) | Message | Verification |
-| 1 | `chore: scaffold PulseTerm solution with test infrastructure` | `dotnet build --warnaserror && dotnet test` |
+| 1 | `chore: scaffold VelaShell solution with test infrastructure` | `dotnet build --warnaserror && dotnet test` |
 | 2 | `feat(ssh): add SSH connection service with wrapper interfaces` | `dotnet test --filter "Category=SshConnection"` |
 | 3 | `feat(core): add JSON data store and session models` | `dotnet test --filter "Category=DataStore"` |
 | 4 | `feat(i18n): add localization infrastructure (zh-CN + en)` | `dotnet build --warnaserror` |
@@ -2248,7 +2248,7 @@ Wave 9 (Final):
 ### Verification Commands
 ```bash
 # Build without warnings
-dotnet build src/PulseTerm.sln --warnaserror
+dotnet build src/VelaShell.sln --warnaserror
 # Expected: Build succeeded. 0 Warning(s). 0 Error(s).
 
 # All tests pass
@@ -2256,13 +2256,13 @@ dotnet test tests/ --logger "console;verbosity=normal"
 # Expected: All tests passed.
 
 # Cross-platform publish
-dotnet publish src/PulseTerm.App -r win-x64 --self-contained -c Release
-dotnet publish src/PulseTerm.App -r osx-arm64 --self-contained -c Release
-dotnet publish src/PulseTerm.App -r linux-x64 --self-contained -c Release
+dotnet publish src/VelaShell.App -r win-x64 --self-contained -c Release
+dotnet publish src/VelaShell.App -r osx-arm64 --self-contained -c Release
+dotnet publish src/VelaShell.App -r linux-x64 --self-contained -c Release
 # Expected: All produce runnable binaries
 
 # App launches (macOS)
-./publish/osx-arm64/PulseTerm.App
+./publish/osx-arm64/VelaShell.App
 # Expected: Main window opens with sidebar, tab bar, terminal area
 ```
 

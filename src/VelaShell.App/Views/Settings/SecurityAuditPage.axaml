@@ -1,0 +1,75 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:VelaShell.App.ViewModels"
+             x:Class="VelaShell.App.Views.Settings.SecurityAuditPage"
+             x:DataType="vm:SettingsViewModel">
+
+  <StackPanel Spacing="14">
+    <StackPanel Spacing="2">
+      <TextBlock Classes="page-title" Text="安全与审计" />
+      <TextBlock Classes="page-subtitle" Text="// 录制策略、信任策略与风险告警" />
+    </StackPanel>
+
+    <!-- 会话录制 -->
+    <TextBlock Classes="section-title" Text="会话录制" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="默认录制所有生产会话" />
+        <TextBlock Classes="row-desc" Text="// 规划中:会话输出记录请先使用 常规 → 会话日志" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Security.RecordProductionSessions}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="输入脱敏" />
+        <TextBlock Classes="row-desc" Text="// 规划中:随会话录制一并提供" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Security.MaskSensitiveInput}" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 主机信任策略 -->
+    <TextBlock Classes="section-title" Text="主机信任策略" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="首次连接需人工确认指纹" />
+        <TextBlock Classes="row-desc" Text="// 关闭时首次连接自动记录指纹(TOFU)" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.ConfirmFirstFingerprint}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="指纹变更时阻断并告警" />
+        <TextBlock Classes="row-desc" Text="// 与 known_hosts 记录不符即拒绝连接,防中间人" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.BlockOnFingerprintChange}" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 告警通道 -->
+    <TextBlock Text="告警通道:应用内通知 + 系统通知 + Webhook"
+               Foreground="#74B9FF" FontSize="12" FontWeight="SemiBold" />
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="应用内通知" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.AlertInApp}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="系统通知" />
+        <TextBlock Classes="row-desc" Text="// 当前以系统提示音提醒;Windows Toast 通知规划中" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.AlertSystem}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="Webhook" />
+        <TextBlock Classes="row-desc" Text="// 安全事件推送到自定义 HTTP 端点" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.AlertWebhook}" VerticalAlignment="Center" />
+    </Grid>
+    <TextBox Text="{Binding Security.WebhookUrl}" PlaceholderText="https://example.com/hooks/velashell"
+             IsVisible="{Binding Security.AlertWebhook}" />
+  </StackPanel>
+</UserControl>

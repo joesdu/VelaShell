@@ -1,0 +1,22 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="using:VelaShell.Controls.Controls">
+  <ControlTheme x:Key="{x:Type controls:StatusMetricChip}"
+                TargetType="controls:StatusMetricChip">
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Padding="8,4"
+                CornerRadius="6"
+                Background="{DynamicResource ThemeControlMidBrush}">
+          <StackPanel Orientation="Horizontal"
+                      Spacing="6">
+            <TextBlock Text="{TemplateBinding Label}"
+                       Opacity="0.72" />
+            <TextBlock Text="{TemplateBinding Value}"
+                       FontWeight="SemiBold" />
+          </StackPanel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </ControlTheme>
+</ResourceDictionary>

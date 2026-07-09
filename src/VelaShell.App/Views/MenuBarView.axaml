@@ -1,0 +1,356 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:VelaShell.App.ViewModels"
+             xmlns:pc="using:VelaShell.Controls.Controls"
+             mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="36"
+             x:Class="VelaShell.App.Views.MenuBarView"
+             x:DataType="vm:MainWindowViewModel">
+
+  <!-- Design frame TSiDh: 36px, bg-sidebar, 1px bottom border, padding [0,12],
+       left text menus (DaZfB, gap 2) / right global action buttons (GQQwj, gap 4). -->
+
+  <UserControl.Resources>
+
+    <!-- Dropdown surface per design small-flyout spec: bg-surface, 1px border-secondary,
+         corner 6, vertical padding 4, width 200 (context-menu frame e6klM). -->
+    <ControlTheme x:Key="PulseMenuFlyoutPresenter" TargetType="FlyoutPresenter">
+      <Setter Property="Background" Value="{DynamicResource PulseBgSurface}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderSecondary}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="0,4" />
+      <Setter Property="MinWidth" Value="200" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}"
+                  BoxShadow="0 4 16 0 #60000000">
+            <ContentPresenter Content="{TemplateBinding Content}" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <!-- Top-level menu item (menu-会话 …): padding [0,10], corner 3, Inter 12 medium
+         text-secondary, hover bg-hover. -->
+    <ControlTheme x:Key="PulseMenuTopButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource PulseUiFont}" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}"
+                            Content="{TemplateBinding Content}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                            Foreground="{TemplateBinding Foreground}" />
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+      </Style>
+    </ControlTheme>
+
+    <!-- Dropdown entry: 30px row, hover bg-hover; content is a DockPanel (label + hint). -->
+    <ControlTheme x:Key="PulseMenuEntry" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Height" Value="30" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Background="{TemplateBinding Background}"
+                            Padding="{TemplateBinding Padding}"
+                            Content="{TemplateBinding Content}"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Center" />
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Opacity" Value="0.45" />
+      </Style>
+    </ControlTheme>
+
+    <!-- Global action icon button (GQQwj): 24×22, corner 3, hover bg-hover. -->
+    <ControlTheme x:Key="PulseMenuActionButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="22" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Content="{TemplateBinding Content}"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center" />
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Opacity" Value="0.5" />
+      </Style>
+    </ControlTheme>
+
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <!-- Menu entry label / shortcut hint text -->
+    <Style Selector="TextBlock.entry-label">
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource PulseUiFont}" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.entry-hint">
+      <Setter Property="Foreground" Value="{DynamicResource PulseTextMuted}" />
+      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Height="36"
+          Background="{DynamicResource PulseBgSidebar}"
+          BorderBrush="{DynamicResource PulseBorderPrimary}"
+          BorderThickness="0,0,0,1"
+          Padding="12,0">
+    <Grid ColumnDefinitions="Auto,*,Auto">
+
+      <!-- Left: text menus (DaZfB, gap 2) -->
+      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2" Margin="0,4">
+
+        <Button Theme="{StaticResource PulseMenuTopButton}" Content="会话">
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft"
+                    FlyoutPresenterTheme="{StaticResource PulseMenuFlyoutPresenter}">
+              <StackPanel>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click"
+                        Command="{Binding RunCommand}" CommandParameter="session.new">
+                  <DockPanel>
+                    <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+N" />
+                    <TextBlock Classes="entry-label" Text="新建 SSH 连接" />
+                  </DockPanel>
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                  <TextBlock Classes="entry-label" Text="新建 SFTP" />
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                  <TextBlock Classes="entry-label" Text="导入 / 导出配置" />
+                </Button>
+                <Border Height="1" Margin="0,4" Background="{DynamicResource PulseBorderPrimary}" />
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click"
+                        Command="{Binding RunCommand}" CommandParameter="session.close">
+                  <DockPanel>
+                    <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+W" />
+                    <TextBlock Classes="entry-label" Text="关闭当前会话" />
+                  </DockPanel>
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Exit_Click">
+                  <TextBlock Classes="entry-label" Text="退出" />
+                </Button>
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+
+        <Button Theme="{StaticResource PulseMenuTopButton}" Content="编辑">
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft"
+                    FlyoutPresenterTheme="{StaticResource PulseMenuFlyoutPresenter}">
+              <StackPanel>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="edit.copy">
+                  <DockPanel>
+                    <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+Shift+C" />
+                    <TextBlock Classes="entry-label" Text="复制" />
+                  </DockPanel>
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="edit.paste">
+                  <DockPanel>
+                    <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+Shift+V" />
+                    <TextBlock Classes="entry-label" Text="粘贴" />
+                  </DockPanel>
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="edit.clear">
+                  <TextBlock Classes="entry-label" Text="清屏" />
+                </Button>
+                <Border Height="1" Margin="0,4" Background="{DynamicResource PulseBorderPrimary}" />
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click"
+                        Command="{Binding RunCommand}" CommandParameter="app.settings">
+                  <DockPanel>
+                    <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+," />
+                    <TextBlock Classes="entry-label" Text="首选项" />
+                  </DockPanel>
+                </Button>
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+
+        <Button Theme="{StaticResource PulseMenuTopButton}" Content="操作">
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft"
+                    FlyoutPresenterTheme="{StaticResource PulseMenuFlyoutPresenter}">
+              <StackPanel>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="session.reconnect">
+                  <DockPanel>
+                    <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+R" />
+                    <TextBlock Classes="entry-label" Text="重连" />
+                  </DockPanel>
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                  <DockPanel>
+                    <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+\" />
+                    <TextBlock Classes="entry-label" Text="分屏" />
+                  </DockPanel>
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                  <TextBlock Classes="entry-label" Text="复制会话" />
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                  <DockPanel>
+                    <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+Shift+B" />
+                    <TextBlock Classes="entry-label" Text="广播输入" />
+                  </DockPanel>
+                </Button>
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+
+        <Button Theme="{StaticResource PulseMenuTopButton}" Content="搜索">
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft"
+                    FlyoutPresenterTheme="{StaticResource PulseMenuFlyoutPresenter}">
+              <StackPanel>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="search.terminal">
+                  <DockPanel>
+                    <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+F" />
+                    <TextBlock Classes="entry-label" Text="终端内查找" />
+                  </DockPanel>
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click"
+                        Command="{Binding OpenCommandPaletteCommand}">
+                  <DockPanel>
+                    <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+P" />
+                    <TextBlock Classes="entry-label" Text="命令面板" />
+                  </DockPanel>
+                </Button>
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+
+        <Button Theme="{StaticResource PulseMenuTopButton}" Content="工具">
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft"
+                    FlyoutPresenterTheme="{StaticResource PulseMenuFlyoutPresenter}">
+              <StackPanel>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="tools.tunnel">
+                  <DockPanel>
+                    <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+Shift+T" />
+                    <TextBlock Classes="entry-label" Text="隧道管理" />
+                  </DockPanel>
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="tools.files">
+                  <DockPanel>
+                    <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+Shift+F" />
+                    <TextBlock Classes="entry-label" Text="SFTP 文件管理器" />
+                  </DockPanel>
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                  <TextBlock Classes="entry-label" Text="连接诊断" />
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                  <TextBlock Classes="entry-label" Text="主机信任中心" />
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                  <TextBlock Classes="entry-label" Text="密钥管理" />
+                </Button>
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+
+        <Button Theme="{StaticResource PulseMenuTopButton}" Content="帮助">
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft"
+                    FlyoutPresenterTheme="{StaticResource PulseMenuFlyoutPresenter}">
+              <StackPanel>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                  <TextBlock Classes="entry-label" Text="快捷键一览" />
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                  <TextBlock Classes="entry-label" Text="检查更新" />
+                </Button>
+                <Button Theme="{StaticResource PulseMenuEntry}" Click="Entry_Click" IsEnabled="False">
+                  <TextBlock Classes="entry-label" Text="关于 VelaShell" />
+                </Button>
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+
+      </StackPanel>
+
+      <!-- Right: global action buttons (GQQwj, gap 4, 24×22, icon 12) -->
+      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+        <Button Theme="{StaticResource PulseMenuActionButton}" ToolTip.Tip="终端搜索 (Ctrl+F)" Command="{Binding RunCommand}" CommandParameter="search.terminal">
+          <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.search}"
+                         Foreground="{DynamicResource PulseTextMuted}" />
+        </Button>
+        <Button Theme="{StaticResource PulseMenuActionButton}" ToolTip.Tip="复制" IsEnabled="False">
+          <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.copy}"
+                         Foreground="{DynamicResource PulseTextMuted}" />
+        </Button>
+        <Button Theme="{StaticResource PulseMenuActionButton}" ToolTip.Tip="分屏" IsEnabled="False">
+          <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.columns-2}"
+                         Foreground="{DynamicResource PulseTextMuted}" />
+        </Button>
+        <Button Theme="{StaticResource PulseMenuActionButton}" ToolTip.Tip="隧道 (Ctrl+Shift+T)" Command="{Binding RunCommand}" CommandParameter="tools.tunnel">
+          <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.route}"
+                         Foreground="{DynamicResource PulseTextMuted}" />
+        </Button>
+        <Button Theme="{StaticResource PulseMenuActionButton}" ToolTip.Tip="命令面板 (Ctrl+P)"
+                Command="{Binding OpenCommandPaletteCommand}">
+          <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.zap}"
+                         Foreground="{DynamicResource PulseTextMuted}" />
+        </Button>
+        <Button Theme="{StaticResource PulseMenuActionButton}" ToolTip.Tip="组同步" IsEnabled="False">
+          <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.link-2}"
+                         Foreground="{DynamicResource PulseTextMuted}" />
+        </Button>
+        <Button Theme="{StaticResource PulseMenuActionButton}" ToolTip.Tip="广播输入" IsEnabled="False">
+          <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.send}"
+                         Foreground="{DynamicResource PulseTextTertiary}" />
+        </Button>
+      </StackPanel>
+
+    </Grid>
+  </Border>
+</UserControl>

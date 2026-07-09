@@ -1,0 +1,165 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:VelaShell.App.ViewModels"
+             x:Class="VelaShell.App.Views.Settings.TransferSettingsPage"
+             x:DataType="vm:SettingsViewModel">
+
+  <StackPanel Spacing="14">
+    <StackPanel Spacing="2">
+      <TextBlock Classes="page-title" Text="文件传输" />
+      <TextBlock Classes="page-subtitle" Text="// 配置 SFTP 和文件传输行为" />
+    </StackPanel>
+
+    <!-- 默认路径 -->
+    <TextBlock Classes="section-title" Text="默认路径" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="本地下载目录" />
+        <TextBlock Classes="row-desc" Text="文件下载的默认保存位置" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <TextBox x:Name="DownloadDirBox" Width="180" Text="{Binding Transfer.LocalDownloadDirectory}" />
+        <Button Classes="dlg-outline" Content="浏览…" Click="BrowseDownloadDir_Click" />
+      </StackPanel>
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="默认编辑器" />
+        <TextBlock Classes="row-desc" Text="Windows:完整路径或命令名;Linux: 命令名;macOS: 应用名" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <TextBox x:Name="EditorPathBox" Width="180" Text="{Binding Transfer.DefaultEditorPath}" PlaceholderText="notepad" />
+        <Button Classes="dlg-outline" Content="浏览…" Click="BrowseEditor_Click" />
+      </StackPanel>
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 传输行为 -->
+    <TextBlock Classes="section-title" Text="传输行为" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="最大并发传输数" />
+        <TextBlock Classes="row-desc" Text="同时进行的文件传输任务数量" />
+      </StackPanel>
+      <NumericUpDown Grid.Column="1" Width="80" Value="{Binding Transfer.MaxConcurrentTransfers}" Minimum="1" Maximum="16" Increment="1" FormatString="0" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="保留文件时间戳" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Transfer.PreserveTimestamps}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="传输完成后显示通知" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Transfer.NotifyOnComplete}" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 冲突处理 -->
+    <TextBlock Classes="section-title" Text="冲突处理" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="文件已存在时" />
+        <TextBlock Classes="row-desc" Text="目标路径已有同名文件的处理方式" />
+      </StackPanel>
+      <ComboBox Grid.Column="1" Width="120" SelectedIndex="{Binding ConflictPolicyIndex}" VerticalAlignment="Center">
+        <ComboBoxItem Content="询问" />
+        <ComboBoxItem Content="覆盖" />
+        <ComboBoxItem Content="跳过" />
+        <ComboBoxItem Content="重命名" />
+      </ComboBox>
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="显示隐藏文件" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Transfer.ShowHiddenFiles}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="自动续传" />
+        <TextBlock Classes="row-desc" Text="// 规划中:随断点续传一并提供" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Transfer.AutoResume}" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 带宽限制 -->
+    <TextBlock Classes="section-title" Text="带宽限制" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="启用带宽限制" />
+        <TextBlock Classes="row-desc" Text="// 限制文件传输的最大带宽" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Transfer.BandwidthLimitEnabled}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="上传速度限制" />
+        <TextBlock Classes="row-desc" Text="// 0 表示不限制" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <NumericUpDown Width="80" Value="{Binding Transfer.UploadLimitMBps}" Minimum="0" Maximum="10000" Increment="1" FormatString="0" />
+        <TextBlock Classes="row-desc" Text="MB/s" VerticalAlignment="Center" />
+      </StackPanel>
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="下载速度限制" />
+        <TextBlock Classes="row-desc" Text="// 0 表示不限制" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <NumericUpDown Width="80" Value="{Binding Transfer.DownloadLimitMBps}" Minimum="0" Maximum="10000" Increment="1" FormatString="0" />
+        <TextBlock Classes="row-desc" Text="MB/s" VerticalAlignment="Center" />
+      </StackPanel>
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 日志记录 -->
+    <TextBlock Classes="section-title" Text="日志记录" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="记录传输日志" />
+        <TextBlock Classes="row-desc" Text="// 保存文件传输的详细日志" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Transfer.TransferLogging}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="日志保留天数" />
+        <TextBlock Classes="row-desc" Text="// 超过天数的日志将自动清理" />
+      </StackPanel>
+      <NumericUpDown Grid.Column="1" Width="80" Value="{Binding Transfer.TransferLogRetentionDays}" Minimum="1" Maximum="365" Increment="1" FormatString="0" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="日志存储路径" VerticalAlignment="Center" />
+      <TextBox Grid.Column="1" Width="180" Text="{Binding Transfer.LogDirectory}" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 断点续传 -->
+    <TextBlock Classes="section-title" Text="断点续传" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="启用断点续传" />
+        <TextBlock Classes="row-desc" Text="// 规划中:当前中断的传输需手动重新开始(已取消的下载会清理残留文件)" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Transfer.ResumeEnabled}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="最大重试次数" />
+        <TextBlock Classes="row-desc" Text="// 规划中:随断点续传一并提供" />
+      </StackPanel>
+      <NumericUpDown Grid.Column="1" Width="80" IsEnabled="False" Value="{Binding Transfer.TransferMaxRetries}" Minimum="0" Maximum="10" Increment="1" FormatString="0" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="自动清理临时文件" />
+        <TextBlock Classes="row-desc" Text="// 规划中:随断点续传一并提供" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Transfer.AutoCleanTempFiles}" VerticalAlignment="Center" />
+    </Grid>
+  </StackPanel>
+</UserControl>

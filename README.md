@@ -1,8 +1,8 @@
-# PulseTerm
+# VelaShell
 
 > 一款为运维与开发者打造的现代化跨平台 SSH 终端客户端。
 
-PulseTerm 是一个使用 .NET 与 Avalonia 构建的桌面终端应用，支持 Windows、Linux 与 macOS。它内置自研 VT 终端引擎、SSH/SFTP 连接、两步身份验证与主机指纹校验、端口转发隧道、分组会话管理、可拖拽分屏、命令面板与九页设置中心；全部数据经嵌入式 SonnetDB 加密持久化。旨在为高频远程操作提供**键盘优先、信息密度高、响应迅速**的使用体验。
+VelaShell 是一个使用 .NET 与 Avalonia 构建的桌面终端应用，支持 Windows、Linux 与 macOS。它内置自研 VT 终端引擎、SSH/SFTP 连接、两步身份验证与主机指纹校验、端口转发隧道、分组会话管理、可拖拽分屏、命令面板与九页设置中心；全部数据经嵌入式 SonnetDB 加密持久化。旨在为高频远程操作提供**键盘优先、信息密度高、响应迅速**的使用体验。
 
 ---
 
@@ -72,23 +72,23 @@ PulseTerm 是一个使用 .NET 与 Avalonia 构建的桌面终端应用，支持
 
 ```bash
 git clone <仓库地址>
-cd PulseTerm
+cd VelaShell
 
 # 构建整个解决方案
 dotnet build
 
 # 或直接构建桌面应用入口项目
-dotnet build src/PulseTerm.App/PulseTerm.App.csproj
+dotnet build src/VelaShell.App/VelaShell.App.csproj
 ```
 
 ### 运行
 
 ```bash
 # 开发模式（热重载）
-dotnet watch run --project src/PulseTerm.App/PulseTerm.App.csproj
+dotnet watch run --project src/VelaShell.App/VelaShell.App.csproj
 
 # 发布为 Windows 独立可执行文件
-dotnet publish src/PulseTerm.App/PulseTerm.App.csproj -c Release -r win-x64 --self-contained true
+dotnet publish src/VelaShell.App/VelaShell.App.csproj -c Release -r win-x64 --self-contained true
 
 # 使用跨平台脚本
 ./scripts/build-win.sh
@@ -108,8 +108,8 @@ docker-compose -f docker-compose.test.yml up
 
 | 内容 | 位置 |
 |------|------|
-| SonnetDB 数据目录（连接/分组/设置/known_hosts/连接历史/审计) | `%LocalAppData%/PulseTerm/sonnetdb` |
-| 凭据加密密钥（AES-256) | `%LocalAppData%/PulseTerm/secret.key` |
+| SonnetDB 数据目录（连接/分组/设置/known_hosts/连接历史/审计) | `%LocalAppData%/VelaShell/sonnetdb` |
+| 凭据加密密钥（AES-256) | `%LocalAppData%/VelaShell/secret.key` |
 | SSH 密钥对（密钥管理页) | `~/.ssh` |
 
 > 旧版本的 `sessions.json` / `settings.json` 等 JSON 配置会在首次运行时自动导入 SonnetDB 并改名为 `*.migrated.bak`。
@@ -119,20 +119,20 @@ docker-compose -f docker-compose.test.yml up
 ## 🏗️ 项目结构
 
 ```text
-PulseTerm/
+VelaShell/
 ├── src/
-│   ├── PulseTerm.App/              # 桌面应用入口、DI 组合根、XAML 视图与全局样式
-│   ├── PulseTerm.Terminal/         # 自研 VT 终端引擎与 Avalonia 渲染控件
-│   ├── PulseTerm.Presentation/     # 跨层 ViewModel、工作流与 Presentation DI 模块
-│   ├── PulseTerm.Controls/         # 复用控件库与主题 Token
-│   ├── PulseTerm.Core/             # 领域模型、服务契约、持久化抽象与本地化（无 UI 依赖）
-│   └── PulseTerm.Infrastructure/   # SSH/SFTP/隧道实现、SonnetDB 持久化、AES-256 凭据加密
+│   ├── VelaShell.App/              # 桌面应用入口、DI 组合根、XAML 视图与全局样式
+│   ├── VelaShell.Terminal/         # 自研 VT 终端引擎与 Avalonia 渲染控件
+│   ├── VelaShell.Presentation/     # 跨层 ViewModel、工作流与 Presentation DI 模块
+│   ├── VelaShell.Controls/         # 复用控件库与主题 Token
+│   ├── VelaShell.Core/             # 领域模型、服务契约、持久化抽象与本地化（无 UI 依赖）
+│   └── VelaShell.Infrastructure/   # SSH/SFTP/隧道实现、SonnetDB 持久化、AES-256 凭据加密
 ├── tests/                          # 单元测试、集成测试与冒烟测试
 ├── docs/                           # 架构设计、UI 规格与交互说明
 ├── scripts/                        # 跨平台发布脚本
 ├── docker-compose.test.yml         # 本地 SSH 测试服务器
 ├── global.json                     # SDK 版本锁定
-└── PulseTerm.slnx                  # Visual Studio 解决方案
+└── VelaShell.slnx                  # Visual Studio 解决方案
 ```
 
 ---
@@ -141,7 +141,7 @@ PulseTerm/
 
 - **严格分层**：依赖方向为 `App → Presentation / Controls / Infrastructure → Core`，Core 层不依赖任何 UI 框架，可独立测试与复用。
 - **接口优先**：服务均通过接口注入，便于 Mock 与单元测试。
-- **单一组合根**：所有依赖注入注册集中在 [`src/PulseTerm.App/App.axaml.cs`](src/PulseTerm.App/App.axaml.cs)。
+- **单一组合根**：所有依赖注入注册集中在 [`src/VelaShell.App/App.axaml.cs`](src/VelaShell.App/App.axaml.cs)。
 - **自绘渲染**：终端通过自定义 Avalonia Control 直接渲染字形、选区与滚动，避免依赖已废弃的第三方终端控件。
 - **设计 Token 化**：颜色、字体、间距全部通过资源字典管理，支持主题与品牌定制。
 - **单引擎持久化**：一个嵌入式 SonnetDB 实例承载文档（配置/业务数据）与时序（连接历史/审计）两类模型，接口在 Core、实现在 Infrastructure，退出时统一刷盘；旧版 JSON 配置首次运行自动迁移。
@@ -158,7 +158,7 @@ PulseTerm/
 dotnet test
 
 # 仅运行终端引擎测试
-dotnet test tests/PulseTerm.Terminal.Tests/
+dotnet test tests/VelaShell.Terminal.Tests/
 
 # 详细输出
 dotnet test --logger "console;verbosity=detailed"
@@ -166,12 +166,12 @@ dotnet test --logger "console;verbosity=detailed"
 
 | 测试项目 | 说明 |
 |----------|------|
-| `PulseTerm.Core.Tests` | 领域模型、数据存储、服务逻辑 |
-| `PulseTerm.Terminal.Tests` | VT 解析、终端仿真、编码与字符宽度 |
-| `PulseTerm.Presentation.Tests` | ViewModel 工作流与命令 |
-| `PulseTerm.Infrastructure.Tests` | SonnetDB 持久化、凭据加密、SSH 密钥管理 |
-| `PulseTerm.Controls.Tests` | 自定义控件行为 |
-| `PulseTerm.App.Tests` | 视图模型、身份验证流程、集成与冒烟测试 |
+| `VelaShell.Core.Tests` | 领域模型、数据存储、服务逻辑 |
+| `VelaShell.Terminal.Tests` | VT 解析、终端仿真、编码与字符宽度 |
+| `VelaShell.Presentation.Tests` | ViewModel 工作流与命令 |
+| `VelaShell.Infrastructure.Tests` | SonnetDB 持久化、凭据加密、SSH 密钥管理 |
+| `VelaShell.Controls.Tests` | 自定义控件行为 |
+| `VelaShell.App.Tests` | 视图模型、身份验证流程、集成与冒烟测试 |
 
 ---
 
@@ -216,4 +216,4 @@ dotnet test --logger "console;verbosity=detailed"
 
 ---
 
-> PulseTerm — 为命令行而生。
+> VelaShell — 为命令行而生。

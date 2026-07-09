@@ -1,4 +1,4 @@
-# PulseTerm Issues and Gotchas
+# VelaShell Issues and Gotchas
 
 ## Known Problems and Workarounds
 

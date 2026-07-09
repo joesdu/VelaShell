@@ -1,0 +1,78 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:core="using:Dock.Model.Core"
+                    xmlns:pc="using:VelaShell.Controls.Controls"
+                    x:CompileBindings="True">
+
+  <!--
+    Overrides Dock.Avalonia's built-in document tab context menu (DocumentTabStripItem sets its
+    DocumentContextMenu to {DynamicResource DocumentTabStripItemContextMenu}). Application-level
+    resources win over the theme's, so this replaces it wholesale.
+
+    Kept (per product spec): the Close family, split into a new horizontal / vertical document
+    dock, and the tab-strip position submenu. Dropped: Float / Float all (floating windows are
+    disabled by product decision) and the Layout Mode submenu — this app is locked to the Tabbed
+    layout and does not support MDI, so the MDI switch must be unreachable. Headers are Chinese to
+    match the rest of the shell; visual styling comes from the shared ContextMenu style.
+
+    Icons follow the design's menu icon spec (e6klM): 13px lucide strokes, neutral rows tinted
+    text-tertiary. Icon Data uses DynamicResource — this dictionary is parsed standalone, so
+    StaticResource cannot see Icons.axaml from here.
+  -->
+  <ContextMenu x:Key="DocumentTabStripItemContextMenu" x:DataType="core:IDockable">
+    <MenuItem Header="关闭"
+              Command="{Binding Owner.Factory.CloseDockable}"
+              CommandParameter="{Binding}">
+      <MenuItem.Icon>
+        <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.x}"
+                       Foreground="{DynamicResource PulseTextTertiary}" />
+      </MenuItem.Icon>
+    </MenuItem>
+    <MenuItem Header="关闭其他标签页"
+              Command="{Binding Owner.Factory.CloseOtherDockables}"
+              CommandParameter="{Binding}" />
+    <MenuItem Header="关闭所有标签页"
+              Command="{Binding Owner.Factory.CloseAllDockables}"
+              CommandParameter="{Binding}" />
+    <MenuItem Header="关闭左侧标签页"
+              Command="{Binding Owner.Factory.CloseLeftDockables}"
+              CommandParameter="{Binding}" />
+    <MenuItem Header="关闭右侧标签页"
+              Command="{Binding Owner.Factory.CloseRightDockables}"
+              CommandParameter="{Binding}" />
+    <Separator />
+    <MenuItem Header="水平拆分"
+              Command="{Binding Owner.Factory.NewHorizontalDocumentDock}"
+              CommandParameter="{Binding}">
+      <MenuItem.Icon>
+        <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.columns-2}"
+                       Foreground="{DynamicResource PulseTextTertiary}" />
+      </MenuItem.Icon>
+    </MenuItem>
+    <MenuItem Header="垂直拆分"
+              Command="{Binding Owner.Factory.NewVerticalDocumentDock}"
+              CommandParameter="{Binding}">
+      <MenuItem.Icon>
+        <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.rows-2}"
+                       Foreground="{DynamicResource PulseTextTertiary}" />
+      </MenuItem.Icon>
+    </MenuItem>
+    <Separator />
+    <MenuItem Header="标签位置">
+      <MenuItem.Icon>
+        <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.panel-top}"
+                       Foreground="{DynamicResource PulseTextTertiary}" />
+      </MenuItem.Icon>
+      <MenuItem Header="顶部"
+                Command="{Binding Owner.Factory.SetDocumentDockTabsLayoutTop}"
+                CommandParameter="{Binding Owner}" />
+      <MenuItem Header="左侧"
+                Command="{Binding Owner.Factory.SetDocumentDockTabsLayoutLeft}"
+                CommandParameter="{Binding Owner}" />
+      <MenuItem Header="右侧"
+                Command="{Binding Owner.Factory.SetDocumentDockTabsLayoutRight}"
+                CommandParameter="{Binding Owner}" />
+    </MenuItem>
+  </ContextMenu>
+
+</ResourceDictionary>

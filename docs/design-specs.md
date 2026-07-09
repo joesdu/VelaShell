@@ -1,4 +1,4 @@
-# PulseTerm-zh.pen 逐帧精确规格（Pencil 提取，UI 重建唯一依据）
+# VelaShell-zh.pen 逐帧精确规格（Pencil 提取，UI 重建唯一依据）
 
 > 由 Pencil MCP 从设计稿节点树逐层提取。所有颜色为 token 名（见 `docs/交互与界面规格.md` §1.1）。
 > 字体：JetBrains Mono = mono，Inter = ui。图标库 lucide（描边 2、圆角端点，按 24×24 视箱缩放）。

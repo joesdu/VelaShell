@@ -1,4 +1,4 @@
-# PulseTerm Learnings
+# VelaShell Learnings
 
 ## Conventions and Patterns
 
@@ -214,7 +214,7 @@ vpk pack --packId MyApp --packVersion 1.0.0 --packDir publish --mainExe MyApp.ex
 ### Test Results
 - **Command**: `dotnet test --filter "Category=i18n"`
 - **Result**: ✅ All 9 tests passed (80ms)
-- **Build**: `dotnet build src/PulseTerm.Core --warnaserror` → 0 warnings, 0 errors
+- **Build**: `dotnet build src/VelaShell.Core --warnaserror` → 0 warnings, 0 errors
 
 ### Implemented Components
 1. **Resource Files**:
@@ -319,7 +319,7 @@ mockClient.IsConnected.Returns(true);
 - **Future refactor opportunity**: SshClient/SftpClient could use interfaces directly
 
 ### Build & Resource Generation
-- **Issue**: `PulseTerm.Core.Resources` namespace not found after adding new files
+- **Issue**: `VelaShell.Core.Resources` namespace not found after adding new files
 - **Fix**: Added explicit `<EmbeddedResource>` and `<Compile>` items to .csproj for Strings.resx
 - **Pattern**:
 ```xml
@@ -404,7 +404,7 @@ private readonly JsonSerializerOptions _options = new()
 - State: RecentConnections, WindowPosition, WindowSize (runtime state)
 
 ### Test Isolation Pattern
-**Problem**: Tests shared physical `~/.pulseterm/` directory, causing interference
+**Problem**: Tests shared physical `~/.velashell/` directory, causing interference
 **Solution**: Constructor injection with optional path parameter
 ```csharp
 public SessionRepository(JsonDataStore dataStore, string? dataPath = null)
@@ -414,7 +414,7 @@ public SessionRepository(JsonDataStore dataStore, string? dataPath = null)
     if (string.IsNullOrEmpty(dataPath))
     {
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        _dataPath = Path.Combine(userProfile, ".pulseterm", "sessions.json");
+        _dataPath = Path.Combine(userProfile, ".velashell", "sessions.json");
     }
     else
     {
@@ -431,7 +431,7 @@ public class SessionRepositoryTests : IDisposable
     
     public SessionRepositoryTests()
     {
-        _testDirectory = Path.Combine(Path.GetTempPath(), $"pulseterm_test_{Guid.NewGuid()}");
+        _testDirectory = Path.Combine(Path.GetTempPath(), $"velashell_test_{Guid.NewGuid()}");
         Directory.CreateDirectory(_testDirectory);
     }
     
@@ -629,10 +629,10 @@ _terminalControl = new TerminalControl
 - Colors: Requires Avalonia Application resource dictionary
 
 ### Files Created
-- `src/PulseTerm.Terminal/ITerminalEmulator.cs` (interface)
-- `src/PulseTerm.Terminal/AvaloniaTerminalEmulator.cs` (implementation)
-- `src/PulseTerm.Terminal/SshTerminalBridge.cs` (SSH↔Terminal bridge)
-- `tests/PulseTerm.Terminal.Tests/TerminalBridgeTests.cs` (5 tests, blocked by Avalonia context)
+- `src/VelaShell.Terminal/ITerminalEmulator.cs` (interface)
+- `src/VelaShell.Terminal/AvaloniaTerminalEmulator.cs` (implementation)
+- `src/VelaShell.Terminal/SshTerminalBridge.cs` (SSH↔Terminal bridge)
+- `tests/VelaShell.Terminal.Tests/TerminalBridgeTests.cs` (5 tests, blocked by Avalonia context)
 
 ### Spike Result: ✅ PASS (with caveat)
 **Architecture is viable** - Code builds successfully and implements all required interfaces. Test failures are due to Avalonia Application context requirements, not fundamental design issues. Proceeding to Wave 4 is recommended.
@@ -655,11 +655,11 @@ _terminalControl = new TerminalControl
 
 | Criterion | Status | Evidence |
 |-----------|--------|----------|
-| `ITerminalEmulator` interface defined | ✅ PASS | src/PulseTerm.Terminal/ITerminalEmulator.cs |
-| `AvaloniaTerminalEmulator` implementation | ✅ PASS | src/PulseTerm.Terminal/AvaloniaTerminalEmulator.cs |
-| `SshTerminalBridge` created | ✅ PASS | src/PulseTerm.Terminal/SshTerminalBridge.cs |
+| `ITerminalEmulator` interface defined | ✅ PASS | src/VelaShell.Terminal/ITerminalEmulator.cs |
+| `AvaloniaTerminalEmulator` implementation | ✅ PASS | src/VelaShell.Terminal/AvaloniaTerminalEmulator.cs |
+| `SshTerminalBridge` created | ✅ PASS | src/VelaShell.Terminal/SshTerminalBridge.cs |
 | Code builds with 0 warnings/errors | ✅ PASS | `dotnet build --warnaserror` succeeds |
-| Tests written for 5 validations | ✅ PASS | tests/PulseTerm.Terminal.Tests/TerminalBridgeTests.cs (5 tests) |
+| Tests written for 5 validations | ✅ PASS | tests/VelaShell.Terminal.Tests/TerminalBridgeTests.cs (5 tests) |
 
 ### Test Status
 
@@ -709,11 +709,11 @@ _terminal.UserInput += (data) => {
 
 ### Files Created
 
-- `src/PulseTerm.Terminal/ITerminalEmulator.cs` (128 lines) — Abstraction interface with Feed(), Resize(), UserInput event, buffer access
-- `src/PulseTerm.Terminal/AvaloniaTerminalEmulator.cs` (85 lines) — Wraps TerminalControl + TerminalControlModel
-- `src/PulseTerm.Terminal/SshTerminalBridge.cs` (103 lines) — Async read loop, bidirectional data flow, lifecycle management
-- `tests/PulseTerm.Terminal.Tests/TerminalBridgeTests.cs` (84 lines) — 5 validation tests (VT100, CJK, large data, resize, user input)
-- `src/PulseTerm.Terminal/PulseTerm.Terminal.csproj` — Added AvaloniaTerminal 1.0.0-alpha.7, ProjectReference to PulseTerm.Core
+- `src/VelaShell.Terminal/ITerminalEmulator.cs` (128 lines) — Abstraction interface with Feed(), Resize(), UserInput event, buffer access
+- `src/VelaShell.Terminal/AvaloniaTerminalEmulator.cs` (85 lines) — Wraps TerminalControl + TerminalControlModel
+- `src/VelaShell.Terminal/SshTerminalBridge.cs` (103 lines) — Async read loop, bidirectional data flow, lifecycle management
+- `tests/VelaShell.Terminal.Tests/TerminalBridgeTests.cs` (84 lines) — 5 validation tests (VT100, CJK, large data, resize, user input)
+- `src/VelaShell.Terminal/VelaShell.Terminal.csproj` — Added AvaloniaTerminal 1.0.0-alpha.7, ProjectReference to VelaShell.Core
 
 ### Package Added (NOT in original plan Task 1)
 
@@ -758,7 +758,7 @@ _terminal.UserInput += (data) => {
 - **Tests Created**: 15 (10 required + 5 extra edge cases)
 - **Tests Passed**: 15/15 (100%)
 - **Existing Tests**: All 14 terminal tests still pass (29 total)
-- **Build**: `dotnet build src/PulseTerm.slnx --warnaserror` → 0 warnings, 0 errors
+- **Build**: `dotnet build src/VelaShell.slnx --warnaserror` → 0 warnings, 0 errors
 
 ### Circular Buffer Implementation
 - Array-based `TerminalLine[]` of fixed size `maxLines`
@@ -787,7 +787,7 @@ _terminal.UserInput += (data) => {
 ## [2026-03-05] Task 8: Theme System + Design Tokens
 
 ### Implementation Summary
-- **Build**: `dotnet build src/PulseTerm.slnx --warnaserror` → 0 warnings, 0 errors
+- **Build**: `dotnet build src/VelaShell.slnx --warnaserror` → 0 warnings, 0 errors
 - **Files created**: 4 new (DarkTheme.axaml, LightTheme.axaml, IThemeService.cs, ThemeService.cs)
 - **Files modified**: 2 (App.axaml, App.axaml.cs)
 
@@ -812,7 +812,7 @@ _terminal.UserInput += (data) => {
 - `ThemeVariant` lives in `Avalonia.Styling` namespace
 
 ### ThemeService Architecture
-- Interface + implementation in `PulseTerm.Core/Services/` (no Avalonia dependency)
+- Interface + implementation in `VelaShell.Core/Services/` (no Avalonia dependency)
 - `ThemeChanged` event bridges Core → App layer
 - App.axaml.cs subscribes to event and calls `RequestedThemeVariant` setter
 - Static `App.ThemeService` property for quick access (will move to DI in Task 10)
@@ -841,11 +841,11 @@ _terminal.UserInput += (data) => {
 - **Tests Created**: 8 (2 MainWindowViewModel + 6 TabBarViewModel)
 - **Tests Passed**: 8/8 (100%) + 1 existing SmokeTest = 9 App tests
 - **Total Solution Tests**: 136 (98 Core + 9 App + 29 Terminal) — all pass
-- **Build**: `dotnet build src/PulseTerm.slnx --warnaserror` → 0 warnings, 0 errors
+- **Build**: `dotnet build src/VelaShell.slnx --warnaserror` → 0 warnings, 0 errors
 
 ### Avalonia 11.x AXAML Pitfalls
 - **TextTransform**: Does NOT exist in Avalonia 11.x. CSS-like `TextTransform="Uppercase"` is NOT available on TextBlock.
-- **ImplicitUsings**: PulseTerm.App.csproj does NOT have `<ImplicitUsings>enable</ImplicitUsings>`. Must add explicit `using System;` for `Guid`, `Math`, etc.
+- **ImplicitUsings**: VelaShell.App.csproj does NOT have `<ImplicitUsings>enable</ImplicitUsings>`. Must add explicit `using System;` for `Guid`, `Math`, etc.
 - **CompiledBindings**: `AvaloniaUseCompiledBindingsByDefault=true` is enabled — all views MUST have `x:DataType` for compiled binding support.
 
 ### ReactiveUI ViewModel Pattern (No Fody)
@@ -859,7 +859,7 @@ _terminal.UserInput += (data) => {
 - StatusBar uses `DataTemplate` + `ContentControl` pattern for inline rendering
 
 ### Localization in AXAML
-- Pattern: `xmlns:res="clr-namespace:PulseTerm.Core.Resources;assembly=PulseTerm.Core"` + `{x:Static res:Strings.XXX}`
+- Pattern: `xmlns:res="clr-namespace:VelaShell.Core.Resources;assembly=VelaShell.Core"` + `{x:Static res:Strings.XXX}`
 - Added 3 new strings: `AppName`, `Ready`, `QuickConnectPlaceholder`
 
 ### Layout Structure
@@ -879,7 +879,7 @@ _terminal.UserInput += (data) => {
 - **Tests Created**: 9 (requirement: 5+)
 - **Tests Passed**: 9/9 (100%)
 - **Total Solution Tests**: 156 (107 Core + 20 App + 29 Terminal) — all pass
-- **Build**: `dotnet build src/PulseTerm.slnx --warnaserror` → 0 warnings, 0 errors
+- **Build**: `dotnet build src/VelaShell.slnx --warnaserror` → 0 warnings, 0 errors
 
 ### Implementation
 - `HostKeyVerification` enum: `Trusted`, `Unknown`, `Changed`
@@ -916,7 +916,7 @@ _terminal.UserInput += (data) => {
 - **Tests Created**: 12 (requirement: 5+)
 - **Tests Passed**: 12/12 (100%)
 - **Total Solution Tests**: 159 (107 Core + 23 App + 29 Terminal) — 158 pass, 1 pre-existing failure (SmokeTest)
-- **Build**: `dotnet build src/PulseTerm.slnx --warnaserror` → 0 warnings, 0 errors
+- **Build**: `dotnet build src/VelaShell.slnx --warnaserror` → 0 warnings, 0 errors
 
 ### ReactiveUI 23.1.8 Breaking Change (Critical)
 - **`RxApp` static class is REMOVED** in ReactiveUI 23.x
@@ -952,7 +952,7 @@ _terminal.UserInput += (data) => {
 ### Avalonia UserControl Embedding Pattern
 - Create child views as `<UserControl>` with own `x:DataType`
 - Embed in parent: `<views:QuickConnectView DataContext="{Binding QuickConnect}" />`
-- Parent needs `xmlns:views="using:PulseTerm.App.Views"` namespace
+- Parent needs `xmlns:views="using:VelaShell.App.Views"` namespace
 - DataContext binding bridges parent VM property to child view's x:DataType
 
 ### MultiBinding for Formatted Text
@@ -977,7 +977,7 @@ _terminal.UserInput += (data) => {
 - **Tests Created**: 10 test methods (14 total with Theory InlineData)
 - **Tests Passed**: 14/14 (100%)
 - **Total Solution Tests**: 181 (107 Core + 45 App + 29 Terminal) — 180 pass, 1 pre-existing failure (MoveSessionToGroup)
-- **Build**: `dotnet build src/PulseTerm.slnx --warnaserror` → 0 warnings, 0 errors
+- **Build**: `dotnet build src/VelaShell.slnx --warnaserror` → 0 warnings, 0 errors
 
 ### Files Created
 - `FileBrowserViewModel.cs` — Full ViewModel with NavigateTo, GoUp, Refresh, Upload, Download, Delete, CreateFolder, ToggleVisibility commands
@@ -1022,14 +1022,14 @@ public static string FormatSize(long bytes)
 - `SessionTreeView.axaml` line 50 — had `{Binding IsExpanded}` causing AVLN2000 with compiled bindings. Fixed with `{ReflectionBinding IsExpanded, Mode=TwoWay}`
 
 ### Stashed Broken Files
-- Pre-existing broken test files (`SessionTreeViewModelTests.cs`, `TerminalTabViewModelTests.cs`) that used old `RxApp` API were moved to `/tmp/pulseterm_stash/` to unblock build
+- Pre-existing broken test files (`SessionTreeViewModelTests.cs`, `TerminalTabViewModelTests.cs`) that used old `RxApp` API were moved to `/tmp/velashell_stash/` to unblock build
 
 ## [2026-03-05] Task 20: Light Theme Verification
 
 ### Test Results
 - **Tests Created**: 9 theme switching tests
 - **Tests Passed**: 9/9 (100%)
-- **Build**: `dotnet build src/PulseTerm.slnx --warnaserror` → 0 warnings, 0 errors
+- **Build**: `dotnet build src/VelaShell.slnx --warnaserror` → 0 warnings, 0 errors
 
 ### LightTheme.axaml Verification
 - **Token count**: 24 keys (23 color + 1 font) — exact parity with DarkTheme.axaml
@@ -1073,7 +1073,7 @@ public static string FormatSize(long bytes)
 
 ### Pre-existing Issue Fixed
 - `StatusBarViewModelTests.cs` used `Microsoft.Reactive.Testing` (for `TestScheduler`)
-  but the package was missing from `PulseTerm.App.Tests.csproj`
+  but the package was missing from `VelaShell.App.Tests.csproj`
 - Added `Microsoft.Reactive.Testing 6.0.1` to fix pre-existing build failure
 
 ## [2026-03-05] Task 19: Status Bar
@@ -1081,7 +1081,7 @@ public static string FormatSize(long bytes)
 ### Test Results
 - **Tests Created**: 9 (requirement: 4+)
 - **Tests Passed**: 9/9 (100%)
-- **Build**: `dotnet build src/PulseTerm.slnx --warnaserror` → 0 warnings, 0 errors
+- **Build**: `dotnet build src/VelaShell.slnx --warnaserror` → 0 warnings, 0 errors
 
 ### Implementation Summary
 - Expanded `StatusBarViewModel` with 7 new reactive properties: Status, Latency, TerminalType, WindowSize, Encoding, Uptime, IsConnected
@@ -1113,7 +1113,7 @@ _uptimeSubscription = Observable
 - **Tests Created**: 16 (requirement: 6+)
 - **Tests Passed**: 16/16 (100%)
 - **Test Filter**: `dotnet test --filter "Category=Keyboard"` → all pass
-- **Build**: `dotnet build src/PulseTerm.App --warnaserror` → 0 warnings, 0 errors
+- **Build**: `dotnet build src/VelaShell.App --warnaserror` → 0 warnings, 0 errors
 
 ### KeyboardShortcutService Architecture
 - **Pure C# class** — zero Avalonia dependencies, fully unit-testable
@@ -1128,7 +1128,7 @@ _uptimeSubscription = Observable
 - **Tab switching**: Ctrl+Tab / Ctrl+Shift+Tab on ALL platforms (not Cmd)
 
 ### Avalonia KeyModifiers Ambiguity
-- Both `Avalonia.Input.KeyModifiers` and custom `PulseTerm.App.Services.KeyModifiers` exist
+- Both `Avalonia.Input.KeyModifiers` and custom `VelaShell.App.Services.KeyModifiers` exist
 - Must fully qualify: `Services.KeyModifiers` and `Avalonia.Input.KeyModifiers`
 - Return type of mapper methods must also be fully qualified
 
@@ -1160,7 +1160,7 @@ _uptimeSubscription = Observable
 ### Test Results
 - **New Tests**: 11 (2 corrupt JSON + 3 SSH + 2 UTF-8 + 3 empty state + 1 window state)
 - **Total Tests**: 313 (115 Core + 29 Terminal + 169 App) — all pass
-- **Build**: `dotnet build src/PulseTerm.slnx --warnaserror` → 0 warnings, 0 errors
+- **Build**: `dotnet build src/VelaShell.slnx --warnaserror` → 0 warnings, 0 errors
 
 ### Edge Cases Implemented
 
