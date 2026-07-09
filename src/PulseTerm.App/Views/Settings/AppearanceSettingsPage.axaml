@@ -133,6 +133,17 @@
     <TextBlock Classes="section-title" Text="终端颜色" />
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="配色方案" />
+        <TextBlock Classes="row-desc" Text="// 一键套用整套终端配色(保存后生效);Dracula 为默认并跟随主题" />
+      </StackPanel>
+      <ComboBox Grid.Column="1" Width="160"
+                ItemsSource="{Binding AvailableColorSchemes}"
+                SelectedIndex="{Binding ColorSchemeIndex}"
+                PlaceholderText="选择方案…"
+                VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="前景色" />
         <TextBlock Classes="row-desc" Text="// 终端默认文本颜色" />
       </StackPanel>

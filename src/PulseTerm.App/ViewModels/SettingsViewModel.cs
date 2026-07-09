@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Reactive;
 using System.Threading.Tasks;
 using PulseTerm.Core.Data;
@@ -276,6 +277,32 @@ public class SettingsViewModel : ReactiveObject
     public string[] AccentSwatches { get; } =
         ["#00D4AA", "#3498DB", "#9B59B6", "#E74C3C", "#F39C12", "#1ABC9C", "#E91E63"];
 
+    // ———— 终端配色方案预设(§12.5) ————
+
+    public string[] AvailableColorSchemes { get; } =
+        TerminalColorScheme.BuiltIn.Select(s => s.Name).ToArray();
+
+    private int _colorSchemeIndex = -1;
+
+    /// <summary>选择预设即把整套颜色写入 Appearance(保存后生效);-1 = 未选择。
+    /// 载入设置时复位,不做反向匹配(用户可能自定义过单色)。</summary>
+    public int ColorSchemeIndex
+    {
+        get => _colorSchemeIndex;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _colorSchemeIndex, value);
+            if (value >= 0 && value < TerminalColorScheme.BuiltIn.Length)
+            {
+                // 克隆后整体替换:引用变化才能保证 Appearance.X 路径绑定全部刷新。
+                var updated = System.Text.Json.JsonSerializer.Deserialize<AppearanceOptions>(
+                    System.Text.Json.JsonSerializer.Serialize(Appearance)) ?? new AppearanceOptions();
+                TerminalColorScheme.BuiltIn[value].ApplyTo(updated);
+                Appearance = updated;
+            }
+        }
+    }
+
     /// <summary>快捷键页分组(设计 YQvri;只读展示)。</summary>
     public ShortcutGroup[] ShortcutGroups { get; } =
     [
@@ -481,6 +508,10 @@ public class SettingsViewModel : ReactiveObject
         Transfer = settings.Transfer;
         Security = settings.Security;
         Keys = settings.Keys;
+
+        // 配色方案下拉复位为“未选择”(不反向匹配,用户可能自定义过单色)。
+        _colorSchemeIndex = -1;
+        this.RaisePropertyChanged(nameof(ColorSchemeIndex));
 
         // 分组对象整体替换后,派生的下拉索引一并刷新。
         this.RaisePropertyChanged(nameof(ThemeIndex));
