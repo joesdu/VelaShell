@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:pvm="using:PulseTerm.Presentation.ViewModels"
              xmlns:pc="using:PulseTerm.Controls.Controls"
+             xmlns:loc="using:PulseTerm.App.Localization"
              mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="24"
              x:Class="PulseTerm.App.Views.StatusBarView"
              x:DataType="pvm:StatusBarViewModel">
@@ -45,9 +46,9 @@
                    IsVisible="{Binding ConnectionInfo, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <Border Classes="divider"
                 IsVisible="{Binding Latency, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-        <TextBlock Foreground="{DynamicResource PulseAccent}"
-                   Text="{Binding Latency, StringFormat='Latency: {0}'}"
-                   IsVisible="{Binding Latency, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <!-- 标签本地化(延迟/Latency)且仅数值上主题色(用户要求)。Run 之间不能换行,
+             否则 XAML 空白折叠会在冒号前多出一个空格。 -->
+        <TextBlock IsVisible="{Binding Latency, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><Run Text="{loc:Localize Latency}" Foreground="{DynamicResource PulseTextTertiary}" /><Run Text=": " Foreground="{DynamicResource PulseTextTertiary}" /><Run Text="{Binding Latency}" Foreground="{DynamicResource PulseAccent}" /></TextBlock>
         <Border Classes="divider"
                 IsVisible="{Binding Uptime, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <TextBlock Foreground="{DynamicResource PulseTextTertiary}"
