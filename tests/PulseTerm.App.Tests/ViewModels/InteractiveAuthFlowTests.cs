@@ -94,7 +94,12 @@ public sealed class InteractiveAuthFlowTests
         var profile = new SessionProfile { Name = "P", Host = "h", Username = "root", AuthMethod = AuthMethod.Password, Password = "wrong" };
         var tab = await vm.TryConnectProfileAsync(profile);
 
-        Assert.IsNull(tab);
+        // 重试用尽后保留失败标签,标签页内显示“连接失败”覆盖层(设计 yxjmg),不再销毁标签。
+        Assert.IsNotNull(tab);
+        Assert.AreEqual(1, vm.TabBar.Tabs.Count());
+        Assert.AreEqual(SessionStatus.Disconnected, tab.ConnectionStatus);
+        Assert.IsTrue(tab.ShowDisconnectedOverlay);
+        Assert.IsTrue(tab.HasConnectionError);
         Assert.AreEqual(2, prompted);
         await workflow.Received(3).ConnectProfileAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>());
         StringAssert.Contains(vm.LastConnectionError, "认证失败");

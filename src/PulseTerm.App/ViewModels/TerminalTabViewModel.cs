@@ -18,6 +18,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     private int _reconnectAttempts;
     private bool _disposed;
     private bool _started;
+    private string? _connectionError;
 
     /// <summary>
     /// Creates a tab that owns the terminal emulator but has no live transport yet. Used to show
@@ -43,6 +44,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         ReconnectCommand = ReactiveCommand.Create(
             RequestReconnect,
             this.WhenAnyValue(x => x.IsConnected, connected => !connected));
+
+        // 标签页内失败/断开覆盖层(设计 yxjmg)的“关闭标签页”按钮。
+        CloseTabCommand = ReactiveCommand.Create(() => CloseRequested?.Invoke(this, EventArgs.Empty));
     }
 
     /// <summary>Creates a tab and attaches a live transport immediately (the established-connection case).</summary>
@@ -74,6 +78,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     /// <summary>Raised when the user asks to reconnect a disconnected tab (Enter / Ctrl+R).</summary>
     public event EventHandler? ReconnectRequested;
+
+    /// <summary>标签页内失败/断开覆盖层(设计 yxjmg)的“关闭标签页”触发,由宿主移除该标签。</summary>
+    public event EventHandler? CloseRequested;
 
     /// <summary>Requests a reconnect, but only from the disconnected state (no-op otherwise).</summary>
     public void RequestReconnect()
@@ -118,8 +125,50 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         {
             base.ConnectionStatus = value;
             IsConnected = value == SessionStatus.Connected;
+
+            // 连接成功即清除上次失败信息(隐去覆盖层);其余状态变化都要刷新覆盖层可见性。
+            if (value == SessionStatus.Connected)
+                ConnectionError = null;
+
+            this.RaisePropertyChanged(nameof(ShowDisconnectedOverlay));
+            this.RaisePropertyChanged(nameof(DisconnectOverlayTitle));
+            this.RaisePropertyChanged(nameof(DisconnectOverlayDetail));
         }
     }
+
+    /// <summary>最近一次连接失败的原因;非空时覆盖层显示为“连接失败”,否则为掉线的
+    /// “连接已断开”(设计 yxjmg / dcOverlay)。</summary>
+    public string? ConnectionError
+    {
+        get => _connectionError;
+        private set
+        {
+            this.RaiseAndSetIfChanged(ref _connectionError, value);
+            this.RaisePropertyChanged(nameof(HasConnectionError));
+            this.RaisePropertyChanged(nameof(DisconnectOverlayTitle));
+            this.RaisePropertyChanged(nameof(DisconnectOverlayDetail));
+        }
+    }
+
+    public bool HasConnectionError => !string.IsNullOrEmpty(_connectionError);
+
+    /// <summary>标签页内失败/断开覆盖层(设计 yxjmg)的可见性:未连接(断开/错误)且是一个
+    /// 真实会话标签(SSH 或本地)时显示。连接中/已连接不显示。</summary>
+    public bool ShowDisconnectedOverlay =>
+        !_disposed
+        && ConnectionStatus is SessionStatus.Disconnected or SessionStatus.Error
+        && (Profile is not null || LocalShell is not null);
+
+    public string DisconnectOverlayTitle =>
+        HasConnectionError ? "连接失败" : "连接已断开";
+
+    public string DisconnectOverlayDetail =>
+        HasConnectionError
+            ? _connectionError!
+            : $"// 与 {OverlayHostLabel} 的 SSH 连接已丢失";
+
+    private string OverlayHostLabel =>
+        Profile is { } p ? $"{p.Host}:{p.Port}" : Title;
 
     public TimeSpan? Latency
     {
@@ -148,6 +197,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     /// <summary>Requests an in-place reconnect of a disconnected tab (same as Enter / Ctrl+R).</summary>
     public ReactiveCommand<Unit, Unit> ReconnectCommand { get; }
+
+    /// <summary>Closes the tab from the in-tab failure/disconnect overlay (设计 yxjmg).</summary>
+    public ReactiveCommand<Unit, Unit> CloseTabCommand { get; }
 
     public void Start()
     {
@@ -218,14 +270,32 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         if (Dispatcher.UIThread.CheckAccess())
             MarkDisconnected();
         else
-            Dispatcher.UIThread.Post(MarkDisconnected);
+            Dispatcher.UIThread.Post(() => MarkDisconnected());
     }
 
-    /// <summary>Transitions the tab to the disconnected state and notifies listeners (idempotent).</summary>
-    public void MarkDisconnected()
+    /// <summary>初始连接失败:保留标签并在标签页内显示失败覆盖层(设计 yxjmg),不销毁标签、
+    /// 不弹全局框。置为断开态以启用“重新连接”;不触发 <see cref="Disconnected"/> 事件——
+    /// 初始连接失败不应自动重连(尤其认证失败),由用户手动决定重连或关闭。</summary>
+    public void MarkConnectionFailed(string message)
+    {
+        if (_disposed)
+            return;
+
+        // 先记录原因(覆盖层显示“连接失败”),再切断开态刷新覆盖层可见性。
+        ConnectionError = message;
+        ConnectionStatus = SessionStatus.Disconnected;
+    }
+
+    /// <summary>Transitions the tab to the disconnected state and notifies listeners (idempotent).
+    /// <paramref name="reason"/> 非空时(如重连失败)覆盖层显示为“连接失败 + 具体原因”,
+    /// 否则为普通掉线的“连接已断开”。</summary>
+    public void MarkDisconnected(string? reason = null)
     {
         if (_disposed || ConnectionStatus == SessionStatus.Disconnected)
             return;
+
+        if (!string.IsNullOrEmpty(reason))
+            ConnectionError = reason;
 
         ConnectionStatus = SessionStatus.Disconnected;
         FeedDisconnectNotice();

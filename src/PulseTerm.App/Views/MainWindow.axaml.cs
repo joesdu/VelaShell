@@ -100,28 +100,22 @@ public partial class MainWindow : Window
             // 资源管理器树:右键连接/双击连接 + 右键编辑。
             if (vm.Sidebar.SessionTree is { } tree)
             {
-                tree.ConnectRequested += profile => Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
-                {
-                    var tab = await vm.TryConnectProfileAsync(profile);
-                    if (tab is null && vm.LastConnectionError is { Length: > 0 } error)
-                        await ShowConnectionErrorAsync(error);
-                });
+                tree.ConnectRequested += profile => Avalonia.Threading.Dispatcher.UIThread.Post(
+                    () => _ = vm.TryConnectProfileAsync(profile));
                 tree.EditRequested += profile => Avalonia.Threading.Dispatcher.UIThread.Post(
                     () => _ = OpenProfileDialogAsync(profile));
 
                 // 打开 SFTP:先连接(已连接则新开标签),随后展开文件浏览面板。
                 tree.OpenSftpRequested += profile => Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
                 {
+                    // 连接失败已在标签页内以覆盖层提示(设计 yxjmg),这里不再弹全局框;
+                    // 仅在连上后展开 SFTP 面板。
                     var tab = await vm.TryConnectProfileAsync(profile);
-                    if (tab is null)
+                    if (tab is { ConnectionStatus: PulseTerm.Core.Models.SessionStatus.Connected }
+                        && !vm.FileBrowser.IsVisible)
                     {
-                        if (vm.LastConnectionError is { Length: > 0 } error)
-                            await ShowConnectionErrorAsync(error);
-                        return;
-                    }
-
-                    if (!vm.FileBrowser.IsVisible)
                         vm.ToggleFileBrowser();
+                    }
                 });
 
                 // 端口转发:打开隧道管理面板(全局非模态,见 fuXS7)。
@@ -370,14 +364,13 @@ public partial class MainWindow : Window
 
     // The window uses the native OS title bar per design spec §2 — no custom chrome.
 
-    private async void OnSidebarRecentConnectRequested(object? sender, RecentConnectionEntry entry)
+    private void OnSidebarRecentConnectRequested(object? sender, RecentConnectionEntry entry)
     {
         if (DataContext is not MainWindowViewModel vm)
             return;
 
-        var tab = await vm.TryConnectRecentAsync(entry);
-        if (tab is null && vm.LastConnectionError is { Length: > 0 } error)
-            await ShowConnectionErrorAsync(error);
+        // 连接失败已在标签页内以覆盖层提示(设计 yxjmg),不再弹全局框。
+        _ = vm.TryConnectRecentAsync(entry);
     }
 
     private void OnOpenConnectionProfileRequested(object? sender, EventArgs e)
@@ -434,12 +427,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        // TryConnectProfileAsync never throws — a failed auth/connection is reported, not crashed.
-        var tab = await mainWindowViewModel.TryConnectProfileAsync(profile);
-        if (tab is null && mainWindowViewModel.LastConnectionError is { Length: > 0 } error)
-        {
-            await ShowConnectionErrorAsync(error);
-        }
+        // TryConnectProfileAsync never throws — 连接失败已在标签页内以覆盖层提示(设计 yxjmg),
+        // 不再弹全局框。
+        await mainWindowViewModel.TryConnectProfileAsync(profile);
     }
 
     /// <summary>打开设置窗口(设计 §14):DI 单例 VM,打开时重新加载持久化设置。</summary>
@@ -513,9 +503,6 @@ public partial class MainWindow : Window
 
         return profile;
     }
-
-    private Task ShowConnectionErrorAsync(string message) =>
-        MessageDialog.ShowMessageAsync(this, "连接失败", message, MessageDialogKind.Error);
 
     /// <summary>导出终端输出(§12.4):有选区导出选区,否则导出整个缓冲区(scrollback+屏幕)。</summary>
     private async Task ExportTerminalBufferAsync(MainWindowViewModel vm)

@@ -21,7 +21,11 @@ public sealed class MainWindowSshFeatureTests
         var shellStream = Substitute.For<IShellStreamWrapper>();
         var terminal = Substitute.For<ITerminalEmulator>();
 
-        shellStream.CanRead.Returns(false);
+        // 模拟活连接:读循环阻塞在 ReadAsync(不立即 EOF),否则桥会异步触发 Closed 与连接
+        // 结果竞态,把刚连上的标签翻回断开(真实连接不会立即 EOF)。
+        shellStream.CanRead.Returns(true);
+        shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new TaskCompletionSource<int>().Task);
 
         var profile = new SessionProfile
         {
@@ -106,13 +110,49 @@ public sealed class MainWindowSshFeatureTests
     }
 
     [TestMethod]
+    public async Task TryConnectProfileAsync_NetworkFailure_KeepsTab_WithInTabOverlay()
+    {
+        // 设计 yxjmg:网络/超时失败不销毁标签、不弹全局框,仅在标签页内显示失败覆盖层。
+        var workflow = Substitute.For<IConnectionWorkflowService>();
+        var sshConnectionService = Substitute.For<ISshConnectionService>();
+
+        var profile = new SessionProfile
+        {
+            Name = "LAN",
+            Host = "192.168.1.50",
+            Port = 22,
+            Username = "root",
+            AuthMethod = AuthMethod.Password,
+            Password = "secret",
+        };
+
+        workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>())
+            .Returns<Task<SshSession>>(_ => throw new System.Net.Sockets.SocketException());
+
+        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => Substitute.For<ITerminalEmulator>());
+
+        var tab = await vm.TryConnectProfileAsync(profile);
+
+        Assert.IsNotNull(tab);
+        Assert.AreEqual(1, vm.TabBar.Tabs.Count());
+        Assert.AreEqual(SessionStatus.Disconnected, tab.ConnectionStatus);
+        Assert.IsTrue(tab.ShowDisconnectedOverlay);
+        Assert.IsTrue(tab.HasConnectionError);
+        Assert.AreEqual("连接失败", tab.DisconnectOverlayTitle);
+        Assert.IsFalse(string.IsNullOrEmpty(vm.LastConnectionError));
+    }
+
+    [TestMethod]
     public async Task ReconnectTabAsync_ReusesSameTab_AndRestoresConnectedState()
     {
         var workflow = Substitute.For<IConnectionWorkflowService>();
         var sshConnectionService = Substitute.For<ISshConnectionService>();
         var sshClient = Substitute.For<ISshClientWrapper>();
         var shellStream = Substitute.For<IShellStreamWrapper>();
-        shellStream.CanRead.Returns(false);
+        // 模拟活连接:读循环阻塞在 ReadAsync,避免桥立即 EOF 触发 Closed 与连接结果竞态。
+        shellStream.CanRead.Returns(true);
+        shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new TaskCompletionSource<int>().Task);
         var terminal = Substitute.For<ITerminalEmulator>();
 
         var profile = new SessionProfile

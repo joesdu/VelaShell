@@ -12,7 +12,10 @@ public class SshConnectionService : ISshConnectionService
     private readonly Func<ConnectionInfo, ISshClientWrapper> _clientFactory;
     private readonly SourceList<SshSession> _sessions = new();
     private readonly ConcurrentDictionary<Guid, ISshClientWrapper> _clients = new();
-    private readonly SemaphoreSlim _connectionLock = new(1, 1);
+
+    /// <summary>只保护 <see cref="_sessions"/> 列表的增删/读取(微秒级、无网络 I/O)。
+    /// 握手不在此锁内进行,因此一条高延迟连接不再阻塞其它并发连接。</summary>
+    private readonly object _sessionsGate = new();
 
     public SshConnectionService(
         Func<ConnectionInfo, ISshClientWrapper> clientFactory,
@@ -24,17 +27,10 @@ public class SshConnectionService : ISshConnectionService
 
     public IObservableList<SshSession> Sessions => _sessions.AsObservableList();
 
-    public async Task<SshSession> ConnectAsync(ConnectionInfo connectionInfo, CancellationToken cancellationToken = default)
+    public Task<SshSession> ConnectAsync(ConnectionInfo connectionInfo, CancellationToken cancellationToken = default)
     {
-        await _connectionLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return await ConnectInternalAsync(connectionInfo, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _connectionLock.Release();
-        }
+        // 并发连接:握手不再串行,多个会话可同时建连,单条慢连接不阻塞其它连接。
+        return ConnectInternalAsync(connectionInfo, cancellationToken);
     }
 
     private async Task<SshSession> ConnectInternalAsync(ConnectionInfo connectionInfo, CancellationToken cancellationToken)
@@ -45,7 +41,10 @@ public class SshConnectionService : ISshConnectionService
             Status = SessionStatus.Connecting
         };
 
-        _sessions.Add(session);
+        lock (_sessionsGate)
+        {
+            _sessions.Add(session);
+        }
 
         ISshClientWrapper? client = null;
         try
@@ -76,7 +75,10 @@ public class SshConnectionService : ISshConnectionService
 
             session.Status = SessionStatus.Error;
             session.ErrorMessage = $"Connection to {connectionInfo.Host}:{connectionInfo.Port} timed out. Please check the host and port, then retry.";
-            _sessions.Remove(session);
+            lock (_sessionsGate)
+            {
+                _sessions.Remove(session);
+            }
 
             _logger?.LogWarning("SSH session {SessionId} to {Host}:{Port} timed out or was cancelled",
                 session.SessionId, connectionInfo.Host, connectionInfo.Port);
@@ -89,7 +91,10 @@ public class SshConnectionService : ISshConnectionService
 
             session.Status = SessionStatus.Error;
             session.ErrorMessage = ex.Message;
-            _sessions.Remove(session);
+            lock (_sessionsGate)
+            {
+                _sessions.Remove(session);
+            }
 
             _logger?.LogError(ex, "Failed to connect SSH session {SessionId} to {Host}:{Port}",
                 session.SessionId, connectionInfo.Host, connectionInfo.Port);
@@ -100,42 +105,38 @@ public class SshConnectionService : ISshConnectionService
 
     public async Task DisconnectAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
-        await _connectionLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        // 断开也不再走全局锁:每个会话的网络拆除各自并发进行,不阻塞其它连接/断开。
+        var session = GetSession(sessionId);
+        if (session == null)
         {
-            var session = GetSession(sessionId);
-            if (session == null)
-            {
-                throw new InvalidOperationException($"Session {sessionId} not found");
-            }
-
-            if (session.Status == SessionStatus.Disconnected)
-            {
-                return;
-            }
-
-            if (_clients.TryRemove(sessionId, out var client))
-            {
-                await Task.Run(() =>
-                {
-                    client.Disconnect();
-                    client.Dispose();
-                }, cancellationToken).ConfigureAwait(false);
-            }
-
-            session.Status = SessionStatus.Disconnected;
-
-            _logger?.LogInformation("SSH session {SessionId} disconnected", sessionId);
+            throw new InvalidOperationException($"Session {sessionId} not found");
         }
-        finally
+
+        if (session.Status == SessionStatus.Disconnected)
         {
-            _connectionLock.Release();
+            return;
         }
+
+        if (_clients.TryRemove(sessionId, out var client))
+        {
+            await Task.Run(() =>
+            {
+                client.Disconnect();
+                client.Dispose();
+            }, cancellationToken).ConfigureAwait(false);
+        }
+
+        session.Status = SessionStatus.Disconnected;
+
+        _logger?.LogInformation("SSH session {SessionId} disconnected", sessionId);
     }
 
     public SshSession? GetSession(Guid sessionId)
     {
-        return _sessions.Items.FirstOrDefault(s => s.SessionId == sessionId);
+        lock (_sessionsGate)
+        {
+            return _sessions.Items.FirstOrDefault(s => s.SessionId == sessionId);
+        }
     }
 
     public ISshClientWrapper? GetClient(Guid sessionId)

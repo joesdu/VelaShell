@@ -164,6 +164,45 @@ public class SshConnectionServiceTests
     }
 
     [TestMethod]
+    [TestCategory("EdgeCase")]
+    public async Task ConnectAsync_SlowConnection_DoesNotBlockOtherConnections()
+    {
+        // 第一条连接的握手阻塞在 TCS 上(模拟高延迟/不可达主机);第二条应立即连上,
+        // 不必等第一条超时。验证已移除全局串行锁(回归:此前会串行阻塞)。
+        var gate = new TaskCompletionSource();
+
+        var slowClient = Substitute.For<ISshClientWrapper>();
+        slowClient.IsConnected.Returns(true);
+        slowClient.ConnectAsync(Arg.Any<CancellationToken>()).Returns(_ => gate.Task);
+
+        var fastClient = Substitute.For<ISshClientWrapper>();
+        fastClient.IsConnected.Returns(true);
+        fastClient.ConnectAsync(Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+
+        var clients = new Queue<ISshClientWrapper>([slowClient, fastClient]);
+        var service = new SshConnectionService(_ => clients.Dequeue());
+
+        var info = new ConnectionInfo
+        {
+            Host = "localhost",
+            Port = 22,
+            Username = "u",
+            AuthMethod = AuthMethod.Password,
+            Password = "p",
+        };
+
+        var slow = service.ConnectAsync(info);
+        var fast = await service.ConnectAsync(info).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.AreEqual(SessionStatus.Connected, fast.Status);
+        Assert.IsFalse(slow.IsCompleted, "慢连接仍应在进行中,不应因串行而完成/被跳过。");
+
+        gate.SetResult();
+        var slowSession = await slow.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.AreEqual(SessionStatus.Connected, slowSession.Status);
+    }
+
+    [TestMethod]
     public async Task ConnectAsync_FactoryReceivesConnectionInfo()
     {
         var mockClientWrapper = Substitute.For<ISshClientWrapper>();

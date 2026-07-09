@@ -21,9 +21,27 @@
         <Setter Property="Padding" Value="0" />
         <Setter Property="MinHeight" Value="0" />
       </Style>
-      <!-- Remove default selection highlight; the row Border renders it (设计 FrJPu:bg-active). -->
+      <!-- 去掉内置选中/悬停高亮:行的选中与悬停都由自绘的行 Border 渲染(设计 FrJPu)。
+           不压掉内置 :pointerover 时,嵌套子项左侧缩进区会被内置 hover 背景填成一块多余的
+           浅色块。 -->
       <Style Selector="TreeViewItem:selected /template/ Border#PART_LayoutRoot">
         <Setter Property="Background" Value="Transparent" />
+      </Style>
+      <Style Selector="TreeViewItem:pointerover /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="Transparent" />
+      </Style>
+
+      <!-- 隐藏内置展开箭头及其预留的层级缩进区(设计 FrJPu 只保留自绘、紧挨文件夹的
+           箭头;缩进改由行 Border 的 padding 控制)。容器在 Fluent 主题里的具体类型
+           不确定,用 :is(Control) 按名字命中,并把预留宽度/边距一并归零,消除左侧空白。 -->
+      <Style Selector="TreeViewItem /template/ :is(Control)#PART_ExpandCollapseChevronContainer">
+        <Setter Property="IsVisible" Value="False" />
+        <Setter Property="Width" Value="0" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Margin" Value="0" />
+      </Style>
+      <Style Selector="TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron">
+        <Setter Property="IsVisible" Value="False" />
       </Style>
 
       <!-- 分组行 -->

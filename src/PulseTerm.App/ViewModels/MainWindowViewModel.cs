@@ -655,19 +655,44 @@ public class MainWindowViewModel : ReactiveObject
             throw new InvalidOperationException("SSH connection services are not configured.");
         }
 
+        var settings = await LoadSettingsSnapshotAsync().ConfigureAwait(true);
+        var (terminalTab, document) = CreateConnectingTab(profile, settings);
+
+        try
+        {
+            await RunHandshakeAsync(terminalTab, profile, settings, cancellationToken);
+            return terminalTab;
+        }
+        catch
+        {
+            // 直接入口(编程/测试)保持既有语义:握手失败即撤掉标签并向上抛。
+            // 交互入口 TryConnectProfileAsync 另有“保留标签 + 标签页内覆盖层”的失败处理。
+            RemoveTerminalTab(terminalTab, document);
+            throw;
+        }
+    }
+
+    /// <summary>读取设置快照并缓存到 <see cref="_latestSettings"/>(无设置服务时用默认值)。</summary>
+    private async Task<AppSettings> LoadSettingsSnapshotAsync()
+    {
         var settings = _settingsService is not null
             ? await _settingsService.GetSettingsAsync()
             : new AppSettings();
         _latestSettings = settings;
-        var terminalType = TerminalTypeExtensions.FromTermName(settings.TerminalType);
+        return settings;
+    }
 
-        // Show the tab immediately in a connecting state, then perform the (already async, non-UI-
-        // blocking) handshake. A slow or timing-out connection no longer looks like a frozen app,
-        // and the user gets a visible, closable tab right away (#17).
+    /// <summary>立即创建一个“连接中”的终端标签并加入标签栏/停靠区(#17:慢连接不再像卡死,
+    /// 用户立刻拿到可见、可关闭的标签)。握手由 <see cref="RunHandshakeAsync"/> 完成。
+    /// 认证重试会复用同一标签,不重复建标签。</summary>
+    private (TerminalTabViewModel Tab, TerminalDocument Document) CreateConnectingTab(SessionProfile profile, AppSettings settings)
+    {
+        var terminalType = TerminalTypeExtensions.FromTermName(settings.TerminalType);
         var terminalEmulator = _terminalEmulatorFactory();
         ConfigureTerminal(terminalEmulator, settings, terminalType);
-        // 状态栏连接指示按设计 gzmsb 显示"SSH • <显示名称>:<端口>"——不暴露用户名与
-        // IP(用户以安全为由要求);未配置名称时才退回主机地址。
+
+        // 状态栏连接指示按设计 gzmsb 显示"SSH • <显示名称>"——不暴露用户名与 IP(安全要求);
+        // 未配置名称时才退回主机地址。
         var displayName = string.IsNullOrWhiteSpace(profile.Name) ? profile.Host : profile.Name;
         var terminalTab = new TerminalTabViewModel(terminalEmulator)
         {
@@ -700,55 +725,55 @@ public class MainWindowViewModel : ReactiveObject
         }
 
         var document = new TerminalDocument(terminalTab);
+        // 标签页内失败覆盖层(设计 yxjmg)的“关闭标签页”按钮:闭包捕获 document 以整体移除。
+        terminalTab.CloseRequested += (_, _) => RemoveTerminalTab(terminalTab, document);
+
         TabBar.AddTab(terminalTab);
         ActiveTerminalTab = terminalTab;
         _dockFactory.AddTerminal(document);
         UpdateStatusBarForActiveTab();
 
-        try
-        {
-            var session = await _connectionWorkflowService.ConnectProfileAsync(profile, cancellationToken);
-            var client = _sshConnectionService.GetClient(session.SessionId)
-                ?? throw new InvalidOperationException("SSH client was not created for the session.");
+        return (terminalTab, document);
+    }
 
-            var shellStream = client.CreateShellStream(
-                terminalName: terminalType.ToTermName(),
-                columns: 120,
-                rows: 32,
-                width: 0,
-                height: 0,
-                bufferSize: 4096);
+    /// <summary>在一个已存在的“连接中”标签上完成 SSH 握手并挂上传输;失败时向上抛,由调用方
+    /// 决定撤标签(直接入口)还是保留标签显示覆盖层(交互入口)。</summary>
+    private async Task RunHandshakeAsync(TerminalTabViewModel terminalTab, SessionProfile profile, AppSettings settings, CancellationToken cancellationToken)
+    {
+        var terminalType = TerminalTypeExtensions.FromTermName(settings.TerminalType);
 
-            terminalTab.SessionId = session.SessionId;
-            terminalTab.AttachTransport(shellStream);
-            terminalTab.Start();
-            terminalTab.ConnectionStatus = SessionStatus.Connected;
-            StartSessionLogging(terminalTab, settings);
-            SendStartupCommand(terminalTab, settings);
+        var session = await _connectionWorkflowService!.ConnectProfileAsync(profile, cancellationToken);
+        var client = _sshConnectionService!.GetClient(session.SessionId)
+            ?? throw new InvalidOperationException("SSH client was not created for the session.");
 
-            // The session id only exists now, after the handshake — the active-tab subscription
-            // fired before it was assigned, so bind the SFTP browser here (and show + load it) or
-            // it stays bound to the empty placeholder and never loads a listing (#22).
-            ShowFileBrowserForActiveSession();
+        var shellStream = client.CreateShellStream(
+            terminalName: terminalType.ToTermName(),
+            columns: 120,
+            rows: 32,
+            width: 0,
+            height: 0,
+            bufferSize: 4096);
 
-            if (_metricsService is not null)
-                terminalTab.ResourceMonitor = new ResourceMonitorViewModel(_metricsService, session.SessionId, terminalTab.Title);
-        }
-        catch
-        {
-            // The handshake failed (auth/network/timeout): retract the connecting tab so the
-            // caller sees a clean failure instead of a dead tab.
-            RemoveTerminalTab(terminalTab, document);
-            throw;
-        }
+        terminalTab.SessionId = session.SessionId;
+        terminalTab.AttachTransport(shellStream);
+        terminalTab.Start();
+        terminalTab.ConnectionStatus = SessionStatus.Connected;
+        StartSessionLogging(terminalTab, settings);
+        SendStartupCommand(terminalTab, settings);
+
+        // The session id only exists now, after the handshake — the active-tab subscription
+        // fired before it was assigned, so bind the SFTP browser here (and show + load it) or
+        // it stays bound to the empty placeholder and never loads a listing (#22).
+        ShowFileBrowserForActiveSession();
+
+        if (_metricsService is not null)
+            terminalTab.ResourceMonitor = new ResourceMonitorViewModel(_metricsService, session.SessionId, terminalTab.Title);
 
         // 连接历史已由工作流写入 SonnetDB,这里刷新侧边栏“最近连接”。
         await Sidebar.RecentConnections.RefreshAsync();
         StatusBar.ResetUptime();
         UpdateStatusBarForActiveTab();
         LastConnectionError = null;
-
-        return terminalTab;
     }
 
     /// <summary>
@@ -825,9 +850,10 @@ public class MainWindowViewModel : ReactiveObject
         }
         catch (Exception ex)
         {
-            tab.MarkDisconnected();
+            // 重连失败:保留标签,标签页内覆盖层显示“连接失败 + 原因”(设计 yxjmg),不弹全局框。
             LastConnectionError = DescribeConnectionError(ex, tab.Profile);
             StatusBar.Status = LastConnectionError;
+            tab.MarkDisconnected(LastConnectionError);
         }
     }
 
@@ -961,7 +987,16 @@ public class MainWindowViewModel : ReactiveObject
     /// </summary>
     public async Task<TerminalTabViewModel?> TryConnectProfileAsync(SessionProfile profile, CancellationToken cancellationToken = default)
     {
+        if (_connectionWorkflowService is null || _sshConnectionService is null)
+            return null;
+
         var current = profile;
+        var settings = await LoadSettingsSnapshotAsync().ConfigureAwait(true);
+
+        // 标签只创建一次:连接中→(失败则)标签页内覆盖层→(认证重试)复用同一标签,
+        // 不再每次尝试都新建/销毁标签。慢连接不阻塞其它连接(SshConnectionService 已并发)。
+        TerminalTabViewModel? tab = null;
+        TerminalDocument? document = null;
 
         for (var attempt = 0; attempt < 3; attempt++)
         {
@@ -971,15 +1006,17 @@ public class MainWindowViewModel : ReactiveObject
                 if (InteractiveAuthenticator is not { } prompt)
                 {
                     if (attempt > 0)
-                        return null; // 无法交互重试,保留已记录的错误。
+                        return tab; // 无法交互重试,保留失败标签(含覆盖层)。
                 }
                 else
                 {
                     var updated = await prompt(current);
                     if (updated is null)
                     {
-                        // 用户取消:不弹连接失败提示。
+                        // 用户取消:不弹连接失败提示,撤掉尚未连上的标签。
                         LastConnectionError = null;
+                        if (tab is not null && document is not null)
+                            RemoveTerminalTab(tab, document);
                         return null;
                     }
 
@@ -987,12 +1024,27 @@ public class MainWindowViewModel : ReactiveObject
                 }
             }
 
+            if (tab is null)
+            {
+                (tab, document) = CreateConnectingTab(current, settings);
+            }
+            else
+            {
+                // 认证重试:复用标签,回到“连接中”(隐去上次的失败覆盖层)。
+                tab.Profile = current;
+                tab.ConnectionStatus = SessionStatus.Connecting;
+            }
+
             try
             {
-                return await ConnectProfileAsync(current, cancellationToken);
+                await RunHandshakeAsync(tab, current, settings, cancellationToken);
+                return tab;
             }
             catch (OperationCanceledException)
             {
+                // 用户取消(超时):撤掉这个正在连接的标签。
+                if (document is not null)
+                    RemoveTerminalTab(tab, document);
                 return null;
             }
             catch (Exception ex)
@@ -1000,13 +1052,28 @@ public class MainWindowViewModel : ReactiveObject
                 LastConnectionError = DescribeConnectionError(ex, current);
                 StatusBar.Status = LastConnectionError;
 
-                // 仅认证失败进入重试弹窗;其他错误(网络/超时)直接报告。
-                if (ex.GetType().Name != "SshAuthenticationException" || InteractiveAuthenticator is null)
+                var isAuth = ex.GetType().Name == "SshAuthenticationException";
+
+                // 认证失败但无法交互重试(headless):保持既有契约,撤标签、返回 null。
+                if (isAuth && InteractiveAuthenticator is null)
+                {
+                    if (document is not null)
+                        RemoveTerminalTab(tab, document);
                     return null;
+                }
+
+                // 认证失败且可交互:标记失败态并循环回去重新弹凭据重试。
+                tab.MarkConnectionFailed(LastConnectionError);
+                if (isAuth && InteractiveAuthenticator is not null)
+                    continue;
+
+                // 网络/超时等失败:保留标签,标签页内显示失败覆盖层(设计 yxjmg),不弹全局框。
+                return tab;
             }
         }
 
-        return null;
+        // 认证重试用尽:保留标签显示“认证失败”覆盖层,交给用户手动重连/关闭。
+        return tab;
     }
 
     /// <summary>
