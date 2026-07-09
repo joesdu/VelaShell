@@ -48,6 +48,9 @@ public class GeneralOptions
     public bool CheckUpdatesOnStartup { get; set; } = true;
     public bool MinimizeToTray { get; set; }
 
+    /// <summary>“恢复会话”的持久化槽位(不出现在设置界面):退出时已连接会话的配置 id。</summary>
+    public List<Guid> LastOpenProfileIds { get; set; } = [];
+
     // 连接默认值
     public int ConnectTimeoutSeconds { get; set; } = 30;
     public int KeepAliveSeconds { get; set; } = 60;
@@ -89,6 +92,11 @@ public class AppearanceOptions
     public string SidebarPosition { get; set; } = "left";
     public string StartupWindowState { get; set; } = "remember";
 
+    // “记住上次”窗口状态的持久化槽位(不出现在设置界面,由主窗口关闭时回写)。
+    public double LastWindowWidth { get; set; }
+    public double LastWindowHeight { get; set; }
+    public bool LastWindowMaximized { get; set; }
+
     // 终端颜色(默认 = Dracula 官方 Windows Terminal 方案,用户确认)
     public string TerminalForeground { get; set; } = "#F8F8F2";
     public string TerminalBackground { get; set; } = "#282A36";
@@ -107,7 +115,8 @@ public class AppearanceOptions
 /// <summary>设置 - 终端(设计 08FpM;字体/字号/回滚沿用 AppSettings 顶层字段)。</summary>
 public class TerminalBehaviorOptions
 {
-    public double LineHeight { get; set; } = 1.2;
+    /// <summary>行间距倍数;1.0 = 字体自然行高(与历史版本渲染一致)。</summary>
+    public double LineHeight { get; set; } = 1.0;
     public bool Ligatures { get; set; } = true;
 
     public string CursorStyle { get; set; } = "bar";
@@ -117,10 +126,12 @@ public class TerminalBehaviorOptions
     public bool TabFlashAlert { get; set; } = true;
     public bool VisualBell { get; set; }
 
-    public bool ScrollOnOutput { get; set; } = true;
+    /// <summary>开 = 新输出把翻看历史的视图拉回底部;关 = 保持锚定(#15 的既有行为)。</summary>
+    public bool ScrollOnOutput { get; set; }
     public bool ScrollOnKeystroke { get; set; } = true;
 
-    public bool CopyOnSelect { get; set; }
+    /// <summary>选中即复制:沿用设计 §8 的既有默认行为。</summary>
+    public bool CopyOnSelect { get; set; } = true;
     public bool RightClickPaste { get; set; } = true;
     public bool TrimTrailingWhitespaceOnCopy { get; set; } = true;
     public bool DoubleClickSelectsWord { get; set; } = true;
@@ -138,7 +149,9 @@ public class TerminalBehaviorOptions
 public class TransferOptions
 {
     public string LocalDownloadDirectory { get; set; } = "~/Downloads";
-    public string RemoteInitialPath { get; set; } = "/home/user";
+
+    /// <summary>SFTP 初始目录;空 = 登录账户的家目录(pwd)。</summary>
+    public string RemoteInitialPath { get; set; } = "";
 
     public int MaxConcurrentTransfers { get; set; } = 3;
     public bool PreserveTimestamps { get; set; } = true;

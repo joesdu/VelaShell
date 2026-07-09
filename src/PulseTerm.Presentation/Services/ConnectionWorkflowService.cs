@@ -10,17 +10,20 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
     private readonly ISshConnectionService _sshConnectionService;
     private readonly IRecentConnectionService? _recentConnections;
     private readonly IAuditLogService? _auditLog;
+    private readonly ISettingsService? _settingsService;
 
     public ConnectionWorkflowService(
         ISessionRepository sessionRepository,
         ISshConnectionService sshConnectionService,
         IRecentConnectionService? recentConnections = null,
-        IAuditLogService? auditLog = null)
+        IAuditLogService? auditLog = null,
+        ISettingsService? settingsService = null)
     {
         _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
         _sshConnectionService = sshConnectionService ?? throw new ArgumentNullException(nameof(sshConnectionService));
         _recentConnections = recentConnections;
         _auditLog = auditLog;
+        _settingsService = settingsService;
     }
 
     public async Task<IReadOnlyList<SessionProfile>> GetSavedProfilesAsync(CancellationToken cancellationToken = default)
@@ -40,7 +43,7 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
 
         // 保存不要求凭据 —— 未勾选“记住密码”的配置在连接时再询问。
         ValidateProfile(profile, requireCredentials: false);
-        await _sessionRepository.SaveSessionAsync(WithPersistablePassword(profile)).ConfigureAwait(false);
+        await _sessionRepository.SaveSessionAsync(await WithPersistablePasswordAsync(profile).ConfigureAwait(false)).ConfigureAwait(false);
         return profile;
     }
 
@@ -83,16 +86,31 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
         }
 
         profile.LastConnectedAt = DateTime.UtcNow;
-        await _sessionRepository.SaveSessionAsync(WithPersistablePassword(profile)).ConfigureAwait(false);
+        await _sessionRepository.SaveSessionAsync(await WithPersistablePasswordAsync(profile).ConfigureAwait(false)).ConfigureAwait(false);
         await RecordHistoryAsync(profile, startedAt, success: true).ConfigureAwait(false);
 
         return session;
     }
 
-    /// <summary>“记住密码”未勾选时,持久化副本不包含密码/口令(仅本次连接使用)。</summary>
-    private static SessionProfile WithPersistablePassword(SessionProfile profile)
+    /// <summary>“记住密码”未勾选、或全局“记住密码”(设置 → 常规 → 隐私与安全)关闭时,
+    /// 持久化副本不包含密码/口令(仅本次连接使用)。</summary>
+    private async Task<SessionProfile> WithPersistablePasswordAsync(SessionProfile profile)
     {
-        if (profile.RememberPassword)
+        bool remember = profile.RememberPassword;
+        if (remember && _settingsService is not null)
+        {
+            try
+            {
+                var settings = await _settingsService.GetSettingsAsync().ConfigureAwait(false);
+                remember = settings.General.RememberPasswords;
+            }
+            catch
+            {
+                // 设置不可读时沿用配置自身的勾选。
+            }
+        }
+
+        if (remember)
         {
             return profile;
         }
@@ -111,7 +129,8 @@ public sealed class ConnectionWorkflowService : IConnectionWorkflowService
             GroupId = profile.GroupId,
             LastConnectedAt = profile.LastConnectedAt,
             Tags = [.. profile.Tags],
-            RememberPassword = false,
+            // 保留配置自身的勾选:全局开关只影响是否落盘,不改写每条配置的选择。
+            RememberPassword = profile.RememberPassword,
         };
     }
 

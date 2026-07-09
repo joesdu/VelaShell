@@ -38,7 +38,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         // Toolbar quick actions (用户反馈 #5): tear the transport down but keep the tab,
         // or ask the owner to reconnect in place (#19 flow).
         DisconnectCommand = ReactiveCommand.Create(
-            () => { DetachTransport(); MarkDisconnected(); },
+            () => { UserRequestedDisconnect = true; DetachTransport(); MarkDisconnected(); },
             this.WhenAnyValue(x => x.IsConnected));
         ReconnectCommand = ReactiveCommand.Create(
             RequestReconnect,
@@ -63,6 +63,10 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// <summary>Raised when the session drops (remote closed the channel) so the UI can show the
     /// disconnected overlay and offer reconnect (#19).</summary>
     public event EventHandler? Disconnected;
+
+    /// <summary>true = 本次断开由用户主动触发(断开按钮),自动重连(设置 → 常规)不介入;
+    /// 重新挂载传输时复位。</summary>
+    public bool UserRequestedDisconnect { get; private set; }
 
     /// <summary>Raised when the user asks to reconnect a disconnected tab (Enter / Ctrl+R).</summary>
     public event EventHandler? ReconnectRequested;
@@ -164,6 +168,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
         DetachTransport();
 
+        UserRequestedDisconnect = false;
         ShellStream = shellStream;
         var bridge = new SshTerminalBridge(TerminalEmulator, shellStream);
         bridge.Closed += OnBridgeClosed;

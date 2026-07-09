@@ -110,8 +110,11 @@
                 VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
-      <TextBlock Classes="row-label" Text="自动加载密钥到 Agent" VerticalAlignment="Center" />
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Keys.AutoLoadToAgent}" VerticalAlignment="Center" />
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="自动加载密钥到 Agent" />
+        <TextBlock Classes="row-desc" Text="// 规划中:ssh-agent 集成尚未接入,连接时直接读取密钥文件" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Keys.AutoLoadToAgent}" VerticalAlignment="Center" />
     </Grid>
   </StackPanel>
 </UserControl>

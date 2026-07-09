@@ -83,9 +83,9 @@
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="自动续传" />
-        <TextBlock Classes="row-desc" Text="传输中断后自动恢复未完成的传输" />
+        <TextBlock Classes="row-desc" Text="// 规划中:随断点续传一并提供" />
       </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Transfer.AutoResume}" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Transfer.AutoResume}" VerticalAlignment="Center" />
     </Grid>
 
     <Border Classes="sep" />
@@ -150,20 +150,23 @@
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="启用断点续传" />
-        <TextBlock Classes="row-desc" Text="// 传输中断后自动从断点继续" />
+        <TextBlock Classes="row-desc" Text="// 规划中:当前中断的传输需手动重新开始(已取消的下载会清理残留文件)" />
       </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Transfer.ResumeEnabled}" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Transfer.ResumeEnabled}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="最大重试次数" />
-        <TextBlock Classes="row-desc" Text="// 传输失败后的自动重试次数" />
+        <TextBlock Classes="row-desc" Text="// 规划中:随断点续传一并提供" />
       </StackPanel>
-      <NumericUpDown Grid.Column="1" Width="80" Value="{Binding Transfer.TransferMaxRetries}" Minimum="0" Maximum="10" Increment="1" FormatString="0" VerticalAlignment="Center" />
+      <NumericUpDown Grid.Column="1" Width="80" IsEnabled="False" Value="{Binding Transfer.TransferMaxRetries}" Minimum="0" Maximum="10" Increment="1" FormatString="0" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
-      <TextBlock Classes="row-label" Text="自动清理临时文件" VerticalAlignment="Center" />
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Transfer.AutoCleanTempFiles}" VerticalAlignment="Center" />
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="自动清理临时文件" />
+        <TextBlock Classes="row-desc" Text="// 规划中:随断点续传一并提供" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Transfer.AutoCleanTempFiles}" VerticalAlignment="Center" />
     </Grid>
   </StackPanel>
 </UserControl>

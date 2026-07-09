@@ -54,6 +54,7 @@ public partial class FileBrowserView : UserControl
             vm.OpenLocalFile = OpenLocalFileAsync;
             vm.OpenInBuiltInEditor = OpenInBuiltInEditorAsync;
             vm.PromptConfigureEditor = PromptConfigureEditorAsync;
+            vm.ConfirmOverwrite = ConfirmOverwriteAsync;
         };
 
         // Accept dropping local files/folders onto the list to upload into CurrentPath.
@@ -265,7 +266,8 @@ public partial class FileBrowserView : UserControl
         return folders.FirstOrDefault()?.TryGetLocalPath();
     }
 
-    /// <summary>Picks the local destination folder for folder/batch downloads.</summary>
+    /// <summary>Picks the local destination folder for folder/batch downloads, starting at the
+    /// configured 本地下载目录 (设置 → 文件传输).</summary>
     private async Task<string?> PickDownloadFolderAsync()
     {
         var top = TopLevel.GetTopLevel(this);
@@ -276,9 +278,40 @@ public partial class FileBrowserView : UserControl
         {
             Title = Strings.SelectDownloadFolder,
             AllowMultiple = false,
+            SuggestedStartLocation = await ResolveDefaultDownloadFolderAsync(top),
         });
 
         return folders.FirstOrDefault()?.TryGetLocalPath();
+    }
+
+    /// <summary>把设置中的下载目录("~" 展开)换成存储提供器的文件夹句柄;失败返回 null
+    /// (选择器落在系统默认位置)。</summary>
+    private async Task<IStorageFolder?> ResolveDefaultDownloadFolderAsync(TopLevel top)
+    {
+        if (DataContext is not FileBrowserViewModel vm)
+            return null;
+
+        var configured = vm.TransferOptions.LocalDownloadDirectory?.Trim();
+        if (string.IsNullOrEmpty(configured))
+            return null;
+
+        if (configured.StartsWith("~"))
+        {
+            configured = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                configured.TrimStart('~', '/', '\\'));
+        }
+
+        try
+        {
+            return System.IO.Directory.Exists(configured)
+                ? await top.StorageProvider.TryGetFolderFromPathAsync(configured)
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private void OnFileListDragOver(object? sender, DragEventArgs e)
@@ -331,9 +364,21 @@ public partial class FileBrowserView : UserControl
         {
             Title = Strings.SaveToLocal,
             SuggestedFileName = suggestedName,
+            SuggestedStartLocation = await ResolveDefaultDownloadFolderAsync(top),
         });
 
         return file?.TryGetLocalPath();
+    }
+
+    /// <summary>下载遇到本地同名文件且冲突策略为“询问”:覆盖 or 跳过该文件。</summary>
+    private async Task<bool> ConfirmOverwriteAsync(string localPath)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner)
+            return true;
+
+        return await MessageDialog.ConfirmAsync(owner, "文件已存在",
+            $"本地已有同名文件:\n{localPath}\n\n覆盖它吗?(取消则跳过该文件)",
+            kind: MessageDialogKind.Warning);
     }
 
     /// <summary>Modal single-line text prompt used by new folder / new file / rename / move.

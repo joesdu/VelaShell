@@ -68,8 +68,8 @@ public sealed class MainWindowSshFeatureTests
         Assert.AreEqual(SessionStatus.Connected, tab.ConnectionStatus);
         Assert.AreSame(tab, vm.TabBar.ActiveTab);
         Assert.AreEqual(1, vm.TabBar.Tabs.Count());
-        // 设计 gzmsb:状态栏显示"SSH • <显示名称>:<端口>",不暴露用户名与 IP(安全要求)。
-        Assert.AreEqual("SSH • Prod:22", vm.StatusBar.ConnectionInfo);
+        // 设计 gzmsb 调整(cfe16d2):状态栏只显示"SSH • <显示名称>",不暴露用户名/IP/端口(安全要求)。
+        Assert.AreEqual("SSH • Prod", vm.StatusBar.ConnectionInfo);
         Assert.AreEqual(Strings.Connected, vm.StatusBar.Status);
         Assert.AreEqual(1, vm.Sidebar.RecentConnections.Connections.Count());
         Assert.AreEqual("Prod - 生产环境", vm.Sidebar.RecentConnections.Connections[0].DisplayName);

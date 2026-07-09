@@ -736,6 +736,8 @@ public class FileBrowserViewModelTests
         try
         {
             _vm.PickFolderForDownload = () => Task.FromResult<string?>(tempRoot);
+            // 顺序传输语义(设置 → 文件传输 → 最大并发 = 1):并发 >1 时第二个文件可能已在飞行中。
+            _vm.TransferOptions.MaxConcurrentTransfers = 1;
 
             var files = CreateTestFiles();
             _vm.SelectedFiles.Add(new RemoteFileInfoViewModel(files[1])); // readme.txt (first)

@@ -12,11 +12,34 @@ public class SftpService : ISftpService
     private readonly ISshConnectionService _connectionService;
     private readonly ConcurrentDictionary<Guid, ISftpClientWrapper> _sftpClients = new();
     private readonly Func<SshSession, ISftpClientWrapper>? _sftpClientFactory;
+    private readonly Data.ISettingsService? _settingsService;
 
-    public SftpService(ISshConnectionService connectionService, Func<SshSession, ISftpClientWrapper>? sftpClientFactory = null)
+    public SftpService(ISshConnectionService connectionService,
+        Func<SshSession, ISftpClientWrapper>? sftpClientFactory = null,
+        Data.ISettingsService? settingsService = null)
     {
         _connectionService = connectionService ?? throw new ArgumentNullException(nameof(connectionService));
         _sftpClientFactory = sftpClientFactory;
+        _settingsService = settingsService;
+    }
+
+    /// <summary>带宽限制(设置 → 文件传输):返回字节/秒,0 = 不限速。</summary>
+    private async Task<(long UploadBps, long DownloadBps, bool PreserveTimestamps)> GetTransferTuningAsync()
+    {
+        if (_settingsService is null)
+            return (0, 0, true);
+
+        try
+        {
+            var t = (await _settingsService.GetSettingsAsync().ConfigureAwait(false)).Transfer;
+            long up = t.BandwidthLimitEnabled ? (long)Math.Max(0, t.UploadLimitMBps) * 1024 * 1024 : 0;
+            long down = t.BandwidthLimitEnabled ? (long)Math.Max(0, t.DownloadLimitMBps) * 1024 * 1024 : 0;
+            return (up, down, t.PreserveTimestamps);
+        }
+        catch
+        {
+            return (0, 0, true);
+        }
     }
 
     public async Task<List<RemoteFileInfo>> ListDirectoryAsync(Guid sessionId, string path, CancellationToken cancellationToken = default)
@@ -40,7 +63,10 @@ public class SftpService : ISftpService
 
         var stopwatch = Stopwatch.StartNew();
 
-        await using var fileStream = File.OpenRead(localPath);
+        var (uploadBps, _, _) = await GetTransferTuningAsync().ConfigureAwait(false);
+        await using var fileStream = uploadBps > 0
+            ? new ThrottledStream(File.OpenRead(localPath), uploadBps)
+            : (Stream)File.OpenRead(localPath);
 
         // NOTE: SSH.NET invokes this progress callback on a detached thread-pool thread
         // (ThreadPool.QueueUserWorkItem), so throwing from it would be an unhandled exception that
@@ -73,7 +99,10 @@ public class SftpService : ISftpService
 
         var stopwatch = Stopwatch.StartNew();
 
-        await using var fileStream = File.Create(localPath);
+        var (_, downloadBps, preserveTimestamps) = await GetTransferTuningAsync().ConfigureAwait(false);
+        await using var fileStream = downloadBps > 0
+            ? new ThrottledStream(File.Create(localPath), downloadBps)
+            : (Stream)File.Create(localPath);
 
         // See UploadFileAsync: the callback runs on a detached thread-pool thread, so we cancel by
         // disposing our own stream (failing the worker's write) rather than throwing from it.
@@ -89,6 +118,19 @@ public class SftpService : ISftpService
             catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is not OperationCanceledException)
             {
                 throw new OperationCanceledException(cancellationToken);
+            }
+        }
+
+        // 保留文件时间戳(设置 → 文件传输):下载完成后把远端修改时间写到本地副本。
+        if (preserveTimestamps && fileInfo.LastModified != default)
+        {
+            try
+            {
+                File.SetLastWriteTime(localPath, fileInfo.LastModified);
+            }
+            catch
+            {
+                // 时间戳只是尽力而为。
             }
         }
     }

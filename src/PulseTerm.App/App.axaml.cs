@@ -19,8 +19,13 @@ public partial class App : Application
 {
     public IServiceProvider? Services => _serviceProvider;
 
+    /// <summary>托盘图标当前是否挂载(主窗口据此决定“关闭时最小化到托盘”是否可用)。</summary>
+    public bool TrayIconActive => _trayIconService?.IsActive == true;
+
     private ServiceProvider? _serviceProvider;
     private IThemeService? _themeService;
+    private Services.TrayIconService? _trayIconService;
+    private Core.Models.AppSettings? _startupSettings;
 
     public override void Initialize()
     {
@@ -31,6 +36,7 @@ public partial class App : Application
             .AddPulseTermControls()
             .AddPulseTermInfrastructure()
             .AddSingleton<IThemeService>(_ => new ThemeService("system"))
+            .AddSingleton<PulseTerm.Core.Ssh.IHostKeyPrompt, Services.HostKeyPromptDialogService>()
             .AddSingleton<PulseTerm.Core.Localization.ILocalizationService, PulseTerm.Core.Localization.LocalizationService>()
             .AddSingleton<Services.IKeyboardShortcutService, Services.KeyboardShortcutService>()
             .AddSingleton<SettingsViewModel>()
@@ -58,15 +64,52 @@ public partial class App : Application
             var viewModel = _serviceProvider?.GetRequiredService<MainWindowViewModel>()
                 ?? new MainWindowViewModel();
 
-            desktop.MainWindow = new MainWindow
+            var mainWindow = new MainWindow
             {
                 DataContext = viewModel
             };
+            desktop.MainWindow = mainWindow;
+
+            // 启动时窗口状态(设置 → 外观):记住上次 / 最大化 / 默认大小。
+            ApplyStartupWindowState(mainWindow, _startupSettings);
+
+            // 开机自启动与设置保持同步(用户可能在外部改过注册表)。
+            PulseTerm.App.Services.StartupRegistration.Apply(_startupSettings?.General.LaunchAtStartup == true);
+
+            // 过期会话/传输日志清理(设置 → 常规/文件传输 → 日志保留天数),后台执行。
+            PulseTerm.App.Services.SessionLogService.CleanupExpired(
+                _startupSettings?.General.LogRetentionDays ?? 30);
+            PulseTerm.App.Services.TransferLogService.CleanupExpired(
+                _startupSettings?.Transfer.LogDirectory,
+                _startupSettings?.Transfer.TransferLogRetentionDays ?? 30);
+
+            // 托盘图标(关闭时最小化到托盘);设置保存后热更新挂载状态。
+            _trayIconService = new PulseTerm.App.Services.TrayIconService(this);
+            _trayIconService.ShowRequested += () =>
+            {
+                mainWindow.Show();
+                if (mainWindow.WindowState == Avalonia.Controls.WindowState.Minimized)
+                    mainWindow.WindowState = Avalonia.Controls.WindowState.Normal;
+                mainWindow.Activate();
+            };
+            _trayIconService.ExitRequested += mainWindow.ForceClose;
+            _trayIconService.SetEnabled(_startupSettings?.General.MinimizeToTray == true);
+
+            if (_serviceProvider?.GetService<ISettingsService>() is { } settingsService)
+            {
+                settingsService.SettingsSaved += settings =>
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        PulseTerm.App.Services.StartupRegistration.Apply(settings.General.LaunchAtStartup);
+                        _trayIconService?.SetEnabled(settings.General.MinimizeToTray);
+                    });
+            }
 
             // 退出时释放容器,确保 SonnetDB 引擎正常关闭(WAL/段刷盘);
             // 并清理「默认编辑器打开」遗留的 remote-edit 临时文件。
             desktop.Exit += (_, _) =>
             {
+                _trayIconService?.Dispose();
                 PulseTerm.App.Services.ExternalEditSessionManager.CleanupAll();
                 DisposeServicesOnExit();
             };
@@ -111,6 +154,7 @@ public partial class App : Application
         {
             var settings = _serviceProvider.GetRequiredService<ISettingsService>()
                 .GetSettingsAsync().GetAwaiter().GetResult();
+            _startupSettings = settings;
 
             _serviceProvider.GetRequiredService<PulseTerm.Core.Localization.ILocalizationService>()
                 .SetLanguage(settings.Language);
@@ -122,6 +166,32 @@ public partial class App : Application
         catch
         {
             // Corrupt settings must never block startup; defaults apply.
+        }
+    }
+
+    /// <summary>启动时窗口状态(设置 → 外观 → 启动时窗口状态),在窗口显示前应用以免闪动。</summary>
+    private static void ApplyStartupWindowState(MainWindow window, Core.Models.AppSettings? settings)
+    {
+        if (settings is null)
+            return;
+
+        switch (settings.Appearance.StartupWindowState)
+        {
+            case "maximized":
+                window.WindowState = Avalonia.Controls.WindowState.Maximized;
+                break;
+            case "default":
+                break;
+            default: // remember
+                var a = settings.Appearance;
+                if (a.LastWindowWidth >= 800 && a.LastWindowHeight >= 500)
+                {
+                    window.Width = a.LastWindowWidth;
+                    window.Height = a.LastWindowHeight;
+                }
+                if (a.LastWindowMaximized)
+                    window.WindowState = Avalonia.Controls.WindowState.Maximized;
+                break;
         }
     }
 

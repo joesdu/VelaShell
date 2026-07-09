@@ -29,9 +29,9 @@
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="启动时检查更新" />
-        <TextBlock Classes="row-desc" Text="// 自动检测并提示可用的新版本" />
+        <TextBlock Classes="row-desc" Text="// 暂不可用:自动更新通道尚未接入" />
       </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding General.CheckUpdatesOnStartup}" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding General.CheckUpdatesOnStartup}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
@@ -115,16 +115,16 @@
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="更新频道" />
-        <TextBlock Classes="row-desc" Text="// 选择稳定版或抢先体验版" />
+        <TextBlock Classes="row-desc" Text="// 暂不可用:自动更新通道尚未接入" />
       </StackPanel>
-      <ComboBox Grid.Column="1" Width="140" SelectedIndex="{Binding UpdateChannelIndex}" VerticalAlignment="Center">
+      <ComboBox Grid.Column="1" Width="140" IsEnabled="False" SelectedIndex="{Binding UpdateChannelIndex}" VerticalAlignment="Center">
         <ComboBoxItem Content="稳定版" />
         <ComboBoxItem Content="预览版" />
       </ComboBox>
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <TextBlock Classes="row-label" Text="自动下载更新" VerticalAlignment="Center" />
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding General.AutoDownloadUpdates}" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding General.AutoDownloadUpdates}" VerticalAlignment="Center" />
     </Grid>
 
     <Border Classes="sep" />
@@ -167,9 +167,9 @@
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="系统通知" />
-        <TextBlock Classes="row-desc" Text="// 连接状态变化时发送系统通知" />
+        <TextBlock Classes="row-desc" Text="// 规划中:Windows 原生通知(Toast)尚未接入;状态变化提醒见“断开连接时提醒”" />
       </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding General.SystemNotifications}" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding General.SystemNotifications}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
@@ -186,9 +186,9 @@
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="主密码保护" />
-        <TextBlock Classes="row-desc" Text="// 使用主密码加密存储的凭据" />
+        <TextBlock Classes="row-desc" Text="// 规划中:当前凭据已用本机密钥(AES)加密存储" />
       </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding General.MasterPasswordProtection}" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding General.MasterPasswordProtection}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">

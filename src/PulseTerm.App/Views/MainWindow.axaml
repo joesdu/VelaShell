@@ -49,7 +49,7 @@
       <views:TunnelPanelView DataContext="{Binding TunnelPanel}" />
     </Panel>
     <!-- Menu bar (design frame TSiDh): text menus + global action buttons -->
-    <views:MenuBarView Grid.Row="0" DataContext="{Binding}" />
+    <views:MenuBarView x:Name="MenuBarHost" Grid.Row="0" DataContext="{Binding}" />
 
     <!-- Shell: content + status bar + palette overlay -->
     <Grid Grid.Row="1" RowDefinitions="*,Auto">

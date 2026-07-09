@@ -25,6 +25,11 @@ public partial class MainWindow : Window
     private double _lastFileRowHeight = 360;
     private IDisposable? _fileBrowserVisibilitySub;
 
+    private PulseTerm.Core.Data.ISettingsService? _settingsService;
+    private AppSettings? _settings;
+    private bool _forceClose;
+    private bool _sidebarOnRight;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -89,6 +94,7 @@ public partial class MainWindow : Window
             vm.NewConnectionRequested += (_, _) => _ = OpenProfileDialogAsync(existing: null);
             vm.SettingsRequested += (_, _) => _ = OpenSettingsAsync();
             vm.InteractiveAuthenticator = PromptCredentialsAsync;
+            vm.MultilinePasteConfirmer = ConfirmMultilinePasteAsync;
 
             // 资源管理器树:右键连接/双击连接 + 右键编辑。
             if (vm.Sidebar.SessionTree is { } tree)
@@ -135,6 +141,217 @@ public partial class MainWindow : Window
 
             await vm.InitializeAsync();
         }
+
+        // 外观/行为设置:启动时应用一次,设置保存后热更新。
+        if (App.Current is App { Services: { } services }
+            && services.GetService<PulseTerm.Core.Data.ISettingsService>() is { } settingsService)
+        {
+            _settingsService = settingsService;
+            settingsService.SettingsSaved += OnSettingsSavedForWindow;
+            Closed += (_, _) => settingsService.SettingsSaved -= OnSettingsSavedForWindow;
+            try
+            {
+                _settings = await settingsService.GetSettingsAsync();
+                ApplyWindowAppearance(_settings);
+            }
+            catch
+            {
+                // 设置读取失败不影响窗口本身。
+            }
+
+            await RestoreSessionsAsync(_settings);
+        }
+    }
+
+    /// <summary>恢复会话(设置 → 常规 → 启动):重连上次退出时在线的连接。缺凭据的
+    /// 配置会走既有的登录验证弹窗;单个失败不影响其余会话。</summary>
+    private async Task RestoreSessionsAsync(AppSettings? settings)
+    {
+        if (settings?.General.RestoreSessionsOnStartup != true
+            || settings.General.LastOpenProfileIds.Count == 0
+            || DataContext is not MainWindowViewModel vm
+            || App.Current is not App { Services: { } services }
+            || services.GetService<PulseTerm.Core.Data.ISessionRepository>() is not { } repository)
+        {
+            return;
+        }
+
+        foreach (var profileId in settings.General.LastOpenProfileIds.Distinct().ToList())
+        {
+            try
+            {
+                var profile = await repository.GetSessionAsync(profileId);
+                if (profile is not null)
+                    await vm.TryConnectProfileAsync(profile);
+            }
+            catch
+            {
+                // 配置已删除或连接失败:跳过,继续恢复其余会话。
+            }
+        }
+    }
+
+    private void OnSettingsSavedForWindow(AppSettings settings) =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            _settings = settings;
+            ApplyWindowAppearance(settings);
+        });
+
+    /// <summary>应用设置 → 外观:窗口透明度、菜单栏显隐、侧边栏位置、界面字体/字号。</summary>
+    private void ApplyWindowAppearance(AppSettings settings)
+    {
+        var a = settings.Appearance;
+
+        Opacity = Math.Clamp(a.WindowOpacityPercent, 50, 100) / 100.0;
+
+        if (this.FindControl<MenuBarView>("MenuBarHost") is { } menuBar)
+            menuBar.IsVisible = a.ShowMenuBar;
+
+        ApplySidebarPosition(a.SidebarPosition == "right");
+
+        // 界面字体:shadow 主题的 PulseUiFont 令牌(空或默认 Inter 时还原主题字体)。
+        if (Application.Current is { } app)
+        {
+            var uiFont = a.UiFont?.Trim();
+            if (string.IsNullOrEmpty(uiFont) || string.Equals(uiFont, "Inter", StringComparison.OrdinalIgnoreCase))
+                app.Resources.Remove("PulseUiFont");
+            else
+                app.Resources["PulseUiFont"] = new FontFamily($"{uiFont}, Segoe UI, Microsoft YaHei, sans-serif");
+        }
+
+        // 界面字号:窗口级默认字号,未显式指定 FontSize 的控件继承。
+        if (a.UiFontSize is >= 9 and <= 24)
+            FontSize = a.UiFontSize;
+    }
+
+    /// <summary>侧边栏位置(设置 → 外观):交换侧边栏与主区所在列,分隔条留在中间。</summary>
+    private void ApplySidebarPosition(bool right)
+    {
+        if (right == _sidebarOnRight)
+            return;
+
+        if (this.FindControl<SidebarView>("SidebarHost") is not { } sidebar
+            || this.FindControl<Grid>("MainAreaGrid") is not { } main
+            || sidebar.Parent is not Grid contentGrid
+            || contentGrid.ColumnDefinitions.Count < 3)
+        {
+            return;
+        }
+
+        _sidebarOnRight = right;
+        var cols = contentGrid.ColumnDefinitions;
+        int sidebarCol = right ? 2 : 0;
+        int mainCol = right ? 0 : 2;
+
+        // 保留用户拖出来的侧边栏宽度。
+        var sidebarWidth = cols[right ? 0 : 2].Width;
+        if (!sidebarWidth.IsAbsolute)
+            sidebarWidth = new GridLength(260);
+
+        cols[sidebarCol].Width = sidebarWidth;
+        cols[sidebarCol].MinWidth = 180;
+        cols[sidebarCol].MaxWidth = 520;
+        cols[mainCol].Width = new GridLength(1, GridUnitType.Star);
+        cols[mainCol].MinWidth = 400;
+        cols[mainCol].MaxWidth = double.PositiveInfinity;
+
+        Grid.SetColumn(sidebar, sidebarCol);
+        Grid.SetColumn(main, mainCol);
+    }
+
+    /// <summary>托盘“退出”/关闭确认后的真正退出:跳过托盘拦截与确认弹窗。</summary>
+    public void ForceClose()
+    {
+        _forceClose = true;
+        Close();
+    }
+
+    /// <summary>关闭链路(设置 → 常规):最小化到托盘 → 关闭前确认 → 记住窗口状态。
+    /// 系统关机/应用程序退出(CloseReason ≠ 用户点关闭)不拦截。</summary>
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        var settings = _settings;
+        bool userInitiated = e.CloseReason == WindowCloseReason.WindowClosing;
+
+        if (!_forceClose && userInitiated && settings is not null)
+        {
+            if (settings.General.MinimizeToTray
+                && App.Current is App app && HasActiveTrayIcon(app))
+            {
+                e.Cancel = true;
+                Hide();
+                base.OnClosing(e);
+                return;
+            }
+
+            if (settings.General.ConfirmBeforeClose && HasConnectedSessions())
+            {
+                e.Cancel = true;
+                _ = ConfirmCloseAsync();
+                base.OnClosing(e);
+                return;
+            }
+        }
+
+        PersistWindowBounds(settings);
+        base.OnClosing(e);
+    }
+
+    private static bool HasActiveTrayIcon(App app) => app.TrayIconActive;
+
+    private bool HasConnectedSessions() =>
+        DataContext is MainWindowViewModel vm
+        && vm.TabBar.Tabs.OfType<TerminalTabViewModel>().Any(t => t.IsConnected);
+
+    private async Task ConfirmCloseAsync()
+    {
+        var confirmed = await MessageDialog.ConfirmAsync(this, "关闭 PulseTerm",
+            "仍有活动的 SSH 会话,关闭窗口将断开所有连接。确定退出吗?");
+        if (confirmed)
+            ForceClose();
+    }
+
+    /// <summary>退出时的状态记忆:窗口尺寸/最大化(启动时窗口状态 = 记住上次)与
+    /// 已连接会话的配置 id(恢复会话)。同步等待,本地写入很快。</summary>
+    private void PersistWindowBounds(AppSettings? settings)
+    {
+        if (_settingsService is null || settings is null)
+            return;
+
+        bool rememberWindow = settings.Appearance.StartupWindowState == "remember";
+        bool rememberSessions = settings.General.RestoreSessionsOnStartup;
+        if (!rememberWindow && !rememberSessions)
+            return;
+
+        try
+        {
+            if (rememberWindow)
+            {
+                settings.Appearance.LastWindowMaximized = WindowState == WindowState.Maximized;
+                if (WindowState == WindowState.Normal)
+                {
+                    settings.Appearance.LastWindowWidth = Width;
+                    settings.Appearance.LastWindowHeight = Height;
+                }
+            }
+
+            if (rememberSessions && DataContext is MainWindowViewModel vm)
+            {
+                settings.General.LastOpenProfileIds = vm.TabBar.Tabs
+                    .OfType<TerminalTabViewModel>()
+                    .Where(t => t.IsConnected && t.Profile is { } p && p.Id != Guid.Empty)
+                    .Select(t => t.Profile!.Id)
+                    .Distinct()
+                    .ToList();
+            }
+
+            _settingsService.SaveSettingsAsync(settings).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // 记忆退出状态失败不阻塞退出。
+        }
     }
 
     /// <summary>Menu/palette 终端内查找 → opens the visible terminal view's search bar.</summary>
@@ -178,10 +395,23 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 新建连接的默认端口与默认密钥(设置 → 常规 / 密钥管理)。
+        int defaultPort = _settings?.DefaultPort ?? 22;
+        string? defaultKeyPath = null;
+        if (_settings?.Keys.DefaultKeyName is { Length: > 0 } keyName)
+        {
+            var candidate = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh", keyName);
+            if (System.IO.File.Exists(candidate))
+                defaultKeyPath = candidate;
+        }
+
         var connectionProfileViewModel = new ConnectionProfileViewModel(
             existing: existing,
             connectionWorkflowService: app.Services.GetService<IConnectionWorkflowService>(),
-            sessionRepository: app.Services.GetService<PulseTerm.Core.Data.ISessionRepository>());
+            sessionRepository: app.Services.GetService<PulseTerm.Core.Data.ISessionRepository>(),
+            defaultPort: defaultPort,
+            defaultPrivateKeyPath: defaultKeyPath);
 
         var dialog = new ConnectionProfileView
         {
@@ -285,4 +515,18 @@ public partial class MainWindow : Window
 
     private Task ShowConnectionErrorAsync(string message) =>
         MessageDialog.ShowMessageAsync(this, "连接失败", message, MessageDialogKind.Error);
+
+    /// <summary>多行粘贴确认(设置 → 终端 → 粘贴时确认多行内容):预览前几行,防止把
+    /// 整段脚本误粘进 shell 直接执行。</summary>
+    private Task<bool> ConfirmMultilinePasteAsync(string text)
+    {
+        var lines = text.Split('\n');
+        var previewLines = lines.Take(5).Select(l => l.TrimEnd('\r'));
+        var preview = string.Join('\n', previewLines);
+        if (lines.Length > 5)
+            preview += "\n…";
+
+        return MessageDialog.ConfirmAsync(this, "粘贴多行内容",
+            $"剪贴板包含 {lines.Length} 行内容,粘贴后可能被终端立即执行:\n\n{preview}\n\n确定粘贴吗?");
+    }
 }

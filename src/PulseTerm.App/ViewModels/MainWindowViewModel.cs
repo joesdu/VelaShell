@@ -39,6 +39,7 @@ public class MainWindowViewModel : ReactiveObject
     private StatusBarViewModel _statusBar;
     private TerminalTabViewModel? _activeTerminalTab;
     private string? _lastConnectionError;
+    private AppSettings? _latestSettings;
 
     // SFTP/File management views derived from design
     private FileBrowserViewModel _fileBrowser;
@@ -54,7 +55,8 @@ public class MainWindowViewModel : ReactiveObject
         ITransferManager? transferManager = null,
         PulseTerm.Core.Tunnels.ITunnelService? tunnelService = null,
         PulseTerm.Core.Services.ISessionMetricsService? metricsService = null,
-        IRecentConnectionService? recentConnectionService = null)
+        IRecentConnectionService? recentConnectionService = null,
+        ISecurityAlertService? securityAlertService = null)
     {
         _connectionWorkflowService = connectionWorkflowService;
         _sshConnectionService = sshConnectionService;
@@ -85,6 +87,8 @@ public class MainWindowViewModel : ReactiveObject
             .Subscribe(activeTab =>
             {
                 ActiveTerminalTab = activeTab as TerminalTabViewModel;
+                if (activeTab is not null)
+                    activeTab.HasBellAlert = false; // 切换到该标签即清除 Bell 提醒
                 RebindFileBrowser();
             });
 
@@ -101,6 +105,20 @@ public class MainWindowViewModel : ReactiveObject
         // font, size and encoding change live; TERM stays per-session (negotiated at connect).
         if (_settingsService is not null)
             _settingsService.SettingsSaved += OnSettingsSaved;
+
+        // 安全告警(设置 → 安全审计 → 告警通道):应用内 → 状态栏;系统 → 提示音。
+        if (securityAlertService is not null)
+        {
+            securityAlertService.Alerted += notice =>
+                RxSchedulers.MainThreadScheduler.Schedule(Unit.Default, (_, _) =>
+                {
+                    if (notice.InApp)
+                        StatusBar.Status = notice.Message;
+                    if (notice.System)
+                        Services.SystemSound.Alert();
+                    return System.Reactive.Disposables.Disposable.Empty;
+                });
+        }
 
         StartStatusMetricsPolling();
 
@@ -181,6 +199,8 @@ public class MainWindowViewModel : ReactiveObject
             TransferSink = FileTransfer,
             IsVisible = wasVisible,
             GetDefaultEditorPath = QueryDefaultEditorPathAsync,
+            TransferOptions = _latestSettings?.Transfer ?? new TransferOptions(),
+            ShowHiddenFiles = _latestSettings?.Transfer.ShowHiddenFiles ?? false,
         };
         if (wasVisible)
             FileBrowser.RefreshCommand.Execute().Subscribe(_ => { }, _ => { });
@@ -460,6 +480,7 @@ public class MainWindowViewModel : ReactiveObject
         var settings = _settingsService is not null
             ? await _settingsService.GetSettingsAsync()
             : new AppSettings();
+        _latestSettings = settings;
         var terminalType = TerminalTypeExtensions.FromTermName(settings.TerminalType);
 
         // Show the tab immediately in a connecting state, then perform the (already async, non-UI-
@@ -480,6 +501,21 @@ public class MainWindowViewModel : ReactiveObject
             Profile = profile,
         };
         terminalTab.ReconnectRequested += (_, _) => _ = ReconnectTabAsync(terminalTab);
+        terminalTab.Disconnected += (_, _) => OnTabDisconnected(terminalTab);
+
+        // 后台标签收到 BEL → 点亮闪烁提醒(设置 → 终端 → 标签闪烁提醒);切回标签时清除。
+        if (terminalEmulator is PulseTerminalControl bellSource)
+        {
+            bellSource.BellRang += () =>
+            {
+                if (_latestSettings?.TerminalBehavior.TabFlashAlert != false
+                    && !ReferenceEquals(ActiveTerminalTab, terminalTab))
+                {
+                    terminalTab.HasBellAlert = true;
+                }
+            };
+        }
+
         var document = new TerminalDocument(terminalTab);
         TabBar.AddTab(terminalTab);
         ActiveTerminalTab = terminalTab;
@@ -504,6 +540,7 @@ public class MainWindowViewModel : ReactiveObject
             terminalTab.AttachTransport(shellStream);
             terminalTab.Start();
             terminalTab.ConnectionStatus = SessionStatus.Connected;
+            StartSessionLogging(terminalTab, settings);
             SendStartupCommand(terminalTab, settings);
 
             // The session id only exists now, after the handshake — the active-tab subscription
@@ -556,6 +593,7 @@ public class MainWindowViewModel : ReactiveObject
             var settings = _settingsService is not null
                 ? await _settingsService.GetSettingsAsync()
                 : new AppSettings();
+            _latestSettings = settings;
             var terminalType = TerminalTypeExtensions.FromTermName(settings.TerminalType);
 
             var session = await _connectionWorkflowService.ConnectProfileAsync(tab.Profile, cancellationToken);
@@ -578,6 +616,8 @@ public class MainWindowViewModel : ReactiveObject
             tab.AttachTransport(shellStream);
             tab.Start();
             tab.ConnectionStatus = SessionStatus.Connected;
+            tab.ResetReconnectAttempts();
+            StartSessionLogging(tab, settings);
             SendStartupCommand(tab, settings);
             if (_metricsService is not null)
                 tab.ResourceMonitor = new ResourceMonitorViewModel(_metricsService, session.SessionId, tab.Title);
@@ -599,6 +639,80 @@ public class MainWindowViewModel : ReactiveObject
             LastConnectionError = DescribeConnectionError(ex, tab.Profile);
             StatusBar.Status = LastConnectionError;
         }
+    }
+
+    // ---- 会话日志(设置 → 常规 → 数据与存储) ----
+
+    private readonly System.Collections.Generic.Dictionary<TerminalTabViewModel, Services.SessionLogWriter>
+        _sessionLogs = new();
+
+    /// <summary>开启后把该会话的原始输出写入日志文件;每次(重)连接换新文件。</summary>
+    private void StartSessionLogging(TerminalTabViewModel tab, AppSettings settings)
+    {
+        StopSessionLogging(tab);
+
+        if (!settings.General.SessionLogging || tab.Bridge is null)
+            return;
+
+        var writer = Services.SessionLogService.CreateWriter(tab.Title);
+        if (writer is null)
+            return;
+
+        tab.Bridge.DataReceived += writer.Write;
+        _sessionLogs[tab] = writer;
+    }
+
+    private void StopSessionLogging(TerminalTabViewModel tab)
+    {
+        if (_sessionLogs.Remove(tab, out var writer))
+            writer.Dispose(); // 旧桥可能还在收尾;Write 对已释放流是 no-op。
+    }
+
+    /// <summary>连接断开(设置 → 常规 → 行为/通知):状态栏提醒 + 可选提示音 +
+    /// 自动重连(用户主动断开除外,按重连间隔与最大重试执行)。</summary>
+    private void OnTabDisconnected(TerminalTabViewModel tab)
+    {
+        StopSessionLogging(tab);
+
+        var settings = _latestSettings;
+        if (settings is null)
+            return;
+
+        if (settings.General.NotifyOnDisconnect)
+        {
+            StatusBar.Status = $"{tab.Title} 连接已断开";
+            if (!ReferenceEquals(ActiveTerminalTab, tab))
+                tab.HasBellAlert = true;
+        }
+
+        if (settings.General.SoundAlerts && OperatingSystem.IsWindows())
+            Services.SystemSound.Alert();
+
+        // Headless unit tests construct this VM without an Avalonia application; no timer there.
+        if (!settings.General.AutoReconnect || tab.UserRequestedDisconnect
+            || Avalonia.Application.Current is null)
+        {
+            return;
+        }
+
+        int maxRetries = Math.Max(1, settings.General.MaxRetries);
+        if (tab.ReconnectAttempts >= maxRetries)
+            return;
+
+        tab.IncrementReconnectAttempt();
+        int delaySeconds = Math.Clamp(settings.General.ReconnectIntervalSeconds, 1, 300);
+        StatusBar.Status = $"{tab.Title} 已断开,{delaySeconds} 秒后自动重连({tab.ReconnectAttempts}/{maxRetries})…";
+
+        Avalonia.Threading.DispatcherTimer.RunOnce(() =>
+        {
+            // 等待期间用户可能已手动重连、关掉标签或主动断开。
+            if (tab.ConnectionStatus == SessionStatus.Disconnected
+                && !tab.UserRequestedDisconnect
+                && TabBar.Tabs.Contains(tab))
+            {
+                _ = ReconnectTabAsync(tab);
+            }
+        }, TimeSpan.FromSeconds(delaySeconds));
     }
 
     /// <summary>bash 提示符补行脚本(内置,静默注入):命令输出末尾无换行时,经 DSR(ESC[6n)
@@ -623,6 +737,7 @@ public class MainWindowViewModel : ReactiveObject
 
     private void RemoveTerminalTab(TerminalTabViewModel tab, TerminalDocument document)
     {
+        StopSessionLogging(tab);
         if (TabBar.Tabs.Contains(tab))
             TabBar.CloseTabCommand.Execute(tab).Subscribe();
 
@@ -757,7 +872,10 @@ public class MainWindowViewModel : ReactiveObject
         };
     }
 
-    private static void ConfigureTerminal(ITerminalEmulator emulator, AppSettings settings, TerminalType terminalType)
+    /// <summary>窗口注入的多行粘贴确认弹窗(设置 → 终端 → 粘贴时确认多行内容)。</summary>
+    public Func<string, Task<bool>>? MultilinePasteConfirmer { get; set; }
+
+    private void ConfigureTerminal(ITerminalEmulator emulator, AppSettings settings, TerminalType terminalType)
     {
         if (emulator is PulseTerminalControl control)
             control.TerminalType = terminalType;
@@ -766,9 +884,9 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>The settings that are safe to change on a live session: scrollback depth, font,
-    /// font size and host-output encoding. Applied at tab creation and re-applied to every open
-    /// tab whenever settings are saved (#3/#15/#21).</summary>
-    private static void ApplyLiveTerminalSettings(ITerminalEmulator emulator, AppSettings settings)
+    /// font size, host-output encoding plus the full 终端行为/配色 option set. Applied at tab
+    /// creation and re-applied to every open tab whenever settings are saved (#3/#15/#21).</summary>
+    private void ApplyLiveTerminalSettings(ITerminalEmulator emulator, AppSettings settings)
     {
         emulator.ScrollbackLines = settings.ScrollbackLines;
 
@@ -780,17 +898,42 @@ public class MainWindowViewModel : ReactiveObject
                     $"{settings.TerminalFont}, JetBrains Mono, Cascadia Mono, Consolas, Microsoft YaHei, monospace");
             if (settings.TerminalFontSize > 0)
                 control.FontSize = settings.TerminalFontSize;
+
+            var behavior = settings.TerminalBehavior;
+            control.LineHeight = behavior.LineHeight;
+            control.CursorStyle = behavior.CursorStyle;
+            control.CursorBlink = behavior.CursorBlink;
+            control.BellMode = behavior.BellMode;
+            control.VisualBell = behavior.VisualBell;
+            control.ScrollOnOutput = behavior.ScrollOnOutput;
+            control.ScrollOnKeystroke = behavior.ScrollOnKeystroke;
+            control.CopyOnSelect = behavior.CopyOnSelect;
+            control.RightClickPaste = behavior.RightClickPaste;
+            control.TrimTrailingWhitespaceOnCopy = behavior.TrimTrailingWhitespaceOnCopy;
+            control.DoubleClickSelectsWord = behavior.DoubleClickSelectsWord;
+            control.ConfirmMultilinePaste = behavior.ConfirmMultilinePaste;
+            control.MultilinePasteConfirmation = MultilinePasteConfirmer;
+            control.CtrlCCopiesWhenSelected = behavior.CtrlCCopiesWhenSelected;
+            control.ImeEnabled = behavior.ImeSupport;
+
+            // 用户自定义的终端配色(仅覆盖改过的颜色,其余跟随主题)。
+            control.PaletteOverrides = Services.TerminalAppearanceMapper.BuildPaletteOverrides(settings.Appearance);
         }
     }
 
     private void OnSettingsSaved(AppSettings settings)
     {
+        _latestSettings = settings;
+
         // SaveSettingsAsync may complete on a thread-pool continuation; font/size touch layout,
         // so marshal onto the UI thread (the main scheduler is the Avalonia dispatcher).
         RxSchedulers.MainThreadScheduler.Schedule(Unit.Default, (_, _) =>
         {
             foreach (var tab in TabBar.Tabs.OfType<TerminalTabViewModel>())
                 ApplyLiveTerminalSettings(tab.TerminalEmulator, settings);
+
+            // 已打开的文件浏览器同步最新的传输选项(冲突策略/并发/带宽等)。
+            FileBrowser.TransferOptions = settings.Transfer;
             return System.Reactive.Disposables.Disposable.Empty;
         });
     }
@@ -889,6 +1032,7 @@ public class MainWindowViewModel : ReactiveObject
         {
             TabBar.CloseTabCommand.Execute(tab).Subscribe();
         }
+        StopSessionLogging(tab);
         CloseSftpForTab(tab);
         tab.Dispose();
     }

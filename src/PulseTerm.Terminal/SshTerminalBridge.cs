@@ -30,6 +30,10 @@ public class SshTerminalBridge : IDisposable
 
     public event Action<Exception>? Error;
 
+    /// <summary>Raw host output chunks, fired on the read thread — used by session logging
+    /// (设置 → 常规 → 会话日志). Subscribers must be fast and never throw.</summary>
+    public event Action<byte[]>? DataReceived;
+
     /// <summary>
     /// Raised when the remote side closes the channel (e.g. the shell ran <c>exit</c> or the
     /// server rebooted): the read loop ended on its own rather than via <see cref="Dispose"/>.
@@ -83,6 +87,15 @@ public class SshTerminalBridge : IDisposable
 
                 var data = new byte[bytesRead];
                 Array.Copy(buffer, data, bytesRead);
+
+                try
+                {
+                    DataReceived?.Invoke(data);
+                }
+                catch
+                {
+                    // 日志订阅者异常不允许打断读循环。
+                }
 
                 // Do NOT await a per-read UI hop. Queue the chunk and coalesce; the read
                 // thread keeps pace with the network while the UI drains at frame rate.

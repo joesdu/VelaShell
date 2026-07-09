@@ -25,8 +25,11 @@
       </ComboBox>
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
-      <TextBlock Classes="row-label" Text="自适应窗口标题栏颜色" VerticalAlignment="Center" />
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Appearance.AdaptiveTitleBar}" VerticalAlignment="Center" />
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="自适应窗口标题栏颜色" />
+        <TextBlock Classes="row-desc" Text="// 由系统标题栏跟随主题自动处理,无需配置" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Appearance.AdaptiveTitleBar}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
@@ -91,9 +94,9 @@
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="标签栏位置" />
-        <TextBlock Classes="row-desc" Text="// 标签页栏显示在窗口的位置" />
+        <TextBlock Classes="row-desc" Text="// 暂不支持:标签栏由可停靠布局(Dock)提供,固定在顶部" />
       </StackPanel>
-      <ComboBox Grid.Column="1" Width="140" SelectedIndex="{Binding TabBarPositionIndex}" VerticalAlignment="Center">
+      <ComboBox Grid.Column="1" Width="140" IsEnabled="False" SelectedIndex="{Binding TabBarPositionIndex}" VerticalAlignment="Center">
         <ComboBoxItem Content="顶部" />
         <ComboBoxItem Content="底部" />
       </ComboBox>

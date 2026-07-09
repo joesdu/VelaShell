@@ -15,16 +15,16 @@
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="默认录制所有生产会话" />
-        <TextBlock Classes="row-desc" Text="// 可按标签排除;录制数据写入本地 SonnetDB 时序库" />
+        <TextBlock Classes="row-desc" Text="// 规划中:会话输出记录请先使用 常规 → 会话日志" />
       </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.RecordProductionSessions}" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Security.RecordProductionSessions}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="输入脱敏" />
-        <TextBlock Classes="row-desc" Text="// 密码/Token/私钥自动打码" />
+        <TextBlock Classes="row-desc" Text="// 规划中:随会话录制一并提供" />
       </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.MaskSensitiveInput}" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Security.MaskSensitiveInput}" VerticalAlignment="Center" />
     </Grid>
 
     <Border Classes="sep" />
@@ -56,7 +56,10 @@
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.AlertInApp}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
-      <TextBlock Classes="row-label" Text="系统通知" VerticalAlignment="Center" />
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="系统通知" />
+        <TextBlock Classes="row-desc" Text="// 当前以系统提示音提醒;Windows Toast 通知规划中" />
+      </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.AlertSystem}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">

@@ -54,15 +54,25 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IAppDataStore, SonnetDbAppDataStore>();
         services.AddSingleton<PulseTerm.Core.Ssh.ISshKeyService>(_ => new SshKeyService());
 
+        services.AddSingleton<PulseTerm.Core.Ssh.ISecurityAlertService>(serviceProvider =>
+            new PulseTerm.Core.Ssh.SecurityAlertService(
+                serviceProvider.GetRequiredService<ISettingsService>(),
+                serviceProvider.GetService<IAuditLogService>()));
+
         services.AddSingleton<ISshConnectionService>(serviceProvider =>
         {
             var hostKeyService = serviceProvider.GetRequiredService<PulseTerm.Core.Ssh.IHostKeyService>();
-            return new SshConnectionService(connectionInfo => CreateSshClientWrapper(connectionInfo, hostKeyService));
+            var settingsService = serviceProvider.GetRequiredService<ISettingsService>();
+            var hostKeyPrompt = serviceProvider.GetService<PulseTerm.Core.Ssh.IHostKeyPrompt>();
+            var securityAlerts = serviceProvider.GetService<PulseTerm.Core.Ssh.ISecurityAlertService>();
+            return new SshConnectionService(connectionInfo =>
+                CreateSshClientWrapper(connectionInfo, hostKeyService, settingsService, hostKeyPrompt, securityAlerts));
         });
 
         services.AddSingleton<ISftpService>(serviceProvider =>
         {
             var connectionService = serviceProvider.GetRequiredService<ISshConnectionService>();
+            var settingsService = serviceProvider.GetRequiredService<ISettingsService>();
             // A dedicated SFTP channel per session, built from the same credentials.
             return new SftpService(connectionService, session =>
             {
@@ -72,9 +82,9 @@ public static class InfrastructureServiceCollectionExtensions
                     session.ConnectionInfo.Port,
                     session.ConnectionInfo.Username,
                     authMethods);
-                info.Timeout = TimeSpan.FromSeconds(10);
+                info.Timeout = ConnectTimeout(settingsService);
                 return new SftpClientWrapper(new SftpClient(info));
-            });
+            }, settingsService);
         });
 
         services.AddSingleton<ITransferManager, TransferManager>();
@@ -94,9 +104,56 @@ public static class InfrastructureServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>连接超时(设置 → 常规 → 连接默认值);设置不可读时退回既有的 10 秒。</summary>
+    private static TimeSpan ConnectTimeout(ISettingsService? settingsService)
+    {
+        try
+        {
+            var seconds = settingsService?.GetSettingsAsync().GetAwaiter().GetResult()
+                .General.ConnectTimeoutSeconds ?? 10;
+            return TimeSpan.FromSeconds(Math.Clamp(seconds, 1, 600));
+        }
+        catch
+        {
+            return TimeSpan.FromSeconds(10);
+        }
+    }
+
+    /// <summary>主机信任策略(设置 → 安全审计);设置不可读时用默认策略(TOFU + 变更阻断)。</summary>
+    private static PulseTerm.Core.Models.SecurityOptions GetSecurityOptions(ISettingsService? settingsService)
+    {
+        try
+        {
+            return settingsService?.GetSettingsAsync().GetAwaiter().GetResult().Security
+                ?? new PulseTerm.Core.Models.SecurityOptions();
+        }
+        catch
+        {
+            return new PulseTerm.Core.Models.SecurityOptions();
+        }
+    }
+
+    /// <summary>心跳间隔(设置 → 常规):0 = 关闭(SSH.NET 用 -1ms 表示禁用)。</summary>
+    private static TimeSpan KeepAliveInterval(ISettingsService? settingsService)
+    {
+        try
+        {
+            var seconds = settingsService?.GetSettingsAsync().GetAwaiter().GetResult()
+                .General.KeepAliveSeconds ?? 0;
+            return seconds > 0 ? TimeSpan.FromSeconds(seconds) : Timeout.InfiniteTimeSpan;
+        }
+        catch
+        {
+            return Timeout.InfiniteTimeSpan;
+        }
+    }
+
     private static ISshClientWrapper CreateSshClientWrapper(
         PulseConnectionInfo connectionInfo,
-        PulseTerm.Core.Ssh.IHostKeyService? hostKeyService = null)
+        PulseTerm.Core.Ssh.IHostKeyService? hostKeyService = null,
+        ISettingsService? settingsService = null,
+        PulseTerm.Core.Ssh.IHostKeyPrompt? hostKeyPrompt = null,
+        PulseTerm.Core.Ssh.ISecurityAlertService? securityAlerts = null)
     {
         var authMethods = CreateAuthenticationMethods(connectionInfo);
         var sshConnectionInfo = new Renci.SshNet.ConnectionInfo(
@@ -106,12 +163,14 @@ public static class InfrastructureServiceCollectionExtensions
             authMethods);
 
         var client = new SshClient(sshConnectionInfo);
-        client.ConnectionInfo.Timeout = TimeSpan.FromSeconds(10);
+        client.ConnectionInfo.Timeout = ConnectTimeout(settingsService);
+        client.KeepAliveInterval = KeepAliveInterval(settingsService);
 
         if (hostKeyService is not null)
         {
-            // TOFU 策略:首次连接记录指纹(known_hosts,SonnetDB);指纹变化即拒绝,
-            // 防中间人。事件在握手线程上触发,同步等待本地存储是安全的。
+            // 主机信任策略(设置 → 安全审计):首次连接默认 TOFU 自动记录,可改为人工确认;
+            // 指纹变化默认阻断并告警(防中间人),可改为弹窗人工裁决。
+            // 事件在握手线程上触发,同步等待本地存储/UI 弹窗是安全的。
             client.HostKeyReceived += (_, e) =>
             {
                 var fingerprint = "SHA256:" + Convert.ToBase64String(
@@ -121,20 +180,63 @@ public static class InfrastructureServiceCollectionExtensions
                     .VerifyHostKeyAsync(connectionInfo.Host, connectionInfo.Port, e.HostKeyName, fingerprint)
                     .GetAwaiter().GetResult();
 
+                var security = GetSecurityOptions(settingsService);
+                var target = $"{connectionInfo.Host}:{connectionInfo.Port}";
+
                 switch (verification)
                 {
                     case PulseTerm.Core.Ssh.HostKeyVerification.Trusted:
                         e.CanTrust = true;
                         break;
+
                     case PulseTerm.Core.Ssh.HostKeyVerification.Unknown:
-                        e.CanTrust = true;
-                        hostKeyService
-                            .TrustHostKeyAsync(connectionInfo.Host, connectionInfo.Port, e.HostKeyName, fingerprint)
-                            .GetAwaiter().GetResult();
+                        bool trustNew = true;
+                        if (security.ConfirmFirstFingerprint && hostKeyPrompt is not null)
+                        {
+                            trustNew = hostKeyPrompt
+                                .ConfirmAsync(connectionInfo.Host, connectionInfo.Port, e.HostKeyName,
+                                    fingerprint, verification)
+                                .GetAwaiter().GetResult();
+                        }
+
+                        e.CanTrust = trustNew;
+                        if (trustNew)
+                        {
+                            hostKeyService
+                                .TrustHostKeyAsync(connectionInfo.Host, connectionInfo.Port, e.HostKeyName, fingerprint)
+                                .GetAwaiter().GetResult();
+                        }
+                        else
+                        {
+                            _ = securityAlerts?.RaiseAsync("hostkey-rejected",
+                                $"已拒绝 {target} 的首次连接指纹:{fingerprint}");
+                        }
                         break;
-                    default:
-                        // 指纹与记录不符:拒绝连接。
-                        e.CanTrust = false;
+
+                    default: // Changed:与 known_hosts 记录不符
+                        bool trustChanged = false;
+                        if (!security.BlockOnFingerprintChange && hostKeyPrompt is not null)
+                        {
+                            trustChanged = hostKeyPrompt
+                                .ConfirmAsync(connectionInfo.Host, connectionInfo.Port, e.HostKeyName,
+                                    fingerprint, verification)
+                                .GetAwaiter().GetResult();
+                        }
+
+                        e.CanTrust = trustChanged;
+                        if (trustChanged)
+                        {
+                            hostKeyService
+                                .TrustHostKeyAsync(connectionInfo.Host, connectionInfo.Port, e.HostKeyName, fingerprint)
+                                .GetAwaiter().GetResult();
+                            _ = securityAlerts?.RaiseAsync("hostkey-changed-accepted",
+                                $"{target} 的主机指纹已变更,用户确认信任新指纹:{fingerprint}");
+                        }
+                        else
+                        {
+                            _ = securityAlerts?.RaiseAsync("hostkey-changed-blocked",
+                                $"{target} 的主机指纹与 known_hosts 记录不符,连接已被阻断(疑似中间人)。新指纹:{fingerprint}");
+                        }
                         break;
                 }
             };

@@ -9,6 +9,7 @@ public class TabViewModel : ReactiveObject
     private string _title;
     private SessionStatus _connectionStatus;
     private bool _isActive;
+    private bool _hasBellAlert;
 
     public TabViewModel()
     {
@@ -34,5 +35,13 @@ public class TabViewModel : ReactiveObject
     {
         get => _isActive;
         set => this.RaiseAndSetIfChanged(ref _isActive, value);
+    }
+
+    /// <summary>后台标签收到 BEL 时点亮的提醒标记(设置 → 终端 → 标签闪烁提醒);
+    /// 切换到该标签时由宿主清除。</summary>
+    public bool HasBellAlert
+    {
+        get => _hasBellAlert;
+        set => this.RaiseAndSetIfChanged(ref _hasBellAlert, value);
     }
 }

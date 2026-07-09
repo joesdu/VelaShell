@@ -70,6 +70,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     private double _cellWidth = 8;
     private double _cellHeight = 16;
     private double _baselineOffset;
+    private double _glyphYOffset;
 
     private int _scrollOffset;            // lines scrolled up from the bottom (0 = live)
     private int _lastScrollbackCount;     // scrollback size at the previous output update
@@ -77,6 +78,89 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
     /// <summary>When true, releasing a selection copies it to the clipboard automatically.</summary>
     public bool CopyOnSelect { get; set; } = true;
+
+    // ---- 设置 → 终端(行为选项,由 ApplyLiveTerminalSettings 下发) ----------
+
+    /// <summary>Cursor shape: "bar" (vertical line), "block" (filled cell) or "underline".</summary>
+    public string CursorStyle
+    {
+        get => _cursorStyle;
+        set { if (_cursorStyle != value) { _cursorStyle = value; InvalidateVisual(); } }
+    }
+
+    private string _cursorStyle = "block";
+
+    /// <summary>Whether the focused cursor blinks (设置 → 终端 → 光标闪烁).</summary>
+    public bool CursorBlink
+    {
+        get => _cursorBlinkEnabled;
+        set { if (_cursorBlinkEnabled != value) { _cursorBlinkEnabled = value; UpdateCursorBlinkTimer(); } }
+    }
+
+    private bool _cursorBlinkEnabled = true;
+    private bool _cursorBlinkVisible = true;
+    private DispatcherTimer? _cursorBlinkTimer;
+
+    /// <summary>Line-height multiplier (1.0 = font natural height). Extra space is distributed
+    /// evenly above/below the glyphs.</summary>
+    public double LineHeight
+    {
+        get => _lineHeight;
+        set
+        {
+            double clamped = Math.Clamp(double.IsFinite(value) && value > 0 ? value : 1.0, 0.8, 2.0);
+            if (Math.Abs(clamped - _lineHeight) < 0.001)
+                return;
+            _lineHeight = clamped;
+            RecomputeMetrics();
+            RelayoutFromBounds();
+            InvalidateVisual();
+        }
+    }
+
+    private double _lineHeight = 1.0;
+
+    /// <summary>Right-click pastes the clipboard (off = right-click does nothing).</summary>
+    public bool RightClickPaste { get; set; } = true;
+
+    /// <summary>Strip trailing whitespace from each copied line.</summary>
+    public bool TrimTrailingWhitespaceOnCopy { get; set; } = true;
+
+    /// <summary>Double-click selects the word under the pointer.</summary>
+    public bool DoubleClickSelectsWord { get; set; } = true;
+
+    /// <summary>Ask before pasting text that contains newlines (accidental multi-line runs).</summary>
+    public bool ConfirmMultilinePaste { get; set; } = true;
+
+    /// <summary>Host-provided confirmation for multi-line pastes (returns false to abort).
+    /// Null = never ask, the control itself cannot show dialogs.</summary>
+    public Func<string, Task<bool>>? MultilinePasteConfirmation { get; set; }
+
+    /// <summary>When text is selected, plain Ctrl+C copies it instead of sending SIGINT.</summary>
+    public bool CtrlCCopiesWhenSelected { get; set; }
+
+    /// <summary>Typing snaps the view back to the live bottom.</summary>
+    public bool ScrollOnKeystroke { get; set; } = true;
+
+    /// <summary>New output snaps a history-scrolled view back to the bottom; off keeps the
+    /// user's history view pinned (#15 behavior).</summary>
+    public bool ScrollOnOutput { get; set; }
+
+    /// <summary>BEL handling: "system" (beep), "none" (silent) or "visual" (screen flash).</summary>
+    public string BellMode { get; set; } = "system";
+
+    /// <summary>Force a screen flash instead of sound regardless of <see cref="BellMode"/>.</summary>
+    public bool VisualBell { get; set; }
+
+    /// <summary>Raised (on the UI thread) whenever the remote sends BEL — hosts use it for
+    /// tab-flash alerts.</summary>
+    public event Action? BellRang;
+
+    /// <summary>Enables the OS input method (Chinese/Japanese/Korean composition). Off = the
+    /// terminal never provides an IME client.</summary>
+    public bool ImeEnabled { get; set; } = true;
+
+    private DateTime _bellFlashUntil = DateTime.MinValue;
 
     /// <summary>Raised whenever the scroll position or scrollable extent changes.</summary>
     public event Action? ScrollChanged;
@@ -139,6 +223,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
         _emulator.Updated += OnEmulatorUpdated;
         _emulator.Response += bytes => UserInput?.Invoke(bytes);
+        _emulator.Bell += OnBell;
 
         // 终端配色跟随应用主题(暗=Dracula,亮=Alucard);切换主题时重灌调色板并重绘。
         ActualThemeVariantChanged += (_, _) => ApplyThemePalette();
@@ -156,7 +241,37 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     private void ApplyThemePalette()
     {
         ApplyDesignPalette(_emulator.Palette, light: ActualThemeVariant == Avalonia.Styling.ThemeVariant.Light);
+        ApplyPaletteOverrides(_emulator.Palette);
         InvalidateVisual();
+    }
+
+    private TerminalPaletteOverrides? _paletteOverrides;
+
+    /// <summary>用户自定义终端配色(设置 → 外观 → 终端颜色/ANSI 调色板):只包含用户实际
+    /// 改过的颜色,叠加在主题调色板之上;null 或空对象 = 完全跟随主题。</summary>
+    public TerminalPaletteOverrides? PaletteOverrides
+    {
+        get => _paletteOverrides;
+        set { _paletteOverrides = value; ApplyThemePalette(); }
+    }
+
+    private void ApplyPaletteOverrides(TerminalPalette palette)
+    {
+        if (_paletteOverrides is not { } o)
+            return;
+
+        if (o.Foreground is { } fg) palette.DefaultForeground = fg;
+        if (o.Background is { } bg) palette.DefaultBackground = bg;
+        if (o.Cursor is { } cur) palette.CursorColor = cur;
+        if (o.Selection is { } sel)
+            // 用户给的是不带透明度的选区色;按既有方案以 ~35% 透明叠加,避免盖住文字。
+            palette.SelectionBackground = new Rgba(0x59, sel.R, sel.G, sel.B);
+
+        for (int i = 0; i < TerminalPaletteOverrides.AnsiCount; i++)
+        {
+            if (o.Ansi[i] is { } c)
+                palette.SetAnsi(i, c);
+        }
     }
 
     // ---- ITerminalEmulator --------------------------------------------------
@@ -233,6 +348,86 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     public void Dispose()
     {
         _emulator.Updated -= OnEmulatorUpdated;
+        _emulator.Bell -= OnBell;
+        _cursorBlinkTimer?.Stop();
+        _cursorBlinkTimer = null;
+    }
+
+    // ---- Bell (设置 → 终端 → 提示音与通知) ----------------------------------
+
+    /// <summary>Fires on the feed thread; marshals to the UI thread, then flashes / beeps per
+    /// <see cref="BellMode"/> and notifies the host (tab flash).</summary>
+    private void OnBell()
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(OnBell);
+            return;
+        }
+
+        BellRang?.Invoke();
+
+        bool visual = VisualBell || BellMode == "visual";
+        if (visual)
+        {
+            _bellFlashUntil = DateTime.UtcNow.AddMilliseconds(120);
+            InvalidateVisual();
+            DispatcherTimer.RunOnce(InvalidateVisual, TimeSpan.FromMilliseconds(140));
+        }
+        else if (BellMode == "system" && OperatingSystem.IsWindows())
+        {
+            NativeMethods.MessageBeep(0);
+        }
+    }
+
+    private static class NativeMethods
+    {
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        internal static extern bool MessageBeep(uint type);
+    }
+
+    // ---- Cursor blink --------------------------------------------------------
+
+    /// <summary>Runs the blink timer only while focused with blinking enabled; otherwise the
+    /// cursor stays solid and no per-500ms repaints happen.</summary>
+    private void UpdateCursorBlinkTimer()
+    {
+        bool shouldRun = _hasFocus && (_cursorBlinkEnabled || _emulator.Modes.CursorBlink);
+        if (shouldRun)
+        {
+            if (_cursorBlinkTimer is null)
+            {
+                _cursorBlinkTimer = new DispatcherTimer(
+                    TimeSpan.FromMilliseconds(530), DispatcherPriority.Background,
+                    (_, _) => { _cursorBlinkVisible = !_cursorBlinkVisible; InvalidateVisual(); });
+            }
+            if (!_cursorBlinkTimer.IsEnabled)
+                _cursorBlinkTimer.Start();
+        }
+        else
+        {
+            _cursorBlinkTimer?.Stop();
+            if (!_cursorBlinkVisible)
+            {
+                _cursorBlinkVisible = true;
+                InvalidateVisual();
+            }
+        }
+    }
+
+    /// <summary>Typing resets the blink phase so the cursor is visible right where input lands.</summary>
+    private void ResetCursorBlink()
+    {
+        if (_cursorBlinkTimer is { IsEnabled: true } timer)
+        {
+            timer.Stop();
+            timer.Start();
+        }
+        if (!_cursorBlinkVisible)
+        {
+            _cursorBlinkVisible = true;
+            InvalidateVisual();
+        }
     }
 
     private void OnEmulatorUpdated()
@@ -246,9 +441,13 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     private void ApplyOutputUpdate()
     {
         // Follow output only when already at the bottom; otherwise keep the user's history
-        // view pinned so background output doesn't yank them back down (fixes #15).
+        // view pinned so background output doesn't yank them back down (fixes #15) — unless
+        // 设置 → 终端 → 有输出时自动滚动 is on, which snaps the view back to the live bottom.
         int scrollback = _emulator.Screen.ScrollbackCount;
-        _scrollOffset = PinScrollOffset(_scrollOffset, _lastScrollbackCount, scrollback);
+        if (ScrollOnOutput && _scrollOffset > 0 && scrollback > _lastScrollbackCount)
+            _scrollOffset = 0;
+        else
+            _scrollOffset = PinScrollOffset(_scrollOffset, _lastScrollbackCount, scrollback);
         _lastScrollbackCount = scrollback;
         InvalidateVisual();
         ScrollChanged?.Invoke();
@@ -264,6 +463,8 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     /// land instead of at the window corner (#14b).</summary>
     private void OnTextInputMethodClientRequested(object? sender, TextInputMethodClientRequestedEventArgs e)
     {
+        if (!ImeEnabled)
+            return;
         _imeClient ??= new TerminalImeClient(this);
         e.Client = _imeClient;
     }
@@ -395,8 +596,10 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         var probe = new FormattedText("0", CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
             typeface, _fontSize, Brushes.White);
         _cellWidth = Math.Max(1, Math.Round(probe.WidthIncludingTrailingWhitespace));
-        _cellHeight = Math.Max(1, Math.Ceiling(probe.Height));
-        _baselineOffset = probe.Baseline;
+        // 行高倍数(设置 → 终端 → 行高):多出的空间上下均分,字形垂直居中。
+        _cellHeight = Math.Max(1, Math.Ceiling(probe.Height * _lineHeight));
+        _glyphYOffset = Math.Max(0, (_cellHeight - probe.Height) / 2);
+        _baselineOffset = probe.Baseline + _glyphYOffset;
 
         // Cached glyphs are bound to the old typeface/size; drop them on any metric change.
         _glyphCache.Clear();
@@ -557,7 +760,14 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
         if (_scrollOffset == 0)
             RenderCursor(context, screen, palette, topAbsolute);
+
+        // Visual bell: a brief translucent flash over the whole terminal (§终端 → 视觉闪烁).
+        if (_bellFlashUntil > DateTime.UtcNow)
+            context.FillRectangle(BellFlashBrush, new Rect(Bounds.Size));
     }
+
+    private static readonly ImmutableSolidColorBrush BellFlashBrush =
+        new(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF));
 
     private void RenderLine(DrawingContext context, TerminalPalette palette, TerminalRow line,
         int cols, double y, int absoluteRow, ((int Row, int Col) Start, (int Row, int Col) End)? sel)
@@ -632,7 +842,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
                 {
                     FlushGlyphRun(context, y);
                     var ft = GlyphFor(cell, fg, bold, italic);
-                    context.DrawText(ft, new Point(col * _cellWidth, y));
+                    context.DrawText(ft, new Point(col * _cellWidth, y + _glyphYOffset));
                 }
             }
 
@@ -742,20 +952,36 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         var rect = new Rect(x, y, _cellWidth, _cellHeight);
         var cursorBrush = BrushFor(palette.CursorColor);
 
-        if (_hasFocus)
+        if (!_hasFocus)
         {
-            context.FillRectangle(cursorBrush, rect);
-            // Redraw the glyph under the cursor in the background color for contrast.
-            var cell = screen.GetCell(screen.CursorX, screen.CursorY);
-            if (cell.Rune != 0)
-            {
-                var ft = GlyphFor(cell, palette.DefaultBackground, bold: false, italic: false);
-                context.DrawText(ft, new Point(x, y));
-            }
-        }
-        else
-        {
+            // Unfocused: hollow outline regardless of style, so the position stays visible.
             context.DrawRectangle(new Pen(cursorBrush, 1), rect);
+            return;
+        }
+
+        // Blink phase: the "off" half simply skips drawing (focused only; unfocused outline
+        // never blinks).
+        if ((_cursorBlinkEnabled || _emulator.Modes.CursorBlink) && !_cursorBlinkVisible)
+            return;
+
+        switch (CursorStyle)
+        {
+            case "bar":
+                context.FillRectangle(cursorBrush, new Rect(x, y, Math.Max(1.5, _cellWidth * 0.15), _cellHeight));
+                break;
+            case "underline":
+                context.FillRectangle(cursorBrush, new Rect(x, y + _cellHeight - 2, _cellWidth, 2));
+                break;
+            default: // block
+                context.FillRectangle(cursorBrush, rect);
+                // Redraw the glyph under the cursor in the background color for contrast.
+                var cell = screen.GetCell(screen.CursorX, screen.CursorY);
+                if (cell.Rune != 0)
+                {
+                    var ft = GlyphFor(cell, palette.DefaultBackground, bold: false, italic: false);
+                    context.DrawText(ft, new Point(x, y + _glyphYOffset));
+                }
+                break;
         }
     }
 
@@ -854,16 +1080,23 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
             var line = screen.ViewLine(row);
             int from = row == s.Start.Row ? s.Start.Col : 0;
             int to = row == s.End.Row ? s.End.Col : line.Columns;
+            int lineStart = sb.Length;
             for (int col = Math.Max(0, from); col < Math.Min(line.Columns, to); col++)
             {
                 var cell = line[col];
                 if (!cell.IsWideTrailing)
                     sb.Append(cell.Rune == 0 ? " " : char.ConvertFromUtf32(cell.Rune));
             }
+            // 复制时去除每行尾部空格(设置 → 终端 → 选择与复制)。
+            if (TrimTrailingWhitespaceOnCopy)
+            {
+                while (sb.Length > lineStart && sb[^1] == ' ')
+                    sb.Length--;
+            }
             if (row != s.End.Row)
                 sb.Append('\n');
         }
-        return sb.ToString().TrimEnd();
+        return TrimTrailingWhitespaceOnCopy ? sb.ToString().TrimEnd() : sb.ToString();
     }
 
     private (int Row, int Col) PointToCell(Point p)
@@ -883,6 +1116,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     {
         base.OnGotFocus(e);
         _hasFocus = true;
+        UpdateCursorBlinkTimer();
         InvalidateVisual();
     }
 
@@ -890,6 +1124,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     {
         base.OnLostFocus(e);
         _hasFocus = false;
+        UpdateCursorBlinkTimer();
         InvalidateVisual();
     }
 
@@ -901,7 +1136,10 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
             if (bytes.Length > 0)
             {
                 UserInput?.Invoke(bytes);
+                if (ScrollOnKeystroke)
+                    _scrollOffset = 0;
                 ClearSelection();
+                ResetCursorBlink();
                 e.Handled = true;
             }
         }
@@ -955,12 +1193,25 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         if (e.Key is Key.Home or Key.End && e.KeyModifiers == KeyModifiers.Shift)
             effectiveModifiers = KeyModifiers.None;
 
+        // 有选中文本时 Ctrl+C 复制而非发送 SIGINT(设置 → 终端 → 输入)。
+        if (CtrlCCopiesWhenSelected && e.Key == Key.C && e.KeyModifiers == KeyModifiers.Control
+            && NormalizedSelection() is not null)
+        {
+            _ = CopyAsync();
+            ClearSelection();
+            InvalidateVisual();
+            e.Handled = true;
+            return;
+        }
+
         var encoded = InputEncoder.Encode(e.Key, effectiveModifiers, _emulator.Modes, _emulator.Type);
         if (encoded is { Length: > 0 })
         {
             UserInput?.Invoke(encoded);
-            _scrollOffset = 0;
+            if (ScrollOnKeystroke)
+                _scrollOffset = 0;
             ClearSelection();
+            ResetCursorBlink();
             e.Handled = true;
         }
 
@@ -1010,17 +1261,67 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
 
         if (props.IsLeftButtonPressed)
         {
+            // 双击选择整个单词(设置 → 终端 → 选择与复制)。
+            if (e.ClickCount == 2 && DoubleClickSelectsWord)
+            {
+                SelectWordAt(PointToCell(point));
+                e.Handled = true;
+                return;
+            }
+
             _selecting = true;
             _selectionAnchor = PointToCell(point);
             _selectionCaret = _selectionAnchor;
             InvalidateVisual();
         }
-        else if (props.IsRightButtonPressed)
+        else if (props.IsRightButtonPressed && RightClickPaste)
         {
-            // Right click pastes, matching common terminal behavior.
+            // Right click pastes, matching common terminal behavior (可在设置中关闭).
             _ = PasteAsync();
         }
         e.Handled = true;
+    }
+
+    /// <summary>Selects the contiguous word (letters/digits and common path characters) around
+    /// the given cell; with 选中即复制 on, the word lands on the clipboard immediately.</summary>
+    private void SelectWordAt((int Row, int Col) cell)
+    {
+        var screen = _emulator.Screen;
+        if (cell.Row >= screen.TotalRows)
+            return;
+
+        var line = screen.ViewLine(cell.Row);
+        if (line.Columns <= 0)
+            return;
+
+        int col = Math.Clamp(cell.Col, 0, line.Columns - 1);
+        if (!IsWordCell(line, col))
+            return;
+
+        int start = col;
+        while (start > 0 && IsWordCell(line, start - 1))
+            start--;
+        int end = col + 1;
+        while (end < line.Columns && IsWordCell(line, end))
+            end++;
+
+        _selectionAnchor = (cell.Row, start);
+        _selectionCaret = (cell.Row, end);
+        _selecting = false;
+        InvalidateVisual();
+        if (CopyOnSelect)
+            _ = CopyAsync();
+    }
+
+    private static bool IsWordCell(TerminalRow line, int col)
+    {
+        var cell = line[col];
+        if (cell.IsWideTrailing)
+            return true; // part of the wide rune that leads it
+        if (cell.Rune == 0 || cell.Rune == ' ')
+            return false;
+        return (System.Text.Rune.TryCreate(cell.Rune, out var rune) && System.Text.Rune.IsLetterOrDigit(rune))
+            || cell.Rune is '_' or '-' or '.' or '/' or '~' or '+' or '@' or ':';
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
@@ -1180,6 +1481,14 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
         var text = await clipboard.TryGetTextAsync();
         if (string.IsNullOrEmpty(text))
             return;
+
+        // 粘贴多行内容前确认(设置 → 终端 → 输入),防止误执行整段脚本。
+        if (ConfirmMultilinePaste && MultilinePasteConfirmation is { } confirm
+            && text.IndexOfAny(['\r', '\n']) >= 0 && text.TrimEnd('\r', '\n').IndexOfAny(['\r', '\n']) >= 0
+            && !await confirm(text))
+        {
+            return;
+        }
 
         var payload = new StringBuilder();
         if (_emulator.Modes.BracketedPaste)

@@ -316,10 +316,26 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
-    /// <summary>Loads the SFTP account's home directory (its post-login working directory) rather
-    /// than the filesystem root, falling back to "/" if it can't be resolved.</summary>
+    /// <summary>Loads the configured 远程默认目录 (设置 → 文件传输), falling back to the SFTP
+    /// account's home directory (its post-login working directory), then to "/".</summary>
     private async Task LoadInitialAsync(CancellationToken ct = default)
     {
+        // 用户配置的初始路径优先;不存在/无权限时回退家目录。
+        var configured = TransferOptions.RemoteInitialPath?.Trim();
+        if (!string.IsNullOrEmpty(configured) && configured.StartsWith('/') && _sftpService is not null)
+        {
+            try
+            {
+                await _sftpService.ListDirectoryAsync(_sessionId, configured, ct);
+                await NavigateToAsync(configured, ct);
+                return;
+            }
+            catch
+            {
+                // 配置目录不可用,继续走家目录。
+            }
+        }
+
         var home = "/";
         if (_sftpService is not null)
         {
@@ -610,6 +626,13 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>The floating transfer toast fed by uploads/downloads started here (spec §9).</summary>
     public FileTransferViewModel? TransferSink { get; set; }
 
+    /// <summary>设置 → 文件传输 的选项快照(宿主在绑定与设置保存时刷新)。</summary>
+    public PulseTerm.Core.Models.TransferOptions TransferOptions { get; set; } = new();
+
+    /// <summary>Set by the view: 下载遇到本地同名文件且策略为“询问”时的覆盖确认
+    /// (arg = 本地路径;true = 覆盖,false = 跳过该文件)。</summary>
+    public Func<string, Task<bool>>? ConfirmOverwrite { get; set; }
+
     private async Task UploadAsync(CancellationToken ct = default)
     {
         if (_sftpService is null || PickFilesForUpload is null)
@@ -794,18 +817,56 @@ public class FileBrowserViewModel : ReactiveObject
         if (plan.Count == 0)
             return true;
 
+        // 冲突处理(设置 → 文件传输 → 文件已存在时):下载前对本地同名文件按策略
+        // 覆盖/跳过/重命名/逐个询问。上传沿用 SFTP 语义(远端同名即覆盖)。
+        var resolved = new List<PlannedFileTransfer>(plan.Count);
+        foreach (var item in plan)
+        {
+            var settled = await ResolveLocalConflictAsync(item);
+            if (settled is not null)
+                resolved.Add(settled);
+        }
+
+        if (resolved.Count == 0)
+            return true;
+
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _transferCts = cts;
-        TransferSink?.BeginBatch(plan.Count, cts);
+        TransferSink?.BeginBatch(resolved.Count, cts);
+        bool completed = false;
 
         try
         {
-            foreach (var item in plan)
+            // 最大并发传输数(设置 → 文件传输):1 = 既有的顺序行为。
+            int maxConcurrent = Math.Clamp(TransferOptions.MaxConcurrentTransfers, 1, 16);
+            if (maxConcurrent <= 1 || resolved.Count == 1)
             {
-                await RunTransferAsync(item.Type, item.LocalPath, item.RemotePath, cts.Token);
-                TransferSink?.NotifyBatchItemSettled();
+                foreach (var item in resolved)
+                {
+                    await RunTransferAsync(item.Type, item.LocalPath, item.RemotePath, cts.Token);
+                    TransferSink?.NotifyBatchItemSettled();
+                }
+            }
+            else
+            {
+                using var gate = new SemaphoreSlim(maxConcurrent);
+                var workers = resolved.Select(async item =>
+                {
+                    await gate.WaitAsync(cts.Token);
+                    try
+                    {
+                        await RunTransferAsync(item.Type, item.LocalPath, item.RemotePath, cts.Token);
+                        TransferSink?.NotifyBatchItemSettled();
+                    }
+                    finally
+                    {
+                        gate.Release();
+                    }
+                }).ToList();
+                await Task.WhenAll(workers);
             }
 
+            completed = true;
             return true;
         }
         catch (OperationCanceledException)
@@ -817,7 +878,52 @@ public class FileBrowserViewModel : ReactiveObject
         {
             TransferSink?.EndBatch();
             _transferCts = null;
+
+            // 传输完成后显示通知(设置 → 文件传输):提示音 + 展开传输面板。
+            if (completed && TransferOptions.NotifyOnComplete)
+            {
+                Services.SystemSound.Alert();
+                TransferSink?.ShowPanel();
+            }
         }
+    }
+
+    /// <summary>按冲突策略处理一个计划中的下载:返回 null 表示跳过,或返回(可能改了
+    /// 本地路径的)计划项。非下载或无冲突原样返回。</summary>
+    private async Task<PlannedFileTransfer?> ResolveLocalConflictAsync(PlannedFileTransfer item)
+    {
+        if (item.Type != TransferType.Download || !System.IO.File.Exists(item.LocalPath))
+            return item;
+
+        switch (TransferOptions.ConflictPolicy)
+        {
+            case "overwrite":
+                return item;
+            case "skip":
+                return null;
+            case "rename":
+                return item with { LocalPath = NextAvailableLocalName(item.LocalPath) };
+            default: // ask
+                if (ConfirmOverwrite is null)
+                    return item;
+                return await ConfirmOverwrite(item.LocalPath) ? item : null;
+        }
+    }
+
+    /// <summary>"file.txt" → "file (1).txt"(取第一个不存在的序号)。</summary>
+    private static string NextAvailableLocalName(string localPath)
+    {
+        var dir = System.IO.Path.GetDirectoryName(localPath) ?? "";
+        var stem = System.IO.Path.GetFileNameWithoutExtension(localPath);
+        var ext = System.IO.Path.GetExtension(localPath);
+        for (int i = 1; i < 10000; i++)
+        {
+            var candidate = System.IO.Path.Combine(dir, $"{stem} ({i}){ext}");
+            if (!System.IO.File.Exists(candidate))
+                return candidate;
+        }
+
+        return localPath;
     }
 
     /// <summary>Runs one transfer end to end: registers it with the toast, streams progress into
@@ -834,6 +940,7 @@ public class FileBrowserViewModel : ReactiveObject
             Status = TransferStatus.InProgress,
         };
 
+        var finalStatus = TransferStatus.Failed;
         TransferSink?.AddTransfer(task);
         var item = TransferSink?.FindTransfer(task.Id);
         var progress = new Progress<TransferProgress>(p => item?.UpdateProgress(p));
@@ -847,11 +954,13 @@ public class FileBrowserViewModel : ReactiveObject
 
             if (item is not null)
                 item.Status = TransferStatus.Completed;
+            finalStatus = TransferStatus.Completed;
         }
         catch (OperationCanceledException)
         {
             if (item is not null)
                 item.Status = TransferStatus.Cancelled;
+            finalStatus = TransferStatus.Cancelled;
 
             // A cancelled download leaves a half-written file behind; drop it.
             if (type == TransferType.Download)
@@ -868,6 +977,10 @@ public class FileBrowserViewModel : ReactiveObject
         finally
         {
             TransferSink?.NotifyTaskSettled();
+
+            // 记录传输日志(设置 → 文件传输 → 日志记录)。
+            if (TransferOptions.TransferLogging)
+                Services.TransferLogService.Append(TransferOptions.LogDirectory, type, localPath, remotePath, finalStatus);
         }
     }
 

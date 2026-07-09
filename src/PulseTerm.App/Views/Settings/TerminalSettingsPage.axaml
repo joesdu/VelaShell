@@ -31,8 +31,11 @@
       <NumericUpDown Grid.Column="1" Width="80" Value="{Binding TerminalBehavior.LineHeight}" Minimum="0.8" Maximum="2.0" Increment="0.1" FormatString="0.0" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
-      <TextBlock Classes="row-label" Text="启用连字 (Ligatures)" VerticalAlignment="Center" />
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.Ligatures}" VerticalAlignment="Center" />
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="启用连字 (Ligatures)" />
+        <TextBlock Classes="row-desc" Text="// 暂不支持:自绘渲染器按单元格排版,无法跨字符连字" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding TerminalBehavior.Ligatures}" VerticalAlignment="Center" />
     </Grid>
 
     <Border Classes="sep" />
@@ -121,7 +124,7 @@
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="有输出时自动滚动" />
-        <TextBlock Classes="row-desc" Text="// 新输出时自动滚动到底部" />
+        <TextBlock Classes="row-desc" Text="// 翻看历史时有新输出立即拉回底部;关闭则停留在当前位置" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.ScrollOnOutput}" VerticalAlignment="Center" />
     </Grid>

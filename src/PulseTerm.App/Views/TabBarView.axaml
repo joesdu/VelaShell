@@ -64,12 +64,26 @@
                 <Grid ColumnDefinitions="Auto,*,Auto"
                       VerticalAlignment="Center">
 
-                  <!-- Status dot -->
+                  <!-- Status dot(收到 BEL 的后台标签以强调色脉冲闪烁提醒) -->
                   <Ellipse Grid.Column="0"
                            Width="7" Height="7"
                            Margin="0,0,8,0"
                            VerticalAlignment="Center"
-                           Fill="{DynamicResource PulseStatusDisconnected}" />
+                           Classes.bell-alert="{Binding HasBellAlert}"
+                           Fill="{DynamicResource PulseStatusDisconnected}">
+                    <Ellipse.Styles>
+                      <Style Selector="Ellipse.bell-alert">
+                        <Setter Property="Fill" Value="{DynamicResource PulseAccent}" />
+                        <Style.Animations>
+                          <Animation Duration="0:0:0.9" IterationCount="INFINITE">
+                            <KeyFrame Cue="0%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+                            <KeyFrame Cue="50%"><Setter Property="Opacity" Value="0.25" /></KeyFrame>
+                            <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+                          </Animation>
+                        </Style.Animations>
+                      </Style>
+                    </Ellipse.Styles>
+                  </Ellipse>
 
                   <!-- Title -->
                   <TextBlock Grid.Column="1"

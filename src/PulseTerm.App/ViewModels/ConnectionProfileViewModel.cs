@@ -48,13 +48,24 @@ public class ConnectionProfileViewModel : ReactiveObject
     public ConnectionProfileViewModel(
         SessionProfile? existing = null,
         IConnectionWorkflowService? connectionWorkflowService = null,
-        ISessionRepository? sessionRepository = null)
+        ISessionRepository? sessionRepository = null,
+        int defaultPort = 22,
+        string? defaultPrivateKeyPath = null)
     {
         _connectionWorkflowService = connectionWorkflowService;
         _sessionRepository = sessionRepository;
 
         Groups = new ObservableCollection<GroupOption> { new(null, "未分组") };
         _selectedGroup = Groups[0];
+
+        // 新建连接的默认值(设置 → 常规 → 连接默认值 / 密钥管理 → 默认认证密钥)。
+        if (existing is null)
+        {
+            if (defaultPort is >= 1 and <= 65535)
+                _port = defaultPort;
+            if (!string.IsNullOrWhiteSpace(defaultPrivateKeyPath))
+                _privateKeyPath = defaultPrivateKeyPath;
+        }
 
         if (existing != null)
         {
