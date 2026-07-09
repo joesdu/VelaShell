@@ -1,7 +1,7 @@
 # PulseTerm 项目进展与参考文档
 
 > 本文件记录已完成的工作、当前架构、关键文件索引与后续待办,供后续开发参考。
-> 最近更新:2026-07-09(设置项全量接线完成,见 §10;未实现项与终端工具功能缺口分析,见 §10.A/§12)。
+> 最近更新:2026-07-09(设置项全量接线 §10;§12 P1 六项功能全部实现 —— 本地终端待实机验证未提交,其余已分特性提交)。
 
 ## 1. 技术栈现状
 
@@ -157,14 +157,14 @@ tests/  6 个 MSTest 项目(见 §7)
 
 > §10.B 已列的缺口(Telnet/串口/证书认证、快捷键自定义、ed25519 生成、审计查看界面、全量配置导出、更新检查等)不在此重复。以下为本次新识别的缺口,按优先级排列。
 
-**P1 —— 日常使用高频,建议优先**
+**P1 —— 日常使用高频(2026-07-09 全部实现,除第 1 项外各自独立提交)**
 
-1. **本地终端标签**:PowerShell / CMD / WSL / Git Bash 作为标签页打开(主流工具标配)。VT 引擎与渲染控件是现成的,缺一个 ConPTY 传输层(`IShellStreamWrapper` 的本地实现,Windows 侧走 `CreatePseudoConsole`)。
-2. **SSH 跳板机(ProxyJump)**:经堡垒机二段/多段连接。连接配置加"跳板主机"字段,SSH.NET 用第一跳的转发端口做第二跳 socket。
-3. **保存的会话全部进命令面板**:目前"会话"类目只有最近连接,应并入 `session_profiles` 全量(带分组标签),这是命令面板作为中枢的关键。
-4. **导出终端缓冲区**:右键/命令"保存输出到文件"(scrollback 全量或选区),运维取证常用;`TerminalScreen` 已能逐行读文本,只差落盘入口。
-5. **配色方案预设**:内置 Dracula/Alucard 之外的常见方案(Solarized/Nord/Gruvbox/One Dark…)一键切换,当前只能逐色手改;`TerminalPaletteOverrides` 机制已具备,补预设清单+下拉即可。
-6. **克隆会话/复制标签**:同一配置一键再开一个标签(Xshell 的"复制会话"),等价于对当前 Profile 再走一次 ConnectProfileAsync,成本极低。
+1. ✅ **本地终端标签**(⚠️ 待实机验证,暂未提交):`Infrastructure/Pty/ConPtyShellStream.cs`(CreatePseudoConsole + 双匿名管道;进程退出 → 300ms 排空 → 关伪控制台 → 读端 EOF 归一化)实现 `IShellStreamWrapper`,复用既有 桥→VT 引擎→自绘控件 管线;`App/Services/LocalShellCatalog.cs` 探测 pwsh / Windows PowerShell / CMD / WSL / Git Bash 并动态注册命令面板入口(`local.*`);本地标签强制 UTF-8、不自动重连(exit 是用户意图)、Enter/Ctrl+R 重开进程。**已知注意点**:本机(Windows 预览版 conhost)对无头测试进程不渲染屏幕帧(新版 ConPTY 先发 `CSI 1t`/`CSI c`/`?1004h`/`?9001h` 协商,DA 无应答约 3 秒自杀),单测只断言 拉起+握手+输入通路+EOF 契约;GUI 内 VT 引擎会自动应答 DA,需实测确认出帧,若仍无帧则下一步补 win32-input-mode/更完整的终端应答。
+2. ✅ **SSH 跳板机(ProxyJump)**:`SessionProfile.JumpHostProfileId` 引用另一条已保存配置作跳板(链式即多段跳,≤5 跳、带环检测,`ConnectionWorkflowService.BuildChainAsync`);`JumpChainSshClientWrapper` 逐跳建链,前一跳开 `ForwardedPortLocal(127.0.0.1:0)` 承载下一跳,任一跳失败整链回收;**指纹按各跳逻辑主机校验**(绝不按 127.0.0.1 记录);连接对话框-高级选项 选跳板;跳板配置需已保存凭据。
+3. ✅ **保存的会话全部进命令面板**:"最近连接"(快速通道)+"会话"(session_profiles 全量、分组名徽章、按名排序),两组按 ProfileId 去重;缓存随会话树刷新(`RefreshPaletteSessionsAsync`)。
+4. ✅ **导出终端缓冲区**:命令面板"导出终端输出到文件"(`terminal.export`):有选区导出选区、否则全量(scrollback+屏幕,逐行去尾空格、截掉尾部空行),保存对话框预填 标签名-时间戳.txt。
+5. ✅ **配色方案预设**:`Core/Models/TerminalColorScheme.cs` 内置 Dracula / Solarized Dark / Solarized Light / Nord / Gruvbox Dark / One Dark / Monokai / Tokyo Night;外观页"配色方案"下拉一键写入整套颜色(保存生效);选 Dracula 即恢复默认、继续跟随主题。
+6. ✅ **克隆会话**:`session.clone`(Ctrl+Shift+N / 命令面板)对当前标签的 Profile 再连一次。
 
 **P2 —— 进阶运维能力** 7. **多会话同步输入**(send to all / 命令多发):对选中的多个标签广播键入,集群运维刚需;在 `UserInput` 分发处加广播开关即可。8. **ZMODEM(rz/sz)**:终端内直接收发文件,Xshell/SecureCRT 标配;需在 `SshTerminalBridge` 流上识别 ZMODEM 起始序列并接管通道(可评估 trzsz 协议替代,实现更简单)。9. **SSH config 导入**:解析 `~/.ssh/config`(Host/HostName/Port/User/IdentityFile/ProxyJump)批量导入会话,降低迁移成本。10. **连接代理**:SOCKS5/HTTP 代理经由连接(公司内网出网场景);SSH.NET `ConnectionInfo` 原生支持 ProxyTypes。11. **防空闲断开(Anti-idle)**:按间隔发送自定义串(如 `\0` 或空格),与已实现的 SSH keepalive 互补(keepalive 防 NAT 超时,anti-idle 防服务端 shell 超时踢出)。12. **known_hosts 管理界面**(设计稿"主机信任中心"):列出/删除/导出已信任指纹;`IHostKeyService` CRUD 已齐,只缺 UI 页(可挂设置-安全审计)。13. **会话标签自定义颜色/图标**:多环境(生产红/测试绿)一眼区分;SessionProfile 加 color 字段 + 标签条着色。
 

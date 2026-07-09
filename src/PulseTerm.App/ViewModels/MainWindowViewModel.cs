@@ -180,6 +180,107 @@ public class MainWindowViewModel : ReactiveObject
             () => OpenSettingsCommand.Execute().Subscribe(), Shortcut: "Ctrl+,", Icon: "Icon.settings"));
         Commands.Register(new CommandDescriptor("app.palette", "命令面板", "搜索",
             () => CommandPalette.Open(), Shortcut: "Ctrl+P", Icon: "Icon.zap"));
+
+        // 本地终端(§12 P1-1):按本机安装情况动态注册 PowerShell/CMD/WSL/Git Bash 入口。
+        foreach (var shell in Services.LocalShellCatalog.DetectShells())
+        {
+            var captured = shell;
+            Commands.Register(new CommandDescriptor($"local.{captured.Id}",
+                $"打开本地终端:{captured.Name}", "会话",
+                () => _ = OpenLocalTerminalAsync(captured), Icon: "Icon.terminal"));
+        }
+    }
+
+    /// <summary>打开一个本地终端标签:走与 SSH 相同的 桥 → VT 引擎 → 自绘控件 管线,
+    /// 传输层换成 ConPTY(输出恒为 UTF-8,不套用设置里的远端编码)。</summary>
+    public async Task OpenLocalTerminalAsync(Services.LocalShellInfo shell)
+    {
+        var settings = _settingsService is not null
+            ? await _settingsService.GetSettingsAsync()
+            : new AppSettings();
+        _latestSettings = settings;
+
+        var terminalEmulator = _terminalEmulatorFactory();
+        ConfigureTerminal(terminalEmulator, settings, TerminalType.XtermusColor256, forceUtf8: true);
+
+        var terminalTab = new TerminalTabViewModel(terminalEmulator)
+        {
+            Title = shell.Name,
+            ConnectionStatus = SessionStatus.Connecting,
+            ConnectionSummary = $"本地 • {shell.Name}",
+            TerminalTypeName = TerminalType.XtermusColor256.ToTermName(),
+            EncodingName = "UTF-8",
+            LocalShell = shell,
+        };
+        terminalTab.ReconnectRequested += (_, _) => _ = ReconnectTabAsync(terminalTab);
+        terminalTab.Disconnected += (_, _) => OnTabDisconnected(terminalTab);
+        if (terminalEmulator is PulseTerminalControl bellSource)
+        {
+            bellSource.BellRang += () =>
+            {
+                if (_latestSettings?.TerminalBehavior.TabFlashAlert != false
+                    && !ReferenceEquals(ActiveTerminalTab, terminalTab))
+                {
+                    terminalTab.HasBellAlert = true;
+                }
+            };
+        }
+
+        var document = new TerminalDocument(terminalTab);
+        TabBar.AddTab(terminalTab);
+        ActiveTerminalTab = terminalTab;
+        _dockFactory.AddTerminal(document);
+        UpdateStatusBarForActiveTab();
+
+        try
+        {
+            AttachLocalShell(terminalTab, shell, settings);
+        }
+        catch (Exception ex)
+        {
+            RemoveTerminalTab(terminalTab, document);
+            LastConnectionError = $"启动 {shell.Name} 失败:{ex.Message}";
+            StatusBar.Status = LastConnectionError;
+        }
+    }
+
+    /// <summary>RIS(ESC c)完全重置序列:重开会话前清掉旧进程的残留缓冲。</summary>
+    private static readonly byte[] RisResetSequence = [0x1B, (byte)'c']; // ESC c
+
+    /// <summary>重开本地终端标签:RIS 清屏后重新拉起 shell(与 SSH 重连同语义)。</summary>
+    private void ReopenLocalShell(TerminalTabViewModel tab, Services.LocalShellInfo shell)
+    {
+        tab.ConnectionStatus = SessionStatus.Connecting;
+        tab.DetachTransport();
+        try
+        {
+            tab.TerminalEmulator.Feed(RisResetSequence);
+            AttachLocalShell(tab, shell, _latestSettings ?? new AppSettings());
+            LastConnectionError = null;
+        }
+        catch (Exception ex)
+        {
+            tab.MarkDisconnected();
+            LastConnectionError = $"重开 {shell.Name} 失败:{ex.Message}";
+            StatusBar.Status = LastConnectionError;
+        }
+    }
+
+    /// <summary>拉起本地 shell 进程并挂上标签(打开与重开共用)。</summary>
+    private void AttachLocalShell(TerminalTabViewModel tab, Services.LocalShellInfo shell, AppSettings settings)
+    {
+        var stream = PulseTerm.Infrastructure.Pty.ConPtyShellStream.Start(
+            shell.CommandLine,
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            tab.TerminalEmulator.Columns,
+            tab.TerminalEmulator.Rows);
+
+        tab.AttachTransport(stream);
+        tab.Start();
+        tab.ConnectionStatus = SessionStatus.Connected;
+        tab.ResetReconnectAttempts();
+        StartSessionLogging(tab, settings);
+        UpdateStatusBarForActiveTab();
     }
 
     /// <summary>
@@ -654,11 +755,18 @@ public class MainWindowViewModel : ReactiveObject
     {
         ArgumentNullException.ThrowIfNull(tab);
 
-        if (tab.Profile is null || _connectionWorkflowService is null || _sshConnectionService is null)
-            return;
-
         // Ignore reconnect requests while already connecting or connected.
         if (tab.ConnectionStatus is SessionStatus.Connecting or SessionStatus.Connected)
+            return;
+
+        // 本地终端标签:重开 = 重新拉起 shell 进程(复用同一标签与缓冲)。
+        if (tab.LocalShell is { } localShell)
+        {
+            ReopenLocalShell(tab, localShell);
+            return;
+        }
+
+        if (tab.Profile is null || _connectionWorkflowService is null || _sshConnectionService is null)
             return;
 
         tab.ConnectionStatus = SessionStatus.Connecting;
@@ -766,7 +874,9 @@ public class MainWindowViewModel : ReactiveObject
             Services.SystemSound.Alert();
 
         // Headless unit tests construct this VM without an Avalonia application; no timer there.
+        // 本地终端不自动重开:shell 退出(exit)是用户意图,自动拉起会没完没了。
         if (!settings.General.AutoReconnect || tab.UserRequestedDisconnect
+            || tab.LocalShell is not null
             || Avalonia.Application.Current is null)
         {
             return;
@@ -952,24 +1062,26 @@ public class MainWindowViewModel : ReactiveObject
     /// <summary>窗口注入的多行粘贴确认弹窗(设置 → 终端 → 粘贴时确认多行内容)。</summary>
     public Func<string, Task<bool>>? MultilinePasteConfirmer { get; set; }
 
-    private void ConfigureTerminal(ITerminalEmulator emulator, AppSettings settings, TerminalType terminalType)
+    private void ConfigureTerminal(ITerminalEmulator emulator, AppSettings settings, TerminalType terminalType,
+        bool forceUtf8 = false)
     {
         if (emulator is PulseTerminalControl control)
             control.TerminalType = terminalType;
 
-        ApplyLiveTerminalSettings(emulator, settings);
+        ApplyLiveTerminalSettings(emulator, settings, forceUtf8);
     }
 
     /// <summary>The settings that are safe to change on a live session: scrollback depth, font,
     /// font size, host-output encoding plus the full 终端行为/配色 option set. Applied at tab
     /// creation and re-applied to every open tab whenever settings are saved (#3/#15/#21).</summary>
-    private void ApplyLiveTerminalSettings(ITerminalEmulator emulator, AppSettings settings)
+    private void ApplyLiveTerminalSettings(ITerminalEmulator emulator, AppSettings settings, bool forceUtf8 = false)
     {
         emulator.ScrollbackLines = settings.ScrollbackLines;
 
         if (emulator is PulseTerminalControl control)
         {
-            control.SetEncoding(ResolveEncoding(settings.TerminalEncoding));
+            // 本地终端(ConPTY)输出恒为 UTF-8,不套用面向远端主机的编码设置。
+            control.SetEncoding(forceUtf8 ? Encoding.UTF8 : ResolveEncoding(settings.TerminalEncoding));
             if (!string.IsNullOrWhiteSpace(settings.TerminalFont))
                 control.FontFamily = new Avalonia.Media.FontFamily(
                     $"{settings.TerminalFont}, JetBrains Mono, Cascadia Mono, Consolas, Microsoft YaHei, monospace");
@@ -1007,7 +1119,7 @@ public class MainWindowViewModel : ReactiveObject
         RxSchedulers.MainThreadScheduler.Schedule(Unit.Default, (_, _) =>
         {
             foreach (var tab in TabBar.Tabs.OfType<TerminalTabViewModel>())
-                ApplyLiveTerminalSettings(tab.TerminalEmulator, settings);
+                ApplyLiveTerminalSettings(tab.TerminalEmulator, settings, forceUtf8: tab.LocalShell is not null);
 
             // 已打开的文件浏览器同步最新的传输选项(冲突策略/并发/带宽等)。
             FileBrowser.TransferOptions = settings.Transfer;

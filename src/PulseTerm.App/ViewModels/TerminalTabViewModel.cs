@@ -60,6 +60,10 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// <summary>The profile this tab was connected with, used to reconnect in place (#19).</summary>
     public SessionProfile? Profile { get; set; }
 
+    /// <summary>本地终端标签(§12 P1-1)对应的 shell;null = SSH 会话。重开(Enter/Ctrl+R)
+    /// 用它重新拉起本地进程。</summary>
+    public Services.LocalShellInfo? LocalShell { get; set; }
+
     /// <summary>Raised when the session drops (remote closed the channel) so the UI can show the
     /// disconnected overlay and offer reconnect (#19).</summary>
     public event EventHandler? Disconnected;
