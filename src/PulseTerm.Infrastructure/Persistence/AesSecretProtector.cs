@@ -4,7 +4,8 @@ using PulseTerm.Core.Data;
 namespace PulseTerm.Infrastructure.Persistence;
 
 /// <summary>
-/// AES-256-GCM 敏感字段加密。密钥保存在本地密钥文件(首次使用时生成 32 字节随机密钥),
+/// AES-256-GCM 敏感字段加密。密钥保存在本地密钥文件(首次使用时生成 32 字节随机密钥):
+/// Windows 上以 DPAPI(CurrentUser)密文落盘,其余平台明文 + 0600 权限;历史明文密钥会自动升级。
 /// 密文格式 <c>enc1:base64(nonce ‖ tag ‖ ciphertext)</c>;无前缀的输入视为历史明文。
 /// </summary>
 public sealed class AesSecretProtector : ISecretProtector
@@ -87,21 +88,64 @@ public sealed class AesSecretProtector : ISecretProtector
     {
         if (File.Exists(keyFilePath))
         {
-            var existing = File.ReadAllBytes(keyFilePath);
-            if (existing.Length == 32)
+            var stored = File.ReadAllBytes(keyFilePath);
+
+            // Windows:密钥以 DPAPI(CurrentUser)密文落盘。历史版本可能是 32 字节明文,
+            // 解包失败时回退按明文处理,并顺带升级为 DPAPI 密文。
+            if (OperatingSystem.IsWindows())
             {
-                return existing;
+                if (TryDpapiUnprotect(stored, out var unwrapped) && unwrapped.Length == 32)
+                {
+                    return unwrapped;
+                }
+
+                if (stored.Length == 32)
+                {
+                    WriteKey(keyFilePath, stored); // 明文 → DPAPI 密文迁移
+                    return stored;
+                }
+            }
+            else if (stored.Length == 32)
+            {
+                return stored;
             }
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(keyFilePath)!);
         var key = RandomNumberGenerator.GetBytes(32);
-        File.WriteAllBytes(keyFilePath, key);
-        if (!OperatingSystem.IsWindows())
+        WriteKey(keyFilePath, key);
+        return key;
+    }
+
+    /// <summary>写入密钥:Windows 用 DPAPI(CurrentUser)包裹,其余平台明文 + 0600 权限。</summary>
+    private static void WriteKey(string keyFilePath, byte[] key)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(keyFilePath)!);
+
+        if (OperatingSystem.IsWindows())
         {
-            File.SetUnixFileMode(keyFilePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            var wrapped = System.Security.Cryptography.ProtectedData.Protect(
+                key, optionalEntropy: null, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+            File.WriteAllBytes(keyFilePath, wrapped);
+            return;
         }
 
-        return key;
+        File.WriteAllBytes(keyFilePath, key);
+        File.SetUnixFileMode(keyFilePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static bool TryDpapiUnprotect(byte[] wrapped, out byte[] key)
+    {
+        try
+        {
+            key = System.Security.Cryptography.ProtectedData.Unprotect(
+                wrapped, optionalEntropy: null, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+            return true;
+        }
+        catch (CryptographicException)
+        {
+            key = [];
+            return false;
+        }
     }
 }

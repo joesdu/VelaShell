@@ -1,16 +1,20 @@
 using System;
 using System.Reactive;
 using System.Reactive.Linq;
+using System.Security;
 using PulseTerm.Core.Models;
 using ReactiveUI;
 
 namespace PulseTerm.App.ViewModels;
 
-/// <summary>身份验证弹窗的结果:登录所需的完整凭据。</summary>
+/// <summary>
+/// 身份验证弹窗的结果:登录所需的完整凭据。<see cref="Password"/> 以 SecureString 承载,
+/// 由消费方负责在使用后 Dispose。
+/// </summary>
 public sealed record AuthenticationResult(
     string Username,
     AuthMethod AuthMethod,
-    string? Password,
+    SecureString? Password,
     string? PrivateKeyPath,
     string? PrivateKeyPassphrase,
     bool RememberPassword);
@@ -27,7 +31,7 @@ public class AuthenticationDialogViewModel : ReactiveObject
     private int _step = 1;
     private string _username;
     private int _methodIndex; // 0=密码 1=证书(暂未支持) 2=密钥
-    private string? _password;
+    private SecureString? _password;
     private bool _showPassword;
     private bool _rememberPassword = true;
     private string? _privateKeyPath;
@@ -61,7 +65,7 @@ public class AuthenticationDialogViewModel : ReactiveObject
             x => x.PrivateKeyPath,
             (method, password, keyPath) => method switch
             {
-                0 => !string.IsNullOrEmpty(password),
+                0 => password is { Length: > 0 },
                 2 => !string.IsNullOrWhiteSpace(keyPath),
                 _ => false,
             });
@@ -136,7 +140,7 @@ public class AuthenticationDialogViewModel : ReactiveObject
     public bool IsPasswordMethod => MethodIndex == 0;
     public bool IsKeyMethod => MethodIndex == 2;
 
-    public string? Password
+    public SecureString? Password
     {
         get => _password;
         set => this.RaiseAndSetIfChanged(ref _password, value);
@@ -179,7 +183,8 @@ public class AuthenticationDialogViewModel : ReactiveObject
         return new AuthenticationResult(
             Username.Trim(),
             IsKeyMethod ? AuthMethod.PrivateKey : AuthMethod.Password,
-            IsPasswordMethod ? Password : null,
+            // 传一份副本,与弹窗自身的生命周期解耦;消费方负责 Dispose。
+            IsPasswordMethod ? Password?.Copy() : null,
             IsKeyMethod ? PrivateKeyPath : null,
             IsKeyMethod ? PrivateKeyPassphrase : null,
             RememberPassword);

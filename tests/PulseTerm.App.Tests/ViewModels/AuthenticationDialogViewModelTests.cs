@@ -1,4 +1,5 @@
 using System.Reactive.Linq;
+using PulseTerm.App.Security;
 using PulseTerm.App.ViewModels;
 using PulseTerm.Core.Models;
 
@@ -58,7 +59,7 @@ public sealed class AuthenticationDialogViewModelTests
         Assert.IsTrue(vm.IsPasswordMethod);
         Assert.IsFalse(await vm.LoginCommand.CanExecute.FirstAsync());
 
-        vm.Password = "s3cret";
+        vm.Password = SecureStringConvert.FromPlaintext("s3cret");
         vm.RememberPassword = false;
         Assert.IsTrue(await vm.LoginCommand.CanExecute.FirstAsync());
 
@@ -69,7 +70,7 @@ public sealed class AuthenticationDialogViewModelTests
         Assert.IsNotNull(result);
         Assert.AreEqual("root", result.Username);
         Assert.AreEqual(AuthMethod.Password, result.AuthMethod);
-        Assert.AreEqual("s3cret", result.Password);
+        Assert.AreEqual("s3cret", SecureStringConvert.ToPlaintext(result.Password));
         Assert.IsFalse(result.RememberPassword);
     }
 

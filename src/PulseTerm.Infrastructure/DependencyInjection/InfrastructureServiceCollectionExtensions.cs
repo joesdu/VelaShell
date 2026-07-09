@@ -148,7 +148,11 @@ public static class InfrastructureServiceCollectionExtensions
         return connectionInfo.AuthMethod switch
         {
             AuthMethod.Password =>
-            [new PasswordAuthenticationMethod(connectionInfo.Username, connectionInfo.Password ?? string.Empty)],
+            // byte[] 重载:SSH.NET 会在认证方法释放时清零该缓冲区(string 重载做不到),
+            // 因此密码不会以不可清除的托管字符串常驻在 SSH.NET 内部。
+            [new PasswordAuthenticationMethod(
+                connectionInfo.Username,
+                System.Text.Encoding.UTF8.GetBytes(connectionInfo.Password ?? string.Empty))],
 
             AuthMethod.PrivateKey =>
             [new PrivateKeyAuthenticationMethod(connectionInfo.Username, CreatePrivateKeyFile(connectionInfo))],

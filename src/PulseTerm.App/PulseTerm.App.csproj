@@ -30,6 +30,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="PulseTerm.App.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\PulseTerm.Core\PulseTerm.Core.csproj" />
     <ProjectReference Include="..\PulseTerm.Terminal\PulseTerm.Terminal.csproj" />
     <ProjectReference Include="..\PulseTerm.Presentation\PulseTerm.Presentation.csproj" />

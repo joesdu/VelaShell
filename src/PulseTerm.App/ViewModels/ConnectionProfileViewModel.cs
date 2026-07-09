@@ -3,7 +3,9 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
+using System.Security;
 using System.Threading.Tasks;
+using PulseTerm.App.Security;
 using PulseTerm.Core.Data;
 using PulseTerm.Core.Models;
 using PulseTerm.Presentation.Services;
@@ -26,7 +28,7 @@ public class ConnectionProfileViewModel : ReactiveObject
     private int _port = 22;
     private string _username = string.Empty;
     private AuthMethod _authMethod = AuthMethod.Password;
-    private string? _password;
+    private SecureString? _password;
     private string? _privateKeyPath;
     private string? _privateKeyPassphrase;
     private Guid? _groupId;
@@ -62,7 +64,7 @@ public class ConnectionProfileViewModel : ReactiveObject
             _port = existing.Port;
             _username = existing.Username;
             _authMethod = existing.AuthMethod;
-            _password = existing.Password;
+            _password = SecureStringConvert.FromPlaintext(existing.Password);
             _privateKeyPath = existing.PrivateKeyPath;
             _privateKeyPassphrase = existing.PrivateKeyPassphrase;
             _groupId = existing.GroupId;
@@ -176,25 +178,11 @@ public class ConnectionProfileViewModel : ReactiveObject
         set => AuthMethod = value == 1 ? AuthMethod.PrivateKey : AuthMethod.Password;
     }
 
-    public string? Password
+    /// <summary>密码以 SecureString 承载;ASCII 过滤由 <c>SecurePasswordBox</c> 输入行为负责。</summary>
+    public SecureString? Password
     {
         get => _password;
-        // Strip any non-ASCII characters (e.g. pasted Chinese) — passwords are ASCII-only.
-        set => this.RaiseAndSetIfChanged(ref _password, StripNonAscii(value));
-    }
-
-    private static string? StripNonAscii(string? value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return value;
-        Span<char> buffer = value.Length <= 256 ? stackalloc char[value.Length] : new char[value.Length];
-        int n = 0;
-        foreach (char c in value)
-        {
-            if (c is >= ' ' and <= '~')
-                buffer[n++] = c;
-        }
-        return n == value.Length ? value : new string(buffer[..n]);
+        set => this.RaiseAndSetIfChanged(ref _password, value);
     }
 
     public string? PrivateKeyPath
@@ -371,7 +359,7 @@ public class ConnectionProfileViewModel : ReactiveObject
             Port = Port,
             Username = Username.Trim(),
             AuthMethod = AuthMethod,
-            Password = Password,
+            Password = SecureStringConvert.ToPlaintext(Password),
             RememberPassword = RememberPassword,
             PrivateKeyPath = PrivateKeyPath,
             PrivateKeyPassphrase = PrivateKeyPassphrase,

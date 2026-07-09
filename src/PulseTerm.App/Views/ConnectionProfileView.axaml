@@ -188,12 +188,11 @@
           <Border Classes="input-affix">
             <Grid ColumnDefinitions="*,Auto">
               <TextBox Grid.Column="0"
-                       Text="{Binding Password}"
-                       behaviors:AsciiOnlyInput.IsEnabled="True"
+                       behaviors:SecurePasswordBox.Enabled="True"
+                       behaviors:SecurePasswordBox.Password="{Binding Password}"
+                       behaviors:SecurePasswordBox.Reveal="{Binding ShowPassword}"
                        Padding="10,0,0,0"
-                       VerticalAlignment="Center"
-                       PasswordChar="&#x2022;"
-                       RevealPassword="{Binding ShowPassword}" />
+                       VerticalAlignment="Center" />
               <Button Grid.Column="1" Width="28" Height="28"
                       Margin="0,0,2,0" Padding="0"
                       Background="Transparent" CornerRadius="3" Cursor="Hand"

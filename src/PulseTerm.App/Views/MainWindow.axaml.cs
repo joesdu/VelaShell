@@ -266,7 +266,12 @@ public partial class MainWindow : Window
         profile.AuthMethod = result.AuthMethod;
         if (result.AuthMethod == PulseTerm.Core.Models.AuthMethod.Password)
         {
-            profile.Password = result.Password;
+            // 交接点:SecureString → 管线所需的明文,随即释放 SecureString。
+            using (result.Password)
+            {
+                profile.Password = PulseTerm.App.Security.SecureStringConvert.ToPlaintext(result.Password);
+            }
+
             profile.RememberPassword = result.RememberPassword;
         }
         else
