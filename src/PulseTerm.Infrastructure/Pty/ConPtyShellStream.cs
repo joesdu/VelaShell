@@ -15,7 +15,7 @@ namespace PulseTerm.Infrastructure.Pty;
 /// 输出为 UTF-8 的 VT 序列)。子进程退出时关闭伪控制台,读端得到断管 → 归一化为 EOF(返回 0),
 /// 桥的读循环据此走远端关闭路径(标签变为已断开,可重开)。
 /// </summary>
-[SupportedOSPlatform("windows")]
+[SupportedOSPlatform(nameof(OSPlatform.Windows))]
 public sealed class ConPtyShellStream : IShellStreamWrapper
 {
     private readonly IntPtr _console;

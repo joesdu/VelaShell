@@ -1,7 +1,7 @@
-using System;
 using System.Reactive;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Reactive.Linq;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text;
 using Dock.Model.Controls;
 using PulseTerm.App.Docking;
@@ -10,14 +10,13 @@ using PulseTerm.Core.Models;
 using PulseTerm.Core.Resources;
 using PulseTerm.Core.Sftp;
 using PulseTerm.Core.Ssh;
-using PulseTerm.Terminal.Emulation;
-using PulseTerm.Presentation.ViewModels;
-using PulseTerm.Presentation.Services;
 using PulseTerm.Presentation.Commands;
+using PulseTerm.Presentation.Services;
+using PulseTerm.Presentation.ViewModels;
 using PulseTerm.Terminal;
+using PulseTerm.Terminal.Emulation;
 using PulseTerm.Terminal.Rendering;
 using ReactiveUI;
-using System.Reactive.Linq;
 
 namespace PulseTerm.App.ViewModels;
 
@@ -28,8 +27,8 @@ public class MainWindowViewModel : ReactiveObject
     private readonly ISettingsService? _settingsService;
     private readonly ISessionRepository? _sessionRepository;
     private readonly ISftpService? _sftpService;
-    private readonly PulseTerm.Core.Tunnels.ITunnelService? _tunnelService;
-    private readonly PulseTerm.Core.Services.ISessionMetricsService? _metricsService;
+    private readonly Core.Tunnels.ITunnelService? _tunnelService;
+    private readonly Core.Services.ISessionMetricsService? _metricsService;
     private TunnelPanelViewModel? _tunnelPanel;
     private bool _isTunnelPanelOpen;
     private readonly Func<ITerminalEmulator> _terminalEmulatorFactory;
@@ -234,7 +233,10 @@ public class MainWindowViewModel : ReactiveObject
 
         try
         {
-            AttachLocalShell(terminalTab, shell, settings);
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                AttachLocalShell(terminalTab, shell, settings);
+            }
         }
         catch (Exception ex)
         {
@@ -255,7 +257,10 @@ public class MainWindowViewModel : ReactiveObject
         try
         {
             tab.TerminalEmulator.Feed(RisResetSequence);
-            AttachLocalShell(tab, shell, _latestSettings ?? new AppSettings());
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                AttachLocalShell(tab, shell, _latestSettings ?? new AppSettings());
+            }
             LastConnectionError = null;
         }
         catch (Exception ex)
@@ -266,10 +271,14 @@ public class MainWindowViewModel : ReactiveObject
         }
     }
 
-    /// <summary>拉起本地 shell 进程并挂上标签(打开与重开共用)。</summary>
+
+    /// <summary>
+    /// 拉起本地 shell 进程并挂上标签(打开与重开共用)。
+    /// </summary>
+    [SupportedOSPlatform(nameof(OSPlatform.Windows))]
     private void AttachLocalShell(TerminalTabViewModel tab, Services.LocalShellInfo shell, AppSettings settings)
     {
-        var stream = PulseTerm.Infrastructure.Pty.ConPtyShellStream.Start(
+        var stream = Infrastructure.Pty.ConPtyShellStream.Start(
             shell.CommandLine,
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             tab.TerminalEmulator.Columns,
