@@ -5,7 +5,6 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Input.TextInput;
-using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Avalonia.Media.TextFormatting;
@@ -66,7 +65,7 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     private int _runPrevCol;
     private int _runPrevWidth;
 
-    private FontFamily _fontFamily = new("JetBrains Mono, Cascadia Mono, Consolas, Microsoft YaHei, Segoe UI, monospace");
+    private FontFamily _fontFamily = new("Cascadia Mono, Consolas, JetBrains Mono, Microsoft YaHei, Segoe UI, monospace");
     private double _fontSize = 14;
     private double _cellWidth = 8;
     private double _cellHeight = 16;
