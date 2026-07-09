@@ -1026,6 +1026,27 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     public IReadOnlyList<BufferSearchHit> SearchBuffer(string query) =>
         BufferSearch.FindAll(_emulator.Screen, query);
 
+    /// <summary>导出整个缓冲区(scrollback + 当前屏幕)为纯文本:逐行去尾空格,
+    /// 末尾的空白行不输出(“保存输出到文件”,§12.4)。</summary>
+    public string GetBufferText()
+    {
+        var screen = _emulator.Screen;
+        var sb = new StringBuilder();
+        int lastNonEmpty = -1;
+        for (int row = 0; row < screen.TotalRows; row++)
+        {
+            var text = screen.ViewLine(row).GetText().TrimEnd();
+            sb.AppendLine(text);
+            if (text.Length > 0)
+                lastNonEmpty = sb.Length;
+        }
+
+        if (lastNonEmpty < 0)
+            return string.Empty;
+        sb.Length = lastNonEmpty;
+        return sb.ToString();
+    }
+
     // ---- Search highlights (spec §5.3: 命中项高亮) --------------------------
 
     private static readonly Rgba SearchMatchBg = new(0x59, 0xFD, 0xCB, 0x6E);   // amber, ~35%

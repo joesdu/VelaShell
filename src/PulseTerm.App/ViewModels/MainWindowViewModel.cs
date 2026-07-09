@@ -161,6 +161,9 @@ public class MainWindowViewModel : ReactiveObject
         Commands.Register(new CommandDescriptor("edit.paste", "粘贴", "编辑",
             () => { if (ActiveTerminalControl is { } c) _ = c.PasteAsync(); },
             CanExecute: () => ActiveTerminalControl is not null, Shortcut: "Ctrl+Shift+V"));
+        Commands.Register(new CommandDescriptor("terminal.export", "导出终端输出到文件", "会话",
+            () => ExportBufferRequested?.Invoke(this, EventArgs.Empty),
+            CanExecute: () => ActiveTerminalControl is not null, Icon: "Icon.save"));
         Commands.Register(new CommandDescriptor("search.terminal", "终端内查找", "搜索",
             () => TerminalSearchRequested?.Invoke(this, EventArgs.Empty),
             CanExecute: () => ActiveTerminalTab is not null, Shortcut: "Ctrl+F", Icon: "Icon.search"));
@@ -250,6 +253,26 @@ public class MainWindowViewModel : ReactiveObject
     /// <summary>Raised when the user asks for in-terminal search via menu/palette; the window
     /// forwards it to the active terminal view's search bar (§5.3).</summary>
     public event EventHandler? TerminalSearchRequested;
+
+    /// <summary>导出终端输出(命令面板“导出终端输出到文件”)—— 窗口弹保存对话框并落盘。</summary>
+    public event EventHandler? ExportBufferRequested;
+
+    /// <summary>取当前标签的导出内容:有选区导出选区,否则导出整个缓冲区;附建议文件名。
+    /// 无活动终端时返回 null。</summary>
+    public (string Text, string SuggestedFileName)? GetActiveTerminalExport()
+    {
+        if (ActiveTerminalControl is not { } control || ActiveTerminalTab is not { } tab)
+            return null;
+
+        var selection = control.GetSelectedText();
+        var text = string.IsNullOrEmpty(selection) ? control.GetBufferText() : selection;
+
+        var safeTitle = string.Concat(tab.Title.Select(c =>
+            char.IsLetterOrDigit(c) || c is '-' or '_' or '.' ? c : '_'));
+        if (safeTitle.Length > 40)
+            safeTitle = safeTitle[..40];
+        return (text, $"{safeTitle}-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
+    }
 
     /// <summary>Ctrl+N / 菜单 / 命令面板“新建 SSH 连接” —— 由窗口打开新建连接弹窗。</summary>
     public event EventHandler? NewConnectionRequested;

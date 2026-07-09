@@ -95,6 +95,7 @@ public partial class MainWindow : Window
             vm.SettingsRequested += (_, _) => _ = OpenSettingsAsync();
             vm.InteractiveAuthenticator = PromptCredentialsAsync;
             vm.MultilinePasteConfirmer = ConfirmMultilinePasteAsync;
+            vm.ExportBufferRequested += (_, _) => _ = ExportTerminalBufferAsync(vm);
 
             // 资源管理器树:右键连接/双击连接 + 右键编辑。
             if (vm.Sidebar.SessionTree is { } tree)
@@ -515,6 +516,41 @@ public partial class MainWindow : Window
 
     private Task ShowConnectionErrorAsync(string message) =>
         MessageDialog.ShowMessageAsync(this, "连接失败", message, MessageDialogKind.Error);
+
+    /// <summary>导出终端输出(§12.4):有选区导出选区,否则导出整个缓冲区(scrollback+屏幕)。</summary>
+    private async Task ExportTerminalBufferAsync(MainWindowViewModel vm)
+    {
+        var export = vm.GetActiveTerminalExport();
+        if (export is null)
+            return;
+        var (text, suggestedName) = export.Value;
+
+        var file = await StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
+        {
+            Title = "导出终端输出",
+            SuggestedFileName = suggestedName,
+            DefaultExtension = "txt",
+            FileTypeChoices =
+            [
+                new Avalonia.Platform.Storage.FilePickerFileType("文本文件") { Patterns = ["*.txt"] },
+                new Avalonia.Platform.Storage.FilePickerFileType("日志文件") { Patterns = ["*.log"] },
+            ],
+        });
+
+        var path = file is null ? null : Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(file);
+        if (string.IsNullOrEmpty(path))
+            return;
+
+        try
+        {
+            await System.IO.File.WriteAllTextAsync(path, text);
+            vm.StatusBar.Status = $"终端输出已导出:{path}";
+        }
+        catch (Exception ex)
+        {
+            await MessageDialog.ShowMessageAsync(this, "导出失败", ex.Message, MessageDialogKind.Error);
+        }
+    }
 
     /// <summary>多行粘贴确认(设置 → 终端 → 粘贴时确认多行内容):预览前几行,防止把
     /// 整段脚本误粘进 shell 直接执行。</summary>
