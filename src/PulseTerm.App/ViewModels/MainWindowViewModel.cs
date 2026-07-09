@@ -424,7 +424,8 @@ public class MainWindowViewModel : ReactiveObject
         await RefreshSessionTreeAsync();
     }
 
-    /// <summary>重新加载资源管理器会话树(新建/编辑/删除配置后调用)。</summary>
+    /// <summary>重新加载资源管理器会话树(新建/编辑/删除配置后调用),并同步刷新命令面板
+    /// 的全量会话缓存。</summary>
     public async Task RefreshSessionTreeAsync()
     {
         if (Sidebar.SessionTree is { } tree)
@@ -438,22 +439,71 @@ public class MainWindowViewModel : ReactiveObject
                 // 树加载失败不影响其余启动流程。
             }
         }
+
+        await RefreshPaletteSessionsAsync();
+    }
+
+    // ---- 命令面板的全量会话(§12.3:面板作为中枢,收录全部已保存配置) ----
+
+    private IReadOnlyList<SessionProfile> _paletteProfiles = [];
+    private Dictionary<Guid, string> _paletteGroupNames = new();
+
+    /// <summary>BuildPaletteItems 是同步回调,这里预取 session_profiles 全量与分组名。</summary>
+    private async Task RefreshPaletteSessionsAsync()
+    {
+        if (_sessionRepository is null)
+            return;
+
+        try
+        {
+            var profiles = await _sessionRepository.GetAllSessionsAsync();
+            var groups = await _sessionRepository.GetAllGroupsAsync();
+            _paletteGroupNames = groups.ToDictionary(g => g.Id, g => g.Name);
+            _paletteProfiles = profiles
+                .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch
+        {
+            // 面板会话缓存刷新失败不影响其余流程,下次刷新重试。
+        }
     }
 
     private IReadOnlyList<CommandPaletteItem> BuildPaletteItems()
     {
         var items = new List<CommandPaletteItem>();
 
-        // Sessions from recent connections — Enter connects.
+        // Recent connections first — the quick-access bucket (Enter connects).
+        var recentProfileIds = new HashSet<Guid>();
         foreach (var item in Sidebar.RecentConnections.Connections)
         {
             var captured = item.Entry;
+            if (captured.ProfileId is { } pid)
+                recentProfileIds.Add(pid);
             var title = string.IsNullOrWhiteSpace(item.DisplayName) ? captured.Host : item.DisplayName;
             items.Add(new CommandPaletteItem(
-                category: "会话",
+                category: "最近连接",
                 title: title,
                 invoke: () => _ = TryConnectRecentAsync(captured),
                 hint: "Enter 连接",
+                isSession: true));
+        }
+
+        // All saved profiles (§12.3),带分组徽章;已出现在最近连接里的不重复列出。
+        foreach (var profile in _paletteProfiles)
+        {
+            if (recentProfileIds.Contains(profile.Id))
+                continue;
+
+            var captured = profile;
+            string? groupName = captured.GroupId is { } groupId
+                && _paletteGroupNames.TryGetValue(groupId, out var name) ? name : null;
+            items.Add(new CommandPaletteItem(
+                category: "会话",
+                title: string.IsNullOrWhiteSpace(captured.Name) ? captured.Host : captured.Name,
+                invoke: () => _ = TryConnectProfileAsync(captured),
+                hint: "Enter 连接",
+                tag: groupName,
                 isSession: true));
         }
 
