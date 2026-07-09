@@ -33,6 +33,48 @@
       <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
+
+    <!-- ================================================================
+         带前缀/后缀的输入框容器,模拟 antd <Input prefix=... />
+         外层 Border 承担边框/背景/焦点态,内部 TextBox 完全去壳,
+         焦点高亮通过容器的 :focus-within 触发,视觉上是一个整体。
+         ================================================================ -->
+    <Style Selector="Border.input-affix">
+      <Setter Property="Background" Value="{DynamicResource PulseBgInput}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderPrimary}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="MinHeight" Value="34" />
+    </Style>
+    <Style Selector="Border.input-affix:pointerover">
+      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderSecondary}" />
+    </Style>
+    <Style Selector="Border.input-affix:focus-within">
+      <Setter Property="BorderBrush" Value="{DynamicResource PulseAccent}" />
+    </Style>
+
+    <!-- 容器内的裸 TextBox:清掉自带背景/边框/内边距与各状态外观 -->
+    <Style Selector="Border.input-affix TextBox">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="Border.input-affix TextBox /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Border.input-affix TextBox:pointerover /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Border.input-affix TextBox:focus /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
     <Style Selector="Button.dlg-outline">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
@@ -193,22 +235,19 @@
         <!-- 第 1 步:用户名 -->
         <StackPanel IsVisible="{Binding IsStep1}">
           <TextBlock Classes="field-label" Text="用户名" />
-          <Grid ColumnDefinitions="Auto,*"
-                Height="34">
-            <Border Grid.ColumnSpan="2"
-                    Background="{DynamicResource PulseBgInput}"
-                    BorderBrush="{DynamicResource PulseBorderPrimary}"
-                    BorderThickness="1" CornerRadius="4" />
-            <PathIcon Grid.Column="0" Width="13" Height="13" Margin="12,0,0,0"
-                      Data="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"
-                      Foreground="{DynamicResource PulseTextTertiary}"
-                      VerticalAlignment="Center" />
-            <TextBox Grid.Column="1"
-                     Text="{Binding Username}"
-                     Background="Transparent" BorderThickness="0"
-                     MinHeight="32" Margin="2,0,2,0"
-                     PlaceholderText="root" />
-          </Grid>
+          <Border Classes="input-affix">
+            <Grid ColumnDefinitions="Auto,*">
+              <PathIcon Grid.Column="0" Width="13" Height="13" Margin="11,0,9,0"
+                        Data="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"
+                        Foreground="{DynamicResource PulseTextTertiary}"
+                        VerticalAlignment="Center" />
+              <TextBox Grid.Column="1"
+                       Text="{Binding Username}"
+                       Padding="0,0,10,0"
+                       VerticalAlignment="Center"
+                       PlaceholderText="root" />
+            </Grid>
+          </Border>
         </StackPanel>
 
         <!-- 第 2 步:认证方式 -->
@@ -232,24 +271,27 @@
           <StackPanel IsVisible="{Binding IsPasswordMethod}" Spacing="14">
             <StackPanel>
               <TextBlock Classes="field-label" Text="密码" />
-              <Grid ColumnDefinitions="*,Auto">
-                <TextBox Grid.Column="0"
-                         Name="PasswordBox"
-                         Text="{Binding Password}"
-                         behaviors:AsciiOnlyInput.IsEnabled="True"
-                         BorderBrush="{DynamicResource PulseAccent}"
-                         PasswordChar="&#x2022;"
-                         RevealPassword="{Binding ShowPassword}" />
-                <Button Grid.Column="1" Width="28" Height="28"
-                        Margin="-34,0,6,0" Padding="0"
-                        Background="Transparent" CornerRadius="3" Cursor="Hand"
-                        Command="{Binding TogglePasswordVisibilityCommand}"
-                        VerticalAlignment="Center" HorizontalAlignment="Right">
-                  <PathIcon Width="14" Height="14"
-                            Data="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"
-                            Foreground="{DynamicResource PulseTextMuted}" />
-                </Button>
-              </Grid>
+              <Border Classes="input-affix">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBox Grid.Column="0"
+                           Name="PasswordBox"
+                           Text="{Binding Password}"
+                           behaviors:AsciiOnlyInput.IsEnabled="True"
+                           Padding="10,0,0,0"
+                           VerticalAlignment="Center"
+                           PasswordChar="&#x2022;"
+                           RevealPassword="{Binding ShowPassword}" />
+                  <Button Grid.Column="1" Width="28" Height="28"
+                          Margin="2,0,4,0" Padding="0"
+                          Background="Transparent" CornerRadius="3" Cursor="Hand"
+                          Command="{Binding TogglePasswordVisibilityCommand}"
+                          VerticalAlignment="Center">
+                    <PathIcon Width="14" Height="14"
+                              Data="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"
+                              Foreground="{DynamicResource PulseTextMuted}" />
+                  </Button>
+                </Grid>
+              </Border>
             </StackPanel>
 
             <!-- 记住密码 + AES 徽标 -->
@@ -258,6 +300,7 @@
                 <CheckBox IsChecked="{Binding RememberPassword}"
                           Padding="0" MinHeight="0" VerticalAlignment="Center">
                   <TextBlock Text="记住密码"
+                             Margin="6,0,0,0"
                              Foreground="{DynamicResource PulseTextSecondary}"
                              FontSize="11" />
                 </CheckBox>

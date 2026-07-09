@@ -228,6 +228,7 @@
           <CheckBox IsChecked="{Binding RememberPassword}"
                     Padding="0" MinHeight="0" VerticalAlignment="Center">
             <TextBlock Text="记住密码"
+                       Margin="6,0,0,0"
                        Foreground="{DynamicResource PulseTextSecondary}"
                        FontSize="11" FontWeight="Medium" />
           </CheckBox>
