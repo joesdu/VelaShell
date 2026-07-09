@@ -24,13 +24,6 @@
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="远程默认目录" />
-        <TextBlock Classes="row-desc" Text="连接后 SFTP 的初始路径" />
-      </StackPanel>
-      <TextBox Grid.Column="1" Width="180" Text="{Binding Transfer.RemoteInitialPath}" VerticalAlignment="Center" />
-    </Grid>
-    <Grid ColumnDefinitions="*,Auto">
-      <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="默认编辑器" />
         <TextBlock Classes="row-desc" Text="Windows:完整路径或命令名;Linux: 命令名;macOS: 应用名" />
       </StackPanel>

@@ -150,9 +150,6 @@ public class TransferOptions
 {
     public string LocalDownloadDirectory { get; set; } = "~/Downloads";
 
-    /// <summary>SFTP 初始目录;空 = 登录账户的家目录(pwd)。</summary>
-    public string RemoteInitialPath { get; set; } = "";
-
     public int MaxConcurrentTransfers { get; set; } = 3;
     public bool PreserveTimestamps { get; set; } = true;
     public bool NotifyOnComplete { get; set; } = true;

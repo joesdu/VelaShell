@@ -316,42 +316,36 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
-    /// <summary>Loads the configured 远程默认目录 (设置 → 文件传输), falling back to the SFTP
-    /// account's home directory (its post-login working directory), then to "/".</summary>
+    /// <summary>始终打开登录账户的家目录(登录后的工作目录,如 pi → /home/pi、root → /root)。
+    /// 家目录在服务器上不存在或不可访问(如 realpath(".") 返回的目录未创建/被 chroot)时,
+    /// 自动回退到根目录 "/",避免停在报错的空白页。</summary>
     private async Task LoadInitialAsync(CancellationToken ct = default)
     {
-        // 用户配置的初始路径优先;不存在/无权限时回退家目录。
-        var configured = TransferOptions.RemoteInitialPath?.Trim();
-        if (!string.IsNullOrEmpty(configured) && configured.StartsWith('/') && _sftpService is not null)
-        {
-            try
-            {
-                await _sftpService.ListDirectoryAsync(_sessionId, configured, ct);
-                await NavigateToAsync(configured, ct);
-                return;
-            }
-            catch
-            {
-                // 配置目录不可用,继续走家目录。
-            }
-        }
+        var candidates = new List<string>();
 
-        var home = "/";
         if (_sftpService is not null)
         {
             try
             {
                 var working = await _sftpService.GetWorkingDirectoryAsync(_sessionId, ct);
                 if (!string.IsNullOrWhiteSpace(working))
-                    home = working;
+                    candidates.Add(working);
             }
             catch
             {
-                // Resolving the home directory is best-effort; fall back to root.
+                // 解析家目录尽力而为,失败则继续走根目录。
             }
         }
 
-        await NavigateToAsync(home, ct);
+        candidates.Add("/");
+
+        foreach (var path in candidates.Distinct())
+        {
+            await NavigateToAsync(path, ct);
+            // NavigateToAsync 会吞掉异常并写入 ErrorMessage;为空即表示该目录成功打开。
+            if (string.IsNullOrEmpty(ErrorMessage))
+                return;
+        }
     }
 
     /// <summary>Sets or flips the sort, then reorders the currently loaded rows in place.</summary>
