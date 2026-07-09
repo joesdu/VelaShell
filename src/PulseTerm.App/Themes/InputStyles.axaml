@@ -1,0 +1,53 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ================================================================
+         带前缀/后缀的输入框容器,模拟 antd Input 的 prefix / suffix。
+
+         用法:
+           Border Classes="input-affix" 包裹一个 Grid(ColumnDefinitions="Auto,*"),
+           前缀 PathIcon 放 Column 0,TextBox 放 Column 1(可设 Padding 控制文字内缩);
+           后缀按钮同理放在末尾的 Auto 列。
+
+         外层 Border 承担边框/背景/焦点态,内部 TextBox 完全去壳,
+         焦点高亮通过容器的 :focus-within 触发,视觉上是一个整体。
+         默认高度 32;需要 34 等其它高度时在实例上设置 MinHeight 覆盖。
+         ================================================================ -->
+    <Style Selector="Border.input-affix">
+        <Setter Property="Background" Value="{DynamicResource PulseBgInput}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderPrimary}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="MinHeight" Value="32" />
+    </Style>
+    <Style Selector="Border.input-affix:pointerover">
+        <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderSecondary}" />
+    </Style>
+    <Style Selector="Border.input-affix:focus-within">
+        <Setter Property="BorderBrush" Value="{DynamicResource PulseAccent}" />
+    </Style>
+
+    <!-- 容器内的裸 TextBox:清掉自带背景/边框/内边距与各状态外观 -->
+    <Style Selector="Border.input-affix TextBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="Border.input-affix TextBox /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Border.input-affix TextBox:pointerover /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Border.input-affix TextBox:focus /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+</Styles>

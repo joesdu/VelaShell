@@ -185,23 +185,27 @@
         <!-- 密码(密码认证) -->
         <StackPanel IsVisible="{Binding IsPasswordAuth}">
           <TextBlock Classes="field-label" Text="密码" />
-          <Grid ColumnDefinitions="*,Auto">
-            <TextBox Grid.Column="0"
-                     Text="{Binding Password}"
-                     behaviors:AsciiOnlyInput.IsEnabled="True"
-                     PasswordChar="&#x2022;"
-                     RevealPassword="{Binding ShowPassword}" />
-            <Button Grid.Column="1" Width="28" Height="28"
-                    Margin="-34,0,6,0" Padding="0"
-                    Background="Transparent" CornerRadius="3" Cursor="Hand"
-                    Command="{Binding TogglePasswordVisibilityCommand}"
-                    ToolTip.Tip="显示/隐藏密码"
-                    VerticalAlignment="Center" HorizontalAlignment="Right">
-              <PathIcon Width="13" Height="13"
-                        Data="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"
-                        Foreground="{DynamicResource PulseTextTertiary}" />
-            </Button>
-          </Grid>
+          <Border Classes="input-affix">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox Grid.Column="0"
+                       Text="{Binding Password}"
+                       behaviors:AsciiOnlyInput.IsEnabled="True"
+                       Padding="10,0,0,0"
+                       VerticalAlignment="Center"
+                       PasswordChar="&#x2022;"
+                       RevealPassword="{Binding ShowPassword}" />
+              <Button Grid.Column="1" Width="28" Height="28"
+                      Margin="0,0,2,0" Padding="0"
+                      Background="Transparent" CornerRadius="3" Cursor="Hand"
+                      Command="{Binding TogglePasswordVisibilityCommand}"
+                      ToolTip.Tip="显示/隐藏密码"
+                      VerticalAlignment="Center">
+                <PathIcon Width="13" Height="13"
+                          Data="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"
+                          Foreground="{DynamicResource PulseTextTertiary}" />
+              </Button>
+            </Grid>
+          </Border>
         </StackPanel>
 
         <!-- 私钥(密钥认证) -->

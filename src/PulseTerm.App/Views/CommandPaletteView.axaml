@@ -24,6 +24,20 @@
       <Setter Property="FontWeight" Value="Medium" />
       <Setter Property="Margin" Value="16,6,0,2" />
     </Style>
+    <!-- 搜索框:与前置放大镜图标构成一个整体,清除 TextBox 在
+         悬停/焦点态下自绘的不透明背景与边框,避免出现拼接的方框。 -->
+    <Style Selector="TextBox#SearchBox /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="TextBox#SearchBox:pointerover /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="TextBox#SearchBox:focus /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
   </UserControl.Styles>
 
   <!-- 560px palette panel, matching the design frame FN5dM -->

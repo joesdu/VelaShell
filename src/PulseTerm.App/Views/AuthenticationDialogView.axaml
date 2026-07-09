@@ -33,48 +33,6 @@
       <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
-
-    <!-- ================================================================
-         带前缀/后缀的输入框容器,模拟 antd <Input prefix=... />
-         外层 Border 承担边框/背景/焦点态,内部 TextBox 完全去壳,
-         焦点高亮通过容器的 :focus-within 触发,视觉上是一个整体。
-         ================================================================ -->
-    <Style Selector="Border.input-affix">
-      <Setter Property="Background" Value="{DynamicResource PulseBgInput}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderPrimary}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="4" />
-      <Setter Property="MinHeight" Value="34" />
-    </Style>
-    <Style Selector="Border.input-affix:pointerover">
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderSecondary}" />
-    </Style>
-    <Style Selector="Border.input-affix:focus-within">
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseAccent}" />
-    </Style>
-
-    <!-- 容器内的裸 TextBox:清掉自带背景/边框/内边距与各状态外观 -->
-    <Style Selector="Border.input-affix TextBox">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="CornerRadius" Value="0" />
-      <Setter Property="MinHeight" Value="0" />
-      <Setter Property="Padding" Value="0" />
-    </Style>
-    <Style Selector="Border.input-affix TextBox /template/ Border#PART_BorderElement">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-    </Style>
-    <Style Selector="Border.input-affix TextBox:pointerover /template/ Border#PART_BorderElement">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-    </Style>
-    <Style Selector="Border.input-affix TextBox:focus /template/ Border#PART_BorderElement">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-    </Style>
     <Style Selector="Button.dlg-outline">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
@@ -235,7 +193,7 @@
         <!-- 第 1 步:用户名 -->
         <StackPanel IsVisible="{Binding IsStep1}">
           <TextBlock Classes="field-label" Text="用户名" />
-          <Border Classes="input-affix">
+          <Border Classes="input-affix" MinHeight="34">
             <Grid ColumnDefinitions="Auto,*">
               <PathIcon Grid.Column="0" Width="13" Height="13" Margin="11,0,9,0"
                         Data="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"
@@ -271,7 +229,7 @@
           <StackPanel IsVisible="{Binding IsPasswordMethod}" Spacing="14">
             <StackPanel>
               <TextBlock Classes="field-label" Text="密码" />
-              <Border Classes="input-affix">
+              <Border Classes="input-affix" MinHeight="34">
                 <Grid ColumnDefinitions="*,Auto">
                   <TextBox Grid.Column="0"
                            Name="PasswordBox"
