@@ -36,6 +36,10 @@ public interface ISftpService : IAsyncDisposable
     Task SetPermissionsAsync(Guid sessionId, string remotePath, short octalMode, CancellationToken cancellationToken = default);
     Task<RemoteFileInfo> GetFileInfoAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default);
 
+    /// <summary>Whether a remote path exists (file or directory). Used for upload conflict
+    /// detection before overwriting a remote file.</summary>
+    Task<bool> ExistsAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default);
+
     /// <summary>The session's SFTP working directory (the account's home directory right after
     /// login), used to open the browser there instead of the filesystem root.</summary>
     Task<string> GetWorkingDirectoryAsync(Guid sessionId, CancellationToken cancellationToken = default);

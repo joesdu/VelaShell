@@ -289,6 +289,12 @@ public class SftpService : ISftpService
         return MapToRemoteFileInfo(file);
     }
 
+    public async Task<bool> ExistsAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
+    {
+        var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        return await Task.Run(() => client.Exists(remotePath), cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<string> GetWorkingDirectoryAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);

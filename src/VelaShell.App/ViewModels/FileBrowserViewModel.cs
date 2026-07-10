@@ -627,6 +627,10 @@ public class FileBrowserViewModel : ReactiveObject
     /// (arg = 本地路径;true = 覆盖,false = 跳过该文件)。</summary>
     public Func<string, Task<bool>>? ConfirmOverwrite { get; set; }
 
+    /// <summary>Set by the view: 上传遇到远端同名文件且策略为“询问”时的覆盖确认
+    /// (arg = 远端路径;true = 覆盖,false = 跳过该文件)。</summary>
+    public Func<string, Task<bool>>? ConfirmRemoteOverwrite { get; set; }
+
     private async Task UploadAsync(CancellationToken ct = default)
     {
         if (_sftpService is null || PickFilesForUpload is null)
@@ -811,12 +815,14 @@ public class FileBrowserViewModel : ReactiveObject
         if (plan.Count == 0)
             return true;
 
-        // 冲突处理(设置 → 文件传输 → 文件已存在时):下载前对本地同名文件按策略
-        // 覆盖/跳过/重命名/逐个询问。上传沿用 SFTP 语义(远端同名即覆盖)。
+        // 冲突处理(设置 → 文件传输 → 文件已存在时):下载对本地同名文件、上传对远端
+        // 同名文件,均按策略覆盖/跳过/重命名/逐个询问。
         var resolved = new List<PlannedFileTransfer>(plan.Count);
         foreach (var item in plan)
         {
-            var settled = await ResolveLocalConflictAsync(item);
+            var settled = item.Type == TransferType.Download
+                ? await ResolveLocalConflictAsync(item)
+                : await ResolveRemoteConflictAsync(item, ct);
             if (settled is not null)
                 resolved.Add(settled);
         }
@@ -902,6 +908,48 @@ public class FileBrowserViewModel : ReactiveObject
                     return item;
                 return await ConfirmOverwrite(item.LocalPath) ? item : null;
         }
+    }
+
+    /// <summary>按冲突策略处理一个计划中的上传:先 stat 远端同名文件(“覆盖”策略下省去
+    /// 这次往返,直接沿用 SFTP 覆盖语义),冲突时返回 null 表示跳过,或返回(可能改了
+    /// 远端路径的)计划项。</summary>
+    private async Task<PlannedFileTransfer?> ResolveRemoteConflictAsync(PlannedFileTransfer item, CancellationToken ct)
+    {
+        if (item.Type != TransferType.Upload || TransferOptions.ConflictPolicy == "overwrite")
+            return item;
+
+        if (!await _sftpService.ExistsAsync(_sessionId, item.RemotePath, ct))
+            return item;
+
+        switch (TransferOptions.ConflictPolicy)
+        {
+            case "skip":
+                return null;
+            case "rename":
+                return item with { RemotePath = await NextAvailableRemoteNameAsync(item.RemotePath, ct) };
+            default: // ask
+                if (ConfirmRemoteOverwrite is null)
+                    return item;
+                return await ConfirmRemoteOverwrite(item.RemotePath) ? item : null;
+        }
+    }
+
+    /// <summary>远端 "file.txt" → "file (1).txt"(取第一个不存在的序号)。</summary>
+    private async Task<string> NextAvailableRemoteNameAsync(string remotePath, CancellationToken ct)
+    {
+        var dir = ParentOf(remotePath);
+        var name = remotePath[(remotePath.TrimEnd('/').LastIndexOf('/') + 1)..];
+        var dot = name.LastIndexOf('.');
+        var stem = dot > 0 ? name[..dot] : name;
+        var ext = dot > 0 ? name[dot..] : "";
+        for (int i = 1; i < 10000; i++)
+        {
+            var candidate = CombinePath(dir, $"{stem} ({i}){ext}");
+            if (!await _sftpService.ExistsAsync(_sessionId, candidate, ct))
+                return candidate;
+        }
+
+        return remotePath;
     }
 
     /// <summary>"file.txt" → "file (1).txt"(取第一个不存在的序号)。</summary>

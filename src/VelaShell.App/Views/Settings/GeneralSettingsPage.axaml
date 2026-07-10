@@ -166,13 +166,6 @@
     <TextBlock Classes="section-title" Text="通知" />
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="系统通知" />
-        <TextBlock Classes="row-desc" Text="// 规划中:Windows 原生通知(Toast)尚未接入;状态变化提醒见“断开连接时提醒”" />
-      </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding General.SystemNotifications}" VerticalAlignment="Center" />
-    </Grid>
-    <Grid ColumnDefinitions="*,Auto">
-      <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="声音提示" />
         <TextBlock Classes="row-desc" Text="// 重要事件时播放提示音" />
       </StackPanel>

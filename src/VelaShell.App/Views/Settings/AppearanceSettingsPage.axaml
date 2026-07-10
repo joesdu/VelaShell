@@ -26,13 +26,6 @@
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="自适应窗口标题栏颜色" />
-        <TextBlock Classes="row-desc" Text="// 由系统标题栏跟随主题自动处理,无需配置" />
-      </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Appearance.AdaptiveTitleBar}" VerticalAlignment="Center" />
-    </Grid>
-    <Grid ColumnDefinitions="*,Auto">
-      <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="主题色" />
         <TextBlock Classes="row-desc" Text="// 应用程序的强调色(留空用主题默认)" />
       </StackPanel>

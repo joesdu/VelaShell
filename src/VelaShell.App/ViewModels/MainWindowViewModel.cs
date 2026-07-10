@@ -105,7 +105,7 @@ public class MainWindowViewModel : ReactiveObject
         if (_settingsService is not null)
             _settingsService.SettingsSaved += OnSettingsSaved;
 
-        // 安全告警(设置 → 安全审计 → 告警通道):应用内 → 状态栏;系统 → 提示音。
+        // 安全告警(设置 → 安全审计 → 告警通道):应用内 → 状态栏;提示音 → 系统提示音。
         if (securityAlertService is not null)
         {
             securityAlertService.Alerted += notice =>
@@ -113,7 +113,7 @@ public class MainWindowViewModel : ReactiveObject
                 {
                     if (notice.InApp)
                         StatusBar.Status = notice.Message;
-                    if (notice.System)
+                    if (notice.Sound)
                         Services.SystemSound.Alert();
                     return System.Reactive.Disposables.Disposable.Empty;
                 });

@@ -49,7 +49,7 @@
     <Border Classes="sep" />
 
     <!-- 告警通道 -->
-    <TextBlock Text="告警通道:应用内通知 + 系统通知 + Webhook"
+    <TextBlock Text="告警通道:应用内通知 + 提示音 + Webhook"
                Foreground="#74B9FF" FontSize="12" FontWeight="SemiBold" />
     <Grid ColumnDefinitions="*,Auto">
       <TextBlock Classes="row-label" Text="应用内通知" VerticalAlignment="Center" />
@@ -57,10 +57,10 @@
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="系统通知" />
-        <TextBlock Classes="row-desc" Text="// 当前以系统提示音提醒;Windows Toast 通知规划中" />
+        <TextBlock Classes="row-label" Text="提示音" />
+        <TextBlock Classes="row-desc" Text="// 安全事件时播放系统提示音" />
       </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.AlertSystem}" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.AlertSound}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">

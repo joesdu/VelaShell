@@ -55,6 +55,7 @@ public partial class FileBrowserView : UserControl
             vm.OpenInBuiltInEditor = OpenInBuiltInEditorAsync;
             vm.PromptConfigureEditor = PromptConfigureEditorAsync;
             vm.ConfirmOverwrite = ConfirmOverwriteAsync;
+            vm.ConfirmRemoteOverwrite = ConfirmRemoteOverwriteAsync;
         };
 
         // Accept dropping local files/folders onto the list to upload into CurrentPath.
@@ -378,6 +379,17 @@ public partial class FileBrowserView : UserControl
 
         return await MessageDialog.ConfirmAsync(owner, "文件已存在",
             $"本地已有同名文件:\n{localPath}\n\n覆盖它吗?(取消则跳过该文件)",
+            kind: MessageDialogKind.Warning);
+    }
+
+    /// <summary>上传遇到远端同名文件且冲突策略为“询问”:覆盖 or 跳过该文件。</summary>
+    private async Task<bool> ConfirmRemoteOverwriteAsync(string remotePath)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner)
+            return true;
+
+        return await MessageDialog.ConfirmAsync(owner, "文件已存在",
+            $"远端已有同名文件:\n{remotePath}\n\n覆盖它吗?(取消则跳过该文件)",
             kind: MessageDialogKind.Warning);
     }
 

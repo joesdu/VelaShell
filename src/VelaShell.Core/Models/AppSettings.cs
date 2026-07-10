@@ -71,7 +71,6 @@ public class GeneralOptions
     public int ReconnectIntervalSeconds { get; set; } = 5;
 
     // 通知
-    public bool SystemNotifications { get; set; } = true;
     public bool SoundAlerts { get; set; }
 
     // 隐私与安全
@@ -82,7 +81,6 @@ public class GeneralOptions
 /// <summary>设置 - 外观(设计 ZAbb9)。</summary>
 public class AppearanceOptions
 {
-    public bool AdaptiveTitleBar { get; set; } = true;
     public string UiFont { get; set; } = "Inter";
     public int UiFontSize { get; set; } = 13;
 
@@ -117,7 +115,6 @@ public class TerminalBehaviorOptions
 {
     /// <summary>行间距倍数;1.0 = 字体自然行高(与历史版本渲染一致)。</summary>
     public double LineHeight { get; set; } = 1.0;
-    public bool Ligatures { get; set; } = true;
 
     public string CursorStyle { get; set; } = "bar";
     public bool CursorBlink { get; set; } = true;
@@ -186,7 +183,9 @@ public class SecurityOptions
     public bool BlockOnFingerprintChange { get; set; } = true;
 
     public bool AlertInApp { get; set; } = true;
-    public bool AlertSystem { get; set; } = true;
+
+    /// <summary>安全事件时播放系统提示音。</summary>
+    public bool AlertSound { get; set; } = true;
     public bool AlertWebhook { get; set; }
     public string WebhookUrl { get; set; } = "";
 }

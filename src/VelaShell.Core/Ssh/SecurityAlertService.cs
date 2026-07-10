@@ -6,7 +6,7 @@ using VelaShell.Core.Data;
 namespace VelaShell.Core.Ssh;
 
 /// <summary>一条安全告警及其(按设置解析后的)投递通道。</summary>
-public sealed record SecurityAlertNotice(string Category, string Message, bool InApp, bool System);
+public sealed record SecurityAlertNotice(string Category, string Message, bool InApp, bool Sound);
 
 /// <summary>
 /// 安全告警通道(设置 → 安全审计 → 告警通道):Webhook 与审计日志在这里投递;
@@ -67,11 +67,11 @@ public sealed class SecurityAlertService : ISecurityAlertService
             }
         }
 
-        if (security.AlertInApp || security.AlertSystem)
+        if (security.AlertInApp || security.AlertSound)
         {
             try
             {
-                Alerted?.Invoke(new SecurityAlertNotice(category, message, security.AlertInApp, security.AlertSystem));
+                Alerted?.Invoke(new SecurityAlertNotice(category, message, security.AlertInApp, security.AlertSound));
             }
             catch
             {
