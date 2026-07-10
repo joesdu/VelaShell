@@ -1,0 +1,122 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:pvm="using:VelaShell.Presentation.ViewModels"
+             xmlns:pc="using:VelaShell.Controls.Controls"
+             xmlns:loc="using:VelaShell.Localization"
+             mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="24"
+             x:Class="VelaShell.Views.StatusBarView"
+             x:DataType="pvm:StatusBarViewModel">
+
+  <!-- Design frame gzmsb: 24px, bg-sidebar, 1px top border, padding [0,12], space-between.
+       Left (1y2au, gap 14): wifi + "SSH • host:port" + | + latency(accent) + | + uptime.
+       Right (4Cio1, gap 12): term type | size | cpu | mem | net | encoding. -->
+
+  <UserControl.Styles>
+    <Style Selector="TextBlock">
+      <Setter Property="FontFamily" Value="{DynamicResource VelaTerminalFont}" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.divider">
+      <Setter Property="Width" Value="1" />
+      <Setter Property="Height" Value="12" />
+      <Setter Property="Background" Value="{DynamicResource VelaBorderSecondary}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Height="24"
+          Background="{DynamicResource VelaBgSidebar}"
+          BorderBrush="{DynamicResource VelaBorderPrimary}"
+          BorderThickness="0,1,0,0"
+          Padding="12,0">
+    <Grid ColumnDefinitions="Auto,*,Auto">
+
+      <!-- Left group (gap 14) -->
+      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="14">
+        <pc:LucideIcon Width="12" Height="12"
+                       Data="{StaticResource Icon.wifi}"
+                       Foreground="{DynamicResource VelaStatusConnected}"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding IsConnected}" />
+        <TextBlock Text="{Binding ConnectionInfo}"
+                   Foreground="{DynamicResource VelaTextSecondary}"
+                   IsVisible="{Binding ConnectionInfo, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <Border Classes="divider"
+                IsVisible="{Binding Latency, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <!-- 标签本地化(延迟/Latency)且仅数值上主题色(用户要求)。Run 之间不能换行,
+             否则 XAML 空白折叠会在冒号前多出一个空格。 -->
+        <TextBlock IsVisible="{Binding Latency, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><Run Text="{loc:Localize Latency}" Foreground="{DynamicResource VelaTextTertiary}" /><Run Text=": " Foreground="{DynamicResource VelaTextTertiary}" /><Run Text="{Binding Latency}" Foreground="{DynamicResource VelaAccent}" /></TextBlock>
+        <Border Classes="divider"
+                IsVisible="{Binding Uptime, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <TextBlock Foreground="{DynamicResource VelaTextTertiary}"
+                   Text="{Binding Uptime, StringFormat='↑ {0}'}"
+                   IsVisible="{Binding Uptime, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <TextBlock Foreground="{DynamicResource VelaTextSecondary}"
+                   Text="{Binding StatusText}"
+                   IsVisible="{Binding StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </StackPanel>
+
+      <!-- Right group (gap 12). The live metrics sit LEFT of the fixed-width fields
+           (terminal type / size / encoding) so their varying width never shoves the
+           static text around (用户反馈 #4). -->
+      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
+        <!-- 悬停提示为动态详情(用户反馈):CPU 逐核心、内存含交换、磁盘逐挂载点、网速逐网卡。 -->
+        <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding CpuTooltip}">
+          <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.cpu}"
+                         Foreground="{DynamicResource VelaTextTertiary}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding CpuUsage}" Foreground="{DynamicResource VelaTextSecondary}" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding MemTooltip}">
+          <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.memory-stick}"
+                         Foreground="{DynamicResource VelaTextTertiary}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding MemUsage}" Foreground="{DynamicResource VelaTextSecondary}" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="Swap">
+          <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.arrow-right-left}"
+                         Foreground="{DynamicResource VelaTextTertiary}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding SwapUsage}" Foreground="{DynamicResource VelaTextSecondary}" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding DiskTooltip}">
+          <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.hard-drive}"
+                         Foreground="{DynamicResource VelaTextTertiary}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding DiskUsage}" Foreground="{DynamicResource VelaTextSecondary}" />
+        </StackPanel>
+        <!-- The original arrow-up-down glyph, rebuilt from its two halves so each direction
+             lights up (accent) independently while traffic flows that way; the readout shows
+             the dominant direction's rate (Android-style). -->
+        <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding NetTooltip}">
+          <StackPanel.Styles>
+            <Style Selector="pc|LucideIcon.updown">
+              <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+            </Style>
+            <Style Selector="pc|LucideIcon.updown.net-active">
+              <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
+            </Style>
+          </StackPanel.Styles>
+          <Panel Width="11" Height="11" VerticalAlignment="Center">
+            <pc:LucideIcon Width="11" Height="11" Classes="updown"
+                           Data="{StaticResource Icon.arrow-up-half}"
+                           Classes.net-active="{Binding IsNetUpActive}" />
+            <pc:LucideIcon Width="11" Height="11" Classes="updown"
+                           Data="{StaticResource Icon.arrow-down-half}"
+                           Classes.net-active="{Binding IsNetDownActive}" />
+          </Panel>
+          <TextBlock Text="{Binding NetSpeed}" Foreground="{DynamicResource VelaTextSecondary}" />
+        </StackPanel>
+        <Border Classes="divider" />
+        <TextBlock Text="{Binding TerminalType}"
+                   Foreground="{DynamicResource VelaTextMuted}" />
+        <Border Classes="divider" />
+        <TextBlock Text="{Binding WindowSize}"
+                   Foreground="{DynamicResource VelaTextMuted}" />
+        <Border Classes="divider" />
+        <TextBlock Text="{Binding Encoding}"
+                   Foreground="{DynamicResource VelaTextMuted}" />
+      </StackPanel>
+
+    </Grid>
+  </Border>
+</UserControl>

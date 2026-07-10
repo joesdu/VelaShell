@@ -1,16 +1,16 @@
 <Solution>
   <Folder Name="/tests/">
-    <Project Path="./tests/VelaShell.App.Tests/VelaShell.App.Tests.csproj" />
-    <Project Path="./tests/VelaShell.Controls.Tests/VelaShell.Controls.Tests.csproj" />
-    <Project Path="./tests/VelaShell.Core.Tests/VelaShell.Core.Tests.csproj" />
-    <Project Path="./tests/VelaShell.Infrastructure.Tests/VelaShell.Infrastructure.Tests.csproj" />
-    <Project Path="./tests/VelaShell.Presentation.Tests/VelaShell.Presentation.Tests.csproj" />
-    <Project Path="./tests/VelaShell.Terminal.Tests/VelaShell.Terminal.Tests.csproj" />
+    <Project Path="tests/VelaShell.Tests/VelaShell.Tests.csproj" />
+    <Project Path="tests/VelaShell.Controls.Tests/VelaShell.Controls.Tests.csproj" />
+    <Project Path="tests/VelaShell.Core.Tests/VelaShell.Core.Tests.csproj" />
+    <Project Path="tests/VelaShell.Infrastructure.Tests/VelaShell.Infrastructure.Tests.csproj" />
+    <Project Path="tests/VelaShell.Presentation.Tests/VelaShell.Presentation.Tests.csproj" />
+    <Project Path="tests/VelaShell.Terminal.Tests/VelaShell.Terminal.Tests.csproj" />
   </Folder>
-  <Project Path="./src/VelaShell.App/VelaShell.App.csproj" />
-  <Project Path="./src/VelaShell.Controls/VelaShell.Controls.csproj" />
-  <Project Path="./src/VelaShell.Core/VelaShell.Core.csproj" />
-  <Project Path="./src/VelaShell.Infrastructure/VelaShell.Infrastructure.csproj" />
-  <Project Path="./src/VelaShell.Presentation/VelaShell.Presentation.csproj" />
-  <Project Path="./src/VelaShell.Terminal/VelaShell.Terminal.csproj" />
+  <Project Path="src/VelaShell/VelaShell.csproj" />
+  <Project Path="src/VelaShell.Controls/VelaShell.Controls.csproj" />
+  <Project Path="src/VelaShell.Core/VelaShell.Core.csproj" />
+  <Project Path="src/VelaShell.Infrastructure/VelaShell.Infrastructure.csproj" />
+  <Project Path="src/VelaShell.Presentation/VelaShell.Presentation.csproj" />
+  <Project Path="src/VelaShell.Terminal/VelaShell.Terminal.csproj" />
 </Solution>

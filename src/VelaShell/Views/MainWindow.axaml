@@ -1,0 +1,138 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:VelaShell.ViewModels"
+        xmlns:pvm="using:VelaShell.Presentation.ViewModels"
+        xmlns:views="using:VelaShell.Views"
+        xmlns:docking="using:VelaShell.Docking"
+        xmlns:dock="using:Dock.Avalonia.Controls"
+        xmlns:res="clr-namespace:VelaShell.Core.Resources;assembly=VelaShell.Core"
+        mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="900"
+        x:Class="VelaShell.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/velashell.ico"
+        Title="{x:Static res:Strings.AppName}"
+        Width="1440" Height="900"
+        MinWidth="800" MinHeight="500"
+        Background="{DynamicResource VelaBgPage}"
+        WindowStartupLocation="CenterScreen">
+
+  <Window.KeyBindings>
+    <!-- Ctrl+T = 新建标签:标签即 SSH 会话,与 Ctrl+N 一样打开新建连接
+         (旧绑定往已不再显示的 TabBar 集合塞空标签,§10.C 瑕疵)。 -->
+    <KeyBinding Gesture="Ctrl+T" Command="{Binding RunCommand}" CommandParameter="session.new" />
+    <KeyBinding Gesture="Ctrl+W" Command="{Binding TabBar.CloseActiveTabCommand}" />
+    <KeyBinding Gesture="Ctrl+Tab" Command="{Binding TabBar.NextTabCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+Tab" Command="{Binding TabBar.PreviousTabCommand}" />
+    <KeyBinding Gesture="Ctrl+OemComma" Command="{Binding OpenSettingsCommand}" />
+    <KeyBinding Gesture="Ctrl+P" Command="{Binding OpenCommandPaletteCommand}" />
+    <KeyBinding Gesture="Ctrl+K" Command="{Binding OpenCommandPaletteCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+N" Command="{Binding RunCommand}" CommandParameter="session.clone" />
+    <KeyBinding Gesture="Ctrl+Shift+T" Command="{Binding RunCommand}" CommandParameter="tools.tunnel" />
+    <KeyBinding Gesture="Ctrl+Shift+F" Command="{Binding RunCommand}" CommandParameter="tools.files" />
+  </Window.KeyBindings>
+
+  <!-- Native OS title bar (design spec §2): the client area starts with the menu bar row. -->
+  <Grid RowDefinitions="Auto,*">
+
+    <!-- Floating transfer toast (design frame 9Ralg): top-right, non-modal, exists only
+         while transfers are running (spec §9). -->
+    <views:FileTransferView Grid.Row="1"
+                            DataContext="{Binding FileTransfer}"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Margin="0,12,16,0"
+                            ZIndex="50" />
+    <!-- Tunnel manager panel (design frame fuXS7): non-modal, toggled by tools.tunnel
+         (menu route button / Ctrl+Shift+T), anchored below the menu bar on the right. -->
+    <Panel Grid.Row="1" ZIndex="60"
+           HorizontalAlignment="Right" VerticalAlignment="Top"
+           Margin="0,8,48,0"
+           IsVisible="{Binding IsTunnelPanelOpen}">
+      <views:TunnelPanelView DataContext="{Binding TunnelPanel}" />
+    </Panel>
+    <!-- Menu bar (design frame TSiDh): text menus + global action buttons -->
+    <views:MenuBarView x:Name="MenuBarHost" Grid.Row="0" DataContext="{Binding}" />
+
+    <!-- Shell: content + status bar + palette overlay -->
+    <Grid Grid.Row="1" RowDefinitions="*,Auto">
+    <!-- Row 0: Content area (sidebar + main) -->
+    <Grid Grid.Row="0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="260" MinWidth="180" MaxWidth="520" />
+        <ColumnDefinition Width="5" />
+        <ColumnDefinition Width="*" MinWidth="400" />
+      </Grid.ColumnDefinitions>
+
+      <!-- Sidebar -->
+      <views:SidebarView x:Name="SidebarHost" Grid.Column="0" DataContext="{Binding Sidebar}" />
+
+      <!-- Sidebar splitter: 5px transparent grab area drawn as a 1px line, so the sidebar
+           width is drag-adjustable. -->
+      <Border Grid.Column="1" Width="1" HorizontalAlignment="Center"
+              Background="{DynamicResource VelaBorderPrimary}" />
+      <GridSplitter Grid.Column="1" Background="Transparent" ResizeDirection="Columns"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+
+      <!-- Main area (terminal, file browser). The file rows start collapsed (0) and are
+           opened/restored from code-behind when FileBrowser.IsVisible changes (§6 可折叠/拖高). -->
+      <Grid Grid.Column="2" x:Name="MainAreaGrid">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="*" MinHeight="150" />
+          <RowDefinition Height="0" />
+          <RowDefinition Height="0" />
+        </Grid.RowDefinitions>
+
+        <!-- Top Area: dockable terminal documents (drag to reorder, tear off to a new
+             floating window, or drop on an edge to split — provided by Dock.Avalonia). -->
+        <dock:DockControl Grid.Row="0" Layout="{Binding Layout}">
+          <dock:DockControl.DataTemplates>
+            <DataTemplate DataType="docking:TerminalDocument">
+              <views:TerminalTabView DataContext="{Binding Terminal}" />
+            </DataTemplate>
+          </dock:DockControl.DataTemplates>
+        </dock:DockControl>
+
+        <!-- Horizontal splitter: a 5px transparent grab area drawn as a 1px line, so the
+             panel is draggable without a heavy divider. -->
+        <Border Grid.Row="1" Height="1" VerticalAlignment="Center"
+                Background="{DynamicResource VelaBorderPrimary}" />
+        <GridSplitter Grid.Row="1" Background="Transparent" ResizeDirection="Rows"
+                      HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+
+        <!-- Bottom Area (Files) -->
+        <views:FileBrowserView Grid.Row="2" DataContext="{Binding FileBrowser}" />
+
+      </Grid>
+    </Grid>
+
+    <!-- Row 1: Status bar (design frame gzmsb) -->
+    <views:StatusBarView Grid.Row="1" DataContext="{Binding StatusBar}" />
+
+    <!-- Command palette overlay (Ctrl+P / Ctrl+K). Backdrop click or Esc closes it. -->
+    <Grid Grid.Row="0" Grid.RowSpan="2"
+          IsVisible="{Binding CommandPalette.IsOpen}">
+      <Grid.Styles>
+        <Style Selector="Button.backdrop /template/ ContentPresenter#PART_ContentPresenter">
+          <Setter Property="Background" Value="#66000000" />
+        </Style>
+        <Style Selector="Button.backdrop:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+          <Setter Property="Background" Value="#66000000" />
+        </Style>
+      </Grid.Styles>
+      <Button Classes="backdrop"
+              Command="{Binding CommandPalette.CloseCommand}"
+              Background="#66000000"
+              BorderThickness="0"
+              CornerRadius="0"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch" />
+      <views:CommandPaletteView DataContext="{Binding CommandPalette}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Top" />
+    </Grid>
+
+    </Grid>
+  </Grid>
+</Window>

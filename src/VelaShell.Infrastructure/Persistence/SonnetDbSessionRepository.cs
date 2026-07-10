@@ -25,7 +25,7 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
         await EnsureMigratedAsync().ConfigureAwait(false);
         List<ServerGroup?> groups = await _engine.WithCollectionAsync(SonnetDbEngine.GroupsCollection, store =>
                                         store.Scan().Select(row => SonnetDbJson.Deserialize<ServerGroup>(row.Json)).ToList()).ConfigureAwait(false);
-        return groups.Where(g => g is not null).OrderBy(g => g.SortOrder).ToList();
+        return [.. groups.OfType<ServerGroup>().OrderBy(static g => g.SortOrder)];
     }
 
     public async Task<List<SessionProfile>> GetAllSessionsAsync()
@@ -33,7 +33,7 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
         await EnsureMigratedAsync().ConfigureAwait(false);
         List<SessionProfile?> sessions = await _engine.WithCollectionAsync(SonnetDbEngine.ProfilesCollection, store =>
                                              store.Scan().Select(row => SonnetDbJson.Deserialize<SessionProfile>(row.Json)).ToList()).ConfigureAwait(false);
-        return sessions.Where(s => s is not null).Cast<SessionProfile>().Select(Unprotect).ToList();
+        return [.. sessions.OfType<SessionProfile>().Select(Unprotect)];
     }
 
     public async Task<SessionProfile?> GetSessionAsync(Guid id)

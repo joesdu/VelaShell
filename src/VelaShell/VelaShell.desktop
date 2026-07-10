@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=VelaShell
+Comment=Cross-platform SSH terminal client
+Exec=/opt/velashell/VelaShell
+Icon=velashell
+Type=Application
+Categories=System;TerminalEmulator;Network;
+Terminal=false
+StartupWMClass=VelaShell.App
