@@ -15,7 +15,7 @@
         Title="{x:Static res:Strings.AppName}"
         Width="1440" Height="900"
         MinWidth="800" MinHeight="500"
-        Background="{DynamicResource PulseBgPage}"
+        Background="{DynamicResource VelaBgPage}"
         WindowStartupLocation="CenterScreen">
 
   <Window.KeyBindings>
@@ -71,7 +71,7 @@
       <!-- Sidebar splitter: 5px transparent grab area drawn as a 1px line, so the sidebar
            width is drag-adjustable. -->
       <Border Grid.Column="1" Width="1" HorizontalAlignment="Center"
-              Background="{DynamicResource PulseBorderPrimary}" />
+              Background="{DynamicResource VelaBorderPrimary}" />
       <GridSplitter Grid.Column="1" Background="Transparent" ResizeDirection="Columns"
                     HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 
@@ -97,7 +97,7 @@
         <!-- Horizontal splitter: a 5px transparent grab area drawn as a 1px line, so the
              panel is draggable without a heavy divider. -->
         <Border Grid.Row="1" Height="1" VerticalAlignment="Center"
-                Background="{DynamicResource PulseBorderPrimary}" />
+                Background="{DynamicResource VelaBorderPrimary}" />
         <GridSplitter Grid.Row="1" Background="Transparent" ResizeDirection="Rows"
                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 

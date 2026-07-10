@@ -9,7 +9,7 @@ using VelaShell.Infrastructure.Tunnels;
 using VelaShell.Infrastructure.Persistence;
 using Renci.SshNet;
 using Renci.SshNet.Common;
-using PulseConnectionInfo = VelaShell.Core.Models.ConnectionInfo;
+using VelaConnectionInfo = VelaShell.Core.Models.ConnectionInfo;
 
 namespace VelaShell.Infrastructure.DependencyInjection;
 
@@ -149,7 +149,7 @@ public static class InfrastructureServiceCollectionExtensions
     }
 
     private static ISshClientWrapper CreateSshClientWrapper(
-        PulseConnectionInfo connectionInfo,
+        VelaConnectionInfo connectionInfo,
         VelaShell.Core.Ssh.IHostKeyService? hostKeyService = null,
         ISettingsService? settingsService = null,
         VelaShell.Core.Ssh.IHostKeyPrompt? hostKeyPrompt = null,
@@ -174,7 +174,7 @@ public static class InfrastructureServiceCollectionExtensions
     /// <paramref name="connectHost"/>:<paramref name="connectPort"/>(直连时相同,经跳板时
     /// 是上一跳的本地转发口 —— 指纹绝不能按 127.0.0.1 记录)。</summary>
     private static SshClient BuildSshClient(
-        PulseConnectionInfo connectionInfo,
+        VelaConnectionInfo connectionInfo,
         string connectHost,
         int connectPort,
         VelaShell.Core.Ssh.IHostKeyService? hostKeyService,
@@ -272,7 +272,7 @@ public static class InfrastructureServiceCollectionExtensions
         return client;
     }
 
-    private static AuthenticationMethod[] CreateAuthenticationMethods(PulseConnectionInfo connectionInfo)
+    private static AuthenticationMethod[] CreateAuthenticationMethods(VelaConnectionInfo connectionInfo)
     {
         return connectionInfo.AuthMethod switch
         {
@@ -290,7 +290,7 @@ public static class InfrastructureServiceCollectionExtensions
         };
     }
 
-    private static PrivateKeyFile CreatePrivateKeyFile(PulseConnectionInfo connectionInfo)
+    private static PrivateKeyFile CreatePrivateKeyFile(VelaConnectionInfo connectionInfo)
     {
         var privateKeyPath = connectionInfo.PrivateKeyPath;
         if (string.IsNullOrWhiteSpace(privateKeyPath))

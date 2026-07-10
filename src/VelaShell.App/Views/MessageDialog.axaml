@@ -22,57 +22,57 @@
     <!-- 标题栏语义图标着色:代码侧只挂类名,画刷交给 DynamicResource(带主题变体解析;
          代码里的 FindResource 不带变体查不到 ThemeDictionaries 的画刷)。 -->
     <Style Selector="pc|LucideIcon#KindIcon.info">
-      <Setter Property="Foreground" Value="{DynamicResource PulseInfo}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaInfo}" />
     </Style>
     <Style Selector="pc|LucideIcon#KindIcon.success">
-      <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
     </Style>
     <Style Selector="pc|LucideIcon#KindIcon.warning">
-      <Setter Property="Foreground" Value="{DynamicResource PulseWarning}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaWarning}" />
     </Style>
     <Style Selector="pc|LucideIcon#KindIcon.error">
-      <Setter Property="Foreground" Value="{DynamicResource PulseError}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
     </Style>
     <Style Selector="pc|LucideIcon#KindIcon.question">
-      <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
     </Style>
 
     <!-- 自定义内容区(属性表/权限矩阵等)默认文字样式:调用方只挂类名,不在代码里取画刷。 -->
     <Style Selector="ContentControl#BodyHost TextBlock">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
       <Setter Property="FontSize" Value="12" />
     </Style>
     <Style Selector="ContentControl#BodyHost TextBlock.dim">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
     </Style>
     <Style Selector="ContentControl#BodyHost TextBlock.mono">
-      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaTerminalFont}" />
     </Style>
     <Style Selector="ContentControl#BodyHost TextBlock.mono-accent">
-      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseAccentText}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaTerminalFont}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccentText}" />
       <Setter Property="FontSize" Value="11" />
     </Style>
     <Style Selector="ContentControl#BodyHost pc|LucideIcon.folder">
-      <Setter Property="Foreground" Value="{DynamicResource PulseFileFolderIcon}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaFileFolderIcon}" />
     </Style>
     <Style Selector="ContentControl#BodyHost pc|LucideIcon.file">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextTertiary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
     </Style>
     <Style Selector="ContentControl#BodyHost TextBox">
-      <Setter Property="Background" Value="{DynamicResource PulseBgInput}" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderPrimary}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="MinHeight" Value="28" />
       <Setter Property="FontSize" Value="11" />
-      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaTerminalFont}" />
     </Style>
 
     <Style Selector="Button.dlg-outline">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderSecondary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Height" Value="30" />
       <Setter Property="Padding" Value="12,0" />
@@ -81,8 +81,8 @@
       <Setter Property="FontSize" Value="11" />
     </Style>
     <Style Selector="Button.dlg-primary">
-      <Setter Property="Background" Value="{DynamicResource PulseAccent}" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseAccentForeground}" />
+      <Setter Property="Background" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccentForeground}" />
       <Setter Property="Height" Value="30" />
       <Setter Property="Padding" Value="14,0" />
       <Setter Property="CornerRadius" Value="4" />
@@ -91,8 +91,8 @@
       <Setter Property="FontWeight" Value="Medium" />
     </Style>
     <Style Selector="Button.dlg-danger">
-      <Setter Property="Background" Value="{DynamicResource PulseError}" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseAccentForeground}" />
+      <Setter Property="Background" Value="{DynamicResource VelaError}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccentForeground}" />
       <Setter Property="Height" Value="30" />
       <Setter Property="Padding" Value="14,0" />
       <Setter Property="CornerRadius" Value="4" />
@@ -103,8 +103,8 @@
   </Window.Styles>
 
   <Border CornerRadius="8"
-          Background="{DynamicResource PulseBgSurface}"
-          BorderBrush="{DynamicResource PulseBorderSecondary}"
+          Background="{DynamicResource VelaBgSurface}"
+          BorderBrush="{DynamicResource VelaBorderSecondary}"
           BorderThickness="1"
           BoxShadow="0 8 32 0 #80000000"
           Margin="12"
@@ -115,13 +115,13 @@
       <Border Grid.Row="0" Padding="20,0"
               Background="Transparent"
               PointerPressed="Header_PointerPressed"
-              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,0,1">
         <Grid ColumnDefinitions="Auto,*,Auto">
           <pc:LucideIcon Name="KindIcon" Width="15" Height="15"
                          VerticalAlignment="Center" Margin="0,0,10,0" />
           <TextBlock Grid.Column="1" Name="TitleText"
-                     Foreground="{DynamicResource PulseTextPrimary}"
+                     Foreground="{DynamicResource VelaTextPrimary}"
                      FontSize="13" FontWeight="SemiBold"
                      VerticalAlignment="Center"
                      TextTrimming="CharacterEllipsis" />
@@ -131,7 +131,7 @@
                   VerticalAlignment="Center">
             <pc:LucideIcon Width="13" Height="13"
                            Data="{DynamicResource Icon.x}"
-                           Foreground="{DynamicResource PulseTextTertiary}" />
+                           Foreground="{DynamicResource VelaTextTertiary}" />
           </Button>
         </Grid>
       </Border>
@@ -139,21 +139,21 @@
       <!-- 内容区 -->
       <StackPanel Grid.Row="1" Margin="20,16" Spacing="12">
         <TextBlock Name="MessageText"
-                   Foreground="{DynamicResource PulseTextSecondary}"
+                   Foreground="{DynamicResource VelaTextSecondary}"
                    FontSize="12" LineHeight="19"
                    TextWrapping="Wrap" />
         <TextBox Name="InputBox" IsVisible="False"
-                 Background="{DynamicResource PulseBgInput}"
-                 Foreground="{DynamicResource PulseTextPrimary}"
-                 BorderBrush="{DynamicResource PulseBorderPrimary}"
+                 Background="{DynamicResource VelaBgInput}"
+                 Foreground="{DynamicResource VelaTextPrimary}"
+                 BorderBrush="{DynamicResource VelaBorderPrimary}"
                  CornerRadius="4" MinHeight="30" FontSize="11"
-                 FontFamily="{DynamicResource PulseTerminalFont}" />
+                 FontFamily="{DynamicResource VelaTerminalFont}" />
         <ContentControl Name="BodyHost" IsVisible="False" />
       </StackPanel>
 
       <!-- 按钮栏 -->
       <Border Grid.Row="2" Padding="20,0"
-              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,1,0,0">
         <StackPanel Orientation="Horizontal" Spacing="8"
                     HorizontalAlignment="Right" VerticalAlignment="Center">

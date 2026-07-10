@@ -546,7 +546,7 @@ public class FileBrowserViewModelTests
     [TestCategory("FileBrowser")]
     public async Task DownloadItem_OnDirectory_RecursivelyDownloadsIntoPickedFolder()
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"pulse-download-{Guid.NewGuid():N}");
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"vela-download-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempRoot);
         try
         {
@@ -731,7 +731,7 @@ public class FileBrowserViewModelTests
     [TestCategory("FileBrowser")]
     public async Task DownloadSelected_WhenCancelled_StopsRemainingFiles_WithoutError()
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"pulse-cancel-{Guid.NewGuid():N}");
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"vela-cancel-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempRoot);
         try
         {
@@ -798,7 +798,7 @@ public class FileBrowserViewModelTests
     [TestCategory("FileBrowser")]
     public async Task DownloadSelected_DownloadsAllFilesIntoPickedFolder()
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"pulse-batch-{Guid.NewGuid():N}");
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"vela-batch-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempRoot);
         try
         {
@@ -828,7 +828,7 @@ public class FileBrowserViewModelTests
     [TestCategory("FileBrowser")]
     public async Task UploadCommand_MultiSelect_UploadsAllChosenFiles()
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"pulse-upload-{Guid.NewGuid():N}");
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"vela-upload-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempRoot);
         try
         {
@@ -868,7 +868,7 @@ public class FileBrowserViewModelTests
     [TestCategory("FileBrowser")]
     public async Task UploadFolderCommand_RecursivelyUploadsFolderTree()
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"pulse-folder-upload-{Guid.NewGuid():N}");
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"vela-folder-upload-{Guid.NewGuid():N}");
         var folder = Path.Combine(tempRoot, "assets");
         var nested = Path.Combine(folder, "nested");
 

@@ -49,18 +49,18 @@
         <Setter Property="Background" Value="Transparent" />
       </Style>
       <Style Selector="Border.group:pointerover">
-        <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+        <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
       </Style>
 
       <!-- 分组文件夹图标配色:按分组顺序 warning/info/accent 轮换(设计 FrJPu)。 -->
       <Style Selector="pc|LucideIcon.folder">
-        <Setter Property="Foreground" Value="{DynamicResource PulseWarning}" />
+        <Setter Property="Foreground" Value="{DynamicResource VelaWarning}" />
       </Style>
       <Style Selector="pc|LucideIcon.folder.info">
-        <Setter Property="Foreground" Value="{DynamicResource PulseInfo}" />
+        <Setter Property="Foreground" Value="{DynamicResource VelaInfo}" />
       </Style>
       <Style Selector="pc|LucideIcon.folder.accent">
-        <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+        <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
       </Style>
 
       <!-- 会话行:子级缩进 36,根级(未分组)与分组行同缩进 12;选中行 bg-active。 -->
@@ -72,51 +72,51 @@
         <Setter Property="Padding" Value="12,0" />
       </Style>
       <Style Selector="Border.session:pointerover">
-        <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+        <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
       </Style>
       <Style Selector="Border.session.selected">
-        <Setter Property="Background" Value="{DynamicResource PulseBgActive}" />
+        <Setter Property="Background" Value="{DynamicResource VelaBgActive}" />
       </Style>
 
       <!-- 状态圆点:默认断开(红),connected 绿 / connecting 黄。 -->
       <Style Selector="Ellipse.dot">
-        <Setter Property="Fill" Value="{DynamicResource PulseStatusDisconnected}" />
+        <Setter Property="Fill" Value="{DynamicResource VelaStatusDisconnected}" />
       </Style>
       <Style Selector="Ellipse.dot.connected">
-        <Setter Property="Fill" Value="{DynamicResource PulseStatusConnected}" />
+        <Setter Property="Fill" Value="{DynamicResource VelaStatusConnected}" />
       </Style>
       <Style Selector="Ellipse.dot.connecting">
-        <Setter Property="Fill" Value="{DynamicResource PulseStatusConnecting}" />
+        <Setter Property="Fill" Value="{DynamicResource VelaStatusConnecting}" />
       </Style>
 
       <!-- 会话名:默认 secondary,选中行转 accent(设计 FrJPu 活跃行)。 -->
       <Style Selector="TextBlock.sessionName">
-        <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+        <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
       </Style>
       <Style Selector="Border.session.selected TextBlock.sessionName">
-        <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+        <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
         <Setter Property="FontWeight" Value="Medium" />
       </Style>
 
       <!-- 状态标签胶囊:活跃(accent)/连接中(warning)/离线(error)。
            注意 Avalonia 颜色是 #AARRGGBB,设计稿 #FDCB6E20 → #20FDCB6E。 -->
       <Style Selector="Border.tag">
-        <Setter Property="Background" Value="{DynamicResource PulseAccentDim}" />
+        <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
       </Style>
       <Style Selector="Border.tag TextBlock">
-        <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+        <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
       </Style>
       <Style Selector="Border.tag.connecting">
         <Setter Property="Background" Value="#20FDCB6E" />
       </Style>
       <Style Selector="Border.tag.connecting TextBlock">
-        <Setter Property="Foreground" Value="{DynamicResource PulseWarning}" />
+        <Setter Property="Foreground" Value="{DynamicResource VelaWarning}" />
       </Style>
       <Style Selector="Border.tag.offline">
         <Setter Property="Background" Value="#20FF6B6B" />
       </Style>
       <Style Selector="Border.tag.offline TextBlock">
-        <Setter Property="Foreground" Value="{DynamicResource PulseError}" />
+        <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
       </Style>
     </TreeView.Styles>
 
@@ -140,12 +140,12 @@
               <pc:LucideIcon Width="12" Height="12"
                              VerticalAlignment="Center"
                              Data="{StaticResource Icon.chevron-down}"
-                             Foreground="{DynamicResource PulseTextTertiary}"
+                             Foreground="{DynamicResource VelaTextTertiary}"
                              IsVisible="{Binding IsExpanded}" />
               <pc:LucideIcon Width="12" Height="12"
                              VerticalAlignment="Center"
                              Data="{StaticResource Icon.chevron-right}"
-                             Foreground="{DynamicResource PulseTextTertiary}"
+                             Foreground="{DynamicResource VelaTextTertiary}"
                              IsVisible="{Binding !IsExpanded}" />
 
               <!-- Folder icon(按分组轮换配色) -->
@@ -158,16 +158,16 @@
 
               <!-- Group name -->
               <TextBlock Text="{Binding Name}"
-                         Foreground="{DynamicResource PulseTextPrimary}"
-                         FontFamily="{DynamicResource PulseTerminalFont}"
+                         Foreground="{DynamicResource VelaTextPrimary}"
+                         FontFamily="{DynamicResource VelaTerminalFont}"
                          FontSize="12"
                          FontWeight="Medium"
                          VerticalAlignment="Center" />
 
               <!-- Child count -->
               <TextBlock Text="{Binding Children.Count}"
-                         Foreground="{DynamicResource PulseTextTertiary}"
-                         FontFamily="{DynamicResource PulseTerminalFont}"
+                         Foreground="{DynamicResource VelaTextTertiary}"
+                         FontFamily="{DynamicResource VelaTerminalFont}"
                          FontSize="10"
                          VerticalAlignment="Center" />
 
@@ -191,11 +191,11 @@
                 <MenuItem Header="{x:Static res:Strings.Connect}"
                           Command="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).ConnectCommand}"
                           IsVisible="{Binding !IsGroup}"
-                          Foreground="{DynamicResource PulseTextPrimary}"
+                          Foreground="{DynamicResource VelaTextPrimary}"
                           FontWeight="Medium">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.plug}"
-                                   Foreground="{DynamicResource PulseAccent}" />
+                                   Foreground="{DynamicResource VelaAccent}" />
                   </MenuItem.Icon>
                 </MenuItem>
                 <MenuItem Header="在新标签页打开"
@@ -203,7 +203,7 @@
                           IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.plus}"
-                                   Foreground="{DynamicResource PulseTextTertiary}" />
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
                 <Separator IsVisible="{Binding !IsGroup}" />
@@ -212,7 +212,7 @@
                           IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.pencil}"
-                                   Foreground="{DynamicResource PulseTextTertiary}" />
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
                 <MenuItem Header="复制连接"
@@ -220,7 +220,7 @@
                           IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.copy}"
-                                   Foreground="{DynamicResource PulseTextTertiary}" />
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
                 <Separator IsVisible="{Binding !IsGroup}" />
@@ -229,7 +229,7 @@
                           IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-open}"
-                                   Foreground="{DynamicResource PulseTextTertiary}" />
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
                 <MenuItem Header="端口转发"
@@ -237,7 +237,7 @@
                           IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.arrow-right-left}"
-                                   Foreground="{DynamicResource PulseTextTertiary}" />
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
                 <MenuItem Header="会话设置"
@@ -245,7 +245,7 @@
                           IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.sliders-horizontal}"
-                                   Foreground="{DynamicResource PulseTextTertiary}" />
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
                 <MenuItem Header="移动到分组"
@@ -253,7 +253,7 @@
                           ItemsSource="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).GroupNodes}">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-input}"
-                                   Foreground="{DynamicResource PulseTextTertiary}" />
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                   <MenuItem.Styles>
                     <Style Selector="MenuItem > MenuItem" x:DataType="vm:SessionTreeNodeViewModel">
@@ -270,27 +270,27 @@
                           ToolTip.Tip="即将推出">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.stethoscope}"
-                                   Foreground="{DynamicResource PulseTextTertiary}" />
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
                 <Separator IsVisible="{Binding !IsGroup}" />
                 <MenuItem Header="断开连接"
                           Command="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).DisconnectCommand}"
                           IsVisible="{Binding !IsGroup}"
-                          Foreground="{DynamicResource PulseWarning}">
+                          Foreground="{DynamicResource VelaWarning}">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.unplug}"
-                                   Foreground="{DynamicResource PulseWarning}" />
+                                   Foreground="{DynamicResource VelaWarning}" />
                   </MenuItem.Icon>
                 </MenuItem>
                 <Separator IsVisible="{Binding !IsGroup}" />
                 <MenuItem Header="{x:Static res:Strings.Delete}"
                           Command="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).DeleteSessionCommand}"
                           IsVisible="{Binding !IsGroup}"
-                          Foreground="{DynamicResource PulseError}">
+                          Foreground="{DynamicResource VelaError}">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.trash-2}"
-                                   Foreground="{DynamicResource PulseError}" />
+                                   Foreground="{DynamicResource VelaError}" />
                   </MenuItem.Icon>
                 </MenuItem>
               </ContextMenu>
@@ -309,7 +309,7 @@
 
               <TextBlock Classes="sessionName"
                          Text="{Binding Name}"
-                         FontFamily="{DynamicResource PulseTerminalFont}"
+                         FontFamily="{DynamicResource VelaTerminalFont}"
                          FontSize="11"
                          VerticalAlignment="Center"
                          TextTrimming="CharacterEllipsis" />
@@ -322,7 +322,7 @@
                       Padding="6,1"
                       VerticalAlignment="Center">
                 <TextBlock Text="{Binding StatusTagText}"
-                           FontFamily="{DynamicResource PulseTerminalFont}"
+                           FontFamily="{DynamicResource VelaTerminalFont}"
                            FontSize="9"
                            FontWeight="Medium"
                            VerticalAlignment="Center" />

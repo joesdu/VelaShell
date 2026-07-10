@@ -4,12 +4,12 @@
     <!-- VelaShell Dark Theme — Dracula palette (用户确认) -->
 
     <!-- Accent tokens -->
-    <SolidColorBrush x:Key="PulseAccentText" Color="#BD93F9" />
+    <SolidColorBrush x:Key="VelaAccentText" Color="#BD93F9" />
 
     <!-- Semantic tokens -->
-    <SolidColorBrush x:Key="PulseWarning" Color="#FFB86C" />
-    <SolidColorBrush x:Key="PulseError"   Color="#FF5555" />
-    <SolidColorBrush x:Key="PulseInfo"    Color="#8BE9FD" />
+    <SolidColorBrush x:Key="VelaWarning" Color="#FFB86C" />
+    <SolidColorBrush x:Key="VelaError"   Color="#FF5555" />
+    <SolidColorBrush x:Key="VelaInfo"    Color="#8BE9FD" />
 
     <!-- Terminal color tokens -->
     <SolidColorBrush x:Key="VelaShellWhite"   Color="#F8F8F2" />

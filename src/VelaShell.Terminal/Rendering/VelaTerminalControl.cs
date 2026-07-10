@@ -20,7 +20,7 @@ namespace VelaShell.Terminal.Rendering;
 /// host bytes. Implements <see cref="ITerminalEmulator"/> so it drops straight into the existing
 /// <c>SshTerminalBridge</c> and views without any changes to the wiring.
 /// </summary>
-public sealed class PulseTerminalControl : Control, ITerminalEmulator
+public sealed class VelaTerminalControl : Control, ITerminalEmulator
 {
     private readonly TerminalEmulator _emulator;
     private readonly SemanticMatcher _semanticMatcher = new();
@@ -207,12 +207,12 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     private TerminalMouseButton? _mouseButtonDown;
     private (int Col, int Row) _lastMouseReportCell = (-1, -1);
 
-    public PulseTerminalControl()
+    public VelaTerminalControl()
         : this(new TerminalEmulator(120, 32))
     {
     }
 
-    public PulseTerminalControl(TerminalEmulator emulator)
+    public VelaTerminalControl(TerminalEmulator emulator)
     {
         _emulator = emulator;
         Focusable = true;
@@ -497,9 +497,9 @@ public sealed class PulseTerminalControl : Control, ITerminalEmulator
     /// the cursor rectangle matters, to position the candidate window.</summary>
     private sealed class TerminalImeClient : TextInputMethodClient
     {
-        private readonly PulseTerminalControl _owner;
+        private readonly VelaTerminalControl _owner;
 
-        public TerminalImeClient(PulseTerminalControl owner) => _owner = owner;
+        public TerminalImeClient(VelaTerminalControl owner) => _owner = owner;
 
         public override Visual TextViewVisual => _owner;
         public override bool SupportsPreedit => false;

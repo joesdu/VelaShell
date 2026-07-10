@@ -144,6 +144,13 @@ public partial class MainWindow : Window
             _settingsService = settingsService;
             settingsService.SettingsSaved += OnSettingsSavedForWindow;
             Closed += (_, _) => settingsService.SettingsSaved -= OnSettingsSavedForWindow;
+
+            // 外观即时预览(未持久化):同样应用窗口外观,但不覆盖 _settings(已保存状态)。
+            if (services.GetService<VelaShell.Core.Services.ISettingsPreviewService>() is { } previewService)
+            {
+                previewService.PreviewRequested += OnSettingsPreviewedForWindow;
+                Closed += (_, _) => previewService.PreviewRequested -= OnSettingsPreviewedForWindow;
+            }
             try
             {
                 _settings = await settingsService.GetSettingsAsync();
@@ -193,31 +200,37 @@ public partial class MainWindow : Window
             ApplyWindowAppearance(settings);
         });
 
+    private void OnSettingsPreviewedForWindow(AppSettings settings) =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => ApplyWindowAppearance(settings));
+
     /// <summary>应用设置 → 外观:窗口透明度、菜单栏显隐、侧边栏位置、界面字体/字号。</summary>
     private void ApplyWindowAppearance(AppSettings settings)
     {
         var a = settings.Appearance;
 
-        Opacity = Math.Clamp(a.WindowOpacityPercent, 50, 100) / 100.0;
+        Opacity = Math.Clamp(a.WindowOpacityPercent, 10, 100) / 100.0;
 
         if (this.FindControl<MenuBarView>("MenuBarHost") is { } menuBar)
             menuBar.IsVisible = a.ShowMenuBar;
 
         ApplySidebarPosition(a.SidebarPosition == "right");
 
-        // 界面字体:shadow 主题的 PulseUiFont 令牌(空或默认 Inter 时还原主题字体)。
         if (Application.Current is { } app)
         {
+            // 界面字体:覆盖 VelaUiFont 令牌(空或默认 Inter 时还原主题字体);
+            // App 级 :is(Window) 样式让所有窗口继承,未显式指定 FontFamily 的文本统一换字体。
             var uiFont = a.UiFont?.Trim();
             if (string.IsNullOrEmpty(uiFont) || string.Equals(uiFont, "Inter", StringComparison.OrdinalIgnoreCase))
-                app.Resources.Remove("PulseUiFont");
+                app.Resources.Remove("VelaUiFont");
             else
-                app.Resources["PulseUiFont"] = new FontFamily($"{uiFont}, Segoe UI, Microsoft YaHei, sans-serif");
-        }
+                app.Resources["VelaUiFont"] = new FontFamily($"{uiFont}, Segoe UI, Microsoft YaHei, sans-serif");
 
-        // 界面字号:窗口级默认字号,未显式指定 FontSize 的控件继承。
-        if (a.UiFontSize is >= 9 and <= 24)
-            FontSize = a.UiFontSize;
+            // 界面字号:覆盖 VelaUiFontSize 令牌(同上,全窗口继承);同时覆盖 Fluent 的
+            // ControlContentThemeFontSize,让内置控件(按钮/输入框/下拉等)一起缩放。
+            var uiFontSize = (double)Math.Clamp(a.UiFontSize, 9, 24);
+            app.Resources["VelaUiFontSize"] = uiFontSize;
+            app.Resources["ControlContentThemeFontSize"] = uiFontSize;
+        }
     }
 
     /// <summary>侧边栏位置(设置 → 外观):交换侧边栏与主区所在列,分隔条留在中间。</summary>

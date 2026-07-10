@@ -25,11 +25,11 @@
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:ShortcutItem">
                     <Border Height="36" Padding="12,0"
-                            BorderBrush="{DynamicResource PulseBorderPrimary}"
+                            BorderBrush="{DynamicResource VelaBorderPrimary}"
                             BorderThickness="0,0,0,1">
                       <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Text="{Binding Label}"
-                                   Foreground="{DynamicResource PulseTextSecondary}"
+                                   Foreground="{DynamicResource VelaTextSecondary}"
                                    FontSize="12" VerticalAlignment="Center" />
                         <ItemsControl Grid.Column="1" ItemsSource="{Binding Keys}"
                                       VerticalAlignment="Center">
@@ -42,8 +42,8 @@
                             <DataTemplate x:DataType="x:String">
                               <Border Classes="keycap">
                                 <TextBlock Text="{Binding}"
-                                           Foreground="{DynamicResource PulseTextSecondary}"
-                                           FontFamily="{DynamicResource PulseTerminalFont}"
+                                           Foreground="{DynamicResource VelaTextSecondary}"
+                                           FontFamily="{DynamicResource VelaTerminalFont}"
                                            FontSize="10" FontWeight="Medium" />
                               </Border>
                             </DataTemplate>
@@ -63,7 +63,7 @@
     <StackPanel Orientation="Horizontal" Spacing="6">
       <PathIcon Width="12" Height="12"
                 Data="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"
-                Foreground="{DynamicResource PulseTextMuted}" VerticalAlignment="Center" />
+                Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center" />
       <TextBlock Classes="row-desc" Text="自定义键位将在后续版本提供;当前展示为内置绑定" VerticalAlignment="Center" />
     </StackPanel>
   </StackPanel>

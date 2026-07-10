@@ -13,8 +13,8 @@
        auto-fades ~3s after all complete; x collapses without cancelling (spec §9). -->
 
   <Border Width="280"
-          Background="{DynamicResource PulseBgSurface}"
-          BorderBrush="{DynamicResource PulseBorderSecondary}"
+          Background="{DynamicResource VelaBgSurface}"
+          BorderBrush="{DynamicResource VelaBorderSecondary}"
           BorderThickness="1"
           CornerRadius="6"
           BoxShadow="0 4 16 0 #60000000"
@@ -24,25 +24,25 @@
       <!-- Header (32px, drag handle): arrow-up-down accent + 传输 + count badge | x -->
       <Border Height="32"
               Padding="12,0"
-              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,0,1">
         <Grid ColumnDefinitions="Auto,*,Auto">
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
             <pc:LucideIcon Width="12" Height="12"
                            Data="{StaticResource Icon.arrow-up-down}"
-                           Foreground="{DynamicResource PulseAccent}" />
+                           Foreground="{DynamicResource VelaAccent}" />
             <TextBlock Text="传输"
-                       Foreground="{DynamicResource PulseTextPrimary}"
-                       FontFamily="{DynamicResource PulseTerminalFont}"
+                       Foreground="{DynamicResource VelaTextPrimary}"
+                       FontFamily="{DynamicResource VelaTerminalFont}"
                        FontSize="11" FontWeight="Medium"
                        VerticalAlignment="Center" />
-            <Border Background="{DynamicResource PulseAccent}"
+            <Border Background="{DynamicResource VelaAccent}"
                     CornerRadius="8" Padding="6,1"
                     VerticalAlignment="Center"
                     IsVisible="{Binding PendingCount}">
               <TextBlock Text="{Binding PendingCount}"
-                         Foreground="{DynamicResource PulseAccentText}"
-                         FontFamily="{DynamicResource PulseTerminalFont}"
+                         Foreground="{DynamicResource VelaAccentText}"
+                         FontFamily="{DynamicResource VelaTerminalFont}"
                          FontSize="9" FontWeight="Medium" />
             </Border>
           </StackPanel>
@@ -53,8 +53,8 @@
                     Command="{Binding CancelAllCommand}"
                     ToolTip.Tip="取消剩余传输">
               <TextBlock Text="取消"
-                         Foreground="{DynamicResource PulseError}"
-                         FontFamily="{DynamicResource PulseTerminalFont}"
+                         Foreground="{DynamicResource VelaError}"
+                         FontFamily="{DynamicResource VelaTerminalFont}"
                          FontSize="10" FontWeight="Medium" />
             </Button>
             <Button Background="Transparent" Padding="2" Cursor="Hand"
@@ -62,7 +62,7 @@
                     ToolTip.Tip="收起（任务继续后台执行）">
               <pc:LucideIcon Width="12" Height="12"
                              Data="{StaticResource Icon.x}"
-                             Foreground="{DynamicResource PulseTextTertiary}" />
+                             Foreground="{DynamicResource VelaTextTertiary}" />
             </Button>
           </StackPanel>
         </Grid>
@@ -76,7 +76,7 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:TransferItemViewModel">
               <Border Padding="12,8"
-                      BorderBrush="{DynamicResource PulseBorderPrimary}"
+                      BorderBrush="{DynamicResource VelaBorderPrimary}"
                       BorderThickness="0,0,0,1">
                 <StackPanel Spacing="4">
 
@@ -84,25 +84,25 @@
                   <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Grid.Column="0"
                                Text="{Binding FileName}"
-                               Foreground="{DynamicResource PulseTextPrimary}"
-                               FontFamily="{DynamicResource PulseTerminalFont}"
+                               Foreground="{DynamicResource VelaTextPrimary}"
+                               FontFamily="{DynamicResource VelaTerminalFont}"
                                FontSize="10" FontWeight="Medium"
                                TextTrimming="CharacterEllipsis" />
                     <TextBlock Grid.Column="1"
                                Text="{Binding ProgressText}"
-                               FontFamily="{DynamicResource PulseTerminalFont}"
+                               FontFamily="{DynamicResource VelaTerminalFont}"
                                FontSize="10" FontWeight="Medium"
                                Classes.done="{Binding IsCompleted}"
                                Classes.failed="{Binding IsFailed}">
                       <TextBlock.Styles>
                         <Style Selector="TextBlock">
-                          <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+                          <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
                         </Style>
                         <Style Selector="TextBlock.done">
-                          <Setter Property="Foreground" Value="{DynamicResource PulseStatusConnected}" />
+                          <Setter Property="Foreground" Value="{DynamicResource VelaStatusConnected}" />
                         </Style>
                         <Style Selector="TextBlock.failed">
-                          <Setter Property="Foreground" Value="{DynamicResource PulseError}" />
+                          <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
                         </Style>
                       </TextBlock.Styles>
                     </TextBlock>
@@ -113,13 +113,13 @@
                                Value="{Binding Progress}"
                                Height="3" MinHeight="3"
                                CornerRadius="2"
-                               Background="{DynamicResource PulseBorderPrimary}"
-                               Foreground="{DynamicResource PulseAccent}" />
+                               Background="{DynamicResource VelaBorderPrimary}"
+                               Foreground="{DynamicResource VelaAccent}" />
 
                   <!-- Detail line -->
                   <TextBlock Text="{Binding InfoLine}"
-                             Foreground="{DynamicResource PulseTextMuted}"
-                             FontFamily="{DynamicResource PulseTerminalFont}"
+                             Foreground="{DynamicResource VelaTextMuted}"
+                             FontFamily="{DynamicResource VelaTerminalFont}"
                              FontSize="9" />
                 </StackPanel>
               </Border>

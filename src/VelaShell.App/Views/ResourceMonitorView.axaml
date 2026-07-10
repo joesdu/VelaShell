@@ -13,37 +13,37 @@
 
   <UserControl.Styles>
     <Style Selector="TextBlock.row-label">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
-      <Setter Property="FontFamily" Value="{DynamicResource PulseUiFont}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
       <Setter Property="FontSize" Value="11" />
     </Style>
     <Style Selector="TextBlock.row-value">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
-      <Setter Property="FontFamily" Value="{DynamicResource PulseUiFont}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
       <Setter Property="FontSize" Value="11" />
     </Style>
     <Style Selector="ProgressBar">
       <Setter Property="Height" Value="6" />
       <Setter Property="MinHeight" Value="6" />
       <Setter Property="CornerRadius" Value="3" />
-      <Setter Property="Background" Value="{DynamicResource PulseBgActive}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgActive}" />
       <Setter Property="Minimum" Value="0" />
       <Setter Property="Maximum" Value="100" />
     </Style>
     <Style Selector="ProgressBar.warn">
-      <Setter Property="Foreground" Value="{DynamicResource PulseWarning}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaWarning}" />
     </Style>
     <Style Selector="ProgressBar.crit">
-      <Setter Property="Foreground" Value="{DynamicResource PulseError}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
     </Style>
     <Style Selector="TextBlock.info-label">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
-      <Setter Property="FontFamily" Value="{DynamicResource PulseUiFont}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
       <Setter Property="FontSize" Value="10" />
     </Style>
     <Style Selector="TextBlock.info-value">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
-      <Setter Property="FontFamily" Value="{DynamicResource PulseUiFont}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
       <Setter Property="FontSize" Value="10" />
     </Style>
   </UserControl.Styles>
@@ -53,15 +53,15 @@
     <!-- Header: hostname + latency -->
     <Grid ColumnDefinitions="*,Auto">
       <TextBlock Text="{Binding HostName}"
-                 Foreground="{DynamicResource PulseTextPrimary}"
-                 FontFamily="{DynamicResource PulseUiFont}"
+                 Foreground="{DynamicResource VelaTextPrimary}"
+                 FontFamily="{DynamicResource VelaUiFont}"
                  FontSize="13" FontWeight="Bold" />
     </Grid>
 
     <!-- Unavailable placeholder (§11: 若该会话已断开，显示数据不可用) -->
     <TextBlock Text="数据不可用"
-               Foreground="{DynamicResource PulseTextMuted}"
-               FontFamily="{DynamicResource PulseUiFont}" FontSize="11"
+               Foreground="{DynamicResource VelaTextMuted}"
+               FontFamily="{DynamicResource VelaUiFont}" FontSize="11"
                IsVisible="{Binding !IsAvailable}" />
 
     <StackPanel Spacing="8" IsVisible="{Binding IsAvailable}">

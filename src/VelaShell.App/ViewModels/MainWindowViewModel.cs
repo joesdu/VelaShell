@@ -55,7 +55,8 @@ public class MainWindowViewModel : ReactiveObject
         VelaShell.Core.Tunnels.ITunnelService? tunnelService = null,
         VelaShell.Core.Services.ISessionMetricsService? metricsService = null,
         IRecentConnectionService? recentConnectionService = null,
-        ISecurityAlertService? securityAlertService = null)
+        ISecurityAlertService? securityAlertService = null,
+        VelaShell.Core.Services.ISettingsPreviewService? settingsPreviewService = null)
     {
         _connectionWorkflowService = connectionWorkflowService;
         _sshConnectionService = sshConnectionService;
@@ -64,7 +65,7 @@ public class MainWindowViewModel : ReactiveObject
         _sftpService = sftpService;
         _tunnelService = tunnelService;
         _metricsService = metricsService;
-        _terminalEmulatorFactory = terminalEmulatorFactory ?? (() => new PulseTerminalControl());
+        _terminalEmulatorFactory = terminalEmulatorFactory ?? (() => new VelaTerminalControl());
 
         _dockFactory = new TerminalDockFactory();
         Layout = _dockFactory.CreateLayout();
@@ -104,6 +105,16 @@ public class MainWindowViewModel : ReactiveObject
         // font, size and encoding change live; TERM stays per-session (negotiated at connect).
         if (_settingsService is not null)
             _settingsService.SettingsSaved += OnSettingsSaved;
+
+        // 外观即时预览(设置窗口广播,未持久化):只重刷已打开标签的终端外观,
+        // 不动 _latestSettings(新建标签仍用已保存的设置)。
+        if (settingsPreviewService is not null)
+            settingsPreviewService.PreviewRequested += settings =>
+                RxSchedulers.MainThreadScheduler.Schedule(Unit.Default, (_, _) =>
+                {
+                    ApplyLiveSettingsToOpenTabs(settings);
+                    return System.Reactive.Disposables.Disposable.Empty;
+                });
 
         // 安全告警(设置 → 安全审计 → 告警通道):应用内 → 状态栏;提示音 → 系统提示音。
         if (securityAlertService is not null)
@@ -213,7 +224,7 @@ public class MainWindowViewModel : ReactiveObject
         };
         terminalTab.ReconnectRequested += (_, _) => _ = ReconnectTabAsync(terminalTab);
         terminalTab.Disconnected += (_, _) => OnTabDisconnected(terminalTab);
-        if (terminalEmulator is PulseTerminalControl bellSource)
+        if (terminalEmulator is VelaTerminalControl bellSource)
         {
             bellSource.BellRang += () =>
             {
@@ -431,8 +442,8 @@ public class MainWindowViewModel : ReactiveObject
         IsTunnelPanelOpen = true;
     }
     /// <summary>The self-drawn terminal control of the active tab, when it is one.</summary>
-    private PulseTerminalControl? ActiveTerminalControl =>
-        ActiveTerminalTab?.TerminalEmulator.Control as PulseTerminalControl;
+    private VelaTerminalControl? ActiveTerminalControl =>
+        ActiveTerminalTab?.TerminalEmulator.Control as VelaTerminalControl;
 
     // ---- Status-bar live metrics (spec §7: cpu / memory / net for the active session) ----
 
@@ -721,7 +732,7 @@ public class MainWindowViewModel : ReactiveObject
             .Subscribe(status => Sidebar.SessionTree?.SetSessionStatus(profile.Id, status));
 
         // 后台标签收到 BEL → 点亮闪烁提醒(设置 → 终端 → 标签闪烁提醒);切回标签时清除。
-        if (terminalEmulator is PulseTerminalControl bellSource)
+        if (terminalEmulator is VelaTerminalControl bellSource)
         {
             bellSource.BellRang += () =>
             {
@@ -1146,7 +1157,7 @@ public class MainWindowViewModel : ReactiveObject
     private void ConfigureTerminal(ITerminalEmulator emulator, AppSettings settings, TerminalType terminalType,
         bool forceUtf8 = false)
     {
-        if (emulator is PulseTerminalControl control)
+        if (emulator is VelaTerminalControl control)
             control.TerminalType = terminalType;
 
         ApplyLiveTerminalSettings(emulator, settings, forceUtf8);
@@ -1159,7 +1170,7 @@ public class MainWindowViewModel : ReactiveObject
     {
         emulator.ScrollbackLines = settings.ScrollbackLines;
 
-        if (emulator is PulseTerminalControl control)
+        if (emulator is VelaTerminalControl control)
         {
             // 本地终端(ConPTY)输出恒为 UTF-8,不套用面向远端主机的编码设置。
             control.SetEncoding(forceUtf8 ? Encoding.UTF8 : ResolveEncoding(settings.TerminalEncoding));
@@ -1199,13 +1210,19 @@ public class MainWindowViewModel : ReactiveObject
         // so marshal onto the UI thread (the main scheduler is the Avalonia dispatcher).
         RxSchedulers.MainThreadScheduler.Schedule(Unit.Default, (_, _) =>
         {
-            foreach (var tab in TabBar.Tabs.OfType<TerminalTabViewModel>())
-                ApplyLiveTerminalSettings(tab.TerminalEmulator, settings, forceUtf8: tab.LocalShell is not null);
+            ApplyLiveSettingsToOpenTabs(settings);
 
             // 已打开的文件浏览器同步最新的传输选项(冲突策略/并发/带宽等)。
             FileBrowser.TransferOptions = settings.Transfer;
             return System.Reactive.Disposables.Disposable.Empty;
         });
+    }
+
+    /// <summary>把一份设置应用到所有已打开的终端标签(保存与外观预览共用)。</summary>
+    private void ApplyLiveSettingsToOpenTabs(AppSettings settings)
+    {
+        foreach (var tab in TabBar.Tabs.OfType<TerminalTabViewModel>())
+            ApplyLiveTerminalSettings(tab.TerminalEmulator, settings, forceUtf8: tab.LocalShell is not null);
     }
 
     private static Encoding ResolveEncoding(string? name)

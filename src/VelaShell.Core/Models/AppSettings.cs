@@ -78,36 +78,76 @@ public class GeneralOptions
     public bool RememberPasswords { get; set; } = true;
 }
 
-/// <summary>设置 - 外观(设计 ZAbb9)。</summary>
-public class AppearanceOptions
+/// <summary>设置 - 外观(设计 ZAbb9)。实现 INPC:设置页直接 TwoWay 绑定本对象,
+/// 单项修改需要能被设置 VM 观察到,用于外观「即时预览」与颜色色块的实时刷新。</summary>
+public class AppearanceOptions : System.ComponentModel.INotifyPropertyChanged
 {
-    public string UiFont { get; set; } = "Inter";
-    public int UiFontSize { get; set; } = 13;
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 
-    public int WindowOpacityPercent { get; set; } = 100;
-    public string TabBarPosition { get; set; } = "top";
-    public bool ShowMenuBar { get; set; } = true;
-    public string SidebarPosition { get; set; } = "left";
-    public string StartupWindowState { get; set; } = "remember";
+    private bool Set<T>(ref T field, T value,
+        [System.Runtime.CompilerServices.CallerMemberName] string? name = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+            return false;
+
+        field = value;
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
+        return true;
+    }
+
+    private string _uiFont = "Inter";
+    public string UiFont { get => _uiFont; set => Set(ref _uiFont, value); }
+
+    private int _uiFontSize = 13;
+    public int UiFontSize { get => _uiFontSize; set => Set(ref _uiFontSize, value); }
+
+    private int _windowOpacityPercent = 100;
+    public int WindowOpacityPercent { get => _windowOpacityPercent; set => Set(ref _windowOpacityPercent, value); }
+
+    private string _tabBarPosition = "top";
+    public string TabBarPosition { get => _tabBarPosition; set => Set(ref _tabBarPosition, value); }
+
+    private bool _showMenuBar = true;
+    public bool ShowMenuBar { get => _showMenuBar; set => Set(ref _showMenuBar, value); }
+
+    private string _sidebarPosition = "left";
+    public string SidebarPosition { get => _sidebarPosition; set => Set(ref _sidebarPosition, value); }
+
+    private string _startupWindowState = "remember";
+    public string StartupWindowState { get => _startupWindowState; set => Set(ref _startupWindowState, value); }
 
     // “记住上次”窗口状态的持久化槽位(不出现在设置界面,由主窗口关闭时回写)。
-    public double LastWindowWidth { get; set; }
-    public double LastWindowHeight { get; set; }
-    public bool LastWindowMaximized { get; set; }
+    private double _lastWindowWidth;
+    public double LastWindowWidth { get => _lastWindowWidth; set => Set(ref _lastWindowWidth, value); }
+
+    private double _lastWindowHeight;
+    public double LastWindowHeight { get => _lastWindowHeight; set => Set(ref _lastWindowHeight, value); }
+
+    private bool _lastWindowMaximized;
+    public bool LastWindowMaximized { get => _lastWindowMaximized; set => Set(ref _lastWindowMaximized, value); }
 
     // 终端颜色(默认 = Dracula 官方 Windows Terminal 方案,用户确认)
-    public string TerminalForeground { get; set; } = "#F8F8F2";
-    public string TerminalBackground { get; set; } = "#282A36";
-    public string CursorColor { get; set; } = "#F8F8F2";
-    public string SelectionColor { get; set; } = "#44475A";
+    private string _terminalForeground = "#F8F8F2";
+    public string TerminalForeground { get => _terminalForeground; set => Set(ref _terminalForeground, value); }
+
+    private string _terminalBackground = "#282A36";
+    public string TerminalBackground { get => _terminalBackground; set => Set(ref _terminalBackground, value); }
+
+    private string _cursorColor = "#F8F8F2";
+    public string CursorColor { get => _cursorColor; set => Set(ref _cursorColor, value); }
+
+    private string _selectionColor = "#44475A";
+    public string SelectionColor { get => _selectionColor; set => Set(ref _selectionColor, value); }
 
     /// <summary>ANSI 普通 8 色(Dracula:black/red/green/yellow/blue/purple/cyan/white)。</summary>
-    public List<string> AnsiNormal { get; set; } =
+    private List<string> _ansiNormal =
         ["#21222C", "#FF5555", "#50FA7B", "#F1FA8C", "#BD93F9", "#FF79C6", "#8BE9FD", "#F8F8F2"];
+    public List<string> AnsiNormal { get => _ansiNormal; set => Set(ref _ansiNormal, value); }
 
     /// <summary>ANSI 明亮 8 色(Dracula bright)。</summary>
-    public List<string> AnsiBright { get; set; } =
+    private List<string> _ansiBright =
         ["#6272A4", "#FF6E6E", "#69FF94", "#FFFFA5", "#D6ACFF", "#FF92DF", "#A4FFFF", "#FFFFFF"];
+    public List<string> AnsiBright { get => _ansiBright; set => Set(ref _ansiBright, value); }
 }
 
 /// <summary>设置 - 终端(设计 08FpM;字体/字号/回滚沿用 AppSettings 顶层字段)。</summary>

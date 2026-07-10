@@ -79,9 +79,12 @@
         <TextBlock Classes="row-desc" Text="// 调整窗口背景的透明程度" />
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-        <Slider Width="120" Minimum="50" Maximum="100"
+        <Slider Width="120" Minimum="10" Maximum="100"
                 Value="{Binding Appearance.WindowOpacityPercent}" VerticalAlignment="Center" />
-        <NumericUpDown Width="70" Value="{Binding Appearance.WindowOpacityPercent}" Minimum="50" Maximum="100" Increment="5" FormatString="0" />
+        <!-- 只读指示器:数值仅由滑块驱动(手动输入无意义且易输入非法字符)。 -->
+        <TextBlock Width="40" TextAlignment="Right" VerticalAlignment="Center"
+                   Foreground="{DynamicResource VelaTextSecondary}" FontSize="12"
+                   Text="{Binding Appearance.WindowOpacityPercent, StringFormat={}{0}%}" />
       </StackPanel>
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
@@ -127,7 +130,7 @@
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="配色方案" />
-        <TextBlock Classes="row-desc" Text="// 一键套用整套终端配色(保存后生效);Dracula 为默认并跟随主题" />
+        <TextBlock Classes="row-desc" Text="// 一键套用整套终端配色(即时预览,保存后生效,取消可还原);Dracula 为默认并跟随主题" />
       </StackPanel>
       <ComboBox Grid.Column="1" Width="160"
                 ItemsSource="{Binding AvailableColorSchemes}"
@@ -142,7 +145,7 @@
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <Border Width="24" Height="24" CornerRadius="4"
-                BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1"
+                BorderBrush="{DynamicResource VelaBorderSecondary}" BorderThickness="1"
                 Background="{Binding Appearance.TerminalForeground, Converter={x:Static conv:StringToBrushConverter.Instance}}" />
         <TextBox Width="100" Text="{Binding Appearance.TerminalForeground}" />
       </StackPanel>
@@ -154,7 +157,7 @@
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <Border Width="24" Height="24" CornerRadius="4"
-                BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1"
+                BorderBrush="{DynamicResource VelaBorderSecondary}" BorderThickness="1"
                 Background="{Binding Appearance.TerminalBackground, Converter={x:Static conv:StringToBrushConverter.Instance}}" />
         <TextBox Width="100" Text="{Binding Appearance.TerminalBackground}" />
       </StackPanel>
@@ -166,7 +169,7 @@
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <Border Width="24" Height="24" CornerRadius="4"
-                BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1"
+                BorderBrush="{DynamicResource VelaBorderSecondary}" BorderThickness="1"
                 Background="{Binding Appearance.CursorColor, Converter={x:Static conv:StringToBrushConverter.Instance}}" />
         <TextBox Width="100" Text="{Binding Appearance.CursorColor}" />
       </StackPanel>
@@ -178,7 +181,7 @@
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <Border Width="24" Height="24" CornerRadius="4"
-                BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1"
+                BorderBrush="{DynamicResource VelaBorderSecondary}" BorderThickness="1"
                 Background="{Binding Appearance.SelectionColor, Converter={x:Static conv:StringToBrushConverter.Instance}}" />
         <TextBox Width="100" Text="{Binding Appearance.SelectionColor}" />
       </StackPanel>
@@ -203,7 +206,7 @@
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="x:String">
             <Border Width="28" Height="28" CornerRadius="4"
-                    BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1"
+                    BorderBrush="{DynamicResource VelaBorderSecondary}" BorderThickness="1"
                     ToolTip.Tip="{Binding}"
                     Background="{Binding Converter={x:Static conv:StringToBrushConverter.Instance}}" />
           </DataTemplate>
@@ -221,7 +224,7 @@
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="x:String">
             <Border Width="28" Height="28" CornerRadius="4"
-                    BorderBrush="{DynamicResource PulseBorderSecondary}" BorderThickness="1"
+                    BorderBrush="{DynamicResource VelaBorderSecondary}" BorderThickness="1"
                     ToolTip.Tip="{Binding}"
                     Background="{Binding Converter={x:Static conv:StringToBrushConverter.Instance}}" />
           </DataTemplate>

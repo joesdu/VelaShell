@@ -27,11 +27,11 @@
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.chrome:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
     </Style>
     <Style Selector="Button.dlg-primary">
-      <Setter Property="Background" Value="{DynamicResource PulseAccent}" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseAccentForeground}" />
+      <Setter Property="Background" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccentForeground}" />
       <Setter Property="Height" Value="26" />
       <Setter Property="Padding" Value="12,0" />
       <Setter Property="CornerRadius" Value="4" />
@@ -42,8 +42,8 @@
   </Window.Styles>
 
   <Border CornerRadius="8"
-          Background="{DynamicResource PulseBgSurface}"
-          BorderBrush="{DynamicResource PulseBorderSecondary}"
+          Background="{DynamicResource VelaBgSurface}"
+          BorderBrush="{DynamicResource VelaBorderSecondary}"
           BorderThickness="1"
           BoxShadow="0 8 32 0 #80000000"
           Margin="12"
@@ -55,21 +55,21 @@
               Background="Transparent"
               PointerPressed="Header_PointerPressed"
               DoubleTapped="Header_DoubleTapped"
-              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,0,1">
         <Grid ColumnDefinitions="Auto,*,Auto">
           <pc:LucideIcon Width="15" Height="15"
                          Data="{DynamicResource Icon.file-text}"
-                         Foreground="{DynamicResource PulseAccent}"
+                         Foreground="{DynamicResource VelaAccent}"
                          VerticalAlignment="Center" Margin="0,0,10,0" />
           <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
             <TextBlock Name="TitleText"
-                       Foreground="{DynamicResource PulseTextPrimary}"
+                       Foreground="{DynamicResource VelaTextPrimary}"
                        FontSize="13" FontWeight="SemiBold"
                        TextTrimming="CharacterEllipsis" />
             <TextBlock Name="PathText"
-                       Foreground="{DynamicResource PulseTextMuted}"
-                       FontFamily="{DynamicResource PulseTerminalFont}"
+                       Foreground="{DynamicResource VelaTextMuted}"
+                       FontFamily="{DynamicResource VelaTerminalFont}"
                        FontSize="10"
                        TextTrimming="CharacterEllipsis" />
           </StackPanel>
@@ -78,33 +78,33 @@
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <pc:LucideIcon Width="12" Height="12"
                                Data="{DynamicResource Icon.save}"
-                               Foreground="{DynamicResource PulseAccentForeground}" />
+                               Foreground="{DynamicResource VelaAccentForeground}" />
                 <TextBlock Text="保存" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
             <Button Classes="chrome" Click="Maximize_Click" ToolTip.Tip="最大化/还原">
               <pc:LucideIcon Width="13" Height="13"
                              Data="{DynamicResource Icon.maximize}"
-                             Foreground="{DynamicResource PulseTextTertiary}" />
+                             Foreground="{DynamicResource VelaTextTertiary}" />
             </Button>
             <Button Classes="chrome" Click="Close_Click">
               <pc:LucideIcon Width="13" Height="13"
                              Data="{DynamicResource Icon.x}"
-                             Foreground="{DynamicResource PulseTextTertiary}" />
+                             Foreground="{DynamicResource VelaTextTertiary}" />
             </Button>
           </StackPanel>
         </Grid>
       </Border>
 
       <!-- 编辑器 -->
-      <Border Grid.Row="1" Background="{DynamicResource PulseBgTerminal}">
+      <Border Grid.Row="1" Background="{DynamicResource VelaBgTerminal}">
         <ae:TextEditor Name="Editor"
-                       FontFamily="{DynamicResource PulseTerminalFont}"
+                       FontFamily="{DynamicResource VelaTerminalFont}"
                        FontSize="13"
                        ShowLineNumbers="True"
                        Background="Transparent"
-                       Foreground="{DynamicResource PulseTextPrimary}"
-                       LineNumbersForeground="{DynamicResource PulseTextMuted}"
+                       Foreground="{DynamicResource VelaTextPrimary}"
+                       LineNumbersForeground="{DynamicResource VelaTextMuted}"
                        HorizontalScrollBarVisibility="Auto"
                        VerticalScrollBarVisibility="Auto"
                        Padding="8,6" />
@@ -112,12 +112,12 @@
 
       <!-- 状态栏 + 右下角缩放角 -->
       <Border Grid.Row="2" Padding="20,0,6,0"
-              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,1,0,0">
         <Grid ColumnDefinitions="*,Auto">
           <TextBlock Name="StatusText"
-                     Foreground="{DynamicResource PulseTextMuted}"
-                     FontFamily="{DynamicResource PulseTerminalFont}"
+                     Foreground="{DynamicResource VelaTextMuted}"
+                     FontFamily="{DynamicResource VelaTerminalFont}"
                      FontSize="10"
                      VerticalAlignment="Center"
                      TextTrimming="CharacterEllipsis" />
@@ -127,7 +127,7 @@
                   PointerPressed="ResizeGrip_PointerPressed">
             <pc:LucideIcon Width="10" Height="10"
                            Data="{DynamicResource Icon.chevron-right}"
-                           Foreground="{DynamicResource PulseTextMuted}"
+                           Foreground="{DynamicResource VelaTextMuted}"
                            RenderTransform="rotate(45deg)"
                            HorizontalAlignment="Center" VerticalAlignment="Center" />
           </Border>

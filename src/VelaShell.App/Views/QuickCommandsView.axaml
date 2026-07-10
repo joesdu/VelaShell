@@ -19,40 +19,40 @@
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Button.cmd-btn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
     </Style>
     <Style Selector="TextBox.cmd-input">
-      <Setter Property="Background" Value="{DynamicResource PulseBgInput}" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderSecondary}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
       <Setter Property="FontSize" Value="12" />
       <Setter Property="Padding" Value="6,4" />
       <Setter Property="CornerRadius" Value="4" />
     </Style>
     <Style Selector="TextBlock.section-header">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
       <Setter Property="FontSize" Value="11" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Margin" Value="12,8,12,4" />
     </Style>
     <Style Selector="TextBlock.label">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
       <Setter Property="FontSize" Value="11" />
       <Setter Property="Margin" Value="0,0,0,2" />
     </Style>
   </UserControl.Styles>
 
-  <Border Background="{DynamicResource PulseBgSidebar}"
-          BorderBrush="{DynamicResource PulseBorderPrimary}"
+  <Border Background="{DynamicResource VelaBgSidebar}"
+          BorderBrush="{DynamicResource VelaBorderPrimary}"
           BorderThickness="1,0,0,0">
     <DockPanel>
 
       <!-- Header -->
       <Border DockPanel.Dock="Top"
-              Background="{DynamicResource PulseBgPage}"
+              Background="{DynamicResource VelaBgPage}"
               Padding="12,8">
         <TextBlock Text="{x:Static res:Strings.QuickCommands}"
-                   Foreground="{DynamicResource PulseTextPrimary}"
+                   Foreground="{DynamicResource VelaTextPrimary}"
                    FontSize="13"
                    FontWeight="SemiBold" />
       </Border>
@@ -68,8 +68,8 @@
       <!-- Add Command form (bottom, toggled) -->
       <Border DockPanel.Dock="Bottom"
               IsVisible="{Binding IsAddingCommand}"
-              Background="{DynamicResource PulseBgSurface}"
-              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              Background="{DynamicResource VelaBgSurface}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,1,0,0"
               Padding="12,8">
         <StackPanel Spacing="6">
@@ -116,8 +116,8 @@
                     Command="{Binding SaveNewCommandCommand}"
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Center"
-                    Background="{DynamicResource PulseAccent}"
-                    Foreground="{DynamicResource PulseTextPrimary}"
+                    Background="{DynamicResource VelaAccent}"
+                    Foreground="{DynamicResource VelaTextPrimary}"
                     Padding="8,6"
                     CornerRadius="4"
                     FontSize="12"
@@ -128,9 +128,9 @@
                     Command="{Binding CancelAddCommand}"
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Center"
-                    Background="{DynamicResource PulseBgSurface}"
-                    Foreground="{DynamicResource PulseTextSecondary}"
-                    BorderBrush="{DynamicResource PulseBorderSecondary}"
+                    Background="{DynamicResource VelaBgSurface}"
+                    Foreground="{DynamicResource VelaTextSecondary}"
+                    BorderBrush="{DynamicResource VelaBorderSecondary}"
                     BorderThickness="1"
                     Padding="8,6"
                     CornerRadius="4"
@@ -149,8 +149,8 @@
         <Button Command="{Binding AddCommandCommand}"
                 HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Center"
-                Background="{DynamicResource PulseAccent}"
-                Foreground="{DynamicResource PulseTextPrimary}"
+                Background="{DynamicResource VelaAccent}"
+                Foreground="{DynamicResource VelaTextPrimary}"
                 Padding="8,6"
                 CornerRadius="4"
                 FontSize="12"
@@ -189,7 +189,7 @@
                             ToolTip.Tip="{x:Static res:Strings.Edit}">
                       <PathIcon Data="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
                                 Width="12" Height="12"
-                                Foreground="{DynamicResource PulseTextSecondary}" />
+                                Foreground="{DynamicResource VelaTextSecondary}" />
                     </Button>
                     <!-- Delete button -->
                     <Button Classes="cmd-btn"
@@ -198,7 +198,7 @@
                             ToolTip.Tip="{x:Static res:Strings.Delete}">
                       <PathIcon Data="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
                                 Width="12" Height="12"
-                                Foreground="{DynamicResource PulseTextSecondary}" />
+                                Foreground="{DynamicResource VelaTextSecondary}" />
                     </Button>
                   </StackPanel>
 
@@ -208,27 +208,27 @@
                       <!-- Terminal icon -->
                       <PathIcon Data="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v12zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"
                                 Width="12" Height="12"
-                                Foreground="{DynamicResource PulseAccent}"
+                                Foreground="{DynamicResource VelaAccent}"
                                 VerticalAlignment="Center" />
                       <!-- Name -->
                       <TextBlock Text="{Binding Name}"
-                                 Foreground="{DynamicResource PulseTextPrimary}"
+                                 Foreground="{DynamicResource VelaTextPrimary}"
                                  FontSize="12"
                                  FontWeight="SemiBold"
                                  TextTrimming="CharacterEllipsis" />
                       <!-- Category badge -->
-                      <Border Background="{DynamicResource PulseBgHover}"
+                      <Border Background="{DynamicResource VelaBgHover}"
                               CornerRadius="2"
                               Padding="4,1">
                         <TextBlock Text="{Binding Category}"
-                                   Foreground="{DynamicResource PulseTextTertiary}"
+                                   Foreground="{DynamicResource VelaTextTertiary}"
                                    FontSize="10" />
                       </Border>
                     </StackPanel>
 
                     <!-- Command text (monospace) -->
                     <TextBlock Text="{Binding CommandText}"
-                               Foreground="{DynamicResource PulseAccentText}"
+                               Foreground="{DynamicResource VelaAccentText}"
                                FontFamily="Cascadia Mono,Consolas,Menlo,monospace"
                                FontSize="11"
                                TextTrimming="CharacterEllipsis"
@@ -236,7 +236,7 @@
 
                     <!-- Description -->
                     <TextBlock Text="{Binding Description}"
-                               Foreground="{DynamicResource PulseTextTertiary}"
+                               Foreground="{DynamicResource VelaTextTertiary}"
                                FontSize="10"
                                TextTrimming="CharacterEllipsis"
                                Margin="18,0,0,0"

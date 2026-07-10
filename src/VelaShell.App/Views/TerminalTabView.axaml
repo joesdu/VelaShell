@@ -18,8 +18,8 @@
     <Border Grid.Row="1"
               x:Name="SearchBar"
               IsVisible="False"
-              Background="{DynamicResource PulseBgSurface}"
-              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              Background="{DynamicResource VelaBgSurface}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,1,0,0"
               Padding="14,4">
         <Grid>
@@ -39,39 +39,39 @@
           </Grid.ColumnDefinitions>
           <pc:LucideIcon Grid.Column="0" Width="12" Height="12"
                          Data="{StaticResource Icon.search}"
-                         Foreground="{DynamicResource PulseTextTertiary}"
+                         Foreground="{DynamicResource VelaTextTertiary}"
                          VerticalAlignment="Center" />
           <TextBox x:Name="SearchBox" Grid.Column="2"
                    MinHeight="24" Padding="8,2" CornerRadius="3"
-                   FontFamily="{DynamicResource PulseTerminalFont}" FontSize="11"
-                   Background="{DynamicResource PulseBgInput}"
-                   Foreground="{DynamicResource PulseTextPrimary}"
-                   BorderBrush="{DynamicResource PulseBorderPrimary}"
+                   FontFamily="{DynamicResource VelaTerminalFont}" FontSize="11"
+                   Background="{DynamicResource VelaBgInput}"
+                   Foreground="{DynamicResource VelaTextPrimary}"
+                   BorderBrush="{DynamicResource VelaBorderPrimary}"
                    PlaceholderText="在终端中查找" />
           <TextBlock x:Name="SearchCount" Grid.Column="4"
-                     Foreground="{DynamicResource PulseTextMuted}"
-                     FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10"
+                     Foreground="{DynamicResource VelaTextMuted}"
+                     FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10"
                      VerticalAlignment="Center" />
           <Button x:Name="SearchPrev" Grid.Column="6"
                   Width="22" Height="22" Padding="0" Background="Transparent" CornerRadius="3"
                   HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                   ToolTip.Tip="上一个 (Shift+Enter)">
             <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.chevron-left}"
-                           Foreground="{DynamicResource PulseTextTertiary}" />
+                           Foreground="{DynamicResource VelaTextTertiary}" />
           </Button>
           <Button x:Name="SearchNext" Grid.Column="8"
                   Width="22" Height="22" Padding="0" Background="Transparent" CornerRadius="3"
                   HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                   ToolTip.Tip="下一个 (Enter)">
             <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.chevron-right}"
-                           Foreground="{DynamicResource PulseTextTertiary}" />
+                           Foreground="{DynamicResource VelaTextTertiary}" />
           </Button>
           <Button x:Name="SearchClose" Grid.Column="10"
                   Width="22" Height="22" Padding="0" Background="Transparent" CornerRadius="3"
                   HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                   ToolTip.Tip="关闭 (Esc)">
             <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.x}"
-                           Foreground="{DynamicResource PulseTextTertiary}" />
+                           Foreground="{DynamicResource VelaTextTertiary}" />
           </Button>
         </Grid>
       </Border>
@@ -81,7 +81,7 @@
 
       <!-- Terminal emulator control -->
       <Border Grid.Column="0"
-              Background="{DynamicResource PulseBgTerminal}"
+              Background="{DynamicResource VelaBgTerminal}"
               ClipToBounds="True">
         <controls:ReparentingHost Target="{Binding TerminalEmulator.Control}" />
       </Border>
@@ -93,7 +93,7 @@
                  Orientation="Vertical"
                  Minimum="0"
                  AllowAutoHide="False"
-                 Background="{DynamicResource PulseBgSurface}"
+                 Background="{DynamicResource VelaBgSurface}"
                  Width="12"
                  Opacity="0.6" />
 
@@ -104,8 +104,8 @@
               Background="#66000000"
               HorizontalAlignment="Stretch"
               VerticalAlignment="Stretch">
-        <Border Background="{DynamicResource PulseBgSurface}"
-                BorderBrush="{DynamicResource PulseBorderSecondary}"
+        <Border Background="{DynamicResource VelaBgSurface}"
+                BorderBrush="{DynamicResource VelaBorderSecondary}"
                 BorderThickness="1"
                 CornerRadius="8"
                 Padding="32,24"
@@ -121,18 +121,18 @@
                     HorizontalAlignment="Center">
               <pc:LucideIcon Width="22" Height="22"
                              Data="{StaticResource Icon.wifi-off}"
-                             Foreground="{DynamicResource PulseError}"
+                             Foreground="{DynamicResource VelaError}"
                              HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
 
             <TextBlock Text="{Binding DisconnectOverlayTitle}"
-                       Foreground="{DynamicResource PulseTextPrimary}"
+                       Foreground="{DynamicResource VelaTextPrimary}"
                        FontSize="16" FontWeight="SemiBold"
                        HorizontalAlignment="Center" />
 
             <TextBlock Text="{Binding DisconnectOverlayDetail}"
-                       Foreground="{DynamicResource PulseTextMuted}"
-                       FontFamily="{DynamicResource PulseTerminalFont}"
+                       Foreground="{DynamicResource VelaTextMuted}"
+                       FontFamily="{DynamicResource VelaTerminalFont}"
                        FontSize="11"
                        MaxWidth="280"
                        TextWrapping="Wrap"
@@ -141,7 +141,7 @@
 
             <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
               <Button Command="{Binding ReconnectCommand}"
-                      Background="{DynamicResource PulseAccent}"
+                      Background="{DynamicResource VelaAccent}"
                       CornerRadius="4" Padding="16,8"
                       BorderThickness="0">
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -154,11 +154,11 @@
               </Button>
               <Button Command="{Binding CloseTabCommand}"
                       Background="Transparent"
-                      BorderBrush="{DynamicResource PulseBorderSecondary}"
+                      BorderBrush="{DynamicResource VelaBorderSecondary}"
                       BorderThickness="1"
                       CornerRadius="4" Padding="16,8">
                 <TextBlock Text="关闭标签页"
-                           Foreground="{DynamicResource PulseTextSecondary}"
+                           Foreground="{DynamicResource VelaTextSecondary}"
                            FontSize="12" FontWeight="Medium" VerticalAlignment="Center" />
               </Button>
             </StackPanel>

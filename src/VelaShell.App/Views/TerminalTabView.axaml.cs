@@ -19,7 +19,7 @@ namespace VelaShell.App.Views;
 public partial class TerminalTabView : UserControl
 {
     private readonly IKeyboardShortcutService _shortcutService;
-    private PulseTerminalControl? _termControl;
+    private VelaTerminalControl? _termControl;
     private bool _syncingScrollBar;
 
     public TerminalTabView()
@@ -168,7 +168,7 @@ public partial class TerminalTabView : UserControl
     // view (re)binds the scrollbar to whichever control it currently hosts.
     private void HookTerminalControl()
     {
-        var ctrl = (DataContext as TerminalTabViewModel)?.TerminalEmulator.Control as PulseTerminalControl;
+        var ctrl = (DataContext as TerminalTabViewModel)?.TerminalEmulator.Control as VelaTerminalControl;
         if (ReferenceEquals(ctrl, _termControl))
         {
             SyncScrollBar();

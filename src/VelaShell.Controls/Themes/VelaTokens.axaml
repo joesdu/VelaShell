@@ -1,0 +1,48 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ResourceDictionary.ThemeDictionaries>
+    <!-- Dracula 暗色(用户确认):accent=紫 #BD93F9,弱文字取官方 comment #6272A4,
+         边框用 #44475A(selection)家族。 -->
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="VelaAccent" Color="#BD93F9" />
+      <SolidColorBrush x:Key="VelaAccentDim" Color="#BD93F930" />
+      <!-- 强调色底上的文字/图标:浅紫底配深字。 -->
+      <SolidColorBrush x:Key="VelaAccentForeground" Color="#0A0E14" />
+      <SolidColorBrush x:Key="VelaTextPrimary" Color="#F8F8F2" />
+      <SolidColorBrush x:Key="VelaTextSecondary" Color="#B0B8D6" />
+      <SolidColorBrush x:Key="VelaTextTertiary" Color="#6272A4" />
+      <SolidColorBrush x:Key="VelaTextMuted" Color="#545B76" />
+      <SolidColorBrush x:Key="VelaBorderPrimary" Color="#3B3E51" />
+      <SolidColorBrush x:Key="VelaBorderSecondary" Color="#44475A" />
+      <SolidColorBrush x:Key="VelaStatusConnected" Color="#50FA7B" />
+      <SolidColorBrush x:Key="VelaStatusConnecting" Color="#F1FA8C" />
+      <SolidColorBrush x:Key="VelaStatusDisconnected" Color="#FF5555" />
+      <!-- File browser rows (design frame dyuii): orange folder icon, cyan directory names. -->
+      <SolidColorBrush x:Key="VelaFileFolderIcon" Color="#FFB86C" />
+      <SolidColorBrush x:Key="VelaFileDirName" Color="#8BE9FD" />
+      <FontFamily x:Key="VelaTerminalFont">JetBrains Mono, Cascadia Mono, Consolas, monospace</FontFamily>
+      <FontFamily x:Key="VelaUiFont">fonts:Inter#Inter, Segoe UI, Microsoft YaHei, sans-serif</FontFamily>
+    </ResourceDictionary>
+    <!-- Alucard 亮色(用户确认):accent=紫 #644AC9,弱文字取 Alucard comment #6C664B。 -->
+    <ResourceDictionary x:Key="Light">
+      <SolidColorBrush x:Key="VelaAccent" Color="#644AC9" />
+      <SolidColorBrush x:Key="VelaAccentDim" Color="#644AC91A" />
+      <!-- 亮色主题 accent 是深紫,深字 #0A0E14 对比不足(§10.C),改配浅字。 -->
+      <SolidColorBrush x:Key="VelaAccentForeground" Color="#FFFBEB" />
+      <SolidColorBrush x:Key="VelaTextPrimary" Color="#1F1F1F" />
+      <SolidColorBrush x:Key="VelaTextSecondary" Color="#4A4636" />
+      <SolidColorBrush x:Key="VelaTextTertiary" Color="#6C664B" />
+      <SolidColorBrush x:Key="VelaTextMuted" Color="#9A9377" />
+      <SolidColorBrush x:Key="VelaBorderPrimary" Color="#E3DCBF" />
+      <SolidColorBrush x:Key="VelaBorderSecondary" Color="#D3CBA9" />
+      <SolidColorBrush x:Key="VelaStatusConnected" Color="#14710A" />
+      <SolidColorBrush x:Key="VelaStatusConnecting" Color="#846E15" />
+      <SolidColorBrush x:Key="VelaStatusDisconnected" Color="#CB3A2A" />
+      <!-- File browser rows: Alucard yellow folders, cyan directory names. -->
+      <SolidColorBrush x:Key="VelaFileFolderIcon" Color="#9E841A" />
+      <SolidColorBrush x:Key="VelaFileDirName" Color="#036A96" />
+      <FontFamily x:Key="VelaTerminalFont">JetBrains Mono, Cascadia Mono, Consolas, monospace</FontFamily>
+      <FontFamily x:Key="VelaUiFont">fonts:Inter#Inter, Segoe UI, Microsoft YaHei, sans-serif</FontFamily>
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

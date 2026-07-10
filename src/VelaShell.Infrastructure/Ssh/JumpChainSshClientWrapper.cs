@@ -1,7 +1,7 @@
 using VelaShell.Core.Ssh;
 using Renci.SshNet;
 using Renci.SshNet.Common;
-using PulseConnectionInfo = VelaShell.Core.Models.ConnectionInfo;
+using VelaConnectionInfo = VelaShell.Core.Models.ConnectionInfo;
 
 namespace VelaShell.Infrastructure.Ssh;
 
@@ -15,9 +15,9 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
 {
     /// <summary>为一跳构建 SshClient:logical = 该跳的逻辑连接信息(凭据与指纹校验键),
     /// connectHost/connectPort = 实际 socket 端点(直连时同 logical,经跳板时是本地转发口)。</summary>
-    public delegate SshClient HopClientBuilder(PulseConnectionInfo logical, string connectHost, int connectPort);
+    public delegate SshClient HopClientBuilder(VelaConnectionInfo logical, string connectHost, int connectPort);
 
-    private readonly PulseConnectionInfo _target;
+    private readonly VelaConnectionInfo _target;
     private readonly HopClientBuilder _buildHopClient;
 
     // 建链顺序(外层跳板在前,目标在最后);teardown 逆序。
@@ -27,7 +27,7 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
     private TimeSpan? _pendingTimeout;
     private bool _disposed;
 
-    public JumpChainSshClientWrapper(PulseConnectionInfo target, HopClientBuilder buildHopClient)
+    public JumpChainSshClientWrapper(VelaConnectionInfo target, HopClientBuilder buildHopClient)
     {
         _target = target ?? throw new ArgumentNullException(nameof(target));
         _buildHopClient = buildHopClient ?? throw new ArgumentNullException(nameof(buildHopClient));
@@ -72,7 +72,7 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
             return;
 
         // 链上的跳,从最外层(没有再上级跳板的那台)到目标排序。
-        var hops = new List<PulseConnectionInfo>();
+        var hops = new List<VelaConnectionInfo>();
         for (var hop = _target; hop is not null; hop = hop.JumpHost)
             hops.Insert(0, hop);
 

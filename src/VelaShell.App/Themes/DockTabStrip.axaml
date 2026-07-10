@@ -19,8 +19,8 @@
     The dropdown lists every open tab (active one highlighted) and activates the chosen one.
   -->
 
-  <commands:ScrollViewerLineCommand x:Key="PulseTabScrollLeftCommand" Direction="Left" />
-  <commands:ScrollViewerLineCommand x:Key="PulseTabScrollRightCommand" Direction="Right" />
+  <commands:ScrollViewerLineCommand x:Key="VelaTabScrollLeftCommand" Direction="Left" />
+  <commands:ScrollViewerLineCommand x:Key="VelaTabScrollRightCommand" Direction="Right" />
 
   <ControlTheme x:Key="DockTabStripScrollViewerHorizontal" TargetType="ScrollViewer">
     <Setter Property="Background" Value="Transparent" />
@@ -42,7 +42,7 @@
             </StackPanel.IsVisible>
 
             <RepeatButton Classes="tab-nav"
-                          Command="{StaticResource PulseTabScrollLeftCommand}"
+                          Command="{StaticResource VelaTabScrollLeftCommand}"
                           CommandParameter="{Binding RelativeSource={RelativeSource TemplatedParent}}">
               <RepeatButton.IsEnabled>
                 <MultiBinding Converter="{x:Static dockConverters:ScrollViewerScrollButtonVisibilityConverter.Instance}"
@@ -55,11 +55,11 @@
               </RepeatButton.IsEnabled>
               <pc:LucideIcon Width="14" Height="14"
                              Data="{DynamicResource Icon.chevron-left}"
-                             Foreground="{DynamicResource PulseTextTertiary}" />
+                             Foreground="{DynamicResource VelaTextTertiary}" />
             </RepeatButton>
 
             <RepeatButton Classes="tab-nav"
-                          Command="{StaticResource PulseTabScrollRightCommand}"
+                          Command="{StaticResource VelaTabScrollRightCommand}"
                           CommandParameter="{Binding RelativeSource={RelativeSource TemplatedParent}}">
               <RepeatButton.IsEnabled>
                 <MultiBinding Converter="{x:Static dockConverters:ScrollViewerScrollButtonVisibilityConverter.Instance}"
@@ -72,7 +72,7 @@
               </RepeatButton.IsEnabled>
               <pc:LucideIcon Width="14" Height="14"
                              Data="{DynamicResource Icon.chevron-right}"
-                             Foreground="{DynamicResource PulseTextTertiary}" />
+                             Foreground="{DynamicResource VelaTextTertiary}" />
             </RepeatButton>
 
             <Button Classes="tab-nav"
@@ -80,7 +80,7 @@
                     ToolTip.Tip="所有标签页">
               <pc:LucideIcon Width="14" Height="14"
                              Data="{DynamicResource Icon.chevron-down}"
-                             Foreground="{DynamicResource PulseTextTertiary}" />
+                             Foreground="{DynamicResource VelaTextTertiary}" />
             </Button>
           </StackPanel>
 

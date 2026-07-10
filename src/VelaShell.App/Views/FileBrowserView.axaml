@@ -18,7 +18,7 @@
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Button.toolbar-btn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
     </Style>
     <Style Selector="Button.col-header">
       <Setter Property="Background" Value="Transparent" />
@@ -31,7 +31,7 @@
       <Setter Property="VerticalAlignment" Value="Stretch" />
     </Style>
     <Style Selector="Button.col-header:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
     </Style>
     <!-- Breadcrumb segment: quiet inline button that lights up as a link on hover (§6 header). -->
     <Style Selector="Button.crumb">
@@ -41,21 +41,21 @@
       <Setter Property="Margin" Value="0" />
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="VerticalAlignment" Value="Center" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
-      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaTerminalFont}" />
       <Setter Property="FontSize" Value="11" />
       <Setter Property="FontWeight" Value="Medium" />
     </Style>
     <Style Selector="Button.crumb:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
     </Style>
   </UserControl.Styles>
 
   <!-- SFTP 面板底色与终端一致(用户要求,#282A36 家族),而非窗口铬色。 -->
   <Border BorderThickness="0,1,0,0"
-          BorderBrush="{DynamicResource PulseBorderPrimary}"
-          Background="{DynamicResource PulseBgTerminal}"
+          BorderBrush="{DynamicResource VelaBorderPrimary}"
+          Background="{DynamicResource VelaBgTerminal}"
           IsVisible="{Binding IsVisible}"
           VerticalAlignment="Stretch"
           MinHeight="120">
@@ -68,7 +68,7 @@
            upload pill + 24×24 refresh. -->
       <Border DockPanel.Dock="Top"
               Height="36"
-              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,0,1"
               Padding="14,0">
         <Grid ColumnDefinitions="Auto,*,Auto">
@@ -76,7 +76,7 @@
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
             <pc:LucideIcon Width="14" Height="14"
                            Data="{StaticResource Icon.folder-open}"
-                           Foreground="{DynamicResource PulseAccent}"
+                           Foreground="{DynamicResource VelaAccent}"
                            VerticalAlignment="Center" />
             <!-- Clickable breadcrumb (§6): "/" root, then each segment navigates to its level. -->
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True">
@@ -95,8 +95,8 @@
                               Command="{Binding $parent[ItemsControl].((vm:FileBrowserViewModel)DataContext).NavigateToCommand}"
                               CommandParameter="{Binding Path}" />
                       <TextBlock Text="/"
-                                 Foreground="{DynamicResource PulseTextMuted}"
-                                 FontFamily="{DynamicResource PulseTerminalFont}"
+                                 Foreground="{DynamicResource VelaTextMuted}"
+                                 FontFamily="{DynamicResource VelaTerminalFont}"
                                  FontSize="11" VerticalAlignment="Center" />
                     </StackPanel>
                   </DataTemplate>
@@ -107,16 +107,16 @@
 
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
             <Button Height="24" Padding="8,0" CornerRadius="3" Cursor="Hand"
-                    Background="{DynamicResource PulseAccentDim}"
+                    Background="{DynamicResource VelaAccentDim}"
                     Command="{Binding UploadCommand}"
                     ToolTip.Tip="{x:Static res:Strings.Upload}">
               <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                 <pc:LucideIcon Width="12" Height="12"
                                Data="{StaticResource Icon.upload}"
-                               Foreground="{DynamicResource PulseAccent}" />
+                               Foreground="{DynamicResource VelaAccent}" />
                 <TextBlock Text="{x:Static res:Strings.Upload}"
-                           Foreground="{DynamicResource PulseAccent}"
-                           FontFamily="{DynamicResource PulseTerminalFont}"
+                           Foreground="{DynamicResource VelaAccent}"
+                           FontFamily="{DynamicResource VelaTerminalFont}"
                            FontSize="10" FontWeight="Medium"
                            VerticalAlignment="Center" />
               </StackPanel>
@@ -127,7 +127,7 @@
                     ToolTip.Tip="{x:Static res:Strings.TransferHistory}">
               <pc:LucideIcon Width="13" Height="13"
                              Data="{StaticResource Icon.history}"
-                             Foreground="{DynamicResource PulseTextTertiary}" />
+                             Foreground="{DynamicResource VelaTextTertiary}" />
             </Button>
             <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
@@ -135,7 +135,7 @@
                     ToolTip.Tip="{loc:Localize NewFolder}">
               <pc:LucideIcon Width="13" Height="13"
                              Data="{StaticResource Icon.folder-plus}"
-                             Foreground="{DynamicResource PulseTextTertiary}" />
+                             Foreground="{DynamicResource VelaTextTertiary}" />
             </Button>
             <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
@@ -145,11 +145,11 @@
                 <pc:LucideIcon Width="13" Height="13"
                                IsVisible="{Binding ShowHiddenFiles}"
                                Data="{StaticResource Icon.eye}"
-                               Foreground="{DynamicResource PulseAccent}" />
+                               Foreground="{DynamicResource VelaAccent}" />
                 <pc:LucideIcon Width="13" Height="13"
                                IsVisible="{Binding !ShowHiddenFiles}"
                                Data="{StaticResource Icon.eye-off}"
-                               Foreground="{DynamicResource PulseTextTertiary}" />
+                               Foreground="{DynamicResource VelaTextTertiary}" />
               </Panel>
             </Button>
             <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
@@ -158,7 +158,7 @@
                     ToolTip.Tip="{x:Static res:Strings.Refresh}">
               <pc:LucideIcon Width="13" Height="13"
                              Data="{StaticResource Icon.refresh-cw}"
-                             Foreground="{DynamicResource PulseTextTertiary}" />
+                             Foreground="{DynamicResource VelaTextTertiary}" />
             </Button>
           </StackPanel>
         </Grid>
@@ -166,18 +166,18 @@
 
       <Border DockPanel.Dock="Top"
               IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-              Background="{DynamicResource PulseBgActive}"
+              Background="{DynamicResource VelaBgActive}"
               Padding="8,4">
         <TextBlock Text="{Binding ErrorMessage}"
-                   Foreground="{DynamicResource PulseAccent}"
+                   Foreground="{DynamicResource VelaAccent}"
                    FontSize="11" />
       </Border>
 
       <Grid RowDefinitions="26,*">
 
         <Border Grid.Row="0"
-                Background="{DynamicResource PulseBgSurface}"
-                BorderBrush="{DynamicResource PulseBorderPrimary}"
+                Background="{DynamicResource VelaBgSurface}"
+                BorderBrush="{DynamicResource VelaBorderPrimary}"
                 BorderThickness="0,0,0,1"
                 Padding="14,0">
           <Grid>
@@ -194,11 +194,11 @@
                     Command="{Binding SortCommand}" CommandParameter="name">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="{x:Static res:Strings.FileName}"
-                           Foreground="{DynamicResource PulseTextMuted}"
-                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" LetterSpacing="1" />
+                           Foreground="{DynamicResource VelaTextMuted}"
+                           FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" LetterSpacing="1" />
                 <TextBlock Text="{Binding NameSortGlyph}"
-                           Foreground="{DynamicResource PulseAccent}"
-                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+                           Foreground="{DynamicResource VelaAccent}"
+                           FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" />
               </StackPanel>
             </Button>
                           <Border Grid.Column="1"
@@ -211,11 +211,11 @@
                     Command="{Binding SortCommand}" CommandParameter="size">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="{x:Static res:Strings.Size}"
-                           Foreground="{DynamicResource PulseTextMuted}"
-                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" LetterSpacing="1" />
+                           Foreground="{DynamicResource VelaTextMuted}"
+                           FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" LetterSpacing="1" />
                 <TextBlock Text="{Binding SizeSortGlyph}"
-                           Foreground="{DynamicResource PulseAccent}"
-                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+                           Foreground="{DynamicResource VelaAccent}"
+                           FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" />
               </StackPanel>
             </Button>
                           <Border Grid.Column="3"
@@ -228,11 +228,11 @@
                     Command="{Binding SortCommand}" CommandParameter="permissions">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="{x:Static res:Strings.Permissions}"
-                           Foreground="{DynamicResource PulseTextMuted}"
-                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" LetterSpacing="1" />
+                           Foreground="{DynamicResource VelaTextMuted}"
+                           FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" LetterSpacing="1" />
                 <TextBlock Text="{Binding PermissionsSortGlyph}"
-                           Foreground="{DynamicResource PulseAccent}"
-                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+                           Foreground="{DynamicResource VelaAccent}"
+                           FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" />
               </StackPanel>
             </Button>
                           <Border Grid.Column="5"
@@ -245,11 +245,11 @@
                     Command="{Binding SortCommand}" CommandParameter="modified">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="{x:Static res:Strings.Modified}"
-                           Foreground="{DynamicResource PulseTextMuted}"
-                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" LetterSpacing="1" />
+                           Foreground="{DynamicResource VelaTextMuted}"
+                           FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" LetterSpacing="1" />
                 <TextBlock Text="{Binding ModifiedSortGlyph}"
-                           Foreground="{DynamicResource PulseAccent}"
-                           FontFamily="{DynamicResource PulseTerminalFont}" FontSize="10" />
+                           Foreground="{DynamicResource VelaAccent}"
+                           FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" />
               </StackPanel>
             </Button>
           </Grid>
@@ -273,10 +273,10 @@
             </Style>
             <!-- Spec §6: selected rows use bg-hover, replacing the theme's default blue. -->
             <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-              <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+              <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
             </Style>
             <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
-              <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+              <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
             </Style>
           </ListBox.Styles>
           <ListBox.ContextMenu>
@@ -285,32 +285,32 @@
               <MenuItem Header="{loc:Localize Refresh}" Command="{Binding RefreshCommand}">
                 <MenuItem.Icon>
                   <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.refresh-cw}"
-                                 Foreground="{DynamicResource PulseTextTertiary}" />
+                                 Foreground="{DynamicResource VelaTextTertiary}" />
                 </MenuItem.Icon>
               </MenuItem>
               <Separator />
               <MenuItem Header="{loc:Localize UploadFilesHere}" Command="{Binding UploadCommand}">
                 <MenuItem.Icon>
                   <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.upload}"
-                                 Foreground="{DynamicResource PulseTextTertiary}" />
+                                 Foreground="{DynamicResource VelaTextTertiary}" />
                 </MenuItem.Icon>
               </MenuItem>
               <MenuItem Header="{loc:Localize UploadFolderHere}" Command="{Binding UploadFolderCommand}">
                 <MenuItem.Icon>
                   <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-up}"
-                                 Foreground="{DynamicResource PulseTextTertiary}" />
+                                 Foreground="{DynamicResource VelaTextTertiary}" />
                 </MenuItem.Icon>
               </MenuItem>
               <MenuItem Header="{loc:Localize NewFolder}" Command="{Binding NewFolderCommand}">
                 <MenuItem.Icon>
                   <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-plus}"
-                                 Foreground="{DynamicResource PulseTextTertiary}" />
+                                 Foreground="{DynamicResource VelaTextTertiary}" />
                 </MenuItem.Icon>
               </MenuItem>
               <MenuItem Header="{loc:Localize NewFile}" Command="{Binding NewFileCommand}">
                 <MenuItem.Icon>
                   <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.file-plus}"
-                                 Foreground="{DynamicResource PulseTextTertiary}" />
+                                 Foreground="{DynamicResource VelaTextTertiary}" />
                 </MenuItem.Icon>
               </MenuItem>
             </ContextMenu>
@@ -320,7 +320,7 @@
                 <!-- Row per design dyuii: 28px, padding [0,14], 1px bottom border; the ".."
                      parent row is tinted bg-hover and has no divider. -->
                 <Border Background="Transparent"
-                        BorderBrush="{DynamicResource PulseBorderPrimary}"
+                        BorderBrush="{DynamicResource VelaBorderPrimary}"
                         BorderThickness="0,0,0,1"
                         Height="28"
                         Padding="14,0"
@@ -332,10 +332,10 @@
                          无限定的 Border:pointerover 会把菜单模板的根 Border/PART_LayoutRoot
                          一并刷成 bg-hover(亮色主题下整张菜单悬停变灰)。 -->
                     <Style Selector="Border.file-row:pointerover">
-                      <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+                      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
                     </Style>
                     <Style Selector="Border.file-row.parent">
-                      <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+                      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
                       <Setter Property="BorderThickness" Value="0" />
                     </Style>
                   </Border.Styles>
@@ -349,7 +349,7 @@
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).RefreshCommand}">
                         <MenuItem.Icon>
                           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.refresh-cw}"
-                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                                         Foreground="{DynamicResource VelaTextTertiary}" />
                         </MenuItem.Icon>
                       </MenuItem>
                       <Separator IsVisible="{Binding IsRegularFile}" />
@@ -358,11 +358,11 @@
                                 IsVisible="{Binding IsRegularFile}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).OpenItemCommand}"
                                 CommandParameter="{Binding}"
-                                Foreground="{DynamicResource PulseTextPrimary}"
+                                Foreground="{DynamicResource VelaTextPrimary}"
                                 FontWeight="Medium">
                         <MenuItem.Icon>
                           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.file-text}"
-                                         Foreground="{DynamicResource PulseAccent}" />
+                                         Foreground="{DynamicResource VelaAccent}" />
                         </MenuItem.Icon>
                       </MenuItem>
                       <MenuItem Header="使用默认编辑器打开"
@@ -371,7 +371,7 @@
                                 CommandParameter="{Binding}">
                         <MenuItem.Icon>
                           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.external-link}"
-                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                                         Foreground="{DynamicResource VelaTextTertiary}" />
                         </MenuItem.Icon>
                       </MenuItem>
                       <Separator />
@@ -379,21 +379,21 @@
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DownloadSelectedCommand}">
                         <MenuItem.Icon>
                           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.download}"
-                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                                         Foreground="{DynamicResource VelaTextTertiary}" />
                         </MenuItem.Icon>
                       </MenuItem>
                       <MenuItem Header="{loc:Localize UploadFilesHere}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).UploadCommand}">
                         <MenuItem.Icon>
                           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.upload}"
-                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                                         Foreground="{DynamicResource VelaTextTertiary}" />
                         </MenuItem.Icon>
                       </MenuItem>
                       <MenuItem Header="{loc:Localize UploadFolderHere}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).UploadFolderCommand}">
                         <MenuItem.Icon>
                           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-up}"
-                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                                         Foreground="{DynamicResource VelaTextTertiary}" />
                         </MenuItem.Icon>
                       </MenuItem>
                       <Separator IsVisible="{Binding !IsParentEntry}" />
@@ -403,7 +403,7 @@
                                 CommandParameter="{Binding}">
                         <MenuItem.Icon>
                           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.pencil}"
-                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                                         Foreground="{DynamicResource VelaTextTertiary}" />
                         </MenuItem.Icon>
                       </MenuItem>
                       <MenuItem Header="{loc:Localize MoveTo}"
@@ -412,7 +412,7 @@
                                 CommandParameter="{Binding}">
                         <MenuItem.Icon>
                           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-input}"
-                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                                         Foreground="{DynamicResource VelaTextTertiary}" />
                         </MenuItem.Icon>
                       </MenuItem>
                       <Separator IsVisible="{Binding !IsParentEntry}" />
@@ -422,7 +422,7 @@
                                 CommandParameter="{Binding}">
                         <MenuItem.Icon>
                           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.clipboard}"
-                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                                         Foreground="{DynamicResource VelaTextTertiary}" />
                         </MenuItem.Icon>
                       </MenuItem>
                       <MenuItem Header="{loc:Localize CopyFilePath}"
@@ -431,7 +431,7 @@
                                 CommandParameter="{Binding}">
                         <MenuItem.Icon>
                           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.copy}"
-                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                                         Foreground="{DynamicResource VelaTextTertiary}" />
                         </MenuItem.Icon>
                       </MenuItem>
                       <Separator />
@@ -439,23 +439,23 @@
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).NewFolderCommand}">
                         <MenuItem.Icon>
                           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-plus}"
-                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                                         Foreground="{DynamicResource VelaTextTertiary}" />
                         </MenuItem.Icon>
                       </MenuItem>
                       <MenuItem Header="{loc:Localize NewFile}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).NewFileCommand}">
                         <MenuItem.Icon>
                           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.file-plus}"
-                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                                         Foreground="{DynamicResource VelaTextTertiary}" />
                         </MenuItem.Icon>
                       </MenuItem>
                       <Separator />
                       <MenuItem Header="{loc:Localize Delete}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).DeleteSelectedCommand}"
-                                Foreground="{DynamicResource PulseError}">
+                                Foreground="{DynamicResource VelaError}">
                         <MenuItem.Icon>
                           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.trash-2}"
-                                         Foreground="{DynamicResource PulseError}" />
+                                         Foreground="{DynamicResource VelaError}" />
                         </MenuItem.Icon>
                       </MenuItem>
                       <Separator IsVisible="{Binding !IsParentEntry}" />
@@ -465,7 +465,7 @@
                                 CommandParameter="{Binding}">
                         <MenuItem.Icon>
                           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.info}"
-                                         Foreground="{DynamicResource PulseTextTertiary}" />
+                                         Foreground="{DynamicResource VelaTextTertiary}" />
                         </MenuItem.Icon>
                       </MenuItem>
                     </ContextMenu>
@@ -487,31 +487,31 @@
                       </Grid.ColumnDefinitions>
                       <!-- Design dyuii icons: amber folder, muted file, corner-left-up for ".." -->
                       <pc:LucideIcon Width="13" Height="13"
-                                     Foreground="{DynamicResource PulseFileFolderIcon}"
+                                     Foreground="{DynamicResource VelaFileFolderIcon}"
                                      IsVisible="{Binding IsRegularDirectory}"
                                      Margin="0,0,7,0"
                                      Data="{StaticResource Icon.folder}" />
                       <pc:LucideIcon Width="13" Height="13"
-                                     Foreground="{DynamicResource PulseTextTertiary}"
+                                     Foreground="{DynamicResource VelaTextTertiary}"
                                      IsVisible="{Binding !IsDirectory}"
                                      Margin="0,0,7,0"
                                      Data="{StaticResource Icon.file}" />
                       <pc:LucideIcon Width="13" Height="13"
-                                     Foreground="{DynamicResource PulseTextTertiary}"
+                                     Foreground="{DynamicResource VelaTextTertiary}"
                                      IsVisible="{Binding IsParentEntry}"
                                      Margin="0,0,7,0"
                                      Data="{StaticResource Icon.corner-left-up}" />
                       <TextBlock Grid.Column="1"
                                  Text="{Binding DisplayName}"
-                                 Foreground="{DynamicResource PulseTextSecondary}"
-                                 FontFamily="{DynamicResource PulseTerminalFont}"
+                                 Foreground="{DynamicResource VelaTextSecondary}"
+                                 FontFamily="{DynamicResource VelaTerminalFont}"
                                  FontSize="11"
                                  VerticalAlignment="Center"
                                  TextTrimming="CharacterEllipsis"
                                  Classes.dir="{Binding IsRegularDirectory}">
                         <TextBlock.Styles>
                           <Style Selector="TextBlock.dir">
-                            <Setter Property="Foreground" Value="{DynamicResource PulseFileDirName}" />
+                            <Setter Property="Foreground" Value="{DynamicResource VelaFileDirName}" />
                           </Style>
                         </TextBlock.Styles>
                       </TextBlock>
@@ -519,20 +519,20 @@
 
                     <TextBlock Grid.Column="2"
                                Text="{Binding FormattedSize}"
-                               Foreground="{DynamicResource PulseTextTertiary}"
-                               FontFamily="{DynamicResource PulseTerminalFont}"
+                               Foreground="{DynamicResource VelaTextTertiary}"
+                               FontFamily="{DynamicResource VelaTerminalFont}"
                                FontSize="11"
                                VerticalAlignment="Center" />
                     <TextBlock Grid.Column="4"
                                Text="{Binding Permissions}"
-                               Foreground="{DynamicResource PulseTextTertiary}"
-                               FontFamily="{DynamicResource PulseTerminalFont}"
+                               Foreground="{DynamicResource VelaTextTertiary}"
+                               FontFamily="{DynamicResource VelaTerminalFont}"
                                FontSize="11"
                                VerticalAlignment="Center" />
                     <TextBlock Grid.Column="6"
                                Text="{Binding FormattedModifiedTime}"
-                               Foreground="{DynamicResource PulseTextTertiary}"
-                               FontFamily="{DynamicResource PulseTerminalFont}"
+                               Foreground="{DynamicResource VelaTextTertiary}"
+                               FontFamily="{DynamicResource VelaTerminalFont}"
                                FontSize="11"
                                VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis" />
@@ -548,7 +548,7 @@
 
       <!-- Loading overlay -->
       <Border IsVisible="{Binding IsLoading}"
-              Background="{DynamicResource PulseBgSurface}"
+              Background="{DynamicResource VelaBgSurface}"
               Opacity="0.8"
               HorizontalAlignment="Stretch"
               VerticalAlignment="Stretch">
@@ -557,7 +557,7 @@
               Width="300"
               Spacing="8">
           <TextBlock Text="{Binding BusyText}"
-               Foreground="{DynamicResource PulseTextSecondary}"
+               Foreground="{DynamicResource VelaTextSecondary}"
                HorizontalAlignment="Center"
                TextAlignment="Center"
                FontSize="13" />
@@ -568,8 +568,8 @@
                  Value="{Binding DeleteProgressPercent}"
                  Height="6"
                  CornerRadius="3"
-                 Background="{DynamicResource PulseBorderPrimary}"
-                 Foreground="{DynamicResource PulseAccent}" />
+                 Background="{DynamicResource VelaBorderPrimary}"
+                 Foreground="{DynamicResource VelaAccent}" />
           <!-- Cancel an in-progress delete; already-removed entries stay gone. -->
           <Button IsVisible="{Binding IsDeleteProgressVisible}"
                   Content="{x:Static res:Strings.Cancel}"

@@ -36,6 +36,7 @@ public partial class App : Application
             .AddVelaShellControls()
             .AddVelaShellInfrastructure()
             .AddSingleton<IThemeService>(_ => new ThemeService("system"))
+            .AddSingleton<ISettingsPreviewService, SettingsPreviewService>()
             .AddSingleton<VelaShell.Core.Ssh.IHostKeyPrompt, Services.HostKeyPromptDialogService>()
             .AddSingleton<VelaShell.Core.Localization.ILocalizationService, VelaShell.Core.Localization.LocalizationService>()
             .AddSingleton<Services.IKeyboardShortcutService, Services.KeyboardShortcutService>()
@@ -212,30 +213,30 @@ public partial class App : Application
 
     /// <summary>
     /// Applies the accent-color override live by shadowing the themed accent brushes at the
-    /// application level; every <c>DynamicResource PulseAccent</c> updates without a restart (#3).
+    /// application level; every <c>DynamicResource VelaAccent</c> updates without a restart (#3).
     /// A null/empty value removes the override and restores the theme's default accent.
     /// </summary>
     private void ApplyAccent(string? hex)
     {
         if (string.IsNullOrWhiteSpace(hex))
         {
-            Resources.Remove("PulseAccent");
-            Resources.Remove("PulseAccentDim");
-            Resources.Remove("PulseAccentForeground");
+            Resources.Remove("VelaAccent");
+            Resources.Remove("VelaAccentDim");
+            Resources.Remove("VelaAccentForeground");
             return;
         }
 
         if (!Color.TryParse(hex, out var color))
             return;
 
-        Resources["PulseAccent"] = new SolidColorBrush(color);
+        Resources["VelaAccent"] = new SolidColorBrush(color);
         // Dim variant: same hue at ~19% opacity, matching the design's #RRGGBB30 tokens.
-        Resources["PulseAccentDim"] = new SolidColorBrush(new Color(0x30, color.R, color.G, color.B));
+        Resources["VelaAccentDim"] = new SolidColorBrush(new Color(0x30, color.R, color.G, color.B));
 
         // 自定义强调色的配对前景按亮度自动选:亮底深字、深底浅字,
         // 避免用户挑深色 accent 后按钮文字(令牌随主题固定)对比不足。
         double luminance = (0.299 * color.R + 0.587 * color.G + 0.114 * color.B) / 255.0;
-        Resources["PulseAccentForeground"] = new SolidColorBrush(
+        Resources["VelaAccentForeground"] = new SolidColorBrush(
             luminance > 0.55 ? Color.Parse("#0A0E14") : Color.Parse("#FFFBEB"));
     }
 }

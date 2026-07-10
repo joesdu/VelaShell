@@ -9,7 +9,7 @@
              x:DataType="vm:TabBarViewModel">
 
   <!-- Tab bar: bg-page, tabs bottom-aligned -->
-  <Border Background="{DynamicResource PulseBgPage}"
+  <Border Background="{DynamicResource VelaBgPage}"
           Height="36">
     <DockPanel VerticalAlignment="Bottom">
 
@@ -38,14 +38,14 @@
               <Button.Styles>
                 <!-- Active tab -->
                 <Style Selector="Button.active">
-                  <Setter Property="Background" Value="{DynamicResource PulseBgTerminal}" />
+                  <Setter Property="Background" Value="{DynamicResource VelaBgTerminal}" />
                 </Style>
                 <!-- Inactive tab -->
                 <Style Selector="Button:not(.active)">
-                  <Setter Property="Background" Value="{DynamicResource PulseTabInactiveBg}" />
+                  <Setter Property="Background" Value="{DynamicResource VelaTabInactiveBg}" />
                 </Style>
                 <Style Selector="Button:pointerover">
-                  <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+                  <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
                 </Style>
               </Button.Styles>
 
@@ -55,7 +55,7 @@
                       Padding="14,0">
                 <Border.Styles>
                   <Style Selector="Border.active-border">
-                    <Setter Property="BorderBrush" Value="{DynamicResource PulseAccent}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
                   </Style>
                   <Style Selector="Border:not(.active-border)">
                     <Setter Property="BorderBrush" Value="Transparent" />
@@ -70,10 +70,10 @@
                            Margin="0,0,8,0"
                            VerticalAlignment="Center"
                            Classes.bell-alert="{Binding HasBellAlert}"
-                           Fill="{DynamicResource PulseStatusDisconnected}">
+                           Fill="{DynamicResource VelaStatusDisconnected}">
                     <Ellipse.Styles>
                       <Style Selector="Ellipse.bell-alert">
-                        <Setter Property="Fill" Value="{DynamicResource PulseAccent}" />
+                        <Setter Property="Fill" Value="{DynamicResource VelaAccent}" />
                         <Style.Animations>
                           <Animation Duration="0:0:0.9" IterationCount="INFINITE">
                             <KeyFrame Cue="0%"><Setter Property="Opacity" Value="1" /></KeyFrame>
@@ -89,18 +89,18 @@
                   <TextBlock Grid.Column="1"
                              Classes.active-text="{Binding IsActive}"
                              Text="{Binding Title}"
-                             FontFamily="{DynamicResource PulseTerminalFont}"
+                             FontFamily="{DynamicResource VelaTerminalFont}"
                              FontSize="11"
                              VerticalAlignment="Center"
                              TextTrimming="CharacterEllipsis"
                              Margin="0,0,8,0">
                     <TextBlock.Styles>
                       <Style Selector="TextBlock.active-text">
-                        <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
+                        <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
                         <Setter Property="FontWeight" Value="SemiBold" />
                       </Style>
                       <Style Selector="TextBlock:not(.active-text)">
-                        <Setter Property="Foreground" Value="{DynamicResource PulseTextTertiary}" />
+                        <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
                         <Setter Property="FontWeight" Value="Normal" />
                       </Style>
                     </TextBlock.Styles>
@@ -118,7 +118,7 @@
                           Cursor="Hand">
                     <PathIcon Data="M18 6L6 18M6 6l12 12"
                               Width="10" Height="10"
-                              Foreground="{DynamicResource PulseTextTertiary}" />
+                              Foreground="{DynamicResource VelaTextTertiary}" />
                   </Button>
 
                 </Grid>
@@ -141,14 +141,14 @@
               Cursor="Hand">
         <PathIcon Data="M12 5v14M5 12h14"
                   Width="14" Height="14"
-                  Foreground="{DynamicResource PulseTextTertiary}" />
+                  Foreground="{DynamicResource VelaTextTertiary}" />
       </Button>
 
       <!-- Spacer fills remaining width with bg-page / spacer for Window controls -->
       <Border HorizontalAlignment="Stretch"
               Height="32"
               VerticalAlignment="Bottom"
-              Background="{DynamicResource PulseTabInactiveBg}">
+              Background="{DynamicResource VelaTabInactiveBg}">
           <!-- Optional: reserve space for Windows title bar buttons -->
           <Border.IsHitTestVisible>False</Border.IsHitTestVisible>
       </Border>

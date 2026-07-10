@@ -116,7 +116,7 @@ public class SftpServiceTests
     [TestMethod]
     public async Task UploadFileAsync_WhenCancelledMidTransfer_SurfacesCleanOperationCanceled()
     {
-        var localPath = Path.Combine(Path.GetTempPath(), $"pulse-up-{Guid.NewGuid():N}.txt");
+        var localPath = Path.Combine(Path.GetTempPath(), $"vela-up-{Guid.NewGuid():N}.txt");
         await File.WriteAllTextAsync(localPath, "payload");
         using var cts = new CancellationTokenSource();
         try

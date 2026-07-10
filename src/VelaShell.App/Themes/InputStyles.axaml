@@ -14,17 +14,17 @@
          默认高度 32;需要 34 等其它高度时在实例上设置 MinHeight 覆盖。
          ================================================================ -->
     <Style Selector="Border.input-affix">
-        <Setter Property="Background" Value="{DynamicResource PulseBgInput}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderPrimary}" />
+        <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="MinHeight" Value="32" />
     </Style>
     <Style Selector="Border.input-affix:pointerover">
-        <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderSecondary}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
     </Style>
     <Style Selector="Border.input-affix:focus-within">
-        <Setter Property="BorderBrush" Value="{DynamicResource PulseAccent}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
     </Style>
 
     <!-- 容器内的裸 TextBox:清掉自带背景/边框/内边距与各状态外观 -->

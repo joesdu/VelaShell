@@ -14,14 +14,21 @@
         <StyleInclude Source="avares://VelaShell.App/Themes/DockStyles.axaml" />
         <!-- antd 风格的前缀/后缀输入框容器(Border.input-affix),供各视图复用 -->
         <StyleInclude Source="avares://VelaShell.App/Themes/InputStyles.axaml" />
+        <!-- 设置 → 外观 → 界面字体/字号:所有窗口(含设置窗口/各弹窗)统一继承;
+             显式指定了 FontFamily/FontSize 的元素(终端、JB Mono 等宽文本、设计定字号)
+             不受影响。运行时改动经 app.Resources 覆盖这两个令牌即时生效。 -->
+        <Style Selector=":is(Window)">
+            <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
+            <Setter Property="FontSize" Value="{DynamicResource VelaUiFontSize}" />
+        </Style>
     </Application.Styles>
 
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceInclude Source="avares://VelaShell.Controls/Themes/Generic.axaml" />
-                <ResourceInclude Source="avares://VelaShell.Controls/Themes/PulseTokens.axaml" />
-                <ResourceInclude Source="avares://VelaShell.Controls/Themes/PulseShellTokens.axaml" />
+                <ResourceInclude Source="avares://VelaShell.Controls/Themes/VelaTokens.axaml" />
+                <ResourceInclude Source="avares://VelaShell.Controls/Themes/VelaShellTokens.axaml" />
                 <ResourceInclude Source="avares://VelaShell.Controls/Themes/Icons.axaml" />
                 <!-- Overrides Dock.Avalonia's document tab context menu (must come after the Dock
                      theme is applied; application resources win over theme resources). -->
@@ -32,6 +39,9 @@
                      x:Class code-behind. -->
                 <themes:DockTabStripResources />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- 界面字号默认值(设计 font-ui 13);运行时被 ApplyWindowAppearance 覆盖。 -->
+            <sys:Double x:Key="VelaUiFontSize">13</sys:Double>
 
             <!-- Dock document tab metrics per design frame nunbT: 32px tabs, padding [0,14],
                  JB Mono 11, dot/label/close gap 8. Brushes are themed in DockStyles.axaml. -->

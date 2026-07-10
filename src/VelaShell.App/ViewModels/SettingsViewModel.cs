@@ -27,8 +27,18 @@ public class SettingsViewModel : ReactiveObject
     private readonly ISettingsService _settingsService;
     private readonly IThemeService _themeService;
     private readonly ILocalizationService? _localizationService;
+    private readonly ISettingsPreviewService? _previewService;
 
     private AppSettings _loaded = new();
+
+    // ———— 外观即时预览(改动立即可见,保存才落盘,取消/关窗回滚) ————
+    /// <summary>打开设置时的基线快照:未保存关闭时用它恢复主题与外观。</summary>
+    private AppSettings _baseline = new();
+    private bool _saved;
+    private bool _previewed;
+    /// <summary>首次载入完成前(以及 ApplyToViewModel 批量回填期间)抑制预览广播。</summary>
+    private bool _suppressPreview = true;
+    private AppearanceOptions? _hookedAppearance;
 
     private string _language = "en";
     private string _theme = "dark";
@@ -57,12 +67,25 @@ public class SettingsViewModel : ReactiveObject
         ILocalizationService? localizationService = null,
         IAppDataStore? appDataStore = null,
         ISshKeyService? sshKeyService = null,
-        IRecentConnectionService? recentConnections = null)
+        IRecentConnectionService? recentConnections = null,
+        ISettingsPreviewService? previewService = null)
     {
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
         _localizationService = localizationService;
         _recentConnections = recentConnections;
+        _previewService = previewService;
+
+        // 外观即时预览:主题/强调色直接走 IThemeService(应用即生效);
+        // Appearance 对象被整体替换(配色方案/载入)或其单项被绑定修改时广播预览快照。
+        this.WhenAnyValue(x => x.Theme, x => x.AccentColor)
+            .Subscribe(_ => PreviewThemeLive());
+        this.WhenAnyValue(x => x.Appearance)
+            .Subscribe(appearance =>
+            {
+                HookAppearance(appearance);
+                BroadcastPreview();
+            });
 
         SshKeys = new SshKeyManagerViewModel(sshKeyService);
         Snippets = appDataStore is null ? null : new QuickCommandsViewModel(appDataStore);
@@ -471,6 +494,7 @@ public class SettingsViewModel : ReactiveObject
 
             _loaded = imported;
             ApplyToViewModel(imported);
+            PreviewCurrent();
             return true;
         }
         catch (System.Text.Json.JsonException)
@@ -482,6 +506,12 @@ public class SettingsViewModel : ReactiveObject
     private async Task LoadAsync()
     {
         _loaded = await _settingsService.GetSettingsAsync();
+
+        // 外观即时预览的基线:未保存关闭时回滚到这份快照。
+        _baseline = JsonClone(_loaded);
+        _saved = false;
+        _previewed = false;
+
         ApplyToViewModel(_loaded);
 
         await SshKeys.RefreshAsync();
@@ -493,6 +523,9 @@ public class SettingsViewModel : ReactiveObject
 
     private void ApplyToViewModel(AppSettings settings)
     {
+        // 批量回填不逐项触发预览;结束后恢复(调用方需要预览时显式 PreviewCurrent)。
+        _suppressPreview = true;
+
         Language = settings.Language;
         Theme = settings.Theme;
         AccentColor = settings.AccentColor;
@@ -524,14 +557,80 @@ public class SettingsViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(TabBarPositionIndex));
         this.RaisePropertyChanged(nameof(SidebarPositionIndex));
         this.RaisePropertyChanged(nameof(WindowStateIndex));
+
+        _suppressPreview = false;
     }
 
-    /// <summary>恢复默认(常规页按钮):所有设置回到出厂值,保存后生效。</summary>
+    /// <summary>恢复默认(常规页按钮):所有设置回到出厂值,外观即时预览,保存后落盘。</summary>
     private void ResetToDefaults()
     {
         _loaded = new AppSettings();
         ApplyToViewModel(_loaded);
+        PreviewCurrent();
     }
+
+    // ———— 外观即时预览实现 ————
+
+    /// <summary>主题/强调色即时生效(IThemeService 本就是应用即生效,保存前调用即预览)。</summary>
+    private void PreviewThemeLive()
+    {
+        if (_suppressPreview)
+            return;
+
+        _previewed = true;
+        _themeService.SetTheme(Theme);
+        try { _themeService.SetAccent(AccentColor); } catch (ArgumentException) { /* 非法色值:保持现状 */ }
+    }
+
+    /// <summary>跟踪当前 Appearance 对象的单项修改(POCO 直绑,靠其 INPC 感知)。</summary>
+    private void HookAppearance(AppearanceOptions? appearance)
+    {
+        if (_hookedAppearance is not null)
+            _hookedAppearance.PropertyChanged -= OnAppearanceItemChanged;
+
+        _hookedAppearance = appearance;
+        if (appearance is not null)
+            appearance.PropertyChanged += OnAppearanceItemChanged;
+    }
+
+    private void OnAppearanceItemChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        => BroadcastPreview();
+
+    /// <summary>广播外观预览快照:以基线为底、仅叠加外观相关字段,
+    /// 避免把其他设置页未保存的改动一并预览出去。</summary>
+    private void BroadcastPreview()
+    {
+        if (_suppressPreview || _previewService is null)
+            return;
+
+        _previewed = true;
+        var snapshot = JsonClone(_baseline);
+        snapshot.Theme = Theme;
+        snapshot.AccentColor = AccentColor;
+        snapshot.Appearance = JsonClone(Appearance);
+        _previewService.Preview(snapshot);
+    }
+
+    private void PreviewCurrent()
+    {
+        PreviewThemeLive();
+        BroadcastPreview();
+    }
+
+    /// <summary>窗口以任意方式关闭时由视图调用:未保存而预览过 → 回滚到打开时的基线。</summary>
+    public void NotifyClosed()
+    {
+        if (_saved || !_previewed)
+            return;
+
+        _previewed = false;
+        _themeService.SetTheme(_baseline.Theme);
+        try { _themeService.SetAccent(_baseline.AccentColor); } catch (ArgumentException) { }
+        _previewService?.Preview(_baseline);
+    }
+
+    private static T JsonClone<T>(T value) =>
+        System.Text.Json.JsonSerializer.Deserialize<T>(System.Text.Json.JsonSerializer.Serialize(value))!;
 
     private async Task SaveAsync()
     {
@@ -558,6 +657,10 @@ public class SettingsViewModel : ReactiveObject
         _themeService.SetTheme(Theme);
         try { _themeService.SetAccent(AccentColor); } catch (ArgumentException) { /* invalid hex: keep previous */ }
         _localizationService?.SetLanguage(Language);
+
+        // 已保存:外观预览转正,窗口关闭时不再回滚;基线同步到已保存状态。
+        _saved = true;
+        _baseline = JsonClone(_loaded);
 
         CloseRequested?.Invoke(this, EventArgs.Empty);
     }

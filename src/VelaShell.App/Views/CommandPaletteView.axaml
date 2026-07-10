@@ -13,13 +13,13 @@
       <Setter Property="CornerRadius" Value="4" />
     </Style>
     <Style Selector="Border.pal-item:pointerover">
-      <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
     </Style>
     <Style Selector="Border.pal-item.selected">
-      <Setter Property="Background" Value="{DynamicResource PulseBgActive}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgActive}" />
     </Style>
     <Style Selector="TextBlock.cat">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextMuted}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
       <Setter Property="FontSize" Value="10" />
       <Setter Property="FontWeight" Value="Medium" />
       <Setter Property="Margin" Value="16,6,0,2" />
@@ -27,8 +27,8 @@
     <!-- 键帽徽章(Ctrl+K / ↑↓ / ↵ / Esc):统一固定高度并让文字双向居中,
          避免随字形基线上下漂移显得不居中。 -->
     <Style Selector="Border.kbd">
-      <Setter Property="Background" Value="{DynamicResource PulseBgSurface}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderSecondary}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgSurface}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="3" />
       <Setter Property="Height" Value="18" />
@@ -38,7 +38,7 @@
     </Style>
     <Style Selector="Border.kbd > TextBlock">
       <Setter Property="FontSize" Value="10" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextMuted}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
       <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="TextAlignment" Value="Center" />
@@ -64,8 +64,8 @@
           MaxHeight="460"
           VerticalAlignment="Top"
           Margin="0,120,0,0"
-          Background="{DynamicResource PulseBgSurface}"
-          BorderBrush="{DynamicResource PulseBorderSecondary}"
+          Background="{DynamicResource VelaBgSurface}"
+          BorderBrush="{DynamicResource VelaBorderSecondary}"
           BorderThickness="1"
           CornerRadius="8"
           BoxShadow="0 8 32 0 #80000000">
@@ -75,27 +75,27 @@
       <Border DockPanel.Dock="Top"
               Height="48"
               Padding="16,0"
-              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,0,1">
         <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
           <PathIcon Grid.Column="0"
                     Width="16" Height="16"
                     Margin="0,0,10,0"
-                    Foreground="{DynamicResource PulseTextTertiary}"
+                    Foreground="{DynamicResource VelaTextTertiary}"
                     Data="M15.5 14h-.79l-.28-.27a6.5 6.5 0 10-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0a4.5 4.5 0 110-9 4.5 4.5 0 010 9z" />
           <TextBox Grid.Column="1"
                    x:Name="SearchBox"
                    Text="{Binding Query}"
                    BorderThickness="0"
                    Background="Transparent"
-                   Foreground="{DynamicResource PulseTextPrimary}"
-                   CaretBrush="{DynamicResource PulseAccent}"
-                   FontFamily="{DynamicResource PulseTerminalFont}"
+                   Foreground="{DynamicResource VelaTextPrimary}"
+                   CaretBrush="{DynamicResource VelaAccent}"
+                   FontFamily="{DynamicResource VelaTerminalFont}"
                    FontSize="14"
                    VerticalContentAlignment="Center"
                    PlaceholderText="输入命令或搜索会话…" />
           <Border Grid.Column="2" Classes="kbd">
-            <TextBlock Text="Ctrl+K" FontFamily="{DynamicResource PulseTerminalFont}" />
+            <TextBlock Text="Ctrl+K" FontFamily="{DynamicResource VelaTerminalFont}" />
           </Border>
         </Grid>
       </Border>
@@ -105,8 +105,8 @@
       <Border DockPanel.Dock="Bottom"
               Height="32"
               Padding="16,0"
-              Background="{DynamicResource PulseBgInput}"
-              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              Background="{DynamicResource VelaBgInput}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,1,0,0"
               CornerRadius="0,0,7,7">
         <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
@@ -115,25 +115,25 @@
               <Border Classes="kbd">
                 <TextBlock Text="↑↓" />
               </Border>
-              <TextBlock Text="导航" FontSize="10" Foreground="{DynamicResource PulseTextMuted}" VerticalAlignment="Center" />
+              <TextBlock Text="导航" FontSize="10" Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="4">
               <Border Classes="kbd">
                 <TextBlock Text="↵" />
               </Border>
-              <TextBlock Text="确认" FontSize="10" Foreground="{DynamicResource PulseTextMuted}" VerticalAlignment="Center" />
+              <TextBlock Text="确认" FontSize="10" Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="4">
               <Border Classes="kbd">
                 <TextBlock Text="Esc" />
               </Border>
-              <TextBlock Text="关闭" FontSize="10" Foreground="{DynamicResource PulseTextMuted}" VerticalAlignment="Center" />
+              <TextBlock Text="关闭" FontSize="10" Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center" />
             </StackPanel>
           </StackPanel>
           <TextBlock Grid.Column="1"
                      Text="{Binding ResultCount, StringFormat='{}{0} 个结果'}"
                      FontSize="10"
-                     Foreground="{DynamicResource PulseTextMuted}" />
+                     Foreground="{DynamicResource VelaTextMuted}" />
         </Grid>
       </Border>
 
@@ -157,25 +157,25 @@
                           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                             <Ellipse Width="7" Height="7"
                                      IsVisible="{Binding IsSession}"
-                                     Fill="{DynamicResource PulseStatusConnected}" />
+                                     Fill="{DynamicResource VelaStatusConnected}" />
                             <TextBlock Text="{Binding Title}"
-                                       Foreground="{DynamicResource PulseTextPrimary}"
-                                       FontFamily="{DynamicResource PulseTerminalFont}"
+                                       Foreground="{DynamicResource VelaTextPrimary}"
+                                       FontFamily="{DynamicResource VelaTerminalFont}"
                                        FontSize="12"
                                        VerticalAlignment="Center" />
                             <Border IsVisible="{Binding Tag, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                    Background="{DynamicResource PulseAccentDim}"
+                                    Background="{DynamicResource VelaAccentDim}"
                                     CornerRadius="2" Padding="6,1" VerticalAlignment="Center">
                               <TextBlock Text="{Binding Tag}"
-                                         Foreground="{DynamicResource PulseAccent}"
-                                         FontFamily="{DynamicResource PulseTerminalFont}"
+                                         Foreground="{DynamicResource VelaAccent}"
+                                         FontFamily="{DynamicResource VelaTerminalFont}"
                                          FontSize="9" />
                             </Border>
                           </StackPanel>
                           <TextBlock Grid.Column="1"
                                      Text="{Binding Hint}"
-                                     Foreground="{DynamicResource PulseTextMuted}"
-                                     FontFamily="{DynamicResource PulseTerminalFont}"
+                                     Foreground="{DynamicResource VelaTextMuted}"
+                                     FontFamily="{DynamicResource VelaTerminalFont}"
                                      FontSize="10"
                                      VerticalAlignment="Center" />
                         </Grid>

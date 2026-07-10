@@ -23,22 +23,22 @@
 
   <Window.Styles>
     <Style Selector="TextBlock.mono">
-      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaTerminalFont}" />
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseAccentText}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccentText}" />
     </Style>
     <Style Selector="TextBlock.info-label">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
       <Setter Property="FontSize" Value="12" />
       <Setter Property="Margin" Value="0,0,12,0" />
     </Style>
     <Style Selector="TextBlock.info-value">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
       <Setter Property="FontSize" Value="12" />
     </Style>
     <Style Selector="Button.trust">
-      <Setter Property="Background" Value="{DynamicResource PulseAccent}" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseAccentForeground}" />
+      <Setter Property="Background" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccentForeground}" />
       <Setter Property="Height" Value="30" />
       <Setter Property="Padding" Value="14,0" />
       <Setter Property="CornerRadius" Value="4" />
@@ -48,8 +48,8 @@
     </Style>
     <Style Selector="Button.reject">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseError}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderSecondary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Height" Value="30" />
       <Setter Property="Padding" Value="12,0" />
@@ -60,8 +60,8 @@
   </Window.Styles>
 
   <Border CornerRadius="8"
-          Background="{DynamicResource PulseBgSurface}"
-          BorderBrush="{DynamicResource PulseBorderSecondary}"
+          Background="{DynamicResource VelaBgSurface}"
+          BorderBrush="{DynamicResource VelaBorderSecondary}"
           BorderThickness="1"
           BoxShadow="0 8 32 0 #80000000"
           Margin="12"
@@ -72,16 +72,16 @@
       <Border Grid.Row="0" Padding="20,0"
               Background="Transparent"
               PointerPressed="Header_PointerPressed"
-              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,0,1">
         <Grid ColumnDefinitions="Auto,*,Auto">
           <pc:LucideIcon Width="15" Height="15"
                          Data="{DynamicResource Icon.shield}"
-                         Foreground="{DynamicResource PulseWarning}"
+                         Foreground="{DynamicResource VelaWarning}"
                          VerticalAlignment="Center" Margin="0,0,10,0" />
           <TextBlock Grid.Column="1"
                      Text="{x:Static res:Strings.HostKeyVerification}"
-                     Foreground="{DynamicResource PulseTextPrimary}"
+                     Foreground="{DynamicResource VelaTextPrimary}"
                      FontSize="13" FontWeight="SemiBold"
                      VerticalAlignment="Center" />
           <Button Grid.Column="2" Width="24" Height="24"
@@ -90,7 +90,7 @@
                   VerticalAlignment="Center">
             <pc:LucideIcon Width="13" Height="13"
                            Data="{DynamicResource Icon.x}"
-                           Foreground="{DynamicResource PulseTextTertiary}" />
+                           Foreground="{DynamicResource VelaTextTertiary}" />
           </Button>
         </Grid>
       </Border>
@@ -99,16 +99,16 @@
       <StackPanel Grid.Row="1" Margin="20,16" Spacing="14">
 
         <!-- Warning banner -->
-        <Border Background="{DynamicResource PulseBgActive}"
+        <Border Background="{DynamicResource VelaBgActive}"
                 CornerRadius="6"
                 Padding="16,12">
           <StackPanel Orientation="Horizontal" Spacing="10">
             <pc:LucideIcon Width="16" Height="16"
                            VerticalAlignment="Top"
                            Data="{DynamicResource Icon.triangle-alert}"
-                           Foreground="{DynamicResource PulseWarning}" />
+                           Foreground="{DynamicResource VelaWarning}" />
             <TextBlock Text="{Binding WarningText}"
-                       Foreground="{DynamicResource PulseWarning}"
+                       Foreground="{DynamicResource VelaWarning}"
                        FontSize="12"
                        FontWeight="SemiBold"
                        TextWrapping="Wrap"
@@ -116,7 +116,7 @@
                        VerticalAlignment="Center"
                        IsVisible="{Binding !IsChanged}" />
             <TextBlock Text="{Binding WarningText}"
-                       Foreground="{DynamicResource PulseError}"
+                       Foreground="{DynamicResource VelaError}"
                        FontSize="12"
                        FontWeight="SemiBold"
                        TextWrapping="Wrap"
@@ -127,8 +127,8 @@
         </Border>
 
         <!-- Host info (bg-input 与卡片底色区分,同设计 authInfo 条) -->
-        <Border Background="{DynamicResource PulseBgInput}"
-                BorderBrush="{DynamicResource PulseBorderPrimary}"
+        <Border Background="{DynamicResource VelaBgInput}"
+                BorderBrush="{DynamicResource VelaBorderPrimary}"
                 BorderThickness="1"
                 CornerRadius="4"
                 Padding="16,12">
@@ -160,7 +160,7 @@
 
       <!-- 按钮栏 -->
       <Border Grid.Row="2" Padding="20,0"
-              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,1,0,0">
         <StackPanel Orientation="Horizontal" Spacing="8"
                     HorizontalAlignment="Right" VerticalAlignment="Center">

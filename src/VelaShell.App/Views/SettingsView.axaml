@@ -22,53 +22,53 @@
   <Window.Styles>
     <!-- 分节标题 -->
     <Style Selector="TextBlock.section-title">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
       <Setter Property="FontSize" Value="13" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <!-- 设置行左侧标签/描述 -->
     <Style Selector="TextBlock.row-label">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
       <Setter Property="FontSize" Value="12" />
       <Setter Property="FontWeight" Value="Medium" />
     </Style>
     <Style Selector="TextBlock.row-desc">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextMuted}" />
-      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaTerminalFont}" />
       <Setter Property="FontSize" Value="10" />
     </Style>
     <!-- 页面标题/副标题 -->
     <Style Selector="TextBlock.page-title">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
       <Setter Property="FontSize" Value="18" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="TextBlock.page-subtitle">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextMuted}" />
-      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaTerminalFont}" />
       <Setter Property="FontSize" Value="11" />
     </Style>
     <!-- 节分隔线 -->
     <Style Selector="Border.sep">
       <Setter Property="Height" Value="1" />
-      <Setter Property="Background" Value="{DynamicResource PulseBorderPrimary}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBorderPrimary}" />
       <Setter Property="Margin" Value="0,4" />
     </Style>
     <!-- 控件基础样式 -->
     <Style Selector="TextBox">
-      <Setter Property="Background" Value="{DynamicResource PulseBgInput}" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderPrimary}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="MinHeight" Value="30" />
       <Setter Property="FontSize" Value="11" />
-      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaTerminalFont}" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="ComboBox">
-      <Setter Property="Background" Value="{DynamicResource PulseBgInput}" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderPrimary}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="MinHeight" Value="30" />
       <Setter Property="FontSize" Value="11" />
@@ -76,13 +76,13 @@
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="NumericUpDown">
-      <Setter Property="Background" Value="{DynamicResource PulseBgInput}" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextPrimary}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderPrimary}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="MinHeight" Value="30" />
       <Setter Property="FontSize" Value="11" />
-      <Setter Property="FontFamily" Value="{DynamicResource PulseTerminalFont}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaTerminalFont}" />
       <Setter Property="Width" Value="110" />
       <Setter Property="ShowButtonSpinner" Value="False" />
     </Style>
@@ -95,8 +95,8 @@
     <!-- 按钮 -->
     <Style Selector="Button.dlg-outline">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderSecondary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Height" Value="30" />
       <Setter Property="Padding" Value="12,0" />
@@ -105,8 +105,8 @@
       <Setter Property="FontSize" Value="11" />
     </Style>
     <Style Selector="Button.dlg-primary">
-      <Setter Property="Background" Value="{DynamicResource PulseAccent}" />
-      <Setter Property="Foreground" Value="{DynamicResource PulseAccentForeground}" />
+      <Setter Property="Background" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccentForeground}" />
       <Setter Property="Height" Value="30" />
       <Setter Property="Padding" Value="14,0" />
       <Setter Property="CornerRadius" Value="4" />
@@ -117,7 +117,7 @@
     <Style Selector="Button.dlg-danger">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="#FF6B6B" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderSecondary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Height" Value="30" />
       <Setter Property="Padding" Value="12,0" />
@@ -127,15 +127,15 @@
     </Style>
     <!-- keycap(快捷键页) -->
     <Style Selector="Border.keycap">
-      <Setter Property="Background" Value="{DynamicResource PulseBgInput}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderSecondary}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="3" />
       <Setter Property="Padding" Value="8,3" />
     </Style>
     <!-- 表格容器 -->
     <Style Selector="Border.table">
-      <Setter Property="BorderBrush" Value="{DynamicResource PulseBorderPrimary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="6" />
       <Setter Property="ClipToBounds" Value="True" />
@@ -153,29 +153,29 @@
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="ListBox.nav ListBoxItem:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
     </Style>
     <Style Selector="ListBox.nav ListBoxItem:selected /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource PulseBgActive}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgActive}" />
     </Style>
     <Style Selector="ListBox.nav ListBoxItem TextBlock">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextSecondary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
     </Style>
     <Style Selector="ListBox.nav ListBoxItem PathIcon">
-      <Setter Property="Foreground" Value="{DynamicResource PulseTextTertiary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
     </Style>
     <Style Selector="ListBox.nav ListBoxItem:selected TextBlock">
-      <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
       <Setter Property="FontWeight" Value="Medium" />
     </Style>
     <Style Selector="ListBox.nav ListBoxItem:selected PathIcon">
-      <Setter Property="Foreground" Value="{DynamicResource PulseAccent}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
     </Style>
   </Window.Styles>
 
   <Border CornerRadius="8"
-          Background="{DynamicResource PulseBgSurface}"
-          BorderBrush="{DynamicResource PulseBorderSecondary}"
+          Background="{DynamicResource VelaBgSurface}"
+          BorderBrush="{DynamicResource VelaBorderSecondary}"
           BorderThickness="1"
           BoxShadow="0 8 32 0 #80000000"
           Margin="12"
@@ -185,8 +185,8 @@
       <!-- 左侧导航。CornerRadius 跟随外框左侧圆角:方角的 bg-sidebar 背景会盖住外框在
            圆角处的描边,看起来像边框断开(用户反馈)。 -->
       <Border Grid.Column="0"
-              Background="{DynamicResource PulseBgSidebar}"
-              BorderBrush="{DynamicResource PulseBorderPrimary}"
+              Background="{DynamicResource VelaBgSidebar}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,1,0"
               CornerRadius="8,0,0,8">
         <Grid RowDefinitions="48,*">
@@ -194,14 +194,14 @@
           <Border Grid.Row="0" Padding="16,0"
                   Background="Transparent"
                   PointerPressed="Header_PointerPressed"
-                  BorderBrush="{DynamicResource PulseBorderPrimary}"
+                  BorderBrush="{DynamicResource VelaBorderPrimary}"
                   BorderThickness="0,0,0,1">
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
               <PathIcon Width="14" Height="14"
                         Data="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-                        Foreground="{DynamicResource PulseAccent}" />
+                        Foreground="{DynamicResource VelaAccent}" />
               <TextBlock Text="设置"
-                         Foreground="{DynamicResource PulseTextPrimary}"
+                         Foreground="{DynamicResource VelaTextPrimary}"
                          FontSize="13" FontWeight="SemiBold" />
             </StackPanel>
           </Border>
@@ -240,7 +240,7 @@
 
         <!-- 底部:恢复默认 / 取消 / 保存设置 -->
         <Border Grid.Row="1" Height="52" Padding="28,0"
-                BorderBrush="{DynamicResource PulseBorderPrimary}"
+                BorderBrush="{DynamicResource VelaBorderPrimary}"
                 BorderThickness="0,1,0,0">
           <Grid ColumnDefinitions="Auto,*,Auto">
             <Button Grid.Column="0" Classes="dlg-outline" Content="恢复默认"

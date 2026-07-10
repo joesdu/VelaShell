@@ -4,11 +4,11 @@
     <!-- VelaShell Light Theme — Alucard palette (dracula 官方亮色,用户确认) -->
 
     <!-- Accent tokens (adjusted for light background contrast) -->
-    <SolidColorBrush x:Key="PulseAccentText" Color="#644AC9" />
+    <SolidColorBrush x:Key="VelaAccentText" Color="#644AC9" />
 
     <!-- Semantic tokens -->
-    <SolidColorBrush x:Key="PulseWarning" Color="#846E15" />
-    <SolidColorBrush x:Key="PulseError" Color="#CB3A2A" />
-    <SolidColorBrush x:Key="PulseInfo" Color="#036A96" />
+    <SolidColorBrush x:Key="VelaWarning" Color="#846E15" />
+    <SolidColorBrush x:Key="VelaError" Color="#CB3A2A" />
+    <SolidColorBrush x:Key="VelaInfo" Color="#036A96" />
 
 </ResourceDictionary>
