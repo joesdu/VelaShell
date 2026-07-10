@@ -7,6 +7,7 @@
         xmlns:views="using:VelaShell.Views"
         xmlns:docking="using:VelaShell.Docking"
         xmlns:dock="using:Dock.Avalonia.Controls"
+        xmlns:recycling="clr-namespace:Avalonia.Controls.Recycling;assembly=Dock.Controls.Recycling"
         xmlns:res="clr-namespace:VelaShell.Core.Resources;assembly=VelaShell.Core"
         mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="900"
         x:Class="VelaShell.Views.MainWindow"
@@ -86,7 +87,13 @@
 
         <!-- Top Area: dockable terminal documents (drag to reorder, tear off to a new
              floating window, or drop on an edge to split — provided by Dock.Avalonia). -->
+        <!-- ControlRecycling(Dock 自带、按 dockable 关闭自动清理):切换标签复用同一个
+             已构建的 TerminalTabView,而不是每次切换都重建整个视图再重挂终端控件——
+             这是多标签切换流畅度的关键(用户反馈:切换卡顿)。 -->
         <dock:DockControl Grid.Row="0" Layout="{Binding Layout}">
+          <recycling:ControlRecyclingDataTemplate.ControlRecycling>
+            <recycling:ControlRecycling />
+          </recycling:ControlRecyclingDataTemplate.ControlRecycling>
           <dock:DockControl.DataTemplates>
             <DataTemplate DataType="docking:TerminalDocument">
               <views:TerminalTabView DataContext="{Binding Terminal}" />

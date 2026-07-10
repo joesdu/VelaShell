@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Ssh;
@@ -13,6 +14,9 @@ public class SftpService(
 {
     private readonly ISshConnectionService _connectionService = connectionService ?? throw new ArgumentNullException(nameof(connectionService));
     private readonly ConcurrentDictionary<Guid, ISftpClientWrapper> _sftpClients = new();
+
+    /// <summary>SFTP 客户端创建的按会话单飞闸(见 GetOrCreateSftpClientAsync)。</summary>
+    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _clientGates = new();
 
     public async Task<List<RemoteFileInfo>> ListDirectoryAsync(Guid sessionId, string path, CancellationToken cancellationToken = default)
     {
@@ -222,6 +226,10 @@ public class SftpService(
 
     public async Task CloseSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
+        if (_clientGates.TryRemove(sessionId, out SemaphoreSlim? gate))
+        {
+            gate.Dispose();
+        }
         if (!_sftpClients.TryRemove(sessionId, out ISftpClientWrapper? client))
         {
             return;
@@ -330,26 +338,63 @@ public class SftpService(
 
     private async Task<ISftpClientWrapper> GetOrCreateSftpClientAsync(Guid sessionId, CancellationToken cancellationToken)
     {
-        if (_sftpClients.TryGetValue(sessionId, out ISftpClientWrapper? existingClient))
+        if (TryGetUsableClient(sessionId, out ISftpClientWrapper? existingClient))
         {
-            if (existingClient.IsConnected)
+            return existingClient;
+        }
+
+        // 单飞:面板加载与文件操作可能并发首次触达同一会话,不加闸时会各自握手出
+        // 一条 SFTP 连接(SSH 握手 × N),后到者还会把先到者从字典里顶掉造成泄漏。
+        SemaphoreSlim gate = _clientGates.GetOrAdd(sessionId, static _ => new(1, 1));
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (TryGetUsableClient(sessionId, out existingClient))
             {
                 return existingClient;
             }
+            SshSession? session = _connectionService.GetSession(sessionId) ?? throw new InvalidOperationException($"Session {sessionId} not found");
+            if (session.Status != SessionStatus.Connected)
+            {
+                throw new InvalidOperationException($"Session {sessionId} is not connected");
+            }
+            if (sftpClientFactory == null)
+            {
+                throw new InvalidOperationException("SFTP client factory not configured");
+            }
+            ISftpClientWrapper client = sftpClientFactory(session);
+            await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            _sftpClients[sessionId] = client;
+            return client;
         }
-        SshSession? session = _connectionService.GetSession(sessionId) ?? throw new InvalidOperationException($"Session {sessionId} not found");
-        if (session.Status != SessionStatus.Connected)
+        finally
         {
-            throw new InvalidOperationException($"Session {sessionId} is not connected");
+            try
+            {
+                gate.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                // CloseSessionAsync 与首次创建赛跑时会把闸释放掉;创建结果本身已无所谓。
+            }
         }
-        if (sftpClientFactory == null)
+    }
+
+    private bool TryGetUsableClient(Guid sessionId, [NotNullWhen(true)] out ISftpClientWrapper? client)
+    {
+        if (_sftpClients.TryGetValue(sessionId, out client))
         {
-            throw new InvalidOperationException("SFTP client factory not configured");
+            try
+            {
+                return client.IsConnected;
+            }
+            catch (ObjectDisposedException)
+            {
+                // 会话关闭把客户端释放了,当作缺失重建。
+            }
         }
-        ISftpClientWrapper client = sftpClientFactory(session);
-        await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
-        _sftpClients[sessionId] = client;
-        return client;
+        client = null;
+        return false;
     }
 
     private static RemoteFileInfo MapToRemoteFileInfo(SftpEntry file)

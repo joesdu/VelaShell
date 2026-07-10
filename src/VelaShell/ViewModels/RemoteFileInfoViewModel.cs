@@ -6,6 +6,9 @@ public class RemoteFileInfoViewModel(RemoteFileInfo model)
 {
     private readonly RemoteFileInfo _model = model ?? throw new ArgumentNullException(nameof(model));
 
+    /// <summary>底层条目(静默刷新的差异比对用,见 FileBrowserViewModel.RefreshSilentlyAsync)。</summary>
+    internal RemoteFileInfo Model => _model;
+
     /// <summary>True only for the synthetic ".." row.</summary>
     public bool IsParentEntry { get; private init; }
 

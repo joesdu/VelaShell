@@ -34,6 +34,9 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>Cancels the running delete; tripped from the delete overlay's cancel button.</summary>
     private CancellationTokenSource? _deleteCts;
 
+    /// <summary>在飞的初始加载(合流用,见 LoadInitialAsync)。</summary>
+    private Task? _initialLoad;
+
     /// <summary>
     /// Cancelled when this browser instance is discarded (its tab closed, or the panel rebound to
     /// another session), so in-flight SFTP work stops racing the session teardown (#tab-close NRE).
@@ -109,6 +112,14 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             List<RemoteFileInfo> files = await _sftpService.ListDirectoryAsync(_sessionId, CurrentPath, _lifetime.Token);
+
+            // 内容没变(切回标签的常见情形)就不动列表:整表 Clear+重建会让 ListBox
+            // 全量重新虚拟化,恰好落在切换标签的瞬间,是可感知的顿挫来源。
+            if (ListingUnchanged(files))
+            {
+                ErrorMessage = null;
+                return;
+            }
             _allFiles.Clear();
             _allFiles.AddRange(files.Select(f => new RemoteFileInfoViewModel(f)));
             RebuildVisibleFiles();
@@ -123,6 +134,27 @@ public class FileBrowserViewModel : ReactiveObject
             // 静默刷新失败(网络抖动/目录被删)不打扰用户,保留手头的旧列表;
             // 用户显式操作(刷新按钮/导航)仍会正常报错。
         }
+    }
+
+    /// <summary>新列举与当前原始列表逐项等价(名称/路径/大小/权限/时间/属主)。</summary>
+    private bool ListingUnchanged(List<RemoteFileInfo> fresh)
+    {
+        if (fresh.Count != _allFiles.Count)
+        {
+            return false;
+        }
+        for (int i = 0; i < fresh.Count; i++)
+        {
+            RemoteFileInfo a = fresh[i];
+            RemoteFileInfo b = _allFiles[i].Model;
+            if (a.Name != b.Name || a.FullPath != b.FullPath || a.Size != b.Size ||
+                a.IsDirectory != b.IsDirectory || a.Permissions != b.Permissions ||
+                a.LastModified != b.LastModified || a.Owner != b.Owner || a.Group != b.Group)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>
@@ -474,7 +506,20 @@ public class FileBrowserViewModel : ReactiveObject
     /// 家目录在服务器上不存在或不可访问(如 realpath(".") 返回的目录未创建/被 chroot)时,
     /// 自动回退到根目录 "/",避免停在报错的空白页。
     /// </summary>
-    private async Task LoadInitialAsync(CancellationToken ct = default)
+    private Task LoadInitialAsync(CancellationToken ct = default)
+    {
+        // 合流:连接完成路径与激活标签订阅可能各触发一次初始加载,不加闸时两条
+        // LoadInitial 并发各跑一遍 GetWorkingDirectory + 列目录(命令与调用方都在
+        // UI 线程,无并发写竞争,引用比较即可)。
+        if (_initialLoad is { IsCompleted: false })
+        {
+            return _initialLoad;
+        }
+        _initialLoad = LoadInitialCoreAsync(ct);
+        return _initialLoad;
+    }
+
+    private async Task LoadInitialCoreAsync(CancellationToken ct)
     {
         ct = WithLifetime(ct);
         var candidates = new List<string>();
