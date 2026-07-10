@@ -1,6 +1,7 @@
 using System.Reactive.Linq;
 using NSubstitute;
 using VelaShell.App.ViewModels;
+using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Tunnels;
 
@@ -253,6 +254,100 @@ public class TunnelPanelViewModelTests
     [DataRow(1048576, "1.0 MB")]
     [DataRow(1073741824, "1.0 GB")]
     public void TunnelItemViewModel_BytesTransferred_FormatsCorrectly(long bytes, string expected) => Assert.AreEqual(expected, TunnelItemViewModel.FormatBytes(bytes));
+
+    /// <summary>带持久化存储的面板(隧道配置持久化,重启后手动启动)。</summary>
+    private TunnelPanelViewModel CreateVmWithStore(IAppDataStore store)
+    {
+        var vm = new TunnelPanelViewModel(_tunnelService,
+            () => Task.FromResult<IReadOnlyList<SessionProfile>>([_server]),
+            (_, _) => Task.FromResult(_sessionId),
+            _ => true,
+            _ => Task.CompletedTask,
+            store);
+        vm.Servers.Add(_server);
+        return vm;
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task CreateTunnel_PersistsConfigsToStore()
+    {
+        IAppDataStore store = Substitute.For<IAppDataStore>();
+        TunnelPanelViewModel vm = CreateVmWithStore(store);
+        vm.SelectedServer = _server;
+        TunnelInfo tunnelInfo = CreateTunnelInfo();
+        _tunnelService.CreateLocalForwardAsync(_sessionId, Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>())
+                      .Returns(Task.FromResult(tunnelInfo));
+        vm.NewTunnelName = "test-tunnel";
+        vm.NewLocalHost = "localhost";
+        vm.NewLocalPort = 3306;
+        vm.ForwardToServerLoopback = false;
+        vm.NewRemoteHost = "db-server";
+        vm.NewRemotePort = 3306;
+        await vm.CreateTunnelCommand.Execute().FirstAsync();
+        await store.Received(1).UpsertAsync(
+            "tunnels",
+            _server.Id.ToString("D"),
+            Arg.Is<List<TunnelConfig>>(list => list.Count == 1 && list[0].Name == "test-tunnel"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task DeleteTunnel_PersistsEmptyList()
+    {
+        IAppDataStore store = Substitute.For<IAppDataStore>();
+        TunnelPanelViewModel vm = CreateVmWithStore(store);
+        vm.SelectedServer = _server;
+        TunnelInfo tunnelInfo = CreateTunnelInfo();
+        _tunnelService.CreateLocalForwardAsync(_sessionId, Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>())
+                      .Returns(Task.FromResult(tunnelInfo));
+        vm.NewTunnelName = "t";
+        vm.NewLocalHost = "localhost";
+        vm.NewLocalPort = 3306;
+        vm.ForwardToServerLoopback = false;
+        vm.NewRemoteHost = "db-server";
+        vm.NewRemotePort = 3306;
+        await vm.CreateTunnelCommand.Execute().FirstAsync();
+        await vm.DeleteTunnelCommand.Execute(tunnelInfo.Id).FirstAsync();
+        await store.Received(1).UpsertAsync(
+            "tunnels",
+            _server.Id.ToString("D"),
+            Arg.Is<List<TunnelConfig>>(list => list.Count == 0),
+            Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task SelectServer_RestoresPersistedTunnels_StoppedAndNotAutoStarted()
+    {
+        IAppDataStore store = Substitute.For<IAppDataStore>();
+        List<TunnelConfig> saved =
+        [
+            new()
+            {
+                Type = TunnelType.LocalForward,
+                Name = "restored",
+                LocalHost = "127.0.0.1",
+                LocalPort = 8080,
+                RemoteHost = "127.0.0.1",
+                RemotePort = 80
+            }
+        ];
+        store.GetAsync<List<TunnelConfig>>("tunnels", _server.Id.ToString("D"), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult<List<TunnelConfig>?>(saved));
+        TunnelPanelViewModel vm = CreateVmWithStore(store);
+        vm.SelectedServer = _server;
+
+        // 恢复为"已停止",等待用户手动启动;绝不自动建立转发。
+        Assert.AreEqual(1, vm.Tunnels.Count);
+        Assert.AreEqual("restored", vm.Tunnels[0].Name);
+        Assert.AreEqual(TunnelStatus.Stopped, vm.Tunnels[0].Status);
+        Assert.IsFalse(vm.Tunnels[0].IsActive);
+        await _tunnelService.DidNotReceive().CreateLocalForwardAsync(Arg.Any<Guid>(), Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>());
+        await _tunnelService.DidNotReceive().CreateRemoteForwardAsync(Arg.Any<Guid>(), Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>());
+        await _tunnelService.DidNotReceive().CreateDynamicForwardAsync(Arg.Any<Guid>(), Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>());
+    }
 
     [TestMethod]
     [TestCategory("TunnelUI")]

@@ -6,7 +6,7 @@ namespace VelaShell.Core.Data;
 public class JsonDataStore(ILogger<JsonDataStore>? logger = null)
 {
     private readonly SemaphoreSlim _dictionaryLock = new(1, 1);
-    private readonly Dictionary<string, SemaphoreSlim> _fileLocks = new();
+    private readonly Dictionary<string, SemaphoreSlim> _fileLocks = [];
 
     private readonly JsonSerializerOptions _options = new()
     {

@@ -48,8 +48,9 @@ public class MainWindowViewModel : ReactiveObject
     // ---- 会话日志(设置 → 常规 → 数据与存储) ----
 
     private readonly Dictionary<TerminalTabViewModel, SessionLogWriter>
-        _sessionLogs = new();
+        _sessionLogs = [];
 
+    private readonly IAppDataStore? _appDataStore;
     private readonly ISessionRepository? _sessionRepository;
     private readonly ISettingsService? _settingsService;
     private readonly ISftpService? _sftpService;
@@ -64,7 +65,7 @@ public class MainWindowViewModel : ReactiveObject
     private bool _latencyPolling;
     private int _latencyTick;
     private AppSettings? _latestSettings;
-    private Dictionary<Guid, string> _paletteGroupNames = new();
+    private Dictionary<Guid, string> _paletteGroupNames = [];
 
     // ---- 命令面板的全量会话(§12.3:面板作为中枢,收录全部已保存配置) ----
 
@@ -90,8 +91,10 @@ public class MainWindowViewModel : ReactiveObject
         ISessionMetricsService? metricsService = null,
         IRecentConnectionService? recentConnectionService = null,
         ISecurityAlertService? securityAlertService = null,
-        ISettingsPreviewService? settingsPreviewService = null)
+        ISettingsPreviewService? settingsPreviewService = null,
+        IAppDataStore? appDataStore = null)
     {
+        _appDataStore = appDataStore;
         _connectionWorkflowService = connectionWorkflowService;
         _sshConnectionService = sshConnectionService;
         _settingsService = settingsService;
@@ -592,7 +595,8 @@ public class MainWindowViewModel : ReactiveObject
                 servers,
                 ConnectTunnelHostAsync,
                 id => _sshConnectionService?.GetClient(id)?.IsConnected == true,
-                id => _connectionWorkflowService?.DisconnectAsync(id) ?? Task.CompletedTask);
+                id => _connectionWorkflowService?.DisconnectAsync(id) ?? Task.CompletedTask,
+                _appDataStore);
             panel.CloseRequested += (_, _) => IsTunnelPanelOpen = false;
             TunnelPanel = panel;
         }
@@ -1428,12 +1432,12 @@ public class MainWindowViewModel : ReactiveObject
         // Match by type name so VelaShell.App need not reference SSH.NET directly.
         return ex.GetType().Name switch
         {
-            "SshAuthenticationException"   => $"认证失败：{target} 的用户名、密码或密钥不正确。",
-            "SshConnectionException"       => $"连接失败：无法与 {target} 建立 SSH 会话。",
-            "SocketException"              => $"网络错误：无法连接到 {target}，请检查主机与端口。",
+            "SshAuthenticationException" => $"认证失败：{target} 的用户名、密码或密钥不正确。",
+            "SshConnectionException" => $"连接失败：无法与 {target} 建立 SSH 会话。",
+            "SocketException" => $"网络错误：无法连接到 {target}，请检查主机与端口。",
             "SshOperationTimeoutException" => $"连接超时：{target} 未响应。",
-            "ProxyException"               => $"代理错误：无法通过代理连接到 {target}。",
-            _                              => $"连接 {target} 失败：{ex.Message}"
+            "ProxyException" => $"代理错误：无法通过代理连接到 {target}。",
+            _ => $"连接 {target} 失败：{ex.Message}"
         };
     }
 

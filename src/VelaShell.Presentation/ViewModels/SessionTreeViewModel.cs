@@ -10,13 +10,13 @@ namespace VelaShell.Presentation.ViewModels;
 public sealed class SessionTreeViewModel : ReactiveObject
 {
     private readonly ISessionRepository _repository;
-    private readonly Dictionary<Guid, SessionProfile> _sessionCache = new();
+    private readonly Dictionary<Guid, SessionProfile> _sessionCache = [];
 
     /// <summary>
     /// 各配置最近一次上报的连接状态;重建树(LoadTreeAsync)后重放,状态圆点
     /// 与「活跃/连接中」标签才不会因刷新而回到断开态。
     /// </summary>
-    private readonly Dictionary<Guid, SessionStatus> _statusCache = new();
+    private readonly Dictionary<Guid, SessionStatus> _statusCache = [];
 
     private bool _hasNoSessions;
 
@@ -239,7 +239,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
             PrivateKeyPath = source.PrivateKeyPath,
             PrivateKeyPassphrase = source.PrivateKeyPassphrase,
             GroupId = source.GroupId,
-            Tags = [..source.Tags],
+            Tags = [.. source.Tags],
             JumpHostProfileId = source.JumpHostProfileId
         };
         await _repository.SaveSessionAsync(copy);

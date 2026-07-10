@@ -28,7 +28,7 @@ public static class SecurePasswordBox
 {
     private const char Mask = '•';
 
-    private static readonly ConditionalWeakTable<TextBox, BoxState> States = new();
+    private static readonly ConditionalWeakTable<TextBox, BoxState> States = [];
 
     public static readonly AttachedProperty<bool> EnabledProperty =
         AvaloniaProperty.RegisterAttached<TextBox, bool>("Enabled", typeof(SecurePasswordBox));
@@ -136,34 +136,34 @@ public static class SecurePasswordBox
         switch (e.Key)
         {
             case Key.Back:
-            {
-                e.Handled = true;
-                (int start, int len) = Selection(tb);
-                if (len > 0)
                 {
-                    ApplyEdit(tb, start, len, null, start);
+                    e.Handled = true;
+                    (int start, int len) = Selection(tb);
+                    if (len > 0)
+                    {
+                        ApplyEdit(tb, start, len, null, start);
+                    }
+                    else if (start > 0)
+                    {
+                        ApplyEdit(tb, start - 1, 1, null, start - 1);
+                    }
+                    return;
                 }
-                else if (start > 0)
-                {
-                    ApplyEdit(tb, start - 1, 1, null, start - 1);
-                }
-                return;
-            }
             case Key.Delete:
-            {
-                e.Handled = true;
-                (int start, int len) = Selection(tb);
-                int total = GetPassword(tb)?.Length ?? 0;
-                if (len > 0)
                 {
-                    ApplyEdit(tb, start, len, null, start);
+                    e.Handled = true;
+                    (int start, int len) = Selection(tb);
+                    int total = GetPassword(tb)?.Length ?? 0;
+                    if (len > 0)
+                    {
+                        ApplyEdit(tb, start, len, null, start);
+                    }
+                    else if (start < total)
+                    {
+                        ApplyEdit(tb, start, 1, null, start);
+                    }
+                    return;
                 }
-                else if (start < total)
-                {
-                    ApplyEdit(tb, start, 1, null, start);
-                }
-                return;
-            }
         }
     }
 

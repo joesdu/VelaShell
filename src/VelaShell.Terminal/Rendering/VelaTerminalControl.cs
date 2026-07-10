@@ -35,12 +35,12 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
 
     private static readonly Rgba SearchMatchBg = new(0x59, 0xFD, 0xCB, 0x6E);   // amber, ~35%
     private static readonly Rgba SearchCurrentBg = new(0x73, 0x00, 0xD4, 0xAA); // accent, ~45%
-    private readonly Dictionary<uint, ImmutableSolidColorBrush> _brushCache = new();
+    private readonly Dictionary<uint, ImmutableSolidColorBrush> _brushCache = [];
 
     // Cache of shaped, colored glyphs keyed by (rune, combining, foreground, style). Terminal
     // output draws from a tiny alphabet, so hit rate is ~100% and per-frame text shaping —
     // the dominant render cost — effectively disappears. Cleared when the font/size changes.
-    private readonly Dictionary<GlyphKey, FormattedText> _glyphCache = new();
+    private readonly Dictionary<GlyphKey, FormattedText> _glyphCache = [];
     private readonly List<char> _runChars = [];
     private readonly List<GlyphInfo> _runGlyphs = [];
     private readonly SemanticMatcher _semanticMatcher = new();
@@ -49,7 +49,7 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
     // for text the remote program left in the default color, so plain logs/MOTD get highlighted
     // without ever clobbering explicit SGR colors (ls --color, git, etc.). Regex results are cached
     // by line text since the visible lines are re-scanned every frame (cursor blink, output).
-    private readonly Dictionary<string, IReadOnlyList<SemanticSpan>> _semanticSpanCache = new();
+    private readonly Dictionary<string, IReadOnlyList<SemanticSpan>> _semanticSpanCache = [];
 
     // ---- Glyph-run batching -------------------------------------------------
     // Each visible line is drawn as a handful of GlyphRuns — one per contiguous run of cells
@@ -416,7 +416,7 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
             palette.CursorColor = cur;
         }
         if (o.Selection is { } sel)
-            // 用户给的是不带透明度的选区色;按既有方案以 ~35% 透明叠加,避免盖住文字。
+        // 用户给的是不带透明度的选区色;按既有方案以 ~35% 透明叠加,避免盖住文字。
         {
             palette.SelectionBackground = new(0x59, sel.R, sel.G, sel.B);
         }
@@ -1045,14 +1045,14 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
     private static Rgba SemanticColor(TerminalPalette palette, SemanticKind kind) =>
         kind switch
         {
-            SemanticKind.Error     => palette[9],  // bright red
-            SemanticKind.Warning   => palette[11], // bright yellow
-            SemanticKind.Success   => palette[10], // bright green
-            SemanticKind.Url       => palette[12], // bright blue
+            SemanticKind.Error => palette[9],  // bright red
+            SemanticKind.Warning => palette[11], // bright yellow
+            SemanticKind.Success => palette[10], // bright green
+            SemanticKind.Url => palette[12], // bright blue
             SemanticKind.IpAddress => palette[14], // bright cyan
-            SemanticKind.Option    => palette[13], // bright magenta
-            SemanticKind.Number    => palette[6],  // cyan
-            _                      => palette.DefaultForeground
+            SemanticKind.Option => palette[13], // bright magenta
+            SemanticKind.Number => palette[6],  // cyan
+            _ => palette.DefaultForeground
         };
 
     private void RenderCursor(DrawingContext context, TerminalScreen screen, TerminalPalette palette, int topAbsolute)
@@ -1517,23 +1517,23 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
         switch (_selecting)
         {
             case false when _scrollOffset == 0 && tracking is MouseTracking.ButtonEvent or MouseTracking.AnyEvent:
-            {
-                bool held = _mouseButtonDown is not null;
-                if (tracking != MouseTracking.AnyEvent && !held)
                 {
+                    bool held = _mouseButtonDown is not null;
+                    if (tracking != MouseTracking.AnyEvent && !held)
+                    {
+                        return;
+                    }
+                    Point position = e.GetPosition(this);
+                    (int Col, int Row) cell = ScreenCell(position);
+                    if (cell == _lastMouseReportCell)
+                    {
+                        return;
+                    }
+                    _lastMouseReportCell = cell;
+                    TerminalMouseButton button = _mouseButtonDown ?? TerminalMouseButton.None;
+                    SendMouse(TerminalMouseEventType.Move, button, position, e.KeyModifiers);
                     return;
                 }
-                Point position = e.GetPosition(this);
-                (int Col, int Row) cell = ScreenCell(position);
-                if (cell == _lastMouseReportCell)
-                {
-                    return;
-                }
-                _lastMouseReportCell = cell;
-                TerminalMouseButton button = _mouseButtonDown ?? TerminalMouseButton.None;
-                SendMouse(TerminalMouseEventType.Move, button, position, e.KeyModifiers);
-                return;
-            }
             case true:
                 _selectionCaret = PointToCell(e.GetPosition(this));
                 InvalidateVisual();

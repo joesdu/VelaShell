@@ -8,7 +8,7 @@ namespace VelaShell.Presentation.ViewModels;
 
 public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, IDisposable
 {
-    private readonly CompositeDisposable _disposables = new();
+    private readonly CompositeDisposable _disposables = [];
 
     private DateTimeOffset _uptimeStart;
 
@@ -210,7 +210,7 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
             >= gb => $"{bytesPerSec / gb:F1} GB/s",
             >= mb => $"{bytesPerSec / mb:F1} MB/s",
             >= kb => $"{bytesPerSec / kb:F1} KB/s",
-            _     => $"{bytesPerSec:F0} B/s"
+            _ => $"{bytesPerSec:F0} B/s"
         };
     }
 

@@ -247,7 +247,7 @@
 
         <Grid ColumnDefinitions="*,8,120" RowDefinitions="Auto,4,Auto">
           <TextBlock Grid.Row="0" Grid.Column="0" Classes="form-label" Text="别名(可选)" />
-          <TextBox   Grid.Row="2" Grid.Column="0" Text="{Binding NewTunnelName}" PlaceholderText="MySQL 转发" />
+          <TextBox   Grid.Row="2" Grid.Column="0" Text="{Binding NewTunnelName}" PlaceholderText="MongoDB 转发" />
           <TextBlock Grid.Row="0" Grid.Column="2" Classes="form-label" Text="类型" />
           <ComboBox  Grid.Row="2" Grid.Column="2"
                      MinHeight="26" FontSize="11"

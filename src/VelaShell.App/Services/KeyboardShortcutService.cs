@@ -13,7 +13,7 @@ public class KeyboardShortcutService : IKeyboardShortcutService
     public KeyboardShortcutService(bool isMacOS)
     {
         IsMacOS = isMacOS;
-        _mappings = new();
+        _mappings = [];
         RegisterMappings();
     }
 

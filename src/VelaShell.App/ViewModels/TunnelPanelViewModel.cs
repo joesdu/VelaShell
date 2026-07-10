@@ -4,6 +4,7 @@ using System.Reactive;
 using Avalonia;
 using Avalonia.Threading;
 using ReactiveUI;
+using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Tunnels;
 
@@ -16,15 +17,23 @@ namespace VelaShell.App.ViewModels;
 /// </summary>
 public class TunnelPanelViewModel : ReactiveObject, IDisposable
 {
+    /// <summary>隧道配置持久化集合:每台服务器一份文档(id = profileId),内容为配置列表。</summary>
+    private const string TunnelCollection = "tunnels";
+
     private readonly Func<SessionProfile, CancellationToken, Task<Guid>>? _backgroundConnector;
 
+    private readonly IAppDataStore? _dataStore;
+
+    /// <summary>已从存储恢复过配置的服务器(每次运行每台只恢复一次)。</summary>
+    private readonly HashSet<Guid> _restoredProfiles = [];
+
     /// <summary>面板持有的后台隧道连接:profileId → sessionId。</summary>
-    private readonly Dictionary<Guid, Guid> _hostSessions = new();
+    private readonly Dictionary<Guid, Guid> _hostSessions = [];
 
     private readonly Func<Guid, bool>? _isSessionAlive;
 
     /// <summary>每台服务器的隧道条目缓存:切换服务器/后台连接掉线后配置仍在,可一键重启。</summary>
-    private readonly Dictionary<Guid, ObservableCollection<TunnelItemViewModel>> _itemsByProfile = new();
+    private readonly Dictionary<Guid, ObservableCollection<TunnelItemViewModel>> _itemsByProfile = [];
 
     private readonly DispatcherTimer? _liveTimer;
     private readonly Func<Task<IReadOnlyList<SessionProfile>>>? _savedProfilesProvider;
@@ -41,13 +50,15 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         Func<Task<IReadOnlyList<SessionProfile>>>? savedProfilesProvider = null,
         Func<SessionProfile, CancellationToken, Task<Guid>>? backgroundConnector = null,
         Func<Guid, bool>? isSessionAlive = null,
-        Func<Guid, Task>? sessionDisconnector = null)
+        Func<Guid, Task>? sessionDisconnector = null,
+        IAppDataStore? dataStore = null)
     {
         _tunnelService = tunnelService ?? throw new ArgumentNullException(nameof(tunnelService));
         _savedProfilesProvider = savedProfilesProvider;
         _backgroundConnector = backgroundConnector;
         _isSessionAlive = isSessionAlive;
         _sessionDisconnector = sessionDisconnector;
+        _dataStore = dataStore;
         Servers = [];
         _tunnels = [];
         IObservable<bool> canCreate = this.WhenAnyValue(vm => vm.SelectedServer,
@@ -146,9 +157,9 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         get =>
             NewTunnelType switch
             {
-                TunnelType.RemoteForward  => 1,
+                TunnelType.RemoteForward => 1,
                 TunnelType.DynamicForward => 2,
-                _                         => 0
+                _ => 0
             };
         set
         {
@@ -410,6 +421,9 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
                         // 找不回历史隧道不影响面板可用性。
                     }
                 }
+
+                // 恢复上次运行持久化的隧道配置(以"已停止"状态展示,由用户手动启动)。
+                _ = RestorePersistedTunnelsAsync(server.Id, items);
             }
             Tunnels = items;
         }
@@ -444,6 +458,76 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         RefreshServerStatus();
     }
 
+    // ---- 配置持久化(仅配置,不含运行状态;重启后恢复为"已停止",由用户手动启动) ----
+
+    /// <summary>配置身份键:恢复时用来跳过面板里已存在的同配置条目。</summary>
+    private static string ConfigKey(TunnelConfig config) =>
+        $"{config.Type}|{config.LocalHost}|{config.LocalPort}|{config.RemoteHost}|{config.RemotePort}|{config.Name}";
+
+    /// <summary>从存储恢复该服务器的隧道配置(每次运行每台只执行一次);失败不影响面板。</summary>
+    private async Task RestorePersistedTunnelsAsync(Guid profileId, ObservableCollection<TunnelItemViewModel> items)
+    {
+        if (_dataStore is null || !_restoredProfiles.Add(profileId))
+        {
+            return;
+        }
+        try
+        {
+            List<TunnelConfig>? saved = await _dataStore
+                                              .GetAsync<List<TunnelConfig>>(TunnelCollection, profileId.ToString("D"))
+                                              .ConfigureAwait(true);
+            if (saved is not { Count: > 0 })
+            {
+                return;
+            }
+            HashSet<string> existing = [.. items.Select(t => ConfigKey(t.Config))];
+            foreach (TunnelConfig config in saved)
+            {
+                if (!existing.Add(ConfigKey(config)))
+                {
+                    continue;
+                }
+                items.Add(new(new TunnelInfo
+                {
+                    Id = Guid.NewGuid(),
+                    Config = config,
+                    Status = TunnelStatus.Stopped,
+                    SessionId = Guid.Empty,
+                    CreatedAt = DateTime.UtcNow,
+                    BytesTransferred = 0
+                }));
+            }
+        }
+        catch
+        {
+            // 恢复失败(存储损坏/旧格式)不影响面板可用性,后续保存会覆盖为新格式。
+        }
+    }
+
+    /// <summary>把该服务器当前的隧道配置快照写入存储;在创建/编辑/删除后调用,失败不打断操作。</summary>
+    private void PersistTunnels(Guid profileId)
+    {
+        if (_dataStore is null || !_itemsByProfile.TryGetValue(profileId, out ObservableCollection<TunnelItemViewModel>? items))
+        {
+            return;
+        }
+        // 先在调用线程(UI)拍快照再落盘,避免后台线程枚举 ObservableCollection。
+        List<TunnelConfig> configs = items.Select(t => t.Config).ToList();
+        _ = SaveAsync();
+
+        async Task SaveAsync()
+        {
+            try
+            {
+                await _dataStore.UpsertAsync(TunnelCollection, profileId.ToString("D"), configs).ConfigureAwait(false);
+            }
+            catch
+            {
+                // 落盘失败不影响运行中的隧道;下次变更会再次尝试。
+            }
+        }
+    }
+
     // ---- 表单/条目操作 ----
 
     private void BeginEdit(Guid tunnelId)
@@ -459,9 +543,9 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         NewLocalPort = (int)item.Config.LocalPort;
         NewTunnelTypeIndex = item.TunnelType switch
         {
-            TunnelType.RemoteForward  => 1,
+            TunnelType.RemoteForward => 1,
             TunnelType.DynamicForward => 2,
-            _                         => 0
+            _ => 0
         };
         ForwardToServerLoopback = item.TunnelType != TunnelType.DynamicForward && item.Config.RemoteHost is "" or "127.0.0.1" or "localhost";
         if (!ForwardToServerLoopback)
@@ -517,6 +601,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
                 TunnelInfo result = await CreateOnServiceAsync(sessionId, config, ct).ConfigureAwait(true);
                 Tunnels.Add(new(result));
             }
+            PersistTunnels(server.Id);
             ResetForm();
         }
         catch (Exception ex)
@@ -560,9 +645,9 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     private Task<TunnelInfo> CreateOnServiceAsync(Guid sessionId, TunnelConfig config, CancellationToken ct) =>
         config.Type switch
         {
-            TunnelType.RemoteForward  => _tunnelService.CreateRemoteForwardAsync(sessionId, config, ct),
+            TunnelType.RemoteForward => _tunnelService.CreateRemoteForwardAsync(sessionId, config, ct),
             TunnelType.DynamicForward => _tunnelService.CreateDynamicForwardAsync(sessionId, config, ct),
-            _                         => _tunnelService.CreateLocalForwardAsync(sessionId, config, ct)
+            _ => _tunnelService.CreateLocalForwardAsync(sessionId, config, ct)
         };
 
     private async Task StopTunnelAsync(Guid tunnelId, CancellationToken ct)
@@ -630,6 +715,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
             }
             if (SelectedServer is { } server)
             {
+                PersistTunnels(server.Id);
                 await ReleaseHostIfUnusedAsync(server.Id).ConfigureAwait(true);
             }
         }
@@ -647,7 +733,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
             InvalidOperationException when ex.Message.Contains("not connected", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase)
                 => "与服务器的连接不可用,请重试(将自动重连)。",
             SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse } => $"本地端口 {NewLocalPort} 已被占用,请换一个端口。",
-            _                                                                    => ex.Message
+            _ => ex.Message
         };
 
     private void ResetForm()

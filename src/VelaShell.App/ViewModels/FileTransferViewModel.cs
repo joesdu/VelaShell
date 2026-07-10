@@ -10,7 +10,8 @@ namespace VelaShell.App.ViewModels;
 
 public class FileTransferViewModel : ReactiveObject
 {
-    private readonly ITransferManager _transferManager;
+    // 可空:无参构造的宿主(单元测试/无 SFTP 服务的场景)不提供传输管理器。
+    private readonly ITransferManager? _transferManager;
     private IDisposable? _autoHide;
 
     // Current batch (a folder/multi-file download or upload): the number of files still to finish
@@ -27,7 +28,7 @@ public class FileTransferViewModel : ReactiveObject
 
     public FileTransferViewModel(ITransferManager? transferManager)
     {
-        _transferManager = transferManager ?? throw new ArgumentNullException(nameof(transferManager));
+        _transferManager = transferManager;
         Transfers = [];
         Transfers.CollectionChanged += OnTransfersChanged;
         CancelTransferCommand = ReactiveCommand.Create<Guid>(CancelTransfer);
@@ -316,7 +317,7 @@ public class FileTransferViewModel : ReactiveObject
             return;
         }
         item.Status = TransferStatus.Cancelled;
-        _transferManager.CancelTransferAsync(transferId);
+        _transferManager?.CancelTransferAsync(transferId);
     }
 
     private void RetryTransfer(Guid transferId)
