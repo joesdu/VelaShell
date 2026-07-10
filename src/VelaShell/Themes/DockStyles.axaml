@@ -65,14 +65,25 @@
              pointer; leaving hides it (§4B.4/§11 — the spec anchors hover on the tab name). -->
         <Setter Property="HeaderTemplate">
             <DataTemplate x:DataType="docking:TerminalDocument">
-                <TextBlock Text="{Binding Title}"
-                           VerticalAlignment="Center"
-                           ToolTip.ShowDelay="400"
-                           ToolTip.Placement="Pointer">
-                    <ToolTip.Tip>
-                        <views:ResourceMonitorView DataContext="{Binding Terminal.ResourceMonitor}" />
-                    </ToolTip.Tip>
-                </TextBlock>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <!-- 连接标识色条:与 SFTP 面板头部同色联动(ConnectionAccent,按配置稳定取色),
+                         多标签时靠余光即可确认下方文件面板属于哪台服务器。本地终端为透明。 -->
+                    <Border Width="3" Height="12" CornerRadius="1.5"
+                            VerticalAlignment="Center"
+                            Background="{Binding Terminal.ConnectionAccentBrush}">
+                        <Border.RenderTransform>
+                            <TranslateTransform Y="-1" />
+                        </Border.RenderTransform>
+                    </Border>
+                    <TextBlock Text="{Binding Title}"
+                               VerticalAlignment="Center"
+                               ToolTip.ShowDelay="400"
+                               ToolTip.Placement="Pointer">
+                        <ToolTip.Tip>
+                            <views:ResourceMonitorView DataContext="{Binding Terminal.ResourceMonitor}" />
+                        </ToolTip.Tip>
+                    </TextBlock>
+                </StackPanel>
             </DataTemplate>
         </Setter>
         <!-- Close x: 11px lucide x, sized to sit quietly beside the 11px tab title. -->

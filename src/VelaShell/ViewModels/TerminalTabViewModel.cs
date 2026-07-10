@@ -67,6 +67,13 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     public SessionProfile? Profile { get; set; }
 
     /// <summary>
+    /// 该连接的稳定标识色(标签页色条与 SFTP 面板同色联动,防多标签误操作)。
+    /// 本地终端/无配置标签返回透明。Profile 在标签创建时就已赋值,绑定一次性读取即可。
+    /// </summary>
+    public Avalonia.Media.IBrush ConnectionAccentBrush =>
+        Profile is { } profile ? ConnectionAccent.BrushFor(profile.Id) : Avalonia.Media.Brushes.Transparent;
+
+    /// <summary>
     /// 本地终端标签(§12 P1-1)对应的 shell;null = SSH 会话。重开(Enter/Ctrl+R)
     /// 用它重新拉起本地进程。
     /// </summary>

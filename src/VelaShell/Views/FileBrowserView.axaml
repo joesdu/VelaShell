@@ -74,6 +74,23 @@
         <Grid ColumnDefinitions="Auto,*,Auto">
 
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <!-- 连接身份徽章:标识色条(与标签页色条同色)+ 服务器显示名。多标签时一眼
+                 确认面板归属,防止误操作别的服务器上的文件。占位面板(未绑定会话)隐藏。 -->
+            <Border Width="3" Height="16" CornerRadius="1.5"
+                    VerticalAlignment="Center"
+                    Background="{Binding AccentBrush}"
+                    IsVisible="{Binding ServerDisplayName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TextBlock Text="{Binding ServerDisplayName}"
+                       Foreground="{DynamicResource VelaTextPrimary}"
+                       FontFamily="{DynamicResource VelaTerminalFont}"
+                       FontSize="11" FontWeight="SemiBold"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding ServerDisplayName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TextBlock Text="·"
+                       Foreground="{DynamicResource VelaTextMuted}"
+                       FontFamily="{DynamicResource VelaTerminalFont}"
+                       FontSize="11" VerticalAlignment="Center"
+                       IsVisible="{Binding ServerDisplayName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             <pc:LucideIcon Width="14" Height="14"
                            Data="{StaticResource Icon.folder-open}"
                            Foreground="{DynamicResource VelaAccent}"

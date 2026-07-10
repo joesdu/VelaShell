@@ -61,6 +61,13 @@ public class MainWindowViewModel : ReactiveObject
 
     // SFTP/File management views derived from design
     private FileBrowserViewModel _fileBrowser;
+
+    /// <summary>
+    /// 按会话缓存的 SFTP 面板实例:切换标签复用(保留路径/列表/排序/列宽,免重复列目录),
+    /// 标签关闭或连接断开时经 <see cref="EvictFileBrowser" /> 驱逐。
+    /// </summary>
+    private readonly Dictionary<Guid, FileBrowserViewModel> _fileBrowserCache = [];
+
     private FileTransferViewModel _fileTransfer;
 
     private bool _latencyPolling;
@@ -449,6 +456,9 @@ public class MainWindowViewModel : ReactiveObject
     /// <summary>
     /// Points the SFTP file browser at the active tab's session (#22). Each connected tab gets
     /// a browser rooted at its own session; without a connected session the panel shows empty.
+    /// 面板实例按会话缓存:切回已看过的标签直接复用(旧列表秒显 + 后台静默刷新),
+    /// 保留浏览路径/排序/列宽,不再每次切换都重建对象、重新列目录(用户优化需求)。
+    /// 缓存的驱逐点:标签关闭与连接断开(<see cref="EvictFileBrowser" />)。
     /// </summary>
     private void RebindFileBrowser()
     {
@@ -469,19 +479,59 @@ public class MainWindowViewModel : ReactiveObject
         // Carry the open/closed state across the rebind so switching to (or connecting) a tab
         // never silently hides a panel the user had opened.
         bool wasVisible = FileBrowser.IsVisible;
-        FileBrowser.Detach();
-        FileBrowser = new(_sftpService, tab.SessionId)
+        if (_fileBrowserCache.TryGetValue(tab.SessionId, out FileBrowserViewModel? cached))
+        {
+            cached.IsVisible = wasVisible;
+            FileBrowser = cached;
+            if (wasVisible)
+            {
+                _ = cached.RefreshSilentlyAsync();
+            }
+            return;
+        }
+
+        string serverName = tab.Profile is { } profile
+                                ? string.IsNullOrWhiteSpace(profile.Name) ? profile.Host : profile.Name
+                                : tab.Title;
+        var browser = new FileBrowserViewModel(_sftpService, tab.SessionId)
         {
             TransferSink = FileTransfer,
             IsVisible = wasVisible,
             GetDefaultEditorPath = QueryDefaultEditorPathAsync,
             TransferOptions = _latestSettings?.Transfer ?? new TransferOptions(),
-            ShowHiddenFiles = _latestSettings?.Transfer.ShowHiddenFiles ?? false
+            ShowHiddenFiles = _latestSettings?.Transfer.ShowHiddenFiles ?? false,
+            ServerDisplayName = serverName,
+            AccentBrush = tab.Profile is { } p ? ConnectionAccent.BrushFor(p.Id) : null
         };
+        _fileBrowserCache[tab.SessionId] = browser;
+        FileBrowser = browser;
         if (wasVisible)
         {
-            FileBrowser.RefreshCommand.Execute().Subscribe(_ => { }, _ => { });
+            // 全新面板首次展示:走初始加载(定位到登录家目录),而不是刷新根目录。
+            FileBrowser.LoadInitialCommand.Execute().Subscribe(_ => { }, _ => { });
         }
+    }
+
+    /// <summary>
+    /// 驱逐一个会话的缓存面板(标签关闭/连接断开):取消其在飞操作并移出缓存;
+    /// 若当前面板正指向该会话,换成隐藏的空占位。
+    /// </summary>
+    private void EvictFileBrowser(Guid sessionId)
+    {
+        if (sessionId == Guid.Empty)
+        {
+            return;
+        }
+        if (_fileBrowserCache.Remove(sessionId, out FileBrowserViewModel? cached))
+        {
+            cached.Detach();
+        }
+        if (FileBrowser.SessionId != sessionId)
+        {
+            return;
+        }
+        FileBrowser.Detach();
+        FileBrowser = new(_sftpService, Guid.Empty) { TransferSink = FileTransfer };
     }
 
     /// <summary>SFTP「使用默认编辑器打开」读取的编辑器命令(设置 → 文件传输 → 默认编辑器)。</summary>
@@ -508,7 +558,20 @@ public class MainWindowViewModel : ReactiveObject
         FileBrowser.IsVisible = !FileBrowser.IsVisible;
         if (FileBrowser.IsVisible && FileBrowser.SessionId != Guid.Empty)
         {
-            FileBrowser.RefreshCommand.Execute().Subscribe(_ => { }, _ => { });
+            RefreshOrLoadFileBrowser();
+        }
+    }
+
+    /// <summary>已加载过的面板静默刷新(保留旧列表秒显),从未加载过的走完整初始加载。</summary>
+    private void RefreshOrLoadFileBrowser()
+    {
+        if (FileBrowser.HasLoaded)
+        {
+            _ = FileBrowser.RefreshSilentlyAsync();
+        }
+        else
+        {
+            FileBrowser.LoadInitialCommand.Execute().Subscribe(_ => { }, _ => { });
         }
     }
 
@@ -525,7 +588,7 @@ public class MainWindowViewModel : ReactiveObject
             return;
         }
         FileBrowser.IsVisible = true;
-        FileBrowser.LoadInitialCommand.Execute().Subscribe(_ => { }, _ => { });
+        RefreshOrLoadFileBrowser();
     }
 
     /// <summary>
@@ -1217,6 +1280,10 @@ public class MainWindowViewModel : ReactiveObject
     {
         StopSessionLogging(tab);
 
+        // 会话断开后 SFTP 通道随之失效:驱逐缓存的文件面板并释放 SFTP 客户端。
+        // 重连会拿到新的 SessionId,面板届时按新会话重建。
+        CloseSftpForTab(tab);
+
         // 不论主动断开还是远端掉线,都把底层 SSH 客户端一并拆掉(用户反馈 #2);
         // 重连会新建会话,不受影响。
         TeardownSshSession(tab.SessionId);
@@ -1512,7 +1579,12 @@ public class MainWindowViewModel : ReactiveObject
             ApplyLiveSettingsToOpenTabs(settings);
 
             // 已打开的文件浏览器同步最新的传输选项(冲突策略/并发/带宽等)。
+            // 面板按会话缓存后,当前实例与全部缓存实例都要广播到。
             FileBrowser.TransferOptions = settings.Transfer;
+            foreach (FileBrowserViewModel browser in _fileBrowserCache.Values)
+            {
+                browser.TransferOptions = settings.Transfer;
+            }
             return Disposable.Empty;
         });
     }
@@ -1627,15 +1699,10 @@ public class MainWindowViewModel : ReactiveObject
         }
         Guid closedSessionId = tab.SessionId;
 
-        // The active-tab change from closing may have already rebound the browser to another
-        // session; only reset when it still points at the one we just closed. Detach BEFORE
-        // tearing the SFTP channel down so an in-flight listing is cancelled rather than
-        // racing the client disposal (SSH.NET NREs from inside ListDirectory otherwise).
-        if (FileBrowser.SessionId == closedSessionId)
-        {
-            FileBrowser.Detach();
-            FileBrowser = new(_sftpService, Guid.Empty);
-        }
+        // Evict BEFORE tearing the SFTP channel down so an in-flight listing is cancelled
+        // rather than racing the client disposal (SSH.NET NREs from inside ListDirectory
+        // otherwise).
+        EvictFileBrowser(closedSessionId);
         _ = _sftpService.CloseSessionAsync(closedSessionId);
     }
 }

@@ -82,6 +82,50 @@ public class FileBrowserViewModel : ReactiveObject
     public Guid SessionId { get; }
 
     /// <summary>
+    /// 面板头部身份徽章显示的服务器名(配置显示名,未配置时用主机地址);
+    /// 空串 = 未绑定会话的占位面板,徽章隐藏。
+    /// </summary>
+    public string ServerDisplayName { get; init; } = string.Empty;
+
+    /// <summary>该连接的稳定标识色(与标签页色条同色,见 ConnectionAccent)。</summary>
+    public Avalonia.Media.IBrush? AccentBrush { get; init; }
+
+    /// <summary>
+    /// 是否已成功加载过至少一次目录列表。宿主用它区分"切回缓存面板 → 静默刷新"
+    /// 与"首次展示 → 完整初始加载"。
+    /// </summary>
+    public bool HasLoaded { get; private set; }
+
+    /// <summary>
+    /// 静默刷新当前目录:不弹加载遮罩、失败时保留现有列表。用于切回已缓存的面板时
+    /// 后台更新数据——旧列表先显示(秒切),新列表到达后原地替换。
+    /// </summary>
+    public async Task RefreshSilentlyAsync()
+    {
+        if (_sftpService is null || _sessionId == Guid.Empty)
+        {
+            return;
+        }
+        try
+        {
+            List<RemoteFileInfo> files = await _sftpService.ListDirectoryAsync(_sessionId, CurrentPath, _lifetime.Token);
+            _allFiles.Clear();
+            _allFiles.AddRange(files.Select(f => new RemoteFileInfoViewModel(f)));
+            RebuildVisibleFiles();
+            ErrorMessage = null;
+        }
+        catch (OperationCanceledException)
+        {
+            // 面板已被驱逐 —— 静默退出。
+        }
+        catch
+        {
+            // 静默刷新失败(网络抖动/目录被删)不打扰用户,保留手头的旧列表;
+            // 用户显式操作(刷新按钮/导航)仍会正常报错。
+        }
+    }
+
+    /// <summary>
     /// Called by the host when this instance is being replaced (tab closed / panel rebound):
     /// cancels in-flight SFTP operations so they don't race the SFTP channel teardown.
     /// </summary>
@@ -104,6 +148,10 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     private CancellationToken WithLifetime(CancellationToken ct) =>
         ct.CanBeCanceled ? CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token).Token : _lifetime.Token;
+
+    /// <summary>危险操作确认文案加服务器名前缀,多标签下防止删错服务器上的文件。</summary>
+    private string WithServerTag(string message) =>
+        string.IsNullOrEmpty(ServerDisplayName) ? message : $"[{ServerDisplayName}] {message}";
 
     public ObservableCollection<RemoteFileInfoViewModel> Files { get; }
 
@@ -404,6 +452,7 @@ public class FileBrowserViewModel : ReactiveObject
             _allFiles.Clear();
             _allFiles.AddRange(files.Select(f => new RemoteFileInfoViewModel(f)));
             RebuildVisibleFiles();
+            HasLoaded = true;
         }
         catch (OperationCanceledException)
         {
@@ -1376,7 +1425,7 @@ public class FileBrowserViewModel : ReactiveObject
         if (ConfirmDelete is not null)
         {
             string template = file.IsDirectory ? Strings.ConfirmDeleteFolder : Strings.ConfirmDeleteFile;
-            bool ok = await ConfirmDelete(string.Format(template, file.Name));
+            bool ok = await ConfirmDelete(WithServerTag(string.Format(template, file.Name)));
             if (!ok)
             {
                 return;
@@ -1394,9 +1443,9 @@ public class FileBrowserViewModel : ReactiveObject
         }
         if (ConfirmDelete is not null)
         {
-            bool ok = await ConfirmDelete(targets.Count == 1
+            bool ok = await ConfirmDelete(WithServerTag(targets.Count == 1
                                               ? string.Format(targets[0].IsDirectory ? Strings.ConfirmDeleteFolder : Strings.ConfirmDeleteFile, targets[0].Name)
-                                              : string.Format(Strings.ConfirmDeleteMultiple, targets.Count));
+                                              : string.Format(Strings.ConfirmDeleteMultiple, targets.Count)));
             if (!ok)
             {
                 return;
