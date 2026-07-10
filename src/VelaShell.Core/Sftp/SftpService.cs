@@ -226,8 +226,16 @@ public class SftpService : ISftpService
         var client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
         await Task.Run(() =>
         {
-            if (!client.Exists(remotePath))
+            // 直接创建而非先 Exists 探测:SSH.NET 的 Exists 对不存在的路径以内部异常实现,
+            // 上传新文件夹树时会逐目录刷 SftpPathNotFoundException 并各多一次网络往返。
+            // 创建失败且目录确实已存在 → 幂等成功;其余失败(权限/父目录缺失)照常抛出。
+            try
+            {
                 client.CreateDirectory(remotePath);
+            }
+            catch (SshException) when (client.Exists(remotePath))
+            {
+            }
         }, cancellationToken).ConfigureAwait(false);
     }
 

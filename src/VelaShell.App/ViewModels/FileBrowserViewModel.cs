@@ -837,12 +837,16 @@ public class FileBrowserViewModel : ReactiveObject
 
         // 冲突处理(设置 → 文件传输 → 文件已存在时):下载对本地同名文件、上传对远端
         // 同名文件,均按策略覆盖/跳过/重命名/逐个询问。
+        // 上传的存在性检查按目录一次列举、内存比对:逐文件 ExistsAsync 在 SSH.NET 里以
+        // "stat 不存在则抛异常"实现,批量上传时每个文件多一次网络往返、还刷一条
+        // SftpPathNotFoundException(用户反馈调试输出刷屏)。
+        var remoteNames = await ListRemoteNamesForUploadsAsync(plan, ct);
         var resolved = new List<PlannedFileTransfer>(plan.Count);
         foreach (var item in plan)
         {
             var settled = item.Type == TransferType.Download
                 ? await ResolveLocalConflictAsync(item)
-                : await ResolveRemoteConflictAsync(item, ct);
+                : await ResolveRemoteConflictAsync(item, remoteNames, ct);
             if (settled is not null)
                 resolved.Add(settled);
         }
@@ -932,15 +936,61 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
-    /// <summary>按冲突策略处理一个计划中的上传:先 stat 远端同名文件(“覆盖”策略下省去
-    /// 这次往返,直接沿用 SFTP 覆盖语义),冲突时返回 null 表示跳过,或返回(可能改了
-    /// 远端路径的)计划项。</summary>
-    private async Task<PlannedFileTransfer?> ResolveRemoteConflictAsync(PlannedFileTransfer item, CancellationToken ct)
+    /// <summary>上传冲突检测的目录名单:对计划中所有上传目标的父目录各列举一次,
+    /// 返回 目录 → 现存条目名 的映射。策略为“覆盖”或没有上传项时返回空表;某个目录
+    /// 列举失败(权限/瞬时错误)则不入表,该目录退回逐文件 ExistsAsync 兜底。</summary>
+    private async Task<Dictionary<string, HashSet<string>>> ListRemoteNamesForUploadsAsync(
+        IReadOnlyList<PlannedFileTransfer> plan, CancellationToken ct)
+    {
+        var map = new Dictionary<string, HashSet<string>>();
+        if (TransferOptions.ConflictPolicy == "overwrite")
+            return map;
+
+        foreach (var dir in plan.Where(p => p.Type == TransferType.Upload)
+                     .Select(p => ParentOf(p.RemotePath)).Distinct())
+        {
+            try
+            {
+                var entries = await _sftpService.ListDirectoryAsync(_sessionId, dir, ct);
+                map[dir] = entries.Select(e => e.Name).ToHashSet(StringComparer.Ordinal);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // 该目录退回 ExistsAsync 兜底。
+            }
+        }
+
+        return map;
+    }
+
+    /// <summary>远端路径是否存在:优先查预先列举的目录名单(零网络往返、零内部异常),
+    /// 目录不在名单中才退回逐路径 ExistsAsync。</summary>
+    private async Task<bool> RemoteExistsAsync(string remotePath,
+        Dictionary<string, HashSet<string>> remoteNames, CancellationToken ct)
+    {
+        if (remoteNames.TryGetValue(ParentOf(remotePath), out var names))
+            return names.Contains(NameOf(remotePath));
+
+        return await _sftpService.ExistsAsync(_sessionId, remotePath, ct);
+    }
+
+    private static string NameOf(string remotePath)
+        => remotePath[(remotePath.TrimEnd('/').LastIndexOf('/') + 1)..];
+
+    /// <summary>按冲突策略处理一个计划中的上传:对照预列举的远端目录名单检查同名文件
+    /// (“覆盖”策略下连列举都省去,直接沿用 SFTP 覆盖语义),冲突时返回 null 表示跳过,
+    /// 或返回(可能改了远端路径的)计划项。</summary>
+    private async Task<PlannedFileTransfer?> ResolveRemoteConflictAsync(PlannedFileTransfer item,
+        Dictionary<string, HashSet<string>> remoteNames, CancellationToken ct)
     {
         if (item.Type != TransferType.Upload || TransferOptions.ConflictPolicy == "overwrite")
             return item;
 
-        if (!await _sftpService.ExistsAsync(_sessionId, item.RemotePath, ct))
+        if (!await RemoteExistsAsync(item.RemotePath, remoteNames, ct))
             return item;
 
         switch (TransferOptions.ConflictPolicy)
@@ -948,7 +998,7 @@ public class FileBrowserViewModel : ReactiveObject
             case "skip":
                 return null;
             case "rename":
-                return item with { RemotePath = await NextAvailableRemoteNameAsync(item.RemotePath, ct) };
+                return item with { RemotePath = await NextAvailableRemoteNameAsync(item.RemotePath, remoteNames, ct) };
             default: // ask
                 if (ConfirmRemoteOverwrite is null)
                     return item;
@@ -956,19 +1006,25 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
-    /// <summary>远端 "file.txt" → "file (1).txt"(取第一个不存在的序号)。</summary>
-    private async Task<string> NextAvailableRemoteNameAsync(string remotePath, CancellationToken ct)
+    /// <summary>远端 "file.txt" → "file (1).txt"(取第一个不存在的序号)。选中的名字会记入
+    /// 目录名单,同批次里后续重命名不会撞上它。</summary>
+    private async Task<string> NextAvailableRemoteNameAsync(string remotePath,
+        Dictionary<string, HashSet<string>> remoteNames, CancellationToken ct)
     {
         var dir = ParentOf(remotePath);
-        var name = remotePath[(remotePath.TrimEnd('/').LastIndexOf('/') + 1)..];
+        var name = NameOf(remotePath);
         var dot = name.LastIndexOf('.');
         var stem = dot > 0 ? name[..dot] : name;
         var ext = dot > 0 ? name[dot..] : "";
         for (int i = 1; i < 10000; i++)
         {
             var candidate = CombinePath(dir, $"{stem} ({i}){ext}");
-            if (!await _sftpService.ExistsAsync(_sessionId, candidate, ct))
+            if (!await RemoteExistsAsync(candidate, remoteNames, ct))
+            {
+                if (remoteNames.TryGetValue(dir, out var names))
+                    names.Add(NameOf(candidate));
                 return candidate;
+            }
         }
 
         return remotePath;
