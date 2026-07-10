@@ -138,16 +138,41 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         return new ShellStreamWrapper(shellStream);
     }
 
-    public Task<string> RunCommandAsync(string commandText, CancellationToken cancellationToken = default)
+    public async Task<string> RunCommandAsync(string commandText, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         SshClient target = Target;
-        return Task.Run(() =>
+        try
         {
             using SshCommand command = target.CreateCommand(commandText);
             command.CommandTimeout = TimeSpan.FromSeconds(10);
-            return command.Execute();
-        }, cancellationToken);
+            await command.ExecuteAsync(cancellationToken).ConfigureAwait(false);
+            return command.Result;
+        }
+        catch (Exception ex) when (ex is SshConnectionException or NullReferenceException && IsTornDown(target))
+        {
+            // See SshClientWrapper.RunCommandAsync: teardown mid-command is normalised to the
+            // "session is gone" signal callers already handle.
+            throw new ObjectDisposedException(nameof(JumpChainSshClientWrapper), ex);
+        }
+    }
+
+    /// <summary>True when the wrapper was disposed or the target client lost its connection.</summary>
+    private bool IsTornDown(SshClient target)
+    {
+        if (_disposed)
+        {
+            return true;
+        }
+        try
+        {
+            return !target.IsConnected;
+        }
+        catch
+        {
+            // IsConnected itself throws once the client is disposed underneath us.
+            return true;
+        }
     }
 
     public void AddForwardedPort(ForwardedPort port)
