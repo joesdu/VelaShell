@@ -77,30 +77,29 @@
       </Border>
 
     <!-- Row 0: Terminal area with scrollbar -->
-    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+    <Grid Grid.Row="0">
 
       <!-- Terminal emulator control -->
-      <Border Grid.Column="0"
-              Background="{DynamicResource VelaBgTerminal}"
+      <Border Background="{DynamicResource VelaBgTerminal}"
               ClipToBounds="True">
         <controls:ReparentingHost Target="{Binding TerminalEmulator.Control}" />
       </Border>
 
       <!-- Scrollbar for scrollback navigation (driven from code-behind against the
-           shared terminal control, since the control is reparented across split panes). -->
-      <ScrollBar Grid.Column="1"
-                 x:Name="ScrollBarView"
+           shared terminal control, since the control is reparented across split panes).
+           Overlaid on the terminal's right edge — like Fluent ScrollViewer's overlay
+           scrollbars — so it reserves no column of its own (would show as a stray
+           dark strip against the terminal background). -->
+      <ScrollBar x:Name="ScrollBarView"
                  Orientation="Vertical"
                  Minimum="0"
-                 AllowAutoHide="False"
-                 Background="{DynamicResource VelaBgSurface}"
-                 Width="12"
-                 Opacity="0.6" />
+                 IsVisible="False"
+                 HorizontalAlignment="Right"
+                 VerticalAlignment="Stretch" />
 
       <!-- 标签页内失败/断开覆盖层(设计 yxjmg / dcOverlay):连接失败或掉线时居中显示,
            提供“重新连接”“关闭标签页”。连接失败不再弹全局对话框,提示只落在所属标签页内。 -->
-      <Border Grid.Column="0"
-              IsVisible="{Binding ShowDisconnectedOverlay}"
+      <Border IsVisible="{Binding ShowDisconnectedOverlay}"
               Background="#66000000"
               HorizontalAlignment="Stretch"
               VerticalAlignment="Stretch">

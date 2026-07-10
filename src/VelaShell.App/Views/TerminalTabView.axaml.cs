@@ -204,6 +204,9 @@ public partial class TerminalTabView : UserControl
             // when fully scrolled back into history.
             ScrollBarView.Value = max - _termControl.ScrollOffset;
             ScrollBarView.IsEnabled = max > 0;
+            // The bar overlays the terminal's right edge; with no scrollback there is
+            // nothing to scroll, so hide it entirely instead of showing a disabled thumb.
+            ScrollBarView.IsVisible = max > 0;
         }
         finally
         {
