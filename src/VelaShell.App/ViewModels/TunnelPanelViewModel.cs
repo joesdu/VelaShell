@@ -79,7 +79,16 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         StartTunnelCommand = ReactiveCommand.CreateFromTask<Guid>(StartTunnelAsync);
         DeleteTunnelCommand = ReactiveCommand.CreateFromTask<Guid>(DeleteTunnelAsync);
         EditTunnelCommand = ReactiveCommand.Create<Guid>(BeginEdit);
-        ResetFormCommand = ReactiveCommand.Create(() => { ErrorMessage = null; ResetForm(); });
+        // 取消:编辑模式下退出编辑并清空表单;普通状态下表单本就多为默认值,单纯清空
+        // 看起来"点了没反应"(用户反馈 #6)——此时按对话框惯例直接收起面板。
+        ResetFormCommand = ReactiveCommand.Create(() =>
+        {
+            ErrorMessage = null;
+            bool wasEditing = IsEditing;
+            ResetForm();
+            if (!wasEditing)
+                CloseRequested?.Invoke(this, EventArgs.Empty);
+        });
         CloseCommand = ReactiveCommand.Create(() => CloseRequested?.Invoke(this, EventArgs.Empty));
 
         // 每 5 秒刷新条目(运行时长/服务侧状态与错误)并核对后台连接是否还活着;

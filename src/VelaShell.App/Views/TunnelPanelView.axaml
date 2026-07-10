@@ -53,8 +53,9 @@
               BorderThickness="0,0,0,1">
         <Grid ColumnDefinitions="Auto,*,Auto">
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <!-- 与菜单栏"隧道"按钮同一图标(Icon.route),保持视觉一致。 -->
             <pc:LucideIcon Width="12" Height="12"
-                           Data="{StaticResource Icon.arrow-right-left}"
+                           Data="{StaticResource Icon.route}"
                            Foreground="{DynamicResource VelaAccent}" />
             <TextBlock Text="隧道"
                        Foreground="{DynamicResource VelaTextPrimary}"
