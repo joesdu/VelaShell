@@ -546,6 +546,12 @@ public class MainWindowViewModel : ReactiveObject
             StatusBar.SwapUsage = metrics.SwapTotalBytes > 0 ? $"{metrics.SwapPercent:F1}%" : "--";
             StatusBar.DiskUsage = metrics.DiskTotalBytes > 0 ? $"{metrics.DiskPercent:F1}%" : "--";
             StatusBar.UpdateNetwork(metrics.NetRxBytesPerSec, metrics.NetTxBytesPerSec, metrics.HasNetRates);
+
+            // 悬停提示的详情(用户反馈):CPU 逐核心、磁盘逐挂载点、网速逐网卡。
+            StatusBar.CpuTooltip = BuildCpuTooltip(metrics);
+            StatusBar.MemTooltip = BuildMemTooltip(metrics);
+            StatusBar.DiskTooltip = BuildDiskTooltip(metrics);
+            StatusBar.NetTooltip = BuildNetTooltip(metrics);
         }
         catch
         {
@@ -556,6 +562,70 @@ public class MainWindowViewModel : ReactiveObject
             _statusMetricsPolling = false;
         }
     }
+
+    private static string BuildCpuTooltip(VelaShell.Core.Services.SessionMetrics m)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"CPU 总占用: {m.CpuPercent:F1}%（{m.CpuCores} 核）");
+
+        if (m.CorePercents is { Count: > 0 } percents)
+        {
+            for (int i = 0; i < percents.Count; i++)
+            {
+                var name = i < m.CoreCounters.Count ? m.CoreCounters[i].Name.Replace("cpu", "核心 ") : $"核心 {i}";
+                sb.Append('\n').Append($"{name}: {percents[i]:F0}%");
+            }
+        }
+        else if (m.CoreCounters.Count > 0)
+        {
+            sb.Append("\n每核心占用统计中…");
+        }
+
+        return sb.ToString();
+    }
+
+    private static string BuildMemTooltip(VelaShell.Core.Services.SessionMetrics m)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"内存: {FormatGb(m.MemUsedBytes)} / {FormatGb(m.MemTotalBytes)} GB（{m.MemPercent:F1}%）");
+        if (m.SwapTotalBytes > 0)
+            sb.Append('\n').Append($"交换: {FormatGb(m.SwapUsedBytes)} / {FormatGb(m.SwapTotalBytes)} GB（{m.SwapPercent:F1}%）");
+        return sb.ToString();
+    }
+
+    private static string BuildDiskTooltip(VelaShell.Core.Services.SessionMetrics m)
+    {
+        if (m.Disks.Count == 0)
+        {
+            return m.DiskTotalBytes > 0
+                ? $"磁盘 (/): {FormatGb(m.DiskUsedBytes)} / {FormatGb(m.DiskTotalBytes)} GB（{m.DiskPercent:F0}%）"
+                : "磁盘";
+        }
+
+        var sb = new System.Text.StringBuilder("磁盘占用");
+        foreach (var d in m.Disks)
+            sb.Append('\n').Append($"{d.MountPoint}: {FormatGb(d.UsedBytes)} / {FormatGb(d.TotalBytes)} GB（{d.Percent:F0}%）");
+        return sb.ToString();
+    }
+
+    private static string BuildNetTooltip(VelaShell.Core.Services.SessionMetrics m)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append(m.HasNetRates
+            ? $"网速（合计）: ↓ {Presentation.ViewModels.StatusBarViewModel.FormatRate(m.NetRxBytesPerSec)}  ↑ {Presentation.ViewModels.StatusBarViewModel.FormatRate(m.NetTxBytesPerSec)}"
+            : "网速统计中…");
+
+        if (m.NicRates is { Count: > 0 } rates)
+        {
+            foreach (var r in rates)
+                sb.Append('\n').Append(
+                    $"{r.Name}: ↓ {Presentation.ViewModels.StatusBarViewModel.FormatRate(r.RxBytesPerSec)}  ↑ {Presentation.ViewModels.StatusBarViewModel.FormatRate(r.TxBytesPerSec)}");
+        }
+
+        return sb.ToString();
+    }
+
+    private static string FormatGb(long bytes) => (bytes / 1024.0 / 1024.0 / 1024.0).ToString("F1");
 
     /// <summary>The Ctrl+P / Ctrl+K command palette overlay.</summary>
     public CommandPaletteViewModel CommandPalette { get; }

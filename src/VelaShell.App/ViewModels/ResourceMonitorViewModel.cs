@@ -1,9 +1,28 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using VelaShell.Core.Services;
 using ReactiveUI;
 
 namespace VelaShell.App.ViewModels;
+
+/// <summary>One disk row of the resource panel(多磁盘主机逐盘显示,用户反馈)。</summary>
+public sealed class DiskRowViewModel
+{
+    public DiskRowViewModel(string label, string text, double percent)
+    {
+        Label = label;
+        Text = text;
+        Percent = percent;
+    }
+
+    public string Label { get; }
+    public string Text { get; }
+    public double Percent { get; }
+    public bool Warn => Percent is > 70 and <= 90;
+    public bool Crit => Percent > 90;
+}
 
 /// <summary>
 /// Backs the tab-hover resource panel (design EP3Gd, spec §11): a live snapshot of the
@@ -43,6 +62,25 @@ public class ResourceMonitorViewModel : ReactiveObject
     public string DiskText => _metrics is { } m
         ? $"{FormatGb(m.DiskUsedBytes)} / {FormatGb(m.DiskTotalBytes)} GB ({m.DiskPercent:F0}%)" : "--";
     public double DiskPercent => _metrics?.DiskPercent ?? 0;
+
+    /// <summary>逐盘行:探针拿到完整磁盘列表时一盘一行(按挂载点标注);
+    /// 老主机/BusyBox 拿不到列表时退回原来的根分区单行。</summary>
+    public IReadOnlyList<DiskRowViewModel> Disks
+    {
+        get
+        {
+            if (_metrics is not { } m)
+                return [];
+
+            if (m.Disks.Count > 0)
+                return m.Disks.Select(d => new DiskRowViewModel(
+                    $"Disk {d.MountPoint}",
+                    $"{FormatGb(d.UsedBytes)} / {FormatGb(d.TotalBytes)} GB ({d.Percent:F0}%)",
+                    d.Percent)).ToList();
+
+            return [new DiskRowViewModel("Disk", DiskText, DiskPercent)];
+        }
+    }
 
     public string OsVersion => _metrics?.OsVersion is { Length: > 0 } os ? os : "--";
     public string Kernel => _metrics?.Kernel is { Length: > 0 } k ? $"Linux {k}" : "--";

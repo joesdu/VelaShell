@@ -88,16 +88,28 @@
                      Classes.warn="{Binding RamWarn}" Classes.crit="{Binding RamCrit}" />
       </StackPanel>
 
-      <!-- Disk -->
-      <StackPanel Spacing="4">
-        <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Classes="row-label" Text="Disk" />
-          <TextBlock Grid.Column="1" Classes="row-value" Text="{Binding DiskText}" />
-        </Grid>
-        <ProgressBar Value="{Binding DiskPercent}"
-                     Foreground="{DynamicResource VelaShellGreen}"
-                     Classes.warn="{Binding DiskWarn}" Classes.crit="{Binding DiskCrit}" />
-      </StackPanel>
+      <!-- Disk:一盘一行(多磁盘主机全部显示,用户反馈);拿不到列表时 VM 退回单行聚合。 -->
+      <ItemsControl ItemsSource="{Binding Disks}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Spacing="8" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:DiskRowViewModel">
+            <StackPanel Spacing="4">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="row-label" Text="{Binding Label}"
+                           TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
+                <TextBlock Grid.Column="1" Classes="row-value" Text="{Binding Text}" />
+              </Grid>
+              <ProgressBar Value="{Binding Percent}"
+                           Foreground="{DynamicResource VelaShellGreen}"
+                           Classes.warn="{Binding Warn}" Classes.crit="{Binding Crit}" />
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
 
       <!-- System info -->
       <StackPanel Spacing="4">

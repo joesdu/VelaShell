@@ -63,12 +63,13 @@
            (terminal type / size / encoding) so their varying width never shoves the
            static text around (用户反馈 #4). -->
       <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
-        <StackPanel Orientation="Horizontal" Spacing="4">
+        <!-- 悬停提示为动态详情(用户反馈):CPU 逐核心、内存含交换、磁盘逐挂载点、网速逐网卡。 -->
+        <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding CpuTooltip}">
           <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.cpu}"
                          Foreground="{DynamicResource VelaTextTertiary}" VerticalAlignment="Center" />
           <TextBlock Text="{Binding CpuUsage}" Foreground="{DynamicResource VelaTextSecondary}" />
         </StackPanel>
-        <StackPanel Orientation="Horizontal" Spacing="4">
+        <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding MemTooltip}">
           <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.memory-stick}"
                          Foreground="{DynamicResource VelaTextTertiary}" VerticalAlignment="Center" />
           <TextBlock Text="{Binding MemUsage}" Foreground="{DynamicResource VelaTextSecondary}" />
@@ -78,7 +79,7 @@
                          Foreground="{DynamicResource VelaTextTertiary}" VerticalAlignment="Center" />
           <TextBlock Text="{Binding SwapUsage}" Foreground="{DynamicResource VelaTextSecondary}" />
         </StackPanel>
-        <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="Disk (/)">
+        <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding DiskTooltip}">
           <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.hard-drive}"
                          Foreground="{DynamicResource VelaTextTertiary}" VerticalAlignment="Center" />
           <TextBlock Text="{Binding DiskUsage}" Foreground="{DynamicResource VelaTextSecondary}" />
@@ -86,7 +87,7 @@
         <!-- The original arrow-up-down glyph, rebuilt from its two halves so each direction
              lights up (accent) independently while traffic flows that way; the readout shows
              the dominant direction's rate (Android-style). -->
-        <StackPanel Orientation="Horizontal" Spacing="4">
+        <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding NetTooltip}">
           <StackPanel.Styles>
             <Style Selector="pc|LucideIcon.updown">
               <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />

@@ -1,5 +1,20 @@
 namespace VelaShell.Core.Services;
 
+/// <summary>One mounted real filesystem(non-tmpfs 等虚拟盘)的用量(资源面板逐盘显示)。</summary>
+public sealed record DiskUsage(string Source, string MountPoint, long TotalBytes, long UsedBytes)
+{
+    public double Percent => TotalBytes > 0 ? UsedBytes * 100.0 / TotalBytes : 0;
+}
+
+/// <summary>单个 CPU 核心的累计 jiffies 计数(/proc/stat cpuN 行),由采集器做两次采样差分。</summary>
+public sealed record CpuCoreCounter(string Name, long TotalJiffies, long IdleJiffies);
+
+/// <summary>单个网卡的累计收发字节计数(/proc/net/dev),由采集器做两次采样差分。</summary>
+public sealed record NetInterfaceCounter(string Name, long RxBytes, long TxBytes);
+
+/// <summary>单个网卡的瞬时速率(字节/秒),由采集器从上一采样计算。</summary>
+public sealed record NetInterfaceRate(string Name, double RxBytesPerSec, double TxBytesPerSec);
+
 /// <summary>A point-in-time resource snapshot of a remote session's host (design panel EP3Gd).</summary>
 public sealed class SessionMetrics
 {
@@ -16,6 +31,10 @@ public sealed class SessionMetrics
     public long SwapUsedBytes { get; init; }
     public long DiskTotalBytes { get; init; }
     public long DiskUsedBytes { get; init; }
+
+    /// <summary>All mounted real filesystems(__DL__);空 = 探针不支持,退回根分区聚合值。</summary>
+    public IReadOnlyList<DiskUsage> Disks { get; init; } = [];
+
     public string OsVersion { get; init; } = "";
     public string Kernel { get; init; } = "";
 
@@ -32,6 +51,16 @@ public sealed class SessionMetrics
     public bool HasNetRates { get; set; }
     public double NetRxBytesPerSec { get; set; }
     public double NetTxBytesPerSec { get; set; }
+
+    /// <summary>Per-core cumulative counters(__C__),原始值;百分比由采集器差分后写入
+    /// <see cref="CorePercents"/>(与本列表同序,首个采样为 null)。</summary>
+    public IReadOnlyList<CpuCoreCounter> CoreCounters { get; init; } = [];
+    public IReadOnlyList<double>? CorePercents { get; set; }
+
+    /// <summary>Per-NIC cumulative counters(__NI__),原始值;速率由采集器差分后写入
+    /// <see cref="NicRates"/>(首个采样为 null)。</summary>
+    public IReadOnlyList<NetInterfaceCounter> NicCounters { get; init; } = [];
+    public IReadOnlyList<NetInterfaceRate>? NicRates { get; set; }
 
     public double MemPercent => MemTotalBytes > 0 ? MemUsedBytes * 100.0 / MemTotalBytes : 0;
     public double SwapPercent => SwapTotalBytes > 0 ? SwapUsedBytes * 100.0 / SwapTotalBytes : 0;
@@ -117,6 +146,63 @@ public sealed class SessionMetrics
             hasNetCounters = true;
         }
 
+        static string[] Lines(string section)
+            => section.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        // __DL__: one real filesystem per line "source size used mountpoint"(挂载点可能含空格)。
+        // 同一设备的多个挂载(bind mount / btrfs 子卷)只记第一处,避免容量重复计入。
+        var disks = new List<DiskUsage>();
+        var seenSources = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var line in Lines(Section("__DL__")))
+        {
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 4 ||
+                !long.TryParse(parts[1], out var dTotal) ||
+                !long.TryParse(parts[2], out var dUsed) ||
+                dTotal <= 0)
+                continue;
+            if (!seenSources.Add(parts[0]))
+                continue;
+            disks.Add(new DiskUsage(parts[0], string.Join(' ', parts[3..]), dTotal, dUsed));
+        }
+
+        // __C__: per-core "cpuN user nice system idle iowait ..." lines of /proc/stat,
+        // 与聚合行同一套 jiffies 口径(iowait 计入空闲)。
+        var coreCounters = new List<CpuCoreCounter>();
+        foreach (var line in Lines(Section("__C__")))
+        {
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 5 || !parts[0].StartsWith("cpu", StringComparison.Ordinal))
+                continue;
+
+            long total = 0;
+            for (int i = 1; i < parts.Length; i++)
+            {
+                if (long.TryParse(parts[i], out var v))
+                    total += v;
+            }
+
+            long.TryParse(parts[4], out var coreIdle);
+            long coreIowait = 0;
+            if (parts.Length > 5)
+                long.TryParse(parts[5], out coreIowait);
+            if (total > 0)
+                coreCounters.Add(new CpuCoreCounter(parts[0], total, coreIdle + coreIowait));
+        }
+
+        // __NI__: one non-loopback interface per line "name rx tx".
+        var nicCounters = new List<NetInterfaceCounter>();
+        foreach (var line in Lines(Section("__NI__")))
+        {
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 3 &&
+                long.TryParse(parts[1], out var rx) &&
+                long.TryParse(parts[2], out var tx))
+            {
+                nicCounters.Add(new NetInterfaceCounter(parts[0], rx, tx));
+            }
+        }
+
         if (cores == 1 && memTotal == 0 && diskTotal == 0 && os.Length == 0 && kernel.Length == 0
             && !hasCpuCounters && !hasNetCounters)
             return null;
@@ -131,6 +217,7 @@ public sealed class SessionMetrics
             SwapUsedBytes = swapUsed,
             DiskTotalBytes = diskTotal,
             DiskUsedBytes = diskUsed,
+            Disks = disks,
             OsVersion = os,
             Kernel = kernel,
             HasCpuCounters = hasCpuCounters,
@@ -139,6 +226,8 @@ public sealed class SessionMetrics
             HasNetCounters = hasNetCounters,
             NetRxTotalBytes = netRx,
             NetTxTotalBytes = netTx,
+            CoreCounters = coreCounters,
+            NicCounters = nicCounters,
         };
     }
 
@@ -157,5 +246,14 @@ public sealed class SessionMetrics
         "echo __O__; . /etc/os-release 2>/dev/null && echo \"$PRETTY_NAME\"; " +
         "echo __K__; uname -r 2>/dev/null; " +
         "echo __S__; grep -m1 '^cpu ' /proc/stat 2>/dev/null; " +
-        "echo __N__; awk -F: 'NR>2 {gsub(/^ +/,\"\",$1); if ($1!=\"lo\") {split($2,f,\" \"); rx+=f[1]; tx+=f[9]}} END {print rx+0\" \"tx+0}' /proc/net/dev 2>/dev/null";
+        "echo __N__; awk -F: 'NR>2 {gsub(/^ +/,\"\",$1); if ($1!=\"lo\") {split($2,f,\" \"); rx+=f[1]; tx+=f[9]}} END {print rx+0\" \"tx+0}' /proc/net/dev 2>/dev/null; " +
+        // __DL__: all real filesystems for the multi-disk panel/tooltips(排除 tmpfs 等虚拟盘;
+        // 需 GNU df,BusyBox 上该段为空,UI 退回 __D__ 的根分区聚合值)。
+        "echo __DL__; df -B1 -x tmpfs -x devtmpfs -x squashfs -x overlay --output=source,size,used,target 2>/dev/null | tail -n +2; " +
+        // __C__: per-core /proc/stat lines for the status-bar CPU tooltip.
+        "echo __C__; grep '^cpu[0-9]' /proc/stat 2>/dev/null; " +
+        // __NI__: per-interface cumulative rx/tx for the status-bar network tooltip。
+        // 只取物理网卡(/sys/class/net/*/device 存在):Docker/K8s 主机会有成百个 veth/
+        // 网桥虚拟接口,全列出来没法看(用户反馈)。__N__ 的合计口径保持不变。
+        "echo __NI__; for i in /sys/class/net/*; do if [ -e \"$i/device\" ]; then echo \"${i##*/} $(cat \"$i/statistics/rx_bytes\" 2>/dev/null) $(cat \"$i/statistics/tx_bytes\" 2>/dev/null)\"; fi; done 2>/dev/null";
 }

@@ -128,6 +128,38 @@ public sealed class StatusBarViewModel : ReactiveObject, IDisposable
 
     private string _swapUsage = "--";
     private string _diskUsage = "--";
+    private string _cpuTooltip = "CPU";
+    private string _memTooltip = "内存";
+    private string _diskTooltip = "磁盘";
+    private string _netTooltip = "网速";
+
+    /// <summary>悬停提示:CPU 总占用 + 每核心占用(用户反馈,由主 VM 按采样填充)。</summary>
+    public string CpuTooltip
+    {
+        get => _cpuTooltip;
+        set => this.RaiseAndSetIfChanged(ref _cpuTooltip, value);
+    }
+
+    /// <summary>悬停提示:内存/交换分区的已用与总量。</summary>
+    public string MemTooltip
+    {
+        get => _memTooltip;
+        set => this.RaiseAndSetIfChanged(ref _memTooltip, value);
+    }
+
+    /// <summary>悬停提示:每个磁盘(挂载点)的用量。</summary>
+    public string DiskTooltip
+    {
+        get => _diskTooltip;
+        set => this.RaiseAndSetIfChanged(ref _diskTooltip, value);
+    }
+
+    /// <summary>悬停提示:每个网卡的上下行速率。</summary>
+    public string NetTooltip
+    {
+        get => _netTooltip;
+        set => this.RaiseAndSetIfChanged(ref _netTooltip, value);
+    }
 
     /// <summary>Swap usage percent; "--" when the host has no swap or no session is live.</summary>
     public string SwapUsage
@@ -200,6 +232,10 @@ public sealed class StatusBarViewModel : ReactiveObject, IDisposable
         NetSpeed = "0 B/s";
         IsNetUpActive = false;
         IsNetDownActive = false;
+        CpuTooltip = "CPU";
+        MemTooltip = "内存";
+        DiskTooltip = "磁盘";
+        NetTooltip = "网速";
     }
 
     public static string FormatRate(double bytesPerSec)

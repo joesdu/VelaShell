@@ -79,6 +79,49 @@ public class SessionMetricsServiceTests
     }
 
     [TestMethod]
+    public async Task SecondSample_ComputesPerCorePercents_AndPerNicRates()
+    {
+        var sessionId = Guid.NewGuid();
+        var client = Substitute.For<ISshClientWrapper>();
+        client.IsConnected.Returns(true);
+        var connections = Substitute.For<ISshConnectionService>();
+        connections.GetClient(sessionId).Returns(client);
+        var service = new SessionMetricsService(connections);
+
+        static string Extras(long c0Busy, long c0Idle, long c1Busy, long c1Idle, long rx0, long tx0, long rx1, long tx1) =>
+            $"__C__\ncpu0 {c0Busy} 0 0 {c0Idle} 0 0 0\ncpu1 {c1Busy} 0 0 {c1Idle} 0 0 0\n" +
+            $"__NI__\neth0 {rx0} {tx0}\neth1 {rx1} {tx1}\n";
+
+        client.RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Probe(100, 900, 1000, 1000) + Extras(50, 450, 50, 450, 500, 500, 500, 500));
+        var first = await service.GetMetricsAsync(sessionId);
+
+        Assert.IsNotNull(first);
+        Assert.IsNull(first.CorePercents); // 首个采样没有差分基准
+        Assert.IsNull(first.NicRates);
+
+        await Task.Delay(300);
+        // cpu0: +90 busy / +10 idle → 90%;cpu1: +10 busy / +90 idle → 10%。
+        // eth0 收发各 +100_000;eth1 不动。
+        client.RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Probe(200, 1800, 201_000, 201_000)
+                + Extras(140, 460, 60, 540, 100_500, 100_500, 500, 500));
+        var second = await service.GetMetricsAsync(sessionId);
+
+        Assert.IsNotNull(second);
+        Assert.IsNotNull(second.CorePercents);
+        Assert.AreEqual(2, second.CorePercents.Count);
+        Assert.AreEqual(90.0, second.CorePercents[0], 0.5);
+        Assert.AreEqual(10.0, second.CorePercents[1], 0.5);
+
+        Assert.IsNotNull(second.NicRates);
+        Assert.AreEqual(2, second.NicRates.Count);
+        Assert.AreEqual("eth0", second.NicRates[0].Name);
+        Assert.IsTrue(second.NicRates[0].RxBytesPerSec > 0, "eth0 应有下行速率");
+        Assert.AreEqual(0, second.NicRates[1].RxBytesPerSec, 0.01); // eth1 无流量
+    }
+
+    [TestMethod]
     public async Task DisconnectedSession_ReturnsNullAndForgetsHistory()
     {
         var sessionId = Guid.NewGuid();
