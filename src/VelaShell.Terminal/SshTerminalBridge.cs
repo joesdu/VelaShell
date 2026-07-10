@@ -40,6 +40,20 @@ public class SshTerminalBridge : IDisposable
         _disposed = true;
         _terminal.UserInput -= OnUserInput;
         _cts.Cancel();
+
+        // Dispose the stream BEFORE waiting on the read task: SSH.NET's ShellStream.Read blocks
+        // in Monitor.Wait (its ReadAsync is the base Stream wrapper, so the token can't interrupt
+        // it) and Dispose pulses that wait, making the pending read return EOF immediately and
+        // without an exception. The previous order (wait, then dispose) parked the read task for
+        // the full 2s timeout on every tab close.
+        try
+        {
+            _shellStream.Dispose();
+        }
+        catch
+        {
+            // Best-effort: the channel may already be torn down by the session disconnect.
+        }
         try
         {
             _readTask?.Wait(TimeSpan.FromSeconds(2));
@@ -49,7 +63,6 @@ public class SshTerminalBridge : IDisposable
             // Swallow faults from read task during dispose
         }
         _cts.Dispose();
-        _shellStream.Dispose();
     }
 
     public event Action<Exception>? Error;
@@ -83,19 +96,22 @@ public class SshTerminalBridge : IDisposable
 
         // Only start reading. Do NOT prime the shell with a newline — the server already sends
         // its banner and prompt on connect, so an extra '\n' produces a duplicate prompt line.
-        _readTask = Task.Run(ReadLoopAsync);
+        // The token is snapshotted here because Dispose disposes _cts after its 2s grace — a
+        // still-draining loop must not touch the CTS property afterwards (token reads stay valid).
+        CancellationToken token = _cts.Token;
+        _readTask = Task.Run(() => ReadLoopAsync(token));
     }
 
-    private async Task ReadLoopAsync()
+    private async Task ReadLoopAsync(CancellationToken token)
     {
         // A larger read buffer means fewer awaits and larger natural batches.
         byte[] buffer = new byte[16384];
         bool remoteClosed = false;
         try
         {
-            while (!_cts.Token.IsCancellationRequested && _shellStream.CanRead)
+            while (!token.IsCancellationRequested && _shellStream.CanRead)
             {
-                int bytesRead = await _shellStream.ReadAsync(buffer, 0, buffer.Length, _cts.Token).ConfigureAwait(false);
+                int bytesRead = await _shellStream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
                 if (bytesRead == 0)
                 {
                     // EOF: the remote closed the channel (exit / reboot / dropped connection).
@@ -119,7 +135,7 @@ public class SshTerminalBridge : IDisposable
             }
 
             // Loop also exits when the stream reports it can no longer be read.
-            if (!_cts.Token.IsCancellationRequested)
+            if (!token.IsCancellationRequested)
             {
                 remoteClosed = true;
             }
