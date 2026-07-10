@@ -1,5 +1,5 @@
-using System;
 using System.Diagnostics;
+using Microsoft.Win32;
 
 namespace VelaShell.App.Services;
 
@@ -15,24 +15,27 @@ public static class StartupRegistration
     public static void Apply(bool enabled)
     {
         if (!OperatingSystem.IsWindows())
+        {
             return;
-
+        }
         try
         {
-            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
+            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RunKeyPath, true);
             if (key is null)
+            {
                 return;
-
+            }
             if (enabled)
             {
-                var exePath = Environment.ProcessPath
-                    ?? Process.GetCurrentProcess().MainModule?.FileName;
+                string? exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
                 if (!string.IsNullOrEmpty(exePath))
+                {
                     key.SetValue(ValueName, $"\"{exePath}\"");
+                }
             }
             else if (key.GetValue(ValueName) is not null)
             {
-                key.DeleteValue(ValueName, throwOnMissingValue: false);
+                key.DeleteValue(ValueName, false);
             }
         }
         catch

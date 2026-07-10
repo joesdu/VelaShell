@@ -1,4 +1,3 @@
-using System.Reactive.Linq;
 using NSubstitute;
 using VelaShell.App.ViewModels;
 using VelaShell.Core.Models;
@@ -17,7 +16,7 @@ public class FileTransferViewModelTests
         _transferManager = Substitute.For<ITransferManager>();
         _transferManager.ActiveTransfers.Returns(new List<TransferTask>());
         _transferManager.QueuedTransfers.Returns(new List<TransferTask>());
-        _vm = new FileTransferViewModel(_transferManager);
+        _vm = new(_transferManager);
     }
 
     private static TransferTask CreateTask(
@@ -26,7 +25,7 @@ public class FileTransferViewModelTests
         string remotePath = "/home/user/file.txt",
         string localPath = "/tmp/file.txt")
     {
-        return new TransferTask
+        return new()
         {
             Id = Guid.NewGuid(),
             Type = type,
@@ -41,7 +40,7 @@ public class FileTransferViewModelTests
     public void TransferAdded_AppearsInTransfersCollection()
     {
         // Arrange
-        var task = CreateTask();
+        TransferTask task = CreateTask();
 
         // Act
         _vm.AddTransfer(task);
@@ -56,9 +55,9 @@ public class FileTransferViewModelTests
     public void ProgressUpdate_ChangesTransferItemProgress()
     {
         // Arrange
-        var task = CreateTask(status: TransferStatus.InProgress);
+        TransferTask task = CreateTask(status: TransferStatus.InProgress);
         _vm.AddTransfer(task);
-        var item = _vm.Transfers[0];
+        TransferItemViewModel item = _vm.Transfers[0];
 
         // Act
         var progress = new TransferProgress
@@ -83,9 +82,9 @@ public class FileTransferViewModelTests
     public void CancelTransfer_UpdatesStatusToCancelled()
     {
         // Arrange
-        var task = CreateTask(status: TransferStatus.InProgress);
+        TransferTask task = CreateTask(status: TransferStatus.InProgress);
         _transferManager.CancelTransferAsync(task.Id, Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask);
+                        .Returns(Task.CompletedTask);
         _vm.AddTransfer(task);
 
         // Act
@@ -100,10 +99,9 @@ public class FileTransferViewModelTests
     public void ClearCompleted_RemovesCompletedItemsFromList()
     {
         // Arrange
-        var active = CreateTask(status: TransferStatus.InProgress);
-        var completed1 = CreateTask(status: TransferStatus.Completed, remotePath: "/home/user/done1.txt");
-        var completed2 = CreateTask(status: TransferStatus.Completed, remotePath: "/home/user/done2.txt");
-
+        TransferTask active = CreateTask(status: TransferStatus.InProgress);
+        TransferTask completed1 = CreateTask(status: TransferStatus.Completed, remotePath: "/home/user/done1.txt");
+        TransferTask completed2 = CreateTask(status: TransferStatus.Completed, remotePath: "/home/user/done2.txt");
         _vm.AddTransfer(active);
         _vm.AddTransfer(completed1);
         _vm.AddTransfer(completed2);
@@ -124,19 +122,15 @@ public class FileTransferViewModelTests
     [DataRow(1_230, "1.2 KB/s")]
     [DataRow(3_670_016, "3.5 MB/s")]
     [DataRow(1_181_116_006, "1.1 GB/s")]
-    public void SpeedFormatting_ReturnsHumanReadable(double bytesPerSecond, string expected)
-    {
-        Assert.AreEqual(expected, TransferItemViewModel.FormatSpeed(bytesPerSecond));
-    }
+    public void SpeedFormatting_ReturnsHumanReadable(double bytesPerSecond, string expected) => Assert.AreEqual(expected, TransferItemViewModel.FormatSpeed(bytesPerSecond));
 
     [TestMethod]
     [TestCategory("FileTransfer")]
     public void Direction_ShowsCorrectArrow()
     {
         // Arrange & Act
-        var upload = CreateTask(type: TransferType.Upload);
-        var download = CreateTask(type: TransferType.Download);
-
+        TransferTask upload = CreateTask();
+        TransferTask download = CreateTask(TransferType.Download);
         _vm.AddTransfer(upload);
         _vm.AddTransfer(download);
 
@@ -150,9 +144,9 @@ public class FileTransferViewModelTests
     public void RetryTransfer_RequeuesFailedTransfer()
     {
         // Arrange
-        var task = CreateTask(status: TransferStatus.Failed);
+        TransferTask task = CreateTask(status: TransferStatus.Failed);
         _transferManager.QueueTransferAsync(Arg.Any<TransferTask>(), Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask);
+                        .Returns(Task.CompletedTask);
         _vm.AddTransfer(task);
         Assert.AreEqual(TransferStatus.Failed, _vm.Transfers[0].Status);
 
@@ -168,9 +162,9 @@ public class FileTransferViewModelTests
     public void TimeRemainingFormatting_ShowsReadableString()
     {
         // Arrange
-        var task = CreateTask(status: TransferStatus.InProgress);
+        TransferTask task = CreateTask(status: TransferStatus.InProgress);
         _vm.AddTransfer(task);
-        var item = _vm.Transfers[0];
+        TransferItemViewModel item = _vm.Transfers[0];
 
         // Act
         var progress = new TransferProgress
@@ -193,17 +187,13 @@ public class FileTransferViewModelTests
     public void BeginBatch_ShowsRemainingCount_AndCountsDownAsFilesSettle()
     {
         using var cts = new CancellationTokenSource();
-
         _vm.BeginBatch(3, cts);
         Assert.IsTrue(_vm.IsBatchActive);
         Assert.AreEqual(3, _vm.PendingCount); // remaining count, not stuck at 1
-
         _vm.NotifyBatchItemSettled();
         Assert.AreEqual(2, _vm.PendingCount);
-
         _vm.NotifyBatchItemSettled();
         Assert.AreEqual(1, _vm.PendingCount);
-
         _vm.EndBatch();
         Assert.IsFalse(_vm.IsBatchActive);
         Assert.AreEqual(0, _vm.PendingCount); // falls back to (empty) active count
@@ -214,12 +204,10 @@ public class FileTransferViewModelTests
     public void CancelAll_CancelsBatchToken_AndMarksActiveItemsCancelled()
     {
         using var cts = new CancellationTokenSource();
-        var running = CreateTask(status: TransferStatus.InProgress);
+        TransferTask running = CreateTask(status: TransferStatus.InProgress);
         _vm.AddTransfer(running);
         _vm.BeginBatch(5, cts);
-
         _vm.CancelAllCommand.Execute().Subscribe();
-
         Assert.IsTrue(cts.IsCancellationRequested);
         Assert.AreEqual(TransferStatus.Cancelled, _vm.Transfers[0].Status);
     }
@@ -232,9 +220,7 @@ public class FileTransferViewModelTests
         _vm.AddTransfer(CreateTask(status: TransferStatus.Completed, remotePath: "/home/user/done.txt"));
         _vm.HidePanelCommand.Execute().Subscribe();
         Assert.IsFalse(_vm.IsPanelVisible);
-
         _vm.ShowPanel();
-
         Assert.IsTrue(_vm.IsPanelVisible);
         Assert.AreEqual(1, _vm.Transfers.Count()); // past record still there to review
     }
@@ -245,7 +231,6 @@ public class FileTransferViewModelTests
     {
         _vm.AddTransfer(CreateTask(status: TransferStatus.InProgress));
         _vm.AddTransfer(CreateTask(status: TransferStatus.Completed, remotePath: "/home/user/done.txt"));
-
         Assert.IsFalse(_vm.IsBatchActive);
         Assert.AreEqual(1, _vm.PendingCount); // one in-flight single transfer
     }
@@ -256,16 +241,12 @@ public class FileTransferViewModelTests
     {
         // 选择大文件夹后,扫描期间面板立即可见、徽标随发现数递增(用户反馈)。
         Assert.IsFalse(_vm.IsPanelVisible);
-
         _vm.BeginPreparing();
-
         Assert.IsTrue(_vm.IsPreparing);
         Assert.IsTrue(_vm.IsPanelVisible);
         Assert.AreEqual(0, _vm.PendingCount);
-
         _vm.UpdatePreparingCount(1);
         Assert.AreEqual(1, _vm.PendingCount);
-
         _vm.UpdatePreparingCount(42);
         Assert.AreEqual(42, _vm.PendingCount);
         StringAssert.Contains(_vm.PreparingText, "42");
@@ -278,9 +259,7 @@ public class FileTransferViewModelTests
         using var cts = new CancellationTokenSource();
         _vm.BeginPreparing();
         _vm.UpdatePreparingCount(7);
-
         _vm.BeginBatch(7, cts);
-
         Assert.IsFalse(_vm.IsPreparing);
         Assert.IsTrue(_vm.IsBatchActive);
         Assert.AreEqual(7, _vm.PendingCount); // 从"已发现"无缝切换为"剩余"
@@ -293,9 +272,7 @@ public class FileTransferViewModelTests
         // 计划为空(全部冲突跳过/取消)时退出准备态,面板不残留。
         _vm.BeginPreparing();
         Assert.IsTrue(_vm.IsPanelVisible);
-
         _vm.EndPreparing();
-
         Assert.IsFalse(_vm.IsPreparing);
         Assert.IsFalse(_vm.IsPanelVisible);
     }
@@ -307,9 +284,7 @@ public class FileTransferViewModelTests
         using var cts = new CancellationTokenSource();
         _vm.BeginPreparing();
         _vm.BeginBatch(3, cts);
-
         _vm.UpdatePreparingCount(99); // 迟到的扫描回调不得污染"剩余"徽标
-
         Assert.AreEqual(3, _vm.PendingCount);
     }
 
@@ -321,9 +296,7 @@ public class FileTransferViewModelTests
         _vm.AddTransfer(CreateTask(status: TransferStatus.Completed, remotePath: "/home/user/done.txt"));
         _vm.HidePanelCommand.Execute().Subscribe();
         Assert.IsFalse(_vm.IsPanelVisible);
-
         _vm.ShowPanelTransient();
-
         Assert.IsTrue(_vm.IsPanelVisible);
         // 隐藏倒计时已排定:指针进入应暂停、离开应重启,而不是像 ShowPanel 那样清掉挂起状态。
         _vm.SetPointerOver(true);
@@ -336,8 +309,8 @@ public class FileTransferViewModelTests
     public void MultipleTransfers_TrackedIndependently()
     {
         // Arrange
-        var task1 = CreateTask(remotePath: "/home/user/alpha.zip");
-        var task2 = CreateTask(remotePath: "/home/user/beta.tar.gz");
+        TransferTask task1 = CreateTask(remotePath: "/home/user/alpha.zip");
+        TransferTask task2 = CreateTask(remotePath: "/home/user/beta.tar.gz");
 
         // Act
         _vm.AddTransfer(task1);

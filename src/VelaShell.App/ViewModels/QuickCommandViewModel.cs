@@ -1,26 +1,11 @@
-using System;
-using VelaShell.Core.Models;
 using ReactiveUI;
+using VelaShell.Core.Models;
 
 namespace VelaShell.App.ViewModels;
 
-public class QuickCommandViewModel : ReactiveObject
+public class QuickCommandViewModel(QuickCommand model) : ReactiveObject
 {
-    private readonly QuickCommand _model;
-
-    private string _name;
-    private string _category;
-    private string _commandText;
-    private string _description;
-
-    public QuickCommandViewModel(QuickCommand model)
-    {
-        _model = model ?? throw new ArgumentNullException(nameof(model));
-        _name = model.Name;
-        _category = model.Category;
-        _commandText = model.CommandText;
-        _description = model.Description;
-    }
+    private readonly QuickCommand _model = model ?? throw new ArgumentNullException(nameof(model));
 
     public Guid Id => _model.Id;
 
@@ -28,55 +13,59 @@ public class QuickCommandViewModel : ReactiveObject
 
     public string Name
     {
-        get => _name;
+        get;
         set
         {
-            if (!IsBuiltIn)
+            if (IsBuiltIn)
             {
-                this.RaiseAndSetIfChanged(ref _name, value);
-                _model.Name = value;
+                return;
             }
+            this.RaiseAndSetIfChanged(ref field, value);
+            _model.Name = value;
         }
-    }
+    } = model.Name;
 
     public string Category
     {
-        get => _category;
+        get;
         set
         {
-            if (!IsBuiltIn)
+            if (IsBuiltIn)
             {
-                this.RaiseAndSetIfChanged(ref _category, value);
-                _model.Category = value;
+                return;
             }
+            this.RaiseAndSetIfChanged(ref field, value);
+            _model.Category = value;
         }
-    }
+    } = model.Category;
 
     public string CommandText
     {
-        get => _commandText;
+        get;
         set
         {
-            if (!IsBuiltIn)
+            if (IsBuiltIn)
             {
-                this.RaiseAndSetIfChanged(ref _commandText, value);
-                _model.CommandText = value;
+                return;
             }
+            this.RaiseAndSetIfChanged(ref field, value);
+            _model.CommandText = value;
         }
-    }
+    } = model.CommandText;
 
     public string Description
     {
-        get => _description;
+        get;
         set
         {
-            if (!IsBuiltIn)
+            if (IsBuiltIn)
             {
-                this.RaiseAndSetIfChanged(ref _description, value);
-                _model.Description = value;
+                return;
             }
+            this.RaiseAndSetIfChanged(ref field, value);
+            _model.Description = value;
         }
-    }
+    } = model.Description;
 
     public QuickCommand ToModel() => _model;
 }

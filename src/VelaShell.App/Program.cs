@@ -1,14 +1,15 @@
-using Avalonia;
-using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using VelaShell.Infrastructure.Persistence;
+using Avalonia;
+using Avalonia.Logging;
 using ReactiveUI.Avalonia;
+using VelaShell.App.Logging;
+using VelaShell.Infrastructure.Persistence;
 using Velopack;
+
+// ReSharper disable InconsistentNaming
 
 namespace VelaShell.App;
 
@@ -22,9 +23,7 @@ internal static class Program
     {
         // Enable legacy code pages (GBK, Big5, Shift_JIS, …) for the terminal encoding option.
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-
         InstallGlobalExceptionGuards();
-
         VelopackApp.Build().Run();
 
         // Only one instance per user may run: SonnetDB holds an exclusive lock on its WAL, so a
@@ -32,12 +31,10 @@ internal static class Program
         // the running instance up front and exit cleanly with a friendly notice instead.
         if (!TryAcquireSingleInstanceLock())
         {
-            ShowMessage(
-                "VelaShell 已经在运行了。\n\n请切换到已打开的窗口;同一时间只能运行一个实例。",
+            ShowMessage("VelaShell 已经在运行了。\n\n请切换到已打开的窗口;同一时间只能运行一个实例。",
                 "VelaShell");
             return;
         }
-
         try
         {
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
@@ -46,9 +43,9 @@ internal static class Program
         {
             // Last-resort: surface a readable dialog instead of a raw .NET crash box for testers.
             Trace.WriteLine($"[VelaShell] Fatal startup error: {ex}");
-            ShowMessage(
-                "VelaShell 启动失败。\n\n" + ex.Message +
-                "\n\n如果反复出现,请尝试关闭其它 VelaShell 窗口后重试。",
+            ShowMessage("VelaShell 启动失败。\n\n" +
+                        ex.Message +
+                        "\n\n如果反复出现,请尝试关闭其它 VelaShell 窗口后重试。",
                 "VelaShell - 启动错误");
             throw;
         }
@@ -70,11 +67,9 @@ internal static class Program
     {
         try
         {
-            var root = new VelaShellStoragePaths().RootDirectory;
-            var key = Convert.ToHexString(
-                SHA256.HashData(Encoding.UTF8.GetBytes(root.ToLowerInvariant())))[..16];
-            _singleInstanceMutex = new Mutex(initiallyOwned: false, $"Local\\VelaShell-{key}");
-
+            string root = new VelaShellStoragePaths().RootDirectory;
+            string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(root.ToLowerInvariant())))[..16];
+            _singleInstanceMutex = new(false, $"Local\\VelaShell-{key}");
             try
             {
                 if (!_singleInstanceMutex.WaitOne(TimeSpan.Zero))
@@ -86,7 +81,6 @@ internal static class Program
             {
                 // Previous owner died without releasing (e.g. crash). We now own it — proceed.
             }
-
             return true;
         }
         catch
@@ -138,25 +132,25 @@ internal static class Program
             Trace.WriteLine($"[VelaShell] Unobserved task exception: {e.Exception}");
             e.SetObserved();
         };
-
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             Trace.WriteLine($"[VelaShell] Unhandled domain exception: {e.ExceptionObject}");
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.
-    public static AppBuilder BuildAvaloniaApp()
+    private static AppBuilder BuildAvaloniaApp()
     {
-        var builder = AppBuilder.Configure<App>()
-            .UsePlatformDetect()
-            .WithInterFont()
-            .LogToTrace()
-            .UseReactiveUI(builder => { });
+        AppBuilder builder = AppBuilder.Configure<App>()
+                                       .UsePlatformDetect()
+                                       .WithInterFont()
+                                       .LogToTrace()
+                                       .UseReactiveUI(_ => { });
 
         // Silence Dock.Avalonia's benign "DockCapability" binding warnings while keeping all
         // other diagnostics. LogToTrace has already installed the trace sink at this point.
-        if (Avalonia.Logging.Logger.Sink is { } sink and not Logging.FilteringLogSink)
-            Avalonia.Logging.Logger.Sink = new Logging.FilteringLogSink(sink);
-
+        if (Logger.Sink is { } sink and not FilteringLogSink)
+        {
+            Logger.Sink = new FilteringLogSink(sink);
+        }
         return builder;
     }
 }

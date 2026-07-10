@@ -1,4 +1,3 @@
-using System;
 using System.ComponentModel;
 using Avalonia.Data;
 using Avalonia.Markup.Xaml;
@@ -23,17 +22,21 @@ public class LocalizeExtension : MarkupExtension
         new Binding($"[{Key}]")
         {
             Mode = BindingMode.OneWay,
-            Source = LocalizedStrings.Instance,
+            Source = LocalizedStrings.Instance
         };
 }
 
-/// <summary>Bindable indexer over the localization service; language changes re-resolve
-/// every bound key at once via the indexer-changed notification.</summary>
+/// <summary>
+/// Bindable indexer over the localization service; language changes re-resolve
+/// every bound key at once via the indexer-changed notification.
+/// </summary>
 public sealed class LocalizedStrings : INotifyPropertyChanged
 {
+    private ILocalizationService _service = new LocalizationService();
+
     public static LocalizedStrings Instance { get; } = new();
 
-    private ILocalizationService _service = new LocalizationService();
+    public string this[string key] => _service.GetString(key);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -42,8 +45,6 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
         service.LanguageChanged += _ =>
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Item[]"));
+            PropertyChanged?.Invoke(this, new("Item[]"));
     }
-
-    public string this[string key] => _service.GetString(key);
 }

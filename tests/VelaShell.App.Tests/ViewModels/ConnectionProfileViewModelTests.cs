@@ -3,6 +3,7 @@ using NSubstitute;
 using VelaShell.App.Behaviors;
 using VelaShell.App.Security;
 using VelaShell.App.ViewModels;
+using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Presentation.Services;
 
@@ -16,10 +17,7 @@ public sealed class ConnectionProfileViewModelTests
     [DataRow("pä中文ss123", "pss123")]
     [DataRow("secret!", "secret!")]
     [DataRow("密码", "")]
-    public void FilterAscii_StripsNonAsciiCharacters(string input, string expected)
-    {
-        Assert.AreEqual(expected, SecurePasswordBox.FilterAscii(input));
-    }
+    public void FilterAscii_StripsNonAsciiCharacters(string input, string expected) => Assert.AreEqual(expected, SecurePasswordBox.FilterAscii(input));
 
     [TestMethod]
     public async Task SaveCommand_MaterializesSecurePasswordIntoProfile()
@@ -32,11 +30,9 @@ public sealed class ConnectionProfileViewModelTests
             Port = 22,
             Username = "root",
             AuthMethod = AuthMethod.Password,
-            Password = SecureStringConvert.FromPlaintext("s3cret"),
+            Password = SecureStringConvert.FromPlaintext("s3cret")
         };
-
-        var profile = await vm.SaveCommand.Execute().FirstAsync();
-
+        SessionProfile? profile = await vm.SaveCommand.Execute().FirstAsync();
         Assert.IsNotNull(profile);
         Assert.AreEqual("s3cret", profile.Password);
     }
@@ -44,7 +40,7 @@ public sealed class ConnectionProfileViewModelTests
     [TestMethod]
     public async Task SaveCommand_UsesWorkflowServiceAndReturnsSavedProfile()
     {
-        var workflow = Substitute.For<IConnectionWorkflowService>();
+        IConnectionWorkflowService? workflow = Substitute.For<IConnectionWorkflowService>();
         var expected = new SessionProfile
         {
             Name = "prod",
@@ -54,14 +50,10 @@ public sealed class ConnectionProfileViewModelTests
             AuthMethod = AuthMethod.Password,
             Password = "secret"
         };
-
         workflow.SaveProfileAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>())
-            .Returns(expected);
-
-        var vm = CreateValidViewModel(workflow);
-
-        var result = await vm.SaveCommand.Execute().FirstAsync();
-
+                .Returns(expected);
+        ConnectionProfileViewModel vm = CreateValidViewModel(workflow);
+        SessionProfile? result = await vm.SaveCommand.Execute().FirstAsync();
         Assert.AreSame(expected, result);
         await workflow.Received(1).SaveProfileAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>());
     }
@@ -69,14 +61,11 @@ public sealed class ConnectionProfileViewModelTests
     [TestMethod]
     public async Task TestConnectionCommand_StoresSuccessState()
     {
-        var workflow = Substitute.For<IConnectionWorkflowService>();
+        IConnectionWorkflowService? workflow = Substitute.For<IConnectionWorkflowService>();
         workflow.TestConnectionAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>())
-            .Returns(new ConnectionTestResult(true));
-
-        var vm = CreateValidViewModel(workflow);
-
+                .Returns(new ConnectionTestResult(true));
+        ConnectionProfileViewModel vm = CreateValidViewModel(workflow);
         await vm.TestConnectionCommand.Execute().FirstAsync();
-
         Assert.IsTrue(vm.LastTestSucceeded == true);
         Assert.IsNull(vm.ErrorMessage);
     }
@@ -85,21 +74,18 @@ public sealed class ConnectionProfileViewModelTests
     public async Task SaveCommand_CreatesNewGroup_WhenGroupTextIsUnknown()
     {
         // 分组框输入了不存在的分组名:保存时应新建分组落库,并把配置归入该组。
-        var repository = Substitute.For<VelaShell.Core.Data.ISessionRepository>();
+        ISessionRepository? repository = Substitute.For<ISessionRepository>();
         repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup>()));
         repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile>()));
-
         var vm = new ConnectionProfileViewModel(sessionRepository: repository)
         {
             Host = "h",
             Port = 22,
-            Username = "root",
+            Username = "root"
         };
         await vm.LoadGroupsAsync();
         vm.GroupText = "生产环境";
-
-        var profile = await vm.SaveCommand.Execute().FirstAsync();
-
+        SessionProfile? profile = await vm.SaveCommand.Execute().FirstAsync();
         Assert.IsNotNull(profile);
         await repository.Received(1).SaveGroupAsync(Arg.Is<ServerGroup>(g => g.Name == "生产环境"));
         Assert.IsNotNull(profile.GroupId);
@@ -110,21 +96,18 @@ public sealed class ConnectionProfileViewModelTests
     public async Task SaveCommand_ReusesExistingGroup_WhenGroupTextMatches()
     {
         var existing = new ServerGroup { Name = "生产环境" };
-        var repository = Substitute.For<VelaShell.Core.Data.ISessionRepository>();
+        ISessionRepository? repository = Substitute.For<ISessionRepository>();
         repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { existing }));
         repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile>()));
-
         var vm = new ConnectionProfileViewModel(sessionRepository: repository)
         {
             Host = "h",
             Port = 22,
-            Username = "root",
+            Username = "root"
         };
         await vm.LoadGroupsAsync();
         vm.GroupText = "生产环境";
-
-        var profile = await vm.SaveCommand.Execute().FirstAsync();
-
+        SessionProfile? profile = await vm.SaveCommand.Execute().FirstAsync();
         Assert.IsNotNull(profile);
         Assert.AreEqual(existing.Id, profile.GroupId);
         await repository.DidNotReceive().SaveGroupAsync(Arg.Any<ServerGroup>());
@@ -133,21 +116,18 @@ public sealed class ConnectionProfileViewModelTests
     [TestMethod]
     public async Task SaveCommand_EmptyOrUngroupedText_SavesAsUngrouped()
     {
-        var repository = Substitute.For<VelaShell.Core.Data.ISessionRepository>();
+        ISessionRepository? repository = Substitute.For<ISessionRepository>();
         repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup>()));
         repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile>()));
-
         var vm = new ConnectionProfileViewModel(sessionRepository: repository)
         {
             Host = "h",
             Port = 22,
-            Username = "root",
+            Username = "root"
         };
         await vm.LoadGroupsAsync();
         vm.GroupText = "  ";
-
-        var profile = await vm.SaveCommand.Execute().FirstAsync();
-
+        SessionProfile? profile = await vm.SaveCommand.Execute().FirstAsync();
         Assert.IsNotNull(profile);
         Assert.IsNull(profile.GroupId);
         await repository.DidNotReceive().SaveGroupAsync(Arg.Any<ServerGroup>());
@@ -155,7 +135,7 @@ public sealed class ConnectionProfileViewModelTests
 
     private static ConnectionProfileViewModel CreateValidViewModel(IConnectionWorkflowService workflow)
     {
-        return new ConnectionProfileViewModel(connectionWorkflowService: workflow)
+        return new(connectionWorkflowService: workflow)
         {
             Name = "prod",
             Host = "prod.example.com",

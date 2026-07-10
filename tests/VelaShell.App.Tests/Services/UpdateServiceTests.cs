@@ -6,20 +6,22 @@ namespace VelaShell.App.Tests.Services;
 [TestClass]
 public class UpdateServiceTests : IDisposable
 {
-    private readonly string _tempDir;
     private readonly TestVelopackLocator _locator;
+    private readonly string _tempDir;
 
     public UpdateServiceTests()
     {
         _tempDir = Path.Combine(Path.GetTempPath(), $"velashell_update_test_{Guid.NewGuid()}");
         Directory.CreateDirectory(_tempDir);
-        _locator = new TestVelopackLocator("com.velashell.test", "1.0.0", _tempDir, null);
+        _locator = new("com.velashell.test", "1.0.0", _tempDir);
     }
 
     public void Dispose()
     {
         if (Directory.Exists(_tempDir))
+        {
             Directory.Delete(_tempDir, true);
+        }
     }
 
     [TestMethod]
@@ -27,7 +29,6 @@ public class UpdateServiceTests : IDisposable
     public void CurrentVersion_WhenNotInstalled_ReturnsAssemblyVersion()
     {
         var service = new UpdateService("https://example.com/updates", _locator);
-
         Assert.IsFalse(string.IsNullOrEmpty(service.CurrentVersion));
     }
 
@@ -36,7 +37,6 @@ public class UpdateServiceTests : IDisposable
     public void AvailableVersion_Initially_IsNull()
     {
         var service = new UpdateService("https://example.com/updates", _locator);
-
         Assert.IsNull(service.AvailableVersion);
     }
 
@@ -45,9 +45,7 @@ public class UpdateServiceTests : IDisposable
     public async Task CheckForUpdateAsync_WhenNetworkUnavailable_ReturnsFalse()
     {
         var service = new UpdateService("https://invalid.test.example.com/updates", _locator);
-
-        var result = await service.CheckForUpdateAsync();
-
+        bool result = await service.CheckForUpdateAsync();
         Assert.IsFalse(result);
     }
 
@@ -56,7 +54,6 @@ public class UpdateServiceTests : IDisposable
     public async Task DownloadUpdateAsync_WhenNoUpdateAvailable_CompletesWithoutError()
     {
         var service = new UpdateService("https://example.com/updates", _locator);
-
         await service.DownloadUpdateAsync();
     }
 
@@ -65,9 +62,7 @@ public class UpdateServiceTests : IDisposable
     public void ApplyUpdateAndRestart_WhenNoUpdateAvailable_ThrowsInvalidOperation()
     {
         var service = new UpdateService("https://example.com/updates", _locator);
-
-        var act = () => service.ApplyUpdateAndRestart();
-
+        Action act = () => service.ApplyUpdateAndRestart();
         Assert.ThrowsExactly<InvalidOperationException>(act);
     }
 
@@ -75,8 +70,7 @@ public class UpdateServiceTests : IDisposable
     [TestCategory("Update")]
     public void Constructor_WithNullUrl_ThrowsArgumentNullException()
     {
-        var act = () => new UpdateService(null!, _locator);
-
+        Func<UpdateService> act = () => new(null!, _locator);
         Assert.ThrowsExactly<ArgumentNullException>(act);
     }
 
@@ -85,7 +79,6 @@ public class UpdateServiceTests : IDisposable
     public void ImplementsIUpdateService()
     {
         var service = new UpdateService("https://example.com/updates", _locator);
-
         Assert.IsInstanceOfType(service, typeof(IUpdateService));
     }
 }

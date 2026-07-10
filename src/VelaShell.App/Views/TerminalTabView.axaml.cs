@@ -57,7 +57,7 @@ public partial class TerminalTabView : UserControl
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
         // Ctrl+F toggles the in-terminal search bar (spec §5.3).
-        if (e.Key == Key.F && e.KeyModifiers == Avalonia.Input.KeyModifiers.Control)
+        if (e is { Key: Key.F, KeyModifiers: Avalonia.Input.KeyModifiers.Control })
         {
             OpenSearch();
             e.Handled = true;
@@ -69,18 +69,17 @@ public partial class TerminalTabView : UserControl
             e.Handled = true;
             return;
         }
-        if (DataContext is not TerminalTabViewModel vm || vm.ConnectionStatus != SessionStatus.Disconnected)
+        if (DataContext is not TerminalTabViewModel { ConnectionStatus: SessionStatus.Disconnected } vm)
         {
             return;
         }
-        bool reconnect =
-            (e.Key == Key.Enter && e.KeyModifiers == Avalonia.Input.KeyModifiers.None) ||
-            (e.Key == Key.R && e.KeyModifiers == Avalonia.Input.KeyModifiers.Control);
-        if (reconnect)
+        bool reconnect = e is { Key: Key.Enter, KeyModifiers: Avalonia.Input.KeyModifiers.None } or { Key: Key.R, KeyModifiers: Avalonia.Input.KeyModifiers.Control };
+        if (!reconnect)
         {
-            vm.RequestReconnect();
-            e.Handled = true;
+            return;
         }
+        vm.RequestReconnect();
+        e.Handled = true;
     }
 
     internal void OpenSearch()

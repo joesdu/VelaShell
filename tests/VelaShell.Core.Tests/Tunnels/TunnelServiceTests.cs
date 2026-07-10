@@ -1,7 +1,7 @@
+using DynamicData;
 using NSubstitute;
 using VelaShell.Core.Models;
 using VelaShell.Core.Ssh;
-using VelaShell.Core.Tunnels;
 using VelaShell.Infrastructure.Tunnels;
 
 namespace VelaShell.Core.Tests.Tunnels;
@@ -10,8 +10,8 @@ namespace VelaShell.Core.Tests.Tunnels;
 [TestCategory("Tunnel")]
 public class TunnelServiceTests
 {
-    private readonly ISshConnectionService _mockConnectionService;
     private readonly ISshClientWrapper _mockClientWrapper;
+    private readonly ISshConnectionService _mockConnectionService;
     private readonly Guid _sessionId;
 
     public TunnelServiceTests()
@@ -19,12 +19,11 @@ public class TunnelServiceTests
         _mockConnectionService = Substitute.For<ISshConnectionService>();
         _mockClientWrapper = Substitute.For<ISshClientWrapper>();
         _sessionId = Guid.NewGuid();
-
         var mockSession = new SshSession
         {
             SessionId = _sessionId,
             Status = SessionStatus.Connected,
-            ConnectionInfo = new ConnectionInfo
+            ConnectionInfo = new()
             {
                 Host = "localhost",
                 Port = 22,
@@ -32,7 +31,6 @@ public class TunnelServiceTests
                 AuthMethod = AuthMethod.Password
             }
         };
-
         _mockConnectionService.GetSession(_sessionId).Returns(mockSession);
         _mockClientWrapper.IsConnected.Returns(true);
     }
@@ -49,10 +47,8 @@ public class TunnelServiceTests
             RemoteHost = "db.example.com",
             RemotePort = 5432
         };
-
-        var service = new TunnelService(_mockConnectionService, (sessionId) => _mockClientWrapper);
-        var tunnel = await service.CreateLocalForwardAsync(_sessionId, config);
-
+        var service = new TunnelService(_mockConnectionService, sessionId => _mockClientWrapper);
+        TunnelInfo tunnel = await service.CreateLocalForwardAsync(_sessionId, config);
         Assert.IsNotNull(tunnel);
         Assert.AreNotEqual(Guid.Empty, tunnel.Id);
         Assert.AreEqual(config, tunnel.Config);
@@ -73,10 +69,8 @@ public class TunnelServiceTests
             RemoteHost = "localhost",
             RemotePort = 8080
         };
-
-        var service = new TunnelService(_mockConnectionService, (sessionId) => _mockClientWrapper);
-        var tunnel = await service.CreateRemoteForwardAsync(_sessionId, config);
-
+        var service = new TunnelService(_mockConnectionService, sessionId => _mockClientWrapper);
+        TunnelInfo tunnel = await service.CreateRemoteForwardAsync(_sessionId, config);
         Assert.IsNotNull(tunnel);
         Assert.AreNotEqual(Guid.Empty, tunnel.Id);
         Assert.AreEqual(config, tunnel.Config);
@@ -96,14 +90,11 @@ public class TunnelServiceTests
             RemoteHost = "mysql.example.com",
             RemotePort = 3306
         };
-
-        var service = new TunnelService(_mockConnectionService, (sessionId) => _mockClientWrapper);
-        var tunnel = await service.CreateLocalForwardAsync(_sessionId, config);
-
+        var service = new TunnelService(_mockConnectionService, sessionId => _mockClientWrapper);
+        TunnelInfo tunnel = await service.CreateLocalForwardAsync(_sessionId, config);
         await service.StopTunnelAsync(tunnel.Id);
-
-        var activeTunnels = service.GetActiveTunnels(_sessionId);
-        var stoppedTunnel = activeTunnels.Items.FirstOrDefault(t => t.Id == tunnel.Id);
+        IObservableList<TunnelInfo> activeTunnels = service.GetActiveTunnels(_sessionId);
+        TunnelInfo? stoppedTunnel = activeTunnels.Items.FirstOrDefault(t => t.Id == tunnel.Id);
         Assert.AreEqual(TunnelStatus.Stopped, stoppedTunnel?.Status);
     }
 
@@ -119,7 +110,6 @@ public class TunnelServiceTests
             RemoteHost = "db1.example.com",
             RemotePort = 5432
         };
-
         var config2 = new TunnelConfig
         {
             Type = TunnelType.LocalForward,
@@ -129,12 +119,10 @@ public class TunnelServiceTests
             RemoteHost = "db2.example.com",
             RemotePort = 3306
         };
-
-        var service = new TunnelService(_mockConnectionService, (sessionId) => _mockClientWrapper);
-        var tunnel1 = await service.CreateLocalForwardAsync(_sessionId, config1);
-        var tunnel2 = await service.CreateLocalForwardAsync(_sessionId, config2);
-
-        var activeTunnels = service.GetActiveTunnels(_sessionId);
+        var service = new TunnelService(_mockConnectionService, sessionId => _mockClientWrapper);
+        TunnelInfo tunnel1 = await service.CreateLocalForwardAsync(_sessionId, config1);
+        TunnelInfo tunnel2 = await service.CreateLocalForwardAsync(_sessionId, config2);
+        IObservableList<TunnelInfo> activeTunnels = service.GetActiveTunnels(_sessionId);
         Assert.AreEqual(2, activeTunnels.Count);
         Assert.IsTrue(activeTunnels.Items.Any(t => t.Id == tunnel1.Id));
         Assert.IsTrue(activeTunnels.Items.Any(t => t.Id == tunnel2.Id));
@@ -152,7 +140,6 @@ public class TunnelServiceTests
             RemoteHost = "db1.example.com",
             RemotePort = 5432
         };
-
         var config2 = new TunnelConfig
         {
             Type = TunnelType.LocalForward,
@@ -162,17 +149,13 @@ public class TunnelServiceTests
             RemoteHost = "db2.example.com",
             RemotePort = 3306
         };
-
-        var service = new TunnelService(_mockConnectionService, (sessionId) => _mockClientWrapper);
-        var tunnel1 = await service.CreateLocalForwardAsync(_sessionId, config1);
-        var tunnel2 = await service.CreateLocalForwardAsync(_sessionId, config2);
-
+        var service = new TunnelService(_mockConnectionService, sessionId => _mockClientWrapper);
+        TunnelInfo tunnel1 = await service.CreateLocalForwardAsync(_sessionId, config1);
+        TunnelInfo tunnel2 = await service.CreateLocalForwardAsync(_sessionId, config2);
         await service.StopTunnelAsync(tunnel1.Id);
-
-        var activeTunnels = service.GetActiveTunnels(_sessionId);
-        var stoppedTunnel = activeTunnels.Items.FirstOrDefault(t => t.Id == tunnel1.Id);
-        var activeTunnel = activeTunnels.Items.FirstOrDefault(t => t.Id == tunnel2.Id);
-
+        IObservableList<TunnelInfo> activeTunnels = service.GetActiveTunnels(_sessionId);
+        TunnelInfo? stoppedTunnel = activeTunnels.Items.FirstOrDefault(t => t.Id == tunnel1.Id);
+        TunnelInfo? activeTunnel = activeTunnels.Items.FirstOrDefault(t => t.Id == tunnel2.Id);
         Assert.AreEqual(TunnelStatus.Stopped, stoppedTunnel?.Status);
         Assert.AreEqual(TunnelStatus.Active, activeTunnel?.Status);
     }
@@ -189,10 +172,8 @@ public class TunnelServiceTests
             RemoteHost = "db.example.com",
             RemotePort = 5432
         };
-
-        var service = new TunnelService(_mockConnectionService, (sessionId) => _mockClientWrapper);
-        var tunnel = await service.CreateLocalForwardAsync(_sessionId, config);
-
+        var service = new TunnelService(_mockConnectionService, sessionId => _mockClientWrapper);
+        TunnelInfo tunnel = await service.CreateLocalForwardAsync(_sessionId, config);
         Assert.IsNotNull(tunnel.Config);
         Assert.AreEqual(TunnelType.LocalForward, tunnel.Config.Type);
         Assert.AreEqual("DB Tunnel", tunnel.Config.Name);

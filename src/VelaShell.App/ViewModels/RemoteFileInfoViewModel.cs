@@ -2,14 +2,9 @@ using VelaShell.Core.Models;
 
 namespace VelaShell.App.ViewModels;
 
-public class RemoteFileInfoViewModel
+public class RemoteFileInfoViewModel(RemoteFileInfo model)
 {
-    private readonly RemoteFileInfo _model;
-
-    public RemoteFileInfoViewModel(RemoteFileInfo model)
-    {
-        _model = model ?? throw new ArgumentNullException(nameof(model));
-    }
+    private readonly RemoteFileInfo _model = model ?? throw new ArgumentNullException(nameof(model));
 
     /// <summary>True only for the synthetic ".." row.</summary>
     public bool IsParentEntry { get; private init; }
@@ -86,7 +81,7 @@ public class RemoteFileInfoViewModel
     /// ls -l style timestamp per design dyuii ("Jan 12 09:15"): time within the current
     /// year, otherwise the year replaces the clock.
     /// </summary>
-    public static string FormatModifiedTime(DateTime dateTime)
+    private static string FormatModifiedTime(DateTime dateTime)
     {
         DateTime local = dateTime.Kind == DateTimeKind.Unspecified
                              ? dateTime

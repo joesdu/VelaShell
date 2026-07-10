@@ -4,7 +4,7 @@ using System.Security;
 namespace VelaShell.App.Security;
 
 /// <summary>
-/// SecureString ↔ 明文的最小转换工具。仅在必须与只接受 <see cref="string"/> 的
+/// SecureString ↔ 明文的最小转换工具。仅在必须与只接受 <see cref="string" /> 的
 /// 边界(持久化 DTO、SSH.NET 等)交接时使用;materialize 出的明文应尽快转交并弃用。
 /// </summary>
 public static class SecureStringConvert
@@ -16,13 +16,11 @@ public static class SecureStringConvert
         {
             return null;
         }
-
         if (secure.Length == 0)
         {
             return string.Empty;
         }
-
-        var ptr = Marshal.SecureStringToGlobalAllocUnicode(secure);
+        IntPtr ptr = Marshal.SecureStringToGlobalAllocUnicode(secure);
         try
         {
             return Marshal.PtrToStringUni(ptr);
@@ -40,13 +38,11 @@ public static class SecureStringConvert
         {
             return null;
         }
-
         var secure = new SecureString();
-        foreach (var c in plaintext)
+        foreach (char c in plaintext)
         {
             secure.AppendChar(c);
         }
-
         return secure;
     }
 }

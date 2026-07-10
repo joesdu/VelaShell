@@ -9,9 +9,6 @@ namespace VelaShell.App.ViewModels;
 public class SshKeyManagerViewModel : ReactiveObject
 {
     private readonly ISshKeyService? _keyService;
-    private bool _isBusy;
-    private string _searchQuery = string.Empty;
-    private string _statusMessage = string.Empty;
 
     public SshKeyManagerViewModel(ISshKeyService? keyService = null)
     {
@@ -34,20 +31,20 @@ public class SshKeyManagerViewModel : ReactiveObject
 
     public string SearchQuery
     {
-        get => _searchQuery;
-        set => this.RaiseAndSetIfChanged(ref _searchQuery, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
 
     public string StatusMessage
     {
-        get => _statusMessage;
-        private set => this.RaiseAndSetIfChanged(ref _statusMessage, value);
-    }
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
 
     public bool IsBusy
     {
-        get => _isBusy;
-        private set => this.RaiseAndSetIfChanged(ref _isBusy, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
@@ -113,7 +110,7 @@ public class SshKeyManagerViewModel : ReactiveObject
         try
         {
             // 自动挑选未占用的名称 velashell_rsa[, _2, _3…]。
-            string baseName = "velashell_rsa";
+            const string baseName = "velashell_rsa";
             string name = baseName;
             for (int i = 2; Keys.Any(k => k.Name == name); i++)
             {

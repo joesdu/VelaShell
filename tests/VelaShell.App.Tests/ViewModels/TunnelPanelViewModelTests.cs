@@ -9,25 +9,23 @@ namespace VelaShell.App.Tests.ViewModels;
 [TestClass]
 public class TunnelPanelViewModelTests
 {
-    private readonly ITunnelService _tunnelService;
-    private readonly Guid _sessionId;
     private readonly SessionProfile _server;
+    private readonly Guid _sessionId;
+    private readonly ITunnelService _tunnelService;
     private readonly TunnelPanelViewModel _vm;
 
     public TunnelPanelViewModelTests()
     {
         _tunnelService = Substitute.For<ITunnelService>();
         _sessionId = Guid.NewGuid();
-        _server = new SessionProfile { Name = "srv", Host = "10.0.0.1", Username = "root" };
+        _server = new() { Name = "srv", Host = "10.0.0.1", Username = "root" };
 
         // 面板以服务器为中心:后台连接器直接返回固定会话,存活检查恒真。
-        _vm = new TunnelPanelViewModel(
-            _tunnelService,
-            savedProfilesProvider: () => Task.FromResult<IReadOnlyList<SessionProfile>>([_server]),
-            backgroundConnector: (_, _) => Task.FromResult(_sessionId),
-            isSessionAlive: _ => true,
-            sessionDisconnector: _ => Task.CompletedTask);
-
+        _vm = new(_tunnelService,
+            () => Task.FromResult<IReadOnlyList<SessionProfile>>([_server]),
+            (_, _) => Task.FromResult(_sessionId),
+            _ => true,
+            _ => Task.CompletedTask);
         _vm.Servers.Add(_server);
         _vm.SelectedServer = _server;
     }
@@ -42,10 +40,10 @@ public class TunnelPanelViewModelTests
         uint remotePort = 3306,
         long bytesTransferred = 0)
     {
-        return new TunnelInfo
+        return new()
         {
             Id = Guid.NewGuid(),
-            Config = new TunnelConfig
+            Config = new()
             {
                 Type = type,
                 Name = name,
@@ -77,14 +75,11 @@ public class TunnelPanelViewModelTests
     [TestCategory("TunnelUI")]
     public async Task CreateTunnel_WithValidForm_AddsTunnelToList()
     {
-        var tunnelInfo = CreateTunnelInfo();
+        TunnelInfo tunnelInfo = CreateTunnelInfo();
         _tunnelService.CreateLocalForwardAsync(_sessionId, Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(tunnelInfo));
-
+                      .Returns(Task.FromResult(tunnelInfo));
         FillValidLocalForm();
-
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
-
         Assert.AreEqual(1, _vm.Tunnels.Count());
         Assert.AreEqual("test-tunnel", _vm.Tunnels[0].Name);
         Assert.AreEqual(3306u, _vm.Tunnels[0].LocalPort);
@@ -97,7 +92,6 @@ public class TunnelPanelViewModelTests
     {
         FillValidLocalForm();
         _vm.SelectedServer = null;
-
         Assert.IsFalse(await _vm.CreateTunnelCommand.CanExecute.FirstAsync());
     }
 
@@ -105,20 +99,17 @@ public class TunnelPanelViewModelTests
     [TestCategory("TunnelUI")]
     public async Task CreateTunnel_LoopbackDefault_TargetsServerItself()
     {
-        var tunnelInfo = CreateTunnelInfo(remoteHost: "127.0.0.1");
+        TunnelInfo tunnelInfo = CreateTunnelInfo(remoteHost: "127.0.0.1");
         TunnelConfig? captured = null;
         _tunnelService.CreateLocalForwardAsync(_sessionId, Arg.Do<TunnelConfig>(c => captured = c), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(tunnelInfo));
-
+                      .Returns(Task.FromResult(tunnelInfo));
         _vm.NewLocalHost = "127.0.0.1";
         _vm.NewLocalPort = 5432;
         _vm.NewRemotePort = 5432;
         // 默认 ForwardToServerLoopback = true:目标主机锁定 127.0.0.1(服务器视角)。
         Assert.IsTrue(_vm.ForwardToServerLoopback);
         Assert.IsFalse(_vm.IsRemoteHostEditable);
-
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
-
         Assert.IsNotNull(captured);
         Assert.AreEqual("127.0.0.1", captured!.RemoteHost);
     }
@@ -136,7 +127,6 @@ public class TunnelPanelViewModelTests
     {
         FillValidLocalForm(remotePort: remotePort);
         _vm.NewLocalPort = localPort;
-
         Assert.AreEqual(expectedValid, await _vm.CreateTunnelCommand.CanExecute.FirstAsync());
     }
 
@@ -144,17 +134,13 @@ public class TunnelPanelViewModelTests
     [TestCategory("TunnelUI")]
     public async Task StopTunnel_ChangesTunnelStatusToStopped()
     {
-        var tunnelInfo = CreateTunnelInfo(status: TunnelStatus.Active);
+        TunnelInfo tunnelInfo = CreateTunnelInfo(status: TunnelStatus.Active);
         _tunnelService.CreateLocalForwardAsync(_sessionId, Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(tunnelInfo));
-
+                      .Returns(Task.FromResult(tunnelInfo));
         FillValidLocalForm();
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
-
         Assert.AreEqual(TunnelStatus.Active, _vm.Tunnels[0].Status);
-
         await _vm.StopTunnelCommand.Execute(tunnelInfo.Id).FirstAsync();
-
         Assert.AreEqual(TunnelStatus.Stopped, _vm.Tunnels[0].Status);
         await _tunnelService.Received(1).StopTunnelAsync(tunnelInfo.Id, Arg.Any<CancellationToken>());
     }
@@ -163,16 +149,13 @@ public class TunnelPanelViewModelTests
     [TestCategory("TunnelUI")]
     public async Task DeleteTunnel_RemovesTunnelFromList()
     {
-        var tunnelInfo = CreateTunnelInfo(status: TunnelStatus.Active);
+        TunnelInfo tunnelInfo = CreateTunnelInfo(status: TunnelStatus.Active);
         _tunnelService.CreateLocalForwardAsync(_sessionId, Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(tunnelInfo));
-
+                      .Returns(Task.FromResult(tunnelInfo));
         FillValidLocalForm();
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
         Assert.AreEqual(1, _vm.Tunnels.Count());
-
         await _vm.DeleteTunnelCommand.Execute(tunnelInfo.Id).FirstAsync();
-
         Assert.AreEqual(0, _vm.Tunnels.Count());
         // 删除统一走 RemoveTunnelAsync(活动中的由服务先停再移除)。
         await _tunnelService.Received(1).RemoveTunnelAsync(tunnelInfo.Id, Arg.Any<CancellationToken>());
@@ -187,7 +170,12 @@ public class TunnelPanelViewModelTests
     [DataRow("test", "localhost", 3306, "remote", 0, false)]
     [DataRow("test", "localhost", 3306, "remote", 3306, true)]
     public async Task PortValidation_RequiredFieldsMustBeNonEmptyNonZero(
-        string name, string localHost, int localPort, string remoteHost, int remotePort, bool expectedValid)
+        string name,
+        string localHost,
+        int localPort,
+        string remoteHost,
+        int remotePort,
+        bool expectedValid)
     {
         _vm.ForwardToServerLoopback = false;
         _vm.NewTunnelName = name;
@@ -195,7 +183,6 @@ public class TunnelPanelViewModelTests
         _vm.NewLocalPort = localPort;
         _vm.NewRemoteHost = remoteHost;
         _vm.NewRemotePort = remotePort;
-
         Assert.AreEqual(expectedValid, await _vm.CreateTunnelCommand.CanExecute.FirstAsync());
     }
 
@@ -209,7 +196,6 @@ public class TunnelPanelViewModelTests
         _vm.NewRemoteHost = string.Empty;
         _vm.NewRemotePort = 0;
         _vm.NewTunnelTypeIndex = 2; // 动态 SOCKS
-
         Assert.IsTrue(await _vm.CreateTunnelCommand.CanExecute.FirstAsync());
     }
 
@@ -217,17 +203,14 @@ public class TunnelPanelViewModelTests
     [TestCategory("TunnelUI")]
     public async Task CreateTunnel_RemoteForward_UsesCorrectServiceMethod()
     {
-        var tunnelInfo = CreateTunnelInfo(type: TunnelType.RemoteForward);
+        TunnelInfo tunnelInfo = CreateTunnelInfo(TunnelType.RemoteForward);
         _tunnelService.CreateRemoteForwardAsync(_sessionId, Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(tunnelInfo));
-
-        FillValidLocalForm(remoteHost: "web-server", remotePort: 80);
+                      .Returns(Task.FromResult(tunnelInfo));
+        FillValidLocalForm("web-server", 80);
         _vm.NewTunnelName = "remote-tunnel";
         _vm.NewLocalPort = 8080;
         _vm.NewTunnelType = TunnelType.RemoteForward;
-
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
-
         await _tunnelService.Received(1).CreateRemoteForwardAsync(_sessionId, Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>());
         await _tunnelService.DidNotReceive().CreateLocalForwardAsync(Arg.Any<Guid>(), Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>());
         Assert.AreEqual(1, _vm.Tunnels.Count());
@@ -237,14 +220,11 @@ public class TunnelPanelViewModelTests
     [TestCategory("TunnelUI")]
     public void TunnelItemViewModel_DisplayFormat_IsCorrect()
     {
-        var tunnelInfo = CreateTunnelInfo(
-            localHost: "localhost",
+        TunnelInfo tunnelInfo = CreateTunnelInfo(localHost: "localhost",
             localPort: 3306,
             remoteHost: "db-server",
             remotePort: 3306);
-
         var itemVm = new TunnelItemViewModel(tunnelInfo);
-
         Assert.AreEqual("localhost:3306 → db-server:3306", itemVm.DisplayRoute);
         Assert.AreEqual("Local", itemVm.TypeBadge);
     }
@@ -253,14 +233,13 @@ public class TunnelPanelViewModelTests
     [TestCategory("TunnelUI")]
     public void TunnelItemViewModel_ReflectsServiceSideStatusAndError()
     {
-        var tunnelInfo = CreateTunnelInfo(status: TunnelStatus.Active);
+        TunnelInfo tunnelInfo = CreateTunnelInfo(status: TunnelStatus.Active);
         var itemVm = new TunnelItemViewModel(tunnelInfo);
 
         // 服务侧(会话断开/通道错误)直接改共享 TunnelInfo,条目应透传。
         tunnelInfo.Status = TunnelStatus.Stopped;
         tunnelInfo.LastError = "目标拒绝连接";
         itemVm.RefreshLive();
-
         Assert.AreEqual(TunnelStatus.Stopped, itemVm.Status);
         Assert.IsFalse(itemVm.IsActive);
         Assert.IsTrue(itemVm.HasError);
@@ -273,25 +252,19 @@ public class TunnelPanelViewModelTests
     [DataRow(1024, "1.0 KB")]
     [DataRow(1048576, "1.0 MB")]
     [DataRow(1073741824, "1.0 GB")]
-    public void TunnelItemViewModel_BytesTransferred_FormatsCorrectly(long bytes, string expected)
-    {
-        Assert.AreEqual(expected, TunnelItemViewModel.FormatBytes(bytes));
-    }
+    public void TunnelItemViewModel_BytesTransferred_FormatsCorrectly(long bytes, string expected) => Assert.AreEqual(expected, TunnelItemViewModel.FormatBytes(bytes));
 
     [TestMethod]
     [TestCategory("TunnelUI")]
     public async Task CreateTunnel_ResetsFormAfterSuccess()
     {
-        var tunnelInfo = CreateTunnelInfo();
+        TunnelInfo tunnelInfo = CreateTunnelInfo();
         _tunnelService.CreateLocalForwardAsync(_sessionId, Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(tunnelInfo));
-
-        FillValidLocalForm(remoteHost: "server", remotePort: 80);
+                      .Returns(Task.FromResult(tunnelInfo));
+        FillValidLocalForm("server", 80);
         _vm.NewLocalHost = "127.0.0.1";
         _vm.NewLocalPort = 8080;
-
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
-
         Assert.AreEqual(string.Empty, _vm.NewTunnelName);
         Assert.AreEqual("127.0.0.1", _vm.NewLocalHost);
         Assert.AreEqual(0, _vm.NewLocalPort);

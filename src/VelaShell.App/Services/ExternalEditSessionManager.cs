@@ -188,6 +188,8 @@ internal sealed class ExternalEditSession : IDisposable
             return;
         }
         _debounce?.Dispose();
+        // ReSharper disable once RedundantAssignment
+        // ReSharper disable once AllUnderscoreLocalParameterName
         _debounce = new(_ => _ = UploadAsync(), null, TimeSpan.FromMilliseconds(600), Timeout.InfiniteTimeSpan);
     }
 
@@ -227,8 +229,7 @@ internal sealed class ExternalEditSession : IDisposable
         {
             try
             {
-                using FileStream _ = File.Open(_localPath, FileMode.Open, FileAccess.Read,
-                    FileShare.ReadWrite | FileShare.Delete);
+                await using FileStream _ = File.Open(_localPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                 return;
             }
             catch (IOException) when (attempt < 3)

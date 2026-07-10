@@ -1,7 +1,6 @@
-using System;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Markup.Xaml;
+using Avalonia.Interactivity;
 using VelaShell.Core.Models;
 using VelaShell.Presentation.ViewModels;
 
@@ -9,6 +8,11 @@ namespace VelaShell.App.Views;
 
 public partial class SidebarView : UserControl
 {
+    public SidebarView()
+    {
+        InitializeComponent();
+    }
+
     public event EventHandler? OpenConnectionProfileRequested;
 
     /// <summary>Raised by the footer gear button to open the settings window.</summary>
@@ -17,17 +21,12 @@ public partial class SidebarView : UserControl
     /// <summary>Raised when the user double-clicks a recent connection to reconnect to it.</summary>
     public event EventHandler<RecentConnectionEntry>? RecentConnectRequested;
 
-    public SidebarView()
-    {
-        InitializeComponent();
-    }
-
-    private void OpenConnectionProfile_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private void OpenConnectionProfile_Click(object? sender, RoutedEventArgs e)
     {
         OpenConnectionProfileRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    private void OpenSettings_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private void OpenSettings_Click(object? sender, RoutedEventArgs e)
     {
         SettingsRequested?.Invoke(this, EventArgs.Empty);
     }
@@ -35,6 +34,8 @@ public partial class SidebarView : UserControl
     private void RecentConnection_DoubleTapped(object? sender, TappedEventArgs e)
     {
         if (sender is Control { DataContext: RecentConnectionItemViewModel item })
+        {
             RecentConnectRequested?.Invoke(this, item.Entry);
+        }
     }
 }

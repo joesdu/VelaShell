@@ -1,4 +1,5 @@
 using System.Globalization;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
@@ -149,7 +150,7 @@ public partial class FileBrowserView : UserControl
     private static double EstimateAutoWidthForName(FileBrowserViewModel vm)
     {
         double header = MeasureTextWidth("文件名", 10);
-        double rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.DisplayName ?? string.Empty, 11)) : 0;
+        double rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.DisplayName, 11)) : 0;
 
         // Name column also has a leading icon area (14px icon + 6px gap) and breathing room.
         double estimated = Math.Max(header, rows) + 24 + 10;
@@ -159,7 +160,7 @@ public partial class FileBrowserView : UserControl
     private static double EstimateAutoWidthForSize(FileBrowserViewModel vm)
     {
         double header = MeasureTextWidth("大小", 10);
-        double rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.FormattedSize ?? string.Empty, 11)) : 0;
+        double rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.FormattedSize, 11)) : 0;
         double estimated = Math.Max(header, rows) + 8;
         return Math.Clamp(estimated, MinSizeWidth, 260);
     }
@@ -167,7 +168,7 @@ public partial class FileBrowserView : UserControl
     private static double EstimateAutoWidthForPermissions(FileBrowserViewModel vm)
     {
         double header = MeasureTextWidth("权限", 10);
-        double rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.Permissions ?? string.Empty, 11)) : 0;
+        double rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.Permissions, 11)) : 0;
         double estimated = Math.Max(header, rows) + 8;
         return Math.Clamp(estimated, MinPermissionsWidth, 300);
     }
@@ -291,7 +292,7 @@ public partial class FileBrowserView : UserControl
         {
             return null;
         }
-        string? configured = vm.TransferOptions.LocalDownloadDirectory?.Trim();
+        string configured = vm.TransferOptions.LocalDownloadDirectory.Trim();
         if (string.IsNullOrEmpty(configured))
         {
             return null;
@@ -446,7 +447,7 @@ public partial class FileBrowserView : UserControl
         }
 
         // 直达 设置 → 文件传输 页(索引 5,对应 SettingsView 的页序)。
-        if (App.Current is App app && app.Services?.GetService<SettingsViewModel>() is { } settingsViewModel)
+        if (Application.Current is App app && app.Services?.GetService<SettingsViewModel>() is { } settingsViewModel)
         {
             settingsViewModel.SelectedSectionIndex = 5;
         }

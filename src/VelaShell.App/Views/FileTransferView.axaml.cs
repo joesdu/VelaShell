@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Input;
 using VelaShell.App.ViewModels;
 
 namespace VelaShell.App.Views;

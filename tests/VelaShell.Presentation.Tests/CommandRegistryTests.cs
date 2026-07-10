@@ -10,9 +10,8 @@ public class CommandRegistryTests
     public void Register_ThenFindAndExecute()
     {
         var registry = new CommandRegistry();
-        var ran = false;
-        registry.Register(new CommandDescriptor("t.run", "Run", "工具", () => ran = true, Shortcut: "Ctrl+R"));
-
+        bool ran = false;
+        registry.Register(new("t.run", "Run", "工具", () => ran = true, Shortcut: "Ctrl+R"));
         Assert.IsNotNull(registry.Find("t.run"));
         Assert.IsTrue(registry.Execute("t.run"));
         Assert.IsTrue(ran);
@@ -29,9 +28,8 @@ public class CommandRegistryTests
     public void Execute_DisabledCommand_DoesNotRun()
     {
         var registry = new CommandRegistry();
-        var ran = false;
-        registry.Register(new CommandDescriptor("t.off", "Off", "工具", () => ran = true, CanExecute: () => false));
-
+        bool ran = false;
+        registry.Register(new("t.off", "Off", "工具", () => ran = true, () => false));
         Assert.IsFalse(registry.Execute("t.off"));
         Assert.IsFalse(ran);
     }
@@ -40,10 +38,9 @@ public class CommandRegistryTests
     public void Register_SameId_ReplacesButKeepsOrder()
     {
         var registry = new CommandRegistry();
-        registry.Register(new CommandDescriptor("a", "A1", "c", () => { }));
-        registry.Register(new CommandDescriptor("b", "B", "c", () => { }));
-        registry.Register(new CommandDescriptor("a", "A2", "c", () => { }));
-
+        registry.Register(new("a", "A1", "c", () => { }));
+        registry.Register(new("b", "B", "c", () => { }));
+        registry.Register(new("a", "A2", "c", () => { }));
         Assert.AreEqual(2, registry.All.Count);
         Assert.AreEqual("A2", registry.All[0].Title);
         Assert.AreEqual("b", registry.All[1].Id);

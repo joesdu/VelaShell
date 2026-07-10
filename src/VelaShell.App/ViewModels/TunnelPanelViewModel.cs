@@ -31,16 +31,8 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     private readonly Func<Guid, Task>? _sessionDisconnector;
     private readonly ITunnelService _tunnelService;
     private Guid? _editingTunnelId;
-    private string? _errorMessage;
-    private bool _forwardToServerLoopback = true;
     private bool _isConnectingHost;
-    private string _newLocalHost = "127.0.0.1";
-    private int _newLocalPort;
-    private string _newRemoteHost = "127.0.0.1";
-    private int _newRemotePort;
-    private string _newTunnelName = string.Empty;
 
-    private TunnelType _newTunnelType;
     private SessionProfile? _selectedServer;
     private ObservableCollection<TunnelItemViewModel> _tunnels;
 
@@ -68,10 +60,9 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
             (server, localHost, localPort, remoteHost, remotePort, typeIndex, _) =>
                 server is not null &&
                 !string.IsNullOrWhiteSpace(localHost) &&
-                localPort >= 1 &&
-                localPort <= 65535 &&
+                localPort is >= 1 and <= 65535 &&
                 (typeIndex == 2 ||
-                 (!string.IsNullOrWhiteSpace(remoteHost) && remotePort >= 1 && remotePort <= 65535)));
+                 (!string.IsNullOrWhiteSpace(remoteHost) && remotePort is >= 1 and <= 65535)));
         CreateTunnelCommand = ReactiveCommand.CreateFromTask(SubmitAsync, canCreate);
         StopTunnelCommand = ReactiveCommand.CreateFromTask<Guid>(StopTunnelAsync);
         StartTunnelCommand = ReactiveCommand.CreateFromTask<Guid>(StartTunnelAsync);
@@ -181,60 +172,60 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     /// </summary>
     public bool ForwardToServerLoopback
     {
-        get => _forwardToServerLoopback;
+        get;
         set
         {
-            this.RaiseAndSetIfChanged(ref _forwardToServerLoopback, value);
+            this.RaiseAndSetIfChanged(ref field, value);
             if (value)
             {
                 NewRemoteHost = "127.0.0.1";
             }
             this.RaisePropertyChanged(nameof(IsRemoteHostEditable));
         }
-    }
+    } = true;
 
     public bool IsRemoteHostEditable => !ForwardToServerLoopback;
 
     public TunnelType NewTunnelType
     {
-        get => _newTunnelType;
-        set => this.RaiseAndSetIfChanged(ref _newTunnelType, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public string NewLocalHost
     {
-        get => _newLocalHost;
-        set => this.RaiseAndSetIfChanged(ref _newLocalHost, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "127.0.0.1";
 
     public int NewLocalPort
     {
-        get => _newLocalPort;
-        set => this.RaiseAndSetIfChanged(ref _newLocalPort, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public string NewRemoteHost
     {
-        get => _newRemoteHost;
-        set => this.RaiseAndSetIfChanged(ref _newRemoteHost, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "127.0.0.1";
 
     public int NewRemotePort
     {
-        get => _newRemotePort;
-        set => this.RaiseAndSetIfChanged(ref _newRemotePort, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public string NewTunnelName
     {
-        get => _newTunnelName;
-        set => this.RaiseAndSetIfChanged(ref _newTunnelName, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
 
     public string? ErrorMessage
     {
-        get => _errorMessage;
-        set => this.RaiseAndSetIfChanged(ref _errorMessage, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>非空 = 表单处于"编辑既有隧道"模式;提交按钮显示"保存"。</summary>
@@ -364,7 +355,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         bool hasTunnels;
         try
         {
-            hasTunnels = _tunnelService.GetActiveTunnels(sessionId)?.Items.Any() == true;
+            hasTunnels = _tunnelService.GetActiveTunnels(sessionId).Items.Any();
         }
         catch
         {
@@ -408,13 +399,10 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
                 {
                     try
                     {
-                        IReadOnlyList<TunnelInfo>? existing = _tunnelService.GetActiveTunnels(sessionId)?.Items;
-                        if (existing is not null)
+                        IReadOnlyList<TunnelInfo> existing = _tunnelService.GetActiveTunnels(sessionId).Items;
+                        foreach (TunnelInfo info in existing.OrderBy(t => t.CreatedAt))
                         {
-                            foreach (TunnelInfo info in existing.OrderBy(t => t.CreatedAt))
-                            {
-                                items.Add(new(info));
-                            }
+                            items.Add(new(info));
                         }
                     }
                     catch
@@ -658,10 +646,8 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
             OperationCanceledException => "已取消。",
             InvalidOperationException when ex.Message.Contains("not connected", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase)
                 => "与服务器的连接不可用,请重试(将自动重连)。",
-            SocketException socket
-                when socket.SocketErrorCode == SocketError.AddressAlreadyInUse
-                => $"本地端口 {NewLocalPort} 已被占用,请换一个端口。",
-            _ => ex.Message
+            SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse } => $"本地端口 {NewLocalPort} 已被占用,请换一个端口。",
+            _                                                                    => ex.Message
         };
 
     private void ResetForm()

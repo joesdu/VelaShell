@@ -9,40 +9,30 @@ using VelaShell.Presentation.Services;
 namespace VelaShell.App.ViewModels;
 
 /// <summary>诊断步骤行(设计 RGXg1 stepPanel):序号 + 名称 + 状态图形/耗时。</summary>
-public sealed class DiagnosticStepItemViewModel : ReactiveObject
+public sealed class DiagnosticStepItemViewModel(int index, string name) : ReactiveObject
 {
-    private string? _detail;
-    private long? _elapsedMs;
-    private DiagnosticStepStatus _status = DiagnosticStepStatus.Pending;
+    private int Index { get; } = index;
 
-    public DiagnosticStepItemViewModel(int index, string name)
-    {
-        Index = index;
-        Name = name;
-    }
-
-    public int Index { get; }
-
-    public string Name { get; private set; }
+    private string Name { get; set; } = name;
 
     public string DisplayName => $"{Index + 1}. {Name}";
 
     public DiagnosticStepStatus Status
     {
-        get => _status;
-        private set => this.RaiseAndSetIfChanged(ref _status, value);
-    }
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    } = DiagnosticStepStatus.Pending;
 
     public string? Detail
     {
-        get => _detail;
-        private set => this.RaiseAndSetIfChanged(ref _detail, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public long? ElapsedMs
     {
-        get => _elapsedMs;
-        private set => this.RaiseAndSetIfChanged(ref _elapsedMs, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>状态列文本:✅ 4ms / ⚠ 原因 / ✗ 原因 / ⏸ 等待修复后重试(设计 RGXg1)。</summary>
@@ -92,10 +82,7 @@ public class ConnectionDiagnosticsViewModel : ReactiveObject
 {
     private readonly IConnectionDiagnosticsService _diagnosticsService;
     private readonly SessionProfile _profile;
-    private bool _allPassed;
 
-    private bool _isBusy;
-    private string? _issueDescription;
     private string? _issueTitle;
     private DiagnosticReport? _lastReport;
 
@@ -126,8 +113,8 @@ public class ConnectionDiagnosticsViewModel : ReactiveObject
 
     public bool IsBusy
     {
-        get => _isBusy;
-        private set => this.RaiseAndSetIfChanged(ref _isBusy, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public string? IssueTitle
@@ -142,8 +129,8 @@ public class ConnectionDiagnosticsViewModel : ReactiveObject
 
     public string? IssueDescription
     {
-        get => _issueDescription;
-        private set => this.RaiseAndSetIfChanged(ref _issueDescription, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public bool HasIssue => !string.IsNullOrEmpty(_issueTitle);
@@ -151,8 +138,8 @@ public class ConnectionDiagnosticsViewModel : ReactiveObject
     /// <summary>四步全部通过时问题面板显示绿色的"未发现问题"。</summary>
     public bool AllPassed
     {
-        get => _allPassed;
-        private set => this.RaiseAndSetIfChanged(ref _allPassed, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public bool CanExport => _lastReport is not null;

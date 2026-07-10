@@ -5,7 +5,7 @@ namespace VelaShell.App.Docking;
 
 /// <summary>
 /// A Dock document that hosts a single SSH terminal tab. Wrapping the terminal (rather than
-/// making <see cref="TerminalTabViewModel"/> itself a dockable) keeps the presentation/tab model
+/// making <see cref="TerminalTabViewModel" /> itself a dockable) keeps the presentation/tab model
 /// independent of the docking framework, so the existing tab collection and tests are unaffected.
 /// The visual is resolved by a DataTemplate matched to this type.
 /// </summary>

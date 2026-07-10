@@ -28,28 +28,13 @@ public class FileBrowserViewModel : ReactiveObject
 
     private readonly Guid _sessionId;
     private readonly ISftpService _sftpService;
-    private string _busyText = Strings.Loading;
 
     private string _currentPath;
 
     /// <summary>Cancels the running delete; tripped from the delete overlay's cancel button.</summary>
     private CancellationTokenSource? _deleteCts;
 
-    private double _deleteProgressPercent;
-    private string? _errorMessage;
-    private bool _isDeleteProgressIndeterminate;
-    private bool _isDeleteProgressVisible;
-    private bool _isLoading;
     private bool _isVisible;
-    private GridLength _nameColumnWidth = new(280);
-    private GridLength _permissionsColumnWidth = new(110);
-    private bool _showHiddenFiles;
-    private GridLength _sizeColumnWidth = new(100);
-    private string _sortColumn = "name";
-    private bool _sortDescending;
-
-    /// <summary>Cancels the running transfer batch (upload/download); tripped from the toast.</summary>
-    private CancellationTokenSource? _transferCts;
 
     public FileBrowserViewModel(ISftpService? sftpService, Guid sessionId)
     {
@@ -126,16 +111,16 @@ public class FileBrowserViewModel : ReactiveObject
 
     public bool IsLoading
     {
-        get => _isLoading;
-        set => this.RaiseAndSetIfChanged(ref _isLoading, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>Message shown on the busy overlay (loading a directory, or delete progress).</summary>
     public string BusyText
     {
-        get => _busyText;
-        set => this.RaiseAndSetIfChanged(ref _busyText, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = Strings.Loading;
 
     public bool IsVisible
     {
@@ -145,62 +130,62 @@ public class FileBrowserViewModel : ReactiveObject
 
     public string? ErrorMessage
     {
-        get => _errorMessage;
-        set => this.RaiseAndSetIfChanged(ref _errorMessage, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>Whether dotfiles are listed. Off by default per §6 (hidden-files toggle).</summary>
     public bool ShowHiddenFiles
     {
-        get => _showHiddenFiles;
+        get;
         set
         {
-            if (_showHiddenFiles == value)
+            if (field == value)
             {
                 return;
             }
-            this.RaiseAndSetIfChanged(ref _showHiddenFiles, value);
+            this.RaiseAndSetIfChanged(ref field, value);
             RebuildVisibleFiles();
         }
     }
 
     public GridLength NameColumnWidth
     {
-        get => _nameColumnWidth;
-        set => this.RaiseAndSetIfChanged(ref _nameColumnWidth, ClampColumnWidth(value, 180));
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, ClampColumnWidth(value, 180));
+    } = new(280);
 
     public GridLength SizeColumnWidth
     {
-        get => _sizeColumnWidth;
-        set => this.RaiseAndSetIfChanged(ref _sizeColumnWidth, ClampColumnWidth(value, 70));
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, ClampColumnWidth(value, 70));
+    } = new(100);
 
     public GridLength PermissionsColumnWidth
     {
-        get => _permissionsColumnWidth;
-        set => this.RaiseAndSetIfChanged(ref _permissionsColumnWidth, ClampColumnWidth(value, 80));
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, ClampColumnWidth(value, 80));
+    } = new(110);
 
     /// <summary>Whether the loading overlay should show a delete progress bar.</summary>
     public bool IsDeleteProgressVisible
     {
-        get => _isDeleteProgressVisible;
-        private set => this.RaiseAndSetIfChanged(ref _isDeleteProgressVisible, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>Delete progress percentage [0,100] for the overlay progress bar.</summary>
     public double DeleteProgressPercent
     {
-        get => _deleteProgressPercent;
-        private set => this.RaiseAndSetIfChanged(ref _deleteProgressPercent, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>When true, delete progress is shown as indeterminate (e.g., before total is known).</summary>
     public bool IsDeleteProgressIndeterminate
     {
-        get => _isDeleteProgressIndeterminate;
-        private set => this.RaiseAndSetIfChanged(ref _isDeleteProgressIndeterminate, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public ReactiveCommand<string, Unit> NavigateToCommand { get; }
@@ -279,15 +264,15 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>The column the list is currently ordered by.</summary>
     public string SortColumn
     {
-        get => _sortColumn;
-        private set => this.RaiseAndSetIfChanged(ref _sortColumn, value);
-    }
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "name";
 
     /// <summary>Whether the current sort is descending.</summary>
     public bool SortDescending
     {
-        get => _sortDescending;
-        private set => this.RaiseAndSetIfChanged(ref _sortDescending, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public string NameSortGlyph => GlyphFor("name");
@@ -378,12 +363,6 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task NavigateToAsync(string path, CancellationToken ct = default)
     {
-        if (_sftpService is null)
-        {
-            ErrorMessage = null;
-            CurrentPath = path;
-            return;
-        }
         try
         {
             ErrorMessage = null;
@@ -413,20 +392,17 @@ public class FileBrowserViewModel : ReactiveObject
     private async Task LoadInitialAsync(CancellationToken ct = default)
     {
         var candidates = new List<string>();
-        if (_sftpService is not null)
+        try
         {
-            try
+            string working = await _sftpService.GetWorkingDirectoryAsync(_sessionId, ct);
+            if (!string.IsNullOrWhiteSpace(working))
             {
-                string working = await _sftpService.GetWorkingDirectoryAsync(_sessionId, ct);
-                if (!string.IsNullOrWhiteSpace(working))
-                {
-                    candidates.Add(working);
-                }
+                candidates.Add(working);
             }
-            catch
-            {
-                // 解析家目录尽力而为,失败则继续走根目录。
-            }
+        }
+        catch
+        {
+            // 解析家目录尽力而为,失败则继续走根目录。
         }
         candidates.Add("/");
         foreach (string path in candidates.Distinct())
@@ -525,7 +501,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     private async Task DownloadAndOpenAsync(RemoteFileInfoViewModel file, CancellationToken ct)
     {
-        if (_sftpService is null || OpenLocalFile is null)
+        if (OpenLocalFile is null)
         {
             return;
         }
@@ -576,17 +552,11 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, progress);
-            if (item is not null)
-            {
-                item.Status = TransferStatus.Completed;
-            }
+            item?.Status = TransferStatus.Completed;
         }
         catch
         {
-            if (item is not null)
-            {
-                item.Status = TransferStatus.Failed;
-            }
+            item?.Status = TransferStatus.Failed;
             throw;
         }
         finally
@@ -601,7 +571,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     private async Task OpenItemAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
     {
-        if (_sftpService is null || OpenInBuiltInEditor is null || file is null || !file.IsRegularFile)
+        if (OpenInBuiltInEditor is null || file is null || !file.IsRegularFile)
         {
             return;
         }
@@ -613,8 +583,7 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             ErrorMessage = null;
-            string tempDir = Path.Combine(Path.GetTempPath(), "VelaShell", "builtin-edit",
-                Guid.NewGuid().ToString("N")[..8]);
+            string tempDir = Path.Combine(Path.GetTempPath(), "VelaShell", "builtin-edit", Guid.NewGuid().ToString("N")[..8]);
             Directory.CreateDirectory(tempDir);
             string localPath = Path.Combine(tempDir, file.Name);
             await _sftpService.DownloadFileAsync(_sessionId, file.FullPath, localPath, null, ct);
@@ -634,7 +603,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     private async Task OpenWithDefaultEditorAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
     {
-        if (_sftpService is null || file is null || !file.IsRegularFile)
+        if (file is null || !file.IsRegularFile)
         {
             return;
         }
@@ -680,7 +649,7 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task UploadAsync(CancellationToken ct = default)
     {
-        if (_sftpService is null || PickFilesForUpload is null)
+        if (PickFilesForUpload is null)
         {
             return;
         }
@@ -690,7 +659,7 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task UploadFolderAsync(CancellationToken ct = default)
     {
-        if (_sftpService is null || PickFolderForUpload is null)
+        if (PickFolderForUpload is null)
         {
             return;
         }
@@ -709,7 +678,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     public async Task UploadLocalPathsAsync(IReadOnlyList<string> localPaths, CancellationToken ct = default)
     {
-        if (_sftpService is null || localPaths is null || localPaths.Count == 0)
+        if (localPaths.Count == 0)
         {
             return;
         }
@@ -768,7 +737,7 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task DownloadItemAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
     {
-        if (_sftpService is null || file is null || file.IsParentEntry)
+        if (file is null || file.IsParentEntry)
         {
             return;
         }
@@ -852,7 +821,7 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task DownloadSelectedAsync(CancellationToken ct = default)
     {
-        if (_sftpService is null || PickFolderForDownload is null)
+        if (PickFolderForDownload is null)
         {
             return;
         }
@@ -926,7 +895,6 @@ public class FileBrowserViewModel : ReactiveObject
             return true;
         }
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        _transferCts = cts;
         TransferSink?.BeginBatch(resolved.Count, cts);
         bool completed = false;
         try
@@ -970,7 +938,6 @@ public class FileBrowserViewModel : ReactiveObject
         finally
         {
             TransferSink?.EndBatch();
-            _transferCts = null;
 
             // 传输完成后显示通知(设置 → 文件传输):提示音 + 临时展开传输面板。
             // 用 ShowPanelTransient 而非 ShowPanel:后者会钉住面板、杀掉自动隐藏倒计时,
@@ -1167,18 +1134,12 @@ public class FileBrowserViewModel : ReactiveObject
             {
                 await _sftpService.DownloadFileAsync(_sessionId, remotePath, localPath, progress, ct);
             }
-            if (item is not null)
-            {
-                item.Status = TransferStatus.Completed;
-            }
+            item?.Status = TransferStatus.Completed;
             finalStatus = TransferStatus.Completed;
         }
         catch (OperationCanceledException)
         {
-            if (item is not null)
-            {
-                item.Status = TransferStatus.Cancelled;
-            }
+            item?.Status = TransferStatus.Cancelled;
             finalStatus = TransferStatus.Cancelled;
 
             // A cancelled download leaves a half-written file behind; drop it.
@@ -1190,10 +1151,7 @@ public class FileBrowserViewModel : ReactiveObject
         }
         catch (Exception ex)
         {
-            if (item is not null)
-            {
-                item.Status = TransferStatus.Failed;
-            }
+            item?.Status = TransferStatus.Failed;
             ErrorMessage = ex.Message;
         }
         finally
@@ -1238,7 +1196,7 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task NewFolderAsync(CancellationToken ct = default)
     {
-        if (_sftpService is null || PromptForText is null)
+        if (PromptForText is null)
         {
             return;
         }
@@ -1261,7 +1219,7 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task NewFileAsync(CancellationToken ct = default)
     {
-        if (_sftpService is null || PromptForText is null)
+        if (PromptForText is null)
         {
             return;
         }
@@ -1284,7 +1242,7 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task RenameAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
     {
-        if (_sftpService is null || PromptForText is null || file is null || file.IsParentEntry)
+        if (PromptForText is null || file is null || file.IsParentEntry)
         {
             return;
         }
@@ -1308,7 +1266,7 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task MoveAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
     {
-        if (_sftpService is null || PromptForText is null || file is null || file.IsParentEntry)
+        if (PromptForText is null || file is null || file.IsParentEntry)
         {
             return;
         }
@@ -1356,7 +1314,7 @@ public class FileBrowserViewModel : ReactiveObject
 
         // 属性弹窗内含权限矩阵;确定且权限有变化时返回新 mode,由这里落到 chmod。
         short? mode = await ShowFileProperties(file);
-        if (mode is null || _sftpService is null)
+        if (mode is null)
         {
             return;
         }
@@ -1374,7 +1332,7 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task DeleteItemAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
     {
-        if (_sftpService is null || file is null || file.IsParentEntry)
+        if (file is null || file.IsParentEntry)
         {
             return;
         }
@@ -1392,10 +1350,6 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task DeleteSelectedAsync(CancellationToken ct = default)
     {
-        if (_sftpService is null)
-        {
-            return;
-        }
         var targets = SelectedFiles.Where(f => !f.IsParentEntry).ToList();
         if (targets.Count == 0)
         {

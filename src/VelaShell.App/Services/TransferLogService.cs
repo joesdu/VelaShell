@@ -1,7 +1,4 @@
-using System;
-using System.IO;
 using System.Text;
-using System.Threading.Tasks;
 using VelaShell.Core.Models;
 
 namespace VelaShell.App.Services;
@@ -12,22 +9,21 @@ namespace VelaShell.App.Services;
 /// </summary>
 public static class TransferLogService
 {
-    private static readonly object Gate = new();
+    private static readonly Lock Gate = new();
 
     /// <summary>展开配置的日志目录("~" = 用户目录);空则退回默认 %LocalAppData%\VelaShell\logs。</summary>
-    public static string ResolveDirectory(string? configured)
+    private static string ResolveDirectory(string? configured)
     {
-        var dir = configured?.Trim();
+        string? dir = configured?.Trim();
         if (string.IsNullOrEmpty(dir))
+        {
             return SessionLogService.LogDirectory;
-
+        }
         if (dir.StartsWith("~"))
         {
-            dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 dir.TrimStart('~', '/', '\\'));
         }
-
         return dir;
     }
 
@@ -35,16 +31,16 @@ public static class TransferLogService
     {
         try
         {
-            var dir = ResolveDirectory(configuredDirectory);
+            string dir = ResolveDirectory(configuredDirectory);
             Directory.CreateDirectory(dir);
-            var file = Path.Combine(dir, $"transfer-{DateTime.Now:yyyyMMdd}.log");
-            var line = string.Join('\t',
-                DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-                type == TransferType.Upload ? "UPLOAD" : "DOWNLOAD",
-                localPath,
-                remotePath,
-                status.ToString().ToUpperInvariant()) + Environment.NewLine;
-
+            string file = Path.Combine(dir, $"transfer-{DateTime.Now:yyyyMMdd}.log");
+            string line = string.Join('\t',
+                              DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                              type == TransferType.Upload ? "UPLOAD" : "DOWNLOAD",
+                              localPath,
+                              remotePath,
+                              status.ToString().ToUpperInvariant()) +
+                          Environment.NewLine;
             lock (Gate)
             {
                 File.AppendAllText(file, line, Encoding.UTF8);
@@ -60,23 +56,27 @@ public static class TransferLogService
     public static void CleanupExpired(string? configuredDirectory, int retentionDays)
     {
         if (retentionDays < 1)
+        {
             return;
-
+        }
         _ = Task.Run(() =>
         {
             try
             {
-                var dir = ResolveDirectory(configuredDirectory);
+                string dir = ResolveDirectory(configuredDirectory);
                 if (!Directory.Exists(dir))
+                {
                     return;
-
-                var cutoff = DateTime.Now.AddDays(-retentionDays);
-                foreach (var file in Directory.EnumerateFiles(dir, "transfer-*.log"))
+                }
+                DateTime cutoff = DateTime.Now.AddDays(-retentionDays);
+                foreach (string file in Directory.EnumerateFiles(dir, "transfer-*.log"))
                 {
                     try
                     {
                         if (File.GetLastWriteTime(file) < cutoff)
+                        {
                             File.Delete(file);
+                        }
                     }
                     catch
                     {

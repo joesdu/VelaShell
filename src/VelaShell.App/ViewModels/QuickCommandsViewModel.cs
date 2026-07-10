@@ -15,14 +15,6 @@ public class QuickCommandsViewModel : ReactiveObject
     private readonly IAppDataStore _dataStore;
     private readonly Action<string>? _executeCallback;
     private readonly string? _legacyDataPath;
-    private QuickCommandViewModel? _editingCommand;
-    private bool _isAddingCommand;
-    private string _newCategory = string.Empty;
-    private string _newCommandText = string.Empty;
-    private string _newDescription = string.Empty;
-    private string _newName = string.Empty;
-
-    private string _searchQuery = string.Empty;
 
     public QuickCommandsViewModel(
         IAppDataStore dataStore,
@@ -58,44 +50,44 @@ public class QuickCommandsViewModel : ReactiveObject
 
     public string SearchQuery
     {
-        get => _searchQuery;
-        set => this.RaiseAndSetIfChanged(ref _searchQuery, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
 
     public bool IsAddingCommand
     {
-        get => _isAddingCommand;
-        set => this.RaiseAndSetIfChanged(ref _isAddingCommand, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public string NewName
     {
-        get => _newName;
-        set => this.RaiseAndSetIfChanged(ref _newName, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
 
     public string NewCategory
     {
-        get => _newCategory;
-        set => this.RaiseAndSetIfChanged(ref _newCategory, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
 
     public string NewCommandText
     {
-        get => _newCommandText;
-        set => this.RaiseAndSetIfChanged(ref _newCommandText, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
 
     public string NewDescription
     {
-        get => _newDescription;
-        set => this.RaiseAndSetIfChanged(ref _newDescription, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
 
     public QuickCommandViewModel? EditingCommand
     {
-        get => _editingCommand;
-        set => this.RaiseAndSetIfChanged(ref _editingCommand, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public ReactiveCommand<QuickCommandViewModel, Unit> ExecuteCommandCommand { get; }
@@ -274,7 +266,7 @@ public class QuickCommandsViewModel : ReactiveObject
     private void ApplyFilter()
     {
         FilteredCommands.Clear();
-        string query = SearchQuery?.Trim() ?? string.Empty;
+        string query = SearchQuery.Trim();
         foreach (QuickCommandViewModel cmd in AllCommands)
         {
             if (string.IsNullOrEmpty(query) ||

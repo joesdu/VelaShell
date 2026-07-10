@@ -1,7 +1,4 @@
-using System;
-using System.IO;
 using System.Text;
-using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -16,10 +13,10 @@ public partial class RemoteFileEditorView : Window
 {
     private readonly string _localPath = string.Empty;
     private readonly Func<Task>? _uploadAsync;
-    private Encoding _encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
     private bool _dirty;
-    private bool _saving;
+    private Encoding _encoding = new UTF8Encoding(false);
     private bool _forceClose;
+    private bool _saving;
 
     public RemoteFileEditorView()
     {
@@ -31,11 +28,9 @@ public partial class RemoteFileEditorView : Window
     {
         _localPath = localPath;
         _uploadAsync = uploadAsync;
-
         Title = fileName;
         TitleText.Text = fileName;
         PathText.Text = remotePath;
-
         LoadFile();
         Editor.TextChanged += (_, _) =>
         {
@@ -47,7 +42,7 @@ public partial class RemoteFileEditorView : Window
     private void LoadFile()
     {
         // 保留原文件的 BOM/编码:UTF-8(无 BOM)为缺省,识别 UTF-8 BOM 与 UTF-16 LE/BE。
-        var bytes = File.ReadAllBytes(_localPath);
+        byte[] bytes = File.ReadAllBytes(_localPath);
         _encoding = DetectEncoding(bytes);
         Editor.Text = _encoding.GetString(bytes, PreambleLength(bytes, _encoding), bytes.Length - PreambleLength(bytes, _encoding));
         _dirty = false;
@@ -56,35 +51,44 @@ public partial class RemoteFileEditorView : Window
 
     private static Encoding DetectEncoding(byte[] bytes)
     {
-        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
-            return new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
-        if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+        if (bytes is [0xEF, 0xBB, 0xBF, ..])
+        {
+            return new UTF8Encoding(true);
+        }
+        if (bytes is [0xFF, 0xFE, ..])
+        {
             return Encoding.Unicode;
-        if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+        }
+        if (bytes is [0xFE, 0xFF, ..])
+        {
             return Encoding.BigEndianUnicode;
-        return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        }
+        return new UTF8Encoding(false);
     }
 
     private static int PreambleLength(byte[] bytes, Encoding encoding)
     {
-        var preamble = encoding.GetPreamble();
+        byte[] preamble = encoding.GetPreamble();
         if (preamble.Length == 0 || bytes.Length < preamble.Length)
+        {
             return 0;
-
-        for (var i = 0; i < preamble.Length; i++)
+        }
+        for (int i = 0; i < preamble.Length; i++)
         {
             if (bytes[i] != preamble[i])
+            {
                 return 0;
+            }
         }
-
         return preamble.Length;
     }
 
     private async Task SaveAsync()
     {
         if (_saving || _uploadAsync is null)
+        {
             return;
-
+        }
         _saving = true;
         StatusText.Text = "保存中…";
         try
@@ -112,7 +116,6 @@ public partial class RemoteFileEditorView : Window
             e.Handled = true;
             return;
         }
-
         base.OnKeyDown(e);
     }
 
@@ -123,15 +126,14 @@ public partial class RemoteFileEditorView : Window
             e.Cancel = true;
             _ = ConfirmDiscardAndCloseAsync();
         }
-
         base.OnClosing(e);
     }
 
     private async Task ConfirmDiscardAndCloseAsync()
     {
-        var discard = await MessageDialog.ConfirmAsync(this, "未保存的更改",
-            "文件有未保存的修改,关闭将丢弃这些更改。", confirmText: "放弃并关闭",
-            kind: MessageDialogKind.Warning, danger: true);
+        bool discard = await MessageDialog.ConfirmAsync(this, "未保存的更改",
+                           "文件有未保存的修改,关闭将丢弃这些更改。", "放弃并关闭",
+                           kind: MessageDialogKind.Warning, danger: true);
         if (discard)
         {
             _forceClose = true;
@@ -144,15 +146,16 @@ public partial class RemoteFileEditorView : Window
         // 清理本地临时副本(整个独占子目录)。
         try
         {
-            var dir = Path.GetDirectoryName(_localPath);
+            string? dir = Path.GetDirectoryName(_localPath);
             if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
-                Directory.Delete(dir, recursive: true);
+            {
+                Directory.Delete(dir, true);
+            }
         }
         catch
         {
             // 尽力而为;残留交给应用退出清理。
         }
-
         base.OnClosed(e);
     }
 
@@ -160,11 +163,9 @@ public partial class RemoteFileEditorView : Window
 
     private void Close_Click(object? sender, RoutedEventArgs e) => Close();
 
-    private void Maximize_Click(object? sender, RoutedEventArgs e) =>
-        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void Maximize_Click(object? sender, RoutedEventArgs e) => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
-    private void Header_DoubleTapped(object? sender, TappedEventArgs e) =>
-        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void Header_DoubleTapped(object? sender, TappedEventArgs e) => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
     private void Header_PointerPressed(object? sender, PointerPressedEventArgs e)
     {

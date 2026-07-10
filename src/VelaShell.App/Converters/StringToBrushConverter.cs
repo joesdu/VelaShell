@@ -1,7 +1,8 @@
-using System;
 using System.Globalization;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
+
+// ReSharper disable ReturnTypeCanBeNotNullable
 
 namespace VelaShell.App.Converters;
 
@@ -12,14 +13,12 @@ public sealed class StringToBrushConverter : IValueConverter
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        if (value is string hex && Color.TryParse(hex, out var color))
+        if (value is string hex && Color.TryParse(hex, out Color color))
         {
             return new SolidColorBrush(color);
         }
-
         return Brushes.Transparent;
     }
 
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => throw new NotSupportedException();
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }

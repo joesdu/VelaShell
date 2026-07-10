@@ -433,9 +433,9 @@ public class SftpServiceTests
 
         // Assert
         Assert.IsTrue(progressReports.Count() >= 4);
-        Assert.IsTrue(progressReports.Any(p => p.Percentage >= 25 && p.Percentage < 35));
-        Assert.IsTrue(progressReports.Any(p => p.Percentage >= 50 && p.Percentage < 60));
-        Assert.IsTrue(progressReports.Any(p => p.Percentage >= 75 && p.Percentage < 85));
+        Assert.IsTrue(progressReports.Any(p => p.Percentage is >= 25 and < 35));
+        Assert.IsTrue(progressReports.Any(p => p.Percentage is >= 50 and < 60));
+        Assert.IsTrue(progressReports.Any(p => p.Percentage is >= 75 and < 85));
         Assert.AreEqual(100, progressReports.Last().Percentage);
 
         // Cleanup

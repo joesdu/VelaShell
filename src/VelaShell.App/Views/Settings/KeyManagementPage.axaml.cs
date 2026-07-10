@@ -1,4 +1,3 @@
-using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -17,18 +16,15 @@ public partial class KeyManagementPage : UserControl
 
     private async void ImportKey_Click(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not SettingsViewModel viewModel
-            || TopLevel.GetTopLevel(this) is not { } top)
+        if (DataContext is not SettingsViewModel viewModel || TopLevel.GetTopLevel(this) is not { } top)
         {
             return;
         }
-
-        var files = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        IReadOnlyList<IStorageFile> files = await top.StorageProvider.OpenFilePickerAsync(new()
         {
             Title = "导入 SSH 私钥",
-            AllowMultiple = false,
+            AllowMultiple = false
         });
-
         if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
         {
             await viewModel.SshKeys.ImportAsync(path);
@@ -37,8 +33,7 @@ public partial class KeyManagementPage : UserControl
 
     private async void CopyPublicKey_Click(object? sender, RoutedEventArgs e)
     {
-        if (sender is Control { DataContext: SshKeyInfo key }
-            && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+        if (sender is Control { DataContext: SshKeyInfo key } && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
         {
             await clipboard.SetTextAsync(key.PublicKeyLine ?? key.Fingerprint);
         }

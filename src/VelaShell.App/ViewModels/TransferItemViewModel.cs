@@ -18,14 +18,15 @@ public class TransferItemViewModel : ReactiveObject
     {
         _task = task ?? throw new ArgumentNullException(nameof(task));
         _status = task.Status;
-        if (task.Progress != null)
+        if (task.Progress == null)
         {
-            _totalSize = task.Progress.TotalBytes;
-            _transferredBytes = task.Progress.BytesTransferred;
-            _progress = task.Progress.Percentage;
-            _speed = FormatSpeed(task.Progress.SpeedBytesPerSecond);
-            _timeRemaining = FormatTimeRemaining(task.Progress.EstimatedTimeRemaining);
+            return;
         }
+        _totalSize = task.Progress.TotalBytes;
+        _transferredBytes = task.Progress.BytesTransferred;
+        _progress = task.Progress.Percentage;
+        _speed = FormatSpeed(task.Progress.SpeedBytesPerSecond);
+        _timeRemaining = FormatTimeRemaining(task.Progress.EstimatedTimeRemaining);
     }
 
     public Guid Id => _task.Id;

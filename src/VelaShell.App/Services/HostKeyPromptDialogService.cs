@@ -1,6 +1,4 @@
-using System;
-using System.Threading.Tasks;
-using Avalonia.Controls;
+using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using VelaShell.App.ViewModels;
@@ -15,24 +13,26 @@ namespace VelaShell.App.Services;
 /// </summary>
 public sealed class HostKeyPromptDialogService : IHostKeyPrompt
 {
-    public async Task<bool> ConfirmAsync(string host, int port, string keyType, string fingerprint,
+    public async Task<bool> ConfirmAsync(string host,
+        int port,
+        string keyType,
+        string fingerprint,
         HostKeyVerification verification)
     {
         try
         {
             return await Dispatcher.UIThread.InvokeAsync(async () =>
             {
-                if (Avalonia.Application.Current?.ApplicationLifetime
-                        is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+                if (Application.Current?.ApplicationLifetime
+                    is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
                 {
                     return false;
                 }
-
                 var dialog = new HostKeyPromptView
                 {
-                    DataContext = new HostKeyPromptViewModel(host, port, keyType, fingerprint, verification),
+                    DataContext = new HostKeyPromptViewModel(host, port, keyType, fingerprint, verification)
                 };
-                var result = await dialog.ShowDialog<bool?>(owner);
+                bool? result = await dialog.ShowDialog<bool?>(owner);
                 return result == true;
             });
         }

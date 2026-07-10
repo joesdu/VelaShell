@@ -1,5 +1,3 @@
-using System;
-
 namespace VelaShell.App.Services;
 
 public enum ShortcutAction
@@ -44,7 +42,7 @@ public enum KeyCode
 
 public interface IKeyboardShortcutService
 {
-    ShortcutAction Resolve(KeyModifiers modifiers, KeyCode key, ShortcutContext context);
-
     bool IsMacOS { get; }
+
+    ShortcutAction Resolve(KeyModifiers modifiers, KeyCode key, ShortcutContext context);
 }

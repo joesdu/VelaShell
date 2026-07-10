@@ -1,4 +1,3 @@
-using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
@@ -23,7 +22,7 @@ public partial class ResourceMonitorView : UserControl
     private void OnAttached(object? sender, VisualTreeAttachmentEventArgs e)
     {
         Refresh();
-        _pollTimer = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background,
+        _pollTimer = new(TimeSpan.FromSeconds(1), DispatcherPriority.Background,
             (_, _) => Refresh());
         _pollTimer.Start();
     }
@@ -37,6 +36,8 @@ public partial class ResourceMonitorView : UserControl
     private void Refresh()
     {
         if (DataContext is ResourceMonitorViewModel vm)
+        {
             _ = vm.RefreshAsync();
+        }
     }
 }

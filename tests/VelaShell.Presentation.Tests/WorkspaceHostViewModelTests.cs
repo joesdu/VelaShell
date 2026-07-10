@@ -1,5 +1,3 @@
-using VelaShell.Presentation;
-
 namespace VelaShell.Presentation.Tests;
 
 [TestClass]
@@ -9,7 +7,6 @@ public sealed class WorkspaceHostViewModelTests
     public void Title_Defaults_ToWorkspaceTitle()
     {
         var viewModel = new WorkspaceHostViewModel();
-
         Assert.AreEqual("VelaShell Workspace", viewModel.Title);
     }
 }

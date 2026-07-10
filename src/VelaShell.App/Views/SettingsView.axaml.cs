@@ -1,7 +1,5 @@
-using System;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Markup.Xaml;
 using VelaShell.App.ViewModels;
 
 namespace VelaShell.App.Views;
@@ -19,7 +17,6 @@ public partial class SettingsView : Window
             {
                 _viewModel.CloseRequested -= OnCloseRequested;
             }
-
             _viewModel = DataContext as SettingsViewModel;
             if (_viewModel is not null)
             {

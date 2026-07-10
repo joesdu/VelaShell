@@ -7,24 +7,23 @@ public class CommandPaletteViewModelTests
 {
     private static CommandPaletteViewModel CreateVm(out int[] runCount, params (string cat, string title)[] items)
     {
-        var counts = new int[items.Length];
+        int[] counts = new int[items.Length];
         runCount = counts;
         var built = new List<CommandPaletteItem>();
         for (int i = 0; i < items.Length; i++)
         {
             int index = i;
-            built.Add(new CommandPaletteItem(items[i].cat, items[i].title, () => counts[index]++));
+            built.Add(new(items[i].cat, items[i].title, () => counts[index]++));
         }
-        return new CommandPaletteViewModel(() => built);
+        return new(() => built);
     }
 
     [TestMethod]
     [TestCategory("CommandPalette")]
     public void Open_LoadsItemsGroupedByCategory_AndSelectsFirst()
     {
-        var vm = CreateVm(out _, ("会话", "web-01"), ("会话", "db-01"), ("命令", "打开设置"));
+        CommandPaletteViewModel vm = CreateVm(out _, ("会话", "web-01"), ("会话", "db-01"), ("命令", "打开设置"));
         vm.Open();
-
         Assert.IsTrue(vm.IsOpen);
         Assert.AreEqual(2, vm.Groups.Count());
         Assert.AreEqual("会话", vm.Groups[0].Category);
@@ -38,9 +37,8 @@ public class CommandPaletteViewModelTests
     [TestCategory("CommandPalette")]
     public void Query_FiltersItems_CaseInsensitiveAndFuzzy()
     {
-        var vm = CreateVm(out _, ("命令", "打开设置"), ("命令", "新建 SSH 连接"), ("会话", "web-prod-01"));
+        CommandPaletteViewModel vm = CreateVm(out _, ("命令", "打开设置"), ("命令", "新建 SSH 连接"), ("会话", "web-prod-01"));
         vm.Open();
-
         vm.Query = "web";
         Assert.AreEqual(1, vm.ResultCount);
         Assert.AreEqual("web-prod-01", vm.SelectedItem!.Title);
@@ -55,9 +53,8 @@ public class CommandPaletteViewModelTests
     [TestCategory("CommandPalette")]
     public void MoveDownAndUp_WrapsSelection()
     {
-        var vm = CreateVm(out _, ("命令", "a"), ("命令", "b"), ("命令", "c"));
+        CommandPaletteViewModel vm = CreateVm(out _, ("命令", "a"), ("命令", "b"), ("命令", "c"));
         vm.Open();
-
         Assert.AreEqual("a", vm.SelectedItem!.Title);
         vm.MoveDown();
         Assert.AreEqual("b", vm.SelectedItem!.Title);
@@ -70,12 +67,10 @@ public class CommandPaletteViewModelTests
     [TestCategory("CommandPalette")]
     public void ExecuteSelected_InvokesActionAndCloses()
     {
-        var vm = CreateVm(out var runs, ("命令", "a"), ("命令", "b"));
+        CommandPaletteViewModel vm = CreateVm(out int[] runs, ("命令", "a"), ("命令", "b"));
         vm.Open();
         vm.MoveDown(); // select "b"
-
         vm.ExecuteSelected();
-
         Assert.AreEqual(1, runs[1]);
         Assert.AreEqual(0, runs[0]);
         Assert.IsFalse(vm.IsOpen);
@@ -85,12 +80,10 @@ public class CommandPaletteViewModelTests
     [TestCategory("CommandPalette")]
     public void Activate_SelectsThenRunsItem()
     {
-        var vm = CreateVm(out var runs, ("命令", "a"), ("命令", "b"));
+        CommandPaletteViewModel vm = CreateVm(out int[] runs, ("命令", "a"), ("命令", "b"));
         vm.Open();
-        var target = vm.Groups[0].Items[1];
-
+        CommandPaletteItem target = vm.Groups[0].Items[1];
         vm.Activate(target);
-
         Assert.AreEqual(1, runs[1]);
         Assert.IsFalse(vm.IsOpen);
     }
@@ -101,14 +94,12 @@ public class CommandPaletteViewModelTests
     {
         var source = new List<CommandPaletteItem>
         {
-            new("命令", "one", () => { }),
+            new("命令", "one", () => { })
         };
         var vm = new CommandPaletteViewModel(() => source);
-
         vm.Open();
         Assert.AreEqual(1, vm.ResultCount);
-
-        source.Add(new CommandPaletteItem("命令", "two", () => { }));
+        source.Add(new("命令", "two", () => { }));
         vm.Open();
         Assert.AreEqual(2, vm.ResultCount);
     }

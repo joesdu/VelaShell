@@ -36,8 +36,7 @@ public class MainWindowViewModel : ReactiveObject
     /// bash 提示符补行脚本(内置,静默注入):命令输出末尾无换行时,经 DSR(ESC[6n)
     /// 查询光标列,不在行首则先补一个换行再画提示符(zsh 的默认行为,用户要求)。
     /// </summary>
-    private const string PromptNewlineFix =
-        "prompt_nl() { local c; IFS='[;' read -p $'\\e[6n' -d R -rs _ _ c; ((c>1)) && echo; }; PROMPT_COMMAND=prompt_nl";
+    private const string PromptNewlineFix = """prompt_nl() { local c; IFS='[;' read -p $'\e[6n' -d R -rs _ _ c; ((c>1)) && echo; }; PROMPT_COMMAND=prompt_nl""";
 
     /// <summary>RIS(ESC c)完全重置序列:重开会话前清掉旧进程的残留缓冲。</summary>
     private static readonly byte[] RisResetSequence = [0x1B, (byte)'c']; // ESC c
@@ -57,13 +56,10 @@ public class MainWindowViewModel : ReactiveObject
     private readonly ISshConnectionService? _sshConnectionService;
     private readonly Func<ITerminalEmulator> _terminalEmulatorFactory;
     private readonly ITunnelService? _tunnelService;
-    private TerminalTabViewModel? _activeTerminalTab;
 
     // SFTP/File management views derived from design
     private FileBrowserViewModel _fileBrowser;
     private FileTransferViewModel _fileTransfer;
-    private bool _isTunnelPanelOpen;
-    private string? _lastConnectionError;
 
     private bool _latencyPolling;
     private int _latencyTick;
@@ -81,7 +77,6 @@ public class MainWindowViewModel : ReactiveObject
 
     private DispatcherTimer? _statusMetricsTimer;
     private TabBarViewModel _tabBar;
-    private TunnelPanelViewModel? _tunnelPanel;
 
     public MainWindowViewModel(
         IConnectionWorkflowService? connectionWorkflowService = null,
@@ -124,10 +119,7 @@ public class MainWindowViewModel : ReactiveObject
                .Subscribe(activeTab =>
                {
                    ActiveTerminalTab = activeTab as TerminalTabViewModel;
-                   if (activeTab is not null)
-                   {
-                       activeTab.HasBellAlert = false; // 切换到该标签即清除 Bell 提醒
-                   }
+                   activeTab?.HasBellAlert = false; // 切换到该标签即清除 Bell 提醒
                    RebindFileBrowser();
                });
 
@@ -191,19 +183,19 @@ public class MainWindowViewModel : ReactiveObject
     public ICommandRegistry Commands { get; } = new CommandRegistry();
 
     /// <summary>Executes a registry command by id (used by menu entries via CommandParameter).</summary>
-    public ReactiveCommand<string, Unit> RunCommand { get; private set; } = null!;
+    public ReactiveCommand<string, Unit>? RunCommand { get; private set; }
 
     /// <summary>Tunnel manager panel for the active session (design fuXS7, spec §10).</summary>
     public TunnelPanelViewModel? TunnelPanel
     {
-        get => _tunnelPanel;
-        private set => this.RaiseAndSetIfChanged(ref _tunnelPanel, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public bool IsTunnelPanelOpen
     {
-        get => _isTunnelPanelOpen;
-        set => this.RaiseAndSetIfChanged(ref _isTunnelPanelOpen, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>The self-drawn terminal control of the active tab, when it is one.</summary>
@@ -223,8 +215,8 @@ public class MainWindowViewModel : ReactiveObject
     /// <summary>The most recent connection error message, or null if the last attempt succeeded.</summary>
     public string? LastConnectionError
     {
-        get => _lastConnectionError;
-        private set => this.RaiseAndSetIfChanged(ref _lastConnectionError, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>窗口注入的多行粘贴确认弹窗(设置 → 终端 → 粘贴时确认多行内容)。</summary>
@@ -250,8 +242,8 @@ public class MainWindowViewModel : ReactiveObject
 
     public TerminalTabViewModel? ActiveTerminalTab
     {
-        get => _activeTerminalTab;
-        private set => this.RaiseAndSetIfChanged(ref _activeTerminalTab, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public bool HasActiveTerminalTab => ActiveTerminalTab is not null;
@@ -662,10 +654,7 @@ public class MainWindowViewModel : ReactiveObject
         TerminalTabViewModel? tab = ActiveTerminalTab;
         if (tab?.Profile is null || tab.ConnectionStatus != SessionStatus.Connected)
         {
-            if (tab is not null)
-            {
-                tab.Latency = null;
-            }
+            tab?.Latency = null;
             return;
         }
         _latencyPolling = true;
@@ -794,12 +783,13 @@ public class MainWindowViewModel : ReactiveObject
         sb.Append(m.HasNetRates
                       ? $"网速（合计）: ↓ {StatusBarViewModel.FormatRate(m.NetRxBytesPerSec)}  ↑ {StatusBarViewModel.FormatRate(m.NetTxBytesPerSec)}"
                       : "网速统计中…");
-        if (m.NicRates is { Count: > 0 } rates)
+        if (m.NicRates is not { Count: > 0 } rates)
         {
-            foreach (NetInterfaceRate r in rates)
-            {
-                sb.Append('\n').Append($"{r.Name}: ↓ {StatusBarViewModel.FormatRate(r.RxBytesPerSec)}  ↑ {StatusBarViewModel.FormatRate(r.TxBytesPerSec)}");
-            }
+            return sb.ToString();
+        }
+        foreach (NetInterfaceRate r in rates)
+        {
+            sb.Append('\n').Append($"{r.Name}: ↓ {StatusBarViewModel.FormatRate(r.RxBytesPerSec)}  ↑ {StatusBarViewModel.FormatRate(r.TxBytesPerSec)}");
         }
         return sb.ToString();
     }
@@ -897,12 +887,7 @@ public class MainWindowViewModel : ReactiveObject
         }
 
         // Global actions come from the shared command registry (menu/palette/shortcut parity).
-        foreach (CommandDescriptor command in Commands.All)
-        {
-            CommandDescriptor captured = command;
-            items.Add(new("命令", captured.Title,
-                () => Commands.Execute(captured.Id), captured.Shortcut));
-        }
+        items.AddRange(Commands.All.Select(captured => new CommandPaletteItem("命令", captured.Title, () => Commands.Execute(captured.Id), captured.Shortcut)));
         return items;
     }
 
@@ -1079,7 +1064,7 @@ public class MainWindowViewModel : ReactiveObject
 
             // Full-reset (RIS) the emulator before the new session's output arrives, so the
             // fresh MOTD doesn't append after the old buffer's content (用户反馈 #1).
-            tab.TerminalEmulator.Feed("\u001bc"u8.ToArray());
+            tab.TerminalEmulator.Feed("\ec"u8.ToArray());
             tab.SessionId = session.SessionId;
             tab.AttachTransport(shellStream);
             tab.Start();
@@ -1145,7 +1130,7 @@ public class MainWindowViewModel : ReactiveObject
             // 配置里跳板由内向外嵌套;反转成"本机 → 最外层跳板 → … → 目标"的阅读顺序。
             names.Reverse();
             string target = string.IsNullOrWhiteSpace(profile.Name) ? profile.Host : profile.Name;
-            string notice = "\u001b[90m● 已经由跳板链路连接:本机 → " + string.Join(" → ", names) + " → " + target + "\u001b[0m\r\n";
+            string notice = "\e[90m● 已经由跳板链路连接:本机 → " + string.Join(" → ", names) + " → " + target + "\e[0m\r\n";
             tab.TerminalEmulator.Feed(Encoding.UTF8.GetBytes(notice));
         }
         catch
@@ -1261,7 +1246,7 @@ public class MainWindowViewModel : ReactiveObject
         DispatcherTimer.RunOnce(() =>
         {
             // 等待期间用户可能已手动重连、关掉标签或主动断开。
-            if (tab.ConnectionStatus == SessionStatus.Disconnected && !tab.UserRequestedDisconnect && TabBar.Tabs.Contains(tab))
+            if (tab is { ConnectionStatus: SessionStatus.Disconnected, UserRequestedDisconnect: false } && TabBar.Tabs.Contains(tab))
             {
                 _ = ReconnectTabAsync(tab);
             }
@@ -1275,7 +1260,7 @@ public class MainWindowViewModel : ReactiveObject
     /// </summary>
     private static void SendStartupCommand(TerminalTabViewModel tab, AppSettings settings)
     {
-        string? user = settings.TerminalBehavior.StartupCommand?.Trim();
+        string? user = settings.TerminalBehavior.StartupCommand.Trim();
 
         // 旧版本曾把补行脚本作为该设置项的默认值;现已内置,跳过以免重复执行。
         if (!string.IsNullOrEmpty(user) && user.Contains("PROMPT_COMMAND=prompt_nl", StringComparison.Ordinal))
@@ -1472,38 +1457,39 @@ public class MainWindowViewModel : ReactiveObject
     private void ApplyLiveTerminalSettings(ITerminalEmulator emulator, AppSettings settings, bool forceUtf8 = false)
     {
         emulator.ScrollbackLines = settings.ScrollbackLines;
-        if (emulator is VelaTerminalControl control)
+        if (emulator is not VelaTerminalControl control)
         {
-            // 本地终端(ConPTY)输出恒为 UTF-8,不套用面向远端主机的编码设置。
-            control.SetEncoding(forceUtf8 ? Encoding.UTF8 : ResolveEncoding(settings.TerminalEncoding));
-            if (!string.IsNullOrWhiteSpace(settings.TerminalFont))
-            {
-                control.FontFamily = new($"{settings.TerminalFont}, JetBrains Mono, Cascadia Mono, Consolas, Microsoft YaHei, monospace");
-            }
-            if (settings.TerminalFontSize > 0)
-            {
-                control.FontSize = settings.TerminalFontSize;
-            }
-            TerminalBehaviorOptions behavior = settings.TerminalBehavior;
-            control.LineHeight = behavior.LineHeight;
-            control.CursorStyle = behavior.CursorStyle;
-            control.CursorBlink = behavior.CursorBlink;
-            control.BellMode = behavior.BellMode;
-            control.VisualBell = behavior.VisualBell;
-            control.ScrollOnOutput = behavior.ScrollOnOutput;
-            control.ScrollOnKeystroke = behavior.ScrollOnKeystroke;
-            control.CopyOnSelect = behavior.CopyOnSelect;
-            control.RightClickPaste = behavior.RightClickPaste;
-            control.TrimTrailingWhitespaceOnCopy = behavior.TrimTrailingWhitespaceOnCopy;
-            control.DoubleClickSelectsWord = behavior.DoubleClickSelectsWord;
-            control.ConfirmMultilinePaste = behavior.ConfirmMultilinePaste;
-            control.MultilinePasteConfirmation = MultilinePasteConfirmer;
-            control.CtrlCCopiesWhenSelected = behavior.CtrlCCopiesWhenSelected;
-            control.ImeEnabled = behavior.ImeSupport;
-
-            // 用户自定义的终端配色(仅覆盖改过的颜色,其余跟随主题)。
-            control.PaletteOverrides = TerminalAppearanceMapper.BuildPaletteOverrides(settings.Appearance);
+            return;
         }
+        // 本地终端(ConPTY)输出恒为 UTF-8,不套用面向远端主机的编码设置。
+        control.SetEncoding(forceUtf8 ? Encoding.UTF8 : ResolveEncoding(settings.TerminalEncoding));
+        if (!string.IsNullOrWhiteSpace(settings.TerminalFont))
+        {
+            control.FontFamily = new($"{settings.TerminalFont}, JetBrains Mono, Cascadia Mono, Consolas, Microsoft YaHei, monospace");
+        }
+        if (settings.TerminalFontSize > 0)
+        {
+            control.FontSize = settings.TerminalFontSize;
+        }
+        TerminalBehaviorOptions behavior = settings.TerminalBehavior;
+        control.LineHeight = behavior.LineHeight;
+        control.CursorStyle = behavior.CursorStyle;
+        control.CursorBlink = behavior.CursorBlink;
+        control.BellMode = behavior.BellMode;
+        control.VisualBell = behavior.VisualBell;
+        control.ScrollOnOutput = behavior.ScrollOnOutput;
+        control.ScrollOnKeystroke = behavior.ScrollOnKeystroke;
+        control.CopyOnSelect = behavior.CopyOnSelect;
+        control.RightClickPaste = behavior.RightClickPaste;
+        control.TrimTrailingWhitespaceOnCopy = behavior.TrimTrailingWhitespaceOnCopy;
+        control.DoubleClickSelectsWord = behavior.DoubleClickSelectsWord;
+        control.ConfirmMultilinePaste = behavior.ConfirmMultilinePaste;
+        control.MultilinePasteConfirmation = MultilinePasteConfirmer;
+        control.CtrlCCopiesWhenSelected = behavior.CtrlCCopiesWhenSelected;
+        control.ImeEnabled = behavior.ImeSupport;
+
+        // 用户自定义的终端配色(仅覆盖改过的颜色,其余跟随主题)。
+        control.PaletteOverrides = TerminalAppearanceMapper.BuildPaletteOverrides(settings.Appearance);
     }
 
     private void OnSettingsSaved(AppSettings settings)
@@ -1580,13 +1566,14 @@ public class MainWindowViewModel : ReactiveObject
 
     private void SetActiveFromDockable(IDockable? dockable)
     {
-        if (dockable is TerminalDocument document && TabBar.Tabs.Contains(document.Terminal))
+        if (dockable is not TerminalDocument document || !TabBar.Tabs.Contains(document.Terminal))
         {
-            ActiveTerminalTab = document.Terminal;
-            if (!ReferenceEquals(TabBar.ActiveTab, document.Terminal))
-            {
-                TabBar.ActiveTab = document.Terminal;
-            }
+            return;
+        }
+        ActiveTerminalTab = document.Terminal;
+        if (!ReferenceEquals(TabBar.ActiveTab, document.Terminal))
+        {
+            TabBar.ActiveTab = document.Terminal;
         }
     }
 
@@ -1605,15 +1592,16 @@ public class MainWindowViewModel : ReactiveObject
 
         // 关闭标签不会再触发 ConnectionStatus 变更(已 Dispose),这里显式把树上的
         // 状态圆点复位;同配置还有其他已连接标签时保持"活跃"。
-        if (tab.Profile is { } profile)
+        if (tab.Profile is not { } profile)
         {
-            bool stillConnected = TabBar.Tabs
-                                        .OfType<TerminalTabViewModel>()
-                                        .Any(other => !ReferenceEquals(other, tab) && other.Profile?.Id == profile.Id && other.ConnectionStatus == SessionStatus.Connected);
-            if (!stillConnected)
-            {
-                Sidebar.SessionTree?.SetSessionStatus(profile.Id, SessionStatus.Disconnected);
-            }
+            return;
+        }
+        bool stillConnected = TabBar.Tabs
+                                    .OfType<TerminalTabViewModel>()
+                                    .Any(other => !ReferenceEquals(other, tab) && other.Profile?.Id == profile.Id && other.ConnectionStatus == SessionStatus.Connected);
+        if (!stillConnected)
+        {
+            Sidebar.SessionTree?.SetSessionStatus(profile.Id, SessionStatus.Disconnected);
         }
     }
 

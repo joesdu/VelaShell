@@ -5,11 +5,10 @@ using Avalonia.Controls.Presenters;
 namespace VelaShell.App.Controls;
 
 /// <summary>
-/// Hosts a single shared <see cref="Control"/> (the live terminal surface) that must appear in
+/// Hosts a single shared <see cref="Control" /> (the live terminal surface) that must appear in
 /// exactly one place at a time. Avalonia forbids a control from having two visual parents, so when
 /// Dock realizes the same document in a second presenter (during a split, tab drag, or tear-off to
 /// a floating window), the shared control would throw "already has a visual parent".
-///
 /// This host solves that by "stealing" the target: whenever a host attaches (or its target
 /// changes) it first detaches the target from its previous parent, then adopts it. Because only
 /// the currently visible view is attached, the target always ends up parented exactly once.
@@ -40,21 +39,23 @@ public sealed class ReparentingHost : Decorator
     {
         base.OnDetachedFromVisualTree(e);
         if (ReferenceEquals(Child, Target))
+        {
             Child = null;
+        }
     }
 
     private void Reattach()
     {
-        var target = Target;
+        Control? target = Target;
         if (target is null)
         {
             Child = null;
             return;
         }
-
         if (ReferenceEquals(Child, target))
+        {
             return;
-
+        }
         DetachFromCurrentParent(target);
         Child = target;
     }

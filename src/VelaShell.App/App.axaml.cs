@@ -1,55 +1,57 @@
-using System;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
-using VelaShell.Controls.DependencyInjection;
-using VelaShell.Infrastructure.DependencyInjection;
+using VelaShell.App.Localization;
+using VelaShell.App.Services;
 using VelaShell.App.ViewModels;
 using VelaShell.App.Views;
-using VelaShell.Presentation.DependencyInjection;
+using VelaShell.Controls.DependencyInjection;
 using VelaShell.Core.Data;
+using VelaShell.Core.Localization;
+using VelaShell.Core.Models;
 using VelaShell.Core.Services;
+using VelaShell.Core.Ssh;
+using VelaShell.Infrastructure.DependencyInjection;
+using VelaShell.Presentation.DependencyInjection;
 
 namespace VelaShell.App;
 
-public partial class App : Application
+public class App : Application
 {
+    private ServiceProvider? _serviceProvider;
+    private AppSettings? _startupSettings;
+    private IThemeService? _themeService;
+    private TrayIconService? _trayIconService;
+
     public IServiceProvider? Services => _serviceProvider;
 
     /// <summary>托盘图标当前是否挂载(主窗口据此决定“关闭时最小化到托盘”是否可用)。</summary>
     public bool TrayIconActive => _trayIconService?.IsActive == true;
 
-    private ServiceProvider? _serviceProvider;
-    private IThemeService? _themeService;
-    private Services.TrayIconService? _trayIconService;
-    private Core.Models.AppSettings? _startupSettings;
-
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
-
         _serviceProvider = new ServiceCollection()
-            .AddVelaShellPresentation()
-            .AddVelaShellControls()
-            .AddVelaShellInfrastructure()
-            .AddSingleton<IThemeService>(_ => new ThemeService("system"))
-            .AddSingleton<ISettingsPreviewService, SettingsPreviewService>()
-            .AddSingleton<VelaShell.Core.Ssh.IHostKeyPrompt, Services.HostKeyPromptDialogService>()
-            .AddSingleton<VelaShell.Core.Localization.ILocalizationService, VelaShell.Core.Localization.LocalizationService>()
-            .AddSingleton<Services.IKeyboardShortcutService, Services.KeyboardShortcutService>()
-            .AddSingleton<SettingsViewModel>()
-            .AddSingleton<MainWindowViewModel>()
-            .BuildServiceProvider();
-
+                           .AddVelaShellPresentation()
+                           .AddVelaShellControls()
+                           .AddVelaShellInfrastructure()
+                           .AddSingleton<IThemeService>(_ => new ThemeService("system"))
+                           .AddSingleton<ISettingsPreviewService, SettingsPreviewService>()
+                           .AddSingleton<IHostKeyPrompt, HostKeyPromptDialogService>()
+                           .AddSingleton<ILocalizationService, LocalizationService>()
+                           .AddSingleton<IKeyboardShortcutService, KeyboardShortcutService>()
+                           .AddSingleton<SettingsViewModel>()
+                           .AddSingleton<MainWindowViewModel>()
+                           .BuildServiceProvider();
         _themeService = _serviceProvider.GetRequiredService<IThemeService>();
 
         // Live-rebinding localized strings ({loc:Localize}) follow the DI service (#4).
-        Localization.LocalizedStrings.Instance.Attach(
-            _serviceProvider.GetRequiredService<VelaShell.Core.Localization.ILocalizationService>());
-
+        LocalizedStrings.Instance.Attach(_serviceProvider.GetRequiredService<ILocalizationService>());
         _themeService.ThemeChanged += OnThemeChanged;
         _themeService.AccentChanged += ApplyAccent;
         ApplyThemeVariant(_themeService.CurrentTheme);
@@ -59,12 +61,9 @@ public partial class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         ApplyPersistedPreferences();
-
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var viewModel = _serviceProvider?.GetRequiredService<MainWindowViewModel>()
-                ?? new MainWindowViewModel();
-
+            MainWindowViewModel viewModel = _serviceProvider?.GetRequiredService<MainWindowViewModel>() ?? new MainWindowViewModel();
             var mainWindow = new MainWindow
             {
                 DataContext = viewModel
@@ -75,33 +74,32 @@ public partial class App : Application
             ApplyStartupWindowState(mainWindow, _startupSettings);
 
             // 开机自启动与设置保持同步(用户可能在外部改过注册表)。
-            VelaShell.App.Services.StartupRegistration.Apply(_startupSettings?.General.LaunchAtStartup == true);
+            StartupRegistration.Apply(_startupSettings?.General.LaunchAtStartup == true);
 
             // 过期会话/传输日志清理(设置 → 常规/文件传输 → 日志保留天数),后台执行。
-            VelaShell.App.Services.SessionLogService.CleanupExpired(
-                _startupSettings?.General.LogRetentionDays ?? 30);
-            VelaShell.App.Services.TransferLogService.CleanupExpired(
-                _startupSettings?.Transfer.LogDirectory,
+            SessionLogService.CleanupExpired(_startupSettings?.General.LogRetentionDays ?? 30);
+            TransferLogService.CleanupExpired(_startupSettings?.Transfer.LogDirectory,
                 _startupSettings?.Transfer.TransferLogRetentionDays ?? 30);
 
             // 托盘图标(关闭时最小化到托盘);设置保存后热更新挂载状态。
-            _trayIconService = new VelaShell.App.Services.TrayIconService(this);
+            _trayIconService = new(this);
             _trayIconService.ShowRequested += () =>
             {
                 mainWindow.Show();
-                if (mainWindow.WindowState == Avalonia.Controls.WindowState.Minimized)
-                    mainWindow.WindowState = Avalonia.Controls.WindowState.Normal;
+                if (mainWindow.WindowState == WindowState.Minimized)
+                {
+                    mainWindow.WindowState = WindowState.Normal;
+                }
                 mainWindow.Activate();
             };
             _trayIconService.ExitRequested += mainWindow.ForceClose;
             _trayIconService.SetEnabled(_startupSettings?.General.MinimizeToTray == true);
-
             if (_serviceProvider?.GetService<ISettingsService>() is { } settingsService)
             {
                 settingsService.SettingsSaved += settings =>
-                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    Dispatcher.UIThread.Post(() =>
                     {
-                        VelaShell.App.Services.StartupRegistration.Apply(settings.General.LaunchAtStartup);
+                        StartupRegistration.Apply(settings.General.LaunchAtStartup);
                         _trayIconService?.SetEnabled(settings.General.MinimizeToTray);
                     });
             }
@@ -111,11 +109,10 @@ public partial class App : Application
             desktop.Exit += (_, _) =>
             {
                 _trayIconService?.Dispose();
-                VelaShell.App.Services.ExternalEditSessionManager.CleanupAll();
+                ExternalEditSessionManager.CleanupAll();
                 DisposeServicesOnExit();
             };
         }
-
         base.OnFrameworkInitializationCompleted();
     }
 
@@ -129,11 +126,12 @@ public partial class App : Application
     /// </summary>
     private void DisposeServicesOnExit()
     {
-        var provider = _serviceProvider;
+        ServiceProvider? provider = _serviceProvider;
         _serviceProvider = null;
         if (provider is null)
+        {
             return;
-
+        }
         try
         {
             provider.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2));
@@ -144,25 +142,31 @@ public partial class App : Application
         }
     }
 
-    /// <summary>Applies persisted language / theme / accent before the first window shows,
-    /// so the app starts in the user's chosen look without a visible re-theme flash.</summary>
+    /// <summary>
+    /// Applies persisted language / theme / accent before the first window shows,
+    /// so the app starts in the user's chosen look without a visible re-theme flash.
+    /// </summary>
     private void ApplyPersistedPreferences()
     {
         if (_serviceProvider is null)
+        {
             return;
-
+        }
         try
         {
-            var settings = _serviceProvider.GetRequiredService<ISettingsService>()
-                .GetSettingsAsync().GetAwaiter().GetResult();
+            AppSettings settings = _serviceProvider.GetRequiredService<ISettingsService>()
+                                                   .GetSettingsAsync().GetAwaiter().GetResult();
             _startupSettings = settings;
-
-            _serviceProvider.GetRequiredService<VelaShell.Core.Localization.ILocalizationService>()
-                .SetLanguage(settings.Language);
+            _serviceProvider.GetRequiredService<ILocalizationService>()
+                            .SetLanguage(settings.Language);
             if (!string.IsNullOrWhiteSpace(settings.Theme))
+            {
                 _themeService?.SetTheme(settings.Theme);
+            }
             if (!string.IsNullOrWhiteSpace(settings.AccentColor))
+            {
                 _themeService?.SetAccent(settings.AccentColor);
+            }
         }
         catch
         {
@@ -171,27 +175,30 @@ public partial class App : Application
     }
 
     /// <summary>启动时窗口状态(设置 → 外观 → 启动时窗口状态),在窗口显示前应用以免闪动。</summary>
-    private static void ApplyStartupWindowState(MainWindow window, Core.Models.AppSettings? settings)
+    private static void ApplyStartupWindowState(MainWindow window, AppSettings? settings)
     {
         if (settings is null)
+        {
             return;
-
+        }
         switch (settings.Appearance.StartupWindowState)
         {
             case "maximized":
-                window.WindowState = Avalonia.Controls.WindowState.Maximized;
+                window.WindowState = WindowState.Maximized;
                 break;
             case "default":
                 break;
             default: // remember
-                var a = settings.Appearance;
-                if (a.LastWindowWidth >= 800 && a.LastWindowHeight >= 500)
+                AppearanceOptions a = settings.Appearance;
+                if (a is { LastWindowWidth: >= 800, LastWindowHeight: >= 500 })
                 {
                     window.Width = a.LastWindowWidth;
                     window.Height = a.LastWindowHeight;
                 }
                 if (a.LastWindowMaximized)
-                    window.WindowState = Avalonia.Controls.WindowState.Maximized;
+                {
+                    window.WindowState = WindowState.Maximized;
+                }
                 break;
         }
     }
@@ -205,9 +212,9 @@ public partial class App : Application
     {
         RequestedThemeVariant = themeName.ToLowerInvariant() switch
         {
-            "light" => ThemeVariant.Light,
+            "light"  => ThemeVariant.Light,
             "system" => ThemeVariant.Default,
-            _ => ThemeVariant.Dark,
+            _        => ThemeVariant.Dark
         };
     }
 
@@ -225,10 +232,10 @@ public partial class App : Application
             Resources.Remove("VelaAccentForeground");
             return;
         }
-
-        if (!Color.TryParse(hex, out var color))
+        if (!Color.TryParse(hex, out Color color))
+        {
             return;
-
+        }
         Resources["VelaAccent"] = new SolidColorBrush(color);
         // Dim variant: same hue at ~19% opacity, matching the design's #RRGGBB30 tokens.
         Resources["VelaAccentDim"] = new SolidColorBrush(new Color(0x30, color.R, color.G, color.B));
@@ -236,7 +243,6 @@ public partial class App : Application
         // 自定义强调色的配对前景按亮度自动选:亮底深字、深底浅字,
         // 避免用户挑深色 accent 后按钮文字(令牌随主题固定)对比不足。
         double luminance = (0.299 * color.R + 0.587 * color.G + 0.114 * color.B) / 255.0;
-        Resources["VelaAccentForeground"] = new SolidColorBrush(
-            luminance > 0.55 ? Color.Parse("#0A0E14") : Color.Parse("#FFFBEB"));
+        Resources["VelaAccentForeground"] = new SolidColorBrush(luminance > 0.55 ? Color.Parse("#0A0E14") : Color.Parse("#FFFBEB"));
     }
 }

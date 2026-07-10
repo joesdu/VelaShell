@@ -1,6 +1,3 @@
-using System;
-using System.Linq;
-using System.Reactive.Linq;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -23,11 +20,9 @@ public partial class ConnectionProfileView : Window
         {
             return;
         }
-
-        viewModel.SaveCommand.Subscribe(profile => Close(profile));
-        viewModel.ConnectCommand.Subscribe(profile => Close(profile));
-        viewModel.CancelCommand.Subscribe(profile => Close(profile));
-
+        viewModel.SaveCommand.Subscribe(Close);
+        viewModel.ConnectCommand.Subscribe(Close);
+        viewModel.CancelCommand.Subscribe(Close);
         await viewModel.LoadGroupsAsync();
     }
 
@@ -46,13 +41,11 @@ public partial class ConnectionProfileView : Window
         {
             return;
         }
-
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new()
         {
             Title = "选择私钥文件",
-            AllowMultiple = false,
+            AllowMultiple = false
         });
-
         if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
         {
             viewModel.PrivateKeyPath = path;

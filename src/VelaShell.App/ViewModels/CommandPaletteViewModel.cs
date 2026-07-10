@@ -14,7 +14,6 @@ public sealed class CommandPaletteViewModel : ReactiveObject
     private readonly List<CommandPaletteItem> _flat = [];
     private readonly Func<IReadOnlyList<CommandPaletteItem>> _itemsProvider;
     private IReadOnlyList<CommandPaletteItem> _all = [];
-    private bool _isOpen;
 
     private string _query = string.Empty;
     private CommandPaletteItem? _selectedItem;
@@ -41,8 +40,8 @@ public sealed class CommandPaletteViewModel : ReactiveObject
 
     public bool IsOpen
     {
-        get => _isOpen;
-        private set => this.RaiseAndSetIfChanged(ref _isOpen, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public CommandPaletteItem? SelectedItem
@@ -50,15 +49,9 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         get => _selectedItem;
         private set
         {
-            if (_selectedItem is not null)
-            {
-                _selectedItem.IsSelected = false;
-            }
+            _selectedItem?.IsSelected = false;
             this.RaiseAndSetIfChanged(ref _selectedItem, value);
-            if (_selectedItem is not null)
-            {
-                _selectedItem.IsSelected = true;
-            }
+            _selectedItem?.IsSelected = true;
             this.RaisePropertyChanged(nameof(HasResults));
         }
     }
@@ -80,7 +73,7 @@ public sealed class CommandPaletteViewModel : ReactiveObject
     /// <summary>Reloads items from the provider, clears the query and shows the palette.</summary>
     public void Open()
     {
-        _all = _itemsProvider() ?? [];
+        _all = _itemsProvider();
         Query = string.Empty;
         Rebuild();
         IsOpen = true;
@@ -125,7 +118,7 @@ public sealed class CommandPaletteViewModel : ReactiveObject
     {
         Groups.Clear();
         _flat.Clear();
-        string query = _query?.Trim() ?? string.Empty;
+        string query = _query.Trim();
         var byCategory = new Dictionary<string, CommandPaletteGroup>();
         foreach (CommandPaletteItem item in _all)
         {

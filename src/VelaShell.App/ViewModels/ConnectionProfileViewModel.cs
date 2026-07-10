@@ -26,16 +26,11 @@ public class ConnectionProfileViewModel : ReactiveObject
     private readonly Guid _profileId;
     private readonly ISessionRepository? _sessionRepository;
     private AuthMethod _authMethod = AuthMethod.Password;
-    private string? _errorMessage;
     private Guid? _groupId;
-    private string _groupText = UngroupedName;
     private string _host = string.Empty;
-    private bool _isAdvancedVisible;
-    private bool _isBusy;
     private bool _isKeyAuth;
     private bool _isPasswordAuth = true;
     private Guid? _jumpHostProfileId;
-    private bool? _lastTestSucceeded;
     private string _name = string.Empty;
     private SecureString? _password;
     private int _port = 22;
@@ -44,7 +39,6 @@ public class ConnectionProfileViewModel : ReactiveObject
     private bool _rememberPassword = true;
     private GroupOption? _selectedGroup;
     private GroupOption? _selectedJumpHost;
-    private bool _showPassword;
     private string _tagsText = string.Empty;
     private string _username = string.Empty;
 
@@ -127,8 +121,7 @@ public class ConnectionProfileViewModel : ReactiveObject
                 !isBusy &&
                 !string.IsNullOrWhiteSpace(host) &&
                 !string.IsNullOrWhiteSpace(username) &&
-                port >= 1 &&
-                port <= 65535);
+                port is >= 1 and <= 65535);
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync, canExecute);
         ConnectCommand = ReactiveCommand.CreateFromTask(ConnectAsync, canExecute);
         CancelCommand = ReactiveCommand.Create(() => (SessionProfile?)null);
@@ -227,22 +220,22 @@ public class ConnectionProfileViewModel : ReactiveObject
 
     public bool IsBusy
     {
-        get => _isBusy;
-        private set => this.RaiseAndSetIfChanged(ref _isBusy, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public string? ErrorMessage
     {
-        get => _errorMessage;
-        private set => this.RaiseAndSetIfChanged(ref _errorMessage, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public bool? LastTestSucceeded
     {
-        get => _lastTestSucceeded;
+        get;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _lastTestSucceeded, value);
+            this.RaiseAndSetIfChanged(ref field, value);
             this.RaisePropertyChanged(nameof(ShowTestSuccess));
         }
     }
@@ -259,14 +252,14 @@ public class ConnectionProfileViewModel : ReactiveObject
 
     public bool ShowPassword
     {
-        get => _showPassword;
-        set => this.RaiseAndSetIfChanged(ref _showPassword, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public bool IsAdvancedVisible
     {
-        get => _isAdvancedVisible;
-        set => this.RaiseAndSetIfChanged(ref _isAdvancedVisible, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>标签,逗号分隔(高级选项)。</summary>
@@ -290,9 +283,9 @@ public class ConnectionProfileViewModel : ReactiveObject
     /// </summary>
     public string GroupText
     {
-        get => _groupText;
-        set => this.RaiseAndSetIfChanged(ref _groupText, value ?? string.Empty);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = UngroupedName;
 
     /// <summary>“连接”按钮关闭弹窗后,由宿主窗口发起连接。</summary>
     public bool ConnectAfterClose { get; private set; }

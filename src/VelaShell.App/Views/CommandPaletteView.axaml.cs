@@ -22,13 +22,17 @@ public partial class CommandPaletteView : UserControl
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
-    private void OnDataContextChanged(object? sender, System.EventArgs e)
+    private void OnDataContextChanged(object? sender, EventArgs e)
     {
         if (_vm is not null)
+        {
             _vm.PropertyChanged -= OnVmPropertyChanged;
+        }
         _vm = DataContext as CommandPaletteViewModel;
         if (_vm is not null)
+        {
             _vm.PropertyChanged += OnVmPropertyChanged;
+        }
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -37,7 +41,7 @@ public partial class CommandPaletteView : UserControl
         {
             Dispatcher.UIThread.Post(() =>
             {
-                var box = this.FindControl<TextBox>("SearchBox");
+                TextBox? box = this.FindControl<TextBox>("SearchBox");
                 box?.Focus();
                 box?.SelectAll();
             }, DispatcherPriority.Input);
@@ -47,8 +51,9 @@ public partial class CommandPaletteView : UserControl
     private void OnKeyDownTunnel(object? sender, KeyEventArgs e)
     {
         if (_vm is null)
+        {
             return;
-
+        }
         switch (e.Key)
         {
             case Key.Down:
@@ -73,6 +78,8 @@ public partial class CommandPaletteView : UserControl
     private void OnItemTapped(object? sender, TappedEventArgs e)
     {
         if (_vm is not null && sender is Control { DataContext: CommandPaletteItem item })
+        {
             _vm.Activate(item);
+        }
     }
 }

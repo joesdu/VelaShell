@@ -18,7 +18,6 @@ public class FileTransferViewModel : ReactiveObject
     private CancellationTokenSource? _batchCts;
     private int _batchRemaining;
     private bool _hidePending;
-    private bool _isPanelVisible;
     private bool _isPointerOver;
 
     // 准备阶段(上传/下载前的目录扫描):大文件夹的扫描可能持续数秒,期间面板立即弹出、
@@ -28,7 +27,7 @@ public class FileTransferViewModel : ReactiveObject
 
     public FileTransferViewModel(ITransferManager? transferManager)
     {
-        _transferManager = transferManager!;
+        _transferManager = transferManager ?? throw new ArgumentNullException(nameof(transferManager));
         Transfers = [];
         Transfers.CollectionChanged += OnTransfersChanged;
         CancelTransferCommand = ReactiveCommand.Create<Guid>(CancelTransfer);
@@ -73,8 +72,8 @@ public class FileTransferViewModel : ReactiveObject
     /// </summary>
     public bool IsPanelVisible
     {
-        get => _isPanelVisible;
-        set => this.RaiseAndSetIfChanged(ref _isPanelVisible, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public ReactiveCommand<Unit, Unit> HidePanelCommand { get; }
@@ -291,11 +290,12 @@ public class FileTransferViewModel : ReactiveObject
     {
         _autoHide = DispatcherTimer.RunOnce(() =>
         {
-            if (ActiveCount == 0 && !_isPointerOver)
+            if (ActiveCount != 0 || _isPointerOver)
             {
-                IsPanelVisible = false;
-                _hidePending = false;
+                return;
             }
+            IsPanelVisible = false;
+            _hidePending = false;
         }, TimeSpan.FromSeconds(3));
     }
 
@@ -316,13 +316,13 @@ public class FileTransferViewModel : ReactiveObject
             return;
         }
         item.Status = TransferStatus.Cancelled;
-        _transferManager?.CancelTransferAsync(transferId);
+        _transferManager.CancelTransferAsync(transferId);
     }
 
     private void RetryTransfer(Guid transferId)
     {
         TransferItemViewModel? item = FindTransfer(transferId);
-        if (item == null || item.Status != TransferStatus.Failed)
+        if (item is not { Status: TransferStatus.Failed })
         {
             return;
         }

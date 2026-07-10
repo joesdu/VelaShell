@@ -1,8 +1,3 @@
-using System;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
-
 namespace VelaShell.App.Services;
 
 /// <summary>
@@ -12,9 +7,7 @@ namespace VelaShell.App.Services;
 /// </summary>
 public static class SessionLogService
 {
-    public static string LogDirectory => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "VelaShell", "logs");
+    public static string LogDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VelaShell", "logs");
 
     /// <summary>为一个会话开启日志;返回 null 表示无法创建日志文件(不影响会话)。</summary>
     public static SessionLogWriter? CreateWriter(string sessionName)
@@ -22,13 +15,15 @@ public static class SessionLogService
         try
         {
             Directory.CreateDirectory(LogDirectory);
-            var safeName = string.Concat(sessionName.Select(c =>
+            string safeName = string.Concat(sessionName.Select(c =>
                 char.IsLetterOrDigit(c) || c is '-' or '_' or '.' ? c : '_'));
             if (safeName.Length > 40)
+            {
                 safeName = safeName[..40];
-            var path = Path.Combine(LogDirectory,
+            }
+            string path = Path.Combine(LogDirectory,
                 $"session-{safeName}-{DateTime.Now:yyyyMMdd-HHmmss}.log");
-            return new SessionLogWriter(path);
+            return new(path);
         }
         catch
         {
@@ -40,22 +35,26 @@ public static class SessionLogService
     public static void CleanupExpired(int retentionDays)
     {
         if (retentionDays < 1)
+        {
             return;
-
+        }
         _ = Task.Run(() =>
         {
             try
             {
                 if (!Directory.Exists(LogDirectory))
+                {
                     return;
-
-                var cutoff = DateTime.Now.AddDays(-retentionDays);
-                foreach (var file in Directory.EnumerateFiles(LogDirectory, "session-*.log"))
+                }
+                DateTime cutoff = DateTime.Now.AddDays(-retentionDays);
+                foreach (string file in Directory.EnumerateFiles(LogDirectory, "session-*.log"))
                 {
                     try
                     {
                         if (File.GetLastWriteTime(file) < cutoff)
+                        {
                             File.Delete(file);
+                        }
                     }
                     catch
                     {
@@ -74,29 +73,12 @@ public static class SessionLogService
 /// <summary>单个会话的追加式日志写入器;写入在调用线程(读线程)上串行,异常即自禁用。</summary>
 public sealed class SessionLogWriter : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private FileStream? _stream;
 
     internal SessionLogWriter(string path)
     {
-        _stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read);
-    }
-
-    public void Write(byte[] data)
-    {
-        lock (_gate)
-        {
-            try
-            {
-                _stream?.Write(data, 0, data.Length);
-            }
-            catch
-            {
-                // 磁盘满/文件被删等:停止记录,不影响会话。
-                _stream?.Dispose();
-                _stream = null;
-            }
-        }
+        _stream = new(path, FileMode.Append, FileAccess.Write, FileShare.Read);
     }
 
     public void Dispose()
@@ -113,6 +95,23 @@ public sealed class SessionLogWriter : IDisposable
             }
             _stream?.Dispose();
             _stream = null;
+        }
+    }
+
+    public void Write(byte[] data)
+    {
+        lock (_gate)
+        {
+            try
+            {
+                _stream?.Write(data, 0, data.Length);
+            }
+            catch
+            {
+                // 磁盘满/文件被删等:停止记录,不影响会话。
+                _stream?.Dispose();
+                _stream = null;
+            }
         }
     }
 }

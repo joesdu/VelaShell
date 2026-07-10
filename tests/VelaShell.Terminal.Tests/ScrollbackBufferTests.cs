@@ -1,5 +1,3 @@
-using VelaShell.Terminal;
-
 namespace VelaShell.Terminal.Tests;
 
 [TestClass]
@@ -11,9 +9,7 @@ public class ScrollbackBufferTests
     {
         var buffer = new ScrollbackBuffer(100);
         var line = new TerminalLine { Content = "hello world" };
-
         buffer.AddLine(line);
-
         Assert.AreEqual(1, buffer.ScrollbackLineCount);
         Assert.AreEqual("hello world", buffer.GetLine(0).Content);
     }
@@ -22,12 +18,10 @@ public class ScrollbackBufferTests
     public void AddLine_CircularWrap_OverwritesOldest()
     {
         var buffer = new ScrollbackBuffer(3);
-
-        buffer.AddLine(new TerminalLine { Content = "line0" });
-        buffer.AddLine(new TerminalLine { Content = "line1" });
-        buffer.AddLine(new TerminalLine { Content = "line2" });
-        buffer.AddLine(new TerminalLine { Content = "line3" });
-
+        buffer.AddLine(new() { Content = "line0" });
+        buffer.AddLine(new() { Content = "line1" });
+        buffer.AddLine(new() { Content = "line2" });
+        buffer.AddLine(new() { Content = "line3" });
         Assert.AreEqual(3, buffer.ScrollbackLineCount);
         Assert.AreEqual("line1", buffer.GetLine(0).Content);
         Assert.AreEqual("line2", buffer.GetLine(1).Content);
@@ -38,12 +32,10 @@ public class ScrollbackBufferTests
     public void GetLine_ReturnsCorrectContent()
     {
         var buffer = new ScrollbackBuffer(100);
-
         for (int i = 0; i < 10; i++)
         {
-            buffer.AddLine(new TerminalLine { Content = $"line {i}" });
+            buffer.AddLine(new() { Content = $"line {i}" });
         }
-
         Assert.AreEqual("line 0", buffer.GetLine(0).Content);
         Assert.AreEqual("line 5", buffer.GetLine(5).Content);
         Assert.AreEqual("line 9", buffer.GetLine(9).Content);
@@ -54,14 +46,11 @@ public class ScrollbackBufferTests
     {
         var buffer = new ScrollbackBuffer(100);
         buffer.VisibleRows = 24;
-
         for (int i = 0; i < 50; i++)
         {
-            buffer.AddLine(new TerminalLine { Content = $"line {i}" });
+            buffer.AddLine(new() { Content = $"line {i}" });
         }
-
         buffer.ScrollTo(10);
-
         Assert.AreEqual(10, buffer.ViewportRow);
     }
 
@@ -70,15 +59,12 @@ public class ScrollbackBufferTests
     {
         var buffer = new ScrollbackBuffer(100);
         buffer.VisibleRows = 24;
-
         for (int i = 0; i < 50; i++)
         {
-            buffer.AddLine(new TerminalLine { Content = $"line {i}" });
+            buffer.AddLine(new() { Content = $"line {i}" });
         }
-
         buffer.ScrollTo(30);
         buffer.ScrollUp(5);
-
         Assert.AreEqual(25, buffer.ViewportRow);
     }
 
@@ -87,15 +73,12 @@ public class ScrollbackBufferTests
     {
         var buffer = new ScrollbackBuffer(100);
         buffer.VisibleRows = 24;
-
         for (int i = 0; i < 50; i++)
         {
-            buffer.AddLine(new TerminalLine { Content = $"line {i}" });
+            buffer.AddLine(new() { Content = $"line {i}" });
         }
-
         buffer.ScrollTo(10);
         buffer.ScrollDown(5);
-
         Assert.AreEqual(15, buffer.ViewportRow);
     }
 
@@ -103,13 +86,10 @@ public class ScrollbackBufferTests
     public void Search_FindsTextAcrossScrollback()
     {
         var buffer = new ScrollbackBuffer(100);
-
-        buffer.AddLine(new TerminalLine { Content = "foo bar baz" });
-        buffer.AddLine(new TerminalLine { Content = "hello world" });
-        buffer.AddLine(new TerminalLine { Content = "foo again" });
-
-        var matches = buffer.Search("foo");
-
+        buffer.AddLine(new() { Content = "foo bar baz" });
+        buffer.AddLine(new() { Content = "hello world" });
+        buffer.AddLine(new() { Content = "foo again" });
+        List<SearchMatch> matches = buffer.Search("foo");
         Assert.AreEqual(2, matches.Count());
         Assert.AreEqual(0, matches[0].Row);
         Assert.AreEqual(0, matches[0].Column);
@@ -124,12 +104,10 @@ public class ScrollbackBufferTests
     {
         var buffer = new ScrollbackBuffer(100);
         buffer.VisibleRows = 24;
-
         for (int i = 0; i < 10; i++)
         {
-            buffer.AddLine(new TerminalLine { Content = $"line {i}" });
+            buffer.AddLine(new() { Content = $"line {i}" });
         }
-
         Assert.AreEqual(10 + 24, buffer.TotalLines);
     }
 
@@ -138,7 +116,6 @@ public class ScrollbackBufferTests
     {
         var buffer = new ScrollbackBuffer(500);
         Assert.AreEqual(500, buffer.MaxLines);
-
         var defaultBuffer = new ScrollbackBuffer();
         Assert.AreEqual(10000, defaultBuffer.MaxLines);
     }
@@ -147,14 +124,11 @@ public class ScrollbackBufferTests
     public void Clear_RemovesAllLines()
     {
         var buffer = new ScrollbackBuffer(100);
-
         for (int i = 0; i < 20; i++)
         {
-            buffer.AddLine(new TerminalLine { Content = $"line {i}" });
+            buffer.AddLine(new() { Content = $"line {i}" });
         }
-
         buffer.Clear();
-
         Assert.AreEqual(0, buffer.ScrollbackLineCount);
         Assert.AreEqual(0, buffer.ViewportRow);
     }
@@ -164,15 +138,12 @@ public class ScrollbackBufferTests
     {
         var buffer = new ScrollbackBuffer(100);
         buffer.VisibleRows = 24;
-
         for (int i = 0; i < 10; i++)
         {
-            buffer.AddLine(new TerminalLine { Content = $"line {i}" });
+            buffer.AddLine(new() { Content = $"line {i}" });
         }
-
         buffer.ScrollTo(3);
         buffer.ScrollUp(100);
-
         Assert.AreEqual(0, buffer.ViewportRow);
     }
 
@@ -181,14 +152,11 @@ public class ScrollbackBufferTests
     {
         var buffer = new ScrollbackBuffer(100);
         buffer.VisibleRows = 24;
-
         for (int i = 0; i < 50; i++)
         {
-            buffer.AddLine(new TerminalLine { Content = $"line {i}" });
+            buffer.AddLine(new() { Content = $"line {i}" });
         }
-
         buffer.ScrollDown(1000);
-
         Assert.AreEqual(50, buffer.ViewportRow);
     }
 
@@ -196,11 +164,8 @@ public class ScrollbackBufferTests
     public void Search_FindsMultipleMatchesInSameLine()
     {
         var buffer = new ScrollbackBuffer(100);
-
-        buffer.AddLine(new TerminalLine { Content = "ab ab ab" });
-
-        var matches = buffer.Search("ab");
-
+        buffer.AddLine(new() { Content = "ab ab ab" });
+        List<SearchMatch> matches = buffer.Search("ab");
         Assert.AreEqual(3, matches.Count());
         Assert.AreEqual(0, matches[0].Column);
         Assert.AreEqual(3, matches[1].Column);
@@ -211,9 +176,8 @@ public class ScrollbackBufferTests
     public void GetLine_OutOfRange_ThrowsArgumentOutOfRangeException()
     {
         var buffer = new ScrollbackBuffer(100);
-        buffer.AddLine(new TerminalLine { Content = "only line" });
-
-        var act = () => buffer.GetLine(5);
+        buffer.AddLine(new() { Content = "only line" });
+        Func<TerminalLine> act = () => buffer.GetLine(5);
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(act);
     }
 
@@ -221,12 +185,10 @@ public class ScrollbackBufferTests
     public void CircularWrap_ManyOverwrites_MaintainsCorrectOrder()
     {
         var buffer = new ScrollbackBuffer(5);
-
         for (int i = 0; i < 20; i++)
         {
-            buffer.AddLine(new TerminalLine { Content = $"line {i}" });
+            buffer.AddLine(new() { Content = $"line {i}" });
         }
-
         Assert.AreEqual(5, buffer.ScrollbackLineCount);
         Assert.AreEqual("line 15", buffer.GetLine(0).Content);
         Assert.AreEqual("line 16", buffer.GetLine(1).Content);

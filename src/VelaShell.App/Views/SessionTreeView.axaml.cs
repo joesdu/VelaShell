@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Markup.Xaml;
 using VelaShell.Presentation.ViewModels;
 
 namespace VelaShell.App.Views;
@@ -24,23 +23,24 @@ public partial class SessionTreeView : UserControl
     /// <summary>双击会话行直接连接(分组行仅展开/折叠)。</summary>
     private void Session_DoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (sender is Control { DataContext: SessionTreeNodeViewModel { IsGroup: false } node }
-            && DataContext is SessionTreeViewModel viewModel)
+        if (sender is Control { DataContext: SessionTreeNodeViewModel { IsGroup: false } node } && DataContext is SessionTreeViewModel viewModel)
         {
             viewModel.SelectedNode = node;
             viewModel.RequestConnect(node.Id);
         }
     }
 
-    /// <summary>右键弹菜单前先选中所指行:菜单里的命令都作用于 SelectedNode,不选中会
-    /// 对着上一次选择的会话执行。</summary>
+    /// <summary>
+    /// 右键弹菜单前先选中所指行:菜单里的命令都作用于 SelectedNode,不选中会
+    /// 对着上一次选择的会话执行。
+    /// </summary>
     private void Session_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (!e.GetCurrentPoint(null).Properties.IsRightButtonPressed)
+        {
             return;
-
-        if (sender is Control { DataContext: SessionTreeNodeViewModel { IsGroup: false } node }
-            && DataContext is SessionTreeViewModel viewModel)
+        }
+        if (sender is Control { DataContext: SessionTreeNodeViewModel { IsGroup: false } node } && DataContext is SessionTreeViewModel viewModel)
         {
             viewModel.SelectedNode = node;
         }

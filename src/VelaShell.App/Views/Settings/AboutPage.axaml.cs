@@ -1,4 +1,3 @@
-using System;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
@@ -15,10 +14,16 @@ public partial class AboutPage : UserControl
     private async void OnOpenLink(object? sender, RoutedEventArgs e)
     {
         if (sender is not Control { Tag: string url } || string.IsNullOrWhiteSpace(url))
+        {
             return;
+        }
         if (TopLevel.GetTopLevel(this) is not { } top)
+        {
             return;
-        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        }
+        if (Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
+        {
             await top.Launcher.LaunchUriAsync(uri);
+        }
     }
 }

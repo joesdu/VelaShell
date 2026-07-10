@@ -3,14 +3,9 @@ using VelaShell.Core.Models;
 
 namespace VelaShell.App.ViewModels;
 
-public class TunnelItemViewModel : ReactiveObject
+public class TunnelItemViewModel(TunnelInfo tunnelInfo) : ReactiveObject
 {
-    private readonly TunnelInfo _tunnelInfo;
-
-    public TunnelItemViewModel(TunnelInfo tunnelInfo)
-    {
-        _tunnelInfo = tunnelInfo ?? throw new ArgumentNullException(nameof(tunnelInfo));
-    }
+    private readonly TunnelInfo _tunnelInfo = tunnelInfo ?? throw new ArgumentNullException(nameof(tunnelInfo));
 
     public Guid Id => _tunnelInfo.Id;
 

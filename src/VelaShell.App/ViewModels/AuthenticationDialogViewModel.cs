@@ -1,14 +1,13 @@
-using System;
 using System.Reactive;
 using System.Reactive.Linq;
 using System.Security;
-using VelaShell.Core.Models;
 using ReactiveUI;
+using VelaShell.Core.Models;
 
 namespace VelaShell.App.ViewModels;
 
 /// <summary>
-/// 身份验证弹窗的结果:登录所需的完整凭据。<see cref="Password"/> 以 SecureString 承载,
+/// 身份验证弹窗的结果:登录所需的完整凭据。<see cref="Password" /> 以 SecureString 承载,
 /// 由消费方负责在使用后 Dispose。
 /// </summary>
 public sealed record AuthenticationResult(
@@ -25,17 +24,10 @@ public sealed record AuthenticationResult(
 /// </summary>
 public class AuthenticationDialogViewModel : ReactiveObject
 {
-    private readonly string _host;
     private readonly int _port;
-
-    private int _step = 1;
-    private string _username;
     private int _methodIndex; // 0=密码 1=证书(暂未支持) 2=密钥
-    private SecureString? _password;
-    private bool _showPassword;
-    private bool _rememberPassword = true;
-    private string? _privateKeyPath;
-    private string? _privateKeyPassphrase;
+
+    private string _username;
 
     public AuthenticationDialogViewModel(
         string host,
@@ -44,37 +36,31 @@ public class AuthenticationDialogViewModel : ReactiveObject
         string? knownFingerprint = null,
         AuthMethod initialMethod = AuthMethod.Password)
     {
-        _host = host;
+        TargetText = host;
         _port = port;
         _username = username ?? string.Empty;
         _methodIndex = initialMethod == AuthMethod.PrivateKey ? 2 : 0;
-
         FingerprintText = string.IsNullOrEmpty(knownFingerprint)
-            ? "指纹: 首次连接,将在握手时记录"
-            : $"指纹: {Shorten(knownFingerprint)}(已信任)";
-
-        var canNext = this.WhenAnyValue(x => x.Username)
-            .Select(name => !string.IsNullOrWhiteSpace(name));
+                              ? "指纹: 首次连接,将在握手时记录"
+                              : $"指纹: {Shorten(knownFingerprint)}(已信任)";
+        IObservable<bool> canNext = this.WhenAnyValue(x => x.Username)
+                                        .Select(name => !string.IsNullOrWhiteSpace(name));
         NextCommand = ReactiveCommand.Create(() => { Step = 2; }, canNext);
         BackCommand = ReactiveCommand.Create(() => { Step = 1; });
-        CancelCommand = ReactiveCommand.Create(() => (AuthenticationResult?)null);
-
-        var canLogin = this.WhenAnyValue(
-            x => x.MethodIndex,
+        CancelCommand = ReactiveCommand.Create<AuthenticationResult?>(() => null);
+        IObservable<bool> canLogin = this.WhenAnyValue(x => x.MethodIndex,
             x => x.Password,
             x => x.PrivateKeyPath,
             (method, password, keyPath) => method switch
             {
                 0 => password is { Length: > 0 },
                 2 => !string.IsNullOrWhiteSpace(keyPath),
-                _ => false,
+                _ => false
             });
         LoginCommand = ReactiveCommand.Create(BuildResult, canLogin);
-
         SelectPasswordCommand = ReactiveCommand.Create(() => { MethodIndex = 0; });
         SelectKeyCommand = ReactiveCommand.Create(() => { MethodIndex = 2; });
         TogglePasswordVisibilityCommand = ReactiveCommand.Create(() => { ShowPassword = !ShowPassword; });
-
         this.WhenAnyValue(x => x.Step)
             .Subscribe(_ =>
             {
@@ -94,11 +80,12 @@ public class AuthenticationDialogViewModel : ReactiveObject
 
     public int Step
     {
-        get => _step;
-        private set => this.RaiseAndSetIfChanged(ref _step, value);
-    }
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    } = 1;
 
     public bool IsStep1 => Step == 1;
+
     public bool IsStep2 => Step == 2;
 
     public string HeaderTitle => $"身份验证 - 第 {Step} 步";
@@ -108,9 +95,9 @@ public class AuthenticationDialogViewModel : ReactiveObject
     {
         get
         {
-            var target = string.IsNullOrWhiteSpace(Username)
-                ? $"{_host}:{_port}"
-                : $"{Username}@{_host}:{_port}";
+            string target = string.IsNullOrWhiteSpace(Username)
+                                ? $"{field}:{_port}"
+                                : $"{Username}@{field}:{_port}";
             return Step == 1 ? $"正在连接 {target}" : target;
         }
     }
@@ -138,50 +125,56 @@ public class AuthenticationDialogViewModel : ReactiveObject
     }
 
     public bool IsPasswordMethod => MethodIndex == 0;
+
     public bool IsKeyMethod => MethodIndex == 2;
 
     public SecureString? Password
     {
-        get => _password;
-        set => this.RaiseAndSetIfChanged(ref _password, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public bool ShowPassword
     {
-        get => _showPassword;
-        set => this.RaiseAndSetIfChanged(ref _showPassword, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public bool RememberPassword
     {
-        get => _rememberPassword;
-        set => this.RaiseAndSetIfChanged(ref _rememberPassword, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = true;
 
     public string? PrivateKeyPath
     {
-        get => _privateKeyPath;
-        set => this.RaiseAndSetIfChanged(ref _privateKeyPath, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public string? PrivateKeyPassphrase
     {
-        get => _privateKeyPassphrase;
-        set => this.RaiseAndSetIfChanged(ref _privateKeyPassphrase, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public ReactiveCommand<Unit, Unit> NextCommand { get; }
+
     public ReactiveCommand<Unit, Unit> BackCommand { get; }
+
     public ReactiveCommand<Unit, AuthenticationResult?> CancelCommand { get; }
-    public ReactiveCommand<Unit, AuthenticationResult?> LoginCommand { get; }
+
+    public ReactiveCommand<Unit, AuthenticationResult> LoginCommand { get; }
+
     public ReactiveCommand<Unit, Unit> SelectPasswordCommand { get; }
+
     public ReactiveCommand<Unit, Unit> SelectKeyCommand { get; }
+
     public ReactiveCommand<Unit, Unit> TogglePasswordVisibilityCommand { get; }
 
-    private AuthenticationResult? BuildResult()
+    private AuthenticationResult BuildResult()
     {
-        return new AuthenticationResult(
-            Username.Trim(),
+        return new(Username.Trim(),
             IsKeyMethod ? AuthMethod.PrivateKey : AuthMethod.Password,
             // 传一份副本,与弹窗自身的生命周期解耦;消费方负责 Dispose。
             IsPasswordMethod ? Password?.Copy() : null,
@@ -190,6 +183,5 @@ public class AuthenticationDialogViewModel : ReactiveObject
             RememberPassword);
     }
 
-    private static string Shorten(string fingerprint)
-        => fingerprint.Length <= 24 ? fingerprint : $"{fingerprint[..12]}...{fingerprint[^4..]}";
+    private static string Shorten(string fingerprint) => fingerprint.Length <= 24 ? fingerprint : $"{fingerprint[..12]}...{fingerprint[^4..]}";
 }

@@ -1,4 +1,3 @@
-using System;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -42,27 +41,24 @@ public partial class ConnectionDiagnosticsView : Window
         {
             return;
         }
-
-        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        IStorageFile? file = await StorageProvider.SaveFilePickerAsync(new()
         {
             Title = "导出诊断报告",
             SuggestedFileName = viewModel.SuggestedReportFileName,
             DefaultExtension = "txt",
             FileTypeChoices =
             [
-                new FilePickerFileType("文本文件") { Patterns = ["*.txt"] },
-            ],
+                new("文本文件") { Patterns = ["*.txt"] }
+            ]
         });
-
-        var path = file is null ? null : StorageProviderExtensions.TryGetLocalPath(file);
+        string? path = file?.TryGetLocalPath();
         if (string.IsNullOrEmpty(path))
         {
             return;
         }
-
         try
         {
-            await System.IO.File.WriteAllTextAsync(path, viewModel.BuildReportText());
+            await File.WriteAllTextAsync(path, viewModel.BuildReportText());
         }
         catch (Exception ex)
         {

@@ -1,43 +1,47 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-
 namespace VelaShell.App.Services;
 
 /// <summary>本机可用的一种本地 shell(§12 P1-1)。CommandLine 含参数,直接交给 ConPTY 启动。</summary>
 public sealed record LocalShellInfo(string Id, string Name, string CommandLine);
 
-/// <summary>探测本机安装的 shell:PowerShell 7 / Windows PowerShell / CMD / WSL / Git Bash。
-/// 只做文件存在性检查,构造命令注册表时同步调用足够便宜;非 Windows 返回空。</summary>
+/// <summary>
+/// 探测本机安装的 shell:PowerShell 7 / Windows PowerShell / CMD / WSL / Git Bash。
+/// 只做文件存在性检查,构造命令注册表时同步调用足够便宜;非 Windows 返回空。
+/// </summary>
 public static class LocalShellCatalog
 {
     public static IReadOnlyList<LocalShellInfo> DetectShells()
     {
         if (!OperatingSystem.IsWindows())
+        {
             return [];
-
+        }
         var shells = new List<LocalShellInfo>();
-        var system32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        string system32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
 
         // PowerShell 7(pwsh)优先于 Windows PowerShell;都装了就都给。
         if (FindOnPath("pwsh.exe") is { } pwsh)
-            shells.Add(new LocalShellInfo("pwsh", "PowerShell", Quote(pwsh) + " -NoLogo"));
-
-        var windowsPowerShell = Path.Combine(system32, "WindowsPowerShell", "v1.0", "powershell.exe");
+        {
+            shells.Add(new("pwsh", "PowerShell", Quote(pwsh) + " -NoLogo"));
+        }
+        string windowsPowerShell = Path.Combine(system32, "WindowsPowerShell", "v1.0", "powershell.exe");
         if (File.Exists(windowsPowerShell))
-            shells.Add(new LocalShellInfo("powershell", "Windows PowerShell", Quote(windowsPowerShell) + " -NoLogo"));
-
-        var cmd = Environment.GetEnvironmentVariable("ComSpec") ?? Path.Combine(system32, "cmd.exe");
+        {
+            shells.Add(new("powershell", "Windows PowerShell", Quote(windowsPowerShell) + " -NoLogo"));
+        }
+        string cmd = Environment.GetEnvironmentVariable("ComSpec") ?? Path.Combine(system32, "cmd.exe");
         if (File.Exists(cmd))
-            shells.Add(new LocalShellInfo("cmd", "命令提示符 (CMD)", Quote(cmd)));
-
-        var wsl = Path.Combine(system32, "wsl.exe");
+        {
+            shells.Add(new("cmd", "命令提示符 (CMD)", Quote(cmd)));
+        }
+        string wsl = Path.Combine(system32, "wsl.exe");
         if (File.Exists(wsl))
-            shells.Add(new LocalShellInfo("wsl", "WSL", Quote(wsl)));
-
+        {
+            shells.Add(new("wsl", "WSL", Quote(wsl)));
+        }
         if (FindGitBash() is { } gitBash)
-            shells.Add(new LocalShellInfo("gitbash", "Git Bash", Quote(gitBash) + " --login -i"));
-
+        {
+            shells.Add(new("gitbash", "Git Bash", Quote(gitBash) + " --login -i"));
+        }
         return shells;
     }
 
@@ -45,24 +49,26 @@ public static class LocalShellCatalog
 
     private static string? FindOnPath(string fileName)
     {
-        var path = Environment.GetEnvironmentVariable("PATH");
+        string? path = Environment.GetEnvironmentVariable("PATH");
         if (string.IsNullOrEmpty(path))
+        {
             return null;
-
-        foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        }
+        foreach (string dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
         {
             try
             {
-                var candidate = Path.Combine(dir.Trim(), fileName);
+                string candidate = Path.Combine(dir.Trim(), fileName);
                 if (File.Exists(candidate))
+                {
                     return candidate;
+                }
             }
             catch (ArgumentException)
             {
                 // PATH 里的非法片段,跳过。
             }
         }
-
         return null;
     }
 
@@ -72,30 +78,36 @@ public static class LocalShellCatalog
         [
             Environment.GetEnvironmentVariable("ProgramFiles"),
             Environment.GetEnvironmentVariable("ProgramFiles(x86)"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs")
         ];
-
-        foreach (var root in roots)
+        foreach (string? root in roots)
         {
             if (string.IsNullOrEmpty(root))
-                continue;
-            var candidate = Path.Combine(root, "Git", "bin", "bash.exe");
-            if (File.Exists(candidate))
-                return candidate;
-        }
-
-        // Git 在 PATH 时,git.exe 兄弟目录里找 bash。
-        if (FindOnPath("git.exe") is { } git)
-        {
-            var gitRoot = Path.GetDirectoryName(Path.GetDirectoryName(git));
-            if (gitRoot is not null)
             {
-                var candidate = Path.Combine(gitRoot, "bin", "bash.exe");
-                if (File.Exists(candidate))
-                    return candidate;
+                continue;
+            }
+            string candidate = Path.Combine(root, "Git", "bin", "bash.exe");
+            if (File.Exists(candidate))
+            {
+                return candidate;
             }
         }
 
+        // Git 在 PATH 时,git.exe 兄弟目录里找 bash。
+        // ReSharper disable once InvertIf
+        if (FindOnPath("git.exe") is { } git)
+        {
+            string? gitRoot = Path.GetDirectoryName(Path.GetDirectoryName(git));
+            if (gitRoot is null)
+            {
+                return null;
+            }
+            string candidate = Path.Combine(gitRoot, "bin", "bash.exe");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
         return null;
     }
 }

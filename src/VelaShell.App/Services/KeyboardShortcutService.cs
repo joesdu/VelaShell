@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace VelaShell.App.Services;
@@ -9,14 +7,13 @@ public class KeyboardShortcutService : IKeyboardShortcutService
     private readonly Dictionary<(KeyModifiers, KeyCode, ShortcutContext), ShortcutAction> _mappings;
 
     public KeyboardShortcutService()
-        : this(RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-    {
-    }
+        : this(RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) { }
 
+    // ReSharper disable once InconsistentNaming
     public KeyboardShortcutService(bool isMacOS)
     {
         IsMacOS = isMacOS;
-        _mappings = new Dictionary<(KeyModifiers, KeyCode, ShortcutContext), ShortcutAction>();
+        _mappings = new();
         RegisterMappings();
     }
 
@@ -24,29 +21,24 @@ public class KeyboardShortcutService : IKeyboardShortcutService
 
     public ShortcutAction Resolve(KeyModifiers modifiers, KeyCode key, ShortcutContext context)
     {
-        if (_mappings.TryGetValue((modifiers, key, context), out var action))
+        if (_mappings.TryGetValue((modifiers, key, context), out ShortcutAction action) || context == ShortcutContext.Terminal && _mappings.TryGetValue((modifiers, key, ShortcutContext.Global), out action))
+        {
             return action;
-
-        if (context == ShortcutContext.Terminal &&
-            _mappings.TryGetValue((modifiers, key, ShortcutContext.Global), out action))
-            return action;
-
+        }
         return ShortcutAction.None;
     }
 
     private void RegisterMappings()
     {
-        var primaryModifier = IsMacOS ? KeyModifiers.Meta : KeyModifiers.Ctrl;
-
-        RegisterTerminalMappings(primaryModifier);
+        KeyModifiers primaryModifier = IsMacOS ? KeyModifiers.Meta : KeyModifiers.Ctrl;
+        RegisterTerminalMappings();
         RegisterGlobalMappings(primaryModifier);
     }
 
-    private void RegisterTerminalMappings(KeyModifiers primaryModifier)
+    private void RegisterTerminalMappings()
     {
         // Ctrl+C always sends interrupt in terminal (both platforms)
         Map(KeyModifiers.Ctrl, KeyCode.C, ShortcutContext.Terminal, ShortcutAction.SendInterrupt);
-
         if (IsMacOS)
         {
             // macOS: Cmd+C = copy, Cmd+V = paste in terminal

@@ -1,6 +1,3 @@
-using System;
-using System.Linq;
-using System.Reactive.Linq;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -23,9 +20,8 @@ public partial class AuthenticationDialogView : Window
         {
             return;
         }
-
-        viewModel.LoginCommand.Subscribe(result => Close(result));
-        viewModel.CancelCommand.Subscribe(result => Close(result));
+        viewModel.LoginCommand.Subscribe(Close);
+        viewModel.CancelCommand.Subscribe(Close);
     }
 
     private void Header_PointerPressed(object? sender, PointerPressedEventArgs e)
@@ -42,13 +38,11 @@ public partial class AuthenticationDialogView : Window
         {
             return;
         }
-
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new()
         {
             Title = "选择私钥文件",
-            AllowMultiple = false,
+            AllowMultiple = false
         });
-
         if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
         {
             viewModel.PrivateKeyPath = path;
