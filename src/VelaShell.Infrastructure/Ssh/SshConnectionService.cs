@@ -34,7 +34,10 @@ public class SshConnectionService(
     public Task<SshSession> ConnectAsync(ConnectionInfo connectionInfo, CancellationToken cancellationToken = default)
     {
         // 并发连接:握手不再串行,多个会话可同时建连,单条慢连接不阻塞其它连接。
-        return ConnectInternalAsync(connectionInfo, cancellationToken);
+        // 整个建连挪到线程池:同步前缀里有真实的重活(客户端工厂解析/解密私钥、
+        // 同步读取设置的超时与心跳、SSH.NET 建连前的准备),从 UI 线程发起时这些
+        // 会直接吃掉渲染帧,表现为“连接中界面掉帧/点第二条连接更卡”。
+        return Task.Run(() => ConnectInternalAsync(connectionInfo, cancellationToken), cancellationToken);
     }
 
     public async Task DisconnectAsync(Guid sessionId, CancellationToken cancellationToken = default)
