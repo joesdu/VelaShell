@@ -25,6 +25,36 @@ public sealed record TerminalColorScheme(
         appearance.AnsiBright = [.. AnsiBright];
     }
 
+    /// <summary>整套颜色(前景/背景/光标/选区 + ANSI 16 色)与给定外观完全一致才算匹配,
+    /// 用于设置页打开时反向选中已保存的方案;用户改过任意单色即不匹配(显示“未选择”)。</summary>
+    public bool Matches(AppearanceOptions appearance)
+    {
+        ArgumentNullException.ThrowIfNull(appearance);
+        return HexEquals(appearance.TerminalForeground, Foreground)
+            && HexEquals(appearance.TerminalBackground, Background)
+            && HexEquals(appearance.CursorColor, Cursor)
+            && HexEquals(appearance.SelectionColor, Selection)
+            && HexSequenceEquals(appearance.AnsiNormal, AnsiNormal)
+            && HexSequenceEquals(appearance.AnsiBright, AnsiBright);
+    }
+
+    private static bool HexEquals(string? a, string? b) =>
+        string.Equals(a?.Trim(), b?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static bool HexSequenceEquals(IReadOnlyList<string>? a, IReadOnlyList<string> b)
+    {
+        if (a is null || a.Count != b.Count)
+            return false;
+
+        for (var i = 0; i < b.Count; i++)
+        {
+            if (!HexEquals(a[i], b[i]))
+                return false;
+        }
+
+        return true;
+    }
+
     /// <summary>内置方案;首项 Dracula 等同出厂默认(不产生覆盖、跟随主题)。</summary>
     public static readonly TerminalColorScheme[] BuiltIn =
     [

@@ -285,7 +285,7 @@ public class SettingsViewModel : ReactiveObject
     private int _colorSchemeIndex = -1;
 
     /// <summary>选择预设即把整套颜色写入 Appearance(保存后生效);-1 = 未选择。
-    /// 载入设置时复位,不做反向匹配(用户可能自定义过单色)。</summary>
+    /// 载入设置时按整套颜色反向匹配选中已保存的方案(改过单色则回落 -1)。</summary>
     public int ColorSchemeIndex
     {
         get => _colorSchemeIndex;
@@ -509,8 +509,9 @@ public class SettingsViewModel : ReactiveObject
         Security = settings.Security;
         Keys = settings.Keys;
 
-        // 配色方案下拉复位为“未选择”(不反向匹配,用户可能自定义过单色)。
-        _colorSchemeIndex = -1;
+        // 配色方案下拉:反向匹配当前整套颜色,命中即选中已保存的方案;
+        // 用户自定义过任意单色则不命中,显示“未选择”(-1)。
+        _colorSchemeIndex = Array.FindIndex(TerminalColorScheme.BuiltIn, s => s.Matches(settings.Appearance));
         this.RaisePropertyChanged(nameof(ColorSchemeIndex));
 
         // 分组对象整体替换后,派生的下拉索引一并刷新。
