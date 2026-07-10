@@ -60,6 +60,14 @@ public interface ITerminalEmulator : IDisposable
     event Action<byte[]>? UserInput;
 
     /// <summary>
+    /// 仅"用户产生"的输入(键盘/IME/鼠标上报/粘贴/程序化写入),不含终端的协议自动应答
+    /// (光标位置报告、设备属性等也经 <see cref="UserInput" /> 发往 PTY,但并非用户键入)。
+    /// 命令补全的行跟踪(plan.md #16)只应订阅此事件,否则会话初期的 ESC 应答会把
+    /// 跟踪器永久打进未知态。
+    /// </summary>
+    event Action<byte[]>? TypedInput;
+
+    /// <summary>
     /// Raised when the terminal's character-cell grid changes size (e.g. the control was
     /// laid out at a new size) so the host PTY can be resized to match. Args: (columns, rows).
     /// </summary>

@@ -99,6 +99,13 @@ public partial class TerminalTabView : UserControl
     private string? _suppressedInput;
     private int _suggestSeq;
 
+    /// <summary>
+    /// 用户是否对弹层表达过明确的选择意图(Alt+Enter 主动召出、或按过 ↑/↓)。
+    /// 只有此时 Enter 才补全插入;纯自动弹层下 Enter 直通 shell 执行当前行,
+    /// 避免"输入 ls 按回车却被历史里的 ls -la 劫持"。
+    /// </summary>
+    private bool _suggestExplicit;
+
     private void HookSuggestions()
     {
         _suggestVm?.InputTracker.InputChanged -= OnTrackedInputChanged;
@@ -116,6 +123,7 @@ public partial class TerminalTabView : UserControl
             return;
         }
         _suppressedInput = null;
+        _suggestExplicit = false; // 继续键入 = 回到纯自动建议,Enter 恢复直通。
         _ = UpdateSuggestionsAsync(input, 8);
     }
 
@@ -159,6 +167,7 @@ public partial class TerminalTabView : UserControl
             SuggestPopup.IsOpen = false;
         }
         _suggestions = [];
+        _suggestExplicit = false;
     }
 
     /// <summary>补全弹层键位;返回 true 表示按键已被弹层消费。</summary>
@@ -168,6 +177,7 @@ public partial class TerminalTabView : UserControl
         if (e is { Key: Key.Enter, KeyModifiers: Avalonia.Input.KeyModifiers.Alt })
         {
             _suppressedInput = null;
+            _suggestExplicit = true; // 主动召出 = 明确意图,Enter 即补全。
             _ = UpdateSuggestionsAsync(_suggestVm?.InputTracker.CurrentInput ?? string.Empty, 20);
             e.Handled = true;
             return true;
@@ -186,19 +196,26 @@ public partial class TerminalTabView : UserControl
                 MoveSuggestion(-1);
                 e.Handled = true;
                 return true;
-            case Key.Tab:
-                AcceptSuggestion();
-                e.Handled = true;
-                return true;
             case Key.Escape:
                 CloseSuggestPopup(suppress: true);
                 e.Handled = true;
                 return true;
-            case Key.Enter:
-                // Enter 直通 shell 执行当前行,弹层只需让路(行提交后输入清空会自动收起)。
+            case Key.Enter when e.KeyModifiers == Avalonia.Input.KeyModifiers.None:
+                // 用户明确选择过(Alt+Enter 召出 / 按过 ↑↓)→ Enter 补全插入;
+                // 纯自动弹层未导航 → Enter 直通 shell 执行当前行。
+                // 选中项与已输入完全相同(如手动敲完了整条命令)也直通执行,免去二次回车。
+                if (_suggestExplicit && SuggestList.SelectedItem is CommandSuggestion selected &&
+                    selected.Text != (_suggestVm?.InputTracker.CurrentInput ?? string.Empty))
+                {
+                    AcceptSuggestion();
+                    e.Handled = true;
+                    return true;
+                }
                 CloseSuggestPopup(suppress: false);
                 return false;
             default:
+                // 其余按键(含 Tab)直通终端:Tab 保留给 shell 的原生补全,
+                // 行内容随之不可知,弹层会经 InputChanged 自动收起。
                 return false;
         }
     }
@@ -209,6 +226,7 @@ public partial class TerminalTabView : UserControl
         {
             return;
         }
+        _suggestExplicit = true; // 导航过列表 = 明确意图,Enter 即补全。
         int next = ((SuggestList.SelectedIndex + delta) % _suggestions.Count + _suggestions.Count) % _suggestions.Count;
         SuggestList.SelectedIndex = next;
         SuggestList.ScrollIntoView(next);

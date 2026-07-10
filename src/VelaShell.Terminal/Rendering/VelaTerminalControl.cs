@@ -113,7 +113,7 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
         ApplyDesignPalette(Emulator.Palette);
         RecomputeMetrics();
         Emulator.Updated += OnEmulatorUpdated;
-        Emulator.Response += bytes => UserInput?.Invoke(bytes);
+        Emulator.Response += bytes => UserInput?.Invoke(bytes); // 协议自动应答:发往 PTY 但不算用户键入(不进 TypedInput)。
         Emulator.Bell += OnBell;
         Emulator.ClipboardWriteRequested += OnRemoteClipboardWrite;
 
@@ -311,7 +311,20 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
         ScrollChanged?.Invoke();
     }
 
-    public void WriteInput(byte[] data) => UserInput?.Invoke(data);
+    public void WriteInput(byte[] data) => SendTypedInput(data);
+
+    public event Action<byte[]>? TypedInput;
+
+    /// <summary>
+    /// 用户产生的输入(键盘/IME/鼠标上报/粘贴/程序化写入)统一出口:发往 PTY
+    /// (<see cref="UserInput" />)并同步通知补全跟踪(<see cref="TypedInput" />)。
+    /// 终端协议自动应答不走这里(见构造函数 Response 挂接)。
+    /// </summary>
+    private void SendTypedInput(byte[] data)
+    {
+        TypedInput?.Invoke(data);
+        UserInput?.Invoke(data);
+    }
 
     public string GetBufferLine(int row) => Emulator.Screen.ActiveLine(row).GetText();
 
@@ -1288,7 +1301,7 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
             byte[] bytes = InputEncoder.EncodeText(e.Text);
             if (bytes.Length > 0)
             {
-                UserInput?.Invoke(bytes);
+                SendTypedInput(bytes);
                 if (ScrollOnKeystroke)
                 {
                     _scrollOffset = 0;
@@ -1368,7 +1381,7 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
         byte[]? encoded = InputEncoder.Encode(e.Key, effectiveModifiers, Emulator.Modes, Emulator.Type);
         if (encoded is { Length: > 0 })
         {
-            UserInput?.Invoke(encoded);
+            SendTypedInput(encoded);
             if (ScrollOnKeystroke)
             {
                 _scrollOffset = 0;
@@ -1623,7 +1636,7 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
         {
             return false;
         }
-        UserInput?.Invoke(bytes);
+        SendTypedInput(bytes);
         return true;
     }
 
@@ -1705,7 +1718,7 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
         {
             payload.Append("\e[201~");
         }
-        UserInput?.Invoke(Encoding.UTF8.GetBytes(payload.ToString()));
+        SendTypedInput(Encoding.UTF8.GetBytes(payload.ToString()));
     }
 
     private readonly record struct GlyphKey(int Rune, string? Combining, uint Foreground, int Style);

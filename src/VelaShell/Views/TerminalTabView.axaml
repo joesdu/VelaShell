@@ -89,7 +89,8 @@
 
       <!-- 命令补全弹层(plan.md #16,WindTerm 式):锚在终端光标下方;输入即建议,
            空输入按 Alt+Enter 弹全量(快捷命令 + 最近历史)。键位:↑↓ 选择、
-           Tab 补全、Esc 关闭、Enter 直通 shell 执行。全部逻辑在代码后置。 -->
+           Enter 补全插入(Alt+Enter 召出或 ↑↓ 导航过时;纯自动弹层下直通 shell)、
+           Esc 关闭、Tab 归还 shell 原生补全。全部逻辑在代码后置。 -->
       <Popup x:Name="SuggestPopup"
              PlacementTarget="{Binding #TerminalHost}"
              Placement="AnchorAndGravity"

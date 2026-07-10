@@ -37,8 +37,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         TerminalEmulator.PtySizeChanged += OnPtySizeChanged;
 
         // 命令补全(plan.md #16):旁路跟踪用户键入的命令行;Enter 提交时做回显校验
-        // (密码输入无回显,不入历史)后向宿主上报。
-        TerminalEmulator.UserInput += OnUserInputForTracker;
+        // (密码输入无回显,不入历史)后向宿主上报。必须订阅 TypedInput 而非 UserInput:
+        // 后者还承载终端的协议自动应答(ESC 开头),会把跟踪器永久打进未知态。
+        TerminalEmulator.TypedInput += OnUserInputForTracker;
         InputTracker.CommandSubmitted += OnTrackedCommandSubmitted;
 
         // Toolbar quick actions (用户反馈 #5): tear the transport down but keep the tab,
@@ -228,7 +229,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         }
         _disposed = true;
         TerminalEmulator.PtySizeChanged -= OnPtySizeChanged;
-        TerminalEmulator.UserInput -= OnUserInputForTracker;
+        TerminalEmulator.TypedInput -= OnUserInputForTracker;
         InputTracker.CommandSubmitted -= OnTrackedCommandSubmitted;
 
         // Instant, UI-safe teardown so the tab closes immediately: this only unhooks the
