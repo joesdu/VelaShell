@@ -252,6 +252,87 @@ public class FileTransferViewModelTests
 
     [TestMethod]
     [TestCategory("FileTransfer")]
+    public void BeginPreparing_ShowsPanelImmediately_AndCountsDiscoveredFiles()
+    {
+        // 选择大文件夹后,扫描期间面板立即可见、徽标随发现数递增(用户反馈)。
+        Assert.IsFalse(_vm.IsPanelVisible);
+
+        _vm.BeginPreparing();
+
+        Assert.IsTrue(_vm.IsPreparing);
+        Assert.IsTrue(_vm.IsPanelVisible);
+        Assert.AreEqual(0, _vm.PendingCount);
+
+        _vm.UpdatePreparingCount(1);
+        Assert.AreEqual(1, _vm.PendingCount);
+
+        _vm.UpdatePreparingCount(42);
+        Assert.AreEqual(42, _vm.PendingCount);
+        StringAssert.Contains(_vm.PreparingText, "42");
+    }
+
+    [TestMethod]
+    [TestCategory("FileTransfer")]
+    public void BeginBatch_TakesOverFromPreparing_BadgeSwitchesToRemaining()
+    {
+        using var cts = new CancellationTokenSource();
+        _vm.BeginPreparing();
+        _vm.UpdatePreparingCount(7);
+
+        _vm.BeginBatch(7, cts);
+
+        Assert.IsFalse(_vm.IsPreparing);
+        Assert.IsTrue(_vm.IsBatchActive);
+        Assert.AreEqual(7, _vm.PendingCount); // 从"已发现"无缝切换为"剩余"
+    }
+
+    [TestMethod]
+    [TestCategory("FileTransfer")]
+    public void EndPreparing_WithNothingPlanned_HidesPanelAgain()
+    {
+        // 计划为空(全部冲突跳过/取消)时退出准备态,面板不残留。
+        _vm.BeginPreparing();
+        Assert.IsTrue(_vm.IsPanelVisible);
+
+        _vm.EndPreparing();
+
+        Assert.IsFalse(_vm.IsPreparing);
+        Assert.IsFalse(_vm.IsPanelVisible);
+    }
+
+    [TestMethod]
+    [TestCategory("FileTransfer")]
+    public void UpdatePreparingCount_AfterPreparingEnded_IsIgnored()
+    {
+        using var cts = new CancellationTokenSource();
+        _vm.BeginPreparing();
+        _vm.BeginBatch(3, cts);
+
+        _vm.UpdatePreparingCount(99); // 迟到的扫描回调不得污染"剩余"徽标
+
+        Assert.AreEqual(3, _vm.PendingCount);
+    }
+
+    [TestMethod]
+    [TestCategory("FileTransfer")]
+    public void ShowPanelTransient_ShowsPanel_WithoutPinningIt()
+    {
+        // 完成通知展开面板,但自动隐藏倒计时照常进行(ShowPanel 则会钉住面板)。
+        _vm.AddTransfer(CreateTask(status: TransferStatus.Completed, remotePath: "/home/user/done.txt"));
+        _vm.HidePanelCommand.Execute().Subscribe();
+        Assert.IsFalse(_vm.IsPanelVisible);
+
+        _vm.ShowPanelTransient();
+
+        Assert.IsTrue(_vm.IsPanelVisible);
+        // 隐藏倒计时已排定:指针进入应暂停、离开应重启,而不是像 ShowPanel 那样清掉挂起状态。
+        _vm.SetPointerOver(true);
+        _vm.SetPointerOver(false);
+        Assert.IsTrue(_vm.IsPanelVisible); // 3 秒倒计时尚未到期,面板仍在
+    }
+
+    [TestMethod]
+    [TestCategory("FileTransfer")]
     public void MultipleTransfers_TrackedIndependently()
     {
         // Arrange

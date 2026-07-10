@@ -24,6 +24,11 @@ public class FileTransferViewModel : ReactiveObject
     private CancellationTokenSource? _batchCts;
     private int _batchRemaining;
 
+    // 准备阶段(上传/下载前的目录扫描):大文件夹的扫描可能持续数秒,期间面板立即弹出、
+    // 徽标随发现的文件数递增,让用户知道处理已经开始(用户反馈)。
+    private bool _isPreparing;
+    private int _preparingCount;
+
     public FileTransferViewModel(ITransferManager? transferManager)
     {
         _transferManager = transferManager!;
@@ -46,15 +51,75 @@ public class FileTransferViewModel : ReactiveObject
     /// <summary>Whether a cancellable batch of transfers is currently running.</summary>
     public bool IsBatchActive => _batchCts is not null;
 
-    /// <summary>Header badge (design 9Ralg): during a batch this is the number of files still to
-    /// transfer (counting down), otherwise the number of in-flight single transfers. Fixes the
-    /// badge previously being stuck at "1" because files are transferred one at a time.</summary>
-    public int PendingCount => IsBatchActive ? _batchRemaining : ActiveCount;
+    /// <summary>Header badge (design 9Ralg): while preparing it counts up with the files
+    /// discovered by the scan; during a batch it is the number of files still to transfer
+    /// (counting down); otherwise the number of in-flight single transfers.</summary>
+    public int PendingCount => IsPreparing ? _preparingCount : IsBatchActive ? _batchRemaining : ActiveCount;
+
+    /// <summary>Whether an upload/download is still scanning directories to build its plan.</summary>
+    public bool IsPreparing
+    {
+        get => _isPreparing;
+        private set => this.RaiseAndSetIfChanged(ref _isPreparing, value);
+    }
+
+    /// <summary>准备阶段的状态行文案:随扫描进度动态刷新。</summary>
+    public string PreparingText => $"正在扫描待传输文件… 已发现 {_preparingCount} 个";
+
+    /// <summary>Enters the preparing (directory-scan) state: the toast pops up immediately with
+    /// a live file counter so picking a large folder no longer looks like nothing happened.
+    /// Ended by <see cref="BeginBatch"/> (scan done, transfers starting) or <see cref="EndPreparing"/>.</summary>
+    public void BeginPreparing()
+    {
+        _preparingCount = 0;
+        IsPreparing = true;
+        this.RaisePropertyChanged(nameof(PendingCount));
+        this.RaisePropertyChanged(nameof(PreparingText));
+
+        // 面板立即可见;挂起中的自动隐藏作废(新一轮任务开始了)。
+        _autoHide?.Dispose();
+        _autoHide = null;
+        _hidePending = false;
+        IsPanelVisible = true;
+    }
+
+    /// <summary>Updates the live count of files discovered so far during the preparing scan.</summary>
+    public void UpdatePreparingCount(int discovered)
+    {
+        if (!IsPreparing)
+            return;
+        _preparingCount = discovered;
+        this.RaisePropertyChanged(nameof(PendingCount));
+        this.RaisePropertyChanged(nameof(PreparingText));
+    }
+
+    /// <summary>Leaves the preparing state without starting a batch (empty plan, cancellation or
+    /// error). No-op when <see cref="BeginBatch"/> already took over. Hides the toast again if
+    /// the scan produced nothing to show.</summary>
+    public void EndPreparing()
+    {
+        if (!IsPreparing)
+            return;
+
+        _preparingCount = 0;
+        IsPreparing = false;
+        this.RaisePropertyChanged(nameof(PendingCount));
+
+        if (Transfers.Count == 0)
+            IsPanelVisible = false;
+        else
+            NotifyTaskSettled();
+    }
 
     /// <summary>Begins a cancellable batch of <paramref name="totalFiles"/> transfers. The header
     /// then shows the remaining count and a cancel control that trips <paramref name="cts"/>.</summary>
     public void BeginBatch(int totalFiles, CancellationTokenSource cts)
     {
+        // 准备阶段结束,徽标从"已发现"切换为"剩余"。
+        _isPreparing = false;
+        _preparingCount = 0;
+        this.RaisePropertyChanged(nameof(IsPreparing));
+
         _batchCts = cts;
         _batchRemaining = totalFiles;
         this.RaisePropertyChanged(nameof(IsBatchActive));
@@ -122,6 +187,15 @@ public class FileTransferViewModel : ReactiveObject
         IsPanelVisible = true;
     }
 
+    /// <summary>传输完成通知用的临时展开:面板可见,但不像 <see cref="ShowPanel"/> 那样锁定——
+    /// 自动隐藏倒计时照常进行(指针悬停时照常暂停)。修复完成通知把面板钉死在界面上、
+    /// 只能手动关闭的问题(用户反馈)。</summary>
+    public void ShowPanelTransient()
+    {
+        IsPanelVisible = true;
+        NotifyTaskSettled();
+    }
+
     private void OnTransfersChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         this.RaisePropertyChanged(nameof(ActiveCount));
@@ -142,9 +216,9 @@ public class FileTransferViewModel : ReactiveObject
         _autoHide?.Dispose();
         _autoHide = null;
 
-        // Keep the toast up while more files in the batch are pending, or while any single
-        // transfer is still in flight.
-        if (ActiveCount > 0 || IsBatchActive)
+        // Keep the toast up while more files in the batch are pending, while any single
+        // transfer is still in flight, or while a scan is preparing the next batch.
+        if (ActiveCount > 0 || IsBatchActive || IsPreparing)
         {
             _hidePending = false;
             return;

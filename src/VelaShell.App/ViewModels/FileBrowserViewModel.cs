@@ -663,6 +663,8 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             ErrorMessage = null;
+            // 扫描大文件夹可能耗时:先让传输面板进入"准备中",徽标随发现的文件数递增。
+            TransferSink?.BeginPreparing();
             var plan = new List<PlannedFileTransfer>();
             foreach (var path in localPaths)
                 await BuildUploadPlanAsync(path, CurrentPath, plan, ct);
@@ -676,6 +678,11 @@ public class FileBrowserViewModel : ReactiveObject
         catch (Exception ex)
         {
             ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            // BeginBatch 正常接管后这是空操作;计划为空/出错/取消时确保退出准备态。
+            TransferSink?.EndPreparing();
         }
 
         await RefreshAsync(ct);
@@ -700,6 +707,7 @@ public class FileBrowserViewModel : ReactiveObject
         {
             var remotePath = CombinePath(remoteDir, System.IO.Path.GetFileName(localPath));
             plan.Add(new PlannedFileTransfer(TransferType.Upload, localPath, remotePath));
+            TransferSink?.UpdatePreparingCount(plan.Count);
         }
     }
 
@@ -720,6 +728,8 @@ public class FileBrowserViewModel : ReactiveObject
             try
             {
                 ErrorMessage = null;
+                // 远端目录树的枚举同样可能耗时:面板先进入"准备中"给出扫描反馈。
+                TransferSink?.BeginPreparing();
                 var plan = new List<PlannedFileTransfer>();
                 await BuildDownloadPlanAsync(file.FullPath, file.Name, isDirectory: true, localDir, plan, ct);
                 await RunTransferBatchAsync(plan, ct);
@@ -731,6 +741,10 @@ public class FileBrowserViewModel : ReactiveObject
             catch (Exception ex)
             {
                 ErrorMessage = ex.Message;
+            }
+            finally
+            {
+                TransferSink?.EndPreparing();
             }
 
             return;
@@ -767,6 +781,7 @@ public class FileBrowserViewModel : ReactiveObject
         {
             var localPath = System.IO.Path.Combine(localDir, name);
             plan.Add(new PlannedFileTransfer(TransferType.Download, localPath, remotePath));
+            TransferSink?.UpdatePreparingCount(plan.Count);
         }
     }
 
@@ -786,6 +801,7 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             ErrorMessage = null;
+            TransferSink?.BeginPreparing();
             var plan = new List<PlannedFileTransfer>();
             foreach (var item in targets)
                 await BuildDownloadPlanAsync(item.FullPath, item.Name, item.IsDirectory, localDir, plan, ct);
@@ -799,6 +815,10 @@ public class FileBrowserViewModel : ReactiveObject
         catch (Exception ex)
         {
             ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            TransferSink?.EndPreparing();
         }
     }
 
@@ -879,11 +899,13 @@ public class FileBrowserViewModel : ReactiveObject
             TransferSink?.EndBatch();
             _transferCts = null;
 
-            // 传输完成后显示通知(设置 → 文件传输):提示音 + 展开传输面板。
+            // 传输完成后显示通知(设置 → 文件传输):提示音 + 临时展开传输面板。
+            // 用 ShowPanelTransient 而非 ShowPanel:后者会钉住面板、杀掉自动隐藏倒计时,
+            // 导致完成后面板常驻只能手动关闭(用户反馈)。
             if (completed && TransferOptions.NotifyOnComplete)
             {
                 Services.SystemSound.Alert();
-                TransferSink?.ShowPanel();
+                TransferSink?.ShowPanelTransient();
             }
         }
     }

@@ -68,6 +68,17 @@
         </Grid>
       </Border>
 
+      <!-- 准备中:选择大文件夹后目录扫描的即时反馈,头部徽标随发现数递增(用户反馈)。 -->
+      <Border Padding="12,8"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
+              BorderThickness="0,0,0,1"
+              IsVisible="{Binding IsPreparing}">
+        <TextBlock Text="{Binding PreparingText}"
+                   Foreground="{DynamicResource VelaTextMuted}"
+                   FontFamily="{DynamicResource VelaTerminalFont}"
+                   FontSize="10" />
+      </Border>
+
       <!-- Transfer rows: keep panel height bounded (~5 rows) and scroll overflow. -->
       <ScrollViewer VerticalScrollBarVisibility="Auto"
                     HorizontalScrollBarVisibility="Disabled"
