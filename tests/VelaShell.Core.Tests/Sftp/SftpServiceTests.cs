@@ -1,7 +1,5 @@
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
-using Renci.SshNet.Common;
-using Renci.SshNet.Sftp;
 using VelaShell.Core.Models;
 using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;
@@ -53,7 +51,7 @@ public class SftpServiceTests
     {
         // Open a channel so it gets cached, then close it.
         _sftpClient.ListDirectoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns(Task.FromResult<IEnumerable<ISftpFile>>(new List<ISftpFile>()));
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>(new List<SftpEntry>()));
         await _sftpService.ListDirectoryAsync(_sessionId, "/");
         await _sftpService.CloseSessionAsync(_sessionId);
         _sftpClient.Received(1).Disconnect();
@@ -81,7 +79,7 @@ public class SftpServiceTests
         // Some servers answer the plain SSH_FXP_RENAME with SSH_FX_BAD_MESSAGE.
         _sftpClient
             .When(c => c.RenameFile("/home/user/dir", "/tmp/dir"))
-            .Do(_ => throw new SftpException(StatusCode.BadMessage, "bad message"));
+            .Do(_ => throw new SftpOperationException("bad message"));
         await _sftpService.RenameAsync(_sessionId, "/home/user/dir", "/tmp/dir");
         _sftpClient.Received(1).PosixRenameFile("/home/user/dir", "/tmp/dir");
     }
@@ -91,11 +89,11 @@ public class SftpServiceTests
     {
         _sftpClient
             .When(c => c.RenameFile("/home/user/dir", "/tmp/dir"))
-            .Do(_ => throw new SftpException(StatusCode.BadMessage, "bad message"));
+            .Do(_ => throw new SftpOperationException("bad message"));
         _sftpClient
             .When(c => c.PosixRenameFile("/home/user/dir", "/tmp/dir"))
             .Do(_ => throw new NotSupportedException("posix-rename not supported"));
-        SftpException ex = await Assert.ThrowsExactlyAsync<SftpException>(() => _sftpService.RenameAsync(_sessionId, "/home/user/dir", "/tmp/dir"));
+        SftpOperationException ex = await Assert.ThrowsExactlyAsync<SftpOperationException>(() => _sftpService.RenameAsync(_sessionId, "/home/user/dir", "/tmp/dir"));
         Assert.AreEqual("bad message", ex.Message);
     }
 
@@ -158,13 +156,13 @@ public class SftpServiceTests
     public async Task ListDirectoryAsync_ReturnsRemoteFileInfoArray()
     {
         // Arrange
-        var mockFiles = new List<ISftpFile>
+        var mockFiles = new List<SftpEntry>
         {
             CreateMockSftpFile("file1.txt", "/home/user/file1.txt", 1024, false, "rw-r--r--"),
             CreateMockSftpFile("dir1", "/home/user/dir1", 0, true, "rwxr-xr-x")
         };
         _sftpClient.ListDirectoryAsync("/home/user", Arg.Any<CancellationToken>())
-                   .Returns(Task.FromResult<IEnumerable<ISftpFile>>(mockFiles));
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>(mockFiles));
 
         // Act
         List<RemoteFileInfo> result = await _sftpService.ListDirectoryAsync(_sessionId, "/home/user");
@@ -223,9 +221,9 @@ public class SftpServiceTests
         // Arrange
         string localPath = Path.Combine(Path.GetTempPath(), $"download_{Guid.NewGuid()}.bin");
         string remotePath = "/home/user/remote.bin";
-        ISftpFile mockFile = CreateMockSftpFile("remote.bin", remotePath, 2048, false, "rw-r--r--");
+        SftpEntry mockFile = CreateMockSftpFile("remote.bin", remotePath, 2048, false, "rw-r--r--");
         _sftpClient.ListDirectoryAsync("/home/user", Arg.Any<CancellationToken>())
-                   .Returns(Task.FromResult<IEnumerable<ISftpFile>>([mockFile]));
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([mockFile]));
         _sftpClient.DownloadAsync(remotePath,
                        Arg.Any<Stream>(),
                        Arg.Do<Action<ulong>?>(callback =>
@@ -269,7 +267,7 @@ public class SftpServiceTests
     {
         // Arrange
         string remotePath = "/home/user/todelete.txt";
-        ISftpFile mockFile = CreateMockSftpFile("todelete.txt", remotePath, 1024, false, "rw-r--r--");
+        SftpEntry mockFile = CreateMockSftpFile("todelete.txt", remotePath, 1024, false, "rw-r--r--");
         _sftpClient.Exists(remotePath).Returns(true);
         _sftpClient.ListDirectory("/home/user")
                    .Returns([mockFile]);
@@ -300,7 +298,7 @@ public class SftpServiceTests
     {
         // Arrange
         string remotePath = "/home/user/mydir";
-        ISftpFile mockDir = CreateMockSftpFile("mydir", remotePath, 0, true, "rwxr-xr-x");
+        SftpEntry mockDir = CreateMockSftpFile("mydir", remotePath, 0, true, "rwxr-xr-x");
         _sftpClient.Exists(remotePath).Returns(true);
         _sftpClient.ListDirectory("/home/user")
                    .Returns([mockDir]);
@@ -317,10 +315,10 @@ public class SftpServiceTests
     public async Task DeleteAsync_RecursivelyDeletesDirectoryContents_AndReportsProgress()
     {
         const string dir = "/home/user/proj";
-        ISftpFile mockDir = CreateMockSftpFile("proj", dir, 0, true, "rwxr-xr-x");
-        ISftpFile childFile = CreateMockSftpFile("a.txt", "/home/user/proj/a.txt", 10, false, "rw-r--r--");
-        ISftpFile childSub = CreateMockSftpFile("sub", "/home/user/proj/sub", 0, true, "rwxr-xr-x");
-        ISftpFile grandchild = CreateMockSftpFile("b.txt", "/home/user/proj/sub/b.txt", 20, false, "rw-r--r--");
+        SftpEntry mockDir = CreateMockSftpFile("proj", dir, 0, true, "rwxr-xr-x");
+        SftpEntry childFile = CreateMockSftpFile("a.txt", "/home/user/proj/a.txt", 10, false, "rw-r--r--");
+        SftpEntry childSub = CreateMockSftpFile("sub", "/home/user/proj/sub", 0, true, "rwxr-xr-x");
+        SftpEntry grandchild = CreateMockSftpFile("b.txt", "/home/user/proj/sub/b.txt", 20, false, "rw-r--r--");
         _sftpClient.Exists(dir).Returns(true);
         _sftpClient.ListDirectory("/home/user").Returns([mockDir]); // parent listing → proj is a directory
         _sftpClient.ListDirectory(dir).Returns([childFile, childSub]);
@@ -356,11 +354,10 @@ public class SftpServiceTests
     public async Task ListDirectoryAsync_OwnerAndGroup_AreNotBooleanStrings()
     {
         // Arrange
-        ISftpFile mockFile = CreateMockSftpFile("file.txt", "/home/user/file.txt", 1024, false, "rw-r--r--");
-        mockFile.UserId.Returns(1000);
-        mockFile.GroupId.Returns(1000);
+        SftpEntry mockFile = CreateMockSftpFile("file.txt", "/home/user/file.txt", 1024, false, "rw-r--r--")
+            with { UserId = 1000, GroupId = 1000 };
         _sftpClient.ListDirectoryAsync("/home/user", Arg.Any<CancellationToken>())
-                   .Returns(Task.FromResult<IEnumerable<ISftpFile>>([mockFile]));
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([mockFile]));
 
         // Act
         List<RemoteFileInfo> result = await _sftpService.ListDirectoryAsync(_sessionId, "/home/user");
@@ -378,9 +375,9 @@ public class SftpServiceTests
     public async Task DisposeAsync_DisconnectsAndDisposesAllClients()
     {
         // Arrange — trigger client caching by calling any method
-        ISftpFile mockFile = CreateMockSftpFile("file.txt", "/home/user/file.txt", 0, false, "rw-r--r--");
+        SftpEntry mockFile = CreateMockSftpFile("file.txt", "/home/user/file.txt", 0, false, "rw-r--r--");
         _sftpClient.ListDirectoryAsync("/home/user", Arg.Any<CancellationToken>())
-                   .Returns(Task.FromResult<IEnumerable<ISftpFile>>([mockFile]));
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([mockFile]));
         await _sftpService.ListDirectoryAsync(_sessionId, "/home/user");
 
         // Act
@@ -447,9 +444,9 @@ public class SftpServiceTests
     {
         // Arrange
         string remotePath = "/home/user/info.txt";
-        ISftpFile mockFile = CreateMockSftpFile("info.txt", remotePath, 4096, false, "rw-r--r--");
+        SftpEntry mockFile = CreateMockSftpFile("info.txt", remotePath, 4096, false, "rw-r--r--");
         _sftpClient.ListDirectoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns(Task.FromResult<IEnumerable<ISftpFile>>([mockFile]));
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([mockFile]));
 
         // Act
         RemoteFileInfo result = await _sftpService.GetFileInfoAsync(_sessionId, remotePath);
@@ -462,24 +459,26 @@ public class SftpServiceTests
         Assert.IsFalse(result.IsDirectory);
     }
 
-    private ISftpFile CreateMockSftpFile(string name, string fullName, long length, bool isDirectory, string permissions)
+    private static SftpEntry CreateMockSftpFile(string name, string fullName, long length, bool isDirectory, string permissions)
     {
-        ISftpFile? file = Substitute.For<ISftpFile>();
-        file.Name.Returns(name);
-        file.FullName.Returns(fullName);
-        file.Length.Returns(length);
-        file.IsDirectory.Returns(isDirectory);
-        file.LastWriteTime.Returns(DateTime.UtcNow);
-        file.OwnerCanRead.Returns(permissions.Length > 0 && permissions[0] == 'r');
-        file.OwnerCanWrite.Returns(permissions.Length > 1 && permissions[1] == 'w');
-        file.OwnerCanExecute.Returns(permissions.Length > 2 && permissions[2] == 'x');
-        file.GroupCanRead.Returns(permissions.Length > 3 && permissions[3] == 'r');
-        file.GroupCanWrite.Returns(permissions.Length > 4 && permissions[4] == 'w');
-        file.GroupCanExecute.Returns(permissions.Length > 5 && permissions[5] == 'x');
-        file.OthersCanRead.Returns(permissions.Length > 6 && permissions[6] == 'r');
-        file.OthersCanWrite.Returns(permissions.Length > 7 && permissions[7] == 'w');
-        file.OthersCanExecute.Returns(permissions.Length > 8 && permissions[8] == 'x');
-        return file;
+        // SftpEntry 是 Core 的中立不可变记录(不再是 SSH 库的接口),直接构造即可。
+        return new()
+        {
+            Name = name,
+            FullName = fullName,
+            Length = length,
+            IsDirectory = isDirectory,
+            LastWriteTime = DateTime.UtcNow,
+            OwnerCanRead = permissions.Length > 0 && permissions[0] == 'r',
+            OwnerCanWrite = permissions.Length > 1 && permissions[1] == 'w',
+            OwnerCanExecute = permissions.Length > 2 && permissions[2] == 'x',
+            GroupCanRead = permissions.Length > 3 && permissions[3] == 'r',
+            GroupCanWrite = permissions.Length > 4 && permissions[4] == 'w',
+            GroupCanExecute = permissions.Length > 5 && permissions[5] == 'x',
+            OthersCanRead = permissions.Length > 6 && permissions[6] == 'r',
+            OthersCanWrite = permissions.Length > 7 && permissions[7] == 'w',
+            OthersCanExecute = permissions.Length > 8 && permissions[8] == 'x'
+        };
     }
 
     private class SynchronousProgress<T> : IProgress<T>

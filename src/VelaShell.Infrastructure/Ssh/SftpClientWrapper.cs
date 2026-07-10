@@ -4,6 +4,11 @@ using VelaShell.Core.Ssh;
 
 namespace VelaShell.Infrastructure.Ssh;
 
+/// <summary>
+/// <see cref="ISftpClientWrapper" /> 的 SSH.NET 实现。库类型不越过此边界:目录条目映射为
+/// 中立的 <see cref="SftpEntry" />,SSH.NET 异常在 <see cref="Guarded{T}" /> 中翻译为
+/// Core 的 SshClientException 层级 —— 更换底层库时重写本文件即可。
+/// </summary>
 public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
 {
     private readonly SftpClient _client = client ?? throw new ArgumentNullException(nameof(client));
@@ -44,13 +49,20 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
     public void Connect()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _client.Connect();
+        Guarded(_client.Connect);
     }
 
-    public Task ConnectAsync(CancellationToken cancellationToken)
+    public async Task ConnectAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return _client.ConnectAsync(cancellationToken);
+        try
+        {
+            await _client.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (SshNetInterop.Translate(ex) is { } translated)
+        {
+            throw translated;
+        }
     }
 
     public void Disconnect()
@@ -59,22 +71,22 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
         _client.Disconnect();
     }
 
-    public IEnumerable<ISftpFile> ListDirectory(string path)
+    public IEnumerable<SftpEntry> ListDirectory(string path)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return Guarded(() => _client.ListDirectory(path));
+        return Guarded(() => _client.ListDirectory(path).Select(MapEntry).ToList());
     }
 
-    public Task<IEnumerable<ISftpFile>> ListDirectoryAsync(string path, CancellationToken cancellationToken)
+    public Task<IEnumerable<SftpEntry>> ListDirectoryAsync(string path, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return Task.Run(() => Guarded(() => _client.ListDirectory(path)), cancellationToken);
+        return Task.Run(() => Guarded<IEnumerable<SftpEntry>>(() => [.. _client.ListDirectory(path).Select(MapEntry)]), cancellationToken);
     }
 
     public void UploadFile(Stream input, string path, bool canOverride = true)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _client.UploadFile(input, path, canOverride);
+        Guarded(() => _client.UploadFile(input, path, canOverride));
     }
 
     public Task UploadAsync(Stream input, string path, Action<ulong>? uploadCallback = null, CancellationToken cancellationToken = default)
@@ -86,7 +98,7 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
     public void DownloadFile(string path, Stream output)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _client.DownloadFile(path, output);
+        Guarded(() => _client.DownloadFile(path, output));
     }
 
     public Task DownloadAsync(string path, Stream output, Action<ulong>? downloadCallback = null, CancellationToken cancellationToken = default)
@@ -139,12 +151,36 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
 
     public void Dispose() => Dispose(true);
 
+    private static SftpEntry MapEntry(ISftpFile file)
+    {
+        return new()
+        {
+            Name = file.Name,
+            FullName = file.FullName,
+            Length = file.Length,
+            IsDirectory = file.IsDirectory,
+            LastWriteTime = file.LastWriteTime,
+            UserId = file.UserId,
+            GroupId = file.GroupId,
+            OwnerCanRead = file.OwnerCanRead,
+            OwnerCanWrite = file.OwnerCanWrite,
+            OwnerCanExecute = file.OwnerCanExecute,
+            GroupCanRead = file.GroupCanRead,
+            GroupCanWrite = file.GroupCanWrite,
+            GroupCanExecute = file.GroupCanExecute,
+            OthersCanRead = file.OthersCanRead,
+            OthersCanWrite = file.OthersCanWrite,
+            OthersCanExecute = file.OthersCanExecute
+        };
+    }
+
     /// <summary>
-    /// Runs an SSH.NET call, normalising the NullReferenceException the library throws when the
-    /// underlying session is torn down (Disconnect/Dispose) while the call is in flight — e.g. a
-    /// directory listing still running as its tab is closed. Translated to
-    /// <see cref="ObjectDisposedException" /> so callers see the ordinary "session is gone" signal
-    /// they already handle instead of an opaque crash from inside Renci.SshNet.
+    /// Runs an SSH.NET call and keeps library types from leaking past this wrapper:
+    /// SSH.NET exceptions are translated to the Core SshClientException hierarchy, and the
+    /// NullReferenceException the library throws when the underlying session is torn down
+    /// (Disconnect/Dispose) mid-call — e.g. a directory listing still running as its tab is
+    /// closed — becomes <see cref="ObjectDisposedException" />, the ordinary "session is gone"
+    /// signal callers already handle.
     /// </summary>
     private T Guarded<T>(Func<T> operation)
     {
@@ -155,6 +191,10 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
         catch (NullReferenceException ex) when (IsTornDown())
         {
             throw new ObjectDisposedException(nameof(SftpClientWrapper), ex);
+        }
+        catch (Exception ex) when (SshNetInterop.Translate(ex) is { } translated)
+        {
+            throw translated;
         }
     }
 

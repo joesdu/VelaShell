@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Net.Sockets;
 using NSubstitute;
-using Renci.SshNet.Common;
 using VelaShell.Core.Models;
 using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Ssh;

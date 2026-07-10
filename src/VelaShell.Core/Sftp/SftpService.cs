@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using Renci.SshNet.Common;
-using Renci.SshNet.Sftp;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Ssh;
@@ -19,11 +17,8 @@ public class SftpService(
     public async Task<List<RemoteFileInfo>> ListDirectoryAsync(Guid sessionId, string path, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        IEnumerable<ISftpFile> files = await client.ListDirectoryAsync(path, cancellationToken).ConfigureAwait(false);
-        return files
-               .Where(f => f.Name != "." && f.Name != "..")
-               .Select(MapToRemoteFileInfo)
-               .ToList();
+        IEnumerable<SftpEntry> files = await client.ListDirectoryAsync(path, cancellationToken).ConfigureAwait(false);
+        return [.. files.Where(f => f.Name is not "." and not "..").Select(MapToRemoteFileInfo)];
     }
 
     public async Task UploadFileAsync(Guid sessionId,
@@ -122,7 +117,7 @@ public class SftpService(
             }
             string parentDir = GetUnixParentDirectory(remotePath);
             string name = GetUnixFileName(remotePath);
-            ISftpFile? entry = client.ListDirectory(parentDir).FirstOrDefault(f => f.Name == name);
+            SftpEntry? entry = client.ListDirectory(parentDir).FirstOrDefault(f => f.Name == name);
             bool isDirectory = entry is { IsDirectory: true };
             int total = CountEntries(client, remotePath, isDirectory, cancellationToken);
 
@@ -158,7 +153,7 @@ public class SftpService(
             {
                 client.CreateDirectory(remotePath);
             }
-            catch (SshException) when (client.Exists(remotePath)) { }
+            catch (SshClientException) when (client.Exists(remotePath)) { }
         }, cancellationToken).ConfigureAwait(false);
     }
 
@@ -171,7 +166,7 @@ public class SftpService(
             {
                 client.RenameFile(oldPath, newPath);
             }
-            catch (Exception ex) when (ex is SftpException or NotSupportedException)
+            catch (Exception ex) when (ex is SftpOperationException or NotSupportedException)
             {
                 // Some SFTP servers reject the plain SSH_FXP_RENAME with SSH_FX_BAD_MESSAGE (surfaced
                 // as "bad message") — commonly for cross-directory moves. Retry with the widely
@@ -204,8 +199,8 @@ public class SftpService(
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
         string parentDir = GetUnixParentDirectory(remotePath);
         string fileName = GetUnixFileName(remotePath);
-        IEnumerable<ISftpFile> files = await client.ListDirectoryAsync(parentDir, cancellationToken).ConfigureAwait(false);
-        ISftpFile? file = files.FirstOrDefault(f => f.Name == fileName);
+        IEnumerable<SftpEntry> files = await client.ListDirectoryAsync(parentDir, cancellationToken).ConfigureAwait(false);
+        SftpEntry? file = files.FirstOrDefault(f => f.Name == fileName);
         if (file == null)
         {
             throw new FileNotFoundException($"File not found: {remotePath}");
@@ -267,6 +262,7 @@ public class SftpService(
         }
         _sftpClients.Clear();
         await ValueTask.CompletedTask.ConfigureAwait(false);
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>带宽限制(设置 → 文件传输):返回字节/秒,0 = 不限速。</summary>
@@ -314,7 +310,7 @@ public class SftpService(
         cancellationToken.ThrowIfCancellationRequested();
         if (isDirectory)
         {
-            foreach (ISftpFile child in client.ListDirectory(path))
+            foreach (SftpEntry child in client.ListDirectory(path))
             {
                 if (child.Name is "." or "..")
                 {
@@ -341,11 +337,7 @@ public class SftpService(
                 return existingClient;
             }
         }
-        SshSession? session = _connectionService.GetSession(sessionId);
-        if (session == null)
-        {
-            throw new InvalidOperationException($"Session {sessionId} not found");
-        }
+        SshSession? session = _connectionService.GetSession(sessionId) ?? throw new InvalidOperationException($"Session {sessionId} not found");
         if (session.Status != SessionStatus.Connected)
         {
             throw new InvalidOperationException($"Session {sessionId} is not connected");
@@ -360,7 +352,7 @@ public class SftpService(
         return client;
     }
 
-    private static RemoteFileInfo MapToRemoteFileInfo(ISftpFile file)
+    private static RemoteFileInfo MapToRemoteFileInfo(SftpEntry file)
     {
         return new()
         {
@@ -429,7 +421,7 @@ public class SftpService(
         return lastSlash >= 0 ? remotePath[(lastSlash + 1)..] : remotePath;
     }
 
-    private static string FormatPermissions(ISftpFile file)
+    private static string FormatPermissions(SftpEntry file)
     {
         string perms = file.IsDirectory ? "d" : "-";
         perms += file.OwnerCanRead ? "r" : "-";

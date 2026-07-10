@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Net.Sockets;
 using DynamicData;
 using Microsoft.Extensions.Logging;
-using Renci.SshNet;
 using VelaShell.Core.Models;
 using VelaShell.Core.Ssh;
 using VelaShell.Core.Tunnels;
@@ -17,7 +16,7 @@ public class TunnelService(
     private readonly Func<Guid, ISshClientWrapper> _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
     private readonly ISshConnectionService _connectionService = connectionService ?? throw new ArgumentNullException(nameof(connectionService));
     private readonly ConcurrentDictionary<Guid, SourceList<TunnelInfo>> _sessionTunnels = new();
-    private readonly ConcurrentDictionary<Guid, (ForwardedPort Port, TunnelInfo Info)> _tunnelPorts = new();
+    private readonly ConcurrentDictionary<Guid, (IPortForwardHandle Handle, TunnelInfo Info)> _tunnelPorts = new();
 
     public IObservableList<TunnelInfo> GetActiveTunnels(Guid sessionId)
     {
@@ -33,7 +32,7 @@ public class TunnelService(
         }
         return await CreateForwardAsync(sessionId,
                    config,
-                   () => new ForwardedPortLocal(config.LocalHost, config.LocalPort, config.RemoteHost, config.RemotePort),
+                   new(PortForwardKind.Local, config.LocalHost, config.LocalPort, config.RemoteHost, config.RemotePort),
                    "local",
                    cancellationToken).ConfigureAwait(false);
     }
@@ -46,7 +45,7 @@ public class TunnelService(
         }
         return await CreateForwardAsync(sessionId,
                    config,
-                   () => new ForwardedPortRemote(config.RemoteHost, config.RemotePort, config.LocalHost, config.LocalPort),
+                   new(PortForwardKind.Remote, config.RemoteHost, config.RemotePort, config.LocalHost, config.LocalPort),
                    "remote",
                    cancellationToken).ConfigureAwait(false);
     }
@@ -59,7 +58,7 @@ public class TunnelService(
         }
         return await CreateForwardAsync(sessionId,
                    config,
-                   () => new ForwardedPortDynamic(config.LocalHost, config.LocalPort),
+                   new(PortForwardKind.Dynamic, config.LocalHost, config.LocalPort),
                    "dynamic",
                    cancellationToken).ConfigureAwait(false);
     }
@@ -86,7 +85,7 @@ public class TunnelService(
 
     public async Task StopAllForSessionAsync(Guid sessionId)
     {
-        foreach ((Guid tunnelId, (ForwardedPort _, TunnelInfo info)) in _tunnelPorts)
+        foreach ((Guid tunnelId, (IPortForwardHandle _, TunnelInfo info)) in _tunnelPorts)
         {
             if (info.SessionId != sessionId)
             {
@@ -108,26 +107,15 @@ public class TunnelService(
 
     public async Task StopTunnelAsync(Guid tunnelId, CancellationToken cancellationToken = default)
     {
-        if (!_tunnelPorts.TryRemove(tunnelId, out (ForwardedPort Port, TunnelInfo Info) tunnelData))
+        if (!_tunnelPorts.TryRemove(tunnelId, out (IPortForwardHandle Handle, TunnelInfo Info) tunnelData))
         {
             throw new InvalidOperationException($"Tunnel {tunnelId} not found");
         }
-        (ForwardedPort port, TunnelInfo info) = tunnelData;
+        (IPortForwardHandle handle, TunnelInfo info) = tunnelData;
         try
         {
-            await Task.Run(() =>
-            {
-                port.Stop();
-                try
-                {
-                    ISshClientWrapper client = _clientFactory(info.SessionId);
-                    client.RemoveForwardedPort(port);
-                }
-                catch (InvalidOperationException)
-                {
-                    // 会话已断开、客户端已释放:端口随之失效,无需再从客户端摘除。
-                }
-            }, cancellationToken).ConfigureAwait(false);
+            // Stop 幂等且自带"客户端已随会话释放"的容错(见 IPortForwardHandle 契约)。
+            await Task.Run(handle.Dispose, cancellationToken).ConfigureAwait(false);
             info.Status = TunnelStatus.Stopped;
             if (_sessionTunnels.TryGetValue(info.SessionId, out SourceList<TunnelInfo>? tunnels))
             {
@@ -150,16 +138,11 @@ public class TunnelService(
 
     public async ValueTask DisposeAsync()
     {
-        foreach ((Guid tunnelId, (ForwardedPort port, TunnelInfo info)) in _tunnelPorts)
+        foreach ((Guid tunnelId, (IPortForwardHandle handle, TunnelInfo info)) in _tunnelPorts)
         {
             try
             {
-                await Task.Run(() =>
-                {
-                    port.Stop();
-                    ISshClientWrapper client = _clientFactory(info.SessionId);
-                    client.RemoveForwardedPort(port);
-                }).ConfigureAwait(false);
+                await Task.Run(handle.Dispose).ConfigureAwait(false);
                 info.Status = TunnelStatus.Stopped;
             }
             catch (Exception ex)
@@ -200,15 +183,11 @@ public class TunnelService(
     private async Task<TunnelInfo> CreateForwardAsync(
         Guid sessionId,
         TunnelConfig config,
-        Func<ForwardedPort> portFactory,
+        PortForwardRequest request,
         string direction,
         CancellationToken cancellationToken)
     {
-        SshSession? session = _connectionService.GetSession(sessionId);
-        if (session == null)
-        {
-            throw new InvalidOperationException($"Session {sessionId} not found");
-        }
+        SshSession? session = _connectionService.GetSession(sessionId) ?? throw new InvalidOperationException($"Session {sessionId} not found");
         if (session.Status != SessionStatus.Connected)
         {
             throw new InvalidOperationException($"Session {sessionId} is not connected");
@@ -218,7 +197,6 @@ public class TunnelService(
         {
             throw new InvalidOperationException($"SSH client for session {sessionId} is not connected");
         }
-        ForwardedPort forwardedPort = portFactory();
         var tunnelInfo = new TunnelInfo
         {
             Id = Guid.NewGuid(),
@@ -228,42 +206,20 @@ public class TunnelService(
             CreatedAt = DateTime.UtcNow,
             BytesTransferred = 0
         };
-
-        // 转发通道错误(目标拒绝连接等)不会让监听端口停摆,但每个经过的连接都会失败;
-        // 记到 LastError 供界面展示,否则用户只看到"运行中"却连不上。
-        forwardedPort.Exception += (_, args) =>
-        {
-            tunnelInfo.LastError = DescribeForwardError(args.Exception);
-            logger?.LogWarning(args.Exception, "Tunnel {TunnelId} channel error", tunnelInfo.Id);
-        };
         try
         {
-            await Task.Run(() =>
+            // StartPortForward 建立并启动监听,失败时不留下半挂的端口(见接口契约)。
+            IPortForwardHandle handle = await Task.Run(() => client.StartPortForward(request), cancellationToken).ConfigureAwait(false);
+
+            // 转发通道错误(目标拒绝连接等)不会让监听端口停摆,但每个经过的连接都会失败;
+            // 记到 LastError 供界面展示,否则用户只看到"运行中"却连不上。
+            handle.ChannelError += ex =>
             {
-                client.AddForwardedPort(forwardedPort);
-                try
-                {
-                    forwardedPort.Start();
-                }
-                catch (InvalidOperationException ex) when (ex.Message.Contains("not added to a client"))
-                {
-                    logger?.LogDebug(ex, "Port start failed (expected with mocked clients) for tunnel {TunnelId}", tunnelInfo.Id);
-                }
-                catch (Exception)
-                {
-                    try
-                    {
-                        client.RemoveForwardedPort(forwardedPort);
-                    }
-                    catch (Exception removeEx)
-                    {
-                        logger?.LogWarning(removeEx, "Failed to remove forwarded port after start failure for tunnel {TunnelId}", tunnelInfo.Id);
-                    }
-                    throw;
-                }
-            }, cancellationToken).ConfigureAwait(false);
+                tunnelInfo.LastError = DescribeForwardError(ex);
+                logger?.LogWarning(ex, "Tunnel {TunnelId} channel error", tunnelInfo.Id);
+            };
             SourceList<TunnelInfo> tunnels = _sessionTunnels.GetOrAdd(sessionId, _ => new());
-            _tunnelPorts[tunnelInfo.Id] = (forwardedPort, tunnelInfo);
+            _tunnelPorts[tunnelInfo.Id] = (handle, tunnelInfo);
             tunnels.Add(tunnelInfo);
             logger?.LogInformation("Created {Direction} forward tunnel {TunnelId} for session {SessionId}: {LocalHost}:{LocalPort} <-> {RemoteHost}:{RemotePort}",
                 direction, tunnelInfo.Id, sessionId, config.LocalHost, config.LocalPort, config.RemoteHost, config.RemotePort);

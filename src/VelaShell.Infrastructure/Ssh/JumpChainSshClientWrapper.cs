@@ -1,5 +1,4 @@
 using Renci.SshNet;
-using Renci.SshNet.Common;
 using VelaShell.Core.Ssh;
 using VelaConnectionInfo = VelaShell.Core.Models.ConnectionInfo;
 
@@ -110,10 +109,14 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
             }
             _targetClient = _hopClients[^1];
         }
-        catch
+        catch (Exception ex)
         {
-            // 任一跳失败:整条链回收,不留下半开的跳板连接。
+            // 任一跳失败:整条链回收,不留下半开的跳板连接;库异常翻译为 Core 中立类型。
             TearDownChain();
+            if (SshNetInterop.Translate(ex) is { } translated)
+            {
+                throw translated;
+            }
             throw;
         }
     }
@@ -131,11 +134,18 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         uint width,
         uint height,
         int bufferSize,
-        IDictionary<TerminalModes, uint>? terminalModeValues = null)
+        IReadOnlyDictionary<TerminalMode, uint>? terminalModeValues = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ShellStream shellStream = Target.CreateShellStream(terminalName, columns, rows, width, height, bufferSize, terminalModeValues);
-        return new ShellStreamWrapper(shellStream);
+        try
+        {
+            ShellStream shellStream = Target.CreateShellStream(terminalName, columns, rows, width, height, bufferSize, SshNetInterop.MapTerminalModes(terminalModeValues));
+            return new ShellStreamWrapper(shellStream);
+        }
+        catch (Exception ex) when (SshNetInterop.Translate(ex) is { } translated)
+        {
+            throw translated;
+        }
     }
 
     public async Task<string> RunCommandAsync(string commandText, CancellationToken cancellationToken = default)
@@ -149,11 +159,15 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
             await command.ExecuteAsync(cancellationToken).ConfigureAwait(false);
             return command.Result;
         }
-        catch (Exception ex) when (ex is SshConnectionException or NullReferenceException && IsTornDown(target))
+        catch (Exception ex) when (ex is Renci.SshNet.Common.SshConnectionException or NullReferenceException && IsTornDown(target))
         {
             // See SshClientWrapper.RunCommandAsync: teardown mid-command is normalised to the
             // "session is gone" signal callers already handle.
             throw new ObjectDisposedException(nameof(JumpChainSshClientWrapper), ex);
+        }
+        catch (Exception ex) when (SshNetInterop.Translate(ex) is { } translated)
+        {
+            throw translated;
         }
     }
 
@@ -175,16 +189,17 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         }
     }
 
-    public void AddForwardedPort(ForwardedPort port)
+    public IPortForwardHandle StartPortForward(PortForwardRequest request)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        Target.AddForwardedPort(port);
-    }
-
-    public void RemoveForwardedPort(ForwardedPort port)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        Target.RemoveForwardedPort(port);
+        try
+        {
+            return new SshNetPortForwardHandle(Target, SshNetInterop.CreateForwardedPort(request));
+        }
+        catch (Exception ex) when (SshNetInterop.Translate(ex) is { } translated)
+        {
+            throw translated;
+        }
     }
 
     public void Dispose()
