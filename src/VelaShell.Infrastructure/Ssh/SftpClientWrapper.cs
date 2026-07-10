@@ -62,13 +62,13 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
     public IEnumerable<ISftpFile> ListDirectory(string path)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return _client.ListDirectory(path);
+        return Guarded(() => _client.ListDirectory(path));
     }
 
     public Task<IEnumerable<ISftpFile>> ListDirectoryAsync(string path, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return Task.Run(() => _client.ListDirectory(path), cancellationToken);
+        return Task.Run(() => Guarded(() => _client.ListDirectory(path)), cancellationToken);
     }
 
     public void UploadFile(Stream input, string path, bool canOverride = true)
@@ -80,7 +80,7 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
     public Task UploadAsync(Stream input, string path, Action<ulong>? uploadCallback = null, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return Task.Run(() => _client.UploadFile(input, path, true, uploadCallback), cancellationToken);
+        return Task.Run(() => Guarded(() => _client.UploadFile(input, path, true, uploadCallback)), cancellationToken);
     }
 
     public void DownloadFile(string path, Stream output)
@@ -92,52 +92,98 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
     public Task DownloadAsync(string path, Stream output, Action<ulong>? downloadCallback = null, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return Task.Run(() => _client.DownloadFile(path, output, downloadCallback), cancellationToken);
+        return Task.Run(() => Guarded(() => _client.DownloadFile(path, output, downloadCallback)), cancellationToken);
     }
 
     public void DeleteFile(string path)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _client.DeleteFile(path);
+        Guarded(() => _client.DeleteFile(path));
     }
 
     public void DeleteDirectory(string path)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _client.DeleteDirectory(path);
+        Guarded(() => _client.DeleteDirectory(path));
     }
 
     public void CreateDirectory(string path)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _client.CreateDirectory(path);
+        Guarded(() => _client.CreateDirectory(path));
     }
 
     public void RenameFile(string oldPath, string newPath)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _client.RenameFile(oldPath, newPath);
+        Guarded(() => _client.RenameFile(oldPath, newPath));
     }
 
     public void PosixRenameFile(string oldPath, string newPath)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _client.RenameFile(oldPath, newPath, true);
+        Guarded(() => _client.RenameFile(oldPath, newPath, true));
     }
 
     public bool Exists(string path)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return _client.Exists(path);
+        return Guarded(() => _client.Exists(path));
     }
 
     public void ChangePermissions(string path, short mode)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _client.ChangePermissions(path, mode);
+        Guarded(() => _client.ChangePermissions(path, mode));
     }
 
     public void Dispose() => Dispose(true);
+
+    /// <summary>
+    /// Runs an SSH.NET call, normalising the NullReferenceException the library throws when the
+    /// underlying session is torn down (Disconnect/Dispose) while the call is in flight — e.g. a
+    /// directory listing still running as its tab is closed. Translated to
+    /// <see cref="ObjectDisposedException" /> so callers see the ordinary "session is gone" signal
+    /// they already handle instead of an opaque crash from inside Renci.SshNet.
+    /// </summary>
+    private T Guarded<T>(Func<T> operation)
+    {
+        try
+        {
+            return operation();
+        }
+        catch (NullReferenceException ex) when (IsTornDown())
+        {
+            throw new ObjectDisposedException(nameof(SftpClientWrapper), ex);
+        }
+    }
+
+    private void Guarded(Action operation)
+    {
+        Guarded(() =>
+        {
+            operation();
+            return true;
+        });
+    }
+
+    /// <summary>True when the wrapper was disposed or the client lost its connection/session.</summary>
+    private bool IsTornDown()
+    {
+        if (_disposed)
+        {
+            return true;
+        }
+        try
+        {
+            return !_client.IsConnected;
+        }
+        catch
+        {
+            // IsConnected itself throws once the client is disposed underneath us.
+            return true;
+        }
+    }
 
     private void Dispose(bool disposing)
     {

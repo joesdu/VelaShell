@@ -468,6 +468,7 @@ public class MainWindowViewModel : ReactiveObject
         // Carry the open/closed state across the rebind so switching to (or connecting) a tab
         // never silently hides a panel the user had opened.
         bool wasVisible = FileBrowser.IsVisible;
+        FileBrowser.Detach();
         FileBrowser = new(_sftpService, tab.SessionId)
         {
             TransferSink = FileTransfer,
@@ -1621,13 +1622,16 @@ public class MainWindowViewModel : ReactiveObject
             return;
         }
         Guid closedSessionId = tab.SessionId;
-        _ = _sftpService.CloseSessionAsync(closedSessionId);
 
         // The active-tab change from closing may have already rebound the browser to another
-        // session; only reset when it still points at the one we just closed.
+        // session; only reset when it still points at the one we just closed. Detach BEFORE
+        // tearing the SFTP channel down so an in-flight listing is cancelled rather than
+        // racing the client disposal (SSH.NET NREs from inside ListDirectory otherwise).
         if (FileBrowser.SessionId == closedSessionId)
         {
+            FileBrowser.Detach();
             FileBrowser = new(_sftpService, Guid.Empty);
         }
+        _ = _sftpService.CloseSessionAsync(closedSessionId);
     }
 }

@@ -34,6 +34,12 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>Cancels the running delete; tripped from the delete overlay's cancel button.</summary>
     private CancellationTokenSource? _deleteCts;
 
+    /// <summary>
+    /// Cancelled when this browser instance is discarded (its tab closed, or the panel rebound to
+    /// another session), so in-flight SFTP work stops racing the session teardown (#tab-close NRE).
+    /// </summary>
+    private readonly CancellationTokenSource _lifetime = new();
+
     private bool _isVisible;
 
     public FileBrowserViewModel(ISftpService? sftpService, Guid sessionId)
@@ -74,6 +80,30 @@ public class FileBrowserViewModel : ReactiveObject
 
     /// <summary>The SSH session this browser is rooted at.</summary>
     public Guid SessionId { get; }
+
+    /// <summary>
+    /// Called by the host when this instance is being replaced (tab closed / panel rebound):
+    /// cancels in-flight SFTP operations so they don't race the SFTP channel teardown.
+    /// </summary>
+    public void Detach()
+    {
+        try
+        {
+            _lifetime.Cancel();
+            _deleteCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already detached — nothing left to cancel.
+        }
+    }
+
+    /// <summary>
+    /// Links an operation token to this browser's lifetime. Commands never pass a token, so the
+    /// common case is simply the lifetime token itself (no allocation).
+    /// </summary>
+    private CancellationToken WithLifetime(CancellationToken ct) =>
+        ct.CanBeCanceled ? CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token).Token : _lifetime.Token;
 
     public ObservableCollection<RemoteFileInfoViewModel> Files { get; }
 
@@ -363,6 +393,7 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task NavigateToAsync(string path, CancellationToken ct = default)
     {
+        ct = WithLifetime(ct);
         try
         {
             ErrorMessage = null;
@@ -373,6 +404,11 @@ public class FileBrowserViewModel : ReactiveObject
             _allFiles.Clear();
             _allFiles.AddRange(files.Select(f => new RemoteFileInfoViewModel(f)));
             RebuildVisibleFiles();
+        }
+        catch (OperationCanceledException)
+        {
+            // Detached (tab closed / panel rebound) mid-listing — nobody is looking at this
+            // instance any more, so surface no error.
         }
         catch (Exception ex)
         {
@@ -391,6 +427,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     private async Task LoadInitialAsync(CancellationToken ct = default)
     {
+        ct = WithLifetime(ct);
         var candidates = new List<string>();
         try
         {
