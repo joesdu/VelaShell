@@ -136,7 +136,8 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
     /// Null = never ask, the control itself cannot show dialogs.</summary>
     public Func<string, Task<bool>>? MultilinePasteConfirmation { get; set; }
 
-    /// <summary>When text is selected, plain Ctrl+C copies it instead of sending SIGINT.</summary>
+    /// <summary>选中时 Ctrl+C 复制:开 = 有选区时 Ctrl+C 复制选中内容而不发送中断(无选区
+    /// 仍发送中断);关 = Ctrl+C 始终作为中断信号 ^C 发往 PTY。</summary>
     public bool CtrlCCopiesWhenSelected { get; set; }
 
     /// <summary>Typing snaps the view back to the live bottom.</summary>
@@ -1227,13 +1228,9 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
         if (e.Key is Key.Home or Key.End && e.KeyModifiers == KeyModifiers.Shift)
             effectiveModifiers = KeyModifiers.None;
 
-        // 有选中文本时 Ctrl+C 复制而非发送 SIGINT(设置 → 终端 → 输入)。
-        if (CtrlCCopiesWhenSelected && e.Key == Key.C && e.KeyModifiers == KeyModifiers.Control
-            && NormalizedSelection() is not null)
+        // 有选中文本时 Ctrl+C 复制而非发送中断(设置 → 终端 → 输入 → 选中时 Ctrl+C 复制)。
+        if (e.Key == Key.C && e.KeyModifiers == KeyModifiers.Control && TryCopyOnCtrlC())
         {
-            _ = CopyAsync();
-            ClearSelection();
-            InvalidateVisual();
             e.Handled = true;
             return;
         }
@@ -1495,6 +1492,20 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
             return;
         if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
             await top.Launcher.LaunchUriAsync(uri);
+    }
+
+    /// <summary>Ctrl+C 的复制分支:仅当「选中时 Ctrl+C 复制」开启且当前有选区时,复制选中
+    /// 内容并清除选区,返回 true(调用方不再发送 ^C);否则返回 false,Ctrl+C 照常作为中断
+    /// 信号发往 PTY。TerminalTabView 的快捷键回退层也调用这里,保证两层行为一致跟随设置。</summary>
+    public bool TryCopyOnCtrlC()
+    {
+        if (!CtrlCCopiesWhenSelected || NormalizedSelection() is null)
+            return false;
+
+        _ = CopyAsync();
+        ClearSelection();
+        InvalidateVisual();
+        return true;
     }
 
     public async Task CopyAsync()

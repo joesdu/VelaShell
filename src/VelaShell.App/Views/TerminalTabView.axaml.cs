@@ -238,18 +238,31 @@ public partial class TerminalTabView : UserControl
 
         switch (action)
         {
+            // 本层是焦点落在标签视图(而非终端控件)时的回退:正常情况下终端控件自己的
+            // OnKeyDown 已处理这些键。回退层必须与控件行为一致地跟随设置,否则同一个
+            // 快捷键会因焦点位置不同而表现不同(用户反馈:选中即复制/Ctrl+C 不受控)。
             case ShortcutAction.Copy:
-                _ = CopySelectionAsync();
+                // 复用控件的复制:只复制选中内容,并尊重「复制时去除尾部空格」等设置。
+                if (_termControl is not null)
+                    _ = _termControl.CopyAsync();
+                else
+                    _ = CopySelectionAsync();
                 e.Handled = true;
                 return;
 
             case ShortcutAction.Paste:
-                _ = PasteFromClipboardAsync();
+                if (_termControl is not null)
+                    _ = _termControl.PasteAsync();
+                else
+                    _ = PasteFromClipboardAsync();
                 e.Handled = true;
                 return;
 
             case ShortcutAction.SendInterrupt:
-                SendBytesToTerminal(new byte[] { 0x03 });
+                // 与 VelaTerminalControl.OnKeyDown 同规则:「选中时 Ctrl+C 复制」开启且有
+                // 选区 → 复制;否则发送中断信号 ^C。
+                if (_termControl?.TryCopyOnCtrlC() != true)
+                    SendBytesToTerminal(new byte[] { 0x03 });
                 e.Handled = true;
                 return;
         }

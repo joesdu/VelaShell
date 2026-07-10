@@ -167,7 +167,8 @@ public class TerminalBehaviorOptions
     public bool ScrollOnOutput { get; set; }
     public bool ScrollOnKeystroke { get; set; } = true;
 
-    /// <summary>选中即复制:沿用设计 §8 的既有默认行为。</summary>
+    /// <summary>选中即复制(默认开,设计 §8):开 = 松开鼠标/双击选词后选中内容自动进剪贴板;
+    /// 关 = 选中只高亮不复制,复制需 Ctrl+Shift+C。</summary>
     public bool CopyOnSelect { get; set; } = true;
     public bool RightClickPaste { get; set; } = true;
     public bool TrimTrailingWhitespaceOnCopy { get; set; } = true;
@@ -175,6 +176,8 @@ public class TerminalBehaviorOptions
 
     public bool ConfirmMultilinePaste { get; set; } = true;
     public bool ImeSupport { get; set; } = true;
+    /// <summary>选中时 Ctrl+C 复制(默认关):开 = 有选区时 Ctrl+C 复制选中内容而不发送中断,
+    /// 无选区仍发送中断;关 = Ctrl+C 始终发送中断信号 ^C。</summary>
     public bool CtrlCCopiesWhenSelected { get; set; }
 
     /// <summary>连接/重连成功后追加执行的用户初始化命令(空 = 无)。它会被拼接在内置的

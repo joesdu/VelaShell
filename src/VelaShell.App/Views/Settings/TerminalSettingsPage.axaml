@@ -139,7 +139,7 @@
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="选中即复制" />
-        <TextBlock Classes="row-desc" Text="// 选中文本后自动复制到剪贴板" />
+        <TextBlock Classes="row-desc" Text="// 开:松开鼠标或双击选词后,选中内容自动复制;关:选中不复制,用 Ctrl+Shift+C 手动复制" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.CopyOnSelect}" VerticalAlignment="Center" />
     </Grid>
@@ -179,8 +179,8 @@
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="发送 Ctrl+C 中断信号" />
-        <TextBlock Classes="row-desc" Text="// 有选中文本时 Ctrl+C 复制而非中断" />
+        <TextBlock Classes="row-label" Text="选中时 Ctrl+C 复制" />
+        <TextBlock Classes="row-desc" Text="// 开:有选中文本时 Ctrl+C 复制选中内容、不发送中断(无选中仍中断);关:Ctrl+C 始终发送中断信号 ^C" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.CtrlCCopiesWhenSelected}" VerticalAlignment="Center" />
     </Grid>

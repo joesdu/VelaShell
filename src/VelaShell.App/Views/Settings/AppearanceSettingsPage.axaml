@@ -130,7 +130,7 @@
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="配色方案" />
-        <TextBlock Classes="row-desc" Text="// 一键套用整套终端配色(即时预览,保存后生效,取消可还原);Dracula 为默认并跟随主题" />
+        <TextBlock Classes="row-desc" Text="// 一键套用整套终端配色;Dracula Theme风格为默认并跟随主题" />
       </StackPanel>
       <ComboBox Grid.Column="1" Width="160"
                 ItemsSource="{Binding AvailableColorSchemes}"
