@@ -325,12 +325,16 @@
                         Height="28"
                         Padding="14,0"
                         PointerPressed="FileRow_PointerPressed"
+                        Classes="file-row"
                         Classes.parent="{Binding IsParentEntry}">
                   <Border.Styles>
-                    <Style Selector="Border:pointerover">
+                    <!-- 必须用 file-row 类限定:ContextMenu 弹层是本 Border 的逻辑子级,
+                         无限定的 Border:pointerover 会把菜单模板的根 Border/PART_LayoutRoot
+                         一并刷成 bg-hover(亮色主题下整张菜单悬停变灰)。 -->
+                    <Style Selector="Border.file-row:pointerover">
                       <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
                     </Style>
-                    <Style Selector="Border.parent">
+                    <Style Selector="Border.file-row.parent">
                       <Setter Property="Background" Value="{DynamicResource PulseBgHover}" />
                       <Setter Property="BorderThickness" Value="0" />
                     </Style>
