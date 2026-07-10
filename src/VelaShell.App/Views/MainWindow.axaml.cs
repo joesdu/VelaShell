@@ -34,6 +34,12 @@ public partial class MainWindow : Window
     private ISettingsService? _settingsService;
     private bool _sidebarOnRight;
 
+    // NOTE: the window's DataContext must be assigned AFTER construction (object initializer in
+    // App): child views' compiled bindings (x:DataType = their own VM) briefly see the inherited
+    // MainWindowViewModel during InitializeComponent if it is set earlier, spraying
+    // InvalidCastException binding errors before each view's local DataContext binding takes over.
+    // The cost is a handful of benign "Value is null" messages from DockControl's theme bindings
+    // ($self.Layout.* with FallbackValue) while Layout is still null — the lesser noise.
     public MainWindow()
     {
         InitializeComponent();
