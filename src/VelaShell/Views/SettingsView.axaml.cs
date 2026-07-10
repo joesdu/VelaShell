@@ -13,15 +13,9 @@ public partial class SettingsView : Window
         InitializeComponent();
         DataContextChanged += (_, _) =>
         {
-            if (_viewModel is not null)
-            {
-                _viewModel.CloseRequested -= OnCloseRequested;
-            }
+            _viewModel?.CloseRequested -= OnCloseRequested;
             _viewModel = DataContext as SettingsViewModel;
-            if (_viewModel is not null)
-            {
-                _viewModel.CloseRequested += OnCloseRequested;
-            }
+            _viewModel?.CloseRequested += OnCloseRequested;
         };
     }
 

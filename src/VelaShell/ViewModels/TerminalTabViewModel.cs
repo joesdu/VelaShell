@@ -8,13 +8,14 @@ using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Presentation.ViewModels;
 using VelaShell.Terminal;
+using VelaShell.Terminal.Input;
+using VelaShell.Terminal.Rendering;
 
 namespace VelaShell.ViewModels;
 
 public class TerminalTabViewModel : TabViewModel, IDisposable
 {
     private readonly Lock _ptyResizeGate = new();
-    private string? _connectionError;
     private bool _disposed;
     private (int Columns, int Rows)? _pendingPtySize;
     private bool _ptyResizeSending;
@@ -34,6 +35,11 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         // Keep the remote PTY size in sync with the local terminal grid. This is tied to the
         // emulator, not the transport, so it survives reconnects.
         TerminalEmulator.PtySizeChanged += OnPtySizeChanged;
+
+        // 命令补全(plan.md #16):旁路跟踪用户键入的命令行;Enter 提交时做回显校验
+        // (密码输入无回显,不入历史)后向宿主上报。
+        TerminalEmulator.UserInput += OnUserInputForTracker;
+        InputTracker.CommandSubmitted += OnTrackedCommandSubmitted;
 
         // Toolbar quick actions (用户反馈 #5): tear the transport down but keep the tab,
         // or ask the owner to reconnect in place (#19 flow).
@@ -72,6 +78,38 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// </summary>
     public Avalonia.Media.IBrush ConnectionAccentBrush =>
         Profile is { } profile ? ConnectionAccent.BrushFor(profile.Id) : Avalonia.Media.Brushes.Transparent;
+
+    /// <summary>本标签正在键入的命令行跟踪器(命令补全弹层的数据入口,见视图侧)。</summary>
+    public TerminalInputTracker InputTracker { get; } = new();
+
+    /// <summary>补全建议提供器(宿主 MainWindowViewModel 注入;null = 补全不可用)。</summary>
+    public CommandSuggestionProvider? SuggestionProvider { get; set; }
+
+    /// <summary>用户在本标签提交了一条通过回显校验的命令(宿主记入全局命令历史)。</summary>
+    public event Action<string>? CommandLineSubmitted;
+
+    private void OnUserInputForTracker(byte[] data) => InputTracker.Process(data);
+
+    private void OnTrackedCommandSubmitted(string command)
+    {
+        // 回显校验:提交瞬间光标行应包含所键入的文本(shell 已逐字符回显)。
+        // 密码提示符不回显 → 校验不过 → 不记录,防止口令进历史。
+        if (TerminalEmulator is not VelaTerminalControl control)
+        {
+            return;
+        }
+        try
+        {
+            if (control.GetBufferLine(control.CursorRow).Contains(command, StringComparison.Ordinal))
+            {
+                CommandLineSubmitted?.Invoke(command);
+            }
+        }
+        catch
+        {
+            // 读缓冲失败(极端竞态)时宁可漏记不误记。
+        }
+    }
 
     /// <summary>
     /// 本地终端标签(§12 P1-1)对应的 shell;null = SSH 会话。重开(Enter/Ctrl+R)
@@ -125,17 +163,17 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// </summary>
     public string? ConnectionError
     {
-        get => _connectionError;
+        get;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _connectionError, value);
+            this.RaiseAndSetIfChanged(ref field, value);
             this.RaisePropertyChanged(nameof(HasConnectionError));
             this.RaisePropertyChanged(nameof(DisconnectOverlayTitle));
             this.RaisePropertyChanged(nameof(DisconnectOverlayDetail));
         }
     }
 
-    public bool HasConnectionError => !string.IsNullOrEmpty(_connectionError);
+    public bool HasConnectionError => !string.IsNullOrEmpty(ConnectionError);
 
     /// <summary>
     /// 标签页内失败/断开覆盖层(设计 yxjmg)的可见性:未连接(断开/错误)且是一个
@@ -146,7 +184,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     public string DisconnectOverlayTitle => HasConnectionError ? "连接失败" : "连接已断开";
 
     public string DisconnectOverlayDetail => HasConnectionError
-                                                 ? _connectionError!
+                                                 ? ConnectionError!
                                                  : $"// 与 {OverlayHostLabel} 的 SSH 连接已丢失";
 
     private string OverlayHostLabel => Profile is { } p ? $"{p.Host}:{p.Port}" : Title;
@@ -190,6 +228,8 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         }
         _disposed = true;
         TerminalEmulator.PtySizeChanged -= OnPtySizeChanged;
+        TerminalEmulator.UserInput -= OnUserInputForTracker;
+        InputTracker.CommandSubmitted -= OnTrackedCommandSubmitted;
 
         // Instant, UI-safe teardown so the tab closes immediately: this only unhooks the
         // emulator's Updated handler, no network I/O.

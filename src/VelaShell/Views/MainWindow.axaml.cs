@@ -548,7 +548,7 @@ public partial class MainWindow : Window
                 new("日志文件") { Patterns = ["*.log"] }
             ]
         });
-        string? path = file is null ? null : file.TryGetLocalPath();
+        string? path = file?.TryGetLocalPath();
         if (string.IsNullOrEmpty(path))
         {
             return;

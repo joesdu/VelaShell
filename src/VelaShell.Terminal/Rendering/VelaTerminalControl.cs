@@ -28,8 +28,7 @@ namespace VelaShell.Terminal.Rendering;
 /// </summary>
 public sealed class VelaTerminalControl : Control, ITerminalEmulator
 {
-    private static readonly ImmutableSolidColorBrush BellFlashBrush =
-        new(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF));
+    private static readonly ImmutableSolidColorBrush BellFlashBrush = new(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF));
 
     // ---- Search highlights (spec §5.3: 命中项高亮) --------------------------
 
@@ -65,14 +64,8 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
     private DateTime _bellFlashUntil = DateTime.MinValue;
     private double _cellHeight = 16;
     private double _cellWidth = 8;
-
-    private bool _cursorBlinkEnabled = true;
     private DispatcherTimer? _cursorBlinkTimer;
     private bool _cursorBlinkVisible = true;
-
-    private FontFamily _fontFamily = new("Cascadia Mono, Consolas, JetBrains Mono, Microsoft YaHei, Segoe UI, monospace");
-
-    private double _fontSize = 14;
 
     // Latches on the first time the batched GlyphRun path throws at runtime (unexpected platform
     // behavior), permanently reverting to the proven per-cell FormattedText path so a rendering
@@ -87,13 +80,9 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
     private (int Col, int Row) _lastMouseReportCell = (-1, -1);
     private int _lastScrollbackCount; // scrollback size at the previous output update
 
-    private double _lineHeight = 1.0;
-
     // Mouse reporting to the app (htop/btop/vim/tmux): the button held after a reported press, and
     // the last cell reported, so drag/motion only emits when the cell actually changes.
     private TerminalMouseButton? _mouseButtonDown;
-
-    private TerminalPaletteOverrides? _paletteOverrides;
     private ImmutableSolidColorBrush? _runBrush;
     private uint _runFg;
     private int _runPrevCol;
@@ -158,17 +147,17 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
     /// <summary>Whether the focused cursor blinks (设置 → 终端 → 光标闪烁).</summary>
     public bool CursorBlink
     {
-        get => _cursorBlinkEnabled;
+        get;
         set
         {
-            if (_cursorBlinkEnabled == value)
+            if (field == value)
             {
                 return;
             }
-            _cursorBlinkEnabled = value;
+            field = value;
             UpdateCursorBlinkTimer();
         }
-    }
+    } = true;
 
     /// <summary>
     /// Line-height multiplier (1.0 = font natural height). Extra space is distributed
@@ -176,20 +165,20 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
     /// </summary>
     public double LineHeight
     {
-        get => _lineHeight;
+        get;
         set
         {
             double clamped = Math.Clamp(double.IsFinite(value) && value > 0 ? value : 1.0, 0.8, 2.0);
-            if (Math.Abs(clamped - _lineHeight) < 0.001)
+            if (Math.Abs(clamped - field) < 0.001)
             {
                 return;
             }
-            _lineHeight = clamped;
+            field = clamped;
             RecomputeMetrics();
             RelayoutFromBounds();
             InvalidateVisual();
         }
-    }
+    } = 1.0;
 
     /// <summary>Right-click pastes the clipboard (off = right-click does nothing).</summary>
     public bool RightClickPaste { get; set; } = true;
@@ -262,10 +251,10 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
     /// </summary>
     public TerminalPaletteOverrides? PaletteOverrides
     {
-        get => _paletteOverrides;
+        get;
         set
         {
-            _paletteOverrides = value;
+            field = value;
             ApplyThemePalette();
         }
     }
@@ -280,27 +269,27 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
 
     public FontFamily FontFamily
     {
-        get => _fontFamily;
+        get;
         set
         {
-            _fontFamily = value;
+            field = value;
             RecomputeMetrics();
             RelayoutFromBounds();
             InvalidateVisual();
         }
-    }
+    } = new("Cascadia Mono, Consolas, JetBrains Mono, Microsoft YaHei, Segoe UI, monospace");
 
     public double FontSize
     {
-        get => _fontSize;
+        get;
         set
         {
-            _fontSize = value;
+            field = value;
             RecomputeMetrics();
             RelayoutFromBounds();
             InvalidateVisual();
         }
-    }
+    } = 14;
 
     // ---- ITerminalEmulator --------------------------------------------------
 
@@ -399,7 +388,7 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
 
     private void ApplyPaletteOverrides(TerminalPalette palette)
     {
-        if (_paletteOverrides is not { } o)
+        if (PaletteOverrides is not { } o)
         {
             return;
         }
@@ -488,7 +477,7 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
     /// </summary>
     private void UpdateCursorBlinkTimer()
     {
-        bool shouldRun = _hasFocus && (_cursorBlinkEnabled || Emulator.Modes.CursorBlink);
+        bool shouldRun = _hasFocus && (CursorBlink || Emulator.Modes.CursorBlink);
         if (shouldRun)
         {
             _cursorBlinkTimer ??= new(TimeSpan.FromMilliseconds(530), DispatcherPriority.Background,
@@ -575,6 +564,9 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
         _imeClient ??= new(this);
         e.Client = _imeClient;
     }
+
+    /// <summary>光标单元格在控件坐标系中的矩形(命令补全弹层锚点,与 IME 光标同一套计算)。</summary>
+    public Rect GetCursorRect() => GetImeCursorRect();
 
     /// <summary>The cursor cell's rectangle in control coordinates (same math as RenderCursor).</summary>
     private Rect GetImeCursorRect()
@@ -671,11 +663,11 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
         {
             _glyphCache.Clear();
         }
-        var typeface = new Typeface(_fontFamily,
+        var typeface = new Typeface(FontFamily,
             italic ? FontStyle.Italic : FontStyle.Normal,
             bold ? FontWeight.Bold : FontWeight.Normal);
         var ft = new FormattedText(cell.GetText(), CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight, typeface, _fontSize, BrushFor(fg));
+            FlowDirection.LeftToRight, typeface, FontSize, BrushFor(fg));
         _glyphCache[key] = ft;
         return ft;
     }
@@ -684,12 +676,12 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
 
     private void RecomputeMetrics()
     {
-        var typeface = new Typeface(_fontFamily);
+        var typeface = new Typeface(FontFamily);
         var probe = new FormattedText("0", CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
-            typeface, _fontSize, Brushes.White);
+            typeface, FontSize, Brushes.White);
         _cellWidth = Math.Max(1, Math.Round(probe.WidthIncludingTrailingWhitespace));
         // 行高倍数(设置 → 终端 → 行高):多出的空间上下均分,字形垂直居中。
-        _cellHeight = Math.Max(1, Math.Ceiling(probe.Height * _lineHeight));
+        _cellHeight = Math.Max(1, Math.Ceiling(probe.Height * LineHeight));
         _glyphYOffset = Math.Max(0, (_cellHeight - probe.Height) / 2);
         _baselineOffset = probe.Baseline + _glyphYOffset;
 
@@ -709,7 +701,7 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
         {
             for (int s = 0; s < 4; s++)
             {
-                var tf = new Typeface(_fontFamily,
+                var tf = new Typeface(FontFamily,
                     (s & 2) != 0 ? FontStyle.Italic : FontStyle.Normal,
                     (s & 1) != 0 ? FontWeight.Bold : FontWeight.Normal);
                 try
@@ -772,7 +764,7 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
         {
             try
             {
-                var run = new GlyphRun(gtf, _fontSize, _runChars.ToArray().AsMemory(),
+                var run = new GlyphRun(gtf, FontSize, _runChars.ToArray().AsMemory(),
                     _runGlyphs.ToArray(),
                     new Point(_runStartCol * _cellWidth, y + _baselineOffset));
                 context.DrawGlyphRun(_runBrush, run);
@@ -1080,7 +1072,7 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
 
         // Blink phase: the "off" half simply skips drawing (focused only; unfocused outline
         // never blinks).
-        if ((_cursorBlinkEnabled || Emulator.Modes.CursorBlink) && !_cursorBlinkVisible)
+        if ((CursorBlink || Emulator.Modes.CursorBlink) && !_cursorBlinkVisible)
         {
             return;
         }
@@ -1578,8 +1570,8 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
         // cell metrics, reflows the grid and resizes the PTY.
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
-            double next = Math.Clamp(_fontSize + (e.Delta.Y > 0 ? 1 : -1), 6, 40);
-            if (Math.Abs(next - _fontSize) > 0.01)
+            double next = Math.Clamp(FontSize + (e.Delta.Y > 0 ? 1 : -1), 6, 40);
+            if (Math.Abs(next - FontSize) > 0.01)
             {
                 FontSize = next;
                 FontSizeChanged?.Invoke(next);

@@ -590,15 +590,9 @@ public class SettingsViewModel : ReactiveObject
     /// <summary>跟踪当前 Appearance 对象的单项修改(POCO 直绑,靠其 INPC 感知)。</summary>
     private void HookAppearance(AppearanceOptions? appearance)
     {
-        if (_hookedAppearance is not null)
-        {
-            _hookedAppearance.PropertyChanged -= OnAppearanceItemChanged;
-        }
+        _hookedAppearance?.PropertyChanged -= OnAppearanceItemChanged;
         _hookedAppearance = appearance;
-        if (appearance is not null)
-        {
-            appearance.PropertyChanged += OnAppearanceItemChanged;
-        }
+        appearance?.PropertyChanged += OnAppearanceItemChanged;
     }
 
     private void OnAppearanceItemChanged(object? sender, PropertyChangedEventArgs e) => BroadcastPreview();

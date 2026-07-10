@@ -24,15 +24,9 @@ public partial class CommandPaletteView : UserControl
 
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
-        if (_vm is not null)
-        {
-            _vm.PropertyChanged -= OnVmPropertyChanged;
-        }
+        _vm?.PropertyChanged -= OnVmPropertyChanged;
         _vm = DataContext as CommandPaletteViewModel;
-        if (_vm is not null)
-        {
-            _vm.PropertyChanged += OnVmPropertyChanged;
-        }
+        _vm?.PropertyChanged += OnVmPropertyChanged;
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)

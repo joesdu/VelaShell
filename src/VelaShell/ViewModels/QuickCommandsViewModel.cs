@@ -108,20 +108,8 @@ public class QuickCommandsViewModel : ReactiveObject
 
     private void LoadBuiltInCommands()
     {
-        var builtIns = new List<QuickCommand>
-        {
-            new() { Name = "htop", Category = "System Monitor", CommandText = "htop", Description = "Interactive process viewer", IsBuiltIn = true },
-            new() { Name = "top", Category = "System Monitor", CommandText = "top", Description = "Display running processes", IsBuiltIn = true },
-            new() { Name = "df -h", Category = "System Monitor", CommandText = "df -h", Description = "Disk space usage (human-readable)", IsBuiltIn = true },
-            new() { Name = "free -m", Category = "System Monitor", CommandText = "free -m", Description = "Memory usage in MB", IsBuiltIn = true },
-            new() { Name = "netstat -tlnp", Category = "Network", CommandText = "netstat -tlnp", Description = "Show listening ports", IsBuiltIn = true },
-            new() { Name = "ss -tlnp", Category = "Network", CommandText = "ss -tlnp", Description = "Socket statistics", IsBuiltIn = true },
-            new() { Name = "docker ps", Category = "Docker", CommandText = "docker ps", Description = "List running containers", IsBuiltIn = true },
-            new() { Name = "docker stats", Category = "Docker", CommandText = "docker stats", Description = "Container resource usage", IsBuiltIn = true },
-            new() { Name = "systemctl status", Category = "System", CommandText = "systemctl status", Description = "Show systemd service status", IsBuiltIn = true },
-            new() { Name = "journalctl -f", Category = "System", CommandText = "journalctl -f", Description = "Follow system journal", IsBuiltIn = true }
-        };
-        foreach (QuickCommand cmd in builtIns)
+        // 内置目录移到 Core(QuickCommandCatalog),与命令补全建议共用一份数据。
+        foreach (QuickCommand cmd in QuickCommandCatalog.BuiltIns)
         {
             AllCommands.Add(new(cmd));
         }
@@ -289,8 +277,4 @@ public class QuickCommandsViewModel : ReactiveObject
         }
     }
 
-    internal class QuickCommandData
-    {
-        public List<QuickCommand> Commands { get; set; } = [];
-    }
 }

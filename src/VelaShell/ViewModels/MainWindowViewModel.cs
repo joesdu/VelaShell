@@ -59,6 +59,12 @@ public class MainWindowViewModel : ReactiveObject
     private readonly Func<ITerminalEmulator> _terminalEmulatorFactory;
     private readonly ITunnelService? _tunnelService;
 
+    /// <summary>全局命令历史(命令补全数据源;终端标签提交命令后写入)。</summary>
+    public CommandHistoryService CommandHistory { get; }
+
+    /// <summary>补全建议提供器(历史 ∪ 快捷命令),注入到每个终端标签。</summary>
+    private readonly CommandSuggestionProvider _suggestionProvider;
+
     // SFTP/File management views derived from design
     private FileBrowserViewModel _fileBrowser;
 
@@ -103,6 +109,11 @@ public class MainWindowViewModel : ReactiveObject
         IAppDataStore? appDataStore = null)
     {
         _appDataStore = appDataStore;
+
+        // 命令补全(plan.md #16):全局命令历史 + 建议提供器(历史 ∪ 快捷命令),
+        // 逐标签在 CreateConnectingTab 注入。
+        CommandHistory = new(appDataStore);
+        _suggestionProvider = new(CommandHistory, appDataStore);
         _connectionWorkflowService = connectionWorkflowService;
         _sshConnectionService = sshConnectionService;
         _settingsService = settingsService;
@@ -145,27 +156,19 @@ public class MainWindowViewModel : ReactiveObject
 
         // Saved settings re-apply to every open terminal immediately (#3/#15/#21) — scrollback,
         // font, size and encoding change live; TERM stays per-session (negotiated at connect).
-        if (_settingsService is not null)
-        {
-            _settingsService.SettingsSaved += OnSettingsSaved;
-        }
+        _settingsService?.SettingsSaved += OnSettingsSaved;
 
         // 外观即时预览(设置窗口广播,未持久化):只重刷已打开标签的终端外观,
         // 不动 _latestSettings(新建标签仍用已保存的设置)。
-        if (settingsPreviewService is not null)
-        {
-            settingsPreviewService.PreviewRequested += settings =>
+        settingsPreviewService?.PreviewRequested += settings =>
                 RxSchedulers.MainThreadScheduler.Schedule(Unit.Default, (_, _) =>
                 {
                     ApplyLiveSettingsToOpenTabs(settings);
                     return Disposable.Empty;
                 });
-        }
 
         // 安全告警(设置 → 安全审计 → 告警通道):应用内 → 状态栏;提示音 → 系统提示音。
-        if (securityAlertService is not null)
-        {
-            securityAlertService.Alerted += notice =>
+        securityAlertService?.Alerted += notice =>
                 RxSchedulers.MainThreadScheduler.Schedule(Unit.Default, (_, _) =>
                 {
                     if (notice.InApp)
@@ -178,7 +181,6 @@ public class MainWindowViewModel : ReactiveObject
                     }
                     return Disposable.Empty;
                 });
-        }
         StartStatusMetricsPolling();
         OpenSettingsCommand = ReactiveCommand.Create(() => SettingsRequested?.Invoke(this, EventArgs.Empty));
         CommandPalette = new(BuildPaletteItems);
@@ -383,6 +385,10 @@ public class MainWindowViewModel : ReactiveObject
         };
         terminalTab.ReconnectRequested += (_, _) => _ = ReconnectTabAsync(terminalTab);
         terminalTab.Disconnected += (_, _) => OnTabDisconnected(terminalTab);
+
+        // 命令补全:注入建议提供器;提交(已回显校验)的命令进全局历史。
+        terminalTab.SuggestionProvider = _suggestionProvider;
+        terminalTab.CommandLineSubmitted += CommandHistory.Record;
         if (terminalEmulator is VelaTerminalControl bellSource)
         {
             bellSource.BellRang += () =>
@@ -871,6 +877,7 @@ public class MainWindowViewModel : ReactiveObject
     /// </summary>
     public async Task InitializeAsync()
     {
+        await CommandHistory.LoadAsync();
         await Sidebar.RecentConnections.RefreshAsync();
         await RefreshSessionTreeAsync();
     }
@@ -1021,6 +1028,10 @@ public class MainWindowViewModel : ReactiveObject
         };
         terminalTab.ReconnectRequested += (_, _) => _ = ReconnectTabAsync(terminalTab);
         terminalTab.Disconnected += (_, _) => OnTabDisconnected(terminalTab);
+
+        // 命令补全:注入建议提供器;提交(已回显校验)的命令进全局历史。
+        terminalTab.SuggestionProvider = _suggestionProvider;
+        terminalTab.CommandLineSubmitted += CommandHistory.Record;
 
         // 资源管理器树的状态圆点与「活跃/连接中/离线」标签(设计 FrJPu)跟随该配置
         // 最新标签的连接状态;重连复用同一标签,订阅随标签生命周期存续。

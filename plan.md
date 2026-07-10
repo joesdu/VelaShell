@@ -20,7 +20,7 @@
 
 ```
 src/
-├── VelaShell.App/            桌面入口、DI 组合根、视图(axaml)、App 层 ViewModel、停靠、行为
+├── VelaShell/                桌面入口、DI 组合根、视图(axaml)、App 层 ViewModel、停靠、行为
 ├── VelaShell.Presentation/   跨层 ViewModel、连接/隧道工作流服务
 ├── VelaShell.Controls/       自定义控件与设计 token(PulseTokens/PulseShellTokens/Generic)
 ├── VelaShell.Terminal/       ★ 自研 VT 终端引擎 + 自绘渲染控件
@@ -109,14 +109,14 @@ tests/  6 个 MSTest 项目(见 §7)
 
 ⏳ **仍未实现(UI 已禁用并标注"规划中/暂不支持",后期按情况实现)**:
 
-| 项                                            | 设置位置      | 未实现原因 / 实现思路                                                                                             |
-| --------------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------- |
-| 标签栏位置(顶部/底部)                         | 外观          | 标签条由 Dock.Avalonia 的 DocumentDock 模板提供,需覆写其主题模板才能移到底部                                      |
-| 启动时检查更新 / 更新频道 / 自动下载          | 常规          | Velopack `UpdateService` 未接入,且无发布 feed URL;接入后三项一并实现(About 页"检查更新"目前也是占位)              |
-| 主密码保护                                    | 常规          | 需主密码派生密钥替换 `AesSecretProtector` 的本机密钥文件 + 启动解锁弹窗 + 密文迁移,安全敏感需单独设计             |
-| 断点续传 / 自动续传 / 传输重试 / 临时文件清理 | 文件传输      | 需 `.part` 临时文件 + SFTP offset 续写(SSH.NET 支持 DownloadFile offset 有限,需改用流式 seek)+ 传输队列持久化     |
-| 会话录制 / 输入脱敏                           | 安全审计      | 录制功能本身未实现;可基于已完成的会话日志(SshTerminalBridge.DataReceived)扩展为带时间戳的 asciinema 格式 + 回放器 |
-| 自动加载密钥到 Agent                          | 密钥管理      | 需集成 Windows OpenSSH ssh-agent(named pipe 协议)或 Pageant                                                       |
+| 项                                            | 设置位置 | 未实现原因 / 实现思路                                                                                             |
+| --------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------- |
+| 标签栏位置(顶部/底部)                         | 外观     | 标签条由 Dock.Avalonia 的 DocumentDock 模板提供,需覆写其主题模板才能移到底部                                      |
+| 启动时检查更新 / 更新频道 / 自动下载          | 常规     | Velopack `UpdateService` 未接入,且无发布 feed URL;接入后三项一并实现(About 页"检查更新"目前也是占位)              |
+| 主密码保护                                    | 常规     | 需主密码派生密钥替换 `AesSecretProtector` 的本机密钥文件 + 启动解锁弹窗 + 密文迁移,安全敏感需单独设计             |
+| 断点续传 / 自动续传 / 传输重试 / 临时文件清理 | 文件传输 | 需 `.part` 临时文件 + SFTP offset 续写(SSH.NET 支持 DownloadFile offset 有限,需改用流式 seek)+ 传输队列持久化     |
+| 会话录制 / 输入脱敏                           | 安全审计 | 录制功能本身未实现;可基于已完成的会话日志(SshTerminalBridge.DataReceived)扩展为带时间戳的 asciinema 格式 + 回放器 |
+| 自动加载密钥到 Agent                          | 密钥管理 | 需集成 Windows OpenSSH ssh-agent(named pipe 协议)或 Pageant                                                       |
 
 ❌ **确认当前架构不实现,已从设置界面与 `AppSettings` 移除**(2026-07-10,见 docs/架构设计.md §11):连字 Ligatures(自绘渲染器按单元格排版,无法跨字符连字)、自适应标题栏颜色(系统原生标题栏由 OS 托管)、系统通知 Toast(需 AppUserModelID/通知框架;常规页用「声音提示」、安全审计页告警通道改为「提示音」`Security.AlertSound` 替代)。
 ✅ **上传方向冲突策略已实现**(2026-07-10):上传前 `ISftpService.ExistsAsync` stat 远端同名文件,按策略询问(弹窗:覆盖 or 跳过)/覆盖/跳过/重命名(`file (1).txt` 取首个可用名);「覆盖」策略下不额外 stat,沿用 SFTP 覆盖语义;编辑器保存回传属有意覆盖,不走冲突检查。
@@ -165,6 +165,20 @@ tests/  6 个 MSTest 项目(见 §7)
 5. ✅ **配色方案预设**:`Core/Models/TerminalColorScheme.cs` 内置 Dracula / Solarized Dark / Solarized Light / Nord / Gruvbox Dark / One Dark / Monokai / Tokyo Night;外观页"配色方案"下拉一键写入整套颜色(保存生效);选 Dracula 即恢复默认、继续跟随主题。
 6. ✅ **克隆会话**:`session.clone`(Ctrl+Shift+N / 命令面板)对当前标签的 Profile 再连一次。
 
-**P2 —— 进阶运维能力** 7. **多会话同步输入**(send to all / 命令多发):对选中的多个标签广播键入,集群运维刚需;在 `UserInput` 分发处加广播开关即可。8. **ZMODEM(rz/sz)**:终端内直接收发文件,Xshell/SecureCRT 标配;需在 `SshTerminalBridge` 流上识别 ZMODEM 起始序列并接管通道(可评估 trzsz 协议替代,实现更简单)。9. **SSH config 导入**:解析 `~/.ssh/config`(Host/HostName/Port/User/IdentityFile/ProxyJump)批量导入会话,降低迁移成本。10. **连接代理**:SOCKS5/HTTP 代理经由连接(公司内网出网场景);SSH.NET `ConnectionInfo` 原生支持 ProxyTypes。11. **防空闲断开(Anti-idle)**:按间隔发送自定义串(如 `\0` 或空格),与已实现的 SSH keepalive 互补(keepalive 防 NAT 超时,anti-idle 防服务端 shell 超时踢出)。12. **known_hosts 管理界面**(设计稿"主机信任中心"):列出/删除/导出已信任指纹;`IHostKeyService` CRUD 已齐,只缺 UI 页(可挂设置-安全审计)。13. **会话标签自定义颜色/图标**:多环境(生产红/测试绿)一眼区分;SessionProfile 加 color 字段 + 标签条着色。
+**P2 —— 进阶运维能力**
+7. **多会话同步输入**(send to all / 命令多发):对选中的多个标签广播键入,集群运维刚需;在 `UserInput` 分发处加广播开关即可。
+8. **ZMODEM(rz/sz)**:终端内直接收发文件,Xshell/SecureCRT 标配;需在 `SshTerminalBridge` 流上识别 ZMODEM 起始序列并接管通道(可评估 trzsz 协议替代,实现更简单)。
+9. **SSH config 导入**:解析 `~/.ssh/config`(Host/HostName/Port/User/IdentityFile/ProxyJump)批量导入会话,降低迁移成本。
+✅10. **连接代理**:SOCKS5/HTTP 代理经由连接(公司内网出网场景);SSH.NET `ConnectionInfo` 原生支持 ProxyTypes。
+11. **防空闲断开(Anti-idle)**:按间隔发送自定义串(如 `\0` 或空格),与已实现的 SSH keepalive 互补(keepalive 防 NAT 超时,anti-idle 防服务端 shell 超时踢出)。
+12. **known_hosts 管理界面**(设计稿"主机信任中心"):列出/删除/导出已信任指纹;`IHostKeyService` CRUD 已齐,只缺 UI 页(可挂设置-安全审计)。
+✅13. **会话标签自定义颜色/图标**:多环境(生产红/测试绿)一眼区分;SessionProfile 加 color 字段 + 标签条着色。
 
-**P3 —— 锦上添花** 14. **SFTP 本地/远程双栏**:目前只有远程单栏,MobaXterm/WinSCP 式左右双栏拖拽互传体验更好(升级现有 FileBrowser 布局)。15. **用户自定义关键字高亮规则**:语义高亮已内置(URL/IP/错误词),开放用户正则+颜色规则表(WindTerm 卖点)。16. **命令自动补全/历史建议**:输入时基于本地命令历史悬浮建议(WindTerm 式);已有 quick_commands 可作为数据源之一。17. **OSC 52 剪贴板**:远端 vim/tmux 写系统剪贴板(§8 遗留,一并归档到此)。18. **触发器/自动应答**:输出匹配正则时自动发送响应(expect 式),如自动 yes/密码带外输入。19. **多窗口**:新开独立主窗口(目前只有单窗口+分屏/浮动 Dock)。20. **Mosh / SSH 证书(certificate)认证**:弱网漫游与企业 CA 场景,按需求评估。
+**P3 —— 锦上添花**
+14. **SFTP 本地/远程双栏**:目前只有远程单栏,MobaXterm/WinSCP 式左右双栏拖拽互传体验更好(升级现有 FileBrowser 布局)。
+15. **用户自定义关键字高亮规则**:语义高亮已内置(URL/IP/错误词),开放用户正则+颜色规则表(WindTerm 卖点)。
+✅16. **命令自动补全/历史建议**:输入时基于本地命令历史悬浮建议(WindTerm 式);已有 quick_commands 可作为数据源之一。
+17. **OSC 52 剪贴板**:远端 vim/tmux 写系统剪贴板(§8 遗留,一并归档到此)。
+18. **触发器/自动应答**:输出匹配正则时自动发送响应(expect 式),如自动 yes/密码带外输入。
+19. **多窗口**:新开独立主窗口(目前只有单窗口+分屏/浮动 Dock)。
+20. **Mosh / SSH 证书(certificate)认证**:弱网漫游与企业 CA 场景,按需求评估。

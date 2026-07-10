@@ -657,10 +657,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
             ErrorMessage = null;
             await _tunnelService.StopTunnelAsync(tunnelId, ct).ConfigureAwait(true);
             TunnelItemViewModel? tunnel = Tunnels.FirstOrDefault(t => t.Id == tunnelId);
-            if (tunnel != null)
-            {
-                tunnel.Status = TunnelStatus.Stopped;
-            }
+            tunnel?.Status = TunnelStatus.Stopped;
         }
         catch (Exception ex)
         {
