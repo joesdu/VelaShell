@@ -3,76 +3,455 @@ using System.Text;
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// The terminal "brain": consumes parsed escape-sequence events from <see cref="VtParser"/>
-/// and applies them to a <see cref="TerminalScreen"/>. Owns the current graphic rendition
+/// The terminal "brain": consumes parsed escape-sequence events from <see cref="VtParser" />
+/// and applies them to a <see cref="TerminalScreen" />. Owns the current graphic rendition
 /// (pen), character sets, terminal modes, tab stops and the saved-cursor state, and produces
-/// host-bound replies (Device Attributes, cursor reports, etc.) via <see cref="Response"/>.
-///
-/// Behavior is gated by the active <see cref="TerminalType"/> so the same engine can emulate
+/// host-bound replies (Device Attributes, cursor reports, etc.) via <see cref="Response" />.
+/// Behavior is gated by the active <see cref="TerminalType" /> so the same engine can emulate
 /// anything from a VT52 up to xterm-256color.
 /// </summary>
 public sealed class TerminalEmulator : IVtActions
 {
-    private readonly VtParser _parser;
-    private readonly Utf8Sink _utf8 = new();
-
-    private TerminalScreen _screen;
-    private readonly TerminalScreen _mainScreen;
-    private TerminalScreen? _altScreen;   // alternate buffer (no scrollback)
-    private bool _alternate;
-
-    // Current pen
-    private TerminalColor _fg = TerminalColor.Default;
-    private TerminalColor _bg = TerminalColor.Default;
-    private CellFlags _flags = CellFlags.None;
+    /// <summary>OSC 52 载荷上限(base64 解码后),防远端滥发撑爆剪贴板。</summary>
+    private const int MaxOsc52Bytes = 1024 * 1024;
 
     // Character sets: G0..G3 designations, GL/GR invocation, single shift.
     private readonly bool[] _decGraphics = new bool[4]; // true => DEC special graphics
-    private int _gl;                                     // active GL set index
-    private int _singleShift = -1;
-
-    private bool _pendingWrap;                           // deferred autowrap at end of line
-    private bool[] _tabStops;
-
-    // Saved cursor (DECSC / DECRC, CSI s/u, DECSET 1048)
-    private SavedCursor? _saved;
+    private readonly TerminalScreen _mainScreen;
+    private readonly VtParser _parser;
+    private readonly Utf8Sink _utf8 = new();
 
     // Separate save slot for the alternate-screen switch (DECSET 1049). Keeping it distinct from
     // _saved is what xterm does: an app running in the alt screen (e.g. nano) uses DECSC/DECRC
     // freely without clobbering the main-screen cursor that must be restored on exit (#14b).
     private SavedCursor? _altSaved;
+    private TerminalScreen? _altScreen; // alternate buffer (no scrollback)
+    private TerminalColor _bg = TerminalColor.Default;
 
-    private struct SavedCursor
-    {
-        public int X, Y;
-        public TerminalColor Fg, Bg;
-        public CellFlags Flags;
-        public int Gl;
-        public bool[] DecGraphics;
-        public bool OriginMode;
-    }
+    // Current pen
+    private TerminalColor _fg = TerminalColor.Default;
+    private CellFlags _flags = CellFlags.None;
+    private int _gl; // active GL set index
 
-    public TerminalEmulator(int columns = 80, int rows = 24, TerminalType type = TerminalType.XtermusColor256, int scrollback = 10_000)
+    private bool _pendingWrap; // deferred autowrap at end of line
+
+    // Saved cursor (DECSC / DECRC, CSI s/u, DECSET 1048)
+    private SavedCursor? _saved;
+
+    private int _singleShift = -1;
+    private bool[] _tabStops;
+
+    public TerminalEmulator(int columns = 80, int rows = 24, TerminalType type = TerminalType.XtermColor256, int scrollback = 10_000)
     {
         Type = type;
-        Palette = new TerminalPalette();
-        Modes = new TerminalModes();
-        _screen = new TerminalScreen(columns, rows, scrollback);
-        _mainScreen = _screen;
+        Palette = new();
+        Modes = new();
+        Screen = new(columns, rows, scrollback);
+        _mainScreen = Screen;
         _tabStops = BuildDefaultTabs(columns);
-        _parser = new VtParser(this) { Vt52Mode = type == TerminalType.Vt52 };
+        _parser = new(this) { Vt52Mode = type == TerminalType.Vt52 };
     }
 
     public TerminalType Type { get; private set; }
-    public TerminalModes Modes { get; }
-    public TerminalPalette Palette { get; }
-    public TerminalScreen Screen => _screen;
 
-    public int Columns => _screen.Columns;
-    public int Rows => _screen.Rows;
-    public int CursorX => _screen.CursorX;
-    public int CursorY => _screen.CursorY;
-    public bool IsAlternateScreen => _alternate;
+    public TerminalModes Modes { get; }
+
+    public TerminalPalette Palette { get; }
+
+    public TerminalScreen Screen { get; private set; }
+
+    public int Columns => Screen.Columns;
+
+    public int Rows => Screen.Rows;
+
+    public int CursorX => Screen.CursorX;
+
+    public int CursorY => Screen.CursorY;
+
+    public bool IsAlternateScreen { get; private set; }
+
+    // ---- IVtActions: printing ----------------------------------------------
+
+    public void Print(int rune)
+    {
+        // Apply active charset translation.
+        int setIndex = _singleShift >= 0 ? _singleShift : _gl;
+        _singleShift = -1;
+        if (_decGraphics[setIndex])
+        {
+            rune = Charsets.MapDecSpecial(rune);
+        }
+        int width = CharWidth.Of(rune);
+
+        // Combining marks attach to the previous cell without advancing the cursor.
+        if (width == 0)
+        {
+            AttachCombining(rune);
+            return;
+        }
+        if (_pendingWrap)
+        {
+            Screen.ActiveLine(Screen.CursorY).Wrapped = true;
+            CarriageReturnLineFeed();
+            _pendingWrap = false;
+        }
+
+        // Autowrap check for wide chars that won't fit.
+        if (width == 2 && Screen.CursorX == Screen.Columns - 1)
+        {
+            if (Modes.AutoWrap)
+            {
+                Screen.ActiveLine(Screen.CursorY).Wrapped = true;
+                CarriageReturnLineFeed();
+            }
+            else
+            {
+                Screen.SetCursorX(Screen.Columns - 2);
+            }
+        }
+        if (Modes.InsertMode)
+        {
+            Screen.InsertChars(width, Blank());
+        }
+        var cell = new TerminalCell
+        {
+            Rune = rune,
+            Foreground = _fg,
+            Background = _bg,
+            Flags = _flags
+        };
+        Screen.SetCell(Screen.CursorX, Screen.CursorY, cell);
+        if (width == 2)
+        {
+            TerminalCell trailing = cell;
+            trailing.Rune = 0;
+            trailing.Flags |= CellFlags.WideTrailing;
+            Screen.SetCell(Screen.CursorX + 1, Screen.CursorY, trailing);
+        }
+        if (Screen.CursorX + width >= Screen.Columns)
+        {
+            if (Modes.AutoWrap)
+            {
+                Screen.SetCursorX(Screen.Columns - 1);
+                _pendingWrap = true;
+            }
+            else
+            {
+                Screen.SetCursorX(Screen.Columns - 1);
+            }
+        }
+        else
+        {
+            Screen.SetCursorX(Screen.CursorX + width);
+        }
+    }
+
+    // ---- IVtActions: C0 controls -------------------------------------------
+
+    public void Execute(char control)
+    {
+        switch (control)
+        {
+            case '\a': // BEL
+                Bell?.Invoke();
+                break;
+            case '\b': // BS
+                if (_pendingWrap)
+                {
+                    _pendingWrap = false;
+                }
+                else if (Screen.CursorX > 0)
+                {
+                    Screen.SetCursorX(Screen.CursorX - 1);
+                }
+                break;
+            case '\t': // HT
+                HorizontalTab();
+                break;
+            case '\n': // LF
+            case '\v': // VT
+            case '\f': // FF
+                _pendingWrap = false;
+                Screen.Index(Blank());
+                if (Modes.NewLineMode)
+                {
+                    Screen.SetCursorX(0);
+                }
+                break;
+            case '\r': // CR
+                _pendingWrap = false;
+                Screen.SetCursorX(0);
+                break;
+            case '\x0E': // SO -> invoke G1 into GL
+                _gl = 1;
+                break;
+            case '\x0F': // SI -> invoke G0 into GL
+                _gl = 0;
+                break;
+        }
+    }
+
+    // ---- IVtActions: ESC ----------------------------------------------------
+
+    public void EscDispatch(string intermediates, char final)
+    {
+        if (Type == TerminalType.Vt52 && intermediates.Length == 0)
+        {
+            EscDispatchVt52(final);
+            return;
+        }
+        if (intermediates.Length > 0)
+        {
+            char inter = intermediates[0];
+            switch (inter)
+            {
+                case '(' or ')' or '*' or '+': // designate G0..G3
+                    int g = inter switch { '(' => 0, ')' => 1, '*' => 2, _ => 3 };
+                    _decGraphics[g] = final == '0';
+                    return;
+                case '#':
+                    if (final == '8')
+                    {
+                        FillScreenWithE(); // DECALN
+                    }
+                    return;
+            }
+            return;
+        }
+        switch (final)
+        {
+            case 'D':
+                Screen.Index(Blank());
+                break; // IND
+            case 'M':
+                Screen.ReverseIndex(Blank());
+                break; // RI
+            case 'E':
+                Screen.SetCursorX(0);
+                Screen.Index(Blank());
+                break; // NEL
+            case 'H':
+                _tabStops[Math.Clamp(Screen.CursorX, 0, _tabStops.Length - 1)] = true;
+                break; // HTS
+            case '7':
+                SaveCursor();
+                break; // DECSC
+            case '8':
+                RestoreCursor();
+                break; // DECRC
+            case '=':
+                Modes.ApplicationKeypad = true;
+                break; // DECCKPAM
+            case '>':
+                Modes.ApplicationKeypad = false;
+                break; // DECKPNM
+            case 'c':
+                FullReset();
+                break; // RIS
+            case '\\':
+                break; // ST (string terminator)
+            case 'n':
+                _gl = 2;
+                break; // LS2
+            case 'o':
+                _gl = 3;
+                break; // LS3
+        }
+    }
+
+    // ---- IVtActions: CSI ----------------------------------------------------
+
+    public void CsiDispatch(char prefix, IReadOnlyList<int> p, string intermediates, char final)
+    {
+        if (prefix == '?')
+        {
+            HandlePrivateMode(p, final);
+            return;
+        }
+        switch (intermediates)
+        {
+            // Intermediate '!' + 'p' => DECSTR soft reset.
+            case "!" when final == 'p':
+                SoftReset();
+                return;
+            case " " when final == 'q':
+                return; // DECSCUSR cursor style (accepted, style handled in UI)
+        }
+        switch (final)
+        {
+            case '@':
+                Screen.InsertChars(P(0), Blank());
+                break; // ICH
+            case 'A':
+                MoveCursor(0, -P(0));
+                break; // CUU
+            case 'B':
+                MoveCursor(0, P(0));
+                break; // CUD
+            case 'C':
+                MoveCursor(P(0), 0);
+                break; // CUF
+            case 'D':
+                MoveCursor(-P(0), 0);
+                break; // CUB
+            case 'E':
+                Screen.SetCursorX(0);
+                MoveCursor(0, P(0));
+                break; // CNL
+            case 'F':
+                Screen.SetCursorX(0);
+                MoveCursor(0, -P(0));
+                break; // CPL
+            case '`':
+            case 'G':
+                SetCursorColumn(P(0) - 1);
+                break; // CHA / HPA
+            case 'd':
+                SetCursorRow(P(0) - 1);
+                break; // VPA
+            case 'H':
+            case 'f':
+                CursorPosition(P(0) - 1, P(1) - 1);
+                break; // CUP / HVP
+            case 'I':
+                TabForward(P(0));
+                break; // CHT
+            case 'Z':
+                TabBackward(P(0));
+                break; // CBT
+            case 'J':
+                Screen.EraseInDisplay(P0(0), Blank());
+                _pendingWrap = false;
+                break; // ED
+            case 'K':
+                Screen.EraseInLine(P0(0), Blank());
+                _pendingWrap = false;
+                break; // EL
+            case 'L':
+                Screen.InsertLines(P(0), Blank());
+                break; // IL
+            case 'M':
+                Screen.DeleteLines(P(0), Blank());
+                break; // DL
+            case 'P':
+                Screen.DeleteChars(P(0), Blank());
+                break; // DCH
+            case 'X':
+                Screen.EraseChars(P(0), Blank());
+                break; // ECH
+            case 'S':
+                Screen.ScrollUp(P(0), Blank());
+                break; // SU
+            case 'T':
+                Screen.ScrollDown(P(0), Blank());
+                break; // SD
+            case 'm':
+                ApplySgr(p);
+                break; // SGR
+            case 'r':
+                SetScrollRegion(p);
+                break; // DECSTBM
+            case 'h':
+                SetAnsiMode(p, true);
+                break;
+            case 'l':
+                SetAnsiMode(p, false);
+                break;
+            case 'g':
+                ClearTabs(P0(0));
+                break; // TBC
+            case 'c':
+                DeviceAttributes(prefix);
+                break; // DA
+            case 'n':
+                DeviceStatusReport(P0(0));
+                break; // DSR
+            case 's':
+                SaveCursor();
+                break; // ANSI.SYS save
+            case 'u':
+                RestoreCursor();
+                break; // ANSI.SYS restore
+            case 't':
+                break; // window ops (ignored)
+        }
+        return;
+
+        int P(int index, int def = 1)
+        {
+            if (index >= p.Count)
+            {
+                return def;
+            }
+            int v = p[index];
+            return v == 0 ? def : v;
+        }
+
+        int P0(int index) => index < p.Count ? p[index] : 0;
+    }
+
+    public void OscDispatch(IReadOnlyList<string> p)
+    {
+        if (p.Count == 0)
+        {
+            return;
+        }
+        if (!int.TryParse(p[0], out int cmd))
+        {
+            return;
+        }
+        switch (cmd)
+        {
+            case 0:
+            case 2:
+                if (p.Count > 1)
+                {
+                    TitleChanged?.Invoke(p[1]);
+                }
+                break;
+            case 52:
+                // 形如 52;c;<base64>(c/p/s… 选区种类一律当系统剪贴板处理)。
+                if (p.Count > 2 && p[2] is { Length: > 0 } payload && payload != "?" && payload.Length <= MaxOsc52Bytes / 3 * 4 + 4)
+                {
+                    try
+                    {
+                        string text = Encoding.UTF8.GetString(Convert.FromBase64String(payload));
+                        if (text.Length > 0)
+                        {
+                            ClipboardWriteRequested?.Invoke(text);
+                        }
+                    }
+                    catch (FormatException)
+                    {
+                        // 非法 base64:按规范静默忽略。
+                    }
+                }
+                break;
+            // 4 (palette), 8 (hyperlink) intentionally accepted-and-ignored for now.
+        }
+    }
+
+    public void DcsDispatch(char prefix, IReadOnlyList<int> parameters, string intermediates, char final, string data)
+    {
+        // DECRQSS(DCS $ q Pt ST):按 xterm 惯例应答 DCS 1 $ r <设定> ST(1=有效,0=无效)。
+        // sixel 仍未实现,静默消费。
+        if (final != 'q' || intermediates != "$")
+        {
+            return;
+        }
+        switch (data)
+        {
+            case "m": // SGR:回报当前画笔属性
+                Send($"\eP1$r{BuildSgrReport()}m\e\\");
+                break;
+            case "r": // DECSTBM:回报当前滚动区域(1 基)
+                Send($"\eP1$r{Screen.ScrollTop + 1};{Screen.ScrollBottom + 1}r\e\\");
+                break;
+            default:
+                Send("\eP0$r\e\\");
+                break;
+        }
+    }
 
     /// <summary>Bytes the terminal needs to send back to the host (DA/DSR/etc.).</summary>
     public event Action<byte[]>? Response;
@@ -93,7 +472,7 @@ public sealed class TerminalEmulator : IVtActions
     }
 
     /// <summary>Changes the byte-decoding charset (UTF-8 by default). Pending bytes are dropped.</summary>
-    public void SetEncoding(System.Text.Encoding encoding) => _utf8.SetEncoding(encoding);
+    public void SetEncoding(Encoding encoding) => _utf8.SetEncoding(encoding);
 
     // ---- Input --------------------------------------------------------------
 
@@ -102,7 +481,9 @@ public sealed class TerminalEmulator : IVtActions
     {
         string decoded = _utf8.Decode(bytes);
         if (decoded.Length > 0)
+        {
             _parser.Parse(decoded);
+        }
         Updated?.Invoke();
     }
 
@@ -124,293 +505,108 @@ public sealed class TerminalEmulator : IVtActions
 
     private static bool[] BuildDefaultTabs(int columns)
     {
-        var tabs = new bool[Math.Max(1, columns)];
+        bool[] tabs = new bool[Math.Max(1, columns)];
         for (int i = 0; i < tabs.Length; i++)
+        {
             tabs[i] = i % 8 == 0 && i != 0;
+        }
         return tabs;
     }
 
     private static bool[] ResizeTabs(bool[] old, int columns)
     {
-        var tabs = new bool[Math.Max(1, columns)];
+        bool[] tabs = new bool[Math.Max(1, columns)];
         for (int i = 0; i < tabs.Length; i++)
-            tabs[i] = i < old.Length ? old[i] : (i % 8 == 0 && i != 0);
+        {
+            tabs[i] = i < old.Length ? old[i] : i % 8 == 0 && i != 0;
+        }
         return tabs;
-    }
-
-    // ---- IVtActions: printing ----------------------------------------------
-
-    public void Print(int rune)
-    {
-        // Apply active charset translation.
-        int setIndex = _singleShift >= 0 ? _singleShift : _gl;
-        _singleShift = -1;
-        if (_decGraphics[setIndex])
-            rune = Charsets.MapDecSpecial(rune);
-
-        int width = CharWidth.Of(rune);
-
-        // Combining marks attach to the previous cell without advancing the cursor.
-        if (width == 0)
-        {
-            AttachCombining(rune);
-            return;
-        }
-
-        if (_pendingWrap)
-        {
-            _screen.ActiveLine(_screen.CursorY).Wrapped = true;
-            CarriageReturnLineFeed(wrap: true);
-            _pendingWrap = false;
-        }
-
-        // Autowrap check for wide chars that won't fit.
-        if (width == 2 && _screen.CursorX == _screen.Columns - 1)
-        {
-            if (Modes.AutoWrap)
-            {
-                _screen.ActiveLine(_screen.CursorY).Wrapped = true;
-                CarriageReturnLineFeed(wrap: true);
-            }
-            else
-            {
-                _screen.SetCursorX(_screen.Columns - 2);
-            }
-        }
-
-        if (Modes.InsertMode)
-            _screen.InsertChars(width, Blank());
-
-        var cell = new TerminalCell
-        {
-            Rune = rune,
-            Foreground = _fg,
-            Background = _bg,
-            Flags = _flags,
-        };
-        _screen.SetCell(_screen.CursorX, _screen.CursorY, cell);
-
-        if (width == 2)
-        {
-            var trailing = cell;
-            trailing.Rune = 0;
-            trailing.Flags |= CellFlags.WideTrailing;
-            _screen.SetCell(_screen.CursorX + 1, _screen.CursorY, trailing);
-        }
-
-        int advance = width;
-        if (_screen.CursorX + advance >= _screen.Columns)
-        {
-            if (Modes.AutoWrap)
-            {
-                _screen.SetCursorX(_screen.Columns - 1);
-                _pendingWrap = true;
-            }
-            else
-            {
-                _screen.SetCursorX(_screen.Columns - 1);
-            }
-        }
-        else
-        {
-            _screen.SetCursorX(_screen.CursorX + advance);
-        }
     }
 
     private void AttachCombining(int rune)
     {
-        int x = _screen.CursorX - 1;
-        int y = _screen.CursorY;
-        if (x < 0) return;
-        ref TerminalCell cell = ref _screen.CellRef(Math.Clamp(x, 0, _screen.Columns - 1), y);
+        int x = Screen.CursorX - 1;
+        int y = Screen.CursorY;
+        if (x < 0)
+        {
+            return;
+        }
+        ref TerminalCell cell = ref Screen.CellRef(Math.Clamp(x, 0, Screen.Columns - 1), y);
         if (cell.IsWideTrailing && x - 1 >= 0)
         {
             x -= 1;
-            cell = ref _screen.CellRef(x, y);
+            cell = ref Screen.CellRef(x, y);
         }
         cell.Combining = (cell.Combining ?? string.Empty) + char.ConvertFromUtf32(rune);
     }
 
-    private void CarriageReturnLineFeed(bool wrap)
+    private void CarriageReturnLineFeed()
     {
-        if (!wrap)
-            _screen.SetCursorX(0);
-        else
-            _screen.SetCursorX(0);
-        _screen.Index(Blank());
-    }
-
-    // ---- IVtActions: C0 controls -------------------------------------------
-
-    public void Execute(char control)
-    {
-        switch (control)
-        {
-            case '\a': // BEL
-                Bell?.Invoke();
-                break;
-            case '\b': // BS
-                if (_pendingWrap) _pendingWrap = false;
-                else if (_screen.CursorX > 0) _screen.SetCursorX(_screen.CursorX - 1);
-                break;
-            case '\t': // HT
-                HorizontalTab();
-                break;
-            case '\n': // LF
-            case '\v': // VT
-            case '\f': // FF
-                _pendingWrap = false;
-                _screen.Index(Blank());
-                if (Modes.NewLineMode)
-                    _screen.SetCursorX(0);
-                break;
-            case '\r': // CR
-                _pendingWrap = false;
-                _screen.SetCursorX(0);
-                break;
-            case '\x0E': // SO -> invoke G1 into GL
-                _gl = 1;
-                break;
-            case '\x0F': // SI -> invoke G0 into GL
-                _gl = 0;
-                break;
-        }
+        Screen.SetCursorX(0);
+        Screen.Index(Blank());
     }
 
     private void HorizontalTab()
     {
-        int x = _screen.CursorX;
-        for (int i = x + 1; i < _screen.Columns; i++)
+        int x = Screen.CursorX;
+        for (int i = x + 1; i < Screen.Columns; i++)
         {
-            if (_tabStops[i])
+            if (!_tabStops[i])
             {
-                _screen.SetCursorX(i);
-                return;
+                continue;
             }
-        }
-        _screen.SetCursorX(_screen.Columns - 1);
-    }
-
-    // ---- IVtActions: ESC ----------------------------------------------------
-
-    public void EscDispatch(string intermediates, char final)
-    {
-        if (Type == TerminalType.Vt52 && intermediates.Length == 0)
-        {
-            EscDispatchVt52(final);
+            Screen.SetCursorX(i);
             return;
         }
-
-        if (intermediates.Length > 0)
-        {
-            char inter = intermediates[0];
-            switch (inter)
-            {
-                case '(' or ')' or '*' or '+': // designate G0..G3
-                    int g = inter switch { '(' => 0, ')' => 1, '*' => 2, _ => 3 };
-                    _decGraphics[g] = final == '0';
-                    return;
-                case '#':
-                    if (final == '8') FillScreenWithE(); // DECALN
-                    return;
-            }
-            return;
-        }
-
-        switch (final)
-        {
-            case 'D': _screen.Index(Blank()); break;                 // IND
-            case 'M': _screen.ReverseIndex(Blank()); break;          // RI
-            case 'E': _screen.SetCursorX(0); _screen.Index(Blank()); break; // NEL
-            case 'H': _tabStops[Math.Clamp(_screen.CursorX, 0, _tabStops.Length - 1)] = true; break; // HTS
-            case '7': SaveCursor(); break;                           // DECSC
-            case '8': RestoreCursor(); break;                        // DECRC
-            case '=': Modes.ApplicationKeypad = true; break;         // DECKPAM
-            case '>': Modes.ApplicationKeypad = false; break;        // DECKPNM
-            case 'c': FullReset(); break;                            // RIS
-            case '\\': break;                                        // ST (string terminator)
-            case 'n': _gl = 2; break;                                // LS2
-            case 'o': _gl = 3; break;                                // LS3
-        }
+        Screen.SetCursorX(Screen.Columns - 1);
     }
 
     private void EscDispatchVt52(char final)
     {
         switch (final)
         {
-            case 'A': _screen.SetCursor(_screen.CursorX, _screen.CursorY - 1); break;
-            case 'B': _screen.SetCursor(_screen.CursorX, _screen.CursorY + 1); break;
-            case 'C': _screen.SetCursor(_screen.CursorX + 1, _screen.CursorY); break;
-            case 'D': _screen.SetCursor(_screen.CursorX - 1, _screen.CursorY); break;
-            case 'H': _screen.SetCursor(0, 0); break;
-            case 'I': _screen.ReverseIndex(Blank()); break;
-            case 'J': _screen.EraseInDisplay(0, Blank()); break;
-            case 'K': _screen.EraseInLine(0, Blank()); break;
-            case 'Z': Send("\x1b/Z"); break;                         // VT52 identify
-            case '<': SetTerminalType(TerminalType.Vt100); break;    // exit VT52 mode
-            case '=': Modes.ApplicationKeypad = true; break;
-            case '>': Modes.ApplicationKeypad = false; break;
-            case 'F': _decGraphics[0] = true; break;                 // enter graphics
-            case 'G': _decGraphics[0] = false; break;                // exit graphics
-        }
-    }
-
-    // ---- IVtActions: CSI ----------------------------------------------------
-
-    public void CsiDispatch(char prefix, IReadOnlyList<int> p, string intermediates, char final)
-    {
-        int P(int index, int def = 1)
-        {
-            if (index >= p.Count) return def;
-            int v = p[index];
-            return v == 0 ? def : v;
-        }
-        int P0(int index) => index < p.Count ? p[index] : 0;
-
-        if (prefix == '?')
-        {
-            HandlePrivateMode(p, final);
-            return;
-        }
-
-        // Intermediate '!' + 'p' => DECSTR soft reset.
-        if (intermediates == "!" && final == 'p') { SoftReset(); return; }
-        if (intermediates == " " && final == 'q') { return; } // DECSCUSR cursor style (accepted, style handled in UI)
-
-        switch (final)
-        {
-            case '@': _screen.InsertChars(P(0), Blank()); break;                          // ICH
-            case 'A': MoveCursor(0, -P(0)); break;                                        // CUU
-            case 'B': MoveCursor(0, P(0)); break;                                         // CUD
-            case 'C': MoveCursor(P(0), 0); break;                                         // CUF
-            case 'D': MoveCursor(-P(0), 0); break;                                        // CUB
-            case 'E': _screen.SetCursorX(0); MoveCursor(0, P(0)); break;                  // CNL
-            case 'F': _screen.SetCursorX(0); MoveCursor(0, -P(0)); break;                 // CPL
-            case '`':
-            case 'G': SetCursorColumn(P(0) - 1); break;                                   // CHA / HPA
-            case 'd': SetCursorRow(P(0) - 1); break;                                      // VPA
+            case 'A':
+                Screen.SetCursor(Screen.CursorX, Screen.CursorY - 1);
+                break;
+            case 'B':
+                Screen.SetCursor(Screen.CursorX, Screen.CursorY + 1);
+                break;
+            case 'C':
+                Screen.SetCursor(Screen.CursorX + 1, Screen.CursorY);
+                break;
+            case 'D':
+                Screen.SetCursor(Screen.CursorX - 1, Screen.CursorY);
+                break;
             case 'H':
-            case 'f': CursorPosition(P(0) - 1, P(1) - 1); break;                          // CUP / HVP
-            case 'I': TabForward(P(0)); break;                                            // CHT
-            case 'Z': TabBackward(P(0)); break;                                           // CBT
-            case 'J': _screen.EraseInDisplay(P0(0), Blank()); _pendingWrap = false; break;// ED
-            case 'K': _screen.EraseInLine(P0(0), Blank()); _pendingWrap = false; break;   // EL
-            case 'L': _screen.InsertLines(P(0), Blank()); break;                          // IL
-            case 'M': _screen.DeleteLines(P(0), Blank()); break;                          // DL
-            case 'P': _screen.DeleteChars(P(0), Blank()); break;                          // DCH
-            case 'X': _screen.EraseChars(P(0), Blank()); break;                           // ECH
-            case 'S': _screen.ScrollUp(P(0), Blank()); break;                             // SU
-            case 'T': _screen.ScrollDown(P(0), Blank()); break;                           // SD
-            case 'm': ApplySgr(p); break;                                                 // SGR
-            case 'r': SetScrollRegion(p); break;                                          // DECSTBM
-            case 'h': SetAnsiMode(p, true); break;
-            case 'l': SetAnsiMode(p, false); break;
-            case 'g': ClearTabs(P0(0)); break;                                            // TBC
-            case 'c': DeviceAttributes(prefix, P0(0)); break;                             // DA
-            case 'n': DeviceStatusReport(P0(0)); break;                                   // DSR
-            case 's': SaveCursor(); break;                                                // ANSI.SYS save
-            case 'u': RestoreCursor(); break;                                             // ANSI.SYS restore
-            case 't': break;                                                              // window ops (ignored)
+                Screen.SetCursor(0, 0);
+                break;
+            case 'I':
+                Screen.ReverseIndex(Blank());
+                break;
+            case 'J':
+                Screen.EraseInDisplay(0, Blank());
+                break;
+            case 'K':
+                Screen.EraseInLine(0, Blank());
+                break;
+            case 'Z':
+                Send("\e/Z");
+                break; // VT52 identify
+            case '<':
+                SetTerminalType(TerminalType.Vt100);
+                break; // exit VT52 mode
+            case '=':
+                Modes.ApplicationKeypad = true;
+                break;
+            case '>':
+                Modes.ApplicationKeypad = false;
+                break;
+            case 'F':
+                _decGraphics[0] = true;
+                break; // enter graphics
+            case 'G':
+                _decGraphics[0] = false;
+                break; // exit graphics
         }
     }
 
@@ -423,31 +619,80 @@ public sealed class TerminalEmulator : IVtActions
         }
         bool set = final == 'h';
         if (final != 'h' && final != 'l')
+        {
             return;
-
+        }
         foreach (int mode in p)
         {
             switch (mode)
             {
-                case 1: Modes.ApplicationCursorKeys = set; break;             // DECCKM
-                case 2: if (!set) SetTerminalType(TerminalType.Vt52); break;   // DECANM (reset -> VT52)
-                case 3: ColumnMode(set); break;                               // DECCOLM 132/80
-                case 5: Modes.ReverseVideo = set; break;                      // DECSCNM
-                case 6: Modes.OriginMode = set; HomeCursor(); break;          // DECOM
-                case 7: Modes.AutoWrap = set; break;                          // DECAWM
-                case 9: Modes.Mouse = set ? MouseTracking.X10 : MouseTracking.None; break;
-                case 12: Modes.CursorBlink = set; break;
-                case 25: Modes.CursorVisible = set; break;                    // DECTCEM
-                case 1000: Modes.Mouse = set ? MouseTracking.Normal : MouseTracking.None; break;
-                case 1002: Modes.Mouse = set ? MouseTracking.ButtonEvent : MouseTracking.None; break;
-                case 1003: Modes.Mouse = set ? MouseTracking.AnyEvent : MouseTracking.None; break;
-                case 1004: break; // focus reporting (accepted)
-                case 1006: Modes.MouseEncoding = set ? MouseEncoding.Sgr : MouseEncoding.Default; break;
-                case 1015: Modes.MouseEncoding = set ? MouseEncoding.Urxvt : MouseEncoding.Default; break;
-                case 1047: SwitchAlternate(set, clearOnExit: true); break;
-                case 1048: if (set) SaveCursor(); else RestoreCursor(); break;
-                case 1049: SwitchAlternate(set, clearOnExit: true, saveCursor: true); break;
-                case 2004: Modes.BracketedPaste = set; break;
+                case 1:
+                    Modes.ApplicationCursorKeys = set;
+                    break; // DECCKM
+                case 2:
+                    if (!set)
+                    {
+                        SetTerminalType(TerminalType.Vt52);
+                    }
+                    break; // DECANM (reset -> VT52)
+                case 3:
+                    ColumnMode(set);
+                    break; // DECCOLM 132/80
+                case 5:
+                    Modes.ReverseVideo = set;
+                    break; // DECSCNM
+                case 6:
+                    Modes.OriginMode = set;
+                    HomeCursor();
+                    break; // DECOM
+                case 7:
+                    Modes.AutoWrap = set;
+                    break; // DECAWM
+                case 9:
+                    Modes.Mouse = set ? MouseTracking.X10 : MouseTracking.None;
+                    break;
+                case 12:
+                    Modes.CursorBlink = set;
+                    break;
+                case 25:
+                    Modes.CursorVisible = set;
+                    break; // DECTCEM
+                case 1000:
+                    Modes.Mouse = set ? MouseTracking.Normal : MouseTracking.None;
+                    break;
+                case 1002:
+                    Modes.Mouse = set ? MouseTracking.ButtonEvent : MouseTracking.None;
+                    break;
+                case 1003:
+                    Modes.Mouse = set ? MouseTracking.AnyEvent : MouseTracking.None;
+                    break;
+                case 1004:
+                    break; // focus reporting (accepted)
+                case 1006:
+                    Modes.MouseEncoding = set ? MouseEncoding.Sgr : MouseEncoding.Default;
+                    break;
+                case 1015:
+                    Modes.MouseEncoding = set ? MouseEncoding.Urxvt : MouseEncoding.Default;
+                    break;
+                case 1047:
+                    SwitchAlternate(set);
+                    break;
+                case 1048:
+                    if (set)
+                    {
+                        SaveCursor();
+                    }
+                    else
+                    {
+                        RestoreCursor();
+                    }
+                    break;
+                case 1049:
+                    SwitchAlternate(set, true);
+                    break;
+                case 2004:
+                    Modes.BracketedPaste = set;
+                    break;
             }
         }
     }
@@ -458,8 +703,12 @@ public sealed class TerminalEmulator : IVtActions
         {
             switch (mode)
             {
-                case 4: Modes.InsertMode = set; break;   // IRM
-                case 20: Modes.NewLineMode = set; break; // LNM
+                case 4:
+                    Modes.InsertMode = set;
+                    break; // IRM
+                case 20:
+                    Modes.NewLineMode = set;
+                    break; // LNM
             }
         }
     }
@@ -469,24 +718,28 @@ public sealed class TerminalEmulator : IVtActions
     private void MoveCursor(int dx, int dy)
     {
         _pendingWrap = false;
-        int y = _screen.CursorY + dy;
+        int y = Screen.CursorY + dy;
         if (Modes.OriginMode)
-            y = Math.Clamp(y, _screen.ScrollTop, _screen.ScrollBottom);
-        _screen.SetCursor(_screen.CursorX + dx, y);
+        {
+            y = Math.Clamp(y, Screen.ScrollTop, Screen.ScrollBottom);
+        }
+        Screen.SetCursor(Screen.CursorX + dx, y);
     }
 
     private void SetCursorColumn(int col)
     {
         _pendingWrap = false;
-        _screen.SetCursorX(col);
+        Screen.SetCursorX(col);
     }
 
     private void SetCursorRow(int row)
     {
         _pendingWrap = false;
         if (Modes.OriginMode)
-            row += _screen.ScrollTop;
-        _screen.SetCursorY(Modes.OriginMode ? Math.Clamp(row, _screen.ScrollTop, _screen.ScrollBottom) : row);
+        {
+            row += Screen.ScrollTop;
+        }
+        Screen.SetCursorY(Modes.OriginMode ? Math.Clamp(row, Screen.ScrollTop, Screen.ScrollBottom) : row);
     }
 
     private void CursorPosition(int row, int col)
@@ -494,50 +747,69 @@ public sealed class TerminalEmulator : IVtActions
         _pendingWrap = false;
         if (Modes.OriginMode)
         {
-            row += _screen.ScrollTop;
-            row = Math.Clamp(row, _screen.ScrollTop, _screen.ScrollBottom);
+            row += Screen.ScrollTop;
+            row = Math.Clamp(row, Screen.ScrollTop, Screen.ScrollBottom);
         }
-        _screen.SetCursor(col, row);
+        Screen.SetCursor(col, row);
     }
 
     private void HomeCursor()
     {
         if (Modes.OriginMode)
-            _screen.SetCursor(0, _screen.ScrollTop);
+        {
+            Screen.SetCursor(0, Screen.ScrollTop);
+        }
         else
-            _screen.SetCursor(0, 0);
+        {
+            Screen.SetCursor(0, 0);
+        }
     }
 
     private void TabForward(int count)
     {
-        for (int i = 0; i < count; i++) HorizontalTab();
+        for (int i = 0; i < count; i++)
+        {
+            HorizontalTab();
+        }
     }
 
     private void TabBackward(int count)
     {
         for (int c = 0; c < count; c++)
         {
-            int x = _screen.CursorX;
+            int x = Screen.CursorX;
             int target = 0;
             for (int i = x - 1; i > 0; i--)
-                if (_tabStops[i]) { target = i; break; }
-            _screen.SetCursorX(target);
+            {
+                if (!_tabStops[i])
+                {
+                    continue;
+                }
+                target = i;
+                break;
+            }
+            Screen.SetCursorX(target);
         }
     }
 
     private void ClearTabs(int mode)
     {
-        if (mode == 0)
-            _tabStops[Math.Clamp(_screen.CursorX, 0, _tabStops.Length - 1)] = false;
-        else if (mode == 3)
-            Array.Clear(_tabStops, 0, _tabStops.Length);
+        switch (mode)
+        {
+            case 0:
+                _tabStops[Math.Clamp(Screen.CursorX, 0, _tabStops.Length - 1)] = false;
+                break;
+            case 3:
+                Array.Clear(_tabStops, 0, _tabStops.Length);
+                break;
+        }
     }
 
     private void SetScrollRegion(IReadOnlyList<int> p)
     {
         int top = (p.Count > 0 && p[0] > 0 ? p[0] : 1) - 1;
-        int bottom = (p.Count > 1 && p[1] > 0 ? p[1] : _screen.Rows) - 1;
-        _screen.SetMargins(top, bottom);
+        int bottom = (p.Count > 1 && p[1] > 0 ? p[1] : Screen.Rows) - 1;
+        Screen.SetMargins(top, bottom);
         HomeCursor();
     }
 
@@ -550,37 +822,87 @@ public sealed class TerminalEmulator : IVtActions
             ResetPen();
             return;
         }
-
         for (int i = 0; i < p.Count; i++)
         {
             int code = p[i];
             switch (code)
             {
-                case 0: ResetPen(); break;
-                case 1: _flags |= CellFlags.Bold; break;
-                case 2: _flags |= CellFlags.Dim; break;
-                case 3: _flags |= CellFlags.Italic; break;
-                case 4: _flags |= CellFlags.Underline; break;
-                case 5: case 6: _flags |= CellFlags.Blink; break;
-                case 7: _flags |= CellFlags.Inverse; break;
-                case 8: _flags |= CellFlags.Invisible; break;
-                case 9: _flags |= CellFlags.Strikethrough; break;
-                case 21: _flags |= CellFlags.DoubleUnderline; break;
-                case 22: _flags &= ~(CellFlags.Bold | CellFlags.Dim); break;
-                case 23: _flags &= ~CellFlags.Italic; break;
-                case 24: _flags &= ~(CellFlags.Underline | CellFlags.DoubleUnderline); break;
-                case 25: _flags &= ~CellFlags.Blink; break;
-                case 27: _flags &= ~CellFlags.Inverse; break;
-                case 28: _flags &= ~CellFlags.Invisible; break;
-                case 29: _flags &= ~CellFlags.Strikethrough; break;
-                case >= 30 and <= 37: _fg = TerminalColor.FromIndex(code - 30); break;
-                case 38: i = ParseExtendedColor(p, i, ref _fg); break;
-                case 39: _fg = TerminalColor.Default; break;
-                case >= 40 and <= 47: _bg = TerminalColor.FromIndex(code - 40); break;
-                case 48: i = ParseExtendedColor(p, i, ref _bg); break;
-                case 49: _bg = TerminalColor.Default; break;
-                case >= 90 and <= 97: _fg = TerminalColor.FromIndex(code - 90 + 8); break;
-                case >= 100 and <= 107: _bg = TerminalColor.FromIndex(code - 100 + 8); break;
+                case 0:
+                    ResetPen();
+                    break;
+                case 1:
+                    _flags |= CellFlags.Bold;
+                    break;
+                case 2:
+                    _flags |= CellFlags.Dim;
+                    break;
+                case 3:
+                    _flags |= CellFlags.Italic;
+                    break;
+                case 4:
+                    _flags |= CellFlags.Underline;
+                    break;
+                case 5:
+                case 6:
+                    _flags |= CellFlags.Blink;
+                    break;
+                case 7:
+                    _flags |= CellFlags.Inverse;
+                    break;
+                case 8:
+                    _flags |= CellFlags.Invisible;
+                    break;
+                case 9:
+                    _flags |= CellFlags.Strikethrough;
+                    break;
+                case 21:
+                    _flags |= CellFlags.DoubleUnderline;
+                    break;
+                case 22:
+                    _flags &= ~(CellFlags.Bold | CellFlags.Dim);
+                    break;
+                case 23:
+                    _flags &= ~CellFlags.Italic;
+                    break;
+                case 24:
+                    _flags &= ~(CellFlags.Underline | CellFlags.DoubleUnderline);
+                    break;
+                case 25:
+                    _flags &= ~CellFlags.Blink;
+                    break;
+                case 27:
+                    _flags &= ~CellFlags.Inverse;
+                    break;
+                case 28:
+                    _flags &= ~CellFlags.Invisible;
+                    break;
+                case 29:
+                    _flags &= ~CellFlags.Strikethrough;
+                    break;
+                case >= 30 and <= 37:
+                    _fg = TerminalColor.FromIndex(code - 30);
+                    break;
+                case 38:
+                    i = ParseExtendedColor(p, i, ref _fg);
+                    break;
+                case 39:
+                    _fg = TerminalColor.Default;
+                    break;
+                case >= 40 and <= 47:
+                    _bg = TerminalColor.FromIndex(code - 40);
+                    break;
+                case 48:
+                    i = ParseExtendedColor(p, i, ref _bg);
+                    break;
+                case 49:
+                    _bg = TerminalColor.Default;
+                    break;
+                case >= 90 and <= 97:
+                    _fg = TerminalColor.FromIndex(code - 90 + 8);
+                    break;
+                case >= 100 and <= 107:
+                    _bg = TerminalColor.FromIndex(code - 100 + 8);
+                    break;
             }
         }
     }
@@ -589,21 +911,31 @@ public sealed class TerminalEmulator : IVtActions
     private int ParseExtendedColor(IReadOnlyList<int> p, int i, ref TerminalColor target)
     {
         if (i + 1 >= p.Count)
+        {
             return i;
+        }
         int kind = p[i + 1];
-        if (kind == 5 && i + 2 < p.Count)
+        switch (kind)
         {
-            if (Type.SupportsColor())
-                target = TerminalColor.FromIndex(p[i + 2]);
-            return i + 2;
+            case 5 when i + 2 < p.Count:
+            {
+                if (Type.SupportsColor())
+                {
+                    target = TerminalColor.FromIndex(p[i + 2]);
+                }
+                return i + 2;
+            }
+            case 2 when i + 4 < p.Count:
+            {
+                if (Type.SupportsColor())
+                {
+                    target = TerminalColor.FromRgb((byte)p[i + 2], (byte)p[i + 3], (byte)p[i + 4]);
+                }
+                return i + 4;
+            }
+            default:
+                return i + 1;
         }
-        if (kind == 2 && i + 4 < p.Count)
-        {
-            if (Type.SupportsColor())
-                target = TerminalColor.FromRgb((byte)p[i + 2], (byte)p[i + 3], (byte)p[i + 4]);
-            return i + 4;
-        }
-        return i + 1;
     }
 
     private void ResetPen()
@@ -619,59 +951,70 @@ public sealed class TerminalEmulator : IVtActions
     {
         // DECCOLM: switch 132/80 columns, clearing the screen.
         int cols = set ? 132 : 80;
-        _screen.EraseInDisplay(2, Blank());
-        _screen.SetCursor(0, 0);
-        Resize(cols, _screen.Rows);
+        Screen.EraseInDisplay(2, Blank());
+        Screen.SetCursor(0, 0);
+        Resize(cols, Screen.Rows);
     }
 
-    private void SwitchAlternate(bool enable, bool clearOnExit, bool saveCursor = false)
+    private void SwitchAlternate(bool enable, bool saveCursor = false)
     {
-        if (enable == _alternate)
+        if (enable == IsAlternateScreen)
+        {
             return;
-
+        }
         if (enable)
         {
             // Save the MAIN cursor into the dedicated alt slot before switching.
-            if (saveCursor) _altSaved = CaptureCursor();
-            _altScreen = new TerminalScreen(_mainScreen.Columns, _mainScreen.Rows, maxScrollback: 0);
+            if (saveCursor)
+            {
+                _altSaved = CaptureCursor();
+            }
+            _altScreen = new(_mainScreen.Columns, _mainScreen.Rows, 0);
             _altScreen.ResetToBlank(Blank());
-            _alternate = true;
-            _screen = _altScreen;
-            _screen.SetCursor(0, 0);
+            IsAlternateScreen = true;
+            Screen = _altScreen;
+            Screen.SetCursor(0, 0);
         }
         else
         {
             _altScreen = null;
-            _alternate = false;
-            _screen = _mainScreen;
+            IsAlternateScreen = false;
+            Screen = _mainScreen;
             // Restore the main cursor from the dedicated alt slot — never from _saved, which the
             // alt-screen app may have overwritten via DECSC.
-            if (saveCursor) ApplyCursor(_altSaved);
+            if (saveCursor)
+            {
+                ApplyCursor(_altSaved);
+            }
         }
         _pendingWrap = false;
     }
 
-    private SavedCursor CaptureCursor() => new()
-    {
-        X = _screen.CursorX,
-        Y = _screen.CursorY,
-        Fg = _fg,
-        Bg = _bg,
-        Flags = _flags,
-        Gl = _gl,
-        DecGraphics = (bool[])_decGraphics.Clone(),
-        OriginMode = Modes.OriginMode,
-    };
+    private SavedCursor CaptureCursor() =>
+        new()
+        {
+            X = Screen.CursorX,
+            Y = Screen.CursorY,
+            Fg = _fg,
+            Bg = _bg,
+            Flags = _flags,
+            Gl = _gl,
+            DecGraphics = (bool[])_decGraphics.Clone(),
+            OriginMode = Modes.OriginMode
+        };
 
     private void ApplyCursor(SavedCursor? saved)
     {
         if (saved is not { } s)
         {
-            _screen.SetCursor(0, 0);
+            Screen.SetCursor(0, 0);
             return;
         }
-        _screen.SetCursor(s.X, s.Y);
-        _fg = s.Fg; _bg = s.Bg; _flags = s.Flags; _gl = s.Gl;
+        Screen.SetCursor(s.X, s.Y);
+        _fg = s.Fg;
+        _bg = s.Bg;
+        _flags = s.Flags;
+        _gl = s.Gl;
         Array.Copy(s.DecGraphics, _decGraphics, _decGraphics.Length);
         Modes.OriginMode = s.OriginMode;
         _pendingWrap = false;
@@ -684,15 +1027,17 @@ public sealed class TerminalEmulator : IVtActions
     private void FillScreenWithE()
     {
         var cell = new TerminalCell { Rune = 'E', Foreground = _fg, Background = _bg, Flags = _flags };
-        for (int y = 0; y < _screen.Rows; y++)
-            for (int x = 0; x < _screen.Columns; x++)
-                _screen.SetCell(x, y, cell);
+        for (int y = 0; y < Screen.Rows; y++)
+        for (int x = 0; x < Screen.Columns; x++)
+        {
+            Screen.SetCell(x, y, cell);
+        }
     }
 
     private void SoftReset()
     {
         Modes.Reset();
-        _screen.ResetMargins();
+        Screen.ResetMargins();
         ResetPen();
         _gl = 0;
         Array.Clear(_decGraphics, 0, _decGraphics.Length);
@@ -704,36 +1049,47 @@ public sealed class TerminalEmulator : IVtActions
     private void FullReset()
     {
         SoftReset();
-        _tabStops = BuildDefaultTabs(_screen.Columns);
-        if (_alternate)
-            SwitchAlternate(false, clearOnExit: true);
-        _screen.ResetToBlank(Blank());
-        _screen.ClearScrollback();
+        _tabStops = BuildDefaultTabs(Screen.Columns);
+        if (IsAlternateScreen)
+        {
+            SwitchAlternate(false);
+        }
+        Screen.ResetToBlank(Blank());
+        Screen.ClearScrollback();
         _utf8.Reset();
         _parser.Reset();
     }
 
     // ---- Reports ------------------------------------------------------------
 
-    private void DeviceAttributes(char prefix, int p)
+    private void DeviceAttributes(char prefix)
     {
-        if (prefix == '>')
-            Send(Type.SecondaryDeviceAttributes());
-        else if (prefix == '\0')
-            Send(Type.PrimaryDeviceAttributes());
+        switch (prefix)
+        {
+            case '>':
+                Send(Type.SecondaryDeviceAttributes());
+                break;
+            case '\0':
+                Send(Type.PrimaryDeviceAttributes());
+                break;
+        }
     }
 
     private void DeviceStatusReport(int p)
     {
         switch (p)
         {
-            case 5: Send("\x1b[0n"); break; // OK
+            case 5:
+                Send("\e[0n");
+                break; // OK
             case 6:
-                int row = _screen.CursorY + 1;
-                int col = _screen.CursorX + 1;
+                int row = Screen.CursorY + 1;
+                int col = Screen.CursorX + 1;
                 if (Modes.OriginMode)
-                    row = _screen.CursorY - _screen.ScrollTop + 1;
-                Send($"\x1b[{row};{col}R");
+                {
+                    row = Screen.CursorY - Screen.ScrollTop + 1;
+                }
+                Send($"\e[{row};{col}R");
                 break;
         }
     }
@@ -742,87 +1098,56 @@ public sealed class TerminalEmulator : IVtActions
 
     // ---- IVtActions: OSC / DCS ---------------------------------------------
 
-    /// <summary>OSC 52:远端程序(tmux/vim 的 yank)请求写系统剪贴板。只支持写方向;
-    /// 查询("?")一律不应答,防止远端读取本地剪贴板内容(安全)。宿主控件订阅后落剪贴板。</summary>
+    /// <summary>
+    /// OSC 52:远端程序(tmux/vim 的 yank)请求写系统剪贴板。只支持写方向;
+    /// 查询("?")一律不应答,防止远端读取本地剪贴板内容(安全)。宿主控件订阅后落剪贴板。
+    /// </summary>
     public event Action<string>? ClipboardWriteRequested;
-
-    /// <summary>OSC 52 载荷上限(base64 解码后),防远端滥发撑爆剪贴板。</summary>
-    private const int MaxOsc52Bytes = 1024 * 1024;
-
-    public void OscDispatch(IReadOnlyList<string> p)
-    {
-        if (p.Count == 0)
-            return;
-        if (!int.TryParse(p[0], out int cmd))
-            return;
-        switch (cmd)
-        {
-            case 0:
-            case 2:
-                if (p.Count > 1)
-                    TitleChanged?.Invoke(p[1]);
-                break;
-            case 52:
-                // 形如 52;c;<base64>(c/p/s… 选区种类一律当系统剪贴板处理)。
-                if (p.Count > 2 && p[2] is { Length: > 0 } payload && payload != "?"
-                    && payload.Length <= MaxOsc52Bytes / 3 * 4 + 4)
-                {
-                    try
-                    {
-                        var text = Encoding.UTF8.GetString(Convert.FromBase64String(payload));
-                        if (text.Length > 0)
-                            ClipboardWriteRequested?.Invoke(text);
-                    }
-                    catch (FormatException)
-                    {
-                        // 非法 base64:按规范静默忽略。
-                    }
-                }
-                break;
-            // 4 (palette), 8 (hyperlink) intentionally accepted-and-ignored for now.
-        }
-    }
-
-    public void DcsDispatch(char prefix, IReadOnlyList<int> parameters, string intermediates, char final, string data)
-    {
-        // DECRQSS(DCS $ q Pt ST):按 xterm 惯例应答 DCS 1 $ r <设定> ST(1=有效,0=无效)。
-        // sixel 仍未实现,静默消费。
-        if (final == 'q' && intermediates == "$")
-        {
-            switch (data)
-            {
-                case "m": // SGR:回报当前画笔属性
-                    Send($"\x1bP1$r{BuildSgrReport()}m\x1b\\");
-                    break;
-                case "r": // DECSTBM:回报当前滚动区域(1 基)
-                    Send($"\x1bP1$r{_screen.ScrollTop + 1};{_screen.ScrollBottom + 1}r\x1b\\");
-                    break;
-                default:
-                    Send("\x1bP0$r\x1b\\");
-                    break;
-            }
-        }
-    }
 
     /// <summary>把当前画笔状态编码为 SGR 参数串(DECRQSS "m" 应答用),始终以 0 开头。</summary>
     private string BuildSgrReport()
     {
         var sb = new StringBuilder("0");
-        if ((_flags & CellFlags.Bold) != 0) sb.Append(";1");
-        if ((_flags & CellFlags.Dim) != 0) sb.Append(";2");
-        if ((_flags & CellFlags.Italic) != 0) sb.Append(";3");
-        if ((_flags & CellFlags.Underline) != 0) sb.Append(";4");
-        if ((_flags & CellFlags.Blink) != 0) sb.Append(";5");
-        if ((_flags & CellFlags.Inverse) != 0) sb.Append(";7");
-        if ((_flags & CellFlags.Invisible) != 0) sb.Append(";8");
-        if ((_flags & CellFlags.Strikethrough) != 0) sb.Append(";9");
-        AppendSgrColor(sb, _fg, isForeground: true);
-        AppendSgrColor(sb, _bg, isForeground: false);
+        if ((_flags & CellFlags.Bold) != 0)
+        {
+            sb.Append(";1");
+        }
+        if ((_flags & CellFlags.Dim) != 0)
+        {
+            sb.Append(";2");
+        }
+        if ((_flags & CellFlags.Italic) != 0)
+        {
+            sb.Append(";3");
+        }
+        if ((_flags & CellFlags.Underline) != 0)
+        {
+            sb.Append(";4");
+        }
+        if ((_flags & CellFlags.Blink) != 0)
+        {
+            sb.Append(";5");
+        }
+        if ((_flags & CellFlags.Inverse) != 0)
+        {
+            sb.Append(";7");
+        }
+        if ((_flags & CellFlags.Invisible) != 0)
+        {
+            sb.Append(";8");
+        }
+        if ((_flags & CellFlags.Strikethrough) != 0)
+        {
+            sb.Append(";9");
+        }
+        AppendSgrColor(sb, _fg, true);
+        AppendSgrColor(sb, _bg, false);
         return sb.ToString();
     }
 
     private static void AppendSgrColor(StringBuilder sb, TerminalColor color, bool isForeground)
     {
+        // ReSharper disable once SwitchStatementMissingSomeEnumCasesNoDefault
         switch (color.Kind)
         {
             case TerminalColorKind.Indexed when color.Index < 8:
@@ -840,5 +1165,15 @@ public sealed class TerminalEmulator : IVtActions
                 break;
             // Default:SGR 0 已覆盖,无需追加。
         }
+    }
+
+    private struct SavedCursor
+    {
+        public int X, Y;
+        public TerminalColor Fg, Bg;
+        public CellFlags Flags;
+        public int Gl;
+        public bool[] DecGraphics;
+        public bool OriginMode;
     }
 }

@@ -21,7 +21,7 @@ public class Utf8StreamDecoderTests
     public void DecodeBytes_EmptyInput_ReturnsEmptyString()
     {
         var decoder = new Utf8StreamDecoder();
-        byte[] input = Array.Empty<byte>();
+        byte[] input = [];
         string result = decoder.DecodeBytes(input);
         Assert.AreEqual(string.Empty, result);
     }
@@ -121,7 +121,7 @@ public class Utf8StreamDecoderTests
         var decoder = new Utf8StreamDecoder();
 
         // 0xFF is never valid in UTF-8
-        byte[] invalidBytes = new byte[] { 0xFF, 0xFE };
+        byte[] invalidBytes = [0xFF, 0xFE];
         string result = decoder.DecodeBytes(invalidBytes);
 
         // Flush to force any buffered invalid bytes to emit
@@ -136,7 +136,7 @@ public class Utf8StreamDecoderTests
         var decoder = new Utf8StreamDecoder();
 
         // First byte of a 3-byte sequence (0xE4 starts 你)
-        byte[] incompleteBytes = new byte[] { 0xE4 };
+        byte[] incompleteBytes = [0xE4];
         string result = decoder.DecodeBytes(incompleteBytes);
         Assert.AreEqual(string.Empty, result);
         string flushed = decoder.Flush();

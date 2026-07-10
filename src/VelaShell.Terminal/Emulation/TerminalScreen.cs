@@ -1,17 +1,16 @@
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// The terminal grid: an active screen of <see cref="TerminalRow"/> plus a scrollback
+/// The terminal grid: an active screen of <see cref="TerminalRow" /> plus a scrollback
 /// history for the main (non-alternate) buffer. Owns the cursor, the vertical scroll
 /// region (DECSTBM) and all structural editing primitives the emulator drives.
-///
 /// This class is intentionally UI-free and single-threaded; the rendering control reads
 /// it on the UI thread only.
 /// </summary>
 public sealed class TerminalScreen
 {
+    private readonly List<TerminalRow> _scrollback = [];
     private TerminalRow[] _lines;
-    private readonly List<TerminalRow> _scrollback = new();
 
     public TerminalScreen(int columns, int rows, int maxScrollback = 10_000)
     {
@@ -24,10 +23,13 @@ public sealed class TerminalScreen
     }
 
     public int Columns { get; private set; }
+
     public int Rows { get; private set; }
+
     public int MaxScrollback { get; set; }
 
     public int CursorX { get; private set; }
+
     public int CursorY { get; private set; }
 
     /// <summary>Top margin of the scroll region (0-based, inclusive).</summary>
@@ -45,7 +47,9 @@ public sealed class TerminalScreen
     {
         var lines = new TerminalRow[rows];
         for (int i = 0; i < rows; i++)
-            lines[i] = new TerminalRow(cols);
+        {
+            lines[i] = new(cols);
+        }
         return lines;
     }
 
@@ -61,7 +65,9 @@ public sealed class TerminalScreen
         // dragged past the top edge); clamp instead of throwing.
         absoluteRow = Math.Clamp(absoluteRow, 0, TotalRows - 1);
         if (absoluteRow < _scrollback.Count)
+        {
             return _scrollback[absoluteRow];
+        }
         return _lines[absoluteRow - _scrollback.Count];
     }
 
@@ -70,13 +76,17 @@ public sealed class TerminalScreen
     public void SetCell(int x, int y, in TerminalCell cell)
     {
         if ((uint)x < (uint)Columns && (uint)y < (uint)Rows)
+        {
             _lines[y][x] = cell;
+        }
     }
 
     public TerminalCell GetCell(int x, int y)
     {
         if ((uint)x < (uint)Columns && (uint)y < (uint)Rows)
+        {
             return _lines[y][x];
+        }
         return TerminalCell.Empty;
     }
 
@@ -97,8 +107,14 @@ public sealed class TerminalScreen
 
     public void SetMargins(int top, int bottom)
     {
-        if (top < 0) top = 0;
-        if (bottom > Rows - 1) bottom = Rows - 1;
+        if (top < 0)
+        {
+            top = 0;
+        }
+        if (bottom > Rows - 1)
+        {
+            bottom = Rows - 1;
+        }
         if (top >= bottom)
         {
             top = 0;
@@ -120,27 +136,36 @@ public sealed class TerminalScreen
     public void Index(in TerminalCell blank)
     {
         if (CursorY == ScrollBottom)
+        {
             ScrollUp(1, blank);
+        }
         else if (CursorY < Rows - 1)
+        {
             CursorY++;
+        }
     }
 
     /// <summary>Reverse Index: move up one line, scrolling the region down at the top margin.</summary>
     public void ReverseIndex(in TerminalCell blank)
     {
         if (CursorY == ScrollTop)
+        {
             ScrollDown(1, blank);
+        }
         else if (CursorY > 0)
+        {
             CursorY--;
+        }
     }
 
-    /// <summary>Scrolls the scroll region up by <paramref name="count"/> lines. When the region
-    /// spans the whole screen, retired top lines are pushed into scrollback.</summary>
+    /// <summary>
+    /// Scrolls the scroll region up by <paramref name="count" /> lines. When the region
+    /// spans the whole screen, retired top lines are pushed into scrollback.
+    /// </summary>
     public void ScrollUp(int count, in TerminalCell blank)
     {
         count = Math.Clamp(count, 0, ScrollBottom - ScrollTop + 1);
         bool fullScreen = ScrollTop == 0 && ScrollBottom == Rows - 1;
-
         for (int i = 0; i < count; i++)
         {
             TerminalRow retired = _lines[ScrollTop];
@@ -148,10 +173,14 @@ public sealed class TerminalScreen
             {
                 _scrollback.Add(retired);
                 if (_scrollback.Count > MaxScrollback)
+                {
                     _scrollback.RemoveAt(0);
+                }
             }
             for (int y = ScrollTop; y < ScrollBottom; y++)
+            {
                 _lines[y] = _lines[y + 1];
+            }
             var fresh = new TerminalRow(Columns);
             fresh.Fill(blank);
             _lines[ScrollBottom] = fresh;
@@ -164,7 +193,9 @@ public sealed class TerminalScreen
         for (int i = 0; i < count; i++)
         {
             for (int y = ScrollBottom; y > ScrollTop; y--)
+            {
                 _lines[y] = _lines[y - 1];
+            }
             var fresh = new TerminalRow(Columns);
             fresh.Fill(blank);
             _lines[ScrollTop] = fresh;
@@ -176,12 +207,16 @@ public sealed class TerminalScreen
     public void InsertLines(int count, in TerminalCell blank)
     {
         if (CursorY < ScrollTop || CursorY > ScrollBottom)
+        {
             return;
+        }
         count = Math.Clamp(count, 0, ScrollBottom - CursorY + 1);
         for (int i = 0; i < count; i++)
         {
             for (int y = ScrollBottom; y > CursorY; y--)
+            {
                 _lines[y] = _lines[y - 1];
+            }
             var fresh = new TerminalRow(Columns);
             fresh.Fill(blank);
             _lines[CursorY] = fresh;
@@ -191,26 +226,27 @@ public sealed class TerminalScreen
     public void DeleteLines(int count, in TerminalCell blank)
     {
         if (CursorY < ScrollTop || CursorY > ScrollBottom)
+        {
             return;
+        }
         count = Math.Clamp(count, 0, ScrollBottom - CursorY + 1);
         for (int i = 0; i < count; i++)
         {
             for (int y = CursorY; y < ScrollBottom; y++)
+            {
                 _lines[y] = _lines[y + 1];
+            }
             var fresh = new TerminalRow(Columns);
             fresh.Fill(blank);
             _lines[ScrollBottom] = fresh;
         }
     }
 
-    public void InsertChars(int count, in TerminalCell blank) =>
-        _lines[CursorY].InsertCells(CursorX, count, blank);
+    public void InsertChars(int count, in TerminalCell blank) => _lines[CursorY].InsertCells(CursorX, count, blank);
 
-    public void DeleteChars(int count, in TerminalCell blank) =>
-        _lines[CursorY].DeleteCells(CursorX, count, blank);
+    public void DeleteChars(int count, in TerminalCell blank) => _lines[CursorY].DeleteCells(CursorX, count, blank);
 
-    public void EraseChars(int count, in TerminalCell blank) =>
-        _lines[CursorY].FillRange(CursorX, CursorX + count, blank);
+    public void EraseChars(int count, in TerminalCell blank) => _lines[CursorY].FillRange(CursorX, CursorX + count, blank);
 
     // ---- Erase --------------------------------------------------------------
 
@@ -225,16 +261,22 @@ public sealed class TerminalScreen
                 // would make the resize reflow merge unrelated rows (prompt redraw bug).
                 _lines[CursorY].Wrapped = false;
                 for (int y = CursorY + 1; y < Rows; y++)
+                {
                     _lines[y].Fill(blank);
+                }
                 break;
             case 1:
                 _lines[CursorY].FillRange(0, CursorX + 1, blank);
                 for (int y = 0; y < CursorY; y++)
+                {
                     _lines[y].Fill(blank);
+                }
                 break;
             case 2:
                 for (int y = 0; y < Rows; y++)
+                {
                     _lines[y].Fill(blank);
+                }
                 break;
             case 3:
                 _scrollback.Clear();
@@ -255,8 +297,12 @@ public sealed class TerminalScreen
                 // whatever followed (progressively corrupting the buffer on repeated drags).
                 _lines[CursorY].Wrapped = false;
                 break;
-            case 1: _lines[CursorY].FillRange(0, CursorX + 1, blank); break;
-            case 2: _lines[CursorY].Fill(blank); break;
+            case 1:
+                _lines[CursorY].FillRange(0, CursorX + 1, blank);
+                break;
+            case 2:
+                _lines[CursorY].Fill(blank);
+                break;
         }
     }
 
@@ -264,8 +310,10 @@ public sealed class TerminalScreen
 
     public void ResetToBlank(in TerminalCell blank)
     {
-        foreach (var line in _lines)
+        foreach (TerminalRow line in _lines)
+        {
             line.Fill(blank);
+        }
         CursorX = 0;
         CursorY = 0;
         ResetMargins();
@@ -279,7 +327,7 @@ public sealed class TerminalScreen
     /// </summary>
     public TerminalRow[] SwapLines(TerminalRow[] replacement)
     {
-        var previous = _lines;
+        TerminalRow[] previous = _lines;
         _lines = replacement;
         return previous;
     }
@@ -288,9 +336,11 @@ public sealed class TerminalScreen
 
     public TerminalRow[] CreateBlankLines(in TerminalCell blank)
     {
-        var lines = NewLines(Rows, Columns);
-        foreach (var l in lines)
+        TerminalRow[] lines = NewLines(Rows, Columns);
+        foreach (TerminalRow l in lines)
+        {
             l.Fill(blank);
+        }
         return lines;
     }
 
@@ -299,7 +349,9 @@ public sealed class TerminalScreen
         columns = Math.Max(1, columns);
         rows = Math.Max(1, rows);
         if (columns == Columns && rows == Rows)
+        {
             return;
+        }
 
         // Column changes on the primary screen reflow the whole buffer (the mainstream
         // approach — Windows Terminal / iTerm2 / VTE / kitty): soft-wrapped rows are joined
@@ -316,10 +368,14 @@ public sealed class TerminalScreen
         // Alternate screen column resize: hard grow/shrink each row in place.
         if (columns != Columns)
         {
-            foreach (var line in _lines)
+            foreach (TerminalRow line in _lines)
+            {
                 line.Resize(columns, blank);
-            foreach (var line in _scrollback)
+            }
+            foreach (TerminalRow line in _scrollback)
+            {
                 line.Resize(columns, blank);
+            }
         }
 
         // Row resize: when shrinking, discard only genuinely blank bottom rows; everything
@@ -330,18 +386,17 @@ public sealed class TerminalScreen
         if (rows < Rows)
         {
             int remove = Rows - rows;
-
             int blankBottom = 0;
             for (int y = Rows - 1; y > CursorY && blankBottom < remove; y--)
             {
                 if (_lines[y].Wrapped || _lines[y].LastNonBlank() >= 0)
+                {
                     break;
+                }
                 blankBottom++;
             }
-
             int fromBottom = blankBottom;
             int fromTop = remove - fromBottom;
-
             var next = new TerminalRow[rows];
             for (int i = 0; i < fromTop; i++)
             {
@@ -349,7 +404,9 @@ public sealed class TerminalScreen
                 {
                     _scrollback.Add(_lines[i]);
                     if (_scrollback.Count > MaxScrollback)
+                    {
                         _scrollback.RemoveAt(0);
+                    }
                 }
             }
             Array.Copy(_lines, fromTop, next, 0, rows);
@@ -376,7 +433,6 @@ public sealed class TerminalScreen
             _lines = next;
             CursorY += pulled;
         }
-
         Columns = columns;
         Rows = rows;
         ScrollTop = 0;
@@ -389,8 +445,8 @@ public sealed class TerminalScreen
 
     /// <summary>
     /// Rebuilds the entire buffer at a new width: physical rows are joined into logical
-    /// lines along their <see cref="TerminalRow.Wrapped"/> flags, each logical line is
-    /// re-wrapped to <paramref name="newCols"/> (wide characters kept atomic), and the
+    /// lines along their <see cref="TerminalRow.Wrapped" /> flags, each logical line is
+    /// re-wrapped to <paramref name="newCols" /> (wide characters kept atomic), and the
     /// result is split back into scrollback + a bottom-anchored screen. The cursor is
     /// carried through as (logical line, cell offset) so it lands on the same character.
     /// </summary>
@@ -407,23 +463,26 @@ public sealed class TerminalScreen
         // bottom of the screen and would otherwise pad the scrollback with empties.
         while (physical.Count > cursorAbs + 1)
         {
-            var last = physical[^1];
+            TerminalRow last = physical[^1];
             if (last.Wrapped || last.LastNonBlank() >= 0)
+            {
                 break;
+            }
             physical.RemoveAt(physical.Count - 1);
         }
 
         // 2. Re-emit logical lines at the new width.
         var rebuilt = new List<TerminalRow>(physical.Count);
         int newCursorRow = -1, newCursorCol = 0;
-
         int i = 0;
         while (i < physical.Count)
         {
             // A logical line spans [i..j]: every row but the last carries the Wrapped flag.
             int j = i;
             while (j < physical.Count - 1 && physical[j].Wrapped)
+            {
                 j++;
+            }
 
             // Collect its cells: wrapped segments contribute their full width, the final
             // segment is trimmed at the last non-blank cell (extended to cover the cursor).
@@ -431,7 +490,7 @@ public sealed class TerminalScreen
             int cursorOffset = -1;
             for (int r = i; r <= j; r++)
             {
-                var row = physical[r];
+                TerminalRow row = physical[r];
                 int len = r < j ? row.Columns : row.LastNonBlank() + 1;
                 if (r == cursorAbs)
                 {
@@ -440,15 +499,17 @@ public sealed class TerminalScreen
                     cursorOffset = cells.Count + cursorCol;
                 }
                 for (int c = 0; c < len; c++)
+                {
                     cells.Add(row[c]);
+                }
             }
-
             EmitLogicalLine(cells, cursorOffset, newCols, blank, rebuilt, ref newCursorRow, ref newCursorCol);
             i = j + 1;
         }
-
         if (rebuilt.Count == 0)
+        {
             rebuilt.Add(NewBlankRow(newCols, blank));
+        }
         if (newCursorRow < 0)
         {
             newCursorRow = rebuilt.Count - 1;
@@ -461,23 +522,26 @@ public sealed class TerminalScreen
         //    is clamped into it rather than dragging the window up and silently dropping the
         //    tail rows (that drop is what ate the buffer on repeated drag-resizes).
         int screenStart = Math.Max(0, rebuilt.Count - newRows);
-
         _scrollback.Clear();
         for (int r = 0; r < screenStart; r++)
+        {
             _scrollback.Add(rebuilt[r]);
+        }
         while (_scrollback.Count > MaxScrollback)
         {
             _scrollback.RemoveAt(0);
         }
-
         var lines = new TerminalRow[newRows];
         int idx = 0;
         for (int r = screenStart; r < rebuilt.Count && idx < newRows; r++, idx++)
+        {
             lines[idx] = rebuilt[r];
+        }
         for (; idx < newRows; idx++)
+        {
             lines[idx] = NewBlankRow(newCols, blank);
+        }
         _lines = lines;
-
         Columns = newCols;
         Rows = newRows;
         ScrollTop = 0;
@@ -486,24 +550,31 @@ public sealed class TerminalScreen
         CursorX = Math.Clamp(newCursorCol, 0, newCols - 1);
     }
 
-    /// <summary>Wraps one logical line's cells into rows of <paramref name="cols"/>, keeping
+    /// <summary>
+    /// Wraps one logical line's cells into rows of <paramref name="cols" />, keeping
     /// wide-character lead/trail pairs on the same row, marking every produced row but the
-    /// last as soft-wrapped, and reporting where <paramref name="cursorOffset"/> landed.</summary>
-    private static void EmitLogicalLine(List<TerminalCell> cells, int cursorOffset, int cols,
-        in TerminalCell blank, List<TerminalRow> output, ref int cursorRow, ref int cursorCol)
+    /// last as soft-wrapped, and reporting where <paramref name="cursorOffset" /> landed.
+    /// </summary>
+    private static void EmitLogicalLine(List<TerminalCell> cells,
+        int cursorOffset,
+        int cols,
+        in TerminalCell blank,
+        List<TerminalRow> output,
+        ref int cursorRow,
+        ref int cursorCol)
     {
-        var row = NewBlankRow(cols, blank);
+        TerminalRow row = NewBlankRow(cols, blank);
         output.Add(row);
         int col = 0;
-
         for (int k = 0; k < cells.Count; k++)
         {
-            var cell = cells[k];
+            TerminalCell cell = cells[k];
             // A wide pair (lead + trailing marker) must stay together on one row.
-            bool wide = cols >= 2 && !cell.IsWideTrailing &&
-                        k + 1 < cells.Count && cells[k + 1].IsWideTrailing;
+            bool wide = cols >= 2 &&
+                        !cell.IsWideTrailing &&
+                        k + 1 < cells.Count &&
+                        cells[k + 1].IsWideTrailing;
             int need = wide ? 2 : 1;
-
             if (col + need > cols)
             {
                 row.Wrapped = true;
@@ -511,13 +582,11 @@ public sealed class TerminalScreen
                 output.Add(row);
                 col = 0;
             }
-
             if (k == cursorOffset)
             {
                 cursorRow = output.Count - 1;
                 cursorCol = col;
             }
-
             row[col++] = cell;
             if (wide)
             {

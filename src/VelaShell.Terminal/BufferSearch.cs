@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using VelaShell.Terminal.Emulation;
 
 namespace VelaShell.Terminal;
@@ -16,25 +14,26 @@ public static class BufferSearch
     public static IReadOnlyList<BufferSearchHit> FindAll(TerminalScreen screen, string query)
     {
         if (string.IsNullOrEmpty(query))
-            return Array.Empty<BufferSearchHit>();
-
+        {
+            return [];
+        }
         var hits = new List<BufferSearchHit>();
         int totalRows = screen.TotalRows;
-
         for (int row = 0; row < totalRows; row++)
         {
-            var text = screen.ViewLine(row).GetText();
+            string text = screen.ViewLine(row).GetText();
             int index = 0;
             while (true)
             {
                 int found = text.IndexOf(query, index, StringComparison.OrdinalIgnoreCase);
                 if (found < 0)
+                {
                     break;
-                hits.Add(new BufferSearchHit(row, found, query.Length));
+                }
+                hits.Add(new(row, found, query.Length));
                 index = found + Math.Max(1, query.Length);
             }
         }
-
         return hits;
     }
 }

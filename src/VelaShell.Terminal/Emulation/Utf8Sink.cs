@@ -4,18 +4,13 @@ namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
 /// Incremental byte-stream decoder that buffers partial multibyte sequences across feeds and
-/// substitutes U+FFFD for malformed input. Defaults to UTF-8 but accepts any <see cref="Encoding"/>
+/// substitutes U+FFFD for malformed input. Defaults to UTF-8 but accepts any <see cref="Encoding" />
 /// (e.g. GBK, Big5) so the terminal's charset is configurable while UTF-8 remains the default.
 /// </summary>
-public sealed class Utf8Sink
+public sealed class Utf8Sink(Encoding? encoding = null)
 {
-    private Decoder _decoder;
     private char[] _chars = new char[1024];
-
-    public Utf8Sink(Encoding? encoding = null)
-    {
-        _decoder = CreateDecoder(encoding);
-    }
+    private Decoder _decoder = CreateDecoder(encoding);
 
     public void SetEncoding(Encoding encoding)
     {
@@ -24,8 +19,8 @@ public sealed class Utf8Sink
 
     private static Decoder CreateDecoder(Encoding? encoding)
     {
-        encoding ??= new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
-        var decoder = encoding.GetDecoder();
+        encoding ??= new UTF8Encoding(false, false);
+        Decoder decoder = encoding.GetDecoder();
         decoder.Fallback = new DecoderReplacementFallback("�");
         return decoder;
     }
@@ -33,17 +28,20 @@ public sealed class Utf8Sink
     public string Decode(ReadOnlySpan<byte> bytes)
     {
         if (bytes.IsEmpty)
+        {
             return string.Empty;
-
-        int max = _decoder.GetCharCount(bytes, flush: false);
+        }
+        int max = _decoder.GetCharCount(bytes, false);
         if (_chars.Length < max)
+        {
             _chars = new char[max];
+        }
 
         // 即使 max == 0(整段都是某个多字节字符的前半部分)也必须调用 GetChars:
         // GetCharCount 不改变解码器状态,早退会把这些字节整段丢掉,下一段解码成 U+FFFD
         // (网络分块恰好切在 CJK 字符中间时输出变 �,cat 中文文件偶发乱码的根因)。
-        int written = _decoder.GetChars(bytes, _chars, flush: false);
-        return written == 0 ? string.Empty : new string(_chars, 0, written);
+        int written = _decoder.GetChars(bytes, _chars, false);
+        return written == 0 ? string.Empty : new(_chars, 0, written);
     }
 
     public void Reset() => _decoder.Reset();

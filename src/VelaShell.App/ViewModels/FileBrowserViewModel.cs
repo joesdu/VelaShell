@@ -534,7 +534,7 @@ public class FileBrowserViewModel : ReactiveObject
             string tempDir = Path.Combine(Path.GetTempPath(), "VelaShell", _sessionId.ToString("N"));
             Directory.CreateDirectory(tempDir);
             string localPath = Path.Combine(tempDir, file.Name);
-            PlannedFileTransfer[] plan = new[] { new PlannedFileTransfer(TransferType.Download, localPath, file.FullPath) };
+            PlannedFileTransfer[] plan = [new(TransferType.Download, localPath, file.FullPath)];
             bool ok = await RunTransferBatchAsync(plan, ct);
             if (ok)
             {
@@ -815,7 +815,7 @@ public class FileBrowserViewModel : ReactiveObject
         {
             return;
         }
-        PlannedFileTransfer[] single = new[] { new PlannedFileTransfer(TransferType.Download, localPath, file.FullPath) };
+        PlannedFileTransfer[] single = [new(TransferType.Download, localPath, file.FullPath)];
         await RunTransferBatchAsync(single, ct);
     }
 

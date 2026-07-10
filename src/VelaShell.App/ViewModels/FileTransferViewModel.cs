@@ -332,8 +332,7 @@ public class FileTransferViewModel : ReactiveObject
     private void ClearCompleted()
     {
         var completed = Transfers.Where(t =>
-            t.Status == TransferStatus.Completed ||
-            t.Status == TransferStatus.Cancelled).ToList();
+            t.Status is TransferStatus.Completed or TransferStatus.Cancelled).ToList();
         foreach (TransferItemViewModel item in completed)
         {
             Transfers.Remove(item);

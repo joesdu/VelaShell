@@ -9,7 +9,7 @@ public static class Charsets
 {
     // Index by (rune - 0x60). '\0' means "no translation".
     private static readonly char[] DecSpecial =
-    {
+    [
         '◆', // ` diamond
         '▒', // a checkerboard
         '␉', // b HT
@@ -40,16 +40,16 @@ public static class Charsets
         'π', // { pi
         '≠', // | not equal
         '£', // } pound sterling
-        '·', // ~ centered dot
-    };
+        '·'  // ~ centered dot
+    ];
 
     public static int MapDecSpecial(int rune)
     {
-        if (rune is >= 0x60 and <= 0x7E)
+        if (rune is < 0x60 or > 0x7E)
         {
-            char mapped = DecSpecial[rune - 0x60];
-            return mapped;
+            return rune;
         }
-        return rune;
+        char mapped = DecSpecial[rune - 0x60];
+        return mapped;
     }
 }

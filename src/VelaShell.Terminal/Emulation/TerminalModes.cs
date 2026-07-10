@@ -7,22 +7,22 @@ namespace VelaShell.Terminal.Emulation;
 public sealed class TerminalModes
 {
     // DEC private modes
-    public bool ApplicationCursorKeys;    // DECCKM  ?1
-    public bool ApplicationKeypad;        // DECKPAM / DECKPNM
-    public bool OriginMode;               // DECOM   ?6
-    public bool AutoWrap = true;          // DECAWM  ?7
-    public bool ReverseVideo;             // DECSCNM ?5
-    public bool CursorVisible = true;     // DECTCEM ?25
-    public bool BracketedPaste;           // ?2004
-    public bool CursorBlink = true;       // ?12
+    public bool ApplicationCursorKeys; // DECCKM  ?1
+    public bool ApplicationKeypad;     // DECKPAM / DECKPNM
+    public bool AutoWrap = true;       // DECAWM  ?7
+    public bool BracketedPaste;        // ?2004
+    public bool CursorBlink = true;    // ?12
+    public bool CursorVisible = true;  // DECTCEM ?25
+
+    // ANSI modes
+    public bool InsertMode; // IRM  (4)
 
     // Mouse tracking (?1000/1002/1003) and encoding (?1006 SGR / ?1015 urxvt)
     public MouseTracking Mouse = MouseTracking.None;
     public MouseEncoding MouseEncoding = MouseEncoding.Default;
-
-    // ANSI modes
-    public bool InsertMode;               // IRM  (4)
-    public bool NewLineMode;              // LNM  (20)
+    public bool NewLineMode;  // LNM  (20)
+    public bool OriginMode;   // DECOM   ?6
+    public bool ReverseVideo; // DECSCNM ?5
 
     public void Reset()
     {
@@ -44,15 +44,15 @@ public sealed class TerminalModes
 public enum MouseTracking
 {
     None,
-    X10,       // ?9
-    Normal,    // ?1000
+    X10,         // ?9
+    Normal,      // ?1000
     ButtonEvent, // ?1002
-    AnyEvent,  // ?1003
+    AnyEvent     // ?1003
 }
 
 public enum MouseEncoding
 {
     Default,
-    Sgr,       // ?1006
-    Urxvt,     // ?1015
+    Sgr,  // ?1006
+    Urxvt // ?1015
 }

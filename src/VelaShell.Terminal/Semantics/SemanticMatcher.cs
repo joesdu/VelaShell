@@ -1,9 +1,8 @@
-using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
 namespace VelaShell.Terminal.Semantics;
 
-/// <summary>The kind of thing a <see cref="SemanticSpan"/> marks in a line of terminal output.</summary>
+/// <summary>The kind of thing a <see cref="SemanticSpan" /> marks in a line of terminal output.</summary>
 public enum SemanticKind
 {
     Url,
@@ -12,7 +11,7 @@ public enum SemanticKind
     Success,
     IpAddress,
     Option,
-    Number,
+    Number
 }
 
 /// <summary>A matched region within a single line, in character offsets.</summary>
@@ -59,11 +58,12 @@ public sealed partial class SemanticMatcher
     /// (e.g. digits inside an IP, or an IP inside a URL) the higher-priority kind wins:
     /// Url &gt; IpAddress &gt; Error &gt; Warning &gt; Success &gt; Option &gt; Number.
     /// </summary>
-    public IReadOnlyList<SemanticSpan> Match(string? line)
+    public static IReadOnlyList<SemanticSpan> Match(string? line)
     {
         if (string.IsNullOrEmpty(line))
-            return System.Array.Empty<SemanticSpan>();
-
+        {
+            return [];
+        }
         var raw = new List<SemanticSpan>();
         Collect(raw, UrlRegex(), line, SemanticKind.Url);
         Collect(raw, IpRegex(), line, SemanticKind.IpAddress);
@@ -79,37 +79,33 @@ public sealed partial class SemanticMatcher
             int byKind = Priority(a.Kind).CompareTo(Priority(b.Kind));
             return byKind != 0 ? byKind : a.Start.CompareTo(b.Start);
         });
-
         var chosen = new List<SemanticSpan>();
-        foreach (var span in raw)
+        // ReSharper disable once ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator
+        foreach (SemanticSpan span in raw)
         {
-            bool overlaps = false;
-            foreach (var kept in chosen)
-            {
-                if (span.Start < kept.End && kept.Start < span.End)
-                {
-                    overlaps = true;
-                    break;
-                }
-            }
+            bool overlaps = chosen.Any(kept => span.Start < kept.End && kept.Start < span.End);
             if (!overlaps)
+            {
                 chosen.Add(span);
+            }
         }
-
         chosen.Sort((a, b) => a.Start.CompareTo(b.Start));
         return chosen;
     }
 
     /// <summary>Returns the URL at the given character offset, or null if none.</summary>
-    public string? UrlAt(string? line, int offset)
+    public static string? UrlAt(string? line, int offset)
     {
         if (string.IsNullOrEmpty(line) || offset < 0 || offset >= line.Length)
+        {
             return null;
-
+        }
         foreach (Match m in UrlRegex().Matches(line))
         {
             if (offset >= m.Index && offset < m.Index + m.Length)
+            {
                 return m.Value;
+            }
         }
         return null;
     }
@@ -119,18 +115,21 @@ public sealed partial class SemanticMatcher
         foreach (Match m in regex.Matches(line))
         {
             if (m.Length > 0)
-                into.Add(new SemanticSpan(m.Index, m.Length, kind));
+            {
+                into.Add(new(m.Index, m.Length, kind));
+            }
         }
     }
 
-    private static int Priority(SemanticKind kind) => kind switch
-    {
-        SemanticKind.Url => 0,
-        SemanticKind.IpAddress => 1,
-        SemanticKind.Error => 2,
-        SemanticKind.Warning => 3,
-        SemanticKind.Success => 4,
-        SemanticKind.Option => 5,
-        _ => 6, // Number
-    };
+    private static int Priority(SemanticKind kind) =>
+        kind switch
+        {
+            SemanticKind.Url       => 0,
+            SemanticKind.IpAddress => 1,
+            SemanticKind.Error     => 2,
+            SemanticKind.Warning   => 3,
+            SemanticKind.Success   => 4,
+            SemanticKind.Option    => 5,
+            _                      => 6 // Number
+        };
 }

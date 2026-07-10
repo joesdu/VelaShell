@@ -6,52 +6,25 @@ namespace VelaShell.Terminal.Emulation;
 /// A DEC-compatible escape-sequence parser implementing the state machine described by
 /// Paul Williams (https://vt100.net/emu/dec_ansi_parser). It consumes a stream of Unicode
 /// scalar values (UTF-8 is decoded upstream so that multibyte text never collides with the
-/// 7-bit control set) and dispatches semantic events to an <see cref="IVtActions"/> sink.
-///
+/// 7-bit control set) and dispatches semantic events to an <see cref="IVtActions" /> sink.
 /// A dedicated VT52-compatibility path is provided because VT52 uses a distinct,
 /// non-CSI escape grammar.
 /// </summary>
-public sealed class VtParser
+public sealed class VtParser(IVtActions actions)
 {
-    private enum State
-    {
-        Ground,
-        Escape,
-        EscapeIntermediate,
-        CsiEntry,
-        CsiParam,
-        CsiIntermediate,
-        CsiIgnore,
-        OscString,
-        DcsEntry,
-        DcsParam,
-        DcsIntermediate,
-        DcsPassthrough,
-        DcsIgnore,
-        SosPmApcString,
-        // VT52 sub-states
-        Vt52Escape,
-        Vt52CursorRow,
-        Vt52CursorCol,
-    }
-
     private const int MaxParams = 32;
 
-    private readonly IVtActions _actions;
-    private State _state = State.Ground;
+    private readonly StringBuilder _intermediates = new(4);
+    private readonly StringBuilder _oscOrDcs = new(64);
 
     private readonly List<int> _params = new(MaxParams);
     private int _currentParam;
+
+    private char _dcsFinal;
     private bool _hasCurrentParam;
     private char _prefix;
-    private readonly StringBuilder _intermediates = new(4);
-    private readonly StringBuilder _oscOrDcs = new(64);
+    private State _state = State.Ground;
     private int _vt52Row;
-
-    public VtParser(IVtActions actions)
-    {
-        _actions = actions;
-    }
 
     /// <summary>When true, the parser interprets input using the VT52 escape grammar.</summary>
     public bool Vt52Mode { get; set; }
@@ -65,7 +38,7 @@ public sealed class VtParser
         _prefix = '\0';
     }
 
-    public void Parse(ReadOnlySpan<char> text)
+    private void Parse(ReadOnlySpan<char> text)
     {
         // Iterate Unicode scalar values so surrogate pairs are delivered as one rune.
         for (int i = 0; i < text.Length; i++)
@@ -92,71 +65,83 @@ public sealed class VtParser
             ConsumeVt52(rune);
             return;
         }
-
-        // CAN and SUB abort any sequence in progress.
-        if (rune == 0x18 || rune == 0x1A)
+        switch (rune)
         {
-            _state = State.Ground;
-            ClearParams();
-            _intermediates.Clear();
-            return;
-        }
-        // ESC restarts a sequence from most states. OSC/DCS are the exception: their
-        // terminator ST is ESC \, so the collected payload must be dispatched here —
-        // otherwise a string terminated by ST (instead of BEL) is silently discarded.
-        if (rune == 0x1B)
-        {
-            if (_state == State.OscString)
-                DispatchOsc();
-            else if (_state == State.DcsPassthrough)
-                DispatchDcs();
-            EnterEscape();
-            return;
-        }
-
-        switch (_state)
-        {
-            case State.Ground:
-                Ground(rune);
-                break;
-            case State.Escape:
-                Escape(rune);
-                break;
-            case State.EscapeIntermediate:
-                EscapeIntermediate(rune);
-                break;
-            case State.CsiEntry:
-                CsiEntry(rune);
-                break;
-            case State.CsiParam:
-                CsiParam(rune);
-                break;
-            case State.CsiIntermediate:
-                CsiIntermediate(rune);
-                break;
-            case State.CsiIgnore:
-                CsiIgnore(rune);
-                break;
-            case State.OscString:
-                OscString(rune);
-                break;
-            case State.DcsEntry:
-                DcsEntry(rune);
-                break;
-            case State.DcsParam:
-                DcsParam(rune);
-                break;
-            case State.DcsIntermediate:
-                DcsIntermediate(rune);
-                break;
-            case State.DcsPassthrough:
-                DcsPassthrough(rune);
-                break;
-            case State.DcsIgnore:
-                DcsIgnore(rune);
-                break;
-            case State.SosPmApcString:
-                SosPmApcString(rune);
+            // CAN and SUB abort any sequence in progress.
+            case 0x18 or 0x1A:
+                _state = State.Ground;
+                ClearParams();
+                _intermediates.Clear();
+                return;
+            // ESC restarts a sequence from most states. OSC/DCS are the exception: their
+            // terminator ST is ESC \, so the collected payload must be dispatched here —
+            // otherwise a string terminated by ST (instead of BEL) is silently discarded.
+            case 0x1B:
+            {
+                // ReSharper disable once ConvertIfStatementToSwitchStatement
+                if (_state == State.OscString)
+                {
+                    DispatchOsc();
+                }
+                else if (_state == State.DcsPassthrough)
+                {
+                    DispatchDcs();
+                }
+                EnterEscape();
+                return;
+            }
+            default:
+                switch (_state)
+                {
+                    case State.Ground:
+                        Ground(rune);
+                        break;
+                    case State.Escape:
+                        Escape(rune);
+                        break;
+                    case State.EscapeIntermediate:
+                        EscapeIntermediate(rune);
+                        break;
+                    case State.CsiEntry:
+                        CsiEntry(rune);
+                        break;
+                    case State.CsiParam:
+                        CsiParam(rune);
+                        break;
+                    case State.CsiIntermediate:
+                        CsiIntermediate(rune);
+                        break;
+                    case State.CsiIgnore:
+                        CsiIgnore(rune);
+                        break;
+                    case State.OscString:
+                        OscString(rune);
+                        break;
+                    case State.DcsEntry:
+                        DcsEntry(rune);
+                        break;
+                    case State.DcsParam:
+                        DcsParam(rune);
+                        break;
+                    case State.DcsIntermediate:
+                        DcsIntermediate(rune);
+                        break;
+                    case State.DcsPassthrough:
+                        DcsPassthrough(rune);
+                        break;
+                    case State.DcsIgnore:
+                        DcsIgnore(rune);
+                        break;
+                    case State.SosPmApcString:
+                        SosPmApcString(rune);
+                        break;
+                    case State.Vt52Escape:
+                    case State.Vt52CursorRow:
+                    case State.Vt52CursorCol:
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
                 break;
         }
     }
@@ -167,10 +152,10 @@ public sealed class VtParser
     {
         if (IsC0(rune) || rune == 0x7F)
         {
-            _actions.Execute((char)rune);
+            actions.Execute((char)rune);
             return;
         }
-        _actions.Print(rune);
+        actions.Print(rune);
     }
 
     private void EnterEscape()
@@ -186,7 +171,7 @@ public sealed class VtParser
     {
         if (IsC0(rune))
         {
-            _actions.Execute((char)rune);
+            actions.Execute((char)rune);
             return;
         }
         if (rune is >= 0x20 and <= 0x2F) // intermediate
@@ -213,20 +198,26 @@ public sealed class VtParser
         }
         if (rune is >= 0x30 and <= 0x7E)
         {
-            _actions.EscDispatch(_intermediates.ToString(), (char)rune);
-            _state = State.Ground;
-            return;
+            actions.EscDispatch(_intermediates.ToString(), (char)rune);
         }
         _state = State.Ground;
     }
 
     private void EscapeIntermediate(int rune)
     {
-        if (IsC0(rune)) { _actions.Execute((char)rune); return; }
-        if (rune is >= 0x20 and <= 0x2F) { _intermediates.Append((char)rune); return; }
-        if (rune is >= 0x30 and <= 0x7E)
+        if (IsC0(rune))
         {
-            _actions.EscDispatch(_intermediates.ToString(), (char)rune);
+            actions.Execute((char)rune);
+            return;
+        }
+        switch (rune)
+        {
+            case >= 0x20 and <= 0x2F:
+                _intermediates.Append((char)rune);
+                return;
+            case >= 0x30 and <= 0x7E:
+                actions.EscDispatch(_intermediates.ToString(), (char)rune);
+                break;
         }
         _state = State.Ground;
     }
@@ -235,100 +226,124 @@ public sealed class VtParser
 
     private void CsiEntry(int rune)
     {
-        if (IsC0(rune)) { _actions.Execute((char)rune); return; }
-        if (rune is >= 0x3C and <= 0x3F) // < = > ?
+        if (IsC0(rune))
         {
-            _prefix = (char)rune;
-            _state = State.CsiParam;
+            actions.Execute((char)rune);
             return;
         }
-        if (rune is >= 0x30 and <= 0x39 || rune == ';' || rune == ':')
+        switch (rune)
         {
-            HandleParamDigit(rune);
-            _state = State.CsiParam;
-            return;
+            // < = > ?
+            case >= 0x3C and <= 0x3F:
+                _prefix = (char)rune;
+                _state = State.CsiParam;
+                return;
+            case >= 0x30 and <= 0x39:
+            case ';':
+            case ':':
+                HandleParamDigit(rune);
+                _state = State.CsiParam;
+                return;
+            case >= 0x20 and <= 0x2F:
+                _intermediates.Append((char)rune);
+                _state = State.CsiIntermediate;
+                return;
+            case >= 0x40 and <= 0x7E:
+                FinishParam();
+                actions.CsiDispatch(_prefix, _params, _intermediates.ToString(), (char)rune);
+                _state = State.Ground;
+                return;
+            default:
+                _state = State.CsiIgnore;
+                break;
         }
-        if (rune is >= 0x20 and <= 0x2F)
-        {
-            _intermediates.Append((char)rune);
-            _state = State.CsiIntermediate;
-            return;
-        }
-        if (rune is >= 0x40 and <= 0x7E)
-        {
-            FinishParam();
-            _actions.CsiDispatch(_prefix, _params, _intermediates.ToString(), (char)rune);
-            _state = State.Ground;
-            return;
-        }
-        _state = State.CsiIgnore;
     }
 
     private void CsiParam(int rune)
     {
-        if (IsC0(rune)) { _actions.Execute((char)rune); return; }
-        if (rune is >= 0x30 and <= 0x39 || rune == ';' || rune == ':')
+        if (IsC0(rune))
         {
-            HandleParamDigit(rune);
+            actions.Execute((char)rune);
             return;
         }
-        if (rune is >= 0x20 and <= 0x2F)
+        switch (rune)
         {
-            _intermediates.Append((char)rune);
-            _state = State.CsiIntermediate;
-            return;
+            case >= 0x30 and <= 0x39 or ';' or ':':
+                HandleParamDigit(rune);
+                return;
+            case >= 0x20 and <= 0x2F:
+                _intermediates.Append((char)rune);
+                _state = State.CsiIntermediate;
+                return;
+            case >= 0x40 and <= 0x7E:
+                FinishParam();
+                actions.CsiDispatch(_prefix, _params, _intermediates.ToString(), (char)rune);
+                _state = State.Ground;
+                return;
+            default:
+                _state = State.CsiIgnore;
+                break;
         }
-        if (rune is >= 0x40 and <= 0x7E)
-        {
-            FinishParam();
-            _actions.CsiDispatch(_prefix, _params, _intermediates.ToString(), (char)rune);
-            _state = State.Ground;
-            return;
-        }
-        _state = State.CsiIgnore;
     }
 
     private void CsiIntermediate(int rune)
     {
-        if (IsC0(rune)) { _actions.Execute((char)rune); return; }
-        if (rune is >= 0x20 and <= 0x2F) { _intermediates.Append((char)rune); return; }
-        if (rune is >= 0x40 and <= 0x7E)
+        if (IsC0(rune))
         {
-            FinishParam();
-            _actions.CsiDispatch(_prefix, _params, _intermediates.ToString(), (char)rune);
-            _state = State.Ground;
+            actions.Execute((char)rune);
             return;
         }
-        _state = State.CsiIgnore;
+        switch (rune)
+        {
+            case >= 0x20 and <= 0x2F:
+                _intermediates.Append((char)rune);
+                return;
+            case >= 0x40 and <= 0x7E:
+                FinishParam();
+                actions.CsiDispatch(_prefix, _params, _intermediates.ToString(), (char)rune);
+                _state = State.Ground;
+                return;
+            default:
+                _state = State.CsiIgnore;
+                break;
+        }
     }
 
     private void CsiIgnore(int rune)
     {
-        if (IsC0(rune)) { _actions.Execute((char)rune); return; }
+        if (IsC0(rune))
+        {
+            actions.Execute((char)rune);
+            return;
+        }
         if (rune is >= 0x40 and <= 0x7E)
+        {
             _state = State.Ground;
+        }
     }
 
     // ---- OSC ----------------------------------------------------------------
 
     private void OscString(int rune)
     {
-        // Terminated by BEL (0x07) here, or by ST (ESC \) via the global ESC branch in
-        // Consume — ESC never reaches this handler.
-        if (rune == 0x07)
+        switch (rune)
         {
-            DispatchOsc();
-            _state = State.Ground;
-            return;
+            // Terminated by BEL (0x07) here, or by ST (ESC \) via the global ESC branch in
+            // Consume — ESC never reaches this handler.
+            case 0x07:
+                DispatchOsc();
+                _state = State.Ground;
+                return;
+            case >= 0x20:
+                _oscOrDcs.Append(char.ConvertFromUtf32(rune));
+                break;
         }
-        if (rune >= 0x20)
-            _oscOrDcs.Append(char.ConvertFromUtf32(rune));
     }
 
     private void DispatchOsc()
     {
-        var parts = _oscOrDcs.ToString().Split(';');
-        _actions.OscDispatch(parts);
+        string[] parts = _oscOrDcs.ToString().Split(';');
+        actions.OscDispatch(parts);
         _oscOrDcs.Clear();
     }
 
@@ -336,54 +351,120 @@ public sealed class VtParser
 
     private void DcsEntry(int rune)
     {
-        if (rune is >= 0x3C and <= 0x3F) { _prefix = (char)rune; _state = State.DcsParam; return; }
-        if (rune is >= 0x30 and <= 0x39 || rune == ';' || rune == ':') { HandleParamDigit(rune); _state = State.DcsParam; return; }
-        if (rune is >= 0x20 and <= 0x2F) { _intermediates.Append((char)rune); _state = State.DcsIntermediate; return; }
-        if (rune is >= 0x40 and <= 0x7E) { FinishParam(); _oscOrDcs.Clear(); _dcsFinal = (char)rune; _state = State.DcsPassthrough; return; }
-        _state = State.DcsIgnore;
+        switch (rune)
+        {
+            case >= 0x3C and <= 0x3F:
+                _prefix = (char)rune;
+                _state = State.DcsParam;
+                return;
+            case >= 0x30 and <= 0x39:
+            case ';':
+            case ':':
+                HandleParamDigit(rune);
+                _state = State.DcsParam;
+                return;
+            case >= 0x20 and <= 0x2F:
+                _intermediates.Append((char)rune);
+                _state = State.DcsIntermediate;
+                return;
+            case >= 0x40 and <= 0x7E:
+                FinishParam();
+                _oscOrDcs.Clear();
+                _dcsFinal = (char)rune;
+                _state = State.DcsPassthrough;
+                return;
+            default:
+                _state = State.DcsIgnore;
+                break;
+        }
     }
 
     private void DcsParam(int rune)
     {
-        if (rune is >= 0x30 and <= 0x39 || rune == ';' || rune == ':') { HandleParamDigit(rune); return; }
-        if (rune is >= 0x20 and <= 0x2F) { _intermediates.Append((char)rune); _state = State.DcsIntermediate; return; }
-        if (rune is >= 0x40 and <= 0x7E) { FinishParam(); _oscOrDcs.Clear(); _dcsFinal = (char)rune; _state = State.DcsPassthrough; return; }
-        _state = State.DcsIgnore;
+        switch (rune)
+        {
+            case >= 0x30 and <= 0x39 or ';' or ':':
+                HandleParamDigit(rune);
+                return;
+            case >= 0x20 and <= 0x2F:
+                _intermediates.Append((char)rune);
+                _state = State.DcsIntermediate;
+                return;
+            case >= 0x40 and <= 0x7E:
+                FinishParam();
+                _oscOrDcs.Clear();
+                _dcsFinal = (char)rune;
+                _state = State.DcsPassthrough;
+                return;
+            default:
+                _state = State.DcsIgnore;
+                break;
+        }
     }
 
     private void DcsIntermediate(int rune)
     {
-        if (rune is >= 0x20 and <= 0x2F) { _intermediates.Append((char)rune); return; }
-        if (rune is >= 0x40 and <= 0x7E) { FinishParam(); _oscOrDcs.Clear(); _dcsFinal = (char)rune; _state = State.DcsPassthrough; return; }
-        _state = State.DcsIgnore;
+        switch (rune)
+        {
+            case >= 0x20 and <= 0x2F:
+                _intermediates.Append((char)rune);
+                return;
+            case >= 0x40 and <= 0x7E:
+                FinishParam();
+                _oscOrDcs.Clear();
+                _dcsFinal = (char)rune;
+                _state = State.DcsPassthrough;
+                return;
+            default:
+                _state = State.DcsIgnore;
+                break;
+        }
     }
-
-    private char _dcsFinal;
 
     private void DcsPassthrough(int rune)
     {
-        // ST (ESC \) is handled by the global ESC branch in Consume — ESC never reaches here.
-        if (rune == 0x07) { DispatchDcs(); _state = State.Ground; return; }
-        if (rune >= 0x20 || rune == 0x09 || rune == 0x0A || rune == 0x0D)
-            _oscOrDcs.Append(char.ConvertFromUtf32(rune));
+        switch (rune)
+        {
+            // ST (ESC \) is handled by the global ESC branch in Consume — ESC never reaches here.
+            case 0x07:
+                DispatchDcs();
+                _state = State.Ground;
+                return;
+            case >= 0x20:
+            case 0x09:
+            case 0x0A:
+            case 0x0D:
+                _oscOrDcs.Append(char.ConvertFromUtf32(rune));
+                break;
+        }
     }
 
     private void DcsIgnore(int rune)
     {
-        if (rune == 0x1B) { EnterEscape(); }
+        if (rune == 0x1B)
+        {
+            EnterEscape();
+        }
     }
 
     private void DispatchDcs()
     {
-        _actions.DcsDispatch(_prefix, _params, _intermediates.ToString(), _dcsFinal, _oscOrDcs.ToString());
+        actions.DcsDispatch(_prefix, _params, _intermediates.ToString(), _dcsFinal, _oscOrDcs.ToString());
         _oscOrDcs.Clear();
     }
 
     private void SosPmApcString(int rune)
     {
-        // Consume until ST/BEL; content is ignored.
-        if (rune == 0x1B) { EnterEscape(); return; }
-        if (rune == 0x07) { _state = State.Ground; }
+        switch (rune)
+        {
+            // Consume until ST/BEL; content is ignored.
+            case 0x1B:
+                EnterEscape();
+                return;
+            case 0x07:
+                _state = State.Ground;
+                break;
+        }
     }
 
     // ---- VT52 ---------------------------------------------------------------
@@ -393,14 +474,26 @@ public sealed class VtParser
         switch (_state)
         {
             case State.Ground:
-                if (rune == 0x1B) { _state = State.Vt52Escape; return; }
-                if (IsC0(rune) || rune == 0x7F) { _actions.Execute((char)rune); return; }
-                _actions.Print(rune);
+                if (rune == 0x1B)
+                {
+                    _state = State.Vt52Escape;
+                    return;
+                }
+                if (IsC0(rune) || rune == 0x7F)
+                {
+                    actions.Execute((char)rune);
+                    return;
+                }
+                actions.Print(rune);
                 return;
             case State.Vt52Escape:
-                if (rune == 'Y') { _state = State.Vt52CursorRow; return; }
+                if (rune == 'Y')
+                {
+                    _state = State.Vt52CursorRow;
+                    return;
+                }
                 // Deliver every other VT52 command as an ESC dispatch with no intermediates.
-                _actions.EscDispatch(string.Empty, (char)rune);
+                actions.EscDispatch(string.Empty, (char)rune);
                 _state = State.Ground;
                 return;
             case State.Vt52CursorRow:
@@ -411,9 +504,25 @@ public sealed class VtParser
                 _params.Clear();
                 _params.Add(_vt52Row + 1);
                 _params.Add(rune - 0x20 + 1);
-                _actions.CsiDispatch('\0', _params, string.Empty, 'H');
+                actions.CsiDispatch('\0', _params, string.Empty, 'H');
                 _state = State.Ground;
                 return;
+            case State.Escape:
+            case State.EscapeIntermediate:
+            case State.CsiEntry:
+            case State.CsiParam:
+            case State.CsiIntermediate:
+            case State.CsiIgnore:
+            case State.OscString:
+            case State.DcsEntry:
+            case State.DcsParam:
+            case State.DcsIntermediate:
+            case State.DcsPassthrough:
+            case State.DcsIgnore:
+            case State.SosPmApcString:
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
         }
     }
 
@@ -421,17 +530,21 @@ public sealed class VtParser
 
     private void HandleParamDigit(int rune)
     {
-        if (rune == ';' || rune == ':')
+        if (rune is ';' or ':')
         {
             FinishParam();
             return;
         }
         if (_params.Count >= MaxParams)
+        {
             return;
+        }
         _hasCurrentParam = true;
         _currentParam = _currentParam * 10 + (rune - '0');
         if (_currentParam > 65535)
+        {
             _currentParam = 65535;
+        }
     }
 
     private void FinishParam()
@@ -449,4 +562,27 @@ public sealed class VtParser
     }
 
     private static bool IsC0(int rune) => rune is >= 0x00 and <= 0x1F;
+
+    private enum State
+    {
+        Ground,
+        Escape,
+        EscapeIntermediate,
+        CsiEntry,
+        CsiParam,
+        CsiIntermediate,
+        CsiIgnore,
+        OscString,
+        DcsEntry,
+        DcsParam,
+        DcsIntermediate,
+        DcsPassthrough,
+        DcsIgnore,
+        SosPmApcString,
+
+        // VT52 sub-states
+        Vt52Escape,
+        Vt52CursorRow,
+        Vt52CursorCol
+    }
 }

@@ -368,13 +368,13 @@ public class MainWindowViewModel : ReactiveObject
                                    : new();
         _latestSettings = settings;
         ITerminalEmulator terminalEmulator = _terminalEmulatorFactory();
-        ConfigureTerminal(terminalEmulator, settings, TerminalType.XtermusColor256, true);
+        ConfigureTerminal(terminalEmulator, settings, TerminalType.XtermColor256, true);
         var terminalTab = new TerminalTabViewModel(terminalEmulator)
         {
             Title = shell.Name,
             ConnectionStatus = SessionStatus.Connecting,
             ConnectionSummary = $"本地 • {shell.Name}",
-            TerminalTypeName = TerminalType.XtermusColor256.ToTermName(),
+            TerminalTypeName = TerminalType.XtermColor256.ToTermName(),
             EncodingName = "UTF-8",
             LocalShell = shell
         };

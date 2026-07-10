@@ -28,13 +28,10 @@ public sealed class TerminalPaletteOverrides
         get
         {
             if (Foreground is not null || Background is not null || Cursor is not null || Selection is not null)
-                return false;
-            foreach (var c in Ansi)
             {
-                if (c is not null)
-                    return false;
+                return false;
             }
-            return true;
+            return !Ansi.Any();
         }
     }
 }

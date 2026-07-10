@@ -67,7 +67,7 @@ public class TransferItemViewModel : ReactiveObject
         }
     }
 
-    public bool IsActive => _status == TransferStatus.InProgress || _status == TransferStatus.Queued;
+    public bool IsActive => _status is TransferStatus.InProgress or TransferStatus.Queued;
 
     public bool IsFailed => _status == TransferStatus.Failed;
 

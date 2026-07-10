@@ -1,7 +1,7 @@
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// Sink for the events produced by <see cref="VtParser"/>. The <see cref="TerminalEmulator"/>
+/// Sink for the events produced by <see cref="VtParser" />. The <see cref="TerminalEmulator" />
 /// implements this to turn parsed escape sequences into screen-buffer mutations.
 /// </summary>
 public interface IVtActions
@@ -17,11 +17,11 @@ public interface IVtActions
 
     /// <summary>
     /// A CSI sequence: <c>CSI {prefix} {params} {intermediates} {final}</c>.
-    /// <paramref name="prefix"/> is the private marker (e.g. <c>?</c>, <c>&gt;</c>) or '\0'.
+    /// <paramref name="prefix" /> is the private marker (e.g. <c>?</c>, <c>&gt;</c>) or '\0'.
     /// </summary>
     void CsiDispatch(char prefix, IReadOnlyList<int> parameters, string intermediates, char final);
 
-    /// <summary>An OSC sequence. <paramref name="parameters"/> is the ';'-split payload.</summary>
+    /// <summary>An OSC sequence. <paramref name="parameters" /> is the ';'-split payload.</summary>
     void OscDispatch(IReadOnlyList<string> parameters);
 
     /// <summary>A DCS sequence with its collected string payload.</summary>
