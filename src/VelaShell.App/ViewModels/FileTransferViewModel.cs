@@ -1,28 +1,25 @@
-using System;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
-using System.Linq;
 using System.Reactive;
-using System.Reactive.Linq;
-using System.Threading;
+using Avalonia.Threading;
+using ReactiveUI;
 using VelaShell.Core.Models;
 using VelaShell.Core.Sftp;
-using ReactiveUI;
 
 namespace VelaShell.App.ViewModels;
 
 public class FileTransferViewModel : ReactiveObject
 {
     private readonly ITransferManager _transferManager;
-    private bool _isPanelVisible;
     private IDisposable? _autoHide;
-    private bool _isPointerOver;
-    private bool _hidePending;
 
     // Current batch (a folder/multi-file download or upload): the number of files still to finish
     // and the token source that cancels whatever remains, including the file in flight.
     private CancellationTokenSource? _batchCts;
     private int _batchRemaining;
+    private bool _hidePending;
+    private bool _isPanelVisible;
+    private bool _isPointerOver;
 
     // 准备阶段(上传/下载前的目录扫描):大文件夹的扫描可能持续数秒,期间面板立即弹出、
     // 徽标随发现的文件数递增,让用户知道处理已经开始(用户反馈)。
@@ -32,10 +29,8 @@ public class FileTransferViewModel : ReactiveObject
     public FileTransferViewModel(ITransferManager? transferManager)
     {
         _transferManager = transferManager!;
-
-        Transfers = new ObservableCollection<TransferItemViewModel>();
+        Transfers = [];
         Transfers.CollectionChanged += OnTransfersChanged;
-
         CancelTransferCommand = ReactiveCommand.Create<Guid>(CancelTransfer);
         RetryTransferCommand = ReactiveCommand.Create<Guid>(RetryTransfer);
         ClearCompletedCommand = ReactiveCommand.Create(ClearCompleted);
@@ -51,10 +46,16 @@ public class FileTransferViewModel : ReactiveObject
     /// <summary>Whether a cancellable batch of transfers is currently running.</summary>
     public bool IsBatchActive => _batchCts is not null;
 
-    /// <summary>Header badge (design 9Ralg): while preparing it counts up with the files
+    /// <summary>
+    /// Header badge (design 9Ralg): while preparing it counts up with the files
     /// discovered by the scan; during a batch it is the number of files still to transfer
-    /// (counting down); otherwise the number of in-flight single transfers.</summary>
-    public int PendingCount => IsPreparing ? _preparingCount : IsBatchActive ? _batchRemaining : ActiveCount;
+    /// (counting down); otherwise the number of in-flight single transfers.
+    /// </summary>
+    public int PendingCount => IsPreparing
+                                   ? _preparingCount
+                                   : IsBatchActive
+                                       ? _batchRemaining
+                                       : ActiveCount;
 
     /// <summary>Whether an upload/download is still scanning directories to build its plan.</summary>
     public bool IsPreparing
@@ -66,9 +67,35 @@ public class FileTransferViewModel : ReactiveObject
     /// <summary>准备阶段的状态行文案:随扫描进度动态刷新。</summary>
     public string PreparingText => $"正在扫描待传输文件… 已发现 {_preparingCount} 个";
 
-    /// <summary>Enters the preparing (directory-scan) state: the toast pops up immediately with
+    /// <summary>
+    /// The toast exists only while it has content and wasn't manually collapsed (spec §9):
+    /// a new task fades it in, closing (x) only hides it — tasks keep running.
+    /// </summary>
+    public bool IsPanelVisible
+    {
+        get => _isPanelVisible;
+        set => this.RaiseAndSetIfChanged(ref _isPanelVisible, value);
+    }
+
+    public ReactiveCommand<Unit, Unit> HidePanelCommand { get; }
+
+    public ReactiveCommand<Guid, Unit> CancelTransferCommand { get; }
+
+    public ReactiveCommand<Guid, Unit> RetryTransferCommand { get; }
+
+    public ReactiveCommand<Unit, Unit> ClearCompletedCommand { get; }
+
+    /// <summary>
+    /// Cancels every remaining file in the current batch, aborting the one in flight
+    /// and skipping the rest (spec §9: 取消剩余传输).
+    /// </summary>
+    public ReactiveCommand<Unit, Unit> CancelAllCommand { get; }
+
+    /// <summary>
+    /// Enters the preparing (directory-scan) state: the toast pops up immediately with
     /// a live file counter so picking a large folder no longer looks like nothing happened.
-    /// Ended by <see cref="BeginBatch"/> (scan done, transfers starting) or <see cref="EndPreparing"/>.</summary>
+    /// Ended by <see cref="BeginBatch" /> (scan done, transfers starting) or <see cref="EndPreparing" />.
+    /// </summary>
     public void BeginPreparing()
     {
         _preparingCount = 0;
@@ -87,39 +114,48 @@ public class FileTransferViewModel : ReactiveObject
     public void UpdatePreparingCount(int discovered)
     {
         if (!IsPreparing)
+        {
             return;
+        }
         _preparingCount = discovered;
         this.RaisePropertyChanged(nameof(PendingCount));
         this.RaisePropertyChanged(nameof(PreparingText));
     }
 
-    /// <summary>Leaves the preparing state without starting a batch (empty plan, cancellation or
-    /// error). No-op when <see cref="BeginBatch"/> already took over. Hides the toast again if
-    /// the scan produced nothing to show.</summary>
+    /// <summary>
+    /// Leaves the preparing state without starting a batch (empty plan, cancellation or
+    /// error). No-op when <see cref="BeginBatch" /> already took over. Hides the toast again if
+    /// the scan produced nothing to show.
+    /// </summary>
     public void EndPreparing()
     {
         if (!IsPreparing)
+        {
             return;
-
+        }
         _preparingCount = 0;
         IsPreparing = false;
         this.RaisePropertyChanged(nameof(PendingCount));
-
         if (Transfers.Count == 0)
+        {
             IsPanelVisible = false;
+        }
         else
+        {
             NotifyTaskSettled();
+        }
     }
 
-    /// <summary>Begins a cancellable batch of <paramref name="totalFiles"/> transfers. The header
-    /// then shows the remaining count and a cancel control that trips <paramref name="cts"/>.</summary>
+    /// <summary>
+    /// Begins a cancellable batch of <paramref name="totalFiles" /> transfers. The header
+    /// then shows the remaining count and a cancel control that trips <paramref name="cts" />.
+    /// </summary>
     public void BeginBatch(int totalFiles, CancellationTokenSource cts)
     {
         // 准备阶段结束,徽标从"已发现"切换为"剩余"。
         _isPreparing = false;
         _preparingCount = 0;
         this.RaisePropertyChanged(nameof(IsPreparing));
-
         _batchCts = cts;
         _batchRemaining = totalFiles;
         this.RaisePropertyChanged(nameof(IsBatchActive));
@@ -130,7 +166,9 @@ public class FileTransferViewModel : ReactiveObject
     public void NotifyBatchItemSettled()
     {
         if (_batchRemaining > 0)
+        {
             _batchRemaining--;
+        }
         this.RaisePropertyChanged(nameof(PendingCount));
     }
 
@@ -160,25 +198,17 @@ public class FileTransferViewModel : ReactiveObject
         }
 
         // Reflect the cancellation immediately; the running file unwinds as its stream closes.
-        foreach (var item in Transfers.Where(t => t.IsActive).ToList())
+        foreach (TransferItemViewModel item in Transfers.Where(t => t.IsActive).ToList())
+        {
             item.Status = TransferStatus.Cancelled;
+        }
     }
 
     /// <summary>
-    /// The toast exists only while it has content and wasn't manually collapsed (spec §9):
-    /// a new task fades it in, closing (x) only hides it — tasks keep running.
-    /// </summary>
-    public bool IsPanelVisible
-    {
-        get => _isPanelVisible;
-        set => this.RaiseAndSetIfChanged(ref _isPanelVisible, value);
-    }
-
-    public ReactiveCommand<Unit, Unit> HidePanelCommand { get; }
-
-    /// <summary>Reopens the transfer toast (from the toolbar "transfer history" button) so past and
+    /// Reopens the transfer toast (from the toolbar "transfer history" button) so past and
     /// active transfers can be reviewed. Cancels any pending auto-hide and keeps it up until the
-    /// user collapses it with the x.</summary>
+    /// user collapses it with the x.
+    /// </summary>
     public void ShowPanel()
     {
         _autoHide?.Dispose();
@@ -187,9 +217,11 @@ public class FileTransferViewModel : ReactiveObject
         IsPanelVisible = true;
     }
 
-    /// <summary>传输完成通知用的临时展开:面板可见,但不像 <see cref="ShowPanel"/> 那样锁定——
+    /// <summary>
+    /// 传输完成通知用的临时展开:面板可见,但不像 <see cref="ShowPanel" /> 那样锁定——
     /// 自动隐藏倒计时照常进行(指针悬停时照常暂停)。修复完成通知把面板钉死在界面上、
-    /// 只能手动关闭的问题(用户反馈)。</summary>
+    /// 只能手动关闭的问题(用户反馈)。
+    /// </summary>
     public void ShowPanelTransient()
     {
         IsPanelVisible = true;
@@ -201,14 +233,20 @@ public class FileTransferViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(ActiveCount));
         this.RaisePropertyChanged(nameof(PendingCount));
         if (Transfers.Count > 0)
+        {
             IsPanelVisible = true;
+        }
         else
+        {
             IsPanelVisible = false;
+        }
     }
 
-    /// <summary>Call when a task finishes; once nothing is active the toast lingers ~3s
+    /// <summary>
+    /// Call when a task finishes; once nothing is active the toast lingers ~3s
     /// showing the completed state, then fades out (spec §9.4). While the pointer is inside
-    /// the toast the countdown is held — it only starts (or restarts) after the pointer leaves.</summary>
+    /// the toast the countdown is held — it only starts (or restarts) after the pointer leaves.
+    /// </summary>
     public void NotifyTaskSettled()
     {
         this.RaisePropertyChanged(nameof(ActiveCount));
@@ -223,32 +261,35 @@ public class FileTransferViewModel : ReactiveObject
             _hidePending = false;
             return;
         }
-
         _hidePending = true;
         if (!_isPointerOver)
+        {
             ScheduleAutoHide();
+        }
     }
 
-    /// <summary>Called by the view on pointer enter/leave: entering pauses any pending
-    /// auto-hide so the user can inspect results; leaving resumes the 3s countdown.</summary>
+    /// <summary>
+    /// Called by the view on pointer enter/leave: entering pauses any pending
+    /// auto-hide so the user can inspect results; leaving resumes the 3s countdown.
+    /// </summary>
     public void SetPointerOver(bool isOver)
     {
         _isPointerOver = isOver;
-
         if (isOver)
         {
             _autoHide?.Dispose();
             _autoHide = null;
             return;
         }
-
         if (_hidePending && ActiveCount == 0)
+        {
             ScheduleAutoHide();
+        }
     }
 
     private void ScheduleAutoHide()
     {
-        _autoHide = Avalonia.Threading.DispatcherTimer.RunOnce(() =>
+        _autoHide = DispatcherTimer.RunOnce(() =>
         {
             if (ActiveCount == 0 && !_isPointerOver)
             {
@@ -258,14 +299,6 @@ public class FileTransferViewModel : ReactiveObject
         }, TimeSpan.FromSeconds(3));
     }
 
-    public ReactiveCommand<Guid, Unit> CancelTransferCommand { get; }
-    public ReactiveCommand<Guid, Unit> RetryTransferCommand { get; }
-    public ReactiveCommand<Unit, Unit> ClearCompletedCommand { get; }
-
-    /// <summary>Cancels every remaining file in the current batch, aborting the one in flight
-    /// and skipping the rest (spec §9: 取消剩余传输).</summary>
-    public ReactiveCommand<Unit, Unit> CancelAllCommand { get; }
-
     public void AddTransfer(TransferTask task)
     {
         var item = new TransferItemViewModel(task);
@@ -273,25 +306,26 @@ public class FileTransferViewModel : ReactiveObject
         Transfers.Insert(0, item);
     }
 
-    public TransferItemViewModel? FindTransfer(Guid transferId)
-    {
-        return Transfers.FirstOrDefault(t => t.Id == transferId);
-    }
+    public TransferItemViewModel? FindTransfer(Guid transferId) => Transfers.FirstOrDefault(t => t.Id == transferId);
 
     private void CancelTransfer(Guid transferId)
     {
-        var item = FindTransfer(transferId);
-        if (item == null) return;
-
+        TransferItemViewModel? item = FindTransfer(transferId);
+        if (item == null)
+        {
+            return;
+        }
         item.Status = TransferStatus.Cancelled;
         _transferManager?.CancelTransferAsync(transferId);
     }
 
     private void RetryTransfer(Guid transferId)
     {
-        var item = FindTransfer(transferId);
-        if (item == null || item.Status != TransferStatus.Failed) return;
-
+        TransferItemViewModel? item = FindTransfer(transferId);
+        if (item == null || item.Status != TransferStatus.Failed)
+        {
+            return;
+        }
         item.Status = TransferStatus.Queued;
     }
 
@@ -300,8 +334,7 @@ public class FileTransferViewModel : ReactiveObject
         var completed = Transfers.Where(t =>
             t.Status == TransferStatus.Completed ||
             t.Status == TransferStatus.Cancelled).ToList();
-
-        foreach (var item in completed)
+        foreach (TransferItemViewModel item in completed)
         {
             Transfers.Remove(item);
         }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 
@@ -7,14 +8,14 @@ namespace VelaShell.Core.Tests.Data;
 [TestCategory("DataStore")]
 public class SettingsServiceTests : IDisposable
 {
-    private readonly string _testDirectory;
     private readonly JsonDataStore _dataStore;
+    private readonly string _testDirectory;
 
     public SettingsServiceTests()
     {
         _testDirectory = Path.Combine(Path.GetTempPath(), $"velashell_test_{Guid.NewGuid()}");
         Directory.CreateDirectory(_testDirectory);
-        _dataStore = new JsonDataStore();
+        _dataStore = new();
     }
 
     public void Dispose()
@@ -29,9 +30,7 @@ public class SettingsServiceTests : IDisposable
     public async Task GetSettingsAsync_FileDoesNotExist_ShouldReturnDefaultSettings()
     {
         var service = new SettingsService(_dataStore, _testDirectory);
-
-        var settings = await service.GetSettingsAsync();
-
+        AppSettings settings = await service.GetSettingsAsync();
         Assert.IsNotNull(settings);
         Assert.AreEqual("zh-CN", settings.Language);
         Assert.AreEqual("dark", settings.Theme);
@@ -54,22 +53,17 @@ public class SettingsServiceTests : IDisposable
             ScrollbackLines = 5000,
             DefaultPort = 2222
         };
-
         await service.SaveSettingsAsync(settings);
-        var retrieved = await service.GetSettingsAsync();
-
-        Assert.AreEqual(
-            System.Text.Json.JsonSerializer.Serialize(settings),
-            System.Text.Json.JsonSerializer.Serialize(retrieved));
+        AppSettings retrieved = await service.GetSettingsAsync();
+        Assert.AreEqual(JsonSerializer.Serialize(settings),
+            JsonSerializer.Serialize(retrieved));
     }
 
     [TestMethod]
     public async Task GetStateAsync_FileDoesNotExist_ShouldReturnDefaultState()
     {
         var service = new SettingsService(_dataStore, _testDirectory);
-
-        var state = await service.GetStateAsync();
-
+        AppState state = await service.GetStateAsync();
         Assert.IsNotNull(state);
         Assert.AreEqual(0, state.RecentConnections.Count());
         Assert.IsNull(state.WindowPosition);
@@ -83,18 +77,15 @@ public class SettingsServiceTests : IDisposable
         var service = new SettingsService(_dataStore, _testDirectory);
         var state = new AppState
         {
-            RecentConnections = new List<string> { "session1", "session2", "session3" },
-            WindowPosition = new WindowPosition { X = 100, Y = 200 },
-            WindowSize = new WindowSize { Width = 1024, Height = 768 },
+            RecentConnections = ["session1", "session2", "session3"],
+            WindowPosition = new() { X = 100, Y = 200 },
+            WindowSize = new() { Width = 1024, Height = 768 },
             LastActiveTab = "tab1"
         };
-
         await service.SaveStateAsync(state);
-        var retrieved = await service.GetStateAsync();
-
-        Assert.AreEqual(
-            System.Text.Json.JsonSerializer.Serialize(state),
-            System.Text.Json.JsonSerializer.Serialize(retrieved));
+        AppState retrieved = await service.GetStateAsync();
+        Assert.AreEqual(JsonSerializer.Serialize(state),
+            JsonSerializer.Serialize(retrieved));
     }
 
     [TestMethod]
@@ -103,11 +94,9 @@ public class SettingsServiceTests : IDisposable
         var service = new SettingsService(_dataStore, _testDirectory);
         var settings1 = new AppSettings { Language = "en", Theme = "dark" };
         var settings2 = new AppSettings { Language = "zh", Theme = "light" };
-
         await service.SaveSettingsAsync(settings1);
         await service.SaveSettingsAsync(settings2);
-        var retrieved = await service.GetSettingsAsync();
-
+        AppSettings retrieved = await service.GetSettingsAsync();
         Assert.AreEqual("zh", retrieved.Language);
         Assert.AreEqual("light", retrieved.Theme);
     }
@@ -118,14 +107,12 @@ public class SettingsServiceTests : IDisposable
         var service = new SettingsService(_dataStore, _testDirectory);
         var state = new AppState
         {
-            RecentConnections = new List<string> { "session1" }
+            RecentConnections = ["session1"]
         };
-
         await service.SaveStateAsync(state);
         state.RecentConnections.Add("session2");
         await service.SaveStateAsync(state);
-        var retrieved = await service.GetStateAsync();
-
+        AppState retrieved = await service.GetStateAsync();
         Assert.AreEqual(2, retrieved.RecentConnections.Count());
         Assert.IsTrue(retrieved.RecentConnections.Contains("session1"));
         Assert.IsTrue(retrieved.RecentConnections.Contains("session2"));
@@ -137,13 +124,10 @@ public class SettingsServiceTests : IDisposable
         var service = new SettingsService(_dataStore, _testDirectory);
         var settings = new AppSettings { Language = "fr" };
         var state = new AppState { LastActiveTab = "tab1" };
-
         await service.SaveSettingsAsync(settings);
         await service.SaveStateAsync(state);
-
-        var retrievedSettings = await service.GetSettingsAsync();
-        var retrievedState = await service.GetStateAsync();
-
+        AppSettings retrievedSettings = await service.GetSettingsAsync();
+        AppState retrievedState = await service.GetStateAsync();
         Assert.AreEqual("fr", retrievedSettings.Language);
         Assert.AreEqual("tab1", retrievedState.LastActiveTab);
     }
@@ -155,15 +139,12 @@ public class SettingsServiceTests : IDisposable
         var service1 = new SettingsService(_dataStore, _testDirectory);
         var state = new AppState
         {
-            WindowPosition = new WindowPosition { X = 150, Y = 250 },
-            WindowSize = new WindowSize { Width = 1280, Height = 720 }
+            WindowPosition = new() { X = 150, Y = 250 },
+            WindowSize = new() { Width = 1280, Height = 720 }
         };
-
         await service1.SaveStateAsync(state);
-
         var service2 = new SettingsService(_dataStore, _testDirectory);
-        var retrieved = await service2.GetStateAsync();
-
+        AppState retrieved = await service2.GetStateAsync();
         Assert.IsNotNull(retrieved.WindowPosition);
         Assert.AreEqual(150, retrieved.WindowPosition!.X);
         Assert.AreEqual(250, retrieved.WindowPosition.Y);

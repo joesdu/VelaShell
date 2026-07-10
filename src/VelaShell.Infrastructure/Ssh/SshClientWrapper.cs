@@ -1,18 +1,13 @@
-using VelaShell.Core.Ssh;
 using Renci.SshNet;
 using Renci.SshNet.Common;
+using VelaShell.Core.Ssh;
 
 namespace VelaShell.Infrastructure.Ssh;
 
-public class SshClientWrapper : ISshClientWrapper
+public sealed class SshClientWrapper(SshClient client) : ISshClientWrapper
 {
-    private readonly SshClient _client;
+    private readonly SshClient _client = client ?? throw new ArgumentNullException(nameof(client));
     private bool _disposed;
-
-    public SshClientWrapper(SshClient client)
-    {
-        _client = client ?? throw new ArgumentNullException(nameof(client));
-    }
 
     public bool IsConnected
     {
@@ -65,16 +60,13 @@ public class SshClientWrapper : ISshClientWrapper
         IDictionary<TerminalModes, uint>? terminalModeValues = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-
-        var shellStream = _client.CreateShellStream(
-            terminalName,
+        ShellStream shellStream = _client.CreateShellStream(terminalName,
             columns,
             rows,
             width,
             height,
             bufferSize,
             terminalModeValues);
-
         return new ShellStreamWrapper(shellStream);
     }
 
@@ -85,7 +77,7 @@ public class SshClientWrapper : ISshClientWrapper
         // SSH.NET SshCommand is synchronous; run it off the caller's thread.
         return Task.Run(() =>
         {
-            using var command = _client.CreateCommand(commandText);
+            using SshCommand command = _client.CreateCommand(commandText);
             command.CommandTimeout = TimeSpan.FromSeconds(10);
             return command.Execute();
         }, cancellationToken);
@@ -103,22 +95,21 @@ public class SshClientWrapper : ISshClientWrapper
         _client.RemoveForwardedPort(port);
     }
 
-    protected virtual void Dispose(bool disposing)
-    {
-        if (!_disposed)
-        {
-            if (disposing)
-            {
-                _client.Dispose();
-            }
-
-            _disposed = true;
-        }
-    }
-
     public void Dispose()
     {
-        Dispose(disposing: true);
-        GC.SuppressFinalize(this);
+        Dispose(true);
+    }
+
+    private void Dispose(bool disposing)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+        if (disposing)
+        {
+            _client.Dispose();
+        }
+        _disposed = true;
     }
 }

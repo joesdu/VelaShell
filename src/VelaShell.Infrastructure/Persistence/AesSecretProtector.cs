@@ -1,4 +1,6 @@
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
+using System.Text;
 using VelaShell.Core.Data;
 
 namespace VelaShell.Infrastructure.Persistence;
@@ -17,18 +19,15 @@ public sealed class AesSecretProtector : ISecretProtector
     private readonly Lazy<byte[]> _key;
 
     public AesSecretProtector(VelaShellStoragePaths paths)
-        : this((paths ?? throw new ArgumentNullException(nameof(paths))).SecretKeyFile)
-    {
-    }
+        : this((paths ?? throw new ArgumentNullException(nameof(paths))).SecretKeyFile) { }
 
     public AesSecretProtector(string keyFilePath)
     {
         if (string.IsNullOrWhiteSpace(keyFilePath))
         {
-            throw new ArgumentException("Key file path is required.", nameof(keyFilePath));
+            throw new ArgumentException(@"Key file path is required.", nameof(keyFilePath));
         }
-
-        _key = new Lazy<byte[]>(() => LoadOrCreateKey(keyFilePath), LazyThreadSafetyMode.ExecutionAndPublication);
+        _key = new(() => LoadOrCreateKey(keyFilePath), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public string? Protect(string? plaintext)
@@ -37,16 +36,13 @@ public sealed class AesSecretProtector : ISecretProtector
         {
             return plaintext;
         }
-
-        var nonce = RandomNumberGenerator.GetBytes(NonceSize);
-        var plainBytes = System.Text.Encoding.UTF8.GetBytes(plaintext);
-        var cipher = new byte[plainBytes.Length];
-        var tag = new byte[TagSize];
-
+        byte[] nonce = RandomNumberGenerator.GetBytes(NonceSize);
+        byte[] plainBytes = Encoding.UTF8.GetBytes(plaintext);
+        byte[] cipher = new byte[plainBytes.Length];
+        byte[] tag = new byte[TagSize];
         using var aes = new AesGcm(_key.Value, TagSize);
         aes.Encrypt(nonce, plainBytes, cipher, tag);
-
-        var blob = new byte[NonceSize + TagSize + cipher.Length];
+        byte[] blob = new byte[NonceSize + TagSize + cipher.Length];
         nonce.CopyTo(blob, 0);
         tag.CopyTo(blob, NonceSize);
         cipher.CopyTo(blob, NonceSize + TagSize);
@@ -59,23 +55,20 @@ public sealed class AesSecretProtector : ISecretProtector
         {
             return ciphertext;
         }
-
         try
         {
-            var blob = Convert.FromBase64String(ciphertext[Prefix.Length..]);
+            byte[] blob = Convert.FromBase64String(ciphertext[Prefix.Length..]);
             if (blob.Length < NonceSize + TagSize)
             {
                 return ciphertext;
             }
-
-            var nonce = blob.AsSpan(0, NonceSize);
-            var tag = blob.AsSpan(NonceSize, TagSize);
-            var cipher = blob.AsSpan(NonceSize + TagSize);
-            var plain = new byte[cipher.Length];
-
+            Span<byte> nonce = blob.AsSpan(0, NonceSize);
+            Span<byte> tag = blob.AsSpan(NonceSize, TagSize);
+            Span<byte> cipher = blob.AsSpan(NonceSize + TagSize);
+            byte[] plain = new byte[cipher.Length];
             using var aes = new AesGcm(_key.Value, TagSize);
             aes.Decrypt(nonce, cipher, tag, plain);
-            return System.Text.Encoding.UTF8.GetString(plain);
+            return Encoding.UTF8.GetString(plain);
         }
         catch (Exception ex) when (ex is FormatException or CryptographicException)
         {
@@ -88,17 +81,16 @@ public sealed class AesSecretProtector : ISecretProtector
     {
         if (File.Exists(keyFilePath))
         {
-            var stored = File.ReadAllBytes(keyFilePath);
+            byte[] stored = File.ReadAllBytes(keyFilePath);
 
             // Windows:密钥以 DPAPI(CurrentUser)密文落盘。历史版本可能是 32 字节明文,
             // 解包失败时回退按明文处理,并顺带升级为 DPAPI 密文。
             if (OperatingSystem.IsWindows())
             {
-                if (TryDpapiUnprotect(stored, out var unwrapped) && unwrapped.Length == 32)
+                if (TryDpapiUnprotect(stored, out byte[] unwrapped) && unwrapped.Length == 32)
                 {
                     return unwrapped;
                 }
-
                 if (stored.Length == 32)
                 {
                     WriteKey(keyFilePath, stored); // 明文 → DPAPI 密文迁移
@@ -110,8 +102,7 @@ public sealed class AesSecretProtector : ISecretProtector
                 return stored;
             }
         }
-
-        var key = RandomNumberGenerator.GetBytes(32);
+        byte[] key = RandomNumberGenerator.GetBytes(32);
         WriteKey(keyFilePath, key);
         return key;
     }
@@ -120,26 +111,22 @@ public sealed class AesSecretProtector : ISecretProtector
     private static void WriteKey(string keyFilePath, byte[] key)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(keyFilePath)!);
-
         if (OperatingSystem.IsWindows())
         {
-            var wrapped = System.Security.Cryptography.ProtectedData.Protect(
-                key, optionalEntropy: null, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+            byte[] wrapped = ProtectedData.Protect(key, null, DataProtectionScope.CurrentUser);
             File.WriteAllBytes(keyFilePath, wrapped);
             return;
         }
-
         File.WriteAllBytes(keyFilePath, key);
         File.SetUnixFileMode(keyFilePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("windows")]
     private static bool TryDpapiUnprotect(byte[] wrapped, out byte[] key)
     {
         try
         {
-            key = System.Security.Cryptography.ProtectedData.Unprotect(
-                wrapped, optionalEntropy: null, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+            key = ProtectedData.Unprotect(wrapped, null, DataProtectionScope.CurrentUser);
             return true;
         }
         catch (CryptographicException)

@@ -1,22 +1,18 @@
 using System.Globalization;
 using System.Resources;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.Core.Localization;
 
 public class LocalizationService : ILocalizationService
 {
-    private readonly ResourceManager _resourceManager;
-    
-    public LocalizationService()
-    {
-        _resourceManager = new ResourceManager("VelaShell.Core.Resources.Strings", typeof(Resources.Strings).Assembly);
-    }
-    
+    private readonly ResourceManager _resourceManager = new("VelaShell.Core.Resources.Strings", typeof(Strings).Assembly);
+
     public string GetString(string key)
     {
         try
         {
-            var value = _resourceManager.GetString(key, CultureInfo.CurrentUICulture);
+            string? value = _resourceManager.GetString(key, CultureInfo.CurrentUICulture);
             return value ?? key;
         }
         catch (MissingManifestResourceException)
@@ -28,7 +24,7 @@ public class LocalizationService : ILocalizationService
             return key;
         }
     }
-    
+
     public string CurrentLanguage => CultureInfo.CurrentUICulture.Name;
 
     public event Action<string>? LanguageChanged;
@@ -38,8 +34,9 @@ public class LocalizationService : ILocalizationService
         ArgumentNullException.ThrowIfNull(language);
         var culture = new CultureInfo(language);
         if (culture.Name == CultureInfo.CurrentUICulture.Name)
+        {
             return;
-
+        }
         CultureInfo.CurrentUICulture = culture;
         CultureInfo.CurrentCulture = culture;
         LanguageChanged?.Invoke(culture.Name);

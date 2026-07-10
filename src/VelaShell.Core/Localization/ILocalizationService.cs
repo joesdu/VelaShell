@@ -6,17 +6,17 @@ namespace VelaShell.Core.Localization;
 public interface ILocalizationService
 {
     /// <summary>
+    /// Gets the current UI language code (e.g., "en", "zh-CN")
+    /// </summary>
+    string CurrentLanguage { get; }
+
+    /// <summary>
     /// Gets a localized string by key
     /// </summary>
     /// <param name="key">The resource key</param>
     /// <returns>Localized string, or key name if not found</returns>
     string GetString(string key);
-    
-    /// <summary>
-    /// Gets the current UI language code (e.g., "en", "zh-CN")
-    /// </summary>
-    string CurrentLanguage { get; }
-    
+
     /// <summary>
     /// Sets the UI language for the application
     /// </summary>

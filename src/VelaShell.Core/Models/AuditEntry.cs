@@ -5,7 +5,9 @@ public class AuditEntry
 {
     public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.UtcNow;
 
-    /// <summary>类别,如 connection / profile / settings / security。</summary>
+    /// <summary>
+    /// 类别,如 connection / profile / settings / security。
+    /// </summary>
     public string Category { get; set; } = string.Empty;
 
     /// <summary>动作,如 connect / disconnect / save / delete / trust-host。</summary>

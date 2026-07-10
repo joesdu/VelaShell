@@ -1,6 +1,7 @@
+using SonnetDB.Model;
+using SonnetDB.Sql.Execution;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
-using SonnetDB.Model;
 
 namespace VelaShell.Infrastructure.Persistence;
 
@@ -9,14 +10,9 @@ namespace VelaShell.Infrastructure.Persistence;
 /// 每次连接写入一个数据点(tags: profile_id/host/username;fields: name/group_name/port/success/duration_ms),
 /// “最近连接”按时间倒序查询并对同一目标去重。
 /// </summary>
-public sealed class SonnetDbRecentConnectionService : IRecentConnectionService
+public sealed class SonnetDbRecentConnectionService(SonnetDbEngine engine) : IRecentConnectionService
 {
-    private readonly SonnetDbEngine _engine;
-
-    public SonnetDbRecentConnectionService(SonnetDbEngine engine)
-    {
-        _engine = engine ?? throw new ArgumentNullException(nameof(engine));
-    }
+    private readonly SonnetDbEngine _engine = engine ?? throw new ArgumentNullException(nameof(engine));
 
     public Task RecordAsync(RecentConnectionEntry entry, CancellationToken cancellationToken = default)
     {
@@ -28,12 +24,10 @@ public sealed class SonnetDbRecentConnectionService : IRecentConnectionService
         {
             tags["profile_id"] = profileId.ToString("D");
         }
-
         if (!string.IsNullOrEmpty(entry.Host))
         {
             tags["host"] = entry.Host;
         }
-
         if (!string.IsNullOrEmpty(entry.Username))
         {
             tags["username"] = entry.Username;
@@ -44,9 +38,8 @@ public sealed class SonnetDbRecentConnectionService : IRecentConnectionService
             ["group_name"] = FieldValue.FromString(entry.GroupName),
             ["port"] = FieldValue.FromLong(entry.Port),
             ["success"] = FieldValue.FromBool(entry.Success),
-            ["duration_ms"] = FieldValue.FromLong(entry.DurationMs),
+            ["duration_ms"] = FieldValue.FromLong(entry.DurationMs)
         };
-
         return _engine.WritePointAsync(SonnetDbEngine.ConnHistoryMeasurement, entry.ConnectedAt, tags, fields, cancellationToken);
     }
 
@@ -58,61 +51,52 @@ public sealed class SonnetDbRecentConnectionService : IRecentConnectionService
         }
 
         // 多取一些再去重,保证同一目标反复连接时仍能凑满 limit 个不同目标。
-        var fetch = Math.Clamp(limit * 10, 50, 500);
-        var result = await _engine.QueryAsync(
-            $"SELECT time, profile_id, host, username, name, group_name, port, success FROM {SonnetDbEngine.ConnHistoryMeasurement} ORDER BY time DESC LIMIT {fetch}",
-            cancellationToken).ConfigureAwait(false);
-
+        int fetch = Math.Clamp(limit * 10, 50, 500);
+        SelectExecutionResult result = await _engine.QueryAsync($"SELECT time, profile_id, host, username, name, group_name, port, success FROM {SonnetDbEngine.ConnHistoryMeasurement} ORDER BY time DESC LIMIT {fetch}",
+                                           cancellationToken).ConfigureAwait(false);
         var entries = new List<RecentConnectionEntry>(limit);
         var seen = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var row in result.Rows)
+        foreach (IReadOnlyList<object?> row in result.Rows)
         {
-            var entry = MapRow(result.Columns, row);
+            RecentConnectionEntry? entry = MapRow(result.Columns, row);
             if (entry is null || !entry.Success)
             {
                 continue;
             }
-
-            var key = entry.ProfileId is { } id
-                ? "p:" + id.ToString("D")
-                : $"h:{entry.Username}@{entry.Host}:{entry.Port}";
+            string key = entry.ProfileId is { } id
+                             ? "p:" + id.ToString("D")
+                             : $"h:{entry.Username}@{entry.Host}:{entry.Port}";
             if (!seen.Add(key))
             {
                 continue;
             }
-
             entries.Add(entry);
             if (entries.Count >= limit)
             {
                 break;
             }
         }
-
         return entries;
     }
 
-    public Task ClearAsync(CancellationToken cancellationToken = default)
-        => _engine.ResetMeasurementAsync(SonnetDbEngine.ConnHistoryMeasurement, cancellationToken);
+    public Task ClearAsync(CancellationToken cancellationToken = default) => _engine.ResetMeasurementAsync(SonnetDbEngine.ConnHistoryMeasurement, cancellationToken);
 
     private static RecentConnectionEntry? MapRow(IReadOnlyList<string> columns, IReadOnlyList<object?> row)
     {
         var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < columns.Count && i < row.Count; i++)
+        for (int i = 0; i < columns.Count && i < row.Count; i++)
         {
             values[columns[i]] = row[i];
         }
-
-        if (!values.TryGetValue("time", out var time) || time is null)
+        if (!values.TryGetValue("time", out object? time) || time is null)
         {
             return null;
         }
-
-        var profileIdRaw = AsString(values.GetValueOrDefault("profile_id"));
-        return new RecentConnectionEntry
+        string profileIdRaw = AsString(values.GetValueOrDefault("profile_id"));
+        return new()
         {
             ConnectedAt = DateTimeOffset.FromUnixTimeMilliseconds(Convert.ToInt64(time)),
-            ProfileId = Guid.TryParse(profileIdRaw, out var id) ? id : null,
+            ProfileId = Guid.TryParse(profileIdRaw, out Guid id) ? id : null,
             Host = AsString(values.GetValueOrDefault("host")),
             Username = AsString(values.GetValueOrDefault("username")),
             Name = AsString(values.GetValueOrDefault("name")),
@@ -120,10 +104,10 @@ public sealed class SonnetDbRecentConnectionService : IRecentConnectionService
             Port = values.GetValueOrDefault("port") is { } port ? (int)Convert.ToInt64(port) : 22,
             Success = values.GetValueOrDefault("success") switch
             {
-                bool b => b,
-                null => true,
-                var other => Convert.ToBoolean(other),
-            },
+                bool b    => b,
+                null      => true,
+                var other => Convert.ToBoolean(other)
+            }
         };
     }
 

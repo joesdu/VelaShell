@@ -55,7 +55,7 @@ public sealed class CommandPaletteGroup
     public CommandPaletteGroup(string category)
     {
         Category = category;
-        Items = new ObservableCollection<CommandPaletteItem>();
+        Items = [];
     }
 
     public string Category { get; }

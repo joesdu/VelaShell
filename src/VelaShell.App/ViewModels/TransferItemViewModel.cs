@@ -1,7 +1,5 @@
-using System;
-using System.IO;
-using VelaShell.Core.Models;
 using ReactiveUI;
+using VelaShell.Core.Models;
 
 namespace VelaShell.App.ViewModels;
 
@@ -11,8 +9,8 @@ public class TransferItemViewModel : ReactiveObject
 
     private int _progress;
     private string _speed = string.Empty;
-    private string _timeRemaining = string.Empty;
     private TransferStatus _status;
+    private string _timeRemaining = string.Empty;
     private long _totalSize;
     private long _transferredBytes;
 
@@ -20,7 +18,6 @@ public class TransferItemViewModel : ReactiveObject
     {
         _task = task ?? throw new ArgumentNullException(nameof(task));
         _status = task.Status;
-
         if (task.Progress != null)
         {
             _totalSize = task.Progress.TotalBytes;
@@ -71,7 +68,9 @@ public class TransferItemViewModel : ReactiveObject
     }
 
     public bool IsActive => _status == TransferStatus.InProgress || _status == TransferStatus.Queued;
+
     public bool IsFailed => _status == TransferStatus.Failed;
+
     public bool IsCompleted => _status == TransferStatus.Completed;
 
     public long TotalSize
@@ -86,6 +85,34 @@ public class TransferItemViewModel : ReactiveObject
         private set => this.RaiseAndSetIfChanged(ref _transferredBytes, value);
     }
 
+    /// <summary>Right-hand status: "67%" while running, "完成" when done, "失败" on error.</summary>
+    public string ProgressText => _status switch
+    {
+        TransferStatus.Completed => "完成",
+        TransferStatus.Failed    => "失败",
+        _                        => $"{_progress}%"
+    };
+
+    /// <summary>Detail line per design 9Ralg: "142 MB / 212 MB  •  4.2 MB/s  •  ↑ 上传中".</summary>
+    public string InfoLine
+    {
+        get
+        {
+            string action = _task.Type == TransferType.Upload ? "↑ 上传中" : "↓ 下载中";
+            if (_status == TransferStatus.Completed)
+            {
+                action = _task.Type == TransferType.Upload ? "↑ 已上传" : "↓ 已下载";
+            }
+            else if (_status == TransferStatus.Failed)
+            {
+                action = "失败";
+            }
+            return _status == TransferStatus.Completed
+                       ? $"{FormatBytes(_totalSize)}  •  已完成  •  {action}"
+                       : $"{FormatBytes(_transferredBytes)} / {FormatBytes(_totalSize)}  •  {_speed}  •  {action}";
+        }
+    }
+
     public void UpdateProgress(TransferProgress progress)
     {
         Progress = progress.Percentage;
@@ -97,35 +124,13 @@ public class TransferItemViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(ProgressText));
     }
 
-    /// <summary>Right-hand status: "67%" while running, "完成" when done, "失败" on error.</summary>
-    public string ProgressText => _status switch
-    {
-        TransferStatus.Completed => "完成",
-        TransferStatus.Failed => "失败",
-        _ => $"{_progress}%",
-    };
-
-    /// <summary>Detail line per design 9Ralg: "142 MB / 212 MB  •  4.2 MB/s  •  ↑ 上传中".</summary>
-    public string InfoLine
-    {
-        get
-        {
-            var action = _task.Type == TransferType.Upload ? "↑ 上传中" : "↓ 下载中";
-            if (_status == TransferStatus.Completed)
-                action = _task.Type == TransferType.Upload ? "↑ 已上传" : "↓ 已下载";
-            else if (_status == TransferStatus.Failed)
-                action = "失败";
-
-            return _status == TransferStatus.Completed
-                ? $"{FormatBytes(_totalSize)}  •  已完成  •  {action}"
-                : $"{FormatBytes(_transferredBytes)} / {FormatBytes(_totalSize)}  •  {_speed}  •  {action}";
-        }
-    }
-
     public static string FormatBytes(long bytes)
     {
-        if (bytes <= 0) return "0 B";
-        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        if (bytes <= 0)
+        {
+            return "0 B";
+        }
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
         int i = Math.Min((int)Math.Floor(Math.Log(bytes, 1024)), units.Length - 1);
         double value = bytes / Math.Pow(1024, i);
         return i == 0 ? $"{bytes} B" : $"{value:F1} {units[i]}";
@@ -133,23 +138,33 @@ public class TransferItemViewModel : ReactiveObject
 
     public static string FormatSpeed(double bytesPerSecond)
     {
-        if (bytesPerSecond <= 0) return "0 B/s";
-
-        string[] units = { "B/s", "KB/s", "MB/s", "GB/s", "TB/s" };
+        if (bytesPerSecond <= 0)
+        {
+            return "0 B/s";
+        }
+        string[] units = ["B/s", "KB/s", "MB/s", "GB/s", "TB/s"];
         int i = (int)Math.Floor(Math.Log(bytesPerSecond, 1024));
         i = Math.Min(i, units.Length - 1);
-
         double value = bytesPerSecond / Math.Pow(1024, i);
         return i == 0
-            ? $"{(int)value} {units[0]}"
-            : $"{value:F1} {units[i]}";
+                   ? $"{(int)value} {units[0]}"
+                   : $"{value:F1} {units[i]}";
     }
 
     public static string FormatTimeRemaining(TimeSpan remaining)
     {
-        if (remaining <= TimeSpan.Zero) return string.Empty;
-        if (remaining.TotalHours >= 1) return $"{(int)remaining.TotalHours}h {remaining.Minutes}m";
-        if (remaining.TotalMinutes >= 1) return $"{(int)remaining.TotalMinutes}m {remaining.Seconds}s";
+        if (remaining <= TimeSpan.Zero)
+        {
+            return string.Empty;
+        }
+        if (remaining.TotalHours >= 1)
+        {
+            return $"{(int)remaining.TotalHours}h {remaining.Minutes}m";
+        }
+        if (remaining.TotalMinutes >= 1)
+        {
+            return $"{(int)remaining.TotalMinutes}m {remaining.Seconds}s";
+        }
         return $"{remaining.Seconds}s";
     }
 }

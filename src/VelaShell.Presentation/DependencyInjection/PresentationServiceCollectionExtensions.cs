@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using ReactiveUI;
 using VelaShell.Presentation.Services;
 using VelaShell.Presentation.ViewModels;
 
@@ -10,7 +9,6 @@ public static class PresentationServiceCollectionExtensions
     public static IServiceCollection AddVelaShellPresentation(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-
         services.AddSingleton<WorkspaceHostViewModel>();
         services.AddSingleton<StatusBarViewModel>();
         services.AddSingleton<TabBarViewModel>();
@@ -18,7 +16,6 @@ public static class PresentationServiceCollectionExtensions
         services.AddSingleton<IConnectionWorkflowService, ConnectionWorkflowService>();
         services.AddSingleton<ITunnelWorkflowService, TunnelWorkflowService>();
         services.AddSingleton<IConnectionDiagnosticsService, ConnectionDiagnosticsService>();
-
         return services;
     }
 }

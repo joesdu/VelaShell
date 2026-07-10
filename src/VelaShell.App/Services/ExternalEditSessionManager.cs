@@ -1,9 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using VelaShell.Core.Sftp;
 
 namespace VelaShell.App.Services;
@@ -12,11 +7,12 @@ namespace VelaShell.App.Services;
 /// 「使用默认编辑器打开」(WinSCP 式远程编辑):远程文件下载到本地 temp 的独立子目录,
 /// 交给用户配置的编辑器;FileSystemWatcher 侦听保存(600ms 防抖)后自动上传回服务器。
 /// 编辑器进程正常退出后延迟清理临时目录;启动即返回的单实例编辑器(如复用实例的
-/// notepad++)无法据进程判断,保留监听,由应用退出时的 <see cref="CleanupAll"/> 统一清理。
+/// notepad++)无法据进程判断,保留监听,由应用退出时的 <see cref="CleanupAll" /> 统一清理。
 /// </summary>
 public static class ExternalEditSessionManager
 {
-    private static readonly List<ExternalEditSession> Sessions = new();
+    private static readonly List<ExternalEditSession> Sessions = [];
+
     private static readonly string TempRoot =
         Path.Combine(Path.GetTempPath(), "VelaShell", "remote-edit");
 
@@ -31,18 +27,15 @@ public static class ExternalEditSessionManager
         CancellationToken cancellationToken = default)
     {
         // 每次编辑独占一个子目录,避免同名文件互相覆盖。
-        var directory = Path.Combine(TempRoot, Guid.NewGuid().ToString("N")[..8]);
+        string directory = Path.Combine(TempRoot, Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(directory);
-        var localPath = Path.Combine(directory, fileName);
-
+        string localPath = Path.Combine(directory, fileName);
         await sftpService.DownloadFileAsync(sessionId, remotePath, localPath, null, cancellationToken);
-
         var session = new ExternalEditSession(sftpService, sessionId, remotePath, localPath, onError, uploadAsync);
         lock (Sessions)
         {
             Sessions.Add(session);
         }
-
         session.LaunchEditor(editorCommand);
     }
 
@@ -51,11 +44,12 @@ public static class ExternalEditSessionManager
     {
         lock (Sessions)
         {
-            foreach (var session in Sessions)
+            foreach (ExternalEditSession session in Sessions)
+            {
                 session.Dispose();
+            }
             Sessions.Clear();
         }
-
         TryDeleteDirectory(TempRoot);
     }
 
@@ -72,7 +66,9 @@ public static class ExternalEditSessionManager
         try
         {
             if (Directory.Exists(path))
-                Directory.Delete(path, recursive: true);
+            {
+                Directory.Delete(path, true);
+            }
         }
         catch
         {
@@ -83,21 +79,25 @@ public static class ExternalEditSessionManager
 
 internal sealed class ExternalEditSession : IDisposable
 {
-    private readonly ISftpService _sftpService;
-    private readonly Guid _sessionId;
-    private readonly string _remotePath;
     private readonly string _localPath;
     private readonly Action<string>? _onError;
+    private readonly string _remotePath;
+    private readonly Guid _sessionId;
+    private readonly ISftpService _sftpService;
     private readonly Func<string, string, Task>? _uploadAsync;
-    private readonly FileSystemWatcher _watcher;
     private readonly SemaphoreSlim _uploadGate = new(1, 1);
+    private readonly FileSystemWatcher _watcher;
     private Timer? _debounce;
-    private DateTime _launchedAt;
     private bool _disposed;
+    private DateTime _launchedAt;
 
     public ExternalEditSession(
-        ISftpService sftpService, Guid sessionId, string remotePath, string localPath,
-        Action<string>? onError, Func<string, string, Task>? uploadAsync)
+        ISftpService sftpService,
+        Guid sessionId,
+        string remotePath,
+        string localPath,
+        Action<string>? onError,
+        Func<string, string, Task>? uploadAsync)
     {
         _sftpService = sftpService;
         _sessionId = sessionId;
@@ -105,10 +105,9 @@ internal sealed class ExternalEditSession : IDisposable
         _localPath = localPath;
         _onError = onError;
         _uploadAsync = uploadAsync;
-
-        _watcher = new FileSystemWatcher(Path.GetDirectoryName(localPath)!, Path.GetFileName(localPath))
+        _watcher = new(Path.GetDirectoryName(localPath)!, Path.GetFileName(localPath))
         {
-            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName
         };
         // 编辑器保存往往触发多个事件(写入+改名+属性),统一走防抖。
         _watcher.Changed += (_, _) => ScheduleUpload();
@@ -117,21 +116,35 @@ internal sealed class ExternalEditSession : IDisposable
         _watcher.EnableRaisingEvents = true;
     }
 
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+        _disposed = true;
+        _debounce?.Dispose();
+        _watcher.Dispose();
+        ExternalEditSessionManager.TryDeleteDirectory(Path.GetDirectoryName(_localPath)!);
+    }
+
     public void LaunchEditor(string editorCommand)
     {
         _launchedAt = DateTime.UtcNow;
-
-        var startInfo = BuildEditorStartInfo(editorCommand.Trim().Trim('"'), _localPath);
+        ProcessStartInfo startInfo = BuildEditorStartInfo(editorCommand.Trim().Trim('"'), _localPath);
         var process = Process.Start(startInfo);
         if (process is null)
+        {
             return;
-
+        }
         process.EnableRaisingEvents = true;
         process.Exited += (_, _) =>
         {
             // 单实例编辑器的引导进程会立刻退出 —— 此时不能清理,保留监听到应用退出。
             if (DateTime.UtcNow - _launchedAt < TimeSpan.FromSeconds(3))
+            {
                 return;
+            }
 
             // 正常退出:留 1.5s 让最后一次保存的事件与上传落地,再清理临时目录。
             _ = Task.Delay(TimeSpan.FromSeconds(1.5)).ContinueWith(_ =>
@@ -142,27 +155,27 @@ internal sealed class ExternalEditSession : IDisposable
         };
     }
 
-    /// <summary>按平台组装编辑器启动方式:
+    /// <summary>
+    /// 按平台组装编辑器启动方式:
     /// Windows — ShellExecute(支持 exe 完整路径、PATH 命令名与 App Paths 注册名,如 notepad++);
     /// macOS — 配置的不是现存可执行文件时按应用名/.app 包走 `open -a`(GUI 应用的正规启动方式);
-    /// Linux — 直接 exec,命令名经 PATH 解析(如 gedit、kate、code)。</summary>
+    /// Linux — 直接 exec,命令名经 PATH 解析(如 gedit、kate、code)。
+    /// </summary>
     private static ProcessStartInfo BuildEditorStartInfo(string editor, string filePath)
     {
         ProcessStartInfo startInfo;
-
         if (OperatingSystem.IsMacOS() && !File.Exists(editor))
         {
-            startInfo = new ProcessStartInfo { FileName = "open", UseShellExecute = false };
+            startInfo = new() { FileName = "open", UseShellExecute = false };
             startInfo.ArgumentList.Add("-a");
             startInfo.ArgumentList.Add(editor);
             startInfo.ArgumentList.Add(filePath);
             return startInfo;
         }
-
-        startInfo = new ProcessStartInfo
+        startInfo = new()
         {
             FileName = editor,
-            UseShellExecute = OperatingSystem.IsWindows(),
+            UseShellExecute = OperatingSystem.IsWindows()
         };
         startInfo.ArgumentList.Add(filePath);
         return startInfo;
@@ -171,27 +184,32 @@ internal sealed class ExternalEditSession : IDisposable
     private void ScheduleUpload()
     {
         if (_disposed)
+        {
             return;
-
+        }
         _debounce?.Dispose();
-        _debounce = new Timer(_ => _ = UploadAsync(), null, TimeSpan.FromMilliseconds(600), Timeout.InfiniteTimeSpan);
+        _debounce = new(_ => _ = UploadAsync(), null, TimeSpan.FromMilliseconds(600), Timeout.InfiniteTimeSpan);
     }
 
     private async Task UploadAsync()
     {
         if (_disposed || !File.Exists(_localPath))
+        {
             return;
-
+        }
         await _uploadGate.WaitAsync();
         try
         {
             // 编辑器保存后可能短暂持锁:先等到文件可读再上传,保证传输浮窗里只出现一行。
             await WaitUntilReadableAsync();
-
             if (_uploadAsync is not null)
+            {
                 await _uploadAsync(_localPath, _remotePath);
+            }
             else
+            {
                 await _sftpService.UploadFileAsync(_sessionId, _localPath, _remotePath);
+            }
         }
         catch (Exception ex)
         {
@@ -205,11 +223,11 @@ internal sealed class ExternalEditSession : IDisposable
 
     private async Task WaitUntilReadableAsync()
     {
-        for (var attempt = 0; attempt < 4; attempt++)
+        for (int attempt = 0; attempt < 4; attempt++)
         {
             try
             {
-                using var _ = File.Open(_localPath, FileMode.Open, FileAccess.Read,
+                using FileStream _ = File.Open(_localPath, FileMode.Open, FileAccess.Read,
                     FileShare.ReadWrite | FileShare.Delete);
                 return;
             }
@@ -218,16 +236,5 @@ internal sealed class ExternalEditSession : IDisposable
                 await Task.Delay(300);
             }
         }
-    }
-
-    public void Dispose()
-    {
-        if (_disposed)
-            return;
-
-        _disposed = true;
-        _debounce?.Dispose();
-        _watcher.Dispose();
-        ExternalEditSessionManager.TryDeleteDirectory(Path.GetDirectoryName(_localPath)!);
     }
 }

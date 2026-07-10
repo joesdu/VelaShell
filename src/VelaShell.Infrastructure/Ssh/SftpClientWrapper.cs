@@ -1,18 +1,13 @@
-using VelaShell.Core.Ssh;
 using Renci.SshNet;
 using Renci.SshNet.Sftp;
+using VelaShell.Core.Ssh;
 
 namespace VelaShell.Infrastructure.Ssh;
 
-public class SftpClientWrapper : ISftpClientWrapper
+public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
 {
-    private readonly SftpClient _client;
+    private readonly SftpClient _client = client ?? throw new ArgumentNullException(nameof(client));
     private bool _disposed;
-
-    public SftpClientWrapper(SftpClient client)
-    {
-        _client = client ?? throw new ArgumentNullException(nameof(client));
-    }
 
     public bool IsConnected
     {
@@ -127,7 +122,7 @@ public class SftpClientWrapper : ISftpClientWrapper
     public void PosixRenameFile(string oldPath, string newPath)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _client.RenameFile(oldPath, newPath, isPosix: true);
+        _client.RenameFile(oldPath, newPath, true);
     }
 
     public bool Exists(string path)
@@ -142,22 +137,18 @@ public class SftpClientWrapper : ISftpClientWrapper
         _client.ChangePermissions(path, mode);
     }
 
-    protected virtual void Dispose(bool disposing)
+    public void Dispose() => Dispose(true);
+
+    private void Dispose(bool disposing)
     {
-        if (!_disposed)
+        if (_disposed)
         {
-            if (disposing)
-            {
-                _client.Dispose();
-            }
-
-            _disposed = true;
+            return;
         }
-    }
-
-    public void Dispose()
-    {
-        Dispose(disposing: true);
-        GC.SuppressFinalize(this);
+        if (disposing)
+        {
+            _client.Dispose();
+        }
+        _disposed = true;
     }
 }

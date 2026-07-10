@@ -6,26 +6,30 @@ using VelaShell.Core.Ssh;
 
 namespace VelaShell.Infrastructure.Ssh;
 
-public class SshConnectionService : ISshConnectionService
+public class SshConnectionService(
+    Func<ConnectionInfo, ISshClientWrapper> clientFactory,
+    ILogger<SshConnectionService>? logger = null) : ISshConnectionService
 {
-    private readonly ILogger<SshConnectionService>? _logger;
-    private readonly Func<ConnectionInfo, ISshClientWrapper> _clientFactory;
-    private readonly SourceList<SshSession> _sessions = new();
+    private readonly Func<ConnectionInfo, ISshClientWrapper> _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
     private readonly ConcurrentDictionary<Guid, ISshClientWrapper> _clients = new();
+    private readonly SourceList<SshSession> _sessions = new();
 
-    /// <summary>只保护 <see cref="_sessions"/> 列表的增删/读取(微秒级、无网络 I/O)。
-    /// 握手不在此锁内进行,因此一条高延迟连接不再阻塞其它并发连接。</summary>
-    private readonly object _sessionsGate = new();
+    /// <summary>
+    /// 只保护 <see cref="_sessions" /> 列表的增删/读取(微秒级、无网络 I/O)。
+    /// 握手不在此锁内进行,因此一条高延迟连接不再阻塞其它并发连接。
+    /// </summary>
+    private readonly Lock _sessionsGate = new();
 
-    public SshConnectionService(
-        Func<ConnectionInfo, ISshClientWrapper> clientFactory,
-        ILogger<SshConnectionService>? logger = null)
+    public IObservableList<SshSession> Sessions
     {
-        _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
-        _logger = logger;
+        get
+        {
+            lock (_sessionsGate)
+            {
+                return _sessions.AsObservableList();
+            }
+        }
     }
-
-    public IObservableList<SshSession> Sessions => _sessions.AsObservableList();
 
     public Task<SshSession> ConnectAsync(ConnectionInfo connectionInfo, CancellationToken cancellationToken = default)
     {
@@ -33,91 +37,19 @@ public class SshConnectionService : ISshConnectionService
         return ConnectInternalAsync(connectionInfo, cancellationToken);
     }
 
-    private async Task<SshSession> ConnectInternalAsync(ConnectionInfo connectionInfo, CancellationToken cancellationToken)
-    {
-        var session = new SshSession
-        {
-            ConnectionInfo = connectionInfo,
-            Status = SessionStatus.Connecting
-        };
-
-        lock (_sessionsGate)
-        {
-            _sessions.Add(session);
-        }
-
-        ISshClientWrapper? client = null;
-        try
-        {
-            client = _clientFactory(connectionInfo);
-            await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
-
-            if (!client.IsConnected)
-            {
-                client.Dispose();
-                client = null;
-                throw new InvalidOperationException("Client connection failed without exception");
-            }
-
-            _clients[session.SessionId] = client;
-
-            session.Status = SessionStatus.Connected;
-            session.ConnectedAt = DateTime.UtcNow;
-
-            _logger?.LogInformation("SSH session {SessionId} connected to {Host}:{Port}",
-                session.SessionId, connectionInfo.Host, connectionInfo.Port);
-
-            return session;
-        }
-        catch (OperationCanceledException)
-        {
-            client?.Dispose();
-
-            session.Status = SessionStatus.Error;
-            session.ErrorMessage = $"Connection to {connectionInfo.Host}:{connectionInfo.Port} timed out. Please check the host and port, then retry.";
-            lock (_sessionsGate)
-            {
-                _sessions.Remove(session);
-            }
-
-            _logger?.LogWarning("SSH session {SessionId} to {Host}:{Port} timed out or was cancelled",
-                session.SessionId, connectionInfo.Host, connectionInfo.Port);
-
-            throw new TimeoutException(session.ErrorMessage);
-        }
-        catch (Exception ex)
-        {
-            client?.Dispose();
-
-            session.Status = SessionStatus.Error;
-            session.ErrorMessage = ex.Message;
-            lock (_sessionsGate)
-            {
-                _sessions.Remove(session);
-            }
-
-            _logger?.LogError(ex, "Failed to connect SSH session {SessionId} to {Host}:{Port}",
-                session.SessionId, connectionInfo.Host, connectionInfo.Port);
-
-            throw;
-        }
-    }
-
     public async Task DisconnectAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         // 断开也不再走全局锁:每个会话的网络拆除各自并发进行,不阻塞其它连接/断开。
-        var session = GetSession(sessionId);
+        SshSession? session = GetSession(sessionId);
         if (session == null)
         {
             throw new InvalidOperationException($"Session {sessionId} not found");
         }
-
         if (session.Status == SessionStatus.Disconnected)
         {
             return;
         }
-
-        if (_clients.TryRemove(sessionId, out var client))
+        if (_clients.TryRemove(sessionId, out ISshClientWrapper? client))
         {
             await Task.Run(() =>
             {
@@ -125,10 +57,8 @@ public class SshConnectionService : ISshConnectionService
                 client.Dispose();
             }, cancellationToken).ConfigureAwait(false);
         }
-
         session.Status = SessionStatus.Disconnected;
-
-        _logger?.LogInformation("SSH session {SessionId} disconnected", sessionId);
+        logger?.LogInformation("SSH session {SessionId} disconnected", sessionId);
     }
 
     public SshSession? GetSession(Guid sessionId)
@@ -141,39 +71,96 @@ public class SshConnectionService : ISshConnectionService
 
     public ISshClientWrapper? GetClient(Guid sessionId)
     {
-        _clients.TryGetValue(sessionId, out var client);
+        _clients.TryGetValue(sessionId, out ISshClientWrapper? client);
         return client;
     }
 
     public async ValueTask DisposeAsync()
     {
-        var clientEntries = _clients.ToArray();
+        KeyValuePair<Guid, ISshClientWrapper>[] clientEntries = _clients.ToArray();
         _clients.Clear();
 
         // Disconnect every session concurrently: each Disconnect() is a blocking network teardown,
         // so a sequential loop would make app exit take (sessions × teardown) time and stall on any
         // single unresponsive connection.
-        var teardowns = clientEntries.Select(entry => Task.Run(() =>
+        IEnumerable<Task> teardowns = clientEntries.Select(entry => Task.Run(() =>
         {
-            var (sessionId, client) = entry;
+            (Guid sessionId, ISshClientWrapper client) = entry;
             try
             {
                 if (client.IsConnected)
                 {
                     client.Disconnect();
                 }
-
                 client.Dispose();
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "Error disposing SSH client for session {SessionId}", sessionId);
+                logger?.LogWarning(ex, "Error disposing SSH client for session {SessionId}", sessionId);
             }
         }));
-
         await Task.WhenAll(teardowns).ConfigureAwait(false);
-
-        _sessions.Dispose();
+        lock (_sessionsGate)
+        {
+            _sessions.Dispose();
+        }
         GC.SuppressFinalize(this);
+    }
+
+    private async Task<SshSession> ConnectInternalAsync(ConnectionInfo connectionInfo, CancellationToken cancellationToken)
+    {
+        var session = new SshSession
+        {
+            ConnectionInfo = connectionInfo,
+            Status = SessionStatus.Connecting
+        };
+        lock (_sessionsGate)
+        {
+            _sessions.Add(session);
+        }
+        ISshClientWrapper? client = null;
+        try
+        {
+            client = _clientFactory(connectionInfo);
+            await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            if (!client.IsConnected)
+            {
+                client.Dispose();
+                client = null;
+                throw new InvalidOperationException("Client connection failed without exception");
+            }
+            _clients[session.SessionId] = client;
+            session.Status = SessionStatus.Connected;
+            session.ConnectedAt = DateTime.UtcNow;
+            logger?.LogInformation("SSH session {SessionId} connected to {Host}:{Port}",
+                session.SessionId, connectionInfo.Host, connectionInfo.Port);
+            return session;
+        }
+        catch (OperationCanceledException)
+        {
+            client?.Dispose();
+            session.Status = SessionStatus.Error;
+            session.ErrorMessage = $"Connection to {connectionInfo.Host}:{connectionInfo.Port} timed out. Please check the host and port, then retry.";
+            lock (_sessionsGate)
+            {
+                _sessions.Remove(session);
+            }
+            logger?.LogWarning("SSH session {SessionId} to {Host}:{Port} timed out or was cancelled",
+                session.SessionId, connectionInfo.Host, connectionInfo.Port);
+            throw new TimeoutException(session.ErrorMessage);
+        }
+        catch (Exception ex)
+        {
+            client?.Dispose();
+            session.Status = SessionStatus.Error;
+            session.ErrorMessage = ex.Message;
+            lock (_sessionsGate)
+            {
+                _sessions.Remove(session);
+            }
+            logger?.LogError(ex, "Failed to connect SSH session {SessionId} to {Host}:{Port}",
+                session.SessionId, connectionInfo.Host, connectionInfo.Port);
+            throw;
+        }
     }
 }

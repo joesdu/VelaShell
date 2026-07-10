@@ -1,3 +1,6 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
 namespace VelaShell.Core.Models;
 
 public class AppSettings
@@ -44,8 +47,11 @@ public class GeneralOptions
 {
     // 启动
     public bool LaunchAtStartup { get; set; }
+
     public bool RestoreSessionsOnStartup { get; set; } = true;
+
     public bool CheckUpdatesOnStartup { get; set; } = true;
+
     public bool MinimizeToTray { get; set; }
 
     /// <summary>“恢复会话”的持久化槽位(不出现在设置界面):退出时已连接会话的配置 id。</summary>
@@ -53,21 +59,28 @@ public class GeneralOptions
 
     // 连接默认值
     public int ConnectTimeoutSeconds { get; set; } = 30;
+
     public int KeepAliveSeconds { get; set; } = 60;
+
     public int MaxRetries { get; set; } = 3;
 
     // 数据与存储
     public bool SessionLogging { get; set; }
+
     public int LogRetentionDays { get; set; } = 30;
 
     // 更新
     public string UpdateChannel { get; set; } = "stable";
+
     public bool AutoDownloadUpdates { get; set; } = true;
 
     // 行为
     public bool ConfirmBeforeClose { get; set; } = true;
+
     public bool NotifyOnDisconnect { get; set; } = true;
+
     public bool AutoReconnect { get; set; } = true;
+
     public int ReconnectIntervalSeconds { get; set; } = 5;
 
     // 通知
@@ -75,79 +88,125 @@ public class GeneralOptions
 
     // 隐私与安全
     public bool MasterPasswordProtection { get; set; }
+
     public bool RememberPasswords { get; set; } = true;
 }
 
-/// <summary>设置 - 外观(设计 ZAbb9)。实现 INPC:设置页直接 TwoWay 绑定本对象,
-/// 单项修改需要能被设置 VM 观察到,用于外观「即时预览」与颜色色块的实时刷新。</summary>
-public class AppearanceOptions : System.ComponentModel.INotifyPropertyChanged
+/// <summary>
+/// 设置 - 外观(设计 ZAbb9)。实现 INPC:设置页直接 TwoWay 绑定本对象,
+/// 单项修改需要能被设置 VM 观察到,用于外观「即时预览」与颜色色块的实时刷新。
+/// </summary>
+public class AppearanceOptions : INotifyPropertyChanged
 {
-    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
-
-    private bool Set<T>(ref T field, T value,
-        [System.Runtime.CompilerServices.CallerMemberName] string? name = null)
+    public string UiFont
     {
-        if (EqualityComparer<T>.Default.Equals(field, value))
-            return false;
+        get;
+        set => Set(ref field, value);
+    } = "Inter";
 
-        field = value;
-        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
-        return true;
-    }
+    public int UiFontSize
+    {
+        get;
+        set => Set(ref field, value);
+    } = 13;
 
-    private string _uiFont = "Inter";
-    public string UiFont { get => _uiFont; set => Set(ref _uiFont, value); }
+    public int WindowOpacityPercent
+    {
+        get;
+        set => Set(ref field, value);
+    } = 100;
 
-    private int _uiFontSize = 13;
-    public int UiFontSize { get => _uiFontSize; set => Set(ref _uiFontSize, value); }
+    public string TabBarPosition
+    {
+        get;
+        set => Set(ref field, value);
+    } = "top";
 
-    private int _windowOpacityPercent = 100;
-    public int WindowOpacityPercent { get => _windowOpacityPercent; set => Set(ref _windowOpacityPercent, value); }
+    public bool ShowMenuBar
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
 
-    private string _tabBarPosition = "top";
-    public string TabBarPosition { get => _tabBarPosition; set => Set(ref _tabBarPosition, value); }
+    public string SidebarPosition
+    {
+        get;
+        set => Set(ref field, value);
+    } = "left";
 
-    private bool _showMenuBar = true;
-    public bool ShowMenuBar { get => _showMenuBar; set => Set(ref _showMenuBar, value); }
-
-    private string _sidebarPosition = "left";
-    public string SidebarPosition { get => _sidebarPosition; set => Set(ref _sidebarPosition, value); }
-
-    private string _startupWindowState = "remember";
-    public string StartupWindowState { get => _startupWindowState; set => Set(ref _startupWindowState, value); }
+    public string StartupWindowState
+    {
+        get;
+        set => Set(ref field, value);
+    } = "remember";
 
     // “记住上次”窗口状态的持久化槽位(不出现在设置界面,由主窗口关闭时回写)。
-    private double _lastWindowWidth;
-    public double LastWindowWidth { get => _lastWindowWidth; set => Set(ref _lastWindowWidth, value); }
+    public double LastWindowWidth
+    {
+        get;
+        set => Set(ref field, value);
+    }
 
-    private double _lastWindowHeight;
-    public double LastWindowHeight { get => _lastWindowHeight; set => Set(ref _lastWindowHeight, value); }
+    public double LastWindowHeight
+    {
+        get;
+        set => Set(ref field, value);
+    }
 
-    private bool _lastWindowMaximized;
-    public bool LastWindowMaximized { get => _lastWindowMaximized; set => Set(ref _lastWindowMaximized, value); }
+    public bool LastWindowMaximized
+    {
+        get;
+        set => Set(ref field, value);
+    }
 
     // 终端颜色(默认 = Dracula 官方 Windows Terminal 方案,用户确认)
-    private string _terminalForeground = "#F8F8F2";
-    public string TerminalForeground { get => _terminalForeground; set => Set(ref _terminalForeground, value); }
+    public string TerminalForeground
+    {
+        get;
+        set => Set(ref field, value);
+    } = "#F8F8F2";
 
-    private string _terminalBackground = "#282A36";
-    public string TerminalBackground { get => _terminalBackground; set => Set(ref _terminalBackground, value); }
+    public string TerminalBackground
+    {
+        get;
+        set => Set(ref field, value);
+    } = "#282A36";
 
-    private string _cursorColor = "#F8F8F2";
-    public string CursorColor { get => _cursorColor; set => Set(ref _cursorColor, value); }
+    public string CursorColor
+    {
+        get;
+        set => Set(ref field, value);
+    } = "#F8F8F2";
 
-    private string _selectionColor = "#44475A";
-    public string SelectionColor { get => _selectionColor; set => Set(ref _selectionColor, value); }
+    public string SelectionColor
+    {
+        get;
+        set => Set(ref field, value);
+    } = "#44475A";
 
-    /// <summary>ANSI 普通 8 色(Dracula:black/red/green/yellow/blue/purple/cyan/white)。</summary>
-    private List<string> _ansiNormal =
-        ["#21222C", "#FF5555", "#50FA7B", "#F1FA8C", "#BD93F9", "#FF79C6", "#8BE9FD", "#F8F8F2"];
-    public List<string> AnsiNormal { get => _ansiNormal; set => Set(ref _ansiNormal, value); }
+    public List<string> AnsiNormal
+    {
+        get;
+        set => Set(ref field, value);
+    } = ["#21222C", "#FF5555", "#50FA7B", "#F1FA8C", "#BD93F9", "#FF79C6", "#8BE9FD", "#F8F8F2"];
 
-    /// <summary>ANSI 明亮 8 色(Dracula bright)。</summary>
-    private List<string> _ansiBright =
-        ["#6272A4", "#FF6E6E", "#69FF94", "#FFFFA5", "#D6ACFF", "#FF92DF", "#A4FFFF", "#FFFFFF"];
-    public List<string> AnsiBright { get => _ansiBright; set => Set(ref _ansiBright, value); }
+    public List<string> AnsiBright
+    {
+        get;
+        set => Set(ref field, value);
+    } = ["#6272A4", "#FF6E6E", "#69FF94", "#FFFFA5", "#D6ACFF", "#FF92DF", "#A4FFFF", "#FFFFFF"];
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return;
+        }
+        field = value;
+        PropertyChanged?.Invoke(this, new(name));
+    }
 }
 
 /// <summary>设置 - 终端(设计 08FpM;字体/字号/回滚沿用 AppSettings 顶层字段)。</summary>
@@ -157,31 +216,46 @@ public class TerminalBehaviorOptions
     public double LineHeight { get; set; } = 1.0;
 
     public string CursorStyle { get; set; } = "bar";
+
     public bool CursorBlink { get; set; } = true;
 
     public string BellMode { get; set; } = "system";
+
     public bool TabFlashAlert { get; set; } = true;
+
     public bool VisualBell { get; set; }
 
     /// <summary>开 = 新输出把翻看历史的视图拉回底部;关 = 保持锚定(#15 的既有行为)。</summary>
     public bool ScrollOnOutput { get; set; }
+
     public bool ScrollOnKeystroke { get; set; } = true;
 
-    /// <summary>选中即复制(默认开,设计 §8):开 = 松开鼠标/双击选词后选中内容自动进剪贴板;
-    /// 关 = 选中只高亮不复制,复制需 Ctrl+Shift+C。</summary>
+    /// <summary>
+    /// 选中即复制(默认开,设计 §8):开 = 松开鼠标/双击选词后选中内容自动进剪贴板;
+    /// 关 = 选中只高亮不复制,复制需 Ctrl+Shift+C。
+    /// </summary>
     public bool CopyOnSelect { get; set; } = true;
+
     public bool RightClickPaste { get; set; } = true;
+
     public bool TrimTrailingWhitespaceOnCopy { get; set; } = true;
+
     public bool DoubleClickSelectsWord { get; set; } = true;
 
     public bool ConfirmMultilinePaste { get; set; } = true;
+
     public bool ImeSupport { get; set; } = true;
-    /// <summary>选中时 Ctrl+C 复制(默认关):开 = 有选区时 Ctrl+C 复制选中内容而不发送中断,
-    /// 无选区仍发送中断;关 = Ctrl+C 始终发送中断信号 ^C。</summary>
+
+    /// <summary>
+    /// 选中时 Ctrl+C 复制(默认关):开 = 有选区时 Ctrl+C 复制选中内容而不发送中断,
+    /// 无选区仍发送中断;关 = Ctrl+C 始终发送中断信号 ^C。
+    /// </summary>
     public bool CtrlCCopiesWhenSelected { get; set; }
 
-    /// <summary>连接/重连成功后追加执行的用户初始化命令(空 = 无)。它会被拼接在内置的
-    /// bash 提示符补行脚本之后,一并静默注入远端 shell(回显被抑制,不在终端显示)。</summary>
+    /// <summary>
+    /// 连接/重连成功后追加执行的用户初始化命令(空 = 无)。它会被拼接在内置的
+    /// bash 提示符补行脚本之后,一并静默注入远端 shell(回显被抑制,不在终端显示)。
+    /// </summary>
     public string StartupCommand { get; set; } = "";
 }
 
@@ -191,28 +265,40 @@ public class TransferOptions
     public string LocalDownloadDirectory { get; set; } = "~/Downloads";
 
     public int MaxConcurrentTransfers { get; set; } = 3;
+
     public bool PreserveTimestamps { get; set; } = true;
+
     public bool NotifyOnComplete { get; set; } = true;
 
     /// <summary>ask / overwrite / skip / rename。</summary>
     public string ConflictPolicy { get; set; } = "ask";
+
     public bool ShowHiddenFiles { get; set; }
+
     public bool AutoResume { get; set; } = true;
 
     public bool BandwidthLimitEnabled { get; set; }
+
     public int UploadLimitMBps { get; set; }
+
     public int DownloadLimitMBps { get; set; }
 
     public bool TransferLogging { get; set; } = true;
+
     public int TransferLogRetentionDays { get; set; } = 30;
+
     public string LogDirectory { get; set; } = "~/.velashell/logs";
 
     public bool ResumeEnabled { get; set; } = true;
+
     public int TransferMaxRetries { get; set; } = 3;
+
     public bool AutoCleanTempFiles { get; set; } = true;
 
-    /// <summary>SFTP「使用默认编辑器打开」调用的程序(命令名或完整路径,如 notepad、
-    /// notepad++、"C:\Program Files\Notepad++\notepad++.exe")。空 = 未配置。</summary>
+    /// <summary>
+    /// SFTP「使用默认编辑器打开」调用的程序(命令名或完整路径,如 notepad、
+    /// notepad++、"C:\Program Files\Notepad++\notepad++.exe")。空 = 未配置。
+    /// </summary>
     public string DefaultEditorPath { get; set; } = "";
 }
 
@@ -220,16 +306,20 @@ public class TransferOptions
 public class SecurityOptions
 {
     public bool RecordProductionSessions { get; set; } = true;
+
     public bool MaskSensitiveInput { get; set; } = true;
 
     public bool ConfirmFirstFingerprint { get; set; }
+
     public bool BlockOnFingerprintChange { get; set; } = true;
 
     public bool AlertInApp { get; set; } = true;
 
     /// <summary>安全事件时播放系统提示音。</summary>
     public bool AlertSound { get; set; } = true;
+
     public bool AlertWebhook { get; set; }
+
     public string WebhookUrl { get; set; } = "";
 }
 

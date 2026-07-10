@@ -14,9 +14,11 @@ public delegate Task TransferExecutor(
 public interface ITransferManager : IDisposable
 {
     int MaxConcurrentTransfers { get; set; }
+
     IReadOnlyList<TransferTask> ActiveTransfers { get; }
+
     IReadOnlyList<TransferTask> QueuedTransfers { get; }
-    
+
     Task QueueTransferAsync(TransferTask task, CancellationToken cancellationToken = default);
     Task CancelTransferAsync(Guid transferId, CancellationToken cancellationToken = default);
     TransferTask? GetTransfer(Guid transferId);

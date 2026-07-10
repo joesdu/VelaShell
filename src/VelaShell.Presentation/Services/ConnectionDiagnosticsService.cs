@@ -7,24 +7,20 @@ using VelaShell.Core.Models;
 
 namespace VelaShell.Presentation.Services;
 
-/// <summary>连接诊断中心的执行引擎(设计 RGXg1):按 DNS 解析 → TCP 建链 → SSH 握手 →
+/// <summary>
+/// 连接诊断中心的执行引擎(设计 RGXg1):按 DNS 解析 → TCP 建链 → SSH 握手 →
 /// 用户认证 四步逐项检测。配了跳板的会话,前三步针对链路第一跳(本机实际直连的主机),
-/// 认证步骤经 <see cref="IConnectionWorkflowService.TestConnectionAsync"/> 走完整跳板链。</summary>
-public sealed class ConnectionDiagnosticsService : IConnectionDiagnosticsService
+/// 认证步骤经 <see cref="IConnectionWorkflowService.TestConnectionAsync" /> 走完整跳板链。
+/// </summary>
+public sealed class ConnectionDiagnosticsService(
+    ISessionRepository sessionRepository,
+    IConnectionWorkflowService connectionWorkflowService) : IConnectionDiagnosticsService
 {
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan BannerTimeout = TimeSpan.FromSeconds(5);
+    private readonly IConnectionWorkflowService _connectionWorkflowService = connectionWorkflowService ?? throw new ArgumentNullException(nameof(connectionWorkflowService));
 
-    private readonly ISessionRepository _sessionRepository;
-    private readonly IConnectionWorkflowService _connectionWorkflowService;
-
-    public ConnectionDiagnosticsService(
-        ISessionRepository sessionRepository,
-        IConnectionWorkflowService connectionWorkflowService)
-    {
-        _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
-        _connectionWorkflowService = connectionWorkflowService ?? throw new ArgumentNullException(nameof(connectionWorkflowService));
-    }
+    private readonly ISessionRepository _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
 
     public async Task<DiagnosticReport> DiagnoseAsync(
         SessionProfile profile,
@@ -34,41 +30,36 @@ public sealed class ConnectionDiagnosticsService : IConnectionDiagnosticsService
         ArgumentNullException.ThrowIfNull(profile);
 
         // 跳板链场景:本机实际直连的是链路最外层的跳板;DNS/TCP/握手针对它才有意义。
-        var (entry, viaJump, chainError) = await ResolveEntryHopAsync(profile).ConfigureAwait(false);
-        var hopSuffix = viaJump ? $"(跳板 {DisplayName(entry)})" : string.Empty;
-
+        (SessionProfile entry, bool viaJump, string? chainError) = await ResolveEntryHopAsync(profile).ConfigureAwait(false);
+        string hopSuffix = viaJump ? $"(跳板 {DisplayName(entry)})" : string.Empty;
         var steps = new DiagnosticStepUpdate[]
         {
             new(0, $"DNS 解析{hopSuffix}", DiagnosticStepStatus.Pending),
             new(1, $"TCP 建链{hopSuffix}", DiagnosticStepStatus.Pending),
             new(2, $"SSH 握手{hopSuffix}", DiagnosticStepStatus.Pending),
-            new(3, viaJump ? "用户认证(完整跳板链)" : "用户认证", DiagnosticStepStatus.Pending),
+            new(3, viaJump ? "用户认证(完整跳板链)" : "用户认证", DiagnosticStepStatus.Pending)
         };
-        var results = steps.ToArray();
-
-        void Publish(DiagnosticStepUpdate update)
-        {
-            results[update.Index] = update;
-            progress?.Report(update);
-        }
-
+        DiagnosticStepUpdate[] results = steps.ToArray();
         string? issueTitle = null;
         string? issueDescription = null;
         var suggestions = new List<string>();
-
         if (chainError is not null)
         {
             // 跳板配置本身有问题(被删除/成环):四步都无从谈起,直接给出问题面板。
-            for (int i = 0; i < results.Length; i++)
-                Publish(results[i] with { Status = DiagnosticStepStatus.Skipped, Detail = "跳板配置异常" });
-
-            return new DiagnosticReport
+            foreach (DiagnosticStepUpdate t in results)
+            {
+                Publish(t with { Status = DiagnosticStepStatus.Skipped, Detail = "跳板配置异常" });
+            }
+            return new()
             {
                 Steps = results,
                 IssueTitle = "跳板链配置异常",
                 IssueDescription = chainError,
-                Suggestions = ["打开该连接的编辑窗口 → 高级选项,重新选择跳板主机。",
-                               "若跳板配置已删除,请改为直连或重建跳板配置。"],
+                Suggestions =
+                [
+                    "打开该连接的编辑窗口 → 高级选项,重新选择跳板主机。",
+                    "若跳板配置已删除,请改为直连或重建跳板配置。"
+                ]
             };
         }
 
@@ -78,30 +69,30 @@ public sealed class ConnectionDiagnosticsService : IConnectionDiagnosticsService
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            if (IPAddress.TryParse(entry.Host, out var literal))
+            if (IPAddress.TryParse(entry.Host, out IPAddress? literal))
             {
                 address = literal;
                 Publish(results[0] with
                 {
                     Status = DiagnosticStepStatus.Success,
                     ElapsedMs = 0,
-                    Detail = "IP 直连,无需解析",
+                    Detail = "IP 直连,无需解析"
                 });
             }
             else
             {
-                var addresses = await Dns.GetHostAddressesAsync(entry.Host, cancellationToken)
-                    .WaitAsync(ConnectTimeout, cancellationToken).ConfigureAwait(false);
-                address = addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork)
-                    ?? addresses.FirstOrDefault();
+                IPAddress[] addresses = await Dns.GetHostAddressesAsync(entry.Host, cancellationToken)
+                                                 .WaitAsync(ConnectTimeout, cancellationToken).ConfigureAwait(false);
+                address = addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) ?? addresses.FirstOrDefault();
                 if (address is null)
+                {
                     throw new SocketException((int)SocketError.HostNotFound);
-
+                }
                 Publish(results[0] with
                 {
                     Status = DiagnosticStepStatus.Success,
                     ElapsedMs = stopwatch.ElapsedMilliseconds,
-                    Detail = $"{entry.Host} → {address}",
+                    Detail = $"{entry.Host} → {address}"
                 });
             }
         }
@@ -111,7 +102,7 @@ public sealed class ConnectionDiagnosticsService : IConnectionDiagnosticsService
             {
                 Status = DiagnosticStepStatus.Failed,
                 ElapsedMs = stopwatch.ElapsedMilliseconds,
-                Detail = Trim(ex.Message),
+                Detail = Trim(ex.Message)
             });
             issueTitle = "DNS 解析失败";
             issueDescription = $"无法解析主机名 {entry.Host}:{Trim(ex.Message)}";
@@ -126,27 +117,27 @@ public sealed class ConnectionDiagnosticsService : IConnectionDiagnosticsService
             Publish(results[1] with { Status = DiagnosticStepStatus.Running });
             using var tcp = new TcpClient(address.AddressFamily);
             stopwatch.Restart();
-            var tcpOk = false;
+            bool tcpOk = false;
             try
             {
                 await tcp.ConnectAsync(address, entry.Port, cancellationToken)
-                    .AsTask().WaitAsync(ConnectTimeout, cancellationToken).ConfigureAwait(false);
+                         .AsTask().WaitAsync(ConnectTimeout, cancellationToken).ConfigureAwait(false);
                 tcpOk = true;
                 Publish(results[1] with
                 {
                     Status = DiagnosticStepStatus.Success,
                     ElapsedMs = stopwatch.ElapsedMilliseconds,
-                    Detail = $"{address}:{entry.Port}",
+                    Detail = $"{address}:{entry.Port}"
                 });
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                var reason = ex is TimeoutException ? "连接超时" : Trim(ex.Message);
+                string reason = ex is TimeoutException ? "连接超时" : Trim(ex.Message);
                 Publish(results[1] with
                 {
                     Status = DiagnosticStepStatus.Failed,
                     ElapsedMs = stopwatch.ElapsedMilliseconds,
-                    Detail = reason,
+                    Detail = reason
                 });
                 issueTitle ??= "无法建立 TCP 连接";
                 issueDescription ??= $"到 {entry.Host}:{entry.Port} 的 TCP 连接失败:{reason}";
@@ -165,14 +156,14 @@ public sealed class ConnectionDiagnosticsService : IConnectionDiagnosticsService
                 stopwatch.Restart();
                 try
                 {
-                    var banner = await ReadBannerAsync(tcp, cancellationToken).ConfigureAwait(false);
+                    string? banner = await ReadBannerAsync(tcp, cancellationToken).ConfigureAwait(false);
                     if (banner is not null && banner.StartsWith("SSH-", StringComparison.Ordinal))
                     {
                         Publish(results[2] with
                         {
                             Status = DiagnosticStepStatus.Success,
                             ElapsedMs = stopwatch.ElapsedMilliseconds,
-                            Detail = banner,
+                            Detail = banner
                         });
                     }
                     else
@@ -181,12 +172,12 @@ public sealed class ConnectionDiagnosticsService : IConnectionDiagnosticsService
                         {
                             Status = DiagnosticStepStatus.Failed,
                             ElapsedMs = stopwatch.ElapsedMilliseconds,
-                            Detail = banner is null ? "未收到服务端应答" : $"非 SSH 应答:{Trim(banner)}",
+                            Detail = banner is null ? "未收到服务端应答" : $"非 SSH 应答:{Trim(banner)}"
                         });
                         issueTitle ??= "端口未运行 SSH 服务";
                         issueDescription ??= banner is null
-                            ? $"{entry.Host}:{entry.Port} 可连通,但在 {BannerTimeout.TotalSeconds:0} 秒内未返回 SSH 服务标识。"
-                            : $"{entry.Host}:{entry.Port} 返回了非 SSH 协议应答:{Trim(banner)}";
+                                                 ? $"{entry.Host}:{entry.Port} 可连通,但在 {BannerTimeout.TotalSeconds:0} 秒内未返回 SSH 服务标识。"
+                                                 : $"{entry.Host}:{entry.Port} 返回了非 SSH 协议应答:{Trim(banner)}";
                         if (issueTitle == "端口未运行 SSH 服务")
                         {
                             suggestions.Add("确认端口号:SSH 默认 22,当前配置为 " + entry.Port + "。");
@@ -200,7 +191,7 @@ public sealed class ConnectionDiagnosticsService : IConnectionDiagnosticsService
                     {
                         Status = DiagnosticStepStatus.Failed,
                         ElapsedMs = stopwatch.ElapsedMilliseconds,
-                        Detail = Trim(ex.Message),
+                        Detail = Trim(ex.Message)
                     });
                     issueTitle ??= "SSH 握手失败";
                     issueDescription ??= $"读取 SSH 服务标识时出错:{Trim(ex.Message)}";
@@ -227,7 +218,7 @@ public sealed class ConnectionDiagnosticsService : IConnectionDiagnosticsService
             Publish(results[3] with
             {
                 Status = DiagnosticStepStatus.Warning,
-                Detail = "未保存凭据,跳过认证测试",
+                Detail = "未保存凭据,跳过认证测试"
             });
             suggestions.Add("该配置未保存密码/密钥,连接时会弹出登录验证;如需自动认证测试,请在编辑窗口保存凭据。");
         }
@@ -235,95 +226,110 @@ public sealed class ConnectionDiagnosticsService : IConnectionDiagnosticsService
         {
             Publish(results[3] with { Status = DiagnosticStepStatus.Running });
             stopwatch.Restart();
-            var test = await _connectionWorkflowService.TestConnectionAsync(profile, cancellationToken).ConfigureAwait(false);
+            ConnectionTestResult test = await _connectionWorkflowService.TestConnectionAsync(profile, cancellationToken).ConfigureAwait(false);
             if (test.Success)
             {
                 Publish(results[3] with
                 {
                     Status = DiagnosticStepStatus.Success,
                     ElapsedMs = stopwatch.ElapsedMilliseconds,
-                    Detail = $"{profile.Username}@{profile.Host} 登录成功",
+                    Detail = $"{profile.Username}@{profile.Host} 登录成功"
                 });
             }
             else
             {
-                var reason = Trim(test.ErrorMessage ?? "未知错误");
+                string reason = Trim(test.ErrorMessage ?? "未知错误");
                 Publish(results[3] with
                 {
                     Status = DiagnosticStepStatus.Failed,
                     ElapsedMs = stopwatch.ElapsedMilliseconds,
-                    Detail = reason,
+                    Detail = reason
                 });
                 (issueTitle, issueDescription) = ClassifyAuthFailure(profile, viaJump, reason);
                 suggestions.AddRange(SuggestForAuthFailure(profile, viaJump, reason));
             }
         }
-
-        return new DiagnosticReport
+        return new()
         {
             Steps = results,
             IssueTitle = issueTitle,
             IssueDescription = issueDescription,
-            Suggestions = suggestions,
+            Suggestions = suggestions
         };
+
+        void Publish(DiagnosticStepUpdate update)
+        {
+            results[update.Index] = update;
+            progress?.Report(update);
+        }
     }
 
-    /// <summary>沿 JumpHostProfileId 找到链路最外层跳板(本机实际直连的主机);
-    /// 无跳板时返回配置本身。链路损坏(成环/配置丢失)返回错误描述。</summary>
+    /// <summary>
+    /// 沿 JumpHostProfileId 找到链路最外层跳板(本机实际直连的主机);
+    /// 无跳板时返回配置本身。链路损坏(成环/配置丢失)返回错误描述。
+    /// </summary>
     private async Task<(SessionProfile Entry, bool ViaJump, string? Error)> ResolveEntryHopAsync(SessionProfile profile)
     {
         if (profile.JumpHostProfileId is null)
+        {
             return (profile, false, null);
-
+        }
         var visited = new HashSet<Guid> { profile.Id };
-        var current = profile;
+        SessionProfile current = profile;
         for (int depth = 0; current.JumpHostProfileId is { } jumpId; depth++)
         {
             if (depth >= 5)
+            {
                 return (profile, true, "跳板链超过 5 跳,请精简跳板层级。");
+            }
             if (!visited.Add(jumpId))
+            {
                 return (profile, true, "跳板配置形成了循环引用,请检查各配置的跳板主机设置。");
-
-            var jump = await _sessionRepository.GetSessionAsync(jumpId).ConfigureAwait(false);
+            }
+            SessionProfile? jump = await _sessionRepository.GetSessionAsync(jumpId).ConfigureAwait(false);
             if (jump is null)
+            {
                 return (profile, true, "跳板主机配置不存在(可能已被删除),请重新设置。");
+            }
             current = jump;
         }
-
         return (current, true, null);
     }
 
     /// <summary>读服务端 SSH 识别串的第一行(服务端可能先发多行 banner,识别串以 SSH- 开头)。</summary>
     private static async Task<string?> ReadBannerAsync(TcpClient tcp, CancellationToken cancellationToken)
     {
-        var stream = tcp.GetStream();
-        var buffer = new byte[512];
+        NetworkStream stream = tcp.GetStream();
+        byte[] buffer = new byte[512];
         var builder = new StringBuilder();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(BannerTimeout);
-
         try
         {
             while (builder.Length < 4096)
             {
-                var read = await stream.ReadAsync(buffer, timeout.Token).ConfigureAwait(false);
+                int read = await stream.ReadAsync(buffer, timeout.Token).ConfigureAwait(false);
                 if (read == 0)
-                    break;
-
-                builder.Append(Encoding.ASCII.GetString(buffer, 0, read));
-                foreach (var line in builder.ToString().Split('\n'))
                 {
-                    var trimmed = line.TrimEnd('\r');
-                    if (trimmed.StartsWith("SSH-", StringComparison.Ordinal))
-                        return trimmed;
+                    break;
                 }
-
+                builder.Append(Encoding.ASCII.GetString(buffer, 0, read));
+                foreach (string line in builder.ToString().Split('\n'))
+                {
+                    string trimmed = line.TrimEnd('\r');
+                    if (trimmed.StartsWith("SSH-", StringComparison.Ordinal))
+                    {
+                        return trimmed;
+                    }
+                }
                 if (builder.ToString().Contains('\n'))
                 {
                     // 已经收到完整行但不是 SSH 识别串:返回首行供诊断展示。
-                    var first = builder.ToString().Split('\n')[0].TrimEnd('\r');
+                    string first = builder.ToString().Split('\n')[0].TrimEnd('\r');
                     if (first.Length > 0)
+                    {
                         return first;
+                    }
                 }
             }
         }
@@ -331,26 +337,32 @@ public sealed class ConnectionDiagnosticsService : IConnectionDiagnosticsService
         {
             // 服务端在超时前没有说话。
         }
-
-        var text = builder.ToString().Trim();
+        string text = builder.ToString().Trim();
         return text.Length == 0 ? null : text;
     }
 
-    private static bool HasStoredCredentials(SessionProfile profile) => profile.AuthMethod switch
-    {
-        AuthMethod.Password => !string.IsNullOrEmpty(profile.Password),
-        AuthMethod.PrivateKey => !string.IsNullOrEmpty(profile.PrivateKeyPath),
-        _ => false,
-    };
+    private static bool HasStoredCredentials(SessionProfile profile) =>
+        profile.AuthMethod switch
+        {
+            AuthMethod.Password   => !string.IsNullOrEmpty(profile.Password),
+            AuthMethod.PrivateKey => !string.IsNullOrEmpty(profile.PrivateKeyPath),
+            _                     => false
+        };
 
     private static (string Title, string Description) ClassifyAuthFailure(SessionProfile profile, bool viaJump, string reason)
     {
         if (ContainsAny(reason, "Permission denied", "denied", "认证", "password", "publickey", "Authentication"))
+        {
             return ("身份验证失败", $"服务器拒绝了 {profile.Username} 的登录:{reason}");
+        }
         if (ContainsAny(reason, "fingerprint", "host key", "指纹", "主机密钥"))
+        {
             return ("主机密钥校验未通过", reason);
+        }
         if (viaJump && ContainsAny(reason, "跳板", "jump"))
+        {
             return ("跳板链建立失败", reason);
+        }
         return ("连接建立失败", reason);
     }
 
@@ -360,38 +372,37 @@ public sealed class ConnectionDiagnosticsService : IConnectionDiagnosticsService
         {
             yield return "检查用户名与密码/私钥是否正确,注意大小写。";
             if (profile.AuthMethod == AuthMethod.PrivateKey)
+            {
                 yield return "确认私钥文件与服务器上的公钥匹配,私钥口令(passphrase)正确。";
+            }
             else
+            {
                 yield return "服务器可能禁用了密码登录(PasswordAuthentication no),可尝试改用密钥认证。";
+            }
             yield break;
         }
-
         if (ContainsAny(reason, "fingerprint", "host key", "指纹", "主机密钥"))
         {
             yield return "服务器主机密钥与本地记录不一致:若服务器确实重装过,请在提示中信任新指纹。";
             yield return "若非预期变更,请警惕中间人攻击,先与服务器管理员核实。";
             yield break;
         }
-
         if (viaJump)
         {
             yield return "跳板机的配置需已保存凭据才能免交互连上,请检查各跳板配置。";
             yield return "可先对跳板机单独执行一次连接诊断,逐跳定位问题。";
             yield break;
         }
-
         yield return "网络与端口均正常,失败发生在 SSH 协商阶段;检查服务器 sshd 日志(/var/log/auth.log)获取具体原因。";
     }
 
-    private static bool ContainsAny(string text, params string[] needles)
-        => needles.Any(n => text.Contains(n, StringComparison.OrdinalIgnoreCase));
+    private static bool ContainsAny(string text, params string[] needles) => needles.Any(n => text.Contains(n, StringComparison.OrdinalIgnoreCase));
 
-    private static string DisplayName(SessionProfile profile)
-        => string.IsNullOrWhiteSpace(profile.Name) ? profile.Host : profile.Name;
+    private static string DisplayName(SessionProfile profile) => string.IsNullOrWhiteSpace(profile.Name) ? profile.Host : profile.Name;
 
     private static string Trim(string message)
     {
-        var single = message.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        string single = message.Replace('\r', ' ').Replace('\n', ' ').Trim();
         return single.Length > 160 ? single[..160] + "…" : single;
     }
 }

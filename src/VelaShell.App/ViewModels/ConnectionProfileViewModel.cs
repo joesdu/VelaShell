@@ -1,15 +1,12 @@
-using System;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
 using System.Security;
-using System.Threading.Tasks;
+using ReactiveUI;
 using VelaShell.App.Security;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Presentation.Services;
-using ReactiveUI;
 
 namespace VelaShell.App.ViewModels;
 
@@ -21,35 +18,35 @@ public sealed record GroupOption(Guid? Id, string Name)
 
 public class ConnectionProfileViewModel : ReactiveObject
 {
-    private readonly IConnectionWorkflowService? _connectionWorkflowService;
-    private readonly ISessionRepository? _sessionRepository;
-    private string _name = string.Empty;
-    private string _host = string.Empty;
-    private int _port = 22;
-    private string _username = string.Empty;
-    private AuthMethod _authMethod = AuthMethod.Password;
-    private SecureString? _password;
-    private string? _privateKeyPath;
-    private string? _privateKeyPassphrase;
-    private Guid? _groupId;
-    private bool _isPasswordAuth = true;
-    private bool _isKeyAuth;
-    private bool _isBusy;
-    private string? _errorMessage;
-    private bool? _lastTestSucceeded;
-    private bool _rememberPassword = true;
-    private bool _showPassword;
-    private bool _isAdvancedVisible;
-    private string _tagsText = string.Empty;
-    private GroupOption? _selectedGroup;
-    private string _groupText = UngroupedName;
-
     /// <summary>“未分组”选项/输入的显示名;输入等于该名或留空即保存为未分组。</summary>
     private const string UngroupedName = "未分组";
-    private Guid? _jumpHostProfileId;
-    private GroupOption? _selectedJumpHost;
+
+    private readonly IConnectionWorkflowService? _connectionWorkflowService;
 
     private readonly Guid _profileId;
+    private readonly ISessionRepository? _sessionRepository;
+    private AuthMethod _authMethod = AuthMethod.Password;
+    private string? _errorMessage;
+    private Guid? _groupId;
+    private string _groupText = UngroupedName;
+    private string _host = string.Empty;
+    private bool _isAdvancedVisible;
+    private bool _isBusy;
+    private bool _isKeyAuth;
+    private bool _isPasswordAuth = true;
+    private Guid? _jumpHostProfileId;
+    private bool? _lastTestSucceeded;
+    private string _name = string.Empty;
+    private SecureString? _password;
+    private int _port = 22;
+    private string? _privateKeyPassphrase;
+    private string? _privateKeyPath;
+    private bool _rememberPassword = true;
+    private GroupOption? _selectedGroup;
+    private GroupOption? _selectedJumpHost;
+    private bool _showPassword;
+    private string _tagsText = string.Empty;
+    private string _username = string.Empty;
 
     public ConnectionProfileViewModel(
         SessionProfile? existing = null,
@@ -60,22 +57,23 @@ public class ConnectionProfileViewModel : ReactiveObject
     {
         _connectionWorkflowService = connectionWorkflowService;
         _sessionRepository = sessionRepository;
-
-        Groups = new ObservableCollection<GroupOption> { new(null, UngroupedName) };
+        Groups = [new(null, UngroupedName)];
         _selectedGroup = Groups[0];
-
-        JumpHostOptions = new ObservableCollection<GroupOption> { new(null, "直连(不使用跳板)") };
+        JumpHostOptions = [new(null, "直连(不使用跳板)")];
         _selectedJumpHost = JumpHostOptions[0];
 
         // 新建连接的默认值(设置 → 常规 → 连接默认值 / 密钥管理 → 默认认证密钥)。
         if (existing is null)
         {
             if (defaultPort is >= 1 and <= 65535)
+            {
                 _port = defaultPort;
+            }
             if (!string.IsNullOrWhiteSpace(defaultPrivateKeyPath))
+            {
                 _privateKeyPath = defaultPrivateKeyPath;
+            }
         }
-
         if (existing != null)
         {
             _profileId = existing.Id;
@@ -98,7 +96,6 @@ public class ConnectionProfileViewModel : ReactiveObject
         {
             _profileId = Guid.NewGuid();
         }
-
         this.WhenAnyValue(x => x.AuthMethod)
             .Subscribe(method =>
             {
@@ -115,15 +112,14 @@ public class ConnectionProfileViewModel : ReactiveObject
             {
                 _groupId = option?.Id;
                 if (option is not null)
+                {
                     GroupText = option.Name;
+                }
             });
-
         this.WhenAnyValue(x => x.SelectedJumpHost)
             .Skip(1)
             .Subscribe(option => _jumpHostProfileId = option?.Id);
-
-        var canExecute = this.WhenAnyValue(
-            x => x.Host,
+        IObservable<bool> canExecute = this.WhenAnyValue(x => x.Host,
             x => x.Username,
             x => x.Port,
             x => x.IsBusy,
@@ -131,8 +127,8 @@ public class ConnectionProfileViewModel : ReactiveObject
                 !isBusy &&
                 !string.IsNullOrWhiteSpace(host) &&
                 !string.IsNullOrWhiteSpace(username) &&
-                port >= 1 && port <= 65535);
-
+                port >= 1 &&
+                port <= 65535);
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync, canExecute);
         ConnectCommand = ReactiveCommand.CreateFromTask(ConnectAsync, canExecute);
         CancelCommand = ReactiveCommand.Create(() => (SessionProfile?)null);
@@ -140,70 +136,6 @@ public class ConnectionProfileViewModel : ReactiveObject
         BrowseKeyFileCommand = ReactiveCommand.Create(() => { });
         ToggleAdvancedCommand = ReactiveCommand.Create(() => { IsAdvancedVisible = !IsAdvancedVisible; });
         TogglePasswordVisibilityCommand = ReactiveCommand.Create(() => { ShowPassword = !ShowPassword; });
-    }
-
-    /// <summary>从仓储加载分组下拉(“未分组” + 全部分组),并选中当前配置的分组;
-    /// 同时装填跳板主机下拉(“直连” + 其余已保存配置)。</summary>
-    public async Task LoadGroupsAsync()
-    {
-        if (_sessionRepository is null)
-        {
-            return;
-        }
-
-        try
-        {
-            var groups = await _sessionRepository.GetAllGroupsAsync();
-            while (Groups.Count > 1)
-            {
-                Groups.RemoveAt(Groups.Count - 1);
-            }
-
-            foreach (var group in groups)
-            {
-                Groups.Add(new GroupOption(group.Id, group.Name));
-            }
-
-            SelectedGroup = Groups.FirstOrDefault(option => option.Id == _groupId) ?? Groups[0];
-        }
-        catch
-        {
-            // 分组加载失败时仍可保存为未分组。
-        }
-
-        await LoadJumpHostOptionsAsync();
-    }
-
-    /// <summary>跳板主机候选 = 除自身外的全部已保存配置(跳板需已存凭据才能免交互连上)。</summary>
-    private async Task LoadJumpHostOptionsAsync()
-    {
-        if (_sessionRepository is null)
-        {
-            return;
-        }
-
-        try
-        {
-            var profiles = await _sessionRepository.GetAllSessionsAsync();
-            while (JumpHostOptions.Count > 1)
-            {
-                JumpHostOptions.RemoveAt(JumpHostOptions.Count - 1);
-            }
-
-            foreach (var profile in profiles
-                         .Where(p => p.Id != _profileId)
-                         .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
-            {
-                JumpHostOptions.Add(new GroupOption(profile.Id, profile.Name));
-            }
-
-            SelectedJumpHost = JumpHostOptions.FirstOrDefault(option => option.Id == _jumpHostProfileId)
-                ?? JumpHostOptions[0];
-        }
-        catch
-        {
-            // 跳板列表加载失败时仍可按直连保存。
-        }
     }
 
     public string Name
@@ -352,8 +284,10 @@ public class ConnectionProfileViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _selectedGroup, value);
     }
 
-    /// <summary>分组框的可编辑文本:既可从下拉选已有分组,也可直接输入新分组名;
-    /// 保存时由 <see cref="ResolveGroupFromTextAsync"/> 解析(不存在则建组归属)。</summary>
+    /// <summary>
+    /// 分组框的可编辑文本:既可从下拉选已有分组,也可直接输入新分组名;
+    /// 保存时由 <see cref="ResolveGroupFromTextAsync" /> 解析(不存在则建组归属)。
+    /// </summary>
     public string GroupText
     {
         get => _groupText;
@@ -364,12 +298,76 @@ public class ConnectionProfileViewModel : ReactiveObject
     public bool ConnectAfterClose { get; private set; }
 
     public ReactiveCommand<Unit, SessionProfile?> SaveCommand { get; }
+
     public ReactiveCommand<Unit, SessionProfile?> ConnectCommand { get; }
+
     public ReactiveCommand<Unit, SessionProfile?> CancelCommand { get; }
+
     public ReactiveCommand<Unit, Unit> TestConnectionCommand { get; }
+
     public ReactiveCommand<Unit, Unit> BrowseKeyFileCommand { get; }
+
     public ReactiveCommand<Unit, Unit> ToggleAdvancedCommand { get; }
+
     public ReactiveCommand<Unit, Unit> TogglePasswordVisibilityCommand { get; }
+
+    /// <summary>
+    /// 从仓储加载分组下拉(“未分组” + 全部分组),并选中当前配置的分组;
+    /// 同时装填跳板主机下拉(“直连” + 其余已保存配置)。
+    /// </summary>
+    public async Task LoadGroupsAsync()
+    {
+        if (_sessionRepository is null)
+        {
+            return;
+        }
+        try
+        {
+            List<ServerGroup> groups = await _sessionRepository.GetAllGroupsAsync();
+            while (Groups.Count > 1)
+            {
+                Groups.RemoveAt(Groups.Count - 1);
+            }
+            foreach (ServerGroup group in groups)
+            {
+                Groups.Add(new(group.Id, group.Name));
+            }
+            SelectedGroup = Groups.FirstOrDefault(option => option.Id == _groupId) ?? Groups[0];
+        }
+        catch
+        {
+            // 分组加载失败时仍可保存为未分组。
+        }
+        await LoadJumpHostOptionsAsync();
+    }
+
+    /// <summary>跳板主机候选 = 除自身外的全部已保存配置(跳板需已存凭据才能免交互连上)。</summary>
+    private async Task LoadJumpHostOptionsAsync()
+    {
+        if (_sessionRepository is null)
+        {
+            return;
+        }
+        try
+        {
+            List<SessionProfile> profiles = await _sessionRepository.GetAllSessionsAsync();
+            while (JumpHostOptions.Count > 1)
+            {
+                JumpHostOptions.RemoveAt(JumpHostOptions.Count - 1);
+            }
+            foreach (SessionProfile profile in profiles
+                                               .Where(p => p.Id != _profileId)
+                                               .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                JumpHostOptions.Add(new(profile.Id, profile.Name));
+            }
+            SelectedJumpHost = JumpHostOptions.FirstOrDefault(option => option.Id == _jumpHostProfileId) ?? JumpHostOptions[0];
+        }
+        catch
+        {
+            // 跳板列表加载失败时仍可按直连保存。
+        }
+    }
 
     private async Task<SessionProfile?> SaveAsync()
     {
@@ -377,14 +375,12 @@ public class ConnectionProfileViewModel : ReactiveObject
         {
             IsBusy = true;
             ErrorMessage = null;
-
             await ResolveGroupFromTextAsync();
-            var profile = BuildProfile();
+            SessionProfile profile = BuildProfile();
             if (_connectionWorkflowService is null)
             {
                 return profile;
             }
-
             return await _connectionWorkflowService.SaveProfileAsync(profile);
         }
         catch (Exception ex)
@@ -401,12 +397,11 @@ public class ConnectionProfileViewModel : ReactiveObject
     /// <summary>“连接”:保存配置并请求宿主窗口在弹窗关闭后立即连接。</summary>
     private async Task<SessionProfile?> ConnectAsync()
     {
-        var profile = await SaveAsync();
+        SessionProfile? profile = await SaveAsync();
         if (profile is not null)
         {
             ConnectAfterClose = true;
         }
-
         return profile;
     }
 
@@ -417,13 +412,11 @@ public class ConnectionProfileViewModel : ReactiveObject
             LastTestSucceeded = null;
             return;
         }
-
         try
         {
             IsBusy = true;
             ErrorMessage = null;
-
-            var result = await _connectionWorkflowService.TestConnectionAsync(BuildProfile());
+            ConnectionTestResult result = await _connectionWorkflowService.TestConnectionAsync(BuildProfile());
             LastTestSucceeded = result.Success;
             ErrorMessage = result.ErrorMessage;
         }
@@ -433,39 +426,36 @@ public class ConnectionProfileViewModel : ReactiveObject
         }
     }
 
-    /// <summary>把分组框文本解析为 GroupId:留空/“未分组”→ null;命中已有分组(不区分
+    /// <summary>
+    /// 把分组框文本解析为 GroupId:留空/“未分组”→ null;命中已有分组(不区分
     /// 大小写)→ 其 Id;否则新建分组落库并归属。无仓储(设计时)只回退未分组,
-    /// 避免产生指向不存在分组的悬空 Id。</summary>
+    /// 避免产生指向不存在分组的悬空 Id。
+    /// </summary>
     private async Task ResolveGroupFromTextAsync()
     {
-        var text = GroupText.Trim();
+        string text = GroupText.Trim();
         if (text.Length == 0 || text == UngroupedName)
         {
             SelectedGroup = Groups[0];
             return;
         }
-
-        var existing = Groups.FirstOrDefault(option => option.Id is not null
-            && string.Equals(option.Name, text, StringComparison.OrdinalIgnoreCase));
+        GroupOption? existing = Groups.FirstOrDefault(option => option.Id is not null && string.Equals(option.Name, text, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
             SelectedGroup = existing;
             return;
         }
-
         if (_sessionRepository is null)
         {
             SelectedGroup = Groups[0];
             return;
         }
-
         var group = new ServerGroup
         {
             Name = text,
-            SortOrder = Groups.Count - 1, // 排在已有分组之后(下拉含“未分组”占位,故 -1)。
+            SortOrder = Groups.Count - 1 // 排在已有分组之后(下拉含“未分组”占位,故 -1)。
         };
         await _sessionRepository.SaveGroupAsync(group);
-
         var option = new GroupOption(group.Id, group.Name);
         Groups.Add(option);
         SelectedGroup = option;
@@ -474,9 +464,8 @@ public class ConnectionProfileViewModel : ReactiveObject
     private SessionProfile BuildProfile()
     {
         // 显示名称留空时用 user@host 兜底,保证列表/标签页有可读名称。
-        var name = string.IsNullOrWhiteSpace(Name) ? $"{Username}@{Host}" : Name.Trim();
-
-        return new SessionProfile
+        string name = string.IsNullOrWhiteSpace(Name) ? $"{Username}@{Host}" : Name.Trim();
+        return new()
         {
             Id = _profileId,
             Name = name,
@@ -490,9 +479,9 @@ public class ConnectionProfileViewModel : ReactiveObject
             PrivateKeyPassphrase = PrivateKeyPassphrase,
             GroupId = GroupId,
             Tags = TagsText
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .ToList(),
-            JumpHostProfileId = _jumpHostProfileId,
+                   .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                   .ToList(),
+            JumpHostProfileId = _jumpHostProfileId
         };
     }
 }

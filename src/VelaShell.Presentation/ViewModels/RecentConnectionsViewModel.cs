@@ -1,26 +1,25 @@
 using System.Collections.ObjectModel;
 using System.Reactive;
-using VelaShell.Core.Data;
 using ReactiveUI;
+using VelaShell.Core.Data;
+using VelaShell.Core.Models;
 
 namespace VelaShell.Presentation.ViewModels;
 
 /// <summary>
-/// 侧边栏“最近连接”列表:数据来自 SonnetDB 连接历史(<see cref="IRecentConnectionService"/>),
-/// 按时间倒序、同一目标去重,最多展示 <see cref="MaxRecentConnections"/> 条。
+/// 侧边栏“最近连接”列表:数据来自 SonnetDB 连接历史(<see cref="IRecentConnectionService" />),
+/// 按时间倒序、同一目标去重,最多展示 <see cref="MaxRecentConnections" /> 条。
 /// </summary>
 public sealed class RecentConnectionsViewModel : ReactiveObject
 {
     private const int MaxRecentConnections = 10;
 
     private readonly IRecentConnectionService? _recentConnectionService;
-    private bool _isLoading;
 
     public RecentConnectionsViewModel(IRecentConnectionService? recentConnectionService = null)
     {
         _recentConnectionService = recentConnectionService;
-        Connections = new ObservableCollection<RecentConnectionItemViewModel>();
-
+        Connections = [];
         RefreshCommand = ReactiveCommand.CreateFromTask(RefreshAsync);
         ClearCommand = ReactiveCommand.CreateFromTask(ClearAllAsync);
     }
@@ -29,8 +28,8 @@ public sealed class RecentConnectionsViewModel : ReactiveObject
 
     public bool IsLoading
     {
-        get => _isLoading;
-        private set => this.RaiseAndSetIfChanged(ref _isLoading, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>快速连接头部 history 按钮:重新加载最近连接。</summary>
@@ -45,15 +44,14 @@ public sealed class RecentConnectionsViewModel : ReactiveObject
         {
             return;
         }
-
         IsLoading = true;
         try
         {
-            var entries = await _recentConnectionService.GetRecentAsync(MaxRecentConnections).ConfigureAwait(true);
+            List<RecentConnectionEntry> entries = await _recentConnectionService.GetRecentAsync(MaxRecentConnections).ConfigureAwait(true);
             Connections.Clear();
-            foreach (var entry in entries)
+            foreach (RecentConnectionEntry entry in entries)
             {
-                Connections.Add(new RecentConnectionItemViewModel(entry));
+                Connections.Add(new(entry));
             }
         }
         catch
@@ -79,7 +77,6 @@ public sealed class RecentConnectionsViewModel : ReactiveObject
                 return;
             }
         }
-
         Connections.Clear();
     }
 }

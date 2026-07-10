@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-
 namespace VelaShell.Presentation.Commands;
 
 /// <summary>
@@ -23,12 +19,12 @@ public sealed record CommandDescriptor(
 
 public interface ICommandRegistry
 {
+    IReadOnlyList<CommandDescriptor> All { get; }
+
     /// <summary>Registers (or replaces, by id) a command.</summary>
     void Register(CommandDescriptor command);
 
     CommandDescriptor? Find(string id);
-
-    IReadOnlyList<CommandDescriptor> All { get; }
 
     /// <summary>Executes the command when it exists and is enabled; returns whether it ran.</summary>
     bool Execute(string id);
@@ -37,27 +33,29 @@ public interface ICommandRegistry
 public sealed class CommandRegistry : ICommandRegistry
 {
     private readonly Dictionary<string, CommandDescriptor> _commands = new(StringComparer.Ordinal);
-    private readonly List<string> _order = new();
+    private readonly List<string> _order = [];
 
     public void Register(CommandDescriptor command)
     {
         ArgumentNullException.ThrowIfNull(command);
         if (!_commands.ContainsKey(command.Id))
+        {
             _order.Add(command.Id);
+        }
         _commands[command.Id] = command;
     }
 
-    public CommandDescriptor? Find(string id) =>
-        _commands.TryGetValue(id, out var command) ? command : null;
+    public CommandDescriptor? Find(string id) => _commands.GetValueOrDefault(id);
 
-    public IReadOnlyList<CommandDescriptor> All =>
-        _order.Select(id => _commands[id]).ToList();
+    public IReadOnlyList<CommandDescriptor> All => _order.Select(id => _commands[id]).ToList();
 
     public bool Execute(string id)
     {
-        var command = Find(id);
+        CommandDescriptor? command = Find(id);
         if (command is null || !command.IsEnabled)
+        {
             return false;
+        }
         command.Execute();
         return true;
     }

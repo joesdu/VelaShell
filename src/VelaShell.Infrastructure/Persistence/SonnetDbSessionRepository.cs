@@ -1,52 +1,47 @@
 using System.Text.Json;
+using SonnetDB.Documents;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+
+// ReSharper disable AutoPropertyCanBeMadeGetOnly.Local
 
 namespace VelaShell.Infrastructure.Persistence;
 
 /// <summary>
 /// 基于 SonnetDB 文档集合的会话仓储:分组存 <c>session_groups</c>、
 /// 会话配置存 <c>session_profiles</c>(文档 Id 均为 Guid 字符串)。
-/// 密码与私钥口令通过 <see cref="ISecretProtector"/> 以 AES-256 加密后落盘。
+/// 密码与私钥口令通过 <see cref="ISecretProtector" /> 以 AES-256 加密后落盘。
 /// 首次运行时自动导入既有 sessions.json。
 /// </summary>
-public sealed class SonnetDbSessionRepository : ISessionRepository
+public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProtector protector, string? legacySessionsFile = null) : ISessionRepository
 {
-    private readonly SonnetDbEngine _engine;
-    private readonly ISecretProtector _protector;
-    private readonly string? _legacySessionsFile;
+    private readonly SonnetDbEngine _engine = engine ?? throw new ArgumentNullException(nameof(engine));
     private readonly SemaphoreSlim _migrationLock = new(1, 1);
+    private readonly ISecretProtector _protector = protector ?? throw new ArgumentNullException(nameof(protector));
     private bool _migrationChecked;
-
-    public SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProtector protector, string? legacySessionsFile = null)
-    {
-        _engine = engine ?? throw new ArgumentNullException(nameof(engine));
-        _protector = protector ?? throw new ArgumentNullException(nameof(protector));
-        _legacySessionsFile = legacySessionsFile;
-    }
 
     public async Task<List<ServerGroup>> GetAllGroupsAsync()
     {
         await EnsureMigratedAsync().ConfigureAwait(false);
-        var groups = await _engine.WithCollectionAsync(SonnetDbEngine.GroupsCollection, store =>
-            store.Scan().Select(row => SonnetDbJson.Deserialize<ServerGroup>(row.Json)).ToList()).ConfigureAwait(false);
-        return groups.Where(g => g is not null).Cast<ServerGroup>().OrderBy(g => g.SortOrder).ToList();
+        List<ServerGroup?> groups = await _engine.WithCollectionAsync(SonnetDbEngine.GroupsCollection, store =>
+                                        store.Scan().Select(row => SonnetDbJson.Deserialize<ServerGroup>(row.Json)).ToList()).ConfigureAwait(false);
+        return groups.Where(g => g is not null).OrderBy(g => g.SortOrder).ToList();
     }
 
     public async Task<List<SessionProfile>> GetAllSessionsAsync()
     {
         await EnsureMigratedAsync().ConfigureAwait(false);
-        var sessions = await _engine.WithCollectionAsync(SonnetDbEngine.ProfilesCollection, store =>
-            store.Scan().Select(row => SonnetDbJson.Deserialize<SessionProfile>(row.Json)).ToList()).ConfigureAwait(false);
+        List<SessionProfile?> sessions = await _engine.WithCollectionAsync(SonnetDbEngine.ProfilesCollection, store =>
+                                             store.Scan().Select(row => SonnetDbJson.Deserialize<SessionProfile>(row.Json)).ToList()).ConfigureAwait(false);
         return sessions.Where(s => s is not null).Cast<SessionProfile>().Select(Unprotect).ToList();
     }
 
     public async Task<SessionProfile?> GetSessionAsync(Guid id)
     {
         await EnsureMigratedAsync().ConfigureAwait(false);
-        var profile = await _engine.WithCollectionAsync(SonnetDbEngine.ProfilesCollection, store =>
+        SessionProfile? profile = await _engine.WithCollectionAsync(SonnetDbEngine.ProfilesCollection, store =>
         {
-            var row = store.Get(id.ToString("D"));
+            DocumentRow? row = store.Get(id.ToString("D"));
             return row is null ? null : SonnetDbJson.Deserialize<SessionProfile>(row.Json);
         }).ConfigureAwait(false);
         return profile is null ? null : Unprotect(profile);
@@ -56,7 +51,7 @@ public sealed class SonnetDbSessionRepository : ISessionRepository
     {
         ArgumentNullException.ThrowIfNull(session);
         await EnsureMigratedAsync().ConfigureAwait(false);
-        var json = SonnetDbJson.Serialize(Protect(session));
+        string json = SonnetDbJson.Serialize(Protect(session));
         await _engine.WithCollectionAsync<object?>(SonnetDbEngine.ProfilesCollection, store =>
         {
             store.Upsert(session.Id.ToString("D"), json);
@@ -76,15 +71,14 @@ public sealed class SonnetDbSessionRepository : ISessionRepository
         // 从各分组的会话列表中移除引用。
         await _engine.WithCollectionAsync<object?>(SonnetDbEngine.GroupsCollection, store =>
         {
-            foreach (var row in store.Scan())
+            foreach (DocumentRow row in store.Scan())
             {
-                var group = SonnetDbJson.Deserialize<ServerGroup>(row.Json);
+                ServerGroup? group = SonnetDbJson.Deserialize<ServerGroup>(row.Json);
                 if (group is not null && group.Sessions.Remove(id))
                 {
                     store.Upsert(row.Id, SonnetDbJson.Serialize(group));
                 }
             }
-
             return null;
         }).ConfigureAwait(false);
     }
@@ -93,7 +87,7 @@ public sealed class SonnetDbSessionRepository : ISessionRepository
     {
         ArgumentNullException.ThrowIfNull(group);
         await EnsureMigratedAsync().ConfigureAwait(false);
-        var json = SonnetDbJson.Serialize(group);
+        string json = SonnetDbJson.Serialize(group);
         await _engine.WithCollectionAsync<object?>(SonnetDbEngine.GroupsCollection, store =>
         {
             store.Upsert(group.Id.ToString("D"), json);
@@ -113,16 +107,15 @@ public sealed class SonnetDbSessionRepository : ISessionRepository
         // 归属该分组的会话回到未分组状态。
         await _engine.WithCollectionAsync<object?>(SonnetDbEngine.ProfilesCollection, store =>
         {
-            foreach (var row in store.Scan())
+            foreach (DocumentRow row in store.Scan())
             {
-                var profile = SonnetDbJson.Deserialize<SessionProfile>(row.Json);
+                SessionProfile? profile = SonnetDbJson.Deserialize<SessionProfile>(row.Json);
                 if (profile?.GroupId == id)
                 {
                     profile.GroupId = null;
                     store.Upsert(row.Id, SonnetDbJson.Serialize(profile));
                 }
             }
-
             return null;
         }).ConfigureAwait(false);
     }
@@ -130,7 +123,7 @@ public sealed class SonnetDbSessionRepository : ISessionRepository
     /// <summary>返回加密副本 —— 不得修改调用方持有的实例(其明文密码仍用于活动连接)。</summary>
     private SessionProfile Protect(SessionProfile profile)
     {
-        return new SessionProfile
+        return new()
         {
             Id = profile.Id,
             Name = profile.Name,
@@ -145,7 +138,7 @@ public sealed class SonnetDbSessionRepository : ISessionRepository
             LastConnectedAt = profile.LastConnectedAt,
             Tags = [.. profile.Tags],
             RememberPassword = profile.RememberPassword,
-            JumpHostProfileId = profile.JumpHostProfileId,
+            JumpHostProfileId = profile.JumpHostProfileId
         };
     }
 
@@ -162,7 +155,6 @@ public sealed class SonnetDbSessionRepository : ISessionRepository
         {
             return;
         }
-
         await _migrationLock.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -170,20 +162,17 @@ public sealed class SonnetDbSessionRepository : ISessionRepository
             {
                 return;
             }
-
-            if (!string.IsNullOrEmpty(_legacySessionsFile) && File.Exists(_legacySessionsFile))
+            if (!string.IsNullOrEmpty(legacySessionsFile) && File.Exists(legacySessionsFile))
             {
-                var isEmpty = await _engine.WithCollectionAsync(SonnetDbEngine.ProfilesCollection,
-                    store => store.Count() == 0).ConfigureAwait(false)
-                    && await _engine.WithCollectionAsync(SonnetDbEngine.GroupsCollection,
-                    store => store.Count() == 0).ConfigureAwait(false);
-
+                bool isEmpty = await _engine.WithCollectionAsync(SonnetDbEngine.ProfilesCollection,
+                                   store => store.Count() == 0).ConfigureAwait(false) &&
+                               await _engine.WithCollectionAsync(SonnetDbEngine.GroupsCollection,
+                                   store => store.Count() == 0).ConfigureAwait(false);
                 if (isEmpty)
                 {
-                    await ImportLegacyAsync(_legacySessionsFile).ConfigureAwait(false);
+                    await ImportLegacyAsync(legacySessionsFile).ConfigureAwait(false);
                 }
             }
-
             _migrationChecked = true;
         }
         finally
@@ -203,32 +192,26 @@ public sealed class SonnetDbSessionRepository : ISessionRepository
         {
             return; // 旧文件损坏时跳过导入,不阻塞启动。
         }
-
         if (data is null)
         {
             return;
         }
-
         await _engine.WithCollectionAsync<object?>(SonnetDbEngine.GroupsCollection, store =>
         {
-            foreach (var group in data.Groups)
+            foreach (ServerGroup group in data.Groups)
             {
                 store.Upsert(group.Id.ToString("D"), SonnetDbJson.Serialize(group));
             }
-
             return null;
         }).ConfigureAwait(false);
-
         await _engine.WithCollectionAsync<object?>(SonnetDbEngine.ProfilesCollection, store =>
         {
-            foreach (var session in data.Sessions)
+            foreach (SessionProfile session in data.Sessions)
             {
                 store.Upsert(session.Id.ToString("D"), SonnetDbJson.Serialize(Protect(session)));
             }
-
             return null;
         }).ConfigureAwait(false);
-
         TryRename(path);
     }
 
@@ -236,7 +219,7 @@ public sealed class SonnetDbSessionRepository : ISessionRepository
     {
         try
         {
-            File.Move(path, path + ".migrated.bak", overwrite: true);
+            File.Move(path, path + ".migrated.bak", true);
         }
         catch (IOException)
         {
@@ -244,9 +227,12 @@ public sealed class SonnetDbSessionRepository : ISessionRepository
         }
     }
 
+    // ReSharper disable once ClassNeverInstantiated.Local
     private sealed class LegacySessionData
     {
-        public List<ServerGroup> Groups { get; set; } = new();
-        public List<SessionProfile> Sessions { get; set; } = new();
+        // JSON 反序列化需要 setter:get-only 集合属性 System.Text.Json 默认不填充。
+        public List<ServerGroup> Groups { get; set; } = [];
+
+        public List<SessionProfile> Sessions { get; set; } = [];
     }
 }

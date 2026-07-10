@@ -15,8 +15,7 @@ namespace VelaShell.Terminal.Tests;
 [TestCategory("Emulator")]
 public class ResizePreservationTests
 {
-    private static TerminalEmulator New(int cols = 80, int rows = 6)
-        => new(cols, rows, TerminalType.XtermusColor256);
+    private static TerminalEmulator New(int cols = 80, int rows = 6) => new(cols, rows);
 
     private static void Feed(TerminalEmulator e, string s) => e.Feed(Encoding.UTF8.GetBytes(s));
 
@@ -25,9 +24,8 @@ public class ResizePreservationTests
     [TestMethod]
     public void NarrowResize_ReflowsInsteadOfTruncating()
     {
-        var e = New(cols: 80, rows: 4);
+        TerminalEmulator e = New(80, 4);
         Feed(e, "Linux NanoPi-R2S 6.1.63 aarch64\r\npi@NanoPi-R2S:~$");
-
         e.Resize(7, 4);
 
         // The long line is re-wrapped across rows (starting at the top of the buffer),
@@ -41,12 +39,10 @@ public class ResizePreservationTests
     [TestMethod]
     public void ShrinkThenGrowColumns_RestoresLinesAndCursor()
     {
-        var e = New(cols: 80, rows: 4);
+        TerminalEmulator e = New(80, 4);
         Feed(e, "Linux NanoPi-R2S 6.1.63 aarch64\r\npi@NanoPi-R2S:~$");
-
         e.Resize(7, 4);
         e.Resize(80, 4);
-
         Assert.AreEqual("Linux NanoPi-R2S 6.1.63 aarch64", Line(e, 0));
         Assert.AreEqual("pi@NanoPi-R2S:~$", Line(e, 1));
         // The cursor followed its character through both reflows.
@@ -57,9 +53,8 @@ public class ResizePreservationTests
     [TestMethod]
     public void Reflow_KeepsWideCharactersAtomic()
     {
-        var e = New(cols: 80, rows: 4);
+        TerminalEmulator e = New(80, 4);
         Feed(e, "abcde中文");
-
         e.Resize(6, 4);
 
         // 中 needs two cells and doesn't fit after "abcde" in a 6-column row, so it wraps
@@ -71,9 +66,8 @@ public class ResizePreservationTests
     [TestMethod]
     public void Reflow_RewrapsPreviouslyAutowrappedLines()
     {
-        var e = New(cols: 10, rows: 4);
+        TerminalEmulator e = New(10, 4);
         Feed(e, "0123456789ABCDEF"); // autowraps at column 10 into two physical rows
-
         e.Resize(16, 4);
 
         // Widening rejoins the soft-wrapped pair into one 16-character line.
@@ -84,16 +78,15 @@ public class ResizePreservationTests
     [TestMethod]
     public void ShrinkThenGrowRows_RestoresLinesFromScrollback()
     {
-        var e = New(cols: 20, rows: 6);
+        TerminalEmulator e = New(20);
         Feed(e, "one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix");
-
         e.Resize(20, 2);
         e.Resize(20, 6);
-
         var all = new List<string>();
         for (int r = 0; r < e.Screen.TotalRows; r++)
+        {
             all.Add(e.Screen.ViewLine(r).GetText());
-
+        }
         CollectionAssert.Contains(all, "one");
         CollectionAssert.Contains(all, "six");
     }
@@ -101,11 +94,9 @@ public class ResizePreservationTests
     [TestMethod]
     public void GrowBeyondOriginalWidth_KeepsContent()
     {
-        var e = New(cols: 10, rows: 2);
+        TerminalEmulator e = New(10, 2);
         Feed(e, "abc");
-
         e.Resize(30, 2);
-
         Assert.AreEqual("abc", Line(e, 0));
         Assert.AreEqual(30, e.Screen.ActiveLine(0).Columns);
     }
@@ -113,10 +104,9 @@ public class ResizePreservationTests
     [TestMethod]
     public void AltScreen_IsHardResized_NotReflowed()
     {
-        var e = New(cols: 20, rows: 4);
-        Feed(e, "\u001b[?1049h");   // enter the alternate screen (htop/vim territory)
+        TerminalEmulator e = New(20, 4);
+        Feed(e, "\u001b[?1049h"); // enter the alternate screen (htop/vim territory)
         Feed(e, "PANEL VIEW");
-
         e.Resize(8, 4);
 
         // Full-screen apps repaint on SIGWINCH; the alt screen just truncates to the new
@@ -132,23 +122,23 @@ public class ResizePreservationTests
         // with "\r ESC[K prompt" on every WINCH) progressively ate the buffer until only a
         // lone prompt remained. Root causes: EL not clearing the soft-wrap flag, and the
         // reflow split dropping tail rows to keep the cursor visible.
-        var e = New(cols: 80, rows: 10);
+        TerminalEmulator e = New(80, 10);
         Feed(e, "Linux NanoPi-R2S 6.1.63 #218 SMP aarch64\r\n" +
                 "The programs included with the Debian GNU/Linux system are free software;\r\n" +
                 "permitted by applicable law.\r\n");
         Feed(e, "pi@NanoPi-R2S:~$ ");
-
         for (int i = 0; i < 6; i++)
         {
             e.Resize(60, 8);
-            Feed(e, "\r\u001b[Kpi@NanoPi-R2S:~$ ");   // readline redraw after WINCH
+            Feed(e, "\r\u001b[Kpi@NanoPi-R2S:~$ "); // readline redraw after WINCH
             e.Resize(80, 10);
             Feed(e, "\r\u001b[Kpi@NanoPi-R2S:~$ ");
         }
-
         var all = new List<string>();
         for (int r = 0; r < e.Screen.TotalRows; r++)
+        {
             all.Add(e.Screen.ViewLine(r).GetText());
+        }
 
         // The MOTD survives every cycle…
         Assert.IsTrue(all.Any(l => l.StartsWith("Linux NanoPi-R2S")), "MOTD first line was lost");
@@ -161,15 +151,15 @@ public class ResizePreservationTests
     [TestMethod]
     public void RowShrink_ContentBelowCursor_RetiresToScrollbackNotDropped()
     {
-        var e = New(cols: 20, rows: 6);
+        TerminalEmulator e = New(20);
         Feed(e, "one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix");
         Feed(e, "\u001b[2;1H"); // cursor to row 2 — real content sits below it
-
-        e.Resize(20, 3); // rows-only shrink takes the non-reflow path
-
+        e.Resize(20, 3);        // rows-only shrink takes the non-reflow path
         var all = new List<string>();
         for (int r = 0; r < e.Screen.TotalRows; r++)
+        {
             all.Add(e.Screen.ViewLine(r).GetText());
+        }
 
         // The rows below the cursor held content, so nothing may be discarded.
         CollectionAssert.Contains(all, "one");
@@ -181,38 +171,42 @@ public class ResizePreservationTests
     {
         // Mirrors the real drag path: the layout shrinks/grows a cell at a time through many
         // intermediate grids (cols AND rows), with readline redraws landing in between.
-        var e = New(cols: 120, rows: 32);
+        TerminalEmulator e = New(120, 32);
         string[] motd =
-        {
+        [
             "Linux NanoPi-R2S 6.1.63 #218 SMP Thu Nov 30 20:48:04 CST 2023 aarch64",
             "The programs included with the Debian GNU/Linux system are free software;",
             "the exact distribution terms for each program are described in the",
             "individual files in /usr/share/doc/*/copyright.",
             "Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent",
-            "permitted by applicable law.",
-        };
+            "permitted by applicable law."
+        ];
         Feed(e, string.Join("\r\n", motd) + "\r\n");
         Feed(e, "pi@NanoPi-R2S:~$ ");
-
         for (int cycle = 0; cycle < 3; cycle++)
         {
             int rows = 32;
             for (int cols = 120; cols >= 24; cols -= 8)
+            {
                 e.Resize(cols, rows = Math.Max(6, rows - 2));
+            }
             Feed(e, "\r\u001b[Kpi@NanoPi-R2S:~$ ");
-
             for (int cols = 24; cols <= 120; cols += 8)
+            {
                 e.Resize(cols, rows = Math.Min(32, rows + 2));
+            }
             Feed(e, "\r\u001b[Kpi@NanoPi-R2S:~$ ");
         }
-
         var all = new List<string>();
         for (int r = 0; r < e.Screen.TotalRows; r++)
+        {
             all.Add(e.Screen.ViewLine(r).GetText());
-        var joined = string.Join("\n", all);
-
-        foreach (var line in motd)
+        }
+        string joined = string.Join("\n", all);
+        foreach (string line in motd)
+        {
             Assert.IsTrue(joined.Contains(line), $"MOTD line lost: {line}");
+        }
         Assert.AreEqual(1, all.Count(l => l.Contains("pi@NanoPi-R2S:~$")),
             "prompt fragments were duplicated");
     }
@@ -220,7 +214,7 @@ public class ResizePreservationTests
     [TestMethod]
     public void ViewLine_OutOfRangeRows_ClampInsteadOfThrow()
     {
-        var e = New(cols: 10, rows: 3);
+        TerminalEmulator e = New(10, 3);
         Feed(e, "top\r\nmid\r\nbot");
 
         // Negative (pointer dragged above the control) and beyond-total rows must not throw.

@@ -11,11 +11,10 @@ namespace VelaShell.Infrastructure.Persistence;
 /// <summary>
 /// 嵌入式 SonnetDB 引擎的单例封装:负责打开数据库、初始化文档集合与时序 measurement,
 /// 并对上层仓储提供带锁的文档/时序访问原语。
-///
 /// 数据模型:
-///  - 文档集合(业务数据,JSON):session_groups、session_profiles($.groupId 索引)、
-///    app_config(settings/state 单文档)、known_hosts、ui_config、quick_commands。
-///  - 时序 measurement(时间相关数据):conn_history(最近连接)、audit_log(安全审计)。
+/// - 文档集合(业务数据,JSON):session_groups、session_profiles($.groupId 索引)、
+/// app_config(settings/state 单文档)、known_hosts、ui_config、quick_commands。
+/// - 时序 measurement(时间相关数据):conn_history(最近连接)、audit_log(安全审计)。
 /// </summary>
 public sealed class SonnetDbEngine : IDisposable
 {
@@ -30,25 +29,45 @@ public sealed class SonnetDbEngine : IDisposable
     public const string AuditLogMeasurement = "audit_log";
 
     private readonly Tsdb _db;
-    private readonly ConcurrentDictionary<string, DocumentCollectionStore> _stores = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly ConcurrentDictionary<string, DocumentCollectionStore> _stores = new(StringComparer.Ordinal);
     private bool _disposed;
 
     public SonnetDbEngine(VelaShellStoragePaths paths)
-        : this((paths ?? throw new ArgumentNullException(nameof(paths))).SonnetDbDirectory)
-    {
-    }
+        : this((paths ?? throw new ArgumentNullException(nameof(paths))).SonnetDbDirectory) { }
 
     public SonnetDbEngine(string rootDirectory)
     {
         if (string.IsNullOrWhiteSpace(rootDirectory))
         {
-            throw new ArgumentException("SonnetDB root directory is required.", nameof(rootDirectory));
+            throw new ArgumentException(@"SonnetDB root directory is required.", nameof(rootDirectory));
         }
-
         Directory.CreateDirectory(rootDirectory);
-        _db = Tsdb.Open(new TsdbOptions { RootDirectory = rootDirectory });
+        _db = Tsdb.Open(new() { RootDirectory = rootDirectory });
         EnsureSchema();
+    }
+
+    public void Dispose()
+    {
+        _gate.Wait();
+        try
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+            foreach (DocumentCollectionStore store in _stores.Values)
+            {
+                store.Dispose();
+            }
+            _stores.Clear();
+            _db.Dispose();
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <summary>在引擎锁内执行文档集合操作。</summary>
@@ -97,8 +116,7 @@ public sealed class SonnetDbEngine : IDisposable
             return SqlExecutor.Execute(_db, sql) switch
             {
                 SelectExecutionResult select => select,
-                var other => throw new InvalidOperationException(
-                    $"Expected a SELECT result but got {other?.GetType().Name ?? "null"} for: {sql}"),
+                var other                    => throw new InvalidOperationException($"Expected a SELECT result but got {other?.GetType().Name ?? "null"} for: {sql}")
             };
         }
         finally
@@ -123,33 +141,8 @@ public sealed class SonnetDbEngine : IDisposable
         }
     }
 
-    public void Dispose()
-    {
-        _gate.Wait();
-        try
-        {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _disposed = true;
-            foreach (var store in _stores.Values)
-            {
-                store.Dispose();
-            }
-
-            _stores.Clear();
-            _db.Dispose();
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
-    private DocumentCollectionStore OpenStore(string collection)
-        => _stores.GetOrAdd(collection, name =>
+    private DocumentCollectionStore OpenStore(string collection) =>
+        _stores.GetOrAdd(collection, name =>
         {
             CreateCollectionIfMissing(name);
             return _db.Documents.Open(name);
@@ -163,7 +156,6 @@ public sealed class SonnetDbEngine : IDisposable
         CreateCollectionIfMissing(KnownHostsCollection);
         CreateCollectionIfMissing(UiConfigCollection);
         CreateCollectionIfMissing(QuickCommandsCollection);
-
         CreateMeasurementIfMissing(ConnHistoryMeasurement);
         CreateMeasurementIfMissing(AuditLogMeasurement);
     }
@@ -182,30 +174,28 @@ public sealed class SonnetDbEngine : IDisposable
         {
             return;
         }
-
-        var schema = name switch
+        MeasurementSchema schema = name switch
         {
             ConnHistoryMeasurement => MeasurementSchema.Create(name,
             [
-                new MeasurementColumn("profile_id", MeasurementColumnRole.Tag, FieldType.String),
-                new MeasurementColumn("host", MeasurementColumnRole.Tag, FieldType.String),
-                new MeasurementColumn("username", MeasurementColumnRole.Tag, FieldType.String),
-                new MeasurementColumn("name", MeasurementColumnRole.Field, FieldType.String),
-                new MeasurementColumn("group_name", MeasurementColumnRole.Field, FieldType.String),
-                new MeasurementColumn("port", MeasurementColumnRole.Field, FieldType.Int64),
-                new MeasurementColumn("success", MeasurementColumnRole.Field, FieldType.Boolean),
-                new MeasurementColumn("duration_ms", MeasurementColumnRole.Field, FieldType.Int64),
+                new("profile_id", MeasurementColumnRole.Tag, FieldType.String),
+                new("host", MeasurementColumnRole.Tag, FieldType.String),
+                new("username", MeasurementColumnRole.Tag, FieldType.String),
+                new("name", MeasurementColumnRole.Field, FieldType.String),
+                new("group_name", MeasurementColumnRole.Field, FieldType.String),
+                new("port", MeasurementColumnRole.Field, FieldType.Int64),
+                new("success", MeasurementColumnRole.Field, FieldType.Boolean),
+                new("duration_ms", MeasurementColumnRole.Field, FieldType.Int64)
             ]),
             AuditLogMeasurement => MeasurementSchema.Create(name,
             [
-                new MeasurementColumn("category", MeasurementColumnRole.Tag, FieldType.String),
-                new MeasurementColumn("action", MeasurementColumnRole.Tag, FieldType.String),
-                new MeasurementColumn("profile_id", MeasurementColumnRole.Tag, FieldType.String),
-                new MeasurementColumn("detail", MeasurementColumnRole.Field, FieldType.String),
+                new("category", MeasurementColumnRole.Tag, FieldType.String),
+                new("action", MeasurementColumnRole.Tag, FieldType.String),
+                new("profile_id", MeasurementColumnRole.Tag, FieldType.String),
+                new("detail", MeasurementColumnRole.Field, FieldType.String)
             ]),
-            _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown measurement."),
+            _ => throw new ArgumentOutOfRangeException(nameof(name), name, @"Unknown measurement.")
         };
-
         _db.CreateMeasurement(schema);
     }
 

@@ -29,11 +29,9 @@ public class ModelSerializationTests
             PrivateKeyPassphrase = "passphrase",
             GroupId = Guid.NewGuid(),
             LastConnectedAt = new DateTime(2026, 3, 5, 12, 0, 0, DateTimeKind.Utc),
-            Tags = new List<string> { "production", "critical" }
+            Tags = ["production", "critical"]
         };
-
-        var json = JsonSerializer.Serialize(session, _options);
-
+        string json = JsonSerializer.Serialize(session, _options);
         StringAssert.Contains(json, "\"name\":");
         StringAssert.Contains(json, "\"host\":");
         StringAssert.Contains(json, "\"username\":");
@@ -51,25 +49,23 @@ public class ModelSerializationTests
     {
         var id = Guid.NewGuid();
         var groupId = Guid.NewGuid();
-        var json = $$"""
-        {
-          "id": "{{id}}",
-          "name": "Test Server",
-          "host": "192.168.1.100",
-          "port": 2222,
-          "username": "admin",
-          "authMethod": 0,
-          "password": "secret123",
-          "privateKeyPath": "/path/to/key",
-          "privateKeyPassphrase": "passphrase",
-          "groupId": "{{groupId}}",
-          "lastConnectedAt": "2026-03-05T12:00:00Z",
-          "tags": ["production", "critical"]
-        }
-        """;
-
-        var session = JsonSerializer.Deserialize<SessionProfile>(json, _options);
-
+        string json = $$"""
+                        {
+                          "id": "{{id}}",
+                          "name": "Test Server",
+                          "host": "192.168.1.100",
+                          "port": 2222,
+                          "username": "admin",
+                          "authMethod": 0,
+                          "password": "secret123",
+                          "privateKeyPath": "/path/to/key",
+                          "privateKeyPassphrase": "passphrase",
+                          "groupId": "{{groupId}}",
+                          "lastConnectedAt": "2026-03-05T12:00:00Z",
+                          "tags": ["production", "critical"]
+                        }
+                        """;
+        SessionProfile? session = JsonSerializer.Deserialize<SessionProfile>(json, _options);
         Assert.IsNotNull(session);
         Assert.AreEqual(id, session!.Id);
         Assert.AreEqual("Test Server", session.Name);
@@ -97,9 +93,7 @@ public class ModelSerializationTests
             ScrollbackLines = 10000,
             DefaultPort = 22
         };
-
-        var json = JsonSerializer.Serialize(settings, _options);
-
+        string json = JsonSerializer.Serialize(settings, _options);
         StringAssert.Contains(json, "\"language\":");
         StringAssert.Contains(json, "\"theme\":");
         StringAssert.Contains(json, "\"terminalFont\":");
@@ -111,19 +105,17 @@ public class ModelSerializationTests
     [TestMethod]
     public void AppSettings_ShouldDeserializeCorrectly()
     {
-        var json = """
-        {
-          "language": "zh",
-          "theme": "light",
-          "terminalFont": "Consolas",
-          "terminalFontSize": 16,
-          "scrollbackLines": 5000,
-          "defaultPort": 2222
-        }
-        """;
-
-        var settings = JsonSerializer.Deserialize<AppSettings>(json, _options);
-
+        string json = """
+                      {
+                        "language": "zh",
+                        "theme": "light",
+                        "terminalFont": "Consolas",
+                        "terminalFontSize": 16,
+                        "scrollbackLines": 5000,
+                        "defaultPort": 2222
+                      }
+                      """;
+        AppSettings? settings = JsonSerializer.Deserialize<AppSettings>(json, _options);
         Assert.IsNotNull(settings);
         Assert.AreEqual("zh", settings!.Language);
         Assert.AreEqual("light", settings.Theme);
@@ -138,14 +130,12 @@ public class ModelSerializationTests
     {
         var state = new AppState
         {
-            RecentConnections = new List<string> { "session1", "session2" },
-            WindowPosition = new WindowPosition { X = 100, Y = 200 },
-            WindowSize = new WindowSize { Width = 1024, Height = 768 },
+            RecentConnections = ["session1", "session2"],
+            WindowPosition = new() { X = 100, Y = 200 },
+            WindowSize = new() { Width = 1024, Height = 768 },
             LastActiveTab = "tab1"
         };
-
-        var json = JsonSerializer.Serialize(state, _options);
-
+        string json = JsonSerializer.Serialize(state, _options);
         StringAssert.Contains(json, "\"recentConnections\":");
         StringAssert.Contains(json, "\"windowPosition\":");
         StringAssert.Contains(json, "\"windowSize\":");
@@ -165,11 +155,9 @@ public class ModelSerializationTests
             Name = "Production",
             Icon = "server",
             SortOrder = 1,
-            Sessions = new List<Guid> { Guid.NewGuid(), Guid.NewGuid() }
+            Sessions = [Guid.NewGuid(), Guid.NewGuid()]
         };
-
-        var json = JsonSerializer.Serialize(group, _options);
-
+        string json = JsonSerializer.Serialize(group, _options);
         StringAssert.Contains(json, "\"id\":");
         StringAssert.Contains(json, "\"name\":");
         StringAssert.Contains(json, "\"icon\":");
@@ -185,12 +173,10 @@ public class ModelSerializationTests
             HostKey = "AAAAB3NzaC1...",
             Fingerprint = "SHA256:abc123...",
             Algorithm = "ssh-rsa",
-            FirstSeenAt = new DateTime(2026, 3, 1, 10, 0, 0, DateTimeKind.Utc),
-            LastSeenAt = new DateTime(2026, 3, 5, 12, 0, 0, DateTimeKind.Utc)
+            FirstSeenAt = new(2026, 3, 1, 10, 0, 0, DateTimeKind.Utc),
+            LastSeenAt = new(2026, 3, 5, 12, 0, 0, DateTimeKind.Utc)
         };
-
-        var json = JsonSerializer.Serialize(host, _options);
-
+        string json = JsonSerializer.Serialize(host, _options);
         StringAssert.Contains(json, "\"hostKey\":");
         StringAssert.Contains(json, "\"fingerprint\":");
         StringAssert.Contains(json, "\"algorithm\":");
@@ -214,14 +200,11 @@ public class ModelSerializationTests
             PrivateKeyPassphrase = "phrase",
             GroupId = Guid.NewGuid(),
             LastConnectedAt = DateTime.UtcNow,
-            Tags = new List<string> { "tag1", "tag2" }
+            Tags = ["tag1", "tag2"]
         };
-
-        var json = JsonSerializer.Serialize(original, _options);
-        var deserialized = JsonSerializer.Deserialize<SessionProfile>(json, _options);
-
-        Assert.AreEqual(
-            JsonSerializer.Serialize(original, _options),
+        string json = JsonSerializer.Serialize(original, _options);
+        SessionProfile? deserialized = JsonSerializer.Deserialize<SessionProfile>(json, _options);
+        Assert.AreEqual(JsonSerializer.Serialize(original, _options),
             JsonSerializer.Serialize(deserialized, _options));
     }
 
@@ -237,12 +220,9 @@ public class ModelSerializationTests
             ScrollbackLines = 20000,
             DefaultPort = 2222
         };
-
-        var json = JsonSerializer.Serialize(original, _options);
-        var deserialized = JsonSerializer.Deserialize<AppSettings>(json, _options);
-
-        Assert.AreEqual(
-            JsonSerializer.Serialize(original, _options),
+        string json = JsonSerializer.Serialize(original, _options);
+        AppSettings? deserialized = JsonSerializer.Deserialize<AppSettings>(json, _options);
+        Assert.AreEqual(JsonSerializer.Serialize(original, _options),
             JsonSerializer.Serialize(deserialized, _options));
     }
 }

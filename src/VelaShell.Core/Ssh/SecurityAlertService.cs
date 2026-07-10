@@ -1,7 +1,7 @@
-using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using VelaShell.Core.Data;
+using VelaShell.Core.Models;
 
 namespace VelaShell.Core.Ssh;
 
@@ -10,7 +10,7 @@ public sealed record SecurityAlertNotice(string Category, string Message, bool I
 
 /// <summary>
 /// 安全告警通道(设置 → 安全审计 → 告警通道):Webhook 与审计日志在这里投递;
-/// 应用内/系统通知通过 <see cref="Alerted"/> 交给 UI 层渲染。
+/// 应用内/系统通知通过 <see cref="Alerted" /> 交给 UI 层渲染。
 /// </summary>
 public interface ISecurityAlertService
 {
@@ -21,44 +21,37 @@ public interface ISecurityAlertService
     Task RaiseAsync(string category, string message, object? detail = null);
 }
 
-public sealed class SecurityAlertService : ISecurityAlertService
+public sealed class SecurityAlertService(ISettingsService settingsService, IAuditLogService? auditLog = null) : ISecurityAlertService
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5) };
 
-    private readonly ISettingsService _settingsService;
-    private readonly IAuditLogService? _auditLog;
-
-    public SecurityAlertService(ISettingsService settingsService, IAuditLogService? auditLog = null)
-    {
-        _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
-        _auditLog = auditLog;
-    }
+    private readonly ISettingsService _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
 
     public event Action<SecurityAlertNotice>? Alerted;
 
     public async Task RaiseAsync(string category, string message, object? detail = null)
     {
-        Models.SecurityOptions security;
+        SecurityOptions security;
         try
         {
             security = (await _settingsService.GetSettingsAsync().ConfigureAwait(false)).Security;
         }
         catch
         {
-            security = new Models.SecurityOptions();
+            security = new();
         }
 
         // 审计日志始终记录(安全事件不可静默丢失)。
-        if (_auditLog is not null)
+        if (auditLog is not null)
         {
             try
             {
-                await _auditLog.WriteAsync(new Models.AuditEntry
+                await auditLog.WriteAsync(new()
                 {
                     Timestamp = DateTimeOffset.UtcNow,
                     Category = "security",
                     Action = category,
-                    Detail = message,
+                    Detail = message
                 }).ConfigureAwait(false);
             }
             catch
@@ -66,34 +59,31 @@ public sealed class SecurityAlertService : ISecurityAlertService
                 // 审计写入失败不阻塞告警链路。
             }
         }
-
         if (security.AlertInApp || security.AlertSound)
         {
             try
             {
-                Alerted?.Invoke(new SecurityAlertNotice(category, message, security.AlertInApp, security.AlertSound));
+                Alerted?.Invoke(new(category, message, security.AlertInApp, security.AlertSound));
             }
             catch
             {
                 // UI 订阅者异常不影响其余通道。
             }
         }
-
-        if (security.AlertWebhook && Uri.TryCreate(security.WebhookUrl, UriKind.Absolute, out var url)
-            && (url.Scheme == Uri.UriSchemeHttp || url.Scheme == Uri.UriSchemeHttps))
+        if (security.AlertWebhook && Uri.TryCreate(security.WebhookUrl, UriKind.Absolute, out Uri? url) && (url.Scheme == Uri.UriSchemeHttp || url.Scheme == Uri.UriSchemeHttps))
         {
             try
             {
-                var payload = JsonSerializer.Serialize(new
+                string payload = JsonSerializer.Serialize(new
                 {
                     source = "VelaShell",
                     @event = category,
                     message,
                     detail,
-                    timestamp = DateTimeOffset.UtcNow,
+                    timestamp = DateTimeOffset.UtcNow
                 });
                 using var content = new StringContent(payload, Encoding.UTF8, "application/json");
-                using var response = await Http.PostAsync(url, content).ConfigureAwait(false);
+                using HttpResponseMessage response = await Http.PostAsync(url, content).ConfigureAwait(false);
             }
             catch
             {

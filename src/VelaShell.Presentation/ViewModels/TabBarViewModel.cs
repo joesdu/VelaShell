@@ -6,12 +6,9 @@ namespace VelaShell.Presentation.ViewModels;
 
 public sealed class TabBarViewModel : ReactiveObject
 {
-    private TabViewModel? _activeTab;
-
     public TabBarViewModel()
     {
-        Tabs = new ObservableCollection<TabViewModel>();
-
+        Tabs = [];
         AddTabCommand = ReactiveCommand.Create(AddTab);
         CloseTabCommand = ReactiveCommand.Create<TabViewModel>(CloseTab);
         SelectTabCommand = ReactiveCommand.Create<TabViewModel>(tab => ActiveTab = tab);
@@ -24,20 +21,12 @@ public sealed class TabBarViewModel : ReactiveObject
 
     public TabViewModel? ActiveTab
     {
-        get => _activeTab;
+        get;
         set
         {
-            if (_activeTab is not null)
-            {
-                _activeTab.IsActive = false;
-            }
-
-            this.RaiseAndSetIfChanged(ref _activeTab, value);
-
-            if (_activeTab is not null)
-            {
-                _activeTab.IsActive = true;
-            }
+            field?.IsActive = false;
+            this.RaiseAndSetIfChanged(ref field, value);
+            field?.IsActive = true;
         }
     }
 
@@ -56,7 +45,6 @@ public sealed class TabBarViewModel : ReactiveObject
     public void AddTab(TabViewModel tab)
     {
         ArgumentNullException.ThrowIfNull(tab);
-
         Tabs.Add(tab);
         ActiveTab = tab;
     }
@@ -69,22 +57,19 @@ public sealed class TabBarViewModel : ReactiveObject
 
     private void CloseTab(TabViewModel tab)
     {
-        var index = Tabs.IndexOf(tab);
+        int index = Tabs.IndexOf(tab);
         if (index < 0)
         {
             return;
         }
-
         Tabs.RemoveAt(index);
-
         if (ActiveTab != tab)
         {
             return;
         }
-
         ActiveTab = Tabs.Count == 0
-            ? null
-            : Tabs[Math.Min(index, Tabs.Count - 1)];
+                        ? null
+                        : Tabs[Math.Min(index, Tabs.Count - 1)];
     }
 
     private void CloseActiveTab()
@@ -101,8 +86,7 @@ public sealed class TabBarViewModel : ReactiveObject
         {
             return;
         }
-
-        var index = Tabs.IndexOf(ActiveTab);
+        int index = Tabs.IndexOf(ActiveTab);
         ActiveTab = Tabs[(index + 1) % Tabs.Count];
     }
 
@@ -112,8 +96,7 @@ public sealed class TabBarViewModel : ReactiveObject
         {
             return;
         }
-
-        var index = Tabs.IndexOf(ActiveTab);
-        ActiveTab = Tabs[(index - 1 + Tabs.Count) % Tabs.Count];
+        int index = Tabs.IndexOf(ActiveTab);
+        ActiveTab = Tabs[((index - 1) + Tabs.Count) % Tabs.Count];
     }
 }

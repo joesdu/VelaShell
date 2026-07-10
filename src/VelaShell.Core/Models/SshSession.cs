@@ -7,9 +7,6 @@ namespace VelaShell.Core.Models;
 /// </summary>
 public class SshSession : ReactiveObject
 {
-    private SessionStatus _status;
-    private string? _errorMessage;
-
     /// <summary>
     /// Gets the unique session identifier
     /// </summary>
@@ -25,8 +22,8 @@ public class SshSession : ReactiveObject
     /// </summary>
     public SessionStatus Status
     {
-        get => _status;
-        set => this.RaiseAndSetIfChanged(ref _status, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>
@@ -34,8 +31,8 @@ public class SshSession : ReactiveObject
     /// </summary>
     public string? ErrorMessage
     {
-        get => _errorMessage;
-        set => this.RaiseAndSetIfChanged(ref _errorMessage, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>

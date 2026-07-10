@@ -1,6 +1,7 @@
+using SonnetDB.Model;
+using SonnetDB.Sql.Execution;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
-using SonnetDB.Model;
 
 namespace VelaShell.Infrastructure.Persistence;
 
@@ -8,14 +9,9 @@ namespace VelaShell.Infrastructure.Persistence;
 /// 基于 SonnetDB 时序 measurement <c>audit_log</c> 的审计日志
 /// (tags: category/action/profile_id;fields: detail)。
 /// </summary>
-public sealed class SonnetDbAuditLogService : IAuditLogService
+public sealed class SonnetDbAuditLogService(SonnetDbEngine engine) : IAuditLogService
 {
-    private readonly SonnetDbEngine _engine;
-
-    public SonnetDbAuditLogService(SonnetDbEngine engine)
-    {
-        _engine = engine ?? throw new ArgumentNullException(nameof(engine));
-    }
+    private readonly SonnetDbEngine _engine = engine ?? throw new ArgumentNullException(nameof(engine));
 
     public Task WriteAsync(AuditEntry entry, CancellationToken cancellationToken = default)
     {
@@ -27,21 +23,18 @@ public sealed class SonnetDbAuditLogService : IAuditLogService
         {
             tags["category"] = entry.Category;
         }
-
         if (!string.IsNullOrEmpty(entry.Action))
         {
             tags["action"] = entry.Action;
         }
-
         if (entry.ProfileId is { } profileId)
         {
             tags["profile_id"] = profileId.ToString("D");
         }
         var fields = new Dictionary<string, FieldValue>
         {
-            ["detail"] = FieldValue.FromString(entry.Detail),
+            ["detail"] = FieldValue.FromString(entry.Detail)
         };
-
         return _engine.WritePointAsync(SonnetDbEngine.AuditLogMeasurement, entry.Timestamp, tags, fields, cancellationToken);
     }
 
@@ -51,36 +44,30 @@ public sealed class SonnetDbAuditLogService : IAuditLogService
         {
             return [];
         }
-
-        var where = string.IsNullOrEmpty(category) ? string.Empty : $" WHERE category = '{category.Replace("'", "''")}'";
-        var result = await _engine.QueryAsync(
-            $"SELECT time, category, action, profile_id, detail FROM {SonnetDbEngine.AuditLogMeasurement}{where} ORDER BY time DESC LIMIT {limit}",
-            cancellationToken).ConfigureAwait(false);
-
+        string where = string.IsNullOrEmpty(category) ? string.Empty : $" WHERE category = '{category.Replace("'", "''")}'";
+        SelectExecutionResult result = await _engine.QueryAsync($"SELECT time, category, action, profile_id, detail FROM {SonnetDbEngine.AuditLogMeasurement}{where} ORDER BY time DESC LIMIT {limit}",
+                                           cancellationToken).ConfigureAwait(false);
         var entries = new List<AuditEntry>(result.Rows.Count);
-        foreach (var row in result.Rows)
+        foreach (IReadOnlyList<object?> row in result.Rows)
         {
             var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < result.Columns.Count && i < row.Count; i++)
+            for (int i = 0; i < result.Columns.Count && i < row.Count; i++)
             {
                 values[result.Columns[i]] = row[i];
             }
-
             if (values.GetValueOrDefault("time") is not { } time)
             {
                 continue;
             }
-
-            entries.Add(new AuditEntry
+            entries.Add(new()
             {
                 Timestamp = DateTimeOffset.FromUnixTimeMilliseconds(Convert.ToInt64(time)),
                 Category = values.GetValueOrDefault("category")?.ToString() ?? string.Empty,
                 Action = values.GetValueOrDefault("action")?.ToString() ?? string.Empty,
-                ProfileId = Guid.TryParse(values.GetValueOrDefault("profile_id")?.ToString(), out var id) ? id : null,
-                Detail = values.GetValueOrDefault("detail")?.ToString() ?? string.Empty,
+                ProfileId = Guid.TryParse(values.GetValueOrDefault("profile_id")?.ToString(), out Guid id) ? id : null,
+                Detail = values.GetValueOrDefault("detail")?.ToString() ?? string.Empty
             });
         }
-
         return entries;
     }
 }

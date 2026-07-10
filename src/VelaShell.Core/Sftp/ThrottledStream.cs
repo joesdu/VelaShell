@@ -5,31 +5,40 @@ namespace VelaShell.Core.Sftp;
 /// 上传时包装本地读流(限读),下载时包装本地写流(限写),对 SSH.NET 完全透明。
 /// 采用简单的滑动窗口:每消耗满一个配额窗口就 sleep 到窗口结束。
 /// </summary>
-public sealed class ThrottledStream : Stream
+public sealed class ThrottledStream(Stream inner, long bytesPerSecond) : Stream
 {
-    private readonly Stream _inner;
-    private readonly long _bytesPerSecond;
+    private readonly long _bytesPerSecond = Math.Max(1, bytesPerSecond);
+    private readonly Stream _inner = inner ?? throw new ArgumentNullException(nameof(inner));
     private long _windowBytes;
-    private long _windowStartTicks;
+    private long _windowStartTicks = Environment.TickCount64;
 
-    public ThrottledStream(Stream inner, long bytesPerSecond)
+    public override bool CanRead => _inner.CanRead;
+
+    public override bool CanSeek => _inner.CanSeek;
+
+    public override bool CanWrite => _inner.CanWrite;
+
+    public override long Length => _inner.Length;
+
+    public override long Position
     {
-        _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-        _bytesPerSecond = Math.Max(1, bytesPerSecond);
-        _windowStartTicks = Environment.TickCount64;
+        get => _inner.Position;
+        set => _inner.Position = value;
     }
 
     private void Throttle(int justTransferred)
     {
         _windowBytes += justTransferred;
         if (_windowBytes < _bytesPerSecond)
+        {
             return;
-
+        }
         long elapsed = Environment.TickCount64 - _windowStartTicks;
-        long expectedMs = _windowBytes * 1000 / _bytesPerSecond;
+        long expectedMs = (_windowBytes * 1000) / _bytesPerSecond;
         if (expectedMs > elapsed)
+        {
             Thread.Sleep((int)Math.Min(expectedMs - elapsed, 1000));
-
+        }
         _windowBytes = 0;
         _windowStartTicks = Environment.TickCount64;
     }
@@ -60,17 +69,6 @@ public sealed class ThrottledStream : Stream
         Throttle(count);
     }
 
-    public override bool CanRead => _inner.CanRead;
-    public override bool CanSeek => _inner.CanSeek;
-    public override bool CanWrite => _inner.CanWrite;
-    public override long Length => _inner.Length;
-
-    public override long Position
-    {
-        get => _inner.Position;
-        set => _inner.Position = value;
-    }
-
     public override void Flush() => _inner.Flush();
     public override Task FlushAsync(CancellationToken cancellationToken) => _inner.FlushAsync(cancellationToken);
     public override long Seek(long offset, SeekOrigin origin) => _inner.Seek(offset, origin);
@@ -79,7 +77,9 @@ public sealed class ThrottledStream : Stream
     protected override void Dispose(bool disposing)
     {
         if (disposing)
+        {
             _inner.Dispose();
+        }
         base.Dispose(disposing);
     }
 

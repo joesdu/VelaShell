@@ -6,6 +6,7 @@ namespace VelaShell.Core.Ssh;
 public interface ISshClientWrapper : IDisposable
 {
     bool IsConnected { get; }
+
     TimeSpan ConnectionTimeout { get; set; }
 
     void Connect();

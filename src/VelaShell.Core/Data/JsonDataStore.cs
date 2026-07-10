@@ -3,47 +3,37 @@ using Microsoft.Extensions.Logging;
 
 namespace VelaShell.Core.Data;
 
-public class JsonDataStore
+public class JsonDataStore(ILogger<JsonDataStore>? logger = null)
 {
-    private readonly Dictionary<string, SemaphoreSlim> _fileLocks = new();
     private readonly SemaphoreSlim _dictionaryLock = new(1, 1);
-    private readonly ILogger<JsonDataStore>? _logger;
-    
+    private readonly Dictionary<string, SemaphoreSlim> _fileLocks = new();
+
     private readonly JsonSerializerOptions _options = new()
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public JsonDataStore(ILogger<JsonDataStore>? logger = null)
-    {
-        _logger = logger;
-    }
-
     public async Task<T?> LoadAsync<T>(string filePath, CancellationToken cancellationToken = default) where T : class, new()
     {
-        var fileLock = await GetFileLockAsync(filePath).ConfigureAwait(false);
+        SemaphoreSlim fileLock = await GetFileLockAsync(filePath).ConfigureAwait(false);
         await fileLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        
         try
         {
             if (!File.Exists(filePath))
             {
-                return new T();
+                return new();
             }
-
-            await using var stream = new FileStream(
-                filePath,
+            await using var stream = new FileStream(filePath,
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.Read);
-                
             return await JsonSerializer.DeserializeAsync<T>(stream, _options, cancellationToken).ConfigureAwait(false);
         }
         catch (JsonException ex)
         {
-            _logger?.LogWarning(ex, "Corrupt JSON detected in {FilePath}, resetting to defaults", filePath);
-            return new T();
+            logger?.LogWarning(ex, "Corrupt JSON detected in {FilePath}, resetting to defaults", filePath);
+            return new();
         }
         finally
         {
@@ -53,27 +43,23 @@ public class JsonDataStore
 
     public async Task SaveAsync<T>(string filePath, T data, CancellationToken cancellationToken = default)
     {
-        var directory = Path.GetDirectoryName(filePath);
+        string? directory = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
         {
             Directory.CreateDirectory(directory);
         }
-
-        var fileLock = await GetFileLockAsync(filePath).ConfigureAwait(false);
+        SemaphoreSlim fileLock = await GetFileLockAsync(filePath).ConfigureAwait(false);
         await fileLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        
         try
         {
             for (int attempt = 0; attempt < 3; attempt++)
             {
                 try
                 {
-                    await using var stream = new FileStream(
-                        filePath,
+                    await using var stream = new FileStream(filePath,
                         FileMode.Create,
                         FileAccess.Write,
                         FileShare.None);
-                        
                     await JsonSerializer.SerializeAsync(stream, data, _options, cancellationToken).ConfigureAwait(false);
                     return;
                 }
@@ -94,11 +80,12 @@ public class JsonDataStore
         await _dictionaryLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (!_fileLocks.TryGetValue(filePath, out var fileLock))
+            if (_fileLocks.TryGetValue(filePath, out SemaphoreSlim? fileLock))
             {
-                fileLock = new SemaphoreSlim(1, 1);
-                _fileLocks[filePath] = fileLock;
+                return fileLock;
             }
+            fileLock = new(1, 1);
+            _fileLocks[filePath] = fileLock;
             return fileLock;
         }
         finally

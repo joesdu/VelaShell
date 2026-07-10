@@ -1,6 +1,6 @@
-using VelaShell.Core.Ssh;
 using Renci.SshNet;
 using Renci.SshNet.Common;
+using VelaShell.Core.Ssh;
 using VelaConnectionInfo = VelaShell.Core.Models.ConnectionInfo;
 
 namespace VelaShell.Infrastructure.Ssh;
@@ -13,30 +13,34 @@ namespace VelaShell.Infrastructure.Ssh;
 /// </summary>
 public sealed class JumpChainSshClientWrapper : ISshClientWrapper
 {
-    /// <summary>为一跳构建 SshClient:logical = 该跳的逻辑连接信息(凭据与指纹校验键),
-    /// connectHost/connectPort = 实际 socket 端点(直连时同 logical,经跳板时是本地转发口)。</summary>
+    /// <summary>
+    /// 为一跳构建 SshClient:logical = 该跳的逻辑连接信息(凭据与指纹校验键),
+    /// connectHost/connectPort = 实际 socket 端点(直连时同 logical,经跳板时是本地转发口)。
+    /// </summary>
     public delegate SshClient HopClientBuilder(VelaConnectionInfo logical, string connectHost, int connectPort);
 
-    private readonly VelaConnectionInfo _target;
     private readonly HopClientBuilder _buildHopClient;
 
     // 建链顺序(外层跳板在前,目标在最后);teardown 逆序。
-    private readonly List<SshClient> _hopClients = new();
-    private readonly List<ForwardedPortLocal> _hopForwards = new();
-    private SshClient? _targetClient;
-    private TimeSpan? _pendingTimeout;
+    private readonly List<SshClient> _hopClients = [];
+    private readonly List<ForwardedPortLocal> _hopForwards = [];
+
+    private readonly VelaConnectionInfo _target;
     private bool _disposed;
+    private TimeSpan? _pendingTimeout;
+    private SshClient? _targetClient;
 
     public JumpChainSshClientWrapper(VelaConnectionInfo target, HopClientBuilder buildHopClient)
     {
         _target = target ?? throw new ArgumentNullException(nameof(target));
         _buildHopClient = buildHopClient ?? throw new ArgumentNullException(nameof(buildHopClient));
         if (target.JumpHost is null)
-            throw new ArgumentException("Target has no jump host; use SshClientWrapper instead.", nameof(target));
+        {
+            throw new ArgumentException(@"Target has no jump host; use SshClientWrapper instead.", nameof(target));
+        }
     }
 
-    private SshClient Target => _targetClient
-        ?? throw new InvalidOperationException("Jump chain is not connected yet.");
+    private SshClient Target => _targetClient ?? throw new InvalidOperationException("Jump chain is not connected yet.");
 
     public bool IsConnected
     {
@@ -58,8 +62,7 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             _pendingTimeout = value;
-            if (_targetClient is not null)
-                _targetClient.ConnectionInfo.Timeout = value;
+            _targetClient?.ConnectionInfo.Timeout = value;
         }
     }
 
@@ -69,21 +72,23 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_targetClient?.IsConnected == true)
+        {
             return;
+        }
 
         // 链上的跳,从最外层(没有再上级跳板的那台)到目标排序。
         var hops = new List<VelaConnectionInfo>();
-        for (var hop = _target; hop is not null; hop = hop.JumpHost)
+        for (VelaConnectionInfo? hop = _target; hop is not null; hop = hop.JumpHost)
+        {
             hops.Insert(0, hop);
-
+        }
         try
         {
             SshClient? previous = null;
-            foreach (var hop in hops)
+            foreach (VelaConnectionInfo hop in hops)
             {
                 string connectHost = hop.Host;
                 int connectPort = hop.Port;
-
                 if (previous is not null)
                 {
                     // 上一跳开本地转发口,本跳经它进入(等价 OpenSSH 的 ProxyJump/-W)。
@@ -94,15 +99,15 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
                     connectHost = "127.0.0.1";
                     connectPort = (int)forward.BoundPort;
                 }
-
-                var client = _buildHopClient(hop, connectHost, connectPort);
+                SshClient client = _buildHopClient(hop, connectHost, connectPort);
                 if (_pendingTimeout is { } timeout)
+                {
                     client.ConnectionInfo.Timeout = timeout;
+                }
                 _hopClients.Add(client);
                 await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
                 previous = client;
             }
-
             _targetClient = _hopClients[^1];
         }
         catch
@@ -129,18 +134,17 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         IDictionary<TerminalModes, uint>? terminalModeValues = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var shellStream = Target.CreateShellStream(
-            terminalName, columns, rows, width, height, bufferSize, terminalModeValues);
+        ShellStream shellStream = Target.CreateShellStream(terminalName, columns, rows, width, height, bufferSize, terminalModeValues);
         return new ShellStreamWrapper(shellStream);
     }
 
     public Task<string> RunCommandAsync(string commandText, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var target = Target;
+        SshClient target = Target;
         return Task.Run(() =>
         {
-            using var command = target.CreateCommand(commandText);
+            using SshCommand command = target.CreateCommand(commandText);
             command.CommandTimeout = TimeSpan.FromSeconds(10);
             return command.Execute();
         }, cancellationToken);
@@ -158,6 +162,16 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         Target.RemoveForwardedPort(port);
     }
 
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+        _disposed = true;
+        TearDownChain();
+    }
+
     /// <summary>逆序拆链:目标 → 转发口 → 跳板;每步独立吞错,保证整条链都被回收。</summary>
     private void TearDownChain()
     {
@@ -166,15 +180,16 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
             try
             {
                 if (_hopClients[i].IsConnected)
+                {
                     _hopClients[i].Disconnect();
+                }
             }
             catch
             {
                 // 单跳断开失败不阻塞其余回收。
             }
         }
-
-        foreach (var forward in _hopForwards)
+        foreach (ForwardedPortLocal forward in _hopForwards)
         {
             try
             {
@@ -186,8 +201,7 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
             }
         }
         _hopForwards.Clear();
-
-        foreach (var client in _hopClients)
+        foreach (SshClient client in _hopClients)
         {
             try
             {
@@ -200,13 +214,5 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         }
         _hopClients.Clear();
         _targetClient = null;
-    }
-
-    public void Dispose()
-    {
-        if (_disposed)
-            return;
-        _disposed = true;
-        TearDownChain();
     }
 }

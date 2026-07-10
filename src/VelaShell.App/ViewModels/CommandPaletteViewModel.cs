@@ -11,25 +11,23 @@ namespace VelaShell.App.ViewModels;
 /// </summary>
 public sealed class CommandPaletteViewModel : ReactiveObject
 {
+    private readonly List<CommandPaletteItem> _flat = [];
     private readonly Func<IReadOnlyList<CommandPaletteItem>> _itemsProvider;
-    private IReadOnlyList<CommandPaletteItem> _all = Array.Empty<CommandPaletteItem>();
-    private readonly List<CommandPaletteItem> _flat = new();
+    private IReadOnlyList<CommandPaletteItem> _all = [];
+    private bool _isOpen;
 
     private string _query = string.Empty;
-    private bool _isOpen;
     private CommandPaletteItem? _selectedItem;
 
     public CommandPaletteViewModel(Func<IReadOnlyList<CommandPaletteItem>>? itemsProvider = null)
     {
-        _itemsProvider = itemsProvider ?? (() => Array.Empty<CommandPaletteItem>());
-        Groups = new ObservableCollection<CommandPaletteGroup>();
-
+        _itemsProvider = itemsProvider ?? (() => []);
+        Groups = [];
         MoveDownCommand = ReactiveCommand.Create(MoveDown);
         MoveUpCommand = ReactiveCommand.Create(MoveUp);
         ExecuteSelectedCommand = ReactiveCommand.Create(ExecuteSelected);
         ActivateCommand = ReactiveCommand.Create<CommandPaletteItem>(Activate);
         CloseCommand = ReactiveCommand.Create(Close);
-
         this.WhenAnyValue(x => x.Query).Subscribe(_ => Rebuild());
     }
 
@@ -53,10 +51,14 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         private set
         {
             if (_selectedItem is not null)
+            {
                 _selectedItem.IsSelected = false;
+            }
             this.RaiseAndSetIfChanged(ref _selectedItem, value);
             if (_selectedItem is not null)
+            {
                 _selectedItem.IsSelected = true;
+            }
             this.RaisePropertyChanged(nameof(HasResults));
         }
     }
@@ -66,15 +68,19 @@ public sealed class CommandPaletteViewModel : ReactiveObject
     public bool HasResults => _flat.Count > 0;
 
     public ReactiveCommand<Unit, Unit> MoveDownCommand { get; }
+
     public ReactiveCommand<Unit, Unit> MoveUpCommand { get; }
+
     public ReactiveCommand<Unit, Unit> ExecuteSelectedCommand { get; }
+
     public ReactiveCommand<CommandPaletteItem, Unit> ActivateCommand { get; }
+
     public ReactiveCommand<Unit, Unit> CloseCommand { get; }
 
     /// <summary>Reloads items from the provider, clears the query and shows the palette.</summary>
     public void Open()
     {
-        _all = _itemsProvider() ?? Array.Empty<CommandPaletteItem>();
+        _all = _itemsProvider() ?? [];
         Query = string.Empty;
         Rebuild();
         IsOpen = true;
@@ -89,7 +95,9 @@ public sealed class CommandPaletteViewModel : ReactiveObject
     private void Move(int delta)
     {
         if (_flat.Count == 0)
+        {
             return;
+        }
         int index = _selectedItem is null ? -1 : _flat.IndexOf(_selectedItem);
         index = (index + delta + _flat.Count) % _flat.Count;
         SelectedItem = _flat[index];
@@ -97,9 +105,11 @@ public sealed class CommandPaletteViewModel : ReactiveObject
 
     public void ExecuteSelected()
     {
-        var item = _selectedItem;
+        CommandPaletteItem? item = _selectedItem;
         if (item is null)
+        {
             return;
+        }
         Close();
         item.Invoke();
     }
@@ -115,26 +125,23 @@ public sealed class CommandPaletteViewModel : ReactiveObject
     {
         Groups.Clear();
         _flat.Clear();
-
-        var query = _query?.Trim() ?? string.Empty;
+        string query = _query?.Trim() ?? string.Empty;
         var byCategory = new Dictionary<string, CommandPaletteGroup>();
-
-        foreach (var item in _all)
+        foreach (CommandPaletteItem item in _all)
         {
             if (!Matches(item, query))
-                continue;
-
-            if (!byCategory.TryGetValue(item.Category, out var group))
             {
-                group = new CommandPaletteGroup(item.Category);
+                continue;
+            }
+            if (!byCategory.TryGetValue(item.Category, out CommandPaletteGroup? group))
+            {
+                group = new(item.Category);
                 byCategory[item.Category] = group;
                 Groups.Add(group);
             }
-
             group.Items.Add(item);
             _flat.Add(item);
         }
-
         SelectedItem = _flat.Count > 0 ? _flat[0] : null;
         this.RaisePropertyChanged(nameof(ResultCount));
         this.RaisePropertyChanged(nameof(HasResults));
@@ -143,10 +150,10 @@ public sealed class CommandPaletteViewModel : ReactiveObject
     private static bool Matches(CommandPaletteItem item, string query)
     {
         if (query.Length == 0)
+        {
             return true;
-        return item.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
-            || (item.Hint?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
-            || Fuzzy(item.Title, query);
+        }
+        return item.Title.Contains(query, StringComparison.OrdinalIgnoreCase) || (item.Hint?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) || Fuzzy(item.Title, query);
     }
 
     /// <summary>Subsequence fuzzy match: every query char appears in order within the title.</summary>
@@ -156,7 +163,9 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         foreach (char c in title)
         {
             if (q < query.Length && char.ToLowerInvariant(c) == char.ToLowerInvariant(query[q]))
+            {
                 q++;
+            }
         }
         return q == query.Length;
     }

@@ -7,6 +7,6 @@ public interface IAuditLogService
 {
     Task WriteAsync(AuditEntry entry, CancellationToken cancellationToken = default);
 
-    /// <summary>按时间倒序查询;<paramref name="category"/> 为空时返回全部类别。</summary>
+    /// <summary>按时间倒序查询;<paramref name="category" /> 为空时返回全部类别。</summary>
     Task<List<AuditEntry>> QueryAsync(int limit, string? category = null, CancellationToken cancellationToken = default);
 }

@@ -4,19 +4,14 @@ public sealed class VelaShellStoragePaths
 {
     public VelaShellStoragePaths()
     {
-        var root = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "VelaShell");
-
+        string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VelaShell");
         RootDirectory = root;
         SettingsFile = Path.Combine(root, "settings.json");
         StateFile = Path.Combine(root, "state.json");
         SessionsFile = Path.Combine(root, "sessions.json");
         SonnetDbDirectory = Path.Combine(root, "sonnetdb");
         SecretKeyFile = Path.Combine(root, "secret.key");
-        LegacyDotDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".velashell");
+        LegacyDotDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".velashell");
     }
 
     public string RootDirectory { get; }

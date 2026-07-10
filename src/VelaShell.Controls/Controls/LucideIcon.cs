@@ -42,26 +42,28 @@ public class LucideIcon : Control
         // Default to the design's most common icon size when unconstrained.
         double w = double.IsFinite(Width) ? Width : 12;
         double h = double.IsFinite(Height) ? Height : 12;
-        return new Size(w, h);
+        return new(w, h);
     }
 
     public override void Render(DrawingContext context)
     {
-        var geometry = Data;
-        var brush = Foreground;
+        Geometry? geometry = Data;
+        IBrush? brush = Foreground;
         if (geometry is null || brush is null)
+        {
             return;
-
+        }
         double w = Bounds.Width, h = Bounds.Height;
         if (w <= 0 || h <= 0)
+        {
             return;
+        }
 
         // Uniform scale from the 24×24 lucide view box, centered in the bounds. The pen scales
         // with the transform, so the stroke keeps lucide's 2/24 weight ratio at any size.
         double scale = Math.Min(w, h) / 24.0;
         var offset = new Point((w - 24 * scale) / 2, (h - 24 * scale) / 2);
         var pen = new Pen(brush, 2, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
-
         using (context.PushTransform(Matrix.CreateScale(scale, scale) * Matrix.CreateTranslation(offset.X, offset.Y)))
         {
             context.DrawGeometry(null, pen, geometry);

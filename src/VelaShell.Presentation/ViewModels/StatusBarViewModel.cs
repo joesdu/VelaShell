@@ -1,208 +1,171 @@
 using System.Reactive.Concurrency;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
-using VelaShell.Core.Resources;
 using ReactiveUI;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.Presentation.ViewModels;
 
-public sealed class StatusBarViewModel : ReactiveObject, IDisposable
+public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, IDisposable
 {
-    private readonly IScheduler _scheduler;
     private readonly CompositeDisposable _disposables = new();
 
-    private string _statusText;
-    private string _connectionInfo;
-    private string _status;
-    private string _latency;
-    private string _terminalType;
-    private string _windowSize;
-    private string _encoding;
-    private string _uptime;
-    private bool _isConnected;
-    private string _cpuUsage;
-    private string _memUsage;
-    private string _netUsage;
-
-    private IDisposable? _uptimeSubscription;
     private DateTimeOffset _uptimeStart;
 
-    public StatusBarViewModel()
-        : this(DefaultScheduler.Instance)
-    {
-    }
+    private IDisposable? _uptimeSubscription;
 
-    public StatusBarViewModel(IScheduler scheduler)
-    {
-        _scheduler = scheduler;
-        _statusText = Strings.Ready;
-        _connectionInfo = string.Empty;
-        _status = Strings.Disconnected;
-        _latency = string.Empty;
-        _terminalType = "xterm-256color";
-        _windowSize = "80×24";
-        _encoding = "UTF-8";
-        _uptime = string.Empty;
-        // The metric segments are always visible; before the first sample (or without a
-        // connected session) they show idle placeholders (用户要求).
-        _cpuUsage = "--";
-        _memUsage = "--";
-        _netUsage = string.Empty;
-    }
+    public StatusBarViewModel()
+        : this(DefaultScheduler.Instance) { }
+
+    // The metric segments are always visible; before the first sample (or without a
+    // connected session) they show idle placeholders (用户要求).
 
     public string StatusText
     {
-        get => _statusText;
-        set => this.RaiseAndSetIfChanged(ref _statusText, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = Strings.Ready;
 
     public string ConnectionInfo
     {
-        get => _connectionInfo;
-        set => this.RaiseAndSetIfChanged(ref _connectionInfo, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
 
     public string Status
     {
-        get => _status;
+        get;
         set
         {
-            this.RaiseAndSetIfChanged(ref _status, value);
+            this.RaiseAndSetIfChanged(ref field, value);
             IsConnected = value == Strings.Connected;
         }
-    }
+    } = Strings.Disconnected;
 
     public string Latency
     {
-        get => _latency;
-        set => this.RaiseAndSetIfChanged(ref _latency, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
 
     public string TerminalType
     {
-        get => _terminalType;
-        set => this.RaiseAndSetIfChanged(ref _terminalType, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "xterm-256color";
 
     public string WindowSize
     {
-        get => _windowSize;
-        set => this.RaiseAndSetIfChanged(ref _windowSize, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "80×24";
 
     public string Encoding
     {
-        get => _encoding;
-        set => this.RaiseAndSetIfChanged(ref _encoding, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "UTF-8";
 
     public string Uptime
     {
-        get => _uptime;
-        set => this.RaiseAndSetIfChanged(ref _uptime, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
 
     public bool IsConnected
     {
-        get => _isConnected;
-        private set => this.RaiseAndSetIfChanged(ref _isConnected, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public string CpuUsage
     {
-        get => _cpuUsage;
-        set => this.RaiseAndSetIfChanged(ref _cpuUsage, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "--";
 
     public string MemUsage
     {
-        get => _memUsage;
-        set => this.RaiseAndSetIfChanged(ref _memUsage, value);
-    }
-
-    public string NetUsage
-    {
-        get => _netUsage;
-        set => this.RaiseAndSetIfChanged(ref _netUsage, value);
-    }
-
-    private string _swapUsage = "--";
-    private string _diskUsage = "--";
-    private string _cpuTooltip = "CPU";
-    private string _memTooltip = "内存";
-    private string _diskTooltip = "磁盘";
-    private string _netTooltip = "网速";
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "--";
 
     /// <summary>悬停提示:CPU 总占用 + 每核心占用(用户反馈,由主 VM 按采样填充)。</summary>
     public string CpuTooltip
     {
-        get => _cpuTooltip;
-        set => this.RaiseAndSetIfChanged(ref _cpuTooltip, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "CPU";
 
     /// <summary>悬停提示:内存/交换分区的已用与总量。</summary>
     public string MemTooltip
     {
-        get => _memTooltip;
-        set => this.RaiseAndSetIfChanged(ref _memTooltip, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "内存";
 
     /// <summary>悬停提示:每个磁盘(挂载点)的用量。</summary>
     public string DiskTooltip
     {
-        get => _diskTooltip;
-        set => this.RaiseAndSetIfChanged(ref _diskTooltip, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "磁盘";
 
     /// <summary>悬停提示:每个网卡的上下行速率。</summary>
     public string NetTooltip
     {
-        get => _netTooltip;
-        set => this.RaiseAndSetIfChanged(ref _netTooltip, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "网速";
 
     /// <summary>Swap usage percent; "--" when the host has no swap or no session is live.</summary>
     public string SwapUsage
     {
-        get => _swapUsage;
-        set => this.RaiseAndSetIfChanged(ref _swapUsage, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "--";
 
     /// <summary>Root filesystem usage percent; "--" without a live session.</summary>
     public string DiskUsage
     {
-        get => _diskUsage;
-        set => this.RaiseAndSetIfChanged(ref _diskUsage, value);
-    }
-
-    private string _netSpeed = "0 B/s";
-    private bool _isNetUpActive;
-    private bool _isNetDownActive;
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "--";
 
     /// <summary>The dominant direction's rate, e.g. "4.2 MB/s" (Android-style readout).</summary>
     public string NetSpeed
     {
-        get => _netSpeed;
-        private set => this.RaiseAndSetIfChanged(ref _netSpeed, value);
-    }
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "0 B/s";
 
-    /// <summary>True while the server is actually uploading — lights the ↑ half of the
-    /// arrow-up-down glyph in the accent color.</summary>
+    /// <summary>
+    /// True while the server is actually uploading — lights the ↑ half of the
+    /// arrow-up-down glyph in the accent color.
+    /// </summary>
     public bool IsNetUpActive
     {
-        get => _isNetUpActive;
-        private set => this.RaiseAndSetIfChanged(ref _isNetUpActive, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>True while the server is actually downloading — lights the ↓ half.</summary>
     public bool IsNetDownActive
     {
-        get => _isNetDownActive;
-        private set => this.RaiseAndSetIfChanged(ref _isNetDownActive, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>Feeds one network sample (bytes/second per direction). Each arrow half lights
-    /// up for its own direction; the readout shows the dominant direction's rate.</summary>
+    public void Dispose()
+    {
+        _disposables.Dispose();
+        _uptimeSubscription = null;
+    }
+
+    /// <summary>
+    /// Feeds one network sample (bytes/second per direction). Each arrow half lights
+    /// up for its own direction; the readout shows the dominant direction's rate.
+    /// </summary>
     public void UpdateNetwork(double rxBytesPerSec, double txBytesPerSec, bool hasRates)
     {
         if (!hasRates)
@@ -215,14 +178,15 @@ public sealed class StatusBarViewModel : ReactiveObject, IDisposable
 
         // Keepalives/echo traffic hovers under this; don't light the arrows for noise.
         const double activeThreshold = 512;
-
         IsNetUpActive = txBytesPerSec >= activeThreshold;
         IsNetDownActive = rxBytesPerSec >= activeThreshold;
         NetSpeed = FormatRate(Math.Max(rxBytesPerSec, txBytesPerSec));
     }
 
-    /// <summary>Resets the metric segments to their idle placeholders (no connected session).
-    /// The segments stay visible so the bar layout never jumps.</summary>
+    /// <summary>
+    /// Resets the metric segments to their idle placeholders (no connected session).
+    /// The segments stay visible so the bar layout never jumps.
+    /// </summary>
     public void ClearSessionMetrics()
     {
         CpuUsage = "--";
@@ -246,23 +210,21 @@ public sealed class StatusBarViewModel : ReactiveObject, IDisposable
             >= gb => $"{bytesPerSec / gb:F1} GB/s",
             >= mb => $"{bytesPerSec / mb:F1} MB/s",
             >= kb => $"{bytesPerSec / kb:F1} KB/s",
-            _ => $"{bytesPerSec:F0} B/s",
+            _     => $"{bytesPerSec:F0} B/s"
         };
     }
 
     public void StartUptimeTimer()
     {
         StopUptimeTimer();
-        _uptimeStart = _scheduler.Now;
-
+        _uptimeStart = scheduler.Now;
         _uptimeSubscription = Observable
-            .Interval(TimeSpan.FromSeconds(1), _scheduler)
-            .Subscribe(_ =>
-            {
-                var elapsed = _scheduler.Now - _uptimeStart;
-                Uptime = elapsed.ToString(@"hh\:mm\:ss");
-            });
-
+                              .Interval(TimeSpan.FromSeconds(1), scheduler)
+                              .Subscribe(_ =>
+                              {
+                                  TimeSpan elapsed = scheduler.Now - _uptimeStart;
+                                  Uptime = elapsed.ToString(@"hh\:mm\:ss");
+                              });
         _disposables.Add(_uptimeSubscription);
     }
 
@@ -277,11 +239,5 @@ public sealed class StatusBarViewModel : ReactiveObject, IDisposable
         StopUptimeTimer();
         Uptime = string.Empty;
         StartUptimeTimer();
-    }
-
-    public void Dispose()
-    {
-        _disposables.Dispose();
-        _uptimeSubscription = null;
     }
 }

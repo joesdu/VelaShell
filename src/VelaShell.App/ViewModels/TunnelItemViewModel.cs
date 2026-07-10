@@ -1,6 +1,5 @@
-using System;
-using VelaShell.Core.Models;
 using ReactiveUI;
+using VelaShell.Core.Models;
 
 namespace VelaShell.App.ViewModels;
 
@@ -22,8 +21,8 @@ public class TunnelItemViewModel : ReactiveObject
     public Guid SessionId => _tunnelInfo.SessionId;
 
     public string Name => string.IsNullOrWhiteSpace(_tunnelInfo.Config.Name)
-        ? DisplayRoute
-        : _tunnelInfo.Config.Name;
+                              ? DisplayRoute
+                              : _tunnelInfo.Config.Name;
 
     public TunnelType TunnelType => _tunnelInfo.Config.Type;
 
@@ -40,28 +39,32 @@ public class TunnelItemViewModel : ReactiveObject
     /// <summary>路由描述:本地/动态以本地端口为起点,远程转发方向相反(设计 B3Rth)。</summary>
     public string DisplayRoute => TunnelType switch
     {
-        Core.Models.TunnelType.RemoteForward => $"服务器:{RemotePort} → {LocalHost}:{LocalPort}",
-        Core.Models.TunnelType.DynamicForward => $"{LocalHost}:{LocalPort} → SOCKS5 代理",
-        _ => $"{LocalHost}:{LocalPort} → {RemoteHost}:{RemotePort}",
+        TunnelType.RemoteForward  => $"服务器:{RemotePort} → {LocalHost}:{LocalPort}",
+        TunnelType.DynamicForward => $"{LocalHost}:{LocalPort} → SOCKS5 代理",
+        _                         => $"{LocalHost}:{LocalPort} → {RemoteHost}:{RemotePort}"
     };
 
     /// <summary>类型标签(设计 B3Rth:Local/Remote/Dynamic 全词徽标)。</summary>
     public string TypeBadge => TunnelType switch
     {
-        Core.Models.TunnelType.RemoteForward => "Remote",
-        Core.Models.TunnelType.DynamicForward => "Dynamic",
-        _ => "Local",
+        TunnelType.RemoteForward  => "Remote",
+        TunnelType.DynamicForward => "Dynamic",
+        _                         => "Local"
     };
 
-    /// <summary>状态直接读写共享的 <see cref="TunnelInfo"/>:服务侧(会话断开、停止全部)
-    /// 改的状态,界面经 <see cref="RefreshLive"/> 就能看到,不再各存一份而彼此失联。</summary>
+    /// <summary>
+    /// 状态直接读写共享的 <see cref="TunnelInfo" />:服务侧(会话断开、停止全部)
+    /// 改的状态,界面经 <see cref="RefreshLive" /> 就能看到,不再各存一份而彼此失联。
+    /// </summary>
     public TunnelStatus Status
     {
         get => _tunnelInfo.Status;
         set
         {
             if (_tunnelInfo.Status == value)
+            {
                 return;
+            }
             _tunnelInfo.Status = value;
             RaiseLiveChanged();
         }
@@ -82,8 +85,8 @@ public class TunnelItemViewModel : ReactiveObject
     public string StatusText => Status switch
     {
         TunnelStatus.Active => $"运行中 • {FormatUptime(DateTime.UtcNow - CreatedAt)}",
-        TunnelStatus.Error => "发生错误",
-        _ => "已停止",
+        TunnelStatus.Error  => "发生错误",
+        _                   => "已停止"
     };
 
     /// <summary>由面板的时钟周期性调用:刷新运行时长、透传服务侧的状态/错误变化。</summary>
@@ -101,18 +104,27 @@ public class TunnelItemViewModel : ReactiveObject
     private static string FormatUptime(TimeSpan uptime)
     {
         if (uptime < TimeSpan.Zero)
+        {
             uptime = TimeSpan.Zero;
+        }
         if (uptime.TotalHours >= 1)
+        {
             return $"已运行 {(int)uptime.TotalHours}h {uptime.Minutes}m";
+        }
         if (uptime.TotalMinutes >= 1)
+        {
             return $"已运行 {(int)uptime.TotalMinutes}m";
+        }
         return "已运行 <1m";
     }
 
     public static string FormatBytes(long bytes)
     {
-        if (bytes == 0) return "0 B";
-        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        if (bytes == 0)
+        {
+            return "0 B";
+        }
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
         int i = (int)Math.Floor(Math.Log(bytes, 1024));
         i = Math.Min(i, units.Length - 1);
         return $"{bytes / Math.Pow(1024, i):F1} {units[i]}";

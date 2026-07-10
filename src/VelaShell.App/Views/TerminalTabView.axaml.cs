@@ -1,4 +1,3 @@
-using System;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
@@ -6,44 +5,48 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
-using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using VelaShell.App.Services;
 using VelaShell.App.ViewModels;
 using VelaShell.Core.Models;
+using VelaShell.Terminal;
 using VelaShell.Terminal.Rendering;
+using KeyModifiers = VelaShell.App.Services.KeyModifiers;
 
 namespace VelaShell.App.Views;
 
 public partial class TerminalTabView : UserControl
 {
     private readonly IKeyboardShortcutService _shortcutService;
-    private VelaTerminalControl? _termControl;
+
+    // ---- In-terminal search (spec §5.3) ------------------------------------
+
+    private IReadOnlyList<BufferSearchHit> _searchHits =
+        [];
+
+    private int _searchIndex = -1;
     private bool _syncingScrollBar;
+    private VelaTerminalControl? _termControl;
 
     public TerminalTabView()
-        : this(new KeyboardShortcutService())
-    {
-    }
+        : this(new KeyboardShortcutService()) { }
 
     public TerminalTabView(IKeyboardShortcutService shortcutService)
     {
         _shortcutService = shortcutService ?? throw new ArgumentNullException(nameof(shortcutService));
         InitializeComponent();
-
         Focusable = true;
         AttachedToVisualTree += OnAttachedToVisualTree;
         DetachedFromVisualTree += OnDetachedFromVisualTree;
         DataContextChanged += (_, _) => HookTerminalControl();
-
         if (ScrollBarView is not null)
+        {
             ScrollBarView.Scroll += OnScrollBarScroll;
+        }
 
         // Tunnel so a disconnected tab can catch Enter / Ctrl+R for reconnect (and Ctrl+F can
         // open search) before the terminal control consumes the keys for the PTY.
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
-
         SearchBox.TextChanged += (_, _) => RunSearch();
         SearchNext.Click += (_, _) => MoveHit(+1);
         SearchPrev.Click += (_, _) => MoveHit(-1);
@@ -60,33 +63,25 @@ public partial class TerminalTabView : UserControl
             e.Handled = true;
             return;
         }
-
         if (e.Key == Key.Escape && SearchBar.IsVisible)
         {
             CloseSearch();
             e.Handled = true;
             return;
         }
-
         if (DataContext is not TerminalTabViewModel vm || vm.ConnectionStatus != SessionStatus.Disconnected)
+        {
             return;
-
-        var reconnect =
+        }
+        bool reconnect =
             (e.Key == Key.Enter && e.KeyModifiers == Avalonia.Input.KeyModifiers.None) ||
             (e.Key == Key.R && e.KeyModifiers == Avalonia.Input.KeyModifiers.Control);
-
         if (reconnect)
         {
             vm.RequestReconnect();
             e.Handled = true;
         }
     }
-
-    // ---- In-terminal search (spec §5.3) ------------------------------------
-
-    private IReadOnlyList<VelaShell.Terminal.BufferSearchHit> _searchHits =
-        Array.Empty<VelaShell.Terminal.BufferSearchHit>();
-    private int _searchIndex = -1;
 
     internal void OpenSearch()
     {
@@ -99,7 +94,7 @@ public partial class TerminalTabView : UserControl
     private void CloseSearch()
     {
         SearchBar.IsVisible = false;
-        _searchHits = Array.Empty<VelaShell.Terminal.BufferSearchHit>();
+        _searchHits = [];
         _searchIndex = -1;
         _termControl?.ClearSearchHighlights();
         FocusTerminal();
@@ -108,9 +103,10 @@ public partial class TerminalTabView : UserControl
     private void RunSearch()
     {
         if (_termControl is null || !SearchBar.IsVisible)
+        {
             return;
-
-        var query = SearchBox.Text ?? string.Empty;
+        }
+        string query = SearchBox.Text ?? string.Empty;
         _searchHits = _termControl.SearchBuffer(query);
         _searchIndex = _searchHits.Count > 0 ? 0 : -1;
         ShowCurrentHit();
@@ -119,22 +115,25 @@ public partial class TerminalTabView : UserControl
     private void MoveHit(int delta)
     {
         if (_searchHits.Count == 0)
+        {
             return;
-        _searchIndex = ((_searchIndex + delta) % _searchHits.Count + _searchHits.Count) % _searchHits.Count;
+        }
+        _searchIndex = (((_searchIndex + delta) % _searchHits.Count) + _searchHits.Count) % _searchHits.Count;
         ShowCurrentHit();
     }
 
     private void ShowCurrentHit()
     {
         SearchCount.Text = _searchHits.Count == 0
-            ? (string.IsNullOrEmpty(SearchBox.Text) ? "" : "无匹配")
-            : $"{_searchIndex + 1}/{_searchHits.Count}";
+                               ? string.IsNullOrEmpty(SearchBox.Text) ? "" : "无匹配"
+                               : $"{_searchIndex + 1}/{_searchHits.Count}";
 
         // All hits get a persistent highlight; the current one is tinted accent (§5.3).
         _termControl?.SetSearchHighlights(_searchHits, _searchIndex);
-
         if (_searchIndex >= 0 && _termControl is not null)
+        {
             _termControl.ShowHit(_searchHits[_searchIndex]);
+        }
     }
 
     private void OnSearchBoxKeyDown(object? sender, KeyEventArgs e)
@@ -160,7 +159,9 @@ public partial class TerminalTabView : UserControl
     private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
         if (_termControl is not null)
+        {
             _termControl.ScrollChanged -= OnTerminalScrollChanged;
+        }
         _termControl = null;
     }
 
@@ -174,13 +175,15 @@ public partial class TerminalTabView : UserControl
             SyncScrollBar();
             return;
         }
-
         if (_termControl is not null)
+        {
             _termControl.ScrollChanged -= OnTerminalScrollChanged;
+        }
         _termControl = ctrl;
         if (_termControl is not null)
+        {
             _termControl.ScrollChanged += OnTerminalScrollChanged;
-
+        }
         SyncScrollBar();
     }
 
@@ -189,8 +192,9 @@ public partial class TerminalTabView : UserControl
     private void SyncScrollBar()
     {
         if (ScrollBarView is null || _termControl is null)
+        {
             return;
-
+        }
         _syncingScrollBar = true;
         try
         {
@@ -211,8 +215,9 @@ public partial class TerminalTabView : UserControl
     private void OnScrollBarScroll(object? sender, ScrollEventArgs e)
     {
         if (_syncingScrollBar || _termControl is null || ScrollBarView is null)
+        {
             return;
-
+        }
         int max = _termControl.MaxScrollOffset;
         _termControl.ScrollOffset = max - (int)Math.Round(ScrollBarView.Value);
     }
@@ -225,17 +230,14 @@ public partial class TerminalTabView : UserControl
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        var modifiers = MapModifiers(e.KeyModifiers);
-        var key = MapKey(e.Key);
-
+        KeyModifiers modifiers = MapModifiers(e.KeyModifiers);
+        KeyCode key = MapKey(e.Key);
         if (key == KeyCode.None)
         {
             base.OnKeyDown(e);
             return;
         }
-
-        var action = _shortcutService.Resolve(modifiers, key, ShortcutContext.Terminal);
-
+        ShortcutAction action = _shortcutService.Resolve(modifiers, key, ShortcutContext.Terminal);
         switch (action)
         {
             // 本层是焦点落在标签视图(而非终端控件)时的回退:正常情况下终端控件自己的
@@ -244,29 +246,36 @@ public partial class TerminalTabView : UserControl
             case ShortcutAction.Copy:
                 // 复用控件的复制:只复制选中内容,并尊重「复制时去除尾部空格」等设置。
                 if (_termControl is not null)
+                {
                     _ = _termControl.CopyAsync();
+                }
                 else
+                {
                     _ = CopySelectionAsync();
+                }
                 e.Handled = true;
                 return;
-
             case ShortcutAction.Paste:
                 if (_termControl is not null)
+                {
                     _ = _termControl.PasteAsync();
+                }
                 else
+                {
                     _ = PasteFromClipboardAsync();
+                }
                 e.Handled = true;
                 return;
-
             case ShortcutAction.SendInterrupt:
                 // 与 VelaTerminalControl.OnKeyDown 同规则:「选中时 Ctrl+C 复制」开启且有
                 // 选区 → 复制;否则发送中断信号 ^C。
                 if (_termControl?.TryCopyOnCtrlC() != true)
-                    SendBytesToTerminal(new byte[] { 0x03 });
+                {
+                    SendBytesToTerminal([0x03]);
+                }
                 e.Handled = true;
                 return;
         }
-
         base.OnKeyDown(e);
     }
 
@@ -274,11 +283,10 @@ public partial class TerminalTabView : UserControl
     {
         if (!string.IsNullOrEmpty(e.Text))
         {
-            var bytes = Encoding.UTF8.GetBytes(e.Text);
+            byte[] bytes = Encoding.UTF8.GetBytes(e.Text);
             SendBytesToTerminal(bytes);
             e.Handled = true;
         }
-
         base.OnTextInput(e);
     }
 
@@ -290,51 +298,52 @@ public partial class TerminalTabView : UserControl
         }
     }
 
-    private async System.Threading.Tasks.Task CopySelectionAsync()
+    private async Task CopySelectionAsync()
     {
-        var clipboard = GetClipboard();
+        IClipboard? clipboard = GetClipboard();
         if (clipboard == null)
+        {
             return;
-
-        var selectedText = GetSelectedText();
+        }
+        string selectedText = GetSelectedText();
         if (!string.IsNullOrEmpty(selectedText))
         {
             await clipboard.SetTextAsync(selectedText);
         }
     }
 
-    private async System.Threading.Tasks.Task PasteFromClipboardAsync()
+    private async Task PasteFromClipboardAsync()
     {
-        var clipboard = GetClipboard();
+        IClipboard? clipboard = GetClipboard();
         if (clipboard == null)
+        {
             return;
-
-        var text = await clipboard.TryGetTextAsync();
+        }
+        string? text = await clipboard.TryGetTextAsync();
         if (!string.IsNullOrEmpty(text))
         {
-            var bytes = Encoding.UTF8.GetBytes(text);
+            byte[] bytes = Encoding.UTF8.GetBytes(text);
             SendBytesToTerminal(bytes);
         }
     }
 
-    private IClipboard? GetClipboard()
-    {
-        return TopLevel.GetTopLevel(this)?.Clipboard;
-    }
+    private IClipboard? GetClipboard() => TopLevel.GetTopLevel(this)?.Clipboard;
 
     private string GetSelectedText()
     {
         if (DataContext is TerminalTabViewModel vm)
         {
-            var emulator = vm.TerminalEmulator;
+            ITerminalEmulator emulator = vm.TerminalEmulator;
             var sb = new StringBuilder();
             for (int row = 0; row < emulator.Rows; row++)
             {
-                var line = emulator.GetBufferLine(row);
+                string line = emulator.GetBufferLine(row);
                 if (!string.IsNullOrEmpty(line))
                 {
                     if (sb.Length > 0)
+                    {
                         sb.AppendLine();
+                    }
                     sb.Append(line);
                 }
             }
@@ -349,7 +358,6 @@ public partial class TerminalTabView : UserControl
         {
             return;
         }
-
         Dispatcher.UIThread.Post(() =>
         {
             Focus();
@@ -357,19 +365,25 @@ public partial class TerminalTabView : UserControl
         }, DispatcherPriority.Input);
     }
 
-    private static Services.KeyModifiers MapModifiers(Avalonia.Input.KeyModifiers avaloniaModifiers)
+    private static KeyModifiers MapModifiers(Avalonia.Input.KeyModifiers avaloniaModifiers)
     {
-        var result = Services.KeyModifiers.None;
-
+        KeyModifiers result = KeyModifiers.None;
         if (avaloniaModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control))
-            result |= Services.KeyModifiers.Ctrl;
+        {
+            result |= KeyModifiers.Ctrl;
+        }
         if (avaloniaModifiers.HasFlag(Avalonia.Input.KeyModifiers.Shift))
-            result |= Services.KeyModifiers.Shift;
+        {
+            result |= KeyModifiers.Shift;
+        }
         if (avaloniaModifiers.HasFlag(Avalonia.Input.KeyModifiers.Alt))
-            result |= Services.KeyModifiers.Alt;
+        {
+            result |= KeyModifiers.Alt;
+        }
         if (avaloniaModifiers.HasFlag(Avalonia.Input.KeyModifiers.Meta))
-            result |= Services.KeyModifiers.Meta;
-
+        {
+            result |= KeyModifiers.Meta;
+        }
         return result;
     }
 
@@ -377,13 +391,13 @@ public partial class TerminalTabView : UserControl
     {
         return avaloniaKey switch
         {
-            Key.C => KeyCode.C,
-            Key.V => KeyCode.V,
-            Key.T => KeyCode.T,
-            Key.W => KeyCode.W,
-            Key.Tab => KeyCode.Tab,
+            Key.C        => KeyCode.C,
+            Key.V        => KeyCode.V,
+            Key.T        => KeyCode.T,
+            Key.W        => KeyCode.W,
+            Key.Tab      => KeyCode.Tab,
             Key.OemComma => KeyCode.Comma,
-            _ => KeyCode.None
+            _            => KeyCode.None
         };
     }
 }

@@ -40,7 +40,9 @@ public class ConnectionInfo
     /// </summary>
     public string? PrivateKeyPassphrase { get; init; }
 
-    /// <summary>跳板主机(ProxyJump):先连它,再经其本地转发端口连本机。递归嵌套即多段跳;
-    /// 由工作流按 <c>SessionProfile.JumpHostProfileId</c> 链解析(带环检测)。null = 直连。</summary>
+    /// <summary>
+    /// 跳板主机(ProxyJump):先连它,再经其本地转发端口连本机。递归嵌套即多段跳;
+    /// 由工作流按 <c>SessionProfile.JumpHostProfileId</c> 链解析(带环检测)。null = 直连。
+    /// </summary>
     public ConnectionInfo? JumpHost { get; init; }
 }

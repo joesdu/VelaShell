@@ -2,7 +2,7 @@ namespace VelaShell.Core.Data;
 
 /// <summary>
 /// 敏感字段(密码/口令)的静态加密。实现使用 AES-256-GCM 与本地密钥文件,
-/// 密文带版本前缀;<see cref="Unprotect"/> 对无前缀的历史明文原样返回,便于平滑迁移。
+/// 密文带版本前缀;<see cref="Unprotect" /> 对无前缀的历史明文原样返回,便于平滑迁移。
 /// </summary>
 public interface ISecretProtector
 {

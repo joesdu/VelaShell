@@ -1,13 +1,9 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Reactive;
-using System.Reactive.Linq;
-using System.Threading.Tasks;
+using System.Text.Json;
+using ReactiveUI;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
-using ReactiveUI;
 
 namespace VelaShell.App.ViewModels;
 
@@ -17,16 +13,16 @@ public class QuickCommandsViewModel : ReactiveObject
     private const string DocumentId = "commands";
 
     private readonly IAppDataStore _dataStore;
-    private readonly string? _legacyDataPath;
     private readonly Action<string>? _executeCallback;
-
-    private string _searchQuery = string.Empty;
+    private readonly string? _legacyDataPath;
+    private QuickCommandViewModel? _editingCommand;
     private bool _isAddingCommand;
-    private string _newName = string.Empty;
     private string _newCategory = string.Empty;
     private string _newCommandText = string.Empty;
     private string _newDescription = string.Empty;
-    private QuickCommandViewModel? _editingCommand;
+    private string _newName = string.Empty;
+
+    private string _searchQuery = string.Empty;
 
     public QuickCommandsViewModel(
         IAppDataStore dataStore,
@@ -35,14 +31,12 @@ public class QuickCommandsViewModel : ReactiveObject
     {
         _dataStore = dataStore ?? throw new ArgumentNullException(nameof(dataStore));
         _executeCallback = executeCallback;
-        _legacyDataPath = legacyDataPath ?? System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".velashell", "quick-commands.json");
-
-        AllCommands = new ObservableCollection<QuickCommandViewModel>();
-        FilteredCommands = new ObservableCollection<QuickCommandViewModel>();
-        Categories = new ObservableCollection<string>();
-
+        _legacyDataPath = legacyDataPath ??
+                          Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                              ".velashell", "quick-commands.json");
+        AllCommands = [];
+        FilteredCommands = [];
+        Categories = [];
         ExecuteCommandCommand = ReactiveCommand.Create<QuickCommandViewModel>(ExecuteCommand);
         AddCommandCommand = ReactiveCommand.Create(AddCommand);
         DeleteCommandCommand = ReactiveCommand.Create<QuickCommandViewModel>(DeleteCommand);
@@ -51,15 +45,15 @@ public class QuickCommandsViewModel : ReactiveObject
         BeginEditCommand = ReactiveCommand.Create<QuickCommandViewModel>(BeginEdit);
         SaveEditCommand = ReactiveCommand.Create(SaveEdit);
         CancelEditCommand = ReactiveCommand.Create(CancelEdit);
-
         this.WhenAnyValue(vm => vm.SearchQuery)
             .Subscribe(_ => ApplyFilter());
-
         LoadBuiltInCommands();
     }
 
     public ObservableCollection<QuickCommandViewModel> AllCommands { get; }
+
     public ObservableCollection<QuickCommandViewModel> FilteredCommands { get; }
+
     public ObservableCollection<string> Categories { get; }
 
     public string SearchQuery
@@ -105,12 +99,19 @@ public class QuickCommandsViewModel : ReactiveObject
     }
 
     public ReactiveCommand<QuickCommandViewModel, Unit> ExecuteCommandCommand { get; }
+
     public ReactiveCommand<Unit, Unit> AddCommandCommand { get; }
+
     public ReactiveCommand<QuickCommandViewModel, Unit> DeleteCommandCommand { get; }
+
     public ReactiveCommand<Unit, Unit> SaveNewCommandCommand { get; }
+
     public ReactiveCommand<Unit, Unit> CancelAddCommand { get; }
+
     public ReactiveCommand<QuickCommandViewModel, Unit> BeginEditCommand { get; }
+
     public ReactiveCommand<Unit, Unit> SaveEditCommand { get; }
+
     public ReactiveCommand<Unit, Unit> CancelEditCommand { get; }
 
     private void LoadBuiltInCommands()
@@ -121,39 +122,32 @@ public class QuickCommandsViewModel : ReactiveObject
             new() { Name = "top", Category = "System Monitor", CommandText = "top", Description = "Display running processes", IsBuiltIn = true },
             new() { Name = "df -h", Category = "System Monitor", CommandText = "df -h", Description = "Disk space usage (human-readable)", IsBuiltIn = true },
             new() { Name = "free -m", Category = "System Monitor", CommandText = "free -m", Description = "Memory usage in MB", IsBuiltIn = true },
-
             new() { Name = "netstat -tlnp", Category = "Network", CommandText = "netstat -tlnp", Description = "Show listening ports", IsBuiltIn = true },
             new() { Name = "ss -tlnp", Category = "Network", CommandText = "ss -tlnp", Description = "Socket statistics", IsBuiltIn = true },
-
             new() { Name = "docker ps", Category = "Docker", CommandText = "docker ps", Description = "List running containers", IsBuiltIn = true },
             new() { Name = "docker stats", Category = "Docker", CommandText = "docker stats", Description = "Container resource usage", IsBuiltIn = true },
-
             new() { Name = "systemctl status", Category = "System", CommandText = "systemctl status", Description = "Show systemd service status", IsBuiltIn = true },
-            new() { Name = "journalctl -f", Category = "System", CommandText = "journalctl -f", Description = "Follow system journal", IsBuiltIn = true },
+            new() { Name = "journalctl -f", Category = "System", CommandText = "journalctl -f", Description = "Follow system journal", IsBuiltIn = true }
         };
-
-        foreach (var cmd in builtIns)
+        foreach (QuickCommand cmd in builtIns)
         {
-            AllCommands.Add(new QuickCommandViewModel(cmd));
+            AllCommands.Add(new(cmd));
         }
-
         RefreshCategories();
         ApplyFilter();
     }
 
     public async Task LoadCustomCommandsAsync()
     {
-        var data = await _dataStore.GetAsync<QuickCommandData>(Collection, DocumentId)
-            ?? await TryImportLegacyAsync();
+        QuickCommandData? data = await _dataStore.GetAsync<QuickCommandData>(Collection, DocumentId) ?? await TryImportLegacyAsync();
         if (data?.Commands != null)
         {
-            foreach (var cmd in data.Commands)
+            foreach (QuickCommand cmd in data.Commands)
             {
                 cmd.IsBuiltIn = false;
-                AllCommands.Add(new QuickCommandViewModel(cmd));
+                AllCommands.Add(new(cmd));
             }
         }
-
         RefreshCategories();
         ApplyFilter();
     }
@@ -161,26 +155,26 @@ public class QuickCommandsViewModel : ReactiveObject
     /// <summary>首次运行时从旧版 quick-commands.json 一次性导入到 SonnetDB。</summary>
     private async Task<QuickCommandData?> TryImportLegacyAsync()
     {
-        if (string.IsNullOrEmpty(_legacyDataPath) || !System.IO.File.Exists(_legacyDataPath))
+        if (string.IsNullOrEmpty(_legacyDataPath) || !File.Exists(_legacyDataPath))
+        {
             return null;
-
+        }
         try
         {
-            var json = await System.IO.File.ReadAllTextAsync(_legacyDataPath);
-            var data = System.Text.Json.JsonSerializer.Deserialize<QuickCommandData>(json,
-                new System.Text.Json.JsonSerializerOptions
+            string json = await File.ReadAllTextAsync(_legacyDataPath);
+            QuickCommandData? data = JsonSerializer.Deserialize<QuickCommandData>(json,
+                new JsonSerializerOptions
                 {
-                    PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
-                    PropertyNameCaseInsensitive = true,
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                    PropertyNameCaseInsensitive = true
                 });
             if (data is not null)
             {
                 await _dataStore.UpsertAsync(Collection, DocumentId, data);
             }
-
             return data;
         }
-        catch (Exception ex) when (ex is System.Text.Json.JsonException or System.IO.IOException)
+        catch (Exception ex) when (ex is JsonException or IOException)
         {
             return null;
         }
@@ -189,18 +183,14 @@ public class QuickCommandsViewModel : ReactiveObject
     private async Task SaveCustomCommandsAsync()
     {
         var customCommands = AllCommands
-            .Where(c => !c.IsBuiltIn)
-            .Select(c => c.ToModel())
-            .ToList();
-
+                             .Where(c => !c.IsBuiltIn)
+                             .Select(c => c.ToModel())
+                             .ToList();
         var data = new QuickCommandData { Commands = customCommands };
         await _dataStore.UpsertAsync(Collection, DocumentId, data);
     }
 
-    private void ExecuteCommand(QuickCommandViewModel command)
-    {
-        _executeCallback?.Invoke(command.CommandText);
-    }
+    private void ExecuteCommand(QuickCommandViewModel command) => _executeCallback?.Invoke(command.CommandText);
 
     private void AddCommand()
     {
@@ -214,8 +204,9 @@ public class QuickCommandsViewModel : ReactiveObject
     private void SaveNewCommand()
     {
         if (string.IsNullOrWhiteSpace(NewName) || string.IsNullOrWhiteSpace(NewCommandText))
+        {
             return;
-
+        }
         var model = new QuickCommand
         {
             Name = NewName.Trim(),
@@ -224,34 +215,31 @@ public class QuickCommandsViewModel : ReactiveObject
             Description = NewDescription.Trim(),
             IsBuiltIn = false
         };
-
-        AllCommands.Add(new QuickCommandViewModel(model));
+        AllCommands.Add(new(model));
         IsAddingCommand = false;
-
         RefreshCategories();
         ApplyFilter();
-
         SaveCustomCommandsAsync().GetAwaiter().GetResult();
     }
 
     private void DeleteCommand(QuickCommandViewModel command)
     {
         if (command.IsBuiltIn)
+        {
             return;
-
+        }
         AllCommands.Remove(command);
         FilteredCommands.Remove(command);
-
         RefreshCategories();
-
         SaveCustomCommandsAsync().GetAwaiter().GetResult();
     }
 
     private void BeginEdit(QuickCommandViewModel command)
     {
         if (command.IsBuiltIn)
+        {
             return;
-
+        }
         EditingCommand = command;
         NewName = command.Name;
         NewCategory = command.Category;
@@ -262,41 +250,32 @@ public class QuickCommandsViewModel : ReactiveObject
     private void SaveEdit()
     {
         if (EditingCommand == null || EditingCommand.IsBuiltIn)
+        {
             return;
-
+        }
         if (string.IsNullOrWhiteSpace(NewName) || string.IsNullOrWhiteSpace(NewCommandText))
+        {
             return;
-
+        }
         EditingCommand.Name = NewName.Trim();
         EditingCommand.Category = string.IsNullOrWhiteSpace(NewCategory) ? "Custom" : NewCategory.Trim();
         EditingCommand.CommandText = NewCommandText.Trim();
         EditingCommand.Description = NewDescription.Trim();
-
         EditingCommand = null;
-
         RefreshCategories();
         ApplyFilter();
-
         SaveCustomCommandsAsync().GetAwaiter().GetResult();
     }
 
-    private void CancelEdit()
-    {
-        EditingCommand = null;
-    }
+    private void CancelEdit() => EditingCommand = null;
 
-    private void CancelAdd()
-    {
-        IsAddingCommand = false;
-    }
+    private void CancelAdd() => IsAddingCommand = false;
 
     private void ApplyFilter()
     {
         FilteredCommands.Clear();
-
-        var query = SearchQuery?.Trim() ?? string.Empty;
-
-        foreach (var cmd in AllCommands)
+        string query = SearchQuery?.Trim() ?? string.Empty;
+        foreach (QuickCommandViewModel cmd in AllCommands)
         {
             if (string.IsNullOrEmpty(query) ||
                 cmd.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
@@ -311,8 +290,8 @@ public class QuickCommandsViewModel : ReactiveObject
     private void RefreshCategories()
     {
         Categories.Clear();
-        var cats = AllCommands.Select(c => c.Category).Distinct().OrderBy(c => c);
-        foreach (var cat in cats)
+        IOrderedEnumerable<string> cats = AllCommands.Select(c => c.Category).Distinct().OrderBy(c => c);
+        foreach (string cat in cats)
         {
             Categories.Add(cat);
         }
@@ -320,6 +299,6 @@ public class QuickCommandsViewModel : ReactiveObject
 
     internal class QuickCommandData
     {
-        public List<QuickCommand> Commands { get; set; } = new();
+        public List<QuickCommand> Commands { get; set; } = [];
     }
 }
