@@ -13,5 +13,10 @@ public enum TunnelType
     /// <summary>
     /// Remote forward: sshServer:remotePort → localhost:localPort
     /// </summary>
-    RemoteForward
+    RemoteForward,
+
+    /// <summary>
+    /// Dynamic forward: localhost:localPort 作为 SOCKS 代理,目标由客户端协议协商(ssh -D)。
+    /// </summary>
+    DynamicForward
 }

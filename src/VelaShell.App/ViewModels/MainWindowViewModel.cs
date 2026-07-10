@@ -177,12 +177,15 @@ public class MainWindowViewModel : ReactiveObject
         Commands.Register(new CommandDescriptor("search.terminal", "终端内查找", "搜索",
             () => TerminalSearchRequested?.Invoke(this, EventArgs.Empty),
             CanExecute: () => ActiveTerminalTab is not null, Shortcut: "Ctrl+F", Icon: "Icon.search"));
+        // 隧道独立于终端会话(后台自动连接),无活动标签也可用(用户反馈 #5)。
         Commands.Register(new CommandDescriptor("tools.tunnel", "隧道管理", "工具",
-            ToggleTunnelPanel,
-            CanExecute: () => ActiveTerminalTab is not null, Shortcut: "Ctrl+Shift+T", Icon: "Icon.route"));
+            ToggleTunnelPanel, Shortcut: "Ctrl+Shift+T", Icon: "Icon.route"));
         Commands.Register(new CommandDescriptor("tools.files", "SFTP 文件管理器", "工具",
             ToggleFileBrowser,
             CanExecute: () => ActiveTerminalTab is not null, Shortcut: "Ctrl+Shift+F", Icon: "Icon.folder"));
+        Commands.Register(new CommandDescriptor("tools.diagnostics", "连接诊断", "工具",
+            () => { if (ActiveTerminalTab?.Profile is { } profile) DiagnosticsRequested?.Invoke(profile); },
+            CanExecute: () => ActiveTerminalTab?.Profile is not null, Icon: "Icon.stethoscope"));
         Commands.Register(new CommandDescriptor("edit.clear", "清屏", "编辑",
             () => ActiveTerminalTab?.TerminalEmulator.WriteInput(new byte[] { 0x0C }),
             CanExecute: () => ActiveTerminalTab?.ConnectionStatus == SessionStatus.Connected));
@@ -400,6 +403,9 @@ public class MainWindowViewModel : ReactiveObject
 
     /// <summary>Ctrl+, / 菜单 / 侧边栏齿轮“打开设置” —— 由窗口打开设置窗口。</summary>
     public event EventHandler? SettingsRequested;
+
+    /// <summary>工具菜单“连接诊断”(针对当前标签的配置)—— 由窗口打开诊断中心弹窗。</summary>
+    public event Action<SessionProfile>? DiagnosticsRequested;
     /// <summary>Tunnel manager panel for the active session (design fuXS7, spec §10).</summary>
     public TunnelPanelViewModel? TunnelPanel
     {
@@ -422,24 +428,52 @@ public class MainWindowViewModel : ReactiveObject
             return;
         }
 
-        if (_tunnelService is null || ActiveTerminalTab is not { } tab || tab.SessionId == Guid.Empty)
+        OpenTunnelPanel();
+    }
+
+    /// <summary>打开隧道面板(可选预选某台服务器)。面板以服务器为中心、生命周期与终端
+    /// 会话无关:无需先打开终端标签,创建隧道时由面板后台自建 SSH 连接(用户反馈 #5)。</summary>
+    public void OpenTunnelPanel(SessionProfile? preselect = null)
+    {
+        if (_tunnelService is null)
             return;
 
-        if (TunnelPanel is null || TunnelPanel.SessionId != tab.SessionId)
+        if (TunnelPanel is null)
         {
-            // Saved sessions feed the remote-host picker (用户反馈 #4).
-            Func<Task<IReadOnlyList<SessionProfile>>>? targets = _sessionRepository is null
+            Func<Task<IReadOnlyList<SessionProfile>>>? servers = _sessionRepository is null
                 ? null
                 : async () => await _sessionRepository.GetAllSessionsAsync();
 
-            TunnelPanel = new TunnelPanelViewModel(_tunnelService, tab.SessionId, targets)
-            {
-                NewLocalHost = "127.0.0.1",
-            };
+            var panel = new TunnelPanelViewModel(
+                _tunnelService,
+                servers,
+                backgroundConnector: ConnectTunnelHostAsync,
+                isSessionAlive: id => _sshConnectionService?.GetClient(id)?.IsConnected == true,
+                sessionDisconnector: id => _connectionWorkflowService?.DisconnectAsync(id) ?? Task.CompletedTask);
+            panel.CloseRequested += (_, _) => IsTunnelPanelOpen = false;
+            TunnelPanel = panel;
         }
 
-        _ = TunnelPanel.LoadSavedTargetsAsync();
+        _ = TunnelPanel.OpenAsync(preselect?.Id ?? ActiveTerminalTab?.Profile?.Id);
         IsTunnelPanelOpen = true;
+    }
+
+    /// <summary>为隧道面板后台建立 SSH 连接:不开终端标签,凭据缺失时走登录验证弹窗。</summary>
+    private async Task<Guid> ConnectTunnelHostAsync(SessionProfile profile, CancellationToken cancellationToken)
+    {
+        if (_connectionWorkflowService is null)
+            throw new InvalidOperationException("SSH 连接服务未配置。");
+
+        var current = profile;
+        if (RequiresCredentials(current))
+        {
+            var updated = InteractiveAuthenticator is { } prompt ? await prompt(current) : null;
+            current = updated
+                ?? throw new InvalidOperationException("该配置未保存凭据,已取消登录验证。");
+        }
+
+        var session = await _connectionWorkflowService.ConnectProfileAsync(current, cancellationToken);
+        return session.SessionId;
     }
     /// <summary>The self-drawn terminal control of the active tab, when it is one.</summary>
     private VelaTerminalControl? ActiveTerminalControl =>
@@ -788,7 +822,10 @@ public class MainWindowViewModel : ReactiveObject
         {
             Title = displayName,
             ConnectionStatus = SessionStatus.Connecting,
-            ConnectionSummary = $"SSH • {displayName}",
+            // 配了跳板的会话在状态栏点明"经由跳板",让用户一眼确认链路生效(用户反馈 #1)。
+            ConnectionSummary = profile.JumpHostProfileId is null
+                ? $"SSH • {displayName}"
+                : $"SSH • {displayName} • 经由跳板",
             TerminalTypeName = terminalType.ToTermName(),
             EncodingName = string.IsNullOrWhiteSpace(settings.TerminalEncoding) ? "UTF-8" : settings.TerminalEncoding,
             Profile = profile,
@@ -848,6 +885,7 @@ public class MainWindowViewModel : ReactiveObject
         terminalTab.AttachTransport(shellStream);
         terminalTab.Start();
         terminalTab.ConnectionStatus = SessionStatus.Connected;
+        await FeedJumpChainNoticeAsync(terminalTab, profile);
         StartSessionLogging(terminalTab, settings);
         SendStartupCommand(terminalTab, settings);
 
@@ -921,6 +959,7 @@ public class MainWindowViewModel : ReactiveObject
             tab.AttachTransport(shellStream);
             tab.Start();
             tab.ConnectionStatus = SessionStatus.Connected;
+            await FeedJumpChainNoticeAsync(tab, tab.Profile);
             tab.ResetReconnectAttempts();
             StartSessionLogging(tab, settings);
             SendStartupCommand(tab, settings);
@@ -945,6 +984,76 @@ public class MainWindowViewModel : ReactiveObject
             StatusBar.Status = LastConnectionError;
             tab.MarkDisconnected(LastConnectionError);
         }
+    }
+
+    /// <summary>跳板链可见反馈(用户反馈 #1):经由跳板建立的会话在终端顶部打一行灰色提示,
+    /// 标注实际经过的跳板链路,让用户确认跳板真的生效。纯装饰,失败不影响连接。</summary>
+    private async Task FeedJumpChainNoticeAsync(TerminalTabViewModel tab, SessionProfile profile)
+    {
+        if (_sessionRepository is null || profile.JumpHostProfileId is null)
+            return;
+
+        try
+        {
+            var names = new System.Collections.Generic.List<string>();
+            var visited = new System.Collections.Generic.HashSet<Guid> { profile.Id };
+            var jumpId = profile.JumpHostProfileId;
+            while (jumpId is { } id && visited.Add(id) && names.Count < 5)
+            {
+                var jump = await _sessionRepository.GetSessionAsync(id);
+                if (jump is null)
+                    break;
+                names.Add(string.IsNullOrWhiteSpace(jump.Name) ? jump.Host : jump.Name);
+                jumpId = jump.JumpHostProfileId;
+            }
+
+            if (names.Count == 0)
+                return;
+
+            // 配置里跳板由内向外嵌套;反转成"本机 → 最外层跳板 → … → 目标"的阅读顺序。
+            names.Reverse();
+            var target = string.IsNullOrWhiteSpace(profile.Name) ? profile.Host : profile.Name;
+            var notice = "\u001b[90m● 已经由跳板链路连接:本机 → " + string.Join(" → ", names) + " → " + target + "\u001b[0m\r\n";
+            tab.TerminalEmulator.Feed(System.Text.Encoding.UTF8.GetBytes(notice));
+        }
+        catch
+        {
+            // 提示为纯装饰,读取跳板名失败时静默跳过。
+        }
+    }
+
+    /// <summary>关闭标签背后的 SSH 会话(用户反馈 #2):标签的 DisconnectCommand 只拆终端
+    /// 传输层,底层 SshClient 仍保持 TCP 连接;这里显式断开并释放,避免"界面显示已断开、
+    /// 连接实际还活着"。该会话上的隧道也一并停止。</summary>
+    private void TeardownSshSession(Guid sessionId)
+    {
+        if (sessionId == Guid.Empty || _connectionWorkflowService is null)
+            return;
+
+        var tunnelService = _tunnelService;
+        _ = Task.Run(async () =>
+        {
+            if (tunnelService is not null)
+            {
+                try
+                {
+                    await tunnelService.StopAllForSessionAsync(sessionId);
+                }
+                catch
+                {
+                    // 隧道清理失败不阻塞断开。
+                }
+            }
+
+            try
+            {
+                await _connectionWorkflowService.DisconnectAsync(sessionId);
+            }
+            catch
+            {
+                // 会话可能已被服务端拆除或从未完成握手。
+            }
+        });
     }
 
     // ---- 会话日志(设置 → 常规 → 数据与存储) ----
@@ -979,6 +1088,10 @@ public class MainWindowViewModel : ReactiveObject
     private void OnTabDisconnected(TerminalTabViewModel tab)
     {
         StopSessionLogging(tab);
+
+        // 不论主动断开还是远端掉线,都把底层 SSH 客户端一并拆掉(用户反馈 #2);
+        // 重连会新建会话,不受影响。
+        TeardownSshSession(tab.SessionId);
 
         var settings = _latestSettings;
         if (settings is null)
@@ -1392,6 +1505,8 @@ public class MainWindowViewModel : ReactiveObject
         StopSessionLogging(tab);
         CloseSftpForTab(tab);
         tab.Dispose();
+        // Dispose 只拆终端传输;底层 SSH 客户端也要断开释放(用户反馈 #2)。
+        TeardownSshSession(tab.SessionId);
 
         // 关闭标签不会再触发 ConnectionStatus 变更(已 Dispose),这里显式把树上的
         // 状态圆点复位;同配置还有其他已连接标签时保持"活跃"。

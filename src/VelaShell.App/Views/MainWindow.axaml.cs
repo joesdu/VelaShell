@@ -96,6 +96,9 @@ public partial class MainWindow : Window
             vm.InteractiveAuthenticator = PromptCredentialsAsync;
             vm.MultilinePasteConfirmer = ConfirmMultilinePasteAsync;
             vm.ExportBufferRequested += (_, _) => _ = ExportTerminalBufferAsync(vm);
+            // 工具菜单“连接诊断”:对当前标签的配置打开诊断中心(设计 RGXg1)。
+            vm.DiagnosticsRequested += profile => Avalonia.Threading.Dispatcher.UIThread.Post(
+                () => _ = OpenDiagnosticsDialogAsync(profile));
 
             // 资源管理器树:右键连接/双击连接 + 右键编辑。
             if (vm.Sidebar.SessionTree is { } tree)
@@ -118,16 +121,23 @@ public partial class MainWindow : Window
                     }
                 });
 
-                // 端口转发:打开隧道管理面板(全局非模态,见 fuXS7)。
-                tree.PortForwardRequested += _ => Avalonia.Threading.Dispatcher.UIThread.Post(
-                    () => vm.IsTunnelPanelOpen = true);
+                // 端口转发:打开隧道管理面板并预选该服务器(全局非模态,见 fuXS7);
+                // 无需先建立终端会话,面板会在创建隧道时后台自动连接。
+                tree.PortForwardRequested += profile => Avalonia.Threading.Dispatcher.UIThread.Post(
+                    () => vm.OpenTunnelPanel(profile));
 
-                // 断开连接:断开该会话所有已连接的终端标签(保留缓冲以便重连)。
+                // 连接诊断:对选中的配置打开诊断中心(设计 RGXg1)。
+                tree.DiagnoseRequested += profile => Avalonia.Threading.Dispatcher.UIThread.Post(
+                    () => _ = OpenDiagnosticsDialogAsync(profile));
+
+                // 断开连接:断开该配置所有已连接的终端标签(保留缓冲以便重连)。
+                // 必须按 Profile.Id 匹配——tab.SessionId 是 SSH 连接会话 ID,与配置 ID
+                // 不是一回事,之前用它比较永远匹配不上,菜单点了没反应(用户反馈 #2)。
                 tree.DisconnectRequested += profile => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
                     foreach (var tab in vm.TabBar.Tabs.OfType<TerminalTabViewModel>().Where(t =>
-                                 t.SessionId == profile.Id
-                                 && t.ConnectionStatus != VelaShell.Core.Models.SessionStatus.Disconnected))
+                                 t.Profile?.Id == profile.Id
+                                 && t.ConnectionStatus == VelaShell.Core.Models.SessionStatus.Connected).ToList())
                     {
                         tab.DisconnectCommand.Execute().Subscribe();
                     }
@@ -443,6 +453,22 @@ public partial class MainWindow : Window
         // TryConnectProfileAsync never throws — 连接失败已在标签页内以覆盖层提示(设计 yxjmg),
         // 不再弹全局框。
         await mainWindowViewModel.TryConnectProfileAsync(profile);
+    }
+
+    /// <summary>打开连接诊断中心(设计 RGXg1):打开即自动执行一轮四步检测。</summary>
+    private async Task OpenDiagnosticsDialogAsync(SessionProfile profile)
+    {
+        if (App.Current is not App app
+            || app.Services?.GetService<IConnectionDiagnosticsService>() is not { } diagnosticsService)
+        {
+            return;
+        }
+
+        var dialog = new ConnectionDiagnosticsView
+        {
+            DataContext = new ConnectionDiagnosticsViewModel(profile, diagnosticsService),
+        };
+        await dialog.ShowDialog(this);
     }
 
     /// <summary>打开设置窗口(设计 §14):DI 单例 VM,打开时重新加载持久化设置。</summary>

@@ -106,7 +106,11 @@ public class ConnectionProfileViewModel : ReactiveObject
                 IsKeyAuth = method == AuthMethod.PrivateKey;
             });
 
+        // Skip(1):WhenAnyValue 订阅时会立即用当前值(默认“未分组”/“直连”)触发一次,
+        // 不跳过会把上面刚从 existing 读入的 _groupId/_jumpHostProfileId 冲成 null——
+        // 表现为编辑窗口跳板机回显丢失、保存后配置被静默清掉(用户反馈 #1)。
         this.WhenAnyValue(x => x.SelectedGroup)
+            .Skip(1)
             .Subscribe(option =>
             {
                 _groupId = option?.Id;
@@ -115,6 +119,7 @@ public class ConnectionProfileViewModel : ReactiveObject
             });
 
         this.WhenAnyValue(x => x.SelectedJumpHost)
+            .Skip(1)
             .Subscribe(option => _jumpHostProfileId = option?.Id);
 
         var canExecute = this.WhenAnyValue(

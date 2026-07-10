@@ -39,6 +39,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
         OpenSftpCommand = ReactiveCommand.Create(() => RaiseForSelected(OpenSftpRequested), hasSelectedSession);
         PortForwardCommand = ReactiveCommand.Create(() => RaiseForSelected(PortForwardRequested), hasSelectedSession);
         DisconnectCommand = ReactiveCommand.Create(() => RaiseForSelected(DisconnectRequested), hasSelectedSession);
+        DiagnoseCommand = ReactiveCommand.Create(() => RaiseForSelected(DiagnoseRequested), hasSelectedSession);
         MoveToGroupCommand = ReactiveCommand.Create<SessionTreeNodeViewModel>(MoveSelectedToGroup);
     }
 
@@ -56,6 +57,9 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
     /// <summary>右键“断开连接”:由宿主断开该会话已连接的终端标签。</summary>
     public event Action<SessionProfile>? DisconnectRequested;
+
+    /// <summary>右键“连接诊断”:由宿主打开连接诊断中心(设计 RGXg1)。</summary>
+    public event Action<SessionProfile>? DiagnoseRequested;
 
     private void RaiseForSelected(Action<SessionProfile>? handler)
     {
@@ -109,6 +113,8 @@ public sealed class SessionTreeViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> PortForwardCommand { get; }
 
     public ReactiveCommand<Unit, Unit> DisconnectCommand { get; }
+
+    public ReactiveCommand<Unit, Unit> DiagnoseCommand { get; }
 
     /// <summary>把选中的会话移动到指定分组节点(参数为“移动到分组”子菜单项)。</summary>
     public ReactiveCommand<SessionTreeNodeViewModel, Unit> MoveToGroupCommand { get; }

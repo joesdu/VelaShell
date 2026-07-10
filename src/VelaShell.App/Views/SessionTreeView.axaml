@@ -265,9 +265,8 @@
                   </MenuItem.Styles>
                 </MenuItem>
                 <MenuItem Header="连接诊断"
-                          IsVisible="{Binding !IsGroup}"
-                          IsEnabled="False"
-                          ToolTip.Tip="即将推出">
+                          Command="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).DiagnoseCommand}"
+                          IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.stethoscope}"
                                    Foreground="{DynamicResource VelaTextTertiary}" />

@@ -17,6 +17,7 @@ public static class PresentationServiceCollectionExtensions
         services.AddSingleton<SidebarViewModel>();
         services.AddSingleton<IConnectionWorkflowService, ConnectionWorkflowService>();
         services.AddSingleton<ITunnelWorkflowService, TunnelWorkflowService>();
+        services.AddSingleton<IConnectionDiagnosticsService, ConnectionDiagnosticsService>();
 
         return services;
     }
