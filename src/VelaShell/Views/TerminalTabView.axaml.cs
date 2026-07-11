@@ -355,21 +355,49 @@ public partial class TerminalTabView : UserControl
         }
     }
 
+    /// <summary>宿主窗口(挂接失活事件用;弹层是独立顶层,不随主窗口失活自动收起)。</summary>
+    private Window? _hostWindow;
+
     private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
         HookTerminalControl();
         // Dock 回收复用视图时 DataContext 可能经历 null→原值的往返,这里重挂一次
         // 补全接线,保证切换标签后建议仍然工作(幂等:先退订再订阅)。
         HookSuggestions();
+
+        // 切到其他应用时收起补全弹层——Popup 是独立顶层窗口,不主动关就会
+        // 悬浮在别的程序上面(用户反馈)。
+        _hostWindow = TopLevel.GetTopLevel(this) as Window;
+        if (_hostWindow is not null)
+        {
+            _hostWindow.Deactivated += OnHostWindowDeactivated;
+        }
         FocusTerminal();
     }
+
+    private void OnHostWindowDeactivated(object? sender, EventArgs e) => CloseSuggestPopup(suppress: false);
 
     private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
         CloseSuggestPopup(suppress: false);
-        _termControl?.ScrollChanged -= OnTerminalScrollChanged;
+        if (_hostWindow is not null)
+        {
+            _hostWindow.Deactivated -= OnHostWindowDeactivated;
+            _hostWindow = null;
+        }
+        if (_termControl is not null)
+        {
+            _termControl.ScrollChanged -= OnTerminalScrollChanged;
+            _termControl.LostFocus -= OnTerminalLostFocus;
+        }
         _termControl = null;
     }
+
+    /// <summary>
+    /// 终端失焦(点击 SFTP 面板/侧边栏等)时收起弹层;建议列表项不可聚焦,
+    /// 因此点击建议项本身不会触发这里。
+    /// </summary>
+    private void OnTerminalLostFocus(object? sender, RoutedEventArgs e) => CloseSuggestPopup(suppress: false);
 
     // The terminal control is a single shared instance reparented across split panes, so each
     // view (re)binds the scrollbar to whichever control it currently hosts.
@@ -381,9 +409,17 @@ public partial class TerminalTabView : UserControl
             SyncScrollBar();
             return;
         }
-        _termControl?.ScrollChanged -= OnTerminalScrollChanged;
+        if (_termControl is not null)
+        {
+            _termControl.ScrollChanged -= OnTerminalScrollChanged;
+            _termControl.LostFocus -= OnTerminalLostFocus;
+        }
         _termControl = ctrl;
-        _termControl?.ScrollChanged += OnTerminalScrollChanged;
+        if (_termControl is not null)
+        {
+            _termControl.ScrollChanged += OnTerminalScrollChanged;
+            _termControl.LostFocus += OnTerminalLostFocus;
+        }
         SyncScrollBar();
     }
 

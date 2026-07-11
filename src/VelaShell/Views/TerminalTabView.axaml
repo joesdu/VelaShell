@@ -112,6 +112,9 @@
               <Style Selector="ListBoxItem">
                 <Setter Property="Padding" Value="8,4" />
                 <Setter Property="CornerRadius" Value="4" />
+                <!-- 不可聚焦:点击建议项不得抢走终端焦点,否则"终端失焦即收起"
+                     的守卫会在鼠标插入前把弹层关掉。 -->
+                <Setter Property="Focusable" Value="False" />
               </Style>
             </ListBox.Styles>
             <ListBox.ItemTemplate>
