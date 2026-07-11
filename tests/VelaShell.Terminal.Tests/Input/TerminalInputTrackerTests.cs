@@ -99,6 +99,59 @@ public class TerminalInputTrackerTests
     }
 
     [TestMethod]
+    public void InjectedInitCommand_WithEscAndTrailingNewline_RecoversToKnownEmpty()
+    {
+        // 连接初始化注入(补行脚本)含 ESC 字节、以 \n 结尾;ESC 使行不可知,
+        // 但 \n 必须把状态复位为确定的空行,否则 SSH 标签的建议从连接起全灭。
+        var tracker = new TerminalInputTracker();
+        tracker.Process(Bytes(" prompt_nl() { read -p $'[6n' -d R -rs _ _ c; }; PROMPT_COMMAND=prompt_nl\n"));
+        Assert.AreEqual(string.Empty, tracker.CurrentInput);
+
+        tracker.Process(Bytes("ht"));
+        Assert.AreEqual("ht", tracker.CurrentInput);
+    }
+
+    [TestMethod]
+    public void FunctionKey_ThenTyping_RecoversViaTentativeRun()
+    {
+        // F10(ESC[21~)后继续键入:整行不可知,但试探段必须干净地拿到 "ht"
+        // (序列尾部的可打印字节 "[21~" 不得漏入),降级建议才能继续工作。
+        var tracker = new TerminalInputTracker();
+        tracker.Process(Bytes("h"));
+        tracker.Process([0x1B, (byte)'[', (byte)'2', (byte)'1', (byte)'~']);
+        Assert.IsNull(tracker.CurrentInput);
+        Assert.AreEqual(string.Empty, tracker.TentativeRun);
+
+        tracker.Process(Bytes("ht"));
+        Assert.IsNull(tracker.CurrentInput);
+        Assert.AreEqual("ht", tracker.TentativeRun);
+
+        // 退格只回删试探段;再来一个控制键则重置试探段(新一轮编辑)。
+        tracker.Process([0x7F]);
+        Assert.AreEqual("h", tracker.TentativeRun);
+        tracker.Process([0x1B, (byte)'[', (byte)'A']);
+        Assert.AreEqual(string.Empty, tracker.TentativeRun);
+    }
+
+    [TestMethod]
+    public void EnterOnUnknownState_RaisesUnknownLineSubmitted()
+    {
+        var tracker = new TerminalInputTracker();
+        int unknownSubmits = 0;
+        string? submitted = null;
+        tracker.CommandSubmitted += cmd => submitted = cmd;
+        tracker.UnknownLineSubmitted += () => unknownSubmits++;
+
+        tracker.Process([0x1B, (byte)'[', (byte)'A']); // ↑ 召回历史 → 未知态。
+        tracker.Process(Bytes("x"));
+        tracker.Process([0x0D]);
+
+        Assert.IsNull(submitted, "未知态不得按本地缓冲提交");
+        Assert.AreEqual(1, unknownSubmits, "未知态回车应上报,由消费方从屏幕提取命令");
+        Assert.AreEqual(string.Empty, tracker.CurrentInput, "回车后回到确定的空行");
+    }
+
+    [TestMethod]
     public void InputChanged_FiresOnEdits()
     {
         var tracker = new TerminalInputTracker();

@@ -51,11 +51,17 @@ public sealed class CommandSuggestionProvider(CommandHistoryService history, IAp
             return results;
         }
 
-        foreach (string entry in history.Entries.Where(e => e.StartsWith(prefix, StringComparison.Ordinal) && e.Length > prefix.Length))
+        // 排序:历史前缀命中 → 快捷命令前缀命中 → 快捷命令包含命中(名称/描述也算)
+        // → 历史包含命中。前缀匹配一律忽略大小写("Sudo"/"sudo" 不应错过)。
+        foreach (string entry in history.Entries.Where(e => e.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && e.Length > prefix.Length))
         {
             Add(entry, null, "历史");
         }
-        foreach (QuickCommand cmd in quick.Where(c => Matches(c, prefix)))
+        foreach (QuickCommand cmd in quick.Where(c => c.CommandText.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+        {
+            Add(cmd.CommandText, DescribeQuickCommand(cmd), "快捷命令");
+        }
+        foreach (QuickCommand cmd in quick.Where(c => MatchesLoosely(c, prefix)))
         {
             Add(cmd.CommandText, DescribeQuickCommand(cmd), "快捷命令");
         }
@@ -66,9 +72,10 @@ public sealed class CommandSuggestionProvider(CommandHistoryService history, IAp
         return results;
     }
 
-    private static bool Matches(QuickCommand cmd, string prefix) =>
-        cmd.CommandText.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
-        cmd.Name.Contains(prefix, StringComparison.OrdinalIgnoreCase);
+    private static bool MatchesLoosely(QuickCommand cmd, string prefix) =>
+        cmd.CommandText.Contains(prefix, StringComparison.OrdinalIgnoreCase) ||
+        cmd.Name.Contains(prefix, StringComparison.OrdinalIgnoreCase) ||
+        cmd.Description.Contains(prefix, StringComparison.OrdinalIgnoreCase);
 
     private static string? DescribeQuickCommand(QuickCommand cmd)
     {

@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using VelaShell.Services;
 using VelaShell.ViewModels;
 using VelaShell.Core.Models;
@@ -99,33 +100,38 @@ public partial class TerminalTabView : UserControl
     private string? _suppressedInput;
     private int _suggestSeq;
 
-    /// <summary>
-    /// 用户是否对弹层表达过明确的选择意图(Alt+Enter 主动召出、或按过 ↑/↓)。
-    /// 只有此时 Enter 才补全插入;纯自动弹层下 Enter 直通 shell 执行当前行,
-    /// 避免"输入 ls 按回车却被历史里的 ls -la 劫持"。
-    /// </summary>
-    private bool _suggestExplicit;
 
     private void HookSuggestions()
     {
         _suggestVm?.InputTracker.InputChanged -= OnTrackedInputChanged;
         _suggestVm = DataContext as TerminalTabViewModel;
         _suggestVm?.InputTracker.InputChanged += OnTrackedInputChanged;
+        SuggestDiag.Log("hook", $"view={GetHashCode():X} vm={_suggestVm?.GetHashCode():X} provider={(_suggestVm?.SuggestionProvider is null ? "null" : "ok")}");
         CloseSuggestPopup(suppress: false);
     }
 
     private void OnTrackedInputChanged()
     {
-        string? input = _suggestVm?.InputTracker.CurrentInput;
+        string input = EffectiveInput();
+        SuggestDiag.Log("changed", $"view={GetHashCode():X} attached={IsAttachedToVisualTree()} known=\"{_suggestVm?.InputTracker.CurrentInput ?? "<unknown>"}\" effective=\"{input}\" suppressed=\"{_suppressedInput}\"");
         if (string.IsNullOrEmpty(input) || input == _suppressedInput)
         {
             CloseSuggestPopup(suppress: false);
             return;
         }
         _suppressedInput = null;
-        _suggestExplicit = false; // 继续键入 = 回到纯自动建议,Enter 恢复直通。
         _ = UpdateSuggestionsAsync(input, 8);
     }
+
+    /// <summary>
+    /// 建议所依据的"当前输入":确定态用整行;未知态(按过方向键/F 键后)降级为
+    /// 自最后一个控制键以来键入的字符段——建议不因一次按键失灵,补全只追加/等量回删,
+    /// 永远与屏幕一致。
+    /// </summary>
+    private string EffectiveInput() =>
+        _suggestVm?.InputTracker.CurrentInput ?? _suggestVm?.InputTracker.TentativeRun ?? string.Empty;
+
+    private bool IsAttachedToVisualTree() => VisualRoot is not null;
 
     private async Task UpdateSuggestionsAsync(string prefix, int max)
     {
@@ -134,40 +140,63 @@ public partial class TerminalTabView : UserControl
             return;
         }
         int seq = ++_suggestSeq;
-        IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync(prefix, max);
+        try
+        {
+            IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync(prefix, max);
 
+            // 建议查询可能异步恢复;UI 变更强制回到 UI 线程(fire-and-forget 场景下
+            // 线程亲和性异常会被静默吞掉,表现为"弹层时灵时不灵")。
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                Dispatcher.UIThread.Post(() => ApplySuggestions(seq, items));
+                return;
+            }
+            ApplySuggestions(seq, items);
+        }
+        catch
+        {
+            // 建议是锦上添花,任何失败都只安静收起,不得污染后续键入的状态。
+            CloseSuggestPopup(suppress: false);
+        }
+    }
+
+    private void ApplySuggestions(int seq, IReadOnlyList<CommandSuggestion> items)
+    {
         // 键入速度快于查询时只应用最后一次结果;期间行内容变了(seq 落后)直接丢弃。
         if (seq != _suggestSeq)
         {
+            SuggestDiag.Log("apply", $"seq {seq} stale (now {_suggestSeq})");
             return;
         }
         if (items.Count == 0)
         {
+            SuggestDiag.Log("apply", "0 items -> close");
             CloseSuggestPopup(suppress: false);
             return;
         }
         _suggestions = items;
         SuggestList.ItemsSource = items;
         SuggestList.SelectedIndex = 0;
+        SuggestPopup.PlacementTarget ??= TerminalHost;
         if (_termControl is not null)
         {
             SuggestPopup.PlacementRect = _termControl.GetCursorRect();
         }
         SuggestPopup.IsOpen = true;
+        SuggestDiag.Log("apply", $"opened with {items.Count} items, isOpen={SuggestPopup.IsOpen}, target={(SuggestPopup.PlacementTarget is null ? "null" : "ok")}");
     }
 
     private void CloseSuggestPopup(bool suppress)
     {
         if (suppress)
         {
-            _suppressedInput = _suggestVm?.InputTracker.CurrentInput;
+            _suppressedInput = EffectiveInput();
         }
         if (SuggestPopup.IsOpen)
         {
             SuggestPopup.IsOpen = false;
         }
         _suggestions = [];
-        _suggestExplicit = false;
     }
 
     /// <summary>补全弹层键位;返回 true 表示按键已被弹层消费。</summary>
@@ -177,8 +206,7 @@ public partial class TerminalTabView : UserControl
         if (e is { Key: Key.Enter, KeyModifiers: Avalonia.Input.KeyModifiers.Alt })
         {
             _suppressedInput = null;
-            _suggestExplicit = true; // 主动召出 = 明确意图,Enter 即补全。
-            _ = UpdateSuggestionsAsync(_suggestVm?.InputTracker.CurrentInput ?? string.Empty, 20);
+            _ = UpdateSuggestionsAsync(EffectiveInput(), 20);
             e.Handled = true;
             return true;
         }
@@ -201,11 +229,11 @@ public partial class TerminalTabView : UserControl
                 e.Handled = true;
                 return true;
             case Key.Enter when e.KeyModifiers == Avalonia.Input.KeyModifiers.None:
-                // 用户明确选择过(Alt+Enter 召出 / 按过 ↑↓)→ Enter 补全插入;
-                // 纯自动弹层未导航 → Enter 直通 shell 执行当前行。
-                // 选中项与已输入完全相同(如手动敲完了整条命令)也直通执行,免去二次回车。
-                if (_suggestExplicit && SuggestList.SelectedItem is CommandSuggestion selected &&
-                    selected.Text != (_suggestVm?.InputTracker.CurrentInput ?? string.Empty))
+                // 弹层存在时 Enter 始终输入当前选中项(VS 语义,无需先按方向键;
+                // 不想要建议按 Esc 退出)。唯一例外:选中项与已输入完全相同
+                // (如手动敲完了整条命令)→ 直通 shell 执行,免去二次回车。
+                if (SuggestList.SelectedItem is CommandSuggestion selected &&
+                    selected.Text != EffectiveInput())
                 {
                     AcceptSuggestion();
                     e.Handled = true;
@@ -226,7 +254,6 @@ public partial class TerminalTabView : UserControl
         {
             return;
         }
-        _suggestExplicit = true; // 导航过列表 = 明确意图,Enter 即补全。
         int next = ((SuggestList.SelectedIndex + delta) % _suggestions.Count + _suggestions.Count) % _suggestions.Count;
         SuggestList.SelectedIndex = next;
         SuggestList.ScrollIntoView(next);
@@ -238,7 +265,7 @@ public partial class TerminalTabView : UserControl
         {
             return;
         }
-        string current = _suggestVm?.InputTracker.CurrentInput ?? string.Empty;
+        string current = EffectiveInput();
         string payload;
         if (suggestion.Text.StartsWith(current, StringComparison.Ordinal))
         {
@@ -257,7 +284,7 @@ public partial class TerminalTabView : UserControl
         {
             _termControl.WriteInput(Encoding.UTF8.GetBytes(payload));
         }
-        _suppressedInput = _suggestVm?.InputTracker.CurrentInput;
+        _suppressedInput = EffectiveInput();
         FocusTerminal();
     }
 
@@ -331,6 +358,9 @@ public partial class TerminalTabView : UserControl
     private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
         HookTerminalControl();
+        // Dock 回收复用视图时 DataContext 可能经历 null→原值的往返,这里重挂一次
+        // 补全接线,保证切换标签后建议仍然工作(幂等:先退订再订阅)。
+        HookSuggestions();
         FocusTerminal();
     }
 

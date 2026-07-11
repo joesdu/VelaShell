@@ -41,6 +41,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         // 后者还承载终端的协议自动应答(ESC 开头),会把跟踪器永久打进未知态。
         TerminalEmulator.TypedInput += OnUserInputForTracker;
         InputTracker.CommandSubmitted += OnTrackedCommandSubmitted;
+        InputTracker.UnknownLineSubmitted += OnUnknownLineSubmitted;
 
         // Toolbar quick actions (用户反馈 #5): tear the transport down but keep the tab,
         // or ask the owner to reconnect in place (#19 flow).
@@ -89,27 +90,112 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// <summary>用户在本标签提交了一条通过回显校验的命令(宿主记入全局命令历史)。</summary>
     public event Action<string>? CommandLineSubmitted;
 
-    private void OnUserInputForTracker(byte[] data) => InputTracker.Process(data);
+    private void OnUserInputForTracker(byte[] data)
+    {
+        InputTracker.Process(data);
+        SuggestDiag.Log("typed", $"bytes=[{Convert.ToHexString(data)}] input=\"{InputTracker.CurrentInput ?? "<unknown>"}\"");
+    }
 
     private void OnTrackedCommandSubmitted(string command)
     {
-        // 回显校验:提交瞬间光标行应包含所键入的文本(shell 已逐字符回显)。
-        // 密码提示符不回显 → 校验不过 → 不记录,防止口令进历史。
+        // 回显校验:所键入的文本应已被 shell 回显到屏上;密码提示符不回显 → 不记录,
+        // 防止口令进历史。注意桥接层的输出是按帧合并 Feed 的——Enter 瞬间最后几个
+        // 字符的回显可能还在队列里,同步校验失败时延迟 200ms 后在整个可视区做二次
+        // 校验(此时命令行可能已随输出上移,故扫全屏而非只看光标行)。
+        if (TerminalEmulator is not VelaTerminalControl control)
+        {
+            return;
+        }
+        if (CursorLineContains(control, command))
+        {
+            CommandLineSubmitted?.Invoke(command);
+            return;
+        }
+        DispatcherTimer.RunOnce(() =>
+        {
+            if (!_disposed && ScreenContains(control, command))
+            {
+                CommandLineSubmitted?.Invoke(command);
+            }
+        }, TimeSpan.FromMilliseconds(200));
+    }
+
+    private void OnUnknownLineSubmitted()
+    {
+        // 行内容本地不可知(用户按过方向键/Tab 等):改从屏幕的光标行提取命令——
+        // 提示符之后的文本就是 shell 将执行的整行。读取发生在 Enter 的瞬间,
+        // 先于命令输出刷屏;密码提示行没有提示符结尾标记,天然不会被提取。
         if (TerminalEmulator is not VelaTerminalControl control)
         {
             return;
         }
         try
         {
-            if (control.GetBufferLine(control.CursorRow).Contains(command, StringComparison.Ordinal))
+            string? command = ExtractCommandAfterPrompt(control.GetBufferLine(control.CursorRow));
+            if (!string.IsNullOrWhiteSpace(command))
             {
                 CommandLineSubmitted?.Invoke(command);
             }
         }
         catch
         {
-            // 读缓冲失败(极端竞态)时宁可漏记不误记。
+            // 读缓冲失败时宁可漏记不误记。
         }
+    }
+
+    /// <summary>
+    /// 从提示符行提取命令:取最早出现的提示符结尾标记("$ "/"# "/"❯ "/"% ")之后的文本。
+    /// 识别不了的提示符样式(无标记)返回 null——宁可漏记不误记。
+    /// </summary>
+    internal static string? ExtractCommandAfterPrompt(string line)
+    {
+        int best = -1;
+        foreach (string marker in (ReadOnlySpan<string>)["$ ", "# ", "❯ ", "% "])
+        {
+            int index = line.IndexOf(marker, StringComparison.Ordinal);
+            if (index >= 0 && (best < 0 || index < best))
+            {
+                best = index;
+            }
+        }
+        if (best < 0)
+        {
+            return null;
+        }
+        string command = line[(best + 2)..].Trim();
+        return command.Length == 0 ? null : command;
+    }
+
+    private static bool CursorLineContains(VelaTerminalControl control, string command)
+    {
+        try
+        {
+            return control.GetBufferLine(control.CursorRow).Contains(command, StringComparison.Ordinal);
+        }
+        catch
+        {
+            // 读缓冲失败(极端竞态)时宁可漏记不误记。
+            return false;
+        }
+    }
+
+    private static bool ScreenContains(VelaTerminalControl control, string command)
+    {
+        try
+        {
+            for (int row = 0; row < control.Rows; row++)
+            {
+                if (control.GetBufferLine(row).Contains(command, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+            // 同上:宁可漏记不误记。
+        }
+        return false;
     }
 
     /// <summary>
@@ -231,6 +317,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         TerminalEmulator.PtySizeChanged -= OnPtySizeChanged;
         TerminalEmulator.TypedInput -= OnUserInputForTracker;
         InputTracker.CommandSubmitted -= OnTrackedCommandSubmitted;
+        InputTracker.UnknownLineSubmitted -= OnUnknownLineSubmitted;
 
         // Instant, UI-safe teardown so the tab closes immediately: this only unhooks the
         // emulator's Updated handler, no network I/O.
@@ -283,7 +370,10 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             return;
         }
         Bridge.SuppressEchoOnce(Encoding.UTF8.GetBytes(payload + "\r\n"));
-        TerminalEmulator.WriteInput(Encoding.UTF8.GetBytes(" " + payload + "\n"));
+
+        // 直写 PTY(SendRaw)而非 WriteInput:注入不是用户键入,不得进入命令补全的
+        // 行跟踪——补行脚本里的 ESC 字节曾把跟踪器打进未知态,SSH 标签建议全灭。
+        Bridge.SendRaw(Encoding.UTF8.GetBytes(" " + payload + "\n"));
     }
 
     public void Start()
