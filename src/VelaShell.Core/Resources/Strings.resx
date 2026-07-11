@@ -282,6 +282,12 @@
   <data name="Reject" xml:space="preserve">
     <value>Reject</value>
   </data>
+  <data name="TrustPermanently" xml:space="preserve">
+    <value>Trust Permanently</value>
+  </data>
+  <data name="TrustOnce" xml:space="preserve">
+    <value>Trust Once</value>
+  </data>
   <data name="Name" xml:space="preserve">
     <value>Name</value>
   </data>

@@ -169,6 +169,10 @@ public static class Strings
 
     public static string Reject => ResourceManager.GetString(nameof(Reject), CultureInfo.CurrentUICulture) ?? nameof(Reject);
 
+    public static string TrustPermanently => ResourceManager.GetString(nameof(TrustPermanently), CultureInfo.CurrentUICulture) ?? nameof(TrustPermanently);
+
+    public static string TrustOnce => ResourceManager.GetString(nameof(TrustOnce), CultureInfo.CurrentUICulture) ?? nameof(TrustOnce);
+
     public static string Name => ResourceManager.GetString(nameof(Name), CultureInfo.CurrentUICulture) ?? nameof(Name);
 
     public static string Group => ResourceManager.GetString(nameof(Group), CultureInfo.CurrentUICulture) ?? nameof(Group);

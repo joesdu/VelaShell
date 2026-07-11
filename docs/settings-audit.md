@@ -296,3 +296,14 @@
 - 快捷键页改名“快捷键参考”,条目按真实绑定重建;`MainWindow.axaml` 补上 `Ctrl+N` 真实绑定;关于页“检查更新”改为如实提示。
 
 **验证**:`dotnet build` 全量通过;测试 601 项通过,唯一失败的 `ConPty_SpawnsShell_HandshakesAndSignalsEof` 在未改动的工作树上同样失败(环境相关,与本批无关)。
+
+### 2026-07-12 第二批(主机指纹确认三选项 + 已信任主机管理)
+
+背景:用户开启“首次连接需人工确认指纹”后未见弹窗——原因不是链路缺失,而是目标主机早已在开关开启前经 TOFU 自动记录(持久化在 SonnetDB `known_hosts` 集合,不再是 `~/.velashell/known_hosts.json`,该文件仅作首次运行的一次性导入源),且没有任何 UI 可删除已信任记录。
+
+- **确认弹窗改为三选项**(与主流 SSH 客户端一致):永久信任(写入 known_hosts)/ 仅本次信任(进程内 `HostTrustOnceCache`,不落盘,重启后再次询问)/ 取消(拒绝并中止连接,fail-closed)。`IHostKeyPrompt.ConfirmAsync(bool)` 重构为 `DecideAsync(HostKeyDecision)`;指纹变更(关闭阻断开关时)走同一三选项。
+- **新增“已信任主机”管理**(设置 → 安全审计):列出 host:port、密钥类型与 SHA256 指纹,可逐条删除;删除即时生效,下次连接重新执行首次确认流程。
+- **修复 SFTP 通道不校验主机指纹的缺口**:此前 SFTP 独立通道未订阅 `HostKeyReceived`(= 默认信任任意指纹,存在 MITM 风险);现严格比对 known_hosts 或本次运行的临时信任,不匹配即拒绝、不弹窗。
+- 安全告警新增 `hostkey-trusted-once` 事件类型。
+
+**验证**:全量构建通过;VelaShell.Tests 268 项、Core.Tests 148 项通过(弹窗三选项新增用例)。

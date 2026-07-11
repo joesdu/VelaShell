@@ -20,8 +20,12 @@ public class HostKeyPromptViewModel : ReactiveObject
         Fingerprint = fingerprint;
         VerificationResult = verificationResult;
         IsChanged = verificationResult == HostKeyVerification.Changed;
-        TrustCommand = ReactiveCommand.Create(() => { Result = true; });
-        RejectCommand = ReactiveCommand.Create(() => { Result = false; });
+
+        // 与主流 SSH 客户端一致的三选项:永久信任(写入 known_hosts)/
+        // 仅本次信任(本次运行有效,不落盘)/ 取消(拒绝并中止连接)。
+        TrustPermanentlyCommand = ReactiveCommand.Create(() => { Result = HostKeyDecision.TrustPermanently; });
+        TrustOnceCommand = ReactiveCommand.Create(() => { Result = HostKeyDecision.TrustOnce; });
+        CancelCommand = ReactiveCommand.Create(() => { Result = HostKeyDecision.Reject; });
     }
 
     public string Host { get; }
@@ -40,13 +44,15 @@ public class HostKeyPromptViewModel : ReactiveObject
                                      ? Strings.HostKeyChanged
                                      : Strings.HostKeyUnknown;
 
-    public bool? Result
+    public HostKeyDecision? Result
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    public ReactiveCommand<Unit, Unit> TrustCommand { get; }
+    public ReactiveCommand<Unit, Unit> TrustPermanentlyCommand { get; }
 
-    public ReactiveCommand<Unit, Unit> RejectCommand { get; }
+    public ReactiveCommand<Unit, Unit> TrustOnceCommand { get; }
+
+    public ReactiveCommand<Unit, Unit> CancelCommand { get; }
 }

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:VelaShell.ViewModels"
+             xmlns:models="using:VelaShell.Core.Models"
              x:Class="VelaShell.Views.Settings.SecurityAuditPage"
              x:DataType="vm:SettingsViewModel">
 
@@ -29,6 +30,50 @@
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.BlockOnFingerprintChange}" VerticalAlignment="Center" />
     </Grid>
+
+    <Border Classes="sep" />
+
+    <!-- 已信任主机(known_hosts):查看/删除已记录的主机指纹。
+         删除即时生效,下次连接该主机将重新执行首次指纹确认流程。 -->
+    <TextBlock Classes="section-title" Text="已信任主机" />
+    <TextBlock Classes="row-desc"
+               Text="// 已记录指纹的主机列表;删除后下次连接将重新执行首次指纹确认" />
+    <TextBlock Classes="row-desc" Text="暂无已信任的主机"
+               IsVisible="{Binding !HasKnownHosts}" />
+    <Border Classes="table" IsVisible="{Binding HasKnownHosts}">
+      <ItemsControl ItemsSource="{Binding KnownHosts}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="models:KnownHost">
+            <Border Padding="12,8"
+                    BorderBrush="{DynamicResource VelaBorderPrimary}"
+                    BorderThickness="0,0,0,1">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="2" VerticalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock FontSize="12" FontWeight="Medium"
+                               Foreground="{DynamicResource VelaTextPrimary}">
+                      <Run Text="{Binding Host}" /><Run Text=":" /><Run Text="{Binding Port}" />
+                    </TextBlock>
+                    <TextBlock FontSize="10" VerticalAlignment="Center"
+                               Foreground="{DynamicResource VelaTextMuted}"
+                               Text="{Binding KeyType}" />
+                  </StackPanel>
+                  <TextBlock FontSize="10"
+                             FontFamily="{DynamicResource VelaTerminalFont}"
+                             Foreground="{DynamicResource VelaTextMuted}"
+                             TextWrapping="Wrap"
+                             Text="{Binding Fingerprint}" />
+                </StackPanel>
+                <Button Grid.Column="1" Classes="dlg-danger" Content="删除"
+                        VerticalAlignment="Center"
+                        Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).RemoveKnownHostCommand}"
+                        CommandParameter="{Binding}" />
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Border>
 
     <Border Classes="sep" />
 

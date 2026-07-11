@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Reactive;
 using System.Text.Json;
@@ -24,6 +25,7 @@ public sealed record ShortcutItem(string Label, string[] Keys);
 
 public class SettingsViewModel : ReactiveObject
 {
+    private readonly IHostKeyService? _hostKeyService;
     private readonly ILocalizationService? _localizationService;
     private readonly ISettingsPreviewService? _previewService;
 
@@ -52,13 +54,15 @@ public class SettingsViewModel : ReactiveObject
         IAppDataStore? appDataStore = null,
         ISshKeyService? sshKeyService = null,
         IRecentConnectionService? recentConnections = null,
-        ISettingsPreviewService? previewService = null)
+        ISettingsPreviewService? previewService = null,
+        IHostKeyService? hostKeyService = null)
     {
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
         _localizationService = localizationService;
         _recentConnections = recentConnections;
         _previewService = previewService;
+        _hostKeyService = hostKeyService;
 
         // 外观即时预览:主题/强调色直接走 IThemeService(应用即生效);
         // Appearance 对象被整体替换(配色方案/载入)或其单项被绑定修改时广播预览快照。
@@ -72,6 +76,7 @@ public class SettingsViewModel : ReactiveObject
             });
         SshKeys = new(sshKeyService);
         Snippets = appDataStore is null ? null : new QuickCommandsViewModel(appDataStore);
+        RemoveKnownHostCommand = ReactiveCommand.CreateFromTask<KnownHost>(RemoveKnownHostAsync);
         LoadCommand = ReactiveCommand.CreateFromTask(LoadAsync);
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync);
         CancelCommand = ReactiveCommand.Create(() => CloseRequested?.Invoke(this, EventArgs.Empty));
@@ -181,6 +186,21 @@ public class SettingsViewModel : ReactiveObject
 
     /// <summary>密钥管理页。</summary>
     public SshKeyManagerViewModel SshKeys { get; }
+
+    /// <summary>
+    /// 安全审计页“已信任主机”列表(SonnetDB known_hosts 集合)。删除即时生效,
+    /// 不随“保存设置”走:这是信任数据管理,不是偏好设置。
+    /// </summary>
+    public ObservableCollection<KnownHost> KnownHosts { get; } = [];
+
+    public bool HasKnownHosts
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>删除一条已信任主机指纹;下次连接该主机将重新执行首次指纹流程。</summary>
+    public ReactiveCommand<KnownHost, Unit> RemoveKnownHostCommand { get; }
 
     /// <summary>代码片段页(quick_commands 集合);无存储时为 null。</summary>
     public QuickCommandsViewModel? Snippets { get; }
@@ -519,10 +539,51 @@ public class SettingsViewModel : ReactiveObject
         _previewed = false;
         ApplyToViewModel(_loaded);
         await SshKeys.RefreshAsync();
+        await RefreshKnownHostsAsync();
         if (Snippets is not null && Snippets.AllCommands.Count <= 10)
         {
             await Snippets.LoadCustomCommandsAsync();
         }
+    }
+
+    private async Task RefreshKnownHostsAsync()
+    {
+        if (_hostKeyService is null)
+        {
+            return;
+        }
+        try
+        {
+            List<KnownHost> hosts = await _hostKeyService.GetKnownHostsAsync();
+            KnownHosts.Clear();
+            foreach (KnownHost host in hosts.OrderBy(h => h.Host, StringComparer.OrdinalIgnoreCase).ThenBy(h => h.Port))
+            {
+                KnownHosts.Add(host);
+            }
+        }
+        catch
+        {
+            // 列表加载失败不阻塞设置页其余功能。
+        }
+        HasKnownHosts = KnownHosts.Count > 0;
+    }
+
+    private async Task RemoveKnownHostAsync(KnownHost host)
+    {
+        if (_hostKeyService is null)
+        {
+            return;
+        }
+        try
+        {
+            await _hostKeyService.RemoveKnownHostAsync(host.Host, host.Port);
+            KnownHosts.Remove(host);
+        }
+        catch
+        {
+            // 删除失败保持列表现状。
+        }
+        HasKnownHosts = KnownHosts.Count > 0;
     }
 
     private void ApplyToViewModel(AppSettings settings)

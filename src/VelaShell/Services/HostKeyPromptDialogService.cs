@@ -8,12 +8,13 @@ using VelaShell.Core.Ssh;
 namespace VelaShell.Services;
 
 /// <summary>
-/// 主机指纹人工确认(设置 → 安全审计):在 UI 线程弹既有的 HostKeyPromptView。
-/// 由 SSH 握手线程同步等待,拿不到主窗口时按拒绝处理(fail-closed)。
+/// 主机指纹人工确认(设置 → 安全审计):在 UI 线程弹既有的 HostKeyPromptView,
+/// 返回用户三选项裁决(永久信任/仅本次信任/取消)。由 SSH 握手线程同步等待,
+/// 拿不到主窗口或弹窗异常时一律按拒绝处理(fail-closed)。
 /// </summary>
 public sealed class HostKeyPromptDialogService : IHostKeyPrompt
 {
-    public async Task<bool> ConfirmAsync(string host,
+    public async Task<HostKeyDecision> DecideAsync(string host,
         int port,
         string keyType,
         string fingerprint,
@@ -26,20 +27,22 @@ public sealed class HostKeyPromptDialogService : IHostKeyPrompt
                 if (Application.Current?.ApplicationLifetime
                     is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
                 {
-                    return false;
+                    return HostKeyDecision.Reject;
                 }
                 var dialog = new HostKeyPromptView
                 {
                     DataContext = new HostKeyPromptViewModel(host, port, keyType, fingerprint, verification)
                 };
-                bool? result = await dialog.ShowDialog<bool?>(owner);
-                return result == true;
+                HostKeyDecision? result = await dialog.ShowDialog<HostKeyDecision?>(owner);
+
+                // 直接关窗(Esc/系统关闭)没有 Result → 拒绝。
+                return result ?? HostKeyDecision.Reject;
             });
         }
         catch
         {
             // 安全决策失败时一律拒绝。
-            return false;
+            return HostKeyDecision.Reject;
         }
     }
 }

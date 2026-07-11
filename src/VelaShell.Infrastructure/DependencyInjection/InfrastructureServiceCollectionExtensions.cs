@@ -68,6 +68,7 @@ public static class InfrastructureServiceCollectionExtensions
         {
             ISshConnectionService connectionService = serviceProvider.GetRequiredService<ISshConnectionService>();
             ISettingsService settingsService = serviceProvider.GetRequiredService<ISettingsService>();
+            IHostKeyService hostKeyService = serviceProvider.GetRequiredService<IHostKeyService>();
             // A dedicated SFTP channel per session, built from the same credentials.
             return new SftpService(connectionService, session =>
             {
@@ -76,7 +77,23 @@ public static class InfrastructureServiceCollectionExtensions
                 {
                     Timeout = ConnectTimeout(settingsService)
                 };
-                return new SftpClientWrapper(new(info));
+                var sftpClient = new SftpClient(info);
+
+                // SFTP 通道与终端通道同等校验主机指纹(此前未订阅事件 = 默认信任任意指纹,
+                // 存在中间人缺口)。终端会话先行建立时指纹已入库或已“仅本次信任”,
+                // 这里只做严格比对、不弹窗:不匹配即拒绝。
+                string host = session.ConnectionInfo.Host;
+                int port = session.ConnectionInfo.Port;
+                sftpClient.HostKeyReceived += (_, e) =>
+                {
+                    string fingerprint = "SHA256:" + Convert.ToBase64String(SHA256.HashData(e.HostKey)).TrimEnd('=');
+                    HostKeyVerification verification = hostKeyService
+                                                       .VerifyHostKeyAsync(host, port, e.HostKeyName, fingerprint)
+                                                       .GetAwaiter().GetResult();
+                    e.CanTrust = verification == HostKeyVerification.Trusted ||
+                                 HostTrustOnceCache.IsTrusted(host, port, fingerprint);
+                };
+                return new SftpClientWrapper(sftpClient);
             }, settingsService);
         });
         services.AddSingleton<ITransferManager, TransferManager>();
@@ -178,9 +195,9 @@ public static class InfrastructureServiceCollectionExtensions
         client.KeepAliveInterval = KeepAliveInterval(settingsService);
         if (hostKeyService is not null)
         {
-            // 主机信任策略(设置 → 安全审计):首次连接默认 TOFU 自动记录,可改为人工确认;
-            // 指纹变化默认阻断并告警(防中间人),可改为弹窗人工裁决。
-            // 事件在握手线程上触发,同步等待本地存储/UI 弹窗是安全的。
+            // 主机信任策略(设置 → 安全审计):首次连接默认 TOFU 自动记录,可改为人工确认
+            // (三选项:永久信任 / 仅本次信任 / 取消);指纹变化默认阻断并告警(防中间人),
+            // 可改为弹窗人工裁决。事件在握手线程上触发,同步等待本地存储/UI 弹窗是安全的。
             client.HostKeyReceived += (_, e) =>
             {
                 string fingerprint = "SHA256:" + Convert.ToBase64String(SHA256.HashData(e.HostKey)).TrimEnd('=');
@@ -189,54 +206,60 @@ public static class InfrastructureServiceCollectionExtensions
                                                    .GetAwaiter().GetResult();
                 SecurityOptions security = GetSecurityOptions(settingsService);
                 string target = $"{connectionInfo.Host}:{connectionInfo.Port}";
-                switch (verification)
+
+                // 已持久信任 → 放行;本次运行内被“仅本次信任”过且指纹一致 → 同样放行
+                // (覆盖同会话重连与 SFTP 通道,不重复弹窗)。
+                if (verification == HostKeyVerification.Trusted ||
+                    HostTrustOnceCache.IsTrusted(connectionInfo.Host, connectionInfo.Port, fingerprint))
                 {
-                    case HostKeyVerification.Trusted:
-                        e.CanTrust = true;
+                    e.CanTrust = true;
+                    return;
+                }
+                HostKeyDecision decision;
+                if (verification == HostKeyVerification.Unknown)
+                {
+                    // 首次连接:开关关闭 = TOFU 自动永久记录;开启 = 弹窗人工裁决。
+                    decision = security.ConfirmFirstFingerprint && hostKeyPrompt is not null
+                                   ? hostKeyPrompt.DecideAsync(connectionInfo.Host, connectionInfo.Port,
+                                                      e.HostKeyName, fingerprint, verification)
+                                                  .GetAwaiter().GetResult()
+                                   : HostKeyDecision.TrustPermanently;
+                }
+                else
+                {
+                    // 指纹变更:默认阻断;关闭阻断开关后弹窗人工裁决。
+                    decision = !security.BlockOnFingerprintChange && hostKeyPrompt is not null
+                                   ? hostKeyPrompt.DecideAsync(connectionInfo.Host, connectionInfo.Port,
+                                                      e.HostKeyName, fingerprint, verification)
+                                                  .GetAwaiter().GetResult()
+                                   : HostKeyDecision.Reject;
+                }
+                e.CanTrust = decision != HostKeyDecision.Reject;
+                switch (decision)
+                {
+                    case HostKeyDecision.TrustPermanently:
+                        hostKeyService
+                            .TrustHostKeyAsync(connectionInfo.Host, connectionInfo.Port, e.HostKeyName, fingerprint)
+                            .GetAwaiter().GetResult();
+                        if (verification == HostKeyVerification.Changed)
+                        {
+                            securityAlerts?.RaiseAsync("hostkey-changed-accepted", $"{target} 的主机指纹已变更,用户确认永久信任新指纹:{fingerprint}");
+                        }
                         break;
-                    case HostKeyVerification.Unknown:
-                        bool trustNew = true;
-                        if (security.ConfirmFirstFingerprint && hostKeyPrompt is not null)
-                        {
-                            trustNew = hostKeyPrompt
-                                       .ConfirmAsync(connectionInfo.Host, connectionInfo.Port, e.HostKeyName,
-                                           fingerprint, verification)
-                                       .GetAwaiter().GetResult();
-                        }
-                        e.CanTrust = trustNew;
-                        if (trustNew)
-                        {
-                            hostKeyService
-                                .TrustHostKeyAsync(connectionInfo.Host, connectionInfo.Port, e.HostKeyName, fingerprint)
-                                .GetAwaiter().GetResult();
-                        }
-                        else
-                        {
-                            securityAlerts?.RaiseAsync("hostkey-rejected", $"已拒绝 {target} 的首次连接指纹:{fingerprint}");
-                        }
+                    case HostKeyDecision.TrustOnce:
+                        HostTrustOnceCache.Remember(connectionInfo.Host, connectionInfo.Port, fingerprint);
+                        securityAlerts?.RaiseAsync("hostkey-trusted-once",
+                            verification == HostKeyVerification.Changed
+                                ? $"{target} 的主机指纹已变更,用户选择仅本次信任(不落盘):{fingerprint}"
+                                : $"用户对 {target} 的首次连接指纹选择仅本次信任(不落盘):{fingerprint}");
                         break;
-                    case HostKeyVerification.Changed:
-                    default: // Changed:与 known_hosts 记录不符
-                        bool trustChanged = false;
-                        if (!security.BlockOnFingerprintChange && hostKeyPrompt is not null)
-                        {
-                            trustChanged = hostKeyPrompt
-                                           .ConfirmAsync(connectionInfo.Host, connectionInfo.Port, e.HostKeyName,
-                                               fingerprint, verification)
-                                           .GetAwaiter().GetResult();
-                        }
-                        e.CanTrust = trustChanged;
-                        if (trustChanged)
-                        {
-                            hostKeyService
-                                .TrustHostKeyAsync(connectionInfo.Host, connectionInfo.Port, e.HostKeyName, fingerprint)
-                                .GetAwaiter().GetResult();
-                            securityAlerts?.RaiseAsync("hostkey-changed-accepted", $"{target} 的主机指纹已变更,用户确认信任新指纹:{fingerprint}");
-                        }
-                        else
-                        {
-                            securityAlerts?.RaiseAsync("hostkey-changed-blocked", $"{target} 的主机指纹与 known_hosts 记录不符,连接已被阻断(疑似中间人)。新指纹:{fingerprint}");
-                        }
+                    case HostKeyDecision.Reject:
+                    default:
+                        securityAlerts?.RaiseAsync(
+                            verification == HostKeyVerification.Changed ? "hostkey-changed-blocked" : "hostkey-rejected",
+                            verification == HostKeyVerification.Changed
+                                ? $"{target} 的主机指纹与 known_hosts 记录不符,连接已被阻断(疑似中间人)。新指纹:{fingerprint}"
+                                : $"已拒绝 {target} 的首次连接指纹:{fingerprint}");
                         break;
                 }
             };

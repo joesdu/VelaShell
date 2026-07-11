@@ -363,6 +363,12 @@
   <data name="Reject" xml:space="preserve">
     <value>拒绝</value>
   </data>
+  <data name="TrustPermanently" xml:space="preserve">
+    <value>永久信任</value>
+  </data>
+  <data name="TrustOnce" xml:space="preserve">
+    <value>仅本次信任</value>
+  </data>
   <data name="Name" xml:space="preserve">
     <value>名称</value>
   </data>

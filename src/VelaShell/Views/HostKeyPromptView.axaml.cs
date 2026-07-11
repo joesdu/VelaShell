@@ -25,9 +25,9 @@ public partial class HostKeyPromptView : Window
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(HostKeyPromptViewModel.Result) && _viewModel?.Result is { } result)
+        if (e.PropertyName == nameof(HostKeyPromptViewModel.Result) && _viewModel?.Result is { } decision)
         {
-            Close(result);
+            Close(decision);
         }
     }
 

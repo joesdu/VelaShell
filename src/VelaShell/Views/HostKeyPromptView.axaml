@@ -57,6 +57,17 @@
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="FontSize" Value="11" />
     </Style>
+    <Style Selector="Button.trust-once">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Height" Value="30" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="FontSize" Value="11" />
+    </Style>
   </Window.Styles>
 
   <Border CornerRadius="8"
@@ -86,7 +97,7 @@
                      VerticalAlignment="Center" />
           <Button Grid.Column="2" Width="24" Height="24"
                   Background="Transparent" Padding="0" CornerRadius="3"
-                  Cursor="Hand" Command="{Binding RejectCommand}"
+                  Cursor="Hand" Command="{Binding CancelCommand}"
                   VerticalAlignment="Center">
             <pc:LucideIcon Width="13" Height="13"
                            Data="{DynamicResource Icon.x}"
@@ -162,14 +173,21 @@
       <Border Grid.Row="2" Padding="20,0"
               BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,1,0,0">
+        <!-- 三选项与主流 SSH 客户端一致:取消(拒绝)/ 仅本次信任(不落盘,
+             本次运行有效)/ 永久信任(写入已信任主机)。 -->
         <StackPanel Orientation="Horizontal" Spacing="8"
                     HorizontalAlignment="Right" VerticalAlignment="Center">
           <Button Classes="reject"
-                  Content="{x:Static res:Strings.Reject}"
-                  Command="{Binding RejectCommand}" />
+                  Content="{x:Static res:Strings.Cancel}"
+                  Command="{Binding CancelCommand}" />
+          <Button Classes="trust-once"
+                  Content="{x:Static res:Strings.TrustOnce}"
+                  Command="{Binding TrustOnceCommand}"
+                  ToolTip.Tip="放行本次连接,但不写入已信任主机;应用重启后将再次询问" />
           <Button Classes="trust"
-                  Content="{x:Static res:Strings.Trust}"
-                  Command="{Binding TrustCommand}" />
+                  Content="{x:Static res:Strings.TrustPermanently}"
+                  Command="{Binding TrustPermanentlyCommand}"
+                  ToolTip.Tip="记录该指纹,之后连接不再询问;可在 设置 → 安全审计 → 已信任主机 中删除" />
         </StackPanel>
       </Border>
     </Grid>

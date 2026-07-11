@@ -130,7 +130,7 @@ public class SettingsViewModelTests
 
     [TestMethod]
     [TestCategory("Settings")]
-    public void HostKeyPrompt_TrustCommand_SetsResultTrue()
+    public void HostKeyPrompt_TrustPermanentlyCommand_SetsResult()
     {
         var vm = new HostKeyPromptViewModel(
             "example.com", 22, "ssh-ed25519",
@@ -138,22 +138,35 @@ public class SettingsViewModelTests
 
         Assert.IsNull(vm.Result);
 
-        vm.TrustCommand.Execute().Subscribe();
+        vm.TrustPermanentlyCommand.Execute().Subscribe();
 
-        Assert.IsTrue(vm.Result == true);
+        Assert.AreEqual(HostKeyDecision.TrustPermanently, vm.Result);
     }
 
     [TestMethod]
     [TestCategory("Settings")]
-    public void HostKeyPrompt_RejectCommand_SetsResultFalse()
+    public void HostKeyPrompt_TrustOnceCommand_SetsResult()
+    {
+        var vm = new HostKeyPromptViewModel(
+            "example.com", 22, "ssh-ed25519",
+            "SHA256:abc123def456", HostKeyVerification.Unknown);
+
+        vm.TrustOnceCommand.Execute().Subscribe();
+
+        Assert.AreEqual(HostKeyDecision.TrustOnce, vm.Result);
+    }
+
+    [TestMethod]
+    [TestCategory("Settings")]
+    public void HostKeyPrompt_CancelCommand_SetsReject()
     {
         var vm = new HostKeyPromptViewModel(
             "example.com", 22, "ssh-rsa",
             "SHA256:xyz789", HostKeyVerification.Unknown);
 
-        vm.RejectCommand.Execute().Subscribe();
+        vm.CancelCommand.Execute().Subscribe();
 
-        Assert.IsTrue(vm.Result == false);
+        Assert.AreEqual(HostKeyDecision.Reject, vm.Result);
     }
 
     [TestMethod]
