@@ -7,7 +7,8 @@ namespace VelaShell.Services;
 
 /// <summary>
 /// 把设置 → 外观 的终端配色映射成渲染层的稀疏覆盖集:只有与出厂默认(Dracula)不同的
-/// 颜色才会生效覆盖,未改过的槽位保持 null,让终端继续跟随应用主题(暗 Dracula/亮 Alucard)。
+/// 颜色才会生效覆盖,未改过的槽位保持 null,让终端继续跟随应用主题
+/// (暗 = Dracula / 亮 = Solarized Light)。
 /// </summary>
 public static class TerminalAppearanceMapper
 {

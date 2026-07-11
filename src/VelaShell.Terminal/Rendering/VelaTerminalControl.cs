@@ -117,7 +117,7 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
         Emulator.Bell += OnBell;
         Emulator.ClipboardWriteRequested += OnRemoteClipboardWrite;
 
-        // 终端配色跟随应用主题(暗=Dracula,亮=Alucard);切换主题时重灌调色板并重绘。
+        // 终端配色跟随应用主题(暗=Dracula,亮=Solarized Light);切换主题时重灌调色板并重绘。
         ActualThemeVariantChanged += (_, _) => ApplyThemePalette();
         AddHandler(TextInputMethodClientRequestedEvent, OnTextInputMethodClientRequested);
     }
@@ -592,34 +592,34 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
     // ---- Palette ------------------------------------------------------------
 
     /// <summary>
-    /// Seeds the palette for the given theme variant (用户确认的配色):
-    /// dark = Dracula(官方 Windows Terminal 方案,背景改用 #282828),
-    /// light = Alucard(dracula/foot 官方亮色方案)。
+    /// Seeds the palette for the given theme variant (跟随应用主题的默认配色):
+    /// dark = Dracula(官方 Windows Terminal 方案),
+    /// light = Solarized Light(与设置 → 外观 内置方案同一套色值)。
     /// </summary>
     private static void ApplyDesignPalette(TerminalPalette palette, bool light = false)
     {
         if (light)
         {
-            palette.DefaultForeground = Rgba.FromRgb(0x1F, 0x1F, 0x1F);
-            palette.DefaultBackground = Rgba.FromRgb(0xFF, 0xFB, 0xEB);
-            palette.CursorColor = Rgba.FromRgb(0x1F, 0x1F, 0x1F);
-            palette.SelectionBackground = new(0x50, 0x64, 0x4A, 0xC9); // alucard blue @31%
-            palette.SetAnsi(0, Rgba.FromRgb(0xFF, 0xFB, 0xEB));        // black = bg(官方映射)
-            palette.SetAnsi(1, Rgba.FromRgb(0xCB, 0x3A, 0x2A));        // red
-            palette.SetAnsi(2, Rgba.FromRgb(0x14, 0x71, 0x0A));        // green
-            palette.SetAnsi(3, Rgba.FromRgb(0x84, 0x6E, 0x15));        // yellow
-            palette.SetAnsi(4, Rgba.FromRgb(0x64, 0x4A, 0xC9));        // blue
-            palette.SetAnsi(5, Rgba.FromRgb(0xA3, 0x14, 0x4D));        // magenta
-            palette.SetAnsi(6, Rgba.FromRgb(0x03, 0x6A, 0x96));        // cyan
-            palette.SetAnsi(7, Rgba.FromRgb(0x1F, 0x1F, 0x1F));        // white = fg(官方映射)
-            palette.SetAnsi(8, Rgba.FromRgb(0x6C, 0x66, 0x4B));        // bright black (comment)
-            palette.SetAnsi(9, Rgba.FromRgb(0xD7, 0x4C, 0x3D));
-            palette.SetAnsi(10, Rgba.FromRgb(0x19, 0x8D, 0x0C));
-            palette.SetAnsi(11, Rgba.FromRgb(0x9E, 0x84, 0x1A));
-            palette.SetAnsi(12, Rgba.FromRgb(0x78, 0x62, 0xD0));
-            palette.SetAnsi(13, Rgba.FromRgb(0xBF, 0x18, 0x5A));
-            palette.SetAnsi(14, Rgba.FromRgb(0x04, 0x7F, 0xB4));
-            palette.SetAnsi(15, Rgba.FromRgb(0x2C, 0x2B, 0x31));
+            palette.DefaultForeground = Rgba.FromRgb(0x65, 0x7B, 0x83); // base00
+            palette.DefaultBackground = Rgba.FromRgb(0xFD, 0xF6, 0xE3); // base3
+            palette.CursorColor = Rgba.FromRgb(0x65, 0x7B, 0x83);
+            palette.SelectionBackground = new(0x40, 0x58, 0x6E, 0x75);  // base01 @25%(方案原生选区 base2 与背景过近,取更可辨的半透明灰蓝)
+            palette.SetAnsi(0, Rgba.FromRgb(0x07, 0x36, 0x42));         // black  = base02
+            palette.SetAnsi(1, Rgba.FromRgb(0xDC, 0x32, 0x2F));         // red
+            palette.SetAnsi(2, Rgba.FromRgb(0x85, 0x99, 0x00));         // green
+            palette.SetAnsi(3, Rgba.FromRgb(0xB5, 0x89, 0x00));         // yellow
+            palette.SetAnsi(4, Rgba.FromRgb(0x26, 0x8B, 0xD2));         // blue
+            palette.SetAnsi(5, Rgba.FromRgb(0xD3, 0x36, 0x82));         // magenta
+            palette.SetAnsi(6, Rgba.FromRgb(0x2A, 0xA1, 0x98));         // cyan
+            palette.SetAnsi(7, Rgba.FromRgb(0xEE, 0xE8, 0xD5));         // white  = base2
+            palette.SetAnsi(8, Rgba.FromRgb(0x58, 0x6E, 0x75));         // bright black = base01
+            palette.SetAnsi(9, Rgba.FromRgb(0xCB, 0x4B, 0x16));         // bright red (orange)
+            palette.SetAnsi(10, Rgba.FromRgb(0x85, 0x99, 0x00));
+            palette.SetAnsi(11, Rgba.FromRgb(0xB5, 0x89, 0x00));
+            palette.SetAnsi(12, Rgba.FromRgb(0x26, 0x8B, 0xD2));
+            palette.SetAnsi(13, Rgba.FromRgb(0x6C, 0x71, 0xC4));        // bright magenta (violet)
+            palette.SetAnsi(14, Rgba.FromRgb(0x93, 0xA1, 0xA1));        // bright cyan = base1
+            palette.SetAnsi(15, Rgba.FromRgb(0xFD, 0xF6, 0xE3));        // bright white = base3
             return;
         }
         palette.DefaultForeground = Rgba.FromRgb(0xF8, 0xF8, 0xF2);

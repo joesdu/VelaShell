@@ -5,7 +5,7 @@ namespace VelaShell.Terminal.Rendering;
 /// <summary>
 /// 用户自定义终端配色的稀疏覆盖集(设置 → 外观):null 槽位表示"未自定义,跟随主题"。
 /// 由宿主(App 层)将设置中与出厂默认值不同的颜色填进来,叠加在主题调色板之上,
-/// 这样没改过的颜色仍能在暗/亮主题(Dracula/Alucard)之间正常切换。
+/// 这样没改过的颜色仍能在暗/亮主题(Dracula/Solarized Light)之间正常切换。
 /// </summary>
 public sealed class TerminalPaletteOverrides
 {

@@ -71,8 +71,17 @@ public class SettingsViewModel : ReactiveObject
 
         // 外观即时预览:主题/强调色直接走 IThemeService(应用即生效);
         // Appearance 对象被整体替换(配色方案/载入)或其单项被绑定修改时广播预览快照。
+        // 主题变化后重算配色方案下拉:“(默认)”标注移到新主题的默认方案上,
+        // 跟随态的选中项同步跳转(暗 Dracula / 亮 Solarized Light)。
         this.WhenAnyValue(x => x.Theme, x => x.AccentColor)
-            .Subscribe(_ => PreviewThemeLive());
+            .Subscribe(_ =>
+            {
+                PreviewThemeLive();
+                if (!_suppressPreview)
+                {
+                    RefreshColorSchemeDisplay();
+                }
+            });
         this.WhenAnyValue(x => x.Appearance)
             .Subscribe(appearance =>
             {
@@ -344,12 +353,37 @@ public class SettingsViewModel : ReactiveObject
 
     // ———— 终端配色方案预设(§12.5) ————
 
-    public string[] AvailableColorSchemes { get; } =
-        TerminalColorScheme.BuiltIn.Select(s => s.Name).ToArray();
+    /// <summary>
+    /// 方案名列表,当前主题的默认方案带“(默认)”后缀
+    /// (暗 = Dracula,亮 = Solarized Light),随主题切换动态刷新。
+    /// </summary>
+    public string[] AvailableColorSchemes
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    } = BuildSchemeNames(0);
+
+    /// <summary>程序化刷新选中项(主题切换/载入)时抑制“套用方案”写回,防止把跟随态钉死。</summary>
+    private bool _suppressSchemeApply;
+
+    /// <summary>当前主题下的默认方案下标:暗 = Dracula(0),亮 = Solarized Light。</summary>
+    private int ThemeDefaultSchemeIndex =>
+        IsLightThemeActive
+            ? Math.Max(0, Array.FindIndex(TerminalColorScheme.BuiltIn, s => s.Name == "Solarized Light"))
+            : 0;
+
+    /// <summary>“跟随系统”时以应用实际生效的主题变体判定亮/暗。</summary>
+    private bool IsLightThemeActive =>
+        Theme == "light" ||
+        (Theme == "system" && Avalonia.Application.Current?.ActualThemeVariant == Avalonia.Styling.ThemeVariant.Light);
+
+    private static string[] BuildSchemeNames(int defaultIndex) =>
+        [.. TerminalColorScheme.BuiltIn.Select((s, i) => i == defaultIndex ? $"{s.Name}(默认)" : s.Name)];
 
     /// <summary>
-    /// 选择预设即把整套颜色写入 Appearance(保存后生效);-1 = 未选择。
-    /// 载入设置时按整套颜色反向匹配选中已保存的方案(改过单色则回落 -1)。
+    /// 选择预设即把整套颜色写入 Appearance(保存后生效);-1 = 未选择(改过单色)。
+    /// 选择带“(默认)”的方案 = 恢复出厂值、终端跟随主题;跟随态下选中项随主题
+    /// 自动落在对应主题的默认方案上(暗 Dracula / 亮 Solarized Light)。
     /// </summary>
     public int ColorSchemeIndex
     {
@@ -357,14 +391,43 @@ public class SettingsViewModel : ReactiveObject
         set
         {
             this.RaiseAndSetIfChanged(ref _colorSchemeIndex, value);
-            if (value < 0 || value >= TerminalColorScheme.BuiltIn.Length)
+            if (_suppressSchemeApply || value < 0 || value >= TerminalColorScheme.BuiltIn.Length)
             {
                 return;
             }
             // 克隆后整体替换:引用变化才能保证 Appearance.X 路径绑定全部刷新。
             AppearanceOptions updated = JsonSerializer.Deserialize<AppearanceOptions>(JsonSerializer.Serialize(Appearance)) ?? new AppearanceOptions();
-            TerminalColorScheme.BuiltIn[value].ApplyTo(updated);
+
+            // 选中当前主题的默认方案 = 回到出厂值(Dracula 色值,零覆盖,跟随主题);
+            // 其余方案按其色值写入(与出厂差异成为覆盖,主题切换不再改变终端配色)。
+            TerminalColorScheme.BuiltIn[value == ThemeDefaultSchemeIndex ? 0 : value].ApplyTo(updated);
             Appearance = updated;
+
+            // 写回后重算显示:出厂值命中会折射到当前主题的默认方案位。
+            RefreshColorSchemeDisplay();
+        }
+    }
+
+    /// <summary>
+    /// 重算方案下拉的条目后缀与选中项:出厂值(跟随主题)显示为当前主题默认方案,
+    /// 显式方案按整套颜色反向匹配,改过单色则显示“未选择”(-1)。
+    /// </summary>
+    private void RefreshColorSchemeDisplay()
+    {
+        int defaultIndex = ThemeDefaultSchemeIndex;
+        bool following = TerminalColorScheme.BuiltIn[0].Matches(Appearance); // 出厂值 = Dracula 色值
+        int desired = following ? defaultIndex : Array.FindIndex(TerminalColorScheme.BuiltIn, s => s.Matches(Appearance));
+        _suppressSchemeApply = true;
+        try
+        {
+            // 先换条目再定选中:ItemsSource 替换会让 ComboBox 短暂把 -1 写回来,抑制期内无害。
+            AvailableColorSchemes = BuildSchemeNames(defaultIndex);
+            _colorSchemeIndex = desired;
+            this.RaisePropertyChanged(nameof(ColorSchemeIndex));
+        }
+        finally
+        {
+            _suppressSchemeApply = false;
         }
     }
 
@@ -650,10 +713,9 @@ public class SettingsViewModel : ReactiveObject
         Security = settings.Security;
         Keys = settings.Keys;
 
-        // 配色方案下拉:反向匹配当前整套颜色,命中即选中已保存的方案;
-        // 用户自定义过任意单色则不命中,显示“未选择”(-1)。
-        _colorSchemeIndex = Array.FindIndex(TerminalColorScheme.BuiltIn, s => s.Matches(settings.Appearance));
-        this.RaisePropertyChanged(nameof(ColorSchemeIndex));
+        // 配色方案下拉:重算“(默认)”标注与选中项(出厂值折射到当前主题默认方案;
+        // 显式方案反向匹配;改过单色显示“未选择”)。
+        RefreshColorSchemeDisplay();
 
         // 分组对象整体替换后,派生的下拉索引一并刷新。
         this.RaisePropertyChanged(nameof(ThemeIndex));

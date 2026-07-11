@@ -2,8 +2,9 @@ namespace VelaShell.Core.Models;
 
 /// <summary>
 /// 终端配色方案预设(§12.5):一键把整套颜色写入 <see cref="AppearanceOptions" />。
-/// 应用后与出厂默认(Dracula)不同的颜色会作为覆盖生效(见 TerminalAppearanceMapper 的
-/// 稀疏覆盖机制);选择 Dracula 即恢复默认、终端重新跟随应用主题(暗 Dracula/亮 Alucard)。
+/// 应用后与出厂默认(Dracula 色值)不同的颜色会作为覆盖生效(见 TerminalAppearanceMapper 的
+/// 稀疏覆盖机制);选择当前主题的默认方案即恢复出厂、终端重新跟随应用主题
+/// (暗 = Dracula / 亮 = Solarized Light)。“(默认)”后缀由设置页按当前主题动态标注。
 /// </summary>
 public sealed record TerminalColorScheme(
     string Name,
@@ -14,10 +15,10 @@ public sealed record TerminalColorScheme(
     string[] AnsiNormal,
     string[] AnsiBright)
 {
-    /// <summary>内置方案;首项 Dracula 等同出厂默认(不产生覆盖、跟随主题)。</summary>
+    /// <summary>内置方案;首项 Dracula 色值等同出厂默认(不产生覆盖、跟随主题)。</summary>
     public static readonly TerminalColorScheme[] BuiltIn =
     [
-        new("Dracula(默认)",
+        new("Dracula",
             "#F8F8F2", "#282A36", "#F8F8F2", "#44475A",
             ["#21222C", "#FF5555", "#50FA7B", "#F1FA8C", "#BD93F9", "#FF79C6", "#8BE9FD", "#F8F8F2"],
             ["#6272A4", "#FF6E6E", "#69FF94", "#FFFFA5", "#D6ACFF", "#FF92DF", "#A4FFFF", "#FFFFFF"]),
