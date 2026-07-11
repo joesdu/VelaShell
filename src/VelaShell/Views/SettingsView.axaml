@@ -235,6 +235,7 @@
             <pages:SecurityAuditPage IsVisible="{Binding SelectedSectionIndex, Converter={x:Static conv:IntEqualsConverter.Instance}, ConverterParameter=6}" />
             <pages:SnippetsPage IsVisible="{Binding SelectedSectionIndex, Converter={x:Static conv:IntEqualsConverter.Instance}, ConverterParameter=7}" />
             <pages:AboutPage IsVisible="{Binding SelectedSectionIndex, Converter={x:Static conv:IntEqualsConverter.Instance}, ConverterParameter=8}" />
+            <pages:DonatePage IsVisible="{Binding SelectedSectionIndex, Converter={x:Static conv:IntEqualsConverter.Instance}, ConverterParameter=9}" />
           </Panel>
         </ScrollViewer>
 

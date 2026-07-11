@@ -3,7 +3,6 @@ using System.ComponentModel;
 using System.Reactive;
 using System.Text.Json;
 using ReactiveUI;
-using VelaShell.ViewModels;
 using VelaShell.Core.Data;
 using VelaShell.Core.Localization;
 using VelaShell.Core.Models;
@@ -32,9 +31,13 @@ public class SettingsViewModel : ReactiveObject
     private readonly IRecentConnectionService? _recentConnections;
     private readonly ISettingsService _settingsService;
     private readonly IThemeService _themeService;
-
+    private readonly JsonSerializerOptions? jsonOption = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
     // ———— 外观即时预览(改动立即可见,保存才落盘,取消/关窗回滚) ————
-    /// <summary>打开设置时的基线快照:未保存关闭时用它恢复主题与外观。</summary>
+                /// <summary>打开设置时的基线快照:未保存关闭时用它恢复主题与外观。</summary>
     private AppSettings _baseline = new();
 
     private int _colorSchemeIndex = -1;
@@ -228,7 +231,8 @@ public class SettingsViewModel : ReactiveObject
         new("文件传输", "M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3 5 6.99h3V14h2V6.99h3L9 3z"),
         new("安全审计", "M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"),
         new("代码片段", "M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"),
-        new("关于", "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z")
+        new("关于", "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"),
+        new("支持与捐赠", "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z")
     ];
 
     public int SelectedSectionIndex
@@ -517,12 +521,7 @@ public class SettingsViewModel : ReactiveObject
     {
         try
         {
-            AppSettings? imported = JsonSerializer.Deserialize<AppSettings>(json,
-                new JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                    PropertyNameCaseInsensitive = true
-                });
+            AppSettings? imported = JsonSerializer.Deserialize<AppSettings>(json, jsonOption);
             if (imported is null)
             {
                 return false;
