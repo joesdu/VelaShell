@@ -14,15 +14,13 @@ public static class QuickCommandCatalog
 {
     public static IReadOnlyList<QuickCommand> BuiltIns { get; } =
     [
-        new() { Name = "htop", Category = "System Monitor", CommandText = "htop", Description = "Interactive process viewer", IsBuiltIn = true },
-        new() { Name = "top", Category = "System Monitor", CommandText = "top", Description = "Display running processes", IsBuiltIn = true },
-        new() { Name = "df -h", Category = "System Monitor", CommandText = "df -h", Description = "Disk space usage (human-readable)", IsBuiltIn = true },
-        new() { Name = "free -m", Category = "System Monitor", CommandText = "free -m", Description = "Memory usage in MB", IsBuiltIn = true },
         new() { Name = "netstat -tlnp", Category = "Network", CommandText = "netstat -tlnp", Description = "Show listening ports", IsBuiltIn = true },
-        new() { Name = "ss -tlnp", Category = "Network", CommandText = "ss -tlnp", Description = "Socket statistics", IsBuiltIn = true },
-        new() { Name = "docker ps", Category = "Docker", CommandText = "docker ps", Description = "List running containers", IsBuiltIn = true },
-        new() { Name = "docker stats", Category = "Docker", CommandText = "docker stats", Description = "Container resource usage", IsBuiltIn = true },
         new() { Name = "systemctl status", Category = "System", CommandText = "systemctl status", Description = "Show systemd service status", IsBuiltIn = true },
-        new() { Name = "journalctl -f", Category = "System", CommandText = "journalctl -f", Description = "Follow system journal", IsBuiltIn = true }
+        new() { Name = "journalctl -f", Category = "System", CommandText = "journalctl -f", Description = "Follow system journal", IsBuiltIn = true },
+        new() { Name = "Enabled Services", Category = "System", CommandText = "sudo systemctl list-unit-files --type service | grep enabled", Description = "List enabled systemd services", IsBuiltIn = true },
+        new() { Name = "Linux Kernel Packages", Category = "System", CommandText = "dpkg --list | grep linux-image", Description = "List installed Linux kernel packages", IsBuiltIn = true },
+        new() { Name = "docker ps", Category = "Docker", CommandText = "sudo docker ps -a", Description = "List running containers", IsBuiltIn = true },
+        new() { Name = "docker stats", Category = "Docker", CommandText = "sudo docker stats", Description = "Container resource usage", IsBuiltIn = true },
+        new() { Name = "docker system prune", Category = "Docker", CommandText = "sudo docker system prune -f", Description = "Remove unused Docker data", IsBuiltIn = true }
     ];
 }
