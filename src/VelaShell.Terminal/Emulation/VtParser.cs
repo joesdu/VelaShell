@@ -77,19 +77,19 @@ public sealed class VtParser(IVtActions actions)
             // terminator ST is ESC \, so the collected payload must be dispatched here —
             // otherwise a string terminated by ST (instead of BEL) is silently discarded.
             case 0x1B:
-            {
-                // ReSharper disable once ConvertIfStatementToSwitchStatement
-                if (_state == State.OscString)
                 {
-                    DispatchOsc();
+                    // ReSharper disable once ConvertIfStatementToSwitchStatement
+                    if (_state == State.OscString)
+                    {
+                        DispatchOsc();
+                    }
+                    else if (_state == State.DcsPassthrough)
+                    {
+                        DispatchDcs();
+                    }
+                    EnterEscape();
+                    return;
                 }
-                else if (_state == State.DcsPassthrough)
-                {
-                    DispatchDcs();
-                }
-                EnterEscape();
-                return;
-            }
             default:
                 switch (_state)
                 {

@@ -119,9 +119,9 @@ public static class MouseEncoder
         int cy = row + 1;
         return modes.MouseEncoding switch
         {
-            MouseEncoding.Sgr   => Ascii($"\e[<{cb};{cx};{cy}{(type == TerminalMouseEventType.Release ? 'm' : 'M')}"),
+            MouseEncoding.Sgr => Ascii($"\e[<{cb};{cx};{cy}{(type == TerminalMouseEventType.Release ? 'm' : 'M')}"),
             MouseEncoding.Urxvt => Ascii($"\e[{cb + 32};{cx};{cy}M"),
-            _                   => EncodeX10(cb, cx, cy)
+            _ => EncodeX10(cb, cx, cy)
         };
     }
 

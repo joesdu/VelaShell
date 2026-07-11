@@ -90,8 +90,8 @@ public class TransferItemViewModel : ReactiveObject
     public string ProgressText => _status switch
     {
         TransferStatus.Completed => "完成",
-        TransferStatus.Failed    => "失败",
-        _                        => $"{_progress}%"
+        TransferStatus.Failed => "失败",
+        _ => $"{_progress}%"
     };
 
     /// <summary>Detail line per design 9Ralg: "142 MB / 212 MB  •  4.2 MB/s  •  ↑ 上传中".</summary>

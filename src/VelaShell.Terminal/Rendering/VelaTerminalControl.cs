@@ -909,11 +909,11 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
             if (_searchHighlights is not null &&
                 _searchHighlights.TryGetValue(absoluteRow, out List<(int Start, int End, bool Current)>? searchSpans))
             {
-                foreach ((int Start, int End, bool Current) span in searchSpans)
+                foreach ((int Start, int End, bool Current) in searchSpans)
                 {
-                    if (col >= span.Start && col < span.End)
+                    if (col >= Start && col < End)
                     {
-                        bg = span.Current ? SearchCurrentBg : SearchMatchBg;
+                        bg = Current ? SearchCurrentBg : SearchMatchBg;
                         break;
                     }
                 }

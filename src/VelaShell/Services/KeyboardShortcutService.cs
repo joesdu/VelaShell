@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using VelaShell.Services;
 
 namespace VelaShell.Services;
 

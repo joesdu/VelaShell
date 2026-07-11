@@ -3,7 +3,6 @@ using System.Collections.Specialized;
 using System.Reactive;
 using Avalonia.Threading;
 using ReactiveUI;
-using VelaShell.ViewModels;
 using VelaShell.Core.Models;
 using VelaShell.Core.Sftp;
 

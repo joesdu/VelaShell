@@ -27,14 +27,14 @@ public class ConPtyShellStreamTests
             "cmd.exe", workingDirectory: null, columns: 80, rows: 25);
 
         var collected = new StringBuilder();
-        var buffer = new byte[4096];
-        var deadline = DateTime.UtcNow.AddSeconds(20);
+        byte[] buffer = new byte[4096];
+        DateTime deadline = DateTime.UtcNow.AddSeconds(20);
         bool sawEof = false;
         bool sentExit = false;
 
         while (DateTime.UtcNow < deadline)
         {
-            var readTask = stream.ReadAsync(buffer, 0, buffer.Length, CancellationToken.None);
+            Task<int> readTask = stream.ReadAsync(buffer, 0, buffer.Length, CancellationToken.None);
             if (await Task.WhenAny(readTask, Task.Delay(TimeSpan.FromSeconds(20))) != readTask)
                 break;
             int read = await readTask;
@@ -48,7 +48,7 @@ public class ConPtyShellStreamTests
             if (!sentExit && collected.Length > 0)
             {
                 sentExit = true;
-                var exit = Encoding.ASCII.GetBytes("exit\r");
+                byte[] exit = Encoding.ASCII.GetBytes("exit\r");
                 await stream.WriteAsync(exit, 0, exit.Length, CancellationToken.None);
             }
         }

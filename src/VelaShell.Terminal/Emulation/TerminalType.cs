@@ -25,7 +25,7 @@ public static class TerminalTypeExtensions
     public static TerminalType FromTermName(string? term) =>
         (term ?? string.Empty).Trim().ToLowerInvariant() switch
         {
-            "vt52"  => TerminalType.Vt52,
+            "vt52" => TerminalType.Vt52,
             "vt100" => TerminalType.Vt100,
             "vt102" => TerminalType.Vt102,
             "vt220" => TerminalType.Vt220,
@@ -34,7 +34,7 @@ public static class TerminalTypeExtensions
             "vt420" => TerminalType.Vt420,
             "vt520" => TerminalType.Vt520,
             "xterm" => TerminalType.Xterm,
-            _       => TerminalType.XtermColor256
+            _ => TerminalType.XtermColor256
         };
 
     extension(TerminalType type)
@@ -69,7 +69,7 @@ public static class TerminalTypeExtensions
                 TerminalType.Vt520 => "\e[?65;1;2;6;7;8;9;12;15;18;19;21c",
                 // xterm advertises itself as a VT100-class terminal with many extensions.
                 TerminalType.Xterm => "\e[?1;2c",
-                _                  => "\e[?64;1;2;6;9;15;18;21;22c"
+                _ => "\e[?64;1;2;6;9;15;18;21;22c"
             };
 
         /// <summary>The secondary Device Attributes (CSI > c) reply, identifying firmware/version.</summary>
@@ -83,14 +83,14 @@ public static class TerminalTypeExtensions
                 TerminalType.Vt520 => "\e[>65;20;0c",
                 // xterm reports terminal type 0/41 and a patch level; we advertise as VT420-compatible xterm.
                 TerminalType.Xterm or TerminalType.XtermColor256 => "\e[>41;360;0c",
-                _                                                => "\e[>0;10;0c"
+                _ => "\e[>0;10;0c"
             };
 
         /// <summary>The value sent as the TERM environment variable / PTY terminal type.</summary>
         public string ToTermName() =>
             type switch
             {
-                TerminalType.Vt52  => "vt52",
+                TerminalType.Vt52 => "vt52",
                 TerminalType.Vt100 => "vt100",
                 TerminalType.Vt102 => "vt102",
                 TerminalType.Vt220 => "vt220",
@@ -99,7 +99,7 @@ public static class TerminalTypeExtensions
                 TerminalType.Vt420 => "vt420",
                 TerminalType.Vt520 => "vt520",
                 TerminalType.Xterm => "xterm",
-                _                  => "xterm-256color"
+                _ => "xterm-256color"
             };
     }
 }

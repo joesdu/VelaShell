@@ -5,6 +5,7 @@ using System.Text.Json;
 using Avalonia.Threading;
 using ReactiveUI;
 using VelaShell.Core.Data;
+using VelaShell.Core.Models;
 using VelaShell.Core.Recording;
 
 namespace VelaShell.ViewModels;
@@ -391,7 +392,7 @@ public class RecordingPlayerViewModel : ReactiveObject
         }
         try
         {
-            var settings = await _settingsService.GetSettingsAsync();
+            AppSettings settings = await _settingsService.GetSettingsAsync();
             settings.Security.RecordProductionSessions = !settings.Security.RecordProductionSessions;
             await _settingsService.SaveSettingsAsync(settings);
             AutoRecordEnabled = settings.Security.RecordProductionSessions;

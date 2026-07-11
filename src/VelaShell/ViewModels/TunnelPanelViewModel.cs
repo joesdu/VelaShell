@@ -279,10 +279,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         {
             SelectedServer = preferred;
         }
-        else if (SelectedServer is null)
-        {
-            SelectedServer = Servers.FirstOrDefault();
-        }
+        else SelectedServer ??= Servers.FirstOrDefault();
         RefreshServerStatus();
     }
 
@@ -512,7 +509,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
             return;
         }
         // 先在调用线程(UI)拍快照再落盘,避免后台线程枚举 ObservableCollection。
-        List<TunnelConfig> configs = items.Select(t => t.Config).ToList();
+        var configs = items.Select(t => t.Config).ToList();
         _ = SaveAsync();
 
         async Task SaveAsync()

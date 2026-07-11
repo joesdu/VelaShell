@@ -74,10 +74,10 @@ public sealed class SessionTreeNodeViewModel(Guid id, string name, bool isGroup)
 
     public string StatusTagText => _status switch
     {
-        SessionStatus.Connected  => "活跃",
+        SessionStatus.Connected => "活跃",
         SessionStatus.Connecting => "连接中",
-        SessionStatus.Error      => "离线",
-        _                        => string.Empty
+        SessionStatus.Error => "离线",
+        _ => string.Empty
     };
 
     /// <summary>

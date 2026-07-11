@@ -45,7 +45,7 @@ public class ThemeServiceSwitchTests
     public void SetTheme_SameTheme_DoesNotFireEvent()
     {
         var sut = new ThemeService("dark");
-        var fired = false;
+        bool fired = false;
         sut.ThemeChanged += _ => fired = true;
 
         sut.SetTheme("dark");
@@ -59,7 +59,7 @@ public class ThemeServiceSwitchTests
     {
         var sut = new ThemeService("dark");
 
-        var act = () => sut.SetTheme("ocean");
+        Action act = () => sut.SetTheme("ocean");
 
         Assert.ThrowsExactly<ArgumentException>(act);
     }
@@ -175,7 +175,7 @@ public class ThemeServiceSwitchTests
     public void SetAccent_SameValue_DoesNotFireAgain()
     {
         var sut = new ThemeService("dark", "#00D4AA");
-        var count = 0;
+        int count = 0;
         sut.AccentChanged += _ => count++;
 
         sut.SetAccent("#00D4AA");

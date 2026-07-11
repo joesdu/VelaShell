@@ -6,9 +6,6 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
-using VelaShell.Localization;
-using VelaShell.Services;
-using VelaShell.Views;
 using VelaShell.Controls.DependencyInjection;
 using VelaShell.Core.Data;
 using VelaShell.Core.Localization;
@@ -18,8 +15,11 @@ using VelaShell.Core.Services;
 using VelaShell.Core.Ssh;
 using VelaShell.Core.Sync;
 using VelaShell.Infrastructure.DependencyInjection;
+using VelaShell.Localization;
 using VelaShell.Presentation.DependencyInjection;
+using VelaShell.Services;
 using VelaShell.ViewModels;
+using VelaShell.Views;
 
 namespace VelaShell;
 
@@ -287,9 +287,9 @@ public class App : Application
     {
         RequestedThemeVariant = themeName.ToLowerInvariant() switch
         {
-            "light"  => ThemeVariant.Light,
+            "light" => ThemeVariant.Light,
             "system" => ThemeVariant.Default,
-            _        => ThemeVariant.Dark
+            _ => ThemeVariant.Dark
         };
     }
 

@@ -8,9 +8,9 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Microsoft.Extensions.DependencyInjection;
-using VelaShell.ViewModels;
 using VelaShell.Controls.Controls;
 using VelaShell.Core.Resources;
+using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 
@@ -127,23 +127,23 @@ public partial class FileBrowserView : UserControl
         switch (tag)
         {
             case "NameSize":
-            {
-                double targetName = EstimateAutoWidthForName(vm);
-                vm.NameColumnWidth = new(ClampColumnWidth(targetName, MinNameWidth, GetMaxNameWidth(vm)));
-                break;
-            }
+                {
+                    double targetName = EstimateAutoWidthForName(vm);
+                    vm.NameColumnWidth = new(ClampColumnWidth(targetName, MinNameWidth, GetMaxNameWidth(vm)));
+                    break;
+                }
             case "SizePermissions":
-            {
-                double targetSize = EstimateAutoWidthForSize(vm);
-                vm.SizeColumnWidth = new(ClampColumnWidth(targetSize, MinSizeWidth, GetMaxSizeWidth(vm)));
-                break;
-            }
+                {
+                    double targetSize = EstimateAutoWidthForSize(vm);
+                    vm.SizeColumnWidth = new(ClampColumnWidth(targetSize, MinSizeWidth, GetMaxSizeWidth(vm)));
+                    break;
+                }
             case "PermissionsModified":
-            {
-                double targetPerm = EstimateAutoWidthForPermissions(vm);
-                vm.PermissionsColumnWidth = new(ClampColumnWidth(targetPerm, MinPermissionsWidth, GetMaxPermissionsWidth(vm)));
-                break;
-            }
+                {
+                    double targetPerm = EstimateAutoWidthForPermissions(vm);
+                    vm.PermissionsColumnWidth = new(ClampColumnWidth(targetPerm, MinPermissionsWidth, GetMaxPermissionsWidth(vm)));
+                    break;
+                }
         }
     }
 
@@ -209,8 +209,7 @@ public partial class FileBrowserView : UserControl
         {
             return;
         }
-        var row = (e.Source as Control)?.DataContext as RemoteFileInfoViewModel;
-        if (row is null)
+        if ((e.Source as Control)?.DataContext is not RemoteFileInfoViewModel row)
         {
             return;
         }

@@ -21,16 +21,16 @@ public class TerminalBridgeTests
     [TestMethod]
     public void Constructor_NullTerminal_ThrowsArgumentNullException()
     {
-        var act = () => new SshTerminalBridge(null!, _shellStream);
-        var ex = Assert.ThrowsExactly<ArgumentNullException>(act);
+        Func<SshTerminalBridge> act = () => new SshTerminalBridge(null!, _shellStream);
+        ArgumentNullException ex = Assert.ThrowsExactly<ArgumentNullException>(act);
         Assert.AreEqual("terminal", ex.ParamName);
     }
 
     [TestMethod]
     public void Constructor_NullShellStream_ThrowsArgumentNullException()
     {
-        var act = () => new SshTerminalBridge(_terminal, null!);
-        var ex = Assert.ThrowsExactly<ArgumentNullException>(act);
+        Func<SshTerminalBridge> act = () => new SshTerminalBridge(_terminal, null!);
+        ArgumentNullException ex = Assert.ThrowsExactly<ArgumentNullException>(act);
         Assert.AreEqual("shellStream", ex.ParamName);
     }
 
@@ -42,8 +42,8 @@ public class TerminalBridgeTests
         using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Start();
 
-        var act = () => bridge.Start();
-        var ex = Assert.ThrowsExactly<InvalidOperationException>(act);
+        Action act = () => bridge.Start();
+        InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>(act);
         StringAssert.Contains(ex.Message, "already started");
     }
 
@@ -57,7 +57,7 @@ public class TerminalBridgeTests
 
         using var bridge = new SshTerminalBridge(_terminal, _shellStream);
 
-        var testData = Encoding.UTF8.GetBytes("hello");
+        byte[] testData = Encoding.UTF8.GetBytes("hello");
 
         _terminal.UserInput += Raise.Event<Action<byte[]>>(testData);
 
@@ -81,7 +81,7 @@ public class TerminalBridgeTests
 
         using var bridge = new SshTerminalBridge(_terminal, _shellStream);
 
-        var testData = Encoding.UTF8.GetBytes("hello");
+        byte[] testData = Encoding.UTF8.GetBytes("hello");
         _terminal.UserInput += Raise.Event<Action<byte[]>>(testData);
 
         Thread.Sleep(100);
@@ -131,7 +131,7 @@ public class TerminalBridgeTests
 
         using var bridge = new SshTerminalBridge(_terminal, _shellStream);
 
-        var testData = Encoding.UTF8.GetBytes("hello");
+        byte[] testData = Encoding.UTF8.GetBytes("hello");
         _terminal.UserInput += Raise.Event<Action<byte[]>>(testData);
 
         Thread.Sleep(100);
@@ -205,7 +205,7 @@ public class TerminalBridgeTests
         _shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(async callInfo =>
             {
-                var ct = callInfo.ArgAt<CancellationToken>(3);
+                CancellationToken ct = callInfo.ArgAt<CancellationToken>(3);
                 await Task.Delay(Timeout.Infinite, ct);
                 return 0;
             });
@@ -227,7 +227,7 @@ public class TerminalBridgeTests
         _shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(0)); // EOF => remote closed the channel
 
-        var closed = false;
+        bool closed = false;
         using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Closed += () => closed = true;
         bridge.Start();
@@ -244,12 +244,12 @@ public class TerminalBridgeTests
         _shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(async callInfo =>
             {
-                var ct = callInfo.ArgAt<CancellationToken>(3);
+                CancellationToken ct = callInfo.ArgAt<CancellationToken>(3);
                 await Task.Delay(Timeout.Infinite, ct);
                 return 0;
             });
 
-        var closed = false;
+        bool closed = false;
         var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Closed += () => closed = true;
         bridge.Start();
@@ -285,7 +285,7 @@ public class TerminalBridgeTests
         using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Error += ex => capturedError = ex;
 
-        var testData = Encoding.UTF8.GetBytes("hello");
+        byte[] testData = Encoding.UTF8.GetBytes("hello");
         _terminal.UserInput += Raise.Event<Action<byte[]>>(testData);
 
         Thread.Sleep(200);
@@ -307,7 +307,7 @@ public class TerminalBridgeTests
         using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Error += ex => capturedError = ex;
 
-        var testData = Encoding.UTF8.GetBytes("hello");
+        byte[] testData = Encoding.UTF8.GetBytes("hello");
         _terminal.UserInput += Raise.Event<Action<byte[]>>(testData);
 
         Thread.Sleep(200);

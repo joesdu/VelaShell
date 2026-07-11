@@ -14,10 +14,10 @@ public sealed class TunnelWorkflowService(ITunnelService tunnelService) : ITunne
         ArgumentNullException.ThrowIfNull(config);
         return config.Type switch
         {
-            TunnelType.LocalForward   => _tunnelService.CreateLocalForwardAsync(sessionId, config, cancellationToken),
-            TunnelType.RemoteForward  => _tunnelService.CreateRemoteForwardAsync(sessionId, config, cancellationToken),
+            TunnelType.LocalForward => _tunnelService.CreateLocalForwardAsync(sessionId, config, cancellationToken),
+            TunnelType.RemoteForward => _tunnelService.CreateRemoteForwardAsync(sessionId, config, cancellationToken),
             TunnelType.DynamicForward => _tunnelService.CreateDynamicForwardAsync(sessionId, config, cancellationToken),
-            _                         => throw new ArgumentOutOfRangeException(nameof(config), config.Type, @"Unsupported tunnel type.")
+            _ => throw new ArgumentOutOfRangeException(nameof(config), config.Type, @"Unsupported tunnel type.")
         };
     }
 

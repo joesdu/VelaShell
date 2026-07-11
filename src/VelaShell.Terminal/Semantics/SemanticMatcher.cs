@@ -124,12 +124,12 @@ public sealed partial class SemanticMatcher
     private static int Priority(SemanticKind kind) =>
         kind switch
         {
-            SemanticKind.Url       => 0,
+            SemanticKind.Url => 0,
             SemanticKind.IpAddress => 1,
-            SemanticKind.Error     => 2,
-            SemanticKind.Warning   => 3,
-            SemanticKind.Success   => 4,
-            SemanticKind.Option    => 5,
-            _                      => 6 // Number
+            SemanticKind.Error => 2,
+            SemanticKind.Warning => 3,
+            SemanticKind.Success => 4,
+            SemanticKind.Option => 5,
+            _ => 6 // Number
         };
 }

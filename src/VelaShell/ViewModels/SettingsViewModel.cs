@@ -38,7 +38,7 @@ public class SettingsViewModel : ReactiveObject
         PropertyNameCaseInsensitive = true
     };
     // ———— 外观即时预览(改动立即可见,保存才落盘,取消/关窗回滚) ————
-                /// <summary>打开设置时的基线快照:未保存关闭时用它恢复主题与外观。</summary>
+    /// <summary>打开设置时的基线快照:未保存关闭时用它恢复主题与外观。</summary>
     private AppSettings _baseline = new();
 
     private int _colorSchemeIndex = -1;

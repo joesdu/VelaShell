@@ -30,7 +30,7 @@ public class CrossPlatformPublishTests : IDisposable
 
     private static string FindSolutionRoot()
     {
-        var dir = AppContext.BaseDirectory;
+        string? dir = AppContext.BaseDirectory;
         while (dir != null)
         {
             if (File.Exists(Path.Combine(dir, "src", "VelaShell.slnx")))
@@ -43,9 +43,9 @@ public class CrossPlatformPublishTests : IDisposable
 
     private (int exitCode, string output, string error) RunDotnetPublish(string rid)
     {
-        var solutionRoot = FindSolutionRoot();
-        var projectPath = Path.Combine(solutionRoot, "src", "VelaShell.App");
-        var outputDir = Path.Combine(_publishOutputDir, rid);
+        string solutionRoot = FindSolutionRoot();
+        string projectPath = Path.Combine(solutionRoot, "src", "VelaShell.App");
+        string outputDir = Path.Combine(_publishOutputDir, rid);
 
         var psi = new ProcessStartInfo
         {
@@ -58,9 +58,9 @@ public class CrossPlatformPublishTests : IDisposable
             WorkingDirectory = solutionRoot
         };
 
-        using var process = Process.Start(psi)!;
-        var stdout = process.StandardOutput.ReadToEnd();
-        var stderr = process.StandardError.ReadToEnd();
+        using Process process = Process.Start(psi)!;
+        string stdout = process.StandardOutput.ReadToEnd();
+        string stderr = process.StandardError.ReadToEnd();
         process.WaitForExit(300_000);
 
         return (process.ExitCode, stdout, stderr);
@@ -103,12 +103,12 @@ public class CrossPlatformPublishTests : IDisposable
         const string rid = "osx-arm64";
         if (SkipIfNotNativeRid(rid)) return;
 
-        var (exitCode, stdout, stderr) = RunDotnetPublish(rid);
+        (int exitCode, string? stdout, string? stderr) = RunDotnetPublish(rid);
 
         Assert.AreEqual(0, exitCode,
             $"dotnet publish for {rid} should succeed.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 
-        var outputDir = Path.Combine(_publishOutputDir, rid);
+        string outputDir = Path.Combine(_publishOutputDir, rid);
         Assert.IsTrue(Directory.Exists(outputDir));
         Assert.IsTrue(Directory.GetFiles(outputDir).Any(),
             $"publish output for {rid} should contain files");
@@ -121,12 +121,12 @@ public class CrossPlatformPublishTests : IDisposable
         const string rid = "win-x64";
         if (SkipIfNotNativeRid(rid)) return;
 
-        var (exitCode, stdout, stderr) = RunDotnetPublish(rid);
+        (int exitCode, string? stdout, string? stderr) = RunDotnetPublish(rid);
 
         Assert.AreEqual(0, exitCode,
             $"dotnet publish for {rid} should succeed.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 
-        var outputDir = Path.Combine(_publishOutputDir, rid);
+        string outputDir = Path.Combine(_publishOutputDir, rid);
         Assert.IsTrue(Directory.Exists(outputDir));
         Assert.IsTrue(Directory.GetFiles(outputDir).Any(),
             $"publish output for {rid} should contain files");
@@ -139,12 +139,12 @@ public class CrossPlatformPublishTests : IDisposable
         const string rid = "linux-x64";
         if (SkipIfNotNativeRid(rid)) return;
 
-        var (exitCode, stdout, stderr) = RunDotnetPublish(rid);
+        (int exitCode, string? stdout, string? stderr) = RunDotnetPublish(rid);
 
         Assert.AreEqual(0, exitCode,
             $"dotnet publish for {rid} should succeed.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 
-        var outputDir = Path.Combine(_publishOutputDir, rid);
+        string outputDir = Path.Combine(_publishOutputDir, rid);
         Assert.IsTrue(Directory.Exists(outputDir));
         Assert.IsTrue(Directory.GetFiles(outputDir).Any(),
             $"publish output for {rid} should contain files");

@@ -2,9 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Microsoft.Extensions.DependencyInjection;
-using VelaShell.ViewModels;
 using VelaShell.Core.Data;
 using VelaShell.Core.Recording;
+using VelaShell.ViewModels;
 
 namespace VelaShell.Views.Settings;
 

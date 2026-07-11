@@ -6,12 +6,11 @@ using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
-using VelaShell.Services;
-using VelaShell.ViewModels;
 using VelaShell.Core.Models;
+using VelaShell.Services;
 using VelaShell.Terminal;
 using VelaShell.Terminal.Rendering;
+using VelaShell.ViewModels;
 using KeyModifiers = VelaShell.Services.KeyModifiers;
 
 namespace VelaShell.Views;
@@ -368,10 +367,7 @@ public partial class TerminalTabView : UserControl
         // 切到其他应用时收起补全弹层——Popup 是独立顶层窗口,不主动关就会
         // 悬浮在别的程序上面(用户反馈)。
         _hostWindow = TopLevel.GetTopLevel(this) as Window;
-        if (_hostWindow is not null)
-        {
-            _hostWindow.Deactivated += OnHostWindowDeactivated;
-        }
+        _hostWindow?.Deactivated += OnHostWindowDeactivated;
         FocusTerminal();
     }
 
@@ -380,11 +376,8 @@ public partial class TerminalTabView : UserControl
     private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
         CloseSuggestPopup(suppress: false);
-        if (_hostWindow is not null)
-        {
-            _hostWindow.Deactivated -= OnHostWindowDeactivated;
-            _hostWindow = null;
-        }
+        _hostWindow?.Deactivated -= OnHostWindowDeactivated;
+        _hostWindow = null;
         if (_termControl is not null)
         {
             _termControl.ScrollChanged -= OnTerminalScrollChanged;
@@ -630,13 +623,13 @@ public partial class TerminalTabView : UserControl
     {
         return avaloniaKey switch
         {
-            Key.C        => KeyCode.C,
-            Key.V        => KeyCode.V,
-            Key.T        => KeyCode.T,
-            Key.W        => KeyCode.W,
-            Key.Tab      => KeyCode.Tab,
+            Key.C => KeyCode.C,
+            Key.V => KeyCode.V,
+            Key.T => KeyCode.T,
+            Key.W => KeyCode.W,
+            Key.Tab => KeyCode.Tab,
             Key.OemComma => KeyCode.Comma,
-            _            => KeyCode.None
+            _ => KeyCode.None
         };
     }
 }

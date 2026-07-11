@@ -118,7 +118,7 @@ public sealed class SonnetDbEngine : IDisposable
             return SqlExecutor.Execute(_db, sql) switch
             {
                 SelectExecutionResult select => select,
-                var other                    => throw new InvalidOperationException($"Expected a SELECT result but got {other?.GetType().Name ?? "null"} for: {sql}")
+                var other => throw new InvalidOperationException($"Expected a SELECT result but got {other?.GetType().Name ?? "null"} for: {sql}")
             };
         }
         finally

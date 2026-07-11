@@ -2,8 +2,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
-using VelaShell.ViewModels;
 using VelaShell.Terminal.Rendering;
+using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 

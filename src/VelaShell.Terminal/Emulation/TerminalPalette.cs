@@ -89,11 +89,11 @@ public sealed class TerminalPalette
         ReadOnlySpan<byte> steps = [0x00, 0x5F, 0x87, 0xAF, 0xD7, 0xFF];
         int i = 16;
         foreach (byte r in steps)
-        foreach (byte g in steps)
-        foreach (byte b in steps)
-        {
-            _colors[i++] = Rgba.FromRgb(r, g, b);
-        }
+            foreach (byte g in steps)
+                foreach (byte b in steps)
+                {
+                    _colors[i++] = Rgba.FromRgb(r, g, b);
+                }
     }
 
     private void InitializeGrayscale()

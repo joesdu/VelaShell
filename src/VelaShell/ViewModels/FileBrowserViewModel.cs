@@ -3,10 +3,10 @@ using System.Reactive;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using ReactiveUI;
-using VelaShell.Services;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
+using VelaShell.Services;
 
 namespace VelaShell.ViewModels;
 

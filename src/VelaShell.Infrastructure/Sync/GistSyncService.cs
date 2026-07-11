@@ -3,7 +3,6 @@ using System.Text.Json;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Sync;
-using VelaShell.Core.Tunnels;
 
 namespace VelaShell.Infrastructure.Sync;
 
@@ -234,7 +233,7 @@ public sealed class GistSyncService(
                                            .ConfigureAwait(false);
                     if (content is not null)
                     {
-                        using JsonDocument doc = JsonDocument.Parse(content);
+                        using var doc = JsonDocument.Parse(content);
                         if (doc.RootElement.TryGetProperty("deviceName", out JsonElement name))
                         {
                             device = name.GetString();
@@ -438,7 +437,7 @@ public sealed class GistSyncService(
                 }
                 if (payload.Profiles is { } profiles)
                 {
-                    Dictionary<Guid, SessionProfile> localProfiles =
+                    var localProfiles =
                         (await sessionRepository.GetAllSessionsAsync().ConfigureAwait(false)).ToDictionary(p => p.Id);
                     foreach (SessionProfile incoming in profiles)
                     {

@@ -1,11 +1,12 @@
 using System.Reactive.Concurrency;
 using NSubstitute;
-using VelaShell.ViewModels;
+using ReactiveUI.Builder;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Presentation.Commands;
 using VelaShell.Presentation.ViewModels;
 using VelaShell.Terminal;
-using ReactiveUI.Builder;
+using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;
 
@@ -44,7 +45,7 @@ public class MainWindowViewModelTests
     {
         var vm = new MainWindowViewModel();
 
-        var command = vm.Commands.Find("tools.files");
+        CommandDescriptor? command = vm.Commands.Find("tools.files");
 
         Assert.IsNotNull(command, "SFTP file manager command must be wired so the panel can be opened.");
         Assert.AreEqual("Ctrl+Shift+F", command.Shortcut);
@@ -69,8 +70,8 @@ public class MainWindowViewModelTests
     [TestCategory("UI")]
     public void SettingsSaved_ReappliesScrollbackToOpenTabs()
     {
-        var settingsService = Substitute.For<ISettingsService>();
-        var emulator = Substitute.For<ITerminalEmulator>();
+        ISettingsService settingsService = Substitute.For<ISettingsService>();
+        ITerminalEmulator emulator = Substitute.For<ITerminalEmulator>();
         var vm = new MainWindowViewModel(settingsService: settingsService);
 
         var tab = new TerminalTabViewModel(emulator);

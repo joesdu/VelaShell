@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Reactive;
 using ReactiveUI;
-using VelaShell.ViewModels;
 
 namespace VelaShell.ViewModels;
 

@@ -56,17 +56,17 @@ public class RemoteFileInfoViewModel(RemoteFileInfo model)
     /// </summary>
     public static RemoteFileInfoViewModel CreateParentEntry(string parentPath) =>
         new(new()
-            {
-                Name = "..",
-                FullPath = parentPath,
-                Size = 0,
-                Permissions = string.Empty,
-                IsDirectory = true,
-                LastModified = DateTime.MinValue,
-                Owner = string.Empty,
-                Group = string.Empty
-            })
-            { IsParentEntry = true };
+        {
+            Name = "..",
+            FullPath = parentPath,
+            Size = 0,
+            Permissions = string.Empty,
+            IsDirectory = true,
+            LastModified = DateTime.MinValue,
+            Owner = string.Empty,
+            Group = string.Empty
+        })
+        { IsParentEntry = true };
 
     public static string FormatSize(long bytes)
     {

@@ -165,25 +165,47 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         DateTimeOffset now = DateTimeOffset.UtcNow;
         await service.RecordAsync(new()
         {
-            ProfileId = profileId, Name = "web-prod-01", GroupName = "生产环境",
-            Host = "192.168.1.100", Port = 22, Username = "root",
-            ConnectedAt = now.AddHours(-2), Success = true, DurationMs = 120
+            ProfileId = profileId,
+            Name = "web-prod-01",
+            GroupName = "生产环境",
+            Host = "192.168.1.100",
+            Port = 22,
+            Username = "root",
+            ConnectedAt = now.AddHours(-2),
+            Success = true,
+            DurationMs = 120
         });
         await service.RecordAsync(new()
         {
-            ProfileId = profileId, Name = "web-prod-01", GroupName = "生产环境",
-            Host = "192.168.1.100", Port = 22, Username = "root",
-            ConnectedAt = now.AddMinutes(-5), Success = true, DurationMs = 80
+            ProfileId = profileId,
+            Name = "web-prod-01",
+            GroupName = "生产环境",
+            Host = "192.168.1.100",
+            Port = 22,
+            Username = "root",
+            ConnectedAt = now.AddMinutes(-5),
+            Success = true,
+            DurationMs = 80
         });
         await service.RecordAsync(new()
         {
-            Name = "deploy@staging.example.com", Host = "staging.example.com", Port = 22,
-            Username = "deploy", ConnectedAt = now.AddDays(-1), Success = true, DurationMs = 300
+            Name = "deploy@staging.example.com",
+            Host = "staging.example.com",
+            Port = 22,
+            Username = "deploy",
+            ConnectedAt = now.AddDays(-1),
+            Success = true,
+            DurationMs = 300
         });
         await service.RecordAsync(new()
         {
-            Name = "failed@10.0.0.9", Host = "10.0.0.9", Port = 22, Username = "x",
-            ConnectedAt = now, Success = false, DurationMs = 5000
+            Name = "failed@10.0.0.9",
+            Host = "10.0.0.9",
+            Port = 22,
+            Username = "x",
+            ConnectedAt = now,
+            Success = false,
+            DurationMs = 5000
         });
         List<RecentConnectionEntry> recent = await service.GetRecentAsync(10);
         Assert.AreEqual(2, recent.Count, "同一配置去重、失败连接不出现");

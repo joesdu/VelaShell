@@ -1,4 +1,5 @@
 using NSubstitute;
+using VelaShell.Core.Services;
 using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Ssh;
 
@@ -22,16 +23,16 @@ public class SessionMetricsServiceTests
     public async Task SecondSample_ComputesInstantCpuAndNetRates()
     {
         var sessionId = Guid.NewGuid();
-        var client = Substitute.For<ISshClientWrapper>();
+        ISshClientWrapper client = Substitute.For<ISshClientWrapper>();
         client.IsConnected.Returns(true);
-        var connections = Substitute.For<ISshConnectionService>();
+        ISshConnectionService connections = Substitute.For<ISshConnectionService>();
         connections.GetClient(sessionId).Returns(client);
         var service = new SessionMetricsService(connections);
 
         // Sample 1: busy=100 idle=900; rx=1_000_000 tx=500_000.
         client.RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Probe(100, 900, 1_000_000, 500_000));
-        var first = await service.GetMetricsAsync(sessionId);
+        SessionMetrics? first = await service.GetMetricsAsync(sessionId);
 
         Assert.IsNotNull(first);
         Assert.IsFalse(first.HasNetRates);           // no previous sample yet
@@ -42,7 +43,7 @@ public class SessionMetricsServiceTests
         await Task.Delay(500);
         client.RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Probe(400, 1600, 3_097_152, 1_024_288));
-        var second = await service.GetMetricsAsync(sessionId);
+        SessionMetrics? second = await service.GetMetricsAsync(sessionId);
 
         Assert.IsNotNull(second);
         Assert.AreEqual(30.0, second.CpuPercent, 0.1); // (dTotal-dIdle)/dTotal = 300/1000
@@ -57,9 +58,9 @@ public class SessionMetricsServiceTests
     public async Task CounterReset_ClampsRatesToZeroInsteadOfNegative()
     {
         var sessionId = Guid.NewGuid();
-        var client = Substitute.For<ISshClientWrapper>();
+        ISshClientWrapper client = Substitute.For<ISshClientWrapper>();
         client.IsConnected.Returns(true);
-        var connections = Substitute.For<ISshConnectionService>();
+        ISshConnectionService connections = Substitute.For<ISshConnectionService>();
         connections.GetClient(sessionId).Returns(client);
         var service = new SessionMetricsService(connections);
 
@@ -71,7 +72,7 @@ public class SessionMetricsServiceTests
         // Interface bounced: counters restarted from near zero.
         client.RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Probe(200, 1800, 1_000, 1_000));
-        var second = await service.GetMetricsAsync(sessionId);
+        SessionMetrics? second = await service.GetMetricsAsync(sessionId);
 
         Assert.IsNotNull(second);
         Assert.AreEqual(0, second.NetRxBytesPerSec);
@@ -82,9 +83,9 @@ public class SessionMetricsServiceTests
     public async Task SecondSample_ComputesPerCorePercents_AndPerNicRates()
     {
         var sessionId = Guid.NewGuid();
-        var client = Substitute.For<ISshClientWrapper>();
+        ISshClientWrapper client = Substitute.For<ISshClientWrapper>();
         client.IsConnected.Returns(true);
-        var connections = Substitute.For<ISshConnectionService>();
+        ISshConnectionService connections = Substitute.For<ISshConnectionService>();
         connections.GetClient(sessionId).Returns(client);
         var service = new SessionMetricsService(connections);
 
@@ -94,7 +95,7 @@ public class SessionMetricsServiceTests
 
         client.RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Probe(100, 900, 1000, 1000) + Extras(50, 450, 50, 450, 500, 500, 500, 500));
-        var first = await service.GetMetricsAsync(sessionId);
+        SessionMetrics? first = await service.GetMetricsAsync(sessionId);
 
         Assert.IsNotNull(first);
         Assert.IsNull(first.CorePercents); // 首个采样没有差分基准
@@ -106,7 +107,7 @@ public class SessionMetricsServiceTests
         client.RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Probe(200, 1800, 201_000, 201_000)
                 + Extras(140, 460, 60, 540, 100_500, 100_500, 500, 500));
-        var second = await service.GetMetricsAsync(sessionId);
+        SessionMetrics? second = await service.GetMetricsAsync(sessionId);
 
         Assert.IsNotNull(second);
         Assert.IsNotNull(second.CorePercents);
@@ -125,9 +126,9 @@ public class SessionMetricsServiceTests
     public async Task DisconnectedSession_ReturnsNullAndForgetsHistory()
     {
         var sessionId = Guid.NewGuid();
-        var client = Substitute.For<ISshClientWrapper>();
+        ISshClientWrapper client = Substitute.For<ISshClientWrapper>();
         client.IsConnected.Returns(true);
-        var connections = Substitute.For<ISshConnectionService>();
+        ISshConnectionService connections = Substitute.For<ISshConnectionService>();
         connections.GetClient(sessionId).Returns(client);
         var service = new SessionMetricsService(connections);
 
@@ -142,7 +143,7 @@ public class SessionMetricsServiceTests
         client.IsConnected.Returns(true);
         client.RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Probe(500, 1500, 9000, 9000));
-        var afterReconnect = await service.GetMetricsAsync(sessionId);
+        SessionMetrics? afterReconnect = await service.GetMetricsAsync(sessionId);
 
         Assert.IsNotNull(afterReconnect);
         Assert.IsFalse(afterReconnect.HasNetRates);

@@ -104,8 +104,8 @@ public sealed class SonnetDbRecentConnectionService(SonnetDbEngine engine) : IRe
             Port = values.GetValueOrDefault("port") is { } port ? (int)Convert.ToInt64(port) : 22,
             Success = values.GetValueOrDefault("success") switch
             {
-                bool b    => b,
-                null      => true,
+                bool b => b,
+                null => true,
                 var other => Convert.ToBoolean(other)
             }
         };

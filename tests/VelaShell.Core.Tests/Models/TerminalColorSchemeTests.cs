@@ -8,7 +8,7 @@ public class TerminalColorSchemeTests
     [TestMethod]
     public void ApplyTo_ThenMatches_ShouldRoundTripForEveryBuiltInScheme()
     {
-        foreach (var scheme in TerminalColorScheme.BuiltIn)
+        foreach (TerminalColorScheme scheme in TerminalColorScheme.BuiltIn)
         {
             var appearance = new AppearanceOptions();
             scheme.ApplyTo(appearance);
@@ -16,7 +16,7 @@ public class TerminalColorSchemeTests
             Assert.IsTrue(scheme.Matches(appearance), $"方案 {scheme.Name} 应用后应能反向匹配自身");
 
             // 反向匹配应唯一命中(内置方案两两不同)。
-            var matched = TerminalColorScheme.BuiltIn.Count(s => s.Matches(appearance));
+            int matched = TerminalColorScheme.BuiltIn.Count(s => s.Matches(appearance));
             Assert.AreEqual(1, matched, $"方案 {scheme.Name} 应恰好命中一个内置方案");
         }
     }
@@ -36,7 +36,7 @@ public class TerminalColorSchemeTests
     public void Matches_ShouldFailWhenAnySingleColorIsCustomized()
     {
         var appearance = new AppearanceOptions();
-        var scheme = TerminalColorScheme.BuiltIn[1];
+        TerminalColorScheme scheme = TerminalColorScheme.BuiltIn[1];
         scheme.ApplyTo(appearance);
         appearance.AnsiBright[3] = "#123456";
 

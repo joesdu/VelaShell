@@ -11,16 +11,16 @@ public sealed class TunnelWorkflowServiceTests
     [TestMethod]
     public async Task CreateTunnelAsync_LocalForward_UsesLocalForwardPath()
     {
-        var tunnelService = Substitute.For<ITunnelService>();
+        ITunnelService tunnelService = Substitute.For<ITunnelService>();
         var workflow = new TunnelWorkflowService(tunnelService);
         var sessionId = Guid.NewGuid();
-        var config = CreateConfig(TunnelType.LocalForward);
-        var result = CreateInfo(sessionId, config);
+        TunnelConfig config = CreateConfig(TunnelType.LocalForward);
+        TunnelInfo result = CreateInfo(sessionId, config);
 
         tunnelService.CreateLocalForwardAsync(sessionId, config, Arg.Any<CancellationToken>())
             .Returns(result);
 
-        var created = await workflow.CreateTunnelAsync(sessionId, config);
+        TunnelInfo created = await workflow.CreateTunnelAsync(sessionId, config);
 
         Assert.AreSame(result, created);
         await tunnelService.Received(1).CreateLocalForwardAsync(sessionId, config, Arg.Any<CancellationToken>());
@@ -29,7 +29,7 @@ public sealed class TunnelWorkflowServiceTests
     [TestMethod]
     public async Task StopTunnelAsync_ForwardsCall()
     {
-        var tunnelService = Substitute.For<ITunnelService>();
+        ITunnelService tunnelService = Substitute.For<ITunnelService>();
         var workflow = new TunnelWorkflowService(tunnelService);
         var tunnelId = Guid.NewGuid();
 

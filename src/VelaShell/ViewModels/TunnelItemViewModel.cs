@@ -34,17 +34,17 @@ public class TunnelItemViewModel(TunnelInfo tunnelInfo) : ReactiveObject
     /// <summary>路由描述:本地/动态以本地端口为起点,远程转发方向相反(设计 B3Rth)。</summary>
     public string DisplayRoute => TunnelType switch
     {
-        TunnelType.RemoteForward  => $"服务器:{RemotePort} → {LocalHost}:{LocalPort}",
+        TunnelType.RemoteForward => $"服务器:{RemotePort} → {LocalHost}:{LocalPort}",
         TunnelType.DynamicForward => $"{LocalHost}:{LocalPort} → SOCKS5 代理",
-        _                         => $"{LocalHost}:{LocalPort} → {RemoteHost}:{RemotePort}"
+        _ => $"{LocalHost}:{LocalPort} → {RemoteHost}:{RemotePort}"
     };
 
     /// <summary>类型标签(设计 B3Rth:Local/Remote/Dynamic 全词徽标)。</summary>
     public string TypeBadge => TunnelType switch
     {
-        TunnelType.RemoteForward  => "Remote",
+        TunnelType.RemoteForward => "Remote",
         TunnelType.DynamicForward => "Dynamic",
-        _                         => "Local"
+        _ => "Local"
     };
 
     /// <summary>
@@ -80,8 +80,8 @@ public class TunnelItemViewModel(TunnelInfo tunnelInfo) : ReactiveObject
     public string StatusText => Status switch
     {
         TunnelStatus.Active => $"运行中 • {FormatUptime(DateTime.UtcNow - CreatedAt)}",
-        TunnelStatus.Error  => "发生错误",
-        _                   => "已停止"
+        TunnelStatus.Error => "发生错误",
+        _ => "已停止"
     };
 
     /// <summary>由面板的时钟周期性调用:刷新运行时长、透传服务侧的状态/错误变化。</summary>

@@ -7,13 +7,13 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using ReactiveUI;
-using VelaShell.Security;
-using VelaShell.ViewModels;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Services;
 using VelaShell.Core.Ssh;
 using VelaShell.Presentation.Services;
+using VelaShell.Security;
+using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 

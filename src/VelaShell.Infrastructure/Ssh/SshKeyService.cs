@@ -136,13 +136,13 @@ public sealed class SshKeyService(string? sshDirectory = null) : ISshKeyService
     {
         return algorithm switch
         {
-            "ssh-rsa"             => $"RSA {TryGetRsaBits(blob)}",
-            "ssh-ed25519"         => "ED25519",
+            "ssh-rsa" => $"RSA {TryGetRsaBits(blob)}",
+            "ssh-ed25519" => "ED25519",
             "ecdsa-sha2-nistp256" => "ECDSA 256",
             "ecdsa-sha2-nistp384" => "ECDSA 384",
             "ecdsa-sha2-nistp521" => "ECDSA 521",
-            "ssh-dss"             => "DSA",
-            _                     => algorithm
+            "ssh-dss" => "DSA",
+            _ => algorithm
         };
     }
 

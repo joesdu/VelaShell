@@ -17,9 +17,9 @@ public class BufferSearchTests
     [TestMethod]
     public void FindAll_FindsHits_CaseInsensitive_WithPositions()
     {
-        var e = Feed("hello world", "no match here", "WORLD of Hello");
+        TerminalEmulator e = Feed("hello world", "no match here", "WORLD of Hello");
 
-        var hits = BufferSearch.FindAll(e.Screen, "world");
+        IReadOnlyList<BufferSearchHit> hits = BufferSearch.FindAll(e.Screen, "world");
 
         Assert.AreEqual(2, hits.Count);
         Assert.AreEqual(0, hits[0].Row);
@@ -32,9 +32,9 @@ public class BufferSearchTests
     [TestMethod]
     public void FindAll_MultipleHitsPerLine()
     {
-        var e = Feed("ab ab ab");
+        TerminalEmulator e = Feed("ab ab ab");
 
-        var hits = BufferSearch.FindAll(e.Screen, "ab");
+        IReadOnlyList<BufferSearchHit> hits = BufferSearch.FindAll(e.Screen, "ab");
 
         Assert.AreEqual(3, hits.Count);
         Assert.AreEqual(0, hits[0].StartCol);
@@ -53,7 +53,7 @@ public class BufferSearchTests
         e.Feed(Encoding.UTF8.GetBytes(sb.ToString()));
 
         Assert.IsTrue(e.Screen.ScrollbackCount > 0, "line must have scrolled out");
-        var hits = BufferSearch.FindAll(e.Screen, "needle-in-history");
+        IReadOnlyList<BufferSearchHit> hits = BufferSearch.FindAll(e.Screen, "needle-in-history");
         Assert.AreEqual(1, hits.Count);
         Assert.AreEqual(0, hits[0].Row);
     }
@@ -61,7 +61,7 @@ public class BufferSearchTests
     [TestMethod]
     public void FindAll_EmptyQuery_ReturnsNothing()
     {
-        var e = Feed("anything");
+        TerminalEmulator e = Feed("anything");
         Assert.AreEqual(0, BufferSearch.FindAll(e.Screen, "").Count);
     }
 }

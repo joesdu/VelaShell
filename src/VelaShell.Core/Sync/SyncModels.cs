@@ -1,5 +1,4 @@
 using VelaShell.Core.Models;
-using VelaShell.Core.Tunnels;
 
 namespace VelaShell.Core.Sync;
 

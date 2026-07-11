@@ -104,11 +104,11 @@ public partial class MessageDialog : Window
         // 画刷经样式类 + DynamicResource 解析(代码里 FindResource 拿不到主题字典画刷)。
         (string iconKey, string kindClass) = kind switch
         {
-            MessageDialogKind.Success  => ("Icon.circle-check", "success"),
-            MessageDialogKind.Warning  => ("Icon.triangle-alert", "warning"),
-            MessageDialogKind.Error    => ("Icon.circle-alert", "error"),
+            MessageDialogKind.Success => ("Icon.circle-check", "success"),
+            MessageDialogKind.Warning => ("Icon.triangle-alert", "warning"),
+            MessageDialogKind.Error => ("Icon.circle-alert", "error"),
             MessageDialogKind.Question => ("Icon.circle-help", "question"),
-            _                          => ("Icon.info", "info")
+            _ => ("Icon.info", "info")
         };
         KindIcon.Data = this.FindResource(iconKey) as Geometry;
         KindIcon.Classes.Add(kindClass);

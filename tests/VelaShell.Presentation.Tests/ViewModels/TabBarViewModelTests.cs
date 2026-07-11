@@ -31,7 +31,7 @@ public sealed class TabBarViewModelTests
     {
         var vm = new TabBarViewModel();
         vm.AddTabCommand.Execute().Subscribe();
-        var tab = vm.Tabs[0];
+        TabViewModel tab = vm.Tabs[0];
 
         vm.CloseTabCommand.Execute(tab).Subscribe();
 

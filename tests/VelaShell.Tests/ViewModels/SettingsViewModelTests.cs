@@ -1,10 +1,10 @@
 using System.Reactive.Linq;
 using NSubstitute;
-using VelaShell.ViewModels;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Services;
 using VelaShell.Core.Ssh;
+using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;
 
@@ -39,7 +39,7 @@ public class SettingsViewModelTests
         };
         _settingsService.GetSettingsAsync().Returns(settings);
 
-        var vm = CreateVm();
+        SettingsViewModel vm = CreateVm();
         await vm.LoadCommand.Execute().FirstAsync();
 
         Assert.AreEqual("zh-CN", vm.Language);
@@ -56,7 +56,7 @@ public class SettingsViewModelTests
     [TestCategory("Settings")]
     public async Task SaveCommand_PersistsToService()
     {
-        var vm = CreateVm();
+        SettingsViewModel vm = CreateVm();
         vm.Language = "zh-CN";
         vm.Theme = "light";
         vm.TerminalFont = "Cascadia Code";
@@ -84,7 +84,7 @@ public class SettingsViewModelTests
     [TestCategory("Settings")]
     public async Task SaveCommand_AppliesTheme()
     {
-        var vm = CreateVm();
+        SettingsViewModel vm = CreateVm();
         vm.Theme = "light";
 
         await vm.SaveCommand.Execute().FirstAsync();
@@ -101,7 +101,7 @@ public class SettingsViewModelTests
         // Host and Username empty → SaveCommand not executable
         vm.Host = "";
         vm.Username = "";
-        var canExecute = false;
+        bool canExecute = false;
         vm.SaveCommand.CanExecute.Subscribe(x => canExecute = x);
 
         Assert.IsFalse(canExecute);
@@ -196,7 +196,7 @@ public class SettingsViewModelTests
 
         // Valid port
         vm.Port = 22;
-        var canExecute = false;
+        bool canExecute = false;
         vm.SaveCommand.CanExecute.Subscribe(x => canExecute = x);
         Assert.IsTrue(canExecute);
 

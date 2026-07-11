@@ -427,7 +427,7 @@ public sealed class TerminalEmulator : IVtActions
                     }
                 }
                 break;
-            // 4 (palette), 8 (hyperlink) intentionally accepted-and-ignored for now.
+                // 4 (palette), 8 (hyperlink) intentionally accepted-and-ignored for now.
         }
     }
 
@@ -618,7 +618,7 @@ public sealed class TerminalEmulator : IVtActions
             return;
         }
         bool set = final == 'h';
-        if (final != 'h' && final != 'l')
+        if (final is not 'h' and not 'l')
         {
             return;
         }
@@ -918,21 +918,21 @@ public sealed class TerminalEmulator : IVtActions
         switch (kind)
         {
             case 5 when i + 2 < p.Count:
-            {
-                if (Type.SupportsColor())
                 {
-                    target = TerminalColor.FromIndex(p[i + 2]);
+                    if (Type.SupportsColor())
+                    {
+                        target = TerminalColor.FromIndex(p[i + 2]);
+                    }
+                    return i + 2;
                 }
-                return i + 2;
-            }
             case 2 when i + 4 < p.Count:
-            {
-                if (Type.SupportsColor())
                 {
-                    target = TerminalColor.FromRgb((byte)p[i + 2], (byte)p[i + 3], (byte)p[i + 4]);
+                    if (Type.SupportsColor())
+                    {
+                        target = TerminalColor.FromRgb((byte)p[i + 2], (byte)p[i + 3], (byte)p[i + 4]);
+                    }
+                    return i + 4;
                 }
-                return i + 4;
-            }
             default:
                 return i + 1;
         }
@@ -1028,10 +1028,10 @@ public sealed class TerminalEmulator : IVtActions
     {
         var cell = new TerminalCell { Rune = 'E', Foreground = _fg, Background = _bg, Flags = _flags };
         for (int y = 0; y < Screen.Rows; y++)
-        for (int x = 0; x < Screen.Columns; x++)
-        {
-            Screen.SetCell(x, y, cell);
-        }
+            for (int x = 0; x < Screen.Columns; x++)
+            {
+                Screen.SetCell(x, y, cell);
+            }
     }
 
     private void SoftReset()
@@ -1163,7 +1163,7 @@ public sealed class TerminalEmulator : IVtActions
                 sb.Append(isForeground ? ";38;2;" : ";48;2;")
                   .Append(color.R).Append(';').Append(color.G).Append(';').Append(color.B);
                 break;
-            // Default:SGR 0 已覆盖,无需追加。
+                // Default:SGR 0 已覆盖,无需追加。
         }
     }
 

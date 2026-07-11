@@ -5,8 +5,8 @@ using System.Text;
 using Avalonia;
 using Avalonia.Logging;
 using ReactiveUI.Avalonia;
-using VelaShell.Logging;
 using VelaShell.Infrastructure.Persistence;
+using VelaShell.Logging;
 using Velopack;
 
 // ReSharper disable InconsistentNaming

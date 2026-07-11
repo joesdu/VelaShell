@@ -11,7 +11,7 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
-        var action = service.Resolve(
+        ShortcutAction action = service.Resolve(
             KeyModifiers.Ctrl | KeyModifiers.Shift,
             KeyCode.C,
             ShortcutContext.Terminal);
@@ -25,7 +25,7 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
-        var action = service.Resolve(
+        ShortcutAction action = service.Resolve(
             KeyModifiers.Ctrl | KeyModifiers.Shift,
             KeyCode.V,
             ShortcutContext.Terminal);
@@ -39,7 +39,7 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
-        var action = service.Resolve(KeyModifiers.Ctrl, KeyCode.T, ShortcutContext.Global);
+        ShortcutAction action = service.Resolve(KeyModifiers.Ctrl, KeyCode.T, ShortcutContext.Global);
 
         Assert.AreEqual(ShortcutAction.NewTab, action);
     }
@@ -50,7 +50,7 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
-        var action = service.Resolve(KeyModifiers.Ctrl, KeyCode.W, ShortcutContext.Global);
+        ShortcutAction action = service.Resolve(KeyModifiers.Ctrl, KeyCode.W, ShortcutContext.Global);
 
         Assert.AreEqual(ShortcutAction.CloseTab, action);
     }
@@ -61,7 +61,7 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
-        var action = service.Resolve(KeyModifiers.Ctrl, KeyCode.C, ShortcutContext.Terminal);
+        ShortcutAction action = service.Resolve(KeyModifiers.Ctrl, KeyCode.C, ShortcutContext.Terminal);
 
         Assert.AreEqual(ShortcutAction.SendInterrupt, action);
     }
@@ -72,7 +72,7 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: true);
 
-        var action = service.Resolve(KeyModifiers.Meta, KeyCode.C, ShortcutContext.Terminal);
+        ShortcutAction action = service.Resolve(KeyModifiers.Meta, KeyCode.C, ShortcutContext.Terminal);
 
         Assert.AreEqual(ShortcutAction.Copy, action);
     }
@@ -83,7 +83,7 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: true);
 
-        var action = service.Resolve(KeyModifiers.Meta, KeyCode.V, ShortcutContext.Terminal);
+        ShortcutAction action = service.Resolve(KeyModifiers.Meta, KeyCode.V, ShortcutContext.Terminal);
 
         Assert.AreEqual(ShortcutAction.Paste, action);
     }
@@ -94,7 +94,7 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: true);
 
-        var action = service.Resolve(KeyModifiers.Meta, KeyCode.T, ShortcutContext.Global);
+        ShortcutAction action = service.Resolve(KeyModifiers.Meta, KeyCode.T, ShortcutContext.Global);
 
         Assert.AreEqual(ShortcutAction.NewTab, action);
     }
@@ -105,7 +105,7 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: true);
 
-        var action = service.Resolve(KeyModifiers.Ctrl, KeyCode.C, ShortcutContext.Terminal);
+        ShortcutAction action = service.Resolve(KeyModifiers.Ctrl, KeyCode.C, ShortcutContext.Terminal);
 
         Assert.AreEqual(ShortcutAction.SendInterrupt, action);
     }
@@ -116,7 +116,7 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
-        var action = service.Resolve(KeyModifiers.Ctrl, KeyCode.Tab, ShortcutContext.Global);
+        ShortcutAction action = service.Resolve(KeyModifiers.Ctrl, KeyCode.Tab, ShortcutContext.Global);
 
         Assert.AreEqual(ShortcutAction.NextTab, action);
     }
@@ -127,7 +127,7 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
-        var action = service.Resolve(
+        ShortcutAction action = service.Resolve(
             KeyModifiers.Ctrl | KeyModifiers.Shift,
             KeyCode.Tab,
             ShortcutContext.Global);
@@ -141,7 +141,7 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
-        var action = service.Resolve(KeyModifiers.Ctrl, KeyCode.Comma, ShortcutContext.Global);
+        ShortcutAction action = service.Resolve(KeyModifiers.Ctrl, KeyCode.Comma, ShortcutContext.Global);
 
         Assert.AreEqual(ShortcutAction.OpenSettings, action);
     }
@@ -152,7 +152,7 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: true);
 
-        var action = service.Resolve(KeyModifiers.Meta, KeyCode.Comma, ShortcutContext.Global);
+        ShortcutAction action = service.Resolve(KeyModifiers.Meta, KeyCode.Comma, ShortcutContext.Global);
 
         Assert.AreEqual(ShortcutAction.OpenSettings, action);
     }
@@ -163,7 +163,7 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
-        var action = service.Resolve(KeyModifiers.Alt, KeyCode.T, ShortcutContext.Global);
+        ShortcutAction action = service.Resolve(KeyModifiers.Alt, KeyCode.T, ShortcutContext.Global);
 
         Assert.AreEqual(ShortcutAction.None, action);
     }
@@ -185,8 +185,8 @@ public class KeyboardShortcutServiceTests
     {
         var service = new KeyboardShortcutService(isMacOS: false);
 
-        var newTab = service.Resolve(KeyModifiers.Ctrl, KeyCode.T, ShortcutContext.Terminal);
-        var closeTab = service.Resolve(KeyModifiers.Ctrl, KeyCode.W, ShortcutContext.Terminal);
+        ShortcutAction newTab = service.Resolve(KeyModifiers.Ctrl, KeyCode.T, ShortcutContext.Terminal);
+        ShortcutAction closeTab = service.Resolve(KeyModifiers.Ctrl, KeyCode.W, ShortcutContext.Terminal);
 
         Assert.AreEqual(ShortcutAction.NewTab, newTab);
         Assert.AreEqual(ShortcutAction.CloseTab, closeTab);

@@ -344,9 +344,9 @@ public sealed class ConnectionDiagnosticsService(
     private static bool HasStoredCredentials(SessionProfile profile) =>
         profile.AuthMethod switch
         {
-            AuthMethod.Password   => !string.IsNullOrEmpty(profile.Password),
+            AuthMethod.Password => !string.IsNullOrEmpty(profile.Password),
             AuthMethod.PrivateKey => !string.IsNullOrEmpty(profile.PrivateKeyPath),
-            _                     => false
+            _ => false
         };
 
     private static (string Title, string Description) ClassifyAuthFailure(SessionProfile profile, bool viaJump, string reason)

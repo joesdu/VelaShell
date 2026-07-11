@@ -1,4 +1,3 @@
-using SonnetDB.Documents;
 using SonnetDB.Model;
 using SonnetDB.Sql.Execution;
 using VelaShell.Core.Recording;

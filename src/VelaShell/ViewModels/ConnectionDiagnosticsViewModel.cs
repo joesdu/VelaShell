@@ -41,9 +41,9 @@ public sealed class DiagnosticStepItemViewModel(int index, string name) : Reacti
         DiagnosticStepStatus.Running => "… 检测中",
         DiagnosticStepStatus.Success => ElapsedMs is { } ms ? $"✓  {ms}ms" : "✓",
         DiagnosticStepStatus.Warning => "⚠",
-        DiagnosticStepStatus.Failed  => "✗",
+        DiagnosticStepStatus.Failed => "✗",
         DiagnosticStepStatus.Skipped => "⏸",
-        _                            => "—"
+        _ => "—"
     };
 
     public bool IsSuccess => Status == DiagnosticStepStatus.Success;
@@ -212,9 +212,9 @@ public class ConnectionDiagnosticsViewModel : ReactiveObject
             {
                 DiagnosticStepStatus.Success => "通过",
                 DiagnosticStepStatus.Warning => "警告",
-                DiagnosticStepStatus.Failed  => "失败",
+                DiagnosticStepStatus.Failed => "失败",
                 DiagnosticStepStatus.Skipped => "跳过",
-                _                            => "未执行"
+                _ => "未执行"
             };
             builder.Append($"{step.DisplayName,-24} [{status}]");
             if (step.ElapsedMs is { } ms)

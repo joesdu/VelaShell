@@ -39,33 +39,33 @@ public static class InputEncoder
         int mod = ModifierCode(mods);
         return key switch
         {
-            Key.Up       => Cursor('A', app, vt52, mod, alt),
-            Key.Down     => Cursor('B', app, vt52, mod, alt),
-            Key.Right    => Cursor('C', app, vt52, mod, alt),
-            Key.Left     => Cursor('D', app, vt52, mod, alt),
-            Key.Home     => Cursor('H', app, vt52, mod, alt),
-            Key.End      => Cursor('F', app, vt52, mod, alt),
-            Key.Insert   => Tilde(2, mod, alt),
-            Key.Delete   => Tilde(3, mod, alt),
-            Key.PageUp   => Tilde(5, mod, alt),
+            Key.Up => Cursor('A', app, vt52, mod, alt),
+            Key.Down => Cursor('B', app, vt52, mod, alt),
+            Key.Right => Cursor('C', app, vt52, mod, alt),
+            Key.Left => Cursor('D', app, vt52, mod, alt),
+            Key.Home => Cursor('H', app, vt52, mod, alt),
+            Key.End => Cursor('F', app, vt52, mod, alt),
+            Key.Insert => Tilde(2, mod, alt),
+            Key.Delete => Tilde(3, mod, alt),
+            Key.PageUp => Tilde(5, mod, alt),
             Key.PageDown => Tilde(6, mod, alt),
-            Key.Enter    => WithAlt(modes.NewLineMode ? "\r\n"u8.ToArray() : "\r"u8.ToArray(), alt),
-            Key.Tab      => shift ? Esc("[Z") : WithAlt([0x09], alt),
-            Key.Back     => WithAlt([ctrl ? (byte)0x08 : (byte)0x7F], alt),
-            Key.Escape   => WithAlt([0x1B], alt),
-            Key.F1       => Function(1, 'P', mod, alt, vt52),
-            Key.F2       => Function(2, 'Q', mod, alt, vt52),
-            Key.F3       => Function(3, 'R', mod, alt, vt52),
-            Key.F4       => Function(4, 'S', mod, alt, vt52),
-            Key.F5       => Tilde(15, mod, alt),
-            Key.F6       => Tilde(17, mod, alt),
-            Key.F7       => Tilde(18, mod, alt),
-            Key.F8       => Tilde(19, mod, alt),
-            Key.F9       => Tilde(20, mod, alt),
-            Key.F10      => Tilde(21, mod, alt),
-            Key.F11      => Tilde(23, mod, alt),
-            Key.F12      => Tilde(24, mod, alt),
-            _            => null
+            Key.Enter => WithAlt(modes.NewLineMode ? "\r\n"u8.ToArray() : "\r"u8.ToArray(), alt),
+            Key.Tab => shift ? Esc("[Z") : WithAlt([0x09], alt),
+            Key.Back => WithAlt([ctrl ? (byte)0x08 : (byte)0x7F], alt),
+            Key.Escape => WithAlt([0x1B], alt),
+            Key.F1 => Function(1, 'P', mod, alt, vt52),
+            Key.F2 => Function(2, 'Q', mod, alt, vt52),
+            Key.F3 => Function(3, 'R', mod, alt, vt52),
+            Key.F4 => Function(4, 'S', mod, alt, vt52),
+            Key.F5 => Tilde(15, mod, alt),
+            Key.F6 => Tilde(17, mod, alt),
+            Key.F7 => Tilde(18, mod, alt),
+            Key.F8 => Tilde(19, mod, alt),
+            Key.F9 => Tilde(20, mod, alt),
+            Key.F10 => Tilde(21, mod, alt),
+            Key.F11 => Tilde(23, mod, alt),
+            Key.F12 => Tilde(24, mod, alt),
+            _ => null
         };
     }
 
@@ -149,18 +149,18 @@ public static class InputEncoder
         }
         return key switch
         {
-            Key.Space                    => 0x00,
-            Key.OemOpenBrackets          => 0x1B, // Ctrl+[
+            Key.Space => 0x00,
+            Key.OemOpenBrackets => 0x1B, // Ctrl+[
             Key.OemBackslash or Key.Oem5 => 0x1C, // Ctrl+backslash
-            Key.OemCloseBrackets         => 0x1D,
-            Key.D2 when shift            => 0x00, // Ctrl+@
-            Key.D3                       => 0x1B,
-            Key.D4                       => 0x1C,
-            Key.D5                       => 0x1D,
-            Key.D6                       => 0x1E, // Ctrl+^
-            Key.D7                       => 0x1F, // Ctrl+_
-            Key.OemMinus                 => 0x1F,
-            _                            => null
+            Key.OemCloseBrackets => 0x1D,
+            Key.D2 when shift => 0x00, // Ctrl+@
+            Key.D3 => 0x1B,
+            Key.D4 => 0x1C,
+            Key.D5 => 0x1D,
+            Key.D6 => 0x1E, // Ctrl+^
+            Key.D7 => 0x1F, // Ctrl+_
+            Key.OemMinus => 0x1F,
+            _ => null
         };
     }
 }

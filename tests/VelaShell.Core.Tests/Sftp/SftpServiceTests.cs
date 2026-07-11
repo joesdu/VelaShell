@@ -355,7 +355,8 @@ public class SftpServiceTests
     {
         // Arrange
         SftpEntry mockFile = CreateMockSftpFile("file.txt", "/home/user/file.txt", 1024, false, "rw-r--r--")
-            with { UserId = 1000, GroupId = 1000 };
+            with
+        { UserId = 1000, GroupId = 1000 };
         _sftpClient.ListDirectoryAsync("/home/user", Arg.Any<CancellationToken>())
                    .Returns(Task.FromResult<IEnumerable<SftpEntry>>([mockFile]));
 

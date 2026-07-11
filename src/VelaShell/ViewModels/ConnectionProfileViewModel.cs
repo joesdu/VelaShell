@@ -3,10 +3,10 @@ using System.Reactive;
 using System.Reactive.Linq;
 using System.Security;
 using ReactiveUI;
-using VelaShell.Security;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Presentation.Services;
+using VelaShell.Security;
 
 namespace VelaShell.ViewModels;
 

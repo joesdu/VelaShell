@@ -1,9 +1,9 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
+using VelaShell.Core.Ssh;
 using VelaShell.ViewModels;
 using VelaShell.Views;
-using VelaShell.Core.Ssh;
 
 namespace VelaShell.Services;
 
