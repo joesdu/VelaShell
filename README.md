@@ -27,7 +27,7 @@ VelaShell 是一个使用 .NET 与 Avalonia 构建的桌面终端应用，支持
 | **当前版本** | `v0.0.5-beta`（活跃开发中） |
 | **平台** | Windows 10 / 11 · Linux · macOS（x64 / arm64） |
 | **运行时** | .NET 10 + Avalonia 12，Self-contained 发布（免装 Runtime） |
-| **许可证** | [MIT](LICENSE) · © 2026 VelaShell Contributors |
+| **许可证** | 双许可：[AGPL-3.0](LICENSE) / [商业授权](LICENSE-COMMERCIAL.md) · © 2026 VelaShell 作者及贡献者 |
 
 ---
 
@@ -243,7 +243,14 @@ dotnet test --logger "console;verbosity=detailed"
 
 ## 📄 许可证
 
-本项目采用 [MIT](LICENSE) 许可证。
+本项目采用**双许可(Dual License)**模式：
+
+- **[AGPL-3.0](LICENSE)(默认)**：自由使用、修改与分发，但衍生作品（含通过网络提供服务）**必须以相同许可证开放全部源代码**，并保留版权与捐赠信息。移除本项目信息后闭源售卖属于侵权行为，版权方将依法追究（DMCA 下架 / 诉讼）。
+- **[商业授权](LICENSE-COMMERCIAL.md)（付费，按需）**：需要闭源集成、闭源分发或企业合规无法接受 AGPL 时，可联系作者购买商业许可（📧 <dygood@outlook.com>，标题注明「Commercial License」）。
+
+**正版声明**：VelaShell 本体对所有个人与企业**永久免费**，唯一官方发布渠道为本仓库的 GitHub Releases；任何渠道的「收费版 VelaShell」均为盗版。「VelaShell」名称与 Logo 不在开源许可授权范围内，衍生版本不得使用本项目名称与标识宣传或售卖。
+
+向本项目提交贡献即表示同意贡献以 AGPL-3.0 授权，并授予版权方在商业许可下再许可该贡献的权利（详见 [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md) §3）。
 
 ---
 

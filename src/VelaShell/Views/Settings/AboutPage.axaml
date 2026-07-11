@@ -154,11 +154,14 @@
       </ItemsControl>
     </Border>
 
-    <!-- 版权 -->
+    <!-- 版权与正版声明(双许可,见仓库 LICENSE / LICENSE-COMMERCIAL.md) -->
     <StackPanel Spacing="2" HorizontalAlignment="Center" Margin="0,8,0,0">
       <TextBlock Classes="row-desc" Text="VelaShell - 现代化 SSH 终端" HorizontalAlignment="Center" />
-      <TextBlock Classes="row-desc" Text="Copyright © 2026 VelaShell Contributors" HorizontalAlignment="Center" />
-      <TextBlock Classes="row-desc" Text="基于 MIT 许可证开源发布" HorizontalAlignment="Center" />
+      <TextBlock Classes="row-desc" Text="Copyright © 2026 VelaShell 作者及贡献者" HorizontalAlignment="Center" />
+      <TextBlock Classes="row-desc" Text="双许可发布:AGPL-3.0 开源许可 / 商业授权(见仓库 LICENSE-COMMERCIAL.md)" HorizontalAlignment="Center" />
+      <TextBlock Classes="row-desc" HorizontalAlignment="Center"
+                 Foreground="{DynamicResource VelaAccentText}"
+                 Text="本软件永久免费;唯一官方渠道为 GitHub Releases,任何「收费版」均为盗版" />
     </StackPanel>
   </StackPanel>
 </UserControl>
