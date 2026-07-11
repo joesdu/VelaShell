@@ -154,6 +154,49 @@
       </ItemsControl>
     </Border>
 
+    <Border Classes="sep" />
+
+    <!-- 贡献者(设计 kGwqX,仅头像与名称):真实 GitHub 头像,点击跳转主页 -->
+    <StackPanel Spacing="2">
+      <TextBlock Classes="section-title" Text="贡献者" />
+      <TextBlock Classes="row-desc" Text="// 感谢以下贡献者的付出" />
+    </StackPanel>
+    <ItemsControl ItemsSource="{Binding Contributors}">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Orientation="Horizontal" Spacing="10" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:ContributorViewModel">
+          <Button Classes="link" Tag="{Binding Url}" Click="OnOpenLink"
+                  ToolTip.Tip="{Binding Url}">
+            <StackPanel Spacing="6" Width="72" HorizontalAlignment="Center">
+              <Border Width="36" Height="36" CornerRadius="18" ClipToBounds="True"
+                      Background="{DynamicResource VelaAccentDim}"
+                      HorizontalAlignment="Center">
+                <Panel>
+                  <!-- 头像未就绪/加载失败:首字母占位 -->
+                  <TextBlock Text="{Binding Initial}"
+                             FontSize="15" FontWeight="SemiBold"
+                             Foreground="{DynamicResource VelaAccent}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             IsVisible="{Binding !HasAvatar}" />
+                  <Image Source="{Binding Avatar}" Stretch="UniformToFill"
+                         IsVisible="{Binding HasAvatar}" />
+                </Panel>
+              </Border>
+              <TextBlock Text="{Binding Display}"
+                         FontFamily="{DynamicResource VelaTerminalFont}"
+                         FontSize="10" FontWeight="Medium"
+                         Foreground="{DynamicResource VelaTextSecondary}"
+                         HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
     <!-- 版权与正版声明(双许可,见仓库 LICENSE / LICENSE-COMMERCIAL.md) -->
     <StackPanel Spacing="2" HorizontalAlignment="Center" Margin="0,8,0,0">
       <TextBlock Classes="row-desc" Text="VelaShell - 现代化 SSH 终端" HorizontalAlignment="Center" />

@@ -291,6 +291,16 @@ public class SettingsViewModel : ReactiveObject
 
     public string AboutConfigPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VelaShell");
 
+    /// <summary>
+    /// 关于页贡献者(设计 kGwqX;数据来自仓库真实提交者,新增贡献者在此追加)。
+    /// 头像在 LoadAsync 时后台拉取。
+    /// </summary>
+    public ContributorViewModel[] Contributors { get; } =
+    [
+        new("joesdu"),
+        new("tsaiggo")
+    ];
+
     /// <summary>开源依赖(真实技术栈)。</summary>
     public DependencyInfo[] AboutDependencies { get; } =
     [
@@ -555,6 +565,12 @@ public class SettingsViewModel : ReactiveObject
         _previewed = false;
         // 已信任主机的地址脱敏每次打开设置都回到默认隐藏(不持久化,防截图泄露)。
         MaskKnownHostAddresses = true;
+
+        // 关于页贡献者头像:后台拉取,失败保留首字母占位,不阻塞设置载入。
+        foreach (ContributorViewModel contributor in Contributors)
+        {
+            _ = contributor.LoadAvatarAsync();
+        }
 
         if (Sync is not null)
         {
