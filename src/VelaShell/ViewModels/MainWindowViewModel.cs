@@ -506,6 +506,7 @@ public class MainWindowViewModel : ReactiveObject
             GetDefaultEditorPath = QueryDefaultEditorPathAsync,
             TransferOptions = _latestSettings?.Transfer ?? new TransferOptions(),
             ShowHiddenFiles = _latestSettings?.Transfer.ShowHiddenFiles ?? false,
+            ShowHiddenFilesToggled = PersistShowHiddenFiles,
             ServerDisplayName = serverName,
             AccentBrush = tab.Profile is { } p ? ConnectionAccent.BrushFor(p.Id) : null
         };
@@ -1323,6 +1324,7 @@ public class MainWindowViewModel : ReactiveObject
             return;
         }
         int maxRetries = Math.Max(1, settings.General.MaxRetries);
+        tab.MaxReconnectAttempts = maxRetries; // 全部自动重连路径共用同一权威值(设置审计 C-02)
         if (tab.ReconnectAttempts >= maxRetries)
         {
             return;
@@ -1563,7 +1565,6 @@ public class MainWindowViewModel : ReactiveObject
         control.CursorStyle = behavior.CursorStyle;
         control.CursorBlink = behavior.CursorBlink;
         control.BellMode = behavior.BellMode;
-        control.VisualBell = behavior.VisualBell;
         control.ScrollOnOutput = behavior.ScrollOnOutput;
         control.ScrollOnKeystroke = behavior.ScrollOnKeystroke;
         control.CopyOnSelect = behavior.CopyOnSelect;
@@ -1589,14 +1590,46 @@ public class MainWindowViewModel : ReactiveObject
         {
             ApplyLiveSettingsToOpenTabs(settings);
 
-            // 已打开的文件浏览器同步最新的传输选项(冲突策略/并发/带宽等)。
+            // 已打开的文件浏览器同步最新的传输选项(冲突策略/并发/带宽等)与
+            // “显示隐藏文件”状态(设置审计 C-04:设置中心与工具栏共用一个来源)。
             // 面板按会话缓存后,当前实例与全部缓存实例都要广播到。
             FileBrowser.TransferOptions = settings.Transfer;
+            FileBrowser.ShowHiddenFiles = settings.Transfer.ShowHiddenFiles;
             foreach (FileBrowserViewModel browser in _fileBrowserCache.Values)
             {
                 browser.TransferOptions = settings.Transfer;
+                browser.ShowHiddenFiles = settings.Transfer.ShowHiddenFiles;
             }
             return Disposable.Empty;
+        });
+    }
+
+    /// <summary>
+    /// 文件浏览器工具栏切换“显示隐藏文件”后写回持久化设置(设置审计 C-04),
+    /// 使设置中心与工具栏共用 Transfer.ShowHiddenFiles 这一个状态来源。
+    /// </summary>
+    private void PersistShowHiddenFiles(bool value)
+    {
+        if (_settingsService is null)
+        {
+            return;
+        }
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                AppSettings settings = await _settingsService.GetSettingsAsync().ConfigureAwait(false);
+                if (settings.Transfer.ShowHiddenFiles == value)
+                {
+                    return;
+                }
+                settings.Transfer.ShowHiddenFiles = value;
+                await _settingsService.SaveSettingsAsync(settings).ConfigureAwait(false);
+            }
+            catch
+            {
+                // 写回失败只影响下次启动的初始值,不打断当前浏览。
+            }
         });
     }
 

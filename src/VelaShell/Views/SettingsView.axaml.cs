@@ -35,4 +35,20 @@ public partial class SettingsView : Window
             BeginMoveDrag(e);
         }
     }
+
+    /// <summary>恢复默认是破坏性操作:先确认再执行,防止误点丢失全部设置(设置审计 C-11)。</summary>
+    private async void ResetToDefaults_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+        bool confirmed = await MessageDialog.ConfirmAsync(this, "恢复默认设置",
+                             "将把所有页面的设置恢复为出厂值(点击「保存设置」后才会写入磁盘)。确定继续吗?",
+                             danger: true);
+        if (confirmed)
+        {
+            _viewModel.ResetCommand.Execute().Subscribe();
+        }
+    }
 }

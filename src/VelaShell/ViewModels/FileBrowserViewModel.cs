@@ -77,7 +77,13 @@ public class FileBrowserViewModel : ReactiveObject
         CancelDeleteCommand = ReactiveCommand.Create(CancelDelete);
         ShowTransfersCommand = ReactiveCommand.Create(() => TransferSink?.ShowPanel());
         ToggleVisibilityCommand = ReactiveCommand.Create(ToggleVisibility);
-        ToggleHiddenFilesCommand = ReactiveCommand.Create(() => { ShowHiddenFiles = !ShowHiddenFiles; });
+        ToggleHiddenFilesCommand = ReactiveCommand.Create(() =>
+        {
+            ShowHiddenFiles = !ShowHiddenFiles;
+
+            // 工具栏切换写回持久化设置(设置审计 C-04):与设置中心共用同一状态来源。
+            ShowHiddenFilesToggled?.Invoke(ShowHiddenFiles);
+        });
         SortCommand = ReactiveCommand.Create<string>(ToggleSort);
     }
 
@@ -243,6 +249,12 @@ public class FileBrowserViewModel : ReactiveObject
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
+
+    /// <summary>
+    /// 工具栏切换“显示隐藏文件”后的回调(宿主用它把新值写回 Transfer.ShowHiddenFiles);
+    /// 仅由用户点击工具栏触发,宿主程序化赋值 <see cref="ShowHiddenFiles" /> 不触发。
+    /// </summary>
+    public Action<bool>? ShowHiddenFilesToggled { get; set; }
 
     /// <summary>Whether dotfiles are listed. Off by default per §6 (hidden-files toggle).</summary>
     public bool ShowHiddenFiles

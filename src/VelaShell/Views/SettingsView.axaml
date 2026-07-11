@@ -243,8 +243,9 @@
                 BorderBrush="{DynamicResource VelaBorderPrimary}"
                 BorderThickness="0,1,0,0">
           <Grid ColumnDefinitions="Auto,*,Auto">
+            <!-- 破坏性操作:点击后先弹确认框(代码后置),确认才执行 ResetCommand(设置审计 C-11)。 -->
             <Button Grid.Column="0" Classes="dlg-outline" Content="恢复默认"
-                    Command="{Binding ResetCommand}" VerticalAlignment="Center" />
+                    Click="ResetToDefaults_Click" VerticalAlignment="Center" />
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
                         VerticalAlignment="Center">
               <Button Classes="dlg-outline" Content="取消" Command="{Binding CancelCommand}" />

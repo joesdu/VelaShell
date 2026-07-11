@@ -109,12 +109,7 @@
                 SelectedItem="{Binding Keys.DefaultKeyName}"
                 VerticalAlignment="Center" />
     </Grid>
-    <Grid ColumnDefinitions="*,Auto">
-      <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="自动加载密钥到 Agent" />
-        <TextBlock Classes="row-desc" Text="// 规划中:ssh-agent 集成尚未接入,连接时直接读取密钥文件" />
-      </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Keys.AutoLoadToAgent}" VerticalAlignment="Center" />
-    </Grid>
+    <!-- 自动加载密钥到 Agent:Windows OpenSSH Agent/Pageant 集成未实现,暂不展示
+         (设置审计 R-06);当前连接时直接读取密钥文件。字段仍持久化,实现后恢复展示。 -->
   </StackPanel>
 </UserControl>

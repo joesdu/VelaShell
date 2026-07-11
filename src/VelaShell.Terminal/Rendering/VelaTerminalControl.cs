@@ -142,7 +142,9 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
                 InvalidateVisual();
             }
         }
-    } = "block";
+        // 默认值与设置模型(TerminalBehaviorOptions.CursorStyle)一致;运行时由
+        // ApplyLiveTerminalSettings 下发,这里不声明独立的业务默认值(设置审计 C-07)。
+    } = "bar";
 
     /// <summary>Whether the focused cursor blinks (设置 → 终端 → 光标闪烁).</summary>
     public bool CursorBlink
@@ -215,9 +217,6 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
 
     /// <summary>BEL handling: "system" (beep), "none" (silent) or "visual" (screen flash).</summary>
     public string BellMode { get; set; } = "system";
-
-    /// <summary>Force a screen flash instead of sound regardless of <see cref="BellMode" />.</summary>
-    public bool VisualBell { get; set; }
 
     /// <summary>
     /// Enables the OS input method (Chinese/Japanese/Korean composition). Off = the
@@ -469,8 +468,7 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
             return;
         }
         BellRang?.Invoke();
-        bool visual = VisualBell || BellMode == "visual";
-        if (visual)
+        if (BellMode == "visual")
         {
             _bellFlashUntil = DateTime.UtcNow.AddMilliseconds(120);
             InvalidateVisual();

@@ -20,7 +20,12 @@ public class SettingsService : ISettingsService
         _statePath = Path.Combine(basePath, "state.json");
     }
 
-    public async Task<AppSettings> GetSettingsAsync() => await _dataStore.LoadAsync<AppSettings>(_settingsPath).ConfigureAwait(false) ?? new AppSettings();
+    public async Task<AppSettings> GetSettingsAsync()
+    {
+        AppSettings settings = await _dataStore.LoadAsync<AppSettings>(_settingsPath).ConfigureAwait(false) ?? new AppSettings();
+        settings.Normalize();
+        return settings;
+    }
 
     public event Action<AppSettings>? SettingsSaved;
 

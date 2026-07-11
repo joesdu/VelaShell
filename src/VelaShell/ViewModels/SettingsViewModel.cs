@@ -17,7 +17,7 @@ public sealed record SettingsSection(string Name, string Icon);
 /// <summary>关于页的开源依赖条目(项目主页 + 许可证页面可点击跳转)。</summary>
 public sealed record DependencyInfo(string Name, string License, string Url, string LicenseUrl);
 
-/// <summary>快捷键页的分组与条目(只读展示,自定义键位后续版本提供)。</summary>
+/// <summary>快捷键参考页的分组与条目(纯展示;产品决定不提供自定义键位)。</summary>
 public sealed record ShortcutGroup(string Title, ShortcutItem[] Items);
 
 public sealed record ShortcutItem(string Label, string[] Keys);
@@ -78,16 +78,19 @@ public class SettingsViewModel : ReactiveObject
         ResetCommand = ReactiveCommand.Create(ResetToDefaults);
         SetAccentCommand = ReactiveCommand.Create<string>(hex => AccentColor = hex);
         ClearHistoryCommand = ReactiveCommand.CreateFromTask(ClearHistoryAsync);
-        CheckUpdatesCommand = ReactiveCommand.Create(() => { UpdateStatus = "当前已是最新版本"; });
+        // 更新服务尚未接入:如实提示,而不是伪装成“已检查且最新”(设置审计 R-01~R-03)。
+        CheckUpdatesCommand = ReactiveCommand.Create(() => { UpdateStatus = "自动更新服务尚未接入,请前往项目发布页获取新版本。"; });
     }
 
     // ———— 顶层字段(既有行为:保存后立即生效) ————
+    // 默认值一律与 AppSettings 模型保持一致(设置审计 C-05/C-06):
+    // VM 仅是绑定层,载入时会被 ApplyToViewModel 覆盖,不得自行声明业务默认值。
 
     public string Language
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
-    } = "en";
+    } = new AppSettings().Language;
 
     public string Theme
     {
@@ -111,7 +114,7 @@ public class SettingsViewModel : ReactiveObject
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
-    } = 10000;
+    } = new AppSettings().ScrollbackLines;
 
     public int DefaultPort
     {
@@ -314,43 +317,44 @@ public class SettingsViewModel : ReactiveObject
         }
     }
 
-    /// <summary>快捷键页分组(设计 YQvri;只读展示)。</summary>
+    /// <summary>
+    /// 快捷键参考页分组(只读展示)。条目与真实绑定逐一核对
+    /// (MainWindow.axaml KeyBindings、KeyboardShortcutService、TerminalTabView、
+    /// RemoteFileEditorView,设置审计 C-10/R-14),不得列出未绑定的键位;
+    /// 新增/修改绑定时必须同步本表,长期方案是直接从绑定注册表生成。
+    /// </summary>
     public ShortcutGroup[] ShortcutGroups { get; } =
     [
         new("常规",
         [
-            new("新建连接", ["Ctrl", "N"]),
+            new("新建 SSH 连接", ["Ctrl", "N"]),
+            new("新建标签(同新建连接)", ["Ctrl", "T"]),
+            new("克隆当前会话", ["Ctrl", "Shift", "N"]),
             new("打开设置", ["Ctrl", ","]),
             new("命令面板", ["Ctrl", "K"]),
-            new("关闭标签页", ["Ctrl", "W"])
+            new("命令面板(等效)", ["Ctrl", "P"])
+        ]),
+        new("标签与面板",
+        [
+            new("关闭标签页", ["Ctrl", "W"]),
+            new("下一个标签页", ["Ctrl", "Tab"]),
+            new("上一个标签页", ["Ctrl", "Shift", "Tab"]),
+            new("切换文件浏览器", ["Ctrl", "Shift", "F"]),
+            new("隧道管理", ["Ctrl", "Shift", "T"])
         ]),
         new("终端",
         [
             new("复制", ["Ctrl", "Shift", "C"]),
             new("粘贴", ["Ctrl", "Shift", "V"]),
+            new("发送中断信号 ^C", ["Ctrl", "C"]),
             new("搜索终端内容", ["Ctrl", "F"]),
-            new("清屏", ["Ctrl", "L"])
-        ]),
-        new("会话管理",
-        [
-            new("新建连接", ["Ctrl", "N"]),
-            new("断开当前连接", ["Ctrl", "D"]),
-            new("重新连接", ["Ctrl", "Shift", "R"]),
-            new("切换到上一个会话", ["Ctrl", "Tab"])
+            new("弹出命令补全", ["Alt", "Enter"]),
+            new("断线后重新连接", ["Enter"]),
+            new("断线后重新连接(等效)", ["Ctrl", "R"])
         ]),
         new("文件操作",
         [
-            new("上传文件", ["Ctrl", "U"]),
-            new("下载文件", ["Ctrl", "Shift", "D"]),
-            new("切换文件浏览器", ["Ctrl", "B"])
-        ]),
-        new("窗口管理",
-        [
-            new("水平分屏", ["Ctrl", "Shift", "H"]),
-            new("垂直分屏", ["Ctrl", "Shift", "V"]),
-            new("关闭当前标签", ["Ctrl", "W"]),
-            new("全屏切换", ["F11"]),
-            new("切换侧边栏", ["Ctrl", "\\"])
+            new("远程编辑器内保存", ["Ctrl", "S"])
         ])
     ];
 
@@ -493,6 +497,7 @@ public class SettingsViewModel : ReactiveObject
             {
                 return false;
             }
+            imported.Normalize();
             _loaded = imported;
             ApplyToViewModel(imported);
             PreviewCurrent();

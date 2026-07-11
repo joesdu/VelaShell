@@ -10,8 +10,8 @@
       <TextBlock Classes="page-subtitle" Text="// 配置应用程序的基本行为" />
     </StackPanel>
 
-    <!-- 启动 -->
-    <TextBlock Classes="section-title" Text="启动" />
+    <!-- 启动与窗口 -->
+    <TextBlock Classes="section-title" Text="启动与窗口" />
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="开机自启动" />
@@ -28,18 +28,13 @@
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="启动时检查更新" />
-        <TextBlock Classes="row-desc" Text="// 暂不可用:自动更新通道尚未接入" />
-      </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding General.CheckUpdatesOnStartup}" VerticalAlignment="Center" />
-    </Grid>
-    <Grid ColumnDefinitions="*,Auto">
-      <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="关闭时最小化到托盘" />
-        <TextBlock Classes="row-desc" Text="// 点击关闭按钮时隐藏到系统托盘" />
+        <TextBlock Classes="row-desc" Text="// 点击关闭按钮时隐藏到系统托盘;经托盘菜单「退出」才真正退出" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding General.MinimizeToTray}" VerticalAlignment="Center" />
     </Grid>
+    <!-- 启动时检查更新 / 更新频道 / 自动下载:更新服务尚未接入,暂不展示(设置审计 R-01~R-03);
+         字段仍持久化,功能实现后恢复展示。 -->
 
     <Border Classes="sep" />
 
@@ -73,10 +68,6 @@
         <TextBlock Classes="row-label" FontSize="11" Text="心跳间隔(秒)" />
         <NumericUpDown Width="NaN" HorizontalAlignment="Stretch" Value="{Binding General.KeepAliveSeconds}" Minimum="0" Maximum="600" Increment="10" FormatString="0" />
       </StackPanel>
-      <StackPanel Grid.Row="2" Grid.Column="2" Spacing="5">
-        <TextBlock Classes="row-label" FontSize="11" Text="最大重试" />
-        <NumericUpDown Width="NaN" HorizontalAlignment="Stretch" Value="{Binding General.MaxRetries}" Minimum="0" Maximum="10" Increment="1" FormatString="0" />
-      </StackPanel>
     </Grid>
 
     <Border Classes="sep" />
@@ -90,17 +81,17 @@
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding General.SessionLogging}" VerticalAlignment="Center" />
     </Grid>
-    <Grid ColumnDefinitions="*,Auto">
+    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding General.SessionLogging}">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="日志保留天数" />
-        <TextBlock Classes="row-desc" Text="// 超过天数的日志将自动清理" />
+        <TextBlock Classes="row-label" Text="终端会话日志保留天数" />
+        <TextBlock Classes="row-desc" Text="// 超过天数的终端会话日志将自动清理;文件传输日志的保留天数在「文件传输」页单独设置" />
       </StackPanel>
       <NumericUpDown Grid.Column="1" Width="80" Value="{Binding General.LogRetentionDays}" Minimum="1" Maximum="365" Increment="1" FormatString="0" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="配置导入/导出" />
-        <TextBlock Classes="row-desc" Text="// 备份或迁移所有连接和设置" />
+        <TextBlock Classes="row-label" Text="设置导入/导出" />
+        <TextBlock Classes="row-desc" Text="// 仅备份或迁移应用设置;连接、分组、密钥与代码片段不包含在内" />
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
         <Button Classes="dlg-outline" Content="导出" Click="ExportSettings_Click" />
@@ -110,49 +101,45 @@
 
     <Border Classes="sep" />
 
-    <!-- 更新 -->
-    <TextBlock Classes="section-title" Text="更新" />
-    <Grid ColumnDefinitions="*,Auto">
-      <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="更新频道" />
-        <TextBlock Classes="row-desc" Text="// 暂不可用:自动更新通道尚未接入" />
-      </StackPanel>
-      <ComboBox Grid.Column="1" Width="140" IsEnabled="False" SelectedIndex="{Binding UpdateChannelIndex}" VerticalAlignment="Center">
-        <ComboBoxItem Content="稳定版" />
-        <ComboBoxItem Content="预览版" />
-      </ComboBox>
-    </Grid>
-    <Grid ColumnDefinitions="*,Auto">
-      <TextBlock Classes="row-label" Text="自动下载更新" VerticalAlignment="Center" />
-      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding General.AutoDownloadUpdates}" VerticalAlignment="Center" />
-    </Grid>
-
-    <Border Classes="sep" />
-
     <!-- 行为 -->
     <TextBlock Classes="section-title" Text="行为" />
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="关闭前确认" />
-        <TextBlock Classes="row-desc" Text="// 有活动会话时关闭窗口需确认" />
+        <TextBlock Classes="row-label" Text="退出应用前确认" />
+        <TextBlock Classes="row-desc" Text="// 有已连接会话时关闭窗口需确认;开启「最小化到托盘」后点关闭按钮只隐藏窗口,不触发本确认" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding General.ConfirmBeforeClose}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="断开连接时提醒" />
-        <TextBlock Classes="row-desc" Text="// 连接意外断开时显示通知" />
+        <TextBlock Classes="row-label" Text="连接断开时显示通知" />
+        <TextBlock Classes="row-desc" Text="// SSH 连接意外断开时在状态栏与标签上提醒" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding General.NotifyOnDisconnect}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="连接断开时播放声音" />
+        <TextBlock Classes="row-desc" Text="// SSH 连接意外断开时播放系统提示音;安全事件的提示音在「安全审计」页单独设置" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding General.SoundAlerts}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="自动重连" />
-        <TextBlock Classes="row-desc" Text="// 连接断开后自动尝试重新连接" />
+        <TextBlock Classes="row-desc" Text="// 连接意外断开后自动尝试重新连接(手动断开不重连)" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding General.AutoReconnect}" VerticalAlignment="Center" />
     </Grid>
-    <Grid ColumnDefinitions="*,Auto">
+    <!-- 自动重连的从属设置:父项关闭时隐藏,已保存值保留(设置审计 §10)。 -->
+    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding General.AutoReconnect}">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="最大自动重连次数" />
+        <TextBlock Classes="row-desc" Text="// 自动重连的最多尝试次数;与文件传输的失败重试无关" />
+      </StackPanel>
+      <NumericUpDown Grid.Column="1" Width="80" Value="{Binding General.MaxRetries}" Minimum="1" Maximum="20" Increment="1" FormatString="0" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding General.AutoReconnect}">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="重连间隔" />
         <TextBlock Classes="row-desc" Text="// 自动重连的等待时间(秒)" />
@@ -162,27 +149,10 @@
 
     <Border Classes="sep" />
 
-    <!-- 通知 -->
-    <TextBlock Classes="section-title" Text="通知" />
-    <Grid ColumnDefinitions="*,Auto">
-      <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="声音提示" />
-        <TextBlock Classes="row-desc" Text="// 重要事件时播放提示音" />
-      </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding General.SoundAlerts}" VerticalAlignment="Center" />
-    </Grid>
-
-    <Border Classes="sep" />
-
     <!-- 隐私与安全 -->
     <TextBlock Classes="section-title" Text="隐私与安全" />
-    <Grid ColumnDefinitions="*,Auto">
-      <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="主密码保护" />
-        <TextBlock Classes="row-desc" Text="// 规划中:当前凭据已用本机密钥(AES)加密存储" />
-      </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding General.MasterPasswordProtection}" VerticalAlignment="Center" />
-    </Grid>
+    <!-- 主密码保护:密钥派生/解锁/凭据迁移未实现,暂不展示(设置审计 R-04);
+         当前凭据已用本机密钥(AES)加密存储。 -->
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="记住密码" />
@@ -195,8 +165,9 @@
         <TextBlock Classes="row-label" Text="清除历史记录" />
         <TextBlock Classes="row-desc" Text="// 清除命令历史和最近连接记录" />
       </StackPanel>
+      <!-- 破坏性操作:点击后先弹确认框(代码后置),确认才执行(设置审计 §12)。 -->
       <Button Grid.Column="1" Classes="dlg-danger" Content="清除"
-              Command="{Binding ClearHistoryCommand}" VerticalAlignment="Center" />
+              Click="ClearHistory_Click" VerticalAlignment="Center" />
     </Grid>
     <TextBlock Classes="row-desc"
                Text="{Binding ClearHistoryStatus}"

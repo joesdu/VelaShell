@@ -10,24 +10,8 @@
       <TextBlock Classes="page-subtitle" Text="// 录制策略、信任策略与风险告警" />
     </StackPanel>
 
-    <!-- 会话录制 -->
-    <TextBlock Classes="section-title" Text="会话录制" />
-    <Grid ColumnDefinitions="*,Auto">
-      <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="默认录制所有生产会话" />
-        <TextBlock Classes="row-desc" Text="// 规划中:会话输出记录请先使用 常规 → 会话日志" />
-      </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Security.RecordProductionSessions}" VerticalAlignment="Center" />
-    </Grid>
-    <Grid ColumnDefinitions="*,Auto">
-      <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="输入脱敏" />
-        <TextBlock Classes="row-desc" Text="// 规划中:随会话录制一并提供" />
-      </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsEnabled="False" IsChecked="{Binding Security.MaskSensitiveInput}" VerticalAlignment="Center" />
-    </Grid>
-
-    <Border Classes="sep" />
+    <!-- 会话录制 / 输入脱敏:录制、存储与脱敏机制未实现,暂不展示(设置审计 R-11/R-12);
+         会话输出记录请先使用 常规 → 会话日志。字段仍持久化,功能实现后恢复展示。 -->
 
     <!-- 主机信任策略 -->
     <TextBlock Classes="section-title" Text="主机信任策略" />
@@ -57,8 +41,8 @@
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="提示音" />
-        <TextBlock Classes="row-desc" Text="// 安全事件时播放系统提示音" />
+        <TextBlock Classes="row-label" Text="安全事件发生时播放声音" />
+        <TextBlock Classes="row-desc" Text="// 主机指纹变更等安全事件时播放系统提示音;连接断开的提示音在「常规」页单独设置" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.AlertSound}" VerticalAlignment="Center" />
     </Grid>

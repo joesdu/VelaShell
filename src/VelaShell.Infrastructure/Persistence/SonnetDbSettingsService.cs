@@ -30,9 +30,11 @@ public sealed class SonnetDbSettingsService(SonnetDbEngine engine, IReadOnlyList
     {
         if (_settingsJsonCache is { } cached && SonnetDbJson.Deserialize<AppSettings>(cached) is { } fromCache)
         {
+            fromCache.Normalize();
             return fromCache;
         }
         AppSettings settings = await GetOrImportAsync<AppSettings>(SettingsDocId, "settings.json").ConfigureAwait(false);
+        settings.Normalize();
         _settingsJsonCache = SonnetDbJson.Serialize(settings);
         return settings;
     }

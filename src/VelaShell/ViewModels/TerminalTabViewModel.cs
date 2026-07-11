@@ -294,7 +294,15 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    public int MaxReconnectAttempts => 3;
+    /// <summary>
+    /// 最大自动重连次数,唯一来源是设置 → 常规 → 自动重连(General.MaxRetries),
+    /// 由宿主在断开处理时同步下发;默认值与设置模型一致,仅作未注入时的兜底。
+    /// </summary>
+    public int MaxReconnectAttempts
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = 3;
 
     public bool CanReconnect => ReconnectAttempts < MaxReconnectAttempts;
 

@@ -73,29 +73,25 @@
 
     <Border Classes="sep" />
 
-    <!-- 提示音与通知 -->
-    <TextBlock Classes="section-title" Text="提示音与通知" />
+    <!-- 响铃与标签提醒 -->
+    <TextBlock Classes="section-title" Text="响铃与标签提醒" />
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="终端 Bell" />
-        <TextBlock Classes="row-desc" Text="// 收到 Bell 字符时的行为" />
+        <TextBlock Classes="row-label" Text="终端响铃行为" />
+        <TextBlock Classes="row-desc" Text="// 远程程序发送 BEL 控制符时:播放系统提示音、不提示或屏幕闪烁" />
       </StackPanel>
       <ComboBox Grid.Column="1" Width="140" SelectedIndex="{Binding BellModeIndex}" VerticalAlignment="Center">
         <ComboBoxItem Content="系统提示音" />
-        <ComboBoxItem Content="静音" />
+        <ComboBoxItem Content="不提示" />
         <ComboBoxItem Content="视觉闪烁" />
       </ComboBox>
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
-      <TextBlock Classes="row-label" Text="标签闪烁提醒" VerticalAlignment="Center" />
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.TabFlashAlert}" VerticalAlignment="Center" />
-    </Grid>
-    <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="视觉闪烁" />
-        <TextBlock Classes="row-desc" Text="// 用屏幕闪烁代替声音提示" />
+        <TextBlock Classes="row-label" Text="后台标签响铃提醒" />
+        <TextBlock Classes="row-desc" Text="// 非活动标签收到响铃时闪烁标签提醒" />
       </StackPanel>
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.VisualBell}" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.TabFlashAlert}" VerticalAlignment="Center" />
     </Grid>
 
     <Border Classes="sep" />
