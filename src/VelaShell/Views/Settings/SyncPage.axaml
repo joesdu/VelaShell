@@ -1,0 +1,215 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:VelaShell.ViewModels"
+             xmlns:sync="using:VelaShell.Core.Sync"
+             xmlns:conv="using:VelaShell.Converters"
+             x:Class="VelaShell.Views.Settings.SyncPage"
+             x:DataType="vm:SettingsViewModel">
+
+  <StackPanel Spacing="14">
+    <StackPanel Spacing="2">
+      <TextBlock Classes="page-title" Text="云同步" />
+      <TextBlock Classes="page-subtitle" Text="// 通过 GitHub Gist 在多台设备间同步配置(支持版本历史)" />
+    </StackPanel>
+
+    <StackPanel Spacing="14" DataContext="{Binding Sync}" IsVisible="{Binding Converter={x:Static ObjectConverters.IsNotNull}}"
+                x:DataType="vm:SyncViewModel">
+
+      <TextBlock TextWrapping="Wrap" FontSize="12" LineHeight="20"
+                 Foreground="{DynamicResource VelaTextSecondary}"
+                 Text="同步数据保存在你自己 GitHub 账号下的一个私密 Gist 中,每次同步都会生成一个可回溯的历史版本。同一账号的多台设备使用相同的令牌与 Gist Id 即可无缝同步。" />
+
+      <!-- 账户与绑定 -->
+      <TextBlock Classes="section-title" Text="账户与绑定" />
+
+      <!-- 令牌获取指引:链接经代码后置在系统浏览器打开(Tag = URL)。 -->
+      <Border Background="{DynamicResource VelaBgActive}" CornerRadius="6" Padding="16,12">
+        <StackPanel Spacing="6">
+          <TextBlock FontSize="12" FontWeight="SemiBold"
+                     Foreground="{DynamicResource VelaAccent}"
+                     Text="如何获取 GitHub 令牌?" />
+          <!-- XML 属性值中的换行会被规范化为空格,分步文案用逐条 TextBlock 排版。 -->
+          <StackPanel Spacing="3">
+            <TextBlock TextWrapping="Wrap" FontSize="12" LineHeight="20"
+                       Foreground="{DynamicResource VelaTextSecondary}"
+                       Text="1. 点击下方「创建令牌」打开 GitHub 令牌页(已自动勾选所需的 gist 权限,需先登录 GitHub);" />
+            <TextBlock TextWrapping="Wrap" FontSize="12" LineHeight="20"
+                       Foreground="{DynamicResource VelaTextSecondary}"
+                       Text="2. 按需设置备注与有效期,点击 Generate token 生成;" />
+            <TextBlock TextWrapping="Wrap" FontSize="12" LineHeight="20"
+                       Foreground="{DynamicResource VelaTextSecondary}"
+                       Text="3. 复制以 ghp_ 开头的令牌,粘贴到下方输入框并保存配置。" />
+            <TextBlock TextWrapping="Wrap" FontSize="11" LineHeight="18"
+                       Foreground="{DynamicResource VelaTextMuted}"
+                       Text="令牌只在本机加密保存,绝不会随同步数据上传。" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="16">
+            <TextBlock FontSize="12" TextDecorations="Underline" Cursor="Hand"
+                       Foreground="{DynamicResource VelaAccentText}"
+                       Text="创建令牌(已预选 gist 权限)"
+                       ToolTip.Tip="https://github.com/settings/tokens/new?scopes=gist"
+                       Tag="https://github.com/settings/tokens/new?scopes=gist&amp;description=VelaShell%20Cloud%20Sync"
+                       PointerPressed="OpenLink_PointerPressed" />
+            <TextBlock FontSize="12" TextDecorations="Underline" Cursor="Hand"
+                       Foreground="{DynamicResource VelaAccentText}"
+                       Text="什么是 Gist?"
+                       ToolTip.Tip="https://docs.github.com/zh/get-started/writing-on-github/editing-and-sharing-content-with-gists/creating-gists"
+                       Tag="https://docs.github.com/zh/get-started/writing-on-github/editing-and-sharing-content-with-gists/creating-gists"
+                       PointerPressed="OpenLink_PointerPressed" />
+            <TextBlock FontSize="12" TextDecorations="Underline" Cursor="Hand"
+                       Foreground="{DynamicResource VelaAccentText}"
+                       Text="令牌官方文档"
+                       ToolTip.Tip="https://docs.github.com/zh/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens"
+                       Tag="https://docs.github.com/zh/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens"
+                       PointerPressed="OpenLink_PointerPressed" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2">
+          <TextBlock Classes="row-label" Text="启用云同步" />
+          <TextBlock Classes="row-desc" Text="// 关闭后不再进行任何自动或手动同步" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" IsChecked="{Binding Enabled}" VerticalAlignment="Center" />
+      </Grid>
+      <StackPanel Spacing="5">
+        <TextBlock Classes="row-label" Text="GitHub 令牌(PAT)" />
+        <TextBlock Classes="row-desc"
+                   Text="// 在 GitHub → Settings → Developer settings → Personal access tokens 创建,只需勾选 gist 权限;令牌经本机密钥加密存储,绝不上传" />
+        <Grid ColumnDefinitions="*,8,Auto">
+          <TextBox Grid.Column="0" PasswordChar="●" Text="{Binding TokenInput}"
+                   PlaceholderText="ghp_…(留空 = 保留已保存的令牌)" />
+          <TextBlock Grid.Column="2" FontSize="12" FontWeight="Medium" VerticalAlignment="Center"
+                     Foreground="{DynamicResource VelaAccent}"
+                     Text="已保存 ✓" IsVisible="{Binding HasSavedToken}" />
+        </Grid>
+      </StackPanel>
+      <StackPanel Spacing="5">
+        <TextBlock Classes="row-label" Text="Gist Id" />
+        <TextBlock Classes="row-desc"
+                   Text="// 留空:首次推送自动创建;其它设备把这里填成同一个 Id 即完成绑定" />
+        <TextBox Text="{Binding GistId}" PlaceholderText="首次推送后自动填入" />
+      </StackPanel>
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2">
+          <TextBlock Classes="row-label" Text="本设备名称" />
+          <TextBlock Classes="row-desc" Text="// 写入同步元数据,便于在版本历史中辨认改动来自哪台设备" />
+        </StackPanel>
+        <TextBox Grid.Column="1" Width="180" Text="{Binding DeviceName}" VerticalAlignment="Center" />
+      </Grid>
+
+      <Border Classes="sep" />
+
+      <!-- 安全 -->
+      <TextBlock Classes="section-title" Text="端到端加密(推荐)" />
+      <StackPanel Spacing="5">
+        <TextBlock Classes="row-desc" TextWrapping="Wrap"
+                   Text="// 设置同步口令后,数据先在本机 AES-256-GCM 加密再上传,GitHub 侧只见密文,且连接密码才会随载荷同步;未设口令时密码与私钥口令绝不上传。各设备需填写相同口令。" />
+        <Grid ColumnDefinitions="*,8,Auto">
+          <TextBox Grid.Column="0" PasswordChar="●" Text="{Binding PassphraseInput}"
+                   PlaceholderText="同步口令(留空 = 保留已保存的口令)" />
+          <TextBlock Grid.Column="2" FontSize="12" FontWeight="Medium" VerticalAlignment="Center"
+                     Foreground="{DynamicResource VelaAccent}"
+                     Text="已保存 ✓" IsVisible="{Binding HasSavedPassphrase}" />
+        </Grid>
+        <TextBlock Classes="row-desc" TextWrapping="Wrap"
+                   IsVisible="{Binding HasSavedPassphrase}"
+                   Text="✓ 端到端加密已启用:该 Gist 的数据为密文,口令已加密保存在本机;其他设备需填写相同口令,输入新口令并保存配置可更换" />
+      </StackPanel>
+
+      <Border Classes="sep" />
+
+      <!-- 同步范围与行为 -->
+      <TextBlock Classes="section-title" Text="同步范围" />
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Classes="row-label" Text="应用设置" VerticalAlignment="Center" />
+        <ToggleSwitch Grid.Column="1" IsChecked="{Binding SyncAppSettings}" VerticalAlignment="Center" />
+      </Grid>
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2">
+          <TextBlock Classes="row-label" Text="连接配置" />
+          <TextBlock Classes="row-desc" Text="// 服务器连接、分组与端口转发隧道;本地独有的连接不会被云端删除" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" IsChecked="{Binding SyncProfiles}" VerticalAlignment="Center" />
+      </Grid>
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Classes="row-label" Text="代码片段" VerticalAlignment="Center" />
+        <ToggleSwitch Grid.Column="1" IsChecked="{Binding SyncSnippets}" VerticalAlignment="Center" />
+      </Grid>
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2">
+          <TextBlock Classes="row-label" Text="自动同步" />
+          <TextBlock Classes="row-desc" Text="// 启动时自动拉取;保存设置后自动推送(有改动才会产生新版本)" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" IsChecked="{Binding AutoSync}" VerticalAlignment="Center" />
+      </Grid>
+
+      <Border Classes="sep" />
+
+      <!-- 操作 -->
+      <TextBlock Classes="section-title" Text="操作" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Classes="dlg-primary" Content="保存同步配置" Command="{Binding SaveConfigCommand}" />
+        <Button Classes="dlg-outline" Content="立即同步" Command="{Binding SyncNowCommand}"
+                ToolTip.Tip="自动判断方向:本地新则推送,云端新则拉取,双端都改按较新者胜(旧数据可从版本历史找回)" />
+        <Button Classes="dlg-outline" Content="仅推送" Command="{Binding PushCommand}"
+                ToolTip.Tip="强制把本机数据上传为云端最新版本" />
+        <Button Classes="dlg-outline" Content="仅拉取" Command="{Binding PullCommand}"
+                ToolTip.Tip="强制应用云端最新版本到本机" />
+      </StackPanel>
+      <TextBlock Classes="row-desc" Text="{Binding LastSyncText}" />
+      <TextBlock Classes="row-desc" TextWrapping="Wrap"
+                 Foreground="{DynamicResource VelaAccentText}"
+                 Text="{Binding Status}"
+                 IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+      <Border Classes="sep" />
+
+      <!-- 版本历史 -->
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2">
+          <TextBlock Classes="section-title" Text="版本历史" />
+          <TextBlock Classes="row-desc" Text="// 每次同步都是一个 Gist 修订版本;恢复旧版本会作为新版本推送,历史永不丢失" />
+        </StackPanel>
+        <Button Grid.Column="1" Classes="dlg-outline" Content="刷新历史"
+                Command="{Binding LoadRevisionsCommand}" VerticalAlignment="Center" />
+      </Grid>
+      <Border Classes="table" IsVisible="{Binding HasRevisions}">
+        <ScrollViewer MaxHeight="260" VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding Revisions}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="sync:GistRevision">
+                <Border Padding="12,8"
+                        BorderBrush="{DynamicResource VelaBorderPrimary}"
+                        BorderThickness="0,0,0,1">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock FontSize="12" FontWeight="Medium"
+                                   Foreground="{DynamicResource VelaTextPrimary}"
+                                   Text="{Binding DeviceName, Mode=OneWay, TargetNullValue=未知设备}" />
+                        <TextBlock FontSize="10" VerticalAlignment="Center"
+                                   FontFamily="{DynamicResource VelaTerminalFont}"
+                                   Foreground="{DynamicResource VelaTextMuted}"
+                                   Text="{Binding Version, Mode=OneWay, Converter={x:Static conv:ShortShaConverter.Instance}}" />
+                      </StackPanel>
+                      <TextBlock FontSize="10" Foreground="{DynamicResource VelaTextMuted}">
+                        <Run Text="{Binding CommittedAtUtc, Mode=OneWay, Converter={x:Static conv:UtcToLocalTextConverter.Instance}}" />
+                        <Run Text="  +" /><Run Text="{Binding Additions, Mode=OneWay}" />
+                        <Run Text=" -" /><Run Text="{Binding Deletions, Mode=OneWay}" />
+                      </TextBlock>
+                    </StackPanel>
+                    <Button Grid.Column="1" Classes="dlg-outline" Content="恢复到此版本"
+                            VerticalAlignment="Center"
+                            Command="{Binding $parent[ItemsControl].((vm:SyncViewModel)DataContext).RestoreRevisionCommand}"
+                            CommandParameter="{Binding}" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Border>
+    </StackPanel>
+  </StackPanel>
+</UserControl>

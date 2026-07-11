@@ -15,6 +15,7 @@ using VelaShell.Core.Localization;
 using VelaShell.Core.Models;
 using VelaShell.Core.Services;
 using VelaShell.Core.Ssh;
+using VelaShell.Core.Sync;
 using VelaShell.Infrastructure.DependencyInjection;
 using VelaShell.Presentation.DependencyInjection;
 using VelaShell.ViewModels;
@@ -25,6 +26,7 @@ public class App : Application
 {
     private ServiceProvider? _serviceProvider;
     private AppSettings? _startupSettings;
+    private CancellationTokenSource? _syncDebounce;
     private IThemeService? _themeService;
     private TrayIconService? _trayIconService;
 
@@ -104,6 +106,12 @@ public class App : Application
                     });
             }
 
+            // 云同步(设置 → 云同步):启动后台拉取一次;设置保存后标记本地改动并防抖推送。
+            if (_serviceProvider?.GetService<IGistSyncService>() is { } syncService)
+            {
+                WireAutoSync(syncService, _serviceProvider.GetService<ISettingsService>());
+            }
+
             // 退出时释放容器,确保 SonnetDB 引擎正常关闭(WAL/段刷盘);
             // 并清理「默认编辑器打开」遗留的 remote-edit 临时文件。
             desktop.Exit += (_, _) =>
@@ -114,6 +122,65 @@ public class App : Application
             };
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// 自动同步接线(设置 → 云同步,开启“自动同步”时):
+    /// 启动后台执行一次智能同步(通常表现为拉取);设置保存后标记本地改动,
+    /// 防抖 5 秒再推送(应用远端数据触发的保存由服务内部的 IsApplyingRemote 过滤)。
+    /// 全部静默执行,失败不打扰用户 —— 下次手动同步时会看到具体错误。
+    /// </summary>
+    private void WireAutoSync(IGistSyncService syncService, ISettingsService? settingsService)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                SyncSettings config = await syncService.GetSyncSettingsAsync();
+                if (config is { Enabled: true, AutoSync: true })
+                {
+                    await syncService.SyncNowAsync();
+                }
+            }
+            catch
+            {
+                // 启动同步失败静默;设置页手动同步会给出错误详情。
+            }
+        });
+        if (settingsService is null)
+        {
+            return;
+        }
+        settingsService.SettingsSaved += saved =>
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await syncService.MarkLocalChangedAsync();
+                    SyncSettings config = await syncService.GetSyncSettingsAsync();
+                    if (config is not { Enabled: true, AutoSync: true })
+                    {
+                        return;
+                    }
+
+                    // 防抖:连续保存只推送最后一次。
+                    CancellationTokenSource cts = new();
+                    CancellationTokenSource? previous = Interlocked.Exchange(ref _syncDebounce, cts);
+                    previous?.Cancel();
+                    await Task.Delay(TimeSpan.FromSeconds(5), cts.Token);
+                    await syncService.SyncNowAsync(CancellationToken.None);
+                }
+                catch (OperationCanceledException)
+                {
+                    // 被更晚的保存取代,正常。
+                }
+                catch
+                {
+                    // 自动推送失败静默,手动同步可见错误。
+                }
+            });
+        };
     }
 
     /// <summary>

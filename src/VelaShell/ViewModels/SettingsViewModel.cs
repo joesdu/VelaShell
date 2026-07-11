@@ -8,6 +8,7 @@ using VelaShell.Core.Localization;
 using VelaShell.Core.Models;
 using VelaShell.Core.Services;
 using VelaShell.Core.Ssh;
+using VelaShell.Core.Sync;
 
 namespace VelaShell.ViewModels;
 
@@ -58,7 +59,8 @@ public class SettingsViewModel : ReactiveObject
         ISshKeyService? sshKeyService = null,
         IRecentConnectionService? recentConnections = null,
         ISettingsPreviewService? previewService = null,
-        IHostKeyService? hostKeyService = null)
+        IHostKeyService? hostKeyService = null,
+        IGistSyncService? gistSyncService = null)
     {
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
@@ -79,6 +81,7 @@ public class SettingsViewModel : ReactiveObject
             });
         SshKeys = new(sshKeyService);
         Snippets = appDataStore is null ? null : new QuickCommandsViewModel(appDataStore);
+        Sync = gistSyncService is null ? null : new SyncViewModel(gistSyncService);
         RemoveKnownHostCommand = ReactiveCommand.CreateFromTask<KnownHost>(RemoveKnownHostAsync);
         LoadCommand = ReactiveCommand.CreateFromTask(LoadAsync);
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync);
@@ -218,6 +221,9 @@ public class SettingsViewModel : ReactiveObject
     /// <summary>代码片段页(quick_commands 集合);无存储时为 null。</summary>
     public QuickCommandsViewModel? Snippets { get; }
 
+    /// <summary>云同步页(GitHub Gist 多端同步);无同步服务时为 null。</summary>
+    public SyncViewModel? Sync { get; }
+
     /// <summary>Left-nav sections per design §14.</summary>
     public SettingsSection[] Sections { get; } =
     [
@@ -231,6 +237,7 @@ public class SettingsViewModel : ReactiveObject
         new("文件传输", "M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3 5 6.99h3V14h2V6.99h3L9 3z"),
         new("安全审计", "M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"),
         new("代码片段", "M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"),
+        new("云同步", "M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"),
         new("关于", "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"),
         new("支持与捐赠", "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z")
     ];
@@ -548,6 +555,11 @@ public class SettingsViewModel : ReactiveObject
         _previewed = false;
         // 已信任主机的地址脱敏每次打开设置都回到默认隐藏(不持久化,防截图泄露)。
         MaskKnownHostAddresses = true;
+
+        if (Sync is not null)
+        {
+            await Sync.LoadAsync();
+        }
 
         // 必须先填充密钥名列表再回填设置:“默认认证密钥”下拉是
         // SelectedItem TwoWay 绑定,ItemsSource 为空时回填值匹配不到会被

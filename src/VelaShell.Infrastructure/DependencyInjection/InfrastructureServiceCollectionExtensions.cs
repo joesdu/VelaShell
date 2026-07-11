@@ -7,6 +7,7 @@ using VelaShell.Core.Models;
 using VelaShell.Core.Services;
 using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;
+using VelaShell.Core.Sync;
 using VelaShell.Core.Tunnels;
 using VelaShell.Infrastructure.Persistence;
 using VelaShell.Infrastructure.Ssh;
@@ -97,6 +98,14 @@ public static class InfrastructureServiceCollectionExtensions
             }, settingsService);
         });
         services.AddSingleton<ITransferManager, TransferManager>();
+
+        // Gist 云同步(设置 → 云同步):设置/连接(含隧道)/代码片段的多端同步。
+        services.AddSingleton<IGistSyncService>(serviceProvider =>
+            new Sync.GistSyncService(
+                serviceProvider.GetRequiredService<ISettingsService>(),
+                serviceProvider.GetRequiredService<ISessionRepository>(),
+                serviceProvider.GetRequiredService<IAppDataStore>(),
+                serviceProvider.GetRequiredService<ISecretProtector>()));
         services.AddSingleton<ISessionMetricsService>(sp =>
             new SessionMetricsService(sp.GetRequiredService<ISshConnectionService>()));
         services.AddSingleton<ITunnelService>(serviceProvider =>
