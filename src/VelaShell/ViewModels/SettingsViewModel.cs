@@ -199,6 +199,16 @@ public class SettingsViewModel : ReactiveObject
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>
+    /// 已信任主机列表隐藏主机地址与端口(截图防泄露)。刻意不持久化:
+    /// 仅会话内状态,每次打开设置都恢复为隐藏,需手动关闭才显示明文。
+    /// </summary>
+    public bool MaskKnownHostAddresses
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = true;
+
     /// <summary>删除一条已信任主机指纹;下次连接该主机将重新执行首次指纹流程。</summary>
     public ReactiveCommand<KnownHost, Unit> RemoveKnownHostCommand { get; }
 
@@ -537,8 +547,15 @@ public class SettingsViewModel : ReactiveObject
         _baseline = JsonClone(_loaded);
         _saved = false;
         _previewed = false;
-        ApplyToViewModel(_loaded);
+        // 已信任主机的地址脱敏每次打开设置都回到默认隐藏(不持久化,防截图泄露)。
+        MaskKnownHostAddresses = true;
+
+        // 必须先填充密钥名列表再回填设置:“默认认证密钥”下拉是
+        // SelectedItem TwoWay 绑定,ItemsSource 为空时回填值匹配不到会被
+        // ComboBox 强制清成 null 并写回模型,已保存的选择就此丢失。
         await SshKeys.RefreshAsync();
+        ApplyToViewModel(_loaded);
+        this.RaisePropertyChanged(nameof(Keys)); // 列表就位后重新评估选中项
         await RefreshKnownHostsAsync();
         if (Snippets is not null && Snippets.AllCommands.Count <= 10)
         {

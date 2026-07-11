@@ -64,11 +64,21 @@ public class SshKeyManagerViewModel : ReactiveObject
         {
             List<SshKeyInfo> keys = await _keyService.ListKeysAsync();
             Keys.Clear();
-            KeyNames.Clear();
             foreach (SshKeyInfo key in keys)
             {
                 Keys.Add(key);
-                KeyNames.Add(key.Name);
+            }
+
+            // 名单没变就不动 KeyNames:它是“默认认证密钥”下拉的 ItemsSource,
+            // Clear 的瞬间 ComboBox 会把选中项清空并经 TwoWay 把 null 写回设置模型,
+            // 已选择的默认密钥会被无谓抹掉。
+            if (!keys.Select(k => k.Name).SequenceEqual(KeyNames))
+            {
+                KeyNames.Clear();
+                foreach (SshKeyInfo key in keys)
+                {
+                    KeyNames.Add(key.Name);
+                }
             }
             ApplyFilter();
         }

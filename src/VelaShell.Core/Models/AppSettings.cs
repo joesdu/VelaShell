@@ -572,11 +572,15 @@ public class SecurityOptions : ObservableOptions
 /// <summary>设置 - 密钥管理(设计 UBP59)。</summary>
 public class KeyOptions : ObservableOptions
 {
-    /// <summary>新建连接时默认使用的密钥名称(~/.ssh 下的文件名)。</summary>
+    /// <summary>
+    /// 新建连接时默认使用的密钥名称(~/.ssh 下的文件名)。null 归一为空串:
+    /// “默认认证密钥”下拉在列表未就位/密钥被删除时会把 SelectedItem=null 写回来,
+    /// 不允许它破坏模型的非空不变量。
+    /// </summary>
     public string DefaultKeyName
     {
         get;
-        set => Set(ref field, value);
+        set => Set(ref field, value ?? "");
     } = "";
 
     /// <summary>规划中(ssh-agent 集成):仅持久化,当前无运行时消费者,不出现在设置界面(设置审计 R-06)。</summary>
