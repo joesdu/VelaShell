@@ -315,7 +315,6 @@ public class SettingsViewModel : ReactiveObject
     [
         new("Avalonia UI", "MIT", "https://github.com/AvaloniaUI/Avalonia", "https://github.com/AvaloniaUI/Avalonia/blob/main/licence.md"),
         new("SSH.NET", "MIT", "https://github.com/sshnet/SSH.NET", "https://github.com/sshnet/SSH.NET/blob/develop/LICENSE"),
-        new("Dock.Avalonia", "MIT", "https://github.com/wieslawsoltes/Dock", "https://github.com/wieslawsoltes/Dock/blob/master/LICENSE.TXT"),
         new("ReactiveUI", "MIT", "https://github.com/reactiveui/ReactiveUI", "https://github.com/reactiveui/ReactiveUI/blob/main/LICENSE"),
         new("SonnetDB", "MIT", "https://github.com/IoTSharp/SonnetDB", "https://github.com/IoTSharp/SonnetDB/blob/main/LICENSE"),
         new("Velopack", "MIT", "https://github.com/velopack/velopack", "https://github.com/velopack/velopack/blob/develop/LICENSE")

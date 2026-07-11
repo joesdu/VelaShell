@@ -10,7 +10,7 @@
 | .NET     | net10.0                                                                                                                                              |
 | UI 框架  | **Avalonia 12.0.5**(已从 11.x 升级)                                                                                                                  |
 | MVVM     | ReactiveUI 23.2.28 / ReactiveUI.Avalonia 12.0.3                                                                                                      |
-| 停靠框架 | Dock.Avalonia 12.0.0.2(+ Themes.Fluent、Model.ReactiveUI)                                                                                            |
+| 停靠框架 | **自研 VelaDock**(`src/VelaShell/Docking/`,零第三方依赖;已替换 Dock.Avalonia,见 `docs/dock-replacement-plan.md`)                                     |
 | SSH/SFTP | SSH.NET 2025.1.0                                                                                                                                     |
 | 持久化   | **SonnetDB.Core 3.0.0 嵌入式多模型数据库**(`%LocalAppData%/VelaShell/sonnetdb`;文档集合 + 时序 measurement;旧 JSON 首次运行一次性导入;LiteDB 已移除) |
 | 打包     | Velopack 1.2.0                                                                                                                                       |
@@ -49,13 +49,14 @@ tests/  6 个 MSTest 项目(见 §7)
 - **连接持久化**:`ConnectionWorkflowService.SaveProfileAsync`→`SonnetDbSessionRepository`(SonnetDB `session_profiles` 集合,密码 AES-256 加密);`MainWindowViewModel.InitializeAsync` 启动时加载侧栏"最近连接"(SonnetDB `conn_history` 时序)与会话树;侧栏最近项**双击重连**;命令面板也可连。
 - **新建连接密码框仅限 ASCII**:`Behaviors/AsciiOnlyInput.cs` 拦截 IME/中文 TextInput + VM setter 剥离粘贴的非 ASCII。
 
-## 5. 停靠 / 分屏(Dock.Avalonia)
+## 5. 停靠 / 分屏(自研 VelaDock,已替换 Dock.Avalonia)
 
-- `Docking/TerminalDocument.cs`(包装 `TerminalTabViewModel`)、`Docking/TerminalDockFactory.cs`(RootDock→DocumentDock,`AddTerminal`/`OnDockableClosed`)。
-- `MainWindow.axaml` 用 `<dock:DockControl Layout="{Binding Layout}">` 承载,`TerminalDocument`→`TerminalTabView` 模板。标签可拖动重排、**撕出成浮动窗口**、**边缘拖放二分/四分分屏**。
-- `Controls/ReparentingHost.cs` — 解决分屏/撕下时"同一控件被两个 ContentPresenter 领养"崩溃:自绘终端控件是共享单实例,该 Decorator 在挂载时先从旧父级摘除再领养,保证任一时刻只有一个父级。
-- `App.axaml` 挂 `DockFluentTheme` + `Themes/DockStyles.axaml`(token 覆盖)。
-- `Logging/FilteringLogSink.cs` — 过滤 Dock 的无害 `DockCapability … Value is null` 绑定诊断噪音(仅丢弃 Binding 区域含该标记的消息,其余透传)。
+- **模型层** `Docking/Model/`(纯 INPC,可单测):`DockWorkspace`(结构操作 + `DocumentClosed`/`ActiveDocumentChanged` 事件)、`DockGroup`(标签组,主组不折叠)、`DockSplit`(分栏树)、`DockDocument`;空的次级组自动折叠、单子分栏自动提升。方案与集成面分析见 `docs/dock-replacement-plan.md`。
+- **控件层** `Docking/Controls/`:`DockWorkspaceControl`(按树渲染 Grid+GridSplitter,star ↔ Proportion 回写;**按文档缓存视图**,切标签复用同一 `TerminalTabView`,取代原 ControlRecycling)、`DockGroupControl`(标签条 + 溢出三连钮 + 标签列表下拉)、`DockTabItem`(标签视觉 + 右键菜单:关闭系列/水平垂直拆分/标签位置)、`DockDragController` + `DockDropOverlay`(拖拽重排插入线、跨组并入、五区拖放分屏,Esc 取消;浮动窗口按产品决策不存在)。
+- `Docking/TerminalDocument.cs` 包装 `TerminalTabViewModel`,实现 `IDockViewProvider` 自建视图。
+- `MainWindow.axaml` 用 `<dockc:DockWorkspaceControl Workspace="{Binding Layout}" />` 承载;`TabBar`(Ctrl+Tab/W 逻辑集合)与工作区激活态**双向同步**(原 Dock 集成缺 TabBar→文档区半边)。
+- `Controls/ReparentingHost.cs` — 沿用:内容宿主挂缓存视图前先从旧父级摘除,保证共享终端控件任一时刻只有一个父级。
+- `Themes/DockStyles.axaml` 保留全局通用样式(ToolTip/ContextMenu/MenuFlyout/tab-nav 等);标签视觉内联在 `DockTabItem.axaml`。
 
 ## 6. UI / 视图与设置
 
