@@ -76,16 +76,27 @@ All persistence goes through **SonnetDB** (https://github.com/IoTSharp/SonnetDB)
 
 - **Document collections** (JSON documents) hold business/config data:
   `session_groups`, `session_profiles` (indexed by `$.groupId`), `app_config`
-  (settings/state singleton docs), `known_hosts`, `ui_config`, `quick_commands`.
+  (settings/state/sync singleton docs — `sync` holds the Gist cloud-sync config with
+  the PAT encrypted via `ISecretProtector`), `known_hosts`, `ui_config`,
+  `quick_commands`, `tunnels` (one doc per profile id holding its tunnel configs),
+  `recordings` (session-recording metadata).
 - **Time-series measurements** hold time-oriented data:
-  `conn_history` (recent connections, powers the sidebar list) and
-  `audit_log` (security auditing).
-- Sensitive fields (passwords, key passphrases) are encrypted at rest with
-  AES-256-GCM via `ISecretProtector` (local key file).
+  `conn_history` (recent connections, powers the sidebar list),
+  `audit_log` (security auditing) and `session_recording_chunks`
+  (session recording output chunks: tag `recording_id`, fields `offset_ms` +
+  Base64 `data`; point time = recording start + offset, replayed on a timeline
+  by the recording player).
+- SQL dialect note: `ORDER BY time` requires the `time` column to be present in
+  the SELECT list; plain `DELETE FROM measurement` may be unsupported — the
+  recording store falls back to a drop-and-rewrite compaction during retention
+  cleanup to reclaim orphaned chunk bytes.
+- Sensitive fields (passwords, key passphrases, sync tokens) are encrypted at
+  rest with AES-256-GCM via `ISecretProtector` (local key file).
 - Keep persistence interfaces in `Core` (`ISessionRepository`, `ISettingsService`,
-  `IRecentConnectionService`, `IAuditLogService`, `IAppDataStore`, `ISecretProtector`),
-  implementations in `Infrastructure/Persistence` (`SonnetDb*`), all sharing one
-  `SonnetDbEngine` singleton that is disposed on app exit (WAL flush).
+  `IRecentConnectionService`, `IAuditLogService`, `IAppDataStore`,
+  `ISessionRecordingStore`, `ISecretProtector`), implementations in
+  `Infrastructure/Persistence` (`SonnetDb*`), all sharing one `SonnetDbEngine`
+  singleton that is disposed on app exit (WAL flush).
 
 ## Migration Rule
 
