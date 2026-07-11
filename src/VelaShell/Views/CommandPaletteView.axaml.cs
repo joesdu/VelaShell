@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
@@ -52,10 +53,12 @@ public partial class CommandPaletteView : UserControl
         {
             case Key.Down:
                 _vm.MoveDown();
+                ScrollSelectedIntoView();
                 e.Handled = true;
                 break;
             case Key.Up:
                 _vm.MoveUp();
+                ScrollSelectedIntoView();
                 e.Handled = true;
                 break;
             case Key.Enter:
@@ -67,6 +70,24 @@ public partial class CommandPaletteView : UserControl
                 e.Handled = true;
                 break;
         }
+    }
+
+    /// <summary>
+    /// 键盘导航后把选中项滚入可视区:结果区是嵌套 ItemsControl(非 ListBox),
+    /// 没有内建的选中跟随滚动,超出可视范围后选中项会不可见,需手动 BringIntoView。
+    /// </summary>
+    private void ScrollSelectedIntoView()
+    {
+        if (_vm?.SelectedItem is not { } selected)
+        {
+            return;
+        }
+
+        // 面板未虚拟化(StackPanel 容器),条目已全部实例化,按 DataContext 定位容器即可。
+        Border? container = this.GetVisualDescendants()
+                                .OfType<Border>()
+                                .FirstOrDefault(b => b.Classes.Contains("pal-item") && ReferenceEquals(b.DataContext, selected));
+        container?.BringIntoView();
     }
 
     private void OnItemTapped(object? sender, TappedEventArgs e)

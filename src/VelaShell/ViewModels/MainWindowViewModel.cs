@@ -538,7 +538,16 @@ public class MainWindowViewModel : ReactiveObject
             return;
         }
         FileBrowser.Detach();
-        FileBrowser = new(_sftpService, Guid.Empty) { TransferSink = FileTransfer };
+
+        // 占位面板必须继承被驱逐面板的打开状态:面板开/关是用户的全局意图,
+        // RebindFileBrowser 切标签时以“当前面板的 IsVisible”为准搬运。若这里
+        // 固定为隐藏,断开/关闭一个标签后切回其它标签,已打开的 SFTP 面板会被
+        // 这个 false 传染而静默消失。
+        FileBrowser = new(_sftpService, Guid.Empty)
+        {
+            TransferSink = FileTransfer,
+            IsVisible = FileBrowser.IsVisible
+        };
     }
 
     /// <summary>SFTP「使用默认编辑器打开」读取的编辑器命令(设置 → 文件传输 → 默认编辑器)。</summary>
