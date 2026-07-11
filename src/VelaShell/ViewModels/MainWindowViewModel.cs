@@ -15,6 +15,7 @@ using VelaShell.Services;
 using VelaShell.ViewModels;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Recording;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Services;
 using VelaShell.Core.Sftp;
@@ -50,6 +51,11 @@ public class MainWindowViewModel : ReactiveObject
 
     private readonly Dictionary<TerminalTabViewModel, SessionLogWriter>
         _sessionLogs = [];
+
+    // ---- 会话录制(设置 → 安全审计 → 会话录制) ----
+
+    private readonly Dictionary<TerminalTabViewModel, SessionRecorder> _sessionRecorders = [];
+    private readonly ISessionRecordingStore? _recordingStore;
 
     private readonly IAppDataStore? _appDataStore;
     private readonly ISessionRepository? _sessionRepository;
@@ -113,9 +119,11 @@ public class MainWindowViewModel : ReactiveObject
         IRecentConnectionService? recentConnectionService = null,
         ISecurityAlertService? securityAlertService = null,
         ISettingsPreviewService? settingsPreviewService = null,
-        IAppDataStore? appDataStore = null)
+        IAppDataStore? appDataStore = null,
+        ISessionRecordingStore? recordingStore = null)
     {
         _appDataStore = appDataStore;
+        _recordingStore = recordingStore;
 
         // 命令补全(plan.md #16):全局命令历史 + 建议提供器(历史 ∪ 快捷命令),
         // 逐标签在 CreateConnectingTab 注入。
@@ -1300,17 +1308,24 @@ public class MainWindowViewModel : ReactiveObject
     private void StartSessionLogging(TerminalTabViewModel tab, AppSettings settings)
     {
         StopSessionLogging(tab);
-        if (!settings.General.SessionLogging || tab.Bridge is null)
+        if (settings.General.SessionLogging && tab.Bridge is not null)
         {
-            return;
+            SessionLogWriter? writer = SessionLogService.CreateWriter(tab.Title);
+            if (writer is not null)
+            {
+                tab.Bridge.DataReceived += writer.Write;
+                _sessionLogs[tab] = writer;
+            }
         }
-        SessionLogWriter? writer = SessionLogService.CreateWriter(tab.Title);
-        if (writer is null)
+
+        // 会话录制(设置 → 安全审计):与会话日志同挂钩点(桥的原始输出),
+        // 每次(重)连接产生一条新录制;开关只对之后建立的连接生效。
+        if (settings.Security.RecordProductionSessions && _recordingStore is not null && tab.Bridge is not null)
         {
-            return;
+            var recorder = new SessionRecorder(_recordingStore, tab.Title);
+            tab.Bridge.DataReceived += recorder.Write;
+            _sessionRecorders[tab] = recorder;
         }
-        tab.Bridge.DataReceived += writer.Write;
-        _sessionLogs[tab] = writer;
     }
 
     private void StopSessionLogging(TerminalTabViewModel tab)
@@ -1318,6 +1333,10 @@ public class MainWindowViewModel : ReactiveObject
         if (_sessionLogs.Remove(tab, out SessionLogWriter? writer))
         {
             writer.Dispose(); // 旧桥可能还在收尾;Write 对已释放流是 no-op。
+        }
+        if (_sessionRecorders.Remove(tab, out SessionRecorder? recorder))
+        {
+            recorder.Dispose(); // 收尾写入元数据(时长/结束时间)。
         }
     }
 

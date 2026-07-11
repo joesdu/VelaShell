@@ -13,6 +13,7 @@ using VelaShell.Controls.DependencyInjection;
 using VelaShell.Core.Data;
 using VelaShell.Core.Localization;
 using VelaShell.Core.Models;
+using VelaShell.Core.Recording;
 using VelaShell.Core.Services;
 using VelaShell.Core.Ssh;
 using VelaShell.Core.Sync;
@@ -82,6 +83,13 @@ public class App : Application
             SessionLogService.CleanupExpired(_startupSettings?.General.LogRetentionDays ?? 30);
             TransferLogService.CleanupExpired(_startupSettings?.Transfer.LogDirectory,
                 _startupSettings?.Transfer.TransferLogRetentionDays ?? 30);
+
+            // 过期会话录制清理(随终端会话日志的保留天数)。
+            if (_serviceProvider?.GetService<ISessionRecordingStore>() is { } recordingStore)
+            {
+                int retentionDays = _startupSettings?.General.LogRetentionDays ?? 30;
+                _ = Task.Run(() => recordingStore.CleanupExpiredAsync(retentionDays));
+            }
 
             // 托盘图标(关闭时最小化到托盘);设置保存后热更新挂载状态。
             _trayIconService = new(this);

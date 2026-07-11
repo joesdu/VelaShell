@@ -11,8 +11,26 @@
       <TextBlock Classes="page-subtitle" Text="// 录制策略、信任策略与风险告警" />
     </StackPanel>
 
-    <!-- 会话录制 / 输入脱敏:录制、存储与脱敏机制未实现,暂不展示(设置审计 R-11/R-12);
-         会话输出记录请先使用 常规 → 会话日志。字段仍持久化,功能实现后恢复展示。 -->
+    <!-- 会话录制(设计 NceE6;设置审计 R-11 已实现恢复展示)。
+         输入脱敏(R-12)不再需要:录制仅捕获终端输出流,密码输入本就无回显。 -->
+    <TextBlock Classes="section-title" Text="会话录制" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="自动录制所有会话" />
+        <TextBlock Classes="row-desc" Text="// 记录终端输出到本地数据库供审计与回放;对之后建立的连接生效,保留天数随「常规 → 终端会话日志保留天数」" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.RecordProductionSessions}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="录制与回放中心" />
+        <TextBlock Classes="row-desc" Text="// 查看录制列表、按时间轴回放(支持倍速与跳过空闲)、导出与删除" />
+      </StackPanel>
+      <Button Grid.Column="1" Classes="dlg-outline" Content="打开回放中心"
+              Click="OpenRecordingPlayer_Click" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="sep" />
 
     <!-- 主机信任策略 -->
     <TextBlock Classes="section-title" Text="主机信任策略" />
@@ -108,11 +126,16 @@
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="Webhook" />
-        <TextBlock Classes="row-desc" Text="// 安全事件推送到自定义 HTTP 端点" />
+        <TextBlock Classes="row-desc" Text="// 安全事件以 JSON POST 推送到自定义 HTTP 端点" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.AlertWebhook}" VerticalAlignment="Center" />
     </Grid>
-    <TextBox Text="{Binding Security.WebhookUrl}" PlaceholderText="https://example.com/hooks/velashell"
-             IsVisible="{Binding Security.AlertWebhook}" />
+    <!-- 从属设置:开启 Webhook 后显示(设置审计 §10)。 -->
+    <StackPanel Spacing="5" IsVisible="{Binding Security.AlertWebhook}">
+      <TextBlock Classes="row-label" Text="Webhook URL" />
+      <TextBox Text="{Binding Security.WebhookUrl}" PlaceholderText="https://example.com/hooks/velashell" />
+      <TextBlock Classes="row-desc"
+                 Text="// 事件负载:{ source, event, message, detail, timestamp };端点不可达不影响连接流程" />
+    </StackPanel>
   </StackPanel>
 </UserControl>

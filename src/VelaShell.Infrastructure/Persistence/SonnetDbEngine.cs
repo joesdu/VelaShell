@@ -24,9 +24,11 @@ public sealed class SonnetDbEngine : IDisposable
     public const string KnownHostsCollection = "known_hosts";
     public const string UiConfigCollection = "ui_config";
     public const string QuickCommandsCollection = "quick_commands";
+    public const string RecordingsCollection = "recordings";
 
     public const string ConnHistoryMeasurement = "conn_history";
     public const string AuditLogMeasurement = "audit_log";
+    public const string RecordingChunksMeasurement = "session_recording_chunks";
 
     private readonly Tsdb _db;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -125,6 +127,29 @@ public sealed class SonnetDbEngine : IDisposable
         }
     }
 
+    /// <summary>
+    /// 执行非查询时序 SQL(如 DELETE);返回是否成功。SonnetDB 的 SQL 方言若不支持
+    /// 该语句则返回 false,调用方自行降级(例如仅删元数据,数据块留作不可见孤儿)。
+    /// </summary>
+    public async Task<bool> TryExecuteAsync(string sql, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            SqlExecutor.Execute(_db, sql);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     /// <summary>删除并重建一个 measurement(用于清空历史)。</summary>
     public async Task ResetMeasurementAsync(string measurement, CancellationToken cancellationToken = default)
     {
@@ -156,8 +181,10 @@ public sealed class SonnetDbEngine : IDisposable
         CreateCollectionIfMissing(KnownHostsCollection);
         CreateCollectionIfMissing(UiConfigCollection);
         CreateCollectionIfMissing(QuickCommandsCollection);
+        CreateCollectionIfMissing(RecordingsCollection);
         CreateMeasurementIfMissing(ConnHistoryMeasurement);
         CreateMeasurementIfMissing(AuditLogMeasurement);
+        CreateMeasurementIfMissing(RecordingChunksMeasurement);
     }
 
     private void CreateCollectionIfMissing(string name, params DocumentPathIndexDefinition[] indexes)
@@ -193,6 +220,15 @@ public sealed class SonnetDbEngine : IDisposable
                 new("action", MeasurementColumnRole.Tag, FieldType.String),
                 new("profile_id", MeasurementColumnRole.Tag, FieldType.String),
                 new("detail", MeasurementColumnRole.Field, FieldType.String)
+            ]),
+
+            // 会话录制(设置 → 安全审计):终端原始输出按时间分块存储,
+            // offset_ms = 相对录制开始的毫秒偏移(回放时间轴),data = Base64 输出字节。
+            RecordingChunksMeasurement => MeasurementSchema.Create(name,
+            [
+                new("recording_id", MeasurementColumnRole.Tag, FieldType.String),
+                new("offset_ms", MeasurementColumnRole.Field, FieldType.Int64),
+                new("data", MeasurementColumnRole.Field, FieldType.String)
             ]),
             _ => throw new ArgumentOutOfRangeException(nameof(name), name, @"Unknown measurement.")
         };

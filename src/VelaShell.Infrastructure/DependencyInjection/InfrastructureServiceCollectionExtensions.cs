@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Renci.SshNet;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Recording;
 using VelaShell.Core.Services;
 using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;
@@ -52,6 +53,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IRecentConnectionService, SonnetDbRecentConnectionService>();
         services.AddSingleton<IAuditLogService, SonnetDbAuditLogService>();
         services.AddSingleton<IAppDataStore, SonnetDbAppDataStore>();
+        services.AddSingleton<ISessionRecordingStore, SonnetDbSessionRecordingStore>();
         services.AddSingleton<ISshKeyService>(_ => new SshKeyService());
         services.AddSingleton<ISecurityAlertService>(serviceProvider =>
             new SecurityAlertService(serviceProvider.GetRequiredService<ISettingsService>(),

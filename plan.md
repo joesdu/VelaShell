@@ -1,7 +1,7 @@
 # VelaShell 项目进展与参考文档
 
 > 本文件记录已完成的工作、当前架构、关键文件索引与后续待办,供后续开发参考。
-> 最近更新:2026-07-09(设置项全量接线 §10;§12 P1 六项功能全部实现 —— 本地终端待实机验证未提交,其余已分特性提交)。
+> 最近更新:2026-07-12(§13:设置审计整改三批完成;新特性 —— 主机指纹三选项确认与已信任主机管理、GitHub Gist 云同步、会话录制与回放、支持与捐赠页)。
 
 ## 1. 技术栈现状
 
@@ -115,7 +115,7 @@ tests/  6 个 MSTest 项目(见 §7)
 | 启动时检查更新 / 更新频道 / 自动下载          | 常规     | Velopack `UpdateService` 未接入,且无发布 feed URL;接入后三项一并实现(About 页"检查更新"目前也是占位)              |
 | 主密码保护                                    | 常规     | 需主密码派生密钥替换 `AesSecretProtector` 的本机密钥文件 + 启动解锁弹窗 + 密文迁移,安全敏感需单独设计             |
 | 断点续传 / 自动续传 / 传输重试 / 临时文件清理 | 文件传输 | 需 `.part` 临时文件 + SFTP offset 续写(SSH.NET 支持 DownloadFile offset 有限,需改用流式 seek)+ 传输队列持久化     |
-| 会话录制 / 输入脱敏                           | 安全审计 | 录制功能本身未实现;可基于已完成的会话日志(SshTerminalBridge.DataReceived)扩展为带时间戳的 asciinema 格式 + 回放器 |
+| ~~会话录制 / 输入脱敏~~                       | 安全审计 | ✅ 2026-07-12 录制与回放已实现(SonnetDB 时序 + 回放中心,见 §13);输入脱敏确认不做(仅录输出流,密码无回显)         |
 | 自动加载密钥到 Agent                          | 密钥管理 | 需集成 Windows OpenSSH ssh-agent(named pipe 协议)或 Pageant                                                       |
 
 ❌ **确认当前架构不实现,已从设置界面与 `AppSettings` 移除**(2026-07-10,见 docs/架构设计.md §11):连字 Ligatures(自绘渲染器按单元格排版,无法跨字符连字)、自适应标题栏颜色(系统原生标题栏由 OS 托管)、系统通知 Toast(需 AppUserModelID/通知框架;常规页用「声音提示」、安全审计页告警通道改为「提示音」`Security.AlertSound` 替代)。
@@ -124,13 +124,13 @@ tests/  6 个 MSTest 项目(见 §7)
 **B. 功能缺口**
 
 - 非 SSH 协议:连接弹窗 SFTP/Telnet/串口 标签禁用;第 2 步"证书"认证禁用。
-- 快捷键自定义未实现(只读展示);**展示表来自设计稿,与 `KeyboardShortcutService` 实际绑定未逐条核对**(如 Ctrl+L 清屏 / Ctrl+D 断开 / 分屏键等未必真实存在)——需对齐或标注。
+- ✅ 快捷键展示表已与真实绑定逐条核对重建(2026-07-11,删除虚构项、补 Ctrl+N 绑定);**自定义键位确认不做**(产品决定,页面定位为"快捷键参考")。
 - 密钥生成仅 RSA(PEM+OpenSSH 公钥);ed25519 生成缺失(.NET 无内置 OpenSSH ed25519 私钥导出,需评估 SSH.NET 或 BouncyCastle);导入不校验私钥有效性;删除无二次确认。
 - 审计日志已在写(connect/connect-failed),但**无查看界面**;`audit_log`/`conn_history` 无保留策略(retention),长期运行会累积。
-- 配置导出目前仅 AppSettings,不含连接/分组(界面文案写的是"所有连接和设置")——待扩展为全量导出。
+- ✅ 配置导出文案已修正为"仅应用设置"(2026-07-11,settings-audit C-08);全量选择性导出待做——注:**Gist 云同步(§13)已覆盖设置/连接/隧道/片段的跨设备迁移场景**。
 - 命令面板"会话"类目仅最近连接,不含全部已保存会话。
-- 关于页"检查更新"为占位(直接显示"已是最新版本"),Velopack `UpdateService` 未接;"更新日志"禁用。
-- 会话录制与回放、系统资源监控面板、连接诊断中心、运维编排中心、主机信任中心、文件传输 toast 等设计稿面板仍未组件化(遗留自上轮)。
+- 关于页"检查更新":Velopack `UpdateService` 仍未接,但占位文案已改为如实提示"更新服务尚未接入"(2026-07-11);"更新日志"禁用。
+- ✅ 会话录制与回放已组件化(2026-07-12,§13);✅ 主机信任中心以"安全审计 → 已信任主机"落地(查看/删除/地址脱敏)。系统资源监控面板、连接诊断中心、运维编排中心、文件传输 toast 等设计稿面板状态不变。
 
 **C. 技术债 / 小瑕疵(2026-07-09 处理完毕,余项见末尾)**
 
@@ -171,7 +171,7 @@ tests/  6 个 MSTest 项目(见 §7)
 9. **SSH config 导入**:解析 `~/.ssh/config`(Host/HostName/Port/User/IdentityFile/ProxyJump)批量导入会话,降低迁移成本。
 ✅10. **连接代理**:SOCKS5/HTTP 代理经由连接(公司内网出网场景);SSH.NET `ConnectionInfo` 原生支持 ProxyTypes。
 11. **防空闲断开(Anti-idle)**:按间隔发送自定义串(如 `\0` 或空格),与已实现的 SSH keepalive 互补(keepalive 防 NAT 超时,anti-idle 防服务端 shell 超时踢出)。
-12. **known_hosts 管理界面**(设计稿"主机信任中心"):列出/删除/导出已信任指纹;`IHostKeyService` CRUD 已齐,只缺 UI 页(可挂设置-安全审计)。
+✅12. **known_hosts 管理界面**:已落地为 设置 → 安全审计 → 已信任主机(2026-07-12,列出/删除/截图防泄露地址脱敏);导出未做。
 ✅13. **会话标签自定义颜色/图标**:多环境(生产红/测试绿)一眼区分;SessionProfile 加 color 字段 + 标签条着色。
 
 **P3 —— 锦上添花**
@@ -182,3 +182,21 @@ tests/  6 个 MSTest 项目(见 §7)
 18. **触发器/自动应答**:输出匹配正则时自动发送响应(expect 式),如自动 yes/密码带外输入。
 19. **多窗口**:新开独立主窗口(目前只有单窗口+分屏/浮动 Dock)。
 20. **Mosh / SSH 证书(certificate)认证**:弱网漫游与企业 CA 场景,按需求评估。
+
+## 13. 2026-07-11 ~ 07-12 批次(设置审计整改 + 四个新特性)
+
+**A. 设置审计整改**(台账与逐项状态见 `docs/settings-audit.md`,共三批):
+BellMode/VisualBell 合并(旧配置经 `AppSettings.Normalize()` 迁移)、自动重连次数统一、默认值来源统一、显示隐藏文件写回持久化、恢复默认/清除历史加确认、误导性文案与九组相似命名修正、12+ 个未实现禁用控件隐藏或删除、选项类统一 `ObservableOptions`(INPC,从属设置条件显隐真正生效)、快捷键页与真实绑定核对重建(自定义键位确认不做)。
+
+**B. 主机指纹三选项确认 + 已信任主机管理**:
+`IHostKeyPrompt.DecideAsync` 三态(永久信任=写 known_hosts / 仅本次信任=进程内 `HostTrustOnceCache` 不落盘 / 取消=fail-closed);SFTP 独立通道补主机指纹校验(修复默认信任任意指纹的 MITM 缺口);安全审计页新增"已信任主机"列表(删除即可重触发首次确认;地址默认脱敏防截图泄露)。
+
+**C. GitHub Gist 云同步**(`Core/Sync` + `Infrastructure/Sync` + 设置"云同步"页):
+同步范围 = 应用设置(剔除设备本地字段)+ 连接配置(含分组与隧道,upsert 合并不删本地)+ 代码片段;单文件 secret Gist,版本管理复用 Gist 原生 revision(列表含来源设备,可恢复任意版本);可选 PBKDF2-SHA256(200k)+AES-256-GCM 端到端加密(未启用时凭据绝不上传);智能方向判定(本地改动标记 × 远端 revision,双端都改按较新者胜);自动同步 = 启动拉取 + 设置保存防抖推送;PAT/口令经 `ISecretProtector` 机器绑定加密,永不进载荷。
+
+**D. 会话录制与回放**(设计 `NceE6`;`Core/Recording` + `SonnetDbSessionRecordingStore` + `RecordingPlayerView`):
+录制 = 桥输出 600ms/64KB 缓冲成块写 SonnetDB 时序 measurement `session_recording_chunks`(元数据在文档集合 `recordings`);开关 `Security.RecordProductionSessions`(安全审计页,对新连接生效),保留天数随会话日志;回放中心 = 列表 + 只读终端按时间轴重放 + seek(重置瞬时重放)+ 1x/2x/4x + 跳过空闲 + 删除 + 导出 asciicast v2。输入脱敏确认不做(仅录输出流)。
+
+**E. 支持与捐赠页**(设置导航末位):支付宝/微信/Wise(链接可点击+复制),收款码已裁剪入 `Assets/`;文案强调 PR/Issue 是最好的支持。
+
+**已知遗留**:QuickCommands 相关 12 个测试在用户某次提交后失败(测试期望 11 个内置命令含 htop,`QuickCommandCatalog` 只有 8 个,测试与目录不同步,与上述改动无关);C-09 设置页本地化(~150 条文案迁移 .resx)待专门批次。
