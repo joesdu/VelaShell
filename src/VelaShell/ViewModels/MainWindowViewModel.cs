@@ -79,6 +79,13 @@ public class MainWindowViewModel : ReactiveObject
     private bool _latencyPolling;
     private int _latencyTick;
     private AppSettings? _latestSettings;
+
+    /// <summary>
+    /// SFTP 面板的用户开关意图(全局,跨标签)。面板对象随标签切换/会话驱逐被整体
+    /// 替换,可见性不能从上一个对象“抄”过来(本地终端占位是隐藏的,会把 false 传染
+    /// 给下一个远程标签);统一以本字段为准恢复。
+    /// </summary>
+    private bool _fileBrowserOpenIntent;
     private Dictionary<Guid, string> _paletteGroupNames = [];
 
     // ---- 命令面板的全量会话(§12.3:面板作为中枢,收录全部已保存配置) ----
@@ -144,6 +151,15 @@ public class MainWindowViewModel : ReactiveObject
                    activeTab?.HasBellAlert = false; // 切换到该标签即清除 Bell 提醒
                    RebindFileBrowser();
                });
+
+        // SFTP 面板“打开/关闭”的用户意图:只跟踪当前面板实例上的 IsVisible 变化
+        // (工具栏切换、面板关闭按钮、连接后自动展开)。对象整体替换(切标签重绑、
+        // 驱逐后的占位)属于程序行为,Skip(1) 跳过替换瞬间的初值,不污染意图。
+        // RebindFileBrowser 以该意图恢复展示,而不是抄上一个面板对象的可见性。
+        this.WhenAnyValue(x => x.FileBrowser)
+            .Select(browser => browser.WhenAnyValue(b => b.IsVisible).Skip(1))
+            .Switch()
+            .Subscribe(visible => _fileBrowserOpenIntent = visible);
 
         // Keep the status bar in sync with the active tab: refresh when the active tab changes,
         // and when that tab's own connection state / latency changes.
@@ -473,7 +489,24 @@ public class MainWindowViewModel : ReactiveObject
             return;
         }
         TerminalTabViewModel? tab = ActiveTerminalTab;
-        if (tab is null || tab.SessionId == Guid.Empty)
+        if (tab is null)
+        {
+            return;
+        }
+
+        // 本地终端(ConPTY)没有 SFTP 会话:不得继续展示上一个 SSH 会话的文件面板
+        // (用户反馈:切到 PowerShell 标签后下方仍显示 r2s 的文件)。换成隐藏的空占位;
+        // 上一个面板不 Detach(仍按其会话缓存),打开意图保留在 _fileBrowserOpenIntent,
+        // 切回远程标签时恢复展示。
+        if (tab.LocalShell is not null)
+        {
+            if (FileBrowser.SessionId != Guid.Empty || FileBrowser.IsVisible)
+            {
+                FileBrowser = new(_sftpService, Guid.Empty) { TransferSink = FileTransfer };
+            }
+            return;
+        }
+        if (tab.SessionId == Guid.Empty)
         {
             return;
         }
@@ -482,9 +515,9 @@ public class MainWindowViewModel : ReactiveObject
             return;
         }
 
-        // Carry the open/closed state across the rebind so switching to (or connecting) a tab
+        // Restore the user's open/closed intent so switching to (or connecting) a tab
         // never silently hides a panel the user had opened.
-        bool wasVisible = FileBrowser.IsVisible;
+        bool wasVisible = _fileBrowserOpenIntent;
         if (_fileBrowserCache.TryGetValue(tab.SessionId, out FileBrowserViewModel? cached))
         {
             cached.IsVisible = wasVisible;
@@ -539,15 +572,10 @@ public class MainWindowViewModel : ReactiveObject
         }
         FileBrowser.Detach();
 
-        // 占位面板必须继承被驱逐面板的打开状态:面板开/关是用户的全局意图,
-        // RebindFileBrowser 切标签时以“当前面板的 IsVisible”为准搬运。若这里
-        // 固定为隐藏,断开/关闭一个标签后切回其它标签,已打开的 SFTP 面板会被
-        // 这个 false 传染而静默消失。
-        FileBrowser = new(_sftpService, Guid.Empty)
-        {
-            TransferSink = FileTransfer,
-            IsVisible = FileBrowser.IsVisible
-        };
+        // 会话已死,面板收起(空面板没有可看内容);用户的打开意图保留在
+        // _fileBrowserOpenIntent(对象替换不触发意图跟踪),切到/重连任一
+        // 远程会话时由 RebindFileBrowser 恢复展示,不会被这里的隐藏传染。
+        FileBrowser = new(_sftpService, Guid.Empty) { TransferSink = FileTransfer };
     }
 
     /// <summary>SFTP「使用默认编辑器打开」读取的编辑器命令(设置 → 文件传输 → 默认编辑器)。</summary>
