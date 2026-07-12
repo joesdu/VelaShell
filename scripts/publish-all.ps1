@@ -73,8 +73,12 @@ foreach ($t in $targets) {
         if ($haveWix) {
             Write-Host "-- wix MSI ($($t.Rid))" -ForegroundColor Yellow
             $arch = $t.Rid.Replace('win-', '')
+            # 安装向导(WixUI_InstallDir,中文界面)支持自定义安装目录;
+            # 需要 UI 扩展:wix extension add -g WixToolset.UI.wixext/5.0.2
             wix build (Join-Path $root 'installer\VelaShell.wxs') -arch $arch -pdbtype none `
+                -ext WixToolset.UI.wixext -culture zh-CN `
                 -d ProductVersion=$numeric -d "PublishDir=$dir" -d "IconPath=$icon" `
+                -d "LicenseRtf=$(Join-Path $root 'installer\License.rtf')" `
                 -o (Join-Path $outRoot "$name.msi")
             if ($LASTEXITCODE -ne 0) { throw "wix 失败: $($t.Rid)" }
         }

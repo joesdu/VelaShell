@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- VelaShell MSI(WiX v4+ schema):
-     wix build installer/VelaShell.wxs -arch x64|arm64
-         -d ProductVersion=0.1.0 -d PublishDir=<发布目录> -o VelaShell.msi
+     wix build installer/VelaShell.wxs -arch x64|arm64 -pdbtype none
+         -ext WixToolset.UI.wixext -culture zh-CN
+         -d ProductVersion=0.1.0 -d PublishDir=<发布目录> -d IconPath=<ico> -o VelaShell.msi
      ProductVersion 必须为纯数字 x.y.z(MSI 规范不允许 -beta 后缀);
-     UpgradeCode 固定不变(升级识别),ProductId 每次生成(MajorUpgrade)。 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+     UpgradeCode 固定不变(升级识别),ProductId 每次生成(MajorUpgrade)。
+     安装向导 WixUI_InstallDir 支持自定义安装目录;静默安装同样可指定:
+     msiexec /i VelaShell.msi /qn INSTALLFOLDER="D:\Tools\VelaShell" -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
   <Package Name="VelaShell"
            Manufacturer="joesdu"
            Version="$(var.ProductVersion)"
@@ -19,6 +23,10 @@
 
     <Icon Id="AppIcon" SourceFile="$(var.IconPath)" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+
+    <!-- 安装向导:许可 → 选择安装目录 → 安装(WixUI_InstallDir 标准对话框集) -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="VelaShell">
