@@ -2,6 +2,7 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using VelaShell.Docking.Model;
@@ -21,6 +22,20 @@ public partial class DockGroupControl : UserControl
     {
         InitializeComponent();
         TabScroll.ScrollChanged += (_, _) => UpdateScrollButtons();
+        // 点击本组任意位置(含终端内容区)即把本组的选中文档设为全局激活 —— 对应原
+        // Dock 的 FocusedDockable 语义;缺了它,分屏后点另一个窗格输入,SFTP 面板与
+        // 状态栏不会跟随切换(用户反馈)。Tunnel + handledEventsToo:终端控件会吞掉
+        // 指针事件,冒泡阶段收不到。点标签时本处理器先按组当前选中激活一次,随后
+        // DockTabItem 再精确激活被点的标签,结果一致。
+        AddHandler(PointerPressedEvent, OnAnyPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+    }
+
+    private void OnAnyPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (Workspace is { } workspace && Group is { ActiveDocument: { } active } && !ReferenceEquals(workspace.ActiveDocument, active))
+        {
+            workspace.ActivateDocument(active);
+        }
     }
 
     public DockGroup? Group => DataContext as DockGroup;
