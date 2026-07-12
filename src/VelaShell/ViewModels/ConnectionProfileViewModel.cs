@@ -19,8 +19,12 @@ public sealed record GroupOption(Guid? Id, string Name)
 
 public class ConnectionProfileViewModel : ReactiveObject
 {
-    /// <summary>“未分组”选项/输入的显示名;输入等于该名或留空即保存为未分组。</summary>
-    private static readonly string UngroupedName = Strings.Get("Msg_Ungrouped");
+    /// <summary>
+    /// “未分组”选项/输入的显示名;输入等于该名或留空即保存为未分组。
+    /// 属性而非 static readonly:后者按类型加载时的语言冻结,换语言后新开的
+    /// 对话框仍显示旧语言;VM 每次打开对话框新建,属性取值即当前语言。
+    /// </summary>
+    private static string UngroupedName => Strings.Get("Msg_Ungrouped");
 
     private readonly IConnectionWorkflowService? _connectionWorkflowService;
 

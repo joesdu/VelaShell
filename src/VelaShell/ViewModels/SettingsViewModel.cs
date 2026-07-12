@@ -70,6 +70,22 @@ public class SettingsViewModel : ReactiveObject
         _previewService = previewService;
         _hostKeyService = hostKeyService;
 
+        // 换语言时重建构造期求值的标签列表(左侧导航、快捷键参考页):本 VM 是单例,
+        // 这些数组在启动语言下冻结,不重建就停留在旧语言(用户反馈:切英文保存后
+        // 重开设置,左侧菜单仍是中文)。两者均为单例,订阅无泄漏。
+        if (localizationService is not null)
+        {
+            localizationService.LanguageChanged += _ =>
+            {
+                int selectedSection = SelectedSectionIndex;
+                Sections = BuildSections();
+                ShortcutGroups = BuildShortcutGroups();
+                this.RaisePropertyChanged(nameof(Sections));
+                this.RaisePropertyChanged(nameof(ShortcutGroups));
+                SelectedSectionIndex = selectedSection;
+            };
+        }
+
         // 外观即时预览:主题/强调色直接走 IThemeService(应用即生效);
         // Appearance 对象被整体替换(配色方案/载入)或其单项被绑定修改时广播预览快照。
         // 主题变化后重算配色方案下拉:“(默认)”标注移到新主题的默认方案上,
@@ -234,8 +250,10 @@ public class SettingsViewModel : ReactiveObject
     /// <summary>云同步页(GitHub Gist 多端同步);无同步服务时为 null。</summary>
     public SyncViewModel? Sync { get; }
 
-    /// <summary>Left-nav sections per design §14.</summary>
-    public SettingsSection[] Sections { get; } =
+    /// <summary>Left-nav sections per design §14. 换语言时经 <see cref="BuildSections" /> 重建。</summary>
+    public SettingsSection[] Sections { get; private set; } = BuildSections();
+
+    private static SettingsSection[] BuildSections() =>
     [
         new(Strings.Get("SetVm_SectionGeneral"),
             "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"),
@@ -438,7 +456,9 @@ public class SettingsViewModel : ReactiveObject
     /// RemoteFileEditorView,设置审计 C-10/R-14),不得列出未绑定的键位;
     /// 新增/修改绑定时必须同步本表,长期方案是直接从绑定注册表生成。
     /// </summary>
-    public ShortcutGroup[] ShortcutGroups { get; } =
+    public ShortcutGroup[] ShortcutGroups { get; private set; } = BuildShortcutGroups();
+
+    private static ShortcutGroup[] BuildShortcutGroups() =>
     [
         new(Strings.Get("SetVm_SectionGeneral"),
         [
