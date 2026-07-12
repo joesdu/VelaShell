@@ -213,15 +213,12 @@ public partial class MainWindow : Window
 
     private void OnSettingsPreviewedForWindow(AppSettings settings) => Dispatcher.UIThread.Post(() => ApplyWindowAppearance(settings));
 
-    /// <summary>应用设置 → 外观:窗口透明度、菜单栏显隐、侧边栏位置、界面字体/字号。</summary>
+    /// <summary>应用设置 → 外观:窗口透明度、侧边栏位置、界面字体/字号。
+    /// (菜单栏显隐设置已随文字菜单一并移除:自绘标题栏承载窗口控制按钮,必须常显。)</summary>
     private void ApplyWindowAppearance(AppSettings settings)
     {
         AppearanceOptions a = settings.Appearance;
         Opacity = Math.Clamp(a.WindowOpacityPercent, 10, 100) / 100.0;
-        if (this.FindControl<MenuBarView>("MenuBarHost") is { } menuBar)
-        {
-            menuBar.IsVisible = a.ShowMenuBar;
-        }
         ApplySidebarPosition(a.SidebarPosition == "right");
         if (Application.Current is not { } app)
         {

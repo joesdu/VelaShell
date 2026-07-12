@@ -15,7 +15,8 @@
         Width="1440" Height="900"
         MinWidth="800" MinHeight="500"
         Background="{DynamicResource VelaBgPage}"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        WindowDecorations="BorderOnly">
 
   <Window.KeyBindings>
     <!-- Ctrl+T = 新建标签:标签即 SSH 会话,与 Ctrl+N 一样打开新建连接
@@ -35,8 +36,10 @@
     <KeyBinding Gesture="Ctrl+Shift+F" Command="{Binding RunCommand}" CommandParameter="tools.files" />
   </Window.KeyBindings>
 
-  <!-- Native OS title bar (design spec §2): the client area starts with the menu bar row. -->
-  <Grid RowDefinitions="Auto,*">
+  <!-- 无边框窗体:客户区首行为自绘标题栏(logo + 全局图标 + 窗口控制);
+       根容器 Margin 绑 OffScreenMargin,防最大化时客户区越界被裁。 -->
+  <Grid RowDefinitions="Auto,*"
+        Margin="{Binding $parent[Window].OffScreenMargin}">
 
     <!-- Floating transfer toast (design frame 9Ralg): top-right, non-modal, exists only
          while transfers are running (spec §9). -->
@@ -54,8 +57,8 @@
            IsVisible="{Binding IsTunnelPanelOpen}">
       <views:TunnelPanelView DataContext="{Binding TunnelPanel}" />
     </Panel>
-    <!-- Menu bar (design frame TSiDh): text menus + global action buttons -->
-    <views:MenuBarView x:Name="MenuBarHost" Grid.Row="0" DataContext="{Binding}" />
+    <!-- 自绘标题栏:logo/名称 + 全局功能图标 + 最小化/最大化/关闭 -->
+    <views:TitleBarView Grid.Row="0" DataContext="{Binding}" />
 
     <!-- Shell: content + status bar + palette overlay -->
     <Grid Grid.Row="1" RowDefinitions="*,Auto">

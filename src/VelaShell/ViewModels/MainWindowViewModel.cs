@@ -376,6 +376,26 @@ public class MainWindowViewModel : ReactiveObject
         Commands.Register(new("app.palette", Strings.Get("Cmd_CommandPalette"), Strings.Get("CmdCat_Search"),
             () => CommandPalette.Open(), Shortcut: "Ctrl+P", Icon: "Icon.zap"));
 
+        // 分屏(标题栏分屏按钮与命令面板共用;右键标签菜单另有直达入口)。
+        Commands.Register(new("split.horizontal", Strings.Get("Dock_SplitHorizontal"), Strings.Get("CmdCat_Actions"),
+            () =>
+            {
+                if (Layout.ActiveDocument is { } document)
+                {
+                    Layout.SplitDocument(document, DockOrientation.Horizontal);
+                }
+            },
+            () => Layout.ActiveDocument is not null, Icon: "Icon.columns-2"));
+        Commands.Register(new("split.vertical", Strings.Get("Dock_SplitVertical"), Strings.Get("CmdCat_Actions"),
+            () =>
+            {
+                if (Layout.ActiveDocument is { } document)
+                {
+                    Layout.SplitDocument(document, DockOrientation.Vertical);
+                }
+            },
+            () => Layout.ActiveDocument is not null, Icon: "Icon.rows-2"));
+
         // 本地终端(§12 P1-1):按本机安装情况动态注册 PowerShell/CMD/WSL/Git Bash 入口。
         foreach (LocalShellInfo shell in LocalShellCatalog.DetectShells())
         {

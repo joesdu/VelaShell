@@ -90,10 +90,8 @@
     </Grid>
     <!-- 标签栏位置:标签栏由可停靠布局(Dock)提供、固定在顶部,暂不展示
          (设置审计 R-05);Dock 模板支持切换后恢复展示。 -->
-    <Grid ColumnDefinitions="*,Auto">
-      <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_ShowMenuBar}" VerticalAlignment="Center" />
-      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Appearance.ShowMenuBar}" VerticalAlignment="Center" />
-    </Grid>
+    <!-- “显示菜单栏”开关已移除:文字菜单被自绘标题栏取代(含窗口控制按钮,必须常显);
+         AppearanceOptions.ShowMenuBar 字段保留以兼容既有存储。 -->
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_SidebarPosition}" />
