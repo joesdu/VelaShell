@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Reactive;
+using System.Reflection;
 using System.Text.Json;
 using ReactiveUI;
 using VelaShell.Core.Data;
@@ -308,7 +309,13 @@ public class SettingsViewModel : ReactiveObject
 
     // ———— 关于页(真实构建信息) ————
 
-    public string AppVersion => "v0.0.5-beta";
+    /// <summary>版本号取自程序集 InformationalVersion(由 Directory.Build.props 的
+    /// Version 统一供给,含 -beta 等预发布后缀),不再手工硬编码。</summary>
+    public string AppVersion { get; } = "v" +
+        (Assembly.GetEntryAssembly()
+                 ?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                 ?.InformationalVersion.Split('+')[0]
+         ?? "0.0.0");
 
     public string AboutFramework => "Avalonia UI 12.0.5";
 
