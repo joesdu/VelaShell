@@ -1,0 +1,127 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:VelaShell.Docking.Controls"
+             xmlns:docking="using:VelaShell.Docking"
+             xmlns:conv="using:VelaShell.Converters"
+             xmlns:pc="using:VelaShell.Controls.Controls"
+             xmlns:views="using:VelaShell.Views"
+             x:Class="VelaShell.Docking.Controls.DockTabItem"
+             x:DataType="docking:TerminalDocument"
+             FontSize="11"
+             VerticalAlignment="Stretch">
+
+  <!-- 单个终端标签(设计 nunbT):32px 高、padding [0,14],状态点 7px + 连接标识色条
+       3×12 + JB Mono 11 标题 + 11px 关闭钮,元素间距 8。激活 = tab-active 底 +
+       2px accent 顶线;悬停 = bg-hover。视觉与原 Dock 重皮肤逐像素一致。 -->
+  <UserControl.Styles>
+    <Style Selector="local|DockTabItem">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaTerminalFont}" />
+    </Style>
+    <Style Selector="local|DockTabItem Border#TabRoot">
+      <Setter Property="Background" Value="{DynamicResource VelaTabInactiveBg}" />
+    </Style>
+    <Style Selector="local|DockTabItem:pointerover:not(:selected)">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+    </Style>
+    <Style Selector="local|DockTabItem:pointerover:not(:selected) Border#TabRoot">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="local|DockTabItem:selected">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+    <Style Selector="local|DockTabItem:selected Border#TabRoot">
+      <Setter Property="Background" Value="{DynamicResource VelaTabActiveBg}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
+    </Style>
+  </UserControl.Styles>
+
+  <UserControl.ContextMenu>
+    <!-- 与原 DockContextMenu.axaml 完全同构:关闭系列 + 拆分 + 标签位置;
+         浮动与 MDI 按产品决策不存在。菜单外观走全局 ContextMenu 样式。 -->
+    <ContextMenu>
+      <MenuItem Header="关闭" Click="CloseTab_Click">
+        <MenuItem.Icon>
+          <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.x}"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+        </MenuItem.Icon>
+      </MenuItem>
+      <MenuItem Header="关闭其他标签页" Click="CloseOthers_Click" />
+      <MenuItem Header="关闭所有标签页" Click="CloseAll_Click" />
+      <MenuItem Header="关闭左侧标签页" Click="CloseLeft_Click" />
+      <MenuItem Header="关闭右侧标签页" Click="CloseRight_Click" />
+      <Separator />
+      <MenuItem Header="水平拆分" Click="SplitHorizontal_Click">
+        <MenuItem.Icon>
+          <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.columns-2}"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+        </MenuItem.Icon>
+      </MenuItem>
+      <MenuItem Header="垂直拆分" Click="SplitVertical_Click">
+        <MenuItem.Icon>
+          <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.rows-2}"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+        </MenuItem.Icon>
+      </MenuItem>
+      <Separator />
+      <MenuItem Header="标签位置">
+        <MenuItem.Icon>
+          <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.panel-top}"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+        </MenuItem.Icon>
+        <MenuItem Header="顶部" Click="TabsTop_Click" />
+        <MenuItem Header="左侧" Click="TabsLeft_Click" />
+        <MenuItem Header="右侧" Click="TabsRight_Click" />
+      </MenuItem>
+    </ContextMenu>
+  </UserControl.ContextMenu>
+
+  <Border x:Name="TabRoot"
+          MinHeight="32"
+          Padding="14,0"
+          BorderThickness="0,2,0,0"
+          BorderBrush="Transparent"
+          VerticalAlignment="Stretch">
+    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+
+      <!-- 状态点:上移 1px,补偿 mono 标题下伸部把视觉中心抬高(用户反馈)。 -->
+      <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+               Fill="{Binding Terminal.ConnectionStatus, Converter={x:Static conv:SessionStatusToBrushConverter.Instance}}">
+        <Ellipse.RenderTransform>
+          <TranslateTransform Y="-1" />
+        </Ellipse.RenderTransform>
+      </Ellipse>
+
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <!-- 连接标识色条:与 SFTP 面板头部同色联动(ConnectionAccent),本地终端为透明。 -->
+        <Border Width="3" Height="12" CornerRadius="1.5"
+                VerticalAlignment="Center"
+                Background="{Binding Terminal.ConnectionAccentBrush}">
+          <Border.RenderTransform>
+            <TranslateTransform Y="-1" />
+          </Border.RenderTransform>
+        </Border>
+        <!-- 标题:悬停 400ms 浮出该会话的资源面板(§4B.4/§11)。 -->
+        <TextBlock Text="{Binding Title}"
+                   VerticalAlignment="Center"
+                   ToolTip.ShowDelay="400"
+                   ToolTip.Placement="Pointer">
+          <ToolTip.Tip>
+            <views:ResourceMonitorView DataContext="{Binding Terminal.ResourceMonitor}" />
+          </ToolTip.Tip>
+        </TextBlock>
+      </StackPanel>
+
+      <!-- 关闭 x:11px lucide,与 11px 标题安静并排。 -->
+      <Button Background="Transparent" Padding="0" Width="14" Height="14"
+              BorderThickness="0"
+              HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+              Click="CloseTab_Click">
+        <pc:LucideIcon Width="11" Height="11"
+                       Data="{DynamicResource Icon.x}"
+                       Foreground="{DynamicResource VelaTextTertiary}" />
+      </Button>
+    </StackPanel>
+  </Border>
+</UserControl>

@@ -3,10 +3,8 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using Avalonia;
-using Avalonia.Logging;
 using ReactiveUI.Avalonia;
 using VelaShell.Infrastructure.Persistence;
-using VelaShell.Logging;
 using Velopack;
 
 // ReSharper disable InconsistentNaming
@@ -137,20 +135,10 @@ internal static class Program
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.
-    private static AppBuilder BuildAvaloniaApp()
-    {
-        AppBuilder builder = AppBuilder.Configure<App>()
-                                       .UsePlatformDetect()
-                                       .WithInterFont()
-                                       .LogToTrace()
-                                       .UseReactiveUI(_ => { });
-
-        // Silence Dock.Avalonia's benign "DockCapability" binding warnings while keeping all
-        // other diagnostics. LogToTrace has already installed the trace sink at this point.
-        if (Logger.Sink is { } sink and not FilteringLogSink)
-        {
-            Logger.Sink = new FilteringLogSink(sink);
-        }
-        return builder;
-    }
+    private static AppBuilder BuildAvaloniaApp() =>
+        AppBuilder.Configure<App>()
+                  .UsePlatformDetect()
+                  .WithInterFont()
+                  .LogToTrace()
+                  .UseReactiveUI(_ => { });
 }

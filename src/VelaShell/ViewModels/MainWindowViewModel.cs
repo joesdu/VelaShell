@@ -7,9 +7,6 @@ using System.Runtime.Versioning;
 using System.Text;
 using Avalonia;
 using Avalonia.Threading;
-using Dock.Model.Controls;
-using Dock.Model.Core;
-using Dock.Model.Core.Events;
 using ReactiveUI;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
@@ -20,6 +17,7 @@ using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;
 using VelaShell.Core.Tunnels;
 using VelaShell.Docking;
+using VelaShell.Docking.Model;
 using VelaShell.Infrastructure.Pty;
 using VelaShell.Presentation.Commands;
 using VelaShell.Presentation.Services;
@@ -43,7 +41,6 @@ public class MainWindowViewModel : ReactiveObject
     private static readonly byte[] RisResetSequence = [0x1B, (byte)'c']; // ESC c
 
     private readonly IConnectionWorkflowService? _connectionWorkflowService;
-    private readonly TerminalDockFactory _dockFactory;
     private readonly ISessionMetricsService? _metricsService;
 
     // ---- 会话日志(设置 → 常规 → 数据与存储) ----
@@ -136,12 +133,15 @@ public class MainWindowViewModel : ReactiveObject
         _tunnelService = tunnelService;
         _metricsService = metricsService;
         _terminalEmulatorFactory = terminalEmulatorFactory ?? (() => new VelaTerminalControl());
-        _dockFactory = new();
-        Layout = _dockFactory.CreateLayout();
-        _dockFactory.InitLayout(Layout);
-        _dockFactory.DocumentClosed += OnDocumentClosed;
-        _dockFactory.ActiveDockableChanged += OnActiveDockableChanged;
-        _dockFactory.FocusedDockableChanged += OnFocusedDockableChanged;
+        Layout = new DockWorkspace();
+        Layout.DocumentClosed += document =>
+        {
+            if (document is TerminalDocument terminalDocument)
+            {
+                OnDocumentClosed(terminalDocument);
+            }
+        };
+        Layout.ActiveDocumentChanged += SetActiveFromDocument;
         _sidebar = new(recentConnectionService);
         if (sessionRepository is not null)
         {
@@ -157,6 +157,7 @@ public class MainWindowViewModel : ReactiveObject
                    ActiveTerminalTab = activeTab as TerminalTabViewModel;
                    activeTab?.HasBellAlert = false; // 切换到该标签即清除 Bell 提醒
                    RebindFileBrowser();
+                   SyncWorkspaceToActiveTab(activeTab as TerminalTabViewModel);
                });
 
         // SFTP 面板“打开/关闭”的用户意图:只跟踪当前面板实例上的 IsVisible 变化
@@ -284,8 +285,8 @@ public class MainWindowViewModel : ReactiveObject
 
     public bool HasActiveTerminalTab => ActiveTerminalTab is not null;
 
-    /// <summary>The Dock.Avalonia layout hosting terminal documents (draggable, floatable, splittable).</summary>
-    public IRootDock Layout { get; }
+    /// <summary>自研 VelaDock 工作区:承载终端文档(标签可拖拽重排、拆分分屏)。</summary>
+    public DockWorkspace Layout { get; }
 
     public FileBrowserViewModel FileBrowser
     {
@@ -425,7 +426,7 @@ public class MainWindowViewModel : ReactiveObject
         var document = new TerminalDocument(terminalTab);
         TabBar.AddTab(terminalTab);
         ActiveTerminalTab = terminalTab;
-        _dockFactory.AddTerminal(document);
+        Layout.AddDocument(document);
         UpdateStatusBarForActiveTab();
         try
         {
@@ -1099,7 +1100,7 @@ public class MainWindowViewModel : ReactiveObject
         terminalTab.CloseRequested += (_, _) => RemoveTerminalTab(terminalTab, document);
         TabBar.AddTab(terminalTab);
         ActiveTerminalTab = terminalTab;
-        _dockFactory.AddTerminal(document);
+        Layout.AddDocument(document);
         UpdateStatusBarForActiveTab();
         return (terminalTab, document);
     }
@@ -1422,7 +1423,7 @@ public class MainWindowViewModel : ReactiveObject
         {
             TabBar.CloseTabCommand.Execute(tab).Subscribe();
         }
-        _dockFactory.RemoveTerminal(document);
+        Layout.RemoveDocument(document);
         if (ReferenceEquals(ActiveTerminalTab, tab))
         {
             ActiveTerminalTab = TabBar.ActiveTab as TerminalTabViewModel;
@@ -1740,13 +1741,9 @@ public class MainWindowViewModel : ReactiveObject
         StatusBar.Latency = tab.Latency is { } latency ? $"{(int)latency.TotalMilliseconds}ms" : string.Empty;
     }
 
-    private void OnActiveDockableChanged(object? sender, ActiveDockableChangedEventArgs e) => SetActiveFromDockable(e.Dockable);
-
-    private void OnFocusedDockableChanged(object? sender, FocusedDockableChangedEventArgs e) => SetActiveFromDockable(e.Dockable);
-
-    private void SetActiveFromDockable(IDockable? dockable)
+    private void SetActiveFromDocument(DockDocument? dockDocument)
     {
-        if (dockable is not TerminalDocument document || !TabBar.Tabs.Contains(document.Terminal))
+        if (dockDocument is not TerminalDocument document || !TabBar.Tabs.Contains(document.Terminal))
         {
             return;
         }
@@ -1754,6 +1751,25 @@ public class MainWindowViewModel : ReactiveObject
         if (!ReferenceEquals(TabBar.ActiveTab, document.Terminal))
         {
             TabBar.ActiveTab = document.Terminal;
+        }
+    }
+
+    /// <summary>
+    /// TabBar → 工作区反向同步:Ctrl+Tab / Ctrl+Shift+Tab 走 TabBar 的逻辑集合切换标签,
+    /// 文档区必须跟着切到对应文档(原 Dock 集成缺这半边,快捷键切标签时画面不动)。
+    /// </summary>
+    private void SyncWorkspaceToActiveTab(TerminalTabViewModel? tab)
+    {
+        if (tab is null)
+        {
+            return;
+        }
+        TerminalDocument? document = Layout.AllDocuments()
+                                           .OfType<TerminalDocument>()
+                                           .FirstOrDefault(d => ReferenceEquals(d.Terminal, tab));
+        if (document is not null && !ReferenceEquals(Layout.ActiveDocument, document))
+        {
+            Layout.ActivateDocument(document);
         }
     }
 

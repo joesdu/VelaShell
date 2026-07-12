@@ -113,13 +113,57 @@ public partial class TerminalTabView : UserControl
     {
         string input = EffectiveInput();
         SuggestDiag.Log("changed", $"view={GetHashCode():X} attached={IsAttachedToVisualTree()} known=\"{_suggestVm?.InputTracker.CurrentInput ?? "<unknown>"}\" effective=\"{input}\" suppressed=\"{_suppressedInput}\"");
-        if (string.IsNullOrEmpty(input) || input == _suppressedInput)
+        if (string.IsNullOrEmpty(input) || input == _suppressedInput || IsSecretPromptLine())
         {
             CloseSuggestPopup(suppress: false);
             return;
         }
         _suppressedInput = null;
         _ = UpdateSuggestionsAsync(input, 8);
+    }
+
+    /// <summary>
+    /// 密码类提示行不弹补全(用户反馈:sudo 密码提示下按键仍弹智能提示)。
+    /// 判定:光标行剥掉已回显的输入(若有)后,剩余提示以冒号(全/半角)结尾且含
+    /// 密码类关键词 —— 覆盖 "[sudo] password for pi:"、"xxx's password:"、
+    /// "Enter passphrase for key:"、"密码:" 等。密码输入无回显,该特征在整个
+    /// 键入过程中保持稳定;双条件(冒号 + 关键词)把误拦截压到最低。
+    /// </summary>
+    private bool IsSecretPromptLine()
+    {
+        if (_termControl is null)
+        {
+            return false;
+        }
+        try
+        {
+            return IsSecretPrompt(_termControl.GetBufferLine(_termControl.CursorRow), EffectiveInput());
+        }
+        catch
+        {
+            return false; // 读缓冲失败(极端竞态):宁可照常弹出,不影响正常补全。
+        }
+    }
+
+    internal static bool IsSecretPrompt(string line, string typed)
+    {
+        string prompt = line.TrimEnd();
+        if (typed.Length > 0 && prompt.EndsWith(typed, StringComparison.Ordinal))
+        {
+            prompt = prompt[..^typed.Length].TrimEnd();
+        }
+        if (prompt.Length == 0 || (prompt[^1] != ':' && prompt[^1] != '：'))
+        {
+            return false;
+        }
+        foreach (string keyword in (ReadOnlySpan<string>)["password", "passphrase", "passwd", "密码", "口令", "verification code", "验证码", "认证码"])
+        {
+            if (prompt.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>
@@ -202,8 +246,14 @@ public partial class TerminalTabView : UserControl
     private bool HandleSuggestionKey(KeyEventArgs e)
     {
         // Alt+Enter:主动弹出补全面板(空输入 = 快捷命令全量 + 最近历史)。
+        // 密码提示行连主动召出也不给:把整条历史命令插进不回显的口令输入里有害无益。
         if (e is { Key: Key.Enter, KeyModifiers: Avalonia.Input.KeyModifiers.Alt })
         {
+            if (IsSecretPromptLine())
+            {
+                e.Handled = true;
+                return true;
+            }
             _suppressedInput = null;
             _ = UpdateSuggestionsAsync(EffectiveInput(), 20);
             e.Handled = true;

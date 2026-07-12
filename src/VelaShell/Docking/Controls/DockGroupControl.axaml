@@ -1,0 +1,94 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:VelaShell.Docking.Controls"
+             xmlns:m="using:VelaShell.Docking.Model"
+             xmlns:conv="using:VelaShell.Converters"
+             xmlns:pc="using:VelaShell.Controls.Controls"
+             xmlns:controls="using:VelaShell.Controls"
+             x:Class="VelaShell.Docking.Controls.DockGroupControl"
+             x:DataType="m:DockGroup">
+
+  <!-- 一个标签组:标签条(35px + 1px 分割线 = 36px,与侧栏头部分割线同一水平线,
+       用户反馈)+ 内容区。标签条按 TabsPosition 停靠(代码后置调整),溢出时右端
+       出现固定 24px 三连按钮(设计 nunbT pZGS4):左滚/右滚/全部标签下拉。 -->
+  <DockPanel>
+
+    <DockPanel x:Name="TabStripArea"
+               DockPanel.Dock="Top"
+               Background="{DynamicResource VelaBgPage}"
+               MinHeight="35">
+
+      <StackPanel x:Name="OverflowControls"
+                  DockPanel.Dock="Right"
+                  Orientation="Horizontal"
+                  Spacing="2"
+                  Margin="6,0"
+                  VerticalAlignment="Center">
+        <StackPanel.IsVisible>
+          <MultiBinding Converter="{x:Static conv:WidthOverflowConverter.Instance}">
+            <Binding ElementName="TabScroll" Path="Extent.Width" />
+            <Binding ElementName="TabScroll" Path="Viewport.Width" />
+          </MultiBinding>
+        </StackPanel.IsVisible>
+
+        <RepeatButton x:Name="ScrollLeftButton" Classes="tab-nav" Click="ScrollLeft_Click">
+          <pc:LucideIcon Width="14" Height="14"
+                         Data="{DynamicResource Icon.chevron-left}"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+        </RepeatButton>
+
+        <RepeatButton x:Name="ScrollRightButton" Classes="tab-nav" Click="ScrollRight_Click">
+          <pc:LucideIcon Width="14" Height="14"
+                         Data="{DynamicResource Icon.chevron-right}"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+        </RepeatButton>
+
+        <Button Classes="tab-nav" Click="TabListDrop_Click" ToolTip.Tip="所有标签页">
+          <pc:LucideIcon Width="14" Height="14"
+                         Data="{DynamicResource Icon.chevron-down}"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+        </Button>
+      </StackPanel>
+
+      <!-- 标签区:纯滚动视口,无内嵌箭头(用户反馈:内嵌箭头易错且难看)。 -->
+      <ScrollViewer x:Name="TabScroll"
+                    HorizontalScrollBarVisibility="Hidden"
+                    VerticalScrollBarVisibility="Disabled">
+        <ItemsControl x:Name="TabsHost" ItemsSource="{Binding Documents}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="m:DockDocument">
+              <local:DockTabItem />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </DockPanel>
+
+    <!-- 标签条下的 1px 分割线:恒用主题分割线画刷,无焦点反馈(用户要求)。 -->
+    <Border x:Name="StripSeparator"
+            DockPanel.Dock="Top"
+            Height="1"
+            Background="{DynamicResource VelaBorderPrimary}" />
+
+    <!-- 内容区:终端视图经工作区缓存复用,ReparentingHost 保证单父级。
+         组为空时(拆分留下的空面板)显示拖放提示。 -->
+    <Border Background="{DynamicResource VelaBgTerminal}" ClipToBounds="True">
+      <Panel>
+        <TextBlock x:Name="EmptyHint"
+                   Text="将标签拖到此处"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   FontFamily="{DynamicResource VelaTerminalFont}"
+                   FontSize="11"
+                   Foreground="{DynamicResource VelaTextMuted}"
+                   IsVisible="False" />
+        <controls:ReparentingHost x:Name="ContentHost" />
+      </Panel>
+    </Border>
+  </DockPanel>
+</UserControl>

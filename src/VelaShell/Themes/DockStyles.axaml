@@ -1,115 +1,13 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:dc="using:Dock.Avalonia.Controls"
-        xmlns:docking="using:VelaShell.Docking"
-        xmlns:conv="using:VelaShell.Converters"
-        xmlns:pc="using:VelaShell.Controls.Controls"
-        xmlns:views="using:VelaShell.Views">
+        xmlns:dockc="using:VelaShell.Docking.Controls">
 
-    <!-- Re-skin the Dock.Avalonia document tab strip to match design frame nunbT exactly:
-         36px bg-page bar; 32px tabs padding [0,14]; active = tab-active bg + 2px accent top
-         line + JB Mono 11 medium text-primary; inactive = tab-inactive bg + text-tertiary;
-         status dot 7px + close x 12px, gap 8. -->
+    <!-- 终端工作区(自研 VelaDock)底色 + 全局通用样式。标签本身的视觉
+         (36px 条 / 32px 标签 / 状态点 / accent 顶线 / 关闭钮)内联在
+         Docking/Controls/DockTabItem.axaml,与设计 nunbT 逐像素一致。 -->
 
-    <Style Selector="dc|DockControl">
+    <Style Selector="dockc|DockWorkspaceControl">
         <Setter Property="Background" Value="{DynamicResource VelaBgPage}" />
-    </Style>
-
-    <Style Selector="dc|DocumentControl">
-        <Setter Property="Background" Value="{DynamicResource VelaBgTerminal}" />
-    </Style>
-
-    <!-- No border around the document content area — the terminal fills its pane edge to
-         edge (nunbT). -->
-    <Style Selector="dc|DocumentControl /template/ Border#PART_Border">
-        <Setter Property="BorderBrush" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0" />
-    </Style>
-
-    <!-- The 1px line under the tab strip is a plain themed divider (用户要求): same brush
-         whether or not the pane has focus — no click feedback, no Fluent-blue active state. -->
-    <Style Selector="dc|DocumentControl /template/ Panel#PART_DocumentSeperator">
-        <Setter Property="Background" Value="{DynamicResource VelaBorderPrimary}" />
-    </Style>
-    <Style Selector="dc|DocumentControl:active /template/ Panel#PART_DocumentSeperator">
-        <Setter Property="Background" Value="{DynamicResource VelaBorderPrimary}" />
-    </Style>
-
-    <!-- 35px strip + the 1px separator below = 36px total, so the divider lands on the same
-         horizontal line as the sidebar header's bottom border (which is drawn INSIDE its
-         36px row) — they used to sit 1px apart (用户反馈). -->
-    <Style Selector="dc|DocumentTabStrip">
-        <Setter Property="Background" Value="{DynamicResource VelaBgPage}" />
-        <Setter Property="MinHeight" Value="35" />
-    </Style>
-
-    <!-- The tab templates MUST be set on DocumentControl, not on the strip: the control's
-         template forwards them to the strip via TemplateBinding (a local value), so setters
-         aimed at the strip never applied — which is why the default Dock close glyph kept
-         showing no matter what the strip style said. -->
-    <Style Selector="dc|DocumentControl">
-        <!-- Status dot (7px) in front of the title, colored by the session state. Nudged up
-             1px: the mono title's descender pulls its visual center above the geometric one,
-             so a dead-center dot reads as sitting low (用户反馈). -->
-        <Setter Property="IconTemplate">
-            <DataTemplate x:DataType="docking:TerminalDocument">
-                <Ellipse Width="7" Height="7" VerticalAlignment="Center"
-                         Fill="{Binding Terminal.ConnectionStatus, Converter={x:Static conv:SessionStatusToBrushConverter.Instance}}">
-                    <Ellipse.RenderTransform>
-                        <TranslateTransform Y="-1" />
-                    </Ellipse.RenderTransform>
-                </Ellipse>
-            </DataTemplate>
-        </Setter>
-        <!-- Tab title. Hovering the NAME for >400ms floats the session's resource panel at the
-             pointer; leaving hides it (§4B.4/§11 — the spec anchors hover on the tab name). -->
-        <Setter Property="HeaderTemplate">
-            <DataTemplate x:DataType="docking:TerminalDocument">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <!-- 连接标识色条:与 SFTP 面板头部同色联动(ConnectionAccent,按配置稳定取色),
-                         多标签时靠余光即可确认下方文件面板属于哪台服务器。本地终端为透明。 -->
-                    <Border Width="3" Height="12" CornerRadius="1.5"
-                            VerticalAlignment="Center"
-                            Background="{Binding Terminal.ConnectionAccentBrush}">
-                        <Border.RenderTransform>
-                            <TranslateTransform Y="-1" />
-                        </Border.RenderTransform>
-                    </Border>
-                    <TextBlock Text="{Binding Title}"
-                               VerticalAlignment="Center"
-                               ToolTip.ShowDelay="400"
-                               ToolTip.Placement="Pointer">
-                        <ToolTip.Tip>
-                            <views:ResourceMonitorView DataContext="{Binding Terminal.ResourceMonitor}" />
-                        </ToolTip.Tip>
-                    </TextBlock>
-                </StackPanel>
-            </DataTemplate>
-        </Setter>
-        <!-- Close x: 11px lucide x, sized to sit quietly beside the 11px tab title. -->
-        <Setter Property="CloseTemplate">
-            <DataTemplate x:DataType="docking:TerminalDocument">
-                <Button Background="Transparent" Padding="0" Width="14" Height="14"
-                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                        Command="{Binding Owner.Factory.CloseDockable}"
-                        CommandParameter="{Binding}">
-                    <pc:LucideIcon Width="11" Height="11"
-                                   Data="{StaticResource Icon.x}"
-                                   Foreground="{DynamicResource VelaTextTertiary}" />
-                </Button>
-            </DataTemplate>
-        </Setter>
-    </Style>
-
-    <!-- Tabs stretch to the full strip height so no bg-page sliver shows between the menu
-         bar's divider and the tab tops (用户反馈：标签与菜单分割线之间的空隙). -->
-    <Style Selector="dc|DocumentTabStripItem">
-        <Setter Property="Background" Value="{DynamicResource VelaTabInactiveBg}" />
-        <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
-        <Setter Property="FontFamily" Value="{DynamicResource VelaTerminalFont}" />
-        <Setter Property="BorderBrush" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0,2,0,0" />
-        <Setter Property="VerticalAlignment" Value="Stretch" />
     </Style>
 
     <!-- Single-line inputs center their text vertically (设计稿所有输入框文本均为垂直居中);
@@ -176,7 +74,7 @@
         <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
     </Style>
 
-    <!-- Disabled items (e.g. the forced-off MDI layout mode) read as muted, not hidden. -->
+    <!-- Disabled items read as muted, not hidden. -->
     <Style Selector="ContextMenu MenuItem:disabled">
         <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
         <Setter Property="Opacity" Value="0.6" />
@@ -188,8 +86,7 @@
         <Setter Property="Margin" Value="6,4" />
     </Style>
 
-    <!-- Tab-strip overflow controls (design nunbT pZGS4): 24px, corner 3, hover bg-hover.
-         Base metrics live here so the DockTabStrip.axaml template stays minimal. -->
+    <!-- Tab-strip overflow controls (design nunbT pZGS4): 24px, corner 3, hover bg-hover. -->
     <Style Selector=":is(Button).tab-nav">
         <Setter Property="Width" Value="24" />
         <Setter Property="Height" Value="24" />
@@ -232,21 +129,9 @@
     <Style Selector="MenuFlyoutPresenter MenuItem:selected">
         <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
     </Style>
-    <!-- 下拉里当前激活的标签:accent + 加粗(DockTabStripResources 挂 active-tab 类)。 -->
+    <!-- 下拉里当前激活的标签:accent + 加粗(DockGroupControl 挂 active-tab 类)。 -->
     <Style Selector="MenuFlyoutPresenter MenuItem.active-tab">
         <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
-        <Setter Property="FontWeight" Value="Medium" />
-    </Style>
-
-    <Style Selector="dc|DocumentTabStripItem:pointerover:not(:selected):not(:dragging)">
-        <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
-        <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
-    </Style>
-
-    <Style Selector="dc|DocumentTabStripItem:selected">
-        <Setter Property="Background" Value="{DynamicResource VelaTabActiveBg}" />
-        <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
         <Setter Property="FontWeight" Value="Medium" />
     </Style>
 

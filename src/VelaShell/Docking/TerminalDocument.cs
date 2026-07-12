@@ -1,38 +1,27 @@
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
-using Dock.Model.ReactiveUI.Controls;
+using VelaShell.Docking.Controls;
+using VelaShell.Docking.Model;
 using VelaShell.ViewModels;
 using VelaShell.Views;
 
 namespace VelaShell.Docking;
 
 /// <summary>
-/// A Dock document that hosts a single SSH terminal tab. Wrapping the terminal (rather than
-/// making <see cref="TerminalTabViewModel" /> itself a dockable) keeps the presentation/tab model
-/// independent of the docking framework, so the existing tab collection and tests are unaffected.
-/// Implements <see cref="IDataTemplate" /> because Dock 12's Fluent theme presents document
-/// content via <c>ContentTemplate="{Binding}"</c> — i.e. it expects the document itself to be its
-/// own template (as Dock.Model.Avalonia's Document is). Without this every realization logged a
-/// "Could not convert TerminalDocument to IDataTemplate" binding error before falling back to a
-/// DataTemplate lookup.
+/// 承载单个 SSH/本地终端标签的可停靠文档。包装终端(而不是让
+/// <see cref="TerminalTabViewModel" /> 自己成为文档)使既有标签集合与测试不受
+/// 停靠层影响。浮动/Pin 由产品决策禁用(用户反馈),VelaDock 未建模,天然不存在。
 /// </summary>
-public sealed class TerminalDocument : Document, IDataTemplate
+public sealed class TerminalDocument : DockDocument, IDockViewProvider
 {
     public TerminalDocument(TerminalTabViewModel terminal)
     {
         Terminal = terminal;
         Id = terminal.Id.ToString("N");
         Title = terminal.Title;
-        CanClose = true;
-        // Floating is disabled by product decision (用户反馈): tabs only rearrange and split
-        // inside the main window; tearing off into separate windows added confusion, not value.
-        CanFloat = false;
-        CanPin = false;
     }
 
     public TerminalTabViewModel Terminal { get; }
 
-    public Control Build(object? param) => new TerminalTabView { DataContext = Terminal };
-
-    public bool Match(object? data) => data is TerminalDocument;
+    /// <summary>每个文档只被 DockWorkspaceControl 调用一次,视图随后全程复用。</summary>
+    public Control CreateView() => new TerminalTabView { DataContext = Terminal };
 }
