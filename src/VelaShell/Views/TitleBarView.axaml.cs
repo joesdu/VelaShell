@@ -1,25 +1,35 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 
 namespace VelaShell.Views;
 
 /// <summary>
-/// 无边框窗体的自绘标题栏:标题栏为纯客户区(Avalonia 12.0.5 的 chrome 角色输入
-/// 重定向在 Win32 上未落地,角色区内按钮点不动 —— 实测),拖动走 BeginMoveDrag
-/// (原生移动循环,Win11 边缘贴靠/拖顶最大化照常生效),双击切换最大化,
-/// 窗口控制按钮为常规 Click。
+/// 无边框窗体的自绘标题栏(WindowDecorations="None" 全自绘模式)。
+/// 拖动/双击遵循 Windows 原生标题栏手感:普通状态按下即拖(BeginMoveDrag,
+/// 原生移动循环,Win11 边缘贴靠有效);最大化状态单击不动作、拖动超阈值才还原
+/// 并按水平比例把窗口定位到鼠标下再继续拖;双击切换最大化。
+/// 最大化按钮的 Win11 贴靠面板由 MainWindow 的 WndProc 钩子(HTMAXBUTTON)提供。
 /// </summary>
 public partial class TitleBarView : UserControl
 {
+    private const double DragThreshold = 4;
+
     private Window? _observedWindow;
+    private PointerPressedEventArgs? _pendingMaximizedDrag;
+    private Point _pressPoint;
 
     public TitleBarView()
     {
         InitializeComponent();
+        AddHandler(PointerMovedEvent, Bar_PointerMoved);
+        AddHandler(PointerReleasedEvent, (_, _) => _pendingMaximizedDrag = null);
+        AddHandler(PointerCaptureLostEvent, (_, _) => _pendingMaximizedDrag = null);
     }
 
     // 必须沿逻辑树找 Window:Avalonia 12 的视觉根是 TopLevelHost 而非 Window,
@@ -27,7 +37,35 @@ public partial class TitleBarView : UserControl
     // 实为事件一直在触发、只是拿不到 Window 执行动作。
     private Window? HostWindow => this.FindLogicalAncestorOfType<Window>();
 
-    protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+    /// <summary>供 MainWindow 的 WndProc 钩子做 HTMAXBUTTON 命中与 nc-hover 高亮。</summary>
+    internal Button MaximizeButtonControl => MaximizeButton;
+
+    internal void SetMaximizeNcHover(bool hovered)
+    {
+        if (hovered)
+        {
+            if (!MaximizeButton.Classes.Contains("nc-hover"))
+            {
+                MaximizeButton.Classes.Add("nc-hover");
+            }
+        }
+        else
+        {
+            MaximizeButton.Classes.Remove("nc-hover");
+        }
+    }
+
+    internal void ToggleMaximize()
+    {
+        if (HostWindow is { } window)
+        {
+            window.WindowState = window.WindowState == WindowState.Maximized
+                                     ? WindowState.Normal
+                                     : WindowState.Maximized;
+        }
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
         // 最大化按钮图标随窗口状态切换:方块 = 可最大化,双矩形 = 可还原。
@@ -39,7 +77,7 @@ public partial class TitleBarView : UserControl
         }
     }
 
-    protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
         if (_observedWindow is { } window)
@@ -49,7 +87,7 @@ public partial class TitleBarView : UserControl
         }
     }
 
-    private void OnWindowPropertyChanged(object? sender, Avalonia.AvaloniaPropertyChangedEventArgs e)
+    private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (e.Property == Window.WindowStateProperty && sender is Window window)
         {
@@ -79,6 +117,7 @@ public partial class TitleBarView : UserControl
         }
         if (e.ClickCount == 2)
         {
+            _pendingMaximizedDrag = null;
             ToggleMaximize();
             return;
         }
@@ -86,12 +125,43 @@ public partial class TitleBarView : UserControl
         {
             return;
         }
-        // 最大化下拖动 = 先还原再进入移动(操作系统标题栏的标准手感)。
         if (window.WindowState == WindowState.Maximized)
         {
-            window.WindowState = WindowState.Normal;
+            // 原生手感:最大化下单击不还原;只记录按下,拖动超阈值才还原并进入移动
+            // (见 Bar_PointerMoved)。
+            _pendingMaximizedDrag = e;
+            _pressPoint = e.GetPosition(this);
+            return;
         }
         window.BeginMoveDrag(e);
+    }
+
+    private void Bar_PointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_pendingMaximizedDrag is not { } pressed || HostWindow is not { } window)
+        {
+            return;
+        }
+        Point position = e.GetPosition(this);
+        if (Math.Abs(position.X - _pressPoint.X) < DragThreshold && Math.Abs(position.Y - _pressPoint.Y) < DragThreshold)
+        {
+            return;
+        }
+        _pendingMaximizedDrag = null;
+
+        // 原生手感:还原窗口,并按“鼠标在标题栏的水平比例”把窗口定位到鼠标下,
+        // 标题栏保持跟手;还原后的尺寸要等一拍布局,故定位与 BeginMoveDrag 后置。
+        double ratioX = Math.Clamp(_pressPoint.X / Math.Max(Bounds.Width, 1), 0, 1);
+        PixelPoint screenPoint = this.PointToScreen(position);
+        window.WindowState = WindowState.Normal;
+        Dispatcher.UIThread.Post(() =>
+        {
+            double scaling = window.RenderScaling;
+            var offsetX = (int)(window.Bounds.Width * ratioX * scaling);
+            var offsetY = (int)(_pressPoint.Y * scaling);
+            window.Position = new PixelPoint(screenPoint.X - offsetX, screenPoint.Y - offsetY);
+            window.BeginMoveDrag(pressed);
+        }, DispatcherPriority.Render);
     }
 
     private void Minimize_Click(object? sender, RoutedEventArgs e)
@@ -106,14 +176,4 @@ public partial class TitleBarView : UserControl
 
     /// <summary>关闭走 Window.Close():托盘化/退出确认逻辑在 MainWindow.OnClosing 统一处理。</summary>
     private void Close_Click(object? sender, RoutedEventArgs e) => HostWindow?.Close();
-
-    private void ToggleMaximize()
-    {
-        if (HostWindow is { } window)
-        {
-            window.WindowState = window.WindowState == WindowState.Maximized
-                                     ? WindowState.Normal
-                                     : WindowState.Maximized;
-        }
-    }
 }

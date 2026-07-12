@@ -62,7 +62,7 @@
       <views:TunnelPanelView DataContext="{Binding TunnelPanel}" />
     </Panel>
     <!-- 自绘标题栏:logo/名称 + 全局功能图标 + 最小化/最大化/关闭 -->
-    <views:TitleBarView Grid.Row="0" DataContext="{Binding}" />
+    <views:TitleBarView x:Name="TitleBarHost" Grid.Row="0" DataContext="{Binding}" />
 
     <!-- Shell: content + status bar + palette overlay -->
     <Grid Grid.Row="1" RowDefinitions="*,Auto">

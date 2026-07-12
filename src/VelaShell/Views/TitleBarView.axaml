@@ -80,6 +80,12 @@
     <Style Selector="Button.caption-close:pointerover pc|LucideIcon">
       <Setter Property="Foreground" Value="White" />
     </Style>
+    <!-- nc-hover:最大化按钮被非客户命中(HTMAXBUTTON,Win11 贴靠面板路径)时的
+         悬停高亮 —— 此时指针事件不进 Avalonia,:pointerover 不生效,由
+         MainWindow 的 WndProc 钩子按 NC 消息挂/摘该类。 -->
+    <Style Selector="Button.nc-hover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
   </UserControl.Styles>
 
   <!-- 标题栏为纯客户区(不设 chrome 角色:Avalonia 12.0.5 的角色输入重定向在
@@ -154,7 +160,7 @@
           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.minus}"
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </Button>
-        <Button Theme="{StaticResource VelaCaptionButton}" Click="Maximize_Click">
+        <Button x:Name="MaximizeButton" Theme="{StaticResource VelaCaptionButton}" Click="Maximize_Click">
           <pc:LucideIcon x:Name="MaximizeIcon" Width="11" Height="11" Data="{StaticResource Icon.square}"
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </Button>
