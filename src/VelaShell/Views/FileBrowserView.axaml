@@ -371,7 +371,7 @@
                       </MenuItem>
                       <Separator IsVisible="{Binding IsRegularFile}" />
                       <!-- 打开 = 文件的主操作(accent):内置 AvaloniaEdit 编辑器,保存即上传。 -->
-                      <MenuItem Header="打开"
+                      <MenuItem Header="{loc:Localize Sftp_Open}"
                                 IsVisible="{Binding IsRegularFile}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).OpenItemCommand}"
                                 CommandParameter="{Binding}"
@@ -382,7 +382,7 @@
                                          Foreground="{DynamicResource VelaAccent}" />
                         </MenuItem.Icon>
                       </MenuItem>
-                      <MenuItem Header="使用默认编辑器打开"
+                      <MenuItem Header="{loc:Localize Sftp_OpenWithDefaultEditor}"
                                 IsVisible="{Binding IsRegularFile}"
                                 Command="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).OpenWithDefaultEditorCommand}"
                                 CommandParameter="{Binding}">

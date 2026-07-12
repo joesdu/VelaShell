@@ -1,3 +1,5 @@
+using VelaShell.Core.Resources;
+
 namespace VelaShell.Services;
 
 /// <summary>本机可用的一种本地 shell(§12 P1-1)。CommandLine 含参数,直接交给 ConPTY 启动。</summary>
@@ -31,7 +33,7 @@ public static class LocalShellCatalog
         string cmd = Environment.GetEnvironmentVariable("ComSpec") ?? Path.Combine(system32, "cmd.exe");
         if (File.Exists(cmd))
         {
-            shells.Add(new("cmd", "命令提示符 (CMD)", Quote(cmd)));
+            shells.Add(new("cmd", Strings.Get("Shell_Cmd"), Quote(cmd)));
         }
         string wsl = Path.Combine(system32, "wsl.exe");
         if (File.Exists(wsl))

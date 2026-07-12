@@ -2,20 +2,21 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:VelaShell.ViewModels"
              xmlns:ssh="clr-namespace:VelaShell.Core.Ssh;assembly=VelaShell.Core"
+             xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Views.Settings.KeyManagementPage"
              x:DataType="vm:SettingsViewModel">
 
   <StackPanel Spacing="14">
     <StackPanel Spacing="2">
-      <TextBlock Classes="page-title" Text="密钥管理" />
-      <TextBlock Classes="page-subtitle" Text="// 管理 SSH 密钥对和证书" />
+      <TextBlock Classes="page-title" Text="{loc:Localize SetKeys_Title}" />
+      <TextBlock Classes="page-subtitle" Text="{loc:Localize SetKeys_Subtitle}" />
     </StackPanel>
 
     <!-- 工具栏 -->
     <Grid ColumnDefinitions="200,*,Auto,8,Auto">
-      <TextBox Grid.Column="0" Text="{Binding SshKeys.SearchQuery}" PlaceholderText="搜索密钥..." />
-      <Button Grid.Column="2" Classes="dlg-outline" Content="导入" Click="ImportKey_Click" />
-      <Button Grid.Column="4" Classes="dlg-primary" Content="生成密钥"
+      <TextBox Grid.Column="0" Text="{Binding SshKeys.SearchQuery}" PlaceholderText="{loc:Localize SetKeys_SearchPlaceholder}" />
+      <Button Grid.Column="2" Classes="dlg-outline" Content="{loc:Localize SetKeys_Import}" Click="ImportKey_Click" />
+      <Button Grid.Column="4" Classes="dlg-primary" Content="{loc:Localize SetKeys_Generate}"
               Command="{Binding SshKeys.GenerateCommand}" />
     </Grid>
 
@@ -27,10 +28,10 @@
                 BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1"
                 Padding="12,0">
           <Grid ColumnDefinitions="130,80,*,60">
-            <TextBlock Text="名称" Foreground="{DynamicResource VelaTextMuted}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="1" Text="类型" Foreground="{DynamicResource VelaTextMuted}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="2" Text="指纹" Foreground="{DynamicResource VelaTextMuted}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="3" Text="操作" Foreground="{DynamicResource VelaTextMuted}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Text="{loc:Localize Name}" Foreground="{DynamicResource VelaTextMuted}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Text="{loc:Localize KeyType}" Foreground="{DynamicResource VelaTextMuted}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="2" Text="{loc:Localize Fingerprint}" Foreground="{DynamicResource VelaTextMuted}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="3" Text="{loc:Localize SetSync_Actions}" Foreground="{DynamicResource VelaTextMuted}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
           </Grid>
         </Border>
 
@@ -60,7 +61,7 @@
                   <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                     <Button Width="24" Height="24" Padding="0" Background="Transparent"
                             CornerRadius="3" Cursor="Hand"
-                            ToolTip.Tip="复制公钥"
+                            ToolTip.Tip="{loc:Localize SetKeys_CopyPublicKey}"
                             Click="CopyPublicKey_Click">
                       <PathIcon Width="13" Height="13"
                                 Data="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
@@ -68,7 +69,7 @@
                     </Button>
                     <Button Width="24" Height="24" Padding="0" Background="Transparent"
                             CornerRadius="3" Cursor="Hand"
-                            ToolTip.Tip="删除密钥"
+                            ToolTip.Tip="{loc:Localize SetKeys_DeleteKey}"
                             Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).SshKeys.DeleteCommand}"
                             CommandParameter="{Binding}">
                       <PathIcon Width="13" Height="13"
@@ -89,7 +90,7 @@
       <PathIcon Width="12" Height="12"
                 Data="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"
                 Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center" />
-      <TextBlock Classes="row-desc" Text="密钥存储在 ~/.ssh/ 目录下,点击复制按钮可复制公钥" VerticalAlignment="Center" />
+      <TextBlock Classes="row-desc" Text="{loc:Localize SetKeys_StorageHint}" VerticalAlignment="Center" />
     </StackPanel>
     <TextBlock Classes="row-desc"
                Text="{Binding SshKeys.StatusMessage}"
@@ -98,11 +99,11 @@
     <Border Classes="sep" />
 
     <!-- 默认密钥 -->
-    <TextBlock Classes="section-title" Text="默认密钥" />
+    <TextBlock Classes="section-title" Text="{loc:Localize SetKeys_SectionDefault}" />
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="默认认证密钥" />
-        <TextBlock Classes="row-desc" Text="// 新建连接时默认使用的密钥" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetKeys_DefaultAuthKey}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetKeys_DefaultAuthKeyDesc}" />
       </StackPanel>
       <ComboBox Grid.Column="1" Width="160"
                 ItemsSource="{Binding SshKeys.KeyNames}"

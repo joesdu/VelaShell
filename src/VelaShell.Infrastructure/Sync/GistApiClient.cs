@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Sync;
 
 namespace VelaShell.Infrastructure.Sync;
@@ -34,7 +35,7 @@ public sealed class GistApiClient
         JsonDocument doc = await SendAsync(token, HttpMethod.Post, "https://api.github.com/gists", body, cancellationToken).ConfigureAwait(false);
         using (doc)
         {
-            string id = doc.RootElement.GetProperty("id").GetString() ?? throw new InvalidOperationException("GitHub 未返回 Gist Id。");
+            string id = doc.RootElement.GetProperty("id").GetString() ?? throw new InvalidOperationException(Strings.Get("SyncSvc_NoGistId"));
             return (id, ReadLatestVersion(doc.RootElement));
         }
     }
@@ -122,7 +123,7 @@ public sealed class GistApiClient
             {
                 return (file.GetProperty("content").GetString(), version);
             }
-            string rawUrl = file.GetProperty("raw_url").GetString() ?? throw new InvalidOperationException("Gist 文件缺少 raw_url。");
+            string rawUrl = file.GetProperty("raw_url").GetString() ?? throw new InvalidOperationException(Strings.Get("SyncSvc_MissingRawUrl"));
             using HttpRequestMessage rawRequest = CreateRequest(token, HttpMethod.Get, rawUrl, null);
             using HttpResponseMessage rawResponse = await Http.SendAsync(rawRequest, cancellationToken).ConfigureAwait(false);
             rawResponse.EnsureSuccessStatusCode();
@@ -162,10 +163,10 @@ public sealed class GistApiClient
         {
             throw new InvalidOperationException(response.StatusCode switch
             {
-                HttpStatusCode.Unauthorized => "GitHub 令牌无效或已过期,请重新生成(需 gist 权限)。",
-                HttpStatusCode.NotFound => "Gist 不存在或令牌无权访问(请检查 Gist Id 与令牌账号)。",
-                HttpStatusCode.Forbidden => "请求被 GitHub 拒绝(可能触发 API 限流,请稍后再试)。",
-                _ => $"GitHub API 请求失败({(int)response.StatusCode}):{Truncate(text)}"
+                HttpStatusCode.Unauthorized => Strings.Get("SyncSvc_TokenInvalid"),
+                HttpStatusCode.NotFound => Strings.Get("SyncSvc_GistNotFound"),
+                HttpStatusCode.Forbidden => Strings.Get("SyncSvc_Forbidden"),
+                _ => Strings.Format("SyncSvc_ApiFailed", (int)response.StatusCode, Truncate(text))
             });
         }
         return JsonDocument.Parse(text);

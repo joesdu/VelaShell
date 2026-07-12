@@ -1,0 +1,2648 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- App Shell -->
+  <!-- Sidebar (5) -->
+  <!-- Terminal (7) -->
+  <!-- File Browser (7) -->
+  <!-- Tunnel (6) -->
+  <!-- Quick Commands (5) -->
+  <!-- Status Bar (4) -->
+  <!-- Session Tree -->
+  <!-- General (9) -->
+  <!-- Settings (5) -->
+  <!-- Auth (7) -->
+  <!-- Settings Dialog -->
+  <!-- File Browser / SFTP (§6) -->
+  <data name="ActiveTunnels" xml:space="preserve">
+    <value>활성 터널</value>
+  </data>
+  <data name="AddCommand" xml:space="preserve">
+    <value>명령 추가</value>
+  </data>
+  <data name="AppName" xml:space="preserve">
+    <value>VelaShell</value>
+  </data>
+  <data name="Auth_AesBadge" xml:space="preserve">
+    <value>AES-256 암호화 저장</value>
+  </data>
+  <data name="Auth_Back" xml:space="preserve">
+    <value>이전</value>
+  </data>
+  <data name="Auth_Certificate" xml:space="preserve">
+    <value>인증서</value>
+  </data>
+  <data name="Auth_ConnectingTo" xml:space="preserve">
+    <value>{0}에 연결 중</value>
+  </data>
+  <data name="Auth_EnterUsername" xml:space="preserve">
+    <value>사용자 이름 입력</value>
+  </data>
+  <data name="Auth_FingerprintFirstConnect" xml:space="preserve">
+    <value>지문: 최초 연결이며 핸드셰이크 시 기록됩니다</value>
+  </data>
+  <data name="Auth_FingerprintTrusted" xml:space="preserve">
+    <value>지문: {0} (신뢰됨)</value>
+  </data>
+  <data name="Auth_HeaderTitle" xml:space="preserve">
+    <value>인증 - {0}단계</value>
+  </data>
+  <data name="Auth_Key" xml:space="preserve">
+    <value>키</value>
+  </data>
+  <data name="Auth_Login" xml:space="preserve">
+    <value>로그인</value>
+  </data>
+  <data name="Auth_Next" xml:space="preserve">
+    <value>다음</value>
+  </data>
+  <data name="Auth_SelectMethod" xml:space="preserve">
+    <value>인증 방식 선택</value>
+  </data>
+  <data name="Auth_Title" xml:space="preserve">
+    <value>인증</value>
+  </data>
+  <data name="Auth_UsernameLine" xml:space="preserve">
+    <value>사용자 이름: {0}</value>
+  </data>
+  <data name="AuthMethodLabel" xml:space="preserve">
+    <value>인증 방식</value>
+  </data>
+  <data name="Boot_AlreadyRunning" xml:space="preserve">
+    <value>VelaShell이 이미 실행 중입니다.
+
+열려 있는 창으로 전환하세요. 한 번에 하나의 인스턴스만 실행할 수 있습니다.</value>
+  </data>
+  <data name="Boot_StartupErrorTitle" xml:space="preserve">
+    <value>VelaShell - 시작 오류</value>
+  </data>
+  <data name="Boot_StartupFailed" xml:space="preserve">
+    <value>VelaShell을 시작하지 못했습니다.
+
+{0}
+
+반복해서 발생하면 다른 VelaShell 창을 닫고 다시 시도하세요.</value>
+  </data>
+  <data name="Broadcast" xml:space="preserve">
+    <value>브로드캐스트</value>
+  </data>
+  <data name="BrowseKeyFile" xml:space="preserve">
+    <value>찾아보기…</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>취소</value>
+  </data>
+  <data name="Category" xml:space="preserve">
+    <value>분류</value>
+  </data>
+  <data name="ChangePermissions" xml:space="preserve">
+    <value>권한 (chmod)…</value>
+  </data>
+  <data name="ClearAll" xml:space="preserve">
+    <value>모두 지우기</value>
+  </data>
+  <data name="CloseTab" xml:space="preserve">
+    <value>탭 닫기</value>
+  </data>
+  <data name="Cmd_ClearScreen" xml:space="preserve">
+    <value>화면 지우기</value>
+  </data>
+  <data name="Cmd_CloneSession" xml:space="preserve">
+    <value>세션 복제</value>
+  </data>
+  <data name="Cmd_CloseCurrentSession" xml:space="preserve">
+    <value>현재 세션 닫기</value>
+  </data>
+  <data name="Cmd_CommandPalette" xml:space="preserve">
+    <value>명령 팔레트</value>
+  </data>
+  <data name="Cmd_ConnectionDiagnostics" xml:space="preserve">
+    <value>연결 진단</value>
+  </data>
+  <data name="Cmd_ExportTerminalOutput" xml:space="preserve">
+    <value>터미널 출력을 파일로 내보내기</value>
+  </data>
+  <data name="Cmd_FindInTerminal" xml:space="preserve">
+    <value>터미널 내 찾기</value>
+  </data>
+  <data name="Cmd_NewSshConnection" xml:space="preserve">
+    <value>새 SSH 연결</value>
+  </data>
+  <data name="Cmd_OpenLocalTerminal" xml:space="preserve">
+    <value>로컬 터미널 열기: {0}</value>
+  </data>
+  <data name="Cmd_OpenSettings" xml:space="preserve">
+    <value>설정 열기</value>
+  </data>
+  <data name="Cmd_Paste" xml:space="preserve">
+    <value>붙여넣기</value>
+  </data>
+  <data name="Cmd_Reconnect" xml:space="preserve">
+    <value>다시 연결</value>
+  </data>
+  <data name="Cmd_SftpFileManager" xml:space="preserve">
+    <value>SFTP 파일 관리자</value>
+  </data>
+  <data name="Cmd_TunnelManager" xml:space="preserve">
+    <value>터널 관리</value>
+  </data>
+  <data name="CmdCat_Actions" xml:space="preserve">
+    <value>작업</value>
+  </data>
+  <data name="CmdCat_Edit" xml:space="preserve">
+    <value>편집</value>
+  </data>
+  <data name="CmdCat_Search" xml:space="preserve">
+    <value>검색</value>
+  </data>
+  <data name="CmdCat_Session" xml:space="preserve">
+    <value>세션</value>
+  </data>
+  <data name="CmdCat_Tools" xml:space="preserve">
+    <value>도구</value>
+  </data>
+  <data name="Command" xml:space="preserve">
+    <value>명령</value>
+  </data>
+  <data name="ConfirmDeleteFile" xml:space="preserve">
+    <value>파일 "{0}"을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</value>
+  </data>
+  <data name="ConfirmDeleteFolder" xml:space="preserve">
+    <value>폴더 "{0}"과(와) 모든 내용을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</value>
+  </data>
+  <data name="ConfirmDeleteMultiple" xml:space="preserve">
+    <value>선택한 {0}개 항목을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</value>
+  </data>
+  <data name="ConfirmDeleteTitle" xml:space="preserve">
+    <value>삭제 확인</value>
+  </data>
+  <data name="Connect" xml:space="preserve">
+    <value>연결</value>
+  </data>
+  <data name="Connected" xml:space="preserve">
+    <value>연결됨</value>
+  </data>
+  <data name="Connecting" xml:space="preserve">
+    <value>연결 중</value>
+  </data>
+  <data name="ConnectionProfile" xml:space="preserve">
+    <value>연결 프로필</value>
+  </data>
+  <data name="Copy" xml:space="preserve">
+    <value>복사</value>
+  </data>
+  <data name="CopyFileName" xml:space="preserve">
+    <value>이름 복사</value>
+  </data>
+  <data name="CopyFilePath" xml:space="preserve">
+    <value>경로 복사</value>
+  </data>
+  <data name="Custom" xml:space="preserve">
+    <value>사용자 지정</value>
+  </data>
+  <data name="DefaultPort" xml:space="preserve">
+    <value>기본 포트</value>
+  </data>
+  <data name="Delete" xml:space="preserve">
+    <value>삭제</value>
+  </data>
+  <data name="DeleteSelected" xml:space="preserve">
+    <value>선택 항목 삭제</value>
+  </data>
+  <data name="Deleting" xml:space="preserve">
+    <value>삭제 중…</value>
+  </data>
+  <data name="DeletingProgress" xml:space="preserve">
+    <value>삭제 중… {0}/{1}개 완료</value>
+  </data>
+  <data name="Description" xml:space="preserve">
+    <value>설명</value>
+  </data>
+  <data name="Diag_AllPassed" xml:space="preserve">
+    <value>문제가 발견되지 않았습니다. 모든 검사를 통과하여 정상적으로 연결할 수 있습니다.</value>
+  </data>
+  <data name="Diag_CloseTip" xml:space="preserve">
+    <value>닫기</value>
+  </data>
+  <data name="Diag_ExportReport" xml:space="preserve">
+    <value>진단 보고서 내보내기</value>
+  </data>
+  <data name="Diag_Header" xml:space="preserve">
+    <value>연결 진단 센터</value>
+  </data>
+  <data name="Diag_IssueFound" xml:space="preserve">
+    <value>발견된 문제: </value>
+  </data>
+  <data name="Diag_Rerun" xml:space="preserve">
+    <value>다시 검사</value>
+  </data>
+  <data name="Diag_Running" xml:space="preserve">
+    <value>// 검사 진행 중입니다. 잠시 기다려 주세요…</value>
+  </data>
+  <data name="Diag_Steps" xml:space="preserve">
+    <value>진단 단계</value>
+  </data>
+  <data name="Diag_Title" xml:space="preserve">
+    <value>연결 진단</value>
+  </data>
+  <data name="DiagSvc_AuthFailed" xml:space="preserve">
+    <value>인증 실패</value>
+  </data>
+  <data name="DiagSvc_AuthFailedDesc" xml:space="preserve">
+    <value>서버가 {0}의 로그인을 거부했습니다: {1}</value>
+  </data>
+  <data name="DiagSvc_ConnectTimeout" xml:space="preserve">
+    <value>연결 시간 초과</value>
+  </data>
+  <data name="DiagSvc_ConnFailed" xml:space="preserve">
+    <value>연결 설정 실패</value>
+  </data>
+  <data name="DiagSvc_DnsFailed" xml:space="preserve">
+    <value>DNS 확인 실패</value>
+  </data>
+  <data name="DiagSvc_DnsFailedDesc" xml:space="preserve">
+    <value>호스트 이름 {0}을(를) 확인할 수 없습니다: {1}</value>
+  </data>
+  <data name="DiagSvc_HostKeyFailed" xml:space="preserve">
+    <value>호스트 키 검증 실패</value>
+  </data>
+  <data name="DiagSvc_IpLiteral" xml:space="preserve">
+    <value>IP 직접 연결, 확인 불필요</value>
+  </data>
+  <data name="DiagSvc_JumpChainConfigError" xml:space="preserve">
+    <value>점프 체인 설정 오류</value>
+  </data>
+  <data name="DiagSvc_JumpChainFailed" xml:space="preserve">
+    <value>점프 체인 설정 실패</value>
+  </data>
+  <data name="DiagSvc_JumpChainLoop" xml:space="preserve">
+    <value>점프 호스트 설정이 순환 참조를 이루고 있습니다. 각 설정의 점프 호스트 항목을 확인하세요.</value>
+  </data>
+  <data name="DiagSvc_JumpChainTooLong" xml:space="preserve">
+    <value>점프 체인이 5홉을 초과합니다. 점프 단계를 줄이세요.</value>
+  </data>
+  <data name="DiagSvc_JumpConfigError" xml:space="preserve">
+    <value>점프 호스트 설정 오류</value>
+  </data>
+  <data name="DiagSvc_JumpSuffix" xml:space="preserve">
+    <value> (점프 {0})</value>
+  </data>
+  <data name="DiagSvc_LoginSuccess" xml:space="preserve">
+    <value>{0}@{1} 로그인 성공</value>
+  </data>
+  <data name="DiagSvc_NoBanner" xml:space="preserve">
+    <value>서버 응답 없음</value>
+  </data>
+  <data name="DiagSvc_NoBannerDesc" xml:space="preserve">
+    <value>{0}:{1}에 연결할 수 있으나 {2}초 안에 SSH 식별 문자열을 반환하지 않았습니다.</value>
+  </data>
+  <data name="DiagSvc_NoCredsSkip" xml:space="preserve">
+    <value>저장된 자격 증명이 없어 인증 테스트를 건너뜀</value>
+  </data>
+  <data name="DiagSvc_NonSshBanner" xml:space="preserve">
+    <value>SSH가 아닌 응답: {0}</value>
+  </data>
+  <data name="DiagSvc_NonSshDesc" xml:space="preserve">
+    <value>{0}:{1}이(가) SSH가 아닌 프로토콜 응답을 반환했습니다: {2}</value>
+  </data>
+  <data name="DiagSvc_NotSshPort" xml:space="preserve">
+    <value>포트에서 SSH 서비스가 실행되고 있지 않음</value>
+  </data>
+  <data name="DiagSvc_SshBannerReadError" xml:space="preserve">
+    <value>SSH 식별 문자열을 읽는 중 오류 발생: {0}</value>
+  </data>
+  <data name="DiagSvc_SshHandshakeFailed" xml:space="preserve">
+    <value>SSH 핸드셰이크 실패</value>
+  </data>
+  <data name="DiagSvc_StepAuth" xml:space="preserve">
+    <value>사용자 인증</value>
+  </data>
+  <data name="DiagSvc_StepAuthFullChain" xml:space="preserve">
+    <value>사용자 인증(전체 점프 체인)</value>
+  </data>
+  <data name="DiagSvc_StepDns" xml:space="preserve">
+    <value>DNS 확인</value>
+  </data>
+  <data name="DiagSvc_StepSsh" xml:space="preserve">
+    <value>SSH 핸드셰이크</value>
+  </data>
+  <data name="DiagSvc_StepTcp" xml:space="preserve">
+    <value>TCP 연결</value>
+  </data>
+  <data name="DiagSvc_SuggestCheckCreds" xml:space="preserve">
+    <value>사용자 이름과 비밀번호/개인 키가 올바른지 확인하세요. 대소문자에 주의하세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestCheckDns" xml:space="preserve">
+    <value>로컬 DNS 설정을 확인하거나 IP 주소로 직접 연결하세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestCheckHostname" xml:space="preserve">
+    <value>호스트 이름 철자가 올바른지 확인하세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestCheckPort" xml:space="preserve">
+    <value>포트 {0}이(가) 올바른지, 서버에서 SSH 서비스가 실행 중인지 확인하세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestCheckSshd" xml:space="preserve">
+    <value>네트워크와 포트는 정상이며 SSH 협상 단계에서 실패했습니다. 서버의 sshd 로그(/var/log/auth.log)에서 구체적인 원인을 확인하세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestDefaultPort" xml:space="preserve">
+    <value>포트 번호를 확인하세요: SSH 기본값은 22이며 현재 설정은 {0}입니다.</value>
+  </data>
+  <data name="DiagSvc_SuggestDiagnoseJump" xml:space="preserve">
+    <value>먼저 점프 호스트에 대해 개별적으로 연결 진단을 실행하여 홉별로 문제를 찾아보세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestFirewall" xml:space="preserve">
+    <value>서버 방화벽/클라우드 보안 그룹이 해당 포트를 허용하는지 확인하세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestHostOnline" xml:space="preserve">
+    <value>호스트가 온라인인지 확인하세요(ping 또는 다른 네트워크에서 접근해 보기).</value>
+  </data>
+  <data name="DiagSvc_SuggestJumpCreds" xml:space="preserve">
+    <value>점프 호스트 설정에 자격 증명이 저장되어 있어야 확인 없이 연결됩니다. 각 점프 호스트 설정을 확인하세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestKeyMatch" xml:space="preserve">
+    <value>개인 키가 서버의 공개 키와 일치하고 암호(passphrase)가 올바른지 확인하세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestMitm" xml:space="preserve">
+    <value>예상치 못한 변경이라면 중간자 공격에 유의하고 먼저 서버 관리자에게 확인하세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestPasswordDisabled" xml:space="preserve">
+    <value>서버에서 비밀번호 로그인을 비활성화했을 수 있습니다(PasswordAuthentication no). 키 인증을 시도해 보세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestPortOccupied" xml:space="preserve">
+    <value>해당 포트를 다른 서비스(HTTP/데이터베이스 등)가 사용 중일 수 있습니다. 서버 설정을 확인하세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestRecreateJump" xml:space="preserve">
+    <value>점프 호스트 설정이 삭제되었다면 직접 연결로 바꾸거나 설정을 다시 만드세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestReselectJump" xml:space="preserve">
+    <value>이 연결의 편집 창 → 고급 옵션에서 점프 호스트를 다시 선택하세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestSaveCreds" xml:space="preserve">
+    <value>이 설정에는 비밀번호/키가 저장되어 있지 않아 연결 시 로그인 창이 표시됩니다. 자동 인증 테스트가 필요하면 편집 창에서 자격 증명을 저장하세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestTrustNewKey" xml:space="preserve">
+    <value>서버 호스트 키가 로컬 기록과 다릅니다. 서버를 실제로 재설치했다면 안내 창에서 새 지문을 신뢰하세요.</value>
+  </data>
+  <data name="DiagSvc_SuggestVpn" xml:space="preserve">
+    <value>대상이 내부망에 있다면 회사 네트워크 또는 VPN에 연결되어 있는지 확인하세요.</value>
+  </data>
+  <data name="DiagSvc_TcpFailed" xml:space="preserve">
+    <value>TCP 연결을 설정할 수 없음</value>
+  </data>
+  <data name="DiagSvc_TcpFailedDesc" xml:space="preserve">
+    <value>{0}:{1}에 대한 TCP 연결 실패: {2}</value>
+  </data>
+  <data name="DiagSvc_UnknownError" xml:space="preserve">
+    <value>알 수 없는 오류</value>
+  </data>
+  <data name="DiagSvc_WaitFix" xml:space="preserve">
+    <value>문제 해결 후 다시 시도</value>
+  </data>
+  <data name="Disconnect" xml:space="preserve">
+    <value>연결 끊기</value>
+  </data>
+  <data name="Disconnected" xml:space="preserve">
+    <value>연결 끊김</value>
+  </data>
+  <data name="Dock_AllTabs" xml:space="preserve">
+    <value>모든 탭</value>
+  </data>
+  <data name="Dock_Close" xml:space="preserve">
+    <value>닫기</value>
+  </data>
+  <data name="Dock_CloseAll" xml:space="preserve">
+    <value>모든 탭 닫기</value>
+  </data>
+  <data name="Dock_CloseLeft" xml:space="preserve">
+    <value>왼쪽 탭 닫기</value>
+  </data>
+  <data name="Dock_CloseOthers" xml:space="preserve">
+    <value>다른 탭 닫기</value>
+  </data>
+  <data name="Dock_CloseRight" xml:space="preserve">
+    <value>오른쪽 탭 닫기</value>
+  </data>
+  <data name="Dock_DropTabHere" xml:space="preserve">
+    <value>탭을 여기로 드래그</value>
+  </data>
+  <data name="Dock_SplitHorizontal" xml:space="preserve">
+    <value>가로 분할</value>
+  </data>
+  <data name="Dock_SplitVertical" xml:space="preserve">
+    <value>세로 분할</value>
+  </data>
+  <data name="Dock_TabsLeft" xml:space="preserve">
+    <value>왼쪽</value>
+  </data>
+  <data name="Dock_TabsPosition" xml:space="preserve">
+    <value>탭 위치</value>
+  </data>
+  <data name="Dock_TabsRight" xml:space="preserve">
+    <value>오른쪽</value>
+  </data>
+  <data name="Dock_TabsTop" xml:space="preserve">
+    <value>상단</value>
+  </data>
+  <data name="Docker" xml:space="preserve">
+    <value>Docker</value>
+  </data>
+  <data name="Download" xml:space="preserve">
+    <value>다운로드</value>
+  </data>
+  <data name="DownloadSelected" xml:space="preserve">
+    <value>선택 항목 다운로드</value>
+  </data>
+  <data name="Edit" xml:space="preserve">
+    <value>편집</value>
+  </data>
+  <data name="Editor_DiscardAndClose" xml:space="preserve">
+    <value>버리고 닫기</value>
+  </data>
+  <data name="Editor_LoadedStatus" xml:space="preserve">
+    <value>UTF 텍스트 · {0} B · 준비됨</value>
+  </data>
+  <data name="Editor_MaximizeTip" xml:space="preserve">
+    <value>최대화/복원</value>
+  </data>
+  <data name="Editor_SavedStatus" xml:space="preserve">
+    <value>저장되어 서버와 동기화됨 · {0}</value>
+  </data>
+  <data name="Editor_SaveFailed" xml:space="preserve">
+    <value>저장 실패: {0}</value>
+  </data>
+  <data name="Editor_Saving" xml:space="preserve">
+    <value>저장 중…</value>
+  </data>
+  <data name="Editor_Unsaved" xml:space="preserve">
+    <value>● 저장되지 않은 변경 사항</value>
+  </data>
+  <data name="Editor_UnsavedBody" xml:space="preserve">
+    <value>파일에 저장되지 않은 변경 사항이 있습니다. 닫으면 사라집니다.</value>
+  </data>
+  <data name="Editor_UnsavedTitle" xml:space="preserve">
+    <value>저장되지 않은 변경 사항</value>
+  </data>
+  <data name="Error" xml:space="preserve">
+    <value>오류</value>
+  </data>
+  <data name="File" xml:space="preserve">
+    <value>파일</value>
+  </data>
+  <data name="FileName" xml:space="preserve">
+    <value>파일 이름</value>
+  </data>
+  <data name="FilePath" xml:space="preserve">
+    <value>경로</value>
+  </data>
+  <data name="FileType" xml:space="preserve">
+    <value>유형</value>
+  </data>
+  <data name="Fingerprint" xml:space="preserve">
+    <value>지문</value>
+  </data>
+  <data name="Folder" xml:space="preserve">
+    <value>폴더</value>
+  </data>
+  <data name="Font" xml:space="preserve">
+    <value>글꼴</value>
+  </data>
+  <data name="FontSize" xml:space="preserve">
+    <value>글꼴 크기</value>
+  </data>
+  <data name="Group" xml:space="preserve">
+    <value>그룹</value>
+  </data>
+  <data name="Host" xml:space="preserve">
+    <value>호스트</value>
+  </data>
+  <data name="HostKey_TrustOnceTip" xml:space="preserve">
+    <value>이번 연결만 허용하고 신뢰할 수 있는 호스트에 저장하지 않습니다. 앱 재시작 후 다시 묻습니다</value>
+  </data>
+  <data name="HostKey_TrustPermanentlyTip" xml:space="preserve">
+    <value>이 지문을 기록하여 이후 연결 시 다시 묻지 않습니다. 설정 → 보안 감사 → 신뢰할 수 있는 호스트에서 삭제할 수 있습니다</value>
+  </data>
+  <data name="HostKeyChanged" xml:space="preserve">
+    <value>경고: 호스트 키가 변경되었습니다!</value>
+  </data>
+  <data name="HostKeyUnknown" xml:space="preserve">
+    <value>이 호스트에 처음 연결합니다</value>
+  </data>
+  <data name="HostKeyVerification" xml:space="preserve">
+    <value>호스트 키 확인</value>
+  </data>
+  <data name="KeySvc_AlertChangedAccepted" xml:space="preserve">
+    <value>{0}의 호스트 지문이 변경되었으며 사용자가 새 지문의 영구 신뢰를 확인했습니다: {1}</value>
+  </data>
+  <data name="KeySvc_AlertChangedBlocked" xml:space="preserve">
+    <value>{0}의 호스트 지문이 known_hosts 기록과 일치하지 않아 연결이 차단되었습니다(중간자 공격 의심). 새 지문: {1}</value>
+  </data>
+  <data name="KeySvc_AlertChangedTrustOnce" xml:space="preserve">
+    <value>{0}의 호스트 지문이 변경되었으며 사용자가 이번만 신뢰를 선택했습니다(저장 안 함): {1}</value>
+  </data>
+  <data name="KeySvc_AlertFirstRejected" xml:space="preserve">
+    <value>{0}의 최초 연결 지문을 거부했습니다: {1}</value>
+  </data>
+  <data name="KeySvc_AlertFirstTrustOnce" xml:space="preserve">
+    <value>사용자가 {0}의 최초 연결 지문을 이번만 신뢰했습니다(저장 안 함): {1}</value>
+  </data>
+  <data name="KeySvc_AlreadyExists" xml:space="preserve">
+    <value>키 {0}이(가) 이미 존재합니다.</value>
+  </data>
+  <data name="KeySvc_InvalidName" xml:space="preserve">
+    <value>키 이름이 잘못되었습니다.</value>
+  </data>
+  <data name="KeySvc_UnknownType" xml:space="preserve">
+    <value>알 수 없음</value>
+  </data>
+  <data name="KeyType" xml:space="preserve">
+    <value>키 유형</value>
+  </data>
+  <data name="Lang_English" xml:space="preserve">
+    <value>English</value>
+  </data>
+  <data name="Lang_Japanese" xml:space="preserve">
+    <value>日本語</value>
+  </data>
+  <data name="Lang_Korean" xml:space="preserve">
+    <value>한국어</value>
+  </data>
+  <data name="Lang_SimplifiedChinese" xml:space="preserve">
+    <value>简体中文</value>
+  </data>
+  <data name="Lang_TraditionalChinese" xml:space="preserve">
+    <value>繁體中文</value>
+  </data>
+  <data name="Language" xml:space="preserve">
+    <value>언어</value>
+  </data>
+  <data name="Latency" xml:space="preserve">
+    <value>지연 시간</value>
+  </data>
+  <data name="Loading" xml:space="preserve">
+    <value>불러오는 중…</value>
+  </data>
+  <data name="LocalForward" xml:space="preserve">
+    <value>로컬 포워딩</value>
+  </data>
+  <data name="LocalPort" xml:space="preserve">
+    <value>로컬 포트</value>
+  </data>
+  <data name="Main_CloseConfirmBody" xml:space="preserve">
+    <value>활성 SSH 세션이 있습니다. 창을 닫으면 모든 연결이 끊어집니다. 종료하시겠습니까?</value>
+  </data>
+  <data name="Main_CloseConfirmTitle" xml:space="preserve">
+    <value>VelaShell 닫기</value>
+  </data>
+  <data name="Main_ExportFailed" xml:space="preserve">
+    <value>내보내기 실패</value>
+  </data>
+  <data name="Main_ExportTerminalTitle" xml:space="preserve">
+    <value>터미널 출력 내보내기</value>
+  </data>
+  <data name="Main_FileTypeLog" xml:space="preserve">
+    <value>로그 파일</value>
+  </data>
+  <data name="Main_FileTypeText" xml:space="preserve">
+    <value>텍스트 파일</value>
+  </data>
+  <data name="Main_PasteMultilineBody" xml:space="preserve">
+    <value>클립보드에 {0}줄이 있으며 붙여넣으면 터미널에서 즉시 실행될 수 있습니다:
+
+{1}
+
+붙여넣으시겠습니까?</value>
+  </data>
+  <data name="Main_PasteMultilineTitle" xml:space="preserve">
+    <value>여러 줄 붙여넣기</value>
+  </data>
+  <data name="Main_TerminalExported" xml:space="preserve">
+    <value>터미널 출력을 내보냈습니다: {0}</value>
+  </data>
+  <data name="Menu_Actions" xml:space="preserve">
+    <value>작업</value>
+  </data>
+  <data name="Menu_ClearScreen" xml:space="preserve">
+    <value>화면 지우기</value>
+  </data>
+  <data name="Menu_CloseCurrentSession" xml:space="preserve">
+    <value>현재 세션 닫기</value>
+  </data>
+  <data name="Menu_CommandPalette" xml:space="preserve">
+    <value>명령 팔레트</value>
+  </data>
+  <data name="Menu_CommandPaletteTip" xml:space="preserve">
+    <value>명령 팔레트 (Ctrl+P)</value>
+  </data>
+  <data name="Menu_ConnectionDiagnostics" xml:space="preserve">
+    <value>연결 진단</value>
+  </data>
+  <data name="Menu_DuplicateSession" xml:space="preserve">
+    <value>세션 복제</value>
+  </data>
+  <data name="Menu_Exit" xml:space="preserve">
+    <value>종료</value>
+  </data>
+  <data name="Menu_FindInTerminal" xml:space="preserve">
+    <value>터미널에서 찾기</value>
+  </data>
+  <data name="Menu_Help" xml:space="preserve">
+    <value>도움말</value>
+  </data>
+  <data name="Menu_HostTrustCenter" xml:space="preserve">
+    <value>호스트 신뢰 센터</value>
+  </data>
+  <data name="Menu_ImportExportConfig" xml:space="preserve">
+    <value>설정 가져오기 / 내보내기</value>
+  </data>
+  <data name="Menu_KeyManagement" xml:space="preserve">
+    <value>키 관리</value>
+  </data>
+  <data name="Menu_NewSftp" xml:space="preserve">
+    <value>새 SFTP</value>
+  </data>
+  <data name="Menu_NewSshConnection" xml:space="preserve">
+    <value>새 SSH 연결</value>
+  </data>
+  <data name="Menu_Paste" xml:space="preserve">
+    <value>붙여넣기</value>
+  </data>
+  <data name="Menu_Preferences" xml:space="preserve">
+    <value>환경설정</value>
+  </data>
+  <data name="Menu_SearchTerminalTip" xml:space="preserve">
+    <value>터미널 검색 (Ctrl+F)</value>
+  </data>
+  <data name="Menu_Session" xml:space="preserve">
+    <value>세션</value>
+  </data>
+  <data name="Menu_SftpFileManager" xml:space="preserve">
+    <value>SFTP 파일 관리자</value>
+  </data>
+  <data name="Menu_ShortcutsOverview" xml:space="preserve">
+    <value>단축키 목록</value>
+  </data>
+  <data name="Menu_Tools" xml:space="preserve">
+    <value>도구</value>
+  </data>
+  <data name="Menu_TunnelManager" xml:space="preserve">
+    <value>터널 관리</value>
+  </data>
+  <data name="Menu_TunnelTip" xml:space="preserve">
+    <value>터널 (Ctrl+Shift+T)</value>
+  </data>
+  <data name="Modified" xml:space="preserve">
+    <value>수정 시간</value>
+  </data>
+  <data name="Monitor_Kernel" xml:space="preserve">
+    <value>커널</value>
+  </data>
+  <data name="Monitor_OsVersion" xml:space="preserve">
+    <value>OS 버전</value>
+  </data>
+  <data name="Monitor_Unavailable" xml:space="preserve">
+    <value>데이터를 사용할 수 없음</value>
+  </data>
+  <data name="MoveTo" xml:space="preserve">
+    <value>이동…</value>
+  </data>
+  <data name="MoveToGroup" xml:space="preserve">
+    <value>그룹으로 이동</value>
+  </data>
+  <data name="MoveToPrompt" xml:space="preserve">
+    <value>이동 위치(전체 경로)</value>
+  </data>
+  <data name="Msg_AuthFailed" xml:space="preserve">
+    <value>인증 실패: {0}의 사용자 이름, 비밀번호 또는 키가 올바르지 않습니다.</value>
+  </data>
+  <data name="Msg_AuthPromptCancelled" xml:space="preserve">
+    <value>이 프로필에 저장된 자격 증명이 없어 로그인 인증이 취소되었습니다.</value>
+  </data>
+  <data name="Msg_AutoReconnectCountdown" xml:space="preserve">
+    <value>{0} 연결 끊김, {1}초 후 자동 재연결({2}/{3})…</value>
+  </data>
+  <data name="Msg_AutoRecordDisabledHint" xml:space="preserve">
+    <value>자동 녹화가 꺼졌습니다.</value>
+  </data>
+  <data name="Msg_AutoRecordEnabledHint" xml:space="preserve">
+    <value>자동 녹화가 켜졌습니다. 이후에 설정되는 연결부터 적용됩니다.</value>
+  </data>
+  <data name="Msg_AutoRecordOff" xml:space="preserve">
+    <value>자동 녹화: 사용 안 함</value>
+  </data>
+  <data name="Msg_AutoRecordOn" xml:space="preserve">
+    <value>자동 녹화: 사용</value>
+  </data>
+  <data name="Msg_BackgroundConnectorNotConfigured" xml:space="preserve">
+    <value>백그라운드 연결 서비스가 구성되지 않았습니다.</value>
+  </data>
+  <data name="Msg_ClearFailed" xml:space="preserve">
+    <value>지우기 실패: {0}</value>
+  </data>
+  <data name="Msg_CloudRevisionCount" xml:space="preserve">
+    <value>클라우드에 버전 {0}개가 있습니다(최대 30개 표시).</value>
+  </data>
+  <data name="Msg_Completed" xml:space="preserve">
+    <value>완료됨</value>
+  </data>
+  <data name="Msg_ConnectFailed" xml:space="preserve">
+    <value>연결 실패: {0}과(와) SSH 세션을 설정할 수 없습니다.</value>
+  </data>
+  <data name="Msg_ConnectGenericFailed" xml:space="preserve">
+    <value>{0} 연결 실패: {1}</value>
+  </data>
+  <data name="Msg_ConnectingInBackground" xml:space="preserve">
+    <value>백그라운드에서 연결 중…</value>
+  </data>
+  <data name="Msg_ConnectionClosedTitle" xml:space="preserve">
+    <value>연결 끊김</value>
+  </data>
+  <data name="Msg_ConnectionFailedTitle" xml:space="preserve">
+    <value>연결 실패</value>
+  </data>
+  <data name="Msg_ConnectTimeout" xml:space="preserve">
+    <value>연결 시간 초과: {0}이(가) 응답하지 않습니다.</value>
+  </data>
+  <data name="Msg_CpuCorePrefix" xml:space="preserve">
+    <value>코어 </value>
+  </data>
+  <data name="Msg_CpuTooltipTotal" xml:space="preserve">
+    <value>CPU 총 사용률: {0:F1}% ({1}코어)</value>
+  </data>
+  <data name="Msg_Create" xml:space="preserve">
+    <value>만들기</value>
+  </data>
+  <data name="Msg_DefaultEditorNotConfigured" xml:space="preserve">
+    <value>기본 편집기가 설정되지 않았습니다. 설정 → 파일 전송 → 기본 편집기에서 지정하세요(예: notepad).</value>
+  </data>
+  <data name="Msg_DeleteFailed" xml:space="preserve">
+    <value>삭제 실패: {0}</value>
+  </data>
+  <data name="Msg_DirectConnection" xml:space="preserve">
+    <value>직접 연결(점프 호스트 없음)</value>
+  </data>
+  <data name="Msg_Disk" xml:space="preserve">
+    <value>디스크</value>
+  </data>
+  <data name="Msg_DiskMountLine" xml:space="preserve">
+    <value>{0}: {1} / {2} GB ({3:F0}%)</value>
+  </data>
+  <data name="Msg_DiskRootTooltip" xml:space="preserve">
+    <value>디스크 (/): {0} / {1} GB ({2:F0}%)</value>
+  </data>
+  <data name="Msg_DiskUsage" xml:space="preserve">
+    <value>디스크 사용량</value>
+  </data>
+  <data name="Msg_Done" xml:space="preserve">
+    <value>완료</value>
+  </data>
+  <data name="Msg_Downloaded" xml:space="preserve">
+    <value>다운로드됨</value>
+  </data>
+  <data name="Msg_Downloading" xml:space="preserve">
+    <value>다운로드 중</value>
+  </data>
+  <data name="Msg_EditTunnel" xml:space="preserve">
+    <value>터널 편집</value>
+  </data>
+  <data name="Msg_EnterToConnect" xml:space="preserve">
+    <value>Enter로 연결</value>
+  </data>
+  <data name="Msg_ErrorOccurred" xml:space="preserve">
+    <value>오류 발생</value>
+  </data>
+  <data name="Msg_Failed" xml:space="preserve">
+    <value>실패</value>
+  </data>
+  <data name="Msg_FileTooLargeForBuiltInEditor" xml:space="preserve">
+    <value>파일이 5 MB를 초과합니다. 내장 편집기는 작은 텍스트에만 적합하니 다운로드 후 로컬에서 편집하세요.</value>
+  </data>
+  <data name="Msg_GenerateFailed" xml:space="preserve">
+    <value>생성 실패: {0}</value>
+  </data>
+  <data name="Msg_HistoryCleared" xml:space="preserve">
+    <value>최근 연결 기록을 지웠습니다.</value>
+  </data>
+  <data name="Msg_ImportFailed" xml:space="preserve">
+    <value>가져오기 실패: {0}</value>
+  </data>
+  <data name="Msg_JumpChainNotice" xml:space="preserve">
+    <value>점프 호스트 체인을 통해 연결됨: 로컬 → {0} → {1}</value>
+  </data>
+  <data name="Msg_KeyAlreadyExists" xml:space="preserve">
+    <value>같은 이름의 키가 이미 있어 가져오지 않았습니다.</value>
+  </data>
+  <data name="Msg_KeyDeleted" xml:space="preserve">
+    <value>{0}을(를) 삭제했습니다.</value>
+  </data>
+  <data name="Msg_KeyGenerated" xml:space="preserve">
+    <value>{0}({1})을 생성했습니다.</value>
+  </data>
+  <data name="Msg_KeyImported" xml:space="preserve">
+    <value>{0}을(를) 가져왔습니다.</value>
+  </data>
+  <data name="Msg_LastSyncAt" xml:space="preserve">
+    <value>마지막 동기화: {0:yyyy-MM-dd HH:mm:ss}</value>
+  </data>
+  <data name="Msg_LoadRecordingFailed" xml:space="preserve">
+    <value>녹화를 불러오지 못했습니다: {0}</value>
+  </data>
+  <data name="Msg_LoadRecordingListFailed" xml:space="preserve">
+    <value>녹화 목록을 불러오지 못했습니다: {0}</value>
+  </data>
+  <data name="Msg_LoadRevisionsFailed" xml:space="preserve">
+    <value>버전 기록을 불러오지 못했습니다: {0}</value>
+  </data>
+  <data name="Msg_LocalPortInUse" xml:space="preserve">
+    <value>로컬 포트 {0}이(가) 이미 사용 중입니다. 다른 포트를 사용하세요.</value>
+  </data>
+  <data name="Msg_LocalPrefix" xml:space="preserve">
+    <value>로컬 • {0}</value>
+  </data>
+  <data name="Msg_LocalShellReopenFailed" xml:space="preserve">
+    <value>{0} 다시 열기 실패: {1}</value>
+  </data>
+  <data name="Msg_LocalShellStartFailed" xml:space="preserve">
+    <value>{0} 시작 실패: {1}</value>
+  </data>
+  <data name="Msg_MemTooltip" xml:space="preserve">
+    <value>메모리: {0} / {1} GB ({2:F1}%)</value>
+  </data>
+  <data name="Msg_NetCollecting" xml:space="preserve">
+    <value>네트워크 속도 측정 중…</value>
+  </data>
+  <data name="Msg_NetTooltipTotal" xml:space="preserve">
+    <value>네트워크 속도(합계): ↓ {0}  ↑ {1}</value>
+  </data>
+  <data name="Msg_NetworkError" xml:space="preserve">
+    <value>네트워크 오류: {0}에 연결할 수 없습니다. 호스트와 포트를 확인하세요.</value>
+  </data>
+  <data name="Msg_NeverSynced" xml:space="preserve">
+    <value>동기화한 적 없음</value>
+  </data>
+  <data name="Msg_NoCloudRevisions" xml:space="preserve">
+    <value>클라우드에 아직 버전 기록이 없습니다.</value>
+  </data>
+  <data name="Msg_NoRecordings" xml:space="preserve">
+    <value>녹화가 없습니다. 설정 → 보안 감사에서 세션 녹화를 켜면 새 연결의 출력이 기록됩니다.</value>
+  </data>
+  <data name="Msg_OperationCancelled" xml:space="preserve">
+    <value>취소되었습니다.</value>
+  </data>
+  <data name="Msg_Pause" xml:space="preserve">
+    <value>일시 정지</value>
+  </data>
+  <data name="Msg_PerCoreCollecting" xml:space="preserve">
+    <value>코어별 사용률 집계 중…</value>
+  </data>
+  <data name="Msg_Play" xml:space="preserve">
+    <value>재생</value>
+  </data>
+  <data name="Msg_PlaybackTitle" xml:space="preserve">
+    <value>재생: {0}({1})</value>
+  </data>
+  <data name="Msg_ProxyError" xml:space="preserve">
+    <value>프록시 오류: 프록시를 통해 {0}에 연결할 수 없습니다.</value>
+  </data>
+  <data name="Msg_ReadKeysFailed" xml:space="preserve">
+    <value>키 읽기 실패: {0}</value>
+  </data>
+  <data name="Msg_RecordingEmpty" xml:space="preserve">
+    <value>이 녹화에는 데이터 블록이 없습니다(녹화 중 출력이 없었을 수 있음).</value>
+  </data>
+  <data name="Msg_RestoreFailed" xml:space="preserve">
+    <value>복원 실패: {0}</value>
+  </data>
+  <data name="Msg_Restoring" xml:space="preserve">
+    <value>복원 중…</value>
+  </data>
+  <data name="Msg_SaveFailed" xml:space="preserve">
+    <value>저장 실패: {0}</value>
+  </data>
+  <data name="Msg_ScanningTransferFiles" xml:space="preserve">
+    <value>전송할 파일 검색 중… {0}개 발견</value>
+  </data>
+  <data name="Msg_SelectRecordingToPlay" xml:space="preserve">
+    <value>왼쪽에서 녹화를 선택해 재생을 시작하세요</value>
+  </data>
+  <data name="Msg_SelectServer" xml:space="preserve">
+    <value>서버를 선택하세요</value>
+  </data>
+  <data name="Msg_ServerConnectionUnavailable" xml:space="preserve">
+    <value>서버 연결을 사용할 수 없습니다. 다시 시도하세요(자동으로 다시 연결됩니다).</value>
+  </data>
+  <data name="Msg_SftpUnavailable" xml:space="preserve">
+    <value>SFTP 서비스를 사용할 수 없습니다.</value>
+  </data>
+  <data name="Msg_SshConnectionLostDetail" xml:space="preserve">
+    <value>// {0}과(와)의 SSH 연결이 끊어졌습니다</value>
+  </data>
+  <data name="Msg_SshServiceNotConfigured" xml:space="preserve">
+    <value>SSH 연결 서비스가 구성되지 않았습니다.</value>
+  </data>
+  <data name="Msg_Stopped" xml:space="preserve">
+    <value>중지됨</value>
+  </data>
+  <data name="Msg_SwapTooltip" xml:space="preserve">
+    <value>스왑: {0} / {1} GB ({2:F1}%)</value>
+  </data>
+  <data name="Msg_SyncConfigSavedE2eOff" xml:space="preserve">
+    <value>동기화 설정이 저장되었습니다(종단 간 암호화: 사용 안 함, 자격 증명은 업로드되지 않음).</value>
+  </data>
+  <data name="Msg_SyncConfigSavedE2eOn" xml:space="preserve">
+    <value>동기화 설정이 저장되었습니다(종단 간 암호화: 사용).</value>
+  </data>
+  <data name="Msg_SyncFailed" xml:space="preserve">
+    <value>동기화 실패: {0}</value>
+  </data>
+  <data name="Msg_Syncing" xml:space="preserve">
+    <value>동기화 중…</value>
+  </data>
+  <data name="Msg_TabDisconnected" xml:space="preserve">
+    <value>{0} 연결이 끊어졌습니다</value>
+  </data>
+  <data name="Msg_ToggleFailed" xml:space="preserve">
+    <value>전환 실패: {0}</value>
+  </data>
+  <data name="Msg_TunnelConnectedBackground" xml:space="preserve">
+    <value>연결됨 • 백그라운드 터널 채널(터미널 세션과 독립)</value>
+  </data>
+  <data name="Msg_TunnelNotConnectedAuto" xml:space="preserve">
+    <value>연결 안 됨 • 터널 생성 또는 시작 시 자동 연결</value>
+  </data>
+  <data name="Msg_TunnelRouteDynamic" xml:space="preserve">
+    <value>{0}:{1} → SOCKS5 프록시</value>
+  </data>
+  <data name="Msg_TunnelRouteRemote" xml:space="preserve">
+    <value>서버:{0} → {1}:{2}</value>
+  </data>
+  <data name="Msg_TunnelRunning" xml:space="preserve">
+    <value>실행 중 • {0}</value>
+  </data>
+  <data name="Msg_Ungrouped" xml:space="preserve">
+    <value>그룹 없음</value>
+  </data>
+  <data name="Msg_UnnamedSession" xml:space="preserve">
+    <value>(이름 없는 세션)</value>
+  </data>
+  <data name="Msg_UpdateServiceNotAvailable" xml:space="preserve">
+    <value>자동 업데이트 서비스가 아직 연결되지 않았습니다. 프로젝트 릴리스 페이지에서 새 버전을 받으세요.</value>
+  </data>
+  <data name="Msg_Uploaded" xml:space="preserve">
+    <value>업로드됨</value>
+  </data>
+  <data name="Msg_Uploading" xml:space="preserve">
+    <value>업로드 중</value>
+  </data>
+  <data name="Msg_UptimeHours" xml:space="preserve">
+    <value>가동 {0}h {1}m</value>
+  </data>
+  <data name="Msg_UptimeMinutes" xml:space="preserve">
+    <value>가동 {0}m</value>
+  </data>
+  <data name="Msg_UptimeUnderMinute" xml:space="preserve">
+    <value>가동 &lt;1m</value>
+  </data>
+  <data name="Msg_ViaJumpHost" xml:space="preserve">
+    <value>점프 호스트 경유</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>이름</value>
+  </data>
+  <data name="Network" xml:space="preserve">
+    <value>네트워크</value>
+  </data>
+  <data name="NewFile" xml:space="preserve">
+    <value>새 파일</value>
+  </data>
+  <data name="NewFolder" xml:space="preserve">
+    <value>새 폴더</value>
+  </data>
+  <data name="NewTab" xml:space="preserve">
+    <value>새 탭</value>
+  </data>
+  <data name="NewTunnel" xml:space="preserve">
+    <value>새 터널</value>
+  </data>
+  <data name="NoSavedSessions" xml:space="preserve">
+    <value>저장된 세션이 없습니다</value>
+  </data>
+  <data name="Notifications" xml:space="preserve">
+    <value>알림</value>
+  </data>
+  <data name="OK" xml:space="preserve">
+    <value>확인</value>
+  </data>
+  <data name="Palette_Close" xml:space="preserve">
+    <value>닫기</value>
+  </data>
+  <data name="Palette_Confirm" xml:space="preserve">
+    <value>확인</value>
+  </data>
+  <data name="Palette_Navigate" xml:space="preserve">
+    <value>이동</value>
+  </data>
+  <data name="Palette_ResultsSuffix" xml:space="preserve">
+    <value>개 결과</value>
+  </data>
+  <data name="Palette_SearchPlaceholder" xml:space="preserve">
+    <value>명령 입력 또는 세션 검색…</value>
+  </data>
+  <data name="ParentDirectory" xml:space="preserve">
+    <value>상위 디렉터리</value>
+  </data>
+  <data name="Passphrase" xml:space="preserve">
+    <value>암호 문구</value>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>비밀번호</value>
+  </data>
+  <data name="PermissionExecute" xml:space="preserve">
+    <value>실행</value>
+  </data>
+  <data name="PermissionGroup" xml:space="preserve">
+    <value>그룹</value>
+  </data>
+  <data name="PermissionOthers" xml:space="preserve">
+    <value>기타</value>
+  </data>
+  <data name="PermissionOwner" xml:space="preserve">
+    <value>소유자</value>
+  </data>
+  <data name="PermissionRead" xml:space="preserve">
+    <value>읽기</value>
+  </data>
+  <data name="Permissions" xml:space="preserve">
+    <value>권한</value>
+  </data>
+  <data name="PermissionWrite" xml:space="preserve">
+    <value>쓰기</value>
+  </data>
+  <data name="Port" xml:space="preserve">
+    <value>포트</value>
+  </data>
+  <data name="PrivateKey" xml:space="preserve">
+    <value>개인 키</value>
+  </data>
+  <data name="Profile_AdvancedOptions" xml:space="preserve">
+    <value>고급 옵션</value>
+  </data>
+  <data name="Profile_AesNote" xml:space="preserve">
+    <value>(AES-256으로 암호화되어 저장됩니다)</value>
+  </data>
+  <data name="Profile_DisplayName" xml:space="preserve">
+    <value>표시 이름</value>
+  </data>
+  <data name="Profile_GroupPlaceholder" xml:space="preserve">
+    <value>그룹 선택 또는 새 그룹 이름 입력</value>
+  </data>
+  <data name="Profile_HostIp" xml:space="preserve">
+    <value>호스트 이름 / IP</value>
+  </data>
+  <data name="Profile_JumpHost" xml:space="preserve">
+    <value>점프 호스트(ProxyJump)</value>
+  </data>
+  <data name="Profile_JumpHostHint" xml:space="preserve">
+    <value>// 먼저 점프 호스트에 연결한 뒤 포트 포워딩을 통해 이 호스트로 접속합니다. 점프 호스트에는 저장된 자격 증명이 필요하며, 점프 호스트에 다시 점프 호스트를 설정할 수 있습니다(다단계 체인)</value>
+  </data>
+  <data name="Profile_KeyAuth" xml:space="preserve">
+    <value>키 인증</value>
+  </data>
+  <data name="Profile_NotSupported" xml:space="preserve">
+    <value>아직 지원되지 않음</value>
+  </data>
+  <data name="Profile_PassphraseOptional" xml:space="preserve">
+    <value>개인 키 암호 문구(선택)</value>
+  </data>
+  <data name="Profile_PasswordAuth" xml:space="preserve">
+    <value>비밀번호 인증</value>
+  </data>
+  <data name="Profile_PrivateKeyFile" xml:space="preserve">
+    <value>개인 키 파일</value>
+  </data>
+  <data name="Profile_RememberPassword" xml:space="preserve">
+    <value>비밀번호 저장</value>
+  </data>
+  <data name="Profile_SelectKeyFile" xml:space="preserve">
+    <value>개인 키 파일 선택</value>
+  </data>
+  <data name="Profile_Serial" xml:space="preserve">
+    <value>시리얼</value>
+  </data>
+  <data name="Profile_SessionGroup" xml:space="preserve">
+    <value>세션 그룹</value>
+  </data>
+  <data name="Profile_ShowHidePassword" xml:space="preserve">
+    <value>비밀번호 표시/숨기기</value>
+  </data>
+  <data name="Profile_TagsLabel" xml:space="preserve">
+    <value>태그(쉼표로 구분)</value>
+  </data>
+  <data name="Profile_TagsPlaceholder" xml:space="preserve">
+    <value>web, 프로덕션</value>
+  </data>
+  <data name="Profile_Test" xml:space="preserve">
+    <value>테스트</value>
+  </data>
+  <data name="Profile_TestSuccess" xml:space="preserve">
+    <value>연결 테스트 성공</value>
+  </data>
+  <data name="Profile_Title" xml:space="preserve">
+    <value>새 연결</value>
+  </data>
+  <data name="Properties" xml:space="preserve">
+    <value>속성</value>
+  </data>
+  <data name="QuickCmd_DockerPrune" xml:space="preserve">
+    <value>사용하지 않는 Docker 데이터 정리</value>
+  </data>
+  <data name="QuickCmd_DockerPs" xml:space="preserve">
+    <value>실행 중인 컨테이너 나열</value>
+  </data>
+  <data name="QuickCmd_DockerStats" xml:space="preserve">
+    <value>컨테이너 리소스 사용량</value>
+  </data>
+  <data name="QuickCmd_EnabledServices" xml:space="preserve">
+    <value>활성화된 systemd 서비스 나열</value>
+  </data>
+  <data name="QuickCmd_FollowJournal" xml:space="preserve">
+    <value>시스템 저널 실시간 보기</value>
+  </data>
+  <data name="QuickCmd_KernelPackages" xml:space="preserve">
+    <value>설치된 Linux 커널 패키지 나열</value>
+  </data>
+  <data name="QuickCmd_ShowListeningPorts" xml:space="preserve">
+    <value>수신 대기 포트 표시</value>
+  </data>
+  <data name="QuickCmd_SystemdStatus" xml:space="preserve">
+    <value>systemd 서비스 상태 표시</value>
+  </data>
+  <data name="QuickCommands" xml:space="preserve">
+    <value>빠른 명령</value>
+  </data>
+  <data name="QuickConnect" xml:space="preserve">
+    <value>빠른 연결</value>
+  </data>
+  <data name="QuickConnectPlaceholder" xml:space="preserve">
+    <value>user@host:port</value>
+  </data>
+  <data name="Ready" xml:space="preserve">
+    <value>준비됨</value>
+  </data>
+  <data name="RecentConnections" xml:space="preserve">
+    <value>최근 연결</value>
+  </data>
+  <data name="Reconnect" xml:space="preserve">
+    <value>다시 연결</value>
+  </data>
+  <data name="Recorder_AutoRecordTip" xml:space="preserve">
+    <value>설정 → 보안 감사 → 세션 녹화와 동일. 이후 연결부터 적용</value>
+  </data>
+  <data name="Recorder_Empty" xml:space="preserve">
+    <value>녹화가 없습니다</value>
+  </data>
+  <data name="Recorder_Export" xml:space="preserve">
+    <value>녹화 내보내기</value>
+  </data>
+  <data name="Recorder_ExportTip" xml:space="preserve">
+    <value>asciicast v2(.cast)로 내보내기, asciinema 등의 도구로 재생 가능</value>
+  </data>
+  <data name="Recorder_ListTitle" xml:space="preserve">
+    <value>녹화 목록</value>
+  </data>
+  <data name="Recorder_MaximizeTip" xml:space="preserve">
+    <value>최대화 / 복원 (제목 표시줄 더블클릭도 가능)</value>
+  </data>
+  <data name="Recorder_ResizeTip" xml:space="preserve">
+    <value>드래그하여 창 크기 조절</value>
+  </data>
+  <data name="Recorder_SkipIdle" xml:space="preserve">
+    <value>유휴 구간 건너뛰기</value>
+  </data>
+  <data name="Recorder_SpeedTip" xml:space="preserve">
+    <value>재생 속도 (1x / 2x / 4x)</value>
+  </data>
+  <data name="Recorder_Subtitle" xml:space="preserve">
+    <value>// 터미널 감사, 검색 및 타임라인 재생</value>
+  </data>
+  <data name="Recorder_Title" xml:space="preserve">
+    <value>세션 녹화 및 재생</value>
+  </data>
+  <data name="Refresh" xml:space="preserve">
+    <value>새로 고침</value>
+  </data>
+  <data name="Reject" xml:space="preserve">
+    <value>거부</value>
+  </data>
+  <data name="RemoteAddress" xml:space="preserve">
+    <value>원격 주소</value>
+  </data>
+  <data name="RemoteForward" xml:space="preserve">
+    <value>원격 포워딩</value>
+  </data>
+  <data name="Rename" xml:space="preserve">
+    <value>이름 바꾸기</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>저장</value>
+  </data>
+  <data name="SaveToLocal" xml:space="preserve">
+    <value>로컬에 저장</value>
+  </data>
+  <data name="ScrollbackLines" xml:space="preserve">
+    <value>스크롤백 줄 수</value>
+  </data>
+  <data name="Search" xml:space="preserve">
+    <value>검색</value>
+  </data>
+  <data name="SearchCommands" xml:space="preserve">
+    <value>명령 검색</value>
+  </data>
+  <data name="SelectDownloadFolder" xml:space="preserve">
+    <value>저장 위치 선택</value>
+  </data>
+  <data name="SelectFilesToUpload" xml:space="preserve">
+    <value>업로드할 파일 선택</value>
+  </data>
+  <data name="SelectFolderToUpload" xml:space="preserve">
+    <value>업로드할 폴더 선택</value>
+  </data>
+  <data name="ServerGroups" xml:space="preserve">
+    <value>서버 그룹</value>
+  </data>
+  <data name="Sessions" xml:space="preserve">
+    <value>세션</value>
+  </data>
+  <data name="SetAbout_Changelog" xml:space="preserve">
+    <value>변경 로그</value>
+  </data>
+  <data name="SetAbout_ChangelogTip" xml:space="preserve">
+    <value>정식 버전에서 제공</value>
+  </data>
+  <data name="SetAbout_CheckUpdates" xml:space="preserve">
+    <value>업데이트 확인</value>
+  </data>
+  <data name="SetAbout_ConfigPath" xml:space="preserve">
+    <value>설정 경로</value>
+  </data>
+  <data name="SetAbout_Contributors" xml:space="preserve">
+    <value>기여자</value>
+  </data>
+  <data name="SetAbout_ContributorsDesc" xml:space="preserve">
+    <value>// 다음 기여자분들께 감사드립니다</value>
+  </data>
+  <data name="SetAbout_Copyright" xml:space="preserve">
+    <value>Copyright © 2026 VelaShell 작성자 및 기여자</value>
+  </data>
+  <data name="SetAbout_Framework" xml:space="preserve">
+    <value>프레임워크</value>
+  </data>
+  <data name="SetAbout_FreeNotice" xml:space="preserve">
+    <value>이 소프트웨어는 영구 무료입니다. 유일한 공식 채널은 GitHub Releases이며, 어떤 "유료 버전"도 불법 복제품입니다</value>
+  </data>
+  <data name="SetAbout_InDevelopment" xml:space="preserve">
+    <value>개발 중</value>
+  </data>
+  <data name="SetAbout_LicenseNotice" xml:space="preserve">
+    <value>이중 라이선스: AGPL-3.0 오픈 소스 라이선스 / 상용 라이선스 (저장소의 LICENSE-COMMERCIAL.md 참조)</value>
+  </data>
+  <data name="SetAbout_OpenSourceDeps" xml:space="preserve">
+    <value>오픈 소스 종속성</value>
+  </data>
+  <data name="SetAbout_OpenSourceDepsDesc" xml:space="preserve">
+    <value>// VelaShell은 다음의 훌륭한 오픈 소스 프로젝트를 사용합니다</value>
+  </data>
+  <data name="SetAbout_OperatingSystem" xml:space="preserve">
+    <value>운영 체제</value>
+  </data>
+  <data name="SetAbout_Runtime" xml:space="preserve">
+    <value>런타임</value>
+  </data>
+  <data name="SetAbout_SshLibrary" xml:space="preserve">
+    <value>SSH 라이브러리</value>
+  </data>
+  <data name="SetAbout_Subtitle" xml:space="preserve">
+    <value>// 애플리케이션 정보 및 업데이트</value>
+  </data>
+  <data name="SetAbout_SystemInfo" xml:space="preserve">
+    <value>시스템 정보</value>
+  </data>
+  <data name="SetAbout_Tagline" xml:space="preserve">
+    <value>VelaShell - 모던 SSH 터미널</value>
+  </data>
+  <data name="SetAbout_Title" xml:space="preserve">
+    <value>VelaShell 정보</value>
+  </data>
+  <data name="SetAbout_ViewLicense" xml:space="preserve">
+    <value>라이선스 보기</value>
+  </data>
+  <data name="SetAppear_AccentColor" xml:space="preserve">
+    <value>강조 색</value>
+  </data>
+  <data name="SetAppear_AccentColorDesc" xml:space="preserve">
+    <value>// 애플리케이션 강조 색(비워 두면 테마 기본값)</value>
+  </data>
+  <data name="SetAppear_Ansi16" xml:space="preserve">
+    <value>터미널 ANSI 16색</value>
+  </data>
+  <data name="SetAppear_Ansi16Desc" xml:space="preserve">
+    <value>// 터미널에서 사용하는 표준 16색 팔레트</value>
+  </data>
+  <data name="SetAppear_AnsiBright" xml:space="preserve">
+    <value>밝음</value>
+  </data>
+  <data name="SetAppear_AnsiNormal" xml:space="preserve">
+    <value>일반</value>
+  </data>
+  <data name="SetAppear_AnsiSection" xml:space="preserve">
+    <value>ANSI 팔레트</value>
+  </data>
+  <data name="SetAppear_Background" xml:space="preserve">
+    <value>배경색</value>
+  </data>
+  <data name="SetAppear_BackgroundDesc" xml:space="preserve">
+    <value>// 터미널 배경색</value>
+  </data>
+  <data name="SetAppear_ColorScheme" xml:space="preserve">
+    <value>색 구성표</value>
+  </data>
+  <data name="SetAppear_ColorSchemeDesc" xml:space="preserve">
+    <value>// 터미널 색 구성표를 한 번에 적용합니다. 기본값은 앱 테마를 따름: 다크 = Dracula, 라이트 = Solarized Light</value>
+  </data>
+  <data name="SetAppear_ColorSchemePlaceholder" xml:space="preserve">
+    <value>구성표 선택…</value>
+  </data>
+  <data name="SetAppear_CursorColor" xml:space="preserve">
+    <value>커서 색</value>
+  </data>
+  <data name="SetAppear_CursorColorDesc" xml:space="preserve">
+    <value>// 터미널 커서 색</value>
+  </data>
+  <data name="SetAppear_Foreground" xml:space="preserve">
+    <value>전경색</value>
+  </data>
+  <data name="SetAppear_ForegroundDesc" xml:space="preserve">
+    <value>// 터미널 기본 텍스트 색</value>
+  </data>
+  <data name="SetAppear_SelectionColor" xml:space="preserve">
+    <value>선택 영역 색</value>
+  </data>
+  <data name="SetAppear_SelectionColorDesc" xml:space="preserve">
+    <value>// 터미널에서 선택한 텍스트의 배경색</value>
+  </data>
+  <data name="SetAppear_ShowMenuBar" xml:space="preserve">
+    <value>메뉴 모음 표시</value>
+  </data>
+  <data name="SetAppear_SidebarLeft" xml:space="preserve">
+    <value>왼쪽</value>
+  </data>
+  <data name="SetAppear_SidebarPosition" xml:space="preserve">
+    <value>사이드바 위치</value>
+  </data>
+  <data name="SetAppear_SidebarPositionDesc" xml:space="preserve">
+    <value>// 사이드바를 창의 왼쪽 또는 오른쪽에 표시</value>
+  </data>
+  <data name="SetAppear_SidebarRight" xml:space="preserve">
+    <value>오른쪽</value>
+  </data>
+  <data name="SetAppear_Subtitle" xml:space="preserve">
+    <value>// 애플리케이션의 시각적 스타일 사용자 지정</value>
+  </data>
+  <data name="SetAppear_TerminalColorsSection" xml:space="preserve">
+    <value>터미널 색상</value>
+  </data>
+  <data name="SetAppear_ThemeDark" xml:space="preserve">
+    <value>다크 모드</value>
+  </data>
+  <data name="SetAppear_ThemeLight" xml:space="preserve">
+    <value>라이트 모드</value>
+  </data>
+  <data name="SetAppear_ThemeMode" xml:space="preserve">
+    <value>테마 모드</value>
+  </data>
+  <data name="SetAppear_ThemeModeDesc" xml:space="preserve">
+    <value>// 라이트, 다크 또는 시스템 따르기 선택</value>
+  </data>
+  <data name="SetAppear_ThemeSystem" xml:space="preserve">
+    <value>시스템 따르기</value>
+  </data>
+  <data name="SetAppear_Title" xml:space="preserve">
+    <value>모양</value>
+  </data>
+  <data name="SetAppear_UiFont" xml:space="preserve">
+    <value>UI 글꼴</value>
+  </data>
+  <data name="SetAppear_UiFontDesc" xml:space="preserve">
+    <value>// 메뉴, 탭 등 UI 요소의 글꼴</value>
+  </data>
+  <data name="SetAppear_UiFontSize" xml:space="preserve">
+    <value>UI 글꼴 크기</value>
+  </data>
+  <data name="SetAppear_UiFontSizeDesc" xml:space="preserve">
+    <value>// UI 요소의 기본 글꼴 크기</value>
+  </data>
+  <data name="SetAppear_WindowOpacity" xml:space="preserve">
+    <value>창 투명도</value>
+  </data>
+  <data name="SetAppear_WindowOpacityDesc" xml:space="preserve">
+    <value>// 창 배경의 투명도 조정</value>
+  </data>
+  <data name="SetAppear_WindowSection" xml:space="preserve">
+    <value>창</value>
+  </data>
+  <data name="SetAppear_WindowState" xml:space="preserve">
+    <value>시작 시 창 상태</value>
+  </data>
+  <data name="SetAppear_WindowStateDefault" xml:space="preserve">
+    <value>기본 크기</value>
+  </data>
+  <data name="SetAppear_WindowStateDesc" xml:space="preserve">
+    <value>// 앱 시작 시 창 크기 동작</value>
+  </data>
+  <data name="SetAppear_WindowStateMaximized" xml:space="preserve">
+    <value>최대화</value>
+  </data>
+  <data name="SetAppear_WindowStateRemember" xml:space="preserve">
+    <value>마지막 상태 기억</value>
+  </data>
+  <data name="SetDonate_Alipay" xml:space="preserve">
+    <value>알리페이</value>
+  </data>
+  <data name="SetDonate_CoffeeDesc" xml:space="preserve">
+    <value>// 기부는 전적으로 자율이며 금액도 자유입니다. 기부 여부와 관계없이 VelaShell의 모든 기능은 영원히 무료입니다</value>
+  </data>
+  <data name="SetDonate_CoffeeTitle" xml:space="preserve">
+    <value>개발자에게 커피 한 잔 사주기</value>
+  </data>
+  <data name="SetDonate_ContributeBody" xml:space="preserve">
+    <value>기부보다 더 가치 있는 것은 여러분의 참여입니다. PR 제출, 성능과 사용 경험 개선, 버그 수정, 문서 보완, 또는 Issue에 문제와 아이디어를 공유해 주세요. 모든 코드 기여가 VelaShell을 더 멀리 나아가게 합니다.</value>
+  </data>
+  <data name="SetDonate_ContributeTitle" xml:space="preserve">
+    <value>최고의 후원 방법: 기여하기</value>
+  </data>
+  <data name="SetDonate_CopyPaymentLink" xml:space="preserve">
+    <value>결제 링크 복사</value>
+  </data>
+  <data name="SetDonate_InternationalDesc" xml:space="preserve">
+    <value>// 해외에 계시거나 달러, 유로 등 다른 통화로 후원하고 싶다면 Wise로 결제할 수 있습니다</value>
+  </data>
+  <data name="SetDonate_InternationalTitle" xml:space="preserve">
+    <value>해외 기부 (Wise)</value>
+  </data>
+  <data name="SetDonate_Intro" xml:space="preserve">
+    <value>VelaShell은 개인이 유지 관리하는 오픈 소스 프로젝트입니다. 일상적인 운영과 개발에 도움이 된다면 원하는 방식으로 후원해 주세요. 모든 후원은 새로운 기능, 성능 최적화, 더 빠른 버그 수정으로 이어집니다.</value>
+  </data>
+  <data name="SetDonate_OpenInBrowser" xml:space="preserve">
+    <value>브라우저에서 열기</value>
+  </data>
+  <data name="SetDonate_Subtitle" xml:space="preserve">
+    <value>// VelaShell을 사용해 주셔서 감사합니다</value>
+  </data>
+  <data name="SetDonate_Thanks" xml:space="preserve">
+    <value>여기까지 읽어 주셔서 감사합니다. 기부 한 번, Star 하나, Issue 하나, PR 하나 모두가 이 프로젝트를 계속 유지하는 원동력입니다.</value>
+  </data>
+  <data name="SetDonate_Title" xml:space="preserve">
+    <value>후원 및 기부</value>
+  </data>
+  <data name="SetDonate_WeChatPay" xml:space="preserve">
+    <value>위챗페이</value>
+  </data>
+  <data name="SetDonate_WiseHint" xml:space="preserve">
+    <value>QR 코드를 스캔하거나 아래 결제 링크를 클릭하면 현지 통화로 기부할 수 있습니다:</value>
+  </data>
+  <data name="SetGeneral_AutoReconnect" xml:space="preserve">
+    <value>자동 재연결</value>
+  </data>
+  <data name="SetGeneral_AutoReconnectDesc" xml:space="preserve">
+    <value>// 예기치 않게 끊긴 후 자동으로 재연결 시도(수동으로 끊은 경우 제외)</value>
+  </data>
+  <data name="SetGeneral_BehaviorSection" xml:space="preserve">
+    <value>동작</value>
+  </data>
+  <data name="SetGeneral_Clear" xml:space="preserve">
+    <value>지우기</value>
+  </data>
+  <data name="SetGeneral_ClearHistory" xml:space="preserve">
+    <value>기록 지우기</value>
+  </data>
+  <data name="SetGeneral_ClearHistoryConfirm" xml:space="preserve">
+    <value>명령 기록과 최근 연결 기록을 지웁니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?</value>
+  </data>
+  <data name="SetGeneral_ClearHistoryDesc" xml:space="preserve">
+    <value>// 명령 기록과 최근 연결 기록 지우기</value>
+  </data>
+  <data name="SetGeneral_ConfirmBeforeClose" xml:space="preserve">
+    <value>종료 전 확인</value>
+  </data>
+  <data name="SetGeneral_ConfirmBeforeCloseDesc" xml:space="preserve">
+    <value>// 연결된 세션이 있을 때 창을 닫으면 확인합니다. "트레이로 최소화"가 켜져 있으면 닫기 버튼은 창만 숨기며 이 확인을 표시하지 않음</value>
+  </data>
+  <data name="SetGeneral_ConnectionDefaultsSection" xml:space="preserve">
+    <value>연결 기본값</value>
+  </data>
+  <data name="SetGeneral_ConnectTimeout" xml:space="preserve">
+    <value>연결 시간 제한(초)</value>
+  </data>
+  <data name="SetGeneral_DataSection" xml:space="preserve">
+    <value>데이터 및 저장소</value>
+  </data>
+  <data name="SetGeneral_Export" xml:space="preserve">
+    <value>내보내기</value>
+  </data>
+  <data name="SetGeneral_ExportDialogTitle" xml:space="preserve">
+    <value>설정 내보내기</value>
+  </data>
+  <data name="SetGeneral_Import" xml:space="preserve">
+    <value>가져오기</value>
+  </data>
+  <data name="SetGeneral_ImportDialogTitle" xml:space="preserve">
+    <value>설정 가져오기</value>
+  </data>
+  <data name="SetGeneral_ImportExport" xml:space="preserve">
+    <value>설정 가져오기/내보내기</value>
+  </data>
+  <data name="SetGeneral_ImportExportDesc" xml:space="preserve">
+    <value>// 앱 설정만 백업하거나 이전합니다. 연결, 그룹, 키, 스니펫은 포함되지 않음</value>
+  </data>
+  <data name="SetGeneral_KeepAliveInterval" xml:space="preserve">
+    <value>킵얼라이브 간격(초)</value>
+  </data>
+  <data name="SetGeneral_LanguageSection" xml:space="preserve">
+    <value>언어 및 지역</value>
+  </data>
+  <data name="SetGeneral_LaunchAtStartup" xml:space="preserve">
+    <value>시작 시 자동 실행</value>
+  </data>
+  <data name="SetGeneral_LaunchAtStartupDesc" xml:space="preserve">
+    <value>// 시스템 시작 시 VelaShell 자동 실행</value>
+  </data>
+  <data name="SetGeneral_LogRetentionDays" xml:space="preserve">
+    <value>세션 로그 보관 일수</value>
+  </data>
+  <data name="SetGeneral_LogRetentionDaysDesc" xml:space="preserve">
+    <value>// 보관 일수를 초과한 세션 로그는 자동 정리됩니다. 파일 전송 로그 보관 일수는 "파일 전송" 페이지에서 별도 설정</value>
+  </data>
+  <data name="SetGeneral_MaxRetries" xml:space="preserve">
+    <value>최대 재연결 횟수</value>
+  </data>
+  <data name="SetGeneral_MaxRetriesDesc" xml:space="preserve">
+    <value>// 자동 재연결 최대 시도 횟수, 파일 전송 재시도와는 무관</value>
+  </data>
+  <data name="SetGeneral_MinimizeToTray" xml:space="preserve">
+    <value>닫을 때 트레이로 최소화</value>
+  </data>
+  <data name="SetGeneral_MinimizeToTrayDesc" xml:space="preserve">
+    <value>// 닫기 버튼을 누르면 시스템 트레이로 숨기고, 트레이 메뉴의 "종료"로만 종료</value>
+  </data>
+  <data name="SetGeneral_NotifyOnDisconnect" xml:space="preserve">
+    <value>연결 끊김 시 알림 표시</value>
+  </data>
+  <data name="SetGeneral_NotifyOnDisconnectDesc" xml:space="preserve">
+    <value>// SSH 연결이 예기치 않게 끊기면 상태 표시줄과 탭에 알림</value>
+  </data>
+  <data name="SetGeneral_PrivacySection" xml:space="preserve">
+    <value>개인 정보 및 보안</value>
+  </data>
+  <data name="SetGeneral_ReconnectInterval" xml:space="preserve">
+    <value>재연결 간격</value>
+  </data>
+  <data name="SetGeneral_ReconnectIntervalDesc" xml:space="preserve">
+    <value>// 재연결 대기 시간(초)</value>
+  </data>
+  <data name="SetGeneral_RememberPasswords" xml:space="preserve">
+    <value>비밀번호 저장</value>
+  </data>
+  <data name="SetGeneral_RememberPasswordsDesc" xml:space="preserve">
+    <value>// 연결 비밀번호를 로컬 암호화 저장소에 저장</value>
+  </data>
+  <data name="SetGeneral_RestoreSessions" xml:space="preserve">
+    <value>세션 복원</value>
+  </data>
+  <data name="SetGeneral_RestoreSessionsDesc" xml:space="preserve">
+    <value>// 시작 시 이전 세션에 자동 재연결</value>
+  </data>
+  <data name="SetGeneral_SessionLogging" xml:space="preserve">
+    <value>세션 로그</value>
+  </data>
+  <data name="SetGeneral_SessionLoggingDesc" xml:space="preserve">
+    <value>// 모든 세션의 터미널 출력을 자동 기록</value>
+  </data>
+  <data name="SetGeneral_SoundOnDisconnect" xml:space="preserve">
+    <value>연결 끊김 시 소리 재생</value>
+  </data>
+  <data name="SetGeneral_SoundOnDisconnectDesc" xml:space="preserve">
+    <value>// SSH 연결이 예기치 않게 끊기면 시스템 알림음을 재생합니다. 보안 이벤트 알림음은 "보안 감사" 페이지에서 별도 설정</value>
+  </data>
+  <data name="SetGeneral_StartupSection" xml:space="preserve">
+    <value>시작 및 창</value>
+  </data>
+  <data name="SetGeneral_Subtitle" xml:space="preserve">
+    <value>// 애플리케이션 기본 동작 설정</value>
+  </data>
+  <data name="SetGeneral_Title" xml:space="preserve">
+    <value>일반 설정</value>
+  </data>
+  <data name="SetGeneral_UiLanguageDesc" xml:space="preserve">
+    <value>// 애플리케이션 표시 언어</value>
+  </data>
+  <data name="SetKeys_CopyPublicKey" xml:space="preserve">
+    <value>공개 키 복사</value>
+  </data>
+  <data name="SetKeys_DefaultAuthKey" xml:space="preserve">
+    <value>기본 인증 키</value>
+  </data>
+  <data name="SetKeys_DefaultAuthKeyDesc" xml:space="preserve">
+    <value>// 새 연결에서 기본으로 사용할 키</value>
+  </data>
+  <data name="SetKeys_DeleteKey" xml:space="preserve">
+    <value>키 삭제</value>
+  </data>
+  <data name="SetKeys_Generate" xml:space="preserve">
+    <value>키 생성</value>
+  </data>
+  <data name="SetKeys_Import" xml:space="preserve">
+    <value>가져오기</value>
+  </data>
+  <data name="SetKeys_ImportDialogTitle" xml:space="preserve">
+    <value>SSH 개인 키 가져오기</value>
+  </data>
+  <data name="SetKeys_SearchPlaceholder" xml:space="preserve">
+    <value>키 검색...</value>
+  </data>
+  <data name="SetKeys_SectionDefault" xml:space="preserve">
+    <value>기본 키</value>
+  </data>
+  <data name="SetKeys_StorageHint" xml:space="preserve">
+    <value>키는 ~/.ssh/ 디렉터리에 저장됩니다. 복사 버튼을 눌러 공개 키를 복사할 수 있습니다</value>
+  </data>
+  <data name="SetKeys_Subtitle" xml:space="preserve">
+    <value>// SSH 키 쌍 및 인증서 관리</value>
+  </data>
+  <data name="SetKeys_Title" xml:space="preserve">
+    <value>키 관리</value>
+  </data>
+  <data name="SetSecurity_AlertInApp" xml:space="preserve">
+    <value>앱 내 알림</value>
+  </data>
+  <data name="SetSecurity_AlertSound" xml:space="preserve">
+    <value>보안 이벤트 발생 시 소리 재생</value>
+  </data>
+  <data name="SetSecurity_AlertSoundDesc" xml:space="preserve">
+    <value>// 호스트 지문 변경 등 보안 이벤트 시 시스템 알림음 재생; 연결 끊김 알림음은 '일반' 페이지에서 별도 설정</value>
+  </data>
+  <data name="SetSecurity_AutoRecord" xml:space="preserve">
+    <value>모든 세션 자동 녹화</value>
+  </data>
+  <data name="SetSecurity_AutoRecordDesc" xml:space="preserve">
+    <value>// 터미널 출력을 로컬 데이터베이스에 기록해 감사와 재생에 사용; 이후 연결부터 적용되며 보관 일수는 '일반 → 터미널 세션 로그 보관 일수'를 따릅니다</value>
+  </data>
+  <data name="SetSecurity_BlockOnChange" xml:space="preserve">
+    <value>지문 변경 시 차단 및 경고</value>
+  </data>
+  <data name="SetSecurity_BlockOnChangeDesc" xml:space="preserve">
+    <value>// known_hosts 기록과 다르면 연결을 거부해 중간자 공격을 방지</value>
+  </data>
+  <data name="SetSecurity_ConfirmFirstFingerprint" xml:space="preserve">
+    <value>첫 연결 시 지문 수동 확인 필요</value>
+  </data>
+  <data name="SetSecurity_ConfirmFirstFingerprintDesc" xml:space="preserve">
+    <value>// 끄면 첫 연결 시 지문을 자동 기록(TOFU)</value>
+  </data>
+  <data name="SetSecurity_KnownHostsDesc" xml:space="preserve">
+    <value>// 지문이 기록된 호스트 목록; 삭제하면 다음 연결 시 첫 지문 확인을 다시 수행합니다</value>
+  </data>
+  <data name="SetSecurity_MaskAddresses" xml:space="preserve">
+    <value>호스트 주소 숨기기</value>
+  </data>
+  <data name="SetSecurity_MaskAddressesDesc" xml:space="preserve">
+    <value>// 스크린샷 유출 방지: IP와 포트를 숨깁니다. 설정을 열 때마다 기본으로 켜지며 끈 상태는 저장되지 않습니다</value>
+  </data>
+  <data name="SetSecurity_NoKnownHosts" xml:space="preserve">
+    <value>신뢰된 호스트가 없습니다</value>
+  </data>
+  <data name="SetSecurity_OpenPlayer" xml:space="preserve">
+    <value>재생 센터 열기</value>
+  </data>
+  <data name="SetSecurity_RecordingCenter" xml:space="preserve">
+    <value>녹화 및 재생 센터</value>
+  </data>
+  <data name="SetSecurity_RecordingCenterDesc" xml:space="preserve">
+    <value>// 녹화 목록 보기, 타임라인 재생(배속·유휴 건너뛰기 지원), 내보내기 및 삭제</value>
+  </data>
+  <data name="SetSecurity_SectionAlerts" xml:space="preserve">
+    <value>경고 채널: 앱 내 알림 + 알림음 + Webhook</value>
+  </data>
+  <data name="SetSecurity_SectionKnownHosts" xml:space="preserve">
+    <value>신뢰된 호스트</value>
+  </data>
+  <data name="SetSecurity_SectionRecording" xml:space="preserve">
+    <value>세션 녹화</value>
+  </data>
+  <data name="SetSecurity_SectionTrust" xml:space="preserve">
+    <value>호스트 신뢰 정책</value>
+  </data>
+  <data name="SetSecurity_Subtitle" xml:space="preserve">
+    <value>// 녹화 정책, 신뢰 정책 및 위험 경고</value>
+  </data>
+  <data name="SetSecurity_Title" xml:space="preserve">
+    <value>보안 및 감사</value>
+  </data>
+  <data name="SetSecurity_WebhookDesc" xml:space="preserve">
+    <value>// 보안 이벤트를 JSON POST로 사용자 지정 HTTP 엔드포인트에 전송</value>
+  </data>
+  <data name="SetSecurity_WebhookPayloadDesc" xml:space="preserve">
+    <value>// 이벤트 페이로드: { source, event, message, detail, timestamp }; 엔드포인트에 도달할 수 없어도 연결 흐름에는 영향 없음</value>
+  </data>
+  <data name="SetShortcuts_Subtitle" xml:space="preserve">
+    <value>// 현재 버전의 기본 키 바인딩 목록 (읽기 전용)</value>
+  </data>
+  <data name="SetShortcuts_Title" xml:space="preserve">
+    <value>키보드 단축키</value>
+  </data>
+  <data name="SetSnippets_Add" xml:space="preserve">
+    <value>추가</value>
+  </data>
+  <data name="SetSnippets_CommandPlaceholder" xml:space="preserve">
+    <value>명령 (예: systemctl status docker)</value>
+  </data>
+  <data name="SetSnippets_DeleteTip" xml:space="preserve">
+    <value>스니펫 삭제 (기본 제공 스니펫은 삭제할 수 없음)</value>
+  </data>
+  <data name="SetSnippets_Intro" xml:space="preserve">
+    <value>자주 사용하는 명령 스니펫을 만들어 단축키에 바인딩하거나 특정 세션에 할당할 수 있습니다.</value>
+  </data>
+  <data name="SetSnippets_NamePlaceholder" xml:space="preserve">
+    <value>이름 (예: Check Docker Status)</value>
+  </data>
+  <data name="SetSnippets_NewSnippet" xml:space="preserve">
+    <value>새 스니펫</value>
+  </data>
+  <data name="SetSnippets_Subtitle" xml:space="preserve">
+    <value>// 자주 쓰는 명령 스니펫으로, 빠른 명령 패널에서 실행할 수 있습니다</value>
+  </data>
+  <data name="SetSnippets_Title" xml:space="preserve">
+    <value>스크립트/스니펫 관리</value>
+  </data>
+  <data name="SetSync_Actions" xml:space="preserve">
+    <value>작업</value>
+  </data>
+  <data name="SetSync_AutoSync" xml:space="preserve">
+    <value>자동 동기화</value>
+  </data>
+  <data name="SetSync_AutoSyncDesc" xml:space="preserve">
+    <value>// 시작 시 자동 풀, 설정 저장 후 자동 푸시(변경이 있을 때만 새 버전 생성)</value>
+  </data>
+  <data name="SetSync_CreateTokenLink" xml:space="preserve">
+    <value>토큰 만들기(gist 권한 사전 선택됨)</value>
+  </data>
+  <data name="SetSync_DeviceName" xml:space="preserve">
+    <value>이 기기 이름</value>
+  </data>
+  <data name="SetSync_DeviceNameDesc" xml:space="preserve">
+    <value>// 동기화 메타데이터에 기록되어 버전 기록에서 어느 기기의 변경인지 확인할 수 있습니다</value>
+  </data>
+  <data name="SetSync_E2EDesc" xml:space="preserve">
+    <value>// 동기화 암호를 설정하면 데이터가 로컬에서 AES-256-GCM으로 암호화된 후 업로드되어 GitHub에는 암호문만 보이며, 이 경우에만 연결 비밀번호가 페이로드에 포함됩니다. 암호 미설정 시 비밀번호와 개인 키 암호는 절대 업로드되지 않습니다. 모든 기기에서 동일한 암호를 입력해야 합니다.</value>
+  </data>
+  <data name="SetSync_E2EEnabledNotice" xml:space="preserve">
+    <value>✓ 종단 간 암호화 사용 중: 이 Gist의 데이터는 암호문이며 암호는 이 기기에 암호화되어 저장됩니다. 다른 기기에서도 같은 암호를 입력해야 하며, 새 암호를 입력하고 설정을 저장하면 변경됩니다</value>
+  </data>
+  <data name="SetSync_Enable" xml:space="preserve">
+    <value>클라우드 동기화 사용</value>
+  </data>
+  <data name="SetSync_EnableDesc" xml:space="preserve">
+    <value>// 끄면 자동/수동 동기화를 모두 수행하지 않습니다</value>
+  </data>
+  <data name="SetSync_GistIdDesc" xml:space="preserve">
+    <value>// 비워 두면 첫 푸시 시 자동 생성; 다른 기기에서 같은 Id를 입력하면 연동됩니다</value>
+  </data>
+  <data name="SetSync_GistIdPlaceholder" xml:space="preserve">
+    <value>첫 푸시 후 자동 입력</value>
+  </data>
+  <data name="SetSync_HistoryDesc" xml:space="preserve">
+    <value>// 동기화할 때마다 Gist 리비전이 생성됩니다. 이전 버전 복원은 새 버전으로 푸시되므로 기록은 사라지지 않습니다</value>
+  </data>
+  <data name="SetSync_Intro" xml:space="preserve">
+    <value>동기화 데이터는 본인 GitHub 계정의 비공개 Gist에 저장되며, 동기화할 때마다 되돌릴 수 있는 기록 버전이 생성됩니다. 같은 계정의 여러 기기에서 동일한 토큰과 Gist Id를 사용하면 원활하게 동기화됩니다.</value>
+  </data>
+  <data name="SetSync_PassphrasePlaceholder" xml:space="preserve">
+    <value>동기화 암호(비워 두면 저장된 암호 유지)</value>
+  </data>
+  <data name="SetSync_PullOnly" xml:space="preserve">
+    <value>풀만</value>
+  </data>
+  <data name="SetSync_PullOnlyTip" xml:space="preserve">
+    <value>클라우드 최신 버전을 이 기기에 강제 적용</value>
+  </data>
+  <data name="SetSync_PushOnly" xml:space="preserve">
+    <value>푸시만</value>
+  </data>
+  <data name="SetSync_PushOnlyTip" xml:space="preserve">
+    <value>로컬 데이터를 클라우드 최신 버전으로 강제 업로드</value>
+  </data>
+  <data name="SetSync_RefreshHistory" xml:space="preserve">
+    <value>기록 새로고침</value>
+  </data>
+  <data name="SetSync_RestoreRevision" xml:space="preserve">
+    <value>이 버전으로 복원</value>
+  </data>
+  <data name="SetSync_SaveConfig" xml:space="preserve">
+    <value>동기화 설정 저장</value>
+  </data>
+  <data name="SetSync_Saved" xml:space="preserve">
+    <value>저장됨 ✓</value>
+  </data>
+  <data name="SetSync_ScopeAppSettings" xml:space="preserve">
+    <value>앱 설정</value>
+  </data>
+  <data name="SetSync_ScopeProfilesDesc" xml:space="preserve">
+    <value>// 서버 연결, 그룹 및 포트 포워딩 터널; 로컬에만 있는 연결은 클라우드에 의해 삭제되지 않습니다</value>
+  </data>
+  <data name="SetSync_ScopeSnippets" xml:space="preserve">
+    <value>코드 스니펫</value>
+  </data>
+  <data name="SetSync_SectionAccount" xml:space="preserve">
+    <value>계정 및 연동</value>
+  </data>
+  <data name="SetSync_SectionE2E" xml:space="preserve">
+    <value>종단 간 암호화(권장)</value>
+  </data>
+  <data name="SetSync_SectionHistory" xml:space="preserve">
+    <value>버전 기록</value>
+  </data>
+  <data name="SetSync_SectionScope" xml:space="preserve">
+    <value>동기화 범위</value>
+  </data>
+  <data name="SetSync_Subtitle" xml:space="preserve">
+    <value>// GitHub Gist로 여러 기기 간 설정 동기화(버전 기록 지원)</value>
+  </data>
+  <data name="SetSync_SyncNow" xml:space="preserve">
+    <value>지금 동기화</value>
+  </data>
+  <data name="SetSync_SyncNowTip" xml:space="preserve">
+    <value>방향 자동 판단: 로컬이 최신이면 푸시, 클라우드가 최신이면 풀, 양쪽 모두 변경 시 최신 쪽 우선(이전 데이터는 버전 기록에서 복구 가능)</value>
+  </data>
+  <data name="SetSync_Title" xml:space="preserve">
+    <value>클라우드 동기화</value>
+  </data>
+  <data name="SetSync_TokenDesc" xml:space="preserve">
+    <value>// GitHub → Settings → Developer settings → Personal access tokens에서 gist 권한만 선택해 생성; 토큰은 로컬 키로 암호화 저장되며 절대 업로드되지 않습니다</value>
+  </data>
+  <data name="SetSync_TokenDocs" xml:space="preserve">
+    <value>토큰 공식 문서</value>
+  </data>
+  <data name="SetSync_TokenGuideStep1" xml:space="preserve">
+    <value>1. 아래 "토큰 만들기"를 눌러 GitHub 토큰 페이지를 엽니다(필요한 gist 권한은 미리 선택됨, 먼저 GitHub 로그인 필요);</value>
+  </data>
+  <data name="SetSync_TokenGuideStep2" xml:space="preserve">
+    <value>2. 필요에 따라 메모와 만료 기간을 설정한 뒤 Generate token을 클릭합니다;</value>
+  </data>
+  <data name="SetSync_TokenGuideStep3" xml:space="preserve">
+    <value>3. ghp_로 시작하는 토큰을 복사해 아래 입력란에 붙여넣고 설정을 저장합니다.</value>
+  </data>
+  <data name="SetSync_TokenGuideTitle" xml:space="preserve">
+    <value>GitHub 토큰은 어떻게 얻나요?</value>
+  </data>
+  <data name="SetSync_TokenLabel" xml:space="preserve">
+    <value>GitHub 토큰(PAT)</value>
+  </data>
+  <data name="SetSync_TokenLocalOnly" xml:space="preserve">
+    <value>토큰은 이 기기에만 암호화되어 저장되며 동기화 데이터와 함께 업로드되지 않습니다.</value>
+  </data>
+  <data name="SetSync_TokenPlaceholder" xml:space="preserve">
+    <value>ghp_…(비워 두면 저장된 토큰 유지)</value>
+  </data>
+  <data name="SetSync_WhatIsGist" xml:space="preserve">
+    <value>Gist란 무엇인가요?</value>
+  </data>
+  <data name="SetTerm_BellBehavior" xml:space="preserve">
+    <value>터미널 벨 동작</value>
+  </data>
+  <data name="SetTerm_BellBehaviorDesc" xml:space="preserve">
+    <value>// 원격 프로그램이 BEL을 보낼 때: 시스템 알림음 재생, 무시 또는 화면 깜박임</value>
+  </data>
+  <data name="SetTerm_BellNone" xml:space="preserve">
+    <value>없음</value>
+  </data>
+  <data name="SetTerm_BellSection" xml:space="preserve">
+    <value>벨 및 탭 알림</value>
+  </data>
+  <data name="SetTerm_BellSound" xml:space="preserve">
+    <value>시스템 알림음</value>
+  </data>
+  <data name="SetTerm_BellVisual" xml:space="preserve">
+    <value>화면 깜박임</value>
+  </data>
+  <data name="SetTerm_ConfirmMultilinePaste" xml:space="preserve">
+    <value>여러 줄 붙여넣기 확인</value>
+  </data>
+  <data name="SetTerm_ConfirmMultilinePasteDesc" xml:space="preserve">
+    <value>// 줄바꿈이 포함된 내용을 붙여넣을 때 확인 창 표시</value>
+  </data>
+  <data name="SetTerm_CopyOnSelect" xml:space="preserve">
+    <value>선택 시 복사</value>
+  </data>
+  <data name="SetTerm_CopyOnSelectDesc" xml:space="preserve">
+    <value>// 켜기: 마우스를 놓거나 더블 클릭으로 선택하면 자동 복사, 끄기: 선택해도 복사하지 않고 Ctrl+Shift+C로 수동 복사</value>
+  </data>
+  <data name="SetTerm_CtrlCCopy" xml:space="preserve">
+    <value>선택 시 Ctrl+C로 복사</value>
+  </data>
+  <data name="SetTerm_CtrlCCopyDesc" xml:space="preserve">
+    <value>// 켜기: 텍스트 선택 중 Ctrl+C는 복사만 하고 인터럽트를 보내지 않음(선택이 없으면 인터럽트), 끄기: Ctrl+C는 항상 인터럽트 신호 ^C 전송</value>
+  </data>
+  <data name="SetTerm_CursorBar" xml:space="preserve">
+    <value>세로 막대</value>
+  </data>
+  <data name="SetTerm_CursorBlink" xml:space="preserve">
+    <value>커서 깜박임</value>
+  </data>
+  <data name="SetTerm_CursorBlock" xml:space="preserve">
+    <value>블록</value>
+  </data>
+  <data name="SetTerm_CursorSection" xml:space="preserve">
+    <value>커서</value>
+  </data>
+  <data name="SetTerm_CursorStyle" xml:space="preserve">
+    <value>커서 스타일</value>
+  </data>
+  <data name="SetTerm_CursorStyleDesc" xml:space="preserve">
+    <value>// 터미널 커서 모양</value>
+  </data>
+  <data name="SetTerm_CursorUnderline" xml:space="preserve">
+    <value>밑줄</value>
+  </data>
+  <data name="SetTerm_DoubleClickSelectWord" xml:space="preserve">
+    <value>더블 클릭으로 단어 선택</value>
+  </data>
+  <data name="SetTerm_Font" xml:space="preserve">
+    <value>터미널 글꼴</value>
+  </data>
+  <data name="SetTerm_FontDesc" xml:space="preserve">
+    <value>// 터미널에서 사용할 고정폭 글꼴</value>
+  </data>
+  <data name="SetTerm_FontDisplaySection" xml:space="preserve">
+    <value>글꼴 및 표시</value>
+  </data>
+  <data name="SetTerm_ImeSupport" xml:space="preserve">
+    <value>IME 지원</value>
+  </data>
+  <data name="SetTerm_ImeSupportDesc" xml:space="preserve">
+    <value>// 중국어/일본어 등 입력기의 인라인 입력 사용</value>
+  </data>
+  <data name="SetTerm_InputSection" xml:space="preserve">
+    <value>입력</value>
+  </data>
+  <data name="SetTerm_LineHeight" xml:space="preserve">
+    <value>줄 간격</value>
+  </data>
+  <data name="SetTerm_LineHeightDesc" xml:space="preserve">
+    <value>// 줄 간격 배율, 기본값 1.0</value>
+  </data>
+  <data name="SetTerm_OutputEncoding" xml:space="preserve">
+    <value>출력 인코딩</value>
+  </data>
+  <data name="SetTerm_OutputEncodingDesc" xml:space="preserve">
+    <value>// 원격 출력을 해석할 문자 인코딩</value>
+  </data>
+  <data name="SetTerm_RightClickPaste" xml:space="preserve">
+    <value>오른쪽 클릭 붙여넣기</value>
+  </data>
+  <data name="SetTerm_RightClickPasteDesc" xml:space="preserve">
+    <value>// 터미널에서 오른쪽 클릭 시 클립보드 내용 붙여넣기</value>
+  </data>
+  <data name="SetTerm_ScrollbackDesc" xml:space="preserve">
+    <value>// 스크롤백에 보관할 최대 줄 수</value>
+  </data>
+  <data name="SetTerm_ScrollOnKeystroke" xml:space="preserve">
+    <value>키 입력 시 맨 아래로 스크롤</value>
+  </data>
+  <data name="SetTerm_ScrollOnOutput" xml:space="preserve">
+    <value>출력 시 자동 스크롤</value>
+  </data>
+  <data name="SetTerm_ScrollOnOutputDesc" xml:space="preserve">
+    <value>// 기록을 보는 중 새 출력이 있으면 맨 아래로 이동, 끄면 현재 위치 유지</value>
+  </data>
+  <data name="SetTerm_ScrollSection" xml:space="preserve">
+    <value>스크롤</value>
+  </data>
+  <data name="SetTerm_SelectionSection" xml:space="preserve">
+    <value>선택 및 복사</value>
+  </data>
+  <data name="SetTerm_StartupCommand" xml:space="preserve">
+    <value>연결 후 명령 실행</value>
+  </data>
+  <data name="SetTerm_StartupCommandDesc" xml:space="preserve">
+    <value>// 연결/재연결 후 조용히 실행(터미널에 표시되지 않음)되며 내장 프롬프트 보정 스크립트 뒤에 이어서 실행됩니다. 비워 두면 내장 스크립트만 실행</value>
+  </data>
+  <data name="SetTerm_StartupCommandPlaceholder" xml:space="preserve">
+    <value>예: cd /var/www</value>
+  </data>
+  <data name="SetTerm_Subtitle" xml:space="preserve">
+    <value>// 터미널 표시 및 동작 설정</value>
+  </data>
+  <data name="SetTerm_TabFlashAlert" xml:space="preserve">
+    <value>비활성 탭 벨 알림</value>
+  </data>
+  <data name="SetTerm_TabFlashAlertDesc" xml:space="preserve">
+    <value>// 비활성 탭이 벨을 받으면 탭을 깜박여 알림</value>
+  </data>
+  <data name="SetTerm_TermType" xml:space="preserve">
+    <value>터미널 유형 (TERM)</value>
+  </data>
+  <data name="SetTerm_TermTypeDesc" xml:space="preserve">
+    <value>// 원격 호스트에 알리는 터미널 기능 프로파일</value>
+  </data>
+  <data name="SetTerm_Title" xml:space="preserve">
+    <value>터미널</value>
+  </data>
+  <data name="SetTerm_TrimCopyWhitespace" xml:space="preserve">
+    <value>복사 시 끝 공백 제거</value>
+  </data>
+  <data name="SetTerm_TypeEncodingSection" xml:space="preserve">
+    <value>터미널 유형 및 인코딩</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>설정</value>
+  </data>
+  <data name="Settings_ResetConfirmMessage" xml:space="preserve">
+    <value>모든 페이지의 설정을 초기값으로 되돌립니다(「설정 저장」을 클릭해야 디스크에 기록됩니다). 계속하시겠습니까?</value>
+  </data>
+  <data name="Settings_ResetConfirmTitle" xml:space="preserve">
+    <value>기본 설정 복원</value>
+  </data>
+  <data name="Settings_RestoreDefaults" xml:space="preserve">
+    <value>기본값 복원</value>
+  </data>
+  <data name="Settings_SaveSettings" xml:space="preserve">
+    <value>설정 저장</value>
+  </data>
+  <data name="SetTransfer_BandwidthEnable" xml:space="preserve">
+    <value>대역폭 제한 사용</value>
+  </data>
+  <data name="SetTransfer_BandwidthEnableDesc" xml:space="preserve">
+    <value>// 파일 전송의 최대 대역폭 제한</value>
+  </data>
+  <data name="SetTransfer_Browse" xml:space="preserve">
+    <value>찾아보기…</value>
+  </data>
+  <data name="SetTransfer_ConflictAsk" xml:space="preserve">
+    <value>묻기</value>
+  </data>
+  <data name="SetTransfer_ConflictOverwrite" xml:space="preserve">
+    <value>덮어쓰기</value>
+  </data>
+  <data name="SetTransfer_ConflictSkip" xml:space="preserve">
+    <value>건너뛰기</value>
+  </data>
+  <data name="SetTransfer_DefaultEditor" xml:space="preserve">
+    <value>기본 편집기</value>
+  </data>
+  <data name="SetTransfer_DefaultEditorDesc" xml:space="preserve">
+    <value>Windows: 전체 경로 또는 명령 이름; Linux: 명령 이름; macOS: 앱 이름</value>
+  </data>
+  <data name="SetTransfer_DownloadDir" xml:space="preserve">
+    <value>로컬 다운로드 폴더</value>
+  </data>
+  <data name="SetTransfer_DownloadDirDesc" xml:space="preserve">
+    <value>다운로드한 파일의 기본 저장 위치</value>
+  </data>
+  <data name="SetTransfer_DownloadLimit" xml:space="preserve">
+    <value>다운로드 속도 제한</value>
+  </data>
+  <data name="SetTransfer_ExecutableFilter" xml:space="preserve">
+    <value>실행 파일</value>
+  </data>
+  <data name="SetTransfer_FileExists" xml:space="preserve">
+    <value>파일이 이미 있을 때</value>
+  </data>
+  <data name="SetTransfer_FileExistsDesc" xml:space="preserve">
+    <value>대상 경로에 같은 이름의 파일이 있을 때 처리 방식</value>
+  </data>
+  <data name="SetTransfer_LogDirectory" xml:space="preserve">
+    <value>로그 저장 경로</value>
+  </data>
+  <data name="SetTransfer_LogRetentionDays" xml:space="preserve">
+    <value>파일 전송 로그 보관 일수</value>
+  </data>
+  <data name="SetTransfer_LogRetentionDaysDesc" xml:space="preserve">
+    <value>// 보관 일수를 초과한 전송 로그는 자동 정리됩니다; 터미널 세션 로그 보관 일수는 '일반' 페이지에서 별도 설정</value>
+  </data>
+  <data name="SetTransfer_MaxConcurrent" xml:space="preserve">
+    <value>최대 동시 전송 수</value>
+  </data>
+  <data name="SetTransfer_MaxConcurrentDesc" xml:space="preserve">
+    <value>동시에 실행되는 파일 전송 작업 수</value>
+  </data>
+  <data name="SetTransfer_NotifyOnComplete" xml:space="preserve">
+    <value>파일 전송 완료 시 알림 표시</value>
+  </data>
+  <data name="SetTransfer_NotifyOnCompleteDesc" xml:space="preserve">
+    <value>// 업로드/다운로드 작업 완료 시 알림 표시; 연결 끊김 알림은 '일반' 페이지에서 별도 설정</value>
+  </data>
+  <data name="SetTransfer_PreserveTimestamps" xml:space="preserve">
+    <value>파일 타임스탬프 유지</value>
+  </data>
+  <data name="SetTransfer_SectionBandwidth" xml:space="preserve">
+    <value>대역폭 제한</value>
+  </data>
+  <data name="SetTransfer_SectionBehavior" xml:space="preserve">
+    <value>전송 동작</value>
+  </data>
+  <data name="SetTransfer_SectionConflict" xml:space="preserve">
+    <value>충돌 처리</value>
+  </data>
+  <data name="SetTransfer_SectionDefaultPaths" xml:space="preserve">
+    <value>기본 경로</value>
+  </data>
+  <data name="SetTransfer_SectionLogging" xml:space="preserve">
+    <value>로그 기록</value>
+  </data>
+  <data name="SetTransfer_SelectEditorTitle" xml:space="preserve">
+    <value>기본 편집기 프로그램 선택</value>
+  </data>
+  <data name="SetTransfer_ShowHiddenDesc" xml:space="preserve">
+    <value>// 파일 브라우저에서 점으로 시작하는 파일을 표시할지 여부; 도구 모음에서 전환하면 이 설정에 저장됩니다</value>
+  </data>
+  <data name="SetTransfer_Subtitle" xml:space="preserve">
+    <value>// SFTP 및 파일 전송 동작 설정</value>
+  </data>
+  <data name="SetTransfer_Title" xml:space="preserve">
+    <value>파일 전송</value>
+  </data>
+  <data name="SetTransfer_TransferLogging" xml:space="preserve">
+    <value>전송 로그 기록</value>
+  </data>
+  <data name="SetTransfer_TransferLoggingDesc" xml:space="preserve">
+    <value>// 파일 전송의 상세 로그 저장</value>
+  </data>
+  <data name="SetTransfer_UploadLimit" xml:space="preserve">
+    <value>업로드 속도 제한</value>
+  </data>
+  <data name="SetTransfer_ZeroUnlimited" xml:space="preserve">
+    <value>// 0은 무제한</value>
+  </data>
+  <data name="SetVm_DefaultSuffix" xml:space="preserve">
+    <value>(기본값)</value>
+  </data>
+  <data name="SetVm_GroupFileOperations" xml:space="preserve">
+    <value>파일 작업</value>
+  </data>
+  <data name="SetVm_GroupTabsAndPanels" xml:space="preserve">
+    <value>탭 및 패널</value>
+  </data>
+  <data name="SetVm_SectionAbout" xml:space="preserve">
+    <value>정보</value>
+  </data>
+  <data name="SetVm_SectionAppearance" xml:space="preserve">
+    <value>모양</value>
+  </data>
+  <data name="SetVm_SectionGeneral" xml:space="preserve">
+    <value>일반</value>
+  </data>
+  <data name="SetVm_SectionKeys" xml:space="preserve">
+    <value>키 관리</value>
+  </data>
+  <data name="SetVm_SectionSecurity" xml:space="preserve">
+    <value>보안 감사</value>
+  </data>
+  <data name="SetVm_SectionShortcuts" xml:space="preserve">
+    <value>단축키</value>
+  </data>
+  <data name="SetVm_SectionSnippets" xml:space="preserve">
+    <value>코드 조각</value>
+  </data>
+  <data name="SetVm_SectionSupport" xml:space="preserve">
+    <value>지원 및 후원</value>
+  </data>
+  <data name="SetVm_SectionSync" xml:space="preserve">
+    <value>클라우드 동기화</value>
+  </data>
+  <data name="SetVm_SectionTerminal" xml:space="preserve">
+    <value>터미널</value>
+  </data>
+  <data name="SetVm_SectionTransfer" xml:space="preserve">
+    <value>파일 전송</value>
+  </data>
+  <data name="SetVm_ShortcutCloneSession" xml:space="preserve">
+    <value>현재 세션 복제</value>
+  </data>
+  <data name="SetVm_ShortcutCompletionPopup" xml:space="preserve">
+    <value>명령 자동 완성 표시</value>
+  </data>
+  <data name="SetVm_ShortcutNewTabAlias" xml:space="preserve">
+    <value>새 탭(새 연결과 동일)</value>
+  </data>
+  <data name="SetVm_ShortcutNextTab" xml:space="preserve">
+    <value>다음 탭</value>
+  </data>
+  <data name="SetVm_ShortcutPaletteAlt" xml:space="preserve">
+    <value>명령 팔레트(동일 기능)</value>
+  </data>
+  <data name="SetVm_ShortcutPrevTab" xml:space="preserve">
+    <value>이전 탭</value>
+  </data>
+  <data name="SetVm_ShortcutReconnect" xml:space="preserve">
+    <value>연결 끊김 후 다시 연결</value>
+  </data>
+  <data name="SetVm_ShortcutReconnectAlt" xml:space="preserve">
+    <value>연결 끊김 후 다시 연결(동일 기능)</value>
+  </data>
+  <data name="SetVm_ShortcutSaveInEditor" xml:space="preserve">
+    <value>원격 편집기에서 저장</value>
+  </data>
+  <data name="SetVm_ShortcutSearchTerminal" xml:space="preserve">
+    <value>터미널 내용 검색</value>
+  </data>
+  <data name="SetVm_ShortcutSendInterrupt" xml:space="preserve">
+    <value>인터럽트 신호 ^C 보내기</value>
+  </data>
+  <data name="SetVm_ShortcutToggleFileBrowser" xml:space="preserve">
+    <value>파일 브라우저 전환</value>
+  </data>
+  <data name="Sftp_FileExistsTitle" xml:space="preserve">
+    <value>파일이 이미 있습니다</value>
+  </data>
+  <data name="Sftp_LocalOverwriteBody" xml:space="preserve">
+    <value>같은 이름의 로컬 파일이 있습니다:
+{0}
+
+덮어쓰시겠습니까? (취소하면 이 파일을 건너뜁니다)</value>
+  </data>
+  <data name="Sftp_NoEditorBody" xml:space="preserve">
+    <value>"기본 편집기로 열기"를 사용하려면 먼저 편집기 프로그램을 지정해야 합니다:
+Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령 이름(예: gedit), macOS는 앱 이름(예: Visual Studio Code)을 입력합니다.
+
+지금 설정을 열어 구성하시겠습니까?</value>
+  </data>
+  <data name="Sftp_NoEditorTitle" xml:space="preserve">
+    <value>기본 편집기가 설정되지 않았습니다</value>
+  </data>
+  <data name="Sftp_Octal" xml:space="preserve">
+    <value>8진수</value>
+  </data>
+  <data name="Sftp_Open" xml:space="preserve">
+    <value>열기</value>
+  </data>
+  <data name="Sftp_OpenSettings" xml:space="preserve">
+    <value>설정 열기</value>
+  </data>
+  <data name="Sftp_OpenWithDefaultEditor" xml:space="preserve">
+    <value>기본 편집기로 열기</value>
+  </data>
+  <data name="Sftp_RemoteOverwriteBody" xml:space="preserve">
+    <value>같은 이름의 원격 파일이 있습니다:
+{0}
+
+덮어쓰시겠습니까? (취소하면 이 파일을 건너뜁니다)</value>
+  </data>
+  <data name="Shell_Cmd" xml:space="preserve">
+    <value>명령 프롬프트 (CMD)</value>
+  </data>
+  <data name="ShowHiddenFiles" xml:space="preserve">
+    <value>숨김 파일 표시</value>
+  </data>
+  <data name="Sidebar_Explorer" xml:space="preserve">
+    <value>탐색기</value>
+  </data>
+  <data name="Sidebar_RefreshRecent" xml:space="preserve">
+    <value>최근 연결 새로 고침</value>
+  </data>
+  <data name="Size" xml:space="preserve">
+    <value>크기</value>
+  </data>
+  <data name="Split" xml:space="preserve">
+    <value>분할</value>
+  </data>
+  <data name="StatusBar_Swap" xml:space="preserve">
+    <value>스왑</value>
+  </data>
+  <data name="Svc_Active" xml:space="preserve">
+    <value>활성</value>
+  </data>
+  <data name="Svc_AddFirstConnection" xml:space="preserve">
+    <value>첫 연결을 추가하세요</value>
+  </data>
+  <data name="Svc_CopySuffix" xml:space="preserve">
+    <value>{0} (복사본)</value>
+  </data>
+  <data name="Svc_DaysAgo" xml:space="preserve">
+    <value>{0}일 전</value>
+  </data>
+  <data name="Svc_Disk" xml:space="preserve">
+    <value>디스크</value>
+  </data>
+  <data name="Svc_DoubleClickToConnect" xml:space="preserve">
+    <value>더블 클릭으로 연결</value>
+  </data>
+  <data name="Svc_History" xml:space="preserve">
+    <value>기록</value>
+  </data>
+  <data name="Svc_HostRequired" xml:space="preserve">
+    <value>호스트를 입력하세요.</value>
+  </data>
+  <data name="Svc_HoursAgo" xml:space="preserve">
+    <value>{0}시간 전</value>
+  </data>
+  <data name="Svc_JumpChainLoop" xml:space="preserve">
+    <value>점프 호스트 설정이 순환 참조를 이루고 있습니다. 점프 호스트 설정을 확인하세요.</value>
+  </data>
+  <data name="Svc_JumpChainTooLong" xml:space="preserve">
+    <value>점프 체인이 너무 깁니다(최대 5홉).</value>
+  </data>
+  <data name="Svc_JumpHostMissing" xml:space="preserve">
+    <value>점프 호스트 설정이 존재하지 않습니다(삭제되었을 수 있음). 다시 설정하세요.</value>
+  </data>
+  <data name="Svc_JustNow" xml:space="preserve">
+    <value>방금 전</value>
+  </data>
+  <data name="Svc_Memory" xml:space="preserve">
+    <value>메모리</value>
+  </data>
+  <data name="Svc_MinutesAgo" xml:space="preserve">
+    <value>{0}분 전</value>
+  </data>
+  <data name="Svc_NetSpeed" xml:space="preserve">
+    <value>네트워크 속도</value>
+  </data>
+  <data name="Svc_Offline" xml:space="preserve">
+    <value>오프라인</value>
+  </data>
+  <data name="Svc_PasswordRequired" xml:space="preserve">
+    <value>비밀번호 인증에는 비밀번호가 필요합니다.</value>
+  </data>
+  <data name="Svc_PortRange" xml:space="preserve">
+    <value>포트는 1에서 65535 사이여야 합니다.</value>
+  </data>
+  <data name="Svc_PrivateKeyRequired" xml:space="preserve">
+    <value>개인 키 인증에는 개인 키 파일이 필요합니다.</value>
+  </data>
+  <data name="Svc_ProfileNameRequired" xml:space="preserve">
+    <value>연결 이름을 입력하세요.</value>
+  </data>
+  <data name="Svc_RemoteUpdateFailed" xml:space="preserve">
+    <value>원격 업데이트 실패({0}): {1}</value>
+  </data>
+  <data name="Svc_Ungrouped" xml:space="preserve">
+    <value>그룹 없음</value>
+  </data>
+  <data name="Svc_UsernameRequired" xml:space="preserve">
+    <value>사용자 이름을 입력하세요.</value>
+  </data>
+  <data name="Svc_Yesterday" xml:space="preserve">
+    <value>어제</value>
+  </data>
+  <data name="SyncGroup" xml:space="preserve">
+    <value>동기화 그룹</value>
+  </data>
+  <data name="SyncSvc_ApiFailed" xml:space="preserve">
+    <value>GitHub API 요청 실패({0}): {1}</value>
+  </data>
+  <data name="SyncSvc_Applied" xml:space="preserve">
+    <value>클라우드 데이터를 적용했습니다(기기 {0}, {1}).</value>
+  </data>
+  <data name="SyncSvc_BadFormat" xml:space="preserve">
+    <value>클라우드 동기화 데이터 형식을 인식할 수 없습니다.</value>
+  </data>
+  <data name="SyncSvc_BothChangedLocalWins" xml:space="preserve">
+    <value> (양쪽 모두 변경됨, 로컬이 더 최신이라 푸시하여 덮어썼습니다. 클라우드 이전 버전은 기록에 남아 있습니다)</value>
+  </data>
+  <data name="SyncSvc_BothChangedRemoteWins" xml:space="preserve">
+    <value> (양쪽 모두 변경됨, 클라우드가 더 최신이라 클라우드를 적용했습니다. 로컬 이전 데이터는 버전 기록에서 복구할 수 있습니다)</value>
+  </data>
+  <data name="SyncSvc_EmptyPayload" xml:space="preserve">
+    <value>페이로드가 비어 있습니다.</value>
+  </data>
+  <data name="SyncSvc_Forbidden" xml:space="preserve">
+    <value>GitHub가 요청을 거부했습니다(API 속도 제한일 수 있으니 잠시 후 다시 시도하세요).</value>
+  </data>
+  <data name="SyncSvc_GistNotFound" xml:space="preserve">
+    <value>Gist가 존재하지 않거나 토큰에 접근 권한이 없습니다(Gist Id와 토큰 계정을 확인하세요).</value>
+  </data>
+  <data name="SyncSvc_MissingPayload" xml:space="preserve">
+    <value>클라우드 데이터에 페이로드가 없습니다.</value>
+  </data>
+  <data name="SyncSvc_MissingRawUrl" xml:space="preserve">
+    <value>Gist 파일에 raw_url이 없습니다.</value>
+  </data>
+  <data name="SyncSvc_NeedPassphrase" xml:space="preserve">
+    <value>클라우드 데이터가 종단 간 암호화되어 있습니다. 이 기기에서 동일한 동기화 암호를 입력한 후 가져오세요.</value>
+  </data>
+  <data name="SyncSvc_NoGistBound" xml:space="preserve">
+    <value>아직 Gist가 연결되지 않았습니다. 먼저 한 번 푸시하거나 다른 기기에서 만든 Gist Id를 입력하세요.</value>
+  </data>
+  <data name="SyncSvc_NoGistId" xml:space="preserve">
+    <value>GitHub가 Gist Id를 반환하지 않았습니다.</value>
+  </data>
+  <data name="SyncSvc_NoGistNoRestore" xml:space="preserve">
+    <value>Gist가 연결되어 있지 않아 복구할 버전이 없습니다.</value>
+  </data>
+  <data name="SyncSvc_NoRemoteFile" xml:space="preserve">
+    <value>클라우드 Gist에 동기화 데이터 파일이 없습니다.</value>
+  </data>
+  <data name="SyncSvc_NotEnabled" xml:space="preserve">
+    <value>클라우드 동기화가 활성화되어 있지 않습니다.</value>
+  </data>
+  <data name="SyncSvc_NoToken" xml:space="preserve">
+    <value>GitHub 토큰이 설정되어 있지 않습니다(gist 권한 필요).</value>
+  </data>
+  <data name="SyncSvc_Pushed" xml:space="preserve">
+    <value>클라우드에 푸시했습니다(버전 {0}).</value>
+  </data>
+  <data name="SyncSvc_RestoredAndPushed" xml:space="preserve">
+    <value>버전 {0}(으)로 복구하고 최신 버전으로 푸시했습니다.</value>
+  </data>
+  <data name="SyncSvc_RevisionNoFile" xml:space="preserve">
+    <value>이 버전에는 동기화 데이터 파일이 없습니다.</value>
+  </data>
+  <data name="SyncSvc_TokenDecryptFailed" xml:space="preserve">
+    <value>저장된 GitHub 토큰을 복호화할 수 없습니다. 다시 입력하세요.</value>
+  </data>
+  <data name="SyncSvc_TokenInvalid" xml:space="preserve">
+    <value>GitHub 토큰이 유효하지 않거나 만료되었습니다. 다시 생성하세요(gist 권한 필요).</value>
+  </data>
+  <data name="SyncSvc_UpToDate" xml:space="preserve">
+    <value>로컬과 클라우드가 이미 일치합니다. 동기화가 필요 없습니다.</value>
+  </data>
+  <data name="SyncSvc_WrongPassphrase" xml:space="preserve">
+    <value>동기화 암호가 올바르지 않아 클라우드 데이터를 복호화할 수 없습니다.</value>
+  </data>
+  <data name="System" xml:space="preserve">
+    <value>시스템</value>
+  </data>
+  <data name="SystemMonitor" xml:space="preserve">
+    <value>시스템 모니터</value>
+  </data>
+  <data name="Term_NoMatches" xml:space="preserve">
+    <value>일치 항목 없음</value>
+  </data>
+  <data name="Term_SearchClose" xml:space="preserve">
+    <value>닫기 (Esc)</value>
+  </data>
+  <data name="Term_SearchNext" xml:space="preserve">
+    <value>다음 (Enter)</value>
+  </data>
+  <data name="Term_SearchPlaceholder" xml:space="preserve">
+    <value>터미널에서 찾기</value>
+  </data>
+  <data name="Term_SearchPrev" xml:space="preserve">
+    <value>이전 (Shift+Enter)</value>
+  </data>
+  <data name="TerminalDisconnectedNotice" xml:space="preserve">
+    <value>연결이 끊어졌습니다.</value>
+  </data>
+  <data name="TerminalEncoding" xml:space="preserve">
+    <value>문자 인코딩</value>
+  </data>
+  <data name="TerminalReconnectHint" xml:space="preserve">
+    <value>Enter 키를 눌러 다시 연결합니다.</value>
+  </data>
+  <data name="TerminalType" xml:space="preserve">
+    <value>터미널 유형</value>
+  </data>
+  <data name="TestConnection" xml:space="preserve">
+    <value>연결 테스트</value>
+  </data>
+  <data name="Theme" xml:space="preserve">
+    <value>테마</value>
+  </data>
+  <data name="Transfer_CancelRemainingTip" xml:space="preserve">
+    <value>남은 전송 취소</value>
+  </data>
+  <data name="Transfer_CollapseTip" xml:space="preserve">
+    <value>접기 (작업은 백그라운드에서 계속됩니다)</value>
+  </data>
+  <data name="Transfer_Title" xml:space="preserve">
+    <value>전송</value>
+  </data>
+  <data name="TransferHistory" xml:space="preserve">
+    <value>전송 기록</value>
+  </data>
+  <data name="Tray_ExitApp" xml:space="preserve">
+    <value>VelaShell 종료</value>
+  </data>
+  <data name="Tray_ShowMainWindow" xml:space="preserve">
+    <value>메인 창 표시</value>
+  </data>
+  <data name="Tree_Diagnostics" xml:space="preserve">
+    <value>연결 진단</value>
+  </data>
+  <data name="Tree_DuplicateConnection" xml:space="preserve">
+    <value>연결 복제</value>
+  </data>
+  <data name="Tree_EditConnection" xml:space="preserve">
+    <value>연결 편집</value>
+  </data>
+  <data name="Tree_OpenInNewTab" xml:space="preserve">
+    <value>새 탭에서 열기</value>
+  </data>
+  <data name="Tree_OpenSftp" xml:space="preserve">
+    <value>SFTP 열기</value>
+  </data>
+  <data name="Tree_PortForwarding" xml:space="preserve">
+    <value>포트 포워딩</value>
+  </data>
+  <data name="Tree_SessionSettings" xml:space="preserve">
+    <value>세션 설정</value>
+  </data>
+  <data name="Trust" xml:space="preserve">
+    <value>신뢰</value>
+  </data>
+  <data name="TrustOnce" xml:space="preserve">
+    <value>이번만 신뢰</value>
+  </data>
+  <data name="TrustPermanently" xml:space="preserve">
+    <value>항상 신뢰</value>
+  </data>
+  <data name="TrustThisHost" xml:space="preserve">
+    <value>이 호스트 신뢰</value>
+  </data>
+  <data name="Tunnel_AliasLabel" xml:space="preserve">
+    <value>별칭 (선택)</value>
+  </data>
+  <data name="Tunnel_AliasPlaceholder" xml:space="preserve">
+    <value>MongoDB 포워딩</value>
+  </data>
+  <data name="Tunnel_ClosePanel" xml:space="preserve">
+    <value>패널 닫기</value>
+  </data>
+  <data name="Tunnel_DeleteTip" xml:space="preserve">
+    <value>터널 삭제</value>
+  </data>
+  <data name="Tunnel_DynamicSocks" xml:space="preserve">
+    <value>동적 SOCKS</value>
+  </data>
+  <data name="Tunnel_DynamicSocksTip" xml:space="preserve">
+    <value>로컬 포트를 SOCKS5 프록시로 사용, 대상 임의 (ssh -D)</value>
+  </data>
+  <data name="Tunnel_EditTip" xml:space="preserve">
+    <value>터널 편집</value>
+  </data>
+  <data name="Tunnel_EmptyHint" xml:space="preserve">
+    <value>// 이 서버에는 아직 터널이 없습니다. 아래에서 만드세요</value>
+  </data>
+  <data name="Tunnel_ForwardToLoopback" xml:space="preserve">
+    <value>서버 자신(127.0.0.1)으로 전달</value>
+  </data>
+  <data name="Tunnel_LocalForwardTip" xml:space="preserve">
+    <value>로컬 포트 접근을 서버를 거쳐 대상 서비스로 전달 (ssh -L)</value>
+  </data>
+  <data name="Tunnel_RemoteForwardTip" xml:space="preserve">
+    <value>서버 포트 접근을 로컬 서비스로 전달 (ssh -R)</value>
+  </data>
+  <data name="Tunnel_SelectServerPlaceholder" xml:space="preserve">
+    <value>저장된 서버 선택</value>
+  </data>
+  <data name="Tunnel_ServerLabel" xml:space="preserve">
+    <value>서버 (이 호스트를 통해 전달)</value>
+  </data>
+  <data name="Tunnel_StartTip" xml:space="preserve">
+    <value>터널 시작 (서버 자동 연결)</value>
+  </data>
+  <data name="Tunnel_StopTip" xml:space="preserve">
+    <value>터널 중지</value>
+  </data>
+  <data name="Tunnel_TargetHostLabel" xml:space="preserve">
+    <value>대상 호스트 (서버 기준)</value>
+  </data>
+  <data name="Tunnel_Title" xml:space="preserve">
+    <value>터널</value>
+  </data>
+  <data name="Tunnel_TypeLabel" xml:space="preserve">
+    <value>유형</value>
+  </data>
+  <data name="TunnelSvc_ForwardProhibited" xml:space="preserve">
+    <value>서버가 포트 포워딩을 금지했습니다(sshd 설정 AllowTcpForwarding no).</value>
+  </data>
+  <data name="TunnelSvc_TargetRefused" xml:space="preserve">
+    <value>대상이 연결을 거부했습니다. 대상 주소는 서버 관점에서 해석됩니다. 서버 자체의 서비스를 전달하려면 127.0.0.1을 사용하고 대상 포트가 수신 중인지 확인하세요.</value>
+  </data>
+  <data name="TunnelSvc_TargetUnreachable" xml:space="preserve">
+    <value>대상에 연결할 수 없습니다. 서버에서 대상 호스트에 접근할 수 있는지 확인하세요(내부 주소/방화벽).</value>
+  </data>
+  <data name="Upload" xml:space="preserve">
+    <value>업로드</value>
+  </data>
+  <data name="UploadFilesHere" xml:space="preserve">
+    <value>현재 폴더에 파일 업로드</value>
+  </data>
+  <data name="UploadFolderHere" xml:space="preserve">
+    <value>현재 폴더에 폴더 업로드</value>
+  </data>
+  <data name="Username" xml:space="preserve">
+    <value>사용자 이름</value>
+  </data>
+  <data name="Warning" xml:space="preserve">
+    <value>경고</value>
+  </data>
+</root>

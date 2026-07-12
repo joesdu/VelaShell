@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:VelaShell.ViewModels"
+             xmlns:loc="using:VelaShell.Localization"
              mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="440"
              x:Class="VelaShell.Views.CommandPaletteView"
              x:DataType="vm:CommandPaletteViewModel">
@@ -93,7 +94,7 @@
                    FontFamily="{DynamicResource VelaTerminalFont}"
                    FontSize="14"
                    VerticalContentAlignment="Center"
-                   PlaceholderText="输入命令或搜索会话…" />
+                   PlaceholderText="{loc:Localize Palette_SearchPlaceholder}" />
           <Border Grid.Column="2" Classes="kbd">
             <TextBlock Text="Ctrl+K" FontFamily="{DynamicResource VelaTerminalFont}" />
           </Border>
@@ -115,25 +116,29 @@
               <Border Classes="kbd">
                 <TextBlock Text="↑↓" />
               </Border>
-              <TextBlock Text="导航" FontSize="10" Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center" />
+              <TextBlock Text="{loc:Localize Palette_Navigate}" FontSize="10" Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="4">
               <Border Classes="kbd">
                 <TextBlock Text="↵" />
               </Border>
-              <TextBlock Text="确认" FontSize="10" Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center" />
+              <TextBlock Text="{loc:Localize Palette_Confirm}" FontSize="10" Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="4">
               <Border Classes="kbd">
                 <TextBlock Text="Esc" />
               </Border>
-              <TextBlock Text="关闭" FontSize="10" Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center" />
+              <TextBlock Text="{loc:Localize Palette_Close}" FontSize="10" Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center" />
             </StackPanel>
           </StackPanel>
-          <TextBlock Grid.Column="1"
-                     Text="{Binding ResultCount, StringFormat='{}{0} 个结果'}"
-                     FontSize="10"
-                     Foreground="{DynamicResource VelaTextMuted}" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="3">
+            <TextBlock Text="{Binding ResultCount}"
+                       FontSize="10"
+                       Foreground="{DynamicResource VelaTextMuted}" />
+            <TextBlock Text="{loc:Localize Palette_ResultsSuffix}"
+                       FontSize="10"
+                       Foreground="{DynamicResource VelaTextMuted}" />
+          </StackPanel>
         </Grid>
       </Border>
 

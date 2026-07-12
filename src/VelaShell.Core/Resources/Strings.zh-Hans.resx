@@ -1,5 +1,110 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
+  <!-- 
+    Microsoft ResX Schema 
+    
+    Version 2.0
+    
+    The primary goals of this format is to allow a simple XML format 
+    that is mostly human readable. The generation and parsing of the 
+    various data types are done through the TypeConverter classes 
+    associated with the data types.
+    
+    Example:
+    
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+                
+    There are any number of "resheader" rows that contain simple 
+    name/value pairs.
+    
+    Each data row contains a name, and value. The row also contains a 
+    type or mimetype. Type corresponds to a .NET class that support 
+    text/value conversion through the TypeConverter architecture. 
+    Classes that don't support this are serialized and stored with the 
+    mimetype set.
+    
+    The mimetype is used for serialized objects, and tells the 
+    ResXResourceReader how to depersist the object. This is currently not 
+    extensible. For a given mimetype the value must be set accordingly:
+    
+    Note - application/x-microsoft.net.object.binary.base64 is the format 
+    that the ResXResourceWriter will generate, however the reader can 
+    read any of the formats listed below.
+    
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+    
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array 
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
   <resheader name="resmimetype">
     <value>text/microsoft-resx</value>
   </resheader>
@@ -12,786 +117,773 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <!-- App Shell -->
   <data name="AppName" xml:space="preserve">
     <value>VelaShell</value>
   </data>
   <data name="Ready" xml:space="preserve">
-    <value>Ready</value>
+    <value>就绪</value>
   </data>
   <data name="QuickConnectPlaceholder" xml:space="preserve">
-    <value>user@host:port</value>
+    <value>用户名@主机名:端口</value>
   </data>
-  <!-- Sidebar (5) -->
   <data name="QuickConnect" xml:space="preserve">
-    <value>Quick Connect</value>
+    <value>快速连接</value>
   </data>
   <data name="RecentConnections" xml:space="preserve">
-    <value>Recent Connections</value>
+    <value>最近连接</value>
   </data>
   <data name="ServerGroups" xml:space="preserve">
-    <value>Server Groups</value>
+    <value>服务器分组</value>
   </data>
   <data name="Settings" xml:space="preserve">
-    <value>Settings</value>
+    <value>设置</value>
   </data>
   <data name="Notifications" xml:space="preserve">
-    <value>Notifications</value>
+    <value>通知</value>
   </data>
-  <!-- Terminal (7) -->
   <data name="NewTab" xml:space="preserve">
-    <value>New Tab</value>
+    <value>新标签页</value>
   </data>
   <data name="CloseTab" xml:space="preserve">
-    <value>Close Tab</value>
+    <value>关闭标签页</value>
   </data>
   <data name="Search" xml:space="preserve">
-    <value>Search</value>
+    <value>搜索</value>
   </data>
   <data name="Copy" xml:space="preserve">
-    <value>Copy</value>
+    <value>复制</value>
   </data>
   <data name="Split" xml:space="preserve">
-    <value>Split</value>
+    <value>拆分</value>
   </data>
   <data name="Broadcast" xml:space="preserve">
-    <value>Broadcast</value>
+    <value>广播</value>
   </data>
   <data name="SyncGroup" xml:space="preserve">
-    <value>Sync Group</value>
+    <value>同步组</value>
   </data>
-  <!-- File Browser (7) -->
   <data name="FileName" xml:space="preserve">
-    <value>File Name</value>
+    <value>文件名</value>
   </data>
   <data name="Size" xml:space="preserve">
-    <value>Size</value>
+    <value>大小</value>
   </data>
   <data name="Permissions" xml:space="preserve">
-    <value>Permissions</value>
+    <value>权限</value>
   </data>
   <data name="Modified" xml:space="preserve">
-    <value>Modified</value>
+    <value>修改时间</value>
   </data>
   <data name="Upload" xml:space="preserve">
-    <value>Upload</value>
+    <value>上传</value>
   </data>
   <data name="Download" xml:space="preserve">
-    <value>Download</value>
+    <value>下载</value>
   </data>
   <data name="Refresh" xml:space="preserve">
-    <value>Refresh</value>
+    <value>刷新</value>
   </data>
   <data name="TransferHistory" xml:space="preserve">
-    <value>Transfer history</value>
+    <value>传输记录</value>
   </data>
-  <!-- Tunnel (6) -->
   <data name="LocalForward" xml:space="preserve">
-    <value>Local Forward</value>
+    <value>本地转发</value>
   </data>
   <data name="RemoteForward" xml:space="preserve">
-    <value>Remote Forward</value>
+    <value>远程转发</value>
   </data>
   <data name="LocalPort" xml:space="preserve">
-    <value>Local Port</value>
+    <value>本地端口</value>
   </data>
   <data name="RemoteAddress" xml:space="preserve">
-    <value>Remote Address</value>
+    <value>远程地址</value>
   </data>
   <data name="NewTunnel" xml:space="preserve">
-    <value>New Tunnel</value>
+    <value>新建隧道</value>
   </data>
   <data name="ActiveTunnels" xml:space="preserve">
-    <value>Active Tunnels</value>
+    <value>活动隧道</value>
   </data>
-  <!-- Quick Commands (5) -->
   <data name="SearchCommands" xml:space="preserve">
-    <value>Search Commands</value>
+    <value>搜索命令</value>
   </data>
   <data name="SystemMonitor" xml:space="preserve">
-    <value>System Monitor</value>
+    <value>系统监控</value>
   </data>
   <data name="Network" xml:space="preserve">
-    <value>Network</value>
+    <value>网络</value>
   </data>
   <data name="Docker" xml:space="preserve">
     <value>Docker</value>
   </data>
   <data name="Custom" xml:space="preserve">
-    <value>Custom</value>
+    <value>自定义</value>
   </data>
   <data name="QuickCommands" xml:space="preserve">
-    <value>Quick Commands</value>
+    <value>快捷命令</value>
   </data>
   <data name="AddCommand" xml:space="preserve">
-    <value>Add Command</value>
+    <value>添加命令</value>
   </data>
   <data name="Description" xml:space="preserve">
-    <value>Description</value>
+    <value>描述</value>
   </data>
   <data name="Command" xml:space="preserve">
-    <value>Command</value>
+    <value>命令</value>
   </data>
   <data name="Category" xml:space="preserve">
-    <value>Category</value>
+    <value>分类</value>
   </data>
   <data name="System" xml:space="preserve">
-    <value>System</value>
+    <value>系统</value>
   </data>
-  <!-- Status Bar (4) -->
   <data name="Connected" xml:space="preserve">
-    <value>Connected</value>
+    <value>已连接</value>
   </data>
   <data name="Connecting" xml:space="preserve">
-    <value>Connecting</value>
+    <value>连接中</value>
   </data>
   <data name="Disconnected" xml:space="preserve">
-    <value>Disconnected</value>
+    <value>已断开</value>
   </data>
   <data name="Latency" xml:space="preserve">
-    <value>Latency</value>
+    <value>延迟</value>
   </data>
-  <!-- Session Tree -->
   <data name="Sessions" xml:space="preserve">
-    <value>Sessions</value>
+    <value>会话</value>
   </data>
   <data name="NoSavedSessions" xml:space="preserve">
-    <value>No saved sessions</value>
+    <value>没有保存的会话</value>
   </data>
   <data name="MoveToGroup" xml:space="preserve">
-    <value>Move to Group</value>
+    <value>移动到分组</value>
   </data>
   <data name="ClearAll" xml:space="preserve">
-    <value>Clear All</value>
+    <value>全部清除</value>
   </data>
-  <!-- General (9) -->
   <data name="Connect" xml:space="preserve">
-    <value>Connect</value>
+    <value>连接</value>
   </data>
   <data name="Disconnect" xml:space="preserve">
-    <value>Disconnect</value>
+    <value>断开</value>
   </data>
   <data name="Save" xml:space="preserve">
-    <value>Save</value>
+    <value>保存</value>
   </data>
   <data name="Cancel" xml:space="preserve">
-    <value>Cancel</value>
+    <value>取消</value>
   </data>
   <data name="Delete" xml:space="preserve">
-    <value>Delete</value>
+    <value>删除</value>
   </data>
   <data name="Edit" xml:space="preserve">
-    <value>Edit</value>
+    <value>编辑</value>
   </data>
   <data name="OK" xml:space="preserve">
-    <value>OK</value>
+    <value>确定</value>
   </data>
   <data name="Error" xml:space="preserve">
-    <value>Error</value>
+    <value>错误</value>
   </data>
   <data name="Warning" xml:space="preserve">
-    <value>Warning</value>
+    <value>警告</value>
   </data>
-  <!-- Settings (5) -->
   <data name="Language" xml:space="preserve">
-    <value>Language</value>
+    <value>语言</value>
   </data>
   <data name="Theme" xml:space="preserve">
-    <value>Theme</value>
+    <value>主题</value>
   </data>
   <data name="Font" xml:space="preserve">
-    <value>Font</value>
+    <value>字体</value>
   </data>
   <data name="FontSize" xml:space="preserve">
-    <value>Font Size</value>
+    <value>字体大小</value>
   </data>
   <data name="ScrollbackLines" xml:space="preserve">
-    <value>Scrollback Lines</value>
+    <value>回滚行数</value>
   </data>
   <data name="TerminalType" xml:space="preserve">
-    <value>Terminal Type</value>
+    <value>终端类型</value>
   </data>
   <data name="TerminalEncoding" xml:space="preserve">
-    <value>Encoding</value>
+    <value>字符编码</value>
   </data>
-  <!-- Auth (7) -->
   <data name="Password" xml:space="preserve">
-    <value>Password</value>
+    <value>密码</value>
   </data>
   <data name="PrivateKey" xml:space="preserve">
-    <value>Private Key</value>
+    <value>私钥</value>
   </data>
   <data name="Username" xml:space="preserve">
-    <value>Username</value>
+    <value>用户名</value>
   </data>
   <data name="Host" xml:space="preserve">
-    <value>Host</value>
+    <value>主机</value>
   </data>
   <data name="Port" xml:space="preserve">
-    <value>Port</value>
+    <value>端口</value>
   </data>
   <data name="HostKeyVerification" xml:space="preserve">
-    <value>Host Key Verification</value>
+    <value>主机密钥验证</value>
   </data>
   <data name="TrustThisHost" xml:space="preserve">
-    <value>Trust This Host</value>
+    <value>信任此主机</value>
   </data>
-  <!-- Settings Dialog -->
   <data name="TestConnection" xml:space="preserve">
-    <value>Test Connection</value>
+    <value>测试连接</value>
   </data>
   <data name="BrowseKeyFile" xml:space="preserve">
-    <value>Browse...</value>
+    <value>浏览...</value>
   </data>
   <data name="ConnectionProfile" xml:space="preserve">
-    <value>Connection Profile</value>
+    <value>连接配置</value>
   </data>
   <data name="AuthMethodLabel" xml:space="preserve">
-    <value>Authentication</value>
+    <value>认证方式</value>
   </data>
   <data name="DefaultPort" xml:space="preserve">
-    <value>Default Port</value>
+    <value>默认端口</value>
   </data>
   <data name="HostKeyChanged" xml:space="preserve">
-    <value>WARNING: Host key has changed!</value>
+    <value>警告：主机密钥已更改！</value>
   </data>
   <data name="HostKeyUnknown" xml:space="preserve">
-    <value>First connection to this host</value>
+    <value>首次连接此主机</value>
   </data>
   <data name="Fingerprint" xml:space="preserve">
-    <value>Fingerprint</value>
+    <value>指纹</value>
   </data>
   <data name="KeyType" xml:space="preserve">
-    <value>Key Type</value>
+    <value>密钥类型</value>
   </data>
   <data name="Trust" xml:space="preserve">
-    <value>Trust</value>
+    <value>信任</value>
   </data>
   <data name="Reject" xml:space="preserve">
-    <value>Reject</value>
+    <value>拒绝</value>
   </data>
   <data name="TrustPermanently" xml:space="preserve">
-    <value>Trust Permanently</value>
+    <value>永久信任</value>
   </data>
   <data name="TrustOnce" xml:space="preserve">
-    <value>Trust Once</value>
+    <value>仅本次信任</value>
   </data>
   <data name="Name" xml:space="preserve">
-    <value>Name</value>
+    <value>名称</value>
   </data>
   <data name="Group" xml:space="preserve">
-    <value>Group</value>
+    <value>分组</value>
   </data>
   <data name="Passphrase" xml:space="preserve">
-    <value>Passphrase</value>
+    <value>密码短语</value>
   </data>
-  <!-- File Browser / SFTP (§6) -->
   <data name="UploadFilesHere" xml:space="preserve">
-    <value>Upload Files Here</value>
+    <value>上传文件到当前目录</value>
   </data>
   <data name="UploadFolderHere" xml:space="preserve">
-    <value>Upload Folder Here</value>
+    <value>上传文件夹到当前目录</value>
   </data>
   <data name="NewFolder" xml:space="preserve">
-    <value>New Folder</value>
+    <value>新建文件夹</value>
   </data>
   <data name="NewFile" xml:space="preserve">
-    <value>New File</value>
+    <value>新建文件</value>
   </data>
   <data name="Rename" xml:space="preserve">
-    <value>Rename</value>
+    <value>重命名</value>
   </data>
   <data name="MoveTo" xml:space="preserve">
-    <value>Move To…</value>
+    <value>移动到…</value>
   </data>
   <data name="MoveToPrompt" xml:space="preserve">
-    <value>Move to (full destination path)</value>
+    <value>移动到（目标完整路径）</value>
   </data>
   <data name="CopyFilePath" xml:space="preserve">
-    <value>Copy Path</value>
+    <value>复制文件路径</value>
   </data>
   <data name="CopyFileName" xml:space="preserve">
-    <value>Copy Name</value>
+    <value>复制文件名称</value>
   </data>
   <data name="Properties" xml:space="preserve">
-    <value>Properties</value>
+    <value>属性</value>
   </data>
   <data name="ChangePermissions" xml:space="preserve">
-    <value>Permissions (chmod)…</value>
+    <value>权限 (chmod)…</value>
   </data>
   <data name="PermissionOwner" xml:space="preserve">
-    <value>Owner</value>
+    <value>所有者</value>
   </data>
   <data name="PermissionGroup" xml:space="preserve">
-    <value>Group</value>
+    <value>用户组</value>
   </data>
   <data name="PermissionOthers" xml:space="preserve">
-    <value>Others</value>
+    <value>其他</value>
   </data>
   <data name="PermissionRead" xml:space="preserve">
-    <value>Read</value>
+    <value>读取</value>
   </data>
   <data name="PermissionWrite" xml:space="preserve">
-    <value>Write</value>
+    <value>写入</value>
   </data>
   <data name="PermissionExecute" xml:space="preserve">
-    <value>Execute</value>
+    <value>执行</value>
   </data>
   <data name="ShowHiddenFiles" xml:space="preserve">
-    <value>Show Hidden Files</value>
+    <value>显示隐藏文件</value>
   </data>
   <data name="ParentDirectory" xml:space="preserve">
-    <value>Parent Directory</value>
+    <value>上级目录</value>
   </data>
   <data name="DownloadSelected" xml:space="preserve">
-    <value>Download Selected</value>
+    <value>下载选中项</value>
   </data>
   <data name="DeleteSelected" xml:space="preserve">
-    <value>Delete Selected</value>
+    <value>删除选中项</value>
   </data>
   <data name="ConfirmDeleteTitle" xml:space="preserve">
-    <value>Confirm Delete</value>
+    <value>确认删除</value>
   </data>
   <data name="ConfirmDeleteFile" xml:space="preserve">
-    <value>Delete file "{0}"? This cannot be undone.</value>
+    <value>确定要删除文件“{0}”吗？此操作不可撤销。</value>
   </data>
   <data name="ConfirmDeleteFolder" xml:space="preserve">
-    <value>Delete folder "{0}" and all of its contents? This cannot be undone.</value>
+    <value>确定要删除文件夹“{0}”及其全部内容吗？此操作不可撤销。</value>
   </data>
   <data name="ConfirmDeleteMultiple" xml:space="preserve">
-    <value>Delete the {0} selected items? This cannot be undone.</value>
+    <value>确定要删除选中的 {0} 项吗？此操作不可撤销。</value>
   </data>
   <data name="Loading" xml:space="preserve">
-    <value>Loading…</value>
+    <value>加载中…</value>
   </data>
   <data name="Deleting" xml:space="preserve">
-    <value>Deleting…</value>
+    <value>正在删除…</value>
   </data>
   <data name="DeletingProgress" xml:space="preserve">
-    <value>Deleting… {0}/{1} removed</value>
+    <value>正在删除… 已删除 {0}/{1} 项</value>
   </data>
   <data name="SelectFilesToUpload" xml:space="preserve">
-    <value>Select files to upload</value>
+    <value>选择要上传的文件</value>
   </data>
   <data name="SelectFolderToUpload" xml:space="preserve">
-    <value>Select a folder to upload</value>
+    <value>选择要上传的文件夹</value>
   </data>
   <data name="SelectDownloadFolder" xml:space="preserve">
-    <value>Select a destination folder</value>
+    <value>选择保存位置</value>
   </data>
   <data name="SaveToLocal" xml:space="preserve">
-    <value>Save to local</value>
+    <value>保存到本地</value>
   </data>
   <data name="FileType" xml:space="preserve">
-    <value>Type</value>
+    <value>类型</value>
   </data>
   <data name="File" xml:space="preserve">
-    <value>File</value>
+    <value>文件</value>
   </data>
   <data name="Folder" xml:space="preserve">
-    <value>Folder</value>
+    <value>文件夹</value>
   </data>
   <data name="FilePath" xml:space="preserve">
-    <value>Path</value>
+    <value>路径</value>
   </data>
   <data name="Reconnect" xml:space="preserve">
-    <value>Reconnect</value>
+    <value>重新连接</value>
   </data>
   <data name="TerminalDisconnectedNotice" xml:space="preserve">
-    <value>Connection closed.</value>
+    <value>连接已断开。</value>
   </data>
   <data name="TerminalReconnectHint" xml:space="preserve">
-    <value>Press Enter to reconnect.</value>
+    <value>按 Enter 重新连接。</value>
   </data>
   <data name="Auth_AesBadge" xml:space="preserve">
-    <value>AES-256 encrypted</value>
+    <value>AES-256 加密存储</value>
   </data>
   <data name="Auth_Back" xml:space="preserve">
-    <value>Back</value>
+    <value>上一步</value>
   </data>
   <data name="Auth_Certificate" xml:space="preserve">
-    <value>Certificate</value>
+    <value>证书</value>
   </data>
   <data name="Auth_ConnectingTo" xml:space="preserve">
-    <value>Connecting to {0}</value>
+    <value>正在连接 {0}</value>
   </data>
   <data name="Auth_EnterUsername" xml:space="preserve">
-    <value>Enter username</value>
+    <value>输入用户名</value>
   </data>
   <data name="Auth_FingerprintFirstConnect" xml:space="preserve">
-    <value>Fingerprint: first connection, recorded during handshake</value>
+    <value>指纹: 首次连接,将在握手时记录</value>
   </data>
   <data name="Auth_FingerprintTrusted" xml:space="preserve">
-    <value>Fingerprint: {0} (trusted)</value>
+    <value>指纹: {0}(已信任)</value>
   </data>
   <data name="Auth_HeaderTitle" xml:space="preserve">
-    <value>Authentication - Step {0}</value>
+    <value>身份验证 - 第 {0} 步</value>
   </data>
   <data name="Auth_Key" xml:space="preserve">
-    <value>Key</value>
+    <value>密钥</value>
   </data>
   <data name="Auth_Login" xml:space="preserve">
-    <value>Log In</value>
+    <value>登录</value>
   </data>
   <data name="Auth_Next" xml:space="preserve">
-    <value>Next</value>
+    <value>下一步</value>
   </data>
   <data name="Auth_SelectMethod" xml:space="preserve">
-    <value>Select authentication method</value>
+    <value>选择认证方式</value>
   </data>
   <data name="Auth_Title" xml:space="preserve">
-    <value>Authentication</value>
+    <value>身份验证</value>
   </data>
   <data name="Auth_UsernameLine" xml:space="preserve">
-    <value>Username: {0}</value>
+    <value>用户名: {0}</value>
   </data>
   <data name="Boot_AlreadyRunning" xml:space="preserve">
-    <value>VelaShell is already running.
+    <value>VelaShell 已经在运行了。
 
-Please switch to the open window; only one instance can run at a time.</value>
+请切换到已打开的窗口;同一时间只能运行一个实例。</value>
   </data>
   <data name="Boot_StartupErrorTitle" xml:space="preserve">
-    <value>VelaShell - Startup Error</value>
+    <value>VelaShell - 启动错误</value>
   </data>
   <data name="Boot_StartupFailed" xml:space="preserve">
-    <value>VelaShell failed to start.
+    <value>VelaShell 启动失败。
 
 {0}
 
-If this keeps happening, close any other VelaShell windows and try again.</value>
+如果反复出现,请尝试关闭其它 VelaShell 窗口后重试。</value>
   </data>
   <data name="Cmd_ClearScreen" xml:space="preserve">
-    <value>Clear Screen</value>
+    <value>清屏</value>
   </data>
   <data name="Cmd_CloneSession" xml:space="preserve">
-    <value>Clone Session</value>
+    <value>克隆会话</value>
   </data>
   <data name="Cmd_CloseCurrentSession" xml:space="preserve">
-    <value>Close Current Session</value>
+    <value>关闭当前会话</value>
   </data>
   <data name="Cmd_CommandPalette" xml:space="preserve">
-    <value>Command Palette</value>
+    <value>命令面板</value>
   </data>
   <data name="Cmd_ConnectionDiagnostics" xml:space="preserve">
-    <value>Connection Diagnostics</value>
+    <value>连接诊断</value>
   </data>
   <data name="Cmd_ExportTerminalOutput" xml:space="preserve">
-    <value>Export Terminal Output to File</value>
+    <value>导出终端输出到文件</value>
   </data>
   <data name="Cmd_FindInTerminal" xml:space="preserve">
-    <value>Find in Terminal</value>
+    <value>终端内查找</value>
   </data>
   <data name="Cmd_NewSshConnection" xml:space="preserve">
-    <value>New SSH Connection</value>
+    <value>新建 SSH 连接</value>
   </data>
   <data name="Cmd_OpenLocalTerminal" xml:space="preserve">
-    <value>Open Local Terminal: {0}</value>
+    <value>打开本地终端:{0}</value>
   </data>
   <data name="Cmd_OpenSettings" xml:space="preserve">
-    <value>Open Settings</value>
+    <value>打开设置</value>
   </data>
   <data name="Cmd_Paste" xml:space="preserve">
-    <value>Paste</value>
+    <value>粘贴</value>
   </data>
   <data name="Cmd_Reconnect" xml:space="preserve">
-    <value>Reconnect</value>
+    <value>重连</value>
   </data>
   <data name="Cmd_SftpFileManager" xml:space="preserve">
-    <value>SFTP File Manager</value>
+    <value>SFTP 文件管理器</value>
   </data>
   <data name="Cmd_TunnelManager" xml:space="preserve">
-    <value>Tunnel Manager</value>
+    <value>隧道管理</value>
   </data>
   <data name="CmdCat_Actions" xml:space="preserve">
-    <value>Actions</value>
+    <value>操作</value>
   </data>
   <data name="CmdCat_Edit" xml:space="preserve">
-    <value>Edit</value>
+    <value>编辑</value>
   </data>
   <data name="CmdCat_Search" xml:space="preserve">
-    <value>Search</value>
+    <value>搜索</value>
   </data>
   <data name="CmdCat_Session" xml:space="preserve">
-    <value>Session</value>
+    <value>会话</value>
   </data>
   <data name="CmdCat_Tools" xml:space="preserve">
-    <value>Tools</value>
+    <value>工具</value>
   </data>
   <data name="Diag_AllPassed" xml:space="preserve">
-    <value>No issues found — all checks passed; you can connect normally.</value>
+    <value>未发现问题,各项检测均通过,可正常连接。</value>
   </data>
   <data name="Diag_CloseTip" xml:space="preserve">
-    <value>Close</value>
+    <value>关闭</value>
   </data>
   <data name="Diag_ExportReport" xml:space="preserve">
-    <value>Export diagnostic report</value>
+    <value>导出诊断报告</value>
   </data>
   <data name="Diag_Header" xml:space="preserve">
-    <value>Connection Diagnostics Center</value>
+    <value>连接诊断中心</value>
   </data>
   <data name="Diag_IssueFound" xml:space="preserve">
-    <value>Issue found: </value>
+    <value>发现问题:</value>
   </data>
   <data name="Diag_Rerun" xml:space="preserve">
-    <value>Re-run checks</value>
+    <value>重新检测</value>
   </data>
   <data name="Diag_Running" xml:space="preserve">
-    <value>// Running checks, please wait…</value>
+    <value>// 正在逐项检测,请稍候…</value>
   </data>
   <data name="Diag_Steps" xml:space="preserve">
-    <value>Diagnostic steps</value>
+    <value>诊断步骤</value>
   </data>
   <data name="Diag_Title" xml:space="preserve">
-    <value>Connection Diagnostics</value>
+    <value>连接诊断</value>
   </data>
   <data name="DiagSvc_AuthFailed" xml:space="preserve">
-    <value>Authentication failed</value>
+    <value>身份验证失败</value>
   </data>
   <data name="DiagSvc_AuthFailedDesc" xml:space="preserve">
-    <value>The server rejected the login for {0}: {1}</value>
+    <value>服务器拒绝了 {0} 的登录:{1}</value>
   </data>
   <data name="DiagSvc_ConnectTimeout" xml:space="preserve">
-    <value>Connection timed out</value>
+    <value>连接超时</value>
   </data>
   <data name="DiagSvc_ConnFailed" xml:space="preserve">
-    <value>Failed to establish the connection</value>
+    <value>连接建立失败</value>
   </data>
   <data name="DiagSvc_DnsFailed" xml:space="preserve">
-    <value>DNS resolution failed</value>
+    <value>DNS 解析失败</value>
   </data>
   <data name="DiagSvc_DnsFailedDesc" xml:space="preserve">
-    <value>Could not resolve hostname {0}: {1}</value>
+    <value>无法解析主机名 {0}:{1}</value>
   </data>
   <data name="DiagSvc_HostKeyFailed" xml:space="preserve">
-    <value>Host key verification failed</value>
+    <value>主机密钥校验未通过</value>
   </data>
   <data name="DiagSvc_IpLiteral" xml:space="preserve">
-    <value>IP address; no resolution needed</value>
+    <value>IP 直连,无需解析</value>
   </data>
   <data name="DiagSvc_JumpChainConfigError" xml:space="preserve">
-    <value>Jump chain misconfigured</value>
+    <value>跳板链配置异常</value>
   </data>
   <data name="DiagSvc_JumpChainFailed" xml:space="preserve">
-    <value>Failed to establish the jump chain</value>
+    <value>跳板链建立失败</value>
   </data>
   <data name="DiagSvc_JumpChainLoop" xml:space="preserve">
-    <value>Jump host profiles form a circular reference; check each profile's jump host setting.</value>
+    <value>跳板配置形成了循环引用,请检查各配置的跳板主机设置。</value>
   </data>
   <data name="DiagSvc_JumpChainTooLong" xml:space="preserve">
-    <value>The jump chain exceeds 5 hops; please simplify the jump levels.</value>
+    <value>跳板链超过 5 跳,请精简跳板层级。</value>
   </data>
   <data name="DiagSvc_JumpConfigError" xml:space="preserve">
-    <value>Jump host misconfigured</value>
+    <value>跳板配置异常</value>
   </data>
   <data name="DiagSvc_JumpSuffix" xml:space="preserve">
-    <value> (via jump {0})</value>
+    <value>(跳板 {0})</value>
   </data>
   <data name="DiagSvc_LoginSuccess" xml:space="preserve">
-    <value>{0}@{1} signed in successfully</value>
+    <value>{0}@{1} 登录成功</value>
   </data>
   <data name="DiagSvc_NoBanner" xml:space="preserve">
-    <value>No response from server</value>
+    <value>未收到服务端应答</value>
   </data>
   <data name="DiagSvc_NoBannerDesc" xml:space="preserve">
-    <value>{0}:{1} is reachable but returned no SSH identification within {2} seconds.</value>
+    <value>{0}:{1} 可连通,但在 {2} 秒内未返回 SSH 服务标识。</value>
   </data>
   <data name="DiagSvc_NoCredsSkip" xml:space="preserve">
-    <value>No saved credentials; authentication test skipped</value>
+    <value>未保存凭据,跳过认证测试</value>
   </data>
   <data name="DiagSvc_NonSshBanner" xml:space="preserve">
-    <value>Non-SSH response: {0}</value>
+    <value>非 SSH 应答:{0}</value>
   </data>
   <data name="DiagSvc_NonSshDesc" xml:space="preserve">
-    <value>{0}:{1} returned a non-SSH protocol response: {2}</value>
+    <value>{0}:{1} 返回了非 SSH 协议应答:{2}</value>
   </data>
   <data name="DiagSvc_NotSshPort" xml:space="preserve">
-    <value>Port is not running an SSH service</value>
+    <value>端口未运行 SSH 服务</value>
   </data>
   <data name="DiagSvc_SshBannerReadError" xml:space="preserve">
-    <value>Error reading the SSH identification string: {0}</value>
+    <value>读取 SSH 服务标识时出错:{0}</value>
   </data>
   <data name="DiagSvc_SshHandshakeFailed" xml:space="preserve">
-    <value>SSH handshake failed</value>
+    <value>SSH 握手失败</value>
   </data>
   <data name="DiagSvc_StepAuth" xml:space="preserve">
-    <value>User Authentication</value>
+    <value>用户认证</value>
   </data>
   <data name="DiagSvc_StepAuthFullChain" xml:space="preserve">
-    <value>User Authentication (full jump chain)</value>
+    <value>用户认证(完整跳板链)</value>
   </data>
   <data name="DiagSvc_StepDns" xml:space="preserve">
-    <value>DNS Resolution</value>
+    <value>DNS 解析</value>
   </data>
   <data name="DiagSvc_StepSsh" xml:space="preserve">
-    <value>SSH Handshake</value>
+    <value>SSH 握手</value>
   </data>
   <data name="DiagSvc_StepTcp" xml:space="preserve">
-    <value>TCP Connection</value>
+    <value>TCP 建链</value>
   </data>
   <data name="DiagSvc_SuggestCheckCreds" xml:space="preserve">
-    <value>Check that the username and password/private key are correct; mind the letter case.</value>
+    <value>检查用户名与密码/私钥是否正确,注意大小写。</value>
   </data>
   <data name="DiagSvc_SuggestCheckDns" xml:space="preserve">
-    <value>Check your local DNS settings, or connect using the IP address instead.</value>
+    <value>检查本机 DNS 设置,或直接改用 IP 地址连接。</value>
   </data>
   <data name="DiagSvc_SuggestCheckHostname" xml:space="preserve">
-    <value>Check that the hostname is spelled correctly.</value>
+    <value>检查主机名拼写是否正确。</value>
   </data>
   <data name="DiagSvc_SuggestCheckPort" xml:space="preserve">
-    <value>Confirm port {0} is correct and the SSH service is running on the server.</value>
+    <value>确认端口 {0} 正确,且服务器上的 SSH 服务正在运行。</value>
   </data>
   <data name="DiagSvc_SuggestCheckSshd" xml:space="preserve">
-    <value>Network and port are fine; the failure happened during SSH negotiation. Check the server's sshd log (/var/log/auth.log) for details.</value>
+    <value>网络与端口均正常,失败发生在 SSH 协商阶段;检查服务器 sshd 日志(/var/log/auth.log)获取具体原因。</value>
   </data>
   <data name="DiagSvc_SuggestDefaultPort" xml:space="preserve">
-    <value>Verify the port number: SSH defaults to 22; currently configured as {0}.</value>
+    <value>确认端口号:SSH 默认 22,当前配置为 {0}。</value>
   </data>
   <data name="DiagSvc_SuggestDiagnoseJump" xml:space="preserve">
-    <value>Run connection diagnostics on the jump host itself first to locate the failing hop.</value>
+    <value>可先对跳板机单独执行一次连接诊断,逐跳定位问题。</value>
   </data>
   <data name="DiagSvc_SuggestFirewall" xml:space="preserve">
-    <value>Check that the server firewall or cloud security group allows this port.</value>
+    <value>检查服务器防火墙/云安全组是否放行了该端口。</value>
   </data>
   <data name="DiagSvc_SuggestHostOnline" xml:space="preserve">
-    <value>Confirm the host is online (try ping or access it from another network).</value>
+    <value>确认主机在线(可尝试 ping 或从其它网络访问)。</value>
   </data>
   <data name="DiagSvc_SuggestJumpCreds" xml:space="preserve">
-    <value>Jump host profiles need saved credentials to connect without prompts; check each jump host profile.</value>
+    <value>跳板机的配置需已保存凭据才能免交互连上,请检查各跳板配置。</value>
   </data>
   <data name="DiagSvc_SuggestKeyMatch" xml:space="preserve">
-    <value>Confirm the private key matches the public key on the server and the passphrase is correct.</value>
+    <value>确认私钥文件与服务器上的公钥匹配,私钥口令(passphrase)正确。</value>
   </data>
   <data name="DiagSvc_SuggestMitm" xml:space="preserve">
-    <value>If this change is unexpected, beware of a man-in-the-middle attack and verify with the server administrator first.</value>
+    <value>若非预期变更,请警惕中间人攻击,先与服务器管理员核实。</value>
   </data>
   <data name="DiagSvc_SuggestPasswordDisabled" xml:space="preserve">
-    <value>The server may have password login disabled (PasswordAuthentication no); try key authentication instead.</value>
+    <value>服务器可能禁用了密码登录(PasswordAuthentication no),可尝试改用密钥认证。</value>
   </data>
   <data name="DiagSvc_SuggestPortOccupied" xml:space="preserve">
-    <value>The port may be used by another service (HTTP, database, etc.); check the server configuration.</value>
+    <value>该端口可能被其它服务(HTTP/数据库等)占用,请核对服务器配置。</value>
   </data>
   <data name="DiagSvc_SuggestRecreateJump" xml:space="preserve">
-    <value>If the jump host profile was deleted, connect directly or recreate the jump host profile.</value>
+    <value>若跳板配置已删除,请改为直连或重建跳板配置。</value>
   </data>
   <data name="DiagSvc_SuggestReselectJump" xml:space="preserve">
-    <value>Open this connection's edit dialog → Advanced options and reselect the jump host.</value>
+    <value>打开该连接的编辑窗口 → 高级选项,重新选择跳板主机。</value>
   </data>
   <data name="DiagSvc_SuggestSaveCreds" xml:space="preserve">
-    <value>This profile has no saved password/key, so a login prompt appears on connect; to run the authentication test automatically, save credentials in the edit dialog.</value>
+    <value>该配置未保存密码/密钥,连接时会弹出登录验证;如需自动认证测试,请在编辑窗口保存凭据。</value>
   </data>
   <data name="DiagSvc_SuggestTrustNewKey" xml:space="preserve">
-    <value>The server host key differs from the local record: if the server really was reinstalled, trust the new fingerprint when prompted.</value>
+    <value>服务器主机密钥与本地记录不一致:若服务器确实重装过,请在提示中信任新指纹。</value>
   </data>
   <data name="DiagSvc_SuggestVpn" xml:space="preserve">
-    <value>If the target is on an internal network, make sure you are on the corporate network or VPN.</value>
+    <value>若目标在内网,确认已接入公司网络或 VPN。</value>
   </data>
   <data name="DiagSvc_TcpFailed" xml:space="preserve">
-    <value>Could not establish TCP connection</value>
+    <value>无法建立 TCP 连接</value>
   </data>
   <data name="DiagSvc_TcpFailedDesc" xml:space="preserve">
-    <value>TCP connection to {0}:{1} failed: {2}</value>
+    <value>到 {0}:{1} 的 TCP 连接失败:{2}</value>
   </data>
   <data name="DiagSvc_UnknownError" xml:space="preserve">
-    <value>Unknown error</value>
+    <value>未知错误</value>
   </data>
   <data name="DiagSvc_WaitFix" xml:space="preserve">
-    <value>Retry after fixing the issue</value>
+    <value>等待修复后重试</value>
   </data>
   <data name="Dock_AllTabs" xml:space="preserve">
-    <value>All Tabs</value>
+    <value>所有标签页</value>
   </data>
   <data name="Dock_Close" xml:space="preserve">
-    <value>Close</value>
+    <value>关闭</value>
   </data>
   <data name="Dock_CloseAll" xml:space="preserve">
-    <value>Close All Tabs</value>
+    <value>关闭所有标签页</value>
   </data>
   <data name="Dock_CloseLeft" xml:space="preserve">
-    <value>Close Tabs to the Left</value>
+    <value>关闭左侧标签页</value>
   </data>
   <data name="Dock_CloseOthers" xml:space="preserve">
-    <value>Close Other Tabs</value>
+    <value>关闭其他标签页</value>
   </data>
   <data name="Dock_CloseRight" xml:space="preserve">
-    <value>Close Tabs to the Right</value>
+    <value>关闭右侧标签页</value>
   </data>
   <data name="Dock_DropTabHere" xml:space="preserve">
-    <value>Drag a tab here</value>
+    <value>将标签拖到此处</value>
   </data>
   <data name="Dock_SplitHorizontal" xml:space="preserve">
-    <value>Split Horizontally</value>
+    <value>水平拆分</value>
   </data>
   <data name="Dock_SplitVertical" xml:space="preserve">
-    <value>Split Vertically</value>
+    <value>垂直拆分</value>
   </data>
   <data name="Dock_TabsLeft" xml:space="preserve">
-    <value>Left</value>
+    <value>左侧</value>
   </data>
   <data name="Dock_TabsPosition" xml:space="preserve">
-    <value>Tab Position</value>
+    <value>标签位置</value>
   </data>
   <data name="Dock_TabsRight" xml:space="preserve">
-    <value>Right</value>
+    <value>右侧</value>
   </data>
   <data name="Dock_TabsTop" xml:space="preserve">
-    <value>Top</value>
+    <value>顶部</value>
   </data>
   <data name="Editor_DiscardAndClose" xml:space="preserve">
-    <value>Discard and close</value>
+    <value>放弃并关闭</value>
   </data>
   <data name="Editor_LoadedStatus" xml:space="preserve">
-    <value>UTF text · {0} B · Ready</value>
+    <value>UTF 文本 · {0} B · 已就绪</value>
   </data>
   <data name="Editor_MaximizeTip" xml:space="preserve">
-    <value>Maximize / restore</value>
+    <value>最大化/还原</value>
   </data>
   <data name="Editor_SavedStatus" xml:space="preserve">
-    <value>Saved and synced to the server · {0}</value>
+    <value>已保存并同步到服务器 · {0}</value>
   </data>
   <data name="Editor_SaveFailed" xml:space="preserve">
-    <value>Save failed: {0}</value>
+    <value>保存失败:{0}</value>
   </data>
   <data name="Editor_Saving" xml:space="preserve">
-    <value>Saving…</value>
+    <value>保存中…</value>
   </data>
   <data name="Editor_Unsaved" xml:space="preserve">
-    <value>● Unsaved changes</value>
+    <value>● 未保存的更改</value>
   </data>
   <data name="Editor_UnsavedBody" xml:space="preserve">
-    <value>The file has unsaved changes; closing will discard them.</value>
+    <value>文件有未保存的修改,关闭将丢弃这些更改。</value>
   </data>
   <data name="Editor_UnsavedTitle" xml:space="preserve">
-    <value>Unsaved changes</value>
+    <value>未保存的更改</value>
   </data>
   <data name="HostKey_TrustOnceTip" xml:space="preserve">
-    <value>Allow this connection without saving to trusted hosts; you will be asked again after the app restarts</value>
+    <value>放行本次连接,但不写入已信任主机;应用重启后将再次询问</value>
   </data>
   <data name="HostKey_TrustPermanentlyTip" xml:space="preserve">
-    <value>Record this fingerprint and stop asking on future connections; remove it in Settings → Security Audit → Trusted Hosts</value>
+    <value>记录该指纹,之后连接不再询问;可在 设置 → 安全审计 → 已信任主机 中删除</value>
   </data>
   <data name="KeySvc_AlertChangedAccepted" xml:space="preserve">
-    <value>Host fingerprint of {0} changed; the user confirmed permanent trust of the new fingerprint: {1}</value>
+    <value>{0} 的主机指纹已变更,用户确认永久信任新指纹:{1}</value>
   </data>
   <data name="KeySvc_AlertChangedBlocked" xml:space="preserve">
-    <value>Host fingerprint of {0} does not match the known_hosts record; the connection was blocked (possible man-in-the-middle). New fingerprint: {1}</value>
+    <value>{0} 的主机指纹与 known_hosts 记录不符,连接已被阻断(疑似中间人)。新指纹:{1}</value>
   </data>
   <data name="KeySvc_AlertChangedTrustOnce" xml:space="preserve">
-    <value>Host fingerprint of {0} changed; the user chose to trust it this time only (not saved): {1}</value>
+    <value>{0} 的主机指纹已变更,用户选择仅本次信任(不落盘):{1}</value>
   </data>
   <data name="KeySvc_AlertFirstRejected" xml:space="preserve">
-    <value>Rejected the first-connection fingerprint of {0}: {1}</value>
+    <value>已拒绝 {0} 的首次连接指纹:{1}</value>
   </data>
   <data name="KeySvc_AlertFirstTrustOnce" xml:space="preserve">
-    <value>The user chose to trust the first-connection fingerprint of {0} this time only (not saved): {1}</value>
+    <value>用户对 {0} 的首次连接指纹选择仅本次信任(不落盘):{1}</value>
   </data>
   <data name="KeySvc_AlreadyExists" xml:space="preserve">
-    <value>Key {0} already exists.</value>
+    <value>密钥 {0} 已存在。</value>
   </data>
   <data name="KeySvc_InvalidName" xml:space="preserve">
-    <value>Invalid key name.</value>
+    <value>密钥名称无效。</value>
   </data>
   <data name="KeySvc_UnknownType" xml:space="preserve">
-    <value>Unknown</value>
+    <value>未知</value>
   </data>
   <data name="Lang_English" xml:space="preserve">
     <value>English</value>
@@ -809,107 +901,107 @@ If this keeps happening, close any other VelaShell windows and try again.</value
     <value>繁體中文</value>
   </data>
   <data name="Main_CloseConfirmBody" xml:space="preserve">
-    <value>Active SSH sessions are still running; closing the window will disconnect them all. Quit anyway?</value>
+    <value>仍有活动的 SSH 会话,关闭窗口将断开所有连接。确定退出吗?</value>
   </data>
   <data name="Main_CloseConfirmTitle" xml:space="preserve">
-    <value>Close VelaShell</value>
+    <value>关闭 VelaShell</value>
   </data>
   <data name="Main_ExportFailed" xml:space="preserve">
-    <value>Export failed</value>
+    <value>导出失败</value>
   </data>
   <data name="Main_ExportTerminalTitle" xml:space="preserve">
-    <value>Export terminal output</value>
+    <value>导出终端输出</value>
   </data>
   <data name="Main_FileTypeLog" xml:space="preserve">
-    <value>Log file</value>
+    <value>日志文件</value>
   </data>
   <data name="Main_FileTypeText" xml:space="preserve">
-    <value>Text file</value>
+    <value>文本文件</value>
   </data>
   <data name="Main_PasteMultilineBody" xml:space="preserve">
-    <value>The clipboard contains {0} lines; the terminal may execute them immediately after pasting:
+    <value>剪贴板包含 {0} 行内容,粘贴后可能被终端立即执行:
 
 {1}
 
-Paste anyway?</value>
+确定粘贴吗?</value>
   </data>
   <data name="Main_PasteMultilineTitle" xml:space="preserve">
-    <value>Paste multiline content</value>
+    <value>粘贴多行内容</value>
   </data>
   <data name="Main_TerminalExported" xml:space="preserve">
-    <value>Terminal output exported: {0}</value>
+    <value>终端输出已导出:{0}</value>
   </data>
   <data name="Menu_Actions" xml:space="preserve">
-    <value>Actions</value>
+    <value>操作</value>
   </data>
   <data name="Menu_ClearScreen" xml:space="preserve">
-    <value>Clear Screen</value>
+    <value>清屏</value>
   </data>
   <data name="Menu_CloseCurrentSession" xml:space="preserve">
-    <value>Close Current Session</value>
+    <value>关闭当前会话</value>
   </data>
   <data name="Menu_CommandPalette" xml:space="preserve">
-    <value>Command Palette</value>
+    <value>命令面板</value>
   </data>
   <data name="Menu_CommandPaletteTip" xml:space="preserve">
-    <value>Command Palette (Ctrl+P)</value>
+    <value>命令面板 (Ctrl+P)</value>
   </data>
   <data name="Menu_ConnectionDiagnostics" xml:space="preserve">
-    <value>Connection Diagnostics</value>
+    <value>连接诊断</value>
   </data>
   <data name="Menu_DuplicateSession" xml:space="preserve">
-    <value>Duplicate Session</value>
+    <value>复制会话</value>
   </data>
   <data name="Menu_Exit" xml:space="preserve">
-    <value>Exit</value>
+    <value>退出</value>
   </data>
   <data name="Menu_FindInTerminal" xml:space="preserve">
-    <value>Find in Terminal</value>
+    <value>终端内查找</value>
   </data>
   <data name="Menu_Help" xml:space="preserve">
-    <value>Help</value>
+    <value>帮助</value>
   </data>
   <data name="Menu_HostTrustCenter" xml:space="preserve">
-    <value>Host Trust Center</value>
+    <value>主机信任中心</value>
   </data>
   <data name="Menu_ImportExportConfig" xml:space="preserve">
-    <value>Import / Export Config</value>
+    <value>导入 / 导出配置</value>
   </data>
   <data name="Menu_KeyManagement" xml:space="preserve">
-    <value>Key Management</value>
+    <value>密钥管理</value>
   </data>
   <data name="Menu_NewSftp" xml:space="preserve">
-    <value>New SFTP</value>
+    <value>新建 SFTP</value>
   </data>
   <data name="Menu_NewSshConnection" xml:space="preserve">
-    <value>New SSH Connection</value>
+    <value>新建 SSH 连接</value>
   </data>
   <data name="Menu_Paste" xml:space="preserve">
-    <value>Paste</value>
+    <value>粘贴</value>
   </data>
   <data name="Menu_Preferences" xml:space="preserve">
-    <value>Preferences</value>
+    <value>首选项</value>
   </data>
   <data name="Menu_SearchTerminalTip" xml:space="preserve">
-    <value>Search Terminal (Ctrl+F)</value>
+    <value>终端搜索 (Ctrl+F)</value>
   </data>
   <data name="Menu_Session" xml:space="preserve">
-    <value>Session</value>
+    <value>会话</value>
   </data>
   <data name="Menu_SftpFileManager" xml:space="preserve">
-    <value>SFTP File Manager</value>
+    <value>SFTP 文件管理器</value>
   </data>
   <data name="Menu_ShortcutsOverview" xml:space="preserve">
-    <value>Keyboard Shortcuts</value>
+    <value>快捷键一览</value>
   </data>
   <data name="Menu_Tools" xml:space="preserve">
-    <value>Tools</value>
+    <value>工具</value>
   </data>
   <data name="Menu_TunnelManager" xml:space="preserve">
-    <value>Tunnel Manager</value>
+    <value>隧道管理</value>
   </data>
   <data name="Menu_TunnelTip" xml:space="preserve">
-    <value>Tunnels (Ctrl+Shift+T)</value>
+    <value>隧道 (Ctrl+Shift+T)</value>
   </data>
   <data name="Monitor_Kernel" xml:space="preserve">
     <value>Kernel</value>
@@ -918,1731 +1010,1731 @@ Paste anyway?</value>
     <value>OS Version</value>
   </data>
   <data name="Monitor_Unavailable" xml:space="preserve">
-    <value>Data unavailable</value>
+    <value>数据不可用</value>
   </data>
   <data name="Msg_AuthFailed" xml:space="preserve">
-    <value>Authentication failed: incorrect username, password or key for {0}.</value>
+    <value>认证失败：{0} 的用户名、密码或密钥不正确。</value>
   </data>
   <data name="Msg_AuthPromptCancelled" xml:space="preserve">
-    <value>No saved credentials for this profile; login verification was cancelled.</value>
+    <value>该配置未保存凭据,已取消登录验证。</value>
   </data>
   <data name="Msg_AutoReconnectCountdown" xml:space="preserve">
-    <value>{0} disconnected; auto-reconnecting in {1}s ({2}/{3})…</value>
+    <value>{0} 已断开,{1} 秒后自动重连({2}/{3})…</value>
   </data>
   <data name="Msg_AutoRecordDisabledHint" xml:space="preserve">
-    <value>Auto recording disabled.</value>
+    <value>自动录制已关闭。</value>
   </data>
   <data name="Msg_AutoRecordEnabledHint" xml:space="preserve">
-    <value>Auto recording enabled; applies to connections established from now on.</value>
+    <value>自动录制已启用:对之后建立的连接生效。</value>
   </data>
   <data name="Msg_AutoRecordOff" xml:space="preserve">
-    <value>Auto recording: off</value>
+    <value>自动录制: 已关闭</value>
   </data>
   <data name="Msg_AutoRecordOn" xml:space="preserve">
-    <value>Auto recording: on</value>
+    <value>自动录制: 已启用</value>
   </data>
   <data name="Msg_BackgroundConnectorNotConfigured" xml:space="preserve">
-    <value>Background connection service is not configured.</value>
+    <value>后台连接服务未配置。</value>
   </data>
   <data name="Msg_ClearFailed" xml:space="preserve">
-    <value>Failed to clear: {0}</value>
+    <value>清除失败:{0}</value>
   </data>
   <data name="Msg_CloudRevisionCount" xml:space="preserve">
-    <value>{0} versions in the cloud (showing up to 30).</value>
+    <value>云端共 {0} 个版本(最多显示 30 个)。</value>
   </data>
   <data name="Msg_Completed" xml:space="preserve">
-    <value>Completed</value>
+    <value>已完成</value>
   </data>
   <data name="Msg_ConnectFailed" xml:space="preserve">
-    <value>Connection failed: could not establish an SSH session with {0}.</value>
+    <value>连接失败：无法与 {0} 建立 SSH 会话。</value>
   </data>
   <data name="Msg_ConnectGenericFailed" xml:space="preserve">
-    <value>Failed to connect to {0}: {1}</value>
+    <value>连接 {0} 失败：{1}</value>
   </data>
   <data name="Msg_ConnectingInBackground" xml:space="preserve">
-    <value>Connecting in the background…</value>
+    <value>正在后台连接…</value>
   </data>
   <data name="Msg_ConnectionClosedTitle" xml:space="preserve">
-    <value>Connection Lost</value>
+    <value>连接已断开</value>
   </data>
   <data name="Msg_ConnectionFailedTitle" xml:space="preserve">
-    <value>Connection Failed</value>
+    <value>连接失败</value>
   </data>
   <data name="Msg_ConnectTimeout" xml:space="preserve">
-    <value>Connection timed out: {0} did not respond.</value>
+    <value>连接超时：{0} 未响应。</value>
   </data>
   <data name="Msg_CpuCorePrefix" xml:space="preserve">
-    <value>Core </value>
+    <value>核心 </value>
   </data>
   <data name="Msg_CpuTooltipTotal" xml:space="preserve">
-    <value>CPU total: {0:F1}% ({1} cores)</value>
+    <value>CPU 总占用: {0:F1}%（{1} 核）</value>
   </data>
   <data name="Msg_Create" xml:space="preserve">
-    <value>Create</value>
+    <value>创建</value>
   </data>
   <data name="Msg_DefaultEditorNotConfigured" xml:space="preserve">
-    <value>No default editor configured. Set one under Settings → File Transfer → Default Editor (e.g. notepad).</value>
+    <value>未配置默认编辑器,请在 设置 → 文件传输 → 默认编辑器 中填写(如 notepad)。</value>
   </data>
   <data name="Msg_DeleteFailed" xml:space="preserve">
-    <value>Delete failed: {0}</value>
+    <value>删除失败:{0}</value>
   </data>
   <data name="Msg_DirectConnection" xml:space="preserve">
-    <value>Direct (no jump host)</value>
+    <value>直连(不使用跳板)</value>
   </data>
   <data name="Msg_Disk" xml:space="preserve">
-    <value>Disk</value>
+    <value>磁盘</value>
   </data>
   <data name="Msg_DiskMountLine" xml:space="preserve">
-    <value>{0}: {1} / {2} GB ({3:F0}%)</value>
+    <value>{0}: {1} / {2} GB（{3:F0}%）</value>
   </data>
   <data name="Msg_DiskRootTooltip" xml:space="preserve">
-    <value>Disk (/): {0} / {1} GB ({2:F0}%)</value>
+    <value>磁盘 (/): {0} / {1} GB（{2:F0}%）</value>
   </data>
   <data name="Msg_DiskUsage" xml:space="preserve">
-    <value>Disk Usage</value>
+    <value>磁盘占用</value>
   </data>
   <data name="Msg_Done" xml:space="preserve">
-    <value>Done</value>
+    <value>完成</value>
   </data>
   <data name="Msg_Downloaded" xml:space="preserve">
-    <value>Downloaded</value>
+    <value>已下载</value>
   </data>
   <data name="Msg_Downloading" xml:space="preserve">
-    <value>Downloading</value>
+    <value>下载中</value>
   </data>
   <data name="Msg_EditTunnel" xml:space="preserve">
-    <value>Edit Tunnel</value>
+    <value>编辑隧道</value>
   </data>
   <data name="Msg_EnterToConnect" xml:space="preserve">
-    <value>Enter to connect</value>
+    <value>Enter 连接</value>
   </data>
   <data name="Msg_ErrorOccurred" xml:space="preserve">
-    <value>Error occurred</value>
+    <value>发生错误</value>
   </data>
   <data name="Msg_Failed" xml:space="preserve">
-    <value>Failed</value>
+    <value>失败</value>
   </data>
   <data name="Msg_FileTooLargeForBuiltInEditor" xml:space="preserve">
-    <value>The file exceeds 5 MB; the built-in editor is for small text files only. Download it and edit locally.</value>
+    <value>文件超过 5 MB,内置编辑器仅适合小文本;请下载后在本地编辑。</value>
   </data>
   <data name="Msg_GenerateFailed" xml:space="preserve">
-    <value>Generation failed: {0}</value>
+    <value>生成失败:{0}</value>
   </data>
   <data name="Msg_HistoryCleared" xml:space="preserve">
-    <value>Recent connection history cleared.</value>
+    <value>已清除最近连接记录。</value>
   </data>
   <data name="Msg_ImportFailed" xml:space="preserve">
-    <value>Import failed: {0}</value>
+    <value>导入失败:{0}</value>
   </data>
   <data name="Msg_JumpChainNotice" xml:space="preserve">
-    <value>Connected via jump chain: local → {0} → {1}</value>
+    <value>已经由跳板链路连接:本机 → {0} → {1}</value>
   </data>
   <data name="Msg_KeyAlreadyExists" xml:space="preserve">
-    <value>A key with the same name already exists; not imported.</value>
+    <value>同名密钥已存在,未导入。</value>
   </data>
   <data name="Msg_KeyDeleted" xml:space="preserve">
-    <value>Deleted {0}.</value>
+    <value>已删除 {0}。</value>
   </data>
   <data name="Msg_KeyGenerated" xml:space="preserve">
-    <value>Generated {0} ({1}).</value>
+    <value>已生成 {0}({1})。</value>
   </data>
   <data name="Msg_KeyImported" xml:space="preserve">
-    <value>Imported {0}.</value>
+    <value>已导入 {0}。</value>
   </data>
   <data name="Msg_LastSyncAt" xml:space="preserve">
-    <value>Last synced: {0:yyyy-MM-dd HH:mm:ss}</value>
+    <value>上次同步:{0:yyyy-MM-dd HH:mm:ss}</value>
   </data>
   <data name="Msg_LoadRecordingFailed" xml:space="preserve">
-    <value>Failed to load recording: {0}</value>
+    <value>载入录制失败:{0}</value>
   </data>
   <data name="Msg_LoadRecordingListFailed" xml:space="preserve">
-    <value>Failed to load recording list: {0}</value>
+    <value>读取录制列表失败:{0}</value>
   </data>
   <data name="Msg_LoadRevisionsFailed" xml:space="preserve">
-    <value>Failed to load version history: {0}</value>
+    <value>读取版本历史失败:{0}</value>
   </data>
   <data name="Msg_LocalPortInUse" xml:space="preserve">
-    <value>Local port {0} is already in use; choose another port.</value>
+    <value>本地端口 {0} 已被占用,请换一个端口。</value>
   </data>
   <data name="Msg_LocalPrefix" xml:space="preserve">
-    <value>Local • {0}</value>
+    <value>本地 • {0}</value>
   </data>
   <data name="Msg_LocalShellReopenFailed" xml:space="preserve">
-    <value>Failed to reopen {0}: {1}</value>
+    <value>重开 {0} 失败:{1}</value>
   </data>
   <data name="Msg_LocalShellStartFailed" xml:space="preserve">
-    <value>Failed to start {0}: {1}</value>
+    <value>启动 {0} 失败:{1}</value>
   </data>
   <data name="Msg_MemTooltip" xml:space="preserve">
-    <value>Memory: {0} / {1} GB ({2:F1}%)</value>
+    <value>内存: {0} / {1} GB（{2:F1}%）</value>
   </data>
   <data name="Msg_NetCollecting" xml:space="preserve">
-    <value>Measuring network rates…</value>
+    <value>网速统计中…</value>
   </data>
   <data name="Msg_NetTooltipTotal" xml:space="preserve">
-    <value>Network (total): ↓ {0}  ↑ {1}</value>
+    <value>网速（合计）: ↓ {0}  ↑ {1}</value>
   </data>
   <data name="Msg_NetworkError" xml:space="preserve">
-    <value>Network error: cannot reach {0}. Check the host and port.</value>
+    <value>网络错误：无法连接到 {0}，请检查主机与端口。</value>
   </data>
   <data name="Msg_NeverSynced" xml:space="preserve">
-    <value>Never synced</value>
+    <value>从未同步</value>
   </data>
   <data name="Msg_NoCloudRevisions" xml:space="preserve">
-    <value>No versions in the cloud yet.</value>
+    <value>云端暂无版本记录。</value>
   </data>
   <data name="Msg_NoRecordings" xml:space="preserve">
-    <value>No recordings yet. Enable session recording under Settings → Security &amp; Audit to record the output of new connections.</value>
+    <value>暂无录制;在 设置 → 安全审计 开启会话录制后,新连接的输出将被记录。</value>
   </data>
   <data name="Msg_OperationCancelled" xml:space="preserve">
-    <value>Cancelled.</value>
+    <value>已取消。</value>
   </data>
   <data name="Msg_Pause" xml:space="preserve">
-    <value>Pause</value>
+    <value>暂停</value>
   </data>
   <data name="Msg_PerCoreCollecting" xml:space="preserve">
-    <value>Collecting per-core usage…</value>
+    <value>每核心占用统计中…</value>
   </data>
   <data name="Msg_Play" xml:space="preserve">
-    <value>Play</value>
+    <value>播放</value>
   </data>
   <data name="Msg_PlaybackTitle" xml:space="preserve">
-    <value>Playback: {0} ({1})</value>
+    <value>回放: {0}({1})</value>
   </data>
   <data name="Msg_ProxyError" xml:space="preserve">
-    <value>Proxy error: cannot connect to {0} through the proxy.</value>
+    <value>代理错误：无法通过代理连接到 {0}。</value>
   </data>
   <data name="Msg_ReadKeysFailed" xml:space="preserve">
-    <value>Failed to read keys: {0}</value>
+    <value>读取密钥失败:{0}</value>
   </data>
   <data name="Msg_RecordingEmpty" xml:space="preserve">
-    <value>This recording has no data chunks (there may have been no output while recording).</value>
+    <value>该录制没有数据块(可能录制期间无输出)。</value>
   </data>
   <data name="Msg_RestoreFailed" xml:space="preserve">
-    <value>Restore failed: {0}</value>
+    <value>恢复失败:{0}</value>
   </data>
   <data name="Msg_Restoring" xml:space="preserve">
-    <value>Restoring…</value>
+    <value>恢复中…</value>
   </data>
   <data name="Msg_SaveFailed" xml:space="preserve">
-    <value>Save failed: {0}</value>
+    <value>保存失败:{0}</value>
   </data>
   <data name="Msg_ScanningTransferFiles" xml:space="preserve">
-    <value>Scanning files to transfer… {0} found</value>
+    <value>正在扫描待传输文件… 已发现 {0} 个</value>
   </data>
   <data name="Msg_SelectRecordingToPlay" xml:space="preserve">
-    <value>Select a recording on the left to start playback</value>
+    <value>选择左侧录制开始回放</value>
   </data>
   <data name="Msg_SelectServer" xml:space="preserve">
-    <value>Select a server</value>
+    <value>请选择服务器</value>
   </data>
   <data name="Msg_ServerConnectionUnavailable" xml:space="preserve">
-    <value>The connection to the server is unavailable; please retry (it will reconnect automatically).</value>
+    <value>与服务器的连接不可用,请重试(将自动重连)。</value>
   </data>
   <data name="Msg_SftpUnavailable" xml:space="preserve">
-    <value>SFTP service is unavailable.</value>
+    <value>SFTP 服务不可用。</value>
   </data>
   <data name="Msg_SshConnectionLostDetail" xml:space="preserve">
-    <value>// The SSH connection to {0} was lost</value>
+    <value>// 与 {0} 的 SSH 连接已丢失</value>
   </data>
   <data name="Msg_SshServiceNotConfigured" xml:space="preserve">
-    <value>SSH connection service is not configured.</value>
+    <value>SSH 连接服务未配置。</value>
   </data>
   <data name="Msg_Stopped" xml:space="preserve">
-    <value>Stopped</value>
+    <value>已停止</value>
   </data>
   <data name="Msg_SwapTooltip" xml:space="preserve">
-    <value>Swap: {0} / {1} GB ({2:F1}%)</value>
+    <value>交换: {0} / {1} GB（{2:F1}%）</value>
   </data>
   <data name="Msg_SyncConfigSavedE2eOff" xml:space="preserve">
-    <value>Sync settings saved (end-to-end encryption: disabled; credentials are never uploaded).</value>
+    <value>同步配置已保存(端到端加密:未启用,凭据不会上传)。</value>
   </data>
   <data name="Msg_SyncConfigSavedE2eOn" xml:space="preserve">
-    <value>Sync settings saved (end-to-end encryption: enabled).</value>
+    <value>同步配置已保存(端到端加密:已启用)。</value>
   </data>
   <data name="Msg_SyncFailed" xml:space="preserve">
-    <value>Sync failed: {0}</value>
+    <value>同步失败:{0}</value>
   </data>
   <data name="Msg_Syncing" xml:space="preserve">
-    <value>Syncing…</value>
+    <value>同步中…</value>
   </data>
   <data name="Msg_TabDisconnected" xml:space="preserve">
-    <value>{0} disconnected</value>
+    <value>{0} 连接已断开</value>
   </data>
   <data name="Msg_ToggleFailed" xml:space="preserve">
-    <value>Toggle failed: {0}</value>
+    <value>切换失败:{0}</value>
   </data>
   <data name="Msg_TunnelConnectedBackground" xml:space="preserve">
-    <value>Connected • background tunnel channel (independent of terminal sessions)</value>
+    <value>已连接 • 后台隧道通道(独立于终端会话)</value>
   </data>
   <data name="Msg_TunnelNotConnectedAuto" xml:space="preserve">
-    <value>Not connected • connects automatically when a tunnel is created or started</value>
+    <value>未连接 • 创建或启动隧道时自动连接</value>
   </data>
   <data name="Msg_TunnelRouteDynamic" xml:space="preserve">
-    <value>{0}:{1} → SOCKS5 proxy</value>
+    <value>{0}:{1} → SOCKS5 代理</value>
   </data>
   <data name="Msg_TunnelRouteRemote" xml:space="preserve">
-    <value>Server:{0} → {1}:{2}</value>
+    <value>服务器:{0} → {1}:{2}</value>
   </data>
   <data name="Msg_TunnelRunning" xml:space="preserve">
-    <value>Running • {0}</value>
+    <value>运行中 • {0}</value>
   </data>
   <data name="Msg_Ungrouped" xml:space="preserve">
-    <value>Ungrouped</value>
+    <value>未分组</value>
   </data>
   <data name="Msg_UnnamedSession" xml:space="preserve">
-    <value>(unnamed session)</value>
+    <value>(未命名会话)</value>
   </data>
   <data name="Msg_UpdateServiceNotAvailable" xml:space="preserve">
-    <value>Auto-update is not available yet; please get new releases from the project releases page.</value>
+    <value>自动更新服务尚未接入,请前往项目发布页获取新版本。</value>
   </data>
   <data name="Msg_Uploaded" xml:space="preserve">
-    <value>Uploaded</value>
+    <value>已上传</value>
   </data>
   <data name="Msg_Uploading" xml:space="preserve">
-    <value>Uploading</value>
+    <value>上传中</value>
   </data>
   <data name="Msg_UptimeHours" xml:space="preserve">
-    <value>Up {0}h {1}m</value>
+    <value>已运行 {0}h {1}m</value>
   </data>
   <data name="Msg_UptimeMinutes" xml:space="preserve">
-    <value>Up {0}m</value>
+    <value>已运行 {0}m</value>
   </data>
   <data name="Msg_UptimeUnderMinute" xml:space="preserve">
-    <value>Up &lt;1m</value>
+    <value>已运行 &lt;1m</value>
   </data>
   <data name="Msg_ViaJumpHost" xml:space="preserve">
-    <value>via jump host</value>
+    <value>经由跳板</value>
   </data>
   <data name="Palette_Close" xml:space="preserve">
-    <value>Close</value>
+    <value>关闭</value>
   </data>
   <data name="Palette_Confirm" xml:space="preserve">
-    <value>Confirm</value>
+    <value>确认</value>
   </data>
   <data name="Palette_Navigate" xml:space="preserve">
-    <value>Navigate</value>
+    <value>导航</value>
   </data>
   <data name="Palette_ResultsSuffix" xml:space="preserve">
-    <value>results</value>
+    <value>个结果</value>
   </data>
   <data name="Palette_SearchPlaceholder" xml:space="preserve">
-    <value>Type a command or search sessions…</value>
+    <value>输入命令或搜索会话…</value>
   </data>
   <data name="Profile_AdvancedOptions" xml:space="preserve">
-    <value>Advanced Options</value>
+    <value>高级选项</value>
   </data>
   <data name="Profile_AesNote" xml:space="preserve">
-    <value>(stored with AES-256 encryption)</value>
+    <value>(将使用 AES-256 加密存储)</value>
   </data>
   <data name="Profile_DisplayName" xml:space="preserve">
-    <value>Display Name</value>
+    <value>显示名称</value>
   </data>
   <data name="Profile_GroupPlaceholder" xml:space="preserve">
-    <value>Select or enter a new group name</value>
+    <value>选择或输入新分组名</value>
   </data>
   <data name="Profile_HostIp" xml:space="preserve">
-    <value>Host / IP</value>
+    <value>主机名 / IP</value>
   </data>
   <data name="Profile_JumpHost" xml:space="preserve">
-    <value>Jump Host (ProxyJump)</value>
+    <value>跳板主机(ProxyJump)</value>
   </data>
   <data name="Profile_JumpHostHint" xml:space="preserve">
-    <value>// Connects to the jump host first, then reaches this host via its port forwarding; the jump host must have saved credentials, and a jump host may use another jump host (multi-hop chain)</value>
+    <value>// 先连跳板、经其端口转发进入本机;跳板配置需已保存凭据,跳板还可再配跳板(链式多段)</value>
   </data>
   <data name="Profile_KeyAuth" xml:space="preserve">
-    <value>Key Authentication</value>
+    <value>密钥认证</value>
   </data>
   <data name="Profile_NotSupported" xml:space="preserve">
-    <value>Not supported yet</value>
+    <value>暂未支持</value>
   </data>
   <data name="Profile_PassphraseOptional" xml:space="preserve">
-    <value>Private Key Passphrase (optional)</value>
+    <value>私钥口令(可选)</value>
   </data>
   <data name="Profile_PasswordAuth" xml:space="preserve">
-    <value>Password Authentication</value>
+    <value>密码认证</value>
   </data>
   <data name="Profile_PrivateKeyFile" xml:space="preserve">
-    <value>Private Key File</value>
+    <value>私钥文件</value>
   </data>
   <data name="Profile_RememberPassword" xml:space="preserve">
-    <value>Remember password</value>
+    <value>记住密码</value>
   </data>
   <data name="Profile_SelectKeyFile" xml:space="preserve">
-    <value>Select Private Key File</value>
+    <value>选择私钥文件</value>
   </data>
   <data name="Profile_Serial" xml:space="preserve">
-    <value>Serial</value>
+    <value>串口</value>
   </data>
   <data name="Profile_SessionGroup" xml:space="preserve">
-    <value>Session Group</value>
+    <value>会话分组</value>
   </data>
   <data name="Profile_ShowHidePassword" xml:space="preserve">
-    <value>Show/hide password</value>
+    <value>显示/隐藏密码</value>
   </data>
   <data name="Profile_TagsLabel" xml:space="preserve">
-    <value>Tags (comma separated)</value>
+    <value>标签(逗号分隔)</value>
   </data>
   <data name="Profile_TagsPlaceholder" xml:space="preserve">
-    <value>web, production</value>
+    <value>web, 生产</value>
   </data>
   <data name="Profile_Test" xml:space="preserve">
-    <value>Test</value>
+    <value>测试</value>
   </data>
   <data name="Profile_TestSuccess" xml:space="preserve">
-    <value>Connection test succeeded</value>
+    <value>连接测试成功</value>
   </data>
   <data name="Profile_Title" xml:space="preserve">
-    <value>New Connection</value>
+    <value>新建连接</value>
   </data>
   <data name="QuickCmd_DockerPrune" xml:space="preserve">
-    <value>Remove unused Docker data</value>
+    <value>清理未使用的 Docker 数据</value>
   </data>
   <data name="QuickCmd_DockerPs" xml:space="preserve">
-    <value>List running containers</value>
+    <value>列出运行中的容器</value>
   </data>
   <data name="QuickCmd_DockerStats" xml:space="preserve">
-    <value>Container resource usage</value>
+    <value>容器资源占用</value>
   </data>
   <data name="QuickCmd_EnabledServices" xml:space="preserve">
-    <value>List enabled systemd services</value>
+    <value>列出已启用的 systemd 服务</value>
   </data>
   <data name="QuickCmd_FollowJournal" xml:space="preserve">
-    <value>Follow system journal</value>
+    <value>实时跟踪系统日志</value>
   </data>
   <data name="QuickCmd_KernelPackages" xml:space="preserve">
-    <value>List installed Linux kernel packages</value>
+    <value>列出已安装的 Linux 内核包</value>
   </data>
   <data name="QuickCmd_ShowListeningPorts" xml:space="preserve">
-    <value>Show listening ports</value>
+    <value>查看监听端口</value>
   </data>
   <data name="QuickCmd_SystemdStatus" xml:space="preserve">
-    <value>Show systemd service status</value>
+    <value>查看 systemd 服务状态</value>
   </data>
   <data name="Recorder_AutoRecordTip" xml:space="preserve">
-    <value>Same as Settings → Security Audit → Session Recording; applies to connections opened afterwards</value>
+    <value>即 设置 → 安全审计 → 会话录制;对之后建立的连接生效</value>
   </data>
   <data name="Recorder_Empty" xml:space="preserve">
-    <value>No recordings yet</value>
+    <value>暂无录制</value>
   </data>
   <data name="Recorder_Export" xml:space="preserve">
-    <value>Export recording</value>
+    <value>导出录制</value>
   </data>
   <data name="Recorder_ExportTip" xml:space="preserve">
-    <value>Export as asciicast v2 (.cast), playable with asciinema and similar tools</value>
+    <value>导出为 asciicast v2(.cast),可用 asciinema 等工具回放</value>
   </data>
   <data name="Recorder_ListTitle" xml:space="preserve">
-    <value>Recordings</value>
+    <value>录制列表</value>
   </data>
   <data name="Recorder_MaximizeTip" xml:space="preserve">
-    <value>Maximize / restore (double-click the title bar also works)</value>
+    <value>最大化 / 还原(双击标题栏亦可)</value>
   </data>
   <data name="Recorder_ResizeTip" xml:space="preserve">
-    <value>Drag to resize the window</value>
+    <value>拖动缩放窗口</value>
   </data>
   <data name="Recorder_SkipIdle" xml:space="preserve">
-    <value>Skip idle periods</value>
+    <value>跳过空闲片段</value>
   </data>
   <data name="Recorder_SpeedTip" xml:space="preserve">
-    <value>Playback speed (1x / 2x / 4x)</value>
+    <value>回放倍速(1x / 2x / 4x)</value>
   </data>
   <data name="Recorder_Subtitle" xml:space="preserve">
-    <value>// Terminal auditing, search, and timeline playback</value>
+    <value>// 终端审计、检索与按时间轴回放</value>
   </data>
   <data name="Recorder_Title" xml:space="preserve">
-    <value>Session Recording &amp; Playback</value>
+    <value>会话录制与回放</value>
   </data>
   <data name="SetAbout_Changelog" xml:space="preserve">
-    <value>Changelog</value>
+    <value>更新日志</value>
   </data>
   <data name="SetAbout_ChangelogTip" xml:space="preserve">
-    <value>Available with stable releases</value>
+    <value>随正式版本提供</value>
   </data>
   <data name="SetAbout_CheckUpdates" xml:space="preserve">
-    <value>Check for Updates</value>
+    <value>检查更新</value>
   </data>
   <data name="SetAbout_ConfigPath" xml:space="preserve">
-    <value>Config Path</value>
+    <value>配置路径</value>
   </data>
   <data name="SetAbout_Contributors" xml:space="preserve">
-    <value>Contributors</value>
+    <value>贡献者</value>
   </data>
   <data name="SetAbout_ContributorsDesc" xml:space="preserve">
-    <value>// Thanks to these contributors</value>
+    <value>// 感谢以下贡献者的付出</value>
   </data>
   <data name="SetAbout_Copyright" xml:space="preserve">
-    <value>Copyright © 2026 VelaShell authors and contributors</value>
+    <value>Copyright © 2026 VelaShell 作者及贡献者</value>
   </data>
   <data name="SetAbout_Framework" xml:space="preserve">
-    <value>Framework</value>
+    <value>框架</value>
   </data>
   <data name="SetAbout_FreeNotice" xml:space="preserve">
-    <value>This software is free forever; the only official channel is GitHub Releases — any "paid version" is pirated</value>
+    <value>本软件永久免费;唯一官方渠道为 GitHub Releases,任何「收费版」均为盗版</value>
   </data>
   <data name="SetAbout_InDevelopment" xml:space="preserve">
-    <value>In Development</value>
+    <value>开发中</value>
   </data>
   <data name="SetAbout_LicenseNotice" xml:space="preserve">
-    <value>Dual-licensed: AGPL-3.0 open source / commercial license (see LICENSE-COMMERCIAL.md in the repository)</value>
+    <value>双许可发布:AGPL-3.0 开源许可 / 商业授权(见仓库 LICENSE-COMMERCIAL.md)</value>
   </data>
   <data name="SetAbout_OpenSourceDeps" xml:space="preserve">
-    <value>Open Source Dependencies</value>
+    <value>开源依赖</value>
   </data>
   <data name="SetAbout_OpenSourceDepsDesc" xml:space="preserve">
-    <value>// VelaShell is built on these excellent open source projects</value>
+    <value>// VelaShell 使用了以下优秀的开源项目</value>
   </data>
   <data name="SetAbout_OperatingSystem" xml:space="preserve">
-    <value>Operating System</value>
+    <value>操作系统</value>
   </data>
   <data name="SetAbout_Runtime" xml:space="preserve">
-    <value>Runtime</value>
+    <value>运行时</value>
   </data>
   <data name="SetAbout_SshLibrary" xml:space="preserve">
-    <value>SSH Library</value>
+    <value>SSH 库</value>
   </data>
   <data name="SetAbout_Subtitle" xml:space="preserve">
-    <value>// Application info &amp; updates</value>
+    <value>// 应用程序信息与更新</value>
   </data>
   <data name="SetAbout_SystemInfo" xml:space="preserve">
-    <value>System Info</value>
+    <value>系统信息</value>
   </data>
   <data name="SetAbout_Tagline" xml:space="preserve">
-    <value>VelaShell - A modern SSH terminal</value>
+    <value>VelaShell - 现代化 SSH 终端</value>
   </data>
   <data name="SetAbout_Title" xml:space="preserve">
-    <value>About VelaShell</value>
+    <value>关于 VelaShell</value>
   </data>
   <data name="SetAbout_ViewLicense" xml:space="preserve">
-    <value>View License</value>
+    <value>查看许可证</value>
   </data>
   <data name="SetAppear_AccentColor" xml:space="preserve">
-    <value>Accent color</value>
+    <value>主题色</value>
   </data>
   <data name="SetAppear_AccentColorDesc" xml:space="preserve">
-    <value>// Application accent color (leave empty for theme default)</value>
+    <value>// 应用程序的强调色(留空用主题默认)</value>
   </data>
   <data name="SetAppear_Ansi16" xml:space="preserve">
-    <value>Terminal ANSI 16 colors</value>
+    <value>终端 ANSI 16 色</value>
   </data>
   <data name="SetAppear_Ansi16Desc" xml:space="preserve">
-    <value>// Standard 16-color palette used in the terminal</value>
+    <value>// 终端中使用的标准 16 色方案</value>
   </data>
   <data name="SetAppear_AnsiBright" xml:space="preserve">
-    <value>Bright</value>
+    <value>明亮</value>
   </data>
   <data name="SetAppear_AnsiNormal" xml:space="preserve">
-    <value>Normal</value>
+    <value>普通</value>
   </data>
   <data name="SetAppear_AnsiSection" xml:space="preserve">
-    <value>ANSI Palette</value>
+    <value>ANSI 调色板</value>
   </data>
   <data name="SetAppear_Background" xml:space="preserve">
-    <value>Background</value>
+    <value>背景色</value>
   </data>
   <data name="SetAppear_BackgroundDesc" xml:space="preserve">
-    <value>// Terminal background color</value>
+    <value>// 终端背景颜色</value>
   </data>
   <data name="SetAppear_ColorScheme" xml:space="preserve">
-    <value>Color scheme</value>
+    <value>配色方案</value>
   </data>
   <data name="SetAppear_ColorSchemeDesc" xml:space="preserve">
-    <value>// Apply a complete terminal color scheme in one click; by default follows the app theme: dark = Dracula, light = Solarized Light</value>
+    <value>// 一键套用整套终端配色;默认跟随应用主题:暗色 = Dracula,亮色 = Solarized Light</value>
   </data>
   <data name="SetAppear_ColorSchemePlaceholder" xml:space="preserve">
-    <value>Select scheme…</value>
+    <value>选择方案…</value>
   </data>
   <data name="SetAppear_CursorColor" xml:space="preserve">
-    <value>Cursor color</value>
+    <value>光标颜色</value>
   </data>
   <data name="SetAppear_CursorColorDesc" xml:space="preserve">
-    <value>// Color of the terminal cursor</value>
+    <value>// 终端光标的颜色</value>
   </data>
   <data name="SetAppear_Foreground" xml:space="preserve">
-    <value>Foreground</value>
+    <value>前景色</value>
   </data>
   <data name="SetAppear_ForegroundDesc" xml:space="preserve">
-    <value>// Default terminal text color</value>
+    <value>// 终端默认文本颜色</value>
   </data>
   <data name="SetAppear_SelectionColor" xml:space="preserve">
-    <value>Selection color</value>
+    <value>选区颜色</value>
   </data>
   <data name="SetAppear_SelectionColorDesc" xml:space="preserve">
-    <value>// Background color of selected text in the terminal</value>
+    <value>// 终端文本选中时的背景颜色</value>
   </data>
   <data name="SetAppear_ShowMenuBar" xml:space="preserve">
-    <value>Show menu bar</value>
+    <value>显示菜单栏</value>
   </data>
   <data name="SetAppear_SidebarLeft" xml:space="preserve">
-    <value>Left</value>
+    <value>左侧</value>
   </data>
   <data name="SetAppear_SidebarPosition" xml:space="preserve">
-    <value>Sidebar position</value>
+    <value>侧边栏位置</value>
   </data>
   <data name="SetAppear_SidebarPositionDesc" xml:space="preserve">
-    <value>// Show the sidebar on the left or right side of the window</value>
+    <value>// 侧边栏显示在窗口的左侧或右侧</value>
   </data>
   <data name="SetAppear_SidebarRight" xml:space="preserve">
-    <value>Right</value>
+    <value>右侧</value>
   </data>
   <data name="SetAppear_Subtitle" xml:space="preserve">
-    <value>// Customize the visual style of the application</value>
+    <value>// 自定义应用程序的视觉风格</value>
   </data>
   <data name="SetAppear_TerminalColorsSection" xml:space="preserve">
-    <value>Terminal Colors</value>
+    <value>终端颜色</value>
   </data>
   <data name="SetAppear_ThemeDark" xml:space="preserve">
-    <value>Dark</value>
+    <value>暗色模式</value>
   </data>
   <data name="SetAppear_ThemeLight" xml:space="preserve">
-    <value>Light</value>
+    <value>亮色模式</value>
   </data>
   <data name="SetAppear_ThemeMode" xml:space="preserve">
-    <value>Theme mode</value>
+    <value>主题模式</value>
   </data>
   <data name="SetAppear_ThemeModeDesc" xml:space="preserve">
-    <value>// Choose light, dark, or follow system</value>
+    <value>// 选择亮色、暗色或跟随系统</value>
   </data>
   <data name="SetAppear_ThemeSystem" xml:space="preserve">
-    <value>Follow system</value>
+    <value>跟随系统</value>
   </data>
   <data name="SetAppear_Title" xml:space="preserve">
-    <value>Appearance</value>
+    <value>外观</value>
   </data>
   <data name="SetAppear_UiFont" xml:space="preserve">
-    <value>UI font</value>
+    <value>界面字体</value>
   </data>
   <data name="SetAppear_UiFontDesc" xml:space="preserve">
-    <value>// Font for menus, tabs and other UI elements</value>
+    <value>// 菜单、标签页等 UI 元素的字体</value>
   </data>
   <data name="SetAppear_UiFontSize" xml:space="preserve">
-    <value>UI font size</value>
+    <value>界面字号</value>
   </data>
   <data name="SetAppear_UiFontSizeDesc" xml:space="preserve">
-    <value>// Default font size for UI elements</value>
+    <value>// UI 元素的默认字体大小</value>
   </data>
   <data name="SetAppear_WindowOpacity" xml:space="preserve">
-    <value>Window opacity</value>
+    <value>窗口透明度</value>
   </data>
   <data name="SetAppear_WindowOpacityDesc" xml:space="preserve">
-    <value>// Adjust the transparency of the window background</value>
+    <value>// 调整窗口背景的透明程度</value>
   </data>
   <data name="SetAppear_WindowSection" xml:space="preserve">
-    <value>Window</value>
+    <value>窗口</value>
   </data>
   <data name="SetAppear_WindowState" xml:space="preserve">
-    <value>Window state at startup</value>
+    <value>启动时窗口状态</value>
   </data>
   <data name="SetAppear_WindowStateDefault" xml:space="preserve">
-    <value>Default size</value>
+    <value>默认大小</value>
   </data>
   <data name="SetAppear_WindowStateDesc" xml:space="preserve">
-    <value>// Window size behavior when the app starts</value>
+    <value>// 应用启动时的窗口大小行为</value>
   </data>
   <data name="SetAppear_WindowStateMaximized" xml:space="preserve">
-    <value>Maximized</value>
+    <value>最大化</value>
   </data>
   <data name="SetAppear_WindowStateRemember" xml:space="preserve">
-    <value>Remember last</value>
+    <value>记住上次</value>
   </data>
   <data name="SetDonate_Alipay" xml:space="preserve">
-    <value>Alipay</value>
+    <value>支付宝</value>
   </data>
   <data name="SetDonate_CoffeeDesc" xml:space="preserve">
-    <value>// Donations are entirely voluntary, any amount welcome; all VelaShell features stay free forever either way</value>
+    <value>// 捐赠完全自愿、金额随意;无论是否捐赠,VelaShell 的全部功能永远免费开放</value>
   </data>
   <data name="SetDonate_CoffeeTitle" xml:space="preserve">
-    <value>Buy the developer a coffee</value>
+    <value>请开发者喝杯咖啡</value>
   </data>
   <data name="SetDonate_ContributeBody" xml:space="preserve">
-    <value>More valuable than donations is your participation: submit PRs, improve performance and UX, fix bugs, polish the docs, or share problems and ideas in Issues. Every code contribution takes VelaShell further.</value>
+    <value>比捐赠更有价值的,是你的参与:为项目提交 PR、改善性能与体验、修复 Bug、完善文档,或在 Issue 中反馈你遇到的问题和想法。每一次代码贡献,都能让 VelaShell 走得更远。</value>
   </data>
   <data name="SetDonate_ContributeTitle" xml:space="preserve">
-    <value>The best way to support: contribute</value>
+    <value>最好的支持方式:参与贡献</value>
   </data>
   <data name="SetDonate_CopyPaymentLink" xml:space="preserve">
-    <value>Copy Payment Link</value>
+    <value>复制付款链接</value>
   </data>
   <data name="SetDonate_InternationalDesc" xml:space="preserve">
-    <value>// Outside China, or prefer to support in USD, EUR or another currency? You can pay via Wise</value>
+    <value>// 身处国外,或希望使用美元、欧元等其他货币支持,可以通过 Wise 付款</value>
   </data>
   <data name="SetDonate_InternationalTitle" xml:space="preserve">
-    <value>International Donations (Wise)</value>
+    <value>国际捐赠(Wise)</value>
   </data>
   <data name="SetDonate_Intro" xml:space="preserve">
-    <value>VelaShell is an open source project maintained by an individual. If it makes your daily ops and development smoother, feel free to support it in whatever way you like — every bit of support turns into new features, performance improvements, and faster bug fixes.</value>
+    <value>VelaShell 是一个由个人维护的开源项目。如果它让你的日常运维与开发更顺手,欢迎以你喜欢的方式支持它长久走下去——每一份支持都会转化为新功能、性能优化和更快的问题修复。</value>
   </data>
   <data name="SetDonate_OpenInBrowser" xml:space="preserve">
-    <value>Open in browser</value>
+    <value>在浏览器中打开</value>
   </data>
   <data name="SetDonate_Subtitle" xml:space="preserve">
-    <value>// Thank you for using VelaShell</value>
+    <value>// 感谢你使用 VelaShell</value>
   </data>
   <data name="SetDonate_Thanks" xml:space="preserve">
-    <value>Thank you for reading this far. Whether it's a donation, a star, an issue, or a PR — every one of them keeps this project going.</value>
+    <value>谢谢你愿意读到这里。无论是一次捐赠、一个 Star、一条 Issue 还是一个 PR,都是这个项目继续维护下去的动力。</value>
   </data>
   <data name="SetDonate_Title" xml:space="preserve">
-    <value>Support &amp; Donate</value>
+    <value>支持与捐赠</value>
   </data>
   <data name="SetDonate_WeChatPay" xml:space="preserve">
-    <value>WeChat Pay</value>
+    <value>微信支付</value>
   </data>
   <data name="SetDonate_WiseHint" xml:space="preserve">
-    <value>Scan the QR code or click the payment link below to donate in your local currency:</value>
+    <value>扫描二维码,或点击下方付款链接,即可用你所在地区的货币完成捐赠:</value>
   </data>
   <data name="SetGeneral_AutoReconnect" xml:space="preserve">
-    <value>Auto reconnect</value>
+    <value>自动重连</value>
   </data>
   <data name="SetGeneral_AutoReconnectDesc" xml:space="preserve">
-    <value>// Automatically try to reconnect after an unexpected disconnect (manual disconnects are not retried)</value>
+    <value>// 连接意外断开后自动尝试重新连接(手动断开不重连)</value>
   </data>
   <data name="SetGeneral_BehaviorSection" xml:space="preserve">
-    <value>Behavior</value>
+    <value>行为</value>
   </data>
   <data name="SetGeneral_Clear" xml:space="preserve">
-    <value>Clear</value>
+    <value>清除</value>
   </data>
   <data name="SetGeneral_ClearHistory" xml:space="preserve">
-    <value>Clear history</value>
+    <value>清除历史记录</value>
   </data>
   <data name="SetGeneral_ClearHistoryConfirm" xml:space="preserve">
-    <value>This will clear command history and recent connections. This action cannot be undone. Continue?</value>
+    <value>将清除命令历史和最近连接记录,此操作不可撤销。确定继续吗?</value>
   </data>
   <data name="SetGeneral_ClearHistoryDesc" xml:space="preserve">
-    <value>// Clear command history and recent connections</value>
+    <value>// 清除命令历史和最近连接记录</value>
   </data>
   <data name="SetGeneral_ConfirmBeforeClose" xml:space="preserve">
-    <value>Confirm before exit</value>
+    <value>退出应用前确认</value>
   </data>
   <data name="SetGeneral_ConfirmBeforeCloseDesc" xml:space="preserve">
-    <value>// Ask before closing the window when sessions are connected; with "Minimize to tray" on, the close button only hides the window and skips this confirmation</value>
+    <value>// 有已连接会话时关闭窗口需确认;开启「最小化到托盘」后点关闭按钮只隐藏窗口,不触发本确认</value>
   </data>
   <data name="SetGeneral_ConnectionDefaultsSection" xml:space="preserve">
-    <value>Connection Defaults</value>
+    <value>连接默认值</value>
   </data>
   <data name="SetGeneral_ConnectTimeout" xml:space="preserve">
-    <value>Connect timeout (s)</value>
+    <value>连接超时(秒)</value>
   </data>
   <data name="SetGeneral_DataSection" xml:space="preserve">
-    <value>Data &amp; Storage</value>
+    <value>数据与存储</value>
   </data>
   <data name="SetGeneral_Export" xml:space="preserve">
-    <value>Export</value>
+    <value>导出</value>
   </data>
   <data name="SetGeneral_ExportDialogTitle" xml:space="preserve">
-    <value>Export settings</value>
+    <value>导出配置</value>
   </data>
   <data name="SetGeneral_Import" xml:space="preserve">
-    <value>Import</value>
+    <value>导入</value>
   </data>
   <data name="SetGeneral_ImportDialogTitle" xml:space="preserve">
-    <value>Import settings</value>
+    <value>导入配置</value>
   </data>
   <data name="SetGeneral_ImportExport" xml:space="preserve">
-    <value>Import/export settings</value>
+    <value>设置导入/导出</value>
   </data>
   <data name="SetGeneral_ImportExportDesc" xml:space="preserve">
-    <value>// Backs up or migrates app settings only; connections, groups, keys and snippets are not included</value>
+    <value>// 仅备份或迁移应用设置;连接、分组、密钥与代码片段不包含在内</value>
   </data>
   <data name="SetGeneral_KeepAliveInterval" xml:space="preserve">
-    <value>Keep-alive interval (s)</value>
+    <value>心跳间隔(秒)</value>
   </data>
   <data name="SetGeneral_LanguageSection" xml:space="preserve">
-    <value>Language &amp; Region</value>
+    <value>语言与区域</value>
   </data>
   <data name="SetGeneral_LaunchAtStartup" xml:space="preserve">
-    <value>Launch at startup</value>
+    <value>开机自启动</value>
   </data>
   <data name="SetGeneral_LaunchAtStartupDesc" xml:space="preserve">
-    <value>// Run VelaShell automatically when the system starts</value>
+    <value>// 系统启动时自动运行 VelaShell</value>
   </data>
   <data name="SetGeneral_LogRetentionDays" xml:space="preserve">
-    <value>Session log retention (days)</value>
+    <value>终端会话日志保留天数</value>
   </data>
   <data name="SetGeneral_LogRetentionDaysDesc" xml:space="preserve">
-    <value>// Terminal session logs older than this are cleaned up automatically; file transfer log retention is set separately on the File Transfer page</value>
+    <value>// 超过天数的终端会话日志将自动清理;文件传输日志的保留天数在「文件传输」页单独设置</value>
   </data>
   <data name="SetGeneral_MaxRetries" xml:space="preserve">
-    <value>Max reconnect attempts</value>
+    <value>最大自动重连次数</value>
   </data>
   <data name="SetGeneral_MaxRetriesDesc" xml:space="preserve">
-    <value>// Maximum number of automatic reconnect attempts; unrelated to file transfer retries</value>
+    <value>// 自动重连的最多尝试次数;与文件传输的失败重试无关</value>
   </data>
   <data name="SetGeneral_MinimizeToTray" xml:space="preserve">
-    <value>Minimize to tray on close</value>
+    <value>关闭时最小化到托盘</value>
   </data>
   <data name="SetGeneral_MinimizeToTrayDesc" xml:space="preserve">
-    <value>// Hide to the system tray when the close button is clicked; quit only via the tray menu "Exit"</value>
+    <value>// 点击关闭按钮时隐藏到系统托盘;经托盘菜单「退出」才真正退出</value>
   </data>
   <data name="SetGeneral_NotifyOnDisconnect" xml:space="preserve">
-    <value>Notify on disconnect</value>
+    <value>连接断开时显示通知</value>
   </data>
   <data name="SetGeneral_NotifyOnDisconnectDesc" xml:space="preserve">
-    <value>// Alert on the status bar and tab when an SSH connection drops unexpectedly</value>
+    <value>// SSH 连接意外断开时在状态栏与标签上提醒</value>
   </data>
   <data name="SetGeneral_PrivacySection" xml:space="preserve">
-    <value>Privacy &amp; Security</value>
+    <value>隐私与安全</value>
   </data>
   <data name="SetGeneral_ReconnectInterval" xml:space="preserve">
-    <value>Reconnect interval</value>
+    <value>重连间隔</value>
   </data>
   <data name="SetGeneral_ReconnectIntervalDesc" xml:space="preserve">
-    <value>// Wait time between reconnect attempts (seconds)</value>
+    <value>// 自动重连的等待时间(秒)</value>
   </data>
   <data name="SetGeneral_RememberPasswords" xml:space="preserve">
-    <value>Remember passwords</value>
+    <value>记住密码</value>
   </data>
   <data name="SetGeneral_RememberPasswordsDesc" xml:space="preserve">
-    <value>// Save connection passwords to encrypted local storage</value>
+    <value>// 保存连接密码到本地加密存储</value>
   </data>
   <data name="SetGeneral_RestoreSessions" xml:space="preserve">
-    <value>Restore sessions</value>
+    <value>恢复会话</value>
   </data>
   <data name="SetGeneral_RestoreSessionsDesc" xml:space="preserve">
-    <value>// Reconnect previous sessions on startup</value>
+    <value>// 启动时自动重连上次的会话</value>
   </data>
   <data name="SetGeneral_SessionLogging" xml:space="preserve">
-    <value>Session logging</value>
+    <value>会话日志</value>
   </data>
   <data name="SetGeneral_SessionLoggingDesc" xml:space="preserve">
-    <value>// Automatically record terminal output for all sessions</value>
+    <value>// 自动记录所有会话的终端输出</value>
   </data>
   <data name="SetGeneral_SoundOnDisconnect" xml:space="preserve">
-    <value>Play sound on disconnect</value>
+    <value>连接断开时播放声音</value>
   </data>
   <data name="SetGeneral_SoundOnDisconnectDesc" xml:space="preserve">
-    <value>// Play the system sound when an SSH connection drops unexpectedly; security event sounds are set separately on the Security Audit page</value>
+    <value>// SSH 连接意外断开时播放系统提示音;安全事件的提示音在「安全审计」页单独设置</value>
   </data>
   <data name="SetGeneral_StartupSection" xml:space="preserve">
-    <value>Startup &amp; Window</value>
+    <value>启动与窗口</value>
   </data>
   <data name="SetGeneral_Subtitle" xml:space="preserve">
-    <value>// Configure basic application behavior</value>
+    <value>// 配置应用程序的基本行为</value>
   </data>
   <data name="SetGeneral_Title" xml:space="preserve">
-    <value>General</value>
+    <value>常规设置</value>
   </data>
   <data name="SetGeneral_UiLanguageDesc" xml:space="preserve">
-    <value>// Display language of the application</value>
+    <value>// 应用程序显示语言</value>
   </data>
   <data name="SetKeys_CopyPublicKey" xml:space="preserve">
-    <value>Copy public key</value>
+    <value>复制公钥</value>
   </data>
   <data name="SetKeys_DefaultAuthKey" xml:space="preserve">
-    <value>Default authentication key</value>
+    <value>默认认证密钥</value>
   </data>
   <data name="SetKeys_DefaultAuthKeyDesc" xml:space="preserve">
-    <value>// Key used by default for new connections</value>
+    <value>// 新建连接时默认使用的密钥</value>
   </data>
   <data name="SetKeys_DeleteKey" xml:space="preserve">
-    <value>Delete key</value>
+    <value>删除密钥</value>
   </data>
   <data name="SetKeys_Generate" xml:space="preserve">
-    <value>Generate key</value>
+    <value>生成密钥</value>
   </data>
   <data name="SetKeys_Import" xml:space="preserve">
-    <value>Import</value>
+    <value>导入</value>
   </data>
   <data name="SetKeys_ImportDialogTitle" xml:space="preserve">
-    <value>Import SSH private key</value>
+    <value>导入 SSH 私钥</value>
   </data>
   <data name="SetKeys_SearchPlaceholder" xml:space="preserve">
-    <value>Search keys...</value>
+    <value>搜索密钥...</value>
   </data>
   <data name="SetKeys_SectionDefault" xml:space="preserve">
-    <value>Default key</value>
+    <value>默认密钥</value>
   </data>
   <data name="SetKeys_StorageHint" xml:space="preserve">
-    <value>Keys are stored under ~/.ssh/; click the copy button to copy the public key</value>
+    <value>密钥存储在 ~/.ssh/ 目录下,点击复制按钮可复制公钥</value>
   </data>
   <data name="SetKeys_Subtitle" xml:space="preserve">
-    <value>// Manage SSH key pairs and certificates</value>
+    <value>// 管理 SSH 密钥对和证书</value>
   </data>
   <data name="SetKeys_Title" xml:space="preserve">
-    <value>Key Management</value>
+    <value>密钥管理</value>
   </data>
   <data name="SetSecurity_AlertInApp" xml:space="preserve">
-    <value>In-app notification</value>
+    <value>应用内通知</value>
   </data>
   <data name="SetSecurity_AlertSound" xml:space="preserve">
-    <value>Play a sound on security events</value>
+    <value>安全事件发生时播放声音</value>
   </data>
   <data name="SetSecurity_AlertSoundDesc" xml:space="preserve">
-    <value>// Play the system sound on security events such as host fingerprint changes; the disconnect sound is configured separately on the General page</value>
+    <value>// 主机指纹变更等安全事件时播放系统提示音;连接断开的提示音在「常规」页单独设置</value>
   </data>
   <data name="SetSecurity_AutoRecord" xml:space="preserve">
-    <value>Auto-record all sessions</value>
+    <value>自动录制所有会话</value>
   </data>
   <data name="SetSecurity_AutoRecordDesc" xml:space="preserve">
-    <value>// Record terminal output to a local database for audit and replay; applies to connections opened afterwards, retention follows General → Terminal session log retention</value>
+    <value>// 记录终端输出到本地数据库供审计与回放;对之后建立的连接生效,保留天数随「常规 → 终端会话日志保留天数」</value>
   </data>
   <data name="SetSecurity_BlockOnChange" xml:space="preserve">
-    <value>Block and alert on fingerprint change</value>
+    <value>指纹变更时阻断并告警</value>
   </data>
   <data name="SetSecurity_BlockOnChangeDesc" xml:space="preserve">
-    <value>// Refuse the connection if it doesn't match the known_hosts record, preventing man-in-the-middle attacks</value>
+    <value>// 与 known_hosts 记录不符即拒绝连接,防中间人</value>
   </data>
   <data name="SetSecurity_ConfirmFirstFingerprint" xml:space="preserve">
-    <value>Require manual fingerprint confirmation on first connect</value>
+    <value>首次连接需人工确认指纹</value>
   </data>
   <data name="SetSecurity_ConfirmFirstFingerprintDesc" xml:space="preserve">
-    <value>// When off, the fingerprint is recorded automatically on first connect (TOFU)</value>
+    <value>// 关闭时首次连接自动记录指纹(TOFU)</value>
   </data>
   <data name="SetSecurity_KnownHostsDesc" xml:space="preserve">
-    <value>// Hosts with recorded fingerprints; after deletion, the next connection runs first-time fingerprint confirmation again</value>
+    <value>// 已记录指纹的主机列表;删除后下次连接将重新执行首次指纹确认</value>
   </data>
   <data name="SetSecurity_MaskAddresses" xml:space="preserve">
-    <value>Hide host addresses</value>
+    <value>隐藏主机地址</value>
   </data>
   <data name="SetSecurity_MaskAddressesDesc" xml:space="preserve">
-    <value>// Anti-leak for screenshots: hides IP and port; defaults to on each time Settings opens, and the off state is not saved</value>
+    <value>// 截图防泄露:隐藏 IP 与端口;每次打开设置默认开启,不会保存关闭状态</value>
   </data>
   <data name="SetSecurity_NoKnownHosts" xml:space="preserve">
-    <value>No trusted hosts yet</value>
+    <value>暂无已信任的主机</value>
   </data>
   <data name="SetSecurity_OpenPlayer" xml:space="preserve">
-    <value>Open Replay Center</value>
+    <value>打开回放中心</value>
   </data>
   <data name="SetSecurity_RecordingCenter" xml:space="preserve">
-    <value>Recording &amp; Replay Center</value>
+    <value>录制与回放中心</value>
   </data>
   <data name="SetSecurity_RecordingCenterDesc" xml:space="preserve">
-    <value>// Browse recordings, replay on a timeline (speed control and idle skipping), export, and delete</value>
+    <value>// 查看录制列表、按时间轴回放(支持倍速与跳过空闲)、导出与删除</value>
   </data>
   <data name="SetSecurity_SectionAlerts" xml:space="preserve">
-    <value>Alert channels: in-app notification + sound + Webhook</value>
+    <value>告警通道:应用内通知 + 提示音 + Webhook</value>
   </data>
   <data name="SetSecurity_SectionKnownHosts" xml:space="preserve">
-    <value>Trusted hosts</value>
+    <value>已信任主机</value>
   </data>
   <data name="SetSecurity_SectionRecording" xml:space="preserve">
-    <value>Session Recording</value>
+    <value>会话录制</value>
   </data>
   <data name="SetSecurity_SectionTrust" xml:space="preserve">
-    <value>Host trust policy</value>
+    <value>主机信任策略</value>
   </data>
   <data name="SetSecurity_Subtitle" xml:space="preserve">
-    <value>// Recording policy, trust policy, and risk alerts</value>
+    <value>// 录制策略、信任策略与风险告警</value>
   </data>
   <data name="SetSecurity_Title" xml:space="preserve">
-    <value>Security &amp; Audit</value>
+    <value>安全与审计</value>
   </data>
   <data name="SetSecurity_WebhookDesc" xml:space="preserve">
-    <value>// Push security events as JSON POST to a custom HTTP endpoint</value>
+    <value>// 安全事件以 JSON POST 推送到自定义 HTTP 端点</value>
   </data>
   <data name="SetSecurity_WebhookPayloadDesc" xml:space="preserve">
-    <value>// Event payload: { source, event, message, detail, timestamp }; an unreachable endpoint never affects the connection flow</value>
+    <value>// 事件负载:{ source, event, message, detail, timestamp };端点不可达不影响连接流程</value>
   </data>
   <data name="SetShortcuts_Subtitle" xml:space="preserve">
-    <value>// Built-in key bindings in this version (read-only)</value>
+    <value>// 当前版本的内置键位一览(只读)</value>
   </data>
   <data name="SetShortcuts_Title" xml:space="preserve">
-    <value>Keyboard Shortcuts</value>
+    <value>快捷键参考</value>
   </data>
   <data name="SetSnippets_Add" xml:space="preserve">
-    <value>Add</value>
+    <value>添加</value>
   </data>
   <data name="SetSnippets_CommandPlaceholder" xml:space="preserve">
-    <value>Command, e.g. systemctl status docker</value>
+    <value>命令,如 systemctl status docker</value>
   </data>
   <data name="SetSnippets_DeleteTip" xml:space="preserve">
-    <value>Delete snippet (built-in snippets cannot be deleted)</value>
+    <value>删除片段(内置片段不可删除)</value>
   </data>
   <data name="SetSnippets_Intro" xml:space="preserve">
-    <value>Create frequently used command snippets, bind them to shortcuts, or assign them to specific sessions.</value>
+    <value>您可以创建常用的命令片段,绑定到快捷键,或分配给特定的会话。</value>
   </data>
   <data name="SetSnippets_NamePlaceholder" xml:space="preserve">
-    <value>Name, e.g. Check Docker Status</value>
+    <value>名称,如 Check Docker Status</value>
   </data>
   <data name="SetSnippets_NewSnippet" xml:space="preserve">
-    <value>New Snippet</value>
+    <value>新建片段</value>
   </data>
   <data name="SetSnippets_Subtitle" xml:space="preserve">
-    <value>// Common command snippets, runnable from the quick command panel</value>
+    <value>// 常用命令片段,可在快捷命令面板中执行</value>
   </data>
   <data name="SetSnippets_Title" xml:space="preserve">
-    <value>Scripts &amp; Snippets</value>
+    <value>脚本/片段库管理</value>
   </data>
   <data name="SetSync_Actions" xml:space="preserve">
-    <value>Actions</value>
+    <value>操作</value>
   </data>
   <data name="SetSync_AutoSync" xml:space="preserve">
-    <value>Auto sync</value>
+    <value>自动同步</value>
   </data>
   <data name="SetSync_AutoSyncDesc" xml:space="preserve">
-    <value>// Pull automatically at startup; push automatically after saving settings (a new version is created only when something changed)</value>
+    <value>// 启动时自动拉取;保存设置后自动推送(有改动才会产生新版本)</value>
   </data>
   <data name="SetSync_CreateTokenLink" xml:space="preserve">
-    <value>Create token (gist scope pre-selected)</value>
+    <value>创建令牌(已预选 gist 权限)</value>
   </data>
   <data name="SetSync_DeviceName" xml:space="preserve">
-    <value>This device's name</value>
+    <value>本设备名称</value>
   </data>
   <data name="SetSync_DeviceNameDesc" xml:space="preserve">
-    <value>// Written into sync metadata so version history shows which device made each change</value>
+    <value>// 写入同步元数据,便于在版本历史中辨认改动来自哪台设备</value>
   </data>
   <data name="SetSync_E2EDesc" xml:space="preserve">
-    <value>// With a sync passphrase set, data is encrypted locally with AES-256-GCM before upload, so GitHub only sees ciphertext, and only then are connection passwords included in the payload; without a passphrase, passwords and key passphrases are never uploaded. All devices must enter the same passphrase.</value>
+    <value>// 设置同步口令后,数据先在本机 AES-256-GCM 加密再上传,GitHub 侧只见密文,且连接密码才会随载荷同步;未设口令时密码与私钥口令绝不上传。各设备需填写相同口令。</value>
   </data>
   <data name="SetSync_E2EEnabledNotice" xml:space="preserve">
-    <value>✓ End-to-end encryption is on: this Gist's data is ciphertext and the passphrase is stored encrypted on this device; other devices must enter the same passphrase, and entering a new one and saving the configuration replaces it</value>
+    <value>✓ 端到端加密已启用:该 Gist 的数据为密文,口令已加密保存在本机;其他设备需填写相同口令,输入新口令并保存配置可更换</value>
   </data>
   <data name="SetSync_Enable" xml:space="preserve">
-    <value>Enable cloud sync</value>
+    <value>启用云同步</value>
   </data>
   <data name="SetSync_EnableDesc" xml:space="preserve">
-    <value>// When off, no automatic or manual sync will run</value>
+    <value>// 关闭后不再进行任何自动或手动同步</value>
   </data>
   <data name="SetSync_GistIdDesc" xml:space="preserve">
-    <value>// Leave blank to auto-create on the first push; enter the same Id on other devices to link them</value>
+    <value>// 留空:首次推送自动创建;其它设备把这里填成同一个 Id 即完成绑定</value>
   </data>
   <data name="SetSync_GistIdPlaceholder" xml:space="preserve">
-    <value>Filled automatically after the first push</value>
+    <value>首次推送后自动填入</value>
   </data>
   <data name="SetSync_HistoryDesc" xml:space="preserve">
-    <value>// Every sync is a Gist revision; restoring an old version pushes it as a new one, so history is never lost</value>
+    <value>// 每次同步都是一个 Gist 修订版本;恢复旧版本会作为新版本推送,历史永不丢失</value>
   </data>
   <data name="SetSync_Intro" xml:space="preserve">
-    <value>Sync data is stored in a secret Gist under your own GitHub account, and every sync creates a restorable history version. Multiple devices on the same account sync seamlessly by using the same token and Gist Id.</value>
+    <value>同步数据保存在你自己 GitHub 账号下的一个私密 Gist 中,每次同步都会生成一个可回溯的历史版本。同一账号的多台设备使用相同的令牌与 Gist Id 即可无缝同步。</value>
   </data>
   <data name="SetSync_PassphrasePlaceholder" xml:space="preserve">
-    <value>Sync passphrase (leave blank to keep the saved one)</value>
+    <value>同步口令(留空 = 保留已保存的口令)</value>
   </data>
   <data name="SetSync_PullOnly" xml:space="preserve">
-    <value>Pull only</value>
+    <value>仅拉取</value>
   </data>
   <data name="SetSync_PullOnlyTip" xml:space="preserve">
-    <value>Force-apply the latest cloud version to this device</value>
+    <value>强制应用云端最新版本到本机</value>
   </data>
   <data name="SetSync_PushOnly" xml:space="preserve">
-    <value>Push only</value>
+    <value>仅推送</value>
   </data>
   <data name="SetSync_PushOnlyTip" xml:space="preserve">
-    <value>Force-upload local data as the latest cloud version</value>
+    <value>强制把本机数据上传为云端最新版本</value>
   </data>
   <data name="SetSync_RefreshHistory" xml:space="preserve">
-    <value>Refresh history</value>
+    <value>刷新历史</value>
   </data>
   <data name="SetSync_RestoreRevision" xml:space="preserve">
-    <value>Restore this version</value>
+    <value>恢复到此版本</value>
   </data>
   <data name="SetSync_SaveConfig" xml:space="preserve">
-    <value>Save sync configuration</value>
+    <value>保存同步配置</value>
   </data>
   <data name="SetSync_Saved" xml:space="preserve">
-    <value>Saved ✓</value>
+    <value>已保存 ✓</value>
   </data>
   <data name="SetSync_ScopeAppSettings" xml:space="preserve">
-    <value>App settings</value>
+    <value>应用设置</value>
   </data>
   <data name="SetSync_ScopeProfilesDesc" xml:space="preserve">
-    <value>// Server connections, groups, and port-forwarding tunnels; connections that exist only locally are never deleted by the cloud</value>
+    <value>// 服务器连接、分组与端口转发隧道;本地独有的连接不会被云端删除</value>
   </data>
   <data name="SetSync_ScopeSnippets" xml:space="preserve">
-    <value>Snippets</value>
+    <value>代码片段</value>
   </data>
   <data name="SetSync_SectionAccount" xml:space="preserve">
-    <value>Account &amp; Binding</value>
+    <value>账户与绑定</value>
   </data>
   <data name="SetSync_SectionE2E" xml:space="preserve">
-    <value>End-to-end encryption (recommended)</value>
+    <value>端到端加密(推荐)</value>
   </data>
   <data name="SetSync_SectionHistory" xml:space="preserve">
-    <value>Version history</value>
+    <value>版本历史</value>
   </data>
   <data name="SetSync_SectionScope" xml:space="preserve">
-    <value>Sync scope</value>
+    <value>同步范围</value>
   </data>
   <data name="SetSync_Subtitle" xml:space="preserve">
-    <value>// Sync your configuration across devices via GitHub Gist (with version history)</value>
+    <value>// 通过 GitHub Gist 在多台设备间同步配置(支持版本历史)</value>
   </data>
   <data name="SetSync_SyncNow" xml:space="preserve">
-    <value>Sync now</value>
+    <value>立即同步</value>
   </data>
   <data name="SetSync_SyncNowTip" xml:space="preserve">
-    <value>Direction is chosen automatically: push if local is newer, pull if the cloud is newer; if both changed, the newer side wins (older data can be recovered from version history)</value>
+    <value>自动判断方向:本地新则推送,云端新则拉取,双端都改按较新者胜(旧数据可从版本历史找回)</value>
   </data>
   <data name="SetSync_Title" xml:space="preserve">
-    <value>Cloud Sync</value>
+    <value>云同步</value>
   </data>
   <data name="SetSync_TokenDesc" xml:space="preserve">
-    <value>// Create it under GitHub → Settings → Developer settings → Personal access tokens with only the gist scope; the token is encrypted with a local key and never uploaded</value>
+    <value>// 在 GitHub → Settings → Developer settings → Personal access tokens 创建,只需勾选 gist 权限;令牌经本机密钥加密存储,绝不上传</value>
   </data>
   <data name="SetSync_TokenDocs" xml:space="preserve">
-    <value>Official token docs</value>
+    <value>令牌官方文档</value>
   </data>
   <data name="SetSync_TokenGuideStep1" xml:space="preserve">
-    <value>1. Click "Create token" below to open the GitHub token page (the required gist scope is pre-selected; sign in to GitHub first);</value>
+    <value>1. 点击下方「创建令牌」打开 GitHub 令牌页(已自动勾选所需的 gist 权限,需先登录 GitHub);</value>
   </data>
   <data name="SetSync_TokenGuideStep2" xml:space="preserve">
-    <value>2. Set a note and expiration as needed, then click Generate token;</value>
+    <value>2. 按需设置备注与有效期,点击 Generate token 生成;</value>
   </data>
   <data name="SetSync_TokenGuideStep3" xml:space="preserve">
-    <value>3. Copy the token starting with ghp_, paste it into the box below, and save the configuration.</value>
+    <value>3. 复制以 ghp_ 开头的令牌,粘贴到下方输入框并保存配置。</value>
   </data>
   <data name="SetSync_TokenGuideTitle" xml:space="preserve">
-    <value>How do I get a GitHub token?</value>
+    <value>如何获取 GitHub 令牌?</value>
   </data>
   <data name="SetSync_TokenLabel" xml:space="preserve">
-    <value>GitHub token (PAT)</value>
+    <value>GitHub 令牌(PAT)</value>
   </data>
   <data name="SetSync_TokenLocalOnly" xml:space="preserve">
-    <value>The token is stored encrypted on this device only and is never uploaded with sync data.</value>
+    <value>令牌只在本机加密保存,绝不会随同步数据上传。</value>
   </data>
   <data name="SetSync_TokenPlaceholder" xml:space="preserve">
-    <value>ghp_… (leave blank to keep the saved token)</value>
+    <value>ghp_…(留空 = 保留已保存的令牌)</value>
   </data>
   <data name="SetSync_WhatIsGist" xml:space="preserve">
-    <value>What is a Gist?</value>
+    <value>什么是 Gist?</value>
   </data>
   <data name="SetTerm_BellBehavior" xml:space="preserve">
-    <value>Terminal bell</value>
+    <value>终端响铃行为</value>
   </data>
   <data name="SetTerm_BellBehaviorDesc" xml:space="preserve">
-    <value>// When a remote program sends BEL: play the system sound, do nothing, or flash the screen</value>
+    <value>// 远程程序发送 BEL 控制符时:播放系统提示音、不提示或屏幕闪烁</value>
   </data>
   <data name="SetTerm_BellNone" xml:space="preserve">
-    <value>None</value>
+    <value>不提示</value>
   </data>
   <data name="SetTerm_BellSection" xml:space="preserve">
-    <value>Bell &amp; Tab Alerts</value>
+    <value>响铃与标签提醒</value>
   </data>
   <data name="SetTerm_BellSound" xml:space="preserve">
-    <value>System sound</value>
+    <value>系统提示音</value>
   </data>
   <data name="SetTerm_BellVisual" xml:space="preserve">
-    <value>Visual flash</value>
+    <value>视觉闪烁</value>
   </data>
   <data name="SetTerm_ConfirmMultilinePaste" xml:space="preserve">
-    <value>Confirm multi-line paste</value>
+    <value>粘贴时确认多行内容</value>
   </data>
   <data name="SetTerm_ConfirmMultilinePasteDesc" xml:space="preserve">
-    <value>// Ask for confirmation when pasting content that contains line breaks</value>
+    <value>// 粘贴包含换行符的内容时弹出确认</value>
   </data>
   <data name="SetTerm_CopyOnSelect" xml:space="preserve">
-    <value>Copy on select</value>
+    <value>选中即复制</value>
   </data>
   <data name="SetTerm_CopyOnSelectDesc" xml:space="preserve">
-    <value>// On: selection is copied automatically on mouse release or word double-click; Off: selection is not copied, use Ctrl+Shift+C to copy manually</value>
+    <value>// 开:松开鼠标或双击选词后,选中内容自动复制;关:选中不复制,用 Ctrl+Shift+C 手动复制</value>
   </data>
   <data name="SetTerm_CtrlCCopy" xml:space="preserve">
-    <value>Ctrl+C copies selection</value>
+    <value>选中时 Ctrl+C 复制</value>
   </data>
   <data name="SetTerm_CtrlCCopyDesc" xml:space="preserve">
-    <value>// On: with text selected, Ctrl+C copies it instead of sending an interrupt (still interrupts when nothing is selected); Off: Ctrl+C always sends the interrupt signal ^C</value>
+    <value>// 开:有选中文本时 Ctrl+C 复制选中内容、不发送中断(无选中仍中断);关:Ctrl+C 始终发送中断信号 ^C</value>
   </data>
   <data name="SetTerm_CursorBar" xml:space="preserve">
-    <value>Bar</value>
+    <value>竖线 (Bar)</value>
   </data>
   <data name="SetTerm_CursorBlink" xml:space="preserve">
-    <value>Cursor blink</value>
+    <value>光标闪烁</value>
   </data>
   <data name="SetTerm_CursorBlock" xml:space="preserve">
-    <value>Block</value>
+    <value>方块 (Block)</value>
   </data>
   <data name="SetTerm_CursorSection" xml:space="preserve">
-    <value>Cursor</value>
+    <value>光标</value>
   </data>
   <data name="SetTerm_CursorStyle" xml:space="preserve">
-    <value>Cursor style</value>
+    <value>光标样式</value>
   </data>
   <data name="SetTerm_CursorStyleDesc" xml:space="preserve">
-    <value>// Shape of the terminal cursor</value>
+    <value>// 终端光标的显示形状</value>
   </data>
   <data name="SetTerm_CursorUnderline" xml:space="preserve">
-    <value>Underline</value>
+    <value>下划线</value>
   </data>
   <data name="SetTerm_DoubleClickSelectWord" xml:space="preserve">
-    <value>Double-click selects word</value>
+    <value>双击选择整个单词</value>
   </data>
   <data name="SetTerm_Font" xml:space="preserve">
-    <value>Terminal font</value>
+    <value>终端字体</value>
   </data>
   <data name="SetTerm_FontDesc" xml:space="preserve">
-    <value>// Monospaced font used in the terminal</value>
+    <value>// 终端中使用的等宽字体</value>
   </data>
   <data name="SetTerm_FontDisplaySection" xml:space="preserve">
-    <value>Font &amp; Display</value>
+    <value>字体与显示</value>
   </data>
   <data name="SetTerm_ImeSupport" xml:space="preserve">
-    <value>IME support</value>
+    <value>输入法支持 (IME)</value>
   </data>
   <data name="SetTerm_ImeSupportDesc" xml:space="preserve">
-    <value>// Enable inline input for Chinese, Japanese and other IMEs</value>
+    <value>// 启用中文/日文等输入法的内联输入</value>
   </data>
   <data name="SetTerm_InputSection" xml:space="preserve">
-    <value>Input</value>
+    <value>输入</value>
   </data>
   <data name="SetTerm_LineHeight" xml:space="preserve">
-    <value>Line height</value>
+    <value>行高</value>
   </data>
   <data name="SetTerm_LineHeightDesc" xml:space="preserve">
-    <value>// Line spacing multiplier; 1.0 is default</value>
+    <value>// 行间距倍数,1.0 为默认</value>
   </data>
   <data name="SetTerm_OutputEncoding" xml:space="preserve">
-    <value>Output encoding</value>
+    <value>输出编码</value>
   </data>
   <data name="SetTerm_OutputEncodingDesc" xml:space="preserve">
-    <value>// Character encoding used to decode remote output</value>
+    <value>// 解析远端输出使用的字符编码</value>
   </data>
   <data name="SetTerm_RightClickPaste" xml:space="preserve">
-    <value>Right-click paste</value>
+    <value>右键粘贴</value>
   </data>
   <data name="SetTerm_RightClickPasteDesc" xml:space="preserve">
-    <value>// Paste clipboard contents on right-click in the terminal</value>
+    <value>// 右键点击终端时粘贴剪贴板内容</value>
   </data>
   <data name="SetTerm_ScrollbackDesc" xml:space="preserve">
-    <value>// Maximum number of lines kept in scrollback</value>
+    <value>// 终端可回滚查看的最大行数</value>
   </data>
   <data name="SetTerm_ScrollOnKeystroke" xml:space="preserve">
-    <value>Scroll to bottom on keystroke</value>
+    <value>按键时自动滚动到底部</value>
   </data>
   <data name="SetTerm_ScrollOnOutput" xml:space="preserve">
-    <value>Scroll on output</value>
+    <value>有输出时自动滚动</value>
   </data>
   <data name="SetTerm_ScrollOnOutputDesc" xml:space="preserve">
-    <value>// Jump to the bottom on new output while viewing history; off keeps the current position</value>
+    <value>// 翻看历史时有新输出立即拉回底部;关闭则停留在当前位置</value>
   </data>
   <data name="SetTerm_ScrollSection" xml:space="preserve">
-    <value>Scrolling</value>
+    <value>滚动</value>
   </data>
   <data name="SetTerm_SelectionSection" xml:space="preserve">
-    <value>Selection &amp; Copy</value>
+    <value>选择与复制</value>
   </data>
   <data name="SetTerm_StartupCommand" xml:space="preserve">
-    <value>Run command after connect</value>
+    <value>连接后执行命令</value>
   </data>
   <data name="SetTerm_StartupCommandDesc" xml:space="preserve">
-    <value>// Runs silently after connect/reconnect (not echoed in the terminal), appended after the built-in prompt-fix script; leave empty to run only the built-in script</value>
+    <value>// 连接/重连后静默执行(不在终端回显),自动拼接在内置的提示符补行脚本之后;留空则只执行内置脚本</value>
   </data>
   <data name="SetTerm_StartupCommandPlaceholder" xml:space="preserve">
-    <value>e.g. cd /var/www</value>
+    <value>如 cd /var/www</value>
   </data>
   <data name="SetTerm_Subtitle" xml:space="preserve">
-    <value>// Configure terminal display and behavior</value>
+    <value>// 配置终端的显示和行为</value>
   </data>
   <data name="SetTerm_TabFlashAlert" xml:space="preserve">
-    <value>Flash inactive tab on bell</value>
+    <value>后台标签响铃提醒</value>
   </data>
   <data name="SetTerm_TabFlashAlertDesc" xml:space="preserve">
-    <value>// Flash the tab when an inactive tab receives a bell</value>
+    <value>// 非活动标签收到响铃时闪烁标签提醒</value>
   </data>
   <data name="SetTerm_TermType" xml:space="preserve">
-    <value>Terminal type (TERM)</value>
+    <value>终端类型 (TERM)</value>
   </data>
   <data name="SetTerm_TermTypeDesc" xml:space="preserve">
-    <value>// Terminal capability profile advertised to the remote host</value>
+    <value>// 向远端通告的终端能力档</value>
   </data>
   <data name="SetTerm_Title" xml:space="preserve">
-    <value>Terminal</value>
+    <value>终端</value>
   </data>
   <data name="SetTerm_TrimCopyWhitespace" xml:space="preserve">
-    <value>Trim trailing spaces on copy</value>
+    <value>复制时去除尾部空格</value>
   </data>
   <data name="SetTerm_TypeEncodingSection" xml:space="preserve">
-    <value>Terminal Type &amp; Encoding</value>
+    <value>终端类型与编码</value>
   </data>
   <data name="Settings_ResetConfirmMessage" xml:space="preserve">
-    <value>This will restore all settings on every page to factory defaults (written to disk only after you click "Save Settings"). Continue?</value>
+    <value>将把所有页面的设置恢复为出厂值(点击「保存设置」后才会写入磁盘)。确定继续吗?</value>
   </data>
   <data name="Settings_ResetConfirmTitle" xml:space="preserve">
-    <value>Restore Default Settings</value>
+    <value>恢复默认设置</value>
   </data>
   <data name="Settings_RestoreDefaults" xml:space="preserve">
-    <value>Restore Defaults</value>
+    <value>恢复默认</value>
   </data>
   <data name="Settings_SaveSettings" xml:space="preserve">
-    <value>Save Settings</value>
+    <value>保存设置</value>
   </data>
   <data name="SetTransfer_BandwidthEnable" xml:space="preserve">
-    <value>Enable bandwidth limit</value>
+    <value>启用带宽限制</value>
   </data>
   <data name="SetTransfer_BandwidthEnableDesc" xml:space="preserve">
-    <value>// Cap the maximum bandwidth used by file transfers</value>
+    <value>// 限制文件传输的最大带宽</value>
   </data>
   <data name="SetTransfer_Browse" xml:space="preserve">
-    <value>Browse…</value>
+    <value>浏览…</value>
   </data>
   <data name="SetTransfer_ConflictAsk" xml:space="preserve">
-    <value>Ask</value>
+    <value>询问</value>
   </data>
   <data name="SetTransfer_ConflictOverwrite" xml:space="preserve">
-    <value>Overwrite</value>
+    <value>覆盖</value>
   </data>
   <data name="SetTransfer_ConflictSkip" xml:space="preserve">
-    <value>Skip</value>
+    <value>跳过</value>
   </data>
   <data name="SetTransfer_DefaultEditor" xml:space="preserve">
-    <value>Default editor</value>
+    <value>默认编辑器</value>
   </data>
   <data name="SetTransfer_DefaultEditorDesc" xml:space="preserve">
-    <value>Windows: full path or command name; Linux: command name; macOS: app name</value>
+    <value>Windows:完整路径或命令名;Linux: 命令名;macOS: 应用名</value>
   </data>
   <data name="SetTransfer_DownloadDir" xml:space="preserve">
-    <value>Local download folder</value>
+    <value>本地下载目录</value>
   </data>
   <data name="SetTransfer_DownloadDirDesc" xml:space="preserve">
-    <value>Default save location for downloaded files</value>
+    <value>文件下载的默认保存位置</value>
   </data>
   <data name="SetTransfer_DownloadLimit" xml:space="preserve">
-    <value>Download speed limit</value>
+    <value>下载速度限制</value>
   </data>
   <data name="SetTransfer_ExecutableFilter" xml:space="preserve">
-    <value>Executable programs</value>
+    <value>可执行程序</value>
   </data>
   <data name="SetTransfer_FileExists" xml:space="preserve">
-    <value>When a file already exists</value>
+    <value>文件已存在时</value>
   </data>
   <data name="SetTransfer_FileExistsDesc" xml:space="preserve">
-    <value>What to do when the destination already has a file with the same name</value>
+    <value>目标路径已有同名文件的处理方式</value>
   </data>
   <data name="SetTransfer_LogDirectory" xml:space="preserve">
-    <value>Log folder</value>
+    <value>日志存储路径</value>
   </data>
   <data name="SetTransfer_LogRetentionDays" xml:space="preserve">
-    <value>Transfer log retention (days)</value>
+    <value>文件传输日志保留天数</value>
   </data>
   <data name="SetTransfer_LogRetentionDaysDesc" xml:space="preserve">
-    <value>// Transfer logs older than this are cleaned up automatically; terminal session log retention is configured separately on the General page</value>
+    <value>// 超过天数的传输日志将自动清理;终端会话日志的保留天数在「常规」页单独设置</value>
   </data>
   <data name="SetTransfer_MaxConcurrent" xml:space="preserve">
-    <value>Max concurrent transfers</value>
+    <value>最大并发传输数</value>
   </data>
   <data name="SetTransfer_MaxConcurrentDesc" xml:space="preserve">
-    <value>Number of file transfer tasks running at the same time</value>
+    <value>同时进行的文件传输任务数量</value>
   </data>
   <data name="SetTransfer_NotifyOnComplete" xml:space="preserve">
-    <value>Notify when file transfers complete</value>
+    <value>文件传输完成时显示通知</value>
   </data>
   <data name="SetTransfer_NotifyOnCompleteDesc" xml:space="preserve">
-    <value>// Show a notification when an upload/download finishes; disconnect notifications are configured separately on the General page</value>
+    <value>// 上传/下载任务完成后弹出通知;连接断开的通知在「常规」页单独设置</value>
   </data>
   <data name="SetTransfer_PreserveTimestamps" xml:space="preserve">
-    <value>Preserve file timestamps</value>
+    <value>保留文件时间戳</value>
   </data>
   <data name="SetTransfer_SectionBandwidth" xml:space="preserve">
-    <value>Bandwidth limit</value>
+    <value>带宽限制</value>
   </data>
   <data name="SetTransfer_SectionBehavior" xml:space="preserve">
-    <value>Transfer behavior</value>
+    <value>传输行为</value>
   </data>
   <data name="SetTransfer_SectionConflict" xml:space="preserve">
-    <value>Conflict handling</value>
+    <value>冲突处理</value>
   </data>
   <data name="SetTransfer_SectionDefaultPaths" xml:space="preserve">
-    <value>Default paths</value>
+    <value>默认路径</value>
   </data>
   <data name="SetTransfer_SectionLogging" xml:space="preserve">
-    <value>Logging</value>
+    <value>日志记录</value>
   </data>
   <data name="SetTransfer_SelectEditorTitle" xml:space="preserve">
-    <value>Select default editor program</value>
+    <value>选择默认编辑器程序</value>
   </data>
   <data name="SetTransfer_ShowHiddenDesc" xml:space="preserve">
-    <value>// Whether the file browser lists dot-files; the toolbar toggle is saved back to this setting</value>
+    <value>// 文件浏览器是否列出以点开头的文件;工具栏切换会同步保存到此设置</value>
   </data>
   <data name="SetTransfer_Subtitle" xml:space="preserve">
-    <value>// Configure SFTP and file transfer behavior</value>
+    <value>// 配置 SFTP 和文件传输行为</value>
   </data>
   <data name="SetTransfer_Title" xml:space="preserve">
-    <value>File Transfer</value>
+    <value>文件传输</value>
   </data>
   <data name="SetTransfer_TransferLogging" xml:space="preserve">
-    <value>Log transfers</value>
+    <value>记录传输日志</value>
   </data>
   <data name="SetTransfer_TransferLoggingDesc" xml:space="preserve">
-    <value>// Keep a detailed log of file transfers</value>
+    <value>// 保存文件传输的详细日志</value>
   </data>
   <data name="SetTransfer_UploadLimit" xml:space="preserve">
-    <value>Upload speed limit</value>
+    <value>上传速度限制</value>
   </data>
   <data name="SetTransfer_ZeroUnlimited" xml:space="preserve">
-    <value>// 0 means unlimited</value>
+    <value>// 0 表示不限制</value>
   </data>
   <data name="SetVm_DefaultSuffix" xml:space="preserve">
-    <value>(default)</value>
+    <value>(默认)</value>
   </data>
   <data name="SetVm_GroupFileOperations" xml:space="preserve">
-    <value>File Operations</value>
+    <value>文件操作</value>
   </data>
   <data name="SetVm_GroupTabsAndPanels" xml:space="preserve">
-    <value>Tabs &amp; Panels</value>
+    <value>标签与面板</value>
   </data>
   <data name="SetVm_SectionAbout" xml:space="preserve">
-    <value>About</value>
+    <value>关于</value>
   </data>
   <data name="SetVm_SectionAppearance" xml:space="preserve">
-    <value>Appearance</value>
+    <value>外观</value>
   </data>
   <data name="SetVm_SectionGeneral" xml:space="preserve">
-    <value>General</value>
+    <value>常规</value>
   </data>
   <data name="SetVm_SectionKeys" xml:space="preserve">
-    <value>Key Management</value>
+    <value>密钥管理</value>
   </data>
   <data name="SetVm_SectionSecurity" xml:space="preserve">
-    <value>Security &amp; Audit</value>
+    <value>安全审计</value>
   </data>
   <data name="SetVm_SectionShortcuts" xml:space="preserve">
-    <value>Shortcuts</value>
+    <value>快捷键</value>
   </data>
   <data name="SetVm_SectionSnippets" xml:space="preserve">
-    <value>Snippets</value>
+    <value>代码片段</value>
   </data>
   <data name="SetVm_SectionSupport" xml:space="preserve">
-    <value>Support &amp; Donate</value>
+    <value>支持与捐赠</value>
   </data>
   <data name="SetVm_SectionSync" xml:space="preserve">
-    <value>Cloud Sync</value>
+    <value>云同步</value>
   </data>
   <data name="SetVm_SectionTerminal" xml:space="preserve">
-    <value>Terminal</value>
+    <value>终端</value>
   </data>
   <data name="SetVm_SectionTransfer" xml:space="preserve">
-    <value>File Transfer</value>
+    <value>文件传输</value>
   </data>
   <data name="SetVm_ShortcutCloneSession" xml:space="preserve">
-    <value>Clone Current Session</value>
+    <value>克隆当前会话</value>
   </data>
   <data name="SetVm_ShortcutCompletionPopup" xml:space="preserve">
-    <value>Show Command Completion</value>
+    <value>弹出命令补全</value>
   </data>
   <data name="SetVm_ShortcutNewTabAlias" xml:space="preserve">
-    <value>New Tab (same as New Connection)</value>
+    <value>新建标签(同新建连接)</value>
   </data>
   <data name="SetVm_ShortcutNextTab" xml:space="preserve">
-    <value>Next Tab</value>
+    <value>下一个标签页</value>
   </data>
   <data name="SetVm_ShortcutPaletteAlt" xml:space="preserve">
-    <value>Command Palette (alternate)</value>
+    <value>命令面板(等效)</value>
   </data>
   <data name="SetVm_ShortcutPrevTab" xml:space="preserve">
-    <value>Previous Tab</value>
+    <value>上一个标签页</value>
   </data>
   <data name="SetVm_ShortcutReconnect" xml:space="preserve">
-    <value>Reconnect After Disconnect</value>
+    <value>断线后重新连接</value>
   </data>
   <data name="SetVm_ShortcutReconnectAlt" xml:space="preserve">
-    <value>Reconnect After Disconnect (alternate)</value>
+    <value>断线后重新连接(等效)</value>
   </data>
   <data name="SetVm_ShortcutSaveInEditor" xml:space="preserve">
-    <value>Save in Remote Editor</value>
+    <value>远程编辑器内保存</value>
   </data>
   <data name="SetVm_ShortcutSearchTerminal" xml:space="preserve">
-    <value>Search Terminal Content</value>
+    <value>搜索终端内容</value>
   </data>
   <data name="SetVm_ShortcutSendInterrupt" xml:space="preserve">
-    <value>Send Interrupt ^C</value>
+    <value>发送中断信号 ^C</value>
   </data>
   <data name="SetVm_ShortcutToggleFileBrowser" xml:space="preserve">
-    <value>Toggle File Browser</value>
+    <value>切换文件浏览器</value>
   </data>
   <data name="Sftp_FileExistsTitle" xml:space="preserve">
-    <value>File already exists</value>
+    <value>文件已存在</value>
   </data>
   <data name="Sftp_LocalOverwriteBody" xml:space="preserve">
-    <value>A local file with the same name exists:
+    <value>本地已有同名文件:
 {0}
 
-Overwrite it? (Cancel skips this file)</value>
+覆盖它吗?(取消则跳过该文件)</value>
   </data>
   <data name="Sftp_NoEditorBody" xml:space="preserve">
-    <value>"Open with default editor" needs an editor program to be set first:
-On Windows enter the full exe path or a command name (e.g. notepad); on Linux a command name (e.g. gedit); on macOS an app name (e.g. Visual Studio Code).
+    <value>「使用默认编辑器打开」需要先指定编辑器程序:
+Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 gedit);macOS 填应用名(如 Visual Studio Code)。
 
-Open Settings now to configure it?</value>
+是否现在打开设置进行配置?</value>
   </data>
   <data name="Sftp_NoEditorTitle" xml:space="preserve">
-    <value>No default editor configured</value>
+    <value>未配置默认编辑器</value>
   </data>
   <data name="Sftp_Octal" xml:space="preserve">
-    <value>Octal</value>
+    <value>八进制</value>
   </data>
   <data name="Sftp_Open" xml:space="preserve">
-    <value>Open</value>
+    <value>打开</value>
   </data>
   <data name="Sftp_OpenSettings" xml:space="preserve">
-    <value>Open Settings</value>
+    <value>打开设置</value>
   </data>
   <data name="Sftp_OpenWithDefaultEditor" xml:space="preserve">
-    <value>Open with default editor</value>
+    <value>使用默认编辑器打开</value>
   </data>
   <data name="Sftp_RemoteOverwriteBody" xml:space="preserve">
-    <value>A remote file with the same name exists:
+    <value>远端已有同名文件:
 {0}
 
-Overwrite it? (Cancel skips this file)</value>
+覆盖它吗?(取消则跳过该文件)</value>
   </data>
   <data name="Shell_Cmd" xml:space="preserve">
-    <value>Command Prompt (CMD)</value>
+    <value>命令提示符 (CMD)</value>
   </data>
   <data name="Sidebar_Explorer" xml:space="preserve">
-    <value>Explorer</value>
+    <value>资源管理器</value>
   </data>
   <data name="Sidebar_RefreshRecent" xml:space="preserve">
-    <value>Refresh Recent Connections</value>
+    <value>刷新最近连接</value>
   </data>
   <data name="StatusBar_Swap" xml:space="preserve">
     <value>Swap</value>
   </data>
   <data name="Svc_Active" xml:space="preserve">
-    <value>Active</value>
+    <value>活跃</value>
   </data>
   <data name="Svc_AddFirstConnection" xml:space="preserve">
-    <value>Add your first connection</value>
+    <value>添加你的第一个连接</value>
   </data>
   <data name="Svc_CopySuffix" xml:space="preserve">
-    <value>{0} (Copy)</value>
+    <value>{0} (副本)</value>
   </data>
   <data name="Svc_DaysAgo" xml:space="preserve">
-    <value>{0} days ago</value>
+    <value>{0} 天前</value>
   </data>
   <data name="Svc_Disk" xml:space="preserve">
-    <value>Disk</value>
+    <value>磁盘</value>
   </data>
   <data name="Svc_DoubleClickToConnect" xml:space="preserve">
-    <value>Double-click to connect</value>
+    <value>双击连接</value>
   </data>
   <data name="Svc_History" xml:space="preserve">
-    <value>History</value>
+    <value>历史</value>
   </data>
   <data name="Svc_HostRequired" xml:space="preserve">
-    <value>Host is required.</value>
+    <value>请填写主机地址。</value>
   </data>
   <data name="Svc_HoursAgo" xml:space="preserve">
-    <value>{0} hours ago</value>
+    <value>{0} 小时前</value>
   </data>
   <data name="Svc_JumpChainLoop" xml:space="preserve">
-    <value>Jump host profiles form a circular reference; check the jump host settings.</value>
+    <value>跳板配置形成了循环引用,请检查跳板主机设置。</value>
   </data>
   <data name="Svc_JumpChainTooLong" xml:space="preserve">
-    <value>Jump chain is too long (5 hops max).</value>
+    <value>跳板链过长(最多 5 跳)。</value>
   </data>
   <data name="Svc_JumpHostMissing" xml:space="preserve">
-    <value>The jump host profile no longer exists (it may have been deleted); please set it again.</value>
+    <value>跳板主机配置不存在(可能已被删除),请重新设置。</value>
   </data>
   <data name="Svc_JustNow" xml:space="preserve">
-    <value>Just now</value>
+    <value>刚刚</value>
   </data>
   <data name="Svc_Memory" xml:space="preserve">
-    <value>Memory</value>
+    <value>内存</value>
   </data>
   <data name="Svc_MinutesAgo" xml:space="preserve">
-    <value>{0} minutes ago</value>
+    <value>{0} 分钟前</value>
   </data>
   <data name="Svc_NetSpeed" xml:space="preserve">
-    <value>Network Speed</value>
+    <value>网速</value>
   </data>
   <data name="Svc_Offline" xml:space="preserve">
-    <value>Offline</value>
+    <value>离线</value>
   </data>
   <data name="Svc_PasswordRequired" xml:space="preserve">
-    <value>Password authentication requires a password.</value>
+    <value>密码认证需要填写密码。</value>
   </data>
   <data name="Svc_PortRange" xml:space="preserve">
-    <value>Port must be between 1 and 65535.</value>
+    <value>端口必须在 1 到 65535 之间。</value>
   </data>
   <data name="Svc_PrivateKeyRequired" xml:space="preserve">
-    <value>Private key authentication requires a private key path.</value>
+    <value>私钥认证需要选择私钥文件。</value>
   </data>
   <data name="Svc_ProfileNameRequired" xml:space="preserve">
-    <value>Connection profile name is required.</value>
+    <value>请填写连接名称。</value>
   </data>
   <data name="Svc_RemoteUpdateFailed" xml:space="preserve">
-    <value>Remote update failed ({0}): {1}</value>
+    <value>远程更新失败({0}):{1}</value>
   </data>
   <data name="Svc_Ungrouped" xml:space="preserve">
-    <value>Ungrouped</value>
+    <value>未分组</value>
   </data>
   <data name="Svc_UsernameRequired" xml:space="preserve">
-    <value>Username is required.</value>
+    <value>请填写用户名。</value>
   </data>
   <data name="Svc_Yesterday" xml:space="preserve">
-    <value>Yesterday</value>
+    <value>昨天</value>
   </data>
   <data name="SyncSvc_ApiFailed" xml:space="preserve">
-    <value>GitHub API request failed ({0}): {1}</value>
+    <value>GitHub API 请求失败({0}):{1}</value>
   </data>
   <data name="SyncSvc_Applied" xml:space="preserve">
-    <value>Applied cloud data (from device {0}, {1}).</value>
+    <value>已应用云端数据(来自设备 {0},{1})。</value>
   </data>
   <data name="SyncSvc_BadFormat" xml:space="preserve">
-    <value>Unrecognized cloud sync data format.</value>
+    <value>云端同步数据格式无法识别。</value>
   </data>
   <data name="SyncSvc_BothChangedLocalWins" xml:space="preserve">
-    <value> (both sides changed; the local copy is newer and was pushed — the old cloud version remains in history)</value>
+    <value>(双端均有改动,本地较新,已推送覆盖;云端旧版本仍保留在历史中)</value>
   </data>
   <data name="SyncSvc_BothChangedRemoteWins" xml:space="preserve">
-    <value> (both sides changed; the cloud copy is newer and was applied — old local data can be recovered from version history)</value>
+    <value>(双端均有改动,云端较新,已采用云端;本地旧数据可从版本历史找回)</value>
   </data>
   <data name="SyncSvc_EmptyPayload" xml:space="preserve">
-    <value>Payload is empty.</value>
+    <value>载荷为空。</value>
   </data>
   <data name="SyncSvc_Forbidden" xml:space="preserve">
-    <value>Request rejected by GitHub (possibly rate-limited; try again later).</value>
+    <value>请求被 GitHub 拒绝(可能触发 API 限流,请稍后再试)。</value>
   </data>
   <data name="SyncSvc_GistNotFound" xml:space="preserve">
-    <value>The Gist does not exist or the token has no access (check the Gist Id and token account).</value>
+    <value>Gist 不存在或令牌无权访问(请检查 Gist Id 与令牌账号)。</value>
   </data>
   <data name="SyncSvc_MissingPayload" xml:space="preserve">
-    <value>Cloud data is missing its payload.</value>
+    <value>云端数据缺少载荷。</value>
   </data>
   <data name="SyncSvc_MissingRawUrl" xml:space="preserve">
-    <value>The Gist file is missing raw_url.</value>
+    <value>Gist 文件缺少 raw_url。</value>
   </data>
   <data name="SyncSvc_NeedPassphrase" xml:space="preserve">
-    <value>Cloud data is end-to-end encrypted: enter the same sync passphrase on this device before pulling.</value>
+    <value>云端数据已端到端加密:请在本设备填入相同的同步口令后再拉取。</value>
   </data>
   <data name="SyncSvc_NoGistBound" xml:space="preserve">
-    <value>No Gist is linked yet: push once first, or enter the Gist Id created on another device.</value>
+    <value>尚未绑定 Gist:请先推送一次,或填入其它设备创建的 Gist Id。</value>
   </data>
   <data name="SyncSvc_NoGistId" xml:space="preserve">
-    <value>GitHub did not return a Gist Id.</value>
+    <value>GitHub 未返回 Gist Id。</value>
   </data>
   <data name="SyncSvc_NoGistNoRestore" xml:space="preserve">
-    <value>No Gist is linked; there are no versions to restore.</value>
+    <value>尚未绑定 Gist,没有可恢复的版本。</value>
   </data>
   <data name="SyncSvc_NoRemoteFile" xml:space="preserve">
-    <value>The cloud Gist contains no sync data file.</value>
+    <value>云端 Gist 中没有同步数据文件。</value>
   </data>
   <data name="SyncSvc_NotEnabled" xml:space="preserve">
-    <value>Cloud sync is not enabled.</value>
+    <value>云同步未启用。</value>
   </data>
   <data name="SyncSvc_NoToken" xml:space="preserve">
-    <value>No GitHub token configured (gist scope required).</value>
+    <value>尚未配置 GitHub 令牌(需 gist 权限)。</value>
   </data>
   <data name="SyncSvc_Pushed" xml:space="preserve">
-    <value>Pushed to the cloud (revision {0}).</value>
+    <value>已推送到云端(版本 {0})。</value>
   </data>
   <data name="SyncSvc_RestoredAndPushed" xml:space="preserve">
-    <value>Restored to revision {0} and pushed as the latest version.</value>
+    <value>已恢复到版本 {0},并作为最新版本推送。</value>
   </data>
   <data name="SyncSvc_RevisionNoFile" xml:space="preserve">
-    <value>This revision contains no sync data file.</value>
+    <value>该版本中没有同步数据文件。</value>
   </data>
   <data name="SyncSvc_TokenDecryptFailed" xml:space="preserve">
-    <value>Could not decrypt the stored GitHub token; please enter it again.</value>
+    <value>无法解密已存的 GitHub 令牌,请重新填写。</value>
   </data>
   <data name="SyncSvc_TokenInvalid" xml:space="preserve">
-    <value>The GitHub token is invalid or expired; regenerate it (gist scope required).</value>
+    <value>GitHub 令牌无效或已过期,请重新生成(需 gist 权限)。</value>
   </data>
   <data name="SyncSvc_UpToDate" xml:space="preserve">
-    <value>Local and cloud are already in sync; nothing to do.</value>
+    <value>本地与云端已一致,无需同步。</value>
   </data>
   <data name="SyncSvc_WrongPassphrase" xml:space="preserve">
-    <value>Incorrect sync passphrase; cannot decrypt the cloud data.</value>
+    <value>同步口令不正确,无法解密云端数据。</value>
   </data>
   <data name="Term_NoMatches" xml:space="preserve">
-    <value>No matches</value>
+    <value>无匹配</value>
   </data>
   <data name="Term_SearchClose" xml:space="preserve">
-    <value>Close (Esc)</value>
+    <value>关闭 (Esc)</value>
   </data>
   <data name="Term_SearchNext" xml:space="preserve">
-    <value>Next (Enter)</value>
+    <value>下一个 (Enter)</value>
   </data>
   <data name="Term_SearchPlaceholder" xml:space="preserve">
-    <value>Find in terminal</value>
+    <value>在终端中查找</value>
   </data>
   <data name="Term_SearchPrev" xml:space="preserve">
-    <value>Previous (Shift+Enter)</value>
+    <value>上一个 (Shift+Enter)</value>
   </data>
   <data name="Transfer_CancelRemainingTip" xml:space="preserve">
-    <value>Cancel remaining transfers</value>
+    <value>取消剩余传输</value>
   </data>
   <data name="Transfer_CollapseTip" xml:space="preserve">
-    <value>Collapse (transfers continue in the background)</value>
+    <value>收起（任务继续后台执行）</value>
   </data>
   <data name="Transfer_Title" xml:space="preserve">
-    <value>Transfers</value>
+    <value>传输</value>
   </data>
   <data name="Tray_ExitApp" xml:space="preserve">
-    <value>Exit VelaShell</value>
+    <value>退出 VelaShell</value>
   </data>
   <data name="Tray_ShowMainWindow" xml:space="preserve">
-    <value>Show Main Window</value>
+    <value>显示主窗口</value>
   </data>
   <data name="Tree_Diagnostics" xml:space="preserve">
-    <value>Connection Diagnostics</value>
+    <value>连接诊断</value>
   </data>
   <data name="Tree_DuplicateConnection" xml:space="preserve">
-    <value>Duplicate Connection</value>
+    <value>复制连接</value>
   </data>
   <data name="Tree_EditConnection" xml:space="preserve">
-    <value>Edit Connection</value>
+    <value>编辑连接</value>
   </data>
   <data name="Tree_OpenInNewTab" xml:space="preserve">
-    <value>Open in New Tab</value>
+    <value>在新标签页打开</value>
   </data>
   <data name="Tree_OpenSftp" xml:space="preserve">
-    <value>Open SFTP</value>
+    <value>打开 SFTP</value>
   </data>
   <data name="Tree_PortForwarding" xml:space="preserve">
-    <value>Port Forwarding</value>
+    <value>端口转发</value>
   </data>
   <data name="Tree_SessionSettings" xml:space="preserve">
-    <value>Session Settings</value>
+    <value>会话设置</value>
   </data>
   <data name="Tunnel_AliasLabel" xml:space="preserve">
-    <value>Alias (optional)</value>
+    <value>别名(可选)</value>
   </data>
   <data name="Tunnel_AliasPlaceholder" xml:space="preserve">
-    <value>MongoDB forward</value>
+    <value>MongoDB 转发</value>
   </data>
   <data name="Tunnel_ClosePanel" xml:space="preserve">
-    <value>Close panel</value>
+    <value>关闭面板</value>
   </data>
   <data name="Tunnel_DeleteTip" xml:space="preserve">
-    <value>Delete tunnel</value>
+    <value>删除隧道</value>
   </data>
   <data name="Tunnel_DynamicSocks" xml:space="preserve">
-    <value>Dynamic SOCKS</value>
+    <value>动态 SOCKS</value>
   </data>
   <data name="Tunnel_DynamicSocksTip" xml:space="preserve">
-    <value>Local port acts as a SOCKS5 proxy for any target (ssh -D)</value>
+    <value>本地端口作为 SOCKS5 代理,目标任意(ssh -D)</value>
   </data>
   <data name="Tunnel_EditTip" xml:space="preserve">
-    <value>Edit tunnel</value>
+    <value>编辑隧道</value>
   </data>
   <data name="Tunnel_EmptyHint" xml:space="preserve">
-    <value>// No tunnels on this server yet — create one below</value>
+    <value>// 这台服务器还没有隧道,先在下方创建一条</value>
   </data>
   <data name="Tunnel_ForwardToLoopback" xml:space="preserve">
-    <value>Forward to the server itself (127.0.0.1)</value>
+    <value>转发到服务器本机(127.0.0.1)</value>
   </data>
   <data name="Tunnel_LocalForwardTip" xml:space="preserve">
-    <value>Forward a local port to a target service via the server (ssh -L)</value>
+    <value>把本地端口的访问经服务器转发到目标服务(ssh -L)</value>
   </data>
   <data name="Tunnel_RemoteForwardTip" xml:space="preserve">
-    <value>Forward a server port back to a local service (ssh -R)</value>
+    <value>把服务器端口的访问转回本机服务(ssh -R)</value>
   </data>
   <data name="Tunnel_SelectServerPlaceholder" xml:space="preserve">
-    <value>Select a saved server</value>
+    <value>选择已保存的服务器</value>
   </data>
   <data name="Tunnel_ServerLabel" xml:space="preserve">
-    <value>Server (forward via this host)</value>
+    <value>服务器(经由此主机转发)</value>
   </data>
   <data name="Tunnel_StartTip" xml:space="preserve">
-    <value>Start tunnel (connects to the server automatically)</value>
+    <value>启动隧道(自动连接服务器)</value>
   </data>
   <data name="Tunnel_StopTip" xml:space="preserve">
-    <value>Stop tunnel</value>
+    <value>停止隧道</value>
   </data>
   <data name="Tunnel_TargetHostLabel" xml:space="preserve">
-    <value>Target host (from the server's view)</value>
+    <value>目标主机(服务器视角)</value>
   </data>
   <data name="Tunnel_Title" xml:space="preserve">
-    <value>Tunnels</value>
+    <value>隧道</value>
   </data>
   <data name="Tunnel_TypeLabel" xml:space="preserve">
-    <value>Type</value>
+    <value>类型</value>
   </data>
   <data name="TunnelSvc_ForwardProhibited" xml:space="preserve">
-    <value>The server prohibits port forwarding (sshd setting AllowTcpForwarding no).</value>
+    <value>服务器禁止了端口转发(sshd 配置 AllowTcpForwarding no)。</value>
   </data>
   <data name="TunnelSvc_TargetRefused" xml:space="preserve">
-    <value>Target refused the connection: the target address is resolved from the server's perspective — use 127.0.0.1 to forward a service on the server itself, and confirm the target port is listening.</value>
+    <value>目标拒绝连接:目标地址是从服务器视角解析的,转发服务器本机服务请用 127.0.0.1,并确认目标端口正在监听。</value>
   </data>
   <data name="TunnelSvc_TargetUnreachable" xml:space="preserve">
-    <value>Target unreachable: confirm the target host is reachable from the server (internal address / firewall).</value>
+    <value>目标不可达:请确认目标主机从服务器可以访问(内网地址/防火墙)。</value>
   </data>
 </root>

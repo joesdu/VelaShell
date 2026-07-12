@@ -1,5 +1,6 @@
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.Services;
 
@@ -38,15 +39,17 @@ public sealed class CommandSuggestionProvider(CommandHistoryService history, IAp
             }
         }
 
+        string quickCommandSource = Strings.Get("QuickCommands");
+        string historySource = Strings.Get("Svc_History");
         if (string.IsNullOrEmpty(prefix))
         {
             foreach (QuickCommand cmd in quick)
             {
-                Add(cmd.CommandText, DescribeQuickCommand(cmd), "快捷命令");
+                Add(cmd.CommandText, DescribeQuickCommand(cmd), quickCommandSource);
             }
             foreach (string entry in history.Entries)
             {
-                Add(entry, null, "历史");
+                Add(entry, null, historySource);
             }
             return results;
         }
@@ -55,19 +58,19 @@ public sealed class CommandSuggestionProvider(CommandHistoryService history, IAp
         // → 历史包含命中。前缀匹配一律忽略大小写("Sudo"/"sudo" 不应错过)。
         foreach (string entry in history.Entries.Where(e => e.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && e.Length > prefix.Length))
         {
-            Add(entry, null, "历史");
+            Add(entry, null, historySource);
         }
         foreach (QuickCommand cmd in quick.Where(c => c.CommandText.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
         {
-            Add(cmd.CommandText, DescribeQuickCommand(cmd), "快捷命令");
+            Add(cmd.CommandText, DescribeQuickCommand(cmd), quickCommandSource);
         }
         foreach (QuickCommand cmd in quick.Where(c => MatchesLoosely(c, prefix)))
         {
-            Add(cmd.CommandText, DescribeQuickCommand(cmd), "快捷命令");
+            Add(cmd.CommandText, DescribeQuickCommand(cmd), quickCommandSource);
         }
         foreach (string entry in history.Entries.Where(e => e.Contains(prefix, StringComparison.OrdinalIgnoreCase) && e.Length > prefix.Length))
         {
-            Add(entry, null, "历史");
+            Add(entry, null, historySource);
         }
         return results;
     }

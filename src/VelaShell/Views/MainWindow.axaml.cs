@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ReactiveUI;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Services;
 using VelaShell.Core.Ssh;
 using VelaShell.Presentation.Services;
@@ -319,8 +320,8 @@ public partial class MainWindow : Window
 
     private async Task ConfirmCloseAsync()
     {
-        bool confirmed = await MessageDialog.ConfirmAsync(this, "关闭 VelaShell",
-                             "仍有活动的 SSH 会话,关闭窗口将断开所有连接。确定退出吗?");
+        bool confirmed = await MessageDialog.ConfirmAsync(this, Strings.Get("Main_CloseConfirmTitle"),
+                             Strings.Get("Main_CloseConfirmBody"));
         if (confirmed)
         {
             ForceClose();
@@ -539,13 +540,13 @@ public partial class MainWindow : Window
         (string text, string suggestedName) = export.Value;
         IStorageFile? file = await StorageProvider.SaveFilePickerAsync(new()
         {
-            Title = "导出终端输出",
+            Title = Strings.Get("Main_ExportTerminalTitle"),
             SuggestedFileName = suggestedName,
             DefaultExtension = "txt",
             FileTypeChoices =
             [
-                new("文本文件") { Patterns = ["*.txt"] },
-                new("日志文件") { Patterns = ["*.log"] }
+                new(Strings.Get("Main_FileTypeText")) { Patterns = ["*.txt"] },
+                new(Strings.Get("Main_FileTypeLog")) { Patterns = ["*.log"] }
             ]
         });
         string? path = file?.TryGetLocalPath();
@@ -556,11 +557,11 @@ public partial class MainWindow : Window
         try
         {
             await File.WriteAllTextAsync(path, text);
-            vm.StatusBar.Status = $"终端输出已导出:{path}";
+            vm.StatusBar.Status = Strings.Format("Main_TerminalExported", path);
         }
         catch (Exception ex)
         {
-            await MessageDialog.ShowMessageAsync(this, "导出失败", ex.Message, MessageDialogKind.Error);
+            await MessageDialog.ShowMessageAsync(this, Strings.Get("Main_ExportFailed"), ex.Message, MessageDialogKind.Error);
         }
     }
 
@@ -577,7 +578,7 @@ public partial class MainWindow : Window
         {
             preview += "\n…";
         }
-        return MessageDialog.ConfirmAsync(this, "粘贴多行内容",
-            $"剪贴板包含 {lines.Length} 行内容,粘贴后可能被终端立即执行:\n\n{preview}\n\n确定粘贴吗?");
+        return MessageDialog.ConfirmAsync(this, Strings.Get("Main_PasteMultilineTitle"),
+            Strings.Format("Main_PasteMultilineBody", lines.Length, preview));
     }
 }

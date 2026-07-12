@@ -7,6 +7,18 @@ public static class Strings
 {
     private static readonly ResourceManager ResourceManager = new("VelaShell.Core.Resources.Strings", typeof(Strings).Assembly);
 
+    /// <summary>
+    /// 按键名取当前 UI 语言的文案;缺失时回退键名(便于发现漏译)。
+    /// 供 C# 侧的动态文案使用(状态栏消息、对话框、命令注册表等);
+    /// axaml 用 {loc:Localize Key} 以获得换语言即时刷新。
+    /// </summary>
+    public static string Get(string key) =>
+        ResourceManager.GetString(key, CultureInfo.CurrentUICulture) ?? key;
+
+    /// <summary>取文案并做 string.Format(占位符 {0}/{1}…)。</summary>
+    public static string Format(string key, params object?[] args) =>
+        string.Format(CultureInfo.CurrentCulture, Get(key), args);
+
     public static string AppName => ResourceManager.GetString(nameof(AppName), CultureInfo.CurrentUICulture) ?? nameof(AppName);
 
     public static string Ready => ResourceManager.GetString(nameof(Ready), CultureInfo.CurrentUICulture) ?? nameof(Ready);

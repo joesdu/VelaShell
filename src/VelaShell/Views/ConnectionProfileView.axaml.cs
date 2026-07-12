@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using VelaShell.Core.Resources;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
@@ -43,7 +44,7 @@ public partial class ConnectionProfileView : Window
         }
         IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new()
         {
-            Title = "选择私钥文件",
+            Title = Strings.Get("Profile_SelectKeyFile"),
             AllowMultiple = false
         });
         if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)

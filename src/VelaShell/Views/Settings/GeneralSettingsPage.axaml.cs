@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using VelaShell.Core.Resources;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Views.Settings;
@@ -20,7 +21,7 @@ public partial class GeneralSettingsPage : UserControl
         }
         IStorageFile? file = await top.StorageProvider.SaveFilePickerAsync(new()
         {
-            Title = "导出配置",
+            Title = Strings.Get("SetGeneral_ExportDialogTitle"),
             SuggestedFileName = "velashell-settings.json",
             DefaultExtension = "json"
         });
@@ -38,7 +39,7 @@ public partial class GeneralSettingsPage : UserControl
         }
         IReadOnlyList<IStorageFile> files = await top.StorageProvider.OpenFilePickerAsync(new()
         {
-            Title = "导入配置",
+            Title = Strings.Get("SetGeneral_ImportDialogTitle"),
             AllowMultiple = false
         });
         if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path && File.Exists(path))
@@ -54,8 +55,8 @@ public partial class GeneralSettingsPage : UserControl
         {
             return;
         }
-        bool confirmed = await Views.MessageDialog.ConfirmAsync(owner, "清除历史记录",
-                             "将清除命令历史和最近连接记录,此操作不可撤销。确定继续吗?",
+        bool confirmed = await Views.MessageDialog.ConfirmAsync(owner, Strings.Get("SetGeneral_ClearHistory"),
+                             Strings.Get("SetGeneral_ClearHistoryConfirm"),
                              danger: true);
         if (confirmed)
         {

@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using VelaShell.Core.Resources;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
@@ -43,12 +44,12 @@ public partial class ConnectionDiagnosticsView : Window
         }
         IStorageFile? file = await StorageProvider.SaveFilePickerAsync(new()
         {
-            Title = "导出诊断报告",
+            Title = Strings.Get("Diag_ExportReport"),
             SuggestedFileName = viewModel.SuggestedReportFileName,
             DefaultExtension = "txt",
             FileTypeChoices =
             [
-                new("文本文件") { Patterns = ["*.txt"] }
+                new(Strings.Get("Main_FileTypeText")) { Patterns = ["*.txt"] }
             ]
         });
         string? path = file?.TryGetLocalPath();
@@ -62,7 +63,7 @@ public partial class ConnectionDiagnosticsView : Window
         }
         catch (Exception ex)
         {
-            await MessageDialog.ShowMessageAsync(this, "导出失败", ex.Message, MessageDialogKind.Error);
+            await MessageDialog.ShowMessageAsync(this, Strings.Get("Main_ExportFailed"), ex.Message, MessageDialogKind.Error);
         }
     }
 }

@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:VelaShell.ViewModels"
+             xmlns:loc="using:VelaShell.Localization"
              mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="220"
              x:Class="VelaShell.Views.ResourceMonitorView"
              x:DataType="vm:ResourceMonitorViewModel">
@@ -59,7 +60,7 @@
     </Grid>
 
     <!-- Unavailable placeholder (§11: 若该会话已断开，显示数据不可用) -->
-    <TextBlock Text="数据不可用"
+    <TextBlock Text="{loc:Localize Monitor_Unavailable}"
                Foreground="{DynamicResource VelaTextMuted}"
                FontFamily="{DynamicResource VelaUiFont}" FontSize="11"
                IsVisible="{Binding !IsAvailable}" />
@@ -114,11 +115,11 @@
       <!-- System info -->
       <StackPanel Spacing="4">
         <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Classes="info-label" Text="OS Version" />
+          <TextBlock Classes="info-label" Text="{loc:Localize Monitor_OsVersion}" />
           <TextBlock Grid.Column="1" Classes="info-value" Text="{Binding OsVersion}" />
         </Grid>
         <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Classes="info-label" Text="Kernel" />
+          <TextBlock Classes="info-label" Text="{loc:Localize Monitor_Kernel}" />
           <TextBlock Grid.Column="1" Classes="info-value" Text="{Binding Kernel}" />
         </Grid>
       </StackPanel>

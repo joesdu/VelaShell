@@ -5,10 +5,11 @@
         xmlns:vm="using:VelaShell.ViewModels"
         xmlns:conv="using:VelaShell.Converters"
         xmlns:pages="using:VelaShell.Views.Settings"
+        xmlns:loc="using:VelaShell.Localization"
         mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="640"
         x:Class="VelaShell.Views.SettingsView"
         x:DataType="vm:SettingsViewModel"
-        Title="设置"
+        Title="{loc:Localize Settings}"
         Width="840" Height="740"
         CanResize="False"
         WindowDecorations="None"
@@ -200,7 +201,7 @@
               <PathIcon Width="14" Height="14"
                         Data="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
                         Foreground="{DynamicResource VelaAccent}" />
-              <TextBlock Text="设置"
+              <TextBlock Text="{loc:Localize Settings}"
                          Foreground="{DynamicResource VelaTextPrimary}"
                          FontSize="13" FontWeight="SemiBold" />
             </StackPanel>
@@ -246,12 +247,12 @@
                 BorderThickness="0,1,0,0">
           <Grid ColumnDefinitions="Auto,*,Auto">
             <!-- 破坏性操作:点击后先弹确认框(代码后置),确认才执行 ResetCommand(设置审计 C-11)。 -->
-            <Button Grid.Column="0" Classes="dlg-outline" Content="恢复默认"
+            <Button Grid.Column="0" Classes="dlg-outline" Content="{loc:Localize Settings_RestoreDefaults}"
                     Click="ResetToDefaults_Click" VerticalAlignment="Center" />
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
                         VerticalAlignment="Center">
-              <Button Classes="dlg-outline" Content="取消" Command="{Binding CancelCommand}" />
-              <Button Classes="dlg-primary" Content="保存设置" Command="{Binding SaveCommand}" />
+              <Button Classes="dlg-outline" Content="{loc:Localize Cancel}" Command="{Binding CancelCommand}" />
+              <Button Classes="dlg-primary" Content="{loc:Localize Settings_SaveSettings}" Command="{Binding SaveCommand}" />
             </StackPanel>
           </Grid>
         </Border>

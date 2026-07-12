@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
 
 namespace VelaShell.Services;
@@ -215,7 +216,7 @@ internal sealed class ExternalEditSession : IDisposable
         }
         catch (Exception ex)
         {
-            _onError?.Invoke($"远程更新失败({Path.GetFileName(_remotePath)}):{ex.Message}");
+            _onError?.Invoke(Strings.Format("Svc_RemoteUpdateFailed", Path.GetFileName(_remotePath), ex.Message));
         }
         finally
         {

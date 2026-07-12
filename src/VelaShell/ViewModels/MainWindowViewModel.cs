@@ -304,12 +304,12 @@ public class MainWindowViewModel : ReactiveObject
 
     private void RegisterCommands()
     {
-        Commands.Register(new("session.new", "新建 SSH 连接", "会话",
+        Commands.Register(new("session.new", Strings.Get("Cmd_NewSshConnection"), Strings.Get("CmdCat_Session"),
             () => NewConnectionRequested?.Invoke(this, EventArgs.Empty), Shortcut: "Ctrl+N", Icon: "Icon.plus"));
-        Commands.Register(new("session.close", "关闭当前会话", "会话",
+        Commands.Register(new("session.close", Strings.Get("Cmd_CloseCurrentSession"), Strings.Get("CmdCat_Session"),
             () => TabBar.CloseActiveTabCommand.Execute().Subscribe(),
             () => TabBar.ActiveTab is not null, "Ctrl+W"));
-        Commands.Register(new("session.reconnect", "重连", "操作",
+        Commands.Register(new("session.reconnect", Strings.Get("Cmd_Reconnect"), Strings.Get("CmdCat_Actions"),
             () =>
             {
                 if (ActiveTerminalTab is { } tab)
@@ -319,7 +319,7 @@ public class MainWindowViewModel : ReactiveObject
             },
             () => ActiveTerminalTab?.ConnectionStatus == SessionStatus.Disconnected,
             "Ctrl+R"));
-        Commands.Register(new("session.clone", "克隆会话", "会话",
+        Commands.Register(new("session.clone", Strings.Get("Cmd_CloneSession"), Strings.Get("CmdCat_Session"),
             () =>
             {
                 if (ActiveTerminalTab?.Profile is { } profile)
@@ -329,7 +329,7 @@ public class MainWindowViewModel : ReactiveObject
             },
             () => ActiveTerminalTab?.Profile is not null,
             "Ctrl+Shift+N", "Icon.copy"));
-        Commands.Register(new("edit.copy", "复制", "编辑",
+        Commands.Register(new("edit.copy", Strings.Get("Copy"), Strings.Get("CmdCat_Edit"),
             () =>
             {
                 if (ActiveTerminalControl is { } c)
@@ -338,7 +338,7 @@ public class MainWindowViewModel : ReactiveObject
                 }
             },
             () => ActiveTerminalControl is not null, "Ctrl+Shift+C", "Icon.copy"));
-        Commands.Register(new("edit.paste", "粘贴", "编辑",
+        Commands.Register(new("edit.paste", Strings.Get("Cmd_Paste"), Strings.Get("CmdCat_Edit"),
             () =>
             {
                 if (ActiveTerminalControl is { } c)
@@ -347,19 +347,19 @@ public class MainWindowViewModel : ReactiveObject
                 }
             },
             () => ActiveTerminalControl is not null, "Ctrl+Shift+V"));
-        Commands.Register(new("terminal.export", "导出终端输出到文件", "会话",
+        Commands.Register(new("terminal.export", Strings.Get("Cmd_ExportTerminalOutput"), Strings.Get("CmdCat_Session"),
             () => ExportBufferRequested?.Invoke(this, EventArgs.Empty),
             () => ActiveTerminalControl is not null, Icon: "Icon.save"));
-        Commands.Register(new("search.terminal", "终端内查找", "搜索",
+        Commands.Register(new("search.terminal", Strings.Get("Cmd_FindInTerminal"), Strings.Get("CmdCat_Search"),
             () => TerminalSearchRequested?.Invoke(this, EventArgs.Empty),
             () => ActiveTerminalTab is not null, "Ctrl+F", "Icon.search"));
         // 隧道独立于终端会话(后台自动连接),无活动标签也可用(用户反馈 #5)。
-        Commands.Register(new("tools.tunnel", "隧道管理", "工具",
+        Commands.Register(new("tools.tunnel", Strings.Get("Cmd_TunnelManager"), Strings.Get("CmdCat_Tools"),
             ToggleTunnelPanel, Shortcut: "Ctrl+Shift+T", Icon: "Icon.route"));
-        Commands.Register(new("tools.files", "SFTP 文件管理器", "工具",
+        Commands.Register(new("tools.files", Strings.Get("Cmd_SftpFileManager"), Strings.Get("CmdCat_Tools"),
             ToggleFileBrowser,
             () => ActiveTerminalTab is not null, "Ctrl+Shift+F", "Icon.folder"));
-        Commands.Register(new("tools.diagnostics", "连接诊断", "工具",
+        Commands.Register(new("tools.diagnostics", Strings.Get("Cmd_ConnectionDiagnostics"), Strings.Get("CmdCat_Tools"),
             () =>
             {
                 if (ActiveTerminalTab?.Profile is { } profile)
@@ -368,12 +368,12 @@ public class MainWindowViewModel : ReactiveObject
                 }
             },
             () => ActiveTerminalTab?.Profile is not null, Icon: "Icon.stethoscope"));
-        Commands.Register(new("edit.clear", "清屏", "编辑",
+        Commands.Register(new("edit.clear", Strings.Get("Cmd_ClearScreen"), Strings.Get("CmdCat_Edit"),
             () => ActiveTerminalTab?.TerminalEmulator.WriteInput([0x0C]),
             () => ActiveTerminalTab?.ConnectionStatus == SessionStatus.Connected));
-        Commands.Register(new("app.settings", "打开设置", "编辑",
+        Commands.Register(new("app.settings", Strings.Get("Cmd_OpenSettings"), Strings.Get("CmdCat_Edit"),
             () => OpenSettingsCommand.Execute().Subscribe(), Shortcut: "Ctrl+,", Icon: "Icon.settings"));
-        Commands.Register(new("app.palette", "命令面板", "搜索",
+        Commands.Register(new("app.palette", Strings.Get("Cmd_CommandPalette"), Strings.Get("CmdCat_Search"),
             () => CommandPalette.Open(), Shortcut: "Ctrl+P", Icon: "Icon.zap"));
 
         // 本地终端(§12 P1-1):按本机安装情况动态注册 PowerShell/CMD/WSL/Git Bash 入口。
@@ -381,7 +381,7 @@ public class MainWindowViewModel : ReactiveObject
         {
             LocalShellInfo captured = shell;
             Commands.Register(new($"local.{captured.Id}",
-                $"打开本地终端:{captured.Name}", "会话",
+                Strings.Format("Cmd_OpenLocalTerminal", captured.Name), Strings.Get("CmdCat_Session"),
                 () => _ = OpenLocalTerminalAsync(captured), Icon: "Icon.terminal"));
         }
     }
@@ -402,7 +402,7 @@ public class MainWindowViewModel : ReactiveObject
         {
             Title = shell.Name,
             ConnectionStatus = SessionStatus.Connecting,
-            ConnectionSummary = $"本地 • {shell.Name}",
+            ConnectionSummary = Strings.Format("Msg_LocalPrefix", shell.Name),
             TerminalTypeName = TerminalType.XtermColor256.ToTermName(),
             EncodingName = "UTF-8",
             LocalShell = shell
@@ -438,7 +438,7 @@ public class MainWindowViewModel : ReactiveObject
         catch (Exception ex)
         {
             RemoveTerminalTab(terminalTab, document);
-            LastConnectionError = $"启动 {shell.Name} 失败:{ex.Message}";
+            LastConnectionError = Strings.Format("Msg_LocalShellStartFailed", shell.Name, ex.Message);
             StatusBar.Status = LastConnectionError;
         }
     }
@@ -460,7 +460,7 @@ public class MainWindowViewModel : ReactiveObject
         catch (Exception ex)
         {
             tab.MarkDisconnected();
-            LastConnectionError = $"重开 {shell.Name} 失败:{ex.Message}";
+            LastConnectionError = Strings.Format("Msg_LocalShellReopenFailed", shell.Name, ex.Message);
             StatusBar.Status = LastConnectionError;
         }
     }
@@ -726,13 +726,13 @@ public class MainWindowViewModel : ReactiveObject
     {
         if (_connectionWorkflowService is null)
         {
-            throw new InvalidOperationException("SSH 连接服务未配置。");
+            throw new InvalidOperationException(Strings.Get("Msg_SshServiceNotConfigured"));
         }
         SessionProfile current = profile;
         if (RequiresCredentials(current))
         {
             SessionProfile? updated = InteractiveAuthenticator is { } prompt ? await prompt(current) : null;
-            current = updated ?? throw new InvalidOperationException("该配置未保存凭据,已取消登录验证。");
+            current = updated ?? throw new InvalidOperationException(Strings.Get("Msg_AuthPromptCancelled"));
         }
         SshSession session = await _connectionWorkflowService.ConnectProfileAsync(current, cancellationToken);
         return session.SessionId;
@@ -855,18 +855,19 @@ public class MainWindowViewModel : ReactiveObject
     private static string BuildCpuTooltip(SessionMetrics m)
     {
         var sb = new StringBuilder();
-        sb.Append($"CPU 总占用: {m.CpuPercent:F1}%（{m.CpuCores} 核）");
+        sb.Append(Strings.Format("Msg_CpuTooltipTotal", m.CpuPercent, m.CpuCores));
         if (m.CorePercents is { Count: > 0 } percents)
         {
+            string corePrefix = Strings.Get("Msg_CpuCorePrefix");
             for (int i = 0; i < percents.Count; i++)
             {
-                string name = i < m.CoreCounters.Count ? m.CoreCounters[i].Name.Replace("cpu", "核心 ") : $"核心 {i}";
+                string name = i < m.CoreCounters.Count ? m.CoreCounters[i].Name.Replace("cpu", corePrefix) : $"{corePrefix}{i}";
                 sb.Append('\n').Append($"{name}: {percents[i]:F0}%");
             }
         }
         else if (m.CoreCounters.Count > 0)
         {
-            sb.Append("\n每核心占用统计中…");
+            sb.Append('\n').Append(Strings.Get("Msg_PerCoreCollecting"));
         }
         return sb.ToString();
     }
@@ -874,10 +875,10 @@ public class MainWindowViewModel : ReactiveObject
     private static string BuildMemTooltip(SessionMetrics m)
     {
         var sb = new StringBuilder();
-        sb.Append($"内存: {FormatGb(m.MemUsedBytes)} / {FormatGb(m.MemTotalBytes)} GB（{m.MemPercent:F1}%）");
+        sb.Append(Strings.Format("Msg_MemTooltip", FormatGb(m.MemUsedBytes), FormatGb(m.MemTotalBytes), m.MemPercent));
         if (m.SwapTotalBytes > 0)
         {
-            sb.Append('\n').Append($"交换: {FormatGb(m.SwapUsedBytes)} / {FormatGb(m.SwapTotalBytes)} GB（{m.SwapPercent:F1}%）");
+            sb.Append('\n').Append(Strings.Format("Msg_SwapTooltip", FormatGb(m.SwapUsedBytes), FormatGb(m.SwapTotalBytes), m.SwapPercent));
         }
         return sb.ToString();
     }
@@ -887,13 +888,13 @@ public class MainWindowViewModel : ReactiveObject
         if (m.Disks.Count == 0)
         {
             return m.DiskTotalBytes > 0
-                       ? $"磁盘 (/): {FormatGb(m.DiskUsedBytes)} / {FormatGb(m.DiskTotalBytes)} GB（{m.DiskPercent:F0}%）"
-                       : "磁盘";
+                       ? Strings.Format("Msg_DiskRootTooltip", FormatGb(m.DiskUsedBytes), FormatGb(m.DiskTotalBytes), m.DiskPercent)
+                       : Strings.Get("Msg_Disk");
         }
-        var sb = new StringBuilder("磁盘占用");
+        var sb = new StringBuilder(Strings.Get("Msg_DiskUsage"));
         foreach (DiskUsage d in m.Disks)
         {
-            sb.Append('\n').Append($"{d.MountPoint}: {FormatGb(d.UsedBytes)} / {FormatGb(d.TotalBytes)} GB（{d.Percent:F0}%）");
+            sb.Append('\n').Append(Strings.Format("Msg_DiskMountLine", d.MountPoint, FormatGb(d.UsedBytes), FormatGb(d.TotalBytes), d.Percent));
         }
         return sb.ToString();
     }
@@ -902,8 +903,8 @@ public class MainWindowViewModel : ReactiveObject
     {
         var sb = new StringBuilder();
         sb.Append(m.HasNetRates
-                      ? $"网速（合计）: ↓ {StatusBarViewModel.FormatRate(m.NetRxBytesPerSec)}  ↑ {StatusBarViewModel.FormatRate(m.NetTxBytesPerSec)}"
-                      : "网速统计中…");
+                      ? Strings.Format("Msg_NetTooltipTotal", StatusBarViewModel.FormatRate(m.NetRxBytesPerSec), StatusBarViewModel.FormatRate(m.NetTxBytesPerSec))
+                      : Strings.Get("Msg_NetCollecting"));
         if (m.NicRates is not { Count: > 0 } rates)
         {
             return sb.ToString();
@@ -984,10 +985,10 @@ public class MainWindowViewModel : ReactiveObject
                 recentProfileIds.Add(pid);
             }
             string title = string.IsNullOrWhiteSpace(item.DisplayName) ? captured.Host : item.DisplayName;
-            items.Add(new("最近连接",
+            items.Add(new(Strings.Get("RecentConnections"),
                 title,
                 () => _ = TryConnectRecentAsync(captured),
-                "Enter 连接",
+                Strings.Get("Msg_EnterToConnect"),
                 isSession: true));
         }
 
@@ -1000,16 +1001,16 @@ public class MainWindowViewModel : ReactiveObject
             }
             SessionProfile captured = profile;
             string? groupName = captured.GroupId is { } groupId && _paletteGroupNames.TryGetValue(groupId, out string? name) ? name : null;
-            items.Add(new("会话",
+            items.Add(new(Strings.Get("Sessions"),
                 string.IsNullOrWhiteSpace(captured.Name) ? captured.Host : captured.Name,
                 () => _ = TryConnectProfileAsync(captured),
-                "Enter 连接",
+                Strings.Get("Msg_EnterToConnect"),
                 groupName,
                 true));
         }
 
         // Global actions come from the shared command registry (menu/palette/shortcut parity).
-        items.AddRange(Commands.All.Select(captured => new CommandPaletteItem("命令", captured.Title, () => Commands.Execute(captured.Id), captured.Shortcut)));
+        items.AddRange(Commands.All.Select(captured => new CommandPaletteItem(Strings.Get("Command"), captured.Title, () => Commands.Execute(captured.Id), captured.Shortcut)));
         return items;
     }
 
@@ -1067,7 +1068,7 @@ public class MainWindowViewModel : ReactiveObject
             // 配了跳板的会话在状态栏点明"经由跳板",让用户一眼确认链路生效(用户反馈 #1)。
             ConnectionSummary = profile.JumpHostProfileId is null
                                     ? $"SSH • {displayName}"
-                                    : $"SSH • {displayName} • 经由跳板",
+                                    : $"SSH • {displayName} • {Strings.Get("Msg_ViaJumpHost")}",
             TerminalTypeName = terminalType.ToTermName(),
             EncodingName = string.IsNullOrWhiteSpace(settings.TerminalEncoding) ? "UTF-8" : settings.TerminalEncoding,
             Profile = profile
@@ -1259,7 +1260,7 @@ public class MainWindowViewModel : ReactiveObject
             // 配置里跳板由内向外嵌套;反转成"本机 → 最外层跳板 → … → 目标"的阅读顺序。
             names.Reverse();
             string target = string.IsNullOrWhiteSpace(profile.Name) ? profile.Host : profile.Name;
-            string notice = "\e[90m● 已经由跳板链路连接:本机 → " + string.Join(" → ", names) + " → " + target + "\e[0m\r\n";
+            string notice = "\e[90m● " + Strings.Format("Msg_JumpChainNotice", string.Join(" → ", names), target) + "\e[0m\r\n";
             tab.TerminalEmulator.Feed(Encoding.UTF8.GetBytes(notice));
         }
         catch
@@ -1362,7 +1363,7 @@ public class MainWindowViewModel : ReactiveObject
         }
         if (settings.General.NotifyOnDisconnect)
         {
-            StatusBar.Status = $"{tab.Title} 连接已断开";
+            StatusBar.Status = Strings.Format("Msg_TabDisconnected", tab.Title);
             if (!ReferenceEquals(ActiveTerminalTab, tab))
             {
                 tab.HasBellAlert = true;
@@ -1387,7 +1388,7 @@ public class MainWindowViewModel : ReactiveObject
         }
         tab.IncrementReconnectAttempt();
         int delaySeconds = Math.Clamp(settings.General.ReconnectIntervalSeconds, 1, 300);
-        StatusBar.Status = $"{tab.Title} 已断开,{delaySeconds} 秒后自动重连({tab.ReconnectAttempts}/{maxRetries})…";
+        StatusBar.Status = Strings.Format("Msg_AutoReconnectCountdown", tab.Title, delaySeconds, tab.ReconnectAttempts, maxRetries);
         DispatcherTimer.RunOnce(() =>
         {
             // 等待期间用户可能已手动重连、关掉标签或主动断开。
@@ -1573,12 +1574,12 @@ public class MainWindowViewModel : ReactiveObject
         // Match by type name so VelaShell.App need not reference SSH.NET directly.
         return ex.GetType().Name switch
         {
-            "SshAuthenticationException" => $"认证失败：{target} 的用户名、密码或密钥不正确。",
-            "SshConnectionException" => $"连接失败：无法与 {target} 建立 SSH 会话。",
-            "SocketException" => $"网络错误：无法连接到 {target}，请检查主机与端口。",
-            "SshOperationTimeoutException" => $"连接超时：{target} 未响应。",
-            "ProxyException" => $"代理错误：无法通过代理连接到 {target}。",
-            _ => $"连接 {target} 失败：{ex.Message}"
+            "SshAuthenticationException" => Strings.Format("Msg_AuthFailed", target),
+            "SshConnectionException" => Strings.Format("Msg_ConnectFailed", target),
+            "SocketException" => Strings.Format("Msg_NetworkError", target),
+            "SshOperationTimeoutException" => Strings.Format("Msg_ConnectTimeout", target),
+            "ProxyException" => Strings.Format("Msg_ProxyError", target),
+            _ => Strings.Format("Msg_ConnectGenericFailed", target, ex.Message)
         };
     }
 

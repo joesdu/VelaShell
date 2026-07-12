@@ -4,10 +4,11 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:VelaShell.ViewModels"
         xmlns:pc="using:VelaShell.Controls.Controls"
+        xmlns:loc="using:VelaShell.Localization"
         mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="480"
         x:Class="VelaShell.Views.ConnectionDiagnosticsView"
         x:DataType="vm:ConnectionDiagnosticsViewModel"
-        Title="连接诊断"
+        Title="{loc:Localize Diag_Title}"
         Width="760" Height="480"
         CanResize="False"
         WindowDecorations="None"
@@ -68,7 +69,7 @@
               <pc:LucideIcon Width="15" Height="15"
                              Data="{StaticResource Icon.stethoscope}"
                              Foreground="{DynamicResource VelaAccent}" VerticalAlignment="Center" />
-              <TextBlock Text="连接诊断中心"
+              <TextBlock Text="{loc:Localize Diag_Header}"
                          Foreground="{DynamicResource VelaTextPrimary}"
                          FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>
@@ -84,7 +85,7 @@
                 <pc:LucideIcon Width="11" Height="11"
                                Data="{StaticResource Icon.download}"
                                Foreground="{DynamicResource VelaTextSecondary}" VerticalAlignment="Center" />
-                <TextBlock Text="导出诊断报告" VerticalAlignment="Center" />
+                <TextBlock Text="{loc:Localize Diag_ExportReport}" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
             <Button Classes="dlg-primary" Command="{Binding RunCommand}">
@@ -92,12 +93,12 @@
                 <pc:LucideIcon Width="11" Height="11"
                                Data="{StaticResource Icon.refresh-cw}"
                                Foreground="{DynamicResource VelaAccentForeground}" VerticalAlignment="Center" />
-                <TextBlock Text="重新检测" VerticalAlignment="Center" />
+                <TextBlock Text="{loc:Localize Diag_Rerun}" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
             <Button Width="28" Height="28" Padding="0" CornerRadius="4"
                     Background="Transparent" Cursor="Hand" Click="Close_Click"
-                    ToolTip.Tip="关闭">
+                    ToolTip.Tip="{loc:Localize Diag_CloseTip}">
               <pc:LucideIcon Width="13" Height="13"
                              Data="{StaticResource Icon.x}"
                              Foreground="{DynamicResource VelaTextTertiary}" />
@@ -118,7 +119,7 @@
             <Border DockPanel.Dock="Top" Height="34" Padding="12,0"
                     BorderThickness="0,0,0,1"
                     BorderBrush="{DynamicResource VelaBorderPrimary}">
-              <TextBlock Text="诊断步骤"
+              <TextBlock Text="{loc:Localize Diag_Steps}"
                          Foreground="{DynamicResource VelaTextSecondary}"
                          FontSize="12" FontWeight="Medium" VerticalAlignment="Center" />
             </Border>
@@ -180,7 +181,7 @@
           <StackPanel Spacing="10">
 
             <!-- 检测中占位 -->
-            <TextBlock Text="// 正在逐项检测,请稍候…"
+            <TextBlock Text="{loc:Localize Diag_Running}"
                        IsVisible="{Binding IsBusy}"
                        Foreground="{DynamicResource VelaTextMuted}"
                        FontFamily="{DynamicResource VelaTerminalFont}" FontSize="11" />
@@ -193,7 +194,7 @@
                 <pc:LucideIcon Width="13" Height="13"
                                Data="{StaticResource Icon.circle-check}"
                                Foreground="{DynamicResource VelaStatusConnected}" VerticalAlignment="Center" />
-                <TextBlock Text="未发现问题,各项检测均通过,可正常连接。"
+                <TextBlock Text="{loc:Localize Diag_AllPassed}"
                            Foreground="{DynamicResource VelaStatusConnected}"
                            FontSize="12" FontWeight="Medium" VerticalAlignment="Center" />
               </StackPanel>
@@ -210,7 +211,7 @@
                                  Foreground="{DynamicResource VelaWarning}" VerticalAlignment="Center" />
                   <TextBlock Foreground="{DynamicResource VelaWarning}"
                              FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center">
-                    <Run Text="发现问题:" /><Run Text="{Binding IssueTitle}" />
+                    <Run Text="{loc:Localize Diag_IssueFound}" /><Run Text="{Binding IssueTitle}" />
                   </TextBlock>
                 </StackPanel>
                 <TextBlock Text="{Binding IssueDescription}"

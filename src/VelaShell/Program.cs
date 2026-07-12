@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Avalonia;
 using ReactiveUI.Avalonia;
+using VelaShell.Core.Resources;
 using VelaShell.Infrastructure.Persistence;
 using Velopack;
 
@@ -29,7 +30,7 @@ internal static class Program
         // the running instance up front and exit cleanly with a friendly notice instead.
         if (!TryAcquireSingleInstanceLock())
         {
-            ShowMessage("VelaShell 已经在运行了。\n\n请切换到已打开的窗口;同一时间只能运行一个实例。",
+            ShowMessage(Strings.Get("Boot_AlreadyRunning"),
                 "VelaShell");
             return;
         }
@@ -41,10 +42,8 @@ internal static class Program
         {
             // Last-resort: surface a readable dialog instead of a raw .NET crash box for testers.
             Trace.WriteLine($"[VelaShell] Fatal startup error: {ex}");
-            ShowMessage("VelaShell 启动失败。\n\n" +
-                        ex.Message +
-                        "\n\n如果反复出现,请尝试关闭其它 VelaShell 窗口后重试。",
-                "VelaShell - 启动错误");
+            ShowMessage(Strings.Format("Boot_StartupFailed", ex.Message),
+                Strings.Get("Boot_StartupErrorTitle"));
             throw;
         }
         finally

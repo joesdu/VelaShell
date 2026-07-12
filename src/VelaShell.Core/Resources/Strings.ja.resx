@@ -1,0 +1,2648 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- App Shell -->
+  <!-- Sidebar (5) -->
+  <!-- Terminal (7) -->
+  <!-- File Browser (7) -->
+  <!-- Tunnel (6) -->
+  <!-- Quick Commands (5) -->
+  <!-- Status Bar (4) -->
+  <!-- Session Tree -->
+  <!-- General (9) -->
+  <!-- Settings (5) -->
+  <!-- Auth (7) -->
+  <!-- Settings Dialog -->
+  <!-- File Browser / SFTP (§6) -->
+  <data name="ActiveTunnels" xml:space="preserve">
+    <value>アクティブなトンネル</value>
+  </data>
+  <data name="AddCommand" xml:space="preserve">
+    <value>コマンドを追加</value>
+  </data>
+  <data name="AppName" xml:space="preserve">
+    <value>VelaShell</value>
+  </data>
+  <data name="Auth_AesBadge" xml:space="preserve">
+    <value>AES-256 暗号化保存</value>
+  </data>
+  <data name="Auth_Back" xml:space="preserve">
+    <value>戻る</value>
+  </data>
+  <data name="Auth_Certificate" xml:space="preserve">
+    <value>証明書</value>
+  </data>
+  <data name="Auth_ConnectingTo" xml:space="preserve">
+    <value>{0} に接続中</value>
+  </data>
+  <data name="Auth_EnterUsername" xml:space="preserve">
+    <value>ユーザー名を入力</value>
+  </data>
+  <data name="Auth_FingerprintFirstConnect" xml:space="preserve">
+    <value>フィンガープリント: 初回接続のため、ハンドシェイク時に記録されます</value>
+  </data>
+  <data name="Auth_FingerprintTrusted" xml:space="preserve">
+    <value>フィンガープリント: {0}(信頼済み)</value>
+  </data>
+  <data name="Auth_HeaderTitle" xml:space="preserve">
+    <value>認証 - ステップ {0}</value>
+  </data>
+  <data name="Auth_Key" xml:space="preserve">
+    <value>鍵</value>
+  </data>
+  <data name="Auth_Login" xml:space="preserve">
+    <value>ログイン</value>
+  </data>
+  <data name="Auth_Next" xml:space="preserve">
+    <value>次へ</value>
+  </data>
+  <data name="Auth_SelectMethod" xml:space="preserve">
+    <value>認証方式を選択</value>
+  </data>
+  <data name="Auth_Title" xml:space="preserve">
+    <value>認証</value>
+  </data>
+  <data name="Auth_UsernameLine" xml:space="preserve">
+    <value>ユーザー名: {0}</value>
+  </data>
+  <data name="AuthMethodLabel" xml:space="preserve">
+    <value>認証方式</value>
+  </data>
+  <data name="Boot_AlreadyRunning" xml:space="preserve">
+    <value>VelaShell はすでに実行中です。
+
+開いているウィンドウに切り替えてください。同時に実行できるインスタンスは 1 つだけです。</value>
+  </data>
+  <data name="Boot_StartupErrorTitle" xml:space="preserve">
+    <value>VelaShell - 起動エラー</value>
+  </data>
+  <data name="Boot_StartupFailed" xml:space="preserve">
+    <value>VelaShell の起動に失敗しました。
+
+{0}
+
+繰り返し発生する場合は、他の VelaShell ウィンドウを閉じてから再試行してください。</value>
+  </data>
+  <data name="Broadcast" xml:space="preserve">
+    <value>ブロードキャスト</value>
+  </data>
+  <data name="BrowseKeyFile" xml:space="preserve">
+    <value>参照…</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>キャンセル</value>
+  </data>
+  <data name="Category" xml:space="preserve">
+    <value>カテゴリ</value>
+  </data>
+  <data name="ChangePermissions" xml:space="preserve">
+    <value>権限 (chmod)…</value>
+  </data>
+  <data name="ClearAll" xml:space="preserve">
+    <value>すべてクリア</value>
+  </data>
+  <data name="CloseTab" xml:space="preserve">
+    <value>タブを閉じる</value>
+  </data>
+  <data name="Cmd_ClearScreen" xml:space="preserve">
+    <value>画面をクリア</value>
+  </data>
+  <data name="Cmd_CloneSession" xml:space="preserve">
+    <value>セッションを複製</value>
+  </data>
+  <data name="Cmd_CloseCurrentSession" xml:space="preserve">
+    <value>現在のセッションを閉じる</value>
+  </data>
+  <data name="Cmd_CommandPalette" xml:space="preserve">
+    <value>コマンドパレット</value>
+  </data>
+  <data name="Cmd_ConnectionDiagnostics" xml:space="preserve">
+    <value>接続診断</value>
+  </data>
+  <data name="Cmd_ExportTerminalOutput" xml:space="preserve">
+    <value>ターミナル出力をファイルにエクスポート</value>
+  </data>
+  <data name="Cmd_FindInTerminal" xml:space="preserve">
+    <value>ターミナル内を検索</value>
+  </data>
+  <data name="Cmd_NewSshConnection" xml:space="preserve">
+    <value>新規 SSH 接続</value>
+  </data>
+  <data name="Cmd_OpenLocalTerminal" xml:space="preserve">
+    <value>ローカルターミナルを開く: {0}</value>
+  </data>
+  <data name="Cmd_OpenSettings" xml:space="preserve">
+    <value>設定を開く</value>
+  </data>
+  <data name="Cmd_Paste" xml:space="preserve">
+    <value>貼り付け</value>
+  </data>
+  <data name="Cmd_Reconnect" xml:space="preserve">
+    <value>再接続</value>
+  </data>
+  <data name="Cmd_SftpFileManager" xml:space="preserve">
+    <value>SFTP ファイルマネージャー</value>
+  </data>
+  <data name="Cmd_TunnelManager" xml:space="preserve">
+    <value>トンネル管理</value>
+  </data>
+  <data name="CmdCat_Actions" xml:space="preserve">
+    <value>操作</value>
+  </data>
+  <data name="CmdCat_Edit" xml:space="preserve">
+    <value>編集</value>
+  </data>
+  <data name="CmdCat_Search" xml:space="preserve">
+    <value>検索</value>
+  </data>
+  <data name="CmdCat_Session" xml:space="preserve">
+    <value>セッション</value>
+  </data>
+  <data name="CmdCat_Tools" xml:space="preserve">
+    <value>ツール</value>
+  </data>
+  <data name="Command" xml:space="preserve">
+    <value>コマンド</value>
+  </data>
+  <data name="ConfirmDeleteFile" xml:space="preserve">
+    <value>ファイル「{0}」を削除しますか?この操作は元に戻せません。</value>
+  </data>
+  <data name="ConfirmDeleteFolder" xml:space="preserve">
+    <value>フォルダー「{0}」とその内容をすべて削除しますか?この操作は元に戻せません。</value>
+  </data>
+  <data name="ConfirmDeleteMultiple" xml:space="preserve">
+    <value>選択した {0} 件の項目を削除しますか?この操作は元に戻せません。</value>
+  </data>
+  <data name="ConfirmDeleteTitle" xml:space="preserve">
+    <value>削除の確認</value>
+  </data>
+  <data name="Connect" xml:space="preserve">
+    <value>接続</value>
+  </data>
+  <data name="Connected" xml:space="preserve">
+    <value>接続済み</value>
+  </data>
+  <data name="Connecting" xml:space="preserve">
+    <value>接続中</value>
+  </data>
+  <data name="ConnectionProfile" xml:space="preserve">
+    <value>接続プロファイル</value>
+  </data>
+  <data name="Copy" xml:space="preserve">
+    <value>コピー</value>
+  </data>
+  <data name="CopyFileName" xml:space="preserve">
+    <value>名前をコピー</value>
+  </data>
+  <data name="CopyFilePath" xml:space="preserve">
+    <value>パスをコピー</value>
+  </data>
+  <data name="Custom" xml:space="preserve">
+    <value>カスタム</value>
+  </data>
+  <data name="DefaultPort" xml:space="preserve">
+    <value>既定のポート</value>
+  </data>
+  <data name="Delete" xml:space="preserve">
+    <value>削除</value>
+  </data>
+  <data name="DeleteSelected" xml:space="preserve">
+    <value>選択項目を削除</value>
+  </data>
+  <data name="Deleting" xml:space="preserve">
+    <value>削除中…</value>
+  </data>
+  <data name="DeletingProgress" xml:space="preserve">
+    <value>削除中… {0}/{1} 件完了</value>
+  </data>
+  <data name="Description" xml:space="preserve">
+    <value>説明</value>
+  </data>
+  <data name="Diag_AllPassed" xml:space="preserve">
+    <value>問題は見つかりませんでした。すべての検査に合格し、正常に接続できます。</value>
+  </data>
+  <data name="Diag_CloseTip" xml:space="preserve">
+    <value>閉じる</value>
+  </data>
+  <data name="Diag_ExportReport" xml:space="preserve">
+    <value>診断レポートをエクスポート</value>
+  </data>
+  <data name="Diag_Header" xml:space="preserve">
+    <value>接続診断センター</value>
+  </data>
+  <data name="Diag_IssueFound" xml:space="preserve">
+    <value>問題を検出:</value>
+  </data>
+  <data name="Diag_Rerun" xml:space="preserve">
+    <value>再検査</value>
+  </data>
+  <data name="Diag_Running" xml:space="preserve">
+    <value>// 検査を実行中です。しばらくお待ちください…</value>
+  </data>
+  <data name="Diag_Steps" xml:space="preserve">
+    <value>診断ステップ</value>
+  </data>
+  <data name="Diag_Title" xml:space="preserve">
+    <value>接続診断</value>
+  </data>
+  <data name="DiagSvc_AuthFailed" xml:space="preserve">
+    <value>認証に失敗しました</value>
+  </data>
+  <data name="DiagSvc_AuthFailedDesc" xml:space="preserve">
+    <value>サーバーが {0} のログインを拒否しました:{1}</value>
+  </data>
+  <data name="DiagSvc_ConnectTimeout" xml:space="preserve">
+    <value>接続タイムアウト</value>
+  </data>
+  <data name="DiagSvc_ConnFailed" xml:space="preserve">
+    <value>接続の確立に失敗しました</value>
+  </data>
+  <data name="DiagSvc_DnsFailed" xml:space="preserve">
+    <value>DNS 解決に失敗しました</value>
+  </data>
+  <data name="DiagSvc_DnsFailedDesc" xml:space="preserve">
+    <value>ホスト名 {0} を解決できません:{1}</value>
+  </data>
+  <data name="DiagSvc_HostKeyFailed" xml:space="preserve">
+    <value>ホスト鍵の検証に失敗しました</value>
+  </data>
+  <data name="DiagSvc_IpLiteral" xml:space="preserve">
+    <value>IP 直接指定のため解決不要</value>
+  </data>
+  <data name="DiagSvc_JumpChainConfigError" xml:space="preserve">
+    <value>踏み台チェーン設定エラー</value>
+  </data>
+  <data name="DiagSvc_JumpChainFailed" xml:space="preserve">
+    <value>踏み台チェーンの確立に失敗しました</value>
+  </data>
+  <data name="DiagSvc_JumpChainLoop" xml:space="preserve">
+    <value>踏み台設定が循環参照になっています。各設定の踏み台ホスト設定を確認してください。</value>
+  </data>
+  <data name="DiagSvc_JumpChainTooLong" xml:space="preserve">
+    <value>踏み台チェーンが 5 ホップを超えています。踏み台の階層を減らしてください。</value>
+  </data>
+  <data name="DiagSvc_JumpConfigError" xml:space="preserve">
+    <value>踏み台設定エラー</value>
+  </data>
+  <data name="DiagSvc_JumpSuffix" xml:space="preserve">
+    <value>(踏み台 {0})</value>
+  </data>
+  <data name="DiagSvc_LoginSuccess" xml:space="preserve">
+    <value>{0}@{1} のログインに成功しました</value>
+  </data>
+  <data name="DiagSvc_NoBanner" xml:space="preserve">
+    <value>サーバーからの応答がありません</value>
+  </data>
+  <data name="DiagSvc_NoBannerDesc" xml:space="preserve">
+    <value>{0}:{1} には接続できますが、{2} 秒以内に SSH 識別文字列が返されませんでした。</value>
+  </data>
+  <data name="DiagSvc_NoCredsSkip" xml:space="preserve">
+    <value>資格情報が保存されていないため、認証テストをスキップしました</value>
+  </data>
+  <data name="DiagSvc_NonSshBanner" xml:space="preserve">
+    <value>SSH 以外の応答:{0}</value>
+  </data>
+  <data name="DiagSvc_NonSshDesc" xml:space="preserve">
+    <value>{0}:{1} は SSH 以外のプロトコル応答を返しました:{2}</value>
+  </data>
+  <data name="DiagSvc_NotSshPort" xml:space="preserve">
+    <value>ポートで SSH サービスが動作していません</value>
+  </data>
+  <data name="DiagSvc_SshBannerReadError" xml:space="preserve">
+    <value>SSH 識別文字列の読み取り中にエラーが発生しました:{0}</value>
+  </data>
+  <data name="DiagSvc_SshHandshakeFailed" xml:space="preserve">
+    <value>SSH ハンドシェイクに失敗しました</value>
+  </data>
+  <data name="DiagSvc_StepAuth" xml:space="preserve">
+    <value>ユーザー認証</value>
+  </data>
+  <data name="DiagSvc_StepAuthFullChain" xml:space="preserve">
+    <value>ユーザー認証(踏み台チェーン全体)</value>
+  </data>
+  <data name="DiagSvc_StepDns" xml:space="preserve">
+    <value>DNS 解決</value>
+  </data>
+  <data name="DiagSvc_StepSsh" xml:space="preserve">
+    <value>SSH ハンドシェイク</value>
+  </data>
+  <data name="DiagSvc_StepTcp" xml:space="preserve">
+    <value>TCP 接続</value>
+  </data>
+  <data name="DiagSvc_SuggestCheckCreds" xml:space="preserve">
+    <value>ユーザー名とパスワード/秘密鍵が正しいか確認してください。大文字小文字に注意してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestCheckDns" xml:space="preserve">
+    <value>ローカルの DNS 設定を確認するか、IP アドレスで接続してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestCheckHostname" xml:space="preserve">
+    <value>ホスト名のつづりが正しいか確認してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestCheckPort" xml:space="preserve">
+    <value>ポート {0} が正しいこと、サーバーで SSH サービスが動作していることを確認してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestCheckSshd" xml:space="preserve">
+    <value>ネットワークとポートは正常で、SSH ネゴシエーション段階で失敗しています。サーバーの sshd ログ(/var/log/auth.log)で原因を確認してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestDefaultPort" xml:space="preserve">
+    <value>ポート番号を確認してください:SSH の既定は 22、現在の設定は {0} です。</value>
+  </data>
+  <data name="DiagSvc_SuggestDiagnoseJump" xml:space="preserve">
+    <value>まず踏み台ホスト単体で接続診断を実行し、ホップごとに問題を特定してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestFirewall" xml:space="preserve">
+    <value>サーバーのファイアウォールやクラウドのセキュリティグループがこのポートを許可しているか確認してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestHostOnline" xml:space="preserve">
+    <value>ホストがオンラインか確認してください(ping や別ネットワークからのアクセスを試す)。</value>
+  </data>
+  <data name="DiagSvc_SuggestJumpCreds" xml:space="preserve">
+    <value>踏み台の設定は資格情報を保存していないと対話なしで接続できません。各踏み台設定を確認してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestKeyMatch" xml:space="preserve">
+    <value>秘密鍵がサーバー上の公開鍵と一致し、パスフレーズが正しいことを確認してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestMitm" xml:space="preserve">
+    <value>予期しない変更の場合は中間者攻撃に注意し、まずサーバー管理者に確認してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestPasswordDisabled" xml:space="preserve">
+    <value>サーバーでパスワードログインが無効(PasswordAuthentication no)の可能性があります。鍵認証をお試しください。</value>
+  </data>
+  <data name="DiagSvc_SuggestPortOccupied" xml:space="preserve">
+    <value>このポートは他のサービス(HTTP やデータベースなど)が使用している可能性があります。サーバー設定を確認してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestRecreateJump" xml:space="preserve">
+    <value>踏み台設定が削除されている場合は、直接接続に変更するか踏み台設定を作り直してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestReselectJump" xml:space="preserve">
+    <value>この接続の編集ウィンドウ → 詳細オプションで踏み台ホストを選び直してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestSaveCreds" xml:space="preserve">
+    <value>このプロファイルにはパスワード/鍵が保存されていないため、接続時にログイン確認が表示されます。認証テストを自動化するには編集ウィンドウで資格情報を保存してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestTrustNewKey" xml:space="preserve">
+    <value>サーバーのホスト鍵がローカルの記録と一致しません。サーバーを本当に再インストールした場合は、プロンプトで新しいフィンガープリントを信頼してください。</value>
+  </data>
+  <data name="DiagSvc_SuggestVpn" xml:space="preserve">
+    <value>接続先が社内ネットワークにある場合は、社内ネットワークまたは VPN に接続していることを確認してください。</value>
+  </data>
+  <data name="DiagSvc_TcpFailed" xml:space="preserve">
+    <value>TCP 接続を確立できません</value>
+  </data>
+  <data name="DiagSvc_TcpFailedDesc" xml:space="preserve">
+    <value>{0}:{1} への TCP 接続に失敗しました:{2}</value>
+  </data>
+  <data name="DiagSvc_UnknownError" xml:space="preserve">
+    <value>不明なエラー</value>
+  </data>
+  <data name="DiagSvc_WaitFix" xml:space="preserve">
+    <value>修正後に再試行</value>
+  </data>
+  <data name="Disconnect" xml:space="preserve">
+    <value>切断</value>
+  </data>
+  <data name="Disconnected" xml:space="preserve">
+    <value>切断済み</value>
+  </data>
+  <data name="Dock_AllTabs" xml:space="preserve">
+    <value>すべてのタブ</value>
+  </data>
+  <data name="Dock_Close" xml:space="preserve">
+    <value>閉じる</value>
+  </data>
+  <data name="Dock_CloseAll" xml:space="preserve">
+    <value>すべてのタブを閉じる</value>
+  </data>
+  <data name="Dock_CloseLeft" xml:space="preserve">
+    <value>左側のタブを閉じる</value>
+  </data>
+  <data name="Dock_CloseOthers" xml:space="preserve">
+    <value>他のタブを閉じる</value>
+  </data>
+  <data name="Dock_CloseRight" xml:space="preserve">
+    <value>右側のタブを閉じる</value>
+  </data>
+  <data name="Dock_DropTabHere" xml:space="preserve">
+    <value>ここにタブをドラッグ</value>
+  </data>
+  <data name="Dock_SplitHorizontal" xml:space="preserve">
+    <value>横に分割</value>
+  </data>
+  <data name="Dock_SplitVertical" xml:space="preserve">
+    <value>縦に分割</value>
+  </data>
+  <data name="Dock_TabsLeft" xml:space="preserve">
+    <value>左</value>
+  </data>
+  <data name="Dock_TabsPosition" xml:space="preserve">
+    <value>タブの位置</value>
+  </data>
+  <data name="Dock_TabsRight" xml:space="preserve">
+    <value>右</value>
+  </data>
+  <data name="Dock_TabsTop" xml:space="preserve">
+    <value>上</value>
+  </data>
+  <data name="Docker" xml:space="preserve">
+    <value>Docker</value>
+  </data>
+  <data name="Download" xml:space="preserve">
+    <value>ダウンロード</value>
+  </data>
+  <data name="DownloadSelected" xml:space="preserve">
+    <value>選択項目をダウンロード</value>
+  </data>
+  <data name="Edit" xml:space="preserve">
+    <value>編集</value>
+  </data>
+  <data name="Editor_DiscardAndClose" xml:space="preserve">
+    <value>破棄して閉じる</value>
+  </data>
+  <data name="Editor_LoadedStatus" xml:space="preserve">
+    <value>UTF テキスト · {0} B · 準備完了</value>
+  </data>
+  <data name="Editor_MaximizeTip" xml:space="preserve">
+    <value>最大化/元に戻す</value>
+  </data>
+  <data name="Editor_SavedStatus" xml:space="preserve">
+    <value>保存してサーバーに同期しました · {0}</value>
+  </data>
+  <data name="Editor_SaveFailed" xml:space="preserve">
+    <value>保存に失敗しました:{0}</value>
+  </data>
+  <data name="Editor_Saving" xml:space="preserve">
+    <value>保存中…</value>
+  </data>
+  <data name="Editor_Unsaved" xml:space="preserve">
+    <value>● 未保存の変更</value>
+  </data>
+  <data name="Editor_UnsavedBody" xml:space="preserve">
+    <value>ファイルに未保存の変更があります。閉じると破棄されます。</value>
+  </data>
+  <data name="Editor_UnsavedTitle" xml:space="preserve">
+    <value>未保存の変更</value>
+  </data>
+  <data name="Error" xml:space="preserve">
+    <value>エラー</value>
+  </data>
+  <data name="File" xml:space="preserve">
+    <value>ファイル</value>
+  </data>
+  <data name="FileName" xml:space="preserve">
+    <value>ファイル名</value>
+  </data>
+  <data name="FilePath" xml:space="preserve">
+    <value>パス</value>
+  </data>
+  <data name="FileType" xml:space="preserve">
+    <value>種類</value>
+  </data>
+  <data name="Fingerprint" xml:space="preserve">
+    <value>フィンガープリント</value>
+  </data>
+  <data name="Folder" xml:space="preserve">
+    <value>フォルダー</value>
+  </data>
+  <data name="Font" xml:space="preserve">
+    <value>フォント</value>
+  </data>
+  <data name="FontSize" xml:space="preserve">
+    <value>フォントサイズ</value>
+  </data>
+  <data name="Group" xml:space="preserve">
+    <value>グループ</value>
+  </data>
+  <data name="Host" xml:space="preserve">
+    <value>ホスト</value>
+  </data>
+  <data name="HostKey_TrustOnceTip" xml:space="preserve">
+    <value>今回の接続のみ許可し、信頼済みホストには保存しません。アプリの再起動後に再度確認されます</value>
+  </data>
+  <data name="HostKey_TrustPermanentlyTip" xml:space="preserve">
+    <value>このフィンガープリントを記録し、以後の接続では確認しません。設定 → セキュリティ監査 → 信頼済みホスト から削除できます</value>
+  </data>
+  <data name="HostKeyChanged" xml:space="preserve">
+    <value>警告: ホストキーが変更されています!</value>
+  </data>
+  <data name="HostKeyUnknown" xml:space="preserve">
+    <value>このホストへの初回接続です</value>
+  </data>
+  <data name="HostKeyVerification" xml:space="preserve">
+    <value>ホストキーの検証</value>
+  </data>
+  <data name="KeySvc_AlertChangedAccepted" xml:space="preserve">
+    <value>{0} のホストフィンガープリントが変更され、ユーザーが新しいフィンガープリントの永続的な信頼を確認しました:{1}</value>
+  </data>
+  <data name="KeySvc_AlertChangedBlocked" xml:space="preserve">
+    <value>{0} のホストフィンガープリントが known_hosts の記録と一致しないため、接続をブロックしました(中間者攻撃の疑い)。新しいフィンガープリント:{1}</value>
+  </data>
+  <data name="KeySvc_AlertChangedTrustOnce" xml:space="preserve">
+    <value>{0} のホストフィンガープリントが変更され、ユーザーは今回のみ信頼を選択しました(保存されません):{1}</value>
+  </data>
+  <data name="KeySvc_AlertFirstRejected" xml:space="preserve">
+    <value>{0} の初回接続フィンガープリントを拒否しました:{1}</value>
+  </data>
+  <data name="KeySvc_AlertFirstTrustOnce" xml:space="preserve">
+    <value>ユーザーは {0} の初回接続フィンガープリントを今回のみ信頼しました(保存されません):{1}</value>
+  </data>
+  <data name="KeySvc_AlreadyExists" xml:space="preserve">
+    <value>鍵 {0} は既に存在します。</value>
+  </data>
+  <data name="KeySvc_InvalidName" xml:space="preserve">
+    <value>鍵の名前が無効です。</value>
+  </data>
+  <data name="KeySvc_UnknownType" xml:space="preserve">
+    <value>不明</value>
+  </data>
+  <data name="KeyType" xml:space="preserve">
+    <value>鍵の種類</value>
+  </data>
+  <data name="Lang_English" xml:space="preserve">
+    <value>English</value>
+  </data>
+  <data name="Lang_Japanese" xml:space="preserve">
+    <value>日本語</value>
+  </data>
+  <data name="Lang_Korean" xml:space="preserve">
+    <value>한국어</value>
+  </data>
+  <data name="Lang_SimplifiedChinese" xml:space="preserve">
+    <value>简体中文</value>
+  </data>
+  <data name="Lang_TraditionalChinese" xml:space="preserve">
+    <value>繁體中文</value>
+  </data>
+  <data name="Language" xml:space="preserve">
+    <value>言語</value>
+  </data>
+  <data name="Latency" xml:space="preserve">
+    <value>遅延</value>
+  </data>
+  <data name="Loading" xml:space="preserve">
+    <value>読み込み中…</value>
+  </data>
+  <data name="LocalForward" xml:space="preserve">
+    <value>ローカル転送</value>
+  </data>
+  <data name="LocalPort" xml:space="preserve">
+    <value>ローカルポート</value>
+  </data>
+  <data name="Main_CloseConfirmBody" xml:space="preserve">
+    <value>アクティブな SSH セッションがあります。ウィンドウを閉じるとすべて切断されます。終了しますか?</value>
+  </data>
+  <data name="Main_CloseConfirmTitle" xml:space="preserve">
+    <value>VelaShell を閉じる</value>
+  </data>
+  <data name="Main_ExportFailed" xml:space="preserve">
+    <value>エクスポートに失敗しました</value>
+  </data>
+  <data name="Main_ExportTerminalTitle" xml:space="preserve">
+    <value>ターミナル出力をエクスポート</value>
+  </data>
+  <data name="Main_FileTypeLog" xml:space="preserve">
+    <value>ログファイル</value>
+  </data>
+  <data name="Main_FileTypeText" xml:space="preserve">
+    <value>テキストファイル</value>
+  </data>
+  <data name="Main_PasteMultilineBody" xml:space="preserve">
+    <value>クリップボードには {0} 行の内容があり、貼り付けるとターミナルで即座に実行される可能性があります:
+
+{1}
+
+貼り付けますか?</value>
+  </data>
+  <data name="Main_PasteMultilineTitle" xml:space="preserve">
+    <value>複数行の貼り付け</value>
+  </data>
+  <data name="Main_TerminalExported" xml:space="preserve">
+    <value>ターミナル出力をエクスポートしました:{0}</value>
+  </data>
+  <data name="Menu_Actions" xml:space="preserve">
+    <value>操作</value>
+  </data>
+  <data name="Menu_ClearScreen" xml:space="preserve">
+    <value>画面をクリア</value>
+  </data>
+  <data name="Menu_CloseCurrentSession" xml:space="preserve">
+    <value>現在のセッションを閉じる</value>
+  </data>
+  <data name="Menu_CommandPalette" xml:space="preserve">
+    <value>コマンドパレット</value>
+  </data>
+  <data name="Menu_CommandPaletteTip" xml:space="preserve">
+    <value>コマンドパレット (Ctrl+P)</value>
+  </data>
+  <data name="Menu_ConnectionDiagnostics" xml:space="preserve">
+    <value>接続診断</value>
+  </data>
+  <data name="Menu_DuplicateSession" xml:space="preserve">
+    <value>セッションを複製</value>
+  </data>
+  <data name="Menu_Exit" xml:space="preserve">
+    <value>終了</value>
+  </data>
+  <data name="Menu_FindInTerminal" xml:space="preserve">
+    <value>ターミナル内検索</value>
+  </data>
+  <data name="Menu_Help" xml:space="preserve">
+    <value>ヘルプ</value>
+  </data>
+  <data name="Menu_HostTrustCenter" xml:space="preserve">
+    <value>ホスト信頼センター</value>
+  </data>
+  <data name="Menu_ImportExportConfig" xml:space="preserve">
+    <value>設定のインポート / エクスポート</value>
+  </data>
+  <data name="Menu_KeyManagement" xml:space="preserve">
+    <value>鍵の管理</value>
+  </data>
+  <data name="Menu_NewSftp" xml:space="preserve">
+    <value>新規 SFTP</value>
+  </data>
+  <data name="Menu_NewSshConnection" xml:space="preserve">
+    <value>新規 SSH 接続</value>
+  </data>
+  <data name="Menu_Paste" xml:space="preserve">
+    <value>貼り付け</value>
+  </data>
+  <data name="Menu_Preferences" xml:space="preserve">
+    <value>環境設定</value>
+  </data>
+  <data name="Menu_SearchTerminalTip" xml:space="preserve">
+    <value>ターミナル検索 (Ctrl+F)</value>
+  </data>
+  <data name="Menu_Session" xml:space="preserve">
+    <value>セッション</value>
+  </data>
+  <data name="Menu_SftpFileManager" xml:space="preserve">
+    <value>SFTP ファイルマネージャー</value>
+  </data>
+  <data name="Menu_ShortcutsOverview" xml:space="preserve">
+    <value>ショートカット一覧</value>
+  </data>
+  <data name="Menu_Tools" xml:space="preserve">
+    <value>ツール</value>
+  </data>
+  <data name="Menu_TunnelManager" xml:space="preserve">
+    <value>トンネル管理</value>
+  </data>
+  <data name="Menu_TunnelTip" xml:space="preserve">
+    <value>トンネル (Ctrl+Shift+T)</value>
+  </data>
+  <data name="Modified" xml:space="preserve">
+    <value>更新日時</value>
+  </data>
+  <data name="Monitor_Kernel" xml:space="preserve">
+    <value>カーネル</value>
+  </data>
+  <data name="Monitor_OsVersion" xml:space="preserve">
+    <value>OS バージョン</value>
+  </data>
+  <data name="Monitor_Unavailable" xml:space="preserve">
+    <value>データを取得できません</value>
+  </data>
+  <data name="MoveTo" xml:space="preserve">
+    <value>移動…</value>
+  </data>
+  <data name="MoveToGroup" xml:space="preserve">
+    <value>グループへ移動</value>
+  </data>
+  <data name="MoveToPrompt" xml:space="preserve">
+    <value>移動先(完全パス)</value>
+  </data>
+  <data name="Msg_AuthFailed" xml:space="preserve">
+    <value>認証に失敗しました: {0} のユーザー名、パスワードまたは鍵が正しくありません。</value>
+  </data>
+  <data name="Msg_AuthPromptCancelled" xml:space="preserve">
+    <value>このプロファイルには資格情報が保存されていないため、ログイン認証をキャンセルしました。</value>
+  </data>
+  <data name="Msg_AutoReconnectCountdown" xml:space="preserve">
+    <value>{0} が切断されました。{1} 秒後に自動再接続します({2}/{3})…</value>
+  </data>
+  <data name="Msg_AutoRecordDisabledHint" xml:space="preserve">
+    <value>自動録画を無効にしました。</value>
+  </data>
+  <data name="Msg_AutoRecordEnabledHint" xml:space="preserve">
+    <value>自動録画を有効にしました。今後確立される接続に適用されます。</value>
+  </data>
+  <data name="Msg_AutoRecordOff" xml:space="preserve">
+    <value>自動録画: 無効</value>
+  </data>
+  <data name="Msg_AutoRecordOn" xml:space="preserve">
+    <value>自動録画: 有効</value>
+  </data>
+  <data name="Msg_BackgroundConnectorNotConfigured" xml:space="preserve">
+    <value>バックグラウンド接続サービスが設定されていません。</value>
+  </data>
+  <data name="Msg_ClearFailed" xml:space="preserve">
+    <value>クリアに失敗しました: {0}</value>
+  </data>
+  <data name="Msg_CloudRevisionCount" xml:space="preserve">
+    <value>クラウドに {0} 個のバージョンがあります(最大 30 件表示)。</value>
+  </data>
+  <data name="Msg_Completed" xml:space="preserve">
+    <value>完了済み</value>
+  </data>
+  <data name="Msg_ConnectFailed" xml:space="preserve">
+    <value>接続に失敗しました: {0} と SSH セッションを確立できません。</value>
+  </data>
+  <data name="Msg_ConnectGenericFailed" xml:space="preserve">
+    <value>{0} への接続に失敗しました: {1}</value>
+  </data>
+  <data name="Msg_ConnectingInBackground" xml:space="preserve">
+    <value>バックグラウンドで接続中…</value>
+  </data>
+  <data name="Msg_ConnectionClosedTitle" xml:space="preserve">
+    <value>接続が切断されました</value>
+  </data>
+  <data name="Msg_ConnectionFailedTitle" xml:space="preserve">
+    <value>接続に失敗しました</value>
+  </data>
+  <data name="Msg_ConnectTimeout" xml:space="preserve">
+    <value>接続タイムアウト: {0} が応答しません。</value>
+  </data>
+  <data name="Msg_CpuCorePrefix" xml:space="preserve">
+    <value>コア </value>
+  </data>
+  <data name="Msg_CpuTooltipTotal" xml:space="preserve">
+    <value>CPU 合計使用率: {0:F1}%（{1} コア）</value>
+  </data>
+  <data name="Msg_Create" xml:space="preserve">
+    <value>作成</value>
+  </data>
+  <data name="Msg_DefaultEditorNotConfigured" xml:space="preserve">
+    <value>デフォルトエディターが未設定です。設定 → ファイル転送 → デフォルトエディター で指定してください(例: notepad)。</value>
+  </data>
+  <data name="Msg_DeleteFailed" xml:space="preserve">
+    <value>削除に失敗しました: {0}</value>
+  </data>
+  <data name="Msg_DirectConnection" xml:space="preserve">
+    <value>直接接続(踏み台なし)</value>
+  </data>
+  <data name="Msg_Disk" xml:space="preserve">
+    <value>ディスク</value>
+  </data>
+  <data name="Msg_DiskMountLine" xml:space="preserve">
+    <value>{0}: {1} / {2} GB（{3:F0}%）</value>
+  </data>
+  <data name="Msg_DiskRootTooltip" xml:space="preserve">
+    <value>ディスク (/): {0} / {1} GB（{2:F0}%）</value>
+  </data>
+  <data name="Msg_DiskUsage" xml:space="preserve">
+    <value>ディスク使用量</value>
+  </data>
+  <data name="Msg_Done" xml:space="preserve">
+    <value>完了</value>
+  </data>
+  <data name="Msg_Downloaded" xml:space="preserve">
+    <value>ダウンロード済み</value>
+  </data>
+  <data name="Msg_Downloading" xml:space="preserve">
+    <value>ダウンロード中</value>
+  </data>
+  <data name="Msg_EditTunnel" xml:space="preserve">
+    <value>トンネルを編集</value>
+  </data>
+  <data name="Msg_EnterToConnect" xml:space="preserve">
+    <value>Enter で接続</value>
+  </data>
+  <data name="Msg_ErrorOccurred" xml:space="preserve">
+    <value>エラーが発生しました</value>
+  </data>
+  <data name="Msg_Failed" xml:space="preserve">
+    <value>失敗</value>
+  </data>
+  <data name="Msg_FileTooLargeForBuiltInEditor" xml:space="preserve">
+    <value>ファイルが 5 MB を超えています。内蔵エディターは小さなテキスト向けです。ダウンロードしてローカルで編集してください。</value>
+  </data>
+  <data name="Msg_GenerateFailed" xml:space="preserve">
+    <value>生成に失敗しました: {0}</value>
+  </data>
+  <data name="Msg_HistoryCleared" xml:space="preserve">
+    <value>最近の接続履歴をクリアしました。</value>
+  </data>
+  <data name="Msg_ImportFailed" xml:space="preserve">
+    <value>インポートに失敗しました: {0}</value>
+  </data>
+  <data name="Msg_JumpChainNotice" xml:space="preserve">
+    <value>踏み台チェーン経由で接続しました: ローカル → {0} → {1}</value>
+  </data>
+  <data name="Msg_KeyAlreadyExists" xml:space="preserve">
+    <value>同名の鍵が既に存在するため、インポートしませんでした。</value>
+  </data>
+  <data name="Msg_KeyDeleted" xml:space="preserve">
+    <value>{0} を削除しました。</value>
+  </data>
+  <data name="Msg_KeyGenerated" xml:space="preserve">
+    <value>{0}({1})を生成しました。</value>
+  </data>
+  <data name="Msg_KeyImported" xml:space="preserve">
+    <value>{0} をインポートしました。</value>
+  </data>
+  <data name="Msg_LastSyncAt" xml:space="preserve">
+    <value>前回の同期: {0:yyyy-MM-dd HH:mm:ss}</value>
+  </data>
+  <data name="Msg_LoadRecordingFailed" xml:space="preserve">
+    <value>録画の読み込みに失敗しました: {0}</value>
+  </data>
+  <data name="Msg_LoadRecordingListFailed" xml:space="preserve">
+    <value>録画リストの読み込みに失敗しました: {0}</value>
+  </data>
+  <data name="Msg_LoadRevisionsFailed" xml:space="preserve">
+    <value>バージョン履歴の読み込みに失敗しました: {0}</value>
+  </data>
+  <data name="Msg_LocalPortInUse" xml:space="preserve">
+    <value>ローカルポート {0} は使用中です。別のポートを指定してください。</value>
+  </data>
+  <data name="Msg_LocalPrefix" xml:space="preserve">
+    <value>ローカル • {0}</value>
+  </data>
+  <data name="Msg_LocalShellReopenFailed" xml:space="preserve">
+    <value>{0} の再起動に失敗しました: {1}</value>
+  </data>
+  <data name="Msg_LocalShellStartFailed" xml:space="preserve">
+    <value>{0} の起動に失敗しました: {1}</value>
+  </data>
+  <data name="Msg_MemTooltip" xml:space="preserve">
+    <value>メモリ: {0} / {1} GB（{2:F1}%）</value>
+  </data>
+  <data name="Msg_NetCollecting" xml:space="preserve">
+    <value>ネットワーク速度を計測中…</value>
+  </data>
+  <data name="Msg_NetTooltipTotal" xml:space="preserve">
+    <value>ネットワーク速度（合計）: ↓ {0}  ↑ {1}</value>
+  </data>
+  <data name="Msg_NetworkError" xml:space="preserve">
+    <value>ネットワークエラー: {0} に接続できません。ホストとポートを確認してください。</value>
+  </data>
+  <data name="Msg_NeverSynced" xml:space="preserve">
+    <value>未同期</value>
+  </data>
+  <data name="Msg_NoCloudRevisions" xml:space="preserve">
+    <value>クラウドにバージョン履歴はまだありません。</value>
+  </data>
+  <data name="Msg_NoRecordings" xml:space="preserve">
+    <value>録画はまだありません。設定 → セキュリティ監査 でセッション録画を有効にすると、新しい接続の出力が記録されます。</value>
+  </data>
+  <data name="Msg_OperationCancelled" xml:space="preserve">
+    <value>キャンセルしました。</value>
+  </data>
+  <data name="Msg_Pause" xml:space="preserve">
+    <value>一時停止</value>
+  </data>
+  <data name="Msg_PerCoreCollecting" xml:space="preserve">
+    <value>コアごとの使用率を集計中…</value>
+  </data>
+  <data name="Msg_Play" xml:space="preserve">
+    <value>再生</value>
+  </data>
+  <data name="Msg_PlaybackTitle" xml:space="preserve">
+    <value>再生: {0}({1})</value>
+  </data>
+  <data name="Msg_ProxyError" xml:space="preserve">
+    <value>プロキシエラー: プロキシ経由で {0} に接続できません。</value>
+  </data>
+  <data name="Msg_ReadKeysFailed" xml:space="preserve">
+    <value>鍵の読み込みに失敗しました: {0}</value>
+  </data>
+  <data name="Msg_RecordingEmpty" xml:space="preserve">
+    <value>この録画にはデータチャンクがありません(録画中に出力がなかった可能性があります)。</value>
+  </data>
+  <data name="Msg_RestoreFailed" xml:space="preserve">
+    <value>復元に失敗しました: {0}</value>
+  </data>
+  <data name="Msg_Restoring" xml:space="preserve">
+    <value>復元中…</value>
+  </data>
+  <data name="Msg_SaveFailed" xml:space="preserve">
+    <value>保存に失敗しました: {0}</value>
+  </data>
+  <data name="Msg_ScanningTransferFiles" xml:space="preserve">
+    <value>転送するファイルをスキャン中… {0} 件検出</value>
+  </data>
+  <data name="Msg_SelectRecordingToPlay" xml:space="preserve">
+    <value>左側の録画を選択して再生を開始</value>
+  </data>
+  <data name="Msg_SelectServer" xml:space="preserve">
+    <value>サーバーを選択してください</value>
+  </data>
+  <data name="Msg_ServerConnectionUnavailable" xml:space="preserve">
+    <value>サーバーへの接続が利用できません。再試行してください(自動的に再接続します)。</value>
+  </data>
+  <data name="Msg_SftpUnavailable" xml:space="preserve">
+    <value>SFTP サービスを利用できません。</value>
+  </data>
+  <data name="Msg_SshConnectionLostDetail" xml:space="preserve">
+    <value>// {0} との SSH 接続が失われました</value>
+  </data>
+  <data name="Msg_SshServiceNotConfigured" xml:space="preserve">
+    <value>SSH 接続サービスが設定されていません。</value>
+  </data>
+  <data name="Msg_Stopped" xml:space="preserve">
+    <value>停止済み</value>
+  </data>
+  <data name="Msg_SwapTooltip" xml:space="preserve">
+    <value>スワップ: {0} / {1} GB（{2:F1}%）</value>
+  </data>
+  <data name="Msg_SyncConfigSavedE2eOff" xml:space="preserve">
+    <value>同期設定を保存しました(エンドツーエンド暗号化: 無効。資格情報はアップロードされません)。</value>
+  </data>
+  <data name="Msg_SyncConfigSavedE2eOn" xml:space="preserve">
+    <value>同期設定を保存しました(エンドツーエンド暗号化: 有効)。</value>
+  </data>
+  <data name="Msg_SyncFailed" xml:space="preserve">
+    <value>同期に失敗しました: {0}</value>
+  </data>
+  <data name="Msg_Syncing" xml:space="preserve">
+    <value>同期中…</value>
+  </data>
+  <data name="Msg_TabDisconnected" xml:space="preserve">
+    <value>{0} の接続が切断されました</value>
+  </data>
+  <data name="Msg_ToggleFailed" xml:space="preserve">
+    <value>切り替えに失敗しました: {0}</value>
+  </data>
+  <data name="Msg_TunnelConnectedBackground" xml:space="preserve">
+    <value>接続済み • バックグラウンドトンネルチャネル(ターミナルセッションから独立)</value>
+  </data>
+  <data name="Msg_TunnelNotConnectedAuto" xml:space="preserve">
+    <value>未接続 • トンネルの作成/起動時に自動接続</value>
+  </data>
+  <data name="Msg_TunnelRouteDynamic" xml:space="preserve">
+    <value>{0}:{1} → SOCKS5 プロキシ</value>
+  </data>
+  <data name="Msg_TunnelRouteRemote" xml:space="preserve">
+    <value>サーバー:{0} → {1}:{2}</value>
+  </data>
+  <data name="Msg_TunnelRunning" xml:space="preserve">
+    <value>実行中 • {0}</value>
+  </data>
+  <data name="Msg_Ungrouped" xml:space="preserve">
+    <value>未分類</value>
+  </data>
+  <data name="Msg_UnnamedSession" xml:space="preserve">
+    <value>(名称未設定のセッション)</value>
+  </data>
+  <data name="Msg_UpdateServiceNotAvailable" xml:space="preserve">
+    <value>自動更新サービスは未対応です。プロジェクトのリリースページから新しいバージョンを入手してください。</value>
+  </data>
+  <data name="Msg_Uploaded" xml:space="preserve">
+    <value>アップロード済み</value>
+  </data>
+  <data name="Msg_Uploading" xml:space="preserve">
+    <value>アップロード中</value>
+  </data>
+  <data name="Msg_UptimeHours" xml:space="preserve">
+    <value>稼働 {0}h {1}m</value>
+  </data>
+  <data name="Msg_UptimeMinutes" xml:space="preserve">
+    <value>稼働 {0}m</value>
+  </data>
+  <data name="Msg_UptimeUnderMinute" xml:space="preserve">
+    <value>稼働 &lt;1m</value>
+  </data>
+  <data name="Msg_ViaJumpHost" xml:space="preserve">
+    <value>踏み台経由</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>名前</value>
+  </data>
+  <data name="Network" xml:space="preserve">
+    <value>ネットワーク</value>
+  </data>
+  <data name="NewFile" xml:space="preserve">
+    <value>新しいファイル</value>
+  </data>
+  <data name="NewFolder" xml:space="preserve">
+    <value>新しいフォルダー</value>
+  </data>
+  <data name="NewTab" xml:space="preserve">
+    <value>新しいタブ</value>
+  </data>
+  <data name="NewTunnel" xml:space="preserve">
+    <value>新しいトンネル</value>
+  </data>
+  <data name="NoSavedSessions" xml:space="preserve">
+    <value>保存されたセッションはありません</value>
+  </data>
+  <data name="Notifications" xml:space="preserve">
+    <value>通知</value>
+  </data>
+  <data name="OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Palette_Close" xml:space="preserve">
+    <value>閉じる</value>
+  </data>
+  <data name="Palette_Confirm" xml:space="preserve">
+    <value>決定</value>
+  </data>
+  <data name="Palette_Navigate" xml:space="preserve">
+    <value>移動</value>
+  </data>
+  <data name="Palette_ResultsSuffix" xml:space="preserve">
+    <value>件の結果</value>
+  </data>
+  <data name="Palette_SearchPlaceholder" xml:space="preserve">
+    <value>コマンドを入力またはセッションを検索…</value>
+  </data>
+  <data name="ParentDirectory" xml:space="preserve">
+    <value>親ディレクトリ</value>
+  </data>
+  <data name="Passphrase" xml:space="preserve">
+    <value>パスフレーズ</value>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>パスワード</value>
+  </data>
+  <data name="PermissionExecute" xml:space="preserve">
+    <value>実行</value>
+  </data>
+  <data name="PermissionGroup" xml:space="preserve">
+    <value>グループ</value>
+  </data>
+  <data name="PermissionOthers" xml:space="preserve">
+    <value>その他</value>
+  </data>
+  <data name="PermissionOwner" xml:space="preserve">
+    <value>所有者</value>
+  </data>
+  <data name="PermissionRead" xml:space="preserve">
+    <value>読み取り</value>
+  </data>
+  <data name="Permissions" xml:space="preserve">
+    <value>権限</value>
+  </data>
+  <data name="PermissionWrite" xml:space="preserve">
+    <value>書き込み</value>
+  </data>
+  <data name="Port" xml:space="preserve">
+    <value>ポート</value>
+  </data>
+  <data name="PrivateKey" xml:space="preserve">
+    <value>秘密鍵</value>
+  </data>
+  <data name="Profile_AdvancedOptions" xml:space="preserve">
+    <value>詳細オプション</value>
+  </data>
+  <data name="Profile_AesNote" xml:space="preserve">
+    <value>(AES-256 で暗号化して保存されます)</value>
+  </data>
+  <data name="Profile_DisplayName" xml:space="preserve">
+    <value>表示名</value>
+  </data>
+  <data name="Profile_GroupPlaceholder" xml:space="preserve">
+    <value>グループを選択または新しい名前を入力</value>
+  </data>
+  <data name="Profile_HostIp" xml:space="preserve">
+    <value>ホスト名 / IP</value>
+  </data>
+  <data name="Profile_JumpHost" xml:space="preserve">
+    <value>踏み台ホスト(ProxyJump)</value>
+  </data>
+  <data name="Profile_JumpHostHint" xml:space="preserve">
+    <value>// 先に踏み台へ接続し、そのポート転送経由で本ホストに入ります。踏み台には保存済みの資格情報が必要で、踏み台にさらに踏み台を設定できます(多段チェーン)</value>
+  </data>
+  <data name="Profile_KeyAuth" xml:space="preserve">
+    <value>鍵認証</value>
+  </data>
+  <data name="Profile_NotSupported" xml:space="preserve">
+    <value>未対応</value>
+  </data>
+  <data name="Profile_PassphraseOptional" xml:space="preserve">
+    <value>秘密鍵のパスフレーズ(任意)</value>
+  </data>
+  <data name="Profile_PasswordAuth" xml:space="preserve">
+    <value>パスワード認証</value>
+  </data>
+  <data name="Profile_PrivateKeyFile" xml:space="preserve">
+    <value>秘密鍵ファイル</value>
+  </data>
+  <data name="Profile_RememberPassword" xml:space="preserve">
+    <value>パスワードを保存</value>
+  </data>
+  <data name="Profile_SelectKeyFile" xml:space="preserve">
+    <value>秘密鍵ファイルを選択</value>
+  </data>
+  <data name="Profile_Serial" xml:space="preserve">
+    <value>シリアル</value>
+  </data>
+  <data name="Profile_SessionGroup" xml:space="preserve">
+    <value>セッショングループ</value>
+  </data>
+  <data name="Profile_ShowHidePassword" xml:space="preserve">
+    <value>パスワードの表示/非表示</value>
+  </data>
+  <data name="Profile_TagsLabel" xml:space="preserve">
+    <value>タグ(カンマ区切り)</value>
+  </data>
+  <data name="Profile_TagsPlaceholder" xml:space="preserve">
+    <value>web, 本番</value>
+  </data>
+  <data name="Profile_Test" xml:space="preserve">
+    <value>テスト</value>
+  </data>
+  <data name="Profile_TestSuccess" xml:space="preserve">
+    <value>接続テストに成功しました</value>
+  </data>
+  <data name="Profile_Title" xml:space="preserve">
+    <value>新規接続</value>
+  </data>
+  <data name="Properties" xml:space="preserve">
+    <value>プロパティ</value>
+  </data>
+  <data name="QuickCmd_DockerPrune" xml:space="preserve">
+    <value>未使用の Docker データを削除</value>
+  </data>
+  <data name="QuickCmd_DockerPs" xml:space="preserve">
+    <value>実行中のコンテナを一覧表示</value>
+  </data>
+  <data name="QuickCmd_DockerStats" xml:space="preserve">
+    <value>コンテナのリソース使用状況</value>
+  </data>
+  <data name="QuickCmd_EnabledServices" xml:space="preserve">
+    <value>有効な systemd サービスを一覧表示</value>
+  </data>
+  <data name="QuickCmd_FollowJournal" xml:space="preserve">
+    <value>システムジャーナルを追跡</value>
+  </data>
+  <data name="QuickCmd_KernelPackages" xml:space="preserve">
+    <value>インストール済みの Linux カーネルパッケージを一覧表示</value>
+  </data>
+  <data name="QuickCmd_ShowListeningPorts" xml:space="preserve">
+    <value>リッスン中のポートを表示</value>
+  </data>
+  <data name="QuickCmd_SystemdStatus" xml:space="preserve">
+    <value>systemd サービスの状態を表示</value>
+  </data>
+  <data name="QuickCommands" xml:space="preserve">
+    <value>クイックコマンド</value>
+  </data>
+  <data name="QuickConnect" xml:space="preserve">
+    <value>クイック接続</value>
+  </data>
+  <data name="QuickConnectPlaceholder" xml:space="preserve">
+    <value>user@host:port</value>
+  </data>
+  <data name="Ready" xml:space="preserve">
+    <value>準備完了</value>
+  </data>
+  <data name="RecentConnections" xml:space="preserve">
+    <value>最近の接続</value>
+  </data>
+  <data name="Reconnect" xml:space="preserve">
+    <value>再接続</value>
+  </data>
+  <data name="Recorder_AutoRecordTip" xml:space="preserve">
+    <value>設定 → セキュリティ監査 → セッション録画と同じ。以降に確立する接続に適用</value>
+  </data>
+  <data name="Recorder_Empty" xml:space="preserve">
+    <value>録画はまだありません</value>
+  </data>
+  <data name="Recorder_Export" xml:space="preserve">
+    <value>録画をエクスポート</value>
+  </data>
+  <data name="Recorder_ExportTip" xml:space="preserve">
+    <value>asciicast v2(.cast)としてエクスポート。asciinema などのツールで再生可能</value>
+  </data>
+  <data name="Recorder_ListTitle" xml:space="preserve">
+    <value>録画リスト</value>
+  </data>
+  <data name="Recorder_MaximizeTip" xml:space="preserve">
+    <value>最大化 / 元に戻す(タイトルバーのダブルクリックでも可)</value>
+  </data>
+  <data name="Recorder_ResizeTip" xml:space="preserve">
+    <value>ドラッグしてウィンドウをサイズ変更</value>
+  </data>
+  <data name="Recorder_SkipIdle" xml:space="preserve">
+    <value>アイドル区間をスキップ</value>
+  </data>
+  <data name="Recorder_SpeedTip" xml:space="preserve">
+    <value>再生速度(1x / 2x / 4x)</value>
+  </data>
+  <data name="Recorder_Subtitle" xml:space="preserve">
+    <value>// ターミナルの監査・検索・タイムライン再生</value>
+  </data>
+  <data name="Recorder_Title" xml:space="preserve">
+    <value>セッションの録画と再生</value>
+  </data>
+  <data name="Refresh" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="Reject" xml:space="preserve">
+    <value>拒否</value>
+  </data>
+  <data name="RemoteAddress" xml:space="preserve">
+    <value>リモートアドレス</value>
+  </data>
+  <data name="RemoteForward" xml:space="preserve">
+    <value>リモート転送</value>
+  </data>
+  <data name="Rename" xml:space="preserve">
+    <value>名前の変更</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="SaveToLocal" xml:space="preserve">
+    <value>ローカルに保存</value>
+  </data>
+  <data name="ScrollbackLines" xml:space="preserve">
+    <value>スクロールバック行数</value>
+  </data>
+  <data name="Search" xml:space="preserve">
+    <value>検索</value>
+  </data>
+  <data name="SearchCommands" xml:space="preserve">
+    <value>コマンドを検索</value>
+  </data>
+  <data name="SelectDownloadFolder" xml:space="preserve">
+    <value>保存先フォルダーを選択</value>
+  </data>
+  <data name="SelectFilesToUpload" xml:space="preserve">
+    <value>アップロードするファイルを選択</value>
+  </data>
+  <data name="SelectFolderToUpload" xml:space="preserve">
+    <value>アップロードするフォルダーを選択</value>
+  </data>
+  <data name="ServerGroups" xml:space="preserve">
+    <value>サーバーグループ</value>
+  </data>
+  <data name="Sessions" xml:space="preserve">
+    <value>セッション</value>
+  </data>
+  <data name="SetAbout_Changelog" xml:space="preserve">
+    <value>更新履歴</value>
+  </data>
+  <data name="SetAbout_ChangelogTip" xml:space="preserve">
+    <value>正式版で提供予定</value>
+  </data>
+  <data name="SetAbout_CheckUpdates" xml:space="preserve">
+    <value>更新を確認</value>
+  </data>
+  <data name="SetAbout_ConfigPath" xml:space="preserve">
+    <value>設定パス</value>
+  </data>
+  <data name="SetAbout_Contributors" xml:space="preserve">
+    <value>コントリビューター</value>
+  </data>
+  <data name="SetAbout_ContributorsDesc" xml:space="preserve">
+    <value>// 以下のコントリビューターに感謝します</value>
+  </data>
+  <data name="SetAbout_Copyright" xml:space="preserve">
+    <value>Copyright © 2026 VelaShell 作者およびコントリビューター</value>
+  </data>
+  <data name="SetAbout_Framework" xml:space="preserve">
+    <value>フレームワーク</value>
+  </data>
+  <data name="SetAbout_FreeNotice" xml:space="preserve">
+    <value>本ソフトウェアは永久無料です。唯一の公式配布元は GitHub Releases であり、いかなる「有料版」も海賊版です</value>
+  </data>
+  <data name="SetAbout_InDevelopment" xml:space="preserve">
+    <value>開発中</value>
+  </data>
+  <data name="SetAbout_LicenseNotice" xml:space="preserve">
+    <value>デュアルライセンス:AGPL-3.0 オープンソースライセンス / 商用ライセンス(リポジトリの LICENSE-COMMERCIAL.md を参照)</value>
+  </data>
+  <data name="SetAbout_OpenSourceDeps" xml:space="preserve">
+    <value>オープンソース依存関係</value>
+  </data>
+  <data name="SetAbout_OpenSourceDepsDesc" xml:space="preserve">
+    <value>// VelaShell は以下の優れたオープンソースプロジェクトを利用しています</value>
+  </data>
+  <data name="SetAbout_OperatingSystem" xml:space="preserve">
+    <value>オペレーティングシステム</value>
+  </data>
+  <data name="SetAbout_Runtime" xml:space="preserve">
+    <value>ランタイム</value>
+  </data>
+  <data name="SetAbout_SshLibrary" xml:space="preserve">
+    <value>SSH ライブラリ</value>
+  </data>
+  <data name="SetAbout_Subtitle" xml:space="preserve">
+    <value>// アプリケーション情報と更新</value>
+  </data>
+  <data name="SetAbout_SystemInfo" xml:space="preserve">
+    <value>システム情報</value>
+  </data>
+  <data name="SetAbout_Tagline" xml:space="preserve">
+    <value>VelaShell - モダンな SSH ターミナル</value>
+  </data>
+  <data name="SetAbout_Title" xml:space="preserve">
+    <value>VelaShell について</value>
+  </data>
+  <data name="SetAbout_ViewLicense" xml:space="preserve">
+    <value>ライセンスを表示</value>
+  </data>
+  <data name="SetAppear_AccentColor" xml:space="preserve">
+    <value>アクセントカラー</value>
+  </data>
+  <data name="SetAppear_AccentColorDesc" xml:space="preserve">
+    <value>// アプリケーションのアクセントカラー(空欄でテーマの既定値)</value>
+  </data>
+  <data name="SetAppear_Ansi16" xml:space="preserve">
+    <value>ターミナル ANSI 16 色</value>
+  </data>
+  <data name="SetAppear_Ansi16Desc" xml:space="preserve">
+    <value>// ターミナルで使用する標準 16 色パレット</value>
+  </data>
+  <data name="SetAppear_AnsiBright" xml:space="preserve">
+    <value>明るい</value>
+  </data>
+  <data name="SetAppear_AnsiNormal" xml:space="preserve">
+    <value>通常</value>
+  </data>
+  <data name="SetAppear_AnsiSection" xml:space="preserve">
+    <value>ANSI パレット</value>
+  </data>
+  <data name="SetAppear_Background" xml:space="preserve">
+    <value>背景色</value>
+  </data>
+  <data name="SetAppear_BackgroundDesc" xml:space="preserve">
+    <value>// ターミナルの背景色</value>
+  </data>
+  <data name="SetAppear_ColorScheme" xml:space="preserve">
+    <value>カラースキーム</value>
+  </data>
+  <data name="SetAppear_ColorSchemeDesc" xml:space="preserve">
+    <value>// ターミナル配色を一括適用します。既定ではアプリのテーマに従います:ダーク = Dracula、ライト = Solarized Light</value>
+  </data>
+  <data name="SetAppear_ColorSchemePlaceholder" xml:space="preserve">
+    <value>スキームを選択…</value>
+  </data>
+  <data name="SetAppear_CursorColor" xml:space="preserve">
+    <value>カーソルの色</value>
+  </data>
+  <data name="SetAppear_CursorColorDesc" xml:space="preserve">
+    <value>// ターミナルカーソルの色</value>
+  </data>
+  <data name="SetAppear_Foreground" xml:space="preserve">
+    <value>前景色</value>
+  </data>
+  <data name="SetAppear_ForegroundDesc" xml:space="preserve">
+    <value>// ターミナルの既定の文字色</value>
+  </data>
+  <data name="SetAppear_SelectionColor" xml:space="preserve">
+    <value>選択範囲の色</value>
+  </data>
+  <data name="SetAppear_SelectionColorDesc" xml:space="preserve">
+    <value>// ターミナルで選択したテキストの背景色</value>
+  </data>
+  <data name="SetAppear_ShowMenuBar" xml:space="preserve">
+    <value>メニューバーを表示</value>
+  </data>
+  <data name="SetAppear_SidebarLeft" xml:space="preserve">
+    <value>左</value>
+  </data>
+  <data name="SetAppear_SidebarPosition" xml:space="preserve">
+    <value>サイドバーの位置</value>
+  </data>
+  <data name="SetAppear_SidebarPositionDesc" xml:space="preserve">
+    <value>// サイドバーをウィンドウの左右どちらに表示するか</value>
+  </data>
+  <data name="SetAppear_SidebarRight" xml:space="preserve">
+    <value>右</value>
+  </data>
+  <data name="SetAppear_Subtitle" xml:space="preserve">
+    <value>// アプリケーションの外観をカスタマイズ</value>
+  </data>
+  <data name="SetAppear_TerminalColorsSection" xml:space="preserve">
+    <value>ターミナルの配色</value>
+  </data>
+  <data name="SetAppear_ThemeDark" xml:space="preserve">
+    <value>ダークモード</value>
+  </data>
+  <data name="SetAppear_ThemeLight" xml:space="preserve">
+    <value>ライトモード</value>
+  </data>
+  <data name="SetAppear_ThemeMode" xml:space="preserve">
+    <value>テーマモード</value>
+  </data>
+  <data name="SetAppear_ThemeModeDesc" xml:space="preserve">
+    <value>// ライト、ダーク、またはシステムに従うを選択</value>
+  </data>
+  <data name="SetAppear_ThemeSystem" xml:space="preserve">
+    <value>システムに従う</value>
+  </data>
+  <data name="SetAppear_Title" xml:space="preserve">
+    <value>外観</value>
+  </data>
+  <data name="SetAppear_UiFont" xml:space="preserve">
+    <value>UI フォント</value>
+  </data>
+  <data name="SetAppear_UiFontDesc" xml:space="preserve">
+    <value>// メニューやタブなど UI 要素のフォント</value>
+  </data>
+  <data name="SetAppear_UiFontSize" xml:space="preserve">
+    <value>UI フォントサイズ</value>
+  </data>
+  <data name="SetAppear_UiFontSizeDesc" xml:space="preserve">
+    <value>// UI 要素の既定フォントサイズ</value>
+  </data>
+  <data name="SetAppear_WindowOpacity" xml:space="preserve">
+    <value>ウィンドウの不透明度</value>
+  </data>
+  <data name="SetAppear_WindowOpacityDesc" xml:space="preserve">
+    <value>// ウィンドウ背景の透明度を調整</value>
+  </data>
+  <data name="SetAppear_WindowSection" xml:space="preserve">
+    <value>ウィンドウ</value>
+  </data>
+  <data name="SetAppear_WindowState" xml:space="preserve">
+    <value>起動時のウィンドウ状態</value>
+  </data>
+  <data name="SetAppear_WindowStateDefault" xml:space="preserve">
+    <value>既定サイズ</value>
+  </data>
+  <data name="SetAppear_WindowStateDesc" xml:space="preserve">
+    <value>// アプリ起動時のウィンドウサイズの扱い</value>
+  </data>
+  <data name="SetAppear_WindowStateMaximized" xml:space="preserve">
+    <value>最大化</value>
+  </data>
+  <data name="SetAppear_WindowStateRemember" xml:space="preserve">
+    <value>前回を記憶</value>
+  </data>
+  <data name="SetDonate_Alipay" xml:space="preserve">
+    <value>Alipay</value>
+  </data>
+  <data name="SetDonate_CoffeeDesc" xml:space="preserve">
+    <value>// 寄付は完全に任意で金額も自由です。寄付の有無にかかわらず、VelaShell の全機能は永久に無料です</value>
+  </data>
+  <data name="SetDonate_CoffeeTitle" xml:space="preserve">
+    <value>開発者にコーヒーをおごる</value>
+  </data>
+  <data name="SetDonate_ContributeBody" xml:space="preserve">
+    <value>寄付よりも価値があるのは、あなたの参加です。PR の提出、パフォーマンスや体験の改善、バグ修正、ドキュメントの充実、Issue での問題やアイデアのフィードバック——ひとつひとつのコード貢献が VelaShell をさらに前進させます。</value>
+  </data>
+  <data name="SetDonate_ContributeTitle" xml:space="preserve">
+    <value>最高のサポート:コントリビュート</value>
+  </data>
+  <data name="SetDonate_CopyPaymentLink" xml:space="preserve">
+    <value>支払いリンクをコピー</value>
+  </data>
+  <data name="SetDonate_InternationalDesc" xml:space="preserve">
+    <value>// 海外にお住まいの方や、米ドル・ユーロなど他の通貨で支援したい方は、Wise でお支払いいただけます</value>
+  </data>
+  <data name="SetDonate_InternationalTitle" xml:space="preserve">
+    <value>海外からの寄付(Wise)</value>
+  </data>
+  <data name="SetDonate_Intro" xml:space="preserve">
+    <value>VelaShell は個人がメンテナンスしているオープンソースプロジェクトです。日々の運用や開発に役立っているなら、お好きな方法で末永く支援していただけると幸いです。すべての支援は新機能、パフォーマンス改善、より迅速なバグ修正につながります。</value>
+  </data>
+  <data name="SetDonate_OpenInBrowser" xml:space="preserve">
+    <value>ブラウザーで開く</value>
+  </data>
+  <data name="SetDonate_Subtitle" xml:space="preserve">
+    <value>// VelaShell をご利用いただきありがとうございます</value>
+  </data>
+  <data name="SetDonate_Thanks" xml:space="preserve">
+    <value>ここまで読んでいただきありがとうございます。寄付、Star、Issue、PR のどれもが、このプロジェクトを維持し続ける原動力になります。</value>
+  </data>
+  <data name="SetDonate_Title" xml:space="preserve">
+    <value>サポートと寄付</value>
+  </data>
+  <data name="SetDonate_WeChatPay" xml:space="preserve">
+    <value>WeChat Pay</value>
+  </data>
+  <data name="SetDonate_WiseHint" xml:space="preserve">
+    <value>QR コードをスキャンするか、下の支払いリンクをクリックすると、お住まいの地域の通貨で寄付できます:</value>
+  </data>
+  <data name="SetGeneral_AutoReconnect" xml:space="preserve">
+    <value>自動再接続</value>
+  </data>
+  <data name="SetGeneral_AutoReconnectDesc" xml:space="preserve">
+    <value>// 予期せぬ切断後に自動的に再接続を試みます(手動切断では再接続しません)</value>
+  </data>
+  <data name="SetGeneral_BehaviorSection" xml:space="preserve">
+    <value>動作</value>
+  </data>
+  <data name="SetGeneral_Clear" xml:space="preserve">
+    <value>消去</value>
+  </data>
+  <data name="SetGeneral_ClearHistory" xml:space="preserve">
+    <value>履歴を消去</value>
+  </data>
+  <data name="SetGeneral_ClearHistoryConfirm" xml:space="preserve">
+    <value>コマンド履歴と最近の接続を消去します。この操作は元に戻せません。続行しますか?</value>
+  </data>
+  <data name="SetGeneral_ClearHistoryDesc" xml:space="preserve">
+    <value>// コマンド履歴と最近の接続を消去</value>
+  </data>
+  <data name="SetGeneral_ConfirmBeforeClose" xml:space="preserve">
+    <value>終了前に確認</value>
+  </data>
+  <data name="SetGeneral_ConfirmBeforeCloseDesc" xml:space="preserve">
+    <value>// 接続中のセッションがあるときにウィンドウを閉じる前に確認します。「トレイへ最小化」が有効な場合、閉じるボタンはウィンドウを隠すだけでこの確認は行いません</value>
+  </data>
+  <data name="SetGeneral_ConnectionDefaultsSection" xml:space="preserve">
+    <value>接続の既定値</value>
+  </data>
+  <data name="SetGeneral_ConnectTimeout" xml:space="preserve">
+    <value>接続タイムアウト(秒)</value>
+  </data>
+  <data name="SetGeneral_DataSection" xml:space="preserve">
+    <value>データとストレージ</value>
+  </data>
+  <data name="SetGeneral_Export" xml:space="preserve">
+    <value>エクスポート</value>
+  </data>
+  <data name="SetGeneral_ExportDialogTitle" xml:space="preserve">
+    <value>設定をエクスポート</value>
+  </data>
+  <data name="SetGeneral_Import" xml:space="preserve">
+    <value>インポート</value>
+  </data>
+  <data name="SetGeneral_ImportDialogTitle" xml:space="preserve">
+    <value>設定をインポート</value>
+  </data>
+  <data name="SetGeneral_ImportExport" xml:space="preserve">
+    <value>設定のインポート/エクスポート</value>
+  </data>
+  <data name="SetGeneral_ImportExportDesc" xml:space="preserve">
+    <value>// アプリ設定のみをバックアップ/移行します。接続、グループ、鍵、スニペットは含まれません</value>
+  </data>
+  <data name="SetGeneral_KeepAliveInterval" xml:space="preserve">
+    <value>キープアライブ間隔(秒)</value>
+  </data>
+  <data name="SetGeneral_LanguageSection" xml:space="preserve">
+    <value>言語と地域</value>
+  </data>
+  <data name="SetGeneral_LaunchAtStartup" xml:space="preserve">
+    <value>起動時に自動実行</value>
+  </data>
+  <data name="SetGeneral_LaunchAtStartupDesc" xml:space="preserve">
+    <value>// システム起動時に VelaShell を自動的に実行</value>
+  </data>
+  <data name="SetGeneral_LogRetentionDays" xml:space="preserve">
+    <value>セッションログの保持日数</value>
+  </data>
+  <data name="SetGeneral_LogRetentionDaysDesc" xml:space="preserve">
+    <value>// 保持日数を超えたセッションログは自動的に削除されます。ファイル転送ログの保持日数は「ファイル転送」ページで個別に設定</value>
+  </data>
+  <data name="SetGeneral_MaxRetries" xml:space="preserve">
+    <value>最大再接続回数</value>
+  </data>
+  <data name="SetGeneral_MaxRetriesDesc" xml:space="preserve">
+    <value>// 自動再接続の最大試行回数。ファイル転送のリトライとは無関係</value>
+  </data>
+  <data name="SetGeneral_MinimizeToTray" xml:space="preserve">
+    <value>閉じるときにトレイへ最小化</value>
+  </data>
+  <data name="SetGeneral_MinimizeToTrayDesc" xml:space="preserve">
+    <value>// 閉じるボタンでシステムトレイに隠します。トレイメニューの「終了」で終了します</value>
+  </data>
+  <data name="SetGeneral_NotifyOnDisconnect" xml:space="preserve">
+    <value>切断時に通知を表示</value>
+  </data>
+  <data name="SetGeneral_NotifyOnDisconnectDesc" xml:space="preserve">
+    <value>// SSH 接続が予期せず切断されたときにステータスバーとタブで通知</value>
+  </data>
+  <data name="SetGeneral_PrivacySection" xml:space="preserve">
+    <value>プライバシーとセキュリティ</value>
+  </data>
+  <data name="SetGeneral_ReconnectInterval" xml:space="preserve">
+    <value>再接続間隔</value>
+  </data>
+  <data name="SetGeneral_ReconnectIntervalDesc" xml:space="preserve">
+    <value>// 再接続までの待機時間(秒)</value>
+  </data>
+  <data name="SetGeneral_RememberPasswords" xml:space="preserve">
+    <value>パスワードを保存</value>
+  </data>
+  <data name="SetGeneral_RememberPasswordsDesc" xml:space="preserve">
+    <value>// 接続パスワードをローカルの暗号化ストレージに保存</value>
+  </data>
+  <data name="SetGeneral_RestoreSessions" xml:space="preserve">
+    <value>セッションを復元</value>
+  </data>
+  <data name="SetGeneral_RestoreSessionsDesc" xml:space="preserve">
+    <value>// 起動時に前回のセッションへ自動再接続</value>
+  </data>
+  <data name="SetGeneral_SessionLogging" xml:space="preserve">
+    <value>セッションログ</value>
+  </data>
+  <data name="SetGeneral_SessionLoggingDesc" xml:space="preserve">
+    <value>// すべてのセッションのターミナル出力を自動記録</value>
+  </data>
+  <data name="SetGeneral_SoundOnDisconnect" xml:space="preserve">
+    <value>切断時にサウンドを再生</value>
+  </data>
+  <data name="SetGeneral_SoundOnDisconnectDesc" xml:space="preserve">
+    <value>// SSH 接続が予期せず切断されたときにシステム音を再生します。セキュリティイベントの通知音は「セキュリティ監査」ページで個別に設定</value>
+  </data>
+  <data name="SetGeneral_StartupSection" xml:space="preserve">
+    <value>起動とウィンドウ</value>
+  </data>
+  <data name="SetGeneral_Subtitle" xml:space="preserve">
+    <value>// アプリケーションの基本動作を設定</value>
+  </data>
+  <data name="SetGeneral_Title" xml:space="preserve">
+    <value>一般設定</value>
+  </data>
+  <data name="SetGeneral_UiLanguageDesc" xml:space="preserve">
+    <value>// アプリケーションの表示言語</value>
+  </data>
+  <data name="SetKeys_CopyPublicKey" xml:space="preserve">
+    <value>公開鍵をコピー</value>
+  </data>
+  <data name="SetKeys_DefaultAuthKey" xml:space="preserve">
+    <value>既定の認証鍵</value>
+  </data>
+  <data name="SetKeys_DefaultAuthKeyDesc" xml:space="preserve">
+    <value>// 新規接続で既定で使用する鍵</value>
+  </data>
+  <data name="SetKeys_DeleteKey" xml:space="preserve">
+    <value>鍵を削除</value>
+  </data>
+  <data name="SetKeys_Generate" xml:space="preserve">
+    <value>鍵を生成</value>
+  </data>
+  <data name="SetKeys_Import" xml:space="preserve">
+    <value>インポート</value>
+  </data>
+  <data name="SetKeys_ImportDialogTitle" xml:space="preserve">
+    <value>SSH 秘密鍵をインポート</value>
+  </data>
+  <data name="SetKeys_SearchPlaceholder" xml:space="preserve">
+    <value>鍵を検索...</value>
+  </data>
+  <data name="SetKeys_SectionDefault" xml:space="preserve">
+    <value>既定の鍵</value>
+  </data>
+  <data name="SetKeys_StorageHint" xml:space="preserve">
+    <value>鍵は ~/.ssh/ ディレクトリに保存されます。コピーボタンで公開鍵をコピーできます</value>
+  </data>
+  <data name="SetKeys_Subtitle" xml:space="preserve">
+    <value>// SSH 鍵ペアと証明書を管理</value>
+  </data>
+  <data name="SetKeys_Title" xml:space="preserve">
+    <value>鍵の管理</value>
+  </data>
+  <data name="SetSecurity_AlertInApp" xml:space="preserve">
+    <value>アプリ内通知</value>
+  </data>
+  <data name="SetSecurity_AlertSound" xml:space="preserve">
+    <value>セキュリティイベント発生時にサウンドを再生</value>
+  </data>
+  <data name="SetSecurity_AlertSoundDesc" xml:space="preserve">
+    <value>// ホストのフィンガープリント変更などのセキュリティイベント時にシステム音を再生。切断時のサウンドは「一般」ページで個別に設定します</value>
+  </data>
+  <data name="SetSecurity_AutoRecord" xml:space="preserve">
+    <value>すべてのセッションを自動録画</value>
+  </data>
+  <data name="SetSecurity_AutoRecordDesc" xml:space="preserve">
+    <value>// ターミナル出力をローカルデータベースに記録し、監査と再生に利用。以後に確立した接続に適用され、保持日数は「一般 → ターミナルセッションログの保持日数」に従います</value>
+  </data>
+  <data name="SetSecurity_BlockOnChange" xml:space="preserve">
+    <value>フィンガープリント変更時にブロックして警告</value>
+  </data>
+  <data name="SetSecurity_BlockOnChangeDesc" xml:space="preserve">
+    <value>// known_hosts の記録と一致しない場合は接続を拒否し、中間者攻撃を防ぎます</value>
+  </data>
+  <data name="SetSecurity_ConfirmFirstFingerprint" xml:space="preserve">
+    <value>初回接続時にフィンガープリントを手動確認</value>
+  </data>
+  <data name="SetSecurity_ConfirmFirstFingerprintDesc" xml:space="preserve">
+    <value>// オフの場合、初回接続時にフィンガープリントを自動記録(TOFU)</value>
+  </data>
+  <data name="SetSecurity_KnownHostsDesc" xml:space="preserve">
+    <value>// フィンガープリント記録済みのホスト一覧。削除すると次回接続時に初回のフィンガープリント確認を再実行します</value>
+  </data>
+  <data name="SetSecurity_MaskAddresses" xml:space="preserve">
+    <value>ホストアドレスを隠す</value>
+  </data>
+  <data name="SetSecurity_MaskAddressesDesc" xml:space="preserve">
+    <value>// スクリーンショットからの漏えい防止:IP とポートを隠します。設定を開くたびに既定でオンになり、オフ状態は保存されません</value>
+  </data>
+  <data name="SetSecurity_NoKnownHosts" xml:space="preserve">
+    <value>信頼済みホストはまだありません</value>
+  </data>
+  <data name="SetSecurity_OpenPlayer" xml:space="preserve">
+    <value>再生センターを開く</value>
+  </data>
+  <data name="SetSecurity_RecordingCenter" xml:space="preserve">
+    <value>録画・再生センター</value>
+  </data>
+  <data name="SetSecurity_RecordingCenterDesc" xml:space="preserve">
+    <value>// 録画一覧の表示、タイムライン再生(倍速・アイドルスキップ対応)、エクスポートと削除</value>
+  </data>
+  <data name="SetSecurity_SectionAlerts" xml:space="preserve">
+    <value>アラートチャネル:アプリ内通知 + サウンド + Webhook</value>
+  </data>
+  <data name="SetSecurity_SectionKnownHosts" xml:space="preserve">
+    <value>信頼済みホスト</value>
+  </data>
+  <data name="SetSecurity_SectionRecording" xml:space="preserve">
+    <value>セッション録画</value>
+  </data>
+  <data name="SetSecurity_SectionTrust" xml:space="preserve">
+    <value>ホスト信頼ポリシー</value>
+  </data>
+  <data name="SetSecurity_Subtitle" xml:space="preserve">
+    <value>// 録画ポリシー、信頼ポリシー、リスクアラート</value>
+  </data>
+  <data name="SetSecurity_Title" xml:space="preserve">
+    <value>セキュリティと監査</value>
+  </data>
+  <data name="SetSecurity_WebhookDesc" xml:space="preserve">
+    <value>// セキュリティイベントを JSON POST でカスタム HTTP エンドポイントに送信</value>
+  </data>
+  <data name="SetSecurity_WebhookPayloadDesc" xml:space="preserve">
+    <value>// イベントペイロード:{ source, event, message, detail, timestamp }。エンドポイントに到達できなくても接続処理には影響しません</value>
+  </data>
+  <data name="SetShortcuts_Subtitle" xml:space="preserve">
+    <value>// 現行バージョンの組み込みキーバインド一覧(読み取り専用)</value>
+  </data>
+  <data name="SetShortcuts_Title" xml:space="preserve">
+    <value>キーボードショートカット</value>
+  </data>
+  <data name="SetSnippets_Add" xml:space="preserve">
+    <value>追加</value>
+  </data>
+  <data name="SetSnippets_CommandPlaceholder" xml:space="preserve">
+    <value>コマンド(例:systemctl status docker)</value>
+  </data>
+  <data name="SetSnippets_DeleteTip" xml:space="preserve">
+    <value>スニペットを削除(組み込みスニペットは削除できません)</value>
+  </data>
+  <data name="SetSnippets_Intro" xml:space="preserve">
+    <value>よく使うコマンドスニペットを作成し、ショートカットに割り当てたり、特定のセッションに関連付けたりできます。</value>
+  </data>
+  <data name="SetSnippets_NamePlaceholder" xml:space="preserve">
+    <value>名前(例:Check Docker Status)</value>
+  </data>
+  <data name="SetSnippets_NewSnippet" xml:space="preserve">
+    <value>新規スニペット</value>
+  </data>
+  <data name="SetSnippets_Subtitle" xml:space="preserve">
+    <value>// よく使うコマンドスニペット。クイックコマンドパネルから実行できます</value>
+  </data>
+  <data name="SetSnippets_Title" xml:space="preserve">
+    <value>スクリプト/スニペット管理</value>
+  </data>
+  <data name="SetSync_Actions" xml:space="preserve">
+    <value>操作</value>
+  </data>
+  <data name="SetSync_AutoSync" xml:space="preserve">
+    <value>自動同期</value>
+  </data>
+  <data name="SetSync_AutoSyncDesc" xml:space="preserve">
+    <value>// 起動時に自動プル、設定保存後に自動プッシュ(変更がある場合のみ新バージョンを作成)</value>
+  </data>
+  <data name="SetSync_CreateTokenLink" xml:space="preserve">
+    <value>トークンを作成(gist 権限選択済み)</value>
+  </data>
+  <data name="SetSync_DeviceName" xml:space="preserve">
+    <value>このデバイスの名前</value>
+  </data>
+  <data name="SetSync_DeviceNameDesc" xml:space="preserve">
+    <value>// 同期メタデータに記録され、バージョン履歴でどのデバイスの変更か識別できます</value>
+  </data>
+  <data name="SetSync_E2EDesc" xml:space="preserve">
+    <value>// 同期パスフレーズを設定すると、データはローカルで AES-256-GCM により暗号化されてからアップロードされ、GitHub 側には暗号文しか見えません。接続パスワードはこの場合のみペイロードに含まれます。未設定の場合、パスワードや秘密鍵のパスフレーズはアップロードされません。各デバイスで同じパスフレーズを入力してください。</value>
+  </data>
+  <data name="SetSync_E2EEnabledNotice" xml:space="preserve">
+    <value>✓ エンドツーエンド暗号化が有効:この Gist のデータは暗号文で、パスフレーズはこのデバイスに暗号化保存されています。他のデバイスでも同じパスフレーズが必要です。新しいパスフレーズを入力して設定を保存すると変更できます</value>
+  </data>
+  <data name="SetSync_Enable" xml:space="preserve">
+    <value>クラウド同期を有効化</value>
+  </data>
+  <data name="SetSync_EnableDesc" xml:space="preserve">
+    <value>// オフにすると自動・手動を問わず同期を行いません</value>
+  </data>
+  <data name="SetSync_GistIdDesc" xml:space="preserve">
+    <value>// 空欄なら初回プッシュ時に自動作成。他のデバイスで同じ Id を入力すれば連携完了</value>
+  </data>
+  <data name="SetSync_GistIdPlaceholder" xml:space="preserve">
+    <value>初回プッシュ後に自動入力</value>
+  </data>
+  <data name="SetSync_HistoryDesc" xml:space="preserve">
+    <value>// 同期のたびに Gist のリビジョンが作成されます。旧バージョンの復元は新バージョンとしてプッシュされるため、履歴は失われません</value>
+  </data>
+  <data name="SetSync_Intro" xml:space="preserve">
+    <value>同期データはあなた自身の GitHub アカウントのシークレット Gist に保存され、同期のたびに遡れる履歴バージョンが作成されます。同じアカウントの複数デバイスで同じトークンと Gist Id を使えばシームレスに同期できます。</value>
+  </data>
+  <data name="SetSync_PassphrasePlaceholder" xml:space="preserve">
+    <value>同期パスフレーズ(空欄 = 保存済みを保持)</value>
+  </data>
+  <data name="SetSync_PullOnly" xml:space="preserve">
+    <value>プルのみ</value>
+  </data>
+  <data name="SetSync_PullOnlyTip" xml:space="preserve">
+    <value>クラウドの最新バージョンを強制的にこのデバイスへ適用</value>
+  </data>
+  <data name="SetSync_PushOnly" xml:space="preserve">
+    <value>プッシュのみ</value>
+  </data>
+  <data name="SetSync_PushOnlyTip" xml:space="preserve">
+    <value>ローカルデータを強制的にクラウドの最新バージョンとしてアップロード</value>
+  </data>
+  <data name="SetSync_RefreshHistory" xml:space="preserve">
+    <value>履歴を更新</value>
+  </data>
+  <data name="SetSync_RestoreRevision" xml:space="preserve">
+    <value>このバージョンに復元</value>
+  </data>
+  <data name="SetSync_SaveConfig" xml:space="preserve">
+    <value>同期設定を保存</value>
+  </data>
+  <data name="SetSync_Saved" xml:space="preserve">
+    <value>保存済み ✓</value>
+  </data>
+  <data name="SetSync_ScopeAppSettings" xml:space="preserve">
+    <value>アプリ設定</value>
+  </data>
+  <data name="SetSync_ScopeProfilesDesc" xml:space="preserve">
+    <value>// サーバー接続、グループ、ポート転送トンネル。ローカルにのみ存在する接続がクラウドによって削除されることはありません</value>
+  </data>
+  <data name="SetSync_ScopeSnippets" xml:space="preserve">
+    <value>コードスニペット</value>
+  </data>
+  <data name="SetSync_SectionAccount" xml:space="preserve">
+    <value>アカウントと連携</value>
+  </data>
+  <data name="SetSync_SectionE2E" xml:space="preserve">
+    <value>エンドツーエンド暗号化(推奨)</value>
+  </data>
+  <data name="SetSync_SectionHistory" xml:space="preserve">
+    <value>バージョン履歴</value>
+  </data>
+  <data name="SetSync_SectionScope" xml:space="preserve">
+    <value>同期範囲</value>
+  </data>
+  <data name="SetSync_Subtitle" xml:space="preserve">
+    <value>// GitHub Gist で複数デバイス間の設定を同期(バージョン履歴対応)</value>
+  </data>
+  <data name="SetSync_SyncNow" xml:space="preserve">
+    <value>今すぐ同期</value>
+  </data>
+  <data name="SetSync_SyncNowTip" xml:space="preserve">
+    <value>方向は自動判定:ローカルが新しければプッシュ、クラウドが新しければプル。両方に変更がある場合は新しい方が優先(古いデータはバージョン履歴から復元可能)</value>
+  </data>
+  <data name="SetSync_Title" xml:space="preserve">
+    <value>クラウド同期</value>
+  </data>
+  <data name="SetSync_TokenDesc" xml:space="preserve">
+    <value>// GitHub → Settings → Developer settings → Personal access tokens で gist 権限のみを選択して作成。トークンはローカル鍵で暗号化保存され、アップロードされません</value>
+  </data>
+  <data name="SetSync_TokenDocs" xml:space="preserve">
+    <value>トークン公式ドキュメント</value>
+  </data>
+  <data name="SetSync_TokenGuideStep1" xml:space="preserve">
+    <value>1. 下の「トークンを作成」をクリックして GitHub のトークンページを開きます(必要な gist 権限は選択済み。先に GitHub へのログインが必要です);</value>
+  </data>
+  <data name="SetSync_TokenGuideStep2" xml:space="preserve">
+    <value>2. 必要に応じてメモと有効期限を設定し、Generate token をクリックして生成します;</value>
+  </data>
+  <data name="SetSync_TokenGuideStep3" xml:space="preserve">
+    <value>3. ghp_ で始まるトークンをコピーし、下の入力欄に貼り付けて設定を保存します。</value>
+  </data>
+  <data name="SetSync_TokenGuideTitle" xml:space="preserve">
+    <value>GitHub トークンの取得方法</value>
+  </data>
+  <data name="SetSync_TokenLabel" xml:space="preserve">
+    <value>GitHub トークン(PAT)</value>
+  </data>
+  <data name="SetSync_TokenLocalOnly" xml:space="preserve">
+    <value>トークンはこのデバイスにのみ暗号化して保存され、同期データと一緒にアップロードされることはありません。</value>
+  </data>
+  <data name="SetSync_TokenPlaceholder" xml:space="preserve">
+    <value>ghp_…(空欄 = 保存済みトークンを保持)</value>
+  </data>
+  <data name="SetSync_WhatIsGist" xml:space="preserve">
+    <value>Gist とは?</value>
+  </data>
+  <data name="SetTerm_BellBehavior" xml:space="preserve">
+    <value>ターミナルベルの動作</value>
+  </data>
+  <data name="SetTerm_BellBehaviorDesc" xml:space="preserve">
+    <value>// リモートプログラムが BEL を送信したとき:システム音を再生、何もしない、または画面を点滅</value>
+  </data>
+  <data name="SetTerm_BellNone" xml:space="preserve">
+    <value>なし</value>
+  </data>
+  <data name="SetTerm_BellSection" xml:space="preserve">
+    <value>ベルとタブ通知</value>
+  </data>
+  <data name="SetTerm_BellSound" xml:space="preserve">
+    <value>システム音</value>
+  </data>
+  <data name="SetTerm_BellVisual" xml:space="preserve">
+    <value>画面を点滅</value>
+  </data>
+  <data name="SetTerm_ConfirmMultilinePaste" xml:space="preserve">
+    <value>複数行の貼り付けを確認</value>
+  </data>
+  <data name="SetTerm_ConfirmMultilinePasteDesc" xml:space="preserve">
+    <value>// 改行を含む内容の貼り付け時に確認を表示</value>
+  </data>
+  <data name="SetTerm_CopyOnSelect" xml:space="preserve">
+    <value>選択時にコピー</value>
+  </data>
+  <data name="SetTerm_CopyOnSelectDesc" xml:space="preserve">
+    <value>// オン:マウスを離すかダブルクリックで選択した内容を自動コピー。オフ:選択してもコピーせず、Ctrl+Shift+C で手動コピー</value>
+  </data>
+  <data name="SetTerm_CtrlCCopy" xml:space="preserve">
+    <value>選択時に Ctrl+C でコピー</value>
+  </data>
+  <data name="SetTerm_CtrlCCopyDesc" xml:space="preserve">
+    <value>// オン:テキスト選択中は Ctrl+C でコピーし、割り込みを送信しません(未選択時は割り込み)。オフ:Ctrl+C は常に割り込み信号 ^C を送信</value>
+  </data>
+  <data name="SetTerm_CursorBar" xml:space="preserve">
+    <value>バー</value>
+  </data>
+  <data name="SetTerm_CursorBlink" xml:space="preserve">
+    <value>カーソルの点滅</value>
+  </data>
+  <data name="SetTerm_CursorBlock" xml:space="preserve">
+    <value>ブロック</value>
+  </data>
+  <data name="SetTerm_CursorSection" xml:space="preserve">
+    <value>カーソル</value>
+  </data>
+  <data name="SetTerm_CursorStyle" xml:space="preserve">
+    <value>カーソルのスタイル</value>
+  </data>
+  <data name="SetTerm_CursorStyleDesc" xml:space="preserve">
+    <value>// ターミナルカーソルの形状</value>
+  </data>
+  <data name="SetTerm_CursorUnderline" xml:space="preserve">
+    <value>アンダーライン</value>
+  </data>
+  <data name="SetTerm_DoubleClickSelectWord" xml:space="preserve">
+    <value>ダブルクリックで単語を選択</value>
+  </data>
+  <data name="SetTerm_Font" xml:space="preserve">
+    <value>ターミナルのフォント</value>
+  </data>
+  <data name="SetTerm_FontDesc" xml:space="preserve">
+    <value>// ターミナルで使用する等幅フォント</value>
+  </data>
+  <data name="SetTerm_FontDisplaySection" xml:space="preserve">
+    <value>フォントと表示</value>
+  </data>
+  <data name="SetTerm_ImeSupport" xml:space="preserve">
+    <value>IME サポート</value>
+  </data>
+  <data name="SetTerm_ImeSupportDesc" xml:space="preserve">
+    <value>// 中国語・日本語などの IME のインライン入力を有効化</value>
+  </data>
+  <data name="SetTerm_InputSection" xml:space="preserve">
+    <value>入力</value>
+  </data>
+  <data name="SetTerm_LineHeight" xml:space="preserve">
+    <value>行の高さ</value>
+  </data>
+  <data name="SetTerm_LineHeightDesc" xml:space="preserve">
+    <value>// 行間の倍率(既定値 1.0)</value>
+  </data>
+  <data name="SetTerm_OutputEncoding" xml:space="preserve">
+    <value>出力エンコーディング</value>
+  </data>
+  <data name="SetTerm_OutputEncodingDesc" xml:space="preserve">
+    <value>// リモート出力の解析に使う文字エンコーディング</value>
+  </data>
+  <data name="SetTerm_RightClickPaste" xml:space="preserve">
+    <value>右クリックで貼り付け</value>
+  </data>
+  <data name="SetTerm_RightClickPasteDesc" xml:space="preserve">
+    <value>// ターミナルで右クリックするとクリップボードの内容を貼り付け</value>
+  </data>
+  <data name="SetTerm_ScrollbackDesc" xml:space="preserve">
+    <value>// スクロールバックで保持する最大行数</value>
+  </data>
+  <data name="SetTerm_ScrollOnKeystroke" xml:space="preserve">
+    <value>キー入力時に最下部へスクロール</value>
+  </data>
+  <data name="SetTerm_ScrollOnOutput" xml:space="preserve">
+    <value>出力時に自動スクロール</value>
+  </data>
+  <data name="SetTerm_ScrollOnOutputDesc" xml:space="preserve">
+    <value>// 履歴の閲覧中に新しい出力があると最下部へ移動します。オフの場合は現在位置を維持</value>
+  </data>
+  <data name="SetTerm_ScrollSection" xml:space="preserve">
+    <value>スクロール</value>
+  </data>
+  <data name="SetTerm_SelectionSection" xml:space="preserve">
+    <value>選択とコピー</value>
+  </data>
+  <data name="SetTerm_StartupCommand" xml:space="preserve">
+    <value>接続後にコマンドを実行</value>
+  </data>
+  <data name="SetTerm_StartupCommandDesc" xml:space="preserve">
+    <value>// 接続/再接続後にサイレント実行(ターミナルには表示されません)。内蔵のプロンプト補正スクリプトの後に自動追加されます。空欄の場合は内蔵スクリプトのみ実行</value>
+  </data>
+  <data name="SetTerm_StartupCommandPlaceholder" xml:space="preserve">
+    <value>例: cd /var/www</value>
+  </data>
+  <data name="SetTerm_Subtitle" xml:space="preserve">
+    <value>// ターミナルの表示と動作を設定</value>
+  </data>
+  <data name="SetTerm_TabFlashAlert" xml:space="preserve">
+    <value>非アクティブタブのベル通知</value>
+  </data>
+  <data name="SetTerm_TabFlashAlertDesc" xml:space="preserve">
+    <value>// 非アクティブなタブがベルを受信したときにタブを点滅して通知</value>
+  </data>
+  <data name="SetTerm_TermType" xml:space="preserve">
+    <value>ターミナルの種類 (TERM)</value>
+  </data>
+  <data name="SetTerm_TermTypeDesc" xml:space="preserve">
+    <value>// リモートに通知するターミナル機能プロファイル</value>
+  </data>
+  <data name="SetTerm_Title" xml:space="preserve">
+    <value>ターミナル</value>
+  </data>
+  <data name="SetTerm_TrimCopyWhitespace" xml:space="preserve">
+    <value>コピー時に末尾の空白を削除</value>
+  </data>
+  <data name="SetTerm_TypeEncodingSection" xml:space="preserve">
+    <value>ターミナルの種類とエンコーディング</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="Settings_ResetConfirmMessage" xml:space="preserve">
+    <value>すべてのページの設定を初期値に戻します(「設定を保存」をクリックするまでディスクには書き込まれません)。続行しますか?</value>
+  </data>
+  <data name="Settings_ResetConfirmTitle" xml:space="preserve">
+    <value>既定の設定に戻す</value>
+  </data>
+  <data name="Settings_RestoreDefaults" xml:space="preserve">
+    <value>既定に戻す</value>
+  </data>
+  <data name="Settings_SaveSettings" xml:space="preserve">
+    <value>設定を保存</value>
+  </data>
+  <data name="SetTransfer_BandwidthEnable" xml:space="preserve">
+    <value>帯域制限を有効化</value>
+  </data>
+  <data name="SetTransfer_BandwidthEnableDesc" xml:space="preserve">
+    <value>// ファイル転送の最大帯域を制限</value>
+  </data>
+  <data name="SetTransfer_Browse" xml:space="preserve">
+    <value>参照…</value>
+  </data>
+  <data name="SetTransfer_ConflictAsk" xml:space="preserve">
+    <value>確認する</value>
+  </data>
+  <data name="SetTransfer_ConflictOverwrite" xml:space="preserve">
+    <value>上書き</value>
+  </data>
+  <data name="SetTransfer_ConflictSkip" xml:space="preserve">
+    <value>スキップ</value>
+  </data>
+  <data name="SetTransfer_DefaultEditor" xml:space="preserve">
+    <value>既定のエディター</value>
+  </data>
+  <data name="SetTransfer_DefaultEditorDesc" xml:space="preserve">
+    <value>Windows:フルパスまたはコマンド名;Linux:コマンド名;macOS:アプリ名</value>
+  </data>
+  <data name="SetTransfer_DownloadDir" xml:space="preserve">
+    <value>ローカルのダウンロードフォルダー</value>
+  </data>
+  <data name="SetTransfer_DownloadDirDesc" xml:space="preserve">
+    <value>ダウンロードしたファイルの既定の保存先</value>
+  </data>
+  <data name="SetTransfer_DownloadLimit" xml:space="preserve">
+    <value>ダウンロード速度制限</value>
+  </data>
+  <data name="SetTransfer_ExecutableFilter" xml:space="preserve">
+    <value>実行可能プログラム</value>
+  </data>
+  <data name="SetTransfer_FileExists" xml:space="preserve">
+    <value>ファイルが既に存在する場合</value>
+  </data>
+  <data name="SetTransfer_FileExistsDesc" xml:space="preserve">
+    <value>宛先に同名ファイルがある場合の処理方法</value>
+  </data>
+  <data name="SetTransfer_LogDirectory" xml:space="preserve">
+    <value>ログの保存先</value>
+  </data>
+  <data name="SetTransfer_LogRetentionDays" xml:space="preserve">
+    <value>転送ログの保持日数</value>
+  </data>
+  <data name="SetTransfer_LogRetentionDaysDesc" xml:space="preserve">
+    <value>// 日数を超えた転送ログは自動的に削除されます。ターミナルセッションログの保持日数は「一般」ページで個別に設定します</value>
+  </data>
+  <data name="SetTransfer_MaxConcurrent" xml:space="preserve">
+    <value>最大同時転送数</value>
+  </data>
+  <data name="SetTransfer_MaxConcurrentDesc" xml:space="preserve">
+    <value>同時に実行するファイル転送タスクの数</value>
+  </data>
+  <data name="SetTransfer_NotifyOnComplete" xml:space="preserve">
+    <value>ファイル転送完了時に通知を表示</value>
+  </data>
+  <data name="SetTransfer_NotifyOnCompleteDesc" xml:space="preserve">
+    <value>// アップロード/ダウンロード完了時に通知を表示。切断時の通知は「一般」ページで個別に設定します</value>
+  </data>
+  <data name="SetTransfer_PreserveTimestamps" xml:space="preserve">
+    <value>ファイルのタイムスタンプを保持</value>
+  </data>
+  <data name="SetTransfer_SectionBandwidth" xml:space="preserve">
+    <value>帯域制限</value>
+  </data>
+  <data name="SetTransfer_SectionBehavior" xml:space="preserve">
+    <value>転送動作</value>
+  </data>
+  <data name="SetTransfer_SectionConflict" xml:space="preserve">
+    <value>競合の処理</value>
+  </data>
+  <data name="SetTransfer_SectionDefaultPaths" xml:space="preserve">
+    <value>既定のパス</value>
+  </data>
+  <data name="SetTransfer_SectionLogging" xml:space="preserve">
+    <value>ログ記録</value>
+  </data>
+  <data name="SetTransfer_SelectEditorTitle" xml:space="preserve">
+    <value>既定のエディターを選択</value>
+  </data>
+  <data name="SetTransfer_ShowHiddenDesc" xml:space="preserve">
+    <value>// ファイルブラウザーでドットで始まるファイルを表示するかどうか。ツールバーでの切り替えはこの設定に保存されます</value>
+  </data>
+  <data name="SetTransfer_Subtitle" xml:space="preserve">
+    <value>// SFTP とファイル転送の動作を設定</value>
+  </data>
+  <data name="SetTransfer_Title" xml:space="preserve">
+    <value>ファイル転送</value>
+  </data>
+  <data name="SetTransfer_TransferLogging" xml:space="preserve">
+    <value>転送ログを記録</value>
+  </data>
+  <data name="SetTransfer_TransferLoggingDesc" xml:space="preserve">
+    <value>// ファイル転送の詳細ログを保存</value>
+  </data>
+  <data name="SetTransfer_UploadLimit" xml:space="preserve">
+    <value>アップロード速度制限</value>
+  </data>
+  <data name="SetTransfer_ZeroUnlimited" xml:space="preserve">
+    <value>// 0 は無制限</value>
+  </data>
+  <data name="SetVm_DefaultSuffix" xml:space="preserve">
+    <value>(デフォルト)</value>
+  </data>
+  <data name="SetVm_GroupFileOperations" xml:space="preserve">
+    <value>ファイル操作</value>
+  </data>
+  <data name="SetVm_GroupTabsAndPanels" xml:space="preserve">
+    <value>タブとパネル</value>
+  </data>
+  <data name="SetVm_SectionAbout" xml:space="preserve">
+    <value>バージョン情報</value>
+  </data>
+  <data name="SetVm_SectionAppearance" xml:space="preserve">
+    <value>外観</value>
+  </data>
+  <data name="SetVm_SectionGeneral" xml:space="preserve">
+    <value>一般</value>
+  </data>
+  <data name="SetVm_SectionKeys" xml:space="preserve">
+    <value>鍵の管理</value>
+  </data>
+  <data name="SetVm_SectionSecurity" xml:space="preserve">
+    <value>セキュリティ監査</value>
+  </data>
+  <data name="SetVm_SectionShortcuts" xml:space="preserve">
+    <value>ショートカット</value>
+  </data>
+  <data name="SetVm_SectionSnippets" xml:space="preserve">
+    <value>スニペット</value>
+  </data>
+  <data name="SetVm_SectionSupport" xml:space="preserve">
+    <value>サポートと寄付</value>
+  </data>
+  <data name="SetVm_SectionSync" xml:space="preserve">
+    <value>クラウド同期</value>
+  </data>
+  <data name="SetVm_SectionTerminal" xml:space="preserve">
+    <value>ターミナル</value>
+  </data>
+  <data name="SetVm_SectionTransfer" xml:space="preserve">
+    <value>ファイル転送</value>
+  </data>
+  <data name="SetVm_ShortcutCloneSession" xml:space="preserve">
+    <value>現在のセッションを複製</value>
+  </data>
+  <data name="SetVm_ShortcutCompletionPopup" xml:space="preserve">
+    <value>コマンド補完を表示</value>
+  </data>
+  <data name="SetVm_ShortcutNewTabAlias" xml:space="preserve">
+    <value>新しいタブ(新規接続と同じ)</value>
+  </data>
+  <data name="SetVm_ShortcutNextTab" xml:space="preserve">
+    <value>次のタブ</value>
+  </data>
+  <data name="SetVm_ShortcutPaletteAlt" xml:space="preserve">
+    <value>コマンドパレット(同等)</value>
+  </data>
+  <data name="SetVm_ShortcutPrevTab" xml:space="preserve">
+    <value>前のタブ</value>
+  </data>
+  <data name="SetVm_ShortcutReconnect" xml:space="preserve">
+    <value>切断後に再接続</value>
+  </data>
+  <data name="SetVm_ShortcutReconnectAlt" xml:space="preserve">
+    <value>切断後に再接続(同等)</value>
+  </data>
+  <data name="SetVm_ShortcutSaveInEditor" xml:space="preserve">
+    <value>リモートエディター内で保存</value>
+  </data>
+  <data name="SetVm_ShortcutSearchTerminal" xml:space="preserve">
+    <value>ターミナル内容を検索</value>
+  </data>
+  <data name="SetVm_ShortcutSendInterrupt" xml:space="preserve">
+    <value>割り込みシグナル ^C を送信</value>
+  </data>
+  <data name="SetVm_ShortcutToggleFileBrowser" xml:space="preserve">
+    <value>ファイルブラウザーの切り替え</value>
+  </data>
+  <data name="Sftp_FileExistsTitle" xml:space="preserve">
+    <value>ファイルは既に存在します</value>
+  </data>
+  <data name="Sftp_LocalOverwriteBody" xml:space="preserve">
+    <value>同名のローカルファイルが存在します:
+{0}
+
+上書きしますか?(キャンセルでこのファイルをスキップ)</value>
+  </data>
+  <data name="Sftp_NoEditorBody" xml:space="preserve">
+    <value>「既定のエディターで開く」には先にエディターの指定が必要です:
+Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux はコマンド名(例: gedit)、macOS はアプリ名(例: Visual Studio Code)を入力します。
+
+今すぐ設定を開いて構成しますか?</value>
+  </data>
+  <data name="Sftp_NoEditorTitle" xml:space="preserve">
+    <value>既定のエディターが未設定です</value>
+  </data>
+  <data name="Sftp_Octal" xml:space="preserve">
+    <value>8進数</value>
+  </data>
+  <data name="Sftp_Open" xml:space="preserve">
+    <value>開く</value>
+  </data>
+  <data name="Sftp_OpenSettings" xml:space="preserve">
+    <value>設定を開く</value>
+  </data>
+  <data name="Sftp_OpenWithDefaultEditor" xml:space="preserve">
+    <value>既定のエディターで開く</value>
+  </data>
+  <data name="Sftp_RemoteOverwriteBody" xml:space="preserve">
+    <value>同名のリモートファイルが存在します:
+{0}
+
+上書きしますか?(キャンセルでこのファイルをスキップ)</value>
+  </data>
+  <data name="Shell_Cmd" xml:space="preserve">
+    <value>コマンドプロンプト (CMD)</value>
+  </data>
+  <data name="ShowHiddenFiles" xml:space="preserve">
+    <value>隠しファイルを表示</value>
+  </data>
+  <data name="Sidebar_Explorer" xml:space="preserve">
+    <value>エクスプローラー</value>
+  </data>
+  <data name="Sidebar_RefreshRecent" xml:space="preserve">
+    <value>最近の接続を更新</value>
+  </data>
+  <data name="Size" xml:space="preserve">
+    <value>サイズ</value>
+  </data>
+  <data name="Split" xml:space="preserve">
+    <value>分割</value>
+  </data>
+  <data name="StatusBar_Swap" xml:space="preserve">
+    <value>スワップ</value>
+  </data>
+  <data name="Svc_Active" xml:space="preserve">
+    <value>アクティブ</value>
+  </data>
+  <data name="Svc_AddFirstConnection" xml:space="preserve">
+    <value>最初の接続を追加</value>
+  </data>
+  <data name="Svc_CopySuffix" xml:space="preserve">
+    <value>{0} (コピー)</value>
+  </data>
+  <data name="Svc_DaysAgo" xml:space="preserve">
+    <value>{0} 日前</value>
+  </data>
+  <data name="Svc_Disk" xml:space="preserve">
+    <value>ディスク</value>
+  </data>
+  <data name="Svc_DoubleClickToConnect" xml:space="preserve">
+    <value>ダブルクリックで接続</value>
+  </data>
+  <data name="Svc_History" xml:space="preserve">
+    <value>履歴</value>
+  </data>
+  <data name="Svc_HostRequired" xml:space="preserve">
+    <value>ホストを入力してください。</value>
+  </data>
+  <data name="Svc_HoursAgo" xml:space="preserve">
+    <value>{0} 時間前</value>
+  </data>
+  <data name="Svc_JumpChainLoop" xml:space="preserve">
+    <value>踏み台設定が循環参照になっています。踏み台ホストの設定を確認してください。</value>
+  </data>
+  <data name="Svc_JumpChainTooLong" xml:space="preserve">
+    <value>踏み台チェーンが長すぎます(最大 5 ホップ)。</value>
+  </data>
+  <data name="Svc_JumpHostMissing" xml:space="preserve">
+    <value>踏み台ホストの設定が存在しません(削除された可能性があります)。再設定してください。</value>
+  </data>
+  <data name="Svc_JustNow" xml:space="preserve">
+    <value>たった今</value>
+  </data>
+  <data name="Svc_Memory" xml:space="preserve">
+    <value>メモリ</value>
+  </data>
+  <data name="Svc_MinutesAgo" xml:space="preserve">
+    <value>{0} 分前</value>
+  </data>
+  <data name="Svc_NetSpeed" xml:space="preserve">
+    <value>ネットワーク速度</value>
+  </data>
+  <data name="Svc_Offline" xml:space="preserve">
+    <value>オフライン</value>
+  </data>
+  <data name="Svc_PasswordRequired" xml:space="preserve">
+    <value>パスワード認証にはパスワードが必要です。</value>
+  </data>
+  <data name="Svc_PortRange" xml:space="preserve">
+    <value>ポートは 1 から 65535 の範囲で指定してください。</value>
+  </data>
+  <data name="Svc_PrivateKeyRequired" xml:space="preserve">
+    <value>秘密鍵認証には秘密鍵ファイルが必要です。</value>
+  </data>
+  <data name="Svc_ProfileNameRequired" xml:space="preserve">
+    <value>接続名を入力してください。</value>
+  </data>
+  <data name="Svc_RemoteUpdateFailed" xml:space="preserve">
+    <value>リモート更新に失敗しました({0}):{1}</value>
+  </data>
+  <data name="Svc_Ungrouped" xml:space="preserve">
+    <value>未分類</value>
+  </data>
+  <data name="Svc_UsernameRequired" xml:space="preserve">
+    <value>ユーザー名を入力してください。</value>
+  </data>
+  <data name="Svc_Yesterday" xml:space="preserve">
+    <value>昨日</value>
+  </data>
+  <data name="SyncGroup" xml:space="preserve">
+    <value>同期グループ</value>
+  </data>
+  <data name="SyncSvc_ApiFailed" xml:space="preserve">
+    <value>GitHub API リクエストに失敗しました({0}):{1}</value>
+  </data>
+  <data name="SyncSvc_Applied" xml:space="preserve">
+    <value>クラウドのデータを適用しました(デバイス {0}、{1})。</value>
+  </data>
+  <data name="SyncSvc_BadFormat" xml:space="preserve">
+    <value>クラウド同期データの形式を認識できません。</value>
+  </data>
+  <data name="SyncSvc_BothChangedLocalWins" xml:space="preserve">
+    <value>(両側に変更がありました。ローカルの方が新しいためプッシュして上書きしました。クラウドの旧バージョンは履歴に残っています)</value>
+  </data>
+  <data name="SyncSvc_BothChangedRemoteWins" xml:space="preserve">
+    <value>(両側に変更がありました。クラウドの方が新しいためクラウドを採用しました。ローカルの旧データはバージョン履歴から復元できます)</value>
+  </data>
+  <data name="SyncSvc_EmptyPayload" xml:space="preserve">
+    <value>ペイロードが空です。</value>
+  </data>
+  <data name="SyncSvc_Forbidden" xml:space="preserve">
+    <value>リクエストが GitHub に拒否されました(API レート制限の可能性があります。しばらくしてから再試行してください)。</value>
+  </data>
+  <data name="SyncSvc_GistNotFound" xml:space="preserve">
+    <value>Gist が存在しないか、トークンにアクセス権がありません(Gist Id とトークンのアカウントを確認してください)。</value>
+  </data>
+  <data name="SyncSvc_MissingPayload" xml:space="preserve">
+    <value>クラウドのデータにペイロードがありません。</value>
+  </data>
+  <data name="SyncSvc_MissingRawUrl" xml:space="preserve">
+    <value>Gist ファイルに raw_url がありません。</value>
+  </data>
+  <data name="SyncSvc_NeedPassphrase" xml:space="preserve">
+    <value>クラウドのデータはエンドツーエンドで暗号化されています。このデバイスで同じ同期パスフレーズを入力してから取得してください。</value>
+  </data>
+  <data name="SyncSvc_NoGistBound" xml:space="preserve">
+    <value>Gist がまだ連携されていません。先に一度プッシュするか、別のデバイスで作成した Gist Id を入力してください。</value>
+  </data>
+  <data name="SyncSvc_NoGistId" xml:space="preserve">
+    <value>GitHub から Gist Id が返されませんでした。</value>
+  </data>
+  <data name="SyncSvc_NoGistNoRestore" xml:space="preserve">
+    <value>Gist が連携されていないため、復元できるバージョンがありません。</value>
+  </data>
+  <data name="SyncSvc_NoRemoteFile" xml:space="preserve">
+    <value>クラウドの Gist に同期データファイルがありません。</value>
+  </data>
+  <data name="SyncSvc_NotEnabled" xml:space="preserve">
+    <value>クラウド同期が有効になっていません。</value>
+  </data>
+  <data name="SyncSvc_NoToken" xml:space="preserve">
+    <value>GitHub トークンが設定されていません(gist 権限が必要)。</value>
+  </data>
+  <data name="SyncSvc_Pushed" xml:space="preserve">
+    <value>クラウドにプッシュしました(バージョン {0})。</value>
+  </data>
+  <data name="SyncSvc_RestoredAndPushed" xml:space="preserve">
+    <value>バージョン {0} に復元し、最新バージョンとしてプッシュしました。</value>
+  </data>
+  <data name="SyncSvc_RevisionNoFile" xml:space="preserve">
+    <value>このバージョンには同期データファイルがありません。</value>
+  </data>
+  <data name="SyncSvc_TokenDecryptFailed" xml:space="preserve">
+    <value>保存済みの GitHub トークンを復号できません。もう一度入力してください。</value>
+  </data>
+  <data name="SyncSvc_TokenInvalid" xml:space="preserve">
+    <value>GitHub トークンが無効または期限切れです。再生成してください(gist 権限が必要)。</value>
+  </data>
+  <data name="SyncSvc_UpToDate" xml:space="preserve">
+    <value>ローカルとクラウドは既に一致しています。同期は不要です。</value>
+  </data>
+  <data name="SyncSvc_WrongPassphrase" xml:space="preserve">
+    <value>同期パスフレーズが正しくないため、クラウドのデータを復号できません。</value>
+  </data>
+  <data name="System" xml:space="preserve">
+    <value>システム</value>
+  </data>
+  <data name="SystemMonitor" xml:space="preserve">
+    <value>システムモニター</value>
+  </data>
+  <data name="Term_NoMatches" xml:space="preserve">
+    <value>一致なし</value>
+  </data>
+  <data name="Term_SearchClose" xml:space="preserve">
+    <value>閉じる (Esc)</value>
+  </data>
+  <data name="Term_SearchNext" xml:space="preserve">
+    <value>次へ (Enter)</value>
+  </data>
+  <data name="Term_SearchPlaceholder" xml:space="preserve">
+    <value>ターミナル内を検索</value>
+  </data>
+  <data name="Term_SearchPrev" xml:space="preserve">
+    <value>前へ (Shift+Enter)</value>
+  </data>
+  <data name="TerminalDisconnectedNotice" xml:space="preserve">
+    <value>接続が切断されました。</value>
+  </data>
+  <data name="TerminalEncoding" xml:space="preserve">
+    <value>文字エンコーディング</value>
+  </data>
+  <data name="TerminalReconnectHint" xml:space="preserve">
+    <value>Enter キーで再接続します。</value>
+  </data>
+  <data name="TerminalType" xml:space="preserve">
+    <value>ターミナルタイプ</value>
+  </data>
+  <data name="TestConnection" xml:space="preserve">
+    <value>接続テスト</value>
+  </data>
+  <data name="Theme" xml:space="preserve">
+    <value>テーマ</value>
+  </data>
+  <data name="Transfer_CancelRemainingTip" xml:space="preserve">
+    <value>残りの転送をキャンセル</value>
+  </data>
+  <data name="Transfer_CollapseTip" xml:space="preserve">
+    <value>折りたたむ(タスクはバックグラウンドで継続)</value>
+  </data>
+  <data name="Transfer_Title" xml:space="preserve">
+    <value>転送</value>
+  </data>
+  <data name="TransferHistory" xml:space="preserve">
+    <value>転送履歴</value>
+  </data>
+  <data name="Tray_ExitApp" xml:space="preserve">
+    <value>VelaShell を終了</value>
+  </data>
+  <data name="Tray_ShowMainWindow" xml:space="preserve">
+    <value>メインウィンドウを表示</value>
+  </data>
+  <data name="Tree_Diagnostics" xml:space="preserve">
+    <value>接続診断</value>
+  </data>
+  <data name="Tree_DuplicateConnection" xml:space="preserve">
+    <value>接続を複製</value>
+  </data>
+  <data name="Tree_EditConnection" xml:space="preserve">
+    <value>接続を編集</value>
+  </data>
+  <data name="Tree_OpenInNewTab" xml:space="preserve">
+    <value>新しいタブで開く</value>
+  </data>
+  <data name="Tree_OpenSftp" xml:space="preserve">
+    <value>SFTP を開く</value>
+  </data>
+  <data name="Tree_PortForwarding" xml:space="preserve">
+    <value>ポート転送</value>
+  </data>
+  <data name="Tree_SessionSettings" xml:space="preserve">
+    <value>セッション設定</value>
+  </data>
+  <data name="Trust" xml:space="preserve">
+    <value>信頼</value>
+  </data>
+  <data name="TrustOnce" xml:space="preserve">
+    <value>今回のみ信頼</value>
+  </data>
+  <data name="TrustPermanently" xml:space="preserve">
+    <value>常に信頼</value>
+  </data>
+  <data name="TrustThisHost" xml:space="preserve">
+    <value>このホストを信頼</value>
+  </data>
+  <data name="Tunnel_AliasLabel" xml:space="preserve">
+    <value>エイリアス(任意)</value>
+  </data>
+  <data name="Tunnel_AliasPlaceholder" xml:space="preserve">
+    <value>MongoDB 転送</value>
+  </data>
+  <data name="Tunnel_ClosePanel" xml:space="preserve">
+    <value>パネルを閉じる</value>
+  </data>
+  <data name="Tunnel_DeleteTip" xml:space="preserve">
+    <value>トンネルを削除</value>
+  </data>
+  <data name="Tunnel_DynamicSocks" xml:space="preserve">
+    <value>動的 SOCKS</value>
+  </data>
+  <data name="Tunnel_DynamicSocksTip" xml:space="preserve">
+    <value>ローカルポートを SOCKS5 プロキシとして使用、宛先は任意(ssh -D)</value>
+  </data>
+  <data name="Tunnel_EditTip" xml:space="preserve">
+    <value>トンネルを編集</value>
+  </data>
+  <data name="Tunnel_EmptyHint" xml:space="preserve">
+    <value>// このサーバーにはまだトンネルがありません。下で作成してください</value>
+  </data>
+  <data name="Tunnel_ForwardToLoopback" xml:space="preserve">
+    <value>サーバー自身(127.0.0.1)へ転送</value>
+  </data>
+  <data name="Tunnel_LocalForwardTip" xml:space="preserve">
+    <value>ローカルポートへのアクセスをサーバー経由でターゲットサービスに転送(ssh -L)</value>
+  </data>
+  <data name="Tunnel_RemoteForwardTip" xml:space="preserve">
+    <value>サーバーポートへのアクセスをローカルサービスへ転送(ssh -R)</value>
+  </data>
+  <data name="Tunnel_SelectServerPlaceholder" xml:space="preserve">
+    <value>保存済みのサーバーを選択</value>
+  </data>
+  <data name="Tunnel_ServerLabel" xml:space="preserve">
+    <value>サーバー(このホスト経由で転送)</value>
+  </data>
+  <data name="Tunnel_StartTip" xml:space="preserve">
+    <value>トンネルを開始(サーバーへ自動接続)</value>
+  </data>
+  <data name="Tunnel_StopTip" xml:space="preserve">
+    <value>トンネルを停止</value>
+  </data>
+  <data name="Tunnel_TargetHostLabel" xml:space="preserve">
+    <value>ターゲットホスト(サーバー視点)</value>
+  </data>
+  <data name="Tunnel_Title" xml:space="preserve">
+    <value>トンネル</value>
+  </data>
+  <data name="Tunnel_TypeLabel" xml:space="preserve">
+    <value>種類</value>
+  </data>
+  <data name="TunnelSvc_ForwardProhibited" xml:space="preserve">
+    <value>サーバーがポート転送を禁止しています(sshd 設定 AllowTcpForwarding no)。</value>
+  </data>
+  <data name="TunnelSvc_TargetRefused" xml:space="preserve">
+    <value>接続先が接続を拒否しました。接続先アドレスはサーバー側から解決されます。サーバー自身のサービスを転送する場合は 127.0.0.1 を使用し、対象ポートが待ち受け中であることを確認してください。</value>
+  </data>
+  <data name="TunnelSvc_TargetUnreachable" xml:space="preserve">
+    <value>接続先に到達できません。サーバーから対象ホストにアクセスできるか確認してください(内部アドレス/ファイアウォール)。</value>
+  </data>
+  <data name="Upload" xml:space="preserve">
+    <value>アップロード</value>
+  </data>
+  <data name="UploadFilesHere" xml:space="preserve">
+    <value>このフォルダーへファイルをアップロード</value>
+  </data>
+  <data name="UploadFolderHere" xml:space="preserve">
+    <value>このフォルダーへフォルダーをアップロード</value>
+  </data>
+  <data name="Username" xml:space="preserve">
+    <value>ユーザー名</value>
+  </data>
+  <data name="Warning" xml:space="preserve">
+    <value>警告</value>
+  </data>
+</root>

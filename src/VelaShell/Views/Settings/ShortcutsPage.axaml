@@ -1,13 +1,14 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:VelaShell.ViewModels"
+             xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Views.Settings.ShortcutsPage"
              x:DataType="vm:SettingsViewModel">
 
   <StackPanel Spacing="14">
     <StackPanel Spacing="2">
-      <TextBlock Classes="page-title" Text="快捷键参考" />
-      <TextBlock Classes="page-subtitle" Text="// 当前版本的内置键位一览(只读)" />
+      <TextBlock Classes="page-title" Text="{loc:Localize SetShortcuts_Title}" />
+      <TextBlock Classes="page-subtitle" Text="{loc:Localize SetShortcuts_Subtitle}" />
     </StackPanel>
 
     <ItemsControl ItemsSource="{Binding ShortcutGroups}">

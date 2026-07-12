@@ -3,6 +3,7 @@ using System.Reactive.Linq;
 using System.Security;
 using ReactiveUI;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.ViewModels;
 
@@ -41,8 +42,8 @@ public class AuthenticationDialogViewModel : ReactiveObject
         _username = username ?? string.Empty;
         _methodIndex = initialMethod == AuthMethod.PrivateKey ? 2 : 0;
         FingerprintText = string.IsNullOrEmpty(knownFingerprint)
-                              ? "指纹: 首次连接,将在握手时记录"
-                              : $"指纹: {Shorten(knownFingerprint)}(已信任)";
+                              ? Strings.Get("Auth_FingerprintFirstConnect")
+                              : Strings.Format("Auth_FingerprintTrusted", Shorten(knownFingerprint));
         IObservable<bool> canNext = this.WhenAnyValue(x => x.Username)
                                         .Select(name => !string.IsNullOrWhiteSpace(name));
         NextCommand = ReactiveCommand.Create(() => { Step = 2; }, canNext);
@@ -88,7 +89,7 @@ public class AuthenticationDialogViewModel : ReactiveObject
 
     public bool IsStep2 => Step == 2;
 
-    public string HeaderTitle => $"身份验证 - 第 {Step} 步";
+    public string HeaderTitle => Strings.Format("Auth_HeaderTitle", Step);
 
     /// <summary>信息栏第一行:第 1 步“正在连接 …”,第 2 步“user@host:port”。</summary>
     public string TargetText
@@ -98,14 +99,14 @@ public class AuthenticationDialogViewModel : ReactiveObject
             string target = string.IsNullOrWhiteSpace(Username)
                                 ? $"{field}:{_port}"
                                 : $"{Username}@{field}:{_port}";
-            return Step == 1 ? $"正在连接 {target}" : target;
+            return Step == 1 ? Strings.Format("Auth_ConnectingTo", target) : target;
         }
     }
 
     public string FingerprintText { get; }
 
     /// <summary>第 2 步信息栏第二行。</summary>
-    public string UsernameLine => $"用户名: {Username}";
+    public string UsernameLine => Strings.Format("Auth_UsernameLine", Username);
 
     public string Username
     {

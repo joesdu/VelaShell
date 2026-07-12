@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using DynamicData;
 using Microsoft.Extensions.Logging;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Core.Tunnels;
 
@@ -169,13 +170,13 @@ public class TunnelService(
         switch (socket?.SocketErrorCode)
         {
             case SocketError.ConnectionRefused:
-                return "目标拒绝连接:目标地址是从服务器视角解析的,转发服务器本机服务请用 127.0.0.1,并确认目标端口正在监听。";
+                return Strings.Get("TunnelSvc_TargetRefused");
             case SocketError.TimedOut or SocketError.HostUnreachable:
-                return "目标不可达:请确认目标主机从服务器可以访问(内网地址/防火墙)。";
+                return Strings.Get("TunnelSvc_TargetUnreachable");
         }
         if (ex.Message.Contains("administratively prohibited", StringComparison.OrdinalIgnoreCase))
         {
-            return "服务器禁止了端口转发(sshd 配置 AllowTcpForwarding no)。";
+            return Strings.Get("TunnelSvc_ForwardProhibited");
         }
         return ex.Message;
     }

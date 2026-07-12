@@ -2,6 +2,7 @@ using System.Text;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.Views;
 
@@ -35,7 +36,7 @@ public partial class RemoteFileEditorView : Window
         Editor.TextChanged += (_, _) =>
         {
             _dirty = true;
-            StatusText.Text = "● 未保存的更改";
+            StatusText.Text = Strings.Get("Editor_Unsaved");
         };
     }
 
@@ -46,7 +47,7 @@ public partial class RemoteFileEditorView : Window
         _encoding = DetectEncoding(bytes);
         Editor.Text = _encoding.GetString(bytes, PreambleLength(bytes, _encoding), bytes.Length - PreambleLength(bytes, _encoding));
         _dirty = false;
-        StatusText.Text = $"UTF 文本 · {bytes.Length:N0} B · 已就绪";
+        StatusText.Text = Strings.Format("Editor_LoadedStatus", bytes.Length.ToString("N0"));
     }
 
     private static Encoding DetectEncoding(byte[] bytes)
@@ -90,17 +91,17 @@ public partial class RemoteFileEditorView : Window
             return;
         }
         _saving = true;
-        StatusText.Text = "保存中…";
+        StatusText.Text = Strings.Get("Editor_Saving");
         try
         {
             await File.WriteAllTextAsync(_localPath, Editor.Text, _encoding);
             await _uploadAsync();
             _dirty = false;
-            StatusText.Text = $"已保存并同步到服务器 · {DateTime.Now:HH:mm:ss}";
+            StatusText.Text = Strings.Format("Editor_SavedStatus", DateTime.Now.ToString("HH:mm:ss"));
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"保存失败:{ex.Message}";
+            StatusText.Text = Strings.Format("Editor_SaveFailed", ex.Message);
         }
         finally
         {
@@ -131,8 +132,8 @@ public partial class RemoteFileEditorView : Window
 
     private async Task ConfirmDiscardAndCloseAsync()
     {
-        bool discard = await MessageDialog.ConfirmAsync(this, "未保存的更改",
-                           "文件有未保存的修改,关闭将丢弃这些更改。", "放弃并关闭",
+        bool discard = await MessageDialog.ConfirmAsync(this, Strings.Get("Editor_UnsavedTitle"),
+                           Strings.Get("Editor_UnsavedBody"), Strings.Get("Editor_DiscardAndClose"),
                            kind: MessageDialogKind.Warning, danger: true);
         if (discard)
         {

@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using VelaShell.Core.Resources;
 using VelaShell.Terminal.Rendering;
 using VelaShell.ViewModels;
 
@@ -85,7 +86,7 @@ public partial class RecordingPlayerView : Window
         }
         IStorageFile? file = await StorageProvider.SaveFilePickerAsync(new()
         {
-            Title = "导出录制",
+            Title = Strings.Get("Recorder_Export"),
             SuggestedFileName = $"velashell-recording-{DateTime.Now:yyyyMMdd-HHmmss}.cast",
             DefaultExtension = "cast"
         });

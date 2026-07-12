@@ -1,18 +1,19 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:VelaShell.ViewModels"
+             xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Views.Settings.DonatePage"
              x:DataType="vm:SettingsViewModel">
 
   <StackPanel Spacing="14">
     <StackPanel Spacing="2">
-      <TextBlock Classes="page-title" Text="支持与捐赠" />
-      <TextBlock Classes="page-subtitle" Text="// 感谢你使用 VelaShell" />
+      <TextBlock Classes="page-title" Text="{loc:Localize SetDonate_Title}" />
+      <TextBlock Classes="page-subtitle" Text="{loc:Localize SetDonate_Subtitle}" />
     </StackPanel>
 
     <TextBlock TextWrapping="Wrap" FontSize="12" LineHeight="20"
                Foreground="{DynamicResource VelaTextSecondary}"
-               Text="VelaShell 是一个由个人维护的开源项目。如果它让你的日常运维与开发更顺手,欢迎以你喜欢的方式支持它长久走下去——每一份支持都会转化为新功能、性能优化和更快的问题修复。" />
+               Text="{loc:Localize SetDonate_Intro}" />
 
     <!-- 最佳支持方式:参与贡献 -->
     <Border Background="{DynamicResource VelaBgActive}"
@@ -20,19 +21,19 @@
       <StackPanel Spacing="6">
         <TextBlock FontSize="12" FontWeight="SemiBold"
                    Foreground="{DynamicResource VelaAccent}"
-                   Text="最好的支持方式:参与贡献" />
+                   Text="{loc:Localize SetDonate_ContributeTitle}" />
         <TextBlock TextWrapping="Wrap" FontSize="12" LineHeight="20"
                    Foreground="{DynamicResource VelaTextSecondary}"
-                   Text="比捐赠更有价值的,是你的参与:为项目提交 PR、改善性能与体验、修复 Bug、完善文档,或在 Issue 中反馈你遇到的问题和想法。每一次代码贡献,都能让 VelaShell 走得更远。" />
+                   Text="{loc:Localize SetDonate_ContributeBody}" />
       </StackPanel>
     </Border>
 
     <Border Classes="sep" />
 
     <!-- 捐赠二维码 -->
-    <TextBlock Classes="section-title" Text="请开发者喝杯咖啡" />
+    <TextBlock Classes="section-title" Text="{loc:Localize SetDonate_CoffeeTitle}" />
     <TextBlock Classes="row-desc"
-               Text="// 捐赠完全自愿、金额随意;无论是否捐赠,VelaShell 的全部功能永远免费开放" />
+               Text="{loc:Localize SetDonate_CoffeeDesc}" />
 
     <!-- 两张收款码已裁剪为相同比例(0.842)的纯二维码白卡;卡片区拉满内容宽度,
          同一 Grid 行内两个 Border 自动等高,卡内“图片行 + 贴底标签行”保证左右标签底对齐。 -->
@@ -47,7 +48,7 @@
                  MaxWidth="260" Stretch="Uniform"
                  HorizontalAlignment="Center" VerticalAlignment="Center" />
           <TextBlock Grid.Row="1" Margin="0,10,0,0"
-                     Text="支付宝" FontSize="12" FontWeight="Medium"
+                     Text="{loc:Localize SetDonate_Alipay}" FontSize="12" FontWeight="Medium"
                      HorizontalAlignment="Center"
                      Foreground="{DynamicResource VelaTextPrimary}" />
         </Grid>
@@ -62,7 +63,7 @@
                  MaxWidth="260" Stretch="Uniform"
                  HorizontalAlignment="Center" VerticalAlignment="Center" />
           <TextBlock Grid.Row="1" Margin="0,10,0,0"
-                     Text="微信支付" FontSize="12" FontWeight="Medium"
+                     Text="{loc:Localize SetDonate_WeChatPay}" FontSize="12" FontWeight="Medium"
                      HorizontalAlignment="Center"
                      Foreground="{DynamicResource VelaTextPrimary}" />
         </Grid>
@@ -72,9 +73,9 @@
     <Border Classes="sep" />
 
     <!-- 国际捐赠(Wise) -->
-    <TextBlock Classes="section-title" Text="国际捐赠(Wise)" />
+    <TextBlock Classes="section-title" Text="{loc:Localize SetDonate_InternationalTitle}" />
     <TextBlock Classes="row-desc"
-               Text="// 身处国外,或希望使用美元、欧元等其他货币支持,可以通过 Wise 付款" />
+               Text="{loc:Localize SetDonate_InternationalDesc}" />
 
     <Border Background="{DynamicResource VelaBgInput}"
             BorderBrush="{DynamicResource VelaBorderPrimary}"
@@ -90,17 +91,17 @@
         <StackPanel Grid.Column="2" Spacing="8" VerticalAlignment="Center">
           <TextBlock TextWrapping="Wrap" FontSize="12" LineHeight="20"
                      Foreground="{DynamicResource VelaTextSecondary}"
-                     Text="扫描二维码,或点击下方付款链接,即可用你所在地区的货币完成捐赠:" />
+                     Text="{loc:Localize SetDonate_WiseHint}" />
           <!-- 可点击链接:点击在系统浏览器打开付款页。 -->
           <TextBlock FontFamily="{DynamicResource VelaTerminalFont}" FontSize="11"
                      Foreground="{DynamicResource VelaAccentText}"
                      TextWrapping="Wrap"
                      TextDecorations="Underline"
                      Cursor="Hand"
-                     ToolTip.Tip="在浏览器中打开"
+                     ToolTip.Tip="{loc:Localize SetDonate_OpenInBrowser}"
                      PointerPressed="WiseLink_PointerPressed"
                      Text="https://wise.com/pay/me/yud162" />
-          <Button Classes="dlg-outline" Content="复制付款链接"
+          <Button Classes="dlg-outline" Content="{loc:Localize SetDonate_CopyPaymentLink}"
                   HorizontalAlignment="Left"
                   Click="CopyWiseLink_Click" />
         </StackPanel>
@@ -109,6 +110,6 @@
 
     <TextBlock TextWrapping="Wrap" FontSize="11" LineHeight="18"
                Foreground="{DynamicResource VelaTextMuted}"
-               Text="谢谢你愿意读到这里。无论是一次捐赠、一个 Star、一条 Issue 还是一个 PR,都是这个项目继续维护下去的动力。" />
+               Text="{loc:Localize SetDonate_Thanks}" />
   </StackPanel>
 </UserControl>

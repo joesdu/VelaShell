@@ -679,7 +679,7 @@ public class FileBrowserViewModel : ReactiveObject
     {
         if (_sftpService is null)
         {
-            throw new InvalidOperationException("SFTP 服务不可用。");
+            throw new InvalidOperationException(Strings.Get("Msg_SftpUnavailable"));
         }
         var task = new TransferTask
         {
@@ -720,7 +720,7 @@ public class FileBrowserViewModel : ReactiveObject
         }
         if (file.SizeBytes > MaxBuiltInEditSize)
         {
-            ErrorMessage = "文件超过 5 MB,内置编辑器仅适合小文本;请下载后在本地编辑。";
+            ErrorMessage = Strings.Get("Msg_FileTooLargeForBuiltInEditor");
             return;
         }
         try
@@ -760,7 +760,7 @@ public class FileBrowserViewModel : ReactiveObject
             }
             else
             {
-                ErrorMessage = "未配置默认编辑器,请在 设置 → 文件传输 → 默认编辑器 中填写(如 notepad)。";
+                ErrorMessage = Strings.Get("Msg_DefaultEditorNotConfigured");
             }
             return;
         }

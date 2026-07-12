@@ -54,7 +54,21 @@ public class App : Application
         _themeService = _serviceProvider.GetRequiredService<IThemeService>();
 
         // Live-rebinding localized strings ({loc:Localize}) follow the DI service (#4).
-        LocalizedStrings.Instance.Attach(_serviceProvider.GetRequiredService<ILocalizationService>());
+        ILocalizationService localization = _serviceProvider.GetRequiredService<ILocalizationService>();
+        LocalizedStrings.Instance.Attach(localization);
+
+        // UI 线程的线程级文化在 Dispatcher 顶层回调里补设:异步命令(设置保存)里
+        // 设置的文化随 ExecutionContext 回卷丢失,而 UI 线程启动时已显式设置过文化,
+        // DefaultThreadCurrentUICulture 对它无效。这里保证 C# 侧 Strings.Get 与
+        // 日期/数字格式化在换语言后于 UI 线程取到新文化(绑定取词本身不依赖它,
+        // LocalizationService 自持文化)。
+        localization.LanguageChanged += lang =>
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    var culture = new System.Globalization.CultureInfo(lang);
+                    System.Globalization.CultureInfo.CurrentUICulture = culture;
+                    System.Globalization.CultureInfo.CurrentCulture = culture;
+                });
         _themeService.ThemeChanged += OnThemeChanged;
         _themeService.AccentChanged += ApplyAccent;
         ApplyThemeVariant(_themeService.CurrentTheme);

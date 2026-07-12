@@ -8,6 +8,7 @@
              xmlns:controls="using:VelaShell.Controls"
              xmlns:pc="using:VelaShell.Controls.Controls"
              xmlns:res="clr-namespace:VelaShell.Core.Resources;assembly=VelaShell.Core"
+             xmlns:loc="using:VelaShell.Localization"
              mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="800"
              x:Class="VelaShell.Views.TerminalTabView"
              x:DataType="vm:TerminalTabViewModel">
@@ -48,7 +49,7 @@
                    Background="{DynamicResource VelaBgInput}"
                    Foreground="{DynamicResource VelaTextPrimary}"
                    BorderBrush="{DynamicResource VelaBorderPrimary}"
-                   PlaceholderText="在终端中查找" />
+                   PlaceholderText="{loc:Localize Term_SearchPlaceholder}" />
           <TextBlock x:Name="SearchCount" Grid.Column="4"
                      Foreground="{DynamicResource VelaTextMuted}"
                      FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10"
@@ -56,21 +57,21 @@
           <Button x:Name="SearchPrev" Grid.Column="6"
                   Width="22" Height="22" Padding="0" Background="Transparent" CornerRadius="3"
                   HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                  ToolTip.Tip="上一个 (Shift+Enter)">
+                  ToolTip.Tip="{loc:Localize Term_SearchPrev}">
             <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.chevron-left}"
                            Foreground="{DynamicResource VelaTextTertiary}" />
           </Button>
           <Button x:Name="SearchNext" Grid.Column="8"
                   Width="22" Height="22" Padding="0" Background="Transparent" CornerRadius="3"
                   HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                  ToolTip.Tip="下一个 (Enter)">
+                  ToolTip.Tip="{loc:Localize Term_SearchNext}">
             <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.chevron-right}"
                            Foreground="{DynamicResource VelaTextTertiary}" />
           </Button>
           <Button x:Name="SearchClose" Grid.Column="10"
                   Width="22" Height="22" Padding="0" Background="Transparent" CornerRadius="3"
                   HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                  ToolTip.Tip="关闭 (Esc)">
+                  ToolTip.Tip="{loc:Localize Term_SearchClose}">
             <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.x}"
                            Foreground="{DynamicResource VelaTextTertiary}" />
           </Button>
@@ -211,7 +212,7 @@
                   <pc:LucideIcon Width="13" Height="13"
                                  Data="{StaticResource Icon.refresh-cw}"
                                  Foreground="#FFFFFF" VerticalAlignment="Center" />
-                  <TextBlock Text="重新连接" Foreground="#FFFFFF"
+                  <TextBlock Text="{loc:Localize Reconnect}" Foreground="#FFFFFF"
                              FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </StackPanel>
               </Button>
@@ -220,7 +221,7 @@
                       BorderBrush="{DynamicResource VelaBorderSecondary}"
                       BorderThickness="1"
                       CornerRadius="4" Padding="16,8">
-                <TextBlock Text="关闭标签页"
+                <TextBlock Text="{loc:Localize CloseTab}"
                            Foreground="{DynamicResource VelaTextSecondary}"
                            FontSize="12" FontWeight="Medium" VerticalAlignment="Center" />
               </Button>

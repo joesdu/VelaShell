@@ -102,21 +102,21 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
-    } = "内存";
+    } = Strings.Get("Svc_Memory");
 
     /// <summary>悬停提示:每个磁盘(挂载点)的用量。</summary>
     public string DiskTooltip
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
-    } = "磁盘";
+    } = Strings.Get("Svc_Disk");
 
     /// <summary>悬停提示:每个网卡的上下行速率。</summary>
     public string NetTooltip
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
-    } = "网速";
+    } = Strings.Get("Svc_NetSpeed");
 
     /// <summary>Swap usage percent; "--" when the host has no swap or no session is live.</summary>
     public string SwapUsage
@@ -197,9 +197,9 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
         IsNetUpActive = false;
         IsNetDownActive = false;
         CpuTooltip = "CPU";
-        MemTooltip = "内存";
-        DiskTooltip = "磁盘";
-        NetTooltip = "网速";
+        MemTooltip = Strings.Get("Svc_Memory");
+        DiskTooltip = Strings.Get("Svc_Disk");
+        NetTooltip = Strings.Get("Svc_NetSpeed");
     }
 
     public static string FormatRate(double bytesPerSec)

@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:VelaShell.ViewModels"
              xmlns:pc="using:VelaShell.Controls.Controls"
+             xmlns:loc="using:VelaShell.Localization"
              mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="160"
              x:Class="VelaShell.Views.FileTransferView"
              x:DataType="vm:FileTransferViewModel">
@@ -31,7 +32,7 @@
             <pc:LucideIcon Width="12" Height="12"
                            Data="{StaticResource Icon.arrow-up-down}"
                            Foreground="{DynamicResource VelaAccent}" />
-            <TextBlock Text="传输"
+            <TextBlock Text="{loc:Localize Transfer_Title}"
                        Foreground="{DynamicResource VelaTextPrimary}"
                        FontFamily="{DynamicResource VelaTerminalFont}"
                        FontSize="11" FontWeight="Medium"
@@ -51,15 +52,15 @@
             <Button Background="Transparent" Padding="4,1" Cursor="Hand"
                     IsVisible="{Binding IsBatchActive}"
                     Command="{Binding CancelAllCommand}"
-                    ToolTip.Tip="取消剩余传输">
-              <TextBlock Text="取消"
+                    ToolTip.Tip="{loc:Localize Transfer_CancelRemainingTip}">
+              <TextBlock Text="{loc:Localize Cancel}"
                          Foreground="{DynamicResource VelaError}"
                          FontFamily="{DynamicResource VelaTerminalFont}"
                          FontSize="10" FontWeight="Medium" />
             </Button>
             <Button Background="Transparent" Padding="2" Cursor="Hand"
                     Command="{Binding HidePanelCommand}"
-                    ToolTip.Tip="收起（任务继续后台执行）">
+                    ToolTip.Tip="{loc:Localize Transfer_CollapseTip}">
               <pc:LucideIcon Width="12" Height="12"
                              Data="{StaticResource Icon.x}"
                              Foreground="{DynamicResource VelaTextTertiary}" />

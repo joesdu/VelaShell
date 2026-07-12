@@ -5,6 +5,7 @@
              xmlns:conv="using:VelaShell.Converters"
              xmlns:pc="using:VelaShell.Controls.Controls"
              xmlns:controls="using:VelaShell.Controls"
+             xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Docking.Controls.DockGroupControl"
              x:DataType="m:DockGroup">
 
@@ -43,7 +44,7 @@
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </RepeatButton>
 
-        <Button Classes="tab-nav" Click="TabListDrop_Click" ToolTip.Tip="所有标签页">
+        <Button Classes="tab-nav" Click="TabListDrop_Click" ToolTip.Tip="{loc:Localize Dock_AllTabs}">
           <pc:LucideIcon Width="14" Height="14"
                          Data="{DynamicResource Icon.chevron-down}"
                          Foreground="{DynamicResource VelaTextTertiary}" />
@@ -80,7 +81,7 @@
     <Border Background="{DynamicResource VelaBgTerminal}" ClipToBounds="True">
       <Panel>
         <TextBlock x:Name="EmptyHint"
-                   Text="将标签拖到此处"
+                   Text="{loc:Localize Dock_DropTabHere}"
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center"
                    FontFamily="{DynamicResource VelaTerminalFont}"

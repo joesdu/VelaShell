@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Platform;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.Services;
 
@@ -56,9 +57,9 @@ public sealed class TrayIconService(Application app) : IDisposable
 
     private NativeMenu BuildMenu()
     {
-        var show = new NativeMenuItem("显示主窗口");
+        var show = new NativeMenuItem(Strings.Get("Tray_ShowMainWindow"));
         show.Click += (_, _) => ShowRequested?.Invoke();
-        var exit = new NativeMenuItem("退出 VelaShell");
+        var exit = new NativeMenuItem(Strings.Get("Tray_ExitApp"));
         exit.Click += (_, _) => ExitRequested?.Invoke();
         return new()
         {

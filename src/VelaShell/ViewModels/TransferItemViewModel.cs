@@ -1,5 +1,6 @@
 using ReactiveUI;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.ViewModels;
 
@@ -89,8 +90,8 @@ public class TransferItemViewModel : ReactiveObject
     /// <summary>Right-hand status: "67%" while running, "完成" when done, "失败" on error.</summary>
     public string ProgressText => _status switch
     {
-        TransferStatus.Completed => "完成",
-        TransferStatus.Failed => "失败",
+        TransferStatus.Completed => Strings.Get("Msg_Done"),
+        TransferStatus.Failed => Strings.Get("Msg_Failed"),
         _ => $"{_progress}%"
     };
 
@@ -99,17 +100,17 @@ public class TransferItemViewModel : ReactiveObject
     {
         get
         {
-            string action = _task.Type == TransferType.Upload ? "↑ 上传中" : "↓ 下载中";
+            string action = _task.Type == TransferType.Upload ? $"↑ {Strings.Get("Msg_Uploading")}" : $"↓ {Strings.Get("Msg_Downloading")}";
             if (_status == TransferStatus.Completed)
             {
-                action = _task.Type == TransferType.Upload ? "↑ 已上传" : "↓ 已下载";
+                action = _task.Type == TransferType.Upload ? $"↑ {Strings.Get("Msg_Uploaded")}" : $"↓ {Strings.Get("Msg_Downloaded")}";
             }
             else if (_status == TransferStatus.Failed)
             {
-                action = "失败";
+                action = Strings.Get("Msg_Failed");
             }
             return _status == TransferStatus.Completed
-                       ? $"{FormatBytes(_totalSize)}  •  已完成  •  {action}"
+                       ? $"{FormatBytes(_totalSize)}  •  {Strings.Get("Msg_Completed")}  •  {action}"
                        : $"{FormatBytes(_transferredBytes)} / {FormatBytes(_totalSize)}  •  {_speed}  •  {action}";
         }
     }

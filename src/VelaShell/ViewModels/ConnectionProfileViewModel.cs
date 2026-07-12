@@ -5,6 +5,7 @@ using System.Security;
 using ReactiveUI;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Presentation.Services;
 using VelaShell.Security;
 
@@ -19,7 +20,7 @@ public sealed record GroupOption(Guid? Id, string Name)
 public class ConnectionProfileViewModel : ReactiveObject
 {
     /// <summary>“未分组”选项/输入的显示名;输入等于该名或留空即保存为未分组。</summary>
-    private const string UngroupedName = "未分组";
+    private static readonly string UngroupedName = Strings.Get("Msg_Ungrouped");
 
     private readonly IConnectionWorkflowService? _connectionWorkflowService;
 
@@ -53,7 +54,7 @@ public class ConnectionProfileViewModel : ReactiveObject
         _sessionRepository = sessionRepository;
         Groups = [new(null, UngroupedName)];
         _selectedGroup = Groups[0];
-        JumpHostOptions = [new(null, "直连(不使用跳板)")];
+        JumpHostOptions = [new(null, Strings.Get("Msg_DirectConnection"))];
         _selectedJumpHost = JumpHostOptions[0];
 
         // 新建连接的默认值(设置 → 常规 → 连接默认值 / 密钥管理 → 默认认证密钥)。

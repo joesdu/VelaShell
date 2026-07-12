@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using ReactiveUI;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.Presentation.ViewModels;
 
@@ -74,9 +75,9 @@ public sealed class SessionTreeNodeViewModel(Guid id, string name, bool isGroup)
 
     public string StatusTagText => _status switch
     {
-        SessionStatus.Connected => "活跃",
-        SessionStatus.Connecting => "连接中",
-        SessionStatus.Error => "离线",
+        SessionStatus.Connected => Strings.Get("Svc_Active"),
+        SessionStatus.Connecting => Strings.Connecting,
+        SessionStatus.Error => Strings.Get("Svc_Offline"),
         _ => string.Empty
     };
 

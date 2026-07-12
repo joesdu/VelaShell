@@ -2,49 +2,50 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:VelaShell.ViewModels"
              xmlns:models="using:VelaShell.Core.Models"
+             xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Views.Settings.SecurityAuditPage"
              x:DataType="vm:SettingsViewModel">
 
   <StackPanel Spacing="14">
     <StackPanel Spacing="2">
-      <TextBlock Classes="page-title" Text="安全与审计" />
-      <TextBlock Classes="page-subtitle" Text="// 录制策略、信任策略与风险告警" />
+      <TextBlock Classes="page-title" Text="{loc:Localize SetSecurity_Title}" />
+      <TextBlock Classes="page-subtitle" Text="{loc:Localize SetSecurity_Subtitle}" />
     </StackPanel>
 
     <!-- 会话录制(设计 NceE6;设置审计 R-11 已实现恢复展示)。
          输入脱敏(R-12)不再需要:录制仅捕获终端输出流,密码输入本就无回显。 -->
-    <TextBlock Classes="section-title" Text="会话录制" />
+    <TextBlock Classes="section-title" Text="{loc:Localize SetSecurity_SectionRecording}" />
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="自动录制所有会话" />
-        <TextBlock Classes="row-desc" Text="// 记录终端输出到本地数据库供审计与回放;对之后建立的连接生效,保留天数随「常规 → 终端会话日志保留天数」" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetSecurity_AutoRecord}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetSecurity_AutoRecordDesc}" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.RecordProductionSessions}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="录制与回放中心" />
-        <TextBlock Classes="row-desc" Text="// 查看录制列表、按时间轴回放(支持倍速与跳过空闲)、导出与删除" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetSecurity_RecordingCenter}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetSecurity_RecordingCenterDesc}" />
       </StackPanel>
-      <Button Grid.Column="1" Classes="dlg-outline" Content="打开回放中心"
+      <Button Grid.Column="1" Classes="dlg-outline" Content="{loc:Localize SetSecurity_OpenPlayer}"
               Click="OpenRecordingPlayer_Click" VerticalAlignment="Center" />
     </Grid>
 
     <Border Classes="sep" />
 
     <!-- 主机信任策略 -->
-    <TextBlock Classes="section-title" Text="主机信任策略" />
+    <TextBlock Classes="section-title" Text="{loc:Localize SetSecurity_SectionTrust}" />
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="首次连接需人工确认指纹" />
-        <TextBlock Classes="row-desc" Text="// 关闭时首次连接自动记录指纹(TOFU)" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetSecurity_ConfirmFirstFingerprint}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetSecurity_ConfirmFirstFingerprintDesc}" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.ConfirmFirstFingerprint}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="指纹变更时阻断并告警" />
-        <TextBlock Classes="row-desc" Text="// 与 known_hosts 记录不符即拒绝连接,防中间人" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetSecurity_BlockOnChange}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetSecurity_BlockOnChangeDesc}" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.BlockOnFingerprintChange}" VerticalAlignment="Center" />
     </Grid>
@@ -53,17 +54,17 @@
 
     <!-- 已信任主机(known_hosts):查看/删除已记录的主机指纹。
          删除即时生效,下次连接该主机将重新执行首次指纹确认流程。 -->
-    <TextBlock Classes="section-title" Text="已信任主机" />
+    <TextBlock Classes="section-title" Text="{loc:Localize SetSecurity_SectionKnownHosts}" />
     <TextBlock Classes="row-desc"
-               Text="// 已记录指纹的主机列表;删除后下次连接将重新执行首次指纹确认" />
+               Text="{loc:Localize SetSecurity_KnownHostsDesc}" />
     <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasKnownHosts}">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="隐藏主机地址" />
-        <TextBlock Classes="row-desc" Text="// 截图防泄露:隐藏 IP 与端口;每次打开设置默认开启,不会保存关闭状态" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetSecurity_MaskAddresses}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetSecurity_MaskAddressesDesc}" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding MaskKnownHostAddresses}" VerticalAlignment="Center" />
     </Grid>
-    <TextBlock Classes="row-desc" Text="暂无已信任的主机"
+    <TextBlock Classes="row-desc" Text="{loc:Localize SetSecurity_NoKnownHosts}"
                IsVisible="{Binding !HasKnownHosts}" />
     <Border Classes="table" IsVisible="{Binding HasKnownHosts}">
       <ItemsControl ItemsSource="{Binding KnownHosts}">
@@ -96,7 +97,7 @@
                              TextWrapping="Wrap"
                              Text="{Binding Fingerprint}" />
                 </StackPanel>
-                <Button Grid.Column="1" Classes="dlg-danger" Content="删除"
+                <Button Grid.Column="1" Classes="dlg-danger" Content="{loc:Localize Delete}"
                         VerticalAlignment="Center"
                         Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).RemoveKnownHostCommand}"
                         CommandParameter="{Binding}" />
@@ -110,23 +111,23 @@
     <Border Classes="sep" />
 
     <!-- 告警通道 -->
-    <TextBlock Text="告警通道:应用内通知 + 提示音 + Webhook"
+    <TextBlock Text="{loc:Localize SetSecurity_SectionAlerts}"
                Foreground="#74B9FF" FontSize="12" FontWeight="SemiBold" />
     <Grid ColumnDefinitions="*,Auto">
-      <TextBlock Classes="row-label" Text="应用内通知" VerticalAlignment="Center" />
+      <TextBlock Classes="row-label" Text="{loc:Localize SetSecurity_AlertInApp}" VerticalAlignment="Center" />
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.AlertInApp}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="安全事件发生时播放声音" />
-        <TextBlock Classes="row-desc" Text="// 主机指纹变更等安全事件时播放系统提示音;连接断开的提示音在「常规」页单独设置" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetSecurity_AlertSound}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetSecurity_AlertSoundDesc}" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.AlertSound}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="Webhook" />
-        <TextBlock Classes="row-desc" Text="// 安全事件以 JSON POST 推送到自定义 HTTP 端点" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetSecurity_WebhookDesc}" />
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Security.AlertWebhook}" VerticalAlignment="Center" />
     </Grid>
@@ -135,7 +136,7 @@
       <TextBlock Classes="row-label" Text="Webhook URL" />
       <TextBox Text="{Binding Security.WebhookUrl}" PlaceholderText="https://example.com/hooks/velashell" />
       <TextBlock Classes="row-desc"
-                 Text="// 事件负载:{ source, event, message, detail, timestamp };端点不可达不影响连接流程" />
+                 Text="{loc:Localize SetSecurity_WebhookPayloadDesc}" />
     </StackPanel>
   </StackPanel>
 </UserControl>

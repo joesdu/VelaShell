@@ -268,11 +268,11 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// </summary>
     public bool ShowDisconnectedOverlay => !_disposed && ConnectionStatus is SessionStatus.Disconnected or SessionStatus.Error && (Profile is not null || LocalShell is not null);
 
-    public string DisconnectOverlayTitle => HasConnectionError ? "连接失败" : "连接已断开";
+    public string DisconnectOverlayTitle => HasConnectionError ? Strings.Get("Msg_ConnectionFailedTitle") : Strings.Get("Msg_ConnectionClosedTitle");
 
     public string DisconnectOverlayDetail => HasConnectionError
                                                  ? ConnectionError!
-                                                 : $"// 与 {OverlayHostLabel} 的 SSH 连接已丢失";
+                                                 : Strings.Format("Msg_SshConnectionLostDetail", OverlayHostLabel);
 
     private string OverlayHostLabel => Profile is { } p ? $"{p.Host}:{p.Port}" : Title;
 

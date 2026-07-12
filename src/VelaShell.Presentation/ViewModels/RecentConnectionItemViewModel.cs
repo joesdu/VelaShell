@@ -1,4 +1,5 @@
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.Presentation.ViewModels;
 
@@ -18,10 +19,7 @@ public sealed class RecentConnectionItemViewModel(RecentConnectionEntry entry)
     public string RelativeTime { get; } = FormatRelativeTime(entry.ConnectedAt);
 
     /// <summary>悬停提示保留 user@host:port,列表本身不再显示该形式。</summary>
-    public string Tooltip { get; } = $"""
-                                      {entry.Username}@{entry.Host}:{entry.Port}
-                                      双击连接
-                                      """;
+    public string Tooltip { get; } = $"{entry.Username}@{entry.Host}:{entry.Port}\n{Strings.Get("Svc_DoubleClickToConnect")}";
 
     private static string FormatRelativeTime(DateTimeOffset timestamp, DateTimeOffset? now = null)
     {
@@ -29,23 +27,23 @@ public sealed class RecentConnectionItemViewModel(RecentConnectionEntry entry)
         TimeSpan elapsed = reference - timestamp;
         if (elapsed < TimeSpan.FromMinutes(1))
         {
-            return "刚刚";
+            return Strings.Get("Svc_JustNow");
         }
         if (elapsed < TimeSpan.FromHours(1))
         {
-            return $"{(int)elapsed.TotalMinutes} 分钟前";
+            return Strings.Format("Svc_MinutesAgo", (int)elapsed.TotalMinutes);
         }
         if (elapsed < TimeSpan.FromHours(24))
         {
-            return $"{(int)elapsed.TotalHours} 小时前";
+            return Strings.Format("Svc_HoursAgo", (int)elapsed.TotalHours);
         }
         if (timestamp.ToLocalTime().Date == reference.ToLocalTime().Date.AddDays(-1))
         {
-            return "昨天";
+            return Strings.Get("Svc_Yesterday");
         }
         if (elapsed < TimeSpan.FromDays(7))
         {
-            return $"{(int)elapsed.TotalDays} 天前";
+            return Strings.Format("Svc_DaysAgo", (int)elapsed.TotalDays);
         }
         return timestamp.ToLocalTime().ToString("yyyy-MM-dd");
     }

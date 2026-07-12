@@ -4,6 +4,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:ae="using:AvaloniaEdit"
         xmlns:pc="using:VelaShell.Controls.Controls"
+        xmlns:loc="using:VelaShell.Localization"
         mc:Ignorable="d" d:DesignWidth="920" d:DesignHeight="640"
         x:Class="VelaShell.Views.RemoteFileEditorView"
         Width="920" Height="640"
@@ -79,10 +80,10 @@
                 <pc:LucideIcon Width="12" Height="12"
                                Data="{DynamicResource Icon.save}"
                                Foreground="{DynamicResource VelaAccentForeground}" />
-                <TextBlock Text="保存" VerticalAlignment="Center" />
+                <TextBlock Text="{loc:Localize Save}" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
-            <Button Classes="chrome" Click="Maximize_Click" ToolTip.Tip="最大化/还原">
+            <Button Classes="chrome" Click="Maximize_Click" ToolTip.Tip="{loc:Localize Editor_MaximizeTip}">
               <pc:LucideIcon Width="13" Height="13"
                              Data="{DynamicResource Icon.maximize}"
                              Foreground="{DynamicResource VelaTextTertiary}" />

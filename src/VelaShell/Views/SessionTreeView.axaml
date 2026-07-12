@@ -5,6 +5,7 @@
              xmlns:vm="using:VelaShell.Presentation.ViewModels"
              xmlns:pc="using:VelaShell.Controls.Controls"
              xmlns:res="clr-namespace:VelaShell.Core.Resources;assembly=VelaShell.Core"
+             xmlns:loc="using:VelaShell.Localization"
              mc:Ignorable="d" d:DesignWidth="260" d:DesignHeight="400"
              x:Class="VelaShell.Views.SessionTreeView"
              x:DataType="vm:SessionTreeViewModel">
@@ -198,7 +199,7 @@
                                    Foreground="{DynamicResource VelaAccent}" />
                   </MenuItem.Icon>
                 </MenuItem>
-                <MenuItem Header="在新标签页打开"
+                <MenuItem Header="{loc:Localize Tree_OpenInNewTab}"
                           Command="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).ConnectCommand}"
                           IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
@@ -207,7 +208,7 @@
                   </MenuItem.Icon>
                 </MenuItem>
                 <Separator IsVisible="{Binding !IsGroup}" />
-                <MenuItem Header="编辑连接"
+                <MenuItem Header="{loc:Localize Tree_EditConnection}"
                           Command="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).EditSessionCommand}"
                           IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
@@ -215,7 +216,7 @@
                                    Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
-                <MenuItem Header="复制连接"
+                <MenuItem Header="{loc:Localize Tree_DuplicateConnection}"
                           Command="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).DuplicateSessionCommand}"
                           IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
@@ -224,7 +225,7 @@
                   </MenuItem.Icon>
                 </MenuItem>
                 <Separator IsVisible="{Binding !IsGroup}" />
-                <MenuItem Header="打开 SFTP"
+                <MenuItem Header="{loc:Localize Tree_OpenSftp}"
                           Command="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).OpenSftpCommand}"
                           IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
@@ -232,7 +233,7 @@
                                    Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
-                <MenuItem Header="端口转发"
+                <MenuItem Header="{loc:Localize Tree_PortForwarding}"
                           Command="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).PortForwardCommand}"
                           IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
@@ -240,7 +241,7 @@
                                    Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
-                <MenuItem Header="会话设置"
+                <MenuItem Header="{loc:Localize Tree_SessionSettings}"
                           Command="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).EditSessionCommand}"
                           IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
@@ -248,7 +249,7 @@
                                    Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
-                <MenuItem Header="移动到分组"
+                <MenuItem Header="{loc:Localize MoveToGroup}"
                           IsVisible="{Binding !IsGroup}"
                           ItemsSource="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).GroupNodes}">
                   <MenuItem.Icon>
@@ -264,7 +265,7 @@
                     </Style>
                   </MenuItem.Styles>
                 </MenuItem>
-                <MenuItem Header="连接诊断"
+                <MenuItem Header="{loc:Localize Tree_Diagnostics}"
                           Command="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).DiagnoseCommand}"
                           IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
@@ -273,7 +274,7 @@
                   </MenuItem.Icon>
                 </MenuItem>
                 <Separator IsVisible="{Binding !IsGroup}" />
-                <MenuItem Header="断开连接"
+                <MenuItem Header="{loc:Localize Disconnect}"
                           Command="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).DisconnectCommand}"
                           IsVisible="{Binding !IsGroup}"
                           Foreground="{DynamicResource VelaWarning}">

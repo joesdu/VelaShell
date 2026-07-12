@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Reactive;
 using ReactiveUI;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Sync;
 
 namespace VelaShell.ViewModels;
@@ -115,7 +116,7 @@ public class SyncViewModel : ReactiveObject
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
-    } = "从未同步";
+    } = Strings.Get("Msg_NeverSynced");
 
     public ObservableCollection<GistRevision> Revisions { get; } = [];
 
@@ -170,12 +171,12 @@ public class SyncViewModel : ReactiveObject
         {
             await SaveConfigCoreAsync();
             Status = HasSavedPassphrase
-                         ? "同步配置已保存(端到端加密:已启用)。"
-                         : "同步配置已保存(端到端加密:未启用,凭据不会上传)。";
+                         ? Strings.Get("Msg_SyncConfigSavedE2eOn")
+                         : Strings.Get("Msg_SyncConfigSavedE2eOff");
         }
         catch (Exception ex)
         {
-            Status = $"保存失败:{ex.Message}";
+            Status = Strings.Format("Msg_SaveFailed", ex.Message);
         }
         finally
         {
@@ -212,7 +213,7 @@ public class SyncViewModel : ReactiveObject
     private async Task RunAsync(Func<CancellationToken, Task<SyncResult>> operation)
     {
         IsBusy = true;
-        Status = "同步中…";
+        Status = Strings.Get("Msg_Syncing");
         try
         {
             // 同步前先把界面当前配置落盘:防止“在输入框填了令牌/口令,
@@ -228,7 +229,7 @@ public class SyncViewModel : ReactiveObject
         }
         catch (Exception ex)
         {
-            Status = $"同步失败:{ex.Message}";
+            Status = Strings.Format("Msg_SyncFailed", ex.Message);
         }
         finally
         {
@@ -247,11 +248,11 @@ public class SyncViewModel : ReactiveObject
             {
                 Revisions.Add(revision);
             }
-            Status = revisions.Count > 0 ? $"云端共 {revisions.Count} 个版本(最多显示 30 个)。" : "云端暂无版本记录。";
+            Status = revisions.Count > 0 ? Strings.Format("Msg_CloudRevisionCount", revisions.Count) : Strings.Get("Msg_NoCloudRevisions");
         }
         catch (Exception ex)
         {
-            Status = $"读取版本历史失败:{ex.Message}";
+            Status = Strings.Format("Msg_LoadRevisionsFailed", ex.Message);
         }
         finally
         {
@@ -263,7 +264,7 @@ public class SyncViewModel : ReactiveObject
     private async Task RestoreRevisionAsync(GistRevision revision)
     {
         IsBusy = true;
-        Status = "恢复中…";
+        Status = Strings.Get("Msg_Restoring");
         try
         {
             await SaveConfigCoreAsync(); // 同步操作前落盘界面配置(含未保存的口令输入)
@@ -274,7 +275,7 @@ public class SyncViewModel : ReactiveObject
         }
         catch (Exception ex)
         {
-            Status = $"恢复失败:{ex.Message}";
+            Status = Strings.Format("Msg_RestoreFailed", ex.Message);
         }
         finally
         {
@@ -284,6 +285,6 @@ public class SyncViewModel : ReactiveObject
 
     private void UpdateLastSyncText() =>
         LastSyncText = _config.LastSyncAtUtc is { } at
-                           ? $"上次同步:{at.ToLocalTime():yyyy-MM-dd HH:mm:ss}"
-                           : "从未同步";
+                           ? Strings.Format("Msg_LastSyncAt", at.ToLocalTime())
+                           : Strings.Get("Msg_NeverSynced");
 }

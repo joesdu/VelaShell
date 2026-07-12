@@ -1,16 +1,17 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:VelaShell.ViewModels"
+             xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Views.Settings.SnippetsPage"
              x:DataType="vm:SettingsViewModel">
 
   <StackPanel Spacing="14">
     <StackPanel Spacing="2">
-      <TextBlock Classes="page-title" Text="脚本/片段库管理" />
-      <TextBlock Classes="page-subtitle" Text="// 常用命令片段,可在快捷命令面板中执行" />
+      <TextBlock Classes="page-title" Text="{loc:Localize SetSnippets_Title}" />
+      <TextBlock Classes="page-subtitle" Text="{loc:Localize SetSnippets_Subtitle}" />
     </StackPanel>
 
-    <TextBlock Text="您可以创建常用的命令片段,绑定到快捷键,或分配给特定的会话。"
+    <TextBlock Text="{loc:Localize SetSnippets_Intro}"
                Foreground="{DynamicResource VelaTextSecondary}"
                FontSize="13" TextWrapping="Wrap" />
 
@@ -49,7 +50,7 @@
               </Border>
               <Button Grid.Column="3" Width="24" Height="24" Padding="0"
                       Background="Transparent" CornerRadius="3" Cursor="Hand"
-                      ToolTip.Tip="删除片段(内置片段不可删除)"
+                      ToolTip.Tip="{loc:Localize SetSnippets_DeleteTip}"
                       Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).Snippets.DeleteCommandCommand}"
                       CommandParameter="{Binding}"
                       VerticalAlignment="Center">
@@ -66,11 +67,11 @@
     <Border Classes="sep" />
 
     <!-- 新建片段 -->
-    <TextBlock Classes="section-title" Text="新建片段" />
+    <TextBlock Classes="section-title" Text="{loc:Localize SetSnippets_NewSnippet}" />
     <Grid ColumnDefinitions="*,8,*,8,Auto">
-      <TextBox Grid.Column="0" Text="{Binding Snippets.NewName}" PlaceholderText="名称,如 Check Docker Status" />
-      <TextBox Grid.Column="2" Text="{Binding Snippets.NewCommandText}" PlaceholderText="命令,如 systemctl status docker" />
-      <Button Grid.Column="4" Classes="dlg-primary" Content="添加"
+      <TextBox Grid.Column="0" Text="{Binding Snippets.NewName}" PlaceholderText="{loc:Localize SetSnippets_NamePlaceholder}" />
+      <TextBox Grid.Column="2" Text="{Binding Snippets.NewCommandText}" PlaceholderText="{loc:Localize SetSnippets_CommandPlaceholder}" />
+      <Button Grid.Column="4" Classes="dlg-primary" Content="{loc:Localize SetSnippets_Add}"
               Command="{Binding Snippets.SaveNewCommandCommand}" />
     </Grid>
   </StackPanel>

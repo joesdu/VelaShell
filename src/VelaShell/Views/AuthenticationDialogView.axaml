@@ -4,10 +4,11 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:VelaShell.ViewModels"
         xmlns:behaviors="using:VelaShell.Behaviors"
+        xmlns:loc="using:VelaShell.Localization"
         mc:Ignorable="d" d:DesignWidth="420"
         x:Class="VelaShell.Views.AuthenticationDialogView"
         x:DataType="vm:AuthenticationDialogViewModel"
-        Title="身份验证"
+        Title="{loc:Localize Auth_Title}"
         Width="420"
         SizeToContent="Height"
         CanResize="False"
@@ -182,17 +183,17 @@
               </TextBlock>
             </Panel>
           </Border>
-          <TextBlock Text="输入用户名" IsVisible="{Binding IsStep1}"
+          <TextBlock Text="{loc:Localize Auth_EnterUsername}" IsVisible="{Binding IsStep1}"
                      Foreground="{DynamicResource VelaTextMuted}" FontSize="11"
                      VerticalAlignment="Center" />
-          <TextBlock Text="选择认证方式" IsVisible="{Binding IsStep2}"
+          <TextBlock Text="{loc:Localize Auth_SelectMethod}" IsVisible="{Binding IsStep2}"
                      Foreground="{DynamicResource VelaTextMuted}" FontSize="11"
                      VerticalAlignment="Center" />
         </StackPanel>
 
         <!-- 第 1 步:用户名 -->
         <StackPanel IsVisible="{Binding IsStep1}">
-          <TextBlock Classes="field-label" Text="用户名" />
+          <TextBlock Classes="field-label" Text="{loc:Localize Username}" />
           <Border Classes="input-affix" MinHeight="34">
             <Grid ColumnDefinitions="Auto,*">
               <PathIcon Grid.Column="0" Width="13" Height="13" Margin="11,0,9,0"
@@ -214,12 +215,12 @@
           <!-- 分段选择:密码 / 证书 / 密钥 -->
           <Border Background="{DynamicResource VelaBgInput}" CornerRadius="4" Padding="2" Height="32">
             <Grid ColumnDefinitions="*,2,*,2,*">
-              <Button Grid.Column="0" Classes="seg-tab" Content="密码"
+              <Button Grid.Column="0" Classes="seg-tab" Content="{loc:Localize Password}"
                       Classes.active="{Binding IsPasswordMethod}"
                       Command="{Binding SelectPasswordCommand}" />
-              <Button Grid.Column="2" Classes="seg-tab" Content="证书"
-                      IsEnabled="False" ToolTip.Tip="暂未支持" />
-              <Button Grid.Column="4" Classes="seg-tab" Content="密钥"
+              <Button Grid.Column="2" Classes="seg-tab" Content="{loc:Localize Auth_Certificate}"
+                      IsEnabled="False" ToolTip.Tip="{loc:Localize Profile_NotSupported}" />
+              <Button Grid.Column="4" Classes="seg-tab" Content="{loc:Localize Auth_Key}"
                       Classes.active="{Binding IsKeyMethod}"
                       Command="{Binding SelectKeyCommand}" />
             </Grid>
@@ -228,7 +229,7 @@
           <!-- 密码 -->
           <StackPanel IsVisible="{Binding IsPasswordMethod}" Spacing="14">
             <StackPanel>
-              <TextBlock Classes="field-label" Text="密码" />
+              <TextBlock Classes="field-label" Text="{loc:Localize Password}" />
               <Border Classes="input-affix" MinHeight="34">
                 <Grid ColumnDefinitions="*,Auto">
                   <TextBox Grid.Column="0"
@@ -256,7 +257,7 @@
               <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
                 <CheckBox IsChecked="{Binding RememberPassword}"
                           Padding="0" MinHeight="0" VerticalAlignment="Center">
-                  <TextBlock Text="记住密码"
+                  <TextBlock Text="{loc:Localize Profile_RememberPassword}"
                              Margin="6,0,0,0"
                              Foreground="{DynamicResource VelaTextSecondary}"
                              FontSize="11" />
@@ -268,7 +269,7 @@
                   <PathIcon Width="10" Height="10"
                             Data="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM9 8V6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9z"
                             Foreground="{DynamicResource VelaAccent}" />
-                  <TextBlock Text="AES-256 加密存储"
+                  <TextBlock Text="{loc:Localize Auth_AesBadge}"
                              Foreground="{DynamicResource VelaAccent}"
                              FontFamily="{DynamicResource VelaTerminalFont}"
                              FontSize="9" FontWeight="Medium"
@@ -281,16 +282,16 @@
           <!-- 密钥 -->
           <StackPanel IsVisible="{Binding IsKeyMethod}" Spacing="14">
             <StackPanel>
-              <TextBlock Classes="field-label" Text="私钥文件" />
+              <TextBlock Classes="field-label" Text="{loc:Localize Profile_PrivateKeyFile}" />
               <Grid ColumnDefinitions="*,8,Auto">
                 <TextBox Grid.Column="0" Text="{Binding PrivateKeyPath}"
                          PlaceholderText="~/.ssh/id_ed25519" />
                 <Button Grid.Column="2" Classes="dlg-outline"
-                        Content="浏览…" Click="BrowseKeyFile_Click" />
+                        Content="{loc:Localize BrowseKeyFile}" Click="BrowseKeyFile_Click" />
               </Grid>
             </StackPanel>
             <StackPanel>
-              <TextBlock Classes="field-label" Text="私钥口令(可选)" />
+              <TextBlock Classes="field-label" Text="{loc:Localize Profile_PassphraseOptional}" />
               <TextBox Text="{Binding PrivateKeyPassphrase}"
                        PasswordChar="&#x2022;" RevealPassword="False" />
             </StackPanel>
@@ -312,14 +313,14 @@
               <PathIcon Width="12" Height="12"
                         Data="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"
                         Foreground="{DynamicResource VelaTextSecondary}" />
-              <TextBlock Text="上一步" VerticalAlignment="Center" />
+              <TextBlock Text="{loc:Localize Auth_Back}" VerticalAlignment="Center" />
             </StackPanel>
           </Button>
 
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
                       VerticalAlignment="Center">
             <!-- 第 1 步:取消 / 下一步 -->
-            <Button Classes="dlg-outline" Content="取消"
+            <Button Classes="dlg-outline" Content="{loc:Localize Cancel}"
                     IsVisible="{Binding IsStep1}"
                     Command="{Binding CancelCommand}" />
             <Button Classes="dlg-primary"
@@ -329,7 +330,7 @@
                 <PathIcon Width="12" Height="12"
                           Data="M4 11h12.17l-5.59-5.59L12 4l8 8-8 8-1.41-1.41L16.17 13H4v-2z"
                           Foreground="{DynamicResource VelaAccentForeground}" />
-                <TextBlock Text="下一步" VerticalAlignment="Center" />
+                <TextBlock Text="{loc:Localize Auth_Next}" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
             <!-- 第 2 步:登录 -->
@@ -340,7 +341,7 @@
                 <PathIcon Width="12" Height="12"
                           Data="M11 7 9.6 8.4l2.6 2.6H2v2h10.2l-2.6 2.6L11 17l5-5-5-5zm9 12h-8v2h8c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-8v2h8v14z"
                           Foreground="{DynamicResource VelaAccentForeground}" />
-                <TextBlock Text="登录" VerticalAlignment="Center" />
+                <TextBlock Text="{loc:Localize Auth_Login}" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
           </StackPanel>

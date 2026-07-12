@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:VelaShell.ViewModels"
+             xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Views.Settings.AboutPage"
              x:DataType="vm:SettingsViewModel">
 
@@ -29,8 +30,8 @@
 
   <StackPanel Spacing="14">
     <StackPanel Spacing="2">
-      <TextBlock Classes="page-title" Text="关于 VelaShell" />
-      <TextBlock Classes="page-subtitle" Text="// 应用程序信息与更新" />
+      <TextBlock Classes="page-title" Text="{loc:Localize SetAbout_Title}" />
+      <TextBlock Classes="page-subtitle" Text="{loc:Localize SetAbout_Subtitle}" />
     </StackPanel>
 
     <!-- Logo 区 -->
@@ -57,7 +58,7 @@
                      FontFamily="{DynamicResource VelaTerminalFont}"
                      FontSize="12" VerticalAlignment="Center" />
           <Border Background="{DynamicResource VelaAccentDim}" CornerRadius="3" Padding="6,2">
-            <TextBlock Text="开发中"
+            <TextBlock Text="{loc:Localize SetAbout_InDevelopment}"
                        Foreground="{DynamicResource VelaAccent}"
                        FontSize="9" />
           </Border>
@@ -66,36 +67,36 @@
     </StackPanel>
 
     <!-- 系统信息 -->
-    <TextBlock Classes="section-title" Text="系统信息" />
+    <TextBlock Classes="section-title" Text="{loc:Localize SetAbout_SystemInfo}" />
     <Border Classes="table">
       <StackPanel>
         <Border Height="32" Padding="12,0" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
           <Grid ColumnDefinitions="120,*">
-            <TextBlock Classes="row-desc" FontSize="11" Text="框架" VerticalAlignment="Center" />
+            <TextBlock Classes="row-desc" FontSize="11" Text="{loc:Localize SetAbout_Framework}" VerticalAlignment="Center" />
             <TextBlock Grid.Column="1" Text="{Binding AboutFramework}" Foreground="{DynamicResource VelaTextSecondary}" FontFamily="{DynamicResource VelaTerminalFont}" FontSize="11" VerticalAlignment="Center" />
           </Grid>
         </Border>
         <Border Height="32" Padding="12,0" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
           <Grid ColumnDefinitions="120,*">
-            <TextBlock Classes="row-desc" FontSize="11" Text="运行时" VerticalAlignment="Center" />
+            <TextBlock Classes="row-desc" FontSize="11" Text="{loc:Localize SetAbout_Runtime}" VerticalAlignment="Center" />
             <TextBlock Grid.Column="1" Text="{Binding AboutRuntime}" Foreground="{DynamicResource VelaTextSecondary}" FontFamily="{DynamicResource VelaTerminalFont}" FontSize="11" VerticalAlignment="Center" />
           </Grid>
         </Border>
         <Border Height="32" Padding="12,0" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
           <Grid ColumnDefinitions="120,*">
-            <TextBlock Classes="row-desc" FontSize="11" Text="SSH 库" VerticalAlignment="Center" />
+            <TextBlock Classes="row-desc" FontSize="11" Text="{loc:Localize SetAbout_SshLibrary}" VerticalAlignment="Center" />
             <TextBlock Grid.Column="1" Text="{Binding AboutSshLibrary}" Foreground="{DynamicResource VelaTextSecondary}" FontFamily="{DynamicResource VelaTerminalFont}" FontSize="11" VerticalAlignment="Center" />
           </Grid>
         </Border>
         <Border Height="32" Padding="12,0" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
           <Grid ColumnDefinitions="120,*">
-            <TextBlock Classes="row-desc" FontSize="11" Text="操作系统" VerticalAlignment="Center" />
+            <TextBlock Classes="row-desc" FontSize="11" Text="{loc:Localize SetAbout_OperatingSystem}" VerticalAlignment="Center" />
             <TextBlock Grid.Column="1" Text="{Binding AboutOs}" Foreground="{DynamicResource VelaTextSecondary}" FontFamily="{DynamicResource VelaTerminalFont}" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
           </Grid>
         </Border>
         <Border Height="32" Padding="12,0">
           <Grid ColumnDefinitions="120,*">
-            <TextBlock Classes="row-desc" FontSize="11" Text="配置路径" VerticalAlignment="Center" />
+            <TextBlock Classes="row-desc" FontSize="11" Text="{loc:Localize SetAbout_ConfigPath}" VerticalAlignment="Center" />
             <TextBlock Grid.Column="1" Text="{Binding AboutConfigPath}" Foreground="{DynamicResource VelaTextSecondary}" FontFamily="{DynamicResource VelaTerminalFont}" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
           </Grid>
         </Border>
@@ -104,8 +105,8 @@
 
     <!-- 按钮 -->
     <StackPanel Orientation="Horizontal" Spacing="8">
-      <Button Classes="dlg-primary" Content="检查更新" Command="{Binding CheckUpdatesCommand}" />
-      <Button Classes="dlg-outline" Content="更新日志" IsEnabled="False" ToolTip.Tip="随正式版本提供" />
+      <Button Classes="dlg-primary" Content="{loc:Localize SetAbout_CheckUpdates}" Command="{Binding CheckUpdatesCommand}" />
+      <Button Classes="dlg-outline" Content="{loc:Localize SetAbout_Changelog}" IsEnabled="False" ToolTip.Tip="{loc:Localize SetAbout_ChangelogTip}" />
       <TextBlock Classes="row-desc" Text="{Binding UpdateStatus}" VerticalAlignment="Center"
                  IsVisible="{Binding UpdateStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
     </StackPanel>
@@ -114,8 +115,8 @@
 
     <!-- 开源依赖 -->
     <StackPanel Spacing="2">
-      <TextBlock Classes="section-title" Text="开源依赖" />
-      <TextBlock Classes="row-desc" Text="// VelaShell 使用了以下优秀的开源项目" />
+      <TextBlock Classes="section-title" Text="{loc:Localize SetAbout_OpenSourceDeps}" />
+      <TextBlock Classes="row-desc" Text="{loc:Localize SetAbout_OpenSourceDepsDesc}" />
     </StackPanel>
     <Border Classes="table">
       <ItemsControl ItemsSource="{Binding AboutDependencies}">
@@ -141,7 +142,7 @@
                 <!-- 许可证:点击跳转许可证页面 -->
                 <Button Grid.Column="1" Classes="link" Tag="{Binding LicenseUrl}" Click="OnOpenLink"
                         VerticalAlignment="Center"
-                        ToolTip.Tip="查看许可证">
+                        ToolTip.Tip="{loc:Localize SetAbout_ViewLicense}">
                   <TextBlock Text="{Binding License}"
                              Foreground="{DynamicResource VelaTextMuted}"
                              FontFamily="{DynamicResource VelaTerminalFont}"
@@ -158,8 +159,8 @@
 
     <!-- 贡献者(设计 kGwqX,仅头像与名称):真实 GitHub 头像,点击跳转主页 -->
     <StackPanel Spacing="2">
-      <TextBlock Classes="section-title" Text="贡献者" />
-      <TextBlock Classes="row-desc" Text="// 感谢以下贡献者的付出" />
+      <TextBlock Classes="section-title" Text="{loc:Localize SetAbout_Contributors}" />
+      <TextBlock Classes="row-desc" Text="{loc:Localize SetAbout_ContributorsDesc}" />
     </StackPanel>
     <ItemsControl ItemsSource="{Binding Contributors}">
       <ItemsControl.ItemsPanel>
@@ -199,12 +200,12 @@
 
     <!-- 版权与正版声明(双许可,见仓库 LICENSE / LICENSE-COMMERCIAL.md) -->
     <StackPanel Spacing="2" HorizontalAlignment="Center" Margin="0,8,0,0">
-      <TextBlock Classes="row-desc" Text="VelaShell - 现代化 SSH 终端" HorizontalAlignment="Center" />
-      <TextBlock Classes="row-desc" Text="Copyright © 2026 VelaShell 作者及贡献者" HorizontalAlignment="Center" />
-      <TextBlock Classes="row-desc" Text="双许可发布:AGPL-3.0 开源许可 / 商业授权(见仓库 LICENSE-COMMERCIAL.md)" HorizontalAlignment="Center" />
+      <TextBlock Classes="row-desc" Text="{loc:Localize SetAbout_Tagline}" HorizontalAlignment="Center" />
+      <TextBlock Classes="row-desc" Text="{loc:Localize SetAbout_Copyright}" HorizontalAlignment="Center" />
+      <TextBlock Classes="row-desc" Text="{loc:Localize SetAbout_LicenseNotice}" HorizontalAlignment="Center" />
       <TextBlock Classes="row-desc" HorizontalAlignment="Center"
                  Foreground="{DynamicResource VelaAccentText}"
-                 Text="本软件永久免费;唯一官方渠道为 GitHub Releases,任何「收费版」均为盗版" />
+                 Text="{loc:Localize SetAbout_FreeNotice}" />
     </StackPanel>
   </StackPanel>
 </UserControl>

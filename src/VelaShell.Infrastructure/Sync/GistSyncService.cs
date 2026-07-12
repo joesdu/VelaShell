@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Sync;
 
 namespace VelaShell.Infrastructure.Sync;
@@ -109,7 +110,7 @@ public sealed class GistSyncService(
             bool remoteChanged = !string.Equals(remoteVersion, config.LastRemoteVersion, StringComparison.Ordinal);
             if (!localChanged && !remoteChanged)
             {
-                return new(SyncAction.UpToDate, true, "本地与云端已一致,无需同步。");
+                return new(SyncAction.UpToDate, true, Strings.Get("SyncSvc_UpToDate"));
             }
             if (localChanged && !remoteChanged)
             {
@@ -125,10 +126,10 @@ public sealed class GistSyncService(
             if (envelope.UpdatedAtUtc >= config.LastLocalChangeAtUtc)
             {
                 SyncResult pulled = await ApplyRemoteAsync(config, envelope, remoteVersion, cancellationToken).ConfigureAwait(false);
-                return pulled with { Message = pulled.Message + "(双端均有改动,云端较新,已采用云端;本地旧数据可从版本历史找回)" };
+                return pulled with { Message = pulled.Message + Strings.Get("SyncSvc_BothChangedRemoteWins") };
             }
             SyncResult pushed = await PushCoreAsync(config, token, cancellationToken).ConfigureAwait(false);
-            return pushed with { Message = pushed.Message + "(双端均有改动,本地较新,已推送覆盖;云端旧版本仍保留在历史中)" };
+            return pushed with { Message = pushed.Message + Strings.Get("SyncSvc_BothChangedLocalWins") };
         }
         catch (OperationCanceledException)
         {
@@ -182,12 +183,12 @@ public sealed class GistSyncService(
             }
             if (string.IsNullOrEmpty(config.GistId))
             {
-                return SyncResult.Fail("尚未绑定 Gist:请先推送一次,或填入其它设备创建的 Gist Id。");
+                return SyncResult.Fail(Strings.Get("SyncSvc_NoGistBound"));
             }
             (string? content, string version) = await _api.GetFileAsync(Token(config), config.GistId, GistFileName, cancellationToken).ConfigureAwait(false);
             if (content is null)
             {
-                return SyncResult.Fail("云端 Gist 中没有同步数据文件。");
+                return SyncResult.Fail(Strings.Get("SyncSvc_NoRemoteFile"));
             }
             return await ApplyRemoteAsync(config, ParseEnvelope(content), version, cancellationToken).ConfigureAwait(false);
         }
@@ -267,13 +268,13 @@ public sealed class GistSyncService(
             }
             if (string.IsNullOrEmpty(config.GistId))
             {
-                return SyncResult.Fail("尚未绑定 Gist,没有可恢复的版本。");
+                return SyncResult.Fail(Strings.Get("SyncSvc_NoGistNoRestore"));
             }
             string token = Token(config);
             (string? content, _) = await _api.GetFileAtRevisionAsync(token, config.GistId, version, GistFileName, cancellationToken).ConfigureAwait(false);
             if (content is null)
             {
-                return SyncResult.Fail("该版本中没有同步数据文件。");
+                return SyncResult.Fail(Strings.Get("SyncSvc_RevisionNoFile"));
             }
             SyncResult applied = await ApplyRemoteAsync(config, ParseEnvelope(content), remoteVersion: null, cancellationToken).ConfigureAwait(false);
             if (!applied.Success)
@@ -285,7 +286,7 @@ public sealed class GistSyncService(
             config = await GetSyncSettingsAsync(cancellationToken).ConfigureAwait(false);
             SyncResult pushed = await PushCoreAsync(config, token, cancellationToken).ConfigureAwait(false);
             return pushed.Success
-                       ? new(SyncAction.Pulled, true, $"已恢复到版本 {version[..Math.Min(7, version.Length)]},并作为最新版本推送。")
+                       ? new(SyncAction.Pulled, true, Strings.Format("SyncSvc_RestoredAndPushed", version[..Math.Min(7, version.Length)]))
                        : pushed;
         }
         catch (OperationCanceledException)
@@ -320,7 +321,7 @@ public sealed class GistSyncService(
         config.LastRemoteVersion = version;
         config.LastLocalChangeAtUtc = null;
         await SaveSyncSettingsAsync(config, cancellationToken).ConfigureAwait(false);
-        return new(SyncAction.Pushed, true, $"已推送到云端(版本 {Short(version)})。");
+        return new(SyncAction.Pushed, true, Strings.Format("SyncSvc_Pushed", Short(version)));
     }
 
     private async Task<string> BuildGistContentAsync(SyncSettings config, CancellationToken cancellationToken)
@@ -399,21 +400,21 @@ public sealed class GistSyncService(
             string? passphrase = Passphrase(config);
             if (string.IsNullOrEmpty(passphrase))
             {
-                return SyncResult.Fail("云端数据已端到端加密:请在本设备填入相同的同步口令后再拉取。");
+                return SyncResult.Fail(Strings.Get("SyncSvc_NeedPassphrase"));
             }
             try
             {
                 payload = JsonSerializer.Deserialize<SyncPayload>(SyncCrypto.Decrypt(envelope.CipherText ?? "", passphrase), JsonOptions)
-                          ?? throw new InvalidOperationException("载荷为空。");
+                          ?? throw new InvalidOperationException(Strings.Get("SyncSvc_EmptyPayload"));
             }
             catch (CryptographicException)
             {
-                return SyncResult.Fail("同步口令不正确,无法解密云端数据。");
+                return SyncResult.Fail(Strings.Get("SyncSvc_WrongPassphrase"));
             }
         }
         else
         {
-            payload = envelope.Payload ?? throw new InvalidOperationException("云端数据缺少载荷。");
+            payload = envelope.Payload ?? throw new InvalidOperationException(Strings.Get("SyncSvc_MissingPayload"));
         }
 
         IsApplyingRemote = true;
@@ -473,7 +474,7 @@ public sealed class GistSyncService(
             config.LastLocalChangeAtUtc = null;
         }
         await SaveSyncSettingsAsync(config, cancellationToken).ConfigureAwait(false);
-        return new(SyncAction.Pulled, true, $"已应用云端数据(来自设备 {payload.DeviceName},{payload.UpdatedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm})。");
+        return new(SyncAction.Pulled, true, Strings.Format("SyncSvc_Applied", payload.DeviceName, payload.UpdatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")));
     }
 
     // ———— 设备本地字段(不参与同步) ————
@@ -514,19 +515,19 @@ public sealed class GistSyncService(
     {
         if (!config.Enabled)
         {
-            return "云同步未启用。";
+            return Strings.Get("SyncSvc_NotEnabled");
         }
-        return HasToken(config) ? null : "尚未配置 GitHub 令牌(需 gist 权限)。";
+        return HasToken(config) ? null : Strings.Get("SyncSvc_NoToken");
     }
 
     private string Token(SyncSettings config) =>
-        secretProtector.Unprotect(config.ProtectedToken) ?? throw new InvalidOperationException("无法解密已存的 GitHub 令牌,请重新填写。");
+        secretProtector.Unprotect(config.ProtectedToken) ?? throw new InvalidOperationException(Strings.Get("SyncSvc_TokenDecryptFailed"));
 
     private string? Passphrase(SyncSettings config) =>
         string.IsNullOrEmpty(config.ProtectedPassphrase) ? null : secretProtector.Unprotect(config.ProtectedPassphrase);
 
     private static SyncEnvelope ParseEnvelope(string content) =>
-        JsonSerializer.Deserialize<SyncEnvelope>(content, JsonOptions) ?? throw new InvalidOperationException("云端同步数据格式无法识别。");
+        JsonSerializer.Deserialize<SyncEnvelope>(content, JsonOptions) ?? throw new InvalidOperationException(Strings.Get("SyncSvc_BadFormat"));
 
     private static string Short(string version) => version.Length <= 7 ? version : version[..7];
 }

@@ -6,6 +6,7 @@ using ReactiveUI;
 using VelaShell.Core.Data;
 using VelaShell.Core.Localization;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Services;
 using VelaShell.Core.Ssh;
 using VelaShell.Core.Sync;
@@ -99,7 +100,7 @@ public class SettingsViewModel : ReactiveObject
         SetAccentCommand = ReactiveCommand.Create<string>(hex => AccentColor = hex);
         ClearHistoryCommand = ReactiveCommand.CreateFromTask(ClearHistoryAsync);
         // 更新服务尚未接入:如实提示,而不是伪装成“已检查且最新”(设置审计 R-01~R-03)。
-        CheckUpdatesCommand = ReactiveCommand.Create(() => { UpdateStatus = "自动更新服务尚未接入,请前往项目发布页获取新版本。"; });
+        CheckUpdatesCommand = ReactiveCommand.Create(() => { UpdateStatus = Strings.Get("Msg_UpdateServiceNotAvailable"); });
     }
 
     // ———— 顶层字段(既有行为:保存后立即生效) ————
@@ -236,19 +237,19 @@ public class SettingsViewModel : ReactiveObject
     /// <summary>Left-nav sections per design §14.</summary>
     public SettingsSection[] Sections { get; } =
     [
-        new("常规",
+        new(Strings.Get("SetVm_SectionGeneral"),
             "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"),
-        new("外观",
+        new(Strings.Get("SetVm_SectionAppearance"),
             "M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"),
-        new("终端", "M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"),
-        new("密钥管理", "M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"),
-        new("快捷键", "M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"),
-        new("文件传输", "M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3 5 6.99h3V14h2V6.99h3L9 3z"),
-        new("安全审计", "M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"),
-        new("代码片段", "M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"),
-        new("云同步", "M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"),
-        new("关于", "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"),
-        new("支持与捐赠", "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z")
+        new(Strings.Get("SetVm_SectionTerminal"), "M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"),
+        new(Strings.Get("SetVm_SectionKeys"), "M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"),
+        new(Strings.Get("SetVm_SectionShortcuts"), "M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"),
+        new(Strings.Get("SetVm_SectionTransfer"), "M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3 5 6.99h3V14h2V6.99h3L9 3z"),
+        new(Strings.Get("SetVm_SectionSecurity"), "M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"),
+        new(Strings.Get("SetVm_SectionSnippets"), "M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"),
+        new(Strings.Get("SetVm_SectionSync"), "M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"),
+        new(Strings.Get("SetVm_SectionAbout"), "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"),
+        new(Strings.Get("SetVm_SectionSupport"), "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z")
     ];
 
     public int SelectedSectionIndex
@@ -257,7 +258,8 @@ public class SettingsViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    public string[] AvailableLanguages { get; } = ["en", "zh-CN"];
+    /// <summary>支持的界面语言(顺序即语言下拉的条目顺序)。</summary>
+    public string[] AvailableLanguages { get; } = ["zh-CN", "en", "zh-TW", "ja", "ko"];
 
     public string[] AvailableThemes { get; } = ["dark", "light", "system"];
 
@@ -377,7 +379,7 @@ public class SettingsViewModel : ReactiveObject
         (Theme == "system" && Avalonia.Application.Current?.ActualThemeVariant == Avalonia.Styling.ThemeVariant.Light);
 
     private static string[] BuildSchemeNames(int defaultIndex) =>
-        [.. TerminalColorScheme.BuiltIn.Select((s, i) => i == defaultIndex ? $"{s.Name}(默认)" : s.Name)];
+        [.. TerminalColorScheme.BuiltIn.Select((s, i) => i == defaultIndex ? $"{s.Name}{Strings.Get("SetVm_DefaultSuffix")}" : s.Name)];
 
     /// <summary>
     /// 选择预设即把整套颜色写入 Appearance(保存后生效);-1 = 未选择(改过单色)。
@@ -438,36 +440,36 @@ public class SettingsViewModel : ReactiveObject
     /// </summary>
     public ShortcutGroup[] ShortcutGroups { get; } =
     [
-        new("常规",
+        new(Strings.Get("SetVm_SectionGeneral"),
         [
-            new("新建 SSH 连接", ["Ctrl", "N"]),
-            new("新建标签(同新建连接)", ["Ctrl", "T"]),
-            new("克隆当前会话", ["Ctrl", "Shift", "N"]),
-            new("打开设置", ["Ctrl", ","]),
-            new("命令面板", ["Ctrl", "K"]),
-            new("命令面板(等效)", ["Ctrl", "P"])
+            new(Strings.Get("Cmd_NewSshConnection"), ["Ctrl", "N"]),
+            new(Strings.Get("SetVm_ShortcutNewTabAlias"), ["Ctrl", "T"]),
+            new(Strings.Get("SetVm_ShortcutCloneSession"), ["Ctrl", "Shift", "N"]),
+            new(Strings.Get("Cmd_OpenSettings"), ["Ctrl", ","]),
+            new(Strings.Get("Cmd_CommandPalette"), ["Ctrl", "K"]),
+            new(Strings.Get("SetVm_ShortcutPaletteAlt"), ["Ctrl", "P"])
         ]),
-        new("标签与面板",
+        new(Strings.Get("SetVm_GroupTabsAndPanels"),
         [
-            new("关闭标签页", ["Ctrl", "W"]),
-            new("下一个标签页", ["Ctrl", "Tab"]),
-            new("上一个标签页", ["Ctrl", "Shift", "Tab"]),
-            new("切换文件浏览器", ["Ctrl", "Shift", "F"]),
-            new("隧道管理", ["Ctrl", "Shift", "T"])
+            new(Strings.Get("CloseTab"), ["Ctrl", "W"]),
+            new(Strings.Get("SetVm_ShortcutNextTab"), ["Ctrl", "Tab"]),
+            new(Strings.Get("SetVm_ShortcutPrevTab"), ["Ctrl", "Shift", "Tab"]),
+            new(Strings.Get("SetVm_ShortcutToggleFileBrowser"), ["Ctrl", "Shift", "F"]),
+            new(Strings.Get("Cmd_TunnelManager"), ["Ctrl", "Shift", "T"])
         ]),
-        new("终端",
+        new(Strings.Get("SetVm_SectionTerminal"),
         [
-            new("复制", ["Ctrl", "Shift", "C"]),
-            new("粘贴", ["Ctrl", "Shift", "V"]),
-            new("发送中断信号 ^C", ["Ctrl", "C"]),
-            new("搜索终端内容", ["Ctrl", "F"]),
-            new("弹出命令补全", ["Alt", "Enter"]),
-            new("断线后重新连接", ["Enter"]),
-            new("断线后重新连接(等效)", ["Ctrl", "R"])
+            new(Strings.Get("Copy"), ["Ctrl", "Shift", "C"]),
+            new(Strings.Get("Cmd_Paste"), ["Ctrl", "Shift", "V"]),
+            new(Strings.Get("SetVm_ShortcutSendInterrupt"), ["Ctrl", "C"]),
+            new(Strings.Get("SetVm_ShortcutSearchTerminal"), ["Ctrl", "F"]),
+            new(Strings.Get("SetVm_ShortcutCompletionPopup"), ["Alt", "Enter"]),
+            new(Strings.Get("SetVm_ShortcutReconnect"), ["Enter"]),
+            new(Strings.Get("SetVm_ShortcutReconnectAlt"), ["Ctrl", "R"])
         ]),
-        new("文件操作",
+        new(Strings.Get("SetVm_GroupFileOperations"),
         [
-            new("远程编辑器内保存", ["Ctrl", "S"])
+            new(Strings.Get("SetVm_ShortcutSaveInEditor"), ["Ctrl", "S"])
         ])
     ];
 
@@ -485,10 +487,13 @@ public class SettingsViewModel : ReactiveObject
 
     public int LanguageIndex
     {
-        get => Language == "en" ? 1 : 0;
+        get => Math.Max(0, Array.IndexOf(AvailableLanguages, Language));
         set
         {
-            Language = value == 1 ? "en" : "zh-CN";
+            if (value >= 0 && value < AvailableLanguages.Length)
+            {
+                Language = AvailableLanguages[value];
+            }
             this.RaisePropertyChanged();
         }
     }
@@ -579,11 +584,11 @@ public class SettingsViewModel : ReactiveObject
         try
         {
             await _recentConnections.ClearAsync();
-            ClearHistoryStatus = "已清除最近连接记录。";
+            ClearHistoryStatus = Strings.Get("Msg_HistoryCleared");
         }
         catch (Exception ex)
         {
-            ClearHistoryStatus = $"清除失败:{ex.Message}";
+            ClearHistoryStatus = Strings.Format("Msg_ClearFailed", ex.Message);
         }
     }
 

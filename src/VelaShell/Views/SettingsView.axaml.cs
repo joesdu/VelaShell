@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using VelaShell.Core.Resources;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
@@ -43,8 +44,8 @@ public partial class SettingsView : Window
         {
             return;
         }
-        bool confirmed = await MessageDialog.ConfirmAsync(this, "恢复默认设置",
-                             "将把所有页面的设置恢复为出厂值(点击「保存设置」后才会写入磁盘)。确定继续吗?",
+        bool confirmed = await MessageDialog.ConfirmAsync(this, Strings.Get("Settings_ResetConfirmTitle"),
+                             Strings.Get("Settings_ResetConfirmMessage"),
                              danger: true);
         if (confirmed)
         {

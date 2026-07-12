@@ -5,6 +5,7 @@
              xmlns:conv="using:VelaShell.Converters"
              xmlns:pc="using:VelaShell.Controls.Controls"
              xmlns:views="using:VelaShell.Views"
+             xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Docking.Controls.DockTabItem"
              x:DataType="docking:TerminalDocument"
              FontSize="11"
@@ -41,38 +42,38 @@
     <!-- 与原 DockContextMenu.axaml 完全同构:关闭系列 + 拆分 + 标签位置;
          浮动与 MDI 按产品决策不存在。菜单外观走全局 ContextMenu 样式。 -->
     <ContextMenu>
-      <MenuItem Header="关闭" Click="CloseTab_Click">
+      <MenuItem Header="{loc:Localize Dock_Close}" Click="CloseTab_Click">
         <MenuItem.Icon>
           <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.x}"
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </MenuItem.Icon>
       </MenuItem>
-      <MenuItem Header="关闭其他标签页" Click="CloseOthers_Click" />
-      <MenuItem Header="关闭所有标签页" Click="CloseAll_Click" />
-      <MenuItem Header="关闭左侧标签页" Click="CloseLeft_Click" />
-      <MenuItem Header="关闭右侧标签页" Click="CloseRight_Click" />
+      <MenuItem Header="{loc:Localize Dock_CloseOthers}" Click="CloseOthers_Click" />
+      <MenuItem Header="{loc:Localize Dock_CloseAll}" Click="CloseAll_Click" />
+      <MenuItem Header="{loc:Localize Dock_CloseLeft}" Click="CloseLeft_Click" />
+      <MenuItem Header="{loc:Localize Dock_CloseRight}" Click="CloseRight_Click" />
       <Separator />
-      <MenuItem Header="水平拆分" Click="SplitHorizontal_Click">
+      <MenuItem Header="{loc:Localize Dock_SplitHorizontal}" Click="SplitHorizontal_Click">
         <MenuItem.Icon>
           <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.columns-2}"
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </MenuItem.Icon>
       </MenuItem>
-      <MenuItem Header="垂直拆分" Click="SplitVertical_Click">
+      <MenuItem Header="{loc:Localize Dock_SplitVertical}" Click="SplitVertical_Click">
         <MenuItem.Icon>
           <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.rows-2}"
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </MenuItem.Icon>
       </MenuItem>
       <Separator />
-      <MenuItem Header="标签位置">
+      <MenuItem Header="{loc:Localize Dock_TabsPosition}">
         <MenuItem.Icon>
           <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.panel-top}"
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </MenuItem.Icon>
-        <MenuItem Header="顶部" Click="TabsTop_Click" />
-        <MenuItem Header="左侧" Click="TabsLeft_Click" />
-        <MenuItem Header="右侧" Click="TabsRight_Click" />
+        <MenuItem Header="{loc:Localize Dock_TabsTop}" Click="TabsTop_Click" />
+        <MenuItem Header="{loc:Localize Dock_TabsLeft}" Click="TabsLeft_Click" />
+        <MenuItem Header="{loc:Localize Dock_TabsRight}" Click="TabsRight_Click" />
       </MenuItem>
     </ContextMenu>
   </UserControl.ContextMenu>

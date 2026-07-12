@@ -71,12 +71,14 @@ public class LocalizationTests : IDisposable
     }
 
     [TestMethod]
-    public void LocalizationService_CurrentLanguage_ReturnsCurrentUICulture()
+    public void LocalizationService_CurrentLanguage_TracksServiceCulture()
     {
+        // 服务自持文化(构造时快照 CurrentUICulture,此后只随 SetLanguage 变化),
+        // 取词不再依赖线程环境 —— 换语言实时刷新依赖这一点。
         CultureInfo.CurrentUICulture = new("en");
         var service = new LocalizationService();
         Assert.AreEqual("en", service.CurrentLanguage);
-        CultureInfo.CurrentUICulture = new("zh-CN");
+        service.SetLanguage("zh-CN");
         Assert.AreEqual("zh-CN", service.CurrentLanguage);
     }
 
@@ -212,5 +214,52 @@ public class LocalizationTests : IDisposable
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Port));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.HostKeyVerification));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.TrustThisHost));
+    }
+
+    /// <summary>
+    /// 五语言键集平价:zh-Hans/zh-Hant/ja/ko 卫星资源必须与默认(英文)资源完全同键 ——
+    /// 缺失 = 漏译、多余 = 孤儿键,双向都算失败。卫星按脚本中性文化命名,
+    /// zh-CN/zh-TW 等具体文化经标准回退链命中(另有专项回退测试)。
+    /// </summary>
+    [TestMethod]
+    public void AllCultures_HaveIdenticalKeySets()
+    {
+        var manager = new System.Resources.ResourceManager("VelaShell.Core.Resources.Strings", typeof(Strings).Assembly);
+        System.Resources.ResourceSet neutral = manager.GetResourceSet(CultureInfo.InvariantCulture, true, false)!;
+        HashSet<string> baseline = neutral.Cast<System.Collections.DictionaryEntry>()
+                                          .Select(entry => (string)entry.Key)
+                                          .ToHashSet();
+        Assert.IsTrue(baseline.Count > 0);
+        foreach (string culture in (string[])["zh-Hans", "zh-Hant", "ja", "ko"])
+        {
+            System.Resources.ResourceSet? set = manager.GetResourceSet(new CultureInfo(culture), true, false);
+            Assert.IsNotNull(set, $"{culture} 卫星资源缺失");
+            HashSet<string> keys = set.Cast<System.Collections.DictionaryEntry>()
+                                      .Select(entry => (string)entry.Key)
+                                      .ToHashSet();
+            List<string> missing = baseline.Except(keys).Order().ToList();
+            List<string> extra = keys.Except(baseline).Order().ToList();
+            Assert.AreEqual(0, missing.Count, $"{culture} 缺失 {missing.Count} 键: {string.Join(", ", missing.Take(20))}");
+            Assert.AreEqual(0, extra.Count, $"{culture} 多余 {extra.Count} 键: {string.Join(", ", extra.Take(20))}");
+        }
+    }
+
+    /// <summary>
+    /// 具体文化沿标准回退链命中脚本中性卫星:zh-CN/zh-SG → zh-Hans,
+    /// zh-TW/zh-HK → zh-Hant,ja-JP → ja。这是把卫星命名为 zh-Hans/zh-Hant
+    /// 而非 zh-CN/zh-TW 的理由 —— 港澳台星等地区文化都能自动落到正确的中文。
+    /// </summary>
+    [TestMethod]
+    public void SpecificCultures_FallBackToScriptNeutralSatellites()
+    {
+        var service = new LocalizationService();
+        service.SetLanguage("zh-SG");
+        Assert.AreEqual("快速连接", service.GetString("QuickConnect"), "zh-SG 应回退到 zh-Hans");
+        service.SetLanguage("zh-TW");
+        Assert.AreEqual("快速連線", service.GetString("QuickConnect"), "zh-TW 应回退到 zh-Hant");
+        service.SetLanguage("zh-HK");
+        Assert.AreEqual("快速連線", service.GetString("QuickConnect"), "zh-HK 应回退到 zh-Hant");
+        service.SetLanguage("ja-JP");
+        Assert.AreEqual("クイック接続", service.GetString("QuickConnect"), "ja-JP 应回退到 ja");
     }
 }

@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using ReactiveUI;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Tunnels;
 
 namespace VelaShell.ViewModels;
@@ -137,15 +138,15 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         {
             if (SelectedServer is null)
             {
-                return "请选择服务器";
+                return Strings.Get("Msg_SelectServer");
             }
             if (_isConnectingHost)
             {
-                return "正在后台连接…";
+                return Strings.Get("Msg_ConnectingInBackground");
             }
             return ResolveLiveSession(SelectedServer.Id) is not null
-                       ? "已连接 • 后台隧道通道(独立于终端会话)"
-                       : "未连接 • 创建或启动隧道时自动连接";
+                       ? Strings.Get("Msg_TunnelConnectedBackground")
+                       : Strings.Get("Msg_TunnelNotConnectedAuto");
         }
     }
 
@@ -242,9 +243,9 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     /// <summary>非空 = 表单处于"编辑既有隧道"模式;提交按钮显示"保存"。</summary>
     public bool IsEditing => _editingTunnelId is not null;
 
-    public string FormTitle => IsEditing ? "编辑隧道" : "新建隧道";
+    public string FormTitle => IsEditing ? Strings.Get("Msg_EditTunnel") : Strings.Get("NewTunnel");
 
-    public string SubmitButtonText => IsEditing ? "保存" : "创建";
+    public string SubmitButtonText => IsEditing ? Strings.Get("Save") : Strings.Get("Msg_Create");
 
     public ReactiveCommand<Unit, Unit> CreateTunnelCommand { get; }
 
@@ -336,7 +337,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         }
         if (_backgroundConnector is null)
         {
-            throw new InvalidOperationException("后台连接服务未配置。");
+            throw new InvalidOperationException(Strings.Get("Msg_BackgroundConnectorNotConfigured"));
         }
         _isConnectingHost = true;
         RefreshServerStatus();
@@ -723,10 +724,10 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     private string FriendlyError(Exception ex) =>
         ex switch
         {
-            OperationCanceledException => "已取消。",
+            OperationCanceledException => Strings.Get("Msg_OperationCancelled"),
             InvalidOperationException when ex.Message.Contains("not connected", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase)
-                => "与服务器的连接不可用,请重试(将自动重连)。",
-            SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse } => $"本地端口 {NewLocalPort} 已被占用,请换一个端口。",
+                => Strings.Get("Msg_ServerConnectionUnavailable"),
+            SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse } => Strings.Format("Msg_LocalPortInUse", NewLocalPort),
             _ => ex.Message
         };
 

@@ -7,6 +7,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Services;
 using VelaShell.Terminal;
 using VelaShell.Terminal.Rendering;
@@ -379,7 +380,7 @@ public partial class TerminalTabView : UserControl
     private void ShowCurrentHit()
     {
         SearchCount.Text = _searchHits.Count == 0
-                               ? string.IsNullOrEmpty(SearchBox.Text) ? "" : "无匹配"
+                               ? string.IsNullOrEmpty(SearchBox.Text) ? "" : Strings.Get("Term_NoMatches")
                                : $"{_searchIndex + 1}/{_searchHits.Count}";
 
         // All hits get a persistent highlight; the current one is tinted accent (§5.3).

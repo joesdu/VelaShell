@@ -5,6 +5,7 @@ using Renci.SshNet;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Recording;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Services;
 using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;
@@ -254,23 +255,23 @@ public static class InfrastructureServiceCollectionExtensions
                             .GetAwaiter().GetResult();
                         if (verification == HostKeyVerification.Changed)
                         {
-                            securityAlerts?.RaiseAsync("hostkey-changed-accepted", $"{target} 的主机指纹已变更,用户确认永久信任新指纹:{fingerprint}");
+                            securityAlerts?.RaiseAsync("hostkey-changed-accepted", Strings.Format("KeySvc_AlertChangedAccepted", target, fingerprint));
                         }
                         break;
                     case HostKeyDecision.TrustOnce:
                         HostTrustOnceCache.Remember(connectionInfo.Host, connectionInfo.Port, fingerprint);
                         securityAlerts?.RaiseAsync("hostkey-trusted-once",
                             verification == HostKeyVerification.Changed
-                                ? $"{target} 的主机指纹已变更,用户选择仅本次信任(不落盘):{fingerprint}"
-                                : $"用户对 {target} 的首次连接指纹选择仅本次信任(不落盘):{fingerprint}");
+                                ? Strings.Format("KeySvc_AlertChangedTrustOnce", target, fingerprint)
+                                : Strings.Format("KeySvc_AlertFirstTrustOnce", target, fingerprint));
                         break;
                     case HostKeyDecision.Reject:
                     default:
                         securityAlerts?.RaiseAsync(
                             verification == HostKeyVerification.Changed ? "hostkey-changed-blocked" : "hostkey-rejected",
                             verification == HostKeyVerification.Changed
-                                ? $"{target} 的主机指纹与 known_hosts 记录不符,连接已被阻断(疑似中间人)。新指纹:{fingerprint}"
-                                : $"已拒绝 {target} 的首次连接指纹:{fingerprint}");
+                                ? Strings.Format("KeySvc_AlertChangedBlocked", target, fingerprint)
+                                : Strings.Format("KeySvc_AlertFirstRejected", target, fingerprint));
                         break;
                 }
             };

@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:VelaShell.ViewModels"
              xmlns:pc="using:VelaShell.Controls.Controls"
+             xmlns:loc="using:VelaShell.Localization"
              mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="36"
              x:Class="VelaShell.Views.MenuBarView"
              x:DataType="vm:MainWindowViewModel">
@@ -145,7 +146,7 @@
       <!-- Left: text menus (DaZfB, gap 2) -->
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2" Margin="0,4">
 
-        <Button Theme="{StaticResource VelaMenuTopButton}" Content="会话">
+        <Button Theme="{StaticResource VelaMenuTopButton}" Content="{loc:Localize Menu_Session}">
           <Button.Flyout>
             <Flyout Placement="BottomEdgeAlignedLeft"
                     FlyoutPresenterTheme="{StaticResource VelaMenuFlyoutPresenter}">
@@ -154,32 +155,32 @@
                         Command="{Binding RunCommand}" CommandParameter="session.new">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+N" />
-                    <TextBlock Classes="entry-label" Text="新建 SSH 连接" />
+                    <TextBlock Classes="entry-label" Text="{loc:Localize Menu_NewSshConnection}" />
                   </DockPanel>
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" IsEnabled="False">
-                  <TextBlock Classes="entry-label" Text="新建 SFTP" />
+                  <TextBlock Classes="entry-label" Text="{loc:Localize Menu_NewSftp}" />
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" IsEnabled="False">
-                  <TextBlock Classes="entry-label" Text="导入 / 导出配置" />
+                  <TextBlock Classes="entry-label" Text="{loc:Localize Menu_ImportExportConfig}" />
                 </Button>
                 <Border Height="1" Margin="0,4" Background="{DynamicResource VelaBorderPrimary}" />
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click"
                         Command="{Binding RunCommand}" CommandParameter="session.close">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+W" />
-                    <TextBlock Classes="entry-label" Text="关闭当前会话" />
+                    <TextBlock Classes="entry-label" Text="{loc:Localize Menu_CloseCurrentSession}" />
                   </DockPanel>
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Exit_Click">
-                  <TextBlock Classes="entry-label" Text="退出" />
+                  <TextBlock Classes="entry-label" Text="{loc:Localize Menu_Exit}" />
                 </Button>
               </StackPanel>
             </Flyout>
           </Button.Flyout>
         </Button>
 
-        <Button Theme="{StaticResource VelaMenuTopButton}" Content="编辑">
+        <Button Theme="{StaticResource VelaMenuTopButton}" Content="{loc:Localize Edit}">
           <Button.Flyout>
             <Flyout Placement="BottomEdgeAlignedLeft"
                     FlyoutPresenterTheme="{StaticResource VelaMenuFlyoutPresenter}">
@@ -187,24 +188,24 @@
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="edit.copy">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+Shift+C" />
-                    <TextBlock Classes="entry-label" Text="复制" />
+                    <TextBlock Classes="entry-label" Text="{loc:Localize Copy}" />
                   </DockPanel>
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="edit.paste">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+Shift+V" />
-                    <TextBlock Classes="entry-label" Text="粘贴" />
+                    <TextBlock Classes="entry-label" Text="{loc:Localize Menu_Paste}" />
                   </DockPanel>
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="edit.clear">
-                  <TextBlock Classes="entry-label" Text="清屏" />
+                  <TextBlock Classes="entry-label" Text="{loc:Localize Menu_ClearScreen}" />
                 </Button>
                 <Border Height="1" Margin="0,4" Background="{DynamicResource VelaBorderPrimary}" />
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click"
                         Command="{Binding RunCommand}" CommandParameter="app.settings">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+," />
-                    <TextBlock Classes="entry-label" Text="首选项" />
+                    <TextBlock Classes="entry-label" Text="{loc:Localize Menu_Preferences}" />
                   </DockPanel>
                 </Button>
               </StackPanel>
@@ -212,7 +213,7 @@
           </Button.Flyout>
         </Button>
 
-        <Button Theme="{StaticResource VelaMenuTopButton}" Content="操作">
+        <Button Theme="{StaticResource VelaMenuTopButton}" Content="{loc:Localize Menu_Actions}">
           <Button.Flyout>
             <Flyout Placement="BottomEdgeAlignedLeft"
                     FlyoutPresenterTheme="{StaticResource VelaMenuFlyoutPresenter}">
@@ -220,22 +221,22 @@
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="session.reconnect">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+R" />
-                    <TextBlock Classes="entry-label" Text="重连" />
+                    <TextBlock Classes="entry-label" Text="{loc:Localize Reconnect}" />
                   </DockPanel>
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" IsEnabled="False">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+\" />
-                    <TextBlock Classes="entry-label" Text="分屏" />
+                    <TextBlock Classes="entry-label" Text="{loc:Localize Split}" />
                   </DockPanel>
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" IsEnabled="False">
-                  <TextBlock Classes="entry-label" Text="复制会话" />
+                  <TextBlock Classes="entry-label" Text="{loc:Localize Menu_DuplicateSession}" />
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" IsEnabled="False">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+Shift+B" />
-                    <TextBlock Classes="entry-label" Text="广播输入" />
+                    <TextBlock Classes="entry-label" Text="{loc:Localize Broadcast}" />
                   </DockPanel>
                 </Button>
               </StackPanel>
@@ -243,7 +244,7 @@
           </Button.Flyout>
         </Button>
 
-        <Button Theme="{StaticResource VelaMenuTopButton}" Content="搜索">
+        <Button Theme="{StaticResource VelaMenuTopButton}" Content="{loc:Localize Search}">
           <Button.Flyout>
             <Flyout Placement="BottomEdgeAlignedLeft"
                     FlyoutPresenterTheme="{StaticResource VelaMenuFlyoutPresenter}">
@@ -251,14 +252,14 @@
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="search.terminal">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+F" />
-                    <TextBlock Classes="entry-label" Text="终端内查找" />
+                    <TextBlock Classes="entry-label" Text="{loc:Localize Menu_FindInTerminal}" />
                   </DockPanel>
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click"
                         Command="{Binding OpenCommandPaletteCommand}">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+P" />
-                    <TextBlock Classes="entry-label" Text="命令面板" />
+                    <TextBlock Classes="entry-label" Text="{loc:Localize Menu_CommandPalette}" />
                   </DockPanel>
                 </Button>
               </StackPanel>
@@ -266,7 +267,7 @@
           </Button.Flyout>
         </Button>
 
-        <Button Theme="{StaticResource VelaMenuTopButton}" Content="工具">
+        <Button Theme="{StaticResource VelaMenuTopButton}" Content="{loc:Localize Menu_Tools}">
           <Button.Flyout>
             <Flyout Placement="BottomEdgeAlignedLeft"
                     FlyoutPresenterTheme="{StaticResource VelaMenuFlyoutPresenter}">
@@ -274,42 +275,42 @@
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="tools.tunnel">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+Shift+T" />
-                    <TextBlock Classes="entry-label" Text="隧道管理" />
+                    <TextBlock Classes="entry-label" Text="{loc:Localize Menu_TunnelManager}" />
                   </DockPanel>
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="tools.files">
                   <DockPanel>
                     <TextBlock Classes="entry-hint" DockPanel.Dock="Right" Text="Ctrl+Shift+F" />
-                    <TextBlock Classes="entry-label" Text="SFTP 文件管理器" />
+                    <TextBlock Classes="entry-label" Text="{loc:Localize Menu_SftpFileManager}" />
                   </DockPanel>
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" Command="{Binding RunCommand}" CommandParameter="tools.diagnostics">
-                  <TextBlock Classes="entry-label" Text="连接诊断" />
+                  <TextBlock Classes="entry-label" Text="{loc:Localize Menu_ConnectionDiagnostics}" />
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" IsEnabled="False">
-                  <TextBlock Classes="entry-label" Text="主机信任中心" />
+                  <TextBlock Classes="entry-label" Text="{loc:Localize Menu_HostTrustCenter}" />
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" IsEnabled="False">
-                  <TextBlock Classes="entry-label" Text="密钥管理" />
+                  <TextBlock Classes="entry-label" Text="{loc:Localize Menu_KeyManagement}" />
                 </Button>
               </StackPanel>
             </Flyout>
           </Button.Flyout>
         </Button>
 
-        <Button Theme="{StaticResource VelaMenuTopButton}" Content="帮助">
+        <Button Theme="{StaticResource VelaMenuTopButton}" Content="{loc:Localize Menu_Help}">
           <Button.Flyout>
             <Flyout Placement="BottomEdgeAlignedLeft"
                     FlyoutPresenterTheme="{StaticResource VelaMenuFlyoutPresenter}">
               <StackPanel>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" IsEnabled="False">
-                  <TextBlock Classes="entry-label" Text="快捷键一览" />
+                  <TextBlock Classes="entry-label" Text="{loc:Localize Menu_ShortcutsOverview}" />
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" IsEnabled="False">
-                  <TextBlock Classes="entry-label" Text="检查更新" />
+                  <TextBlock Classes="entry-label" Text="{loc:Localize SetAbout_CheckUpdates}" />
                 </Button>
                 <Button Theme="{StaticResource VelaMenuEntry}" Click="Entry_Click" IsEnabled="False">
-                  <TextBlock Classes="entry-label" Text="关于 VelaShell" />
+                  <TextBlock Classes="entry-label" Text="{loc:Localize SetAbout_Title}" />
                 </Button>
               </StackPanel>
             </Flyout>
@@ -320,32 +321,32 @@
 
       <!-- Right: global action buttons (GQQwj, gap 4, 24×22, icon 12) -->
       <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-        <Button Theme="{StaticResource VelaMenuActionButton}" ToolTip.Tip="终端搜索 (Ctrl+F)" Command="{Binding RunCommand}" CommandParameter="search.terminal">
+        <Button Theme="{StaticResource VelaMenuActionButton}" ToolTip.Tip="{loc:Localize Menu_SearchTerminalTip}" Command="{Binding RunCommand}" CommandParameter="search.terminal">
           <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.search}"
                          Foreground="{DynamicResource VelaTextMuted}" />
         </Button>
-        <Button Theme="{StaticResource VelaMenuActionButton}" ToolTip.Tip="复制" IsEnabled="False">
+        <Button Theme="{StaticResource VelaMenuActionButton}" ToolTip.Tip="{loc:Localize Copy}" IsEnabled="False">
           <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.copy}"
                          Foreground="{DynamicResource VelaTextMuted}" />
         </Button>
-        <Button Theme="{StaticResource VelaMenuActionButton}" ToolTip.Tip="分屏" IsEnabled="False">
+        <Button Theme="{StaticResource VelaMenuActionButton}" ToolTip.Tip="{loc:Localize Split}" IsEnabled="False">
           <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.columns-2}"
                          Foreground="{DynamicResource VelaTextMuted}" />
         </Button>
-        <Button Theme="{StaticResource VelaMenuActionButton}" ToolTip.Tip="隧道 (Ctrl+Shift+T)" Command="{Binding RunCommand}" CommandParameter="tools.tunnel">
+        <Button Theme="{StaticResource VelaMenuActionButton}" ToolTip.Tip="{loc:Localize Menu_TunnelTip}" Command="{Binding RunCommand}" CommandParameter="tools.tunnel">
           <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.route}"
                          Foreground="{DynamicResource VelaTextMuted}" />
         </Button>
-        <Button Theme="{StaticResource VelaMenuActionButton}" ToolTip.Tip="命令面板 (Ctrl+P)"
+        <Button Theme="{StaticResource VelaMenuActionButton}" ToolTip.Tip="{loc:Localize Menu_CommandPaletteTip}"
                 Command="{Binding OpenCommandPaletteCommand}">
           <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.zap}"
                          Foreground="{DynamicResource VelaTextMuted}" />
         </Button>
-        <Button Theme="{StaticResource VelaMenuActionButton}" ToolTip.Tip="组同步" IsEnabled="False">
+        <Button Theme="{StaticResource VelaMenuActionButton}" ToolTip.Tip="{loc:Localize SyncGroup}" IsEnabled="False">
           <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.link-2}"
                          Foreground="{DynamicResource VelaTextMuted}" />
         </Button>
-        <Button Theme="{StaticResource VelaMenuActionButton}" ToolTip.Tip="广播输入" IsEnabled="False">
+        <Button Theme="{StaticResource VelaMenuActionButton}" ToolTip.Tip="{loc:Localize Broadcast}" IsEnabled="False">
           <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.send}"
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </Button>

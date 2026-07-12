@@ -2,32 +2,33 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:VelaShell.ViewModels"
              xmlns:conv="using:VelaShell.Converters"
+             xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Views.Settings.AppearanceSettingsPage"
              x:DataType="vm:SettingsViewModel">
 
   <StackPanel Spacing="14">
     <StackPanel Spacing="2">
-      <TextBlock Classes="page-title" Text="外观" />
-      <TextBlock Classes="page-subtitle" Text="// 自定义应用程序的视觉风格" />
+      <TextBlock Classes="page-title" Text="{loc:Localize SetAppear_Title}" />
+      <TextBlock Classes="page-subtitle" Text="{loc:Localize SetAppear_Subtitle}" />
     </StackPanel>
 
     <!-- 主题 -->
-    <TextBlock Classes="section-title" Text="主题" />
+    <TextBlock Classes="section-title" Text="{loc:Localize Theme}" />
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="主题模式" />
-        <TextBlock Classes="row-desc" Text="// 选择亮色、暗色或跟随系统" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_ThemeMode}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_ThemeModeDesc}" />
       </StackPanel>
       <ComboBox Grid.Column="1" Width="140" SelectedIndex="{Binding ThemeIndex}" VerticalAlignment="Center">
-        <ComboBoxItem Content="暗色模式" />
-        <ComboBoxItem Content="亮色模式" />
-        <ComboBoxItem Content="跟随系统" />
+        <ComboBoxItem Content="{loc:Localize SetAppear_ThemeDark}" />
+        <ComboBoxItem Content="{loc:Localize SetAppear_ThemeLight}" />
+        <ComboBoxItem Content="{loc:Localize SetAppear_ThemeSystem}" />
       </ComboBox>
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="主题色" />
-        <TextBlock Classes="row-desc" Text="// 应用程序的强调色(留空用主题默认)" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_AccentColor}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_AccentColorDesc}" />
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <ItemsControl ItemsSource="{Binding AccentSwatches}">
@@ -53,18 +54,18 @@
     <Border Classes="sep" />
 
     <!-- 字体 -->
-    <TextBlock Classes="section-title" Text="字体" />
+    <TextBlock Classes="section-title" Text="{loc:Localize Font}" />
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="界面字体" />
-        <TextBlock Classes="row-desc" Text="// 菜单、标签页等 UI 元素的字体" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_UiFont}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_UiFontDesc}" />
       </StackPanel>
       <TextBox Grid.Column="1" Width="140" Text="{Binding Appearance.UiFont}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="界面字号" />
-        <TextBlock Classes="row-desc" Text="// UI 元素的默认字体大小" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_UiFontSize}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_UiFontSizeDesc}" />
       </StackPanel>
       <NumericUpDown Grid.Column="1" Width="80" Value="{Binding Appearance.UiFontSize}" Minimum="9" Maximum="24" Increment="1" FormatString="0" VerticalAlignment="Center" />
     </Grid>
@@ -72,11 +73,11 @@
     <Border Classes="sep" />
 
     <!-- 窗口 -->
-    <TextBlock Classes="section-title" Text="窗口" />
+    <TextBlock Classes="section-title" Text="{loc:Localize SetAppear_WindowSection}" />
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="窗口透明度" />
-        <TextBlock Classes="row-desc" Text="// 调整窗口背景的透明程度" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_WindowOpacity}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_WindowOpacityDesc}" />
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <Slider Width="120" Minimum="10" Maximum="100"
@@ -90,50 +91,50 @@
     <!-- 标签栏位置:标签栏由可停靠布局(Dock)提供、固定在顶部,暂不展示
          (设置审计 R-05);Dock 模板支持切换后恢复展示。 -->
     <Grid ColumnDefinitions="*,Auto">
-      <TextBlock Classes="row-label" Text="显示菜单栏" VerticalAlignment="Center" />
+      <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_ShowMenuBar}" VerticalAlignment="Center" />
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Appearance.ShowMenuBar}" VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="侧边栏位置" />
-        <TextBlock Classes="row-desc" Text="// 侧边栏显示在窗口的左侧或右侧" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_SidebarPosition}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_SidebarPositionDesc}" />
       </StackPanel>
       <ComboBox Grid.Column="1" Width="140" SelectedIndex="{Binding SidebarPositionIndex}" VerticalAlignment="Center">
-        <ComboBoxItem Content="左侧" />
-        <ComboBoxItem Content="右侧" />
+        <ComboBoxItem Content="{loc:Localize SetAppear_SidebarLeft}" />
+        <ComboBoxItem Content="{loc:Localize SetAppear_SidebarRight}" />
       </ComboBox>
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="启动时窗口状态" />
-        <TextBlock Classes="row-desc" Text="// 应用启动时的窗口大小行为" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_WindowState}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_WindowStateDesc}" />
       </StackPanel>
       <ComboBox Grid.Column="1" Width="140" SelectedIndex="{Binding WindowStateIndex}" VerticalAlignment="Center">
-        <ComboBoxItem Content="记住上次" />
-        <ComboBoxItem Content="最大化" />
-        <ComboBoxItem Content="默认大小" />
+        <ComboBoxItem Content="{loc:Localize SetAppear_WindowStateRemember}" />
+        <ComboBoxItem Content="{loc:Localize SetAppear_WindowStateMaximized}" />
+        <ComboBoxItem Content="{loc:Localize SetAppear_WindowStateDefault}" />
       </ComboBox>
     </Grid>
 
     <Border Classes="sep" />
 
     <!-- 终端颜色 -->
-    <TextBlock Classes="section-title" Text="终端颜色" />
+    <TextBlock Classes="section-title" Text="{loc:Localize SetAppear_TerminalColorsSection}" />
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="配色方案" />
-        <TextBlock Classes="row-desc" Text="// 一键套用整套终端配色;默认跟随应用主题:暗色 = Dracula,亮色 = Solarized Light" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_ColorScheme}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_ColorSchemeDesc}" />
       </StackPanel>
       <ComboBox Grid.Column="1" Width="160"
                 ItemsSource="{Binding AvailableColorSchemes}"
                 SelectedIndex="{Binding ColorSchemeIndex}"
-                PlaceholderText="选择方案…"
+                PlaceholderText="{loc:Localize SetAppear_ColorSchemePlaceholder}"
                 VerticalAlignment="Center" />
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="前景色" />
-        <TextBlock Classes="row-desc" Text="// 终端默认文本颜色" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_Foreground}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_ForegroundDesc}" />
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <Border Width="24" Height="24" CornerRadius="4"
@@ -144,8 +145,8 @@
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="背景色" />
-        <TextBlock Classes="row-desc" Text="// 终端背景颜色" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_Background}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_BackgroundDesc}" />
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <Border Width="24" Height="24" CornerRadius="4"
@@ -156,8 +157,8 @@
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="光标颜色" />
-        <TextBlock Classes="row-desc" Text="// 终端光标的颜色" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_CursorColor}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_CursorColorDesc}" />
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <Border Width="24" Height="24" CornerRadius="4"
@@ -168,8 +169,8 @@
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
-        <TextBlock Classes="row-label" Text="选区颜色" />
-        <TextBlock Classes="row-desc" Text="// 终端文本选中时的背景颜色" />
+        <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_SelectionColor}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_SelectionColorDesc}" />
       </StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <Border Width="24" Height="24" CornerRadius="4"
@@ -182,13 +183,13 @@
     <Border Classes="sep" />
 
     <!-- ANSI 调色板 -->
-    <TextBlock Classes="section-title" Text="ANSI 调色板" />
+    <TextBlock Classes="section-title" Text="{loc:Localize SetAppear_AnsiSection}" />
     <StackPanel Spacing="2">
-      <TextBlock Classes="row-label" Text="终端 ANSI 16 色" />
-      <TextBlock Classes="row-desc" Text="// 终端中使用的标准 16 色方案" />
+      <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_Ansi16}" />
+      <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_Ansi16Desc}" />
     </StackPanel>
     <StackPanel Orientation="Horizontal" Spacing="8">
-      <TextBlock Classes="row-desc" Text="普通" Width="30" VerticalAlignment="Center" />
+      <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_AnsiNormal}" Width="30" VerticalAlignment="Center" />
       <ItemsControl ItemsSource="{Binding Appearance.AnsiNormal}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
@@ -206,7 +207,7 @@
       </ItemsControl>
     </StackPanel>
     <StackPanel Orientation="Horizontal" Spacing="8">
-      <TextBlock Classes="row-desc" Text="明亮" Width="30" VerticalAlignment="Center" />
+      <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_AnsiBright}" Width="30" VerticalAlignment="Center" />
       <ItemsControl ItemsSource="{Binding Appearance.AnsiBright}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>

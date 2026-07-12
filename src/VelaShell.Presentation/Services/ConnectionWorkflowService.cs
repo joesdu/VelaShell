@@ -1,5 +1,6 @@
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 
 namespace VelaShell.Presentation.Services;
@@ -204,13 +205,13 @@ public sealed class ConnectionWorkflowService(
         }
         if (depth >= 5)
         {
-            throw new InvalidOperationException("跳板链过长(最多 5 跳)。");
+            throw new InvalidOperationException(Strings.Get("Svc_JumpChainTooLong"));
         }
         if (!visited.Add(jumpId))
         {
-            throw new InvalidOperationException("跳板配置形成了循环引用,请检查跳板主机设置。");
+            throw new InvalidOperationException(Strings.Get("Svc_JumpChainLoop"));
         }
-        SessionProfile jumpProfile = await _sessionRepository.GetSessionAsync(jumpId).ConfigureAwait(false) ?? throw new InvalidOperationException("跳板主机配置不存在(可能已被删除),请重新设置。");
+        SessionProfile jumpProfile = await _sessionRepository.GetSessionAsync(jumpId).ConfigureAwait(false) ?? throw new InvalidOperationException(Strings.Get("Svc_JumpHostMissing"));
         jump = await BuildChainAsync(jumpProfile, visited, depth + 1).ConfigureAwait(false);
         return new()
         {
@@ -229,19 +230,19 @@ public sealed class ConnectionWorkflowService(
     {
         if (string.IsNullOrWhiteSpace(profile.Name))
         {
-            throw new ArgumentException(@"Connection profile name is required.", nameof(profile));
+            throw new ArgumentException(Strings.Get("Svc_ProfileNameRequired"), nameof(profile));
         }
         if (string.IsNullOrWhiteSpace(profile.Host))
         {
-            throw new ArgumentException(@"Host is required.", nameof(profile));
+            throw new ArgumentException(Strings.Get("Svc_HostRequired"), nameof(profile));
         }
         if (string.IsNullOrWhiteSpace(profile.Username))
         {
-            throw new ArgumentException(@"Username is required.", nameof(profile));
+            throw new ArgumentException(Strings.Get("Svc_UsernameRequired"), nameof(profile));
         }
         if (profile.Port is < 1 or > 65535)
         {
-            throw new ArgumentOutOfRangeException(nameof(profile), @"Port must be between 1 and 65535.");
+            throw new ArgumentOutOfRangeException(nameof(profile), Strings.Get("Svc_PortRange"));
         }
         if (!requireCredentials)
         {
@@ -250,11 +251,11 @@ public sealed class ConnectionWorkflowService(
         // ReSharper disable once ConvertIfStatementToSwitchStatement
         if (profile.AuthMethod == AuthMethod.Password && string.IsNullOrWhiteSpace(profile.Password))
         {
-            throw new ArgumentException(@"Password authentication requires a password.", nameof(profile));
+            throw new ArgumentException(Strings.Get("Svc_PasswordRequired"), nameof(profile));
         }
         if (profile.AuthMethod == AuthMethod.PrivateKey && string.IsNullOrWhiteSpace(profile.PrivateKeyPath))
         {
-            throw new ArgumentException(@"Private key authentication requires a private key path.", nameof(profile));
+            throw new ArgumentException(Strings.Get("Svc_PrivateKeyRequired"), nameof(profile));
         }
     }
 }

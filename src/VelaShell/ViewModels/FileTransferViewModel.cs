@@ -4,6 +4,7 @@ using System.Reactive;
 using Avalonia.Threading;
 using ReactiveUI;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
 
 namespace VelaShell.ViewModels;
@@ -65,7 +66,7 @@ public class FileTransferViewModel : ReactiveObject
     }
 
     /// <summary>准备阶段的状态行文案:随扫描进度动态刷新。</summary>
-    public string PreparingText => $"正在扫描待传输文件… 已发现 {_preparingCount} 个";
+    public string PreparingText => Strings.Format("Msg_ScanningTransferFiles", _preparingCount);
 
     /// <summary>
     /// The toast exists only while it has content and wasn't manually collapsed (spec §9):

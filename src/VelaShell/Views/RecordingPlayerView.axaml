@@ -1,9 +1,10 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:VelaShell.ViewModels"
+        xmlns:loc="using:VelaShell.Localization"
         x:Class="VelaShell.Views.RecordingPlayerView"
         x:DataType="vm:RecordingPlayerViewModel"
-        Title="会话录制与回放"
+        Title="{loc:Localize Recorder_Title}"
         Width="1200" Height="820"
         MinWidth="860" MinHeight="600"
         CanResize="True"
@@ -87,26 +88,26 @@
               BorderThickness="0,0,0,1">
         <Grid ColumnDefinitions="*,Auto">
           <StackPanel Spacing="2" VerticalAlignment="Center">
-            <TextBlock Text="会话录制与回放"
+            <TextBlock Text="{loc:Localize Recorder_Title}"
                        Foreground="{DynamicResource VelaTextPrimary}"
                        FontSize="15" FontWeight="SemiBold" />
-            <TextBlock Text="// 终端审计、检索与按时间轴回放"
+            <TextBlock Text="{loc:Localize Recorder_Subtitle}"
                        Foreground="{DynamicResource VelaTextMuted}"
                        FontFamily="{DynamicResource VelaTerminalFont}"
                        FontSize="10" />
           </StackPanel>
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-            <Button Classes="dlg-outline" Content="导出录制"
+            <Button Classes="dlg-outline" Content="{loc:Localize Recorder_Export}"
                     IsEnabled="{Binding HasSelection}"
                     Click="ExportRecording_Click"
-                    ToolTip.Tip="导出为 asciicast v2(.cast),可用 asciinema 等工具回放" />
-            <Button Classes="dlg-outline" Content="刷新" Command="{Binding RefreshCommand}" />
+                    ToolTip.Tip="{loc:Localize Recorder_ExportTip}" />
+            <Button Classes="dlg-outline" Content="{loc:Localize Refresh}" Command="{Binding RefreshCommand}" />
             <Button Classes="dlg-accent" Content="{Binding AutoRecordText}"
                     Command="{Binding ToggleAutoRecordCommand}"
-                    ToolTip.Tip="即 设置 → 安全审计 → 会话录制;对之后建立的连接生效" />
+                    ToolTip.Tip="{loc:Localize Recorder_AutoRecordTip}" />
             <Button Width="26" Height="26" Background="Transparent" Padding="0"
                     CornerRadius="3" Cursor="Hand" Click="Maximize_Click"
-                    VerticalAlignment="Center" ToolTip.Tip="最大化 / 还原(双击标题栏亦可)">
+                    VerticalAlignment="Center" ToolTip.Tip="{loc:Localize Recorder_MaximizeTip}">
               <TextBlock Text="▢" FontSize="12" HorizontalAlignment="Center"
                          Foreground="{DynamicResource VelaTextTertiary}" />
             </Button>
@@ -130,12 +131,12 @@
           <Grid RowDefinitions="34,*">
             <Border Grid.Row="0" Padding="12,0"
                     BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
-              <TextBlock Text="录制列表" FontSize="12" FontWeight="Medium"
+              <TextBlock Text="{loc:Localize Recorder_ListTitle}" FontSize="12" FontWeight="Medium"
                          Foreground="{DynamicResource VelaTextSecondary}" VerticalAlignment="Center" />
             </Border>
             <TextBlock Grid.Row="1" Margin="12" TextWrapping="Wrap" FontSize="11"
                        Foreground="{DynamicResource VelaTextMuted}"
-                       Text="暂无录制"
+                       Text="{loc:Localize Recorder_Empty}"
                        IsVisible="{Binding !HasRecordings}" />
             <ListBox Grid.Row="1" Classes="rec-list" Background="Transparent"
                      ItemsSource="{Binding Recordings}"
@@ -156,7 +157,7 @@
                         <Run Text=" • " /><Run Text="{Binding SizeText, Mode=OneWay}" />
                       </TextBlock>
                     </StackPanel>
-                    <Button Grid.Column="1" Classes="dlg-danger" Content="删除"
+                    <Button Grid.Column="1" Classes="dlg-danger" Content="{loc:Localize Delete}"
                             VerticalAlignment="Center"
                             Command="{Binding $parent[ListBox].((vm:RecordingPlayerViewModel)DataContext).DeleteCommand}"
                             CommandParameter="{Binding}" />
@@ -205,11 +206,11 @@
                       IsEnabled="{Binding HasSelection}" />
               <Button Grid.Column="2" Classes="dlg-outline" Width="48"
                       Content="{Binding SpeedText}" Click="CycleSpeed_Click"
-                      ToolTip.Tip="回放倍速(1x / 2x / 4x)" />
+                      ToolTip.Tip="{loc:Localize Recorder_SpeedTip}" />
               <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                 <ToggleSwitch IsChecked="{Binding SkipIdle}" Padding="0" MinWidth="0"
                               OnContent="" OffContent="" />
-                <TextBlock Text="跳过空闲片段" FontSize="11" VerticalAlignment="Center"
+                <TextBlock Text="{loc:Localize Recorder_SkipIdle}" FontSize="11" VerticalAlignment="Center"
                            Foreground="{DynamicResource VelaTextSecondary}" />
               </StackPanel>
               <TextBlock Grid.Column="6" FontSize="10" VerticalAlignment="Center"
@@ -226,7 +227,7 @@
               HorizontalAlignment="Right" VerticalAlignment="Bottom"
               Background="Transparent" Cursor="BottomRightCorner"
               PointerPressed="ResizeGrip_PointerPressed"
-              ToolTip.Tip="拖动缩放窗口">
+              ToolTip.Tip="{loc:Localize Recorder_ResizeTip}">
         <Path Data="M14,4 L4,14 M14,9 L9,14"
               Stroke="{DynamicResource VelaTextMuted}" StrokeThickness="1.5"
               Margin="0,0,3,3" HorizontalAlignment="Right" VerticalAlignment="Bottom" />

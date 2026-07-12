@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Reactive;
 using ReactiveUI;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 
 namespace VelaShell.ViewModels;
@@ -84,7 +85,7 @@ public class SshKeyManagerViewModel : ReactiveObject
         }
         catch (Exception ex)
         {
-            StatusMessage = $"读取密钥失败:{ex.Message}";
+            StatusMessage = Strings.Format("Msg_ReadKeysFailed", ex.Message);
         }
         finally
         {
@@ -101,12 +102,12 @@ public class SshKeyManagerViewModel : ReactiveObject
         try
         {
             SshKeyInfo? imported = await _keyService.ImportKeyAsync(sourcePath);
-            StatusMessage = imported is null ? "同名密钥已存在,未导入。" : $"已导入 {imported.Name}。";
+            StatusMessage = imported is null ? Strings.Get("Msg_KeyAlreadyExists") : Strings.Format("Msg_KeyImported", imported.Name);
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            StatusMessage = $"导入失败:{ex.Message}";
+            StatusMessage = Strings.Format("Msg_ImportFailed", ex.Message);
         }
     }
 
@@ -127,12 +128,12 @@ public class SshKeyManagerViewModel : ReactiveObject
                 name = $"{baseName}_{i}";
             }
             SshKeyInfo generated = await _keyService.GenerateRsaKeyAsync(name);
-            StatusMessage = $"已生成 {generated.Name}({generated.Type})。";
+            StatusMessage = Strings.Format("Msg_KeyGenerated", generated.Name, generated.Type);
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            StatusMessage = $"生成失败:{ex.Message}";
+            StatusMessage = Strings.Format("Msg_GenerateFailed", ex.Message);
         }
         finally
         {
@@ -149,12 +150,12 @@ public class SshKeyManagerViewModel : ReactiveObject
         try
         {
             await _keyService.DeleteKeyAsync(key.Name);
-            StatusMessage = $"已删除 {key.Name}。";
+            StatusMessage = Strings.Format("Msg_KeyDeleted", key.Name);
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            StatusMessage = $"删除失败:{ex.Message}";
+            StatusMessage = Strings.Format("Msg_DeleteFailed", ex.Message);
         }
     }
 

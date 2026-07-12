@@ -5,6 +5,7 @@
              xmlns:vm="using:VelaShell.ViewModels"
              xmlns:pc="using:VelaShell.Controls.Controls"
              xmlns:models="clr-namespace:VelaShell.Core.Models;assembly=VelaShell.Core"
+             xmlns:loc="using:VelaShell.Localization"
              mc:Ignorable="d" d:DesignWidth="340" d:DesignHeight="460"
              x:Class="VelaShell.Views.TunnelPanelView"
              x:DataType="vm:TunnelPanelViewModel">
@@ -57,7 +58,7 @@
             <pc:LucideIcon Width="12" Height="12"
                            Data="{StaticResource Icon.route}"
                            Foreground="{DynamicResource VelaAccent}" />
-            <TextBlock Text="隧道"
+            <TextBlock Text="{loc:Localize Tunnel_Title}"
                        Foreground="{DynamicResource VelaTextPrimary}"
                        FontFamily="{DynamicResource VelaTerminalFont}"
                        FontSize="11" FontWeight="Medium"
@@ -72,7 +73,7 @@
             </Border>
           </StackPanel>
           <Button Grid.Column="2" Classes="row-action"
-                  ToolTip.Tip="关闭面板"
+                  ToolTip.Tip="{loc:Localize Tunnel_ClosePanel}"
                   Command="{Binding CloseCommand}">
             <pc:LucideIcon Width="12" Height="12"
                            Data="{StaticResource Icon.x}"
@@ -86,11 +87,11 @@
               BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,0,1">
         <StackPanel Spacing="4">
-          <TextBlock Classes="form-label" Text="服务器(经由此主机转发)" />
+          <TextBlock Classes="form-label" Text="{loc:Localize Tunnel_ServerLabel}" />
           <ComboBox MinHeight="26" FontSize="11"
                     FontFamily="{DynamicResource VelaTerminalFont}"
                     HorizontalAlignment="Stretch"
-                    PlaceholderText="选择已保存的服务器"
+                    PlaceholderText="{loc:Localize Tunnel_SelectServerPlaceholder}"
                     ItemsSource="{Binding Servers}"
                     SelectedItem="{Binding SelectedServer}">
             <ComboBox.ItemTemplate>
@@ -132,7 +133,7 @@
               BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,0,1"
               IsVisible="{Binding !Tunnels.Count}">
-        <TextBlock Text="// 这台服务器还没有隧道,先在下方创建一条"
+        <TextBlock Text="{loc:Localize Tunnel_EmptyHint}"
                    Foreground="{DynamicResource VelaTextMuted}"
                    FontFamily="{DynamicResource VelaTerminalFont}"
                    FontSize="10" />
@@ -176,7 +177,7 @@
                   </StackPanel>
                   <!-- 编辑:把配置填回表单,保存后按新配置重建 -->
                   <Button Grid.Column="1" Classes="row-action"
-                          ToolTip.Tip="编辑隧道"
+                          ToolTip.Tip="{loc:Localize Tunnel_EditTip}"
                           Command="{Binding $parent[ItemsControl].((vm:TunnelPanelViewModel)DataContext).EditTunnelCommand}"
                           CommandParameter="{Binding Id}">
                     <pc:LucideIcon Width="10" Height="10"
@@ -186,7 +187,7 @@
                   <!-- Stop (active) / start (stopped) toggle -->
                   <Button Grid.Column="3" Classes="row-action"
                           IsVisible="{Binding IsActive}"
-                          ToolTip.Tip="停止隧道"
+                          ToolTip.Tip="{loc:Localize Tunnel_StopTip}"
                           Command="{Binding $parent[ItemsControl].((vm:TunnelPanelViewModel)DataContext).StopTunnelCommand}"
                           CommandParameter="{Binding Id}">
                     <pc:LucideIcon Width="10" Height="10"
@@ -195,7 +196,7 @@
                   </Button>
                   <Button Grid.Column="3" Classes="row-action"
                           IsVisible="{Binding !IsActive}"
-                          ToolTip.Tip="启动隧道(自动连接服务器)"
+                          ToolTip.Tip="{loc:Localize Tunnel_StartTip}"
                           Command="{Binding $parent[ItemsControl].((vm:TunnelPanelViewModel)DataContext).StartTunnelCommand}"
                           CommandParameter="{Binding Id}">
                     <pc:LucideIcon Width="10" Height="10"
@@ -204,7 +205,7 @@
                   </Button>
                   <!-- Delete (stops first when active) -->
                   <Button Grid.Column="5" Classes="row-action"
-                          ToolTip.Tip="删除隧道"
+                          ToolTip.Tip="{loc:Localize Tunnel_DeleteTip}"
                           Command="{Binding $parent[ItemsControl].((vm:TunnelPanelViewModel)DataContext).DeleteTunnelCommand}"
                           CommandParameter="{Binding Id}">
                     <pc:LucideIcon Width="10" Height="10"
@@ -246,33 +247,33 @@
         </StackPanel>
 
         <Grid ColumnDefinitions="*,8,120" RowDefinitions="Auto,4,Auto">
-          <TextBlock Grid.Row="0" Grid.Column="0" Classes="form-label" Text="别名(可选)" />
-          <TextBox   Grid.Row="2" Grid.Column="0" Text="{Binding NewTunnelName}" PlaceholderText="MongoDB 转发" />
-          <TextBlock Grid.Row="0" Grid.Column="2" Classes="form-label" Text="类型" />
+          <TextBlock Grid.Row="0" Grid.Column="0" Classes="form-label" Text="{loc:Localize Tunnel_AliasLabel}" />
+          <TextBox   Grid.Row="2" Grid.Column="0" Text="{Binding NewTunnelName}" PlaceholderText="{loc:Localize Tunnel_AliasPlaceholder}" />
+          <TextBlock Grid.Row="0" Grid.Column="2" Classes="form-label" Text="{loc:Localize Tunnel_TypeLabel}" />
           <ComboBox  Grid.Row="2" Grid.Column="2"
                      MinHeight="26" FontSize="11"
                      FontFamily="{DynamicResource VelaTerminalFont}"
                      HorizontalAlignment="Stretch"
                      SelectedIndex="{Binding NewTunnelTypeIndex}">
-            <ComboBoxItem Content="本地转发" ToolTip.Tip="把本地端口的访问经服务器转发到目标服务(ssh -L)" />
-            <ComboBoxItem Content="远程转发" ToolTip.Tip="把服务器端口的访问转回本机服务(ssh -R)" />
-            <ComboBoxItem Content="动态 SOCKS" ToolTip.Tip="本地端口作为 SOCKS5 代理,目标任意(ssh -D)" />
+            <ComboBoxItem Content="{loc:Localize LocalForward}" ToolTip.Tip="{loc:Localize Tunnel_LocalForwardTip}" />
+            <ComboBoxItem Content="{loc:Localize RemoteForward}" ToolTip.Tip="{loc:Localize Tunnel_RemoteForwardTip}" />
+            <ComboBoxItem Content="{loc:Localize Tunnel_DynamicSocks}" ToolTip.Tip="{loc:Localize Tunnel_DynamicSocksTip}" />
           </ComboBox>
         </Grid>
 
         <!-- 目标默认锁定为服务器本机 127.0.0.1(地址从服务器视角解析,填公网 IP 会被拒);
              取消勾选可填服务器可达的内网第三方主机。 -->
         <Grid ColumnDefinitions="80,8,*,8,56" RowDefinitions="Auto,4,Auto">
-          <TextBlock Grid.Row="0" Grid.Column="0" Classes="form-label" Text="本地端口" />
+          <TextBlock Grid.Row="0" Grid.Column="0" Classes="form-label" Text="{loc:Localize LocalPort}" />
           <TextBox   Grid.Row="2" Grid.Column="0" Text="{Binding NewLocalPort}" PlaceholderText="5432" />
-          <TextBlock Grid.Row="0" Grid.Column="2" Classes="form-label" Text="目标主机(服务器视角)"
+          <TextBlock Grid.Row="0" Grid.Column="2" Classes="form-label" Text="{loc:Localize Tunnel_TargetHostLabel}"
                      IsVisible="{Binding IsRemoteTargetVisible}" />
           <TextBox   Grid.Row="2" Grid.Column="2"
                      Text="{Binding NewRemoteHost}"
                      IsEnabled="{Binding IsRemoteHostEditable}"
                      PlaceholderText="127.0.0.1"
                      IsVisible="{Binding IsRemoteTargetVisible}" />
-          <TextBlock Grid.Row="0" Grid.Column="4" Classes="form-label" Text="端口"
+          <TextBlock Grid.Row="0" Grid.Column="4" Classes="form-label" Text="{loc:Localize Port}"
                      IsVisible="{Binding IsRemoteTargetVisible}" />
           <TextBox   Grid.Row="2" Grid.Column="4" Text="{Binding NewRemotePort}" PlaceholderText="port"
                      IsVisible="{Binding IsRemoteTargetVisible}" />
@@ -281,7 +282,7 @@
         <CheckBox IsChecked="{Binding ForwardToServerLoopback}"
                   IsVisible="{Binding IsRemoteTargetVisible}"
                   Padding="0" MinHeight="0">
-          <TextBlock Text="转发到服务器本机(127.0.0.1)"
+          <TextBlock Text="{loc:Localize Tunnel_ForwardToLoopback}"
                      Foreground="{DynamicResource VelaTextSecondary}"
                      FontSize="10" Margin="6,0,0,0" />
         </CheckBox>
@@ -296,7 +297,7 @@
           <Button Padding="10,4" CornerRadius="3" Background="Transparent"
                   BorderBrush="{DynamicResource VelaBorderSecondary}" BorderThickness="1"
                   Command="{Binding ResetFormCommand}">
-            <TextBlock Text="取消"
+            <TextBlock Text="{loc:Localize Cancel}"
                        Foreground="{DynamicResource VelaTextSecondary}"
                        FontFamily="{DynamicResource VelaUiFont}" FontSize="11" />
           </Button>

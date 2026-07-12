@@ -5,6 +5,7 @@
         xmlns:vm="using:VelaShell.ViewModels"
         xmlns:pc="using:VelaShell.Controls.Controls"
         xmlns:res="clr-namespace:VelaShell.Core.Resources;assembly=VelaShell.Core"
+        xmlns:loc="using:VelaShell.Localization"
         mc:Ignorable="d" d:DesignWidth="484" d:DesignHeight="400"
         x:Class="VelaShell.Views.HostKeyPromptView"
         x:DataType="vm:HostKeyPromptViewModel"
@@ -183,11 +184,11 @@
           <Button Classes="trust-once"
                   Content="{x:Static res:Strings.TrustOnce}"
                   Command="{Binding TrustOnceCommand}"
-                  ToolTip.Tip="放行本次连接,但不写入已信任主机;应用重启后将再次询问" />
+                  ToolTip.Tip="{loc:Localize HostKey_TrustOnceTip}" />
           <Button Classes="trust"
                   Content="{x:Static res:Strings.TrustPermanently}"
                   Command="{Binding TrustPermanentlyCommand}"
-                  ToolTip.Tip="记录该指纹,之后连接不再询问;可在 设置 → 安全审计 → 已信任主机 中删除" />
+                  ToolTip.Tip="{loc:Localize HostKey_TrustPermanentlyTip}" />
         </StackPanel>
       </Border>
     </Grid>

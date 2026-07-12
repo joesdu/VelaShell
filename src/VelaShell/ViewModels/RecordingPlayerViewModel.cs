@@ -7,6 +7,7 @@ using ReactiveUI;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Recording;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.ViewModels;
 
@@ -15,7 +16,7 @@ public sealed class RecordingItemViewModel(SessionRecording model)
 {
     public SessionRecording Model { get; } = model;
 
-    public string Label => string.IsNullOrWhiteSpace(Model.SessionLabel) ? "(未命名会话)" : Model.SessionLabel;
+    public string Label => string.IsNullOrWhiteSpace(Model.SessionLabel) ? Strings.Get("Msg_UnnamedSession") : Model.SessionLabel;
 
     public string StartText => Model.StartedAtUtc.ToLocalTime().ToString("MM-dd HH:mm");
 
@@ -160,15 +161,15 @@ public class RecordingPlayerViewModel : ReactiveObject
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    public string AutoRecordText => AutoRecordEnabled ? "自动录制: 已启用" : "自动录制: 已关闭";
+    public string AutoRecordText => AutoRecordEnabled ? Strings.Get("Msg_AutoRecordOn") : Strings.Get("Msg_AutoRecordOff");
 
-    public string PlayButtonText => IsPlaying ? "暂停" : "播放";
+    public string PlayButtonText => IsPlaying ? Strings.Get("Msg_Pause") : Strings.Get("Msg_Play");
 
     public string PlaybackTitle
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
-    } = "选择左侧录制开始回放";
+    } = Strings.Get("Msg_SelectRecordingToPlay");
 
     public string Status
     {
@@ -233,11 +234,11 @@ public class RecordingPlayerViewModel : ReactiveObject
             {
                 Recordings.Add(new(recording));
             }
-            Status = recordings.Count > 0 ? "" : "暂无录制;在 设置 → 安全审计 开启会话录制后,新连接的输出将被记录。";
+            Status = recordings.Count > 0 ? "" : Strings.Get("Msg_NoRecordings");
         }
         catch (Exception ex)
         {
-            Status = $"读取录制列表失败:{ex.Message}";
+            Status = Strings.Format("Msg_LoadRecordingListFailed", ex.Message);
         }
         HasRecordings = Recordings.Count > 0;
     }
@@ -250,22 +251,22 @@ public class RecordingPlayerViewModel : ReactiveObject
         PositionMs = 0;
         if (item is null)
         {
-            PlaybackTitle = "选择左侧录制开始回放";
+            PlaybackTitle = Strings.Get("Msg_SelectRecordingToPlay");
             DurationMs = 0;
             return;
         }
-        PlaybackTitle = $"回放: {item.Label}({item.StartText})";
+        PlaybackTitle = Strings.Format("Msg_PlaybackTitle", item.Label, item.StartText);
         try
         {
             _chunks = await _store.GetChunksAsync(item.Model.Id);
             DurationMs = Math.Max(item.Model.DurationMs, _chunks.Count > 0 ? _chunks[^1].OffsetMs : 0);
             ResetSink?.Invoke();
-            Status = _chunks.Count > 0 ? "" : "该录制没有数据块(可能录制期间无输出)。";
+            Status = _chunks.Count > 0 ? "" : Strings.Get("Msg_RecordingEmpty");
             this.RaisePropertyChanged(nameof(HasSelection));
         }
         catch (Exception ex)
         {
-            Status = $"载入录制失败:{ex.Message}";
+            Status = Strings.Format("Msg_LoadRecordingFailed", ex.Message);
         }
     }
 
@@ -380,7 +381,7 @@ public class RecordingPlayerViewModel : ReactiveObject
         }
         catch (Exception ex)
         {
-            Status = $"删除失败:{ex.Message}";
+            Status = Strings.Format("Msg_DeleteFailed", ex.Message);
         }
     }
 
@@ -397,11 +398,11 @@ public class RecordingPlayerViewModel : ReactiveObject
             await _settingsService.SaveSettingsAsync(settings);
             AutoRecordEnabled = settings.Security.RecordProductionSessions;
             this.RaisePropertyChanged(nameof(AutoRecordText));
-            Status = AutoRecordEnabled ? "自动录制已启用:对之后建立的连接生效。" : "自动录制已关闭。";
+            Status = AutoRecordEnabled ? Strings.Get("Msg_AutoRecordEnabledHint") : Strings.Get("Msg_AutoRecordDisabledHint");
         }
         catch (Exception ex)
         {
-            Status = $"切换失败:{ex.Message}";
+            Status = Strings.Format("Msg_ToggleFailed", ex.Message);
         }
     }
 

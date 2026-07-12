@@ -4,6 +4,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- 默认 Strings.resx 即英文(开发语言):CurrentUICulture=en 时直取主程序集,
+         无需 en 卫星。中文卫星按脚本中性文化命名(zh-Hans/zh-Hant),使 zh-CN/zh-SG →
+         zh-Hans、zh-TW/zh-HK/zh-MO → zh-Hant 沿标准回退链自动命中。 -->
+    <NeutralLanguage>en</NeutralLanguage>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,21 +19,19 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Update="Resources\Strings.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>Strings.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
-    <EmbeddedResource Update="Resources\Strings.zh-CN.resx">
+    <!-- Strings.cs 是手写的强类型访问层(Get/Format + 常用键属性),不用设计器生成。 -->
+    <EmbeddedResource Update="Resources\Strings.zh-Hans.resx">
       <DependentUpon>Strings.resx</DependentUpon>
     </EmbeddedResource>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Update="Resources\Strings.Designer.cs">
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
+    <EmbeddedResource Update="Resources\Strings.zh-Hant.resx">
       <DependentUpon>Strings.resx</DependentUpon>
-    </Compile>
+    </EmbeddedResource>
+    <EmbeddedResource Update="Resources\Strings.ja.resx">
+      <DependentUpon>Strings.resx</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Update="Resources\Strings.ko.resx">
+      <DependentUpon>Strings.resx</DependentUpon>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>

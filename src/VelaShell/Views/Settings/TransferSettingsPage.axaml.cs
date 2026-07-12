@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using VelaShell.Core.Resources;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Views.Settings;
@@ -20,7 +21,7 @@ public partial class TransferSettingsPage : UserControl
         }
         IReadOnlyList<IStorageFolder> folders = await top.StorageProvider.OpenFolderPickerAsync(new()
         {
-            Title = "选择下载目录",
+            Title = Strings.Get("SelectDownloadFolder"),
             AllowMultiple = false
         });
         if (folders.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
@@ -40,14 +41,14 @@ public partial class TransferSettingsPage : UserControl
         }
         var options = new FilePickerOpenOptions
         {
-            Title = "选择默认编辑器程序",
+            Title = Strings.Get("SetTransfer_SelectEditorTitle"),
             AllowMultiple = false
         };
         if (OperatingSystem.IsWindows())
         {
             options.FileTypeFilter =
             [
-                new("可执行程序") { Patterns = ["*.exe", "*.bat", "*.cmd"] },
+                new(Strings.Get("SetTransfer_ExecutableFilter")) { Patterns = ["*.exe", "*.bat", "*.cmd"] },
                 FilePickerFileTypes.All
             ];
         }

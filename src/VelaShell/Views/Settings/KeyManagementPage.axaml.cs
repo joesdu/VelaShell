@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.ViewModels;
 
@@ -22,7 +23,7 @@ public partial class KeyManagementPage : UserControl
         }
         IReadOnlyList<IStorageFile> files = await top.StorageProvider.OpenFilePickerAsync(new()
         {
-            Title = "导入 SSH 私钥",
+            Title = Strings.Get("SetKeys_ImportDialogTitle"),
             AllowMultiple = false
         });
         if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)

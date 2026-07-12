@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 
 namespace VelaShell.Infrastructure.Ssh;
@@ -62,7 +63,7 @@ public sealed class SshKeyService(string? sshDirectory = null) : ISshKeyService
             File.Copy(sourcePub, targetPub);
         }
         List<SshKeyInfo> keys = await ListKeysAsync(cancellationToken).ConfigureAwait(false);
-        return keys.FirstOrDefault(k => k.Name == name) ?? new SshKeyInfo(name, "未知", string.Empty, targetPrivate, null);
+        return keys.FirstOrDefault(k => k.Name == name) ?? new SshKeyInfo(name, Strings.Get("KeySvc_UnknownType"), string.Empty, targetPrivate, null);
     }
 
     public Task<SshKeyInfo> GenerateRsaKeyAsync(string name, int bits = 4096, CancellationToken cancellationToken = default)
@@ -71,14 +72,14 @@ public sealed class SshKeyService(string? sshDirectory = null) : ISshKeyService
         {
             if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
             {
-                throw new ArgumentException(@"密钥名称无效。", nameof(name));
+                throw new ArgumentException(Strings.Get("KeySvc_InvalidName"), nameof(name));
             }
             Directory.CreateDirectory(_sshDirectory);
             string privatePath = Path.Combine(_sshDirectory, name);
             string publicPath = privatePath + ".pub";
             if (File.Exists(privatePath) || File.Exists(publicPath))
             {
-                throw new IOException($"密钥 {name} 已存在。");
+                throw new IOException(Strings.Format("KeySvc_AlreadyExists", name));
             }
             using var rsa = RSA.Create(bits);
             File.WriteAllText(privatePath, rsa.ExportRSAPrivateKeyPem() + Environment.NewLine);

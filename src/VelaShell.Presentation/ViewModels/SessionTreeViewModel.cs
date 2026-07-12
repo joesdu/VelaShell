@@ -4,6 +4,7 @@ using System.Reactive.Linq;
 using ReactiveUI;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.Presentation.ViewModels;
 
@@ -47,7 +48,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
         private set => this.RaiseAndSetIfChanged(ref _hasNoSessions, value);
     }
 
-    public string EmptyStateMessage => "Add your first connection";
+    public string EmptyStateMessage => Strings.Get("Svc_AddFirstConnection");
 
     public SessionTreeNodeViewModel? SelectedNode
     {
@@ -229,7 +230,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
         }
         var copy = new SessionProfile
         {
-            Name = source.Name + " (副本)",
+            Name = Strings.Format("Svc_CopySuffix", source.Name),
             Host = source.Host,
             Port = source.Port,
             Username = source.Username,
@@ -286,7 +287,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
         }
 
         // “移动到分组”子菜单始终提供“未分组”落点(即移回树根)。
-        GroupNodes.Add(new(Guid.Empty, "未分组", true));
+        GroupNodes.Add(new(Guid.Empty, Strings.Get("Svc_Ungrouped"), true));
         RefreshHasNoSessions();
     }
 

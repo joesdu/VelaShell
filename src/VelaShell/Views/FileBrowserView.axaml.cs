@@ -149,7 +149,7 @@ public partial class FileBrowserView : UserControl
 
     private static double EstimateAutoWidthForName(FileBrowserViewModel vm)
     {
-        double header = MeasureTextWidth("文件名", 10);
+        double header = MeasureTextWidth(Strings.FileName, 10);
         double rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.DisplayName, 11)) : 0;
 
         // Name column also has a leading icon area (14px icon + 6px gap) and breathing room.
@@ -159,7 +159,7 @@ public partial class FileBrowserView : UserControl
 
     private static double EstimateAutoWidthForSize(FileBrowserViewModel vm)
     {
-        double header = MeasureTextWidth("大小", 10);
+        double header = MeasureTextWidth(Strings.Size, 10);
         double rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.FormattedSize, 11)) : 0;
         double estimated = Math.Max(header, rows) + 8;
         return Math.Clamp(estimated, MinSizeWidth, 260);
@@ -167,7 +167,7 @@ public partial class FileBrowserView : UserControl
 
     private static double EstimateAutoWidthForPermissions(FileBrowserViewModel vm)
     {
-        double header = MeasureTextWidth("权限", 10);
+        double header = MeasureTextWidth(Strings.Permissions, 10);
         double rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.Permissions, 11)) : 0;
         double estimated = Math.Max(header, rows) + 8;
         return Math.Clamp(estimated, MinPermissionsWidth, 300);
@@ -378,8 +378,8 @@ public partial class FileBrowserView : UserControl
         {
             return true;
         }
-        return await MessageDialog.ConfirmAsync(owner, "文件已存在",
-                   $"本地已有同名文件:\n{localPath}\n\n覆盖它吗?(取消则跳过该文件)",
+        return await MessageDialog.ConfirmAsync(owner, Strings.Get("Sftp_FileExistsTitle"),
+                   Strings.Format("Sftp_LocalOverwriteBody", localPath),
                    kind: MessageDialogKind.Warning);
     }
 
@@ -390,8 +390,8 @@ public partial class FileBrowserView : UserControl
         {
             return true;
         }
-        return await MessageDialog.ConfirmAsync(owner, "文件已存在",
-                   $"远端已有同名文件:\n{remotePath}\n\n覆盖它吗?(取消则跳过该文件)",
+        return await MessageDialog.ConfirmAsync(owner, Strings.Get("Sftp_FileExistsTitle"),
+                   Strings.Format("Sftp_RemoteOverwriteBody", remotePath),
                    kind: MessageDialogKind.Warning);
     }
 
@@ -435,11 +435,9 @@ public partial class FileBrowserView : UserControl
         {
             return;
         }
-        bool openSettings = await MessageDialog.ConfirmAsync(owner, "未配置默认编辑器",
-                                "「使用默认编辑器打开」需要先指定编辑器程序:\n" +
-                                "Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 gedit);" +
-                                "macOS 填应用名(如 Visual Studio Code)。\n\n是否现在打开设置进行配置?",
-                                "打开设置", kind: MessageDialogKind.Info);
+        bool openSettings = await MessageDialog.ConfirmAsync(owner, Strings.Get("Sftp_NoEditorTitle"),
+                                Strings.Get("Sftp_NoEditorBody"),
+                                Strings.Get("Sftp_OpenSettings"), kind: MessageDialogKind.Info);
         if (!openSettings)
         {
             return;
@@ -676,7 +674,7 @@ public partial class FileBrowserView : UserControl
         octalBox.TextChanged += (_, _) => SyncBoxesFromOctal();
         content.Children.Add(grid);
         var octalRow = new Grid { ColumnDefinitions = new("96,*") };
-        var octalLabel = new TextBlock { Text = "八进制", VerticalAlignment = VerticalAlignment.Center };
+        var octalLabel = new TextBlock { Text = Strings.Get("Sftp_Octal"), VerticalAlignment = VerticalAlignment.Center };
         octalLabel.Classes.Add("dim");
         octalRow.Children.Add(octalLabel);
         var octalHost = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };

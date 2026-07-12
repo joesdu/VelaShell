@@ -6,6 +6,7 @@
              xmlns:views="using:VelaShell.Views"
              xmlns:pc="using:VelaShell.Controls.Controls"
              xmlns:res="clr-namespace:VelaShell.Core.Resources;assembly=VelaShell.Core"
+             xmlns:loc="using:VelaShell.Localization"
              mc:Ignorable="d" d:DesignWidth="260" d:DesignHeight="876"
              x:Class="VelaShell.Views.SidebarView"
              x:DataType="vm:SidebarViewModel">
@@ -28,7 +29,7 @@
 
         <!-- "会话" label -->
         <TextBlock Grid.Column="0"
-                   Text="资源管理器"
+                   Text="{loc:Localize Sidebar_Explorer}"
                    Foreground="{DynamicResource VelaTextSecondary}"
                    FontFamily="{DynamicResource VelaTerminalFont}"
                    FontSize="11"
@@ -98,7 +99,7 @@
                 Padding="12,0">
           <Grid ColumnDefinitions="*,Auto">
             <TextBlock Grid.Column="0"
-                       Text="最近连接"
+                       Text="{loc:Localize RecentConnections}"
                        Foreground="{DynamicResource VelaTextSecondary}"
                        FontFamily="{DynamicResource VelaTerminalFont}"
                        FontSize="11"
@@ -113,7 +114,7 @@
                     CornerRadius="3"
                     Cursor="Hand"
                     Command="{Binding RecentConnections.RefreshCommand}"
-                    ToolTip.Tip="刷新最近连接"
+                    ToolTip.Tip="{loc:Localize Sidebar_RefreshRecent}"
                     VerticalAlignment="Center">
               <PathIcon Width="13" Height="13"
                         Data="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 1 1 7 7 6.95 6.95 0 0 1-4.9-2.03l-1.42 1.42A8.95 8.95 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"

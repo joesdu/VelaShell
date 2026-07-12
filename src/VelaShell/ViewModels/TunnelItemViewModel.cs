@@ -1,5 +1,6 @@
 using ReactiveUI;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.ViewModels;
 
@@ -34,8 +35,8 @@ public class TunnelItemViewModel(TunnelInfo tunnelInfo) : ReactiveObject
     /// <summary>路由描述:本地/动态以本地端口为起点,远程转发方向相反(设计 B3Rth)。</summary>
     public string DisplayRoute => TunnelType switch
     {
-        TunnelType.RemoteForward => $"服务器:{RemotePort} → {LocalHost}:{LocalPort}",
-        TunnelType.DynamicForward => $"{LocalHost}:{LocalPort} → SOCKS5 代理",
+        TunnelType.RemoteForward => Strings.Format("Msg_TunnelRouteRemote", RemotePort, LocalHost, LocalPort),
+        TunnelType.DynamicForward => Strings.Format("Msg_TunnelRouteDynamic", LocalHost, LocalPort),
         _ => $"{LocalHost}:{LocalPort} → {RemoteHost}:{RemotePort}"
     };
 
@@ -79,9 +80,9 @@ public class TunnelItemViewModel(TunnelInfo tunnelInfo) : ReactiveObject
     /// <summary>状态行:活动中显示运行时长,否则显示状态文字(设计 B3Rth tunI1Stats)。</summary>
     public string StatusText => Status switch
     {
-        TunnelStatus.Active => $"运行中 • {FormatUptime(DateTime.UtcNow - CreatedAt)}",
-        TunnelStatus.Error => "发生错误",
-        _ => "已停止"
+        TunnelStatus.Active => Strings.Format("Msg_TunnelRunning", FormatUptime(DateTime.UtcNow - CreatedAt)),
+        TunnelStatus.Error => Strings.Get("Msg_ErrorOccurred"),
+        _ => Strings.Get("Msg_Stopped")
     };
 
     /// <summary>由面板的时钟周期性调用:刷新运行时长、透传服务侧的状态/错误变化。</summary>
@@ -104,13 +105,13 @@ public class TunnelItemViewModel(TunnelInfo tunnelInfo) : ReactiveObject
         }
         if (uptime.TotalHours >= 1)
         {
-            return $"已运行 {(int)uptime.TotalHours}h {uptime.Minutes}m";
+            return Strings.Format("Msg_UptimeHours", (int)uptime.TotalHours, uptime.Minutes);
         }
         if (uptime.TotalMinutes >= 1)
         {
-            return $"已运行 {(int)uptime.TotalMinutes}m";
+            return Strings.Format("Msg_UptimeMinutes", (int)uptime.TotalMinutes);
         }
-        return "已运行 <1m";
+        return Strings.Get("Msg_UptimeUnderMinute");
     }
 
     public static string FormatBytes(long bytes)
