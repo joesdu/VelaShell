@@ -61,7 +61,7 @@ tests/  6 个 MSTest 项目(见 §7)
 ## 6. UI / 视图与设置
 
 - **状态栏跟随激活 Tab**:每个 `TerminalTabViewModel` 携带 `ConnectionSummary/TerminalTypeName/EncodingName`;`UpdateStatusBarForActiveTab` 投影连接串/状态/类型/编码/尺寸/延迟;订阅 `ActiveTerminalTab` 变化 + Dock `ActiveDockableChanged`/`FocusedDockableChanged` → 切换标签/窗格实时更新左下角。
-- **自绘窗口壳**:Avalonia 12 用 `WindowDecorations="None"`(替代已移除的 `ExtendClientAreaChromeHints`)+ `ExtendClientAreaToDecorationsHint`;`MainWindow.axaml.cs` 自绘可拖动标题栏(`BeginMoveDrag`)+ 最小化/最大化/关闭;根容器 `Margin` 绑 `OffScreenMargin` 防最大化裁切。
+- **自绘窗口壳(2026-07-12 定稿,用户决策)**:主窗 `WindowDecorations="BorderOnly"`(无标题栏,保留边框/阴影/边缘调整);`Views/TitleBarView` 自绘标题栏 —— 左 logo+产品名,右 全局功能图标组(搜索/复制/分屏/隧道/命令面板,经命令注册表)+ 最小化/最大化/关闭;空白区 `BeginMoveDrag` 拖动(最大化下先还原)、双击切最大化,最大化按钮图标随状态切换;根容器 `Margin` 绑 `OffScreenMargin` 防最大化裁切。**文字菜单(会话/编辑/…)已整体移除**——与命令面板功能重复(用户决策);随之移除设置里的"显示菜单栏"开关(`ShowMenuBar` 存储字段保留兼容)。
 - **命令面板(Ctrl+P / Ctrl+K)**:`ViewModels/CommandPaletteItem.cs`(+Group)、`CommandPaletteViewModel.cs`(模糊子序列搜索、分类分组、上下循环导航、执行/关闭)、`Views/CommandPaletteView.axaml(.cs)`;`MainWindow` 半透明遮罩浮层,条目=最近会话(Enter 连接)+ 全局命令。
 - **终端类型/编码设置项**:`AppSettings.TerminalType`(默认 xterm-256color)/`TerminalEncoding`(默认 UTF-8);`SettingsViewModel`/`SettingsView` 两个下拉;`Program.cs` 注册 `CodePagesEncodingProvider`(GBK/Big5);连接时 `MainWindowViewModel.ConfigureTerminal` 应用到 PTY 的 TERM 与控件。`ISettingsService`/`JsonDataStore` 已入 DI。
 - 快捷命令面板、隧道管理面板此前已有完整 View+VM。
