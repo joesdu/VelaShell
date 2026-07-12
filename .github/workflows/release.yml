@@ -1,0 +1,127 @@
+# 发布流水线:在 GitHub 页面发布 Release(publish)时自动触发。
+# 三平台原生 runner 构建 8 个产物并生成 SHA256SUMS.txt,统一附加到该 Release:
+#   Windows x64/arm64 × 含运行时 / 不含运行时(-noruntime)→ zip
+#   macOS   x64/arm64 含运行时 → tar.gz(未签名/未公证;Unix 可执行位在原生 runner 上保留)
+#   Linux   x64/arm64 含运行时 → tar.gz
+# 版本号取 Release 标签(去掉前缀 v),经 -p:Version 覆盖 Directory.Build.props,
+# 关于页显示与产物命名自动一致 —— 发新版只需打标签发 Release,无需改代码。
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  PROJECT: src/VelaShell/VelaShell.csproj
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Publish (x64/arm64 × self-contained/framework-dependent)
+        shell: pwsh
+        run: |
+          $version = '${{ github.event.release.tag_name }}'.TrimStart('v')
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $targets = @(
+            @{ Rid = 'win-x64';   Sc = 'true';  Suffix = '' }
+            @{ Rid = 'win-x64';   Sc = 'false'; Suffix = '-noruntime' }
+            @{ Rid = 'win-arm64'; Sc = 'true';  Suffix = '' }
+            @{ Rid = 'win-arm64'; Sc = 'false'; Suffix = '-noruntime' }
+          )
+          foreach ($t in $targets) {
+            $name = "VelaShell-$version-$($t.Rid)$($t.Suffix)"
+            dotnet publish $env:PROJECT -c Release -r $t.Rid -o "out/$name" `
+              -p:Version=$version -p:SelfContained=$($t.Sc) -p:PublishSingleFile=true --nologo
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            Compress-Archive -Path "out/$name/*" -DestinationPath "dist/$name.zip" -Force
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-windows
+          path: dist/*
+          if-no-files-found: error
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Publish (osx-x64 / osx-arm64)
+        run: |
+          set -euo pipefail
+          version="${TAG_NAME#v}"
+          mkdir -p dist
+          for rid in osx-x64 osx-arm64; do
+            name="VelaShell-$version-$rid"
+            dotnet publish "$PROJECT" -c Release -r "$rid" -o "out/$name" \
+              -p:Version="$version" -p:SelfContained=true -p:PublishSingleFile=true --nologo
+            chmod +x "out/$name/VelaShell"
+            tar -czf "dist/$name.tar.gz" -C "out/$name" .
+          done
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-macos
+          path: dist/*
+          if-no-files-found: error
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Publish (linux-x64 / linux-arm64)
+        run: |
+          set -euo pipefail
+          version="${TAG_NAME#v}"
+          mkdir -p dist
+          for rid in linux-x64 linux-arm64; do
+            name="VelaShell-$version-$rid"
+            dotnet publish "$PROJECT" -c Release -r "$rid" -o "out/$name" \
+              -p:Version="$version" -p:SelfContained=true -p:PublishSingleFile=true --nologo
+            chmod +x "out/$name/VelaShell"
+            tar -czf "dist/$name.tar.gz" -C "out/$name" .
+          done
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-linux
+          path: dist/*
+          if-no-files-found: error
+
+  attach-to-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Generate SHA256SUMS.txt
+        run: |
+          set -euo pipefail
+          cd dist
+          # 只对包文件求和(glob 不能写 *,否则重定向先建出的空 SHA256SUMS.txt 会把自己算进去)
+          sha256sum *.zip *.tar.gz | sort -k2 > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Upload assets to release
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG_NAME" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
