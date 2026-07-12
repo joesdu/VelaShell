@@ -1,15 +1,14 @@
 using Avalonia.Controls;
-using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
-using Avalonia.VisualTree;
 
 namespace VelaShell.Views;
 
 /// <summary>
-/// 无边框窗体的自绘标题栏:空白区拖动窗口、双击切换最大化,
-/// 右侧为窗口控制按钮(最小化 / 最大化(还原) / 关闭)。
-/// 功能图标经命令注册表执行(与命令面板同源)。
+/// 无边框窗体的自绘标题栏。原生窗口行为经 WindowDecorationsElementRole 交还操作系统:
+/// 根 Border = TitleBar(原生拖动/双击最大化/右键系统菜单/Win11 贴靠),
+/// 窗口控制按钮 = Minimize/Maximize/CloseButton(HT*BUTTON,含贴靠布局面板),
+/// 功能图标按钮 = User(chrome 区域上的常规交互)。Click 处理器仅作非 Windows 平台回退。
 /// </summary>
 public partial class TitleBarView : UserControl
 {
@@ -61,35 +60,6 @@ public partial class TitleBarView : UserControl
         }
     }
 
-    private void Bar_PointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        // 按钮(功能图标/窗口控制)自行消费点击;保险起见,源头在任何按钮内都不启动拖动,
-        // 以免吞掉后续的 Click。
-        if (e.Source is Control source && source.FindAncestorOfType<Button>(includeSelf: true) is not null)
-        {
-            return;
-        }
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-        {
-            return;
-        }
-        if (e.ClickCount == 2)
-        {
-            ToggleMaximize();
-            return;
-        }
-        if (HostWindow is not { } window)
-        {
-            return;
-        }
-        // 最大化下拖动 = 先还原再进入移动(操作系统标题栏的标准手感)。
-        if (window.WindowState == WindowState.Maximized)
-        {
-            window.WindowState = WindowState.Normal;
-        }
-        window.BeginMoveDrag(e);
-    }
-
     private void Minimize_Click(object? sender, RoutedEventArgs e)
     {
         if (HostWindow is { } window)
@@ -98,12 +68,7 @@ public partial class TitleBarView : UserControl
         }
     }
 
-    private void Maximize_Click(object? sender, RoutedEventArgs e) => ToggleMaximize();
-
-    /// <summary>关闭走 Window.Close():托盘化/退出确认逻辑在 MainWindow.OnClosing 统一处理。</summary>
-    private void Close_Click(object? sender, RoutedEventArgs e) => HostWindow?.Close();
-
-    private void ToggleMaximize()
+    private void Maximize_Click(object? sender, RoutedEventArgs e)
     {
         if (HostWindow is { } window)
         {
@@ -112,4 +77,7 @@ public partial class TitleBarView : UserControl
                                      : WindowState.Maximized;
         }
     }
+
+    /// <summary>关闭走 Window.Close():托盘化/退出确认逻辑在 MainWindow.OnClosing 统一处理。</summary>
+    private void Close_Click(object? sender, RoutedEventArgs e) => HostWindow?.Close();
 }

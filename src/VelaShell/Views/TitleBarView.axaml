@@ -5,6 +5,7 @@
              xmlns:vm="using:VelaShell.ViewModels"
              xmlns:pc="using:VelaShell.Controls.Controls"
              xmlns:loc="using:VelaShell.Localization"
+             xmlns:chrome="using:Avalonia.Controls.Chrome"
              xmlns:res="clr-namespace:VelaShell.Core.Resources;assembly=VelaShell.Core"
              mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="36"
              x:Class="VelaShell.Views.TitleBarView"
@@ -16,8 +17,10 @@
 
   <UserControl.Resources>
 
-    <!-- 全局功能图标按钮(GQQwj):24×22,corner 3,hover bg-hover。 -->
+    <!-- 全局功能图标按钮(GQQwj):24×22,corner 3,hover bg-hover。
+         User 角色 = 位于标题栏(chrome 命中区)之上仍接收常规输入的交互元素。 -->
     <ControlTheme x:Key="VelaTitleActionButton" TargetType="Button">
+      <Setter Property="chrome:WindowDecorationProperties.ElementRole" Value="User" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Width" Value="24" />
       <Setter Property="Height" Value="22" />
@@ -82,11 +85,13 @@
     </Style>
   </UserControl.Styles>
 
+  <!-- TitleBar 角色 = 平台原生标题栏命中(HTCAPTION):原生拖动、Win11 贴靠布局、
+       双击最大化、右键系统菜单全部由操作系统处理(用户要求原生窗口效果)。 -->
   <Border Height="36"
           Background="{DynamicResource VelaBgSidebar}"
           BorderBrush="{DynamicResource VelaBorderPrimary}"
           BorderThickness="0,0,0,1"
-          PointerPressed="Bar_PointerPressed">
+          chrome:WindowDecorationProperties.ElementRole="TitleBar">
     <Grid ColumnDefinitions="Auto,*,Auto,Auto">
 
       <!-- 左:logo + 产品名(不参与命中,拖动透传到底层 Border)。 -->
@@ -145,17 +150,22 @@
         </Button>
       </StackPanel>
 
-      <!-- 窗口控制:最小化 / 最大化(还原) / 关闭。 -->
+      <!-- 窗口控制:最小化 / 最大化(还原) / 关闭。角色映射 Win32 HT*BUTTON ——
+           动作由操作系统原生处理(最大化按钮悬停出 Win11 贴靠布局面板);
+           Click 处理器保留作非 Windows 平台的常规输入回退。 -->
       <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Top">
-        <Button Theme="{StaticResource VelaCaptionButton}" Click="Minimize_Click">
+        <Button Theme="{StaticResource VelaCaptionButton}" Click="Minimize_Click"
+                chrome:WindowDecorationProperties.ElementRole="MinimizeButton">
           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.minus}"
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </Button>
-        <Button Theme="{StaticResource VelaCaptionButton}" Click="Maximize_Click">
+        <Button Theme="{StaticResource VelaCaptionButton}" Click="Maximize_Click"
+                chrome:WindowDecorationProperties.ElementRole="MaximizeButton">
           <pc:LucideIcon x:Name="MaximizeIcon" Width="11" Height="11" Data="{StaticResource Icon.square}"
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </Button>
-        <Button Theme="{StaticResource VelaCaptionCloseButton}" Classes="caption-close" Click="Close_Click">
+        <Button Theme="{StaticResource VelaCaptionCloseButton}" Classes="caption-close" Click="Close_Click"
+                chrome:WindowDecorationProperties.ElementRole="CloseButton">
           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.x}"
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </Button>
