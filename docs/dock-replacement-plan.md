@@ -93,9 +93,12 @@ Docking/
   - `CloseDocument(doc)`:尊重 `CanClose` → 移除 → 触发 `DocumentClosed`。
   - `CloseOthers/All/Left/Right(doc)`:逐个走 `CloseDocument`(保证 SSH 清理链完整)。
   - `SplitDocument(doc, orientation)`:在文档所属组旁新建组,文档移入(右/下侧,各 50%)。
-  - `DockTo(doc, targetGroup, position)`:Center=并入(可指定序号),边=在目标组旁拆分。
-  - 空组折叠:非主组清空 → 从父分栏移除;分栏仅剩 1 子 → 子节点提升(比例继承);
-    根分栏收敛回单组。
+    组内唯一文档时同样拆分(所有组行为一致,用户反馈),原组留空作为拖放目标。
+  - `DockTo(doc, targetGroup, position)`:Center=并入(可指定序号),边=在目标组旁拆分;
+    拖到自身组边缘且组内仅此一档 = 拆分语义(原组留空)。
+  - 空组折叠:非主组因“文档移出/关闭”清空 → 从父分栏移除;分栏仅剩 1 子 → 子节点提升
+    (比例继承);提升出的若是拆分留下的空次级组(兄弟已全部关闭)一并回收;
+    根分栏收敛回单组。拆分留下的空组保留在原位,空面板显示“将标签拖到此处”提示。
 - **激活语义**:每组有 `ActiveDocument`;工作区有全局 `ActiveDocument`
   (最后交互的组的激活文档),变更触发 `ActiveDocumentChanged`
   —— 对应原 `ActiveDockableChanged`+`FocusedDockableChanged` 双事件合一。

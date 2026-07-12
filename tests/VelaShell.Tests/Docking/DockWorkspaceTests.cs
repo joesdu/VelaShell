@@ -218,19 +218,46 @@ public class DockWorkspaceTests
     }
 
     [TestMethod]
-    public void SplitDocument_LastDocOfSecondaryGroup_IsNoOp()
+    public void SplitDocument_LastDocOfSecondaryGroup_LeavesEmptyGroupBehind()
     {
+        // 用户反馈:唯一标签的次级组拆分也必须生效(与主组行为一致),原组留空作放置目标。
         var ws = new DockWorkspace();
         var a = NewDoc("a");
         var b = NewDoc("b");
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.SplitDocument(b, DockOrientation.Horizontal);
-        DockNode rootBefore = ws.Root;
+        var g2 = (DockGroup)((DockSplit)ws.Root).Children[1];
 
         ws.SplitDocument(b, DockOrientation.Vertical);
 
-        Assert.AreSame(rootBefore, ws.Root, "唯一标签的次级组拆分应为无效操作");
+        var root = (DockSplit)ws.Root;
+        var nested = root.Children[1] as DockSplit;
+        Assert.IsNotNull(nested, "次级组位置应被垂直分栏替换");
+        Assert.AreEqual(DockOrientation.Vertical, nested.Orientation);
+        Assert.AreSame(g2, nested.Children[0]);
+        Assert.AreEqual(0, g2.Documents.Count, "原组留空");
+        var g3 = (DockGroup)nested.Children[1];
+        CollectionAssert.AreEqual(new[] { b }, g3.Documents.ToArray());
+        Assert.AreSame(b, ws.ActiveDocument);
+    }
+
+    [TestMethod]
+    public void EmptySplitRemnant_IsCollapsedWhenSiblingCloses()
+    {
+        // 拆分留下的空面板在其兄弟全部关闭(分栏收敛)时自动回收,不留死空格。
+        var ws = new DockWorkspace();
+        var a = NewDoc("a");
+        var b = NewDoc("b");
+        ws.AddDocument(a);
+        ws.AddDocument(b);
+        ws.SplitDocument(b, DockOrientation.Horizontal); // root: [主组(a) | g2(b)]
+        ws.SplitDocument(b, DockOrientation.Vertical);   // root: [主组(a) | v[g2空, g3(b)]]
+
+        ws.CloseDocument(b); // g3 折叠 → v 分栏收敛出空 g2 → g2 一并回收
+
+        Assert.AreSame(ws.PrimaryGroup, ws.Root, "空面板不应在兄弟关闭后残留");
+        Assert.AreSame(a, ws.ActiveDocument);
     }
 
     // ---- 空组折叠与提升 ----
@@ -365,7 +392,7 @@ public class DockWorkspaceTests
     }
 
     [TestMethod]
-    public void DockTo_OwnEdge_WhenOnlyDocInSecondaryGroup_IsNoOp()
+    public void DockTo_OwnEdge_WhenOnlyDoc_BehavesLikeSplit()
     {
         var ws = new DockWorkspace();
         var a = NewDoc("a");
@@ -373,13 +400,16 @@ public class DockWorkspaceTests
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.SplitDocument(b, DockOrientation.Horizontal);
-        var newGroup = (DockGroup)((DockSplit)ws.Root).Children[1];
-        DockNode rootBefore = ws.Root;
+        var g2 = (DockGroup)((DockSplit)ws.Root).Children[1];
 
-        ws.DockTo(b, newGroup, DockPosition.Right);
+        ws.DockTo(b, g2, DockPosition.Right); // 拖到自己组的右缘 = 拆分,原组留空
 
-        Assert.AreSame(rootBefore, ws.Root);
-        CollectionAssert.AreEqual(new[] { b }, newGroup.Documents.ToArray());
+        var root = (DockSplit)ws.Root;
+        Assert.AreEqual(3, root.Children.Count, "同方向:空的原组 + 新组同级插入");
+        Assert.AreSame(g2, root.Children[1]);
+        Assert.AreEqual(0, g2.Documents.Count);
+        var g3 = (DockGroup)root.Children[2];
+        CollectionAssert.AreEqual(new[] { b }, g3.Documents.ToArray());
     }
 
     [TestMethod]

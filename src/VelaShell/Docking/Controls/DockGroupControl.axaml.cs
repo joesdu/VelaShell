@@ -44,10 +44,14 @@ public partial class DockGroupControl : UserControl
         if (Group is { } group)
         {
             group.PropertyChanged += OnGroupPropertyChanged;
+            group.Documents.CollectionChanged += OnDocumentsChanged;
             ApplyTabsPosition(group.TabsPosition);
         }
         UpdateContent();
     }
+
+    private void OnDocumentsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) =>
+        UpdateContent();
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -55,6 +59,7 @@ public partial class DockGroupControl : UserControl
         if (Group is { } group)
         {
             group.PropertyChanged -= OnGroupPropertyChanged;
+            group.Documents.CollectionChanged -= OnDocumentsChanged;
         }
         // 结构重建时本控件被丢弃;释放对缓存视图的引用,避免下一个宿主收养时双父级。
         ContentHost.Target = null;
@@ -77,6 +82,7 @@ public partial class DockGroupControl : UserControl
     {
         DockDocument? active = Group?.ActiveDocument;
         ContentHost.Target = active is null ? null : _viewResolver?.Invoke(active);
+        EmptyHint.IsVisible = Group is { Documents.Count: 0 };
     }
 
     /// <summary>

@@ -189,8 +189,9 @@ public sealed class DockWorkspace : DockElement
 
     /// <summary>
     /// 右键菜单“水平/垂直拆分”:把文档移入紧邻其所属组新建的组
-    /// (水平 = 新组在右,垂直 = 新组在下,各占一半)。
-    /// 组内唯一文档且组非主组时为无效操作(新组建成的瞬间旧组即折叠,净效果为零)。
+    /// (水平 = 新组在右,垂直 = 新组在下,各占一半)。组内唯一文档时同样拆分,
+    /// 原组留空作为放置目标(所有组行为一致,用户反馈:次级组拆分不能没反应);
+    /// 空组会在其兄弟结构收敛时自动回收(见 <see cref="HoistIfSingle" />)。
     /// </summary>
     public void SplitDocument(DockDocument document, DockOrientation orientation)
     {
@@ -198,11 +199,7 @@ public sealed class DockWorkspace : DockElement
         {
             return;
         }
-        if (group.Documents.Count == 1 && !group.IsPrimary)
-        {
-            return;
-        }
-        DockGroup newGroup = DetachToNewGroup(document, group);
+        DockGroup newGroup = DetachToNewGroup(document, group, collapseSource: false);
         InsertNeighbor(group, newGroup, orientation, after: true);
         ActivateDocument(document);
     }
@@ -222,19 +219,22 @@ public sealed class DockWorkspace : DockElement
             MoveToGroup(document, source, target, index);
             return;
         }
-
-        // 拖到自身组的边缘且组里只有它自己:拆出去旧组立即折叠,净效果为零,直接忽略。
-        if (ReferenceEquals(source, target) && source.Documents.Count == 1 && !source.IsPrimary)
-        {
-            return;
-        }
         DockOrientation orientation = position is DockPosition.Left or DockPosition.Right
                                           ? DockOrientation.Horizontal
                                           : DockOrientation.Vertical;
         bool after = position is DockPosition.Right or DockPosition.Bottom;
+
+        // 拖到自身组的边缘且组里只有它自己 = 语义上的拆分(与右键拆分一致):原组留空。
+        if (ReferenceEquals(source, target) && source.Documents.Count == 1)
+        {
+            DockGroup splitGroup = DetachToNewGroup(document, source, collapseSource: false);
+            InsertNeighbor(source, splitGroup, orientation, after);
+            ActivateDocument(document);
+            return;
+        }
         DockGroup newGroup = DetachToNewGroup(document, source);
-        // source 若因清空被折叠,锚点可能已不在树上;此时锚定到目标组曾经的位置没有意义,
-        // 直接锚定主组(仅发生在 source == target 且为主组之外的情况,前面已挡掉)。
+        // source 若因清空被折叠,目标组仍在树上(source != target 已由上面分支保证),
+        // 极端情况下兜底锚定主组。
         DockGroup anchor = FindNode(target) ? target : PrimaryGroup;
         InsertNeighbor(anchor, newGroup, orientation, after);
         ActivateDocument(document);
@@ -276,8 +276,11 @@ public sealed class DockWorkspace : DockElement
         ActivateDocument(document);
     }
 
-    /// <summary>把文档从原组摘出放入一个新组(原组按需折叠),返回新组。</summary>
-    private DockGroup DetachToNewGroup(DockDocument document, DockGroup source)
+    /// <summary>
+    /// 把文档从原组摘出放入一个新组,返回新组。拆分路径传 collapseSource: false,
+    /// 让原组即使清空也留在原位(作为空放置面板);移动路径保持自动折叠。
+    /// </summary>
+    private DockGroup DetachToNewGroup(DockDocument document, DockGroup source, bool collapseSource = true)
     {
         source.Documents.Remove(document);
         if (ReferenceEquals(source.ActiveDocument, document))
@@ -287,7 +290,10 @@ public sealed class DockWorkspace : DockElement
         var newGroup = new DockGroup();
         newGroup.Documents.Add(document);
         newGroup.ActiveDocument = document;
-        CollapseIfEmpty(source);
+        if (collapseSource)
+        {
+            CollapseIfEmpty(source);
+        }
         return newGroup;
     }
 
@@ -361,5 +367,12 @@ public sealed class DockWorkspace : DockElement
         split.Children.RemoveAt(0);
         child.Proportion = split.Proportion;
         ReplaceNode(split, child);
+
+        // 提升出来的若是一个空的次级组(拆分留下的空面板,兄弟已全部关闭),
+        // 顺带回收,不让空面板独自留在布局里;递归令上层分栏继续收敛。
+        if (child is DockGroup { IsPrimary: false, Documents.Count: 0 } emptyGroup)
+        {
+            CollapseIfEmpty(emptyGroup);
+        }
     }
 }
