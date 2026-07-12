@@ -32,7 +32,7 @@ public class DockWorkspaceTests
         DockDocument? observed = null;
         ws.ActiveDocumentChanged += d => observed = d;
 
-        var a = NewDoc("a");
+        TestDocument a = NewDoc("a");
         ws.AddDocument(a);
 
         Assert.AreSame(ws.PrimaryGroup, ws.Root);
@@ -46,8 +46,8 @@ public class DockWorkspaceTests
     public void ActivateDocument_SwitchesGroupSelectionAndGlobalActive()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
         ws.AddDocument(a);
         ws.AddDocument(b);
 
@@ -65,7 +65,7 @@ public class DockWorkspaceTests
         var ws = new DockWorkspace();
         var closed = new List<DockDocument>();
         ws.DocumentClosed += closed.Add;
-        var a = NewDoc("a");
+        TestDocument a = NewDoc("a");
         ws.AddDocument(a);
 
         ws.CloseDocument(a);
@@ -81,7 +81,7 @@ public class DockWorkspaceTests
         var ws = new DockWorkspace();
         int closedCount = 0;
         ws.DocumentClosed += _ => closedCount++;
-        var a = NewDoc("a");
+        TestDocument a = NewDoc("a");
         ws.AddDocument(a);
 
         ws.RemoveDocument(a);
@@ -96,7 +96,7 @@ public class DockWorkspaceTests
         var ws = new DockWorkspace();
         int closedCount = 0;
         ws.DocumentClosed += _ => closedCount++;
-        var a = NewDoc("a", canClose: false);
+        TestDocument a = NewDoc("a", canClose: false);
         ws.AddDocument(a);
 
         ws.CloseDocument(a);
@@ -109,9 +109,9 @@ public class DockWorkspaceTests
     public void RemovingActiveDocument_SelectsNeighborAtSameIndex()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
-        var c = NewDoc("c");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
+        TestDocument c = NewDoc("c");
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.AddDocument(c);
@@ -128,10 +128,10 @@ public class DockWorkspaceTests
     public void CloseOtherAndSideCommands_AreGroupScoped()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
-        var c = NewDoc("c");
-        var d = NewDoc("d");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
+        TestDocument c = NewDoc("c");
+        TestDocument d = NewDoc("d");
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.AddDocument(c);
@@ -158,8 +158,8 @@ public class DockWorkspaceTests
     public void SplitDocument_Horizontal_CreatesTwoPaneSplit()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
         ws.AddDocument(a);
         ws.AddDocument(b);
 
@@ -181,9 +181,9 @@ public class DockWorkspaceTests
     public void SplitDocument_SameOrientation_InsertsSibling()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
-        var c = NewDoc("c");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
+        TestDocument c = NewDoc("c");
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.AddDocument(c);
@@ -199,9 +199,9 @@ public class DockWorkspaceTests
     public void SplitDocument_CrossOrientation_Nests()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
-        var c = NewDoc("c");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
+        TestDocument c = NewDoc("c");
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.AddDocument(c);
@@ -222,8 +222,8 @@ public class DockWorkspaceTests
     {
         // 用户反馈:唯一标签的次级组拆分也必须生效(与主组行为一致),原组留空作放置目标。
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.SplitDocument(b, DockOrientation.Horizontal);
@@ -247,8 +247,8 @@ public class DockWorkspaceTests
     {
         // 拆分留下的空面板在其兄弟全部关闭(分栏收敛)时自动回收,不留死空格。
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.SplitDocument(b, DockOrientation.Horizontal); // root: [主组(a) | g2(b)]
@@ -266,8 +266,8 @@ public class DockWorkspaceTests
     public void ClosingLastDocOfSplitGroup_CollapsesBackToSingleGroup()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.SplitDocument(b, DockOrientation.Horizontal);
@@ -282,8 +282,8 @@ public class DockWorkspaceTests
     public void PrimaryGroup_NeverCollapses()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.SplitDocument(b, DockOrientation.Horizontal);
@@ -295,7 +295,7 @@ public class DockWorkspaceTests
         Assert.AreEqual(2, split.Children.Count);
         Assert.AreEqual(0, ws.PrimaryGroup.Documents.Count);
         // 新文档仍然进主组
-        var c = NewDoc("c");
+        TestDocument c = NewDoc("c");
         ws.AddDocument(c);
         CollectionAssert.AreEqual(new[] { c }, ws.PrimaryGroup.Documents.ToArray());
     }
@@ -304,8 +304,8 @@ public class DockWorkspaceTests
     public void Proportions_AreHoistedOnCollapse()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.SplitDocument(b, DockOrientation.Horizontal);
@@ -323,9 +323,9 @@ public class DockWorkspaceTests
     public void DockTo_Center_MovesAcrossGroups()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
-        var c = NewDoc("c");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
+        TestDocument c = NewDoc("c");
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.AddDocument(c);
@@ -343,9 +343,9 @@ public class DockWorkspaceTests
     public void DockTo_CenterWithIndex_ReordersWithinGroup()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
-        var c = NewDoc("c");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
+        TestDocument c = NewDoc("c");
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.AddDocument(c);
@@ -359,8 +359,8 @@ public class DockWorkspaceTests
     public void DockTo_LeftEdge_SplitsWithNewGroupFirst()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
         ws.AddDocument(a);
         ws.AddDocument(b);
 
@@ -377,8 +377,8 @@ public class DockWorkspaceTests
     public void DockTo_BottomEdge_SplitsVertically()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
         ws.AddDocument(a);
         ws.AddDocument(b);
 
@@ -395,8 +395,8 @@ public class DockWorkspaceTests
     public void DockTo_OwnEdge_WhenOnlyDoc_BehavesLikeSplit()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.SplitDocument(b, DockOrientation.Horizontal);
@@ -416,9 +416,9 @@ public class DockWorkspaceTests
     public void MoveDocument_ReordersWithinGroup()
     {
         var ws = new DockWorkspace();
-        var a = NewDoc("a");
-        var b = NewDoc("b");
-        var c = NewDoc("c");
+        TestDocument a = NewDoc("a");
+        TestDocument b = NewDoc("b");
+        TestDocument c = NewDoc("c");
         ws.AddDocument(a);
         ws.AddDocument(b);
         ws.AddDocument(c);
