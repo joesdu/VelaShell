@@ -25,6 +25,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - name: Install packaging tools (vpk / wix)
+        shell: pwsh
+        run: |
+          # 版本与本地验证一致:vpk 1.2.0(匹配应用内 Velopack 库),wix 5.0.2(免 OSMF)
+          dotnet tool install --global vpk --version 1.2.0
+          dotnet tool install --global wix --version 5.0.2
       - name: Publish (x64/arm64 × self-contained/framework-dependent)
         shell: pwsh
         run: |
@@ -39,10 +45,38 @@ jobs:
           foreach ($t in $targets) {
             $name = "VelaShell-$version-$($t.Rid)$($t.Suffix)"
             dotnet publish $env:PROJECT -c Release -r $t.Rid -o "out/$name" `
-              -p:Version=$version -p:SelfContained=$($t.Sc) -p:PublishSingleFile=true --nologo
+              -p:Version=$version -p:SelfContained=$($t.Sc) -p:PublishSingleFile=true `
+              -p:DebugType=None --nologo
             if ($LASTEXITCODE -ne 0) { exit 1 }
             Compress-Archive -Path "out/$name/*" -DestinationPath "dist/$name.zip" -Force
           }
+      - name: Build installers (Velopack Setup.exe + WiX MSI, x64/arm64)
+        shell: pwsh
+        run: |
+          $version = '${{ github.event.release.tag_name }}'.TrimStart('v')
+          $numeric = $version.Split('-')[0]   # MSI ProductVersion 不允许预发布后缀
+          $icon = (Resolve-Path 'src/VelaShell/Assets/velashell.ico').Path
+          foreach ($arch in @('x64', 'arm64')) {
+            $rid = "win-$arch"
+            $packDir = (Resolve-Path "out/VelaShell-$version-$rid").Path
+
+            # EXE 安装器(Velopack):同时产出应用内自动更新所需的 feed 文件
+            vpk pack --packId VelaShell --packVersion $version --packDir $packDir `
+              --mainExe VelaShell.exe --icon $icon --channel $rid --outputDir "vpk/$rid"
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            Move-Item "vpk/$rid/VelaShell-$rid-Setup.exe" "dist/VelaShell-$version-$rid-Setup.exe"
+            # 更新 feed(RELEASES-*/releases.json/assets.json/full.nupkg);Portable.zip 与自打 zip 重复,不发
+            Get-ChildItem "vpk/$rid" -File |
+              Where-Object { $_.Name -notlike '*Portable.zip' } |
+              Move-Item -Destination dist
+
+            # MSI(WiX 5)
+            wix build installer/VelaShell.wxs -arch $arch -pdbtype none `
+              -d ProductVersion=$numeric -d "PublishDir=$packDir" -d "IconPath=$icon" `
+              -o "dist/VelaShell-$version-$rid.msi"
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          Get-ChildItem dist | ForEach-Object { $_.Name }
       - uses: actions/upload-artifact@v4
         with:
           name: packages-windows
@@ -64,7 +98,7 @@ jobs:
           for rid in osx-x64 osx-arm64; do
             name="VelaShell-$version-$rid"
             dotnet publish "$PROJECT" -c Release -r "$rid" -o "out/$name" \
-              -p:Version="$version" -p:SelfContained=true -p:PublishSingleFile=true --nologo
+              -p:Version="$version" -p:SelfContained=true -p:PublishSingleFile=true -p:DebugType=None --nologo
             chmod +x "out/$name/VelaShell"
             tar -czf "dist/$name.tar.gz" -C "out/$name" .
           done
@@ -91,7 +125,7 @@ jobs:
           for rid in linux-x64 linux-arm64; do
             name="VelaShell-$version-$rid"
             dotnet publish "$PROJECT" -c Release -r "$rid" -o "out/$name" \
-              -p:Version="$version" -p:SelfContained=true -p:PublishSingleFile=true --nologo
+              -p:Version="$version" -p:SelfContained=true -p:PublishSingleFile=true -p:DebugType=None --nologo
             chmod +x "out/$name/VelaShell"
             tar -czf "dist/$name.tar.gz" -C "out/$name" .
           done
@@ -115,8 +149,9 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          # 只对包文件求和(glob 不能写 *,否则重定向先建出的空 SHA256SUMS.txt 会把自己算进去)
-          sha256sum *.zip *.tar.gz | sort -k2 > SHA256SUMS.txt
+          # 对全部资产求和(排除清单自身,避免重定向先建出的空文件把自己算进去)
+          find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -exec sha256sum {} + \
+            | sed 's| \./| |' | sort -k2 > SHA256SUMS.txt
           cat SHA256SUMS.txt
       - name: Upload assets to release
         run: |
