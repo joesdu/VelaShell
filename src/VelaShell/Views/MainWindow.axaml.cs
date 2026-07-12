@@ -23,6 +23,27 @@ public partial class MainWindow : Window
     private IDisposable? _fileBrowserVisibilitySub;
     private bool _forceClose;
 
+    /// <summary>自绘缩放抓取区:普通状态按下即进入原生缩放;最大化时整层隐藏(见 OnPropertyChanged)。</summary>
+    private void ResizeEdge_PointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+    {
+        if (WindowState == WindowState.Normal
+            && sender is Border { Tag: string tag }
+            && Enum.TryParse(tag, out WindowEdge edge))
+        {
+            BeginResizeDrag(edge, e);
+        }
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        // 最大化/全屏时缩放抓取区必须让位(否则挡住屏幕边缘 5px 的标题栏与状态栏点击)。
+        if (change.Property == WindowStateProperty && this.FindControl<Panel>("ResizeGrips") is { } grips)
+        {
+            grips.IsVisible = WindowState == WindowState.Normal;
+        }
+    }
+
     /// <summary>
     /// File panel height restored when the panel reopens (§6 drag to grow). Default 360
     /// = sidebar recent-connections block (320) + footer (40), so the file panel's top divider

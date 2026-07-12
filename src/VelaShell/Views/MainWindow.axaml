@@ -6,7 +6,6 @@
         xmlns:pvm="using:VelaShell.Presentation.ViewModels"
         xmlns:views="using:VelaShell.Views"
         xmlns:dockc="using:VelaShell.Docking.Controls"
-        xmlns:chrome="using:Avalonia.Controls.Chrome"
         xmlns:res="clr-namespace:VelaShell.Core.Resources;assembly=VelaShell.Core"
         mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="900"
         x:Class="VelaShell.Views.MainWindow"
@@ -17,8 +16,7 @@
         MinWidth="800" MinHeight="500"
         Background="{DynamicResource VelaBgPage}"
         WindowStartupLocation="CenterScreen"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="36">
+        WindowDecorations="None">
 
   <Window.KeyBindings>
     <!-- Ctrl+T = 新建标签:标签即 SSH 会话,与 Ctrl+N 一样打开新建连接
@@ -38,16 +36,14 @@
     <KeyBinding Gesture="Ctrl+Shift+F" Command="{Binding RunCommand}" CommandParameter="tools.files" />
   </Window.KeyBindings>
 
-  <!-- 托管装饰置空:标题文字/托管按钮全部由 TitleBarView 自绘(否则双重标题);
-       原生阴影/边框/贴靠由 DWM 与 WindowDecorationsElementRole 提供,不受影响。 -->
-  <Window.WindowDecorationsTheme>
-    <ControlTheme TargetType="chrome:WindowDrawnDecorations" />
-  </Window.WindowDecorationsTheme>
-
-  <!-- 无边框窗体:客户区首行为自绘标题栏(logo + 全局图标 + 窗口控制);
-       根容器 Margin 绑 OffScreenMargin,防最大化时客户区越界被裁。 -->
-  <Grid RowDefinitions="Auto,*"
-        Margin="{Binding $parent[Window].OffScreenMargin}">
+  <!-- 无边框窗体:与本应用全部对话框同款的 WindowDecorations="None" 全自绘模式
+       (Avalonia 12.0.5 的 ExtendClientArea/BorderOnly 托管装饰会拦截标题栏输入,
+       按钮点不动、窗口拖不动 —— 多组合实测后弃用)。标题栏拖动/双击在
+       TitleBarView(BeginMoveDrag,原生移动循环,Win11 边缘贴靠仍有效);
+       窗口四周为自绘缩放抓取区(BeginResizeDrag)。 -->
+  <Panel>
+    <Grid RowDefinitions="Auto,*"
+          Margin="{Binding $parent[Window].OffScreenMargin}">
 
     <!-- Floating transfer toast (design frame 9Ralg): top-right, non-modal, exists only
          while transfers are running (spec §9). -->
@@ -142,5 +138,19 @@
     </Grid>
 
     </Grid>
-  </Grid>
+    </Grid>
+
+    <!-- 自绘窗口缩放抓取区(仅普通状态,最大化时由 code-behind 关闭):
+         四边 5px + 四角 10px,透明、置顶,按下即 BeginResizeDrag。 -->
+    <Panel x:Name="ResizeGrips" ZIndex="200">
+      <Border Tag="North" Height="5" VerticalAlignment="Top" Margin="10,0" Background="Transparent" Cursor="TopSide" PointerPressed="ResizeEdge_PointerPressed" />
+      <Border Tag="South" Height="5" VerticalAlignment="Bottom" Margin="10,0" Background="Transparent" Cursor="BottomSide" PointerPressed="ResizeEdge_PointerPressed" />
+      <Border Tag="West" Width="5" HorizontalAlignment="Left" Margin="0,10" Background="Transparent" Cursor="LeftSide" PointerPressed="ResizeEdge_PointerPressed" />
+      <Border Tag="East" Width="5" HorizontalAlignment="Right" Margin="0,10" Background="Transparent" Cursor="RightSide" PointerPressed="ResizeEdge_PointerPressed" />
+      <Border Tag="NorthWest" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" Cursor="TopLeftCorner" PointerPressed="ResizeEdge_PointerPressed" />
+      <Border Tag="NorthEast" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Top" Background="Transparent" Cursor="TopRightCorner" PointerPressed="ResizeEdge_PointerPressed" />
+      <Border Tag="SouthWest" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomLeftCorner" PointerPressed="ResizeEdge_PointerPressed" />
+      <Border Tag="SouthEast" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomRightCorner" PointerPressed="ResizeEdge_PointerPressed" />
+    </Panel>
+  </Panel>
 </Window>
