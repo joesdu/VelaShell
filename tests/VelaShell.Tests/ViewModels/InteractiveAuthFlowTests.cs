@@ -57,8 +57,10 @@ public sealed class InteractiveAuthFlowTests
     {
         IConnectionWorkflowService? workflow = Substitute.For<IConnectionWorkflowService>();
         ISshConnectionService? ssh = Substitute.For<ISshConnectionService>();
-        var vm = new MainWindowViewModel(workflow, ssh, () => Substitute.For<ITerminalEmulator>());
-        vm.InteractiveAuthenticator = _ => Task.FromResult<SessionProfile?>(null);
+        var vm = new MainWindowViewModel(workflow, ssh, () => Substitute.For<ITerminalEmulator>())
+        {
+            InteractiveAuthenticator = _ => Task.FromResult<SessionProfile?>(null)
+        };
         var profile = new SessionProfile { Name = "P", Host = "h", Username = "root", AuthMethod = AuthMethod.Password };
         TerminalTabViewModel? tab = await vm.TryConnectProfileAsync(profile);
         Assert.IsNull(tab);
@@ -88,18 +90,17 @@ public sealed class InteractiveAuthFlowTests
 
         // 重试用尽后保留失败标签,标签页内显示“连接失败”覆盖层(设计 yxjmg),不再销毁标签。
         Assert.IsNotNull(tab);
-        Assert.AreEqual(1, vm.TabBar.Tabs.Count());
+        Assert.HasCount(1, vm.TabBar.Tabs);
         Assert.AreEqual(SessionStatus.Disconnected, tab.ConnectionStatus);
         Assert.IsTrue(tab.ShowDisconnectedOverlay);
         Assert.IsTrue(tab.HasConnectionError);
         Assert.AreEqual(2, prompted);
         await workflow.Received(3).ConnectProfileAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>());
-        StringAssert.Contains(vm.LastConnectionError, "认证失败");
+        Assert.Contains("认证失败", vm.LastConnectionError);
     }
 
     // Named to match SSH.NET's SshAuthenticationException so the VM's type-name mapping applies.
-    private sealed class SshAuthenticationException : Exception
+    private sealed class SshAuthenticationException(string message) : Exception(message)
     {
-        public SshAuthenticationException(string message) : base(message) { }
     }
 }

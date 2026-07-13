@@ -54,7 +54,7 @@ public class TunnelServiceTests
         Assert.AreEqual(config, tunnel.Config);
         Assert.AreEqual(TunnelStatus.Active, tunnel.Status);
         Assert.AreEqual(_sessionId, tunnel.SessionId);
-        Assert.IsTrue((DateTime.UtcNow - tunnel.CreatedAt).Duration() <= TimeSpan.FromSeconds(1));
+        Assert.IsLessThanOrEqualTo(TimeSpan.FromSeconds(1), (DateTime.UtcNow - tunnel.CreatedAt).Duration());
     }
 
     [TestMethod]
@@ -124,8 +124,8 @@ public class TunnelServiceTests
         TunnelInfo tunnel2 = await service.CreateLocalForwardAsync(_sessionId, config2);
         IObservableList<TunnelInfo> activeTunnels = service.GetActiveTunnels(_sessionId);
         Assert.AreEqual(2, activeTunnels.Count);
-        Assert.IsTrue(activeTunnels.Items.Any(t => t.Id == tunnel1.Id));
-        Assert.IsTrue(activeTunnels.Items.Any(t => t.Id == tunnel2.Id));
+        Assert.Contains(t => t.Id == tunnel1.Id, activeTunnels.Items);
+        Assert.Contains(t => t.Id == tunnel2.Id, activeTunnels.Items);
     }
 
     [TestMethod]

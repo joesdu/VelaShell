@@ -137,7 +137,7 @@ public class TerminalEmulatorTests
     {
         TerminalEmulator e = New(4, 2);
         Feed(e, "a\r\nb\r\nc");
-        Assert.IsTrue(e.Screen.ScrollbackCount > 0);
+        Assert.IsGreaterThan(0, e.Screen.ScrollbackCount);
         // Newest lines occupy the active screen.
         Assert.AreEqual("c", Line(e, 1));
     }

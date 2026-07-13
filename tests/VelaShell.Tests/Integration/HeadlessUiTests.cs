@@ -76,7 +76,7 @@ public class HeadlessUiTests
         themeService.SetTheme("dark");
         themeService.SetTheme("light");
         Assert.AreEqual("light", themeService.CurrentTheme);
-        Assert.AreEqual(3, events.Count());
+        Assert.HasCount(3, events);
         CollectionAssert.AreEqual(new List<string> { "light", "dark", "light" }, events);
     }
 

@@ -32,7 +32,7 @@ public class SessionRepositoryTests : IDisposable
     {
         var repo = new SessionRepository(_dataStore, _sessionsPath);
         List<ServerGroup> groups = await repo.GetAllGroupsAsync();
-        Assert.AreEqual(0, groups.Count());
+        Assert.IsEmpty(groups);
     }
 
     [TestMethod]
@@ -61,9 +61,9 @@ public class SessionRepositoryTests : IDisposable
         await repo.SaveSessionAsync(first);
         await repo.SaveSessionAsync(second);
         List<SessionProfile> sessions = await repo.GetAllSessionsAsync();
-        Assert.AreEqual(2, sessions.Count());
-        Assert.IsTrue(sessions.Any(session => session.Id == first.Id));
-        Assert.IsTrue(sessions.Any(session => session.Id == second.Id));
+        Assert.HasCount(2, sessions);
+        Assert.Contains(session => session.Id == first.Id, sessions);
+        Assert.Contains(session => session.Id == second.Id, sessions);
     }
 
     [TestMethod]
@@ -109,7 +109,7 @@ public class SessionRepositoryTests : IDisposable
         SessionProfile? retrievedSession = await repo.GetSessionAsync(sessionId);
         List<ServerGroup> groups = await repo.GetAllGroupsAsync();
         Assert.IsNull(retrievedSession);
-        Assert.IsFalse(groups.First().Sessions.Contains(sessionId));
+        Assert.DoesNotContain(sessionId, groups.First().Sessions);
     }
 
     [TestMethod]
@@ -125,7 +125,7 @@ public class SessionRepositoryTests : IDisposable
         };
         await repo.SaveGroupAsync(group);
         List<ServerGroup> groups = await repo.GetAllGroupsAsync();
-        Assert.AreEqual(1, groups.Count());
+        Assert.HasCount(1, groups);
         Assert.AreEqual("Production", groups.First().Name);
         Assert.AreEqual("server", groups.First().Icon);
     }
@@ -166,7 +166,7 @@ public class SessionRepositoryTests : IDisposable
         await repo.DeleteGroupAsync(groupId);
         List<ServerGroup> groups = await repo.GetAllGroupsAsync();
         SessionProfile? retrievedSession = await repo.GetSessionAsync(session.Id);
-        Assert.AreEqual(0, groups.Count());
+        Assert.IsEmpty(groups);
         Assert.IsNull(retrievedSession!.GroupId);
     }
 
@@ -185,7 +185,7 @@ public class SessionRepositoryTests : IDisposable
         List<ServerGroup> groups = await repo.GetAllGroupsAsync();
         SessionProfile? retrievedSession1 = await repo.GetSessionAsync(session1.Id);
         SessionProfile? retrievedSession2 = await repo.GetSessionAsync(session2.Id);
-        Assert.AreEqual(2, groups.Count());
+        Assert.HasCount(2, groups);
         Assert.AreEqual(group1.Id, retrievedSession1!.GroupId);
         Assert.AreEqual(group2.Id, retrievedSession2!.GroupId);
     }

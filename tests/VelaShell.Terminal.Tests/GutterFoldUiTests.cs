@@ -46,7 +46,7 @@ public class GutterFoldUiTests
             Dispatcher.UIThread.RunJobs();
             window.CaptureRenderedFrame(); // 强制一帧渲染 → 填充屏幕行映射
 
-            Assert.IsTrue(control.CellHeightForTest > 0, "渲染后应有有效的单元格高度。");
+            Assert.IsGreaterThan(0, control.CellHeightForTest, "渲染后应有有效的单元格高度。");
             Assert.AreEqual(0, control.FoldCountForTest);
 
             // 只开折叠标记时折叠列从 x=0 开始;点击第 3 屏幕行(L0..L5 占屏幕行 0..5)。

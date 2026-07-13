@@ -1,10 +1,9 @@
 <Project>
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
-
+	<TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+	
+  <PropertyGroup>
     <!-- 全仓统一版本:Version 派生 AssemblyInformationalVersion(含预发布后缀,
          关于页显示);AssemblyVersion/FileVersion 不允许后缀,单独给数字版。 -->
     <Version>0.1.0-beta</Version>
@@ -12,5 +11,36 @@
     <FileVersion>0.1.0.0</FileVersion>
     <!-- 不把 git 提交哈希拼进 InformationalVersion(默认会加 +sha 后缀)。 -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+  	<Authors>joesdu</Authors>
+  	<PackagePrefix>VelaShell</PackagePrefix>
+  	<RepositoryType>git</RepositoryType>
+  	<RepositoryUrl>https://github.com/joesdu/VelaShell</RepositoryUrl>
+  	<GenerateAssemblyConfigurationAttribute>True</GenerateAssemblyConfigurationAttribute>
+  	<GenerateAssemblyCompanyAttribute>True</GenerateAssemblyCompanyAttribute>
+  	<GenerateAssemblyProductAttribute>True</GenerateAssemblyProductAttribute>
+  	<GenerateDocumentationFile>True</GenerateDocumentationFile>
+  	<PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net11.0'">
+  	<EnablePreviewFeatures>true</EnablePreviewFeatures>
+  	<Features>$(Features);runtime-async=on</Features>
+  	<NoWarn>$(NoWarn);CA2252;SYSLIB5007;</NoWarn>
+  </PropertyGroup>
+  
+  <ItemGroup>
+  	<None Include=".\README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+  
+  <PropertyGroup>
+  	<LangVersion>preview</LangVersion>
+  	<Nullable>enable</Nullable>
+  	<ImplicitUsings>enable</ImplicitUsings>
+  	<NoWarn>$(NoWarn);IDE0047;</NoWarn>
+  	<!--控制生成产物目录-->
+  	<!--<ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>-->
   </PropertyGroup>
 </Project>

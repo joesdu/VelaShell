@@ -81,7 +81,7 @@ public class TunnelPanelViewModelTests
                       .Returns(Task.FromResult(tunnelInfo));
         FillValidLocalForm();
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
-        Assert.AreEqual(1, _vm.Tunnels.Count());
+        Assert.HasCount(1, _vm.Tunnels);
         Assert.AreEqual("test-tunnel", _vm.Tunnels[0].Name);
         Assert.AreEqual(3306u, _vm.Tunnels[0].LocalPort);
         Assert.AreEqual("db-server", _vm.Tunnels[0].RemoteHost);
@@ -155,9 +155,9 @@ public class TunnelPanelViewModelTests
                       .Returns(Task.FromResult(tunnelInfo));
         FillValidLocalForm();
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
-        Assert.AreEqual(1, _vm.Tunnels.Count());
+        Assert.HasCount(1, _vm.Tunnels);
         await _vm.DeleteTunnelCommand.Execute(tunnelInfo.Id).FirstAsync();
-        Assert.AreEqual(0, _vm.Tunnels.Count());
+        Assert.IsEmpty(_vm.Tunnels);
         // 删除统一走 RemoveTunnelAsync(活动中的由服务先停再移除)。
         await _tunnelService.Received(1).RemoveTunnelAsync(tunnelInfo.Id, Arg.Any<CancellationToken>());
     }
@@ -214,7 +214,7 @@ public class TunnelPanelViewModelTests
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
         await _tunnelService.Received(1).CreateRemoteForwardAsync(_sessionId, Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>());
         await _tunnelService.DidNotReceive().CreateLocalForwardAsync(Arg.Any<Guid>(), Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>());
-        Assert.AreEqual(1, _vm.Tunnels.Count());
+        Assert.HasCount(1, _vm.Tunnels);
     }
 
     [TestMethod]
@@ -340,7 +340,7 @@ public class TunnelPanelViewModelTests
         vm.SelectedServer = _server;
 
         // 恢复为"已停止",等待用户手动启动;绝不自动建立转发。
-        Assert.AreEqual(1, vm.Tunnels.Count);
+        Assert.HasCount(1, vm.Tunnels);
         Assert.AreEqual("restored", vm.Tunnels[0].Name);
         Assert.AreEqual(TunnelStatus.Stopped, vm.Tunnels[0].Status);
         Assert.IsFalse(vm.Tunnels[0].IsActive);

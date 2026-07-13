@@ -70,7 +70,7 @@ public class DockWorkspaceTests
 
         ws.CloseDocument(a);
 
-        Assert.AreEqual(0, ws.PrimaryGroup.Documents.Count);
+        Assert.IsEmpty(ws.PrimaryGroup.Documents);
         CollectionAssert.AreEqual(new[] { a }, closed);
         Assert.IsNull(ws.ActiveDocument);
     }
@@ -86,7 +86,7 @@ public class DockWorkspaceTests
 
         ws.RemoveDocument(a);
 
-        Assert.AreEqual(0, ws.PrimaryGroup.Documents.Count);
+        Assert.IsEmpty(ws.PrimaryGroup.Documents);
         Assert.AreEqual(0, closedCount);
     }
 
@@ -101,7 +101,7 @@ public class DockWorkspaceTests
 
         ws.CloseDocument(a);
 
-        Assert.AreEqual(1, ws.PrimaryGroup.Documents.Count);
+        Assert.HasCount(1, ws.PrimaryGroup.Documents);
         Assert.AreEqual(0, closedCount);
     }
 
@@ -146,7 +146,7 @@ public class DockWorkspaceTests
         CollectionAssert.AreEqual(new[] { b }, ws.PrimaryGroup.Documents.ToArray());
 
         ws.CloseOtherDocuments(d);
-        Assert.IsTrue(ws.AllDocuments().Contains(b), "其他组的标签不受影响");
+        Assert.Contains(b, ws.AllDocuments(), "其他组的标签不受影响");
 
         ws.CloseAllDocuments(b);
         CollectionAssert.AreEqual(new[] { d }, ws.AllDocuments().ToArray());
@@ -168,7 +168,7 @@ public class DockWorkspaceTests
         var split = ws.Root as DockSplit;
         Assert.IsNotNull(split);
         Assert.AreEqual(DockOrientation.Horizontal, split.Orientation);
-        Assert.AreEqual(2, split.Children.Count);
+        Assert.HasCount(2, split.Children);
         Assert.AreSame(ws.PrimaryGroup, split.Children[0]);
         var newGroup = (DockGroup)split.Children[1];
         CollectionAssert.AreEqual(new[] { b }, newGroup.Documents.ToArray());
@@ -192,7 +192,7 @@ public class DockWorkspaceTests
         ws.SplitDocument(c, DockOrientation.Horizontal);
 
         var split = (DockSplit)ws.Root;
-        Assert.AreEqual(3, split.Children.Count, "同方向拆分应插入兄弟节点而非嵌套分栏");
+        Assert.HasCount(3, split.Children, "同方向拆分应插入兄弟节点而非嵌套分栏");
     }
 
     [TestMethod]
@@ -236,7 +236,7 @@ public class DockWorkspaceTests
         Assert.IsNotNull(nested, "次级组位置应被垂直分栏替换");
         Assert.AreEqual(DockOrientation.Vertical, nested.Orientation);
         Assert.AreSame(g2, nested.Children[0]);
-        Assert.AreEqual(0, g2.Documents.Count, "原组留空");
+        Assert.IsEmpty(g2.Documents, "原组留空");
         var g3 = (DockGroup)nested.Children[1];
         CollectionAssert.AreEqual(new[] { b }, g3.Documents.ToArray());
         Assert.AreSame(b, ws.ActiveDocument);
@@ -292,8 +292,8 @@ public class DockWorkspaceTests
 
         var split = ws.Root as DockSplit;
         Assert.IsNotNull(split, "主组即使为空也保留");
-        Assert.AreEqual(2, split.Children.Count);
-        Assert.AreEqual(0, ws.PrimaryGroup.Documents.Count);
+        Assert.HasCount(2, split.Children);
+        Assert.IsEmpty(ws.PrimaryGroup.Documents);
         // 新文档仍然进主组
         TestDocument c = NewDoc("c");
         ws.AddDocument(c);
@@ -405,9 +405,9 @@ public class DockWorkspaceTests
         ws.DockTo(b, g2, DockPosition.Right); // 拖到自己组的右缘 = 拆分,原组留空
 
         var root = (DockSplit)ws.Root;
-        Assert.AreEqual(3, root.Children.Count, "同方向:空的原组 + 新组同级插入");
+        Assert.HasCount(3, root.Children, "同方向:空的原组 + 新组同级插入");
         Assert.AreSame(g2, root.Children[1]);
-        Assert.AreEqual(0, g2.Documents.Count);
+        Assert.IsEmpty(g2.Documents);
         var g3 = (DockGroup)root.Children[2];
         CollectionAssert.AreEqual(new[] { b }, g3.Documents.ToArray());
     }

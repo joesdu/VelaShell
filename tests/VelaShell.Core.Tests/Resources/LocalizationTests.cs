@@ -229,7 +229,7 @@ public class LocalizationTests : IDisposable
         HashSet<string> baseline = neutral.Cast<System.Collections.DictionaryEntry>()
                                           .Select(entry => (string)entry.Key)
                                           .ToHashSet();
-        Assert.IsTrue(baseline.Count > 0);
+        Assert.IsNotEmpty(baseline);
         foreach (string culture in (string[])["zh-Hans", "zh-Hant", "ja", "ko"])
         {
             System.Resources.ResourceSet? set = manager.GetResourceSet(new CultureInfo(culture), true, false);
@@ -239,8 +239,8 @@ public class LocalizationTests : IDisposable
                                       .ToHashSet();
             List<string> missing = baseline.Except(keys).Order().ToList();
             List<string> extra = keys.Except(baseline).Order().ToList();
-            Assert.AreEqual(0, missing.Count, $"{culture} 缺失 {missing.Count} 键: {string.Join(", ", missing.Take(20))}");
-            Assert.AreEqual(0, extra.Count, $"{culture} 多余 {extra.Count} 键: {string.Join(", ", extra.Take(20))}");
+            Assert.IsEmpty(missing, $"{culture} 缺失 {missing.Count} 键: {string.Join(", ", missing.Take(20))}");
+            Assert.IsEmpty(extra, $"{culture} 多余 {extra.Count} 键: {string.Join(", ", extra.Take(20))}");
         }
     }
 

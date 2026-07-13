@@ -231,7 +231,7 @@ public class SshIntegrationTests
         Assert.AreNotEqual(session2.SessionId, session1.SessionId);
         Assert.AreEqual(SessionStatus.Connected, session1.Status);
         Assert.AreEqual(SessionStatus.Connected, session2.Status);
-        Assert.AreEqual(2, clients.Count());
+        Assert.HasCount(2, clients);
         await service.DisposeAsync();
     }
 
@@ -304,7 +304,7 @@ public class SshIntegrationTests
         var service = new SshConnectionService(ClientFactory);
         await service.ConnectAsync(CreateTestConnectionInfo());
         await service.ConnectAsync(CreateTestConnectionInfo());
-        Assert.AreEqual(2, clients.Count());
+        Assert.HasCount(2, clients);
         await service.DisposeAsync();
         foreach (ISshClientWrapper client in clients)
         {

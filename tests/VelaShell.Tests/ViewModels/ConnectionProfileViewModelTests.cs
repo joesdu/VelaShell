@@ -66,7 +66,7 @@ public sealed class ConnectionProfileViewModelTests
                 .Returns(new ConnectionTestResult(true));
         ConnectionProfileViewModel vm = CreateValidViewModel(workflow);
         await vm.TestConnectionCommand.Execute().FirstAsync();
-        Assert.IsTrue(vm.LastTestSucceeded == true);
+        Assert.IsTrue(vm.LastTestSucceeded);
         Assert.IsNull(vm.ErrorMessage);
     }
 
@@ -89,7 +89,7 @@ public sealed class ConnectionProfileViewModelTests
         Assert.IsNotNull(profile);
         await repository.Received(1).SaveGroupAsync(Arg.Is<ServerGroup>(g => g.Name == "生产环境"));
         Assert.IsNotNull(profile.GroupId);
-        Assert.IsTrue(vm.Groups.Any(option => option.Name == "生产环境" && option.Id == profile.GroupId));
+        Assert.Contains(option => option.Name == "生产环境" && option.Id == profile.GroupId, vm.Groups);
     }
 
     [TestMethod]

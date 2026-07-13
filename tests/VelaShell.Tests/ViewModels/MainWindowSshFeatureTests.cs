@@ -65,11 +65,11 @@ public sealed class MainWindowSshFeatureTests
         Assert.AreEqual("Prod", tab.Title);
         Assert.AreEqual(SessionStatus.Connected, tab.ConnectionStatus);
         Assert.AreSame(tab, vm.TabBar.ActiveTab);
-        Assert.AreEqual(1, vm.TabBar.Tabs.Count());
+        Assert.HasCount(1, vm.TabBar.Tabs);
         // 设计 gzmsb 调整(cfe16d2):状态栏只显示"SSH • <显示名称>",不暴露用户名/IP/端口(安全要求)。
         Assert.AreEqual("SSH • Prod", vm.StatusBar.ConnectionInfo);
         Assert.AreEqual(Strings.Connected, vm.StatusBar.Status);
-        Assert.AreEqual(1, vm.Sidebar.RecentConnections.Connections.Count());
+        Assert.HasCount(1, vm.Sidebar.RecentConnections.Connections);
         Assert.AreEqual("Prod - 生产环境", vm.Sidebar.RecentConnections.Connections[0].DisplayName);
     }
 
@@ -94,7 +94,7 @@ public sealed class MainWindowSshFeatureTests
         var vm = new MainWindowViewModel(workflow, sshConnectionService, () => Substitute.For<ITerminalEmulator>());
         TerminalTabViewModel? tab = await vm.TryConnectProfileAsync(profile);
         Assert.IsNull(tab);
-        Assert.AreEqual(0, vm.TabBar.Tabs.Count());
+        Assert.IsEmpty(vm.TabBar.Tabs);
         Assert.IsFalse(string.IsNullOrEmpty(vm.LastConnectionError));
         StringAssert.Contains(vm.LastConnectionError, "认证失败");
     }
@@ -119,7 +119,7 @@ public sealed class MainWindowSshFeatureTests
         var vm = new MainWindowViewModel(workflow, sshConnectionService, () => Substitute.For<ITerminalEmulator>());
         TerminalTabViewModel? tab = await vm.TryConnectProfileAsync(profile);
         Assert.IsNotNull(tab);
-        Assert.AreEqual(1, vm.TabBar.Tabs.Count());
+        Assert.HasCount(1, vm.TabBar.Tabs);
         Assert.AreEqual(SessionStatus.Disconnected, tab.ConnectionStatus);
         Assert.IsTrue(tab.ShowDisconnectedOverlay);
         Assert.IsTrue(tab.HasConnectionError);
@@ -175,7 +175,7 @@ public sealed class MainWindowSshFeatureTests
         // Reconnect in place — same tab, not a new one.
         await vm.ReconnectTabAsync(tab);
         Assert.AreEqual(SessionStatus.Connected, tab.ConnectionStatus);
-        Assert.AreEqual(1, vm.TabBar.Tabs.Count());
+        Assert.HasCount(1, vm.TabBar.Tabs);
         Assert.AreSame(tab, vm.TabBar.Tabs.First());
     }
 
@@ -209,7 +209,7 @@ public sealed class MainWindowSshFeatureTests
                ]);
         var vm = new MainWindowViewModel(recentConnectionService: recents);
         await vm.InitializeAsync();
-        Assert.AreEqual(2, vm.Sidebar.RecentConnections.Connections.Count());
+        Assert.HasCount(2, vm.Sidebar.RecentConnections.Connections);
         Assert.AreEqual("Prod - 生产环境", vm.Sidebar.RecentConnections.Connections[0].DisplayName);
         Assert.AreEqual("2 小时前", vm.Sidebar.RecentConnections.Connections[0].RelativeTime);
         Assert.AreEqual("Dev", vm.Sidebar.RecentConnections.Connections[1].DisplayName);

@@ -46,7 +46,7 @@ public class SessionTreeViewModelTests
     [TestCategory("SessionTree")]
     public void Constructor_InitializesWithEmptyNodes()
     {
-        Assert.AreEqual(0, _vm.Nodes.Count());
+        Assert.IsEmpty(_vm.Nodes);
         Assert.IsNull(_vm.SelectedNode);
     }
 
@@ -60,10 +60,10 @@ public class SessionTreeViewModelTests
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group }));
         _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { session1, session2 }));
         await _vm.LoadCommand.Execute().FirstAsync();
-        Assert.AreEqual(1, _vm.Nodes.Count());
+        Assert.HasCount(1, _vm.Nodes);
         Assert.AreEqual("Production", _vm.Nodes[0].Name);
         Assert.IsTrue(_vm.Nodes[0].IsGroup);
-        Assert.AreEqual(2, _vm.Nodes[0].Children.Count());
+        Assert.HasCount(2, _vm.Nodes[0].Children);
         // 组内按名称排序。
         Assert.AreEqual("DbServer", _vm.Nodes[0].Children[0].Name);
         Assert.AreEqual("WebServer", _vm.Nodes[0].Children[1].Name);
@@ -78,7 +78,7 @@ public class SessionTreeViewModelTests
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group1, group2 }));
         _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile>()));
         await _vm.LoadCommand.Execute().FirstAsync();
-        Assert.AreEqual(2, _vm.Nodes.Count());
+        Assert.HasCount(2, _vm.Nodes);
         Assert.AreEqual("Production", _vm.Nodes[0].Name);
         Assert.AreEqual("Staging", _vm.Nodes[1].Name);
     }
@@ -92,7 +92,7 @@ public class SessionTreeViewModelTests
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup>()));
         _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { orphan }));
         await _vm.LoadCommand.Execute().FirstAsync();
-        Assert.AreEqual(1, _vm.Nodes.Count());
+        Assert.HasCount(1, _vm.Nodes);
         Assert.IsFalse(_vm.Nodes[0].IsGroup);
         Assert.AreEqual("Orphan", _vm.Nodes[0].Name);
         Assert.IsTrue(_vm.Nodes[0].IsRootLevel);
@@ -111,7 +111,7 @@ public class SessionTreeViewModelTests
 
         // Guid.Empty 是“未分组”落点:节点应移到树根,落库 GroupId 为 null。
         _vm.MoveSessionToGroup(session.Id, Guid.Empty);
-        Assert.AreEqual(0, _vm.Nodes[0].Children.Count());
+        Assert.IsEmpty(_vm.Nodes[0].Children);
         SessionTreeNodeViewModel? rootNode = _vm.Nodes.FirstOrDefault(node => !node.IsGroup && node.Id == session.Id);
         Assert.IsNotNull(rootNode);
         Assert.IsTrue(rootNode.IsRootLevel);
@@ -128,9 +128,9 @@ public class SessionTreeViewModelTests
         _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { orphan }));
         await _vm.LoadCommand.Execute().FirstAsync();
         _vm.MoveSessionToGroup(orphan.Id, group.Id);
-        Assert.IsFalse(_vm.Nodes.Any(node => !node.IsGroup && node.Id == orphan.Id));
+        Assert.DoesNotContain(node => !node.IsGroup && node.Id == orphan.Id, _vm.Nodes);
         SessionTreeNodeViewModel groupNode = _vm.Nodes.First(node => node.IsGroup && node.Id == group.Id);
-        Assert.AreEqual(1, groupNode.Children.Count());
+        Assert.HasCount(1, groupNode.Children);
         Assert.IsFalse(groupNode.Children[0].IsRootLevel);
         Assert.AreEqual(group.Id, orphan.GroupId);
     }
@@ -166,7 +166,7 @@ public class SessionTreeViewModelTests
             GroupId = groupId
         };
         _vm.AddSession(session);
-        Assert.AreEqual(1, groupNode.Children.Count());
+        Assert.HasCount(1, groupNode.Children);
         Assert.AreEqual("NewServer", groupNode.Children[0].Name);
     }
 
@@ -182,10 +182,10 @@ public class SessionTreeViewModelTests
         _vm.Nodes.Add(targetGroup);
         var session = new SessionProfile { Id = Guid.NewGuid(), Name = "MoveMe", GroupId = sourceGroupId };
         _vm.AddSession(session);
-        Assert.AreEqual(1, sourceGroup.Children.Count());
+        Assert.HasCount(1, sourceGroup.Children);
         _vm.MoveSessionToGroup(session.Id, targetGroupId);
-        Assert.AreEqual(0, sourceGroup.Children.Count());
-        Assert.AreEqual(1, targetGroup.Children.Count());
+        Assert.IsEmpty(sourceGroup.Children);
+        Assert.HasCount(1, targetGroup.Children);
         Assert.AreEqual("MoveMe", targetGroup.Children[0].Name);
     }
 
@@ -200,7 +200,7 @@ public class SessionTreeViewModelTests
         await _vm.LoadCommand.Execute().FirstAsync();
         _vm.SelectedNode = _vm.Nodes[0].Children[0];
         await _vm.DeleteSessionCommand.Execute().FirstAsync();
-        Assert.AreEqual(0, _vm.Nodes[0].Children.Count());
+        Assert.IsEmpty(_vm.Nodes[0].Children);
         Assert.IsNull(_vm.SelectedNode);
         await _repository.Received(1).DeleteSessionAsync(session.Id);
     }
@@ -241,7 +241,7 @@ public class SessionTreeViewModelTests
         var node = new SessionTreeNodeViewModel(Guid.NewGuid(), "MyGroup", true);
         Assert.IsTrue(node.IsGroup);
         Assert.IsTrue(node.IsExpanded);
-        Assert.AreEqual(0, node.Children.Count());
+        Assert.IsEmpty(node.Children);
     }
 
     [TestMethod]

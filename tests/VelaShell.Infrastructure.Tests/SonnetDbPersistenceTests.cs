@@ -46,9 +46,9 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         await repo.SaveSessionAsync(profile);
         List<ServerGroup> groups = await repo.GetAllGroupsAsync();
         List<SessionProfile> sessions = await repo.GetAllSessionsAsync();
-        Assert.AreEqual(1, groups.Count);
+        Assert.HasCount(1, groups);
         Assert.AreEqual("生产环境", groups[0].Name);
-        Assert.AreEqual(1, sessions.Count);
+        Assert.HasCount(1, sessions);
         Assert.AreEqual("web-prod-01", sessions[0].Name);
         Assert.AreEqual("s3cret", sessions[0].Password, "读出的密码应已解密");
         SessionProfile? single = await repo.GetSessionAsync(profile.Id);
@@ -64,8 +64,8 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         await repo.SaveSessionAsync(profile);
         string rawJson = await _engine.WithCollectionAsync(SonnetDbEngine.ProfilesCollection,
                              store => store.Get(profile.Id.ToString("D"))!.Json);
-        Assert.IsFalse(rawJson.Contains("plaintext-pass"), "落盘 JSON 不应包含明文密码");
-        Assert.IsTrue(rawJson.Contains("enc1:"), "落盘密码应带加密前缀");
+        Assert.DoesNotContain("plaintext-pass", rawJson, "落盘 JSON 不应包含明文密码");
+        Assert.Contains("enc1:", rawJson, "落盘密码应带加密前缀");
     }
 
     [TestMethod]
@@ -79,7 +79,7 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         await repo.DeleteGroupAsync(group.Id);
         List<SessionProfile> sessions = await repo.GetAllSessionsAsync();
         Assert.IsNull(sessions.Single().GroupId);
-        Assert.AreEqual(0, (await repo.GetAllGroupsAsync()).Count);
+        Assert.IsEmpty(await repo.GetAllGroupsAsync());
     }
 
     [TestMethod]
@@ -91,7 +91,7 @@ public sealed class SonnetDbPersistenceTests : IDisposable
             $$"""{"groups":[{"id":"{{Guid.NewGuid()}}","name":"旧分组","sortOrder":0,"sessions":[]}],"sessions":[{"id":"{{legacyId}}","name":"legacy","host":"1.2.3.4","port":22,"username":"ops","authMethod":0,"password":"oldpass","tags":[]}]}""");
         var repo = new SonnetDbSessionRepository(_engine, _protector, legacyFile);
         List<SessionProfile> sessions = await repo.GetAllSessionsAsync();
-        Assert.AreEqual(1, sessions.Count);
+        Assert.HasCount(1, sessions);
         Assert.AreEqual("legacy", sessions[0].Name);
         Assert.AreEqual("oldpass", sessions[0].Password);
         Assert.IsFalse(File.Exists(legacyFile), "导入成功后旧文件应被改名");
@@ -139,7 +139,7 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         Assert.AreEqual("rename", reloaded.Transfer.ConflictPolicy);
         Assert.IsTrue(reloaded.Security.AlertWebhook);
         Assert.AreEqual("id_ed25519", reloaded.Keys.DefaultKeyName);
-        Assert.AreEqual(8, reloaded.Appearance.AnsiNormal.Count);
+        Assert.HasCount(8, reloaded.Appearance.AnsiNormal);
     }
 
     [TestMethod]
@@ -154,7 +154,7 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         Assert.AreEqual(HostKeyVerification.Changed,
             await service.VerifyHostKeyAsync("host1", 22, "ssh-ed25519", "SHA256:different"));
         await service.RemoveKnownHostAsync("host1", 22);
-        Assert.AreEqual(0, (await service.GetKnownHostsAsync()).Count);
+        Assert.IsEmpty(await service.GetKnownHostsAsync());
     }
 
     [TestMethod]
@@ -208,14 +208,14 @@ public sealed class SonnetDbPersistenceTests : IDisposable
             DurationMs = 5000
         });
         List<RecentConnectionEntry> recent = await service.GetRecentAsync(10);
-        Assert.AreEqual(2, recent.Count, "同一配置去重、失败连接不出现");
+        Assert.HasCount(2, recent, "同一配置去重、失败连接不出现");
         Assert.AreEqual("web-prod-01", recent[0].Name);
         Assert.AreEqual("生产环境", recent[0].GroupName);
         Assert.AreEqual(profileId, recent[0].ProfileId);
         Assert.AreEqual("deploy@staging.example.com", recent[1].Name);
-        Assert.IsTrue(recent[0].ConnectedAt > recent[1].ConnectedAt);
+        Assert.IsGreaterThan(recent[1].ConnectedAt, recent[0].ConnectedAt);
         await service.ClearAsync();
-        Assert.AreEqual(0, (await service.GetRecentAsync(10)).Count);
+        Assert.IsEmpty(await service.GetRecentAsync(10));
     }
 
     [TestMethod]
@@ -225,9 +225,9 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         await service.WriteAsync(new() { Category = "connection", Action = "connect", Detail = "root@h1" });
         await service.WriteAsync(new() { Category = "settings", Action = "save", Detail = "theme" });
         List<AuditEntry> all = await service.QueryAsync(10);
-        Assert.AreEqual(2, all.Count);
+        Assert.HasCount(2, all);
         List<AuditEntry> connections = await service.QueryAsync(10, "connection");
-        Assert.AreEqual(1, connections.Count);
+        Assert.HasCount(1, connections);
         Assert.AreEqual("connect", connections[0].Action);
     }
 
@@ -236,7 +236,7 @@ public sealed class SonnetDbPersistenceTests : IDisposable
     {
         string? cipher = _protector.Protect("你好 password!");
         Assert.IsNotNull(cipher);
-        Assert.IsTrue(cipher.StartsWith("enc1:"));
+        Assert.StartsWith("enc1:", cipher);
         Assert.AreEqual("你好 password!", _protector.Unprotect(cipher));
         Assert.AreEqual("legacy-plain", _protector.Unprotect("legacy-plain"));
         Assert.AreEqual(cipher, _protector.Protect(cipher), "已加密的值不应二次加密");
@@ -251,7 +251,7 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         TestDoc? loaded = await store.GetAsync<TestDoc>("ui_config", "layout");
         Assert.IsNotNull(loaded);
         Assert.AreEqual("docked", loaded.Value);
-        Assert.AreEqual(1, (await store.GetAllAsync<TestDoc>("ui_config")).Count);
+        Assert.HasCount(1, await store.GetAllAsync<TestDoc>("ui_config"));
         await store.DeleteAsync("ui_config", "layout");
         Assert.IsNull(await store.GetAsync<TestDoc>("ui_config", "layout"));
     }
@@ -272,7 +272,7 @@ public sealed class SonnetDbPersistenceTests : IDisposable
             var repo = new SonnetDbSessionRepository(engine, _protector);
             Assert.AreEqual("persist-me", (await repo.GetAllSessionsAsync()).Single().Name);
             var recents = new SonnetDbRecentConnectionService(engine);
-            Assert.AreEqual(1, (await recents.GetRecentAsync(5)).Count);
+            Assert.HasCount(1, await recents.GetRecentAsync(5));
         }
     }
 

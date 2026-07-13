@@ -48,9 +48,9 @@ public class SessionMetricsServiceTests
         Assert.IsNotNull(second);
         Assert.AreEqual(30.0, second.CpuPercent, 0.1); // (dTotal-dIdle)/dTotal = 300/1000
         Assert.IsTrue(second.HasNetRates);
-        Assert.IsTrue(second.NetRxBytesPerSec > 0, "rx rate should be positive");
-        Assert.IsTrue(second.NetTxBytesPerSec > 0, "tx rate should be positive");
-        Assert.IsTrue(second.NetRxBytesPerSec > second.NetTxBytesPerSec,
+        Assert.IsGreaterThan(0, second.NetRxBytesPerSec, "rx rate should be positive");
+        Assert.IsGreaterThan(0, second.NetTxBytesPerSec, "tx rate should be positive");
+        Assert.IsGreaterThan(second.NetTxBytesPerSec, second.NetRxBytesPerSec,
             "rx moved 4x the bytes of tx, so its rate must dominate");
     }
 
@@ -111,14 +111,14 @@ public class SessionMetricsServiceTests
 
         Assert.IsNotNull(second);
         Assert.IsNotNull(second.CorePercents);
-        Assert.AreEqual(2, second.CorePercents.Count);
+        Assert.HasCount(2, second.CorePercents);
         Assert.AreEqual(90.0, second.CorePercents[0], 0.5);
         Assert.AreEqual(10.0, second.CorePercents[1], 0.5);
 
         Assert.IsNotNull(second.NicRates);
-        Assert.AreEqual(2, second.NicRates.Count);
+        Assert.HasCount(2, second.NicRates);
         Assert.AreEqual("eth0", second.NicRates[0].Name);
-        Assert.IsTrue(second.NicRates[0].RxBytesPerSec > 0, "eth0 应有下行速率");
+        Assert.IsGreaterThan(0, second.NicRates[0].RxBytesPerSec, "eth0 应有下行速率");
         Assert.AreEqual(0, second.NicRates[1].RxBytesPerSec, 0.01); // eth1 无流量
     }
 

@@ -71,7 +71,7 @@ public class FileBrowserViewModelTests
         await _vm.RefreshCommand.Execute().FirstAsync();
 
         // Leading ".." parent row (§6), then name-ascending with directories grouped first.
-        Assert.AreEqual(4, _vm.Files.Count());
+        Assert.HasCount(4, _vm.Files);
         Assert.AreEqual("..", _vm.Files[0].Name);
         Assert.IsTrue(_vm.Files[0].IsParentEntry);
         Assert.AreEqual("documents", _vm.Files[1].Name);
@@ -104,7 +104,7 @@ public class FileBrowserViewModelTests
                     .Returns(Task.FromResult(subFiles));
         await _vm.NavigateToCommand.Execute("/home/user/documents").FirstAsync();
         Assert.AreEqual("/home/user/documents", _vm.CurrentPath);
-        Assert.AreEqual(2, _vm.Files.Count());
+        Assert.HasCount(2, _vm.Files);
         Assert.AreEqual("..", _vm.Files[0].Name);
         Assert.AreEqual("report.pdf", _vm.Files[1].Name);
     }
@@ -214,7 +214,7 @@ public class FileBrowserViewModelTests
                     .Returns(Task.FromResult(firstList));
         _vm.CurrentPath = "/home/user";
         await _vm.RefreshCommand.Execute().FirstAsync();
-        Assert.AreEqual(4, _vm.Files.Count()); // ".." + 3 entries
+        Assert.HasCount(4, _vm.Files); // ".." + 3 entries
         var secondList = new List<RemoteFileInfo>
         {
             firstList[0],
@@ -223,7 +223,7 @@ public class FileBrowserViewModelTests
         _sftpService.ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
                     .Returns(Task.FromResult(secondList));
         await _vm.RefreshCommand.Execute().FirstAsync();
-        Assert.AreEqual(3, _vm.Files.Count()); // ".." + 2 entries
+        Assert.HasCount(3, _vm.Files); // ".." + 2 entries
     }
 
     [TestMethod]
@@ -543,10 +543,10 @@ public class FileBrowserViewModelTests
                     .Returns(Task.FromResult(files));
         _vm.CurrentPath = "/home/user";
         await _vm.RefreshCommand.Execute().FirstAsync();
-        Assert.IsFalse(_vm.Files.Any(f => f.Name == ".bashrc")); // hidden by default
+        Assert.DoesNotContain(f => f.Name == ".bashrc", _vm.Files); // hidden by default
         _vm.ToggleHiddenFilesCommand.Execute().Subscribe();
         Assert.IsTrue(_vm.ShowHiddenFiles);
-        Assert.IsTrue(_vm.Files.Any(f => f.Name == ".bashrc")); // re-filtered without a re-list
+        Assert.Contains(f => f.Name == ".bashrc", _vm.Files); // re-filtered without a re-list
     }
 
     [TestMethod]
@@ -570,7 +570,7 @@ public class FileBrowserViewModelTests
         _sftpService.ListDirectoryAsync(_sessionId, "/", Arg.Any<CancellationToken>())
                     .Returns(Task.FromResult(CreateTestFiles()));
         await _vm.NavigateToCommand.Execute("/").FirstAsync();
-        Assert.IsFalse(_vm.Files.Any(f => f.IsParentEntry));
+        Assert.DoesNotContain(f => f.IsParentEntry, _vm.Files);
     }
 
     [TestMethod]
@@ -579,7 +579,7 @@ public class FileBrowserViewModelTests
     {
         _vm.CurrentPath = "/home/user/documents";
         IReadOnlyList<BreadcrumbSegment> crumbs = _vm.Breadcrumbs;
-        Assert.AreEqual(3, crumbs.Count);
+        Assert.HasCount(3, crumbs);
         Assert.AreEqual("home", crumbs[0].Name);
         Assert.AreEqual("/home", crumbs[0].Path);
         Assert.AreEqual("user", crumbs[1].Name);

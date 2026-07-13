@@ -114,7 +114,7 @@ public class JsonDataStoreTests : IDisposable
         string json = await File.ReadAllTextAsync(filePath);
         StringAssert.Contains(json, "\"terminalFont\":");
         StringAssert.Contains(json, "\"terminalFontSize\":");
-        Assert.IsFalse(json.Contains("\"TerminalFont\":"));
+        Assert.DoesNotContain("\"TerminalFont\":", json);
     }
 
     [TestMethod]

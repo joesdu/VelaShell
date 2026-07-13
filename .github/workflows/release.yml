@@ -25,6 +25,13 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - name: Restore strong-name key
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes("src/VelaShell.snk",
+            [Convert]::FromBase64String($env:SNK_B64))
+        env:
+          SNK_B64: ${{ secrets.STRONG_NAME_KEY }}
       - name: Install packaging tools (vpk / wix)
         shell: pwsh
         run: |
@@ -93,6 +100,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - name: Restore strong-name key
+        # openssl 在 Linux/macOS 上解码行为一致(避开 GNU/BSD base64 -d/-D 差异)
+        run: echo "$SNK_B64" | openssl base64 -A -d > src/VelaShell.snk
+        env:
+          SNK_B64: ${{ secrets.STRONG_NAME_KEY }}
       - name: Publish (osx-x64 / osx-arm64)
         run: |
           set -euo pipefail
@@ -120,6 +132,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - name: Restore strong-name key
+        # openssl 在 Linux/macOS 上解码行为一致(避开 GNU/BSD base64 -d/-D 差异)
+        run: echo "$SNK_B64" | openssl base64 -A -d > src/VelaShell.snk
+        env:
+          SNK_B64: ${{ secrets.STRONG_NAME_KEY }}
       - name: Publish (linux-x64 / linux-arm64)
         run: |
           set -euo pipefail

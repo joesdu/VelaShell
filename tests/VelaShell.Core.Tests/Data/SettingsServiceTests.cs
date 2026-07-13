@@ -65,7 +65,7 @@ public class SettingsServiceTests : IDisposable
         var service = new SettingsService(_dataStore, _testDirectory);
         AppState state = await service.GetStateAsync();
         Assert.IsNotNull(state);
-        Assert.AreEqual(0, state.RecentConnections.Count());
+        Assert.IsEmpty(state.RecentConnections);
         Assert.IsNull(state.WindowPosition);
         Assert.IsNull(state.WindowSize);
         Assert.IsNull(state.LastActiveTab);
@@ -113,9 +113,9 @@ public class SettingsServiceTests : IDisposable
         state.RecentConnections.Add("session2");
         await service.SaveStateAsync(state);
         AppState retrieved = await service.GetStateAsync();
-        Assert.AreEqual(2, retrieved.RecentConnections.Count());
-        Assert.IsTrue(retrieved.RecentConnections.Contains("session1"));
-        Assert.IsTrue(retrieved.RecentConnections.Contains("session2"));
+        Assert.HasCount(2, retrieved.RecentConnections);
+        Assert.Contains("session1", retrieved.RecentConnections);
+        Assert.Contains("session2", retrieved.RecentConnections);
     }
 
     [TestMethod]

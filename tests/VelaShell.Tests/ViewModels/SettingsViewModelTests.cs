@@ -96,11 +96,12 @@ public class SettingsViewModelTests
     [TestCategory("Settings")]
     public void ConnectionProfile_ValidatesRequiredFields()
     {
-        var vm = new ConnectionProfileViewModel();
-
-        // Host and Username empty → SaveCommand not executable
-        vm.Host = "";
-        vm.Username = "";
+        var vm = new ConnectionProfileViewModel
+        {
+            // Host and Username empty → SaveCommand not executable
+            Host = "",
+            Username = ""
+        };
         bool canExecute = false;
         vm.SaveCommand.CanExecute.Subscribe(x => canExecute = x);
 
@@ -190,12 +191,14 @@ public class SettingsViewModelTests
     [TestCategory("Settings")]
     public void ConnectionProfile_PortValidation_AcceptsValidRange()
     {
-        var vm = new ConnectionProfileViewModel();
-        vm.Host = "test.example.com";
-        vm.Username = "admin";
+        var vm = new ConnectionProfileViewModel
+        {
+            Host = "test.example.com",
+            Username = "admin",
 
-        // Valid port
-        vm.Port = 22;
+            // Valid port
+            Port = 22
+        };
         bool canExecute = false;
         vm.SaveCommand.CanExecute.Subscribe(x => canExecute = x);
         Assert.IsTrue(canExecute);
@@ -215,13 +218,15 @@ public class SettingsViewModelTests
     [TestCategory("Settings")]
     public void ConnectionProfile_SaveCommand_ReturnsProfile()
     {
-        var vm = new ConnectionProfileViewModel();
-        vm.Name = "My Server";
-        vm.Host = "192.168.1.100";
-        vm.Port = 2222;
-        vm.Username = "deploy";
-        vm.AuthMethod = AuthMethod.PrivateKey;
-        vm.PrivateKeyPath = "/home/user/.ssh/id_rsa";
+        var vm = new ConnectionProfileViewModel
+        {
+            Name = "My Server",
+            Host = "192.168.1.100",
+            Port = 2222,
+            Username = "deploy",
+            AuthMethod = AuthMethod.PrivateKey,
+            PrivateKeyPath = "/home/user/.ssh/id_rsa"
+        };
 
         SessionProfile? result = null;
         vm.SaveCommand.Execute().Subscribe(profile => result = profile);

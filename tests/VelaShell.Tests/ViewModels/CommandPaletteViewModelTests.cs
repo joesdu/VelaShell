@@ -25,9 +25,9 @@ public class CommandPaletteViewModelTests
         CommandPaletteViewModel vm = CreateVm(out _, ("会话", "web-01"), ("会话", "db-01"), ("命令", "打开设置"));
         vm.Open();
         Assert.IsTrue(vm.IsOpen);
-        Assert.AreEqual(2, vm.Groups.Count());
+        Assert.HasCount(2, vm.Groups);
         Assert.AreEqual("会话", vm.Groups[0].Category);
-        Assert.AreEqual(2, vm.Groups[0].Items.Count());
+        Assert.HasCount(2, vm.Groups[0].Items);
         Assert.AreEqual(3, vm.ResultCount);
         Assert.AreEqual("web-01", vm.SelectedItem!.Title);
         Assert.IsTrue(vm.SelectedItem.IsSelected);

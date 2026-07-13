@@ -34,8 +34,8 @@ public class TransferManagerTests
         int activeCount = manager.ActiveTransfers.Count;
         int queuedCount = manager.QueuedTransfers.Count;
         int totalInSystem = activeCount + queuedCount;
-        Assert.IsTrue(activeCount <= 3, "because max concurrent is 3");
-        Assert.IsTrue(totalInSystem > 0, "because transfers should still be in progress");
+        Assert.IsLessThanOrEqualTo(3, activeCount, "because max concurrent is 3");
+        Assert.IsGreaterThan(0, totalInSystem, "because transfers should still be in progress");
     }
 
     [TestMethod]
@@ -50,7 +50,7 @@ public class TransferManagerTests
             await manager.QueueTransferAsync(task);
         }
         await Task.Delay(200);
-        Assert.IsTrue(manager.ActiveTransfers.Count <= 3);
+        Assert.IsLessThanOrEqualTo(3, manager.ActiveTransfers.Count);
     }
 
     [TestMethod]
@@ -97,7 +97,7 @@ public class TransferManagerTests
         await manager.QueueTransferAsync(task2);
         await manager.QueueTransferAsync(task3);
         await Task.Delay(100);
-        Assert.IsTrue(manager.ActiveTransfers.Count <= 2);
+        Assert.IsLessThanOrEqualTo(2, manager.ActiveTransfers.Count);
     }
 
     [TestMethod]
