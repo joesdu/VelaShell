@@ -91,6 +91,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     private int _runStyle = -1; // -1 = no active run; else (bold?1) | (italic?2)
 
     private int _scrollOffset; // lines scrolled up from the bottom (0 = live)
+    private bool _showLineTimestamp; // 左侧栏:显示收行时间(见 ShowLineTimestamp)
+    private bool _showLineNumber; // 左侧栏:显示缓冲区行号(见 ShowLineNumber)
 
     /// <summary>Search spans per absolute buffer row; the current hit is tinted differently.</summary>
     private Dictionary<int, List<(int Start, int End, bool Current)>>? _searchHighlights;
@@ -217,6 +219,41 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
     /// <summary>BEL handling: "system" (beep), "none" (silent) or "visual" (screen flash).</summary>
     public string BellMode { get; set; } = "system";
+
+    /// <summary>
+    /// 左侧栏显示每行的收行时间 <c>[HH:mm:ss]</c>(设置 → 终端)。与 <see cref="ShowLineNumber" />
+    /// 相互独立:可只开时间、只开行号或都开。任一开启都会占用左侧宽度(减少可用列数,PTY 随之改列宽)。
+    /// </summary>
+    public bool ShowLineTimestamp
+    {
+        get => _showLineTimestamp;
+        set
+        {
+            if (_showLineTimestamp == value)
+            {
+                return;
+            }
+            _showLineTimestamp = value;
+            RelayoutFromBounds(); // 侧栏宽度变化 → 立即重算列数并通知 PTY。
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>左侧栏显示每行的缓冲区行号(设置 → 终端)。与 <see cref="ShowLineTimestamp" /> 相互独立。</summary>
+    public bool ShowLineNumber
+    {
+        get => _showLineNumber;
+        set
+        {
+            if (_showLineNumber == value)
+            {
+                return;
+            }
+            _showLineNumber = value;
+            RelayoutFromBounds();
+            InvalidateVisual();
+        }
+    }
 
     /// <summary>
     /// Enables the OS input method (Chinese/Japanese/Korean composition). Off = the
@@ -586,7 +623,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         int topAbsolute = screen.TotalRows - screen.Rows - _scrollOffset;
         int cursorAbsolute = screen.TotalRows - screen.Rows + screen.CursorY;
         int screenRow = cursorAbsolute - topAbsolute;
-        return new(screen.CursorX * _cellWidth, screenRow * _cellHeight, _cellWidth, _cellHeight);
+        return new(screen.CursorX * _cellWidth + GutterWidth(), screenRow * _cellHeight, _cellWidth, _cellHeight);
     }
 
     // ---- Palette ------------------------------------------------------------
@@ -809,7 +846,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         {
             return;
         }
-        int cols = (int)(size.Width / _cellWidth);
+        int cols = (int)((size.Width - GutterWidth()) / _cellWidth);
         int rows = (int)(size.Height / _cellHeight);
 
         // Ignore early/degenerate layout passes (zero or sub-cell size). Collapsing the grid
@@ -852,6 +889,65 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         int cols = screen.Columns;
         int topAbsolute = Math.Max(0, screen.TotalRows - rows - _scrollOffset);
         ((int Row, int Col) Start, (int Row, int Col) End)? sel = NormalizedSelection();
+
+        // 行号/时间侧栏在正文左侧:先画侧栏,再把正文(含光标、选区)整体右移一个侧栏宽度绘制,
+        // 这样所有 col*_cellWidth 的坐标计算保持不变,只在命中测试处减去侧栏宽度即可。
+        if (GutterEnabled)
+        {
+            RenderGutter(context, screen, palette, topAbsolute, rows);
+        }
+        using (context.PushTransform(Matrix.CreateTranslation(GutterWidth(), 0)))
+        {
+            for (int screenRow = 0; screenRow < rows; screenRow++)
+            {
+                int absoluteRow = topAbsolute + screenRow;
+                if (absoluteRow >= screen.TotalRows)
+                {
+                    break;
+                }
+                TerminalRow line = screen.ViewLine(absoluteRow);
+                double y = screenRow * _cellHeight;
+                RenderLine(context, palette, line, cols, y, absoluteRow, sel);
+            }
+            if (_scrollOffset == 0)
+            {
+                RenderCursor(context, screen, palette, topAbsolute);
+            }
+        }
+
+        // Visual bell: a brief translucent flash over the whole terminal (§终端 → 视觉闪烁).
+        if (_bellFlashUntil > DateTime.UtcNow)
+        {
+            context.FillRectangle(BellFlashBrush, new(Bounds.Size));
+        }
+    }
+
+    // ---- Line gutter(时间/行号侧栏) ---------------------------------------
+
+    // 数字列固定 5 位(右对齐):默认 1 万行 scrollback 的最大行号约 5 位。取固定宽度而非按当前行数
+    // 动态计算,是为了侧栏宽度全程恒定 —— 既不在行数跨越 10/100/1000 时抖动,也不在主/备用屏(vim、
+    // htop:scrollback=0)切换时变宽,从而不会无谓地重排 PTY 列宽。
+    private const int GutterNumberWidth = 5;
+    private const string GutterTimeFormat = "HH:mm:ss";
+
+    /// <summary>时间/行号任一开启即绘制侧栏。</summary>
+    private bool GutterEnabled => _showLineTimestamp || _showLineNumber;
+
+    // 字符数按启用的部分累加:时间段 "[HH:mm:ss] "(11)、行号段 "NNNNN "(6);两者拼接即
+    // "[HH:mm:ss] NNNNN "。任一关闭则该段不占宽度。
+    private int GutterChars() => (_showLineTimestamp ? 11 : 0) + (_showLineNumber ? GutterNumberWidth + 1 : 0);
+
+    /// <summary>侧栏像素宽度(时间/行号都关时为 0)。</summary>
+    private double GutterWidth() => GutterChars() * _cellWidth;
+
+    private void RenderGutter(DrawingContext context, TerminalScreen screen, TerminalPalette palette, int topAbsolute, int rows)
+    {
+        double gutter = GutterWidth();
+        // 侧栏底色:在默认底色上叠一层极淡前景,与正文区分;文本用前景/底色混出的暗色(不依赖具体主题)。
+        context.FillRectangle(BrushFor(Blend(palette.DefaultBackground, palette.DefaultForeground, 0.05)), new Rect(0, 0, gutter, Bounds.Height));
+        Rgba dim = Blend(palette.DefaultForeground, palette.DefaultBackground, 0.45);
+        ImmutableSolidColorBrush dimBrush = BrushFor(dim);
+        var typeface = new Typeface(FontFamily);
         for (int screenRow = 0; screenRow < rows; screenRow++)
         {
             int absoluteRow = topAbsolute + screenRow;
@@ -860,19 +956,31 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
                 break;
             }
             TerminalRow line = screen.ViewLine(absoluteRow);
-            double y = screenRow * _cellHeight;
-            RenderLine(context, palette, line, cols, y, absoluteRow, sel);
+            var sb = new StringBuilder(GutterChars());
+            if (_showLineTimestamp)
+            {
+                // 未写入过内容的空行不显示时间(留空占位以保持后续行号对齐)。
+                sb.Append(line.Timestamp is { } ts
+                    ? "[" + ts.ToString(GutterTimeFormat, CultureInfo.InvariantCulture) + "]"
+                    : new string(' ', 10)).Append(' ');
+            }
+            if (_showLineNumber)
+            {
+                sb.Append((absoluteRow + 1).ToString(CultureInfo.InvariantCulture).PadLeft(GutterNumberWidth)).Append(' ');
+            }
+            var ft = new FormattedText(sb.ToString(), CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight, typeface, FontSize, dimBrush);
+            context.DrawText(ft, new Point(0, screenRow * _cellHeight + _glyphYOffset));
         }
-        if (_scrollOffset == 0)
-        {
-            RenderCursor(context, screen, palette, topAbsolute);
-        }
+        // 侧栏与正文之间一条细分隔线。
+        context.DrawLine(new Pen(dimBrush, 0.5), new Point(gutter - 0.5, 0), new Point(gutter - 0.5, rows * _cellHeight));
+    }
 
-        // Visual bell: a brief translucent flash over the whole terminal (§终端 → 视觉闪烁).
-        if (_bellFlashUntil > DateTime.UtcNow)
-        {
-            context.FillRectangle(BellFlashBrush, new(Bounds.Size));
-        }
+    /// <summary>按比例 <paramref name="t" /> 在两色间线性插值(0=a,1=b),用于混出侧栏暗色。</summary>
+    private static Rgba Blend(Rgba a, Rgba b, double t)
+    {
+        static byte Lerp(byte x, byte y, double f) => (byte)Math.Round(x + (y - x) * f);
+        return new Rgba(0xFF, Lerp(a.R, b.R, t), Lerp(a.G, b.G, t), Lerp(a.B, b.B, t));
     }
 
     private void RenderLine(DrawingContext context,
@@ -1266,7 +1374,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     private (int Row, int Col) PointToCell(Point p)
     {
         int screenRow = (int)(p.Y / _cellHeight);
-        int col = (int)(p.X / _cellWidth);
+        int col = (int)((p.X - GutterWidth()) / _cellWidth);
         int topAbsolute = Math.Max(0, Emulator.Screen.TotalRows - Emulator.Rows - _scrollOffset);
         // Clamp the row: while the pointer is captured a drag can leave the control (negative
         // p.Y), and a negative absolute row used to crash selection copy (#用户反馈).
@@ -1613,7 +1721,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <summary>Maps a pointer position to a 0-based cell within the visible screen.</summary>
     private (int Col, int Row) ScreenCell(Point p)
     {
-        int col = Math.Clamp((int)(p.X / _cellWidth), 0, Math.Max(0, Emulator.Columns - 1));
+        int col = Math.Clamp((int)((p.X - GutterWidth()) / _cellWidth), 0, Math.Max(0, Emulator.Columns - 1));
         int row = Math.Clamp((int)(p.Y / _cellHeight), 0, Math.Max(0, Emulator.Rows - 1));
         return (col, row);
     }

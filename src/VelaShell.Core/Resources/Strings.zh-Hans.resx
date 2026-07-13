@@ -555,6 +555,9 @@
   <data name="Cmd_ClearScreen" xml:space="preserve">
     <value>清屏</value>
   </data>
+  <data name="Cmd_ToggleLineGutter" xml:space="preserve">
+    <value>切换行号/时间侧栏</value>
+  </data>
   <data name="Cmd_CloneSession" xml:space="preserve">
     <value>克隆会话</value>
   </data>
@@ -2190,6 +2193,18 @@
   </data>
   <data name="SetTerm_ScrollOnOutput" xml:space="preserve">
     <value>有输出时自动滚动</value>
+  </data>
+  <data name="SetTerm_ShowLineTimestamp" xml:space="preserve">
+    <value>行时间侧栏</value>
+  </data>
+  <data name="SetTerm_ShowLineTimestampDesc" xml:space="preserve">
+    <value>在左侧栏显示每行的收行时间(HH:mm:ss),会占用一定宽度。</value>
+  </data>
+  <data name="SetTerm_ShowLineNumber" xml:space="preserve">
+    <value>行号侧栏</value>
+  </data>
+  <data name="SetTerm_ShowLineNumberDesc" xml:space="preserve">
+    <value>在左侧栏显示每行的缓冲区行号,会占用一定宽度。</value>
   </data>
   <data name="SetTerm_ScrollOnOutputDesc" xml:space="preserve">
     <value>// 翻看历史时有新输出立即拉回底部;关闭则停留在当前位置</value>

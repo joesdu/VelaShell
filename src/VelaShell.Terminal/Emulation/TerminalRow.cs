@@ -13,6 +13,12 @@ public sealed class TerminalRow(int columns)
     /// <summary>True when the line was ended by autowrap rather than an explicit newline.</summary>
     public bool Wrapped { get; set; }
 
+    /// <summary>
+    /// Wall-clock time the row last received output (行号/时间侧栏用)。Null 表示尚未写入过内容
+    /// 的空行——侧栏据此对空行不显示时间。行对象在滚动/换行时按引用迁入 scrollback,时间戳随之保留。
+    /// </summary>
+    public DateTime? Timestamp { get; set; }
+
     public int Columns => _cells.Length;
 
     public TerminalCell this[int col]
@@ -30,6 +36,7 @@ public sealed class TerminalRow(int columns)
             _cells[i] = cell;
         }
         Wrapped = false;
+        Timestamp = null; // 整行清空(擦除/复用作滚动新行)→ 视为未写入,时间戳作废。
     }
 
     public void FillRange(int start, int endExclusive, in TerminalCell cell)
@@ -112,7 +119,7 @@ public sealed class TerminalRow(int columns)
 
     public TerminalRow Clone()
     {
-        var clone = new TerminalRow(_cells.Length) { Wrapped = Wrapped };
+        var clone = new TerminalRow(_cells.Length) { Wrapped = Wrapped, Timestamp = Timestamp };
         Array.Copy(_cells, clone._cells, _cells.Length);
         return clone;
     }

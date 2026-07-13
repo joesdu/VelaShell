@@ -31,6 +31,20 @@
       </StackPanel>
       <NumericUpDown Grid.Column="1" Width="80" Value="{Binding TerminalBehavior.LineHeight}" Minimum="0.8" Maximum="2.0" Increment="0.1" FormatString="0.0" VerticalAlignment="Center" />
     </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetTerm_ShowLineTimestamp}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetTerm_ShowLineTimestampDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.ShowLineTimestamp}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetTerm_ShowLineNumber}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetTerm_ShowLineNumberDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.ShowLineNumber}" VerticalAlignment="Center" />
+    </Grid>
     <Border Classes="sep" />
 
     <!-- 终端类型与编码(既有能力) -->

@@ -118,6 +118,9 @@
   <data name="Cmd_ClearScreen" xml:space="preserve">
     <value>화면 지우기</value>
   </data>
+  <data name="Cmd_ToggleLineGutter" xml:space="preserve">
+    <value>행 번호/시간 여백 전환</value>
+  </data>
   <data name="Cmd_CloneSession" xml:space="preserve">
     <value>세션 복제</value>
   </data>
@@ -2029,6 +2032,18 @@
   </data>
   <data name="SetTerm_ScrollOnOutput" xml:space="preserve">
     <value>출력 시 자동 스크롤</value>
+  </data>
+  <data name="SetTerm_ShowLineTimestamp" xml:space="preserve">
+    <value>행 시각 여백</value>
+  </data>
+  <data name="SetTerm_ShowLineTimestampDesc" xml:space="preserve">
+    <value>각 줄의 수신 시각(HH:mm:ss)을 왼쪽 여백에 표시합니다(너비를 차지함).</value>
+  </data>
+  <data name="SetTerm_ShowLineNumber" xml:space="preserve">
+    <value>행 번호 여백</value>
+  </data>
+  <data name="SetTerm_ShowLineNumberDesc" xml:space="preserve">
+    <value>각 줄의 버퍼 줄 번호를 왼쪽 여백에 표시합니다(너비를 차지함).</value>
   </data>
   <data name="SetTerm_ScrollOnOutputDesc" xml:space="preserve">
     <value>// 기록을 보는 중 새 출력이 있으면 맨 아래로 이동, 끄면 현재 위치 유지</value>
