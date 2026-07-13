@@ -30,6 +30,7 @@ public sealed class DockDropOverlay : Control
         InvalidateVisual();
     }
 
+    /// <summary>清除当前高亮与插入线,隐藏覆盖层的所有绘制内容。</summary>
     public void Hide()
     {
         _region = null;
@@ -37,6 +38,7 @@ public sealed class DockDropOverlay : Control
         InvalidateVisual();
     }
 
+    /// <summary>绘制当前的放置区域高亮或标签插入线,颜色取自主题强调色。</summary>
     public override void Render(DrawingContext context)
     {
         Color accent = this.TryFindResource("VelaAccent", ActualThemeVariant, out object? value) && value is ISolidColorBrush brush

@@ -3,6 +3,10 @@ using VelaShell.Core.Ssh;
 
 namespace VelaShell.Terminal;
 
+/// <summary>
+/// SSH ShellStream 与终端模拟器之间的桥接:后台读线程批量拉取主机输出、合并后在 UI 线程一次性喂入,
+/// 并把用户输入写回 PTY。同时负责回显抑制与远端关闭通知。
+/// </summary>
 public class SshTerminalBridge : IDisposable
 {
     private readonly CancellationTokenSource _cts;
@@ -23,6 +27,7 @@ public class SshTerminalBridge : IDisposable
     private Task? _readTask;
     private int _started;
 
+    /// <summary>绑定终端模拟器与 Shell 流,并订阅终端的用户输入事件。</summary>
     public SshTerminalBridge(ITerminalEmulator terminal, IShellStreamWrapper shellStream)
     {
         _terminal = terminal ?? throw new ArgumentNullException(nameof(terminal));
@@ -31,6 +36,7 @@ public class SshTerminalBridge : IDisposable
         _terminal.UserInput += OnUserInput;
     }
 
+    /// <summary>停止读循环、退订输入事件并释放 Shell 流与取消源(可安全重复调用)。</summary>
     public void Dispose()
     {
         if (_disposed)
@@ -66,6 +72,7 @@ public class SshTerminalBridge : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    /// <summary>读写或喂入终端过程中发生异常时触发。</summary>
     public event Action<Exception>? Error;
 
     /// <summary>
@@ -102,6 +109,7 @@ public class SshTerminalBridge : IDisposable
         _ = WriteUserInputAsync(data);
     }
 
+    /// <summary>启动后台读循环;仅允许调用一次,重复调用会抛出异常。</summary>
     public void Start()
     {
         if (Interlocked.CompareExchange(ref _started, 1, 0) != 0)

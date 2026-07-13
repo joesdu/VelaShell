@@ -9,8 +9,10 @@ public interface IGistSyncService
     /// <summary>正在把远端数据应用到本地(此期间的本地保存事件不算“本地改动”,防止拉取后立刻回推)。</summary>
     bool IsApplyingRemote { get; }
 
+    /// <summary>读取当前同步配置。</summary>
     Task<SyncSettings> GetSyncSettingsAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>持久化同步配置。</summary>
     Task SaveSyncSettingsAsync(SyncSettings settings, CancellationToken cancellationToken = default);
 
     /// <summary>用明文令牌更新配置(空/null = 保留已存令牌);内部经 ISecretProtector 加密。</summary>
@@ -22,6 +24,7 @@ public interface IGistSyncService
     /// <summary>是否已保存令牌(界面据此显示“已配置”而不回显明文)。</summary>
     bool HasToken(SyncSettings settings);
 
+    /// <summary>是否已设置端到端加密口令。</summary>
     bool HasPassphrase(SyncSettings settings);
 
     /// <summary>记录“本地有未同步改动”(设置/数据保存后由宿主调用);应用远端期间自动忽略。</summary>

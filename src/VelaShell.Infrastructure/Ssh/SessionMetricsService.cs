@@ -15,6 +15,10 @@ public sealed class SessionMetricsService(ISshConnectionService connectionServic
     private readonly ISshConnectionService _connectionService = connectionService ?? throw new ArgumentNullException(nameof(connectionService));
     private readonly ConcurrentDictionary<Guid, Sample> _lastSamples = new();
 
+    /// <summary>
+    /// 采集指定会话的一次实时指标:在其现有 SSH 连接上跑探测命令,解析后与上一采样做差分
+    /// 得到瞬时 CPU%/网速。连接不存在或已断开、以及探测失败(超时、非 Linux 主机)时返回 <c>null</c>。
+    /// </summary>
     public async Task<SessionMetrics?> GetMetricsAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         ISshClientWrapper? client = _connectionService.GetClient(sessionId);

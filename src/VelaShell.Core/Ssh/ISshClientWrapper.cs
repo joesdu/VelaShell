@@ -8,14 +8,25 @@ namespace VelaShell.Core.Ssh;
 /// </summary>
 public interface ISshClientWrapper : IDisposable
 {
+    /// <summary>当前是否已与远程主机建立连接。</summary>
     bool IsConnected { get; }
 
+    /// <summary>建立连接时的超时时长。</summary>
     TimeSpan ConnectionTimeout { get; set; }
 
+    /// <summary>同步连接到远程主机。</summary>
     void Connect();
+
+    /// <summary>异步连接到远程主机。</summary>
     Task ConnectAsync(CancellationToken cancellationToken);
+
+    /// <summary>断开与远程主机的连接。</summary>
     void Disconnect();
 
+    /// <summary>
+    /// 在当前连接上创建一条交互式 shell 流,使用给定的终端类型、行列尺寸、像素尺寸、缓冲区大小
+    /// 及可选的终端模式参数。
+    /// </summary>
     IShellStreamWrapper CreateShellStream(
         string terminalName,
         uint columns,

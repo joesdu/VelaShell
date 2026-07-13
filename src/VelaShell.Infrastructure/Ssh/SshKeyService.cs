@@ -14,6 +14,7 @@ public sealed class SshKeyService(string? sshDirectory = null) : ISshKeyService
 {
     private readonly string _sshDirectory = sshDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh");
 
+    /// <summary>枚举 ~/.ssh 目录下的密钥对,按公钥文件解析类型与指纹后返回。</summary>
     public Task<List<SshKeyInfo>> ListKeysAsync(CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
@@ -38,6 +39,7 @@ public sealed class SshKeyService(string? sshDirectory = null) : ISshKeyService
         }, cancellationToken);
     }
 
+    /// <summary>将外部私钥(及同名公钥)复制到 ~/.ssh 目录导入;目标已存在时返回 <see langword="null" />。</summary>
     public async Task<SshKeyInfo?> ImportKeyAsync(string sourcePrivateKeyPath, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(_sshDirectory);
@@ -66,6 +68,7 @@ public sealed class SshKeyService(string? sshDirectory = null) : ISshKeyService
         return keys.FirstOrDefault(k => k.Name == name) ?? new SshKeyInfo(name, Strings.Get("KeySvc_UnknownType"), string.Empty, targetPrivate, null);
     }
 
+    /// <summary>在 ~/.ssh 目录生成指定名称的 RSA 密钥对(默认 4096 位),并写出私钥与 OpenSSH 格式公钥。</summary>
     public Task<SshKeyInfo> GenerateRsaKeyAsync(string name, int bits = 4096, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>
@@ -95,6 +98,7 @@ public sealed class SshKeyService(string? sshDirectory = null) : ISshKeyService
         }, cancellationToken);
     }
 
+    /// <summary>删除指定名称密钥对的私钥与公钥文件(存在则删除)。</summary>
     public Task DeleteKeyAsync(string name, CancellationToken cancellationToken = default)
     {
         return Task.Run(() =>

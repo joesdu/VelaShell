@@ -35,20 +35,26 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
         _job = job;
     }
 
+    /// <summary>桥不轮询数据可用性(读循环阻塞在 <see cref="ReadAsync" /> 上),故恒为 <c>false</c>。</summary>
     public bool DataAvailable => false; // 桥不轮询;读循环阻塞在 ReadAsync 上。
 
+    /// <summary>流是否可读:未关闭且未释放时为 <c>true</c>。</summary>
     public bool CanRead => !_closed && !_disposed;
 
+    /// <summary>流是否可写:未关闭且未释放时为 <c>true</c>。</summary>
     public bool CanWrite => !_closed && !_disposed;
 
+    /// <summary>本地 shell 无登录握手,故恒返回 <c>null</c>(不参与 Expect 匹配)。</summary>
     public string? Expect(string regex, TimeSpan timeout) => null; // 本地 shell 无登录握手。
 
+    /// <summary>向子进程 stdin 写入一行文本(以回车结尾)。</summary>
     public void WriteLine(string line)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(line + "\r");
         WriteAsync(bytes, 0, bytes.Length, CancellationToken.None).GetAwaiter().GetResult();
     }
 
+    /// <summary>从子进程输出读取字节;断管或句柄关闭均归一化为 EOF(返回 0)。</summary>
     public async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
         try
@@ -62,6 +68,7 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
         }
     }
 
+    /// <summary>异步向子进程 stdin 写入并刷新;流已关闭或子进程已退出时静默丢弃。</summary>
     public async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
         if (_closed || _disposed)
@@ -79,6 +86,7 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
         }
     }
 
+    /// <summary>刷新输入缓冲区,把待写数据推给子进程 stdin。</summary>
     public void Flush()
     {
         try
@@ -91,6 +99,7 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
         }
     }
 
+    /// <summary>调整伪控制台的列/行尺寸(数值钳制在 2–500)。</summary>
     public void Resize(int columns, int rows)
     {
         if (_closed || _disposed)
@@ -104,6 +113,7 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
         });
     }
 
+    /// <summary>释放会话:优先经 Job Object 秒杀整棵进程树,关闭伪控制台与管道句柄。</summary>
     public void Dispose()
     {
         if (_disposed)

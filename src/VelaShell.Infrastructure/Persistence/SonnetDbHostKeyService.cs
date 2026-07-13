@@ -17,6 +17,7 @@ public sealed class SonnetDbHostKeyService(SonnetDbEngine engine, string? legacy
     private readonly SemaphoreSlim _migrationLock = new(1, 1);
     private bool _migrationChecked;
 
+    /// <summary>校验主机密钥指纹:未记录返回 Unknown,一致返回 Trusted,不一致返回 Changed。</summary>
     public async Task<HostKeyVerification> VerifyHostKeyAsync(string host, int port, string keyType, string fingerprint, CancellationToken cancellationToken = default)
     {
         await EnsureMigratedAsync(cancellationToken).ConfigureAwait(false);
@@ -30,6 +31,7 @@ public sealed class SonnetDbHostKeyService(SonnetDbEngine engine, string? legacy
                    : HostKeyVerification.Changed;
     }
 
+    /// <summary>信任指定主机的密钥:新增或更新 known_hosts 记录的类型、指纹与最近可见时间。</summary>
     public async Task TrustHostKeyAsync(string host, int port, string keyType, string fingerprint, CancellationToken cancellationToken = default)
     {
         await EnsureMigratedAsync(cancellationToken).ConfigureAwait(false);
@@ -46,6 +48,7 @@ public sealed class SonnetDbHostKeyService(SonnetDbEngine engine, string? legacy
         }, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>返回全部已知主机密钥记录。</summary>
     public async Task<List<KnownHost>> GetKnownHostsAsync(CancellationToken cancellationToken = default)
     {
         await EnsureMigratedAsync(cancellationToken).ConfigureAwait(false);
@@ -55,6 +58,7 @@ public sealed class SonnetDbHostKeyService(SonnetDbEngine engine, string? legacy
         return [.. hosts.Where(h => h is not null).Cast<KnownHost>()];
     }
 
+    /// <summary>移除指定 host:port 的已知主机密钥记录。</summary>
     public async Task RemoveKnownHostAsync(string host, int port, CancellationToken cancellationToken = default)
     {
         await EnsureMigratedAsync(cancellationToken).ConfigureAwait(false);

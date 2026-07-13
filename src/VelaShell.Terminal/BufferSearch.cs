@@ -11,6 +11,13 @@ public readonly record struct BufferSearchHit(int Row, int StartCol, int Length)
 /// </summary>
 public static class BufferSearch
 {
+    /// <summary>
+    /// Returns every case-insensitive match of <paramref name="query" /> across the whole
+    /// terminal buffer (scrollback + screen); an empty query yields no hits.
+    /// </summary>
+    /// <param name="screen">The terminal buffer to search.</param>
+    /// <param name="query">The plain text to search for.</param>
+    /// <returns>All matches in absolute-row/character space, in buffer order.</returns>
     public static IReadOnlyList<BufferSearchHit> FindAll(TerminalScreen screen, string query)
     {
         if (string.IsNullOrEmpty(query))

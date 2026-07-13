@@ -12,13 +12,17 @@ public interface ISettingsPreviewService
     /// <summary>预览快照(未持久化)。在 UI 线程触发。</summary>
     event Action<AppSettings>? PreviewRequested;
 
+    /// <summary>广播一份未持久化的设置快照以触发即时预览。</summary>
     void Preview(AppSettings settings);
 }
 
+/// <summary><see cref="ISettingsPreviewService" /> 的默认实现:将预览请求同步转发给订阅者。</summary>
 public sealed class SettingsPreviewService : ISettingsPreviewService
 {
+    /// <inheritdoc />
     public event Action<AppSettings>? PreviewRequested;
 
+    /// <inheritdoc />
     public void Preview(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);

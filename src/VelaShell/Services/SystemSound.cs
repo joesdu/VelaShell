@@ -8,6 +8,7 @@ namespace VelaShell.Services;
 /// </summary>
 public static partial class SystemSound
 {
+    /// <summary>播放一次系统警告提示音;非 Windows 平台或调用失败时静默返回。</summary>
     public static void Alert()
     {
         if (!OperatingSystem.IsWindows())

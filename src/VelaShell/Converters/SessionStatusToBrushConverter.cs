@@ -12,12 +12,14 @@ namespace VelaShell.Converters;
 /// </summary>
 public sealed class SessionStatusToBrushConverter : IValueConverter
 {
+    /// <summary>Shared singleton for use directly from XAML.</summary>
     public static readonly SessionStatusToBrushConverter Instance = new();
 
     private static readonly IBrush Connected = new SolidColorBrush(Color.Parse("#00D4AA"));
     private static readonly IBrush Connecting = new SolidColorBrush(Color.Parse("#FDCB6E"));
     private static readonly IBrush Disconnected = new SolidColorBrush(Color.Parse("#FF6B6B"));
 
+    /// <summary>Returns the status-dot brush for the given <see cref="SessionStatus" />, defaulting to the disconnected color.</summary>
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         value switch
         {
@@ -26,5 +28,6 @@ public sealed class SessionStatusToBrushConverter : IValueConverter
             _ => Disconnected
         };
 
+    /// <summary>Reverse conversion is unsupported and always throws <see cref="NotSupportedException" />.</summary>
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }

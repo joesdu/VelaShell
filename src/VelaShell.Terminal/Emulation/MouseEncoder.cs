@@ -5,18 +5,28 @@ namespace VelaShell.Terminal.Emulation;
 /// <summary>A mouse button (or wheel notch) in xterm button-code terms.</summary>
 public enum TerminalMouseButton
 {
+    /// <summary>Left mouse button (xterm button code 0).</summary>
     Left = 0,
+    /// <summary>Middle mouse button / wheel press (xterm button code 1).</summary>
     Middle = 1,
+    /// <summary>Right mouse button (xterm button code 2).</summary>
     Right = 2,
+    /// <summary>No button held; used for buttonless motion or a legacy release (code 3).</summary>
     None = 3, // buttonless motion / legacy release
+    /// <summary>Wheel scrolled up by one notch (xterm button code 64).</summary>
     WheelUp = 64,
+    /// <summary>Wheel scrolled down by one notch (xterm button code 65).</summary>
     WheelDown = 65
 }
 
+/// <summary>The kind of pointer event being reported to the terminal application.</summary>
 public enum TerminalMouseEventType
 {
+    /// <summary>A button was pressed down.</summary>
     Press,
+    /// <summary>A button was released.</summary>
     Release,
+    /// <summary>The pointer moved (motion / drag).</summary>
     Move
 }
 

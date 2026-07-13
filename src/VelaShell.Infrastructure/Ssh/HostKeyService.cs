@@ -6,12 +6,20 @@ using VelaShell.Core.Ssh;
 
 namespace VelaShell.Infrastructure.Ssh;
 
+/// <summary>
+/// 已知主机(known_hosts)服务:将主机指纹持久化到本地 JSON 文件,
+/// 用于验证、信任与移除 SSH 主机密钥。
+/// </summary>
 public class HostKeyService : IHostKeyService
 {
     private readonly string _dataPath;
     private readonly JsonDataStore _dataStore;
     private readonly SemaphoreSlim _operationLock = new(1, 1);
 
+    /// <summary>
+    /// 创建主机密钥服务;未指定 <paramref name="dataPath" /> 时默认存储于用户目录下的
+    /// <c>.velashell/known_hosts.json</c>。
+    /// </summary>
     public HostKeyService(JsonDataStore dataStore, string? dataPath = null)
     {
         _dataStore = dataStore;
@@ -26,6 +34,10 @@ public class HostKeyService : IHostKeyService
         }
     }
 
+    /// <summary>
+    /// 验证指定主机与端口的密钥指纹:未记录返回 <see cref="HostKeyVerification.Unknown" />,
+    /// 指纹匹配返回 <see cref="HostKeyVerification.Trusted" />,不匹配返回 <see cref="HostKeyVerification.Changed" />。
+    /// </summary>
     public async Task<HostKeyVerification> VerifyHostKeyAsync(string host, int port, string keyType, string fingerprint, CancellationToken cancellationToken = default)
     {
         KnownHostData data = await LoadDataAsync(cancellationToken).ConfigureAwait(false);
@@ -39,6 +51,9 @@ public class HostKeyService : IHostKeyService
                    : HostKeyVerification.Changed;
     }
 
+    /// <summary>
+    /// 信任指定主机的密钥:已存在记录则更新指纹与最后可见时间,否则新增一条已知主机记录并持久化。
+    /// </summary>
     public async Task TrustHostKeyAsync(string host, int port, string keyType, string fingerprint, CancellationToken cancellationToken = default)
     {
         await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -72,12 +87,14 @@ public class HostKeyService : IHostKeyService
         }
     }
 
+    /// <summary>返回当前已记录的所有已知主机。</summary>
     public async Task<List<KnownHost>> GetKnownHostsAsync(CancellationToken cancellationToken = default)
     {
         KnownHostData data = await LoadDataAsync(cancellationToken).ConfigureAwait(false);
         return data.Hosts;
     }
 
+    /// <summary>移除指定主机与端口的已知主机记录并持久化。</summary>
     public async Task RemoveKnownHostAsync(string host, int port, CancellationToken cancellationToken = default)
     {
         await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);

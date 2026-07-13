@@ -39,17 +39,21 @@ public sealed class GistSyncService(
     /// <summary>同步操作串行化:防止自动推送与手动同步并发互踩。</summary>
     private readonly SemaphoreSlim _gate = new(1, 1);
 
+    /// <summary>是否正在应用远端数据;为 true 时忽略由此触发的本地保存事件,避免拉取后被误判为本地改动而立即回推。</summary>
     public bool IsApplyingRemote { get; private set; }
 
+    /// <summary>读取持久化的同步配置;不存在时返回默认 <see cref="SyncSettings"/>。</summary>
     public async Task<SyncSettings> GetSyncSettingsAsync(CancellationToken cancellationToken = default) =>
         await appDataStore.GetAsync<SyncSettings>(ConfigCollection, ConfigDocId, cancellationToken).ConfigureAwait(false) ?? new SyncSettings();
 
+    /// <summary>将同步配置保存到应用数据存储。</summary>
     public Task SaveSyncSettingsAsync(SyncSettings settings, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(settings);
         return appDataStore.UpsertAsync(ConfigCollection, ConfigDocId, settings, cancellationToken);
     }
 
+    /// <summary>将明文 GitHub 令牌加密后写入配置;空白令牌则保留原有值不变。</summary>
     public void ApplyToken(SyncSettings settings, string? plainToken)
     {
         if (!string.IsNullOrWhiteSpace(plainToken))
@@ -58,6 +62,7 @@ public sealed class GistSyncService(
         }
     }
 
+    /// <summary>设置端到端加密口令:传 null 保留现有口令,传空字符串清除口令,其余值加密后保存。</summary>
     public void ApplyPassphrase(SyncSettings settings, string? plainPassphrase)
     {
         if (plainPassphrase is null)
@@ -67,10 +72,13 @@ public sealed class GistSyncService(
         settings.ProtectedPassphrase = plainPassphrase.Length == 0 ? null : secretProtector.Protect(plainPassphrase);
     }
 
+    /// <summary>配置中是否已保存 GitHub 令牌。</summary>
     public bool HasToken(SyncSettings settings) => !string.IsNullOrEmpty(settings.ProtectedToken);
 
+    /// <summary>配置中是否已设置端到端加密口令。</summary>
     public bool HasPassphrase(SyncSettings settings) => !string.IsNullOrEmpty(settings.ProtectedPassphrase);
 
+    /// <summary>标记本地发生用户改动(更新改动时间戳),供后续同步判定推送方向;应用远端数据期间的保存不计入。</summary>
     public async Task MarkLocalChangedAsync(CancellationToken cancellationToken = default)
     {
         // 应用远端数据期间触发的保存事件不是用户改动,忽略,否则拉取后会立刻无谓回推。
@@ -83,6 +91,7 @@ public sealed class GistSyncService(
         await SaveSyncSettingsAsync(settings, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>执行智能双向同步:比对本地改动标记与远端 revision,按“较新者胜”决定推送或拉取。</summary>
     public async Task<SyncResult> SyncNowAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -145,6 +154,7 @@ public sealed class GistSyncService(
         }
     }
 
+    /// <summary>强制将本地数据打包推送到 Gist(尚未绑定时会创建新的 Gist)。</summary>
     public async Task<SyncResult> PushAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -171,6 +181,7 @@ public sealed class GistSyncService(
         }
     }
 
+    /// <summary>强制从 Gist 拉取远端数据并应用到本地(合并式,不删除本地独有数据)。</summary>
     public async Task<SyncResult> PullAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -206,6 +217,7 @@ public sealed class GistSyncService(
         }
     }
 
+    /// <summary>获取 Gist 的历史版本列表,并尽力补全前若干个版本的提交来源设备名。</summary>
     public async Task<List<GistRevision>> GetRevisionsAsync(CancellationToken cancellationToken = default)
     {
         SyncSettings config = await GetSyncSettingsAsync(cancellationToken).ConfigureAwait(false);
@@ -253,6 +265,7 @@ public sealed class GistSyncService(
         return [.. enriched];
     }
 
+    /// <summary>将指定历史版本的内容恢复为当前状态并重新推送,使版本链保持线性、任何一步都可再恢复。</summary>
     public async Task<SyncResult> RestoreRevisionAsync(string version, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(version);

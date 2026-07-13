@@ -4,8 +4,10 @@ using ReactiveUI;
 
 namespace VelaShell.Presentation.ViewModels;
 
+/// <summary>标签栏视图模型:管理终端标签集合、当前活动标签以及新增、关闭、切换等交互命令。</summary>
 public sealed class TabBarViewModel : ReactiveObject
 {
+    /// <summary>初始化标签栏视图模型,创建空标签集合并绑定各交互命令。</summary>
     public TabBarViewModel()
     {
         Tabs = [];
@@ -17,8 +19,10 @@ public sealed class TabBarViewModel : ReactiveObject
         PreviousTabCommand = ReactiveCommand.Create(PreviousTab);
     }
 
+    /// <summary>当前打开的标签集合,按显示顺序排列。</summary>
     public ObservableCollection<TabViewModel> Tabs { get; }
 
+    /// <summary>当前活动(选中)的标签;赋值时会同步切换新旧标签的激活状态,无标签时为 <see langword="null" />。</summary>
     public TabViewModel? ActiveTab
     {
         get;
@@ -30,18 +34,26 @@ public sealed class TabBarViewModel : ReactiveObject
         }
     }
 
+    /// <summary>新建一个标签并将其设为活动标签的命令。</summary>
     public ReactiveCommand<Unit, Unit> AddTabCommand { get; }
 
+    /// <summary>关闭指定标签的命令;关闭活动标签时会自动选中相邻标签。</summary>
     public ReactiveCommand<TabViewModel, Unit> CloseTabCommand { get; }
 
+    /// <summary>将指定标签设为活动标签的命令。</summary>
     public ReactiveCommand<TabViewModel, Unit> SelectTabCommand { get; }
 
+    /// <summary>关闭当前活动标签的命令。</summary>
     public ReactiveCommand<Unit, Unit> CloseActiveTabCommand { get; }
 
+    /// <summary>循环切换到下一个标签的命令。</summary>
     public ReactiveCommand<Unit, Unit> NextTabCommand { get; }
 
+    /// <summary>循环切换到上一个标签的命令。</summary>
     public ReactiveCommand<Unit, Unit> PreviousTabCommand { get; }
 
+    /// <summary>向标签集合追加一个标签,并将其设为当前活动标签。</summary>
+    /// <param name="tab">要添加的标签视图模型,不能为 <see langword="null" />。</param>
     public void AddTab(TabViewModel tab)
     {
         ArgumentNullException.ThrowIfNull(tab);

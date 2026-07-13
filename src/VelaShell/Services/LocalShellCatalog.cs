@@ -11,6 +11,7 @@ public sealed record LocalShellInfo(string Id, string Name, string CommandLine);
 /// </summary>
 public static class LocalShellCatalog
 {
+    /// <summary>探测本机已安装的 shell 并返回其列表;非 Windows 平台返回空列表。</summary>
     public static IReadOnlyList<LocalShellInfo> DetectShells()
     {
         if (!OperatingSystem.IsWindows())

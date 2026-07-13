@@ -6,6 +6,9 @@ namespace VelaShell.Core.Sftp;
 /// Progress of a (possibly recursive) delete: how many entries are deleted so far, the
 /// total entries expected to be deleted, and the path most recently deleted.
 /// </summary>
+/// <param name="DeletedCount">Number of entries deleted so far.</param>
+/// <param name="TotalCount">Total number of entries expected to be deleted.</param>
+/// <param name="CurrentPath">The path most recently deleted.</param>
 // ReSharper disable once NotAccessedPositionalProperty.Global
 public readonly record struct SftpDeleteProgress(int DeletedCount, int TotalCount, string CurrentPath)
 {
@@ -13,10 +16,19 @@ public readonly record struct SftpDeleteProgress(int DeletedCount, int TotalCoun
     public int Percentage => TotalCount <= 0 ? 0 : (int)Math.Clamp(((double)DeletedCount * 100) / TotalCount, 0, 100);
 }
 
+/// <summary>
+/// SFTP file operations over an existing SSH session: directory listing, upload/download,
+/// delete, create, rename, permissions and metadata queries, keyed by session id.
+/// </summary>
 public interface ISftpService : IAsyncDisposable
 {
+    /// <summary>Lists the entries of a remote directory.</summary>
     Task<List<RemoteFileInfo>> ListDirectoryAsync(Guid sessionId, string path, CancellationToken cancellationToken = default);
+
+    /// <summary>Uploads a local file to the given remote path, reporting transfer progress.</summary>
     Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Downloads a remote file to the given local path, reporting transfer progress.</summary>
     Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -25,6 +37,7 @@ public interface ISftpService : IAsyncDisposable
     /// </summary>
     Task DeleteAsync(Guid sessionId, string remotePath, IProgress<SftpDeleteProgress>? progress = null, CancellationToken cancellationToken = default);
 
+    /// <summary>Creates a new directory at the given remote path.</summary>
     Task CreateDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default);
 
     /// <summary>Creates an empty file at the given remote path.</summary>
@@ -45,6 +58,7 @@ public interface ISftpService : IAsyncDisposable
     /// </summary>
     Task SetPermissionsAsync(Guid sessionId, string remotePath, short octalMode, CancellationToken cancellationToken = default);
 
+    /// <summary>Retrieves metadata for a single remote file or directory.</summary>
     Task<RemoteFileInfo> GetFileInfoAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default);
 
     /// <summary>

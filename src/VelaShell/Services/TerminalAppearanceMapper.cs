@@ -14,6 +14,7 @@ public static class TerminalAppearanceMapper
 {
     private static readonly AppearanceOptions Defaults = new();
 
+    /// <summary>把外观配色映射为渲染层的稀疏覆盖集;全部与默认一致时返回 null。</summary>
     public static TerminalPaletteOverrides? BuildPaletteOverrides(AppearanceOptions appearance)
     {
         var overrides = new TerminalPaletteOverrides

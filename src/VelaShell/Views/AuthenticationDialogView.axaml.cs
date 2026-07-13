@@ -7,8 +7,12 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 
+/// <summary>
+/// 身份验证对话框视图:采集连接凭据(密码/私钥),并在登录或取消命令完成后自动关闭窗口。
+/// </summary>
 public partial class AuthenticationDialogView : Window
 {
+    /// <summary>初始化身份验证对话框,注册窗口打开后的命令订阅。</summary>
     public AuthenticationDialogView()
     {
         InitializeComponent();

@@ -19,11 +19,21 @@ public partial class RemoteFileEditorView : Window
     private bool _forceClose;
     private bool _saving;
 
+    /// <summary>
+    /// 供设计器/XAML 使用的无参构造函数。
+    /// </summary>
     public RemoteFileEditorView()
     {
         InitializeComponent();
     }
 
+    /// <summary>
+    /// 创建编辑器窗口并加载本地临时副本内容。
+    /// </summary>
+    /// <param name="fileName">文件名,用于窗口标题显示。</param>
+    /// <param name="remotePath">文件在服务器上的远程路径。</param>
+    /// <param name="localPath">已下载到本地的临时副本路径。</param>
+    /// <param name="uploadAsync">保存时用于将临时文件上传回服务器的回调。</param>
     public RemoteFileEditorView(string fileName, string remotePath, string localPath, Func<Task> uploadAsync)
         : this()
     {
@@ -109,6 +119,9 @@ public partial class RemoteFileEditorView : Window
         }
     }
 
+    /// <summary>
+    /// 处理键盘输入:Ctrl+S 触发保存并阻止事件继续冒泡。
+    /// </summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
         if (e.Key == Key.S && e.KeyModifiers.HasFlag(KeyModifiers.Control))
@@ -120,6 +133,9 @@ public partial class RemoteFileEditorView : Window
         base.OnKeyDown(e);
     }
 
+    /// <summary>
+    /// 窗口关闭时若存在未保存改动,取消关闭并弹出确认丢弃对话框。
+    /// </summary>
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         if (_dirty && !_forceClose)
@@ -142,6 +158,9 @@ public partial class RemoteFileEditorView : Window
         }
     }
 
+    /// <summary>
+    /// 窗口关闭后清理本地临时副本所在的独占子目录。
+    /// </summary>
     protected override void OnClosed(EventArgs e)
     {
         // 清理本地临时副本(整个独占子目录)。

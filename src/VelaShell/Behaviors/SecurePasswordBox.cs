@@ -18,9 +18,11 @@ namespace VelaShell.Behaviors;
 /// 常驻在托管 <see cref="string" /> 中。SecureString 为唯一真实来源,TextBox.Text 仅保存
 /// 等长的掩码字符('•');开启 <see cref="RevealProperty" /> 时才临时还原明文用于显示。
 /// 用法:
-/// <TextBox behaviors:SecurePasswordBox.Enabled="True"
+/// <code>
+/// &lt;TextBox behaviors:SecurePasswordBox.Enabled="True"
 ///     behaviors:SecurePasswordBox.Password="{Binding Password}"
-///     behaviors:SecurePasswordBox.Reveal="{Binding ShowPassword}" />
+///     behaviors:SecurePasswordBox.Reveal="{Binding ShowPassword}" /&gt;
+/// </code>
 /// 掩码与安全缓冲保持 1:1 的位置映射,因此插入符/选区、方向键、Home/End 等原生行为可直接复用。
 /// 仅接受可打印 ASCII;复制/剪切被禁用以避免密码外泄到剪贴板。
 /// </summary>
@@ -30,6 +32,7 @@ public static class SecurePasswordBox
 
     private static readonly ConditionalWeakTable<TextBox, BoxState> States = [];
 
+    /// <summary>是否在目标 <see cref="TextBox" /> 上启用安全密码行为(接管输入、渲染掩码)。</summary>
     public static readonly AttachedProperty<bool> EnabledProperty =
         AvaloniaProperty.RegisterAttached<TextBox, bool>("Enabled", typeof(SecurePasswordBox));
 
@@ -37,6 +40,7 @@ public static class SecurePasswordBox
     public static readonly AttachedProperty<SecureString?> PasswordProperty =
         AvaloniaProperty.RegisterAttached<TextBox, SecureString?>("Password", typeof(SecurePasswordBox), defaultBindingMode: BindingMode.TwoWay);
 
+    /// <summary>是否以明文显示密码;为 true 时临时还原 SecureString,否则显示等长掩码。</summary>
     public static readonly AttachedProperty<bool> RevealProperty =
         AvaloniaProperty.RegisterAttached<TextBox, bool>("Reveal", typeof(SecurePasswordBox));
 
@@ -47,11 +51,22 @@ public static class SecurePasswordBox
         RevealProperty.Changed.AddClassHandler<TextBox>(OnRevealChanged);
     }
 
+    /// <summary>读取目标 <see cref="TextBox" /> 上的 <see cref="EnabledProperty" /> 值。</summary>
     public static bool GetEnabled(TextBox e) => e.GetValue(EnabledProperty);
+
+    /// <summary>设置目标 <see cref="TextBox" /> 上的 <see cref="EnabledProperty" /> 值。</summary>
     public static void SetEnabled(TextBox e, bool v) => e.SetValue(EnabledProperty, v);
+
+    /// <summary>读取目标 <see cref="TextBox" /> 上承载密码的 <see cref="SecureString" />。</summary>
     public static SecureString? GetPassword(TextBox e) => e.GetValue(PasswordProperty);
+
+    /// <summary>设置目标 <see cref="TextBox" /> 上承载密码的 <see cref="SecureString" />。</summary>
     public static void SetPassword(TextBox e, SecureString? v) => e.SetValue(PasswordProperty, v);
+
+    /// <summary>读取目标 <see cref="TextBox" /> 上的 <see cref="RevealProperty" /> 值。</summary>
     public static bool GetReveal(TextBox e) => e.GetValue(RevealProperty);
+
+    /// <summary>设置目标 <see cref="TextBox" /> 上的 <see cref="RevealProperty" /> 值。</summary>
     public static void SetReveal(TextBox e, bool v) => e.SetValue(RevealProperty, v);
 
     private static BoxState State(TextBox tb) => States.GetValue(tb, _ => new());

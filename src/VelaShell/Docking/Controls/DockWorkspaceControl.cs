@@ -16,6 +16,7 @@ namespace VelaShell.Docking.Controls;
 /// </summary>
 public sealed class DockWorkspaceControl : Panel
 {
+    /// <summary><see cref="Workspace" /> 的 Avalonia 样式属性,承载待渲染的停靠布局树。</summary>
     public static readonly StyledProperty<DockWorkspace?> WorkspaceProperty =
         AvaloniaProperty.Register<DockWorkspaceControl, DockWorkspace?>(nameof(Workspace));
 
@@ -28,11 +29,13 @@ public sealed class DockWorkspaceControl : Panel
         WorkspaceProperty.Changed.AddClassHandler<DockWorkspaceControl>((control, e) => control.OnWorkspaceChanged(e));
     }
 
+    /// <summary>构造工作区控件,并初始化其标签拖拽控制器。</summary>
     public DockWorkspaceControl()
     {
         DragController = new DockDragController(this);
     }
 
+    /// <summary>当前渲染的停靠布局树;赋值后整树重建视图。</summary>
     public DockWorkspace? Workspace
     {
         get => GetValue(WorkspaceProperty);

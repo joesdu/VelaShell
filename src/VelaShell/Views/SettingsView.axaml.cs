@@ -5,10 +5,12 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 
+/// <summary>设置窗口视图,承载各设置分页并处理保存、重置与关闭等交互。</summary>
 public partial class SettingsView : Window
 {
     private SettingsViewModel? _viewModel;
 
+    /// <summary>初始化 <see cref="SettingsView"/>,加载组件并绑定视图模型的关闭请求。</summary>
     public SettingsView()
     {
         InitializeComponent();

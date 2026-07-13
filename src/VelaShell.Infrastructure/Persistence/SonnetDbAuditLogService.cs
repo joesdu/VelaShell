@@ -13,6 +13,10 @@ public sealed class SonnetDbAuditLogService(SonnetDbEngine engine) : IAuditLogSe
 {
     private readonly SonnetDbEngine _engine = engine ?? throw new ArgumentNullException(nameof(engine));
 
+    /// <summary>将一条审计记录写入 SonnetDB 时序 measurement。</summary>
+    /// <param name="entry">待写入的审计记录。</param>
+    /// <param name="cancellationToken">用于取消写入操作的令牌。</param>
+    /// <returns>表示异步写入操作的任务。</returns>
     public Task WriteAsync(AuditEntry entry, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -38,6 +42,11 @@ public sealed class SonnetDbAuditLogService(SonnetDbEngine engine) : IAuditLogSe
         return _engine.WritePointAsync(SonnetDbEngine.AuditLogMeasurement, entry.Timestamp, tags, fields, cancellationToken);
     }
 
+    /// <summary>按时间倒序查询审计记录,可按分类过滤。</summary>
+    /// <param name="limit">返回的最大记录条数;小于等于 0 时返回空列表。</param>
+    /// <param name="category">可选的分类过滤条件,为空时不过滤。</param>
+    /// <param name="cancellationToken">用于取消查询操作的令牌。</param>
+    /// <returns>按时间倒序排列的审计记录列表。</returns>
     public async Task<List<AuditEntry>> QueryAsync(int limit, string? category = null, CancellationToken cancellationToken = default)
     {
         if (limit <= 0)

@@ -1,32 +1,45 @@
 namespace VelaShell.Core.Models;
 
+/// <summary>一条已保存的 SSH 连接配置,描述连接目标主机所需的地址、认证方式与凭据等信息。</summary>
 public class SessionProfile
 {
+    /// <summary>配置的全局唯一标识,创建时自动生成。</summary>
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    /// <summary>配置的显示名称。</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>目标主机地址(主机名或 IP)。</summary>
     public string Host { get; set; } = string.Empty;
 
+    /// <summary>SSH 端口,默认 22。</summary>
     public int Port { get; set; } = 22;
 
+    /// <summary>登录用户名。</summary>
     public string Username { get; set; } = string.Empty;
 
+    /// <summary>认证方式(密码 / 私钥等),默认使用密码认证。</summary>
     public AuthMethod AuthMethod { get; set; } = AuthMethod.Password;
 
+    /// <summary>登录密码;仅在密码认证时使用,可为空。</summary>
     public string? Password { get; set; }
 
     /// <summary>是否记住密码(AES-256 加密落盘);为 false 时密码仅用于本次连接,不持久化。</summary>
     public bool RememberPassword { get; set; } = true;
 
+    /// <summary>私钥文件路径;仅在私钥认证时使用,可为空。</summary>
     public string? PrivateKeyPath { get; set; }
 
+    /// <summary>私钥的解锁口令;私钥未加密时可为空。</summary>
     public string? PrivateKeyPassphrase { get; set; }
 
+    /// <summary>所属分组的标识;未分组时为 null。</summary>
     public Guid? GroupId { get; set; }
 
+    /// <summary>最近一次成功连接的时间;从未连接时为 null。</summary>
     public DateTime? LastConnectedAt { get; set; }
 
+    /// <summary>用于分类与检索的标签集合。</summary>
     public List<string> Tags { get; set; } = [];
 
     /// <summary>

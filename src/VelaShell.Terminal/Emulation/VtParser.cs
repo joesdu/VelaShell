@@ -29,6 +29,7 @@ public sealed class VtParser(IVtActions actions)
     /// <summary>When true, the parser interprets input using the VT52 escape grammar.</summary>
     public bool Vt52Mode { get; set; }
 
+    /// <summary>Resets the parser to the ground state, discarding any partially collected sequence.</summary>
     public void Reset()
     {
         _state = State.Ground;
@@ -56,6 +57,7 @@ public sealed class VtParser(IVtActions actions)
         }
     }
 
+    /// <summary>Feeds a chunk of decoded terminal output through the state machine, dispatching actions.</summary>
     public void Parse(string text) => Parse(text.AsSpan());
 
     private void Consume(int rune)

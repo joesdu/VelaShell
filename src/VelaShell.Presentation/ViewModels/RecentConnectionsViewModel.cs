@@ -16,6 +16,7 @@ public sealed class RecentConnectionsViewModel : ReactiveObject
 
     private readonly IRecentConnectionService? _recentConnectionService;
 
+    /// <summary>创建“最近连接”视图模型;未提供服务时列表保持为空且刷新为空操作。</summary>
     public RecentConnectionsViewModel(IRecentConnectionService? recentConnectionService = null)
     {
         _recentConnectionService = recentConnectionService;
@@ -24,8 +25,10 @@ public sealed class RecentConnectionsViewModel : ReactiveObject
         ClearCommand = ReactiveCommand.CreateFromTask(ClearAllAsync);
     }
 
+    /// <summary>当前展示的最近连接项集合,供侧边栏列表绑定。</summary>
     public ObservableCollection<RecentConnectionItemViewModel> Connections { get; }
 
+    /// <summary>是否正在从历史存储加载列表,用于展示加载态。</summary>
     public bool IsLoading
     {
         get;
@@ -35,6 +38,7 @@ public sealed class RecentConnectionsViewModel : ReactiveObject
     /// <summary>快速连接头部 history 按钮:重新加载最近连接。</summary>
     public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
 
+    /// <summary>清空最近连接历史,并同步清除当前列表。</summary>
     public ReactiveCommand<Unit, Unit> ClearCommand { get; }
 
     /// <summary>从连接历史重新加载列表;存储故障时保留现有内容,不影响主流程。</summary>

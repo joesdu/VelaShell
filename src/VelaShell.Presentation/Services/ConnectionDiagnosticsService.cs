@@ -23,6 +23,14 @@ public sealed class ConnectionDiagnosticsService(
 
     private readonly ISessionRepository _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
 
+    /// <summary>
+    /// 对指定会话执行四步连接诊断(DNS 解析 → TCP 建链 → SSH 握手 → 用户认证),
+    /// 并通过 <paramref name="progress" /> 实时上报各步骤状态变化。
+    /// </summary>
+    /// <param name="profile">要诊断的会话配置。</param>
+    /// <param name="progress">各步骤状态变更的进度回调,可为 null。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>汇总四步结果及问题标题/描述/修复建议的诊断报告。</returns>
     public async Task<DiagnosticReport> DiagnoseAsync(
         SessionProfile profile,
         IProgress<DiagnosticStepUpdate>? progress = null,

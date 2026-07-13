@@ -23,6 +23,7 @@ public sealed class GutterFoldModel
     /// <summary>折叠区域数量。</summary>
     public int Count => _regions.Count;
 
+    /// <summary>清除全部折叠区域(如列宽 reflow 重建行对象、折叠失效时调用)。</summary>
     public void Clear() => _regions.Clear();
 
     /// <summary>绝对行 <paramref name="abs" /> 是否某折叠区域的折叠头(可点击展开)。</summary>

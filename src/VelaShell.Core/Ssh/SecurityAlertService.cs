@@ -6,6 +6,10 @@ using VelaShell.Core.Models;
 namespace VelaShell.Core.Ssh;
 
 /// <summary>一条安全告警及其(按设置解析后的)投递通道。</summary>
+/// <param name="Category">告警类别标识(如指纹变更、指纹被拒)。</param>
+/// <param name="Message">面向用户的告警文案。</param>
+/// <param name="InApp">是否需要应用内通知。</param>
+/// <param name="Sound">是否需要伴随提示音。</param>
 public sealed record SecurityAlertNotice(string Category, string Message, bool InApp, bool Sound);
 
 /// <summary>
@@ -21,14 +25,19 @@ public interface ISecurityAlertService
     Task RaiseAsync(string category, string message, object? detail = null);
 }
 
+/// <summary>
+/// <see cref="ISecurityAlertService" /> 的默认实现:投递审计日志与 Webhook,并通过 <see cref="Alerted" /> 事件将应用内/系统通知转交 UI 层。
+/// </summary>
 public sealed class SecurityAlertService(ISettingsService settingsService, IAuditLogService? auditLog = null) : ISecurityAlertService
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5) };
 
     private readonly ISettingsService _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
 
+    /// <inheritdoc />
     public event Action<SecurityAlertNotice>? Alerted;
 
+    /// <inheritdoc />
     public async Task RaiseAsync(string category, string message, object? detail = null)
     {
         SecurityOptions security;

@@ -7,6 +7,7 @@ namespace VelaShell.Core.Ssh;
 /// </summary>
 public sealed record SftpEntry
 {
+    /// <summary>条目名称(不含路径)。</summary>
     public required string Name { get; init; }
 
     /// <summary>绝对路径。</summary>
@@ -15,21 +16,34 @@ public sealed record SftpEntry
     /// <summary>文件字节数(目录为 0 或服务器报告值)。</summary>
     public long Length { get; init; }
 
+    /// <summary>该条目是否为目录。</summary>
     public bool IsDirectory { get; init; }
 
+    /// <summary>最后修改时间。</summary>
     public DateTime LastWriteTime { get; init; }
 
+    /// <summary>属主用户 Id(UID)。</summary>
     public int UserId { get; init; }
 
+    /// <summary>属组 Id(GID)。</summary>
     public int GroupId { get; init; }
 
+    /// <summary>属主是否有读权限。</summary>
     public bool OwnerCanRead { get; init; }
+    /// <summary>属主是否有写权限。</summary>
     public bool OwnerCanWrite { get; init; }
+    /// <summary>属主是否有执行权限。</summary>
     public bool OwnerCanExecute { get; init; }
+    /// <summary>属组是否有读权限。</summary>
     public bool GroupCanRead { get; init; }
+    /// <summary>属组是否有写权限。</summary>
     public bool GroupCanWrite { get; init; }
+    /// <summary>属组是否有执行权限。</summary>
     public bool GroupCanExecute { get; init; }
+    /// <summary>其他用户是否有读权限。</summary>
     public bool OthersCanRead { get; init; }
+    /// <summary>其他用户是否有写权限。</summary>
     public bool OthersCanWrite { get; init; }
+    /// <summary>其他用户是否有执行权限。</summary>
     public bool OthersCanExecute { get; init; }
 }

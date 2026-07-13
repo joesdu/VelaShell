@@ -13,6 +13,10 @@ using VelaShell.Terminal.Rendering;
 
 namespace VelaShell.ViewModels;
 
+/// <summary>
+/// 单个终端标签页的视图模型:持有终端模拟器与(可选的)SSH/本地传输,负责连接状态、
+/// 断开/重连、PTY 尺寸同步与命令补全的行跟踪。
+/// </summary>
 public class TerminalTabViewModel : TabViewModel, IDisposable
 {
     private readonly Lock _ptyResizeGate = new();
@@ -66,6 +70,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         AttachTransport(shellStream ?? throw new ArgumentNullException(nameof(shellStream)));
     }
 
+    /// <summary>该标签所属会话的唯一标识,用于与宿主的会话管理关联。</summary>
     public Guid SessionId { get; set; }
 
     /// <summary>Resource panel data for this tab (hover >400ms on the tab shows it, §11).</summary>
@@ -221,12 +226,19 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// <summary>The character encoding used for this session.</summary>
     public string EncodingName { get; init; } = "UTF-8";
 
+    /// <summary>本标签持有的终端模拟器,跨重连保持不变(拥有滚动缓冲区)。</summary>
     public ITerminalEmulator TerminalEmulator { get; }
 
+    /// <summary>当前挂载的 shell 数据流;未连接或断开后为 null。</summary>
     public IShellStreamWrapper? ShellStream { get; private set; }
 
+    /// <summary>连接 shell 流与终端模拟器的桥接器;未连接时为 null。</summary>
     public SshTerminalBridge? Bridge { get; private set; }
 
+    /// <summary>
+    /// 本标签的连接状态。赋值时同步 <see cref="IsConnected" />、在连接成功时清除错误,
+    /// 并刷新失败/断开覆盖层的可见性与文案。
+    /// </summary>
     public new SessionStatus ConnectionStatus
     {
         get => base.ConnectionStatus;
@@ -262,6 +274,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         }
     }
 
+    /// <summary>是否存在连接错误(决定覆盖层显示“连接失败”还是“连接已断开”)。</summary>
     public bool HasConnectionError => !string.IsNullOrEmpty(ConnectionError);
 
     /// <summary>
@@ -270,26 +283,31 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// </summary>
     public bool ShowDisconnectedOverlay => !_disposed && ConnectionStatus is SessionStatus.Disconnected or SessionStatus.Error && (Profile is not null || LocalShell is not null);
 
+    /// <summary>失败/断开覆盖层的标题:有错误时为“连接失败”,否则为“连接已断开”。</summary>
     public string DisconnectOverlayTitle => HasConnectionError ? Strings.Get("Msg_ConnectionFailedTitle") : Strings.Get("Msg_ConnectionClosedTitle");
 
+    /// <summary>失败/断开覆盖层的详情:有错误时显示具体原因,否则显示掉线主机提示。</summary>
     public string DisconnectOverlayDetail => HasConnectionError
                                                  ? ConnectionError!
                                                  : Strings.Format("Msg_SshConnectionLostDetail", OverlayHostLabel);
 
     private string OverlayHostLabel => Profile is { } p ? $"{p.Host}:{p.Port}" : Title;
 
+    /// <summary>最近一次测得的连接延迟;未知时为 null。</summary>
     public TimeSpan? Latency
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>是否处于已连接状态(随 <see cref="ConnectionStatus" /> 联动)。</summary>
     public bool IsConnected
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>已尝试的自动重连次数,连接成功或重置时归零。</summary>
     public int ReconnectAttempts
     {
         get;
@@ -306,6 +324,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = 3;
 
+    /// <summary>是否仍允许自动重连(重连次数未达上限)。</summary>
     public bool CanReconnect => ReconnectAttempts < MaxReconnectAttempts;
 
     /// <summary>Disconnects the live transport, keeping the tab (and its buffer) for reconnect.</summary>
@@ -317,6 +336,10 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// <summary>Closes the tab from the in-tab failure/disconnect overlay (设计 yxjmg).</summary>
     public ReactiveCommand<Unit, Unit> CloseTabCommand { get; }
 
+    /// <summary>
+    /// 释放标签资源:解绑事件、即时销毁终端模拟器(UI 安全),并把耗时的网络拆除
+    /// (取消读循环、关闭 SSH 通道)放到后台线程,避免关闭标签时卡住 UI(#18)。
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
@@ -387,6 +410,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         Bridge.SendRaw(Encoding.UTF8.GetBytes(" " + payload + "\n"));
     }
 
+    /// <summary>启动桥接的 I/O 泵送(幂等;无桥或已启动时为空操作)。</summary>
     public void Start()
     {
         if (_started || Bridge is null)
@@ -580,11 +604,13 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         }
     }
 
+    /// <summary>自动重连尝试计数加一。</summary>
     public void IncrementReconnectAttempt()
     {
         ReconnectAttempts++;
     }
 
+    /// <summary>把自动重连尝试计数归零(连接成功后调用)。</summary>
     public void ResetReconnectAttempts()
     {
         ReconnectAttempts = 0;

@@ -12,6 +12,7 @@ public static class StartupRegistration
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "VelaShell";
 
+    /// <summary>按开关同步开机自启动注册表项:开启则写入当前可执行文件路径,关闭则移除;非 Windows 或写入失败时静默忽略。</summary>
     public static void Apply(bool enabled)
     {
         if (OperatingSystem.IsWindows())

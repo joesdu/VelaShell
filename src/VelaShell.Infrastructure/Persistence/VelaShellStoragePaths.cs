@@ -1,7 +1,13 @@
 namespace VelaShell.Infrastructure.Persistence;
 
+/// <summary>
+/// 集中解析并暴露 VelaShell 各项持久化文件与目录的绝对路径(以 LocalApplicationData/VelaShell 为根)。
+/// </summary>
 public sealed class VelaShellStoragePaths
 {
+    /// <summary>
+    /// 基于当前用户的本地应用数据目录构造所有存储路径。
+    /// </summary>
     public VelaShellStoragePaths()
     {
         string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VelaShell");
@@ -14,6 +20,7 @@ public sealed class VelaShellStoragePaths
         LegacyDotDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".velashell");
     }
 
+    /// <summary>VelaShell 所有持久化数据的根目录。</summary>
     public string RootDirectory { get; }
 
     /// <summary>历史 JSON 设置文件(仅用于一次性迁移导入)。</summary>

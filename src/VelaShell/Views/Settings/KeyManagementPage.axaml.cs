@@ -8,8 +8,10 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views.Settings;
 
+/// <summary>密钥管理设置页:导入、复制与管理 SSH 密钥。</summary>
 public partial class KeyManagementPage : UserControl
 {
+    /// <summary>初始化密钥管理设置页并加载 XAML 组件。</summary>
     public KeyManagementPage()
     {
         InitializeComponent();

@@ -13,8 +13,10 @@ public sealed class TrayIconService(Application app) : IDisposable
 {
     private TrayIcon? _trayIcon;
 
+    /// <summary>托盘图标当前是否已挂载。</summary>
     public bool IsActive => _trayIcon is not null;
 
+    /// <summary>移除并释放托盘图标(若已挂载)。</summary>
     public void Dispose()
     {
         if (_trayIcon is null)
@@ -32,6 +34,8 @@ public sealed class TrayIconService(Application app) : IDisposable
     /// <summary>“退出”菜单:调用方负责绕过托盘拦截真正退出。</summary>
     public event Action? ExitRequested;
 
+    /// <summary>根据设置挂载或移除系统托盘图标。</summary>
+    /// <param name="enabled">true 挂载托盘图标并绑定右键菜单;false 移除。</param>
     public void SetEnabled(bool enabled)
     {
         if (enabled == IsActive)

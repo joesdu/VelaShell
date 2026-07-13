@@ -9,5 +9,6 @@ namespace VelaShell.Docking.Controls;
 /// </summary>
 public interface IDockViewProvider
 {
+    /// <summary>创建并返回该文档的内容视图控件;每个文档仅调用一次,结果被缓存复用。</summary>
     Control CreateView();
 }

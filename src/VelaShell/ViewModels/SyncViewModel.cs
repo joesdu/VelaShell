@@ -16,6 +16,7 @@ public class SyncViewModel : ReactiveObject
     private readonly IGistSyncService _syncService;
     private SyncSettings _config = new();
 
+    /// <summary>注入同步服务并构建各同步/配置命令(仅在非忙碌状态下可执行)。</summary>
     public SyncViewModel(IGistSyncService syncService)
     {
         _syncService = syncService ?? throw new ArgumentNullException(nameof(syncService));
@@ -30,24 +31,28 @@ public class SyncViewModel : ReactiveObject
 
     // ———— 配置字段(绑定) ————
 
+    /// <summary>是否启用云同步。</summary>
     public bool Enabled
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>是否在合适时机自动触发同步。</summary>
     public bool AutoSync
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = true;
 
+    /// <summary>用于多端同步的 GitHub Gist ID;首次推送后由服务端回填。</summary>
     public string GistId
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "";
 
+    /// <summary>本机在同步记录中显示的设备名,默认取机器名。</summary>
     public string DeviceName
     {
         get;
@@ -61,6 +66,7 @@ public class SyncViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "";
 
+    /// <summary>是否已保存 GitHub 访问令牌(用于界面提示,不回显令牌本身)。</summary>
     public bool HasSavedToken
     {
         get;
@@ -74,24 +80,28 @@ public class SyncViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "";
 
+    /// <summary>是否已保存端到端加密口令(用于界面提示,不回显口令本身)。</summary>
     public bool HasSavedPassphrase
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>是否将应用设置纳入同步载荷。</summary>
     public bool SyncAppSettings
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = true;
 
+    /// <summary>是否将连接配置纳入同步载荷。</summary>
     public bool SyncProfiles
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = true;
 
+    /// <summary>是否将命令片段纳入同步载荷。</summary>
     public bool SyncSnippets
     {
         get;
@@ -100,42 +110,53 @@ public class SyncViewModel : ReactiveObject
 
     // ———— 运行状态 ————
 
+    /// <summary>是否正在执行同步/配置操作;为 true 时禁用各命令。</summary>
     public bool IsBusy
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>最近一次操作的状态提示文本。</summary>
     public string Status
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = "";
 
+    /// <summary>上次同步时间的本地化显示文本;从未同步时显示占位提示。</summary>
     public string LastSyncText
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = Strings.Get("Msg_NeverSynced");
 
+    /// <summary>已加载的云端版本历史列表。</summary>
     public ObservableCollection<GistRevision> Revisions { get; } = [];
 
+    /// <summary>版本历史列表是否非空(用于界面显隐)。</summary>
     public bool HasRevisions
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>保存当前同步配置(含令牌/口令输入)的命令。</summary>
     public ReactiveCommand<Unit, Unit> SaveConfigCommand { get; }
 
+    /// <summary>立即执行一次双向同步的命令。</summary>
     public ReactiveCommand<Unit, Unit> SyncNowCommand { get; }
 
+    /// <summary>将本地数据推送到云端的命令。</summary>
     public ReactiveCommand<Unit, Unit> PushCommand { get; }
 
+    /// <summary>从云端拉取数据到本地的命令。</summary>
     public ReactiveCommand<Unit, Unit> PullCommand { get; }
 
+    /// <summary>加载云端版本历史列表的命令。</summary>
     public ReactiveCommand<Unit, Unit> LoadRevisionsCommand { get; }
 
+    /// <summary>将数据恢复到指定历史版本的命令。</summary>
     public ReactiveCommand<GistRevision, Unit> RestoreRevisionCommand { get; }
 
     /// <summary>设置窗口打开时载入当前同步配置。</summary>

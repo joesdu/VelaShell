@@ -7,6 +7,7 @@ namespace VelaShell.Services;
 /// </summary>
 public static class SessionLogService
 {
+    /// <summary>会话日志目录:%LocalAppData%\VelaShell\logs。</summary>
     public static string LogDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VelaShell", "logs");
 
     /// <summary>为一个会话开启日志;返回 null 表示无法创建日志文件(不影响会话)。</summary>
@@ -76,11 +77,14 @@ public sealed class SessionLogWriter : IDisposable
     private readonly Lock _gate = new();
     private FileStream? _stream;
 
+    /// <summary>以追加模式打开日志文件,准备写入会话原始输出。</summary>
+    /// <param name="path">日志文件的完整路径。</param>
     internal SessionLogWriter(string path)
     {
         _stream = new(path, FileMode.Append, FileAccess.Write, FileShare.Read);
     }
 
+    /// <summary>刷新并关闭底层日志文件流。</summary>
     public void Dispose()
     {
         lock (_gate)
@@ -98,6 +102,8 @@ public sealed class SessionLogWriter : IDisposable
         }
     }
 
+    /// <summary>把一段原始终端字节追加写入日志;写入失败即自禁用,不影响会话。</summary>
+    /// <param name="data">待写入的原始字节。</param>
     public void Write(byte[] data)
     {
         lock (_gate)

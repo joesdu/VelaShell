@@ -9,26 +9,32 @@ using VelaShell.Presentation.Services;
 namespace VelaShell.ViewModels;
 
 /// <summary>诊断步骤行(设计 RGXg1 stepPanel):序号 + 名称 + 状态图形/耗时。</summary>
+/// <param name="index">步骤在诊断流程中的序号(从 0 开始)。</param>
+/// <param name="name">步骤显示名称,如"DNS 解析"。</param>
 public sealed class DiagnosticStepItemViewModel(int index, string name) : ReactiveObject
 {
     private int Index { get; } = index;
 
     private string Name { get; set; } = name;
 
+    /// <summary>列表中显示的带序号步骤名,如"1. DNS 解析"。</summary>
     public string DisplayName => $"{Index + 1}. {Name}";
 
+    /// <summary>当前步骤的检测状态(待检/检测中/成功/警告/失败/跳过)。</summary>
     public DiagnosticStepStatus Status
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = DiagnosticStepStatus.Pending;
 
+    /// <summary>该步骤的补充说明或失败原因,可为空。</summary>
     public string? Detail
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>该步骤耗时(毫秒),未完成时为空。</summary>
     public long? ElapsedMs
     {
         get;
@@ -46,18 +52,26 @@ public sealed class DiagnosticStepItemViewModel(int index, string name) : Reacti
         _ => "—"
     };
 
+    /// <summary>该步骤是否检测成功,供视图着色。</summary>
     public bool IsSuccess => Status == DiagnosticStepStatus.Success;
 
+    /// <summary>该步骤是否处于警告状态,供视图着色。</summary>
     public bool IsWarning => Status == DiagnosticStepStatus.Warning;
 
+    /// <summary>该步骤是否检测失败,供视图着色。</summary>
     public bool IsFailed => Status == DiagnosticStepStatus.Failed;
 
+    /// <summary>该步骤是否为待检或跳过状态,供视图弱化显示。</summary>
     public bool IsMuted => Status is DiagnosticStepStatus.Pending or DiagnosticStepStatus.Skipped;
 
+    /// <summary>该步骤是否正在检测中,供视图显示进行态。</summary>
     public bool IsRunning => Status == DiagnosticStepStatus.Running;
 
+    /// <summary>该步骤是否存在补充说明文本。</summary>
     public bool HasDetail => !string.IsNullOrEmpty(Detail);
 
+    /// <summary>应用一次步骤更新,刷新状态、说明、耗时并通知相关派生属性。</summary>
+    /// <param name="update">来自诊断服务的步骤更新数据。</param>
     public void Apply(DiagnosticStepUpdate update)
     {
         Name = update.Name;
@@ -74,6 +88,7 @@ public sealed class DiagnosticStepItemViewModel(int index, string name) : Reacti
         this.RaisePropertyChanged(nameof(HasDetail));
     }
 
+    /// <summary>将步骤重置为待检状态,用于重新开始诊断。</summary>
     public void Reset() => Apply(new(Index, Name, DiagnosticStepStatus.Pending));
 }
 
@@ -84,6 +99,9 @@ public class ConnectionDiagnosticsViewModel : ReactiveObject
     private readonly SessionProfile _profile;
     private DiagnosticReport? _lastReport;
 
+    /// <summary>创建连接诊断视图模型,绑定目标连接配置与诊断服务并初始化四个检测步骤。</summary>
+    /// <param name="profile">要诊断的连接配置。</param>
+    /// <param name="diagnosticsService">执行逐步诊断的服务。</param>
     public ConnectionDiagnosticsViewModel(SessionProfile profile, IConnectionDiagnosticsService diagnosticsService)
     {
         _profile = profile ?? throw new ArgumentNullException(nameof(profile));
@@ -103,18 +121,23 @@ public class ConnectionDiagnosticsViewModel : ReactiveObject
     /// <summary>标题栏副标题里的目标描述。</summary>
     public string TargetSummary => $"// 逐步分析 DNS、握手、认证与通道建立 — {(_profile.Name is { Length: > 0 } n ? n : _profile.Host)} ({_profile.Username}@{_profile.Host}:{_profile.Port})";
 
+    /// <summary>诊断步骤集合(DNS、TCP、SSH、认证),供步骤面板绑定。</summary>
     public ObservableCollection<DiagnosticStepItemViewModel> Steps { get; }
 
+    /// <summary>诊断得出的修复建议文本集合。</summary>
     public ObservableCollection<string> Suggestions { get; }
 
+    /// <summary>启动一次连接诊断的命令。</summary>
     public ReactiveCommand<Unit, Unit> RunCommand { get; }
 
+    /// <summary>是否正在执行诊断,用于禁用重复触发并显示进度。</summary>
     public bool IsBusy
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>诊断发现的问题标题,无问题时为空。</summary>
     public string? IssueTitle
     {
         get;
@@ -125,12 +148,14 @@ public class ConnectionDiagnosticsViewModel : ReactiveObject
         }
     }
 
+    /// <summary>诊断发现问题的详细描述,无问题时为空。</summary>
     public string? IssueDescription
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>是否存在已发现的问题,用于问题面板显隐。</summary>
     public bool HasIssue => !string.IsNullOrEmpty(IssueTitle);
 
     /// <summary>四步全部通过时问题面板显示绿色的"未发现问题"。</summary>
@@ -140,6 +165,7 @@ public class ConnectionDiagnosticsViewModel : ReactiveObject
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>是否已有可导出的诊断报告,用于导出按钮可用性。</summary>
     public bool CanExport => _lastReport is not null;
 
     /// <summary>导出文件名建议。</summary>

@@ -13,6 +13,8 @@ namespace VelaShell.Docking;
 /// </summary>
 public sealed class TerminalDocument : DockDocument, IDockViewProvider
 {
+    /// <summary>用给定终端标签视图模型创建可停靠文档,并同步其 Id 与标题。</summary>
+    /// <param name="terminal">被本文档包装的终端标签视图模型。</param>
     public TerminalDocument(TerminalTabViewModel terminal)
     {
         Terminal = terminal;
@@ -20,6 +22,7 @@ public sealed class TerminalDocument : DockDocument, IDockViewProvider
         Title = terminal.Title;
     }
 
+    /// <summary>本文档所承载的终端标签视图模型。</summary>
     public TerminalTabViewModel Terminal { get; }
 
     /// <summary>每个文档只被 DockWorkspaceControl 调用一次,视图随后全程复用。</summary>

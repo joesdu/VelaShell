@@ -25,6 +25,9 @@ public sealed class SessionRecorder : IDisposable
     private bool _disposed;
     private bool _failed;
 
+    /// <summary>创建会话录制器,立即持久化录制元数据并启动周期性刷盘定时器。</summary>
+    /// <param name="store">承载录制元数据与数据块的时序存储。</param>
+    /// <param name="sessionLabel">用于在录制列表中标识该会话的显示名称。</param>
     public SessionRecorder(ISessionRecordingStore store, string sessionLabel)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -59,6 +62,7 @@ public sealed class SessionRecorder : IDisposable
         Flush();
     }
 
+    /// <summary>停止录制:关闭定时器、刷出残留缓冲,并补全时长与结束时间等收尾元数据。</summary>
     public void Dispose()
     {
         lock (_gate)

@@ -16,6 +16,7 @@ public partial class DockTabItem : UserControl
 {
     private DockGroupControl? _owner;
 
+    /// <summary>初始化标签项并加载其 XAML 内容。</summary>
     public DockTabItem()
     {
         InitializeComponent();
@@ -27,6 +28,7 @@ public partial class DockTabItem : UserControl
 
     internal DockGroup? Group => _owner?.Group;
 
+    /// <summary>挂载到可视树时定位所属分组并订阅其活动文档变化。</summary>
     protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
@@ -38,6 +40,7 @@ public partial class DockTabItem : UserControl
         UpdateSelected();
     }
 
+    /// <summary>从可视树分离时退订分组事件并清理引用。</summary>
     protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
@@ -59,6 +62,7 @@ public partial class DockTabItem : UserControl
     private void UpdateSelected() =>
         PseudoClasses.Set(":selected", Document is not null && ReferenceEquals(Group?.ActiveDocument, Document));
 
+    /// <summary>处理指针按下:激活文档并启动标签拖拽。</summary>
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);

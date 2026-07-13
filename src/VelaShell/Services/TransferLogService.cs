@@ -27,6 +27,7 @@ public static class TransferLogService
         return dir;
     }
 
+    /// <summary>向当天的 transfer 日志追加一条传输记录(写入失败静默忽略)。</summary>
     public static void Append(string? configuredDirectory, TransferType type, string localPath, string remotePath, TransferStatus status)
     {
         try

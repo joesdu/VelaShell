@@ -17,6 +17,10 @@ using KeyModifiers = VelaShell.Services.KeyModifiers;
 
 namespace VelaShell.Views;
 
+/// <summary>
+/// 单个终端标签页的视图:承载终端控件,并叠加行内搜索、命令补全弹层、
+/// 滚动条同步与快捷键回退等交互逻辑。
+/// </summary>
 public partial class TerminalTabView : UserControl
 {
     private readonly IKeyboardShortcutService _shortcutService;
@@ -30,9 +34,11 @@ public partial class TerminalTabView : UserControl
     private bool _syncingScrollBar;
     private VelaTerminalControl? _termControl;
 
+    /// <summary>无参构造:使用默认的 <see cref="KeyboardShortcutService"/>(供 XAML/设计器实例化)。</summary>
     public TerminalTabView()
         : this(new KeyboardShortcutService()) { }
 
+    /// <summary>使用指定的快捷键服务构造视图并完成事件接线。</summary>
     public TerminalTabView(IKeyboardShortcutService shortcutService)
     {
         _shortcutService = shortcutService ?? throw new ArgumentNullException(nameof(shortcutService));
@@ -582,12 +588,14 @@ public partial class TerminalTabView : UserControl
         _termControl.ScrollOffset = max - (int)Math.Round(ScrollBarView.Value);
     }
 
+    /// <summary>指针按下时将焦点交还终端,确保后续键入直接进入 PTY。</summary>
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         FocusTerminal();
         base.OnPointerPressed(e);
     }
 
+    /// <summary>标签视图持有焦点时的快捷键回退处理(复制/粘贴/发送中断),与终端控件行为保持一致。</summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
         KeyModifiers modifiers = MapModifiers(e.KeyModifiers);
@@ -639,6 +647,7 @@ public partial class TerminalTabView : UserControl
         base.OnKeyDown(e);
     }
 
+    /// <summary>将文本输入以 UTF-8 编码转发到终端。</summary>
     protected override void OnTextInput(TextInputEventArgs e)
     {
         if (!string.IsNullOrEmpty(e.Text))

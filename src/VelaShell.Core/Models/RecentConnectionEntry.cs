@@ -15,14 +15,19 @@ public class RecentConnectionEntry
     /// <summary>所属分组名称(冗余存储,便于直接展示“名称-分组”)。</summary>
     public string GroupName { get; set; } = string.Empty;
 
+    /// <summary>目标主机地址。</summary>
     public string Host { get; set; } = string.Empty;
 
+    /// <summary>目标端口,默认 22。</summary>
     public int Port { get; set; } = 22;
 
+    /// <summary>登录用户名。</summary>
     public string Username { get; set; } = string.Empty;
 
+    /// <summary>连接发起时间(UTC)。</summary>
     public DateTimeOffset ConnectedAt { get; set; } = DateTimeOffset.UtcNow;
 
+    /// <summary>连接是否成功建立。</summary>
     public bool Success { get; set; } = true;
 
     /// <summary>建立连接耗时(毫秒)。</summary>

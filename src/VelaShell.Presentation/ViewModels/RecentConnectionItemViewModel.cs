@@ -8,6 +8,7 @@ namespace VelaShell.Presentation.ViewModels;
 /// </summary>
 public sealed class RecentConnectionItemViewModel(RecentConnectionEntry entry)
 {
+    /// <summary>该列表项对应的最近连接记录。</summary>
     public RecentConnectionEntry Entry { get; } = entry ?? throw new ArgumentNullException(nameof(entry));
 
     /// <summary>“名称 - 分组”;无分组时仅名称。</summary>

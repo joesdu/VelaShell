@@ -20,6 +20,7 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
     private readonly ISecretProtector _protector = protector ?? throw new ArgumentNullException(nameof(protector));
     private bool _migrationChecked;
 
+    /// <summary>返回全部服务器分组,按 <see cref="ServerGroup.SortOrder" /> 升序排列。</summary>
     public async Task<List<ServerGroup>> GetAllGroupsAsync()
     {
         await EnsureMigratedAsync().ConfigureAwait(false);
@@ -28,6 +29,7 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
         return [.. groups.OfType<ServerGroup>().OrderBy(static g => g.SortOrder)];
     }
 
+    /// <summary>返回全部会话配置,密码与私钥口令已解密为明文。</summary>
     public async Task<List<SessionProfile>> GetAllSessionsAsync()
     {
         await EnsureMigratedAsync().ConfigureAwait(false);
@@ -36,6 +38,7 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
         return [.. sessions.OfType<SessionProfile>().Select(Unprotect)];
     }
 
+    /// <summary>按 Id 获取单个会话配置(密码已解密);不存在时返回 <c>null</c>。</summary>
     public async Task<SessionProfile?> GetSessionAsync(Guid id)
     {
         await EnsureMigratedAsync().ConfigureAwait(false);
@@ -47,6 +50,7 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
         return profile is null ? null : Unprotect(profile);
     }
 
+    /// <summary>加密敏感字段后插入或更新会话配置(以 Id 为主键)。</summary>
     public async Task SaveSessionAsync(SessionProfile session)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -59,6 +63,7 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
         }).ConfigureAwait(false);
     }
 
+    /// <summary>删除指定会话配置,并从各分组的会话列表中移除对它的引用。</summary>
     public async Task DeleteSessionAsync(Guid id)
     {
         await EnsureMigratedAsync().ConfigureAwait(false);
@@ -83,6 +88,7 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
         }).ConfigureAwait(false);
     }
 
+    /// <summary>插入或更新服务器分组(以 Id 为主键)。</summary>
     public async Task SaveGroupAsync(ServerGroup group)
     {
         ArgumentNullException.ThrowIfNull(group);
@@ -95,6 +101,7 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
         }).ConfigureAwait(false);
     }
 
+    /// <summary>删除指定分组,并将归属该分组的会话重置为未分组状态。</summary>
     public async Task DeleteGroupAsync(Guid id)
     {
         await EnsureMigratedAsync().ConfigureAwait(false);

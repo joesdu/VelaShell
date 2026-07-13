@@ -3,19 +3,33 @@ using System.Globalization;
 namespace VelaShell.Core.Services;
 
 /// <summary>One mounted real filesystem(non-tmpfs 等虚拟盘)的用量(资源面板逐盘显示)。</summary>
+/// <param name="Source">文件系统的设备/来源(如 /dev/sda1)。</param>
+/// <param name="MountPoint">挂载点路径(可能含空格)。</param>
+/// <param name="TotalBytes">该文件系统的总容量(字节)。</param>
+/// <param name="UsedBytes">该文件系统的已用空间(字节)。</param>
 // ReSharper disable once NotAccessedPositionalProperty.Global
 public sealed record DiskUsage(string Source, string MountPoint, long TotalBytes, long UsedBytes)
 {
+    /// <summary>已用空间占总容量的百分比(0-100);总容量为 0 时返回 0。</summary>
     public double Percent => TotalBytes > 0 ? (UsedBytes * 100.0) / TotalBytes : 0;
 }
 
 /// <summary>单个 CPU 核心的累计 jiffies 计数(/proc/stat cpuN 行),由采集器做两次采样差分。</summary>
+/// <param name="Name">核心名(如 cpu0)。</param>
+/// <param name="TotalJiffies">该核心累计的总 jiffies。</param>
+/// <param name="IdleJiffies">该核心累计的空闲 jiffies(含 iowait)。</param>
 public sealed record CpuCoreCounter(string Name, long TotalJiffies, long IdleJiffies);
 
 /// <summary>单个网卡的累计收发字节计数(/proc/net/dev),由采集器做两次采样差分。</summary>
+/// <param name="Name">网卡接口名。</param>
+/// <param name="RxBytes">累计接收字节数。</param>
+/// <param name="TxBytes">累计发送字节数。</param>
 public sealed record NetInterfaceCounter(string Name, long RxBytes, long TxBytes);
 
 /// <summary>单个网卡的瞬时速率(字节/秒),由采集器从上一采样计算。</summary>
+/// <param name="Name">网卡接口名。</param>
+/// <param name="RxBytesPerSec">接收速率(字节/秒)。</param>
+/// <param name="TxBytesPerSec">发送速率(字节/秒)。</param>
 public sealed record NetInterfaceRate(string Name, double RxBytesPerSec, double TxBytesPerSec);
 
 /// <summary>A point-in-time resource snapshot of a remote session's host (design panel EP3Gd).</summary>
@@ -49,6 +63,7 @@ public sealed class SessionMetrics
         // 网桥虚拟接口,全列出来没法看(用户反馈)。__N__ 的合计口径保持不变。
         """echo __NI__; for i in /sys/class/net/*; do if [ -e "$i/device" ]; then echo "${i##*/} $(cat "$i/statistics/rx_bytes" 2>/dev/null) $(cat "$i/statistics/tx_bytes" 2>/dev/null)"; fi; done 2>/dev/null""";
 
+    /// <summary>逻辑 CPU 核心数(nproc);至少为 1。</summary>
     public int CpuCores { get; private init; }
 
     /// <summary>
@@ -59,36 +74,50 @@ public sealed class SessionMetrics
     /// </summary>
     public double CpuPercent { get; set; }
 
+    /// <summary>物理内存总量(字节)。</summary>
     public long MemTotalBytes { get; private init; }
 
+    /// <summary>已用物理内存(字节),htop 口径:total − free − buffers − cached − 可回收 slab。</summary>
     public long MemUsedBytes { get; private init; }
 
+    /// <summary>交换分区总量(字节)。</summary>
     public long SwapTotalBytes { get; private init; }
 
+    /// <summary>已用交换分区(字节)。</summary>
     public long SwapUsedBytes { get; private init; }
 
+    /// <summary>根分区总容量(字节)。</summary>
     public long DiskTotalBytes { get; private init; }
 
+    /// <summary>根分区已用容量(字节)。</summary>
     public long DiskUsedBytes { get; private init; }
 
     /// <summary>All mounted real filesystems(__DL__);空 = 探针不支持,退回根分区聚合值。</summary>
     public IReadOnlyList<DiskUsage> Disks { get; private init; } = [];
 
+    /// <summary>操作系统发行版描述(/etc/os-release 的 PRETTY_NAME)。</summary>
     public string OsVersion { get; private init; } = "";
 
+    /// <summary>内核版本(uname -r)。</summary>
     public string Kernel { get; private init; } = "";
 
     // Raw cumulative counters used by the stateful collector to compute deltas.
+    /// <summary>本次采样是否成功取得 CPU jiffies 累计计数(可供采集器差分)。</summary>
     public bool HasCpuCounters { get; private init; }
 
+    /// <summary>聚合 CPU 的累计总 jiffies(/proc/stat cpu 行各列之和)。</summary>
     public long CpuTotalJiffies { get; private init; }
 
+    /// <summary>聚合 CPU 的累计空闲 jiffies(idle + iowait)。</summary>
     public long CpuIdleJiffies { get; private init; }
 
+    /// <summary>本次采样是否成功取得网络收发累计字节计数(可供采集器差分)。</summary>
     public bool HasNetCounters { get; private init; }
 
+    /// <summary>所有非回环网卡累计接收字节数之和。</summary>
     public long NetRxTotalBytes { get; private init; }
 
+    /// <summary>所有非回环网卡累计发送字节数之和。</summary>
     public long NetTxTotalBytes { get; private init; }
 
     /// <summary>
@@ -97,8 +126,10 @@ public sealed class SessionMetrics
     /// </summary>
     public bool HasNetRates { get; set; }
 
+    /// <summary>瞬时网络接收速率(字节/秒),由采集器从上一采样计算。</summary>
     public double NetRxBytesPerSec { get; set; }
 
+    /// <summary>瞬时网络发送速率(字节/秒),由采集器从上一采样计算。</summary>
     public double NetTxBytesPerSec { get; set; }
 
     /// <summary>
@@ -107,6 +138,7 @@ public sealed class SessionMetrics
     /// </summary>
     public IReadOnlyList<CpuCoreCounter> CoreCounters { get; private init; } = [];
 
+    /// <summary>各核心的瞬时占用率(0-100),与 <see cref="CoreCounters" /> 同序;首个采样为 null。</summary>
     public IReadOnlyList<double>? CorePercents { get; set; }
 
     /// <summary>
@@ -115,12 +147,16 @@ public sealed class SessionMetrics
     /// </summary>
     public IReadOnlyList<NetInterfaceCounter> NicCounters { get; private init; } = [];
 
+    /// <summary>各网卡的瞬时收发速率,与 <see cref="NicCounters" /> 同序;首个采样为 null。</summary>
     public IReadOnlyList<NetInterfaceRate>? NicRates { get; set; }
 
+    /// <summary>内存使用率(0-100);总量为 0 时返回 0。</summary>
     public double MemPercent => MemTotalBytes > 0 ? (MemUsedBytes * 100.0) / MemTotalBytes : 0;
 
+    /// <summary>交换分区使用率(0-100);总量为 0 时返回 0。</summary>
     public double SwapPercent => SwapTotalBytes > 0 ? (SwapUsedBytes * 100.0) / SwapTotalBytes : 0;
 
+    /// <summary>根分区使用率(0-100);总量为 0 时返回 0。</summary>
     public double DiskPercent => DiskTotalBytes > 0 ? (DiskUsedBytes * 100.0) / DiskTotalBytes : 0;
 
     /// <summary>

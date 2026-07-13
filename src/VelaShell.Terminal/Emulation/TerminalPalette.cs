@@ -4,10 +4,16 @@ namespace VelaShell.Terminal.Emulation;
 /// A 32-bit packed color (0xAARRGGBB) produced when resolving a <see cref="TerminalColor" />.
 /// Kept independent from Avalonia so the engine stays UI-agnostic and testable.
 /// </summary>
+/// <param name="A">Alpha channel.</param>
+/// <param name="R">Red channel.</param>
+/// <param name="G">Green channel.</param>
+/// <param name="B">Blue channel.</param>
 public readonly record struct Rgba(byte A, byte R, byte G, byte B)
 {
+    /// <summary>The color packed into a single 0xAARRGGBB unsigned integer.</summary>
     public uint Packed => ((uint)A << 24) | ((uint)R << 16) | ((uint)G << 8) | B;
 
+    /// <summary>Creates an opaque color from red, green and blue channel values.</summary>
     public static Rgba FromRgb(byte r, byte g, byte b) => new(0xFF, r, g, b);
 }
 
@@ -20,6 +26,7 @@ public sealed class TerminalPalette
 {
     private readonly Rgba[] _colors = new Rgba[256];
 
+    /// <summary>Creates a palette pre-filled with the standard xterm 256-color defaults.</summary>
     public TerminalPalette()
     {
         InitializeAnsi16();
@@ -27,14 +34,19 @@ public sealed class TerminalPalette
         InitializeGrayscale();
     }
 
+    /// <summary>The color used for cells that use the default foreground.</summary>
     public Rgba DefaultForeground { get; set; } = Rgba.FromRgb(0xE0, 0xE6, 0xED);
 
+    /// <summary>The color used for cells that use the default background.</summary>
     public Rgba DefaultBackground { get; set; } = Rgba.FromRgb(0x08, 0x0C, 0x12);
 
+    /// <summary>The color used to draw the cursor.</summary>
     public Rgba CursorColor { get; set; } = Rgba.FromRgb(0x00, 0xD4, 0xAA);
 
+    /// <summary>The fill color drawn behind selected text.</summary>
     public Rgba SelectionBackground { get; set; } = new(0x60, 0x1C, 0x2A, 0x3F);
 
+    /// <summary>Gets the resolved color for the given palette index (0-255, masked to a byte).</summary>
     public Rgba this[int index] => _colors[index & 0xFF];
 
     /// <summary>Overrides one of the 16 ANSI colors (used to apply the design's term-* tokens).</summary>

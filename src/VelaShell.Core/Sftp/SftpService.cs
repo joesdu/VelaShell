@@ -7,6 +7,10 @@ using VelaShell.Core.Ssh;
 
 namespace VelaShell.Core.Sftp;
 
+/// <summary>
+/// 基于 SSH 会话的 SFTP 文件操作服务:按会话缓存并复用 SFTP 客户端,提供目录浏览、
+/// 上传/下载、删除、重命名、权限设置等远端文件系统操作。
+/// </summary>
 public class SftpService(
     ISshConnectionService connectionService,
     Func<SshSession, ISftpClientWrapper>? sftpClientFactory = null,
@@ -18,6 +22,7 @@ public class SftpService(
     /// <summary>SFTP 客户端创建的按会话单飞闸(见 GetOrCreateSftpClientAsync)。</summary>
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _clientGates = new();
 
+    /// <summary>列出指定会话下远端目录的条目(自动剔除 "." 与 ".." )。</summary>
     public async Task<List<RemoteFileInfo>> ListDirectoryAsync(Guid sessionId, string path, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
@@ -25,6 +30,7 @@ public class SftpService(
         return [.. files.Where(f => f.Name is not "." and not "..").Select(MapToRemoteFileInfo)];
     }
 
+    /// <summary>将本地文件上传到远端路径,可选限速与进度回报,支持取消。</summary>
     public async Task UploadFileAsync(Guid sessionId,
         string localPath,
         string remotePath,
@@ -62,6 +68,7 @@ public class SftpService(
         }
     }
 
+    /// <summary>将远端文件下载到本地路径,可选限速与进度回报;按设置可保留文件修改时间戳。</summary>
     public async Task DownloadFileAsync(Guid sessionId,
         string remotePath,
         string localPath,
@@ -110,6 +117,7 @@ public class SftpService(
         }
     }
 
+    /// <summary>删除远端文件或目录;目录按深度优先递归删除子项,并逐条回报删除进度。</summary>
     public async Task DeleteAsync(Guid sessionId, string remotePath, IProgress<SftpDeleteProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
@@ -132,12 +140,14 @@ public class SftpService(
         }, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>在远端创建指定路径的目录。</summary>
     public async Task CreateDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
         await Task.Run(() => { client.CreateDirectory(remotePath); }, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>在远端创建一个空文件。</summary>
     public async Task CreateFileAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
@@ -145,6 +155,7 @@ public class SftpService(
         await client.UploadAsync(empty, remotePath, null, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>幂等地确保远端目录存在:直接创建,若因已存在而失败则视为成功。</summary>
     public async Task EnsureDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
@@ -161,6 +172,7 @@ public class SftpService(
         }, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>重命名或移动远端文件/目录;普通 rename 被服务器拒绝时回退到 posix-rename 扩展。</summary>
     public async Task RenameAsync(Guid sessionId, string oldPath, string newPath, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
@@ -188,6 +200,7 @@ public class SftpService(
         }, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>以三位八进制模式(000-777)设置远端文件/目录的权限。</summary>
     public async Task SetPermissionsAsync(Guid sessionId, string remotePath, short octalMode, CancellationToken cancellationToken = default)
     {
         if (octalMode < 0 || octalMode > 777 || octalMode % 10 > 7 || (octalMode / 10) % 10 > 7)
@@ -198,6 +211,7 @@ public class SftpService(
         await Task.Run(() => { client.ChangePermissions(remotePath, octalMode); }, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>获取远端指定路径文件/目录的详细信息;路径不存在时抛出 <see cref="FileNotFoundException" />。</summary>
     public async Task<RemoteFileInfo> GetFileInfoAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
@@ -208,18 +222,21 @@ public class SftpService(
         return MapToRemoteFileInfo(file);
     }
 
+    /// <summary>判断远端路径是否存在。</summary>
     public async Task<bool> ExistsAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
         return await Task.Run(() => client.Exists(remotePath), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>返回该会话 SFTP 客户端的当前工作目录。</summary>
     public async Task<string> GetWorkingDirectoryAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
         return client.WorkingDirectory;
     }
 
+    /// <summary>关闭并清理指定会话缓存的 SFTP 客户端与单飞闸,断开连接并释放资源。</summary>
     public async Task CloseSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         if (_clientGates.TryRemove(sessionId, out SemaphoreSlim? gate))
@@ -247,6 +264,7 @@ public class SftpService(
         }, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>断开并释放所有缓存的 SFTP 客户端,尽力清理全部会话资源。</summary>
     public async ValueTask DisposeAsync()
     {
         foreach (KeyValuePair<Guid, ISftpClientWrapper> kvp in _sftpClients)

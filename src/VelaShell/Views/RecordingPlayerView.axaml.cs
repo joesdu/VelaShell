@@ -20,6 +20,7 @@ public partial class RecordingPlayerView : Window
     private readonly VelaTerminalControl _terminal;
     private RecordingPlayerViewModel? _viewModel;
 
+    /// <summary>构造回放中心窗口,挂载只读回放终端并订阅 VM 的 Feed/Reset 回调。</summary>
     public RecordingPlayerView()
     {
         InitializeComponent();

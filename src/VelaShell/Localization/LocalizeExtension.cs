@@ -16,12 +16,16 @@ namespace VelaShell.Localization;
 /// </summary>
 public class LocalizeExtension : MarkupExtension
 {
+    /// <summary>无参构造;通过 <see cref="Key" /> 属性设置本地化键。</summary>
     public LocalizeExtension() { }
 
+    /// <summary>以本地化键构造扩展(支持位置参数写法 <c>{loc:Localize QuickConnect}</c>)。</summary>
     public LocalizeExtension(string key) => Key = key;
 
+    /// <summary>要绑定的本地化资源键。</summary>
     public string Key { get; set; } = "";
 
+    /// <summary>返回指向该键缓存条目 <see cref="LocalizedText.Value" /> 的单向绑定。</summary>
     public override object ProvideValue(IServiceProvider serviceProvider) =>
         new Binding(nameof(LocalizedText.Value))
         {
@@ -33,8 +37,10 @@ public class LocalizeExtension : MarkupExtension
 /// <summary>单个本地化键的实时值:换语言时 <see cref="Value" /> 触发标准属性变更通知。</summary>
 public sealed class LocalizedText(LocalizedStrings owner, string key) : INotifyPropertyChanged
 {
+    /// <summary>该键在当前语言下的实时值。</summary>
     public string Value => owner[key];
 
+    /// <summary>标准属性变更通知;<see cref="Value" /> 变化时触发。</summary>
     public event PropertyChangedEventHandler? PropertyChanged;
 
     internal void NotifyChanged() => PropertyChanged?.Invoke(this, new(nameof(Value)));
@@ -49,10 +55,13 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
     private readonly ConcurrentDictionary<string, LocalizedText> _entries = new();
     private ILocalizationService _service = new LocalizationService();
 
+    /// <summary>全局共享的取词源单例。</summary>
     public static LocalizedStrings Instance { get; } = new();
 
+    /// <summary>按键取当前语言下的字符串;供 XAML 索引器绑定使用。</summary>
     public string this[string key] => _service.GetString(key);
 
+    /// <summary>兼容用索引器变更通知;语言切换时以 "Item[]" 触发。</summary>
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>取(或建)键的绑定条目;同键共享同一条目,通知一次全量生效。</summary>

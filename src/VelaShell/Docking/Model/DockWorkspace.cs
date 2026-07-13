@@ -11,6 +11,7 @@ public sealed class DockWorkspace : DockElement
 {
     private DockNode _root;
 
+    /// <summary>创建仅含主组的空工作区,主组即为初始布局树根。</summary>
     public DockWorkspace()
     {
         PrimaryGroup = new DockGroup { IsPrimary = true };
@@ -54,10 +55,13 @@ public sealed class DockWorkspace : DockElement
 
     // ---- 查询 ----
 
+    /// <summary>深度遍历布局树,返回其中全部标签组。</summary>
     public IEnumerable<DockGroup> AllGroups() => EnumerateGroups(Root);
 
+    /// <summary>返回工作区内所有组的全部文档(拉平的标签集合)。</summary>
     public IEnumerable<DockDocument> AllDocuments() => AllGroups().SelectMany(group => group.Documents);
 
+    /// <summary>查找该文档当前所属的组,未在树上则返回 null。</summary>
     public DockGroup? FindGroup(DockDocument document) =>
         AllGroups().FirstOrDefault(group => group.Documents.Contains(document));
 
@@ -164,8 +168,10 @@ public sealed class DockWorkspace : DockElement
         }
     }
 
+    /// <summary>关闭同组内位于该文档左侧的所有标签。</summary>
     public void CloseLeftDocuments(DockDocument document) => CloseToSide(document, left: true);
 
+    /// <summary>关闭同组内位于该文档右侧的所有标签。</summary>
     public void CloseRightDocuments(DockDocument document) => CloseToSide(document, left: false);
 
     private void CloseToSide(DockDocument document, bool left)

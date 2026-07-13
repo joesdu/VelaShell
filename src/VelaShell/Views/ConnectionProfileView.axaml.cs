@@ -7,8 +7,10 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 
+/// <summary>连接配置编辑窗口,用于新建或编辑连接档案并支持保存后立即连接。</summary>
 public partial class ConnectionProfileView : Window
 {
+    /// <summary>初始化连接配置窗口,并在打开时绑定命令与加载分组数据。</summary>
     public ConnectionProfileView()
     {
         InitializeComponent();

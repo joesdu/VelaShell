@@ -14,9 +14,11 @@ namespace VelaShell.ViewModels;
 /// <summary>“会话分组”下拉的一项;Id 为 null 表示未分组。</summary>
 public sealed record GroupOption(Guid? Id, string Name)
 {
+    /// <summary>下拉项以分组名称展示。</summary>
     public override string ToString() => Name;
 }
 
+/// <summary>新建/编辑连接配置对话框的视图模型:承载表单字段、认证方式切换、分组与跳板主机选择,并提供保存、连接、测试等命令。</summary>
 public class ConnectionProfileViewModel : ReactiveObject
 {
     /// <summary>
@@ -47,6 +49,7 @@ public class ConnectionProfileViewModel : ReactiveObject
     private string _tagsText = string.Empty;
     private string _username = string.Empty;
 
+    /// <summary>创建视图模型;传入 <paramref name="existing" /> 时进入编辑模式回显字段,否则新建并应用默认端口/默认密钥路径。</summary>
     public ConnectionProfileViewModel(
         SessionProfile? existing = null,
         IConnectionWorkflowService? connectionWorkflowService = null,
@@ -136,30 +139,35 @@ public class ConnectionProfileViewModel : ReactiveObject
         TogglePasswordVisibilityCommand = ReactiveCommand.Create(() => { ShowPassword = !ShowPassword; });
     }
 
+    /// <summary>连接显示名称;留空时保存时以 user@host 兜底。</summary>
     public string Name
     {
         get => _name;
         set => this.RaiseAndSetIfChanged(ref _name, value);
     }
 
+    /// <summary>目标主机地址(主机名或 IP)。</summary>
     public string Host
     {
         get => _host;
         set => this.RaiseAndSetIfChanged(ref _host, value);
     }
 
+    /// <summary>SSH 端口,有效范围 1–65535,默认 22。</summary>
     public int Port
     {
         get => _port;
         set => this.RaiseAndSetIfChanged(ref _port, value);
     }
 
+    /// <summary>登录用户名。</summary>
     public string Username
     {
         get => _username;
         set => this.RaiseAndSetIfChanged(ref _username, value);
     }
 
+    /// <summary>认证方式(密码或私钥);变更时同步刷新 <see cref="AuthMethodIndex" />。</summary>
     public AuthMethod AuthMethod
     {
         get => _authMethod;
@@ -184,18 +192,21 @@ public class ConnectionProfileViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _password, value);
     }
 
+    /// <summary>私钥文件路径(密钥认证时使用)。</summary>
     public string? PrivateKeyPath
     {
         get => _privateKeyPath;
         set => this.RaiseAndSetIfChanged(ref _privateKeyPath, value);
     }
 
+    /// <summary>私钥口令(私钥受密码保护时使用)。</summary>
     public string? PrivateKeyPassphrase
     {
         get => _privateKeyPassphrase;
         set => this.RaiseAndSetIfChanged(ref _privateKeyPassphrase, value);
     }
 
+    /// <summary>所属分组的 Id;null 表示未分组。</summary>
     public Guid? GroupId
     {
         get => _groupId;
@@ -205,36 +216,42 @@ public class ConnectionProfileViewModel : ReactiveObject
     /// <summary>跳板主机下拉:“直连” + 除自身外的全部已保存配置。</summary>
     public ObservableCollection<GroupOption> JumpHostOptions { get; }
 
+    /// <summary>当前选中的跳板主机项;null 项表示直连。</summary>
     public GroupOption? SelectedJumpHost
     {
         get => _selectedJumpHost;
         set => this.RaiseAndSetIfChanged(ref _selectedJumpHost, value);
     }
 
+    /// <summary>当前是否为密码认证;由认证方式派生,控制密码相关字段的可见性。</summary>
     public bool IsPasswordAuth
     {
         get => _isPasswordAuth;
         private set => this.RaiseAndSetIfChanged(ref _isPasswordAuth, value);
     }
 
+    /// <summary>当前是否为密钥认证;由认证方式派生,控制私钥相关字段的可见性。</summary>
     public bool IsKeyAuth
     {
         get => _isKeyAuth;
         private set => this.RaiseAndSetIfChanged(ref _isKeyAuth, value);
     }
 
+    /// <summary>是否正忙(保存/连接/测试进行中);用于禁用命令与显示进度。</summary>
     public bool IsBusy
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>最近一次操作的错误信息;无错误时为 null。</summary>
     public string? ErrorMessage
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>最近一次连接测试结果;null 表示尚未测试,变更时同步刷新 <see cref="ShowTestSuccess" />。</summary>
     public bool? LastTestSucceeded
     {
         get;
@@ -255,12 +272,14 @@ public class ConnectionProfileViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _rememberPassword, value);
     }
 
+    /// <summary>是否明文显示密码。</summary>
     public bool ShowPassword
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>高级选项区域是否展开。</summary>
     public bool IsAdvancedVisible
     {
         get;
@@ -274,8 +293,10 @@ public class ConnectionProfileViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _tagsText, value);
     }
 
+    /// <summary>分组下拉候选:“未分组” + 全部已保存分组。</summary>
     public ObservableCollection<GroupOption> Groups { get; }
 
+    /// <summary>当前选中的分组项;null 项表示未分组。</summary>
     public GroupOption? SelectedGroup
     {
         get => _selectedGroup;
@@ -295,18 +316,25 @@ public class ConnectionProfileViewModel : ReactiveObject
     /// <summary>“连接”按钮关闭弹窗后,由宿主窗口发起连接。</summary>
     public bool ConnectAfterClose { get; private set; }
 
+    /// <summary>保存配置命令;成功返回保存后的 <see cref="SessionProfile" />,失败返回 null。</summary>
     public ReactiveCommand<Unit, SessionProfile?> SaveCommand { get; }
 
+    /// <summary>连接命令;先保存配置,再请求宿主窗口在弹窗关闭后立即连接。</summary>
     public ReactiveCommand<Unit, SessionProfile?> ConnectCommand { get; }
 
+    /// <summary>取消命令;关闭弹窗并返回 null。</summary>
     public ReactiveCommand<Unit, SessionProfile?> CancelCommand { get; }
 
+    /// <summary>连接测试命令;不落库,仅探测能否连通并回填结果。</summary>
     public ReactiveCommand<Unit, Unit> TestConnectionCommand { get; }
 
+    /// <summary>浏览私钥文件命令;由视图层挂接文件选择对话框。</summary>
     public ReactiveCommand<Unit, Unit> BrowseKeyFileCommand { get; }
 
+    /// <summary>切换高级选项区域展开/收起的命令。</summary>
     public ReactiveCommand<Unit, Unit> ToggleAdvancedCommand { get; }
 
+    /// <summary>切换密码明文/掩码显示的命令。</summary>
     public ReactiveCommand<Unit, Unit> TogglePasswordVisibilityCommand { get; }
 
     /// <summary>

@@ -4,8 +4,10 @@ using VelaShell.Presentation.ViewModels;
 
 namespace VelaShell.Views;
 
+/// <summary>会话树视图:以分组树形式展示会话,支持展开折叠、双击连接与右键菜单。</summary>
 public partial class SessionTreeView : UserControl
 {
+    /// <summary>初始化会话树视图并加载 XAML 组件。</summary>
     public SessionTreeView()
     {
         InitializeComponent();

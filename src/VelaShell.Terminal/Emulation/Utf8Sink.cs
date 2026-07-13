@@ -12,6 +12,9 @@ public sealed class Utf8Sink(Encoding? encoding = null)
     private char[] _chars = new char[1024];
     private Decoder _decoder = CreateDecoder(encoding);
 
+    /// <summary>
+    /// 切换解码所用的字符编码,并重置解码器状态(丢弃任何未完成的多字节前缀)。
+    /// </summary>
     public void SetEncoding(Encoding encoding)
     {
         _decoder = CreateDecoder(encoding);
@@ -25,6 +28,9 @@ public sealed class Utf8Sink(Encoding? encoding = null)
         return decoder;
     }
 
+    /// <summary>
+    /// 增量解码一段字节:跨调用缓存未完成的多字节序列,非法字节替换为 U+FFFD。
+    /// </summary>
     public string Decode(ReadOnlySpan<byte> bytes)
     {
         if (bytes.IsEmpty)
@@ -44,5 +50,8 @@ public sealed class Utf8Sink(Encoding? encoding = null)
         return written == 0 ? string.Empty : new(_chars, 0, written);
     }
 
+    /// <summary>
+    /// 重置解码器状态,丢弃已缓存的部分多字节序列(例如流中断或重连后调用)。
+    /// </summary>
     public void Reset() => _decoder.Reset();
 }

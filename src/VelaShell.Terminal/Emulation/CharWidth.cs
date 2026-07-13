@@ -50,6 +50,7 @@ public static class CharWidth
         (0xFE20, 0xFE2F)  // combining half marks
     ];
 
+    /// <summary>Returns the display width in terminal cells (0, 1, or 2) of the given Unicode scalar value.</summary>
     public static int Of(int rune)
     {
         switch (rune)
@@ -71,6 +72,7 @@ public static class CharWidth
         return 1;
     }
 
+    /// <summary>Returns true when the given scalar value is a zero-width combining or format character.</summary>
     public static bool IsCombining(int rune) => rune != 0 && InRanges(rune, ZeroWidth);
 
     private static bool InRanges(int rune, (int Lo, int Hi)[] ranges)

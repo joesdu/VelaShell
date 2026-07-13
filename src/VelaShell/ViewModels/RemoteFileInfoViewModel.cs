@@ -2,6 +2,8 @@ using VelaShell.Core.Models;
 
 namespace VelaShell.ViewModels;
 
+/// <summary>Presents a <see cref="RemoteFileInfo"/> as a file-browser row, adding display formatting and parent-entry handling.</summary>
+/// <param name="model">The underlying remote file entry backing this row.</param>
 public class RemoteFileInfoViewModel(RemoteFileInfo model)
 {
     /// <summary>底层条目(静默刷新的差异比对用,见 FileBrowserViewModel.RefreshSilentlyAsync)。</summary>
@@ -19,6 +21,7 @@ public class RemoteFileInfoViewModel(RemoteFileInfo model)
     /// <summary>A real file row — gates the file-only context actions (打开/编辑器打开等)。</summary>
     public bool IsRegularFile => !IsDirectory && !IsParentEntry;
 
+    /// <summary>The raw entry name from the remote listing.</summary>
     public string Name => Model.Name;
 
     /// <summary>
@@ -27,25 +30,35 @@ public class RemoteFileInfoViewModel(RemoteFileInfo model)
     /// </summary>
     public string DisplayName => IsParentEntry ? ".." : Name;
 
+    /// <summary>The absolute path of the entry on the remote host.</summary>
     public string FullPath => Model.FullPath;
 
+    /// <summary>Whether the entry is a directory.</summary>
     public bool IsDirectory => Model.IsDirectory;
 
+    /// <summary>The permission string (e.g. rwxr-xr-x) reported by the remote host.</summary>
     public string Permissions => Model.Permissions;
 
+    /// <summary>The owning user of the entry.</summary>
     public string Owner => Model.Owner;
 
+    /// <summary>The owning group of the entry.</summary>
     public string Group => Model.Group;
 
+    /// <summary>The icon key ("folder" or "file") used to render the row.</summary>
     public string Icon => Model.IsDirectory ? "folder" : "file";
 
     // Directories show their reported size too (design dyuii lists "4.0 KB" for folders).
+    /// <summary>Human-readable size for display; empty for the synthetic ".." row.</summary>
     public string FormattedSize => IsParentEntry ? string.Empty : FormatSize(Model.Size);
 
+    /// <summary>Human-readable last-modified timestamp for display; empty for the synthetic ".." row.</summary>
     public string FormattedModifiedTime => IsParentEntry ? string.Empty : FormatModifiedTime(Model.LastModified);
 
+    /// <summary>The entry size in bytes.</summary>
     public long SizeBytes => Model.Size;
 
+    /// <summary>The entry's last-modified time.</summary>
     public DateTime LastModified => Model.LastModified;
 
     /// <summary>
@@ -66,6 +79,9 @@ public class RemoteFileInfoViewModel(RemoteFileInfo model)
         })
         { IsParentEntry = true };
 
+    /// <summary>Formats a byte count as a human-readable size string (e.g. "4.0 KB").</summary>
+    /// <param name="bytes">The size in bytes.</param>
+    /// <returns>The formatted size string with an appropriate unit suffix.</returns>
     public static string FormatSize(long bytes)
     {
         if (bytes == 0)

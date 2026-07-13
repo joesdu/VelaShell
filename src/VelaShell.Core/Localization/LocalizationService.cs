@@ -4,6 +4,7 @@ using VelaShell.Core.Resources;
 
 namespace VelaShell.Core.Localization;
 
+/// <summary>基于资源程序集的本地化服务:自持目标文化,提供取词与运行时切换语言。</summary>
 public class LocalizationService : ILocalizationService
 {
     private readonly ResourceManager _resourceManager = new("VelaShell.Core.Resources.Strings", typeof(Strings).Assembly);
@@ -14,6 +15,7 @@ public class LocalizationService : ILocalizationService
     // 影响它。两条路都靠不住,曾表现为“保存后界面不换语言”。
     private CultureInfo _culture = CultureInfo.CurrentUICulture;
 
+    /// <summary>按键取当前文化下的本地化字符串;缺失或资源不可用时回退返回键本身。</summary>
     public string GetString(string key)
     {
         try
@@ -31,10 +33,13 @@ public class LocalizationService : ILocalizationService
         }
     }
 
+    /// <summary>当前语言的文化名称(如 zh-CN)。</summary>
     public string CurrentLanguage => _culture.Name;
 
+    /// <summary>语言切换成功后触发,携带新的文化名称。</summary>
     public event Action<string>? LanguageChanged;
 
+    /// <summary>切换当前语言:与现有文化相同则跳过,否则更新并尽力同步环境文化后触发 <see cref="LanguageChanged"/>。</summary>
     public void SetLanguage(string language)
     {
         ArgumentNullException.ThrowIfNull(language);

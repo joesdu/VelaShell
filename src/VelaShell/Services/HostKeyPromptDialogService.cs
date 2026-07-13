@@ -14,6 +14,7 @@ namespace VelaShell.Services;
 /// </summary>
 public sealed class HostKeyPromptDialogService : IHostKeyPrompt
 {
+    /// <summary>在 UI 线程弹出主机指纹确认对话框,返回用户裁决;无主窗口或发生异常时按拒绝处理(fail-closed)。</summary>
     public async Task<HostKeyDecision> DecideAsync(string host,
         int port,
         string keyType,

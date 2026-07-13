@@ -5,18 +5,23 @@ using VelaShell.Core.Resources;
 
 namespace VelaShell.Presentation.ViewModels;
 
+/// <summary>会话树中的一个节点视图模型,既可表示分组目录,也可表示单个会话行。</summary>
 public sealed class SessionTreeNodeViewModel(Guid id, string name, bool isGroup) : ReactiveObject
 {
+    /// <summary>节点唯一标识(对应分组或会话的 Id)。</summary>
     public Guid Id { get; } = id;
 
+    /// <summary>该节点是否为分组目录(而非叶子会话)。</summary>
     public bool IsGroup { get; } = isGroup;
 
+    /// <summary>节点显示名称,可在重命名时更新并触发通知。</summary>
     public string Name
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = name;
 
+    /// <summary>分组节点是否处于展开状态(默认分组展开、会话不适用)。</summary>
     public bool IsExpanded
     {
         get;
@@ -62,14 +67,19 @@ public sealed class SessionTreeNodeViewModel(Guid id, string name, bool isGroup)
         }
     } = SessionStatus.Disconnected;
 
+    /// <summary>会话是否已连接(状态为 <see cref="SessionStatus.Connected" />)。</summary>
     public bool IsConnected => Status == SessionStatus.Connected;
 
+    /// <summary>会话是否正在连接中(状态为 <see cref="SessionStatus.Connecting" />)。</summary>
     public bool IsConnecting => Status == SessionStatus.Connecting;
 
+    /// <summary>会话是否处于错误/离线状态(状态为 <see cref="SessionStatus.Error" />)。</summary>
     public bool IsError => Status == SessionStatus.Error;
 
+    /// <summary>是否需要显示状态标签(除断开状态外均显示)。</summary>
     public bool HasStatusTag => Status != SessionStatus.Disconnected;
 
+    /// <summary>根据当前状态返回的本地化状态标签文本。</summary>
     public string StatusTagText => Status switch
     {
         SessionStatus.Connected => Strings.Get("Svc_Active"),
@@ -97,9 +107,12 @@ public sealed class SessionTreeNodeViewModel(Guid id, string name, bool isGroup)
         }
     }
 
+    /// <summary>分组图标是否使用 info 配色(<see cref="GroupColorIndex" /> 为 1)。</summary>
     public bool IsFolderInfo => GroupColorIndex == 1;
 
+    /// <summary>分组图标是否使用 accent 配色(<see cref="GroupColorIndex" /> 为 2)。</summary>
     public bool IsFolderAccent => GroupColorIndex == 2;
 
+    /// <summary>该分组节点下的子节点集合(会话或子分组)。</summary>
     public ObservableCollection<SessionTreeNodeViewModel> Children { get; } = [];
 }

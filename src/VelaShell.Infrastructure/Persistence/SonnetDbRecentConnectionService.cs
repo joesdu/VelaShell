@@ -14,6 +14,9 @@ public sealed class SonnetDbRecentConnectionService(SonnetDbEngine engine) : IRe
 {
     private readonly SonnetDbEngine _engine = engine ?? throw new ArgumentNullException(nameof(engine));
 
+    /// <summary>
+    /// 将一次连接记录为 <c>conn_history</c> measurement 的一个数据点。
+    /// </summary>
     public Task RecordAsync(RecentConnectionEntry entry, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -43,6 +46,9 @@ public sealed class SonnetDbRecentConnectionService(SonnetDbEngine engine) : IRe
         return _engine.WritePointAsync(SonnetDbEngine.ConnHistoryMeasurement, entry.ConnectedAt, tags, fields, cancellationToken);
     }
 
+    /// <summary>
+    /// 按时间倒序返回最近成功的连接,并对同一目标去重,最多 <paramref name="limit" /> 条。
+    /// </summary>
     public async Task<List<RecentConnectionEntry>> GetRecentAsync(int limit, CancellationToken cancellationToken = default)
     {
         if (limit <= 0)
@@ -79,6 +85,9 @@ public sealed class SonnetDbRecentConnectionService(SonnetDbEngine engine) : IRe
         return entries;
     }
 
+    /// <summary>
+    /// 清空全部连接历史(重置 <c>conn_history</c> measurement)。
+    /// </summary>
     public Task ClearAsync(CancellationToken cancellationToken = default) => _engine.ResetMeasurementAsync(SonnetDbEngine.ConnHistoryMeasurement, cancellationToken);
 
     private static RecentConnectionEntry? MapRow(IReadOnlyList<string> columns, IReadOnlyList<object?> row)
