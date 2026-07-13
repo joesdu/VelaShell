@@ -118,6 +118,9 @@
   <data name="Cmd_ClearScreen" xml:space="preserve">
     <value>清除畫面</value>
   </data>
+  <data name="Cmd_ToggleLineGutter" xml:space="preserve">
+    <value>切換行號/時間側欄</value>
+  </data>
   <data name="Cmd_CloneSession" xml:space="preserve">
     <value>複製工作階段</value>
   </data>
@@ -2029,6 +2032,42 @@
   </data>
   <data name="SetTerm_ScrollOnOutput" xml:space="preserve">
     <value>有輸出時自動捲動</value>
+  </data>
+  <data name="SetTerm_ShowLineTimestamp" xml:space="preserve">
+    <value>行時間側欄</value>
+  </data>
+  <data name="SetTerm_ShowLineTimestampDesc" xml:space="preserve">
+    <value>在左側欄顯示每行的收行時間(HH:mm:ss),會佔用一定寬度。</value>
+  </data>
+  <data name="SetTerm_ShowLineNumber" xml:space="preserve">
+    <value>行號側欄</value>
+  </data>
+  <data name="SetTerm_ShowLineNumberDesc" xml:space="preserve">
+    <value>在左側欄顯示每行的緩衝區行號,會佔用一定寬度。</value>
+  </data>
+  <data name="SetTerm_ShowFoldMarker" xml:space="preserve">
+    <value>摺疊標記側欄</value>
+  </data>
+  <data name="SetTerm_ShowFoldMarkerDesc" xml:space="preserve">
+    <value>顯示摺疊列,可把較早的輸出摺疊成可展開的區域。</value>
+  </data>
+  <data name="SetTerm_GutterBlank" xml:space="preserve">
+    <value>側欄間隔</value>
+  </data>
+  <data name="SetTerm_GutterBlankDesc" xml:space="preserve">
+    <value>在側欄與輸出之間加一段約 5px 的空白間隔。</value>
+  </data>
+  <data name="Gutter_LineNumber" xml:space="preserve">
+    <value>行號</value>
+  </data>
+  <data name="Gutter_Timestamp" xml:space="preserve">
+    <value>時間戳</value>
+  </data>
+  <data name="Gutter_FoldMarker" xml:space="preserve">
+    <value>摺疊標記</value>
+  </data>
+  <data name="Gutter_Blank" xml:space="preserve">
+    <value>空白</value>
   </data>
   <data name="SetTerm_ScrollOnOutputDesc" xml:space="preserve">
     <value>// 檢視歷史時有新輸出立即捲回底部;關閉則停留在目前位置</value>

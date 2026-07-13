@@ -118,6 +118,9 @@
   <data name="Cmd_ClearScreen" xml:space="preserve">
     <value>画面をクリア</value>
   </data>
+  <data name="Cmd_ToggleLineGutter" xml:space="preserve">
+    <value>行番号/時刻の余白を切り替え</value>
+  </data>
   <data name="Cmd_CloneSession" xml:space="preserve">
     <value>セッションを複製</value>
   </data>
@@ -2029,6 +2032,42 @@
   </data>
   <data name="SetTerm_ScrollOnOutput" xml:space="preserve">
     <value>出力時に自動スクロール</value>
+  </data>
+  <data name="SetTerm_ShowLineTimestamp" xml:space="preserve">
+    <value>行の時刻余白</value>
+  </data>
+  <data name="SetTerm_ShowLineTimestampDesc" xml:space="preserve">
+    <value>各行の受信時刻(HH:mm:ss)を左側の余白に表示します(幅を消費します)。</value>
+  </data>
+  <data name="SetTerm_ShowLineNumber" xml:space="preserve">
+    <value>行番号の余白</value>
+  </data>
+  <data name="SetTerm_ShowLineNumberDesc" xml:space="preserve">
+    <value>各行のバッファ行番号を左側の余白に表示します(幅を消費します)。</value>
+  </data>
+  <data name="SetTerm_ShowFoldMarker" xml:space="preserve">
+    <value>折り畳みマーカーの余白</value>
+  </data>
+  <data name="SetTerm_ShowFoldMarkerDesc" xml:space="preserve">
+    <value>折り畳み列を表示し、以前の出力を展開可能な領域に折り畳めます。</value>
+  </data>
+  <data name="SetTerm_GutterBlank" xml:space="preserve">
+    <value>余白の間隔</value>
+  </data>
+  <data name="SetTerm_GutterBlankDesc" xml:space="preserve">
+    <value>余白と出力の間に約 5px の空白を追加します。</value>
+  </data>
+  <data name="Gutter_LineNumber" xml:space="preserve">
+    <value>行番号</value>
+  </data>
+  <data name="Gutter_Timestamp" xml:space="preserve">
+    <value>タイムスタンプ</value>
+  </data>
+  <data name="Gutter_FoldMarker" xml:space="preserve">
+    <value>折り畳みマーカー</value>
+  </data>
+  <data name="Gutter_Blank" xml:space="preserve">
+    <value>空白</value>
   </data>
   <data name="SetTerm_ScrollOnOutputDesc" xml:space="preserve">
     <value>// 履歴の閲覧中に新しい出力があると最下部へ移動します。オフの場合は現在位置を維持</value>

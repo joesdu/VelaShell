@@ -488,9 +488,16 @@ public sealed class TerminalScreen
             // segment is trimmed at the last non-blank cell (extended to cover the cursor).
             var cells = new List<TerminalCell>();
             int cursorOffset = -1;
+            DateTime? lineTimestamp = null;
             for (int r = i; r <= j; r++)
             {
                 TerminalRow row = physical[r];
+                // 行时间戳(时间/行号侧栏)必须穿过 reflow —— 否则改列宽(含开关侧栏导致的列变化)
+                // 会把历史行的时间戳清空。取该逻辑行各物理段中最后一个非空时间戳(= 最后收到输出的时间)。
+                if (row.Timestamp is { } t)
+                {
+                    lineTimestamp = t;
+                }
                 int len = r < j ? row.Columns : row.LastNonBlank() + 1;
                 if (r == cursorAbs)
                 {
@@ -503,7 +510,12 @@ public sealed class TerminalScreen
                     cells.Add(row[c]);
                 }
             }
+            int emittedStart = rebuilt.Count;
             EmitLogicalLine(cells, cursorOffset, newCols, blank, rebuilt, ref newCursorRow, ref newCursorCol);
+            for (int r = emittedStart; r < rebuilt.Count; r++)
+            {
+                rebuilt[r].Timestamp = lineTimestamp;
+            }
             i = j + 1;
         }
         if (rebuilt.Count == 0)

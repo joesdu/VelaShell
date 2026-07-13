@@ -463,6 +463,9 @@ If this keeps happening, close any other VelaShell windows and try again.</value
   <data name="Cmd_ClearScreen" xml:space="preserve">
     <value>Clear Screen</value>
   </data>
+  <data name="Cmd_ToggleLineGutter" xml:space="preserve">
+    <value>Toggle line number &amp; time gutter</value>
+  </data>
   <data name="Cmd_CloneSession" xml:space="preserve">
     <value>Clone Session</value>
   </data>
@@ -2098,6 +2101,42 @@ Paste anyway?</value>
   </data>
   <data name="SetTerm_ScrollOnOutput" xml:space="preserve">
     <value>Scroll on output</value>
+  </data>
+  <data name="SetTerm_ShowLineTimestamp" xml:space="preserve">
+    <value>Line timestamp gutter</value>
+  </data>
+  <data name="SetTerm_ShowLineTimestampDesc" xml:space="preserve">
+    <value>Show each line's receive time (HH:mm:ss) in a left gutter.</value>
+  </data>
+  <data name="SetTerm_ShowLineNumber" xml:space="preserve">
+    <value>Line number gutter</value>
+  </data>
+  <data name="SetTerm_ShowLineNumberDesc" xml:space="preserve">
+    <value>Show each line's buffer line number in a left gutter.</value>
+  </data>
+  <data name="SetTerm_ShowFoldMarker" xml:space="preserve">
+    <value>Fold marker gutter</value>
+  </data>
+  <data name="SetTerm_ShowFoldMarkerDesc" xml:space="preserve">
+    <value>Show a fold column to collapse earlier output into expandable regions.</value>
+  </data>
+  <data name="SetTerm_GutterBlank" xml:space="preserve">
+    <value>Gutter spacing</value>
+  </data>
+  <data name="SetTerm_GutterBlankDesc" xml:space="preserve">
+    <value>Add a small blank gap between the gutter and the output.</value>
+  </data>
+  <data name="Gutter_LineNumber" xml:space="preserve">
+    <value>Line number</value>
+  </data>
+  <data name="Gutter_Timestamp" xml:space="preserve">
+    <value>Timestamp</value>
+  </data>
+  <data name="Gutter_FoldMarker" xml:space="preserve">
+    <value>Fold marker</value>
+  </data>
+  <data name="Gutter_Blank" xml:space="preserve">
+    <value>Spacing</value>
   </data>
   <data name="SetTerm_ScrollOnOutputDesc" xml:space="preserve">
     <value>// Jump to the bottom on new output while viewing history; off keeps the current position</value>

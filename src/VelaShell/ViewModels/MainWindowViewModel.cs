@@ -371,6 +371,8 @@ public class MainWindowViewModel : ReactiveObject
         Commands.Register(new("edit.clear", Strings.Get("Cmd_ClearScreen"), Strings.Get("CmdCat_Edit"),
             () => ActiveTerminalTab?.TerminalEmulator.WriteInput([0x0C]),
             () => ActiveTerminalTab?.ConnectionStatus == SessionStatus.Connected));
+        Commands.Register(new("terminal.linegutter", Strings.Get("Cmd_ToggleLineGutter"), Strings.Get("CmdCat_Edit"),
+            ToggleLineGutter, Shortcut: "Ctrl+Shift+L"));
         Commands.Register(new("app.settings", Strings.Get("Cmd_OpenSettings"), Strings.Get("CmdCat_Edit"),
             () => OpenSettingsCommand.Execute().Subscribe(), Shortcut: "Ctrl+,", Icon: "Icon.settings"));
         Commands.Register(new("app.palette", Strings.Get("Cmd_CommandPalette"), Strings.Get("CmdCat_Search"),
@@ -1609,8 +1611,42 @@ public class MainWindowViewModel : ReactiveObject
         if (emulator is VelaTerminalControl control)
         {
             control.TerminalType = terminalType;
+            // 侧栏右键菜单改动 → 持久化(-= 再 += 保证单次订阅,即使本方法重入)。
+            control.GutterOptionsChanged -= OnGutterOptionsChanged;
+            control.GutterOptionsChanged += OnGutterOptionsChanged;
         }
         ApplyLiveTerminalSettings(emulator, settings, forceUtf8);
+    }
+
+    /// <summary>侧栏右键菜单切换部件后写回设置;SaveSettingsAsync 会广播到所有已打开标签,保持一致。</summary>
+    private void OnGutterOptionsChanged(bool timestamp, bool number, bool fold, bool blank)
+    {
+        if (_settingsService is null)
+        {
+            return;
+        }
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                AppSettings settings = await _settingsService.GetSettingsAsync().ConfigureAwait(false);
+                TerminalBehaviorOptions b = settings.TerminalBehavior;
+                if (b.ShowLineTimestamp == timestamp && b.ShowLineNumber == number &&
+                    b.ShowFoldMarker == fold && b.GutterBlank == blank)
+                {
+                    return;
+                }
+                b.ShowLineTimestamp = timestamp;
+                b.ShowLineNumber = number;
+                b.ShowFoldMarker = fold;
+                b.GutterBlank = blank;
+                await _settingsService.SaveSettingsAsync(settings).ConfigureAwait(false);
+            }
+            catch
+            {
+                // 写回失败只影响下次启动的初始值,不打断当前会话。
+            }
+        });
     }
 
     /// <summary>
@@ -1641,6 +1677,12 @@ public class MainWindowViewModel : ReactiveObject
         control.CursorBlink = behavior.CursorBlink;
         control.BellMode = behavior.BellMode;
         control.ScrollOnOutput = behavior.ScrollOnOutput;
+        control.ShowLineTimestamp = behavior.ShowLineTimestamp;
+        control.ShowLineNumber = behavior.ShowLineNumber;
+        control.ShowFoldMarker = behavior.ShowFoldMarker;
+        control.GutterBlank = behavior.GutterBlank;
+        control.GutterMenu = new(Strings.Get("Gutter_LineNumber"), Strings.Get("Gutter_Timestamp"),
+            Strings.Get("Gutter_FoldMarker"), Strings.Get("Gutter_Blank"));
         control.ScrollOnKeystroke = behavior.ScrollOnKeystroke;
         control.CopyOnSelect = behavior.CopyOnSelect;
         control.RightClickPaste = behavior.RightClickPaste;
@@ -1704,6 +1746,34 @@ public class MainWindowViewModel : ReactiveObject
             catch
             {
                 // 写回失败只影响下次启动的初始值,不打断当前浏览。
+            }
+        });
+    }
+
+    /// <summary>
+    /// 一键切换整条侧栏(Ctrl+Shift+L / 命令面板):任一(时间/行号)开着就全部关掉,都关着则全部打开。
+    /// 只想单独显示时间或行号的用户走设置页两个独立开关。写回持久化设置即可 ——
+    /// SaveSettingsAsync 会触发 SettingsSaved → OnSettingsSaved,自动应用到所有已打开的终端标签。
+    /// </summary>
+    private void ToggleLineGutter()
+    {
+        if (_settingsService is null)
+        {
+            return;
+        }
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                AppSettings settings = await _settingsService.GetSettingsAsync().ConfigureAwait(false);
+                bool anyOn = settings.TerminalBehavior.ShowLineTimestamp || settings.TerminalBehavior.ShowLineNumber;
+                settings.TerminalBehavior.ShowLineTimestamp = !anyOn;
+                settings.TerminalBehavior.ShowLineNumber = !anyOn;
+                await _settingsService.SaveSettingsAsync(settings).ConfigureAwait(false);
+            }
+            catch
+            {
+                // 切换失败只影响本次操作,不打断当前会话。
             }
         });
     }

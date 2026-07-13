@@ -34,6 +34,7 @@ public sealed class TerminalEmulator : IVtActions
     private int _gl; // active GL set index
 
     private bool _pendingWrap; // deferred autowrap at end of line
+    private DateTime _feedTimestamp = DateTime.Now; // 当前 Feed 到达时刻,用于给写入的行盖时间戳(行号侧栏)
 
     // Saved cursor (DECSC / DECRC, CSI s/u, DECSET 1048)
     private SavedCursor? _saved;
@@ -121,6 +122,9 @@ public sealed class TerminalEmulator : IVtActions
             Flags = _flags
         };
         Screen.SetCell(Screen.CursorX, Screen.CursorY, cell);
+        // 行时间戳取「本次 Feed 到达时刻」——按 chunk 取一次,避免逐字符 DateTime.Now;
+        // 同一行被多次写入时以最后一次为准(= 该行最后收到输出的时间)。
+        Screen.ActiveLine(Screen.CursorY).Timestamp = _feedTimestamp;
         if (width == 2)
         {
             TerminalCell trailing = cell;
@@ -172,7 +176,7 @@ public sealed class TerminalEmulator : IVtActions
             case '\v': // VT
             case '\f': // FF
                 _pendingWrap = false;
-                Screen.Index(Blank());
+                IndexAndStamp();
                 if (Modes.NewLineMode)
                 {
                     Screen.SetCursorX(0);
@@ -221,14 +225,14 @@ public sealed class TerminalEmulator : IVtActions
         switch (final)
         {
             case 'D':
-                Screen.Index(Blank());
+                IndexAndStamp();
                 break; // IND
             case 'M':
                 Screen.ReverseIndex(Blank());
                 break; // RI
             case 'E':
                 Screen.SetCursorX(0);
-                Screen.Index(Blank());
+                IndexAndStamp();
                 break; // NEL
             case 'H':
                 _tabStops[Math.Clamp(Screen.CursorX, 0, _tabStops.Length - 1)] = true;
@@ -479,6 +483,7 @@ public sealed class TerminalEmulator : IVtActions
     /// <summary>Feeds raw bytes from the host. UTF-8 is decoded before parsing.</summary>
     public void Feed(ReadOnlySpan<byte> bytes)
     {
+        _feedTimestamp = DateTime.Now;
         string decoded = _utf8.Decode(bytes);
         if (decoded.Length > 0)
         {
@@ -543,7 +548,17 @@ public sealed class TerminalEmulator : IVtActions
     private void CarriageReturnLineFeed()
     {
         Screen.SetCursorX(0);
+        IndexAndStamp();
+    }
+
+    /// <summary>
+    /// Line feed 并给落到的行盖上本次 Feed 的时间戳。这样即使是输出里的空行(仅 \r\n,无可打印字符),
+    /// 也被视为「该次输出产生的真实行」,侧栏据此显示其行号/时间;而光标从未到过的屏幕底部空行不会被盖章。
+    /// </summary>
+    private void IndexAndStamp()
+    {
         Screen.Index(Blank());
+        Screen.ActiveLine(Screen.CursorY).Timestamp = _feedTimestamp;
     }
 
     private void HorizontalTab()
