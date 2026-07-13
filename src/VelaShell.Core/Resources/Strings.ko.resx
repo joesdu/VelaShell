@@ -2045,6 +2045,30 @@
   <data name="SetTerm_ShowLineNumberDesc" xml:space="preserve">
     <value>각 줄의 버퍼 줄 번호를 왼쪽 여백에 표시합니다(너비를 차지함).</value>
   </data>
+  <data name="SetTerm_ShowFoldMarker" xml:space="preserve">
+    <value>접기 마커 여백</value>
+  </data>
+  <data name="SetTerm_ShowFoldMarkerDesc" xml:space="preserve">
+    <value>접기 열을 표시하여 이전 출력을 펼칠 수 있는 영역으로 접습니다.</value>
+  </data>
+  <data name="SetTerm_GutterBlank" xml:space="preserve">
+    <value>여백 간격</value>
+  </data>
+  <data name="SetTerm_GutterBlankDesc" xml:space="preserve">
+    <value>여백과 출력 사이에 약 5px의 공백을 추가합니다.</value>
+  </data>
+  <data name="Gutter_LineNumber" xml:space="preserve">
+    <value>행 번호</value>
+  </data>
+  <data name="Gutter_Timestamp" xml:space="preserve">
+    <value>타임스탬프</value>
+  </data>
+  <data name="Gutter_FoldMarker" xml:space="preserve">
+    <value>접기 마커</value>
+  </data>
+  <data name="Gutter_Blank" xml:space="preserve">
+    <value>공백</value>
+  </data>
   <data name="SetTerm_ScrollOnOutputDesc" xml:space="preserve">
     <value>// 기록을 보는 중 새 출력이 있으면 맨 아래로 이동, 끄면 현재 위치 유지</value>
   </data>

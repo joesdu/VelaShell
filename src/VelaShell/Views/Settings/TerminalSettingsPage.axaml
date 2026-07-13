@@ -45,6 +45,20 @@
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.ShowLineNumber}" VerticalAlignment="Center" />
     </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetTerm_ShowFoldMarker}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetTerm_ShowFoldMarkerDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.ShowFoldMarker}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetTerm_GutterBlank}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetTerm_GutterBlankDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.GutterBlank}" VerticalAlignment="Center" />
+    </Grid>
     <Border Classes="sep" />
 
     <!-- 终端类型与编码(既有能力) -->

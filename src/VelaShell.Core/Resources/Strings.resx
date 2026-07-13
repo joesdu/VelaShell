@@ -2114,6 +2114,30 @@ Paste anyway?</value>
   <data name="SetTerm_ShowLineNumberDesc" xml:space="preserve">
     <value>Show each line's buffer line number in a left gutter.</value>
   </data>
+  <data name="SetTerm_ShowFoldMarker" xml:space="preserve">
+    <value>Fold marker gutter</value>
+  </data>
+  <data name="SetTerm_ShowFoldMarkerDesc" xml:space="preserve">
+    <value>Show a fold column to collapse earlier output into expandable regions.</value>
+  </data>
+  <data name="SetTerm_GutterBlank" xml:space="preserve">
+    <value>Gutter spacing</value>
+  </data>
+  <data name="SetTerm_GutterBlankDesc" xml:space="preserve">
+    <value>Add a small blank gap between the gutter and the output.</value>
+  </data>
+  <data name="Gutter_LineNumber" xml:space="preserve">
+    <value>Line number</value>
+  </data>
+  <data name="Gutter_Timestamp" xml:space="preserve">
+    <value>Timestamp</value>
+  </data>
+  <data name="Gutter_FoldMarker" xml:space="preserve">
+    <value>Fold marker</value>
+  </data>
+  <data name="Gutter_Blank" xml:space="preserve">
+    <value>Spacing</value>
+  </data>
   <data name="SetTerm_ScrollOnOutputDesc" xml:space="preserve">
     <value>// Jump to the bottom on new output while viewing history; off keeps the current position</value>
   </data>

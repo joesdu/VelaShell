@@ -55,6 +55,34 @@ public class LineTimestampTests
     }
 
     [TestMethod]
+    public void Timestamp_SurvivesColumnReflow()
+    {
+        // 开关侧栏会改变可用列宽 → 触发主屏 reflow(重建行对象)。时间戳必须穿过 reflow,
+        // 否则切换侧栏后历史行的时间/行号信息全部丢失(用户反馈的核心 bug)。
+        TerminalEmulator e = New(40, 4);
+        e.Screen.MaxScrollback = 1000;
+        Feed(e, "alpha\r\nbeta\r\ngamma");
+        DateTime? alphaTs = e.Screen.ViewLine(0).Timestamp;
+        Assert.IsNotNull(alphaTs);
+
+        // 模拟开启侧栏:列宽变窄触发 reflow。
+        e.Resize(30, 4);
+
+        // 内容与时间戳都应保留。
+        bool found = false;
+        for (int r = 0; r < e.Screen.TotalRows; r++)
+        {
+            TerminalRow row = e.Screen.ViewLine(r);
+            if (row.GetText() == "alpha")
+            {
+                Assert.AreEqual(alphaTs, row.Timestamp, "reflow 后行时间戳应保持不变。");
+                found = true;
+            }
+        }
+        Assert.IsTrue(found, "reflow 后仍应能找到原始行 alpha。");
+    }
+
+    [TestMethod]
     public void ErasingRow_ClearsTimestamp()
     {
         TerminalEmulator e = New();

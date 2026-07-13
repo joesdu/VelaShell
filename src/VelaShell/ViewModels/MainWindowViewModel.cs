@@ -1611,8 +1611,42 @@ public class MainWindowViewModel : ReactiveObject
         if (emulator is VelaTerminalControl control)
         {
             control.TerminalType = terminalType;
+            // 侧栏右键菜单改动 → 持久化(-= 再 += 保证单次订阅,即使本方法重入)。
+            control.GutterOptionsChanged -= OnGutterOptionsChanged;
+            control.GutterOptionsChanged += OnGutterOptionsChanged;
         }
         ApplyLiveTerminalSettings(emulator, settings, forceUtf8);
+    }
+
+    /// <summary>侧栏右键菜单切换部件后写回设置;SaveSettingsAsync 会广播到所有已打开标签,保持一致。</summary>
+    private void OnGutterOptionsChanged(bool timestamp, bool number, bool fold, bool blank)
+    {
+        if (_settingsService is null)
+        {
+            return;
+        }
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                AppSettings settings = await _settingsService.GetSettingsAsync().ConfigureAwait(false);
+                TerminalBehaviorOptions b = settings.TerminalBehavior;
+                if (b.ShowLineTimestamp == timestamp && b.ShowLineNumber == number &&
+                    b.ShowFoldMarker == fold && b.GutterBlank == blank)
+                {
+                    return;
+                }
+                b.ShowLineTimestamp = timestamp;
+                b.ShowLineNumber = number;
+                b.ShowFoldMarker = fold;
+                b.GutterBlank = blank;
+                await _settingsService.SaveSettingsAsync(settings).ConfigureAwait(false);
+            }
+            catch
+            {
+                // 写回失败只影响下次启动的初始值,不打断当前会话。
+            }
+        });
     }
 
     /// <summary>
@@ -1645,6 +1679,10 @@ public class MainWindowViewModel : ReactiveObject
         control.ScrollOnOutput = behavior.ScrollOnOutput;
         control.ShowLineTimestamp = behavior.ShowLineTimestamp;
         control.ShowLineNumber = behavior.ShowLineNumber;
+        control.ShowFoldMarker = behavior.ShowFoldMarker;
+        control.GutterBlank = behavior.GutterBlank;
+        control.GutterMenu = new(Strings.Get("Gutter_LineNumber"), Strings.Get("Gutter_Timestamp"),
+            Strings.Get("Gutter_FoldMarker"), Strings.Get("Gutter_Blank"));
         control.ScrollOnKeystroke = behavior.ScrollOnKeystroke;
         control.CopyOnSelect = behavior.CopyOnSelect;
         control.RightClickPaste = behavior.RightClickPaste;

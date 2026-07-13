@@ -368,6 +368,20 @@ public class TerminalBehaviorOptions : ObservableOptions
         set => Set(ref field, value);
     }
 
+    /// <summary>开 = 侧栏显示折叠标记列,可折叠标记之前的历史内容(WindTerm 式,默认关)。</summary>
+    public bool ShowFoldMarker
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
+    /// <summary>开 = 在侧栏与命令输出之间插入约 5px 的空白间隔(默认关)。</summary>
+    public bool GutterBlank
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
     public bool ScrollOnKeystroke
     {
         get;
