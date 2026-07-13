@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -100,7 +101,6 @@ public partial class TerminalTabView : UserControl
     private string? _suppressedInput;
     private int _suggestSeq;
 
-
     private void HookSuggestions()
     {
         _suggestVm?.InputTracker.InputChanged -= OnTrackedInputChanged;
@@ -113,8 +113,10 @@ public partial class TerminalTabView : UserControl
     private void OnTrackedInputChanged()
     {
         string input = EffectiveInput();
-        SuggestDiag.Log("changed", $"view={GetHashCode():X} attached={IsAttachedToVisualTree()} known=\"{_suggestVm?.InputTracker.CurrentInput ?? "<unknown>"}\" effective=\"{input}\" suppressed=\"{_suppressedInput}\"");
-        if (string.IsNullOrEmpty(input) || input == _suppressedInput || IsSecretPromptLine())
+        SuggestDiag.Log("changed", $"""
+            view={GetHashCode():X} attached={IsAttachedToVisualTree()} known="{_suggestVm?.InputTracker.CurrentInput ?? "<unknown>"}" effective="{input}" suppressed="{_suppressedInput}"
+            """);
+        if (string.IsNullOrEmpty(input) || input == _suppressedInput || IsInteractivePromptLine())
         {
             CloseSuggestPopup(suppress: false);
             return;
@@ -124,13 +126,17 @@ public partial class TerminalTabView : UserControl
     }
 
     /// <summary>
-    /// 密码类提示行不弹补全(用户反馈:sudo 密码提示下按键仍弹智能提示)。
-    /// 判定:光标行剥掉已回显的输入(若有)后,剩余提示以冒号(全/半角)结尾且含
-    /// 密码类关键词 —— 覆盖 "[sudo] password for pi:"、"xxx's password:"、
-    /// "Enter passphrase for key:"、"密码:" 等。密码输入无回显,该特征在整个
-    /// 键入过程中保持稳定;双条件(冒号 + 关键词)把误拦截压到最低。
+    /// 交互提示行不弹命令补全(用户反馈:sudo 密码提示、apt 的 "[Y/n]" 确认行下按键
+    /// 仍弹智能提示)。把光标行末尾已回显的输入剥掉后,按三类特征判定"此刻不是在编写
+    /// shell 命令,而是在回答程序的提问":
+    ///   ① 密码/口令/验证码 —— 冒号(全/半角)结尾 + 密码类关键词;
+    ///   ② 是否类确认      —— 结尾括号选项 [Y/n]/(yes/no)/[Y/I/N/O/D/Z]/[是/否],
+    ///                        或整行以问号结尾(cp/rm 的 "overwrite 'x'?"/"remove 'x'?");
+    ///   ③ 编号选择菜单    —— 冒号结尾 + "选择/编号/选项/number/selection/choice" 等词
+    ///                        (update-alternatives、tzdata、npm init 的序号选单)。
+    /// 这些场景把整条历史命令塞进程序输入里有害无益,一律不弹(含 Alt+Enter 主动召出)。
     /// </summary>
-    private bool IsSecretPromptLine()
+    private bool IsInteractivePromptLine()
     {
         if (_termControl is null)
         {
@@ -138,7 +144,7 @@ public partial class TerminalTabView : UserControl
         }
         try
         {
-            return IsSecretPrompt(_termControl.GetBufferLine(_termControl.CursorRow), EffectiveInput());
+            return IsInteractivePrompt(_termControl.GetBufferLine(_termControl.CursorRow), EffectiveInput());
         }
         catch
         {
@@ -146,13 +152,31 @@ public partial class TerminalTabView : UserControl
         }
     }
 
-    internal static bool IsSecretPrompt(string line, string typed)
+    /// <summary>剥掉光标行末尾已回显的输入,只留下程序打印的提示部分。</summary>
+    private static string StripEcho(string line, string typed)
     {
         string prompt = line.TrimEnd();
         if (typed.Length > 0 && prompt.EndsWith(typed, StringComparison.Ordinal))
         {
             prompt = prompt[..^typed.Length].TrimEnd();
         }
+        return prompt;
+    }
+
+    /// <summary>密码/是否/编号/REPL 四类交互提示行的合并判定(供智能补全与 Alt+Enter 共用)。</summary>
+    internal static bool IsInteractivePrompt(string line, string typed)
+    {
+        string prompt = StripEcho(line, typed);
+        return prompt.Length != 0
+            && (IsSecretPromptCore(prompt) || IsChoicePromptCore(prompt)
+                || IsSelectionPromptCore(prompt) || IsReplPromptCore(prompt));
+    }
+
+    // 单独保留:密码类比"是否/编号"更严格,某些位置(如口令输入)只想拦密码而不误伤确认行。
+    internal static bool IsSecretPrompt(string line, string typed) => IsSecretPromptCore(StripEcho(line, typed));
+
+    private static bool IsSecretPromptCore(string prompt)
+    {
         if (prompt.Length == 0 || (prompt[^1] != ':' && prompt[^1] != '：'))
         {
             return false;
@@ -166,6 +190,58 @@ public partial class TerminalTabView : UserControl
         }
         return false;
     }
+
+    /// <summary>
+    /// 是否类确认行:结尾带斜杠分隔的括号选项([Y/n]/(yes/no)/[是/否] 等),或整行以问号
+    /// 结尾(未显式列出选项的 "overwrite 'x'?"/"是否覆盖?")。问号分支要求提示含空格或
+    /// 非 ASCII 字(即成句),排除主题里以单个 "?" 作装饰的提示符。
+    /// </summary>
+    private static bool IsChoicePromptCore(string prompt)
+    {
+        char tail = prompt[^1];
+        if ((tail == '?' || tail == '？') && (prompt.Contains(' ') || HasNonAscii(prompt)))
+        {
+            return true;
+        }
+        return ChoiceTokenRegex().IsMatch(prompt);
+    }
+
+    private static bool HasNonAscii(string s)
+    {
+        foreach (char c in s)
+        {
+            if (c > 0x7F)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>编号选择菜单:冒号结尾且含"选择/编号/选项/number/selection/choice"等词。</summary>
+    private static bool IsSelectionPromptCore(string prompt)
+    {
+        if (prompt[^1] is not ':' and not '：')
+        {
+            return false;
+        }
+        foreach (string keyword in (ReadOnlySpan<string>)["selection", "select", "choose", "choice", "number", "请选择", "请输入", "选择", "编号", "序号", "选项"])
+        {
+            if (prompt.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// REPL/交互客户端提示符:Python(">>>" 主提示、"..." 续行,均按整段精确匹配)、
+    /// mysql/mariadb/sqlite/psql、IPython、gdb/lldb/pdb、irb 等。裸 ">"(node/R/mongosh)
+    /// 与用户自定义 shell 提示符无法区分,刻意不纳入,以免误伤正常补全。
+    /// </summary>
+    private static bool IsReplPromptCore(string prompt) =>
+        prompt is ">>>" or "..." || ReplPromptRegex().IsMatch(prompt);
 
     /// <summary>
     /// 建议所依据的"当前输入":确定态用整行;未知态(按过方向键/F 键后)降级为
@@ -247,10 +323,11 @@ public partial class TerminalTabView : UserControl
     private bool HandleSuggestionKey(KeyEventArgs e)
     {
         // Alt+Enter:主动弹出补全面板(空输入 = 快捷命令全量 + 最近历史)。
-        // 密码提示行连主动召出也不给:把整条历史命令插进不回显的口令输入里有害无益。
+        // 交互提示行(密码/是否确认/编号选单)连主动召出也不给:把整条历史命令插进
+        // 程序输入里有害无益。
         if (e is { Key: Key.Enter, KeyModifiers: Avalonia.Input.KeyModifiers.Alt })
         {
-            if (IsSecretPromptLine())
+            if (IsInteractivePromptLine())
             {
                 e.Handled = true;
                 return true;
@@ -683,4 +760,25 @@ public partial class TerminalTabView : UserControl
             _ => KeyCode.None
         };
     }
+
+    // 结尾括号选项:[Y/n]、(yes/no)、[Y/I/N/O/D/Z]、[是/否],允许尾随 ?/:/。及空白。
+    // 每段选项限 1~3 个字母,避免误伤 prompt 主题里的 "(feature/xxx)" 分支括号。
+    [GeneratedRegex(@"[\[(]\s*\p{L}{1,3}(?:\s*/\s*\p{L}{1,3})+\s*[\])]\s*[?？:：.。]?\s*$", System.Text.RegularExpressions.RegexOptions.Compiled)]
+    private static partial Regex ChoiceTokenRegex();
+
+    /*
+        @"(?:(?:mysql|mariadb|sqlite|clickhouse|ftp|sftp|telnet)>" +   // 具名 SQL/网络客户端
+        @"|MariaDB \[[^\]]*\]>" +                                       // MariaDB [db]>
+        @"|\w+=[#>]" +                                                  // postgres 就绪提示:db=# / db=>
+        @"|In \[\d+\]:" +                                               // IPython In [n]:
+        @"|\((?:gdb|lldb|Pdb)\)" +                                      // (gdb) (lldb) (Pdb)
+        @"|i?pdb>" +                                                    // pdb> / ipdb>
+        @"|irb\([^)]*\)[^>\n]*>" +                                      // irb(main):001:0>
+        @")\s*$"
+    */
+    // REPL 交互提示符:此时补全给的是 shell 快捷命令,语义上是错的,故一并不弹。
+    // 只匹配"带库名/工具名"等高辨识度形态;裸 ">"(node/R/mongosh)与自定义 shell 提示符
+    // 无法区分,一律不拦,避免误伤把 PS1 设成 "> " 的用户。
+    [GeneratedRegex(@"(?:(?:mysql|mariadb|sqlite|clickhouse|ftp|sftp|telnet)>|MariaDB \[[^\]]*\]>|\w+=[#>]|In \[\d+\]:|\((?:gdb|lldb|Pdb)\)|i?pdb>|irb\([^)]*\)[^>\n]*>)\s*$", System.Text.RegularExpressions.RegexOptions.Compiled)]
+    private static partial Regex ReplPromptRegex();
 }
