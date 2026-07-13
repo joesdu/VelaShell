@@ -4,6 +4,7 @@ using VelaShell.Core.Models;
 
 namespace VelaShell.Core.Sftp;
 
+/// <summary>SFTP 传输调度器:把上传/下载任务排入无界队列,按并发上限并行执行,并跟踪其状态与进度。</summary>
 public class TransferManager : ITransferManager
 {
     private readonly ConcurrentDictionary<Guid, TransferTask> _allTransfers = new();
@@ -16,8 +17,11 @@ public class TransferManager : ITransferManager
     private bool _disposed;
     private Task? _processorTask;
 
+    /// <summary>创建不带执行委托的传输调度器(仅做状态/队列管理,不实际搬运数据)。</summary>
     public TransferManager() : this(null) { }
 
+    /// <summary>创建传输调度器,并指定实际执行单个传输任务的 <paramref name="executor" /> 委托。</summary>
+    /// <param name="executor">实际执行传输并上报进度的委托;为 <c>null</c> 时任务直接标记完成。</param>
     public TransferManager(TransferExecutor? executor)
     {
         _executor = executor;
@@ -29,6 +33,7 @@ public class TransferManager : ITransferManager
         });
     }
 
+    /// <summary>最大并发传输数(默认 3);只能在开始处理任务前修改,值须大于 0。</summary>
     public int MaxConcurrentTransfers
     {
         get;
@@ -48,10 +53,13 @@ public class TransferManager : ITransferManager
         }
     } = 3;
 
+    /// <summary>当前正在传输(<see cref="TransferStatus.InProgress" />)的任务快照。</summary>
     public IReadOnlyList<TransferTask> ActiveTransfers => [.. _allTransfers.Values.Where(t => t.Status == TransferStatus.InProgress)];
 
+    /// <summary>当前处于排队(<see cref="TransferStatus.Queued" />)等待执行的任务快照。</summary>
     public IReadOnlyList<TransferTask> QueuedTransfers => [.. _allTransfers.Values.Where(t => t.Status == TransferStatus.Queued)];
 
+    /// <summary>将传输任务加入队列并确保处理循环运行;任务即刻置为已排队状态。</summary>
     public Task QueueTransferAsync(TransferTask task, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(task);
@@ -65,6 +73,7 @@ public class TransferManager : ITransferManager
         return Task.CompletedTask;
     }
 
+    /// <summary>按标识取消指定传输:标记为已取消并触发其取消令牌。</summary>
     public Task CancelTransferAsync(Guid transferId, CancellationToken cancellationToken = default)
     {
         // ReSharper disable once InvertIf
@@ -79,8 +88,10 @@ public class TransferManager : ITransferManager
         return Task.CompletedTask;
     }
 
+    /// <summary>按标识获取传输任务;不存在时返回 <c>null</c>。</summary>
     public TransferTask? GetTransfer(Guid transferId) => _allTransfers.GetValueOrDefault(transferId);
 
+    /// <summary>释放调度器:结束队列、取消所有在途任务并释放相关资源。</summary>
     public void Dispose()
     {
         if (_disposed)

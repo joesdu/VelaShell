@@ -9,14 +9,18 @@ namespace VelaShell.Docking.Model;
 /// </summary>
 public sealed class DockSplit : DockNode
 {
+    /// <summary>创建指定排列方向的分栏,并开始跟踪子节点集合以维护父子关系。</summary>
+    /// <param name="orientation">子节点的排列方向(水平/垂直)。</param>
     public DockSplit(DockOrientation orientation)
     {
         Orientation = orientation;
         Children.CollectionChanged += OnChildrenChanged;
     }
 
+    /// <summary>子节点的排列方向(水平或垂直),构造后不可变。</summary>
     public DockOrientation Orientation { get; }
 
+    /// <summary>本分栏的子节点集合;增删时自动维护子节点的 <see cref="DockNode.Parent" />。</summary>
     public ObservableCollection<DockNode> Children { get; } = [];
 
     private void OnChildrenChanged(object? sender, NotifyCollectionChangedEventArgs e)

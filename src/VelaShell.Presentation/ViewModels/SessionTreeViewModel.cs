@@ -8,6 +8,7 @@ using VelaShell.Core.Resources;
 
 namespace VelaShell.Presentation.ViewModels;
 
+/// <summary>会话树视图模型:管理分组/会话节点、选中项与右键菜单命令,并向宿主转发连接、编辑、SFTP 等操作请求。</summary>
 public sealed class SessionTreeViewModel : ReactiveObject
 {
     private readonly ISessionRepository _repository;
@@ -21,6 +22,8 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
     private bool _hasNoSessions;
 
+    /// <summary>用指定的会话仓储构造视图模型,并初始化各右键菜单命令及其可用性约束。</summary>
+    /// <param name="repository">提供会话与分组读写、持久化的仓储。</param>
     public SessionTreeViewModel(ISessionRepository repository)
     {
         _repository = repository;
@@ -40,16 +43,20 @@ public sealed class SessionTreeViewModel : ReactiveObject
         MoveToGroupCommand = ReactiveCommand.Create<SessionTreeNodeViewModel>(MoveSelectedToGroup);
     }
 
+    /// <summary>树的根级节点集合,包含各分组节点及直接挂在根级的未分组会话。</summary>
     public ObservableCollection<SessionTreeNodeViewModel> Nodes { get; }
 
+    /// <summary>是否当前没有任何会话,用于驱动空状态提示的显示。</summary>
     public bool HasNoSessions
     {
         get => _hasNoSessions;
         private set => this.RaiseAndSetIfChanged(ref _hasNoSessions, value);
     }
 
+    /// <summary>无会话时的空状态提示文案(本地化)。</summary>
     public static string EmptyStateMessage => Strings.Get("Svc_AddFirstConnection");
 
+    /// <summary>当前选中的树节点;命令的可用性依据其是否为非分组会话节点判定。</summary>
     public SessionTreeNodeViewModel? SelectedNode
     {
         get;
@@ -59,23 +66,32 @@ public sealed class SessionTreeViewModel : ReactiveObject
     /// <summary>分组节点(供“移动到分组”子菜单绑定);随 LoadTreeAsync 同步。</summary>
     public ObservableCollection<SessionTreeNodeViewModel> GroupNodes { get; } = [];
 
+    /// <summary>从仓储加载并重建整棵会话树。</summary>
     public ReactiveCommand<Unit, Unit> LoadCommand { get; }
 
+    /// <summary>连接选中的会话,触发 <see cref="ConnectRequested" />。</summary>
     public ReactiveCommand<Unit, Unit> ConnectCommand { get; }
 
+    /// <summary>编辑选中的会话,触发 <see cref="EditRequested" />。</summary>
     public ReactiveCommand<Unit, Unit> EditSessionCommand { get; }
 
+    /// <summary>删除选中的会话(含落库与树节点移除)。</summary>
     public ReactiveCommand<Unit, Unit> DeleteSessionCommand { get; }
 
     // 复制选中的连接为“<名称> (副本)”并落库
+    /// <summary>复制选中的会话为“&lt;名称&gt; (副本)”并落库,随后重建树。</summary>
     public ReactiveCommand<Unit, Unit> DuplicateSessionCommand { get; }
 
+    /// <summary>为选中的会话打开 SFTP,触发 <see cref="OpenSftpRequested" />。</summary>
     public ReactiveCommand<Unit, Unit> OpenSftpCommand { get; }
 
+    /// <summary>为选中的会话打开端口转发,触发 <see cref="PortForwardRequested" />。</summary>
     public ReactiveCommand<Unit, Unit> PortForwardCommand { get; }
 
+    /// <summary>断开选中会话的连接,触发 <see cref="DisconnectRequested" />。</summary>
     public ReactiveCommand<Unit, Unit> DisconnectCommand { get; }
 
+    /// <summary>对选中的会话发起连接诊断,触发 <see cref="DiagnoseRequested" />。</summary>
     public ReactiveCommand<Unit, Unit> DiagnoseCommand { get; }
 
     /// <summary>把选中的会话移动到指定分组节点(参数为“移动到分组”子菜单项)。</summary>
@@ -116,6 +132,8 @@ public sealed class SessionTreeViewModel : ReactiveObject
         }
     }
 
+    /// <summary>将一个会话加入树:无分组的挂到树根,否则挂到对应分组节点下,并刷新空状态。</summary>
+    /// <param name="session">要加入树的会话配置。</param>
     public void AddSession(SessionProfile session)
     {
         _sessionCache[session.Id] = session;
@@ -138,6 +156,9 @@ public sealed class SessionTreeViewModel : ReactiveObject
         RefreshHasNoSessions();
     }
 
+    /// <summary>把指定会话移动到目标分组并落库;<paramref name="targetGroupId" /> 为 <see cref="Guid.Empty" /> 表示移回树根(未分组)。</summary>
+    /// <param name="sessionId">要移动的会话标识。</param>
+    /// <param name="targetGroupId">目标分组标识;<see cref="Guid.Empty" /> 表示未分组(树根)。</param>
     public void MoveSessionToGroup(Guid sessionId, Guid targetGroupId)
     {
         SessionTreeNodeViewModel? sourceNode = FindSessionNode(sessionId, out SessionTreeNodeViewModel? sourceGroup);

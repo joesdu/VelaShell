@@ -25,18 +25,21 @@ public class LucideIcon : Control
         AffectsRender<LucideIcon>(DataProperty, ForegroundProperty);
     }
 
+    /// <summary>要绘制的 lucide 路径几何(以其原生 24×24 视图框为准)。</summary>
     public Geometry? Data
     {
         get => GetValue(DataProperty);
         set => SetValue(DataProperty, value);
     }
 
+    /// <summary>描边画刷(对应设计中的图标填充令牌)。</summary>
     public IBrush? Foreground
     {
         get => GetValue(ForegroundProperty);
         set => SetValue(ForegroundProperty, value);
     }
 
+    /// <summary>Measures the control, falling back to the design's default icon size when unconstrained.</summary>
     protected override Size MeasureOverride(Size availableSize)
     {
         // Default to the design's most common icon size when unconstrained.
@@ -45,6 +48,7 @@ public class LucideIcon : Control
         return new(w, h);
     }
 
+    /// <summary>Draws the icon geometry with the current foreground brush.</summary>
     public override void Render(DrawingContext context)
     {
         Geometry? geometry = Data;

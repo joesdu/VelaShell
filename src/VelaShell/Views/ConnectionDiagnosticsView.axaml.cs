@@ -7,8 +7,10 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 
+/// <summary>连接诊断窗口,打开时自动执行连通性检测并支持导出诊断报告。</summary>
 public partial class ConnectionDiagnosticsView : Window
 {
+    /// <summary>初始化连接诊断窗口,并在打开时触发首轮诊断。</summary>
     public ConnectionDiagnosticsView()
     {
         InitializeComponent();

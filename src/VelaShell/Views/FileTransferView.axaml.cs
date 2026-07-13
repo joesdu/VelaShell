@@ -3,8 +3,10 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 
+/// <summary>File transfer view showing transfer progress and result toasts.</summary>
 public partial class FileTransferView : UserControl
 {
+    /// <summary>Initializes the view and wires pointer hover to pause the toast auto-hide.</summary>
     public FileTransferView()
     {
         InitializeComponent();

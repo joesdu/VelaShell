@@ -18,16 +18,26 @@ namespace VelaShell.Infrastructure.Persistence;
 /// </summary>
 public sealed class SonnetDbEngine : IDisposable
 {
+    /// <summary>服务器分组文档集合名。</summary>
     public const string GroupsCollection = "session_groups";
+    /// <summary>会话连接配置文档集合名(按 $.groupId 建索引)。</summary>
     public const string ProfilesCollection = "session_profiles";
+    /// <summary>应用配置文档集合名(settings/state 等单文档)。</summary>
     public const string ConfigCollection = "app_config";
+    /// <summary>已知主机指纹文档集合名。</summary>
     public const string KnownHostsCollection = "known_hosts";
+    /// <summary>界面状态文档集合名。</summary>
     public const string UiConfigCollection = "ui_config";
+    /// <summary>快捷命令片段文档集合名。</summary>
     public const string QuickCommandsCollection = "quick_commands";
+    /// <summary>会话录制元数据文档集合名。</summary>
     public const string RecordingsCollection = "recordings";
 
+    /// <summary>最近连接历史时序 measurement 名。</summary>
     public const string ConnHistoryMeasurement = "conn_history";
+    /// <summary>安全审计日志时序 measurement 名。</summary>
     public const string AuditLogMeasurement = "audit_log";
+    /// <summary>会话录制分块数据时序 measurement 名。</summary>
     public const string RecordingChunksMeasurement = "session_recording_chunks";
 
     private readonly Tsdb _db;
@@ -35,9 +45,11 @@ public sealed class SonnetDbEngine : IDisposable
     private readonly ConcurrentDictionary<string, DocumentCollectionStore> _stores = new(StringComparer.Ordinal);
     private bool _disposed;
 
+    /// <summary>以应用存储路径中的 SonnetDB 目录构造引擎。</summary>
     public SonnetDbEngine(VelaShellStoragePaths paths)
         : this((paths ?? throw new ArgumentNullException(nameof(paths))).SonnetDbDirectory) { }
 
+    /// <summary>以指定根目录打开(必要时创建)SonnetDB 并初始化 schema。</summary>
     public SonnetDbEngine(string rootDirectory)
     {
         if (string.IsNullOrWhiteSpace(rootDirectory))
@@ -49,6 +61,7 @@ public sealed class SonnetDbEngine : IDisposable
         EnsureSchema();
     }
 
+    /// <summary>释放所有文档集合存储与底层数据库句柄;线程安全且幂等。</summary>
     public void Dispose()
     {
         _gate.Wait();

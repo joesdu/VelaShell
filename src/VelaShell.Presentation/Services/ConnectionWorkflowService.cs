@@ -5,6 +5,10 @@ using VelaShell.Core.Ssh;
 
 namespace VelaShell.Presentation.Services;
 
+/// <summary>
+/// 连接工作流服务:统筹会话配置的加载、保存、连接测试与实际连接,
+/// 并在连接前后处理密码持久化策略、跳板链构建与历史/审计记录。
+/// </summary>
 public sealed class ConnectionWorkflowService(
     ISessionRepository sessionRepository,
     ISshConnectionService sshConnectionService,
@@ -16,6 +20,7 @@ public sealed class ConnectionWorkflowService(
     private readonly ISessionRepository _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
     private readonly ISshConnectionService _sshConnectionService = sshConnectionService ?? throw new ArgumentNullException(nameof(sshConnectionService));
 
+    /// <summary>获取全部已保存的会话配置,按最近连接时间倒序、再按名称升序排列。</summary>
     public async Task<IReadOnlyList<SessionProfile>> GetSavedProfilesAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -25,6 +30,7 @@ public sealed class ConnectionWorkflowService(
                .ThenBy(profile => profile.Name, StringComparer.OrdinalIgnoreCase)];
     }
 
+    /// <summary>校验并保存会话配置(保存不强制凭据),按记住密码策略决定是否落盘密码。</summary>
     public async Task<SessionProfile> SaveProfileAsync(SessionProfile profile, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(profile);
@@ -36,6 +42,7 @@ public sealed class ConnectionWorkflowService(
         return profile;
     }
 
+    /// <summary>测试连接:建立后立即断开,返回成功与否及失败原因,不抛出连接异常。</summary>
     public async Task<ConnectionTestResult> TestConnectionAsync(SessionProfile profile, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(profile);
@@ -53,6 +60,7 @@ public sealed class ConnectionWorkflowService(
         }
     }
 
+    /// <summary>连接指定配置:成功后更新最近连接时间并持久化,同时记录连接历史与审计。</summary>
     public async Task<SshSession> ConnectProfileAsync(SessionProfile profile, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(profile);
@@ -76,6 +84,7 @@ public sealed class ConnectionWorkflowService(
         return session;
     }
 
+    /// <summary>断开指定会话 Id 对应的 SSH 连接。</summary>
     public Task DisconnectAsync(Guid sessionId, CancellationToken cancellationToken = default) => _sshConnectionService.DisconnectAsync(sessionId, cancellationToken);
 
     /// <summary>

@@ -12,6 +12,7 @@ public sealed class TerminalScreen
     private readonly List<TerminalRow> _scrollback = [];
     private TerminalRow[] _lines;
 
+    /// <summary>Creates a screen of the given size with the given scrollback capacity.</summary>
     public TerminalScreen(int columns, int rows, int maxScrollback = 10_000)
     {
         Columns = Math.Max(1, columns);
@@ -22,14 +23,19 @@ public sealed class TerminalScreen
         ScrollBottom = Rows - 1;
     }
 
+    /// <summary>Number of columns in the active screen.</summary>
     public int Columns { get; private set; }
 
+    /// <summary>Number of rows in the active screen.</summary>
     public int Rows { get; private set; }
 
+    /// <summary>Maximum number of scrollback lines retained for the main buffer.</summary>
     public int MaxScrollback { get; set; }
 
+    /// <summary>Current cursor column (0-based).</summary>
     public int CursorX { get; private set; }
 
+    /// <summary>Current cursor row within the active screen (0-based).</summary>
     public int CursorY { get; private set; }
 
     /// <summary>Top margin of the scroll region (0-based, inclusive).</summary>
@@ -38,6 +44,7 @@ public sealed class TerminalScreen
     /// <summary>Bottom margin of the scroll region (0-based, inclusive).</summary>
     public int ScrollBottom { get; private set; }
 
+    /// <summary>Current number of lines held in scrollback.</summary>
     public int ScrollbackCount => _scrollback.Count;
 
     /// <summary>Total rows available to the viewport (scrollback + active screen).</summary>
@@ -53,6 +60,7 @@ public sealed class TerminalScreen
         return lines;
     }
 
+    /// <summary>Returns the active-screen row at the given index (clamped into range).</summary>
     public TerminalRow ActiveLine(int screenRow) => _lines[Math.Clamp(screenRow, 0, Rows - 1)];
 
     /// <summary>
@@ -71,8 +79,10 @@ public sealed class TerminalScreen
         return _lines[absoluteRow - _scrollback.Count];
     }
 
+    /// <summary>Returns a mutable reference to the cell at (<paramref name="x" />, <paramref name="y" />).</summary>
     public ref TerminalCell CellRef(int x, int y) => ref _lines[y].CellRef(x);
 
+    /// <summary>Writes a cell at (<paramref name="x" />, <paramref name="y" />); out-of-range coordinates are ignored.</summary>
     public void SetCell(int x, int y, in TerminalCell cell)
     {
         if ((uint)x < (uint)Columns && (uint)y < (uint)Rows)
@@ -81,6 +91,7 @@ public sealed class TerminalScreen
         }
     }
 
+    /// <summary>Reads the cell at (<paramref name="x" />, <paramref name="y" />); returns <see cref="TerminalCell.Empty" /> when out of range.</summary>
     public TerminalCell GetCell(int x, int y)
     {
         if ((uint)x < (uint)Columns && (uint)y < (uint)Rows)
@@ -92,19 +103,23 @@ public sealed class TerminalScreen
 
     // ---- Cursor -------------------------------------------------------------
 
+    /// <summary>Moves the cursor to (<paramref name="x" />, <paramref name="y" />), clamped into the screen bounds.</summary>
     public void SetCursor(int x, int y)
     {
         CursorX = Math.Clamp(x, 0, Columns - 1);
         CursorY = Math.Clamp(y, 0, Rows - 1);
     }
 
+    /// <summary>Sets the cursor column, clamped into range.</summary>
     public void SetCursorX(int x) => CursorX = Math.Clamp(x, 0, Columns - 1);
 
+    /// <summary>Sets the cursor row, clamped into range.</summary>
     public void SetCursorY(int y) => CursorY = Math.Clamp(y, 0, Rows - 1);
 
     /// <summary>Places the cursor exactly one past the last column, used to defer autowrap.</summary>
     public void SetCursorAtEndOfLine() => CursorX = Columns;
 
+    /// <summary>Sets the vertical scroll region (DECSTBM); falls back to the full screen on an invalid range.</summary>
     public void SetMargins(int top, int bottom)
     {
         if (top < 0)
@@ -124,6 +139,7 @@ public sealed class TerminalScreen
         ScrollBottom = bottom;
     }
 
+    /// <summary>Resets the scroll region to span the whole screen.</summary>
     public void ResetMargins()
     {
         ScrollTop = 0;
@@ -187,6 +203,7 @@ public sealed class TerminalScreen
         }
     }
 
+    /// <summary>Scrolls the scroll region down by <paramref name="count" /> lines, inserting blank rows at the top margin.</summary>
     public void ScrollDown(int count, in TerminalCell blank)
     {
         count = Math.Clamp(count, 0, ScrollBottom - ScrollTop + 1);
@@ -204,6 +221,7 @@ public sealed class TerminalScreen
 
     // ---- Line editing (within scroll region) --------------------------------
 
+    /// <summary>IL — inserts <paramref name="count" /> blank lines at the cursor row, pushing rows down within the scroll region.</summary>
     public void InsertLines(int count, in TerminalCell blank)
     {
         if (CursorY < ScrollTop || CursorY > ScrollBottom)
@@ -223,6 +241,7 @@ public sealed class TerminalScreen
         }
     }
 
+    /// <summary>DL — deletes <paramref name="count" /> lines at the cursor row, pulling rows up within the scroll region.</summary>
     public void DeleteLines(int count, in TerminalCell blank)
     {
         if (CursorY < ScrollTop || CursorY > ScrollBottom)
@@ -242,10 +261,13 @@ public sealed class TerminalScreen
         }
     }
 
+    /// <summary>ICH — inserts <paramref name="count" /> blank cells at the cursor, shifting the rest of the line right.</summary>
     public void InsertChars(int count, in TerminalCell blank) => _lines[CursorY].InsertCells(CursorX, count, blank);
 
+    /// <summary>DCH — deletes <paramref name="count" /> cells at the cursor, shifting the rest of the line left.</summary>
     public void DeleteChars(int count, in TerminalCell blank) => _lines[CursorY].DeleteCells(CursorX, count, blank);
 
+    /// <summary>ECH — erases <paramref name="count" /> cells starting at the cursor without shifting the line.</summary>
     public void EraseChars(int count, in TerminalCell blank) => _lines[CursorY].FillRange(CursorX, CursorX + count, blank);
 
     // ---- Erase --------------------------------------------------------------
@@ -308,6 +330,7 @@ public sealed class TerminalScreen
 
     // ---- Buffer switching & resize -----------------------------------------
 
+    /// <summary>Clears every active line to blank, homes the cursor, and resets the scroll margins.</summary>
     public void ResetToBlank(in TerminalCell blank)
     {
         foreach (TerminalRow line in _lines)
@@ -319,6 +342,7 @@ public sealed class TerminalScreen
         ResetMargins();
     }
 
+    /// <summary>Discards all scrollback history.</summary>
     public void ClearScrollback() => _scrollback.Clear();
 
     /// <summary>
@@ -332,8 +356,10 @@ public sealed class TerminalScreen
         return previous;
     }
 
+    /// <summary>Returns the live active-line array (not a copy).</summary>
     public TerminalRow[] SnapshotLines() => _lines;
 
+    /// <summary>Allocates a fresh screen-sized array of blank rows without installing it.</summary>
     public TerminalRow[] CreateBlankLines(in TerminalCell blank)
     {
         TerminalRow[] lines = NewLines(Rows, Columns);
@@ -344,6 +370,10 @@ public sealed class TerminalScreen
         return lines;
     }
 
+    /// <summary>
+    /// Resizes the screen to <paramref name="columns" />×<paramref name="rows" />, reflowing the primary
+    /// buffer on column changes and retiring/pulling rows through scrollback on row changes.
+    /// </summary>
     public void Resize(int columns, int rows, in TerminalCell blank)
     {
         columns = Math.Max(1, columns);

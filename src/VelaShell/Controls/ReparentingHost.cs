@@ -15,6 +15,7 @@ namespace VelaShell.Controls;
 /// </summary>
 public sealed class ReparentingHost : Decorator
 {
+    /// <summary>标识 <see cref="Target" /> 样式化属性。</summary>
     public static readonly StyledProperty<Control?> TargetProperty =
         AvaloniaProperty.Register<ReparentingHost, Control?>(nameof(Target));
 
@@ -23,18 +24,24 @@ public sealed class ReparentingHost : Decorator
         TargetProperty.Changed.AddClassHandler<ReparentingHost>((host, _) => host.Reattach());
     }
 
+    /// <summary>
+    /// 需要被独占托管的共享控件(如实时终端画面)。设置后本宿主会先将其从原父级
+    /// 分离,再收养为自身子级,确保该控件在可视树中始终只有一个父级。
+    /// </summary>
     public Control? Target
     {
         get => GetValue(TargetProperty);
         set => SetValue(TargetProperty, value);
     }
 
+    /// <summary>挂载到可视树时将目标控件重新收养为子级。</summary>
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
         Reattach();
     }
 
+    /// <summary>从可视树分离时释放对目标控件的收养,避免重复父级。</summary>
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);

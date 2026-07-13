@@ -29,6 +29,10 @@ using VelaShell.Terminal.Rendering;
 
 namespace VelaShell.ViewModels;
 
+/// <summary>
+/// 主窗口视图模型:应用外壳的中枢,统筹终端标签、SSH/本地会话生命周期、停靠工作区、
+/// 侧边栏、状态栏、命令面板、SFTP 文件面板与隧道面板,并串联设置、连接工作流与各项服务。
+/// </summary>
 public class MainWindowViewModel : ReactiveObject
 {
     /// <summary>
@@ -102,6 +106,11 @@ public class MainWindowViewModel : ReactiveObject
     private DispatcherTimer? _statusMetricsTimer;
     private TabBarViewModel _tabBar;
 
+    /// <summary>
+    /// 用可选注入的各项服务构造主窗口视图模型:装配命令补全、停靠工作区、侧边栏/标签栏/状态栏、
+    /// SFTP 面板与命令注册,并订阅设置保存、外观预览、安全告警等事件、启动状态栏指标轮询。
+    /// 无 UI 的单元测试可全部传 null 构造。
+    /// </summary>
     public MainWindowViewModel(
         IConnectionWorkflowService? connectionWorkflowService = null,
         ISshConnectionService? sshConnectionService = null,
@@ -229,6 +238,7 @@ public class MainWindowViewModel : ReactiveObject
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>隧道面板当前是否展开显示。</summary>
     public bool IsTunnelPanelOpen
     {
         get;
@@ -241,6 +251,7 @@ public class MainWindowViewModel : ReactiveObject
     /// <summary>The Ctrl+P / Ctrl+K command palette overlay.</summary>
     public CommandPaletteViewModel CommandPalette { get; }
 
+    /// <summary>打开命令面板(Ctrl+P / Ctrl+K)的命令。</summary>
     public ReactiveCommand<Unit, Unit> OpenCommandPaletteCommand { get; }
 
     /// <summary>
@@ -259,47 +270,55 @@ public class MainWindowViewModel : ReactiveObject
     /// <summary>窗口注入的多行粘贴确认弹窗(设置 → 终端 → 粘贴时确认多行内容)。</summary>
     public Func<string, Task<bool>>? MultilinePasteConfirmer { get; set; }
 
+    /// <summary>左侧边栏视图模型:资源管理器会话树与最近连接。</summary>
     public SidebarViewModel Sidebar
     {
         get => _sidebar;
         set => this.RaiseAndSetIfChanged(ref _sidebar, value);
     }
 
+    /// <summary>标签栏视图模型:管理终端标签的集合与激活项。</summary>
     public TabBarViewModel TabBar
     {
         get => _tabBar;
         set => this.RaiseAndSetIfChanged(ref _tabBar, value);
     }
 
+    /// <summary>底部状态栏视图模型:连接状态、延迟、窗口尺寸与会话资源指标。</summary>
     public StatusBarViewModel StatusBar
     {
         get => _statusBar;
         set => this.RaiseAndSetIfChanged(ref _statusBar, value);
     }
 
+    /// <summary>当前激活的终端标签;无活动标签时为 null。</summary>
     public TerminalTabViewModel? ActiveTerminalTab
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>当前是否存在活动的终端标签。</summary>
     public bool HasActiveTerminalTab => ActiveTerminalTab is not null;
 
     /// <summary>自研 VelaDock 工作区:承载终端文档(标签可拖拽重排、拆分分屏)。</summary>
     public DockWorkspace Layout { get; }
 
+    /// <summary>当前会话的 SFTP 文件浏览面板(按会话缓存,随活动标签切换重绑)。</summary>
     public FileBrowserViewModel FileBrowser
     {
         get => _fileBrowser;
         set => this.RaiseAndSetIfChanged(ref _fileBrowser, value);
     }
 
+    /// <summary>文件传输面板视图模型:承载上传/下载任务队列与进度。</summary>
     public FileTransferViewModel FileTransfer
     {
         get => _fileTransfer;
         set => this.RaiseAndSetIfChanged(ref _fileTransfer, value);
     }
 
+    /// <summary>打开设置窗口的命令(Ctrl+, / 菜单 / 侧边栏齿轮)。</summary>
     public ReactiveCommand<Unit, Unit> OpenSettingsCommand { get; }
 
     private void RegisterCommands()
@@ -1034,6 +1053,10 @@ public class MainWindowViewModel : ReactiveObject
         return items;
     }
 
+    /// <summary>
+    /// 直接按配置建立 SSH 连接并返回新建的终端标签:立即创建“连接中”标签,随后完成握手;
+    /// 握手失败即撤掉标签并向上抛出异常(编程/测试入口,不做标签页内失败覆盖层)。
+    /// </summary>
     public async Task<TerminalTabViewModel> ConnectProfileAsync(SessionProfile profile, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(profile);

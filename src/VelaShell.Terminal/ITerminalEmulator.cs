@@ -38,10 +38,19 @@ public interface ITerminalEmulator : IDisposable
     /// </summary>
     int Rows { get; }
 
+    /// <summary>
+    /// 回滚缓冲区,保存已滚出可视区域的历史行。
+    /// </summary>
     ScrollbackBuffer ScrollbackBuffer { get; }
 
+    /// <summary>
+    /// 缓冲区中的总行数(回滚历史行 + 当前可视行)。
+    /// </summary>
     int TotalLines { get; }
 
+    /// <summary>
+    /// 当前视口顶部在总行序列中的行索引(用于滚动定位)。
+    /// </summary>
     int ViewportRow { get; }
 
     /// <summary>

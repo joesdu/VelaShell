@@ -19,6 +19,7 @@ public sealed class CommandHistoryService(IAppDataStore? dataStore)
     /// <summary>最近优先的历史快照。</summary>
     public IReadOnlyList<string> Entries => _entries;
 
+    /// <summary>从持久化存储加载命令历史(封顶上限条数);读取失败则从空开始,不影响主流程。</summary>
     public async Task LoadAsync()
     {
         if (dataStore is null)
@@ -80,8 +81,10 @@ public sealed class CommandHistoryService(IAppDataStore? dataStore)
         }
     }
 
+    /// <summary>命令历史的持久化载体。</summary>
     public sealed class CommandHistoryData
     {
+        /// <summary>按最近优先顺序持久化的命令列表。</summary>
         public List<string> Commands { get; set; } = [];
     }
 }

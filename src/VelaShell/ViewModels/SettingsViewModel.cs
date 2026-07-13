@@ -24,8 +24,12 @@ public sealed record DependencyInfo(string Name, string License, string Url, str
 /// <summary>快捷键参考页的分组与条目(纯展示;产品决定不提供自定义键位)。</summary>
 public sealed record ShortcutGroup(string Title, ShortcutItem[] Items);
 
+/// <summary>快捷键参考页的单条记录:一个功能名及其组合键序列。</summary>
+/// <param name="Label">功能说明文本(本地化后的动作名)。</param>
+/// <param name="Keys">组成该快捷键的按键序列(如 ["Ctrl", "N"])。</param>
 public sealed record ShortcutItem(string Label, string[] Keys);
 
+/// <summary>设置窗口的视图模型:承载全部偏好项的绑定、分组页导航、外观即时预览与加载/保存流程。</summary>
 public class SettingsViewModel : ReactiveObject
 {
     private readonly IHostKeyService? _hostKeyService;
@@ -60,6 +64,7 @@ public class SettingsViewModel : ReactiveObject
     /// <summary>首次载入完成前(以及 ApplyToViewModel 批量回填期间)抑制预览广播。</summary>
     private bool _suppressPreview = true;
 
+    /// <summary>注入设置/主题及各可选服务,建立命令、外观即时预览订阅与换语言重建逻辑。</summary>
     public SettingsViewModel(
         ISettingsService settingsService,
         IThemeService themeService,
@@ -128,48 +133,56 @@ public class SettingsViewModel : ReactiveObject
     // 默认值一律与 AppSettings 模型保持一致(设置审计 C-05/C-06):
     // VM 仅是绑定层,载入时会被 ApplyToViewModel 覆盖,不得自行声明业务默认值。
 
+    /// <summary>界面语言(区域代码,如 "zh-CN");保存后即时切换,无需重启。</summary>
     public string Language
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = new AppSettings().Language;
 
+    /// <summary>主题模式("dark"/"light"/"system");改动即时预览。</summary>
     public string Theme
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "dark";
 
+    /// <summary>终端字体族名称。</summary>
     public string TerminalFont
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "JetBrains Mono";
 
+    /// <summary>终端字号(磅)。</summary>
     public int TerminalFontSize
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = 14;
 
+    /// <summary>终端回滚缓冲的最大行数。</summary>
     public int ScrollbackLines
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = new AppSettings().ScrollbackLines;
 
+    /// <summary>新建 SSH 连接时的默认端口。</summary>
     public int DefaultPort
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = 22;
 
+    /// <summary>终端类型标识(TERM 值,如 "xterm-256color")。</summary>
     public string TerminalType
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "xterm-256color";
 
+    /// <summary>终端字符编码(如 "UTF-8")。</summary>
     public string TerminalEncoding
     {
         get;
@@ -185,36 +198,42 @@ public class SettingsViewModel : ReactiveObject
 
     // ———— 分组选项(设计 §14 各页;POCO 直接 TwoWay 绑定) ————
 
+    /// <summary>常规页选项(POCO,直接 TwoWay 绑定)。</summary>
     public GeneralOptions General
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = new();
 
+    /// <summary>外观页选项(POCO);整体替换或单项修改均触发即时预览。</summary>
     public AppearanceOptions Appearance
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = new();
 
+    /// <summary>终端行为页选项(光标样式、响铃模式等)。</summary>
     public TerminalBehaviorOptions TerminalBehavior
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = new();
 
+    /// <summary>文件传输页选项(冲突策略、默认下载目录等)。</summary>
     public TransferOptions Transfer
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = new();
 
+    /// <summary>安全页选项。</summary>
     public SecurityOptions Security
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = new();
 
+    /// <summary>密钥页选项(如默认认证密钥)。</summary>
     public KeyOptions Keys
     {
         get;
@@ -230,6 +249,7 @@ public class SettingsViewModel : ReactiveObject
     /// </summary>
     public ObservableCollection<KnownHost> KnownHosts { get; } = [];
 
+    /// <summary>是否存在已信任主机(用于控制空状态显示)。</summary>
     public bool HasKnownHosts
     {
         get;
@@ -273,6 +293,7 @@ public class SettingsViewModel : ReactiveObject
         new(Strings.Get("SetVm_SectionSupport"), "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z")
     ];
 
+    /// <summary>当前选中的左侧导航分页下标。</summary>
     public int SelectedSectionIndex
     {
         get;
@@ -282,31 +303,41 @@ public class SettingsViewModel : ReactiveObject
     /// <summary>支持的界面语言(顺序即语言下拉的条目顺序)。</summary>
     public string[] AvailableLanguages { get; } = ["zh-CN", "en", "zh-TW", "ja", "ko"];
 
+    /// <summary>主题下拉可选值。</summary>
     public string[] AvailableThemes { get; } = ["dark", "light", "system"];
 
     // xterm-256color is the primary/recommended profile and is listed first.
+    /// <summary>终端类型下拉可选值(推荐项 xterm-256color 置首)。</summary>
     public string[] AvailableTerminalTypes { get; } =
     [
         "xterm-256color", "xterm", "vt520", "vt420", "vt340", "vt320", "vt220", "vt102", "vt100", "vt52"
     ];
 
+    /// <summary>终端编码下拉可选值。</summary>
     public string[] AvailableEncodings { get; } =
     [
         "UTF-8", "GBK", "GB18030", "Big5", "Shift_JIS", "EUC-KR", "ISO-8859-1"
     ];
 
+    /// <summary>更新通道下拉可选值。</summary>
     public string[] AvailableUpdateChannels { get; } = ["stable", "preview"];
 
+    /// <summary>光标样式下拉可选值。</summary>
     public string[] AvailableCursorStyles { get; } = ["bar", "block", "underline"];
 
+    /// <summary>响铃模式下拉可选值。</summary>
     public string[] AvailableBellModes { get; } = ["system", "none", "visual"];
 
+    /// <summary>传输冲突策略下拉可选值。</summary>
     public string[] AvailableConflictPolicies { get; } = ["ask", "overwrite", "skip", "rename"];
 
+    /// <summary>标签栏位置下拉可选值。</summary>
     public string[] AvailableTabBarPositions { get; } = ["top", "bottom"];
 
+    /// <summary>侧栏位置下拉可选值。</summary>
     public string[] AvailableSidebarPositions { get; } = ["left", "right"];
 
+    /// <summary>启动窗口状态下拉可选值。</summary>
     public string[] AvailableWindowStates { get; } = ["remember", "maximized", "default"];
 
     // ———— 关于页(真实构建信息) ————
@@ -319,14 +350,19 @@ public class SettingsViewModel : ReactiveObject
                  ?.InformationalVersion.Split('+')[0]
          ?? "0.0.0");
 
+    /// <summary>关于页显示的 UI 框架版本。</summary>
     public static string AboutFramework => "Avalonia UI 12.0.5";
 
+    /// <summary>关于页显示的 .NET 运行时版本。</summary>
     public static string AboutRuntime => $".NET {Environment.Version.Major}.{Environment.Version.Minor}";
 
+    /// <summary>关于页显示的 SSH 库版本。</summary>
     public static string AboutSshLibrary => "SSH.NET 2025.1.0";
 
+    /// <summary>关于页显示的操作系统版本与位数。</summary>
     public static string AboutOs => $"{Environment.OSVersion.VersionString} ({(Environment.Is64BitOperatingSystem ? "x64" : "x86")})";
 
+    /// <summary>关于页显示的配置文件所在目录。</summary>
     public static string AboutConfigPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VelaShell");
 
     /// <summary>
@@ -349,26 +385,35 @@ public class SettingsViewModel : ReactiveObject
         new("Velopack", "MIT", "https://github.com/velopack/velopack", "https://github.com/velopack/velopack/blob/develop/LICENSE")
     ];
 
+    /// <summary>载入设置命令:从服务读取配置并回填视图模型。</summary>
     public ReactiveCommand<Unit, Unit> LoadCommand { get; }
 
+    /// <summary>保存设置命令:回写并落盘,主题/语言即时生效后关闭窗口。</summary>
     public ReactiveCommand<Unit, Unit> SaveCommand { get; }
 
+    /// <summary>取消命令:请求关闭窗口(未保存改动由关闭流程回滚)。</summary>
     public ReactiveCommand<Unit, Unit> CancelCommand { get; }
 
+    /// <summary>恢复默认命令:将所有设置回到出厂值并即时预览。</summary>
     public ReactiveCommand<Unit, Unit> ResetCommand { get; }
 
+    /// <summary>设置强调色命令:以传入的十六进制色值更新 <see cref="AccentColor" />。</summary>
     public ReactiveCommand<string, Unit> SetAccentCommand { get; }
 
+    /// <summary>清除历史记录命令:清空连接历史。</summary>
     public ReactiveCommand<Unit, Unit> ClearHistoryCommand { get; }
 
+    /// <summary>检查更新命令:更新服务尚未接入,如实提示不可用。</summary>
     public ReactiveCommand<Unit, Unit> CheckUpdatesCommand { get; }
 
+    /// <summary>检查更新的状态提示文本。</summary>
     public string UpdateStatus
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
+    /// <summary>清除历史记录的状态提示文本。</summary>
     public string ClearHistoryStatus
     {
         get;
@@ -504,6 +549,7 @@ public class SettingsViewModel : ReactiveObject
 
     // ———— 下拉的索引映射(POCO 字符串 ↔ ComboBox SelectedIndex) ————
 
+    /// <summary>主题下拉选中项与 <see cref="Theme" /> 字符串之间的索引映射。</summary>
     public int ThemeIndex
     {
         get => Theme switch { "light" => 1, "system" => 2, _ => 0 };
@@ -514,6 +560,7 @@ public class SettingsViewModel : ReactiveObject
         }
     }
 
+    /// <summary>语言下拉选中项与 <see cref="Language" /> 之间的索引映射。</summary>
     public int LanguageIndex
     {
         get => Math.Max(0, Array.IndexOf(AvailableLanguages, Language));
@@ -527,6 +574,7 @@ public class SettingsViewModel : ReactiveObject
         }
     }
 
+    /// <summary>更新通道下拉选中项与 <see cref="GeneralOptions.UpdateChannel" /> 之间的索引映射。</summary>
     public int UpdateChannelIndex
     {
         get => General.UpdateChannel == "preview" ? 1 : 0;
@@ -537,6 +585,7 @@ public class SettingsViewModel : ReactiveObject
         }
     }
 
+    /// <summary>光标样式下拉选中项与 <see cref="TerminalBehaviorOptions.CursorStyle" /> 之间的索引映射。</summary>
     public int CursorStyleIndex
     {
         get => TerminalBehavior.CursorStyle switch { "block" => 1, "underline" => 2, _ => 0 };
@@ -547,6 +596,7 @@ public class SettingsViewModel : ReactiveObject
         }
     }
 
+    /// <summary>响铃模式下拉选中项与 <see cref="TerminalBehaviorOptions.BellMode" /> 之间的索引映射。</summary>
     public int BellModeIndex
     {
         get => TerminalBehavior.BellMode switch { "none" => 1, "visual" => 2, _ => 0 };
@@ -557,6 +607,7 @@ public class SettingsViewModel : ReactiveObject
         }
     }
 
+    /// <summary>冲突策略下拉选中项与 <see cref="TransferOptions.ConflictPolicy" /> 之间的索引映射。</summary>
     public int ConflictPolicyIndex
     {
         get => Transfer.ConflictPolicy switch { "overwrite" => 1, "skip" => 2, "rename" => 3, _ => 0 };
@@ -567,6 +618,7 @@ public class SettingsViewModel : ReactiveObject
         }
     }
 
+    /// <summary>标签栏位置下拉选中项与 <see cref="AppearanceOptions.TabBarPosition" /> 之间的索引映射。</summary>
     public int TabBarPositionIndex
     {
         get => Appearance.TabBarPosition == "bottom" ? 1 : 0;
@@ -577,6 +629,7 @@ public class SettingsViewModel : ReactiveObject
         }
     }
 
+    /// <summary>侧栏位置下拉选中项与 <see cref="AppearanceOptions.SidebarPosition" /> 之间的索引映射。</summary>
     public int SidebarPositionIndex
     {
         get => Appearance.SidebarPosition == "right" ? 1 : 0;
@@ -587,6 +640,7 @@ public class SettingsViewModel : ReactiveObject
         }
     }
 
+    /// <summary>启动窗口状态下拉选中项与 <see cref="AppearanceOptions.StartupWindowState" /> 之间的索引映射。</summary>
     public int WindowStateIndex
     {
         get => Appearance.StartupWindowState switch { "maximized" => 1, "default" => 2, _ => 0 };

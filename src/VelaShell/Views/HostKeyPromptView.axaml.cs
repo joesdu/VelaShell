@@ -5,10 +5,12 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 
+/// <summary>主机密钥确认窗口,提示用户信任或拒绝服务器的主机密钥。</summary>
 public partial class HostKeyPromptView : Window
 {
     private HostKeyPromptViewModel? _viewModel;
 
+    /// <summary>初始化主机密钥提示窗口,并订阅视图模型的结果以随决策关闭窗口。</summary>
     public HostKeyPromptView()
     {
         InitializeComponent();

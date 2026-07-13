@@ -12,6 +12,7 @@ public readonly struct GutterLayout
     /// <summary>“空白”部件:侧栏与正文间的固定间隔(px)。</summary>
     public const double BlankPixels = 5.0;
 
+    /// <summary>按单元格宽与时间戳/行号/折叠/空白四个开关计算各列的像素宽度。</summary>
     public GutterLayout(double cellWidth, bool showTimestamp, bool showNumber, bool showFold, bool blank)
     {
         TimeWidth = showTimestamp ? 11 * cellWidth : 0;                // "[HH:mm:ss] " = 11 cells
@@ -20,9 +21,13 @@ public readonly struct GutterLayout
         BlankWidth = blank ? BlankPixels : 0;
     }
 
+    /// <summary>时间戳列宽(px);关闭时为 0。</summary>
     public double TimeWidth { get; }
+    /// <summary>行号列宽(px);关闭时为 0。</summary>
     public double NumberWidth { get; }
+    /// <summary>折叠列宽(px);关闭时为 0。</summary>
     public double FoldWidth { get; }
+    /// <summary>侧栏与正文间空白宽(px);关闭时为 0。</summary>
     public double BlankWidth { get; }
 
     /// <summary>行号列左边缘 x。</summary>

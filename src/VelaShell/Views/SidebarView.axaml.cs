@@ -6,13 +6,16 @@ using VelaShell.Presentation.ViewModels;
 
 namespace VelaShell.Views;
 
+/// <summary>侧边栏视图:承载资源管理器树、最近连接列表与底部设置入口,并向宿主窗口冒泡打开连接/设置/重连请求。</summary>
 public partial class SidebarView : UserControl
 {
+    /// <summary>创建侧边栏视图并加载其可视组件。</summary>
     public SidebarView()
     {
         InitializeComponent();
     }
 
+    /// <summary>用户请求打开“新建连接”配置弹窗时触发(顶部新建按钮)。</summary>
     public event EventHandler? OpenConnectionProfileRequested;
 
     /// <summary>Raised by the footer gear button to open the settings window.</summary>

@@ -9,6 +9,10 @@ using VelaShell.Core.Tunnels;
 
 namespace VelaShell.Infrastructure.Tunnels;
 
+/// <summary>
+/// 端口转发通道管理服务:在指定 SSH 会话上创建本地/远程/动态转发,跟踪各通道的活动状态,
+/// 并在停止或会话拆除时释放底层监听端口。以 <see cref="Guid" /> 会话为单位维护可观察的通道列表。
+/// </summary>
 public class TunnelService(
     ISshConnectionService connectionService,
     Func<Guid, ISshClientWrapper> clientFactory,
@@ -19,12 +23,14 @@ public class TunnelService(
     private readonly ConcurrentDictionary<Guid, SourceList<TunnelInfo>> _sessionTunnels = new();
     private readonly ConcurrentDictionary<Guid, (IPortForwardHandle Handle, TunnelInfo Info)> _tunnelPorts = new();
 
+    /// <summary>获取指定会话当前所有转发通道的可观察列表,列表会随通道的增删自动更新。</summary>
     public IObservableList<TunnelInfo> GetActiveTunnels(Guid sessionId)
     {
         SourceList<TunnelInfo> tunnels = _sessionTunnels.GetOrAdd(sessionId, _ => new());
         return tunnels.AsObservableList();
     }
 
+    /// <summary>在指定会话上创建本地端口转发通道(本地监听端口 → 远端目标)。</summary>
     public async Task<TunnelInfo> CreateLocalForwardAsync(Guid sessionId, TunnelConfig config, CancellationToken cancellationToken = default)
     {
         if (config.Type != TunnelType.LocalForward)
@@ -38,6 +44,7 @@ public class TunnelService(
                    cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>在指定会话上创建远程端口转发通道(远端监听端口 → 本地目标)。</summary>
     public async Task<TunnelInfo> CreateRemoteForwardAsync(Guid sessionId, TunnelConfig config, CancellationToken cancellationToken = default)
     {
         if (config.Type != TunnelType.RemoteForward)
@@ -51,6 +58,7 @@ public class TunnelService(
                    cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>在指定会话上创建动态转发通道(本地 SOCKS 代理端口),按连接动态选择远端目标。</summary>
     public async Task<TunnelInfo> CreateDynamicForwardAsync(Guid sessionId, TunnelConfig config, CancellationToken cancellationToken = default)
     {
         if (config.Type != TunnelType.DynamicForward)
@@ -64,6 +72,7 @@ public class TunnelService(
                    cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>移除指定转发通道:若仍在活动则先停止,随后将其从会话列表中删除。</summary>
     public async Task RemoveTunnelAsync(Guid tunnelId, CancellationToken cancellationToken = default)
     {
         // 活动中的先停止(同时把记录状态置为 Stopped)。
@@ -87,6 +96,7 @@ public class TunnelService(
         }
     }
 
+    /// <summary>停止指定会话下的所有活动转发通道,常用于会话断开/拆除时的批量清理。</summary>
     public async Task StopAllForSessionAsync(Guid sessionId)
     {
         foreach ((Guid tunnelId, (IPortForwardHandle _, TunnelInfo info)) in _tunnelPorts)
@@ -109,6 +119,7 @@ public class TunnelService(
         }
     }
 
+    /// <summary>停止指定转发通道:释放底层监听端口并将其状态置为 <see cref="TunnelStatus.Stopped" />;找不到通道时抛出异常。</summary>
     public async Task StopTunnelAsync(Guid tunnelId, CancellationToken cancellationToken = default)
     {
         if (!_tunnelPorts.TryRemove(tunnelId, out (IPortForwardHandle Handle, TunnelInfo Info) tunnelData))
@@ -143,6 +154,7 @@ public class TunnelService(
         }
     }
 
+    /// <summary>释放服务:停止并释放所有会话下的转发通道与可观察列表资源。</summary>
     public async ValueTask DisposeAsync()
     {
         foreach ((Guid tunnelId, (IPortForwardHandle handle, TunnelInfo info)) in _tunnelPorts)

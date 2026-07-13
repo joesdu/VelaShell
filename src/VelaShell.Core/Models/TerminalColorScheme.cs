@@ -6,6 +6,13 @@ namespace VelaShell.Core.Models;
 /// 稀疏覆盖机制);选择当前主题的默认方案即恢复出厂、终端重新跟随应用主题
 /// (暗 = Dracula / 亮 = Solarized Light)。“(默认)”后缀由设置页按当前主题动态标注。
 /// </summary>
+/// <param name="Name">方案名称,显示于设置页(内置项如 "Dracula")。</param>
+/// <param name="Foreground">终端前景(文本)色,十六进制。</param>
+/// <param name="Background">终端背景色,十六进制。</param>
+/// <param name="Cursor">光标颜色,十六进制。</param>
+/// <param name="Selection">选区高亮色,十六进制。</param>
+/// <param name="AnsiNormal">ANSI 常规 8 色(索引 0–7),十六进制。</param>
+/// <param name="AnsiBright">ANSI 高亮 8 色(索引 8–15),十六进制。</param>
 public sealed record TerminalColorScheme(
     string Name,
     string Foreground,
@@ -52,6 +59,7 @@ public sealed record TerminalColorScheme(
             ["#414868", "#F7768E", "#9ECE6A", "#E0AF68", "#7AA2F7", "#BB9AF7", "#7DCFFF", "#C0CAF5"])
     ];
 
+    /// <summary>把本方案的整套颜色(前景/背景/光标/选区 + ANSI 16 色)写入给定外观选项。</summary>
     public void ApplyTo(AppearanceOptions appearance)
     {
         ArgumentNullException.ThrowIfNull(appearance);

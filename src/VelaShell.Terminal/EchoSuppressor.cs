@@ -18,6 +18,12 @@ public sealed class EchoSuppressor
     private int _held; // 上一块末尾已匹配的 needle 前缀长度(字节内容即 needle[.._held])
     private int _hitsLeft;
 
+    /// <summary>
+    /// 创建回显抑制器。
+    /// </summary>
+    /// <param name="needle">要从输出流中剥除的命令回显字节序列,长度须不小于 <see cref="MinHold" />。</param>
+    /// <param name="maxHits">最多剥除多少次该回显(用尽后放行一切)。</param>
+    /// <param name="window">抑制生效的时间窗,超时后放行一切。</param>
     public EchoSuppressor(byte[] needle, int maxHits, TimeSpan window)
     {
         if (needle.Length < MinHold)
@@ -29,8 +35,14 @@ public sealed class EchoSuppressor
         _deadline = DateTime.UtcNow + window;
     }
 
+    /// <summary>
+    /// 抑制是否已失效:命中次数用尽或超过时间窗;失效后 <see cref="Process" /> 放行一切。
+    /// </summary>
     public bool Expired => _hitsLeft <= 0 || DateTime.UtcNow > _deadline;
 
+    /// <summary>
+    /// 处理一块输出字节,剥除其中匹配到的命令回显;块尾的部分命中会被扣下,合并进下一块续判。
+    /// </summary>
     public byte[] Process(byte[] data)
     {
         if (Expired)

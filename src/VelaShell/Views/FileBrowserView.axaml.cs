@@ -14,6 +14,7 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 
+/// <summary>Remote file browser view: file list, resizable columns, drag-and-drop upload, and OS picker/dialog integration.</summary>
 public partial class FileBrowserView : UserControl
 {
     private const double MinNameWidth = 180;
@@ -29,6 +30,7 @@ public partial class FileBrowserView : UserControl
     private double _startPermissionsWidth;
     private double _startSizeWidth;
 
+    /// <summary>Initializes the view, supplies the view model with OS pickers/dialogs, and hooks column-splitter and drag-drop handlers.</summary>
     public FileBrowserView()
     {
         InitializeComponent();

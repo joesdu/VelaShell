@@ -18,6 +18,7 @@ public partial class DockGroupControl : UserControl
 {
     private Func<DockDocument, Control?>? _viewResolver;
 
+    /// <summary>初始化控件,订阅标签滚动变化并注册全组激活的指针处理器。</summary>
     public DockGroupControl()
     {
         InitializeComponent();
@@ -38,8 +39,10 @@ public partial class DockGroupControl : UserControl
         }
     }
 
+    /// <summary>当前 DataContext 承载的标签组;非 <see cref="DockGroup" /> 时为 null。</summary>
     public DockGroup? Group => DataContext as DockGroup;
 
+    /// <summary>所属停靠工作区,由 <see cref="Initialize" /> 注入。</summary>
     public DockWorkspace? Workspace { get; private set; }
 
     /// <summary>所属工作区控件(拖拽控制器经由它取得)。</summary>
@@ -51,6 +54,7 @@ public partial class DockGroupControl : UserControl
 
     internal Panel TabStripPanel => TabStripArea;
 
+    /// <summary>注入工作区、工作区控件与视图解析器,订阅标签组变更并刷新内容区。</summary>
     public void Initialize(DockWorkspace workspace, DockWorkspaceControl workspaceControl, Func<DockDocument, Control?> viewResolver)
     {
         Workspace = workspace;
@@ -68,6 +72,7 @@ public partial class DockGroupControl : UserControl
     private void OnDocumentsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) =>
         UpdateContent();
 
+    /// <summary>从可视树分离时退订标签组事件,并释放对缓存视图的引用以避免双父级。</summary>
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);

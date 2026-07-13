@@ -14,12 +14,16 @@ namespace VelaShell.ViewModels;
 /// <summary>回放中心列表条目(设计 NceE6 左栏:主机 • 时间 • 时长)。</summary>
 public sealed class RecordingItemViewModel(SessionRecording model)
 {
+    /// <summary>底层会话录制模型。</summary>
     public SessionRecording Model { get; } = model;
 
+    /// <summary>列表显示名:会话标签,为空时回退到“未命名会话”文案。</summary>
     public string Label => string.IsNullOrWhiteSpace(Model.SessionLabel) ? Strings.Get("Msg_UnnamedSession") : Model.SessionLabel;
 
+    /// <summary>起始时间的本地化短文本(月-日 时:分)。</summary>
     public string StartText => Model.StartedAtUtc.ToLocalTime().ToString("MM-dd HH:mm");
 
+    /// <summary>录制时长的可读文本(超过 1 小时显示时/分,否则分/秒)。</summary>
     public string DurationText
     {
         get
@@ -29,6 +33,7 @@ public sealed class RecordingItemViewModel(SessionRecording model)
         }
     }
 
+    /// <summary>录制字节大小的可读文本(B/KB/MB)。</summary>
     public string SizeText => Model.ByteSize switch
     {
         < 1024 => $"{Model.ByteSize} B",
@@ -56,6 +61,9 @@ public class RecordingPlayerViewModel : ReactiveObject
     private List<RecordingChunk> _chunks = [];
     private int _nextChunkIndex;
 
+    /// <summary>构造回放中心视图模型。</summary>
+    /// <param name="store">会话录制存储(读取/删除录制与块)。</param>
+    /// <param name="settingsService">设置服务(读写自动录制开关);可为 null。</param>
     public RecordingPlayerViewModel(ISessionRecordingStore store, ISettingsService? settingsService = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -73,14 +81,17 @@ public class RecordingPlayerViewModel : ReactiveObject
     /// <summary>回放重置(选择新录制/拖动时间轴时清屏)。</summary>
     public Action? ResetSink { get; set; }
 
+    /// <summary>录制列表(左栏数据源)。</summary>
     public ObservableCollection<RecordingItemViewModel> Recordings { get; } = [];
 
+    /// <summary>是否存在可回放的录制。</summary>
     public bool HasRecordings
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>当前选中的录制;赋值触发异步加载对应录制块。</summary>
     public RecordingItemViewModel? SelectedRecording
     {
         get;
@@ -91,6 +102,7 @@ public class RecordingPlayerViewModel : ReactiveObject
         }
     }
 
+    /// <summary>是否正在回放。</summary>
     public bool IsPlaying
     {
         get;
@@ -119,6 +131,7 @@ public class RecordingPlayerViewModel : ReactiveObject
         }
     }
 
+    /// <summary>当前录制的总时长(毫秒)。</summary>
     public double DurationMs
     {
         get;
@@ -129,10 +142,13 @@ public class RecordingPlayerViewModel : ReactiveObject
         }
     }
 
+    /// <summary>当前回放位置的时间文本。</summary>
     public string PositionText => FormatTime((long)PositionMs);
 
+    /// <summary>总时长的时间文本。</summary>
     public string DurationText => FormatTime((long)DurationMs);
 
+    /// <summary>倍速档位索引(对应 1/2/4/8/16x);赋值会钳制到合法范围。</summary>
     public int SpeedIndex
     {
         get;
@@ -143,11 +159,13 @@ public class RecordingPlayerViewModel : ReactiveObject
         }
     }
 
+    /// <summary>当前倍速的显示文本(如 4x)。</summary>
     public string SpeedText => $"{Speeds[SpeedIndex]}x";
 
     /// <summary>倍速循环:1x → 2x → 4x → 8x → 16x → 1x。</summary>
     public void CycleSpeed() => SpeedIndex = (SpeedIndex + 1) % Speeds.Length;
 
+    /// <summary>是否跳过空闲:两块输出间隔过长时快进(默认开启)。</summary>
     public bool SkipIdle
     {
         get;
@@ -161,30 +179,39 @@ public class RecordingPlayerViewModel : ReactiveObject
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>自动录制开关的状态文本(开/关)。</summary>
     public string AutoRecordText => AutoRecordEnabled ? Strings.Get("Msg_AutoRecordOn") : Strings.Get("Msg_AutoRecordOff");
 
+    /// <summary>播放/暂停按钮的文本(随回放状态切换)。</summary>
     public string PlayButtonText => IsPlaying ? Strings.Get("Msg_Pause") : Strings.Get("Msg_Play");
 
+    /// <summary>回放区标题(显示当前录制名与起始时间)。</summary>
     public string PlaybackTitle
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = Strings.Get("Msg_SelectRecordingToPlay");
 
+    /// <summary>状态栏提示文本(加载/错误/空列表等)。</summary>
     public string Status
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = "";
 
+    /// <summary>刷新录制列表命令。</summary>
     public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
 
+    /// <summary>播放/暂停切换命令。</summary>
     public ReactiveCommand<Unit, Unit> TogglePlayCommand { get; }
 
+    /// <summary>删除指定录制命令。</summary>
     public ReactiveCommand<RecordingItemViewModel, Unit> DeleteCommand { get; }
 
+    /// <summary>切换自动录制开关命令。</summary>
     public ReactiveCommand<Unit, Unit> ToggleAutoRecordCommand { get; }
 
+    /// <summary>初始化:加载录制列表并读取自动录制设置。</summary>
     public async Task InitializeAsync()
     {
         await RefreshAsync();
@@ -222,6 +249,7 @@ public class RecordingPlayerViewModel : ReactiveObject
         return builder.ToString();
     }
 
+    /// <summary>是否已选中录制且存在可回放的录制块。</summary>
     public bool HasSelection => SelectedRecording is not null && _chunks.Count > 0;
 
     private async Task RefreshAsync()

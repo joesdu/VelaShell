@@ -17,6 +17,7 @@ public static class ExternalEditSessionManager
     private static readonly string TempRoot =
         Path.Combine(Path.GetTempPath(), "VelaShell", "remote-edit");
 
+    /// <summary>把远程文件下载到本地独立临时目录并用指定编辑器打开,随后侦听本地保存并自动上传回服务器。</summary>
     public static async Task OpenAsync(
         ISftpService sftpService,
         Guid sessionId,

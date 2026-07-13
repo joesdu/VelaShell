@@ -19,6 +19,7 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 
+/// <summary>应用主窗口:自绘无边框标题栏、侧边栏与终端主区的宿主,统筹连接、设置、会话恢复与关闭链路。</summary>
 public partial class MainWindow : Window
 {
     private IDisposable? _fileBrowserVisibilitySub;
@@ -35,6 +36,7 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>响应窗口属性变化:窗口状态切换时,按是否普通态显隐自绘缩放抓取区。</summary>
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -63,6 +65,7 @@ public partial class MainWindow : Window
     // InvalidCastException binding errors before each view's local DataContext binding takes over.
     // The cost is a handful of benign "Value is null" messages from DockControl's theme bindings
     // ($self.Layout.* with FallbackValue) while Layout is still null — the lesser noise.
+    /// <summary>创建主窗口,挂接侧边栏事件、文件浏览可见性联动与窗口打开回调(Windows 下额外注册贴靠布局钩子)。</summary>
     public MainWindow()
     {
         InitializeComponent();

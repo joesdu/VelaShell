@@ -19,16 +19,20 @@ public sealed class TerminalRow(int columns)
     /// </summary>
     public DateTime? Timestamp { get; set; }
 
+    /// <summary>Number of cells (columns) in this row.</summary>
     public int Columns => _cells.Length;
 
+    /// <summary>Gets or sets the cell at the given column index.</summary>
     public TerminalCell this[int col]
     {
         get => _cells[col];
         set => _cells[col] = value;
     }
 
+    /// <summary>Returns a mutable reference to the cell at the given column for in-place editing.</summary>
     public ref TerminalCell CellRef(int col) => ref _cells[col];
 
+    /// <summary>Fills the entire row with the given cell and clears the wrapped flag and timestamp.</summary>
     public void Fill(in TerminalCell cell)
     {
         for (int i = 0; i < _cells.Length; i++)
@@ -39,6 +43,7 @@ public sealed class TerminalRow(int columns)
         Timestamp = null; // 整行清空(擦除/复用作滚动新行)→ 视为未写入,时间戳作废。
     }
 
+    /// <summary>Fills the cells in <paramref name="start" />..<paramref name="endExclusive" /> with the given cell, clamped to the row bounds.</summary>
     public void FillRange(int start, int endExclusive, in TerminalCell cell)
     {
         for (int i = Math.Max(0, start); i < Math.Min(_cells.Length, endExclusive); i++)
@@ -117,6 +122,7 @@ public sealed class TerminalRow(int columns)
         return sb.ToString();
     }
 
+    /// <summary>Creates a deep copy of the row, preserving cells, the wrapped flag, and the timestamp.</summary>
     public TerminalRow Clone()
     {
         var clone = new TerminalRow(_cells.Length) { Wrapped = Wrapped, Timestamp = Timestamp };

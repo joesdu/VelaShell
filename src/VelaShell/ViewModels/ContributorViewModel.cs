@@ -14,13 +14,16 @@ public sealed class ContributorViewModel(string handle) : ReactiveObject
     /// <summary>GitHub 用户名(不含 @)。</summary>
     public string Handle { get; } = handle;
 
+    /// <summary>显示名(带 @ 前缀)。</summary>
     public string Display => "@" + Handle;
 
+    /// <summary>贡献者 GitHub 主页地址(点击头像时跳转)。</summary>
     public string Url => $"https://github.com/{Handle}";
 
     /// <summary>头像加载失败时的首字母占位。</summary>
     public string Initial => Handle.Length > 0 ? Handle[..1].ToUpperInvariant() : "?";
 
+    /// <summary>异步拉取到的 GitHub 头像;加载完成前为 <c>null</c>(此时显示首字母占位)。</summary>
     public Bitmap? Avatar
     {
         get;
@@ -31,6 +34,7 @@ public sealed class ContributorViewModel(string handle) : ReactiveObject
         }
     }
 
+    /// <summary>是否已成功加载头像(供视图在头像与占位之间切换)。</summary>
     public bool HasAvatar => Avatar is not null;
 
     /// <summary>拉取 GitHub 头像(72px,幂等;任何失败都静默保留占位)。</summary>

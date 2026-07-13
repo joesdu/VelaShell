@@ -15,6 +15,10 @@ public sealed class CommandPaletteViewModel : ReactiveObject
     private readonly Func<IReadOnlyList<CommandPaletteItem>> _itemsProvider;
     private IReadOnlyList<CommandPaletteItem> _all = [];
 
+    /// <summary>
+    /// Creates the palette view model and wires up its keyboard/mouse commands.
+    /// </summary>
+    /// <param name="itemsProvider">Supplies the current palette items on demand; when null an empty list is used.</param>
     public CommandPaletteViewModel(Func<IReadOnlyList<CommandPaletteItem>>? itemsProvider = null)
     {
         _itemsProvider = itemsProvider ?? (() => []);
@@ -27,20 +31,24 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         this.WhenAnyValue(x => x.Query).Subscribe(_ => Rebuild());
     }
 
+    /// <summary>The filtered items arranged into category groups for display.</summary>
     public ObservableCollection<CommandPaletteGroup> Groups { get; }
 
+    /// <summary>The current search text; changing it re-filters the item list.</summary>
     public string Query
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
+    /// <summary>Whether the palette overlay is currently visible.</summary>
     public bool IsOpen
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>The currently highlighted item; keeps the item's own selection flag in sync.</summary>
     public CommandPaletteItem? SelectedItem
     {
         get;
@@ -53,18 +61,25 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         }
     }
 
+    /// <summary>The number of items currently matching the query.</summary>
     public int ResultCount => _flat.Count;
 
+    /// <summary>Whether any item currently matches the query.</summary>
     public bool HasResults => _flat.Count > 0;
 
+    /// <summary>Moves the selection to the next matching item.</summary>
     public ReactiveCommand<Unit, Unit> MoveDownCommand { get; }
 
+    /// <summary>Moves the selection to the previous matching item.</summary>
     public ReactiveCommand<Unit, Unit> MoveUpCommand { get; }
 
+    /// <summary>Runs the currently selected item and closes the palette.</summary>
     public ReactiveCommand<Unit, Unit> ExecuteSelectedCommand { get; }
 
+    /// <summary>Selects and immediately runs the supplied item (mouse activation).</summary>
     public ReactiveCommand<CommandPaletteItem, Unit> ActivateCommand { get; }
 
+    /// <summary>Closes the palette overlay without running anything.</summary>
     public ReactiveCommand<Unit, Unit> CloseCommand { get; }
 
     /// <summary>Reloads items from the provider, clears the query and shows the palette.</summary>
@@ -76,10 +91,13 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         IsOpen = true;
     }
 
+    /// <summary>Hides the palette overlay.</summary>
     public void Close() => IsOpen = false;
 
+    /// <summary>Advances the selection to the next matching item, wrapping around.</summary>
     public void MoveDown() => Move(1);
 
+    /// <summary>Advances the selection to the previous matching item, wrapping around.</summary>
     public void MoveUp() => Move(-1);
 
     private void Move(int delta)
@@ -93,6 +111,7 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         SelectedItem = _flat[index];
     }
 
+    /// <summary>Closes the palette and invokes the currently selected item, if any.</summary>
     public void ExecuteSelected()
     {
         CommandPaletteItem? item = SelectedItem;

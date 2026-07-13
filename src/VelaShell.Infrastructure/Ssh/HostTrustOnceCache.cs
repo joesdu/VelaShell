@@ -11,9 +11,18 @@ public static class HostTrustOnceCache
 {
     private static readonly ConcurrentDictionary<string, string> Trusted = new();
 
+    /// <summary>记住指定 host:port 在本次运行内被临时信任的指纹。</summary>
+    /// <param name="host">目标主机名或地址。</param>
+    /// <param name="port">目标端口。</param>
+    /// <param name="fingerprint">被信任的主机指纹。</param>
     public static void Remember(string host, int port, string fingerprint) =>
         Trusted[Key(host, port)] = fingerprint;
 
+    /// <summary>判断指定 host:port 的指纹是否已在本次运行内被“仅本次信任”。</summary>
+    /// <param name="host">目标主机名或地址。</param>
+    /// <param name="port">目标端口。</param>
+    /// <param name="fingerprint">待校验的主机指纹。</param>
+    /// <returns>指纹与缓存中记录一致时返回 <see langword="true" />。</returns>
     public static bool IsTrusted(string host, int port, string fingerprint) =>
         Trusted.TryGetValue(Key(host, port), out string? cached) && cached == fingerprint;
 

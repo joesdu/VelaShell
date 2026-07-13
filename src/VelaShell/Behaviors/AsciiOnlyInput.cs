@@ -32,8 +32,10 @@ public static class AsciiOnlyInput
         });
     }
 
+    /// <summary>Gets whether ASCII-only input filtering is enabled on the given element.</summary>
     public static bool GetIsEnabled(Interactive element) => element.GetValue(IsEnabledProperty);
 
+    /// <summary>Enables or disables ASCII-only input filtering on the given element.</summary>
     public static void SetIsEnabled(Interactive element, bool value) => element.SetValue(IsEnabledProperty, value);
 
     private static void OnTextInput(object? sender, TextInputEventArgs e)

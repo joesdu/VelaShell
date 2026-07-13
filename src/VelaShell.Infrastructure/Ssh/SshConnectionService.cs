@@ -6,6 +6,10 @@ using VelaShell.Core.Ssh;
 
 namespace VelaShell.Infrastructure.Ssh;
 
+/// <summary>
+/// SSH 连接服务的默认实现:管理 SSH 会话的建连、断开与生命周期,
+/// 通过客户端工厂创建底层连接,并以并发方式处理多条会话以避免相互阻塞。
+/// </summary>
 public class SshConnectionService(
     Func<ConnectionInfo, ISshClientWrapper> clientFactory,
     ILogger<SshConnectionService>? logger = null) : ISshConnectionService
@@ -20,6 +24,9 @@ public class SshConnectionService(
     /// </summary>
     private readonly Lock _sessionsGate = new();
 
+    /// <summary>
+    /// 当前所有 SSH 会话的可观察列表,随会话的新增/移除实时更新。
+    /// </summary>
     public IObservableList<SshSession> Sessions
     {
         get
@@ -31,6 +38,10 @@ public class SshConnectionService(
         }
     }
 
+    /// <summary>
+    /// 根据连接信息异步建立一条新的 SSH 会话。建连过程在线程池中执行,
+    /// 多条连接可并发建立,单条慢连接不会阻塞其它连接。
+    /// </summary>
     public Task<SshSession> ConnectAsync(ConnectionInfo connectionInfo, CancellationToken cancellationToken = default)
     {
         // 并发连接:握手不再串行,多个会话可同时建连,单条慢连接不阻塞其它连接。
@@ -40,6 +51,9 @@ public class SshConnectionService(
         return Task.Run(() => ConnectInternalAsync(connectionInfo, cancellationToken), cancellationToken);
     }
 
+    /// <summary>
+    /// 异步断开指定标识的 SSH 会话,拆除底层网络连接并将会话状态置为已断开。
+    /// </summary>
     public async Task DisconnectAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         // 断开也不再走全局锁:每个会话的网络拆除各自并发进行,不阻塞其它连接/断开。
@@ -63,6 +77,9 @@ public class SshConnectionService(
         }
     }
 
+    /// <summary>
+    /// 按会话标识查找并返回对应的 SSH 会话,未找到时返回 <c>null</c>。
+    /// </summary>
     public SshSession? GetSession(Guid sessionId)
     {
         lock (_sessionsGate)
@@ -71,12 +88,18 @@ public class SshConnectionService(
         }
     }
 
+    /// <summary>
+    /// 获取指定会话对应的底层 SSH 客户端包装器,会话不存在或未建连时返回 <c>null</c>。
+    /// </summary>
     public ISshClientWrapper? GetClient(Guid sessionId)
     {
         _clients.TryGetValue(sessionId, out ISshClientWrapper? client);
         return client;
     }
 
+    /// <summary>
+    /// 异步释放服务持有的全部资源:并发拆除所有会话的网络连接并释放会话列表。
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         KeyValuePair<Guid, ISshClientWrapper>[] clientEntries = [.. _clients];

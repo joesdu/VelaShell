@@ -24,6 +24,7 @@ public partial class TitleBarView : UserControl
     private PointerPressedEventArgs? _pendingMaximizedDrag;
     private Point _pressPoint;
 
+    /// <summary>创建标题栏视图,并挂接指针移动/释放/捕获丢失处理以支持最大化态的延迟拖动判定。</summary>
     public TitleBarView()
     {
         InitializeComponent();
@@ -40,6 +41,8 @@ public partial class TitleBarView : UserControl
     /// <summary>供 MainWindow 的 WndProc 钩子做 HTMAXBUTTON 命中与 nc-hover 高亮。</summary>
     internal Button MaximizeButtonControl => MaximizeButton;
 
+    /// <summary>设置最大化按钮的非客户区悬停高亮(供 MainWindow 的 WndProc HTMAXBUTTON 命中驱动)。</summary>
+    /// <param name="hovered">true 添加 nc-hover 高亮样式类;false 移除。</param>
     internal void SetMaximizeNcHover(bool hovered)
     {
         if (hovered)
@@ -55,6 +58,7 @@ public partial class TitleBarView : UserControl
         }
     }
 
+    /// <summary>在最大化与普通窗口状态之间切换当前宿主窗口。</summary>
     internal void ToggleMaximize()
     {
         if (HostWindow is { } window)
@@ -65,6 +69,7 @@ public partial class TitleBarView : UserControl
         }
     }
 
+    /// <summary>附加到视觉树时开始监听宿主窗口状态变化,并同步最大化按钮图标。</summary>
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
@@ -77,6 +82,7 @@ public partial class TitleBarView : UserControl
         }
     }
 
+    /// <summary>从视觉树分离时取消对窗口状态变化的监听。</summary>
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);

@@ -23,6 +23,10 @@ using VelaShell.Views;
 
 namespace VelaShell;
 
+/// <summary>
+/// 应用入口:构建 DI 容器、接线本地化/主题/强调色的热更新,并在框架初始化完成后
+/// 创建主窗口、恢复启动窗口状态、挂载托盘与云同步,退出时释放服务。
+/// </summary>
 public class App : Application
 {
     private ServiceProvider? _serviceProvider;
@@ -31,11 +35,13 @@ public class App : Application
     private IThemeService? _themeService;
     private TrayIconService? _trayIconService;
 
+    /// <summary>当前应用的 DI 服务容器;在 <see cref="Initialize" /> 完成前为 <c>null</c>。</summary>
     public IServiceProvider? Services => _serviceProvider;
 
     /// <summary>托盘图标当前是否挂载(主窗口据此决定“关闭时最小化到托盘”是否可用)。</summary>
     public bool TrayIconActive => _trayIconService?.IsActive == true;
 
+    /// <summary>加载 XAML、构建 DI 容器,并接线主题/本地化等应用级服务。</summary>
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -75,6 +81,7 @@ public class App : Application
         ApplyAccent(_themeService.AccentColor);
     }
 
+    /// <summary>框架初始化完成后应用已持久化的偏好并创建主窗口。</summary>
     public override void OnFrameworkInitializationCompleted()
     {
         ApplyPersistedPreferences();

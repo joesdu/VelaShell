@@ -24,8 +24,10 @@ public sealed class SonnetDbSettingsService(SonnetDbEngine engine, IReadOnlyList
     /// </summary>
     private volatile string? _settingsJsonCache;
 
+    /// <summary>设置保存成功后触发,携带刚持久化的设置快照,供订阅方刷新缓存或界面。</summary>
     public event Action<AppSettings>? SettingsSaved;
 
+    /// <summary>读取应用设置:优先命中 JSON 缓存,未命中则从文档集合读取或首次导入并归一化。</summary>
     public async Task<AppSettings> GetSettingsAsync()
     {
         if (_settingsJsonCache is { } cached && SonnetDbJson.Deserialize<AppSettings>(cached) is { } fromCache)
@@ -39,6 +41,7 @@ public sealed class SonnetDbSettingsService(SonnetDbEngine engine, IReadOnlyList
         return settings;
     }
 
+    /// <summary>持久化应用设置,同步刷新 JSON 缓存并触发 <see cref="SettingsSaved"/>。</summary>
     public async Task SaveSettingsAsync(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -48,8 +51,10 @@ public sealed class SonnetDbSettingsService(SonnetDbEngine engine, IReadOnlyList
         SettingsSaved?.Invoke(settings);
     }
 
+    /// <summary>读取应用运行状态:从文档集合读取,不存在时首次导入既有 state.json 或返回新实例。</summary>
     public async Task<AppState> GetStateAsync() => await GetOrImportAsync<AppState>(StateDocId, "state.json").ConfigureAwait(false);
 
+    /// <summary>持久化应用运行状态到固定 Id 的状态文档。</summary>
     public async Task SaveStateAsync(AppState state)
     {
         ArgumentNullException.ThrowIfNull(state);

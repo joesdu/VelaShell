@@ -5,18 +5,35 @@ namespace VelaShell.Terminal.Semantics;
 /// <summary>The kind of thing a <see cref="SemanticSpan" /> marks in a line of terminal output.</summary>
 public enum SemanticKind
 {
+    /// <summary>A URL such as an http or https link.</summary>
     Url,
+
+    /// <summary>An error-related keyword (error, failed, fatal, panic, ...).</summary>
     Error,
+
+    /// <summary>A warning-related keyword (warn, deprecated, caution, ...).</summary>
     Warning,
+
+    /// <summary>A success or healthy-state keyword (ok, done, ready, ...).</summary>
     Success,
+
+    /// <summary>A dotted IPv4 address.</summary>
     IpAddress,
+
+    /// <summary>A command-line option flag such as -x or --color.</summary>
     Option,
+
+    /// <summary>A standalone number, port, count, or timestamp.</summary>
     Number
 }
 
 /// <summary>A matched region within a single line, in character offsets.</summary>
+/// <param name="Start">Character offset where the region begins in the line.</param>
+/// <param name="Length">Length of the region in characters.</param>
+/// <param name="Kind">The semantic category of the matched region.</param>
 public readonly record struct SemanticSpan(int Start, int Length, SemanticKind Kind)
 {
+    /// <summary>The exclusive end offset of the region (<see cref="Start" /> + <see cref="Length" />).</summary>
     public int End => Start + Length;
 }
 

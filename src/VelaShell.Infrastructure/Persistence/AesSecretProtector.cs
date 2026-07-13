@@ -18,9 +18,11 @@ public sealed class AesSecretProtector : ISecretProtector
 
     private readonly Lazy<byte[]> _key;
 
+    /// <summary>使用存储路径配置中的密钥文件位置构造保护器。</summary>
     public AesSecretProtector(VelaShellStoragePaths paths)
         : this((paths ?? throw new ArgumentNullException(nameof(paths))).SecretKeyFile) { }
 
+    /// <summary>使用指定密钥文件路径构造保护器;密钥在首次使用时惰性加载或生成。</summary>
     public AesSecretProtector(string keyFilePath)
     {
         if (string.IsNullOrWhiteSpace(keyFilePath))
@@ -30,6 +32,7 @@ public sealed class AesSecretProtector : ISecretProtector
         _key = new(() => LoadOrCreateKey(keyFilePath), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
+    /// <summary>加密明文并返回带 <c>enc1:</c> 前缀的密文;空值或已加密的输入原样返回。</summary>
     public string? Protect(string? plaintext)
     {
         if (string.IsNullOrEmpty(plaintext) || plaintext.StartsWith(Prefix, StringComparison.Ordinal))
@@ -49,6 +52,7 @@ public sealed class AesSecretProtector : ISecretProtector
         return Prefix + Convert.ToBase64String(blob);
     }
 
+    /// <summary>解密带 <c>enc1:</c> 前缀的密文;无前缀的历史明文原样返回,解密失败时返回原始输入。</summary>
     public string? Unprotect(string? ciphertext)
     {
         if (string.IsNullOrEmpty(ciphertext) || !ciphertext.StartsWith(Prefix, StringComparison.Ordinal))

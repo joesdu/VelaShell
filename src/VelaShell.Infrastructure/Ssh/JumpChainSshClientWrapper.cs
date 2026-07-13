@@ -29,6 +29,10 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
     private TimeSpan? _pendingTimeout;
     private SshClient? _targetClient;
 
+    /// <summary>
+    /// 构造跳板链包装器。<paramref name="target" /> 必须带有 JumpHost(否则应改用直连的
+    /// SshClientWrapper);<paramref name="buildHopClient" /> 用于按逻辑主机与实际端点构建每一跳的客户端。
+    /// </summary>
     public JumpChainSshClientWrapper(VelaConnectionInfo target, HopClientBuilder buildHopClient)
     {
         _target = target ?? throw new ArgumentNullException(nameof(target));
@@ -41,6 +45,7 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
 
     private SshClient Target => _targetClient ?? throw new InvalidOperationException("Jump chain is not connected yet.");
 
+    /// <summary>目标跳客户端当前是否已连接。</summary>
     public bool IsConnected
     {
         get
@@ -50,6 +55,7 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         }
     }
 
+    /// <summary>连接超时时间;连接前设置会在建链时应用到目标跳客户端,连接后即时生效。</summary>
     public TimeSpan ConnectionTimeout
     {
         get
@@ -65,8 +71,10 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         }
     }
 
+    /// <summary>同步建立整条跳板链(内部调用 <see cref="ConnectAsync" /> 并阻塞等待)。</summary>
     public void Connect() => ConnectAsync(CancellationToken.None).GetAwaiter().GetResult();
 
+    /// <summary>按 外层跳板 → … → 目标 的顺序逐跳建链;任一跳失败则整条链回收并抛出翻译后的异常。</summary>
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -121,12 +129,14 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         }
     }
 
+    /// <summary>断开整条跳板链并回收所有跳的连接与转发端口。</summary>
     public void Disconnect()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         TearDownChain();
     }
 
+    /// <summary>在目标跳上打开交互式 Shell 流(PTY),尺寸与终端模式由参数指定。</summary>
     public IShellStreamWrapper CreateShellStream(
         string terminalName,
         uint columns,
@@ -148,6 +158,7 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         }
     }
 
+    /// <summary>在目标跳上执行一条命令并返回其标准输出结果;链在执行途中拆除时归一化为"会话已释放"信号。</summary>
     public async Task<string> RunCommandAsync(string commandText, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -189,6 +200,7 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         }
     }
 
+    /// <summary>在目标跳上启动端口转发,并返回可用于停止该转发的句柄。</summary>
     public IPortForwardHandle StartPortForward(PortForwardRequest request)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -202,6 +214,7 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         }
     }
 
+    /// <summary>释放包装器:标记为已释放并逆序拆除整条跳板链;可重复调用。</summary>
     public void Dispose()
     {
         if (_disposed)

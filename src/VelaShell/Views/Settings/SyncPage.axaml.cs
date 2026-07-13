@@ -3,8 +3,10 @@ using Avalonia.Input;
 
 namespace VelaShell.Views.Settings;
 
+/// <summary>同步设置页:配置配置数据的云端同步与相关指引。</summary>
 public partial class SyncPage : UserControl
 {
+    /// <summary>初始化同步设置页并加载 XAML 组件。</summary>
     public SyncPage()
     {
         InitializeComponent();

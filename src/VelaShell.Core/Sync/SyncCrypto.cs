@@ -16,6 +16,7 @@ public static class SyncCrypto
     private const int KeySize = 32;
     private const int Iterations = 200_000;
 
+    /// <summary>用口令派生的 AES-256-GCM 密钥加密明文,返回 Base64(salt | nonce | tag | 密文)。</summary>
     public static string Encrypt(string plaintext, string passphrase)
     {
         ArgumentNullException.ThrowIfNull(plaintext);

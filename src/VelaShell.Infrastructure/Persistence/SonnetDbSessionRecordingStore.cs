@@ -13,6 +13,7 @@ public sealed class SonnetDbSessionRecordingStore(SonnetDbEngine engine) : ISess
 {
     private readonly SonnetDbEngine _engine = engine ?? throw new ArgumentNullException(nameof(engine));
 
+    /// <summary>保存(新增或覆盖)一条会话录制的元数据文档。</summary>
     public async Task SaveRecordingAsync(SessionRecording recording, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(recording);
@@ -24,6 +25,10 @@ public sealed class SonnetDbSessionRecordingStore(SonnetDbEngine engine) : ISess
         }, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// 追加一个录制输出块:以「录制开始时刻 + <paramref name="offsetMs" />」为时间点、
+    /// 录制 Id 为 tag,将 Base64 编码的数据写入时序 measurement。
+    /// </summary>
     public Task AppendChunkAsync(Guid recordingId, DateTime startedAtUtc, long offsetMs, byte[] data, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -38,6 +43,7 @@ public sealed class SonnetDbSessionRecordingStore(SonnetDbEngine engine) : ISess
             tags, fields, cancellationToken);
     }
 
+    /// <summary>列出所有会话录制元数据,按开始时间倒序排列。</summary>
     public async Task<List<SessionRecording>> ListRecordingsAsync(CancellationToken cancellationToken = default)
     {
         List<SessionRecording?> rows = await _engine.WithCollectionAsync(SonnetDbEngine.RecordingsCollection, store =>
@@ -46,6 +52,9 @@ public sealed class SonnetDbSessionRecordingStore(SonnetDbEngine engine) : ISess
         return [.. rows.Where(r => r is not null).Cast<SessionRecording>().OrderByDescending(r => r.StartedAtUtc)];
     }
 
+    /// <summary>
+    /// 读取指定录制的全部输出块并按偏移量升序返回;单块 Base64 解码失败时跳过该块,不影响其余回放。
+    /// </summary>
     public async Task<List<RecordingChunk>> GetChunksAsync(Guid recordingId, CancellationToken cancellationToken = default)
     {
         // SonnetDB 方言要求 ORDER BY time 时 SELECT 列表必须包含 time 列。
@@ -81,6 +90,10 @@ public sealed class SonnetDbSessionRecordingStore(SonnetDbEngine engine) : ISess
         return chunks;
     }
 
+    /// <summary>
+    /// 删除指定录制:先删元数据,再尽力删除其数据块;数据块删除失败时留作孤儿,
+    /// 待后续清理的压缩重建路径统一回收。
+    /// </summary>
     public async Task DeleteRecordingAsync(Guid recordingId, CancellationToken cancellationToken = default)
     {
         await DeleteMetadataAsync(recordingId, cancellationToken).ConfigureAwait(false);
@@ -91,6 +104,9 @@ public sealed class SonnetDbSessionRecordingStore(SonnetDbEngine engine) : ISess
         await TryDeleteChunksAsync(recordingId, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// 清理超过保留天数的过期录制;若数据块无法直接删除,则对存活录制执行压缩重建以回收孤儿字节。
+    /// </summary>
     public async Task CleanupExpiredAsync(int retentionDays, CancellationToken cancellationToken = default)
     {
         if (retentionDays < 1)

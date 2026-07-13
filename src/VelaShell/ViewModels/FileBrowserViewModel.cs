@@ -16,6 +16,10 @@ namespace VelaShell.ViewModels;
 /// </summary>
 public sealed record BreadcrumbSegment(string Name, string Path);
 
+/// <summary>
+/// SFTP 文件浏览面板的视图模型:承载目录列举、导航、上传/下载、增删改与属性/权限
+/// 编辑等操作,并把传输进度反馈到右上角传输浮窗。每个已连接会话绑定一个实例。
+/// </summary>
 public class FileBrowserViewModel : ReactiveObject
 {
     private const long MaxBuiltInEditSize = 5 * 1024 * 1024;
@@ -45,6 +49,10 @@ public class FileBrowserViewModel : ReactiveObject
 
     private bool _isVisible;
 
+    /// <summary>
+    /// 为指定 SSH 会话创建文件浏览视图模型,初始化各命令并把当前路径置于根目录;
+    /// <paramref name="sftpService" /> 为 null 时构成未绑定会话的占位面板。
+    /// </summary>
     public FileBrowserViewModel(ISftpService? sftpService, Guid sessionId)
     {
         _sftpService = sftpService!;
@@ -191,10 +199,13 @@ public class FileBrowserViewModel : ReactiveObject
     private string WithServerTag(string message) =>
         string.IsNullOrEmpty(ServerDisplayName) ? message : $"[{ServerDisplayName}] {message}";
 
+    /// <summary>当前目录中可见的行(已过滤隐藏文件、已排序,非根目录时含首行 ".." 返回项)。</summary>
     public ObservableCollection<RemoteFileInfoViewModel> Files { get; }
 
+    /// <summary>列表中当前被多选中的条目(批量下载/删除的作用对象)。</summary>
     public ObservableCollection<RemoteFileInfoViewModel> SelectedFiles { get; }
 
+    /// <summary>当前浏览的远程目录绝对路径;赋值时同步刷新 <see cref="Breadcrumbs" />。</summary>
     public string CurrentPath
     {
         get => _currentPath;
@@ -225,6 +236,7 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
+    /// <summary>是否正在加载目录或执行删除,用于显示忙碌遮罩。</summary>
     public bool IsLoading
     {
         get;
@@ -238,12 +250,14 @@ public class FileBrowserViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = Strings.Loading;
 
+    /// <summary>该文件浏览面板当前是否展示(隐藏时可跳过后台刷新等工作)。</summary>
     public bool IsVisible
     {
         get => _isVisible;
         set => this.RaiseAndSetIfChanged(ref _isVisible, value);
     }
 
+    /// <summary>需要展示给用户的错误提示;为 null 表示无错误。</summary>
     public string? ErrorMessage
     {
         get;
@@ -271,18 +285,21 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
+    /// <summary>“名称”列的用户可调宽度(有最小像素下限约束)。</summary>
     public GridLength NameColumnWidth
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, ClampColumnWidth(value, 180));
     } = new(280);
 
+    /// <summary>“大小”列的用户可调宽度(有最小像素下限约束)。</summary>
     public GridLength SizeColumnWidth
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, ClampColumnWidth(value, 70));
     } = new(100);
 
+    /// <summary>“权限”列的用户可调宽度(有最小像素下限约束)。</summary>
     public GridLength PermissionsColumnWidth
     {
         get;
@@ -310,6 +327,7 @@ public class FileBrowserViewModel : ReactiveObject
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>导航到指定绝对路径的目录(面包屑点击等)。</summary>
     public ReactiveCommand<string, Unit> NavigateToCommand { get; }
 
     /// <summary>
@@ -318,8 +336,10 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> ActivateCommand { get; }
 
+    /// <summary>返回上一级目录(已在根目录时无操作)。</summary>
     public ReactiveCommand<Unit, Unit> GoUpCommand { get; }
 
+    /// <summary>重新列举当前目录。</summary>
     public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
 
     /// <summary>Loads the account's home directory (spec: land in ~, not filesystem root).</summary>
@@ -332,23 +352,31 @@ public class FileBrowserViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> UploadFolderCommand { get; }
 
     // Right-click context-menu actions (spec: file operations live in the SFTP context menu).
+    /// <summary>在当前目录下新建文件夹(提示输入名称)。</summary>
     public ReactiveCommand<Unit, Unit> NewFolderCommand { get; }
 
+    /// <summary>在当前目录下新建空文件(提示输入名称)。</summary>
     public ReactiveCommand<Unit, Unit> NewFileCommand { get; }
 
+    /// <summary>下载选中的单个文件或目录到本地(目录递归)。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> DownloadItemCommand { get; }
 
+    /// <summary>在同目录内重命名选中的条目(提示输入新名称)。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> RenameCommand { get; }
 
+    /// <summary>把选中条目移动到输入的目标路径。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> MoveCommand { get; }
 
+    /// <summary>把选中条目的完整远程路径复制到剪贴板。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> CopyPathCommand { get; }
 
+    /// <summary>把选中条目的名称复制到剪贴板。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> CopyNameCommand { get; }
 
     /// <summary>属性弹窗(合并了 chmod 权限编辑,确定时应用变更)。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> PropertiesCommand { get; }
 
+    /// <summary>删除选中的单个文件或目录(先弹确认)。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> DeleteItemCommand { get; }
 
     /// <summary>「打开」:下载到临时副本后交给内置 AvaloniaEdit 编辑器(保存即上传)。</summary>
@@ -372,6 +400,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     public ReactiveCommand<Unit, Unit> ShowTransfersCommand { get; }
 
+    /// <summary>切换文件浏览面板的显示/隐藏。</summary>
     public ReactiveCommand<Unit, Unit> ToggleVisibilityCommand { get; }
 
     /// <summary>Toggles dotfile visibility (§6 header switch).</summary>
@@ -397,14 +426,19 @@ public class FileBrowserViewModel : ReactiveObject
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>“名称”列表头的排序方向箭头(仅当前排序列显示,否则为空)。</summary>
     public string NameSortGlyph => GlyphFor("name");
 
+    /// <summary>“大小”列表头的排序方向箭头(仅当前排序列显示,否则为空)。</summary>
     public string SizeSortGlyph => GlyphFor("size");
 
+    /// <summary>“权限”列表头的排序方向箭头(仅当前排序列显示,否则为空)。</summary>
     public string PermissionsSortGlyph => GlyphFor("permissions");
 
+    /// <summary>“修改时间”列表头的排序方向箭头(仅当前排序列显示,否则为空)。</summary>
     public string ModifiedSortGlyph => GlyphFor("modified");
 
+    /// <summary>当前路径按 "/" 拆分后的各级目录名(用于面包屑等)。</summary>
     public string[] PathSegments => CurrentPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
     /// <summary>Set by the view: opens the OS file picker (multi-select) and returns local paths.</summary>

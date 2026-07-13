@@ -3,8 +3,10 @@ using Avalonia.Interactivity;
 
 namespace VelaShell.Views.Settings;
 
+/// <summary>关于页:展示版本、依赖项目及其许可证链接。</summary>
 public partial class AboutPage : UserControl
 {
+    /// <summary>初始化关于页并加载 XAML 组件。</summary>
     public AboutPage()
     {
         InitializeComponent();

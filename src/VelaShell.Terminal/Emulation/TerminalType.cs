@@ -7,18 +7,29 @@ namespace VelaShell.Terminal.Emulation;
 /// </summary>
 public enum TerminalType
 {
+    /// <summary>DEC VT52,早期无 ANSI 转义序列的终端。</summary>
     Vt52,
+    /// <summary>DEC VT100,ANSI/VT 转义序列的基线终端。</summary>
     Vt100,
+    /// <summary>DEC VT102,VT100 的增强型,含插入/删除行列等能力。</summary>
     Vt102,
+    /// <summary>DEC VT220,支持 8 位控制、可下载字符集等扩展。</summary>
     Vt220,
+    /// <summary>DEC VT320,VT300 系列,支持彩色与更多扩展。</summary>
     Vt320, // "vt340" family — DEC VT300 series
+    /// <summary>DEC VT340,VT300 系列中带 Sixel 图形/彩色的型号。</summary>
     Vt340,
+    /// <summary>DEC VT420,支持多会话与更多显示扩展。</summary>
     Vt420,
+    /// <summary>DEC VT520,DEC 终端系列的高端型号。</summary>
     Vt520,
+    /// <summary>xterm 终端,VT100 类兼容并带大量扩展。</summary>
     Xterm,
+    /// <summary>xterm-256color,支持 256 色/真彩色的主用默认配置。</summary>
     XtermColor256
 }
 
+/// <summary><see cref="TerminalType" /> 的扩展方法,提供能力判定与 TERM 名称、Device Attributes 应答的映射。</summary>
 public static class TerminalTypeExtensions
 {
     /// <summary>Parses a TERM string (e.g. "xterm-256color") back to a <see cref="TerminalType" />.</summary>
@@ -47,6 +58,7 @@ public static class TerminalTypeExtensions
         /// <summary>True only for the xterm-256color profile (full 256/truecolor SGR).</summary>
         public bool Supports256Color() => type is TerminalType.XtermColor256;
 
+        /// <summary>True when this is the VT52 profile (使用独立的 VT52 转义语法)。</summary>
         public bool IsVt52() => type == TerminalType.Vt52;
 
         /// <summary>

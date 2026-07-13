@@ -46,6 +46,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     private SessionProfile? _selectedServer;
     private ObservableCollection<TunnelItemViewModel> _tunnels;
 
+    /// <summary>构造隧道面板视图模型;可注入已保存会话来源、后台连接/断开与存活探测委托及配置持久化存储(均可为空,便于测试)。</summary>
     public TunnelPanelViewModel(
         ITunnelService tunnelService,
         Func<Task<IReadOnlyList<SessionProfile>>>? savedProfilesProvider = null,
@@ -110,6 +111,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     /// <summary>隧道走哪台服务器:全部已保存会话。</summary>
     public ObservableCollection<SessionProfile> Servers { get; }
 
+    /// <summary>当前选中的目标服务器;切换时会加载其隧道条目并刷新连接状态。</summary>
     public SessionProfile? SelectedServer
     {
         get => _selectedServer;
@@ -150,6 +152,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         }
     }
 
+    /// <summary>当前服务器是否已有活着的后台隧道连接。</summary>
     public bool IsServerConnected => SelectedServer is not null && ResolveLiveSession(SelectedServer.Id) is not null;
 
     /// <summary>ComboBox adapter: 0 = 本地转发, 1 = 远程转发, 2 = 动态转发 (SOCKS)。</summary>
@@ -196,44 +199,52 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         }
     } = true;
 
+    /// <summary>目标主机是否可编辑:仅在未勾选"转发到服务器本机"时开放输入。</summary>
     public bool IsRemoteHostEditable => !ForwardToServerLoopback;
 
+    /// <summary>新建/编辑表单选择的隧道类型(本地/远程/动态转发)。</summary>
     public TunnelType NewTunnelType
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>表单中的本地监听主机,默认 127.0.0.1。</summary>
     public string NewLocalHost
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "127.0.0.1";
 
+    /// <summary>表单中的本地监听端口。</summary>
     public int NewLocalPort
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>表单中的目标(远端)主机,默认 127.0.0.1。</summary>
     public string NewRemoteHost
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "127.0.0.1";
 
+    /// <summary>表单中的目标(远端)端口。</summary>
     public int NewRemotePort
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>表单中的隧道别名(可选,留空时用路由描述兜底)。</summary>
     public string NewTunnelName
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
+    /// <summary>表单区展示的错误提示;无错误时为空。</summary>
     public string? ErrorMessage
     {
         get;
@@ -243,16 +254,22 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     /// <summary>非空 = 表单处于"编辑既有隧道"模式;提交按钮显示"保存"。</summary>
     public bool IsEditing => _editingTunnelId is not null;
 
+    /// <summary>表单标题:根据是否处于编辑模式显示"编辑隧道"或"新建隧道"。</summary>
     public string FormTitle => IsEditing ? Strings.Get("Msg_EditTunnel") : Strings.Get("NewTunnel");
 
+    /// <summary>提交按钮文案:编辑模式显示"保存",否则显示"创建"。</summary>
     public string SubmitButtonText => IsEditing ? Strings.Get("Save") : Strings.Get("Msg_Create");
 
+    /// <summary>按表单当前配置创建新隧道(或保存正在编辑的隧道)。</summary>
     public ReactiveCommand<Unit, Unit> CreateTunnelCommand { get; }
 
+    /// <summary>停止指定隧道(按隧道 Id)。</summary>
     public ReactiveCommand<Guid, Unit> StopTunnelCommand { get; }
 
+    /// <summary>启动一条已停止的隧道(按隧道 Id),必要时先建立后台连接。</summary>
     public ReactiveCommand<Guid, Unit> StartTunnelCommand { get; }
 
+    /// <summary>删除指定隧道(按隧道 Id),并在无隧道时释放后台连接。</summary>
     public ReactiveCommand<Guid, Unit> DeleteTunnelCommand { get; }
 
     /// <summary>把某条隧道的配置填回表单进入编辑模式;保存时按新配置重建。</summary>
@@ -264,6 +281,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     /// <summary>收起面板。</summary>
     public ReactiveCommand<Unit, Unit> CloseCommand { get; }
 
+    /// <summary>释放面板资源:停止实时刷新计时器。</summary>
     public void Dispose()
     {
         _liveTimer?.Stop();

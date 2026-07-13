@@ -43,6 +43,12 @@ public static class Charsets
         '·'  // ~ centered dot
     ];
 
+    /// <summary>
+    /// Translates a rune through the DEC Special Graphics set. Runes outside the 0x60-0x7E
+    /// range pass through unchanged; those inside map to their box-drawing/block glyph.
+    /// </summary>
+    /// <param name="rune">The incoming character code point.</param>
+    /// <returns>The translated code point, or the original <paramref name="rune" /> when unmapped.</returns>
     public static int MapDecSpecial(int rune)
     {
         if (rune is < 0x60 or > 0x7E)

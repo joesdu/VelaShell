@@ -7,6 +7,7 @@ namespace VelaShell.Docking.Model;
 /// </summary>
 public sealed class DockGroup : DockNode
 {
+    /// <summary>本组标签条中承载的全部文档,顺序即标签显示顺序。</summary>
     public ObservableCollection<DockDocument> Documents { get; } = [];
 
     /// <summary>本组当前显示的文档(标签选中态)。</summary>
@@ -16,6 +17,7 @@ public sealed class DockGroup : DockNode
         set => SetField(ref field, value);
     }
 
+    /// <summary>标签条相对内容区的摆放位置(默认置顶)。</summary>
     public DockTabsPosition TabsPosition
     {
         get;

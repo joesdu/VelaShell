@@ -9,12 +9,16 @@ namespace VelaShell.Terminal.Rendering;
 /// </summary>
 public sealed class TerminalPaletteOverrides
 {
+    /// <summary>ANSI 调色板槽位数(前 8 普通 + 后 8 明亮)。</summary>
     public const int AnsiCount = 16;
 
+    /// <summary>前景色覆盖;null 表示未自定义、跟随主题。</summary>
     public Rgba? Foreground { get; set; }
 
+    /// <summary>背景色覆盖;null 表示未自定义、跟随主题。</summary>
     public Rgba? Background { get; set; }
 
+    /// <summary>光标色覆盖;null 表示未自定义、跟随主题。</summary>
     public Rgba? Cursor { get; set; }
 
     /// <summary>选区底色(不含透明度,渲染层负责按方案叠加 alpha)。</summary>
@@ -23,6 +27,7 @@ public sealed class TerminalPaletteOverrides
     /// <summary>ANSI 0–15(前 8 普通 + 后 8 明亮)。</summary>
     public Rgba?[] Ansi { get; } = new Rgba?[AnsiCount];
 
+    /// <summary>是否不含任何自定义覆盖(所有颜色均跟随主题)。</summary>
     public bool IsEmpty
     {
         get

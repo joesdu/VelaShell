@@ -19,8 +19,12 @@ using VelaConnectionInfo = VelaShell.Core.Models.ConnectionInfo;
 
 namespace VelaShell.Infrastructure.DependencyInjection;
 
+/// <summary>基础设施层(持久化、SSH、隧道、同步等)的依赖注入注册扩展。</summary>
 public static class InfrastructureServiceCollectionExtensions
 {
+    /// <summary>向容器注册 VelaShell 基础设施层所需的存储、SSH、SFTP、隧道与同步服务。</summary>
+    /// <param name="services">要注册服务的服务集合。</param>
+    /// <returns>返回同一服务集合以支持链式调用。</returns>
     public static IServiceCollection AddVelaShellInfrastructure(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);

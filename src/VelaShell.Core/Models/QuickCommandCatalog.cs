@@ -5,6 +5,7 @@ namespace VelaShell.Core.Models;
 /// <summary>quick_commands 集合的存储形状(设置页与命令补全建议共用)。</summary>
 public sealed class QuickCommandData
 {
+    /// <summary>自定义快捷命令列表。</summary>
     public List<QuickCommand> Commands { get; set; } = [];
 }
 
@@ -16,6 +17,7 @@ public sealed class QuickCommandData
 /// </summary>
 public static class QuickCommandCatalog
 {
+    /// <summary>内置快捷命令列表(描述按当前语言本地化)。</summary>
     public static IReadOnlyList<QuickCommand> BuiltIns { get; } =
     [
         new() { Name = "netstat -tlnp", Category = "Network", CommandText = "netstat -tlnp", Description = Strings.Get("QuickCmd_ShowListeningPorts"), IsBuiltIn = true },

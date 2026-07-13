@@ -8,8 +8,10 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views.Settings;
 
+/// <summary>安全审计设置页:提供会话录制回放等安全审计相关入口。</summary>
 public partial class SecurityAuditPage : UserControl
 {
+    /// <summary>初始化安全审计设置页并加载 XAML 组件。</summary>
     public SecurityAuditPage()
     {
         InitializeComponent();

@@ -9,10 +9,19 @@ namespace VelaShell.Views;
 /// <summary>标题栏图标的语义分组:着色跟随主题令牌(info/成功/警告/错误/询问)。</summary>
 public enum MessageDialogKind
 {
+    /// <summary>普通信息提示。</summary>
     Info,
+
+    /// <summary>操作成功提示。</summary>
     Success,
+
+    /// <summary>警告提示。</summary>
     Warning,
+
+    /// <summary>错误提示。</summary>
     Error,
+
+    /// <summary>需要用户确认的询问提示。</summary>
     Question
 }
 
@@ -23,6 +32,7 @@ public enum MessageDialogKind
 /// </summary>
 public partial class MessageDialog : Window
 {
+    /// <summary>供 XAML 加载器调用的无参构造:初始化可视化组件。</summary>
     public MessageDialog()
     {
         InitializeComponent();
@@ -134,6 +144,7 @@ public partial class MessageDialog : Window
 
     private void Close_Click(object? sender, RoutedEventArgs e) => Close(false);
 
+    /// <summary>拦截 Esc 键关闭弹窗:纯消息框(无取消按钮)时也能用 Esc 取消。</summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
         // 无取消按钮的纯消息框也要能用 Esc 关闭(IsCancel 只在按钮可见时生效)。

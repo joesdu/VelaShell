@@ -9,6 +9,10 @@ using VelaShell.Core.Sftp;
 
 namespace VelaShell.ViewModels;
 
+/// <summary>
+/// 文件传输面板(toast)的视图模型:聚合活动/历史传输项,驱动准备扫描、
+/// 可取消批量传输、徽标计数与自动隐藏等交互逻辑。
+/// </summary>
 public class FileTransferViewModel : ReactiveObject
 {
     // 可空:无参构造的宿主(单元测试/无 SFTP 服务的场景)不提供传输管理器。
@@ -27,6 +31,10 @@ public class FileTransferViewModel : ReactiveObject
     private bool _isPreparing;
     private int _preparingCount;
 
+    /// <summary>
+    /// 构造视图模型并初始化各命令;<paramref name="transferManager" /> 可为空
+    /// (单元测试或无 SFTP 服务的宿主场景不提供传输管理器)。
+    /// </summary>
     public FileTransferViewModel(ITransferManager? transferManager)
     {
         _transferManager = transferManager;
@@ -39,6 +47,7 @@ public class FileTransferViewModel : ReactiveObject
         HidePanelCommand = ReactiveCommand.Create(() => { IsPanelVisible = false; });
     }
 
+    /// <summary>当前所有传输项(活动与已完成),新任务插入到列表顶部。</summary>
     public ObservableCollection<TransferItemViewModel> Transfers { get; }
 
     /// <summary>Count of in-flight tasks (in progress or queued).</summary>
@@ -78,12 +87,16 @@ public class FileTransferViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>隐藏传输面板(点击关闭按钮),任务继续在后台运行。</summary>
     public ReactiveCommand<Unit, Unit> HidePanelCommand { get; }
 
+    /// <summary>取消指定 Id 的单个传输。</summary>
     public ReactiveCommand<Guid, Unit> CancelTransferCommand { get; }
 
+    /// <summary>重试指定 Id 的失败传输,将其重新排队。</summary>
     public ReactiveCommand<Guid, Unit> RetryTransferCommand { get; }
 
+    /// <summary>清除列表中所有已完成或已取消的传输项。</summary>
     public ReactiveCommand<Unit, Unit> ClearCompletedCommand { get; }
 
     /// <summary>
@@ -301,6 +314,7 @@ public class FileTransferViewModel : ReactiveObject
         }, TimeSpan.FromSeconds(3));
     }
 
+    /// <summary>新增一个传输任务;插入列表顶部,使进行中的传输无需滚动即可看到。</summary>
     public void AddTransfer(TransferTask task)
     {
         var item = new TransferItemViewModel(task);
@@ -308,6 +322,7 @@ public class FileTransferViewModel : ReactiveObject
         Transfers.Insert(0, item);
     }
 
+    /// <summary>按 Id 查找传输项,未找到时返回 <see langword="null" />。</summary>
     public TransferItemViewModel? FindTransfer(Guid transferId) => Transfers.FirstOrDefault(t => t.Id == transferId);
 
     private void CancelTransfer(Guid transferId)

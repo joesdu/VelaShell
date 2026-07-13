@@ -6,8 +6,10 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views.Settings;
 
+/// <summary>常规设置页:提供导入/导出设置与清除历史等操作。</summary>
 public partial class GeneralSettingsPage : UserControl
 {
+    /// <summary>初始化常规设置页并加载 XAML 组件。</summary>
     public GeneralSettingsPage()
     {
         InitializeComponent();

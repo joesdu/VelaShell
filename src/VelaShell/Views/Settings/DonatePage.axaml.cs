@@ -6,10 +6,12 @@ using Avalonia.Threading;
 
 namespace VelaShell.Views.Settings;
 
+/// <summary>捐赠页:展示 Wise 付款链接并提供打开/复制操作。</summary>
 public partial class DonatePage : UserControl
 {
     private const string WiseLink = "https://wise.com/pay/me/yud162";
 
+    /// <summary>初始化捐赠页并加载 XAML 组件。</summary>
     public DonatePage()
     {
         InitializeComponent();

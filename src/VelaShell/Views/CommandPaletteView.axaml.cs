@@ -9,10 +9,15 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 
+/// <summary>
+/// 命令面板视图:承载搜索框与结果列表,并通过隧道路由拦截方向键/回车/Esc,
+/// 在搜索框消费键盘事件前完成上下导航、执行与关闭。
+/// </summary>
 public partial class CommandPaletteView : UserControl
 {
     private CommandPaletteViewModel? _vm;
 
+    /// <summary>初始化命令面板视图,注册键盘隧道处理器与数据上下文变更监听。</summary>
     public CommandPaletteView()
     {
         InitializeComponent();

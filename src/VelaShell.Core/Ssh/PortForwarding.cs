@@ -17,6 +17,11 @@ public enum PortForwardKind
 /// 库中立的端口转发请求:Bound = 监听端(Local 在本机、Remote 在服务器),
 /// Target = 目的端;Dynamic 转发不需要 Target。
 /// </summary>
+/// <param name="Kind">端口转发类型(本地/远程/动态)。</param>
+/// <param name="BoundHost">监听端主机地址。</param>
+/// <param name="BoundPort">监听端端口。</param>
+/// <param name="TargetHost">目的端主机地址;动态转发时为空。</param>
+/// <param name="TargetPort">目的端端口;动态转发时为空。</param>
 public sealed record PortForwardRequest(
     PortForwardKind Kind,
     string BoundHost,
@@ -32,10 +37,12 @@ public sealed record PortForwardRequest(
 /// </summary>
 public interface IPortForwardHandle : IDisposable
 {
+    /// <summary>转发是否处于已启动(监听中)状态。</summary>
     bool IsStarted { get; }
 
     /// <summary>转发通道错误(每个经过的连接失败时触发,监听端口本身仍在)。</summary>
     event Action<Exception>? ChannelError;
 
+    /// <summary>停止监听并从客户端摘除该转发(幂等)。</summary>
     void Stop();
 }

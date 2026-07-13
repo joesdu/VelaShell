@@ -6,8 +6,10 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views.Settings;
 
+/// <summary>传输设置分页视图,配置下载目录、外部编辑器等文件传输选项。</summary>
 public partial class TransferSettingsPage : UserControl
 {
+    /// <summary>初始化 <see cref="TransferSettingsPage"/> 并加载 XAML 组件。</summary>
     public TransferSettingsPage()
     {
         InitializeComponent();

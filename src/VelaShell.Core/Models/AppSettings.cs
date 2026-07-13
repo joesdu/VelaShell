@@ -3,21 +3,28 @@ using System.Runtime.CompilerServices;
 
 namespace VelaShell.Core.Models;
 
+/// <summary>应用全局设置的根模型:序列化为 SonnetDB app_config 文档,聚合各页面的分组选项。</summary>
 public class AppSettings
 {
+    /// <summary>界面显示语言(BCP-47 文化名,如 zh-CN);切换后实时应用。</summary>
     public string Language { get; set; } = "zh-CN";
 
+    /// <summary>界面主题标识(如 dark / light)。</summary>
     public string Theme { get; set; } = "dark";
 
     /// <summary>Accent-color override as a hex string (e.g. "#00D4AA"); empty = use theme default.</summary>
     public string AccentColor { get; set; } = "";
 
+    /// <summary>终端渲染使用的等宽字体族名。</summary>
     public string TerminalFont { get; set; } = "JetBrains Mono";
 
+    /// <summary>终端字体字号(磅)。</summary>
     public int TerminalFontSize { get; set; } = 14;
 
+    /// <summary>终端可回滚保留的最大历史行数。</summary>
     public int ScrollbackLines { get; set; } = 50000;
 
+    /// <summary>新建 SSH 连接的默认端口。</summary>
     public int DefaultPort { get; set; } = 22;
 
     /// <summary>Terminal emulation profile advertised as TERM (default xterm-256color).</summary>
@@ -29,16 +36,22 @@ public class AppSettings
     // —— 设计 §14 各页面的分组选项(SonnetDB app_config 文档,JSON 嵌套) ——
     // 部分选项当前仅持久化,由后续功能消费。
 
+    /// <summary>「常规」页的分组选项。</summary>
     public GeneralOptions General { get; set; } = new();
 
+    /// <summary>「外观」页的分组选项。</summary>
     public AppearanceOptions Appearance { get; set; } = new();
 
+    /// <summary>「终端」页的行为分组选项。</summary>
     public TerminalBehaviorOptions TerminalBehavior { get; set; } = new();
 
+    /// <summary>「文件传输」页的分组选项。</summary>
     public TransferOptions Transfer { get; set; } = new();
 
+    /// <summary>「安全审计」页的分组选项。</summary>
     public SecurityOptions Security { get; set; } = new();
 
+    /// <summary>「密钥管理」页的分组选项。</summary>
     public KeyOptions Keys { get; set; } = new();
 
     /// <summary>
@@ -62,8 +75,10 @@ public class AppSettings
 /// </summary>
 public abstract class ObservableOptions : INotifyPropertyChanged
 {
+    /// <summary>属性值变化时触发,用于设置页 TwoWay 绑定的实时观察。</summary>
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>为字段赋值:值有变化时更新并触发 <see cref="PropertyChanged" />,值相同则跳过。</summary>
     protected void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {
         if (EqualityComparer<T>.Default.Equals(field, value))
@@ -79,24 +94,28 @@ public abstract class ObservableOptions : INotifyPropertyChanged
 public class GeneralOptions : ObservableOptions
 {
     // 启动
+    /// <summary>是否开机自启动应用。</summary>
     public bool LaunchAtStartup
     {
         get;
         set => Set(ref field, value);
     }
 
+    /// <summary>启动时是否恢复上次退出前已连接的会话。</summary>
     public bool RestoreSessionsOnStartup
     {
         get;
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>启动时是否检查应用更新。</summary>
     public bool CheckUpdatesOnStartup
     {
         get;
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>是否最小化到系统托盘而非任务栏。</summary>
     public bool MinimizeToTray
     {
         get;
@@ -107,12 +126,14 @@ public class GeneralOptions : ObservableOptions
     public List<Guid> LastOpenProfileIds { get; set; } = [];
 
     // 连接默认值
+    /// <summary>建立连接的超时时间(秒)。</summary>
     public int ConnectTimeoutSeconds
     {
         get;
         set => Set(ref field, value);
     } = 30;
 
+    /// <summary>连接保活心跳间隔(秒)。</summary>
     public int KeepAliveSeconds
     {
         get;
@@ -127,6 +148,7 @@ public class GeneralOptions : ObservableOptions
     } = 3;
 
     // 数据与存储
+    /// <summary>是否记录终端会话日志。</summary>
     public bool SessionLogging
     {
         get;
@@ -141,12 +163,14 @@ public class GeneralOptions : ObservableOptions
     } = 30;
 
     // 更新
+    /// <summary>更新通道(如 stable / beta)。</summary>
     public string UpdateChannel
     {
         get;
         set => Set(ref field, value);
     } = "stable";
 
+    /// <summary>是否自动下载可用更新。</summary>
     public bool AutoDownloadUpdates
     {
         get;
@@ -161,18 +185,21 @@ public class GeneralOptions : ObservableOptions
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>连接断开时是否弹出通知。</summary>
     public bool NotifyOnDisconnect
     {
         get;
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>连接断开后是否自动尝试重连。</summary>
     public bool AutoReconnect
     {
         get;
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>自动重连的间隔时间(秒)。</summary>
     public int ReconnectIntervalSeconds
     {
         get;
@@ -188,12 +215,14 @@ public class GeneralOptions : ObservableOptions
     }
 
     // 隐私与安全
+    /// <summary>是否启用主密码保护本地凭据。</summary>
     public bool MasterPasswordProtection
     {
         get;
         set => Set(ref field, value);
     }
 
+    /// <summary>是否记住并保存连接密码。</summary>
     public bool RememberPasswords
     {
         get;
@@ -207,42 +236,49 @@ public class GeneralOptions : ObservableOptions
 /// </summary>
 public class AppearanceOptions : ObservableOptions
 {
+    /// <summary>应用界面(非终端)使用的字体族名。</summary>
     public string UiFont
     {
         get;
         set => Set(ref field, value);
     } = "Inter";
 
+    /// <summary>应用界面字体字号(磅)。</summary>
     public int UiFontSize
     {
         get;
         set => Set(ref field, value);
     } = 13;
 
+    /// <summary>窗口整体不透明度(百分比,100 = 不透明)。</summary>
     public int WindowOpacityPercent
     {
         get;
         set => Set(ref field, value);
     } = 100;
 
+    /// <summary>标签栏位置(如 top / bottom)。</summary>
     public string TabBarPosition
     {
         get;
         set => Set(ref field, value);
     } = "top";
 
+    /// <summary>是否显示菜单栏。</summary>
     public bool ShowMenuBar
     {
         get;
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>侧边栏位置(如 left / right)。</summary>
     public string SidebarPosition
     {
         get;
         set => Set(ref field, value);
     } = "left";
 
+    /// <summary>启动时的窗口状态(如 remember / maximized / normal)。</summary>
     public string StartupWindowState
     {
         get;
@@ -250,18 +286,21 @@ public class AppearanceOptions : ObservableOptions
     } = "remember";
 
     // “记住上次”窗口状态的持久化槽位(不出现在设置界面,由主窗口关闭时回写)。
+    /// <summary>「记住上次」窗口宽度的持久化槽位(由主窗口关闭时回写)。</summary>
     public double LastWindowWidth
     {
         get;
         set => Set(ref field, value);
     }
 
+    /// <summary>「记住上次」窗口高度的持久化槽位(由主窗口关闭时回写)。</summary>
     public double LastWindowHeight
     {
         get;
         set => Set(ref field, value);
     }
 
+    /// <summary>「记住上次」窗口是否最大化的持久化槽位(由主窗口关闭时回写)。</summary>
     public bool LastWindowMaximized
     {
         get;
@@ -269,36 +308,42 @@ public class AppearanceOptions : ObservableOptions
     }
 
     // 终端颜色(默认 = Dracula 官方 Windows Terminal 方案,用户确认)
+    /// <summary>终端前景(文本)颜色(十六进制)。</summary>
     public string TerminalForeground
     {
         get;
         set => Set(ref field, value);
     } = "#F8F8F2";
 
+    /// <summary>终端背景颜色(十六进制)。</summary>
     public string TerminalBackground
     {
         get;
         set => Set(ref field, value);
     } = "#282A36";
 
+    /// <summary>终端光标颜色(十六进制)。</summary>
     public string CursorColor
     {
         get;
         set => Set(ref field, value);
     } = "#F8F8F2";
 
+    /// <summary>终端选区高亮颜色(十六进制)。</summary>
     public string SelectionColor
     {
         get;
         set => Set(ref field, value);
     } = "#44475A";
 
+    /// <summary>ANSI 标准色(0-7)调色板,共 8 个十六进制颜色。</summary>
     public List<string> AnsiNormal
     {
         get;
         set => Set(ref field, value);
     } = ["#21222C", "#FF5555", "#50FA7B", "#F1FA8C", "#BD93F9", "#FF79C6", "#8BE9FD", "#F8F8F2"];
 
+    /// <summary>ANSI 高亮色(8-15)调色板,共 8 个十六进制颜色。</summary>
     public List<string> AnsiBright
     {
         get;
@@ -316,12 +361,14 @@ public class TerminalBehaviorOptions : ObservableOptions
         set => Set(ref field, value);
     } = 1.0;
 
+    /// <summary>光标形状(如 bar / block / underline)。</summary>
     public string CursorStyle
     {
         get;
         set => Set(ref field, value);
     } = "bar";
 
+    /// <summary>光标是否闪烁。</summary>
     public bool CursorBlink
     {
         get;
@@ -335,6 +382,7 @@ public class TerminalBehaviorOptions : ObservableOptions
         set => Set(ref field, value);
     } = "system";
 
+    /// <summary>后台标签收到响铃时是否闪烁标签提示。</summary>
     public bool TabFlashAlert
     {
         get;
@@ -382,6 +430,7 @@ public class TerminalBehaviorOptions : ObservableOptions
         set => Set(ref field, value);
     }
 
+    /// <summary>按键输入时是否把视图滚回底部。</summary>
     public bool ScrollOnKeystroke
     {
         get;
@@ -398,30 +447,35 @@ public class TerminalBehaviorOptions : ObservableOptions
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>是否右键点击即粘贴剪贴板内容。</summary>
     public bool RightClickPaste
     {
         get;
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>复制时是否去除每行末尾空白。</summary>
     public bool TrimTrailingWhitespaceOnCopy
     {
         get;
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>双击是否按单词选中。</summary>
     public bool DoubleClickSelectsWord
     {
         get;
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>粘贴多行内容前是否弹出确认。</summary>
     public bool ConfirmMultilinePaste
     {
         get;
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>是否启用输入法(IME)支持。</summary>
     public bool ImeSupport
     {
         get;
@@ -452,24 +506,28 @@ public class TerminalBehaviorOptions : ObservableOptions
 /// <summary>设置 - 文件传输(设计 HGwa7)。</summary>
 public class TransferOptions : ObservableOptions
 {
+    /// <summary>下载文件保存到的本地默认目录。</summary>
     public string LocalDownloadDirectory
     {
         get;
         set => Set(ref field, value);
     } = "~/Downloads";
 
+    /// <summary>同时进行的最大传输任务数。</summary>
     public int MaxConcurrentTransfers
     {
         get;
         set => Set(ref field, value);
     } = 3;
 
+    /// <summary>传输时是否保留文件的原始时间戳。</summary>
     public bool PreserveTimestamps
     {
         get;
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>传输完成时是否弹出通知。</summary>
     public bool NotifyOnComplete
     {
         get;
@@ -493,24 +551,28 @@ public class TransferOptions : ObservableOptions
     /// <summary>规划中(断点续传):仅持久化,当前无运行时消费者,不出现在设置界面(设置审计 M-02/R-07)。</summary>
     public bool AutoResume { get; set; } = true;
 
+    /// <summary>是否启用传输带宽限速。</summary>
     public bool BandwidthLimitEnabled
     {
         get;
         set => Set(ref field, value);
     }
 
+    /// <summary>上传速度上限(MB/s),0 = 不限。</summary>
     public int UploadLimitMBps
     {
         get;
         set => Set(ref field, value);
     }
 
+    /// <summary>下载速度上限(MB/s),0 = 不限。</summary>
     public int DownloadLimitMBps
     {
         get;
         set => Set(ref field, value);
     }
 
+    /// <summary>是否记录文件传输日志。</summary>
     public bool TransferLogging
     {
         get;
@@ -524,6 +586,7 @@ public class TransferOptions : ObservableOptions
         set => Set(ref field, value);
     } = 30;
 
+    /// <summary>传输日志的存放目录。</summary>
     public string LogDirectory
     {
         get;
@@ -559,18 +622,21 @@ public class SecurityOptions : ObservableOptions
     /// <summary>规划中(输入脱敏,依赖会话录制):仅持久化,不出现在设置界面(设置审计 R-12)。</summary>
     public bool MaskSensitiveInput { get; set; } = true;
 
+    /// <summary>首次连接主机时是否需确认其指纹。</summary>
     public bool ConfirmFirstFingerprint
     {
         get;
         set => Set(ref field, value);
     }
 
+    /// <summary>主机指纹变化时是否阻止连接。</summary>
     public bool BlockOnFingerprintChange
     {
         get;
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>安全事件发生时是否在应用内弹出告警。</summary>
     public bool AlertInApp
     {
         get;
@@ -584,12 +650,14 @@ public class SecurityOptions : ObservableOptions
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>安全事件发生时是否推送到 Webhook。</summary>
     public bool AlertWebhook
     {
         get;
         set => Set(ref field, value);
     }
 
+    /// <summary>接收安全告警的 Webhook 地址(空 = 未配置)。</summary>
     public string WebhookUrl
     {
         get;

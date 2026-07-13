@@ -3,6 +3,7 @@ namespace VelaShell.Core.Models;
 /// <summary>审计日志条目,写入 SonnetDB 时序 measurement <c>audit_log</c>。</summary>
 public class AuditEntry
 {
+    /// <summary>事件发生时间(UTC),作为时序数据的时间戳。</summary>
     public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.UtcNow;
 
     /// <summary>

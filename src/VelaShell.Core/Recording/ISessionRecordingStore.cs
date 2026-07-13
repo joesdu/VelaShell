@@ -3,18 +3,22 @@ namespace VelaShell.Core.Recording;
 /// <summary>一次会话录制的元数据(文档集合 recordings,Id 为文档键)。</summary>
 public class SessionRecording
 {
+    /// <summary>录制唯一标识(文档键)。</summary>
     public Guid Id { get; set; } = Guid.NewGuid();
 
     /// <summary>会话展示名(标签标题,如服务器名)。</summary>
     public string SessionLabel { get; set; } = string.Empty;
 
+    /// <summary>录制开始时刻(UTC)。</summary>
     public DateTime StartedAtUtc { get; set; } = DateTime.UtcNow;
 
     /// <summary>null = 录制中(或应用异常退出未收尾)。</summary>
     public DateTime? EndedAtUtc { get; set; }
 
+    /// <summary>录制输出的累计字节数。</summary>
     public long ByteSize { get; set; }
 
+    /// <summary>录制包含的数据块数量。</summary>
     public int ChunkCount { get; set; }
 
     /// <summary>录制时长(毫秒);以最后一块输出的偏移为准。</summary>
@@ -22,6 +26,8 @@ public class SessionRecording
 }
 
 /// <summary>一块录制数据:相对录制开始的毫秒偏移 + 原始终端输出字节。</summary>
+/// <param name="OffsetMs">相对录制开始时刻的毫秒偏移。</param>
+/// <param name="Data">该时刻的原始终端输出字节。</param>
 public sealed record RecordingChunk(long OffsetMs, byte[] Data);
 
 /// <summary>

@@ -3,6 +3,9 @@ using Microsoft.Extensions.Logging;
 
 namespace VelaShell.Core.Data;
 
+/// <summary>
+/// 基于 JSON 文件的通用数据存储:按文件路径读写可序列化对象,并以每文件信号量串行化并发访问。
+/// </summary>
 public class JsonDataStore(ILogger<JsonDataStore>? logger = null)
 {
     private readonly SemaphoreSlim _dictionaryLock = new(1, 1);
@@ -14,6 +17,7 @@ public class JsonDataStore(ILogger<JsonDataStore>? logger = null)
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
+    /// <summary>从指定 JSON 文件加载对象;文件不存在返回默认新实例,内容损坏时记录警告并重置为默认值。</summary>
     public async Task<T?> LoadAsync<T>(string filePath, CancellationToken cancellationToken = default) where T : class, new()
     {
         SemaphoreSlim fileLock = await GetFileLockAsync(filePath).ConfigureAwait(false);
@@ -41,6 +45,7 @@ public class JsonDataStore(ILogger<JsonDataStore>? logger = null)
         }
     }
 
+    /// <summary>将对象序列化为 JSON 并写入指定文件;按需创建目录,IO 失败时以指数退避重试。</summary>
     public async Task SaveAsync<T>(string filePath, T data, CancellationToken cancellationToken = default)
     {
         string? directory = Path.GetDirectoryName(filePath);

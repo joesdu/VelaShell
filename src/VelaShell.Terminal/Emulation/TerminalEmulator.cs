@@ -42,6 +42,7 @@ public sealed class TerminalEmulator : IVtActions
     private int _singleShift = -1;
     private bool[] _tabStops;
 
+    /// <summary>Creates an emulator with the given screen geometry, terminal type and scrollback capacity.</summary>
     public TerminalEmulator(int columns = 80, int rows = 24, TerminalType type = TerminalType.XtermColor256, int scrollback = 10_000)
     {
         Type = type;
@@ -53,26 +54,36 @@ public sealed class TerminalEmulator : IVtActions
         _parser = new(this) { Vt52Mode = type == TerminalType.Vt52 };
     }
 
+    /// <summary>The terminal type currently being emulated; gates feature behavior.</summary>
     public TerminalType Type { get; private set; }
 
+    /// <summary>The active terminal modes (autowrap, origin, mouse tracking, etc.).</summary>
     public TerminalModes Modes { get; }
 
+    /// <summary>The color palette used to resolve indexed colors to concrete RGB values.</summary>
     public TerminalPalette Palette { get; }
 
+    /// <summary>The screen buffer currently in effect (main or alternate).</summary>
     public TerminalScreen Screen { get; private set; }
 
+    /// <summary>Number of columns in the current screen.</summary>
     public int Columns => Screen.Columns;
 
+    /// <summary>Number of rows in the current screen.</summary>
     public int Rows => Screen.Rows;
 
+    /// <summary>Current cursor column (0-based).</summary>
     public int CursorX => Screen.CursorX;
 
+    /// <summary>Current cursor row (0-based).</summary>
     public int CursorY => Screen.CursorY;
 
+    /// <summary>True while the alternate screen buffer is active (DECSET 1047/1049).</summary>
     public bool IsAlternateScreen { get; private set; }
 
     // ---- IVtActions: printing ----------------------------------------------
 
+    /// <summary>Writes a printable character at the cursor, handling charset translation, wide/combining glyphs and autowrap.</summary>
     public void Print(int rune)
     {
         // Apply active charset translation.
@@ -152,6 +163,7 @@ public sealed class TerminalEmulator : IVtActions
 
     // ---- IVtActions: C0 controls -------------------------------------------
 
+    /// <summary>Executes a C0 control character (BEL, BS, HT, LF/VT/FF, CR, SO/SI).</summary>
     public void Execute(char control)
     {
         switch (control)
@@ -197,6 +209,7 @@ public sealed class TerminalEmulator : IVtActions
 
     // ---- IVtActions: ESC ----------------------------------------------------
 
+    /// <summary>Dispatches an ESC sequence (charset designation, IND/RI/NEL, DECSC/DECRC, RIS, etc.).</summary>
     public void EscDispatch(string intermediates, char final)
     {
         if (Type == TerminalType.Vt52 && intermediates.Length == 0)
@@ -265,6 +278,7 @@ public sealed class TerminalEmulator : IVtActions
 
     // ---- IVtActions: CSI ----------------------------------------------------
 
+    /// <summary>Dispatches a CSI sequence (cursor movement, erase, insert/delete, SGR, mode set/reset, reports, etc.).</summary>
     public void CsiDispatch(char prefix, IReadOnlyList<int> p, string intermediates, char final)
     {
         if (prefix == '?')
@@ -394,6 +408,7 @@ public sealed class TerminalEmulator : IVtActions
         int P0(int index) => index < p.Count ? p[index] : 0;
     }
 
+    /// <summary>Dispatches an OSC command (window title changes, OSC 52 clipboard writes).</summary>
     public void OscDispatch(IReadOnlyList<string> p)
     {
         if (p.Count == 0)
@@ -435,6 +450,7 @@ public sealed class TerminalEmulator : IVtActions
         }
     }
 
+    /// <summary>Dispatches a DCS sequence; currently handles DECRQSS status requests and silently consumes the rest.</summary>
     public void DcsDispatch(char prefix, IReadOnlyList<int> parameters, string intermediates, char final, string data)
     {
         // DECRQSS(DCS $ q Pt ST):按 xterm 惯例应答 DCS 1 $ r <设定> ST(1=有效,0=无效)。
@@ -469,6 +485,7 @@ public sealed class TerminalEmulator : IVtActions
     /// <summary>Raised after a chunk of input has been applied so the UI can repaint.</summary>
     public event Action? Updated;
 
+    /// <summary>Switches the emulated terminal type, updating VT52 parsing accordingly.</summary>
     public void SetTerminalType(TerminalType type)
     {
         Type = type;
@@ -492,8 +509,10 @@ public sealed class TerminalEmulator : IVtActions
         Updated?.Invoke();
     }
 
+    /// <summary>Feeds raw bytes from the host. UTF-8 is decoded before parsing.</summary>
     public void Feed(byte[] bytes) => Feed(bytes.AsSpan());
 
+    /// <summary>Resizes both the main and alternate screens (and tab stops) to the given geometry.</summary>
     public void Resize(int columns, int rows)
     {
         columns = Math.Max(1, columns);

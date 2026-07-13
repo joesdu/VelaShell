@@ -6,6 +6,7 @@ using VelaShell.Core.Resources;
 
 namespace VelaShell.Presentation.ViewModels;
 
+/// <summary>状态栏视图模型:维护连接状态、终端信息与 CPU/内存/磁盘/网络等实时指标,并驱动运行时长计时。</summary>
 public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, IDisposable
 {
     private readonly CompositeDisposable _disposables = [];
@@ -14,24 +15,28 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
 
     private IDisposable? _uptimeSubscription;
 
+    /// <summary>使用默认调度器构造状态栏视图模型(供设计期/无注入场景使用)。</summary>
     public StatusBarViewModel()
         : this(DefaultScheduler.Instance) { }
 
     // The metric segments are always visible; before the first sample (or without a
     // connected session) they show idle placeholders (用户要求).
 
+    /// <summary>状态栏左侧的当前状态文本,默认显示“就绪”。</summary>
     public string StatusText
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = Strings.Ready;
 
+    /// <summary>连接信息文本(如主机名/用户名),未连接时为空。</summary>
     public string ConnectionInfo
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
+    /// <summary>连接状态文本;赋值时同步刷新 <see cref="IsConnected"/>。</summary>
     public string Status
     {
         get;
@@ -42,48 +47,56 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
         }
     } = Strings.Disconnected;
 
+    /// <summary>与服务器的往返延迟文本,未测得时为空。</summary>
     public string Latency
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
+    /// <summary>终端类型标识,默认 xterm-256color。</summary>
     public string TerminalType
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "xterm-256color";
 
+    /// <summary>终端窗口尺寸(列×行)文本。</summary>
     public string WindowSize
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "80×24";
 
+    /// <summary>字符编码文本,默认 UTF-8。</summary>
     public string Encoding
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "UTF-8";
 
+    /// <summary>会话已运行时长文本(hh:mm:ss),由计时器刷新。</summary>
     public string Uptime
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
+    /// <summary>是否已连接;随 <see cref="Status"/> 是否等于“已连接”自动更新。</summary>
     public bool IsConnected
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>CPU 总占用率文本,无实时会话时为 "--"。</summary>
     public string CpuUsage
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "--";
 
+    /// <summary>内存占用率文本,无实时会话时为 "--"。</summary>
     public string MemUsage
     {
         get;
@@ -156,6 +169,7 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>释放内部订阅资源并停止运行时长计时。</summary>
     public void Dispose()
     {
         _disposables.Dispose();
@@ -202,6 +216,9 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
         NetTooltip = Strings.Get("Svc_NetSpeed");
     }
 
+    /// <summary>将字节/秒速率格式化为带单位(B/s、KB/s、MB/s、GB/s)的可读文本。</summary>
+    /// <param name="bytesPerSec">每秒字节数。</param>
+    /// <returns>带单位的速率文本。</returns>
     public static string FormatRate(double bytesPerSec)
     {
         const double kb = 1024, mb = kb * 1024, gb = mb * 1024;
@@ -214,6 +231,7 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
         };
     }
 
+    /// <summary>启动运行时长计时器,每秒刷新 <see cref="Uptime"/>;重复调用会先重置。</summary>
     public void StartUptimeTimer()
     {
         StopUptimeTimer();
@@ -228,12 +246,14 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
         _disposables.Add(_uptimeSubscription);
     }
 
+    /// <summary>停止运行时长计时器并释放其订阅。</summary>
     public void StopUptimeTimer()
     {
         _uptimeSubscription?.Dispose();
         _uptimeSubscription = null;
     }
 
+    /// <summary>重置并重新开始运行时长计时(清空 <see cref="Uptime"/> 后重启计时器)。</summary>
     public void ResetUptime()
     {
         StopUptimeTimer();

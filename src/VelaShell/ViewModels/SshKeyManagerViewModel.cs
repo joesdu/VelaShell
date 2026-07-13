@@ -11,6 +11,7 @@ public class SshKeyManagerViewModel : ReactiveObject
 {
     private readonly ISshKeyService? _keyService;
 
+    /// <summary>构造密钥管理视图模型,注入密钥服务并初始化集合与命令。</summary>
     public SshKeyManagerViewModel(ISshKeyService? keyService = null)
     {
         _keyService = keyService;
@@ -23,37 +24,46 @@ public class SshKeyManagerViewModel : ReactiveObject
         this.WhenAnyValue(x => x.SearchQuery).Subscribe(_ => ApplyFilter());
     }
 
+    /// <summary>已枚举到的全部 ~/.ssh 密钥。</summary>
     public ObservableCollection<SshKeyInfo> Keys { get; }
 
+    /// <summary>按搜索条件过滤后的密钥,供列表展示。</summary>
     public ObservableCollection<SshKeyInfo> FilteredKeys { get; }
 
     /// <summary>密钥名称列表,供“默认认证密钥”下拉。</summary>
     public ObservableCollection<string> KeyNames { get; }
 
+    /// <summary>密钥搜索关键字,变更时触发过滤。</summary>
     public string SearchQuery
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
+    /// <summary>操作结果状态提示文案。</summary>
     public string StatusMessage
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
+    /// <summary>是否正在执行异步密钥操作(刷新/生成等)。</summary>
     public bool IsBusy
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>重新枚举密钥列表的命令。</summary>
     public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
 
+    /// <summary>删除指定密钥的命令。</summary>
     public ReactiveCommand<SshKeyInfo, Unit> DeleteCommand { get; }
 
+    /// <summary>生成新 RSA 密钥的命令。</summary>
     public ReactiveCommand<Unit, Unit> GenerateCommand { get; }
 
+    /// <summary>从密钥服务枚举密钥并刷新列表与下拉名单。</summary>
     public async Task RefreshAsync()
     {
         if (_keyService is null)
@@ -93,6 +103,7 @@ public class SshKeyManagerViewModel : ReactiveObject
         }
     }
 
+    /// <summary>从指定路径导入密钥并刷新列表。</summary>
     public async Task ImportAsync(string sourcePath)
     {
         if (_keyService is null)
