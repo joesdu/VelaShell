@@ -83,6 +83,21 @@ public class LineTimestampTests
     }
 
     [TestMethod]
+    public void BlankLineWithinOutput_GetsTimestamp_TrailingRowsDoNot()
+    {
+        // 侧栏行号可见性依赖时间戳:输出中间的空行(光标经过)应有时间戳→显示行号;
+        // 光标从未到过的屏幕底部空行不应有时间戳→不显示行号(避免空屏凭空冒出几十行编号)。
+        TerminalEmulator e = New(20, 8);
+        Feed(e, "L0\r\n\r\nL2"); // L0、空行、L2
+
+        Assert.IsNotNull(e.Screen.ActiveLine(0).Timestamp, "内容行应有时间戳。");
+        Assert.IsNotNull(e.Screen.ActiveLine(1).Timestamp, "输出中间的空行也应有时间戳(光标经过)。");
+        Assert.IsNotNull(e.Screen.ActiveLine(2).Timestamp);
+        Assert.IsNull(e.Screen.ActiveLine(4).Timestamp, "光标从未到过的底部空行不应有时间戳。");
+        Assert.IsNull(e.Screen.ActiveLine(7).Timestamp);
+    }
+
+    [TestMethod]
     public void ErasingRow_ClearsTimestamp()
     {
         TerminalEmulator e = New();

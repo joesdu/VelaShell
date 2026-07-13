@@ -951,27 +951,22 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
     // ---- Line gutter(时间/行号/折叠侧栏,WindTerm 式) ---------------------
 
-    // 数字列固定 5 位(右对齐):默认 1 万行 scrollback 的最大行号约 5 位。取固定宽度而非按当前行数
-    // 动态计算,是为了侧栏宽度全程恒定 —— 既不在行数跨越 10/100/1000 时抖动,也不在主/备用屏(vim、
-    // htop:scrollback=0)切换时变宽,从而不会无谓地重排 PTY 列宽。
-    private const int GutterNumberWidth = 5;
     private const string GutterTimeFormat = "HH:mm:ss";
-    private const double GutterBlankPixels = 5.0; // “空白”部件:侧栏与正文间的固定间隔
+
+    /// <summary>当前侧栏几何(各部件宽度/偏移/命中区间,见 <see cref="GutterLayout" />)。按当前单元格宽与开关计算。</summary>
+    private GutterLayout Gutter => new(_cellWidth, _showLineTimestamp, _showLineNumber, _showFoldMarker, _gutterBlank);
 
     /// <summary>任一侧栏部件开启即绘制侧栏。</summary>
-    private bool GutterEnabled => _showLineTimestamp || _showLineNumber || _showFoldMarker || _gutterBlank;
-
-    // 各部件像素宽度(按左→右顺序:时间 → 行号 → 折叠列 → 空白)。折叠列/空白用固定像素,其余按字符宽。
-    private double GutterTimeWidth => _showLineTimestamp ? 11 * _cellWidth : 0;
-    private double GutterNumberPixels => _showLineNumber ? (GutterNumberWidth + 1) * _cellWidth : 0;
-    private double GutterFoldWidth => _showFoldMarker ? Math.Ceiling(_cellWidth * 1.6) : 0;
-    private double GutterBlankWidth => _gutterBlank ? GutterBlankPixels : 0;
-
-    /// <summary>折叠列左边缘的 x(控件坐标)。</summary>
-    private double GutterFoldLeft => GutterTimeWidth + GutterNumberPixels;
+    private bool GutterEnabled => Gutter.Enabled;
 
     /// <summary>侧栏总像素宽度(全部部件关时为 0)。</summary>
-    private double GutterWidth() => GutterTimeWidth + GutterNumberPixels + GutterFoldWidth + GutterBlankWidth;
+    private double GutterWidth() => Gutter.TotalWidth;
+
+    // ---- 测试专用只读探针(headless UI 测试用,见 GutterFoldUiTests)----------
+    internal int FoldCountForTest => _foldModel.Count;
+    internal double CellWidthForTest => _cellWidth;
+    internal double CellHeightForTest => _cellHeight;
+    internal GutterLayout GutterForTest => Gutter;
 
     private void RenderGutter(DrawingContext context, TerminalScreen screen, TerminalPalette palette, int rows)
     {
@@ -980,7 +975,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         Rgba dim = Blend(palette.DefaultForeground, palette.DefaultBackground, 0.45);
         ImmutableSolidColorBrush dimBrush = BrushFor(dim);
         var typeface = new Typeface(FontFamily);
-        double numberLeft = GutterTimeWidth;
+        double numberLeft = Gutter.NumberLeft;
         int lastContentRow = -1; // 最后一行有内容的屏幕行:分隔线/折叠线只画到这里,空屏不画侧栏。
         for (int screenRow = 0; screenRow < rows; screenRow++)
         {
@@ -1006,7 +1001,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             }
             if (_showLineNumber)
             {
-                string number = (absoluteRow + 1).ToString(CultureInfo.InvariantCulture).PadLeft(GutterNumberWidth) + " ";
+                string number = (absoluteRow + 1).ToString(CultureInfo.InvariantCulture).PadLeft(GutterLayout.NumberDigits) + " ";
                 context.DrawText(new(number, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, FontSize, dimBrush), new Point(numberLeft, y));
             }
         }
@@ -1015,13 +1010,11 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             return; // 空屏:不画分隔线/折叠列,侧栏完全隐形。
         }
         double contentBottom = (lastContentRow + 1) * _cellHeight;
+        // 唯一的竖线由折叠列绘制(用户要求:去掉原来的分隔竖线,只保留折叠标记这一条)。
         if (_showFoldMarker)
         {
             RenderFoldColumn(context, screen, palette, rows, dim, contentBottom);
         }
-        // 侧栏与正文之间一条细分隔线,只画到内容底部。
-        double sepX = GutterWidth() - GutterBlankWidth - 0.5;
-        context.DrawLine(new Pen(BrushFor(Blend(dim, palette.DefaultBackground, 0.3)), 0.5), new Point(sepX, 0), new Point(sepX, contentBottom));
     }
 
     /// <summary>
@@ -1029,12 +1022,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// </summary>
     private void RenderFoldColumn(DrawingContext context, TerminalScreen screen, TerminalPalette palette, int rows, Rgba dim, double contentBottom)
     {
-        double cx = GutterFoldLeft + GutterFoldWidth / 2;
+        GutterLayout g = Gutter;
+        double cx = g.FoldLeft + g.FoldWidth / 2;
         context.DrawLine(new Pen(BrushFor(Blend(dim, palette.DefaultBackground, 0.4)), 1), new Point(cx, 0), new Point(cx, contentBottom));
-        if (_folds.Count == 0)
-        {
-            return;
-        }
         var typeface = new Typeface(FontFamily);
         ImmutableSolidColorBrush glyphBrush = BrushFor(dim);
         for (int screenRow = 0; screenRow < rows; screenRow++)
@@ -1044,26 +1034,25 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             {
                 continue;
             }
-            if (FoldAnchorAt(absoluteRow, screen) is not null)
+            // 折叠头显示 ▸(点它展开);鼠标悬停的普通行显示 ▾(点它把上方内容折叠到这里)。
+            string? glyph = _foldModel.IsAnchor(screen, absoluteRow) ? "▸"
+                : absoluteRow == _foldHoverAbs ? "▾"
+                : null;
+            if (glyph is not null)
             {
-                context.DrawText(new("▸", CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, FontSize, glyphBrush),
-                    new Point(GutterFoldLeft, screenRow * _cellHeight + _glyphYOffset));
+                context.DrawText(new(glyph, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, FontSize, glyphBrush),
+                    new Point(g.FoldLeft, screenRow * _cellHeight + _glyphYOffset));
             }
         }
     }
 
     // ---- Folding(折叠区域)-------------------------------------------------
-    // 折叠区域按「行对象引用」锚定:行在滚动时按引用迁入 scrollback,引用稳定;列宽 reflow 会重建行对象,
-    // 届时折叠失效,由 ClearFolds() 在 resize 时清空。默认无折叠(_folds 空),渲染/滚动走原快路径,零影响。
+    // 折叠逻辑抽到 UI 无关的 GutterFoldModel(可单测,见 GutterFoldTests);默认无折叠时渲染/滚动
+    // 走连续快路径,零影响。列宽 reflow 会重建行对象使引用失效,由 ClearFolds() 在 resize 时清空。
 
-    private sealed class FoldRegion
-    {
-        public required TerminalRow AnchorRow; // 折叠后仍显示的占位行(区域首行,显示 ▸ 展开)
-        public required TerminalRow[] Rows; // 区域内全部行(含 AnchorRow),按缓冲区顺序
-    }
-
-    private readonly List<FoldRegion> _folds = [];
+    private readonly GutterFoldModel _foldModel = new();
     private int[] _screenToAbs = []; // 本帧 screenRow → 绝对缓冲行(-1=空),侧栏/正文/光标/命中测试共用
+    private int _foldHoverAbs = -1; // 折叠列上鼠标悬停的绝对行(显示 ▾ 折叠提示),-1=无
 
     /// <summary>构建本帧屏幕行映射;无折叠走连续快路径,有折叠跳过隐藏行。同时把 _scrollOffset 夹到可见范围。</summary>
     private void BuildScreenRowMap(TerminalScreen screen, int rows)
@@ -1072,137 +1061,21 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         {
             _screenToAbs = new int[rows];
         }
-        List<int>? visible = BuildVisibleRowsOrNull(screen);
-        int total = visible?.Count ?? screen.TotalRows;
-        int maxOffset = Math.Max(0, total - rows);
-        if (_scrollOffset > maxOffset)
-        {
-            _scrollOffset = maxOffset; // 折叠缩短了可滚动范围
-        }
-        int top = Math.Max(0, total - rows - _scrollOffset);
-        for (int sr = 0; sr < rows; sr++)
-        {
-            int vi = top + sr;
-            _screenToAbs[sr] = vi < total ? visible?[vi] ?? vi : -1;
-        }
-    }
-
-    /// <summary>本帧可见的绝对行序列(隐藏被折叠的非锚点行);无折叠返回 null 表示走连续快路径。</summary>
-    private List<int>? BuildVisibleRowsOrNull(TerminalScreen screen)
-    {
-        if (_folds.Count == 0)
-        {
-            return null;
-        }
-        PruneStaleFolds(screen);
-        if (_folds.Count == 0)
-        {
-            return null;
-        }
-        var hidden = new HashSet<TerminalRow>();
-        foreach (FoldRegion f in _folds)
-        {
-            foreach (TerminalRow r in f.Rows)
-            {
-                if (!ReferenceEquals(r, f.AnchorRow))
-                {
-                    hidden.Add(r);
-                }
-            }
-        }
-        var vis = new List<int>(screen.TotalRows);
-        for (int abs = 0; abs < screen.TotalRows; abs++)
-        {
-            if (!hidden.Contains(screen.ViewLine(abs)))
-            {
-                vis.Add(abs);
-            }
-        }
-        return vis;
-    }
-
-    /// <summary>折叠锚点行若已被 scrollback 淘汰(不在当前缓冲区)则折叠失效,清除之。</summary>
-    private void PruneStaleFolds(TerminalScreen screen)
-    {
-        var present = new HashSet<TerminalRow>();
-        for (int abs = 0; abs < screen.TotalRows; abs++)
-        {
-            present.Add(screen.ViewLine(abs));
-        }
-        _folds.RemoveAll(f => !present.Contains(f.AnchorRow));
+        List<int>? visible = _foldModel.VisibleRowsOrNull(screen);
+        GutterFoldModel.FillScreenRowMap(_screenToAbs, visible, screen.TotalRows, rows, ref _scrollOffset);
     }
 
     /// <summary>清空所有折叠(列宽 reflow 会重建行对象使引用失效,resize 时调用)。</summary>
-    private void ClearFolds()
-    {
-        if (_folds.Count > 0)
-        {
-            _folds.Clear();
-        }
-    }
+    private void ClearFolds() => _foldModel.Clear();
 
-    /// <summary>
-    /// 折叠交互:点击折叠列某屏幕行 —— 若该行是折叠锚点则展开;否则把「该行之前、上一折叠边界之后」的
-    /// 内容折叠成一个新区域(区域首行作锚点保留可见,显示 ▸)。返回是否发生了折叠状态变化。
-    /// </summary>
-    private bool ToggleFoldAt(int screenRow)
+    /// <summary>折叠交互:点击折叠列某屏幕行 —— 折叠头则展开,否则把上方内容折叠到该行(见 <see cref="GutterFoldModel" />)。</summary>
+    private void ToggleFoldAt(int screenRow)
     {
-        TerminalScreen screen = Emulator.Screen;
         int abs = AbsoluteForScreenRow(screenRow);
-        if (abs < 0)
+        if (abs >= 0 && _foldModel.Toggle(Emulator.Screen, abs))
         {
-            return false;
-        }
-        if (FoldAnchorAt(abs, screen) is { } existing)
-        {
-            _folds.Remove(existing);
             AfterFoldChange();
-            return true;
         }
-        int startAbs = NearestFoldBoundaryAbove(abs, screen);
-        if (abs - 1 < startAbs)
-        {
-            return false; // 该行之前没有可折叠内容
-        }
-        var region = new TerminalRow[abs - startAbs];
-        for (int i = 0; i < region.Length; i++)
-        {
-            region[i] = screen.ViewLine(startAbs + i);
-        }
-        _folds.Add(new FoldRegion { AnchorRow = region[0], Rows = region });
-        AfterFoldChange();
-        return true;
-    }
-
-    /// <summary>解析既有折叠区域,返回 <paramref name="abs" /> 之上最近折叠边界的下一行(无则 0)。</summary>
-    private int NearestFoldBoundaryAbove(int abs, TerminalScreen screen)
-    {
-        if (_folds.Count == 0)
-        {
-            return 0;
-        }
-        var absOf = new Dictionary<TerminalRow, int>();
-        for (int a = 0; a < screen.TotalRows; a++)
-        {
-            absOf[screen.ViewLine(a)] = a;
-        }
-        int boundary = 0;
-        foreach (FoldRegion f in _folds)
-        {
-            int last = -1;
-            foreach (TerminalRow r in f.Rows)
-            {
-                if (absOf.TryGetValue(r, out int a))
-                {
-                    last = Math.Max(last, a);
-                }
-            }
-            if (last >= 0 && last < abs)
-            {
-                boundary = Math.Max(boundary, last + 1);
-            }
-        }
-        return boundary;
     }
 
     private void AfterFoldChange()
@@ -1212,7 +1085,10 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>侧栏右键菜单:四个部件(行号/时间戳/折叠标记/空白)的可勾选开关(勾号前缀表示已开)。</summary>
-    private void ShowGutterContextMenu()
+    private void ShowGutterContextMenu() => BuildGutterContextMenu().Open(this);
+
+    /// <summary>构建侧栏右键菜单(不弹出)。internal 供 headless 测试直接检视内容与开关接线,避免打开弹层。</summary>
+    internal ContextMenu BuildGutterContextMenu()
     {
         GutterMenuLabels labels = GutterMenu;
         var menu = new ContextMenu();
@@ -1220,7 +1096,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         AddGutterMenuItem(menu, labels.Timestamp, _showLineTimestamp, v => ShowLineTimestamp = v);
         AddGutterMenuItem(menu, labels.FoldMarker, _showFoldMarker, v => ShowFoldMarker = v);
         AddGutterMenuItem(menu, labels.Blank, _gutterBlank, v => GutterBlank = v);
-        menu.Open(this);
+        return menu;
     }
 
     private void AddGutterMenuItem(ContextMenu menu, string label, bool on, Action<bool> set)
@@ -1236,24 +1112,6 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
     /// <summary>侧栏右键菜单四个部件的本地化标签。</summary>
     public sealed record GutterMenuLabels(string LineNumber, string Timestamp, string FoldMarker, string Blank);
-
-    /// <summary>若绝对行 <paramref name="abs" /> 是某折叠区域的锚点行,返回该区域,否则 null。</summary>
-    private FoldRegion? FoldAnchorAt(int abs, TerminalScreen screen)
-    {
-        if (_folds.Count == 0)
-        {
-            return null;
-        }
-        TerminalRow row = screen.ViewLine(abs);
-        foreach (FoldRegion f in _folds)
-        {
-            if (ReferenceEquals(f.AnchorRow, row))
-            {
-                return f;
-            }
-        }
-        return null;
-    }
 
     /// <summary>本帧「绝对行 → 屏幕行」反查(命中测试/光标定位用),未在可见窗口内返回 -1。</summary>
     private int ScreenRowForAbsolute(int abs)
@@ -1809,7 +1667,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         PointerPointProperties props = e.GetCurrentPoint(this).Properties;
 
         // 侧栏(时间/行号/折叠)区域的交互:右键弹设置菜单;折叠列左键折叠/展开;其余左键吞掉不选文本。
-        if (GutterEnabled && point.X < GutterWidth())
+        GutterLayout gutter = Gutter;
+        if (gutter.ContainsX(point.X))
         {
             if (props.IsRightButtonPressed)
             {
@@ -1817,8 +1676,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
                 e.Handled = true;
                 return;
             }
-            if (props.IsLeftButtonPressed && _showFoldMarker &&
-                point.X >= GutterFoldLeft && point.X < GutterFoldLeft + GutterFoldWidth)
+            if (props.IsLeftButtonPressed && gutter.IsFoldColumnHit(point.X))
             {
                 ToggleFoldAt((int)(point.Y / _cellHeight));
                 e.Handled = true;
@@ -1947,6 +1805,20 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     {
         base.OnPointerMoved(e);
 
+        // 折叠列悬停提示:指针在折叠列上时记住其绝对行(用于画 ▾ 折叠手柄),移出则清除。
+        if (_showFoldMarker && !_selecting)
+        {
+            Point gp = e.GetPosition(this);
+            int hover = Gutter.IsFoldColumnHit(gp.X)
+                ? AbsoluteForScreenRow((int)(gp.Y / _cellHeight))
+                : -1;
+            if (hover != _foldHoverAbs)
+            {
+                _foldHoverAbs = hover;
+                InvalidateVisual();
+            }
+        }
+
         // Report motion to the app in button-event (?1002, only while a button is down) and
         // any-event (?1003, always) modes, but only when a cell boundary is crossed.
         MouseTracking tracking = Emulator.Modes.Mouse;
@@ -1974,6 +1846,16 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
                 _selectionCaret = PointToCell(e.GetPosition(this));
                 InvalidateVisual();
                 break;
+        }
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        if (_foldHoverAbs != -1)
+        {
+            _foldHoverAbs = -1;
+            InvalidateVisual();
         }
     }
 
