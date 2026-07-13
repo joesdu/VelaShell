@@ -12,7 +12,7 @@ public sealed class TabBarViewModelTests
 
         vm.AddTabCommand.Execute().Subscribe();
 
-        Assert.AreEqual(1, vm.Tabs.Count());
+        Assert.HasCount(1, vm.Tabs);
     }
 
     [TestMethod]
@@ -35,6 +35,6 @@ public sealed class TabBarViewModelTests
 
         vm.CloseTabCommand.Execute(tab).Subscribe();
 
-        Assert.AreEqual(0, vm.Tabs.Count());
+        Assert.IsEmpty(vm.Tabs);
     }
 }

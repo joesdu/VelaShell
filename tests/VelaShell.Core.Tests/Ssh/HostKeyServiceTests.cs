@@ -74,9 +74,9 @@ public class HostKeyServiceTests : IDisposable
         await _sut.TrustHostKeyAsync("host1.com", 22, "ssh-rsa", "SHA256:aaa");
         await _sut.TrustHostKeyAsync("host2.com", 2222, "ssh-ed25519", "SHA256:bbb");
         List<KnownHost> hosts = await _sut.GetKnownHostsAsync();
-        Assert.AreEqual(2, hosts.Count());
-        Assert.IsTrue(hosts.Any(h => h is { Host: "host1.com", Port: 22 }));
-        Assert.IsTrue(hosts.Any(h => h is { Host: "host2.com", Port: 2222 }));
+        Assert.HasCount(2, hosts);
+        Assert.Contains(h => h is { Host: "host1.com", Port: 22 }, hosts);
+        Assert.Contains(h => h is { Host: "host2.com", Port: 2222 }, hosts);
     }
 
     [TestMethod]
@@ -86,7 +86,7 @@ public class HostKeyServiceTests : IDisposable
         await _sut.TrustHostKeyAsync("example.com", 22, "ssh-rsa", "SHA256:aaa");
         await _sut.TrustHostKeyAsync("example.com", 2222, "ssh-rsa", "SHA256:bbb");
         List<KnownHost> hosts = await _sut.GetKnownHostsAsync();
-        Assert.AreEqual(2, hosts.Count());
+        Assert.HasCount(2, hosts);
     }
 
     [TestMethod]
@@ -99,9 +99,9 @@ public class HostKeyServiceTests : IDisposable
         await Task.Delay(50);
         await _sut.TrustHostKeyAsync("example.com", 22, "ssh-rsa", "SHA256:abc123");
         List<KnownHost> hostsAfter = await _sut.GetKnownHostsAsync();
-        Assert.AreEqual(1, hostsAfter.Count());
+        Assert.HasCount(1, hostsAfter);
         Assert.AreEqual(firstSeenBefore, hostsAfter.Single().FirstSeenAt);
-        Assert.IsTrue(hostsAfter.Single().LastSeenAt >= firstSeenBefore);
+        Assert.IsGreaterThanOrEqualTo(firstSeenBefore, hostsAfter.Single().LastSeenAt);
     }
 
     [TestMethod]

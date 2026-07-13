@@ -153,7 +153,7 @@ public class GutterFoldTests
         e.Feed(Encoding.UTF8.GetBytes("\r\nL4\r\nL5\r\nL6")); // 顶几行进 scrollback
 
         int absL2 = FindAbs(e.Screen, "L2");
-        Assert.IsTrue(absL2 >= 0, "L2 应仍在缓冲区(scrollback)。");
+        Assert.IsGreaterThanOrEqualTo(0, absL2, "L2 应仍在缓冲区(scrollback)。");
         Assert.IsTrue(model.IsAnchor(e.Screen, absL2), "滚动后折叠头应随行对象保留。");
         List<int>? vis = model.VisibleRowsOrNull(e.Screen);
         Assert.IsNotNull(vis);
@@ -245,7 +245,7 @@ public class GutterFoldTests
         {
             e.Feed(Encoding.UTF8.GetBytes("\r\nL" + i));
         }
-        Assert.IsTrue(FindAbs(e.Screen, "L2") < 0, "L2 应已被淘汰出缓冲区。");
+        Assert.IsLessThan(0, FindAbs(e.Screen, "L2"), "L2 应已被淘汰出缓冲区。");
         model.PruneStale(e.Screen);
         Assert.IsFalse(model.HasFolds, "折叠头被淘汰后折叠应自动清除。");
     }

@@ -1,0 +1,7 @@
+<Project>
+	<Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+	<PropertyGroup>
+		<NoWarn>$(NoWarn);CS1591;CS8600;CS8602;CS8604;MSTEST0049;</NoWarn>
+	</PropertyGroup>
+</Project>

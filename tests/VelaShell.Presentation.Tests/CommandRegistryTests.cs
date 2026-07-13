@@ -41,7 +41,7 @@ public class CommandRegistryTests
         registry.Register(new("a", "A1", "c", () => { }));
         registry.Register(new("b", "B", "c", () => { }));
         registry.Register(new("a", "A2", "c", () => { }));
-        Assert.AreEqual(2, registry.All.Count);
+        Assert.HasCount(2, registry.All);
         Assert.AreEqual("A2", registry.All[0].Title);
         Assert.AreEqual("b", registry.All[1].Id);
     }

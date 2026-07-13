@@ -33,12 +33,12 @@ public sealed class SshKeyServiceTests : IDisposable
         Assert.IsTrue(File.Exists(Path.Combine(_sshDir, "test_key")));
         Assert.IsTrue(File.Exists(Path.Combine(_sshDir, "test_key.pub")));
         List<SshKeyInfo> listed = await _service.ListKeysAsync();
-        Assert.AreEqual(1, listed.Count);
+        Assert.HasCount(1, listed);
         Assert.AreEqual(generated.Fingerprint, listed[0].Fingerprint, "列举解析的指纹应与生成时一致");
         Assert.AreEqual("RSA 2048", listed[0].Type, "公钥 blob 解析出的位数应一致");
         StringAssert.StartsWith(listed[0].PublicKeyLine, "ssh-rsa ");
         await _service.DeleteKeyAsync("test_key");
-        Assert.AreEqual(0, (await _service.ListKeysAsync()).Count);
+        Assert.IsEmpty(await _service.ListKeysAsync());
     }
 
     [TestMethod]
@@ -49,5 +49,5 @@ public sealed class SshKeyServiceTests : IDisposable
     }
 
     [TestMethod]
-    public async Task List_EmptyDirectory_ReturnsEmpty() => Assert.AreEqual(0, (await _service.ListKeysAsync()).Count);
+    public async Task List_EmptyDirectory_ReturnsEmpty() => Assert.IsEmpty(await _service.ListKeysAsync());
 }

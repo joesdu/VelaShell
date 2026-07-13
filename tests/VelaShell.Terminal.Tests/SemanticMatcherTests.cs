@@ -21,14 +21,14 @@ public class SemanticMatcherTests
     public void Match_FindsErrorKeyword()
     {
         IReadOnlyList<SemanticSpan> spans = SemanticMatcher.Match("fatal: connection failed");
-        Assert.IsTrue(spans.Any(s => s.Kind == SemanticKind.Error));
+        Assert.Contains(s => s.Kind == SemanticKind.Error, spans);
     }
 
     [TestMethod]
     public void Match_FindsWarning()
     {
         IReadOnlyList<SemanticSpan> spans = SemanticMatcher.Match("WARNING: disk almost full");
-        Assert.IsTrue(spans.Any(s => s.Kind == SemanticKind.Warning));
+        Assert.Contains(s => s.Kind == SemanticKind.Warning, spans);
     }
 
     [TestMethod]
@@ -45,7 +45,7 @@ public class SemanticMatcherTests
     {
         // The IP inside the URL must not produce a separate overlapping span.
         IReadOnlyList<SemanticSpan> spans = SemanticMatcher.Match("open http://192.168.0.1/admin now");
-        Assert.AreEqual(1, spans.Count);
+        Assert.HasCount(1, spans);
         Assert.AreEqual(SemanticKind.Url, spans[0].Kind);
     }
 
@@ -62,7 +62,7 @@ public class SemanticMatcherTests
     public void Match_FindsSuccessKeyword()
     {
         IReadOnlyList<SemanticSpan> spans = SemanticMatcher.Match("cockpit.service is now active and running");
-        Assert.IsTrue(spans.Any(s => s.Kind == SemanticKind.Success));
+        Assert.Contains(s => s.Kind == SemanticKind.Success, spans);
     }
 
     [TestMethod]
@@ -78,7 +78,7 @@ public class SemanticMatcherTests
     public void Match_OptionDoesNotFireInsideHyphenatedWord()
     {
         IReadOnlyList<SemanticSpan> spans = SemanticMatcher.Match("a well-known re-run host");
-        Assert.IsFalse(spans.Any(s => s.Kind == SemanticKind.Option));
+        Assert.DoesNotContain(s => s.Kind == SemanticKind.Option, spans);
     }
 
     [TestMethod]
@@ -94,16 +94,16 @@ public class SemanticMatcherTests
     public void Match_IpAddress_IsNotFragmentedIntoNumbers()
     {
         IReadOnlyList<SemanticSpan> spans = SemanticMatcher.Match("login from 10.10.10.1 on ssh");
-        Assert.IsTrue(spans.Any(s => s.Kind == SemanticKind.IpAddress));
+        Assert.Contains(s => s.Kind == SemanticKind.IpAddress, spans);
         // The dotted quad must stay a single IP span, not split into number spans.
-        Assert.IsFalse(spans.Any(s => s.Kind == SemanticKind.Number));
+        Assert.DoesNotContain(s => s.Kind == SemanticKind.Number, spans);
     }
 
     [TestMethod]
     public void Match_EmptyLine_ReturnsNothing()
     {
-        Assert.AreEqual(0, SemanticMatcher.Match("").Count);
-        Assert.AreEqual(0, SemanticMatcher.Match(null).Count);
+        Assert.IsEmpty(SemanticMatcher.Match(""));
+        Assert.IsEmpty(SemanticMatcher.Match(null));
     }
 
     [TestMethod]

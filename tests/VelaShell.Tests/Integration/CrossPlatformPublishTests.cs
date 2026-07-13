@@ -110,7 +110,7 @@ public class CrossPlatformPublishTests : IDisposable
 
         string outputDir = Path.Combine(_publishOutputDir, rid);
         Assert.IsTrue(Directory.Exists(outputDir));
-        Assert.IsTrue(Directory.GetFiles(outputDir).Any(),
+        Assert.IsNotEmpty(Directory.GetFiles(outputDir),
             $"publish output for {rid} should contain files");
     }
 
@@ -128,7 +128,7 @@ public class CrossPlatformPublishTests : IDisposable
 
         string outputDir = Path.Combine(_publishOutputDir, rid);
         Assert.IsTrue(Directory.Exists(outputDir));
-        Assert.IsTrue(Directory.GetFiles(outputDir).Any(),
+        Assert.IsNotEmpty(Directory.GetFiles(outputDir),
             $"publish output for {rid} should contain files");
     }
 
@@ -146,7 +146,7 @@ public class CrossPlatformPublishTests : IDisposable
 
         string outputDir = Path.Combine(_publishOutputDir, rid);
         Assert.IsTrue(Directory.Exists(outputDir));
-        Assert.IsTrue(Directory.GetFiles(outputDir).Any(),
+        Assert.IsNotEmpty(Directory.GetFiles(outputDir),
             $"publish output for {rid} should contain files");
     }
 }

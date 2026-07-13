@@ -50,6 +50,6 @@ public class TerminalColorSchemeTests
         var appearance = new AppearanceOptions();
 
         Assert.IsTrue(TerminalColorScheme.BuiltIn[0].Matches(appearance));
-        Assert.AreEqual(1, TerminalColorScheme.BuiltIn.Count(s => s.Matches(appearance)));
+        Assert.ContainsSingle(s => s.Matches(appearance), TerminalColorScheme.BuiltIn);
     }
 }

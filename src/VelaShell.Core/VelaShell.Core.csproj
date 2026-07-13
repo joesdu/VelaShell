@@ -1,9 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <!-- 默认 Strings.resx 即英文(开发语言):CurrentUICulture=en 时直取主程序集,
          无需 en 卫星。中文卫星按脚本中性文化命名(zh-Hans/zh-Hant),使 zh-CN/zh-SG →
          zh-Hans、zh-TW/zh-HK/zh-MO → zh-Hant 沿标准回退链自动命中。 -->
@@ -11,8 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9" />
-    <PackageReference Include="ReactiveUI" Version="23.2.28" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="ReactiveUI" />
     <!-- Core 不引用任何具体 SSH 库:SSH 能力经 Ssh/ 下的中立抽象
          (ISshClientWrapper/ISftpClientWrapper/SftpEntry/SshClientException 等)访问,
          SSH.NET 只存在于 VelaShell.Infrastructure 的实现中,便于日后整体替换。 -->

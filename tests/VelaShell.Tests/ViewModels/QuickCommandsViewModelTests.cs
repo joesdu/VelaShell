@@ -41,17 +41,17 @@ public class QuickCommandsViewModelTests : IDisposable
     public void BuiltInDefaults_ContainExpectedCommands()
     {
         var names = _vm.AllCommands.Select(c => c.Name).ToList();
-        Assert.IsTrue(names.Contains("htop"));
-        Assert.IsTrue(names.Contains("top"));
-        Assert.IsTrue(names.Contains("df -h"));
-        Assert.IsTrue(names.Contains("free -m"));
-        Assert.IsTrue(names.Contains("docker ps"));
-        Assert.IsTrue(names.Contains("docker stats"));
-        Assert.IsTrue(names.Contains("netstat -tlnp"));
-        Assert.IsTrue(names.Contains("ss -tlnp"));
-        Assert.IsTrue(names.Contains("systemctl status"));
-        Assert.IsTrue(names.Contains("journalctl -f"));
-        Assert.AreEqual(10, _vm.AllCommands.Count());
+        Assert.Contains("htop", names);
+        Assert.Contains("top", names);
+        Assert.Contains("df -h", names);
+        Assert.Contains("free -m", names);
+        Assert.Contains("docker ps", names);
+        Assert.Contains("docker stats", names);
+        Assert.Contains("netstat -tlnp", names);
+        Assert.Contains("ss -tlnp", names);
+        Assert.Contains("systemctl status", names);
+        Assert.Contains("journalctl -f", names);
+        Assert.HasCount(10, _vm.AllCommands);
         Assert.IsTrue(_vm.AllCommands.All(c => c.IsBuiltIn));
     }
 
@@ -60,7 +60,7 @@ public class QuickCommandsViewModelTests : IDisposable
     public void SearchQuery_FiltersByName_CaseInsensitive()
     {
         _vm.SearchQuery = "DOCKER";
-        Assert.AreEqual(2, _vm.FilteredCommands.Count());
+        Assert.HasCount(2, _vm.FilteredCommands);
         Assert.IsTrue(_vm.FilteredCommands.All(c => c.Name.Contains("docker")));
     }
 
@@ -69,10 +69,10 @@ public class QuickCommandsViewModelTests : IDisposable
     public void SearchQuery_FiltersByDescriptionAndCommandText()
     {
         _vm.SearchQuery = "process";
-        Assert.IsTrue(_vm.FilteredCommands.Any(c => c.Name == "htop"));
-        Assert.IsTrue(_vm.FilteredCommands.Any(c => c.Name == "top"));
+        Assert.Contains(c => c.Name == "htop", _vm.FilteredCommands);
+        Assert.Contains(c => c.Name == "top", _vm.FilteredCommands);
         _vm.SearchQuery = "systemctl";
-        Assert.AreEqual(1, _vm.FilteredCommands.Count());
+        Assert.HasCount(1, _vm.FilteredCommands);
         Assert.AreEqual("systemctl status", _vm.FilteredCommands[0].Name);
     }
 
@@ -96,7 +96,7 @@ public class QuickCommandsViewModelTests : IDisposable
         _vm.NewCommandText = "echo hello";
         _vm.NewDescription = "Says hello";
         _vm.SaveNewCommandCommand.Execute().Subscribe();
-        Assert.AreEqual(11, _vm.AllCommands.Count());
+        Assert.HasCount(11, _vm.AllCommands);
         Assert.IsFalse(_vm.IsAddingCommand);
         QuickCommandViewModel added = _vm.AllCommands.Last();
         Assert.AreEqual("my-cmd", added.Name);
@@ -117,12 +117,12 @@ public class QuickCommandsViewModelTests : IDisposable
         _vm.SaveNewCommandCommand.Execute().Subscribe();
         QuickCommandViewModel customCmd = _vm.AllCommands.First(c => c.Name == "temp-cmd");
         _vm.DeleteCommandCommand.Execute(customCmd).Subscribe();
-        Assert.IsFalse(_vm.AllCommands.Any(c => c.Name == "temp-cmd"));
-        Assert.AreEqual(10, _vm.AllCommands.Count());
+        Assert.DoesNotContain(c => c.Name == "temp-cmd", _vm.AllCommands);
+        Assert.HasCount(10, _vm.AllCommands);
         QuickCommandViewModel builtIn = _vm.AllCommands.First(c => c.Name == "htop");
         _vm.DeleteCommandCommand.Execute(builtIn).Subscribe();
-        Assert.IsTrue(_vm.AllCommands.Any(c => c.Name == "htop"));
-        Assert.AreEqual(10, _vm.AllCommands.Count());
+        Assert.Contains(c => c.Name == "htop", _vm.AllCommands);
+        Assert.HasCount(10, _vm.AllCommands);
     }
 
     [TestMethod]
@@ -130,20 +130,20 @@ public class QuickCommandsViewModelTests : IDisposable
     public void SearchQuery_EmptyString_ShowsAllCommands()
     {
         _vm.SearchQuery = "docker";
-        Assert.AreEqual(2, _vm.FilteredCommands.Count());
+        Assert.HasCount(2, _vm.FilteredCommands);
         _vm.SearchQuery = "";
-        Assert.AreEqual(10, _vm.FilteredCommands.Count());
+        Assert.HasCount(10, _vm.FilteredCommands);
     }
 
     [TestMethod]
     [TestCategory("QuickCommands")]
     public void Categories_ContainAllDistinctCategories()
     {
-        Assert.IsTrue(_vm.Categories.Contains("System Monitor"));
-        Assert.IsTrue(_vm.Categories.Contains("Network"));
-        Assert.IsTrue(_vm.Categories.Contains("Docker"));
-        Assert.IsTrue(_vm.Categories.Contains("System"));
-        Assert.AreEqual(4, _vm.Categories.Count());
+        Assert.Contains("System Monitor", _vm.Categories);
+        Assert.Contains("Network", _vm.Categories);
+        Assert.Contains("Docker", _vm.Categories);
+        Assert.Contains("System", _vm.Categories);
+        Assert.HasCount(4, _vm.Categories);
     }
 
     [TestMethod]
@@ -174,7 +174,7 @@ public class QuickCommandsViewModelTests : IDisposable
             null,
             _legacyDataPath);
         await vm2.LoadCustomCommandsAsync();
-        Assert.AreEqual(11, vm2.AllCommands.Count());
+        Assert.HasCount(11, vm2.AllCommands);
         QuickCommandViewModel restored = vm2.AllCommands.First(c => c.Name == "persisted-cmd");
         Assert.AreEqual("uptime", restored.CommandText);
         Assert.IsFalse(restored.IsBuiltIn);

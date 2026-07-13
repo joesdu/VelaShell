@@ -32,7 +32,7 @@ public class Utf8StreamDecoderTests
         var decoder = new Utf8StreamDecoder();
         string fullChar = "é";
         byte[] bytes = Encoding.UTF8.GetBytes(fullChar);
-        Assert.AreEqual(2, bytes.Length);
+        Assert.HasCount(2, bytes);
         string result1 = decoder.DecodeBytes([bytes[0]]);
         Assert.AreEqual(string.Empty, result1);
         string result2 = decoder.DecodeBytes([bytes[1]]);
@@ -45,7 +45,7 @@ public class Utf8StreamDecoderTests
         var decoder = new Utf8StreamDecoder();
         string cjkChar = "你";
         byte[] bytes = Encoding.UTF8.GetBytes(cjkChar);
-        Assert.AreEqual(3, bytes.Length);
+        Assert.HasCount(3, bytes);
         string result1 = decoder.DecodeBytes([bytes[0]]);
         Assert.AreEqual(string.Empty, result1);
         string result2 = decoder.DecodeBytes([bytes[1]]);
@@ -60,7 +60,7 @@ public class Utf8StreamDecoderTests
         var decoder = new Utf8StreamDecoder();
         string cjkChar = "好";
         byte[] bytes = Encoding.UTF8.GetBytes(cjkChar);
-        Assert.AreEqual(3, bytes.Length);
+        Assert.HasCount(3, bytes);
         string result1 = decoder.DecodeBytes([bytes[0], bytes[1]]);
         Assert.AreEqual(string.Empty, result1);
         string result2 = decoder.DecodeBytes([bytes[2]]);
@@ -73,7 +73,7 @@ public class Utf8StreamDecoderTests
         var decoder = new Utf8StreamDecoder();
         string emoji = "😀";
         byte[] bytes = Encoding.UTF8.GetBytes(emoji);
-        Assert.AreEqual(4, bytes.Length);
+        Assert.HasCount(4, bytes);
         string result1 = decoder.DecodeBytes([bytes[0]]);
         Assert.AreEqual(string.Empty, result1);
         string result2 = decoder.DecodeBytes([bytes[1]]);

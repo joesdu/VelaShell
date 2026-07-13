@@ -1,23 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="10.0.1">
+    <PackageReference Include="coverlet.collector">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
-    <PackageReference Include="MSTest.TestAdapter" Version="4.3.2" />
-    <PackageReference Include="MSTest.TestFramework" Version="4.3.2" />
-    <PackageReference Include="Microsoft.Reactive.Testing" Version="6.1.0" />
-    <PackageReference Include="NSubstitute" Version="6.0.0" />
-    <PackageReference Include="ReactiveUI.Testing" Version="23.2.28" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="MSTest.TestAdapter" />
+    <PackageReference Include="MSTest.TestFramework" />
+    <PackageReference Include="Microsoft.Reactive.Testing" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="ReactiveUI.Testing" />
   </ItemGroup>
 
   <ItemGroup>

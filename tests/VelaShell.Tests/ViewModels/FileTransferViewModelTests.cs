@@ -46,7 +46,7 @@ public class FileTransferViewModelTests
         _vm.AddTransfer(task);
 
         // Assert
-        Assert.AreEqual(1, _vm.Transfers.Count());
+        Assert.HasCount(1, _vm.Transfers);
         Assert.AreEqual("file.txt", _vm.Transfers[0].FileName);
     }
 
@@ -105,13 +105,13 @@ public class FileTransferViewModelTests
         _vm.AddTransfer(active);
         _vm.AddTransfer(completed1);
         _vm.AddTransfer(completed2);
-        Assert.AreEqual(3, _vm.Transfers.Count());
+        Assert.HasCount(3, _vm.Transfers);
 
         // Act
         _vm.ClearCompletedCommand.Execute().Subscribe();
 
         // Assert
-        Assert.AreEqual(1, _vm.Transfers.Count());
+        Assert.HasCount(1, _vm.Transfers);
         Assert.AreEqual("file.txt", _vm.Transfers[0].FileName);
     }
 
@@ -222,7 +222,7 @@ public class FileTransferViewModelTests
         Assert.IsFalse(_vm.IsPanelVisible);
         _vm.ShowPanel();
         Assert.IsTrue(_vm.IsPanelVisible);
-        Assert.AreEqual(1, _vm.Transfers.Count()); // past record still there to review
+        Assert.HasCount(1, _vm.Transfers); // past record still there to review
     }
 
     [TestMethod]
@@ -317,7 +317,7 @@ public class FileTransferViewModelTests
         _vm.AddTransfer(task2);
 
         // Assert
-        Assert.AreEqual(2, _vm.Transfers.Count());
+        Assert.HasCount(2, _vm.Transfers);
         Assert.AreEqual("beta.tar.gz", _vm.Transfers[0].FileName);
         Assert.AreEqual("alpha.zip", _vm.Transfers[1].FileName);
     }

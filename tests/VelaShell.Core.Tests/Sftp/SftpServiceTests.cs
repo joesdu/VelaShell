@@ -168,7 +168,7 @@ public class SftpServiceTests
         List<RemoteFileInfo> result = await _sftpService.ListDirectoryAsync(_sessionId, "/home/user");
 
         // Assert
-        Assert.AreEqual(2, result.Count());
+        Assert.HasCount(2, result);
         Assert.AreEqual("file1.txt", result[0].Name);
         Assert.AreEqual("/home/user/file1.txt", result[0].FullPath);
         Assert.AreEqual(1024L, result[0].Size);
@@ -211,7 +211,7 @@ public class SftpServiceTests
             remotePath,
             Arg.Any<Action<ulong>?>(),
             Arg.Any<CancellationToken>());
-        Assert.IsTrue(progressReports.Any(), "because progress should be reported during upload");
+        Assert.IsNotEmpty(progressReports, "because progress should be reported during upload");
         File.Delete(localPath);
     }
 
@@ -254,7 +254,7 @@ public class SftpServiceTests
             Arg.Any<Action<ulong>?>(),
             Arg.Any<CancellationToken>());
         Assert.IsTrue(File.Exists(localPath));
-        Assert.IsTrue(progressReports.Any());
+        Assert.IsNotEmpty(progressReports);
         Assert.AreEqual(2048L, progressReports.Last().BytesTransferred);
         if (File.Exists(localPath))
         {
@@ -332,7 +332,7 @@ public class SftpServiceTests
         _sftpClient.Received(1).DeleteFile("/home/user/proj/sub/b.txt");
         _sftpClient.Received(1).DeleteDirectory("/home/user/proj/sub");
         _sftpClient.Received(1).DeleteDirectory(dir);
-        Assert.AreEqual(5, reports.Count); // initial 0/total + 2 files + 2 directories
+        Assert.HasCount(5, reports); // initial 0/total + 2 files + 2 directories
         Assert.AreEqual(0, reports[0].DeletedCount);
         Assert.AreEqual(4, reports[0].TotalCount);
         Assert.AreEqual(4, reports[^1].DeletedCount);
@@ -430,10 +430,10 @@ public class SftpServiceTests
             new SynchronousProgress<TransferProgress>(p => progressReports.Add(p)));
 
         // Assert
-        Assert.IsTrue(progressReports.Count() >= 4);
-        Assert.IsTrue(progressReports.Any(p => p.Percentage is >= 25 and < 35));
-        Assert.IsTrue(progressReports.Any(p => p.Percentage is >= 50 and < 60));
-        Assert.IsTrue(progressReports.Any(p => p.Percentage is >= 75 and < 85));
+        Assert.IsGreaterThanOrEqualTo(4, progressReports.Count());
+        Assert.Contains(p => p.Percentage is >= 25 and < 35, progressReports);
+        Assert.Contains(p => p.Percentage is >= 50 and < 60, progressReports);
+        Assert.Contains(p => p.Percentage is >= 75 and < 85, progressReports);
         Assert.AreEqual(100, progressReports.Last().Percentage);
 
         // Cleanup

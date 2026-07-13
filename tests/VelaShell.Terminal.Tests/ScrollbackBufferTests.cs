@@ -90,7 +90,7 @@ public class ScrollbackBufferTests
         buffer.AddLine(new() { Content = "hello world" });
         buffer.AddLine(new() { Content = "foo again" });
         List<SearchMatch> matches = buffer.Search("foo");
-        Assert.AreEqual(2, matches.Count());
+        Assert.HasCount(2, matches);
         Assert.AreEqual(0, matches[0].Row);
         Assert.AreEqual(0, matches[0].Column);
         Assert.AreEqual(3, matches[0].Length);
@@ -166,7 +166,7 @@ public class ScrollbackBufferTests
         var buffer = new ScrollbackBuffer(100);
         buffer.AddLine(new() { Content = "ab ab ab" });
         List<SearchMatch> matches = buffer.Search("ab");
-        Assert.AreEqual(3, matches.Count());
+        Assert.HasCount(3, matches);
         Assert.AreEqual(0, matches[0].Column);
         Assert.AreEqual(3, matches[1].Column);
         Assert.AreEqual(6, matches[2].Column);

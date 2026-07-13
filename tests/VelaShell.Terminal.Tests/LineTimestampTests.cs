@@ -46,7 +46,7 @@ public class LineTimestampTests
 
         // 换足够多行把 "first" 顶出屏幕、进入 scrollback。
         Feed(e, "\r\nsecond\r\nthird\r\nfourth");
-        Assert.IsTrue(e.Screen.ScrollbackCount > 0, "应已有行滚入 scrollback。");
+        Assert.IsGreaterThan(0, e.Screen.ScrollbackCount, "应已有行滚入 scrollback。");
 
         // 绝对行 0 是最早的历史行(= "first"),其时间戳应与写入时一致(行对象按引用迁移)。
         TerminalRow oldest = e.Screen.ViewLine(0);

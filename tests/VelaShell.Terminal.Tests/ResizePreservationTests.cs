@@ -141,11 +141,11 @@ public class ResizePreservationTests
         }
 
         // The MOTD survives every cycle…
-        Assert.IsTrue(all.Any(l => l.StartsWith("Linux NanoPi-R2S")), "MOTD first line was lost");
-        Assert.IsTrue(all.Any(l => l.Contains("free software")), "MOTD body was lost");
+        Assert.Contains(l => l.StartsWith("Linux NanoPi-R2S"), all, "MOTD first line was lost");
+        Assert.Contains(l => l.Contains("free software"), all, "MOTD body was lost");
         // …and redraws don't stack duplicated prompt fragments.
-        Assert.AreEqual(1, all.Count(l => l.Contains("pi@NanoPi-R2S:~$")),
-            "prompt fragments were duplicated");
+        Assert.ContainsSingle(l => l.Contains("pi@NanoPi-R2S:~$"),
+all, "prompt fragments were duplicated");
     }
 
     [TestMethod]
@@ -205,10 +205,10 @@ public class ResizePreservationTests
         string joined = string.Join("\n", all);
         foreach (string line in motd)
         {
-            Assert.IsTrue(joined.Contains(line), $"MOTD line lost: {line}");
+            Assert.Contains(line, joined, $"MOTD line lost: {line}");
         }
-        Assert.AreEqual(1, all.Count(l => l.Contains("pi@NanoPi-R2S:~$")),
-            "prompt fragments were duplicated");
+        Assert.ContainsSingle(l => l.Contains("pi@NanoPi-R2S:~$"),
+all, "prompt fragments were duplicated");
     }
 
     [TestMethod]

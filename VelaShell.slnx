@@ -1,16 +1,31 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Build.props" />
+    <File Path="LICENSE" />
+    <File Path="LICENSE-COMMERCIAL.md" />
+    <File Path="plan.md" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <File Path="src/Directory.Build.props" />
+    <File Path="src/Directory.Build.targets" />
+	<File Path="src/Directory.Packages.props" />
+    <Project Path="src/VelaShell.Controls/VelaShell.Controls.csproj" />
+    <Project Path="src/VelaShell.Core/VelaShell.Core.csproj" />
+    <Project Path="src/VelaShell.Infrastructure/VelaShell.Infrastructure.csproj" />
+    <Project Path="src/VelaShell.Presentation/VelaShell.Presentation.csproj" />
+    <Project Path="src/VelaShell.Terminal/VelaShell.Terminal.csproj" />
+    <Project Path="src/VelaShell/VelaShell.csproj" /> 
+  </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/VelaShell.Tests/VelaShell.Tests.csproj" />
+    <File Path="tests/Directory.Build.props" />
+    <File Path="tests/Directory.Build.targets" />
+	<File Path="tests/Directory.Packages.props" />
     <Project Path="tests/VelaShell.Controls.Tests/VelaShell.Controls.Tests.csproj" />
     <Project Path="tests/VelaShell.Core.Tests/VelaShell.Core.Tests.csproj" />
     <Project Path="tests/VelaShell.Infrastructure.Tests/VelaShell.Infrastructure.Tests.csproj" />
     <Project Path="tests/VelaShell.Presentation.Tests/VelaShell.Presentation.Tests.csproj" />
     <Project Path="tests/VelaShell.Terminal.Tests/VelaShell.Terminal.Tests.csproj" />
+    <Project Path="tests/VelaShell.Tests/VelaShell.Tests.csproj" /> 
   </Folder>
-  <Project Path="src/VelaShell/VelaShell.csproj" />
-  <Project Path="src/VelaShell.Controls/VelaShell.Controls.csproj" />
-  <Project Path="src/VelaShell.Core/VelaShell.Core.csproj" />
-  <Project Path="src/VelaShell.Infrastructure/VelaShell.Infrastructure.csproj" />
-  <Project Path="src/VelaShell.Presentation/VelaShell.Presentation.csproj" />
-  <Project Path="src/VelaShell.Terminal/VelaShell.Terminal.csproj" />
 </Solution>

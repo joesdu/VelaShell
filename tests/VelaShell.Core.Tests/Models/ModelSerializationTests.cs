@@ -40,8 +40,8 @@ public class ModelSerializationTests
         StringAssert.Contains(json, "\"privateKeyPassphrase\":");
         StringAssert.Contains(json, "\"groupId\":");
         StringAssert.Contains(json, "\"lastConnectedAt\":");
-        Assert.IsFalse(json.Contains("\"Name\":"));
-        Assert.IsFalse(json.Contains("\"Host\":"));
+        Assert.DoesNotContain("\"Name\":", json);
+        Assert.DoesNotContain("\"Host\":", json);
     }
 
     [TestMethod]

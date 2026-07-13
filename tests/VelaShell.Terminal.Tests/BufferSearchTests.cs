@@ -21,7 +21,7 @@ public class BufferSearchTests
 
         IReadOnlyList<BufferSearchHit> hits = BufferSearch.FindAll(e.Screen, "world");
 
-        Assert.AreEqual(2, hits.Count);
+        Assert.HasCount(2, hits);
         Assert.AreEqual(0, hits[0].Row);
         Assert.AreEqual(6, hits[0].StartCol);
         Assert.AreEqual(2, hits[1].Row);
@@ -36,7 +36,7 @@ public class BufferSearchTests
 
         IReadOnlyList<BufferSearchHit> hits = BufferSearch.FindAll(e.Screen, "ab");
 
-        Assert.AreEqual(3, hits.Count);
+        Assert.HasCount(3, hits);
         Assert.AreEqual(0, hits[0].StartCol);
         Assert.AreEqual(3, hits[1].StartCol);
         Assert.AreEqual(6, hits[2].StartCol);
@@ -52,9 +52,9 @@ public class BufferSearchTests
             sb.Append($"filler {i}\r\n");
         e.Feed(Encoding.UTF8.GetBytes(sb.ToString()));
 
-        Assert.IsTrue(e.Screen.ScrollbackCount > 0, "line must have scrolled out");
+        Assert.IsGreaterThan(0, e.Screen.ScrollbackCount, "line must have scrolled out");
         IReadOnlyList<BufferSearchHit> hits = BufferSearch.FindAll(e.Screen, "needle-in-history");
-        Assert.AreEqual(1, hits.Count);
+        Assert.HasCount(1, hits);
         Assert.AreEqual(0, hits[0].Row);
     }
 
@@ -62,6 +62,6 @@ public class BufferSearchTests
     public void FindAll_EmptyQuery_ReturnsNothing()
     {
         TerminalEmulator e = Feed("anything");
-        Assert.AreEqual(0, BufferSearch.FindAll(e.Screen, "").Count);
+        Assert.IsEmpty(BufferSearch.FindAll(e.Screen, ""));
     }
 }
