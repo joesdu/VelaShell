@@ -48,7 +48,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
         private set => this.RaiseAndSetIfChanged(ref _hasNoSessions, value);
     }
 
-    public string EmptyStateMessage => Strings.Get("Svc_AddFirstConnection");
+    public static string EmptyStateMessage => Strings.Get("Svc_AddFirstConnection");
 
     public SessionTreeNodeViewModel? SelectedNode
     {

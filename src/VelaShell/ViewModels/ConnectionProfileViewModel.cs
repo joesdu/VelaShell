@@ -476,9 +476,7 @@ public class ConnectionProfileViewModel : ReactiveObject
             PrivateKeyPath = PrivateKeyPath,
             PrivateKeyPassphrase = PrivateKeyPassphrase,
             GroupId = GroupId,
-            Tags = TagsText
-                   .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                   .ToList(),
+            Tags = [.. TagsText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)],
             JumpHostProfileId = _jumpHostProfileId
         };
     }

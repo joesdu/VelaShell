@@ -7,9 +7,6 @@ namespace VelaShell.Presentation.ViewModels;
 
 public sealed class SessionTreeNodeViewModel(Guid id, string name, bool isGroup) : ReactiveObject
 {
-    private int _groupColorIndex;
-    private SessionStatus _status = SessionStatus.Disconnected;
-
     public Guid Id { get; } = id;
 
     public bool IsGroup { get; } = isGroup;
@@ -49,31 +46,31 @@ public sealed class SessionTreeNodeViewModel(Guid id, string name, bool isGroup)
     /// </summary>
     public SessionStatus Status
     {
-        get => _status;
+        get;
         set
         {
-            if (_status == value)
+            if (field == value)
             {
                 return;
             }
-            this.RaiseAndSetIfChanged(ref _status, value);
+            this.RaiseAndSetIfChanged(ref field, value);
             this.RaisePropertyChanged(nameof(IsConnected));
             this.RaisePropertyChanged(nameof(IsConnecting));
             this.RaisePropertyChanged(nameof(IsError));
             this.RaisePropertyChanged(nameof(HasStatusTag));
             this.RaisePropertyChanged(nameof(StatusTagText));
         }
-    }
+    } = SessionStatus.Disconnected;
 
-    public bool IsConnected => _status == SessionStatus.Connected;
+    public bool IsConnected => Status == SessionStatus.Connected;
 
-    public bool IsConnecting => _status == SessionStatus.Connecting;
+    public bool IsConnecting => Status == SessionStatus.Connecting;
 
-    public bool IsError => _status == SessionStatus.Error;
+    public bool IsError => Status == SessionStatus.Error;
 
-    public bool HasStatusTag => _status != SessionStatus.Disconnected;
+    public bool HasStatusTag => Status != SessionStatus.Disconnected;
 
-    public string StatusTagText => _status switch
+    public string StatusTagText => Status switch
     {
         SessionStatus.Connected => Strings.Get("Svc_Active"),
         SessionStatus.Connecting => Strings.Connecting,
@@ -87,22 +84,22 @@ public sealed class SessionTreeNodeViewModel(Guid id, string name, bool isGroup)
     /// </summary>
     public int GroupColorIndex
     {
-        get => _groupColorIndex;
+        get;
         set
         {
-            if (_groupColorIndex == value)
+            if (field == value)
             {
                 return;
             }
-            this.RaiseAndSetIfChanged(ref _groupColorIndex, value);
+            this.RaiseAndSetIfChanged(ref field, value);
             this.RaisePropertyChanged(nameof(IsFolderInfo));
             this.RaisePropertyChanged(nameof(IsFolderAccent));
         }
     }
 
-    public bool IsFolderInfo => _groupColorIndex == 1;
+    public bool IsFolderInfo => GroupColorIndex == 1;
 
-    public bool IsFolderAccent => _groupColorIndex == 2;
+    public bool IsFolderAccent => GroupColorIndex == 2;
 
     public ObservableCollection<SessionTreeNodeViewModel> Children { get; } = [];
 }

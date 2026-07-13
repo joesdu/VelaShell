@@ -15,21 +15,20 @@ public static class SuggestDiag
 
     public static void Log(string stage, string detail)
     {
-        if (!Enabled)
+        if (Enabled)
         {
-            return;
-        }
-        try
-        {
-            lock (Gate)
+            try
             {
-                File.AppendAllText(LogPath, $"{DateTime.Now:HH:mm:ss.fff} [{stage}] {detail}{Environment.NewLine}");
+                lock (Gate)
+                {
+                    File.AppendAllText(LogPath, $"{DateTime.Now:HH:mm:ss.fff} [{stage}] {detail}{Environment.NewLine}");
+                }
             }
+            catch
+            {
+                // 诊断日志绝不影响主流程。
+            }
+            Debug.WriteLine($"[suggest:{stage}] {detail}");
         }
-        catch
-        {
-            // 诊断日志绝不影响主流程。
-        }
-        Debug.WriteLine($"[suggest:{stage}] {detail}");
     }
 }

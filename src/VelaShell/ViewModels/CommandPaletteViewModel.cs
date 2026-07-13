@@ -15,9 +15,6 @@ public sealed class CommandPaletteViewModel : ReactiveObject
     private readonly Func<IReadOnlyList<CommandPaletteItem>> _itemsProvider;
     private IReadOnlyList<CommandPaletteItem> _all = [];
 
-    private string _query = string.Empty;
-    private CommandPaletteItem? _selectedItem;
-
     public CommandPaletteViewModel(Func<IReadOnlyList<CommandPaletteItem>>? itemsProvider = null)
     {
         _itemsProvider = itemsProvider ?? (() => []);
@@ -34,9 +31,9 @@ public sealed class CommandPaletteViewModel : ReactiveObject
 
     public string Query
     {
-        get => _query;
-        set => this.RaiseAndSetIfChanged(ref _query, value);
-    }
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
 
     public bool IsOpen
     {
@@ -46,12 +43,12 @@ public sealed class CommandPaletteViewModel : ReactiveObject
 
     public CommandPaletteItem? SelectedItem
     {
-        get => _selectedItem;
+        get;
         private set
         {
-            _selectedItem?.IsSelected = false;
-            this.RaiseAndSetIfChanged(ref _selectedItem, value);
-            _selectedItem?.IsSelected = true;
+            field?.IsSelected = false;
+            this.RaiseAndSetIfChanged(ref field, value);
+            field?.IsSelected = true;
             this.RaisePropertyChanged(nameof(HasResults));
         }
     }
@@ -91,14 +88,14 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         {
             return;
         }
-        int index = _selectedItem is null ? -1 : _flat.IndexOf(_selectedItem);
+        int index = SelectedItem is null ? -1 : _flat.IndexOf(SelectedItem);
         index = (index + delta + _flat.Count) % _flat.Count;
         SelectedItem = _flat[index];
     }
 
     public void ExecuteSelected()
     {
-        CommandPaletteItem? item = _selectedItem;
+        CommandPaletteItem? item = SelectedItem;
         if (item is null)
         {
             return;
@@ -118,7 +115,7 @@ public sealed class CommandPaletteViewModel : ReactiveObject
     {
         Groups.Clear();
         _flat.Clear();
-        string query = _query.Trim();
+        string query = Query.Trim();
         var byCategory = new Dictionary<string, CommandPaletteGroup>();
         foreach (CommandPaletteItem item in _all)
         {

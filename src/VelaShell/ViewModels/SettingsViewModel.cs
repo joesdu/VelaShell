@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Reactive;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using ReactiveUI;
 using VelaShell.Core.Data;
 using VelaShell.Core.Localization;
@@ -34,11 +35,17 @@ public class SettingsViewModel : ReactiveObject
     private readonly IRecentConnectionService? _recentConnections;
     private readonly ISettingsService _settingsService;
     private readonly IThemeService _themeService;
-    private readonly JsonSerializerOptions? jsonOption = new()
+    private readonly JsonSerializerOptions jsonOption = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true
     };
+    private readonly JsonSerializerOptions exportJsonOption = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     // ———— 外观即时预览(改动立即可见,保存才落盘,取消/关窗回滚) ————
     /// <summary>打开设置时的基线快照:未保存关闭时用它恢复主题与外观。</summary>
     private AppSettings _baseline = new();
@@ -74,9 +81,7 @@ public class SettingsViewModel : ReactiveObject
         // 换语言时重建构造期求值的标签列表(左侧导航、快捷键参考页):本 VM 是单例,
         // 这些数组在启动语言下冻结,不重建就停留在旧语言(用户反馈:切英文保存后
         // 重开设置,左侧菜单仍是中文)。两者均为单例,订阅无泄漏。
-        if (localizationService is not null)
-        {
-            localizationService.LanguageChanged += _ =>
+        localizationService?.LanguageChanged += _ =>
             {
                 int selectedSection = SelectedSectionIndex;
                 Sections = BuildSections();
@@ -85,7 +90,6 @@ public class SettingsViewModel : ReactiveObject
                 this.RaisePropertyChanged(nameof(ShortcutGroups));
                 SelectedSectionIndex = selectedSection;
             };
-        }
 
         // 外观即时预览:主题/强调色直接走 IThemeService(应用即生效);
         // Appearance 对象被整体替换(配色方案/载入)或其单项被绑定修改时广播预览快照。
@@ -256,10 +260,8 @@ public class SettingsViewModel : ReactiveObject
 
     private static SettingsSection[] BuildSections() =>
     [
-        new(Strings.Get("SetVm_SectionGeneral"),
-            "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"),
-        new(Strings.Get("SetVm_SectionAppearance"),
-            "M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"),
+        new(Strings.Get("SetVm_SectionGeneral"), "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"),
+        new(Strings.Get("SetVm_SectionAppearance"), "M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"),
         new(Strings.Get("SetVm_SectionTerminal"), "M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"),
         new(Strings.Get("SetVm_SectionKeys"), "M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"),
         new(Strings.Get("SetVm_SectionShortcuts"), "M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"),
@@ -317,15 +319,15 @@ public class SettingsViewModel : ReactiveObject
                  ?.InformationalVersion.Split('+')[0]
          ?? "0.0.0");
 
-    public string AboutFramework => "Avalonia UI 12.0.5";
+    public static string AboutFramework => "Avalonia UI 12.0.5";
 
-    public string AboutRuntime => $".NET {Environment.Version.Major}.{Environment.Version.Minor}";
+    public static string AboutRuntime => $".NET {Environment.Version.Major}.{Environment.Version.Minor}";
 
-    public string AboutSshLibrary => "SSH.NET 2025.1.0";
+    public static string AboutSshLibrary => "SSH.NET 2025.1.0";
 
-    public string AboutOs => $"{Environment.OSVersion.VersionString} ({(Environment.Is64BitOperatingSystem ? "x64" : "x86")})";
+    public static string AboutOs => $"{Environment.OSVersion.VersionString} ({(Environment.Is64BitOperatingSystem ? "x64" : "x86")})";
 
-    public string AboutConfigPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VelaShell");
+    public static string AboutConfigPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VelaShell");
 
     /// <summary>
     /// 关于页贡献者(设计 kGwqX;数据来自仓库真实提交者,新增贡献者在此追加)。
@@ -620,12 +622,7 @@ public class SettingsViewModel : ReactiveObject
     }
 
     /// <summary>配置导出为 JSON 文本(常规页“导出”)。</summary>
-    public string BuildExportJson() =>
-        JsonSerializer.Serialize(_loaded, new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        });
+    public string BuildExportJson() => JsonSerializer.Serialize(_loaded, exportJsonOption);
 
     /// <summary>从导出的 JSON 导入配置(常规页“导入”);格式非法时返回 false。</summary>
     public bool TryApplyImportedJson(string json)

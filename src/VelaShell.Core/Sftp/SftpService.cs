@@ -204,11 +204,7 @@ public class SftpService(
         string parentDir = GetUnixParentDirectory(remotePath);
         string fileName = GetUnixFileName(remotePath);
         IEnumerable<SftpEntry> files = await client.ListDirectoryAsync(parentDir, cancellationToken).ConfigureAwait(false);
-        SftpEntry? file = files.FirstOrDefault(f => f.Name == fileName);
-        if (file == null)
-        {
-            throw new FileNotFoundException($"File not found: {remotePath}");
-        }
+        SftpEntry? file = files.FirstOrDefault(f => f.Name == fileName) ?? throw new FileNotFoundException($"File not found: {remotePath}");
         return MapToRemoteFileInfo(file);
     }
 
@@ -442,7 +438,7 @@ public class SftpService(
     /// <see cref="CancellationTokenSource.Cancel()" /> would surface an aggregated exception to
     /// whoever pressed cancel.
     /// </summary>
-    private static void SafeDispose(IDisposable stream)
+    private static void SafeDispose(Stream stream)
     {
         try
         {

@@ -33,7 +33,7 @@ public class MainWindowViewModel : ReactiveObject
 {
     /// <summary>
     /// bash 提示符补行脚本(内置,静默注入):命令输出末尾无换行时,经 DSR(ESC[6n)
-    /// 查询光标列,不在行首则先补一个换行再画提示符(zsh 的默认行为,用户要求)。
+    /// 查询光标列,不在行首则先补一个换行再画提示符(zsh 的默认行为)。
     /// </summary>
     private const string PromptNewlineFix = """prompt_nl() { local c; IFS='[;' read -p $'\e[6n' -d R -rs _ _ c; ((c>1)) && echo; }; PROMPT_COMMAND=prompt_nl""";
 
@@ -981,9 +981,7 @@ public class MainWindowViewModel : ReactiveObject
             List<SessionProfile> profiles = await _sessionRepository.GetAllSessionsAsync();
             List<ServerGroup> groups = await _sessionRepository.GetAllGroupsAsync();
             _paletteGroupNames = groups.ToDictionary(g => g.Id, g => g.Name);
-            _paletteProfiles = profiles
-                               .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
-                               .ToList();
+            _paletteProfiles = [.. profiles.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)];
         }
         catch
         {

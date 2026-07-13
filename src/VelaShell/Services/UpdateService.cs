@@ -11,10 +11,7 @@ public class UpdateService : IUpdateService
 
     public UpdateService(string updateUrl, IVelopackLocator? locator = null)
     {
-        if (updateUrl is null)
-        {
-            throw new ArgumentNullException(nameof(updateUrl));
-        }
+        ArgumentNullException.ThrowIfNull(updateUrl);
         _updateManager = new(updateUrl, locator: locator);
     }
 

@@ -264,7 +264,11 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     /// <summary>收起面板。</summary>
     public ReactiveCommand<Unit, Unit> CloseCommand { get; }
 
-    public void Dispose() => _liveTimer?.Stop();
+    public void Dispose()
+    {
+        _liveTimer?.Stop();
+        GC.SuppressFinalize(this);
+    }
 
     /// <summary>面板右上角关闭按钮(设计 B3Rth tunCloseBtn),由宿主收起面板。</summary>
     public event EventHandler? CloseRequested;

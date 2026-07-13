@@ -1,4 +1,5 @@
 using System.Reactive.Linq;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -92,28 +93,31 @@ public partial class MainWindow : Window
 
     private TitleBarView? TitleBar => this.FindControl<TitleBarView>("TitleBarHost");
 
-    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
-    private static extern long GetWindowLongPtrW(IntPtr hWnd, int index);
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static partial long GetWindowLongPtrW(IntPtr hWnd, int index);
 
-    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
-    private static extern long SetWindowLongPtrW(IntPtr hWnd, int index, long value);
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    private static partial long SetWindowLongPtrW(IntPtr hWnd, int index, long value);
 
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern bool IsZoomed(IntPtr hWnd);
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool IsZoomed(IntPtr hWnd);
 
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
+    [LibraryImport("user32.dll")]
+    private static partial IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
 
-    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
-    private static extern bool GetMonitorInfoW(IntPtr hMonitor, ref MONITORINFO info);
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetMonitorInfoW(IntPtr hMonitor, ref MONITORINFO info);
 
-    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential)]
     private struct WINRECT { public int Left, Top, Right, Bottom; }
 
-    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential)]
     private struct MONITORINFO
     {
         public int Size;
@@ -157,10 +161,10 @@ public partial class MainWindow : Window
                 if (IsZoomed(hWnd))
                 {
                     IntPtr monitor = MonitorFromWindow(hWnd, 2 /* MONITOR_DEFAULTTONEAREST */);
-                    var info = new MONITORINFO { Size = System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
+                    var info = new MONITORINFO { Size = Marshal.SizeOf<MONITORINFO>() };
                     if (monitor != IntPtr.Zero && GetMonitorInfoW(monitor, ref info))
                     {
-                        System.Runtime.InteropServices.Marshal.StructureToPtr(info.Work, lParam, false);
+                        Marshal.StructureToPtr(info.Work, lParam, false);
                     }
                 }
                 handled = true;
@@ -508,12 +512,7 @@ public partial class MainWindow : Window
             }
             if (rememberSessions && DataContext is MainWindowViewModel vm)
             {
-                settings.General.LastOpenProfileIds = vm.TabBar.Tabs
-                                                        .OfType<TerminalTabViewModel>()
-                                                        .Where(t => t is { IsConnected: true, Profile: { } p } && p.Id != Guid.Empty)
-                                                        .Select(t => t.Profile!.Id)
-                                                        .Distinct()
-                                                        .ToList();
+                settings.General.LastOpenProfileIds = [.. vm.TabBar.Tabs.OfType<TerminalTabViewModel>().Where(t => t is { IsConnected: true, Profile: { } p } && p.Id != Guid.Empty).Select(t => t.Profile!.Id).Distinct()];
             }
             _settingsService.SaveSettingsAsync(settings).GetAwaiter().GetResult();
         }

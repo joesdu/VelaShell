@@ -26,7 +26,7 @@ namespace VelaShell.Terminal.Rendering;
 /// host bytes. Implements <see cref="ITerminalEmulator" /> so it drops straight into the existing
 /// <c>SshTerminalBridge</c> and views without any changes to the wiring.
 /// </summary>
-public sealed class VelaTerminalControl : Control, ITerminalEmulator
+public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 {
     private static readonly ImmutableSolidColorBrush BellFlashBrush = new(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF));
 
@@ -1721,10 +1721,11 @@ public sealed class VelaTerminalControl : Control, ITerminalEmulator
 
     private readonly record struct GlyphKey(int Rune, string? Combining, uint Foreground, int Style);
 
-    private static class NativeMethods
+    private static partial class NativeMethods
     {
-        [DllImport("user32.dll")]
-        internal static extern bool MessageBeep(uint type);
+        [LibraryImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool MessageBeep(uint type);
     }
 
     /// <summary>

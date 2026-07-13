@@ -6,15 +6,13 @@ namespace VelaShell.Docking.Model;
 /// </summary>
 public abstract class DockDocument : DockElement
 {
-    private string _title = string.Empty;
-
     public string Id { get; init; } = string.Empty;
 
     public string Title
     {
-        get => _title;
-        set => SetField(ref _title, value);
-    }
+        get;
+        set => SetField(ref field, value);
+    } = string.Empty;
 
     public bool CanClose { get; init; } = true;
 }

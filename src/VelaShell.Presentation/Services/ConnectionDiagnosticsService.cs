@@ -40,7 +40,7 @@ public sealed class ConnectionDiagnosticsService(
             new(2, Strings.Get("DiagSvc_StepSsh") + hopSuffix, DiagnosticStepStatus.Pending),
             new(3, viaJump ? Strings.Get("DiagSvc_StepAuthFullChain") : Strings.Get("DiagSvc_StepAuth"), DiagnosticStepStatus.Pending)
         };
-        DiagnosticStepUpdate[] results = steps.ToArray();
+        DiagnosticStepUpdate[] results = [.. steps];
         string? issueTitle = null;
         string? issueDescription = null;
         var suggestions = new List<string>();
@@ -84,11 +84,7 @@ public sealed class ConnectionDiagnosticsService(
             {
                 IPAddress[] addresses = await Dns.GetHostAddressesAsync(entry.Host, cancellationToken)
                                                  .WaitAsync(ConnectTimeout, cancellationToken).ConfigureAwait(false);
-                address = addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) ?? addresses.FirstOrDefault();
-                if (address is null)
-                {
-                    throw new SocketException((int)SocketError.HostNotFound);
-                }
+                address = (addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) ?? addresses.FirstOrDefault()) ?? throw new SocketException((int)SocketError.HostNotFound);
                 Publish(results[0] with
                 {
                     Status = DiagnosticStepStatus.Success,

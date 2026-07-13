@@ -93,7 +93,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     private void OnUserInputForTracker(byte[] data)
     {
         InputTracker.Process(data);
-        SuggestDiag.Log("typed", $"bytes=[{Convert.ToHexString(data)}] input=\"{InputTracker.CurrentInput ?? "<unknown>"}\"");
+        SuggestDiag.Log("typed", $"""
+            bytes=[{Convert.ToHexString(data)}] input="{InputTracker.CurrentInput ?? "<unknown>"}"
+            """);
     }
 
     private void OnTrackedCommandSubmitted(string command)
@@ -341,6 +343,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             Bridge = null;
             Task.Run(bridge.Dispose);
         }
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
@@ -506,13 +509,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// </summary>
     private void FeedDisconnectNotice()
     {
-        string notice =
-            "\r\n\u001b[0m\u001b[31m● " +
-            Strings.TerminalDisconnectedNotice +
-            "\u001b[0m\r\n" +
-            "\u001b[90m" +
-            Strings.TerminalReconnectHint +
-            "\u001b[0m\r\n";
+        string notice = $"\r\n\u001b[0m\u001b[31m● {Strings.TerminalDisconnectedNotice}\u001b[0m\r\n\u001b[90m{Strings.TerminalReconnectHint}\u001b[0m\r\n";
         try
         {
             TerminalEmulator.Feed(Encoding.UTF8.GetBytes(notice));

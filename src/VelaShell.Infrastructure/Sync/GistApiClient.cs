@@ -20,7 +20,7 @@ public sealed class GistApiClient
     };
 
     /// <summary>创建 secret Gist,返回 (gistId, 初始 revision)。</summary>
-    public async Task<(string GistId, string Version)> CreateGistAsync(string token,
+    public static async Task<(string GistId, string Version)> CreateGistAsync(string token,
         string description,
         string fileName,
         string content,
@@ -41,7 +41,7 @@ public sealed class GistApiClient
     }
 
     /// <summary>更新 Gist 文件内容(每次更新即产生一个新 revision),返回新 revision。</summary>
-    public async Task<string> UpdateGistAsync(string token,
+    public static async Task<string> UpdateGistAsync(string token,
         string gistId,
         string fileName,
         string content,
@@ -59,14 +59,14 @@ public sealed class GistApiClient
     }
 
     /// <summary>读取 Gist 当前内容;文件不存在时返回 null 内容。</summary>
-    public Task<(string? Content, string Version)> GetFileAsync(string token,
+    public static Task<(string? Content, string Version)> GetFileAsync(string token,
         string gistId,
         string fileName,
         CancellationToken cancellationToken) =>
         GetFileCoreAsync(token, $"https://api.github.com/gists/{gistId}", fileName, cancellationToken);
 
     /// <summary>读取指定修订版本的文件内容。</summary>
-    public Task<(string? Content, string Version)> GetFileAtRevisionAsync(string token,
+    public static Task<(string? Content, string Version)> GetFileAtRevisionAsync(string token,
         string gistId,
         string revision,
         string fileName,
@@ -74,7 +74,7 @@ public sealed class GistApiClient
         GetFileCoreAsync(token, $"https://api.github.com/gists/{gistId}/{revision}", fileName, cancellationToken);
 
     /// <summary>修订历史(新→旧,最多 30 条)。</summary>
-    public async Task<List<GistRevision>> GetCommitsAsync(string token, string gistId, CancellationToken cancellationToken)
+    public static async Task<List<GistRevision>> GetCommitsAsync(string token, string gistId, CancellationToken cancellationToken)
     {
         JsonDocument doc = await SendAsync(token, HttpMethod.Get, $"https://api.github.com/gists/{gistId}/commits?per_page=30", null, cancellationToken).ConfigureAwait(false);
         using (doc)
@@ -102,7 +102,7 @@ public sealed class GistApiClient
         }
     }
 
-    private async Task<(string? Content, string Version)> GetFileCoreAsync(string token,
+    private static async Task<(string? Content, string Version)> GetFileCoreAsync(string token,
         string url,
         string fileName,
         CancellationToken cancellationToken)

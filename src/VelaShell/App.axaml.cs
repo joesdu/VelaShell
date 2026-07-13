@@ -63,7 +63,7 @@ public class App : Application
         // 日期/数字格式化在换语言后于 UI 线程取到新文化(绑定取词本身不依赖它,
         // LocalizationService 自持文化)。
         localization.LanguageChanged += lang =>
-                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                Dispatcher.UIThread.Post(() =>
                 {
                     var culture = new System.Globalization.CultureInfo(lang);
                     System.Globalization.CultureInfo.CurrentUICulture = culture;
@@ -95,8 +95,7 @@ public class App : Application
 
             // 过期会话/传输日志清理(设置 → 常规/文件传输 → 日志保留天数),后台执行。
             SessionLogService.CleanupExpired(_startupSettings?.General.LogRetentionDays ?? 30);
-            TransferLogService.CleanupExpired(_startupSettings?.Transfer.LogDirectory,
-                _startupSettings?.Transfer.TransferLogRetentionDays ?? 30);
+            TransferLogService.CleanupExpired(_startupSettings?.Transfer.LogDirectory, _startupSettings?.Transfer.TransferLogRetentionDays ?? 30);
 
             // 过期会话录制清理(随终端会话日志的保留天数)。
             if (_serviceProvider?.GetService<ISessionRecordingStore>() is { } recordingStore)

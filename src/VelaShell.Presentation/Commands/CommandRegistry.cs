@@ -47,7 +47,7 @@ public sealed class CommandRegistry : ICommandRegistry
 
     public CommandDescriptor? Find(string id) => _commands.GetValueOrDefault(id);
 
-    public IReadOnlyList<CommandDescriptor> All => _order.Select(id => _commands[id]).ToList();
+    public IReadOnlyList<CommandDescriptor> All => [.. _order.Select(id => _commands[id])];
 
     public bool Execute(string id)
     {

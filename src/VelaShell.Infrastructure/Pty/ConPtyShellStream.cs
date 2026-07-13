@@ -16,7 +16,7 @@ namespace VelaShell.Infrastructure.Pty;
 /// 桥的读循环据此走远端关闭路径(标签变为已断开,可重开)。
 /// </summary>
 [SupportedOSPlatform(nameof(OSPlatform.Windows))]
-public sealed class ConPtyShellStream : IShellStreamWrapper
+public sealed partial class ConPtyShellStream : IShellStreamWrapper
 {
     private readonly IntPtr _console;
     private readonly FileStream _input;
@@ -243,35 +243,38 @@ public sealed class ConPtyShellStream : IShellStreamWrapper
         }
     }
 
-    [SuppressMessage("ReSharper", "InconsistentNaming")]
-    private static class NativeMethods
+    private static partial class NativeMethods
     {
         public const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
         public const int PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE = 0x00020016;
 
-        [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool CreatePipe(out IntPtr hReadPipe, out IntPtr hWritePipe, IntPtr lpPipeAttributes, int nSize);
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool CreatePipe(out IntPtr hReadPipe, out IntPtr hWritePipe, IntPtr lpPipeAttributes, int nSize);
 
-        [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool CloseHandle(IntPtr hObject);
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool CloseHandle(IntPtr hObject);
 
-        [DllImport("kernel32.dll")]
-        public static extern int CreatePseudoConsole(COORD size, IntPtr hInput, IntPtr hOutput, uint dwFlags, out IntPtr phPC);
+        [LibraryImport("kernel32.dll")]
+        public static partial int CreatePseudoConsole(COORD size, IntPtr hInput, IntPtr hOutput, uint dwFlags, out IntPtr phPC);
 
-        [DllImport("kernel32.dll")]
-        public static extern int ResizePseudoConsole(IntPtr hPC, COORD size);
+        [LibraryImport("kernel32.dll")]
+        public static partial int ResizePseudoConsole(IntPtr hPC, COORD size);
 
-        [DllImport("kernel32.dll")]
-        public static extern void ClosePseudoConsole(IntPtr hPC);
+        [LibraryImport("kernel32.dll")]
+        public static partial void ClosePseudoConsole(IntPtr hPC);
 
-        [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool InitializeProcThreadAttributeList(IntPtr lpAttributeList, int dwAttributeCount, int dwFlags, ref IntPtr lpSize);
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool InitializeProcThreadAttributeList(IntPtr lpAttributeList, int dwAttributeCount, int dwFlags, ref IntPtr lpSize);
 
-        [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool UpdateProcThreadAttribute(IntPtr lpAttributeList, uint dwFlags, IntPtr attribute, IntPtr lpValue, IntPtr cbSize, IntPtr lpPreviousValue, IntPtr lpReturnSize);
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool UpdateProcThreadAttribute(IntPtr lpAttributeList, uint dwFlags, IntPtr attribute, IntPtr lpValue, IntPtr cbSize, IntPtr lpPreviousValue, IntPtr lpReturnSize);
 
-        [DllImport("kernel32.dll")]
-        public static extern void DeleteProcThreadAttributeList(IntPtr lpAttributeList);
+        [LibraryImport("kernel32.dll")]
+        public static partial void DeleteProcThreadAttributeList(IntPtr lpAttributeList);
 
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern bool CreateProcess(

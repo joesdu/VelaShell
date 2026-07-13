@@ -4,10 +4,8 @@ namespace VelaShell.ViewModels;
 
 public class RemoteFileInfoViewModel(RemoteFileInfo model)
 {
-    private readonly RemoteFileInfo _model = model ?? throw new ArgumentNullException(nameof(model));
-
     /// <summary>底层条目(静默刷新的差异比对用,见 FileBrowserViewModel.RefreshSilentlyAsync)。</summary>
-    internal RemoteFileInfo Model => _model;
+    internal RemoteFileInfo Model { get; } = model ?? throw new ArgumentNullException(nameof(model));
 
     /// <summary>True only for the synthetic ".." row.</summary>
     public bool IsParentEntry { get; private init; }
@@ -21,7 +19,7 @@ public class RemoteFileInfoViewModel(RemoteFileInfo model)
     /// <summary>A real file row — gates the file-only context actions (打开/编辑器打开等)。</summary>
     public bool IsRegularFile => !IsDirectory && !IsParentEntry;
 
-    public string Name => _model.Name;
+    public string Name => Model.Name;
 
     /// <summary>
     /// List display name: the plain entry name. The amber folder icon already marks
@@ -29,26 +27,26 @@ public class RemoteFileInfoViewModel(RemoteFileInfo model)
     /// </summary>
     public string DisplayName => IsParentEntry ? ".." : Name;
 
-    public string FullPath => _model.FullPath;
+    public string FullPath => Model.FullPath;
 
-    public bool IsDirectory => _model.IsDirectory;
+    public bool IsDirectory => Model.IsDirectory;
 
-    public string Permissions => _model.Permissions;
+    public string Permissions => Model.Permissions;
 
-    public string Owner => _model.Owner;
+    public string Owner => Model.Owner;
 
-    public string Group => _model.Group;
+    public string Group => Model.Group;
 
-    public string Icon => _model.IsDirectory ? "folder" : "file";
+    public string Icon => Model.IsDirectory ? "folder" : "file";
 
     // Directories show their reported size too (design dyuii lists "4.0 KB" for folders).
-    public string FormattedSize => IsParentEntry ? string.Empty : FormatSize(_model.Size);
+    public string FormattedSize => IsParentEntry ? string.Empty : FormatSize(Model.Size);
 
-    public string FormattedModifiedTime => IsParentEntry ? string.Empty : FormatModifiedTime(_model.LastModified);
+    public string FormattedModifiedTime => IsParentEntry ? string.Empty : FormatModifiedTime(Model.LastModified);
 
-    public long SizeBytes => _model.Size;
+    public long SizeBytes => Model.Size;
 
-    public DateTime LastModified => _model.LastModified;
+    public DateTime LastModified => Model.LastModified;
 
     /// <summary>
     /// The synthetic ".." first row (§6): navigates to the parent directory on

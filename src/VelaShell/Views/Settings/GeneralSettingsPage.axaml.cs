@@ -55,9 +55,7 @@ public partial class GeneralSettingsPage : UserControl
         {
             return;
         }
-        bool confirmed = await Views.MessageDialog.ConfirmAsync(owner, Strings.Get("SetGeneral_ClearHistory"),
-                             Strings.Get("SetGeneral_ClearHistoryConfirm"),
-                             danger: true);
+        bool confirmed = await MessageDialog.ConfirmAsync(owner, Strings.Get("SetGeneral_ClearHistory"), Strings.Get("SetGeneral_ClearHistoryConfirm"), danger: true);
         if (confirmed)
         {
             viewModel.ClearHistoryCommand.Execute().Subscribe();

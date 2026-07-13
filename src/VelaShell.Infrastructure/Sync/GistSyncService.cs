@@ -100,7 +100,7 @@ public sealed class GistSyncService(
             {
                 return await PushCoreAsync(config, token, cancellationToken).ConfigureAwait(false);
             }
-            (string? content, string remoteVersion) = await _api.GetFileAsync(token, config.GistId, GistFileName, cancellationToken).ConfigureAwait(false);
+            (string? content, string remoteVersion) = await GistApiClient.GetFileAsync(token, config.GistId, GistFileName, cancellationToken).ConfigureAwait(false);
             if (content is null)
             {
                 return await PushCoreAsync(config, token, cancellationToken).ConfigureAwait(false);
@@ -185,7 +185,7 @@ public sealed class GistSyncService(
             {
                 return SyncResult.Fail(Strings.Get("SyncSvc_NoGistBound"));
             }
-            (string? content, string version) = await _api.GetFileAsync(Token(config), config.GistId, GistFileName, cancellationToken).ConfigureAwait(false);
+            (string? content, string version) = await GistApiClient.GetFileAsync(Token(config), config.GistId, GistFileName, cancellationToken).ConfigureAwait(false);
             if (content is null)
             {
                 return SyncResult.Fail(Strings.Get("SyncSvc_NoRemoteFile"));
@@ -214,7 +214,7 @@ public sealed class GistSyncService(
             return [];
         }
         string token = Token(config);
-        List<GistRevision> revisions = await _api.GetCommitsAsync(token, config.GistId, cancellationToken).ConfigureAwait(false);
+        List<GistRevision> revisions = await GistApiClient.GetCommitsAsync(token, config.GistId, cancellationToken).ConfigureAwait(false);
 
         // 提交来源设备不在 commits API 中,而在各版本载荷信封的顶层 deviceName
         // (无论是否端到端加密都可读)。逐版本读取有额外请求开销:限 4 并发、
@@ -229,9 +229,7 @@ public sealed class GistSyncService(
                 await throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
                 try
                 {
-                    (string? content, _) = await _api
-                                           .GetFileAtRevisionAsync(token, config.GistId, revision.Version, GistFileName, cancellationToken)
-                                           .ConfigureAwait(false);
+                    (string? content, _) = await GistApiClient.GetFileAtRevisionAsync(token, config.GistId, revision.Version, GistFileName, cancellationToken).ConfigureAwait(false);
                     if (content is not null)
                     {
                         using var doc = JsonDocument.Parse(content);
@@ -271,7 +269,7 @@ public sealed class GistSyncService(
                 return SyncResult.Fail(Strings.Get("SyncSvc_NoGistNoRestore"));
             }
             string token = Token(config);
-            (string? content, _) = await _api.GetFileAtRevisionAsync(token, config.GistId, version, GistFileName, cancellationToken).ConfigureAwait(false);
+            (string? content, _) = await GistApiClient.GetFileAtRevisionAsync(token, config.GistId, version, GistFileName, cancellationToken).ConfigureAwait(false);
             if (content is null)
             {
                 return SyncResult.Fail(Strings.Get("SyncSvc_RevisionNoFile"));
@@ -311,11 +309,11 @@ public sealed class GistSyncService(
         string version;
         if (string.IsNullOrEmpty(config.GistId))
         {
-            (config.GistId, version) = await _api.CreateGistAsync(token, GistDescription, GistFileName, content, cancellationToken).ConfigureAwait(false);
+            (config.GistId, version) = await GistApiClient.CreateGistAsync(token, GistDescription, GistFileName, content, cancellationToken).ConfigureAwait(false);
         }
         else
         {
-            version = await _api.UpdateGistAsync(token, config.GistId, GistFileName, content, cancellationToken).ConfigureAwait(false);
+            version = await GistApiClient.UpdateGistAsync(token, config.GistId, GistFileName, content, cancellationToken).ConfigureAwait(false);
         }
         config.LastSyncAtUtc = DateTime.UtcNow;
         config.LastRemoteVersion = version;
@@ -453,7 +451,7 @@ public sealed class GistSyncService(
                 }
 
                 // 隧道配置:按 profileId 整文档覆盖(文档本身即“该服务器的隧道列表”)。
-                foreach ((Guid profileId, List<TunnelConfig> configs) in payload.Tunnels ?? new Dictionary<Guid, List<TunnelConfig>>())
+                foreach ((Guid profileId, List<TunnelConfig> configs) in payload.Tunnels ?? [])
                 {
                     await appDataStore.UpsertAsync(TunnelsCollection, profileId.ToString("D"), configs, cancellationToken).ConfigureAwait(false);
                 }

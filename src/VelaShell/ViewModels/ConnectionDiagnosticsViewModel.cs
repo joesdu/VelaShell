@@ -82,8 +82,6 @@ public class ConnectionDiagnosticsViewModel : ReactiveObject
 {
     private readonly IConnectionDiagnosticsService _diagnosticsService;
     private readonly SessionProfile _profile;
-
-    private string? _issueTitle;
     private DiagnosticReport? _lastReport;
 
     public ConnectionDiagnosticsViewModel(SessionProfile profile, IConnectionDiagnosticsService diagnosticsService)
@@ -119,10 +117,10 @@ public class ConnectionDiagnosticsViewModel : ReactiveObject
 
     public string? IssueTitle
     {
-        get => _issueTitle;
+        get;
         private set
         {
-            this.RaiseAndSetIfChanged(ref _issueTitle, value);
+            this.RaiseAndSetIfChanged(ref field, value);
             this.RaisePropertyChanged(nameof(HasIssue));
         }
     }
@@ -133,7 +131,7 @@ public class ConnectionDiagnosticsViewModel : ReactiveObject
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    public bool HasIssue => !string.IsNullOrEmpty(_issueTitle);
+    public bool HasIssue => !string.IsNullOrEmpty(IssueTitle);
 
     /// <summary>四步全部通过时问题面板显示绿色的"未发现问题"。</summary>
     public bool AllPassed

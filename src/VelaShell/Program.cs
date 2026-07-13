@@ -12,7 +12,7 @@ using Velopack;
 
 namespace VelaShell;
 
-internal static class Program
+internal static partial class Program
 {
     // Held for the whole process lifetime so a second launch can detect us. Released on exit.
     private static Mutex? _singleInstanceMutex;
@@ -30,8 +30,7 @@ internal static class Program
         // the running instance up front and exit cleanly with a friendly notice instead.
         if (!TryAcquireSingleInstanceLock())
         {
-            ShowMessage(Strings.Get("Boot_AlreadyRunning"),
-                "VelaShell");
+            ShowMessage(Strings.Get("Boot_AlreadyRunning"), "VelaShell");
             return;
         }
         try
@@ -42,8 +41,7 @@ internal static class Program
         {
             // Last-resort: surface a readable dialog instead of a raw .NET crash box for testers.
             Trace.WriteLine($"[VelaShell] Fatal startup error: {ex}");
-            ShowMessage(Strings.Format("Boot_StartupFailed", ex.Message),
-                Strings.Get("Boot_StartupErrorTitle"));
+            ShowMessage(Strings.Format("Boot_StartupFailed", ex.Message), Strings.Get("Boot_StartupErrorTitle"));
             throw;
         }
         finally
@@ -101,8 +99,8 @@ internal static class Program
         _singleInstanceMutex = null;
     }
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
+    [LibraryImport("user32.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
 
     /// <summary>Shows a native message box on Windows; falls back to Trace elsewhere.</summary>
     private static void ShowMessage(string text, string caption)

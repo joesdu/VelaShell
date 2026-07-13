@@ -20,10 +20,9 @@ public sealed class ConnectionWorkflowService(
     {
         cancellationToken.ThrowIfCancellationRequested();
         List<SessionProfile> sessions = await _sessionRepository.GetAllSessionsAsync().ConfigureAwait(false);
-        return sessions
+        return [.. sessions
                .OrderByDescending(profile => profile.LastConnectedAt)
-               .ThenBy(profile => profile.Name, StringComparer.OrdinalIgnoreCase)
-               .ToList();
+               .ThenBy(profile => profile.Name, StringComparer.OrdinalIgnoreCase)];
     }
 
     public async Task<SessionProfile> SaveProfileAsync(SessionProfile profile, CancellationToken cancellationToken = default)

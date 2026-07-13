@@ -14,33 +14,32 @@ public static class StartupRegistration
 
     public static void Apply(bool enabled)
     {
-        if (!OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows())
         {
-            return;
-        }
-        try
-        {
-            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RunKeyPath, true);
-            if (key is null)
+            try
             {
-                return;
-            }
-            if (enabled)
-            {
-                string? exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
-                if (!string.IsNullOrEmpty(exePath))
+                using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RunKeyPath, true);
+                if (key is null)
                 {
-                    key.SetValue(ValueName, $"\"{exePath}\"");
+                    return;
+                }
+                if (enabled)
+                {
+                    string? exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
+                    if (!string.IsNullOrEmpty(exePath))
+                    {
+                        key.SetValue(ValueName, $"\"{exePath}\"");
+                    }
+                }
+                else if (key.GetValue(ValueName) is not null)
+                {
+                    key.DeleteValue(ValueName, false);
                 }
             }
-            else if (key.GetValue(ValueName) is not null)
+            catch
             {
-                key.DeleteValue(ValueName, false);
+                // 注册表不可写(策略限制等)时静默失败,不影响其余设置生效。
             }
-        }
-        catch
-        {
-            // 注册表不可写(策略限制等)时静默失败,不影响其余设置生效。
         }
     }
 }

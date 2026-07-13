@@ -66,7 +66,7 @@ internal sealed class DockDragController(DockWorkspaceControl owner)
 
     private void UpdateDrag(Point position)
     {
-        if (owner.Workspace is not { } workspace || _document is null)
+        if (owner.Workspace is not { } || _document is null)
         {
             return;
         }

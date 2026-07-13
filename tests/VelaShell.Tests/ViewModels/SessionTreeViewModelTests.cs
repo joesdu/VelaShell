@@ -250,7 +250,7 @@ public class SessionTreeViewModelTests
     {
         Assert.IsTrue(_vm.HasNoSessions);
         // 文案已本地化:断言资源值而非硬编码英文(测试机 UI culture 不定)。
-        Assert.AreEqual(VelaShell.Core.Resources.Strings.Get("Svc_AddFirstConnection"), _vm.EmptyStateMessage);
+        Assert.AreEqual(VelaShell.Core.Resources.Strings.Get("Svc_AddFirstConnection"), SessionTreeViewModel.EmptyStateMessage);
     }
 
     [TestMethod]

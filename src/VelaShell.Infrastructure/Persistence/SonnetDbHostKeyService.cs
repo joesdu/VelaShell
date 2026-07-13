@@ -52,7 +52,7 @@ public sealed class SonnetDbHostKeyService(SonnetDbEngine engine, string? legacy
         List<KnownHost?> hosts = await _engine.WithCollectionAsync(SonnetDbEngine.KnownHostsCollection, store =>
                                          store.Scan().Select(row => SonnetDbJson.Deserialize<KnownHost>(row.Json)).ToList(),
                                      cancellationToken).ConfigureAwait(false);
-        return hosts.Where(h => h is not null).Cast<KnownHost>().ToList();
+        return [.. hosts.Where(h => h is not null).Cast<KnownHost>()];
     }
 
     public async Task RemoveKnownHostAsync(string host, int port, CancellationToken cancellationToken = default)

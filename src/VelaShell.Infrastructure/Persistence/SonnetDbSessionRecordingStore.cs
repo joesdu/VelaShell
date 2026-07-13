@@ -43,9 +43,7 @@ public sealed class SonnetDbSessionRecordingStore(SonnetDbEngine engine) : ISess
         List<SessionRecording?> rows = await _engine.WithCollectionAsync(SonnetDbEngine.RecordingsCollection, store =>
                                                store.Scan().Select(row => SonnetDbJson.Deserialize<SessionRecording>(row.Json)).ToList(),
                                            cancellationToken).ConfigureAwait(false);
-        return rows.Where(r => r is not null).Cast<SessionRecording>()
-                   .OrderByDescending(r => r.StartedAtUtc)
-                   .ToList();
+        return [.. rows.Where(r => r is not null).Cast<SessionRecording>().OrderByDescending(r => r.StartedAtUtc)];
     }
 
     public async Task<List<RecordingChunk>> GetChunksAsync(Guid recordingId, CancellationToken cancellationToken = default)
@@ -151,7 +149,7 @@ public sealed class SonnetDbSessionRecordingStore(SonnetDbEngine engine) : ISess
         }
     }
 
-    private Task DeleteMetadataAsync(Guid recordingId, CancellationToken cancellationToken) =>
+    private Task<object?> DeleteMetadataAsync(Guid recordingId, CancellationToken cancellationToken) =>
         _engine.WithCollectionAsync<object?>(SonnetDbEngine.RecordingsCollection, store =>
         {
             store.Delete(DocId(recordingId));

@@ -239,11 +239,7 @@ public partial class FileBrowserView : UserControl
             Title = Strings.SelectFilesToUpload,
             AllowMultiple = true
         });
-        return files
-               .Select(f => f.TryGetLocalPath())
-               .Where(p => !string.IsNullOrEmpty(p))
-               .Select(p => p!)
-               .ToList();
+        return [.. files.Select(f => f.TryGetLocalPath()).Where(p => !string.IsNullOrEmpty(p)).Select(p => p!)];
     }
 
     private async Task<string?> PickFolderAsync()
@@ -296,7 +292,7 @@ public partial class FileBrowserView : UserControl
         {
             return null;
         }
-        if (configured.StartsWith("~"))
+        if (configured.StartsWith('~'))
         {
             configured = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 configured.TrimStart('~', '/', '\\'));
@@ -347,12 +343,7 @@ public partial class FileBrowserView : UserControl
         {
             return [];
         }
-        return items
-               .Select(i => i.TryGetLocalPath())
-               .Where(p => !string.IsNullOrEmpty(p))
-               .Select(p => p!)
-               .Distinct(StringComparer.OrdinalIgnoreCase)
-               .ToList();
+        return [.. items.Select(i => i.TryGetLocalPath()).Where(p => !string.IsNullOrEmpty(p)).Select(p => p!).Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
     private async Task<string?> PickSavePathAsync(string suggestedName)

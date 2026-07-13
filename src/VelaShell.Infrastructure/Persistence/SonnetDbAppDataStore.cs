@@ -20,7 +20,7 @@ public sealed class SonnetDbAppDataStore(SonnetDbEngine engine) : IAppDataStore
         List<T?> items = await _engine.WithCollectionAsync(collection, store =>
                                  store.Scan().Select(row => SonnetDbJson.Deserialize<T>(row.Json)).ToList(),
                              cancellationToken).ConfigureAwait(false);
-        return items.Where(i => i is not null).Cast<T>().ToList();
+        return [.. items.Where(i => i is not null).Cast<T>()];
     }
 
     public async Task UpsertAsync<T>(string collection, string id, T value, CancellationToken cancellationToken = default) where T : class

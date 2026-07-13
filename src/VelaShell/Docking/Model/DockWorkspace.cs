@@ -10,7 +10,6 @@ namespace VelaShell.Docking.Model;
 public sealed class DockWorkspace : DockElement
 {
     private DockNode _root;
-    private DockDocument? _activeDocument;
 
     public DockWorkspace()
     {
@@ -31,10 +30,10 @@ public sealed class DockWorkspace : DockElement
     /// <summary>全局激活文档(最后交互的组的选中标签),驱动 ActiveTerminalTab/状态栏联动。</summary>
     public DockDocument? ActiveDocument
     {
-        get => _activeDocument;
+        get;
         private set
         {
-            if (SetField(ref _activeDocument, value))
+            if (SetField(ref field, value))
             {
                 ActiveDocumentChanged?.Invoke(value);
             }
@@ -177,8 +176,8 @@ public sealed class DockWorkspace : DockElement
         }
         int index = group.Documents.IndexOf(document);
         DockDocument[] targets = left
-                                     ? group.Documents.Take(index).ToArray()
-                                     : group.Documents.Skip(index + 1).ToArray();
+                                     ? [.. group.Documents.Take(index)]
+                                     : [.. group.Documents.Skip(index + 1)];
         foreach (DockDocument doc in targets)
         {
             CloseDocument(doc);

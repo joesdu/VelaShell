@@ -15,6 +15,11 @@ public class QuickCommandsViewModel : ReactiveObject
     private readonly IAppDataStore _dataStore;
     private readonly Action<string>? _executeCallback;
     private readonly string? _legacyDataPath;
+    private readonly JsonSerializerOptions jsonOption = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
 
     public QuickCommandsViewModel(
         IAppDataStore dataStore,
@@ -142,12 +147,7 @@ public class QuickCommandsViewModel : ReactiveObject
         try
         {
             string json = await File.ReadAllTextAsync(_legacyDataPath);
-            QuickCommandData? data = JsonSerializer.Deserialize<QuickCommandData>(json,
-                new JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                    PropertyNameCaseInsensitive = true
-                });
+            QuickCommandData? data = JsonSerializer.Deserialize<QuickCommandData>(json, jsonOption);
             if (data is not null)
             {
                 await _dataStore.UpsertAsync(Collection, DocumentId, data);
@@ -276,5 +276,4 @@ public class QuickCommandsViewModel : ReactiveObject
             Categories.Add(cat);
         }
     }
-
 }

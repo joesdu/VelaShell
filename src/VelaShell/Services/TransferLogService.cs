@@ -19,7 +19,7 @@ public static class TransferLogService
         {
             return SessionLogService.LogDirectory;
         }
-        if (dir.StartsWith("~"))
+        if (dir.StartsWith('~'))
         {
             dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 dir.TrimStart('~', '/', '\\'));

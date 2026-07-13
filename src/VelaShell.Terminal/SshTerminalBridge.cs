@@ -63,6 +63,7 @@ public class SshTerminalBridge : IDisposable
             // Swallow faults from read task during dispose
         }
         _cts.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     public event Action<Exception>? Error;

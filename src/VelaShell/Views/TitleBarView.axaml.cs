@@ -157,8 +157,8 @@ public partial class TitleBarView : UserControl
         Dispatcher.UIThread.Post(() =>
         {
             double scaling = window.RenderScaling;
-            var offsetX = (int)(window.Bounds.Width * ratioX * scaling);
-            var offsetY = (int)(_pressPoint.Y * scaling);
+            int offsetX = (int)(window.Bounds.Width * ratioX * scaling);
+            int offsetY = (int)(_pressPoint.Y * scaling);
             window.Position = new PixelPoint(screenPoint.X - offsetX, screenPoint.Y - offsetY);
             window.BeginMoveDrag(pressed);
         }, DispatcherPriority.Render);

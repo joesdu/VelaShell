@@ -23,7 +23,7 @@ public class Utf8StreamDecoder
         }
         _buffer.AddRange(bytes);
         char[] charBuffer = new char[_buffer.Count * 2];
-        _decoder.Convert(_buffer.ToArray(),
+        _decoder.Convert([.. _buffer],
             0,
             _buffer.Count,
             charBuffer,
@@ -42,7 +42,7 @@ public class Utf8StreamDecoder
     /// </summary>
     public string Flush()
     {
-        byte[] allBytes = _buffer.ToArray();
+        byte[] allBytes = [.. _buffer];
         char[] charBuffer = new char[Math.Max(allBytes.Length, 1) * 2];
         _decoder.Convert(allBytes,
             0,

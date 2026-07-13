@@ -79,7 +79,10 @@ public class TunnelService(
                 continue;
             }
             tunnels.Remove(existing);
-            logger?.LogInformation("Removed tunnel {TunnelId}", tunnelId);
+            if (logger is not null && logger.IsEnabled(LogLevel.Information))
+            {
+                logger.LogInformation("Removed tunnel {TunnelId}", tunnelId);
+            }
             return;
         }
     }
@@ -127,7 +130,10 @@ public class TunnelService(
                     tunnels.Add(info);
                 }
             }
-            logger?.LogInformation("Stopped tunnel {TunnelId} for session {SessionId}", tunnelId, info.SessionId);
+            if(logger is not null && logger.IsEnabled(LogLevel.Information))
+            {
+                logger.LogInformation("Stopped tunnel {TunnelId} for session {SessionId}", tunnelId, info.SessionId);
+            }
         }
         catch (Exception ex)
         {
@@ -222,8 +228,11 @@ public class TunnelService(
             SourceList<TunnelInfo> tunnels = _sessionTunnels.GetOrAdd(sessionId, _ => new());
             _tunnelPorts[tunnelInfo.Id] = (handle, tunnelInfo);
             tunnels.Add(tunnelInfo);
-            logger?.LogInformation("Created {Direction} forward tunnel {TunnelId} for session {SessionId}: {LocalHost}:{LocalPort} <-> {RemoteHost}:{RemotePort}",
-                direction, tunnelInfo.Id, sessionId, config.LocalHost, config.LocalPort, config.RemoteHost, config.RemotePort);
+            if (logger is not null && logger.IsEnabled(LogLevel.Information))
+            {
+                logger?.LogInformation("Created {Direction} forward tunnel {TunnelId} for session {SessionId}: {LocalHost}:{LocalPort} <-> {RemoteHost}:{RemotePort}",
+                    direction, tunnelInfo.Id, sessionId, config.LocalHost, config.LocalPort, config.RemoteHost, config.RemotePort);
+            }
             return tunnelInfo;
         }
         catch (Exception ex)

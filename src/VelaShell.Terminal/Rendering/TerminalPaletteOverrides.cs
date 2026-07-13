@@ -31,7 +31,7 @@ public sealed class TerminalPaletteOverrides
             {
                 return false;
             }
-            return !Ansi.Any();
+            return Ansi.Length == 0;
         }
     }
 }

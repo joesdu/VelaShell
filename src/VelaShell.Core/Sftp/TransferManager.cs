@@ -14,7 +14,6 @@ public class TransferManager : ITransferManager
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _transferCts = new();
     private SemaphoreSlim _concurrencySemaphore;
     private bool _disposed;
-    private int _maxConcurrentTransfers = 3;
     private Task? _processorTask;
 
     public TransferManager() : this(null) { }
@@ -22,7 +21,7 @@ public class TransferManager : ITransferManager
     public TransferManager(TransferExecutor? executor)
     {
         _executor = executor;
-        _concurrencySemaphore = new(_maxConcurrentTransfers, _maxConcurrentTransfers);
+        _concurrencySemaphore = new(MaxConcurrentTransfers, MaxConcurrentTransfers);
         _channel = Channel.CreateUnbounded<TransferTask>(new()
         {
             SingleReader = true,
@@ -32,7 +31,7 @@ public class TransferManager : ITransferManager
 
     public int MaxConcurrentTransfers
     {
-        get => _maxConcurrentTransfers;
+        get;
         set
         {
             if (value <= 0)
@@ -43,15 +42,15 @@ public class TransferManager : ITransferManager
             {
                 throw new InvalidOperationException("Cannot change MaxConcurrentTransfers while transfers are being processed.");
             }
-            _maxConcurrentTransfers = value;
+            field = value;
             _concurrencySemaphore.Dispose();
             _concurrencySemaphore = new(value, value);
         }
-    }
+    } = 3;
 
-    public IReadOnlyList<TransferTask> ActiveTransfers => _allTransfers.Values.Where(t => t.Status == TransferStatus.InProgress).ToList();
+    public IReadOnlyList<TransferTask> ActiveTransfers => [.. _allTransfers.Values.Where(t => t.Status == TransferStatus.InProgress)];
 
-    public IReadOnlyList<TransferTask> QueuedTransfers => _allTransfers.Values.Where(t => t.Status == TransferStatus.Queued).ToList();
+    public IReadOnlyList<TransferTask> QueuedTransfers => [.. _allTransfers.Values.Where(t => t.Status == TransferStatus.Queued)];
 
     public Task QueueTransferAsync(TransferTask task, CancellationToken cancellationToken = default)
     {

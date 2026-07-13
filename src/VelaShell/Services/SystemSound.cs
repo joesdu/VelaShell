@@ -6,7 +6,7 @@ namespace VelaShell.Services;
 /// 系统提示音(设置 → 常规 → 声音提示):Windows 上用 user32 MessageBeep,
 /// 无外部依赖;其他平台静默。
 /// </summary>
-public static class SystemSound
+public static partial class SystemSound
 {
     public static void Alert()
     {
@@ -24,6 +24,7 @@ public static class SystemSound
         }
     }
 
-    [DllImport("user32.dll")]
-    private static extern bool MessageBeep(uint type);
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool MessageBeep(uint type);
 }

@@ -43,11 +43,7 @@ public class SshConnectionService(
     public async Task DisconnectAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         // 断开也不再走全局锁:每个会话的网络拆除各自并发进行,不阻塞其它连接/断开。
-        SshSession? session = GetSession(sessionId);
-        if (session == null)
-        {
-            throw new InvalidOperationException($"Session {sessionId} not found");
-        }
+        SshSession? session = GetSession(sessionId) ?? throw new InvalidOperationException($"Session {sessionId} not found");
         if (session.Status == SessionStatus.Disconnected)
         {
             return;
@@ -61,7 +57,10 @@ public class SshConnectionService(
             }, cancellationToken).ConfigureAwait(false);
         }
         session.Status = SessionStatus.Disconnected;
-        logger?.LogInformation("SSH session {SessionId} disconnected", sessionId);
+        if (logger is not null && logger.IsEnabled(LogLevel.Information))
+        {
+            logger.LogInformation("SSH session {SessionId} disconnected", sessionId);
+        }
     }
 
     public SshSession? GetSession(Guid sessionId)
@@ -80,7 +79,7 @@ public class SshConnectionService(
 
     public async ValueTask DisposeAsync()
     {
-        KeyValuePair<Guid, ISshClientWrapper>[] clientEntries = _clients.ToArray();
+        KeyValuePair<Guid, ISshClientWrapper>[] clientEntries = [.. _clients];
         _clients.Clear();
 
         // Disconnect every session concurrently: each Disconnect() is a blocking network teardown,
@@ -135,8 +134,11 @@ public class SshConnectionService(
             _clients[session.SessionId] = client;
             session.Status = SessionStatus.Connected;
             session.ConnectedAt = DateTime.UtcNow;
-            logger?.LogInformation("SSH session {SessionId} connected to {Host}:{Port}",
-                session.SessionId, connectionInfo.Host, connectionInfo.Port);
+            if(logger is not null && logger.IsEnabled(LogLevel.Information))
+            {
+                logger.LogInformation("SSH session {SessionId} connected to {Host}:{Port}",
+                    session.SessionId, connectionInfo.Host, connectionInfo.Port);
+            }
             return session;
         }
         catch (OperationCanceledException)

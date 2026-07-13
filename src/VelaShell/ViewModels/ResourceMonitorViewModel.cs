@@ -69,9 +69,7 @@ public class ResourceMonitorViewModel(ISessionMetricsService metricsService, Gui
             }
             if (m.Disks.Count > 0)
             {
-                return m.Disks.Select(d => new DiskRowViewModel($"Disk {d.MountPoint}",
-                    $"{FormatGb(d.UsedBytes)} / {FormatGb(d.TotalBytes)} GB ({d.Percent:F0}%)",
-                    d.Percent)).ToList();
+                return [.. m.Disks.Select(d => new DiskRowViewModel($"Disk {d.MountPoint}", $"{FormatGb(d.UsedBytes)} / {FormatGb(d.TotalBytes)} GB ({d.Percent:F0}%)", d.Percent))];
             }
             return [new("Disk", DiskText, DiskPercent)];
         }

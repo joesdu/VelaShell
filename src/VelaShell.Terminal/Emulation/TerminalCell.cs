@@ -73,14 +73,24 @@ public struct TerminalCell : IEquatable<TerminalCell>
         }
     }
 
-    public bool Equals(TerminalCell other) =>
+    public readonly bool Equals(TerminalCell other) =>
         Rune == other.Rune &&
         Combining == other.Combining &&
         Foreground == other.Foreground &&
         Background == other.Background &&
         Flags == other.Flags;
 
-    public override bool Equals(object? obj) => obj is TerminalCell other && Equals(other);
+    public override readonly bool Equals(object? obj) => obj is TerminalCell other && Equals(other);
 
-    public override int GetHashCode() => HashCode.Combine(Rune, Combining, Foreground, Background, Flags);
+    public override readonly int GetHashCode() => HashCode.Combine(Rune, Combining, Foreground, Background, Flags);
+
+    public static bool operator ==(TerminalCell left, TerminalCell right)
+    {
+        return left.Equals(right);
+    }
+
+    public static bool operator !=(TerminalCell left, TerminalCell right)
+    {
+        return !(left == right);
+    }
 }

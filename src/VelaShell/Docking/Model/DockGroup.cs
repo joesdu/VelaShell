@@ -7,23 +7,20 @@ namespace VelaShell.Docking.Model;
 /// </summary>
 public sealed class DockGroup : DockNode
 {
-    private DockDocument? _activeDocument;
-    private DockTabsPosition _tabsPosition = DockTabsPosition.Top;
-
     public ObservableCollection<DockDocument> Documents { get; } = [];
 
     /// <summary>本组当前显示的文档(标签选中态)。</summary>
     public DockDocument? ActiveDocument
     {
-        get => _activeDocument;
-        set => SetField(ref _activeDocument, value);
+        get;
+        set => SetField(ref field, value);
     }
 
     public DockTabsPosition TabsPosition
     {
-        get => _tabsPosition;
-        set => SetField(ref _tabsPosition, value);
-    }
+        get;
+        set => SetField(ref field, value);
+    } = DockTabsPosition.Top;
 
     /// <summary>
     /// 主组:新终端默认加入的组,清空后也不折叠(对应原 DocumentDock 的

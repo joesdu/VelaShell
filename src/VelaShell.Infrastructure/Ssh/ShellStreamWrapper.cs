@@ -33,5 +33,9 @@ public class ShellStreamWrapper(ShellStream stream) : IShellStreamWrapper
         _stream.ChangeWindowSize((uint)columns, (uint)rows, 0, 0);
     }
 
-    public void Dispose() => _stream.Dispose();
+    public void Dispose()
+    {
+        _stream.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }
