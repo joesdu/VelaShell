@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
@@ -20,18 +19,20 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
 {
     private readonly IntPtr _console;
     private readonly FileStream _input;
+    private readonly IntPtr _job;
     private readonly FileStream _output;
     private readonly Process _process;
     private readonly Lock _teardownGate = new();
     private volatile bool _closed;
     private bool _disposed;
 
-    private ConPtyShellStream(IntPtr console, FileStream input, FileStream output, Process process)
+    private ConPtyShellStream(IntPtr console, FileStream input, FileStream output, Process process, IntPtr job)
     {
         _console = console;
         _input = input;
         _output = output;
         _process = process;
+        _job = job;
     }
 
     public bool DataAvailable => false; // 桥不轮询;读循环阻塞在 ReadAsync 上。
@@ -111,12 +112,18 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
         }
         _disposed = true;
 
-        // 用户关标签:先杀 shell 进程树,再收伪控制台与管道。
+        // 用户关标签:优先关掉 Job Object —— 内核一次性终止整棵进程树(O(1),不枚举系统进程),
+        // 避免 Process.Kill(true) 遍历全部进程带来的 UI 卡顿与成批 Win32Exception。
+        // job 创建失败(极少数环境)时退回杀直接子进程(Kill() 亦不枚举进程树)。
         try
         {
-            if (!_process.HasExited)
+            if (_job != IntPtr.Zero)
             {
-                _process.Kill(true);
+                NativeMethods.TerminateJobObject(_job, 0);
+            }
+            else if (!_process.HasExited)
+            {
+                _process.Kill();
             }
         }
         catch
@@ -131,6 +138,10 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
         catch
         {
             // ignore
+        }
+        if (_job != IntPtr.Zero)
+        {
+            NativeMethods.CloseHandle(_job);
         }
         _process.Dispose();
     }
@@ -189,12 +200,17 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
             {
                 throw new InvalidOperationException($"无法启动本地 shell(CreateProcess {Marshal.GetLastWin32Error()}):{commandLine}");
             }
+
+            // 把刚启动的 shell 收进「随句柄关闭而整树终止」的 Job,关标签时据此秒杀进程树。
+            // 需在关闭进程句柄前分配(AssignProcessToJobObject 要拿有效的进程句柄)。
+            IntPtr job = CreateKillOnCloseJob(processInfo.hProcess);
+
             NativeMethods.CloseHandle(processInfo.hThread);
             NativeMethods.CloseHandle(processInfo.hProcess);
             var input = new FileStream(new(inputWrite, true), FileAccess.Write, 4096);
             var output = new FileStream(new(outputRead, true), FileAccess.Read, 16384);
             var process = Process.GetProcessById((int)processInfo.dwProcessId);
-            var stream = new ConPtyShellStream(console, input, output, process);
+            var stream = new ConPtyShellStream(console, input, output, process, job);
 
             // 子进程退出(exit / 崩溃)→ 关伪控制台,读端断管 → EOF → 标签断开。
             // 注意:ClosePseudoConsole 会立刻终止 conhost 的输出泵,退出瞬间可能还有
@@ -243,10 +259,56 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
         }
     }
 
+    /// <summary>把进程收进一个 <c>KILL_ON_JOB_CLOSE</c> 的 Job Object;失败(如受限环境)返回 <see cref="IntPtr.Zero" />。</summary>
+    private static IntPtr CreateKillOnCloseJob(IntPtr processHandle)
+    {
+        IntPtr job = NativeMethods.CreateJobObjectW(IntPtr.Zero, IntPtr.Zero);
+        if (job == IntPtr.Zero)
+        {
+            return IntPtr.Zero;
+        }
+        var info = new NativeMethods.JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
+        info.BasicLimitInformation.LimitFlags = NativeMethods.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        int length = Marshal.SizeOf<NativeMethods.JOBOBJECT_EXTENDED_LIMIT_INFORMATION>();
+        IntPtr infoPtr = Marshal.AllocHGlobal(length);
+        try
+        {
+            Marshal.StructureToPtr(info, infoPtr, false);
+            if (!NativeMethods.SetInformationJobObject(job, NativeMethods.JobObjectExtendedLimitInformation, infoPtr, (uint)length) ||
+                !NativeMethods.AssignProcessToJobObject(job, processHandle))
+            {
+                NativeMethods.CloseHandle(job);
+                return IntPtr.Zero;
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(infoPtr);
+        }
+        return job;
+    }
+
     private static partial class NativeMethods
     {
         public const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
         public const int PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE = 0x00020016;
+        public const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
+        public const int JobObjectExtendedLimitInformation = 9;
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        public static partial IntPtr CreateJobObjectW(IntPtr lpJobAttributes, IntPtr lpName);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool SetInformationJobObject(IntPtr hJob, int jobObjectInformationClass, IntPtr lpJobObjectInformation, uint cbJobObjectInformationLength);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool AssignProcessToJobObject(IntPtr hJob, IntPtr hProcess);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool TerminateJobObject(IntPtr hJob, uint uExitCode);
 
         [LibraryImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -333,6 +395,42 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
             public IntPtr hThread;
             public uint dwProcessId;
             public uint dwThreadId;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct JOBOBJECT_BASIC_LIMIT_INFORMATION
+        {
+            public long PerProcessUserTimeLimit;
+            public long PerJobUserTimeLimit;
+            public uint LimitFlags;
+            public UIntPtr MinimumWorkingSetSize;
+            public UIntPtr MaximumWorkingSetSize;
+            public uint ActiveProcessLimit;
+            public UIntPtr Affinity;
+            public uint PriorityClass;
+            public uint SchedulingClass;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct IO_COUNTERS
+        {
+            public ulong ReadOperationCount;
+            public ulong WriteOperationCount;
+            public ulong OtherOperationCount;
+            public ulong ReadTransferCount;
+            public ulong WriteTransferCount;
+            public ulong OtherTransferCount;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+        {
+            public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+            public IO_COUNTERS IoInfo;
+            public UIntPtr ProcessMemoryLimit;
+            public UIntPtr JobMemoryLimit;
+            public UIntPtr PeakProcessMemoryUsed;
+            public UIntPtr PeakJobMemoryUsed;
         }
     }
 }
