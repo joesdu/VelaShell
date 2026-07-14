@@ -86,10 +86,15 @@ reused across tab switches. Floating windows are intentionally not implemented (
 
 ## Window Shell
 
-The main window uses the **platform-native title bar / chrome** (dragging, snap layouts
-and window buttons are delegated to the OS). An earlier self-drawn borderless shell was
-reverted for native drag/snap fidelity on Windows 11. The text menu bar was removed in
-favor of the command palette (`Ctrl+P` / `Ctrl+K`).
+The main window is a **self-drawn borderless window** (`WindowDecorations="None"`), not
+native chrome — Avalonia 12.x's `ExtendClientArea` / decoration-role input redirection is
+broken on Win32 (title-bar buttons and drag stop working), so it was abandoned. Instead
+`Views/TitleBarView` draws a 36px bar with logo+name (left), the global action icon group
+(right; SyncGroup/Broadcast disabled until implemented) and its own minimize/maximize/close
+caption buttons. Native *feel* is restored programmatically: `BeginMoveDrag` (native move
+loop, Win11 edge-snap works), double-click to maximize, and **Win11 Snap Layouts via a
+`MainWindow` WndProc hook on `HTMAXBUTTON`**. All dialogs use the same borderless mode.
+The text menu bar (会话/编辑/…) was removed in favor of the command palette (`Ctrl+P`/`Ctrl+K`).
 
 ## Theme Design Notes
 
