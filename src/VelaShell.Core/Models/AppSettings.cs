@@ -13,7 +13,7 @@ public class AppSettings
     public string Theme { get; set; } = "dark";
 
     /// <summary>Accent-color override as a hex string (e.g. "#00D4AA"); empty = use theme default.</summary>
-    public string AccentColor { get; set; } = "";
+    public string AccentColor { get; set; } = "#E91E63";
 
     /// <summary>终端渲染使用的等宽字体族名。</summary>
     public string TerminalFont { get; set; } = "JetBrains Mono";
