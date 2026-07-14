@@ -2,6 +2,15 @@
   <PropertyGroup>
 	<TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
+
+  <!-- 定义 Linux -->
+  <PropertyGroup>
+  	<IsLinux Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinux>
+  </PropertyGroup>
+  
+  <PropertyGroup Condition="'$(IsLinux)' == 'true'">
+  	<DefineConstants>$(DefineConstants);LINUX</DefineConstants>
+  </PropertyGroup>
 	
   <PropertyGroup>
     <!-- 全仓统一版本:Version 派生 AssemblyInformationalVersion(含预发布后缀,
