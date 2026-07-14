@@ -28,7 +28,7 @@ public class UpdateServiceTests : IDisposable
     [TestCategory("Update")]
     public void CurrentVersion_WhenNotInstalled_ReturnsAssemblyVersion()
     {
-        var service = new UpdateService("https://example.com/updates", _locator);
+        var service = new UpdateService("https://github.com/velashell-test/nonexistent-repo", locator: _locator);
         Assert.IsFalse(string.IsNullOrEmpty(service.CurrentVersion));
     }
 
@@ -36,7 +36,7 @@ public class UpdateServiceTests : IDisposable
     [TestCategory("Update")]
     public void AvailableVersion_Initially_IsNull()
     {
-        var service = new UpdateService("https://example.com/updates", _locator);
+        var service = new UpdateService("https://github.com/velashell-test/nonexistent-repo", locator: _locator);
         Assert.IsNull(service.AvailableVersion);
     }
 
@@ -44,7 +44,7 @@ public class UpdateServiceTests : IDisposable
     [TestCategory("Update")]
     public async Task CheckForUpdateAsync_WhenNetworkUnavailable_ReturnsFalse()
     {
-        var service = new UpdateService("https://invalid.test.example.com/updates", _locator);
+        var service = new UpdateService("https://github.com/velashell-test/nonexistent-repo", locator: _locator);
         bool result = await service.CheckForUpdateAsync();
         Assert.IsFalse(result);
     }
@@ -53,7 +53,7 @@ public class UpdateServiceTests : IDisposable
     [TestCategory("Update")]
     public async Task DownloadUpdateAsync_WhenNoUpdateAvailable_CompletesWithoutError()
     {
-        var service = new UpdateService("https://example.com/updates", _locator);
+        var service = new UpdateService("https://github.com/velashell-test/nonexistent-repo", locator: _locator);
         await service.DownloadUpdateAsync();
     }
 
@@ -61,7 +61,7 @@ public class UpdateServiceTests : IDisposable
     [TestCategory("Update")]
     public void ApplyUpdateAndRestart_WhenNoUpdateAvailable_ThrowsInvalidOperation()
     {
-        var service = new UpdateService("https://example.com/updates", _locator);
+        var service = new UpdateService("https://github.com/velashell-test/nonexistent-repo", locator: _locator);
         Action act = () => service.ApplyUpdateAndRestart();
         Assert.ThrowsExactly<InvalidOperationException>(act);
     }
@@ -70,7 +70,7 @@ public class UpdateServiceTests : IDisposable
     [TestCategory("Update")]
     public void Constructor_WithNullUrl_ThrowsArgumentNullException()
     {
-        Func<UpdateService> act = () => new(null!, _locator);
+        Func<UpdateService> act = () => new(null!, locator: _locator);
         Assert.ThrowsExactly<ArgumentNullException>(act);
     }
 
@@ -78,7 +78,7 @@ public class UpdateServiceTests : IDisposable
     [TestCategory("Update")]
     public void ImplementsIUpdateService()
     {
-        var service = new UpdateService("https://example.com/updates", _locator);
+        var service = new UpdateService("https://github.com/velashell-test/nonexistent-repo", locator: _locator);
         Assert.IsInstanceOfType(service, typeof(IUpdateService));
     }
 }

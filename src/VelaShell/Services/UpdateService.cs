@@ -1,21 +1,37 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
 using Velopack;
 using Velopack.Locators;
+using Velopack.Sources;
 
 namespace VelaShell.Services;
 
-/// <summary>基于 Velopack 的应用更新服务:检查、下载并应用更新包后重启。</summary>
+/// <summary>基于 Velopack + GitHub Releases 的应用更新服务:检查、下载并应用更新包后重启。</summary>
 public class UpdateService : IUpdateService
 {
     private readonly UpdateManager _updateManager;
     private UpdateInfo? _updateInfo;
 
-    /// <summary>使用更新源地址与可选定位器构造服务。</summary>
-    public UpdateService(string updateUrl, IVelopackLocator? locator = null)
+    /// <summary>
+    /// 以 GitHub 仓库地址构造:更新源即该仓库的 Releases,无需自建服务器。
+    /// <paramref name="allowPreRelease" /> 为 <c>true</c> 时预发布(beta)也纳入更新——beta 阶段应保持开启,
+    /// 发布正式版后可置 <c>false</c> 只推稳定版。更新渠道按当前进程架构解析(win-x64 / win-arm64),
+    /// 与 CI <c>vpk pack --channel win-&lt;arch&gt;</c> 一致:x64 与 arm64 各自独立更新轨。
+    /// </summary>
+    public UpdateService(string repositoryUrl, bool allowPreRelease = true, IVelopackLocator? locator = null)
     {
-        ArgumentNullException.ThrowIfNull(updateUrl);
-        _updateManager = new(updateUrl, locator: locator);
+        ArgumentNullException.ThrowIfNull(repositoryUrl);
+        GithubSource source = new(repositoryUrl, accessToken: null, prerelease: allowPreRelease);
+        UpdateOptions options = new() { ExplicitChannel = ResolveChannel() };
+        _updateManager = new(source, options, locator: locator);
     }
+
+    /// <summary>按运行架构解析更新渠道,匹配 CI 的 <c>--channel win-x64 / win-arm64</c>。</summary>
+    private static string ResolveChannel() =>
+        RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "win-arm64" : "win-x64";
+
+    /// <summary>是否由 Velopack 安装器管理(仅经 Setup.exe 安装的版本为 true);便携版 / MSI / 非安装版为 false。</summary>
+    public bool IsUpdaterManaged => _updateManager.IsInstalled;
 
     /// <summary>当前运行版本:已安装时取 Velopack 记录,否则回退到程序集版本。</summary>
     public string? CurrentVersion

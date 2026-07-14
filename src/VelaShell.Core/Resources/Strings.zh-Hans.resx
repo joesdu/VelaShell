@@ -1291,6 +1291,30 @@
   <data name="Msg_UpdateServiceNotAvailable" xml:space="preserve">
     <value>自动更新服务尚未接入,请前往项目发布页获取新版本。</value>
   </data>
+  <data name="SetAbout_Checking" xml:space="preserve">
+    <value>正在检查更新…</value>
+  </data>
+  <data name="SetAbout_UpToDate" xml:space="preserve">
+    <value>已是最新版本。</value>
+  </data>
+  <data name="SetAbout_NotUpdaterManaged" xml:space="preserve">
+    <value>当前为非安装版(便携版 / MSI),无法自动更新,请前往项目发布页下载最新版本。</value>
+  </data>
+  <data name="SetAbout_Downloading" xml:space="preserve">
+    <value>正在下载更新… {0}%</value>
+  </data>
+  <data name="SetAbout_DownloadFailed" xml:space="preserve">
+    <value>下载失败,请稍后重试。</value>
+  </data>
+  <data name="SetAbout_UpdateCheckFailed" xml:space="preserve">
+    <value>检查更新失败,请稍后重试。</value>
+  </data>
+  <data name="SetAbout_UpdateReady" xml:space="preserve">
+    <value>更新 {0} 已就绪,重启以完成安装。</value>
+  </data>
+  <data name="SetAbout_RestartToUpdate" xml:space="preserve">
+    <value>重启并更新</value>
+  </data>
   <data name="Msg_Uploaded" xml:space="preserve">
     <value>已上传</value>
   </data>
