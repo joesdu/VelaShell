@@ -12,7 +12,10 @@
     <ProjectReference Include="..\VelaShell.Core\VelaShell.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!-- 强名签名(仅 Release,见 src/Directory.Build.props)时,签名程序集的 InternalsVisibleTo
+       必须带友元公钥;而测试程序集本地是非签名的,带公钥反而在 Debug 下失配。发布 CI 只 publish
+       应用、不跑测试,故签名构建(Release)时省略友元声明,仅在非签名构建(Debug / 本地测试)保留。 -->
+  <ItemGroup Condition="'$(SignAssembly)' != 'true'">
     <InternalsVisibleTo Include="VelaShell.Terminal.Tests" />
   </ItemGroup>
 
