@@ -1,0 +1,22 @@
+# VelaShell.Presentation.Tests
+
+> [`VelaShell.Presentation`](../../src/VelaShell.Presentation) 跨层 ViewModel 与工作流的单元测试。
+
+在无窗口环境下验证表现逻辑，依赖注入以 Mock 服务驱动。
+
+## 覆盖范围
+
+| 文件 | 被测对象 |
+|------|----------|
+| `ViewModels/StatusBarViewModelTests` `StatusBarNetworkTests` | 状态栏指标与网速展示。 |
+| `ViewModels/TabBarViewModelTests` | 标签页栏行为。 |
+| `WorkspaceHostViewModelTests` | 工作区宿主与分屏文档。 |
+| `Services/ConnectionWorkflowServiceTests` | 连接工作流（校验 → 认证 → 建链）。 |
+| `Services/TunnelWorkflowServiceTests` | 隧道创建/启停工作流。 |
+| `CommandRegistryTests` | 全局命令注册表。 |
+
+## 运行
+
+```bash
+dotnet test tests/VelaShell.Presentation.Tests/
+```

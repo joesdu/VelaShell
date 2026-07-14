@@ -3,7 +3,7 @@
 ## Recommended Baseline
 
 ```text
-VelaShell.App            -> Desktop entry point and composition root
+VelaShell (App)          -> Desktop entry point and composition root
 VelaShell.Presentation   -> ViewModels, navigation, orchestration
 VelaShell.Controls       -> Custom controls, styles, tokens, behaviors
 VelaShell.Terminal       -> Terminal engine, parser, renderer, interaction model
@@ -11,13 +11,18 @@ VelaShell.Core           -> Stable domain models and contracts
 VelaShell.Infrastructure -> SSH, storage, platform integration, background work
 ```
 
+> The desktop entry project is named `VelaShell` (assembly `VelaShell`, `OutputType=WinExe`).
+> `VelaShell.App` is a legacy alias that still appears in some older docs. Each project
+> also carries its own `README.md` describing its internal structure and dependencies.
+
 ## Dependency Direction
 
 ```text
-App -> Presentation
-App -> Controls
-App -> Infrastructure
-App -> Core
+App(VelaShell) -> Presentation
+App(VelaShell) -> Controls
+App(VelaShell) -> Infrastructure
+App(VelaShell) -> Terminal
+App(VelaShell) -> Core
 
 Presentation -> Core
 Presentation -> Terminal
@@ -59,6 +64,32 @@ This split makes it easier to support:
 - selection without hijacking `Ctrl+C`
 - multiline paste input
 - common Linux progress bar redraw behavior
+
+The renderer also supports an optional **line-number / timestamp gutter** on the left
+edge (`Terminal/Rendering/GutterLayout` + `GutterFoldModel`): two independently toggled
+side columns with fold markers and blank-gap handling, wired to keyboard shortcuts.
+
+## Docking (VelaDock)
+
+Split/tabbed layout is provided by an in-house, dependency-free docking framework
+(**VelaDock**, `src/VelaShell/Docking/`) that replaced `Dock.Avalonia`. See
+`docs/dock-replacement-plan.md`.
+
+```text
+Docking/Model/     -> pure INPC model (unit-testable): DockWorkspace / DockGroup / DockSplit / DockDocument
+Docking/Controls/  -> DockWorkspaceControl (renders the split tree), DockGroupControl (tab strip),
+                      DockTabItem, DockDragController + DockDropOverlay (five-zone drag-drop split)
+```
+
+Documents are live SSH/local sessions; each `TerminalTabView` is cached per document and
+reused across tab switches. Floating windows are intentionally not implemented (product decision).
+
+## Window Shell
+
+The main window uses the **platform-native title bar / chrome** (dragging, snap layouts
+and window buttons are delegated to the OS). An earlier self-drawn borderless shell was
+reverted for native drag/snap fidelity on Windows 11. The text menu bar was removed in
+favor of the command palette (`Ctrl+P` / `Ctrl+K`).
 
 ## Theme Design Notes
 
