@@ -84,7 +84,6 @@ tests/  6 个 MSTest 项目(见 §7)
 
 ## 8. 关键约定 / 已知坑
 
-- **macOS 无边框 + `SizeToContent` 弹窗“底部按钮点不动”**(用户反馈,macOS 26 ARM64;Windows/Linux 不受影响):新建连接 / 验证 / 主机指纹 / 消息 四个自适应高度的无边框弹窗(`WindowDecorations="None"` + `TransparencyLevelHint="Transparent"` + `SizeToContent="Height"`),在 `Opened` 阶段被自动增高,而此刻原生窗口的命中区域(hit region)仍固定在增高前的初始高度——底部页脚按钮虽渲染出来却收不到点击(上半部输入框正常)。修复:`src/VelaShell/Platform/MacBorderlessWindowFix.cs`,`Apply(this)` 在窗口显示后与每次 `SizeChanged` 时,分两帧微调窗口高度(+1 再复位)以强制原生按最终高度重建命中区域(重入标记吞掉自身触发的 `SizeChanged` 防递归);仅 macOS 生效、其它平台空操作,零回归风险。已接入 4 个弹窗的构造函数。固定尺寸弹窗(设置/诊断)不 grow、无此问题。**待用户在 macOS 实机验证**;若仍不行,退路是 macOS 上给这些弹窗启用原生标题栏。
 - 构建/测试用根目录 `VelaShell.slnx`。运行 App 后 DLL 被占用会导致构建报"文件被锁定"——先停掉运行实例。
 - Bash 工具用 Git Bash;不要用 `Read`/`Grep` 直接读 `.pen`(加密,只能走 pencil MCP)。
 - 记忆索引见 `C:\Users\Joe\.claude\projects\G--VelaShell\memory\`(terminal-engine、docking、sonnetdb-storage、connect-flow)。

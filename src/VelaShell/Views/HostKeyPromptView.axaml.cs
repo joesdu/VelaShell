@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Input;
-using VelaShell.Platform;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
@@ -15,8 +14,6 @@ public partial class HostKeyPromptView : Window
     public HostKeyPromptView()
     {
         InitializeComponent();
-        // macOS 无边框 + SizeToContent 弹窗底部按钮点不动的命中区域修复(见该类型注释)。
-        MacBorderlessWindowFix.Apply(this);
 
         // VM 的信任/拒绝命令只落 Result;窗口无系统标题栏,由这里负责随 Result 关闭。
         DataContextChanged += (_, _) =>
