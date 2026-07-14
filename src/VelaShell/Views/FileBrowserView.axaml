@@ -198,19 +198,43 @@
                 BorderThickness="0,0,0,1"
                 Padding="14,0">
           <Grid>
+            <!-- 表头右键 = 列显示开关(参考 WinSCP / 资源管理器)。“文件名”列没有开关:
+                 它是行的标识,关掉就只剩一排没有主语的元数据。勾选即写回持久化设置。 -->
+            <Grid.ContextMenu>
+              <ContextMenu x:DataType="vm:FileBrowserViewModel">
+                <MenuItem Header="{loc:Localize Size}" ToggleType="CheckBox"
+                          IsChecked="{Binding ShowSizeColumn, Mode=TwoWay}" StaysOpenOnClick="True" />
+                <MenuItem Header="{loc:Localize Permissions}" ToggleType="CheckBox"
+                          IsChecked="{Binding ShowPermissionsColumn, Mode=TwoWay}" StaysOpenOnClick="True" />
+                <MenuItem Header="{loc:Localize PermissionOwner}" ToggleType="CheckBox"
+                          IsChecked="{Binding ShowOwnerColumn, Mode=TwoWay}" StaysOpenOnClick="True" />
+                <MenuItem Header="{loc:Localize PermissionGroup}" ToggleType="CheckBox"
+                          IsChecked="{Binding ShowGroupColumn, Mode=TwoWay}" StaysOpenOnClick="True" />
+                <MenuItem Header="{loc:Localize FileType}" ToggleType="CheckBox"
+                          IsChecked="{Binding ShowTypeColumn, Mode=TwoWay}" StaysOpenOnClick="True" />
+                <MenuItem Header="{loc:Localize Modified}" ToggleType="CheckBox"
+                          IsChecked="{Binding ShowModifiedColumn, Mode=TwoWay}" StaysOpenOnClick="True" />
+              </ContextMenu>
+            </Grid.ContextMenu>
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="{Binding NameColumnWidth}" MinWidth="180" />
               <ColumnDefinition Width="6" />
-              <ColumnDefinition Width="{Binding SizeColumnWidth}" MinWidth="70" />
-              <ColumnDefinition Width="6" />
-              <ColumnDefinition Width="{Binding PermissionsColumnWidth}" MinWidth="80" />
-              <ColumnDefinition Width="6" />
+              <ColumnDefinition Width="{Binding SizeGridWidth}" MinWidth="{Binding SizeGridMinWidth}" />
+              <ColumnDefinition Width="{Binding SizeSplitterWidth}" />
+              <ColumnDefinition Width="{Binding PermissionsGridWidth}" MinWidth="{Binding PermissionsGridMinWidth}" />
+              <ColumnDefinition Width="{Binding PermissionsSplitterWidth}" />
+              <ColumnDefinition Width="{Binding OwnerGridWidth}" MinWidth="{Binding OwnerGridMinWidth}" />
+              <ColumnDefinition Width="{Binding OwnerSplitterWidth}" />
+              <ColumnDefinition Width="{Binding GroupGridWidth}" MinWidth="{Binding GroupGridMinWidth}" />
+              <ColumnDefinition Width="{Binding GroupSplitterWidth}" />
+              <ColumnDefinition Width="{Binding TypeGridWidth}" MinWidth="{Binding TypeGridMinWidth}" />
+              <ColumnDefinition Width="{Binding TypeSplitterWidth}" />
               <ColumnDefinition Width="*" MinWidth="110" />
             </Grid.ColumnDefinitions>
             <Button Grid.Column="0" Classes="col-header"
                     Command="{Binding SortCommand}" CommandParameter="name">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="{x:Static res:Strings.FileName}"
+                <TextBlock Text="{loc:Localize FileName}"
                            Foreground="{DynamicResource VelaTextMuted}"
                            FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" LetterSpacing="1" />
                 <TextBlock Text="{Binding NameSortGlyph}"
@@ -218,16 +242,17 @@
                            FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" />
               </StackPanel>
             </Button>
-                          <Border Grid.Column="1"
-                            Background="Transparent"
-                            Cursor="SizeWestEast"
-                            Tag="NameSize"
-                            PointerPressed="OnColumnSplitterPressed"
-                            PointerReleased="OnColumnSplitterReleased" />
-                          <Button Grid.Column="2" Classes="col-header"
+            <Border Grid.Column="1"
+                    Background="Transparent"
+                    Cursor="SizeWestEast"
+                    Tag="name"
+                    PointerPressed="OnColumnSplitterPressed"
+                    PointerReleased="OnColumnSplitterReleased" />
+            <Button Grid.Column="2" Classes="col-header"
+                    IsVisible="{Binding ShowSizeColumn}"
                     Command="{Binding SortCommand}" CommandParameter="size">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="{x:Static res:Strings.Size}"
+                <TextBlock Text="{loc:Localize Size}"
                            Foreground="{DynamicResource VelaTextMuted}"
                            FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" LetterSpacing="1" />
                 <TextBlock Text="{Binding SizeSortGlyph}"
@@ -235,16 +260,18 @@
                            FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" />
               </StackPanel>
             </Button>
-                          <Border Grid.Column="3"
-                            Background="Transparent"
-                            Cursor="SizeWestEast"
-                            Tag="SizePermissions"
-                            PointerPressed="OnColumnSplitterPressed"
-                            PointerReleased="OnColumnSplitterReleased" />
-                          <Button Grid.Column="4" Classes="col-header"
+            <Border Grid.Column="3"
+                    Background="Transparent"
+                    Cursor="SizeWestEast"
+                    Tag="size"
+                    IsVisible="{Binding ShowSizeColumn}"
+                    PointerPressed="OnColumnSplitterPressed"
+                    PointerReleased="OnColumnSplitterReleased" />
+            <Button Grid.Column="4" Classes="col-header"
+                    IsVisible="{Binding ShowPermissionsColumn}"
                     Command="{Binding SortCommand}" CommandParameter="permissions">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="{x:Static res:Strings.Permissions}"
+                <TextBlock Text="{loc:Localize Permissions}"
                            Foreground="{DynamicResource VelaTextMuted}"
                            FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" LetterSpacing="1" />
                 <TextBlock Text="{Binding PermissionsSortGlyph}"
@@ -252,16 +279,75 @@
                            FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" />
               </StackPanel>
             </Button>
-                          <Border Grid.Column="5"
-                            Background="Transparent"
-                            Cursor="SizeWestEast"
-                            Tag="PermissionsModified"
-                            PointerPressed="OnColumnSplitterPressed"
-                            PointerReleased="OnColumnSplitterReleased" />
-                          <Button Grid.Column="6" Classes="col-header"
+            <Border Grid.Column="5"
+                    Background="Transparent"
+                    Cursor="SizeWestEast"
+                    Tag="permissions"
+                    IsVisible="{Binding ShowPermissionsColumn}"
+                    PointerPressed="OnColumnSplitterPressed"
+                    PointerReleased="OnColumnSplitterReleased" />
+            <Button Grid.Column="6" Classes="col-header"
+                    IsVisible="{Binding ShowOwnerColumn}"
+                    Command="{Binding SortCommand}" CommandParameter="owner">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{loc:Localize PermissionOwner}"
+                           Foreground="{DynamicResource VelaTextMuted}"
+                           FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" LetterSpacing="1" />
+                <TextBlock Text="{Binding OwnerSortGlyph}"
+                           Foreground="{DynamicResource VelaAccent}"
+                           FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" />
+              </StackPanel>
+            </Button>
+            <Border Grid.Column="7"
+                    Background="Transparent"
+                    Cursor="SizeWestEast"
+                    Tag="owner"
+                    IsVisible="{Binding ShowOwnerColumn}"
+                    PointerPressed="OnColumnSplitterPressed"
+                    PointerReleased="OnColumnSplitterReleased" />
+            <Button Grid.Column="8" Classes="col-header"
+                    IsVisible="{Binding ShowGroupColumn}"
+                    Command="{Binding SortCommand}" CommandParameter="group">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{loc:Localize PermissionGroup}"
+                           Foreground="{DynamicResource VelaTextMuted}"
+                           FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" LetterSpacing="1" />
+                <TextBlock Text="{Binding GroupSortGlyph}"
+                           Foreground="{DynamicResource VelaAccent}"
+                           FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" />
+              </StackPanel>
+            </Button>
+            <Border Grid.Column="9"
+                    Background="Transparent"
+                    Cursor="SizeWestEast"
+                    Tag="group"
+                    IsVisible="{Binding ShowGroupColumn}"
+                    PointerPressed="OnColumnSplitterPressed"
+                    PointerReleased="OnColumnSplitterReleased" />
+            <Button Grid.Column="10" Classes="col-header"
+                    IsVisible="{Binding ShowTypeColumn}"
+                    Command="{Binding SortCommand}" CommandParameter="type">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{loc:Localize FileType}"
+                           Foreground="{DynamicResource VelaTextMuted}"
+                           FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" LetterSpacing="1" />
+                <TextBlock Text="{Binding TypeSortGlyph}"
+                           Foreground="{DynamicResource VelaAccent}"
+                           FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" />
+              </StackPanel>
+            </Button>
+            <Border Grid.Column="11"
+                    Background="Transparent"
+                    Cursor="SizeWestEast"
+                    Tag="type"
+                    IsVisible="{Binding ShowTypeColumn}"
+                    PointerPressed="OnColumnSplitterPressed"
+                    PointerReleased="OnColumnSplitterReleased" />
+            <Button Grid.Column="12" Classes="col-header"
+                    IsVisible="{Binding ShowModifiedColumn}"
                     Command="{Binding SortCommand}" CommandParameter="modified">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="{x:Static res:Strings.Modified}"
+                <TextBlock Text="{loc:Localize Modified}"
                            Foreground="{DynamicResource VelaTextMuted}"
                            FontFamily="{DynamicResource VelaTerminalFont}" FontSize="10" LetterSpacing="1" />
                 <TextBlock Text="{Binding ModifiedSortGlyph}"
@@ -488,13 +574,20 @@
                     </ContextMenu>
                   </Border.ContextMenu>
                   <Grid ClipToBounds="True">
+                    <!-- 列宽/最小宽度/拖拽条一律回绑表头那份 VM 属性,行与表头才不会错位。 -->
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).NameColumnWidth}" MinWidth="180" />
                       <ColumnDefinition Width="6" />
-                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).SizeColumnWidth}" MinWidth="70" />
-                      <ColumnDefinition Width="6" />
-                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).PermissionsColumnWidth}" MinWidth="80" />
-                      <ColumnDefinition Width="6" />
+                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).SizeGridWidth}" MinWidth="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).SizeGridMinWidth}" />
+                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).SizeSplitterWidth}" />
+                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).PermissionsGridWidth}" MinWidth="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).PermissionsGridMinWidth}" />
+                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).PermissionsSplitterWidth}" />
+                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).OwnerGridWidth}" MinWidth="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).OwnerGridMinWidth}" />
+                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).OwnerSplitterWidth}" />
+                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).GroupGridWidth}" MinWidth="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).GroupGridMinWidth}" />
+                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).GroupSplitterWidth}" />
+                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).TypeGridWidth}" MinWidth="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).TypeGridMinWidth}" />
+                      <ColumnDefinition Width="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).TypeSplitterWidth}" />
                       <ColumnDefinition Width="*" MinWidth="110" />
                     </Grid.ColumnDefinitions>
                     <Grid Grid.Column="0" ClipToBounds="True" VerticalAlignment="Center">
@@ -536,18 +629,45 @@
 
                     <TextBlock Grid.Column="2"
                                Text="{Binding FormattedSize}"
+                               IsVisible="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).ShowSizeColumn}"
                                Foreground="{DynamicResource VelaTextTertiary}"
                                FontFamily="{DynamicResource VelaTerminalFont}"
                                FontSize="11"
                                VerticalAlignment="Center" />
                     <TextBlock Grid.Column="4"
                                Text="{Binding Permissions}"
+                               IsVisible="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).ShowPermissionsColumn}"
                                Foreground="{DynamicResource VelaTextTertiary}"
                                FontFamily="{DynamicResource VelaTerminalFont}"
                                FontSize="11"
                                VerticalAlignment="Center" />
                     <TextBlock Grid.Column="6"
+                               Text="{Binding Owner}"
+                               IsVisible="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).ShowOwnerColumn}"
+                               Foreground="{DynamicResource VelaTextTertiary}"
+                               FontFamily="{DynamicResource VelaTerminalFont}"
+                               FontSize="11"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="8"
+                               Text="{Binding Group}"
+                               IsVisible="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).ShowGroupColumn}"
+                               Foreground="{DynamicResource VelaTextTertiary}"
+                               FontFamily="{DynamicResource VelaTerminalFont}"
+                               FontSize="11"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="10"
+                               Text="{Binding FileTypeDisplay}"
+                               IsVisible="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).ShowTypeColumn}"
+                               Foreground="{DynamicResource VelaTextTertiary}"
+                               FontFamily="{DynamicResource VelaTerminalFont}"
+                               FontSize="11"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="12"
                                Text="{Binding FormattedModifiedTime}"
+                               IsVisible="{Binding $parent[ListBox].((vm:FileBrowserViewModel)DataContext).ShowModifiedColumn}"
                                Foreground="{DynamicResource VelaTextTertiary}"
                                FontFamily="{DynamicResource VelaTerminalFont}"
                                FontSize="11"

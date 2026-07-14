@@ -1,4 +1,5 @@
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.ViewModels;
 
@@ -6,6 +7,12 @@ namespace VelaShell.ViewModels;
 /// <param name="model">The underlying remote file entry backing this row.</param>
 public class RemoteFileInfoViewModel(RemoteFileInfo model)
 {
+    /// <summary>
+    /// 扩展名的最长字符数。超出即判定那个点不是扩展名分隔符,"备份.2024年1月报表"
+    /// 这类名字才不会在“类型”列里显示成一长串。
+    /// </summary>
+    private const int MaxExtensionLength = 8;
+
     /// <summary>底层条目(静默刷新的差异比对用,见 FileBrowserViewModel.RefreshSilentlyAsync)。</summary>
     internal RemoteFileInfo Model { get; } = model ?? throw new ArgumentNullException(nameof(model));
 
@@ -47,6 +54,16 @@ public class RemoteFileInfoViewModel(RemoteFileInfo model)
 
     /// <summary>The icon key ("folder" or "file") used to render the row.</summary>
     public string Icon => Model.IsDirectory ? "folder" : "file";
+
+    /// <summary>
+    /// “类型”列文案:目录为“文件夹”,带扩展名的文件为“PHP 文件”,其余为“文件”;
+    /// 合成的 ".." 行为空。
+    /// </summary>
+    public string FileTypeDisplay => IsParentEntry
+                                         ? string.Empty
+                                         : IsDirectory
+                                             ? Strings.Folder
+                                             : DescribeFileType(Name);
 
     // Directories show their reported size too (design dyuii lists "4.0 KB" for folders).
     /// <summary>Human-readable size for display; empty for the synthetic ".." row.</summary>
@@ -92,6 +109,24 @@ public class RemoteFileInfoViewModel(RemoteFileInfo model)
         int i = (int)Math.Floor(Math.Log(bytes, 1024));
         i = Math.Min(i, units.Length - 1);
         return $"{bytes / Math.Pow(1024, i):F1} {units[i]}";
+    }
+
+    /// <summary>
+    /// 由扩展名生成类型文案。点开头的文件(.bashrc)按 Unix 惯例是“隐藏文件”而非
+    /// “bashrc 类型”,与无扩展名的一样归为“文件”;扩展名还要求短且全为字母数字,
+    /// 否则 "backup.tar 副本" 里的点会被当成分隔符。
+    /// </summary>
+    private static string DescribeFileType(string name)
+    {
+        int dot = name.LastIndexOf('.');
+        if (dot <= 0 || dot == name.Length - 1)
+        {
+            return Strings.File;
+        }
+        string extension = name[(dot + 1)..];
+        return extension.Length > MaxExtensionLength || !extension.All(char.IsLetterOrDigit)
+                   ? Strings.File
+                   : Strings.Format("Sftp_FileTypeExt", extension.ToUpperInvariant());
     }
 
     /// <summary>

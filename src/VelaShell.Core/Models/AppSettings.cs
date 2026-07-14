@@ -13,7 +13,7 @@ public class AppSettings
     public string Theme { get; set; } = "dark";
 
     /// <summary>Accent-color override as a hex string (e.g. "#00D4AA"); empty = use theme default.</summary>
-    public string AccentColor { get; set; } = "";
+    public string AccentColor { get; set; } = "#E91E63";
 
     /// <summary>终端渲染使用的等宽字体族名。</summary>
     public string TerminalFont { get; set; } = "JetBrains Mono";
@@ -547,6 +547,51 @@ public class TransferOptions : ObservableOptions
         get;
         set => Set(ref field, value);
     }
+
+    // —— 文件浏览器的列显示(表头右键切换即写回,与工具栏开关同构,设置审计 C-04)。
+    //    “文件名”列不在其列:它是行的标识,关掉就只剩一排没有主语的元数据。
+
+    /// <summary>文件浏览器是否显示“大小”列。</summary>
+    public bool ShowSizeColumn
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
+    /// <summary>文件浏览器是否显示“权限”列。</summary>
+    public bool ShowPermissionsColumn
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
+    /// <summary>文件浏览器是否显示“所有者”列。</summary>
+    public bool ShowOwnerColumn
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
+    /// <summary>文件浏览器是否显示“用户组”列。</summary>
+    public bool ShowGroupColumn
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
+    /// <summary>文件浏览器是否显示“类型”列。</summary>
+    public bool ShowTypeColumn
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
+    /// <summary>文件浏览器是否显示“修改时间”列。</summary>
+    public bool ShowModifiedColumn
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
 
     /// <summary>规划中(断点续传):仅持久化,当前无运行时消费者,不出现在设置界面(设置审计 M-02/R-07)。</summary>
     public bool AutoResume { get; set; } = true;

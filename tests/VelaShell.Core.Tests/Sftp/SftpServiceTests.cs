@@ -460,6 +460,102 @@ public class SftpServiceTests
         Assert.IsFalse(result.IsDirectory);
     }
 
+    // —— 属主/属组的数字 id → 名称翻译(见 RemoteIdentityResolver)————————————
+
+    /// <summary>查表命令的返回样本:passwd 段 + 分隔标记 + group 段。</summary>
+    private const string IdentityLookupOutput = """
+                                                root:x:0:0:root:/root:/bin/bash
+                                                deploy:x:1000:1000:Deploy User:/home/deploy:/bin/bash
+                                                ###VELA-GROUPS###
+                                                root:x:0:
+                                                www-data:x:33:
+                                                """;
+
+    [TestMethod]
+    public async Task ListDirectoryAsync_TranslatesNumericIdsUsingRemotePasswdDatabase()
+    {
+        GivenIdentityLookupReturns(IdentityLookupOutput);
+        _sftpClient.ListDirectoryAsync("/srv", Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>(
+                       [CreateMockSftpFile("app.log", "/srv/app.log", 10, false, "rw-r--r--") with { UserId = 1000, GroupId = 33 }]));
+
+        List<RemoteFileInfo> result = await _sftpService.ListDirectoryAsync(_sessionId, "/srv");
+
+        Assert.AreEqual("deploy", result[0].Owner);
+        Assert.AreEqual("www-data", result[0].Group);
+    }
+
+    [TestMethod]
+    public async Task ListDirectoryAsync_IdWithoutPasswdEntry_FallsBackToNumericId()
+    {
+        GivenIdentityLookupReturns(IdentityLookupOutput);
+        _sftpClient.ListDirectoryAsync("/srv", Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>(
+                       [CreateMockSftpFile("orphan", "/srv/orphan", 10, false, "rw-r--r--") with { UserId = 4242, GroupId = 4242 }]));
+
+        List<RemoteFileInfo> result = await _sftpService.ListDirectoryAsync(_sessionId, "/srv");
+
+        Assert.AreEqual("4242", result[0].Owner);
+        Assert.AreEqual("4242", result[0].Group);
+    }
+
+    /// <summary>仅 SFTP、没有 exec 通道的主机:查表整个失败,不该拖垮列目录。</summary>
+    [TestMethod]
+    public async Task ListDirectoryAsync_WhenIdentityLookupFails_StillListsWithNumericIds()
+    {
+        ISshClientWrapper sshClient = Substitute.For<ISshClientWrapper>();
+        sshClient.RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                 .ThrowsAsync(new InvalidOperationException("no exec channel"));
+        _connectionService.GetClient(_sessionId).Returns(sshClient);
+        _sftpClient.ListDirectoryAsync("/srv", Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>(
+                       [CreateMockSftpFile("app.log", "/srv/app.log", 10, false, "rw-r--r--") with { UserId = 1000, GroupId = 33 }]));
+
+        List<RemoteFileInfo> result = await _sftpService.ListDirectoryAsync(_sessionId, "/srv");
+
+        Assert.HasCount(1, result);
+        Assert.AreEqual("1000", result[0].Owner);
+        Assert.AreEqual("33", result[0].Group);
+    }
+
+    /// <summary>整表只查一次:切目录不该每次都往返一条 getent。</summary>
+    [TestMethod]
+    public async Task ListDirectoryAsync_QueriesIdentityDatabaseOncePerSession()
+    {
+        ISshClientWrapper sshClient = GivenIdentityLookupReturns(IdentityLookupOutput);
+        _sftpClient.ListDirectoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([]));
+
+        await _sftpService.ListDirectoryAsync(_sessionId, "/a");
+        await _sftpService.ListDirectoryAsync(_sessionId, "/b");
+        await _sftpService.ListDirectoryAsync(_sessionId, "/c");
+
+        await sshClient.Received(1).RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>会话关闭要丢弃查表缓存,重连后才会按新主机重新查。</summary>
+    [TestMethod]
+    public async Task CloseSessionAsync_DiscardsIdentityCache()
+    {
+        ISshClientWrapper sshClient = GivenIdentityLookupReturns(IdentityLookupOutput);
+        _sftpClient.ListDirectoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([]));
+
+        await _sftpService.ListDirectoryAsync(_sessionId, "/a");
+        await _sftpService.CloseSessionAsync(_sessionId);
+        await _sftpService.ListDirectoryAsync(_sessionId, "/a");
+
+        await sshClient.Received(2).RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    private ISshClientWrapper GivenIdentityLookupReturns(string output)
+    {
+        ISshClientWrapper sshClient = Substitute.For<ISshClientWrapper>();
+        sshClient.RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(output));
+        _connectionService.GetClient(_sessionId).Returns(sshClient);
+        return sshClient;
+    }
+
     private static SftpEntry CreateMockSftpFile(string name, string fullName, long length, bool isDirectory, string permissions)
     {
         // SftpEntry 是 Core 的中立不可变记录(不再是 SSH 库的接口),直接构造即可。

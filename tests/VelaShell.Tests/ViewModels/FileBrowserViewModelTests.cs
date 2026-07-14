@@ -1,6 +1,7 @@
 using System.Reactive.Linq;
 using NSubstitute;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
 using VelaShell.ViewModels;
 
@@ -153,6 +154,161 @@ public class FileBrowserViewModelTests
         await _vm.LoadInitialCommand.Execute().FirstAsync();
         Assert.AreEqual("/", _vm.CurrentPath);
     }
+
+    // —— 列显示开关与新增的 所有者/分组/类型 列 ——————————————————————
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public void Columns_AreAllVisibleByDefault()
+    {
+        Assert.IsTrue(_vm.ShowSizeColumn);
+        Assert.IsTrue(_vm.ShowPermissionsColumn);
+        Assert.IsTrue(_vm.ShowOwnerColumn);
+        Assert.IsTrue(_vm.ShowGroupColumn);
+        Assert.IsTrue(_vm.ShowTypeColumn);
+        Assert.IsTrue(_vm.ShowModifiedColumn);
+    }
+
+    /// <summary>Grid 靠把列宽压成 0 来隐藏列:宽度、最小宽度与拖拽条要一起塌缩,漏一个就留白。</summary>
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public void HidingColumn_CollapsesWidthMinWidthAndSplitter()
+    {
+        _vm.ShowOwnerColumn = false;
+
+        Assert.AreEqual(0, _vm.OwnerGridWidth.Value);
+        Assert.AreEqual(0, _vm.OwnerGridMinWidth);
+        Assert.AreEqual(0, _vm.OwnerSplitterWidth.Value);
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public void ShowingColumn_RestoresUserWidth()
+    {
+        _vm.OwnerColumnWidth = new(140);
+        _vm.ShowOwnerColumn = false;
+        _vm.ShowOwnerColumn = true;
+
+        Assert.AreEqual(140, _vm.OwnerGridWidth.Value);
+        Assert.AreEqual(FileBrowserViewModel.MinOwnerWidth, _vm.OwnerGridMinWidth);
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public void TogglingColumn_ReportsChangeForPersistence()
+    {
+        List<(string Key, bool Visible)> toggles = [];
+        _vm.ColumnVisibilityToggled = (key, visible) => toggles.Add((key, visible));
+
+        _vm.ShowTypeColumn = false;
+        _vm.ShowTypeColumn = false; // 同值重复设置不该再报一次
+
+        Assert.HasCount(1, toggles);
+        Assert.AreEqual(("type", false), toggles[0]);
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public void ColumnWidth_IsClampedToItsMinimum()
+    {
+        _vm.OwnerColumnWidth = new(5);
+        Assert.AreEqual(FileBrowserViewModel.MinOwnerWidth, _vm.OwnerColumnWidth.Value);
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task Sort_ByOwner_OrdersAscending_WithDirectoriesFirst()
+    {
+        _sftpService.ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
+                    .Returns(Task.FromResult(CreateOwnedFiles()));
+        _vm.CurrentPath = "/home/user";
+        await _vm.RefreshCommand.Execute().FirstAsync();
+
+        _vm.SortCommand.Execute("owner").Subscribe();
+
+        Assert.AreEqual("owner", _vm.SortColumn);
+        Assert.AreEqual("..", _vm.Files[0].Name);        // 父目录行仍置顶
+        Assert.AreEqual("srv", _vm.Files[1].Name);       // 目录仍成组在前(属主 zoe)
+        Assert.AreEqual("alice.txt", _vm.Files[2].Name);
+        Assert.AreEqual("bob.txt", _vm.Files[3].Name);
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public void FileTypeDisplay_DescribesFoldersFilesAndExtensions()
+    {
+        // 断言比对本地化资源而非字面量:测试跑在哪个 UI 语言下都成立。
+        Assert.AreEqual(Strings.Folder, TypeOf("srv", true));
+        Assert.AreEqual(Strings.Format("Sftp_FileTypeExt", "PHP"), TypeOf("index.php", false));
+
+        // 多重扩展名取最后一段。这里顺带盯住 Sftp_FileTypeExt 这条资源本身:
+        // 上面那种“两边都走 Strings.Format”的写法在资源缺失时会一起退化成键名而依旧相等。
+        StringAssert.Contains(TypeOf("archive.tar.gz", false), "GZ");
+
+        // 无扩展名、点开头的隐藏文件、以及不像扩展名的尾巴,都归为“文件”。
+        Assert.AreEqual(Strings.File, TypeOf("README", false));
+        Assert.AreEqual(Strings.File, TypeOf(".bashrc", false));
+        Assert.AreEqual(Strings.File, TypeOf("backup.tar 副本", false));
+        Assert.AreEqual(Strings.File, TypeOf("trailing.", false));
+    }
+
+    /// <summary>合成的 ".." 行没有类型/大小/时间可言,这些列对它应为空。</summary>
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public void FileTypeDisplay_IsEmptyForParentRow()
+    {
+        Assert.AreEqual(string.Empty, RemoteFileInfoViewModel.CreateParentEntry("/home").FileTypeDisplay);
+    }
+
+    private static string TypeOf(string name, bool isDirectory) =>
+        new RemoteFileInfoViewModel(new()
+        {
+            Name = name,
+            FullPath = "/tmp/" + name,
+            Size = 1,
+            Permissions = "-rw-r--r--",
+            IsDirectory = isDirectory,
+            LastModified = DateTime.UtcNow,
+            Owner = "root",
+            Group = "root"
+        }).FileTypeDisplay;
+
+    private static List<RemoteFileInfo> CreateOwnedFiles() =>
+    [
+        new()
+        {
+            Name = "bob.txt",
+            FullPath = "/home/user/bob.txt",
+            Size = 1,
+            Permissions = "-rw-r--r--",
+            IsDirectory = false,
+            LastModified = DateTime.UtcNow,
+            Owner = "bob",
+            Group = "staff"
+        },
+        new()
+        {
+            Name = "alice.txt",
+            FullPath = "/home/user/alice.txt",
+            Size = 2,
+            Permissions = "-rw-r--r--",
+            IsDirectory = false,
+            LastModified = DateTime.UtcNow,
+            Owner = "alice",
+            Group = "staff"
+        },
+        new()
+        {
+            Name = "srv",
+            FullPath = "/home/user/srv",
+            Size = 4096,
+            Permissions = "drwxr-xr-x",
+            IsDirectory = true,
+            LastModified = DateTime.UtcNow,
+            Owner = "zoe",
+            Group = "staff"
+        }
+    ];
 
     [TestMethod]
     [TestCategory("FileBrowser")]
