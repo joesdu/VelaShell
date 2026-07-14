@@ -1199,6 +1199,30 @@ Paste anyway?</value>
   <data name="Msg_UpdateServiceNotAvailable" xml:space="preserve">
     <value>Auto-update is not available yet; please get new releases from the project releases page.</value>
   </data>
+  <data name="SetAbout_Checking" xml:space="preserve">
+    <value>Checking for updates…</value>
+  </data>
+  <data name="SetAbout_UpToDate" xml:space="preserve">
+    <value>You're on the latest version.</value>
+  </data>
+  <data name="SetAbout_NotUpdaterManaged" xml:space="preserve">
+    <value>This build isn't managed by the installer (portable / MSI), so it can't auto-update. Please download the latest release from the project page.</value>
+  </data>
+  <data name="SetAbout_Downloading" xml:space="preserve">
+    <value>Downloading update… {0}%</value>
+  </data>
+  <data name="SetAbout_DownloadFailed" xml:space="preserve">
+    <value>Download failed. Please try again later.</value>
+  </data>
+  <data name="SetAbout_UpdateCheckFailed" xml:space="preserve">
+    <value>Couldn't check for updates. Please try again later.</value>
+  </data>
+  <data name="SetAbout_UpdateReady" xml:space="preserve">
+    <value>Update {0} is ready. Restart to finish installing.</value>
+  </data>
+  <data name="SetAbout_RestartToUpdate" xml:space="preserve">
+    <value>Restart &amp; update</value>
+  </data>
   <data name="Msg_Uploaded" xml:space="preserve">
     <value>Uploaded</value>
   </data>

@@ -1001,6 +1001,30 @@
   <data name="Msg_UpdateServiceNotAvailable" xml:space="preserve">
     <value>自動更新サービスは未対応です。プロジェクトのリリースページから新しいバージョンを入手してください。</value>
   </data>
+  <data name="SetAbout_Checking" xml:space="preserve">
+    <value>更新を確認しています…</value>
+  </data>
+  <data name="SetAbout_UpToDate" xml:space="preserve">
+    <value>最新バージョンです。</value>
+  </data>
+  <data name="SetAbout_NotUpdaterManaged" xml:space="preserve">
+    <value>このビルドはインストーラー管理外(ポータブル版 / MSI)のため自動更新できません。プロジェクトのリリースページから最新版を入手してください。</value>
+  </data>
+  <data name="SetAbout_Downloading" xml:space="preserve">
+    <value>更新をダウンロードしています… {0}%</value>
+  </data>
+  <data name="SetAbout_DownloadFailed" xml:space="preserve">
+    <value>ダウンロードに失敗しました。後でもう一度お試しください。</value>
+  </data>
+  <data name="SetAbout_UpdateCheckFailed" xml:space="preserve">
+    <value>更新の確認に失敗しました。後でもう一度お試しください。</value>
+  </data>
+  <data name="SetAbout_UpdateReady" xml:space="preserve">
+    <value>更新 {0} の準備ができました。再起動してインストールを完了してください。</value>
+  </data>
+  <data name="SetAbout_RestartToUpdate" xml:space="preserve">
+    <value>再起動して更新</value>
+  </data>
   <data name="Msg_Uploaded" xml:space="preserve">
     <value>アップロード済み</value>
   </data>

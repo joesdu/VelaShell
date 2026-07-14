@@ -73,10 +73,11 @@ jobs:
               --mainExe VelaShell.exe --icon $icon --channel $rid --outputDir "vpk/$rid"
             if ($LASTEXITCODE -ne 0) { exit 1 }
             Move-Item "vpk/$rid/VelaShell-$rid-Setup.exe" "dist/VelaShell-$version-$rid-Setup.exe"
-            # 更新 feed(RELEASES-*/releases.json/assets.json/full.nupkg);Portable.zip 与自打 zip 重复,不发
-            Get-ChildItem "vpk/$rid" -File |
-              Where-Object { $_.Name -notlike '*Portable.zip' } |
-              Move-Item -Destination dist
+            # 应用内自动更新(GithubSource):更新器需从本 Release 读 feed(releases.$rid.json)并下载
+            # 对应架构的完整包(*-full.nupkg),故随 Release 一起发布。其余产物(assets.*.json / 旧版
+            # RELEASES-* / Velopack Portable.zip)不发:Setup.exe 已内嵌首装载荷、不参与更新流程。
+            Move-Item "vpk/$rid/releases.$rid.json" dist
+            Get-ChildItem "vpk/$rid/*-full.nupkg" | Move-Item -Destination dist
 
             # MSI(WiX 5;WixUI_InstallDir 中文安装向导,支持自定义安装目录)
             wix build installer/VelaShell.wxs -arch $arch -pdbtype none `

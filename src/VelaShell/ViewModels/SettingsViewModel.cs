@@ -12,6 +12,7 @@ using VelaShell.Core.Resources;
 using VelaShell.Core.Services;
 using VelaShell.Core.Ssh;
 using VelaShell.Core.Sync;
+using VelaShell.Services;
 
 namespace VelaShell.ViewModels;
 
@@ -39,6 +40,7 @@ public class SettingsViewModel : ReactiveObject
     private readonly IRecentConnectionService? _recentConnections;
     private readonly ISettingsService _settingsService;
     private readonly IThemeService _themeService;
+    private readonly IUpdateService? _updateService;
     private readonly JsonSerializerOptions jsonOption = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -74,7 +76,8 @@ public class SettingsViewModel : ReactiveObject
         IRecentConnectionService? recentConnections = null,
         ISettingsPreviewService? previewService = null,
         IHostKeyService? hostKeyService = null,
-        IGistSyncService? gistSyncService = null)
+        IGistSyncService? gistSyncService = null,
+        IUpdateService? updateService = null)
     {
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
@@ -82,6 +85,7 @@ public class SettingsViewModel : ReactiveObject
         _recentConnections = recentConnections;
         _previewService = previewService;
         _hostKeyService = hostKeyService;
+        _updateService = updateService;
 
         // 换语言时重建构造期求值的标签列表(左侧导航、快捷键参考页):本 VM 是单例,
         // 这些数组在启动语言下冻结,不重建就停留在旧语言(用户反馈:切英文保存后
@@ -125,8 +129,8 @@ public class SettingsViewModel : ReactiveObject
         ResetCommand = ReactiveCommand.Create(ResetToDefaults);
         SetAccentCommand = ReactiveCommand.Create<string>(hex => AccentColor = hex);
         ClearHistoryCommand = ReactiveCommand.CreateFromTask(ClearHistoryAsync);
-        // 更新服务尚未接入:如实提示,而不是伪装成“已检查且最新”(设置审计 R-01~R-03)。
-        CheckUpdatesCommand = ReactiveCommand.Create(() => { UpdateStatus = Strings.Get("Msg_UpdateServiceNotAvailable"); });
+        CheckUpdatesCommand = ReactiveCommand.CreateFromTask(CheckForUpdatesAsync);
+        RestartToUpdateCommand = ReactiveCommand.Create(() => _updateService?.ApplyUpdateAndRestart());
     }
 
     // ———— 顶层字段(既有行为:保存后立即生效) ————
@@ -403,8 +407,11 @@ public class SettingsViewModel : ReactiveObject
     /// <summary>清除历史记录命令:清空连接历史。</summary>
     public ReactiveCommand<Unit, Unit> ClearHistoryCommand { get; }
 
-    /// <summary>检查更新命令:更新服务尚未接入,如实提示不可用。</summary>
+    /// <summary>检查更新命令:检查 → 下载(带进度)→ 就绪后提示重启。</summary>
     public ReactiveCommand<Unit, Unit> CheckUpdatesCommand { get; }
+
+    /// <summary>重启并应用已下载更新命令(仅在 <see cref="UpdateReady" /> 为真时有意义)。</summary>
+    public ReactiveCommand<Unit, Unit> RestartToUpdateCommand { get; }
 
     /// <summary>检查更新的状态提示文本。</summary>
     public string UpdateStatus
@@ -412,6 +419,60 @@ public class SettingsViewModel : ReactiveObject
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
+
+    /// <summary>更新已下载完毕、可重启完成安装(控制“重启并更新”按钮的显隐)。</summary>
+    public bool UpdateReady
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>
+    /// 检查更新完整流程:未接服务 / 非安装版 / 已最新 / 发现更新 四态。发现更新则带进度下载,
+    /// 完成后置 <see cref="UpdateReady" />,由关于页“重启并更新”按钮触发 <see cref="RestartToUpdateCommand" />。
+    /// </summary>
+    private async Task CheckForUpdatesAsync()
+    {
+        if (_updateService is null)
+        {
+            UpdateStatus = Strings.Get("Msg_UpdateServiceNotAvailable");
+            return;
+        }
+        UpdateReady = false;
+        UpdateStatus = Strings.Get("SetAbout_Checking");
+        bool hasUpdate;
+        try
+        {
+            hasUpdate = await _updateService.CheckForUpdateAsync();
+        }
+        catch
+        {
+            UpdateStatus = Strings.Get("SetAbout_UpdateCheckFailed");
+            return;
+        }
+        if (!hasUpdate)
+        {
+            // 区分“已是最新”与“便携/非安装版无法自动更新”,避免误导。
+            UpdateStatus = _updateService.IsUpdaterManaged
+                ? Strings.Get("SetAbout_UpToDate")
+                : Strings.Get("SetAbout_NotUpdaterManaged");
+            return;
+        }
+        try
+        {
+            UpdateStatus = Strings.Format("SetAbout_Downloading", 0);
+            // Progress 在 UI 线程创建,回调自动回到 UI 线程,可安全更新绑定属性。
+            Progress<int> progress = new(p => UpdateStatus = Strings.Format("SetAbout_Downloading", p));
+            await _updateService.DownloadUpdateAsync(progress);
+        }
+        catch
+        {
+            UpdateStatus = Strings.Get("SetAbout_DownloadFailed");
+            return;
+        }
+        UpdateReady = true;
+        UpdateStatus = Strings.Format("SetAbout_UpdateReady", _updateService.AvailableVersion ?? string.Empty);
+    }
 
     /// <summary>清除历史记录的状态提示文本。</summary>
     public string ClearHistoryStatus
