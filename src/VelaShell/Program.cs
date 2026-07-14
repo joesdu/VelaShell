@@ -135,7 +135,9 @@ internal static partial class Program
     private static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<App>()
                   .UsePlatformDetect()
+#if LINUX
                   .UseWayland()
+#endif
                   .WithInterFont()
                   .LogToTrace()
                   .UseReactiveUI(_ => { });
