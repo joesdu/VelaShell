@@ -62,8 +62,6 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     private double _baselineOffset;
 
     private DateTime _bellFlashUntil = DateTime.MinValue;
-    private double _cellHeight = 16;
-    private double _cellWidth = 8;
     private DispatcherTimer? _cursorBlinkTimer;
     private bool _cursorBlinkVisible = true;
 
@@ -91,10 +89,6 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     private int _runStyle = -1; // -1 = no active run; else (bold?1) | (italic?2)
 
     private int _scrollOffset; // lines scrolled up from the bottom (0 = live)
-    private bool _showLineTimestamp; // 左侧栏:显示收行时间(见 ShowLineTimestamp)
-    private bool _showLineNumber; // 左侧栏:显示缓冲区行号(见 ShowLineNumber)
-    private bool _showFoldMarker; // 左侧栏:显示折叠标记列(见 ShowFoldMarker)
-    private bool _gutterBlank; // 左侧栏:侧栏与正文间插入 ~5px 空白(见 GutterBlank)
 
     /// <summary>Search spans per absolute buffer row; the current hit is tinted differently.</summary>
     private Dictionary<int, List<(int Start, int End, bool Current)>>? _searchHighlights;
@@ -229,29 +223,29 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// </summary>
     public bool ShowLineTimestamp
     {
-        get => _showLineTimestamp;
-        set => SetGutterOption(ref _showLineTimestamp, value);
+        get;
+        set => SetGutterOption(ref field, value);
     }
 
     /// <summary>左侧栏显示每行的缓冲区行号。与其他侧栏部件相互独立。</summary>
     public bool ShowLineNumber
     {
-        get => _showLineNumber;
-        set => SetGutterOption(ref _showLineNumber, value);
+        get;
+        set => SetGutterOption(ref field, value);
     }
 
     /// <summary>左侧栏显示折叠标记列:可折叠标记之前的历史内容(WindTerm 式)。</summary>
     public bool ShowFoldMarker
     {
-        get => _showFoldMarker;
-        set => SetGutterOption(ref _showFoldMarker, value);
+        get;
+        set => SetGutterOption(ref field, value);
     }
 
     /// <summary>在侧栏与命令输出之间插入约 5px 的空白间隔。</summary>
     public bool GutterBlank
     {
-        get => _gutterBlank;
-        set => SetGutterOption(ref _gutterBlank, value);
+        get;
+        set => SetGutterOption(ref field, value);
     }
 
     /// <summary>
@@ -669,7 +663,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         {
             screenRow = Math.Max(0, screen.Rows - 1 - _scrollOffset);
         }
-        return new(screen.CursorX * _cellWidth + GutterWidth(), screenRow * _cellHeight, _cellWidth, _cellHeight);
+        return new(screen.CursorX * CellWidthForTest + GutterWidth(), screenRow * CellHeightForTest, CellWidthForTest, CellHeightForTest);
     }
 
     // ---- Palette ------------------------------------------------------------
@@ -773,10 +767,10 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         var typeface = new Typeface(FontFamily);
         var probe = new FormattedText("0", CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
             typeface, FontSize, Brushes.White);
-        _cellWidth = Math.Max(1, Math.Round(probe.WidthIncludingTrailingWhitespace));
+        CellWidthForTest = Math.Max(1, Math.Round(probe.WidthIncludingTrailingWhitespace));
         // 行高倍数(设置 → 终端 → 行高):多出的空间上下均分,字形垂直居中。
-        _cellHeight = Math.Max(1, Math.Ceiling(probe.Height * LineHeight));
-        _glyphYOffset = Math.Max(0, (_cellHeight - probe.Height) / 2);
+        CellHeightForTest = Math.Max(1, Math.Ceiling(probe.Height * LineHeight));
+        _glyphYOffset = Math.Max(0, (CellHeightForTest - probe.Height) / 2);
         _baselineOffset = probe.Baseline + _glyphYOffset;
 
         // Cached glyphs are bound to the old typeface/size; drop them on any metric change.
@@ -837,10 +831,10 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             {
                 GlyphInfo last = _runGlyphs[^1];
                 _runGlyphs[^1] = new(last.GlyphIndex, last.GlyphCluster,
-                    last.GlyphAdvance + gapCells * _cellWidth, last.GlyphOffset);
+                    last.GlyphAdvance + gapCells * CellWidthForTest, last.GlyphOffset);
             }
         }
-        _runGlyphs.Add(new(glyphId, _runChars.Count, width * _cellWidth));
+        _runGlyphs.Add(new(glyphId, _runChars.Count, width * CellWidthForTest));
         _runChars.Add(ch);
         _runPrevCol = col;
         _runPrevWidth = width;
@@ -860,7 +854,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             {
                 var run = new GlyphRun(gtf, FontSize, _runChars.ToArray().AsMemory(),
                     _runGlyphs.ToArray(),
-                    new Point(_runStartCol * _cellWidth, y + _baselineOffset));
+                    new Point(_runStartCol * CellWidthForTest, y + _baselineOffset));
                 context.DrawGlyphRun(_runBrush, run);
             }
             catch
@@ -889,12 +883,12 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
     private void ApplyLayoutSize(Size size)
     {
-        if (_cellWidth <= 0 || _cellHeight <= 0)
+        if (CellWidthForTest <= 0 || CellHeightForTest <= 0)
         {
             return;
         }
-        int cols = (int)((size.Width - GutterWidth()) / _cellWidth);
-        int rows = (int)(size.Height / _cellHeight);
+        int cols = (int)((size.Width - GutterWidth()) / CellWidthForTest);
+        int rows = (int)(size.Height / CellHeightForTest);
 
         // Ignore early/degenerate layout passes (zero or sub-cell size). Collapsing the grid
         // to a single column here is what made the login banner render one char per line: every
@@ -958,7 +952,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
                     continue;
                 }
                 TerminalRow line = screen.ViewLine(absoluteRow);
-                double y = screenRow * _cellHeight;
+                double y = screenRow * CellHeightForTest;
                 RenderLine(context, palette, line, cols, y, absoluteRow, sel);
             }
             if (_scrollOffset == 0)
@@ -979,7 +973,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     private const string GutterTimeFormat = "HH:mm:ss";
 
     /// <summary>当前侧栏几何(各部件宽度/偏移/命中区间,见 <see cref="GutterLayout" />)。按当前单元格宽与开关计算。</summary>
-    private GutterLayout Gutter => new(_cellWidth, _showLineTimestamp, _showLineNumber, _showFoldMarker, _gutterBlank);
+    private GutterLayout Gutter => new(CellWidthForTest, ShowLineTimestamp, ShowLineNumber, ShowFoldMarker, GutterBlank);
 
     /// <summary>任一侧栏部件开启即绘制侧栏。</summary>
     private bool GutterEnabled => Gutter.Enabled;
@@ -989,8 +983,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
     // ---- 测试专用只读探针(headless UI 测试用,见 GutterFoldUiTests)----------
     internal int FoldCountForTest => _foldModel.Count;
-    internal double CellWidthForTest => _cellWidth;
-    internal double CellHeightForTest => _cellHeight;
+    internal double CellWidthForTest { get; private set; } = 8;
+    internal double CellHeightForTest { get; private set; } = 16;
     internal GutterLayout GutterForTest => Gutter;
 
     private void RenderGutter(DrawingContext context, TerminalScreen screen, TerminalPalette palette, int rows)
@@ -1018,13 +1012,13 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
                 continue;
             }
             lastContentRow = screenRow;
-            double y = screenRow * _cellHeight + _glyphYOffset;
-            if (_showLineTimestamp && line.Timestamp is { } ts)
+            double y = screenRow * CellHeightForTest + _glyphYOffset;
+            if (ShowLineTimestamp && line.Timestamp is { } ts)
             {
                 string stamp = "[" + ts.ToString(GutterTimeFormat, CultureInfo.InvariantCulture) + "] ";
                 context.DrawText(new(stamp, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, FontSize, dimBrush), new Point(0, y));
             }
-            if (_showLineNumber)
+            if (ShowLineNumber)
             {
                 string number = (absoluteRow + 1).ToString(CultureInfo.InvariantCulture).PadLeft(GutterLayout.NumberDigits) + " ";
                 context.DrawText(new(number, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, FontSize, dimBrush), new Point(numberLeft, y));
@@ -1034,9 +1028,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         {
             return; // 空屏:不画分隔线/折叠列,侧栏完全隐形。
         }
-        double contentBottom = (lastContentRow + 1) * _cellHeight;
+        double contentBottom = (lastContentRow + 1) * CellHeightForTest;
         // 唯一的竖线由折叠列绘制(用户要求:去掉原来的分隔竖线,只保留折叠标记这一条)。
-        if (_showFoldMarker)
+        if (ShowFoldMarker)
         {
             RenderFoldColumn(context, screen, palette, rows, dim, contentBottom);
         }
@@ -1066,7 +1060,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             if (glyph is not null)
             {
                 context.DrawText(new(glyph, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, FontSize, glyphBrush),
-                    new Point(g.FoldLeft, screenRow * _cellHeight + _glyphYOffset));
+                    new Point(g.FoldLeft, screenRow * CellHeightForTest + _glyphYOffset));
             }
         }
     }
@@ -1117,10 +1111,10 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     {
         GutterMenuLabels labels = GutterMenu;
         var menu = new ContextMenu();
-        AddGutterMenuItem(menu, labels.LineNumber, _showLineNumber, v => ShowLineNumber = v);
-        AddGutterMenuItem(menu, labels.Timestamp, _showLineTimestamp, v => ShowLineTimestamp = v);
-        AddGutterMenuItem(menu, labels.FoldMarker, _showFoldMarker, v => ShowFoldMarker = v);
-        AddGutterMenuItem(menu, labels.Blank, _gutterBlank, v => GutterBlank = v);
+        AddGutterMenuItem(menu, labels.LineNumber, ShowLineNumber, v => ShowLineNumber = v);
+        AddGutterMenuItem(menu, labels.Timestamp, ShowLineTimestamp, v => ShowLineTimestamp = v);
+        AddGutterMenuItem(menu, labels.FoldMarker, ShowFoldMarker, v => ShowFoldMarker = v);
+        AddGutterMenuItem(menu, labels.Blank, GutterBlank, v => GutterBlank = v);
         return menu;
     }
 
@@ -1130,7 +1124,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         item.Click += (_, _) =>
         {
             set(!on);
-            GutterOptionsChanged?.Invoke(_showLineTimestamp, _showLineNumber, _showFoldMarker, _gutterBlank);
+            GutterOptionsChanged?.Invoke(ShowLineTimestamp, ShowLineNumber, ShowFoldMarker, GutterBlank);
         };
         menu.Items.Add(item);
     }
@@ -1215,7 +1209,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
                 fg = SemanticColor(palette, kind);
                 semanticUnderline = kind is SemanticKind.Url or SemanticKind.IpAddress;
             }
-            var cellRect = new Rect(col * _cellWidth, y, _cellWidth * width, _cellHeight);
+            var cellRect = new Rect(col * CellWidthForTest, y, CellWidthForTest * width, CellHeightForTest);
             if (!bg.Equals(palette.DefaultBackground))
             {
                 context.FillRectangle(BrushFor(bg), cellRect);
@@ -1236,20 +1230,20 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
                 {
                     FlushGlyphRun(context, y);
                     FormattedText ft = GlyphFor(cell, fg, bold, italic);
-                    context.DrawText(ft, new(col * _cellWidth, y + _glyphYOffset));
+                    context.DrawText(ft, new(col * CellWidthForTest, y + _glyphYOffset));
                 }
             }
             if ((cell.Flags & (CellFlags.Underline | CellFlags.DoubleUnderline)) != 0 || semanticUnderline)
             {
-                double uy = y + _cellHeight - 1.5;
+                double uy = y + CellHeightForTest - 1.5;
                 context.DrawLine(new Pen(BrushFor(fg)),
-                    new(col * _cellWidth, uy), new((col + width) * _cellWidth, uy));
+                    new(col * CellWidthForTest, uy), new((col + width) * CellWidthForTest, uy));
             }
             if ((cell.Flags & CellFlags.Strikethrough) != 0)
             {
-                double sy = y + _cellHeight / 2;
+                double sy = y + CellHeightForTest / 2;
                 context.DrawLine(new Pen(BrushFor(fg)),
-                    new(col * _cellWidth, sy), new((col + width) * _cellWidth, sy));
+                    new(col * CellWidthForTest, sy), new((col + width) * CellWidthForTest, sy));
             }
             col += width;
         }
@@ -1357,9 +1351,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         {
             return;
         }
-        double x = screen.CursorX * _cellWidth;
-        double y = screenRow * _cellHeight;
-        var rect = new Rect(x, y, _cellWidth, _cellHeight);
+        double x = screen.CursorX * CellWidthForTest;
+        double y = screenRow * CellHeightForTest;
+        var rect = new Rect(x, y, CellWidthForTest, CellHeightForTest);
         ImmutableSolidColorBrush cursorBrush = BrushFor(palette.CursorColor);
         if (!_hasFocus)
         {
@@ -1377,10 +1371,10 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         switch (CursorStyle)
         {
             case "bar":
-                context.FillRectangle(cursorBrush, new(x, y, Math.Max(1.5, _cellWidth * 0.15), _cellHeight));
+                context.FillRectangle(cursorBrush, new(x, y, Math.Max(1.5, CellWidthForTest * 0.15), CellHeightForTest));
                 break;
             case "underline":
-                context.FillRectangle(cursorBrush, new(x, y + _cellHeight - 2, _cellWidth, 2));
+                context.FillRectangle(cursorBrush, new(x, y + CellHeightForTest - 2, CellWidthForTest, 2));
                 break;
             default: // block
                 context.FillRectangle(cursorBrush, rect);
@@ -1554,12 +1548,12 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
     private (int Row, int Col) PointToCell(Point p)
     {
-        int col = (int)((p.X - GutterWidth()) / _cellWidth);
+        int col = (int)((p.X - GutterWidth()) / CellWidthForTest);
         // Clamp the row: while the pointer is captured a drag can leave the control (negative
         // p.Y), and a negative absolute row used to crash selection copy (#用户反馈).
         // 通过本帧屏幕行映射解析绝对行,折叠时命中被折叠后实际可见的那一行。
         int maxRow = Math.Max(0, _screenToAbs.Length - 1);
-        int screenRow = Math.Clamp((int)(p.Y / _cellHeight), 0, maxRow);
+        int screenRow = Math.Clamp((int)(p.Y / CellHeightForTest), 0, maxRow);
         int row = AbsoluteForScreenRow(screenRow);
         if (row < 0)
         {
@@ -1710,7 +1704,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             }
             if (props.IsLeftButtonPressed && gutter.IsFoldColumnHit(point.X))
             {
-                ToggleFoldAt((int)(point.Y / _cellHeight));
+                ToggleFoldAt((int)(point.Y / CellHeightForTest));
                 e.Handled = true;
                 return;
             }
@@ -1839,11 +1833,11 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         base.OnPointerMoved(e);
 
         // 折叠列悬停提示:指针在折叠列上时记住其绝对行(用于画 ▾ 折叠手柄),移出则清除。
-        if (_showFoldMarker && !_selecting)
+        if (ShowFoldMarker && !_selecting)
         {
             Point gp = e.GetPosition(this);
             int hover = Gutter.IsFoldColumnHit(gp.X)
-                ? AbsoluteForScreenRow((int)(gp.Y / _cellHeight))
+                ? AbsoluteForScreenRow((int)(gp.Y / CellHeightForTest))
                 : -1;
             if (hover != _foldHoverAbs)
             {
@@ -1964,8 +1958,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <summary>Maps a pointer position to a 0-based cell within the visible screen.</summary>
     private (int Col, int Row) ScreenCell(Point p)
     {
-        int col = Math.Clamp((int)((p.X - GutterWidth()) / _cellWidth), 0, Math.Max(0, Emulator.Columns - 1));
-        int row = Math.Clamp((int)(p.Y / _cellHeight), 0, Math.Max(0, Emulator.Rows - 1));
+        int col = Math.Clamp((int)((p.X - GutterWidth()) / CellWidthForTest), 0, Math.Max(0, Emulator.Columns - 1));
+        int row = Math.Clamp((int)(p.Y / CellHeightForTest), 0, Math.Max(0, Emulator.Rows - 1));
         return (col, row);
     }
 

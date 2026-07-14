@@ -1,5 +1,9 @@
 # Dock.Avalonia 自研替换方案(VelaDock)
 
+> ✅ **已完成并合并**(2026-07,PR #3 `replacedock`)。VelaDock 现已在主线承载全部停靠/分屏,
+> `Dock.Avalonia` 相关包与许可条目均已移除。以下为原始替换方案,保留作实现记录与设计参考。
+> 落地后的架构见 `docs/architecture.md`「Docking (VelaDock)」与 `plan.md` §5。
+
 > 分支:`replacedock`。目标:用完全自研的轻量 Dock 实现替换 `Dock.Avalonia`
 > (`Dock.Avalonia.Themes.Fluent` / `Dock.Model.ReactiveUI` 12.0.0.2),
 > **不改变任何既有功能与 UI 交互逻辑**,并为后续 Avalonia 大版本升级消除第三方阻塞。

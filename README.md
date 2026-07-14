@@ -2,7 +2,7 @@
 
 > 一款为运维与开发者打造的现代化跨平台 SSH 终端客户端。
 
-VelaShell 是一个使用 .NET 与 Avalonia 构建的桌面终端应用，支持 Windows、Linux 与 macOS。它内置自研 VT 终端引擎、SSH/SFTP 连接、两步身份验证与主机指纹校验、端口转发隧道、分组会话管理、可拖拽分屏、命令面板与九页设置中心；全部数据经嵌入式 SonnetDB 加密持久化。旨在为高频远程操作提供**键盘优先、信息密度高、响应迅速**的使用体验。
+VelaShell 是一个使用 .NET 10 与 Avalonia 构建的桌面终端应用，支持 Windows、Linux 与 macOS。它内置自研 VT 终端引擎、SSH/SFTP 连接、本地终端标签、跳板机（ProxyJump）、两步身份验证与主机指纹校验、端口转发隧道、分组会话管理、自研 VelaDock 可拖拽分屏、命令面板与十一页设置中心；全部数据经嵌入式 SonnetDB 加密持久化。旨在为高频远程操作提供**键盘优先、信息密度高、响应迅速**的使用体验。
 
 ---
 
@@ -24,9 +24,9 @@ VelaShell 是一个使用 .NET 与 Avalonia 构建的桌面终端应用，支持
 | **名称** | VelaShell |
 | **读音** | `/ˈveɪlə ʃɛl/`（VAY-la shell·薇拉·谢尔） |
 | **类别** | 跨平台 SSH / SFTP 终端客户端 |
-| **当前版本** | `v0.0.5-beta`（活跃开发中） |
+| **当前版本** | `v0.1.0-beta`（活跃开发中，版本号单一来源见 `Directory.Build.props`） |
 | **平台** | Windows 10 / 11 · Linux · macOS（x64 / arm64） |
-| **运行时** | .NET 10 + Avalonia 12，Self-contained 发布（免装 Runtime） |
+| **运行时** | .NET 10 + Avalonia 12.1，Self-contained 发布（免装 Runtime） |
 | **许可证** | 双许可：[AGPL-3.0](LICENSE) / [商业授权](LICENSE-COMMERCIAL.md) · © 2026 VelaShell 作者及贡献者 |
 
 ---
@@ -34,13 +34,16 @@ VelaShell 是一个使用 .NET 与 Avalonia 构建的桌面终端应用，支持
 ## ✨ 主要特性
 
 - **自研 VT 终端引擎**  
-  完整实现 DEC ANSI / VT / Xterm 状态机，支持 256 色、真彩色、DEC 线绘字符、主/备屏、滚动区、应用光标键、鼠标协议、CJK 双宽字符与动态编码切换。
+  完整实现 DEC ANSI / VT / Xterm 状态机，支持 256 色、真彩色、DEC 线绘字符、主/备屏、滚动区、应用光标键、鼠标协议、CJK 双宽字符与动态编码切换。内置十种终端 profile（vt52/100/102/220/320/340/420/520/xterm/xterm-256color），默认 xterm-256color。
 
-- **SSH 与 SFTP**  
-  基于 SSH.NET 实现 Shell、SFTP 文件传输与端口转发。支持密码与私钥认证，缺少凭据时自动进入两步身份验证流程（用户名 → 认证方式），认证失败可原地重试。
+- **SSH、SFTP 与本地终端**  
+  基于 SSH.NET 实现 Shell、SFTP 文件传输与端口转发。支持密码与私钥认证，缺少凭据时自动进入两步身份验证流程（用户名 → 认证方式），认证失败可原地重试。另经 Windows ConPTY 提供**本地终端标签**（pwsh / PowerShell / CMD / WSL / Git Bash 自动探测）。
+
+- **跳板机（ProxyJump）**  
+  一条会话可引用另一条已保存配置作跳板，支持链式多段跳转（≤5 跳、带环检测），指纹按各跳逻辑主机分别校验。
 
 - **主机密钥信任**  
-  首次连接默认 TOFU 自动记录指纹，可切换为人工确认（永久信任 / 仅本次信任 / 取消）；指纹变化立即拒绝连接，防御中间人攻击；设置中可查看与删除已信任主机（支持截图防泄露的地址脱敏）。
+  首次连接默认 TOFU 自动记录指纹，可切换为人工确认（永久信任 / 仅本次信任 / 取消）；指纹变化立即拒绝连接，防御中间人攻击；SSH 与 SFTP 通道均校验；设置中可查看与删除已信任主机（支持截图防泄露的地址脱敏）。
 
 - **会话管理**  
   资源管理器按分组维护连接配置（新建/编辑/删除/双击直连）；侧边栏"最近连接"展示 名称-分组 与相对时间，重启不丢失，双击即可重连。
@@ -49,10 +52,13 @@ VelaShell 是一个使用 .NET 与 Avalonia 构建的桌面终端应用，支持
   所有持久化（连接配置、分组、设置、known_hosts、命令片段、连接历史、审计日志、会话录制）统一存入本地嵌入式 [SonnetDB](https://github.com/IoTSharp/SonnetDB) 多模型数据库：业务数据用文档集合，最近连接、审计与录制数据块等时间序列数据用时序引擎。连接密码与私钥口令以 **AES-256-GCM** 加密落盘。
 
 - **会话录制与回放**  
-  开启后自动记录终端输出（SonnetDB 时序存储，随日志保留天数自动清理）；回放中心支持按时间轴回放、拖动定位、1x/2x/4x 倍速、跳过空闲片段，并可导出为 asciinema 兼容的 asciicast v2（`.cast`）格式。
+  开启后自动记录终端输出（SonnetDB 时序存储，随日志保留天数自动清理）；回放中心支持按时间轴回放、拖动定位、1x/2x/…/16x 倍速、跳过空闲片段，并可导出为 asciinema 兼容的 asciicast v2（`.cast`）格式。
 
 - **GitHub Gist 云同步**  
   应用设置、连接配置（含分组与端口转发隧道）与代码片段同步到你自己账号下的私密 Gist，多设备无缝漫游；每次同步即一个可回溯的历史版本，支持任意版本恢复；可选口令端到端加密（PBKDF2 + AES-256-GCM），未启用加密时凭据绝不上传。
+
+- **终端行号 / 时间侧栏**  
+  可为终端输出附加行号与时间戳侧栏，两者独立开关、支持快捷键切换，并带折叠标记与空白间隔。
 
 - **设置中心**  
   十一个设置页面：常规、外观、终端、密钥管理、快捷键、文件传输、安全审计、代码片段、云同步、关于、支持与捐赠。密钥管理可直接枚举 `~/.ssh` 密钥（类型 + SHA256 指纹）、生成 RSA 密钥对、导入与复制公钥。
@@ -60,20 +66,20 @@ VelaShell 是一个使用 .NET 与 Avalonia 构建的桌面终端应用，支持
 - **端口转发隧道**  
   本地转发（`-L`）、远程转发（`-R`）与动态 SOCKS5 转发（`-D`）统一管理。
 
-- **可拖拽分屏与浮窗**  
-  基于 Dock.Avalonia 的标签页、边缘分屏与窗口撕出，支持多终端并行操作。
+- **自研 VelaDock 可拖拽分屏**  
+  完全自研、零第三方依赖的停靠框架（已替换 Dock.Avalonia）：标签页、边缘五区分屏、跨组并入与标签重排，支持多终端并行操作。
 
 - **命令面板**  
-  `Ctrl+P` / `Ctrl+K` 呼出命令面板，支持模糊子序列搜索、最近会话与全局命令快速跳转。
+  `Ctrl+P` / `Ctrl+K` 呼出命令面板，支持模糊子序列搜索、最近会话、全部已保存会话与全局命令快速跳转。
 
 - **键盘优先的交互**  
   快捷键驱动的连接、分屏、搜索与文件传输，减少鼠标往返。
 
 - **深色 / 浅色 / 系统主题**  
-  设计 Token 化，无硬编码颜色，支持运行时切换。
+  设计 Token 化，无硬编码颜色，支持运行时切换；终端配色未自定义时随主题联动（暗=Dracula / 亮=Solarized Light）。
 
 - **多语言支持**  
-  英文与简体中文资源，运行时动态切换。
+  五语言资源：简体中文 / English / 繁體中文 / 日本語 / 한국어（867 键五语齐平），运行时动态切换。
 
 - **实时状态栏**  
   连接状态、延迟、运行时长、终端尺寸、编码、CPU / 内存 / 网速一目了然。
@@ -82,13 +88,13 @@ VelaShell 是一个使用 .NET 与 Avalonia 构建的桌面终端应用，支持
 
 ## 🖥️ 平台支持
 
-| 平台 | 架构 | 构建脚本 | 状态 |
-|------|------|----------|------|
-| Windows 10 / 11 | x64 | [`scripts/build-win.sh`](scripts/build-win.sh) | ✅ 完整支持 |
-| Linux | x64 | [`scripts/build-linux.sh`](scripts/build-linux.sh) | ✅ 完整支持 |
-| macOS | x64 / arm64 | [`scripts/build-mac.sh`](scripts/build-mac.sh) | ✅ 完整支持 |
+| 平台 | 架构 | 状态 |
+|------|------|------|
+| Windows 10 / 11 | x64 / arm64 | ✅ 完整支持（含 Velopack Setup.exe 与 WiX MSI 安装包） |
+| Linux | x64 / arm64 | ✅ 完整支持（便携 tar.gz） |
+| macOS | x64 / arm64 | ✅ 完整支持（tar.gz，未签名/未公证） |
 
-发布方式为 **Self-contained**，目标机器无需预装 .NET Runtime。
+发布方式为 **Self-contained**，目标机器无需预装 .NET Runtime。跨平台发布由 [`scripts/publish-all.ps1`](scripts/publish-all.ps1) 一键产出，详见[发布](#-构建与发布)。
 
 ---
 
@@ -98,33 +104,29 @@ VelaShell 是一个使用 .NET 与 Avalonia 构建的桌面终端应用，支持
 
 - [.NET SDK](https://dotnet.microsoft.com/download) 10.0.201 或更高版本（`global.json` 锁定）
 -（可选）Docker，用于启动本地 SSH 测试服务器
+-（可选，仅打 MSI）[WiX Toolset](https://wixtoolset.org/) v4+
 
 ### 克隆与构建
 
 ```bash
-git clone <仓库地址>
+git clone https://github.com/joesdu/VelaShell
 cd VelaShell
 
 # 构建整个解决方案
 dotnet build
 
 # 或直接构建桌面应用入口项目
-dotnet build src/VelaShell.App/VelaShell.App.csproj
+dotnet build src/VelaShell/VelaShell.csproj
 ```
 
 ### 运行
 
 ```bash
 # 开发模式（热重载）
-dotnet watch run --project src/VelaShell.App/VelaShell.App.csproj
+dotnet watch run --project src/VelaShell/VelaShell.csproj
 
 # 发布为 Windows 独立可执行文件
-dotnet publish src/VelaShell.App/VelaShell.App.csproj -c Release -r win-x64 --self-contained true
-
-# 使用跨平台脚本
-./scripts/build-win.sh
-./scripts/build-linux.sh
-./scripts/build-mac.sh
+dotnet publish src/VelaShell/VelaShell.csproj -c Release -r win-x64 --self-contained true
 ```
 
 ### 启动测试 SSH 服务器
@@ -139,11 +141,26 @@ docker-compose -f docker-compose.test.yml up
 
 | 内容 | 位置 |
 |------|------|
-| SonnetDB 数据目录（连接/分组/设置/known_hosts/连接历史/审计) | `%LocalAppData%/VelaShell/sonnetdb` |
+| SonnetDB 数据目录（连接/分组/设置/known_hosts/连接历史/审计/录制) | `%LocalAppData%/VelaShell/sonnetdb` |
 | 凭据加密密钥（AES-256) | `%LocalAppData%/VelaShell/secret.key` |
 | SSH 密钥对（密钥管理页) | `~/.ssh` |
 
 > 旧版本的 `sessions.json` / `settings.json` 等 JSON 配置会在首次运行时自动导入 SonnetDB 并改名为 `*.migrated.bak`。
+
+---
+
+## 📦 构建与发布
+
+```bash
+# 一键产出全平台 8 个发布包（输出到 publish/）
+pwsh scripts/publish-all.ps1
+```
+
+产物覆盖 Windows x64/arm64（含运行时 / `-noruntime` 两种 zip）、macOS 与 Linux x64/arm64（含运行时 tar.gz，单文件发布）。
+
+**Windows 安装包**：[`installer/VelaShell.wxs`](installer/VelaShell.wxs) 使用 WiX v4+ 构建 MSI，安装向导 `WixUI_InstallDir` 支持自定义安装目录（含中文向导），静默安装 `msiexec /i VelaShell.msi /qn INSTALLFOLDER="D:\Tools\VelaShell"`。
+
+**CI/CD**：[`.github/workflows/release.yml`](.github/workflows/release.yml) 在 GitHub 发布 Release 时触发，三平台原生 runner 并行构建同一套 8 产物（版本号取 Release 标签，`-p:Version` 覆盖，发版无需改代码），汇总 `SHA256SUMS.txt` 后全部附加到该 Release。
 
 ---
 
@@ -152,37 +169,43 @@ docker-compose -f docker-compose.test.yml up
 ```text
 VelaShell/
 ├── src/
-│   ├── VelaShell.App/              # 桌面应用入口、DI 组合根、XAML 视图与全局样式
+│   ├── VelaShell/                  # 桌面应用入口、DI 组合根、XAML 视图、VelaDock 停靠与全局样式
 │   ├── VelaShell.Terminal/         # 自研 VT 终端引擎与 Avalonia 渲染控件
 │   ├── VelaShell.Presentation/     # 跨层 ViewModel、工作流与 Presentation DI 模块
 │   ├── VelaShell.Controls/         # 复用控件库与主题 Token
 │   ├── VelaShell.Core/             # 领域模型、服务契约、持久化抽象与本地化（无 UI 依赖）
-│   └── VelaShell.Infrastructure/   # SSH/SFTP/隧道实现、SonnetDB 持久化、AES-256 凭据加密
-├── tests/                          # 单元测试、集成测试与冒烟测试
-├── docs/                           # 架构设计、UI 规格与交互说明
-├── scripts/                        # 跨平台发布脚本
+│   └── VelaShell.Infrastructure/   # SSH/SFTP/隧道实现、SonnetDB 持久化、AES-256 凭据加密、Gist 同步
+├── tests/                          # 6 个 MSTest 项目：单元、集成与冒烟测试
+├── docs/                           # 架构设计、UI 规格、设置审计与交互说明
+├── scripts/publish-all.ps1         # 跨平台一键发布脚本
+├── installer/                      # WiX MSI 安装包定义
 ├── docker-compose.test.yml         # 本地 SSH 测试服务器
 ├── global.json                     # SDK 版本锁定
+├── Directory.Build.props           # 全仓版本与公共 MSBuild 属性
+├── src/Directory.Packages.props    # 集中式 NuGet 版本管理
 └── VelaShell.slnx                  # Visual Studio 解决方案
 ```
+
+> 每个源项目与测试项目均带有独立 `README.md`，说明该项目的架构、目录职责与依赖关系。入口项目实际名为 `VelaShell`（历史文档中的 `VelaShell.App` 为旧别名）。
 
 ---
 
 ## 🧩 架构亮点
 
-- **严格分层**：依赖方向为 `App → Presentation / Controls / Infrastructure → Core`，Core 层不依赖任何 UI 框架，可独立测试与复用。
+- **严格分层**：依赖方向为 `App(VelaShell) → Presentation / Controls / Infrastructure → Core`，Core 层不依赖任何 UI 框架，可独立测试与复用。
 - **接口优先**：服务均通过接口注入，便于 Mock 与单元测试。
-- **单一组合根**：所有依赖注入注册集中在 [`src/VelaShell.App/App.axaml.cs`](src/VelaShell.App/App.axaml.cs)。
+- **单一组合根**：所有依赖注入注册集中在 [`src/VelaShell/App.axaml.cs`](src/VelaShell/App.axaml.cs)，各层通过 `*ServiceCollectionExtensions` 贡献注册。
 - **自绘渲染**：终端通过自定义 Avalonia Control 直接渲染字形、选区与滚动，避免依赖已废弃的第三方终端控件。
+- **自研停靠**：VelaDock 的模型层（纯 INPC，可单测）与控件层分离，拖拽/分屏/标签重排全套自研，零第三方停靠依赖。
 - **设计 Token 化**：颜色、字体、间距全部通过资源字典管理，支持主题与品牌定制。
-- **单引擎持久化**：一个嵌入式 SonnetDB 实例承载文档（配置/业务数据）与时序（连接历史/审计）两类模型，接口在 Core、实现在 Infrastructure，退出时统一刷盘；旧版 JSON 配置首次运行自动迁移。
+- **单引擎持久化**：一个嵌入式 SonnetDB 实例承载文档（配置/业务数据）与时序（连接历史/审计/录制）两类模型，接口在 Core、实现在 Infrastructure，退出时统一刷盘；旧版 JSON 配置首次运行自动迁移。
 - **安全默认值**：凭据静态加密（AES-256-GCM + 本地密钥文件）、主机指纹 TOFU 校验、"记住密码"可按连接关闭。
 
 ---
 
 ## 🧪 测试
 
-项目包含覆盖核心模型、VT 引擎、ViewModel 与集成场景的完整测试套件。
+项目包含覆盖核心模型、VT 引擎、ViewModel 与集成场景的完整 MSTest 测试套件（6 个测试项目）。
 
 ```bash
 # 运行全部测试
@@ -197,12 +220,14 @@ dotnet test --logger "console;verbosity=detailed"
 
 | 测试项目 | 说明 |
 |----------|------|
-| `VelaShell.Core.Tests` | 领域模型、数据存储、服务逻辑 |
-| `VelaShell.Terminal.Tests` | VT 解析、终端仿真、编码与字符宽度 |
+| `VelaShell.Core.Tests` | 领域模型、数据存储、服务逻辑、云同步加密 |
+| `VelaShell.Terminal.Tests` | VT 解析、终端仿真、编码、字符宽度与侧栏折叠 |
 | `VelaShell.Presentation.Tests` | ViewModel 工作流与命令 |
-| `VelaShell.Infrastructure.Tests` | SonnetDB 持久化、凭据加密、SSH 密钥管理 |
+| `VelaShell.Infrastructure.Tests` | SonnetDB 持久化、凭据加密、ConPTY、SSH 密钥管理 |
 | `VelaShell.Controls.Tests` | 自定义控件行为 |
-| `VelaShell.App.Tests` | 视图模型、身份验证流程、集成与冒烟测试 |
+| `VelaShell.Tests` | 窗口级视图模型、身份验证流程、集成与冒烟测试 |
+
+> 集成测试按环境早退跳过：`SshIntegrationTests` 需 Docker + SSH 服务器，`CrossPlatformPublishTests` 需 `VELASHELL_PUBLISH_TESTS=1`。
 
 ---
 
@@ -210,28 +235,32 @@ dotnet test --logger "console;verbosity=detailed"
 
 - [`docs/architecture.md`](docs/architecture.md) — 分层架构、依赖方向与 SonnetDB 持久化策略
 - [`docs/架构设计.md`](docs/架构设计.md) — 工程化重构蓝图
-- [`docs/design-specs.md`](docs/design-specs.md) — UI 视觉规格
+- [`docs/dock-replacement-plan.md`](docs/dock-replacement-plan.md) — VelaDock 自研替换方案
+- [`docs/design-specs.md`](docs/design-specs.md) — UI 视觉规格（Pencil 逐帧提取）
 - [`docs/交互与界面规格.md`](docs/交互与界面规格.md) — 交互逻辑与设计 Token
-- [`plan.md`](plan.md) — 进展记录、已知问题与后续待办(开发跟进以此为准)
+- [`docs/settings-audit.md`](docs/settings-audit.md) — 设置项审计台账与整改记录
+- [`docs/隧道功能规划.md`](docs/隧道功能规划.md) — 端口转发隧道设计
+- [`plan.md`](plan.md) — 进展记录、已知问题与后续待办（开发跟进以此为准）
 
 ---
 
 ## 🛠️ 技术栈
 
 - **.NET 10** — 目标运行时
-- **Avalonia 12** — 跨平台 XAML UI 框架
+- **Avalonia 12.1** — 跨平台 XAML UI 框架
 - **ReactiveUI** — 响应式 MVVM
-- **Dock.Avalonia** — 可拖拽分屏与停靠布局
+- **VelaDock（自研）** — 可拖拽分屏与停靠布局，零第三方依赖
 - **SSH.NET** — SSH / SFTP / 端口转发
 - **SonnetDB** — 嵌入式多模型数据库（文档 + 时序），唯一持久化引擎
-- **Velopack** — 自动更新与发布管理
+- **Velopack + WiX** — 自动更新、发布管理与 Windows MSI 安装包
 - **MSTest** — 单元测试框架
+- **集中式包管理** — `Directory.Packages.props` 统一 NuGet 版本
 
 ---
 
 ## 🚧 开发状态
 
-项目处于活跃开发阶段。核心链路(终端引擎、SSH/SFTP、会话管理、身份验证、持久化、设置中心)已可用;部分设置项目前仅持久化、待接线到运行时,非 SSH 协议(SFTP 标签页/Telnet/串口)与证书认证暂未开放。完整的完成情况与待办清单见 [`plan.md`](plan.md) §9-§10。
+项目处于活跃开发阶段。核心链路（终端引擎、SSH/SFTP、本地终端、跳板机、会话管理、身份验证、持久化、设置中心、云同步、会话录制）已可用；部分设置项目前仅持久化、待接线到运行时，非 SSH 协议（SFTP 标签页/Telnet/串口）与证书认证暂未开放。完整的完成情况与待办清单见 [`plan.md`](plan.md) §10–§12。
 
 ---
 
