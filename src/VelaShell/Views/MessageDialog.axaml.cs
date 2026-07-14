@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using VelaShell.Core.Resources;
+using VelaShell.Platform;
 
 namespace VelaShell.Views;
 
@@ -36,6 +37,8 @@ public partial class MessageDialog : Window
     public MessageDialog()
     {
         InitializeComponent();
+        // macOS 无边框 + SizeToContent 弹窗底部按钮点不动的命中区域修复(见该类型注释)。
+        MacBorderlessWindowFix.Apply(this);
     }
 
     /// <summary>纯消息:仅一个"确定"按钮。</summary>

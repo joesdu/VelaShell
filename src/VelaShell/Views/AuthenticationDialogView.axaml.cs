@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using VelaShell.Core.Resources;
+using VelaShell.Platform;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
@@ -16,6 +17,8 @@ public partial class AuthenticationDialogView : Window
     public AuthenticationDialogView()
     {
         InitializeComponent();
+        // macOS 无边框 + SizeToContent 弹窗底部按钮点不动的命中区域修复(见该类型注释)。
+        MacBorderlessWindowFix.Apply(this);
         Opened += OnOpened;
     }
 
