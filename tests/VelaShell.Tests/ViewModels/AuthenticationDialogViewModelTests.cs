@@ -1,10 +1,13 @@
 using System.Reactive.Linq;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Security;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;
 
+// 断言一律比对本地化资源,不写中文字面量:这些文案会随 UI 语言变化,
+// 写死就等于把整个测试类绑死在中文环境上(英文环境下会集体失败)。
 [TestClass]
 public sealed class AuthenticationDialogViewModelTests
 {
@@ -15,9 +18,9 @@ public sealed class AuthenticationDialogViewModelTests
 
         Assert.AreEqual(1, vm.Step);
         Assert.IsTrue(vm.IsStep1);
-        Assert.AreEqual("身份验证 - 第 1 步", vm.HeaderTitle);
-        Assert.AreEqual("正在连接 root@192.168.1.100:22", vm.TargetText);
-        StringAssert.Contains(vm.FingerprintText, "首次连接");
+        Assert.AreEqual(Strings.Format("Auth_HeaderTitle", 1), vm.HeaderTitle);
+        Assert.AreEqual(Strings.Format("Auth_ConnectingTo", "root@192.168.1.100:22"), vm.TargetText);
+        Assert.AreEqual(Strings.Get("Auth_FingerprintFirstConnect"), vm.FingerprintText);
     }
 
     [TestMethod]
@@ -26,8 +29,18 @@ public sealed class AuthenticationDialogViewModelTests
         var vm = new AuthenticationDialogViewModel("h", 22, "root",
             knownFingerprint: "SHA256:xK3fAbCdEfGhIjKlMnOpQrStUvWxYz9mPq");
 
+        // 指纹被截断显示,故只断言前缀出现在“已信任”这条文案里。
         StringAssert.Contains(vm.FingerprintText, "SHA256:xK3f");
-        StringAssert.Contains(vm.FingerprintText, "已信任");
+        Assert.AreNotEqual(Strings.Get("Auth_FingerprintFirstConnect"), vm.FingerprintText);
+        StringAssert.StartsWith(vm.FingerprintText, TrustedPrefix());
+    }
+
+    /// <summary>取“已信任”文案中占位符 {0} 之前的固定前缀,用来判别走的是哪条文案。</summary>
+    private static string TrustedPrefix()
+    {
+        string template = Strings.Get("Auth_FingerprintTrusted");
+        int placeholder = template.IndexOf("{0}", StringComparison.Ordinal);
+        return placeholder > 0 ? template[..placeholder] : template;
     }
 
     [TestMethod]
@@ -42,9 +55,11 @@ public sealed class AuthenticationDialogViewModelTests
 
         vm.NextCommand.Execute().Subscribe();
         Assert.AreEqual(2, vm.Step);
-        Assert.AreEqual("身份验证 - 第 2 步", vm.HeaderTitle);
+        Assert.AreEqual(Strings.Format("Auth_HeaderTitle", 2), vm.HeaderTitle);
+
+        // 第 2 步的目标行是裸的 user@host:port,不再套“正在连接 …”的壳。
         Assert.AreEqual("root@h:22", vm.TargetText);
-        Assert.AreEqual("用户名: root", vm.UsernameLine);
+        Assert.AreEqual(Strings.Format("Auth_UsernameLine", "root"), vm.UsernameLine);
 
         vm.BackCommand.Execute().Subscribe();
         Assert.AreEqual(1, vm.Step);

@@ -1,5 +1,6 @@
 using NSubstitute;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Presentation.Services;
 using VelaShell.Terminal;
@@ -96,7 +97,9 @@ public sealed class InteractiveAuthFlowTests
         Assert.IsTrue(tab.HasConnectionError);
         Assert.AreEqual(2, prompted);
         await workflow.Received(3).ConnectProfileAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>());
-        Assert.Contains("认证失败", vm.LastConnectionError);
+
+        // 比对本地化资源而非中文字面量:该文案随 UI 语言变化,写死会让测试只在中文环境通过。
+        Assert.AreEqual(Strings.Format("Msg_AuthFailed", "root@h:22"), vm.LastConnectionError);
     }
 
     // Named to match SSH.NET's SshAuthenticationException so the VM's type-name mapping applies.

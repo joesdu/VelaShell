@@ -1,3 +1,5 @@
+using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Services;
 
 namespace VelaShell.Tests.Services;
@@ -6,6 +8,14 @@ namespace VelaShell.Tests.Services;
 [TestCategory("CommandSuggestions")]
 public class CommandSuggestionProviderTests
 {
+    /// <summary>
+    /// 取一条内置命令与它的前缀当样本。刻意不写死某条具体命令(旧版写死 htop,内置目录
+    /// 一改这些测试就集体失效):要测的是“前缀能命中内置目录”,不是目录里有什么。
+    /// </summary>
+    private static QuickCommand SampleBuiltIn => QuickCommandCatalog.BuiltIns[0];
+
+    private static string SamplePrefix => SampleBuiltIn.CommandText[..3];
+
     private static CommandSuggestionProvider CreateProvider(out CommandHistoryService history)
     {
         history = new(null);
@@ -16,16 +26,16 @@ public class CommandSuggestionProviderTests
     public async Task Prefix_MatchesBuiltInQuickCommand()
     {
         CommandSuggestionProvider provider = CreateProvider(out _);
-        IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync("ht", 8);
-        Assert.Contains(s => s.Text == "htop", items, "内置快捷命令 htop 应命中前缀 ht");
+        IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync(SamplePrefix, 8);
+        Assert.Contains(s => s.Text == SampleBuiltIn.CommandText, items, $"内置快捷命令应命中前缀 {SamplePrefix}");
     }
 
     [TestMethod]
     public async Task Prefix_IsCaseInsensitive()
     {
         CommandSuggestionProvider provider = CreateProvider(out _);
-        IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync("HT", 8);
-        Assert.Contains(s => s.Text == "htop", items);
+        IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync(SamplePrefix.ToUpperInvariant(), 8);
+        Assert.Contains(s => s.Text == SampleBuiltIn.CommandText, items);
     }
 
     [TestMethod]
@@ -36,7 +46,7 @@ public class CommandSuggestionProviderTests
         IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync("sudo ", 8);
         Assert.IsNotEmpty(items);
         Assert.AreEqual("sudo apt update", items[0].Text);
-        Assert.AreEqual("历史", items[0].Source);
+        Assert.AreEqual(Strings.Get("Svc_History"), items[0].Source);
     }
 
     [TestMethod]
@@ -67,7 +77,7 @@ public class CommandSuggestionProviderTests
         CommandSuggestionProvider provider = CreateProvider(out CommandHistoryService history);
         history.Record("tail -f /var/log/syslog");
         IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync(string.Empty, 20);
-        Assert.Contains(s => s.Source == "快捷命令", items);
+        Assert.Contains(s => s.Source == Strings.Get("QuickCommands"), items);
         Assert.Contains(s => s.Text == "tail -f /var/log/syslog", items);
     }
 
@@ -75,9 +85,10 @@ public class CommandSuggestionProviderTests
     public async Task SameTextInHistoryAndQuickCommands_AppearsOnce()
     {
         CommandSuggestionProvider provider = CreateProvider(out CommandHistoryService history);
-        history.Record("htop -d 10"); // 保证 htop 前缀有历史项;htop 本身来自内置。
-        history.Record("htop");
-        IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync("ht", 8);
-        Assert.ContainsSingle(s => s.Text == "htop", items);
+
+        // 同一条命令既在历史里又在内置目录里 —— 两个来源都会产出它,结果里只该留一条。
+        history.Record(SampleBuiltIn.CommandText);
+        IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync(SamplePrefix, 8);
+        Assert.ContainsSingle(s => s.Text == SampleBuiltIn.CommandText, items);
     }
 }

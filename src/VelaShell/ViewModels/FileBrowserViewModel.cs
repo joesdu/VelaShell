@@ -24,6 +24,36 @@ public class FileBrowserViewModel : ReactiveObject
 {
     private const long MaxBuiltInEditSize = 5 * 1024 * 1024;
 
+    // 各列的最小像素宽度。列宽钳制(本类)与视图侧的拖拽/双击自适应共用这一份下限,
+    // 否则两边各写一套魔数,改一处就会错位(见 FileBrowserView.OnColumnSplitterPointerMoved)。
+
+    /// <summary>“名称”列的最小像素宽度。</summary>
+    public const double MinNameWidth = 180;
+
+    /// <summary>“大小”列的最小像素宽度。</summary>
+    public const double MinSizeWidth = 70;
+
+    /// <summary>“权限”列的最小像素宽度。</summary>
+    public const double MinPermissionsWidth = 80;
+
+    /// <summary>“所有者”列的最小像素宽度。</summary>
+    public const double MinOwnerWidth = 70;
+
+    /// <summary>“用户组”列的最小像素宽度。</summary>
+    public const double MinGroupWidth = 70;
+
+    /// <summary>“类型”列的最小像素宽度。</summary>
+    public const double MinTypeWidth = 80;
+
+    /// <summary>“修改时间”列(末列,吸收剩余宽度)的最小像素宽度。</summary>
+    public const double MinModifiedWidth = 110;
+
+    /// <summary>列间拖拽条的宽度;所属列隐藏时随之塌缩为 0。</summary>
+    private static readonly GridLength SplitterWidth = new(6);
+
+    /// <summary>列隐藏时的塌缩宽度。</summary>
+    private static readonly GridLength CollapsedWidth = new(0);
+
     /// <summary>
     /// The raw directory listing before the hidden-files filter/sort; the visible
     /// <see cref="Files" /> collection is rebuilt from this.
@@ -289,22 +319,219 @@ public class FileBrowserViewModel : ReactiveObject
     public GridLength NameColumnWidth
     {
         get;
-        set => this.RaiseAndSetIfChanged(ref field, ClampColumnWidth(value, 180));
+        set => this.RaiseAndSetIfChanged(ref field, ClampColumnWidth(value, MinNameWidth));
     } = new(280);
 
     /// <summary>“大小”列的用户可调宽度(有最小像素下限约束)。</summary>
     public GridLength SizeColumnWidth
     {
         get;
-        set => this.RaiseAndSetIfChanged(ref field, ClampColumnWidth(value, 70));
+        set
+        {
+            this.RaiseAndSetIfChanged(ref field, ClampColumnWidth(value, MinSizeWidth));
+            this.RaisePropertyChanged(nameof(SizeGridWidth));
+        }
     } = new(100);
 
     /// <summary>“权限”列的用户可调宽度(有最小像素下限约束)。</summary>
     public GridLength PermissionsColumnWidth
     {
         get;
-        set => this.RaiseAndSetIfChanged(ref field, ClampColumnWidth(value, 80));
+        set
+        {
+            this.RaiseAndSetIfChanged(ref field, ClampColumnWidth(value, MinPermissionsWidth));
+            this.RaisePropertyChanged(nameof(PermissionsGridWidth));
+        }
     } = new(110);
+
+    /// <summary>“所有者”列的用户可调宽度(有最小像素下限约束)。</summary>
+    public GridLength OwnerColumnWidth
+    {
+        get;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref field, ClampColumnWidth(value, MinOwnerWidth));
+            this.RaisePropertyChanged(nameof(OwnerGridWidth));
+        }
+    } = new(95);
+
+    /// <summary>“用户组”列的用户可调宽度(有最小像素下限约束)。</summary>
+    public GridLength GroupColumnWidth
+    {
+        get;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref field, ClampColumnWidth(value, MinGroupWidth));
+            this.RaisePropertyChanged(nameof(GroupGridWidth));
+        }
+    } = new(95);
+
+    /// <summary>“类型”列的用户可调宽度(有最小像素下限约束)。</summary>
+    public GridLength TypeColumnWidth
+    {
+        get;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref field, ClampColumnWidth(value, MinTypeWidth));
+            this.RaisePropertyChanged(nameof(TypeGridWidth));
+        }
+    } = new(100);
+
+    // —— 列显示开关(表头右键切换)——————————————————————————————
+    // “文件名”列没有开关:它是行的标识,关掉就只剩一排没有主语的元数据。
+    // 每个开关都要连带通知自己那组派生的表格几何(宽度/最小宽度/拖拽条),
+    // 因为 Grid 靠把列宽压成 0 来“隐藏”列。
+
+    /// <summary>是否显示“大小”列。</summary>
+    public bool ShowSizeColumn
+    {
+        get;
+        set
+        {
+            if (field == value)
+            {
+                return;
+            }
+            this.RaiseAndSetIfChanged(ref field, value);
+            RaiseColumnGeometryChanged(nameof(SizeGridWidth), nameof(SizeGridMinWidth), nameof(SizeSplitterWidth));
+            ColumnVisibilityToggled?.Invoke("size", value);
+        }
+    } = true;
+
+    /// <summary>是否显示“权限”列。</summary>
+    public bool ShowPermissionsColumn
+    {
+        get;
+        set
+        {
+            if (field == value)
+            {
+                return;
+            }
+            this.RaiseAndSetIfChanged(ref field, value);
+            RaiseColumnGeometryChanged(nameof(PermissionsGridWidth), nameof(PermissionsGridMinWidth), nameof(PermissionsSplitterWidth));
+            ColumnVisibilityToggled?.Invoke("permissions", value);
+        }
+    } = true;
+
+    /// <summary>是否显示“所有者”列。</summary>
+    public bool ShowOwnerColumn
+    {
+        get;
+        set
+        {
+            if (field == value)
+            {
+                return;
+            }
+            this.RaiseAndSetIfChanged(ref field, value);
+            RaiseColumnGeometryChanged(nameof(OwnerGridWidth), nameof(OwnerGridMinWidth), nameof(OwnerSplitterWidth));
+            ColumnVisibilityToggled?.Invoke("owner", value);
+        }
+    } = true;
+
+    /// <summary>是否显示“用户组”列。</summary>
+    public bool ShowGroupColumn
+    {
+        get;
+        set
+        {
+            if (field == value)
+            {
+                return;
+            }
+            this.RaiseAndSetIfChanged(ref field, value);
+            RaiseColumnGeometryChanged(nameof(GroupGridWidth), nameof(GroupGridMinWidth), nameof(GroupSplitterWidth));
+            ColumnVisibilityToggled?.Invoke("group", value);
+        }
+    } = true;
+
+    /// <summary>是否显示“类型”列。</summary>
+    public bool ShowTypeColumn
+    {
+        get;
+        set
+        {
+            if (field == value)
+            {
+                return;
+            }
+            this.RaiseAndSetIfChanged(ref field, value);
+            RaiseColumnGeometryChanged(nameof(TypeGridWidth), nameof(TypeGridMinWidth), nameof(TypeSplitterWidth));
+            ColumnVisibilityToggled?.Invoke("type", value);
+        }
+    } = true;
+
+    /// <summary>
+    /// 是否显示“修改时间”列。末列吃 * 宽度,没有自己的宽度/拖拽条,
+    /// 隐藏它只是把表头与单元格藏起来,那段宽度留作空白。
+    /// </summary>
+    public bool ShowModifiedColumn
+    {
+        get;
+        set
+        {
+            if (field == value)
+            {
+                return;
+            }
+            this.RaiseAndSetIfChanged(ref field, value);
+            ColumnVisibilityToggled?.Invoke("modified", value);
+        }
+    } = true;
+
+    /// <summary>
+    /// 表头右键切换列显示后写回持久化设置(与“显示隐藏文件”同构,设置审计 C-04):
+    /// 参数为列键("size"/"permissions"/"owner"/"group"/"type"/"modified")与新的可见性。
+    /// </summary>
+    public Action<string, bool>? ColumnVisibilityToggled { get; set; }
+
+    // —— 表格几何:列关闭时宽度与拖拽条一并塌缩为 0,最小宽度同时放开(否则塌不到 0)——
+
+    /// <summary>“大小”列在表格中的实际宽度。</summary>
+    public GridLength SizeGridWidth => ShowSizeColumn ? SizeColumnWidth : CollapsedWidth;
+
+    /// <summary>“大小”列在表格中的最小宽度。</summary>
+    public double SizeGridMinWidth => ShowSizeColumn ? MinSizeWidth : 0;
+
+    /// <summary>“大小”列右侧拖拽条的宽度。</summary>
+    public GridLength SizeSplitterWidth => ShowSizeColumn ? SplitterWidth : CollapsedWidth;
+
+    /// <summary>“权限”列在表格中的实际宽度。</summary>
+    public GridLength PermissionsGridWidth => ShowPermissionsColumn ? PermissionsColumnWidth : CollapsedWidth;
+
+    /// <summary>“权限”列在表格中的最小宽度。</summary>
+    public double PermissionsGridMinWidth => ShowPermissionsColumn ? MinPermissionsWidth : 0;
+
+    /// <summary>“权限”列右侧拖拽条的宽度。</summary>
+    public GridLength PermissionsSplitterWidth => ShowPermissionsColumn ? SplitterWidth : CollapsedWidth;
+
+    /// <summary>“所有者”列在表格中的实际宽度。</summary>
+    public GridLength OwnerGridWidth => ShowOwnerColumn ? OwnerColumnWidth : CollapsedWidth;
+
+    /// <summary>“所有者”列在表格中的最小宽度。</summary>
+    public double OwnerGridMinWidth => ShowOwnerColumn ? MinOwnerWidth : 0;
+
+    /// <summary>“所有者”列右侧拖拽条的宽度。</summary>
+    public GridLength OwnerSplitterWidth => ShowOwnerColumn ? SplitterWidth : CollapsedWidth;
+
+    /// <summary>“用户组”列在表格中的实际宽度。</summary>
+    public GridLength GroupGridWidth => ShowGroupColumn ? GroupColumnWidth : CollapsedWidth;
+
+    /// <summary>“用户组”列在表格中的最小宽度。</summary>
+    public double GroupGridMinWidth => ShowGroupColumn ? MinGroupWidth : 0;
+
+    /// <summary>“用户组”列右侧拖拽条的宽度。</summary>
+    public GridLength GroupSplitterWidth => ShowGroupColumn ? SplitterWidth : CollapsedWidth;
+
+    /// <summary>“类型”列在表格中的实际宽度。</summary>
+    public GridLength TypeGridWidth => ShowTypeColumn ? TypeColumnWidth : CollapsedWidth;
+
+    /// <summary>“类型”列在表格中的最小宽度。</summary>
+    public double TypeGridMinWidth => ShowTypeColumn ? MinTypeWidth : 0;
+
+    /// <summary>“类型”列右侧拖拽条的宽度。</summary>
+    public GridLength TypeSplitterWidth => ShowTypeColumn ? SplitterWidth : CollapsedWidth;
 
     /// <summary>Whether the loading overlay should show a delete progress bar.</summary>
     public bool IsDeleteProgressVisible
@@ -435,6 +662,15 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>“权限”列表头的排序方向箭头(仅当前排序列显示,否则为空)。</summary>
     public string PermissionsSortGlyph => GlyphFor("permissions");
 
+    /// <summary>“所有者”列表头的排序方向箭头(仅当前排序列显示,否则为空)。</summary>
+    public string OwnerSortGlyph => GlyphFor("owner");
+
+    /// <summary>“用户组”列表头的排序方向箭头(仅当前排序列显示,否则为空)。</summary>
+    public string GroupSortGlyph => GlyphFor("group");
+
+    /// <summary>“类型”列表头的排序方向箭头(仅当前排序列显示,否则为空)。</summary>
+    public string TypeSortGlyph => GlyphFor("type");
+
     /// <summary>“修改时间”列表头的排序方向箭头(仅当前排序列显示,否则为空)。</summary>
     public string ModifiedSortGlyph => GlyphFor("modified");
 
@@ -508,11 +744,82 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     public Func<string, Task<bool>>? ConfirmRemoteOverwrite { get; set; }
 
+    /// <summary>
+    /// 按列键取该列当前的用户可调宽度(视图侧的拖拽与双击自适应用)。
+    /// 末列“修改时间”吃 * 宽度、不可调,故不在此列。
+    /// </summary>
+    public GridLength GetColumnWidth(string columnKey) => columnKey switch
+    {
+        "size" => SizeColumnWidth,
+        "permissions" => PermissionsColumnWidth,
+        "owner" => OwnerColumnWidth,
+        "group" => GroupColumnWidth,
+        "type" => TypeColumnWidth,
+        _ => NameColumnWidth
+    };
+
+    /// <summary>按列键设置列宽(视图侧的拖拽与双击自适应用);越界由各列的下限钳制。</summary>
+    public void SetColumnWidth(string columnKey, double pixels)
+    {
+        switch (columnKey)
+        {
+            case "size":
+                SizeColumnWidth = new(pixels);
+                break;
+            case "permissions":
+                PermissionsColumnWidth = new(pixels);
+                break;
+            case "owner":
+                OwnerColumnWidth = new(pixels);
+                break;
+            case "group":
+                GroupColumnWidth = new(pixels);
+                break;
+            case "type":
+                TypeColumnWidth = new(pixels);
+                break;
+            default:
+                NameColumnWidth = new(pixels);
+                break;
+        }
+    }
+
+    /// <summary>按列键取该列是否显示(“文件名”列固定常显)。</summary>
+    public bool IsColumnVisible(string columnKey) => columnKey switch
+    {
+        "size" => ShowSizeColumn,
+        "permissions" => ShowPermissionsColumn,
+        "owner" => ShowOwnerColumn,
+        "group" => ShowGroupColumn,
+        "type" => ShowTypeColumn,
+        "modified" => ShowModifiedColumn,
+        _ => true
+    };
+
+    /// <summary>按列键取该列的最小像素宽度。</summary>
+    public static double MinWidthFor(string columnKey) => columnKey switch
+    {
+        "size" => MinSizeWidth,
+        "permissions" => MinPermissionsWidth,
+        "owner" => MinOwnerWidth,
+        "group" => MinGroupWidth,
+        "type" => MinTypeWidth,
+        "modified" => MinModifiedWidth,
+        _ => MinNameWidth
+    };
+
     private static GridLength ClampColumnWidth(GridLength value, double min)
     {
         // We only support pixel-sized user-resizable columns here.
         double px = value.IsAbsolute ? value.Value : min;
         return new(Math.Max(min, px));
+    }
+
+    private void RaiseColumnGeometryChanged(string widthName, string minWidthName, string splitterName)
+    {
+        this.RaisePropertyChanged(widthName);
+        this.RaisePropertyChanged(minWidthName);
+        this.RaisePropertyChanged(splitterName);
     }
 
     private string GlyphFor(string column) => SortColumn == column ? SortDescending ? " ▼" : " ▲" : string.Empty;
@@ -612,6 +919,9 @@ public class FileBrowserViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(NameSortGlyph));
         this.RaisePropertyChanged(nameof(SizeSortGlyph));
         this.RaisePropertyChanged(nameof(PermissionsSortGlyph));
+        this.RaisePropertyChanged(nameof(OwnerSortGlyph));
+        this.RaisePropertyChanged(nameof(GroupSortGlyph));
+        this.RaisePropertyChanged(nameof(TypeSortGlyph));
         this.RaisePropertyChanged(nameof(ModifiedSortGlyph));
         RebuildVisibleFiles();
     }
@@ -649,6 +959,18 @@ public class FileBrowserViewModel : ReactiveObject
             "permissions" => SortDescending
                                  ? dirsFirst.ThenByDescending(f => f.Permissions, StringComparer.Ordinal)
                                  : dirsFirst.ThenBy(f => f.Permissions, StringComparer.Ordinal),
+
+            // 属主/属组查得到名字时排的是名字,查不到时排的是数字 id 的字符串形式
+            // (即 "1000" 排在 "999" 前)—— 混排两种形式的价值不足以为此引入数值特判。
+            "owner" => SortDescending
+                           ? dirsFirst.ThenByDescending(f => f.Owner, StringComparer.OrdinalIgnoreCase)
+                           : dirsFirst.ThenBy(f => f.Owner, StringComparer.OrdinalIgnoreCase),
+            "group" => SortDescending
+                           ? dirsFirst.ThenByDescending(f => f.Group, StringComparer.OrdinalIgnoreCase)
+                           : dirsFirst.ThenBy(f => f.Group, StringComparer.OrdinalIgnoreCase),
+            "type" => SortDescending
+                          ? dirsFirst.ThenByDescending(f => f.FileTypeDisplay, StringComparer.CurrentCultureIgnoreCase)
+                          : dirsFirst.ThenBy(f => f.FileTypeDisplay, StringComparer.CurrentCultureIgnoreCase),
             "modified" => SortDescending
                               ? dirsFirst.ThenByDescending(f => f.LastModified)
                               : dirsFirst.ThenBy(f => f.LastModified),

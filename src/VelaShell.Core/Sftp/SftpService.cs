@@ -19,6 +19,9 @@ public class SftpService(
     private readonly ISshConnectionService _connectionService = connectionService ?? throw new ArgumentNullException(nameof(connectionService));
     private readonly ConcurrentDictionary<Guid, ISftpClientWrapper> _sftpClients = new();
 
+    /// <summary>属主/属组的数字 id → 名称翻译(按会话缓存,见 RemoteIdentityResolver)。</summary>
+    private readonly RemoteIdentityResolver _identities = new(connectionService);
+
     /// <summary>SFTP 客户端创建的按会话单飞闸(见 GetOrCreateSftpClientAsync)。</summary>
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _clientGates = new();
 
@@ -27,7 +30,10 @@ public class SftpService(
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
         IEnumerable<SftpEntry> files = await client.ListDirectoryAsync(path, cancellationToken).ConfigureAwait(false);
-        return [.. files.Where(f => f.Name is not "." and not "..").Select(MapToRemoteFileInfo)];
+
+        // 属主/属组名要查远端 passwd 库(SFTP 只报数字 id):每会话查一次,查不到回退数字。
+        RemoteIdentityMap identities = await _identities.GetAsync(sessionId).ConfigureAwait(false);
+        return [.. files.Where(f => f.Name is not "." and not "..").Select(f => MapToRemoteFileInfo(f, identities))];
     }
 
     /// <summary>将本地文件上传到远端路径,可选限速与进度回报,支持取消。</summary>
@@ -219,7 +225,8 @@ public class SftpService(
         string fileName = GetUnixFileName(remotePath);
         IEnumerable<SftpEntry> files = await client.ListDirectoryAsync(parentDir, cancellationToken).ConfigureAwait(false);
         SftpEntry? file = files.FirstOrDefault(f => f.Name == fileName) ?? throw new FileNotFoundException($"File not found: {remotePath}");
-        return MapToRemoteFileInfo(file);
+        RemoteIdentityMap identities = await _identities.GetAsync(sessionId).ConfigureAwait(false);
+        return MapToRemoteFileInfo(file, identities);
     }
 
     /// <summary>判断远端路径是否存在。</summary>
@@ -243,6 +250,9 @@ public class SftpService(
         {
             gate.Dispose();
         }
+
+        // 在下面的早退之前丢弃:即使本会话从未建过 SFTP 客户端,查表缓存也可能已存在。
+        _identities.Invalidate(sessionId);
         if (!_sftpClients.TryRemove(sessionId, out ISftpClientWrapper? client))
         {
             return;
@@ -411,7 +421,7 @@ public class SftpService(
         return false;
     }
 
-    private static RemoteFileInfo MapToRemoteFileInfo(SftpEntry file)
+    private static RemoteFileInfo MapToRemoteFileInfo(SftpEntry file, RemoteIdentityMap identities)
     {
         return new()
         {
@@ -421,8 +431,8 @@ public class SftpService(
             Permissions = FormatPermissions(file),
             IsDirectory = file.IsDirectory,
             LastModified = file.LastWriteTime,
-            Owner = file.UserId.ToString(),
-            Group = file.GroupId.ToString()
+            Owner = identities.UserName(file.UserId),
+            Group = identities.GroupName(file.GroupId)
         };
     }
 

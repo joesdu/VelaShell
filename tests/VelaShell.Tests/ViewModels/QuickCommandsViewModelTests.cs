@@ -1,4 +1,5 @@
 using VelaShell.Core.Data;
+using VelaShell.Core.Models;
 using VelaShell.Infrastructure.Persistence;
 using VelaShell.ViewModels;
 
@@ -7,6 +8,16 @@ namespace VelaShell.Tests.ViewModels;
 [TestClass]
 public class QuickCommandsViewModelTests : IDisposable
 {
+    /// <summary>
+    /// 内置命令条数。一律由目录推导,不写死数字:内置目录是产品内容、会随需求增删
+    /// (如 5c22090 换掉了整批命令),这里要盯的是“视图模型如何对待内置命令”,
+    /// 而不是目录当下装了哪几条 —— 写死就会在每次改目录时集体失效。
+    /// </summary>
+    private static int BuiltInCount => QuickCommandCatalog.BuiltIns.Count;
+
+    /// <summary>拿来当操作对象的样本内置命令(同样不写死具体是哪条)。</summary>
+    private static QuickCommand SampleBuiltIn => QuickCommandCatalog.BuiltIns[0];
+
     private readonly IAppDataStore _dataStore;
     private readonly SonnetDbEngine _engine;
     private readonly string _legacyDataPath;
@@ -38,20 +49,11 @@ public class QuickCommandsViewModelTests : IDisposable
 
     [TestMethod]
     [TestCategory("QuickCommands")]
-    public void BuiltInDefaults_ContainExpectedCommands()
+    public void BuiltInDefaults_LoadTheEntireBuiltInCatalog()
     {
         var names = _vm.AllCommands.Select(c => c.Name).ToList();
-        Assert.Contains("htop", names);
-        Assert.Contains("top", names);
-        Assert.Contains("df -h", names);
-        Assert.Contains("free -m", names);
-        Assert.Contains("docker ps", names);
-        Assert.Contains("docker stats", names);
-        Assert.Contains("netstat -tlnp", names);
-        Assert.Contains("ss -tlnp", names);
-        Assert.Contains("systemctl status", names);
-        Assert.Contains("journalctl -f", names);
-        Assert.HasCount(10, _vm.AllCommands);
+        CollectionAssert.AreEquivalent(QuickCommandCatalog.BuiltIns.Select(c => c.Name).ToList(), names);
+        Assert.HasCount(BuiltInCount, _vm.AllCommands);
         Assert.IsTrue(_vm.AllCommands.All(c => c.IsBuiltIn));
     }
 
@@ -59,30 +61,42 @@ public class QuickCommandsViewModelTests : IDisposable
     [TestCategory("QuickCommands")]
     public void SearchQuery_FiltersByName_CaseInsensitive()
     {
+        // 大写查询命中小写名称 —— 这里验的是忽略大小写,期望条数按目录实际情况推导。
+        int expected = QuickCommandCatalog.BuiltIns.Count(c => c.Name.Contains("docker", StringComparison.OrdinalIgnoreCase));
+        Assert.IsGreaterThan(0, expected, "样本前提:内置目录里应有 docker 相关命令");
+
         _vm.SearchQuery = "DOCKER";
-        Assert.HasCount(2, _vm.FilteredCommands);
-        Assert.IsTrue(_vm.FilteredCommands.All(c => c.Name.Contains("docker")));
+
+        Assert.HasCount(expected, _vm.FilteredCommands);
+        Assert.IsTrue(_vm.FilteredCommands.All(c => c.Name.Contains("docker", StringComparison.OrdinalIgnoreCase)));
     }
 
     [TestMethod]
     [TestCategory("QuickCommands")]
     public void SearchQuery_FiltersByDescriptionAndCommandText()
     {
-        _vm.SearchQuery = "process";
-        Assert.Contains(c => c.Name == "htop", _vm.FilteredCommands);
-        Assert.Contains(c => c.Name == "top", _vm.FilteredCommands);
-        _vm.SearchQuery = "systemctl";
-        Assert.HasCount(1, _vm.FilteredCommands);
-        Assert.AreEqual("systemctl status", _vm.FilteredCommands[0].Name);
+        // 只出现在命令正文、不出现在名称里的词:命中它就说明筛选确实看了 CommandText。
+        QuickCommand byText = QuickCommandCatalog.BuiltIns.First(c => c.CommandText.Contains("dpkg"));
+        _vm.SearchQuery = "dpkg";
+        Assert.ContainsSingle(c => c.Name == byText.Name, _vm.FilteredCommands);
+        Assert.DoesNotContain("dpkg", byText.Name, "样本前提:该词不该出现在名称里,否则测不到 CommandText 匹配");
+
+        // 描述是本地化的,拿目录里的原值当查询,才不会绑死在某种语言上。
+        QuickCommand byDescription = QuickCommandCatalog.BuiltIns.First(c => !string.IsNullOrWhiteSpace(c.Description));
+        _vm.SearchQuery = byDescription.Description;
+        Assert.Contains(c => c.Name == byDescription.Name, _vm.FilteredCommands);
     }
 
     [TestMethod]
     [TestCategory("QuickCommands")]
     public void ExecuteCommand_InvokesCallbackWithCommandText()
     {
-        QuickCommandViewModel htopVm = _vm.AllCommands.First(c => c.Name == "htop");
-        _vm.ExecuteCommandCommand.Execute(htopVm).Subscribe();
-        Assert.AreEqual("htop", _executedCommand);
+        QuickCommandViewModel command = _vm.AllCommands.First(c => c.Name == SampleBuiltIn.Name);
+        _vm.ExecuteCommandCommand.Execute(command).Subscribe();
+
+        // 发出去的必须是命令正文而非显示名 —— 二者不同的命令(如 “docker ps” → “sudo docker ps -a”)
+        // 才能真正区分开;旧版样本 htop 的名称与正文恰好相同,测不出这个区别。
+        Assert.AreEqual(SampleBuiltIn.CommandText, _executedCommand);
     }
 
     [TestMethod]
@@ -96,7 +110,7 @@ public class QuickCommandsViewModelTests : IDisposable
         _vm.NewCommandText = "echo hello";
         _vm.NewDescription = "Says hello";
         _vm.SaveNewCommandCommand.Execute().Subscribe();
-        Assert.HasCount(11, _vm.AllCommands);
+        Assert.HasCount(BuiltInCount + 1, _vm.AllCommands);
         Assert.IsFalse(_vm.IsAddingCommand);
         QuickCommandViewModel added = _vm.AllCommands.Last();
         Assert.AreEqual("my-cmd", added.Name);
@@ -118,11 +132,13 @@ public class QuickCommandsViewModelTests : IDisposable
         QuickCommandViewModel customCmd = _vm.AllCommands.First(c => c.Name == "temp-cmd");
         _vm.DeleteCommandCommand.Execute(customCmd).Subscribe();
         Assert.DoesNotContain(c => c.Name == "temp-cmd", _vm.AllCommands);
-        Assert.HasCount(10, _vm.AllCommands);
-        QuickCommandViewModel builtIn = _vm.AllCommands.First(c => c.Name == "htop");
+        Assert.HasCount(BuiltInCount, _vm.AllCommands);
+
+        // 内置命令删不掉。
+        QuickCommandViewModel builtIn = _vm.AllCommands.First(c => c.Name == SampleBuiltIn.Name);
         _vm.DeleteCommandCommand.Execute(builtIn).Subscribe();
-        Assert.Contains(c => c.Name == "htop", _vm.AllCommands);
-        Assert.HasCount(10, _vm.AllCommands);
+        Assert.Contains(c => c.Name == SampleBuiltIn.Name, _vm.AllCommands);
+        Assert.HasCount(BuiltInCount, _vm.AllCommands);
     }
 
     [TestMethod]
@@ -130,33 +146,35 @@ public class QuickCommandsViewModelTests : IDisposable
     public void SearchQuery_EmptyString_ShowsAllCommands()
     {
         _vm.SearchQuery = "docker";
-        Assert.HasCount(2, _vm.FilteredCommands);
+        Assert.IsLessThan(BuiltInCount, _vm.FilteredCommands.Count, "样本前提:该查询应筛掉一部分命令");
+
         _vm.SearchQuery = "";
-        Assert.HasCount(10, _vm.FilteredCommands);
+
+        Assert.HasCount(BuiltInCount, _vm.FilteredCommands);
     }
 
     [TestMethod]
     [TestCategory("QuickCommands")]
     public void Categories_ContainAllDistinctCategories()
     {
-        Assert.Contains("System Monitor", _vm.Categories);
-        Assert.Contains("Network", _vm.Categories);
-        Assert.Contains("Docker", _vm.Categories);
-        Assert.Contains("System", _vm.Categories);
-        Assert.HasCount(4, _vm.Categories);
+        var expected = QuickCommandCatalog.BuiltIns.Select(c => c.Category).Distinct().OrderBy(c => c).ToList();
+        CollectionAssert.AreEqual(expected, _vm.Categories.ToList(), "分类应为内置目录去重排序后的结果");
     }
 
     [TestMethod]
     [TestCategory("QuickCommands")]
     public void BuiltInCommand_CannotBeModified()
     {
-        QuickCommandViewModel htop = _vm.AllCommands.First(c => c.Name == "htop");
-        htop.Name = "modified";
-        Assert.AreEqual("htop", htop.Name);
-        htop.CommandText = "modified";
-        Assert.AreEqual("htop", htop.CommandText);
-        htop.Description = "modified";
-        Assert.AreEqual("Interactive process viewer", htop.Description);
+        QuickCommandViewModel builtIn = _vm.AllCommands.First(c => c.Name == SampleBuiltIn.Name);
+
+        builtIn.Name = "modified";
+        builtIn.CommandText = "modified";
+        builtIn.Description = "modified";
+
+        // 三个字段都该纹丝不动(描述是本地化文案,拿目录里的原值比,不绑死语言)。
+        Assert.AreEqual(SampleBuiltIn.Name, builtIn.Name);
+        Assert.AreEqual(SampleBuiltIn.CommandText, builtIn.CommandText);
+        Assert.AreEqual(SampleBuiltIn.Description, builtIn.Description);
     }
 
     [TestMethod]
@@ -174,7 +192,7 @@ public class QuickCommandsViewModelTests : IDisposable
             null,
             _legacyDataPath);
         await vm2.LoadCustomCommandsAsync();
-        Assert.HasCount(11, vm2.AllCommands);
+        Assert.HasCount(BuiltInCount + 1, vm2.AllCommands);
         QuickCommandViewModel restored = vm2.AllCommands.First(c => c.Name == "persisted-cmd");
         Assert.AreEqual("uptime", restored.CommandText);
         Assert.IsFalse(restored.IsBuiltIn);

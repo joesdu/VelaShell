@@ -17,18 +17,25 @@ namespace VelaShell.Views;
 /// <summary>Remote file browser view: file list, resizable columns, drag-and-drop upload, and OS picker/dialog integration.</summary>
 public partial class FileBrowserView : UserControl
 {
-    private const double MinNameWidth = 180;
-    private const double MinSizeWidth = 70;
-    private const double MinPermissionsWidth = 80;
-    private const double MinModifiedWidth = 110;
+    /// <summary>
+    /// 可拖拽列的列键,顺序同表头。末列“修改时间”吃 * 宽度、右侧没有拖拽条,故不在此列。
+    /// 每根拖拽条调整的是它左边那一列(Tag 即该列的列键)。
+    /// </summary>
+    private static readonly string[] ResizableColumns = ["name", "size", "permissions", "owner", "group", "type"];
+
+    /// <summary>单根拖拽条的宽度(同 axaml 的拖拽条列定义)。</summary>
+    private const double SplitterWidth = 6;
+
+    /// <summary>表头/行的左右内边距合计(axaml 里 Padding="14,0")。</summary>
+    private const double HorizontalPadding = 28;
 
     private static readonly FontFamily TerminalFont = new("JetBrains Mono, Cascadia Mono, Consolas, monospace");
     private static readonly Typeface TerminalTypeface = new(TerminalFont);
     private string? _activeSplitter;
     private double _dragStartX;
-    private double _startNameWidth;
-    private double _startPermissionsWidth;
-    private double _startSizeWidth;
+
+    /// <summary>按下拖拽条那一刻的列宽快照(列键 → 像素),拖拽期间按位移量增量应用。</summary>
+    private readonly Dictionary<string, double> _startWidths = [];
 
     /// <summary>Initializes the view, supplies the view model with OS pickers/dialogs, and hooks column-splitter and drag-drop handlers.</summary>
     public FileBrowserView()
@@ -84,32 +91,25 @@ public partial class FileBrowserView : UserControl
         }
         _activeSplitter = tag;
         _dragStartX = e.GetPosition(this).X;
-        _startNameWidth = vm.NameColumnWidth.Value;
-        _startSizeWidth = vm.SizeColumnWidth.Value;
-        _startPermissionsWidth = vm.PermissionsColumnWidth.Value;
+        _startWidths.Clear();
+        foreach (string column in ResizableColumns)
+        {
+            _startWidths[column] = vm.GetColumnWidth(column).Value;
+        }
         e.Pointer.Capture(this);
         e.Handled = true;
     }
 
     private void OnColumnSplitterPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_activeSplitter is null || DataContext is not FileBrowserViewModel vm)
+        if (_activeSplitter is null || DataContext is not FileBrowserViewModel vm
+            || !_startWidths.TryGetValue(_activeSplitter, out double startWidth))
         {
             return;
         }
         double delta = e.GetPosition(this).X - _dragStartX;
-        switch (_activeSplitter)
-        {
-            case "NameSize":
-                vm.NameColumnWidth = new(ClampColumnWidth(_startNameWidth + delta, MinNameWidth, GetMaxNameWidth(vm)));
-                break;
-            case "SizePermissions":
-                vm.SizeColumnWidth = new(ClampColumnWidth(_startSizeWidth + delta, MinSizeWidth, GetMaxSizeWidth(vm)));
-                break;
-            case "PermissionsModified":
-                vm.PermissionsColumnWidth = new(ClampColumnWidth(_startPermissionsWidth + delta, MinPermissionsWidth, GetMaxPermissionsWidth(vm)));
-                break;
-        }
+        vm.SetColumnWidth(_activeSplitter,
+            ClampColumnWidth(startWidth + delta, FileBrowserViewModel.MinWidthFor(_activeSplitter), GetMaxWidth(vm, _activeSplitter)));
         e.Handled = true;
     }
 
@@ -126,60 +126,43 @@ public partial class FileBrowserView : UserControl
 
     private void AutoFitColumnBySplitterTag(FileBrowserViewModel vm, string tag)
     {
-        switch (tag)
+        vm.SetColumnWidth(tag,
+            ClampColumnWidth(EstimateAutoWidth(vm, tag), FileBrowserViewModel.MinWidthFor(tag), GetMaxWidth(vm, tag)));
+    }
+
+    /// <summary>
+    /// 双击拖拽条的自适应宽度:取表头与所有行里最宽的那条文本。“文件名”列还要
+    /// 额外让出前导图标区(14px 图标 + 6px 间距)。上限防止一个超长名字把列撑爆。
+    /// </summary>
+    private static double EstimateAutoWidth(FileBrowserViewModel vm, string columnKey)
+    {
+        (string Header, Func<RemoteFileInfoViewModel, string> Cell, double Padding, double Max) spec = columnKey switch
         {
-            case "NameSize":
-                {
-                    double targetName = EstimateAutoWidthForName(vm);
-                    vm.NameColumnWidth = new(ClampColumnWidth(targetName, MinNameWidth, GetMaxNameWidth(vm)));
-                    break;
-                }
-            case "SizePermissions":
-                {
-                    double targetSize = EstimateAutoWidthForSize(vm);
-                    vm.SizeColumnWidth = new(ClampColumnWidth(targetSize, MinSizeWidth, GetMaxSizeWidth(vm)));
-                    break;
-                }
-            case "PermissionsModified":
-                {
-                    double targetPerm = EstimateAutoWidthForPermissions(vm);
-                    vm.PermissionsColumnWidth = new(ClampColumnWidth(targetPerm, MinPermissionsWidth, GetMaxPermissionsWidth(vm)));
-                    break;
-                }
-        }
+            "size" => (Strings.Size, f => f.FormattedSize, 8d, 260d),
+            "permissions" => (Strings.Permissions, f => f.Permissions, 8d, 300d),
+            "owner" => (Strings.PermissionOwner, f => f.Owner, 8d, 300d),
+            "group" => (Strings.PermissionGroup, f => f.Group, 8d, 300d),
+            "type" => (Strings.FileType, f => f.FileTypeDisplay, 8d, 300d),
+            _ => (Strings.FileName, f => f.DisplayName, 34d, 760d)
+        };
+        double headerWidth = MeasureTextWidth(spec.Header, 10);
+        double rowsWidth = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(spec.Cell(f), 11)) : 0;
+        return Math.Clamp(Math.Max(headerWidth, rowsWidth) + spec.Padding, FileBrowserViewModel.MinWidthFor(columnKey), spec.Max);
     }
 
-    private static double EstimateAutoWidthForName(FileBrowserViewModel vm)
+    /// <summary>
+    /// 一列能撑到的最大宽度:面板宽度扣掉其余各列、各拖拽条(隐藏列两者都不占位)、
+    /// 末列“修改时间”的下限,以及左右内边距。据此拖拽不会把末列挤没。
+    /// </summary>
+    private double GetMaxWidth(FileBrowserViewModel vm, string columnKey)
     {
-        double header = MeasureTextWidth(Strings.FileName, 10);
-        double rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.DisplayName, 11)) : 0;
-
-        // Name column also has a leading icon area (14px icon + 6px gap) and breathing room.
-        double estimated = Math.Max(header, rows) + 24 + 10;
-        return Math.Clamp(estimated, MinNameWidth, 760);
+        string[] visible = [.. ResizableColumns.Where(vm.IsColumnVisible)];
+        double others = visible.Where(c => c != columnKey).Sum(c => vm.GetColumnWidth(c).Value);
+        double splitters = visible.Length * SplitterWidth;
+        double reserved = vm.IsColumnVisible("modified") ? FileBrowserViewModel.MinModifiedWidth : 0;
+        return Math.Max(FileBrowserViewModel.MinWidthFor(columnKey),
+            Bounds.Width - others - splitters - reserved - HorizontalPadding);
     }
-
-    private static double EstimateAutoWidthForSize(FileBrowserViewModel vm)
-    {
-        double header = MeasureTextWidth(Strings.Size, 10);
-        double rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.FormattedSize, 11)) : 0;
-        double estimated = Math.Max(header, rows) + 8;
-        return Math.Clamp(estimated, MinSizeWidth, 260);
-    }
-
-    private static double EstimateAutoWidthForPermissions(FileBrowserViewModel vm)
-    {
-        double header = MeasureTextWidth(Strings.Permissions, 10);
-        double rows = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(f.Permissions, 11)) : 0;
-        double estimated = Math.Max(header, rows) + 8;
-        return Math.Clamp(estimated, MinPermissionsWidth, 300);
-    }
-
-    private double GetMaxNameWidth(FileBrowserViewModel vm) => Math.Max(MinNameWidth, Bounds.Width - vm.SizeColumnWidth.Value - vm.PermissionsColumnWidth.Value - MinModifiedWidth - 28);
-
-    private double GetMaxSizeWidth(FileBrowserViewModel vm) => Math.Max(MinSizeWidth, Bounds.Width - vm.NameColumnWidth.Value - vm.PermissionsColumnWidth.Value - MinModifiedWidth - 28);
-
-    private double GetMaxPermissionsWidth(FileBrowserViewModel vm) => Math.Max(MinPermissionsWidth, Bounds.Width - vm.NameColumnWidth.Value - vm.SizeColumnWidth.Value - MinModifiedWidth - 28);
 
     private static double MeasureTextWidth(string text, double fontSize)
     {

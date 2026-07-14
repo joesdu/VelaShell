@@ -589,6 +589,16 @@ public class MainWindowViewModel : ReactiveObject
             TransferOptions = _latestSettings?.Transfer ?? new TransferOptions(),
             ShowHiddenFiles = _latestSettings?.Transfer.ShowHiddenFiles ?? false,
             ShowHiddenFilesToggled = PersistShowHiddenFiles,
+
+            // 列显示先按设置铺好,回调后挂:对象初始化器按书写顺序赋值,
+            // 反过来会让这几行“初始化”被当成用户切换而回写一遍设置。
+            ShowSizeColumn = _latestSettings?.Transfer.ShowSizeColumn ?? true,
+            ShowPermissionsColumn = _latestSettings?.Transfer.ShowPermissionsColumn ?? true,
+            ShowOwnerColumn = _latestSettings?.Transfer.ShowOwnerColumn ?? true,
+            ShowGroupColumn = _latestSettings?.Transfer.ShowGroupColumn ?? true,
+            ShowTypeColumn = _latestSettings?.Transfer.ShowTypeColumn ?? true,
+            ShowModifiedColumn = _latestSettings?.Transfer.ShowModifiedColumn ?? true,
+            ColumnVisibilityToggled = PersistColumnVisibility,
             ServerDisplayName = serverName,
             AccentBrush = tab.Profile is { } p ? ConnectionAccent.BrushFor(p.Id) : null
         };
@@ -1735,10 +1745,12 @@ public class MainWindowViewModel : ReactiveObject
             // 面板按会话缓存后,当前实例与全部缓存实例都要广播到。
             FileBrowser.TransferOptions = settings.Transfer;
             FileBrowser.ShowHiddenFiles = settings.Transfer.ShowHiddenFiles;
+            ApplyColumnVisibility(FileBrowser, settings.Transfer);
             foreach (FileBrowserViewModel browser in _fileBrowserCache.Values)
             {
                 browser.TransferOptions = settings.Transfer;
                 browser.ShowHiddenFiles = settings.Transfer.ShowHiddenFiles;
+                ApplyColumnVisibility(browser, settings.Transfer);
             }
             return Disposable.Empty;
         });
@@ -1771,6 +1783,78 @@ public class MainWindowViewModel : ReactiveObject
                 // 写回失败只影响下次启动的初始值,不打断当前浏览。
             }
         });
+    }
+
+    /// <summary>
+    /// 文件浏览器表头右键切换列显示后写回持久化设置(设置审计 C-04),
+    /// 使各会话的面板与下次启动共用 Transfer 的列显示这一个状态来源。
+    /// </summary>
+    /// <param name="columnKey">列键("size"/"permissions"/"owner"/"group"/"type"/"modified")。</param>
+    /// <param name="visible">该列切换后的可见性。</param>
+    private void PersistColumnVisibility(string columnKey, bool visible)
+    {
+        if (_settingsService is null)
+        {
+            return;
+        }
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                AppSettings settings = await _settingsService.GetSettingsAsync().ConfigureAwait(false);
+                if (!TrySetColumnVisibility(settings.Transfer, columnKey, visible))
+                {
+                    return;
+                }
+                await _settingsService.SaveSettingsAsync(settings).ConfigureAwait(false);
+            }
+            catch
+            {
+                // 写回失败只影响下次启动的初始值,不打断当前浏览。
+            }
+        });
+    }
+
+    /// <summary>
+    /// 把列键对应的设置项置为 <paramref name="visible" />;值本就相同(或列键无法识别)
+    /// 时返回 false,调用方据此跳过一次无谓的落盘。
+    /// </summary>
+    private static bool TrySetColumnVisibility(TransferOptions transfer, string columnKey, bool visible)
+    {
+        switch (columnKey)
+        {
+            case "size" when transfer.ShowSizeColumn != visible:
+                transfer.ShowSizeColumn = visible;
+                return true;
+            case "permissions" when transfer.ShowPermissionsColumn != visible:
+                transfer.ShowPermissionsColumn = visible;
+                return true;
+            case "owner" when transfer.ShowOwnerColumn != visible:
+                transfer.ShowOwnerColumn = visible;
+                return true;
+            case "group" when transfer.ShowGroupColumn != visible:
+                transfer.ShowGroupColumn = visible;
+                return true;
+            case "type" when transfer.ShowTypeColumn != visible:
+                transfer.ShowTypeColumn = visible;
+                return true;
+            case "modified" when transfer.ShowModifiedColumn != visible:
+                transfer.ShowModifiedColumn = visible;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>把设置里的列显示状态铺到某个文件浏览器面板(设置保存后广播用)。</summary>
+    private static void ApplyColumnVisibility(FileBrowserViewModel browser, TransferOptions transfer)
+    {
+        browser.ShowSizeColumn = transfer.ShowSizeColumn;
+        browser.ShowPermissionsColumn = transfer.ShowPermissionsColumn;
+        browser.ShowOwnerColumn = transfer.ShowOwnerColumn;
+        browser.ShowGroupColumn = transfer.ShowGroupColumn;
+        browser.ShowTypeColumn = transfer.ShowTypeColumn;
+        browser.ShowModifiedColumn = transfer.ShowModifiedColumn;
     }
 
     /// <summary>

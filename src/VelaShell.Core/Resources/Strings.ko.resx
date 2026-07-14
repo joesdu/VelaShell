@@ -511,6 +511,9 @@
   <data name="FileType" xml:space="preserve">
     <value>유형</value>
   </data>
+  <data name="Sftp_FileTypeExt" xml:space="preserve">
+    <value>{0} 파일</value>
+  </data>
   <data name="Fingerprint" xml:space="preserve">
     <value>지문</value>
   </data>

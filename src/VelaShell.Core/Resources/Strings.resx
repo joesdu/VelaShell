@@ -385,6 +385,10 @@
   <data name="FileType" xml:space="preserve">
     <value>Type</value>
   </data>
+  <data name="Sftp_FileTypeExt" xml:space="preserve">
+    <value>{0} File</value>
+    <comment>文件浏览器“类型”列:{0} 为大写扩展名,如 "PHP File"。</comment>
+  </data>
   <data name="File" xml:space="preserve">
     <value>File</value>
   </data>

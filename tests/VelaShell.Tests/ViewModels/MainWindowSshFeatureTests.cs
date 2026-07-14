@@ -96,7 +96,9 @@ public sealed class MainWindowSshFeatureTests
         Assert.IsNull(tab);
         Assert.IsEmpty(vm.TabBar.Tabs);
         Assert.IsFalse(string.IsNullOrEmpty(vm.LastConnectionError));
-        StringAssert.Contains(vm.LastConnectionError, "认证失败");
+
+        // 比对本地化资源而非中文字面量:该文案随 UI 语言变化,写死会让测试只在中文环境通过。
+        Assert.AreEqual(Strings.Format("Msg_AuthFailed", "root@prod.example.com:22"), vm.LastConnectionError);
     }
 
     [TestMethod]
@@ -123,7 +125,7 @@ public sealed class MainWindowSshFeatureTests
         Assert.AreEqual(SessionStatus.Disconnected, tab.ConnectionStatus);
         Assert.IsTrue(tab.ShowDisconnectedOverlay);
         Assert.IsTrue(tab.HasConnectionError);
-        Assert.AreEqual("连接失败", tab.DisconnectOverlayTitle);
+        Assert.AreEqual(Strings.Get("Msg_ConnectionFailedTitle"), tab.DisconnectOverlayTitle);
         Assert.IsFalse(string.IsNullOrEmpty(vm.LastConnectionError));
     }
 
@@ -210,10 +212,11 @@ public sealed class MainWindowSshFeatureTests
         var vm = new MainWindowViewModel(recentConnectionService: recents);
         await vm.InitializeAsync();
         Assert.HasCount(2, vm.Sidebar.RecentConnections.Connections);
+        // 名称是测试数据(照原样显示),相对时间是本地化文案 —— 后者必须比对资源。
         Assert.AreEqual("Prod - 生产环境", vm.Sidebar.RecentConnections.Connections[0].DisplayName);
-        Assert.AreEqual("2 小时前", vm.Sidebar.RecentConnections.Connections[0].RelativeTime);
+        Assert.AreEqual(Strings.Format("Svc_HoursAgo", 2), vm.Sidebar.RecentConnections.Connections[0].RelativeTime);
         Assert.AreEqual("Dev", vm.Sidebar.RecentConnections.Connections[1].DisplayName);
-        Assert.AreEqual("3 天前", vm.Sidebar.RecentConnections.Connections[1].RelativeTime);
+        Assert.AreEqual(Strings.Format("Svc_DaysAgo", 3), vm.Sidebar.RecentConnections.Connections[1].RelativeTime);
     }
 
     [TestMethod]
