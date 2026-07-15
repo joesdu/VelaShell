@@ -157,7 +157,7 @@ public class SshConnectionService(
             _clients[session.SessionId] = client;
             session.Status = SessionStatus.Connected;
             session.ConnectedAt = DateTime.UtcNow;
-            if(logger is not null && logger.IsEnabled(LogLevel.Information))
+            if (logger is not null && logger.IsEnabled(LogLevel.Information))
             {
                 logger.LogInformation("SSH session {SessionId} connected to {Host}:{Port}",
                     session.SessionId, connectionInfo.Host, connectionInfo.Port);
