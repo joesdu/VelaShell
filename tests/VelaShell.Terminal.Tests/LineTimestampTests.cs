@@ -108,4 +108,59 @@ public class LineTimestampTests
         Feed(e, "\r\x1b[2K");
         Assert.IsNull(e.Screen.ActiveLine(0).Timestamp, "整行擦除后时间戳应清空。");
     }
+
+    /// <summary>
+    /// EL 模式 0(ESC[K,擦到行尾)是重绘型 shell 的主力擦除手段 —— PSReadLine 每重画一行都发它。
+    /// 它同样把行擦空,时间戳就同样该作废,否则侧栏会在空行上显示时间。
+    /// </summary>
+    [TestMethod]
+    public void ErasingToEndOfLine_ClearsTimestamp_WhenRowBecomesBlank()
+    {
+        TerminalEmulator e = New();
+        Feed(e, "content");
+        Assert.IsNotNull(e.Screen.ActiveLine(0).Timestamp);
+
+        Feed(e, "\r\x1b[K");
+        Assert.IsNull(e.Screen.ActiveLine(0).Timestamp, "擦到行尾后整行已空,时间戳应清空。");
+    }
+
+    /// <summary>擦除只清掉一部分时,行还有内容,时间戳必须留着 —— 别矫枉过正。</summary>
+    [TestMethod]
+    public void ErasingToEndOfLine_KeepsTimestamp_WhenContentRemains()
+    {
+        TerminalEmulator e = New();
+        Feed(e, "abcdef");
+        DateTime? ts = e.Screen.ActiveLine(0).Timestamp;
+
+        // 光标回到第 3 列再擦到行尾:留下 "abc"。
+        Feed(e, "\r\x1b[3C\x1b[K");
+        Assert.AreEqual("abc", e.Screen.ActiveLine(0).GetText(), "应只擦掉光标之后的部分。");
+        Assert.AreEqual(ts, e.Screen.ActiveLine(0).Timestamp, "行仍有内容,时间戳应保留。");
+    }
+
+    /// <summary>
+    /// 用户实测的场景:PowerShell + PSReadLine 在提示符下方画出历史/预测列表,撤销输入后又逐行
+    /// 用 ESC[K 擦掉。被擦掉的行必须不再有时间戳,否则侧栏的时间线会一直拖到提示符下方,
+    /// 折叠导引线也随之画过光标位置(光标被盖住)。
+    /// </summary>
+    [TestMethod]
+    public void PredictionRowsErasedWithEl0_LeaveNoTimestampBelowThePrompt()
+    {
+        TerminalEmulator e = New(40, 8);
+        Feed(e, "PS> c");                       // 提示符 + 输入(第 0 行)
+        Feed(e, "\r\n> history one");           // 下方列表
+        Feed(e, "\r\n> history two");
+
+        Assert.IsNotNull(e.Screen.ActiveLine(1).Timestamp, "列表行此时确有内容。");
+        Assert.IsNotNull(e.Screen.ActiveLine(2).Timestamp);
+
+        // 撤销输入:PSReadLine 逐行 ESC[K 擦掉列表,光标回到提示符行。
+        Feed(e, "\r\x1b[K");                    // 擦第 2 行
+        Feed(e, "\x1b[A\r\x1b[K");              // 上移,擦第 1 行
+        Feed(e, "\x1b[A\r\x1b[KPS> ");          // 上移,重画提示符行
+
+        Assert.IsNull(e.Screen.ActiveLine(1).Timestamp, "被擦空的列表行不应再有时间戳。");
+        Assert.IsNull(e.Screen.ActiveLine(2).Timestamp, "被擦空的列表行不应再有时间戳。");
+        Assert.IsNotNull(e.Screen.ActiveLine(0).Timestamp, "提示符行仍有内容,应保留时间戳。");
+    }
 }

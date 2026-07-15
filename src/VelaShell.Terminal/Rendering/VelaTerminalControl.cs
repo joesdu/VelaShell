@@ -987,6 +987,21 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     internal double CellHeightForTest { get; private set; } = 16;
     internal GutterLayout GutterForTest => Gutter;
 
+    /// <summary>
+    /// 该行是否显示侧栏(行号/时间戳),并计入折叠导引线的下端。
+    /// </summary>
+    /// <remarks>
+    /// 两条规矩:
+    /// · 有真实内容的行一律显示 —— 满屏重绘型程序(vim 等)光标下方也有内容,不能按光标位置砍掉。
+    /// · 只有时间戳、没有内容的空行,仅在光标位置及之上显示。换行会给经过的行盖上时间戳(哪怕
+    ///   没写入任何字符,见 LineTimestampTests),重绘型 shell 又常把提示符下方来回涂改;若不设
+    ///   这道界,时间线会一直拖到提示符下方的空白区,折叠导引线随之画过光标把光标盖住
+    ///   (用户实测:PowerShell + oh-my-posh + PSReadLine 的历史列表撤销后)。
+    /// internal 供测试直接验证这条判定,不必去驱动整个渲染。
+    /// </remarks>
+    internal static bool ShowsGutterFor(TerminalRow line, int absoluteRow, int cursorAbsoluteRow) =>
+        line.LastNonBlank() >= 0 || (line.Timestamp is not null && absoluteRow <= cursorAbsoluteRow);
+
     private void RenderGutter(DrawingContext context, TerminalScreen screen, TerminalPalette palette, int rows)
     {
         // 侧栏底色刻意保持与终端背景一致(不再叠色):正文区域整体右移,侧栏落在开头那次全局底色填充上,
@@ -996,6 +1011,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         var typeface = new Typeface(FontFamily);
         double numberLeft = Gutter.NumberLeft;
         int lastContentRow = -1; // 最后一行有内容的屏幕行:分隔线/折叠线只画到这里,空屏不画侧栏。
+        int cursorAbsoluteRow = screen.ScrollbackCount + screen.CursorY;
         for (int screenRow = 0; screenRow < rows; screenRow++)
         {
             int absoluteRow = _screenToAbs[screenRow];
@@ -1003,14 +1019,11 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             {
                 continue;
             }
-            TerminalRow line = screen.ViewLine(absoluteRow);
-            // 从未写入内容的空行(刚开终端时的整屏空行、输出未满屏时下方的空行)不显示行号/时间,
-            // 避免像截图那样凭空多出几十行编号。
-            bool hasContent = line.Timestamp is not null || line.LastNonBlank() >= 0;
-            if (!hasContent)
+            if (!ShowsGutterFor(screen.ViewLine(absoluteRow), absoluteRow, cursorAbsoluteRow))
             {
                 continue;
             }
+            TerminalRow line = screen.ViewLine(absoluteRow);
             lastContentRow = screenRow;
             double y = screenRow * CellHeightForTest + _glyphYOffset;
             if (ShowLineTimestamp && line.Timestamp is { } ts)
