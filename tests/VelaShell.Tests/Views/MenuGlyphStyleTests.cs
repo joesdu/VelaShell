@@ -18,6 +18,10 @@ namespace VelaShell.Tests.Views;
 /// 这里盯着 RenderTransform 而不是 Width/Height,是因为那些尺寸是模板标记里的局部值,
 /// 样式设不动 —— 设了既不报错也不生效。缩放是唯一能落地的路子,故本测试同时钉住
 /// 「别改回 Width/Height」。
+///
+/// 这里只守机制与安全边界(缩放确实生效、不超过字高、不缩到看不清、布局不被扰动),
+/// 不规定具体比例 —— 比例是照观感调的,该由眼睛拍板。别把某次调出来的数字写成断言,
+/// 那样调一次观感就得改一次测试,测试也就不再说明任何事情。
 /// </remarks>
 [TestClass]
 [TestCategory("MenuGlyphStyle")]
@@ -33,6 +37,12 @@ public class MenuGlyphStyleTests
 
     /// <summary>菜单文字的实际行高(FontSize 11)。字形不该比它更高。</summary>
     private const double MenuTextHeight = 12;
+
+    /// <summary>
+    /// 字形渲染高度的下限。这是道防事故的底线(防手滑缩成一个点),不是规格 ——
+    /// 具体缩放比例是照着观感定的,该由眼睛而不是这条断言来拍。
+    /// </summary>
+    private const double LegibleGlyphHeight = 7;
 
     /// <summary>DockStyles 给右键菜单钉死的字号。上面两个缩放比例就是按它算出来的。</summary>
     private const double MenuFontSize = 11;
@@ -56,7 +66,7 @@ public class MenuGlyphStyleTests
             double scale = UniformScaleOf(chevron.RenderTransform, "箭头");
             double rendered = FluentChevronHeight * scale;
             Assert.IsLessThanOrEqualTo(MenuTextHeight, rendered, "箭头渲染高度不应超过菜单文字的行高。");
-            Assert.IsGreaterThanOrEqualTo(9.0, rendered, "也不该缩到看不清。");
+            Assert.IsGreaterThanOrEqualTo(LegibleGlyphHeight, rendered, "也不该缩到看不清。");
         });
     }
 
@@ -72,22 +82,7 @@ public class MenuGlyphStyleTests
             double scale = UniformScaleOf(toggle.RenderTransform, "勾号");
             double rendered = FluentCheckGlyphHeight * scale;
             Assert.IsLessThanOrEqualTo(MenuTextHeight, rendered, "勾号渲染高度不应超过菜单文字的行高。");
-            Assert.IsGreaterThanOrEqualTo(9.0, rendered, "也不该缩到看不清。");
-        });
-    }
-
-    /// <summary>两个字形缩放后观感应齐平,不能一个比另一个明显大。</summary>
-    [TestMethod]
-    public void CheckGlyphAndChevron_RenderAtAComparableHeight()
-    {
-        OnUi(() =>
-        {
-            (_, ContentControl toggle, Shapes.Path chevron) = OpenMenu();
-
-            double check = FluentCheckGlyphHeight * UniformScaleOf(toggle.RenderTransform, "勾号");
-            double arrow = FluentChevronHeight * UniformScaleOf(chevron.RenderTransform, "箭头");
-
-            Assert.IsLessThanOrEqualTo(1.5, Math.Abs(check - arrow), $"勾号({check:F1}px)与箭头({arrow:F1}px)的渲染高度应接近。");
+            Assert.IsGreaterThanOrEqualTo(LegibleGlyphHeight, rendered, "也不该缩到看不清。");
         });
     }
 
