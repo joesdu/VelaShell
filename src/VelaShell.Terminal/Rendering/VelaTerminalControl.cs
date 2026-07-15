@@ -1103,7 +1103,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         ScrollChanged?.Invoke();
     }
 
-    /// <summary>侧栏右键菜单:四个部件(行号/时间戳/折叠标记/空白)的可勾选开关(勾号前缀表示已开)。</summary>
+    /// <summary>侧栏右键菜单:四个部件(行号/时间戳/折叠标记/空白)的可勾选开关。</summary>
     private void ShowGutterContextMenu() => BuildGutterContextMenu().Open(this);
 
     /// <summary>构建侧栏右键菜单(不弹出)。internal 供 headless 测试直接检视内容与开关接线,避免打开弹层。</summary>
@@ -1118,12 +1118,25 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         return menu;
     }
 
+    /// <summary>
+    /// 用 <see cref="MenuItemToggleType.CheckBox" /> 而非在 Header 里拼勾号字符:勾号交给模板
+    /// 固定宽度的勾选列渲染,开关时文字不再左右跳,且勾号是矢量图形、跟随主题前景色 —— 拼字符
+    /// 时 JB Mono 没有 U+2714,回退字体的字宽与颜色都不受控。与文件浏览器的列开关菜单同款。
+    /// </summary>
     private void AddGutterMenuItem(ContextMenu menu, string label, bool on, Action<bool> set)
     {
-        var item = new MenuItem { Header = (on ? "✔  " : "      ") + label };
+        var item = new MenuItem
+        {
+            Header = label,
+            ToggleType = MenuItemToggleType.CheckBox,
+            IsChecked = on,
+            // 四个部件可一次性调完,不必每改一个都重新右键。
+            StaysOpenOnClick = true
+        };
+        // 读 item.IsChecked(点击时已由模板翻转)而非取反捕获的 on:菜单不关,同一项可被连点多次。
         item.Click += (_, _) =>
         {
-            set(!on);
+            set(item.IsChecked);
             GutterOptionsChanged?.Invoke(ShowLineTimestamp, ShowLineNumber, ShowFoldMarker, GutterBlank);
         };
         menu.Items.Add(item);
