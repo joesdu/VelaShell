@@ -1881,10 +1881,11 @@ public class MainWindowViewModel : ReactiveObject
                 // 等待期间用户可能已手动重连、关掉标签或主动断开。
                 if (
                     tab
-                        is {
-                            ConnectionStatus: SessionStatus.Disconnected,
-                            UserRequestedDisconnect: false
-                        }
+                        is
+                    {
+                        ConnectionStatus: SessionStatus.Disconnected,
+                        UserRequestedDisconnect: false
+                    }
                     && TabBar.Tabs.Contains(tab)
                 )
                 {

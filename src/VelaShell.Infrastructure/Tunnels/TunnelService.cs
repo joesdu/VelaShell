@@ -141,7 +141,7 @@ public class TunnelService(
                     tunnels.Add(info);
                 }
             }
-            if(logger is not null && logger.IsEnabled(LogLevel.Information))
+            if (logger is not null && logger.IsEnabled(LogLevel.Information))
             {
                 logger.LogInformation("Stopped tunnel {TunnelId} for session {SessionId}", tunnelId, info.SessionId);
             }
