@@ -548,6 +548,28 @@ public class SftpServiceTests
         await sshClient.Received(2).RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// 分隔标记以 '#' 开头,在命令里必须带引号:裸写时 shell 会把它当注释,连同其后的
+    /// group 查询一起吞掉,于是只有 passwd 段跑出来 —— 属主显示名称而属组回退数字。
+    /// 其余查表测试都直接喂假输出,测不到命令本身,故在此守住。
+    /// </summary>
+    [TestMethod]
+    public async Task ListDirectoryAsync_IdentityLookupCommand_QuotesSectionSeparator()
+    {
+        ISshClientWrapper sshClient = GivenIdentityLookupReturns(IdentityLookupOutput);
+        _sftpClient.ListDirectoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([]));
+
+        await _sftpService.ListDirectoryAsync(_sessionId, "/srv");
+
+        string command = (string)sshClient.ReceivedCalls()
+                                          .Single(c => c.GetMethodInfo().Name == nameof(ISshClientWrapper.RunCommandAsync))
+                                          .GetArguments()[0]!;
+        StringAssert.Contains(command, "echo '###VELA-GROUPS###'");
+        Assert.IsFalse(command.Contains("echo ###", StringComparison.Ordinal),
+                       "分隔标记未加引号,group 段会被 shell 当注释吞掉。");
+    }
+
     private ISshClientWrapper GivenIdentityLookupReturns(string output)
     {
         ISshClientWrapper sshClient = Substitute.For<ISshClientWrapper>();

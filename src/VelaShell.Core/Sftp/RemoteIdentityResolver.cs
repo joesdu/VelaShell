@@ -32,6 +32,10 @@ internal sealed record RemoteIdentityMap(IReadOnlyDictionary<int, string> Users,
 internal sealed class RemoteIdentityResolver(ISshConnectionService connectionService)
 {
     /// <summary>passwd 段与 group 段的分隔标记(一次往返读回两张表)。</summary>
+    /// <remarks>
+    /// 在 <see cref="LookupCommand" /> 里必须带引号:'#' 开头的词会被 shell 当注释,
+    /// 吞掉标记连同其后的整条 group 查询。
+    /// </remarks>
     private const string SectionSeparator = "###VELA-GROUPS###";
 
     /// <summary>
@@ -41,7 +45,7 @@ internal sealed class RemoteIdentityResolver(ISshConnectionService connectionSer
     /// </summary>
     private const string LookupCommand =
         "{ getent passwd 2>/dev/null || cat /etc/passwd 2>/dev/null; }; " +
-        "echo " + SectionSeparator + "; " +
+        "echo '" + SectionSeparator + "'; " +
         "{ getent group 2>/dev/null || cat /etc/group 2>/dev/null; }";
 
     /// <summary>
