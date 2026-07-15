@@ -35,6 +35,28 @@
     <InternalsVisibleTo Include="VelaShell.Tests" />
   </ItemGroup>
 
+  <!--
+    关于页的依赖版本(见 Services/PackageVersions.cs):把 Directory.Packages.props 里 pin 的
+    包版本在编译期写进程序集元数据,免得手写版本号跟着漂(它已经漂过一次:关于页停在 12.0.5,
+    实际引用早已是 12.1.0)。
+
+    为什么不在运行时读 .deps.json:Release 是 PublishSingleFile(见上面的 PropertyGroup),
+    deps.json 被打进 exe 的 bundle,磁盘上不存在,读不到。
+    为什么不读程序集版本:那与包版本不是一回事 —— SSH.NET 程序集报 2025.1.0.1、
+    ReactiveUI 报 23.0.0.0,而包版本是 2025.1.0 / 23.2.28。
+
+    这里把 17 个包全写进去(每条几十字节),而不是只挑关于页当前用到的那两个:
+    否则关于页每加一个依赖都得回来改构建脚本,这种隐式耦合迟早被漏掉。
+  -->
+  <Target Name="EmbedPackageVersions" BeforeTargets="GetAssemblyAttributes">
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute" Condition="'%(PackageVersion.Version)' != ''">
+        <_Parameter1>PackageVersion:%(PackageVersion.Identity)</_Parameter1>
+        <_Parameter2>%(PackageVersion.Version)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <ProjectReference Include="..\VelaShell.Core\VelaShell.Core.csproj" />
     <ProjectReference Include="..\VelaShell.Terminal\VelaShell.Terminal.csproj" />

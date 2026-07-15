@@ -226,7 +226,7 @@ public class LocalizationTests : IDisposable
     {
         var manager = new System.Resources.ResourceManager("VelaShell.Core.Resources.Strings", typeof(Strings).Assembly);
         System.Resources.ResourceSet neutral = manager.GetResourceSet(CultureInfo.InvariantCulture, true, false)!;
-        HashSet<string> baseline = neutral.Cast<System.Collections.DictionaryEntry>()
+        var baseline = neutral.Cast<System.Collections.DictionaryEntry>()
                                           .Select(entry => (string)entry.Key)
                                           .ToHashSet();
         Assert.IsNotEmpty(baseline);
@@ -234,11 +234,11 @@ public class LocalizationTests : IDisposable
         {
             System.Resources.ResourceSet? set = manager.GetResourceSet(new CultureInfo(culture), true, false);
             Assert.IsNotNull(set, $"{culture} 卫星资源缺失");
-            HashSet<string> keys = set.Cast<System.Collections.DictionaryEntry>()
+            var keys = set.Cast<System.Collections.DictionaryEntry>()
                                       .Select(entry => (string)entry.Key)
                                       .ToHashSet();
-            List<string> missing = baseline.Except(keys).Order().ToList();
-            List<string> extra = keys.Except(baseline).Order().ToList();
+            var missing = baseline.Except(keys).Order().ToList();
+            var extra = keys.Except(baseline).Order().ToList();
             Assert.IsEmpty(missing, $"{culture} 缺失 {missing.Count} 键: {string.Join(", ", missing.Take(20))}");
             Assert.IsEmpty(extra, $"{culture} 多余 {extra.Count} 键: {string.Join(", ", extra.Take(20))}");
         }

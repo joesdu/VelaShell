@@ -106,7 +106,7 @@ public class QuickCommandsViewModelTests : IDisposable
     public void Runner_NoExplicitSelection_UsesCurrentTerminal()
     {
         var runner = new QuickCommandRunnerViewModel(_vm);
-        Guid currentId = Guid.NewGuid();
+        var currentId = Guid.NewGuid();
         runner.UpdateTargets([(currentId, "current")]);
         runner.SetCurrentTarget(currentId);
         QuickCommandExecutionRequest? request = null;
@@ -124,9 +124,9 @@ public class QuickCommandsViewModelTests : IDisposable
     public void Runner_ExplicitSelection_BroadcastsOnlySelectedTerminals()
     {
         var runner = new QuickCommandRunnerViewModel(_vm);
-        Guid firstId = Guid.NewGuid();
-        Guid secondId = Guid.NewGuid();
-        Guid currentId = Guid.NewGuid();
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        var currentId = Guid.NewGuid();
         runner.UpdateTargets([(firstId, "first"), (secondId, "second"), (currentId, "current")]);
         runner.SetCurrentTarget(currentId);
         runner.Targets[0].IsSelected = true;
@@ -145,8 +145,8 @@ public class QuickCommandsViewModelTests : IDisposable
     public void Runner_RemovedSelectedTarget_FallsBackToCurrentTerminal()
     {
         var runner = new QuickCommandRunnerViewModel(_vm);
-        Guid removedId = Guid.NewGuid();
-        Guid currentId = Guid.NewGuid();
+        var removedId = Guid.NewGuid();
+        var currentId = Guid.NewGuid();
         runner.UpdateTargets([(removedId, "removed"), (currentId, "current")]);
         runner.Targets[0].IsSelected = true;
         runner.SetCurrentTarget(currentId);

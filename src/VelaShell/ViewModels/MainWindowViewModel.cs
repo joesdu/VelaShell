@@ -1275,7 +1275,7 @@ public class MainWindowViewModel : ReactiveObject
         System.Collections.Specialized.NotifyCollectionChangedEventArgs e
     )
     {
-        HashSet<TerminalTabViewModel> currentTabs = TabBar
+        var currentTabs = TabBar
             .Tabs.OfType<TerminalTabViewModel>()
             .ToHashSet();
         foreach (
@@ -1324,7 +1324,7 @@ public class MainWindowViewModel : ReactiveObject
         QuickCommandExecutionRequest request
     )
     {
-        HashSet<Guid> targetIds = request.TargetIds.ToHashSet();
+        var targetIds = request.TargetIds.ToHashSet();
         TerminalTabViewModel[] targets = TabBar
             .Tabs.OfType<TerminalTabViewModel>()
             .Where(tab => tab.IsConnected && targetIds.Contains(tab.Id))

@@ -3,7 +3,6 @@ using System.ComponentModel;
 using System.Reactive;
 using System.Reflection;
 using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using ReactiveUI;
 using VelaShell.Core.Data;
 using VelaShell.Core.Localization;
@@ -405,15 +404,22 @@ public class SettingsViewModel : ReactiveObject
             ?? "0.0.0"
         );
 
-    /// <summary>关于页显示的 UI 框架版本。</summary>
-    public static string AboutFramework => "Avalonia UI 12.0.5";
+    /// <summary>关于页显示的 UI 框架版本(版本取自实际引用的 NuGet 包,见 <see cref="PackageVersions" />)。</summary>
+    public static string AboutFramework => Describe("Avalonia UI", "Avalonia");
 
     /// <summary>关于页显示的 .NET 运行时版本。</summary>
     public static string AboutRuntime =>
         $".NET {Environment.Version.Major}.{Environment.Version.Minor}";
 
-    /// <summary>关于页显示的 SSH 库版本。</summary>
-    public static string AboutSshLibrary => "SSH.NET 2025.1.0";
+    /// <summary>关于页显示的 SSH 库版本(版本取自实际引用的 NuGet 包,见 <see cref="PackageVersions" />)。</summary>
+    public static string AboutSshLibrary => Describe("SSH.NET", "SSH.NET");
+
+    /// <summary>
+    /// 拼 "名称 版本";版本读不到时只显示名称 —— 关于页少个版本号可以接受,
+    /// 显示一个可能已经过时的写死数字不行。
+    /// </summary>
+    private static string Describe(string displayName, string packageId) =>
+        PackageVersions.Of(packageId) is { } version ? $"{displayName} {version}" : displayName;
 
     /// <summary>关于页显示的操作系统版本与位数。</summary>
     public static string AboutOs =>

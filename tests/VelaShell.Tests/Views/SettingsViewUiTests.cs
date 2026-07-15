@@ -1,5 +1,4 @@
 using System.Reactive.Linq;
-using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;

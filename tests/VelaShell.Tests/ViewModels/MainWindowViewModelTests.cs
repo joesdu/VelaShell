@@ -6,7 +6,6 @@ using VelaShell.Core.Models;
 using VelaShell.Core.Sftp;
 using VelaShell.Presentation.Commands;
 using VelaShell.Presentation.ViewModels;
-using VelaShell.Services;
 using VelaShell.Terminal;
 using VelaShell.ViewModels;
 
