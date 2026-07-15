@@ -32,7 +32,8 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// </summary>
     public TerminalTabViewModel(ITerminalEmulator terminalEmulator)
     {
-        TerminalEmulator = terminalEmulator ?? throw new ArgumentNullException(nameof(terminalEmulator));
+        TerminalEmulator =
+            terminalEmulator ?? throw new ArgumentNullException(nameof(terminalEmulator));
         Title = Strings.NewTab;
         ConnectionStatus = SessionStatus.Disconnected;
 
@@ -49,18 +50,24 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
         // Toolbar quick actions (用户反馈 #5): tear the transport down but keep the tab,
         // or ask the owner to reconnect in place (#19 flow).
-        DisconnectCommand = ReactiveCommand.Create(() =>
+        DisconnectCommand = ReactiveCommand.Create(
+            () =>
             {
                 UserRequestedDisconnect = true;
                 DetachTransport();
                 MarkDisconnected();
             },
-            this.WhenAnyValue(x => x.IsConnected));
-        ReconnectCommand = ReactiveCommand.Create(RequestReconnect,
-            this.WhenAnyValue(x => x.IsConnected, connected => !connected));
+            this.WhenAnyValue(x => x.IsConnected)
+        );
+        ReconnectCommand = ReactiveCommand.Create(
+            RequestReconnect,
+            this.WhenAnyValue(x => x.IsConnected, connected => !connected)
+        );
 
         // 标签页内失败/断开覆盖层(设计 yxjmg)的“关闭标签页”按钮。
-        CloseTabCommand = ReactiveCommand.Create(() => CloseRequested?.Invoke(this, EventArgs.Empty));
+        CloseTabCommand = ReactiveCommand.Create(() =>
+            CloseRequested?.Invoke(this, EventArgs.Empty)
+        );
     }
 
     /// <summary>Creates a tab and attaches a live transport immediately (the established-connection case).</summary>
@@ -84,7 +91,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// 本地终端/无配置标签返回透明。Profile 在标签创建时就已赋值,绑定一次性读取即可。
     /// </summary>
     public Avalonia.Media.IBrush ConnectionAccentBrush =>
-        Profile is { } profile ? ConnectionAccent.BrushFor(profile.Id) : Avalonia.Media.Brushes.Transparent;
+        Profile is { } profile
+            ? ConnectionAccent.BrushFor(profile.Id)
+            : Avalonia.Media.Brushes.Transparent;
 
     /// <summary>本标签正在键入的命令行跟踪器(命令补全弹层的数据入口,见视图侧)。</summary>
     public TerminalInputTracker InputTracker { get; } = new();
@@ -98,9 +107,12 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     private void OnUserInputForTracker(byte[] data)
     {
         InputTracker.Process(data);
-        SuggestDiag.Log("typed", $"""
+        SuggestDiag.Log(
+            "typed",
+            $"""
             bytes=[{Convert.ToHexString(data)}] input="{InputTracker.CurrentInput ?? "<unknown>"}"
-            """);
+            """
+        );
     }
 
     private void OnTrackedCommandSubmitted(string command)
@@ -118,13 +130,16 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             CommandLineSubmitted?.Invoke(command);
             return;
         }
-        DispatcherTimer.RunOnce(() =>
-        {
-            if (!_disposed && ScreenContains(control, command))
+        DispatcherTimer.RunOnce(
+            () =>
             {
-                CommandLineSubmitted?.Invoke(command);
-            }
-        }, TimeSpan.FromMilliseconds(200));
+                if (!_disposed && ScreenContains(control, command))
+                {
+                    CommandLineSubmitted?.Invoke(command);
+                }
+            },
+            TimeSpan.FromMilliseconds(200)
+        );
     }
 
     private void OnUnknownLineSubmitted()
@@ -177,7 +192,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     {
         try
         {
-            return control.GetBufferLine(control.CursorRow).Contains(command, StringComparison.Ordinal);
+            return control
+                .GetBufferLine(control.CursorRow)
+                .Contains(command, StringComparison.Ordinal);
         }
         catch
         {
@@ -281,15 +298,22 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// 标签页内失败/断开覆盖层(设计 yxjmg)的可见性:未连接(断开/错误)且是一个
     /// 真实会话标签(SSH 或本地)时显示。连接中/已连接不显示。
     /// </summary>
-    public bool ShowDisconnectedOverlay => !_disposed && ConnectionStatus is SessionStatus.Disconnected or SessionStatus.Error && (Profile is not null || LocalShell is not null);
+    public bool ShowDisconnectedOverlay =>
+        !_disposed
+        && ConnectionStatus is SessionStatus.Disconnected or SessionStatus.Error
+        && (Profile is not null || LocalShell is not null);
 
     /// <summary>失败/断开覆盖层的标题:有错误时为“连接失败”,否则为“连接已断开”。</summary>
-    public string DisconnectOverlayTitle => HasConnectionError ? Strings.Get("Msg_ConnectionFailedTitle") : Strings.Get("Msg_ConnectionClosedTitle");
+    public string DisconnectOverlayTitle =>
+        HasConnectionError
+            ? Strings.Get("Msg_ConnectionFailedTitle")
+            : Strings.Get("Msg_ConnectionClosedTitle");
 
     /// <summary>失败/断开覆盖层的详情:有错误时显示具体原因,否则显示掉线主机提示。</summary>
-    public string DisconnectOverlayDetail => HasConnectionError
-                                                 ? ConnectionError!
-                                                 : Strings.Format("Msg_SshConnectionLostDetail", OverlayHostLabel);
+    public string DisconnectOverlayDetail =>
+        HasConnectionError
+            ? ConnectionError!
+            : Strings.Format("Msg_SshConnectionLostDetail", OverlayHostLabel);
 
     private string OverlayHostLabel => Profile is { } p ? $"{p.Host}:{p.Port}" : Title;
 
@@ -388,6 +412,22 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         {
             ReconnectRequested?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>
+    /// 通过正常用户输入通道执行一条快捷命令。命令正文原样发送,仅移除已有的末尾
+    /// 换行并补一个回车,使其与用户键入后按 Enter 的行为一致。
+    /// </summary>
+    /// <returns>命令已发送时为 true;终端未连接或命令为空时为 false。</returns>
+    public bool TryExecuteCommand(string command)
+    {
+        if (!IsConnected || string.IsNullOrWhiteSpace(command))
+        {
+            return false;
+        }
+        string payload = command.TrimEnd('\r', '\n') + "\r";
+        TerminalEmulator.WriteInput(Encoding.UTF8.GetBytes(payload));
+        return true;
     }
 
     /// <summary>
@@ -533,7 +573,8 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// </summary>
     private void FeedDisconnectNotice()
     {
-        string notice = $"\r\n\u001b[0m\u001b[31m● {Strings.TerminalDisconnectedNotice}\u001b[0m\r\n\u001b[90m{Strings.TerminalReconnectHint}\u001b[0m\r\n";
+        string notice =
+            $"\r\n\u001b[0m\u001b[31m● {Strings.TerminalDisconnectedNotice}\u001b[0m\r\n\u001b[90m{Strings.TerminalReconnectHint}\u001b[0m\r\n";
         try
         {
             TerminalEmulator.Feed(Encoding.UTF8.GetBytes(notice));

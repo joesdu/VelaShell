@@ -222,6 +222,14 @@
   <data name="QuickCommands" xml:space="preserve">
     <value>快捷命令</value>
   </data>
+  <data name="QuickCmd_SelectTargets" xml:space="preserve"><value>选择执行终端</value></data>
+  <data name="QuickCmd_SelectAll" xml:space="preserve"><value>全选</value></data>
+  <data name="QuickCmd_ClearSelection" xml:space="preserve"><value>清空</value></data>
+  <data name="QuickCmd_NoConnectedTerminals" xml:space="preserve"><value>暂无已连接终端</value></data>
+  <data name="QuickCmd_CurrentTerminal" xml:space="preserve"><value>当前终端</value></data>
+  <data name="QuickCmd_SelectedTerminals" xml:space="preserve"><value>个终端已选</value></data>
+  <data name="QuickCmd_Search" xml:space="preserve"><value>搜索代码片段</value></data>
+  <data name="QuickCmd_Run" xml:space="preserve"><value>运行</value></data>
   <data name="AddCommand" xml:space="preserve">
     <value>添加命令</value>
   </data>
@@ -1978,6 +1986,12 @@
   <data name="SetSnippets_NewSnippet" xml:space="preserve">
     <value>新建片段</value>
   </data>
+  <data name="SetSnippets_ShowInSidebar" xml:space="preserve">
+    <value>在左侧栏显示快捷命令</value>
+  </data>
+  <data name="SetSnippets_ShowInSidebarDesc" xml:space="preserve">
+    <value>在左侧栏显示可折叠的快捷命令面板。</value>
+  </data>
   <data name="SetSnippets_Subtitle" xml:space="preserve">
     <value>// 常用命令片段,可在快捷命令面板中执行</value>
   </data>
@@ -2539,8 +2553,14 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Sidebar_RefreshRecent" xml:space="preserve">
     <value>刷新最近连接</value>
   </data>
+  <data name="Sidebar_ToggleSection" xml:space="preserve">
+    <value>折叠或展开此区域</value>
+  </data>
   <data name="StatusBar_Swap" xml:space="preserve">
     <value>Swap</value>
+  </data>
+  <data name="StatusBar_RemoteFiles" xml:space="preserve">
+    <value>打开或关闭远程文件</value>
   </data>
   <data name="Svc_Active" xml:space="preserve">
     <value>活跃</value>

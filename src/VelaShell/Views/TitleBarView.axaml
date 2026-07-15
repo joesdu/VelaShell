@@ -131,6 +131,18 @@
                          Foreground="{DynamicResource VelaTextMuted}" />
         </Button>
         <Button Theme="{StaticResource VelaTitleActionButton}"
+                ToolTip.Tip="{loc:Localize Cmd_SftpFileManager}"
+                Command="{Binding ToggleFileBrowserCommand}">
+          <Panel>
+            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.folder-open}"
+                           Foreground="{DynamicResource VelaTextMuted}"
+                           IsVisible="{Binding !FileBrowser.IsVisible}" />
+            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.folder-open}"
+                           Foreground="{DynamicResource VelaAccent}"
+                           IsVisible="{Binding FileBrowser.IsVisible}" />
+          </Panel>
+        </Button>
+        <Button Theme="{StaticResource VelaTitleActionButton}"
                 ToolTip.Tip="{loc:Localize Menu_TunnelTip}"
                 Command="{Binding RunCommand}" CommandParameter="tools.tunnel">
           <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.route}"

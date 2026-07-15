@@ -177,6 +177,14 @@
                              Data="{StaticResource Icon.refresh-cw}"
                              Foreground="{DynamicResource VelaTextTertiary}" />
             </Button>
+            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    Command="{Binding ToggleVisibilityCommand}"
+                    ToolTip.Tip="{loc:Localize Close}">
+              <pc:LucideIcon Width="13" Height="13"
+                             Data="{StaticResource Icon.x}"
+                             Foreground="{DynamicResource VelaTextTertiary}" />
+            </Button>
           </StackPanel>
         </Grid>
       </Border>

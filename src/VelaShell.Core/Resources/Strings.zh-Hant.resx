@@ -1220,6 +1220,14 @@
   <data name="QuickCommands" xml:space="preserve">
     <value>快速命令</value>
   </data>
+  <data name="QuickCmd_SelectTargets" xml:space="preserve"><value>選擇執行終端</value></data>
+  <data name="QuickCmd_SelectAll" xml:space="preserve"><value>全選</value></data>
+  <data name="QuickCmd_ClearSelection" xml:space="preserve"><value>清除</value></data>
+  <data name="QuickCmd_NoConnectedTerminals" xml:space="preserve"><value>暫無已連線終端</value></data>
+  <data name="QuickCmd_CurrentTerminal" xml:space="preserve"><value>目前終端</value></data>
+  <data name="QuickCmd_SelectedTerminals" xml:space="preserve"><value>個終端已選</value></data>
+  <data name="QuickCmd_Search" xml:space="preserve"><value>搜尋程式碼片段</value></data>
+  <data name="QuickCmd_Run" xml:space="preserve"><value>執行</value></data>
   <data name="QuickConnect" xml:space="preserve">
     <value>快速連線</value>
   </data>
@@ -1817,6 +1825,12 @@
   <data name="SetSnippets_NewSnippet" xml:space="preserve">
     <value>新增片段</value>
   </data>
+  <data name="SetSnippets_ShowInSidebar" xml:space="preserve">
+    <value>在左側欄顯示快速命令</value>
+  </data>
+  <data name="SetSnippets_ShowInSidebarDesc" xml:space="preserve">
+    <value>在左側欄顯示可摺疊的快速命令面板。</value>
+  </data>
   <data name="SetSnippets_Subtitle" xml:space="preserve">
     <value>// 常用命令片段,可在快速命令面板中執行</value>
   </data>
@@ -2384,6 +2398,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Sidebar_RefreshRecent" xml:space="preserve">
     <value>重新整理最近連線</value>
   </data>
+  <data name="Sidebar_ToggleSection" xml:space="preserve">
+    <value>摺疊或展開此區域</value>
+  </data>
   <data name="Size" xml:space="preserve">
     <value>大小</value>
   </data>
@@ -2392,6 +2409,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="StatusBar_Swap" xml:space="preserve">
     <value>Swap</value>
+  </data>
+  <data name="StatusBar_RemoteFiles" xml:space="preserve">
+    <value>開啟或關閉遠端檔案</value>
   </data>
   <data name="Svc_Active" xml:space="preserve">
     <value>活躍</value>

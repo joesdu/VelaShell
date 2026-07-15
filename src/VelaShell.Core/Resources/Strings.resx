@@ -123,6 +123,14 @@
   <data name="QuickCommands" xml:space="preserve">
     <value>Quick Commands</value>
   </data>
+  <data name="QuickCmd_SelectTargets" xml:space="preserve"><value>Select terminals</value></data>
+  <data name="QuickCmd_SelectAll" xml:space="preserve"><value>Select all</value></data>
+  <data name="QuickCmd_ClearSelection" xml:space="preserve"><value>Clear</value></data>
+  <data name="QuickCmd_NoConnectedTerminals" xml:space="preserve"><value>No connected terminals</value></data>
+  <data name="QuickCmd_CurrentTerminal" xml:space="preserve"><value>Current terminal</value></data>
+  <data name="QuickCmd_SelectedTerminals" xml:space="preserve"><value>terminals selected</value></data>
+  <data name="QuickCmd_Search" xml:space="preserve"><value>Search snippets</value></data>
+  <data name="QuickCmd_Run" xml:space="preserve"><value>Run</value></data>
   <data name="AddCommand" xml:space="preserve">
     <value>Add Command</value>
   </data>
@@ -1887,6 +1895,12 @@ Paste anyway?</value>
   <data name="SetSnippets_NewSnippet" xml:space="preserve">
     <value>New Snippet</value>
   </data>
+  <data name="SetSnippets_ShowInSidebar" xml:space="preserve">
+    <value>Show quick commands in the sidebar</value>
+  </data>
+  <data name="SetSnippets_ShowInSidebarDesc" xml:space="preserve">
+    <value>Display a collapsible quick command panel in the left sidebar.</value>
+  </data>
   <data name="SetSnippets_Subtitle" xml:space="preserve">
     <value>// Common command snippets, runnable from the quick command panel</value>
   </data>
@@ -2448,8 +2462,14 @@ Overwrite it? (Cancel skips this file)</value>
   <data name="Sidebar_RefreshRecent" xml:space="preserve">
     <value>Refresh Recent Connections</value>
   </data>
+  <data name="Sidebar_ToggleSection" xml:space="preserve">
+    <value>Collapse or expand this section</value>
+  </data>
   <data name="StatusBar_Swap" xml:space="preserve">
     <value>Swap</value>
+  </data>
+  <data name="StatusBar_RemoteFiles" xml:space="preserve">
+    <value>Open or close remote files</value>
   </data>
   <data name="Svc_Active" xml:space="preserve">
     <value>Active</value>

@@ -2,254 +2,137 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="using:VelaShell.ViewModels"
-             xmlns:res="clr-namespace:VelaShell.Core.Resources;assembly=VelaShell.Core"
-             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="600"
+             xmlns:pvm="using:VelaShell.Presentation.ViewModels"
+             xmlns:pc="using:VelaShell.Controls.Controls"
+             xmlns:loc="using:VelaShell.Localization"
+             mc:Ignorable="d" d:DesignWidth="260" d:DesignHeight="240"
              x:Class="VelaShell.Views.QuickCommandsView"
-             x:DataType="vm:QuickCommandsViewModel"
-             Width="300">
+             x:DataType="pvm:QuickCommandRunnerViewModel">
 
   <UserControl.Styles>
-    <Style Selector="Button.cmd-btn">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Padding" Value="4" />
+    <Style Selector="Button.quick-action">
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Padding" Value="7,0" />
+      <Setter Property="CornerRadius" Value="3" />
       <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="MinWidth" Value="24" />
-      <Setter Property="MinHeight" Value="24" />
-      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="FontSize" Value="10" />
     </Style>
-    <Style Selector="Button.cmd-btn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
-    </Style>
-    <Style Selector="TextBox.cmd-input">
+    <Style Selector="Button.target-button">
+      <Setter Property="Height" Value="26" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
       <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
-      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
       <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
-      <Setter Property="FontSize" Value="12" />
-      <Setter Property="Padding" Value="6,4" />
-      <Setter Property="CornerRadius" Value="4" />
-    </Style>
-    <Style Selector="TextBlock.section-header">
-      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Margin" Value="12,8,12,4" />
-    </Style>
-    <Style Selector="TextBlock.label">
-      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="Margin" Value="0,0,0,2" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Cursor" Value="Hand" />
     </Style>
   </UserControl.Styles>
 
-  <Border Background="{DynamicResource VelaBgSidebar}"
-          BorderBrush="{DynamicResource VelaBorderPrimary}"
-          BorderThickness="1,0,0,0">
-    <DockPanel>
-
-      <!-- Header -->
-      <Border DockPanel.Dock="Top"
-              Background="{DynamicResource VelaBgPage}"
-              Padding="12,8">
-        <TextBlock Text="{x:Static res:Strings.QuickCommands}"
-                   Foreground="{DynamicResource VelaTextPrimary}"
-                   FontSize="13"
-                   FontWeight="SemiBold" />
-      </Border>
-
-      <!-- Search box -->
-      <Border DockPanel.Dock="Top"
-              Padding="8,4">
-        <TextBox Classes="cmd-input"
-                 Text="{Binding SearchQuery}"
-                 PlaceholderText="{x:Static res:Strings.SearchCommands}" />
-      </Border>
-
-      <!-- Add Command form (bottom, toggled) -->
-      <Border DockPanel.Dock="Bottom"
-              IsVisible="{Binding IsAddingCommand}"
-              Background="{DynamicResource VelaBgSurface}"
-              BorderBrush="{DynamicResource VelaBorderPrimary}"
-              BorderThickness="0,1,0,0"
-              Padding="12,8">
-        <StackPanel Spacing="6">
-          <TextBlock Classes="section-header"
-                     Text="{x:Static res:Strings.AddCommand}"
-                     Margin="0,0,0,4" />
-
-          <!-- Name -->
-          <StackPanel>
-            <TextBlock Classes="label" Text="{x:Static res:Strings.Name}" />
-            <TextBox Classes="cmd-input"
-                     Text="{Binding NewName}"
-                     PlaceholderText="{x:Static res:Strings.Name}" />
-          </StackPanel>
-
-          <!-- Category -->
-          <StackPanel>
-            <TextBlock Classes="label" Text="{x:Static res:Strings.Category}" />
-            <TextBox Classes="cmd-input"
-                     Text="{Binding NewCategory}"
-                     PlaceholderText="{x:Static res:Strings.Category}" />
-          </StackPanel>
-
-          <!-- Command -->
-          <StackPanel>
-            <TextBlock Classes="label" Text="{x:Static res:Strings.Command}" />
-            <TextBox Classes="cmd-input"
-                     Text="{Binding NewCommandText}"
-                     PlaceholderText="{x:Static res:Strings.Command}"
-                     FontFamily="Cascadia Mono,Consolas,Menlo,monospace" />
-          </StackPanel>
-
-          <!-- Description -->
-          <StackPanel>
-            <TextBlock Classes="label" Text="{x:Static res:Strings.Description}" />
-            <TextBox Classes="cmd-input"
-                     Text="{Binding NewDescription}"
-                     PlaceholderText="{x:Static res:Strings.Description}" />
-          </StackPanel>
-
-          <!-- Save / Cancel buttons -->
-          <Grid ColumnDefinitions="*,8,*">
-            <Button Grid.Column="0"
-                    Command="{Binding SaveNewCommandCommand}"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Center"
-                    Background="{DynamicResource VelaAccent}"
-                    Foreground="{DynamicResource VelaTextPrimary}"
-                    Padding="8,6"
-                    CornerRadius="4"
-                    FontSize="12"
-                    Cursor="Hand">
-              <TextBlock Text="{x:Static res:Strings.Save}" />
-            </Button>
-            <Button Grid.Column="2"
-                    Command="{Binding CancelAddCommand}"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Center"
-                    Background="{DynamicResource VelaBgSurface}"
-                    Foreground="{DynamicResource VelaTextSecondary}"
-                    BorderBrush="{DynamicResource VelaBorderSecondary}"
-                    BorderThickness="1"
-                    Padding="8,6"
-                    CornerRadius="4"
-                    FontSize="12"
-                    Cursor="Hand">
-              <TextBlock Text="{x:Static res:Strings.Cancel}" />
-            </Button>
-          </Grid>
+  <Grid RowDefinitions="Auto,Auto,*" Background="{DynamicResource VelaBgSidebar}">
+    <!-- 目标多选器:未勾选时由 VM 回退当前活动终端。 -->
+    <Button Grid.Row="0" Classes="target-button" Margin="8,6,8,4">
+      <Button.Flyout>
+        <Flyout Placement="BottomEdgeAlignedLeft">
+          <Border Width="250" MaxHeight="300" Padding="10"
+                  Background="{DynamicResource VelaBgSurface}"
+                  BorderBrush="{DynamicResource VelaBorderSecondary}"
+                  BorderThickness="1" CornerRadius="5">
+            <StackPanel Spacing="8">
+              <Grid ColumnDefinitions="*,Auto,8,Auto">
+                <TextBlock Text="{loc:Localize QuickCmd_SelectTargets}"
+                           Foreground="{DynamicResource VelaTextPrimary}"
+                           FontSize="11" FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="1" Classes="quick-action"
+                        Content="{loc:Localize QuickCmd_SelectAll}"
+                        Command="{Binding SelectAllCommand}" />
+                <Button Grid.Column="3" Classes="quick-action"
+                        Content="{loc:Localize QuickCmd_ClearSelection}"
+                        Command="{Binding ClearSelectionCommand}" />
+              </Grid>
+              <TextBlock Text="{loc:Localize QuickCmd_NoConnectedTerminals}"
+                         Foreground="{DynamicResource VelaTextMuted}" FontSize="10"
+                         IsVisible="{Binding !HasTargets}" />
+              <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto"
+                            IsVisible="{Binding HasTargets}">
+                <ItemsControl ItemsSource="{Binding Targets}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="pvm:QuickCommandTargetViewModel">
+                      <CheckBox IsChecked="{Binding IsSelected}"
+                                Content="{Binding DisplayName}"
+                                Foreground="{DynamicResource VelaTextSecondary}"
+                                FontFamily="{DynamicResource VelaTerminalFont}"
+                                FontSize="11" Margin="2,3" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </StackPanel>
+          </Border>
+        </Flyout>
+      </Button.Flyout>
+      <Grid ColumnDefinitions="Auto,6,*,Auto">
+        <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.terminal}"
+                       Foreground="{DynamicResource VelaAccent}" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="2" Text="{loc:Localize QuickCmd_CurrentTerminal}"
+                   Foreground="{DynamicResource VelaTextSecondary}"
+                   FontSize="10" VerticalAlignment="Center"
+                   IsVisible="{Binding !HasSelectedTargets}" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                    IsVisible="{Binding HasSelectedTargets}">
+          <TextBlock Text="{Binding SelectedTargetCount}"
+                     Foreground="{DynamicResource VelaAccent}" FontSize="10"
+                     FontWeight="SemiBold" VerticalAlignment="Center" />
+          <TextBlock Text="{loc:Localize QuickCmd_SelectedTerminals}"
+                     Foreground="{DynamicResource VelaTextSecondary}" FontSize="10"
+                     VerticalAlignment="Center" />
         </StackPanel>
-      </Border>
+        <pc:LucideIcon Grid.Column="3" Width="11" Height="11"
+                       Data="{StaticResource Icon.chevron-down}"
+                       Foreground="{DynamicResource VelaTextMuted}" />
+      </Grid>
+    </Button>
 
-      <!-- Add Command button (bottom, when form hidden) -->
-      <Border DockPanel.Dock="Bottom"
-              IsVisible="{Binding !IsAddingCommand}"
-              Padding="8,6">
-        <Button Command="{Binding AddCommandCommand}"
-                HorizontalAlignment="Stretch"
-                HorizontalContentAlignment="Center"
-                Background="{DynamicResource VelaAccent}"
-                Foreground="{DynamicResource VelaTextPrimary}"
-                Padding="8,6"
-                CornerRadius="4"
-                FontSize="12"
-                Cursor="Hand">
-          <TextBlock Text="{x:Static res:Strings.AddCommand}" />
-        </Button>
-      </Border>
+    <TextBox Grid.Row="1" Margin="8,0,8,5" Height="26"
+             Text="{Binding Library.SearchQuery}"
+             PlaceholderText="{loc:Localize QuickCmd_Search}"
+             FontSize="10" Padding="7,3" />
 
-      <!-- Command list (fills remaining space) -->
-      <ScrollViewer>
-        <ItemsControl ItemsSource="{Binding FilteredCommands}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:QuickCommandViewModel">
-              <Button Command="{Binding $parent[ItemsControl].((vm:QuickCommandsViewModel)DataContext).ExecuteCommandCommand}"
-                      CommandParameter="{Binding}"
-                      Background="Transparent"
-                      HorizontalAlignment="Stretch"
-                      HorizontalContentAlignment="Stretch"
-                      Padding="8,6"
-                      Margin="8,1"
-                      CornerRadius="4"
-                      Cursor="Hand"
-                      BorderThickness="0">
-                <DockPanel>
-
-                  <!-- Action buttons (right side, custom commands only) -->
-                  <StackPanel DockPanel.Dock="Right"
-                              Orientation="Horizontal"
-                              Spacing="2"
-                              VerticalAlignment="Center"
-                              IsVisible="{Binding !IsBuiltIn}">
-                    <!-- Edit button -->
-                    <Button Classes="cmd-btn"
-                            Command="{Binding $parent[ItemsControl].((vm:QuickCommandsViewModel)DataContext).BeginEditCommand}"
-                            CommandParameter="{Binding}"
-                            ToolTip.Tip="{x:Static res:Strings.Edit}">
-                      <PathIcon Data="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
-                                Width="12" Height="12"
-                                Foreground="{DynamicResource VelaTextSecondary}" />
-                    </Button>
-                    <!-- Delete button -->
-                    <Button Classes="cmd-btn"
-                            Command="{Binding $parent[ItemsControl].((vm:QuickCommandsViewModel)DataContext).DeleteCommandCommand}"
-                            CommandParameter="{Binding}"
-                            ToolTip.Tip="{x:Static res:Strings.Delete}">
-                      <PathIcon Data="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
-                                Width="12" Height="12"
-                                Foreground="{DynamicResource VelaTextSecondary}" />
-                    </Button>
-                  </StackPanel>
-
-                  <!-- Command info (left side) -->
-                  <StackPanel Spacing="1">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                      <!-- Terminal icon -->
-                      <PathIcon Data="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v12zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"
-                                Width="12" Height="12"
-                                Foreground="{DynamicResource VelaAccent}"
-                                VerticalAlignment="Center" />
-                      <!-- Name -->
-                      <TextBlock Text="{Binding Name}"
-                                 Foreground="{DynamicResource VelaTextPrimary}"
-                                 FontSize="12"
-                                 FontWeight="SemiBold"
-                                 TextTrimming="CharacterEllipsis" />
-                      <!-- Category badge -->
-                      <Border Background="{DynamicResource VelaBgHover}"
-                              CornerRadius="2"
-                              Padding="4,1">
-                        <TextBlock Text="{Binding Category}"
-                                   Foreground="{DynamicResource VelaTextTertiary}"
-                                   FontSize="10" />
-                      </Border>
-                    </StackPanel>
-
-                    <!-- Command text (monospace) -->
-                    <TextBlock Text="{Binding CommandText}"
-                               Foreground="{DynamicResource VelaAccentText}"
-                               FontFamily="Cascadia Mono,Consolas,Menlo,monospace"
-                               FontSize="11"
-                               TextTrimming="CharacterEllipsis"
-                               Margin="18,0,0,0" />
-
-                    <!-- Description -->
-                    <TextBlock Text="{Binding Description}"
-                               Foreground="{DynamicResource VelaTextTertiary}"
-                               FontSize="10"
-                               TextTrimming="CharacterEllipsis"
-                               Margin="18,0,0,0"
-                               IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                  </StackPanel>
-
-                </DockPanel>
-              </Button>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-      </ScrollViewer>
-
-    </DockPanel>
-  </Border>
+    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+      <ItemsControl ItemsSource="{Binding Library.FilteredCommands}" Margin="4,0,4,6">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="pvm:QuickCommandViewModel">
+            <Border Margin="4,2" Padding="8,6" CornerRadius="4"
+                    Background="Transparent">
+              <Border.Styles>
+                <Style Selector="Border:pointerover">
+                  <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+                </Style>
+              </Border.Styles>
+              <Grid ColumnDefinitions="*,8,Auto">
+                <StackPanel Grid.Column="0" Spacing="2">
+                  <TextBlock Text="{Binding Name}"
+                             Foreground="{DynamicResource VelaTextPrimary}"
+                             FontSize="11" FontWeight="SemiBold"
+                             TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding CommandText}"
+                             Foreground="{DynamicResource VelaAccentText}"
+                             FontFamily="{DynamicResource VelaTerminalFont}"
+                             FontSize="9" TextTrimming="CharacterEllipsis"
+                             ToolTip.Tip="{Binding CommandText}" />
+                </StackPanel>
+                <Button Grid.Column="2" Classes="quick-action"
+                        Content="{loc:Localize QuickCmd_Run}"
+                        Command="{Binding $parent[ItemsControl].((pvm:QuickCommandRunnerViewModel)DataContext).RunCommand}"
+                        CommandParameter="{Binding}"
+                        VerticalAlignment="Center" />
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </Grid>
 </UserControl>
