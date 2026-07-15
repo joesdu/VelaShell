@@ -1116,8 +1116,16 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         ScrollChanged?.Invoke();
     }
 
+    /// <summary>上一次弹出的侧栏菜单。每次右键都新建实例,旧实例必须显式关闭,否则会叠着不消失。</summary>
+    private ContextMenu? _gutterMenu;
+
     /// <summary>侧栏右键菜单:四个部件(行号/时间戳/折叠标记/空白)的可勾选开关。</summary>
-    private void ShowGutterContextMenu() => BuildGutterContextMenu().Open(this);
+    private void ShowGutterContextMenu()
+    {
+        _gutterMenu?.Close();
+        _gutterMenu = BuildGutterContextMenu();
+        _gutterMenu.Open(this);
+    }
 
     /// <summary>构建侧栏右键菜单(不弹出)。internal 供 headless 测试直接检视内容与开关接线,避免打开弹层。</summary>
     internal ContextMenu BuildGutterContextMenu()
