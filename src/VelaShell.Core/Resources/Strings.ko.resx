@@ -103,6 +103,9 @@
   <data name="Cancel" xml:space="preserve">
     <value>취소</value>
   </data>
+  <data name="Close" xml:space="preserve">
+    <value>닫기</value>
+  </data>
   <data name="Category" xml:space="preserve">
     <value>분류</value>
   </data>
