@@ -103,6 +103,9 @@
   <data name="Cancel" xml:space="preserve">
     <value>取消</value>
   </data>
+  <data name="Close" xml:space="preserve">
+    <value>關閉</value>
+  </data>
   <data name="Category" xml:space="preserve">
     <value>分類</value>
   </data>
