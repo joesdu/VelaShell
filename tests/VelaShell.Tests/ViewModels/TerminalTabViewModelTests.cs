@@ -51,6 +51,34 @@ public class TerminalTabViewModelTests
 
     [TestMethod]
     [TestCategory("TerminalTab")]
+    public void TryExecuteCommand_Connected_SendsBodyWithSingleCarriageReturn()
+    {
+        _vm.ConnectionStatus = SessionStatus.Connected;
+
+        bool sent = _vm.TryExecuteCommand(" echo hello\r\n");
+
+        Assert.IsTrue(sent);
+        _terminalEmulator
+            .Received(1)
+            .WriteInput(
+                Arg.Is<byte[]>(bytes =>
+                    bytes.SequenceEqual(System.Text.Encoding.UTF8.GetBytes(" echo hello\r"))
+                )
+            );
+    }
+
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void TryExecuteCommand_Disconnected_DoesNotSend()
+    {
+        bool sent = _vm.TryExecuteCommand("uptime");
+
+        Assert.IsFalse(sent);
+        _terminalEmulator.DidNotReceive().WriteInput(Arg.Any<byte[]>());
+    }
+
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public void IncrementReconnectAttempt_IncrementsCounter()
     {
         Assert.AreEqual(0, _vm.ReconnectAttempts);
@@ -129,8 +157,10 @@ public class TerminalTabViewModelTests
     [TestCategory("TerminalTab")]
     public void Id_IsUniquePerInstance()
     {
-        var vm2 = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>(),
-            Substitute.For<IShellStreamWrapper>());
+        var vm2 = new TerminalTabViewModel(
+            Substitute.For<ITerminalEmulator>(),
+            Substitute.For<IShellStreamWrapper>()
+        );
         Assert.AreNotEqual(vm2.Id, _vm.Id);
         Assert.AreNotEqual(Guid.Empty, _vm.Id);
     }
@@ -179,7 +209,9 @@ public class TerminalTabViewModelTests
     {
         var vm = new TerminalTabViewModel(_terminalEmulator);
         vm.Dispose();
-        Assert.ThrowsExactly<ObjectDisposedException>(() => vm.AttachTransport(Substitute.For<IShellStreamWrapper>()));
+        Assert.ThrowsExactly<ObjectDisposedException>(() =>
+            vm.AttachTransport(Substitute.For<IShellStreamWrapper>())
+        );
     }
 
     [TestMethod]

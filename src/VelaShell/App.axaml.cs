@@ -17,6 +17,7 @@ using VelaShell.Core.Sync;
 using VelaShell.Infrastructure.DependencyInjection;
 using VelaShell.Localization;
 using VelaShell.Presentation.DependencyInjection;
+using VelaShell.Presentation.ViewModels;
 using VelaShell.Services;
 using VelaShell.ViewModels;
 using VelaShell.Views;
@@ -46,24 +47,29 @@ public class App : Application
     {
         AvaloniaXamlLoader.Load(this);
         _serviceProvider = new ServiceCollection()
-                           .AddVelaShellPresentation()
-                           .AddVelaShellControls()
-                           .AddVelaShellInfrastructure()
-                           .AddSingleton<IThemeService>(_ => new ThemeService("system"))
-                           .AddSingleton<ISettingsPreviewService, SettingsPreviewService>()
-                           .AddSingleton<IHostKeyPrompt, HostKeyPromptDialogService>()
-                           .AddSingleton<ILocalizationService, LocalizationService>()
-                           .AddSingleton<IKeyboardShortcutService, KeyboardShortcutService>()
-                           // 应用内自动更新:更新源 = 本仓库的 GitHub Releases(无需自建服务器)。
-                           // allowPreRelease=true 让 beta 版也能收到更新;发布正式版后可改 false 只推稳定版。
-                           .AddSingleton<IUpdateService>(_ => new UpdateService("https://github.com/joesdu/VelaShell", allowPreRelease: true))
-                           .AddSingleton<SettingsViewModel>()
-                           .AddSingleton<MainWindowViewModel>()
-                           .BuildServiceProvider();
+            .AddVelaShellPresentation()
+            .AddVelaShellControls()
+            .AddVelaShellInfrastructure()
+            .AddSingleton<IThemeService>(_ => new ThemeService("system"))
+            .AddSingleton<ISettingsPreviewService, SettingsPreviewService>()
+            .AddSingleton<IHostKeyPrompt, HostKeyPromptDialogService>()
+            .AddSingleton<ILocalizationService, LocalizationService>()
+            .AddSingleton<IKeyboardShortcutService, KeyboardShortcutService>()
+            // 应用内自动更新:更新源 = 本仓库的 GitHub Releases(无需自建服务器)。
+            // allowPreRelease=true 让 beta 版也能收到更新;发布正式版后可改 false 只推稳定版。
+            .AddSingleton<IUpdateService>(_ => new UpdateService(
+                "https://github.com/joesdu/VelaShell",
+                allowPreRelease: true
+            ))
+            .AddSingleton<QuickCommandsViewModel>()
+            .AddSingleton<SettingsViewModel>()
+            .AddSingleton<MainWindowViewModel>()
+            .BuildServiceProvider();
         _themeService = _serviceProvider.GetRequiredService<IThemeService>();
 
         // Live-rebinding localized strings ({loc:Localize}) follow the DI service (#4).
-        ILocalizationService localization = _serviceProvider.GetRequiredService<ILocalizationService>();
+        ILocalizationService localization =
+            _serviceProvider.GetRequiredService<ILocalizationService>();
         LocalizedStrings.Instance.Attach(localization);
 
         // UI 线程的线程级文化在 Dispatcher 顶层回调里补设:异步命令(设置保存)里
@@ -72,12 +78,12 @@ public class App : Application
         // 日期/数字格式化在换语言后于 UI 线程取到新文化(绑定取词本身不依赖它,
         // LocalizationService 自持文化)。
         localization.LanguageChanged += lang =>
-                Dispatcher.UIThread.Post(() =>
-                {
-                    var culture = new System.Globalization.CultureInfo(lang);
-                    System.Globalization.CultureInfo.CurrentUICulture = culture;
-                    System.Globalization.CultureInfo.CurrentCulture = culture;
-                });
+            Dispatcher.UIThread.Post(() =>
+            {
+                var culture = new System.Globalization.CultureInfo(lang);
+                System.Globalization.CultureInfo.CurrentUICulture = culture;
+                System.Globalization.CultureInfo.CurrentCulture = culture;
+            });
         _themeService.ThemeChanged += OnThemeChanged;
         _themeService.AccentChanged += ApplyAccent;
         ApplyThemeVariant(_themeService.CurrentTheme);
@@ -90,11 +96,10 @@ public class App : Application
         ApplyPersistedPreferences();
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            MainWindowViewModel viewModel = _serviceProvider?.GetRequiredService<MainWindowViewModel>() ?? new MainWindowViewModel();
-            var mainWindow = new MainWindow
-            {
-                DataContext = viewModel
-            };
+            MainWindowViewModel viewModel =
+                _serviceProvider?.GetRequiredService<MainWindowViewModel>()
+                ?? new MainWindowViewModel();
+            var mainWindow = new MainWindow { DataContext = viewModel };
             desktop.MainWindow = mainWindow;
 
             // 启动时窗口状态(设置 → 外观):记住上次 / 最大化 / 默认大小。
@@ -105,7 +110,10 @@ public class App : Application
 
             // 过期会话/传输日志清理(设置 → 常规/文件传输 → 日志保留天数),后台执行。
             SessionLogService.CleanupExpired(_startupSettings?.General.LogRetentionDays ?? 30);
-            TransferLogService.CleanupExpired(_startupSettings?.Transfer.LogDirectory, _startupSettings?.Transfer.TransferLogRetentionDays ?? 30);
+            TransferLogService.CleanupExpired(
+                _startupSettings?.Transfer.LogDirectory,
+                _startupSettings?.Transfer.TransferLogRetentionDays ?? 30
+            );
 
             // 过期会话录制清理(随终端会话日志的保留天数)。
             if (_serviceProvider?.GetService<ISessionRecordingStore>() is { } recordingStore)
@@ -197,7 +205,10 @@ public class App : Application
 
                     // 防抖:连续保存只推送最后一次。
                     CancellationTokenSource cts = new();
-                    CancellationTokenSource? previous = Interlocked.Exchange(ref _syncDebounce, cts);
+                    CancellationTokenSource? previous = Interlocked.Exchange(
+                        ref _syncDebounce,
+                        cts
+                    );
                     previous?.Cancel();
                     await Task.Delay(TimeSpan.FromSeconds(5), cts.Token);
                     await syncService.SyncNowAsync(CancellationToken.None);
@@ -252,11 +263,15 @@ public class App : Application
         }
         try
         {
-            AppSettings settings = _serviceProvider.GetRequiredService<ISettingsService>()
-                                                   .GetSettingsAsync().GetAwaiter().GetResult();
+            AppSettings settings = _serviceProvider
+                .GetRequiredService<ISettingsService>()
+                .GetSettingsAsync()
+                .GetAwaiter()
+                .GetResult();
             _startupSettings = settings;
-            _serviceProvider.GetRequiredService<ILocalizationService>()
-                            .SetLanguage(settings.Language);
+            _serviceProvider
+                .GetRequiredService<ILocalizationService>()
+                .SetLanguage(settings.Language);
             if (!string.IsNullOrWhiteSpace(settings.Theme))
             {
                 _themeService?.SetTheme(settings.Theme);
@@ -312,7 +327,7 @@ public class App : Application
         {
             "light" => ThemeVariant.Light,
             "system" => ThemeVariant.Default,
-            _ => ThemeVariant.Dark
+            _ => ThemeVariant.Dark,
         };
     }
 
@@ -336,11 +351,15 @@ public class App : Application
         }
         Resources["VelaAccent"] = new SolidColorBrush(color);
         // Dim variant: same hue at ~19% opacity, matching the design's #RRGGBB30 tokens.
-        Resources["VelaAccentDim"] = new SolidColorBrush(new Color(0x30, color.R, color.G, color.B));
+        Resources["VelaAccentDim"] = new SolidColorBrush(
+            new Color(0x30, color.R, color.G, color.B)
+        );
 
         // 自定义强调色的配对前景按亮度自动选:亮底深字、深底浅字,
         // 避免用户挑深色 accent 后按钮文字(令牌随主题固定)对比不足。
         double luminance = (0.299 * color.R + 0.587 * color.G + 0.114 * color.B) / 255.0;
-        Resources["VelaAccentForeground"] = new SolidColorBrush(luminance > 0.55 ? Color.Parse("#0A0E14") : Color.Parse("#FFFBEB"));
+        Resources["VelaAccentForeground"] = new SolidColorBrush(
+            luminance > 0.55 ? Color.Parse("#0A0E14") : Color.Parse("#FFFBEB")
+        );
     }
 }

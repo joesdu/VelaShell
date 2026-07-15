@@ -278,6 +278,13 @@ public class AppearanceOptions : ObservableOptions
         set => Set(ref field, value);
     } = "left";
 
+    /// <summary>是否在左侧栏显示快捷命令面板;默认隐藏。</summary>
+    public bool ShowQuickCommandsPanel
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
     /// <summary>启动时的窗口状态(如 remember / maximized / normal)。</summary>
     public string StartupWindowState
     {

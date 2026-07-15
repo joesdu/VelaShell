@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:VelaShell.ViewModels"
+             xmlns:pvm="using:VelaShell.Presentation.ViewModels"
              xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Views.Settings.SnippetsPage"
              x:DataType="vm:SettingsViewModel">
@@ -15,6 +16,16 @@
                Foreground="{DynamicResource VelaTextSecondary}"
                FontSize="13" TextWrapping="Wrap" />
 
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetSnippets_ShowInSidebar}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetSnippets_ShowInSidebarDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1"
+                    IsChecked="{Binding Appearance.ShowQuickCommandsPanel}"
+                    VerticalAlignment="Center" />
+    </Grid>
+
     <!-- 片段列表(数据:SonnetDB quick_commands 集合 + 内置命令) -->
     <ItemsControl ItemsSource="{Binding Snippets.AllCommands}">
       <ItemsControl.ItemsPanel>
@@ -23,7 +34,7 @@
         </ItemsPanelTemplate>
       </ItemsControl.ItemsPanel>
       <ItemsControl.ItemTemplate>
-        <DataTemplate x:DataType="vm:QuickCommandViewModel">
+        <DataTemplate x:DataType="pvm:QuickCommandViewModel">
           <Border CornerRadius="6" Padding="12"
                   Background="{DynamicResource VelaBgSurface}"
                   BorderBrush="{DynamicResource VelaBorderSecondary}"

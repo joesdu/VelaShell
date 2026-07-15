@@ -38,6 +38,7 @@ public class SettingsServiceTests : IDisposable
         Assert.AreEqual(14, settings.TerminalFontSize);
         Assert.AreEqual(50000, settings.ScrollbackLines);
         Assert.AreEqual(22, settings.DefaultPort);
+        Assert.IsFalse(settings.Appearance.ShowQuickCommandsPanel);
     }
 
     [TestMethod]
@@ -51,12 +52,13 @@ public class SettingsServiceTests : IDisposable
             TerminalFont = "Consolas",
             TerminalFontSize = 16,
             ScrollbackLines = 5000,
-            DefaultPort = 2222
+            DefaultPort = 2222,
+            Appearance = new() { ShowQuickCommandsPanel = true },
         };
         await service.SaveSettingsAsync(settings);
         AppSettings retrieved = await service.GetSettingsAsync();
-        Assert.AreEqual(JsonSerializer.Serialize(settings),
-            JsonSerializer.Serialize(retrieved));
+        Assert.AreEqual(JsonSerializer.Serialize(settings), JsonSerializer.Serialize(retrieved));
+        Assert.IsTrue(retrieved.Appearance.ShowQuickCommandsPanel);
     }
 
     [TestMethod]
@@ -80,12 +82,11 @@ public class SettingsServiceTests : IDisposable
             RecentConnections = ["session1", "session2", "session3"],
             WindowPosition = new() { X = 100, Y = 200 },
             WindowSize = new() { Width = 1024, Height = 768 },
-            LastActiveTab = "tab1"
+            LastActiveTab = "tab1",
         };
         await service.SaveStateAsync(state);
         AppState retrieved = await service.GetStateAsync();
-        Assert.AreEqual(JsonSerializer.Serialize(state),
-            JsonSerializer.Serialize(retrieved));
+        Assert.AreEqual(JsonSerializer.Serialize(state), JsonSerializer.Serialize(retrieved));
     }
 
     [TestMethod]
@@ -105,10 +106,7 @@ public class SettingsServiceTests : IDisposable
     public async Task SaveState_UpdatesRecentConnections_ShouldPersist()
     {
         var service = new SettingsService(_dataStore, _testDirectory);
-        var state = new AppState
-        {
-            RecentConnections = ["session1"]
-        };
+        var state = new AppState { RecentConnections = ["session1"] };
         await service.SaveStateAsync(state);
         state.RecentConnections.Add("session2");
         await service.SaveStateAsync(state);
@@ -140,7 +138,7 @@ public class SettingsServiceTests : IDisposable
         var state = new AppState
         {
             WindowPosition = new() { X = 150, Y = 250 },
-            WindowSize = new() { Width = 1280, Height = 720 }
+            WindowSize = new() { Width = 1280, Height = 720 },
         };
         await service1.SaveStateAsync(state);
         var service2 = new SettingsService(_dataStore, _testDirectory);

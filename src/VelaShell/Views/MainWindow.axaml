@@ -113,7 +113,11 @@
     </Grid>
 
     <!-- Row 1: Status bar (design frame gzmsb) -->
-    <views:StatusBarView Grid.Row="1" DataContext="{Binding StatusBar}" />
+    <views:StatusBarView Grid.Row="1"
+                         DataContext="{Binding StatusBar}"
+                         FileBrowserCommand="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).ToggleFileBrowserCommand}"
+                         ShowFileBrowserButton="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).CanToggleFileBrowser}"
+                         IsFileBrowserVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).FileBrowser.IsVisible}" />
 
     <!-- Command palette overlay (Ctrl+P / Ctrl+K). Backdrop click or Esc closes it. -->
     <Grid Grid.Row="0" Grid.RowSpan="2"

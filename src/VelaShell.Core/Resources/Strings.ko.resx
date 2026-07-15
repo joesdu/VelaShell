@@ -1220,6 +1220,14 @@
   <data name="QuickCommands" xml:space="preserve">
     <value>빠른 명령</value>
   </data>
+  <data name="QuickCmd_SelectTargets" xml:space="preserve"><value>실행할 터미널 선택</value></data>
+  <data name="QuickCmd_SelectAll" xml:space="preserve"><value>모두 선택</value></data>
+  <data name="QuickCmd_ClearSelection" xml:space="preserve"><value>지우기</value></data>
+  <data name="QuickCmd_NoConnectedTerminals" xml:space="preserve"><value>연결된 터미널이 없습니다</value></data>
+  <data name="QuickCmd_CurrentTerminal" xml:space="preserve"><value>현재 터미널</value></data>
+  <data name="QuickCmd_SelectedTerminals" xml:space="preserve"><value>개 터미널 선택됨</value></data>
+  <data name="QuickCmd_Search" xml:space="preserve"><value>스니펫 검색</value></data>
+  <data name="QuickCmd_Run" xml:space="preserve"><value>실행</value></data>
   <data name="QuickConnect" xml:space="preserve">
     <value>빠른 연결</value>
   </data>
@@ -1817,6 +1825,12 @@
   <data name="SetSnippets_NewSnippet" xml:space="preserve">
     <value>새 스니펫</value>
   </data>
+  <data name="SetSnippets_ShowInSidebar" xml:space="preserve">
+    <value>사이드바에 빠른 명령 표시</value>
+  </data>
+  <data name="SetSnippets_ShowInSidebarDesc" xml:space="preserve">
+    <value>왼쪽 사이드바에 접을 수 있는 빠른 명령 패널을 표시합니다.</value>
+  </data>
   <data name="SetSnippets_Subtitle" xml:space="preserve">
     <value>// 자주 쓰는 명령 스니펫으로, 빠른 명령 패널에서 실행할 수 있습니다</value>
   </data>
@@ -2384,6 +2398,9 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Sidebar_RefreshRecent" xml:space="preserve">
     <value>최근 연결 새로 고침</value>
   </data>
+  <data name="Sidebar_ToggleSection" xml:space="preserve">
+    <value>이 영역 접기 또는 펼치기</value>
+  </data>
   <data name="Size" xml:space="preserve">
     <value>크기</value>
   </data>
@@ -2392,6 +2409,9 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="StatusBar_Swap" xml:space="preserve">
     <value>스왑</value>
+  </data>
+  <data name="StatusBar_RemoteFiles" xml:space="preserve">
+    <value>원격 파일 열기 또는 닫기</value>
   </data>
   <data name="Svc_Active" xml:space="preserve">
     <value>활성</value>

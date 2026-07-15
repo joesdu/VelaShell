@@ -1,7 +1,7 @@
 using ReactiveUI;
 using VelaShell.Core.Models;
 
-namespace VelaShell.ViewModels;
+namespace VelaShell.Presentation.ViewModels;
 
 /// <summary>快捷命令的视图模型:包装 <see cref="QuickCommand" /> 模型并暴露可绑定属性;内置命令为只读,编辑时静默忽略写入。</summary>
 public class QuickCommandViewModel(QuickCommand model) : ReactiveObject

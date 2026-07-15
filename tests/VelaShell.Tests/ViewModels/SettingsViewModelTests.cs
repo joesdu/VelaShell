@@ -35,7 +35,8 @@ public class SettingsViewModelTests
             ScrollbackLines = 5000,
             DefaultPort = 2222,
             TerminalType = "vt220",
-            TerminalEncoding = "GBK"
+            TerminalEncoding = "GBK",
+            Appearance = new() { ShowQuickCommandsPanel = true },
         };
         _settingsService.GetSettingsAsync().Returns(settings);
 
@@ -50,6 +51,7 @@ public class SettingsViewModelTests
         Assert.AreEqual(2222, vm.DefaultPort);
         Assert.AreEqual("vt220", vm.TerminalType);
         Assert.AreEqual("GBK", vm.TerminalEncoding);
+        Assert.IsTrue(vm.Appearance.ShowQuickCommandsPanel);
     }
 
     [TestMethod]
@@ -65,19 +67,25 @@ public class SettingsViewModelTests
         vm.DefaultPort = 8022;
         vm.TerminalType = "xterm-256color";
         vm.TerminalEncoding = "UTF-8";
+        vm.Appearance.ShowQuickCommandsPanel = true;
 
         await vm.SaveCommand.Execute().FirstAsync();
 
-        await _settingsService.Received(1).SaveSettingsAsync(
-            Arg.Is<AppSettings>(s =>
-                s.Language == "zh-CN" &&
-                s.Theme == "light" &&
-                s.TerminalFont == "Cascadia Code" &&
-                s.TerminalFontSize == 18 &&
-                s.ScrollbackLines == 20000 &&
-                s.DefaultPort == 8022 &&
-                s.TerminalType == "xterm-256color" &&
-                s.TerminalEncoding == "UTF-8"));
+        await _settingsService
+            .Received(1)
+            .SaveSettingsAsync(
+                Arg.Is<AppSettings>(s =>
+                    s.Language == "zh-CN"
+                    && s.Theme == "light"
+                    && s.TerminalFont == "Cascadia Code"
+                    && s.TerminalFontSize == 18
+                    && s.ScrollbackLines == 20000
+                    && s.DefaultPort == 8022
+                    && s.TerminalType == "xterm-256color"
+                    && s.TerminalEncoding == "UTF-8"
+                    && s.Appearance.ShowQuickCommandsPanel
+                )
+            );
     }
 
     [TestMethod]
@@ -100,7 +108,7 @@ public class SettingsViewModelTests
         {
             // Host and Username empty → SaveCommand not executable
             Host = "",
-            Username = ""
+            Username = "",
         };
         bool canExecute = false;
         vm.SaveCommand.CanExecute.Subscribe(x => canExecute = x);
@@ -134,8 +142,12 @@ public class SettingsViewModelTests
     public void HostKeyPrompt_TrustPermanentlyCommand_SetsResult()
     {
         var vm = new HostKeyPromptViewModel(
-            "example.com", 22, "ssh-ed25519",
-            "SHA256:abc123def456", HostKeyVerification.Unknown);
+            "example.com",
+            22,
+            "ssh-ed25519",
+            "SHA256:abc123def456",
+            HostKeyVerification.Unknown
+        );
 
         Assert.IsNull(vm.Result);
 
@@ -149,8 +161,12 @@ public class SettingsViewModelTests
     public void HostKeyPrompt_TrustOnceCommand_SetsResult()
     {
         var vm = new HostKeyPromptViewModel(
-            "example.com", 22, "ssh-ed25519",
-            "SHA256:abc123def456", HostKeyVerification.Unknown);
+            "example.com",
+            22,
+            "ssh-ed25519",
+            "SHA256:abc123def456",
+            HostKeyVerification.Unknown
+        );
 
         vm.TrustOnceCommand.Execute().Subscribe();
 
@@ -162,8 +178,12 @@ public class SettingsViewModelTests
     public void HostKeyPrompt_CancelCommand_SetsReject()
     {
         var vm = new HostKeyPromptViewModel(
-            "example.com", 22, "ssh-rsa",
-            "SHA256:xyz789", HostKeyVerification.Unknown);
+            "example.com",
+            22,
+            "ssh-rsa",
+            "SHA256:xyz789",
+            HostKeyVerification.Unknown
+        );
 
         vm.CancelCommand.Execute().Subscribe();
 
@@ -175,14 +195,22 @@ public class SettingsViewModelTests
     public void HostKeyPrompt_ChangedKey_ShowsWarning()
     {
         var vmChanged = new HostKeyPromptViewModel(
-            "server.local", 22, "ssh-ed25519",
-            "SHA256:changed123", HostKeyVerification.Changed);
+            "server.local",
+            22,
+            "ssh-ed25519",
+            "SHA256:changed123",
+            HostKeyVerification.Changed
+        );
 
         Assert.IsTrue(vmChanged.IsChanged);
 
         var vmUnknown = new HostKeyPromptViewModel(
-            "server.local", 22, "ssh-ed25519",
-            "SHA256:unknown456", HostKeyVerification.Unknown);
+            "server.local",
+            22,
+            "ssh-ed25519",
+            "SHA256:unknown456",
+            HostKeyVerification.Unknown
+        );
 
         Assert.IsFalse(vmUnknown.IsChanged);
     }
@@ -197,7 +225,7 @@ public class SettingsViewModelTests
             Username = "admin",
 
             // Valid port
-            Port = 22
+            Port = 22,
         };
         bool canExecute = false;
         vm.SaveCommand.CanExecute.Subscribe(x => canExecute = x);
@@ -225,7 +253,7 @@ public class SettingsViewModelTests
             Port = 2222,
             Username = "deploy",
             AuthMethod = AuthMethod.PrivateKey,
-            PrivateKeyPath = "/home/user/.ssh/id_rsa"
+            PrivateKeyPath = "/home/user/.ssh/id_rsa",
         };
 
         SessionProfile? result = null;
