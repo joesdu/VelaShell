@@ -56,6 +56,7 @@ jobs:
               -p:Version=$version -p:SelfContained=$($t.Sc) -p:PublishSingleFile=true `
               -p:DebugType=None --nologo
             if ($LASTEXITCODE -ne 0) { exit 1 }
+            Get-ChildItem "out/$name" -Recurse -File -Filter '*.pdb' | Remove-Item -Force
             Compress-Archive -Path "out/$name/*" -DestinationPath "dist/$name.zip" -Force
           }
       - name: Build installers (Velopack Setup.exe + WiX MSI, x64/arm64)
