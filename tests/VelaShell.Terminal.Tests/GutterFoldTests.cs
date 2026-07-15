@@ -165,7 +165,7 @@ public class GutterFoldTests
     [TestMethod]
     public void FillScreenRowMap_NoFolds_IsIdentityAndClampsOffset()
     {
-        var map = new int[4];
+        int[] map = new int[4];
         int offset = 0;
         // total=10, screen=4, offset=0 → 底部 4 行 abs 6..9。
         GutterFoldModel.FillScreenRowMap(map, null, totalRows: 10, screenRows: 4, ref offset);
@@ -181,7 +181,7 @@ public class GutterFoldTests
     [TestMethod]
     public void FillScreenRowMap_WithFolds_UsesVisibleSequence()
     {
-        var map = new int[4];
+        int[] map = new int[4];
         int offset = 0;
         // 折叠后可见序列(隐藏了 1,2):[0,3,4,5]。屏幕 4 行 → 全部显示。
         var visible = new List<int> { 0, 3, 4, 5 };
@@ -206,7 +206,7 @@ public class GutterFoldTests
         int screenRow = (int)(clickY / cellH);
         Assert.AreEqual(3, screenRow);
 
-        var map = new int[screen.Rows];
+        int[] map = new int[screen.Rows];
         int offset = 0;
         GutterFoldModel.FillScreenRowMap(map, model.VisibleRowsOrNull(screen), screen.TotalRows, screen.Rows, ref offset);
         int abs = map[screenRow];

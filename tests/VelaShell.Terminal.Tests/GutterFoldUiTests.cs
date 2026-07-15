@@ -1,5 +1,4 @@
 using System.Text;
-using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -119,7 +118,7 @@ public class GutterFoldUiTests
                 Assert.AreEqual(MenuItemToggleType.CheckBox, item.ToggleType, "菜单项应是复选型。");
 
                 // Header 只放标签:开与关的 Header 必须完全一致,文字才不会随勾选状态位移。
-                var header = (string)item.Header!;
+                string header = (string)item.Header!;
                 Assert.AreEqual(header.Trim(), header, "Header 不应含用于占位/勾号的空白前缀。");
                 Assert.IsFalse(header.Contains('✔'), "勾号应由勾选列渲染,不应拼进 Header。");
             }

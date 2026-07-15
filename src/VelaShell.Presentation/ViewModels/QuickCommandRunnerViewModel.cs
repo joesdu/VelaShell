@@ -80,7 +80,7 @@ public sealed class QuickCommandRunnerViewModel : ReactiveObject
     public void UpdateTargets(IEnumerable<(Guid Id, string DisplayName)> targets)
     {
         ArgumentNullException.ThrowIfNull(targets);
-        HashSet<Guid> selectedIds = Targets
+        var selectedIds = Targets
             .Where(target => target.IsSelected)
             .Select(target => target.Id)
             .ToHashSet();
