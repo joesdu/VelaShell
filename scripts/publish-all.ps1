@@ -49,6 +49,7 @@ foreach ($t in $targets) {
     if ($LASTEXITCODE -ne 0) { throw "publish 失败: $name" }
 
     if ($t.Archive -eq 'zip') {
+        Get-ChildItem $dir -Recurse -File -Filter '*.pdb' | Remove-Item -Force
         Compress-Archive -Path (Join-Path $dir '*') -DestinationPath (Join-Path $outRoot "$name.zip") -Force
     } else {
         # tar.gz 保留 Unix 可执行位语义(tar 在 Windows 上无权限位,解包后需 chmod +x VelaShell)
