@@ -1,6 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:dockc="using:VelaShell.Docking.Controls">
+        xmlns:dockc="using:VelaShell.Docking.Controls"
+        xmlns:shapes="using:Avalonia.Controls.Shapes">
 
     <!-- 终端工作区(自研 VelaDock)底色 + 全局通用样式。标签本身的视觉
          (36px 条 / 32px 标签 / 状态点 / accent 顶线 / 关闭钮)内联在
@@ -80,6 +81,26 @@
         <Setter Property="Opacity" Value="0.6" />
     </Style>
 
+    <!-- 勾选项的勾号:与箭头同病同治 —— Fluent 也按 14 号字把它定死在 16x13,配 11 号字
+         (文字实高 12)偏大。0.8 → 渲染约 12.8x10.4,高度与缩放后的箭头齐平。
+         缩放挂在 ToggleIconPresenter 上:勾号本身是模板里的匿名 Path,选择器点不到它;
+         而 presenter 的 Width/Height 又是模板局部值、改不动,只有 RenderTransform 可用。
+         布局槽仍是 16x16,勾号原位缩小,文字不位移。图标列(PART_IconPresenter)不受影响。 -->
+    <Style Selector="ContextMenu MenuItem /template/ ContentControl#PART_ToggleIconPresenter">
+        <Setter Property="RenderTransform" Value="scale(0.65)" />
+    </Style>
+
+    <!-- 子菜单箭头:Fluent 按它默认的 14 号字把 8x16 写死在模板里,菜单压到 11 号后箭头
+         不跟着缩,16px 高的箭头配 11px 的字明显大一号。0.65 → 渲染约 10.4px,略低于字高。
+
+         两个坑(改之前先读 MenuChevronStyleTests):
+         · 只能缩放,不能设 Width/Height/Fill —— 那三个是模板里写死的局部值,样式覆盖不了,
+           设了不报错也不生效。布局槽仍是 8x16,箭头在原位缩小,不挤动行内其它元素。
+         · 类型必须写 shapes|Path:默认 xmlns 下裸写的 Path 匹配不到这个部件,同样静默失效。 -->
+    <Style Selector="ContextMenu MenuItem /template/ shapes|Path#PART_ChevronPath">
+        <Setter Property="RenderTransform" Value="scale(0.65)" />
+    </Style>
+
     <Style Selector="ContextMenu Separator">
         <Setter Property="Background" Value="{DynamicResource VelaBorderPrimary}" />
         <Setter Property="Height" Value="1" />
@@ -133,6 +154,14 @@
     <Style Selector="MenuFlyoutPresenter MenuItem.active-tab">
         <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
         <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+
+    <!-- 勾号与子菜单箭头:同 ContextMenu,见那边的说明。 -->
+    <Style Selector="MenuFlyoutPresenter MenuItem /template/ ContentControl#PART_ToggleIconPresenter">
+        <Setter Property="RenderTransform" Value="scale(0.65)" />
+    </Style>
+    <Style Selector="MenuFlyoutPresenter MenuItem /template/ shapes|Path#PART_ChevronPath">
+        <Setter Property="RenderTransform" Value="scale(0.65)" />
     </Style>
 
 </Styles>

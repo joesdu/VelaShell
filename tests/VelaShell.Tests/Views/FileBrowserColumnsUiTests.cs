@@ -33,11 +33,10 @@ public class FileBrowserColumnsUiTests
 
     private static HeadlessUnitTestSession _session = null!;
 
+    // 共用全程序集的宿主(见 VelaHeadlessApp):不能各起各的 App,否则谁先跑谁的样式说了算。
     [ClassInitialize]
-    public static void Init(TestContext _) => _session = HeadlessUnitTestSession.StartNew(typeof(HeadlessTestApp));
-
-    [ClassCleanup]
-    public static void Cleanup() => _session.Dispose();
+    public static void Init(TestContext _) =>
+        _session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(FileBrowserColumnsUiTests).Assembly);
 
     [TestMethod]
     public void AllColumnsVisible_HeaderLaysOutEveryColumnAtItsWidth()
@@ -163,22 +162,4 @@ public class FileBrowserColumnsUiTests
             body();
             return Task.CompletedTask;
         }, CancellationToken.None).GetAwaiter().GetResult();
-
-    /// <summary>
-    /// 最小可跑的 headless 宿主:只加载视图要用到的样式与资源字典(图标是
-    /// StaticResource,缺了会在加载 XAML 时直接抛),不碰真实 App 的 DI 容器与数据库。
-    /// </summary>
-    private class HeadlessTestApp : Application
-    {
-        public override void Initialize()
-        {
-            Styles.Add(new FluentTheme());
-            Resources.MergedDictionaries.Add(LoadDictionary("avares://VelaShell.Controls/Themes/Generic.axaml"));
-            Resources.MergedDictionaries.Add(LoadDictionary("avares://VelaShell.Controls/Themes/VelaTokens.axaml"));
-            Resources.MergedDictionaries.Add(LoadDictionary("avares://VelaShell.Controls/Themes/VelaShellTokens.axaml"));
-            Resources.MergedDictionaries.Add(LoadDictionary("avares://VelaShell.Controls/Themes/Icons.axaml"));
-        }
-
-        private static ResourceInclude LoadDictionary(string uri) => new(new Uri(uri)) { Source = new(uri) };
-    }
 }
