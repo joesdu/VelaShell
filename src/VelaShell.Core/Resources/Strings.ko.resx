@@ -2743,5 +2743,19 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="SetGeneral_FollowActiveTerminalDesc" xml:space="preserve">
     <value>터미널 탭을 전환할 때 해당 저장 연결을 펼치고 선택합니다.</value>
+  <data name="ZModem_ChooseDownloadFolder" xml:space="preserve">
+    <value>ZMODEM 다운로드 폴더 선택</value>
+  </data>
+  <data name="ZModem_ChooseDownloadFolderFor" xml:space="preserve">
+    <value>{0}의 다운로드 폴더 선택</value>
+  </data>
+  <data name="ZModem_ChooseUploadFiles" xml:space="preserve">
+    <value>업로드할 파일 선택(ZMODEM)</value>
+  </data>
+  <data name="ZModem_ChooseDownloadFolderRetry" xml:space="preserve">
+    <value>폴더가 선택되지 않음 — 폴더를 선택하거나 다시 취소하면 수신을 중단합니다</value>
+  </data>
+  <data name="ZModem_ChooseUploadFilesRetry" xml:space="preserve">
+    <value>파일이 선택되지 않음 — 파일을 선택하거나 다시 취소하면 업로드를 중단합니다</value>
   </data>
 </root>

@@ -12,6 +12,49 @@ public class AltScreenCursorTests
 
     private static void Feed(TerminalEmulator e, string s) => e.Feed(Encoding.ASCII.GetBytes(s));
 
+    /// <summary>
+    /// 复刻并验证 ZMODEM 会话结束时的终端自愈:若杂散协议字节把终端切到备用屏(DECSET 1049),
+    /// 主屏内容会"整屏消失"。SshTerminalBridge 在每次 ZMODEM 会话收尾补发的 DECRST 1049
+    /// (即本测试的 <c>ESC[?1049l</c>)必须切回主屏并让原内容重新可见。
+    /// </summary>
+    [TestMethod]
+    public void Exit1049_RecoversMainScreenContent_AfterStrayAltSwitch()
+    {
+        var e = new TerminalEmulator(80, 24);
+
+        // 主屏有内容(用户的 shell 输出)。
+        Feed(e, "hello world");
+        Assert.IsFalse(e.IsAlternateScreen);
+
+        // 杂散字节把终端切到空白备用屏——主屏内容被挡住,表现为"整屏消失"。
+        Feed(e, ESC + "[?1049h");
+        Assert.IsTrue(e.IsAlternateScreen);
+
+        // 桥在 ZMODEM 会话收尾补发的自愈序列:切回主屏。
+        Feed(e, ESC + "[?1049l");
+        Assert.IsFalse(e.IsAlternateScreen, "1049l 应切回主屏");
+
+        // 主屏原内容仍在(备用屏只是遮挡,不销毁主屏缓冲)。
+        Assert.AreEqual("hello world", e.Screen.ActiveLine(0).GetText().TrimEnd());
+    }
+
+    /// <summary>本就在主屏时补发 DECRST 1049 应为无副作用的空操作(模拟器短路返回)。</summary>
+    [TestMethod]
+    public void Exit1049_OnMainScreen_IsHarmlessNoOp()
+    {
+        var e = new TerminalEmulator(80, 24);
+        Feed(e, "sample text");
+        Assert.IsFalse(e.IsAlternateScreen);
+        int cx = e.CursorX, cy = e.CursorY;
+
+        Feed(e, ESC + "[?1049l"); // 桥在正常会话结束时也会补发——不该有任何影响。
+
+        Assert.IsFalse(e.IsAlternateScreen);
+        Assert.AreEqual(cx, e.CursorX);
+        Assert.AreEqual(cy, e.CursorY);
+        Assert.AreEqual("sample text", e.Screen.ActiveLine(0).GetText().TrimEnd());
+    }
+
     [TestMethod]
     public void Exit1049_RestoresMainCursor_EvenWhenAppUsedDecscInAltScreen()
     {

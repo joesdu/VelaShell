@@ -15,6 +15,7 @@ using VelaShell.Core.Services;
 using VelaShell.Core.Ssh;
 using VelaShell.Presentation.Services;
 using VelaShell.Security;
+using VelaShell.Services.ZModem;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
@@ -337,6 +338,8 @@ public partial class MainWindow : Window
             vm.SettingsRequested += (_, _) => _ = OpenSettingsAsync();
             vm.InteractiveAuthenticator = PromptCredentialsAsync;
             vm.MultilinePasteConfirmer = ConfirmMultilinePasteAsync;
+            vm.ZModemDownloadFolderPicker = PromptForZModemDownloadFolderAsync;
+            vm.ZModemUploadFilePicker = PromptForZModemUploadFilesAsync;
             vm.ExportBufferRequested += (_, _) => _ = ExportTerminalBufferAsync(vm);
             // 工具菜单“连接诊断”:对当前标签的配置打开诊断中心(设计 RGXg1)。
             vm.DiagnosticsRequested += profile =>
@@ -889,6 +892,89 @@ public partial class MainWindow : Window
                 MessageDialogKind.Error
             );
         }
+    }
+
+    /// <summary>
+    /// ZMODEM 下载目录选择(视图层):后台接收线程调用时编组到 UI 线程,
+    /// 弹出原生文件夹选择框。返回所选本地目录的绝对路径;用户取消则返回 null。
+    /// </summary>
+    private Task<string?> PromptForZModemDownloadFolderAsync(ZModemFolderPromptRequest request, CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        return Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            TopLevel? top = GetTopLevel(this);
+            if (top?.StorageProvider is not { } storage)
+            {
+                return null;
+            }
+            IStorageFolder? start = null;
+            try
+            {
+                if (Directory.Exists(request.SuggestedDirectory))
+                {
+                    start = await storage.TryGetFolderFromPathAsync(request.SuggestedDirectory);
+                }
+            }
+            catch
+            {
+                // 起始目录解析失败无关紧要。
+            }
+            string title;
+            if (request.IsRetryAfterCancel)
+            {
+                // 二次弹窗:标题提示这是防误触的最后机会,再次取消即中止。
+                title = Strings.Get("ZModem_ChooseDownloadFolderRetry");
+            }
+            else
+            {
+                title = string.IsNullOrEmpty(request.FirstFileName)
+                    ? Strings.Get("ZModem_ChooseDownloadFolder")
+                    : Strings.Format("ZModem_ChooseDownloadFolderFor", request.FirstFileName);
+            }
+            IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(new()
+            {
+                Title = title,
+                AllowMultiple = false,
+                SuggestedStartLocation = start
+            });
+            return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
+        });
+    }
+
+    /// <summary>
+    /// ZMODEM 上传文件选择(视图层):远端跑 <c>rz</c> 时,后台发送线程调用本方法编组到 UI 线程,
+    /// 弹出原生多选文件框。返回所选本地文件的绝对路径清单;用户取消则返回空清单。
+    /// </summary>
+    /// <param name="isRetryAfterCancel">是否为首次取消后的二次弹窗(标题提示再次取消即中止)。</param>
+    /// <param name="cancellationToken"></param>
+    private Task<IReadOnlyList<string>> PromptForZModemUploadFilesAsync(bool isRetryAfterCancel, CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        return Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            TopLevel? top = GetTopLevel(this);
+            if (top?.StorageProvider is not { } storage)
+            {
+                return (IReadOnlyList<string>)[];
+            }
+            IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(new()
+            {
+                Title = isRetryAfterCancel
+                    ? Strings.Get("ZModem_ChooseUploadFilesRetry")
+                    : Strings.Get("ZModem_ChooseUploadFiles"),
+                AllowMultiple = true
+            });
+            List<string> paths = [];
+            foreach (IStorageFile file in files)
+            {
+                if (file.TryGetLocalPath() is { } path)
+                {
+                    paths.Add(path);
+                }
+            }
+            return (IReadOnlyList<string>)paths;
+        });
     }
 
     /// <summary>

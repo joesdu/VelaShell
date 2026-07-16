@@ -2744,5 +2744,19 @@ Overwrite it? (Cancel skips this file)</value>
   </data>
   <data name="SetGeneral_FollowActiveTerminalDesc" xml:space="preserve">
     <value>When switching terminal tabs, reveal and select the matching saved connection.</value>
+  <data name="ZModem_ChooseDownloadFolder" xml:space="preserve">
+    <value>Choose ZMODEM download folder</value>
+  </data>
+  <data name="ZModem_ChooseDownloadFolderFor" xml:space="preserve">
+    <value>Choose download folder for {0}</value>
+  </data>
+  <data name="ZModem_ChooseUploadFiles" xml:space="preserve">
+    <value>Choose files to upload (ZMODEM)</value>
+  </data>
+  <data name="ZModem_ChooseDownloadFolderRetry" xml:space="preserve">
+    <value>No folder chosen — choose one, or cancel again to abort the transfer</value>
+  </data>
+  <data name="ZModem_ChooseUploadFilesRetry" xml:space="preserve">
+    <value>No files chosen — choose some, or cancel again to abort the transfer</value>
   </data>
 </root>

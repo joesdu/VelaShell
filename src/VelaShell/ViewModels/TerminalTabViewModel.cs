@@ -8,6 +8,7 @@ using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Presentation.ViewModels;
 using VelaShell.Services;
+using VelaShell.Services.ZModem;
 using VelaShell.Terminal;
 using VelaShell.Terminal.Input;
 using VelaShell.Terminal.Rendering;
@@ -101,6 +102,25 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     /// <summary>补全建议提供器(宿主 MainWindowViewModel 注入;null = 补全不可用)。</summary>
     public CommandSuggestionProvider? SuggestionProvider { get; set; }
+
+    /// <summary>
+    /// ZMODEM 下载目录选择委托(由视图层 MainWindow 注入,视图层独占 StorageProvider)。
+    /// 后台接收线程经它弹出原生文件夹选择框;返回所选目录,取消则为 null。null = 未接线,ZMODEM 不启用。
+    /// </summary>
+    public Func<ZModemFolderPromptRequest, CancellationToken, Task<string?>>? ZModemDownloadFolderPicker { get; set; }
+
+    /// <summary>
+    /// ZMODEM 上传文件选择委托(由视图层 MainWindow 注入)。远端跑 <c>rz</c> 时,
+    /// 后台发送线程经它弹出多选文件框;返回所选文件的绝对路径,取消则为空清单。
+    /// null = 未接线,遇到 <c>rz</c> 不接管(字节原样喂终端)。
+    /// </summary>
+    public Func<bool, CancellationToken, Task<IReadOnlyList<string>>>? ZModemUploadFilePicker { get; set; }
+
+    /// <summary>共享的文件传输面板(宿主注入),用于展示 ZMODEM 接收进度;null = 不展示进度。</summary>
+    public FileTransferViewModel? FileTransfer { get; set; }
+
+    /// <summary>读取应用设置的委托(宿主注入),ZMODEM 落地据此取默认下载目录与冲突策略。</summary>
+    public Func<Task<AppSettings>>? GetSettingsAsync { get; set; }
 
     /// <summary>用户在本标签提交了一条通过回显校验的命令(宿主记入全局命令历史)。</summary>
     public event Action<string>? CommandLineSubmitted;
@@ -502,6 +522,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         ShellStream = shellStream;
         var bridge = new SshTerminalBridge(TerminalEmulator, shellStream);
         bridge.Closed += OnBridgeClosed;
+        AttachZModemRouter(bridge, shellStream);
         Bridge = bridge;
         _started = false;
 
@@ -535,12 +556,38 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             return;
         }
         bridge.Closed -= OnBridgeClosed;
+        // 拆除传输前先取消进行中的 ZMODEM 会话(向对端发 ZCAN),避免后台接收任务悬空。
+        bridge.ZModemRouter?.CancelActiveSession();
         Bridge = null;
         ShellStream = null;
         _started = false;
 
         // Bridge.Dispose also disposes the shell stream; run it off the caller's thread.
         Task.Run(bridge.Dispose);
+    }
+
+    /// <summary>
+    /// 为新建的桥装配 ZMODEM 路由器(仅当目录选择委托、传输面板与设置委托都已注入时)。
+    /// 必须在 <see cref="Start" /> 之前调用;每个会话经 sinkFactory / sourceFactory 新建一个实例,
+    /// 因此目录与文件选择都不跨会话缓存。上传选择器可选:未注入时遇到 <c>rz</c> 不接管。
+    /// </summary>
+    private void AttachZModemRouter(SshTerminalBridge bridge, IShellStreamWrapper shellStream)
+    {
+        Func<ZModemFolderPromptRequest, CancellationToken, Task<string?>>? picker = ZModemDownloadFolderPicker;
+        FileTransferViewModel? transfer = FileTransfer;
+        Func<Task<AppSettings>>? settings = GetSettingsAsync;
+        if (picker is null || transfer is null || settings is null)
+        {
+            return;
+        }
+        Func<bool, CancellationToken, Task<IReadOnlyList<string>>>? uploadPicker = ZModemUploadFilePicker;
+        var observer = new ZModemTransferObserver(transfer);
+        bridge.ZModemRouter = new Terminal.ZModem.ZModemTerminalRouter(
+            shellStream,
+            () => new FolderZModemFileSink(picker, settings),
+            uploadPicker is null ? null : () => new FileZModemFileSource(uploadPicker),
+            Core.ZModem.Model.ZModemOptions.Default,
+            observer);
     }
 
     private void OnBridgeClosed()
