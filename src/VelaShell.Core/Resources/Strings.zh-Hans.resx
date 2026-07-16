@@ -2826,4 +2826,19 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="TunnelSvc_TargetUnreachable" xml:space="preserve">
     <value>目标不可达:请确认目标主机从服务器可以访问(内网地址/防火墙)。</value>
   </data>
+  <data name="ZModem_ChooseDownloadFolder" xml:space="preserve">
+    <value>选择 ZMODEM 下载目录</value>
+  </data>
+  <data name="ZModem_ChooseDownloadFolderFor" xml:space="preserve">
+    <value>为 {0} 选择下载目录</value>
+  </data>
+  <data name="ZModem_ChooseUploadFiles" xml:space="preserve">
+    <value>选择要上传的文件(ZMODEM)</value>
+  </data>
+  <data name="ZModem_ChooseDownloadFolderRetry" xml:space="preserve">
+    <value>未选择目录——请选择一个,或再次取消以中止本次接收</value>
+  </data>
+  <data name="ZModem_ChooseUploadFilesRetry" xml:space="preserve">
+    <value>未选择文件——请选择文件,或再次取消以中止本次上传</value>
+  </data>
 </root>

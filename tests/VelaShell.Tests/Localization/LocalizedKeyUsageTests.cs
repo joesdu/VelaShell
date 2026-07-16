@@ -86,7 +86,7 @@ public class LocalizedKeyUsageTests
     {
         var manager = new ResourceManager("VelaShell.Core.Resources.Strings", typeof(Strings).Assembly);
         ResourceSet neutral = manager.GetResourceSet(CultureInfo.InvariantCulture, true, false)!;
-        HashSet<string> keys = neutral.Cast<DictionaryEntry>().Select(entry => (string)entry.Key).ToHashSet(StringComparer.Ordinal);
+        var keys = neutral.Cast<DictionaryEntry>().Select(entry => (string)entry.Key).ToHashSet(StringComparer.Ordinal);
         Assert.IsNotEmpty(keys, "中性资源为空,后面的比对就没意义了。");
         return keys;
     }
