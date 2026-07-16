@@ -1,3 +1,4 @@
+using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 
 namespace VelaShell.Core.Sync;
@@ -52,7 +53,7 @@ public class SyncSettings
 public class SyncPayload
 {
     /// <summary>载荷架构版本号,用于跨版本兼容判定。</summary>
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
 
     /// <summary>本快照的生成时间(UTC)。</summary>
     public DateTime UpdatedAtUtc { get; set; }
@@ -73,7 +74,7 @@ public class SyncPayload
     public Dictionary<Guid, List<TunnelConfig>>? Tunnels { get; set; }
 
     /// <summary>快捷命令/代码片段数据。</summary>
-    public QuickCommandData? Snippets { get; set; }
+    public QuickCommandSyncData? Snippets { get; set; }
 }
 
 /// <summary>
@@ -83,7 +84,7 @@ public class SyncPayload
 public class SyncEnvelope
 {
     /// <summary>信封架构版本号,用于跨版本兼容判定。</summary>
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
 
     /// <summary>载荷生成时间(UTC)。</summary>
     public DateTime UpdatedAtUtc { get; set; }
@@ -110,7 +111,13 @@ public class SyncEnvelope
 /// <param name="Additions">相对上一版本的新增行数。</param>
 /// <param name="Deletions">相对上一版本的删除行数。</param>
 /// <param name="DeviceName">生成该版本的设备名;需逐版本读取载荷信封,可能为 null。</param>
-public sealed record GistRevision(string Version, DateTime CommittedAtUtc, int Additions, int Deletions, string? DeviceName = null);
+public sealed record GistRevision(
+    string Version,
+    DateTime CommittedAtUtc,
+    int Additions,
+    int Deletions,
+    string? DeviceName = null
+);
 
 /// <summary>一次同步操作的结果动作类型。</summary>
 public enum SyncAction
@@ -128,7 +135,7 @@ public enum SyncAction
     Pulled,
 
     /// <summary>同步失败。</summary>
-    Failed
+    Failed,
 }
 
 /// <summary>一次同步操作的结果。</summary>

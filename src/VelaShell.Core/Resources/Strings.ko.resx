@@ -1231,6 +1231,10 @@
   <data name="QuickCmd_SelectedTerminals" xml:space="preserve"><value>개 터미널 선택됨</value></data>
   <data name="QuickCmd_Search" xml:space="preserve"><value>스니펫 검색</value></data>
   <data name="QuickCmd_Run" xml:space="preserve"><value>실행</value></data>
+  <data name="QuickCmd_Ungrouped" xml:space="preserve"><value>그룹 없음</value></data>
+  <data name="QuickCmd_GroupPlaceholder" xml:space="preserve"><value>그룹 이름</value></data>
+  <data name="QuickCmd_EditSnippet" xml:space="preserve"><value>스니펫 편집</value></data>
+  <data name="Broadcast_TypeHint" xml:space="preserve"><value>동기 입력이 활성화되었습니다. 입력이 선택한 터미널로 전송됩니다</value></data>
   <data name="QuickConnect" xml:space="preserve">
     <value>빠른 연결</value>
   </data>
@@ -2733,5 +2737,11 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="Warning" xml:space="preserve">
     <value>경고</value>
+  </data>
+  <data name="SetGeneral_FollowActiveTerminal" xml:space="preserve">
+    <value>활성 터미널을 탐색기에서 따라가기</value>
+  </data>
+  <data name="SetGeneral_FollowActiveTerminalDesc" xml:space="preserve">
+    <value>터미널 탭을 전환할 때 해당 저장 연결을 펼치고 선택합니다.</value>
   </data>
 </root>

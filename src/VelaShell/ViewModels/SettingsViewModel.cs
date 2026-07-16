@@ -78,7 +78,8 @@ public class SettingsViewModel : ReactiveObject
         IHostKeyService? hostKeyService = null,
         IGistSyncService? gistSyncService = null,
         IUpdateService? updateService = null,
-        QuickCommandsViewModel? snippets = null
+        QuickCommandsViewModel? snippets = null,
+        IQuickCommandRepository? quickCommandRepository = null
     )
     {
         _settingsService =
@@ -124,7 +125,12 @@ public class SettingsViewModel : ReactiveObject
             });
         SshKeys = new(sshKeyService);
         Snippets =
-            snippets ?? (appDataStore is null ? null : new QuickCommandsViewModel(appDataStore));
+            snippets
+            ?? (
+                quickCommandRepository is null
+                    ? null
+                    : new QuickCommandsViewModel(quickCommandRepository)
+            );
         Sync = gistSyncService is null ? null : new SyncViewModel(gistSyncService);
         RemoveKnownHostCommand = ReactiveCommand.CreateFromTask<KnownHost>(RemoveKnownHostAsync);
         LoadCommand = ReactiveCommand.CreateFromTask(LoadAsync);

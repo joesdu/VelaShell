@@ -23,6 +23,7 @@ public class QuickCommandsViewModelTests : IDisposable
     private readonly SonnetDbEngine _engine;
     private readonly string _legacyDataPath;
     private readonly string _testDirectory;
+    private readonly IQuickCommandRepository _repository;
     private readonly QuickCommandsViewModel _vm;
 
     public QuickCommandsViewModelTests()
@@ -32,7 +33,8 @@ public class QuickCommandsViewModelTests : IDisposable
         _legacyDataPath = Path.Combine(_testDirectory, "quick-commands.json");
         _engine = new(Path.Combine(_testDirectory, "sonnetdb"));
         _dataStore = new SonnetDbAppDataStore(_engine);
-        _vm = new(_dataStore, _legacyDataPath);
+        _repository = new SonnetDbQuickCommandRepository(_dataStore, _legacyDataPath);
+        _vm = new(_repository);
     }
 
     public void Dispose()
@@ -168,7 +170,8 @@ public class QuickCommandsViewModelTests : IDisposable
     {
         _vm.AddCommandCommand.Execute().Subscribe();
         Assert.IsTrue(_vm.IsAddingCommand);
-        Assert.AreEqual("Custom", _vm.NewCategory);
+        string ungrouped = VelaShell.Core.Resources.Strings.Get("QuickCmd_Ungrouped");
+        Assert.AreEqual(ungrouped, _vm.NewCategory);
         _vm.NewName = "my-cmd";
         _vm.NewCommandText = "echo hello";
         _vm.NewDescription = "Says hello";
@@ -179,7 +182,7 @@ public class QuickCommandsViewModelTests : IDisposable
         Assert.AreEqual("my-cmd", added.Name);
         Assert.AreEqual("echo hello", added.CommandText);
         Assert.AreEqual("Says hello", added.Description);
-        Assert.AreEqual("Custom", added.Category);
+        Assert.AreEqual(ungrouped, added.Category);
         Assert.IsFalse(added.IsBuiltIn);
     }
 
@@ -224,10 +227,9 @@ public class QuickCommandsViewModelTests : IDisposable
     [TestCategory("QuickCommands")]
     public void Categories_ContainAllDistinctCategories()
     {
-        var expected = QuickCommandCatalog
-            .BuiltIns.Select(c => c.Category)
-            .Distinct()
-            .OrderBy(c => c)
+        var expected = QuickCommandGroupCatalog
+            .BuiltIns.Select(group => group.Name)
+            .Append(VelaShell.Core.Resources.Strings.Get("QuickCmd_Ungrouped"))
             .ToList();
         CollectionAssert.AreEqual(
             expected,
@@ -262,7 +264,9 @@ public class QuickCommandsViewModelTests : IDisposable
         _vm.NewDescription = "Show uptime";
         _vm.NewCategory = "Custom";
         await _vm.SaveNewCommandCommand.Execute().FirstAsync();
-        var vm2 = new QuickCommandsViewModel(_dataStore, _legacyDataPath);
+        var vm2 = new QuickCommandsViewModel(
+            new SonnetDbQuickCommandRepository(_dataStore, _legacyDataPath)
+        );
         await vm2.LoadAsync();
         Assert.HasCount(BuiltInCount + 1, vm2.AllCommands);
         QuickCommandViewModel restored = vm2.AllCommands.First(c => c.Name == "persisted-cmd");
@@ -278,12 +282,54 @@ public class QuickCommandsViewModelTests : IDisposable
         _vm.NewName = "single-load";
         _vm.NewCommandText = "whoami";
         await _vm.SaveNewCommandCommand.Execute().FirstAsync();
-        var vm2 = new QuickCommandsViewModel(_dataStore, _legacyDataPath);
+        var vm2 = new QuickCommandsViewModel(
+            new SonnetDbQuickCommandRepository(_dataStore, _legacyDataPath)
+        );
 
         await vm2.LoadAsync();
         await vm2.LoadAsync();
 
         Assert.ContainsSingle(command => command.Name == "single-load", vm2.AllCommands);
+    }
+
+    [TestMethod]
+    [TestCategory("QuickCommands")]
+    public void Search_ExpandsMatchingGroup_ThenRestoresCollapsedState()
+    {
+        QuickCommandGroupViewModel group = _vm.Groups.First(item => item.Commands.Count > 0);
+        QuickCommandViewModel command = group.Commands[0];
+        group.IsExpanded = false;
+
+        _vm.SearchQuery = command.Name;
+
+        Assert.IsTrue(group.IsExpanded);
+        Assert.Contains(group, _vm.FilteredGroups);
+
+        _vm.SearchQuery = string.Empty;
+
+        Assert.IsFalse(group.IsExpanded);
+    }
+
+    [TestMethod]
+    [TestCategory("QuickCommands")]
+    public async Task EditCommand_MovesItToNewPersistedGroup()
+    {
+        _vm.NewName = "deploy";
+        _vm.NewCommandText = "./deploy.sh";
+        _vm.NewCategory = "Ops";
+        await _vm.SaveNewCommandCommand.Execute().FirstAsync();
+        QuickCommandViewModel command = _vm.AllCommands.Single(item => item.Name == "deploy");
+
+        _vm.BeginEditCommand.Execute(command).Subscribe();
+        _vm.NewCategory = "Release";
+        await _vm.SaveEditCommand.Execute().FirstAsync();
+
+        Assert.AreEqual("Release", command.Category);
+        var vm2 = new QuickCommandsViewModel(
+            new SonnetDbQuickCommandRepository(_dataStore, _legacyDataPath)
+        );
+        await vm2.LoadAsync();
+        Assert.AreEqual("Release", vm2.AllCommands.Single(item => item.Name == "deploy").Category);
     }
 
     [TestMethod]

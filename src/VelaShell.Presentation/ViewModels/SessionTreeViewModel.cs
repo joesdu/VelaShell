@@ -31,15 +31,39 @@ public sealed class SessionTreeViewModel : ReactiveObject
         _hasNoSessions = true;
         LoadCommand = ReactiveCommand.CreateFromTask(LoadTreeAsync);
         IObservable<bool> hasSelectedSession = this.WhenAnyValue(x => x.SelectedNode)
-                                                   .Select(node => node is { IsGroup: false });
-        ConnectCommand = ReactiveCommand.Create(() => RaiseForSelected(ConnectRequested), hasSelectedSession);
-        EditSessionCommand = ReactiveCommand.Create(() => RaiseForSelected(EditRequested), hasSelectedSession);
-        DeleteSessionCommand = ReactiveCommand.CreateFromTask(DeleteSelectedSessionAsync, hasSelectedSession);
-        DuplicateSessionCommand = ReactiveCommand.CreateFromTask(DuplicateSelectedSessionAsync, hasSelectedSession);
-        OpenSftpCommand = ReactiveCommand.Create(() => RaiseForSelected(OpenSftpRequested), hasSelectedSession);
-        PortForwardCommand = ReactiveCommand.Create(() => RaiseForSelected(PortForwardRequested), hasSelectedSession);
-        DisconnectCommand = ReactiveCommand.Create(() => RaiseForSelected(DisconnectRequested), hasSelectedSession);
-        DiagnoseCommand = ReactiveCommand.Create(() => RaiseForSelected(DiagnoseRequested), hasSelectedSession);
+            .Select(node => node is { IsGroup: false });
+        ConnectCommand = ReactiveCommand.Create(
+            () => RaiseForSelected(ConnectRequested),
+            hasSelectedSession
+        );
+        EditSessionCommand = ReactiveCommand.Create(
+            () => RaiseForSelected(EditRequested),
+            hasSelectedSession
+        );
+        DeleteSessionCommand = ReactiveCommand.CreateFromTask(
+            DeleteSelectedSessionAsync,
+            hasSelectedSession
+        );
+        DuplicateSessionCommand = ReactiveCommand.CreateFromTask(
+            DuplicateSelectedSessionAsync,
+            hasSelectedSession
+        );
+        OpenSftpCommand = ReactiveCommand.Create(
+            () => RaiseForSelected(OpenSftpRequested),
+            hasSelectedSession
+        );
+        PortForwardCommand = ReactiveCommand.Create(
+            () => RaiseForSelected(PortForwardRequested),
+            hasSelectedSession
+        );
+        DisconnectCommand = ReactiveCommand.Create(
+            () => RaiseForSelected(DisconnectRequested),
+            hasSelectedSession
+        );
+        DiagnoseCommand = ReactiveCommand.Create(
+            () => RaiseForSelected(DiagnoseRequested),
+            hasSelectedSession
+        );
         MoveToGroupCommand = ReactiveCommand.Create<SessionTreeNodeViewModel>(MoveSelectedToGroup);
     }
 
@@ -117,7 +141,10 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
     private void RaiseForSelected(Action<SessionProfile>? handler)
     {
-        if (SelectedNode is { IsGroup: false } node && _sessionCache.TryGetValue(node.Id, out SessionProfile? session))
+        if (
+            SelectedNode is { IsGroup: false } node
+            && _sessionCache.TryGetValue(node.Id, out SessionProfile? session)
+        )
         {
             handler?.Invoke(session);
         }
@@ -146,7 +173,9 @@ public sealed class SessionTreeViewModel : ReactiveObject
         }
         else
         {
-            SessionTreeNodeViewModel? groupNode = Nodes.FirstOrDefault(node => node.IsGroup && node.Id == session.GroupId);
+            SessionTreeNodeViewModel? groupNode = Nodes.FirstOrDefault(node =>
+                node.IsGroup && node.Id == session.GroupId
+            );
             if (groupNode is null)
             {
                 return;
@@ -161,7 +190,10 @@ public sealed class SessionTreeViewModel : ReactiveObject
     /// <param name="targetGroupId">目标分组标识;<see cref="Guid.Empty" /> 表示未分组(树根)。</param>
     public void MoveSessionToGroup(Guid sessionId, Guid targetGroupId)
     {
-        SessionTreeNodeViewModel? sourceNode = FindSessionNode(sessionId, out SessionTreeNodeViewModel? sourceGroup);
+        SessionTreeNodeViewModel? sourceNode = FindSessionNode(
+            sessionId,
+            out SessionTreeNodeViewModel? sourceGroup
+        );
         if (sourceNode is null)
         {
             return;
@@ -182,7 +214,9 @@ public sealed class SessionTreeViewModel : ReactiveObject
         }
         else
         {
-            SessionTreeNodeViewModel? targetGroup = Nodes.FirstOrDefault(node => node.IsGroup && node.Id == targetGroupId);
+            SessionTreeNodeViewModel? targetGroup = Nodes.FirstOrDefault(node =>
+                node.IsGroup && node.Id == targetGroupId
+            );
             if (targetGroup is not null)
             {
                 sourceNode.IsRootLevel = false;
@@ -206,14 +240,45 @@ public sealed class SessionTreeViewModel : ReactiveObject
         node?.Status = status;
     }
 
+    /// <summary>展开父分组并选中指定会话;找不到时保留当前选择。</summary>
+    public bool SelectSession(Guid sessionId)
+    {
+        SessionTreeNodeViewModel? node = FindSessionNode(
+            sessionId,
+            out SessionTreeNodeViewModel? parentGroup
+        );
+        if (node is null)
+        {
+            return false;
+        }
+        if (parentGroup is not null)
+        {
+            parentGroup.IsExpanded = true;
+        }
+        foreach (SessionTreeNodeViewModel current in EnumerateSessionNodes())
+        {
+            current.IsSelected = ReferenceEquals(current, node);
+        }
+        SelectedNode = node;
+        return true;
+    }
+
+    private IEnumerable<SessionTreeNodeViewModel> EnumerateSessionNodes() =>
+        Nodes.SelectMany(node => node.IsGroup ? node.Children : [node]);
+
     /// <summary>在树根与各分组下查找会话节点;<paramref name="parentGroup" /> 为 null 表示根级。</summary>
-    private SessionTreeNodeViewModel? FindSessionNode(Guid sessionId, out SessionTreeNodeViewModel? parentGroup)
+    private SessionTreeNodeViewModel? FindSessionNode(
+        Guid sessionId,
+        out SessionTreeNodeViewModel? parentGroup
+    )
     {
         foreach (SessionTreeNodeViewModel node in Nodes)
         {
             if (node.IsGroup)
             {
-                SessionTreeNodeViewModel? child = node.Children.FirstOrDefault(item => item.Id == sessionId);
+                SessionTreeNodeViewModel? child = node.Children.FirstOrDefault(item =>
+                    item.Id == sessionId
+                );
                 if (child is null)
                 {
                     continue;
@@ -232,7 +297,8 @@ public sealed class SessionTreeViewModel : ReactiveObject
         return null;
     }
 
-    private void RefreshHasNoSessions() => HasNoSessions = !Nodes.Any(node => !node.IsGroup || node.Children.Count > 0);
+    private void RefreshHasNoSessions() =>
+        HasNoSessions = !Nodes.Any(node => !node.IsGroup || node.Children.Count > 0);
 
     private void MoveSelectedToGroup(SessionTreeNodeViewModel? targetGroup)
     {
@@ -245,7 +311,10 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
     private async Task DuplicateSelectedSessionAsync()
     {
-        if (SelectedNode is not { IsGroup: false } node || !_sessionCache.TryGetValue(node.Id, out SessionProfile? source))
+        if (
+            SelectedNode is not { IsGroup: false } node
+            || !_sessionCache.TryGetValue(node.Id, out SessionProfile? source)
+        )
         {
             return;
         }
@@ -262,7 +331,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
             PrivateKeyPassphrase = source.PrivateKeyPassphrase,
             GroupId = source.GroupId,
             Tags = [.. source.Tags],
-            JumpHostProfileId = source.JumpHostProfileId
+            JumpHostProfileId = source.JumpHostProfileId,
         };
         await _repository.SaveSessionAsync(copy);
         await LoadTreeAsync();
@@ -278,9 +347,9 @@ public sealed class SessionTreeViewModel : ReactiveObject
         List<ServerGroup> groups = await _repository.GetAllGroupsAsync();
         List<SessionProfile> sessions = await _repository.GetAllSessionsAsync();
         var byGroup = sessions
-                      .Where(session => session.GroupId is not null)
-                      .GroupBy(session => session.GroupId!.Value)
-                      .ToDictionary(grouping => grouping.Key, grouping => grouping.ToList());
+            .Where(session => session.GroupId is not null)
+            .GroupBy(session => session.GroupId!.Value)
+            .ToDictionary(grouping => grouping.Key, grouping => grouping.ToList());
         var ungrouped = sessions.Where(session => session.GroupId is null).ToList();
         int groupIndex = 0;
         foreach (ServerGroup group in groups.OrderBy(item => item.SortOrder))
@@ -288,11 +357,16 @@ public sealed class SessionTreeViewModel : ReactiveObject
             var groupNode = new SessionTreeNodeViewModel(group.Id, group.Name, true)
             {
                 // 文件夹图标按设计 FrJPu 以 warning/info/accent 轮换配色。
-                GroupColorIndex = groupIndex++ % 3
+                GroupColorIndex = groupIndex++ % 3,
             };
             if (byGroup.TryGetValue(group.Id, out List<SessionProfile>? members))
             {
-                foreach (SessionProfile session in members.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
+                foreach (
+                    SessionProfile session in members.OrderBy(
+                        s => s.Name,
+                        StringComparer.OrdinalIgnoreCase
+                    )
+                )
                 {
                     groupNode.Children.Add(CreateSessionNode(session, false));
                 }
@@ -302,7 +376,12 @@ public sealed class SessionTreeViewModel : ReactiveObject
         }
 
         // 未分组会话直接挂在树根(设计 FrJPu),不再收进“未分组”目录。
-        foreach (SessionProfile session in ungrouped.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
+        foreach (
+            SessionProfile session in ungrouped.OrderBy(
+                s => s.Name,
+                StringComparer.OrdinalIgnoreCase
+            )
+        )
         {
             Nodes.Add(CreateSessionNode(session, true));
         }
@@ -317,7 +396,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
         _sessionCache[session.Id] = session;
         var node = new SessionTreeNodeViewModel(session.Id, session.Name, false)
         {
-            IsRootLevel = isRootLevel
+            IsRootLevel = isRootLevel,
         };
         if (_statusCache.TryGetValue(session.Id, out SessionStatus status))
         {
@@ -336,7 +415,10 @@ public sealed class SessionTreeViewModel : ReactiveObject
         await _repository.DeleteSessionAsync(sessionId);
         _sessionCache.Remove(sessionId);
         _statusCache.Remove(sessionId);
-        SessionTreeNodeViewModel? node = FindSessionNode(sessionId, out SessionTreeNodeViewModel? parentGroup);
+        SessionTreeNodeViewModel? node = FindSessionNode(
+            sessionId,
+            out SessionTreeNodeViewModel? parentGroup
+        );
         if (node is not null)
         {
             if (parentGroup is not null)

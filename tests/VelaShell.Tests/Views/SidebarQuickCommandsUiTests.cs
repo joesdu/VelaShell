@@ -1,14 +1,14 @@
 using System.Windows.Input;
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
-using Avalonia.Markup.Xaml.Styling;
-using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using NSubstitute;
 using VelaShell.Core.Data;
+using VelaShell.Core.Models;
 using VelaShell.Presentation.ViewModels;
+using VelaShell.ViewModels;
 using VelaShell.Views;
 
 namespace VelaShell.Tests.Views;
@@ -22,18 +22,17 @@ public class SidebarQuickCommandsUiTests
 
     [ClassInitialize]
     public static void Init(TestContext _) =>
-        _session = HeadlessUnitTestSession.StartNew(typeof(HeadlessTestApp));
-
-    [ClassCleanup]
-    public static void Cleanup() => _session.Dispose();
+        _session = HeadlessUnitTestSession.GetOrStartForAssembly(
+            typeof(SidebarQuickCommandsUiTests).Assembly
+        );
 
     [TestMethod]
     public void MinimumHeight_QuickCommandsCanCollapseAndRestore()
     {
         OnUi(() =>
         {
-            IAppDataStore store = Substitute.For<IAppDataStore>();
-            var library = new QuickCommandsViewModel(store);
+            IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
+            var library = new QuickCommandsViewModel(repository);
             var runner = new QuickCommandRunnerViewModel(library);
             var viewModel = new SidebarViewModel(quickCommands: runner)
             {
@@ -75,8 +74,8 @@ public class SidebarQuickCommandsUiTests
     {
         OnUi(() =>
         {
-            IAppDataStore store = Substitute.For<IAppDataStore>();
-            var runner = new QuickCommandRunnerViewModel(new QuickCommandsViewModel(store));
+            IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
+            var runner = new QuickCommandRunnerViewModel(new QuickCommandsViewModel(repository));
             var viewModel = new SidebarViewModel(quickCommands: runner);
             var view = new SidebarView { DataContext = viewModel };
             var window = new Window
@@ -101,6 +100,171 @@ public class SidebarQuickCommandsUiTests
             Assert.IsTrue(section.IsVisible);
             Assert.IsTrue(splitter.IsVisible);
             Assert.IsGreaterThan(36, grid.RowDefinitions[2].ActualHeight);
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    public void SidebarLayout_RestoresCollapseStateAndRememberedHeights()
+    {
+        OnUi(() =>
+        {
+            IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
+            var viewModel = new SidebarViewModel(
+                quickCommands: new QuickCommandRunnerViewModel(
+                    new QuickCommandsViewModel(repository)
+                )
+            )
+            {
+                IsQuickCommandsVisible = true,
+                QuickCommandsExpanded = false,
+                QuickCommandsHeight = 220,
+                RecentConnectionsExpanded = false,
+                RecentConnectionsHeight = 210,
+            };
+            var view = new SidebarView { DataContext = viewModel };
+            var window = new Window
+            {
+                Width = 280,
+                Height = 700,
+                Content = view,
+            };
+            window.Show();
+            Relayout(window);
+            Grid quickGrid = view.FindControl<Grid>("SessionAndQuickGrid")!;
+            Grid sectionsGrid = view.FindControl<Grid>("SidebarSectionsGrid")!;
+            Button quickToggle = view.FindControl<Button>("QuickCommandsToggle")!;
+            Button recentToggle = view.FindControl<Button>("RecentConnectionsToggle")!;
+
+            Assert.AreEqual(36, quickGrid.RowDefinitions[2].ActualHeight);
+            Assert.AreEqual(36, sectionsGrid.RowDefinitions[2].ActualHeight);
+
+            quickToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            recentToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Relayout(window);
+
+            Assert.IsTrue(viewModel.QuickCommandsExpanded);
+            Assert.IsTrue(viewModel.RecentConnectionsExpanded);
+            Assert.AreEqual(220, quickGrid.RowDefinitions[2].ActualHeight, 1);
+            Assert.AreEqual(210, sectionsGrid.RowDefinitions[2].ActualHeight, 1);
+
+            quickGrid.RowDefinitions[2].Height = new(260);
+            Relayout(window);
+            quickToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Relayout(window);
+            Assert.AreEqual(260, viewModel.QuickCommandsHeight, 1);
+            Assert.AreEqual(36, quickGrid.RowDefinitions[2].ActualHeight);
+
+            quickToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Relayout(window);
+            Assert.AreEqual(260, quickGrid.RowDefinitions[2].ActualHeight, 1);
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    public void SessionTreeProgrammaticSelection_DoesNotTakeKeyboardFocus()
+    {
+        OnUi(() =>
+        {
+            ISessionRepository repository = Substitute.For<ISessionRepository>();
+            var treeViewModel = new SessionTreeViewModel(repository);
+            SessionProfile profile = new()
+            {
+                Id = Guid.NewGuid(),
+                Name = "server",
+                Host = "server.example",
+                Username = "root",
+            };
+            treeViewModel.AddSession(profile);
+            var treeView = new SessionTreeView { DataContext = treeViewModel };
+            var terminalFocusProxy = new TextBox();
+            var panel = new Grid { RowDefinitions = new("*,Auto") };
+            panel.Children.Add(treeView);
+            Grid.SetRow(terminalFocusProxy, 1);
+            panel.Children.Add(terminalFocusProxy);
+            var window = new Window
+            {
+                Width = 320,
+                Height = 400,
+                Content = panel,
+            };
+            window.Show();
+            Relayout(window);
+            terminalFocusProxy.Focus();
+
+            Assert.IsTrue(treeViewModel.SelectSession(profile.Id));
+            Relayout(window);
+
+            Assert.IsTrue(terminalFocusProxy.IsFocused);
+            Assert.IsNotNull(
+                treeView
+                    .GetVisualDescendants()
+                    .OfType<Border>()
+                    .FirstOrDefault(border =>
+                        border.Classes.Contains("session")
+                        && ReferenceEquals(border.DataContext, treeViewModel.SelectedNode)
+                    )
+            );
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    public void QuickCommands_RendersCollapsibleGroups()
+    {
+        OnUi(() =>
+        {
+            IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
+            var runner = new QuickCommandRunnerViewModel(new QuickCommandsViewModel(repository));
+            var view = new QuickCommandsView { DataContext = runner };
+            var window = new Window
+            {
+                Width = 300,
+                Height = 500,
+                Content = view,
+            };
+            window.Show();
+            Relayout(window);
+
+            Assert.IsGreaterThan(
+                1,
+                view.GetVisualDescendants()
+                    .OfType<Avalonia.Controls.Primitives.ToggleButton>()
+                    .Count()
+            );
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    public void BroadcastBar_ToggleFocusAndClose_UsesTextlessCaptureArea()
+    {
+        OnUi(() =>
+        {
+            var viewModel = new MainWindowViewModel();
+            var view = new BroadcastInputView { DataContext = viewModel };
+            var window = new Window
+            {
+                Width = 900,
+                Height = 80,
+                Content = view,
+            };
+            window.Show();
+
+            viewModel.BroadcastInput.ToggleCommand.Execute().Subscribe();
+            Relayout(window);
+            view.FocusCapture();
+            Relayout(window);
+
+            Border capture = view.FindControl<Border>("CaptureBorder")!;
+            Assert.IsTrue(view.IsVisible);
+            Assert.IsTrue(capture.IsFocused);
+            Assert.IsEmpty(view.GetVisualDescendants().OfType<TextBox>());
+
+            viewModel.BroadcastInput.CloseCommand.Execute().Subscribe();
+            Relayout(window);
+            Assert.IsFalse(view.IsVisible);
             window.Close();
         });
     }
@@ -206,27 +370,4 @@ public class SidebarQuickCommandsUiTests
             )
             .GetAwaiter()
             .GetResult();
-
-    private sealed class HeadlessTestApp : Application
-    {
-        public override void Initialize()
-        {
-            Styles.Add(new FluentTheme());
-            Resources.MergedDictionaries.Add(
-                LoadDictionary("avares://VelaShell.Controls/Themes/Generic.axaml")
-            );
-            Resources.MergedDictionaries.Add(
-                LoadDictionary("avares://VelaShell.Controls/Themes/VelaTokens.axaml")
-            );
-            Resources.MergedDictionaries.Add(
-                LoadDictionary("avares://VelaShell.Controls/Themes/VelaShellTokens.axaml")
-            );
-            Resources.MergedDictionaries.Add(
-                LoadDictionary("avares://VelaShell.Controls/Themes/Icons.axaml")
-            );
-        }
-
-        private static ResourceInclude LoadDictionary(string uri) =>
-            new(new Uri(uri)) { Source = new(uri) };
-    }
 }

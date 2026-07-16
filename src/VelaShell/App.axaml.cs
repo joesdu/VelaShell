@@ -94,6 +94,12 @@ public class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         ApplyPersistedPreferences();
+        QuickCommandLoadResult? quickCommandLoad = null;
+        if (_serviceProvider?.GetService<IQuickCommandRepository>() is { } quickCommandRepository)
+        {
+            // 快捷命令迁移必须先于 UI 加载和启动自动同步,避免旧本地/远端结构竞态。
+            quickCommandLoad = quickCommandRepository.LoadAsync().GetAwaiter().GetResult();
+        }
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             MainWindowViewModel viewModel =
@@ -148,7 +154,15 @@ public class App : Application
             // 云同步(设置 → 云同步):启动后台拉取一次;设置保存后标记本地改动并防抖推送。
             if (_serviceProvider?.GetService<IGistSyncService>() is { } syncService)
             {
-                WireAutoSync(syncService, _serviceProvider.GetService<ISettingsService>());
+                if (quickCommandLoad?.Migrated == true)
+                {
+                    syncService.MarkLocalChangedAsync().GetAwaiter().GetResult();
+                }
+                WireAutoSync(
+                    syncService,
+                    _serviceProvider.GetService<ISettingsService>(),
+                    _serviceProvider.GetService<IQuickCommandRepository>()
+                );
             }
 
             // 退出时释放容器,确保 SonnetDB 引擎正常关闭(WAL/段刷盘);
@@ -169,7 +183,11 @@ public class App : Application
     /// 防抖 5 秒再推送(应用远端数据触发的保存由服务内部的 IsApplyingRemote 过滤)。
     /// 全部静默执行,失败不打扰用户 —— 下次手动同步时会看到具体错误。
     /// </summary>
-    private void WireAutoSync(IGistSyncService syncService, ISettingsService? settingsService)
+    private void WireAutoSync(
+        IGistSyncService syncService,
+        ISettingsService? settingsService,
+        IQuickCommandRepository? quickCommandRepository
+    )
     {
         _ = Task.Run(async () =>
         {
@@ -186,43 +204,54 @@ public class App : Application
                 // 启动同步失败静默;设置页手动同步会给出错误详情。
             }
         });
-        if (settingsService is null)
+        if (settingsService is not null)
         {
-            return;
+            settingsService.SettingsSaved += _ => QueueAutoSyncUnlessApplyingRemote(syncService);
         }
-        settingsService.SettingsSaved += saved =>
+        if (quickCommandRepository is not null)
         {
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await syncService.MarkLocalChangedAsync();
-                    SyncSettings config = await syncService.GetSyncSettingsAsync();
-                    if (config is not { Enabled: true, AutoSync: true })
-                    {
-                        return;
-                    }
+            quickCommandRepository.Changed += (_, _) =>
+                QueueAutoSyncUnlessApplyingRemote(syncService);
+        }
+    }
 
-                    // 防抖:连续保存只推送最后一次。
-                    CancellationTokenSource cts = new();
-                    CancellationTokenSource? previous = Interlocked.Exchange(
-                        ref _syncDebounce,
-                        cts
-                    );
-                    previous?.Cancel();
-                    await Task.Delay(TimeSpan.FromSeconds(5), cts.Token);
-                    await syncService.SyncNowAsync(CancellationToken.None);
-                }
-                catch (OperationCanceledException)
+    private void QueueAutoSyncUnlessApplyingRemote(IGistSyncService syncService)
+    {
+        if (!syncService.IsApplyingRemote)
+        {
+            QueueAutoSync(syncService);
+        }
+    }
+
+    private void QueueAutoSync(IGistSyncService syncService)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await syncService.MarkLocalChangedAsync();
+                SyncSettings config = await syncService.GetSyncSettingsAsync();
+                if (config is not { Enabled: true, AutoSync: true })
                 {
-                    // 被更晚的保存取代,正常。
+                    return;
                 }
-                catch
-                {
-                    // 自动推送失败静默,手动同步可见错误。
-                }
-            });
-        };
+
+                // 防抖:连续保存只推送最后一次。
+                CancellationTokenSource cts = new();
+                CancellationTokenSource? previous = Interlocked.Exchange(ref _syncDebounce, cts);
+                previous?.Cancel();
+                await Task.Delay(TimeSpan.FromSeconds(5), cts.Token);
+                await syncService.SyncNowAsync(CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+                // 被更晚的保存取代,正常。
+            }
+            catch
+            {
+                // 自动推送失败静默,手动同步可见错误。
+            }
+        });
     }
 
     /// <summary>

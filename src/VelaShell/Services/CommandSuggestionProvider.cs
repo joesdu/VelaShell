@@ -4,27 +4,33 @@ using VelaShell.Core.Resources;
 
 namespace VelaShell.Services;
 
-/// <summary>一条补全建议:插入文本 + 补充说明(快捷命令的名称/描述)+ 来源标签。</summary>
+/// <summary>一条补全建议:插入文本 + 补充说明 + 来源标签。</summary>
 public sealed record CommandSuggestion(string Text, string? Detail, string Source);
 
-/// <summary>
-/// 命令补全建议提供器(plan.md #16):合并本地命令历史(MRU、前缀匹配优先)与
-/// 快捷命令(内置目录 + 设置里自定义的 quick_commands)。自定义命令带 10 秒 TTL
-/// 缓存——设置页保存后最迟 10 秒生效,避免每次按键都读库。
-/// </summary>
-public sealed class CommandSuggestionProvider(CommandHistoryService history, IAppDataStore? dataStore)
+/// <summary>合并本地命令历史与快捷命令的补全建议提供器。</summary>
+public sealed class CommandSuggestionProvider
 {
-    private const string Collection = "quick_commands";
-    private const string DocumentId = "commands";
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(10);
-
+    private readonly CommandHistoryService _history;
+    private readonly IQuickCommandRepository? _repository;
     private List<QuickCommand> _customCommands = [];
     private DateTime _customLoadedAt = DateTime.MinValue;
 
-    /// <summary>
-    /// 返回按相关度排序的建议:历史前缀匹配 → 快捷命令(名称/命令文本匹配)→ 历史包含匹配。
-    /// 空前缀(Alt+Enter 面板)返回快捷命令全量 + 最近历史。
-    /// </summary>
+    /// <summary>创建由历史记录和快捷命令仓储共同提供建议的服务。</summary>
+    public CommandSuggestionProvider(
+        CommandHistoryService history,
+        IQuickCommandRepository? repository
+    )
+    {
+        _history = history;
+        _repository = repository;
+        if (_repository is not null)
+        {
+            _repository.Changed += (_, _) => _customLoadedAt = DateTime.MinValue;
+        }
+    }
+
+    /// <summary>返回按相关度排序的建议。</summary>
     public async Task<IReadOnlyList<CommandSuggestion>> GetSuggestionsAsync(string prefix, int max)
     {
         List<QuickCommand> quick = await GetQuickCommandsAsync();
@@ -43,50 +49,62 @@ public sealed class CommandSuggestionProvider(CommandHistoryService history, IAp
         string historySource = Strings.Get("Svc_History");
         if (string.IsNullOrEmpty(prefix))
         {
-            foreach (QuickCommand cmd in quick)
+            foreach (QuickCommand command in quick)
             {
-                Add(cmd.CommandText, DescribeQuickCommand(cmd), quickCommandSource);
+                Add(command.CommandText, DescribeQuickCommand(command), quickCommandSource);
             }
-            foreach (string entry in history.Entries)
+            foreach (string entry in _history.Entries)
             {
                 Add(entry, null, historySource);
             }
             return results;
         }
 
-        // 排序:历史前缀命中 → 快捷命令前缀命中 → 快捷命令包含命中(名称/描述也算)
-        // → 历史包含命中。前缀匹配一律忽略大小写("Sudo"/"sudo" 不应错过)。
-        foreach (string entry in history.Entries.Where(e => e.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && e.Length > prefix.Length))
+        foreach (
+            string entry in _history.Entries.Where(entry =>
+                entry.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && entry.Length > prefix.Length
+            )
+        )
         {
             Add(entry, null, historySource);
         }
-        foreach (QuickCommand cmd in quick.Where(c => c.CommandText.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+        foreach (
+            QuickCommand command in quick.Where(command =>
+                command.CommandText.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            )
+        )
         {
-            Add(cmd.CommandText, DescribeQuickCommand(cmd), quickCommandSource);
+            Add(command.CommandText, DescribeQuickCommand(command), quickCommandSource);
         }
-        foreach (QuickCommand cmd in quick.Where(c => MatchesLoosely(c, prefix)))
+        foreach (QuickCommand command in quick.Where(command => MatchesLoosely(command, prefix)))
         {
-            Add(cmd.CommandText, DescribeQuickCommand(cmd), quickCommandSource);
+            Add(command.CommandText, DescribeQuickCommand(command), quickCommandSource);
         }
-        foreach (string entry in history.Entries.Where(e => e.Contains(prefix, StringComparison.OrdinalIgnoreCase) && e.Length > prefix.Length))
+        foreach (
+            string entry in _history.Entries.Where(entry =>
+                entry.Contains(prefix, StringComparison.OrdinalIgnoreCase)
+                && entry.Length > prefix.Length
+            )
+        )
         {
             Add(entry, null, historySource);
         }
         return results;
     }
 
-    private static bool MatchesLoosely(QuickCommand cmd, string prefix) =>
-        cmd.CommandText.Contains(prefix, StringComparison.OrdinalIgnoreCase) ||
-        cmd.Name.Contains(prefix, StringComparison.OrdinalIgnoreCase) ||
-        cmd.Description.Contains(prefix, StringComparison.OrdinalIgnoreCase);
+    private static bool MatchesLoosely(QuickCommand command, string prefix) =>
+        command.CommandText.Contains(prefix, StringComparison.OrdinalIgnoreCase)
+        || command.Name.Contains(prefix, StringComparison.OrdinalIgnoreCase)
+        || command.Description.Contains(prefix, StringComparison.OrdinalIgnoreCase);
 
-    private static string? DescribeQuickCommand(QuickCommand cmd)
+    private static string? DescribeQuickCommand(QuickCommand command)
     {
-        if (!string.IsNullOrWhiteSpace(cmd.Description))
+        if (!string.IsNullOrWhiteSpace(command.Description))
         {
-            return cmd.Description;
+            return command.Description;
         }
-        return cmd.Name == cmd.CommandText ? null : cmd.Name;
+        return command.Name == command.CommandText ? null : command.Name;
     }
 
     private async Task<List<QuickCommand>> GetQuickCommandsAsync()
@@ -96,16 +114,12 @@ public sealed class CommandSuggestionProvider(CommandHistoryService history, IAp
             return _customCommands;
         }
         var merged = new List<QuickCommand>();
-        if (dataStore is not null)
+        if (_repository is not null)
         {
             try
             {
-                QuickCommandData? data = await dataStore.GetAsync<QuickCommandData>(Collection, DocumentId);
-                if (data?.Commands is { Count: > 0 } custom)
-                {
-                    // 自定义命令排在内置前(用户自己配的更常用)。
-                    merged.AddRange(custom);
-                }
+                QuickCommandLoadResult result = await _repository.LoadAsync();
+                merged.AddRange(result.Data.Commands);
             }
             catch
             {
