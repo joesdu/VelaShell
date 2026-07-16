@@ -905,6 +905,79 @@ public class FileBrowserViewModelTests
         Assert.IsFalse(_vm.IsDirectoryLoading);
     }
 
+    // 回归:静默刷新(切回标签时的后台对账)绝不能盖过用户随后发起的导航。
+    // 否则会出现"列表显示旧目录、面包屑却是新目录"——因行路径是绝对路径,
+    // 后续删除/下载会作用到错误的文件。
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task RefreshSilently_DoesNotOverwriteNewerNavigation()
+    {
+        // 初始定位到 /home/user(快速返回)。
+        _sftpService
+            .ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(CreateTestFiles()));
+        await _vm.NavigateToCommand.Execute("/home/user").FirstAsync();
+
+        // 让针对 /home/user 的下一次列举变慢:模拟静默刷新在途、尚未返回。
+        var slowRefresh = new TaskCompletionSource<List<RemoteFileInfo>>(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        _sftpService
+            .ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
+            .Returns(slowRefresh.Task);
+        // 子目录内容(用户随后导航进入),与刷新的过期内容明显不同。
+        _sftpService
+            .ListDirectoryAsync(_sessionId, "/home/user/documents", Arg.Any<CancellationToken>())
+            .Returns(
+                Task.FromResult(
+                    new List<RemoteFileInfo>
+                    {
+                        new()
+                        {
+                            Name = "subfile.txt",
+                            FullPath = "/home/user/documents/subfile.txt",
+                            Size = 1,
+                            Permissions = "-rw-r--r--",
+                            IsDirectory = false,
+                            LastModified = DateTime.UtcNow,
+                            Owner = "user",
+                            Group = "user",
+                        },
+                    }
+                )
+            );
+
+        // 静默刷新开始并阻塞在慢列举上。
+        Task refresh = _vm.RefreshSilentlyAsync();
+
+        // 用户导航进入子目录(快速完成并应用)。
+        await _vm.NavigateToCommand.Execute("/home/user/documents").FirstAsync();
+        Assert.AreEqual("/home/user/documents", _vm.CurrentPath);
+
+        // 慢刷新此刻才返回,内容是过期的 /home/user 目录(含 stale.txt)。
+        slowRefresh.SetResult(
+            [
+                new()
+                {
+                    Name = "stale.txt",
+                    FullPath = "/home/user/stale.txt",
+                    Size = 1,
+                    Permissions = "-rw-r--r--",
+                    IsDirectory = false,
+                    LastModified = DateTime.UtcNow,
+                    Owner = "user",
+                    Group = "user",
+                },
+            ]
+        );
+        await refresh;
+
+        // 过期刷新不得覆盖较新的导航:仍停在 /home/user/documents,列表是子目录内容。
+        Assert.AreEqual("/home/user/documents", _vm.CurrentPath);
+        Assert.Contains(file => file.Name == "subfile.txt", _vm.Files);
+        Assert.DoesNotContain(file => file.Name == "stale.txt", _vm.Files);
+    }
+
     [TestMethod]
     [TestCategory("FileBrowser")]
     public void Breadcrumbs_SplitCurrentPathIntoClickableSegments()

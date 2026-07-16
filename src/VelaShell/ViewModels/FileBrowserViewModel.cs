@@ -164,6 +164,10 @@ public class FileBrowserViewModel : ReactiveObject
         {
             return;
         }
+        // 静默刷新是后台对账,绝不能盖过用户的显式导航。捕获入口时的导航版本与目录;
+        // 这里不递增版本(递增会取消用户正在进行的导航),仅在 await 之后据此判断是否已过期。
+        long navigationVersion = Volatile.Read(ref _navigationVersion);
+        string path = CurrentPath;
         try
         {
             HashSet<string> selectedPaths = SelectedFiles
@@ -172,9 +176,21 @@ public class FileBrowserViewModel : ReactiveObject
                 .ToHashSet(StringComparer.Ordinal);
             List<RemoteFileInfo> files = await _sftpService.ListDirectoryAsync(
                 _sessionId,
-                CurrentPath,
+                path,
                 _lifetime.Token
             );
+
+            // 关键:await 期间若发生了导航(版本变化)或当前目录已不再是本次列举的目录,
+            // 说明这份结果已过期。此时若继续写入 _allFiles,会用旧目录内容覆盖较新的导航结果,
+            // 造成"列表显示 A 目录、面包屑却是 B 目录"——因行路径是绝对路径,后续删除/下载会
+            // 作用到错误的文件。故直接丢弃过期结果。
+            if (
+                navigationVersion != Volatile.Read(ref _navigationVersion)
+                || !string.Equals(path, CurrentPath, StringComparison.Ordinal)
+            )
+            {
+                return;
+            }
 
             // 内容没变(切回标签的常见情形)就不动列表:整表 Clear+重建会让 ListBox
             // 全量重新虚拟化,恰好落在切换标签的瞬间,是可感知的顿挫来源。
