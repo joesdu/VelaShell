@@ -392,6 +392,10 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             return;
         }
         _disposed = true;
+        // 立即标记为未连接:广播写入(TryWriteTextInput/KeyInput/PasteInput)都以 IsConnected 为闸门。
+        // 多终端广播粘贴会在弹出确认框前就快照目标列表,若用户在确认期间关掉某个目标标签,
+        // 快照里仍含该标签;不复位 IsConnected 的话,确认后会向已释放的桥写入而与释放竞争。
+        IsConnected = false;
         TerminalEmulator.PtySizeChanged -= OnPtySizeChanged;
         TerminalEmulator.TypedInput -= OnUserInputForTracker;
         InputTracker.CommandSubmitted -= OnTrackedCommandSubmitted;
