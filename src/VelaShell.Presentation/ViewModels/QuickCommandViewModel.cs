@@ -29,20 +29,31 @@ public class QuickCommandViewModel(QuickCommand model) : ReactiveObject
         }
     } = model.Name;
 
-    /// <summary>命令所属分类;内置命令忽略写入。</summary>
-    public string Category
+    /// <summary>命令所属分组标识;内置命令忽略写入。</summary>
+    public Guid GroupId
     {
-        get;
+        get => _model.GroupId;
         set
         {
             if (IsBuiltIn)
             {
                 return;
             }
-            this.RaiseAndSetIfChanged(ref field, value);
-            _model.Category = value;
+            if (_model.GroupId == value)
+            {
+                return;
+            }
+            _model.GroupId = value;
+            this.RaisePropertyChanged();
         }
-    } = model.Category;
+    }
+
+    /// <summary>当前所属分组的显示名称。</summary>
+    public string Category
+    {
+        get;
+        internal set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
 
     /// <summary>命令的实际执行文本;内置命令忽略写入。</summary>
     public string CommandText
@@ -73,6 +84,21 @@ public class QuickCommandViewModel(QuickCommand model) : ReactiveObject
             _model.Description = value;
         }
     } = model.Description;
+
+    /// <summary>在分组内的显示顺序。</summary>
+    public int SortOrder
+    {
+        get => _model.SortOrder;
+        set
+        {
+            if (IsBuiltIn || _model.SortOrder == value)
+            {
+                return;
+            }
+            _model.SortOrder = value;
+            this.RaisePropertyChanged();
+        }
+    }
 
     /// <summary>返回底层的 <see cref="QuickCommand" /> 模型实例。</summary>
     public QuickCommand ToModel() => _model;

@@ -6,9 +6,11 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using NSubstitute;
 using VelaShell.Core.Data;
 using VelaShell.Presentation.ViewModels;
+using VelaShell.ViewModels;
 using VelaShell.Views;
 
 namespace VelaShell.Tests.Views;
@@ -32,8 +34,8 @@ public class SidebarQuickCommandsUiTests
     {
         OnUi(() =>
         {
-            IAppDataStore store = Substitute.For<IAppDataStore>();
-            var library = new QuickCommandsViewModel(store);
+            IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
+            var library = new QuickCommandsViewModel(repository);
             var runner = new QuickCommandRunnerViewModel(library);
             var viewModel = new SidebarViewModel(quickCommands: runner)
             {
@@ -75,8 +77,8 @@ public class SidebarQuickCommandsUiTests
     {
         OnUi(() =>
         {
-            IAppDataStore store = Substitute.For<IAppDataStore>();
-            var runner = new QuickCommandRunnerViewModel(new QuickCommandsViewModel(store));
+            IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
+            var runner = new QuickCommandRunnerViewModel(new QuickCommandsViewModel(repository));
             var viewModel = new SidebarViewModel(quickCommands: runner);
             var view = new SidebarView { DataContext = viewModel };
             var window = new Window
@@ -101,6 +103,65 @@ public class SidebarQuickCommandsUiTests
             Assert.IsTrue(section.IsVisible);
             Assert.IsTrue(splitter.IsVisible);
             Assert.IsGreaterThan(36, grid.RowDefinitions[2].ActualHeight);
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    public void QuickCommands_RendersCollapsibleGroups()
+    {
+        OnUi(() =>
+        {
+            IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
+            var runner = new QuickCommandRunnerViewModel(new QuickCommandsViewModel(repository));
+            var view = new QuickCommandsView { DataContext = runner };
+            var window = new Window
+            {
+                Width = 300,
+                Height = 500,
+                Content = view,
+            };
+            window.Show();
+            Relayout(window);
+
+            Assert.IsGreaterThan(
+                1,
+                view.GetVisualDescendants()
+                    .OfType<Avalonia.Controls.Primitives.ToggleButton>()
+                    .Count()
+            );
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    public void BroadcastBar_ToggleFocusAndClose_UsesTextlessCaptureArea()
+    {
+        OnUi(() =>
+        {
+            var viewModel = new MainWindowViewModel();
+            var view = new BroadcastInputView { DataContext = viewModel };
+            var window = new Window
+            {
+                Width = 900,
+                Height = 80,
+                Content = view,
+            };
+            window.Show();
+
+            viewModel.BroadcastInput.ToggleCommand.Execute().Subscribe();
+            Relayout(window);
+            view.FocusCapture();
+            Relayout(window);
+
+            Border capture = view.FindControl<Border>("CaptureBorder")!;
+            Assert.IsTrue(view.IsVisible);
+            Assert.IsTrue(capture.IsFocused);
+            Assert.IsEmpty(view.GetVisualDescendants().OfType<TextBox>());
+
+            viewModel.BroadcastInput.CloseCommand.Execute().Subscribe();
+            Relayout(window);
+            Assert.IsFalse(view.IsVisible);
             window.Close();
         });
     }

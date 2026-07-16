@@ -1231,6 +1231,10 @@
   <data name="QuickCmd_SelectedTerminals" xml:space="preserve"><value>台の端末を選択中</value></data>
   <data name="QuickCmd_Search" xml:space="preserve"><value>スニペットを検索</value></data>
   <data name="QuickCmd_Run" xml:space="preserve"><value>実行</value></data>
+  <data name="QuickCmd_Ungrouped" xml:space="preserve"><value>未分類</value></data>
+  <data name="QuickCmd_GroupPlaceholder" xml:space="preserve"><value>グループ名</value></data>
+  <data name="QuickCmd_EditSnippet" xml:space="preserve"><value>スニペットを編集</value></data>
+  <data name="Broadcast_TypeHint" xml:space="preserve"><value>同期入力が有効です。入力は選択した端末へ送信されます</value></data>
   <data name="QuickConnect" xml:space="preserve">
     <value>クイック接続</value>
   </data>

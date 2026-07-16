@@ -1,42 +1,28 @@
 using System.Collections.ObjectModel;
 using System.Reactive;
-using System.Text.Json;
 using ReactiveUI;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.Presentation.ViewModels;
 
-/// <summary>快捷命令目录视图模型:管理内置与自定义命令的加载、筛选及增删改。</summary>
+/// <summary>快捷命令目录视图模型:管理分组、内置命令与自定义命令。</summary>
 public class QuickCommandsViewModel : ReactiveObject
 {
-    private const string Collection = "quick_commands";
-    private const string DocumentId = "commands";
-
-    private readonly IAppDataStore _dataStore;
-    private readonly string? _legacyDataPath;
+    private readonly IQuickCommandRepository _repository;
     private readonly SemaphoreSlim _loadGate = new(1, 1);
-    private readonly JsonSerializerOptions _jsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
-    };
+    private readonly Dictionary<Guid, bool> _expansionBeforeSearch = [];
     private bool _loaded;
+    private bool _searchActive;
 
-    /// <summary>创建快速命令视图模型,并加载内置命令目录。</summary>
-    /// <param name="dataStore">用于持久化自定义命令的应用数据存储。</param>
-    /// <param name="legacyDataPath">旧版 quick-commands.json 的路径,用于一次性迁移导入;为空时使用默认位置。</param>
-    public QuickCommandsViewModel(IAppDataStore dataStore, string? legacyDataPath = null)
+    /// <summary>创建快捷命令视图模型。</summary>
+    public QuickCommandsViewModel(IQuickCommandRepository repository)
     {
-        _dataStore = dataStore ?? throw new ArgumentNullException(nameof(dataStore));
-        _legacyDataPath =
-            legacyDataPath
-            ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                ".velashell",
-                "quick-commands.json"
-            );
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         AllCommands = [];
+        Groups = [];
+        FilteredGroups = [];
         FilteredCommands = [];
         Categories = [];
         AddCommandCommand = ReactiveCommand.Create(AddCommand);
@@ -48,102 +34,103 @@ public class QuickCommandsViewModel : ReactiveObject
         BeginEditCommand = ReactiveCommand.Create<QuickCommandViewModel>(BeginEdit);
         SaveEditCommand = ReactiveCommand.CreateFromTask(SaveEditAsync);
         CancelEditCommand = ReactiveCommand.Create(CancelEdit);
-        this.WhenAnyValue(vm => vm.SearchQuery).Subscribe(_ => ApplyFilter());
-        LoadBuiltInCommands();
+        this.WhenAnyValue(viewModel => viewModel.SearchQuery).Subscribe(_ => ApplyFilter());
+        BuildFromData(new() { Groups = QuickCommandGroupCatalog.CreateSystemGroups() });
     }
 
-    /// <summary>全部命令(内置 + 自定义)的集合。</summary>
+    /// <summary>全部命令(内置 + 自定义)。</summary>
     public ObservableCollection<QuickCommandViewModel> AllCommands { get; }
 
-    /// <summary>经搜索条件筛选后、用于界面展示的命令集合。</summary>
+    /// <summary>全部分组。</summary>
+    public ObservableCollection<QuickCommandGroupViewModel> Groups { get; }
+
+    /// <summary>当前搜索条件下可见的分组。</summary>
+    public ObservableCollection<QuickCommandGroupViewModel> FilteredGroups { get; }
+
+    /// <summary>兼容旧绑定与命令补全测试的扁平筛选结果。</summary>
     public ObservableCollection<QuickCommandViewModel> FilteredCommands { get; }
 
-    /// <summary>去重排序后的命令分类列表。</summary>
+    /// <summary>新增/编辑时可选择的分组名称。</summary>
     public ObservableCollection<string> Categories { get; }
 
-    /// <summary>搜索关键字,更改时会自动重新筛选命令列表。</summary>
+    /// <summary>搜索关键字。</summary>
     public string SearchQuery
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
-    /// <summary>是否处于新增命令的输入状态。</summary>
+    /// <summary>迁移或加载错误;非空时只展示内置命令并禁止覆盖未知版本。</summary>
+    public string ErrorMessage
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
+
+    /// <summary>设置页当前是否显示新增片段表单。</summary>
     public bool IsAddingCommand
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>新增或编辑命令时输入的命令名称。</summary>
+    /// <summary>新增或编辑片段的名称。</summary>
     public string NewName
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
-    /// <summary>新增或编辑命令时输入的分类。</summary>
+    /// <summary>新增或编辑片段的分组名称。</summary>
     public string NewCategory
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
-    /// <summary>新增或编辑命令时输入的命令文本。</summary>
+    /// <summary>新增或编辑片段的命令正文。</summary>
     public string NewCommandText
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
-    /// <summary>新增或编辑命令时输入的描述。</summary>
+    /// <summary>新增或编辑片段的说明。</summary>
     public string NewDescription
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
-    /// <summary>当前正在编辑的命令;为空表示未处于编辑状态。</summary>
+    /// <summary>当前正在编辑的自定义片段。</summary>
     public QuickCommandViewModel? EditingCommand
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>进入新增命令输入状态的命令。</summary>
+    /// <summary>打开新增片段表单。</summary>
     public ReactiveCommand<Unit, Unit> AddCommandCommand { get; }
 
-    /// <summary>删除指定自定义命令的命令。</summary>
+    /// <summary>删除指定自定义片段。</summary>
     public ReactiveCommand<QuickCommandViewModel, Unit> DeleteCommandCommand { get; }
 
-    /// <summary>保存新增命令的命令。</summary>
+    /// <summary>保存新增片段。</summary>
     public ReactiveCommand<Unit, Unit> SaveNewCommandCommand { get; }
 
-    /// <summary>取消新增命令的命令。</summary>
+    /// <summary>取消新增片段。</summary>
     public ReactiveCommand<Unit, Unit> CancelAddCommand { get; }
 
-    /// <summary>开始编辑指定自定义命令的命令。</summary>
+    /// <summary>开始编辑指定自定义片段。</summary>
     public ReactiveCommand<QuickCommandViewModel, Unit> BeginEditCommand { get; }
 
-    /// <summary>保存对命令所做编辑的命令。</summary>
+    /// <summary>保存当前片段编辑。</summary>
     public ReactiveCommand<Unit, Unit> SaveEditCommand { get; }
 
-    /// <summary>取消当前编辑的命令。</summary>
+    /// <summary>取消当前片段编辑。</summary>
     public ReactiveCommand<Unit, Unit> CancelEditCommand { get; }
 
-    private void LoadBuiltInCommands()
-    {
-        // 内置目录移到 Core(QuickCommandCatalog),与命令补全建议共用一份数据。
-        foreach (QuickCommand cmd in QuickCommandCatalog.BuiltIns)
-        {
-            AllCommands.Add(new(cmd));
-        }
-        RefreshCategories();
-        ApplyFilter();
-    }
-
-    /// <summary>从数据存储(或旧版文件迁移)异步加载自定义命令并刷新列表。</summary>
-    /// <returns>表示异步加载操作的任务。</returns>
+    /// <summary>加载并迁移自定义快捷命令。</summary>
     public async Task LoadAsync()
     {
         if (_loaded)
@@ -157,20 +144,10 @@ public class QuickCommandsViewModel : ReactiveObject
             {
                 return;
             }
-            QuickCommandData? data =
-                await _dataStore.GetAsync<QuickCommandData>(Collection, DocumentId)
-                ?? await TryImportLegacyAsync();
-            if (data?.Commands is not null)
-            {
-                foreach (QuickCommand cmd in data.Commands)
-                {
-                    cmd.IsBuiltIn = false;
-                    AllCommands.Add(new(cmd));
-                }
-            }
+            QuickCommandLoadResult result = await _repository.LoadAsync();
+            ErrorMessage = result.Error ?? string.Empty;
+            BuildFromData(result.Data);
             _loaded = true;
-            RefreshCategories();
-            ApplyFilter();
         }
         finally
         {
@@ -178,66 +155,130 @@ public class QuickCommandsViewModel : ReactiveObject
         }
     }
 
-    /// <summary>兼容旧调用名;加载过程本身幂等,重复调用不会重复追加自定义片段。</summary>
+    /// <summary>兼容旧调用名。</summary>
     public Task LoadCustomCommandsAsync() => LoadAsync();
 
-    /// <summary>首次运行时从旧版 quick-commands.json 一次性导入到 SonnetDB。</summary>
-    private async Task<QuickCommandData?> TryImportLegacyAsync()
+    private void BuildFromData(QuickCommandData data)
     {
-        if (string.IsNullOrEmpty(_legacyDataPath) || !File.Exists(_legacyDataPath))
+        Dictionary<Guid, bool> expansion = Groups.ToDictionary(
+            group => group.Id,
+            group => group.IsExpanded
+        );
+        Groups.Clear();
+        AllCommands.Clear();
+
+        foreach (
+            QuickCommandGroup group in data
+                .Groups.OrderBy(group => group.Kind == QuickCommandGroupKind.Default)
+                .ThenBy(group => group.SortOrder)
+                .ThenBy(group => group.Name, StringComparer.CurrentCultureIgnoreCase)
+        )
         {
-            return null;
-        }
-        try
-        {
-            string json = await File.ReadAllTextAsync(_legacyDataPath);
-            QuickCommandData? data = JsonSerializer.Deserialize<QuickCommandData>(
-                json,
-                _jsonOptions
-            );
-            if (data is not null)
+            string displayName =
+                group.Kind == QuickCommandGroupKind.Default
+                    ? Strings.Get("QuickCmd_Ungrouped")
+                    : group.Name;
+            var groupViewModel = new QuickCommandGroupViewModel(
+                QuickCommandGroupCatalog.Clone(group),
+                displayName
+            )
             {
-                await _dataStore.UpsertAsync(Collection, DocumentId, data);
-            }
-            return data;
+                IsExpanded = expansion.GetValueOrDefault(group.Id, true),
+            };
+            Groups.Add(groupViewModel);
         }
-        catch (Exception ex) when (ex is JsonException or IOException)
+
+        foreach (QuickCommand command in QuickCommandCatalog.BuiltIns)
         {
-            return null;
+            AddToGroup(new(command));
         }
+        foreach (
+            QuickCommand command in data
+                .Commands.OrderBy(command => command.SortOrder)
+                .ThenBy(command => command.Name, StringComparer.CurrentCultureIgnoreCase)
+        )
+        {
+            command.IsBuiltIn = false;
+            AddToGroup(new(command));
+        }
+        RefreshCategories();
+        ApplyFilter();
+    }
+
+    private void AddToGroup(QuickCommandViewModel command)
+    {
+        QuickCommandGroupViewModel group =
+            Groups.FirstOrDefault(item => item.Id == command.GroupId)
+            ?? Groups.First(item => item.Id == QuickCommandGroupCatalog.DefaultGroupId);
+        if (group.Id != command.GroupId && !command.IsBuiltIn)
+        {
+            command.GroupId = group.Id;
+        }
+        command.Category = group.Name;
+        group.Commands.Add(command);
+        AllCommands.Add(command);
     }
 
     private async Task SaveCustomCommandsAsync()
     {
-        var customCommands = AllCommands.Where(c => !c.IsBuiltIn).Select(c => c.ToModel()).ToList();
-        var data = new QuickCommandData { Commands = customCommands };
-        await _dataStore.UpsertAsync(Collection, DocumentId, data);
+        if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            return;
+        }
+        var data = new QuickCommandData
+        {
+            Groups = [.. Groups.Select(group => QuickCommandGroupCatalog.Clone(group.Model))],
+            Commands =
+            [
+                .. AllCommands
+                    .Where(command => !command.IsBuiltIn)
+                    .Select(command => command.ToModel()),
+            ],
+        };
+        await _repository.SaveAsync(data);
     }
 
     private void AddCommand()
     {
         IsAddingCommand = true;
         NewName = string.Empty;
-        NewCategory = "Custom";
+        NewCategory = Strings.Get("QuickCmd_Ungrouped");
         NewCommandText = string.Empty;
         NewDescription = string.Empty;
     }
 
     private async Task SaveNewCommandAsync()
     {
-        if (string.IsNullOrWhiteSpace(NewName) || string.IsNullOrWhiteSpace(NewCommandText))
+        if (
+            !string.IsNullOrEmpty(ErrorMessage)
+            || string.IsNullOrWhiteSpace(NewName)
+            || string.IsNullOrWhiteSpace(NewCommandText)
+        )
         {
             return;
         }
-        var model = new QuickCommand
+        QuickCommandGroupViewModel group = ResolveOrCreateGroup(NewCategory);
+        int order =
+            group
+                .Commands.Where(command => !command.IsBuiltIn)
+                .Select(command => command.SortOrder)
+                .DefaultIfEmpty(-1)
+                .Max() + 1;
+        var command = new QuickCommandViewModel(
+            new()
+            {
+                GroupId = group.Id,
+                Name = NewName.Trim(),
+                CommandText = NewCommandText.Trim(),
+                Description = NewDescription.Trim(),
+                SortOrder = order,
+            }
+        )
         {
-            Name = NewName.Trim(),
-            Category = string.IsNullOrWhiteSpace(NewCategory) ? "Custom" : NewCategory.Trim(),
-            CommandText = NewCommandText.Trim(),
-            Description = NewDescription.Trim(),
-            IsBuiltIn = false,
+            Category = group.Name,
         };
-        AllCommands.Add(new(model));
+        group.Commands.Add(command);
+        AllCommands.Add(command);
         IsAddingCommand = false;
         RefreshCategories();
         ApplyFilter();
@@ -246,19 +287,19 @@ public class QuickCommandsViewModel : ReactiveObject
 
     private async Task DeleteCommandAsync(QuickCommandViewModel command)
     {
-        if (command.IsBuiltIn)
+        if (command.IsBuiltIn || !string.IsNullOrEmpty(ErrorMessage))
         {
             return;
         }
         AllCommands.Remove(command);
-        FilteredCommands.Remove(command);
-        RefreshCategories();
+        Groups.FirstOrDefault(group => group.Id == command.GroupId)?.Commands.Remove(command);
+        ApplyFilter();
         await SaveCustomCommandsAsync();
     }
 
     private void BeginEdit(QuickCommandViewModel command)
     {
-        if (command.IsBuiltIn)
+        if (command.IsBuiltIn || !string.IsNullOrEmpty(ErrorMessage))
         {
             return;
         }
@@ -271,20 +312,35 @@ public class QuickCommandsViewModel : ReactiveObject
 
     private async Task SaveEditAsync()
     {
-        if (EditingCommand == null || EditingCommand.IsBuiltIn)
+        if (
+            EditingCommand is null
+            || EditingCommand.IsBuiltIn
+            || !string.IsNullOrEmpty(ErrorMessage)
+            || string.IsNullOrWhiteSpace(NewName)
+            || string.IsNullOrWhiteSpace(NewCommandText)
+        )
         {
             return;
         }
-        if (string.IsNullOrWhiteSpace(NewName) || string.IsNullOrWhiteSpace(NewCommandText))
+
+        QuickCommandViewModel command = EditingCommand;
+        QuickCommandGroupViewModel previous = Groups.First(group => group.Id == command.GroupId);
+        QuickCommandGroupViewModel next = ResolveOrCreateGroup(NewCategory);
+        command.Name = NewName.Trim();
+        command.CommandText = NewCommandText.Trim();
+        command.Description = NewDescription.Trim();
+        if (previous.Id != next.Id)
         {
-            return;
+            previous.Commands.Remove(command);
+            command.GroupId = next.Id;
+            command.SortOrder =
+                next.Commands.Where(item => !item.IsBuiltIn)
+                    .Select(item => item.SortOrder)
+                    .DefaultIfEmpty(-1)
+                    .Max() + 1;
+            next.Commands.Add(command);
         }
-        EditingCommand.Name = NewName.Trim();
-        EditingCommand.Category = string.IsNullOrWhiteSpace(NewCategory)
-            ? "Custom"
-            : NewCategory.Trim();
-        EditingCommand.CommandText = NewCommandText.Trim();
-        EditingCommand.Description = NewDescription.Trim();
+        command.Category = next.Name;
         EditingCommand = null;
         RefreshCategories();
         ApplyFilter();
@@ -295,34 +351,109 @@ public class QuickCommandsViewModel : ReactiveObject
 
     private void CancelAdd() => IsAddingCommand = false;
 
+    private QuickCommandGroupViewModel ResolveOrCreateGroup(string name)
+    {
+        string normalized = name.Trim();
+        if (
+            string.IsNullOrEmpty(normalized)
+            || string.Equals(
+                normalized,
+                Strings.Get("QuickCmd_Ungrouped"),
+                StringComparison.CurrentCultureIgnoreCase
+            )
+        )
+        {
+            return Groups.First(group => group.Id == QuickCommandGroupCatalog.DefaultGroupId);
+        }
+        QuickCommandGroupViewModel? existing = Groups.FirstOrDefault(group =>
+            string.Equals(group.Name, normalized, StringComparison.CurrentCultureIgnoreCase)
+        );
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        int sortOrder =
+            Groups
+                .Where(group => group.Kind != QuickCommandGroupKind.Default)
+                .Select(group => group.Model.SortOrder)
+                .DefaultIfEmpty(-1)
+                .Max() + 1;
+        var created = new QuickCommandGroupViewModel(
+            new()
+            {
+                Id = QuickCommandGroupCatalog.IdForName(normalized),
+                Name = normalized,
+                SortOrder = sortOrder,
+                Kind = QuickCommandGroupKind.User,
+            },
+            normalized
+        );
+        int defaultIndex = Groups
+            .ToList()
+            .FindIndex(group => group.Kind == QuickCommandGroupKind.Default);
+        Groups.Insert(defaultIndex < 0 ? Groups.Count : defaultIndex, created);
+        return created;
+    }
+
     private void ApplyFilter()
     {
-        FilteredCommands.Clear();
         string query = SearchQuery.Trim();
-        foreach (QuickCommandViewModel cmd in AllCommands)
+        bool active = query.Length > 0;
+        if (active && !_searchActive)
         {
-            if (
-                string.IsNullOrEmpty(query)
-                || cmd.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || cmd.Description.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || cmd.CommandText.Contains(query, StringComparison.OrdinalIgnoreCase)
-            )
+            _expansionBeforeSearch.Clear();
+            foreach (QuickCommandGroupViewModel group in Groups)
             {
-                FilteredCommands.Add(cmd);
+                _expansionBeforeSearch[group.Id] = group.IsExpanded;
+            }
+        }
+        else if (!active && _searchActive)
+        {
+            foreach (QuickCommandGroupViewModel group in Groups)
+            {
+                group.IsExpanded = _expansionBeforeSearch.GetValueOrDefault(group.Id, true);
+            }
+            _expansionBeforeSearch.Clear();
+        }
+        _searchActive = active;
+
+        FilteredGroups.Clear();
+        FilteredCommands.Clear();
+        foreach (QuickCommandGroupViewModel group in Groups)
+        {
+            group.FilteredCommands.Clear();
+            foreach (QuickCommandViewModel command in group.Commands)
+            {
+                if (!active || Matches(command, query))
+                {
+                    group.FilteredCommands.Add(command);
+                    FilteredCommands.Add(command);
+                }
+            }
+            if (group.FilteredCommands.Count > 0)
+            {
+                if (active)
+                {
+                    group.IsExpanded = true;
+                }
+                FilteredGroups.Add(group);
             }
         }
     }
 
+    private static bool Matches(QuickCommandViewModel command, string query) =>
+        command.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+        || command.Category.Contains(query, StringComparison.OrdinalIgnoreCase)
+        || command.Description.Contains(query, StringComparison.OrdinalIgnoreCase)
+        || command.CommandText.Contains(query, StringComparison.OrdinalIgnoreCase);
+
     private void RefreshCategories()
     {
         Categories.Clear();
-        IOrderedEnumerable<string> cats = AllCommands
-            .Select(c => c.Category)
-            .Distinct()
-            .OrderBy(c => c);
-        foreach (string cat in cats)
+        foreach (QuickCommandGroupViewModel group in Groups)
         {
-            Categories.Add(cat);
+            Categories.Add(group.Name);
         }
     }
 }

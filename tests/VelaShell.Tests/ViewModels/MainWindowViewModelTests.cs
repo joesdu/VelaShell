@@ -112,8 +112,8 @@ public class MainWindowViewModelTests
     [TestCategory("QuickCommands")]
     public void ConnectedStateChange_AddsTargetAndEnablesCurrentTerminalExecution()
     {
-        IAppDataStore store = Substitute.For<IAppDataStore>();
-        var library = new QuickCommandsViewModel(store);
+        IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
+        var library = new QuickCommandsViewModel(repository);
         var vm = new MainWindowViewModel(quickCommands: library);
         ITerminalEmulator emulator = Substitute.For<ITerminalEmulator>();
         var tab = new TerminalTabViewModel(emulator)
@@ -135,6 +135,98 @@ public class MainWindowViewModelTests
         tab.ConnectionStatus = SessionStatus.Disconnected;
         Assert.IsEmpty(runner.Targets);
         Assert.IsFalse(runner.CanRun);
+    }
+
+    [TestMethod]
+    [TestCategory("QuickCommands")]
+    public void QuickCommandExecution_RequestsFocusForActiveTerminal()
+    {
+        IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
+        var library = new QuickCommandsViewModel(repository);
+        var vm = new MainWindowViewModel(quickCommands: library);
+        ITerminalEmulator emulator = Substitute.For<ITerminalEmulator>();
+        var tab = new TerminalTabViewModel(emulator) { ConnectionStatus = SessionStatus.Connected };
+        vm.TabBar.AddTab(tab);
+        bool focusRequested = false;
+        vm.TerminalFocusRequested += (_, _) => focusRequested = true;
+
+        vm.Sidebar.QuickCommands!.RunCommand.Execute(library.AllCommands[0]).Subscribe();
+
+        Assert.IsTrue(focusRequested);
+    }
+
+    [TestMethod]
+    [TestCategory("Broadcast")]
+    public void BroadcastInput_UsesSharedSelectionAndPerTerminalInputMethods()
+    {
+        var vm = new MainWindowViewModel();
+        ITerminalEmulator firstEmulator = Substitute.For<ITerminalEmulator>();
+        ITerminalEmulator secondEmulator = Substitute.For<ITerminalEmulator>();
+        firstEmulator
+            .WriteKeyInput(Arg.Any<Avalonia.Input.Key>(), Arg.Any<Avalonia.Input.KeyModifiers>())
+            .Returns(true);
+        secondEmulator
+            .WriteKeyInput(Arg.Any<Avalonia.Input.Key>(), Arg.Any<Avalonia.Input.KeyModifiers>())
+            .Returns(true);
+        var first = new TerminalTabViewModel(firstEmulator)
+        {
+            Title = "first",
+            ConnectionStatus = SessionStatus.Connected,
+        };
+        var second = new TerminalTabViewModel(secondEmulator)
+        {
+            Title = "second",
+            ConnectionStatus = SessionStatus.Connected,
+        };
+        vm.TabBar.AddTab(first);
+        vm.TabBar.AddTab(second);
+        vm.BroadcastInput.TargetSelector.Targets[0].IsSelected = true;
+        vm.BroadcastInput.TargetSelector.Targets[1].IsSelected = true;
+
+        Assert.IsTrue(vm.BroadcastTextInput("cd src"));
+        Assert.IsTrue(
+            vm.BroadcastKeyInput(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None)
+        );
+
+        firstEmulator.Received(1).WriteTextInput("cd src");
+        secondEmulator.Received(1).WriteTextInput("cd src");
+        firstEmulator
+            .Received(1)
+            .WriteKeyInput(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
+        secondEmulator
+            .Received(1)
+            .WriteKeyInput(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
+    }
+
+    [TestMethod]
+    [TestCategory("Broadcast")]
+    public void BroadcastInput_WithoutSelectionFallsBackToCurrentConnectedTerminal()
+    {
+        var vm = new MainWindowViewModel();
+        ITerminalEmulator emulator = Substitute.For<ITerminalEmulator>();
+        var tab = new TerminalTabViewModel(emulator) { ConnectionStatus = SessionStatus.Connected };
+        vm.TabBar.AddTab(tab);
+
+        Assert.IsTrue(vm.BroadcastTextInput("pwd"));
+
+        emulator.Received(1).WriteTextInput("pwd");
+    }
+
+    [TestMethod]
+    [TestCategory("Broadcast")]
+    public void BroadcastInput_DisconnectedTerminalIsRemovedFromTargets()
+    {
+        var vm = new MainWindowViewModel();
+        var tab = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>())
+        {
+            ConnectionStatus = SessionStatus.Connected,
+        };
+        vm.TabBar.AddTab(tab);
+        Assert.HasCount(1, vm.BroadcastInput.TargetSelector.Targets);
+
+        tab.ConnectionStatus = SessionStatus.Disconnected;
+
+        Assert.IsEmpty(vm.BroadcastInput.TargetSelector.Targets);
     }
 
     [TestMethod]
@@ -166,10 +258,10 @@ public class MainWindowViewModelTests
     public void SettingsSaved_UpdatesQuickCommandsPanelVisibility()
     {
         ISettingsService settingsService = Substitute.For<ISettingsService>();
-        IAppDataStore store = Substitute.For<IAppDataStore>();
+        IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
         var vm = new MainWindowViewModel(
             settingsService: settingsService,
-            quickCommands: new QuickCommandsViewModel(store)
+            quickCommands: new QuickCommandsViewModel(repository)
         );
 
         Assert.IsFalse(vm.Sidebar.IsQuickCommandsVisible);

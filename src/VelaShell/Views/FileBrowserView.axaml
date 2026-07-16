@@ -122,6 +122,11 @@
             </StackPanel>
           </StackPanel>
 
+          <ProgressBar Grid.Column="1" Width="54" Height="3" Margin="12,0"
+                       HorizontalAlignment="Left" VerticalAlignment="Center"
+                       IsIndeterminate="True"
+                       IsVisible="{Binding IsDirectoryLoading}" />
+
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
             <Button Height="24" Padding="8,0" CornerRadius="3" Cursor="Hand"
                     Background="{DynamicResource VelaAccentDim}"

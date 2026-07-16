@@ -7,6 +7,8 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using VelaShell.Controls.Controls;
 using VelaShell.Core.Resources;
@@ -17,11 +19,21 @@ namespace VelaShell.Views;
 /// <summary>Remote file browser view: file list, resizable columns, drag-and-drop upload, and OS picker/dialog integration.</summary>
 public partial class FileBrowserView : UserControl
 {
+    private FileBrowserViewModel? _viewModel;
+
     /// <summary>
     /// 可拖拽列的列键,顺序同表头。末列“修改时间”吃 * 宽度、右侧没有拖拽条,故不在此列。
     /// 每根拖拽条调整的是它左边那一列(Tag 即该列的列键)。
     /// </summary>
-    private static readonly string[] ResizableColumns = ["name", "size", "permissions", "owner", "group", "type"];
+    private static readonly string[] ResizableColumns =
+    [
+        "name",
+        "size",
+        "permissions",
+        "owner",
+        "group",
+        "type",
+    ];
 
     /// <summary>单根拖拽条的宽度(同 axaml 的拖拽条列定义)。</summary>
     private const double SplitterWidth = 6;
@@ -29,7 +41,9 @@ public partial class FileBrowserView : UserControl
     /// <summary>表头/行的左右内边距合计(axaml 里 Padding="14,0")。</summary>
     private const double HorizontalPadding = 28;
 
-    private static readonly FontFamily TerminalFont = new("JetBrains Mono, Cascadia Mono, Consolas, monospace");
+    private static readonly FontFamily TerminalFont = new(
+        "JetBrains Mono, Cascadia Mono, Consolas, monospace"
+    );
     private static readonly Typeface TerminalTypeface = new(TerminalFont);
     private string? _activeSplitter;
     private double _dragStartX;
@@ -45,10 +59,16 @@ public partial class FileBrowserView : UserControl
         // The VM cannot touch Avalonia storage APIs; the view supplies the OS pickers.
         DataContextChanged += (_, _) =>
         {
-            if (DataContext is not FileBrowserViewModel vm)
+            if (_viewModel is not null)
+            {
+                _viewModel.DirectoryChanged -= OnDirectoryChanged;
+            }
+            _viewModel = DataContext as FileBrowserViewModel;
+            if (_viewModel is not { } vm)
             {
                 return;
             }
+            vm.DirectoryChanged += OnDirectoryChanged;
             vm.PickFilesForUpload = PickFilesAsync;
             vm.PickFolderForUpload = PickFolderAsync;
             vm.PickSavePathForDownload = PickSavePathAsync;
@@ -73,6 +93,24 @@ public partial class FileBrowserView : UserControl
         }
         AddHandler(PointerMovedEvent, OnColumnSplitterPointerMoved, RoutingStrategies.Tunnel);
         AddHandler(PointerReleasedEvent, OnColumnSplitterReleased, RoutingStrategies.Tunnel);
+    }
+
+    private void OnDirectoryChanged(object? sender, EventArgs e)
+    {
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                ScrollViewer? scrollViewer = FileList
+                    .GetVisualDescendants()
+                    .OfType<ScrollViewer>()
+                    .FirstOrDefault();
+                if (scrollViewer is not null)
+                {
+                    scrollViewer.Offset = new(0, 0);
+                }
+            },
+            DispatcherPriority.Loaded
+        );
     }
 
     private void OnColumnSplitterPressed(object? sender, PointerPressedEventArgs e)
@@ -102,14 +140,23 @@ public partial class FileBrowserView : UserControl
 
     private void OnColumnSplitterPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_activeSplitter is null || DataContext is not FileBrowserViewModel vm
-            || !_startWidths.TryGetValue(_activeSplitter, out double startWidth))
+        if (
+            _activeSplitter is null
+            || DataContext is not FileBrowserViewModel vm
+            || !_startWidths.TryGetValue(_activeSplitter, out double startWidth)
+        )
         {
             return;
         }
         double delta = e.GetPosition(this).X - _dragStartX;
-        vm.SetColumnWidth(_activeSplitter,
-            ClampColumnWidth(startWidth + delta, FileBrowserViewModel.MinWidthFor(_activeSplitter), GetMaxWidth(vm, _activeSplitter)));
+        vm.SetColumnWidth(
+            _activeSplitter,
+            ClampColumnWidth(
+                startWidth + delta,
+                FileBrowserViewModel.MinWidthFor(_activeSplitter),
+                GetMaxWidth(vm, _activeSplitter)
+            )
+        );
         e.Handled = true;
     }
 
@@ -126,8 +173,14 @@ public partial class FileBrowserView : UserControl
 
     private void AutoFitColumnBySplitterTag(FileBrowserViewModel vm, string tag)
     {
-        vm.SetColumnWidth(tag,
-            ClampColumnWidth(EstimateAutoWidth(vm, tag), FileBrowserViewModel.MinWidthFor(tag), GetMaxWidth(vm, tag)));
+        vm.SetColumnWidth(
+            tag,
+            ClampColumnWidth(
+                EstimateAutoWidth(vm, tag),
+                FileBrowserViewModel.MinWidthFor(tag),
+                GetMaxWidth(vm, tag)
+            )
+        );
     }
 
     /// <summary>
@@ -136,18 +189,29 @@ public partial class FileBrowserView : UserControl
     /// </summary>
     private static double EstimateAutoWidth(FileBrowserViewModel vm, string columnKey)
     {
-        (string Header, Func<RemoteFileInfoViewModel, string> Cell, double Padding, double Max) spec = columnKey switch
+        (
+            string Header,
+            Func<RemoteFileInfoViewModel, string> Cell,
+            double Padding,
+            double Max
+        ) spec = columnKey switch
         {
             "size" => (Strings.Size, f => f.FormattedSize, 8d, 260d),
             "permissions" => (Strings.Permissions, f => f.Permissions, 8d, 300d),
             "owner" => (Strings.PermissionOwner, f => f.Owner, 8d, 300d),
             "group" => (Strings.PermissionGroup, f => f.Group, 8d, 300d),
             "type" => (Strings.FileType, f => f.FileTypeDisplay, 8d, 300d),
-            _ => (Strings.FileName, f => f.DisplayName, 34d, 760d)
+            _ => (Strings.FileName, f => f.DisplayName, 34d, 760d),
         };
         double headerWidth = MeasureTextWidth(spec.Header, 10);
-        double rowsWidth = vm.Files.Any() ? vm.Files.Max(f => MeasureTextWidth(spec.Cell(f), 11)) : 0;
-        return Math.Clamp(Math.Max(headerWidth, rowsWidth) + spec.Padding, FileBrowserViewModel.MinWidthFor(columnKey), spec.Max);
+        double rowsWidth = vm.Files.Any()
+            ? vm.Files.Max(f => MeasureTextWidth(spec.Cell(f), 11))
+            : 0;
+        return Math.Clamp(
+            Math.Max(headerWidth, rowsWidth) + spec.Padding,
+            FileBrowserViewModel.MinWidthFor(columnKey),
+            spec.Max
+        );
     }
 
     /// <summary>
@@ -159,19 +223,25 @@ public partial class FileBrowserView : UserControl
         string[] visible = [.. ResizableColumns.Where(vm.IsColumnVisible)];
         double others = visible.Where(c => c != columnKey).Sum(c => vm.GetColumnWidth(c).Value);
         double splitters = visible.Length * SplitterWidth;
-        double reserved = vm.IsColumnVisible("modified") ? FileBrowserViewModel.MinModifiedWidth : 0;
-        return Math.Max(FileBrowserViewModel.MinWidthFor(columnKey),
-            Bounds.Width - others - splitters - reserved - HorizontalPadding);
+        double reserved = vm.IsColumnVisible("modified")
+            ? FileBrowserViewModel.MinModifiedWidth
+            : 0;
+        return Math.Max(
+            FileBrowserViewModel.MinWidthFor(columnKey),
+            Bounds.Width - others - splitters - reserved - HorizontalPadding
+        );
     }
 
     private static double MeasureTextWidth(string text, double fontSize)
     {
-        var ft = new FormattedText(text,
+        var ft = new FormattedText(
+            text,
             CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight,
             TerminalTypeface,
             fontSize,
-            Brushes.White);
+            Brushes.White
+        );
         return Math.Ceiling(ft.WidthIncludingTrailingWhitespace);
     }
 
@@ -219,12 +289,16 @@ public partial class FileBrowserView : UserControl
         {
             return [];
         }
-        IReadOnlyList<IStorageFile> files = await top.StorageProvider.OpenFilePickerAsync(new()
-        {
-            Title = Strings.SelectFilesToUpload,
-            AllowMultiple = true
-        });
-        return [.. files.Select(f => f.TryGetLocalPath()).Where(p => !string.IsNullOrEmpty(p)).Select(p => p!)];
+        IReadOnlyList<IStorageFile> files = await top.StorageProvider.OpenFilePickerAsync(
+            new() { Title = Strings.SelectFilesToUpload, AllowMultiple = true }
+        );
+        return
+        [
+            .. files
+                .Select(f => f.TryGetLocalPath())
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Select(p => p!),
+        ];
     }
 
     private async Task<string?> PickFolderAsync()
@@ -234,11 +308,9 @@ public partial class FileBrowserView : UserControl
         {
             return null;
         }
-        IReadOnlyList<IStorageFolder> folders = await top.StorageProvider.OpenFolderPickerAsync(new()
-        {
-            Title = Strings.SelectFolderToUpload,
-            AllowMultiple = false
-        });
+        IReadOnlyList<IStorageFolder> folders = await top.StorageProvider.OpenFolderPickerAsync(
+            new() { Title = Strings.SelectFolderToUpload, AllowMultiple = false }
+        );
         return folders.FirstOrDefault()?.TryGetLocalPath();
     }
 
@@ -253,12 +325,14 @@ public partial class FileBrowserView : UserControl
         {
             return null;
         }
-        IReadOnlyList<IStorageFolder> folders = await top.StorageProvider.OpenFolderPickerAsync(new()
-        {
-            Title = Strings.SelectDownloadFolder,
-            AllowMultiple = false,
-            SuggestedStartLocation = await ResolveDefaultDownloadFolderAsync(top)
-        });
+        IReadOnlyList<IStorageFolder> folders = await top.StorageProvider.OpenFolderPickerAsync(
+            new()
+            {
+                Title = Strings.SelectDownloadFolder,
+                AllowMultiple = false,
+                SuggestedStartLocation = await ResolveDefaultDownloadFolderAsync(top),
+            }
+        );
         return folders.FirstOrDefault()?.TryGetLocalPath();
     }
 
@@ -279,14 +353,16 @@ public partial class FileBrowserView : UserControl
         }
         if (configured.StartsWith('~'))
         {
-            configured = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                configured.TrimStart('~', '/', '\\'));
+            configured = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                configured.TrimStart('~', '/', '\\')
+            );
         }
         try
         {
             return Directory.Exists(configured)
-                       ? await top.StorageProvider.TryGetFolderFromPathAsync(configured)
-                       : null;
+                ? await top.StorageProvider.TryGetFolderFromPathAsync(configured)
+                : null;
         }
         catch
         {
@@ -328,7 +404,14 @@ public partial class FileBrowserView : UserControl
         {
             return [];
         }
-        return [.. items.Select(i => i.TryGetLocalPath()).Where(p => !string.IsNullOrEmpty(p)).Select(p => p!).Distinct(StringComparer.OrdinalIgnoreCase)];
+        return
+        [
+            .. items
+                .Select(i => i.TryGetLocalPath())
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Select(p => p!)
+                .Distinct(StringComparer.OrdinalIgnoreCase),
+        ];
     }
 
     private async Task<string?> PickSavePathAsync(string suggestedName)
@@ -338,12 +421,14 @@ public partial class FileBrowserView : UserControl
         {
             return null;
         }
-        IStorageFile? file = await top.StorageProvider.SaveFilePickerAsync(new()
-        {
-            Title = Strings.SaveToLocal,
-            SuggestedFileName = suggestedName,
-            SuggestedStartLocation = await ResolveDefaultDownloadFolderAsync(top)
-        });
+        IStorageFile? file = await top.StorageProvider.SaveFilePickerAsync(
+            new()
+            {
+                Title = Strings.SaveToLocal,
+                SuggestedFileName = suggestedName,
+                SuggestedStartLocation = await ResolveDefaultDownloadFolderAsync(top),
+            }
+        );
         return file?.TryGetLocalPath();
     }
 
@@ -354,9 +439,12 @@ public partial class FileBrowserView : UserControl
         {
             return true;
         }
-        return await MessageDialog.ConfirmAsync(owner, Strings.Get("Sftp_FileExistsTitle"),
-                   Strings.Format("Sftp_LocalOverwriteBody", localPath),
-                   kind: MessageDialogKind.Warning);
+        return await MessageDialog.ConfirmAsync(
+            owner,
+            Strings.Get("Sftp_FileExistsTitle"),
+            Strings.Format("Sftp_LocalOverwriteBody", localPath),
+            kind: MessageDialogKind.Warning
+        );
     }
 
     /// <summary>上传遇到远端同名文件且冲突策略为“询问”:覆盖 or 跳过该文件。</summary>
@@ -366,9 +454,12 @@ public partial class FileBrowserView : UserControl
         {
             return true;
         }
-        return await MessageDialog.ConfirmAsync(owner, Strings.Get("Sftp_FileExistsTitle"),
-                   Strings.Format("Sftp_RemoteOverwriteBody", remotePath),
-                   kind: MessageDialogKind.Warning);
+        return await MessageDialog.ConfirmAsync(
+            owner,
+            Strings.Get("Sftp_FileExistsTitle"),
+            Strings.Format("Sftp_RemoteOverwriteBody", remotePath),
+            kind: MessageDialogKind.Warning
+        );
     }
 
     /// <summary>
@@ -391,8 +482,14 @@ public partial class FileBrowserView : UserControl
         {
             return false;
         }
-        return await MessageDialog.ConfirmAsync(owner, Strings.ConfirmDeleteTitle, message,
-                   Strings.Delete, kind: MessageDialogKind.Warning, danger: true);
+        return await MessageDialog.ConfirmAsync(
+            owner,
+            Strings.ConfirmDeleteTitle,
+            message,
+            Strings.Delete,
+            kind: MessageDialogKind.Warning,
+            danger: true
+        );
     }
 
     private async Task CopyToClipboardAsync(string text)
@@ -411,16 +508,23 @@ public partial class FileBrowserView : UserControl
         {
             return;
         }
-        bool openSettings = await MessageDialog.ConfirmAsync(owner, Strings.Get("Sftp_NoEditorTitle"),
-                                Strings.Get("Sftp_NoEditorBody"),
-                                Strings.Get("Sftp_OpenSettings"), kind: MessageDialogKind.Info);
+        bool openSettings = await MessageDialog.ConfirmAsync(
+            owner,
+            Strings.Get("Sftp_NoEditorTitle"),
+            Strings.Get("Sftp_NoEditorBody"),
+            Strings.Get("Sftp_OpenSettings"),
+            kind: MessageDialogKind.Info
+        );
         if (!openSettings)
         {
             return;
         }
 
         // 直达 设置 → 文件传输 页(索引 5,对应 SettingsView 的页序)。
-        if (Application.Current is App app && app.Services?.GetService<SettingsViewModel>() is { } settingsViewModel)
+        if (
+            Application.Current is App app
+            && app.Services?.GetService<SettingsViewModel>() is { } settingsViewModel
+        )
         {
             settingsViewModel.SelectedSectionIndex = 5;
         }
@@ -431,7 +535,11 @@ public partial class FileBrowserView : UserControl
     }
 
     /// <summary>「打开」:非模态弹出内置 AvaloniaEdit 编辑器,保存时经回调上传回服务器。</summary>
-    private Task OpenInBuiltInEditorAsync(RemoteFileInfoViewModel file, string localPath, Func<Task> uploadAsync)
+    private Task OpenInBuiltInEditorAsync(
+        RemoteFileInfoViewModel file,
+        string localPath,
+        Func<Task> uploadAsync
+    )
     {
         if (TopLevel.GetTopLevel(this) is not Window owner)
         {
@@ -453,7 +561,10 @@ public partial class FileBrowserView : UserControl
         {
             return;
         }
-        if (sender is not Border { DataContext: RemoteFileInfoViewModel file } || this.FindControl<ListBox>("FileList") is not { } listBox)
+        if (
+            sender is not Border { DataContext: RemoteFileInfoViewModel file }
+            || this.FindControl<ListBox>("FileList") is not { } listBox
+        )
         {
             return;
         }
@@ -489,18 +600,20 @@ public partial class FileBrowserView : UserControl
             Width = 18,
             Height = 18,
             VerticalAlignment = VerticalAlignment.Center,
-            Data = this.FindResource(file.IsDirectory ? "Icon.folder" : "Icon.file") as Geometry
+            Data = this.FindResource(file.IsDirectory ? "Icon.folder" : "Icon.file") as Geometry,
         };
         typeIcon.Classes.Add(file.IsDirectory ? "folder" : "file");
         header.Children.Add(typeIcon);
-        header.Children.Add(new TextBlock
-        {
-            Text = file.Name,
-            FontSize = 13,
-            FontWeight = FontWeight.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextWrapping = TextWrapping.Wrap
-        });
+        header.Children.Add(
+            new TextBlock
+            {
+                Text = file.Name,
+                FontSize = 13,
+                FontWeight = FontWeight.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+            }
+        );
         content.Children.Add(header);
 
         // ── 基本信息 ────────────────────────────────────────────────────────
@@ -547,7 +660,7 @@ public partial class FileBrowserView : UserControl
         var grid = new Grid
         {
             ColumnDefinitions = new("96,Auto,Auto,Auto"),
-            RowDefinitions = new("Auto,Auto,Auto,Auto")
+            RowDefinitions = new("Auto,Auto,Auto,Auto"),
         };
 
         void Place(Control control, int row, int column)
@@ -565,18 +678,24 @@ public partial class FileBrowserView : UserControl
             grid.Children.Add(control);
         }
 
-        string[] columnHeaders = [Strings.PermissionRead, Strings.PermissionWrite, Strings.PermissionExecute];
-        string[] rowHeaders = [Strings.PermissionOwner, Strings.PermissionGroup, Strings.PermissionOthers];
+        string[] columnHeaders =
+        [
+            Strings.PermissionRead,
+            Strings.PermissionWrite,
+            Strings.PermissionExecute,
+        ];
+        string[] rowHeaders =
+        [
+            Strings.PermissionOwner,
+            Strings.PermissionGroup,
+            Strings.PermissionOthers,
+        ];
         var permTitle = new TextBlock { Text = Strings.Permissions };
         permTitle.Classes.Add("dim");
         Place(permTitle, 0, 0);
         for (int c = 0; c < 3; c++)
         {
-            var head = new TextBlock
-            {
-                Text = columnHeaders[c],
-                FontWeight = FontWeight.Medium
-            };
+            var head = new TextBlock { Text = columnHeaders[c], FontWeight = FontWeight.Medium };
             Place(head, 0, c + 1);
         }
         var boxes = new CheckBox[9];
@@ -586,7 +705,10 @@ public partial class FileBrowserView : UserControl
             short mode = 0;
             for (int g = 0; g < 3; g++)
             {
-                int digit = (boxes[g * 3].IsChecked == true ? 4 : 0) + (boxes[(g * 3) + 1].IsChecked == true ? 2 : 0) + (boxes[(g * 3) + 2].IsChecked == true ? 1 : 0);
+                int digit =
+                    (boxes[g * 3].IsChecked == true ? 4 : 0)
+                    + (boxes[(g * 3) + 1].IsChecked == true ? 2 : 0)
+                    + (boxes[(g * 3) + 2].IsChecked == true ? 1 : 0);
                 mode = (short)((mode * 10) + digit);
             }
             return mode;
@@ -633,13 +755,18 @@ public partial class FileBrowserView : UserControl
             var rowLabel = new TextBlock
             {
                 Text = rowHeaders[r],
-                VerticalAlignment = VerticalAlignment.Center
+                VerticalAlignment = VerticalAlignment.Center,
             };
             rowLabel.Classes.Add("dim");
             Place(rowLabel, r + 1, 0);
             for (int c = 0; c < 3; c++)
             {
-                var box = new CheckBox { IsChecked = flags[(r * 3) + c], MinWidth = 0, Padding = new(0) };
+                var box = new CheckBox
+                {
+                    IsChecked = flags[(r * 3) + c],
+                    MinWidth = 0,
+                    Padding = new(0),
+                };
                 box.IsCheckedChanged += (_, _) => SyncOctalFromBoxes();
                 boxes[(r * 3) + c] = box;
                 Place(box, r + 1, c + 1);
@@ -650,7 +777,11 @@ public partial class FileBrowserView : UserControl
         octalBox.TextChanged += (_, _) => SyncBoxesFromOctal();
         content.Children.Add(grid);
         var octalRow = new Grid { ColumnDefinitions = new("96,*") };
-        var octalLabel = new TextBlock { Text = Strings.Get("Sftp_Octal"), VerticalAlignment = VerticalAlignment.Center };
+        var octalLabel = new TextBlock
+        {
+            Text = Strings.Get("Sftp_Octal"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         octalLabel.Classes.Add("dim");
         octalRow.Children.Add(octalLabel);
         var octalHost = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };

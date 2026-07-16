@@ -10,14 +10,21 @@ public sealed class VelaShellStoragePaths
     /// </summary>
     public VelaShellStoragePaths()
     {
-        string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VelaShell");
+        string root = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "VelaShell"
+        );
         RootDirectory = root;
         SettingsFile = Path.Combine(root, "settings.json");
         StateFile = Path.Combine(root, "state.json");
         SessionsFile = Path.Combine(root, "sessions.json");
         SonnetDbDirectory = Path.Combine(root, "sonnetdb");
         SecretKeyFile = Path.Combine(root, "secret.key");
-        LegacyDotDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".velashell");
+        LegacyDotDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".velashell"
+        );
+        LegacyQuickCommandsFile = Path.Combine(LegacyDotDirectory, "quick-commands.json");
     }
 
     /// <summary>VelaShell 所有持久化数据的根目录。</summary>
@@ -40,4 +47,7 @@ public sealed class VelaShellStoragePaths
 
     /// <summary>早期版本使用的 ~/.velashell 目录(仅用于一次性迁移导入)。</summary>
     public string LegacyDotDirectory { get; }
+
+    /// <summary>早期版本快捷命令 JSON 文件(仅用于一次性迁移导入)。</summary>
+    public string LegacyQuickCommandsFile { get; }
 }

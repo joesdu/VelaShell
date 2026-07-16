@@ -28,9 +28,11 @@ public partial class MainWindow : Window
     /// <summary>自绘缩放抓取区:普通状态按下即进入原生缩放;最大化时整层隐藏(见 OnPropertyChanged)。</summary>
     private void ResizeEdge_PointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
     {
-        if (WindowState == WindowState.Normal
+        if (
+            WindowState == WindowState.Normal
             && sender is Border { Tag: string tag }
-            && Enum.TryParse(tag, out WindowEdge edge))
+            && Enum.TryParse(tag, out WindowEdge edge)
+        )
         {
             BeginResizeDrag(edge, e);
         }
@@ -41,7 +43,10 @@ public partial class MainWindow : Window
     {
         base.OnPropertyChanged(change);
         // 最大化/全屏时缩放抓取区必须让位(否则挡住屏幕边缘 5px 的标题栏与状态栏点击)。
-        if (change.Property == WindowStateProperty && this.FindControl<Panel>("ResizeGrips") is { } grips)
+        if (
+            change.Property == WindowStateProperty
+            && this.FindControl<Panel>("ResizeGrips") is { } grips
+        )
         {
             grips.IsVisible = WindowState == WindowState.Normal;
         }
@@ -104,7 +109,15 @@ public partial class MainWindow : Window
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    private static partial bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr after,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        uint flags
+    );
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -118,7 +131,13 @@ public partial class MainWindow : Window
     private static partial bool GetMonitorInfoW(IntPtr hMonitor, ref MONITORINFO info);
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct WINRECT { public int Left, Top, Right, Bottom; }
+    private struct WINRECT
+    {
+        public int Left,
+            Top,
+            Right,
+            Bottom;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct MONITORINFO
@@ -129,32 +148,69 @@ public partial class MainWindow : Window
         public uint Flags;
     }
 
-    private const long StyleWsCaption = 0x00C00000, StyleWsThickFrame = 0x00040000,
-                       StyleWsMinimizeBox = 0x00020000, StyleWsMaximizeBox = 0x00010000;
+    private const long StyleWsCaption = 0x00C00000,
+        StyleWsThickFrame = 0x00040000,
+        StyleWsMinimizeBox = 0x00020000,
+        StyleWsMaximizeBox = 0x00010000;
 
     private void SetupSnapLayouts()
     {
         // 样式回调:Avalonia 每次重算窗口样式后追加 DWM 框架位。
-        Win32Properties.AddWindowStylesCallback(this, (style, exStyle) =>
-            ((uint)(style | StyleWsCaption | StyleWsThickFrame | StyleWsMinimizeBox | StyleWsMaximizeBox), exStyle));
+        Win32Properties.AddWindowStylesCallback(
+            this,
+            (style, exStyle) =>
+                (
+                    (uint)(
+                        style
+                        | StyleWsCaption
+                        | StyleWsThickFrame
+                        | StyleWsMinimizeBox
+                        | StyleWsMaximizeBox
+                    ),
+                    exStyle
+                )
+        );
         Win32Properties.AddWndProcHookCallback(this, SnapLayoutsWndProc);
 
         // 立即应用一次并触发 FRAMECHANGED,当前会话即刻生效。
         if (TryGetPlatformHandle() is { } handle)
         {
             const int GWL_STYLE = -16;
-            const uint SWP_FRAMECHANGED = 0x0020, SWP_NOMOVE = 0x0002, SWP_NOSIZE = 0x0001, SWP_NOZORDER = 0x0004;
+            const uint SWP_FRAMECHANGED = 0x0020,
+                SWP_NOMOVE = 0x0002,
+                SWP_NOSIZE = 0x0001,
+                SWP_NOZORDER = 0x0004;
             long style = GetWindowLongPtrW(handle.Handle, GWL_STYLE);
-            SetWindowLongPtrW(handle.Handle, GWL_STYLE,
-                style | StyleWsCaption | StyleWsThickFrame | StyleWsMinimizeBox | StyleWsMaximizeBox);
-            SetWindowPos(handle.Handle, IntPtr.Zero, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER);
+            SetWindowLongPtrW(
+                handle.Handle,
+                GWL_STYLE,
+                style | StyleWsCaption | StyleWsThickFrame | StyleWsMinimizeBox | StyleWsMaximizeBox
+            );
+            SetWindowPos(
+                handle.Handle,
+                IntPtr.Zero,
+                0,
+                0,
+                0,
+                0,
+                SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER
+            );
         }
     }
 
-    private IntPtr SnapLayoutsWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    private IntPtr SnapLayoutsWndProc(
+        IntPtr hWnd,
+        uint msg,
+        IntPtr wParam,
+        IntPtr lParam,
+        ref bool handled
+    )
     {
-        const uint WM_NCCALCSIZE = 0x0083, WM_NCHITTEST = 0x0084, WM_NCMOUSELEAVE = 0x02A2,
-                   WM_NCLBUTTONDOWN = 0x00A1, WM_NCLBUTTONUP = 0x00A2;
+        const uint WM_NCCALCSIZE = 0x0083,
+            WM_NCHITTEST = 0x0084,
+            WM_NCMOUSELEAVE = 0x02A2,
+            WM_NCLBUTTONDOWN = 0x00A1,
+            WM_NCLBUTTONUP = 0x00A2;
         const int HTCLIENT = 1;
         switch (msg)
         {
@@ -163,7 +219,10 @@ public partial class MainWindow : Window
                 // 最大化时窗口矩形按惯例大出边框宽度,须裁回工作区,否则四周越屏。
                 if (IsZoomed(hWnd))
                 {
-                    IntPtr monitor = MonitorFromWindow(hWnd, 2 /* MONITOR_DEFAULTTONEAREST */);
+                    IntPtr monitor = MonitorFromWindow(
+                        hWnd,
+                        2 /* MONITOR_DEFAULTTONEAREST */
+                    );
                     var info = new MONITORINFO { Size = Marshal.SizeOf<MONITORINFO>() };
                     if (monitor != IntPtr.Zero && GetMonitorInfoW(monitor, ref info))
                     {
@@ -201,7 +260,10 @@ public partial class MainWindow : Window
 
     private bool IsPointOverMaximizeButton(IntPtr lParam)
     {
-        if (TitleBar?.MaximizeButtonControl is not { IsVisible: true } button || !button.IsAttachedToVisualTree())
+        if (
+            TitleBar?.MaximizeButtonControl is not { IsVisible: true } button
+            || !button.IsAttachedToVisualTree()
+        )
         {
             return false;
         }
@@ -210,8 +272,13 @@ public partial class MainWindow : Window
         int screenX = unchecked((short)(packed & 0xFFFF));
         int screenY = unchecked((short)((packed >> 16) & 0xFFFF));
         PixelPoint topLeft = button.PointToScreen(new Point(0, 0));
-        var rect = new PixelRect(topLeft,
-            new PixelSize((int)(button.Bounds.Width * RenderScaling), (int)(button.Bounds.Height * RenderScaling)));
+        var rect = new PixelRect(
+            topLeft,
+            new PixelSize(
+                (int)(button.Bounds.Width * RenderScaling),
+                (int)(button.Bounds.Height * RenderScaling)
+            )
+        );
         return rect.Contains(new PixelPoint(screenX, screenY));
     }
 
@@ -227,9 +294,8 @@ public partial class MainWindow : Window
         {
             return;
         }
-        _fileBrowserVisibilitySub = vm
-                                    .WhenAnyValue(x => x.FileBrowser.IsVisible)
-                                    .Subscribe(visible => Dispatcher.UIThread.Post(() => SetFileRowsVisible(visible)));
+        _fileBrowserVisibilitySub = vm.WhenAnyValue(x => x.FileBrowser.IsVisible)
+            .Subscribe(visible => Dispatcher.UIThread.Post(() => SetFileRowsVisible(visible)));
     }
 
     private void SetFileRowsVisible(bool visible)
@@ -264,56 +330,79 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
         {
             vm.TerminalSearchRequested += OnTerminalSearchRequested;
+            vm.TerminalFocusRequested += (_, _) => FocusActiveTerminal(vm);
+            vm.BroadcastInputFocusRequested += (_, _) =>
+                this.FindControl<BroadcastInputView>("BroadcastInputHost")?.FocusCapture();
             vm.NewConnectionRequested += (_, _) => _ = OpenProfileDialogAsync(null);
             vm.SettingsRequested += (_, _) => _ = OpenSettingsAsync();
             vm.InteractiveAuthenticator = PromptCredentialsAsync;
             vm.MultilinePasteConfirmer = ConfirmMultilinePasteAsync;
             vm.ExportBufferRequested += (_, _) => _ = ExportTerminalBufferAsync(vm);
             // 工具菜单“连接诊断”:对当前标签的配置打开诊断中心(设计 RGXg1)。
-            vm.DiagnosticsRequested += profile => Dispatcher.UIThread.Post(() => _ = OpenDiagnosticsDialogAsync(profile));
+            vm.DiagnosticsRequested += profile =>
+                Dispatcher.UIThread.Post(() => _ = OpenDiagnosticsDialogAsync(profile));
 
             // 资源管理器树:右键连接/双击连接 + 右键编辑。
             if (vm.Sidebar.SessionTree is { } tree)
             {
-                tree.ConnectRequested += profile => Dispatcher.UIThread.Post(() => _ = vm.TryConnectProfileAsync(profile));
-                tree.EditRequested += profile => Dispatcher.UIThread.Post(() => _ = OpenProfileDialogAsync(profile));
+                tree.ConnectRequested += profile =>
+                    Dispatcher.UIThread.Post(() => _ = vm.TryConnectProfileAsync(profile));
+                tree.EditRequested += profile =>
+                    Dispatcher.UIThread.Post(() => _ = OpenProfileDialogAsync(profile));
 
                 // 打开 SFTP:先连接(已连接则新开标签),随后展开文件浏览面板。
-                tree.OpenSftpRequested += profile => Dispatcher.UIThread.Post(async () =>
-                {
-                    // 连接失败已在标签页内以覆盖层提示(设计 yxjmg),这里不再弹全局框;
-                    // 仅在连上后展开 SFTP 面板。
-                    TerminalTabViewModel? tab = await vm.TryConnectProfileAsync(profile);
-                    if (tab is { ConnectionStatus: SessionStatus.Connected } && !vm.FileBrowser.IsVisible)
+                tree.OpenSftpRequested += profile =>
+                    Dispatcher.UIThread.Post(async () =>
                     {
-                        vm.ToggleFileBrowser();
-                    }
-                });
+                        // 连接失败已在标签页内以覆盖层提示(设计 yxjmg),这里不再弹全局框;
+                        // 仅在连上后展开 SFTP 面板。
+                        TerminalTabViewModel? tab = await vm.TryConnectProfileAsync(profile);
+                        if (
+                            tab is { ConnectionStatus: SessionStatus.Connected }
+                            && !vm.FileBrowser.IsVisible
+                        )
+                        {
+                            vm.ToggleFileBrowser();
+                        }
+                    });
 
                 // 端口转发:打开隧道管理面板并预选该服务器(全局非模态,见 fuXS7);
                 // 无需先建立终端会话,面板会在创建隧道时后台自动连接。
-                tree.PortForwardRequested += profile => Dispatcher.UIThread.Post(() => vm.OpenTunnelPanel(profile));
+                tree.PortForwardRequested += profile =>
+                    Dispatcher.UIThread.Post(() => vm.OpenTunnelPanel(profile));
 
                 // 连接诊断:对选中的配置打开诊断中心(设计 RGXg1)。
-                tree.DiagnoseRequested += profile => Dispatcher.UIThread.Post(() => _ = OpenDiagnosticsDialogAsync(profile));
+                tree.DiagnoseRequested += profile =>
+                    Dispatcher.UIThread.Post(() => _ = OpenDiagnosticsDialogAsync(profile));
 
                 // 断开连接:断开该配置所有已连接的终端标签(保留缓冲以便重连)。
                 // 必须按 Profile.Id 匹配——tab.SessionId 是 SSH 连接会话 ID,与配置 ID
                 // 不是一回事,之前用它比较永远匹配不上,菜单点了没反应(用户反馈 #2)。
-                tree.DisconnectRequested += profile => Dispatcher.UIThread.Post(() =>
-                {
-                    foreach (TerminalTabViewModel tab in vm.TabBar.Tabs.OfType<TerminalTabViewModel>().Where(t =>
-                                 t.Profile?.Id == profile.Id && t.ConnectionStatus == SessionStatus.Connected).ToList())
+                tree.DisconnectRequested += profile =>
+                    Dispatcher.UIThread.Post(() =>
                     {
-                        tab.DisconnectCommand.Execute().Subscribe();
-                    }
-                });
+                        foreach (
+                            TerminalTabViewModel tab in vm
+                                .TabBar.Tabs.OfType<TerminalTabViewModel>()
+                                .Where(t =>
+                                    t.Profile?.Id == profile.Id
+                                    && t.ConnectionStatus == SessionStatus.Connected
+                                )
+                                .ToList()
+                        )
+                        {
+                            tab.DisconnectCommand.Execute().Subscribe();
+                        }
+                    });
             }
             await vm.InitializeAsync();
         }
 
         // 外观/行为设置:启动时应用一次,设置保存后热更新。
-        if (Application.Current is App { Services: { } services } && services.GetService<ISettingsService>() is { } settingsService)
+        if (
+            Application.Current is App { Services: { } services }
+            && services.GetService<ISettingsService>() is { } settingsService
+        )
         {
             _settingsService = settingsService;
             settingsService.SettingsSaved += OnSettingsSavedForWindow;
@@ -344,7 +433,13 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task RestoreSessionsAsync(AppSettings? settings)
     {
-        if (settings?.General.RestoreSessionsOnStartup != true || settings.General.LastOpenProfileIds.Count == 0 || DataContext is not MainWindowViewModel vm || Application.Current is not App { Services: { } services } || services.GetService<ISessionRepository>() is not { } repository)
+        if (
+            settings?.General.RestoreSessionsOnStartup != true
+            || settings.General.LastOpenProfileIds.Count == 0
+            || DataContext is not MainWindowViewModel vm
+            || Application.Current is not App { Services: { } services }
+            || services.GetService<ISessionRepository>() is not { } repository
+        )
         {
             return;
         }
@@ -372,7 +467,8 @@ public partial class MainWindow : Window
             ApplyWindowAppearance(settings);
         });
 
-    private void OnSettingsPreviewedForWindow(AppSettings settings) => Dispatcher.UIThread.Post(() => ApplyWindowAppearance(settings));
+    private void OnSettingsPreviewedForWindow(AppSettings settings) =>
+        Dispatcher.UIThread.Post(() => ApplyWindowAppearance(settings));
 
     /// <summary>应用设置 → 外观:窗口透明度、侧边栏位置、界面字体/字号。
     /// (菜单栏显隐设置已随文字菜单一并移除:自绘标题栏承载窗口控制按钮,必须常显。)</summary>
@@ -388,13 +484,18 @@ public partial class MainWindow : Window
         // 界面字体:覆盖 VelaUiFont 令牌(空或默认 Inter 时还原主题字体);
         // App 级 :is(Window) 样式让所有窗口继承,未显式指定 FontFamily 的文本统一换字体。
         string uiFont = a.UiFont.Trim();
-        if (string.IsNullOrEmpty(uiFont) || string.Equals(uiFont, "Inter", StringComparison.OrdinalIgnoreCase))
+        if (
+            string.IsNullOrEmpty(uiFont)
+            || string.Equals(uiFont, "Inter", StringComparison.OrdinalIgnoreCase)
+        )
         {
             app.Resources.Remove("VelaUiFont");
         }
         else
         {
-            app.Resources["VelaUiFont"] = new FontFamily($"{uiFont}, Segoe UI, Microsoft YaHei, sans-serif");
+            app.Resources["VelaUiFont"] = new FontFamily(
+                $"{uiFont}, Segoe UI, Microsoft YaHei, sans-serif"
+            );
         }
 
         // 界面字号:覆盖 VelaUiFontSize 令牌(同上,全窗口继承);同时覆盖 Fluent 的
@@ -411,7 +512,12 @@ public partial class MainWindow : Window
         {
             return;
         }
-        if (this.FindControl<SidebarView>("SidebarHost") is not { } sidebar || this.FindControl<Grid>("MainAreaGrid") is not { } main || sidebar.Parent is not Grid contentGrid || contentGrid.ColumnDefinitions.Count < 3)
+        if (
+            this.FindControl<SidebarView>("SidebarHost") is not { } sidebar
+            || this.FindControl<Grid>("MainAreaGrid") is not { } main
+            || sidebar.Parent is not Grid contentGrid
+            || contentGrid.ColumnDefinitions.Count < 3
+        )
         {
             return;
         }
@@ -453,7 +559,11 @@ public partial class MainWindow : Window
         bool userInitiated = e.CloseReason == WindowCloseReason.WindowClosing;
         if (!_forceClose && userInitiated && settings is not null)
         {
-            if (settings.General.MinimizeToTray && Application.Current is App app && HasActiveTrayIcon(app))
+            if (
+                settings.General.MinimizeToTray
+                && Application.Current is App app
+                && HasActiveTrayIcon(app)
+            )
             {
                 e.Cancel = true;
                 Hide();
@@ -474,12 +584,17 @@ public partial class MainWindow : Window
 
     private static bool HasActiveTrayIcon(App app) => app.TrayIconActive;
 
-    private bool HasConnectedSessions() => DataContext is MainWindowViewModel vm && vm.TabBar.Tabs.OfType<TerminalTabViewModel>().Any(t => t.IsConnected);
+    private bool HasConnectedSessions() =>
+        DataContext is MainWindowViewModel vm
+        && vm.TabBar.Tabs.OfType<TerminalTabViewModel>().Any(t => t.IsConnected);
 
     private async Task ConfirmCloseAsync()
     {
-        bool confirmed = await MessageDialog.ConfirmAsync(this, Strings.Get("Main_CloseConfirmTitle"),
-                             Strings.Get("Main_CloseConfirmBody"));
+        bool confirmed = await MessageDialog.ConfirmAsync(
+            this,
+            Strings.Get("Main_CloseConfirmTitle"),
+            Strings.Get("Main_CloseConfirmBody")
+        );
         if (confirmed)
         {
             ForceClose();
@@ -515,7 +630,16 @@ public partial class MainWindow : Window
             }
             if (rememberSessions && DataContext is MainWindowViewModel vm)
             {
-                settings.General.LastOpenProfileIds = [.. vm.TabBar.Tabs.OfType<TerminalTabViewModel>().Where(t => t is { IsConnected: true, Profile: { } p } && p.Id != Guid.Empty).Select(t => t.Profile!.Id).Distinct()];
+                settings.General.LastOpenProfileIds =
+                [
+                    .. vm
+                        .TabBar.Tabs.OfType<TerminalTabViewModel>()
+                        .Where(t =>
+                            t is { IsConnected: true, Profile: { } p } && p.Id != Guid.Empty
+                        )
+                        .Select(t => t.Profile!.Id)
+                        .Distinct(),
+                ];
             }
             _settingsService.SaveSettingsAsync(settings).GetAwaiter().GetResult();
         }
@@ -538,6 +662,21 @@ public partial class MainWindow : Window
         }
     }
 
+    private void FocusActiveTerminal(MainWindowViewModel viewModel)
+    {
+        foreach (TerminalTabView view in this.GetVisualDescendants().OfType<TerminalTabView>())
+        {
+            if (
+                view.IsEffectivelyVisible
+                && ReferenceEquals(view.DataContext, viewModel.ActiveTerminalTab)
+            )
+            {
+                view.FocusTerminal();
+                return;
+            }
+        }
+    }
+
     // The window uses the native OS title bar per design spec §2 — no custom chrome.
 
     private void OnSidebarRecentConnectRequested(object? sender, RecentConnectionEntry entry)
@@ -551,7 +690,8 @@ public partial class MainWindow : Window
         _ = vm.TryConnectRecentAsync(entry);
     }
 
-    private void OnOpenConnectionProfileRequested(object? sender, EventArgs e) => _ = OpenProfileDialogAsync(null);
+    private void OnOpenConnectionProfileRequested(object? sender, EventArgs e) =>
+        _ = OpenProfileDialogAsync(null);
 
     /// <summary>打开“新建连接”弹窗;传入 existing 时为编辑既有配置。</summary>
     private async Task OpenProfileDialogAsync(SessionProfile? existing)
@@ -570,21 +710,24 @@ public partial class MainWindow : Window
         string? defaultKeyPath = null;
         if (_settings?.Keys.DefaultKeyName is { Length: > 0 } keyName)
         {
-            string candidate = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh", keyName);
+            string candidate = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".ssh",
+                keyName
+            );
             if (File.Exists(candidate))
             {
                 defaultKeyPath = candidate;
             }
         }
-        var connectionProfileViewModel = new ConnectionProfileViewModel(existing,
+        var connectionProfileViewModel = new ConnectionProfileViewModel(
+            existing,
             app.Services.GetService<IConnectionWorkflowService>(),
             app.Services.GetService<ISessionRepository>(),
             defaultPort,
-            defaultKeyPath);
-        var dialog = new ConnectionProfileView
-        {
-            DataContext = connectionProfileViewModel
-        };
+            defaultKeyPath
+        );
+        var dialog = new ConnectionProfileView { DataContext = connectionProfileViewModel };
         SessionProfile? profile = await dialog.ShowDialog<SessionProfile?>(this);
         if (profile is null)
         {
@@ -608,13 +751,17 @@ public partial class MainWindow : Window
     /// <summary>打开连接诊断中心(设计 RGXg1):打开即自动执行一轮四步检测。</summary>
     private async Task OpenDiagnosticsDialogAsync(SessionProfile profile)
     {
-        if (Application.Current is not App app || app.Services?.GetService<IConnectionDiagnosticsService>() is not { } diagnosticsService)
+        if (
+            Application.Current is not App app
+            || app.Services?.GetService<IConnectionDiagnosticsService>()
+                is not { } diagnosticsService
+        )
         {
             return;
         }
         var dialog = new ConnectionDiagnosticsView
         {
-            DataContext = new ConnectionDiagnosticsViewModel(profile, diagnosticsService)
+            DataContext = new ConnectionDiagnosticsViewModel(profile, diagnosticsService),
         };
         await dialog.ShowDialog(this);
     }
@@ -622,7 +769,10 @@ public partial class MainWindow : Window
     /// <summary>打开设置窗口(设计 §14):DI 单例 VM,打开时重新加载持久化设置。</summary>
     private async Task OpenSettingsAsync()
     {
-        if (Application.Current is not App app || app.Services?.GetService<SettingsViewModel>() is not { } settingsViewModel)
+        if (
+            Application.Current is not App app
+            || app.Services?.GetService<SettingsViewModel>() is not { } settingsViewModel
+        )
         {
             return;
         }
@@ -638,25 +788,30 @@ public partial class MainWindow : Window
     private async Task<SessionProfile?> PromptCredentialsAsync(SessionProfile profile)
     {
         string? knownFingerprint = null;
-        if (Application.Current is App app && app.Services?.GetService<IHostKeyService>() is { } hostKeys)
+        if (
+            Application.Current is App app
+            && app.Services?.GetService<IHostKeyService>() is { } hostKeys
+        )
         {
             try
             {
                 List<KnownHost> hosts = await hostKeys.GetKnownHostsAsync();
                 knownFingerprint = hosts
-                                   .FirstOrDefault(h => h.Host == profile.Host && h.Port == profile.Port)
-                                   ?.Fingerprint;
+                    .FirstOrDefault(h => h.Host == profile.Host && h.Port == profile.Port)
+                    ?.Fingerprint;
             }
             catch
             {
                 // 指纹仅用于展示,读取失败不阻塞验证流程。
             }
         }
-        var viewModel = new AuthenticationDialogViewModel(profile.Host,
+        var viewModel = new AuthenticationDialogViewModel(
+            profile.Host,
             profile.Port,
             profile.Username,
             knownFingerprint,
-            profile.AuthMethod);
+            profile.AuthMethod
+        );
         var dialog = new AuthenticationDialogView { DataContext = viewModel };
         AuthenticationResult? result = await dialog.ShowDialog<AuthenticationResult?>(this);
         if (result is null)
@@ -691,17 +846,19 @@ public partial class MainWindow : Window
             return;
         }
         (string text, string suggestedName) = export.Value;
-        IStorageFile? file = await StorageProvider.SaveFilePickerAsync(new()
-        {
-            Title = Strings.Get("Main_ExportTerminalTitle"),
-            SuggestedFileName = suggestedName,
-            DefaultExtension = "txt",
-            FileTypeChoices =
-            [
-                new(Strings.Get("Main_FileTypeText")) { Patterns = ["*.txt"] },
-                new(Strings.Get("Main_FileTypeLog")) { Patterns = ["*.log"] }
-            ]
-        });
+        IStorageFile? file = await StorageProvider.SaveFilePickerAsync(
+            new()
+            {
+                Title = Strings.Get("Main_ExportTerminalTitle"),
+                SuggestedFileName = suggestedName,
+                DefaultExtension = "txt",
+                FileTypeChoices =
+                [
+                    new(Strings.Get("Main_FileTypeText")) { Patterns = ["*.txt"] },
+                    new(Strings.Get("Main_FileTypeLog")) { Patterns = ["*.log"] },
+                ],
+            }
+        );
         string? path = file?.TryGetLocalPath();
         if (string.IsNullOrEmpty(path))
         {
@@ -714,7 +871,12 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            await MessageDialog.ShowMessageAsync(this, Strings.Get("Main_ExportFailed"), ex.Message, MessageDialogKind.Error);
+            await MessageDialog.ShowMessageAsync(
+                this,
+                Strings.Get("Main_ExportFailed"),
+                ex.Message,
+                MessageDialogKind.Error
+            );
         }
     }
 
@@ -731,7 +893,10 @@ public partial class MainWindow : Window
         {
             preview += "\n…";
         }
-        return MessageDialog.ConfirmAsync(this, Strings.Get("Main_PasteMultilineTitle"),
-            Strings.Format("Main_PasteMultilineBody", lines.Length, preview));
+        return MessageDialog.ConfirmAsync(
+            this,
+            Strings.Get("Main_PasteMultilineTitle"),
+            Strings.Format("Main_PasteMultilineBody", lines.Length, preview)
+        );
     }
 }

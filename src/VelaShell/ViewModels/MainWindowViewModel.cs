@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
 using Avalonia;
+using Avalonia.Input;
 using Avalonia.Threading;
 using ReactiveUI;
 using VelaShell.Core.Data;
@@ -66,6 +67,7 @@ public class MainWindowViewModel : ReactiveObject
     private readonly ITunnelService? _tunnelService;
     private readonly QuickCommandsViewModel? _quickCommands;
     private readonly QuickCommandRunnerViewModel? _quickCommandRunner;
+    private readonly TerminalTargetSelectorViewModel _terminalTargetSelector;
     private readonly Dictionary<
         TerminalTabViewModel,
         IDisposable
@@ -132,13 +134,29 @@ public class MainWindowViewModel : ReactiveObject
         ISettingsPreviewService? settingsPreviewService = null,
         IAppDataStore? appDataStore = null,
         ISessionRecordingStore? recordingStore = null,
-        QuickCommandsViewModel? quickCommands = null
+        QuickCommandsViewModel? quickCommands = null,
+        IQuickCommandRepository? quickCommandRepository = null
     )
     {
         _appDataStore = appDataStore;
         _recordingStore = recordingStore;
         _quickCommands = quickCommands;
-        _quickCommandRunner = quickCommands is null ? null : new(quickCommands);
+        _terminalTargetSelector = new();
+        BroadcastInput = new(_terminalTargetSelector);
+        BroadcastInput.FocusRequested += (_, capture) =>
+        {
+            if (capture)
+            {
+                BroadcastInputFocusRequested?.Invoke(this, EventArgs.Empty);
+            }
+            else
+            {
+                TerminalFocusRequested?.Invoke(this, EventArgs.Empty);
+            }
+        };
+        _quickCommandRunner = quickCommands is null
+            ? null
+            : new(quickCommands, _terminalTargetSelector);
         if (_quickCommandRunner is not null)
         {
             _quickCommandRunner.ExecutionRequested += OnQuickCommandExecutionRequested;
@@ -147,7 +165,7 @@ public class MainWindowViewModel : ReactiveObject
         // 命令补全(plan.md #16):全局命令历史 + 建议提供器(历史 ∪ 快捷命令),
         // 逐标签在 CreateConnectingTab 注入。
         CommandHistory = new(appDataStore);
-        _suggestionProvider = new(CommandHistory, appDataStore);
+        _suggestionProvider = new(CommandHistory, quickCommandRepository);
         _connectionWorkflowService = connectionWorkflowService;
         _sshConnectionService = sshConnectionService;
         _settingsService = settingsService;
@@ -272,6 +290,9 @@ public class MainWindowViewModel : ReactiveObject
     /// (design spec §4A.1) — every entry point shows the same name, hint and behavior.
     /// </summary>
     public ICommandRegistry Commands { get; } = new CommandRegistry();
+
+    /// <summary>底部多终端实时输入栏。</summary>
+    public BroadcastInputViewModel BroadcastInput { get; }
 
     /// <summary>Executes a registry command by id (used by menu entries via CommandParameter).</summary>
     public ReactiveCommand<string, Unit>? RunCommand { get; private set; }
@@ -595,6 +616,16 @@ public class MainWindowViewModel : ReactiveObject
                 Icon: "Icon.rows-2"
             )
         );
+        Commands.Register(
+            new(
+                "terminal.broadcast",
+                Strings.Get("Broadcast"),
+                Strings.Get("CmdCat_Actions"),
+                () => BroadcastInput.ToggleCommand.Execute().Subscribe(),
+                Shortcut: "Ctrl+Shift+B",
+                Icon: "Icon.send"
+            )
+        );
 
         // 本地终端(§12 P1-1):按本机安装情况动态注册 PowerShell/CMD/WSL/Git Bash 入口。
         foreach (LocalShellInfo shell in LocalShellCatalog.DetectShells())
@@ -910,6 +941,12 @@ public class MainWindowViewModel : ReactiveObject
     /// forwards it to the active terminal view's search bar (§5.3).
     /// </summary>
     public event EventHandler? TerminalSearchRequested;
+
+    /// <summary>请求视图聚焦当前活动终端。</summary>
+    public event EventHandler? TerminalFocusRequested;
+
+    /// <summary>请求视图聚焦广播输入捕获区。</summary>
+    public event EventHandler? BroadcastInputFocusRequested;
 
     /// <summary>导出终端输出(命令面板“导出终端输出到文件”)—— 窗口弹保存对话框并落盘。</summary>
     public event EventHandler? ExportBufferRequested;
@@ -1304,17 +1341,13 @@ public class MainWindowViewModel : ReactiveObject
 
     private void RefreshQuickCommandTargets()
     {
-        if (_quickCommandRunner is null)
-        {
-            return;
-        }
         (Guid Id, string DisplayName)[] targets = TabBar
             .Tabs.OfType<TerminalTabViewModel>()
             .Where(tab => tab.IsConnected)
             .Select(tab => (tab.Id, tab.Title))
             .ToArray();
-        _quickCommandRunner.UpdateTargets(targets);
-        _quickCommandRunner.SetCurrentTarget(
+        _terminalTargetSelector.UpdateTargets(targets);
+        _terminalTargetSelector.SetCurrentTarget(
             ActiveTerminalTab is { IsConnected: true } current ? current.Id : null
         );
     }
@@ -1329,10 +1362,77 @@ public class MainWindowViewModel : ReactiveObject
             .Tabs.OfType<TerminalTabViewModel>()
             .Where(tab => tab.IsConnected && targetIds.Contains(tab.Id))
             .ToArray();
+        bool sent = false;
         foreach (TerminalTabViewModel target in targets)
         {
-            target.TryExecuteCommand(request.CommandText);
+            sent |= target.TryExecuteCommand(request.CommandText);
         }
+        if (sent)
+        {
+            TerminalFocusRequested?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>把广播栏提交的文本实时写入解析后的目标终端。</summary>
+    public bool BroadcastTextInput(string text)
+    {
+        bool sent = false;
+        foreach (TerminalTabViewModel target in ResolveBroadcastTargets())
+        {
+            sent |= target.TryWriteTextInput(text);
+        }
+        return sent;
+    }
+
+    /// <summary>让每个目标终端按自身 VT 模式编码并发送广播按键。</summary>
+    public bool BroadcastKeyInput(Key key, Avalonia.Input.KeyModifiers modifiers)
+    {
+        bool sent = false;
+        foreach (TerminalTabViewModel target in ResolveBroadcastTargets())
+        {
+            sent |= target.TryWriteKeyInput(key, modifiers);
+        }
+        return sent;
+    }
+
+    /// <summary>确认一次后,按每个目标的 bracketed-paste 模式广播剪贴板文本。</summary>
+    public async Task<bool> BroadcastPasteInputAsync(string text)
+    {
+        TerminalTabViewModel[] targets = ResolveBroadcastTargets();
+        if (targets.Length == 0 || string.IsNullOrEmpty(text))
+        {
+            return false;
+        }
+        VelaTerminalControl? confirmationSource = targets
+            .Select(target => target.TerminalEmulator)
+            .OfType<VelaTerminalControl>()
+            .FirstOrDefault(control => control.ConfirmMultilinePaste);
+        if (
+            confirmationSource?.MultilinePasteConfirmation is { } confirm
+            && text.IndexOfAny(['\r', '\n']) >= 0
+            && text.TrimEnd('\r', '\n').IndexOfAny(['\r', '\n']) >= 0
+            && !await confirm(text)
+        )
+        {
+            return false;
+        }
+        bool sent = false;
+        foreach (TerminalTabViewModel target in targets)
+        {
+            sent |= target.TryWritePasteInput(text);
+        }
+        return sent;
+    }
+
+    private TerminalTabViewModel[] ResolveBroadcastTargets()
+    {
+        HashSet<Guid> targetIds = _terminalTargetSelector.ResolveTargetIds().ToHashSet();
+        return
+        [
+            .. TabBar
+                .Tabs.OfType<TerminalTabViewModel>()
+                .Where(tab => tab.IsConnected && targetIds.Contains(tab.Id)),
+        ];
     }
 
     /// <summary>

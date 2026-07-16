@@ -2,9 +2,18 @@ using VelaShell.Core.Resources;
 
 namespace VelaShell.Core.Models;
 
-/// <summary>quick_commands 集合的存储形状(设置页与命令补全建议共用)。</summary>
+/// <summary>quick_commands/commands 的 v2 聚合文档。</summary>
 public sealed class QuickCommandData
 {
+    /// <summary>当前支持的快捷命令文档版本。</summary>
+    public const int CurrentSchemaVersion = 2;
+
+    /// <summary>文档结构版本。</summary>
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+
+    /// <summary>默认、内置和用户分组。</summary>
+    public List<QuickCommandGroup> Groups { get; set; } = [];
+
     /// <summary>自定义快捷命令列表。</summary>
     public List<QuickCommand> Commands { get; set; } = [];
 }
@@ -20,13 +29,49 @@ public static class QuickCommandCatalog
     /// <summary>内置快捷命令列表(描述按当前语言本地化)。</summary>
     public static IReadOnlyList<QuickCommand> BuiltIns { get; } =
     [
-        new() { Name = "netstat -tlnp", Category = "Network", CommandText = "netstat -tlnp", Description = Strings.Get("QuickCmd_ShowListeningPorts"), IsBuiltIn = true },
-        new() { Name = "systemctl status", Category = "System", CommandText = "systemctl status", Description = Strings.Get("QuickCmd_SystemdStatus"), IsBuiltIn = true },
-        new() { Name = "journalctl -f", Category = "System", CommandText = "journalctl -f", Description = Strings.Get("QuickCmd_FollowJournal"), IsBuiltIn = true },
-        new() { Name = "Enabled Services", Category = "System", CommandText = "sudo systemctl list-unit-files --type service | grep enabled", Description = Strings.Get("QuickCmd_EnabledServices"), IsBuiltIn = true },
-        new() { Name = "Linux Kernel Packages", Category = "System", CommandText = "dpkg --list | grep linux-image", Description = Strings.Get("QuickCmd_KernelPackages"), IsBuiltIn = true },
-        new() { Name = "docker ps", Category = "Docker", CommandText = "sudo docker ps -a", Description = Strings.Get("QuickCmd_DockerPs"), IsBuiltIn = true },
-        new() { Name = "docker stats", Category = "Docker", CommandText = "sudo docker stats", Description = Strings.Get("QuickCmd_DockerStats"), IsBuiltIn = true },
-        new() { Name = "docker system prune", Category = "Docker", CommandText = "sudo docker system prune -f", Description = Strings.Get("QuickCmd_DockerPrune"), IsBuiltIn = true }
+        BuiltIn("netstat -tlnp", "Network", "netstat -tlnp", "QuickCmd_ShowListeningPorts", 0),
+        BuiltIn("systemctl status", "System", "systemctl status", "QuickCmd_SystemdStatus", 0),
+        BuiltIn("journalctl -f", "System", "journalctl -f", "QuickCmd_FollowJournal", 1),
+        BuiltIn(
+            "Enabled Services",
+            "System",
+            "sudo systemctl list-unit-files --type service | grep enabled",
+            "QuickCmd_EnabledServices",
+            2
+        ),
+        BuiltIn(
+            "Linux Kernel Packages",
+            "System",
+            "dpkg --list | grep linux-image",
+            "QuickCmd_KernelPackages",
+            3
+        ),
+        BuiltIn("docker ps", "Docker", "sudo docker ps -a", "QuickCmd_DockerPs", 0),
+        BuiltIn("docker stats", "Docker", "sudo docker stats", "QuickCmd_DockerStats", 1),
+        BuiltIn(
+            "docker system prune",
+            "Docker",
+            "sudo docker system prune -f",
+            "QuickCmd_DockerPrune",
+            2
+        ),
     ];
+
+    private static QuickCommand BuiltIn(
+        string name,
+        string group,
+        string commandText,
+        string descriptionKey,
+        int sortOrder
+    ) =>
+        new()
+        {
+            Id = QuickCommandGroupCatalog.IdForName($"builtin-command:{name}"),
+            GroupId = QuickCommandGroupCatalog.IdForName(group),
+            Name = name,
+            CommandText = commandText,
+            Description = Strings.Get(descriptionKey),
+            SortOrder = sortOrder,
+            IsBuiltIn = true,
+        };
 }

@@ -90,7 +90,7 @@ The main window is a **self-drawn borderless window** (`WindowDecorations="None"
 native chrome — Avalonia 12.x's `ExtendClientArea` / decoration-role input redirection is
 broken on Win32 (title-bar buttons and drag stop working), so it was abandoned. Instead
 `Views/TitleBarView` draws a 36px bar with logo+name (left), the global action icon group
-(right; SyncGroup/Broadcast disabled until implemented) and its own minimize/maximize/close
+(right; Broadcast opens the multi-terminal input bar, while SyncGroup remains disabled) and its own minimize/maximize/close
 caption buttons. Native *feel* is restored programmatically: `BeginMoveDrag` (native move
 loop, Win11 edge-snap works), double-click to maximize, and **Win11 Snap Layouts via a
 `MainWindow` WndProc hook on `HTMAXBUTTON`**. All dialogs use the same borderless mode.
@@ -114,7 +114,8 @@ All persistence goes through **SonnetDB** (https://github.com/IoTSharp/SonnetDB)
   `session_groups`, `session_profiles` (indexed by `$.groupId`), `app_config`
   (settings/state/sync singleton docs — `sync` holds the Gist cloud-sync config with
   the PAT encrypted via `ISecretProtector`), `known_hosts`, `ui_config`,
-  `quick_commands`, `tunnels` (one doc per profile id holding its tunnel configs),
+  `quick_commands` (a schema-v2 singleton containing groups plus custom commands),
+  `tunnels` (one doc per profile id holding its tunnel configs),
   `recordings` (session-recording metadata).
 - **Time-series measurements** hold time-oriented data:
   `conn_history` (recent connections, powers the sidebar list),
@@ -130,9 +131,13 @@ All persistence goes through **SonnetDB** (https://github.com/IoTSharp/SonnetDB)
   rest with AES-256-GCM via `ISecretProtector` (local key file).
 - Keep persistence interfaces in `Core` (`ISessionRepository`, `ISettingsService`,
   `IRecentConnectionService`, `IAuditLogService`, `IAppDataStore`,
-  `ISessionRecordingStore`, `ISecretProtector`), implementations in
+  `ISessionRecordingStore`, `IQuickCommandRepository`, `ISecretProtector`), implementations in
   `Infrastructure/Persistence` (`SonnetDb*`), all sharing one `SonnetDbEngine`
   singleton that is disposed on app exit (WAL flush).
+
+Quick commands are loaded through `IQuickCommandRepository`, which owns v1 SonnetDB and
+legacy `quick-commands.json` migration, backup creation, schema validation, and Gist-compatible
+v1/v2 snapshots. The UI and sync service never manipulate the SonnetDB document directly.
 
 ## Migration Rule
 
