@@ -2743,6 +2743,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="SetGeneral_FollowActiveTerminalDesc" xml:space="preserve">
     <value>터미널 탭을 전환할 때 해당 저장 연결을 펼치고 선택합니다.</value>
+  </data>
   <data name="ZModem_ChooseDownloadFolder" xml:space="preserve">
     <value>ZMODEM 다운로드 폴더 선택</value>
   </data>

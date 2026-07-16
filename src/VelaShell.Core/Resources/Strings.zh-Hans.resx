@@ -2835,6 +2835,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   </data>
   <data name="SetGeneral_FollowActiveTerminalDesc" xml:space="preserve">
     <value>切换终端标签时,自动展开、选中并定位到对应的已保存连接。</value>
+  </data>
   <data name="ZModem_ChooseDownloadFolder" xml:space="preserve">
     <value>选择 ZMODEM 下载目录</value>
   </data>
