@@ -2738,4 +2738,10 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Warning" xml:space="preserve">
     <value>경고</value>
   </data>
+  <data name="SetGeneral_FollowActiveTerminal" xml:space="preserve">
+    <value>활성 터미널을 탐색기에서 따라가기</value>
+  </data>
+  <data name="SetGeneral_FollowActiveTerminalDesc" xml:space="preserve">
+    <value>터미널 탭을 전환할 때 해당 저장 연결을 펼치고 선택합니다.</value>
+  </data>
 </root>

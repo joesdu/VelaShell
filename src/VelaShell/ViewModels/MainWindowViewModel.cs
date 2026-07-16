@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Net.NetworkInformation;
 using System.Reactive;
 using System.Reactive.Disposables;
@@ -93,6 +94,9 @@ public class MainWindowViewModel : ReactiveObject
     private bool _latencyPolling;
     private int _latencyTick;
     private AppSettings? _latestSettings;
+    private AppState _appState = new();
+    private bool _isApplyingSidebarState;
+    private CancellationTokenSource? _sidebarStateSaveDebounce;
 
     /// <summary>
     /// SFTP 面板的用户开关意图(全局,跨标签)。面板对象随标签切换/会话驱逐被整体
@@ -184,6 +188,7 @@ public class MainWindowViewModel : ReactiveObject
         };
         Layout.ActiveDocumentChanged += SetActiveFromDocument;
         _sidebar = new(recentConnectionService, _quickCommandRunner);
+        _sidebar.PropertyChanged += OnSidebarStateChanged;
         if (sessionRepository is not null)
         {
             _sidebar.SessionTree = new(sessionRepository);
@@ -202,6 +207,7 @@ public class MainWindowViewModel : ReactiveObject
                 RebindFileBrowser();
                 SyncWorkspaceToActiveTab(activeTab as TerminalTabViewModel);
                 RefreshQuickCommandTargets();
+                RevealActiveSessionInSidebar(activeTab as TerminalTabViewModel);
             });
 
         // SFTP 面板“打开/关闭”的用户意图:只跟踪当前面板实例上的 IsVisible 变化
@@ -1295,10 +1301,13 @@ public class MainWindowViewModel : ReactiveObject
         }
         if (_settingsService is not null)
         {
+            _appState = await _settingsService.GetStateAsync();
+            ApplySidebarState(_appState);
             ApplyShellPreferences(await LoadSettingsSnapshotAsync());
         }
         await Sidebar.RecentConnections.RefreshAsync();
         await RefreshSessionTreeAsync();
+        RevealActiveSessionInSidebar();
     }
 
     private void ApplyShellPreferences(AppSettings settings)
@@ -1307,14 +1316,118 @@ public class MainWindowViewModel : ReactiveObject
             _quickCommandRunner is not null && settings.Appearance.ShowQuickCommandsPanel;
     }
 
+    private void ApplySidebarState(AppState state)
+    {
+        _isApplyingSidebarState = true;
+        try
+        {
+            Sidebar.QuickCommandsExpanded = state.SidebarQuickCommandsExpanded;
+            Sidebar.QuickCommandsHeight = NormalizeSidebarHeight(
+                state.SidebarQuickCommandsHeight,
+                160
+            );
+            Sidebar.RecentConnectionsExpanded = state.SidebarRecentConnectionsExpanded;
+            Sidebar.RecentConnectionsHeight = NormalizeSidebarHeight(
+                state.SidebarRecentConnectionsHeight,
+                180
+            );
+        }
+        finally
+        {
+            _isApplyingSidebarState = false;
+        }
+        CaptureSidebarState();
+    }
+
+    private static double NormalizeSidebarHeight(double height, double fallback) =>
+        double.IsFinite(height) ? Math.Clamp(height, 100, 1200) : fallback;
+
+    private void OnSidebarStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (
+            _isApplyingSidebarState
+            || _settingsService is null
+            || e.PropertyName
+                is not (
+                    nameof(SidebarViewModel.QuickCommandsExpanded)
+                    or nameof(SidebarViewModel.QuickCommandsHeight)
+                    or nameof(SidebarViewModel.RecentConnectionsExpanded)
+                    or nameof(SidebarViewModel.RecentConnectionsHeight)
+                )
+        )
+        {
+            return;
+        }
+        CaptureSidebarState();
+        CancellationTokenSource next = new();
+        _sidebarStateSaveDebounce?.Cancel();
+        _sidebarStateSaveDebounce = next;
+        _ = SaveSidebarStateAfterDelayAsync(next.Token);
+    }
+
+    private void CaptureSidebarState()
+    {
+        _appState.SidebarQuickCommandsExpanded = Sidebar.QuickCommandsExpanded;
+        _appState.SidebarQuickCommandsHeight = NormalizeSidebarHeight(
+            Sidebar.QuickCommandsHeight,
+            160
+        );
+        _appState.SidebarRecentConnectionsExpanded = Sidebar.RecentConnectionsExpanded;
+        _appState.SidebarRecentConnectionsHeight = NormalizeSidebarHeight(
+            Sidebar.RecentConnectionsHeight,
+            180
+        );
+    }
+
+    private async Task SaveSidebarStateAfterDelayAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(200, cancellationToken).ConfigureAwait(false);
+            if (_settingsService is not null)
+            {
+                await _settingsService.SaveStateAsync(_appState).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 被更晚的折叠或拖动结果替代。
+        }
+        catch
+        {
+            // 布局状态保存失败不影响当前交互;关闭窗口时还会再尝试一次。
+        }
+    }
+
+    internal async Task PersistSidebarStateAsync()
+    {
+        _sidebarStateSaveDebounce?.Cancel();
+        CaptureSidebarState();
+        if (_settingsService is not null)
+        {
+            await _settingsService.SaveStateAsync(_appState).ConfigureAwait(false);
+        }
+    }
+
+    private void RevealActiveSessionInSidebar(TerminalTabViewModel? tab = null)
+    {
+        if ((_latestSettings?.General.FollowActiveTerminalInExplorer ?? true) != true)
+        {
+            return;
+        }
+        TerminalTabViewModel? target = tab ?? ActiveTerminalTab;
+        if (target?.Profile is { Id: var profileId } && profileId != Guid.Empty)
+        {
+            Sidebar.SessionTree?.SelectSession(profileId);
+        }
+    }
+
     private void OnTabsCollectionChanged(
         object? sender,
         System.Collections.Specialized.NotifyCollectionChangedEventArgs e
     )
     {
-        var currentTabs = TabBar
-            .Tabs.OfType<TerminalTabViewModel>()
-            .ToHashSet();
+        var currentTabs = TabBar.Tabs.OfType<TerminalTabViewModel>().ToHashSet();
         foreach (
             TerminalTabViewModel removed in _quickCommandTargetSubscriptions
                 .Keys.Where(tab => !currentTabs.Contains(tab))
@@ -1453,6 +1566,7 @@ public class MainWindowViewModel : ReactiveObject
             }
         }
         await RefreshPaletteSessionsAsync();
+        RevealActiveSessionInSidebar();
     }
 
     /// <summary>BuildPaletteItems 是同步回调,这里预取 session_profiles 全量与分组名。</summary>
@@ -1981,11 +2095,10 @@ public class MainWindowViewModel : ReactiveObject
                 // 等待期间用户可能已手动重连、关掉标签或主动断开。
                 if (
                     tab
-                        is
-                    {
-                        ConnectionStatus: SessionStatus.Disconnected,
-                        UserRequestedDisconnect: false
-                    }
+                        is {
+                            ConnectionStatus: SessionStatus.Disconnected,
+                            UserRequestedDisconnect: false
+                        }
                     && TabBar.Tabs.Contains(tab)
                 )
                 {
@@ -2338,6 +2451,7 @@ public class MainWindowViewModel : ReactiveObject
                     browser.ShowHiddenFiles = settings.Transfer.ShowHiddenFiles;
                     ApplyColumnVisibility(browser, settings.Transfer);
                 }
+                RevealActiveSessionInSidebar();
                 return Disposable.Empty;
             }
         );

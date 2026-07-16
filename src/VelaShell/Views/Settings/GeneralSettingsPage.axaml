@@ -118,6 +118,15 @@
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetGeneral_FollowActiveTerminal}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetGeneral_FollowActiveTerminalDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1"
+                    IsChecked="{Binding General.FollowActiveTerminalInExplorer}"
+                    VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="{loc:Localize SetGeneral_NotifyOnDisconnect}" />
         <TextBlock Classes="row-desc" Text="{loc:Localize SetGeneral_NotifyOnDisconnectDesc}" />
       </StackPanel>

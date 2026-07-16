@@ -2830,4 +2830,10 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="TunnelSvc_TargetUnreachable" xml:space="preserve">
     <value>目标不可达:请确认目标主机从服务器可以访问(内网地址/防火墙)。</value>
   </data>
+  <data name="SetGeneral_FollowActiveTerminal" xml:space="preserve">
+    <value>活动终端跟随资源管理器</value>
+  </data>
+  <data name="SetGeneral_FollowActiveTerminalDesc" xml:space="preserve">
+    <value>切换终端标签时,自动展开、选中并定位到对应的已保存连接。</value>
+  </data>
 </root>

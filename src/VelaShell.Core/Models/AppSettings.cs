@@ -185,6 +185,13 @@ public class GeneralOptions : ObservableOptions
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>切换终端标签时是否在资源管理器中展开、选中并滚动到对应连接。</summary>
+    public bool FollowActiveTerminalInExplorer
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
     /// <summary>连接断开时是否弹出通知。</summary>
     public bool NotifyOnDisconnect
     {

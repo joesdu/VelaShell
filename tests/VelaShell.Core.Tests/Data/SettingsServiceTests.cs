@@ -39,6 +39,7 @@ public class SettingsServiceTests : IDisposable
         Assert.AreEqual(50000, settings.ScrollbackLines);
         Assert.AreEqual(22, settings.DefaultPort);
         Assert.IsFalse(settings.Appearance.ShowQuickCommandsPanel);
+        Assert.IsTrue(settings.General.FollowActiveTerminalInExplorer);
     }
 
     [TestMethod]
@@ -71,6 +72,10 @@ public class SettingsServiceTests : IDisposable
         Assert.IsNull(state.WindowPosition);
         Assert.IsNull(state.WindowSize);
         Assert.IsNull(state.LastActiveTab);
+        Assert.IsTrue(state.SidebarQuickCommandsExpanded);
+        Assert.AreEqual(160, state.SidebarQuickCommandsHeight);
+        Assert.IsTrue(state.SidebarRecentConnectionsExpanded);
+        Assert.AreEqual(180, state.SidebarRecentConnectionsHeight);
     }
 
     [TestMethod]
@@ -83,6 +88,10 @@ public class SettingsServiceTests : IDisposable
             WindowPosition = new() { X = 100, Y = 200 },
             WindowSize = new() { Width = 1024, Height = 768 },
             LastActiveTab = "tab1",
+            SidebarQuickCommandsExpanded = false,
+            SidebarQuickCommandsHeight = 260,
+            SidebarRecentConnectionsExpanded = false,
+            SidebarRecentConnectionsHeight = 230,
         };
         await service.SaveStateAsync(state);
         AppState retrieved = await service.GetStateAsync();

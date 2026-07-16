@@ -23,6 +23,34 @@ public sealed class SidebarViewModel(
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>快捷命令区域是否展开。</summary>
+    public bool QuickCommandsExpanded
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = true;
+
+    /// <summary>快捷命令区域上次展开时的高度。</summary>
+    public double QuickCommandsHeight
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = 160;
+
+    /// <summary>最近连接区域是否展开。</summary>
+    public bool RecentConnectionsExpanded
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = true;
+
+    /// <summary>最近连接区域上次展开时的高度。</summary>
+    public double RecentConnectionsHeight
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = 180;
+
     /// <summary>当前会话树视图模型,未加载时为 null。</summary>
     public SessionTreeViewModel? SessionTree
     {

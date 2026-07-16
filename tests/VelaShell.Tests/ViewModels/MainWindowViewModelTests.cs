@@ -282,4 +282,113 @@ public class MainWindowViewModelTests
         Assert.IsNotNull(vm.NotificationsCommand);
         Assert.IsNotNull(vm.RecentConnections);
     }
+
+    [TestMethod]
+    [TestCategory("Sidebar")]
+    public async Task InitializeAsync_RestoresAndPersistsSidebarLayoutState()
+    {
+        ISettingsService settingsService = Substitute.For<ISettingsService>();
+        settingsService.GetSettingsAsync().Returns(new AppSettings());
+        settingsService
+            .GetStateAsync()
+            .Returns(
+                new AppState
+                {
+                    SidebarQuickCommandsExpanded = false,
+                    SidebarQuickCommandsHeight = 245,
+                    SidebarRecentConnectionsExpanded = true,
+                    SidebarRecentConnectionsHeight = 275,
+                }
+            );
+        var vm = new MainWindowViewModel(settingsService: settingsService);
+
+        await vm.InitializeAsync();
+
+        Assert.IsFalse(vm.Sidebar.QuickCommandsExpanded);
+        Assert.AreEqual(245, vm.Sidebar.QuickCommandsHeight);
+        Assert.IsTrue(vm.Sidebar.RecentConnectionsExpanded);
+        Assert.AreEqual(275, vm.Sidebar.RecentConnectionsHeight);
+
+        vm.Sidebar.QuickCommandsExpanded = true;
+        vm.Sidebar.QuickCommandsHeight = 310;
+        vm.Sidebar.RecentConnectionsExpanded = false;
+        await vm.PersistSidebarStateAsync();
+
+        await settingsService
+            .Received()
+            .SaveStateAsync(
+                Arg.Is<AppState>(state =>
+                    state.SidebarQuickCommandsExpanded
+                    && state.SidebarQuickCommandsHeight == 310
+                    && !state.SidebarRecentConnectionsExpanded
+                    && state.SidebarRecentConnectionsHeight == 275
+                )
+            );
+    }
+
+    [TestMethod]
+    [TestCategory("SessionTree")]
+    public async Task ActiveTerminalTab_FollowsSavedProfileWhenSettingEnabled()
+    {
+        ISettingsService settingsService = Substitute.For<ISettingsService>();
+        ISessionRepository sessionRepository = Substitute.For<ISessionRepository>();
+        SessionProfile profile = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "server",
+            Host = "server.example",
+            Username = "root",
+        };
+        settingsService
+            .GetSettingsAsync()
+            .Returns(new AppSettings { General = new() { FollowActiveTerminalInExplorer = true } });
+        settingsService.GetStateAsync().Returns(new AppState());
+        sessionRepository.GetAllGroupsAsync().Returns([]);
+        sessionRepository.GetAllSessionsAsync().Returns([profile]);
+        var vm = new MainWindowViewModel(
+            settingsService: settingsService,
+            sessionRepository: sessionRepository
+        );
+        await vm.InitializeAsync();
+
+        vm.TabBar.AddTab(
+            new TerminalTabViewModel(Substitute.For<ITerminalEmulator>()) { Profile = profile }
+        );
+
+        Assert.AreEqual(profile.Id, vm.Sidebar.SessionTree?.SelectedNode?.Id);
+    }
+
+    [TestMethod]
+    [TestCategory("SessionTree")]
+    public async Task ActiveTerminalTab_DoesNotChangeTreeSelectionWhenSettingDisabled()
+    {
+        ISettingsService settingsService = Substitute.For<ISettingsService>();
+        ISessionRepository sessionRepository = Substitute.For<ISessionRepository>();
+        SessionProfile profile = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "server",
+            Host = "server.example",
+            Username = "root",
+        };
+        settingsService
+            .GetSettingsAsync()
+            .Returns(
+                new AppSettings { General = new() { FollowActiveTerminalInExplorer = false } }
+            );
+        settingsService.GetStateAsync().Returns(new AppState());
+        sessionRepository.GetAllGroupsAsync().Returns([]);
+        sessionRepository.GetAllSessionsAsync().Returns([profile]);
+        var vm = new MainWindowViewModel(
+            settingsService: settingsService,
+            sessionRepository: sessionRepository
+        );
+        await vm.InitializeAsync();
+
+        vm.TabBar.AddTab(
+            new TerminalTabViewModel(Substitute.For<ITerminalEmulator>()) { Profile = profile }
+        );
+
+        Assert.IsNull(vm.Sidebar.SessionTree?.SelectedNode);
+    }
 }

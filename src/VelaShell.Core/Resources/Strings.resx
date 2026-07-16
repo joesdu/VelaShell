@@ -2739,4 +2739,10 @@ Overwrite it? (Cancel skips this file)</value>
   <data name="TunnelSvc_TargetUnreachable" xml:space="preserve">
     <value>Target unreachable: confirm the target host is reachable from the server (internal address / firewall).</value>
   </data>
+  <data name="SetGeneral_FollowActiveTerminal" xml:space="preserve">
+    <value>Follow active terminal in Explorer</value>
+  </data>
+  <data name="SetGeneral_FollowActiveTerminalDesc" xml:space="preserve">
+    <value>When switching terminal tabs, reveal and select the matching saved connection.</value>
+  </data>
 </root>

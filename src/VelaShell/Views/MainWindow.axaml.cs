@@ -607,6 +607,17 @@ public partial class MainWindow : Window
     /// </summary>
     private void PersistWindowBounds(AppSettings? settings)
     {
+        if (DataContext is MainWindowViewModel sidebarStateViewModel)
+        {
+            try
+            {
+                sidebarStateViewModel.PersistSidebarStateAsync().GetAwaiter().GetResult();
+            }
+            catch
+            {
+                // 侧栏布局保存失败不阻塞窗口关闭。
+            }
+        }
         if (_settingsService is null || settings is null)
         {
             return;

@@ -129,6 +129,9 @@ All persistence goes through **SonnetDB** (https://github.com/IoTSharp/SonnetDB)
   cleanup to reclaim orphaned chunk bytes.
 - Sensitive fields (passwords, key passphrases, sync tokens) are encrypted at
   rest with AES-256-GCM via `ISecretProtector` (local key file).
+- Device-local shell layout is stored in `app_config/state`: sidebar section
+  collapse state and remembered heights are restored on startup and are not
+  included in Gist sync.
 - Keep persistence interfaces in `Core` (`ISessionRepository`, `ISettingsService`,
   `IRecentConnectionService`, `IAuditLogService`, `IAppDataStore`,
   `ISessionRecordingStore`, `IQuickCommandRepository`, `ISecretProtector`), implementations in
