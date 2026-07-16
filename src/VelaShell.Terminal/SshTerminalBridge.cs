@@ -45,6 +45,7 @@ public class SshTerminalBridge : IDisposable
         }
         _disposed = true;
         _terminal.UserInput -= OnUserInput;
+        ZModemRouter?.SessionEnded -= OnZModemSessionEnded;
         _cts.Cancel();
 
         // Dispose the stream BEFORE waiting on the read task: SSH.NET's ShellStream.Read blocks
@@ -88,6 +89,60 @@ public class SshTerminalBridge : IDisposable
     /// Not raised during intentional teardown. Fired on the read thread — marshal as needed.
     /// </summary>
     public event Action? Closed;
+
+    /// <summary>
+    /// 可选的 ZMODEM 路由器。非 null 时,读循环会先经它路由每一段输出字节
+    /// (检测并接管 ZMODEM 会话),其余字节才嗂入终端。由宿主在启动前装配。
+    /// 赋值时自动订阅其会话结束事件,以便在会话收尾后把终端复位到干净状态。
+    /// </summary>
+    public ZModem.ZModemTerminalRouter? ZModemRouter
+    {
+        get;
+        set
+        {
+            if (ReferenceEquals(field, value))
+            {
+                return;
+            }
+            field?.SessionEnded -= OnZModemSessionEnded;
+            field = value;
+            field?.SessionEnded += OnZModemSessionEnded;
+        }
+    }
+
+    // 退出备用屏幕缓冲区的控制序列(DECRST 1049)。ZMODEM 传输对 VT 终端本应完全透明,
+    // 任何会话都不该把终端切到备用屏;每次会话收尾补发一次以自愈,防止杂散协议字节把主屏内容
+    // 挡在空白的备用屏后面(表现为"整屏内容消失、只能重开会话")。
+    private static readonly byte[] AltScreenExit = "\x1b[?1049l"u8.ToArray();
+
+    /// <summary>
+    /// ZMODEM 会话结束(成功 / 失败 / 取消)后的终端复位:在 UI 线程补发一次 DECRST 1049。
+    /// 若终端确实被杂散字节卡在备用屏,这会切回主屏、恢复可见内容;若本就在主屏(正常情况),
+    /// 模拟器会短路返回,是无副作用的空操作。事件在后台线程触发,故必须编组到 UI 线程再喂入。
+    /// </summary>
+    private void OnZModemSessionEnded(Core.ZModem.Model.ZModemSession session)
+    {
+        _ = session;
+        if (_disposed)
+        {
+            return;
+        }
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            try
+            {
+                _terminal.Feed(AltScreenExit);
+            }
+            catch (Exception ex)
+            {
+                Error?.Invoke(ex);
+            }
+        });
+    }
 
     /// <summary>
     /// 在输出流上剥除即将注入的命令回显(见 <see cref="EchoSuppressor" />)。
@@ -154,7 +209,21 @@ public class SshTerminalBridge : IDisposable
 
                 // Do NOT await a per-read UI hop. Queue the chunk and coalesce; the read
                 // thread keeps pace with the network while the UI drains at frame rate.
-                EnqueueForFeed(data);
+                // ZMODEM 路由优先:会话期间返回空终端字节(全部转交引擎),
+                // 命中时仅把引导前的字节嗂终端;未启用时原样嗂入。
+                ZModem.ZModemTerminalRouter? router = ZModemRouter;
+                if (router is null)
+                {
+                    EnqueueForFeed(data);
+                }
+                else
+                {
+                    ZModem.ZModemRouteResult route = router.ProcessIncoming(data);
+                    if (route.TerminalBytes.Length > 0)
+                    {
+                        EnqueueForFeed(route.TerminalBytes);
+                    }
+                }
             }
 
             // Loop also exits when the stream reports it can no longer be read.

@@ -23,6 +23,7 @@ using VelaShell.Presentation.Commands;
 using VelaShell.Presentation.Services;
 using VelaShell.Presentation.ViewModels;
 using VelaShell.Services;
+using VelaShell.Services.ZModem;
 using VelaShell.Terminal;
 using VelaShell.Terminal.Emulation;
 using VelaShell.Terminal.Rendering;
@@ -324,6 +325,33 @@ public class MainWindowViewModel : ReactiveObject
 
     /// <summary>窗口注入的多行粘贴确认弹窗(设置 → 终端 → 粘贴时确认多行内容)。</summary>
     public Func<string, Task<bool>>? MultilinePasteConfirmer { get; set; }
+
+    /// <summary>
+    /// 窗口注入的 ZMODEM 下载目录选择委托(视图层实现,独占 StorageProvider)。
+    /// 分发给每个新建的终端标签,供其 ZMODEM 接收时弹出保存目录选择框。
+    /// </summary>
+    public Func<ZModemFolderPromptRequest, CancellationToken, Task<string?>>? ZModemDownloadFolderPicker { get; set; }
+
+    /// <summary>
+    /// 窗口注入的 ZMODEM 上传文件选择委托(视图层实现,独占 StorageProvider)。
+    /// 分发给每个新建的终端标签,供远端 <c>rz</c> 时弹出多选文件框。
+    /// </summary>
+    public Func<bool, CancellationToken, Task<IReadOnlyList<string>>>? ZModemUploadFilePicker { get; set; }
+
+    /// <summary>
+    /// 为新建的终端标签注入 ZMODEM 传输所需的依赖:下载目录选择委托、上传文件选择委托、
+    /// 共享传输面板与设置读取委托。前者 + 面板 + 设置就绪时 AttachTransport 才会启用 ZMODEM 路由器。
+    /// </summary>
+    private void WireZModemDownload(TerminalTabViewModel terminalTab)
+    {
+        terminalTab.ZModemDownloadFolderPicker = ZModemDownloadFolderPicker;
+        terminalTab.ZModemUploadFilePicker = ZModemUploadFilePicker;
+        terminalTab.FileTransfer = _fileTransfer;
+        if (_settingsService is { } settings)
+        {
+            terminalTab.GetSettingsAsync = settings.GetSettingsAsync;
+        }
+    }
 
     /// <summary>左侧边栏视图模型:资源管理器会话树与最近连接。</summary>
     public SidebarViewModel Sidebar
@@ -638,6 +666,7 @@ public class MainWindowViewModel : ReactiveObject
 
         // 命令补全:注入建议提供器;提交(已回显校验)的命令进全局历史。
         terminalTab.SuggestionProvider = _suggestionProvider;
+        WireZModemDownload(terminalTab);
         terminalTab.CommandLineSubmitted += CommandHistory.Record;
         if (terminalEmulator is VelaTerminalControl bellSource)
         {
@@ -1518,6 +1547,7 @@ public class MainWindowViewModel : ReactiveObject
 
         // 命令补全:注入建议提供器;提交(已回显校验)的命令进全局历史。
         terminalTab.SuggestionProvider = _suggestionProvider;
+        WireZModemDownload(terminalTab);
         terminalTab.CommandLineSubmitted += CommandHistory.Record;
 
         // 资源管理器树的状态圆点与「活跃/连接中/离线」标签(设计 FrJPu)跟随该配置
