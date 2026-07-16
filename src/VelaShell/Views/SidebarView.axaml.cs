@@ -10,10 +10,9 @@ namespace VelaShell.Views;
 /// <summary>侧边栏视图:承载资源管理器、快捷命令、最近连接与底部设置入口。</summary>
 public partial class SidebarView : UserControl
 {
-    private GridLength _quickCommandsExpandedHeight = new(160);
-    private GridLength _recentConnectionsExpandedHeight = new(180);
-    private bool _quickCommandsExpanded = true;
-    private bool _recentConnectionsExpanded = true;
+    private const double CollapsedHeight = 36;
+    private const double MinimumExpandedHeight = 100;
+    private const double MaximumRememberedHeight = 1200;
     private SidebarViewModel? _viewModel;
 
     /// <summary>创建侧边栏视图并加载其可视组件。</summary>
@@ -21,6 +20,8 @@ public partial class SidebarView : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        QuickCommandsSplitter.DragCompleted += (_, _) => CaptureQuickCommandsHeight();
+        RecentConnectionsSplitter.DragCompleted += (_, _) => CaptureRecentConnectionsHeight();
     }
 
     /// <summary>用户请求打开“新建连接”配置弹窗时触发(顶部新建按钮)。</summary>
@@ -44,13 +45,27 @@ public partial class SidebarView : UserControl
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         }
         ApplyQuickCommandsVisibility();
+        ApplyRecentConnectionsState();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(SidebarViewModel.IsQuickCommandsVisible))
+        if (
+            e.PropertyName
+            is nameof(SidebarViewModel.IsQuickCommandsVisible)
+                or nameof(SidebarViewModel.QuickCommandsExpanded)
+                or nameof(SidebarViewModel.QuickCommandsHeight)
+        )
         {
             ApplyQuickCommandsVisibility();
+        }
+        if (
+            e.PropertyName
+            is nameof(SidebarViewModel.RecentConnectionsExpanded)
+                or nameof(SidebarViewModel.RecentConnectionsHeight)
+        )
+        {
+            ApplyRecentConnectionsState();
         }
     }
 
@@ -66,13 +81,15 @@ public partial class SidebarView : UserControl
 
     private void ToggleQuickCommands_Click(object? sender, RoutedEventArgs e)
     {
-        RowDefinition quickCommandsRow = SessionAndQuickGrid.RowDefinitions[2];
-        if (_quickCommandsExpanded && quickCommandsRow.ActualHeight > 36)
+        if (_viewModel is null)
         {
-            _quickCommandsExpandedHeight = new(quickCommandsRow.ActualHeight);
+            return;
         }
-        _quickCommandsExpanded = !_quickCommandsExpanded;
-        ApplyQuickCommandsVisibility();
+        if (_viewModel.QuickCommandsExpanded)
+        {
+            CaptureQuickCommandsHeight();
+        }
+        _viewModel.QuickCommandsExpanded = !_viewModel.QuickCommandsExpanded;
     }
 
     private void ApplyQuickCommandsVisibility()
@@ -83,11 +100,11 @@ public partial class SidebarView : UserControl
         if (
             !visible
             && QuickCommandsSection.IsVisible
-            && _quickCommandsExpanded
-            && quickCommandsRow.ActualHeight > 36
+            && _viewModel?.QuickCommandsExpanded == true
+            && quickCommandsRow.ActualHeight > CollapsedHeight
         )
         {
-            _quickCommandsExpandedHeight = new(quickCommandsRow.ActualHeight);
+            CaptureQuickCommandsHeight();
         }
         QuickCommandsSection.IsVisible = visible;
         if (!visible)
@@ -100,22 +117,25 @@ public partial class SidebarView : UserControl
             return;
         }
 
-        QuickCommandsContent.IsVisible = _quickCommandsExpanded;
-        QuickCommandsExpandedIcon.IsVisible = _quickCommandsExpanded;
-        QuickCommandsCollapsedIcon.IsVisible = !_quickCommandsExpanded;
-        if (_quickCommandsExpanded)
+        bool expanded = _viewModel?.QuickCommandsExpanded == true;
+        QuickCommandsContent.IsVisible = expanded;
+        QuickCommandsExpandedIcon.IsVisible = expanded;
+        QuickCommandsCollapsedIcon.IsVisible = !expanded;
+        if (expanded)
         {
             splitterRow.Height = new(5);
-            quickCommandsRow.MinHeight = 100;
-            quickCommandsRow.Height = _quickCommandsExpandedHeight;
+            quickCommandsRow.MinHeight = MinimumExpandedHeight;
+            quickCommandsRow.Height = new(
+                NormalizeHeight(_viewModel?.QuickCommandsHeight ?? 160, SessionAndQuickGrid, 160)
+            );
             QuickCommandsDivider.IsVisible = true;
             QuickCommandsSplitter.IsVisible = true;
         }
         else
         {
             splitterRow.Height = new(0);
-            quickCommandsRow.MinHeight = 36;
-            quickCommandsRow.Height = new(36);
+            quickCommandsRow.MinHeight = CollapsedHeight;
+            quickCommandsRow.Height = new(CollapsedHeight);
             QuickCommandsDivider.IsVisible = false;
             QuickCommandsSplitter.IsVisible = false;
         }
@@ -123,32 +143,85 @@ public partial class SidebarView : UserControl
 
     private void ToggleRecentConnections_Click(object? sender, RoutedEventArgs e)
     {
-        RowDefinition recentRow = SidebarSectionsGrid.RowDefinitions[2];
-        if (_recentConnectionsExpanded && recentRow.ActualHeight > 36)
+        if (_viewModel is null)
         {
-            _recentConnectionsExpandedHeight = new(recentRow.ActualHeight);
+            return;
         }
-        _recentConnectionsExpanded = !_recentConnectionsExpanded;
-        RecentConnectionsContent.IsVisible = _recentConnectionsExpanded;
-        RecentConnectionsExpandedIcon.IsVisible = _recentConnectionsExpanded;
-        RecentConnectionsCollapsedIcon.IsVisible = !_recentConnectionsExpanded;
+        if (_viewModel.RecentConnectionsExpanded)
+        {
+            CaptureRecentConnectionsHeight();
+        }
+        _viewModel.RecentConnectionsExpanded = !_viewModel.RecentConnectionsExpanded;
+    }
+
+    private void ApplyRecentConnectionsState()
+    {
+        bool expanded = _viewModel?.RecentConnectionsExpanded ?? true;
+        RowDefinition recentRow = SidebarSectionsGrid.RowDefinitions[2];
+        RecentConnectionsContent.IsVisible = expanded;
+        RecentConnectionsExpandedIcon.IsVisible = expanded;
+        RecentConnectionsCollapsedIcon.IsVisible = !expanded;
         RowDefinition splitterRow = SidebarSectionsGrid.RowDefinitions[1];
-        if (_recentConnectionsExpanded)
+        if (expanded)
         {
             splitterRow.Height = new(5);
-            recentRow.MinHeight = 100;
-            recentRow.Height = _recentConnectionsExpandedHeight;
+            recentRow.MinHeight = MinimumExpandedHeight;
+            recentRow.Height = new(
+                NormalizeHeight(
+                    _viewModel?.RecentConnectionsHeight ?? 180,
+                    SidebarSectionsGrid,
+                    180
+                )
+            );
             RecentConnectionsDivider.IsVisible = true;
             RecentConnectionsSplitter.IsVisible = true;
         }
         else
         {
             splitterRow.Height = new(0);
-            recentRow.MinHeight = 36;
-            recentRow.Height = new(36);
+            recentRow.MinHeight = CollapsedHeight;
+            recentRow.Height = new(CollapsedHeight);
             RecentConnectionsDivider.IsVisible = false;
             RecentConnectionsSplitter.IsVisible = false;
         }
+    }
+
+    private void CaptureQuickCommandsHeight()
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+        double height = SessionAndQuickGrid.RowDefinitions[2].ActualHeight;
+        if (height > CollapsedHeight)
+        {
+            _viewModel.QuickCommandsHeight = NormalizeHeight(height, SessionAndQuickGrid, 160);
+        }
+    }
+
+    private void CaptureRecentConnectionsHeight()
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+        double height = SidebarSectionsGrid.RowDefinitions[2].ActualHeight;
+        if (height > CollapsedHeight)
+        {
+            _viewModel.RecentConnectionsHeight = NormalizeHeight(height, SidebarSectionsGrid, 180);
+        }
+    }
+
+    private static double NormalizeHeight(double height, Grid owner, double fallback)
+    {
+        double value =
+            double.IsFinite(height) && height >= MinimumExpandedHeight ? height : fallback;
+        double maximum = MaximumRememberedHeight;
+        if (owner.Bounds.Height > MinimumExpandedHeight + 85)
+        {
+            maximum = Math.Min(maximum, Math.Max(MinimumExpandedHeight, owner.Bounds.Height - 85));
+        }
+        return Math.Clamp(value, MinimumExpandedHeight, maximum);
     }
 
     private void RecentConnection_DoubleTapped(object? sender, TappedEventArgs e)

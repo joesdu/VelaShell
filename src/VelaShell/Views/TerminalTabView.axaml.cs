@@ -27,8 +27,7 @@ public partial class TerminalTabView : UserControl
 
     // ---- In-terminal search (spec §5.3) ------------------------------------
 
-    private IReadOnlyList<BufferSearchHit> _searchHits =
-        [];
+    private IReadOnlyList<BufferSearchHit> _searchHits = [];
 
     private int _searchIndex = -1;
     private bool _syncingScrollBar;
@@ -41,7 +40,8 @@ public partial class TerminalTabView : UserControl
     /// <summary>使用指定的快捷键服务构造视图并完成事件接线。</summary>
     public TerminalTabView(IKeyboardShortcutService shortcutService)
     {
-        _shortcutService = shortcutService ?? throw new ArgumentNullException(nameof(shortcutService));
+        _shortcutService =
+            shortcutService ?? throw new ArgumentNullException(nameof(shortcutService));
         InitializeComponent();
         Focusable = true;
         AttachedToVisualTree += OnAttachedToVisualTree;
@@ -85,11 +85,17 @@ public partial class TerminalTabView : UserControl
             e.Handled = true;
             return;
         }
-        if (DataContext is not TerminalTabViewModel { ConnectionStatus: SessionStatus.Disconnected } vm)
+        if (
+            DataContext
+            is not TerminalTabViewModel { ConnectionStatus: SessionStatus.Disconnected } vm
+        )
         {
             return;
         }
-        bool reconnect = e is { Key: Key.Enter, KeyModifiers: Avalonia.Input.KeyModifiers.None } or { Key: Key.R, KeyModifiers: Avalonia.Input.KeyModifiers.Control };
+        bool reconnect =
+            e
+            is { Key: Key.Enter, KeyModifiers: Avalonia.Input.KeyModifiers.None }
+                or { Key: Key.R, KeyModifiers: Avalonia.Input.KeyModifiers.Control };
         if (!reconnect)
         {
             return;
@@ -112,16 +118,23 @@ public partial class TerminalTabView : UserControl
         _suggestVm?.InputTracker.InputChanged -= OnTrackedInputChanged;
         _suggestVm = DataContext as TerminalTabViewModel;
         _suggestVm?.InputTracker.InputChanged += OnTrackedInputChanged;
-        SuggestDiag.Log("hook", $"view={GetHashCode():X} vm={_suggestVm?.GetHashCode():X} provider={(_suggestVm?.SuggestionProvider is null ? "null" : "ok")}");
+        SuggestDiag.Log(
+            "hook",
+            $"view={GetHashCode():X} vm={_suggestVm?.GetHashCode():X} provider={(_suggestVm?.SuggestionProvider is null ? "null" : "ok")}"
+        );
         CloseSuggestPopup(suppress: false);
     }
 
     private void OnTrackedInputChanged()
     {
         string input = EffectiveInput();
-        SuggestDiag.Log("changed", $"""
-            view={GetHashCode():X} attached={IsAttachedToVisualTree()} known="{_suggestVm?.InputTracker.CurrentInput ?? "<unknown>"}" effective="{input}" suppressed="{_suppressedInput}"
-            """);
+        SuggestDiag.Log(
+            "changed",
+            $"""
+            view={GetHashCode():X} attached={IsAttachedToVisualTree()} known="{_suggestVm?.InputTracker.CurrentInput
+                ?? "<unknown>"}" effective="{input}" suppressed="{_suppressedInput}"
+            """
+        );
         if (string.IsNullOrEmpty(input) || input == _suppressedInput || IsInteractivePromptLine())
         {
             CloseSuggestPopup(suppress: false);
@@ -150,7 +163,10 @@ public partial class TerminalTabView : UserControl
         }
         try
         {
-            return IsInteractivePrompt(_termControl.GetBufferLine(_termControl.CursorRow), EffectiveInput());
+            return IsInteractivePrompt(
+                _termControl.GetBufferLine(_termControl.CursorRow),
+                EffectiveInput()
+            );
         }
         catch
         {
@@ -174,12 +190,17 @@ public partial class TerminalTabView : UserControl
     {
         string prompt = StripEcho(line, typed);
         return prompt.Length != 0
-            && (IsSecretPromptCore(prompt) || IsChoicePromptCore(prompt)
-                || IsSelectionPromptCore(prompt) || IsReplPromptCore(prompt));
+            && (
+                IsSecretPromptCore(prompt)
+                || IsChoicePromptCore(prompt)
+                || IsSelectionPromptCore(prompt)
+                || IsReplPromptCore(prompt)
+            );
     }
 
     // 单独保留:密码类比"是否/编号"更严格,某些位置(如口令输入)只想拦密码而不误伤确认行。
-    internal static bool IsSecretPrompt(string line, string typed) => IsSecretPromptCore(StripEcho(line, typed));
+    internal static bool IsSecretPrompt(string line, string typed) =>
+        IsSecretPromptCore(StripEcho(line, typed));
 
     private static bool IsSecretPromptCore(string prompt)
     {
@@ -187,7 +208,19 @@ public partial class TerminalTabView : UserControl
         {
             return false;
         }
-        foreach (string keyword in (ReadOnlySpan<string>)["password", "passphrase", "passwd", "密码", "口令", "verification code", "验证码", "认证码"])
+        foreach (
+            string keyword in (ReadOnlySpan<string>)
+                [
+                    "password",
+                    "passphrase",
+                    "passwd",
+                    "密码",
+                    "口令",
+                    "verification code",
+                    "验证码",
+                    "认证码",
+                ]
+        )
         {
             if (prompt.Contains(keyword, StringComparison.OrdinalIgnoreCase))
             {
@@ -231,7 +264,22 @@ public partial class TerminalTabView : UserControl
         {
             return false;
         }
-        foreach (string keyword in (ReadOnlySpan<string>)["selection", "select", "choose", "choice", "number", "请选择", "请输入", "选择", "编号", "序号", "选项"])
+        foreach (
+            string keyword in (ReadOnlySpan<string>)
+                [
+                    "selection",
+                    "select",
+                    "choose",
+                    "choice",
+                    "number",
+                    "请选择",
+                    "请输入",
+                    "选择",
+                    "编号",
+                    "序号",
+                    "选项",
+                ]
+        )
         {
             if (prompt.Contains(keyword, StringComparison.OrdinalIgnoreCase))
             {
@@ -255,7 +303,9 @@ public partial class TerminalTabView : UserControl
     /// 永远与屏幕一致。
     /// </summary>
     private string EffectiveInput() =>
-        _suggestVm?.InputTracker.CurrentInput ?? _suggestVm?.InputTracker.TentativeRun ?? string.Empty;
+        _suggestVm?.InputTracker.CurrentInput
+        ?? _suggestVm?.InputTracker.TentativeRun
+        ?? string.Empty;
 
     private bool IsAttachedToVisualTree() => VisualRoot is not null;
 
@@ -268,7 +318,10 @@ public partial class TerminalTabView : UserControl
         int seq = ++_suggestSeq;
         try
         {
-            IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync(prefix, max);
+            IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync(
+                prefix,
+                max
+            );
 
             // 建议查询可能异步恢复;UI 变更强制回到 UI 线程(fire-and-forget 场景下
             // 线程亲和性异常会被静默吞掉,表现为"弹层时灵时不灵")。
@@ -309,7 +362,10 @@ public partial class TerminalTabView : UserControl
             SuggestPopup.PlacementRect = _termControl.GetCursorRect();
         }
         SuggestPopup.IsOpen = true;
-        SuggestDiag.Log("apply", $"opened with {items.Count} items, isOpen={SuggestPopup.IsOpen}, target={(SuggestPopup.PlacementTarget is null ? "null" : "ok")}");
+        SuggestDiag.Log(
+            "apply",
+            $"opened with {items.Count} items, isOpen={SuggestPopup.IsOpen}, target={(SuggestPopup.PlacementTarget is null ? "null" : "ok")}"
+        );
     }
 
     private void CloseSuggestPopup(bool suppress)
@@ -365,8 +421,10 @@ public partial class TerminalTabView : UserControl
                 // 弹层存在时 Enter 始终输入当前选中项(VS 语义,无需先按方向键;
                 // 不想要建议按 Esc 退出)。唯一例外:选中项与已输入完全相同
                 // (如手动敲完了整条命令)→ 直通 shell 执行,免去二次回车。
-                if (SuggestList.SelectedItem is CommandSuggestion selected &&
-                    selected.Text != EffectiveInput())
+                if (
+                    SuggestList.SelectedItem is CommandSuggestion selected
+                    && selected.Text != EffectiveInput()
+                )
                 {
                     AcceptSuggestion();
                     e.Handled = true;
@@ -387,7 +445,9 @@ public partial class TerminalTabView : UserControl
         {
             return;
         }
-        int next = ((SuggestList.SelectedIndex + delta) % _suggestions.Count + _suggestions.Count) % _suggestions.Count;
+        int next =
+            ((SuggestList.SelectedIndex + delta) % _suggestions.Count + _suggestions.Count)
+            % _suggestions.Count;
         SuggestList.SelectedIndex = next;
         SuggestList.ScrollIntoView(next);
     }
@@ -456,15 +516,19 @@ public partial class TerminalTabView : UserControl
         {
             return;
         }
-        _searchIndex = (((_searchIndex + delta) % _searchHits.Count) + _searchHits.Count) % _searchHits.Count;
+        _searchIndex =
+            (((_searchIndex + delta) % _searchHits.Count) + _searchHits.Count) % _searchHits.Count;
         ShowCurrentHit();
     }
 
     private void ShowCurrentHit()
     {
-        SearchCount.Text = _searchHits.Count == 0
-                               ? string.IsNullOrEmpty(SearchBox.Text) ? "" : Strings.Get("Term_NoMatches")
-                               : $"{_searchIndex + 1}/{_searchHits.Count}";
+        SearchCount.Text =
+            _searchHits.Count == 0
+                ? string.IsNullOrEmpty(SearchBox.Text)
+                    ? ""
+                    : Strings.Get("Term_NoMatches")
+                : $"{_searchIndex + 1}/{_searchHits.Count}";
 
         // All hits get a persistent highlight; the current one is tinted accent (§5.3).
         _termControl?.SetSearchHighlights(_searchHits, _searchIndex);
@@ -505,7 +569,8 @@ public partial class TerminalTabView : UserControl
         FocusTerminal();
     }
 
-    private void OnHostWindowDeactivated(object? sender, EventArgs e) => CloseSuggestPopup(suppress: false);
+    private void OnHostWindowDeactivated(object? sender, EventArgs e) =>
+        CloseSuggestPopup(suppress: false);
 
     private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
@@ -524,13 +589,15 @@ public partial class TerminalTabView : UserControl
     /// 终端失焦(点击 SFTP 面板/侧边栏等)时收起弹层;建议列表项不可聚焦,
     /// 因此点击建议项本身不会触发这里。
     /// </summary>
-    private void OnTerminalLostFocus(object? sender, RoutedEventArgs e) => CloseSuggestPopup(suppress: false);
+    private void OnTerminalLostFocus(object? sender, RoutedEventArgs e) =>
+        CloseSuggestPopup(suppress: false);
 
     // The terminal control is a single shared instance reparented across split panes, so each
     // view (re)binds the scrollbar to whichever control it currently hosts.
     private void HookTerminalControl()
     {
-        var ctrl = (DataContext as TerminalTabViewModel)?.TerminalEmulator.Control as VelaTerminalControl;
+        var ctrl =
+            (DataContext as TerminalTabViewModel)?.TerminalEmulator.Control as VelaTerminalControl;
         if (ReferenceEquals(ctrl, _termControl))
         {
             SyncScrollBar();
@@ -721,17 +788,21 @@ public partial class TerminalTabView : UserControl
         return string.Empty;
     }
 
-    private void FocusTerminal()
+    /// <summary>把键盘焦点交给终端模拟器控件。</summary>
+    public void FocusTerminal()
     {
         if (DataContext is not TerminalTabViewModel vm)
         {
             return;
         }
-        Dispatcher.UIThread.Post(() =>
-        {
-            Focus();
-            vm.TerminalEmulator.Control.Focus();
-        }, DispatcherPriority.Input);
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                Focus();
+                vm.TerminalEmulator.Control.Focus();
+            },
+            DispatcherPriority.Input
+        );
     }
 
     private static KeyModifiers MapModifiers(Avalonia.Input.KeyModifiers avaloniaModifiers)
@@ -766,13 +837,16 @@ public partial class TerminalTabView : UserControl
             Key.W => KeyCode.W,
             Key.Tab => KeyCode.Tab,
             Key.OemComma => KeyCode.Comma,
-            _ => KeyCode.None
+            _ => KeyCode.None,
         };
     }
 
     // 结尾括号选项:[Y/n]、(yes/no)、[Y/I/N/O/D/Z]、[是/否],允许尾随 ?/:/。及空白。
     // 每段选项限 1~3 个字母,避免误伤 prompt 主题里的 "(feature/xxx)" 分支括号。
-    [GeneratedRegex(@"[\[(]\s*\p{L}{1,3}(?:\s*/\s*\p{L}{1,3})+\s*[\])]\s*[?？:：.。]?\s*$", System.Text.RegularExpressions.RegexOptions.Compiled)]
+    [GeneratedRegex(
+        @"[\[(]\s*\p{L}{1,3}(?:\s*/\s*\p{L}{1,3})+\s*[\])]\s*[?？:：.。]?\s*$",
+        System.Text.RegularExpressions.RegexOptions.Compiled
+    )]
     private static partial Regex ChoiceTokenRegex();
 
     /*
@@ -788,6 +862,9 @@ public partial class TerminalTabView : UserControl
     // REPL 交互提示符:此时补全给的是 shell 快捷命令,语义上是错的,故一并不弹。
     // 只匹配"带库名/工具名"等高辨识度形态;裸 ">"(node/R/mongosh)与自定义 shell 提示符
     // 无法区分,一律不拦,避免误伤把 PS1 设成 "> " 的用户。
-    [GeneratedRegex(@"(?:(?:mysql|mariadb|sqlite|clickhouse|ftp|sftp|telnet)>|MariaDB \[[^\]]*\]>|\w+=[#>]|In \[\d+\]:|\((?:gdb|lldb|Pdb)\)|i?pdb>|irb\([^)]*\)[^>\n]*>)\s*$", System.Text.RegularExpressions.RegexOptions.Compiled)]
+    [GeneratedRegex(
+        @"(?:(?:mysql|mariadb|sqlite|clickhouse|ftp|sftp|telnet)>|MariaDB \[[^\]]*\]>|\w+=[#>]|In \[\d+\]:|\((?:gdb|lldb|Pdb)\)|i?pdb>|irb\([^)]*\)[^>\n]*>)\s*$",
+        System.Text.RegularExpressions.RegexOptions.Compiled
+    )]
     private static partial Regex ReplPromptRegex();
 }

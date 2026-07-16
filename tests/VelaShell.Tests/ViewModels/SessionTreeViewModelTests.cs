@@ -24,7 +24,7 @@ public class SessionTreeViewModelTests
         {
             Id = Guid.NewGuid(),
             Name = name,
-            SortOrder = sortOrder
+            SortOrder = sortOrder,
         };
         group.Sessions.AddRange(sessionIds);
         return group;
@@ -38,7 +38,7 @@ public class SessionTreeViewModelTests
             Name = name,
             Host = $"{name.ToLower()}.example.com",
             Username = "admin",
-            GroupId = groupId
+            GroupId = groupId,
         };
     }
 
@@ -58,7 +58,9 @@ public class SessionTreeViewModelTests
         SessionProfile session1 = CreateSession("WebServer", group.Id);
         SessionProfile session2 = CreateSession("DbServer", group.Id);
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group }));
-        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { session1, session2 }));
+        _repository
+            .GetAllSessionsAsync()
+            .Returns(Task.FromResult(new List<SessionProfile> { session1, session2 }));
         await _vm.LoadCommand.Execute().FirstAsync();
         Assert.HasCount(1, _vm.Nodes);
         Assert.AreEqual("Production", _vm.Nodes[0].Name);
@@ -75,7 +77,9 @@ public class SessionTreeViewModelTests
     {
         ServerGroup group1 = CreateGroup("Staging", 1);
         ServerGroup group2 = CreateGroup("Production", 0);
-        _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group1, group2 }));
+        _repository
+            .GetAllGroupsAsync()
+            .Returns(Task.FromResult(new List<ServerGroup> { group1, group2 }));
         _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile>()));
         await _vm.LoadCommand.Execute().FirstAsync();
         Assert.HasCount(2, _vm.Nodes);
@@ -90,7 +94,9 @@ public class SessionTreeViewModelTests
         // 设计 FrJPu:未分组会话直接挂树根,不再收进“未分组”目录。
         SessionProfile orphan = CreateSession("Orphan");
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup>()));
-        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { orphan }));
+        _repository
+            .GetAllSessionsAsync()
+            .Returns(Task.FromResult(new List<SessionProfile> { orphan }));
         await _vm.LoadCommand.Execute().FirstAsync();
         Assert.HasCount(1, _vm.Nodes);
         Assert.IsFalse(_vm.Nodes[0].IsGroup);
@@ -106,13 +112,17 @@ public class SessionTreeViewModelTests
         ServerGroup group = CreateGroup("Production", 0);
         SessionProfile session = CreateSession("WebServer", group.Id);
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group }));
-        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { session }));
+        _repository
+            .GetAllSessionsAsync()
+            .Returns(Task.FromResult(new List<SessionProfile> { session }));
         await _vm.LoadCommand.Execute().FirstAsync();
 
         // Guid.Empty 是“未分组”落点:节点应移到树根,落库 GroupId 为 null。
         _vm.MoveSessionToGroup(session.Id, Guid.Empty);
         Assert.IsEmpty(_vm.Nodes[0].Children);
-        SessionTreeNodeViewModel? rootNode = _vm.Nodes.FirstOrDefault(node => !node.IsGroup && node.Id == session.Id);
+        SessionTreeNodeViewModel? rootNode = _vm.Nodes.FirstOrDefault(node =>
+            !node.IsGroup && node.Id == session.Id
+        );
         Assert.IsNotNull(rootNode);
         Assert.IsTrue(rootNode.IsRootLevel);
         Assert.IsNull(session.GroupId);
@@ -125,11 +135,15 @@ public class SessionTreeViewModelTests
         ServerGroup group = CreateGroup("Production", 0);
         SessionProfile orphan = CreateSession("Orphan");
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group }));
-        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { orphan }));
+        _repository
+            .GetAllSessionsAsync()
+            .Returns(Task.FromResult(new List<SessionProfile> { orphan }));
         await _vm.LoadCommand.Execute().FirstAsync();
         _vm.MoveSessionToGroup(orphan.Id, group.Id);
         Assert.DoesNotContain(node => !node.IsGroup && node.Id == orphan.Id, _vm.Nodes);
-        SessionTreeNodeViewModel groupNode = _vm.Nodes.First(node => node.IsGroup && node.Id == group.Id);
+        SessionTreeNodeViewModel groupNode = _vm.Nodes.First(node =>
+            node.IsGroup && node.Id == group.Id
+        );
         Assert.HasCount(1, groupNode.Children);
         Assert.IsFalse(groupNode.Children[0].IsRootLevel);
         Assert.AreEqual(group.Id, orphan.GroupId);
@@ -142,7 +156,9 @@ public class SessionTreeViewModelTests
         ServerGroup group = CreateGroup("Production", 0);
         SessionProfile session = CreateSession("WebServer", group.Id);
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group }));
-        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { session }));
+        _repository
+            .GetAllSessionsAsync()
+            .Returns(Task.FromResult(new List<SessionProfile> { session }));
         await _vm.LoadCommand.Execute().FirstAsync();
         _vm.SetSessionStatus(session.Id, SessionStatus.Connected);
         Assert.AreEqual(SessionStatus.Connected, _vm.Nodes[0].Children[0].Status);
@@ -150,6 +166,44 @@ public class SessionTreeViewModelTests
         // 重建树后状态应从缓存重放,而不是回到断开态。
         await _vm.LoadCommand.Execute().FirstAsync();
         Assert.AreEqual(SessionStatus.Connected, _vm.Nodes[0].Children[0].Status);
+    }
+
+    [TestMethod]
+    [TestCategory("SessionTree")]
+    public async Task SelectSession_ExpandsParentAndSelectsMatchingNode()
+    {
+        ServerGroup group = CreateGroup("Production", 0);
+        SessionProfile first = CreateSession("First", group.Id);
+        SessionProfile second = CreateSession("Second", group.Id);
+        _repository.GetAllGroupsAsync().Returns([group]);
+        _repository.GetAllSessionsAsync().Returns([first, second]);
+        await _vm.LoadCommand.Execute().FirstAsync();
+        SessionTreeNodeViewModel groupNode = _vm.Nodes.Single();
+        groupNode.IsExpanded = false;
+
+        bool selected = _vm.SelectSession(second.Id);
+
+        Assert.IsTrue(selected);
+        Assert.IsTrue(groupNode.IsExpanded);
+        Assert.AreEqual(second.Id, _vm.SelectedNode?.Id);
+        Assert.ContainsSingle(node => node.IsSelected, groupNode.Children);
+    }
+
+    [TestMethod]
+    [TestCategory("SessionTree")]
+    public async Task SelectSession_WhenMissing_PreservesCurrentSelection()
+    {
+        SessionProfile session = CreateSession("Existing");
+        _repository.GetAllGroupsAsync().Returns([]);
+        _repository.GetAllSessionsAsync().Returns([session]);
+        await _vm.LoadCommand.Execute().FirstAsync();
+        Assert.IsTrue(_vm.SelectSession(session.Id));
+        SessionTreeNodeViewModel selected = _vm.SelectedNode!;
+
+        Assert.IsFalse(_vm.SelectSession(Guid.NewGuid()));
+
+        Assert.AreSame(selected, _vm.SelectedNode);
+        Assert.IsTrue(selected.IsSelected);
     }
 
     [TestMethod]
@@ -163,7 +217,7 @@ public class SessionTreeViewModelTests
         {
             Id = Guid.NewGuid(),
             Name = "NewServer",
-            GroupId = groupId
+            GroupId = groupId,
         };
         _vm.AddSession(session);
         Assert.HasCount(1, groupNode.Children);
@@ -180,7 +234,12 @@ public class SessionTreeViewModelTests
         var targetGroup = new SessionTreeNodeViewModel(targetGroupId, "Target", true);
         _vm.Nodes.Add(sourceGroup);
         _vm.Nodes.Add(targetGroup);
-        var session = new SessionProfile { Id = Guid.NewGuid(), Name = "MoveMe", GroupId = sourceGroupId };
+        var session = new SessionProfile
+        {
+            Id = Guid.NewGuid(),
+            Name = "MoveMe",
+            GroupId = sourceGroupId,
+        };
         _vm.AddSession(session);
         Assert.HasCount(1, sourceGroup.Children);
         _vm.MoveSessionToGroup(session.Id, targetGroupId);
@@ -196,7 +255,9 @@ public class SessionTreeViewModelTests
         ServerGroup group = CreateGroup("Group", 0);
         SessionProfile session = CreateSession("ToDelete", group.Id);
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group }));
-        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { session }));
+        _repository
+            .GetAllSessionsAsync()
+            .Returns(Task.FromResult(new List<SessionProfile> { session }));
         await _vm.LoadCommand.Execute().FirstAsync();
         _vm.SelectedNode = _vm.Nodes[0].Children[0];
         await _vm.DeleteSessionCommand.Execute().FirstAsync();
@@ -250,7 +311,10 @@ public class SessionTreeViewModelTests
     {
         Assert.IsTrue(_vm.HasNoSessions);
         // 文案已本地化:断言资源值而非硬编码英文(测试机 UI culture 不定)。
-        Assert.AreEqual(VelaShell.Core.Resources.Strings.Get("Svc_AddFirstConnection"), SessionTreeViewModel.EmptyStateMessage);
+        Assert.AreEqual(
+            VelaShell.Core.Resources.Strings.Get("Svc_AddFirstConnection"),
+            SessionTreeViewModel.EmptyStateMessage
+        );
     }
 
     [TestMethod]
@@ -260,7 +324,9 @@ public class SessionTreeViewModelTests
         ServerGroup group = CreateGroup("Production", 0);
         SessionProfile session = CreateSession("WebServer", group.Id);
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group }));
-        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { session }));
+        _repository
+            .GetAllSessionsAsync()
+            .Returns(Task.FromResult(new List<SessionProfile> { session }));
         await _vm.LoadCommand.Execute().FirstAsync();
         Assert.IsFalse(_vm.HasNoSessions);
     }
@@ -272,7 +338,9 @@ public class SessionTreeViewModelTests
         ServerGroup group = CreateGroup("Production", 0);
         SessionProfile session = CreateSession("OnlyServer", group.Id);
         _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group }));
-        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { session }));
+        _repository
+            .GetAllSessionsAsync()
+            .Returns(Task.FromResult(new List<SessionProfile> { session }));
         await _vm.LoadCommand.Execute().FirstAsync();
         Assert.IsFalse(_vm.HasNoSessions);
         _vm.SelectedNode = _vm.Nodes[0].Children[0];

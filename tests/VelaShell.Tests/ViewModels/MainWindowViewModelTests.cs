@@ -112,8 +112,8 @@ public class MainWindowViewModelTests
     [TestCategory("QuickCommands")]
     public void ConnectedStateChange_AddsTargetAndEnablesCurrentTerminalExecution()
     {
-        IAppDataStore store = Substitute.For<IAppDataStore>();
-        var library = new QuickCommandsViewModel(store);
+        IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
+        var library = new QuickCommandsViewModel(repository);
         var vm = new MainWindowViewModel(quickCommands: library);
         ITerminalEmulator emulator = Substitute.For<ITerminalEmulator>();
         var tab = new TerminalTabViewModel(emulator)
@@ -135,6 +135,98 @@ public class MainWindowViewModelTests
         tab.ConnectionStatus = SessionStatus.Disconnected;
         Assert.IsEmpty(runner.Targets);
         Assert.IsFalse(runner.CanRun);
+    }
+
+    [TestMethod]
+    [TestCategory("QuickCommands")]
+    public void QuickCommandExecution_RequestsFocusForActiveTerminal()
+    {
+        IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
+        var library = new QuickCommandsViewModel(repository);
+        var vm = new MainWindowViewModel(quickCommands: library);
+        ITerminalEmulator emulator = Substitute.For<ITerminalEmulator>();
+        var tab = new TerminalTabViewModel(emulator) { ConnectionStatus = SessionStatus.Connected };
+        vm.TabBar.AddTab(tab);
+        bool focusRequested = false;
+        vm.TerminalFocusRequested += (_, _) => focusRequested = true;
+
+        vm.Sidebar.QuickCommands!.RunCommand.Execute(library.AllCommands[0]).Subscribe();
+
+        Assert.IsTrue(focusRequested);
+    }
+
+    [TestMethod]
+    [TestCategory("Broadcast")]
+    public void BroadcastInput_UsesSharedSelectionAndPerTerminalInputMethods()
+    {
+        var vm = new MainWindowViewModel();
+        ITerminalEmulator firstEmulator = Substitute.For<ITerminalEmulator>();
+        ITerminalEmulator secondEmulator = Substitute.For<ITerminalEmulator>();
+        firstEmulator
+            .WriteKeyInput(Arg.Any<Avalonia.Input.Key>(), Arg.Any<Avalonia.Input.KeyModifiers>())
+            .Returns(true);
+        secondEmulator
+            .WriteKeyInput(Arg.Any<Avalonia.Input.Key>(), Arg.Any<Avalonia.Input.KeyModifiers>())
+            .Returns(true);
+        var first = new TerminalTabViewModel(firstEmulator)
+        {
+            Title = "first",
+            ConnectionStatus = SessionStatus.Connected,
+        };
+        var second = new TerminalTabViewModel(secondEmulator)
+        {
+            Title = "second",
+            ConnectionStatus = SessionStatus.Connected,
+        };
+        vm.TabBar.AddTab(first);
+        vm.TabBar.AddTab(second);
+        vm.BroadcastInput.TargetSelector.Targets[0].IsSelected = true;
+        vm.BroadcastInput.TargetSelector.Targets[1].IsSelected = true;
+
+        Assert.IsTrue(vm.BroadcastTextInput("cd src"));
+        Assert.IsTrue(
+            vm.BroadcastKeyInput(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None)
+        );
+
+        firstEmulator.Received(1).WriteTextInput("cd src");
+        secondEmulator.Received(1).WriteTextInput("cd src");
+        firstEmulator
+            .Received(1)
+            .WriteKeyInput(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
+        secondEmulator
+            .Received(1)
+            .WriteKeyInput(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
+    }
+
+    [TestMethod]
+    [TestCategory("Broadcast")]
+    public void BroadcastInput_WithoutSelectionFallsBackToCurrentConnectedTerminal()
+    {
+        var vm = new MainWindowViewModel();
+        ITerminalEmulator emulator = Substitute.For<ITerminalEmulator>();
+        var tab = new TerminalTabViewModel(emulator) { ConnectionStatus = SessionStatus.Connected };
+        vm.TabBar.AddTab(tab);
+
+        Assert.IsTrue(vm.BroadcastTextInput("pwd"));
+
+        emulator.Received(1).WriteTextInput("pwd");
+    }
+
+    [TestMethod]
+    [TestCategory("Broadcast")]
+    public void BroadcastInput_DisconnectedTerminalIsRemovedFromTargets()
+    {
+        var vm = new MainWindowViewModel();
+        var tab = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>())
+        {
+            ConnectionStatus = SessionStatus.Connected,
+        };
+        vm.TabBar.AddTab(tab);
+        Assert.HasCount(1, vm.BroadcastInput.TargetSelector.Targets);
+
+        tab.ConnectionStatus = SessionStatus.Disconnected;
+
+        Assert.IsEmpty(vm.BroadcastInput.TargetSelector.Targets);
     }
 
     [TestMethod]
@@ -166,10 +258,10 @@ public class MainWindowViewModelTests
     public void SettingsSaved_UpdatesQuickCommandsPanelVisibility()
     {
         ISettingsService settingsService = Substitute.For<ISettingsService>();
-        IAppDataStore store = Substitute.For<IAppDataStore>();
+        IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
         var vm = new MainWindowViewModel(
             settingsService: settingsService,
-            quickCommands: new QuickCommandsViewModel(store)
+            quickCommands: new QuickCommandsViewModel(repository)
         );
 
         Assert.IsFalse(vm.Sidebar.IsQuickCommandsVisible);
@@ -189,5 +281,114 @@ public class MainWindowViewModelTests
         Assert.IsNotNull(vm.SettingsCommand);
         Assert.IsNotNull(vm.NotificationsCommand);
         Assert.IsNotNull(vm.RecentConnections);
+    }
+
+    [TestMethod]
+    [TestCategory("Sidebar")]
+    public async Task InitializeAsync_RestoresAndPersistsSidebarLayoutState()
+    {
+        ISettingsService settingsService = Substitute.For<ISettingsService>();
+        settingsService.GetSettingsAsync().Returns(new AppSettings());
+        settingsService
+            .GetStateAsync()
+            .Returns(
+                new AppState
+                {
+                    SidebarQuickCommandsExpanded = false,
+                    SidebarQuickCommandsHeight = 245,
+                    SidebarRecentConnectionsExpanded = true,
+                    SidebarRecentConnectionsHeight = 275,
+                }
+            );
+        var vm = new MainWindowViewModel(settingsService: settingsService);
+
+        await vm.InitializeAsync();
+
+        Assert.IsFalse(vm.Sidebar.QuickCommandsExpanded);
+        Assert.AreEqual(245, vm.Sidebar.QuickCommandsHeight);
+        Assert.IsTrue(vm.Sidebar.RecentConnectionsExpanded);
+        Assert.AreEqual(275, vm.Sidebar.RecentConnectionsHeight);
+
+        vm.Sidebar.QuickCommandsExpanded = true;
+        vm.Sidebar.QuickCommandsHeight = 310;
+        vm.Sidebar.RecentConnectionsExpanded = false;
+        await vm.PersistSidebarStateAsync();
+
+        await settingsService
+            .Received()
+            .SaveStateAsync(
+                Arg.Is<AppState>(state =>
+                    state.SidebarQuickCommandsExpanded
+                    && state.SidebarQuickCommandsHeight == 310
+                    && !state.SidebarRecentConnectionsExpanded
+                    && state.SidebarRecentConnectionsHeight == 275
+                )
+            );
+    }
+
+    [TestMethod]
+    [TestCategory("SessionTree")]
+    public async Task ActiveTerminalTab_FollowsSavedProfileWhenSettingEnabled()
+    {
+        ISettingsService settingsService = Substitute.For<ISettingsService>();
+        ISessionRepository sessionRepository = Substitute.For<ISessionRepository>();
+        SessionProfile profile = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "server",
+            Host = "server.example",
+            Username = "root",
+        };
+        settingsService
+            .GetSettingsAsync()
+            .Returns(new AppSettings { General = new() { FollowActiveTerminalInExplorer = true } });
+        settingsService.GetStateAsync().Returns(new AppState());
+        sessionRepository.GetAllGroupsAsync().Returns([]);
+        sessionRepository.GetAllSessionsAsync().Returns([profile]);
+        var vm = new MainWindowViewModel(
+            settingsService: settingsService,
+            sessionRepository: sessionRepository
+        );
+        await vm.InitializeAsync();
+
+        vm.TabBar.AddTab(
+            new TerminalTabViewModel(Substitute.For<ITerminalEmulator>()) { Profile = profile }
+        );
+
+        Assert.AreEqual(profile.Id, vm.Sidebar.SessionTree?.SelectedNode?.Id);
+    }
+
+    [TestMethod]
+    [TestCategory("SessionTree")]
+    public async Task ActiveTerminalTab_DoesNotChangeTreeSelectionWhenSettingDisabled()
+    {
+        ISettingsService settingsService = Substitute.For<ISettingsService>();
+        ISessionRepository sessionRepository = Substitute.For<ISessionRepository>();
+        SessionProfile profile = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "server",
+            Host = "server.example",
+            Username = "root",
+        };
+        settingsService
+            .GetSettingsAsync()
+            .Returns(
+                new AppSettings { General = new() { FollowActiveTerminalInExplorer = false } }
+            );
+        settingsService.GetStateAsync().Returns(new AppState());
+        sessionRepository.GetAllGroupsAsync().Returns([]);
+        sessionRepository.GetAllSessionsAsync().Returns([profile]);
+        var vm = new MainWindowViewModel(
+            settingsService: settingsService,
+            sessionRepository: sessionRepository
+        );
+        await vm.InitializeAsync();
+
+        vm.TabBar.AddTab(
+            new TerminalTabViewModel(Substitute.For<ITerminalEmulator>()) { Profile = profile }
+        );
+
+        Assert.IsNull(vm.Sidebar.SessionTree?.SelectedNode);
     }
 }

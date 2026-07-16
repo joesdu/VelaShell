@@ -26,50 +26,59 @@
                     VerticalAlignment="Center" />
     </Grid>
 
-    <!-- 片段列表(数据:SonnetDB quick_commands 集合 + 内置命令) -->
-    <ItemsControl ItemsSource="{Binding Snippets.AllCommands}">
-      <ItemsControl.ItemsPanel>
-        <ItemsPanelTemplate>
-          <StackPanel Spacing="8" />
-        </ItemsPanelTemplate>
-      </ItemsControl.ItemsPanel>
+    <TextBlock Text="{Binding Snippets.ErrorMessage}"
+               Foreground="{DynamicResource VelaStatusError}"
+               TextWrapping="Wrap"
+               IsVisible="{Binding Snippets.ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+    <ItemsControl ItemsSource="{Binding Snippets.FilteredGroups}">
       <ItemsControl.ItemTemplate>
-        <DataTemplate x:DataType="pvm:QuickCommandViewModel">
-          <Border CornerRadius="6" Padding="12"
-                  Background="{DynamicResource VelaBgSurface}"
+        <DataTemplate x:DataType="pvm:QuickCommandGroupViewModel">
+          <Border Margin="0,0,0,8" CornerRadius="6"
                   BorderBrush="{DynamicResource VelaBorderSecondary}"
                   BorderThickness="1">
-            <Border.Styles>
-              <Style Selector="Border:pointerover">
-                <Setter Property="Background" Value="{DynamicResource VelaBgActive}" />
-              </Style>
-            </Border.Styles>
-            <Grid ColumnDefinitions="*,Auto,8,Auto">
-              <TextBlock Text="{Binding Name}"
-                         Foreground="{DynamicResource VelaTextPrimary}"
-                         FontSize="13" FontWeight="Medium"
-                         TextTrimming="CharacterEllipsis"
-                         VerticalAlignment="Center" />
-              <Border Grid.Column="1"
-                      Background="{DynamicResource VelaBgInput}"
-                      CornerRadius="4" Padding="8,4"
-                      VerticalAlignment="Center">
-                <TextBlock Text="{Binding CommandText}"
-                           Foreground="#69FF94"
-                           FontFamily="{DynamicResource VelaTerminalFont}"
-                           FontSize="11" />
-              </Border>
-              <Button Grid.Column="3" Width="24" Height="24" Padding="0"
-                      Background="Transparent" CornerRadius="3" Cursor="Hand"
-                      ToolTip.Tip="{loc:Localize SetSnippets_DeleteTip}"
-                      Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).Snippets.DeleteCommandCommand}"
-                      CommandParameter="{Binding}"
-                      VerticalAlignment="Center">
-                <PathIcon Width="12" Height="12"
-                          Data="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
-                          Foreground="{DynamicResource VelaTextTertiary}" />
-              </Button>
-            </Grid>
+            <StackPanel>
+              <ToggleButton IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                            Background="{DynamicResource VelaBgSurface}"
+                            BorderThickness="0" Padding="12,8"
+                            HorizontalContentAlignment="Stretch">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" />
+                  <TextBlock Grid.Column="1" Text="{Binding FilteredCommands.Count}"
+                             Foreground="{DynamicResource VelaTextMuted}" FontSize="10" />
+                </Grid>
+              </ToggleButton>
+
+              <ItemsControl ItemsSource="{Binding FilteredCommands}"
+                            IsVisible="{Binding IsExpanded}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="pvm:QuickCommandViewModel">
+                    <Border Padding="12,8" BorderThickness="0,1,0,0"
+                            BorderBrush="{DynamicResource VelaBorderSecondary}">
+                      <Grid ColumnDefinitions="*,12,Auto,6,Auto">
+                        <StackPanel Spacing="3">
+                          <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="Medium" />
+                          <TextBlock Text="{Binding CommandText}"
+                                     Foreground="{DynamicResource VelaAccentText}"
+                                     FontFamily="{DynamicResource VelaTerminalFont}"
+                                     FontSize="10" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button Grid.Column="2" Height="24" Padding="8,0"
+                                Content="{loc:Localize Edit}"
+                                IsVisible="{Binding !IsBuiltIn}"
+                                Command="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).Snippets.BeginEditCommand}"
+                                CommandParameter="{Binding}" />
+                        <Button Grid.Column="4" Height="24" Padding="8,0"
+                                Content="{loc:Localize Delete}"
+                                IsVisible="{Binding !IsBuiltIn}"
+                                Command="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).Snippets.DeleteCommandCommand}"
+                                CommandParameter="{Binding}" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
           </Border>
         </DataTemplate>
       </ItemsControl.ItemTemplate>
@@ -77,13 +86,44 @@
 
     <Border Classes="sep" />
 
-    <!-- 新建片段 -->
+    <StackPanel Spacing="10" DataContext="{Binding Snippets.EditingCommand}"
+                IsVisible="{Binding Converter={x:Static ObjectConverters.IsNotNull}}">
+      <TextBlock Classes="section-title" Text="{loc:Localize QuickCmd_EditSnippet}" />
+      <Grid ColumnDefinitions="*,8,*">
+        <TextBox Text="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).Snippets.NewName}"
+                 PlaceholderText="{loc:Localize SetSnippets_NamePlaceholder}" />
+        <ComboBox Grid.Column="2" IsEditable="True"
+                  ItemsSource="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).Snippets.Categories}"
+                  Text="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).Snippets.NewCategory}"
+                  PlaceholderText="{loc:Localize QuickCmd_GroupPlaceholder}" />
+      </Grid>
+      <TextBox Text="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).Snippets.NewCommandText}"
+               PlaceholderText="{loc:Localize SetSnippets_CommandPlaceholder}" />
+      <TextBox Text="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).Snippets.NewDescription}"
+               PlaceholderText="{loc:Localize Description}" />
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Classes="dlg-secondary" Content="{loc:Localize Cancel}"
+                Command="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).Snippets.CancelEditCommand}" />
+        <Button Classes="dlg-primary" Content="{loc:Localize Save}"
+                Command="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).Snippets.SaveEditCommand}" />
+      </StackPanel>
+    </StackPanel>
+
     <TextBlock Classes="section-title" Text="{loc:Localize SetSnippets_NewSnippet}" />
-    <Grid ColumnDefinitions="*,8,*,8,Auto">
-      <TextBox Grid.Column="0" Text="{Binding Snippets.NewName}" PlaceholderText="{loc:Localize SetSnippets_NamePlaceholder}" />
-      <TextBox Grid.Column="2" Text="{Binding Snippets.NewCommandText}" PlaceholderText="{loc:Localize SetSnippets_CommandPlaceholder}" />
-      <Button Grid.Column="4" Classes="dlg-primary" Content="{loc:Localize SetSnippets_Add}"
-              Command="{Binding Snippets.SaveNewCommandCommand}" />
+    <Grid ColumnDefinitions="*,8,*">
+      <TextBox Text="{Binding Snippets.NewName}"
+               PlaceholderText="{loc:Localize SetSnippets_NamePlaceholder}" />
+      <ComboBox Grid.Column="2" IsEditable="True"
+                ItemsSource="{Binding Snippets.Categories}"
+                Text="{Binding Snippets.NewCategory}"
+                PlaceholderText="{loc:Localize QuickCmd_GroupPlaceholder}" />
     </Grid>
+    <TextBox Text="{Binding Snippets.NewCommandText}"
+             PlaceholderText="{loc:Localize SetSnippets_CommandPlaceholder}" />
+    <TextBox Text="{Binding Snippets.NewDescription}"
+             PlaceholderText="{loc:Localize Description}" />
+    <Button Classes="dlg-primary" HorizontalAlignment="Right"
+            Content="{loc:Localize SetSnippets_Add}"
+            Command="{Binding Snippets.SaveNewCommandCommand}" />
   </StackPanel>
 </UserControl>

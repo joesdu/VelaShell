@@ -5,116 +5,71 @@ using ReactiveUI;
 
 namespace VelaShell.Presentation.ViewModels;
 
-/// <summary>
-/// 快捷命令运行区域:维护已连接终端目标、选择状态与执行请求
-/// </summary>
+/// <summary>快捷命令运行区域,复用共享终端选择器并产生执行请求。</summary>
 public sealed class QuickCommandRunnerViewModel : ReactiveObject
 {
-    /// <summary>
-    /// 创建运行区域并复用共享的片段目录
-    /// </summary>
-    public QuickCommandRunnerViewModel(QuickCommandsViewModel library)
+    /// <summary>创建快捷命令运行器并可选复用共享目标选择器。</summary>
+    public QuickCommandRunnerViewModel(
+        QuickCommandsViewModel library,
+        TerminalTargetSelectorViewModel? targetSelector = null
+    )
     {
         Library = library ?? throw new ArgumentNullException(nameof(library));
+        TargetSelector = targetSelector ?? new();
+        TargetSelector.PropertyChanged += OnTargetSelectorPropertyChanged;
         RunCommand = ReactiveCommand.Create<QuickCommandViewModel>(
             Run,
-            this.WhenAnyValue(x => x.CanRun)
+            this.WhenAnyValue(viewModel => viewModel.CanRun)
         );
-        SelectAllCommand = ReactiveCommand.Create(SelectAll);
-        ClearSelectionCommand = ReactiveCommand.Create(ClearSelection);
     }
 
-    /// <summary>
-    /// 设置页与左栏共享的片段目录
-    /// </summary>
+    /// <summary>可搜索、分组的快捷命令库。</summary>
     public QuickCommandsViewModel Library { get; }
 
-    /// <summary>
-    /// 当前所有已连接、可接收命令的终端
-    /// </summary>
-    public ObservableCollection<QuickCommandTargetViewModel> Targets { get; } = [];
+    /// <summary>快捷命令使用的共享终端目标选择器。</summary>
+    public TerminalTargetSelectorViewModel TargetSelector { get; }
 
-    /// <summary>
-    /// 当前活动终端的标签标识;未显式选择目标时作为默认值
-    /// </summary>
-    public Guid? CurrentTargetId
-    {
-        get;
-        private set => this.RaiseAndSetIfChanged(ref field, value);
-    }
+    /// <summary>当前可用终端目标。</summary>
+    public ObservableCollection<QuickCommandTargetViewModel> Targets => TargetSelector.Targets;
 
-    /// <summary>
-    /// 是否存在可选终端
-    /// </summary>
-    public bool HasTargets => Targets.Count > 0;
+    /// <summary>未显式选择时使用的活动终端标识。</summary>
+    public Guid? CurrentTargetId => TargetSelector.CurrentTargetId;
 
-    /// <summary>
-    /// 显式选中的终端数量
-    /// </summary>
-    public int SelectedTargetCount => Targets.Count(target => target.IsSelected);
+    /// <summary>是否存在已连接终端。</summary>
+    public bool HasTargets => TargetSelector.HasTargets;
 
-    /// <summary>
-    /// 是否已显式选择至少一个终端
-    /// </summary>
-    public bool HasSelectedTargets => SelectedTargetCount > 0;
+    /// <summary>显式选择的终端数量。</summary>
+    public int SelectedTargetCount => TargetSelector.SelectedTargetCount;
 
-    /// <summary>当前是否存在有效的显式或默认执行目标。</summary>
-    public bool CanRun => ResolveTargetIds().Count > 0;
+    /// <summary>是否存在显式选择的终端。</summary>
+    public bool HasSelectedTargets => TargetSelector.HasSelectedTargets;
 
-    /// <summary>运行指定代码片段。</summary>
+    /// <summary>当前是否可以执行快捷命令。</summary>
+    public bool CanRun => TargetSelector.CanSend;
+
+    /// <summary>在解析出的目标终端上运行命令。</summary>
     public ReactiveCommand<QuickCommandViewModel, Unit> RunCommand { get; }
 
-    /// <summary>选择全部已连接终端。</summary>
-    public ReactiveCommand<Unit, Unit> SelectAllCommand { get; }
+    /// <summary>选择全部目标终端。</summary>
+    public ReactiveCommand<Unit, Unit> SelectAllCommand => TargetSelector.SelectAllCommand;
 
-    /// <summary>清空显式选择,恢复“当前终端”默认语义。</summary>
-    public ReactiveCommand<Unit, Unit> ClearSelectionCommand { get; }
+    /// <summary>清除显式目标选择。</summary>
+    public ReactiveCommand<Unit, Unit> ClearSelectionCommand =>
+        TargetSelector.ClearSelectionCommand;
 
-    /// <summary>宿主收到后负责把命令映射到真实终端并发送。</summary>
+    /// <summary>命令及目标解析完成后发出的执行请求。</summary>
     public event EventHandler<QuickCommandExecutionRequest>? ExecutionRequested;
 
-    /// <summary>
-    /// 用最新的已连接终端快照刷新选择列表;仍存在的终端保留勾选状态,
-    /// 已关闭或断开的终端自动从列表和选择中移除。
-    /// </summary>
-    public void UpdateTargets(IEnumerable<(Guid Id, string DisplayName)> targets)
-    {
-        ArgumentNullException.ThrowIfNull(targets);
-        var selectedIds = Targets
-            .Where(target => target.IsSelected)
-            .Select(target => target.Id)
-            .ToHashSet();
-        foreach (QuickCommandTargetViewModel target in Targets)
-        {
-            target.PropertyChanged -= OnTargetPropertyChanged;
-        }
-        Targets.Clear();
-        foreach ((Guid id, string displayName) in targets.DistinctBy(target => target.Id))
-        {
-            var target = new QuickCommandTargetViewModel(id, displayName)
-            {
-                IsSelected = selectedIds.Contains(id),
-            };
-            target.PropertyChanged += OnTargetPropertyChanged;
-            Targets.Add(target);
-        }
-        if (CurrentTargetId is { } currentId && Targets.All(target => target.Id != currentId))
-        {
-            CurrentTargetId = null;
-        }
-        RaiseTargetStateChanged();
-    }
+    /// <summary>刷新可用终端目标。</summary>
+    public void UpdateTargets(IEnumerable<(Guid Id, string DisplayName)> targets) =>
+        TargetSelector.UpdateTargets(targets);
 
-    /// <summary>设置未显式选择目标时使用的当前终端。</summary>
-    public void SetCurrentTarget(Guid? targetId)
-    {
-        CurrentTargetId = targetId is { } id && Targets.Any(target => target.Id == id) ? id : null;
-        RaiseTargetStateChanged();
-    }
+    /// <summary>更新活动终端回退目标。</summary>
+    public void SetCurrentTarget(Guid? targetId) => TargetSelector.SetCurrentTarget(targetId);
 
     private void Run(QuickCommandViewModel command)
     {
-        IReadOnlyList<Guid> targetIds = ResolveTargetIds();
+        IReadOnlyList<Guid> targetIds = TargetSelector.ResolveTargetIds();
         if (targetIds.Count == 0 || string.IsNullOrWhiteSpace(command.CommandText))
         {
             return;
@@ -122,52 +77,12 @@ public sealed class QuickCommandRunnerViewModel : ReactiveObject
         ExecutionRequested?.Invoke(this, new(command.CommandText, targetIds));
     }
 
-    private IReadOnlyList<Guid> ResolveTargetIds()
+    private void OnTargetSelectorPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        Guid[] selected = Targets
-            .Where(target => target.IsSelected)
-            .Select(target => target.Id)
-            .ToArray();
-        if (selected.Length > 0)
+        this.RaisePropertyChanged(e.PropertyName);
+        if (e.PropertyName == nameof(TerminalTargetSelectorViewModel.CanSend))
         {
-            return selected;
+            this.RaisePropertyChanged(nameof(CanRun));
         }
-        return CurrentTargetId is { } currentId && Targets.Any(target => target.Id == currentId)
-            ? [currentId]
-            : [];
-    }
-
-    private void SelectAll()
-    {
-        foreach (QuickCommandTargetViewModel target in Targets)
-        {
-            target.IsSelected = true;
-        }
-        RaiseTargetStateChanged();
-    }
-
-    private void ClearSelection()
-    {
-        foreach (QuickCommandTargetViewModel target in Targets)
-        {
-            target.IsSelected = false;
-        }
-        RaiseTargetStateChanged();
-    }
-
-    private void OnTargetPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(QuickCommandTargetViewModel.IsSelected))
-        {
-            RaiseTargetStateChanged();
-        }
-    }
-
-    private void RaiseTargetStateChanged()
-    {
-        this.RaisePropertyChanged(nameof(HasTargets));
-        this.RaisePropertyChanged(nameof(SelectedTargetCount));
-        this.RaisePropertyChanged(nameof(HasSelectedTargets));
-        this.RaisePropertyChanged(nameof(CanRun));
     }
 }

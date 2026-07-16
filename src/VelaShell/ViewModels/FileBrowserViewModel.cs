@@ -59,11 +59,13 @@ public class FileBrowserViewModel : ReactiveObject
     /// <see cref="Files" /> collection is rebuilt from this.
     /// </summary>
     private readonly List<RemoteFileInfoViewModel> _allFiles = [];
+    private readonly BatchObservableCollection<RemoteFileInfoViewModel> _files;
 
     private readonly Guid _sessionId;
     private readonly ISftpService _sftpService;
 
     private string _currentPath;
+    private long _navigationVersion;
 
     /// <summary>Cancels the running delete; tripped from the delete overlay's cancel button.</summary>
     private CancellationTokenSource? _deleteCts;
@@ -90,7 +92,8 @@ public class FileBrowserViewModel : ReactiveObject
         SessionId = sessionId;
         _currentPath = "/";
         _isVisible = false;
-        Files = [];
+        _files = [];
+        Files = _files;
         SelectedFiles = [];
         NavigateToCommand = ReactiveCommand.CreateFromTask<string>(NavigateToAsync);
         ActivateCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(ActivateAsync);
@@ -101,15 +104,23 @@ public class FileBrowserViewModel : ReactiveObject
         UploadFolderCommand = ReactiveCommand.CreateFromTask(UploadFolderAsync);
         NewFolderCommand = ReactiveCommand.CreateFromTask(NewFolderAsync);
         NewFileCommand = ReactiveCommand.CreateFromTask(NewFileAsync);
-        DownloadItemCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(DownloadItemAsync);
+        DownloadItemCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(
+            DownloadItemAsync
+        );
         RenameCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(RenameAsync);
         MoveCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(MoveAsync);
         CopyPathCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(CopyPathAsync);
         CopyNameCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(CopyNameAsync);
-        PropertiesCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(ShowPropertiesAsync);
-        DeleteItemCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(DeleteItemAsync);
+        PropertiesCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(
+            ShowPropertiesAsync
+        );
+        DeleteItemCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(
+            DeleteItemAsync
+        );
         OpenItemCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(OpenItemAsync);
-        OpenWithDefaultEditorCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(OpenWithDefaultEditorAsync);
+        OpenWithDefaultEditorCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(
+            OpenWithDefaultEditorAsync
+        );
         DownloadSelectedCommand = ReactiveCommand.CreateFromTask(DownloadSelectedAsync);
         DeleteSelectedCommand = ReactiveCommand.CreateFromTask(DeleteSelectedAsync);
         CancelDeleteCommand = ReactiveCommand.Create(CancelDelete);
@@ -153,9 +164,33 @@ public class FileBrowserViewModel : ReactiveObject
         {
             return;
         }
+        // 静默刷新是后台对账,绝不能盖过用户的显式导航。捕获入口时的导航版本与目录;
+        // 这里不递增版本(递增会取消用户正在进行的导航),仅在 await 之后据此判断是否已过期。
+        long navigationVersion = Volatile.Read(ref _navigationVersion);
+        string path = CurrentPath;
         try
         {
-            List<RemoteFileInfo> files = await _sftpService.ListDirectoryAsync(_sessionId, CurrentPath, _lifetime.Token);
+            HashSet<string> selectedPaths = SelectedFiles
+                .Where(file => !file.IsParentEntry)
+                .Select(file => file.FullPath)
+                .ToHashSet(StringComparer.Ordinal);
+            List<RemoteFileInfo> files = await _sftpService.ListDirectoryAsync(
+                _sessionId,
+                path,
+                _lifetime.Token
+            );
+
+            // 关键:await 期间若发生了导航(版本变化)或当前目录已不再是本次列举的目录,
+            // 说明这份结果已过期。此时若继续写入 _allFiles,会用旧目录内容覆盖较新的导航结果,
+            // 造成"列表显示 A 目录、面包屑却是 B 目录"——因行路径是绝对路径,后续删除/下载会
+            // 作用到错误的文件。故直接丢弃过期结果。
+            if (
+                navigationVersion != Volatile.Read(ref _navigationVersion)
+                || !string.Equals(path, CurrentPath, StringComparison.Ordinal)
+            )
+            {
+                return;
+            }
 
             // 内容没变(切回标签的常见情形)就不动列表:整表 Clear+重建会让 ListBox
             // 全量重新虚拟化,恰好落在切换标签的瞬间,是可感知的顿挫来源。
@@ -167,6 +202,7 @@ public class FileBrowserViewModel : ReactiveObject
             _allFiles.Clear();
             _allFiles.AddRange(files.Select(f => new RemoteFileInfoViewModel(f)));
             RebuildVisibleFiles();
+            RestoreSelection(selectedPaths);
             ErrorMessage = null;
         }
         catch (OperationCanceledException)
@@ -191,9 +227,16 @@ public class FileBrowserViewModel : ReactiveObject
         {
             RemoteFileInfo a = fresh[i];
             RemoteFileInfo b = _allFiles[i].Model;
-            if (a.Name != b.Name || a.FullPath != b.FullPath || a.Size != b.Size ||
-                a.IsDirectory != b.IsDirectory || a.Permissions != b.Permissions ||
-                a.LastModified != b.LastModified || a.Owner != b.Owner || a.Group != b.Group)
+            if (
+                a.Name != b.Name
+                || a.FullPath != b.FullPath
+                || a.Size != b.Size
+                || a.IsDirectory != b.IsDirectory
+                || a.Permissions != b.Permissions
+                || a.LastModified != b.LastModified
+                || a.Owner != b.Owner
+                || a.Group != b.Group
+            )
             {
                 return false;
             }
@@ -223,7 +266,9 @@ public class FileBrowserViewModel : ReactiveObject
     /// common case is simply the lifetime token itself (no allocation).
     /// </summary>
     private CancellationToken WithLifetime(CancellationToken ct) =>
-        ct.CanBeCanceled ? CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token).Token : _lifetime.Token;
+        ct.CanBeCanceled
+            ? CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token).Token
+            : _lifetime.Token;
 
     /// <summary>危险操作确认文案加服务器名前缀,多标签下防止删错服务器上的文件。</summary>
     private string WithServerTag(string message) =>
@@ -234,6 +279,9 @@ public class FileBrowserViewModel : ReactiveObject
 
     /// <summary>列表中当前被多选中的条目(批量下载/删除的作用对象)。</summary>
     public ObservableCollection<RemoteFileInfoViewModel> SelectedFiles { get; }
+
+    /// <summary>成功进入不同目录后触发,视图据此把滚动条重置到顶部。</summary>
+    public event EventHandler? DirectoryChanged;
 
     /// <summary>当前浏览的远程目录绝对路径;赋值时同步刷新 <see cref="Breadcrumbs" />。</summary>
     public string CurrentPath
@@ -266,7 +314,7 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
-    /// <summary>是否正在加载目录或执行删除,用于显示忙碌遮罩。</summary>
+    /// <summary>是否正在执行需要阻塞面板的操作,当前仅用于删除进度。</summary>
     public bool IsLoading
     {
         get;
@@ -279,6 +327,13 @@ public class FileBrowserViewModel : ReactiveObject
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = Strings.Loading;
+
+    /// <summary>是否正在后台读取目录;只显示路径栏轻量状态。</summary>
+    public bool IsDirectoryLoading
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    }
 
     /// <summary>该文件浏览面板当前是否展示(隐藏时可跳过后台刷新等工作)。</summary>
     public bool IsVisible
@@ -393,7 +448,11 @@ public class FileBrowserViewModel : ReactiveObject
                 return;
             }
             this.RaiseAndSetIfChanged(ref field, value);
-            RaiseColumnGeometryChanged(nameof(SizeGridWidth), nameof(SizeGridMinWidth), nameof(SizeSplitterWidth));
+            RaiseColumnGeometryChanged(
+                nameof(SizeGridWidth),
+                nameof(SizeGridMinWidth),
+                nameof(SizeSplitterWidth)
+            );
             ColumnVisibilityToggled?.Invoke("size", value);
         }
     } = true;
@@ -409,7 +468,11 @@ public class FileBrowserViewModel : ReactiveObject
                 return;
             }
             this.RaiseAndSetIfChanged(ref field, value);
-            RaiseColumnGeometryChanged(nameof(PermissionsGridWidth), nameof(PermissionsGridMinWidth), nameof(PermissionsSplitterWidth));
+            RaiseColumnGeometryChanged(
+                nameof(PermissionsGridWidth),
+                nameof(PermissionsGridMinWidth),
+                nameof(PermissionsSplitterWidth)
+            );
             ColumnVisibilityToggled?.Invoke("permissions", value);
         }
     } = true;
@@ -425,7 +488,11 @@ public class FileBrowserViewModel : ReactiveObject
                 return;
             }
             this.RaiseAndSetIfChanged(ref field, value);
-            RaiseColumnGeometryChanged(nameof(OwnerGridWidth), nameof(OwnerGridMinWidth), nameof(OwnerSplitterWidth));
+            RaiseColumnGeometryChanged(
+                nameof(OwnerGridWidth),
+                nameof(OwnerGridMinWidth),
+                nameof(OwnerSplitterWidth)
+            );
             ColumnVisibilityToggled?.Invoke("owner", value);
         }
     } = true;
@@ -441,7 +508,11 @@ public class FileBrowserViewModel : ReactiveObject
                 return;
             }
             this.RaiseAndSetIfChanged(ref field, value);
-            RaiseColumnGeometryChanged(nameof(GroupGridWidth), nameof(GroupGridMinWidth), nameof(GroupSplitterWidth));
+            RaiseColumnGeometryChanged(
+                nameof(GroupGridWidth),
+                nameof(GroupGridMinWidth),
+                nameof(GroupSplitterWidth)
+            );
             ColumnVisibilityToggled?.Invoke("group", value);
         }
     } = true;
@@ -457,7 +528,11 @@ public class FileBrowserViewModel : ReactiveObject
                 return;
             }
             this.RaiseAndSetIfChanged(ref field, value);
-            RaiseColumnGeometryChanged(nameof(TypeGridWidth), nameof(TypeGridMinWidth), nameof(TypeSplitterWidth));
+            RaiseColumnGeometryChanged(
+                nameof(TypeGridWidth),
+                nameof(TypeGridMinWidth),
+                nameof(TypeSplitterWidth)
+            );
             ColumnVisibilityToggled?.Invoke("type", value);
         }
     } = true;
@@ -498,13 +573,15 @@ public class FileBrowserViewModel : ReactiveObject
     public GridLength SizeSplitterWidth => ShowSizeColumn ? SplitterWidth : CollapsedWidth;
 
     /// <summary>“权限”列在表格中的实际宽度。</summary>
-    public GridLength PermissionsGridWidth => ShowPermissionsColumn ? PermissionsColumnWidth : CollapsedWidth;
+    public GridLength PermissionsGridWidth =>
+        ShowPermissionsColumn ? PermissionsColumnWidth : CollapsedWidth;
 
     /// <summary>“权限”列在表格中的最小宽度。</summary>
     public double PermissionsGridMinWidth => ShowPermissionsColumn ? MinPermissionsWidth : 0;
 
     /// <summary>“权限”列右侧拖拽条的宽度。</summary>
-    public GridLength PermissionsSplitterWidth => ShowPermissionsColumn ? SplitterWidth : CollapsedWidth;
+    public GridLength PermissionsSplitterWidth =>
+        ShowPermissionsColumn ? SplitterWidth : CollapsedWidth;
 
     /// <summary>“所有者”列在表格中的实际宽度。</summary>
     public GridLength OwnerGridWidth => ShowOwnerColumn ? OwnerColumnWidth : CollapsedWidth;
@@ -718,7 +795,12 @@ public class FileBrowserViewModel : ReactiveObject
     /// Set by the view: opens the built-in AvaloniaEdit editor window.
     /// (file, localTempPath, uploadCallback) — the editor invokes the callback after each save.
     /// </summary>
-    public Func<RemoteFileInfoViewModel, string, Func<Task>, Task>? OpenInBuiltInEditor { get; set; }
+    public Func<
+        RemoteFileInfoViewModel,
+        string,
+        Func<Task>,
+        Task
+    >? OpenInBuiltInEditor { get; set; }
 
     /// <summary>Set by the host: resolves the configured default editor (设置 → 文件传输)。</summary>
     public Func<Task<string?>>? GetDefaultEditorPath { get; set; }
@@ -748,15 +830,16 @@ public class FileBrowserViewModel : ReactiveObject
     /// 按列键取该列当前的用户可调宽度(视图侧的拖拽与双击自适应用)。
     /// 末列“修改时间”吃 * 宽度、不可调,故不在此列。
     /// </summary>
-    public GridLength GetColumnWidth(string columnKey) => columnKey switch
-    {
-        "size" => SizeColumnWidth,
-        "permissions" => PermissionsColumnWidth,
-        "owner" => OwnerColumnWidth,
-        "group" => GroupColumnWidth,
-        "type" => TypeColumnWidth,
-        _ => NameColumnWidth
-    };
+    public GridLength GetColumnWidth(string columnKey) =>
+        columnKey switch
+        {
+            "size" => SizeColumnWidth,
+            "permissions" => PermissionsColumnWidth,
+            "owner" => OwnerColumnWidth,
+            "group" => GroupColumnWidth,
+            "type" => TypeColumnWidth,
+            _ => NameColumnWidth,
+        };
 
     /// <summary>按列键设置列宽(视图侧的拖拽与双击自适应用);越界由各列的下限钳制。</summary>
     public void SetColumnWidth(string columnKey, double pixels)
@@ -785,28 +868,30 @@ public class FileBrowserViewModel : ReactiveObject
     }
 
     /// <summary>按列键取该列是否显示(“文件名”列固定常显)。</summary>
-    public bool IsColumnVisible(string columnKey) => columnKey switch
-    {
-        "size" => ShowSizeColumn,
-        "permissions" => ShowPermissionsColumn,
-        "owner" => ShowOwnerColumn,
-        "group" => ShowGroupColumn,
-        "type" => ShowTypeColumn,
-        "modified" => ShowModifiedColumn,
-        _ => true
-    };
+    public bool IsColumnVisible(string columnKey) =>
+        columnKey switch
+        {
+            "size" => ShowSizeColumn,
+            "permissions" => ShowPermissionsColumn,
+            "owner" => ShowOwnerColumn,
+            "group" => ShowGroupColumn,
+            "type" => ShowTypeColumn,
+            "modified" => ShowModifiedColumn,
+            _ => true,
+        };
 
     /// <summary>按列键取该列的最小像素宽度。</summary>
-    public static double MinWidthFor(string columnKey) => columnKey switch
-    {
-        "size" => MinSizeWidth,
-        "permissions" => MinPermissionsWidth,
-        "owner" => MinOwnerWidth,
-        "group" => MinGroupWidth,
-        "type" => MinTypeWidth,
-        "modified" => MinModifiedWidth,
-        _ => MinNameWidth
-    };
+    public static double MinWidthFor(string columnKey) =>
+        columnKey switch
+        {
+            "size" => MinSizeWidth,
+            "permissions" => MinPermissionsWidth,
+            "owner" => MinOwnerWidth,
+            "group" => MinGroupWidth,
+            "type" => MinTypeWidth,
+            "modified" => MinModifiedWidth,
+            _ => MinNameWidth,
+        };
 
     private static GridLength ClampColumnWidth(GridLength value, double min)
     {
@@ -815,29 +900,70 @@ public class FileBrowserViewModel : ReactiveObject
         return new(Math.Max(min, px));
     }
 
-    private void RaiseColumnGeometryChanged(string widthName, string minWidthName, string splitterName)
+    private void RaiseColumnGeometryChanged(
+        string widthName,
+        string minWidthName,
+        string splitterName
+    )
     {
         this.RaisePropertyChanged(widthName);
         this.RaisePropertyChanged(minWidthName);
         this.RaisePropertyChanged(splitterName);
     }
 
-    private string GlyphFor(string column) => SortColumn == column ? SortDescending ? " ▼" : " ▲" : string.Empty;
+    private string GlyphFor(string column) =>
+        SortColumn == column
+            ? SortDescending
+                ? " ▼"
+                : " ▲"
+            : string.Empty;
 
     private async Task NavigateToAsync(string path, CancellationToken ct = default)
     {
         ct = WithLifetime(ct);
+        long navigationVersion = Interlocked.Increment(ref _navigationVersion);
         try
         {
             ErrorMessage = null;
-            BusyText = Strings.Loading;
-            IsLoading = true;
-            CurrentPath = path;
-            List<RemoteFileInfo> files = await _sftpService.ListDirectoryAsync(_sessionId, path, ct);
+            IsDirectoryLoading = true;
+            HashSet<string> selectedPaths = SelectedFiles
+                .Where(file => !file.IsParentEntry)
+                .Select(file => file.FullPath)
+                .ToHashSet(StringComparer.Ordinal);
+            List<RemoteFileInfo> files = await _sftpService.ListDirectoryAsync(
+                _sessionId,
+                path,
+                ct
+            );
+            if (navigationVersion != Volatile.Read(ref _navigationVersion))
+            {
+                return;
+            }
+            bool pathChanged = !string.Equals(CurrentPath, path, StringComparison.Ordinal);
+            bool visibleRowsInitialized =
+                path == "/" || _files.FirstOrDefault()?.IsParentEntry == true;
+            if (!pathChanged && visibleRowsInitialized && ListingUnchanged(files))
+            {
+                HasLoaded = true;
+                return;
+            }
             _allFiles.Clear();
             _allFiles.AddRange(files.Select(f => new RemoteFileInfoViewModel(f)));
+            CurrentPath = path;
+            if (pathChanged)
+            {
+                SelectedFiles.Clear();
+            }
             RebuildVisibleFiles();
+            if (!pathChanged)
+            {
+                RestoreSelection(selectedPaths);
+            }
             HasLoaded = true;
+            if (pathChanged)
+            {
+                DirectoryChanged?.Invoke(this, EventArgs.Empty);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -846,11 +972,17 @@ public class FileBrowserViewModel : ReactiveObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = ex.Message;
+            if (navigationVersion == Volatile.Read(ref _navigationVersion))
+            {
+                ErrorMessage = ex.Message;
+            }
         }
         finally
         {
-            IsLoading = false;
+            if (navigationVersion == Volatile.Read(ref _navigationVersion))
+            {
+                IsDirectoryLoading = false;
+            }
         }
     }
 
@@ -932,15 +1064,31 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     private void RebuildVisibleFiles()
     {
-        IEnumerable<RemoteFileInfoViewModel> visible = _allFiles.Where(f => ShowHiddenFiles || !f.Name.StartsWith('.'));
-        Files.Clear();
+        IEnumerable<RemoteFileInfoViewModel> visible = _allFiles.Where(f =>
+            ShowHiddenFiles || !f.Name.StartsWith('.')
+        );
+        var rebuilt = new List<RemoteFileInfoViewModel>();
         if (CurrentPath != "/")
         {
-            Files.Add(RemoteFileInfoViewModel.CreateParentEntry(ParentOf(CurrentPath)));
+            rebuilt.Add(RemoteFileInfoViewModel.CreateParentEntry(ParentOf(CurrentPath)));
         }
         foreach (RemoteFileInfoViewModel file in SortFiles(visible))
         {
-            Files.Add(file);
+            rebuilt.Add(file);
+        }
+        _files.ReplaceAll(rebuilt);
+    }
+
+    private void RestoreSelection(HashSet<string> selectedPaths)
+    {
+        SelectedFiles.Clear();
+        foreach (
+            RemoteFileInfoViewModel file in Files.Where(file =>
+                !file.IsParentEntry && selectedPaths.Contains(file.FullPath)
+            )
+        )
+        {
+            SelectedFiles.Add(file);
         }
     }
 
@@ -948,35 +1096,42 @@ public class FileBrowserViewModel : ReactiveObject
     /// Orders rows by the active column and direction, keeping directories grouped first
     /// (a directory's size is meaningless, so mixing them into a size sort reads badly).
     /// </summary>
-    private IEnumerable<RemoteFileInfoViewModel> SortFiles(IEnumerable<RemoteFileInfoViewModel> items)
+    private IEnumerable<RemoteFileInfoViewModel> SortFiles(
+        IEnumerable<RemoteFileInfoViewModel> items
+    )
     {
-        IOrderedEnumerable<RemoteFileInfoViewModel> dirsFirst = items.OrderByDescending(f => f.IsDirectory);
+        IOrderedEnumerable<RemoteFileInfoViewModel> dirsFirst = items.OrderByDescending(f =>
+            f.IsDirectory
+        );
         return SortColumn switch
         {
             "size" => SortDescending
-                          ? dirsFirst.ThenByDescending(f => f.SizeBytes)
-                          : dirsFirst.ThenBy(f => f.SizeBytes),
+                ? dirsFirst.ThenByDescending(f => f.SizeBytes)
+                : dirsFirst.ThenBy(f => f.SizeBytes),
             "permissions" => SortDescending
-                                 ? dirsFirst.ThenByDescending(f => f.Permissions, StringComparer.Ordinal)
-                                 : dirsFirst.ThenBy(f => f.Permissions, StringComparer.Ordinal),
+                ? dirsFirst.ThenByDescending(f => f.Permissions, StringComparer.Ordinal)
+                : dirsFirst.ThenBy(f => f.Permissions, StringComparer.Ordinal),
 
             // 属主/属组查得到名字时排的是名字,查不到时排的是数字 id 的字符串形式
             // (即 "1000" 排在 "999" 前)—— 混排两种形式的价值不足以为此引入数值特判。
             "owner" => SortDescending
-                           ? dirsFirst.ThenByDescending(f => f.Owner, StringComparer.OrdinalIgnoreCase)
-                           : dirsFirst.ThenBy(f => f.Owner, StringComparer.OrdinalIgnoreCase),
+                ? dirsFirst.ThenByDescending(f => f.Owner, StringComparer.OrdinalIgnoreCase)
+                : dirsFirst.ThenBy(f => f.Owner, StringComparer.OrdinalIgnoreCase),
             "group" => SortDescending
-                           ? dirsFirst.ThenByDescending(f => f.Group, StringComparer.OrdinalIgnoreCase)
-                           : dirsFirst.ThenBy(f => f.Group, StringComparer.OrdinalIgnoreCase),
+                ? dirsFirst.ThenByDescending(f => f.Group, StringComparer.OrdinalIgnoreCase)
+                : dirsFirst.ThenBy(f => f.Group, StringComparer.OrdinalIgnoreCase),
             "type" => SortDescending
-                          ? dirsFirst.ThenByDescending(f => f.FileTypeDisplay, StringComparer.CurrentCultureIgnoreCase)
-                          : dirsFirst.ThenBy(f => f.FileTypeDisplay, StringComparer.CurrentCultureIgnoreCase),
+                ? dirsFirst.ThenByDescending(
+                    f => f.FileTypeDisplay,
+                    StringComparer.CurrentCultureIgnoreCase
+                )
+                : dirsFirst.ThenBy(f => f.FileTypeDisplay, StringComparer.CurrentCultureIgnoreCase),
             "modified" => SortDescending
-                              ? dirsFirst.ThenByDescending(f => f.LastModified)
-                              : dirsFirst.ThenBy(f => f.LastModified),
+                ? dirsFirst.ThenByDescending(f => f.LastModified)
+                : dirsFirst.ThenBy(f => f.LastModified),
             _ => SortDescending
-                     ? dirsFirst.ThenByDescending(f => f.Name, StringComparer.OrdinalIgnoreCase)
-                     : dirsFirst.ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+                ? dirsFirst.ThenByDescending(f => f.Name, StringComparer.OrdinalIgnoreCase)
+                : dirsFirst.ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase),
         };
     }
 
@@ -1006,7 +1161,11 @@ public class FileBrowserViewModel : ReactiveObject
         }
         try
         {
-            string tempDir = Path.Combine(Path.GetTempPath(), "VelaShell", _sessionId.ToString("N"));
+            string tempDir = Path.Combine(
+                Path.GetTempPath(),
+                "VelaShell",
+                _sessionId.ToString("N")
+            );
             Directory.CreateDirectory(tempDir);
             string localPath = Path.Combine(tempDir, file.Name);
             PlannedFileTransfer[] plan = [new(TransferType.Download, localPath, file.FullPath)];
@@ -1043,7 +1202,7 @@ public class FileBrowserViewModel : ReactiveObject
             Type = TransferType.Upload,
             LocalPath = localPath,
             RemotePath = remotePath,
-            Status = TransferStatus.InProgress
+            Status = TransferStatus.InProgress,
         };
         TransferSink?.AddTransfer(task);
         TransferItemViewModel? item = TransferSink?.FindTransfer(task.Id);
@@ -1082,13 +1241,21 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             ErrorMessage = null;
-            string tempDir = Path.Combine(Path.GetTempPath(), "VelaShell", "builtin-edit", Guid.NewGuid().ToString("N")[..8]);
+            string tempDir = Path.Combine(
+                Path.GetTempPath(),
+                "VelaShell",
+                "builtin-edit",
+                Guid.NewGuid().ToString("N")[..8]
+            );
             Directory.CreateDirectory(tempDir);
             string localPath = Path.Combine(tempDir, file.Name);
             await _sftpService.DownloadFileAsync(_sessionId, file.FullPath, localPath, null, ct);
             string remotePath = file.FullPath;
-            await OpenInBuiltInEditor(file, localPath,
-                () => UploadEditedFileAsync(localPath, remotePath));
+            await OpenInBuiltInEditor(
+                file,
+                localPath,
+                () => UploadEditedFileAsync(localPath, remotePath)
+            );
         }
         catch (Exception ex)
         {
@@ -1100,7 +1267,10 @@ public class FileBrowserViewModel : ReactiveObject
     /// 「使用默认编辑器打开」:交给 ExternalEditSessionManager(下载 → 启动配置的
     /// 编辑器 → 侦听保存自动上传 → 退出清理 temp)。
     /// </summary>
-    private async Task OpenWithDefaultEditorAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
+    private async Task OpenWithDefaultEditorAsync(
+        RemoteFileInfoViewModel? file,
+        CancellationToken ct = default
+    )
     {
         if (file is null || !file.IsRegularFile)
         {
@@ -1123,11 +1293,18 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             ErrorMessage = null;
-            await ExternalEditSessionManager.OpenAsync(_sftpService, _sessionId, file.FullPath, file.Name, editor,
+            await ExternalEditSessionManager.OpenAsync(
+                _sftpService,
+                _sessionId,
+                file.FullPath,
+                file.Name,
+                editor,
                 message => Dispatcher.UIThread.Post(() => ErrorMessage = message),
                 // 保存回传经传输浮窗提示;监听回调在线程池,需切回 UI 线程。
-                (local, remote) => Dispatcher.UIThread.InvokeAsync(() => UploadEditedFileAsync(local, remote)),
-                ct);
+                (local, remote) =>
+                    Dispatcher.UIThread.InvokeAsync(() => UploadEditedFileAsync(local, remote)),
+                ct
+            );
         }
         catch (Exception ex)
         {
@@ -1144,7 +1321,8 @@ public class FileBrowserViewModel : ReactiveObject
         await NavigateToAsync(ParentOf(CurrentPath), ct);
     }
 
-    private async Task RefreshAsync(CancellationToken ct = default) => await NavigateToAsync(CurrentPath, ct);
+    private async Task RefreshAsync(CancellationToken ct = default) =>
+        await NavigateToAsync(CurrentPath, ct);
 
     private async Task UploadAsync(CancellationToken ct = default)
     {
@@ -1175,7 +1353,10 @@ public class FileBrowserViewModel : ReactiveObject
     /// into folders (creating the matching remote directories). Shared by the upload menu items and
     /// drag-and-drop, so multi-select and dropped folders all funnel through here.
     /// </summary>
-    public async Task UploadLocalPathsAsync(IReadOnlyList<string> localPaths, CancellationToken ct = default)
+    public async Task UploadLocalPathsAsync(
+        IReadOnlyList<string> localPaths,
+        CancellationToken ct = default
+    )
     {
         if (localPaths.Count == 0)
         {
@@ -1214,11 +1395,18 @@ public class FileBrowserViewModel : ReactiveObject
     /// <paramref name="plan" />, creating the matching remote directories as it goes. Planning up
     /// front gives the toast an accurate remaining-file count and makes the batch cancellable.
     /// </summary>
-    private async Task BuildUploadPlanAsync(string localPath, string remoteDir, List<PlannedFileTransfer> plan, CancellationToken ct)
+    private async Task BuildUploadPlanAsync(
+        string localPath,
+        string remoteDir,
+        List<PlannedFileTransfer> plan,
+        CancellationToken ct
+    )
     {
         if (Directory.Exists(localPath))
         {
-            string name = Path.GetFileName(localPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            string name = Path.GetFileName(
+                localPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            );
             string remoteSub = CombinePath(remoteDir, name);
             await _sftpService.EnsureDirectoryAsync(_sessionId, remoteSub, ct);
             foreach (string child in Directory.EnumerateFileSystemEntries(localPath))
@@ -1234,7 +1422,10 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
-    private async Task DownloadItemAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
+    private async Task DownloadItemAsync(
+        RemoteFileInfoViewModel? file,
+        CancellationToken ct = default
+    )
     {
         if (file is null || file.IsParentEntry)
         {
@@ -1293,21 +1484,34 @@ public class FileBrowserViewModel : ReactiveObject
     /// (creating the local directories as it goes). Planning up front lets the toast show an accurate
     /// remaining-file count and lets the whole batch be cancelled. Shared by folder and batch download.
     /// </summary>
-    private async Task BuildDownloadPlanAsync(string remotePath,
+    private async Task BuildDownloadPlanAsync(
+        string remotePath,
         string name,
         bool isDirectory,
         string localDir,
         List<PlannedFileTransfer> plan,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (isDirectory)
         {
             string localSub = Path.Combine(localDir, name);
             Directory.CreateDirectory(localSub);
-            List<RemoteFileInfo> children = await _sftpService.ListDirectoryAsync(_sessionId, remotePath, ct);
+            List<RemoteFileInfo> children = await _sftpService.ListDirectoryAsync(
+                _sessionId,
+                remotePath,
+                ct
+            );
             foreach (RemoteFileInfo child in children)
             {
-                await BuildDownloadPlanAsync(child.FullPath, child.Name, child.IsDirectory, localSub, plan, ct);
+                await BuildDownloadPlanAsync(
+                    child.FullPath,
+                    child.Name,
+                    child.IsDirectory,
+                    localSub,
+                    plan,
+                    ct
+                );
             }
         }
         else
@@ -1341,7 +1545,14 @@ public class FileBrowserViewModel : ReactiveObject
             var plan = new List<PlannedFileTransfer>();
             foreach (RemoteFileInfoViewModel item in targets)
             {
-                await BuildDownloadPlanAsync(item.FullPath, item.Name, item.IsDirectory, localDir, plan, ct);
+                await BuildDownloadPlanAsync(
+                    item.FullPath,
+                    item.Name,
+                    item.IsDirectory,
+                    localDir,
+                    plan,
+                    ct
+                );
             }
             await RunTransferBatchAsync(plan, ct);
         }
@@ -1365,7 +1576,10 @@ public class FileBrowserViewModel : ReactiveObject
     /// trip. The toast shows the remaining-file count; the return value says whether every file
     /// completed (false if the user cancelled).
     /// </summary>
-    private async Task<bool> RunTransferBatchAsync(IReadOnlyList<PlannedFileTransfer> plan, CancellationToken ct)
+    private async Task<bool> RunTransferBatchAsync(
+        IReadOnlyList<PlannedFileTransfer> plan,
+        CancellationToken ct
+    )
     {
         if (plan.Count == 0)
         {
@@ -1377,13 +1591,17 @@ public class FileBrowserViewModel : ReactiveObject
         // 上传的存在性检查按目录一次列举、内存比对:逐文件 ExistsAsync 在 SSH.NET 里以
         // "stat 不存在则抛异常"实现,批量上传时每个文件多一次网络往返、还刷一条
         // SftpPathNotFoundException(用户反馈调试输出刷屏)。
-        Dictionary<string, HashSet<string>> remoteNames = await ListRemoteNamesForUploadsAsync(plan, ct);
+        Dictionary<string, HashSet<string>> remoteNames = await ListRemoteNamesForUploadsAsync(
+            plan,
+            ct
+        );
         var resolved = new List<PlannedFileTransfer>(plan.Count);
         foreach (PlannedFileTransfer item in plan)
         {
-            PlannedFileTransfer? settled = item.Type == TransferType.Download
-                                               ? await ResolveLocalConflictAsync(item)
-                                               : await ResolveRemoteConflictAsync(item, remoteNames, ct);
+            PlannedFileTransfer? settled =
+                item.Type == TransferType.Download
+                    ? await ResolveLocalConflictAsync(item)
+                    : await ResolveRemoteConflictAsync(item, remoteNames, ct);
             if (settled is not null)
             {
                 resolved.Add(settled);
@@ -1411,19 +1629,26 @@ public class FileBrowserViewModel : ReactiveObject
             else
             {
                 using var gate = new SemaphoreSlim(maxConcurrent);
-                var workers = resolved.Select(async item =>
-                {
-                    await gate.WaitAsync(cts.Token);
-                    try
+                var workers = resolved
+                    .Select(async item =>
                     {
-                        await RunTransferAsync(item.Type, item.LocalPath, item.RemotePath, cts.Token);
-                        TransferSink?.NotifyBatchItemSettled();
-                    }
-                    finally
-                    {
-                        gate.Release();
-                    }
-                }).ToList();
+                        await gate.WaitAsync(cts.Token);
+                        try
+                        {
+                            await RunTransferAsync(
+                                item.Type,
+                                item.LocalPath,
+                                item.RemotePath,
+                                cts.Token
+                            );
+                            TransferSink?.NotifyBatchItemSettled();
+                        }
+                        finally
+                        {
+                            gate.Release();
+                        }
+                    })
+                    .ToList();
                 await Task.WhenAll(workers);
             }
             completed = true;
@@ -1483,19 +1708,27 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     private async Task<Dictionary<string, HashSet<string>>> ListRemoteNamesForUploadsAsync(
         IReadOnlyList<PlannedFileTransfer> plan,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var map = new Dictionary<string, HashSet<string>>();
         if (TransferOptions.ConflictPolicy == "overwrite")
         {
             return map;
         }
-        foreach (string dir in plan.Where(p => p.Type == TransferType.Upload)
-                                   .Select(p => ParentOf(p.RemotePath)).Distinct())
+        foreach (
+            string dir in plan.Where(p => p.Type == TransferType.Upload)
+                .Select(p => ParentOf(p.RemotePath))
+                .Distinct()
+        )
         {
             try
             {
-                List<RemoteFileInfo> entries = await _sftpService.ListDirectoryAsync(_sessionId, dir, ct);
+                List<RemoteFileInfo> entries = await _sftpService.ListDirectoryAsync(
+                    _sessionId,
+                    dir,
+                    ct
+                );
                 map[dir] = entries.Select(e => e.Name).ToHashSet(StringComparer.Ordinal);
             }
             catch (OperationCanceledException)
@@ -1514,9 +1747,11 @@ public class FileBrowserViewModel : ReactiveObject
     /// 远端路径是否存在:优先查预先列举的目录名单(零网络往返、零内部异常),
     /// 目录不在名单中才退回逐路径 ExistsAsync。
     /// </summary>
-    private async Task<bool> RemoteExistsAsync(string remotePath,
+    private async Task<bool> RemoteExistsAsync(
+        string remotePath,
         Dictionary<string, HashSet<string>> remoteNames,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (remoteNames.TryGetValue(ParentOf(remotePath), out HashSet<string>? names))
         {
@@ -1525,16 +1760,19 @@ public class FileBrowserViewModel : ReactiveObject
         return await _sftpService.ExistsAsync(_sessionId, remotePath, ct);
     }
 
-    private static string NameOf(string remotePath) => remotePath[(remotePath.TrimEnd('/').LastIndexOf('/') + 1)..];
+    private static string NameOf(string remotePath) =>
+        remotePath[(remotePath.TrimEnd('/').LastIndexOf('/') + 1)..];
 
     /// <summary>
     /// 按冲突策略处理一个计划中的上传:对照预列举的远端目录名单检查同名文件
     /// (“覆盖”策略下连列举都省去,直接沿用 SFTP 覆盖语义),冲突时返回 null 表示跳过,
     /// 或返回(可能改了远端路径的)计划项。
     /// </summary>
-    private async Task<PlannedFileTransfer?> ResolveRemoteConflictAsync(PlannedFileTransfer item,
+    private async Task<PlannedFileTransfer?> ResolveRemoteConflictAsync(
+        PlannedFileTransfer item,
         Dictionary<string, HashSet<string>> remoteNames,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (item.Type != TransferType.Upload || TransferOptions.ConflictPolicy == "overwrite")
         {
@@ -1549,7 +1787,14 @@ public class FileBrowserViewModel : ReactiveObject
             case "skip":
                 return null;
             case "rename":
-                return item with { RemotePath = await NextAvailableRemoteNameAsync(item.RemotePath, remoteNames, ct) };
+                return item with
+                {
+                    RemotePath = await NextAvailableRemoteNameAsync(
+                        item.RemotePath,
+                        remoteNames,
+                        ct
+                    ),
+                };
             default: // ask
                 if (ConfirmRemoteOverwrite is null)
                 {
@@ -1563,9 +1808,11 @@ public class FileBrowserViewModel : ReactiveObject
     /// 远端 "file.txt" → "file (1).txt"(取第一个不存在的序号)。选中的名字会记入
     /// 目录名单,同批次里后续重命名不会撞上它。
     /// </summary>
-    private async Task<string> NextAvailableRemoteNameAsync(string remotePath,
+    private async Task<string> NextAvailableRemoteNameAsync(
+        string remotePath,
         Dictionary<string, HashSet<string>> remoteNames,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         string dir = ParentOf(remotePath);
         string name = NameOf(remotePath);
@@ -1609,7 +1856,12 @@ public class FileBrowserViewModel : ReactiveObject
     /// it, and settles the final state. A failure marks the row red and returns; a cancellation
     /// marks the row cancelled, removes any partial local file, and propagates so the batch stops.
     /// </summary>
-    private async Task RunTransferAsync(TransferType type, string localPath, string remotePath, CancellationToken ct)
+    private async Task RunTransferAsync(
+        TransferType type,
+        string localPath,
+        string remotePath,
+        CancellationToken ct
+    )
     {
         var task = new TransferTask
         {
@@ -1617,7 +1869,7 @@ public class FileBrowserViewModel : ReactiveObject
             Type = type,
             LocalPath = localPath,
             RemotePath = remotePath,
-            Status = TransferStatus.InProgress
+            Status = TransferStatus.InProgress,
         };
         TransferStatus finalStatus = TransferStatus.Failed;
         TransferSink?.AddTransfer(task);
@@ -1631,7 +1883,13 @@ public class FileBrowserViewModel : ReactiveObject
             }
             else
             {
-                await _sftpService.DownloadFileAsync(_sessionId, remotePath, localPath, progress, ct);
+                await _sftpService.DownloadFileAsync(
+                    _sessionId,
+                    remotePath,
+                    localPath,
+                    progress,
+                    ct
+                );
             }
             item?.Status = TransferStatus.Completed;
             finalStatus = TransferStatus.Completed;
@@ -1660,7 +1918,13 @@ public class FileBrowserViewModel : ReactiveObject
             // 记录传输日志(设置 → 文件传输 → 日志记录)。
             if (TransferOptions.TransferLogging)
             {
-                TransferLogService.Append(TransferOptions.LogDirectory, type, localPath, remotePath, finalStatus);
+                TransferLogService.Append(
+                    TransferOptions.LogDirectory,
+                    type,
+                    localPath,
+                    remotePath,
+                    finalStatus
+                );
             }
         }
     }
@@ -1707,7 +1971,11 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             ErrorMessage = null;
-            await _sftpService.CreateDirectoryAsync(_sessionId, CombinePath(CurrentPath, name.Trim()), ct);
+            await _sftpService.CreateDirectoryAsync(
+                _sessionId,
+                CombinePath(CurrentPath, name.Trim()),
+                ct
+            );
             await RefreshAsync(ct);
         }
         catch (Exception ex)
@@ -1730,7 +1998,11 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             ErrorMessage = null;
-            await _sftpService.CreateFileAsync(_sessionId, CombinePath(CurrentPath, name.Trim()), ct);
+            await _sftpService.CreateFileAsync(
+                _sessionId,
+                CombinePath(CurrentPath, name.Trim()),
+                ct
+            );
             await RefreshAsync(ct);
         }
         catch (Exception ex)
@@ -1804,7 +2076,10 @@ public class FileBrowserViewModel : ReactiveObject
         await CopyToClipboard(file.Name);
     }
 
-    private async Task ShowPropertiesAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
+    private async Task ShowPropertiesAsync(
+        RemoteFileInfoViewModel? file,
+        CancellationToken ct = default
+    )
     {
         if (ShowFileProperties is null || file is null || file.IsParentEntry)
         {
@@ -1829,7 +2104,10 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
-    private async Task DeleteItemAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
+    private async Task DeleteItemAsync(
+        RemoteFileInfoViewModel? file,
+        CancellationToken ct = default
+    )
     {
         if (file is null || file.IsParentEntry)
         {
@@ -1837,7 +2115,9 @@ public class FileBrowserViewModel : ReactiveObject
         }
         if (ConfirmDelete is not null)
         {
-            string template = file.IsDirectory ? Strings.ConfirmDeleteFolder : Strings.ConfirmDeleteFile;
+            string template = file.IsDirectory
+                ? Strings.ConfirmDeleteFolder
+                : Strings.ConfirmDeleteFile;
             bool ok = await ConfirmDelete(WithServerTag(string.Format(template, file.Name)));
             if (!ok)
             {
@@ -1856,9 +2136,18 @@ public class FileBrowserViewModel : ReactiveObject
         }
         if (ConfirmDelete is not null)
         {
-            bool ok = await ConfirmDelete(WithServerTag(targets.Count == 1
-                                              ? string.Format(targets[0].IsDirectory ? Strings.ConfirmDeleteFolder : Strings.ConfirmDeleteFile, targets[0].Name)
-                                              : string.Format(Strings.ConfirmDeleteMultiple, targets.Count)));
+            bool ok = await ConfirmDelete(
+                WithServerTag(
+                    targets.Count == 1
+                        ? string.Format(
+                            targets[0].IsDirectory
+                                ? Strings.ConfirmDeleteFolder
+                                : Strings.ConfirmDeleteFile,
+                            targets[0].Name
+                        )
+                        : string.Format(Strings.ConfirmDeleteMultiple, targets.Count)
+                )
+            );
             if (!ok)
             {
                 return;
@@ -1871,7 +2160,10 @@ public class FileBrowserViewModel : ReactiveObject
     /// Deletes the given entries one after another behind a single busy overlay; the
     /// per-entry recursive progress is folded into one running "deleted / total" readout.
     /// </summary>
-    private async Task DeleteManyAsync(IReadOnlyList<RemoteFileInfoViewModel> targets, CancellationToken ct)
+    private async Task DeleteManyAsync(
+        IReadOnlyList<RemoteFileInfoViewModel> targets,
+        CancellationToken ct
+    )
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _deleteCts = cts;
@@ -1893,7 +2185,11 @@ public class FileBrowserViewModel : ReactiveObject
                         IsDeleteProgressIndeterminate = false;
                         // Weight each entry equally so a huge folder among small files still moves the bar.
                         DeleteProgressPercent = ((index * 100.0) + p.Percentage) / targets.Count;
-                        BusyText = string.Format(Strings.DeletingProgress, p.DeletedCount, p.TotalCount);
+                        BusyText = string.Format(
+                            Strings.DeletingProgress,
+                            p.DeletedCount,
+                            p.TotalCount
+                        );
                     }
                     else
                     {
@@ -1901,7 +2197,12 @@ public class FileBrowserViewModel : ReactiveObject
                         BusyText = Strings.Deleting;
                     }
                 });
-                await _sftpService.DeleteAsync(_sessionId, targets[i].FullPath, progress, cts.Token);
+                await _sftpService.DeleteAsync(
+                    _sessionId,
+                    targets[i].FullPath,
+                    progress,
+                    cts.Token
+                );
             }
             await RefreshAsync(ct);
         }
@@ -1926,7 +2227,8 @@ public class FileBrowserViewModel : ReactiveObject
     }
 
     /// <summary>Joins a directory and a leaf name into a Unix-style remote path.</summary>
-    private static string CombinePath(string directory, string name) => directory == "/" ? "/" + name : directory.TrimEnd('/') + "/" + name;
+    private static string CombinePath(string directory, string name) =>
+        directory == "/" ? "/" + name : directory.TrimEnd('/') + "/" + name;
 
     /// <summary>The parent directory of a Unix-style remote path.</summary>
     private static string ParentOf(string path)
@@ -1942,5 +2244,9 @@ public class FileBrowserViewModel : ReactiveObject
     /// A single file scheduled for transfer, resolved up front so the whole batch can be
     /// counted and cancelled as one unit.
     /// </summary>
-    private sealed record PlannedFileTransfer(TransferType Type, string LocalPath, string RemotePath);
+    private sealed record PlannedFileTransfer(
+        TransferType Type,
+        string LocalPath,
+        string RemotePath
+    );
 }

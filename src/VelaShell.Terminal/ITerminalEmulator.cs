@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 
 namespace VelaShell.Terminal;
 
@@ -86,6 +87,15 @@ public interface ITerminalEmulator : IDisposable
     /// Programmatically send input bytes as if the user typed them
     /// </summary>
     void WriteInput(byte[] data);
+
+    /// <summary>按终端自身编码和状态发送已提交文本。</summary>
+    void WriteTextInput(string text);
+
+    /// <summary>按终端自身模式编码并发送一个非文本按键。</summary>
+    bool WriteKeyInput(Key key, KeyModifiers modifiers);
+
+    /// <summary>按终端的 bracketed-paste 状态发送粘贴文本。</summary>
+    void WritePasteInput(string text);
 
     /// <summary>
     /// Get the content of a specific line in the terminal buffer

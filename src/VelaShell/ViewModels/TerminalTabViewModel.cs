@@ -1,5 +1,6 @@
 using System.Reactive;
 using System.Text;
+using Avalonia.Input;
 using Avalonia.Threading;
 using ReactiveUI;
 using VelaShell.Core.Models;
@@ -391,6 +392,10 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             return;
         }
         _disposed = true;
+        // 立即标记为未连接:广播写入(TryWriteTextInput/KeyInput/PasteInput)都以 IsConnected 为闸门。
+        // 多终端广播粘贴会在弹出确认框前就快照目标列表,若用户在确认期间关掉某个目标标签,
+        // 快照里仍含该标签;不复位 IsConnected 的话,确认后会向已释放的桥写入而与释放竞争。
+        IsConnected = false;
         TerminalEmulator.PtySizeChanged -= OnPtySizeChanged;
         TerminalEmulator.TypedInput -= OnUserInputForTracker;
         InputTracker.CommandSubmitted -= OnTrackedCommandSubmitted;
@@ -447,6 +452,32 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         }
         string payload = command.TrimEnd('\r', '\n') + "\r";
         TerminalEmulator.WriteInput(Encoding.UTF8.GetBytes(payload));
+        return true;
+    }
+
+    /// <summary>向已连接终端发送广播文本。</summary>
+    public bool TryWriteTextInput(string text)
+    {
+        if (!IsConnected || string.IsNullOrEmpty(text))
+        {
+            return false;
+        }
+        TerminalEmulator.WriteTextInput(text);
+        return true;
+    }
+
+    /// <summary>按本终端模式编码并发送广播按键。</summary>
+    public bool TryWriteKeyInput(Key key, Avalonia.Input.KeyModifiers modifiers) =>
+        IsConnected && TerminalEmulator.WriteKeyInput(key, modifiers);
+
+    /// <summary>按本终端 bracketed-paste 状态发送广播粘贴。</summary>
+    public bool TryWritePasteInput(string text)
+    {
+        if (!IsConnected || string.IsNullOrEmpty(text))
+        {
+            return false;
+        }
+        TerminalEmulator.WritePasteInput(text);
         return true;
     }
 

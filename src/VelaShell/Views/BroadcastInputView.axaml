@@ -1,0 +1,118 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:VelaShell.ViewModels"
+             xmlns:pvm="using:VelaShell.Presentation.ViewModels"
+             xmlns:pc="using:VelaShell.Controls.Controls"
+             xmlns:loc="using:VelaShell.Localization"
+             x:Class="VelaShell.Views.BroadcastInputView"
+             x:DataType="vm:MainWindowViewModel"
+             Focusable="True"
+             IsVisible="{Binding BroadcastInput.IsVisible}">
+  <UserControl.Styles>
+    <Style Selector="Button.broadcast-target">
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.broadcast-capture">
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" />
+    </Style>
+    <Style Selector="Border.broadcast-capture:focus-within">
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Height="38"
+          Padding="8,5"
+          Background="{DynamicResource VelaBgSidebar}"
+          BorderBrush="{DynamicResource VelaBorderPrimary}"
+          BorderThickness="0,1,0,0">
+    <Grid ColumnDefinitions="190,6,*,6,28">
+      <Button Grid.Column="0" Classes="broadcast-target">
+        <Button.Flyout>
+          <Flyout Placement="TopEdgeAlignedLeft">
+            <Border Width="260" MaxHeight="320" Padding="10"
+                    Background="{DynamicResource VelaBgSurface}"
+                    BorderBrush="{DynamicResource VelaBorderSecondary}"
+                    BorderThickness="1" CornerRadius="5">
+              <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="*,Auto,8,Auto">
+                  <TextBlock Text="{loc:Localize QuickCmd_SelectTargets}"
+                             Foreground="{DynamicResource VelaTextPrimary}"
+                             FontSize="11" FontWeight="SemiBold" />
+                  <Button Grid.Column="1" Height="24" Padding="7,0"
+                          Content="{loc:Localize QuickCmd_SelectAll}"
+                          Command="{Binding BroadcastInput.TargetSelector.SelectAllCommand}" />
+                  <Button Grid.Column="3" Height="24" Padding="7,0"
+                          Content="{loc:Localize QuickCmd_ClearSelection}"
+                          Command="{Binding BroadcastInput.TargetSelector.ClearSelectionCommand}" />
+                </Grid>
+                <TextBlock Text="{loc:Localize QuickCmd_NoConnectedTerminals}"
+                           Foreground="{DynamicResource VelaTextMuted}" FontSize="10"
+                           IsVisible="{Binding !BroadcastInput.TargetSelector.HasTargets}" />
+                <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto"
+                              IsVisible="{Binding BroadcastInput.TargetSelector.HasTargets}">
+                  <ItemsControl ItemsSource="{Binding BroadcastInput.TargetSelector.Targets}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="pvm:QuickCommandTargetViewModel">
+                        <CheckBox IsChecked="{Binding IsSelected}"
+                                  Content="{Binding DisplayName}"
+                                  FontFamily="{DynamicResource VelaTerminalFont}"
+                                  FontSize="11" Margin="2,3" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+              </StackPanel>
+            </Border>
+          </Flyout>
+        </Button.Flyout>
+        <Grid ColumnDefinitions="Auto,6,*,Auto">
+          <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.send}"
+                         Foreground="{DynamicResource VelaAccent}" />
+          <TextBlock Grid.Column="2" Text="{loc:Localize QuickCmd_CurrentTerminal}"
+                     FontSize="10" VerticalAlignment="Center"
+                     IsVisible="{Binding !BroadcastInput.TargetSelector.HasSelectedTargets}" />
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                      IsVisible="{Binding BroadcastInput.TargetSelector.HasSelectedTargets}">
+            <TextBlock Text="{Binding BroadcastInput.TargetSelector.SelectedTargetCount}"
+                       Foreground="{DynamicResource VelaAccent}" FontSize="10" />
+            <TextBlock Text="{loc:Localize QuickCmd_SelectedTerminals}" FontSize="10" />
+          </StackPanel>
+          <pc:LucideIcon Grid.Column="3" Width="11" Height="11"
+                         Data="{StaticResource Icon.chevron-down}"
+                         Foreground="{DynamicResource VelaTextMuted}" />
+        </Grid>
+      </Button>
+
+      <Border x:Name="CaptureBorder" Grid.Column="2" Classes="broadcast-capture"
+              Focusable="True"
+              PointerPressed="Capture_PointerPressed">
+        <Grid ColumnDefinitions="Auto,8,*" Margin="8,0">
+          <Border Width="6" Height="6" CornerRadius="3"
+                  Background="{DynamicResource VelaStatusConnected}"
+                  VerticalAlignment="Center" />
+          <TextBlock Grid.Column="2" Text="{loc:Localize Broadcast_TypeHint}"
+                     Foreground="{DynamicResource VelaTextMuted}"
+                     FontFamily="{DynamicResource VelaTerminalFont}"
+                     FontSize="10" VerticalAlignment="Center" />
+        </Grid>
+      </Border>
+
+      <Button Grid.Column="4" Width="28" Height="28" Padding="0"
+              Background="Transparent" CornerRadius="3"
+              Command="{Binding BroadcastInput.CloseCommand}"
+              ToolTip.Tip="{loc:Localize Close}">
+        <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.x}"
+                       Foreground="{DynamicResource VelaTextTertiary}" />
+      </Button>
+    </Grid>
+  </Border>
+</UserControl>

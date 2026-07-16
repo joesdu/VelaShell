@@ -101,35 +101,67 @@
 
     <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled">
-      <ItemsControl ItemsSource="{Binding Library.FilteredCommands}" Margin="4,0,4,6">
+      <ItemsControl ItemsSource="{Binding Library.FilteredGroups}" Margin="4,0,4,6">
         <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="pvm:QuickCommandViewModel">
-            <Border Margin="4,2" Padding="8,6" CornerRadius="4"
-                    Background="Transparent">
-              <Border.Styles>
-                <Style Selector="Border:pointerover">
-                  <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
-                </Style>
-              </Border.Styles>
-              <Grid ColumnDefinitions="*,8,Auto">
-                <StackPanel Grid.Column="0" Spacing="2">
-                  <TextBlock Text="{Binding Name}"
-                             Foreground="{DynamicResource VelaTextPrimary}"
-                             FontSize="11" FontWeight="SemiBold"
+          <DataTemplate x:DataType="pvm:QuickCommandGroupViewModel">
+            <StackPanel Margin="0,2">
+              <ToggleButton IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                            Background="Transparent" BorderThickness="0"
+                            Padding="7,5" HorizontalContentAlignment="Stretch"
+                            Cursor="Hand">
+                <Grid ColumnDefinitions="Auto,6,*,Auto">
+                  <Panel Width="11" Height="11">
+                    <pc:LucideIcon Width="11" Height="11"
+                                   Data="{StaticResource Icon.chevron-right}"
+                                   Foreground="{DynamicResource VelaTextTertiary}"
+                                   IsVisible="{Binding !IsExpanded}" />
+                    <pc:LucideIcon Width="11" Height="11"
+                                   Data="{StaticResource Icon.chevron-down}"
+                                   Foreground="{DynamicResource VelaTextTertiary}"
+                                   IsVisible="{Binding IsExpanded}" />
+                  </Panel>
+                  <TextBlock Grid.Column="2" Text="{Binding Name}"
+                             Foreground="{DynamicResource VelaTextSecondary}"
+                             FontSize="10" FontWeight="SemiBold"
                              TextTrimming="CharacterEllipsis" />
-                  <TextBlock Text="{Binding CommandText}"
-                             Foreground="{DynamicResource VelaAccentText}"
-                             FontFamily="{DynamicResource VelaTerminalFont}"
-                             FontSize="9" TextTrimming="CharacterEllipsis"
-                             ToolTip.Tip="{Binding CommandText}" />
-                </StackPanel>
-                <Button Grid.Column="2" Classes="quick-action"
-                        Content="{loc:Localize QuickCmd_Run}"
-                        Command="{Binding $parent[ItemsControl].((pvm:QuickCommandRunnerViewModel)DataContext).RunCommand}"
-                        CommandParameter="{Binding}"
-                        VerticalAlignment="Center" />
-              </Grid>
-            </Border>
+                  <TextBlock Grid.Column="3" Text="{Binding FilteredCommands.Count}"
+                             Foreground="{DynamicResource VelaTextMuted}" FontSize="9" />
+                </Grid>
+              </ToggleButton>
+              <ItemsControl ItemsSource="{Binding FilteredCommands}"
+                            IsVisible="{Binding IsExpanded}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="pvm:QuickCommandViewModel">
+                    <Border Margin="4,1" Padding="8,6" CornerRadius="4"
+                            Background="Transparent">
+                      <Border.Styles>
+                        <Style Selector="Border:pointerover">
+                          <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+                        </Style>
+                      </Border.Styles>
+                      <Grid ColumnDefinitions="*,8,Auto">
+                        <StackPanel Spacing="2">
+                          <TextBlock Text="{Binding Name}"
+                                     Foreground="{DynamicResource VelaTextPrimary}"
+                                     FontSize="11" FontWeight="SemiBold"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding CommandText}"
+                                     Foreground="{DynamicResource VelaAccentText}"
+                                     FontFamily="{DynamicResource VelaTerminalFont}"
+                                     FontSize="9" TextTrimming="CharacterEllipsis"
+                                     ToolTip.Tip="{Binding CommandText}" />
+                        </StackPanel>
+                        <Button Grid.Column="2" Classes="quick-action"
+                                Content="{loc:Localize QuickCmd_Run}"
+                                Command="{Binding $parent[UserControl].((pvm:QuickCommandRunnerViewModel)DataContext).RunCommand}"
+                                CommandParameter="{Binding}"
+                                VerticalAlignment="Center" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>

@@ -14,6 +14,18 @@ public class AppState
 
     /// <summary>上次处于活动状态的标签页标识,用于恢复用户的工作上下文。</summary>
     public string? LastActiveTab { get; set; }
+
+    /// <summary>快捷命令侧栏区域是否展开。</summary>
+    public bool SidebarQuickCommandsExpanded { get; set; } = true;
+
+    /// <summary>快捷命令侧栏区域上次展开时的高度。</summary>
+    public double SidebarQuickCommandsHeight { get; set; } = 160;
+
+    /// <summary>最近连接侧栏区域是否展开。</summary>
+    public bool SidebarRecentConnectionsExpanded { get; set; } = true;
+
+    /// <summary>最近连接侧栏区域上次展开时的高度。</summary>
+    public double SidebarRecentConnectionsHeight { get; set; } = 180;
 }
 
 /// <summary>窗口在屏幕上的位置坐标。</summary>

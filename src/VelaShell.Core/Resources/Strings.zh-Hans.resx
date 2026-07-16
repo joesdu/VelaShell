@@ -230,6 +230,10 @@
   <data name="QuickCmd_SelectedTerminals" xml:space="preserve"><value>个终端已选</value></data>
   <data name="QuickCmd_Search" xml:space="preserve"><value>搜索代码片段</value></data>
   <data name="QuickCmd_Run" xml:space="preserve"><value>运行</value></data>
+  <data name="QuickCmd_Ungrouped" xml:space="preserve"><value>未分组</value></data>
+  <data name="QuickCmd_GroupPlaceholder" xml:space="preserve"><value>分组名称</value></data>
+  <data name="QuickCmd_EditSnippet" xml:space="preserve"><value>编辑代码片段</value></data>
+  <data name="Broadcast_TypeHint" xml:space="preserve"><value>同步输入已开启，键入内容将发送到所选终端</value></data>
   <data name="AddCommand" xml:space="preserve">
     <value>添加命令</value>
   </data>
@@ -2825,6 +2829,12 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   </data>
   <data name="TunnelSvc_TargetUnreachable" xml:space="preserve">
     <value>目标不可达:请确认目标主机从服务器可以访问(内网地址/防火墙)。</value>
+  </data>
+  <data name="SetGeneral_FollowActiveTerminal" xml:space="preserve">
+    <value>活动终端跟随资源管理器</value>
+  </data>
+  <data name="SetGeneral_FollowActiveTerminalDesc" xml:space="preserve">
+    <value>切换终端标签时,自动展开、选中并定位到对应的已保存连接。</value>
   </data>
   <data name="ZModem_ChooseDownloadFolder" xml:space="preserve">
     <value>选择 ZMODEM 下载目录</value>
