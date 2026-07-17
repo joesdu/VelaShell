@@ -8,7 +8,6 @@ using NSubstitute;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Presentation.ViewModels;
-using VelaShell.ViewModels;
 using VelaShell.Views;
 
 namespace VelaShell.Tests.Views;
@@ -233,38 +232,6 @@ public class SidebarQuickCommandsUiTests
                     .OfType<Avalonia.Controls.Primitives.ToggleButton>()
                     .Count()
             );
-            window.Close();
-        });
-    }
-
-    [TestMethod]
-    public void BroadcastBar_ToggleFocusAndClose_UsesTextlessCaptureArea()
-    {
-        OnUi(() =>
-        {
-            var viewModel = new MainWindowViewModel();
-            var view = new BroadcastInputView { DataContext = viewModel };
-            var window = new Window
-            {
-                Width = 900,
-                Height = 80,
-                Content = view,
-            };
-            window.Show();
-
-            viewModel.BroadcastInput.ToggleCommand.Execute().Subscribe();
-            Relayout(window);
-            view.FocusCapture();
-            Relayout(window);
-
-            Border capture = view.FindControl<Border>("CaptureBorder")!;
-            Assert.IsTrue(view.IsVisible);
-            Assert.IsTrue(capture.IsFocused);
-            Assert.IsEmpty(view.GetVisualDescendants().OfType<TextBox>());
-
-            viewModel.BroadcastInput.CloseCommand.Execute().Subscribe();
-            Relayout(window);
-            Assert.IsFalse(view.IsVisible);
             window.Close();
         });
     }

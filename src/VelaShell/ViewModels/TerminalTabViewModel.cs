@@ -1,6 +1,5 @@
 using System.Reactive;
 using System.Text;
-using Avalonia.Input;
 using Avalonia.Threading;
 using ReactiveUI;
 using VelaShell.Core.Models;
@@ -70,6 +69,20 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         CloseTabCommand = ReactiveCommand.Create(() =>
             CloseRequested?.Invoke(this, EventArgs.Empty)
         );
+
+        // 同步输入横条(标签右键菜单 → 同步输入)的三个动作。
+        ToggleSyncPauseCommand = ReactiveCommand.Create(() =>
+        {
+            IsSyncPaused = !IsSyncPaused;
+        });
+        LeaveSyncChannelCommand = ReactiveCommand.Create(LeaveSyncChannel);
+        CloseSyncChannelCommand = ReactiveCommand.Create(() =>
+        {
+            if (SyncChannel is { } channel)
+            {
+                SyncChannelCloseRequested?.Invoke(channel);
+            }
+        });
     }
 
     /// <summary>Creates a tab and attaches a live transport immediately (the established-connection case).</summary>
@@ -96,6 +109,84 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         Profile is { } profile
             ? ConnectionAccent.BrushFor(profile.Id)
             : Avalonia.Media.Brushes.Transparent;
+
+    // ---- 同步输入频道(标签右键菜单 → 同步输入,对等转发见 SyncInputCoordinator) ----
+
+    /// <summary>所属同步输入频道;null = 未加入。经 <see cref="JoinSyncChannel" /> / <see cref="LeaveSyncChannel" /> 变更。</summary>
+    public SyncInputChannel? SyncChannel
+    {
+        get;
+        private set
+        {
+            this.RaiseAndSetIfChanged(ref field, value);
+            this.RaisePropertyChanged(nameof(SyncChannelLetter));
+            this.RaisePropertyChanged(nameof(SyncChannelBrush));
+            this.RaisePropertyChanged(nameof(IsInSyncChannel));
+        }
+    }
+
+    /// <summary>是否已加入某个同步输入频道(标签头字母与终端上方横条的可见性)。</summary>
+    public bool IsInSyncChannel => SyncChannel is not null;
+
+    /// <summary>频道字母(A/B/C/D),未加入频道时为空串。</summary>
+    public string SyncChannelLetter => SyncChannel?.ToString() ?? string.Empty;
+
+    /// <summary>频道标识色,未加入频道时透明。</summary>
+    public Avalonia.Media.IBrush SyncChannelBrush =>
+        SyncChannel is { } channel
+            ? SyncInputChannels.BrushFor(channel)
+            : Avalonia.Media.Brushes.Transparent;
+
+    /// <summary>true = 本标签的同步输入已暂停:既不向频道发送,也不接收频道输入。</summary>
+    public bool IsSyncPaused
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>暂停/恢复本标签的同步输入(横条“暂停”按钮)。</summary>
+    public ReactiveCommand<Unit, Unit> ToggleSyncPauseCommand { get; }
+
+    /// <summary>让本标签退出频道(横条“离开频道”按钮与关闭钮)。</summary>
+    public ReactiveCommand<Unit, Unit> LeaveSyncChannelCommand { get; }
+
+    /// <summary>请求关闭整个频道:所有成员标签一并退出(横条“关闭频道”按钮)。</summary>
+    public ReactiveCommand<Unit, Unit> CloseSyncChannelCommand { get; }
+
+    /// <summary>“关闭频道”触发,由 SyncInputCoordinator 让频道内全部标签退出。</summary>
+    public event Action<SyncInputChannel>? SyncChannelCloseRequested;
+
+    /// <summary>加入频道(已在其他频道时直接改挂新频道),并清除暂停态。</summary>
+    public void JoinSyncChannel(SyncInputChannel channel)
+    {
+        IsSyncPaused = false;
+        SyncChannel = channel;
+    }
+
+    /// <summary>退出当前频道并清除暂停态(未加入时为空操作)。</summary>
+    public void LeaveSyncChannel()
+    {
+        SyncChannel = null;
+        IsSyncPaused = false;
+    }
+
+    /// <summary>
+    /// 把同频道其他标签的用户输入直写本标签 PTY。走桥的 SendRaw 而非终端控件的
+    /// WriteInput:不触发本标签的 TypedInput(防转发回环),也不进入命令补全的行
+    /// 跟踪——智能建议弹层只属于用户正在键入的焦点标签。以 IsConnected 为闸门,
+    /// 关闭中的标签(Dispose 先复位 IsConnected)不会被写入。
+    /// </summary>
+    public void WriteSyncInput(byte[] data)
+    {
+        if (!IsConnected)
+        {
+            return;
+        }
+        Bridge?.SendRaw(data);
+    }
+
+    /// <summary>true = 当前的程序化写入不转发到同步频道(快捷命令自带多目标分发)。</summary>
+    public bool IsSyncForwardSuppressed { get; private set; }
 
     /// <summary>本标签正在键入的命令行跟踪器(命令补全弹层的数据入口,见视图侧)。</summary>
     public TerminalInputTracker InputTracker { get; } = new();
@@ -392,9 +483,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             return;
         }
         _disposed = true;
-        // 立即标记为未连接:广播写入(TryWriteTextInput/KeyInput/PasteInput)都以 IsConnected 为闸门。
-        // 多终端广播粘贴会在弹出确认框前就快照目标列表,若用户在确认期间关掉某个目标标签,
-        // 快照里仍含该标签;不复位 IsConnected 的话,确认后会向已释放的桥写入而与释放竞争。
+        // 立即标记为未连接:同步频道转发(WriteSyncInput)以 IsConnected 为闸门。
+        // 频道内其他标签的输入可能与本标签的关闭并发,不复位 IsConnected 的话,
+        // 转发会向已释放的桥写入而与释放竞争。
         IsConnected = false;
         TerminalEmulator.PtySizeChanged -= OnPtySizeChanged;
         TerminalEmulator.TypedInput -= OnUserInputForTracker;
@@ -451,33 +542,18 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             return false;
         }
         string payload = command.TrimEnd('\r', '\n') + "\r";
-        TerminalEmulator.WriteInput(Encoding.UTF8.GetBytes(payload));
-        return true;
-    }
 
-    /// <summary>向已连接终端发送广播文本。</summary>
-    public bool TryWriteTextInput(string text)
-    {
-        if (!IsConnected || string.IsNullOrEmpty(text))
+        // 快捷命令可能同时下发给同频道的多个标签,若再经同步频道转发,频道内
+        // 每个标签都会收到重复注入;WriteInput 同步触发 TypedInput,压制窗口有效。
+        IsSyncForwardSuppressed = true;
+        try
         {
-            return false;
+            TerminalEmulator.WriteInput(Encoding.UTF8.GetBytes(payload));
         }
-        TerminalEmulator.WriteTextInput(text);
-        return true;
-    }
-
-    /// <summary>按本终端模式编码并发送广播按键。</summary>
-    public bool TryWriteKeyInput(Key key, Avalonia.Input.KeyModifiers modifiers) =>
-        IsConnected && TerminalEmulator.WriteKeyInput(key, modifiers);
-
-    /// <summary>按本终端 bracketed-paste 状态发送广播粘贴。</summary>
-    public bool TryWritePasteInput(string text)
-    {
-        if (!IsConnected || string.IsNullOrEmpty(text))
+        finally
         {
-            return false;
+            IsSyncForwardSuppressed = false;
         }
-        TerminalEmulator.WritePasteInput(text);
         return true;
     }
 

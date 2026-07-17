@@ -61,9 +61,6 @@ public static class Strings
     /// <summary>“拆分”窗格菜单/按钮文案。</summary>
     public static string Split => ResourceManager.GetString(nameof(Split), CultureInfo.CurrentUICulture) ?? nameof(Split);
 
-    /// <summary>“广播”输入菜单/按钮文案。</summary>
-    public static string Broadcast => ResourceManager.GetString(nameof(Broadcast), CultureInfo.CurrentUICulture) ?? nameof(Broadcast);
-
     /// <summary>“同步分组”菜单/按钮文案。</summary>
     public static string SyncGroup => ResourceManager.GetString(nameof(SyncGroup), CultureInfo.CurrentUICulture) ?? nameof(SyncGroup);
 

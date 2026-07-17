@@ -19,6 +19,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
     /// 与「活跃/连接中」标签才不会因刷新而回到断开态。
     /// </summary>
     private readonly Dictionary<Guid, SessionStatus> _statusCache = [];
+    private readonly Dictionary<Guid, string> _syncChannelCache = [];
 
     private bool _hasNoSessions;
 
@@ -240,6 +241,14 @@ public sealed class SessionTreeViewModel : ReactiveObject
         node?.Status = status;
     }
 
+    /// <summary>宿主上报某配置的同步输入频道字母(空串 = 已退出),驱动节点名前的频道标识。</summary>
+    public void SetSessionSyncChannel(Guid sessionId, string letter)
+    {
+        _syncChannelCache[sessionId] = letter;
+        SessionTreeNodeViewModel? node = FindSessionNode(sessionId, out _);
+        node?.SyncChannelLetter = letter;
+    }
+
     /// <summary>展开父分组并选中指定会话;找不到时保留当前选择。</summary>
     public bool SelectSession(Guid sessionId)
     {
@@ -251,10 +260,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
         {
             return false;
         }
-        if (parentGroup is not null)
-        {
-            parentGroup.IsExpanded = true;
-        }
+        parentGroup?.IsExpanded = true;
         foreach (SessionTreeNodeViewModel current in EnumerateSessionNodes())
         {
             current.IsSelected = ReferenceEquals(current, node);
@@ -401,6 +407,10 @@ public sealed class SessionTreeViewModel : ReactiveObject
         if (_statusCache.TryGetValue(session.Id, out SessionStatus status))
         {
             node.Status = status;
+        }
+        if (_syncChannelCache.TryGetValue(session.Id, out string? letter))
+        {
+            node.SyncChannelLetter = letter;
         }
         return node;
     }

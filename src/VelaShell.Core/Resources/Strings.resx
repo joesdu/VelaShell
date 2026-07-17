@@ -54,9 +54,6 @@
   <data name="Split" xml:space="preserve">
     <value>Split</value>
   </data>
-  <data name="Broadcast" xml:space="preserve">
-    <value>Broadcast</value>
-  </data>
   <data name="SyncGroup" xml:space="preserve">
     <value>Sync Group</value>
   </data>
@@ -134,7 +131,6 @@
   <data name="QuickCmd_Ungrouped" xml:space="preserve"><value>Ungrouped</value></data>
   <data name="QuickCmd_GroupPlaceholder" xml:space="preserve"><value>Group name</value></data>
   <data name="QuickCmd_EditSnippet" xml:space="preserve"><value>Edit snippet</value></data>
-  <data name="Broadcast_TypeHint" xml:space="preserve"><value>Broadcast input active — type to send to the selected terminals</value></data>
   <data name="AddCommand" xml:space="preserve">
     <value>Add Command</value>
   </data>
@@ -2760,4 +2756,17 @@ Overwrite it? (Cancel skips this file)</value>
   <data name="ZModem_ChooseUploadFilesRetry" xml:space="preserve">
     <value>No files chosen — choose some, or cancel again to abort the transfer</value>
   </data>
+  <data name="SyncInput_Menu" xml:space="preserve"><value>Sync Input</value></data>
+  <data name="SyncInput_JoinChannelA" xml:space="preserve"><value>Join Channel A</value></data>
+  <data name="SyncInput_JoinChannelB" xml:space="preserve"><value>Join Channel B</value></data>
+  <data name="SyncInput_JoinChannelC" xml:space="preserve"><value>Join Channel C</value></data>
+  <data name="SyncInput_JoinChannelD" xml:space="preserve"><value>Join Channel D</value></data>
+  <data name="SyncInput_LeaveAll" xml:space="preserve"><value>Leave All Channels</value></data>
+  <data name="SyncInput_BannerPrefix" xml:space="preserve"><value>Syncing input in channel</value></data>
+  <data name="SyncInput_BannerSuffix" xml:space="preserve"><value></value></data>
+  <data name="SyncInput_Paused" xml:space="preserve"><value>(Paused)</value></data>
+  <data name="SyncInput_Pause" xml:space="preserve"><value>Pause</value></data>
+  <data name="SyncInput_Resume" xml:space="preserve"><value>Resume</value></data>
+  <data name="SyncInput_Leave" xml:space="preserve"><value>Leave Channel</value></data>
+  <data name="SyncInput_Close" xml:space="preserve"><value>Close Channel</value></data>
 </root>

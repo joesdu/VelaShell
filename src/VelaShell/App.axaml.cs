@@ -204,15 +204,9 @@ public class App : Application
                 // 启动同步失败静默;设置页手动同步会给出错误详情。
             }
         });
-        if (settingsService is not null)
-        {
-            settingsService.SettingsSaved += _ => QueueAutoSyncUnlessApplyingRemote(syncService);
-        }
-        if (quickCommandRepository is not null)
-        {
-            quickCommandRepository.Changed += (_, _) =>
+        settingsService?.SettingsSaved += _ => QueueAutoSyncUnlessApplyingRemote(syncService);
+        quickCommandRepository?.Changed += (_, _) =>
                 QueueAutoSyncUnlessApplyingRemote(syncService);
-        }
     }
 
     private void QueueAutoSyncUnlessApplyingRemote(IGistSyncService syncService)

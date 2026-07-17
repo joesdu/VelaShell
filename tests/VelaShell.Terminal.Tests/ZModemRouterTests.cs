@@ -115,7 +115,7 @@ public class ZModemRouterTests
     [TestMethod]
     public void Router_RzWithoutUploadPicker_PassesBytesThroughInsteadOfHijacking()
     {
-        var shell = Substitute.For<IShellStreamWrapper>();
+        IShellStreamWrapper shell = Substitute.For<IShellStreamWrapper>();
         shell.CanWrite.Returns(true);
         var router = new ZModemTerminalRouter(shell, () => new RouterTestSink());
 
@@ -134,7 +134,7 @@ public class ZModemRouterTests
     {
         // A shell stream whose WriteAsync captures the receiver's protocol replies and
         // whose reads are irrelevant (the router feeds the engine via ProcessIncoming).
-        var shell = Substitute.For<IShellStreamWrapper>();
+        IShellStreamWrapper shell = Substitute.For<IShellStreamWrapper>();
         shell.CanWrite.Returns(true);
         var fromReceiver = new MemoryStream();
         shell.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())

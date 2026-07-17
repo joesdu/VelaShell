@@ -35,15 +35,9 @@ public partial class SidebarView : UserControl
 
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
-        if (_viewModel is not null)
-        {
-            _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
-        }
+        _viewModel?.PropertyChanged -= OnViewModelPropertyChanged;
         _viewModel = DataContext as SidebarViewModel;
-        if (_viewModel is not null)
-        {
-            _viewModel.PropertyChanged += OnViewModelPropertyChanged;
-        }
+        _viewModel?.PropertyChanged += OnViewModelPropertyChanged;
         ApplyQuickCommandsVisibility();
         ApplyRecentConnectionsState();
     }

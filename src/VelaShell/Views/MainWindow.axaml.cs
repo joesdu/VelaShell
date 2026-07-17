@@ -332,8 +332,6 @@ public partial class MainWindow : Window
         {
             vm.TerminalSearchRequested += OnTerminalSearchRequested;
             vm.TerminalFocusRequested += (_, _) => FocusActiveTerminal(vm);
-            vm.BroadcastInputFocusRequested += (_, _) =>
-                this.FindControl<BroadcastInputView>("BroadcastInputHost")?.FocusCapture();
             vm.NewConnectionRequested += (_, _) => _ = OpenProfileDialogAsync(null);
             vm.SettingsRequested += (_, _) => _ = OpenSettingsAsync();
             vm.InteractiveAuthenticator = PromptCredentialsAsync;
@@ -956,7 +954,7 @@ public partial class MainWindow : Window
             TopLevel? top = GetTopLevel(this);
             if (top?.StorageProvider is not { } storage)
             {
-                return (IReadOnlyList<string>)[];
+                return [];
             }
             IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(new()
             {
@@ -973,7 +971,7 @@ public partial class MainWindow : Window
                     paths.Add(path);
                 }
             }
-            return (IReadOnlyList<string>)paths;
+            return paths;
         });
     }
 

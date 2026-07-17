@@ -160,7 +160,7 @@ public class QuickCommandsViewModel : ReactiveObject
 
     private void BuildFromData(QuickCommandData data)
     {
-        Dictionary<Guid, bool> expansion = Groups.ToDictionary(
+        var expansion = Groups.ToDictionary(
             group => group.Id,
             group => group.IsExpanded
         );

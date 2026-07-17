@@ -2129,23 +2129,23 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             case false
                 when _scrollOffset == 0
                     && tracking is MouseTracking.ButtonEvent or MouseTracking.AnyEvent:
-            {
-                bool held = _mouseButtonDown is not null;
-                if (tracking != MouseTracking.AnyEvent && !held)
                 {
+                    bool held = _mouseButtonDown is not null;
+                    if (tracking != MouseTracking.AnyEvent && !held)
+                    {
+                        return;
+                    }
+                    Point position = e.GetPosition(this);
+                    (int Col, int Row) cell = ScreenCell(position);
+                    if (cell == _lastMouseReportCell)
+                    {
+                        return;
+                    }
+                    _lastMouseReportCell = cell;
+                    TerminalMouseButton button = _mouseButtonDown ?? TerminalMouseButton.None;
+                    SendMouse(TerminalMouseEventType.Move, button, position, e.KeyModifiers);
                     return;
                 }
-                Point position = e.GetPosition(this);
-                (int Col, int Row) cell = ScreenCell(position);
-                if (cell == _lastMouseReportCell)
-                {
-                    return;
-                }
-                _lastMouseReportCell = cell;
-                TerminalMouseButton button = _mouseButtonDown ?? TerminalMouseButton.None;
-                SendMouse(TerminalMouseEventType.Move, button, position, e.KeyModifiers);
-                return;
-            }
             case true:
                 _selectionCaret = PointToCell(e.GetPosition(this));
                 InvalidateVisual();

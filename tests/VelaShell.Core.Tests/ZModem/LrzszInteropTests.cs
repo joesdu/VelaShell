@@ -39,7 +39,7 @@ public class LrzszInteropTests
     /// <summary>跑一次会话,取回接收方写到链路上的全部字节。</summary>
     private static async Task<byte[]> CaptureReceiverOutboundAsync(byte[] inbound)
     {
-        InMemoryByteDuplex duplex = InMemoryByteDuplex.FromInbound(inbound.Length > 0 ? [inbound] : []);
+        var duplex = InMemoryByteDuplex.FromInbound(inbound.Length > 0 ? [inbound] : []);
         var receiver = new ZModemReceiver(duplex, new InMemoryFileSink());
         await receiver.ReceiveAsync(CancellationToken.None);
         return await duplex.DrainOutboundAsync();
@@ -55,7 +55,7 @@ public class LrzszInteropTests
     {
         byte[] outbound = await CaptureReceiverOutboundAsync([]);
 
-        InMemoryByteDuplex echo = InMemoryByteDuplex.FromInbound([outbound]);
+        var echo = InMemoryByteDuplex.FromInbound([outbound]);
         ZModemHeaderResult frame = await new ZModemFrameReader(echo).ReadHeaderAsync(CancellationToken.None);
 
         Assert.AreEqual(ZModemReadStatus.Header, frame.Status);
@@ -97,7 +97,7 @@ public class LrzszInteropTests
         wire.AddRange("rz\r"u8.ToArray());
         wire.AddRange(LrzszHexHeader((byte)ZModemFrameType.ZRQINIT, [0, 0, 0, 0]));
 
-        InMemoryByteDuplex duplex = InMemoryByteDuplex.FromInbound([wire.ToArray()]);
+        var duplex = InMemoryByteDuplex.FromInbound([wire.ToArray()]);
         ZModemHeaderResult frame = await new ZModemFrameReader(duplex).ReadHeaderAsync(CancellationToken.None);
 
         Assert.AreEqual(ZModemReadStatus.Header, frame.Status);
@@ -123,7 +123,7 @@ public class LrzszInteropTests
             0x0D, 0x8A, 0x11                                // CR LF|0x80 XON
         ];
 
-        InMemoryByteDuplex duplex = InMemoryByteDuplex.FromInbound([captured]);
+        var duplex = InMemoryByteDuplex.FromInbound([captured]);
         ZModemHeaderResult frame = await new ZModemFrameReader(duplex).ReadHeaderAsync(CancellationToken.None);
 
         Assert.AreEqual(ZModemReadStatus.Header, frame.Status);
@@ -145,7 +145,7 @@ public class LrzszInteropTests
     {
         byte[] wire = LrzszHexHeader((byte)ZModemFrameType.ZRINIT, [0, 0, 0, 0x23]);
 
-        InMemoryByteDuplex duplex = InMemoryByteDuplex.FromInbound([wire]);
+        var duplex = InMemoryByteDuplex.FromInbound([wire]);
         ZModemHeaderResult frame = await new ZModemFrameReader(duplex).ReadHeaderAsync(CancellationToken.None);
 
         Assert.AreEqual(ZModemReadStatus.Header, frame.Status);

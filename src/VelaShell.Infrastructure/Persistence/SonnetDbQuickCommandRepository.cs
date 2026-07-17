@@ -171,7 +171,7 @@ public sealed class SonnetDbQuickCommandRepository(
     )
     {
         QuickCommandData data = (await LoadAsync(cancellationToken).ConfigureAwait(false)).Data;
-        Dictionary<Guid, QuickCommandGroup> groups = data.Groups.ToDictionary(group => group.Id);
+        var groups = data.Groups.ToDictionary(group => group.Id);
         return new()
         {
             SchemaVersion = QuickCommandData.CurrentSchemaVersion,
@@ -279,7 +279,7 @@ public sealed class SonnetDbQuickCommandRepository(
     private static QuickCommandData MigrateLegacy(LegacyQuickCommandData legacy)
     {
         QuickCommandData data = CreateEmptyDocument();
-        Dictionary<string, QuickCommandGroup> groups = data
+        var groups = data
             .Groups.Where(group => group.Kind != QuickCommandGroupKind.Default)
             .ToDictionary(group => group.Name, StringComparer.OrdinalIgnoreCase);
         int nextUserGroupOrder = QuickCommandGroupCatalog.BuiltIns.Count;
@@ -348,8 +348,8 @@ public sealed class SonnetDbQuickCommandRepository(
         data.SchemaVersion = QuickCommandData.CurrentSchemaVersion;
 
         List<QuickCommandGroup> normalizedGroups = QuickCommandGroupCatalog.CreateSystemGroups();
-        HashSet<Guid> groupIds = normalizedGroups.Select(group => group.Id).ToHashSet();
-        HashSet<string> groupNames = normalizedGroups
+        var groupIds = normalizedGroups.Select(group => group.Id).ToHashSet();
+        var groupNames = normalizedGroups
             .Where(group => group.Kind != QuickCommandGroupKind.Default)
             .Select(group => group.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);

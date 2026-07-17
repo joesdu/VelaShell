@@ -6,6 +6,7 @@ using VelaShell.Core.Models;
 using VelaShell.Core.Sftp;
 using VelaShell.Presentation.Commands;
 using VelaShell.Presentation.ViewModels;
+using VelaShell.Services;
 using VelaShell.Terminal;
 using VelaShell.ViewModels;
 
@@ -156,77 +157,90 @@ public class MainWindowViewModelTests
     }
 
     [TestMethod]
-    [TestCategory("Broadcast")]
-    public void BroadcastInput_UsesSharedSelectionAndPerTerminalInputMethods()
+    [TestCategory("SyncInput")]
+    public void SyncChannel_JoinPauseLeave_UpdatesTabState()
+    {
+        var tab = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>());
+
+        tab.JoinSyncChannel(SyncInputChannel.A);
+        Assert.IsTrue(tab.IsInSyncChannel);
+        Assert.AreEqual("A", tab.SyncChannelLetter);
+
+        tab.ToggleSyncPauseCommand.Execute().Subscribe();
+        Assert.IsTrue(tab.IsSyncPaused);
+
+        // 改挂新频道时清除暂停态。
+        tab.JoinSyncChannel(SyncInputChannel.B);
+        Assert.AreEqual("B", tab.SyncChannelLetter);
+        Assert.IsFalse(tab.IsSyncPaused);
+
+        tab.LeaveSyncChannelCommand.Execute().Subscribe();
+        Assert.IsFalse(tab.IsInSyncChannel);
+        Assert.AreEqual(string.Empty, tab.SyncChannelLetter);
+    }
+
+    [TestMethod]
+    [TestCategory("SyncInput")]
+    public void SyncChannel_CloseChannel_RemovesAllChannelMembersOnly()
+    {
+        var vm = new MainWindowViewModel();
+        var first = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>());
+        var second = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>());
+        var other = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>());
+        vm.TabBar.AddTab(first);
+        vm.TabBar.AddTab(second);
+        vm.TabBar.AddTab(other);
+        first.JoinSyncChannel(SyncInputChannel.A);
+        second.JoinSyncChannel(SyncInputChannel.A);
+        other.JoinSyncChannel(SyncInputChannel.B);
+
+        first.CloseSyncChannelCommand.Execute().Subscribe();
+
+        Assert.IsFalse(first.IsInSyncChannel);
+        Assert.IsFalse(second.IsInSyncChannel);
+        Assert.IsTrue(other.IsInSyncChannel);
+    }
+
+    [TestMethod]
+    [TestCategory("SyncInput")]
+    public void SyncChannel_RemovedTab_LeavesChannel()
+    {
+        var vm = new MainWindowViewModel();
+        var tab = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>());
+        vm.TabBar.AddTab(tab);
+        tab.JoinSyncChannel(SyncInputChannel.C);
+
+        vm.TabBar.Tabs.Remove(tab);
+
+        Assert.IsFalse(tab.IsInSyncChannel);
+    }
+
+    [TestMethod]
+    [TestCategory("SyncInput")]
+    public void SyncChannel_ForwardedInput_BypassesPeerEmulatorInputEvents()
     {
         var vm = new MainWindowViewModel();
         ITerminalEmulator firstEmulator = Substitute.For<ITerminalEmulator>();
         ITerminalEmulator secondEmulator = Substitute.For<ITerminalEmulator>();
-        firstEmulator
-            .WriteKeyInput(Arg.Any<Avalonia.Input.Key>(), Arg.Any<Avalonia.Input.KeyModifiers>())
-            .Returns(true);
-        secondEmulator
-            .WriteKeyInput(Arg.Any<Avalonia.Input.Key>(), Arg.Any<Avalonia.Input.KeyModifiers>())
-            .Returns(true);
         var first = new TerminalTabViewModel(firstEmulator)
         {
-            Title = "first",
             ConnectionStatus = SessionStatus.Connected,
         };
         var second = new TerminalTabViewModel(secondEmulator)
         {
-            Title = "second",
             ConnectionStatus = SessionStatus.Connected,
         };
         vm.TabBar.AddTab(first);
         vm.TabBar.AddTab(second);
-        vm.BroadcastInput.TargetSelector.Targets[0].IsSelected = true;
-        vm.BroadcastInput.TargetSelector.Targets[1].IsSelected = true;
+        first.JoinSyncChannel(SyncInputChannel.A);
+        second.JoinSyncChannel(SyncInputChannel.A);
 
-        Assert.IsTrue(vm.BroadcastTextInput("cd src"));
-        Assert.IsTrue(
-            vm.BroadcastKeyInput(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None)
-        );
+        firstEmulator.TypedInput += Raise.Event<Action<byte[]>>("ls"u8.ToArray());
 
-        firstEmulator.Received(1).WriteTextInput("cd src");
-        secondEmulator.Received(1).WriteTextInput("cd src");
-        firstEmulator
-            .Received(1)
-            .WriteKeyInput(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
-        secondEmulator
-            .Received(1)
-            .WriteKeyInput(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
-    }
-
-    [TestMethod]
-    [TestCategory("Broadcast")]
-    public void BroadcastInput_WithoutSelectionFallsBackToCurrentConnectedTerminal()
-    {
-        var vm = new MainWindowViewModel();
-        ITerminalEmulator emulator = Substitute.For<ITerminalEmulator>();
-        var tab = new TerminalTabViewModel(emulator) { ConnectionStatus = SessionStatus.Connected };
-        vm.TabBar.AddTab(tab);
-
-        Assert.IsTrue(vm.BroadcastTextInput("pwd"));
-
-        emulator.Received(1).WriteTextInput("pwd");
-    }
-
-    [TestMethod]
-    [TestCategory("Broadcast")]
-    public void BroadcastInput_DisconnectedTerminalIsRemovedFromTargets()
-    {
-        var vm = new MainWindowViewModel();
-        var tab = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>())
-        {
-            ConnectionStatus = SessionStatus.Connected,
-        };
-        vm.TabBar.AddTab(tab);
-        Assert.HasCount(1, vm.BroadcastInput.TargetSelector.Targets);
-
-        tab.ConnectionStatus = SessionStatus.Disconnected;
-
-        Assert.IsEmpty(vm.BroadcastInput.TargetSelector.Targets);
+        // 转发必须直写桥(SendRaw),不得经接收端终端控件的输入 API——否则会二次
+        // 触发 TypedInput(转发回环)并驱动非焦点标签的命令补全弹层。
+        secondEmulator.DidNotReceive().WriteInput(Arg.Any<byte[]>());
+        secondEmulator.DidNotReceive().WriteTextInput(Arg.Any<string>());
     }
 
     [TestMethod]

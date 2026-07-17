@@ -170,6 +170,31 @@ public class SessionTreeViewModelTests
 
     [TestMethod]
     [TestCategory("SessionTree")]
+    public async Task SetSessionSyncChannel_SetClearAndSurvivesTreeReload()
+    {
+        ServerGroup group = CreateGroup("Production", 0);
+        SessionProfile session = CreateSession("WebServer", group.Id);
+        _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { group }));
+        _repository
+            .GetAllSessionsAsync()
+            .Returns(Task.FromResult(new List<SessionProfile> { session }));
+        await _vm.LoadCommand.Execute().FirstAsync();
+
+        _vm.SetSessionSyncChannel(session.Id, "A");
+        Assert.AreEqual("A", _vm.Nodes[0].Children[0].SyncChannelLetter);
+        Assert.IsTrue(_vm.Nodes[0].Children[0].HasSyncChannel);
+
+        // 重建树后频道标识应从缓存重放。
+        await _vm.LoadCommand.Execute().FirstAsync();
+        Assert.AreEqual("A", _vm.Nodes[0].Children[0].SyncChannelLetter);
+
+        // 退出频道:上报空串清除标识。
+        _vm.SetSessionSyncChannel(session.Id, string.Empty);
+        Assert.IsFalse(_vm.Nodes[0].Children[0].HasSyncChannel);
+    }
+
+    [TestMethod]
+    [TestCategory("SessionTree")]
     public async Task SelectSession_ExpandsParentAndSelectsMatchingNode()
     {
         ServerGroup group = CreateGroup("Production", 0);

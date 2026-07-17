@@ -94,9 +94,6 @@
 
 반복해서 발생하면 다른 VelaShell 창을 닫고 다시 시도하세요.</value>
   </data>
-  <data name="Broadcast" xml:space="preserve">
-    <value>브로드캐스트</value>
-  </data>
   <data name="BrowseKeyFile" xml:space="preserve">
     <value>찾아보기…</value>
   </data>
@@ -1234,7 +1231,6 @@
   <data name="QuickCmd_Ungrouped" xml:space="preserve"><value>그룹 없음</value></data>
   <data name="QuickCmd_GroupPlaceholder" xml:space="preserve"><value>그룹 이름</value></data>
   <data name="QuickCmd_EditSnippet" xml:space="preserve"><value>스니펫 편집</value></data>
-  <data name="Broadcast_TypeHint" xml:space="preserve"><value>동기 입력이 활성화되었습니다. 입력이 선택한 터미널로 전송됩니다</value></data>
   <data name="QuickConnect" xml:space="preserve">
     <value>빠른 연결</value>
   </data>
@@ -2759,4 +2755,17 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="ZModem_ChooseUploadFilesRetry" xml:space="preserve">
     <value>파일이 선택되지 않음 — 파일을 선택하거나 다시 취소하면 업로드를 중단합니다</value>
   </data>
+  <data name="SyncInput_Menu" xml:space="preserve"><value>동기 입력</value></data>
+  <data name="SyncInput_JoinChannelA" xml:space="preserve"><value>채널 A 참여</value></data>
+  <data name="SyncInput_JoinChannelB" xml:space="preserve"><value>채널 B 참여</value></data>
+  <data name="SyncInput_JoinChannelC" xml:space="preserve"><value>채널 C 참여</value></data>
+  <data name="SyncInput_JoinChannelD" xml:space="preserve"><value>채널 D 참여</value></data>
+  <data name="SyncInput_LeaveAll" xml:space="preserve"><value>모든 채널에서 나가기</value></data>
+  <data name="SyncInput_BannerPrefix" xml:space="preserve"><value>채널</value></data>
+  <data name="SyncInput_BannerSuffix" xml:space="preserve"><value>입력 동기화 중</value></data>
+  <data name="SyncInput_Paused" xml:space="preserve"><value>(일시 중지됨)</value></data>
+  <data name="SyncInput_Pause" xml:space="preserve"><value>일시 중지</value></data>
+  <data name="SyncInput_Resume" xml:space="preserve"><value>재개</value></data>
+  <data name="SyncInput_Leave" xml:space="preserve"><value>채널 나가기</value></data>
+  <data name="SyncInput_Close" xml:space="preserve"><value>채널 닫기</value></data>
 </root>

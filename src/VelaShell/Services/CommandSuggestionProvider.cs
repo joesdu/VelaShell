@@ -24,10 +24,7 @@ public sealed class CommandSuggestionProvider
     {
         _history = history;
         _repository = repository;
-        if (_repository is not null)
-        {
-            _repository.Changed += (_, _) => _customLoadedAt = DateTime.MinValue;
-        }
+        _repository?.Changed += (_, _) => _customLoadedAt = DateTime.MinValue;
     }
 
     /// <summary>返回按相关度排序的建议。</summary>

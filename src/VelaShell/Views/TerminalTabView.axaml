@@ -13,11 +13,82 @@
              x:Class="VelaShell.Views.TerminalTabView"
              x:DataType="vm:TerminalTabViewModel">
 
-  <Grid RowDefinitions="*,Auto">
+  <UserControl.Styles>
+    <Style Selector="Button.sync-banner">
+      <Setter Property="Height" Value="22" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
 
-    <!-- Row 1: in-terminal search bar (spec §5.3, Ctrl+F) — docked at the bottom of this
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <!-- Row 0: 同步输入频道横条——标签加入频道(标签右键菜单 → 同步输入)后出现,
+         色块/字母与标签头同色联动;暂停 = 本标签暂不收发,离开频道 = 仅本标签退出,
+         关闭频道 = 频道内全部标签退出。 -->
+    <Border Grid.Row="0"
+            IsVisible="{Binding IsInSyncChannel}"
+            Background="{DynamicResource VelaBgSurface}"
+            BorderBrush="{DynamicResource VelaBorderPrimary}"
+            BorderThickness="0,0,0,1"
+            Padding="14,4">
+      <Grid ColumnDefinitions="*,8,Auto">
+        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <Border Width="10" Height="10" CornerRadius="2"
+                  Background="{Binding SyncChannelBrush}"
+                  VerticalAlignment="Center" />
+          <TextBlock FontSize="11"
+                     Foreground="{DynamicResource VelaTextSecondary}"
+                     VerticalAlignment="Center"
+                     Text="{loc:Localize SyncInput_BannerPrefix}" />
+          <TextBlock FontSize="11" FontWeight="Bold"
+                     Foreground="{Binding SyncChannelBrush}"
+                     VerticalAlignment="Center"
+                     Text="{Binding SyncChannelLetter}" />
+          <TextBlock FontSize="11"
+                     Foreground="{DynamicResource VelaTextSecondary}"
+                     VerticalAlignment="Center"
+                     Text="{loc:Localize SyncInput_BannerSuffix}" />
+          <TextBlock FontSize="11"
+                     Foreground="{DynamicResource VelaTextMuted}"
+                     VerticalAlignment="Center"
+                     IsVisible="{Binding IsSyncPaused}"
+                     Text="{loc:Localize SyncInput_Paused}" />
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <Button Classes="sync-banner" Command="{Binding ToggleSyncPauseCommand}">
+            <Panel>
+              <TextBlock Text="{loc:Localize SyncInput_Pause}" IsVisible="{Binding !IsSyncPaused}" />
+              <TextBlock Text="{loc:Localize SyncInput_Resume}" IsVisible="{Binding IsSyncPaused}" />
+            </Panel>
+          </Button>
+          <Button Classes="sync-banner"
+                  Content="{loc:Localize SyncInput_Leave}"
+                  Command="{Binding LeaveSyncChannelCommand}" />
+          <Button Classes="sync-banner"
+                  Content="{loc:Localize SyncInput_Close}"
+                  Command="{Binding CloseSyncChannelCommand}" />
+          <Button Width="22" Height="22" Padding="0" Background="Transparent" CornerRadius="3"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                  Command="{Binding LeaveSyncChannelCommand}"
+                  ToolTip.Tip="{loc:Localize SyncInput_Leave}">
+            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.x}"
+                           Foreground="{DynamicResource VelaTextTertiary}" />
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Row 2: in-terminal search bar (spec §5.3, Ctrl+F) — docked at the bottom of this
          tab (per-tab scope; it only searches this tab's buffer). -->
-    <Border Grid.Row="1"
+    <Border Grid.Row="2"
               x:Name="SearchBar"
               IsVisible="False"
               Background="{DynamicResource VelaBgSurface}"
@@ -78,8 +149,8 @@
         </Grid>
       </Border>
 
-    <!-- Row 0: Terminal area with scrollbar -->
-    <Grid Grid.Row="0">
+    <!-- Row 1: Terminal area with scrollbar -->
+    <Grid Grid.Row="1">
 
       <!-- Terminal emulator control -->
       <Border x:Name="TerminalHost"
