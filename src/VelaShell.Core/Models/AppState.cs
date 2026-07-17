@@ -26,6 +26,12 @@ public class AppState
 
     /// <summary>最近连接侧栏区域上次展开时的高度。</summary>
     public double SidebarRecentConnectionsHeight { get; set; } = 180;
+
+    /// <summary>
+    /// 上次退出时 SFTP 文件浏览器是否处于显示状态。仅当设置
+    /// 「连接后自动打开文件浏览器」关闭时生效:下次启动按此恢复面板的初始意图。
+    /// </summary>
+    public bool FileBrowserVisible { get; set; } = true;
 }
 
 /// <summary>窗口在屏幕上的位置坐标。</summary>

@@ -1956,6 +1956,12 @@
   <data name="SetTerm_LineHeightDesc" xml:space="preserve">
     <value>// 줄 간격 배율, 기본값 1.0</value>
   </data>
+  <data name="SetTerm_AutoOpenSftp" xml:space="preserve">
+    <value>연결 시 파일 브라우저 자동 열기</value>
+  </data>
+  <data name="SetTerm_AutoOpenSftpDesc" xml:space="preserve">
+    <value>켜기: 원격 세션에 연결할 때마다 SFTP 파일 브라우저를 자동으로 엽니다. 끄기: 마지막 종료 시 패널 표시 상태를 따릅니다.</value>
+  </data>
   <data name="SetTerm_OutputEncoding" xml:space="preserve">
     <value>출력 인코딩</value>
   </data>

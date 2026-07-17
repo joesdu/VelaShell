@@ -340,6 +340,92 @@ public class MainWindowViewModelTests
             );
     }
 
+    /// <summary>构造带设置/状态桩的 VM 并完成初始化,用于验证 SFTP 面板的启动意图。</summary>
+    private static async Task<MainWindowViewModel> CreateInitializedVmAsync(
+        bool autoOpenFileBrowser,
+        bool lastVisible,
+        ISettingsService? settingsServiceOut = null)
+    {
+        ISettingsService settingsService = settingsServiceOut ?? Substitute.For<ISettingsService>();
+        settingsService
+            .GetSettingsAsync()
+            .Returns(new AppSettings
+            {
+                TerminalBehavior = new() { AutoOpenFileBrowser = autoOpenFileBrowser }
+            });
+        settingsService.GetStateAsync().Returns(new AppState { FileBrowserVisible = lastVisible });
+        var vm = new MainWindowViewModel(
+            settingsService: settingsService,
+            sftpService: Substitute.For<ISftpService>()
+        );
+        await vm.InitializeAsync();
+        return vm;
+    }
+
+    private static TerminalTabViewModel CreateConnectedSshTab() =>
+        new(Substitute.For<ITerminalEmulator>())
+        {
+            Profile = new() { Name = "srv", Host = "srv.example" },
+            SessionId = Guid.NewGuid(),
+            ConnectionStatus = SessionStatus.Connected,
+        };
+
+    [TestMethod]
+    [TestCategory("UI")]
+    public async Task FileBrowser_AutoOpenSettingOn_OpensOnConnectDespiteLastClosedState()
+    {
+        MainWindowViewModel vm = await CreateInitializedVmAsync(
+            autoOpenFileBrowser: true, lastVisible: false);
+
+        vm.TabBar.AddTab(CreateConnectedSshTab());
+
+        Assert.IsTrue(vm.FileBrowser.IsVisible, "开关开启时,无论上次退出状态如何都自动打开。");
+    }
+
+    [TestMethod]
+    [TestCategory("UI")]
+    public async Task FileBrowser_AutoOpenSettingOff_FollowsLastClosedState()
+    {
+        MainWindowViewModel vm = await CreateInitializedVmAsync(
+            autoOpenFileBrowser: false, lastVisible: false);
+
+        vm.TabBar.AddTab(CreateConnectedSshTab());
+
+        Assert.IsFalse(vm.FileBrowser.IsVisible, "开关关闭且上次退出时面板关闭:不自动打开。");
+    }
+
+    [TestMethod]
+    [TestCategory("UI")]
+    public async Task FileBrowser_AutoOpenSettingOff_FollowsLastVisibleState()
+    {
+        MainWindowViewModel vm = await CreateInitializedVmAsync(
+            autoOpenFileBrowser: false, lastVisible: true);
+
+        vm.TabBar.AddTab(CreateConnectedSshTab());
+
+        Assert.IsTrue(vm.FileBrowser.IsVisible, "开关关闭但上次退出时面板可见:仍自动打开。");
+    }
+
+    [TestMethod]
+    [TestCategory("UI")]
+    public async Task FileBrowser_VisibilityIntent_IsPersistedOnExit()
+    {
+        ISettingsService settingsService = Substitute.For<ISettingsService>();
+        MainWindowViewModel vm = await CreateInitializedVmAsync(
+            autoOpenFileBrowser: true, lastVisible: true, settingsService);
+
+        vm.TabBar.AddTab(CreateConnectedSshTab());
+        Assert.IsTrue(vm.FileBrowser.IsVisible);
+        vm.ToggleFileBrowser();
+        Assert.IsFalse(vm.FileBrowser.IsVisible);
+
+        await vm.PersistSidebarStateAsync();
+
+        await settingsService
+            .Received()
+            .SaveStateAsync(Arg.Is<AppState>(state => !state.FileBrowserVisible));
+    }
+
     [TestMethod]
     [TestCategory("SessionTree")]
     public async Task ActiveTerminalTab_FollowsSavedProfileWhenSettingEnabled()

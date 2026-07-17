@@ -33,6 +33,13 @@
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetTerm_AutoOpenSftp}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetTerm_AutoOpenSftpDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.AutoOpenFileBrowser}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="{loc:Localize SetTerm_ShowLineTimestamp}" />
         <TextBlock Classes="row-desc" Text="{loc:Localize SetTerm_ShowLineTimestampDesc}" />
       </StackPanel>
