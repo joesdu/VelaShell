@@ -949,7 +949,7 @@ public partial class MainWindow : Window
     private Task<IReadOnlyList<string>> PromptForZModemUploadFilesAsync(bool isRetryAfterCancel, CancellationToken cancellationToken)
     {
         _ = cancellationToken;
-        return Dispatcher.UIThread.InvokeAsync(async () =>
+        return Dispatcher.UIThread.InvokeAsync<IReadOnlyList<string>>(async () =>
         {
             TopLevel? top = GetTopLevel(this);
             if (top?.StorageProvider is not { } storage)

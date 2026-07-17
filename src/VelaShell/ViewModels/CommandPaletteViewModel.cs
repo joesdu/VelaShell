@@ -132,10 +132,14 @@ public sealed class CommandPaletteViewModel : ReactiveObject
 
     private void Rebuild()
     {
-        Groups.Clear();
         _flat.Clear();
         string query = Query.Trim();
+
+        // 每键入一字符全量重建;分组在挂入 Groups 之前先装配完 Items——组一旦在
+        // 可见集合里,逐项 Add 会给面板每条结果发一次 CollectionChanged+布局,
+        // 会话/命令上千条时按键卡顿。离线装配后每组只挂一次。
         var byCategory = new Dictionary<string, CommandPaletteGroup>();
+        var ordered = new List<CommandPaletteGroup>();
         foreach (CommandPaletteItem item in _all)
         {
             if (!Matches(item, query))
@@ -146,10 +150,15 @@ public sealed class CommandPaletteViewModel : ReactiveObject
             {
                 group = new(item.Category);
                 byCategory[item.Category] = group;
-                Groups.Add(group);
+                ordered.Add(group);
             }
             group.Items.Add(item);
             _flat.Add(item);
+        }
+        Groups.Clear();
+        foreach (CommandPaletteGroup group in ordered)
+        {
+            Groups.Add(group);
         }
         SelectedItem = _flat.Count > 0 ? _flat[0] : null;
         this.RaisePropertyChanged(nameof(ResultCount));

@@ -6,6 +6,7 @@
              xmlns:pc="using:VelaShell.Controls.Controls"
              xmlns:views="using:VelaShell.Views"
              xmlns:services="using:VelaShell.Services"
+             xmlns:vm="using:VelaShell.ViewModels"
              xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Docking.Controls.DockTabItem"
              x:DataType="docking:TerminalDocument"
@@ -150,14 +151,20 @@
             <TranslateTransform Y="-1" />
           </Border.RenderTransform>
         </Border>
-        <!-- 标题:悬停 400ms 浮出该会话的资源面板(§4B.4/§11)。 -->
+        <!-- 标题:悬停 400ms 浮出该会话的资源面板(§4B.4/§11)。
+             Tip 绑定 VM 而非直接内嵌视图:直接内嵌会在每个标签创建时就 eager 实例化
+             整个 ResourceMonitorView(磁盘列表 + 进度条 + 十余条活绑定),N 个标签
+             N 份常驻;改为 DataTemplate 后视图只在首次悬停弹出时才构造。 -->
         <TextBlock Text="{Binding Title}"
                    VerticalAlignment="Center"
                    ToolTip.ShowDelay="400"
-                   ToolTip.Placement="Pointer">
-          <ToolTip.Tip>
-            <views:ResourceMonitorView DataContext="{Binding Terminal.ResourceMonitor}" />
-          </ToolTip.Tip>
+                   ToolTip.Placement="Pointer"
+                   ToolTip.Tip="{Binding Terminal.ResourceMonitor}">
+          <TextBlock.DataTemplates>
+            <DataTemplate DataType="vm:ResourceMonitorViewModel">
+              <views:ResourceMonitorView />
+            </DataTemplate>
+          </TextBlock.DataTemplates>
         </TextBlock>
       </StackPanel>
 

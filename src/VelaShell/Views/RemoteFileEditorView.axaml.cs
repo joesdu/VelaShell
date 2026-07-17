@@ -42,7 +42,7 @@ public partial class RemoteFileEditorView : Window
         Title = fileName;
         TitleText.Text = fileName;
         PathText.Text = remotePath;
-        LoadFile();
+        _ = LoadFileAsync();
         Editor.TextChanged += (_, _) =>
         {
             _dirty = true;
@@ -50,10 +50,22 @@ public partial class RemoteFileEditorView : Window
         };
     }
 
-    private void LoadFile()
+    private async Task LoadFileAsync()
     {
+        // 磁盘读取放后台线程:同步 ReadAllBytes 在构造(UI 线程)里读大文件会卡住
+        // 窗口打开;读完回 UI 线程装配编辑器。TextChanged 在读取完成后才可能触发
+        // 用户编辑,先把 _dirty 复位放在赋值之后。
         // 保留原文件的 BOM/编码:UTF-8(无 BOM)为缺省,识别 UTF-8 BOM 与 UTF-16 LE/BE。
-        byte[] bytes = File.ReadAllBytes(_localPath);
+        byte[] bytes;
+        try
+        {
+            bytes = await Task.Run(() => File.ReadAllBytes(_localPath));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            StatusText.Text = ex.Message;
+            return;
+        }
         _encoding = DetectEncoding(bytes);
         Editor.Text = _encoding.GetString(bytes, PreambleLength(bytes, _encoding), bytes.Length - PreambleLength(bytes, _encoding));
         _dirty = false;

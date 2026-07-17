@@ -2099,6 +2099,9 @@ public class MainWindowViewModel : ReactiveObject
     private void RemoveTerminalTab(TerminalTabViewModel tab, TerminalDocument document)
     {
         StopSessionLogging(tab);
+        // 防御性驱逐 SFTP 面板缓存:本路径(连接失败/取消)静默移除文档,不触发
+        // DocumentClosed,若标签曾短暂连上过,缓存里的面板会悬挂。幂等,无缓存时空操作。
+        CloseSftpForTab(tab);
         if (TabBar.Tabs.Contains(tab))
         {
             TabBar.CloseTabCommand.Execute(tab).Subscribe();

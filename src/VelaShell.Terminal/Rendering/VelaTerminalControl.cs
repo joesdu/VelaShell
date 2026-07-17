@@ -37,6 +37,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     private static readonly Rgba SearchMatchBg = new(0x59, 0xFD, 0xCB, 0x6E); // amber, ~35%
     private static readonly Rgba SearchCurrentBg = new(0x73, 0x00, 0xD4, 0xAA); // accent, ~45%
     private readonly Dictionary<uint, ImmutableSolidColorBrush> _brushCache = [];
+    private readonly Dictionary<uint, ImmutablePen> _penCache = [];
 
     // Cache of shaped, colored glyphs keyed by (rune, combining, foreground, style). Terminal
     // output draws from a tiny alphabet, so hit rate is ~100% and per-frame text shaping —
@@ -815,6 +816,22 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>
+    /// 按颜色缓存的 1px 画笔:下划线/删除线/语义下划线每个 cell 画一次线,
+    /// 逐格 new Pen 在满行 URL/下划线文本时是每帧 O(cols) 的堆分配。
+    /// 缓存上界 = 用过的前景色数,与 <see cref="_brushCache" /> 同量级。
+    /// </summary>
+    private ImmutablePen PenFor(Rgba c)
+    {
+        if (_penCache.TryGetValue(c.Packed, out ImmutablePen? pen))
+        {
+            return pen;
+        }
+        pen = new(BrushFor(c));
+        _penCache[c.Packed] = pen;
+        return pen;
+    }
+
+    /// <summary>
     /// Returns a cached <see cref="FormattedText" /> for a single cell's glyph. Each glyph is
     /// still drawn at its own grid position by the caller, so wide (CJK) cells and monospace
     /// alignment are preserved exactly; only the expensive shaping is amortized.
@@ -1471,7 +1488,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             {
                 double uy = y + CellHeightForTest - 1.5;
                 context.DrawLine(
-                    new Pen(BrushFor(fg)),
+                    PenFor(fg),
                     new(col * CellWidthForTest, uy),
                     new((col + width) * CellWidthForTest, uy)
                 );
@@ -1480,7 +1497,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             {
                 double sy = y + CellHeightForTest / 2;
                 context.DrawLine(
-                    new Pen(BrushFor(fg)),
+                    PenFor(fg),
                     new(col * CellWidthForTest, sy),
                     new((col + width) * CellWidthForTest, sy)
                 );

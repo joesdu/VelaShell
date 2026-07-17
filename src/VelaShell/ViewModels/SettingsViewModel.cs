@@ -1090,8 +1090,34 @@ public class SettingsViewModel : ReactiveObject
         appearance?.PropertyChanged += OnAppearanceItemChanged;
     }
 
+    private Avalonia.Threading.DispatcherTimer? _previewDebounce;
+
     private void OnAppearanceItemChanged(object? sender, PropertyChangedEventArgs e) =>
-        BroadcastPreview();
+        SchedulePreviewBroadcast();
+
+    /// <summary>
+    /// 合并外观单项修改的预览广播到 50ms 尾沿:拖动滑杆时 INPC 每次微调都来一发,
+    /// 而每次广播要做两次全量 JSON 克隆(<see cref="BroadcastPreview" />),
+    /// 不合并会在 UI 线程形成序列化风暴,拖动明显掉帧。
+    /// </summary>
+    private void SchedulePreviewBroadcast()
+    {
+        if (_suppressPreview || _previewService is null)
+        {
+            return;
+        }
+        if (_previewDebounce is null)
+        {
+            _previewDebounce = new() { Interval = TimeSpan.FromMilliseconds(50) };
+            _previewDebounce.Tick += (_, _) =>
+            {
+                _previewDebounce!.Stop();
+                BroadcastPreview();
+            };
+        }
+        _previewDebounce.Stop();
+        _previewDebounce.Start();
+    }
 
     /// <summary>
     /// 广播外观预览快照:以基线为底、仅叠加外观相关字段,
