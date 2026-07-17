@@ -120,18 +120,6 @@
                          Foreground="{DynamicResource VelaTextMuted}" />
         </Button>
         <Button Theme="{StaticResource VelaTitleActionButton}"
-                ToolTip.Tip="{loc:Localize Copy}"
-                Command="{Binding RunCommand}" CommandParameter="edit.copy">
-          <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.copy}"
-                         Foreground="{DynamicResource VelaTextMuted}" />
-        </Button>
-        <Button Theme="{StaticResource VelaTitleActionButton}"
-                ToolTip.Tip="{loc:Localize Dock_SplitHorizontal}"
-                Command="{Binding RunCommand}" CommandParameter="split.horizontal">
-          <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.columns-2}"
-                         Foreground="{DynamicResource VelaTextMuted}" />
-        </Button>
-        <Button Theme="{StaticResource VelaTitleActionButton}"
                 ToolTip.Tip="{loc:Localize Cmd_SftpFileManager}"
                 Command="{Binding ToggleFileBrowserCommand}">
           <Panel>

@@ -95,8 +95,16 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// <summary>该标签所属会话的唯一标识,用于与宿主的会话管理关联。</summary>
     public Guid SessionId { get; set; }
 
-    /// <summary>Resource panel data for this tab (hover >400ms on the tab shows it, §11).</summary>
-    public ResourceMonitorViewModel? ResourceMonitor { get; set; }
+    /// <summary>
+    /// Resource panel data for this tab (hover >400ms on the tab shows it, §11).
+    /// 握手完成后才赋值,而标签 ToolTip.Tip 在标签创建时就已绑定到它,
+    /// 必须发变更通知,否则 Tip 停留在 null,悬浮面板永远不弹。
+    /// </summary>
+    public ResourceMonitorViewModel? ResourceMonitor
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    }
 
     /// <summary>The profile this tab was connected with, used to reconnect in place (#19).</summary>
     public SessionProfile? Profile { get; set; }
