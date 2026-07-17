@@ -4,6 +4,8 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using VelaShell.Docking.Model;
+using VelaShell.Services;
+using VelaShell.ViewModels;
 
 namespace VelaShell.Docking.Controls;
 
@@ -82,6 +84,25 @@ public partial class DockTabItem : UserControl
             workspace.ActivateDocument(document);
         }
     }
+
+    // ---- 右键菜单:同步输入频道(直连被点标签的终端视图模型) ----
+
+    private TerminalTabViewModel? Terminal => (DataContext as TerminalDocument)?.Terminal;
+
+    private void JoinChannelA_Click(object? sender, RoutedEventArgs e) =>
+        Terminal?.JoinSyncChannel(SyncInputChannel.A);
+
+    private void JoinChannelB_Click(object? sender, RoutedEventArgs e) =>
+        Terminal?.JoinSyncChannel(SyncInputChannel.B);
+
+    private void JoinChannelC_Click(object? sender, RoutedEventArgs e) =>
+        Terminal?.JoinSyncChannel(SyncInputChannel.C);
+
+    private void JoinChannelD_Click(object? sender, RoutedEventArgs e) =>
+        Terminal?.JoinSyncChannel(SyncInputChannel.D);
+
+    private void LeaveSyncChannel_Click(object? sender, RoutedEventArgs e) =>
+        Terminal?.LeaveSyncChannel();
 
     // ---- 右键菜单(与原 DockContextMenu 同构,命令直连 DockWorkspace) ----
 

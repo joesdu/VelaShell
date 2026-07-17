@@ -170,7 +170,7 @@ public class FileBrowserViewModel : ReactiveObject
         string path = CurrentPath;
         try
         {
-            HashSet<string> selectedPaths = SelectedFiles
+            var selectedPaths = SelectedFiles
                 .Where(file => !file.IsParentEntry)
                 .Select(file => file.FullPath)
                 .ToHashSet(StringComparer.Ordinal);
@@ -800,7 +800,8 @@ public class FileBrowserViewModel : ReactiveObject
         string,
         Func<Task>,
         Task
-    >? OpenInBuiltInEditor { get; set; }
+    >? OpenInBuiltInEditor
+    { get; set; }
 
     /// <summary>Set by the host: resolves the configured default editor (设置 → 文件传输)。</summary>
     public Func<Task<string?>>? GetDefaultEditorPath { get; set; }
@@ -926,7 +927,7 @@ public class FileBrowserViewModel : ReactiveObject
         {
             ErrorMessage = null;
             IsDirectoryLoading = true;
-            HashSet<string> selectedPaths = SelectedFiles
+            var selectedPaths = SelectedFiles
                 .Where(file => !file.IsParentEntry)
                 .Select(file => file.FullPath)
                 .ToHashSet(StringComparer.Ordinal);

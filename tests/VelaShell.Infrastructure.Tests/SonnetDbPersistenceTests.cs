@@ -466,8 +466,8 @@ public sealed class SonnetDbPersistenceTests : IDisposable
     {
         var store = new SonnetDbAppDataStore(_engine);
         var repository = new SonnetDbQuickCommandRepository(store);
-        Guid groupId = Guid.NewGuid();
-        Guid commandId = Guid.NewGuid();
+        var groupId = Guid.NewGuid();
+        var commandId = Guid.NewGuid();
         await repository.ApplySyncAsync(
             new()
             {

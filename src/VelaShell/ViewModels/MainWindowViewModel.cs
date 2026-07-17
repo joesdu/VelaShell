@@ -7,7 +7,6 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
 using Avalonia;
-using Avalonia.Input;
 using Avalonia.Threading;
 using ReactiveUI;
 using VelaShell.Core.Data;
@@ -74,6 +73,9 @@ public class MainWindowViewModel : ReactiveObject
         TerminalTabViewModel,
         IDisposable
     > _quickCommandTargetSubscriptions = [];
+
+    /// <summary>同步输入频道的对等转发中枢(标签右键菜单 → 同步输入)。</summary>
+    private readonly SyncInputCoordinator _syncInput = new();
 
     /// <summary>全局命令历史(命令补全数据源;终端标签提交命令后写入)。</summary>
     public CommandHistoryService CommandHistory { get; }
@@ -147,25 +149,10 @@ public class MainWindowViewModel : ReactiveObject
         _recordingStore = recordingStore;
         _quickCommands = quickCommands;
         _terminalTargetSelector = new();
-        BroadcastInput = new(_terminalTargetSelector);
-        BroadcastInput.FocusRequested += (_, capture) =>
-        {
-            if (capture)
-            {
-                BroadcastInputFocusRequested?.Invoke(this, EventArgs.Empty);
-            }
-            else
-            {
-                TerminalFocusRequested?.Invoke(this, EventArgs.Empty);
-            }
-        };
         _quickCommandRunner = quickCommands is null
             ? null
             : new(quickCommands, _terminalTargetSelector);
-        if (_quickCommandRunner is not null)
-        {
-            _quickCommandRunner.ExecutionRequested += OnQuickCommandExecutionRequested;
-        }
+        _quickCommandRunner?.ExecutionRequested += OnQuickCommandExecutionRequested;
 
         // 命令补全(plan.md #16):全局命令历史 + 建议提供器(历史 ∪ 快捷命令),
         // 逐标签在 CreateConnectingTab 注入。
@@ -297,9 +284,6 @@ public class MainWindowViewModel : ReactiveObject
     /// (design spec §4A.1) — every entry point shows the same name, hint and behavior.
     /// </summary>
     public ICommandRegistry Commands { get; } = new CommandRegistry();
-
-    /// <summary>底部多终端实时输入栏。</summary>
-    public BroadcastInputViewModel BroadcastInput { get; }
 
     /// <summary>Executes a registry command by id (used by menu entries via CommandParameter).</summary>
     public ReactiveCommand<string, Unit>? RunCommand { get; private set; }
@@ -650,17 +634,6 @@ public class MainWindowViewModel : ReactiveObject
                 Icon: "Icon.rows-2"
             )
         );
-        Commands.Register(
-            new(
-                "terminal.broadcast",
-                Strings.Get("Broadcast"),
-                Strings.Get("CmdCat_Actions"),
-                () => BroadcastInput.ToggleCommand.Execute().Subscribe(),
-                Shortcut: "Ctrl+Shift+B",
-                Icon: "Icon.send"
-            )
-        );
-
         // 本地终端(§12 P1-1):按本机安装情况动态注册 PowerShell/CMD/WSL/Git Bash 入口。
         foreach (LocalShellInfo shell in LocalShellCatalog.DetectShells())
         {
@@ -979,9 +952,6 @@ public class MainWindowViewModel : ReactiveObject
 
     /// <summary>请求视图聚焦当前活动终端。</summary>
     public event EventHandler? TerminalFocusRequested;
-
-    /// <summary>请求视图聚焦广播输入捕获区。</summary>
-    public event EventHandler? BroadcastInputFocusRequested;
 
     /// <summary>导出终端输出(命令面板“导出终端输出到文件”)—— 窗口弹保存对话框并落盘。</summary>
     public event EventHandler? ExportBufferRequested;
@@ -1465,9 +1435,11 @@ public class MainWindowViewModel : ReactiveObject
         {
             _quickCommandTargetSubscriptions.Remove(removed, out IDisposable? subscription);
             subscription?.Dispose();
+            _syncInput.Detach(removed);
         }
         foreach (TerminalTabViewModel added in currentTabs)
         {
+            _syncInput.Attach(added);
             if (_quickCommandTargetSubscriptions.ContainsKey(added))
             {
                 continue;
@@ -1479,6 +1451,23 @@ public class MainWindowViewModel : ReactiveObject
                 .Subscribe(_ => RefreshQuickCommandTargets());
         }
         RefreshQuickCommandTargets();
+    }
+
+    /// <summary>
+    /// 重算某配置在会话树里的同步输入频道字母:该配置可能开着多个标签(复制会话),
+    /// 取其中第一个已加入频道的;全部不在频道时上报空串清除标识。
+    /// </summary>
+    private void RefreshSessionSyncChannel(Guid profileId)
+    {
+        SyncInputChannel? channel = TabBar
+            .Tabs.OfType<TerminalTabViewModel>()
+            .Where(tab => tab.Profile?.Id == profileId)
+            .Select(tab => tab.SyncChannel)
+            .FirstOrDefault(c => c is not null);
+        Sidebar.SessionTree?.SetSessionSyncChannel(
+            profileId,
+            channel?.ToString() ?? string.Empty
+        );
     }
 
     private void RefreshQuickCommandTargets()
@@ -1513,68 +1502,6 @@ public class MainWindowViewModel : ReactiveObject
         {
             TerminalFocusRequested?.Invoke(this, EventArgs.Empty);
         }
-    }
-
-    /// <summary>把广播栏提交的文本实时写入解析后的目标终端。</summary>
-    public bool BroadcastTextInput(string text)
-    {
-        bool sent = false;
-        foreach (TerminalTabViewModel target in ResolveBroadcastTargets())
-        {
-            sent |= target.TryWriteTextInput(text);
-        }
-        return sent;
-    }
-
-    /// <summary>让每个目标终端按自身 VT 模式编码并发送广播按键。</summary>
-    public bool BroadcastKeyInput(Key key, Avalonia.Input.KeyModifiers modifiers)
-    {
-        bool sent = false;
-        foreach (TerminalTabViewModel target in ResolveBroadcastTargets())
-        {
-            sent |= target.TryWriteKeyInput(key, modifiers);
-        }
-        return sent;
-    }
-
-    /// <summary>确认一次后,按每个目标的 bracketed-paste 模式广播剪贴板文本。</summary>
-    public async Task<bool> BroadcastPasteInputAsync(string text)
-    {
-        TerminalTabViewModel[] targets = ResolveBroadcastTargets();
-        if (targets.Length == 0 || string.IsNullOrEmpty(text))
-        {
-            return false;
-        }
-        VelaTerminalControl? confirmationSource = targets
-            .Select(target => target.TerminalEmulator)
-            .OfType<VelaTerminalControl>()
-            .FirstOrDefault(control => control.ConfirmMultilinePaste);
-        if (
-            confirmationSource?.MultilinePasteConfirmation is { } confirm
-            && text.IndexOfAny(['\r', '\n']) >= 0
-            && text.TrimEnd('\r', '\n').IndexOfAny(['\r', '\n']) >= 0
-            && !await confirm(text)
-        )
-        {
-            return false;
-        }
-        bool sent = false;
-        foreach (TerminalTabViewModel target in targets)
-        {
-            sent |= target.TryWritePasteInput(text);
-        }
-        return sent;
-    }
-
-    private TerminalTabViewModel[] ResolveBroadcastTargets()
-    {
-        HashSet<Guid> targetIds = _terminalTargetSelector.ResolveTargetIds().ToHashSet();
-        return
-        [
-            .. TabBar
-                .Tabs.OfType<TerminalTabViewModel>()
-                .Where(tab => tab.IsConnected && targetIds.Contains(tab.Id)),
-        ];
     }
 
     /// <summary>
@@ -1769,6 +1696,12 @@ public class MainWindowViewModel : ReactiveObject
         terminalTab
             .WhenAnyValue(x => x.ConnectionStatus)
             .Subscribe(status => Sidebar.SessionTree?.SetSessionStatus(profile.Id, status));
+
+        // 资源管理器树节点名前的同步输入频道字母跟随该配置任一标签的频道归属;
+        // 标签关闭时经 SyncInputCoordinator.Detach → LeaveSyncChannel 同样走到这里复位。
+        terminalTab
+            .WhenAnyValue(x => x.SyncChannel)
+            .Subscribe(_ => RefreshSessionSyncChannel(profile.Id));
 
         // 后台标签收到 BEL → 点亮闪烁提醒(设置 → 终端 → 标签闪烁提醒);切回标签时清除。
         if (terminalEmulator is VelaTerminalControl bellSource)
@@ -2125,10 +2058,11 @@ public class MainWindowViewModel : ReactiveObject
                 // 等待期间用户可能已手动重连、关掉标签或主动断开。
                 if (
                     tab
-                        is {
-                            ConnectionStatus: SessionStatus.Disconnected,
-                            UserRequestedDisconnect: false
-                        }
+                        is
+                    {
+                        ConnectionStatus: SessionStatus.Disconnected,
+                        UserRequestedDisconnect: false
+                    }
                     && TabBar.Tabs.Contains(tab)
                 )
                 {

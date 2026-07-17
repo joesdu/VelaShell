@@ -5,6 +5,7 @@
              xmlns:conv="using:VelaShell.Converters"
              xmlns:pc="using:VelaShell.Controls.Controls"
              xmlns:views="using:VelaShell.Views"
+             xmlns:services="using:VelaShell.Services"
              xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Docking.Controls.DockTabItem"
              x:DataType="docking:TerminalDocument"
@@ -42,6 +43,41 @@
     <!-- 与原 DockContextMenu.axaml 完全同构:关闭系列 + 拆分 + 标签位置;
          浮动与 MDI 按产品决策不存在。菜单外观走全局 ContextMenu 样式。 -->
     <ContextMenu>
+      <!-- 同步输入频道:四个固定频道以颜色区分,加入后本标签的用户输入与频道内
+           其他标签实时互通(对等转发见 SyncInputCoordinator)。 -->
+      <MenuItem Header="{loc:Localize SyncInput_Menu}">
+        <MenuItem.Icon>
+          <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.link-2}"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+        </MenuItem.Icon>
+        <MenuItem Header="{loc:Localize SyncInput_JoinChannelA}" Click="JoinChannelA_Click">
+          <MenuItem.Icon>
+            <Border Width="10" Height="10" CornerRadius="2"
+                    Background="{x:Static services:SyncInputChannels.BrushA}" />
+          </MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="{loc:Localize SyncInput_JoinChannelB}" Click="JoinChannelB_Click">
+          <MenuItem.Icon>
+            <Border Width="10" Height="10" CornerRadius="2"
+                    Background="{x:Static services:SyncInputChannels.BrushB}" />
+          </MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="{loc:Localize SyncInput_JoinChannelC}" Click="JoinChannelC_Click">
+          <MenuItem.Icon>
+            <Border Width="10" Height="10" CornerRadius="2"
+                    Background="{x:Static services:SyncInputChannels.BrushC}" />
+          </MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="{loc:Localize SyncInput_JoinChannelD}" Click="JoinChannelD_Click">
+          <MenuItem.Icon>
+            <Border Width="10" Height="10" CornerRadius="2"
+                    Background="{x:Static services:SyncInputChannels.BrushD}" />
+          </MenuItem.Icon>
+        </MenuItem>
+        <Separator />
+        <MenuItem Header="{loc:Localize SyncInput_LeaveAll}" Click="LeaveSyncChannel_Click" />
+      </MenuItem>
+      <Separator />
       <MenuItem Header="{loc:Localize Dock_Close}" Click="CloseTab_Click">
         <MenuItem.Icon>
           <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.x}"
@@ -85,6 +121,17 @@
           BorderBrush="Transparent"
           VerticalAlignment="Stretch">
     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+
+      <!-- 同步输入频道字母:置于状态点之前,以频道标识色着色(用户需求)。 -->
+      <TextBlock Text="{Binding Terminal.SyncChannelLetter}"
+                 IsVisible="{Binding Terminal.IsInSyncChannel}"
+                 Foreground="{Binding Terminal.SyncChannelBrush}"
+                 FontWeight="Bold"
+                 VerticalAlignment="Center">
+        <TextBlock.RenderTransform>
+          <TranslateTransform Y="-1" />
+        </TextBlock.RenderTransform>
+      </TextBlock>
 
       <!-- 状态点:上移 1px,补偿 mono 标题下伸部把视觉中心抬高(用户反馈)。 -->
       <Ellipse Width="7" Height="7" VerticalAlignment="Center"

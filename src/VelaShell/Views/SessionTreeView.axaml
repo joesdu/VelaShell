@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:VelaShell.Presentation.ViewModels"
              xmlns:pc="using:VelaShell.Controls.Controls"
+             xmlns:conv="using:VelaShell.Converters"
              xmlns:res="clr-namespace:VelaShell.Core.Resources;assembly=VelaShell.Core"
              xmlns:loc="using:VelaShell.Localization"
              mc:Ignorable="d" d:DesignWidth="260" d:DesignHeight="400"
@@ -300,6 +301,15 @@
             <StackPanel Orientation="Horizontal"
                         Spacing="8"
                         VerticalAlignment="Center">
+
+              <!-- 同步输入频道字母:置于状态点之前,与标签头/终端横条的频道色联动。 -->
+              <TextBlock Text="{Binding SyncChannelLetter}"
+                         IsVisible="{Binding HasSyncChannel}"
+                         Foreground="{Binding SyncChannelLetter, Converter={x:Static conv:SyncChannelLetterToBrushConverter.Instance}}"
+                         FontFamily="{DynamicResource VelaTerminalFont}"
+                         FontSize="11"
+                         FontWeight="Bold"
+                         VerticalAlignment="Center" />
 
               <Ellipse Classes="dot"
                        Classes.connected="{Binding IsConnected}"

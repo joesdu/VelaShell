@@ -67,6 +67,27 @@ public sealed class SessionTreeNodeViewModel(Guid id, string name, bool isGroup)
         }
     } = SessionStatus.Disconnected;
 
+    /// <summary>
+    /// 同步输入频道字母(A/B/C/D),显示在状态圆点之前并以频道色着色(颜色由视图层
+    /// 按字母解析);空串 = 该配置没有任何标签在频道中。由宿主随标签的频道变化上报。
+    /// </summary>
+    public string SyncChannelLetter
+    {
+        get;
+        set
+        {
+            if (field == value)
+            {
+                return;
+            }
+            this.RaiseAndSetIfChanged(ref field, value);
+            this.RaisePropertyChanged(nameof(HasSyncChannel));
+        }
+    } = string.Empty;
+
+    /// <summary>是否显示同步输入频道字母(<see cref="SyncChannelLetter" /> 非空)。</summary>
+    public bool HasSyncChannel => SyncChannelLetter.Length > 0;
+
     /// <summary>会话是否已连接(状态为 <see cref="SessionStatus.Connected" />)。</summary>
     public bool IsConnected => Status == SessionStatus.Connected;
 

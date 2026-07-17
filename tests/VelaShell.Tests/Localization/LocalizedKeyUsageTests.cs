@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Globalization;
-using System.IO;
 using System.Resources;
 using System.Text.RegularExpressions;
 using VelaShell.Core.Resources;

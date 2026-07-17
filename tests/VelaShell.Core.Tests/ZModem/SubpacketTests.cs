@@ -13,7 +13,7 @@ public class SubpacketTests
         {
             chunks.Add(wire.AsMemory(i, Math.Min(chunkSize, wire.Length - i)));
         }
-        await using InMemoryByteDuplex duplex = InMemoryByteDuplex.FromInbound(chunks);
+        await using var duplex = InMemoryByteDuplex.FromInbound(chunks);
         var reader = new ZModemFrameReader(duplex);
         return await ZModemSubpacket.ReadAsync(reader, useCrc32, CancellationToken.None);
     }

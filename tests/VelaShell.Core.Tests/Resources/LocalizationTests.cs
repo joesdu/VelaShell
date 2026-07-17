@@ -108,7 +108,6 @@ public class LocalizationTests : IDisposable
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Search));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Copy));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Split));
-        Assert.IsFalse(string.IsNullOrEmpty(Strings.Broadcast));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.SyncGroup));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.FileName));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Size));
@@ -169,7 +168,6 @@ public class LocalizationTests : IDisposable
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Search));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Copy));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Split));
-        Assert.IsFalse(string.IsNullOrEmpty(Strings.Broadcast));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.SyncGroup));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.FileName));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Size));

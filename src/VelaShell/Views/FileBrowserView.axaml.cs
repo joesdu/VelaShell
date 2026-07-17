@@ -59,10 +59,7 @@ public partial class FileBrowserView : UserControl
         // The VM cannot touch Avalonia storage APIs; the view supplies the OS pickers.
         DataContextChanged += (_, _) =>
         {
-            if (_viewModel is not null)
-            {
-                _viewModel.DirectoryChanged -= OnDirectoryChanged;
-            }
+            _viewModel?.DirectoryChanged -= OnDirectoryChanged;
             _viewModel = DataContext as FileBrowserViewModel;
             if (_viewModel is not { } vm)
             {
@@ -104,10 +101,7 @@ public partial class FileBrowserView : UserControl
                     .GetVisualDescendants()
                     .OfType<ScrollViewer>()
                     .FirstOrDefault();
-                if (scrollViewer is not null)
-                {
-                    scrollViewer.Offset = new(0, 0);
-                }
+                scrollViewer?.Offset = new(0, 0);
             },
             DispatcherPriority.Loaded
         );

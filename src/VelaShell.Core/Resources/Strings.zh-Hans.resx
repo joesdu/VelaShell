@@ -156,9 +156,6 @@
   <data name="Split" xml:space="preserve">
     <value>拆分</value>
   </data>
-  <data name="Broadcast" xml:space="preserve">
-    <value>广播</value>
-  </data>
   <data name="SyncGroup" xml:space="preserve">
     <value>同步组</value>
   </data>
@@ -233,7 +230,6 @@
   <data name="QuickCmd_Ungrouped" xml:space="preserve"><value>未分组</value></data>
   <data name="QuickCmd_GroupPlaceholder" xml:space="preserve"><value>分组名称</value></data>
   <data name="QuickCmd_EditSnippet" xml:space="preserve"><value>编辑代码片段</value></data>
-  <data name="Broadcast_TypeHint" xml:space="preserve"><value>同步输入已开启，键入内容将发送到所选终端</value></data>
   <data name="AddCommand" xml:space="preserve">
     <value>添加命令</value>
   </data>
@@ -2851,4 +2847,17 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="ZModem_ChooseUploadFilesRetry" xml:space="preserve">
     <value>未选择文件——请选择文件,或再次取消以中止本次上传</value>
   </data>
+  <data name="SyncInput_Menu" xml:space="preserve"><value>同步输入</value></data>
+  <data name="SyncInput_JoinChannelA" xml:space="preserve"><value>加入频道 A</value></data>
+  <data name="SyncInput_JoinChannelB" xml:space="preserve"><value>加入频道 B</value></data>
+  <data name="SyncInput_JoinChannelC" xml:space="preserve"><value>加入频道 C</value></data>
+  <data name="SyncInput_JoinChannelD" xml:space="preserve"><value>加入频道 D</value></data>
+  <data name="SyncInput_LeaveAll" xml:space="preserve"><value>离开所有频道</value></data>
+  <data name="SyncInput_BannerPrefix" xml:space="preserve"><value>同步通道</value></data>
+  <data name="SyncInput_BannerSuffix" xml:space="preserve"><value>中的输入</value></data>
+  <data name="SyncInput_Paused" xml:space="preserve"><value>(已暂停)</value></data>
+  <data name="SyncInput_Pause" xml:space="preserve"><value>暂停</value></data>
+  <data name="SyncInput_Resume" xml:space="preserve"><value>恢复</value></data>
+  <data name="SyncInput_Leave" xml:space="preserve"><value>离开频道</value></data>
+  <data name="SyncInput_Close" xml:space="preserve"><value>关闭频道</value></data>
 </root>
