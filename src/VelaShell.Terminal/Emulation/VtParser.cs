@@ -39,7 +39,11 @@ public sealed class VtParser(IVtActions actions)
         _prefix = '\0';
     }
 
-    private void Parse(ReadOnlySpan<char> text)
+    /// <summary>
+    /// Feeds a chunk of decoded terminal output through the state machine, dispatching actions.
+    /// Span 重载是输出热路径(<c>TerminalEmulator.Feed</c> 每帧调用),避免中间 string 物化。
+    /// </summary>
+    public void Parse(ReadOnlySpan<char> text)
     {
         // Iterate Unicode scalar values so surrogate pairs are delivered as one rune.
         for (int i = 0; i < text.Length; i++)

@@ -75,6 +75,13 @@ public partial class RecordingPlayerView : Window
 
     private void Close_Click(object? sender, RoutedEventArgs e) => Close();
 
+    /// <summary>关闭时停掉回放定时器,否则 VM 与整段录制数据会被调度器吊住(见 StopPlayback)。</summary>
+    protected override void OnClosed(EventArgs e)
+    {
+        (DataContext as RecordingPlayerViewModel)?.StopPlayback();
+        base.OnClosed(e);
+    }
+
     /// <summary>Esc 关闭回放中心,与右上角关闭按钮同路径(回放终端不可聚焦,不会截获按键)。</summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {

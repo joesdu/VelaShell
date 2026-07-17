@@ -329,6 +329,12 @@ public class RecordingPlayerViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(PlayButtonText));
     }
 
+    /// <summary>
+    /// 窗口关闭时必须调用:运行中的 DispatcherTimer 被调度器强引用,不停表会让
+    /// 已关闭窗口的 VM 连同整段录制字节以 30Hz 空转存活到播放位置走完为止。
+    /// </summary>
+    public void StopPlayback() => Pause();
+
     private void OnTick(object? sender, EventArgs e)
     {
         if (_chunks.Count == 0)

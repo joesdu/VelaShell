@@ -227,12 +227,16 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     private void OnUserInputForTracker(byte[] data)
     {
         InputTracker.Process(data);
-        SuggestDiag.Log(
-            "typed",
-            $"""
-            bytes=[{Convert.ToHexString(data)}] input="{InputTracker.CurrentInput ?? "<unknown>"}"
-            """
-        );
+        // 每键路径:先查开关再拼实参,否则关着诊断每键也分配 3 个字符串。
+        if (SuggestDiag.IsEnabled)
+        {
+            SuggestDiag.Log(
+                "typed",
+                $"""
+                bytes=[{Convert.ToHexString(data)}] input="{InputTracker.CurrentInput ?? "<unknown>"}"
+                """
+            );
+        }
     }
 
     private void OnTrackedCommandSubmitted(string command)

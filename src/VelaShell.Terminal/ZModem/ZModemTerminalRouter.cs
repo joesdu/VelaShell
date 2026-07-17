@@ -65,6 +65,20 @@ public sealed class ZModemTerminalRouter(
     public event Action<ZModemSession>? SessionEnded;
 
     /// <summary>
+    /// 常态零拷贝快路径:未处于 ZMODEM 会话且检测器判定本块可直通时为 true,
+    /// 调用方(读循环)可把原始块原样喂终端,完全绕过 <see cref="ProcessIncoming" />
+    /// 的窗口拼接与切片。会话只会在同一读线程的 ProcessIncoming 里启动,
+    /// 判定与直喂之间不存在"突然进入会话"的竞态。
+    /// </summary>
+    public bool CanPassThrough(ReadOnlySpan<byte> data)
+    {
+        lock (_gate)
+        {
+            return _state != ZModemRoutingState.InSession && _detector.CanPassThrough(data);
+        }
+    }
+
+    /// <summary>
     /// 处理一段来自读循环的原始输出字节,返回应喂入 VT 终端的字节。
     /// 会话期间返回空数组;检测到引导时启动会话并把引导及其后字节转交引擎。
     /// </summary>
