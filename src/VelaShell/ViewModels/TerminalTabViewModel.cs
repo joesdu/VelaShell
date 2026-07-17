@@ -96,6 +96,13 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     public Guid SessionId { get; set; }
 
     /// <summary>
+    /// 本标签的 SFTP 面板开关状态(标签生命周期内记忆,含断线重连):null 表示尚未
+    /// 决定过(首次连接时取设置「连接后自动打开文件浏览器」)。用户在该标签上
+    /// 打开/关闭面板时由宿主回写,切回本标签按此恢复,与其他标签互不影响。
+    /// </summary>
+    public bool? FileBrowserOpen { get; set; }
+
+    /// <summary>
     /// Resource panel data for this tab (hover >400ms on the tab shows it, §11).
     /// 握手完成后才赋值,而标签 ToolTip.Tip 在标签创建时就已绑定到它,
     /// 必须发变更通知,否则 Tip 停留在 null,悬浮面板永远不弹。

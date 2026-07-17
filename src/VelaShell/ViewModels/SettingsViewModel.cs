@@ -455,7 +455,10 @@ public class SettingsViewModel : ReactiveObject
     /// 关于页贡献者(设计 kGwqX;数据来自仓库真实提交者,新增贡献者在此追加)。
     /// 头像在 LoadAsync 时后台拉取。
     /// </summary>
-    public ContributorViewModel[] Contributors { get; } = [new("joesdu"), new("tsaiggo"), new("pengqian089")];
+    public ContributorViewModel[] Contributors { get; } =
+        [
+            new("joesdu"), new("tsaiggo"), new("pengqian089")
+        ];
 
     /// <summary>开源依赖(真实技术栈)。</summary>
     public DependencyInfo[] AboutDependencies { get; } =

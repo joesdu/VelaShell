@@ -1963,7 +1963,7 @@
     <value>연결 시 파일 브라우저 자동 열기</value>
   </data>
   <data name="SetTerm_AutoOpenSftpDesc" xml:space="preserve">
-    <value>켜기: 원격 세션에 연결할 때마다 SFTP 파일 브라우저를 자동으로 엽니다. 끄기: 마지막 종료 시 패널 표시 상태를 따릅니다.</value>
+    <value>새로 연결하는 원격 세션에서 SFTP 파일 브라우저를 자동으로 열지 결정합니다. 이후에는 각 탭이 표시/숨김 상태를 개별적으로 기억합니다.</value>
   </data>
   <data name="SetTerm_OutputEncoding" xml:space="preserve">
     <value>출력 인코딩</value>
@@ -2321,9 +2321,6 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="StatusBar_Swap" xml:space="preserve">
     <value>스왑</value>
-  </data>
-  <data name="StatusBar_RemoteFiles" xml:space="preserve">
-    <value>원격 파일 열기 또는 닫기</value>
   </data>
   <data name="Svc_Active" xml:space="preserve">
     <value>활성</value>
