@@ -141,8 +141,18 @@ public class SettingsViewModel : ReactiveObject
         ClearHistoryCommand = ReactiveCommand.CreateFromTask(ClearHistoryAsync);
         CheckUpdatesCommand = ReactiveCommand.CreateFromTask(CheckForUpdatesAsync);
         RestartToUpdateCommand = ReactiveCommand.Create(() =>
-            _updateService?.ApplyUpdateAndRestart()
-        );
+        {
+            try
+            {
+                _updateService?.ApplyUpdateAndRestart();
+            }
+            catch
+            {
+                // 换版失败时 UpdateApplier 已自动回滚,应用仍以当前版本运行,如实提示即可。
+                UpdateReady = false;
+                UpdateStatus = Strings.Get("SetAbout_ApplyFailed");
+            }
+        });
     }
 
     // ———— 顶层字段(既有行为:保存后立即生效) ————
@@ -471,12 +481,6 @@ public class SettingsViewModel : ReactiveObject
             "https://github.com/IoTSharp/SonnetDB",
             "https://github.com/IoTSharp/SonnetDB/blob/main/LICENSE"
         ),
-        new(
-            "Velopack",
-            "MIT",
-            "https://github.com/velopack/velopack",
-            "https://github.com/velopack/velopack/blob/develop/LICENSE"
-        ),
     ];
 
     /// <summary>载入设置命令:从服务读取配置并回填视图模型。</summary>
@@ -542,10 +546,16 @@ public class SettingsViewModel : ReactiveObject
         }
         if (!hasUpdate)
         {
-            // 区分“已是最新”与“便携/非安装版无法自动更新”,避免误导。
-            UpdateStatus = _updateService.IsUpdaterManaged
-                ? Strings.Get("SetAbout_UpToDate")
-                : Strings.Get("SetAbout_NotUpdaterManaged");
+            UpdateStatus = Strings.Get("SetAbout_UpToDate");
+            return;
+        }
+        if (!_updateService.CanSelfUpdate)
+        {
+            // 有新版本但应用目录不可写(如装在 Program Files),只能提示手动下载。
+            UpdateStatus = Strings.Format(
+                "SetAbout_UpdateAvailableManual",
+                _updateService.AvailableVersion ?? string.Empty
+            );
             return;
         }
         try

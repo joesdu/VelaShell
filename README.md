@@ -90,7 +90,7 @@ VelaShell 是一个使用 .NET 10 与 Avalonia 构建的桌面终端应用，支
 
 | 平台 | 架构 | 状态 |
 |------|------|------|
-| Windows 10 / 11 | x64 / arm64 | ✅ 完整支持（含 Velopack Setup.exe 与 WiX MSI 安装包） |
+| Windows 10 / 11 | x64 / arm64 | ✅ 完整支持（便携 zip，应用内自动更新） |
 | Linux | x64 / arm64 | ✅ 完整支持（便携 tar.gz） |
 | macOS | x64 / arm64 | ✅ 完整支持（tar.gz，未签名/未公证） |
 
@@ -104,7 +104,6 @@ VelaShell 是一个使用 .NET 10 与 Avalonia 构建的桌面终端应用，支
 
 - [.NET SDK](https://dotnet.microsoft.com/download) 10.0.201 或更高版本（`global.json` 锁定）
 -（可选）Docker，用于启动本地 SSH 测试服务器
--（可选，仅打 MSI）[WiX Toolset](https://wixtoolset.org/) v4+
 
 ### 克隆与构建
 
@@ -152,15 +151,17 @@ docker-compose -f docker-compose.test.yml up
 ## 📦 构建与发布
 
 ```bash
-# 一键产出全平台 8 个发布包（输出到 publish/）
+# 一键产出全平台 6 个发布包（输出到 publish/）
 pwsh scripts/publish-all.ps1
 ```
 
-产物覆盖 Windows x64/arm64（含运行时 / `-noruntime` 两种 zip）、macOS 与 Linux x64/arm64（含运行时 tar.gz，单文件发布）。
+产物覆盖 Windows x64/arm64（便携 zip）、macOS 与 Linux x64/arm64（tar.gz），全部为含运行时的单文件发布,解压到任意目录即可运行。
 
-**Windows 安装包**：[`installer/VelaShell.wxs`](installer/VelaShell.wxs) 使用 WiX v4+ 构建 MSI，安装向导 `WixUI_InstallDir` 支持自定义安装目录（含中文向导），静默安装 `msiexec /i VelaShell.msi /qn INSTALLFOLDER="D:\Tools\VelaShell"`。
+**应用内自动更新**：设置 → 关于 → 检查更新。应用从 GitHub Releases 读取 `latest.json` 清单,下载对应平台压缩包到应用目录下的暂存目录,SHA-256 校验后原地换版并重启 —— 应用装在哪里就更新哪里,不限定安装位置;`%LocalAppData%/VelaShell` 数据目录与更新流程完全隔离,升级/回滚均不触碰用户数据。更新通道（stable / preview）在设置页切换。
 
-**CI/CD**：[`.github/workflows/release.yml`](.github/workflows/release.yml) 在 GitHub 发布 Release 时触发，三平台原生 runner 并行构建同一套 8 产物（版本号取 Release 标签，`-p:Version` 覆盖，发版无需改代码），汇总 `SHA256SUMS.txt` 后全部附加到该 Release。
+**CI/CD**：[`.github/workflows/release.yml`](.github/workflows/release.yml) 在 GitHub 发布 Release 时触发，三平台原生 runner 并行构建同一套 6 产物（版本号取 Release 标签，`-p:Version` 覆盖，发版无需改代码），汇总 `SHA256SUMS.txt` 与自动更新清单 `latest.json` 后全部附加到该 Release。
+
+> `installer/VelaShell.wxs`（WiX MSI 定义）仍保留在仓库中,可手动构建,但不再随 CI 发布;MSI 装进 Program Files 后应用内更新会因目录不可写而提示手动下载。
 
 ---
 
@@ -178,7 +179,7 @@ VelaShell/
 ├── tests/                          # 6 个 MSTest 项目：单元、集成与冒烟测试
 ├── docs/                           # 架构设计、UI 规格、设置审计与交互说明
 ├── scripts/publish-all.ps1         # 跨平台一键发布脚本
-├── installer/                      # WiX MSI 安装包定义
+├── installer/                      # WiX MSI 安装包定义（保留可手动构建，不随 CI 发布）
 ├── docker-compose.test.yml         # 本地 SSH 测试服务器
 ├── global.json                     # SDK 版本锁定
 ├── Directory.Build.props           # 全仓版本与公共 MSBuild 属性
@@ -252,7 +253,7 @@ dotnet test --logger "console;verbosity=detailed"
 - **VelaDock（自研）** — 可拖拽分屏与停靠布局，零第三方依赖
 - **SSH.NET** — SSH / SFTP / 端口转发
 - **SonnetDB** — 嵌入式多模型数据库（文档 + 时序），唯一持久化引擎
-- **Velopack + WiX** — 自动更新、发布管理与 Windows MSI 安装包
+- **自研便携式自更新** — GitHub Releases `latest.json` 清单 + SHA-256 校验 + 原地换版重启，不限定安装位置、不触碰用户数据目录（`src/VelaShell/Services/Update/`）
 - **MSTest** — 单元测试框架
 - **集中式包管理** — `Directory.Packages.props` 统一 NuGet 版本
 

@@ -6,7 +6,7 @@ using Avalonia;
 using ReactiveUI.Avalonia;
 using VelaShell.Core.Resources;
 using VelaShell.Infrastructure.Persistence;
-using Velopack;
+using VelaShell.Services.Update;
 
 // ReSharper disable InconsistentNaming
 
@@ -23,18 +23,21 @@ internal static partial class Program
         // Enable legacy code pages (GBK, Big5, Shift_JIS, …) for the terminal encoding option.
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         InstallGlobalExceptionGuards();
-        VelopackApp.Build().Run();
 
         // Only one instance per user may run: SonnetDB holds an exclusive lock on its WAL, so a
         // second process would otherwise crash at startup with a file-in-use IOException. Detect
         // the running instance up front and exit cleanly with a friendly notice instead.
-        if (!TryAcquireSingleInstanceLock())
+        // After a self-update relaunch (--after-update) the predecessor is still shutting down,
+        // so wait for it to release the lock instead of bailing out immediately.
+        bool afterUpdate = args.Contains("--after-update", StringComparer.Ordinal);
+        if (!TryAcquireSingleInstanceLock(afterUpdate ? TimeSpan.FromSeconds(15) : TimeSpan.Zero))
         {
             ShowMessage(Strings.Get("Boot_AlreadyRunning"), "VelaShell");
             return;
         }
         try
         {
+            FinalizePendingUpdate();
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         }
         catch (Exception ex)
@@ -51,6 +54,33 @@ internal static partial class Program
     }
 
     /// <summary>
+    /// Finishes any self-update left from the previous run: deletes the *.old files a successful
+    /// swap leaves behind, or rolls back a swap that crashed halfway. The old process may still be
+    /// exiting and holding its (renamed) image file, so failed deletions are retried briefly in the
+    /// background and, failing that, picked up again on the next launch. Never throws.
+    /// </summary>
+    private static void FinalizePendingUpdate()
+    {
+        string appDir = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
+        UpdateApplier applier = new(appDir);
+        if (applier.TryFinalizeStartup())
+        {
+            return;
+        }
+        _ = Task.Run(async () =>
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1));
+                if (applier.TryFinalizeStartup())
+                {
+                    return;
+                }
+            }
+        });
+    }
+
+    /// <summary>
     /// Acquires a session-scoped named mutex keyed on the local data directory. Returns false when
     /// another instance already holds it — the common case being a double-click while the app is
     /// open. Keyed on the storage path so distinct Windows users (distinct %LocalAppData%) run
@@ -58,7 +88,7 @@ internal static partial class Program
     /// the rare same-user-across-sessions collision is caught later by SonnetDB's file lock and the
     /// startup error dialog, rather than silently proceeding into a crash.
     /// </summary>
-    private static bool TryAcquireSingleInstanceLock()
+    private static bool TryAcquireSingleInstanceLock(TimeSpan waitTimeout)
     {
         try
         {
@@ -67,7 +97,7 @@ internal static partial class Program
             _singleInstanceMutex = new(false, $"Local\\VelaShell-{key}");
             try
             {
-                if (!_singleInstanceMutex.WaitOne(TimeSpan.Zero))
+                if (!_singleInstanceMutex.WaitOne(waitTimeout))
                 {
                     return false;
                 }

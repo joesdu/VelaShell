@@ -1,34 +1,76 @@
+using System.IO.Compression;
+using System.Security.Cryptography;
 using VelaShell.Services;
-using Velopack.Locators;
+using VelaShell.Services.Update;
 
 namespace VelaShell.Tests.Services;
 
 [TestClass]
 public class UpdateServiceTests : IDisposable
 {
-    private readonly TestVelopackLocator _locator;
-    private readonly string _tempDir;
+    private readonly string _appDir;
+    private readonly FakeUpdateSource _source = new();
 
     public UpdateServiceTests()
     {
-        _tempDir = Path.Combine(Path.GetTempPath(), $"velashell_update_test_{Guid.NewGuid()}");
-        Directory.CreateDirectory(_tempDir);
-        _locator = new("com.velashell.test", "1.0.0", _tempDir);
+        _appDir = Path.Combine(Path.GetTempPath(), $"velashell_update_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_appDir);
     }
 
     public void Dispose()
     {
-        if (Directory.Exists(_tempDir))
+        if (Directory.Exists(_appDir))
         {
-            Directory.Delete(_tempDir, true);
+            Directory.Delete(_appDir, true);
         }
+    }
+
+    private UpdateService CreateService(
+        string currentVersion = "1.0.0",
+        Func<Task<string>>? channelProvider = null,
+        Action? shutdown = null) =>
+        new(_source,
+            channelProvider,
+            applicationDirectory: _appDir,
+            currentVersionOverride: currentVersion,
+            shutdownForRestart: shutdown ?? (static () => { }));
+
+    /// <summary>为当前平台构造一个指向 <paramref name="archiveBytes" /> 的清单。</summary>
+    private static UpdateManifest CreateManifest(string version, byte[] archiveBytes)
+    {
+        string rid = UpdateManifest.CurrentRid()
+            ?? throw new InvalidOperationException("Tests must run on a supported platform.");
+        string sha = Convert.ToHexStringLower(SHA256.HashData(archiveBytes));
+        return UpdateManifest.Parse($$"""
+            {
+              "version": "{{version}}",
+              "tag": "v{{version}}",
+              "assets": {
+                "{{rid}}": { "name": "VelaShell-{{version}}-{{rid}}.zip", "sha256": "{{sha}}", "size": {{archiveBytes.Length}} }
+              }
+            }
+            """);
+    }
+
+    private static byte[] CreateZipBytes(params (string Path, string Content)[] entries)
+    {
+        using MemoryStream stream = new();
+        using (ZipArchive zip = new(stream, ZipArchiveMode.Create, true))
+        {
+            foreach ((string path, string content) in entries)
+            {
+                using StreamWriter writer = new(zip.CreateEntry(path).Open());
+                writer.Write(content);
+            }
+        }
+        return stream.ToArray();
     }
 
     [TestMethod]
     [TestCategory("Update")]
-    public void CurrentVersion_WhenNotInstalled_ReturnsAssemblyVersion()
+    public void CurrentVersion_WithoutOverride_ReturnsAssemblyVersion()
     {
-        var service = new UpdateService("https://github.com/velashell-test/nonexistent-repo", locator: _locator);
+        var service = new UpdateService(_source, applicationDirectory: _appDir);
         Assert.IsFalse(string.IsNullOrEmpty(service.CurrentVersion));
     }
 
@@ -36,49 +78,182 @@ public class UpdateServiceTests : IDisposable
     [TestCategory("Update")]
     public void AvailableVersion_Initially_IsNull()
     {
-        var service = new UpdateService("https://github.com/velashell-test/nonexistent-repo", locator: _locator);
+        Assert.IsNull(CreateService().AvailableVersion);
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public void CanSelfUpdate_WritableTempDir_IsTrue()
+    {
+        Assert.IsTrue(CreateService().CanSelfUpdate);
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public async Task CheckForUpdateAsync_NewerVersion_ReturnsTrueAndExposesVersion()
+    {
+        byte[] zip = CreateZipBytes(("app.txt", "new"));
+        _source.Manifest = CreateManifest("2.0.0", zip);
+        var service = CreateService("1.0.0");
+
+        Assert.IsTrue(await service.CheckForUpdateAsync());
+        Assert.AreEqual("2.0.0", service.AvailableVersion);
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    [DataRow("1.0.0")]
+    [DataRow("0.9.0")]
+    [DataRow("1.0.0-beta")]
+    public async Task CheckForUpdateAsync_SameOrOlderVersion_ReturnsFalse(string remote)
+    {
+        _source.Manifest = CreateManifest(remote, CreateZipBytes(("a", "b")));
+        var service = CreateService("1.0.0");
+
+        Assert.IsFalse(await service.CheckForUpdateAsync());
         Assert.IsNull(service.AvailableVersion);
     }
 
     [TestMethod]
     [TestCategory("Update")]
-    public async Task CheckForUpdateAsync_WhenNetworkUnavailable_ReturnsFalse()
+    public async Task CheckForUpdateAsync_NoManifestOnSource_ReturnsFalse()
     {
-        var service = new UpdateService("https://github.com/velashell-test/nonexistent-repo", locator: _locator);
-        bool result = await service.CheckForUpdateAsync();
-        Assert.IsFalse(result);
+        _source.Manifest = null;
+        Assert.IsFalse(await CreateService().CheckForUpdateAsync());
     }
 
     [TestMethod]
     [TestCategory("Update")]
-    public async Task DownloadUpdateAsync_WhenNoUpdateAvailable_CompletesWithoutError()
+    public async Task CheckForUpdateAsync_NoAssetForPlatform_ReturnsFalse()
     {
-        var service = new UpdateService("https://github.com/velashell-test/nonexistent-repo", locator: _locator);
-        await service.DownloadUpdateAsync();
+        _source.Manifest = UpdateManifest.Parse("""
+            { "version": "9.9.9", "tag": "v9.9.9",
+              "assets": { "solaris-sparc": { "name": "n", "sha256": "s", "size": 1 } } }
+            """);
+        Assert.IsFalse(await CreateService().CheckForUpdateAsync());
     }
 
     [TestMethod]
     [TestCategory("Update")]
-    public void ApplyUpdateAndRestart_WhenNoUpdateAvailable_ThrowsInvalidOperation()
+    public async Task CheckForUpdateAsync_SourceThrows_ReturnsFalse()
     {
-        var service = new UpdateService("https://github.com/velashell-test/nonexistent-repo", locator: _locator);
-        Action act = () => service.ApplyUpdateAndRestart();
-        Assert.ThrowsExactly<InvalidOperationException>(act);
+        _source.ThrowOnManifest = true;
+        Assert.IsFalse(await CreateService().CheckForUpdateAsync());
     }
 
     [TestMethod]
     [TestCategory("Update")]
-    public void Constructor_WithNullUrl_ThrowsArgumentNullException()
+    public async Task CheckForUpdateAsync_PreviewChannel_RequestsPreReleases()
     {
-        Func<UpdateService> act = () => new(null!, locator: _locator);
-        Assert.ThrowsExactly<ArgumentNullException>(act);
+        _source.Manifest = null;
+        await CreateService(channelProvider: static () => Task.FromResult("preview")).CheckForUpdateAsync();
+        Assert.IsTrue(_source.LastIncludePreRelease);
+
+        await CreateService(channelProvider: static () => Task.FromResult("stable")).CheckForUpdateAsync();
+        Assert.IsFalse(_source.LastIncludePreRelease);
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public async Task DownloadUpdateAsync_WithoutCheck_CompletesWithoutError()
+    {
+        await CreateService().DownloadUpdateAsync();
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public async Task DownloadUpdateAsync_ValidChecksum_Succeeds()
+    {
+        byte[] zip = CreateZipBytes(("app.txt", "new"));
+        _source.Manifest = CreateManifest("2.0.0", zip);
+        _source.AssetBytes = zip;
+        var service = CreateService("1.0.0");
+        Assert.IsTrue(await service.CheckForUpdateAsync());
+
+        List<int> reported = [];
+        await service.DownloadUpdateAsync(new SynchronousProgress(reported.Add));
+
+        string archive = Path.Combine(_appDir, UpdateApplier.StagingDirectoryName, "VelaShell-2.0.0-" + UpdateManifest.CurrentRid() + ".zip");
+        Assert.IsTrue(File.Exists(archive));
+        Assert.Contains(100, reported);
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public async Task DownloadUpdateAsync_ChecksumMismatch_ThrowsAndDeletesArchive()
+    {
+        byte[] zip = CreateZipBytes(("app.txt", "new"));
+        _source.Manifest = CreateManifest("2.0.0", zip);
+        _source.AssetBytes = [1, 2, 3]; // 与清单声明的哈希不符
+        var service = CreateService("1.0.0");
+        Assert.IsTrue(await service.CheckForUpdateAsync());
+
+        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => service.DownloadUpdateAsync());
+
+        string staging = Path.Combine(_appDir, UpdateApplier.StagingDirectoryName);
+        Assert.AreEqual(0, Directory.GetFiles(staging).Length, "校验失败的下载必须删除");
+        // 校验失败后不允许进入换版。
+        Assert.ThrowsExactly<InvalidOperationException>(() => service.ApplyUpdateAndRestart());
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public void ApplyUpdateAndRestart_WithoutDownload_ThrowsInvalidOperation()
+    {
+        Assert.ThrowsExactly<InvalidOperationException>(() => CreateService().ApplyUpdateAndRestart());
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public void Constructor_WithNullSource_ThrowsArgumentNullException()
+    {
+        Assert.ThrowsExactly<ArgumentNullException>(() => _ = new UpdateService((IUpdateSource)null!));
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public void Constructor_WithInvalidRepositoryUrl_Throws()
+    {
+        Assert.ThrowsExactly<ArgumentException>(() => _ = new UpdateService("https://github.com/only-owner"));
     }
 
     [TestMethod]
     [TestCategory("Update")]
     public void ImplementsIUpdateService()
     {
-        var service = new UpdateService("https://github.com/velashell-test/nonexistent-repo", locator: _locator);
-        Assert.IsInstanceOfType(service, typeof(IUpdateService));
+        Assert.IsInstanceOfType<IUpdateService>(CreateService());
+    }
+
+    /// <summary>同步回调的进度器(Progress&lt;T&gt; 经同步上下文投递,测试里改用直呼)。</summary>
+    private sealed class SynchronousProgress(Action<int> handler) : IProgress<int>
+    {
+        public void Report(int value) => handler(value);
+    }
+
+    private sealed class FakeUpdateSource : IUpdateSource
+    {
+        public UpdateManifest? Manifest { get; set; }
+        public byte[]? AssetBytes { get; set; }
+        public bool ThrowOnManifest { get; set; }
+        public bool LastIncludePreRelease { get; private set; }
+
+        public Task<UpdateManifest?> GetLatestManifestAsync(bool includePreRelease, CancellationToken cancellationToken = default)
+        {
+            LastIncludePreRelease = includePreRelease;
+            return ThrowOnManifest
+                ? Task.FromException<UpdateManifest?>(new HttpRequestException("offline"))
+                : Task.FromResult(Manifest);
+        }
+
+        public async Task DownloadAssetAsync(
+            UpdateManifest manifest,
+            UpdateAsset asset,
+            string destinationPath,
+            IProgress<int>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            await File.WriteAllBytesAsync(destinationPath, AssetBytes ?? [], cancellationToken);
+            progress?.Report(100);
+        }
     }
 }

@@ -10,12 +10,12 @@
 
 | 路径 | 职责 |
 |------|------|
-| `Program.cs` | 进程入口：配置 Avalonia AppBuilder、Velopack 自动更新钩子、启动生命周期。 |
+| `Program.cs` | 进程入口：配置 Avalonia AppBuilder、单实例锁、自更新启动期收尾（清理 `*.old` / 崩溃回滚）、启动生命周期。 |
 | `App.axaml` / `App.axaml.cs` | **组合根**：构建 DI 容器、注册所有层的服务、创建主窗口、加载主题与全局样式。 |
 | `Views/` | 全部 XAML 视图：`MainWindow`、`SettingsView` 及九+页设置（常规/外观/终端/密钥/快捷键/传输/安全审计/片段/云同步/关于/捐赠）、认证对话框、命令面板、文件浏览/传输、隧道面板、录制回放、资源监视器、主机指纹提示等。 |
 | `ViewModels/` | 与窗口强绑定的 ViewModel：`MainWindowViewModel`（热点文件）、`SettingsViewModel`、`TerminalTabViewModel`、`AuthenticationDialogViewModel`、`CommandPaletteViewModel`、`FileBrowser/FileTransferViewModel`、`SshKeyManagerViewModel`、`SyncViewModel`、`RecordingPlayerViewModel` 等。 |
 | `Docking/` | 基于 Dock.Avalonia 的可拖拽分屏系统：`DockWorkspace` 模型、拖拽控制器、放置覆盖层、标签撕出与终端文档宿主。 |
-| `Services/` | 应用级服务：`SessionRecorder`/`SessionLogService`（会话录制）、`UpdateService`（Velopack 更新）、`TrayIconService`（托盘）、`KeyboardShortcutService`（快捷键）、`CommandHistoryService`/`CommandSuggestionProvider`（命令建议）、`StartupRegistration`（开机自启）、`ExternalEditSessionManager`（外部编辑器）等。 |
+| `Services/` | 应用级服务：`SessionRecorder`/`SessionLogService`（会话录制）、`UpdateService`（便携式自更新，GitHub Releases 清单 + 原地换版，见 `Services/Update/`）、`TrayIconService`（托盘）、`KeyboardShortcutService`（快捷键）、`CommandHistoryService`/`CommandSuggestionProvider`（命令建议）、`StartupRegistration`（开机自启）、`ExternalEditSessionManager`（外部编辑器）等。 |
 | `Themes/` | `DarkTheme`/`LightTheme`/`InputStyles`/`DockStyles`：应用级主题与样式覆盖。 |
 | `Converters/` `Behaviors/` `Controls/` | XAML 值转换器、输入行为（`SecurePasswordBox`、`AsciiOnlyInput`）、`ReparentingHost` 宿主控件。 |
 | `Security/` `Localization/` | `SecureStringConvert` 安全字符串互转、`LocalizeExtension` XAML 本地化标记扩展。 |
@@ -40,7 +40,7 @@ VelaShell (App)
    └─► VelaShell.Infrastructure
 ```
 
-- **包**：`Avalonia.Desktop`、`Avalonia.Themes.Fluent`、`Avalonia.Fonts.Inter`、`Avalonia.AvaloniaEdit`、`ReactiveUI.Avalonia`、`Microsoft.Extensions.DependencyInjection`、`Velopack`。
+- **包**：`Avalonia.Desktop`、`Avalonia.Themes.Fluent`、`Avalonia.Fonts.Inter`、`Avalonia.AvaloniaEdit`、`ReactiveUI.Avalonia`、`Microsoft.Extensions.DependencyInjection`。
 - **Release 发布**：`PublishSingleFile` + `SelfContained`，目标机器无需预装 .NET Runtime。
 - `InternalsVisibleTo` 暴露给 [`tests/VelaShell.Tests`](../../tests/VelaShell.Tests)。
 
