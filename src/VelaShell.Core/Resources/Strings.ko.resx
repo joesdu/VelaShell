@@ -109,9 +109,6 @@
   <data name="ChangePermissions" xml:space="preserve">
     <value>권한 (chmod)…</value>
   </data>
-  <data name="ClearAll" xml:space="preserve">
-    <value>모두 지우기</value>
-  </data>
   <data name="CloseTab" xml:space="preserve">
     <value>탭 닫기</value>
   </data>
@@ -219,9 +216,6 @@
   </data>
   <data name="Delete" xml:space="preserve">
     <value>삭제</value>
-  </data>
-  <data name="DeleteSelected" xml:space="preserve">
-    <value>선택 항목 삭제</value>
   </data>
   <data name="Deleting" xml:space="preserve">
     <value>삭제 중…</value>
@@ -463,9 +457,6 @@
   <data name="Download" xml:space="preserve">
     <value>다운로드</value>
   </data>
-  <data name="DownloadSelected" xml:space="preserve">
-    <value>선택 항목 다운로드</value>
-  </data>
   <data name="Edit" xml:space="preserve">
     <value>편집</value>
   </data>
@@ -574,21 +565,6 @@
   <data name="KeyType" xml:space="preserve">
     <value>키 유형</value>
   </data>
-  <data name="Lang_English" xml:space="preserve">
-    <value>English</value>
-  </data>
-  <data name="Lang_Japanese" xml:space="preserve">
-    <value>日本語</value>
-  </data>
-  <data name="Lang_Korean" xml:space="preserve">
-    <value>한국어</value>
-  </data>
-  <data name="Lang_SimplifiedChinese" xml:space="preserve">
-    <value>简体中文</value>
-  </data>
-  <data name="Lang_TraditionalChinese" xml:space="preserve">
-    <value>繁體中文</value>
-  </data>
   <data name="Language" xml:space="preserve">
     <value>언어</value>
   </data>
@@ -635,74 +611,11 @@
   <data name="Main_TerminalExported" xml:space="preserve">
     <value>터미널 출력을 내보냈습니다: {0}</value>
   </data>
-  <data name="Menu_Actions" xml:space="preserve">
-    <value>작업</value>
-  </data>
-  <data name="Menu_ClearScreen" xml:space="preserve">
-    <value>화면 지우기</value>
-  </data>
-  <data name="Menu_CloseCurrentSession" xml:space="preserve">
-    <value>현재 세션 닫기</value>
-  </data>
-  <data name="Menu_CommandPalette" xml:space="preserve">
-    <value>명령 팔레트</value>
-  </data>
   <data name="Menu_CommandPaletteTip" xml:space="preserve">
     <value>명령 팔레트 (Ctrl+P)</value>
   </data>
-  <data name="Menu_ConnectionDiagnostics" xml:space="preserve">
-    <value>연결 진단</value>
-  </data>
-  <data name="Menu_DuplicateSession" xml:space="preserve">
-    <value>세션 복제</value>
-  </data>
-  <data name="Menu_Exit" xml:space="preserve">
-    <value>종료</value>
-  </data>
-  <data name="Menu_FindInTerminal" xml:space="preserve">
-    <value>터미널에서 찾기</value>
-  </data>
-  <data name="Menu_Help" xml:space="preserve">
-    <value>도움말</value>
-  </data>
-  <data name="Menu_HostTrustCenter" xml:space="preserve">
-    <value>호스트 신뢰 센터</value>
-  </data>
-  <data name="Menu_ImportExportConfig" xml:space="preserve">
-    <value>설정 가져오기 / 내보내기</value>
-  </data>
-  <data name="Menu_KeyManagement" xml:space="preserve">
-    <value>키 관리</value>
-  </data>
-  <data name="Menu_NewSftp" xml:space="preserve">
-    <value>새 SFTP</value>
-  </data>
-  <data name="Menu_NewSshConnection" xml:space="preserve">
-    <value>새 SSH 연결</value>
-  </data>
-  <data name="Menu_Paste" xml:space="preserve">
-    <value>붙여넣기</value>
-  </data>
-  <data name="Menu_Preferences" xml:space="preserve">
-    <value>환경설정</value>
-  </data>
   <data name="Menu_SearchTerminalTip" xml:space="preserve">
     <value>터미널 검색 (Ctrl+F)</value>
-  </data>
-  <data name="Menu_Session" xml:space="preserve">
-    <value>세션</value>
-  </data>
-  <data name="Menu_SftpFileManager" xml:space="preserve">
-    <value>SFTP 파일 관리자</value>
-  </data>
-  <data name="Menu_ShortcutsOverview" xml:space="preserve">
-    <value>단축키 목록</value>
-  </data>
-  <data name="Menu_Tools" xml:space="preserve">
-    <value>도구</value>
-  </data>
-  <data name="Menu_TunnelManager" xml:space="preserve">
-    <value>터널 관리</value>
   </data>
   <data name="Menu_TunnelTip" xml:space="preserve">
     <value>터널 (Ctrl+Shift+T)</value>
@@ -1064,9 +977,6 @@
   <data name="NewTunnel" xml:space="preserve">
     <value>새 터널</value>
   </data>
-  <data name="NoSavedSessions" xml:space="preserve">
-    <value>저장된 세션이 없습니다</value>
-  </data>
   <data name="Notifications" xml:space="preserve">
     <value>알림</value>
   </data>
@@ -1087,9 +997,6 @@
   </data>
   <data name="Palette_SearchPlaceholder" xml:space="preserve">
     <value>명령 입력 또는 세션 검색…</value>
-  </data>
-  <data name="ParentDirectory" xml:space="preserve">
-    <value>상위 디렉터리</value>
   </data>
   <data name="Passphrase" xml:space="preserve">
     <value>암호 문구</value>
@@ -1233,9 +1140,6 @@
   <data name="QuickCmd_EditSnippet" xml:space="preserve"><value>스니펫 편집</value></data>
   <data name="QuickConnect" xml:space="preserve">
     <value>빠른 연결</value>
-  </data>
-  <data name="QuickConnectPlaceholder" xml:space="preserve">
-    <value>user@host:port</value>
   </data>
   <data name="Ready" xml:space="preserve">
     <value>준비됨</value>
@@ -1440,9 +1344,6 @@
   </data>
   <data name="SetAppear_SelectionColorDesc" xml:space="preserve">
     <value>// 터미널에서 선택한 텍스트의 배경색</value>
-  </data>
-  <data name="SetAppear_ShowMenuBar" xml:space="preserve">
-    <value>메뉴 모음 표시</value>
   </data>
   <data name="SetAppear_SidebarLeft" xml:space="preserve">
     <value>왼쪽</value>
@@ -1815,9 +1716,6 @@
   </data>
   <data name="SetSnippets_CommandPlaceholder" xml:space="preserve">
     <value>명령 (예: systemctl status docker)</value>
-  </data>
-  <data name="SetSnippets_DeleteTip" xml:space="preserve">
-    <value>스니펫 삭제 (기본 제공 스니펫은 삭제할 수 없음)</value>
   </data>
   <data name="SetSnippets_Intro" xml:space="preserve">
     <value>자주 사용하는 명령 스니펫을 만들어 단축키에 바인딩하거나 특정 세션에 할당할 수 있습니다.</value>
@@ -2598,9 +2496,6 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="TerminalType" xml:space="preserve">
     <value>터미널 유형</value>
-  </data>
-  <data name="TestConnection" xml:space="preserve">
-    <value>연결 테스트</value>
   </data>
   <data name="Theme" xml:space="preserve">
     <value>테마</value>
