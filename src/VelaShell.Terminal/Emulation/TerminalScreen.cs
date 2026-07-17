@@ -160,9 +160,6 @@ public sealed class TerminalScreen
     /// <summary>Sets the cursor row, clamped into range.</summary>
     public void SetCursorY(int y) => CursorY = Math.Clamp(y, 0, Rows - 1);
 
-    /// <summary>Places the cursor exactly one past the last column, used to defer autowrap.</summary>
-    public void SetCursorAtEndOfLine() => CursorX = Columns;
-
     /// <summary>Sets the vertical scroll region (DECSTBM); falls back to the full screen on an invalid range.</summary>
     public void SetMargins(int top, int bottom)
     {
@@ -389,31 +386,6 @@ public sealed class TerminalScreen
     {
         _scrollback.Clear();
         _scrollbackStart = 0;
-    }
-
-    /// <summary>
-    /// Replaces the active lines wholesale (used when switching between main and alternate
-    /// buffers). The provided array becomes the live screen.
-    /// </summary>
-    public TerminalRow[] SwapLines(TerminalRow[] replacement)
-    {
-        TerminalRow[] previous = _lines;
-        _lines = replacement;
-        return previous;
-    }
-
-    /// <summary>Returns the live active-line array (not a copy).</summary>
-    public TerminalRow[] SnapshotLines() => _lines;
-
-    /// <summary>Allocates a fresh screen-sized array of blank rows without installing it.</summary>
-    public TerminalRow[] CreateBlankLines(in TerminalCell blank)
-    {
-        TerminalRow[] lines = NewLines(Rows, Columns);
-        foreach (TerminalRow l in lines)
-        {
-            l.Fill(blank);
-        }
-        return lines;
     }
 
     /// <summary>

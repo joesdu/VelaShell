@@ -662,7 +662,10 @@ public partial class TerminalTabView : UserControl
         base.OnPointerPressed(e);
     }
 
-    /// <summary>标签视图持有焦点时的快捷键回退处理(复制/粘贴/发送中断),与终端控件行为保持一致。</summary>
+    /// <summary>
+    /// 标签视图持有焦点时的快捷键处理:复制/粘贴/发送中断与终端控件行为保持一致;
+    /// 全局动作(新建/关闭/切换标签、打开设置)经快捷键服务解析后转发到主窗口命令。
+    /// </summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
         KeyModifiers modifiers = MapModifiers(e.KeyModifiers);
@@ -710,8 +713,51 @@ public partial class TerminalTabView : UserControl
                 }
                 e.Handled = true;
                 return;
+            case ShortcutAction.NewTab:
+            case ShortcutAction.CloseTab:
+            case ShortcutAction.NextTab:
+            case ShortcutAction.PreviousTab:
+            case ShortcutAction.OpenSettings:
+                if (ExecuteGlobalShortcut(action))
+                {
+                    e.Handled = true;
+                    return;
+                }
+                break;
         }
         base.OnKeyDown(e);
+    }
+
+    /// <summary>
+    /// 把快捷键服务解析出的全局动作接到主窗口的既有命令上,与 MainWindow.KeyBindings
+    /// 同源。经服务解析而非写死手势,macOS 上才是 Cmd+T/W/, 而非 Ctrl。找不到宿主 VM
+    /// 时返回 false,让事件继续冒泡由 Window.KeyBindings 兜底,避免双重执行。
+    /// </summary>
+    private bool ExecuteGlobalShortcut(ShortcutAction action)
+    {
+        if (TopLevel.GetTopLevel(this)?.DataContext is not MainWindowViewModel vm)
+        {
+            return false;
+        }
+        switch (action)
+        {
+            case ShortcutAction.NewTab:
+                return vm.Commands.Execute("session.new");
+            case ShortcutAction.CloseTab:
+                vm.TabBar.CloseActiveTabCommand.Execute().Subscribe();
+                return true;
+            case ShortcutAction.NextTab:
+                vm.TabBar.NextTabCommand.Execute().Subscribe();
+                return true;
+            case ShortcutAction.PreviousTab:
+                vm.TabBar.PreviousTabCommand.Execute().Subscribe();
+                return true;
+            case ShortcutAction.OpenSettings:
+                vm.OpenSettingsCommand.Execute().Subscribe();
+                return true;
+            default:
+                return false;
+        }
     }
 
     /// <summary>将文本输入以 UTF-8 编码转发到终端。</summary>

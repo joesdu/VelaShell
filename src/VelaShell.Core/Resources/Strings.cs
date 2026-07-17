@@ -28,9 +28,6 @@ public static class Strings
     /// <summary>状态栏“就绪”提示文案。</summary>
     public static string Ready => ResourceManager.GetString(nameof(Ready), CultureInfo.CurrentUICulture) ?? nameof(Ready);
 
-    /// <summary>快速连接输入框的占位提示文案。</summary>
-    public static string QuickConnectPlaceholder => ResourceManager.GetString(nameof(QuickConnectPlaceholder), CultureInfo.CurrentUICulture) ?? nameof(QuickConnectPlaceholder);
-
     /// <summary>“快速连接”标签/按钮文案。</summary>
     public static string QuickConnect => ResourceManager.GetString(nameof(QuickConnect), CultureInfo.CurrentUICulture) ?? nameof(QuickConnect);
 
@@ -157,14 +154,8 @@ public static class Strings
     /// <summary>“会话”列表标题文案。</summary>
     public static string Sessions => ResourceManager.GetString(nameof(Sessions), CultureInfo.CurrentUICulture) ?? nameof(Sessions);
 
-    /// <summary>“暂无已保存会话”空状态提示文案。</summary>
-    public static string NoSavedSessions => ResourceManager.GetString(nameof(NoSavedSessions), CultureInfo.CurrentUICulture) ?? nameof(NoSavedSessions);
-
     /// <summary>“移动到分组”菜单文案。</summary>
     public static string MoveToGroup => ResourceManager.GetString(nameof(MoveToGroup), CultureInfo.CurrentUICulture) ?? nameof(MoveToGroup);
-
-    /// <summary>“全部清除”按钮文案。</summary>
-    public static string ClearAll => ResourceManager.GetString(nameof(ClearAll), CultureInfo.CurrentUICulture) ?? nameof(ClearAll);
 
     /// <summary>“连接”按钮文案。</summary>
     public static string Connect => ResourceManager.GetString(nameof(Connect), CultureInfo.CurrentUICulture) ?? nameof(Connect);
@@ -228,9 +219,6 @@ public static class Strings
 
     /// <summary>“信任此主机”选项文案。</summary>
     public static string TrustThisHost => ResourceManager.GetString(nameof(TrustThisHost), CultureInfo.CurrentUICulture) ?? nameof(TrustThisHost);
-
-    /// <summary>“测试连接”按钮文案。</summary>
-    public static string TestConnection => ResourceManager.GetString(nameof(TestConnection), CultureInfo.CurrentUICulture) ?? nameof(TestConnection);
 
     /// <summary>“浏览密钥文件”按钮文案。</summary>
     public static string BrowseKeyFile => ResourceManager.GetString(nameof(BrowseKeyFile), CultureInfo.CurrentUICulture) ?? nameof(BrowseKeyFile);
@@ -334,15 +322,6 @@ public static class Strings
 
     /// <summary>“显示隐藏文件”开关文案。</summary>
     public static string ShowHiddenFiles => ResourceManager.GetString(nameof(ShowHiddenFiles), CultureInfo.CurrentUICulture) ?? nameof(ShowHiddenFiles);
-
-    /// <summary>“上级目录”导航项文案。</summary>
-    public static string ParentDirectory => ResourceManager.GetString(nameof(ParentDirectory), CultureInfo.CurrentUICulture) ?? nameof(ParentDirectory);
-
-    /// <summary>“下载所选”按钮文案。</summary>
-    public static string DownloadSelected => ResourceManager.GetString(nameof(DownloadSelected), CultureInfo.CurrentUICulture) ?? nameof(DownloadSelected);
-
-    /// <summary>“删除所选”按钮文案。</summary>
-    public static string DeleteSelected => ResourceManager.GetString(nameof(DeleteSelected), CultureInfo.CurrentUICulture) ?? nameof(DeleteSelected);
 
     /// <summary>删除确认对话框标题文案。</summary>
     public static string ConfirmDeleteTitle => ResourceManager.GetString(nameof(ConfirmDeleteTitle), CultureInfo.CurrentUICulture) ?? nameof(ConfirmDeleteTitle);

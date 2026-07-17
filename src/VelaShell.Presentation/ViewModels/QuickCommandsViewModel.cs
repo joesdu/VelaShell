@@ -155,9 +155,6 @@ public class QuickCommandsViewModel : ReactiveObject
         }
     }
 
-    /// <summary>兼容旧调用名。</summary>
-    public Task LoadCustomCommandsAsync() => LoadAsync();
-
     private void BuildFromData(QuickCommandData data)
     {
         var expansion = Groups.ToDictionary(

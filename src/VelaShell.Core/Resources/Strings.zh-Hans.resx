@@ -123,9 +123,6 @@
   <data name="Ready" xml:space="preserve">
     <value>就绪</value>
   </data>
-  <data name="QuickConnectPlaceholder" xml:space="preserve">
-    <value>用户名@主机名:端口</value>
-  </data>
   <data name="QuickConnect" xml:space="preserve">
     <value>快速连接</value>
   </data>
@@ -260,14 +257,8 @@
   <data name="Sessions" xml:space="preserve">
     <value>会话</value>
   </data>
-  <data name="NoSavedSessions" xml:space="preserve">
-    <value>没有保存的会话</value>
-  </data>
   <data name="MoveToGroup" xml:space="preserve">
     <value>移动到分组</value>
-  </data>
-  <data name="ClearAll" xml:space="preserve">
-    <value>全部清除</value>
   </data>
   <data name="Connect" xml:space="preserve">
     <value>连接</value>
@@ -340,9 +331,6 @@
   </data>
   <data name="TrustThisHost" xml:space="preserve">
     <value>信任此主机</value>
-  </data>
-  <data name="TestConnection" xml:space="preserve">
-    <value>测试连接</value>
   </data>
   <data name="BrowseKeyFile" xml:space="preserve">
     <value>浏览...</value>
@@ -442,15 +430,6 @@
   </data>
   <data name="ShowHiddenFiles" xml:space="preserve">
     <value>显示隐藏文件</value>
-  </data>
-  <data name="ParentDirectory" xml:space="preserve">
-    <value>上级目录</value>
-  </data>
-  <data name="DownloadSelected" xml:space="preserve">
-    <value>下载选中项</value>
-  </data>
-  <data name="DeleteSelected" xml:space="preserve">
-    <value>删除选中项</value>
   </data>
   <data name="ConfirmDeleteTitle" xml:space="preserve">
     <value>确认删除</value>
@@ -902,21 +881,6 @@
   <data name="KeySvc_UnknownType" xml:space="preserve">
     <value>未知</value>
   </data>
-  <data name="Lang_English" xml:space="preserve">
-    <value>English</value>
-  </data>
-  <data name="Lang_Japanese" xml:space="preserve">
-    <value>日本語</value>
-  </data>
-  <data name="Lang_Korean" xml:space="preserve">
-    <value>한국어</value>
-  </data>
-  <data name="Lang_SimplifiedChinese" xml:space="preserve">
-    <value>简体中文</value>
-  </data>
-  <data name="Lang_TraditionalChinese" xml:space="preserve">
-    <value>繁體中文</value>
-  </data>
   <data name="Main_CloseConfirmBody" xml:space="preserve">
     <value>仍有活动的 SSH 会话,关闭窗口将断开所有连接。确定退出吗?</value>
   </data>
@@ -948,74 +912,11 @@
   <data name="Main_TerminalExported" xml:space="preserve">
     <value>终端输出已导出:{0}</value>
   </data>
-  <data name="Menu_Actions" xml:space="preserve">
-    <value>操作</value>
-  </data>
-  <data name="Menu_ClearScreen" xml:space="preserve">
-    <value>清屏</value>
-  </data>
-  <data name="Menu_CloseCurrentSession" xml:space="preserve">
-    <value>关闭当前会话</value>
-  </data>
-  <data name="Menu_CommandPalette" xml:space="preserve">
-    <value>命令面板</value>
-  </data>
   <data name="Menu_CommandPaletteTip" xml:space="preserve">
     <value>命令面板 (Ctrl+P)</value>
   </data>
-  <data name="Menu_ConnectionDiagnostics" xml:space="preserve">
-    <value>连接诊断</value>
-  </data>
-  <data name="Menu_DuplicateSession" xml:space="preserve">
-    <value>复制会话</value>
-  </data>
-  <data name="Menu_Exit" xml:space="preserve">
-    <value>退出</value>
-  </data>
-  <data name="Menu_FindInTerminal" xml:space="preserve">
-    <value>终端内查找</value>
-  </data>
-  <data name="Menu_Help" xml:space="preserve">
-    <value>帮助</value>
-  </data>
-  <data name="Menu_HostTrustCenter" xml:space="preserve">
-    <value>主机信任中心</value>
-  </data>
-  <data name="Menu_ImportExportConfig" xml:space="preserve">
-    <value>导入 / 导出配置</value>
-  </data>
-  <data name="Menu_KeyManagement" xml:space="preserve">
-    <value>密钥管理</value>
-  </data>
-  <data name="Menu_NewSftp" xml:space="preserve">
-    <value>新建 SFTP</value>
-  </data>
-  <data name="Menu_NewSshConnection" xml:space="preserve">
-    <value>新建 SSH 连接</value>
-  </data>
-  <data name="Menu_Paste" xml:space="preserve">
-    <value>粘贴</value>
-  </data>
-  <data name="Menu_Preferences" xml:space="preserve">
-    <value>首选项</value>
-  </data>
   <data name="Menu_SearchTerminalTip" xml:space="preserve">
     <value>终端搜索 (Ctrl+F)</value>
-  </data>
-  <data name="Menu_Session" xml:space="preserve">
-    <value>会话</value>
-  </data>
-  <data name="Menu_SftpFileManager" xml:space="preserve">
-    <value>SFTP 文件管理器</value>
-  </data>
-  <data name="Menu_ShortcutsOverview" xml:space="preserve">
-    <value>快捷键一览</value>
-  </data>
-  <data name="Menu_Tools" xml:space="preserve">
-    <value>工具</value>
-  </data>
-  <data name="Menu_TunnelManager" xml:space="preserve">
-    <value>隧道管理</value>
   </data>
   <data name="Menu_TunnelTip" xml:space="preserve">
     <value>隧道 (Ctrl+Shift+T)</value>
@@ -1602,9 +1503,6 @@
   <data name="SetAppear_SelectionColorDesc" xml:space="preserve">
     <value>// 终端文本选中时的背景颜色</value>
   </data>
-  <data name="SetAppear_ShowMenuBar" xml:space="preserve">
-    <value>显示菜单栏</value>
-  </data>
   <data name="SetAppear_SidebarLeft" xml:space="preserve">
     <value>左侧</value>
   </data>
@@ -1976,9 +1874,6 @@
   </data>
   <data name="SetSnippets_CommandPlaceholder" xml:space="preserve">
     <value>命令,如 systemctl status docker</value>
-  </data>
-  <data name="SetSnippets_DeleteTip" xml:space="preserve">
-    <value>删除片段(内置片段不可删除)</value>
   </data>
   <data name="SetSnippets_Intro" xml:space="preserve">
     <value>您可以创建常用的命令片段,绑定到快捷键,或分配给特定的会话。</value>

@@ -119,6 +119,8 @@ public class MainWindowViewModel : ReactiveObject
     // ---- Status-bar live metrics (spec §7: cpu / memory / net for the active session) ----
 
     private DispatcherTimer? _statusMetricsTimer;
+    private DispatcherTimer? _fontSizePersistDebounce;
+    private int _pendingFontSize;
     private TabBarViewModel _tabBar;
 
     /// <summary>
@@ -1609,38 +1611,6 @@ public class MainWindowViewModel : ReactiveObject
         return items;
     }
 
-    /// <summary>
-    /// 直接按配置建立 SSH 连接并返回新建的终端标签:立即创建“连接中”标签,随后完成握手;
-    /// 握手失败即撤掉标签并向上抛出异常(编程/测试入口,不做标签页内失败覆盖层)。
-    /// </summary>
-    public async Task<TerminalTabViewModel> ConnectProfileAsync(
-        SessionProfile profile,
-        CancellationToken cancellationToken = default
-    )
-    {
-        ArgumentNullException.ThrowIfNull(profile);
-        if (_connectionWorkflowService is null || _sshConnectionService is null)
-        {
-            throw new InvalidOperationException("SSH connection services are not configured.");
-        }
-        AppSettings settings = await LoadSettingsSnapshotAsync().ConfigureAwait(true);
-        (TerminalTabViewModel terminalTab, TerminalDocument document) = CreateConnectingTab(
-            profile,
-            settings
-        );
-        try
-        {
-            await RunHandshakeAsync(terminalTab, profile, settings, cancellationToken);
-            return terminalTab;
-        }
-        catch
-        {
-            // 直接入口(编程/测试)保持既有语义:握手失败即撤掉标签并向上抛。
-            // 交互入口 TryConnectProfileAsync 另有“保留标签 + 标签页内覆盖层”的失败处理。
-            RemoveTerminalTab(terminalTab, document);
-            throw;
-        }
-    }
 
     /// <summary>读取设置快照并缓存到 <see cref="_latestSettings" />(无设置服务时用默认值)。</summary>
     private async Task<AppSettings> LoadSettingsSnapshotAsync()
@@ -2292,8 +2262,62 @@ public class MainWindowViewModel : ReactiveObject
             // 侧栏右键菜单改动 → 持久化(-= 再 += 保证单次订阅,即使本方法重入)。
             control.GutterOptionsChanged -= OnGutterOptionsChanged;
             control.GutterOptionsChanged += OnGutterOptionsChanged;
+            // Ctrl+滚轮缩放字号 → 持久化(同上,单次订阅)。
+            control.FontSizeChanged -= OnTerminalFontSizeChanged;
+            control.FontSizeChanged += OnTerminalFontSizeChanged;
         }
         ApplyLiveTerminalSettings(emulator, settings, forceUtf8);
+    }
+
+    /// <summary>
+    /// Ctrl+滚轮缩放字号后写回设置(400ms 尾沿合并:连续滚动只保存一次);
+    /// SaveSettingsAsync 会广播到所有已打开标签,使各标签字号保持一致。
+    /// </summary>
+    private void OnTerminalFontSizeChanged(double size)
+    {
+        if (_settingsService is null)
+        {
+            return;
+        }
+        _pendingFontSize = (int)Math.Round(size);
+        if (_fontSizePersistDebounce is null)
+        {
+            _fontSizePersistDebounce = new() { Interval = TimeSpan.FromMilliseconds(400) };
+            _fontSizePersistDebounce.Tick += (_, _) =>
+            {
+                _fontSizePersistDebounce!.Stop();
+                PersistTerminalFontSize(_pendingFontSize);
+            };
+        }
+        _fontSizePersistDebounce.Stop();
+        _fontSizePersistDebounce.Start();
+    }
+
+    private void PersistTerminalFontSize(int size)
+    {
+        if (_settingsService is null)
+        {
+            return;
+        }
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                AppSettings settings = await _settingsService
+                    .GetSettingsAsync()
+                    .ConfigureAwait(false);
+                if (settings.TerminalFontSize == size)
+                {
+                    return;
+                }
+                settings.TerminalFontSize = size;
+                await _settingsService.SaveSettingsAsync(settings).ConfigureAwait(false);
+            }
+            catch
+            {
+                // 写回失败只影响下次启动的初始值,不打断当前会话。
+            }
+        });
     }
 
     /// <summary>侧栏右键菜单切换部件后写回设置;SaveSettingsAsync 会广播到所有已打开标签,保持一致。</summary>

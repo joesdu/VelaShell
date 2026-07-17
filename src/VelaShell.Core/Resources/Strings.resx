@@ -19,9 +19,6 @@
   <data name="Ready" xml:space="preserve">
     <value>Ready</value>
   </data>
-  <data name="QuickConnectPlaceholder" xml:space="preserve">
-    <value>user@host:port</value>
-  </data>
   <!-- Sidebar (5) -->
   <data name="QuickConnect" xml:space="preserve">
     <value>Quick Connect</value>
@@ -163,14 +160,8 @@
   <data name="Sessions" xml:space="preserve">
     <value>Sessions</value>
   </data>
-  <data name="NoSavedSessions" xml:space="preserve">
-    <value>No saved sessions</value>
-  </data>
   <data name="MoveToGroup" xml:space="preserve">
     <value>Move to Group</value>
-  </data>
-  <data name="ClearAll" xml:space="preserve">
-    <value>Clear All</value>
   </data>
   <!-- General (9) -->
   <data name="Connect" xml:space="preserve">
@@ -248,9 +239,6 @@
     <value>Trust This Host</value>
   </data>
   <!-- Settings Dialog -->
-  <data name="TestConnection" xml:space="preserve">
-    <value>Test Connection</value>
-  </data>
   <data name="BrowseKeyFile" xml:space="preserve">
     <value>Browse...</value>
   </data>
@@ -350,15 +338,6 @@
   </data>
   <data name="ShowHiddenFiles" xml:space="preserve">
     <value>Show Hidden Files</value>
-  </data>
-  <data name="ParentDirectory" xml:space="preserve">
-    <value>Parent Directory</value>
-  </data>
-  <data name="DownloadSelected" xml:space="preserve">
-    <value>Download Selected</value>
-  </data>
-  <data name="DeleteSelected" xml:space="preserve">
-    <value>Delete Selected</value>
   </data>
   <data name="ConfirmDeleteTitle" xml:space="preserve">
     <value>Confirm Delete</value>
@@ -811,21 +790,6 @@ If this keeps happening, close any other VelaShell windows and try again.</value
   <data name="KeySvc_UnknownType" xml:space="preserve">
     <value>Unknown</value>
   </data>
-  <data name="Lang_English" xml:space="preserve">
-    <value>English</value>
-  </data>
-  <data name="Lang_Japanese" xml:space="preserve">
-    <value>日本語</value>
-  </data>
-  <data name="Lang_Korean" xml:space="preserve">
-    <value>한국어</value>
-  </data>
-  <data name="Lang_SimplifiedChinese" xml:space="preserve">
-    <value>简体中文</value>
-  </data>
-  <data name="Lang_TraditionalChinese" xml:space="preserve">
-    <value>繁體中文</value>
-  </data>
   <data name="Main_CloseConfirmBody" xml:space="preserve">
     <value>Active SSH sessions are still running; closing the window will disconnect them all. Quit anyway?</value>
   </data>
@@ -857,74 +821,11 @@ Paste anyway?</value>
   <data name="Main_TerminalExported" xml:space="preserve">
     <value>Terminal output exported: {0}</value>
   </data>
-  <data name="Menu_Actions" xml:space="preserve">
-    <value>Actions</value>
-  </data>
-  <data name="Menu_ClearScreen" xml:space="preserve">
-    <value>Clear Screen</value>
-  </data>
-  <data name="Menu_CloseCurrentSession" xml:space="preserve">
-    <value>Close Current Session</value>
-  </data>
-  <data name="Menu_CommandPalette" xml:space="preserve">
-    <value>Command Palette</value>
-  </data>
   <data name="Menu_CommandPaletteTip" xml:space="preserve">
     <value>Command Palette (Ctrl+P)</value>
   </data>
-  <data name="Menu_ConnectionDiagnostics" xml:space="preserve">
-    <value>Connection Diagnostics</value>
-  </data>
-  <data name="Menu_DuplicateSession" xml:space="preserve">
-    <value>Duplicate Session</value>
-  </data>
-  <data name="Menu_Exit" xml:space="preserve">
-    <value>Exit</value>
-  </data>
-  <data name="Menu_FindInTerminal" xml:space="preserve">
-    <value>Find in Terminal</value>
-  </data>
-  <data name="Menu_Help" xml:space="preserve">
-    <value>Help</value>
-  </data>
-  <data name="Menu_HostTrustCenter" xml:space="preserve">
-    <value>Host Trust Center</value>
-  </data>
-  <data name="Menu_ImportExportConfig" xml:space="preserve">
-    <value>Import / Export Config</value>
-  </data>
-  <data name="Menu_KeyManagement" xml:space="preserve">
-    <value>Key Management</value>
-  </data>
-  <data name="Menu_NewSftp" xml:space="preserve">
-    <value>New SFTP</value>
-  </data>
-  <data name="Menu_NewSshConnection" xml:space="preserve">
-    <value>New SSH Connection</value>
-  </data>
-  <data name="Menu_Paste" xml:space="preserve">
-    <value>Paste</value>
-  </data>
-  <data name="Menu_Preferences" xml:space="preserve">
-    <value>Preferences</value>
-  </data>
   <data name="Menu_SearchTerminalTip" xml:space="preserve">
     <value>Search Terminal (Ctrl+F)</value>
-  </data>
-  <data name="Menu_Session" xml:space="preserve">
-    <value>Session</value>
-  </data>
-  <data name="Menu_SftpFileManager" xml:space="preserve">
-    <value>SFTP File Manager</value>
-  </data>
-  <data name="Menu_ShortcutsOverview" xml:space="preserve">
-    <value>Keyboard Shortcuts</value>
-  </data>
-  <data name="Menu_Tools" xml:space="preserve">
-    <value>Tools</value>
-  </data>
-  <data name="Menu_TunnelManager" xml:space="preserve">
-    <value>Tunnel Manager</value>
   </data>
   <data name="Menu_TunnelTip" xml:space="preserve">
     <value>Tunnels (Ctrl+Shift+T)</value>
@@ -1511,9 +1412,6 @@ Paste anyway?</value>
   <data name="SetAppear_SelectionColorDesc" xml:space="preserve">
     <value>// Background color of selected text in the terminal</value>
   </data>
-  <data name="SetAppear_ShowMenuBar" xml:space="preserve">
-    <value>Show menu bar</value>
-  </data>
   <data name="SetAppear_SidebarLeft" xml:space="preserve">
     <value>Left</value>
   </data>
@@ -1885,9 +1783,6 @@ Paste anyway?</value>
   </data>
   <data name="SetSnippets_CommandPlaceholder" xml:space="preserve">
     <value>Command, e.g. systemctl status docker</value>
-  </data>
-  <data name="SetSnippets_DeleteTip" xml:space="preserve">
-    <value>Delete snippet (built-in snippets cannot be deleted)</value>
   </data>
   <data name="SetSnippets_Intro" xml:space="preserve">
     <value>Create frequently used command snippets, bind them to shortcuts, or assign them to specific sessions.</value>
