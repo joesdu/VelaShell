@@ -17,6 +17,61 @@
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="FontSize" Value="10" />
     </Style>
+
+    <!-- 分组头:压掉 Fluent ToggleButton 的强调色选中态,展开与否都保持侧栏的
+         "透明 + 悬停 VelaBgHover" 语言(与会话树分组行一致),展开状态只由箭头表达。 -->
+    <Style Selector="ToggleButton.group-header">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="7,5" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="ToggleButton.group-header /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector="ToggleButton.group-header:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ToggleButton.group-header:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="ToggleButton.group-header:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="ToggleButton.group-header:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgActive}" />
+    </Style>
+
+    <!-- 命令条目:整行可点,点击即把命令文本发送到目标终端(不回车)。 -->
+    <Style Selector="Button.cmd-item">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="8,6" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.cmd-item /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector="Button.cmd-item:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="Button.cmd-item:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgActive}" />
+    </Style>
+    <!-- 悬停时右侧浮现"发送到终端"图标,提示点击行为。 -->
+    <Style Selector="Button.cmd-item pc|LucideIcon.send-hint">
+      <Setter Property="Opacity" Value="0" />
+    </Style>
+    <Style Selector="Button.cmd-item:pointerover pc|LucideIcon.send-hint">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
     <Style Selector="Button.target-button">
       <Setter Property="Height" Value="26" />
       <Setter Property="Padding" Value="8,0" />
@@ -105,10 +160,8 @@
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="pvm:QuickCommandGroupViewModel">
             <StackPanel Margin="0,2">
-              <ToggleButton IsChecked="{Binding IsExpanded, Mode=TwoWay}"
-                            Background="Transparent" BorderThickness="0"
-                            Padding="7,5" HorizontalContentAlignment="Stretch"
-                            Cursor="Hand">
+              <ToggleButton Classes="group-header"
+                            IsChecked="{Binding IsExpanded, Mode=TwoWay}">
                 <Grid ColumnDefinitions="Auto,6,*,Auto">
                   <Panel Width="11" Height="11">
                     <pc:LucideIcon Width="11" Height="11"
@@ -124,21 +177,23 @@
                              Foreground="{DynamicResource VelaTextSecondary}"
                              FontSize="10" FontWeight="SemiBold"
                              TextTrimming="CharacterEllipsis" />
-                  <TextBlock Grid.Column="3" Text="{Binding FilteredCommands.Count}"
-                             Foreground="{DynamicResource VelaTextMuted}" FontSize="9" />
+                  <Border Grid.Column="3" Padding="5,1" CornerRadius="7"
+                          Background="{DynamicResource VelaBgInput}">
+                    <TextBlock Text="{Binding FilteredCommands.Count}"
+                               Foreground="{DynamicResource VelaTextMuted}" FontSize="9" />
+                  </Border>
                 </Grid>
               </ToggleButton>
               <ItemsControl ItemsSource="{Binding FilteredCommands}"
                             IsVisible="{Binding IsExpanded}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="pvm:QuickCommandViewModel">
-                    <Border Margin="4,1" Padding="8,6" CornerRadius="4"
-                            Background="Transparent">
-                      <Border.Styles>
-                        <Style Selector="Border:pointerover">
-                          <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
-                        </Style>
-                      </Border.Styles>
+                    <!-- 整行即按钮:点击把命令文本发送到目标终端(不附加回车),
+                         便于先补全参数再手动执行。 -->
+                    <Button Classes="cmd-item" Margin="4,1"
+                            Command="{Binding $parent[UserControl].((pvm:QuickCommandRunnerViewModel)DataContext).SendCommand}"
+                            CommandParameter="{Binding}"
+                            ToolTip.Tip="{Binding CommandText}">
                       <Grid ColumnDefinitions="*,8,Auto">
                         <StackPanel Spacing="2">
                           <TextBlock Text="{Binding Name}"
@@ -148,16 +203,15 @@
                           <TextBlock Text="{Binding CommandText}"
                                      Foreground="{DynamicResource VelaAccentText}"
                                      FontFamily="{DynamicResource VelaTerminalFont}"
-                                     FontSize="9" TextTrimming="CharacterEllipsis"
-                                     ToolTip.Tip="{Binding CommandText}" />
+                                     FontSize="9" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
-                        <Button Grid.Column="2" Classes="quick-action"
-                                Content="{loc:Localize QuickCmd_Run}"
-                                Command="{Binding $parent[UserControl].((pvm:QuickCommandRunnerViewModel)DataContext).RunCommand}"
-                                CommandParameter="{Binding}"
-                                VerticalAlignment="Center" />
+                        <pc:LucideIcon Grid.Column="2" Classes="send-hint"
+                                       Width="12" Height="12"
+                                       Data="{StaticResource Icon.send}"
+                                       Foreground="{DynamicResource VelaAccent}"
+                                       VerticalAlignment="Center" />
                       </Grid>
-                    </Border>
+                    </Button>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>

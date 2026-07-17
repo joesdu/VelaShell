@@ -223,7 +223,6 @@
   <data name="QuickCmd_CurrentTerminal" xml:space="preserve"><value>当前终端</value></data>
   <data name="QuickCmd_SelectedTerminals" xml:space="preserve"><value>个终端已选</value></data>
   <data name="QuickCmd_Search" xml:space="preserve"><value>搜索代码片段</value></data>
-  <data name="QuickCmd_Run" xml:space="preserve"><value>运行</value></data>
   <data name="QuickCmd_Ungrouped" xml:space="preserve"><value>未分组</value></data>
   <data name="QuickCmd_GroupPlaceholder" xml:space="preserve"><value>分组名称</value></data>
   <data name="QuickCmd_EditSnippet" xml:space="preserve"><value>编辑代码片段</value></data>

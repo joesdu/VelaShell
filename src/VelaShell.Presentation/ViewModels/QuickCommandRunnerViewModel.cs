@@ -17,8 +17,8 @@ public sealed class QuickCommandRunnerViewModel : ReactiveObject
         Library = library ?? throw new ArgumentNullException(nameof(library));
         TargetSelector = targetSelector ?? new();
         TargetSelector.PropertyChanged += OnTargetSelectorPropertyChanged;
-        RunCommand = ReactiveCommand.Create<QuickCommandViewModel>(
-            Run,
+        SendCommand = ReactiveCommand.Create<QuickCommandViewModel>(
+            Send,
             this.WhenAnyValue(viewModel => viewModel.CanRun)
         );
     }
@@ -47,8 +47,8 @@ public sealed class QuickCommandRunnerViewModel : ReactiveObject
     /// <summary>当前是否可以执行快捷命令。</summary>
     public bool CanRun => TargetSelector.CanSend;
 
-    /// <summary>在解析出的目标终端上运行命令。</summary>
-    public ReactiveCommand<QuickCommandViewModel, Unit> RunCommand { get; }
+    /// <summary>把命令文本发送到解析出的目标终端(不附加回车,由用户补全后自行执行)。</summary>
+    public ReactiveCommand<QuickCommandViewModel, Unit> SendCommand { get; }
 
     /// <summary>选择全部目标终端。</summary>
     public ReactiveCommand<Unit, Unit> SelectAllCommand => TargetSelector.SelectAllCommand;
@@ -67,7 +67,7 @@ public sealed class QuickCommandRunnerViewModel : ReactiveObject
     /// <summary>更新活动终端回退目标。</summary>
     public void SetCurrentTarget(Guid? targetId) => TargetSelector.SetCurrentTarget(targetId);
 
-    private void Run(QuickCommandViewModel command)
+    private void Send(QuickCommandViewModel command)
     {
         IReadOnlyList<Guid> targetIds = TargetSelector.ResolveTargetIds();
         if (targetIds.Count == 0 || string.IsNullOrWhiteSpace(command.CommandText))
