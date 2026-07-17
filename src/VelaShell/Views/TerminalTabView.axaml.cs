@@ -56,6 +56,11 @@ public partial class TerminalTabView : UserControl
         // Tunnel so a disconnected tab can catch Enter / Ctrl+R for reconnect (and Ctrl+F can
         // open search) before the terminal control consumes the keys for the PTY.
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+
+        // 平台侧关闭弹层(如系统截图覆盖层/激活切换导致宿主隐藏它)时,IsOpen 与
+        // 幽灵/列表状态会与本类脱钩;订阅 Closed 统一对账,防止"看不见却仍拦键"的
+        // 僵尸弹层
+        SuggestPopup.Closed += (_, _) => OnSuggestPopupClosedByPlatform();
         SearchBox.TextChanged += (_, _) => RunSearch();
         SearchNext.Click += (_, _) => MoveHit(+1);
         SearchPrev.Click += (_, _) => MoveHit(-1);
@@ -66,6 +71,16 @@ public partial class TerminalTabView : UserControl
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
+        // 自愈守卫:弹层开着但焦点既不在终端控件也不在本视图(回退层)上,说明焦点
+        // 被外因(系统截图覆盖层抢焦点、原生弹层被平台隐藏等)拖进了弹层或别处——
+        // 正常交互期间焦点始终在终端/视图上。此时任何按键都先收口弹层并把焦点还给
+        // 终端,保证输入永远可自行恢复,而不是只能关标签页重连。
+        if (SuggestPopup.IsOpen && !IsFocused && _termControl is { IsFocused: false })
+        {
+            DismissSuggestions(suppress: false);
+            FocusTerminal();
+        }
+
         // 补全弹层的键位优先(↑↓/Tab/Esc),否则方向键会被终端吃掉发成 ESC 序列。
         if (HandleSuggestionKey(e))
         {
@@ -459,6 +474,14 @@ public partial class TerminalTabView : UserControl
             ApplyGhost(input, items);
             return;
         }
+        // 查询在途期间窗口失活(切去截图/别的应用):不得把弹层开到别的程序上面,
+        // 也不得在自己被系统隐藏时开出"看不见却拦键"的僵尸弹层——直接丢弃。
+        if (_hostWindow is { IsActive: false })
+        {
+            CloseSuggestPopup(suppress: false);
+            ClearGhost();
+            return;
+        }
         ClearGhost();
         _suggestions = items;
         SuggestList.ItemsSource = items;
@@ -501,6 +524,20 @@ public partial class TerminalTabView : UserControl
             }
         }
         ClearGhost();
+    }
+
+    /// <summary>
+    /// 弹层被平台侧关闭后的对账:清掉本类残留的列表与幽灵,避免 IsOpen 已 false
+    /// 而键位分支仍按"面板开着"决策;若焦点被弹层带走,交还终端。
+    /// </summary>
+    private void OnSuggestPopupClosedByPlatform()
+    {
+        _suggestions = [];
+        ClearGhost();
+        if (_termControl is { IsFocused: false } && IsAttachedToVisualTree())
+        {
+            FocusTerminal();
+        }
     }
 
     private void CloseSuggestPopup(bool suppress)
