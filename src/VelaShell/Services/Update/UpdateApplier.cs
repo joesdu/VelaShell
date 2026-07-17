@@ -48,13 +48,22 @@ public sealed class UpdateApplier(string applicationDirectory)
         }
     }
 
-    /// <summary>创建(或清空后重建)暂存目录,返回其路径。下载前调用。</summary>
+    /// <summary>创建(或清空后重建)暂存目录,返回其路径。</summary>
     public string PrepareStagingDirectory()
     {
         if (Directory.Exists(StagingDirectory))
         {
             Directory.Delete(StagingDirectory, true);
         }
+        return EnsureStagingDirectory();
+    }
+
+    /// <summary>
+    /// 确保暂存目录存在但不清空已有内容(半成品与已下载的包留给断点续传/复用),
+    /// 返回其路径。下载前调用,与本次更新无关的残留由调用方按文件名清理。
+    /// </summary>
+    public string EnsureStagingDirectory()
+    {
         DirectoryInfo dir = Directory.CreateDirectory(StagingDirectory);
         if (OperatingSystem.IsWindows())
         {
@@ -70,7 +79,14 @@ public sealed class UpdateApplier(string applicationDirectory)
     /// </summary>
     public void Apply(string archivePath)
     {
-        List<PackageEntry> entries = ReadPackageEntries(archivePath);
+        bool isZip = archivePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+        // zip 读中央目录枚举条目几乎免费,维持"先枚举后解压"两遍;tar.gz 枚举本身就要
+        // 整流解压,故单遍完成:枚举的同时把内容解到暂存目录,换版时纯重命名挪成
+        // .new(同卷,元数据操作),不再解压第二遍。
+        string tarExtractDir = Path.Combine(StagingDirectory, "extract");
+        List<PackageEntry> entries = isZip
+            ? ReadZipEntries(archivePath)
+            : StageTarEntries(archivePath, tarExtractDir);
         if (entries.Count == 0)
         {
             throw new InvalidDataException($"Update package contains no files: {archivePath}");
@@ -107,7 +123,14 @@ public sealed class UpdateApplier(string applicationDirectory)
         WriteJournal(journal);
         try
         {
-            ExtractAsNew(archivePath, entries);
+            if (isZip)
+            {
+                ExtractZipAsNew(archivePath, entries);
+            }
+            else
+            {
+                MoveStagedAsNew(tarExtractDir, entries);
+            }
 
             journal.Phase = UpdateJournal.PhaseApplying;
             WriteJournal(journal);
@@ -148,8 +171,10 @@ public sealed class UpdateApplier(string applicationDirectory)
             UpdateJournal? journal = ReadJournal();
             if (journal == null)
             {
-                // 无日志:只剩(可能存在的)下载残留,直接清掉暂存目录。
-                return TryDeleteStaging();
+                // 无日志:暂存目录里只可能有下载产物(完整包或 .partial 半成品),
+                // 保留原样供下次检查更新时断点续传或免下载复用;过期残留由
+                // 下次下载按文件名清理(产物名带版本号与 RID,可精确识别)。
+                return true;
             }
             bool clean = journal.Phase == UpdateJournal.PhaseDone
                 ? TryDeleteOldFiles(journal)
@@ -239,34 +264,16 @@ public sealed class UpdateApplier(string applicationDirectory)
         }
     }
 
-    /// <summary>把包内所有文件解压为目标路径加 <c>.new</c> 后缀的暂存文件。</summary>
-    private void ExtractAsNew(string archivePath, List<PackageEntry> entries)
+    /// <summary>把 zip 内所有文件解压为目标路径加 <c>.new</c> 后缀的暂存文件。</summary>
+    private void ExtractZipAsNew(string archivePath, List<PackageEntry> entries)
     {
         Dictionary<string, PackageEntry> byPath = entries.ToDictionary(
             e => e.RelativePath, StringComparer.OrdinalIgnoreCase);
-        if (archivePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        using (ZipArchive zip = ZipFile.OpenRead(archivePath))
         {
-            using ZipArchive zip = ZipFile.OpenRead(archivePath);
             foreach (ZipArchiveEntry entry in zip.Entries)
             {
                 if (NormalizeEntryPath(entry.FullName) is not { } rel || !byPath.ContainsKey(rel))
-                {
-                    continue;
-                }
-                string newPath = PrepareNewPath(rel);
-                entry.ExtractToFile(newPath, true);
-            }
-        }
-        else
-        {
-            using FileStream file = File.OpenRead(archivePath);
-            using GZipStream gzip = new(file, CompressionMode.Decompress);
-            using TarReader tar = new(gzip);
-            while (tar.GetNextEntry() is { } entry)
-            {
-                if (entry.EntryType is not (TarEntryType.RegularFile or TarEntryType.V7RegularFile)
-                    || NormalizeEntryPath(entry.Name) is not { } rel
-                    || !byPath.ContainsKey(rel))
                 {
                     continue;
                 }
@@ -284,6 +291,15 @@ public sealed class UpdateApplier(string applicationDirectory)
         }
     }
 
+    /// <summary>把 <see cref="StageTarEntries" /> 解到暂存目录的文件重命名为应用目录内的 <c>*.new</c>(同卷,纯元数据操作)。</summary>
+    private void MoveStagedAsNew(string extractDir, List<PackageEntry> entries)
+    {
+        foreach (PackageEntry entry in entries)
+        {
+            File.Move(Path.Combine(extractDir, entry.RelativePath), PrepareNewPath(entry.RelativePath), true);
+        }
+    }
+
     private string PrepareNewPath(string relativePath)
     {
         string newPath = Path.Combine(ApplicationDirectory, relativePath) + ".new";
@@ -291,50 +307,85 @@ public sealed class UpdateApplier(string applicationDirectory)
         return newPath;
     }
 
-    /// <summary>枚举包内文件条目,并对每个条目做路径安全校验(防 zip-slip)。</summary>
-    private List<PackageEntry> ReadPackageEntries(string archivePath)
+    /// <summary>枚举 zip 内文件条目,并对每个条目做路径安全校验(防 zip-slip)。</summary>
+    private List<PackageEntry> ReadZipEntries(string archivePath)
     {
         List<PackageEntry> entries = [];
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        void Add(string rawPath, UnixFileMode? mode)
+        using ZipArchive zip = ZipFile.OpenRead(archivePath);
+        foreach (ZipArchiveEntry entry in zip.Entries)
         {
-            if (NormalizeEntryPath(rawPath) is not { } rel)
+            if (NormalizeEntryPath(entry.FullName) is not { } rel)
             {
-                return;
+                continue;
             }
-            EnsureInsideApplicationDirectory(rel, rawPath);
+            EnsureInsideApplicationDirectory(rel, entry.FullName);
             if (seen.Add(rel))
             {
-                entries.Add(new(rel, mode));
+                entries.Add(new(rel, null));
             }
         }
-        if (archivePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        return entries;
+    }
+
+    /// <summary>
+    /// 单遍处理 tar.gz:枚举条目(含路径安全校验)的同时把内容解压到
+    /// <paramref name="extractDir" />(暂存目录内),避免"枚举一遍 + 解压一遍"的双倍解压。
+    /// 任何一步失败都会清掉 <paramref name="extractDir" /> 后重新抛出,应用目录不受影响。
+    /// </summary>
+    private List<PackageEntry> StageTarEntries(string archivePath, string extractDir)
+    {
+        if (!archivePath.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase)
+            && !archivePath.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase))
         {
-            using ZipArchive zip = ZipFile.OpenRead(archivePath);
-            foreach (ZipArchiveEntry entry in zip.Entries)
+            throw new NotSupportedException($"Unsupported update package format: {archivePath}");
+        }
+        try
+        {
+            if (Directory.Exists(extractDir))
             {
-                Add(entry.FullName, null);
+                Directory.Delete(extractDir, true);
             }
-        }
-        else if (archivePath.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase)
-            || archivePath.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase))
-        {
+            Directory.CreateDirectory(extractDir);
+            List<PackageEntry> entries = [];
+            HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
             using FileStream file = File.OpenRead(archivePath);
             using GZipStream gzip = new(file, CompressionMode.Decompress);
             using TarReader tar = new(gzip);
             while (tar.GetNextEntry() is { } entry)
             {
-                if (entry.EntryType is TarEntryType.RegularFile or TarEntryType.V7RegularFile)
+                if (entry.EntryType is not (TarEntryType.RegularFile or TarEntryType.V7RegularFile)
+                    || NormalizeEntryPath(entry.Name) is not { } rel)
                 {
-                    Add(entry.Name, entry.Mode);
+                    continue;
+                }
+                EnsureInsideApplicationDirectory(rel, entry.Name);
+                if (!seen.Add(rel))
+                {
+                    continue;
+                }
+                string staged = Path.Combine(extractDir, rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(staged)!);
+                entry.ExtractToFile(staged, true);
+                entries.Add(new(rel, entry.Mode));
+            }
+            return entries;
+        }
+        catch
+        {
+            try
+            {
+                if (Directory.Exists(extractDir))
+                {
+                    Directory.Delete(extractDir, true);
                 }
             }
+            catch
+            {
+                // 清理失败不掩盖原始异常;残留由后续下载/启动清理兜底。
+            }
+            throw;
         }
-        else
-        {
-            throw new NotSupportedException($"Unsupported update package format: {archivePath}");
-        }
-        return entries;
     }
 
     /// <summary>

@@ -938,6 +938,9 @@
   <data name="SetAbout_UpdateReady" xml:space="preserve">
     <value>更新 {0} の準備ができました。再起動してインストールを完了してください。</value>
   </data>
+  <data name="SetAbout_Applying" xml:space="preserve">
+    <value>更新を適用しています。まもなく再起動します…</value>
+  </data>
   <data name="SetAbout_ApplyFailed" xml:space="preserve">
     <value>更新の適用に失敗したため、元のバージョンに戻しました。再試行するか手動でダウンロードしてください。</value>
   </data>

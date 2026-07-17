@@ -198,6 +198,48 @@ public class UpdateServiceTests : IDisposable
 
     [TestMethod]
     [TestCategory("Update")]
+    public async Task DownloadUpdateAsync_ExistingValidArchive_ReusedWithoutRedownload()
+    {
+        byte[] zip = CreateZipBytes(("app.txt", "new"));
+        _source.Manifest = CreateManifest("2.0.0", zip);
+        _source.AssetBytes = zip;
+        var service = CreateService("1.0.0");
+        Assert.IsTrue(await service.CheckForUpdateAsync());
+        await service.DownloadUpdateAsync();
+        Assert.AreEqual(1, _source.DownloadCalls);
+
+        // 再次下载(例如重复点“检查更新”):完整包校验通过,直接复用不再请求网络。
+        List<int> reported = [];
+        await service.DownloadUpdateAsync(new SynchronousProgress(reported.Add));
+
+        Assert.AreEqual(1, _source.DownloadCalls);
+        Assert.Contains(100, reported);
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public async Task DownloadUpdateAsync_StaleLeftovers_AreCleaned()
+    {
+        byte[] zip = CreateZipBytes(("app.txt", "new"));
+        _source.Manifest = CreateManifest("2.0.0", zip);
+        _source.AssetBytes = zip;
+        var service = CreateService("1.0.0");
+        Assert.IsTrue(await service.CheckForUpdateAsync());
+        string staging = Path.Combine(_appDir, UpdateApplier.StagingDirectoryName);
+        Directory.CreateDirectory(staging);
+        // 旧版本的包与半成品(文件名不同)必须被清掉,不参与本次续传。
+        File.WriteAllText(Path.Combine(staging, "VelaShell-1.5.0-old.zip"), "stale");
+        File.WriteAllText(Path.Combine(staging, "VelaShell-1.5.0-old.zip.partial"), "stale");
+
+        await service.DownloadUpdateAsync();
+
+        string[] files = Directory.GetFiles(staging);
+        Assert.HasCount(1, files);
+        Assert.AreEqual("VelaShell-2.0.0-" + UpdateManifest.CurrentRid() + ".zip", Path.GetFileName(files[0]));
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
     public void ApplyUpdateAndRestart_WithoutDownload_ThrowsInvalidOperation()
     {
         Assert.ThrowsExactly<InvalidOperationException>(() => CreateService().ApplyUpdateAndRestart());
@@ -236,6 +278,7 @@ public class UpdateServiceTests : IDisposable
         public byte[]? AssetBytes { get; set; }
         public bool ThrowOnManifest { get; set; }
         public bool LastIncludePreRelease { get; private set; }
+        public int DownloadCalls { get; private set; }
 
         public Task<UpdateManifest?> GetLatestManifestAsync(bool includePreRelease, CancellationToken cancellationToken = default)
         {
@@ -245,15 +288,18 @@ public class UpdateServiceTests : IDisposable
                 : Task.FromResult(Manifest);
         }
 
-        public async Task DownloadAssetAsync(
+        public async Task<string?> DownloadAssetAsync(
             UpdateManifest manifest,
             UpdateAsset asset,
             string destinationPath,
             IProgress<int>? progress = null,
             CancellationToken cancellationToken = default)
         {
+            DownloadCalls++;
             await File.WriteAllBytesAsync(destinationPath, AssetBytes ?? [], cancellationToken);
             progress?.Report(100);
+            // 不返回流式哈希,覆盖 UpdateService 读文件校验的兜底路径。
+            return null;
         }
     }
 }

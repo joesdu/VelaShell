@@ -140,11 +140,14 @@ public class SettingsViewModel : ReactiveObject
         SetAccentCommand = ReactiveCommand.Create<string>(hex => AccentColor = hex);
         ClearHistoryCommand = ReactiveCommand.CreateFromTask(ClearHistoryAsync);
         CheckUpdatesCommand = ReactiveCommand.CreateFromTask(CheckForUpdatesAsync);
-        RestartToUpdateCommand = ReactiveCommand.Create(() =>
+        RestartToUpdateCommand = ReactiveCommand.CreateFromTask(async () =>
         {
+            UpdateStatus = Strings.Get("SetAbout_Applying");
             try
             {
-                _updateService?.ApplyUpdateAndRestart();
+                // 解压换版是磁盘密集操作,放到线程池执行,UI 保持响应;
+                // 成功后服务内部拉起新进程并请求本进程退出。
+                await Task.Run(() => _updateService?.ApplyUpdateAndRestart());
             }
             catch
             {
