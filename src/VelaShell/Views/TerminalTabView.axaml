@@ -180,10 +180,15 @@
                 MinWidth="320"
                 MaxWidth="560"
                 BoxShadow="0 6 24 0 #66000000">
+          <!-- ListBox 本体同样不可聚焦:Win+Shift+S 截图覆盖层抢走系统焦点时不触发
+               Deactivated,若焦点落进弹层,切回后所有按键都进了(已被系统隐藏的)
+               弹层窗口——终端表现为"彻底失灵"选中态全部由
+               代码控制(SelectedIndex),不需要焦点。 -->
           <ListBox x:Name="SuggestList"
                    Background="Transparent"
                    BorderThickness="0"
-                   MaxHeight="240">
+                   MaxHeight="240"
+                   Focusable="False">
             <ListBox.Styles>
               <Style Selector="ListBoxItem">
                 <Setter Property="Padding" Value="8,4" />

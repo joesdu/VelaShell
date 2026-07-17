@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.Services;
@@ -56,6 +57,11 @@ public partial class TerminalTabView : UserControl
         // Tunnel so a disconnected tab can catch Enter / Ctrl+R for reconnect (and Ctrl+F can
         // open search) before the terminal control consumes the keys for the PTY.
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+
+        // 平台侧关闭弹层(如系统截图覆盖层/激活切换导致宿主隐藏它)时,IsOpen 与
+        // 幽灵/列表状态会与本类脱钩;订阅 Closed 统一对账,防止"看不见却仍拦键"的
+        // 僵尸弹层
+        SuggestPopup.Closed += (_, _) => OnSuggestPopupClosedByPlatform();
         SearchBox.TextChanged += (_, _) => RunSearch();
         SearchNext.Click += (_, _) => MoveHit(+1);
         SearchPrev.Click += (_, _) => MoveHit(-1);
@@ -66,6 +72,17 @@ public partial class TerminalTabView : UserControl
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
+        // 自愈守卫:弹层开着但焦点既不在终端控件也不在本视图(回退层)上,说明焦点
+        // 被外因(系统截图覆盖层抢焦点、原生弹层被平台隐藏等)拖进了弹层或别处——
+        // 正常交互期间焦点始终在终端/视图上。此时任何按键都先收口弹层并把焦点还给
+        // 终端,保证输入永远可自行恢复,而不是只能关标签页重连。
+        if (SuggestPopup.IsOpen && !IsFocused && _termControl is { IsFocused: false })
+        {
+            SuggestDiag.Log("self-heal", $"view={GetHashCode():X} key={e.Key} focus escaped -> dismiss+refocus");
+            DismissSuggestions(suppress: false);
+            FocusTerminal();
+        }
+
         // 补全弹层的键位优先(↑↓/Tab/Esc),否则方向键会被终端吃掉发成 ESC 序列。
         if (HandleSuggestionKey(e))
         {
@@ -459,6 +476,15 @@ public partial class TerminalTabView : UserControl
             ApplyGhost(input, items);
             return;
         }
+        // 查询在途期间窗口失活(切去截图/别的应用):不得把弹层开到别的程序上面,
+        // 也不得在自己被系统隐藏时开出"看不见却拦键"的僵尸弹层——直接丢弃。
+        if (_hostWindow is { IsActive: false })
+        {
+            SuggestDiag.Log("apply", "host window inactive -> drop, no open");
+            CloseSuggestPopup(suppress: false);
+            ClearGhost();
+            return;
+        }
         ClearGhost();
         _suggestions = items;
         SuggestList.ItemsSource = items;
@@ -503,6 +529,24 @@ public partial class TerminalTabView : UserControl
         ClearGhost();
     }
 
+    /// <summary>
+    /// 弹层被平台侧关闭后的对账:清掉本类残留的列表与幽灵,避免 IsOpen 已 false
+    /// 而键位分支仍按"面板开着"决策;若焦点被弹层带走,交还终端。
+    /// </summary>
+    private void OnSuggestPopupClosedByPlatform()
+    {
+        SuggestDiag.Log(
+            "popup-closed",
+            $"view={GetHashCode():X} termFocused={_termControl?.IsFocused} attached={IsAttachedToVisualTree()}"
+        );
+        _suggestions = [];
+        ClearGhost();
+        if (_termControl is { IsFocused: false } && IsAttachedToVisualTree())
+        {
+            FocusTerminal();
+        }
+    }
+
     private void CloseSuggestPopup(bool suppress)
     {
         if (suppress)
@@ -511,6 +555,8 @@ public partial class TerminalTabView : UserControl
         }
         if (SuggestPopup.IsOpen)
         {
+            // 只记真实的开→关转换,不记每键空转(诊断关闭时本行零开销)。
+            SuggestDiag.Log("close", $"view={GetHashCode():X} suppress={suppress}");
             SuggestPopup.IsOpen = false;
         }
         _suggestions = [];
@@ -719,11 +765,75 @@ public partial class TerminalTabView : UserControl
         // 悬浮在别的程序上面(用户反馈)。
         _hostWindow = TopLevel.GetTopLevel(this) as Window;
         _hostWindow?.Deactivated += OnHostWindowDeactivated;
+        // 重新激活时兜底恢复:系统截图覆盖层(Win+Shift+S)偶尔不触发 Deactivated,
+        // 弹层就会保持打开、把焦点困在自己的顶层窗口里,导致终端"输入死亡、内容被
+        // 灰色残影盖住",用户只能关标签重开(2026-07 反馈,时序竞态,非必现)。用户
+        // 截完图切回本窗口时必然重新激活——这一刻不管失活有没有触发过,只要弹层还开
+        // 着就统一收口并把焦点还给终端。此路径不依赖 Deactivated,也不依赖按键能到达
+        // 本视图(焦点困在弹层时按键根本到不了),是该竞态的唯一可靠恢复点。
+        _hostWindow?.Activated += OnHostWindowActivated;
         FocusTerminal();
     }
 
-    private void OnHostWindowDeactivated(object? sender, EventArgs e) =>
+    private void OnHostWindowDeactivated(object? sender, EventArgs e)
+    {
+        SuggestDiag.Log("deactivated", $"view={GetHashCode():X} popupOpen={SuggestPopup.IsOpen}");
         DismissSuggestions(suppress: false);
+    }
+
+    /// <summary>
+    /// 窗口重新激活时的双重兜底(2026-07 用户反馈,时序竞态,非必现):
+    ///
+    /// ① 强制终端重绘 —— 根因:系统截图覆盖层(Win+Shift+S)+ 微信粘贴会让窗口某个
+    ///    矩形区域在 DWM 层被置脏并要求重绘,而空闲终端(无输出、失焦后连光标闪烁的
+    ///    周期重绘也停了)没有任何 visual 被标脏,那块区域就不重绘,露出下层 surface
+    ///    底色,表现为"内容变空白/一块灰"。用户从覆盖窗口点回本窗口时窗口必然重新
+    ///    激活——此刻强制终端跑一遍 Render(呈现一整帧新画面到 DWM)即可消除残影。
+    ///    点击终端本会经 OnGotFocus 重绘,但失活前后焦点未变(终端一直"持有"焦点),
+    ///    OnGotFocus 不重新触发,故必须在激活时补这一刀。立即 + 延迟各一次:后者兜住
+    ///    "激活事件早于 DWM 完成表面恢复"的时序。
+    ///
+    /// ② 收口僵尸弹层 —— 弹层仍开着说明它熬过了切走(失活未触发或未收口),一并收口
+    ///    并把焦点还给终端,让可能被困的输入自动复活,无需关标签重连。
+    /// </summary>
+    private void OnHostWindowActivated(object? sender, EventArgs e)
+    {
+        SuggestDiag.Log(
+            "activated",
+            $"view={GetHashCode():X} popupOpen={SuggestPopup.IsOpen} termFocused={_termControl?.IsFocused} -> force repaint"
+        );
+
+        // ① 立即重绘终端 + 下一拍强制整棵可视树重绘(DWM 表面恢复可能晚于激活事件;
+        //    整树重绘确保合成器一定提交一整帧新画面到 DWM,兜住单控件 InvalidateVisual
+        //    被"内容未变"优化掉、或空白区跨出终端边界的情形)。激活不频繁,代价可忽略。
+        _termControl?.InvalidateVisual();
+        DispatcherTimer.RunOnce(ForceFullRepaint, TimeSpan.FromMilliseconds(120));
+
+        // ② 顺带收口可能残留的僵尸弹层(内容消失常与输入死亡耦合出现)。
+        if (SuggestPopup.IsOpen)
+        {
+            DismissSuggestions(suppress: false);
+            FocusTerminal();
+        }
+    }
+
+    /// <summary>
+    /// 强制宿主窗口整棵可视树重绘:遍历所有可视后代逐个 <see cref="Visual.InvalidateVisual" />,
+    /// 逼合成器提交一整帧新画面到 DWM。用于截图覆盖层导致某区域"内容消失/残留灰块"后的恢复。
+    /// </summary>
+    private void ForceFullRepaint()
+    {
+        if (_hostWindow is not { } window)
+        {
+            _termControl?.InvalidateVisual();
+            return;
+        }
+        window.InvalidateVisual();
+        foreach (Visual visual in window.GetVisualDescendants())
+        {
+            visual.InvalidateVisual();
+        }
+    }
 
     private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
@@ -732,6 +842,7 @@ public partial class TerminalTabView : UserControl
         _suggestVm?.InputTracker.InputChanged -= OnTrackedInputChanged;
         _suggestVm?.Disconnected -= OnSuggestVmDisconnected;
         _hostWindow?.Deactivated -= OnHostWindowDeactivated;
+        _hostWindow?.Activated -= OnHostWindowActivated;
         _hostWindow = null;
         if (_termControl is not null)
         {
