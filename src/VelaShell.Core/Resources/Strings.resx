@@ -1135,6 +1135,9 @@ Paste anyway?</value>
   <data name="SetAbout_UpdateReady" xml:space="preserve">
     <value>Update {0} is ready. Restart to finish installing.</value>
   </data>
+  <data name="SetAbout_Applying" xml:space="preserve">
+    <value>Applying update, restarting shortly…</value>
+  </data>
   <data name="SetAbout_ApplyFailed" xml:space="preserve">
     <value>Couldn't apply the update; the previous version has been restored. Please try again or download manually.</value>
   </data>

@@ -938,6 +938,9 @@
   <data name="SetAbout_UpdateReady" xml:space="preserve">
     <value>更新 {0} 已就緒,重新啟動以完成安裝。</value>
   </data>
+  <data name="SetAbout_Applying" xml:space="preserve">
+    <value>正在套用更新,即將重新啟動…</value>
+  </data>
   <data name="SetAbout_ApplyFailed" xml:space="preserve">
     <value>套用更新失敗,已還原到目前版本,請重試或手動下載。</value>
   </data>

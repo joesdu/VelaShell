@@ -1226,6 +1226,9 @@
   <data name="SetAbout_UpdateReady" xml:space="preserve">
     <value>更新 {0} 已就绪,重启以完成安装。</value>
   </data>
+  <data name="SetAbout_Applying" xml:space="preserve">
+    <value>正在应用更新,即将重启…</value>
+  </data>
   <data name="SetAbout_ApplyFailed" xml:space="preserve">
     <value>应用更新失败,已还原到当前版本,请重试或手动下载。</value>
   </data>

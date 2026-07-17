@@ -204,13 +204,20 @@ public class UpdateApplierTests : IDisposable
 
     [TestMethod]
     [TestCategory("Update")]
-    public void TryFinalizeStartup_NoJournal_JustRemovesStaging()
+    public void TryFinalizeStartup_NoJournal_KeepsDownloadsForResume()
     {
+        // 无换版日志时暂存目录里只有下载产物,保留给断点续传/免下载复用,
+        // 过期残留由下次下载按文件名清理。
         _applier.PrepareStagingDirectory();
-        File.WriteAllText(Path.Combine(_applier.StagingDirectory, "package.zip"), "leftover download");
+        string archive = Path.Combine(_applier.StagingDirectory, "package.zip");
+        string partial = Path.Combine(_applier.StagingDirectory, "package.zip.partial");
+        File.WriteAllText(archive, "leftover download");
+        File.WriteAllText(partial, "half download");
 
         Assert.IsTrue(_applier.TryFinalizeStartup());
-        Assert.IsFalse(Directory.Exists(_applier.StagingDirectory));
+
+        Assert.AreEqual("leftover download", File.ReadAllText(archive));
+        Assert.AreEqual("half download", File.ReadAllText(partial));
     }
 
     [TestMethod]

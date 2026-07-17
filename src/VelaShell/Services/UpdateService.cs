@@ -109,7 +109,13 @@ public class UpdateService : IUpdateService
         }
     }
 
-    /// <summary>下载已检查到的更新包到暂存目录并做 SHA-256 校验,失败抛出异常。</summary>
+    /// <summary>
+    /// 下载已检查到的更新包到暂存目录并做 SHA-256 校验,失败抛出异常。
+    /// 支持断点续传:上次中断的半成品(<c>*.partial</c> 及其分段断点 <c>*.partial.meta</c>)
+    /// 从断点继续;上次已完整下载且校验通过的包直接复用,不再耗费流量。
+    /// 产物名带版本号与 RID,过期残留按名清理。校验优先采用下载过程中流式算出的
+    /// 哈希(更新源返回),免去落盘后重读;源没给哈希时才读文件校验兜底。
+    /// </summary>
     public async Task DownloadUpdateAsync(IProgress<int>? progress = null)
     {
         if (_manifest == null || _asset == null)
@@ -117,26 +123,78 @@ public class UpdateService : IUpdateService
             return;
         }
         _downloadedArchivePath = null;
-        string staging = _applier.PrepareStagingDirectory();
+        string staging = _applier.EnsureStagingDirectory();
         string archivePath = Path.Combine(staging, _asset.Name);
-        await _source.DownloadAssetAsync(_manifest, _asset, archivePath, progress);
-        await VerifyChecksumAsync(archivePath, _asset.Sha256);
+        string partialPath = archivePath + ".partial";
+        string metaPath = partialPath + ".meta";
+        foreach (string file in Directory.EnumerateFiles(staging))
+        {
+            if (!file.Equals(archivePath, StringComparison.OrdinalIgnoreCase)
+                && !file.Equals(partialPath, StringComparison.OrdinalIgnoreCase)
+                && !file.Equals(metaPath, StringComparison.OrdinalIgnoreCase))
+            {
+                TryDeleteFile(file);
+            }
+        }
+        foreach (string directory in Directory.EnumerateDirectories(staging))
+        {
+            // 子目录只可能是上次换版中断留下的解压残留,与下载无关,直接清掉。
+            TryDeleteDirectory(directory);
+        }
+        if (File.Exists(archivePath))
+        {
+            if (await IsChecksumValidAsync(archivePath, _asset.Sha256))
+            {
+                _downloadedArchivePath = archivePath;
+                progress?.Report(100);
+                return;
+            }
+            File.Delete(archivePath);
+        }
+        string? streamedHash = await _source.DownloadAssetAsync(_manifest, _asset, archivePath, progress);
+        bool valid = streamedHash != null
+            ? streamedHash.Equals(_asset.Sha256, StringComparison.OrdinalIgnoreCase)
+            : await IsChecksumValidAsync(archivePath, _asset.Sha256);
+        if (!valid)
+        {
+            File.Delete(archivePath);
+            throw new InvalidDataException(
+                $"Update package checksum mismatch for {_asset.Name}; the corrupt download was discarded.");
+        }
         _downloadedArchivePath = archivePath;
     }
 
-    private static async Task VerifyChecksumAsync(string archivePath, string expectedSha256)
+    private static async Task<bool> IsChecksumValidAsync(string archivePath, string expectedSha256)
     {
         byte[] hash;
         await using (FileStream stream = File.OpenRead(archivePath))
         {
             hash = await SHA256.HashDataAsync(stream);
         }
-        string actual = Convert.ToHexStringLower(hash);
-        if (!actual.Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
+        return Convert.ToHexStringLower(hash).Equals(expectedSha256, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
         {
-            File.Delete(archivePath);
-            throw new InvalidDataException(
-                $"Update package checksum mismatch: expected {expectedSha256}, got {actual}.");
+            File.Delete(path);
+        }
+        catch
+        {
+            // 清理旧残留失败不阻断下载,留待下次再清。
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            Directory.Delete(path, true);
+        }
+        catch
+        {
+            // 清理旧残留失败不阻断下载,留待下次再清。
         }
     }
 

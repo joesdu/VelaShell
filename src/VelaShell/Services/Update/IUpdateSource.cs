@@ -9,8 +9,12 @@ public interface IUpdateSource
     /// </summary>
     Task<UpdateManifest?> GetLatestManifestAsync(bool includePreRelease, CancellationToken cancellationToken = default);
 
-    /// <summary>把 <paramref name="asset" /> 下载到 <paramref name="destinationPath" />,按百分比汇报进度。</summary>
-    Task DownloadAssetAsync(
+    /// <summary>
+    /// 把 <paramref name="asset" /> 下载到 <paramref name="destinationPath" />,按百分比汇报进度。
+    /// 返回下载过程中边收边算出的整包 SHA-256(十六进制小写),调用方可据此免去
+    /// 落盘后重读校验;实现无法流式计算时返回 null,由调用方读文件校验兜底。
+    /// </summary>
+    Task<string?> DownloadAssetAsync(
         UpdateManifest manifest,
         UpdateAsset asset,
         string destinationPath,

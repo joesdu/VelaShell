@@ -938,6 +938,9 @@
   <data name="SetAbout_UpdateReady" xml:space="preserve">
     <value>업데이트 {0}이(가) 준비되었습니다. 다시 시작하여 설치를 완료하세요.</value>
   </data>
+  <data name="SetAbout_Applying" xml:space="preserve">
+    <value>업데이트를 적용하는 중입니다. 곧 다시 시작됩니다…</value>
+  </data>
   <data name="SetAbout_ApplyFailed" xml:space="preserve">
     <value>업데이트 적용에 실패하여 이전 버전으로 복원했습니다. 다시 시도하거나 수동으로 다운로드하세요.</value>
   </data>
