@@ -37,6 +37,18 @@ public partial class ConnectionDiagnosticsView : Window
 
     private void Close_Click(object? sender, RoutedEventArgs e) => Close();
 
+    /// <summary>Esc 关闭诊断窗口,与右上角关闭按钮同路径。</summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            Close();
+            e.Handled = true;
+            return;
+        }
+        base.OnKeyDown(e);
+    }
+
     /// <summary>导出诊断报告为文本文件(设计 RGXg1 exportDiag)。</summary>
     private async void ExportReport_Click(object? sender, RoutedEventArgs e)
     {

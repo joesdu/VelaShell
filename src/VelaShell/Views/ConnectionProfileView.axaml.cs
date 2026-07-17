@@ -29,6 +29,25 @@ public partial class ConnectionProfileView : Window
         await viewModel.LoadGroupsAsync();
     }
 
+    /// <summary>Esc 等价于点击取消:经 CancelCommand 走与取消按钮完全相同的关闭路径(不保存改动)。</summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            if (DataContext is ConnectionProfileViewModel viewModel)
+            {
+                viewModel.CancelCommand.Execute().Subscribe();
+            }
+            else
+            {
+                Close();
+            }
+            e.Handled = true;
+            return;
+        }
+        base.OnKeyDown(e);
+    }
+
     /// <summary>无系统标题栏 —— 按住头部可拖动窗口。</summary>
     private void Header_PointerPressed(object? sender, PointerPressedEventArgs e)
     {

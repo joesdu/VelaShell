@@ -75,6 +75,18 @@ public partial class RecordingPlayerView : Window
 
     private void Close_Click(object? sender, RoutedEventArgs e) => Close();
 
+    /// <summary>Esc 关闭回放中心,与右上角关闭按钮同路径(回放终端不可聚焦,不会截获按键)。</summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            Close();
+            e.Handled = true;
+            return;
+        }
+        base.OnKeyDown(e);
+    }
+
     /// <summary>倍速按钮:按 VM 定义的档位循环(1x…16x)。</summary>
     private void CycleSpeed_Click(object? sender, RoutedEventArgs e) => _viewModel?.CycleSpeed();
 
