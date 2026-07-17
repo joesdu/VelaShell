@@ -2754,4 +2754,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SyncInput_Resume" xml:space="preserve"><value>恢复</value></data>
   <data name="SyncInput_Leave" xml:space="preserve"><value>离开频道</value></data>
   <data name="SyncInput_Close" xml:space="preserve"><value>关闭频道</value></data>
+  <data name="Svc_CommonUsage" xml:space="preserve">
+    <value>常用用法</value>
+  </data>
 </root>

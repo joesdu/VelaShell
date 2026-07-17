@@ -2662,4 +2662,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SyncInput_Resume" xml:space="preserve"><value>재개</value></data>
   <data name="SyncInput_Leave" xml:space="preserve"><value>채널 나가기</value></data>
   <data name="SyncInput_Close" xml:space="preserve"><value>채널 닫기</value></data>
+  <data name="Svc_CommonUsage" xml:space="preserve">
+    <value>자주 쓰는 명령</value>
+  </data>
 </root>

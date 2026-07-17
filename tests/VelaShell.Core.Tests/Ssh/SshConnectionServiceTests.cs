@@ -162,12 +162,18 @@ public class SshConnectionServiceTests
             AuthMethod = AuthMethod.Password,
             Password = "p"
         };
-        Task<SshSession> slow = service.ConnectAsync(info);
-        SshSession fast = await service.ConnectAsync(info).WaitAsync(TimeSpan.FromSeconds(5));
+        // 不假定哪次调用取到慢客户端(工厂在异步链内被调,两次调用可能反序出队,
+        // 曾致本测试偶发超时):只验证核心不变量——一条被卡住时另一条仍能完成。
+        Task<SshSession> first = service.ConnectAsync(info);
+        Task<SshSession> second = service.ConnectAsync(info);
+        Task<SshSession> completedTask = await Task.WhenAny(first, second)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        SshSession fast = await completedTask;
         Assert.AreEqual(SessionStatus.Connected, fast.Status);
-        Assert.IsFalse(slow.IsCompleted, "慢连接仍应在进行中,不应因串行而完成/被跳过。");
+        Task<SshSession> pending = ReferenceEquals(completedTask, first) ? second : first;
+        Assert.IsFalse(pending.IsCompleted, "慢连接仍应在进行中,不应因串行而完成/被跳过。");
         gate.SetResult();
-        SshSession slowSession = await slow.WaitAsync(TimeSpan.FromSeconds(5));
+        SshSession slowSession = await pending.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.AreEqual(SessionStatus.Connected, slowSession.Status);
     }
 

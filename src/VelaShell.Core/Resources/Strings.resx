@@ -2663,4 +2663,7 @@ Overwrite it? (Cancel skips this file)</value>
   <data name="SyncInput_Resume" xml:space="preserve"><value>Resume</value></data>
   <data name="SyncInput_Leave" xml:space="preserve"><value>Leave Channel</value></data>
   <data name="SyncInput_Close" xml:space="preserve"><value>Close Channel</value></data>
+  <data name="Svc_CommonUsage" xml:space="preserve">
+    <value>Common usage</value>
+  </data>
 </root>
