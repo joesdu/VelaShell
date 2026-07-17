@@ -375,6 +375,17 @@ public class TerminalBehaviorOptions : ObservableOptions
         set => Set(ref field, value);
     } = 1.0;
 
+    /// <summary>
+    /// 连接远程会话后是否总是自动打开 SFTP 文件浏览器。关闭时跟随上次退出程序时
+    /// 面板的显示状态(<see cref="AppState.FileBrowserVisible" />):上次关着就不自动打开。
+    /// 面板不显示时不做任何 SFTP 拉取(文件列表、属主/属组等),首次展开才加载。
+    /// </summary>
+    public bool AutoOpenFileBrowser
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
     /// <summary>光标形状(如 bar / block / underline)。</summary>
     public string CursorStyle
     {

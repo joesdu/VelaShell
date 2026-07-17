@@ -104,7 +104,9 @@ public class MainWindowViewModel : ReactiveObject
     /// <summary>
     /// SFTP 面板的用户开关意图(全局,跨标签)。面板对象随标签切换/会话驱逐被整体
     /// 替换,可见性不能从上一个对象“抄”过来(本地终端占位是隐藏的,会把 false 传染
-    /// 给下一个远程标签);统一以本字段为准恢复。
+    /// 给下一个远程标签);统一以本字段为准恢复。启动时由 <see cref="InitializeAsync" />
+    /// 按设置初始化(总是打开 / 跟随上次退出状态),退出时经 <see cref="CaptureSidebarState" />
+    /// 持久化到 <see cref="AppState.FileBrowserVisible" />。
     /// </summary>
     private bool _fileBrowserOpenIntent = true;
     private Dictionary<Guid, string> _paletteGroupNames = [];
@@ -1303,8 +1305,16 @@ public class MainWindowViewModel : ReactiveObject
         if (_settingsService is not null)
         {
             _appState = await _settingsService.GetStateAsync();
+            AppSettings settings = await LoadSettingsSnapshotAsync();
+
+            // SFTP 面板的初始意图:「连接后自动打开文件浏览器」开启时无条件打开;
+            // 关闭时跟随上次退出的显示状态。必须先于 ApplySidebarState 赋值——
+            // 其内部的 CaptureSidebarState 会把当前意图回写进 _appState。
+            _fileBrowserOpenIntent =
+                settings.TerminalBehavior.AutoOpenFileBrowser || _appState.FileBrowserVisible;
+
             ApplySidebarState(_appState);
-            ApplyShellPreferences(await LoadSettingsSnapshotAsync());
+            ApplyShellPreferences(settings);
         }
         await Sidebar.RecentConnections.RefreshAsync();
         await RefreshSessionTreeAsync();
@@ -1378,6 +1388,9 @@ public class MainWindowViewModel : ReactiveObject
             Sidebar.RecentConnectionsHeight,
             180
         );
+        // 面板显示状态跟随用户意图落盘(窗口关闭时随本方法最终保存一次),
+        // 供「连接后自动打开文件浏览器」关闭时在下次启动恢复。
+        _appState.FileBrowserVisible = _fileBrowserOpenIntent;
     }
 
     private async Task SaveSidebarStateAfterDelayAsync(CancellationToken cancellationToken)

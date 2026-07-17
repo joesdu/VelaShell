@@ -1956,6 +1956,12 @@
   <data name="SetTerm_LineHeightDesc" xml:space="preserve">
     <value>// 行距倍數,預設為 1.0</value>
   </data>
+  <data name="SetTerm_AutoOpenSftp" xml:space="preserve">
+    <value>連線後自動開啟檔案瀏覽器</value>
+  </data>
+  <data name="SetTerm_AutoOpenSftpDesc" xml:space="preserve">
+    <value>開啟:每次連線遠端工作階段都會自動開啟 SFTP 檔案瀏覽器;關閉:跟隨上次結束程式時面板的顯示狀態。</value>
+  </data>
   <data name="SetTerm_OutputEncoding" xml:space="preserve">
     <value>輸出編碼</value>
   </data>
