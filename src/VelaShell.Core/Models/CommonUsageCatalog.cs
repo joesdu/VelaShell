@@ -1,4 +1,4 @@
-namespace VelaShell.Services;
+namespace VelaShell.Core.Models;
 
 /// <summary>
 /// 常用 CLI 工具的高频子命令/用法表,作为命令补全的上下文来源:键入
@@ -6,7 +6,7 @@ namespace VelaShell.Services;
 /// 纯静态查表,不执行远端探测;首词完整(出现空格)后才参与匹配,
 /// 单词阶段交给历史与快捷命令,避免噪音。
 /// </summary>
-internal static class CommonUsageCatalog
+public static class CommonUsageCatalog
 {
     private static readonly Dictionary<string, string[]> Usages = new(StringComparer.Ordinal)
     {
