@@ -2757,4 +2757,64 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Svc_CommonUsage" xml:space="preserve">
     <value>常用用法</value>
   </data>
+  <data name="QuickCmd_SsListeningPorts" xml:space="preserve">
+    <value>监听端口(ss)</value>
+  </data>
+  <data name="QuickCmd_IpAddresses" xml:space="preserve">
+    <value>网卡 IP 地址</value>
+  </data>
+  <data name="QuickCmd_PublicIp" xml:space="preserve">
+    <value>查看公网 IP</value>
+  </data>
+  <data name="QuickCmd_ConnectionSummary" xml:space="preserve">
+    <value>连接统计摘要</value>
+  </data>
+  <data name="QuickCmd_FailedServices" xml:space="preserve">
+    <value>启动失败的服务</value>
+  </data>
+  <data name="QuickCmd_OsRelease" xml:space="preserve">
+    <value>系统发行版信息</value>
+  </data>
+  <data name="QuickCmd_KernelInfo" xml:space="preserve">
+    <value>内核与架构信息</value>
+  </data>
+  <data name="QuickCmd_RecentLogins" xml:space="preserve">
+    <value>最近登录记录</value>
+  </data>
+  <data name="QuickCmd_Uptime" xml:space="preserve">
+    <value>运行时长与平均负载</value>
+  </data>
+  <data name="QuickCmd_MemoryUsage" xml:space="preserve">
+    <value>内存使用情况</value>
+  </data>
+  <data name="QuickCmd_TopCpuProcesses" xml:space="preserve">
+    <value>CPU 占用最高的进程</value>
+  </data>
+  <data name="QuickCmd_TopMemProcesses" xml:space="preserve">
+    <value>内存占用最高的进程</value>
+  </data>
+  <data name="QuickCmd_VmStat" xml:space="preserve">
+    <value>虚拟内存统计(5 秒)</value>
+  </data>
+  <data name="QuickCmd_DiskUsage" xml:space="preserve">
+    <value>磁盘使用情况</value>
+  </data>
+  <data name="QuickCmd_LargestDirs" xml:space="preserve">
+    <value>当前目录下最大的子目录</value>
+  </data>
+  <data name="QuickCmd_LargeFiles" xml:space="preserve">
+    <value>大于 100MB 的文件</value>
+  </data>
+  <data name="QuickCmd_RecentlyModified" xml:space="preserve">
+    <value>最近 1 小时修改的文件</value>
+  </data>
+  <data name="QuickCmd_ComposeUp" xml:space="preserve">
+    <value>后台启动 compose 服务栈</value>
+  </data>
+  <data name="QuickCmd_ComposeLogs" xml:space="preserve">
+    <value>跟随 compose 日志</value>
+  </data>
+  <data name="QuickCmd_DockerDf" xml:space="preserve">
+    <value>Docker 磁盘占用</value>
+  </data>
 </root>

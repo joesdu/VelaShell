@@ -2665,4 +2665,64 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Svc_CommonUsage" xml:space="preserve">
     <value>常用用法</value>
   </data>
+  <data name="QuickCmd_SsListeningPorts" xml:space="preserve">
+    <value>監聽埠(ss)</value>
+  </data>
+  <data name="QuickCmd_IpAddresses" xml:space="preserve">
+    <value>網卡 IP 位址</value>
+  </data>
+  <data name="QuickCmd_PublicIp" xml:space="preserve">
+    <value>查看公網 IP</value>
+  </data>
+  <data name="QuickCmd_ConnectionSummary" xml:space="preserve">
+    <value>連線統計摘要</value>
+  </data>
+  <data name="QuickCmd_FailedServices" xml:space="preserve">
+    <value>啟動失敗的服務</value>
+  </data>
+  <data name="QuickCmd_OsRelease" xml:space="preserve">
+    <value>系統發行版資訊</value>
+  </data>
+  <data name="QuickCmd_KernelInfo" xml:space="preserve">
+    <value>核心與架構資訊</value>
+  </data>
+  <data name="QuickCmd_RecentLogins" xml:space="preserve">
+    <value>最近登入記錄</value>
+  </data>
+  <data name="QuickCmd_Uptime" xml:space="preserve">
+    <value>執行時長與平均負載</value>
+  </data>
+  <data name="QuickCmd_MemoryUsage" xml:space="preserve">
+    <value>記憶體使用情況</value>
+  </data>
+  <data name="QuickCmd_TopCpuProcesses" xml:space="preserve">
+    <value>CPU 佔用最高的處理程序</value>
+  </data>
+  <data name="QuickCmd_TopMemProcesses" xml:space="preserve">
+    <value>記憶體佔用最高的處理程序</value>
+  </data>
+  <data name="QuickCmd_VmStat" xml:space="preserve">
+    <value>虛擬記憶體統計(5 秒)</value>
+  </data>
+  <data name="QuickCmd_DiskUsage" xml:space="preserve">
+    <value>磁碟使用情況</value>
+  </data>
+  <data name="QuickCmd_LargestDirs" xml:space="preserve">
+    <value>目前目錄下最大的子目錄</value>
+  </data>
+  <data name="QuickCmd_LargeFiles" xml:space="preserve">
+    <value>大於 100MB 的檔案</value>
+  </data>
+  <data name="QuickCmd_RecentlyModified" xml:space="preserve">
+    <value>最近 1 小時修改的檔案</value>
+  </data>
+  <data name="QuickCmd_ComposeUp" xml:space="preserve">
+    <value>背景啟動 compose 服務堆疊</value>
+  </data>
+  <data name="QuickCmd_ComposeLogs" xml:space="preserve">
+    <value>跟隨 compose 日誌</value>
+  </data>
+  <data name="QuickCmd_DockerDf" xml:space="preserve">
+    <value>Docker 磁碟佔用</value>
+  </data>
 </root>

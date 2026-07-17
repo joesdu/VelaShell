@@ -2666,4 +2666,64 @@ Overwrite it? (Cancel skips this file)</value>
   <data name="Svc_CommonUsage" xml:space="preserve">
     <value>Common usage</value>
   </data>
+  <data name="QuickCmd_SsListeningPorts" xml:space="preserve">
+    <value>Listening ports (ss)</value>
+  </data>
+  <data name="QuickCmd_IpAddresses" xml:space="preserve">
+    <value>Interface IP addresses</value>
+  </data>
+  <data name="QuickCmd_PublicIp" xml:space="preserve">
+    <value>Show public IP</value>
+  </data>
+  <data name="QuickCmd_ConnectionSummary" xml:space="preserve">
+    <value>Socket connection summary</value>
+  </data>
+  <data name="QuickCmd_FailedServices" xml:space="preserve">
+    <value>Failed systemd units</value>
+  </data>
+  <data name="QuickCmd_OsRelease" xml:space="preserve">
+    <value>OS release info</value>
+  </data>
+  <data name="QuickCmd_KernelInfo" xml:space="preserve">
+    <value>Kernel and architecture</value>
+  </data>
+  <data name="QuickCmd_RecentLogins" xml:space="preserve">
+    <value>Recent login history</value>
+  </data>
+  <data name="QuickCmd_Uptime" xml:space="preserve">
+    <value>Uptime and load average</value>
+  </data>
+  <data name="QuickCmd_MemoryUsage" xml:space="preserve">
+    <value>Memory usage</value>
+  </data>
+  <data name="QuickCmd_TopCpuProcesses" xml:space="preserve">
+    <value>Top CPU processes</value>
+  </data>
+  <data name="QuickCmd_TopMemProcesses" xml:space="preserve">
+    <value>Top memory processes</value>
+  </data>
+  <data name="QuickCmd_VmStat" xml:space="preserve">
+    <value>Virtual memory statistics (5s)</value>
+  </data>
+  <data name="QuickCmd_DiskUsage" xml:space="preserve">
+    <value>Filesystem disk usage</value>
+  </data>
+  <data name="QuickCmd_LargestDirs" xml:space="preserve">
+    <value>Largest directories here</value>
+  </data>
+  <data name="QuickCmd_LargeFiles" xml:space="preserve">
+    <value>Files larger than 100MB</value>
+  </data>
+  <data name="QuickCmd_RecentlyModified" xml:space="preserve">
+    <value>Files modified in the last hour</value>
+  </data>
+  <data name="QuickCmd_ComposeUp" xml:space="preserve">
+    <value>Start compose stack (detached)</value>
+  </data>
+  <data name="QuickCmd_ComposeLogs" xml:space="preserve">
+    <value>Follow compose logs</value>
+  </data>
+  <data name="QuickCmd_DockerDf" xml:space="preserve">
+    <value>Docker disk usage</value>
+  </data>
 </root>
