@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text;
 using VelaShell.Infrastructure.Pty;
 
@@ -16,24 +18,20 @@ namespace VelaShell.Infrastructure.Tests;
 /// </remarks>
 [TestClass]
 [TestCategory("ConPty")]
+[SupportedOSPlatform(nameof(OSPlatform.Windows))]
 public class ConPtyShellStreamTests
 {
     /// <summary>挂载正常:conhost 的 VT 握手序列经输出管道到达我们这侧。</summary>
     [TestMethod]
-    [Timeout(30000)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    [OSCondition(OperatingSystems.Windows)]
     public async Task ConPty_SpawnsShell_DeliversConhostHandshake()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("ConPTY 仅在 Windows 上可用。");
-            return;
-        }
-
         using var stream = ConPtyShellStream.Start("cmd.exe", workingDirectory: null, columns: 80, rows: 25);
 
         string output = await ReadUntilAsync(stream, s => s.Contains('\x1b'), TimeSpan.FromSeconds(15));
 
-        StringAssert.Contains(output, "\x1b[", "应收到 conhost 的 VT 握手序列(伪控制台与管道已挂上)。");
+        Assert.Contains("\x1b[", output, "应收到 conhost 的 VT 握手序列(伪控制台与管道已挂上)。");
     }
 
     /// <summary>
@@ -47,15 +45,10 @@ public class ConPtyShellStreamTests
     /// 自退出足以完整覆盖。
     /// </remarks>
     [TestMethod]
-    [Timeout(30000)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    [OSCondition(OperatingSystems.Windows)]
     public async Task ConPty_WhenChildExitsOnItsOwn_ReadSideSignalsEof()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("ConPTY 仅在 Windows 上可用。");
-            return;
-        }
-
         using var stream = ConPtyShellStream.Start("cmd.exe /c exit", workingDirectory: null, columns: 80, rows: 25);
 
         bool sawEof = await ReadToEofAsync(stream, TimeSpan.FromSeconds(20));
@@ -65,14 +58,9 @@ public class ConPtyShellStreamTests
     }
 
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public void ConPty_Dispose_KillsProcess_AndIsIdempotent()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("ConPTY 仅在 Windows 上可用。");
-            return;
-        }
-
         var stream = ConPtyShellStream.Start("cmd.exe", workingDirectory: null, columns: 80, rows: 25);
         Assert.IsTrue(stream.CanRead);
 
