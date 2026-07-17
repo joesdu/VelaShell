@@ -9,7 +9,19 @@ namespace VelaShell.Terminal.Emulation;
 /// </summary>
 public sealed class TerminalScreen
 {
+    /// <summary>头部搬移的攒批粒度:每退休这么多行才做一次 RemoveRange 物理搬移。</summary>
+    private const int ScrollbackTrimChunk = 1024;
+
     private readonly List<TerminalRow> _scrollback = [];
+
+    /// <summary>
+    /// 头部已裁剪但尚未物理搬移的行数。scrollback 满容量后每滚动一行都退休一行,
+    /// 逐行 RemoveAt(0) 是 O(n) 整表搬移(1 万行缓冲下 cat 大文件 = O(n²) 卡死 UI 线程);
+    /// 改为头指针前移 O(1),攒满 <see cref="ScrollbackTrimChunk" /> 行才搬移一次,
+    /// 对外的 <see cref="ScrollbackCount" /> 语义与逐行裁剪完全一致。
+    /// </summary>
+    private int _scrollbackStart;
+
     private TerminalRow[] _lines;
 
     /// <summary>Creates a screen of the given size with the given scrollback capacity.</summary>
@@ -45,10 +57,10 @@ public sealed class TerminalScreen
     public int ScrollBottom { get; private set; }
 
     /// <summary>Current number of lines held in scrollback.</summary>
-    public int ScrollbackCount => _scrollback.Count;
+    public int ScrollbackCount => _scrollback.Count - _scrollbackStart;
 
     /// <summary>Total rows available to the viewport (scrollback + active screen).</summary>
-    public int TotalRows => _scrollback.Count + Rows;
+    public int TotalRows => ScrollbackCount + Rows;
 
     private static TerminalRow[] NewLines(int rows, int cols)
     {
@@ -72,11 +84,43 @@ public sealed class TerminalScreen
         // Callers can hold stale row indexes (a selection made before a resize, a pointer
         // dragged past the top edge); clamp instead of throwing.
         absoluteRow = Math.Clamp(absoluteRow, 0, TotalRows - 1);
-        if (absoluteRow < _scrollback.Count)
+        if (absoluteRow < ScrollbackCount)
         {
-            return _scrollback[absoluteRow];
+            return _scrollback[_scrollbackStart + absoluteRow];
         }
-        return _lines[absoluteRow - _scrollback.Count];
+        return _lines[absoluteRow - ScrollbackCount];
+    }
+
+    /// <summary>
+    /// 退休语义裁剪:超出容量时头指针前移(O(1)),被裁行置空让 GC 尽早回收;
+    /// 攒满一块才做一次 RemoveRange 物理搬移,把逐行 O(n) 摊薄为 O(1)。
+    /// </summary>
+    private void TrimScrollbackToMax()
+    {
+        while (ScrollbackCount > MaxScrollback)
+        {
+            _scrollback[_scrollbackStart] = null!;
+            _scrollbackStart++;
+        }
+        if (_scrollbackStart >= ScrollbackTrimChunk)
+        {
+            _scrollback.RemoveRange(0, _scrollbackStart);
+            _scrollbackStart = 0;
+        }
+    }
+
+    /// <summary>
+    /// 把头部已裁剪区立即物理搬移掉,使 <c>_scrollback[0]</c> 重新对齐逻辑首行。
+    /// 需要整表遍历/展平 scrollback 的冷路径(resize/reflow)先调用它,
+    /// 之后即可按无偏移方式直接使用列表。
+    /// </summary>
+    private void CompactScrollback()
+    {
+        if (_scrollbackStart > 0)
+        {
+            _scrollback.RemoveRange(0, _scrollbackStart);
+            _scrollbackStart = 0;
+        }
     }
 
     /// <summary>Returns a mutable reference to the cell at (<paramref name="x" />, <paramref name="y" />).</summary>
@@ -188,10 +232,7 @@ public sealed class TerminalScreen
             if (fullScreen && MaxScrollback > 0)
             {
                 _scrollback.Add(retired);
-                if (_scrollback.Count > MaxScrollback)
-                {
-                    _scrollback.RemoveAt(0);
-                }
+                TrimScrollbackToMax();
             }
             for (int y = ScrollTop; y < ScrollBottom; y++)
             {
@@ -302,6 +343,7 @@ public sealed class TerminalScreen
                 break;
             case 3:
                 _scrollback.Clear();
+                _scrollbackStart = 0;
                 break;
         }
     }
@@ -343,7 +385,11 @@ public sealed class TerminalScreen
     }
 
     /// <summary>Discards all scrollback history.</summary>
-    public void ClearScrollback() => _scrollback.Clear();
+    public void ClearScrollback()
+    {
+        _scrollback.Clear();
+        _scrollbackStart = 0;
+    }
 
     /// <summary>
     /// Replaces the active lines wholesale (used when switching between main and alternate
@@ -382,6 +428,10 @@ public sealed class TerminalScreen
         {
             return;
         }
+
+        // resize/reflow 要整表遍历或展平 scrollback,先把头部裁剪区搬移掉,
+        // 后续逻辑保持无偏移访问(冷路径,一次 O(n) 可接受)。
+        CompactScrollback();
 
         // Column changes on the primary screen reflow the whole buffer (the mainstream
         // approach — Windows Terminal / iTerm2 / VTE / kitty): soft-wrapped rows are joined
@@ -433,10 +483,7 @@ public sealed class TerminalScreen
                 if (MaxScrollback > 0)
                 {
                     _scrollback.Add(_lines[i]);
-                    if (_scrollback.Count > MaxScrollback)
-                    {
-                        _scrollback.RemoveAt(0);
-                    }
+                    TrimScrollbackToMax();
                 }
             }
             Array.Copy(_lines, fromTop, next, 0, rows);
@@ -565,13 +612,14 @@ public sealed class TerminalScreen
         //    tail rows (that drop is what ate the buffer on repeated drag-resizes).
         int screenStart = Math.Max(0, rebuilt.Count - newRows);
         _scrollback.Clear();
+        _scrollbackStart = 0;
         for (int r = 0; r < screenStart; r++)
         {
             _scrollback.Add(rebuilt[r]);
         }
-        while (_scrollback.Count > MaxScrollback)
+        if (_scrollback.Count > MaxScrollback)
         {
-            _scrollback.RemoveAt(0);
+            _scrollback.RemoveRange(0, _scrollback.Count - MaxScrollback);
         }
         var lines = new TerminalRow[newRows];
         int idx = 0;
