@@ -1120,8 +1120,8 @@ Paste anyway?</value>
   <data name="SetAbout_UpToDate" xml:space="preserve">
     <value>You're on the latest version.</value>
   </data>
-  <data name="SetAbout_NotUpdaterManaged" xml:space="preserve">
-    <value>This build isn't managed by the installer (portable / MSI), so it can't auto-update. Please download the latest release from the project page.</value>
+  <data name="SetAbout_UpdateAvailableManual" xml:space="preserve">
+    <value>Update {0} is available, but this install location can't be updated automatically (folder isn't writable). Please download the latest release from the project page.</value>
   </data>
   <data name="SetAbout_Downloading" xml:space="preserve">
     <value>Downloading update… {0}%</value>
@@ -1134,6 +1134,9 @@ Paste anyway?</value>
   </data>
   <data name="SetAbout_UpdateReady" xml:space="preserve">
     <value>Update {0} is ready. Restart to finish installing.</value>
+  </data>
+  <data name="SetAbout_ApplyFailed" xml:space="preserve">
+    <value>Couldn't apply the update; the previous version has been restored. Please try again or download manually.</value>
   </data>
   <data name="SetAbout_RestartToUpdate" xml:space="preserve">
     <value>Restart &amp; update</value>

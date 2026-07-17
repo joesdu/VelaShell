@@ -1211,8 +1211,8 @@
   <data name="SetAbout_UpToDate" xml:space="preserve">
     <value>已是最新版本。</value>
   </data>
-  <data name="SetAbout_NotUpdaterManaged" xml:space="preserve">
-    <value>当前为非安装版(便携版 / MSI),无法自动更新,请前往项目发布页下载最新版本。</value>
+  <data name="SetAbout_UpdateAvailableManual" xml:space="preserve">
+    <value>发现新版本 {0},但当前安装位置无法自动更新(目录不可写),请前往项目发布页手动下载最新版本。</value>
   </data>
   <data name="SetAbout_Downloading" xml:space="preserve">
     <value>正在下载更新… {0}%</value>
@@ -1225,6 +1225,9 @@
   </data>
   <data name="SetAbout_UpdateReady" xml:space="preserve">
     <value>更新 {0} 已就绪,重启以完成安装。</value>
+  </data>
+  <data name="SetAbout_ApplyFailed" xml:space="preserve">
+    <value>应用更新失败,已还原到当前版本,请重试或手动下载。</value>
   </data>
   <data name="SetAbout_RestartToUpdate" xml:space="preserve">
     <value>重启并更新</value>

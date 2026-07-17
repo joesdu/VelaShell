@@ -55,11 +55,13 @@ public class App : Application
             .AddSingleton<IHostKeyPrompt, HostKeyPromptDialogService>()
             .AddSingleton<ILocalizationService, LocalizationService>()
             .AddSingleton<IKeyboardShortcutService, KeyboardShortcutService>()
-            // 应用内自动更新:更新源 = 本仓库的 GitHub Releases(无需自建服务器)。
-            // allowPreRelease=true 让 beta 版也能收到更新;发布正式版后可改 false 只推稳定版。
-            .AddSingleton<IUpdateService>(_ => new UpdateService(
+            // 应用内自动更新:更新源 = 本仓库 GitHub Releases 的 latest.json 清单(无需自建服务器),
+            // 便携式原地换版,不限定安装位置。通道跟随设置页的 stable/preview 开关;
+            // beta 阶段(尚无正式版)stable 通道自动放宽到最新预发布。
+            .AddSingleton<IUpdateService>(sp => new UpdateService(
                 "https://github.com/joesdu/VelaShell",
-                allowPreRelease: true
+                channelProvider: async () =>
+                    (await sp.GetRequiredService<ISettingsService>().GetSettingsAsync()).General.UpdateChannel
             ))
             .AddSingleton<QuickCommandsViewModel>()
             .AddSingleton<SettingsViewModel>()

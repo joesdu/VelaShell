@@ -27,7 +27,6 @@
     <PackageReference Include="AvaloniaUI.DiagnosticsSupport" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="ReactiveUI.Avalonia" />
-    <PackageReference Include="Velopack" />
   </ItemGroup>
 
   <!-- 见 VelaShell.Terminal.csproj 同处注释:签名构建(Release)省略友元声明,非签名构建保留。 -->

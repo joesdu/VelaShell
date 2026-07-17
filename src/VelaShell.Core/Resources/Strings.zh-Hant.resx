@@ -923,8 +923,8 @@
   <data name="SetAbout_UpToDate" xml:space="preserve">
     <value>已是最新版本。</value>
   </data>
-  <data name="SetAbout_NotUpdaterManaged" xml:space="preserve">
-    <value>目前為非安裝版(可攜版 / MSI),無法自動更新,請前往專案發佈頁下載最新版本。</value>
+  <data name="SetAbout_UpdateAvailableManual" xml:space="preserve">
+    <value>發現新版本 {0},但目前安裝位置無法自動更新(目錄不可寫),請前往專案發佈頁手動下載最新版本。</value>
   </data>
   <data name="SetAbout_Downloading" xml:space="preserve">
     <value>正在下載更新… {0}%</value>
@@ -937,6 +937,9 @@
   </data>
   <data name="SetAbout_UpdateReady" xml:space="preserve">
     <value>更新 {0} 已就緒,重新啟動以完成安裝。</value>
+  </data>
+  <data name="SetAbout_ApplyFailed" xml:space="preserve">
+    <value>套用更新失敗,已還原到目前版本,請重試或手動下載。</value>
   </data>
   <data name="SetAbout_RestartToUpdate" xml:space="preserve">
     <value>重新啟動並更新</value>

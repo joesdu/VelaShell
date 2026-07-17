@@ -1,8 +1,13 @@
 # 发布流水线:在 GitHub 页面发布 Release(publish)时自动触发。
-# 三平台原生 runner 构建 8 个产物并生成 SHA256SUMS.txt,统一附加到该 Release:
-#   Windows x64/arm64 × 含运行时 / 不含运行时(-noruntime)→ zip
-#   macOS   x64/arm64 含运行时 → tar.gz(未签名/未公证;Unix 可执行位在原生 runner 上保留)
-#   Linux   x64/arm64 含运行时 → tar.gz
+# 三平台原生 runner 构建 6 个 self-contained 产物,统一附加到该 Release:
+#   Windows x64/arm64 → zip
+#   macOS   x64/arm64 → tar.gz(未签名/未公证;Unix 可执行位在原生 runner 上保留)
+#   Linux   x64/arm64 → tar.gz
+# 另生成两份元数据:
+#   SHA256SUMS.txt — 全部产物的校验和(人工核对用)
+#   latest.json    — 应用内自更新清单(版本号/标签/各 RID 产物名+sha256+大小);
+#                    应用经 releases/latest/download/latest.json 固定地址读取(stable 通道,
+#                    不占 API 配额),preview 通道经 API 定位 Release 后取同名清单。
 # 版本号取 Release 标签(去掉前缀 v),经 -p:Version 覆盖 Directory.Build.props,
 # 关于页显示与产物命名自动一致 —— 发新版只需打标签发 Release,无需改代码。
 name: Release
@@ -32,63 +37,20 @@ jobs:
             [Convert]::FromBase64String($env:SNK_B64))
         env:
           SNK_B64: ${{ secrets.STRONG_NAME_KEY }}
-      - name: Install packaging tools (vpk / wix)
-        shell: pwsh
-        run: |
-          # 版本与本地验证一致:vpk 1.2.0(匹配应用内 Velopack 库),wix 5.0.2(免 OSMF)
-          dotnet tool install --global vpk --version 1.2.0
-          dotnet tool install --global wix --version 5.0.2
-          wix extension add -g WixToolset.UI.wixext/5.0.2
-      - name: Publish (x64/arm64 × self-contained/framework-dependent)
+      - name: Publish (win-x64 / win-arm64)
         shell: pwsh
         run: |
           $version = '${{ github.event.release.tag_name }}'.TrimStart('v')
           New-Item -ItemType Directory -Force dist | Out-Null
-          $targets = @(
-            @{ Rid = 'win-x64';   Sc = 'true';  Suffix = '' }
-            @{ Rid = 'win-x64';   Sc = 'false'; Suffix = '-noruntime' }
-            @{ Rid = 'win-arm64'; Sc = 'true';  Suffix = '' }
-            @{ Rid = 'win-arm64'; Sc = 'false'; Suffix = '-noruntime' }
-          )
-          foreach ($t in $targets) {
-            $name = "VelaShell-$version-$($t.Rid)$($t.Suffix)"
-            dotnet publish $env:PROJECT -c Release -r $t.Rid -o "out/$name" `
-              -p:Version=$version -p:SelfContained=$($t.Sc) -p:PublishSingleFile=true `
+          foreach ($rid in @('win-x64', 'win-arm64')) {
+            $name = "VelaShell-$version-$rid"
+            dotnet publish $env:PROJECT -c Release -r $rid -o "out/$name" `
+              -p:Version=$version -p:SelfContained=true -p:PublishSingleFile=true `
               -p:DebugType=None --nologo
             if ($LASTEXITCODE -ne 0) { exit 1 }
             Get-ChildItem "out/$name" -Recurse -File -Filter '*.pdb' | Remove-Item -Force
             Compress-Archive -Path "out/$name/*" -DestinationPath "dist/$name.zip" -Force
           }
-      - name: Build installers (Velopack Setup.exe + WiX MSI, x64/arm64)
-        shell: pwsh
-        run: |
-          $version = '${{ github.event.release.tag_name }}'.TrimStart('v')
-          $numeric = $version.Split('-')[0]   # MSI ProductVersion 不允许预发布后缀
-          $icon = (Resolve-Path 'src/VelaShell/Assets/velashell.ico').Path
-          foreach ($arch in @('x64', 'arm64')) {
-            $rid = "win-$arch"
-            $packDir = (Resolve-Path "out/VelaShell-$version-$rid").Path
-
-            # EXE 安装器(Velopack):同时产出应用内自动更新所需的 feed 文件
-            vpk pack --packId VelaShell --packVersion $version --packDir $packDir `
-              --mainExe VelaShell.exe --icon $icon --channel $rid --outputDir "vpk/$rid"
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-            Move-Item "vpk/$rid/VelaShell-$rid-Setup.exe" "dist/VelaShell-$version-$rid-Setup.exe"
-            # 应用内自动更新(GithubSource):更新器需从本 Release 读 feed(releases.$rid.json)并下载
-            # 对应架构的完整包(*-full.nupkg),故随 Release 一起发布。其余产物(assets.*.json / 旧版
-            # RELEASES-* / Velopack Portable.zip)不发:Setup.exe 已内嵌首装载荷、不参与更新流程。
-            Move-Item "vpk/$rid/releases.$rid.json" dist
-            Get-ChildItem "vpk/$rid/*-full.nupkg" | Move-Item -Destination dist
-
-            # MSI(WiX 5;WixUI_InstallDir 中文安装向导,支持自定义安装目录)
-            wix build installer/VelaShell.wxs -arch $arch -pdbtype none `
-              -ext WixToolset.UI.wixext -culture zh-CN `
-              -d ProductVersion=$numeric -d "PublishDir=$packDir" -d "IconPath=$icon" `
-              -d "LicenseRtf=$((Resolve-Path 'installer/License.rtf').Path)" `
-              -o "dist/VelaShell-$version-$rid.msi"
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-          }
-          Get-ChildItem dist | ForEach-Object { $_.Name }
       - uses: actions/upload-artifact@v4
         with:
           name: packages-windows
@@ -167,6 +129,31 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Generate latest.json (in-app update manifest)
+        run: |
+          set -euo pipefail
+          cd dist
+          VERSION="${TAG_NAME#v}"
+          assets='{}'
+          add_asset() {
+            local rid="$1" file="$2"
+            local sha size
+            sha=$(sha256sum "$file" | cut -d' ' -f1)
+            size=$(stat -c%s "$file")
+            assets=$(jq --arg rid "$rid" --arg name "$file" --arg sha "$sha" --argjson size "$size" \
+              '.[$rid] = {name: $name, sha256: $sha, size: $size}' <<< "$assets")
+          }
+          for rid in win-x64 win-arm64; do
+            add_asset "$rid" "VelaShell-$VERSION-$rid.zip"
+          done
+          for rid in osx-x64 osx-arm64 linux-x64 linux-arm64; do
+            add_asset "$rid" "VelaShell-$VERSION-$rid.tar.gz"
+          done
+          jq -n --arg version "$VERSION" --arg tag "$TAG_NAME" --argjson assets "$assets" \
+            '{version: $version, tag: $tag, assets: $assets}' > latest.json
+          cat latest.json
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Generate SHA256SUMS.txt
         run: |
           set -euo pipefail
