@@ -76,7 +76,12 @@ public class CommandSuggestionProviderTests
     {
         CommandSuggestionProvider provider = CreateProvider(out CommandHistoryService history);
         history.Record("tail -f /var/log/syslog");
-        IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync(string.Empty, 20);
+
+        // max 需容纳全部内置命令再留出历史名额,内置目录扩充时本测试不应跟着挂。
+        IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync(
+            string.Empty,
+            QuickCommandCatalog.BuiltIns.Count + 5
+        );
         Assert.Contains(s => s.Source == Strings.Get("QuickCommands"), items);
         Assert.Contains(s => s.Text == "tail -f /var/log/syslog", items);
     }

@@ -44,7 +44,13 @@ public static class QuickCommandGroupCatalog
 
     /// <summary>内置分组,标识跨版本和设备保持稳定。</summary>
     public static IReadOnlyList<QuickCommandGroup> BuiltIns { get; } =
-    [CreateBuiltIn("Network", 0), CreateBuiltIn("System", 1), CreateBuiltIn("Docker", 2)];
+    [
+        CreateBuiltIn("Network", 0),
+        CreateBuiltIn("System", 1),
+        CreateBuiltIn("Docker", 2),
+        CreateBuiltIn("Monitor", 3),
+        CreateBuiltIn("Files", 4),
+    ];
 
     /// <summary>为分组名称生成确定性标识。</summary>
     public static Guid IdForName(string name)

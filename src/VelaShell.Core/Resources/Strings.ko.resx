@@ -2665,4 +2665,64 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Svc_CommonUsage" xml:space="preserve">
     <value>자주 쓰는 명령</value>
   </data>
+  <data name="QuickCmd_SsListeningPorts" xml:space="preserve">
+    <value>수신 대기 포트(ss)</value>
+  </data>
+  <data name="QuickCmd_IpAddresses" xml:space="preserve">
+    <value>인터페이스 IP 주소</value>
+  </data>
+  <data name="QuickCmd_PublicIp" xml:space="preserve">
+    <value>공인 IP 확인</value>
+  </data>
+  <data name="QuickCmd_ConnectionSummary" xml:space="preserve">
+    <value>소켓 연결 요약</value>
+  </data>
+  <data name="QuickCmd_FailedServices" xml:space="preserve">
+    <value>실패한 서비스 목록</value>
+  </data>
+  <data name="QuickCmd_OsRelease" xml:space="preserve">
+    <value>OS 배포판 정보</value>
+  </data>
+  <data name="QuickCmd_KernelInfo" xml:space="preserve">
+    <value>커널 및 아키텍처 정보</value>
+  </data>
+  <data name="QuickCmd_RecentLogins" xml:space="preserve">
+    <value>최근 로그인 기록</value>
+  </data>
+  <data name="QuickCmd_Uptime" xml:space="preserve">
+    <value>가동 시간 및 평균 부하</value>
+  </data>
+  <data name="QuickCmd_MemoryUsage" xml:space="preserve">
+    <value>메모리 사용량</value>
+  </data>
+  <data name="QuickCmd_TopCpuProcesses" xml:space="preserve">
+    <value>CPU 사용량 상위 프로세스</value>
+  </data>
+  <data name="QuickCmd_TopMemProcesses" xml:space="preserve">
+    <value>메모리 사용량 상위 프로세스</value>
+  </data>
+  <data name="QuickCmd_VmStat" xml:space="preserve">
+    <value>가상 메모리 통계(5초)</value>
+  </data>
+  <data name="QuickCmd_DiskUsage" xml:space="preserve">
+    <value>디스크 사용량</value>
+  </data>
+  <data name="QuickCmd_LargestDirs" xml:space="preserve">
+    <value>현재 경로의 큰 디렉터리</value>
+  </data>
+  <data name="QuickCmd_LargeFiles" xml:space="preserve">
+    <value>100MB 초과 파일</value>
+  </data>
+  <data name="QuickCmd_RecentlyModified" xml:space="preserve">
+    <value>최근 1시간 내 수정된 파일</value>
+  </data>
+  <data name="QuickCmd_ComposeUp" xml:space="preserve">
+    <value>compose 스택 백그라운드 시작</value>
+  </data>
+  <data name="QuickCmd_ComposeLogs" xml:space="preserve">
+    <value>compose 로그 추적</value>
+  </data>
+  <data name="QuickCmd_DockerDf" xml:space="preserve">
+    <value>Docker 디스크 사용량</value>
+  </data>
 </root>

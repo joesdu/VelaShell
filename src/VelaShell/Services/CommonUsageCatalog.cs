@@ -30,6 +30,10 @@ internal static class CommonUsageCatalog
             "clone ",
             "reset --hard HEAD",
             "cherry-pick ",
+            "log --graph --oneline --all",
+            "remote -v",
+            "tag ",
+            "restore ",
         ],
         ["docker"] =
         [
@@ -48,8 +52,12 @@ internal static class CommonUsageCatalog
             "compose up -d",
             "compose down",
             "compose logs -f",
+            "compose ps",
             "network ls",
             "volume ls",
+            "inspect ",
+            "cp ",
+            "system df",
         ],
         ["kubectl"] =
         [
@@ -116,9 +124,73 @@ internal static class CommonUsageCatalog
             "restore",
             "add package ",
             "clean",
+            "--info"
         ],
         ["tar"] = ["-xzvf ", "-czvf ", "-xvf ", "-tvf "],
         ["ssh-keygen"] = ["-t ed25519 -C \"\"", "-t rsa -b 4096", "-R "],
+        ["helm"] =
+        [
+            "repo update",
+            "install ",
+            "upgrade --install ",
+            "list -A",
+            "uninstall ",
+            "rollback ",
+            "status ",
+        ],
+        ["terraform"] =
+        [
+            "init",
+            "plan",
+            "apply",
+            "apply -auto-approve",
+            "destroy",
+            "fmt",
+            "validate",
+            "state list",
+            "output",
+        ],
+        ["go"] =
+        [
+            "build ./...",
+            "run .",
+            "test ./...",
+            "mod tidy",
+            "vet ./...",
+            "fmt ./...",
+            "get -u ",
+        ],
+        ["ufw"] =
+        [
+            "status verbose",
+            "allow ",
+            "deny ",
+            "delete ",
+            "enable",
+            "disable",
+            "reload",
+        ],
+        ["firewall-cmd"] =
+        [
+            "--list-all",
+            "--reload",
+            "--get-active-zones",
+            "--permanent --add-port=",
+        ],
+        ["nginx"] = ["-t", "-s reload", "-V"],
+        ["certbot"] = ["renew --dry-run", "renew", "certificates"],
+        ["crontab"] = ["-l", "-e", "-l -u "],
+        ["mvn"] =
+        [
+            "clean install",
+            "clean package -DskipTests",
+            "test",
+            "spring-boot:run",
+            "dependency:tree",
+        ],
+        ["gradle"] = ["build", "test", "clean build", "bootRun", "dependencies"],
+        ["podman"] = ["ps -a", "images", "logs -f ", "exec -it ", "system prune -f"],
+        ["rsync"] = ["-avz --progress ", "-avz --delete "],
     };
 
     /// <summary>
