@@ -60,7 +60,7 @@ public sealed class MainWindowSshFeatureTests
                    new() { ProfileId = profile.Id, Name = "Prod", GroupName = "生产环境", Host = profile.Host, Port = 22, Username = "root" }
                ]);
         var vm = new MainWindowViewModel(workflow, sshConnectionService, () => terminal, recentConnectionService: recents);
-        TerminalTabViewModel tab = await vm.ConnectProfileAsync(profile);
+        TerminalTabViewModel? tab = await vm.TryConnectProfileAsync(profile);
         Assert.IsNotNull(tab);
         Assert.AreEqual("Prod", tab.Title);
         Assert.AreEqual(SessionStatus.Connected, tab.ConnectionStatus);
@@ -167,7 +167,8 @@ public sealed class MainWindowSshFeatureTests
         sshConnectionService.GetClient(session.SessionId).Returns(sshClient);
         sshClient.CreateShellStream("xterm-256color", 120, 32, 0, 0, 4096).Returns(shellStream);
         var vm = new MainWindowViewModel(workflow, sshConnectionService, () => terminal);
-        TerminalTabViewModel tab = await vm.ConnectProfileAsync(profile);
+        TerminalTabViewModel? tab = await vm.TryConnectProfileAsync(profile);
+        Assert.IsNotNull(tab);
         Assert.AreEqual(SessionStatus.Connected, tab.ConnectionStatus);
 
         // The remote drops (exit / reboot).

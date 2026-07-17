@@ -62,12 +62,6 @@ public static class QuickCommandGroupCatalog
         return new Guid(guidBytes);
     }
 
-    /// <summary>按名称查找内置分组,忽略大小写和首尾空白。</summary>
-    public static QuickCommandGroup? FindBuiltIn(string name) =>
-        BuiltIns.FirstOrDefault(group =>
-            string.Equals(group.Name, name.Trim(), StringComparison.OrdinalIgnoreCase)
-        );
-
     /// <summary>创建包含默认和内置分组的新快照。</summary>
     public static List<QuickCommandGroup> CreateSystemGroups() =>
         [

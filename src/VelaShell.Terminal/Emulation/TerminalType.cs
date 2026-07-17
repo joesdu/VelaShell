@@ -55,12 +55,6 @@ public static class TerminalTypeExtensions
             type is TerminalType.Xterm or TerminalType.XtermColor256
                 or TerminalType.Vt320 or TerminalType.Vt340 or TerminalType.Vt420 or TerminalType.Vt520;
 
-        /// <summary>True only for the xterm-256color profile (full 256/truecolor SGR).</summary>
-        public bool Supports256Color() => type is TerminalType.XtermColor256;
-
-        /// <summary>True when this is the VT52 profile (使用独立的 VT52 转义语法)。</summary>
-        public bool IsVt52() => type == TerminalType.Vt52;
-
         /// <summary>
         /// The primary Device Attributes (CSI c) reply. The first parameter identifies the
         /// terminal class; subsequent parameters advertise supported extensions.

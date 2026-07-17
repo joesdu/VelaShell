@@ -29,7 +29,6 @@ public static class InfrastructureServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddSingleton<VelaShellStoragePaths>();
-        services.AddSingleton<JsonDataStore>();
 
         // 所有持久化统一走嵌入式 SonnetDB(文档集合 + 时序 measurement)。
         services.AddSingleton<SonnetDbEngine>(serviceProvider =>

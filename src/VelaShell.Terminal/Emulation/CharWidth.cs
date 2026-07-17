@@ -72,9 +72,6 @@ public static class CharWidth
         return 1;
     }
 
-    /// <summary>Returns true when the given scalar value is a zero-width combining or format character.</summary>
-    public static bool IsCombining(int rune) => rune != 0 && InRanges(rune, ZeroWidth);
-
     private static bool InRanges(int rune, (int Lo, int Hi)[] ranges)
     {
         int lo = 0, hi = ranges.Length - 1;

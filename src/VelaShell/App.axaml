@@ -23,7 +23,6 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceInclude Source="avares://VelaShell.Controls/Themes/Generic.axaml" />
                 <ResourceInclude Source="avares://VelaShell.Controls/Themes/VelaTokens.axaml" />
                 <ResourceInclude Source="avares://VelaShell.Controls/Themes/VelaShellTokens.axaml" />
                 <ResourceInclude Source="avares://VelaShell.Controls/Themes/Icons.axaml" />
