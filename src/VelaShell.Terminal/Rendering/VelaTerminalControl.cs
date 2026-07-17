@@ -731,6 +731,40 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <summary>光标单元格在控件坐标系中的矩形(命令补全弹层锚点,与 IME 光标同一套计算)。</summary>
     public Rect GetCursorRect() => GetImeCursorRect();
 
+    /// <summary>
+    /// 光标单元格左移 <paramref name="columnsBack" /> 列后的矩形(不越过行首/装订线)。
+    /// 补全弹层锚定在输入起点而非光标处,避免面板随键入逐列漂移。列数按字符数近似,
+    /// CJK 宽字符会略有偏差——锚点仅供定位,可接受。
+    /// </summary>
+    public Rect GetCursorRect(int columnsBack)
+    {
+        Rect rect = GetImeCursorRect();
+        double x = Math.Max(GutterWidth(), rect.X - columnsBack * CellWidthForTest);
+        return new(x, rect.Y, rect.Width, rect.Height);
+    }
+
+    /// <summary>备用屏(DECSET 1047/1049)是否激活。全屏程序(vim/htop)内宿主不启用命令补全。</summary>
+    public bool IsAlternateScreenActive => Emulator.IsAlternateScreen;
+
+    private string? _ghostText;
+
+    /// <summary>
+    /// 光标后叠画的补全建议剩余文本(fish/Warp 式幽灵文本),null/空即不绘制。
+    /// 纯视觉覆盖层,不进屏幕缓冲;由宿主(补全逻辑)设置与清除。
+    /// </summary>
+    public string? GhostText
+    {
+        get => _ghostText;
+        set
+        {
+            if (_ghostText != value)
+            {
+                _ghostText = value;
+                InvalidateVisual();
+            }
+        }
+    }
+
     /// <summary>The cursor cell's rectangle in control coordinates (same math as RenderCursor).</summary>
     private Rect GetImeCursorRect()
     {
@@ -1090,6 +1124,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             if (_scrollOffset == 0)
             {
                 RenderCursor(context, screen, palette);
+                RenderGhostText(context, screen, palette, cols);
             }
         }
 
@@ -1097,6 +1132,48 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         if (_bellFlashUntil > DateTime.UtcNow)
         {
             context.FillRectangle(BellFlashBrush, new(Bounds.Size));
+        }
+    }
+
+    /// <summary>
+    /// 在光标处以约 40% 透明度的前景色绘制幽灵文本,裁剪到当前行行尾。
+    /// 只在未回滚(_scrollOffset==0)时绘制,与光标同一可见性条件。
+    /// </summary>
+    private void RenderGhostText(
+        DrawingContext context,
+        TerminalScreen screen,
+        TerminalPalette palette,
+        int cols
+    )
+    {
+        string? ghost = GhostText;
+        if (string.IsNullOrEmpty(ghost) || screen.CursorX >= cols)
+        {
+            return;
+        }
+        int cursorAbsolute = screen.TotalRows - screen.Rows + screen.CursorY;
+        int screenRow = ScreenRowForAbsolute(cursorAbsolute);
+        if (screenRow < 0)
+        {
+            return;
+        }
+        double x = screen.CursorX * CellWidthForTest;
+        double y = screenRow * CellHeightForTest;
+        var ft = new FormattedText(
+            ghost,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            new Typeface(FontFamily),
+            FontSize,
+            BrushFor(palette.DefaultForeground with { A = 0x66 })
+        );
+        using (
+            context.PushClip(
+                new Rect(x, y, (cols - screen.CursorX) * CellWidthForTest, CellHeightForTest)
+            )
+        )
+        {
+            context.DrawText(ft, new(x, y + _glyphYOffset));
         }
     }
 

@@ -27,67 +27,97 @@ public sealed class CommandSuggestionProvider
         _repository?.Changed += (_, _) => _customLoadedAt = DateTime.MinValue;
     }
 
-    /// <summary>返回按相关度排序的建议。</summary>
+    /// <summary>
+    /// 返回按相关度排序的建议。多来源加权合并:历史前缀命中(带最近加成)>
+    /// 常用子命令(git/docker 等上下文)> 快捷命令前缀命中 > 快捷命令松散命中 >
+    /// 历史包含命中;同文本去重取最高分。
+    /// </summary>
     public async Task<IReadOnlyList<CommandSuggestion>> GetSuggestionsAsync(string prefix, int max)
     {
         List<QuickCommand> quick = await GetQuickCommandsAsync();
-        var results = new List<CommandSuggestion>(max);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-
-        void Add(string text, string? detail, string source)
-        {
-            if (results.Count < max && !string.IsNullOrWhiteSpace(text) && seen.Add(text))
-            {
-                results.Add(new(text, detail, source));
-            }
-        }
-
         string quickCommandSource = Strings.Get("QuickCommands");
         string historySource = Strings.Get("Svc_History");
+
         if (string.IsNullOrEmpty(prefix))
         {
+            // 空输入(Alt+Enter 全量召出):快捷命令在前,最近历史随后。
+            var all = new List<CommandSuggestion>(max);
+            var seenAll = new HashSet<string>(StringComparer.Ordinal);
             foreach (QuickCommand command in quick)
             {
-                Add(command.CommandText, DescribeQuickCommand(command), quickCommandSource);
+                if (all.Count < max && seenAll.Add(command.CommandText))
+                {
+                    all.Add(new(command.CommandText, DescribeQuickCommand(command), quickCommandSource));
+                }
             }
             foreach (string entry in _history.Entries)
             {
-                Add(entry, null, historySource);
+                if (all.Count < max && seenAll.Add(entry))
+                {
+                    all.Add(new(entry, null, historySource));
+                }
             }
-            return results;
+            return all;
         }
 
-        foreach (
-            string entry in _history.Entries.Where(entry =>
-                entry.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                && entry.Length > prefix.Length
-            )
-        )
+        // 文本 → (分数, 建议),同文本保留最高分。
+        var scored = new Dictionary<string, (int Score, CommandSuggestion Item)>(
+            StringComparer.Ordinal
+        );
+
+        void Add(int score, string text, string? detail, string source)
         {
-            Add(entry, null, historySource);
+            if (string.IsNullOrWhiteSpace(text) || text.Length <= prefix.Length)
+            {
+                return;
+            }
+            if (!scored.TryGetValue(text, out (int Score, CommandSuggestion Item) existing)
+                || existing.Score < score)
+            {
+                scored[text] = (score, new(text, detail, source));
+            }
         }
-        foreach (
-            QuickCommand command in quick.Where(command =>
-                command.CommandText.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-            )
-        )
+
+        for (int i = 0; i < _history.Entries.Count; i++)
         {
-            Add(command.CommandText, DescribeQuickCommand(command), quickCommandSource);
+            string entry = _history.Entries[i];
+            int recency = Math.Max(0, 30 - i); // MRU 序:越近的历史越靠前。
+            if (entry.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                Add(100 + recency, entry, null, historySource);
+            }
+            else if (entry.Contains(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                Add(30 + recency / 2, entry, null, historySource);
+            }
         }
-        foreach (QuickCommand command in quick.Where(command => MatchesLoosely(command, prefix)))
+
+        string usageSource = Strings.Get("Svc_CommonUsage");
+        foreach (string candidate in CommonUsageCatalog.Complete(prefix))
         {
-            Add(command.CommandText, DescribeQuickCommand(command), quickCommandSource);
+            Add(90, candidate, null, usageSource);
         }
-        foreach (
-            string entry in _history.Entries.Where(entry =>
-                entry.Contains(prefix, StringComparison.OrdinalIgnoreCase)
-                && entry.Length > prefix.Length
-            )
-        )
+
+        foreach (QuickCommand command in quick)
         {
-            Add(entry, null, historySource);
+            if (command.CommandText.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                Add(80, command.CommandText, DescribeQuickCommand(command), quickCommandSource);
+            }
+            else if (MatchesLoosely(command, prefix))
+            {
+                Add(40, command.CommandText, DescribeQuickCommand(command), quickCommandSource);
+            }
         }
-        return results;
+
+        return
+        [
+            .. scored
+                .Values.OrderByDescending(pair => pair.Score)
+                .ThenBy(pair => pair.Item.Text.Length)
+                .Take(max)
+                .Select(pair => pair.Item),
+        ];
     }
 
     private static bool MatchesLoosely(QuickCommand command, string prefix) =>

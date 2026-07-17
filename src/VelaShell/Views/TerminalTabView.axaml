@@ -163,10 +163,14 @@
            空输入按 Alt+Enter 弹全量(快捷命令 + 最近历史)。键位:↑↓ 选择、
            Enter 补全插入(Alt+Enter 召出或 ↑↓ 导航过时;纯自动弹层下直通 shell)、
            Esc 关闭、Tab 归还 shell 原生补全。全部逻辑在代码后置。 -->
+      <!-- 锚定 PlacementRect(光标行、输入起点列)的下边缘向下展开:面板落在光标的
+           下一行,不遮挡正在编辑的行;底部空间不足时由定位器自动翻转到上方。 -->
       <Popup x:Name="SuggestPopup"
              PlacementTarget="{Binding #TerminalHost}"
              Placement="AnchorAndGravity"
+             PlacementAnchor="BottomLeft"
              PlacementGravity="BottomRight"
+             VerticalOffset="2"
              IsLightDismissEnabled="False">
         <Border Background="{DynamicResource VelaBgSurface}"
                 BorderBrush="{DynamicResource VelaBorderSecondary}"

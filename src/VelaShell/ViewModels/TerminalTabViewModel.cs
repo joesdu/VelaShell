@@ -553,7 +553,10 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
         // 快捷命令可能同时下发给同频道的多个标签,若再经同步频道转发,频道内
         // 每个标签都会收到重复注入;WriteInput 同步触发 TypedInput,压制窗口有效。
+        // IsProgrammaticInput 同理:跟踪器仍需感知注入文本以保持行状态一致,
+        // 但补全弹层不该把程序注入当作用户键入而弹出(用户反馈)。
         IsSyncForwardSuppressed = true;
+        IsProgrammaticInput = true;
         try
         {
             TerminalEmulator.WriteInput(Encoding.UTF8.GetBytes(payload));
@@ -561,9 +564,16 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         finally
         {
             IsSyncForwardSuppressed = false;
+            IsProgrammaticInput = false;
         }
         return true;
     }
+
+    /// <summary>
+    /// 程序注入输入(快捷命令下发等)期间为 true。注入与用户键入共用 TypedInput
+    /// 通道(行跟踪必需),视图据此区分两者,注入期间不弹命令补全。
+    /// </summary>
+    public bool IsProgrammaticInput { get; private set; }
 
     /// <summary>
     /// 把初始化命令注入远端 shell 并静默执行:发送前在桥上装回显抑制器,

@@ -91,4 +91,44 @@ public class CommandSuggestionProviderTests
         IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync(SamplePrefix, 8);
         Assert.ContainsSingle(s => s.Text == SampleBuiltIn.CommandText, items);
     }
+
+    [TestMethod]
+    public async Task ContextUsage_CompletesGitSubcommand()
+    {
+        CommandSuggestionProvider provider = CreateProvider(out _);
+        IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync("git che", 8);
+        Assert.Contains(s => s.Text == "git checkout", items);
+        Assert.Contains(s => s.Text == "git checkout -b", items);
+        Assert.Contains(s => s.Source == Strings.Get("Svc_CommonUsage"), items);
+    }
+
+    [TestMethod]
+    public async Task ContextUsage_HistoryPrefixStillOutranksIt()
+    {
+        CommandSuggestionProvider provider = CreateProvider(out CommandHistoryService history);
+        history.Record("git checkout dev");
+        IReadOnlyList<CommandSuggestion> items = await provider.GetSuggestionsAsync("git che", 8);
+
+        // 真实用过的历史(100+recency)排在通用用法表(90)之前。
+        Assert.AreEqual("git checkout dev", items[0].Text);
+    }
+
+    [TestMethod]
+    public void CommonUsageCatalog_RequiresCompleteFirstToken()
+    {
+        // 首词未敲完(无空格)不出上下文候选,交给历史/快捷命令。
+        Assert.IsEmpty(CommonUsageCatalog.Complete("git"));
+        Assert.IsNotEmpty(CommonUsageCatalog.Complete("git "));
+        Assert.IsEmpty(CommonUsageCatalog.Complete("notool sub"));
+    }
+
+    [TestMethod]
+    public void CommonUsageCatalog_CandidatesExtendThePrefix()
+    {
+        foreach (string candidate in CommonUsageCatalog.Complete("docker lo"))
+        {
+            Assert.StartsWith("docker lo", candidate);
+            Assert.IsGreaterThan("docker lo".Length, candidate.Length);
+        }
+    }
 }

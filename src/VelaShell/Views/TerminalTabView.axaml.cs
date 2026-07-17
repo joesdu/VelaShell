@@ -113,6 +113,9 @@ public partial class TerminalTabView : UserControl
     private string? _suppressedInput;
     private int _suggestSeq;
 
+    /// <summary>幽灵文本对应的完整候选命令(接受时据此设置抑制值);null 即无幽灵。</summary>
+    private string? _ghostFull;
+
     private void HookSuggestions()
     {
         _suggestVm?.InputTracker.InputChanged -= OnTrackedInputChanged;
@@ -123,6 +126,16 @@ public partial class TerminalTabView : UserControl
             $"view={GetHashCode():X} vm={_suggestVm?.GetHashCode():X} provider={(_suggestVm?.SuggestionProvider is null ? "null" : "ok")}"
         );
         CloseSuggestPopup(suppress: false);
+        ClearGhost();
+    }
+
+    private void ClearGhost()
+    {
+        _ghostFull = null;
+        if (_termControl is not null)
+        {
+            _termControl.GhostText = null;
+        }
     }
 
     private void OnTrackedInputChanged()
@@ -135,13 +148,76 @@ public partial class TerminalTabView : UserControl
                 ?? "<unknown>"}" effective="{input}" suppressed="{_suppressedInput}"
             """
         );
+        // 程序注入(快捷命令下发)不是用户键入:收起并记为已抑制,待用户继续
+        // 编辑(输入内容变化)后再恢复正常补全。
+        if (_suggestVm?.IsProgrammaticInput == true)
+        {
+            CloseSuggestPopup(suppress: true);
+            ClearGhost();
+            return;
+        }
+        // 备用屏(vim/htop 等全屏程序)内不做命令补全。
+        if (_termControl?.IsAlternateScreenActive == true)
+        {
+            CloseSuggestPopup(suppress: false);
+            ClearGhost();
+            return;
+        }
         if (string.IsNullOrEmpty(input) || input == _suppressedInput || IsInteractivePromptLine())
         {
             CloseSuggestPopup(suppress: false);
+            ClearGhost();
             return;
         }
         _suppressedInput = null;
-        _ = UpdateSuggestionsAsync(input, 8);
+
+        // 键入的字符与幽灵一致时本地即时消耗(fish 手感),异步结果回来后再校正。
+        // 未知态(按过方向键等)同样提示:EffectiveInput 已降级为试探段,建议剩余
+        // 部分只在光标处追加,与试探段"紧贴光标之前"的保证同等安全——确定态限制
+        // 曾让一次方向键永久哑掉整行的幽灵提示(用户反馈)。
+        if (
+            _ghostFull is { } full
+            && full.Length > input.Length
+            && full.StartsWith(input, StringComparison.Ordinal)
+            && !HasTextRightOfCursor()
+        )
+        {
+            if (_termControl is not null)
+            {
+                _termControl.GhostText = full[input.Length..];
+            }
+        }
+        else
+        {
+            ClearGhost();
+        }
+
+        // 面板未开时结果落到幽灵文本;面板已开(Alt+Enter 召出)则持续跟随键入刷新列表。
+        bool panelOpen = SuggestPopup.IsOpen;
+        _ = UpdateSuggestionsAsync(input, panelOpen ? 20 : 8, openPanel: panelOpen);
+    }
+
+    /// <summary>
+    /// 光标右侧同一行是否还有非空白内容(行中编辑、zsh 右提示符等):有则不显示
+    /// 幽灵文本——叠画会盖住既有内容,且此时"补全在行尾"的语义不成立。
+    /// 宽字符行的列→索引映射有偏差,保守放行(测不准时宁可显示)。
+    /// </summary>
+    private bool HasTextRightOfCursor()
+    {
+        if (_termControl is null)
+        {
+            return false;
+        }
+        try
+        {
+            string line = _termControl.GetBufferLine(_termControl.CursorRow);
+            int col = _termControl.CursorCol;
+            return line.Length > col && !string.IsNullOrWhiteSpace(line[col..]);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -309,7 +385,7 @@ public partial class TerminalTabView : UserControl
 
     private bool IsAttachedToVisualTree() => VisualRoot is not null;
 
-    private async Task UpdateSuggestionsAsync(string prefix, int max)
+    private async Task UpdateSuggestionsAsync(string prefix, int max, bool openPanel)
     {
         if (_suggestVm?.SuggestionProvider is not { } provider)
         {
@@ -327,19 +403,20 @@ public partial class TerminalTabView : UserControl
             // 线程亲和性异常会被静默吞掉,表现为"弹层时灵时不灵")。
             if (!Dispatcher.UIThread.CheckAccess())
             {
-                Dispatcher.UIThread.Post(() => ApplySuggestions(seq, items));
+                Dispatcher.UIThread.Post(() => ApplySuggestions(seq, items, openPanel));
                 return;
             }
-            ApplySuggestions(seq, items);
+            ApplySuggestions(seq, items, openPanel);
         }
         catch
         {
             // 建议是锦上添花,任何失败都只安静收起,不得污染后续键入的状态。
             CloseSuggestPopup(suppress: false);
+            ClearGhost();
         }
     }
 
-    private void ApplySuggestions(int seq, IReadOnlyList<CommandSuggestion> items)
+    private void ApplySuggestions(int seq, IReadOnlyList<CommandSuggestion> items, bool openPanel)
     {
         // 键入速度快于查询时只应用最后一次结果;期间行内容变了(seq 落后)直接丢弃。
         if (seq != _suggestSeq)
@@ -351,21 +428,63 @@ public partial class TerminalTabView : UserControl
         {
             SuggestDiag.Log("apply", "0 items -> close");
             CloseSuggestPopup(suppress: false);
+            ClearGhost();
             return;
         }
+        // 结果落地时输入已被抑制(接受补全/程序注入赛过了在途查询):丢弃,不重开。
+        string input = EffectiveInput();
+        if (input == _suppressedInput)
+        {
+            SuggestDiag.Log("apply", "input suppressed -> drop");
+            return;
+        }
+        if (!openPanel)
+        {
+            ApplyGhost(input, items);
+            return;
+        }
+        ClearGhost();
         _suggestions = items;
         SuggestList.ItemsSource = items;
         SuggestList.SelectedIndex = 0;
         SuggestPopup.PlacementTarget ??= TerminalHost;
         if (_termControl is not null)
         {
-            SuggestPopup.PlacementRect = _termControl.GetCursorRect();
+            // 锚定在输入起点列(而非光标列):面板不随键入逐列漂移,与主流终端一致。
+            SuggestPopup.PlacementRect = _termControl.GetCursorRect(input.Length);
         }
         SuggestPopup.IsOpen = true;
         SuggestDiag.Log(
             "apply",
             $"opened with {items.Count} items, isOpen={SuggestPopup.IsOpen}, target={(SuggestPopup.PlacementTarget is null ? "null" : "ok")}"
         );
+    }
+
+    /// <summary>
+    /// 幽灵文本模式:取首个与当前输入严格同前缀(区分大小写——剩余部分要原样写入
+    /// shell)且更长的候选,把剩余部分叠画在光标后;无合格候选则清除。
+    /// </summary>
+    private void ApplyGhost(string input, IReadOnlyList<CommandSuggestion> items)
+    {
+        if (_termControl is null || input.Length == 0 || HasTextRightOfCursor())
+        {
+            ClearGhost();
+            return;
+        }
+        foreach (CommandSuggestion item in items)
+        {
+            if (
+                item.Text.Length > input.Length
+                && item.Text.StartsWith(input, StringComparison.Ordinal)
+            )
+            {
+                _ghostFull = item.Text;
+                _termControl.GhostText = item.Text[input.Length..];
+                SuggestDiag.Log("ghost", $"\"{item.Text}\" remainder {item.Text.Length - input.Length} chars");
+                return;
+            }
+        }
+        ClearGhost();
     }
 
     private void CloseSuggestPopup(bool suppress)
@@ -385,22 +504,39 @@ public partial class TerminalTabView : UserControl
     private bool HandleSuggestionKey(KeyEventArgs e)
     {
         // Alt+Enter:主动弹出补全面板(空输入 = 快捷命令全量 + 最近历史)。
-        // 交互提示行(密码/是否确认/编号选单)连主动召出也不给:把整条历史命令插进
-        // 程序输入里有害无益。
+        // 交互提示行(密码/是否确认/编号选单)与备用屏连主动召出也不给:把整条
+        // 历史命令插进程序输入里有害无益。
         if (e is { Key: Key.Enter, KeyModifiers: Avalonia.Input.KeyModifiers.Alt })
         {
-            if (IsInteractivePromptLine())
+            if (IsInteractivePromptLine() || _termControl?.IsAlternateScreenActive == true)
             {
                 e.Handled = true;
                 return true;
             }
             _suppressedInput = null;
-            _ = UpdateSuggestionsAsync(EffectiveInput(), 20);
+            _ = UpdateSuggestionsAsync(EffectiveInput(), 20, openPanel: true);
             e.Handled = true;
             return true;
         }
         if (!SuggestPopup.IsOpen)
         {
+            // → / End 接受幽灵文本(fish/zsh-autosuggestions 语义)。幽灵只在确定态
+            // 展示,此时光标必在行尾——行尾的 → 在 shell 里本就是空操作,不会误伤移动。
+            if (
+                e.KeyModifiers == Avalonia.Input.KeyModifiers.None
+                && e.Key is Key.Right or Key.End
+                && _ghostFull is not null
+                && _termControl?.GhostText is { Length: > 0 } remainder
+            )
+            {
+                // 不设抑制:接受后 InputChanged 里发出的查询若命中更长的候选
+                // (如 "git checkout" → "git checkout -b"),继续以幽灵形式接力提示
+                // (fish 语义);幽灵只显示严格更长的候选,不会原样重现。
+                ClearGhost();
+                _termControl.WriteInput(Encoding.UTF8.GetBytes(remainder));
+                e.Handled = true;
+                return true;
+            }
             return false;
         }
         switch (e.Key)
@@ -470,14 +606,15 @@ public partial class TerminalTabView : UserControl
             payload = new string('\x7f', current.Length) + suggestion.Text;
         }
         CloseSuggestPopup(suppress: false);
+        ClearGhost();
 
-        // 经用户输入通道写入(shell 负责回显),跟踪器同路径感知,行状态保持一致;
-        // 补全结果与输入相同,抑制它避免弹层立刻原样重开。
+        // 经用户输入通道写入(shell 负责回显),跟踪器同路径感知,行状态保持一致。
+        // 不设抑制:面板已关,WriteInput 触发的查询结果只会落到幽灵文本,且幽灵
+        // 只显示严格更长的候选——接受后若存在更长的延续(参数、子选项)就接力提示。
         if (payload.Length > 0)
         {
             _termControl.WriteInput(Encoding.UTF8.GetBytes(payload));
         }
-        _suppressedInput = EffectiveInput();
         FocusTerminal();
     }
 
