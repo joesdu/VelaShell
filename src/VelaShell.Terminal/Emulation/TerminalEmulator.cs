@@ -501,7 +501,8 @@ public sealed class TerminalEmulator : IVtActions
     public void Feed(ReadOnlySpan<byte> bytes)
     {
         _feedTimestamp = DateTime.Now;
-        string decoded = _utf8.Decode(bytes);
+        // DecodeSpan 复用 sink 的内部缓冲,parser 只读遍历不留引用——全程零 string 物化。
+        ReadOnlySpan<char> decoded = _utf8.DecodeSpan(bytes);
         if (decoded.Length > 0)
         {
             _parser.Parse(decoded);

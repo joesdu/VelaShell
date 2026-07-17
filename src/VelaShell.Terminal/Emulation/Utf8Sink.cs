@@ -33,9 +33,19 @@ public sealed class Utf8Sink(Encoding? encoding = null)
     /// </summary>
     public string Decode(ReadOnlySpan<byte> bytes)
     {
+        ReadOnlySpan<char> decoded = DecodeSpan(bytes);
+        return decoded.IsEmpty ? string.Empty : new(decoded);
+    }
+
+    /// <summary>
+    /// 增量解码到内部复用缓冲,返回其只读视图(仅在下次 Decode/DecodeSpan 前有效)。
+    /// 输出热路径(每帧一次)用它避免物化中间 string。
+    /// </summary>
+    public ReadOnlySpan<char> DecodeSpan(ReadOnlySpan<byte> bytes)
+    {
         if (bytes.IsEmpty)
         {
-            return string.Empty;
+            return [];
         }
         int max = _decoder.GetCharCount(bytes, false);
         if (_chars.Length < max)
@@ -47,7 +57,7 @@ public sealed class Utf8Sink(Encoding? encoding = null)
         // GetCharCount 不改变解码器状态,早退会把这些字节整段丢掉,下一段解码成 U+FFFD
         // (网络分块恰好切在 CJK 字符中间时输出变 �,cat 中文文件偶发乱码的根因)。
         int written = _decoder.GetChars(bytes, _chars, false);
-        return written == 0 ? string.Empty : new(_chars, 0, written);
+        return _chars.AsSpan(0, written);
     }
 
     /// <summary>

@@ -212,8 +212,9 @@ public class SshTerminalBridge : IDisposable
                 // ZMODEM 路由优先:会话期间返回空终端字节(全部转交引擎),
                 // 命中时仅把引导前的字节嗂终端;未启用时原样嗂入。
                 ZModem.ZModemTerminalRouter? router = ZModemRouter;
-                if (router is null)
+                if (router is null || router.CanPassThrough(data))
                 {
+                    // 常态直通:无 ZMODEM 引导迹象时原始块零拷贝进合批队列。
                     EnqueueForFeed(data);
                 }
                 else
@@ -267,11 +268,16 @@ public class SshTerminalBridge : IDisposable
         }
     }
 
+    // 多 chunk 合批的复用缓冲:只增不缩,仅在 UI 线程的 FlushPending 内访问,
+    // Feed 同步消费不留引用,因此跨帧复用安全。
+    private byte[] _combineBuffer = [];
+
     private void FlushPending()
     {
         // Reset first so chunks arriving during the drain schedule a fresh flush.
         Interlocked.Exchange(ref _flushScheduled, 0);
-        byte[] combined;
+        byte[] buffer;
+        int length;
         lock (_pendingLock)
         {
             int count = _pending.Count;
@@ -281,7 +287,8 @@ public class SshTerminalBridge : IDisposable
             }
             if (count == 1)
             {
-                combined = _pending[0];
+                buffer = _pending[0];
+                length = buffer.Length;
             }
             else
             {
@@ -290,14 +297,20 @@ public class SshTerminalBridge : IDisposable
                 {
                     total += _pending[i].Length;
                 }
-                combined = new byte[total];
+                if (_combineBuffer.Length < total)
+                {
+                    // 2 倍步进摊平增长成本,避免突发行情下反复重分配。
+                    _combineBuffer = new byte[Math.Max(total, _combineBuffer.Length * 2)];
+                }
                 int offset = 0;
                 for (int i = 0; i < count; i++)
                 {
                     byte[] chunk = _pending[i];
-                    Array.Copy(chunk, 0, combined, offset, chunk.Length);
+                    Array.Copy(chunk, 0, _combineBuffer, offset, chunk.Length);
                     offset += chunk.Length;
                 }
+                buffer = _combineBuffer;
+                length = total;
             }
             _pending.Clear();
         }
@@ -307,24 +320,45 @@ public class SshTerminalBridge : IDisposable
         }
         if (_echoSuppressor is { } suppressor)
         {
-            combined = suppressor.Process(combined);
+            // 抑制窗只覆盖连接后的最初几秒:此路径物化精确数组无妨,稳态热路径不经过。
+            byte[] exact = length == buffer.Length ? buffer : buffer[..length];
+            exact = suppressor.Process(exact);
             if (suppressor.Expired)
             {
                 _echoSuppressor = null;
             }
-            if (combined.Length == 0)
+            if (exact.Length == 0)
             {
                 return;
             }
+            buffer = exact;
+            length = exact.Length;
         }
         try
         {
             // One Feed per flush => one Updated => one repaint, regardless of chunk count.
-            _terminal.Feed(combined);
+            FeedTerminal(buffer, length);
         }
         catch (Exception ex)
         {
             Error?.Invoke(ex);
+        }
+    }
+
+    /// <summary>
+    /// 把合批结果喂给模拟器:生产中的具体实现(VelaTerminalControl)走 span 直喂
+    /// (复用缓冲零物化);其它 ITerminalEmulator 实现(测试替身)回退 byte[] 语义——
+    /// 接口不宜引入 span 成员,ref struct 参数无法被常规 mock 框架替身化。
+    /// </summary>
+    private void FeedTerminal(byte[] buffer, int length)
+    {
+        if (_terminal is Rendering.VelaTerminalControl control)
+        {
+            control.Feed(buffer.AsSpan(0, length));
+        }
+        else
+        {
+            _terminal.Feed(length == buffer.Length ? buffer : buffer[..length]);
         }
     }
 

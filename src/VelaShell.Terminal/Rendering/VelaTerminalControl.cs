@@ -362,6 +362,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <summary>Feeds raw host output bytes into the emulator for parsing and display.</summary>
     public void Feed(byte[] data) => Emulator.Feed(data);
 
+    /// <summary>Feed 的 span 重载:桥的合批热路径直喂复用缓冲,避免物化精确尺寸数组。</summary>
+    public void Feed(ReadOnlySpan<byte> data) => Emulator.Feed(data);
+
     /// <summary>Resizes the emulator grid to the given columns/rows, resetting scroll, folds and selection.</summary>
     public void Resize(int cols, int rows)
     {
@@ -844,6 +847,11 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         {
             return brush;
         }
+        // 同 PenFor:truecolor 下颜色空间无界,封顶防止字典长期膨胀。
+        if (_brushCache.Count > 4096)
+        {
+            _brushCache.Clear();
+        }
         brush = new(Color.FromArgb(c.A, c.R, c.G, c.B));
         _brushCache[c.Packed] = brush;
         return brush;
@@ -859,6 +867,12 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         if (_penCache.TryGetValue(c.Packed, out ImmutablePen? pen))
         {
             return pen;
+        }
+        // Truecolor 输出(渐变进度条等)每 cell 一色,不设上界会无限增长;
+        // 全清后一两帧内按需回填,成本可忽略。
+        if (_penCache.Count > 4096)
+        {
+            _penCache.Clear();
         }
         pen = new(BrushFor(c));
         _penCache[c.Packed] = pen;
@@ -922,6 +936,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
         // Cached glyphs are bound to the old typeface/size; drop them on any metric change.
         _glyphCache.Clear();
+        _ghostFormatted = null;
         _styleTypefacesReady = false;
     }
 
@@ -1159,23 +1174,36 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         }
         double x = screen.CursorX * CellWidthForTest;
         double y = screenRow * CellHeightForTest;
-        var ft = new FormattedText(
-            ghost,
-            CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight,
-            new Typeface(FontFamily),
-            FontSize,
-            BrushFor(palette.DefaultForeground with { A = 0x66 })
-        );
+
+        // 幽灵可见期间光标闪烁每 ~530ms 重绘一帧;FormattedText 塑形较贵,
+        // 按 (文本, 颜色) 缓存,仅在幽灵内容/主题/字体度量变化时重建。
+        Rgba fg = palette.DefaultForeground with { A = 0x66 };
+        if (_ghostFormatted is null || _ghostFormattedText != ghost || _ghostFormattedColor != fg.Packed)
+        {
+            _ghostFormatted = new(
+                ghost,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                new Typeface(FontFamily),
+                FontSize,
+                BrushFor(fg)
+            );
+            _ghostFormattedText = ghost;
+            _ghostFormattedColor = fg.Packed;
+        }
         using (
             context.PushClip(
                 new Rect(x, y, (cols - screen.CursorX) * CellWidthForTest, CellHeightForTest)
             )
         )
         {
-            context.DrawText(ft, new(x, y + _glyphYOffset));
+            context.DrawText(_ghostFormatted, new(x, y + _glyphYOffset));
         }
     }
+
+    private FormattedText? _ghostFormatted;
+    private string? _ghostFormattedText;
+    private uint _ghostFormattedColor;
 
     // ---- Line gutter(时间/行号/折叠侧栏,WindTerm 式) ---------------------
 

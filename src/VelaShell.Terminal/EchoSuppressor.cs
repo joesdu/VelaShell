@@ -50,6 +50,13 @@ public sealed class EchoSuppressor
             return ReleaseHeld(data);
         }
 
+        // 快路径:无扣留前缀且整块不含 needle 首字节 → 原样返回,零分配零拷贝。
+        // 抑制窗内绝大多数输出块(MOTD、提示符刷新)都走这里。
+        if (_held == 0 && Array.IndexOf(data, _needle[0]) < 0)
+        {
+            return data;
+        }
+
         // 把上次扣住的前缀接回输入统一扫描(其内容与 needle 前缀相同,可直接重建)。
         byte[] input;
         if (_held > 0)

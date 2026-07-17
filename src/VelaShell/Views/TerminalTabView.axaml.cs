@@ -119,13 +119,25 @@ public partial class TerminalTabView : UserControl
     private void HookSuggestions()
     {
         _suggestVm?.InputTracker.InputChanged -= OnTrackedInputChanged;
+        _suggestVm?.Disconnected -= OnSuggestVmDisconnected;
         _suggestVm = DataContext as TerminalTabViewModel;
         _suggestVm?.InputTracker.InputChanged += OnTrackedInputChanged;
+        _suggestVm?.Disconnected += OnSuggestVmDisconnected;
         SuggestDiag.Log(
             "hook",
             $"view={GetHashCode():X} vm={_suggestVm?.GetHashCode():X} provider={(_suggestVm?.SuggestionProvider is null ? "null" : "ok")}"
         );
-        CloseSuggestPopup(suppress: false);
+        DismissSuggestions(suppress: false);
+    }
+
+    /// <summary>断连横幅会移动光标,残留的幽灵会被画到新光标处——断连即收口。</summary>
+    private void OnSuggestVmDisconnected(object? sender, EventArgs e) =>
+        DismissSuggestions(suppress: false);
+
+    /// <summary>统一收起智能提示:弹层与幽灵文本同生共灭,防止各清一半的残留。</summary>
+    private void DismissSuggestions(bool suppress)
+    {
+        CloseSuggestPopup(suppress);
         ClearGhost();
     }
 
@@ -141,13 +153,17 @@ public partial class TerminalTabView : UserControl
     private void OnTrackedInputChanged()
     {
         string input = EffectiveInput();
-        SuggestDiag.Log(
-            "changed",
-            $"""
-            view={GetHashCode():X} attached={IsAttachedToVisualTree()} known="{_suggestVm?.InputTracker.CurrentInput
-                ?? "<unknown>"}" effective="{input}" suppressed="{_suppressedInput}"
-            """
-        );
+        // 每键路径:先查开关再拼实参(急切求值防线,见 SuggestDiag.IsEnabled)。
+        if (SuggestDiag.IsEnabled)
+        {
+            SuggestDiag.Log(
+                "changed",
+                $"""
+                view={GetHashCode():X} attached={IsAttachedToVisualTree()} known="{_suggestVm?.InputTracker.CurrentInput
+                    ?? "<unknown>"}" effective="{input}" suppressed="{_suppressedInput}"
+                """
+            );
+        }
         // 程序注入(快捷命令下发)不是用户键入:收起并记为已抑制,待用户继续
         // 编辑(输入内容变化)后再恢复正常补全。
         if (_suggestVm?.IsProgrammaticInput == true)
@@ -707,11 +723,14 @@ public partial class TerminalTabView : UserControl
     }
 
     private void OnHostWindowDeactivated(object? sender, EventArgs e) =>
-        CloseSuggestPopup(suppress: false);
+        DismissSuggestions(suppress: false);
 
     private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
-        CloseSuggestPopup(suppress: false);
+        DismissSuggestions(suppress: false);
+        // 脱离可视树后不该再响应跟踪器(重新 attach 时 HookSuggestions 会幂等重订)。
+        _suggestVm?.InputTracker.InputChanged -= OnTrackedInputChanged;
+        _suggestVm?.Disconnected -= OnSuggestVmDisconnected;
         _hostWindow?.Deactivated -= OnHostWindowDeactivated;
         _hostWindow = null;
         if (_termControl is not null)
@@ -723,11 +742,11 @@ public partial class TerminalTabView : UserControl
     }
 
     /// <summary>
-    /// 终端失焦(点击 SFTP 面板/侧边栏等)时收起弹层;建议列表项不可聚焦,
+    /// 终端失焦(点击 SFTP 面板/侧边栏等)时收起弹层与幽灵;建议列表项不可聚焦,
     /// 因此点击建议项本身不会触发这里。
     /// </summary>
     private void OnTerminalLostFocus(object? sender, RoutedEventArgs e) =>
-        CloseSuggestPopup(suppress: false);
+        DismissSuggestions(suppress: false);
 
     // The terminal control is a single shared instance reparented across split panes, so each
     // view (re)binds the scrollbar to whichever control it currently hosts.
@@ -744,7 +763,11 @@ public partial class TerminalTabView : UserControl
         {
             _termControl.ScrollChanged -= OnTerminalScrollChanged;
             _termControl.LostFocus -= OnTerminalLostFocus;
+            // 幽灵是画在控件上的覆盖层:换出的旧控件若在别的面板仍可见,
+            // 不清会把幽灵永久残留在旧光标处。
+            _termControl.GhostText = null;
         }
+        _ghostFull = null;
         _termControl = ctrl;
         if (_termControl is not null)
         {

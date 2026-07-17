@@ -13,6 +13,12 @@ public static class SuggestDiag
     private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "velashell-suggest.log");
     private static readonly Lock Gate = new();
 
+    /// <summary>
+    /// 诊断开关是否开启。热路径(每键)调用方必须先查它再拼 Log 的实参——
+    /// C# 会急切求值实参,不设防的话关着开关每键也白白分配几个字符串。
+    /// </summary>
+    public static bool IsEnabled => Enabled;
+
     /// <summary>在诊断开关开启时,把补全链路某个环节的详情写入日志文件与调试输出;关闭时零开销。</summary>
     public static void Log(string stage, string detail)
     {

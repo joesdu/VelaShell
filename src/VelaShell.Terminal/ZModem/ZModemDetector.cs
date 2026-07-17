@@ -45,6 +45,17 @@ public sealed class ZModemDetector
     // 扣留的、可能属于被切断引导前缀的尾部字节。
     private readonly List<byte> _held = [];
 
+    /// <summary>
+    /// 常态零拷贝快路径判定:无扣留尾部、块内无任一引导、且块尾与引导前缀无重叠时为
+    /// true——调用方可把原始块原样喂终端,跳过 <see cref="Process" /> 的窗口拼接与切片拷贝。
+    /// 该检测器挂在所有会话的输出链路上,绝大多数输出块都应走此路径。
+    /// </summary>
+    public bool CanPassThrough(ReadOnlySpan<byte> incoming) =>
+        _held.Count == 0
+        && IndexOf(incoming, ReceiveSignature) < 0
+        && IndexOf(incoming, SendSignature) < 0
+        && LongestSignaturePrefixSuffix(incoming) == 0;
+
     /// <summary>处理一段新到达的输出字节,判断是否命中 ZMODEM 引导。</summary>
     /// <param name="incoming">本次到达的原始输出字节。</param>
     /// <returns>检测结果:待喂终端字节、命中的引导类型、以及命中后交给引擎的协议字节。</returns>
@@ -80,7 +91,7 @@ public sealed class ZModemDetector
             byte[] feed = window[..feedLen];
             if (holdLen > 0)
             {
-                _held.AddRange(window.AsSpan(feedLen).ToArray());
+                _held.AddRange(window.AsSpan(feedLen));
             }
             return new(feed, ZModemTrigger.None, []);
         }
