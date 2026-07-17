@@ -2030,7 +2030,7 @@ Paste anyway?</value>
     <value>Auto-open file browser on connect</value>
   </data>
   <data name="SetTerm_AutoOpenSftpDesc" xml:space="preserve">
-    <value>On: the SFTP file browser opens every time a remote session connects. Off: it follows whether the panel was open when the app last exited.</value>
+    <value>Decides whether the SFTP file browser opens when a new remote session connects. Each tab then remembers its own show/hide state independently.</value>
   </data>
   <data name="SetTerm_OutputEncoding" xml:space="preserve">
     <value>Output encoding</value>
@@ -2376,9 +2376,6 @@ Overwrite it? (Cancel skips this file)</value>
   </data>
   <data name="StatusBar_Swap" xml:space="preserve">
     <value>Swap</value>
-  </data>
-  <data name="StatusBar_RemoteFiles" xml:space="preserve">
-    <value>Open or close remote files</value>
   </data>
   <data name="Svc_Active" xml:space="preserve">
     <value>Active</value>

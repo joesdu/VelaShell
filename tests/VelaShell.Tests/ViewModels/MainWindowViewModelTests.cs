@@ -59,7 +59,7 @@ public class MainWindowViewModelTests
 
     [TestMethod]
     [TestCategory("UI")]
-    public void ToggleFileBrowser_RequiresConnectedSsh_AndPreservesHiddenIntentAcrossTabs()
+    public void ToggleFileBrowser_RequiresConnectedSsh_AndKeepsStatePerTab()
     {
         ISftpService sftp = Substitute.For<ISftpService>();
         var vm = new MainWindowViewModel(sftpService: sftp);
@@ -82,7 +82,7 @@ public class MainWindowViewModelTests
         Assert.IsTrue(vm.CanToggleFileBrowser);
         Assert.IsTrue(
             vm.FileBrowser.IsVisible,
-            "The first connected SSH terminal is visible by default."
+            "默认设置(自动打开)下,新标签的面板自动展示。"
         );
 
         vm.ToggleFileBrowser();
@@ -95,7 +95,16 @@ public class MainWindowViewModelTests
             ConnectionStatus = SessionStatus.Connected,
         };
         vm.TabBar.AddTab(second);
-        Assert.IsFalse(vm.FileBrowser.IsVisible);
+        Assert.IsTrue(
+            vm.FileBrowser.IsVisible,
+            "第一个标签隐藏面板不影响新标签:新标签按设置自动打开。"
+        );
+
+        // 面板开关是每个标签自己的状态:切回隐藏过的标签保持隐藏,切回打开的恢复显示。
+        vm.TabBar.ActiveTab = first;
+        Assert.IsFalse(vm.FileBrowser.IsVisible, "切回曾隐藏面板的标签:面板保持隐藏。");
+        vm.TabBar.ActiveTab = second;
+        Assert.IsTrue(vm.FileBrowser.IsVisible, "切回面板开着的标签:面板自动恢复显示。");
 
         second.ConnectionStatus = SessionStatus.Disconnected;
         Assert.IsFalse(vm.CanToggleFileBrowser);
@@ -340,10 +349,9 @@ public class MainWindowViewModelTests
             );
     }
 
-    /// <summary>构造带设置/状态桩的 VM 并完成初始化,用于验证 SFTP 面板的启动意图。</summary>
+    /// <summary>构造带设置桩的 VM 并完成初始化,用于验证 SFTP 面板按设置决定新标签初始状态。</summary>
     private static async Task<MainWindowViewModel> CreateInitializedVmAsync(
         bool autoOpenFileBrowser,
-        bool lastVisible,
         ISettingsService? settingsServiceOut = null)
     {
         ISettingsService settingsService = settingsServiceOut ?? Substitute.For<ISettingsService>();
@@ -353,7 +361,7 @@ public class MainWindowViewModelTests
             {
                 TerminalBehavior = new() { AutoOpenFileBrowser = autoOpenFileBrowser }
             });
-        settingsService.GetStateAsync().Returns(new AppState { FileBrowserVisible = lastVisible });
+        settingsService.GetStateAsync().Returns(new AppState());
         var vm = new MainWindowViewModel(
             settingsService: settingsService,
             sftpService: Substitute.For<ISftpService>()
@@ -372,58 +380,70 @@ public class MainWindowViewModelTests
 
     [TestMethod]
     [TestCategory("UI")]
-    public async Task FileBrowser_AutoOpenSettingOn_OpensOnConnectDespiteLastClosedState()
+    public async Task FileBrowser_AutoOpenSettingOn_NewTabOpensBrowser()
     {
-        MainWindowViewModel vm = await CreateInitializedVmAsync(
-            autoOpenFileBrowser: true, lastVisible: false);
+        MainWindowViewModel vm = await CreateInitializedVmAsync(autoOpenFileBrowser: true);
 
         vm.TabBar.AddTab(CreateConnectedSshTab());
 
-        Assert.IsTrue(vm.FileBrowser.IsVisible, "开关开启时,无论上次退出状态如何都自动打开。");
+        Assert.IsTrue(vm.FileBrowser.IsVisible, "开关开启:新连接的标签自动打开面板。");
     }
 
     [TestMethod]
     [TestCategory("UI")]
-    public async Task FileBrowser_AutoOpenSettingOff_FollowsLastClosedState()
+    public async Task FileBrowser_AutoOpenSettingOff_NewTabKeepsBrowserHidden()
     {
-        MainWindowViewModel vm = await CreateInitializedVmAsync(
-            autoOpenFileBrowser: false, lastVisible: false);
+        MainWindowViewModel vm = await CreateInitializedVmAsync(autoOpenFileBrowser: false);
 
         vm.TabBar.AddTab(CreateConnectedSshTab());
 
-        Assert.IsFalse(vm.FileBrowser.IsVisible, "开关关闭且上次退出时面板关闭:不自动打开。");
+        Assert.IsFalse(vm.FileBrowser.IsVisible, "开关关闭:新连接的标签不自动打开面板。");
     }
 
     [TestMethod]
     [TestCategory("UI")]
-    public async Task FileBrowser_AutoOpenSettingOff_FollowsLastVisibleState()
-    {
-        MainWindowViewModel vm = await CreateInitializedVmAsync(
-            autoOpenFileBrowser: false, lastVisible: true);
-
-        vm.TabBar.AddTab(CreateConnectedSshTab());
-
-        Assert.IsTrue(vm.FileBrowser.IsVisible, "开关关闭但上次退出时面板可见:仍自动打开。");
-    }
-
-    [TestMethod]
-    [TestCategory("UI")]
-    public async Task FileBrowser_VisibilityIntent_IsPersistedOnExit()
+    public async Task FileBrowser_SettingSavedAtRuntime_AppliesToSubsequentNewTabs()
     {
         ISettingsService settingsService = Substitute.For<ISettingsService>();
         MainWindowViewModel vm = await CreateInitializedVmAsync(
-            autoOpenFileBrowser: true, lastVisible: true, settingsService);
+            autoOpenFileBrowser: false, settingsService);
 
-        vm.TabBar.AddTab(CreateConnectedSshTab());
-        Assert.IsTrue(vm.FileBrowser.IsVisible);
-        vm.ToggleFileBrowser();
+        TerminalTabViewModel first = CreateConnectedSshTab();
+        vm.TabBar.AddTab(first);
         Assert.IsFalse(vm.FileBrowser.IsVisible);
 
-        await vm.PersistSidebarStateAsync();
+        // 运行中保存设置(开关改为开启):已开标签不受影响,之后新开的标签立即生效。
+        settingsService.SettingsSaved += Raise.Event<Action<AppSettings>>(
+            new AppSettings { TerminalBehavior = new() { AutoOpenFileBrowser = true } });
 
-        await settingsService
-            .Received()
-            .SaveStateAsync(Arg.Is<AppState>(state => !state.FileBrowserVisible));
+        vm.TabBar.AddTab(CreateConnectedSshTab());
+        Assert.IsTrue(vm.FileBrowser.IsVisible, "保存后的开关状态对新标签立即生效。");
+
+        vm.TabBar.ActiveTab = first;
+        Assert.IsFalse(vm.FileBrowser.IsVisible, "已存在标签保持自己原有的面板状态。");
+    }
+
+    [TestMethod]
+    [TestCategory("UI")]
+    public async Task FileBrowser_PanelCloseOnOneTab_DoesNotAffectOtherTabs()
+    {
+        MainWindowViewModel vm = await CreateInitializedVmAsync(autoOpenFileBrowser: true);
+
+        TerminalTabViewModel first = CreateConnectedSshTab();
+        vm.TabBar.AddTab(first);
+        Assert.IsTrue(vm.FileBrowser.IsVisible);
+
+        // 模拟面板右上角关闭按钮:直接改当前面板实例的可见性,只影响所属标签。
+        vm.FileBrowser.IsVisible = false;
+
+        TerminalTabViewModel second = CreateConnectedSshTab();
+        vm.TabBar.AddTab(second);
+        Assert.IsTrue(vm.FileBrowser.IsVisible, "其他标签关闭面板不影响新标签按设置打开。");
+
+        vm.TabBar.ActiveTab = first;
+        Assert.IsFalse(vm.FileBrowser.IsVisible, "切回关闭过面板的标签:保持关闭。");
+        vm.TabBar.ActiveTab = second;
+        Assert.IsTrue(vm.FileBrowser.IsVisible, "切回面板开着的标签:自动恢复显示。");
     }
 
     [TestMethod]

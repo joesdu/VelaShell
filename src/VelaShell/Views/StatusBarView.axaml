@@ -26,14 +26,6 @@
       <Setter Property="Background" Value="{DynamicResource VelaBorderSecondary}" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
-    <Style Selector="Button.file-browser">
-      <Setter Property="Width" Value="20" />
-      <Setter Property="Height" Value="20" />
-      <Setter Property="Padding" Value="0" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="CornerRadius" Value="3" />
-      <Setter Property="Cursor" Value="Hand" />
-    </Style>
   </UserControl.Styles>
 
   <Border Height="24"
@@ -53,21 +45,6 @@
         <TextBlock Text="{Binding ConnectionInfo}"
                    Foreground="{DynamicResource VelaTextSecondary}"
                    IsVisible="{Binding ConnectionInfo, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-        <Button x:Name="FileBrowserButton" Classes="file-browser"
-                Command="{Binding FileBrowserCommand, RelativeSource={RelativeSource AncestorType=views:StatusBarView}}"
-                IsVisible="{Binding ShowFileBrowserButton, RelativeSource={RelativeSource AncestorType=views:StatusBarView}}"
-                ToolTip.Tip="{loc:Localize StatusBar_RemoteFiles}">
-          <Panel>
-            <pc:LucideIcon x:Name="FileBrowserClosedIcon"
-                           Width="12" Height="12" Data="{StaticResource Icon.folder-open}"
-                           Foreground="{DynamicResource VelaTextTertiary}"
-                           IsVisible="{Binding !IsFileBrowserVisible, RelativeSource={RelativeSource AncestorType=views:StatusBarView}}" />
-            <pc:LucideIcon x:Name="FileBrowserOpenIcon"
-                           Width="12" Height="12" Data="{StaticResource Icon.folder-open}"
-                           Foreground="{DynamicResource VelaAccent}"
-                           IsVisible="{Binding IsFileBrowserVisible, RelativeSource={RelativeSource AncestorType=views:StatusBarView}}" />
-          </Panel>
-        </Button>
         <Border Classes="divider"
                 IsVisible="{Binding Latency, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <!-- 标签本地化(延迟/Latency)且仅数值上主题色(用户要求)。Run 之间不能换行,

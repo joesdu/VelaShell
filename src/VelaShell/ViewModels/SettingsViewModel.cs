@@ -457,9 +457,7 @@ public class SettingsViewModel : ReactiveObject
     /// </summary>
     public ContributorViewModel[] Contributors { get; } =
         [
-        new("joesdu"), new("tsaiggo"), new("pengqian089"),
-        // 本项目大量用了AI工具,所以也将他们列为贡献者.
-        new("claude"), new("sisyphus-dev-ai")
+            new("joesdu"), new("tsaiggo"), new("pengqian089")
         ];
 
     /// <summary>开源依赖(真实技术栈)。</summary>

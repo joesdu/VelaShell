@@ -2121,7 +2121,7 @@
     <value>连接后自动打开文件浏览器</value>
   </data>
   <data name="SetTerm_AutoOpenSftpDesc" xml:space="preserve">
-    <value>开启:每次连接远程会话都会自动打开 SFTP 文件浏览器;关闭:跟随上次退出程序时面板的显示状态。</value>
+    <value>决定新连接的远程会话是否自动打开 SFTP 文件浏览器;此后每个标签页各自记忆自己的显示/隐藏状态,互不影响。</value>
   </data>
   <data name="SetTerm_OutputEncoding" xml:space="preserve">
     <value>输出编码</value>
@@ -2467,9 +2467,6 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   </data>
   <data name="StatusBar_Swap" xml:space="preserve">
     <value>Swap</value>
-  </data>
-  <data name="StatusBar_RemoteFiles" xml:space="preserve">
-    <value>打开或关闭远程文件</value>
   </data>
   <data name="Svc_Active" xml:space="preserve">
     <value>活跃</value>

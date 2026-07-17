@@ -101,14 +101,6 @@ public class MainWindowViewModel : ReactiveObject
     private bool _isApplyingSidebarState;
     private CancellationTokenSource? _sidebarStateSaveDebounce;
 
-    /// <summary>
-    /// SFTP 面板的用户开关意图(全局,跨标签)。面板对象随标签切换/会话驱逐被整体
-    /// 替换,可见性不能从上一个对象“抄”过来(本地终端占位是隐藏的,会把 false 传染
-    /// 给下一个远程标签);统一以本字段为准恢复。启动时由 <see cref="InitializeAsync" />
-    /// 按设置初始化(总是打开 / 跟随上次退出状态),退出时经 <see cref="CaptureSidebarState" />
-    /// 持久化到 <see cref="AppState.FileBrowserVisible" />。
-    /// </summary>
-    private bool _fileBrowserOpenIntent = true;
     private Dictionary<Guid, string> _paletteGroupNames = [];
 
     // ---- 命令面板的全量会话(§12.3:面板作为中枢,收录全部已保存配置) ----
@@ -202,14 +194,18 @@ public class MainWindowViewModel : ReactiveObject
                 RevealActiveSessionInSidebar(activeTab as TerminalTabViewModel);
             });
 
-        // SFTP 面板“打开/关闭”的用户意图:只跟踪当前面板实例上的 IsVisible 变化
-        // (工具栏切换、面板关闭按钮、连接后自动展开)。对象整体替换(切标签重绑、
-        // 驱逐后的占位)属于程序行为,Skip(1) 跳过替换瞬间的初值,不污染意图。
-        // RebindFileBrowser 以该意图恢复展示,而不是抄上一个面板对象的可见性。
+        // SFTP 面板“打开/关闭”是每个标签自己的状态:跟踪当前面板实例上的 IsVisible
+        // 变化(标题栏切换、面板关闭按钮),回写到拥有该会话的标签
+        // (TerminalTabViewModel.FileBrowserOpen),切回该标签时按此恢复。对象整体替换
+        // (切标签重绑、驱逐后的占位)属于程序行为,Skip(1) 跳过替换瞬间的初值,
+        // 不污染标签状态。
         this.WhenAnyValue(x => x.FileBrowser)
-            .Select(browser => browser.WhenAnyValue(b => b.IsVisible).Skip(1))
+            .Select(browser => browser
+                .WhenAnyValue(b => b.IsVisible)
+                .Skip(1)
+                .Select(visible => (browser.SessionId, Visible: visible)))
             .Switch()
-            .Subscribe(visible => _fileBrowserOpenIntent = visible);
+            .Subscribe(change => RememberFileBrowserStateForTab(change.SessionId, change.Visible));
 
         // Keep the status bar in sync with the active tab: refresh when the active tab changes,
         // and when that tab's own connection state / latency changes.
@@ -790,7 +786,7 @@ public class MainWindowViewModel : ReactiveObject
 
         // 本地终端(ConPTY)没有 SFTP 会话:不得继续展示上一个 SSH 会话的文件面板
         // (用户反馈:切到 PowerShell 标签后下方仍显示 r2s 的文件)。换成隐藏的空占位;
-        // 上一个面板不 Detach(仍按其会话缓存),打开意图保留在 _fileBrowserOpenIntent,
+        // 上一个面板不 Detach(仍按其会话缓存),其开关状态留在缓存实例与所属标签上,
         // 切回远程标签时恢复展示。
         if (tab.LocalShell is not null)
         {
@@ -809,19 +805,24 @@ public class MainWindowViewModel : ReactiveObject
             return;
         }
 
-        // Restore the user's open/closed intent so switching to (or connecting) a tab
-        // never silently hides a panel the user had opened.
-        bool wasVisible = _fileBrowserOpenIntent;
+        // 切回看过的标签:面板照它自己的状态恢复(开着的自动展示并静默刷新,
+        // 关着的保持隐藏、不加载数据),与其他标签的开关互不影响。
         if (_fileBrowserCache.TryGetValue(tab.SessionId, out FileBrowserViewModel? cached))
         {
-            cached.IsVisible = wasVisible;
             FileBrowser = cached;
-            if (wasVisible)
+            if (cached.IsVisible)
             {
                 _ = cached.RefreshSilentlyAsync();
             }
             return;
         }
+
+        // 本标签首次建面板:初始开关取标签生命周期内记忆的状态(断线重连沿用),
+        // 没有记忆时按设置「连接后自动打开文件浏览器」的当前值决定。
+        bool wasVisible = tab.FileBrowserOpen
+            ?? _latestSettings?.TerminalBehavior.AutoOpenFileBrowser
+            ?? new TerminalBehaviorOptions().AutoOpenFileBrowser;
+        tab.FileBrowserOpen = wasVisible;
 
         string serverName = tab.Profile is { } profile
             ? string.IsNullOrWhiteSpace(profile.Name)
@@ -878,10 +879,29 @@ public class MainWindowViewModel : ReactiveObject
         }
         FileBrowser.Detach();
 
-        // 会话已死,面板收起(空面板没有可看内容);用户的打开意图保留在
-        // _fileBrowserOpenIntent(对象替换不触发意图跟踪),切到/重连任一
-        // 远程会话时由 RebindFileBrowser 恢复展示,不会被这里的隐藏传染。
+        // 会话已死,面板收起(空面板没有可看内容);该标签的开关状态留在
+        // TerminalTabViewModel.FileBrowserOpen(对象替换不触发状态跟踪),
+        // 重连后由 RebindFileBrowser 按标签记忆恢复,不会被这里的隐藏传染。
         FileBrowser = new(_sftpService, Guid.Empty) { TransferSink = FileTransfer };
+    }
+
+    /// <summary>
+    /// 把面板实例上的显示/隐藏变化回写到拥有该会话的标签
+    /// (<see cref="TerminalTabViewModel.FileBrowserOpen" />),作为该标签的生命周期记忆。
+    /// </summary>
+    private void RememberFileBrowserStateForTab(Guid sessionId, bool visible)
+    {
+        if (sessionId == Guid.Empty)
+        {
+            return;
+        }
+        TerminalTabViewModel? owner = _tabBar.Tabs
+            .OfType<TerminalTabViewModel>()
+            .FirstOrDefault(t => t.SessionId == sessionId);
+        if (owner is not null)
+        {
+            owner.FileBrowserOpen = visible;
+        }
     }
 
     /// <summary>SFTP「使用默认编辑器打开」读取的编辑器命令(设置 → 文件传输 → 默认编辑器)。</summary>
@@ -930,22 +950,13 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Called once a session finishes connecting: binds the file browser to it and restores
-    /// the user's runtime-wide open/closed intent. A fresh app run defaults to visible; once the
-    /// user hides it, tab switches and reconnects must not force it open again.
+    /// Called once a session finishes connecting: binds the file browser to it. 面板是否展示
+    /// 由 <see cref="RebindFileBrowser" /> 按标签自己的状态决定(首次连接取设置
+    /// 「连接后自动打开文件浏览器」的当前值,断线重连沿用标签生命周期内的记忆)。
     /// </summary>
     private void ShowFileBrowserForActiveSession()
     {
         RebindFileBrowser();
-        if (_sftpService is null || FileBrowser.SessionId == Guid.Empty)
-        {
-            return;
-        }
-        FileBrowser.IsVisible = _fileBrowserOpenIntent;
-        if (FileBrowser.IsVisible)
-        {
-            RefreshOrLoadFileBrowser();
-        }
     }
 
     /// <summary>
@@ -1305,16 +1316,8 @@ public class MainWindowViewModel : ReactiveObject
         if (_settingsService is not null)
         {
             _appState = await _settingsService.GetStateAsync();
-            AppSettings settings = await LoadSettingsSnapshotAsync();
-
-            // SFTP 面板的初始意图:「连接后自动打开文件浏览器」开启时无条件打开;
-            // 关闭时跟随上次退出的显示状态。必须先于 ApplySidebarState 赋值——
-            // 其内部的 CaptureSidebarState 会把当前意图回写进 _appState。
-            _fileBrowserOpenIntent =
-                settings.TerminalBehavior.AutoOpenFileBrowser || _appState.FileBrowserVisible;
-
             ApplySidebarState(_appState);
-            ApplyShellPreferences(settings);
+            ApplyShellPreferences(await LoadSettingsSnapshotAsync());
         }
         await Sidebar.RecentConnections.RefreshAsync();
         await RefreshSessionTreeAsync();
@@ -1388,9 +1391,6 @@ public class MainWindowViewModel : ReactiveObject
             Sidebar.RecentConnectionsHeight,
             180
         );
-        // 面板显示状态跟随用户意图落盘(窗口关闭时随本方法最终保存一次),
-        // 供「连接后自动打开文件浏览器」关闭时在下次启动恢复。
-        _appState.FileBrowserVisible = _fileBrowserOpenIntent;
     }
 
     private async Task SaveSidebarStateAfterDelayAsync(CancellationToken cancellationToken)

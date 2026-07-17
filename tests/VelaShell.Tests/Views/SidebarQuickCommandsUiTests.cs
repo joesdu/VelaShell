@@ -274,51 +274,6 @@ public class SidebarQuickCommandsUiTests
         });
     }
 
-    [TestMethod]
-    public void StatusBar_RemoteFilesButtonTracksAvailabilityAndOpenState()
-    {
-        OnUi(() =>
-        {
-            ICommand command = Substitute.For<ICommand>();
-            command.CanExecute(null).Returns(true);
-            var view = new StatusBarView
-            {
-                DataContext = new StatusBarViewModel(),
-                FileBrowserCommand = command,
-                ShowFileBrowserButton = true,
-            };
-            var window = new Window
-            {
-                Width = 900,
-                Height = 80,
-                Content = view,
-            };
-            window.Show();
-            Relayout(window);
-            Button button = view.FindControl<Button>("FileBrowserButton")!;
-            Control closedIcon = view.FindControl<Control>("FileBrowserClosedIcon")!;
-            Control openIcon = view.FindControl<Control>("FileBrowserOpenIcon")!;
-
-            Assert.IsTrue(button.IsVisible);
-            Assert.IsTrue(closedIcon.IsVisible);
-            Assert.IsFalse(openIcon.IsVisible);
-
-            view.IsFileBrowserVisible = true;
-            Relayout(window);
-            Assert.IsFalse(closedIcon.IsVisible);
-            Assert.IsTrue(openIcon.IsVisible);
-
-            Assert.AreSame(command, button.Command);
-            button.Command!.Execute(button.CommandParameter);
-            command.Received(1).Execute(null);
-
-            view.ShowFileBrowserButton = false;
-            Relayout(window);
-            Assert.IsFalse(button.IsVisible);
-            window.Close();
-        });
-    }
-
     private static void Relayout(Window window)
     {
         Dispatcher.UIThread.RunJobs();
