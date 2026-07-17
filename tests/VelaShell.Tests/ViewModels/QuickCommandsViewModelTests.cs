@@ -114,7 +114,7 @@ public class QuickCommandsViewModelTests : IDisposable
         QuickCommandExecutionRequest? request = null;
         runner.ExecutionRequested += (_, e) => request = e;
         QuickCommandViewModel command = _vm.AllCommands.First(c => c.Name == SampleBuiltIn.Name);
-        runner.RunCommand.Execute(command).Subscribe();
+        runner.SendCommand.Execute(command).Subscribe();
 
         Assert.IsNotNull(request);
         Assert.AreEqual(SampleBuiltIn.CommandText, request.CommandText);
@@ -136,7 +136,7 @@ public class QuickCommandsViewModelTests : IDisposable
         QuickCommandExecutionRequest? request = null;
         runner.ExecutionRequested += (_, e) => request = e;
 
-        runner.RunCommand.Execute(_vm.AllCommands[0]).Subscribe();
+        runner.SendCommand.Execute(_vm.AllCommands[0]).Subscribe();
 
         Assert.IsNotNull(request);
         CollectionAssert.AreEquivalent(new[] { firstId, secondId }, request.TargetIds.ToArray());
@@ -159,7 +159,7 @@ public class QuickCommandsViewModelTests : IDisposable
         Assert.IsTrue(runner.CanRun);
         QuickCommandExecutionRequest? request = null;
         runner.ExecutionRequested += (_, e) => request = e;
-        runner.RunCommand.Execute(_vm.AllCommands[0]).Subscribe();
+        runner.SendCommand.Execute(_vm.AllCommands[0]).Subscribe();
         Assert.IsNotNull(request);
         CollectionAssert.AreEqual(new[] { currentId }, request.TargetIds.ToArray());
     }

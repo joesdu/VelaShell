@@ -1134,7 +1134,6 @@
   <data name="QuickCmd_CurrentTerminal" xml:space="preserve"><value>현재 터미널</value></data>
   <data name="QuickCmd_SelectedTerminals" xml:space="preserve"><value>개 터미널 선택됨</value></data>
   <data name="QuickCmd_Search" xml:space="preserve"><value>스니펫 검색</value></data>
-  <data name="QuickCmd_Run" xml:space="preserve"><value>실행</value></data>
   <data name="QuickCmd_Ungrouped" xml:space="preserve"><value>그룹 없음</value></data>
   <data name="QuickCmd_GroupPlaceholder" xml:space="preserve"><value>그룹 이름</value></data>
   <data name="QuickCmd_EditSnippet" xml:space="preserve"><value>스니펫 편집</value></data>

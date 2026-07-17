@@ -130,7 +130,7 @@ public class MainWindowViewModelTests
         Assert.HasCount(1, runner.Targets);
         Assert.AreEqual(tab.Id, runner.Targets[0].Id);
         Assert.IsTrue(runner.CanRun);
-        runner.RunCommand.Execute(library.AllCommands[0]).Subscribe();
+        runner.SendCommand.Execute(library.AllCommands[0]).Subscribe();
         emulator.Received(1).WriteInput(Arg.Any<byte[]>());
 
         tab.ConnectionStatus = SessionStatus.Disconnected;
@@ -151,7 +151,7 @@ public class MainWindowViewModelTests
         bool focusRequested = false;
         vm.TerminalFocusRequested += (_, _) => focusRequested = true;
 
-        vm.Sidebar.QuickCommands!.RunCommand.Execute(library.AllCommands[0]).Subscribe();
+        vm.Sidebar.QuickCommands!.SendCommand.Execute(library.AllCommands[0]).Subscribe();
 
         Assert.IsTrue(focusRequested);
     }

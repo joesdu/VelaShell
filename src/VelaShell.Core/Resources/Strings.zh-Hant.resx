@@ -1134,7 +1134,6 @@
   <data name="QuickCmd_CurrentTerminal" xml:space="preserve"><value>目前終端</value></data>
   <data name="QuickCmd_SelectedTerminals" xml:space="preserve"><value>個終端已選</value></data>
   <data name="QuickCmd_Search" xml:space="preserve"><value>搜尋程式碼片段</value></data>
-  <data name="QuickCmd_Run" xml:space="preserve"><value>執行</value></data>
   <data name="QuickCmd_Ungrouped" xml:space="preserve"><value>未分組</value></data>
   <data name="QuickCmd_GroupPlaceholder" xml:space="preserve"><value>分組名稱</value></data>
   <data name="QuickCmd_EditSnippet" xml:space="preserve"><value>編輯程式碼片段</value></data>

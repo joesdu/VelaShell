@@ -51,27 +51,28 @@ public class TerminalTabViewModelTests
 
     [TestMethod]
     [TestCategory("TerminalTab")]
-    public void TryExecuteCommand_Connected_SendsBodyWithSingleCarriageReturn()
+    public void TrySendCommandText_Connected_SendsBodyWithoutTrailingNewline()
     {
         _vm.ConnectionStatus = SessionStatus.Connected;
 
-        bool sent = _vm.TryExecuteCommand(" echo hello\r\n");
+        bool sent = _vm.TrySendCommandText(" echo hello\r\n");
 
         Assert.IsTrue(sent);
+        // 只发正文不带回车:快捷命令可能是待补全的模板,由用户自行按 Enter 执行。
         _terminalEmulator
             .Received(1)
             .WriteInput(
                 Arg.Is<byte[]>(bytes =>
-                    bytes.SequenceEqual(System.Text.Encoding.UTF8.GetBytes(" echo hello\r"))
+                    bytes.SequenceEqual(System.Text.Encoding.UTF8.GetBytes(" echo hello"))
                 )
             );
     }
 
     [TestMethod]
     [TestCategory("TerminalTab")]
-    public void TryExecuteCommand_Disconnected_DoesNotSend()
+    public void TrySendCommandText_Disconnected_DoesNotSend()
     {
-        bool sent = _vm.TryExecuteCommand("uptime");
+        bool sent = _vm.TrySendCommandText("uptime");
 
         Assert.IsFalse(sent);
         _terminalEmulator.DidNotReceive().WriteInput(Arg.Any<byte[]>());

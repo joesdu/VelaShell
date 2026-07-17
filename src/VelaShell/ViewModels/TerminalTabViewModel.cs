@@ -539,17 +539,17 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     }
 
     /// <summary>
-    /// 通过正常用户输入通道执行一条快捷命令。命令正文原样发送,仅移除已有的末尾
-    /// 换行并补一个回车,使其与用户键入后按 Enter 的行为一致。
+    /// 通过正常用户输入通道把快捷命令文本发送到终端。只发正文不附加回车——
+    /// 快捷命令可能是不完整的模板(如缺少参数),由用户在终端里补全后自行按 Enter 执行。
     /// </summary>
-    /// <returns>命令已发送时为 true;终端未连接或命令为空时为 false。</returns>
-    public bool TryExecuteCommand(string command)
+    /// <returns>文本已发送时为 true;终端未连接或命令为空时为 false。</returns>
+    public bool TrySendCommandText(string command)
     {
         if (!IsConnected || string.IsNullOrWhiteSpace(command))
         {
             return false;
         }
-        string payload = command.TrimEnd('\r', '\n') + "\r";
+        string payload = command.TrimEnd('\r', '\n');
 
         // 快捷命令可能同时下发给同频道的多个标签,若再经同步频道转发,频道内
         // 每个标签都会收到重复注入;WriteInput 同步触发 TypedInput,压制窗口有效。

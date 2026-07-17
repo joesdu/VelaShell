@@ -1498,7 +1498,7 @@ public class MainWindowViewModel : ReactiveObject
         bool sent = false;
         foreach (TerminalTabViewModel target in targets)
         {
-            sent |= target.TryExecuteCommand(request.CommandText);
+            sent |= target.TrySendCommandText(request.CommandText);
         }
         if (sent)
         {

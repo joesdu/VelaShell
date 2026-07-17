@@ -124,7 +124,6 @@
   <data name="QuickCmd_CurrentTerminal" xml:space="preserve"><value>Current terminal</value></data>
   <data name="QuickCmd_SelectedTerminals" xml:space="preserve"><value>terminals selected</value></data>
   <data name="QuickCmd_Search" xml:space="preserve"><value>Search snippets</value></data>
-  <data name="QuickCmd_Run" xml:space="preserve"><value>Run</value></data>
   <data name="QuickCmd_Ungrouped" xml:space="preserve"><value>Ungrouped</value></data>
   <data name="QuickCmd_GroupPlaceholder" xml:space="preserve"><value>Group name</value></data>
   <data name="QuickCmd_EditSnippet" xml:space="preserve"><value>Edit snippet</value></data>
