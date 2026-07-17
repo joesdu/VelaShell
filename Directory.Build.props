@@ -15,9 +15,9 @@
   <PropertyGroup>
     <!-- 全仓统一版本:Version 派生 AssemblyInformationalVersion(含预发布后缀,
          关于页显示);AssemblyVersion/FileVersion 不允许后缀,单独给数字版。 -->
-    <Version>0.1.0-beta</Version>
-    <AssemblyVersion>0.1.0.0</AssemblyVersion>
-    <FileVersion>0.1.0.0</FileVersion>
+    <Version>0.0.1-dev</Version>
+    <AssemblyVersion>0.0.1</AssemblyVersion>
+    <FileVersion>0.0.1</FileVersion>
     <!-- 不把 git 提交哈希拼进 InformationalVersion(默认会加 +sha 后缀)。 -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
