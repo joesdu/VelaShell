@@ -29,6 +29,25 @@ public partial class AuthenticationDialogView : Window
         viewModel.CancelCommand.Subscribe(Close);
     }
 
+    /// <summary>Esc 等价于点击取消:经 CancelCommand 走与取消按钮完全相同的关闭路径(结果为 null)。</summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            if (DataContext is AuthenticationDialogViewModel viewModel)
+            {
+                viewModel.CancelCommand.Execute().Subscribe();
+            }
+            else
+            {
+                Close();
+            }
+            e.Handled = true;
+            return;
+        }
+        base.OnKeyDown(e);
+    }
+
     private void Header_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)

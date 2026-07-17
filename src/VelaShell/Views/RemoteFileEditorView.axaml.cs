@@ -132,13 +132,20 @@ public partial class RemoteFileEditorView : Window
     }
 
     /// <summary>
-    /// 处理键盘输入:Ctrl+S 触发保存并阻止事件继续冒泡。
+    /// 处理键盘输入:Ctrl+S 触发保存;Esc 关闭窗口(编辑器搜索面板等内层控件先消费
+    /// 各自的 Esc,冒泡到这里才关窗;未保存改动由 <see cref="OnClosing" /> 确认守卫兜底)。
     /// </summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
         if (e.Key == Key.S && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             _ = SaveAsync();
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Escape)
+        {
+            Close();
             e.Handled = true;
             return;
         }

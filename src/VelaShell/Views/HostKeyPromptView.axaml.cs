@@ -33,6 +33,25 @@ public partial class HostKeyPromptView : Window
         }
     }
 
+    /// <summary>Esc 等价于点击拒绝:安全提示的取消必须落在保守分支(Reject),绝不隐式信任。</summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            if (_viewModel is { } viewModel)
+            {
+                viewModel.CancelCommand.Execute().Subscribe();
+            }
+            else
+            {
+                Close();
+            }
+            e.Handled = true;
+            return;
+        }
+        base.OnKeyDown(e);
+    }
+
     private void Header_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
