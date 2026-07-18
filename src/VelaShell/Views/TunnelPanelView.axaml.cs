@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 
 namespace VelaShell.Views;
 
@@ -9,5 +10,14 @@ public partial class TunnelPanelView : UserControl
     public TunnelPanelView()
     {
         InitializeComponent();
+    }
+
+    private async void HelpButton_Click(object? sender, RoutedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            return;
+        }
+        await new TunnelHelpDialog().ShowDialog(owner);
     }
 }

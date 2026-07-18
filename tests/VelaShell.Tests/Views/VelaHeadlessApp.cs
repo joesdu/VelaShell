@@ -32,7 +32,9 @@ public class VelaHeadlessApp : Application
     }
 
     public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<VelaHeadlessApp>().UseHeadless(new AvaloniaHeadlessPlatformOptions());
+        AppBuilder.Configure<VelaHeadlessApp>()
+                  .UseSkia()
+                  .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
 
     private static ResourceInclude LoadDictionary(string uri) => new(new Uri(uri)) { Source = new(uri) };
 

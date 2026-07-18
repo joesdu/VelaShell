@@ -2826,4 +2826,64 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="QuickCmd_DockerDf" xml:space="preserve">
     <value>Docker 磁盘占用</value>
   </data>
+  <data name="Tunnel_FallbackLocal" xml:space="preserve">
+    <value>本地隧道</value>
+  </data>
+  <data name="Tunnel_FallbackRemote" xml:space="preserve">
+    <value>远程隧道</value>
+  </data>
+  <data name="Tunnel_FallbackDynamic" xml:space="preserve">
+    <value>动态隧道</value>
+  </data>
+  <data name="Tunnel_BadgeLocal" xml:space="preserve">
+    <value>本地</value>
+  </data>
+  <data name="Tunnel_BadgeRemote" xml:space="preserve">
+    <value>远程</value>
+  </data>
+  <data name="Tunnel_BadgeDynamic" xml:space="preserve">
+    <value>动态</value>
+  </data>
+  <data name="Tunnel_RouteLocal" xml:space="preserve">
+    <value>本机监听 {0}:{1} → 服务器侧目标 {2}:{3}</value>
+  </data>
+  <data name="Tunnel_RouteRemote" xml:space="preserve">
+    <value>SSH 服务器监听端口 {2} → 本机服务 {0}:{1}</value>
+  </data>
+  <data name="Tunnel_RouteDynamic" xml:space="preserve">
+    <value>本机 SOCKS5 {0}:{1} → 动态目标</value>
+  </data>
+  <data name="Tunnel_HelpButtonTooltip" xml:space="preserve">
+    <value>关于 SSH 隧道</value>
+  </data>
+  <data name="TunnelHelp_Title" xml:space="preserve">
+    <value>SSH 隧道帮助</value>
+  </data>
+  <data name="TunnelHelp_Overview" xml:space="preserve">
+    <value>SSH 隧道(端口转发)通过 SSH 连接安全转发 TCP 流量。SSH 服务器充当中继，把一侧的连接转发到另一侧目标；流量在 SSH 通道内加密。</value>
+  </data>
+  <data name="TunnelHelp_LocalTitle" xml:space="preserve">
+    <value>本地转发 (-L)</value>
+  </data>
+  <data name="TunnelHelp_LocalDesc" xml:space="preserve">
+    <value>在您的本地机器上监听指定的地址和端口。当客户端连接到此本地端口时，连接通过 SSH 服务器转发到目标主机和端口，目标必须可以从 SSH 服务器访问。常见用途：使用本地工具访问远程数据库，就像它在本地运行一样。</value>
+  </data>
+  <data name="TunnelHelp_RemoteTitle" xml:space="preserve">
+    <value>远程转发 (-R)</value>
+  </data>
+  <data name="TunnelHelp_RemoteDesc" xml:space="preserve">
+    <value>在 SSH 服务器上打开一个监听端口。连接到此服务器端口的流量通过 SSH 连接转发回您本地机器的指定地址和端口。常见用途：将本地开发服务器暴露给远程网络，或让远程方访问您机器上的服务。</value>
+  </data>
+  <data name="TunnelHelp_DynamicTitle" xml:space="preserve">
+    <value>动态转发 (-D)</value>
+  </data>
+  <data name="TunnelHelp_DynamicDesc" xml:space="preserve">
+    <value>在您的本地机器上创建一个 SOCKS5 代理监听器。配置为使用此代理的应用程序，其 TCP 连接将通过 SSH 服务器路由，服务器动态解析并连接每个目标。常见用途：浏览器或应用程序流量通过 SSH 服务器路由，无需单独配置每个转发。</value>
+  </data>
+  <data name="TunnelHelp_LoopbackNote" xml:space="preserve">
+    <value>127.0.0.1 的含义取决于端点属于哪台机器：本地转发的服务器侧目标使用它时，指 SSH 服务器本身；远程转发的本机服务使用它时，指当前计算机；监听端使用回环地址时，则只允许从监听所在机器访问。</value>
+  </data>
+  <data name="TunnelHelp_Close" xml:space="preserve">
+    <value>关闭</value>
+  </data>
 </root>

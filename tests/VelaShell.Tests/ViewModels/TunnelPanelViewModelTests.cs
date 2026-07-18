@@ -2,6 +2,7 @@ using System.Reactive.Linq;
 using NSubstitute;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Presentation.Services;
 using VelaShell.ViewModels;
 
@@ -221,15 +222,83 @@ public class TunnelPanelViewModelTests
 
     [TestMethod]
     [TestCategory("TunnelUI")]
-    public void TunnelItemViewModel_DisplayFormat_IsCorrect()
+    public void TunnelItemViewModel_DisplayRoute_LocalForward()
     {
         TunnelInfo tunnelInfo = CreateTunnelInfo(localHost: "localhost",
             localPort: 3306,
             remoteHost: "db-server",
             remotePort: 3306);
         var itemVm = new TunnelItemViewModel(tunnelInfo);
-        Assert.AreEqual("localhost:3306 → db-server:3306", itemVm.DisplayRoute);
-        Assert.AreEqual("Local", itemVm.TypeBadge);
+        string expectedRoute = Strings.Format("Tunnel_RouteLocal", "localhost", 3306u, "db-server", 3306u);
+        Assert.AreEqual(expectedRoute, itemVm.DisplayRoute);
+        Assert.AreEqual(Strings.Get("Tunnel_BadgeLocal"), itemVm.TypeBadge);
+        Assert.AreEqual("localhost:3306 → db-server:3306", itemVm.EndpointSummary);
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public void TunnelItemViewModel_DisplayRoute_RemoteForward()
+    {
+        TunnelInfo tunnelInfo = CreateTunnelInfo(TunnelType.RemoteForward,
+            localHost: "127.0.0.1",
+            localPort: 3000,
+            remoteHost: "0.0.0.0",
+            remotePort: 8080);
+        var itemVm = new TunnelItemViewModel(tunnelInfo);
+        string expectedRoute = Strings.Format("Tunnel_RouteRemote", "127.0.0.1", 3000u, 8080u);
+        Assert.AreEqual(expectedRoute, itemVm.DisplayRoute);
+        Assert.AreEqual(Strings.Get("Tunnel_BadgeRemote"), itemVm.TypeBadge);
+        Assert.AreEqual("0.0.0.0:8080 → 127.0.0.1:3000", itemVm.EndpointSummary);
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public void TunnelItemViewModel_DisplayRoute_DynamicForward()
+    {
+        TunnelInfo tunnelInfo = CreateTunnelInfo(TunnelType.DynamicForward,
+            localHost: "127.0.0.1",
+            localPort: 1080);
+        var itemVm = new TunnelItemViewModel(tunnelInfo);
+        string expectedRoute = Strings.Format("Tunnel_RouteDynamic", "127.0.0.1", 1080u);
+        Assert.AreEqual(expectedRoute, itemVm.DisplayRoute);
+        Assert.AreEqual(Strings.Get("Tunnel_BadgeDynamic"), itemVm.TypeBadge);
+        Assert.AreEqual("127.0.0.1:1080 (SOCKS5)", itemVm.EndpointSummary);
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public void TunnelItemViewModel_FallbackName_BlankAlias_UsesLocalizedTypeName()
+    {
+        TunnelInfo tunnelInfo = CreateTunnelInfo(TunnelType.LocalForward, name: "");
+        var itemVm = new TunnelItemViewModel(tunnelInfo);
+        Assert.AreEqual(Strings.Get("Tunnel_FallbackLocal"), itemVm.Name);
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public void TunnelItemViewModel_FallbackName_BlankAlias_Remote()
+    {
+        TunnelInfo tunnelInfo = CreateTunnelInfo(TunnelType.RemoteForward, name: null!);
+        var itemVm = new TunnelItemViewModel(tunnelInfo);
+        Assert.AreEqual(Strings.Get("Tunnel_FallbackRemote"), itemVm.Name);
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public void TunnelItemViewModel_FallbackName_BlankAlias_Dynamic()
+    {
+        TunnelInfo tunnelInfo = CreateTunnelInfo(TunnelType.DynamicForward, name: "   ");
+        var itemVm = new TunnelItemViewModel(tunnelInfo);
+        Assert.AreEqual(Strings.Get("Tunnel_FallbackDynamic"), itemVm.Name);
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public void TunnelItemViewModel_FallbackName_NonBlankAlias_KeepsOriginal()
+    {
+        TunnelInfo tunnelInfo = CreateTunnelInfo(name: "my-db-tunnel");
+        var itemVm = new TunnelItemViewModel(tunnelInfo);
+        Assert.AreEqual("my-db-tunnel", itemVm.Name);
     }
 
     [TestMethod]

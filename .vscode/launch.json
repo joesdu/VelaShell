@@ -2,6 +2,12 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Avalonia: VelaShell",
+            "type": "dotnet",
+            "request": "launch",
+            "projectPath": "${workspaceFolder}/src/VelaShell/VelaShell.csproj"
+        },
+        {
             // 使用 IntelliSense 找出 C# 调试存在哪些属性
             // 将悬停用于现有属性的说明
             // 有关详细信息，请访问 https://github.com/dotnet/vscode-csharp/blob/main/debugger-launchjson.md

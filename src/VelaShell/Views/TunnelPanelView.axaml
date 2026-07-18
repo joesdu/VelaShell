@@ -41,6 +41,7 @@
   </UserControl.Styles>
 
   <Border Width="340"
+          VerticalAlignment="Top"
           Background="{DynamicResource VelaBgSurface}"
           BorderBrush="{DynamicResource VelaBorderSecondary}"
           BorderThickness="1"
@@ -52,7 +53,7 @@
       <Border Height="36" Padding="12,0"
               BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,0,1">
-        <Grid ColumnDefinitions="Auto,*,Auto">
+        <Grid ColumnDefinitions="Auto,*,Auto,4,Auto">
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
             <!-- 与菜单栏"隧道"按钮同一图标(Icon.route),保持视觉一致。 -->
             <pc:LucideIcon Width="12" Height="12"
@@ -72,7 +73,14 @@
                          FontSize="9" FontWeight="Medium" />
             </Border>
           </StackPanel>
-          <Button Grid.Column="2" Classes="row-action"
+          <Button Grid.Column="2" Classes="row-action" Name="HelpButton"
+                  ToolTip.Tip="{loc:Localize Tunnel_HelpButtonTooltip}"
+                  Click="HelpButton_Click">
+            <pc:LucideIcon Width="12" Height="12"
+                           Data="{StaticResource Icon.circle-help}"
+                           Foreground="{DynamicResource VelaTextSecondary}" />
+          </Button>
+          <Button Grid.Column="4" Classes="row-action"
                   ToolTip.Tip="{loc:Localize Tunnel_ClosePanel}"
                   Command="{Binding CloseCommand}">
             <pc:LucideIcon Width="12" Height="12"
@@ -217,6 +225,12 @@
                            Foreground="{DynamicResource VelaTextMuted}"
                            FontFamily="{DynamicResource VelaTerminalFont}"
                            FontSize="10" />
+                <TextBlock Text="{Binding EndpointSummary}"
+                           Foreground="{DynamicResource VelaTextMuted}"
+                           FontFamily="{DynamicResource VelaTerminalFont}"
+                           FontSize="9"
+                           MaxWidth="320" TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding EndpointSummary}" />
                 <TextBlock Text="{Binding StatusText}"
                            Foreground="{DynamicResource VelaTextTertiary}"
                            FontFamily="{DynamicResource VelaTerminalFont}"
@@ -265,7 +279,7 @@
              取消勾选可填服务器可达的内网第三方主机。 -->
         <Grid ColumnDefinitions="80,8,*,8,56" RowDefinitions="Auto,4,Auto">
           <TextBlock Grid.Row="0" Grid.Column="0" Classes="form-label" Text="{loc:Localize LocalPort}" />
-          <TextBox   Grid.Row="2" Grid.Column="0" Text="{Binding NewLocalPort}" PlaceholderText="5432" />
+          <TextBox   Grid.Row="2" Grid.Column="0" Text="{Binding NewLocalPort}" PlaceholderText="27017" />
           <TextBlock Grid.Row="0" Grid.Column="2" Classes="form-label" Text="{loc:Localize Tunnel_TargetHostLabel}"
                      IsVisible="{Binding IsRemoteTargetVisible}" />
           <TextBox   Grid.Row="2" Grid.Column="2"
@@ -275,7 +289,7 @@
                      IsVisible="{Binding IsRemoteTargetVisible}" />
           <TextBlock Grid.Row="0" Grid.Column="4" Classes="form-label" Text="{loc:Localize Port}"
                      IsVisible="{Binding IsRemoteTargetVisible}" />
-          <TextBox   Grid.Row="2" Grid.Column="4" Text="{Binding NewRemotePort}" PlaceholderText="port"
+          <TextBox   Grid.Row="2" Grid.Column="4" Text="{Binding NewRemotePort}" PlaceholderText="27017"
                      IsVisible="{Binding IsRemoteTargetVisible}" />
         </Grid>
 
@@ -293,7 +307,7 @@
                    TextWrapping="Wrap"
                    IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
-        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+        <StackPanel Name="FormActions" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
           <Button Padding="10,4" CornerRadius="3" Background="Transparent"
                   BorderBrush="{DynamicResource VelaBorderSecondary}" BorderThickness="1"
                   Command="{Binding ResetFormCommand}">
