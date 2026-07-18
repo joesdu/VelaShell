@@ -2734,4 +2734,64 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="QuickCmd_DockerDf" xml:space="preserve">
     <value>Docker 디스크 사용량</value>
   </data>
+  <data name="Tunnel_FallbackLocal" xml:space="preserve">
+    <value>로컬 터널</value>
+  </data>
+  <data name="Tunnel_FallbackRemote" xml:space="preserve">
+    <value>원격 터널</value>
+  </data>
+  <data name="Tunnel_FallbackDynamic" xml:space="preserve">
+    <value>동적 터널</value>
+  </data>
+  <data name="Tunnel_BadgeLocal" xml:space="preserve">
+    <value>로컬</value>
+  </data>
+  <data name="Tunnel_BadgeRemote" xml:space="preserve">
+    <value>원격</value>
+  </data>
+  <data name="Tunnel_BadgeDynamic" xml:space="preserve">
+    <value>동적</value>
+  </data>
+  <data name="Tunnel_RouteLocal" xml:space="preserve">
+    <value>이 컴퓨터에서 {0}:{1} 수신 대기 → 서버 측 대상 {2}:{3}</value>
+  </data>
+  <data name="Tunnel_RouteRemote" xml:space="preserve">
+    <value>SSH 서버에서 포트 {2} 수신 대기 → 이 컴퓨터의 서비스 {0}:{1}</value>
+  </data>
+  <data name="Tunnel_RouteDynamic" xml:space="preserve">
+    <value>이 컴퓨터의 SOCKS5 {0}:{1} → 동적 대상</value>
+  </data>
+  <data name="Tunnel_HelpButtonTooltip" xml:space="preserve">
+    <value>SSH 터널링 정보</value>
+  </data>
+  <data name="TunnelHelp_Title" xml:space="preserve">
+    <value>SSH 터널 도움말</value>
+  </data>
+  <data name="TunnelHelp_Overview" xml:space="preserve">
+    <value>SSH 터널링(포트 포워딩)은 SSH 연결을 통해 TCP 트래픽을 안전하게 전달합니다. SSH 서버가 중계하여 한쪽 연결을 다른 쪽 대상으로 전달하며, 모든 트래픽은 SSH 채널 안에서 암호화됩니다.</value>
+  </data>
+  <data name="TunnelHelp_LocalTitle" xml:space="preserve">
+    <value>로컬 포워딩 (-L)</value>
+  </data>
+  <data name="TunnelHelp_LocalDesc" xml:space="preserve">
+    <value>로컬 머신의 지정된 주소와 포트에서 수신 대기합니다. 클라이언트가 이 로컬 포트에 연결하면, 연결이 SSH 서버를 통해 대상 호스트와 포트로 전달됩니다. 대상은 SSH 서버에서 접근 가능해야 합니다. 일반적인 용도: 원격 데이터베이스를 로컬 도구로 접근.</value>
+  </data>
+  <data name="TunnelHelp_RemoteTitle" xml:space="preserve">
+    <value>원격 포워딩 (-R)</value>
+  </data>
+  <data name="TunnelHelp_RemoteDesc" xml:space="preserve">
+    <value>SSH 서버에서 수신 포트를 엽니다. 이 서버 포트로의 연결은 SSH 연결을 통해 로컬 머신의 지정된 주소와 포트로 다시 전달됩니다. 일반적인 용도: 로컬 개발 서버를 원격 네트워크에 노출하거나, 원격 측에서 자신의 머신의 서비스에 접근할 수 있도록 함.</value>
+  </data>
+  <data name="TunnelHelp_DynamicTitle" xml:space="preserve">
+    <value>동적 포워딩 (-D)</value>
+  </data>
+  <data name="TunnelHelp_DynamicDesc" xml:space="preserve">
+    <value>로컬 머신에 SOCKS5 프록시 리스너를 생성합니다. 이 프록시를 사용하도록 설정된 애플리케이션의 TCP 연결은 SSH 서버를 통해 라우팅되며, 서버가 각 대상을 동적으로 해석하고 연결합니다. 일반적인 용도: 개별 포워딩 설정 없이 브라우저나 애플리케이션 트래픽을 SSH 서버를 통해 라우팅.</value>
+  </data>
+  <data name="TunnelHelp_LoopbackNote" xml:space="preserve">
+    <value>127.0.0.1의 의미는 해당 엔드포인트가 속한 머신에 따라 달라집니다. 로컬 포워딩의 서버 측 대상에서는 SSH 서버 자체를, 원격 포워딩의 로컬 서비스에서는 이 컴퓨터를 가리킵니다. 수신 엔드포인트에 루프백을 사용하면 해당 수신을 제공하는 머신에서만 접근할 수 있습니다.</value>
+  </data>
+  <data name="TunnelHelp_Close" xml:space="preserve">
+    <value>닫기</value>
+  </data>
 </root>

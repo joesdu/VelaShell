@@ -2735,4 +2735,64 @@ Overwrite it? (Cancel skips this file)</value>
   <data name="QuickCmd_DockerDf" xml:space="preserve">
     <value>Docker disk usage</value>
   </data>
+  <data name="Tunnel_FallbackLocal" xml:space="preserve">
+    <value>Local Tunnel</value>
+  </data>
+  <data name="Tunnel_FallbackRemote" xml:space="preserve">
+    <value>Remote Tunnel</value>
+  </data>
+  <data name="Tunnel_FallbackDynamic" xml:space="preserve">
+    <value>Dynamic Tunnel</value>
+  </data>
+  <data name="Tunnel_BadgeLocal" xml:space="preserve">
+    <value>Local</value>
+  </data>
+  <data name="Tunnel_BadgeRemote" xml:space="preserve">
+    <value>Remote</value>
+  </data>
+  <data name="Tunnel_BadgeDynamic" xml:space="preserve">
+    <value>Dynamic</value>
+  </data>
+  <data name="Tunnel_RouteLocal" xml:space="preserve">
+    <value>This computer listens on {0}:{1} → server-side target {2}:{3}</value>
+  </data>
+  <data name="Tunnel_RouteRemote" xml:space="preserve">
+    <value>SSH server listens on port {2} → service on this computer {0}:{1}</value>
+  </data>
+  <data name="Tunnel_RouteDynamic" xml:space="preserve">
+    <value>This computer provides SOCKS5 at {0}:{1} → dynamic destinations</value>
+  </data>
+  <data name="Tunnel_HelpButtonTooltip" xml:space="preserve">
+    <value>About SSH Tunneling</value>
+  </data>
+  <data name="TunnelHelp_Title" xml:space="preserve">
+    <value>SSH Tunnel Help</value>
+  </data>
+  <data name="TunnelHelp_Overview" xml:space="preserve">
+    <value>SSH tunneling (port forwarding) lets you route TCP traffic through an SSH connection. The SSH server acts as a relay: incoming connections on one side are forwarded to a target on the other side. All traffic is encrypted inside the SSH channel.</value>
+  </data>
+  <data name="TunnelHelp_LocalTitle" xml:space="preserve">
+    <value>Local Forward (-L)</value>
+  </data>
+  <data name="TunnelHelp_LocalDesc" xml:space="preserve">
+    <value>Listens on your local machine at the specified address and port. When a client connects to this local port, the connection is forwarded through the SSH server to the target host and port, which must be reachable from the SSH server. Common use: access a remote database from your local tools as if it were running locally.</value>
+  </data>
+  <data name="TunnelHelp_RemoteTitle" xml:space="preserve">
+    <value>Remote Forward (-R)</value>
+  </data>
+  <data name="TunnelHelp_RemoteDesc" xml:space="preserve">
+    <value>Opens a listening port on the SSH server. Connections to this server port are forwarded back through the SSH connection to your local machine's specified address and port. Common use: expose a local development server to the remote network or let someone on the remote side reach a service on your machine.</value>
+  </data>
+  <data name="TunnelHelp_DynamicTitle" xml:space="preserve">
+    <value>Dynamic Forward (-D)</value>
+  </data>
+  <data name="TunnelHelp_DynamicDesc" xml:space="preserve">
+    <value>Creates a SOCKS5 proxy listener on your local machine. Applications configured to use this proxy will have their TCP connections routed through the SSH server, which resolves and connects to each target dynamically. Common use: browser or application traffic routing through the SSH server without configuring individual forwards.</value>
+  </data>
+  <data name="TunnelHelp_LoopbackNote" xml:space="preserve">
+    <value>The meaning of 127.0.0.1 depends on which machine owns that endpoint. For a local forward's server-side target, it means the SSH server itself. For a remote forward's local service, it means this computer. On a listener endpoint, loopback restricts access to the machine hosting that listener.</value>
+  </data>
+  <data name="TunnelHelp_Close" xml:space="preserve">
+    <value>Close</value>
+  </data>
 </root>

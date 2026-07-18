@@ -18,9 +18,14 @@ public class TunnelItemViewModel(TunnelInfo tunnelInfo) : ReactiveObject
     /// <summary>该隧道所在的 SSH 会话(面板按服务器归组时用来定位)。</summary>
     public Guid SessionId => _tunnelInfo.SessionId;
 
-    /// <summary>显示名称:未自定义名称时回退为路由描述。</summary>
+    /// <summary>显示名称:非空白别名保留原值,空白时回退为本地化的简洁类型名称。</summary>
     public string Name => string.IsNullOrWhiteSpace(_tunnelInfo.Config.Name)
-                              ? DisplayRoute
+                              ? TunnelType switch
+                              {
+                                  TunnelType.RemoteForward => Strings.Get("Tunnel_FallbackRemote"),
+                                  TunnelType.DynamicForward => Strings.Get("Tunnel_FallbackDynamic"),
+                                  _ => Strings.Get("Tunnel_FallbackLocal")
+                              }
                               : _tunnelInfo.Config.Name;
 
     /// <summary>隧道类型(本地/远程/动态转发)。</summary>
@@ -41,20 +46,28 @@ public class TunnelItemViewModel(TunnelInfo tunnelInfo) : ReactiveObject
     /// <summary>隧道创建时间(UTC),用于计算运行时长。</summary>
     public DateTime CreatedAt => _tunnelInfo.CreatedAt;
 
-    /// <summary>路由描述:本地/动态以本地端口为起点,远程转发方向相反(设计 B3Rth)。</summary>
+    /// <summary>语义路由描述:从角色视角描述转发方向与端点。</summary>
     public string DisplayRoute => TunnelType switch
     {
-        TunnelType.RemoteForward => Strings.Format("Msg_TunnelRouteRemote", RemotePort, LocalHost, LocalPort),
-        TunnelType.DynamicForward => Strings.Format("Msg_TunnelRouteDynamic", LocalHost, LocalPort),
-        _ => $"{LocalHost}:{LocalPort} → {RemoteHost}:{RemotePort}"
+        TunnelType.RemoteForward => Strings.Format("Tunnel_RouteRemote", LocalHost, LocalPort, RemotePort),
+        TunnelType.DynamicForward => Strings.Format("Tunnel_RouteDynamic", LocalHost, LocalPort),
+        _ => Strings.Format("Tunnel_RouteLocal", LocalHost, LocalPort, RemoteHost, RemotePort)
     };
 
-    /// <summary>类型标签(设计 B3Rth:Local/Remote/Dynamic 全词徽标)。</summary>
+    /// <summary>类型标签(本地化徽标:Local/Remote/Dynamic)。</summary>
     public string TypeBadge => TunnelType switch
     {
-        TunnelType.RemoteForward => "Remote",
-        TunnelType.DynamicForward => "Dynamic",
-        _ => "Local"
+        TunnelType.RemoteForward => Strings.Get("Tunnel_BadgeRemote"),
+        TunnelType.DynamicForward => Strings.Get("Tunnel_BadgeDynamic"),
+        _ => Strings.Get("Tunnel_BadgeLocal")
+    };
+
+    /// <summary>精确端点摘要(紧凑等宽):本地转发为本地→远端,远程转发颠倒顺序,动态仅显示SOCKS5端点。</summary>
+    public string EndpointSummary => TunnelType switch
+    {
+        TunnelType.RemoteForward => $"{RemoteHost}:{RemotePort} → {LocalHost}:{LocalPort}",
+        TunnelType.DynamicForward => $"{LocalHost}:{LocalPort} (SOCKS5)",
+        _ => $"{LocalHost}:{LocalPort} → {RemoteHost}:{RemotePort}"
     };
 
     /// <summary>
