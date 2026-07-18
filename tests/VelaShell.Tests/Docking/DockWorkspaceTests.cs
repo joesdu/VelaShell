@@ -220,7 +220,7 @@ public class DockWorkspaceTests
     [TestMethod]
     public void SplitDocument_LastDocOfSecondaryGroup_LeavesEmptyGroupBehind()
     {
-        // 用户反馈:唯一标签的次级组拆分也必须生效(与主组行为一致),原组留空作放置目标。
+        // 唯一标签的次级组拆分也必须生效(与主组行为一致),原组留空作放置目标。
         var ws = new DockWorkspace();
         TestDocument a = NewDoc("a");
         TestDocument b = NewDoc("b");

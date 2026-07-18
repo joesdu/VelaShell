@@ -1,7 +1,7 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <ResourceDictionary.ThemeDictionaries>
-    <!-- Dracula 暗色(用户确认):accent=紫 #BD93F9,弱文字取官方 comment #6272A4,
+    <!-- Dracula 暗色:accent=紫 #BD93F9,弱文字取官方 comment #6272A4,
          边框用 #44475A(selection)家族。 -->
     <ResourceDictionary x:Key="Dark">
       <SolidColorBrush x:Key="VelaAccent" Color="#BD93F9" />
@@ -23,7 +23,7 @@
       <FontFamily x:Key="VelaTerminalFont">JetBrains Mono, Cascadia Mono, Consolas, monospace</FontFamily>
       <FontFamily x:Key="VelaUiFont">fonts:Inter#Inter, Segoe UI, Microsoft YaHei, sans-serif</FontFamily>
     </ResourceDictionary>
-    <!-- Alucard 亮色(用户确认):accent=紫 #644AC9,弱文字取 Alucard comment #6C664B。 -->
+    <!-- Alucard 亮色:accent=紫 #644AC9,弱文字取 Alucard comment #6C664B。 -->
     <ResourceDictionary x:Key="Light">
       <SolidColorBrush x:Key="VelaAccent" Color="#644AC9" />
       <SolidColorBrush x:Key="VelaAccentDim" Color="#644AC91A" />

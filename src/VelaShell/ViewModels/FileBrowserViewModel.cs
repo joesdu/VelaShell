@@ -1591,7 +1591,7 @@ public class FileBrowserViewModel : ReactiveObject
         // 同名文件,均按策略覆盖/跳过/重命名/逐个询问。
         // 上传的存在性检查按目录一次列举、内存比对:逐文件 ExistsAsync 在 SSH.NET 里以
         // "stat 不存在则抛异常"实现,批量上传时每个文件多一次网络往返、还刷一条
-        // SftpPathNotFoundException(用户反馈调试输出刷屏)。
+        // SftpPathNotFoundException 调试输出刷屏。
         Dictionary<string, HashSet<string>> remoteNames = await ListRemoteNamesForUploadsAsync(
             plan,
             ct
@@ -1666,7 +1666,7 @@ public class FileBrowserViewModel : ReactiveObject
 
             // 传输完成后显示通知(设置 → 文件传输):提示音 + 临时展开传输面板。
             // 用 ShowPanelTransient 而非 ShowPanel:后者会钉住面板、杀掉自动隐藏倒计时,
-            // 导致完成后面板常驻只能手动关闭(用户反馈)。
+            // 导致完成后面板常驻只能手动关闭。
             if (completed && TransferOptions.NotifyOnComplete)
             {
                 SystemSound.Alert();

@@ -576,7 +576,7 @@ public partial class FileBrowserView : UserControl
     /// <summary>
     /// 属性弹窗(参考 WinSCP):基本信息 + rwx 权限矩阵 + 八进制输入合并在一个界面。
     /// 文本着色一律走 MessageDialog 的 BodyHost 样式类(dim/mono/mono-accent)—— 代码里
-    /// FindResource 取不到主题字典的画刷(会拿到 null 把文字画没,用户反馈的"文字看不见")。
+    /// FindResource 取不到主题字典的画刷(会拿到 null 把文字画没)。
     /// 确定且权限有变化时返回新 mode(三位八进制按十进制书写,如 755),否则返回 null。
     /// </summary>
     private async Task<short?> ShowFilePropertiesAsync(RemoteFileInfoViewModel file)

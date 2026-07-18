@@ -49,7 +49,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         InputTracker.CommandSubmitted += OnTrackedCommandSubmitted;
         InputTracker.UnknownLineSubmitted += OnUnknownLineSubmitted;
 
-        // Toolbar quick actions (用户反馈 #5): tear the transport down but keep the tab,
+        // Toolbar quick actions: tear the transport down but keep the tab,
         // or ask the owner to reconnect in place (#19 flow).
         DisconnectCommand = ReactiveCommand.Create(
             () =>
@@ -565,7 +565,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         // 快捷命令可能同时下发给同频道的多个标签,若再经同步频道转发,频道内
         // 每个标签都会收到重复注入;WriteInput 同步触发 TypedInput,压制窗口有效。
         // IsProgrammaticInput 同理:跟踪器仍需感知注入文本以保持行状态一致,
-        // 但补全弹层不该把程序注入当作用户键入而弹出(用户反馈)。
+        // 但补全弹层不该把程序注入当作用户键入而弹出。
         IsSyncForwardSuppressed = true;
         IsProgrammaticInput = true;
         try
@@ -588,7 +588,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     /// <summary>
     /// 把初始化命令注入远端 shell 并静默执行:发送前在桥上装回显抑制器,
-    /// 把 PTY 回显的这一行从输出流剥掉(用户要求不在界面显示)。前导空格让
+    /// 把 PTY 回显的这一行从输出流剥掉,不在界面显示。前导空格让
     /// HISTCONTROL=ignoreboth 不记历史;抑制针 needle 不含该空格(空格太常见,
     /// 不适合做流匹配锚点),残留的空格与光标位置由命令本身的补行脚本消化。
     /// </summary>
@@ -752,7 +752,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// <summary>
     /// Prints a red "connection closed" banner plus the reconnect hint into the
     /// terminal, so the user knows Enter / the Reconnect button will bring the session back
-    /// (用户反馈 #1). Runs for both manual disconnects and remote closes.
+    /// Runs for both manual disconnects and remote closes.
     /// </summary>
     private void FeedDisconnectNotice()
     {

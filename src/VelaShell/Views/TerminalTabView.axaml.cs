@@ -207,7 +207,7 @@ public partial class TerminalTabView : UserControl
         // 键入的字符与幽灵一致时本地即时消耗(fish 手感),异步结果回来后再校正。
         // 未知态(按过方向键等)同样提示:EffectiveInput 已降级为试探段,建议剩余
         // 部分只在光标处追加,与试探段"紧贴光标之前"的保证同等安全——确定态限制
-        // 曾让一次方向键永久哑掉整行的幽灵提示(用户反馈)。
+        // 曾让一次方向键永久哑掉整行的幽灵提示。
         if (
             _ghostFull is { } full
             && full.Length > input.Length
@@ -254,7 +254,7 @@ public partial class TerminalTabView : UserControl
     }
 
     /// <summary>
-    /// 交互提示行不弹命令补全(用户反馈:sudo 密码提示、apt 的 "[Y/n]" 确认行下按键
+    /// 交互提示行不弹命令补全(sudo 密码提示、apt 的 "[Y/n]" 确认行下按键
     /// 仍弹智能提示)。把光标行末尾已回显的输入剥掉后,按三类特征判定"此刻不是在编写
     /// shell 命令,而是在回答程序的提问":
     ///   ① 密码/口令/验证码 —— 冒号(全/半角)结尾 + 密码类关键词;
@@ -762,12 +762,12 @@ public partial class TerminalTabView : UserControl
         HookSuggestions();
 
         // 切到其他应用时收起补全弹层——Popup 是独立顶层窗口,不主动关就会
-        // 悬浮在别的程序上面(用户反馈)。
+        // 悬浮在别的程序上面。
         _hostWindow = TopLevel.GetTopLevel(this) as Window;
         _hostWindow?.Deactivated += OnHostWindowDeactivated;
         // 重新激活时兜底恢复:系统截图覆盖层(Win+Shift+S)偶尔不触发 Deactivated,
         // 弹层就会保持打开、把焦点困在自己的顶层窗口里,导致终端"输入死亡、内容被
-        // 灰色残影盖住",用户只能关标签重开(2026-07 反馈,时序竞态,非必现)。用户
+        // 灰色残影盖住",只能关标签重开(时序竞态,非必现)。
         // 截完图切回本窗口时必然重新激活——这一刻不管失活有没有触发过,只要弹层还开
         // 着就统一收口并把焦点还给终端。此路径不依赖 Deactivated,也不依赖按键能到达
         // 本视图(焦点困在弹层时按键根本到不了),是该竞态的唯一可靠恢复点。
@@ -782,7 +782,7 @@ public partial class TerminalTabView : UserControl
     }
 
     /// <summary>
-    /// 窗口重新激活时的双重兜底(2026-07 用户反馈,时序竞态,非必现):
+    /// 窗口重新激活时的双重兜底(时序竞态,非必现):
     ///
     /// ① 强制终端重绘 —— 根因:系统截图覆盖层(Win+Shift+S)+ 微信粘贴会让窗口某个
     ///    矩形区域在 DWM 层被置脏并要求重绘,而空闲终端(无输出、失焦后连光标闪烁的
@@ -951,7 +951,7 @@ public partial class TerminalTabView : UserControl
         {
             // 本层是焦点落在标签视图(而非终端控件)时的回退:正常情况下终端控件自己的
             // OnKeyDown 已处理这些键。回退层必须与控件行为一致地跟随设置,否则同一个
-            // 快捷键会因焦点位置不同而表现不同(用户反馈:选中即复制/Ctrl+C 不受控)。
+            // 快捷键会因焦点位置不同而表现不同(选中即复制/Ctrl+C 不受控)。
             case ShortcutAction.Copy:
                 // 复用控件的复制:只复制选中内容,并尊重「复制时去除尾部空格」等设置。
                 if (_termControl is not null)

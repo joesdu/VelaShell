@@ -12,7 +12,7 @@
 
   <!-- Tunnel manager per design frame B3Rth: 340px floating panel, bg-surface, corner 6,
        1px border-secondary, shadow blur16 y+4 (spec §10).
-       以服务器为中心:选服务器 → 后台自动连接,无需打开终端会话(用户反馈 #5)。 -->
+       以服务器为中心:选服务器 → 后台自动连接,无需打开终端会话。 -->
 
   <UserControl.Styles>
     <Style Selector="TextBox">

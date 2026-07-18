@@ -13,7 +13,7 @@ namespace VelaShell.ViewModels;
 
 /// <summary>
 /// 隧道管理面板(设计 B3Rth),以服务器为中心:从已保存会话中选一台服务器,
-/// 创建/启动隧道时后台自动建立专用 SSH 连接(不打开终端标签,用户反馈 #5)。
+/// 创建/启动隧道时后台自动建立专用 SSH 连接(不打开终端标签)。
 /// 隧道生命周期独立于终端会话;该服务器最后一条隧道删除后,后台连接自动断开。
 /// </summary>
 public class TunnelPanelViewModel : ReactiveObject, IDisposable
@@ -81,8 +81,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         StartTunnelCommand = ReactiveCommand.CreateFromTask<Guid>(StartTunnelAsync);
         DeleteTunnelCommand = ReactiveCommand.CreateFromTask<Guid>(DeleteTunnelAsync);
         EditTunnelCommand = ReactiveCommand.Create<Guid>(BeginEdit);
-        // 取消:编辑模式下退出编辑并清空表单;普通状态下表单本就多为默认值,单纯清空
-        // 看起来"点了没反应"(用户反馈 #6)——此时按对话框惯例直接收起面板。
+        // 取消:编辑模式下退出编辑并清空表单;普通状态表单默认值清空不易察觉,直接收起面板。
         ResetFormCommand = ReactiveCommand.Create(() =>
         {
             ErrorMessage = null;
@@ -183,7 +182,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
 
     /// <summary>
     /// 默认转发到"服务器本机":目标主机锁定为 127.0.0.1(从服务器视角,
-    /// 用户反馈 #5 —— 填服务器公网 IP 会被服务器自己拒绝)。取消勾选可填内网第三方主机。
+    /// 填服务器公网 IP 会被服务器自己拒绝)。取消勾选可填内网第三方主机。
     /// </summary>
     public bool ForwardToServerLoopback
     {

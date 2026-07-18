@@ -9,8 +9,8 @@
              x:Class="VelaShell.Docking.Controls.DockGroupControl"
              x:DataType="m:DockGroup">
 
-  <!-- 一个标签组:标签条(35px + 1px 分割线 = 36px,与侧栏头部分割线同一水平线,
-       用户反馈)+ 内容区。标签条按 TabsPosition 停靠(代码后置调整),溢出时右端
+  <!-- 一个标签组:标签条(35px + 1px 分割线 = 36px,与侧栏头部分割线同一水平线)+
+       内容区。标签条按 TabsPosition 停靠(代码后置调整),溢出时右端
        出现固定 24px 三连按钮(设计 nunbT pZGS4):左滚/右滚/全部标签下拉。 -->
   <DockPanel>
 
@@ -51,7 +51,7 @@
         </Button>
       </StackPanel>
 
-      <!-- 标签区:纯滚动视口,无内嵌箭头(用户反馈:内嵌箭头易错且难看)。 -->
+      <!-- 标签区:纯滚动视口,无内嵌箭头。 -->
       <ScrollViewer x:Name="TabScroll"
                     HorizontalScrollBarVisibility="Hidden"
                     VerticalScrollBarVisibility="Disabled">
@@ -70,7 +70,7 @@
       </ScrollViewer>
     </DockPanel>
 
-    <!-- 标签条下的 1px 分割线:恒用主题分割线画刷,无焦点反馈(用户要求)。 -->
+    <!-- 标签条下的 1px 分割线:恒用主题分割线画刷,无焦点反馈。 -->
     <Border x:Name="StripSeparator"
             DockPanel.Dock="Top"
             Height="1"

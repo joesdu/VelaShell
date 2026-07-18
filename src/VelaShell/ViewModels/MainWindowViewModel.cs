@@ -524,7 +524,7 @@ public class MainWindowViewModel : ReactiveObject
                 "Icon.search"
             )
         );
-        // 隧道独立于终端会话(后台自动连接),无活动标签也可用(用户反馈 #5)。
+        // 隧道独立于终端会话(后台自动连接),无活动标签也可用。
         Commands.Register(
             new(
                 "tools.tunnel",
@@ -769,7 +769,7 @@ public class MainWindowViewModel : ReactiveObject
     /// Points the SFTP file browser at the active tab's session (#22). Each connected tab gets
     /// a browser rooted at its own session; without a connected session the panel shows empty.
     /// 面板实例按会话缓存:切回已看过的标签直接复用(旧列表秒显 + 后台静默刷新),
-    /// 保留浏览路径/排序/列宽,不再每次切换都重建对象、重新列目录(用户优化需求)。
+    /// 保留浏览路径/排序/列宽,不再每次切换都重建对象、重新列目录。
     /// 缓存的驱逐点:标签关闭与连接断开(<see cref="EvictFileBrowser" />)。
     /// </summary>
     private void RebindFileBrowser()
@@ -785,7 +785,7 @@ public class MainWindowViewModel : ReactiveObject
         }
 
         // 本地终端(ConPTY)没有 SFTP 会话:不得继续展示上一个 SSH 会话的文件面板
-        // (用户反馈:切到 PowerShell 标签后下方仍显示 r2s 的文件)。换成隐藏的空占位;
+        // 否则切到 PowerShell 等本地标签后下方仍显示上一个 SSH 会话的文件面板。换成隐藏的空占位;
         // 上一个面板不 Detach(仍按其会话缓存),其开关状态留在缓存实例与所属标签上,
         // 切回远程标签时恢复展示。
         if (tab.LocalShell is not null)
@@ -1015,7 +1015,7 @@ public class MainWindowViewModel : ReactiveObject
 
     /// <summary>
     /// 打开隧道面板(可选预选某台服务器)。面板以服务器为中心、生命周期与终端
-    /// 会话无关:无需先打开终端标签,创建隧道时由面板后台自建 SSH 连接(用户反馈 #5)。
+    /// 会话无关:无需先打开终端标签,创建隧道时由面板后台自建 SSH 连接。
     /// </summary>
     public void OpenTunnelPanel(SessionProfile? preselect = null)
     {
@@ -1179,7 +1179,7 @@ public class MainWindowViewModel : ReactiveObject
                 metrics.HasNetRates
             );
 
-            // 悬停提示的详情(用户反馈):CPU 逐核心、磁盘逐挂载点、网速逐网卡。
+            // CPU 逐核心、磁盘逐挂载点、网速逐网卡的悬停提示详情。
             StatusBar.CpuTooltip = BuildCpuTooltip(metrics);
             StatusBar.MemTooltip = BuildMemTooltip(metrics);
             StatusBar.DiskTooltip = BuildDiskTooltip(metrics);
@@ -1656,7 +1656,7 @@ public class MainWindowViewModel : ReactiveObject
         {
             Title = displayName,
             ConnectionStatus = SessionStatus.Connecting,
-            // 配了跳板的会话在状态栏点明"经由跳板",让用户一眼确认链路生效(用户反馈 #1)。
+            // 配了跳板的会话在状态栏点明经由跳板,确认链路生效。
             ConnectionSummary = profile.JumpHostProfileId is null
                 ? $"SSH • {displayName}"
                 : $"SSH • {displayName} • {Strings.Get("Msg_ViaJumpHost")}",
@@ -1821,7 +1821,7 @@ public class MainWindowViewModel : ReactiveObject
             );
 
             // Full-reset (RIS) the emulator before the new session's output arrives, so the
-            // fresh MOTD doesn't append after the old buffer's content (用户反馈 #1).
+            // fresh MOTD doesn't append after the old buffer's content.
             tab.TerminalEmulator.Feed("\ec"u8.ToArray());
             tab.SessionId = session.SessionId;
             tab.AttachTransport(shellStream);
@@ -1856,8 +1856,8 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// 跳板链可见反馈(用户反馈 #1):经由跳板建立的会话在终端顶部打一行灰色提示,
-    /// 标注实际经过的跳板链路,让用户确认跳板真的生效。纯装饰,失败不影响连接。
+    /// 经由跳板建立的会话在终端顶部显示灰色提示,标注实际经过的跳板链路。
+    /// 纯装饰,失败不影响连接。
     /// </summary>
     private async Task FeedJumpChainNoticeAsync(TerminalTabViewModel tab, SessionProfile profile)
     {
@@ -1901,7 +1901,7 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// 关闭标签背后的 SSH 会话(用户反馈 #2):标签的 DisconnectCommand 只拆终端
+    /// 关闭标签背后的 SSH 会话:标签的 DisconnectCommand 只拆终端
     /// 传输层,底层 SshClient 仍保持 TCP 连接;这里显式断开并释放,避免"界面显示已断开、
     /// 连接实际还活着"。该会话上的隧道也一并停止。
     /// </summary>
@@ -1988,7 +1988,7 @@ public class MainWindowViewModel : ReactiveObject
         // 重连会拿到新的 SessionId,面板届时按新会话重建。
         CloseSftpForTab(tab);
 
-        // 不论主动断开还是远端掉线,都把底层 SSH 客户端一并拆掉(用户反馈 #2);
+        // 不论主动断开还是远端掉线,都把底层 SSH 客户端一并拆掉;
         // 重连会新建会话,不受影响。
         TeardownSshSession(tab.SessionId);
         AppSettings? settings = _latestSettings;
@@ -2705,7 +2705,7 @@ public class MainWindowViewModel : ReactiveObject
         StopSessionLogging(tab);
         CloseSftpForTab(tab);
         tab.Dispose();
-        // Dispose 只拆终端传输;底层 SSH 客户端也要断开释放(用户反馈 #2)。
+        // Dispose 只拆终端传输;底层 SSH 客户端也要断开释放。
         TeardownSshSession(tab.SessionId);
 
         // 关闭标签不会再触发 ConnectionStatus 变更(已 Dispose),这里显式把树上的

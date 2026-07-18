@@ -96,7 +96,7 @@
 
         <!-- Top Area: 自研 VelaDock 终端工作区(拖拽重排、边缘拖放/右键拆分分屏;
              浮动窗口按产品决策禁用)。视图按文档缓存复用 —— 切换标签不重建
-             TerminalTabView,这是多标签切换流畅度的关键(用户反馈:切换卡顿)。 -->
+             TerminalTabView,这是多标签切换流畅度的关键。 -->
         <dockc:DockWorkspaceControl Grid.Row="0" Workspace="{Binding Layout}" />
 
         <!-- Horizontal splitter: a 5px transparent grab area drawn as a 1px line, so the

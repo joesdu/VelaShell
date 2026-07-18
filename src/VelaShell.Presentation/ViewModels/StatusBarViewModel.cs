@@ -20,7 +20,7 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
         : this(DefaultScheduler.Instance) { }
 
     // The metric segments are always visible; before the first sample (or without a
-    // connected session) they show idle placeholders (用户要求).
+    // connected session) they show idle placeholders.
 
     /// <summary>状态栏左侧的当前状态文本,默认显示“就绪”。</summary>
     public string StatusText
@@ -103,7 +103,7 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "--";
 
-    /// <summary>悬停提示:CPU 总占用 + 每核心占用(用户反馈,由主 VM 按采样填充)。</summary>
+    /// <summary>悬停提示:CPU 总占用 + 每核心占用(由主 VM 按采样填充)。</summary>
     public string CpuTooltip
     {
         get;

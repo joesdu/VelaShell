@@ -25,7 +25,7 @@ public partial class DockGroupControl : UserControl
         TabScroll.ScrollChanged += (_, _) => UpdateScrollButtons();
         // 点击本组任意位置(含终端内容区)即把本组的选中文档设为全局激活 —— 对应原
         // Dock 的 FocusedDockable 语义;缺了它,分屏后点另一个窗格输入,SFTP 面板与
-        // 状态栏不会跟随切换(用户反馈)。Tunnel + handledEventsToo:终端控件会吞掉
+        // 状态栏不会跟随切换。Tunnel + handledEventsToo:终端控件会吞掉
         // 指针事件,冒泡阶段收不到。点标签时本处理器先按组当前选中激活一次,随后
         // DockTabItem 再精确激活被点的标签,结果一致。
         AddHandler(PointerPressedEvent, OnAnyPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);

@@ -27,7 +27,7 @@ public class FileTransferViewModel : ReactiveObject
     private bool _isPointerOver;
 
     // 准备阶段(上传/下载前的目录扫描):大文件夹的扫描可能持续数秒,期间面板立即弹出、
-    // 徽标随发现的文件数递增,让用户知道处理已经开始(用户反馈)。
+    // 徽标随发现的文件数递增,让用户知道处理已经开始。
     private bool _isPreparing;
     private int _preparingCount;
 
@@ -234,7 +234,7 @@ public class FileTransferViewModel : ReactiveObject
     /// <summary>
     /// 传输完成通知用的临时展开:面板可见,但不像 <see cref="ShowPanel" /> 那样锁定——
     /// 自动隐藏倒计时照常进行(指针悬停时照常暂停)。修复完成通知把面板钉死在界面上、
-    /// 只能手动关闭的问题(用户反馈)。
+    /// 只能手动关闭的问题。
     /// </summary>
     public void ShowPanelTransient()
     {

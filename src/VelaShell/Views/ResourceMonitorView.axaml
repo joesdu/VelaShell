@@ -89,7 +89,7 @@
                      Classes.warn="{Binding RamWarn}" Classes.crit="{Binding RamCrit}" />
       </StackPanel>
 
-      <!-- Disk:一盘一行(多磁盘主机全部显示,用户反馈);拿不到列表时 VM 退回单行聚合。 -->
+      <!-- Disk:一盘一行(多磁盘主机全部显示);拿不到列表时 VM 退回单行聚合。 -->
       <ItemsControl ItemsSource="{Binding Disks}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>

@@ -3,7 +3,7 @@ using VelaShell.Core.Services;
 
 namespace VelaShell.ViewModels;
 
-/// <summary>One disk row of the resource panel(多磁盘主机逐盘显示,用户反馈)。</summary>
+/// <summary>One disk row of the resource panel(多磁盘主机逐盘显示)。</summary>
 public sealed class DiskRowViewModel(string label, string text, double percent)
 {
     /// <summary>磁盘挂载点标签(如 “Disk /home”),显示在行首。</summary>

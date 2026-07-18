@@ -56,7 +56,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// File panel height restored when the panel reopens (§6 drag to grow). Default 360
     /// = sidebar recent-connections block (320) + footer (40), so the file panel's top divider
-    /// lands on the same horizontal line as the sidebar's tree/recent splitter (用户反馈).
+    /// lands on the same horizontal line as the sidebar's tree/recent splitter.
     /// </summary>
     private double _lastFileRowHeight = 360;
 
@@ -378,7 +378,7 @@ public partial class MainWindow : Window
 
                 // 断开连接:断开该配置所有已连接的终端标签(保留缓冲以便重连)。
                 // 必须按 Profile.Id 匹配——tab.SessionId 是 SSH 连接会话 ID,与配置 ID
-                // 不是一回事,之前用它比较永远匹配不上,菜单点了没反应(用户反馈 #2)。
+                // 不是一回事,之前用它比较永远匹配不上,菜单点了没反应(#2)。
                 tree.DisconnectRequested += profile =>
                     Dispatcher.UIThread.Post(() =>
                     {

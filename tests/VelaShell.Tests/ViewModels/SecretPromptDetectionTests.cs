@@ -3,7 +3,7 @@ using VelaShell.Views;
 namespace VelaShell.Tests.ViewModels;
 
 /// <summary>
-/// 密码类提示行判定(命令补全在口令输入时不得弹出,用户反馈):
+/// 密码类提示行判定(命令补全在口令输入时不得弹出):
 /// 冒号结尾 + 密码关键词 双条件;已回显的输入先剥掉再判提示部分。
 /// </summary>
 [TestClass]

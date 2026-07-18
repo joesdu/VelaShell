@@ -21,7 +21,7 @@ public class SyncSettings
     /// <summary>自动同步:启动时拉取 + 设置保存后防抖推送。</summary>
     public bool AutoSync { get; set; } = true;
 
-    // 同步范围(用户确认:只同步配置类数据 —— 应用设置、会话连接、代码片段)
+    // 同步范围:只同步配置类数据 —— 应用设置、会话连接、代码片段
     /// <summary>同步范围:是否同步应用设置。</summary>
     public bool SyncAppSettings { get; set; } = true;
 
