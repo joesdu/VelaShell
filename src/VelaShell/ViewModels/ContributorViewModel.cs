@@ -4,7 +4,7 @@ using ReactiveUI;
 namespace VelaShell.ViewModels;
 
 /// <summary>
-/// 关于页贡献者条目(设计 kGwqX,按用户要求仅保留头像与名称):
+/// 关于页贡献者条目(设计 kGwqX,仅保留头像与名称):
 /// 头像从 GitHub 异步拉取,离线/失败时回退为首字母圆形占位;点击跳转 GitHub 主页。
 /// </summary>
 public sealed class ContributorViewModel(string handle) : ReactiveObject

@@ -184,7 +184,7 @@
     <Grid ColumnDefinitions="200,*">
 
       <!-- 左侧导航。CornerRadius 跟随外框左侧圆角:方角的 bg-sidebar 背景会盖住外框在
-           圆角处的描边,看起来像边框断开(用户反馈)。 -->
+           圆角处的描边,看起来像边框断开。 -->
       <Border Grid.Column="0"
               Background="{DynamicResource VelaBgSidebar}"
               BorderBrush="{DynamicResource VelaBorderPrimary}"

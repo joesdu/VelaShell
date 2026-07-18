@@ -239,7 +239,7 @@ public class FileTransferViewModelTests
     [TestCategory("FileTransfer")]
     public void BeginPreparing_ShowsPanelImmediately_AndCountsDiscoveredFiles()
     {
-        // 选择大文件夹后,扫描期间面板立即可见、徽标随发现数递增(用户反馈)。
+        // 选择大文件夹后,扫描期间面板立即可见、徽标随发现数递增。
         Assert.IsFalse(_vm.IsPanelVisible);
         _vm.BeginPreparing();
         Assert.IsTrue(_vm.IsPreparing);

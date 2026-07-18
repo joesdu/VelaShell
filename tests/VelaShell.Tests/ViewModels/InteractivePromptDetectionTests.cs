@@ -3,7 +3,7 @@ using VelaShell.Views;
 namespace VelaShell.Tests.ViewModels;
 
 /// <summary>
-/// 交互提示行判定(命令补全在"回答程序提问"时不得弹出,用户反馈:apt 的 [Y/n]
+/// 交互提示行判定(命令补全在"回答程序提问"时不得弹出,例如 apt 的 [Y/n]
 /// 确认行、覆盖配置文件的 y/N 下按键仍弹智能提示)。覆盖是否类确认与编号选单,
 /// 并复用密码类判定;已回显的输入先剥掉再判提示部分。
 /// </summary>
@@ -14,7 +14,7 @@ public class InteractivePromptDetectionTests
     [TestMethod]
     public void AptContinuePrompt_IsInteractive()
     {
-        // 用户实测:apt 安装的确认行,输入 y 时仍弹出补全。
+        // apt 安装的确认行,输入 y 时仍弹出补全。
         Assert.IsTrue(TerminalTabView.IsInteractivePrompt("Do you want to continue? [Y/n] y", "y"));
         Assert.IsTrue(TerminalTabView.IsInteractivePrompt("Do you want to continue? [Y/n] ", ""));
         Assert.IsTrue(TerminalTabView.IsInteractivePrompt("Do you want to continue? [Y/n] yes", "yes"));

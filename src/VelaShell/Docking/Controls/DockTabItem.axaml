@@ -123,7 +123,7 @@
           VerticalAlignment="Stretch">
     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
 
-      <!-- 同步输入频道字母:置于状态点之前,以频道标识色着色(用户需求)。 -->
+      <!-- 同步输入频道字母:置于状态点之前,以频道标识色着色。 -->
       <TextBlock Text="{Binding Terminal.SyncChannelLetter}"
                  IsVisible="{Binding Terminal.IsInSyncChannel}"
                  Foreground="{Binding Terminal.SyncChannelBrush}"
@@ -134,7 +134,7 @@
         </TextBlock.RenderTransform>
       </TextBlock>
 
-      <!-- 状态点:上移 1px,补偿 mono 标题下伸部把视觉中心抬高(用户反馈)。 -->
+      <!-- 状态点:上移 1px,补偿 mono 标题下伸部把视觉中心抬高。 -->
       <Ellipse Width="7" Height="7" VerticalAlignment="Center"
                Fill="{Binding Terminal.ConnectionStatus, Converter={x:Static conv:SessionStatusToBrushConverter.Instance}}">
         <Ellipse.RenderTransform>

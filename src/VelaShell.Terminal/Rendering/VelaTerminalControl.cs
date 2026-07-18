@@ -1234,7 +1234,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// · 只有时间戳、没有内容的空行,仅在光标位置及之上显示。换行会给经过的行盖上时间戳(哪怕
     ///   没写入任何字符,见 LineTimestampTests),重绘型 shell 又常把提示符下方来回涂改;若不设
     ///   这道界,时间线会一直拖到提示符下方的空白区,折叠导引线随之画过光标把光标盖住
-    ///   (用户实测:PowerShell + oh-my-posh + PSReadLine 的历史列表撤销后)。
+    ///   (PowerShell + oh-my-posh + PSReadLine 的历史列表撤销后)。
     /// internal 供测试直接验证这条判定,不必去驱动整个渲染。
     /// </remarks>
     internal static bool ShowsGutterFor(TerminalRow line, int absoluteRow, int cursorAbsoluteRow) =>
@@ -1304,7 +1304,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             return; // 空屏:不画分隔线/折叠列,侧栏完全隐形。
         }
         double contentBottom = (lastContentRow + 1) * CellHeightForTest;
-        // 唯一的竖线由折叠列绘制(用户要求:去掉原来的分隔竖线,只保留折叠标记这一条)。
+        // 唯一的竖线由折叠列绘制,只保留折叠标记这一条。
         if (ShowFoldMarker)
         {
             RenderFoldColumn(context, screen, palette, rows, dim, contentBottom);
@@ -1927,7 +1927,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     {
         int col = (int)((p.X - GutterWidth()) / CellWidthForTest);
         // Clamp the row: while the pointer is captured a drag can leave the control (negative
-        // p.Y), and a negative absolute row used to crash selection copy (#用户反馈).
+        // p.Y), and a negative absolute row used to crash selection copy.
         // 通过本帧屏幕行映射解析绝对行,折叠时命中被折叠后实际可见的那一行。
         int maxRow = Math.Max(0, _screenToAbs.Length - 1);
         int screenRow = Math.Clamp((int)(p.Y / CellHeightForTest), 0, maxRow);
@@ -2023,7 +2023,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             return;
         }
 
-        // View paging (用户反馈): PageUp/PageDown page through the scrollback on the primary
+        // PageUp/PageDown page through the scrollback on the primary
         // screen (full-screen apps on the alternate screen still receive them as CSI 5~/6~);
         // the Shift+ variants page everywhere.
         if (
@@ -2040,7 +2040,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             return;
         }
 
-        // Shift+Home/End jump the shell cursor to line start/end (用户反馈): send the plain
+        // Shift+Home/End jump the shell cursor to line start/end: send the plain
         // Home/End sequences, which readline binds — the shifted CSI 1;2H/F variants it ignores.
         KeyModifiers effectiveModifiers = e.KeyModifiers;
         switch (e.Key)

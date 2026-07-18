@@ -52,7 +52,7 @@
     </Style>
   </UserControl.Styles>
 
-  <!-- SFTP 面板底色与终端一致(用户要求,#282A36 家族),而非窗口铬色。 -->
+  <!-- SFTP 面板底色与终端一致(#282A36 家族),而非窗口铬色。 -->
   <Border BorderThickness="0,1,0,0"
           BorderBrush="{DynamicResource VelaBorderPrimary}"
           Background="{DynamicResource VelaBgTerminal}"
@@ -456,7 +456,7 @@
                     </Style>
                   </Border.Styles>
                   <Border.ContextMenu>
-                    <!-- 结构参考 WinSCP(用户提供截图):刷新 | 下载/上传 | 重命名/移动 |
+                    <!-- 结构参考 WinSCP:刷新 | 下载/上传 | 重命名/移动 |
                          复制名称/路径 | 新建 | 删除 | 属性。下载与删除均作用于多选集合
                          (右键会先把所指行并入选区,见 FileRow_PointerPressed)。
                          着色分组同设计 e6klM:主操作 accent、常规 text-tertiary、危险 error。 -->

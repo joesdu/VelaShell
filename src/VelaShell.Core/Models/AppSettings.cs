@@ -321,7 +321,7 @@ public class AppearanceOptions : ObservableOptions
         set => Set(ref field, value);
     }
 
-    // 终端颜色(默认 = Dracula 官方 Windows Terminal 方案,用户确认)
+    // 终端颜色(默认 = Dracula 官方 Windows Terminal 方案)
     /// <summary>终端前景(文本)颜色(十六进制)。</summary>
     public string TerminalForeground
     {

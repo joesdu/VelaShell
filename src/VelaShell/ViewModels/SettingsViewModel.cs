@@ -92,7 +92,7 @@ public class SettingsViewModel : ReactiveObject
         _updateService = updateService;
 
         // 换语言时重建构造期求值的标签列表(左侧导航、快捷键参考页):本 VM 是单例,
-        // 这些数组在启动语言下冻结,不重建就停留在旧语言(用户反馈:切英文保存后
+        // 这些数组在启动语言下冻结,不重建就停留在旧语言(例如切英文保存后
         // 重开设置,左侧菜单仍是中文)。两者均为单例,订阅无泄漏。
         localizationService?.LanguageChanged += _ =>
         {

@@ -46,7 +46,7 @@ public sealed class SessionMetrics
         "echo __L__; cat /proc/loadavg 2>/dev/null; " +
         // htop-style used = total − free − buffers − cached − reclaimable slab. `free`'s own
         // "used" column changed meaning in procps 4.x (total − available), which reads ~2x
-        // higher than what users compare against (用户反馈: htop 99M vs our 19%).
+        // higher than what users compare against (htop 99M vs our 19%).
         """echo __M__; awk '/^MemTotal:/{t=$2} /^MemFree:/{f=$2} /^Buffers:/{b=$2} /^Cached:/{c=$2} /^SReclaimable:/{s=$2} /^SwapTotal:/{st=$2} /^SwapFree:/{sf=$2} END{if(t>0){u=t-f-b-c-s; if(u<0)u=0; print t*1024" "u*1024" "st*1024" "(st-sf)*1024}}' /proc/meminfo 2>/dev/null; """ +
         "echo __D__; df -B1 --output=size,used / 2>/dev/null | tail -1; " +
         """echo __O__; . /etc/os-release 2>/dev/null && echo "$PRETTY_NAME"; """ +
@@ -60,7 +60,7 @@ public sealed class SessionMetrics
         "echo __C__; grep '^cpu[0-9]' /proc/stat 2>/dev/null; " +
         // __NI__: per-interface cumulative rx/tx for the status-bar network tooltip。
         // 只取物理网卡(/sys/class/net/*/device 存在):Docker/K8s 主机会有成百个 veth/
-        // 网桥虚拟接口,全列出来没法看(用户反馈)。__N__ 的合计口径保持不变。
+        // 网桥虚拟接口,全列出来没法看。__N__ 的合计口径保持不变。
         """echo __NI__; for i in /sys/class/net/*; do if [ -e "$i/device" ]; then echo "${i##*/} $(cat "$i/statistics/rx_bytes" 2>/dev/null) $(cat "$i/statistics/tx_bytes" 2>/dev/null)"; fi; done 2>/dev/null""";
 
     /// <summary>逻辑 CPU 核心数(nproc);至少为 1。</summary>

@@ -9,7 +9,7 @@ namespace VelaShell.Docking;
 /// <summary>
 /// 承载单个 SSH/本地终端标签的可停靠文档。包装终端(而不是让
 /// <see cref="TerminalTabViewModel" /> 自己成为文档)使既有标签集合与测试不受
-/// 停靠层影响。浮动/Pin 由产品决策禁用(用户反馈),VelaDock 未建模,天然不存在。
+/// 停靠层影响。浮动/Pin 由产品决策禁用,VelaDock 未建模,天然不存在。
 /// </summary>
 public sealed class TerminalDocument : DockDocument, IDockViewProvider
 {

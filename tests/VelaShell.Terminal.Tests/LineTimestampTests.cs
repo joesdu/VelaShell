@@ -58,7 +58,7 @@ public class LineTimestampTests
     public void Timestamp_SurvivesColumnReflow()
     {
         // 开关侧栏会改变可用列宽 → 触发主屏 reflow(重建行对象)。时间戳必须穿过 reflow,
-        // 否则切换侧栏后历史行的时间/行号信息全部丢失(用户反馈的核心 bug)。
+        // 否则切换侧栏后历史行的时间/行号信息全部丢失(核心 bug)。
         TerminalEmulator e = New(40, 4);
         e.Screen.MaxScrollback = 1000;
         Feed(e, "alpha\r\nbeta\r\ngamma");
@@ -139,7 +139,7 @@ public class LineTimestampTests
     }
 
     /// <summary>
-    /// 用户实测的场景:PowerShell + PSReadLine 在提示符下方画出历史/预测列表,撤销输入后又逐行
+    /// PowerShell + PSReadLine 在提示符下方画出历史/预测列表,撤销输入后又逐行
     /// 用 ESC[K 擦掉。被擦掉的行必须不再有时间戳,否则侧栏的时间线会一直拖到提示符下方,
     /// 折叠导引线也随之画过光标位置(光标被盖住)。
     /// </summary>

@@ -1,13 +1,13 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <ResourceDictionary.ThemeDictionaries>
-    <!-- Dracula 暗色(用户确认):沿用官方 BG 阶梯 #191A21 < #21222C < #282A36 < #343746
+    <!-- Dracula 暗色:沿用官方 BG 阶梯 #191A21 < #21222C < #282A36 < #343746
          < #44475A。终端区取 Dracula 正典背景 #282A36(ANSI 方案即按它调校),窗口铬色
          压得更暗,弹窗/菜单浮在 #343746。 -->
     <ResourceDictionary x:Key="Dark">
       <SolidColorBrush x:Key="VelaBgPage" Color="#191A21" />
       <!-- 侧栏贴近终端平面(仅低一小档,镜像亮色 F8F4E4→FFFBEB 的微差),
-           原 #21222C 与终端 #282A36 落差过大,分界生硬(用户反馈)。 -->
+           原 #21222C 与终端 #282A36 落差过大,分界生硬。 -->
       <SolidColorBrush x:Key="VelaBgSidebar" Color="#252734" />
       <SolidColorBrush x:Key="VelaBgTerminal" Color="#282A36" />
       <SolidColorBrush x:Key="VelaBgSurface" Color="#343746" />
@@ -17,7 +17,7 @@
       <SolidColorBrush x:Key="VelaTabActiveBg" Color="#282A36" />
       <SolidColorBrush x:Key="VelaTabInactiveBg" Color="#191A21" />
     </ResourceDictionary>
-    <!-- Alucard 亮色(dracula/foot 官方亮色方案,用户确认):奶油底 #FFFBEB 家族。 -->
+    <!-- Alucard 亮色(dracula/foot 官方亮色方案):奶油底 #FFFBEB 家族。 -->
     <ResourceDictionary x:Key="Light">
       <SolidColorBrush x:Key="VelaBgPage" Color="#F2EDDA" />
       <SolidColorBrush x:Key="VelaBgSidebar" Color="#F8F4E4" />

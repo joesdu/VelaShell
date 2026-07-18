@@ -58,7 +58,7 @@ public class StatusBarNetworkTests
     {
         var vm = new StatusBarViewModel();
 
-        // 用户要求: the three segments are visible from app start, just without data.
+        // The three segments are visible from app start, just without data.
         Assert.AreEqual("--", vm.CpuUsage);
         Assert.AreEqual("--", vm.MemUsage);
         Assert.AreEqual("0 B/s", vm.NetSpeed);

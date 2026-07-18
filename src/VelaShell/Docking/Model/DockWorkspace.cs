@@ -195,7 +195,7 @@ public sealed class DockWorkspace : DockElement
     /// <summary>
     /// 右键菜单“水平/垂直拆分”:把文档移入紧邻其所属组新建的组
     /// (水平 = 新组在右,垂直 = 新组在下,各占一半)。组内唯一文档时同样拆分,
-    /// 原组留空作为放置目标(所有组行为一致,用户反馈:次级组拆分不能没反应);
+    /// 原组留空作为放置目标(所有组行为一致);
     /// 空组会在其兄弟结构收敛时自动回收(见 <see cref="HoistIfSingle" />)。
     /// </summary>
     public void SplitDocument(DockDocument document, DockOrientation orientation)

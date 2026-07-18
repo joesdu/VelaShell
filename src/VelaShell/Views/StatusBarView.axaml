@@ -47,7 +47,7 @@
                    IsVisible="{Binding ConnectionInfo, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <Border Classes="divider"
                 IsVisible="{Binding Latency, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-        <!-- 标签本地化(延迟/Latency)且仅数值上主题色(用户要求)。Run 之间不能换行,
+        <!-- 标签本地化(延迟/Latency)且仅数值上主题色。Run 之间不能换行,
              否则 XAML 空白折叠会在冒号前多出一个空格。 -->
         <TextBlock IsVisible="{Binding Latency, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><Run Text="{loc:Localize Latency}" Foreground="{DynamicResource VelaTextTertiary}" /><Run Text=": " Foreground="{DynamicResource VelaTextTertiary}" /><Run Text="{Binding Latency}" Foreground="{DynamicResource VelaAccent}" /></TextBlock>
         <Border Classes="divider"
@@ -62,9 +62,9 @@
 
       <!-- Right group (gap 12). The live metrics sit LEFT of the fixed-width fields
            (terminal type / size / encoding) so their varying width never shoves the
-           static text around (用户反馈 #4). -->
+           static text around (#4). -->
       <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
-        <!-- 悬停提示为动态详情(用户反馈):CPU 逐核心、内存含交换、磁盘逐挂载点、网速逐网卡。 -->
+        <!-- 悬停提示为动态详情:CPU 逐核心、内存含交换、磁盘逐挂载点、网速逐网卡。 -->
         <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding CpuTooltip}">
           <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.cpu}"
                          Foreground="{DynamicResource VelaTextTertiary}" VerticalAlignment="Center" />
