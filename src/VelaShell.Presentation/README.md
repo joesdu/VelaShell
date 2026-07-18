@@ -15,10 +15,9 @@
 | `ViewModels/RecentConnectionsViewModel.cs` `RecentConnectionItemViewModel.cs` | 「最近连接」列表：名称-分组 + 相对时间，重启不丢失。 |
 | `ViewModels/StatusBarViewModel.cs` | 实时状态栏：连接状态、延迟、时长、终端尺寸、编码、CPU/内存/网速。 |
 | `ViewModels/TabBarViewModel.cs` `TabViewModel.cs` | 标签页栏与单标签状态。 |
-| `WorkspaceHostViewModel.cs` | 工作区宿主：承载可拖拽分屏的文档区域。 |
 | `Services/ConnectionWorkflowService.cs` | 连接工作流：把「校验 → 认证 → 建立会话」编排为一条可复用流程。 |
+| `Services/TunnelWorkflowService.cs` | 隧道工作流：统一封装隧道创建类型分派、快照读取、停止与移除。 |
 | `Services/ConnectionDiagnosticsService.cs` `ConnectionTestResult.cs` | 连接诊断与测试结果模型。 |
-| `Services/TunnelWorkflowService.cs` | 端口转发隧道的创建/启停工作流。 |
 | `Commands/CommandRegistry.cs` | 全局命令注册表，供命令面板与快捷键系统消费。 |
 | `DependencyInjection/PresentationServiceCollectionExtensions.cs` | 本层 ViewModel 与服务的 DI 注册入口。 |
 

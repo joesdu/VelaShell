@@ -4,7 +4,7 @@
 
 `VelaShell` 是解决方案的**可执行入口**（`OutputType=WinExe`，程序集名 `VelaShell`）。它是唯一的**组合根（Composition Root）**：所有依赖注入注册在此汇聚，所有窗口/对话框的 XAML 视图与主题样式在此定义，并托管托盘、自动更新、会话录制等应用级服务。
 
-> 命名提示：根 README 与构建脚本中出现的 `VelaShell.App` 为历史别名，实际入口项目为本项目 `src/VelaShell`。
+> 入口项目位于 `src/VelaShell`，程序集名为 `VelaShell`。
 
 ## 🗂️ 目录结构
 
@@ -14,7 +14,7 @@
 | `App.axaml` / `App.axaml.cs` | **组合根**：构建 DI 容器、注册所有层的服务、创建主窗口、加载主题与全局样式。 |
 | `Views/` | 全部 XAML 视图：`MainWindow`、`SettingsView` 及九+页设置（常规/外观/终端/密钥/快捷键/传输/安全审计/片段/云同步/关于/捐赠）、认证对话框、命令面板、文件浏览/传输、隧道面板、录制回放、资源监视器、主机指纹提示等。 |
 | `ViewModels/` | 与窗口强绑定的 ViewModel：`MainWindowViewModel`（热点文件）、`SettingsViewModel`、`TerminalTabViewModel`、`AuthenticationDialogViewModel`、`CommandPaletteViewModel`、`FileBrowser/FileTransferViewModel`、`SshKeyManagerViewModel`、`SyncViewModel`、`RecordingPlayerViewModel` 等。 |
-| `Docking/` | 基于 Dock.Avalonia 的可拖拽分屏系统：`DockWorkspace` 模型、拖拽控制器、放置覆盖层、标签撕出与终端文档宿主。 |
+| `Docking/` | 自研 VelaDock 可拖拽分屏系统：`DockWorkspace` 模型、拖拽控制器、放置覆盖层、标签撕出与终端文档宿主。 |
 | `Services/` | 应用级服务：`SessionRecorder`/`SessionLogService`（会话录制）、`UpdateService`（便携式自更新，GitHub Releases 清单 + 原地换版，见 `Services/Update/`）、`TrayIconService`（托盘）、`KeyboardShortcutService`（快捷键）、`CommandHistoryService`/`CommandSuggestionProvider`（命令建议）、`StartupRegistration`（开机自启）、`ExternalEditSessionManager`（外部编辑器）等。 |
 | `Themes/` | `DarkTheme`/`LightTheme`/`InputStyles`/`DockStyles`：应用级主题与样式覆盖。 |
 | `Converters/` `Behaviors/` `Controls/` | XAML 值转换器、输入行为（`SecurePasswordBox`、`AsciiOnlyInput`）、`ReparentingHost` 宿主控件。 |

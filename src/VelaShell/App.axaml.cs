@@ -32,7 +32,7 @@ public class App : Application
 {
     private ServiceProvider? _serviceProvider;
     private AppSettings? _startupSettings;
-    private CancellationTokenSource? _syncDebounce;
+    private readonly SyncDebounceLifecycle _syncDebounce = new();
     private IThemeService? _themeService;
     private TrayIconService? _trayIconService;
 
@@ -233,11 +233,16 @@ public class App : Application
                 }
 
                 // 防抖:连续保存只推送最后一次。
-                CancellationTokenSource cts = new();
-                CancellationTokenSource? previous = Interlocked.Exchange(ref _syncDebounce, cts);
-                previous?.Cancel();
-                await Task.Delay(TimeSpan.FromSeconds(5), cts.Token);
-                await syncService.SyncNowAsync(CancellationToken.None);
+                if (!_syncDebounce.TrySwapNew(out CancellationToken token))
+                {
+                    return; // Shut down; do not start new debounce work.
+                }
+                await Task.Delay(TimeSpan.FromSeconds(5), token);
+                if (!_syncDebounce.TryStartCurrent(token, () => syncService.SyncNowAsync(CancellationToken.None), out Task? syncTask))
+                {
+                    return; // Shut down or superseded during delay.
+                }
+                await syncTask!;
             }
             catch (OperationCanceledException)
             {
@@ -260,6 +265,7 @@ public class App : Application
     /// </summary>
     private void DisposeServicesOnExit()
     {
+        _syncDebounce.Shutdown();
         ServiceProvider? provider = _serviceProvider;
         _serviceProvider = null;
         if (provider is null)

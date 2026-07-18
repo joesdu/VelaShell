@@ -10,7 +10,7 @@ public sealed class TabBarViewModelTests
     {
         var vm = new TabBarViewModel();
 
-        vm.AddTabCommand.Execute().Subscribe();
+        vm.AddTab(new TabViewModel());
 
         Assert.HasCount(1, vm.Tabs);
     }
@@ -20,7 +20,7 @@ public sealed class TabBarViewModelTests
     {
         var vm = new TabBarViewModel();
 
-        vm.AddTabCommand.Execute().Subscribe();
+        vm.AddTab(new TabViewModel());
 
         Assert.IsNotNull(vm.ActiveTab);
         Assert.AreSame(vm.Tabs[0], vm.ActiveTab);
@@ -30,7 +30,7 @@ public sealed class TabBarViewModelTests
     public void CloseTab_RemovesFromCollection()
     {
         var vm = new TabBarViewModel();
-        vm.AddTabCommand.Execute().Subscribe();
+        vm.AddTab(new TabViewModel());
         TabViewModel tab = vm.Tabs[0];
 
         vm.CloseTabCommand.Execute(tab).Subscribe();

@@ -18,10 +18,10 @@
     <File Path="LICENSE-COMMERCIAL.md" />
     <File Path="plan.md" />
     <File Path="README.md" />
+    <File Path="Directory.Build.targets" />
   </Folder>
   <Folder Name="/src/">
     <File Path="src/Directory.Build.props" />
-    <File Path="src/Directory.Build.targets" />
 	<File Path="src/Directory.Packages.props" />
     <Project Path="src/VelaShell.Controls/VelaShell.Controls.csproj" />
     <Project Path="src/VelaShell.Core/VelaShell.Core.csproj" />
@@ -32,7 +32,6 @@
   </Folder>
   <Folder Name="/tests/">
     <File Path="tests/Directory.Build.props" />
-    <File Path="tests/Directory.Build.targets" />
 	<File Path="tests/Directory.Packages.props" />
     <Project Path="tests/VelaShell.Controls.Tests/VelaShell.Controls.Tests.csproj" />
     <Project Path="tests/VelaShell.Core.Tests/VelaShell.Core.Tests.csproj" />

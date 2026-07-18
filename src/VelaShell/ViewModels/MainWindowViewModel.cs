@@ -66,6 +66,7 @@ public class MainWindowViewModel : ReactiveObject
     private readonly ISshConnectionService? _sshConnectionService;
     private readonly Func<ITerminalEmulator> _terminalEmulatorFactory;
     private readonly ITunnelService? _tunnelService;
+    private readonly ITunnelWorkflowService? _tunnelWorkflowService;
     private readonly QuickCommandsViewModel? _quickCommands;
     private readonly QuickCommandRunnerViewModel? _quickCommandRunner;
     private readonly TerminalTargetSelectorViewModel _terminalTargetSelector;
@@ -131,6 +132,7 @@ public class MainWindowViewModel : ReactiveObject
         ISftpService? sftpService = null,
         ITransferManager? transferManager = null,
         ITunnelService? tunnelService = null,
+        ITunnelWorkflowService? tunnelWorkflowService = null,
         ISessionMetricsService? metricsService = null,
         IRecentConnectionService? recentConnectionService = null,
         ISecurityAlertService? securityAlertService = null,
@@ -160,6 +162,7 @@ public class MainWindowViewModel : ReactiveObject
         _sessionRepository = sessionRepository;
         _sftpService = sftpService;
         _tunnelService = tunnelService;
+        _tunnelWorkflowService = tunnelWorkflowService;
         _metricsService = metricsService;
         _terminalEmulatorFactory = terminalEmulatorFactory ?? (() => new VelaTerminalControl());
         Layout = new DockWorkspace();
@@ -1019,7 +1022,7 @@ public class MainWindowViewModel : ReactiveObject
     /// </summary>
     public void OpenTunnelPanel(SessionProfile? preselect = null)
     {
-        if (_tunnelService is null)
+        if (_tunnelWorkflowService is null)
         {
             return;
         }
@@ -1029,7 +1032,7 @@ public class MainWindowViewModel : ReactiveObject
                 ? null
                 : async () => await _sessionRepository.GetAllSessionsAsync();
             var panel = new TunnelPanelViewModel(
-                _tunnelService,
+                _tunnelWorkflowService,
                 servers,
                 ConnectTunnelHostAsync,
                 id => _sshConnectionService?.GetClient(id)?.IsConnected == true,
