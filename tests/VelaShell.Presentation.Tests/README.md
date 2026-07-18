@@ -10,9 +10,8 @@
 |------|----------|
 | `ViewModels/StatusBarViewModelTests` `StatusBarNetworkTests` | 状态栏指标与网速展示。 |
 | `ViewModels/TabBarViewModelTests` | 标签页栏行为。 |
-| `WorkspaceHostViewModelTests` | 工作区宿主与分屏文档。 |
 | `Services/ConnectionWorkflowServiceTests` | 连接工作流（校验 → 认证 → 建链）。 |
-| `Services/TunnelWorkflowServiceTests` | 隧道创建/启停工作流。 |
+| `Services/TunnelWorkflowServiceTests` | 隧道工作流（类型分派、快照、停止、移除）。 |
 | `CommandRegistryTests` | 全局命令注册表。 |
 
 ## 运行

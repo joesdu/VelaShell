@@ -7,7 +7,7 @@ using ReactiveUI;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
-using VelaShell.Core.Tunnels;
+using VelaShell.Presentation.Services;
 
 namespace VelaShell.ViewModels;
 
@@ -39,7 +39,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     private readonly DispatcherTimer? _liveTimer;
     private readonly Func<Task<IReadOnlyList<SessionProfile>>>? _savedProfilesProvider;
     private readonly Func<Guid, Task>? _sessionDisconnector;
-    private readonly ITunnelService _tunnelService;
+    private readonly ITunnelWorkflowService _workflowService;
     private Guid? _editingTunnelId;
     private bool _isConnectingHost;
 
@@ -48,14 +48,14 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
 
     /// <summary>构造隧道面板视图模型;可注入已保存会话来源、后台连接/断开与存活探测委托及配置持久化存储(均可为空,便于测试)。</summary>
     public TunnelPanelViewModel(
-        ITunnelService tunnelService,
+        ITunnelWorkflowService workflowService,
         Func<Task<IReadOnlyList<SessionProfile>>>? savedProfilesProvider = null,
         Func<SessionProfile, CancellationToken, Task<Guid>>? backgroundConnector = null,
         Func<Guid, bool>? isSessionAlive = null,
         Func<Guid, Task>? sessionDisconnector = null,
         IAppDataStore? dataStore = null)
     {
-        _tunnelService = tunnelService ?? throw new ArgumentNullException(nameof(tunnelService));
+        _workflowService = workflowService ?? throw new ArgumentNullException(nameof(workflowService));
         _savedProfilesProvider = savedProfilesProvider;
         _backgroundConnector = backgroundConnector;
         _isSessionAlive = isSessionAlive;
@@ -385,7 +385,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         bool hasTunnels;
         try
         {
-            hasTunnels = _tunnelService.GetActiveTunnels(sessionId).Items.Any();
+            hasTunnels = _workflowService.GetActiveTunnels(sessionId).Count > 0;
         }
         catch
         {
@@ -429,7 +429,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
                 {
                     try
                     {
-                        IReadOnlyList<TunnelInfo> existing = _tunnelService.GetActiveTunnels(sessionId).Items;
+                        IReadOnlyList<TunnelInfo> existing = _workflowService.GetActiveTunnels(sessionId);
                         foreach (TunnelInfo info in existing.OrderBy(t => t.CreatedAt))
                         {
                             items.Add(new(info));
@@ -592,11 +592,11 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
                 TunnelItemViewModel? existing = Tunnels.FirstOrDefault(t => t.Id == editingId);
                 int index = existing is null ? -1 : Tunnels.IndexOf(existing);
                 bool wasActive = existing?.IsActive ?? true;
-                await _tunnelService.RemoveTunnelAsync(editingId, ct).ConfigureAwait(true);
+                await _workflowService.RemoveTunnelAsync(editingId, ct).ConfigureAwait(true);
                 if (wasActive)
                 {
                     Guid sessionId = await EnsureSessionAsync(server, ct).ConfigureAwait(true);
-                    TunnelInfo result = await CreateOnServiceAsync(sessionId, config, ct).ConfigureAwait(true);
+                    TunnelInfo result = await _workflowService.CreateTunnelAsync(sessionId, config, ct).ConfigureAwait(true);
                     ReplaceOrAdd(index, new(result));
                 }
                 else
@@ -617,7 +617,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
             else
             {
                 Guid sessionId = await EnsureSessionAsync(server, ct).ConfigureAwait(true);
-                TunnelInfo result = await CreateOnServiceAsync(sessionId, config, ct).ConfigureAwait(true);
+                TunnelInfo result = await _workflowService.CreateTunnelAsync(sessionId, config, ct).ConfigureAwait(true);
                 Tunnels.Add(new(result));
             }
             PersistTunnels(server.Id);
@@ -661,20 +661,13 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         };
     }
 
-    private Task<TunnelInfo> CreateOnServiceAsync(Guid sessionId, TunnelConfig config, CancellationToken ct) =>
-        config.Type switch
-        {
-            TunnelType.RemoteForward => _tunnelService.CreateRemoteForwardAsync(sessionId, config, ct),
-            TunnelType.DynamicForward => _tunnelService.CreateDynamicForwardAsync(sessionId, config, ct),
-            _ => _tunnelService.CreateLocalForwardAsync(sessionId, config, ct)
-        };
 
     private async Task StopTunnelAsync(Guid tunnelId, CancellationToken ct)
     {
         try
         {
             ErrorMessage = null;
-            await _tunnelService.StopTunnelAsync(tunnelId, ct).ConfigureAwait(true);
+            await _workflowService.StopTunnelAsync(tunnelId, ct).ConfigureAwait(true);
             TunnelItemViewModel? tunnel = Tunnels.FirstOrDefault(t => t.Id == tunnelId);
             tunnel?.Status = TunnelStatus.Stopped;
         }
@@ -701,9 +694,9 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
             }
 
             // 服务侧还留着停止状态的旧记录,先清掉再重建,避免列表里越积越多。
-            await _tunnelService.RemoveTunnelAsync(tunnelId, ct).ConfigureAwait(true);
+            await _workflowService.RemoveTunnelAsync(tunnelId, ct).ConfigureAwait(true);
             Guid sessionId = await EnsureSessionAsync(server, ct).ConfigureAwait(true);
-            TunnelInfo result = await CreateOnServiceAsync(sessionId, existing.Config, ct).ConfigureAwait(true);
+            TunnelInfo result = await _workflowService.CreateTunnelAsync(sessionId, existing.Config, ct).ConfigureAwait(true);
             int index = Tunnels.IndexOf(existing);
             ReplaceOrAdd(index, new(result));
         }
@@ -723,7 +716,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
             {
                 return;
             }
-            await _tunnelService.RemoveTunnelAsync(tunnelId, ct).ConfigureAwait(true);
+            await _workflowService.RemoveTunnelAsync(tunnelId, ct).ConfigureAwait(true);
             Tunnels.Remove(tunnel);
             if (_editingTunnelId == tunnelId)
             {

@@ -11,7 +11,6 @@ public sealed class TabBarViewModel : ReactiveObject
     public TabBarViewModel()
     {
         Tabs = [];
-        AddTabCommand = ReactiveCommand.Create(AddTab);
         CloseTabCommand = ReactiveCommand.Create<TabViewModel>(CloseTab);
         SelectTabCommand = ReactiveCommand.Create<TabViewModel>(tab => ActiveTab = tab);
         CloseActiveTabCommand = ReactiveCommand.Create(CloseActiveTab);
@@ -33,9 +32,6 @@ public sealed class TabBarViewModel : ReactiveObject
             field?.IsActive = true;
         }
     }
-
-    /// <summary>新建一个标签并将其设为活动标签的命令。</summary>
-    public ReactiveCommand<Unit, Unit> AddTabCommand { get; }
 
     /// <summary>关闭指定标签的命令;关闭活动标签时会自动选中相邻标签。</summary>
     public ReactiveCommand<TabViewModel, Unit> CloseTabCommand { get; }
@@ -59,12 +55,6 @@ public sealed class TabBarViewModel : ReactiveObject
         ArgumentNullException.ThrowIfNull(tab);
         Tabs.Add(tab);
         ActiveTab = tab;
-    }
-
-    private void AddTab()
-    {
-        var tab = new TabViewModel();
-        AddTab(tab);
     }
 
     private void CloseTab(TabViewModel tab)

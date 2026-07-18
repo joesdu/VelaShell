@@ -33,18 +33,18 @@ public class CrossPlatformPublishTests : IDisposable
         string? dir = AppContext.BaseDirectory;
         while (dir != null)
         {
-            if (File.Exists(Path.Combine(dir, "src", "VelaShell.slnx")))
+            if (File.Exists(Path.Combine(dir, "VelaShell.slnx")))
                 return dir;
             dir = Directory.GetParent(dir)?.FullName;
         }
         throw new InvalidOperationException(
-            "Could not find solution root. Expected src/VelaShell.slnx in an ancestor directory.");
+            "Could not find solution root. Expected VelaShell.slnx in an ancestor directory.");
     }
 
     private (int exitCode, string output, string error) RunDotnetPublish(string rid)
     {
         string solutionRoot = FindSolutionRoot();
-        string projectPath = Path.Combine(solutionRoot, "src", "VelaShell.App");
+        string projectPath = Path.Combine(solutionRoot, "src", "VelaShell");
         string outputDir = Path.Combine(_publishOutputDir, rid);
 
         var psi = new ProcessStartInfo

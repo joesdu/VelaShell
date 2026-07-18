@@ -13,13 +13,12 @@ public static class PresentationServiceCollectionExtensions
     public static IServiceCollection AddVelaShellPresentation(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.AddSingleton<WorkspaceHostViewModel>();
         services.AddSingleton<StatusBarViewModel>();
         services.AddSingleton<TabBarViewModel>();
         services.AddSingleton<SidebarViewModel>();
         services.AddSingleton<IConnectionWorkflowService, ConnectionWorkflowService>();
-        services.AddSingleton<ITunnelWorkflowService, TunnelWorkflowService>();
         services.AddSingleton<IConnectionDiagnosticsService, ConnectionDiagnosticsService>();
+        services.AddSingleton<ITunnelWorkflowService, TunnelWorkflowService>();
         return services;
     }
 }

@@ -58,9 +58,6 @@ public sealed class SidebarViewModel(
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>打开设置的命令。</summary>
-    public ReactiveCommand<Unit, Unit> SettingsCommand { get; } = ReactiveCommand.Create(() => { });
-
     /// <summary>打开通知的命令。</summary>
     public ReactiveCommand<Unit, Unit> NotificationsCommand { get; } =
         ReactiveCommand.Create(() => { });

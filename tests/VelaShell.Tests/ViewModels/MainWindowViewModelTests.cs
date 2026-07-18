@@ -4,7 +4,9 @@ using ReactiveUI.Builder;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Sftp;
+using VelaShell.Core.Tunnels;
 using VelaShell.Presentation.Commands;
+using VelaShell.Presentation.Services;
 using VelaShell.Presentation.ViewModels;
 using VelaShell.Services;
 using VelaShell.Terminal;
@@ -40,6 +42,32 @@ public class MainWindowViewModelTests
         Assert.IsNotNull(vm.Sidebar);
         Assert.IsNotNull(vm.TabBar);
         Assert.IsNotNull(vm.StatusBar);
+    }
+
+    [TestMethod]
+    [TestCategory("UI")]
+    public void OpenTunnelPanel_WithWorkflowService_OpensPanel()
+    {
+        ITunnelWorkflowService workflow = Substitute.For<ITunnelWorkflowService>();
+        var vm = new MainWindowViewModel(tunnelWorkflowService: workflow);
+
+        vm.OpenTunnelPanel();
+
+        Assert.IsNotNull(vm.TunnelPanel);
+        Assert.IsTrue(vm.IsTunnelPanelOpen);
+    }
+
+    [TestMethod]
+    [TestCategory("UI")]
+    public void OpenTunnelPanel_WithOnlyCoreTunnelService_DoesNotBypassWorkflow()
+    {
+        ITunnelService tunnelService = Substitute.For<ITunnelService>();
+        var vm = new MainWindowViewModel(tunnelService: tunnelService);
+
+        vm.OpenTunnelPanel();
+
+        Assert.IsNull(vm.TunnelPanel);
+        Assert.IsFalse(vm.IsTunnelPanelOpen);
     }
 
     [TestMethod]
@@ -301,7 +329,6 @@ public class MainWindowViewModelTests
     {
         var vm = new SidebarViewModel();
 
-        Assert.IsNotNull(vm.SettingsCommand);
         Assert.IsNotNull(vm.NotificationsCommand);
         Assert.IsNotNull(vm.RecentConnections);
     }

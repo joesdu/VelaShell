@@ -7,7 +7,7 @@
             "type": "process",
             "args": [
                 "build",
-                "${workspaceFolder}/src/VelaShell.App/VelaShell.csproj",
+                "${workspaceFolder}/src/VelaShell/VelaShell.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary;ForceNoAlign"
             ],
@@ -19,7 +19,7 @@
             "type": "process",
             "args": [
                 "publish",
-                "${workspaceFolder}/src/VelaShell.App/VelaShell.csproj",
+                "${workspaceFolder}/src/VelaShell/VelaShell.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary;ForceNoAlign"
             ],
@@ -33,7 +33,7 @@
                 "watch",
                 "run",
                 "--project",
-                "${workspaceFolder}/src/VelaShell.App/VelaShell.csproj"
+                "${workspaceFolder}/src/VelaShell/VelaShell.csproj"
             ],
             "problemMatcher": "$msCompile"
         }
