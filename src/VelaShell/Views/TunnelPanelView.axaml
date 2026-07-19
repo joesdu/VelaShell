@@ -185,7 +185,8 @@
                   </StackPanel>
                   <!-- 编辑:把配置填回表单,保存后按新配置重建 -->
                   <Button Grid.Column="1" Classes="row-action"
-                          ToolTip.Tip="{loc:Localize Tunnel_EditTip}"
+                          IsEnabled="{Binding !IsActive}"
+                          ToolTip.Tip="{Binding EditToolTip}"
                           Command="{Binding $parent[ItemsControl].((vm:TunnelPanelViewModel)DataContext).EditTunnelCommand}"
                           CommandParameter="{Binding Id}">
                     <pc:LucideIcon Width="10" Height="10"

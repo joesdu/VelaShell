@@ -2687,6 +2687,12 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Tunnel_EditTip" xml:space="preserve">
     <value>编辑隧道</value>
   </data>
+  <data name="Tunnel_EditDisabledTip" xml:space="preserve">
+    <value>隧道运行中，不可编辑。</value>
+  </data>
+  <data name="Tunnel_DeleteConfirmationBody" xml:space="preserve">
+    <value>是否确认删除？若是运行中的隧道被删除，该隧道将会自动关闭。</value>
+  </data>
   <data name="Tunnel_EmptyHint" xml:space="preserve">
     <value>// 这台服务器还没有隧道,先在下方创建一条</value>
   </data>

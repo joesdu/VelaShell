@@ -2596,6 +2596,12 @@ Overwrite it? (Cancel skips this file)</value>
   <data name="Tunnel_EditTip" xml:space="preserve">
     <value>Edit tunnel</value>
   </data>
+  <data name="Tunnel_EditDisabledTip" xml:space="preserve">
+    <value>Cannot edit while tunnel is running</value>
+  </data>
+  <data name="Tunnel_DeleteConfirmationBody" xml:space="preserve">
+    <value>Confirm delete? If a running tunnel is deleted, it will be closed automatically.</value>
+  </data>
   <data name="Tunnel_EmptyHint" xml:space="preserve">
     <value>// No tunnels on this server yet — create one below</value>
   </data>

@@ -97,6 +97,9 @@ public class TunnelItemViewModel(TunnelInfo tunnelInfo) : ReactiveObject
     /// <summary>隧道是否处于活动状态。</summary>
     public bool IsActive => Status == TunnelStatus.Active;
 
+    /// <summary>编辑按钮提示:活动隧道不可编辑。</summary>
+    public string EditToolTip => Strings.Get(IsActive ? "Tunnel_EditDisabledTip" : "Tunnel_EditTip");
+
     /// <summary>最近一次转发通道错误(目标拒绝连接等),由服务写入共享 TunnelInfo。</summary>
     public string? LastError => _tunnelInfo.LastError;
 
@@ -118,6 +121,7 @@ public class TunnelItemViewModel(TunnelInfo tunnelInfo) : ReactiveObject
     {
         this.RaisePropertyChanged(nameof(Status));
         this.RaisePropertyChanged(nameof(IsActive));
+        this.RaisePropertyChanged(nameof(EditToolTip));
         this.RaisePropertyChanged(nameof(StatusText));
         this.RaisePropertyChanged(nameof(LastError));
         this.RaisePropertyChanged(nameof(HasError));
