@@ -414,6 +414,9 @@ public partial class MainWindow : Window
             {
                 previewService.PreviewRequested += OnSettingsPreviewedForWindow;
                 Closed += (_, _) => previewService.PreviewRequested -= OnSettingsPreviewedForWindow;
+                previewService.WindowOpacityPreviewRequested += OnSettingsOpacityPreviewedForWindow;
+                Closed += (_, _) =>
+                    previewService.WindowOpacityPreviewRequested -= OnSettingsOpacityPreviewedForWindow;
             }
             try
             {
@@ -471,12 +474,22 @@ public partial class MainWindow : Window
     private void OnSettingsPreviewedForWindow(AppSettings settings) =>
         Dispatcher.UIThread.Post(() => ApplyWindowAppearance(settings));
 
+    private void OnSettingsOpacityPreviewedForWindow(int percent)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            ApplyWindowOpacity(percent);
+            return;
+        }
+        Dispatcher.UIThread.Post(() => ApplyWindowOpacity(percent));
+    }
+
     /// <summary>应用设置 → 外观:窗口透明度、侧边栏位置、界面字体/字号。
     /// (菜单栏显隐设置已随文字菜单一并移除:自绘标题栏承载窗口控制按钮,必须常显。)</summary>
     private void ApplyWindowAppearance(AppSettings settings)
     {
         AppearanceOptions a = settings.Appearance;
-        Opacity = Math.Clamp(a.WindowOpacityPercent, 10, 100) / 100.0;
+        ApplyWindowOpacity(a.WindowOpacityPercent);
         ApplySidebarPosition(a.SidebarPosition == "right");
         if (Application.Current is not { } app)
         {
@@ -505,6 +518,9 @@ public partial class MainWindow : Window
         app.Resources["VelaUiFontSize"] = uiFontSize;
         app.Resources["ControlContentThemeFontSize"] = uiFontSize;
     }
+
+    private void ApplyWindowOpacity(int percent) =>
+        Opacity = Math.Clamp(percent, 10, 100) / 100.0;
 
     /// <summary>侧边栏位置(设置 → 外观):交换侧边栏与主区所在列,分隔条留在中间。</summary>
     private void ApplySidebarPosition(bool right)

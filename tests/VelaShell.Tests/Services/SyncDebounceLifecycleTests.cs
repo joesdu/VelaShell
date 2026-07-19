@@ -16,7 +16,7 @@ public class SyncDebounceLifecycleTests
 
         Assert.IsTrue(ok1);
         Assert.IsTrue(ok2);
-        Assert.IsTrue(t1 != t2, "Consecutive tokens must differ");
+        Assert.AreNotEqual(t2, t1, "Consecutive tokens must differ");
     }
 
     [TestMethod]
@@ -148,7 +148,7 @@ public class SyncDebounceLifecycleTests
             }
         });
 
-        Assert.AreEqual(1, all.Count(token => !token.IsCancellationRequested));
+        Assert.ContainsSingle(token => !token.IsCancellationRequested, all);
 
         lifecycle.Shutdown();
 

@@ -74,7 +74,7 @@ public class SubpacketTests
         byte[] wire = ZModemSubpacket.Write([], ZModemSubpacketEnd.EndNoAck, useCrc32: false);
         ZModemSubpacketResult result = await ReadOneAsync(wire, useCrc32: false, wire.Length);
         Assert.AreEqual(ZModemSubpacketStatus.Ok, result.Status);
-        Assert.AreEqual(0, result.Data.Length);
+        Assert.IsEmpty(result.Data);
     }
 
     [TestMethod]

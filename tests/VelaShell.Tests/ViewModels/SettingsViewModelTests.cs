@@ -20,7 +20,50 @@ public class SettingsViewModelTests
         _themeService = Substitute.For<IThemeService>();
     }
 
-    private SettingsViewModel CreateVm() => new(_settingsService, _themeService);
+    private SettingsViewModel CreateVm(ISettingsPreviewService? previewService = null) =>
+        new(_settingsService, _themeService, previewService: previewService);
+
+    [TestMethod]
+    [TestCategory("Settings")]
+    public async Task AppearanceOpacityChange_PreviewsEveryValueImmediately_WithoutSnapshot()
+    {
+        ISettingsPreviewService preview = new SettingsPreviewService();
+        var opacityValues = new List<int>();
+        var snapshots = new List<AppSettings>();
+        preview.WindowOpacityPreviewRequested += value => opacityValues.Add(value);
+        preview.PreviewRequested += snapshot => snapshots.Add(snapshot);
+        _settingsService.GetSettingsAsync().Returns(new AppSettings());
+
+        SettingsViewModel vm = CreateVm(preview);
+        await vm.LoadCommand.Execute().FirstAsync();
+
+        foreach (int value in new[] { 20, 30, 40, 50 })
+        {
+            vm.Appearance.WindowOpacityPercent = value;
+        }
+
+        CollectionAssert.AreEqual(new[] { 20, 30, 40, 50 }, opacityValues);
+        Assert.IsEmpty(snapshots);
+    }
+
+    [TestMethod]
+    [TestCategory("Settings")]
+    public async Task OpacityOnlyPreview_NotifyClosed_BroadcastsOriginalBaseline()
+    {
+        ISettingsPreviewService preview = new SettingsPreviewService();
+        var snapshots = new List<AppSettings>();
+        preview.PreviewRequested += snapshot => snapshots.Add(snapshot);
+        var baseline = new AppSettings { Appearance = new() { WindowOpacityPercent = 80 } };
+        _settingsService.GetSettingsAsync().Returns(baseline);
+
+        SettingsViewModel vm = CreateVm(preview);
+        await vm.LoadCommand.Execute().FirstAsync();
+        vm.Appearance.WindowOpacityPercent = 40;
+        vm.NotifyClosed();
+
+        Assert.HasCount(1, snapshots);
+        Assert.AreEqual(80, snapshots[0].Appearance.WindowOpacityPercent);
+    }
 
     [TestMethod]
     [TestCategory("Settings")]

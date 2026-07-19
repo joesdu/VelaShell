@@ -14,6 +14,12 @@ public interface ISettingsPreviewService
 
     /// <summary>广播一份未持久化的设置快照以触发即时预览。</summary>
     void Preview(AppSettings settings);
+
+    /// <summary>窗口不透明度即时预览事件(已钳位到 10..100)。绕过 AppSettings 快照路径,在 UI 线程触发。</summary>
+    event Action<int>? WindowOpacityPreviewRequested;
+
+    /// <summary>广播窗口不透明度百分比(钳位到 10..100),不产生 AppSettings/JSON 开销。</summary>
+    void PreviewWindowOpacity(int percent);
 }
 
 /// <summary><see cref="ISettingsPreviewService" /> 的默认实现:将预览请求同步转发给订阅者。</summary>
@@ -27,5 +33,14 @@ public sealed class SettingsPreviewService : ISettingsPreviewService
     {
         ArgumentNullException.ThrowIfNull(settings);
         PreviewRequested?.Invoke(settings);
+    }
+
+    /// <inheritdoc />
+    public event Action<int>? WindowOpacityPreviewRequested;
+
+    /// <inheritdoc />
+    public void PreviewWindowOpacity(int percent)
+    {
+        WindowOpacityPreviewRequested?.Invoke(Math.Clamp(percent, 10, 100));
     }
 }

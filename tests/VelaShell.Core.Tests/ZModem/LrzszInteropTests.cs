@@ -177,7 +177,7 @@ public class LrzszInteropTests
 
         Assert.AreEqual(ZModemTransferStatus.Failed, session.Status);
         // 每次超时都应补发一次 ZRINIT,最后再发取消序列。
-        Assert.IsTrue(duplex.WrittenBytes > 0, "超时后应向对端发过 ZRINIT / 取消序列");
+        Assert.IsGreaterThan(0, duplex.WrittenBytes, "超时后应向对端发过 ZRINIT / 取消序列");
     }
 
     /// <summary>
@@ -192,12 +192,12 @@ public class LrzszInteropTests
         ZModemOptions o = ZModemOptions.Default;
         // 握手最坏耗时 ≈ (1 次首读 + HandshakeRetries 次重试) × HandshakeTimeout。
         TimeSpan worstCase = o.HandshakeTimeout * (o.HandshakeRetries + 1);
-        Assert.IsTrue(
-            worstCase <= TimeSpan.FromSeconds(30),
+        Assert.IsLessThanOrEqualTo(
+            TimeSpan.FromSeconds(30), worstCase,
             $"默认握手预算最坏 {worstCase.TotalSeconds:F0}s,应为秒级(旧实现曾是 FrameTimeout×MaxRetries=300s)");
         // 握手预算必须显著短于数据阶段预算,否则等于没区分。
-        Assert.IsTrue(
-            o.HandshakeTimeout < o.FrameTimeout,
+        Assert.IsLessThan(
+            o.FrameTimeout, o.HandshakeTimeout,
             "握手超时应远短于数据阶段超时");
     }
 

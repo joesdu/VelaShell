@@ -1108,8 +1108,20 @@ public class SettingsViewModel : ReactiveObject
 
     private Avalonia.Threading.DispatcherTimer? _previewDebounce;
 
-    private void OnAppearanceItemChanged(object? sender, PropertyChangedEventArgs e) =>
+    private void OnAppearanceItemChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AppearanceOptions.WindowOpacityPercent))
+        {
+            if (_suppressPreview || _previewService is null)
+            {
+                return;
+            }
+            _previewed = true;
+            _previewService.PreviewWindowOpacity(Appearance.WindowOpacityPercent);
+            return;
+        }
         SchedulePreviewBroadcast();
+    }
 
     /// <summary>
     /// 合并外观单项修改的预览广播到 50ms 尾沿:拖动滑杆时 INPC 每次微调都来一发,

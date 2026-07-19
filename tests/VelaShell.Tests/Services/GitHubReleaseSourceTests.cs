@@ -179,7 +179,7 @@ public class GitHubReleaseSourceTests : IDisposable
         string? hash = await source.DownloadAssetAsync(
             CreateManifest("pkg.zip", payload.Length), Asset(payload.Length), destination);
 
-        Assert.AreEqual(3, ranges.Count, "24MB 应切成 3 段并发请求");
+        Assert.HasCount(3, ranges, "24MB 应切成 3 段并发请求");
         CollectionAssert.AreEquivalent(
             new long[] { 0, 8 * 1024 * 1024, 16 * 1024 * 1024 },
             ranges.Select(r => r.From).ToArray());
@@ -220,7 +220,7 @@ public class GitHubReleaseSourceTests : IDisposable
         string? hash = await source.DownloadAssetAsync(
             CreateManifest("pkg.zip", payload.Length), Asset(payload.Length), destination);
 
-        Assert.AreEqual(2, ranges.Count, "已完成的第一段不应重新请求");
+        Assert.HasCount(2, ranges, "已完成的第一段不应重新请求");
         CollectionAssert.AreEquivalent(
             new long[] { segmentLength, 2 * segmentLength },
             ranges.Select(r => r.From).ToArray());
