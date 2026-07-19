@@ -38,6 +38,45 @@ public sealed class ConnectionProfileViewModelTests
     }
 
     [TestMethod]
+    public async Task NewProfile_DefaultsToSsh_AndCanSaveSftp()
+    {
+        var vm = new ConnectionProfileViewModel
+        {
+            Host = "files.example.com",
+            Port = 22,
+            Username = "root",
+            Password = SecureStringConvert.FromPlaintext("secret"),
+        };
+
+        Assert.AreEqual(ConnectionType.SSH, vm.ConnectionType);
+        vm.SelectConnectionTypeCommand.Execute(ConnectionType.SFTP).Subscribe();
+
+        SessionProfile? profile = await vm.SaveCommand.Execute().FirstAsync();
+
+        Assert.IsNotNull(profile);
+        Assert.AreEqual(ConnectionType.SFTP, profile.ConnectionType);
+        Assert.IsTrue(vm.IsSftpSelected);
+        Assert.IsFalse(vm.IsSshSelected);
+    }
+
+    [TestMethod]
+    public void EditProfile_ReopensSelectedProtocol()
+    {
+        var existing = new SessionProfile
+        {
+            ConnectionType = ConnectionType.SFTP,
+            Host = "files.example.com",
+            Username = "root",
+        };
+
+        var vm = new ConnectionProfileViewModel(existing);
+
+        Assert.AreEqual(ConnectionType.SFTP, vm.ConnectionType);
+        Assert.IsTrue(vm.IsSftpSelected);
+        Assert.IsFalse(vm.IsSshSelected);
+    }
+
+    [TestMethod]
     public async Task SaveCommand_UsesWorkflowServiceAndReturnsSavedProfile()
     {
         IConnectionWorkflowService? workflow = Substitute.For<IConnectionWorkflowService>();

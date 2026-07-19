@@ -228,7 +228,7 @@
                 <Separator IsVisible="{Binding !IsGroup}" />
                 <MenuItem Header="{loc:Localize Tree_OpenSftp}"
                           Command="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).OpenSftpCommand}"
-                          IsVisible="{Binding !IsGroup}">
+                          IsVisible="{Binding CanOpenSftp}">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-open}"
                                    Foreground="{DynamicResource VelaTextTertiary}" />
@@ -236,7 +236,7 @@
                 </MenuItem>
                 <MenuItem Header="{loc:Localize Tree_PortForwarding}"
                           Command="{Binding $parent[TreeView].((vm:SessionTreeViewModel)DataContext).PortForwardCommand}"
-                          IsVisible="{Binding !IsGroup}">
+                          IsVisible="{Binding IsSshProfile}">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.arrow-right-left}"
                                    Foreground="{DynamicResource VelaTextTertiary}" />

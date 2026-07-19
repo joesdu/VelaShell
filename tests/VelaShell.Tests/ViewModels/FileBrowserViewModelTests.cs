@@ -3,6 +3,7 @@ using NSubstitute;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
+using VelaShell.Services;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;
@@ -538,6 +539,27 @@ public class FileBrowserViewModelTests
 
     [TestMethod]
     [TestCategory("FileBrowser")]
+    [DataRow("..")]
+    [DataRow(".")]
+    [DataRow("/escape")]
+    [DataRow("../escape")]
+    [DataRow("nested/name")]
+    [DataRow("nested\\name")]
+    public async Task NewFolder_RejectsUnsafeLeafNameBeforeSftp(string name)
+    {
+        _vm.CurrentPath = "/home/user";
+        _vm.PromptForText = (_, _) => Task.FromResult<string?>(name);
+
+        await _vm.NewFolderCommand.Execute().FirstAsync();
+
+        Assert.AreEqual(Strings.Get("KeySvc_InvalidName"), _vm.ErrorMessage);
+        await _sftpService
+            .DidNotReceive()
+            .CreateDirectoryAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public async Task NewFile_PromptsAndCreatesUnderCurrentPath()
     {
         _vm.CurrentPath = "/home/user";
@@ -549,6 +571,27 @@ public class FileBrowserViewModelTests
         await _sftpService
             .Received(1)
             .CreateFileAsync(_sessionId, "/home/user/notes.txt", Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    [DataRow("..")]
+    [DataRow(".")]
+    [DataRow("/escape")]
+    [DataRow("../escape")]
+    [DataRow("nested/name")]
+    [DataRow("nested\\name")]
+    public async Task NewFile_RejectsUnsafeLeafNameBeforeSftp(string name)
+    {
+        _vm.CurrentPath = "/home/user";
+        _vm.PromptForText = (_, _) => Task.FromResult<string?>(name);
+
+        await _vm.NewFileCommand.Execute().FirstAsync();
+
+        Assert.AreEqual(Strings.Get("KeySvc_InvalidName"), _vm.ErrorMessage);
+        await _sftpService
+            .DidNotReceive()
+            .CreateFileAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [TestMethod]
@@ -567,6 +610,32 @@ public class FileBrowserViewModelTests
                 _sessionId,
                 "/home/user/readme.txt",
                 "/home/user/renamed.txt",
+                Arg.Any<CancellationToken>()
+            );
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    [DataRow("..")]
+    [DataRow(".")]
+    [DataRow("/escape")]
+    [DataRow("../escape")]
+    [DataRow("nested/name")]
+    [DataRow("nested\\name")]
+    public async Task Rename_RejectsUnsafeLeafNameBeforeSftp(string name)
+    {
+        _vm.PromptForText = (_, _) => Task.FromResult<string?>(name);
+        var file = new RemoteFileInfoViewModel(CreateTestFiles()[1]);
+
+        await _vm.RenameCommand.Execute(file).FirstAsync();
+
+        Assert.AreEqual(Strings.Get("KeySvc_InvalidName"), _vm.ErrorMessage);
+        await _sftpService
+            .DidNotReceive()
+            .RenameAsync(
+                Arg.Any<Guid>(),
+                Arg.Any<string>(),
+                Arg.Any<string>(),
                 Arg.Any<CancellationToken>()
             );
     }
@@ -636,6 +705,131 @@ public class FileBrowserViewModelTests
                 _sessionId,
                 "/home/user/readme.txt",
                 "C:/local/readme.txt",
+                Arg.Any<IProgress<TransferProgress>?>(),
+                Arg.Any<CancellationToken>()
+            );
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    [DataRow("..")]
+    [DataRow(".")]
+    [DataRow("/escape.txt")]
+    [DataRow("../escape.txt")]
+    [DataRow("nested/name.txt")]
+    [DataRow("nested\\name.txt")]
+    public async Task DownloadAndOpen_RejectsUnsafeRemoteLeafNameBeforeLocalTransfer(string name)
+    {
+        string? openedPath = null;
+        _vm.OpenLocalFile = path =>
+        {
+            openedPath = path;
+            return Task.CompletedTask;
+        };
+        _sftpService
+            .DownloadFileAsync(
+                _sessionId,
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<IProgress<TransferProgress>?>(),
+                Arg.Any<CancellationToken>()
+            )
+            .Returns(Task.CompletedTask);
+        var file = new RemoteFileInfoViewModel(
+            new()
+            {
+                Name = name,
+                FullPath = "/home/user/" + name,
+                Size = 1,
+                IsDirectory = false,
+                Permissions = "-rw-r--r--",
+                LastModified = DateTime.UtcNow,
+                Owner = "user",
+                Group = "user",
+            }
+        );
+
+        await _vm.ActivateCommand.Execute(file).FirstAsync();
+
+        Assert.IsNull(openedPath);
+        await _sftpService
+            .DidNotReceive()
+            .DownloadFileAsync(
+                Arg.Any<Guid>(),
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<IProgress<TransferProgress>?>(),
+                Arg.Any<CancellationToken>()
+            );
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task OpenWithDefaultEditor_RejectsUnsafeRemoteLeafNameBeforeExternalEdit()
+    {
+        try
+        {
+            _vm.GetDefaultEditorPath = () => Task.FromResult<string?>("not-a-real-editor");
+            var file = new RemoteFileInfoViewModel(
+                new()
+                {
+                    Name = "../escape.txt",
+                    FullPath = "/home/user/../escape.txt",
+                    Size = 1,
+                    IsDirectory = false,
+                    Permissions = "-rw-r--r--",
+                    LastModified = DateTime.UtcNow,
+                    Owner = "user",
+                    Group = "user",
+                }
+            );
+
+            await _vm.OpenWithDefaultEditorCommand.Execute(file).FirstAsync();
+
+            Assert.AreEqual(Strings.Get("KeySvc_InvalidName"), _vm.ErrorMessage);
+            await _sftpService
+                .DidNotReceive()
+                .DownloadFileAsync(
+                    Arg.Any<Guid>(),
+                    Arg.Any<string>(),
+                    Arg.Any<string>(),
+                    Arg.Any<IProgress<TransferProgress>?>(),
+                    Arg.Any<CancellationToken>()
+                );
+        }
+        finally
+        {
+            ExternalEditSessionManager.CleanupAll();
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task OpenItem_RejectsUnsafeRemoteLeafNameBeforeSftp()
+    {
+        _vm.OpenInBuiltInEditor = (_, _, _) => Task.CompletedTask;
+        var file = new RemoteFileInfoViewModel(
+            new()
+            {
+                Name = "../escape.txt",
+                FullPath = "/home/user/../escape.txt",
+                Size = 1,
+                IsDirectory = false,
+                Permissions = "-rw-r--r--",
+                LastModified = DateTime.UtcNow,
+                Owner = "user",
+                Group = "user",
+            }
+        );
+
+        await _vm.OpenItemCommand.Execute(file).FirstAsync();
+
+        await _sftpService
+            .DidNotReceive()
+            .DownloadFileAsync(
+                Arg.Any<Guid>(),
+                Arg.Any<string>(),
+                Arg.Any<string>(),
                 Arg.Any<IProgress<TransferProgress>?>(),
                 Arg.Any<CancellationToken>()
             );
@@ -759,6 +953,141 @@ public class FileBrowserViewModelTests
             if (Directory.Exists(tempRoot))
             {
                 Directory.Delete(tempRoot, true);
+            }
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task DownloadItem_OnDirectory_RejectsUnsafeChildNameBeforeCreatingOrTransferring()
+    {
+        string tempRoot = Path.Combine(Path.GetTempPath(), $"vela-download-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+        try
+        {
+            _vm.PickFolderForDownload = () => Task.FromResult<string?>(tempRoot);
+            _sftpService
+                .ListDirectoryAsync(_sessionId, "/home/user/documents", Arg.Any<CancellationToken>())
+                .Returns(
+                    Task.FromResult(
+                        new List<RemoteFileInfo>
+                        {
+                            new()
+                            {
+                                Name = "../escape.txt",
+                                FullPath = "/home/user/documents/../escape.txt",
+                                Size = 1,
+                                IsDirectory = false,
+                                Permissions = "-rw-r--r--",
+                                LastModified = DateTime.UtcNow,
+                                Owner = "user",
+                                Group = "user",
+                            },
+                        }
+                    )
+                );
+            var dir = new RemoteFileInfoViewModel(CreateTestFiles()[0]);
+
+            await _vm.DownloadItemCommand.Execute(dir).FirstAsync();
+
+            Assert.IsFalse(File.Exists(Path.Combine(tempRoot, "escape.txt")));
+            await _sftpService
+                .DidNotReceive()
+                .DownloadFileAsync(
+                    Arg.Any<Guid>(),
+                    Arg.Any<string>(),
+                    Arg.Any<string>(),
+                    Arg.Any<IProgress<TransferProgress>?>(),
+                    Arg.Any<CancellationToken>()
+                );
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, true);
+            }
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task DownloadItem_OnDirectory_RejectsExistingSymlinkChildBeforeTransfer()
+    {
+        string tempRoot = Path.Combine(Path.GetTempPath(), $"vela-download-{Guid.NewGuid():N}");
+        string localDirectory = Path.Combine(tempRoot, "documents");
+        string outside = Path.Combine(Path.GetTempPath(), $"vela-outside-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(localDirectory);
+        Directory.CreateDirectory(outside);
+        string link = Path.Combine(localDirectory, "linked");
+        try
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(link, outside);
+            }
+            catch (Exception ex) when (
+                ex is UnauthorizedAccessException
+                    or PlatformNotSupportedException
+                    or IOException
+            )
+            {
+                Assert.Inconclusive($"Symlink creation is unavailable: {ex.Message}");
+                return;
+            }
+
+            _vm.PickFolderForDownload = () => Task.FromResult<string?>(tempRoot);
+            _sftpService
+                .ListDirectoryAsync(_sessionId, "/home/user/documents", Arg.Any<CancellationToken>())
+                .Returns(
+                    Task.FromResult(
+                        new List<RemoteFileInfo>
+                        {
+                            new()
+                            {
+                                Name = "linked",
+                                FullPath = "/home/user/documents/linked",
+                                Size = 4096,
+                                IsDirectory = true,
+                                Permissions = "drwxr-xr-x",
+                                LastModified = DateTime.UtcNow,
+                                Owner = "user",
+                                Group = "user",
+                            },
+                        }
+                    )
+                );
+            var dir = new RemoteFileInfoViewModel(CreateTestFiles()[0]);
+
+            await _vm.DownloadItemCommand.Execute(dir).FirstAsync();
+
+            Assert.AreEqual(Strings.Get("KeySvc_InvalidName"), _vm.ErrorMessage);
+            await _sftpService
+                .DidNotReceive()
+                .DownloadFileAsync(
+                    Arg.Any<Guid>(),
+                    Arg.Any<string>(),
+                    Arg.Any<string>(),
+                    Arg.Any<IProgress<TransferProgress>?>(),
+                    Arg.Any<CancellationToken>()
+                );
+            await _sftpService
+                .DidNotReceive()
+                .ListDirectoryAsync(
+                    _sessionId,
+                    "/home/user/documents/linked",
+                    Arg.Any<CancellationToken>()
+                );
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, true);
+            }
+            if (Directory.Exists(outside))
+            {
+                Directory.Delete(outside, true);
             }
         }
     }

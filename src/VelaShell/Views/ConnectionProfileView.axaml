@@ -17,8 +17,10 @@
         TransparencyLevelHint="Transparent"
         Background="Transparent"
         WindowStartupLocation="CenterOwner">
-
   <Window.Styles>
+    <Style Selector="AdornerLayer">
+      <Setter Property="DefaultFocusAdorner" Value="{x:Null}" />
+    </Style>
     <!-- 表单标签 -->
     <Style Selector="TextBlock.field-label">
       <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
@@ -89,6 +91,43 @@
       <Setter Property="FontSize" Value="11" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
+    <Style Selector="Button.proto-tab">
+      <Setter Property="FocusAdorner" Value="{x:Null}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0,0,0,2" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+      <Setter Property="Padding" Value="14,0" />
+      <Setter Property="Height" Value="32" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.proto-tab:pointerover">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="Button.proto-tab.selected">
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
+    </Style>
+    <!-- Avalonia's :focus state is the keyboard-focus hook for this control. Keep the
+         selected underline hierarchy intact; the tokenized focus fill is the additional
+         keyboard affordance. -->
+    <Style Selector="Button.proto-tab:focus">
+      <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
+    </Style>
+    <!-- Fluent's focus layer is above the Button background; override only this
+         class so its system accent cannot replace the Vela focus token. -->
+    <Style Selector="Button.proto-tab:focus /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Button.proto-tab:focus /template/ Border#PART_FocusAdorner">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
   </Window.Styles>
 
   <!-- 自绘对话框卡片(设计:圆角 8、外描边、投影) -->
@@ -125,27 +164,26 @@
         </Grid>
       </Border>
 
-      <!-- 协议标签页:SSH 激活;其余暂未支持 -->
+      <!-- 协议标签页:SSH/SFTP 可选;Telnet/串口保持禁用 -->
       <Border Height="36" Padding="20,0"
               BorderThickness="0,0,0,1"
               BorderBrush="{DynamicResource VelaBorderPrimary}">
         <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
-          <Border Classes="proto-tab"
-                  BorderThickness="0,0,0,2"
-                  BorderBrush="{DynamicResource VelaAccent}">
-            <TextBlock Classes="proto-label" Text="SSH"
-                       Foreground="{DynamicResource VelaAccent}"
-                       FontWeight="Medium" />
-          </Border>
-          <Border Classes="proto-tab" ToolTip.Tip="{loc:Localize Profile_NotSupported}">
-            <TextBlock Classes="proto-label" Text="SFTP"
-                       Foreground="{DynamicResource VelaTextTertiary}" />
-          </Border>
-          <Border Classes="proto-tab" ToolTip.Tip="{loc:Localize Profile_NotSupported}">
+          <Button Classes="proto-tab" Classes.selected="{Binding IsSshSelected}"
+                  Command="{Binding SelectConnectionTypeCommand}"
+                  CommandParameter="{x:Static models:ConnectionType.SSH}">
+            <TextBlock Classes="proto-label" Text="SSH" FontWeight="Medium" />
+          </Button>
+          <Button Classes="proto-tab" Classes.selected="{Binding IsSftpSelected}"
+                  Command="{Binding SelectConnectionTypeCommand}"
+                  CommandParameter="{x:Static models:ConnectionType.SFTP}">
+            <TextBlock Classes="proto-label" Text="SFTP" FontWeight="Medium" />
+          </Button>
+          <Border Classes="proto-tab" IsEnabled="False" ToolTip.Tip="{loc:Localize Profile_NotSupported}">
             <TextBlock Classes="proto-label" Text="Telnet"
                        Foreground="{DynamicResource VelaTextTertiary}" />
           </Border>
-          <Border Classes="proto-tab" ToolTip.Tip="{loc:Localize Profile_NotSupported}">
+          <Border Classes="proto-tab" IsEnabled="False" ToolTip.Tip="{loc:Localize Profile_NotSupported}">
             <TextBlock Classes="proto-label" Text="{loc:Localize Profile_Serial}"
                        Foreground="{DynamicResource VelaTextTertiary}" />
           </Border>

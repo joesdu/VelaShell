@@ -1,7 +1,10 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using VelaShell.Core.Resources;
 using VelaShell.ViewModels;
 
@@ -17,12 +20,65 @@ public partial class ConnectionProfileView : Window
         Opened += OnOpened;
     }
 
+    private void ApplyProtoTabFocusAdorner()
+    {
+        List<Button> buttons = this.GetVisualDescendants().OfType<Button>()
+            .Where(button => button.Classes.Contains("proto-tab"))
+            .ToList();
+        foreach (Button button in buttons)
+        {
+            AdornerLayer? layer = AdornerLayer.GetAdornerLayer(button);
+            if (layer is not null)
+            {
+                layer.DefaultFocusAdorner = null;
+            }
+
+            List<Control> controls = new[] { button }
+                .Concat(button.GetVisualDescendants().OfType<Control>())
+                .ToList();
+            foreach (Control control in controls)
+            {
+                control.FocusAdorner = null;
+                control.SetValue(AdornerLayer.DefaultFocusAdornerProperty, null);
+            }
+            button.GotFocus += ProtoTab_GotFocus;
+            button.LostFocus += ProtoTab_LostFocus;
+        }
+    }
+
+    private void ProtoTab_GotFocus(object? sender, FocusChangedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            AdornerLayer.SetAdorner(button, CreateVelaFocusAdorner());
+        }
+    }
+
+    private static void ProtoTab_LostFocus(object? sender, FocusChangedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            AdornerLayer.SetAdorner(button, null);
+        }
+    }
+
+    private Border CreateVelaFocusAdorner()
+    {
+        Border border = new();
+        border.Background = this.FindResource("VelaAccentDim") as IBrush;
+        border.BorderBrush = this.FindResource("VelaAccent") as IBrush;
+        border.BorderThickness = new Avalonia.Thickness(1);
+        border.IsHitTestVisible = false;
+        return border;
+    }
+
     private async void OnOpened(object? sender, EventArgs e)
     {
         if (DataContext is not ConnectionProfileViewModel viewModel)
         {
             return;
         }
+        ApplyProtoTabFocusAdorner();
         viewModel.SaveCommand.Subscribe(Close);
         viewModel.ConnectCommand.Subscribe(Close);
         viewModel.CancelCommand.Subscribe(Close);

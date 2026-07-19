@@ -17,7 +17,7 @@ internal sealed class DockDragController(DockWorkspaceControl owner)
     private const double DragThreshold = 4;
     private const double EdgeRatio = 0.25;
 
-    private DockTabItem? _tab;
+    private DockTabItemBase? _tab;
     private DockDocument? _document;
     private Point _origin;
     private bool _dragging;
@@ -25,7 +25,7 @@ internal sealed class DockDragController(DockWorkspaceControl owner)
     private IPointer? _pointer;
     private TopLevel? _topLevel;
 
-    public void OnTabPressed(DockTabItem tab, PointerPressedEventArgs e)
+    public void OnTabPressed(DockTabItemBase tab, PointerPressedEventArgs e)
     {
         if (tab.DataContext is not DockDocument document || owner.Workspace is null)
         {

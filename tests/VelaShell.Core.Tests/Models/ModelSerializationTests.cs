@@ -40,6 +40,7 @@ public class ModelSerializationTests
         StringAssert.Contains(json, "\"privateKeyPassphrase\":");
         StringAssert.Contains(json, "\"groupId\":");
         StringAssert.Contains(json, "\"lastConnectedAt\":");
+        StringAssert.Contains(json, "\"connectionType\":");
         Assert.DoesNotContain("\"Name\":", json);
         Assert.DoesNotContain("\"Host\":", json);
     }
@@ -79,6 +80,28 @@ public class ModelSerializationTests
         Assert.AreEqual(groupId, session.GroupId);
         Assert.AreEqual(new DateTime(2026, 3, 5, 12, 0, 0, DateTimeKind.Utc), session.LastConnectedAt);
         CollectionAssert.AreEquivalent(new[] { "production", "critical" }.ToList(), session.Tags.ToList());
+    }
+
+    [TestMethod]
+    public void SessionProfile_ConnectionType_DefaultsToSsh_AndRoundTripsSftp()
+    {
+        string legacyJson = "{\"name\":\"legacy\"}";
+        SessionProfile? legacy = JsonSerializer.Deserialize<SessionProfile>(legacyJson, _options);
+        Assert.IsNotNull(legacy);
+        Assert.AreEqual(ConnectionType.SSH, legacy!.ConnectionType);
+
+        SessionProfile sftp = new() { ConnectionType = ConnectionType.SFTP };
+        string json = JsonSerializer.Serialize(sftp, _options);
+        SessionProfile? roundTrip = JsonSerializer.Deserialize<SessionProfile>(json, _options);
+        Assert.IsNotNull(roundTrip);
+        Assert.AreEqual(ConnectionType.SFTP, roundTrip!.ConnectionType);
+
+        SessionProfile? invalid = JsonSerializer.Deserialize<SessionProfile>(
+            "{\"connectionType\":99}",
+            _options
+        );
+        Assert.IsNotNull(invalid);
+        Assert.AreEqual(ConnectionType.SSH, invalid!.ConnectionType);
     }
 
     [TestMethod]
@@ -206,6 +229,28 @@ public class ModelSerializationTests
         SessionProfile? deserialized = JsonSerializer.Deserialize<SessionProfile>(json, _options);
         Assert.AreEqual(JsonSerializer.Serialize(original, _options),
             JsonSerializer.Serialize(deserialized, _options));
+    }
+
+    [TestMethod]
+    public void RecentConnectionEntry_ConnectionType_DefaultsAndNormalizesUnknownValues()
+    {
+        RecentConnectionEntry? legacy = JsonSerializer.Deserialize<RecentConnectionEntry>("{}", _options);
+        Assert.IsNotNull(legacy);
+        Assert.AreEqual(ConnectionType.SSH, legacy!.ConnectionType);
+
+        RecentConnectionEntry? sftp = JsonSerializer.Deserialize<RecentConnectionEntry>(
+            "{\"connectionType\":1}",
+            _options
+        );
+        Assert.IsNotNull(sftp);
+        Assert.AreEqual(ConnectionType.SFTP, sftp!.ConnectionType);
+
+        RecentConnectionEntry? invalid = JsonSerializer.Deserialize<RecentConnectionEntry>(
+            "{\"connectionType\":99}",
+            _options
+        );
+        Assert.IsNotNull(invalid);
+        Assert.AreEqual(ConnectionType.SSH, invalid!.ConnectionType);
     }
 
     [TestMethod]

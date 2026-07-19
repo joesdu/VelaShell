@@ -6,13 +6,29 @@ using VelaShell.Core.Resources;
 namespace VelaShell.Presentation.ViewModels;
 
 /// <summary>会话树中的一个节点视图模型,既可表示分组目录,也可表示单个会话行。</summary>
-public sealed class SessionTreeNodeViewModel(Guid id, string name, bool isGroup) : ReactiveObject
+public sealed class SessionTreeNodeViewModel(
+    Guid id,
+    string name,
+    bool isGroup,
+    ConnectionType connectionType = ConnectionType.SSH) : ReactiveObject
 {
     /// <summary>节点唯一标识(对应分组或会话的 Id)。</summary>
     public Guid Id { get; } = id;
 
     /// <summary>该节点是否为分组目录(而非叶子会话)。</summary>
     public bool IsGroup { get; } = isGroup;
+
+    /// <summary>叶子节点的协议类型;分组节点使用 SSH 默认值。</summary>
+    public ConnectionType ConnectionType { get; } = connectionType;
+
+    /// <summary>该节点是否允许 SSH 专属操作(终端侧 SFTP/隧道)。</summary>
+    public bool IsSshProfile => !IsGroup && ConnectionType == ConnectionType.SSH;
+
+    /// <summary>Whether this node represents a standalone SFTP profile.</summary>
+    public bool IsSftpProfile => !IsGroup && ConnectionType == ConnectionType.SFTP;
+
+    /// <summary>Whether the standalone SFTP action is available for this node.</summary>
+    public bool CanOpenSftp => IsSshProfile || IsSftpProfile;
 
     /// <summary>节点显示名称,可在重命名时更新并触发通知。</summary>
     public string Name

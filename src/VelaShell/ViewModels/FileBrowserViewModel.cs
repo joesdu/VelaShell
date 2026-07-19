@@ -992,7 +992,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// 家目录在服务器上不存在或不可访问(如 realpath(".") 返回的目录未创建/被 chroot)时,
     /// 自动回退到根目录 "/",避免停在报错的空白页。
     /// </summary>
-    private Task LoadInitialAsync(CancellationToken ct = default)
+    public Task LoadInitialAsync(CancellationToken ct = default)
     {
         // 合流:连接完成路径与激活标签订阅可能各触发一次初始加载,不加闸时两条
         // LoadInitial 并发各跑一遍 GetWorkingDirectory + 列目录(命令与调用方都在
@@ -1167,8 +1167,12 @@ public class FileBrowserViewModel : ReactiveObject
                 "VelaShell",
                 _sessionId.ToString("N")
             );
+            if (!LocalPathSafety.TryResolveDestination(tempDir, file.Name, out string localPath))
+            {
+                ErrorMessage = Strings.Get("KeySvc_InvalidName");
+                return;
+            }
             Directory.CreateDirectory(tempDir);
-            string localPath = Path.Combine(tempDir, file.Name);
             PlannedFileTransfer[] plan = [new(TransferType.Download, localPath, file.FullPath)];
             bool ok = await RunTransferBatchAsync(plan, ct);
             if (ok)
@@ -1248,8 +1252,12 @@ public class FileBrowserViewModel : ReactiveObject
                 "builtin-edit",
                 Guid.NewGuid().ToString("N")[..8]
             );
+            if (!LocalPathSafety.TryResolveDestination(tempDir, file.Name, out string localPath))
+            {
+                ErrorMessage = Strings.Get("KeySvc_InvalidName");
+                return;
+            }
             Directory.CreateDirectory(tempDir);
-            string localPath = Path.Combine(tempDir, file.Name);
             await _sftpService.DownloadFileAsync(_sessionId, file.FullPath, localPath, null, ct);
             string remotePath = file.FullPath;
             await OpenInBuiltInEditor(
@@ -1275,6 +1283,11 @@ public class FileBrowserViewModel : ReactiveObject
     {
         if (file is null || !file.IsRegularFile)
         {
+            return;
+        }
+        if (!LocalPathSafety.IsSafeLeafName(file.Name))
+        {
+            ErrorMessage = Strings.Get("KeySvc_InvalidName");
             return;
         }
         string? editor = GetDefaultEditorPath is null ? null : await GetDefaultEditorPath();
@@ -1496,7 +1509,10 @@ public class FileBrowserViewModel : ReactiveObject
     {
         if (isDirectory)
         {
-            string localSub = Path.Combine(localDir, name);
+            if (!LocalPathSafety.TryResolveDestination(localDir, name, out string localSub))
+            {
+                throw new InvalidOperationException(Strings.Get("KeySvc_InvalidName"));
+            }
             Directory.CreateDirectory(localSub);
             List<RemoteFileInfo> children = await _sftpService.ListDirectoryAsync(
                 _sessionId,
@@ -1517,28 +1533,36 @@ public class FileBrowserViewModel : ReactiveObject
         }
         else
         {
-            string localPath = Path.Combine(localDir, name);
+            if (!LocalPathSafety.TryResolveDestination(localDir, name, out string localPath))
+            {
+                throw new InvalidOperationException(Strings.Get("KeySvc_InvalidName"));
+            }
             plan.Add(new(TransferType.Download, localPath, remotePath));
             TransferSink?.UpdatePreparingCount(plan.Count);
         }
     }
 
-    private async Task DownloadSelectedAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Downloads explicitly selected remote entries into a caller-owned local directory.
+    /// The existing planning, conflict, progress and recursive-directory logic is reused.
+    /// </summary>
+    public async Task DownloadRemoteEntriesAsync(
+        IReadOnlyList<RemoteFileInfoViewModel> entries,
+        string localDirectory,
+        CancellationToken ct = default)
     {
-        if (PickFolderForDownload is null)
+        ArgumentNullException.ThrowIfNull(entries);
+        ArgumentException.ThrowIfNullOrWhiteSpace(localDirectory);
+        if (entries.Count == 0)
         {
             return;
         }
-        var targets = SelectedFiles.Where(f => !f.IsParentEntry).ToList();
+        var targets = entries.Where(f => !f.IsParentEntry).ToList();
         if (targets.Count == 0)
         {
             return;
         }
-        string? localDir = await PickFolderForDownload();
-        if (string.IsNullOrEmpty(localDir))
-        {
-            return;
-        }
+        string localDir = Path.GetFullPath(localDirectory);
         try
         {
             ErrorMessage = null;
@@ -1568,6 +1592,19 @@ public class FileBrowserViewModel : ReactiveObject
         finally
         {
             TransferSink?.EndPreparing();
+        }
+    }
+
+    private async Task DownloadSelectedAsync(CancellationToken ct = default)
+    {
+        if (PickFolderForDownload is null)
+        {
+            return;
+        }
+        string? localDirectory = await PickFolderForDownload();
+        if (!string.IsNullOrEmpty(localDirectory))
+        {
+            await DownloadRemoteEntriesAsync(SelectedFiles, localDirectory, ct);
         }
     }
 
@@ -1969,12 +2006,18 @@ public class FileBrowserViewModel : ReactiveObject
         {
             return;
         }
+        string trimmedName = name.Trim();
+        if (!LocalPathSafety.IsSafeLeafName(trimmedName))
+        {
+            ErrorMessage = Strings.Get("KeySvc_InvalidName");
+            return;
+        }
         try
         {
             ErrorMessage = null;
             await _sftpService.CreateDirectoryAsync(
                 _sessionId,
-                CombinePath(CurrentPath, name.Trim()),
+                CombinePath(CurrentPath, trimmedName),
                 ct
             );
             await RefreshAsync(ct);
@@ -1996,12 +2039,18 @@ public class FileBrowserViewModel : ReactiveObject
         {
             return;
         }
+        string trimmedName = name.Trim();
+        if (!LocalPathSafety.IsSafeLeafName(trimmedName))
+        {
+            ErrorMessage = Strings.Get("KeySvc_InvalidName");
+            return;
+        }
         try
         {
             ErrorMessage = null;
             await _sftpService.CreateFileAsync(
                 _sessionId,
-                CombinePath(CurrentPath, name.Trim()),
+                CombinePath(CurrentPath, trimmedName),
                 ct
             );
             await RefreshAsync(ct);
@@ -2023,10 +2072,16 @@ public class FileBrowserViewModel : ReactiveObject
         {
             return;
         }
+        string trimmedName = newName.Trim();
+        if (!LocalPathSafety.IsSafeLeafName(trimmedName))
+        {
+            ErrorMessage = Strings.Get("KeySvc_InvalidName");
+            return;
+        }
         try
         {
             ErrorMessage = null;
-            string target = CombinePath(ParentOf(file.FullPath), newName.Trim());
+            string target = CombinePath(ParentOf(file.FullPath), trimmedName);
             await _sftpService.RenameAsync(_sessionId, file.FullPath, target, ct);
             await RefreshAsync(ct);
         }

@@ -49,13 +49,17 @@ public sealed class SessionTreeViewModel : ReactiveObject
             DuplicateSelectedSessionAsync,
             hasSelectedSession
         );
+        IObservable<bool> hasSelectedSftpProfile = this.WhenAnyValue(x => x.SelectedNode)
+            .Select(node => node is { IsGroup: false, IsSshProfile: true } || node is { IsGroup: false, IsSftpProfile: true });
+        IObservable<bool> hasSelectedSshSession = this.WhenAnyValue(x => x.SelectedNode)
+            .Select(node => node is { IsGroup: false, IsSshProfile: true });
         OpenSftpCommand = ReactiveCommand.Create(
             () => RaiseForSelected(OpenSftpRequested),
-            hasSelectedSession
+            hasSelectedSftpProfile
         );
         PortForwardCommand = ReactiveCommand.Create(
-            () => RaiseForSelected(PortForwardRequested),
-            hasSelectedSession
+            () => RaiseForSelectedSsh(PortForwardRequested),
+            hasSelectedSshSession
         );
         DisconnectCommand = ReactiveCommand.Create(
             () => RaiseForSelected(DisconnectRequested),
@@ -151,6 +155,14 @@ public sealed class SessionTreeViewModel : ReactiveObject
         }
     }
 
+    private void RaiseForSelectedSsh(Action<SessionProfile>? handler)
+    {
+        if (SelectedNode is { IsSshProfile: true })
+        {
+            RaiseForSelected(handler);
+        }
+    }
+
     /// <summary>视图双击会话行时调用:选中并触发连接。</summary>
     public void RequestConnect(Guid sessionId)
     {
@@ -165,7 +177,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
     public void AddSession(SessionProfile session)
     {
         _sessionCache[session.Id] = session;
-        var sessionNode = new SessionTreeNodeViewModel(session.Id, session.Name, false);
+        var sessionNode = new SessionTreeNodeViewModel(session.Id, session.Name, false, session.ConnectionType);
         if (session.GroupId is null)
         {
             // 未分组会话直接挂树根(设计 FrJPu),不再有“未分组”目录。
@@ -326,6 +338,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
         }
         var copy = new SessionProfile
         {
+            ConnectionType = source.ConnectionType,
             Name = Strings.Format("Svc_CopySuffix", source.Name),
             Host = source.Host,
             Port = source.Port,
@@ -400,7 +413,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
     private SessionTreeNodeViewModel CreateSessionNode(SessionProfile session, bool isRootLevel)
     {
         _sessionCache[session.Id] = session;
-        var node = new SessionTreeNodeViewModel(session.Id, session.Name, false)
+        var node = new SessionTreeNodeViewModel(session.Id, session.Name, false, session.ConnectionType)
         {
             IsRootLevel = isRootLevel,
         };

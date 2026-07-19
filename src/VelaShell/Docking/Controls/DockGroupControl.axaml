@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:VelaShell.Docking.Controls"
+             xmlns:docking="using:VelaShell.Docking"
              xmlns:m="using:VelaShell.Docking.Model"
              xmlns:conv="using:VelaShell.Converters"
              xmlns:pc="using:VelaShell.Controls.Controls"
@@ -61,11 +62,14 @@
               <StackPanel Orientation="Horizontal" />
             </ItemsPanelTemplate>
           </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="m:DockDocument">
+          <ItemsControl.DataTemplates>
+            <DataTemplate x:DataType="docking:TerminalDocument">
               <local:DockTabItem />
             </DataTemplate>
-          </ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="docking:SftpDocument">
+              <local:SftpDockTabItem />
+            </DataTemplate>
+          </ItemsControl.DataTemplates>
         </ItemsControl>
       </ScrollViewer>
     </DockPanel>

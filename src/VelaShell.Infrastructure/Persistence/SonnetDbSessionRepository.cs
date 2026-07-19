@@ -132,6 +132,7 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
     {
         return new()
         {
+            ConnectionType = profile.ConnectionType,
             Id = profile.Id,
             Name = profile.Name,
             Host = profile.Host,

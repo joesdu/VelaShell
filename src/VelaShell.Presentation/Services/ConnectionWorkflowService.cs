@@ -113,6 +113,7 @@ public sealed class ConnectionWorkflowService(
         return new()
         {
             Id = profile.Id,
+            ConnectionType = profile.ConnectionType,
             Name = profile.Name,
             Host = profile.Host,
             Port = profile.Port,
@@ -166,6 +167,7 @@ public sealed class ConnectionWorkflowService(
             await recentConnections.RecordAsync(new()
             {
                 ProfileId = profile.Id,
+                ConnectionType = profile.ConnectionType,
                 Name = string.IsNullOrWhiteSpace(profile.Name)
                            ? $"{profile.Username}@{profile.Host}"
                            : profile.Name,

@@ -1191,6 +1191,12 @@
   <data name="Refresh" xml:space="preserve">
     <value>更新</value>
   </data>
+  <data name="SftpLocalRefresh" xml:space="preserve">
+    <value>ローカルファイルを更新</value>
+  </data>
+  <data name="SftpRemoteRefresh" xml:space="preserve">
+    <value>リモートファイルを更新</value>
+  </data>
   <data name="Reject" xml:space="preserve">
     <value>拒否</value>
   </data>

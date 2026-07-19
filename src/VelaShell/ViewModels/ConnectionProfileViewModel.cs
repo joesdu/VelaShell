@@ -33,6 +33,7 @@ public class ConnectionProfileViewModel : ReactiveObject
     private readonly Guid _profileId;
     private readonly ISessionRepository? _sessionRepository;
     private AuthMethod _authMethod = AuthMethod.Password;
+    private ConnectionType _connectionType = ConnectionType.SSH;
     private Guid? _groupId;
     private string _host = string.Empty;
     private bool _isKeyAuth;
@@ -79,6 +80,7 @@ public class ConnectionProfileViewModel : ReactiveObject
         if (existing != null)
         {
             _profileId = existing.Id;
+            _connectionType = existing.ConnectionType;
             _name = existing.Name;
             _host = existing.Host;
             _port = existing.Port;
@@ -134,6 +136,7 @@ public class ConnectionProfileViewModel : ReactiveObject
         ConnectCommand = ReactiveCommand.CreateFromTask(ConnectAsync, canExecute);
         CancelCommand = ReactiveCommand.Create(() => (SessionProfile?)null);
         TestConnectionCommand = ReactiveCommand.CreateFromTask(TestConnectionAsync, canExecute);
+        SelectConnectionTypeCommand = ReactiveCommand.Create<ConnectionType>(SelectConnectionType);
         BrowseKeyFileCommand = ReactiveCommand.Create(() => { });
         ToggleAdvancedCommand = ReactiveCommand.Create(() => { IsAdvancedVisible = !IsAdvancedVisible; });
         TogglePasswordVisibilityCommand = ReactiveCommand.Create(() => { ShowPassword = !ShowPassword; });
@@ -145,6 +148,31 @@ public class ConnectionProfileViewModel : ReactiveObject
         get => _name;
         set => this.RaiseAndSetIfChanged(ref _name, value);
     }
+
+    /// <summary>当前连接协议;SSH 为默认值,SFTP 复用 SSH 认证但不创建终端。</summary>
+    public ConnectionType ConnectionType
+    {
+        get => _connectionType;
+        private set
+        {
+            ConnectionType normalized = value == ConnectionType.SFTP
+                ? ConnectionType.SFTP
+                : ConnectionType.SSH;
+            if (_connectionType == normalized)
+            {
+                return;
+            }
+            this.RaiseAndSetIfChanged(ref _connectionType, normalized);
+            this.RaisePropertyChanged(nameof(IsSshSelected));
+            this.RaisePropertyChanged(nameof(IsSftpSelected));
+        }
+    }
+
+    /// <summary>协议标签是否选中 SSH。</summary>
+    public bool IsSshSelected => ConnectionType == ConnectionType.SSH;
+
+    /// <summary>协议标签是否选中 SFTP。</summary>
+    public bool IsSftpSelected => ConnectionType == ConnectionType.SFTP;
 
     /// <summary>目标主机地址(主机名或 IP)。</summary>
     public string Host
@@ -337,6 +365,9 @@ public class ConnectionProfileViewModel : ReactiveObject
     /// <summary>切换密码明文/掩码显示的命令。</summary>
     public ReactiveCommand<Unit, Unit> TogglePasswordVisibilityCommand { get; }
 
+    /// <summary>选择 SSH 或 SFTP;Telnet/串口没有对应命令,因此仍保持禁用。</summary>
+    public ReactiveCommand<ConnectionType, Unit> SelectConnectionTypeCommand { get; }
+
     /// <summary>
     /// 从仓储加载分组下拉(“未分组” + 全部分组),并选中当前配置的分组;
     /// 同时装填跳板主机下拉(“直连” + 其余已保存配置)。
@@ -494,6 +525,7 @@ public class ConnectionProfileViewModel : ReactiveObject
         return new()
         {
             Id = _profileId,
+            ConnectionType = ConnectionType,
             Name = name,
             Host = Host.Trim(),
             Port = Port,
@@ -508,4 +540,6 @@ public class ConnectionProfileViewModel : ReactiveObject
             JumpHostProfileId = _jumpHostProfileId
         };
     }
+
+    private void SelectConnectionType(ConnectionType connectionType) => ConnectionType = connectionType;
 }

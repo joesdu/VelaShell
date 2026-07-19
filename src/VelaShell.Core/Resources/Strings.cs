@@ -88,6 +88,12 @@ public static class Strings
     /// <summary>“刷新”按钮文案。</summary>
     public static string Refresh => ResourceManager.GetString(nameof(Refresh), CultureInfo.CurrentUICulture) ?? nameof(Refresh);
 
+    /// <summary>Local-pane refresh tooltip.</summary>
+    public static string SftpLocalRefresh => ResourceManager.GetString(nameof(SftpLocalRefresh), CultureInfo.CurrentUICulture) ?? nameof(SftpLocalRefresh);
+
+    /// <summary>Remote-pane refresh tooltip.</summary>
+    public static string SftpRemoteRefresh => ResourceManager.GetString(nameof(SftpRemoteRefresh), CultureInfo.CurrentUICulture) ?? nameof(SftpRemoteRefresh);
+
     /// <summary>“本地转发”隧道类型文案。</summary>
     public static string LocalForward => ResourceManager.GetString(nameof(LocalForward), CultureInfo.CurrentUICulture) ?? nameof(LocalForward);
 
