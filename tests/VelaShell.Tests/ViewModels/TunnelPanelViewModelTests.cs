@@ -1,4 +1,5 @@
 using System.Reactive.Linq;
+using System.Reactive.Threading.Tasks;
 using NSubstitute;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
@@ -157,10 +158,131 @@ public class TunnelPanelViewModelTests
         FillValidLocalForm();
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
         Assert.HasCount(1, _vm.Tunnels);
+        _vm.ConfirmDelete = _ => Task.FromResult(true);
         await _vm.DeleteTunnelCommand.Execute(tunnelInfo.Id).FirstAsync();
         Assert.IsEmpty(_vm.Tunnels);
         // 删除统一走 RemoveTunnelAsync(活动中的由服务先停再移除)。
         await _workflowService.Received(1).RemoveTunnelAsync(tunnelInfo.Id, Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task EditTunnel_ActiveTunnel_DoesNotEnterEditMode()
+    {
+        TunnelInfo tunnelInfo = CreateTunnelInfo(status: TunnelStatus.Active);
+        _vm.Tunnels.Add(new TunnelItemViewModel(tunnelInfo));
+
+        await _vm.EditTunnelCommand.Execute(tunnelInfo.Id).FirstAsync();
+
+        Assert.IsFalse(_vm.IsEditing);
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task EditTunnel_StoppedTunnel_EntersEditMode()
+    {
+        TunnelInfo tunnelInfo = CreateTunnelInfo(status: TunnelStatus.Stopped);
+        _vm.Tunnels.Add(new TunnelItemViewModel(tunnelInfo));
+
+        await _vm.EditTunnelCommand.Execute(tunnelInfo.Id).FirstAsync();
+
+        Assert.IsTrue(_vm.IsEditing);
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public void TunnelItemViewModel_EditToolTip_TracksActiveStatus()
+    {
+        TunnelInfo tunnelInfo = CreateTunnelInfo(status: TunnelStatus.Active);
+        var itemVm = new TunnelItemViewModel(tunnelInfo);
+        List<string> changedProperties = [];
+        itemVm.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName ?? string.Empty);
+
+        Assert.AreEqual(Strings.Get("Tunnel_EditDisabledTip"), itemVm.EditToolTip);
+        tunnelInfo.Status = TunnelStatus.Stopped;
+        itemVm.RefreshLive();
+
+        Assert.AreEqual(Strings.Get("Tunnel_EditTip"), itemVm.EditToolTip);
+        CollectionAssert.Contains(changedProperties, nameof(TunnelItemViewModel.EditToolTip));
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task DeleteTunnel_WithoutConfirmationDelegate_IsNoOp()
+    {
+        TunnelInfo tunnelInfo = CreateTunnelInfo();
+        _vm.Tunnels.Add(new TunnelItemViewModel(tunnelInfo));
+
+        await _vm.DeleteTunnelCommand.Execute(tunnelInfo.Id).FirstAsync();
+
+        Assert.HasCount(1, _vm.Tunnels);
+        await _workflowService.DidNotReceive().RemoveTunnelAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task DeleteTunnel_CancelledConfirmation_IsNoOp()
+    {
+        TunnelInfo tunnelInfo = CreateTunnelInfo();
+        _vm.Tunnels.Add(new TunnelItemViewModel(tunnelInfo));
+        _vm.ConfirmDelete = _ => Task.FromResult(false);
+
+        await _vm.DeleteTunnelCommand.Execute(tunnelInfo.Id).FirstAsync();
+
+        Assert.HasCount(1, _vm.Tunnels);
+        await _workflowService.DidNotReceive().RemoveTunnelAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task DeleteTunnel_ConfirmationReleasesBeforeMutation_ReResolvesItem()
+    {
+        TunnelInfo tunnelInfo = CreateTunnelInfo();
+        _vm.Tunnels.Add(new TunnelItemViewModel(tunnelInfo));
+        TaskCompletionSource<bool> confirmationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseConfirmation = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _vm.ConfirmDelete = async _ =>
+        {
+            confirmationStarted.SetResult(true);
+            await releaseConfirmation.Task;
+            return true;
+        };
+
+        Task deleteTask = _vm.DeleteTunnelCommand.Execute(tunnelInfo.Id).FirstAsync().ToTask();
+        await confirmationStarted.Task;
+        _vm.Tunnels.Clear();
+        releaseConfirmation.SetResult(true);
+        await deleteTask;
+
+        await _workflowService.DidNotReceive().RemoveTunnelAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task DeleteTunnel_ConcurrentRequests_RemoveOnlyOnce()
+    {
+        TunnelInfo tunnelInfo = CreateTunnelInfo();
+        _vm.Tunnels.Add(new TunnelItemViewModel(tunnelInfo));
+        TaskCompletionSource<bool> releaseConfirmation = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int confirmationCount = 0;
+        _vm.ConfirmDelete = async _ =>
+        {
+            Interlocked.Increment(ref confirmationCount);
+            await releaseConfirmation.Task;
+            return true;
+        };
+        _workflowService.RemoveTunnelAsync(tunnelInfo.Id, Arg.Any<CancellationToken>())
+                        .Returns(Task.CompletedTask);
+
+        Task first = _vm.DeleteTunnelCommand.Execute(tunnelInfo.Id).FirstAsync().ToTask();
+        await Task.Delay(20);
+        Task second = _vm.DeleteTunnelCommand.Execute(tunnelInfo.Id).FirstAsync().ToTask();
+        releaseConfirmation.SetResult(true);
+        await Task.WhenAll(first, second);
+
+        Assert.AreEqual(1, confirmationCount);
+        await _workflowService.Received(1).RemoveTunnelAsync(tunnelInfo.Id, Arg.Any<CancellationToken>());
+        Assert.IsEmpty(_vm.Tunnels);
     }
 
     [TestMethod]
@@ -380,6 +502,7 @@ public class TunnelPanelViewModelTests
         vm.NewRemoteHost = "db-server";
         vm.NewRemotePort = 3306;
         await vm.CreateTunnelCommand.Execute().FirstAsync();
+        vm.ConfirmDelete = _ => Task.FromResult(true);
         await vm.DeleteTunnelCommand.Execute(tunnelInfo.Id).FirstAsync();
         await store.Received(1).UpsertAsync(
             "tunnels",

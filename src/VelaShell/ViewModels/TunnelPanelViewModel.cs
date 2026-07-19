@@ -36,6 +36,10 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     /// <summary>每台服务器的隧道条目缓存:切换服务器/后台连接掉线后配置仍在,可一键重启。</summary>
     private readonly Dictionary<Guid, ObservableCollection<TunnelItemViewModel>> _itemsByProfile = [];
 
+    private readonly HashSet<Guid> _deletingTunnelIds = [];
+
+    private readonly object _deletingTunnelIdsGate = new();
+
     private readonly DispatcherTimer? _liveTimer;
     private readonly Func<Task<IReadOnlyList<SessionProfile>>>? _savedProfilesProvider;
     private readonly Func<Guid, Task>? _sessionDisconnector;
@@ -270,6 +274,9 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
 
     /// <summary>删除指定隧道(按隧道 Id),并在无隧道时释放后台连接。</summary>
     public ReactiveCommand<Guid, Unit> DeleteTunnelCommand { get; }
+
+    /// <summary>Set by the view: asks the user to confirm deleting a tunnel; false or missing cancels.</summary>
+    public Func<string, Task<bool>>? ConfirmDelete { get; set; }
 
     /// <summary>把某条隧道的配置填回表单进入编辑模式;保存时按新配置重建。</summary>
     public ReactiveCommand<Guid, Unit> EditTunnelCommand { get; }
@@ -556,6 +563,10 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         {
             return;
         }
+        if (item.IsActive)
+        {
+            return;
+        }
         _editingTunnelId = tunnelId;
         NewTunnelName = item.Config.Name;
         NewLocalHost = item.Config.LocalHost;
@@ -708,11 +719,29 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
 
     private async Task DeleteTunnelAsync(Guid tunnelId, CancellationToken ct)
     {
+        TunnelItemViewModel? tunnel = Tunnels.FirstOrDefault(t => t.Id == tunnelId);
+        if (tunnel is null || ConfirmDelete is null)
+        {
+            return;
+        }
+        bool isDeleteInFlight;
+        lock (_deletingTunnelIdsGate)
+        {
+            isDeleteInFlight = !_deletingTunnelIds.Add(tunnelId);
+        }
+        if (isDeleteInFlight)
+        {
+            return;
+        }
         try
         {
             ErrorMessage = null;
-            TunnelItemViewModel? tunnel = Tunnels.FirstOrDefault(t => t.Id == tunnelId);
-            if (tunnel == null)
+            if (!await ConfirmDelete(Strings.Get("Tunnel_DeleteConfirmationBody")).ConfigureAwait(true))
+            {
+                return;
+            }
+            tunnel = Tunnels.FirstOrDefault(t => t.Id == tunnelId);
+            if (tunnel is null)
             {
                 return;
             }
@@ -731,6 +760,13 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         catch (Exception ex)
         {
             ErrorMessage = FriendlyError(ex);
+        }
+        finally
+        {
+            lock (_deletingTunnelIdsGate)
+            {
+                _deletingTunnelIds.Remove(tunnelId);
+            }
         }
     }
 

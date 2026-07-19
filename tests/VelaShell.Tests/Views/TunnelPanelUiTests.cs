@@ -10,6 +10,7 @@ using NSubstitute;
 using System.Globalization;
 using VelaShell.Core.Localization;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Localization;
 using VelaShell.Presentation.Services;
 using VelaShell.ViewModels;
@@ -83,6 +84,77 @@ public sealed class TunnelPanelUiTests
                 CultureInfo.CurrentCulture = previousCulture;
                 CultureInfo.CurrentUICulture = previousUiCulture;
                 _localization.SetLanguage(previousUiCulture.Name);
+            }
+        });
+    }
+
+    [TestMethod]
+    public void Panel_EditButtons_ReflectTunnelStatusAndTooltip()
+    {
+        OnUi(() =>
+        {
+            CultureInfo previousCulture = CultureInfo.CurrentCulture;
+            CultureInfo previousUiCulture = CultureInfo.CurrentUICulture;
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("en-US");
+            try
+            {
+                var vm = new TunnelPanelViewModel(Substitute.For<ITunnelWorkflowService>());
+                vm.Tunnels.Add(new(new TunnelInfo
+                {
+                    Id = Guid.NewGuid(),
+                    Config = new()
+                    {
+                        Type = TunnelType.LocalForward,
+                        Name = "active",
+                        LocalHost = "127.0.0.1",
+                        LocalPort = 5432,
+                        RemoteHost = "127.0.0.1",
+                        RemotePort = 5432
+                    },
+                    Status = TunnelStatus.Active,
+                    SessionId = Guid.NewGuid(),
+                    CreatedAt = DateTime.UtcNow
+                }));
+                vm.Tunnels.Add(new(new TunnelInfo
+                {
+                    Id = Guid.NewGuid(),
+                    Config = new()
+                    {
+                        Type = TunnelType.LocalForward,
+                        Name = "stopped",
+                        LocalHost = "127.0.0.1",
+                        LocalPort = 5433,
+                        RemoteHost = "127.0.0.1",
+                        RemotePort = 5433
+                    },
+                    Status = TunnelStatus.Stopped,
+                    SessionId = Guid.NewGuid(),
+                    CreatedAt = DateTime.UtcNow
+                }));
+
+                var view = new TunnelPanelView { DataContext = vm };
+                var window = new Window { Width = 380, Height = 760, Content = view };
+                window.Show();
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+
+                Button[] editButtons = view.GetVisualDescendants()
+                    .OfType<Button>()
+                    .Where(button => ToolTip.GetTip(button) is string tip
+                        && (string.Equals(tip, Strings.Get("Tunnel_EditTip"))
+                            || string.Equals(tip, Strings.Get("Tunnel_EditDisabledTip"))))
+                    .ToArray();
+
+                Assert.HasCount(2, editButtons);
+                Assert.IsFalse(editButtons.Single(button => string.Equals(ToolTip.GetTip(button), Strings.Get("Tunnel_EditDisabledTip"))).IsEnabled);
+                Assert.IsTrue(editButtons.Single(button => string.Equals(ToolTip.GetTip(button), Strings.Get("Tunnel_EditTip"))).IsEnabled);
+                window.Close();
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = previousCulture;
+                CultureInfo.CurrentUICulture = previousUiCulture;
             }
         });
     }

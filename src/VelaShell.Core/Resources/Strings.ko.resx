@@ -2580,6 +2580,12 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Tunnel_EditTip" xml:space="preserve">
     <value>터널 편집</value>
   </data>
+  <data name="Tunnel_EditDisabledTip" xml:space="preserve">
+    <value>실행 중인 터널은 편집할 수 없습니다.</value>
+  </data>
+  <data name="Tunnel_DeleteConfirmationBody" xml:space="preserve">
+    <value>삭제하시겠습니까? 실행 중인 터널을 삭제하면 자동으로 종료됩니다.</value>
+  </data>
   <data name="Tunnel_EmptyHint" xml:space="preserve">
     <value>// 이 서버에는 아직 터널이 없습니다. 아래에서 만드세요</value>
   </data>
