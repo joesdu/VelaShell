@@ -29,10 +29,7 @@ public partial class MainWindow : Window
     /// <summary>自绘缩放抓取区:普通状态按下即进入原生缩放;最大化时整层隐藏(见 OnPropertyChanged)。</summary>
     private void ResizeEdge_PointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
     {
-        if (
-            WindowState == WindowState.Normal
-            && sender is Border { Tag: string tag }
-            && Enum.TryParse(tag, out WindowEdge edge)
+        if (WindowState == WindowState.Normal && sender is Border { Tag: string tag } && Enum.TryParse(tag, out WindowEdge edge)
         )
         {
             BeginResizeDrag(edge, e);
@@ -44,10 +41,7 @@ public partial class MainWindow : Window
     {
         base.OnPropertyChanged(change);
         // 最大化/全屏时缩放抓取区必须让位(否则挡住屏幕边缘 5px 的标题栏与状态栏点击)。
-        if (
-            change.Property == WindowStateProperty
-            && this.FindControl<Panel>("ResizeGrips") is { } grips
-        )
+        if (change.Property == WindowStateProperty && this.FindControl<Panel>("ResizeGrips") is { } grips)
         {
             grips.IsVisible = WindowState == WindowState.Normal;
         }
@@ -110,15 +104,7 @@ public partial class MainWindow : Window
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetWindowPos(
-        IntPtr hWnd,
-        IntPtr after,
-        int x,
-        int y,
-        int cx,
-        int cy,
-        uint flags
-    );
+    private static partial bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -261,10 +247,7 @@ public partial class MainWindow : Window
 
     private bool IsPointOverMaximizeButton(IntPtr lParam)
     {
-        if (
-            TitleBar?.MaximizeButtonControl is not { IsVisible: true } button
-            || !button.IsAttachedToVisualTree()
-        )
+        if (TitleBar?.MaximizeButtonControl is not { IsVisible: true } button || !button.IsAttachedToVisualTree())
         {
             return false;
         }
@@ -400,10 +383,7 @@ public partial class MainWindow : Window
         }
 
         // 外观/行为设置:启动时应用一次,设置保存后热更新。
-        if (
-            Application.Current is App { Services: { } services }
-            && services.GetService<ISettingsService>() is { } settingsService
-        )
+        if (Application.Current is App { Services: { } services } && services.GetService<ISettingsService>() is { } settingsService)
         {
             _settingsService = settingsService;
             settingsService.SettingsSaved += OnSettingsSavedForWindow;
@@ -477,7 +457,7 @@ public partial class MainWindow : Window
     private void OnSettingsOpacityPreviewedForWindow(int percent) =>
         RunOnUiThread(() => ApplyWindowOpacity(percent));
 
-    private void RunOnUiThread(Action action)
+    private static void RunOnUiThread(Action action)
     {
         if (Dispatcher.UIThread.CheckAccess())
         {
@@ -501,18 +481,13 @@ public partial class MainWindow : Window
         // 界面字体:覆盖 VelaUiFont 令牌(空或默认 Inter 时还原主题字体);
         // App 级 :is(Window) 样式让所有窗口继承,未显式指定 FontFamily 的文本统一换字体。
         string uiFont = a.UiFont.Trim();
-        if (
-            string.IsNullOrEmpty(uiFont)
-            || string.Equals(uiFont, "Inter", StringComparison.OrdinalIgnoreCase)
-        )
+        if (string.IsNullOrEmpty(uiFont) || string.Equals(uiFont, "Inter", StringComparison.OrdinalIgnoreCase))
         {
             app.Resources.Remove("VelaUiFont");
         }
         else
         {
-            app.Resources["VelaUiFont"] = new FontFamily(
-                $"{uiFont}, Segoe UI, Microsoft YaHei, sans-serif"
-            );
+            app.Resources["VelaUiFont"] = new FontFamily($"{uiFont}, Segoe UI, Microsoft YaHei, sans-serif");
         }
 
         // 界面字号:覆盖 VelaUiFontSize 令牌(同上,全窗口继承);同时覆盖 Fluent 的
@@ -522,8 +497,7 @@ public partial class MainWindow : Window
         app.Resources["ControlContentThemeFontSize"] = uiFontSize;
     }
 
-    private void ApplyWindowOpacity(int percent) =>
-        Opacity = Math.Clamp(percent, 10, 100) / 100.0;
+    private void ApplyWindowOpacity(int percent) => Opacity = Math.Clamp(percent, 10, 100) / 100.0;
 
     /// <summary>侧边栏位置(设置 → 外观):交换侧边栏与主区所在列,分隔条留在中间。</summary>
     private void ApplySidebarPosition(bool right)
@@ -579,11 +553,7 @@ public partial class MainWindow : Window
         bool userInitiated = e.CloseReason == WindowCloseReason.WindowClosing;
         if (!_forceClose && userInitiated && settings is not null)
         {
-            if (
-                settings.General.MinimizeToTray
-                && Application.Current is App app
-                && HasActiveTrayIcon(app)
-            )
+            if (settings.General.MinimizeToTray && Application.Current is App app && HasActiveTrayIcon(app))
             {
                 e.Cancel = true;
                 Hide();
@@ -665,9 +635,7 @@ public partial class MainWindow : Window
                 [
                     .. vm
                         .TabBar.Tabs.OfType<TerminalTabViewModel>()
-                        .Where(t =>
-                            t is { IsConnected: true, Profile: { } p } && p.Id != Guid.Empty
-                        )
+                        .Where(t => t is { IsConnected: true, Profile: { } p } && p.Id != Guid.Empty)
                         .Select(t => t.Profile!.Id)
                         .Distinct(),
                 ];
@@ -697,10 +665,7 @@ public partial class MainWindow : Window
     {
         foreach (TerminalTabView view in this.GetVisualDescendants().OfType<TerminalTabView>())
         {
-            if (
-                view.IsEffectivelyVisible
-                && ReferenceEquals(view.DataContext, viewModel.ActiveTerminalTab)
-            )
+            if (view.IsEffectivelyVisible && ReferenceEquals(view.DataContext, viewModel.ActiveTerminalTab))
             {
                 view.FocusTerminal();
                 return;
@@ -721,8 +686,7 @@ public partial class MainWindow : Window
         _ = vm.TryConnectRecentAsync(entry);
     }
 
-    private void OnOpenConnectionProfileRequested(object? sender, EventArgs e) =>
-        _ = OpenProfileDialogAsync(null);
+    private void OnOpenConnectionProfileRequested(object? sender, EventArgs e) => _ = OpenProfileDialogAsync(null);
 
     /// <summary>打开“新建连接”弹窗;传入 existing 时为编辑既有配置。</summary>
     private async Task OpenProfileDialogAsync(SessionProfile? existing)
@@ -782,11 +746,7 @@ public partial class MainWindow : Window
     /// <summary>打开连接诊断中心(设计 RGXg1):打开即自动执行一轮四步检测。</summary>
     private async Task OpenDiagnosticsDialogAsync(SessionProfile profile)
     {
-        if (
-            Application.Current is not App app
-            || app.Services?.GetService<IConnectionDiagnosticsService>()
-                is not { } diagnosticsService
-        )
+        if (Application.Current is not App app || app.Services?.GetService<IConnectionDiagnosticsService>() is not { } diagnosticsService)
         {
             return;
         }
@@ -800,10 +760,7 @@ public partial class MainWindow : Window
     /// <summary>打开设置窗口(设计 §14):DI 单例 VM,打开时重新加载持久化设置。</summary>
     private async Task OpenSettingsAsync()
     {
-        if (
-            Application.Current is not App app
-            || app.Services?.GetService<SettingsViewModel>() is not { } settingsViewModel
-        )
+        if (Application.Current is not App app || app.Services?.GetService<SettingsViewModel>() is not { } settingsViewModel)
         {
             return;
         }
@@ -819,10 +776,7 @@ public partial class MainWindow : Window
     private async Task<SessionProfile?> PromptCredentialsAsync(SessionProfile profile)
     {
         string? knownFingerprint = null;
-        if (
-            Application.Current is App app
-            && app.Services?.GetService<IHostKeyService>() is { } hostKeys
-        )
+        if (Application.Current is App app && app.Services?.GetService<IHostKeyService>() is { } hostKeys)
         {
             try
             {
