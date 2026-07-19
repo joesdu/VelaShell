@@ -38,7 +38,7 @@ public class FolderZModemFileSinkTests
             await sink.OnFileOfferedAsync(Meta("a.bin"), new ZModemTransferItem { FileName = "a.bin" }, CancellationToken.None);
 
         Assert.AreEqual(ZModemFileDisposition.Abort, disposition);
-        Assert.AreEqual(2, calls.Count, "首次取消应重弹一次,共两次");
+        Assert.HasCount(2, calls, "首次取消应重弹一次,共两次");
         Assert.IsFalse(calls[0].IsRetryAfterCancel, "第一次弹窗不是重试");
         Assert.IsTrue(calls[1].IsRetryAfterCancel, "第二次弹窗应标记为重试(标题提示再次取消即中止)");
     }

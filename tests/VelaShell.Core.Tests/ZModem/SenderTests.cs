@@ -95,7 +95,7 @@ public class SenderTests
         (ZModemSession send, _, InMemoryFileSink sink) = await RoundTripAsync([("empty.txt", [])]);
 
         Assert.AreEqual(ZModemTransferStatus.Completed, send.Status);
-        Assert.AreEqual(0, sink.Completed["empty.txt"].Length);
+        Assert.IsEmpty(sink.Completed["empty.txt"]);
     }
 
     [TestMethod]
@@ -195,7 +195,7 @@ public class SenderTests
 
         Assert.AreEqual(ZModemTransferStatus.Cancelled, send.Result.Status);
         Assert.AreEqual(ZModemTransferStatus.Completed, receive.Result.Status, "接收方收到 ZFIN 应干净收束,而非挂起");
-        Assert.AreEqual(0, receiverSink.Completed.Count, "取消批次不应落地任何文件");
+        Assert.IsEmpty(receiverSink.Completed, "取消批次不应落地任何文件");
     }
 
     private static bool ContainsSequence(byte[] haystack, byte[] needle)

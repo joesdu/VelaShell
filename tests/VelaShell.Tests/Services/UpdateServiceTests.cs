@@ -191,7 +191,7 @@ public class UpdateServiceTests : IDisposable
         await Assert.ThrowsExactlyAsync<InvalidDataException>(() => service.DownloadUpdateAsync());
 
         string staging = Path.Combine(_appDir, UpdateApplier.StagingDirectoryName);
-        Assert.AreEqual(0, Directory.GetFiles(staging).Length, "校验失败的下载必须删除");
+        Assert.IsEmpty(Directory.GetFiles(staging), "校验失败的下载必须删除");
         // 校验失败后不允许进入换版。
         Assert.ThrowsExactly<InvalidOperationException>(() => service.ApplyUpdateAndRestart());
     }

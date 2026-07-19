@@ -57,6 +57,73 @@ public class SettingsViewUiTests
         });
     }
 
+    [TestMethod]
+    public void NonOpacityAppearanceChange_RemainsTrailingSnapshotDebounced()
+    {
+        OnUi(async () =>
+        {
+            ISettingsService settings = Substitute.For<ISettingsService>();
+            IThemeService theme = Substitute.For<IThemeService>();
+            ISettingsPreviewService preview = new SettingsPreviewService();
+            var snapshots = new List<AppSettings>();
+            var opacityValues = new List<int>();
+            preview.PreviewRequested += snapshot => snapshots.Add(snapshot);
+            preview.WindowOpacityPreviewRequested += value => opacityValues.Add(value);
+            settings.GetSettingsAsync().Returns(new AppSettings());
+
+            var viewModel = new SettingsViewModel(settings, theme, previewService: preview);
+            await viewModel.LoadCommand.Execute().FirstAsync();
+            viewModel.Appearance.SidebarPosition = "right";
+
+            Assert.IsEmpty(snapshots);
+            Assert.IsEmpty(opacityValues);
+
+            await Task.Delay(75);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.HasCount(1, snapshots);
+            Assert.AreEqual("right", snapshots[0].Appearance.SidebarPosition);
+            Assert.IsEmpty(opacityValues);
+        });
+    }
+
+    [TestMethod]
+    public void AppearanceOpacitySlider_EmitsEveryValueImmediately()
+    {
+        OnUi(async () =>
+        {
+            ISettingsService settings = Substitute.For<ISettingsService>();
+            IThemeService theme = Substitute.For<IThemeService>();
+            var preview = new SettingsPreviewService();
+            settings.GetSettingsAsync().Returns(new AppSettings());
+
+            var viewModel = new SettingsViewModel(settings, theme, previewService: preview);
+            await viewModel.LoadCommand.Execute().FirstAsync();
+            viewModel.SelectedSectionIndex = 1;
+
+            var window = new SettingsView { DataContext = viewModel };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            var opacitySlider = window
+                .GetVisualDescendants()
+                .OfType<Slider>()
+                .Single(slider => slider.Minimum == 10 && slider.Maximum == 100);
+            var received = new List<int>();
+            preview.WindowOpacityPreviewRequested += value => received.Add(value);
+            int[] expected = [20, 30, 40, 50];
+
+            foreach (int value in expected)
+            {
+                opacitySlider.Value = value;
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            CollectionAssert.AreEqual(expected, received);
+            window.Close();
+        });
+    }
+
     private static void OnUi(Func<Task> body) =>
         _session.Dispatch(body, CancellationToken.None).GetAwaiter().GetResult();
 

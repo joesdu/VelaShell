@@ -55,7 +55,7 @@ public class PackageVersionsTests
     [TestMethod]
     public void Read_AssemblyWithoutMetadata_ReturnsEmpty()
     {
-        Assert.AreEqual(0, PackageVersions.Read(typeof(object).Assembly).Count);
+        Assert.IsEmpty(PackageVersions.Read(typeof(object).Assembly));
     }
 
     /// <summary>

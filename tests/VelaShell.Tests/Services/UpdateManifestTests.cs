@@ -28,7 +28,7 @@ public class UpdateManifestTests
         UpdateManifest manifest = UpdateManifest.Parse(SampleJson);
         Assert.AreEqual("0.2.0", manifest.Version);
         Assert.AreEqual("v0.2.0", manifest.Tag);
-        Assert.AreEqual(6, manifest.Assets.Count);
+        Assert.HasCount(6, manifest.Assets);
         UpdateAsset asset = manifest.Assets["win-x64"];
         Assert.AreEqual("VelaShell-0.2.0-win-x64.zip", asset.Name);
         Assert.AreEqual("aa11", asset.Sha256);

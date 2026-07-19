@@ -37,7 +37,7 @@ public class ZModemRouterTests
 
         Assert.IsTrue(result.Detected);
         CollectionAssert.AreEqual(prefix, result.TerminalBytes);
-        Assert.AreEqual(Signature.Length + 2, result.ProtocolBytes.Length);
+        Assert.HasCount(Signature.Length + 2, result.ProtocolBytes);
         CollectionAssert.AreEqual(Signature, result.ProtocolBytes[..Signature.Length]);
     }
 
@@ -57,7 +57,7 @@ public class ZModemRouterTests
         ZModemDetectResult r2 = detector.Process(second);
 
         Assert.IsTrue(r2.Detected);
-        Assert.AreEqual(0, r2.TerminalBytes.Length);
+        Assert.IsEmpty(r2.TerminalBytes);
         CollectionAssert.AreEqual(Signature, r2.ProtocolBytes[..Signature.Length]);
     }
 
@@ -165,7 +165,7 @@ public class ZModemRouterTests
 
         ZModemRouteResult route2 = router.ProcessIncoming(stream);
         Assert.IsTrue(route2.SessionStarted);
-        Assert.AreEqual(0, route2.TerminalBytes.Length);
+        Assert.IsEmpty(route2.TerminalBytes);
 
         ZModemSession session = await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.AreEqual(ZModemTransferStatus.Completed, session.Status);

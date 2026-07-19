@@ -25,8 +25,8 @@ public class FileZModemFileSourceTests
         var source = new FileZModemFileSource(picker);
         IReadOnlyList<ZModemOutgoingFile> files = await source.GetFilesAsync(CancellationToken.None);
 
-        Assert.AreEqual(0, files.Count, "两次都取消应最终返回空清单(触发发送方优雅收尾)");
-        Assert.AreEqual(2, retryFlags.Count, "首次取消应重弹一次,共两次");
+        Assert.IsEmpty(files, "两次都取消应最终返回空清单(触发发送方优雅收尾)");
+        Assert.HasCount(2, retryFlags, "首次取消应重弹一次,共两次");
         Assert.IsFalse(retryFlags[0], "第一次弹窗不是重试");
         Assert.IsTrue(retryFlags[1], "第二次弹窗应标记为重试");
     }
@@ -50,7 +50,7 @@ public class FileZModemFileSourceTests
             IReadOnlyList<ZModemOutgoingFile> files = await source.GetFilesAsync(CancellationToken.None);
 
             Assert.AreEqual(2, callCount);
-            Assert.AreEqual(1, files.Count);
+            Assert.HasCount(1, files);
             Assert.AreEqual(Path.GetFileName(tmp), files[0].RemoteName, "远端文件名应为纯文件名");
             Assert.AreEqual(5, files[0].Size);
         }
@@ -79,7 +79,7 @@ public class FileZModemFileSourceTests
             IReadOnlyList<ZModemOutgoingFile> files = await source.GetFilesAsync(CancellationToken.None);
 
             Assert.AreEqual(1, callCount, "首次即选定不应重弹");
-            Assert.AreEqual(1, files.Count);
+            Assert.HasCount(1, files);
         }
         finally
         {

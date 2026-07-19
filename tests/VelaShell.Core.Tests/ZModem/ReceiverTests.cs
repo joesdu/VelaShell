@@ -43,7 +43,7 @@ public class ReceiverTests
         await RunAsync([("empty.bin", [])], useCrc32: true, 1024, sink);
 
         Assert.IsTrue(sink.Completed.ContainsKey("empty.bin"));
-        Assert.AreEqual(0, sink.Completed["empty.bin"].Length);
+        Assert.IsEmpty(sink.Completed["empty.bin"]);
     }
 
     [TestMethod]
@@ -76,7 +76,7 @@ public class ReceiverTests
         var sink = new InMemoryFileSink();
         await RunAsync(files, useCrc32: true, 4, sink);
 
-        Assert.AreEqual(3, sink.Completed.Count);
+        Assert.HasCount(3, sink.Completed);
         CollectionAssert.AreEqual("first"u8.ToArray(), sink.Completed["a.txt"]);
         CollectionAssert.AreEqual("second file body"u8.ToArray(), sink.Completed["b.txt"]);
         CollectionAssert.AreEqual(new byte[] { 0x00, 0x18, 0x11, 0x13, 0xFF, 0x7F }, sink.Completed["c.bin"]);
