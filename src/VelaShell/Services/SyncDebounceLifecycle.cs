@@ -8,7 +8,7 @@ namespace VelaShell.Services;
 /// </summary>
 internal sealed class SyncDebounceLifecycle
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private CancellationTokenSource? _cts;
     private bool _shutdown;
 

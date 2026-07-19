@@ -356,7 +356,7 @@ public sealed class GitHubReleaseSource : IUpdateSource
 
         SaveMeta();
         Task<string> hashTask = HashFrontierAsync(partialPath, segments, asset.Size, gate, hashSignal, abort.Token);
-        Task[] workers = segments.Select(DownloadSegment).ToArray();
+        Task[] workers = [.. segments.Select(DownloadSegment)];
         try
         {
             await Task.WhenAll(workers);

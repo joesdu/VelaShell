@@ -1487,15 +1487,9 @@ public class MainWindowViewModel : ReactiveObject
 
     private void RefreshQuickCommandTargets()
     {
-        (Guid Id, string DisplayName)[] targets = TabBar
-            .Tabs.OfType<TerminalTabViewModel>()
-            .Where(tab => tab.IsConnected)
-            .Select(tab => (tab.Id, tab.Title))
-            .ToArray();
+        (Guid Id, string DisplayName)[] targets = [.. TabBar.Tabs.OfType<TerminalTabViewModel>().Where(tab => tab.IsConnected).Select(tab => (tab.Id, tab.Title))];
         _terminalTargetSelector.UpdateTargets(targets);
-        _terminalTargetSelector.SetCurrentTarget(
-            ActiveTerminalTab is { IsConnected: true } current ? current.Id : null
-        );
+        _terminalTargetSelector.SetCurrentTarget(ActiveTerminalTab is { IsConnected: true } current ? current.Id : null);
     }
 
     private void OnQuickCommandExecutionRequested(
@@ -1504,10 +1498,7 @@ public class MainWindowViewModel : ReactiveObject
     )
     {
         var targetIds = request.TargetIds.ToHashSet();
-        TerminalTabViewModel[] targets = TabBar
-            .Tabs.OfType<TerminalTabViewModel>()
-            .Where(tab => tab.IsConnected && targetIds.Contains(tab.Id))
-            .ToArray();
+        TerminalTabViewModel[] targets = [.. TabBar.Tabs.OfType<TerminalTabViewModel>().Where(tab => tab.IsConnected && targetIds.Contains(tab.Id))];
         bool sent = false;
         foreach (TerminalTabViewModel target in targets)
         {
@@ -1623,7 +1614,6 @@ public class MainWindowViewModel : ReactiveObject
         );
         return items;
     }
-
 
     /// <summary>读取设置快照并缓存到 <see cref="_latestSettings" />(无设置服务时用默认值)。</summary>
     private async Task<AppSettings> LoadSettingsSnapshotAsync()

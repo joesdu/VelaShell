@@ -20,7 +20,6 @@ public class UpdateService : IUpdateService
     private readonly Func<Task<string>> _channelProvider;
     private readonly UpdateApplier _applier;
     private readonly Action _shutdownForRestart;
-    private readonly string? _currentVersionOverride;
     private UpdateManifest? _manifest;
     private UpdateAsset? _asset;
     private string? _downloadedArchivePath;
@@ -32,8 +31,7 @@ public class UpdateService : IUpdateService
     /// </summary>
     public UpdateService(string repositoryUrl, Func<Task<string>>? channelProvider = null)
         : this(new GitHubReleaseSource(repositoryUrl), channelProvider)
-    {
-    }
+    { }
 
     /// <summary>核心构造,测试可注入更新源、应用目录、版本号与"关闭应用"动作。</summary>
     public UpdateService(
@@ -49,7 +47,7 @@ public class UpdateService : IUpdateService
         _applier = new(applicationDirectory
             ?? Path.GetDirectoryName(Environment.ProcessPath)
             ?? AppContext.BaseDirectory);
-        _currentVersionOverride = currentVersionOverride;
+        CurrentVersion = currentVersionOverride;
         _shutdownForRestart = shutdownForRestart ?? DefaultShutdown;
     }
 
@@ -58,9 +56,9 @@ public class UpdateService : IUpdateService
     {
         get
         {
-            if (_currentVersionOverride != null)
+            if (field != null)
             {
-                return _currentVersionOverride;
+                return field;
             }
             Assembly assembly = Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
             return assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
