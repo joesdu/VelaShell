@@ -38,7 +38,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
 
     private readonly HashSet<Guid> _deletingTunnelIds = [];
 
-    private readonly object _deletingTunnelIdsGate = new();
+    private readonly Lock _deletingTunnelIdsGate = new();
 
     private readonly DispatcherTimer? _liveTimer;
     private readonly Func<Task<IReadOnlyList<SessionProfile>>>? _savedProfilesProvider;
@@ -224,7 +224,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
-    }
+    } = 27017;
 
     /// <summary>表单中的目标(远端)主机,默认 127.0.0.1。</summary>
     public string NewRemoteHost
@@ -238,7 +238,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
-    }
+    } = 27017;
 
     /// <summary>表单中的隧道别名(可选,留空时用路由描述兜底)。</summary>
     public string NewTunnelName
@@ -672,7 +672,6 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         };
     }
 
-
     private async Task StopTunnelAsync(Guid tunnelId, CancellationToken ct)
     {
         try
@@ -786,8 +785,8 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         _editingTunnelId = null;
         NewTunnelName = string.Empty;
         NewLocalHost = "127.0.0.1";
-        NewLocalPort = 0;
-        NewRemotePort = 0;
+        NewLocalPort = 27017;
+        NewRemotePort = 27017;
         NewTunnelTypeIndex = 0;
         ForwardToServerLoopback = true; // 同时把目标主机复位为 127.0.0.1
         RaiseEditingChanged();

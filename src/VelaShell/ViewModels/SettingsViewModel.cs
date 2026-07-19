@@ -82,8 +82,7 @@ public class SettingsViewModel : ReactiveObject
         IQuickCommandRepository? quickCommandRepository = null
     )
     {
-        _settingsService =
-            settingsService ?? throw new ArgumentNullException(nameof(settingsService));
+        _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
         _localizationService = localizationService;
         _recentConnections = recentConnections;

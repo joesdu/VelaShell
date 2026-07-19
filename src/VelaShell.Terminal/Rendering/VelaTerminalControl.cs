@@ -749,20 +749,18 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <summary>备用屏(DECSET 1047/1049)是否激活。全屏程序(vim/htop)内宿主不启用命令补全。</summary>
     public bool IsAlternateScreenActive => Emulator.IsAlternateScreen;
 
-    private string? _ghostText;
-
     /// <summary>
     /// 光标后叠画的补全建议剩余文本(fish/Warp 式幽灵文本),null/空即不绘制。
     /// 纯视觉覆盖层,不进屏幕缓冲;由宿主(补全逻辑)设置与清除。
     /// </summary>
     public string? GhostText
     {
-        get => _ghostText;
+        get;
         set
         {
-            if (_ghostText != value)
+            if (field != value)
             {
-                _ghostText = value;
+                field = value;
                 InvalidateVisual();
             }
         }

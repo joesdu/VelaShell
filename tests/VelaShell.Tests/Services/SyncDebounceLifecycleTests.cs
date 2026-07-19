@@ -167,14 +167,14 @@ public class SyncDebounceLifecycleTests
             var collected = new System.Collections.Concurrent.ConcurrentBag<CancellationToken>();
             var barrier = new ManualResetEventSlim(false);
 
-            Task[] swapTasks = Enumerable.Range(0, 8).Select(_ => Task.Run(() =>
+            Task[] swapTasks = [.. Enumerable.Range(0, 8).Select(_ => Task.Run(() =>
             {
                 barrier.Wait();
                 if (lifecycle.TrySwapNew(out CancellationToken token))
                 {
                     collected.Add(token);
                 }
-            })).ToArray();
+            }))];
 
             var shutdownTask = Task.Run(() =>
             {
@@ -183,7 +183,7 @@ public class SyncDebounceLifecycleTests
             });
 
             barrier.Set();
-            Task.WaitAll(swapTasks.Append(shutdownTask).ToArray());
+            Task.WaitAll([.. swapTasks, shutdownTask]);
 
             // After Shutdown returns, every token that was successfully issued
             // must be cancelled. No uncancellable token may survive.
