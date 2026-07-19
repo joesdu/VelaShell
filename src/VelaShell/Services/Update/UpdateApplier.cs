@@ -267,7 +267,7 @@ public sealed class UpdateApplier(string applicationDirectory)
     /// <summary>把 zip 内所有文件解压为目标路径加 <c>.new</c> 后缀的暂存文件。</summary>
     private void ExtractZipAsNew(string archivePath, List<PackageEntry> entries)
     {
-        Dictionary<string, PackageEntry> byPath = entries.ToDictionary(
+        var byPath = entries.ToDictionary(
             e => e.RelativePath, StringComparer.OrdinalIgnoreCase);
         using (ZipArchive zip = ZipFile.OpenRead(archivePath))
         {

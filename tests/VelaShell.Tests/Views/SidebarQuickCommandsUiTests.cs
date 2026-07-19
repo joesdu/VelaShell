@@ -1,4 +1,3 @@
-using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Interactivity;

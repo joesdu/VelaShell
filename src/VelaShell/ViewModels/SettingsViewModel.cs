@@ -1174,6 +1174,7 @@ public class SettingsViewModel : ReactiveObject
     /// <summary>窗口以任意方式关闭时由视图调用:未保存而预览过 → 回滚到打开时的基线。</summary>
     public void NotifyClosed()
     {
+        _previewDebounce?.Stop();
         if (_saved || !_previewed)
         {
             return;

@@ -58,7 +58,7 @@ public sealed class UpdateManifest
     /// </summary>
     public static UpdateManifest Parse(string json)
     {
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json);
         JsonElement root = doc.RootElement;
         string version = root.GetProperty("version").GetString()
             ?? throw new FormatException("latest.json: version missing");

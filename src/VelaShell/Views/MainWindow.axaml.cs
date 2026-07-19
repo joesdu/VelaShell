@@ -472,16 +472,19 @@ public partial class MainWindow : Window
         });
 
     private void OnSettingsPreviewedForWindow(AppSettings settings) =>
-        Dispatcher.UIThread.Post(() => ApplyWindowAppearance(settings));
+        RunOnUiThread(() => ApplyWindowAppearance(settings));
 
-    private void OnSettingsOpacityPreviewedForWindow(int percent)
+    private void OnSettingsOpacityPreviewedForWindow(int percent) =>
+        RunOnUiThread(() => ApplyWindowOpacity(percent));
+
+    private void RunOnUiThread(Action action)
     {
         if (Dispatcher.UIThread.CheckAccess())
         {
-            ApplyWindowOpacity(percent);
+            action();
             return;
         }
-        Dispatcher.UIThread.Post(() => ApplyWindowOpacity(percent));
+        Dispatcher.UIThread.Post(action);
     }
 
     /// <summary>应用设置 → 外观:窗口透明度、侧边栏位置、界面字体/字号。

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -7,7 +8,6 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using NSubstitute;
-using System.Globalization;
 using VelaShell.Core.Localization;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
@@ -188,7 +188,7 @@ public sealed class TunnelPanelUiTests
 
     private static void RenderHelpDialog(string cultureName, ThemeVariant theme, string fileName)
     {
-        CultureInfo culture = CultureInfo.GetCultureInfo(cultureName);
+        var culture = CultureInfo.GetCultureInfo(cultureName);
         CultureInfo.CurrentCulture = culture;
         CultureInfo.CurrentUICulture = culture;
         _localization.SetLanguage(cultureName);
@@ -217,7 +217,7 @@ public sealed class TunnelPanelUiTests
         }
 
         Directory.CreateDirectory(directory);
-        using var frame = topLevel.CaptureRenderedFrame();
+        using WriteableBitmap? frame = topLevel.CaptureRenderedFrame();
         Assert.IsNotNull(frame, "Skia headless renderer should produce a visual-QA frame.");
         using FileStream output = File.Create(Path.Combine(directory, fileName));
         frame.Save(output, PngBitmapEncoderOptions.Default);

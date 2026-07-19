@@ -94,7 +94,7 @@ public class UpdateServiceTests : IDisposable
     {
         byte[] zip = CreateZipBytes(("app.txt", "new"));
         _source.Manifest = CreateManifest("2.0.0", zip);
-        var service = CreateService("1.0.0");
+        UpdateService service = CreateService("1.0.0");
 
         Assert.IsTrue(await service.CheckForUpdateAsync());
         Assert.AreEqual("2.0.0", service.AvailableVersion);
@@ -108,7 +108,7 @@ public class UpdateServiceTests : IDisposable
     public async Task CheckForUpdateAsync_SameOrOlderVersion_ReturnsFalse(string remote)
     {
         _source.Manifest = CreateManifest(remote, CreateZipBytes(("a", "b")));
-        var service = CreateService("1.0.0");
+        UpdateService service = CreateService("1.0.0");
 
         Assert.IsFalse(await service.CheckForUpdateAsync());
         Assert.IsNull(service.AvailableVersion);
@@ -167,7 +167,7 @@ public class UpdateServiceTests : IDisposable
         byte[] zip = CreateZipBytes(("app.txt", "new"));
         _source.Manifest = CreateManifest("2.0.0", zip);
         _source.AssetBytes = zip;
-        var service = CreateService("1.0.0");
+        UpdateService service = CreateService("1.0.0");
         Assert.IsTrue(await service.CheckForUpdateAsync());
 
         List<int> reported = [];
@@ -185,7 +185,7 @@ public class UpdateServiceTests : IDisposable
         byte[] zip = CreateZipBytes(("app.txt", "new"));
         _source.Manifest = CreateManifest("2.0.0", zip);
         _source.AssetBytes = [1, 2, 3]; // 与清单声明的哈希不符
-        var service = CreateService("1.0.0");
+        UpdateService service = CreateService("1.0.0");
         Assert.IsTrue(await service.CheckForUpdateAsync());
 
         await Assert.ThrowsExactlyAsync<InvalidDataException>(() => service.DownloadUpdateAsync());
@@ -203,7 +203,7 @@ public class UpdateServiceTests : IDisposable
         byte[] zip = CreateZipBytes(("app.txt", "new"));
         _source.Manifest = CreateManifest("2.0.0", zip);
         _source.AssetBytes = zip;
-        var service = CreateService("1.0.0");
+        UpdateService service = CreateService("1.0.0");
         Assert.IsTrue(await service.CheckForUpdateAsync());
         await service.DownloadUpdateAsync();
         Assert.AreEqual(1, _source.DownloadCalls);
@@ -223,7 +223,7 @@ public class UpdateServiceTests : IDisposable
         byte[] zip = CreateZipBytes(("app.txt", "new"));
         _source.Manifest = CreateManifest("2.0.0", zip);
         _source.AssetBytes = zip;
-        var service = CreateService("1.0.0");
+        UpdateService service = CreateService("1.0.0");
         Assert.IsTrue(await service.CheckForUpdateAsync());
         string staging = Path.Combine(_appDir, UpdateApplier.StagingDirectoryName);
         Directory.CreateDirectory(staging);
