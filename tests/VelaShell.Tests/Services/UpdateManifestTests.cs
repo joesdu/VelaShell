@@ -25,7 +25,7 @@ public class UpdateManifestTests
     [TestCategory("Update")]
     public void Parse_ValidManifest_ExposesAllFields()
     {
-        UpdateManifest manifest = UpdateManifest.Parse(SampleJson);
+        var manifest = UpdateManifest.Parse(SampleJson);
         Assert.AreEqual("0.2.0", manifest.Version);
         Assert.AreEqual("v0.2.0", manifest.Tag);
         Assert.HasCount(6, manifest.Assets);
@@ -40,7 +40,7 @@ public class UpdateManifestTests
     public void AssetForCurrentPlatform_KnownRids_ReturnsMatch()
     {
         // 测试跑在 win/osx/linux 的 x64/arm64 上,CurrentRid 一定命中样例清单。
-        UpdateManifest manifest = UpdateManifest.Parse(SampleJson);
+        var manifest = UpdateManifest.Parse(SampleJson);
         string? rid = UpdateManifest.CurrentRid();
         Assert.IsNotNull(rid);
         UpdateAsset? asset = manifest.AssetForCurrentPlatform();
@@ -52,7 +52,7 @@ public class UpdateManifestTests
     [TestCategory("Update")]
     public void AssetForCurrentPlatform_MissingRid_ReturnsNull()
     {
-        UpdateManifest manifest = UpdateManifest.Parse("""
+        var manifest = UpdateManifest.Parse("""
             { "version": "0.2.0", "tag": "v0.2.0",
               "assets": { "solaris-sparc": { "name": "n", "sha256": "s", "size": 1 } } }
             """);

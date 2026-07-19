@@ -135,7 +135,7 @@ public sealed class TunnelWorkflowServiceTests
     [TestCategory("TunnelWorkflow")]
     public async Task StopTunnelAsync_ForwardsToService()
     {
-        Guid tunnelId = Guid.NewGuid();
+        var tunnelId = Guid.NewGuid();
         using var cancellation = new CancellationTokenSource();
         await CreateService().StopTunnelAsync(tunnelId, cancellation.Token);
         await _tunnelService.Received(1).StopTunnelAsync(tunnelId, cancellation.Token);
@@ -145,7 +145,7 @@ public sealed class TunnelWorkflowServiceTests
     [TestCategory("TunnelWorkflow")]
     public async Task RemoveTunnelAsync_ForwardsToService()
     {
-        Guid tunnelId = Guid.NewGuid();
+        var tunnelId = Guid.NewGuid();
         using var cancellation = new CancellationTokenSource();
         await CreateService().RemoveTunnelAsync(tunnelId, cancellation.Token);
         await _tunnelService.Received(1).RemoveTunnelAsync(tunnelId, cancellation.Token);

@@ -161,10 +161,7 @@ public partial class TerminalTabView : UserControl
     private void ClearGhost()
     {
         _ghostFull = null;
-        if (_termControl is not null)
-        {
-            _termControl.GhostText = null;
-        }
+        _termControl?.GhostText = null;
     }
 
     private void OnTrackedInputChanged()
@@ -215,10 +212,7 @@ public partial class TerminalTabView : UserControl
             && !HasTextRightOfCursor()
         )
         {
-            if (_termControl is not null)
-            {
-                _termControl.GhostText = full[input.Length..];
-            }
+            _termControl?.GhostText = full[input.Length..];
         }
         else
         {

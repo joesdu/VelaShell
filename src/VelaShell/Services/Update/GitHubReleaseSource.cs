@@ -42,7 +42,7 @@ public sealed class GitHubReleaseSource : IUpdateSource
     /// <inheritdoc />
     public async Task<UpdateManifest?> GetLatestManifestAsync(bool includePreRelease, CancellationToken cancellationToken = default)
     {
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromSeconds(30));
         if (!includePreRelease)
         {
@@ -86,7 +86,7 @@ public sealed class GitHubReleaseSource : IUpdateSource
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         using HttpResponseMessage response = await _http.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
-        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
         string? firstNonDraft = null;
         foreach (JsonElement release in doc.RootElement.EnumerateArray())
         {
@@ -183,7 +183,7 @@ public sealed class GitHubReleaseSource : IUpdateSource
             {
                 resumeFrom = 0;
             }
-            using IncrementalHash sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             if (resumed)
             {
                 // 续传:已落盘的前缀要先进哈希,这次读盘换来的是整包不必重下。
@@ -247,7 +247,7 @@ public sealed class GitHubReleaseSource : IUpdateSource
         long saveWatermark = segments.Sum(s => s.Done);
         bool rangeUnsupported = false;
         using SemaphoreSlim hashSignal = new(0);
-        using CancellationTokenSource abort = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var abort = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         void SaveMeta()
         {
@@ -415,7 +415,7 @@ public sealed class GitHubReleaseSource : IUpdateSource
         SemaphoreSlim hashSignal,
         CancellationToken cancellationToken)
     {
-        using IncrementalHash sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         await using FileStream stream = new(
             partialPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 1, useAsync: true);
         byte[] buffer = new byte[CopyBufferSize];

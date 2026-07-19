@@ -105,7 +105,7 @@ public class SettingsViewUiTests
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            var opacitySlider = window
+            Slider opacitySlider = window
                 .GetVisualDescendants()
                 .OfType<Slider>()
                 .Single(slider => slider.Minimum == 10 && slider.Maximum == 100);
@@ -122,6 +122,38 @@ public class SettingsViewUiTests
             CollectionAssert.AreEqual(expected, received);
             window.Close();
         });
+    }
+
+    [TestMethod]
+    public void CancelBeforePendingAppearanceDebounce_DoesNotPreviewEditedStateAfterRollback()
+    {
+        ISettingsService settings = Substitute.For<ISettingsService>();
+        IThemeService theme = Substitute.For<IThemeService>();
+        var preview = new SettingsPreviewService();
+        var baseline = new AppSettings
+        {
+            Appearance = new() { WindowOpacityPercent = 80, SidebarPosition = "left" },
+        };
+        settings.GetSettingsAsync().Returns(baseline);
+        var viewModel = new SettingsViewModel(settings, theme, previewService: preview);
+        viewModel.LoadCommand.Execute().FirstAsync().GetAwaiter().GetResult();
+        var snapshots = new List<AppSettings>();
+        OnUi(async () =>
+        {
+            preview.PreviewRequested += snapshot => snapshots.Add(snapshot);
+
+            viewModel.Appearance.SidebarPosition = "right";
+            viewModel.Appearance.WindowOpacityPercent = 40;
+            viewModel.NotifyClosed();
+
+            await Task.Delay(150);
+            Dispatcher.UIThread.RunJobs();
+            Dispatcher.UIThread.RunJobs();
+        });
+
+        Assert.HasCount(1, snapshots);
+        Assert.AreEqual(80, snapshots[0].Appearance.WindowOpacityPercent);
+        Assert.AreEqual("left", snapshots[0].Appearance.SidebarPosition);
     }
 
     private static void OnUi(Func<Task> body) =>

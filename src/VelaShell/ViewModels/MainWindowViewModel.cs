@@ -901,10 +901,7 @@ public class MainWindowViewModel : ReactiveObject
         TerminalTabViewModel? owner = _tabBar.Tabs
             .OfType<TerminalTabViewModel>()
             .FirstOrDefault(t => t.SessionId == sessionId);
-        if (owner is not null)
-        {
-            owner.FileBrowserOpen = visible;
-        }
+        owner?.FileBrowserOpen = visible;
     }
 
     /// <summary>SFTP「使用默认编辑器打开」读取的编辑器命令(设置 → 文件传输 → 默认编辑器)。</summary>

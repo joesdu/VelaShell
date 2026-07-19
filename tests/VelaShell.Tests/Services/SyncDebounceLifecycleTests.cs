@@ -51,7 +51,7 @@ public class SyncDebounceLifecycleTests
     {
         var lifecycle = new SyncDebounceLifecycle();
 
-        CancellationToken[] tokens = new CancellationToken[5];
+        var tokens = new CancellationToken[5];
         for (int i = 0; i < 5; i++)
         {
             lifecycle.TrySwapNew(out tokens[i]);
@@ -167,7 +167,7 @@ public class SyncDebounceLifecycleTests
             var collected = new System.Collections.Concurrent.ConcurrentBag<CancellationToken>();
             var barrier = new ManualResetEventSlim(false);
 
-            var swapTasks = Enumerable.Range(0, 8).Select(_ => Task.Run(() =>
+            Task[] swapTasks = Enumerable.Range(0, 8).Select(_ => Task.Run(() =>
             {
                 barrier.Wait();
                 if (lifecycle.TrySwapNew(out CancellationToken token))
