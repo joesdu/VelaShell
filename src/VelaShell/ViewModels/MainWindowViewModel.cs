@@ -84,7 +84,7 @@ public class MainWindowViewModel : ReactiveObject
     /// <summary>补全建议提供器(历史 ∪ 快捷命令),注入到每个终端标签。</summary>
     private readonly CommandSuggestionProvider _suggestionProvider;
 
-    // SFTP/File management views derived from design
+    // SFTP/文件管理视图(源自设计稿)
     private FileBrowserViewModel _fileBrowser;
 
     /// <summary>
@@ -215,8 +215,7 @@ public class MainWindowViewModel : ReactiveObject
             .Switch()
             .Subscribe(change => RememberFileBrowserStateForTab(change.SessionId, change.Visible));
 
-        // Keep the status bar in sync with the active tab: refresh when the active tab changes,
-        // and when that tab's own connection state / latency changes.
+        // 状态栏随活动标签同步:活动标签变化时以及该标签自身的连接状态/延迟变化时刷新。
         this.WhenAnyValue(x => x.ActiveTerminalTab)
             .Select(tab =>
                 tab is null
@@ -236,8 +235,8 @@ public class MainWindowViewModel : ReactiveObject
             .Switch()
             .Subscribe(_ => this.RaisePropertyChanged(nameof(CanToggleFileBrowser)));
 
-        // Saved settings re-apply to every open terminal immediately (#3/#15/#21) — scrollback,
-        // font, size and encoding change live; TERM stays per-session (negotiated at connect).
+        // 已保存的设置即时应用到所有已打开的终端(#3/#15/#21) —— 回滚、字体、
+        // 字号与编码实时生效;TERM 按会话保持(在连接时协商)。
         _settingsService?.SettingsSaved += OnSettingsSaved;
 
         // 外观即时预览(设置窗口广播,未持久化):只重刷已打开标签的终端外观,
@@ -288,15 +287,14 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// The single command source shared by the menu bar, command palette and shortcuts
-    /// (design spec §4A.1) — every entry point shows the same name, hint and behavior.
+    /// 菜单栏、命令面板与快捷键共用的单条命令来源(设计稿 §4A.1)——每个入口展示的名称、提示与行为都一致。
     /// </summary>
     public ICommandRegistry Commands { get; } = new CommandRegistry();
 
-    /// <summary>Executes a registry command by id (used by menu entries via CommandParameter).</summary>
+    /// <summary>通过 id 执行一条注册命令(菜单项通过 CommandParameter 使用)。</summary>
     public ReactiveCommand<string, Unit>? RunCommand { get; private set; }
 
-    /// <summary>Tunnel manager panel for the active session (design fuXS7, spec §10).</summary>
+    /// <summary>活动会话的隧道管理面板(设计 fuXS7,规范 §10)。</summary>
     public TunnelPanelViewModel? TunnelPanel
     {
         get;
@@ -310,11 +308,11 @@ public class MainWindowViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>The self-drawn terminal control of the active tab, when it is one.</summary>
+    /// <summary>活动标签的自绘终端控件(当活动标签存在时)。</summary>
     private VelaTerminalControl? ActiveTerminalControl =>
         ActiveTerminalTab?.TerminalEmulator.Control as VelaTerminalControl;
 
-    /// <summary>The Ctrl+P / Ctrl+K command palette overlay.</summary>
+    /// <summary>Ctrl+P / Ctrl+K 命令面板浮层。</summary>
     public CommandPaletteViewModel CommandPalette { get; }
 
     /// <summary>打开命令面板(Ctrl+P / Ctrl+K)的命令。</summary>
@@ -335,7 +333,7 @@ public class MainWindowViewModel : ReactiveObject
     /// </summary>
     public Func<SessionProfile, Task<SessionProfile?>>? InteractiveAuthenticator { get; set; }
 
-    /// <summary>The most recent connection error message, or null if the last attempt succeeded.</summary>
+    /// <summary>最近一次连接的错误消息,若上次尝试成功则为 null。</summary>
     public string? LastConnectionError
     {
         get;
@@ -773,13 +771,13 @@ public class MainWindowViewModel : ReactiveObject
         UpdateStatusBarForActiveTab();
     }
 
-    /// <summary>Creates a blank placeholder FileBrowserViewModel for hiding the bottom panel.</summary>
+    /// <summary>创建一个空白占位 FileBrowserViewModel 用于隐藏底部面板。</summary>
     private FileBrowserViewModel CreatePlaceholderFileBrowser() =>
         new(_sftpService, Guid.Empty) { TransferSink = FileTransfer };
 
     /// <summary>
-    /// Points the SFTP file browser at the active tab's session (#22). Each connected tab gets
-    /// a browser rooted at its own session; without a connected session the panel shows empty.
+    /// 将 SFTP 文件浏览器指向活动标签的会话(#22)。每个已连接标签有一个根植于自己会话的浏览器;
+    /// 未连接会话时面板显示为空。
     /// 面板实例按会话缓存:切回已看过的标签直接复用(旧列表秒显 + 后台静默刷新),
     /// 保留浏览路径/排序/列宽,不再每次切换都重建对象、重新列目录。
     /// 缓存的驱逐点:标签关闭与连接断开(<see cref="EvictFileBrowser" />)。
@@ -925,8 +923,7 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Toggles the SFTP panel for the active session (#22, spec §9). Opening it binds the
-    /// browser to the current session (if not already) and loads the initial listing.
+    /// 切换活动会话的 SFTP 面板(#22,规范 §9)。打开时(若尚未绑定)将浏览器绑定到当前会话并加载初始列表。
     /// </summary>
     public void ToggleFileBrowser()
     {
@@ -934,9 +931,8 @@ public class MainWindowViewModel : ReactiveObject
         {
             return;
         }
-        // Ensure the browser points at the active tab's (now-connected) session before showing it.
-        // The active-tab subscription can't do this on its own because the session id is assigned
-        // after the tab is activated, so we rebind on demand here as well.
+        // 在展示前确保浏览器指向活动标签(此时已连接)的会话。
+        // 活动标签订阅靠自己做不到:会话 Id 在标签激活后才分配,因此我们也在此按需重新绑定。
         RebindFileBrowser();
         FileBrowser.IsVisible = !FileBrowser.IsVisible;
         if (FileBrowser.IsVisible && FileBrowser.SessionId != Guid.Empty)
@@ -959,7 +955,7 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Called once a session finishes connecting: binds the file browser to it. 面板是否展示
+    /// 连接完成后调用:将文件浏览器绑定到该会话。 面板是否展示
     /// 由 <see cref="RebindFileBrowser" /> 按标签自己的状态决定(首次连接取设置
     /// 「连接后自动打开文件浏览器」的当前值,断线重连沿用标签生命周期内的记忆)。
     /// </summary>
@@ -969,8 +965,7 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Raised when the user asks for in-terminal search via menu/palette; the window
-    /// forwards it to the active terminal view's search bar (§5.3).
+    /// 用户通过菜单/面板请求终端内搜索时触发;窗口将其转发到活动终端视图的搜索栏(§5.3)。
     /// </summary>
     public event EventHandler? TerminalSearchRequested;
 
@@ -1011,7 +1006,7 @@ public class MainWindowViewModel : ReactiveObject
     /// <summary>工具菜单“连接诊断”(针对当前标签的配置)—— 由窗口打开诊断中心弹窗。</summary>
     public event Action<SessionProfile>? DiagnosticsRequested;
 
-    /// <summary>Singleton toggle (spec §17.2): reopening focuses the existing panel.</summary>
+    /// <summary>单例切换(规范 §17.2):再次打开时聚焦现有面板。</summary>
     public void ToggleTunnelPanel()
     {
         if (IsTunnelPanelOpen)
@@ -1084,13 +1079,12 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Polls the active session's metrics once a second into the status bar. The
-    /// probe runs on a dedicated SSH exec channel, so it never touches the terminal stream;
-    /// consecutive samples give the collector real instantaneous CPU% and network rates.
+    /// 每秒轮询一次活动会话的指标到状态栏中。探测运行在专用 SSH exec 通道上,
+    /// 因此绝不触碰终端流;连续采样让采集器获得真实的瞬时 CPU% 和网络速率。
     /// </summary>
     private void StartStatusMetricsPolling()
     {
-        // Headless unit tests construct this VM without an Avalonia application; skip there.
+        // 无头单元测试在没有 Avalonia 应用的情况下构造此 VM;应跳过。
         // 延迟测量(ICMP)不依赖 metrics 服务,所以只要有 UI 就启动计时器。
         if (Application.Current is null)
         {
@@ -1172,7 +1166,7 @@ public class MainWindowViewModel : ReactiveObject
         {
             SessionMetrics? metrics = await _metricsService.GetMetricsAsync(tab.SessionId);
 
-            // The user may have switched tabs while the probe ran; don't show stale data.
+            // 探测期间用户可能切换了标签;不要把结果写到别的会话上。
             if (!ReferenceEquals(ActiveTerminalTab, tab))
             {
                 return;
@@ -1200,7 +1194,7 @@ public class MainWindowViewModel : ReactiveObject
         }
         catch
         {
-            // Never let a failed probe surface in the UI loop; the next tick retries.
+            // 绝不让失败的探测浮现到 UI 循环里;下次 tick 再重试。
         }
         finally
         {
@@ -1316,8 +1310,7 @@ public class MainWindowViewModel : ReactiveObject
     private static string FormatGb(long bytes) => (bytes / 1024.0 / 1024.0 / 1024.0).ToString("F1");
 
     /// <summary>
-    /// Loads the persisted recent-connection history (SonnetDB) into the sidebar so it
-    /// survives restarts.
+    /// 加载已持久化的最近连接历史(SonnetDB)到侧边栏,使重启后仍保留。
     /// </summary>
     public async Task InitializeAsync()
     {
@@ -1473,8 +1466,8 @@ public class MainWindowViewModel : ReactiveObject
                 continue;
             }
             _quickCommandTargetSubscriptions[added] = added
-                // ConnectionStatus raises before TerminalTabViewModel updates IsConnected.
-                // Observe IsConnected itself so the refresh sees the final, usable state.
+                // ConnectionStatus 在 TerminalTabViewModel 更新 IsConnected 之前触发。
+                // 观察 IsConnected 本身,使刷新看到最终可用的状态。
                 .WhenAnyValue(tab => tab.IsConnected, tab => tab.Title)
                 .Subscribe(_ => RefreshQuickCommandTargets());
         }
@@ -1568,7 +1561,7 @@ public class MainWindowViewModel : ReactiveObject
     {
         var items = new List<CommandPaletteItem>();
 
-        // Recent connections first — the quick-access bucket (Enter connects).
+        // 最近连接优先 —— 快捷访问桶(Enter 连接)。
         var recentProfileIds = new HashSet<Guid>();
         foreach (RecentConnectionItemViewModel item in Sidebar.RecentConnections.Connections)
         {
@@ -1591,7 +1584,7 @@ public class MainWindowViewModel : ReactiveObject
             );
         }
 
-        // All saved profiles (§12.3),带分组徽章;已出现在最近连接里的不重复列出。
+        // 全部已保存配置(§12.3),带分组徽章;已出现在最近连接里的不重复列出。
         foreach (SessionProfile profile in _paletteProfiles)
         {
             if (recentProfileIds.Contains(profile.Id))
@@ -1616,7 +1609,7 @@ public class MainWindowViewModel : ReactiveObject
             );
         }
 
-        // Global actions come from the shared command registry (menu/palette/shortcut parity).
+        // 全局操作来自共享命令注册表(菜单/面板/快捷键一致)。
         items.AddRange(
             Commands.All.Select(captured => new CommandPaletteItem(
                 Strings.Get("Command"),
@@ -1746,9 +1739,8 @@ public class MainWindowViewModel : ReactiveObject
         StartSessionLogging(terminalTab, settings);
         SendStartupCommand(terminalTab, settings);
 
-        // The session id only exists now, after the handshake — the active-tab subscription
-        // fired before it was assigned, so bind the SFTP browser here (and show + load it) or
-        // it stays bound to the empty placeholder and never loads a listing (#22).
+        // 会话 Id 从现在起才存在(握手完成后)——活动标签订阅在它被赋值前已触发,
+        // 因此在这里绑定 SFTP 浏览器(并展示+加载),否则它将一直指向空占位,永远加载不到列表(#22)。
         ShowFileBrowserForActiveSession();
         if (_metricsService is not null)
         {
@@ -1767,9 +1759,9 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Reconnects a dropped session in place: it reuses the same tab, emulator and scrollback
-    /// buffer, only rebuilding the transport. Triggered by Enter / Ctrl+R on a disconnected tab
-    /// (or after exit/reboot) instead of forcing the user to open a fresh tab (#19).
+    /// 在同一位置重连一个已断开的会话:复用同一个标签、模拟器与回滚缓冲,
+    /// 仅重建传输层。由已断开标签上的 Enter / Ctrl+R 触发(或在 exit/reboot 后),
+    /// 省去用户打开新标签的操作(#19)。
     /// </summary>
     public async Task ReconnectTabAsync(
         TerminalTabViewModel tab,
@@ -1778,7 +1770,7 @@ public class MainWindowViewModel : ReactiveObject
     {
         ArgumentNullException.ThrowIfNull(tab);
 
-        // Ignore reconnect requests while already connecting or connected.
+        // 忽略正在连接或已连接时的重连请求。
         if (tab.ConnectionStatus is SessionStatus.Connecting or SessionStatus.Connected)
         {
             return;
@@ -1823,8 +1815,7 @@ public class MainWindowViewModel : ReactiveObject
                 cancellationToken
             );
 
-            // Full-reset (RIS) the emulator before the new session's output arrives, so the
-            // fresh MOTD doesn't append after the old buffer's content.
+            // 在新会话输出到达前做一次完全复位(RIS),使新的标语不至于附加在旧缓冲内容之后。
             tab.TerminalEmulator.Feed("\ec"u8.ToArray());
             tab.SessionId = session.SessionId;
             tab.AttachTransport(shellStream);
@@ -1839,7 +1830,7 @@ public class MainWindowViewModel : ReactiveObject
                 tab.ResourceMonitor = new(_metricsService, session.SessionId, tab.Title);
             }
 
-            // Reconnect mints a fresh session id; rebind the SFTP browser to it and reload (#22).
+            // 重连产生全新的会话 id;重新绑定 SFTP 浏览器并重新加载(#22)。
             ShowFileBrowserForActiveSession();
             StatusBar.ResetUptime();
             UpdateStatusBarForActiveTab();
@@ -2012,7 +2003,7 @@ public class MainWindowViewModel : ReactiveObject
             SystemSound.Alert();
         }
 
-        // Headless unit tests construct this VM without an Avalonia application; no timer there.
+        // 无头单元测试在没有 Avalonia 应用的情况下构造此 VM;此处无计时器。
         // 本地终端不自动重开:shell 退出(exit)是用户意图,自动拉起会没完没了。
         if (
             !settings.General.AutoReconnect
@@ -2110,9 +2101,8 @@ public class MainWindowViewModel : ReactiveObject
         );
 
     /// <summary>
-    /// Connects without ever letting a failure escape to the caller. Authentication failures,
-    /// unreachable hosts and the like are captured in <see cref="LastConnectionError" /> and
-    /// reflected in the status bar instead of crashing the app.
+    /// 执行连接且绝不让异常逃逸到调用方。认证失败、主机不可达等被捕获进
+    /// <see cref="LastConnectionError" /> 并反映在状态栏中,而非让应用崩溃。
     /// 凭据缺失或认证失败时通过 <see cref="InteractiveAuthenticator" /> 走两步验证弹窗(最多重试 3 次)。
     /// </summary>
     public async Task<TerminalTabViewModel?> TryConnectProfileAsync(
@@ -2221,8 +2211,7 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Opens a standalone SFTP document for either an SSH or SFTP profile. This path
-    /// never creates a terminal tab or shell stream.
+    /// 为 SSH 或 SFTP 配置打开一个独立的 SFTP 文档。此路径绝不创建终端标签或 shell 流。
     /// </summary>
     public async Task<TerminalTabViewModel?> OpenSftpForProfileAsync(
         SessionProfile profile,
@@ -2234,8 +2223,7 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Connects through the normal workflow and creates one document-scoped serialized SFTP
-    /// channel only after authentication succeeds.
+    /// 通过常规工作流连接,并在认证成功后才创建一个文档范围的串行化 SFTP 通道。
     /// </summary>
     public async Task<SftpDocument?> OpenSftpDocumentForProfileAsync(
         SessionProfile profile,
@@ -2323,8 +2311,7 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Connects a sidebar "最近连接" entry: resolves the saved profile by id when available,
-    /// otherwise reconstructs an ad-hoc profile from the recorded host/port/username.
+    /// 连接侧边栏"最近连接"条目:有 id 时解析已保存配置,否则从记录的主机/端口/用户名重建临时配置。
     /// </summary>
     public async Task<TerminalTabViewModel?> TryConnectRecentAsync(
         RecentConnectionEntry entry,
@@ -2361,7 +2348,7 @@ public class MainWindowViewModel : ReactiveObject
         string target = string.IsNullOrWhiteSpace(profile.Host)
             ? profile.Name
             : $"{profile.Username}@{profile.Host}:{profile.Port}";
-        // Match by type name so VelaShell.App need not reference SSH.NET directly.
+        // 按类型名匹配,使 VelaShell.App 无需直接引用 SSH.NET。
         return ex.GetType().Name switch
         {
             "SshAuthenticationException" => Strings.Format("Msg_AuthFailed", target),
@@ -2482,9 +2469,8 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// The settings that are safe to change on a live session: scrollback depth, font,
-    /// font size, host-output encoding plus the full 终端行为/配色 option set. Applied at tab
-    /// creation and re-applied to every open tab whenever settings are saved (#3/#15/#21).
+    /// 可在活动会话上安全更改的设置:回滚深度、字体、字号、主机输出编码以及完整的
+    /// 终端行为/配色选项集。在标签创建时应用,并每次保存设置后重新应用到所有已打开的标签(#3/#15/#21)。
     /// </summary>
     private void ApplyLiveTerminalSettings(
         ITerminalEmulator emulator,
@@ -2545,8 +2531,8 @@ public class MainWindowViewModel : ReactiveObject
     {
         _latestSettings = settings;
 
-        // SaveSettingsAsync may complete on a thread-pool continuation; font/size touch layout,
-        // so marshal onto the UI thread (the main scheduler is the Avalonia dispatcher).
+        // SaveSettingsAsync 可能在线程池的回调中完成;字体/字号涉及布局,
+        // 因此编组到 UI 线程(主调度器即 Avalonia 的 Dispatcher)。
         RxSchedulers.MainThreadScheduler.Schedule(
             Unit.Default,
             (_, _) =>
@@ -2742,8 +2728,7 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Projects the currently active terminal tab's connection details onto the status bar so
-    /// the bottom-left indicator always reflects the tab the user is looking at.
+    /// 将当前活动终端标签的连接详情投射到状态栏中,使左下角的指示器始终反映用户正在看的标签。
     /// </summary>
     private void UpdateStatusBarForActiveTab()
     {
@@ -2776,8 +2761,8 @@ public class MainWindowViewModel : ReactiveObject
         {
             ActiveTerminalTab = null;
             UpdateStatusBarForActiveTab();
-            // Replace the bottom file browser with a blank placeholder so the grid rows collapse;
-            // the terminal's browser stays in _fileBrowserCache with its true IsVisible state.
+            // 用空白占位替换底部文件浏览器,使网格行塌缩;
+            // 终端的浏��器保留在 _fileBrowserCache 中,保持其真实的 IsVisible 状态。
             if (FileBrowser.SessionId != Guid.Empty || FileBrowser.IsVisible)
             {
                 FileBrowser = CreatePlaceholderFileBrowser();
@@ -2924,9 +2909,8 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Tears down the SFTP channel bound to a closing tab's session and, if the browser is
-    /// still showing that session, unbinds and hides it — closing the SSH tab must not leave a live,
-    /// operable SFTP panel behind (#22).
+    /// 拆除正在关闭的标签对应会话的 SFTP 通道,并在浏览器当前绑定到该会话时将面板替换为空白占位。
+    /// 面板仍在显示该会话时,取消绑定并隐藏 —— 关闭 SSH 标签不应留下一个活动的、可操作的 SFTP 面板(#22)。
     /// </summary>
     private void CloseSftpForTab(TerminalTabViewModel tab)
     {
@@ -2936,9 +2920,8 @@ public class MainWindowViewModel : ReactiveObject
         }
         Guid closedSessionId = tab.SessionId;
 
-        // Evict BEFORE tearing the SFTP channel down so an in-flight listing is cancelled
-        // rather than racing the client disposal (SSH.NET NREs from inside ListDirectory
-        // otherwise).
+        // 在拆除 SFTP 通道前先驱逐:使在飞的列举被取消,而非与客户端释放争抢
+        // (否则 SSH.NET 会从 ListDirectory 内部抛 NRE)。
         EvictFileBrowser(closedSessionId);
         _ = _sftpService.CloseSessionAsync(closedSessionId);
     }

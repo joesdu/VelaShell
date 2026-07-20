@@ -1,28 +1,28 @@
 namespace VelaShell.Core.Localization;
 
 /// <summary>
-/// Service for accessing localized strings at runtime
+/// 运行时访问本地化字符串的服务
 /// </summary>
 public interface ILocalizationService
 {
     /// <summary>
-    /// Gets the current UI language code (e.g., "en", "zh-CN")
+    /// 获取当前 UI 语言代码(如 "en"、"zh-CN")
     /// </summary>
     string CurrentLanguage { get; }
 
     /// <summary>
-    /// Gets a localized string by key
+    /// 按键获取本地化字符串
     /// </summary>
-    /// <param name="key">The resource key</param>
-    /// <returns>Localized string, or key name if not found</returns>
+    /// <param name="key">资源键</param>
+    /// <returns>本地化字符串;未找到时返回键名</returns>
     string GetString(string key);
 
     /// <summary>
-    /// Sets the UI language for the application
+    /// 设置应用的 UI 语言
     /// </summary>
-    /// <param name="language">Language code (e.g., "en", "zh-CN")</param>
+    /// <param name="language">语言代码(如 "en"、"zh-CN")</param>
     void SetLanguage(string language);
 
-    /// <summary>Raised after the UI language changes, so live-bound text can refresh.</summary>
+    /// <summary>UI 语言变更后触发,使实时绑定的文本可以刷新。</summary>
     event Action<string>? LanguageChanged;
 }

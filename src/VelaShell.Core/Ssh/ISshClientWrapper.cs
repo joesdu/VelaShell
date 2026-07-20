@@ -36,7 +36,7 @@ public interface ISshClientWrapper : IDisposable
         int bufferSize,
         IReadOnlyDictionary<TerminalMode, uint>? terminalModeValues = null);
 
-    /// <summary>Runs a one-shot command on the remote host and returns its stdout.</summary>
+    /// <summary>在远端主机上执行一次性命令并返回其标准输出。</summary>
     Task<string> RunCommandAsync(string commandText, CancellationToken cancellationToken = default);
 
     /// <summary>

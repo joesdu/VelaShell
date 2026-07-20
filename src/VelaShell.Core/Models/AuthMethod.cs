@@ -1,17 +1,17 @@
 namespace VelaShell.Core.Models;
 
 /// <summary>
-/// SSH authentication method types
+/// SSH 认证方式类型
 /// </summary>
 public enum AuthMethod
 {
     /// <summary>
-    /// Password-based authentication
+    /// 基于密码的认证
     /// </summary>
     Password,
 
     /// <summary>
-    /// Private key authentication (RSA, ED25519, ECDSA)
+    /// 私钥认证(RSA、ED25519、ECDSA)
     /// </summary>
     PrivateKey
 }

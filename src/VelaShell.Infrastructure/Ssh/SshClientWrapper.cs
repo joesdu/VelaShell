@@ -126,9 +126,8 @@ public sealed class SshClientWrapper(SshClient client) : ISshClientWrapper
         }
         catch (Exception ex) when (ex is Renci.SshNet.Common.SshConnectionException or NullReferenceException && IsTornDown())
         {
-            // The session was disconnected/disposed while the command was in flight (e.g. its
-            // tab closed mid-probe). Normalise to the "session is gone" signal callers already
-            // handle, instead of surfacing SSH.NET's internal failure.
+            // 命令执行途中(例如其标签页在探测中途被关闭)会话被断开/释放。归一化为调用方
+            // 已处理的"会话已释放"信号,而非暴露 SSH.NET 的内部失败。
             throw new ObjectDisposedException(nameof(SshClientWrapper), ex);
         }
         catch (Exception ex) when (SshNetInterop.Translate(ex) is { } translated)
@@ -159,7 +158,7 @@ public sealed class SshClientWrapper(SshClient client) : ISshClientWrapper
         Dispose(true);
     }
 
-    /// <summary>True when the wrapper was disposed or the client lost its connection/session.</summary>
+    /// <summary>包装器已释放或客户端连接/会话丢失时返回 True。</summary>
     private bool IsTornDown()
     {
         if (_disposed)
@@ -172,7 +171,7 @@ public sealed class SshClientWrapper(SshClient client) : ISshClientWrapper
         }
         catch
         {
-            // IsConnected itself throws once the client is disposed underneath us.
+            // 一旦底层客户端被释放,IsConnected 本身也会抛出异常。
             return true;
         }
     }

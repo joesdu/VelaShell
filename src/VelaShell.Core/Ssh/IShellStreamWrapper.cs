@@ -1,52 +1,51 @@
 namespace VelaShell.Core.Ssh;
 
 /// <summary>
-/// Library-neutral abstraction over an interactive SSH shell stream, decoupling
-/// callers from the underlying SSH implementation.
+/// 交互式 SSH shell 流之上的库中立抽象,将调用方与底层 SSH 实现解耦。
 /// </summary>
 public interface IShellStreamWrapper : IDisposable
 {
-    /// <summary>Gets a value indicating whether unread data is currently buffered on the stream.</summary>
+    /// <summary>获取一个值,指示流上当前是否缓冲有未读数据。</summary>
     bool DataAvailable { get; }
 
-    /// <summary>Gets a value indicating whether the stream currently supports reading.</summary>
+    /// <summary>获取一个值,指示流当前是否支持读取。</summary>
     bool CanRead { get; }
 
-    /// <summary>Gets a value indicating whether the stream currently supports writing.</summary>
+    /// <summary>获取一个值,指示流当前是否支持写入。</summary>
     bool CanWrite { get; }
 
-    /// <summary>Waits for output matching the given regular expression, up to the specified timeout.</summary>
-    /// <param name="regex">The regular expression to match against incoming output.</param>
-    /// <param name="timeout">The maximum time to wait for a match.</param>
-    /// <returns>The matched text, or <c>null</c> if the timeout elapses without a match.</returns>
+    /// <summary>等待与给定正则表达式匹配的输出,直到指定的超时时间。</summary>
+    /// <param name="regex">用于匹配到来输出的正则表达式。</param>
+    /// <param name="timeout">等待匹配的最长时间。</param>
+    /// <returns>匹配到的文本;若超时仍未匹配则返回 <c>null</c>。</returns>
     string? Expect(string regex, TimeSpan timeout);
 
-    /// <summary>Writes a line of text to the shell, appending a line terminator.</summary>
-    /// <param name="line">The text to send to the remote shell.</param>
+    /// <summary>向 shell 写入一行文本,并附加行结束符。</summary>
+    /// <param name="line">要发送给远端 shell 的文本。</param>
     void WriteLine(string line);
 
-    /// <summary>Asynchronously reads output bytes from the shell into the buffer.</summary>
-    /// <param name="buffer">The buffer that receives the read bytes.</param>
-    /// <param name="offset">The zero-based byte offset in <paramref name="buffer" /> at which to begin storing data.</param>
-    /// <param name="count">The maximum number of bytes to read.</param>
-    /// <param name="cancellationToken">A token to cancel the read operation.</param>
-    /// <returns>The number of bytes actually read.</returns>
+    /// <summary>异步从 shell 读取输出字节到缓冲区。</summary>
+    /// <param name="buffer">接收所读取字节的缓冲区。</param>
+    /// <param name="offset">在 <paramref name="buffer" /> 中开始存储数据的从零开始的字节偏移量。</param>
+    /// <param name="count">要读取的最大字节数。</param>
+    /// <param name="cancellationToken">用于取消读取操作的令牌。</param>
+    /// <returns>实际读取的字节数。</returns>
     Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken);
 
-    /// <summary>Asynchronously writes bytes to the shell.</summary>
-    /// <param name="buffer">The buffer containing the bytes to write.</param>
-    /// <param name="offset">The zero-based byte offset in <paramref name="buffer" /> from which to begin writing.</param>
-    /// <param name="count">The number of bytes to write.</param>
-    /// <param name="cancellationToken">A token to cancel the write operation.</param>
-    /// <returns>A task that completes when the write finishes.</returns>
+    /// <summary>异步向 shell 写入字节。</summary>
+    /// <param name="buffer">包含待写入字节的缓冲区。</param>
+    /// <param name="offset">在 <paramref name="buffer" /> 中开始写入数据的从零开始的字节偏移量。</param>
+    /// <param name="count">要写入的字节数。</param>
+    /// <param name="cancellationToken">用于取消写入操作的令牌。</param>
+    /// <returns>写入完成时完成的任务。</returns>
     Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken);
 
-    /// <summary>Flushes any buffered output to the remote shell.</summary>
+    /// <summary>将任何缓冲的输出刷新到远端 shell。</summary>
     void Flush();
 
     /// <summary>
-    /// Sends an SSH window-change request so the remote PTY matches the local terminal size.
-    /// Pixel dimensions are reported as 0 (character-cell sizing only).
+    /// 发送 SSH 窗口变更请求,使远端 PTY 匹配本地终端尺寸。
+    /// 像素尺寸报告为 0(仅使用字符单元尺寸)。
     /// </summary>
     void Resize(int columns, int rows);
 }

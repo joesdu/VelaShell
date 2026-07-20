@@ -27,9 +27,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     private bool _started;
 
     /// <summary>
-    /// Creates a tab that owns the terminal emulator but has no live transport yet. Used to show
-    /// the tab immediately in a "connecting" state; call <see cref="AttachTransport" /> once the
-    /// shell stream is available (#17), and again to reconnect in place (#19).
+    /// 创建一个拥有终端模拟器但尚未建立实时传输的标签。用于让标签立即以
+    /// “连接中”状态显示;待 shell 流可用时(#17)调用 <see cref="AttachTransport" />,
+    /// 重连时同样调用它就地重连(#19)。
     /// </summary>
     public TerminalTabViewModel(ITerminalEmulator terminalEmulator)
     {
@@ -38,8 +38,8 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         Title = Strings.NewTab;
         ConnectionStatus = SessionStatus.Disconnected;
 
-        // Keep the remote PTY size in sync with the local terminal grid. This is tied to the
-        // emulator, not the transport, so it survives reconnects.
+        // 保持远程 PTY 尺寸与本地终端网格同步。这绑定在模拟器而非传输上,
+        // 因此重连后依然有效。
         TerminalEmulator.PtySizeChanged += OnPtySizeChanged;
 
         // 命令补全(plan.md #16):旁路跟踪用户键入的命令行;Enter 提交时做回显校验
@@ -49,8 +49,8 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         InputTracker.CommandSubmitted += OnTrackedCommandSubmitted;
         InputTracker.UnknownLineSubmitted += OnUnknownLineSubmitted;
 
-        // Toolbar quick actions: tear the transport down but keep the tab,
-        // or ask the owner to reconnect in place (#19 flow).
+        // 工具栏快捷操作:拆除传输但保留标签,
+        // 或请求宿主就地重连(#19 流程)。
         DisconnectCommand = ReactiveCommand.Create(
             () =>
             {
@@ -85,7 +85,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         });
     }
 
-    /// <summary>Creates a tab and attaches a live transport immediately (the established-connection case).</summary>
+    /// <summary>创建一个标签并立即挂载实时传输(已建立连接的场景)。</summary>
     public TerminalTabViewModel(ITerminalEmulator terminalEmulator, IShellStreamWrapper shellStream)
         : this(terminalEmulator)
     {
@@ -103,7 +103,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     public bool? FileBrowserOpen { get; set; }
 
     /// <summary>
-    /// Resource panel data for this tab (hover >400ms on the tab shows it, §11).
+    /// 本标签页的资源面板数据(悬停 > 400ms 时显示,§11)。
     /// 握手完成后才赋值,而标签 ToolTip.Tip 在标签创建时就已绑定到它,
     /// 必须发变更通知,否则 Tip 停留在 null,悬浮面板永远不弹。
     /// </summary>
@@ -113,7 +113,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>The profile this tab was connected with, used to reconnect in place (#19).</summary>
+    /// <summary>本标签连接所用的配置,用于就地重连(#19)。</summary>
     public SessionProfile? Profile { get; set; }
 
     /// <summary>
@@ -365,13 +365,13 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// </summary>
     public bool UserRequestedDisconnect { get; private set; }
 
-    /// <summary>Status-bar connection summary for this tab, e.g. "SSH • root@host:22".</summary>
+    /// <summary>本标签在状态栏显示的连接摘要,例如 "SSH • root@host:22"。</summary>
     public string ConnectionSummary { get; init; } = string.Empty;
 
-    /// <summary>The terminal emulation type advertised for this session.</summary>
+    /// <summary>本会话声明的终端模拟类型。</summary>
     public string TerminalTypeName { get; init; } = "xterm-256color";
 
-    /// <summary>The character encoding used for this session.</summary>
+    /// <summary>本会话使用的字符编码。</summary>
     public string EncodingName { get; init; } = "UTF-8";
 
     /// <summary>本标签持有的终端模拟器,跨重连保持不变(拥有滚动缓冲区)。</summary>
@@ -482,13 +482,13 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// <summary>是否仍允许自动重连(重连次数未达上限)。</summary>
     public bool CanReconnect => ReconnectAttempts < MaxReconnectAttempts;
 
-    /// <summary>Disconnects the live transport, keeping the tab (and its buffer) for reconnect.</summary>
+    /// <summary>断开实时传输,但保留标签(及其缓冲区)以便重连。</summary>
     public ReactiveCommand<Unit, Unit> DisconnectCommand { get; }
 
-    /// <summary>Requests an in-place reconnect of a disconnected tab (same as Enter / Ctrl+R).</summary>
+    /// <summary>请求对已断开标签就地重连(等同于 Enter / Ctrl+R)。</summary>
     public ReactiveCommand<Unit, Unit> ReconnectCommand { get; }
 
-    /// <summary>Closes the tab from the in-tab failure/disconnect overlay (设计 yxjmg).</summary>
+    /// <summary>从标签页内失败/断开覆盖层(设计 yxjmg)关闭标签页。</summary>
     public ReactiveCommand<Unit, Unit> CloseTabCommand { get; }
 
     /// <summary>
@@ -511,13 +511,13 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         InputTracker.CommandSubmitted -= OnTrackedCommandSubmitted;
         InputTracker.UnknownLineSubmitted -= OnUnknownLineSubmitted;
 
-        // Instant, UI-safe teardown so the tab closes immediately: this only unhooks the
-        // emulator's Updated handler, no network I/O.
+        // 即时、UI 安全的拆除,使标签立即关闭:这里只解绑模拟器的
+        // Updated 事件处理,不涉及网络 I/O。
         TerminalEmulator.Dispose();
 
-        // Network teardown (cancel the read loop, close the SSH channel) can block for up to a
-        // couple of seconds, so run it off the caller's (UI) thread — the tab is already gone.
-        // Fixes the "closing a tab freezes the UI" problem (#18). Bridge.Dispose is idempotent.
+        // 网络拆除(取消读循环、关闭 SSH 通道)最多可能阻塞数秒,因此放到
+        // 调用方(UI)线程之外执行 —— 此时标签已经消失。
+        // 修复了“关闭标签卡住 UI”的问题(#18)。Bridge.Dispose 是幂等的。
         SshTerminalBridge? bridge = Bridge;
         if (bridge is not null)
         {
@@ -529,18 +529,17 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     }
 
     /// <summary>
-    /// Raised when the session drops (remote closed the channel) so the UI can show the
-    /// disconnected overlay and offer reconnect (#19).
+    /// 会话断开时(远端关闭了通道)触发,使 UI 显示断开覆盖层并提供重连(#19)。
     /// </summary>
     public event EventHandler? Disconnected;
 
-    /// <summary>Raised when the user asks to reconnect a disconnected tab (Enter / Ctrl+R).</summary>
+    /// <summary>用户请求重连已断开标签时触发(Enter / Ctrl+R)。</summary>
     public event EventHandler? ReconnectRequested;
 
     /// <summary>标签页内失败/断开覆盖层(设计 yxjmg)的“关闭标签页”触发,由宿主移除该标签。</summary>
     public event EventHandler? CloseRequested;
 
-    /// <summary>Requests a reconnect, but only from the disconnected state (no-op otherwise).</summary>
+    /// <summary>请求重连,但仅在已断开状态下有效(否则为空操作)。</summary>
     public void RequestReconnect()
     {
         if (ConnectionStatus == SessionStatus.Disconnected)
@@ -618,9 +617,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     }
 
     /// <summary>
-    /// Attaches a live shell stream and prepares I/O pumping (call <see cref="Start" /> after).
-    /// Any previous transport is torn down in the background first, so this doubles as the
-    /// reconnect entry point that reuses the same tab and scrollback buffer (#19).
+    /// 挂载实时 shell 流并准备 I/O 泵送(之后调用 <see cref="Start" />)。
+    /// 会先在后台拆除任何先前的传输,因此它同时充当复用同一标签与回滚
+    /// 缓冲区的重连入口(#19)。
     /// </summary>
     public void AttachTransport(IShellStreamWrapper shellStream)
     {
@@ -635,18 +634,17 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         Bridge = bridge;
         _started = false;
 
-        // The channel was opened at a fixed default grid (120×32). By now the control has usually
-        // already been laid out to the real viewport, but the PtySizeChanged that carried that
-        // size fired while ShellStream was still null and was dropped. Push the emulator's current
-        // grid to the new stream so the remote PTY winsize matches what's visible — otherwise
-        // full-screen apps (htop/nano) read the stale 32-row size and draw their footer mid-screen,
-        // leaving the lower part of the terminal blank.
+        // 通道以固定的默认网格(120×32)打开。到此时控件通常已经布局到真实视口,
+        // 但承载该尺寸的 PtySizeChanged 在 ShellStream 仍为 null 时触发并被丢弃了。
+        // 把模拟器当前网格推送到新流,使远程 PTY 的 winsize 与实际可见区域一致 ——
+        // 否则全屏程序(htop/nano)会读取过期的 32 行尺寸,把页脚画在屏幕中央,
+        // 导致终端下半部分空白。
         SyncPtySize();
     }
 
     /// <summary>
-    /// Re-sends the emulator's current grid size to the live shell stream, so the remote
-    /// PTY winsize matches the actual viewport rather than the fixed size the channel opened with.
+    /// 把模拟器当前的网格尺寸重新发送到实时 shell 流,使远程 PTY 的
+    /// winsize 与真实视口一致,而非通道打开时的固定尺寸。
     /// </summary>
     private void SyncPtySize()
     {
@@ -656,7 +654,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         }
     }
 
-    /// <summary>Tears down the current transport off the UI thread, keeping the tab and buffer intact.</summary>
+    /// <summary>在 UI 线程外拆除当前传输,同时保留标签与缓冲区完好。</summary>
     public void DetachTransport()
     {
         SshTerminalBridge? bridge = Bridge;
@@ -671,7 +669,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         ShellStream = null;
         _started = false;
 
-        // Bridge.Dispose also disposes the shell stream; run it off the caller's thread.
+        // Bridge.Dispose 也会释放 shell 流;放到调用方线程之外执行。
         Task.Run(bridge.Dispose);
     }
 
@@ -701,7 +699,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     private void OnBridgeClosed()
     {
-        // Fired on the read thread; marshal the reactive status change to the UI thread.
+        // 在读线程上触发;将响应式状态变更封送到 UI 线程。
         if (Dispatcher.UIThread.CheckAccess())
         {
             MarkDisconnected();
@@ -730,7 +728,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     }
 
     /// <summary>
-    /// Transitions the tab to the disconnected state and notifies listeners (idempotent).
+    /// 将标签切换到断开状态并通知监听者(幂等)。
     /// <paramref name="reason" /> 非空时(如重连失败)覆盖层显示为“连接失败 + 具体原因”,
     /// 否则为普通掉线的“连接已断开”。
     /// </summary>
@@ -750,9 +748,8 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     }
 
     /// <summary>
-    /// Prints a red "connection closed" banner plus the reconnect hint into the
-    /// terminal, so the user knows Enter / the Reconnect button will bring the session back
-    /// Runs for both manual disconnects and remote closes.
+    /// 向终端打印一行红色“连接已关闭”横幅以及重连提示,让用户知道按 Enter /
+    /// 点“重新连接”按钮即可恢复会话。手动断开与远端关闭时都会执行。
     /// </summary>
     private void FeedDisconnectNotice()
     {
@@ -764,15 +761,14 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         }
         catch
         {
-            // Purely cosmetic; never let the hint break the disconnect flow.
+            // 纯属装饰;绝不让提示破坏断开流程。
         }
     }
 
     /// <summary>
-    /// Forwards grid changes to the SSH channel off the UI thread, strictly in order
-    /// and collapsing bursts to the latest size. The previous fire-and-forget Task.Run per
-    /// event could deliver sizes out of order during drag storms, leaving the remote shell
-    /// with a stale grid — its subsequent prompt redraw then corrupted the buffer.
+    /// 在 UI 线程外把网格变化按严格顺序转发到 SSH 通道,并合并突发为最新尺寸。
+    /// 原先每次事件都 fire-and-forget 地 Task.Run,在拖拽风暴期间可能乱序送达尺寸,
+    /// 导致远程 shell 拿到过期网格 —— 其随后的提示符重绘便会破坏缓冲区。
     /// </summary>
     private void OnPtySizeChanged(int columns, int rows)
     {
@@ -823,7 +819,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             }
             catch
             {
-                // A resize on a torn-down or unsupported channel is non-fatal.
+                // 在已拆除或不支持的通道上调整尺寸是非致命的。
             }
         }
     }

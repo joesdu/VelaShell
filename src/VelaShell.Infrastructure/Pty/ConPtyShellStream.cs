@@ -95,7 +95,7 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
-            // ignore
+            // 忽略
         }
     }
 
@@ -147,7 +147,7 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
         }
         catch
         {
-            // ignore
+            // 忽略
         }
         if (_job != IntPtr.Zero)
         {
@@ -264,7 +264,7 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
             }
             catch
             {
-                // ignore
+                // 忽略
             }
         }
     }

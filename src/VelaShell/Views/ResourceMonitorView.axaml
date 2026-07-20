@@ -8,9 +8,9 @@
              x:Class="VelaShell.Views.ResourceMonitorView"
              x:DataType="vm:ResourceMonitorViewModel">
 
-  <!-- Resource panel per design frame EP3Gd (spec §11): 280px, padding 12, gap 8; bars 6px
-       corner 3 on bg-active track; CPU=term-blue, RAM=term-yellow, Disk=term-green;
-       >70% turns warning, >90% error. Hosted inside the tab-hover tooltip. -->
+  <!-- 资源面板(设计帧 EP3Gd,规范 §11):宽 280px,内边距 12,间距 8;进度条高 6px、
+       圆角 3,底色为 bg-active;CPU=终端蓝,RAM=终端黄,Disk=终端绿;
+       超过 70% 转警告色,超过 90% 转错误色。嵌入标签悬停提示气泡中。 -->
 
   <UserControl.Styles>
     <Style Selector="TextBlock.row-label">
@@ -51,7 +51,7 @@
 
   <StackPanel Width="256" Margin="12" Spacing="8">
 
-    <!-- Header: hostname + latency -->
+    <!-- 头部:主机名 + 延迟 -->
     <Grid ColumnDefinitions="*,Auto">
       <TextBlock Text="{Binding HostName}"
                  Foreground="{DynamicResource VelaTextPrimary}"
@@ -59,7 +59,7 @@
                  FontSize="13" FontWeight="Bold" />
     </Grid>
 
-    <!-- Unavailable placeholder (§11: 若该会话已断开，显示数据不可用) -->
+    <!-- 不可用占位(§11:若该会话已断开，显示数据不可用) -->
     <TextBlock Text="{loc:Localize Monitor_Unavailable}"
                Foreground="{DynamicResource VelaTextMuted}"
                FontFamily="{DynamicResource VelaUiFont}" FontSize="11"
@@ -112,7 +112,7 @@
         </ItemsControl.ItemTemplate>
       </ItemsControl>
 
-      <!-- System info -->
+      <!-- 系统信息 -->
       <StackPanel Spacing="4">
         <Grid ColumnDefinitions="*,Auto">
           <TextBlock Classes="info-label" Text="{loc:Localize Monitor_OsVersion}" />

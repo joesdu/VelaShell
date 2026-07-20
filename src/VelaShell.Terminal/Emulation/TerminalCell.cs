@@ -3,18 +3,17 @@ using System.Text;
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// A single character cell in the terminal grid. This is a value type so rows can be
-/// stored as contiguous arrays and cleared cheaply.
+/// 终端网格中的一个字符单元格。采用值类型,使行可被存为连续数组并被廉价清空。
 /// </summary>
 public struct TerminalCell : IEquatable<TerminalCell>
 {
     /// <summary>
-    /// The Unicode scalar value shown in this cell. 0 means an empty cell (rendered as a space).
-    /// Combining characters are folded into the base cell via <see cref="Combining" />.
+    /// 该单元格中显示的 Unicode 标量值。0 表示空单元格(渲染为空格)。
+    /// 组合字符通过 <see cref="Combining" /> 折叠进基础单元格。
     /// </summary>
     public int Rune;
 
-    /// <summary>Optional combining marks appended after <see cref="Rune" />. Null for the common case.</summary>
+    /// <summary>追加在 <see cref="Rune" /> 之后的可选组合标记。常见情况下为 Null。</summary>
     public string? Combining;
 
     /// <summary>单元格的前景(文字)颜色。</summary>
@@ -35,20 +34,20 @@ public struct TerminalCell : IEquatable<TerminalCell>
         Flags = CellFlags.None
     };
 
-    /// <summary>A blank cell that still carries the given background/attributes (used when erasing).</summary>
+    /// <summary>仍带有给定背景/属性的空白单元格(擦除时使用)。</summary>
     public static TerminalCell Blank(TerminalColor background, CellFlags flags) =>
         new()
         {
             Rune = 0,
             Foreground = TerminalColor.Default,
             Background = background,
-            Flags = flags & CellFlags.Inverse // erased cells keep background-affecting bits only
+            Flags = flags & CellFlags.Inverse // 擦除后的单元格仅保留影响背景的位
         };
 
     /// <summary>是否为宽字符所占据的第二个(尾随)单元格。</summary>
     public readonly bool IsWideTrailing => (Flags & CellFlags.WideTrailing) != 0;
 
-    /// <summary>Materializes the cell's text (base rune plus any combining marks).</summary>
+    /// <summary>物化该单元格的文本(基础字符加任何组合标记)。</summary>
     public readonly string GetText()
     {
         if (Rune == 0)

@@ -1,11 +1,11 @@
 namespace VelaShell.Core.Sftp;
 
-/// <summary>Shared drag-and-drop payload markers used by the SFTP dual-pane views.</summary>
+/// <summary>SFTP 双栏视图共用的拖放负载标记。</summary>
 public static class DragDropFormats
 {
-    /// <summary>Prefix for remote-to-local drags (paths on the remote host).</summary>
+    /// <summary>远端到本地拖放的前缀(远端主机上的路径)。</summary>
     public const string RemotePaths = "VFTP|";
 
-    /// <summary>Prefix for local-to-remote drags (paths on the local filesystem).</summary>
+    /// <summary>本地到远端拖放的前缀(本地文件系统上的路径)。</summary>
     public const string LocalPaths = "VFTPL|";
 }

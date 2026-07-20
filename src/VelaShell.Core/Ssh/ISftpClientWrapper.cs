@@ -88,9 +88,9 @@ public interface ISftpClientWrapper : IDisposable
     void RenameFile(string oldPath, string newPath);
 
     /// <summary>
-    /// Renames/moves a remote entry using the <c>posix-rename@openssh.com</c> extension.
-    /// Some servers reject the plain SSH_FXP_RENAME (SSH_FX_BAD_MESSAGE) — notably for cross-directory
-    /// moves — but accept the POSIX variant.
+    /// 使用 <c>posix-rename@openssh.com</c> 扩展重命名/移动远端条目。
+    /// 部分服务器会拒绝普通的 SSH_FXP_RENAME(SSH_FX_BAD_MESSAGE),尤其跨目录
+    /// 移动时;但会接受 POSIX 变体。
     /// </summary>
     void PosixRenameFile(string oldPath, string newPath);
 
@@ -100,25 +100,25 @@ public interface ISftpClientWrapper : IDisposable
     bool Exists(string path);
 
     /// <summary>
-    /// Changes a remote entry's permissions. <paramref name="mode" /> uses the convention of
-    /// three octal digits written as a decimal number (e.g. 755, 644).
+    /// 修改远端条目的权限。<paramref name="mode" /> 采用将三个八进制数字写作十进制数的约定
+    /// (例如 755、644)。
     /// </summary>
     void ChangePermissions(string path, short mode);
 
     /// <summary>
-    /// Opens a remote file for read or write. Use <see cref="FileMode.Append"/> with
-    /// <see cref="FileAccess.Write"/> for resume-capable uploads.
+    /// 以读或写方式打开远端文件。需支持断点续传的上传时,
+    /// 请结合 <see cref="FileMode.Append"/> 与 <see cref="FileAccess.Write"/> 使用。
     /// </summary>
     Stream Open(string path, FileMode mode, FileAccess access);
 
     /// <summary>
-    /// Gets the size in bytes of a remote file, or -1 if it does not exist.
+    /// 获取远端文件的字节大小;若文件不存在则返回 -1。
     /// </summary>
     long GetFileSize(string path);
 
     /// <summary>
-    /// Uploads a stream to a remote path, seeking to <paramref name="resumeOffset"/> bytes
-    /// before writing. Used for breakpoint-resume uploads.
+    /// 将流上传到远端路径,写入前先定位到 <paramref name="resumeOffset"/> 字节处。
+    /// 用于断点续传上传。
     /// </summary>
     Task UploadAsync(Stream input, string path, long resumeOffset, Action<ulong>? uploadCallback = null, CancellationToken cancellationToken = default);
 }

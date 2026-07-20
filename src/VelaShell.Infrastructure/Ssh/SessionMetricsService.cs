@@ -5,10 +5,9 @@ using VelaShell.Core.Ssh;
 namespace VelaShell.Infrastructure.Ssh;
 
 /// <summary>
-/// Runs the metrics probe over the session's existing SSH connection (§11) and turns
-/// consecutive samples into instantaneous readings: CPU% from the /proc/stat jiffies delta
-/// (the one-shot loadavg approximation lags by a minute) and network rates from the
-/// /proc/net/dev byte-counter delta.
+/// 在会话现有的 SSH 连接上运行指标探测(§11),并将连续采样转换为瞬时读数:CPU% 取自
+/// /proc/stat 的 jiffies 增量(一次性的 loadavg 近似会滞后约一分钟),网速取自
+/// /proc/net/dev 的字节计数器增量。
 /// </summary>
 public sealed class SessionMetricsService(ISshConnectionService connectionService) : ISessionMetricsService
 {
@@ -39,15 +38,14 @@ public sealed class SessionMetricsService(ISshConnectionService connectionServic
         }
         catch
         {
-            // A failed probe (timeout, non-Linux host, dropped session) is "data unavailable".
+            // 探测失败(超时、非 Linux 主机、会话断开)即为"数据不可用"。
             return null;
         }
     }
 
     /// <summary>
-    /// Computes instantaneous CPU% / network rates against the previous sample of the
-    /// same session, then stores this sample. First samples keep the loadavg CPU fallback and
-    /// report no network rate.
+    /// 针对同一会话的上一采样计算瞬时 CPU%/网速,然后保存本次采样。首个采样保留 loadavg 的
+    /// CPU 兜底值,且不报告网速。
     /// </summary>
     private void ApplyDeltas(Guid sessionId, SessionMetrics metrics)
     {
@@ -83,7 +81,7 @@ public sealed class SessionMetricsService(ISshConnectionService connectionServic
             }
             if (metrics.HasNetCounters && seconds > 0.2)
             {
-                // Counters can reset (interface bounce, reboot); clamp negatives to 0.
+                // 计数器可能复位(网卡抖动、重启);将负值钳制为 0。
                 metrics.NetRxBytesPerSec = Math.Max(0, (metrics.NetRxTotalBytes - prev.NetRx) / seconds);
                 metrics.NetTxBytesPerSec = Math.Max(0, (metrics.NetTxTotalBytes - prev.NetTx) / seconds);
                 metrics.HasNetRates = true;

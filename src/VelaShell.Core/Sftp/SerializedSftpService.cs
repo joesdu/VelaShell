@@ -3,8 +3,7 @@ using VelaShell.Core.Models;
 namespace VelaShell.Core.Sftp;
 
 /// <summary>
-/// Serializes SFTP operations for one document-owned session without changing the behavior of the
-/// shared SFTP service used by terminal side panels.
+/// 为单个文档所属的会话串行化 SFTP 操作,而不改变终端侧边栏所用共享 SFTP 服务的行为。
 /// </summary>
 public sealed class SerializedSftpService : ISftpService
 {
@@ -14,63 +13,63 @@ public sealed class SerializedSftpService : ISftpService
     private Task? _closeTask;
     private bool _closing;
 
-    /// <summary>Creates a serializer bound to exactly one document-owned SFTP session.</summary>
+    /// <summary>创建绑定到唯一一个文档所属 SFTP 会话的串行器。</summary>
     public SerializedSftpService(ISftpService inner, Guid sessionId)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         SessionId = sessionId;
     }
 
-    /// <summary>The only session ID accepted by this document-scoped service.</summary>
+    /// <summary>该文档作用域服务唯一接受的会话 ID。</summary>
     public Guid SessionId { get; }
 
-    /// <summary>Serialized passthrough for listing a remote directory.</summary>
+    /// <summary>列举远端目录的串行化透传。</summary>
     public Task<List<RemoteFileInfo>> ListDirectoryAsync(Guid sessionId, string path, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.ListDirectoryAsync(sessionId, path, token), cancellationToken);
 
-    /// <summary>Serialized passthrough for uploading a file to the remote host.</summary>
+    /// <summary>向远端主机上传文件的串行化透传。</summary>
     public Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0) => ExecuteAsync(sessionId, token => _inner.UploadFileAsync(sessionId, localPath, remotePath, progress, token, resumeOffset), cancellationToken);
 
-    /// <summary>Serialized passthrough for downloading a file from the remote host.</summary>
+    /// <summary>从远端主机下载文件的串行化透传。</summary>
     public Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0) => ExecuteAsync(sessionId, token => _inner.DownloadFileAsync(sessionId, remotePath, localPath, progress, token, resumeOffset), cancellationToken);
 
-    /// <summary>Serialized passthrough for deleting a remote file or directory.</summary>
+    /// <summary>删除远端文件或目录的串行化透传。</summary>
     public Task DeleteAsync(Guid sessionId, string remotePath, IProgress<SftpDeleteProgress>? progress = null, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.DeleteAsync(sessionId, remotePath, progress, token), cancellationToken);
 
-    /// <summary>Serialized passthrough for creating a remote directory.</summary>
+    /// <summary>创建远端目录的串行化透传。</summary>
     public Task CreateDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.CreateDirectoryAsync(sessionId, remotePath, token), cancellationToken);
 
-    /// <summary>Serialized passthrough for creating a remote file.</summary>
+    /// <summary>创建远端文件的串行化透传。</summary>
     public Task CreateFileAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.CreateFileAsync(sessionId, remotePath, token), cancellationToken);
 
-    /// <summary>Serialized passthrough for ensuring a remote directory exists.</summary>
+    /// <summary>确保远端目录存在的串行化透传。</summary>
     public Task EnsureDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.EnsureDirectoryAsync(sessionId, remotePath, token), cancellationToken);
 
-    /// <summary>Serialized passthrough for renaming a remote entry.</summary>
+    /// <summary>重命名远端条目的串行化透传。</summary>
     public Task RenameAsync(Guid sessionId, string oldPath, string newPath, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.RenameAsync(sessionId, oldPath, newPath, token), cancellationToken);
 
-    /// <summary>Serialized passthrough for copying a remote entry.</summary>
+    /// <summary>复制远端条目的串行化透传。</summary>
     public Task CopyAsync(Guid sessionId, string sourcePath, string destPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.CopyAsync(sessionId, sourcePath, destPath, progress, token), cancellationToken);
 
-    /// <summary>Serialized passthrough for setting remote file permissions.</summary>
+    /// <summary>设置远端文件权限的串行化透传。</summary>
     public Task SetPermissionsAsync(Guid sessionId, string remotePath, short octalMode, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.SetPermissionsAsync(sessionId, remotePath, octalMode, token), cancellationToken);
 
-    /// <summary>Serialized passthrough for retrieving remote file metadata.</summary>
+    /// <summary>获取远端文件元数据的串行化透传。</summary>
     public Task<RemoteFileInfo> GetFileInfoAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.GetFileInfoAsync(sessionId, remotePath, token), cancellationToken);
 
-    /// <summary>Serialized passthrough for checking if a remote path exists.</summary>
+    /// <summary>检查远端路径是否存在的串行化透传。</summary>
     public Task<bool> ExistsAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.ExistsAsync(sessionId, remotePath, token), cancellationToken);
 
-    /// <summary>Serialized passthrough for getting the remote working directory.</summary>
+    /// <summary>获取远端工作目录的串行化透传。</summary>
     public Task<string> GetWorkingDirectoryAsync(Guid sessionId, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.GetWorkingDirectoryAsync(sessionId, token), cancellationToken);
 
-    /// <summary>Serialized passthrough for closing the bound SFTP session.</summary>
+    /// <summary>关闭所绑定 SFTP 会话的串行化透传。</summary>
     public Task CloseSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         ValidateSession(sessionId);
         return CloseAsync(cancellationToken);
     }
 
-    /// <summary>Rejects new work, drains the current operation, and closes the bound session once.</summary>
+    /// <summary>拒绝新任务,排空当前操作,并关闭所绑定的会话一次。</summary>
     public Task CloseAsync(CancellationToken cancellationToken = default)
     {
         lock (_lifecycleSync)
@@ -81,7 +80,7 @@ public sealed class SerializedSftpService : ISftpService
         }
     }
 
-    /// <summary>Closes the session and disposes the internal semaphore.</summary>
+    /// <summary>关闭会话并释放内部信号量。</summary>
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {

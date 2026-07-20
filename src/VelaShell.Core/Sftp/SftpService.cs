@@ -54,7 +54,7 @@ public class SftpService(
 
         if (resumeOffset > 0)
         {
-            // Resume: use the new offset-aware upload path.
+            // 断点续传:使用新的支持偏移的上传路径。
             Stream fileStream = uploadBps > 0
                                     ? new ThrottledStream(File.OpenRead(localPath), uploadBps)
                                     : File.OpenRead(localPath);
@@ -76,7 +76,7 @@ public class SftpService(
         }
         else
         {
-            // Fresh upload: original truncate-and-write path.
+            // 全新上传:原始的截断并写入路径。
             Stream fileStream = uploadBps > 0
                                     ? new ThrottledStream(File.OpenRead(localPath), uploadBps)
                                     : File.OpenRead(localPath);
@@ -115,10 +115,10 @@ public class SftpService(
 
         if (resumeOffset > 0)
         {
-            // Resume download: append to the partial local file.
+            // 断点续传下载:向不完整的本地文件追加。
             await using (Stream localStream = new FileStream(localPath, FileMode.Append, FileAccess.Write, FileShare.None))
             {
-                // Download remote from offset using chunked copy.
+                // 从偏移处分块拷贝下载远端内容。
                 using Stream remoteStream = client.Open(remotePath, FileMode.Open, FileAccess.Read);
                 remoteStream.Seek(resumeOffset, SeekOrigin.Begin);
 
@@ -139,8 +139,8 @@ public class SftpService(
                                     ? new ThrottledStream(File.Create(localPath), downloadBps)
                                     : File.Create(localPath);
 
-            // See UploadFileAsync: the callback runs on a detached thread-pool thread, so we cancel by
-            // disposing our own stream (failing the worker's write) rather than throwing from it.
+            // 参见 UploadFileAsync:回调运行在脱离的线程池线程上,因此我们通过
+            // 释放自己的流(使工作线程的写入失败)来取消,而非从中抛出异常。
             await using (cancellationToken.Register(() => SafeDispose(fileStream)))
             {
                 try
@@ -188,7 +188,7 @@ public class SftpService(
             bool isDirectory = entry is { IsDirectory: true };
             int total = CountEntries(client, remotePath, isDirectory, cancellationToken);
 
-            // Emit a "0 / total" tick so the UI can immediately switch to determinate progress.
+            // 先发出一个 "0 / total" 的进度点,使 UI 能立即切换到确定型进度。
             progress?.Report(new(0, total, remotePath));
             int deleted = 0;
             DeleteEntry(client, remotePath, isDirectory, total, ref deleted, progress, cancellationToken);
@@ -239,10 +239,9 @@ public class SftpService(
             }
             catch (Exception ex) when (ex is SftpOperationException or NotSupportedException)
             {
-                // Some SFTP servers reject the plain SSH_FXP_RENAME with SSH_FX_BAD_MESSAGE (surfaced
-                // as "bad message") — commonly for cross-directory moves. Retry with the widely
-                // supported posix-rename@openssh.com extension, but surface the original, more
-                // meaningful error if that path is unavailable too.
+                // 部分 SFTP 服务器以 SSH_FX_BAD_MESSAGE(表现为"bad message")拒绝普通的 SSH_FXP_RENAME,
+                // 跨目录移动时常见。改用被广泛支持的 posix-rename@openssh.com 扩展重试;若该路径也不可用,
+                // 则抛出原本更具信息量的错误。
                 try
                 {
                     client.PosixRenameFile(oldPath, newPath);
@@ -256,9 +255,9 @@ public class SftpService(
     }
 
     /// <summary>
-    /// Copies a remote file or directory to another path on the same server.
-    /// Single files are copied via a temporary local file (no in-memory buffering of large files).
-    /// Directories are walked recursively with cycle detection.
+    /// 将远端文件或目录复制到同一服务器的另一路径。
+    /// 单个文件经由临时本地文件复制(不在内存中缓冲大文件)。
+    /// 目录则递归遍历并做循环检测。
     /// </summary>
     public async Task CopyAsync(Guid sessionId,
         string sourcePath,
@@ -269,7 +268,7 @@ public class SftpService(
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
         RemoteIdentityMap identities = await _identities.GetAsync(sessionId).ConfigureAwait(false);
 
-        // Determine if source is a directory by stat'ing it.
+        // 通过 stat 判断源是否为目录。
         string parentDir = GetUnixParentDirectory(sourcePath);
         string name = GetUnixFileName(sourcePath);
         SftpEntry? entry = client.ListDirectory(parentDir).FirstOrDefault(f => f.Name == name);
@@ -288,8 +287,8 @@ public class SftpService(
     }
 
     /// <summary>
-    /// Copies a single remote file via a temporary local file, never buffering the whole
-    /// file in memory. Reuses DownloadFileAsync/UploadFileAsync for throttling and cancellation.
+    /// 经由临时本地文件复制单个远端文件,绝不在内存中缓冲整个文件。
+    /// 复用 DownloadFileAsync/UploadFileAsync 以进行限速与取消。
     /// </summary>
     private async Task CopySingleFileAsync(
         Guid sessionId,
@@ -304,23 +303,23 @@ public class SftpService(
 
         try
         {
-            // Download remote → temp
+            // 远端下载 → 临时文件
             await DownloadFileAsync(sessionId, sourcePath, tempPath, progress, cancellationToken)
                 .ConfigureAwait(false);
 
-            // Upload temp → remote destination
+            // 临时文件上传 → 远端目标
             await UploadFileAsync(sessionId, tempPath, destPath, progress, cancellationToken)
                 .ConfigureAwait(false);
         }
         finally
         {
-            try { File.Delete(tempPath); } catch { /* best effort */ }
+            try { File.Delete(tempPath); } catch { /* 尽力而为 */ }
         }
     }
 
     /// <summary>
-    /// Recursively copies a remote directory, with cycle detection via a visited-path set
-    /// and a depth cap to prevent stack overflow from symlink loops.
+    /// 递归复制远端目录,通过已访问路径集合做循环检测,
+    /// 并设置深度上限以防止符号链接环导致的栈溢出。
     /// </summary>
     private async Task CopyDirectoryAsync(
         Guid sessionId,
@@ -431,7 +430,7 @@ public class SftpService(
             }
             catch
             {
-                // Best-effort teardown; the tab is already gone.
+                // 尽力拆解;标签页已经不在了。
             }
         }, cancellationToken).ConfigureAwait(false);
     }
@@ -451,7 +450,7 @@ public class SftpService(
             }
             catch
             {
-                // Best-effort cleanup during disposal
+                // 释放期间的尽力清理
             }
         }
         _sftpClients.Clear();
@@ -480,8 +479,8 @@ public class SftpService(
     }
 
     /// <summary>
-    /// Depth-first delete: a directory's children are removed before the directory itself,
-    /// since SFTP <c>rmdir</c> only succeeds on empty directories. Reports one tick per removed entry.
+    /// 深度优先删除:先移除目录的子项再移除目录自身,因为 SFTP 的 <c>rmdir</c> 仅对空目录成功。
+    /// 每移除一个条目回报一次进度。
     /// </summary>
     private static int CountEntries(ISftpClientWrapper client, string path, bool isDirectory, CancellationToken cancellationToken)
     {
@@ -623,10 +622,9 @@ public class SftpService(
     }
 
     /// <summary>
-    /// Disposes a stream to abort an in-flight transfer on cancellation. Runs from a
-    /// <see cref="CancellationToken" /> callback, so it must never throw — otherwise
-    /// <see cref="CancellationTokenSource.Cancel()" /> would surface an aggregated exception to
-    /// whoever pressed cancel.
+    /// 取消时释放流以中止进行中的传输。运行于 <see cref="CancellationToken" /> 回调中,
+    /// 因此绝不能抛出异常,否则 <see cref="CancellationTokenSource.Cancel()" /> 会把聚合异常
+    /// 抛给发起取消的一方。
     /// </summary>
     private static void SafeDispose(Stream stream)
     {
@@ -636,7 +634,7 @@ public class SftpService(
         }
         catch
         {
-            // Best-effort: the transfer will still fail out and be reported as cancelled.
+            // 尽力而为:传输仍会失败并以已取消的形式上报。
         }
     }
 

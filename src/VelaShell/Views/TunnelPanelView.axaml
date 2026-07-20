@@ -10,8 +10,8 @@
              x:Class="VelaShell.Views.TunnelPanelView"
              x:DataType="vm:TunnelPanelViewModel">
 
-  <!-- Tunnel manager per design frame B3Rth: 340px floating panel, bg-surface, corner 6,
-       1px border-secondary, shadow blur16 y+4 (spec §10).
+  <!-- 隧道管理器,遵循设计框 B3Rth:340px 浮动面板、bg-surface、圆角 6、
+       1px border-secondary、阴影 blur16 y+4(spec §10)。
        以服务器为中心:选服务器 → 后台自动连接,无需打开终端会话。 -->
 
   <UserControl.Styles>
@@ -49,7 +49,7 @@
           BoxShadow="0 4 16 0 #60000000">
     <StackPanel>
 
-      <!-- Header (36px, design tunHeader): icon + 隧道 + count badge | close -->
+      <!-- 标题栏(36px,设计 tunHeader):图标 + 隧道 + 数量徽标 | 关闭 -->
       <Border Height="36" Padding="12,0"
               BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,0,1">
@@ -147,7 +147,7 @@
                    FontSize="10" />
       </Border>
 
-      <!-- Tunnel rows (design tunItem1/2): dot + 名称 + 类型徽标 | 编辑/启停/删除 -->
+      <!-- 隧道行(设计 tunItem1/2):圆点 + 名称 + 类型徽标 | 编辑/启停/删除 -->
       <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto">
       <ItemsControl ItemsSource="{Binding Tunnels}">
         <ItemsControl.ItemTemplate>
@@ -193,7 +193,7 @@
                                    Data="{StaticResource Icon.pencil}"
                                    Foreground="{DynamicResource VelaTextTertiary}" />
                   </Button>
-                  <!-- Stop (active) / start (stopped) toggle -->
+                  <!-- 停止(运行中)/ 启动(已停止)切换 -->
                   <Button Grid.Column="3" Classes="row-action"
                           IsVisible="{Binding IsActive}"
                           ToolTip.Tip="{loc:Localize Tunnel_StopTip}"
@@ -212,7 +212,7 @@
                                    Data="{StaticResource Icon.play}"
                                    Foreground="{DynamicResource VelaStatusConnected}" />
                   </Button>
-                  <!-- Delete (stops first when active) -->
+                  <!-- 删除(活动状态下先停止) -->
                   <Button Grid.Column="5" Classes="row-action"
                           ToolTip.Tip="{loc:Localize Tunnel_DeleteTip}"
                           Command="{Binding $parent[ItemsControl].((vm:TunnelPanelViewModel)DataContext).DeleteTunnelCommand}"
@@ -249,7 +249,7 @@
       </ItemsControl>
       </ScrollViewer>
 
-      <!-- New/edit tunnel form (design tunNewForm) -->
+      <!-- 新建/编辑隧道表单(设计 tunNewForm) -->
       <StackPanel Margin="12,10" Spacing="8">
         <StackPanel Orientation="Horizontal" Spacing="6">
           <pc:LucideIcon Width="11" Height="11"

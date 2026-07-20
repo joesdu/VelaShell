@@ -1,32 +1,31 @@
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// A 32-bit packed color (0xAARRGGBB) produced when resolving a <see cref="TerminalColor" />.
-/// Kept independent from Avalonia so the engine stays UI-agnostic and testable.
+/// 一个 32 位打包颜色(0xAARRGGBB),在解析 <see cref="TerminalColor" /> 时产生。
+/// 与 Avalonia 解耦,使引擎保持 UI 无关、可测试。
 /// </summary>
-/// <param name="A">Alpha channel.</param>
-/// <param name="R">Red channel.</param>
-/// <param name="G">Green channel.</param>
-/// <param name="B">Blue channel.</param>
+/// <param name="A">Alpha 通道。</param>
+/// <param name="R">红色通道。</param>
+/// <param name="G">绿色通道。</param>
+/// <param name="B">蓝色通道。</param>
 public readonly record struct Rgba(byte A, byte R, byte G, byte B)
 {
-    /// <summary>The color packed into a single 0xAARRGGBB unsigned integer.</summary>
+    /// <summary>打包为单个 0xAARRGGBB 无符号整数的颜色。</summary>
     public uint Packed => ((uint)A << 24) | ((uint)R << 16) | ((uint)G << 8) | B;
 
-    /// <summary>Creates an opaque color from red, green and blue channel values.</summary>
+    /// <summary>由红、绿、蓝通道值创建不透明颜色。</summary>
     public static Rgba FromRgb(byte r, byte g, byte b) => new(0xFF, r, g, b);
 }
 
 /// <summary>
-/// The active color palette: 256 indexed colors plus the semantic default foreground,
-/// background and cursor colors. Index 0-15 can be themed; 16-255 follow the standard
-/// xterm 6x6x6 color cube and grayscale ramp.
+/// 当前生效的调色板:256 个索引色,外加语义化的默认前景、背景与光标颜色。
+/// 索引 0-15 可随主题改变;16-255 遵循标准的 xterm 6x6x6 颜色立方图与灰度渐变。
 /// </summary>
 public sealed class TerminalPalette
 {
     private readonly Rgba[] _colors = new Rgba[256];
 
-    /// <summary>Creates a palette pre-filled with the standard xterm 256-color defaults.</summary>
+    /// <summary>创建预填标准 xterm 256 色默认值的调色板。</summary>
     public TerminalPalette()
     {
         InitializeAnsi16();
@@ -34,22 +33,22 @@ public sealed class TerminalPalette
         InitializeGrayscale();
     }
 
-    /// <summary>The color used for cells that use the default foreground.</summary>
+    /// <summary>使用默认前景色的单元格所采用的颜色。</summary>
     public Rgba DefaultForeground { get; set; } = Rgba.FromRgb(0xE0, 0xE6, 0xED);
 
-    /// <summary>The color used for cells that use the default background.</summary>
+    /// <summary>使用默认背景色的单元格所采用的颜色。</summary>
     public Rgba DefaultBackground { get; set; } = Rgba.FromRgb(0x08, 0x0C, 0x12);
 
-    /// <summary>The color used to draw the cursor.</summary>
+    /// <summary>绘制光标所用的颜色。</summary>
     public Rgba CursorColor { get; set; } = Rgba.FromRgb(0x00, 0xD4, 0xAA);
 
-    /// <summary>The fill color drawn behind selected text.</summary>
+    /// <summary>选中文本背后所绘制的填充色。</summary>
     public Rgba SelectionBackground { get; set; } = new(0x60, 0x1C, 0x2A, 0x3F);
 
-    /// <summary>Gets the resolved color for the given palette index (0-255, masked to a byte).</summary>
+    /// <summary>获取给定调色板索引(0-255,掩码为一个字节)对应的解析后颜色。</summary>
     public Rgba this[int index] => _colors[index & 0xFF];
 
-    /// <summary>Overrides one of the 16 ANSI colors (used to apply the design's term-* tokens).</summary>
+    /// <summary>覆盖 16 个 ANSI 颜色之一(用于套用设计里的 term-* 令牌)。</summary>
     public void SetAnsi(int index, Rgba color)
     {
         if (index is >= 0 and < 16)
@@ -58,7 +57,7 @@ public sealed class TerminalPalette
         }
     }
 
-    /// <summary>Resolves a cell color to concrete RGBA, honoring inverse video and bold-brightening.</summary>
+    /// <summary>把一个单元格颜色解析为具体 RGBA,遵循反显与加粗加亮规则。</summary>
     public Rgba Resolve(TerminalColor color, bool isBackground, bool bold)
     {
         switch (color.Kind)
@@ -67,7 +66,7 @@ public sealed class TerminalPalette
                 return Rgba.FromRgb(color.R, color.G, color.B);
             case TerminalColorKind.Indexed:
                 int idx = color.Index;
-                // Bold text brightens the low 8 ANSI colors, matching xterm behavior.
+                // 加粗文本会提亮低 8 个 ANSI 颜色,与 xterm 行为一致。
                 if (bold && !isBackground && idx < 8)
                 {
                     idx += 8;
@@ -81,7 +80,7 @@ public sealed class TerminalPalette
 
     private void InitializeAnsi16()
     {
-        // Standard xterm defaults; the app overrides 0-15 from the .pen term-* tokens.
+        // 标准 xterm 默认色;应用会从 .pen 的 term-* 令牌覆盖 0-15。
         var ansi = new (byte, byte, byte)[]
         {
             (0x00, 0x00, 0x00), (0xCD, 0x00, 0x00), (0x00, 0xCD, 0x00), (0xCD, 0xCD, 0x00),
@@ -97,7 +96,7 @@ public sealed class TerminalPalette
 
     private void InitializeCube()
     {
-        // 216-color 6x6x6 cube at indices 16-231.
+        // 位于索引 16-231 的 216 色 6x6x6 立方图。
         ReadOnlySpan<byte> steps = [0x00, 0x5F, 0x87, 0xAF, 0xD7, 0xFF];
         int i = 16;
         foreach (byte r in steps)
@@ -110,7 +109,7 @@ public sealed class TerminalPalette
 
     private void InitializeGrayscale()
     {
-        // 24-step grayscale ramp at indices 232-255.
+        // 位于索引 232-255 的 24 级灰度渐变。
         for (int i = 0; i < 24; i++)
         {
             byte v = (byte)(8 + i * 10);

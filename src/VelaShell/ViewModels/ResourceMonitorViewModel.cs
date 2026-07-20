@@ -3,7 +3,7 @@ using VelaShell.Core.Services;
 
 namespace VelaShell.ViewModels;
 
-/// <summary>One disk row of the resource panel(多磁盘主机逐盘显示)。</summary>
+/// <summary>资源面板中的一行磁盘信息(多磁盘主机逐盘显示)。</summary>
 public sealed class DiskRowViewModel(string label, string text, double percent)
 {
     /// <summary>磁盘挂载点标签(如 “Disk /home”),显示在行首。</summary>
@@ -23,8 +23,8 @@ public sealed class DiskRowViewModel(string label, string text, double percent)
 }
 
 /// <summary>
-/// Backs the tab-hover resource panel (design EP3Gd, spec §11): a live snapshot of the
-/// session host's CPU / RAM / Disk / system info, polled while the panel is visible.
+/// 支撑标签页悬停资源面板(设计 EP3Gd,规范 §11):在面板可见期间
+/// 轮询得到的会话主机 CPU / RAM / 磁盘 / 系统信息的实时快照。
 /// </summary>
 public class ResourceMonitorViewModel(ISessionMetricsService metricsService, Guid sessionId, string hostName) : ReactiveObject
 {
@@ -37,7 +37,7 @@ public class ResourceMonitorViewModel(ISessionMetricsService metricsService, Gui
     /// <summary>会话主机名,显示在面板标题处。</summary>
     public string HostName { get; } = hostName;
 
-    /// <summary>False shows the "数据不可用" placeholder (disconnected / non-Linux host).</summary>
+    /// <summary>为 false 时显示 "数据不可用" 占位符(已断开连接 / 非 Linux 主机)。</summary>
     public bool IsAvailable
     {
         get;
@@ -95,7 +95,7 @@ public class ResourceMonitorViewModel(ISessionMetricsService metricsService, Gui
     /// <summary>内核版本(以 “Linux ” 前缀展示),无数据时为 “--”。</summary>
     public string Kernel => _metrics?.Kernel is { Length: > 0 } k ? $"Linux {k}" : "--";
 
-    // Threshold coloring per §11: normal / >70% warning / >90% critical.
+    // 阈值着色按 §11:正常 / >70% 警告 / >90% 危险。
     /// <summary>CPU 使用率处于警告区间(>70% 且 ≤90%)时为 true。</summary>
     public bool CpuWarn => CpuPercent is > 70 and <= 90;
 
@@ -120,7 +120,7 @@ public class ResourceMonitorViewModel(ISessionMetricsService metricsService, Gui
         SessionMetrics? metrics = await _metricsService.GetMetricsAsync(SessionId);
         _metrics = metrics;
         IsAvailable = metrics is not null;
-        this.RaisePropertyChanged(string.Empty); // refresh all computed properties
+        this.RaisePropertyChanged(string.Empty); // 刷新所有计算属性
     }
 
     private static string FormatGb(long bytes) => (bytes / 1024.0 / 1024.0 / 1024.0).ToString("F1");

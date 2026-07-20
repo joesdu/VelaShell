@@ -6,7 +6,7 @@ using VelaShell.Core.Resources;
 
 namespace VelaShell.ViewModels;
 
-/// <summary>Domain ViewModel for the local side of an SFTP dual-pane document.</summary>
+/// <summary>SFTP 双栏文档本地侧的领域视图模型。</summary>
 public sealed class LocalFilePaneViewModel : ReactiveObject
 {
     private readonly TransferOptions _transferOptions;
@@ -18,7 +18,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
     private long _navigationVersion;
     private bool _isSwitchingRoot;
 
-    /// <summary>Creates a local pane using the configured transfer download directory.</summary>
+    /// <summary>使用配置中的传输下载目录创建一个本地面板。</summary>
     public LocalFilePaneViewModel(TransferOptions transferOptions)
         : this(transferOptions, null) { }
 
@@ -49,77 +49,77 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
         SortCommand = ReactiveCommand.Create<string>(ToggleSort);
     }
 
-    /// <summary>Visible local rows, including a synthetic parent row outside the filesystem root.</summary>
+    /// <summary>可见的本地行,包含文件系统根之外的一个合成父目录行。</summary>
     public ObservableCollection<LocalFileEntry> Entries { get; }
 
-    /// <summary>Selectable physical roots for the local pane.</summary>
+    /// <summary>本地面板可选中的物理根。</summary>
     public ObservableCollection<LocalRootEntry> Roots { get; }
 
-    /// <summary>The root containing the current path, selected by longest prefix.</summary>
+    /// <summary>包含当前路径的根,按最长前缀匹配选出。</summary>
     public LocalRootEntry? SelectedRoot
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>Selected rows used by the host for multi-item operations.</summary>
+    /// <summary>由宿主用于多项操作的已选中行。</summary>
     public ObservableCollection<LocalFileEntry> SelectedEntries { get; }
 
-    /// <summary>Navigates to a canonical local directory.</summary>
+    /// <summary>导航到规范化的本地目录。</summary>
     public ReactiveCommand<string, Unit> NavigateToCommand { get; }
 
-    /// <summary>Enters an activated directory row.</summary>
+    /// <summary>进入一个被激活的目录行。</summary>
     public ReactiveCommand<LocalFileEntry, Unit> ActivateCommand { get; }
 
-    /// <summary>Navigates to the parent directory.</summary>
+    /// <summary>导航到父目录。</summary>
     public ReactiveCommand<Unit, Unit> GoUpCommand { get; }
 
-    /// <summary>Refreshes the current directory listing.</summary>
+    /// <summary>刷新当前目录列举。</summary>
     public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
 
-    /// <summary>Switches the current directory to a selected root.</summary>
+    /// <summary>将当前目录切换到所选根目录。</summary>
     public ReactiveCommand<LocalRootEntry, Unit> SwitchRootCommand { get; }
 
-    /// <summary>Reloads the list of available local roots.</summary>
+    /// <summary>重新加载可用的本地根列表。</summary>
     public ReactiveCommand<Unit, Unit> RefreshRootsCommand { get; }
 
-    /// <summary>Confirms and permanently deletes one local entry.</summary>
+    /// <summary>经确认后永久删除单个本地条目。</summary>
     public ReactiveCommand<LocalFileEntry, Unit> DeleteItemCommand { get; }
 
-    /// <summary>Confirms and permanently deletes the selected local entries.</summary>
+    /// <summary>经确认后永久删除选中的本地条目。</summary>
     public ReactiveCommand<Unit, Unit> DeleteSelectedCommand { get; }
 
-    /// <summary>Host-provided upload delegate for the standalone SFTP document.</summary>
+    /// <summary>由宿主提供的上传委托,用于独立 SFTP 文档。</summary>
     public ReactiveCommand<Unit, Unit> UploadSelectedCommand { get; }
 
-    /// <summary>Renames a selected local entry in-place.</summary>
+    /// <summary>就地重命名选中的本地条目。</summary>
     public ReactiveCommand<LocalFileEntry, Unit> RenameCommand { get; }
 
-    /// <summary>Creates a new folder in the current directory.</summary>
+    /// <summary>在当前目录中创建新文件夹。</summary>
     public ReactiveCommand<Unit, Unit> NewFolderCommand { get; }
 
-    /// <summary>Opens a local file with the default program or navigates into a directory.</summary>
+    /// <summary>用默认程序打开本地文件,或进入某个目录。</summary>
     public ReactiveCommand<LocalFileEntry, Unit> OpenItemCommand { get; }
 
-    /// <summary>Host-provided upload delegate invoked by UploadSelectedCommand.</summary>
+    /// <summary>由宿主提供、被 UploadSelectedCommand 调用的上传委托。</summary>
     public Func<Task>? UploadSelectedAsync { get; set; }
 
-    /// <summary>Sorts visible rows by name, size, or modified time.</summary>
+    /// <summary>按名称、大小或修改时间对可见行排序。</summary>
     public ReactiveCommand<string, Unit> SortCommand { get; }
 
-    /// <summary>Injected destructive-action confirmation callback.</summary>
+    /// <summary>注入的破坏性操作确认回调。</summary>
     public Func<string, Task<bool>>? ConfirmDelete { get; set; }
 
-    /// <summary>Set by the view: prompts for a line of text (title, initial value) → entered text or null.</summary>
+    /// <summary>由视图设置:提示输入一行文本(标题、初始值)→ 输入的文本或 null。</summary>
     public Func<string, string, Task<string?>>? PromptForText { get; set; }
 
-    /// <summary>Set by the view: opens a local file with the OS default program.</summary>
+    /// <summary>由视图设置:用操作系统默认程序打开本地文件。</summary>
     public Func<string, Task>? OpenLocalFile { get; set; }
 
-    /// <summary>Cancels local work before the document drains and closes its SFTP channel.</summary>
+    /// <summary>在文档排空并关闭其 SFTP 通道前,取消本地工作。</summary>
     public void Detach() => _lifetime.Cancel();
 
-    /// <summary>The canonical directory currently listed.</summary>
+    /// <summary>当前列举的规范化目录。</summary>
     public string CurrentPath
     {
         get;
@@ -136,7 +136,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
         }
     } = string.Empty;
 
-    /// <summary>Clickable breadcrumb segments for the current path, deepest last. Root is handled by RootBreadcrumbLabel.</summary>
+    /// <summary>当前路径的可点击面包屑分段,最深的在最后。根由 RootBreadcrumbLabel 处理。</summary>
     public IReadOnlyList<LocalBreadcrumbSegment> Breadcrumbs
     {
         get
@@ -147,8 +147,8 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
                 return [];
             }
 
-            // Guard: RootBreadcrumbLabel may resolve to a place-holder root when CurrentPath is still
-            // empty, so the slice below would fail with startIndex > length.
+            // 守卫:CurrentPath 仍为空时 RootBreadcrumbLabel 可能解析为占位根,
+            // 此时下方切片会因 startIndex > length 而报错,需直接返回空。
             if (root.Length >= CurrentPath.Length || !CurrentPath.StartsWith(root, PathComparison))
             {
                 return [];
@@ -170,7 +170,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
         }
     }
 
-    /// <summary>Label for the root breadcrumb button (e.g. "/" on Linux, "C:\" on Windows).</summary>
+    /// <summary>根面包屑按钮的标签(如 Linux 上为“/”,Windows 上为“C:\”)。</summary>
     public string RootBreadcrumbLabel
     {
         get
@@ -184,46 +184,46 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
             {
                 return "/";
             }
-            // Ensure Windows roots end with a separator (e.g. "C:\" not "C:")
+            // 确保 Windows 根路径以分隔符结尾(如 "C:\" 而非 "C:")
             return root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         }
     }
 
-    /// <summary>Path for the root breadcrumb button navigation.</summary>
+    /// <summary>根面包屑按钮导航所用的路径。</summary>
     public string RootBreadcrumbPath => RootBreadcrumbLabel;
 
-    /// <summary>OS path separator character for breadcrumb display.</summary>
+    /// <summary>用于面包屑显示的 OS 路径分隔符字符。</summary>
     public static string PathSeparator => Path.DirectorySeparatorChar.ToString();
 
-    /// <summary>Whether a directory listing is in progress.</summary>
+    /// <summary>目录列举是否正在进行。</summary>
     public bool IsDirectoryLoading
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>The most recent listing or deletion error.</summary>
+    /// <summary>最近一次列举或删除的错误。</summary>
     public string? ErrorMessage
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>The active sort column.</summary>
+    /// <summary>当前生效的排序列。</summary>
     public string SortColumn
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = "name";
 
-    /// <summary>Whether the active sort is descending.</summary>
+    /// <summary>当前排序是否为降序。</summary>
     public bool SortDescending
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>Loads the configured directory, falling back to the user home directory.</summary>
+    /// <summary>加载配置的目录,失败时回退到用户主目录。</summary>
     public async Task LoadInitialAsync(CancellationToken cancellationToken = default)
     {
         await RefreshRootsAsync(cancellationToken);
@@ -259,7 +259,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
         SyncSelectedRoot(home);
     }
 
-    /// <summary>Reloads the local roots list, preserving the current path selection.</summary>
+    /// <summary>重新加载本地根列表,保留当前选中的路径。</summary>
     public async Task RefreshRootsAsync(CancellationToken cancellationToken = default)
     {
         IReadOnlyList<LocalRootEntry> roots = await _rootProvider.EnumerateAsync(cancellationToken);
@@ -271,7 +271,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
         SyncSelectedRoot(CurrentPath);
     }
 
-    /// <summary>Switches to the path of the selected root if it is accessible.</summary>
+    /// <summary>若所选根可访问,则切换到其路径。</summary>
     public async Task SwitchRootAsync(LocalRootEntry? root, CancellationToken cancellationToken = default)
     {
         if (_isSwitchingRoot || root is null || !root.IsAccessible)
@@ -290,7 +290,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
         }
     }
 
-    /// <summary>Lists a directory and retains the previous rows when listing fails.</summary>
+    /// <summary>列举目录,列举失败时保留原有行。</summary>
     public async Task NavigateToAsync(string path, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -343,23 +343,23 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
         }
     }
 
-    /// <summary>Refreshes the current directory or performs initial loading.</summary>
+    /// <summary>刷新当前目录,或执行初始加载。</summary>
     public Task RefreshAsync(CancellationToken cancellationToken = default) =>
         string.IsNullOrEmpty(CurrentPath)
             ? LoadInitialAsync(cancellationToken)
             : NavigateToAsync(CurrentPath, cancellationToken);
 
-    /// <summary>Navigates to the parent directory, staying at the filesystem root.</summary>
+    /// <summary>导航到父目录,停留在文件系统根处。</summary>
     public Task GoUpAsync(CancellationToken cancellationToken = default) =>
         string.IsNullOrEmpty(CurrentPath)
             ? LoadInitialAsync(cancellationToken)
             : NavigateToAsync(ParentOf(CurrentPath), cancellationToken);
 
-    /// <summary>Enters a directory entry; files and the parent row are inert.</summary>
+    /// <summary>进入一个目录条目;文件与父目录行不响应。</summary>
     public Task ActivateAsync(LocalFileEntry? entry, CancellationToken cancellationToken = default) =>
         entry is { IsDirectory: true } ? NavigateToAsync(entry.FullPath, cancellationToken) : Task.CompletedTask;
 
-    /// <summary>Confirms and permanently deletes one entry without following links.</summary>
+    /// <summary>经确认后永久删除单个条目,且不跟随链接。</summary>
     public async Task DeleteItemAsync(LocalFileEntry? entry, CancellationToken cancellationToken = default)
     {
         if (entry is null || entry.IsParentEntry || ConfirmDelete is null)
@@ -388,7 +388,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
         }
     }
 
-    /// <summary>Confirms and permanently deletes selected entries without following links.</summary>
+    /// <summary>经确认后永久删除选中条目,且不跟随链接。</summary>
     public async Task DeleteSelectedAsync(CancellationToken cancellationToken = default)
     {
         LocalFileEntry[] targets = SelectedEntries.Where(entry => !entry.IsParentEntry).ToArray();
@@ -705,5 +705,5 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
     }
 }
 
-/// <summary>One clickable segment of the local path breadcrumb.</summary>
+/// <summary>本地路径面包屑的一个可点击分段。</summary>
 public sealed record LocalBreadcrumbSegment(string Name, string Path);

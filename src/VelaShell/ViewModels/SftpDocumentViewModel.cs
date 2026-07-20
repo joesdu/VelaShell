@@ -6,7 +6,7 @@ using VelaShell.Presentation.Services;
 
 namespace VelaShell.ViewModels;
 
-/// <summary>Owns all state and lifetime resources for one standalone SFTP document.</summary>
+/// <summary>持有一个独立 SFTP 文档的全部状态与生命周期资源。</summary>
 public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
 {
     private readonly IConnectionWorkflowService _workflow;
@@ -15,7 +15,7 @@ public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
     private Task? _closeTask;
     private readonly object _closeSync = new();
 
-    /// <summary>Initializes the SFTP document view model and begins loading local/remote file trees.</summary>
+    /// <summary>初始化 SFTP 文档视图模型,并开始加载本地/远程文件树。</summary>
     public SftpDocumentViewModel(
         SessionProfile profile,
         SshSession session,
@@ -48,30 +48,30 @@ public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
         InitialLoadTask = LoadAsync();
     }
 
-    /// <summary>The session profile used to establish the connection.</summary>
+    /// <summary>用于建立连接的会话配置。</summary>
     public SessionProfile Profile { get; }
-    /// <summary>The active SSH session.</summary>
+    /// <summary>当前活跃的 SSH 会话。</summary>
     public SshSession Session { get; }
-    /// <summary>Unique identifier for the SSH session.</summary>
+    /// <summary>SSH 会话的唯一标识。</summary>
     public Guid SessionId { get; }
-    /// <summary>Display title for the SFTP document tab.</summary>
+    /// <summary>SFTP 文档标签页的显示标题。</summary>
     public string Title { get; }
-    /// <summary>Local file browser pane.</summary>
+    /// <summary>本地文件浏览器面板。</summary>
     public LocalFilePaneViewModel LocalFiles { get; }
-    /// <summary>Remote file browser pane.</summary>
+    /// <summary>远程文件浏览器面板。</summary>
     public FileBrowserViewModel RemoteFiles { get; }
-    /// <summary>Command to upload selected local files to the remote server.</summary>
+    /// <summary>将选中的本地文件上传到远程服务器的命令。</summary>
     public ReactiveCommand<Unit, Unit> UploadSelectedCommand { get; }
-    /// <summary>Command to download selected remote files to the local machine.</summary>
+    /// <summary>将选中的远程文件下载到本机的命令。</summary>
     public ReactiveCommand<Unit, Unit> DownloadSelectedCommand { get; }
-    /// <summary>Command to delete selected local files.</summary>
+    /// <summary>删除选中的本地文件的命令。</summary>
     public ReactiveCommand<Unit, Unit> DeleteLocalSelectedCommand { get; }
-    /// <summary>Callback for confirming local file deletions.</summary>
+    /// <summary>确认本地文件删除的回调。</summary>
     public Func<string, Task<bool>>? ConfirmLocalDelete { get; set; }
 
     internal Task InitialLoadTask { get; }
 
-    /// <summary>Uploads selected local files to the remote server.</summary>
+    /// <summary>将选中的本地文件上传到远程服务器。</summary>
     public async Task UploadSelectedAsync(CancellationToken cancellationToken = default)
     {
         string[] paths = LocalFiles.SelectedEntries
@@ -81,7 +81,7 @@ public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
         await RemoteFiles.UploadLocalPathsAsync(paths, cancellationToken);
     }
 
-    /// <summary>Downloads selected remote files to the local machine.</summary>
+    /// <summary>将选中的远程文件下载到本机。</summary>
     public async Task DownloadSelectedAsync(CancellationToken cancellationToken = default)
     {
         RemoteFileInfoViewModel[] entries = RemoteFiles.SelectedFiles
@@ -98,7 +98,7 @@ public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
         }
     }
 
-    /// <summary>Detaches file browsers and cancels the lifetime token.</summary>
+    /// <summary>分离文件浏览器并取消生命周期令牌。</summary>
     public void Detach()
     {
         _lifetime.Cancel();
@@ -106,7 +106,7 @@ public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
         LocalFiles.Detach();
     }
 
-    /// <summary>Closes the SFTP session and cleans up resources, ensuring it runs only once.</summary>
+    /// <summary>关闭 SFTP 会话并清理资源,确保仅执行一次。</summary>
     public Task CloseAsync(CancellationToken cancellationToken = default)
     {
         lock (_closeSync)
@@ -118,7 +118,7 @@ public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
         }
     }
 
-    /// <summary>Asynchronously disposes the SFTP document view model.</summary>
+    /// <summary>异步释放 SFTP 文档视图模型。</summary>
     public async ValueTask DisposeAsync() => await CloseAsync().ConfigureAwait(false);
 
     private async Task LoadAsync()

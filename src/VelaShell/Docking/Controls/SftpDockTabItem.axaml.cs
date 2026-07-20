@@ -1,8 +1,8 @@
 namespace VelaShell.Docking.Controls;
 
-/// <summary>Compiled SFTP tab presentation without terminal-only UI.</summary>
+/// <summary>编译后的 SFTP 标签呈现,不含终端专用 UI。</summary>
 public partial class SftpDockTabItem : DockTabItemBase
 {
-    /// <summary>Initializes the SFTP dock tab item.</summary>
+    /// <summary>初始化 SFTP 停靠标签项。</summary>
     public SftpDockTabItem() => InitializeComponent();
 }

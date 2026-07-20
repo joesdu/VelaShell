@@ -46,16 +46,15 @@
     <Grid RowDefinitions="Auto,*"
           Margin="{Binding $parent[Window].OffScreenMargin}">
 
-    <!-- Floating transfer toast (design frame 9Ralg): top-right, non-modal, exists only
-         while transfers are running (spec §9). -->
+    <!-- 浮动传输提示(设计帧 9Ralg):右上角,非模态,仅在有传输进行时出现(规范 §9)。 -->
     <views:FileTransferView Grid.Row="1"
                             DataContext="{Binding FileTransfer}"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Top"
                             Margin="0,12,16,0"
                             ZIndex="50" />
-    <!-- Tunnel manager panel (design frame fuXS7): non-modal, toggled by tools.tunnel
-         (menu route button / Ctrl+Shift+T), anchored below the menu bar on the right. -->
+    <!-- 隧道管理面板(设计帧 fuXS7):非模态,由 tools.tunnel 切换
+         (菜单路由按钮 / Ctrl+Shift+T),锚定于菜单栏下方右侧。 -->
     <Panel Grid.Row="1" ZIndex="60"
            HorizontalAlignment="Right" VerticalAlignment="Top"
            Margin="0,8,48,0"
@@ -65,7 +64,7 @@
     <!-- 自绘标题栏:logo/名称 + 全局功能图标 + 最小化/最大化/关闭 -->
     <views:TitleBarView x:Name="TitleBarHost" Grid.Row="0" DataContext="{Binding}" />
 
-    <!-- Shell: content + status bar + palette overlay -->
+    <!-- 外壳:内容 + 状态栏 + 命令面板覆盖层 -->
     <Grid Grid.Row="1" RowDefinitions="*,Auto">
     <!-- Row 0: Content area (sidebar + main) -->
     <Grid Grid.Row="0">
@@ -78,15 +77,14 @@
       <!-- Sidebar -->
       <views:SidebarView x:Name="SidebarHost" Grid.Column="0" DataContext="{Binding Sidebar}" />
 
-      <!-- Sidebar splitter: 5px transparent grab area drawn as a 1px line, so the sidebar
-           width is drag-adjustable. -->
+      <!-- 侧栏拖拽条:5px 透明抓取区画成 1px 细线,使侧栏宽度可拖拽调整。 -->
       <Border Grid.Column="1" Width="1" HorizontalAlignment="Center"
               Background="{DynamicResource VelaBorderPrimary}" />
       <GridSplitter Grid.Column="1" Background="Transparent" ResizeDirection="Columns"
                     HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 
-      <!-- Main area (terminal, file browser). The file rows start collapsed (0) and are
-           opened/restored from code-behind when FileBrowser.IsVisible changes (§6 可折叠/拖高). -->
+      <!-- 主区域(终端、文件浏览器)。文件行初始折叠(0),当 FileBrowser.IsVisible
+           变化时由 code-behind 打开/恢复(§6 可折叠/拖高)。 -->
       <Grid Grid.Column="2" x:Name="MainAreaGrid">
         <Grid.RowDefinitions>
           <RowDefinition Height="*" MinHeight="150" />
@@ -99,8 +97,7 @@
              TerminalTabView,这是多标签切换流畅度的关键。 -->
         <dockc:DockWorkspaceControl Grid.Row="0" Workspace="{Binding Layout}" />
 
-        <!-- Horizontal splitter: a 5px transparent grab area drawn as a 1px line, so the
-             panel is draggable without a heavy divider. -->
+        <!-- 水平拖拽条:5px 透明抓取区画成 1px 细线,使面板可在无粗分隔线的情况下拖拽。 -->
         <Border Grid.Row="1" Height="1" VerticalAlignment="Center"
                 Background="{DynamicResource VelaBorderPrimary}" />
         <GridSplitter Grid.Row="1" Background="Transparent" ResizeDirection="Rows"
@@ -116,7 +113,7 @@
     <views:StatusBarView Grid.Row="1"
                          DataContext="{Binding StatusBar}" />
 
-    <!-- Command palette overlay (Ctrl+P / Ctrl+K). Backdrop click or Esc closes it. -->
+    <!-- 命令面板覆盖层(Ctrl+P / Ctrl+K)。点击遮罩或按 Esc 关闭。 -->
     <Grid Grid.Row="0" Grid.RowSpan="2"
           IsVisible="{Binding CommandPalette.IsOpen}">
       <Grid.Styles>

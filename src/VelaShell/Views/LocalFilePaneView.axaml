@@ -65,7 +65,7 @@
             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" ClipToBounds="True">
               <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.hard-drive}"
                              Foreground="{DynamicResource VelaTextTertiary}" VerticalAlignment="Center" />
-              <!-- Clickable breadcrumb segments matching remote FileBrowserView style -->
+              <!-- 可点击面包屑分段,风格与远端 FileBrowserView 一致 -->
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True">
                 <Button Classes="crumb" Content="{Binding RootBreadcrumbLabel}"
                         Command="{Binding NavigateToCommand}"

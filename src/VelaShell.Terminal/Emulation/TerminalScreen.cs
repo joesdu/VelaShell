@@ -1,11 +1,9 @@
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// The terminal grid: an active screen of <see cref="TerminalRow" /> plus a scrollback
-/// history for the main (non-alternate) buffer. Owns the cursor, the vertical scroll
-/// region (DECSTBM) and all structural editing primitives the emulator drives.
-/// This class is intentionally UI-free and single-threaded; the rendering control reads
-/// it on the UI thread only.
+/// 终端网格:一个由 <see cref="TerminalRow" /> 构成的活动屏幕,外加主屏(非备用屏)缓冲区的
+/// 回滚历史。持有光标、垂直滚动区域(DECSTBM)以及仿真器驱动的所有结构性编辑原语。
+/// 本类刻意保持 UI 无关且单线程;渲染控件仅在 UI 线程上读取它。
 /// </summary>
 public sealed class TerminalScreen
 {
@@ -24,7 +22,7 @@ public sealed class TerminalScreen
 
     private TerminalRow[] _lines;
 
-    /// <summary>Creates a screen of the given size with the given scrollback capacity.</summary>
+    /// <summary>创建指定大小、具有给定回滚容量的屏幕。</summary>
     public TerminalScreen(int columns, int rows, int maxScrollback = 10_000)
     {
         Columns = Math.Max(1, columns);
@@ -35,31 +33,31 @@ public sealed class TerminalScreen
         ScrollBottom = Rows - 1;
     }
 
-    /// <summary>Number of columns in the active screen.</summary>
+    /// <summary>活动屏幕的列数。</summary>
     public int Columns { get; private set; }
 
-    /// <summary>Number of rows in the active screen.</summary>
+    /// <summary>活动屏幕的行数。</summary>
     public int Rows { get; private set; }
 
-    /// <summary>Maximum number of scrollback lines retained for the main buffer.</summary>
+    /// <summary>为主屏保留的最大回滚行数。</summary>
     public int MaxScrollback { get; set; }
 
-    /// <summary>Current cursor column (0-based).</summary>
+    /// <summary>当前光标列(从 0 开始)。</summary>
     public int CursorX { get; private set; }
 
-    /// <summary>Current cursor row within the active screen (0-based).</summary>
+    /// <summary>活动屏幕内的当前光标行(从 0 开始)。</summary>
     public int CursorY { get; private set; }
 
-    /// <summary>Top margin of the scroll region (0-based, inclusive).</summary>
+    /// <summary>滚动区域的上边界(从 0 开始,含)。</summary>
     public int ScrollTop { get; private set; }
 
-    /// <summary>Bottom margin of the scroll region (0-based, inclusive).</summary>
+    /// <summary>滚动区域的下边界(从 0 开始,含)。</summary>
     public int ScrollBottom { get; private set; }
 
-    /// <summary>Current number of lines held in scrollback.</summary>
+    /// <summary>回滚区当前持有的行数。</summary>
     public int ScrollbackCount => _scrollback.Count - _scrollbackStart;
 
-    /// <summary>Total rows available to the viewport (scrollback + active screen).</summary>
+    /// <summary>视口可用的总行数(回滚 + 活动屏幕)。</summary>
     public int TotalRows => ScrollbackCount + Rows;
 
     private static TerminalRow[] NewLines(int rows, int cols)
@@ -72,17 +70,17 @@ public sealed class TerminalScreen
         return lines;
     }
 
-    /// <summary>Returns the active-screen row at the given index (clamped into range).</summary>
+    /// <summary>返回给定索引处的活动屏幕行(已裁剪到范围内)。</summary>
     public TerminalRow ActiveLine(int screenRow) => _lines[Math.Clamp(screenRow, 0, Rows - 1)];
 
     /// <summary>
-    /// Returns a row addressed in "total" space: 0..ScrollbackCount-1 are history,
-    /// ScrollbackCount..TotalRows-1 are the active screen. Used by the renderer.
+    /// 返回以"总"空间寻址的行:0..ScrollbackCount-1 为历史,
+    /// ScrollbackCount..TotalRows-1 为活动屏幕。供渲染层使用。
     /// </summary>
     public TerminalRow ViewLine(int absoluteRow)
     {
-        // Callers can hold stale row indexes (a selection made before a resize, a pointer
-        // dragged past the top edge); clamp instead of throwing.
+        // 调用方可能持有过期的行索引(改变列宽前所做的选区、拖到顶边之外的指针);
+        // 此处裁剪而非抛异常。
         absoluteRow = Math.Clamp(absoluteRow, 0, TotalRows - 1);
         if (absoluteRow < ScrollbackCount)
         {
@@ -123,10 +121,10 @@ public sealed class TerminalScreen
         }
     }
 
-    /// <summary>Returns a mutable reference to the cell at (<paramref name="x" />, <paramref name="y" />).</summary>
+    /// <summary>返回 (<paramref name="x" />, <paramref name="y" />) 处单元格的可变引用。</summary>
     public ref TerminalCell CellRef(int x, int y) => ref _lines[y].CellRef(x);
 
-    /// <summary>Writes a cell at (<paramref name="x" />, <paramref name="y" />); out-of-range coordinates are ignored.</summary>
+    /// <summary>在 (<paramref name="x" />, <paramref name="y" />) 处写入单元格;超出范围的坐标被忽略。</summary>
     public void SetCell(int x, int y, in TerminalCell cell)
     {
         if ((uint)x < (uint)Columns && (uint)y < (uint)Rows)
@@ -135,7 +133,7 @@ public sealed class TerminalScreen
         }
     }
 
-    /// <summary>Reads the cell at (<paramref name="x" />, <paramref name="y" />); returns <see cref="TerminalCell.Empty" /> when out of range.</summary>
+    /// <summary>读取 (<paramref name="x" />, <paramref name="y" />) 处的单元格;超出范围时返回 <see cref="TerminalCell.Empty" />。</summary>
     public TerminalCell GetCell(int x, int y)
     {
         if ((uint)x < (uint)Columns && (uint)y < (uint)Rows)
@@ -145,22 +143,22 @@ public sealed class TerminalScreen
         return TerminalCell.Empty;
     }
 
-    // ---- Cursor -------------------------------------------------------------
+    // ---- 光标 -------------------------------------------------------------
 
-    /// <summary>Moves the cursor to (<paramref name="x" />, <paramref name="y" />), clamped into the screen bounds.</summary>
+    /// <summary>把光标移动到 (<paramref name="x" />, <paramref name="y" />),并裁剪到屏幕边界内。</summary>
     public void SetCursor(int x, int y)
     {
         CursorX = Math.Clamp(x, 0, Columns - 1);
         CursorY = Math.Clamp(y, 0, Rows - 1);
     }
 
-    /// <summary>Sets the cursor column, clamped into range.</summary>
+    /// <summary>设置光标列,裁剪到范围内。</summary>
     public void SetCursorX(int x) => CursorX = Math.Clamp(x, 0, Columns - 1);
 
-    /// <summary>Sets the cursor row, clamped into range.</summary>
+    /// <summary>设置光标行,裁剪到范围内。</summary>
     public void SetCursorY(int y) => CursorY = Math.Clamp(y, 0, Rows - 1);
 
-    /// <summary>Sets the vertical scroll region (DECSTBM); falls back to the full screen on an invalid range.</summary>
+    /// <summary>设置垂直滚动区域(DECSTBM);范围无效时回退为整屏。</summary>
     public void SetMargins(int top, int bottom)
     {
         if (top < 0)
@@ -180,16 +178,16 @@ public sealed class TerminalScreen
         ScrollBottom = bottom;
     }
 
-    /// <summary>Resets the scroll region to span the whole screen.</summary>
+    /// <summary>把滚动区域重置为覆盖整屏。</summary>
     public void ResetMargins()
     {
         ScrollTop = 0;
         ScrollBottom = Rows - 1;
     }
 
-    // ---- Vertical movement --------------------------------------------------
+    // ---- 垂直移动 --------------------------------------------------
 
-    /// <summary>Line feed / Index: move down one line, scrolling the region up at the bottom margin.</summary>
+    /// <summary>换行 / Index:下移一行,在底部边界处让区域向上滚动。</summary>
     public void Index(in TerminalCell blank)
     {
         if (CursorY == ScrollBottom)
@@ -202,7 +200,7 @@ public sealed class TerminalScreen
         }
     }
 
-    /// <summary>Reverse Index: move up one line, scrolling the region down at the top margin.</summary>
+    /// <summary>反向 Index:上移一行,在顶部边界处让区域向下滚动。</summary>
     public void ReverseIndex(in TerminalCell blank)
     {
         if (CursorY == ScrollTop)
@@ -216,8 +214,8 @@ public sealed class TerminalScreen
     }
 
     /// <summary>
-    /// Scrolls the scroll region up by <paramref name="count" /> lines. When the region
-    /// spans the whole screen, retired top lines are pushed into scrollback.
+    /// 把滚动区域向上滚动 <paramref name="count" /> 行。当区域覆盖整屏时,
+    /// 退休的顶部行会被压入回滚区。
     /// </summary>
     public void ScrollUp(int count, in TerminalCell blank)
     {
@@ -241,7 +239,7 @@ public sealed class TerminalScreen
         }
     }
 
-    /// <summary>Scrolls the scroll region down by <paramref name="count" /> lines, inserting blank rows at the top margin.</summary>
+    /// <summary>把滚动区域向下滚动 <paramref name="count" /> 行,在顶部边界插入空白行。</summary>
     public void ScrollDown(int count, in TerminalCell blank)
     {
         count = Math.Clamp(count, 0, ScrollBottom - ScrollTop + 1);
@@ -257,9 +255,9 @@ public sealed class TerminalScreen
         }
     }
 
-    // ---- Line editing (within scroll region) --------------------------------
+    // ---- 行编辑(滚动区域内) ----------------------------------------
 
-    /// <summary>IL — inserts <paramref name="count" /> blank lines at the cursor row, pushing rows down within the scroll region.</summary>
+    /// <summary>IL —— 在光标行插入 <paramref name="count" /> 个空行,将区域中的其余行下移。</summary>
     public void InsertLines(int count, in TerminalCell blank)
     {
         if (CursorY < ScrollTop || CursorY > ScrollBottom)
@@ -279,7 +277,7 @@ public sealed class TerminalScreen
         }
     }
 
-    /// <summary>DL — deletes <paramref name="count" /> lines at the cursor row, pulling rows up within the scroll region.</summary>
+    /// <summary>DL —— 删除光标行的 <paramref name="count" /> 行,将区域中的其余行上移。</summary>
     public void DeleteLines(int count, in TerminalCell blank)
     {
         if (CursorY < ScrollTop || CursorY > ScrollBottom)
@@ -299,26 +297,25 @@ public sealed class TerminalScreen
         }
     }
 
-    /// <summary>ICH — inserts <paramref name="count" /> blank cells at the cursor, shifting the rest of the line right.</summary>
+    /// <summary>ICH —— 在光标处插入 <paramref name="count" /> 个空单元格,将本行其余部分右移。</summary>
     public void InsertChars(int count, in TerminalCell blank) => _lines[CursorY].InsertCells(CursorX, count, blank);
 
-    /// <summary>DCH — deletes <paramref name="count" /> cells at the cursor, shifting the rest of the line left.</summary>
+    /// <summary>DCH —— 删除光标处的 <paramref name="count" /> 个单元格,将本行其余部分左移。</summary>
     public void DeleteChars(int count, in TerminalCell blank) => _lines[CursorY].DeleteCells(CursorX, count, blank);
 
-    /// <summary>ECH — erases <paramref name="count" /> cells starting at the cursor without shifting the line.</summary>
+    /// <summary>ECH —— 从光标开始擦除 <paramref name="count" /> 个单元格,不移动本行。</summary>
     public void EraseChars(int count, in TerminalCell blank) => _lines[CursorY].FillRange(CursorX, CursorX + count, blank);
 
-    // ---- Erase --------------------------------------------------------------
+    // ---- 擦除 --------------------------------------------------------------
 
-    /// <summary>ED — Erase in Display. mode 0: cursor→end, 1: start→cursor, 2: all, 3: scrollback.</summary>
+    /// <summary>ED —— 整屏擦除。模式 0:光标→行尾,1:行首→光标,2:全部,3:回滚区。</summary>
     public void EraseInDisplay(int mode, in TerminalCell blank)
     {
         switch (mode)
         {
             case 0:
                 _lines[CursorY].FillRange(CursorX, Columns, blank);
-                // The line no longer continues onto the next row; a stale soft-wrap flag
-                // would make the resize reflow merge unrelated rows (prompt redraw bug).
+                // 该行不再延续到下一行;陈旧的软换行标志会让改变列宽时的重排合并无关的行(提示符重绘 bug)。
                 _lines[CursorY].Wrapped = false;
                 for (int y = CursorY + 1; y < Rows; y++)
                 {
@@ -345,17 +342,16 @@ public sealed class TerminalScreen
         }
     }
 
-    /// <summary>EL — Erase in Line. mode 0: cursor→end, 1: start→cursor, 2: whole line.</summary>
+    /// <summary>EL —— 整行擦除。模式 0:光标→行尾,1:行首→光标,2:整行。</summary>
     public void EraseInLine(int mode, in TerminalCell blank)
     {
         switch (mode)
         {
             case 0:
                 _lines[CursorY].FillRange(CursorX, Columns, blank);
-                // Erasing to the end of the line severs its soft-wrap continuation — this is
-                // exactly what readline's "\r ESC[K + prompt" redraw emits on every WINCH, and
-                // a stale Wrapped flag here made resize reflows merge the redrawn prompt with
-                // whatever followed (progressively corrupting the buffer on repeated drags).
+                // 擦到行尾会切断其软换行延续——这正是 readline 的 "\r ESC[K + 提示符" 重绘在每次
+                // WINCH 时发出的内容;此处陈旧的 Wrapped 标志会让改变列宽的重排把重绘后的提示符与
+                // 其后的内容合并(反复拖拽时逐步破坏缓冲区)。
                 _lines[CursorY].Wrapped = false;
                 break;
             case 1:
@@ -367,9 +363,9 @@ public sealed class TerminalScreen
         }
     }
 
-    // ---- Buffer switching & resize -----------------------------------------
+    // ---- 缓冲区切换与改变大小 -----------------------------------------
 
-    /// <summary>Clears every active line to blank, homes the cursor, and resets the scroll margins.</summary>
+    /// <summary>把所有活动行清空为空白,光标归位,并重置滚动边距。</summary>
     public void ResetToBlank(in TerminalCell blank)
     {
         foreach (TerminalRow line in _lines)
@@ -381,7 +377,7 @@ public sealed class TerminalScreen
         ResetMargins();
     }
 
-    /// <summary>Discards all scrollback history.</summary>
+    /// <summary>丢弃全部回滚历史。</summary>
     public void ClearScrollback()
     {
         _scrollback.Clear();
@@ -389,8 +385,8 @@ public sealed class TerminalScreen
     }
 
     /// <summary>
-    /// Resizes the screen to <paramref name="columns" />×<paramref name="rows" />, reflowing the primary
-    /// buffer on column changes and retiring/pulling rows through scrollback on row changes.
+    /// 把屏幕调整为 <paramref name="columns" />×<paramref name="rows" />,列变化时重新排版主缓冲区,
+    /// 行变化时通过回滚区退休/拉取行。
     /// </summary>
     public void Resize(int columns, int rows, in TerminalCell blank)
     {
@@ -405,19 +401,17 @@ public sealed class TerminalScreen
         // 后续逻辑保持无偏移访问(冷路径,一次 O(n) 可接受)。
         CompactScrollback();
 
-        // Column changes on the primary screen reflow the whole buffer (the mainstream
-        // approach — Windows Terminal / iTerm2 / VTE / kitty): soft-wrapped rows are joined
-        // back into logical lines and re-wrapped at the new width, so narrowing never
-        // destroys content and widening re-joins it. The alternate screen (MaxScrollback
-        // 0 — htop/vim/tmux) is NOT reflowed: those programs repaint themselves on
-        // SIGWINCH, matching every mainstream terminal.
+        // 主屏的列变化会对整个缓冲区重新排版(主流做法 —— Windows Terminal / iTerm2 / VTE / kitty):
+        // 软换行行被重新合并为逻辑行,并按新宽度重新换行,因此变窄不会破坏内容,变宽则会重新接回。
+        // 备用屏(MaxScrollback 为 0 —— htop/vim/tmux)不做重排:这些程序在 SIGWINCH 时自行重绘,
+        // 与所有主流终端一致。
         if (columns != Columns && MaxScrollback > 0)
         {
             ReflowResize(columns, rows, blank);
             return;
         }
 
-        // Alternate screen column resize: hard grow/shrink each row in place.
+        // 备用屏列尺寸变化:就地硬性地增缩每一行。
         if (columns != Columns)
         {
             foreach (TerminalRow line in _lines)
@@ -430,11 +424,9 @@ public sealed class TerminalScreen
             }
         }
 
-        // Row resize: when shrinking, discard only genuinely blank bottom rows; everything
-        // else retires from the top into scrollback. (This used to drop ANY row below the
-        // cursor — during drag-resize storms, where the cursor can sit mid-buffer, that
-        // silently ate real content a few rows per shrink.) When growing, pull lines back
-        // from scrollback if available.
+        // 行尺寸变化:缩小时,只丢弃真正空白的底部行;其余行从顶部退休进入回滚区。
+        // (旧逻辑会丢弃光标下方的任意行——在拖拽改变大小的风暴中,光标可能位于缓冲区中部,
+        // 这会悄悄吃掉真实内容,每次缩小几行。)增大时,若回滚区有内容则把行拉回。
         if (rows < Rows)
         {
             int remove = Rows - rows;
@@ -490,26 +482,24 @@ public sealed class TerminalScreen
         CursorY = Math.Clamp(CursorY, 0, Rows - 1);
     }
 
-    // ---- Reflow (primary-screen column resize) -------------------------------
+    // ---- 重新排版(主屏列尺寸变化) -------------------------------
 
     /// <summary>
-    /// Rebuilds the entire buffer at a new width: physical rows are joined into logical
-    /// lines along their <see cref="TerminalRow.Wrapped" /> flags, each logical line is
-    /// re-wrapped to <paramref name="newCols" /> (wide characters kept atomic), and the
-    /// result is split back into scrollback + a bottom-anchored screen. The cursor is
-    /// carried through as (logical line, cell offset) so it lands on the same character.
+    /// 以新宽度重建整个缓冲区:物理行沿其 <see cref="TerminalRow.Wrapped" /> 标志合并为逻辑行,
+    /// 每条逻辑行按 <paramref name="newCols" /> 重新换行(宽字符保持原子性),结果再拆分为
+    /// 回滚区 + 一个底部锚定的屏幕。光标以(逻辑行,单元格偏移)的形式被带过,
+    /// 从而落在同一个字符上。
     /// </summary>
     private void ReflowResize(int newCols, int newRows, in TerminalCell blank)
     {
         int cursorAbs = _scrollback.Count + CursorY;
 
-        // 1. Flatten scrollback + screen into one physical row list.
+        // 1. 将回滚区与屏幕展平为一个物理行列表。
         var physical = new List<TerminalRow>(_scrollback.Count + Rows);
         physical.AddRange(_scrollback);
         physical.AddRange(_lines);
 
-        // Drop trailing blank, unwrapped rows below the cursor — they're just the unused
-        // bottom of the screen and would otherwise pad the scrollback with empties.
+        // 丢弃光标下方末尾的空白、未换行行——它们只是屏幕未使用的底部,否则会用空行填充回滚区。
         while (physical.Count > cursorAbs + 1)
         {
             TerminalRow last = physical[^1];
@@ -520,21 +510,21 @@ public sealed class TerminalScreen
             physical.RemoveAt(physical.Count - 1);
         }
 
-        // 2. Re-emit logical lines at the new width.
+        // 2. 按新宽度重新生成逻辑行。
         var rebuilt = new List<TerminalRow>(physical.Count);
         int newCursorRow = -1, newCursorCol = 0;
         int i = 0;
         while (i < physical.Count)
         {
-            // A logical line spans [i..j]: every row but the last carries the Wrapped flag.
+            // 逻辑行跨越 [i..j]:除最后一行外每行都带有软换行标志。
             int j = i;
             while (j < physical.Count - 1 && physical[j].Wrapped)
             {
                 j++;
             }
 
-            // Collect its cells: wrapped segments contribute their full width, the final
-            // segment is trimmed at the last non-blank cell (extended to cover the cursor).
+            // 收集其单元格:被换行的段落贡献其完整宽度,最后一段
+            // 在最后一个非空单元格处截断(扩展以覆盖光标)。
             var cells = new List<TerminalCell>();
             int cursorOffset = -1;
             DateTime? lineTimestamp = null;
@@ -577,11 +567,9 @@ public sealed class TerminalScreen
             newCursorCol = 0;
         }
 
-        // 3. Split back: the screen is the bottom-most newRows rows (content stays anchored
-        //    at the bottom like every terminal). The split NEVER discards rows: everything
-        //    above the screen goes to scrollback, and a cursor that mapped above the window
-        //    is clamped into it rather than dragging the window up and silently dropping the
-        //    tail rows (that drop is what ate the buffer on repeated drag-resizes).
+        // 3. 切回:屏幕是最底部 newRows 行(内容像所有终端一样锚定在底部)。拆分绝不丢弃行:
+        //    屏幕之上的所有内容都进入回滚区,而映射到窗口之上的光标会被裁剪进窗口,
+        //    而非把窗口上拖并悄悄丢弃尾部行(正是这种丢弃在反复拖拽改变大小时吃掉了缓冲区)。
         int screenStart = Math.Max(0, rebuilt.Count - newRows);
         _scrollback.Clear();
         _scrollbackStart = 0;
@@ -613,9 +601,8 @@ public sealed class TerminalScreen
     }
 
     /// <summary>
-    /// Wraps one logical line's cells into rows of <paramref name="cols" />, keeping
-    /// wide-character lead/trail pairs on the same row, marking every produced row but the
-    /// last as soft-wrapped, and reporting where <paramref name="cursorOffset" /> landed.
+    /// 把一条逻辑行的单元格换行成若干 <paramref name="cols" /> 宽的行,使宽字符的前导/尾随成对
+    /// 留在同一行,除最后一行外每行都标记为软换行,并报告 <paramref name="cursorOffset" /> 落点。
     /// </summary>
     private static void EmitLogicalLine(List<TerminalCell> cells,
         int cursorOffset,
@@ -631,7 +618,7 @@ public sealed class TerminalScreen
         for (int k = 0; k < cells.Count; k++)
         {
             TerminalCell cell = cells[k];
-            // A wide pair (lead + trailing marker) must stay together on one row.
+            // 宽字符对(前导 + 尾随标记)必须留在同一行。
             bool wide = cols >= 2 &&
                         !cell.IsWideTrailing &&
                         k + 1 < cells.Count &&
@@ -662,7 +649,7 @@ public sealed class TerminalScreen
             }
         }
 
-        // A cursor sitting on the (blank) cell right past the collected content.
+        // 光标落在已收集内容之后紧邻的(空白)单元格上。
         if (cursorOffset == cells.Count && cursorOffset >= 0)
         {
             cursorRow = output.Count - 1;

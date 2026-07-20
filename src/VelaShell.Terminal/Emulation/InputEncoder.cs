@@ -4,20 +4,19 @@ using Avalonia.Input;
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// Translates Avalonia key events into the byte sequences a host expects, honoring
-/// application-cursor-key mode, VT52 mode and xterm modifier encoding. Text (printable)
-/// input is encoded separately as UTF-8.
+/// 把 Avalonia 的按键事件翻译成宿主所期望的字节序列,遵循应用光标键模式、VT52 模式
+/// 以及 xterm 的修饰键编码。文本(可打印)输入则单独以 UTF-8 编码。
 /// </summary>
 public static class InputEncoder
 {
     private static readonly byte[] Empty = [];
 
-    /// <summary>Encodes ordinary text (from IME / TextInput) as UTF-8.</summary>
+    /// <summary>把普通文本(来自 IME / TextInput)以 UTF-8 编码。</summary>
     public static byte[] EncodeText(string text) => string.IsNullOrEmpty(text) ? Empty : Encoding.UTF8.GetBytes(text);
 
     /// <summary>
-    /// Encodes a non-text key press. Returns null when the key produces no direct sequence
-    /// (the control should then rely on the TextInput event for the character).
+    /// 编码一次非文本按键。当该按键不产生直接序列时返回 null
+    /// (此时控件应改由 TextInput 事件获取字符)。
     /// </summary>
     public static byte[]? Encode(Key key, KeyModifiers mods, TerminalModes modes, TerminalType type)
     {
@@ -25,7 +24,7 @@ public static class InputEncoder
         bool alt = mods.HasFlag(KeyModifiers.Alt);
         bool shift = mods.HasFlag(KeyModifiers.Shift);
 
-        // Control-letter combinations map to C0 controls.
+        // 控制键 + 字母组合映射到 C0 控制字符。
         if (ctrl && !alt)
         {
             byte? c0 = ControlByte(key, shift);
@@ -104,7 +103,7 @@ public static class InputEncoder
 
     private static byte[] Esc(string tail) => Encoding.ASCII.GetBytes("\e" + tail);
 
-    /// <summary>Prepends ESC when Alt is held (xterm meta-sends-escape convention).</summary>
+    /// <summary>按住 Alt 时在前面加 ESC(xterm 的 meta 发送 ESC 约定)。</summary>
     private static byte[] WithAlt(byte[] seq, bool alt)
     {
         if (!alt)
@@ -117,7 +116,7 @@ public static class InputEncoder
         return result;
     }
 
-    /// <summary>xterm modifier parameter: 1 + shift(1) + alt(2) + ctrl(4) + meta(8).</summary>
+    /// <summary>xterm 修饰键参数:1 + shift(1) + alt(2) + ctrl(4) + meta(8)。</summary>
     private static int ModifierCode(KeyModifiers mods)
     {
         int m = 0;
@@ -142,7 +141,7 @@ public static class InputEncoder
 
     private static byte? ControlByte(Key key, bool shift)
     {
-        // Letters A-Z -> 0x01..0x1A
+        // 字母 A-Z -> 0x01..0x1A
         if (key is >= Key.A and <= Key.Z)
         {
             return (byte)(key - Key.A + 1);
@@ -151,7 +150,7 @@ public static class InputEncoder
         {
             Key.Space => 0x00,
             Key.OemOpenBrackets => 0x1B, // Ctrl+[
-            Key.OemBackslash or Key.Oem5 => 0x1C, // Ctrl+backslash
+            Key.OemBackslash or Key.Oem5 => 0x1C, // Ctrl+反斜杠
             Key.OemCloseBrackets => 0x1D,
             Key.D2 when shift => 0x00, // Ctrl+@
             Key.D3 => 0x1B,

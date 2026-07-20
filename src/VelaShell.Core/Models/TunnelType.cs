@@ -1,17 +1,17 @@
 namespace VelaShell.Core.Models;
 
 /// <summary>
-/// Specifies the type of SSH port forwarding tunnel.
+/// 指定 SSH 端口转发隧道的类型。
 /// </summary>
 public enum TunnelType
 {
     /// <summary>
-    /// Local forward: localhost:localPort → remoteHost:remotePort (via SSH server)
+    /// 本地转发:localhost:localPort → remoteHost:remotePort(经由 SSH 服务器)
     /// </summary>
     LocalForward,
 
     /// <summary>
-    /// Remote forward: sshServer:remotePort → localhost:localPort
+    /// 远程转发:sshServer:remotePort → localhost:localPort
     /// </summary>
     RemoteForward,
 

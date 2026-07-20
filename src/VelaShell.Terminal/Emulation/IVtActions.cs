@@ -1,29 +1,29 @@
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// Sink for the events produced by <see cref="VtParser" />. The <see cref="TerminalEmulator" />
-/// implements this to turn parsed escape sequences into screen-buffer mutations.
+/// <see cref="VtParser" /> 所产生的事件的接收端(sink)。<see cref="TerminalEmulator" />
+/// 实现此接口,把解析出的转义序列转化为对屏幕缓冲区的修改。
 /// </summary>
 public interface IVtActions
 {
-    /// <summary>A printable Unicode scalar value should be written at the cursor.</summary>
+    /// <summary>应在光标处写入一个可打印的 Unicode 标量值。</summary>
     void Print(int rune);
 
-    /// <summary>A C0 control character (0x00-0x1F) or DEL should be executed.</summary>
+    /// <summary>应执行一个 C0 控制字符(0x00-0x1F)或 DEL。</summary>
     void Execute(char control);
 
-    /// <summary>An <c>ESC</c> sequence: <c>ESC {intermediates} {final}</c> (e.g. ESC ( B).</summary>
+    /// <summary>一个 <c>ESC</c> 序列:<c>ESC {中间字节} {终结字节}</c>(如 ESC ( B)。</summary>
     void EscDispatch(string intermediates, char final);
 
     /// <summary>
-    /// A CSI sequence: <c>CSI {prefix} {params} {intermediates} {final}</c>.
-    /// <paramref name="prefix" /> is the private marker (e.g. <c>?</c>, <c>&gt;</c>) or '\0'.
+    /// 一个 CSI 序列:<c>CSI {前缀} {参数} {中间字节} {终结字节}</c>。
+    /// <paramref name="prefix" /> 是私有标记(如 <c>?</c>、<c>&gt;</c>)或 '\0'。
     /// </summary>
     void CsiDispatch(char prefix, IReadOnlyList<int> parameters, string intermediates, char final);
 
-    /// <summary>An OSC sequence. <paramref name="parameters" /> is the ';'-split payload.</summary>
+    /// <summary>一个 OSC 序列。<paramref name="parameters" /> 为按 ';' 拆分后的载荷。</summary>
     void OscDispatch(IReadOnlyList<string> parameters);
 
-    /// <summary>A DCS sequence with its collected string payload.</summary>
+    /// <summary>一个带有已收集字符串载荷的 DCS 序列。</summary>
     void DcsDispatch(char prefix, IReadOnlyList<int> parameters, string intermediates, char final, string data);
 }

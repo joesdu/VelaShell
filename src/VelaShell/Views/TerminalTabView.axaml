@@ -86,8 +86,8 @@
       </Grid>
     </Border>
 
-    <!-- Row 2: in-terminal search bar (spec §5.3, Ctrl+F) — docked at the bottom of this
-         tab (per-tab scope; it only searches this tab's buffer). -->
+    <!-- 第 2 行:终端内搜索栏(spec §5.3,Ctrl+F)——停靠在本标签页底部(按标签作用域,
+         只搜索本标签的缓冲区)。 -->
     <Border Grid.Row="2"
               x:Name="SearchBar"
               IsVisible="False"
@@ -149,10 +149,10 @@
         </Grid>
       </Border>
 
-    <!-- Row 1: Terminal area with scrollbar -->
+    <!-- 第 1 行:终端区域(含滚动条) -->
     <Grid Grid.Row="1">
 
-      <!-- Terminal emulator control -->
+      <!-- 终端模拟器控件 -->
       <Border x:Name="TerminalHost"
               Background="{DynamicResource VelaBgTerminal}"
               ClipToBounds="True">
@@ -230,11 +230,9 @@
         </Border>
       </Popup>
 
-      <!-- Scrollbar for scrollback navigation (driven from code-behind against the
-           shared terminal control, since the control is reparented across split panes).
-           Overlaid on the terminal's right edge — like Fluent ScrollViewer's overlay
-           scrollbars — so it reserves no column of its own (would show as a stray
-           dark strip against the terminal background). -->
+      <!-- 用于回滚导航的滚动条(由代码后置驱动共享终端控件,因为该控件在分屏间被重新挂载)。
+           覆盖在终端右边缘——类似 Fluent ScrollViewer 的覆盖式滚动条——因此不占用独立列
+           (否则会在终端背景上显出一条多余的暗色条带)。 -->
       <ScrollBar x:Name="ScrollBarView"
                  Orientation="Vertical"
                  Minimum="0"

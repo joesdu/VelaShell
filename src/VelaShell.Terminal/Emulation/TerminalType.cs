@@ -1,9 +1,8 @@
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// The terminal emulation profile advertised to the remote host. Determines the
-/// TERM string, the Device Attributes (DA) response, and which feature set the
-/// emulator enables. xterm-256color is the primary/default profile.
+/// 向远端主机宣示的终端仿真档位。决定 TERM 字符串、设备属性(DA)应答,
+/// 以及仿真器启用哪些功能集。xterm-256color 是主用/默认档位。
 /// </summary>
 public enum TerminalType
 {
@@ -16,7 +15,7 @@ public enum TerminalType
     /// <summary>DEC VT220,支持 8 位控制、可下载字符集等扩展。</summary>
     Vt220,
     /// <summary>DEC VT320,VT300 系列,支持彩色与更多扩展。</summary>
-    Vt320, // "vt340" family — DEC VT300 series
+    Vt320, // "vt340" 家族 — DEC VT300 系列
     /// <summary>DEC VT340,VT300 系列中带 Sixel 图形/彩色的型号。</summary>
     Vt340,
     /// <summary>DEC VT420,支持多会话与更多显示扩展。</summary>
@@ -32,7 +31,7 @@ public enum TerminalType
 /// <summary><see cref="TerminalType" /> 的扩展方法,提供能力判定与 TERM 名称、Device Attributes 应答的映射。</summary>
 public static class TerminalTypeExtensions
 {
-    /// <summary>Parses a TERM string (e.g. "xterm-256color") back to a <see cref="TerminalType" />.</summary>
+    /// <summary>把 TERM 字符串(如 "xterm-256color")解析回 <see cref="TerminalType" />。</summary>
     public static TerminalType FromTermName(string? term) =>
         (term ?? string.Empty).Trim().ToLowerInvariant() switch
         {
@@ -50,35 +49,34 @@ public static class TerminalTypeExtensions
 
     extension(TerminalType type)
     {
-        /// <summary>True for VT300+ / xterm profiles that support ANSI colors and 8-bit charsets.</summary>
+        /// <summary>对于支持 ANSI 颜色与 8 位字符集的 VT300+ / xterm 档位返回 true。</summary>
         public bool SupportsColor() =>
             type is TerminalType.Xterm or TerminalType.XtermColor256
                 or TerminalType.Vt320 or TerminalType.Vt340 or TerminalType.Vt420 or TerminalType.Vt520;
 
         /// <summary>
-        /// The primary Device Attributes (CSI c) reply. The first parameter identifies the
-        /// terminal class; subsequent parameters advertise supported extensions.
+        /// 主设备属性(CSI c)应答。第一个参数标识终端类型;后续参数宣示所支持的扩展。
         /// </summary>
         public string PrimaryDeviceAttributes() =>
             type switch
             {
-                // VT52 has no DA; it replies to ESC Z with ESC / Z instead (handled in the emulator).
+                // VT52 没有 DA;它改为以 ESC / Z 应答 ESC Z(在仿真器内处理)。
                 TerminalType.Vt52 => "\e/Z",
-                // VT100 with AVO: "I am a VT100 with Advanced Video Option".
+                // VT100 带 AVO:"我是带高级视频选项的 VT100"。
                 TerminalType.Vt100 => "\e[?1;2c",
                 TerminalType.Vt102 => "\e[?6c",
-                // VT220: service class 62, with 132-columns, printer, selective erase, DRCS, UDK, NRCS.
+                // VT220:服务类别 62,带 132 列、打印机、选择性擦除、DRCS、UDK、NRCS。
                 TerminalType.Vt220 => "\e[?62;1;2;6;7;8;9c",
                 TerminalType.Vt320 => "\e[?63;1;2;6;7;8;9c",
                 TerminalType.Vt340 => "\e[?63;1;2;4;6;7;8;9;15c",
                 TerminalType.Vt420 => "\e[?64;1;2;6;7;8;9;15;18;19;21c",
                 TerminalType.Vt520 => "\e[?65;1;2;6;7;8;9;12;15;18;19;21c",
-                // xterm advertises itself as a VT100-class terminal with many extensions.
+                // xterm 把自己宣示为带大量扩展的 VT100 类终端。
                 TerminalType.Xterm => "\e[?1;2c",
                 _ => "\e[?64;1;2;6;9;15;18;21;22c"
             };
 
-        /// <summary>The secondary Device Attributes (CSI > c) reply, identifying firmware/version.</summary>
+        /// <summary>次设备属性(CSI > c)应答,用于标识固件/版本。</summary>
         public string SecondaryDeviceAttributes() =>
             type switch
             {
@@ -87,12 +85,12 @@ public static class TerminalTypeExtensions
                 TerminalType.Vt340 => "\e[>19;20;0c",
                 TerminalType.Vt420 => "\e[>41;20;0c",
                 TerminalType.Vt520 => "\e[>65;20;0c",
-                // xterm reports terminal type 0/41 and a patch level; we advertise as VT420-compatible xterm.
+                // xterm 报告终端类型 0/41 与补丁级别;我们宣示为兼容 VT420 的 xterm。
                 TerminalType.Xterm or TerminalType.XtermColor256 => "\e[>41;360;0c",
                 _ => "\e[>0;10;0c"
             };
 
-        /// <summary>The value sent as the TERM environment variable / PTY terminal type.</summary>
+        /// <summary>作为 TERM 环境变量 / PTY 终端类型发送的值。</summary>
         public string ToTermName() =>
             type switch
             {

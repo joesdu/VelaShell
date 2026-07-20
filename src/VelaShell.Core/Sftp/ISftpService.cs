@@ -3,87 +3,80 @@ using VelaShell.Core.Models;
 namespace VelaShell.Core.Sftp;
 
 /// <summary>
-/// Progress of a (possibly recursive) delete: how many entries are deleted so far, the
-/// total entries expected to be deleted, and the path most recently deleted.
+/// 删除(可能递归)的进度:已删除的条目数、预计删除的总条目数,以及最近一次被删除的路径。
 /// </summary>
-/// <param name="DeletedCount">Number of entries deleted so far.</param>
-/// <param name="TotalCount">Total number of entries expected to be deleted.</param>
-/// <param name="CurrentPath">The path most recently deleted.</param>
+/// <param name="DeletedCount">已删除的条目数。</param>
+/// <param name="TotalCount">预计删除的总条目数。</param>
+/// <param name="CurrentPath">最近一次被删除的路径。</param>
 // ReSharper disable once NotAccessedPositionalProperty.Global
 public readonly record struct SftpDeleteProgress(int DeletedCount, int TotalCount, string CurrentPath)
 {
-    /// <summary>Delete progress percentage in [0, 100].</summary>
+    /// <summary>删除进度百分比,取值范围 [0, 100]。</summary>
     public int Percentage => TotalCount <= 0 ? 0 : (int)Math.Clamp(((double)DeletedCount * 100) / TotalCount, 0, 100);
 }
 
 /// <summary>
-/// SFTP file operations over an existing SSH session: directory listing, upload/download,
-/// delete, create, rename, permissions and metadata queries, keyed by session id.
+/// 基于已有 SSH 会话的 SFTP 文件操作:目录列举、上传/下载、删除、创建、重命名、权限与元数据查询,以会话 id 为键。
 /// </summary>
 public interface ISftpService : IAsyncDisposable
 {
-    /// <summary>Lists the entries of a remote directory.</summary>
+    /// <summary>列举远端目录的条目。</summary>
     Task<List<RemoteFileInfo>> ListDirectoryAsync(Guid sessionId, string path, CancellationToken cancellationToken = default);
 
-    /// <summary>Uploads a local file to the given remote path, reporting transfer progress.</summary>
+    /// <summary>将本地文件上传到给定远端路径,并报告传输进度。</summary>
     Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0);
 
-    /// <summary>Downloads a remote file to the given local path, reporting transfer progress.</summary>
+    /// <summary>将远端文件下载到给定本地路径,并报告传输进度。</summary>
     Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0);
 
     /// <summary>
-    /// Deletes a file, or a directory and its entire contents (recursively). Reports one
-    /// progress tick per removed entry so the UI can show progress for large/slow folder deletes.
+    /// 删除文件,或递归删除目录及其全部内容。每移除一个条目回报一次进度,
+    /// 以便界面对大/慢文件夹的删除展示进度。
     /// </summary>
     Task DeleteAsync(Guid sessionId, string remotePath, IProgress<SftpDeleteProgress>? progress = null, CancellationToken cancellationToken = default);
 
-    /// <summary>Creates a new directory at the given remote path.</summary>
+    /// <summary>在给定远端路径创建新目录。</summary>
     Task CreateDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default);
 
-    /// <summary>Creates an empty file at the given remote path.</summary>
+    /// <summary>在给定远端路径创建一个空文件。</summary>
     Task CreateFileAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Creates a directory if it does not already exist (idempotent). Used when uploading
-    /// a folder tree so re-creating an existing subdirectory is not an error.
+    /// 若目录不存在则创建(幂等)。上传文件夹树时使用,以便重建已存在的子目录不会报错。
     /// </summary>
     Task EnsureDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default);
 
-    /// <summary>Renames or moves a remote entry (SFTP rename doubles as move).</summary>
+    /// <summary>重命名或移动远端条目(SFTP 的 rename 兼具 move 语义)。</summary>
     Task RenameAsync(Guid sessionId, string oldPath, string newPath, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Copies a remote file or directory tree to another path on the same server. For single files
-    /// this is download-to-memory-then-upload; for directories each file is copied recursively.
-    /// Reports transfer progress per file.
+    /// 将远端文件或目录树复制到同一服务器的另一路径。单个文件采用先下载到内存再上传的方式;
+    /// 目录则逐文件递归复制。按文件回报传输进度。
     /// </summary>
     Task CopyAsync(Guid sessionId, string sourcePath, string destPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Changes a remote entry's permissions (chmod). <paramref name="octalMode" /> is
-    /// three octal digits written as a decimal number (e.g. 755, 644), matching `chmod` notation.
+    /// 修改远端条目的权限(chmod)。<paramref name="octalMode" /> 是三位八进制数字,
+    /// 以十进制数书写(如 755、644),与 `chmod` 记法一致。
     /// </summary>
     Task SetPermissionsAsync(Guid sessionId, string remotePath, short octalMode, CancellationToken cancellationToken = default);
 
-    /// <summary>Retrieves metadata for a single remote file or directory.</summary>
+    /// <summary>获取单个远端文件或目录的元数据。</summary>
     Task<RemoteFileInfo> GetFileInfoAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Whether a remote path exists (file or directory). Used for upload conflict
-    /// detection before overwriting a remote file.
+    /// 远端路径是否存在(文件或目录)。用于在覆盖远端文件前进行上传冲突检测。
     /// </summary>
     Task<bool> ExistsAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The session's SFTP working directory (the account's home directory right after
-    /// login), used to open the browser there instead of the filesystem root.
+    /// 会话的 SFTP 工作目录(登录后即为账户的 home 目录),用于在该处打开浏览器而非文件系统根目录。
     /// </summary>
     Task<string> GetWorkingDirectoryAsync(Guid sessionId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Closes and disposes the SFTP channel for a session (called when its SSH tab is
-    /// closed) so it no longer holds a live connection or accepts operations. No-op if the session
-    /// has no SFTP channel open.
+    /// 关闭并释放某个会话的 SFTP 通道(在其 SSH 标签页关闭时调用),使其不再持有活动连接或接受操作。
+    /// 若会话未打开 SFTP 通道则为空操作。
     /// </summary>
     Task CloseSessionAsync(Guid sessionId, CancellationToken cancellationToken = default);
 }

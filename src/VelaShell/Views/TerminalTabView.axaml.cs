@@ -26,7 +26,7 @@ public partial class TerminalTabView : UserControl
 {
     private readonly IKeyboardShortcutService _shortcutService;
 
-    // ---- In-terminal search (spec §5.3) ------------------------------------
+    // ---- 终端内搜索(spec §5.3) ------------------------------------
 
     private IReadOnlyList<BufferSearchHit> _searchHits = [];
 
@@ -54,8 +54,8 @@ public partial class TerminalTabView : UserControl
         };
         ScrollBarView?.Scroll += OnScrollBarScroll;
 
-        // Tunnel so a disconnected tab can catch Enter / Ctrl+R for reconnect (and Ctrl+F can
-        // open search) before the terminal control consumes the keys for the PTY.
+        // 采用 Tunnel 路由,使已断开的标签能在终端控件把按键交给 PTY 之前截获 Enter / Ctrl+R
+        // 用于重连(以及 Ctrl+F 打开搜索)。
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
 
         // 平台侧关闭弹层(如系统截图覆盖层/激活切换导致宿主隐藏它)时,IsOpen 与
@@ -89,7 +89,7 @@ public partial class TerminalTabView : UserControl
             return;
         }
 
-        // Ctrl+F toggles the in-terminal search bar (spec §5.3).
+        // Ctrl+F 切换终端内搜索栏(spec §5.3)。
         if (e is { Key: Key.F, KeyModifiers: Avalonia.Input.KeyModifiers.Control })
         {
             OpenSearch();
@@ -723,7 +723,7 @@ public partial class TerminalTabView : UserControl
                     : Strings.Get("Term_NoMatches")
                 : $"{_searchIndex + 1}/{_searchHits.Count}";
 
-        // All hits get a persistent highlight; the current one is tinted accent (§5.3).
+        // 所有命中项均保持高亮;当前项以 accent 着色(§5.3)。
         _termControl?.SetSearchHighlights(_searchHits, _searchIndex);
         if (_searchIndex >= 0 && _termControl is not null)
         {
@@ -853,8 +853,8 @@ public partial class TerminalTabView : UserControl
     private void OnTerminalLostFocus(object? sender, RoutedEventArgs e) =>
         DismissSuggestions(suppress: false);
 
-    // The terminal control is a single shared instance reparented across split panes, so each
-    // view (re)binds the scrollbar to whichever control it currently hosts.
+    // 终端控件是跨分屏重新挂载的单一共享实例,因此每个视图都把滚动条(重新)绑定到它
+    // 当前承载的那个控件上。
     private void HookTerminalControl()
     {
         var ctrl =
@@ -896,12 +896,11 @@ public partial class TerminalTabView : UserControl
             int max = _termControl.MaxScrollOffset;
             ScrollBarView.Maximum = max;
             ScrollBarView.ViewportSize = Math.Max(1, _termControl.Rows);
-            // Thumb sits at the bottom when following live output (offset 0) and at the top
-            // when fully scrolled back into history.
+            // 跟随实时输出时(偏移 0)滑块位于底部,完全回滚到历史时位于顶部。
             ScrollBarView.Value = max - _termControl.ScrollOffset;
             ScrollBarView.IsEnabled = max > 0;
-            // The bar overlays the terminal's right edge; with no scrollback there is
-            // nothing to scroll, so hide it entirely instead of showing a disabled thumb.
+            // 滚动条覆盖在终端右边缘;没有回滚内容时无可滚动项,因此整体隐藏,
+            // 而非显示禁用的滑块。
             ScrollBarView.IsVisible = max > 0;
         }
         finally

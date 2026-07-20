@@ -19,8 +19,8 @@ public class FileTransferViewModel : ReactiveObject
     private readonly ITransferManager? _transferManager;
     private IDisposable? _autoHide;
 
-    // Current batch (a folder/multi-file download or upload): the number of files still to finish
-    // and the token source that cancels whatever remains, including the file in flight.
+    // 当前批次(一个文件夹/多文件的下载或上传):尚未完成的文件数,
+    // 以及用于取消剩余所有文件(包括正在传输的那个)的令牌源。
     private CancellationTokenSource? _batchCts;
     private int _batchRemaining;
     private bool _hidePending;
@@ -50,16 +50,15 @@ public class FileTransferViewModel : ReactiveObject
     /// <summary>当前所有传输项(活动与已完成),新任务插入到列表顶部。</summary>
     public ObservableCollection<TransferItemViewModel> Transfers { get; }
 
-    /// <summary>Count of in-flight tasks (in progress or queued).</summary>
+    /// <summary>进行中(传输中或排队中)的任务数量。</summary>
     public int ActiveCount => Transfers.Count(t => t.IsActive);
 
-    /// <summary>Whether a cancellable batch of transfers is currently running.</summary>
+    /// <summary>当前是否正在运行一个可取消的传输批次。</summary>
     public bool IsBatchActive => _batchCts is not null;
 
     /// <summary>
-    /// Header badge (design 9Ralg): while preparing it counts up with the files
-    /// discovered by the scan; during a batch it is the number of files still to transfer
-    /// (counting down); otherwise the number of in-flight single transfers.
+    /// 头部徽标(design 9Ralg):准备阶段随扫描发现的文件数递增;
+    /// 批处理期间为尚待传输的文件数(递减);其余情况为进行中的单文件传输数。
     /// </summary>
     public int PendingCount => IsPreparing
                                    ? _preparingCount
@@ -67,7 +66,7 @@ public class FileTransferViewModel : ReactiveObject
                                        ? _batchRemaining
                                        : ActiveCount;
 
-    /// <summary>Whether an upload/download is still scanning directories to build its plan.</summary>
+    /// <summary>上传/下载是否仍在扫描目录以制定计划。</summary>
     public bool IsPreparing
     {
         get => _isPreparing;
@@ -78,8 +77,8 @@ public class FileTransferViewModel : ReactiveObject
     public string PreparingText => Strings.Format("Msg_ScanningTransferFiles", _preparingCount);
 
     /// <summary>
-    /// The toast exists only while it has content and wasn't manually collapsed (spec §9):
-    /// a new task fades it in, closing (x) only hides it — tasks keep running.
+    /// 浮窗仅在有内容且未被手动收起时存在(规范 §9):
+    /// 新任务会淡入显示,点关闭(x)只是隐藏 —— 任务继续运行。
     /// </summary>
     public bool IsPanelVisible
     {
@@ -100,15 +99,15 @@ public class FileTransferViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> ClearCompletedCommand { get; }
 
     /// <summary>
-    /// Cancels every remaining file in the current batch, aborting the one in flight
-    /// and skipping the rest (spec §9: 取消剩余传输).
+    /// 取消当前批次中所有剩余文件:中止正在传输的那个并跳过其余
+    /// (规范 §9:取消剩余传输)。
     /// </summary>
     public ReactiveCommand<Unit, Unit> CancelAllCommand { get; }
 
     /// <summary>
-    /// Enters the preparing (directory-scan) state: the toast pops up immediately with
-    /// a live file counter so picking a large folder no longer looks like nothing happened.
-    /// Ended by <see cref="BeginBatch" /> (scan done, transfers starting) or <see cref="EndPreparing" />.
+    /// 进入准备(目录扫描)状态:浮窗立即弹出并显示实时文件计数,
+    /// 这样选择一个大文件夹时不会再像什么都没发生。由 <see cref="BeginBatch" />
+    /// (扫描完成、传输开始)或 <see cref="EndPreparing" /> 结束。
     /// </summary>
     public void BeginPreparing()
     {
@@ -124,7 +123,7 @@ public class FileTransferViewModel : ReactiveObject
         IsPanelVisible = true;
     }
 
-    /// <summary>Updates the live count of files discovered so far during the preparing scan.</summary>
+    /// <summary>更新准备扫描过程中迄今发现的文件实时计数。</summary>
     public void UpdatePreparingCount(int discovered)
     {
         if (!IsPreparing)
@@ -137,9 +136,8 @@ public class FileTransferViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Leaves the preparing state without starting a batch (empty plan, cancellation or
-    /// error). No-op when <see cref="BeginBatch" /> already took over. Hides the toast again if
-    /// the scan produced nothing to show.
+    /// 不启动批次即离开准备状态(计划为空、取消或出错)。当
+    /// <see cref="BeginBatch" /> 已接管时为无操作。若扫描未产出可显示内容则再次隐藏浮窗。
     /// </summary>
     public void EndPreparing()
     {
@@ -161,8 +159,8 @@ public class FileTransferViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Begins a cancellable batch of <paramref name="totalFiles" /> transfers. The header
-    /// then shows the remaining count and a cancel control that trips <paramref name="cts" />.
+    /// 开始一个包含 <paramref name="totalFiles" /> 个传输的可取消批次。随后
+    /// 头部显示剩余计数,并提供触发 <paramref name="cts" /> 的取消控件。
     /// </summary>
     public void BeginBatch(int totalFiles, CancellationTokenSource cts)
     {
@@ -176,7 +174,7 @@ public class FileTransferViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(PendingCount));
     }
 
-    /// <summary>Marks one file of the current batch as finished, decrementing the remaining count.</summary>
+    /// <summary>将当前批次中的一个文件标记为完成,并递减剩余计数。</summary>
     public void NotifyBatchItemSettled()
     {
         if (_batchRemaining > 0)
@@ -186,7 +184,7 @@ public class FileTransferViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(PendingCount));
     }
 
-    /// <summary>Ends the current batch; the toast reverts to its idle badge and resumes auto-hide.</summary>
+    /// <summary>结束当前批次;浮窗恢复为空闲徽标并恢复自动隐藏。</summary>
     public void EndBatch()
     {
         _batchCts = null;
@@ -194,24 +192,23 @@ public class FileTransferViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(IsBatchActive));
         this.RaisePropertyChanged(nameof(PendingCount));
 
-        // Re-evaluate auto-hide now that the batch (which suppressed it) is done.
+        // 批次结束后重新评估自动隐藏(批次期间曾抑制了它)。
         NotifyTaskSettled();
     }
 
     private void CancelAll()
     {
-        // Cancel() runs the transfer's cancellation callbacks inline; guard so a misbehaving
-        // callback can never crash the app from the cancel button.
+        // Cancel() 内联运行传输的取消回调;加保护,使行为异常的回调绝不会从取消按钮处让应用崩溃。
         try
         {
             _batchCts?.Cancel();
         }
         catch
         {
-            // Best-effort: the batch is already tearing down.
+            // 尽力而为:批次已在拆除中。
         }
 
-        // Reflect the cancellation immediately; the running file unwinds as its stream closes.
+        // 立即反映取消状态;正在运行的文件会随其流关闭而逐步结束。
         foreach (TransferItemViewModel item in Transfers.Where(t => t.IsActive).ToList())
         {
             item.Status = TransferStatus.Cancelled;
@@ -219,9 +216,8 @@ public class FileTransferViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Reopens the transfer toast (from the toolbar "transfer history" button) so past and
-    /// active transfers can be reviewed. Cancels any pending auto-hide and keeps it up until the
-    /// user collapses it with the x.
+    /// 重新打开传输浮窗(通过工具栏“传输历史”按钮),以便查看过往与
+    /// 正在进行的传输。取消任何待定的自动隐藏,并保持显示直到用户用 x 收起。
     /// </summary>
     public void ShowPanel()
     {
@@ -257,9 +253,8 @@ public class FileTransferViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Call when a task finishes; once nothing is active the toast lingers ~3s
-    /// showing the completed state, then fades out (spec §9.4). While the pointer is inside
-    /// the toast the countdown is held — it only starts (or restarts) after the pointer leaves.
+    /// 任务完成时调用;一旦没有活动项,浮窗会停留约 3 秒显示完成状态,
+    /// 随后淡出(规范 §9.4)。指针在浮窗内时暂停倒计时 —— 仅当指针离开后才开始(或重启)计时。
     /// </summary>
     public void NotifyTaskSettled()
     {
@@ -268,8 +263,7 @@ public class FileTransferViewModel : ReactiveObject
         _autoHide?.Dispose();
         _autoHide = null;
 
-        // Keep the toast up while more files in the batch are pending, while any single
-        // transfer is still in flight, or while a scan is preparing the next batch.
+        // 批次有剩余文件时、任一单文件传输仍在进行时、或扫描正在规划下一批次时,保持浮窗开启。
         if (ActiveCount > 0 || IsBatchActive || IsPreparing)
         {
             _hidePending = false;
@@ -283,8 +277,8 @@ public class FileTransferViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Called by the view on pointer enter/leave: entering pauses any pending
-    /// auto-hide so the user can inspect results; leaving resumes the 3s countdown.
+    /// 由视图在指针进入/离开时调用:进入时暂停任何待定的自动隐藏,
+    /// 以便用户查看结果;离开时恢复 3 秒倒计时。
     /// </summary>
     public void SetPointerOver(bool isOver)
     {
@@ -318,7 +312,7 @@ public class FileTransferViewModel : ReactiveObject
     public void AddTransfer(TransferTask task)
     {
         var item = new TransferItemViewModel(task);
-        // New tasks appear at the top so active uploads are visible without scrolling.
+        // 新任务出现在顶部,这样进行中的上传无需滚动即可看到。
         Transfers.Insert(0, item);
     }
 

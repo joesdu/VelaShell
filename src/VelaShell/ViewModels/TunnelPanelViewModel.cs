@@ -158,7 +158,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     /// <summary>当前服务器是否已有活着的后台隧道连接。</summary>
     public bool IsServerConnected => SelectedServer is not null && ResolveLiveSession(SelectedServer.Id) is not null;
 
-    /// <summary>ComboBox adapter: 0 = 本地转发, 1 = 远程转发, 2 = 动态转发 (SOCKS)。</summary>
+    /// <summary>ComboBox 适配器:0 = 本地转发, 1 = 远程转发, 2 = 动态转发 (SOCKS)。</summary>
     public int NewTunnelTypeIndex
     {
         get =>
@@ -275,13 +275,13 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     /// <summary>删除指定隧道(按隧道 Id),并在无隧道时释放后台连接。</summary>
     public ReactiveCommand<Guid, Unit> DeleteTunnelCommand { get; }
 
-    /// <summary>Set by the view: asks the user to confirm deleting a tunnel; false or missing cancels.</summary>
+    /// <summary>由视图设置:向用户确认删除某条隧道;返回 false 或未设置则取消。</summary>
     public Func<string, Task<bool>>? ConfirmDelete { get; set; }
 
     /// <summary>把某条隧道的配置填回表单进入编辑模式;保存时按新配置重建。</summary>
     public ReactiveCommand<Guid, Unit> EditTunnelCommand { get; }
 
-    /// <summary>取消 button: clears the form and any error, and leaves edit mode.</summary>
+    /// <summary>取消按钮:清空表单与错误提示,并退出编辑模式。</summary>
     public ReactiveCommand<Unit, Unit> ResetFormCommand { get; }
 
     /// <summary>收起面板。</summary>

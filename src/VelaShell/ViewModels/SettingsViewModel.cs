@@ -217,7 +217,7 @@ public class SettingsViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "UTF-8";
 
-    /// <summary>Accent-color override (hex, e.g. "#00D4AA"); empty uses the theme default.</summary>
+    /// <summary>强调色覆盖(十六进制,例如 "#00D4AA");为空则使用主题默认值。</summary>
     public string AccentColor
     {
         get;
@@ -303,7 +303,7 @@ public class SettingsViewModel : ReactiveObject
     /// <summary>云同步页(GitHub Gist 多端同步);无同步服务时为 null。</summary>
     public SyncViewModel? Sync { get; }
 
-    /// <summary>Left-nav sections per design §14. 换语言时经 <see cref="BuildSections" /> 重建。</summary>
+    /// <summary>按设计 §14 构建的左侧导航分区。换语言时经 <see cref="BuildSections" /> 重建。</summary>
     public SettingsSection[] Sections { get; private set; } = BuildSections();
 
     private static SettingsSection[] BuildSections() =>
@@ -367,7 +367,7 @@ public class SettingsViewModel : ReactiveObject
     /// <summary>主题下拉可选值。</summary>
     public string[] AvailableThemes { get; } = ["dark", "light", "system"];
 
-    // xterm-256color is the primary/recommended profile and is listed first.
+    // xterm-256color 是首选/推荐配置,排在最前。
     /// <summary>终端类型下拉可选值(推荐项 xterm-256color 置首)。</summary>
     public string[] AvailableTerminalTypes { get; } =
     [
@@ -1211,7 +1211,7 @@ public class SettingsViewModel : ReactiveObject
         _loaded.Keys = Keys;
         await _settingsService.SaveSettingsAsync(_loaded);
 
-        // Apply live — theme, accent and language all take effect without restart (#2/#3/#4).
+        // 即时生效 —— 主题、强调色与语言均无需重启即可应用(#2/#3/#4)。
         _themeService.SetTheme(Theme);
         try
         {
@@ -1219,7 +1219,7 @@ public class SettingsViewModel : ReactiveObject
         }
         catch (ArgumentException)
         {
-            /* invalid hex: keep previous */
+            /* 非法十六进制:保留原先值 */
         }
         _localizationService?.SetLanguage(Language);
 

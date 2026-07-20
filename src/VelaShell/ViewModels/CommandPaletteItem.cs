@@ -4,7 +4,7 @@ using ReactiveUI;
 namespace VelaShell.ViewModels;
 
 /// <summary>
-/// A single entry in the command palette — either a session to connect to or an action to run.
+/// 命令面板中的单个条目 —— 既可以是待连接的会话,也可以是待执行的动作。
 /// </summary>
 public sealed class CommandPaletteItem(
     string category,
@@ -15,25 +15,25 @@ public sealed class CommandPaletteItem(
     bool isSession = false)
     : ReactiveObject
 {
-    /// <summary>Grouping bucket shown as a section header (e.g. "会话", "命令").</summary>
+    /// <summary>分组桶,作为分组表头展示(如“会话”、“命令”)。</summary>
     public string Category { get; } = category;
 
-    /// <summary>Primary display text for the entry (the session or action name).</summary>
+    /// <summary>条目的主要显示文本(会话或动作名称)。</summary>
     public string Title { get; } = title;
 
-    /// <summary>Trailing hint text: a keyboard shortcut, or "Enter 连接" for sessions.</summary>
+    /// <summary>尾部提示文本:键盘快捷键,或会话的“Enter 连接”。</summary>
     public string? Hint { get; } = hint;
 
-    /// <summary>Optional coloured badge (e.g. an environment tag).</summary>
+    /// <summary>可选的彩色徽章(如环境标签)。</summary>
     public string? Tag { get; } = tag;
 
-    /// <summary>True when this entry represents a session to connect to rather than a command.</summary>
+    /// <summary>当本条目代表待连接的会话(而非命令)时为 true。</summary>
     public bool IsSession { get; } = isSession;
 
-    /// <summary>Action executed when the entry is chosen.</summary>
+    /// <summary>选中该条目时执行的动作。</summary>
     public Action Invoke { get; } = invoke;
 
-    /// <summary>True when this item is the current keyboard selection (drives the highlight).</summary>
+    /// <summary>当本项是当前键盘选中项(驱动高亮)时为 true。</summary>
     public bool IsSelected
     {
         get;
@@ -41,12 +41,12 @@ public sealed class CommandPaletteItem(
     }
 }
 
-/// <summary>A category section of palette results.</summary>
+/// <summary>命令面板结果的分类分组。</summary>
 public sealed class CommandPaletteGroup(string category)
 {
-    /// <summary>The category name shown as the section header.</summary>
+    /// <summary>作为分组表头展示的分类名称。</summary>
     public string Category { get; } = category;
 
-    /// <summary>The palette items belonging to this category.</summary>
+    /// <summary>属于该分类的命令面板条目。</summary>
     public ObservableCollection<CommandPaletteItem> Items { get; } = [];
 }

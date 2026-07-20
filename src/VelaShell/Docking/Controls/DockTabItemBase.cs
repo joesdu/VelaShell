@@ -8,19 +8,19 @@ using VelaShell.Docking.Model;
 
 namespace VelaShell.Docking.Controls;
 
-/// <summary>Shared activation, selection, drag, close, split, and tab-position behavior.</summary>
+/// <summary>共用的激活、选中、拖拽、关闭、拆分与标签位置行为。</summary>
 public abstract class DockTabItemBase : UserControl
 {
     private DockGroupControl? _owner;
 
-    /// <summary>The document bound to this tab via data context.</summary>
+    /// <summary>经数据上下文绑定到本标签的文档。</summary>
     protected DockDocument? Document => DataContext as DockDocument;
-    /// <summary>The workspace owning this tab's group.</summary>
+    /// <summary>拥有本标签所属组的 workspace。</summary>
     protected DockWorkspace? Workspace => _owner?.Workspace;
-    /// <summary>The dock group containing this tab.</summary>
+    /// <summary>包含本标签的停靠组。</summary>
     protected DockGroup? Group => _owner?.Group;
 
-    /// <summary>Locates the owning group control and subscribes to active document changes.</summary>
+    /// <summary>定位所属组控件,并订阅激活文档变更。</summary>
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
@@ -32,7 +32,7 @@ public abstract class DockTabItemBase : UserControl
         UpdateSelected();
     }
 
-    /// <summary>Unsubscribes from group property changes and releases the owner reference.</summary>
+    /// <summary>取消组属性变更订阅并释放所属引用。</summary>
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
@@ -43,7 +43,7 @@ public abstract class DockTabItemBase : UserControl
         _owner = null;
     }
 
-    /// <summary>Activates the document on left-click and initiates drag on press.</summary>
+    /// <summary>左键单击激活文档,按下时发起拖拽。</summary>
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
@@ -75,25 +75,25 @@ public abstract class DockTabItemBase : UserControl
     private void UpdateSelected() =>
         PseudoClasses.Set(":selected", Document is not null && ReferenceEquals(Group?.ActiveDocument, Document));
 
-    /// <summary>Closes the current tab's document.</summary>
+    /// <summary>关闭当前标签的文档。</summary>
     protected void CloseTab_Click(object? sender, RoutedEventArgs e) => Workspace?.CloseDocument(Document!);
-    /// <summary>Closes all documents in the group except the current one.</summary>
+    /// <summary>关闭组内除当前标签外的所有文档。</summary>
     protected void CloseOthers_Click(object? sender, RoutedEventArgs e) => Workspace?.CloseOtherDocuments(Document!);
-    /// <summary>Closes all documents in the group.</summary>
+    /// <summary>关闭组内的全部文档。</summary>
     protected void CloseAll_Click(object? sender, RoutedEventArgs e) => Workspace?.CloseAllDocuments(Document!);
-    /// <summary>Closes all documents to the left of the current one.</summary>
+    /// <summary>关闭当前标签左侧的全部文档。</summary>
     protected void CloseLeft_Click(object? sender, RoutedEventArgs e) => Workspace?.CloseLeftDocuments(Document!);
-    /// <summary>Closes all documents to the right of the current one.</summary>
+    /// <summary>关闭当前标签右侧的全部文档。</summary>
     protected void CloseRight_Click(object? sender, RoutedEventArgs e) => Workspace?.CloseRightDocuments(Document!);
-    /// <summary>Splits the document horizontally into a new group.</summary>
+    /// <summary>将文档水平拆分为新组。</summary>
     protected void SplitHorizontal_Click(object? sender, RoutedEventArgs e) => Workspace?.SplitDocument(Document!, DockOrientation.Horizontal);
-    /// <summary>Splits the document vertically into a new group.</summary>
+    /// <summary>将文档垂直拆分为新组。</summary>
     protected void SplitVertical_Click(object? sender, RoutedEventArgs e) => Workspace?.SplitDocument(Document!, DockOrientation.Vertical);
-    /// <summary>Moves tabs to the top of the group.</summary>
+    /// <summary>将标签移到组的顶部。</summary>
     protected void TabsTop_Click(object? sender, RoutedEventArgs e) => SetTabsPosition(DockTabsPosition.Top);
-    /// <summary>Moves tabs to the left of the group.</summary>
+    /// <summary>将标签移到组的左侧。</summary>
     protected void TabsLeft_Click(object? sender, RoutedEventArgs e) => SetTabsPosition(DockTabsPosition.Left);
-    /// <summary>Moves tabs to the right of the group.</summary>
+    /// <summary>将标签移到组的右侧。</summary>
     protected void TabsRight_Click(object? sender, RoutedEventArgs e) => SetTabsPosition(DockTabsPosition.Right);
 
     private void SetTabsPosition(DockTabsPosition position)

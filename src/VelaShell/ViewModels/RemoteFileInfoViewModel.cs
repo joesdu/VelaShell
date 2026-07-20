@@ -3,8 +3,8 @@ using VelaShell.Core.Resources;
 
 namespace VelaShell.ViewModels;
 
-/// <summary>Presents a <see cref="RemoteFileInfo"/> as a file-browser row, adding display formatting and parent-entry handling.</summary>
-/// <param name="model">The underlying remote file entry backing this row.</param>
+/// <summary>将 <see cref="RemoteFileInfo"/> 呈现为文件浏览器的一行，并附加显示格式化与父目录项处理。</summary>
+/// <param name="model">支撑此行的基础远程文件条目。</param>
 public class RemoteFileInfoViewModel(RemoteFileInfo model)
 {
     /// <summary>
@@ -16,43 +16,43 @@ public class RemoteFileInfoViewModel(RemoteFileInfo model)
     /// <summary>底层条目(静默刷新的差异比对用,见 FileBrowserViewModel.RefreshSilentlyAsync)。</summary>
     internal RemoteFileInfo Model { get; } = model ?? throw new ArgumentNullException(nameof(model));
 
-    /// <summary>True only for the synthetic ".." row.</summary>
+    /// <summary>仅对合成的 ".." 行返回 true。</summary>
     public bool IsParentEntry { get; private init; }
 
     /// <summary>
-    /// A real directory row (excludes the synthetic ".." row) — drives the amber
-    /// folder icon and blue name styling from design dyuii.
+    /// 真正的目录行(排除合成的 ".." 行)——驱动设计 dyuii 中的琥珀色
+    /// 文件夹图标与蓝色名称样式。
     /// </summary>
     public bool IsRegularDirectory => IsDirectory && !IsParentEntry;
 
     /// <summary>A real file row — gates the file-only context actions (打开/编辑器打开等)。</summary>
     public bool IsRegularFile => !IsDirectory && !IsParentEntry;
 
-    /// <summary>The raw entry name from the remote listing.</summary>
+    /// <summary>来自远程列表的原始条目名称。</summary>
     public string Name => Model.Name;
 
     /// <summary>
-    /// List display name: the plain entry name. The amber folder icon already marks
-    /// directories, so no trailing slash is appended.
+    /// 列表显示名称:即原始条目名称。琥珀色文件夹图标已标记目录,
+    /// 因此不追加尾部斜杠。
     /// </summary>
     public string DisplayName => IsParentEntry ? ".." : Name;
 
-    /// <summary>The absolute path of the entry on the remote host.</summary>
+    /// <summary>条目在远程主机上的绝对路径。</summary>
     public string FullPath => Model.FullPath;
 
-    /// <summary>Whether the entry is a directory.</summary>
+    /// <summary>该条目是否为目录。</summary>
     public bool IsDirectory => Model.IsDirectory;
 
-    /// <summary>The permission string (e.g. rwxr-xr-x) reported by the remote host.</summary>
+    /// <summary>远程主机报告的权限字符串(例如 rwxr-xr-x)。</summary>
     public string Permissions => Model.Permissions;
 
-    /// <summary>The owning user of the entry.</summary>
+    /// <summary>条目的所属用户。</summary>
     public string Owner => Model.Owner;
 
-    /// <summary>The owning group of the entry.</summary>
+    /// <summary>条目的所属组。</summary>
     public string Group => Model.Group;
 
-    /// <summary>The icon key ("folder" or "file") used to render the row.</summary>
+    /// <summary>用于渲染该行的图标键("folder" 或 "file")。</summary>
     public string Icon => Model.IsDirectory ? "folder" : "file";
 
     /// <summary>
@@ -65,22 +65,22 @@ public class RemoteFileInfoViewModel(RemoteFileInfo model)
                                              ? Strings.Folder
                                              : DescribeFileType(Name);
 
-    // Directories show their reported size too (design dyuii lists "4.0 KB" for folders).
-    /// <summary>Human-readable size for display; empty for the synthetic ".." row.</summary>
+    // 目录也显示其报告的尺寸(设计 dyuii 中文件夹列出 "4.0 KB")。
+    /// <summary>用于显示的可读大小;合成的 ".." 行为空。</summary>
     public string FormattedSize => IsParentEntry ? string.Empty : FormatSize(Model.Size);
 
-    /// <summary>Human-readable last-modified timestamp for display; empty for the synthetic ".." row.</summary>
+    /// <summary>用于显示的可读最后修改时间戳;合成的 ".." 行为空。</summary>
     public string FormattedModifiedTime => IsParentEntry ? string.Empty : FormatModifiedTime(Model.LastModified);
 
-    /// <summary>The entry size in bytes.</summary>
+    /// <summary>条目大小(字节)。</summary>
     public long SizeBytes => Model.Size;
 
-    /// <summary>The entry's last-modified time.</summary>
+    /// <summary>条目的最后修改时间。</summary>
     public DateTime LastModified => Model.LastModified;
 
     /// <summary>
-    /// The synthetic ".." first row (§6): navigates to the parent directory on
-    /// activation and offers no file operations.
+    /// 合成的 ".." 首行(§6):激活时跳转到父目录,
+    /// 不提供任何文件操作。
     /// </summary>
     public static RemoteFileInfoViewModel CreateParentEntry(string parentPath) =>
         new(new()
@@ -96,9 +96,9 @@ public class RemoteFileInfoViewModel(RemoteFileInfo model)
         })
         { IsParentEntry = true };
 
-    /// <summary>Formats a byte count as a human-readable size string (e.g. "4.0 KB").</summary>
-    /// <param name="bytes">The size in bytes.</param>
-    /// <returns>The formatted size string with an appropriate unit suffix.</returns>
+    /// <summary>将字节数格式化为可读的大小字符串(例如 "4.0 KB")。</summary>
+    /// <param name="bytes">以字节为单位的大小。</param>
+    /// <returns>带有合适单位后缀的格式化大小字符串。</returns>
     public static string FormatSize(long bytes)
     {
         if (bytes == 0)
@@ -130,8 +130,8 @@ public class RemoteFileInfoViewModel(RemoteFileInfo model)
     }
 
     /// <summary>
-    /// ls -l style timestamp per design dyuii ("Jan 12 09:15"): time within the current
-    /// year, otherwise the year replaces the clock.
+    /// ls -l 风格时间戳(按设计 dyuii 的 "Jan 12 09:15" 格式):当年显示月日时分,
+    /// 跨年则以年份替换时间。
     /// </summary>
     private static string FormatModifiedTime(DateTime dateTime)
     {

@@ -2,9 +2,9 @@ using Avalonia.Controls;
 
 namespace VelaShell.Views;
 
-/// <summary>View for the standalone SFTP document with dual-pane layout.</summary>
+/// <summary>独立的 SFTP 文档视图,采用双栏布局。</summary>
 public partial class SftpDocumentView : UserControl
 {
-    /// <summary>Initializes the SFTP document view.</summary>
+    /// <summary>初始化 SFTP 文档视图。</summary>
     public SftpDocumentView() => InitializeComponent();
 }

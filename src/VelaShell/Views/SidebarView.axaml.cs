@@ -27,10 +27,10 @@ public partial class SidebarView : UserControl
     /// <summary>用户请求打开“新建连接”配置弹窗时触发(顶部新建按钮)。</summary>
     public event EventHandler? OpenConnectionProfileRequested;
 
-    /// <summary>Raised by the footer gear button to open the settings window.</summary>
+    /// <summary>由底部栏齿轮按钮触发,用于打开设置窗口。</summary>
     public event EventHandler? SettingsRequested;
 
-    /// <summary>Raised when the user double-clicks a recent connection to reconnect to it.</summary>
+    /// <summary>用户双击最近连接以重新连接时触发。</summary>
     public event EventHandler<RecentConnectionEntry>? RecentConnectRequested;
 
     private void OnDataContextChanged(object? sender, EventArgs e)

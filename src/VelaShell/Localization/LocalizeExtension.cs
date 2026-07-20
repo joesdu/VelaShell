@@ -7,12 +7,12 @@ using VelaShell.Core.Localization;
 namespace VelaShell.Localization;
 
 /// <summary>
-/// Live-updating localized string binding: <c>Text="{loc:Localize QuickConnect}"</c>.
-/// Unlike <c>{x:Static Strings.X}</c> (frozen at load), every use refreshes instantly when
-/// the language changes (#4 — no restart). Backed by resx via ILocalizationService.
+/// 实时刷新的本地化字符串绑定:<c>Text="{loc:Localize QuickConnect}"</c>。
+/// 与 <c>{x:Static Strings.X}</c>(加载时冻结)不同,任何用法在语言切换时都会即时刷新
+/// (#4 —— 无需重启)。底层由 ILocalizationService 经 resx 提供。
 /// 绑定目标是按键缓存的 <see cref="LocalizedText" /> 条目的普通属性 —— 不依赖
 /// INPC 索引器变更通知(Avalonia 12 的绑定引擎对 "Item[]" 通知不响应,
-/// 曾表现为“保存后既有界面不换语言、新开窗口才是新语言”)。
+/// 曾表现为"保存后既有界面不换语言、新开窗口才是新语言")。
 /// </summary>
 public class LocalizeExtension : MarkupExtension
 {
@@ -67,7 +67,7 @@ public sealed class LocalizedStrings : INotifyPropertyChanged
     /// <summary>取(或建)键的绑定条目;同键共享同一条目,通知一次全量生效。</summary>
     public LocalizedText GetEntry(string key) => _entries.GetOrAdd(key, k => new LocalizedText(this, k));
 
-    /// <summary>Swaps in the DI-provided service and hooks live refresh (call once at startup).</summary>
+    /// <summary>注入 DI 提供的服务并挂接实时刷新(启动时调用一次)。</summary>
     public void Attach(ILocalizationService service)
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));

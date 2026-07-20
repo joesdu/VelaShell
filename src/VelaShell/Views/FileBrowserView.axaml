@@ -90,7 +90,7 @@
     <Style Selector="Button.col-header:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
     </Style>
-    <!-- Breadcrumb segment: quiet inline button that lights up as a link on hover (§6 header). -->
+    <!-- 面包屑分段:安静的内联按钮,悬停时高亮成链接(§6 表头)。 -->
     <Style Selector="Button.crumb">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
@@ -120,9 +120,9 @@
     <Panel>
       <DockPanel>
 
-      <!-- Header per design frame cKZr7: 36px, padding [0,14], bottom border;
-           left = folder-open 14 accent + path (JB Mono 11 medium); right = accent-dim
-           upload pill + 24×24 refresh. -->
+      <!-- 表头(设计帧 cKZr7):高 36px,padding [0,14],底部边框;
+           左侧 = folder-open 14 强调色 + 路径(JB Mono 11 medium);右侧 = accent-dim
+           上传药丸 + 24×24 刷新按钮。 -->
       <Border DockPanel.Dock="Top"
               Height="36"
               BorderBrush="{DynamicResource VelaBorderPrimary}"
@@ -152,7 +152,7 @@
                            Data="{StaticResource Icon.folder-open}"
                            Foreground="{DynamicResource VelaAccent}"
                            VerticalAlignment="Center" />
-            <!-- Clickable breadcrumb (§6): "/" root, then each segment navigates to its level. -->
+            <!-- 可点击面包屑(§6):"/" 为根目录,其后每段可导航到对应层级。 -->
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True">
               <Button Classes="crumb" Content="/"
                       Command="{Binding NavigateToCommand}" CommandParameter="/" />
@@ -445,7 +445,7 @@
               <Setter Property="Margin" Value="0" />
               <Setter Property="MinHeight" Value="0" />
             </Style>
-            <!-- Spec §6: selected rows use bg-hover, replacing the theme's default blue. -->
+            <!-- 规范 §6:选中行使用 bg-hover,替换主题默认的蓝色。 -->
             <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
               <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
             </Style>
@@ -454,7 +454,7 @@
             </Style>
           </ListBox.Styles>
           <ListBox.ContextMenu>
-            <!-- Menu icon groups per design e6klM: neutral rows = 13px text-tertiary strokes. -->
+            <!-- 菜单图标分组(设计 e6klM):中性行 = 13px text-tertiary 描边。 -->
             <ContextMenu x:DataType="vm:FileBrowserViewModel">
               <MenuItem Header="{loc:Localize Refresh}" Command="{Binding RefreshCommand}">
                 <MenuItem.Icon>
@@ -491,8 +491,8 @@
           </ListBox.ContextMenu>
           <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:RemoteFileInfoViewModel">
-                <!-- Row per design dyuii: 28px, padding [0,14], 1px bottom border; the ".."
-                     parent row is tinted bg-hover and has no divider. -->
+                <!-- 每行(设计 dyuii):高 28px,padding [0,14],底部 1px 边框;合成的 ".."
+                     父行染 bg-hover 且无分隔线。 -->
                 <Border Background="Transparent"
                         BorderBrush="{DynamicResource VelaBorderPrimary}"
                         BorderThickness="0,0,0,1"
@@ -675,7 +675,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                       </Grid.ColumnDefinitions>
-                      <!-- Design dyuii icons: amber folder, muted file, corner-left-up for ".." -->
+                      <!-- 设计 dyuii 图标:琥珀色文件夹、素色文件、".." 用 corner-left-up。 -->
                       <pc:LucideIcon Width="13" Height="13"
                                      Foreground="{DynamicResource VelaFileFolderIcon}"
                                      IsVisible="{Binding IsRegularDirectory}"
@@ -787,7 +787,7 @@
                  CornerRadius="3"
                  Background="{DynamicResource VelaBorderPrimary}"
                  Foreground="{DynamicResource VelaAccent}" />
-          <!-- Cancel an in-progress delete; already-removed entries stay gone. -->
+          <!-- 取消进行中的删除;已移除的条目保持移除状态。 -->
           <Button IsVisible="{Binding IsDeleteProgressVisible}"
                   Content="{x:Static res:Strings.Cancel}"
                   Command="{Binding CancelDeleteCommand}"

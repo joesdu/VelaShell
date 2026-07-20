@@ -168,14 +168,14 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
         Guarded(() => _client.ChangePermissions(path, mode));
     }
 
-    /// <summary>Opens a remote file for read or write with the given mode and access.</summary>
+    /// <summary>以给定模式与访问权限打开远程文件用于读或写。</summary>
     public Stream Open(string path, FileMode mode, FileAccess access)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         return Guarded(() => _client.Open(path, mode, access));
     }
 
-    /// <summary>Gets the size in bytes of a remote file, or -1 if it does not exist.</summary>
+    /// <summary>获取远程文件的大小(字节);不存在则返回 -1。</summary>
     public long GetFileSize(string path)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -191,8 +191,8 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
     }
 
     /// <summary>
-    /// Uploads a stream to a remote path starting from <paramref name="resumeOffset"/>.
-    /// Opens the remote file with FileMode.Append when resumeOffset > 0.
+    /// 从 <paramref name="resumeOffset" /> 处开始将流上传到远程路径。当 resumeOffset > 0 时,
+    /// 以 FileMode.Append 打开远程文件。
     /// </summary>
     public Task UploadAsync(Stream input, string path, long resumeOffset, Action<ulong>? uploadCallback = null, CancellationToken cancellationToken = default)
     {
@@ -202,12 +202,12 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
             using Stream remote = resumeOffset > 0
                 ? _client.Open(path, FileMode.Append, FileAccess.Write)
                 : _client.Create(path);
-            // Seek the input to the resume offset so we only transfer the tail.
+            // 将输入流定位到续传偏移处,只传输尾部数据。
             if (resumeOffset > 0)
             {
                 input.Seek(resumeOffset, SeekOrigin.Begin);
             }
-            // Copy with progress reporting.
+            // 复制并上报进度。
             byte[] buffer = new byte[32 * 1024];
             long totalRead = 0;
             int bytesRead;
@@ -247,12 +247,10 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
     }
 
     /// <summary>
-    /// Runs an SSH.NET call and keeps library types from leaking past this wrapper:
-    /// SSH.NET exceptions are translated to the Core SshClientException hierarchy, and the
-    /// NullReferenceException the library throws when the underlying session is torn down
-    /// (Disconnect/Dispose) mid-call — e.g. a directory listing still running as its tab is
-    /// closed — becomes <see cref="ObjectDisposedException" />, the ordinary "session is gone"
-    /// signal callers already handle.
+    /// 执行一次 SSH.NET 调用,并阻止库类型越过本包装器边界:SSH.NET 异常被翻译为 Core 的
+    /// SshClientException 层级;当底层会话在调用中途被拆除(Disconnect/Dispose)时,库抛出的
+    /// NullReferenceException(例如标签页关闭时仍在运行的目录列举)转变为调用方已处理的
+    /// 常规"会话已释放"信号 <see cref="ObjectDisposedException" />。
     /// </summary>
     private T Guarded<T>(Func<T> operation)
     {
@@ -279,7 +277,7 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
         });
     }
 
-    /// <summary>True when the wrapper was disposed or the client lost its connection/session.</summary>
+    /// <summary>包装器已释放或客户端连接/会话丢失时返回 True。</summary>
     private bool IsTornDown()
     {
         if (_disposed)
@@ -292,7 +290,7 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
         }
         catch
         {
-            // IsConnected itself throws once the client is disposed underneath us.
+            // 一旦底层客户端被释放,IsConnected 本身也会抛出异常。
             return true;
         }
     }

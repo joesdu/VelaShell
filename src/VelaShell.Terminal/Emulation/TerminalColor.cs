@@ -1,40 +1,39 @@
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// How a <see cref="TerminalColor" /> resolves to an on-screen color.
+/// <see cref="TerminalColor" /> 解析为屏幕上实际颜色的方式。
 /// </summary>
 public enum TerminalColorKind : byte
 {
-    /// <summary>Use the terminal's configured default foreground/background.</summary>
+    /// <summary>使用终端配置好的默认前景色/背景色。</summary>
     Default = 0,
 
-    /// <summary>Index into the 256-color palette (0-15 = ANSI, 16-231 = cube, 232-255 = grayscale).</summary>
+    /// <summary>256 色调色板索引(0-15 = ANSI,16-231 = 立方图,232-255 = 灰度)。</summary>
     Indexed = 1,
 
-    /// <summary>Direct 24-bit truecolor.</summary>
+    /// <summary>直接 24 位真彩色。</summary>
     Rgb = 2
 }
 
 /// <summary>
-/// A cell color that is independent from any particular palette. The rendering layer
-/// resolves <see cref="TerminalColorKind.Default" /> and <see cref="TerminalColorKind.Indexed" />
-/// against the active <see cref="TerminalPalette" />.
+/// 与任何具体调色板都无关的颜色。渲染层会针对当前生效的 <see cref="TerminalPalette" />
+/// 来解析 <see cref="TerminalColorKind.Default" /> 与 <see cref="TerminalColorKind.Indexed" />。
 /// </summary>
 public readonly struct TerminalColor : IEquatable<TerminalColor>
 {
-    /// <summary>How this color resolves to an on-screen color.</summary>
+    /// <summary>该颜色解析为屏幕上实际颜色的方式。</summary>
     public TerminalColorKind Kind { get; }
 
-    /// <summary>Palette index when <see cref="Kind" /> is Indexed.</summary>
+    /// <summary>当 <see cref="Kind" /> 为 Indexed 时的调色板索引。</summary>
     public byte Index { get; }
 
-    /// <summary>Red channel when <see cref="Kind" /> is Rgb.</summary>
+    /// <summary>当 <see cref="Kind" /> 为 Rgb 时的红色通道。</summary>
     public byte R { get; }
 
-    /// <summary>Green channel when <see cref="Kind" /> is Rgb.</summary>
+    /// <summary>当 <see cref="Kind" /> 为 Rgb 时的绿色通道。</summary>
     public byte G { get; }
 
-    /// <summary>Blue channel when <see cref="Kind" /> is Rgb.</summary>
+    /// <summary>当 <see cref="Kind" /> 为 Rgb 时的蓝色通道。</summary>
     public byte B { get; }
 
     private TerminalColor(TerminalColorKind kind, byte index, byte r, byte g, byte b)
@@ -46,30 +45,30 @@ public readonly struct TerminalColor : IEquatable<TerminalColor>
         B = b;
     }
 
-    /// <summary>The terminal default foreground/background sentinel.</summary>
+    /// <summary>终端默认前景/背景色哨兵值。</summary>
     public static TerminalColor Default => new(TerminalColorKind.Default, 0, 0, 0, 0);
 
-    /// <summary>Creates an indexed color from a 256-color palette index (clamped to 0-255).</summary>
+    /// <summary>由 256 色调色板索引创建索引色(钳制到 0-255)。</summary>
     public static TerminalColor FromIndex(int index) => new(TerminalColorKind.Indexed, (byte)Math.Clamp(index, 0, 255), 0, 0, 0);
 
-    /// <summary>Creates a 24-bit truecolor from the given red, green and blue channels.</summary>
+    /// <summary>由给定的红、绿、蓝通道创建 24 位真彩色。</summary>
     public static TerminalColor FromRgb(byte r, byte g, byte b) => new(TerminalColorKind.Rgb, 0, r, g, b);
 
-    /// <summary>Whether this color is the terminal default sentinel.</summary>
+    /// <summary>该颜色是否为终端默认哨兵值。</summary>
     public bool IsDefault => Kind == TerminalColorKind.Default;
 
-    /// <summary>Determines whether this color equals another color.</summary>
+    /// <summary>判断该颜色是否与另一个颜色相等。</summary>
     public bool Equals(TerminalColor other) => Kind == other.Kind && Index == other.Index && R == other.R && G == other.G && B == other.B;
 
-    /// <summary>Determines whether this color equals the given object.</summary>
+    /// <summary>判断该颜色是否与给定对象相等。</summary>
     public override bool Equals(object? obj) => obj is TerminalColor other && Equals(other);
 
-    /// <summary>Returns a hash code combining all color components.</summary>
+    /// <summary>返回合并所有颜色分量的哈希码。</summary>
     public override int GetHashCode() => HashCode.Combine((byte)Kind, Index, R, G, B);
 
-    /// <summary>Determines whether two colors are equal.</summary>
+    /// <summary>判断两个颜色是否相等。</summary>
     public static bool operator ==(TerminalColor left, TerminalColor right) => left.Equals(right);
 
-    /// <summary>Determines whether two colors are not equal.</summary>
+    /// <summary>判断两个颜色是否不相等。</summary>
     public static bool operator !=(TerminalColor left, TerminalColor right) => !left.Equals(right);
 }
