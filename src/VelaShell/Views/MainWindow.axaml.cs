@@ -13,6 +13,7 @@ using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Services;
 using VelaShell.Core.Ssh;
+using VelaShell.Docking;
 using VelaShell.Presentation.Services;
 using VelaShell.Security;
 using VelaShell.Services.ZModem;
@@ -25,6 +26,9 @@ public partial class MainWindow : Window
 {
     private IDisposable? _fileBrowserVisibilitySub;
     private bool _forceClose;
+    private bool _confirmationInProgress;
+    private bool _standaloneSftpShutdownInProgress;
+    private bool _standaloneSftpShutdownComplete;
 
     /// <summary>自绘缩放抓取区:普通状态按下即进入原生缩放;最大化时整层隐藏(见 OnPropertyChanged)。</summary>
     private void ResizeEdge_PointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
@@ -336,19 +340,7 @@ public partial class MainWindow : Window
 
                 // 打开 SFTP:先连接(已连接则新开标签),随后展开文件浏览面板。
                 tree.OpenSftpRequested += profile =>
-                    Dispatcher.UIThread.Post(async () =>
-                    {
-                        // 连接失败已在标签页内以覆盖层提示(设计 yxjmg),这里不再弹全局框;
-                        // 仅在连上后展开 SFTP 面板。
-                        TerminalTabViewModel? tab = await vm.TryConnectProfileAsync(profile);
-                        if (
-                            tab is { ConnectionStatus: SessionStatus.Connected }
-                            && !vm.FileBrowser.IsVisible
-                        )
-                        {
-                            vm.ToggleFileBrowser();
-                        }
-                    });
+                    Dispatcher.UIThread.Post(() => _ = vm.OpenSftpForProfileAsync(profile));
 
                 // 端口转发:打开隧道管理面板并预选该服务器(全局非模态,见 fuXS7);
                 // 无需先建立终端会话,面板会在创建隧道时后台自动连接。
@@ -563,31 +555,79 @@ public partial class MainWindow : Window
             if (settings.General.ConfirmBeforeClose && HasConnectedSessions())
             {
                 e.Cancel = true;
-                _ = ConfirmCloseAsync();
+                if (!_confirmationInProgress)
+                {
+                    _confirmationInProgress = true;
+                    _ = ConfirmCloseAsync();
+                }
                 base.OnClosing(e);
                 return;
             }
         }
         PersistWindowBounds(settings);
+        if (
+            !_standaloneSftpShutdownComplete
+            && DataContext is MainWindowViewModel vm
+            && vm.HasPendingStandaloneSftpDocuments()
+        )
+        {
+            e.Cancel = true;
+            if (!_standaloneSftpShutdownInProgress)
+            {
+                _standaloneSftpShutdownInProgress = true;
+                _ = CloseStandaloneSftpDocumentsAndRetryAsync(vm);
+            }
+            base.OnClosing(e);
+            return;
+        }
         base.OnClosing(e);
+    }
+
+    private async Task CloseStandaloneSftpDocumentsAndRetryAsync(MainWindowViewModel vm)
+    {
+        try
+        {
+            await vm.CloseStandaloneSftpDocumentsAsync();
+        }
+        catch
+        {
+            // Per-document cleanup reports expected failures through the VM; keep the
+            // window shutdown path safe if an unexpected aggregate failure escapes.
+        }
+        finally
+        {
+            _standaloneSftpShutdownComplete = true;
+            _standaloneSftpShutdownInProgress = false;
+            ForceClose();
+        }
     }
 
     private static bool HasActiveTrayIcon(App app) => app.TrayIconActive;
 
     private bool HasConnectedSessions() =>
         DataContext is MainWindowViewModel vm
-        && vm.TabBar.Tabs.OfType<TerminalTabViewModel>().Any(t => t.IsConnected);
+        && (
+            vm.TabBar.Tabs.OfType<TerminalTabViewModel>().Any(t => t.IsConnected)
+            || vm.Layout.AllDocuments().OfType<SftpDocument>().Any()
+        );
 
     private async Task ConfirmCloseAsync()
     {
-        bool confirmed = await MessageDialog.ConfirmAsync(
-            this,
-            Strings.Get("Main_CloseConfirmTitle"),
-            Strings.Get("Main_CloseConfirmBody")
-        );
-        if (confirmed)
+        try
         {
-            ForceClose();
+            bool confirmed = await MessageDialog.ConfirmAsync(
+                this,
+                Strings.Get("Main_CloseConfirmTitle"),
+                Strings.Get("Main_CloseConfirmBody")
+            );
+            if (confirmed)
+            {
+                ForceClose();
+            }
+        }
+        finally
+        {
+            _confirmationInProgress = false;
         }
     }
 
@@ -633,10 +673,17 @@ public partial class MainWindow : Window
             {
                 settings.General.LastOpenProfileIds =
                 [
-                    .. vm
-                        .TabBar.Tabs.OfType<TerminalTabViewModel>()
+                    .. vm.TabBar.Tabs
+                        .OfType<TerminalTabViewModel>()
                         .Where(t => t is { IsConnected: true, Profile: { } p } && p.Id != Guid.Empty)
                         .Select(t => t.Profile!.Id)
+                        .Concat(
+                            vm.Layout
+                                .AllDocuments()
+                                .OfType<SftpDocument>()
+                                .Select(document => document.ViewModel.Profile.Id)
+                                .Where(id => id != Guid.Empty)
+                        )
                         .Distinct(),
                 ];
             }

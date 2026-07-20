@@ -5,7 +5,7 @@
          边框用 #44475A(selection)家族。 -->
     <ResourceDictionary x:Key="Dark">
       <SolidColorBrush x:Key="VelaAccent" Color="#BD93F9" />
-      <SolidColorBrush x:Key="VelaAccentDim" Color="#BD93F930" />
+      <SolidColorBrush x:Key="VelaAccentDim" Color="#30BD93F9" />
       <!-- 强调色底上的文字/图标:浅紫底配深字。 -->
       <SolidColorBrush x:Key="VelaAccentForeground" Color="#0A0E14" />
       <SolidColorBrush x:Key="VelaTextPrimary" Color="#F8F8F2" />
@@ -26,7 +26,7 @@
     <!-- Alucard 亮色:accent=紫 #644AC9,弱文字取 Alucard comment #6C664B。 -->
     <ResourceDictionary x:Key="Light">
       <SolidColorBrush x:Key="VelaAccent" Color="#644AC9" />
-      <SolidColorBrush x:Key="VelaAccentDim" Color="#644AC91A" />
+      <SolidColorBrush x:Key="VelaAccentDim" Color="#1A644AC9" />
       <!-- 亮色主题 accent 是深紫,深字 #0A0E14 对比不足(§10.C),改配浅字。 -->
       <SolidColorBrush x:Key="VelaAccentForeground" Color="#FFFBEB" />
       <SolidColorBrush x:Key="VelaTextPrimary" Color="#1F1F1F" />

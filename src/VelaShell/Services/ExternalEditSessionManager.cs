@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
+using VelaShell.ViewModels;
 
 namespace VelaShell.Services;
 
@@ -29,8 +30,11 @@ public static class ExternalEditSessionManager
     {
         // 每次编辑独占一个子目录,避免同名文件互相覆盖。
         string directory = Path.Combine(TempRoot, Guid.NewGuid().ToString("N")[..8]);
+        if (!LocalPathSafety.TryResolveDestination(directory, fileName, out string localPath))
+        {
+            throw new InvalidOperationException(Strings.Get("KeySvc_InvalidName"));
+        }
         Directory.CreateDirectory(directory);
-        string localPath = Path.Combine(directory, fileName);
         await sftpService.DownloadFileAsync(sessionId, remotePath, localPath, null, cancellationToken);
         var session = new ExternalEditSession(sftpService, sessionId, remotePath, localPath, onError, uploadAsync);
         lock (Sessions)

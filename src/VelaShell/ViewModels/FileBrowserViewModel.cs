@@ -109,6 +109,7 @@ public class FileBrowserViewModel : ReactiveObject
         );
         RenameCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(RenameAsync);
         MoveCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(MoveAsync);
+        CopyToCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(CopyToAsync);
         CopyPathCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(CopyPathAsync);
         CopyNameCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(CopyNameAsync);
         PropertiesCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(
@@ -341,6 +342,9 @@ public class FileBrowserViewModel : ReactiveObject
         get => _isVisible;
         set => this.RaiseAndSetIfChanged(ref _isVisible, value);
     }
+
+    /// <summary>Whether row drag initiation is enabled. Off in terminal panel; on in SFTP dual-pane.</summary>
+    public bool IsDragEnabled { get; set; }
 
     /// <summary>需要展示给用户的错误提示;为 null 表示无错误。</summary>
     public string? ErrorMessage
@@ -671,6 +675,9 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>把选中条目移动到输入的目标路径。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> MoveCommand { get; }
 
+    /// <summary>Copies the selected entry to a different remote directory.</summary>
+    public ReactiveCommand<RemoteFileInfoViewModel, Unit> CopyToCommand { get; }
+
     /// <summary>把选中条目的完整远程路径复制到剪贴板。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> CopyPathCommand { get; }
 
@@ -992,7 +999,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// 家目录在服务器上不存在或不可访问(如 realpath(".") 返回的目录未创建/被 chroot)时,
     /// 自动回退到根目录 "/",避免停在报错的空白页。
     /// </summary>
-    private Task LoadInitialAsync(CancellationToken ct = default)
+    public Task LoadInitialAsync(CancellationToken ct = default)
     {
         // 合流:连接完成路径与激活标签订阅可能各触发一次初始加载,不加闸时两条
         // LoadInitial 并发各跑一遍 GetWorkingDirectory + 列目录(命令与调用方都在
@@ -1167,8 +1174,12 @@ public class FileBrowserViewModel : ReactiveObject
                 "VelaShell",
                 _sessionId.ToString("N")
             );
+            if (!LocalPathSafety.TryResolveDestination(tempDir, file.Name, out string localPath))
+            {
+                ErrorMessage = Strings.Get("KeySvc_InvalidName");
+                return;
+            }
             Directory.CreateDirectory(tempDir);
-            string localPath = Path.Combine(tempDir, file.Name);
             PlannedFileTransfer[] plan = [new(TransferType.Download, localPath, file.FullPath)];
             bool ok = await RunTransferBatchAsync(plan, ct);
             if (ok)
@@ -1248,8 +1259,12 @@ public class FileBrowserViewModel : ReactiveObject
                 "builtin-edit",
                 Guid.NewGuid().ToString("N")[..8]
             );
+            if (!LocalPathSafety.TryResolveDestination(tempDir, file.Name, out string localPath))
+            {
+                ErrorMessage = Strings.Get("KeySvc_InvalidName");
+                return;
+            }
             Directory.CreateDirectory(tempDir);
-            string localPath = Path.Combine(tempDir, file.Name);
             await _sftpService.DownloadFileAsync(_sessionId, file.FullPath, localPath, null, ct);
             string remotePath = file.FullPath;
             await OpenInBuiltInEditor(
@@ -1275,6 +1290,11 @@ public class FileBrowserViewModel : ReactiveObject
     {
         if (file is null || !file.IsRegularFile)
         {
+            return;
+        }
+        if (!LocalPathSafety.IsSafeLeafName(file.Name))
+        {
+            ErrorMessage = Strings.Get("KeySvc_InvalidName");
             return;
         }
         string? editor = GetDefaultEditorPath is null ? null : await GetDefaultEditorPath();
@@ -1496,7 +1516,10 @@ public class FileBrowserViewModel : ReactiveObject
     {
         if (isDirectory)
         {
-            string localSub = Path.Combine(localDir, name);
+            if (!LocalPathSafety.TryResolveDestination(localDir, name, out string localSub))
+            {
+                throw new InvalidOperationException(Strings.Get("KeySvc_InvalidName"));
+            }
             Directory.CreateDirectory(localSub);
             List<RemoteFileInfo> children = await _sftpService.ListDirectoryAsync(
                 _sessionId,
@@ -1517,28 +1540,36 @@ public class FileBrowserViewModel : ReactiveObject
         }
         else
         {
-            string localPath = Path.Combine(localDir, name);
+            if (!LocalPathSafety.TryResolveDestination(localDir, name, out string localPath))
+            {
+                throw new InvalidOperationException(Strings.Get("KeySvc_InvalidName"));
+            }
             plan.Add(new(TransferType.Download, localPath, remotePath));
             TransferSink?.UpdatePreparingCount(plan.Count);
         }
     }
 
-    private async Task DownloadSelectedAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Downloads explicitly selected remote entries into a caller-owned local directory.
+    /// The existing planning, conflict, progress and recursive-directory logic is reused.
+    /// </summary>
+    public async Task DownloadRemoteEntriesAsync(
+        IReadOnlyList<RemoteFileInfoViewModel> entries,
+        string localDirectory,
+        CancellationToken ct = default)
     {
-        if (PickFolderForDownload is null)
+        ArgumentNullException.ThrowIfNull(entries);
+        ArgumentException.ThrowIfNullOrWhiteSpace(localDirectory);
+        if (entries.Count == 0)
         {
             return;
         }
-        var targets = SelectedFiles.Where(f => !f.IsParentEntry).ToList();
+        var targets = entries.Where(f => !f.IsParentEntry).ToList();
         if (targets.Count == 0)
         {
             return;
         }
-        string? localDir = await PickFolderForDownload();
-        if (string.IsNullOrEmpty(localDir))
-        {
-            return;
-        }
+        string localDir = Path.GetFullPath(localDirectory);
         try
         {
             ErrorMessage = null;
@@ -1571,6 +1602,19 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
+    private async Task DownloadSelectedAsync(CancellationToken ct = default)
+    {
+        if (PickFolderForDownload is null)
+        {
+            return;
+        }
+        string? localDirectory = await PickFolderForDownload();
+        if (!string.IsNullOrEmpty(localDirectory))
+        {
+            await DownloadRemoteEntriesAsync(SelectedFiles, localDirectory, ct);
+        }
+    }
+
     /// <summary>
     /// Runs a batch of planned transfers one after another behind a shared cancellation
     /// scope that the toast's "cancel remaining" control (and folder-download cancellation) can
@@ -1599,6 +1643,15 @@ public class FileBrowserViewModel : ReactiveObject
         var resolved = new List<PlannedFileTransfer>(plan.Count);
         foreach (PlannedFileTransfer item in plan)
         {
+            // Resume check first: if resume is enabled and a partial file exists, resume from that offset.
+            PlannedFileTransfer? resumed = await TryResumeAsync(item, ct);
+            if (resumed is not null)
+            {
+                resolved.Add(resumed);
+                continue;
+            }
+
+            // Normal conflict resolution.
             PlannedFileTransfer? settled =
                 item.Type == TransferType.Download
                     ? await ResolveLocalConflictAsync(item)
@@ -1623,7 +1676,7 @@ public class FileBrowserViewModel : ReactiveObject
             {
                 foreach (PlannedFileTransfer item in resolved)
                 {
-                    await RunTransferAsync(item.Type, item.LocalPath, item.RemotePath, cts.Token);
+                    await RunTransferAsync(item.Type, item.LocalPath, item.RemotePath, item.ResumeOffset, cts.Token);
                     TransferSink?.NotifyBatchItemSettled();
                 }
             }
@@ -1640,6 +1693,7 @@ public class FileBrowserViewModel : ReactiveObject
                                 item.Type,
                                 item.LocalPath,
                                 item.RemotePath,
+                                item.ResumeOffset,
                                 cts.Token
                             );
                             TransferSink?.NotifyBatchItemSettled();
@@ -1679,6 +1733,87 @@ public class FileBrowserViewModel : ReactiveObject
     /// 按冲突策略处理一个计划中的下载:返回 null 表示跳过,或返回(可能改了
     /// 本地路径的)计划项。非下载或无冲突原样返回。
     /// </summary>
+    /// <summary>
+    /// Checks whether a partial transfer exists that can be resumed. If resume is enabled
+    /// and the destination file exists but is smaller than the source, returns the plan
+    /// with ResumeOffset set to the partial size.
+    /// </summary>
+    private async Task<PlannedFileTransfer?> TryResumeAsync(
+        PlannedFileTransfer item,
+        CancellationToken ct
+    )
+    {
+        // Only upload/download support resume.
+        if (item.Type is not (TransferType.Upload or TransferType.Download))
+        {
+            return null;
+        }
+
+        // Check if resume is enabled in settings.
+        if (!TransferOptions.ResumeEnabled)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (item.Type == TransferType.Download)
+            {
+                // For download: check if local file already exists (partial).
+                long localSize = File.Exists(item.LocalPath) ? new FileInfo(item.LocalPath).Length : -1;
+                if (localSize <= 0)
+                {
+                    return null;
+                }
+                RemoteFileInfo remoteInfo = await _sftpService.GetFileInfoAsync(
+                    _sessionId,
+                    item.RemotePath,
+                    ct
+                );
+                if (localSize < remoteInfo.Size)
+                {
+                    return item with { ResumeOffset = localSize };
+                }
+            }
+            else
+            {
+                // For upload: check if remote file already exists (partial).
+                long remoteSize = await GetRemoteFileSizeAsync(item.RemotePath, ct);
+                if (remoteSize <= 0)
+                {
+                    return null;
+                }
+                var localInfo = new FileInfo(item.LocalPath);
+                if (remoteSize < localInfo.Length)
+                {
+                    return item with { ResumeOffset = remoteSize };
+                }
+            }
+        }
+        catch
+        {
+            // If any check fails, fall through to normal conflict resolution.
+        }
+
+        return null;
+    }
+
+    /// <summary>Gets the remote file size via the SFTP wrapper's GetFileSize method.</summary>
+    private async Task<long> GetRemoteFileSizeAsync(string remotePath, CancellationToken ct)
+    {
+        // Access the underlying SFTP client through a service call.
+        // We use GetFileInfoAsync which does a directory listing — not ideal but existing.
+        try
+        {
+            RemoteFileInfo info = await _sftpService.GetFileInfoAsync(_sessionId, remotePath, ct);
+            return info.Size;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
     private async Task<PlannedFileTransfer?> ResolveLocalConflictAsync(PlannedFileTransfer item)
     {
         if (item.Type != TransferType.Download || !File.Exists(item.LocalPath))
@@ -1861,6 +1996,7 @@ public class FileBrowserViewModel : ReactiveObject
         TransferType type,
         string localPath,
         string remotePath,
+        long resumeOffset,
         CancellationToken ct
     )
     {
@@ -1870,17 +2006,30 @@ public class FileBrowserViewModel : ReactiveObject
             Type = type,
             LocalPath = localPath,
             RemotePath = remotePath,
-            Status = TransferStatus.InProgress,
+            Status = resumeOffset > 0 ? TransferStatus.Resuming : TransferStatus.InProgress,
         };
         TransferStatus finalStatus = TransferStatus.Failed;
         TransferSink?.AddTransfer(task);
         TransferItemViewModel? item = TransferSink?.FindTransfer(task.Id);
-        var progress = new Progress<TransferProgress>(p => item?.UpdateProgress(p));
+        var progress = new Progress<TransferProgress>(p =>
+        {
+            item?.UpdateProgress(p);
+            // Transition from Resuming to InProgress on first progress tick.
+            if (item?.Status == TransferStatus.Resuming)
+            {
+                item.Status = TransferStatus.InProgress;
+            }
+        });
         try
         {
             if (type == TransferType.Upload)
             {
-                await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, progress, ct);
+                await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, progress, ct, resumeOffset);
+            }
+            else if (type == TransferType.Copy)
+            {
+                // For Copy: LocalPath = remote source, RemotePath = remote destination.
+                await _sftpService.CopyAsync(_sessionId, localPath, remotePath, progress, ct);
             }
             else
             {
@@ -1889,7 +2038,8 @@ public class FileBrowserViewModel : ReactiveObject
                     remotePath,
                     localPath,
                     progress,
-                    ct
+                    ct,
+                    resumeOffset
                 );
             }
             item?.Status = TransferStatus.Completed;
@@ -1969,12 +2119,18 @@ public class FileBrowserViewModel : ReactiveObject
         {
             return;
         }
+        string trimmedName = name.Trim();
+        if (!LocalPathSafety.IsSafeLeafName(trimmedName))
+        {
+            ErrorMessage = Strings.Get("KeySvc_InvalidName");
+            return;
+        }
         try
         {
             ErrorMessage = null;
             await _sftpService.CreateDirectoryAsync(
                 _sessionId,
-                CombinePath(CurrentPath, name.Trim()),
+                CombinePath(CurrentPath, trimmedName),
                 ct
             );
             await RefreshAsync(ct);
@@ -1996,12 +2152,18 @@ public class FileBrowserViewModel : ReactiveObject
         {
             return;
         }
+        string trimmedName = name.Trim();
+        if (!LocalPathSafety.IsSafeLeafName(trimmedName))
+        {
+            ErrorMessage = Strings.Get("KeySvc_InvalidName");
+            return;
+        }
         try
         {
             ErrorMessage = null;
             await _sftpService.CreateFileAsync(
                 _sessionId,
-                CombinePath(CurrentPath, name.Trim()),
+                CombinePath(CurrentPath, trimmedName),
                 ct
             );
             await RefreshAsync(ct);
@@ -2023,10 +2185,16 @@ public class FileBrowserViewModel : ReactiveObject
         {
             return;
         }
+        string trimmedName = newName.Trim();
+        if (!LocalPathSafety.IsSafeLeafName(trimmedName))
+        {
+            ErrorMessage = Strings.Get("KeySvc_InvalidName");
+            return;
+        }
         try
         {
             ErrorMessage = null;
-            string target = CombinePath(ParentOf(file.FullPath), newName.Trim());
+            string target = CombinePath(ParentOf(file.FullPath), trimmedName);
             await _sftpService.RenameAsync(_sessionId, file.FullPath, target, ct);
             await RefreshAsync(ct);
         }
@@ -2052,6 +2220,47 @@ public class FileBrowserViewModel : ReactiveObject
             ErrorMessage = null;
             await _sftpService.RenameAsync(_sessionId, file.FullPath, destination.Trim(), ct);
             await RefreshAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    private async Task CopyToAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
+    {
+        if (PromptForText is null || file is null || file.IsParentEntry)
+        {
+            return;
+        }
+        // Pre-fill with current parent directory and same name for easy copy-to-same-dir.
+        string parentDir = ParentOf(file.FullPath);
+        string suggested = CombinePath(parentDir, file.Name);
+        string? destination = await PromptForText(Strings.SftpCopyToPrompt, suggested);
+        if (string.IsNullOrWhiteSpace(destination) || destination.Trim() == file.FullPath)
+        {
+            return;
+        }
+        try
+        {
+            ErrorMessage = null;
+            string destPath = destination.Trim();
+
+            // Route through the unified transfer pipeline for proper progress,
+            // cancellation, failure status, and toast lifecycle.
+            var plan = new List<PlannedFileTransfer>
+            {
+                new(TransferType.Copy, file.FullPath, destPath)
+            };
+            bool ok = await RunTransferBatchAsync(plan, ct);
+            if (ok)
+            {
+                await RefreshAsync(ct);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // User cancelled.
         }
         catch (Exception ex)
         {
@@ -2244,10 +2453,13 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>
     /// A single file scheduled for transfer, resolved up front so the whole batch can be
     /// counted and cancelled as one unit.
+    /// For Copy: LocalPath = remote source, RemotePath = remote destination.
+    /// ResumeOffset > 0 indicates a breakpoint resume from that byte position.
     /// </summary>
     private sealed record PlannedFileTransfer(
         TransferType Type,
         string LocalPath,
-        string RemotePath
+        string RemotePath,
+        long ResumeOffset = 0
     );
 }

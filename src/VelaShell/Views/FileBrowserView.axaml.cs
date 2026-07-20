@@ -12,6 +12,7 @@ using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using VelaShell.Controls.Controls;
 using VelaShell.Core.Resources;
+using VelaShell.Core.Sftp;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
@@ -48,6 +49,13 @@ public partial class FileBrowserView : UserControl
     private string? _activeSplitter;
     private double _dragStartX;
 
+    // Cross-pane drag initiation state (SFTP dual-pane mode).
+    private bool _isDragging;
+    private Point _dragOrigin;
+    private RemoteFileInfoViewModel? _dragRow;
+    private PointerPressedEventArgs? _dragPointerArgs;
+    private const double DragThreshold = 5;
+
     /// <summary>按下拖拽条那一刻的列宽快照(列键 → 像素),拖拽期间按位移量增量应用。</summary>
     private readonly Dictionary<string, double> _startWidths = [];
 
@@ -81,12 +89,16 @@ public partial class FileBrowserView : UserControl
             vm.ConfirmRemoteOverwrite = ConfirmRemoteOverwriteAsync;
         };
 
-        // Accept dropping local files/folders onto the list to upload into CurrentPath.
+        // Drag-drop receiving: OS file drops (always enabled) + cross-pane drops.
         if (this.FindControl<ListBox>("FileList") is { } fileList)
         {
             DragDrop.SetAllowDrop(fileList, true);
             fileList.AddHandler(DragDrop.DragOverEvent, OnFileListDragOver);
             fileList.AddHandler(DragDrop.DropEvent, OnFileListDrop);
+
+            // Cross-pane drag initiation (rows → local pane).
+            fileList.AddHandler(PointerMovedEvent, OnRemoteDragPointerMoved);
+            fileList.AddHandler(PointerReleasedEvent, OnRemoteDragPointerReleased);
         }
         AddHandler(PointerMovedEvent, OnColumnSplitterPointerMoved, RoutingStrategies.Tunnel);
         AddHandler(PointerReleasedEvent, OnColumnSplitterReleased, RoutingStrategies.Tunnel);
@@ -371,8 +383,11 @@ public partial class FileBrowserView : UserControl
             e.DragEffects = DragDropEffects.None;
             return;
         }
-        IReadOnlyList<string> paths = ExtractLocalPaths(e);
-        e.DragEffects = paths.Count > 0 ? DragDropEffects.Copy : DragDropEffects.None;
+        // Accept OS file drops OR cross-pane local-file drags (VFTPL text marker).
+        IReadOnlyList<string> osPaths = ExtractLocalPaths(e);
+        bool isCrossPane = !string.IsNullOrEmpty(e.DataTransfer.TryGetText())
+            && e.DataTransfer.TryGetText()!.StartsWith(DragDropFormats.LocalPaths);
+        e.DragEffects = (osPaths.Count > 0 || isCrossPane) ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
@@ -383,6 +398,15 @@ public partial class FileBrowserView : UserControl
             return;
         }
         IReadOnlyList<string> paths = ExtractLocalPaths(e);
+        if (paths.Count == 0)
+        {
+            // Check for cross-pane local file drag (VFTPL marker).
+            string? text = e.DataTransfer.TryGetText();
+            if (!string.IsNullOrEmpty(text) && text.StartsWith(DragDropFormats.LocalPaths))
+            {
+                paths = text[DragDropFormats.LocalPaths.Length..].Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            }
+        }
         if (paths.Count == 0)
         {
             return;
@@ -553,24 +577,82 @@ public partial class FileBrowserView : UserControl
     {
         if (!e.GetCurrentPoint(null).Properties.IsRightButtonPressed)
         {
+            // Left button: prepare for potential drag to local pane (SFTP mode only).
+            if (DataContext is FileBrowserViewModel { IsDragEnabled: true } vm
+                && sender is Border { DataContext: RemoteFileInfoViewModel file }
+                && !file.IsParentEntry)
+            {
+                _dragOrigin = e.GetPosition(this.FindControl<ListBox>("FileList"));
+                _dragRow = file;
+                _dragPointerArgs = e;
+                _isDragging = false;
+            }
             return;
         }
         if (
-            sender is not Border { DataContext: RemoteFileInfoViewModel file }
+            sender is not Border { DataContext: RemoteFileInfoViewModel file2 }
             || this.FindControl<ListBox>("FileList") is not { } listBox
         )
         {
             return;
         }
-        if (file.IsParentEntry)
+        if (file2.IsParentEntry)
         {
             return;
         }
-        if (listBox.SelectedItems is { } selection && !selection.Contains(file))
+        if (listBox.SelectedItems is { } selection && !selection.Contains(file2))
         {
             selection.Clear();
-            selection.Add(file);
+            selection.Add(file2);
         }
+    }
+
+    private void OnRemoteDragPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_isDragging || _dragRow is null || _dragPointerArgs is null)
+        {
+            return;
+        }
+        Point current = e.GetPosition(this.FindControl<ListBox>("FileList"));
+        if (Math.Abs(current.X - _dragOrigin.X) < DragThreshold && Math.Abs(current.Y - _dragOrigin.Y) < DragThreshold)
+        {
+            return;
+        }
+
+        _isDragging = true;
+        _ = StartRemoteDragAsync(_dragRow, _dragPointerArgs);
+    }
+
+    private void OnRemoteDragPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        _isDragging = false;
+        _dragRow = null;
+        _dragPointerArgs = null;
+    }
+
+    private async Task StartRemoteDragAsync(RemoteFileInfoViewModel source, PointerPressedEventArgs pointerArgs)
+    {
+        // Collect all selected remote file paths.
+        var paths = new List<string>();
+        if (DataContext is FileBrowserViewModel vm)
+        {
+            foreach (RemoteFileInfoViewModel item in vm.SelectedFiles)
+            {
+                if (!item.IsParentEntry) paths.Add(item.FullPath);
+            }
+        }
+        if (paths.Count == 0) paths.Add(source.FullPath);
+
+        var data = new DataTransfer();
+        var dragItem = new DataTransferItem();
+        dragItem.SetText(DragDropFormats.RemotePaths + string.Join("\n", paths));
+        data.Add(dragItem);
+
+        await DragDrop.DoDragDropAsync(pointerArgs, data, DragDropEffects.Copy);
+
+        _isDragging = false;
+        _dragRow = null;
+        _dragPointerArgs = null;
     }
 
     /// <summary>

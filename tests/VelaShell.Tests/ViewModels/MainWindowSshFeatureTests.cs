@@ -3,7 +3,9 @@ using NSubstitute;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
+using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;
+using VelaShell.Docking;
 using VelaShell.Presentation.Services;
 using VelaShell.Terminal;
 using VelaShell.ViewModels;
@@ -218,6 +220,84 @@ public sealed class MainWindowSshFeatureTests
         Assert.AreEqual(Strings.Format("Svc_HoursAgo", 2), vm.Sidebar.RecentConnections.Connections[0].RelativeTime);
         Assert.AreEqual("Dev", vm.Sidebar.RecentConnections.Connections[1].DisplayName);
         Assert.AreEqual(Strings.Format("Svc_DaysAgo", 3), vm.Sidebar.RecentConnections.Connections[1].RelativeTime);
+    }
+
+    [TestMethod]
+    public async Task TryConnectRecentAsync_ReconstructsSftpType_WithoutCreatingTerminal()
+    {
+        IConnectionWorkflowService? workflow = Substitute.For<IConnectionWorkflowService>();
+        ISshConnectionService? sshConnectionService = Substitute.For<ISshConnectionService>();
+        var entry = new RecentConnectionEntry
+        {
+            ConnectionType = ConnectionType.SFTP,
+            Name = "Files",
+            Host = "files.example.com",
+            Port = 22,
+            Username = "root",
+        };
+
+        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => Substitute.For<ITerminalEmulator>());
+
+        TerminalTabViewModel? tab = await vm.TryConnectRecentAsync(entry);
+
+        Assert.IsNull(tab);
+        Assert.IsEmpty(vm.TabBar.Tabs);
+        await workflow.DidNotReceive().ConnectProfileAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    public async Task OpenSftpForProfileAsync_ConnectsSshAndEnsuresExistingPanelVisible()
+    {
+        IConnectionWorkflowService? workflow = Substitute.For<IConnectionWorkflowService>();
+        ISshConnectionService? sshConnectionService = Substitute.For<ISshConnectionService>();
+        ISshClientWrapper? sshClient = Substitute.For<ISshClientWrapper>();
+        ISftpService? sftpService = Substitute.For<ISftpService>();
+        var profile = new SessionProfile
+        {
+            Name = "Files",
+            Host = "files.example.com",
+            Port = 22,
+            Username = "root",
+            AuthMethod = AuthMethod.Password,
+            Password = "secret",
+        };
+        var session = new SshSession
+        {
+            SessionId = Guid.NewGuid(),
+            ConnectionInfo = new()
+            {
+                Host = profile.Host,
+                Port = profile.Port,
+                Username = profile.Username,
+                AuthMethod = profile.AuthMethod,
+            },
+            Status = SessionStatus.Connected,
+        };
+        workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>()).Returns(session);
+        sshConnectionService.GetClient(session.SessionId).Returns(sshClient);
+        sftpService.GetWorkingDirectoryAsync(session.SessionId, Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult("/"));
+        sftpService.ListDirectoryAsync(session.SessionId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult(new List<RemoteFileInfo>()));
+        var vm = new MainWindowViewModel(
+            workflow,
+            sshConnectionService,
+            sftpService: sftpService);
+
+        TerminalTabViewModel? tab = await vm.OpenSftpForProfileAsync(profile);
+
+        Assert.IsNull(tab);
+        Assert.IsEmpty(vm.TabBar.Tabs);
+        Assert.HasCount(1, vm.Layout.AllDocuments().OfType<SftpDocument>());
+        await workflow.Received(1).ConnectProfileAsync(profile, Arg.Any<CancellationToken>());
+        sshClient.DidNotReceive().CreateShellStream(
+            Arg.Any<string>(),
+            Arg.Any<uint>(),
+            Arg.Any<uint>(),
+            Arg.Any<uint>(),
+            Arg.Any<uint>(),
+            Arg.Any<int>(),
+            Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>());
     }
 
     [TestMethod]

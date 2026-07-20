@@ -3,6 +3,13 @@ namespace VelaShell.Core.Models;
 /// <summary>一条已保存的 SSH 连接配置,描述连接目标主机所需的地址、认证方式与凭据等信息。</summary>
 public class SessionProfile
 {
+    /// <summary>连接协议类型;缺失或未知值均按 SSH 处理。</summary>
+    public ConnectionType ConnectionType
+    {
+        get;
+        set => field = value == ConnectionType.SFTP ? ConnectionType.SFTP : ConnectionType.SSH;
+    } = ConnectionType.SSH;
+
     /// <summary>配置的全局唯一标识,创建时自动生成。</summary>
     public Guid Id { get; set; } = Guid.NewGuid();
 

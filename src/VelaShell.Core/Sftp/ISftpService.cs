@@ -26,10 +26,10 @@ public interface ISftpService : IAsyncDisposable
     Task<List<RemoteFileInfo>> ListDirectoryAsync(Guid sessionId, string path, CancellationToken cancellationToken = default);
 
     /// <summary>Uploads a local file to the given remote path, reporting transfer progress.</summary>
-    Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default);
+    Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0);
 
     /// <summary>Downloads a remote file to the given local path, reporting transfer progress.</summary>
-    Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default);
+    Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0);
 
     /// <summary>
     /// Deletes a file, or a directory and its entire contents (recursively). Reports one
@@ -51,6 +51,13 @@ public interface ISftpService : IAsyncDisposable
 
     /// <summary>Renames or moves a remote entry (SFTP rename doubles as move).</summary>
     Task RenameAsync(Guid sessionId, string oldPath, string newPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Copies a remote file or directory tree to another path on the same server. For single files
+    /// this is download-to-memory-then-upload; for directories each file is copied recursively.
+    /// Reports transfer progress per file.
+    /// </summary>
+    Task CopyAsync(Guid sessionId, string sourcePath, string destPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Changes a remote entry's permissions (chmod). <paramref name="octalMode" /> is

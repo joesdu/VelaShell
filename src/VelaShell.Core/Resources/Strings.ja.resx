@@ -641,6 +641,12 @@
   <data name="MoveToPrompt" xml:space="preserve">
     <value>移動先(完全パス)</value>
   </data>
+  <data name="CopyTo" xml:space="preserve">
+    <value>コピー先…</value>
+  </data>
+  <data name="SftpCopyToPrompt" xml:space="preserve">
+    <value>コピー先のパスを入力</value>
+  </data>
   <data name="Msg_AuthFailed" xml:space="preserve">
     <value>認証に失敗しました: {0} のユーザー名、パスワードまたは鍵が正しくありません。</value>
   </data>

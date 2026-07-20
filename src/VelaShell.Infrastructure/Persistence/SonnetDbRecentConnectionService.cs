@@ -7,7 +7,7 @@ namespace VelaShell.Infrastructure.Persistence;
 
 /// <summary>
 /// 基于 SonnetDB 时序 measurement <c>conn_history</c> 的连接历史:
-/// 每次连接写入一个数据点(tags: profile_id/host/username;fields: name/group_name/port/success/duration_ms),
+/// 每次连接写入一个数据点(tags: profile_id/host/username;fields: name/group_name/port/connection_type/success/duration_ms),
 /// “最近连接”按时间倒序查询并对同一目标去重。
 /// </summary>
 public sealed class SonnetDbRecentConnectionService(SonnetDbEngine engine) : IRecentConnectionService
@@ -40,6 +40,7 @@ public sealed class SonnetDbRecentConnectionService(SonnetDbEngine engine) : IRe
             ["name"] = FieldValue.FromString(entry.Name),
             ["group_name"] = FieldValue.FromString(entry.GroupName),
             ["port"] = FieldValue.FromLong(entry.Port),
+            ["connection_type"] = FieldValue.FromLong((int)entry.ConnectionType),
             ["success"] = FieldValue.FromBool(entry.Success),
             ["duration_ms"] = FieldValue.FromLong(entry.DurationMs)
         };
@@ -58,7 +59,7 @@ public sealed class SonnetDbRecentConnectionService(SonnetDbEngine engine) : IRe
 
         // 多取一些再去重,保证同一目标反复连接时仍能凑满 limit 个不同目标。
         int fetch = Math.Clamp(limit * 10, 50, 500);
-        SelectExecutionResult result = await _engine.QueryAsync($"SELECT time, profile_id, host, username, name, group_name, port, success FROM {SonnetDbEngine.ConnHistoryMeasurement} ORDER BY time DESC LIMIT {fetch}",
+        SelectExecutionResult result = await _engine.QueryAsync($"SELECT time, profile_id, host, username, name, group_name, port, connection_type, success FROM {SonnetDbEngine.ConnHistoryMeasurement} ORDER BY time DESC LIMIT {fetch}",
                                            cancellationToken).ConfigureAwait(false);
         var entries = new List<RecentConnectionEntry>(limit);
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -108,6 +109,7 @@ public sealed class SonnetDbRecentConnectionService(SonnetDbEngine engine) : IRe
             ProfileId = Guid.TryParse(profileIdRaw, out Guid id) ? id : null,
             Host = AsString(values.GetValueOrDefault("host")),
             Username = AsString(values.GetValueOrDefault("username")),
+            ConnectionType = ParseConnectionType(values.GetValueOrDefault("connection_type")),
             Name = AsString(values.GetValueOrDefault("name")),
             GroupName = AsString(values.GetValueOrDefault("group_name")),
             Port = values.GetValueOrDefault("port") is { } port ? (int)Convert.ToInt64(port) : 22,
@@ -121,4 +123,9 @@ public sealed class SonnetDbRecentConnectionService(SonnetDbEngine engine) : IRe
     }
 
     private static string AsString(object? value) => value?.ToString() ?? string.Empty;
+
+    private static ConnectionType ParseConnectionType(object? value) =>
+        value is long raw && raw == (long)ConnectionType.SFTP
+            ? ConnectionType.SFTP
+            : ConnectionType.SSH;
 }

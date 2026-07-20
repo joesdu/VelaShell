@@ -293,6 +293,65 @@ public class SessionTreeViewModelTests
 
     [TestMethod]
     [TestCategory("SessionTree")]
+    public async Task DuplicateSessionCommand_PreservesConnectionType()
+    {
+        SessionProfile source = CreateSession("Files");
+        source.ConnectionType = ConnectionType.SFTP;
+        _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup>()));
+        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { source }));
+        await _vm.LoadCommand.Execute().FirstAsync();
+        _vm.SelectedNode = _vm.Nodes.Single();
+
+        await _vm.DuplicateSessionCommand.Execute().FirstAsync();
+
+        await _repository.Received(1).SaveSessionAsync(
+            Arg.Is<SessionProfile>(copy => copy.ConnectionType == ConnectionType.SFTP)
+        );
+    }
+
+    [TestMethod]
+    public async Task SftpSession_AllowsStandaloneSftp_AndKeepsSshOnlyCommandsHidden()
+    {
+        SessionProfile source = CreateSession("Files");
+        source.ConnectionType = ConnectionType.SFTP;
+        _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup>()));
+        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { source }));
+        await _vm.LoadCommand.Execute().FirstAsync();
+        _vm.SelectedNode = _vm.Nodes.Single();
+
+        SessionProfile? requested = null;
+        _vm.OpenSftpRequested += profile => requested = profile;
+        SessionProfile? portForwardRequested = null;
+        _vm.PortForwardRequested += profile => portForwardRequested = profile;
+
+        Assert.IsFalse(_vm.SelectedNode.IsSshProfile);
+        Assert.IsTrue(_vm.OpenSftpCommand.CanExecute.FirstAsync().Wait());
+        Assert.IsFalse(_vm.PortForwardCommand.CanExecute.FirstAsync().Wait());
+        await _vm.OpenSftpCommand.Execute().FirstAsync();
+        await _vm.PortForwardCommand.Execute().FirstAsync();
+        Assert.AreSame(source, requested);
+        Assert.IsNull(portForwardRequested);
+    }
+
+    [TestMethod]
+    public async Task SshSession_OpenSftpCommandRaisesExistingExplorerRequest()
+    {
+        SessionProfile source = CreateSession("Server");
+        _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup>()));
+        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { source }));
+        await _vm.LoadCommand.Execute().FirstAsync();
+        _vm.SelectedNode = _vm.Nodes.Single();
+
+        SessionProfile? requested = null;
+        _vm.OpenSftpRequested += profile => requested = profile;
+
+        await _vm.OpenSftpCommand.Execute().FirstAsync();
+
+        Assert.AreSame(source, requested);
+    }
+
+    [TestMethod]
+    [TestCategory("SessionTree")]
     public void SelectedNode_RaisesPropertyChanged()
     {
         var node = new SessionTreeNodeViewModel(Guid.NewGuid(), "Test", false);

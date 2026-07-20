@@ -641,6 +641,12 @@
   <data name="MoveToPrompt" xml:space="preserve">
     <value>이동 위치(전체 경로)</value>
   </data>
+  <data name="CopyTo" xml:space="preserve">
+    <value>복사 대상…</value>
+  </data>
+  <data name="SftpCopyToPrompt" xml:space="preserve">
+    <value>복사 대상 경로 입력</value>
+  </data>
   <data name="Msg_AuthFailed" xml:space="preserve">
     <value>인증 실패: {0}의 사용자 이름, 비밀번호 또는 키가 올바르지 않습니다.</value>
   </data>

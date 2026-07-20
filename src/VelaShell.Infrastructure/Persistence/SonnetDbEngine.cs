@@ -224,6 +224,7 @@ public sealed class SonnetDbEngine : IDisposable
                 new("name", MeasurementColumnRole.Field, FieldType.String),
                 new("group_name", MeasurementColumnRole.Field, FieldType.String),
                 new("port", MeasurementColumnRole.Field, FieldType.Int64),
+                new("connection_type", MeasurementColumnRole.Field, FieldType.Int64),
                 new("success", MeasurementColumnRole.Field, FieldType.Boolean),
                 new("duration_ms", MeasurementColumnRole.Field, FieldType.Int64)
             ]),

@@ -52,9 +52,47 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         Assert.HasCount(1, sessions);
         Assert.AreEqual("web-prod-01", sessions[0].Name);
         Assert.AreEqual("s3cret", sessions[0].Password, "读出的密码应已解密");
+        Assert.AreEqual(ConnectionType.SSH, sessions[0].ConnectionType);
         SessionProfile? single = await repo.GetSessionAsync(profile.Id);
         Assert.IsNotNull(single);
         Assert.AreEqual(profile.Host, single.Host);
+    }
+
+    [TestMethod]
+    public async Task SessionRepository_SftpProfile_RoundTripsThroughProtectedDocument()
+    {
+        var repo = new SonnetDbSessionRepository(_engine, _protector);
+        var profile = new SessionProfile
+        {
+            Name = "files",
+            Host = "sftp.example.com",
+            Username = "deploy",
+            Password = "secret",
+            ConnectionType = ConnectionType.SFTP,
+        };
+
+        await repo.SaveSessionAsync(profile);
+
+        SessionProfile loaded = (await repo.GetSessionAsync(profile.Id))!;
+        Assert.AreEqual(ConnectionType.SFTP, loaded.ConnectionType);
+        Assert.AreEqual("secret", loaded.Password);
+    }
+
+    [TestMethod]
+    public async Task SessionRepository_LegacyDocumentWithoutConnectionType_DefaultsToSsh()
+    {
+        var profileId = Guid.NewGuid();
+        string json = $$"""{"id":"{{profileId}}","name":"legacy","host":"legacy.example.com","username":"ops","authMethod":0}""";
+        await _engine.WithCollectionAsync<object?>(SonnetDbEngine.ProfilesCollection, store =>
+        {
+            store.Upsert(profileId.ToString("D"), json);
+            return null;
+        });
+        var repo = new SonnetDbSessionRepository(_engine, _protector);
+
+        SessionProfile loaded = (await repo.GetSessionAsync(profileId))!;
+
+        Assert.AreEqual(ConnectionType.SSH, loaded.ConnectionType);
     }
 
     [TestMethod]
@@ -195,6 +233,7 @@ public sealed class SonnetDbPersistenceTests : IDisposable
                 Host = "192.168.1.100",
                 Port = 22,
                 Username = "root",
+                ConnectionType = ConnectionType.SFTP,
                 ConnectedAt = now.AddHours(-2),
                 Success = true,
                 DurationMs = 120,
@@ -209,6 +248,7 @@ public sealed class SonnetDbPersistenceTests : IDisposable
                 Host = "192.168.1.100",
                 Port = 22,
                 Username = "root",
+                ConnectionType = ConnectionType.SFTP,
                 ConnectedAt = now.AddMinutes(-5),
                 Success = true,
                 DurationMs = 80,
@@ -243,10 +283,61 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         Assert.AreEqual("web-prod-01", recent[0].Name);
         Assert.AreEqual("生产环境", recent[0].GroupName);
         Assert.AreEqual(profileId, recent[0].ProfileId);
+        Assert.AreEqual(ConnectionType.SFTP, recent[0].ConnectionType);
         Assert.AreEqual("deploy@staging.example.com", recent[1].Name);
         Assert.IsGreaterThan(recent[1].ConnectedAt, recent[0].ConnectedAt);
         await service.ClearAsync();
         Assert.IsEmpty(await service.GetRecentAsync(10));
+    }
+
+    [TestMethod]
+    public async Task RecentConnections_InvalidConnectionType_FallsBackToSsh()
+    {
+        await _engine.WritePointAsync(
+            SonnetDbEngine.ConnHistoryMeasurement,
+            DateTimeOffset.UtcNow,
+            new Dictionary<string, string>
+            {
+                ["host"] = "legacy.example.com",
+                ["username"] = "ops",
+            },
+            new Dictionary<string, SonnetDB.Model.FieldValue>
+            {
+                ["name"] = SonnetDB.Model.FieldValue.FromString("legacy"),
+                ["port"] = SonnetDB.Model.FieldValue.FromLong(22),
+                ["connection_type"] = SonnetDB.Model.FieldValue.FromLong(99),
+                ["success"] = SonnetDB.Model.FieldValue.FromBool(true),
+            }
+        );
+
+        RecentConnectionEntry entry = (await new SonnetDbRecentConnectionService(_engine).GetRecentAsync(1)).Single();
+
+        Assert.AreEqual(ConnectionType.SSH, entry.ConnectionType);
+    }
+
+    [TestMethod]
+    public async Task RecentConnections_ConnectionTypeBeyondInt32Range_FallsBackToSsh()
+    {
+        await _engine.WritePointAsync(
+            SonnetDbEngine.ConnHistoryMeasurement,
+            DateTimeOffset.UtcNow,
+            new Dictionary<string, string>
+            {
+                ["host"] = "overflow.example.com",
+                ["username"] = "ops",
+            },
+            new Dictionary<string, SonnetDB.Model.FieldValue>
+            {
+                ["name"] = SonnetDB.Model.FieldValue.FromString("overflow"),
+                ["port"] = SonnetDB.Model.FieldValue.FromLong(22),
+                ["connection_type"] = SonnetDB.Model.FieldValue.FromLong((long)int.MaxValue + 1),
+                ["success"] = SonnetDB.Model.FieldValue.FromBool(true),
+            }
+        );
+
+        RecentConnectionEntry entry = (await new SonnetDbRecentConnectionService(_engine).GetRecentAsync(1)).Single();
+
+        Assert.AreEqual(ConnectionType.SSH, entry.ConnectionType);
     }
 
     [TestMethod]

@@ -92,7 +92,8 @@ public class MainWindowViewModel : ReactiveObject
     /// 标签关闭或连接断开时经 <see cref="EvictFileBrowser" /> 驱逐。
     /// </summary>
     private readonly Dictionary<Guid, FileBrowserViewModel> _fileBrowserCache = [];
-
+    private readonly object _sftpCloseTasksSync = new();
+    private readonly Dictionary<SftpDocument, Task> _sftpCloseTasks = [];
     private FileTransferViewModel _fileTransfer;
 
     private bool _latencyPolling;
@@ -171,6 +172,10 @@ public class MainWindowViewModel : ReactiveObject
             if (document is TerminalDocument terminalDocument)
             {
                 OnDocumentClosed(terminalDocument);
+            }
+            else if (document is SftpDocument sftpDocument)
+            {
+                _ = GetOrCreateSftpCloseTask(sftpDocument);
             }
         };
         Layout.ActiveDocumentChanged += SetActiveFromDocument;
@@ -768,6 +773,10 @@ public class MainWindowViewModel : ReactiveObject
         UpdateStatusBarForActiveTab();
     }
 
+    /// <summary>Creates a blank placeholder FileBrowserViewModel for hiding the bottom panel.</summary>
+    private FileBrowserViewModel CreatePlaceholderFileBrowser() =>
+        new(_sftpService, Guid.Empty) { TransferSink = FileTransfer };
+
     /// <summary>
     /// Points the SFTP file browser at the active tab's session (#22). Each connected tab gets
     /// a browser rooted at its own session; without a connected session the panel shows empty.
@@ -795,7 +804,7 @@ public class MainWindowViewModel : ReactiveObject
         {
             if (FileBrowser.SessionId != Guid.Empty || FileBrowser.IsVisible)
             {
-                FileBrowser = new(_sftpService, Guid.Empty) { TransferSink = FileTransfer };
+                FileBrowser = CreatePlaceholderFileBrowser();
             }
             return;
         }
@@ -1019,6 +1028,10 @@ public class MainWindowViewModel : ReactiveObject
     /// </summary>
     public void OpenTunnelPanel(SessionProfile? preselect = null)
     {
+        if (preselect?.ConnectionType == ConnectionType.SFTP)
+        {
+            return;
+        }
         if (_tunnelWorkflowService is null)
         {
             return;
@@ -2107,6 +2120,11 @@ public class MainWindowViewModel : ReactiveObject
         CancellationToken cancellationToken = default
     )
     {
+        if (profile.ConnectionType == ConnectionType.SFTP)
+        {
+            await OpenSftpDocumentForProfileAsync(profile, cancellationToken).ConfigureAwait(true);
+            return null;
+        }
         if (_connectionWorkflowService is null || _sshConnectionService is null)
         {
             return null;
@@ -2203,6 +2221,108 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
+    /// Opens a standalone SFTP document for either an SSH or SFTP profile. This path
+    /// never creates a terminal tab or shell stream.
+    /// </summary>
+    public async Task<TerminalTabViewModel?> OpenSftpForProfileAsync(
+        SessionProfile profile,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        await OpenSftpDocumentForProfileAsync(profile, cancellationToken).ConfigureAwait(true);
+        return null;
+    }
+
+    /// <summary>
+    /// Connects through the normal workflow and creates one document-scoped serialized SFTP
+    /// channel only after authentication succeeds.
+    /// </summary>
+    public async Task<SftpDocument?> OpenSftpDocumentForProfileAsync(
+        SessionProfile profile,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        if (_connectionWorkflowService is null)
+        {
+            return null;
+        }
+
+        SessionProfile current = profile;
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            if (attempt > 0 || RequiresCredentials(current))
+            {
+                if (InteractiveAuthenticator is not { } prompt)
+                {
+                    return null;
+                }
+                SessionProfile? prompted = await prompt(current).ConfigureAwait(true);
+                if (prompted is null)
+                {
+                    return null;
+                }
+                current = prompted;
+            }
+
+            SshSession? session = null;
+            try
+            {
+                session = await _connectionWorkflowService.ConnectProfileAsync(current, cancellationToken)
+                    .ConfigureAwait(true);
+                if (session is null)
+                {
+                    return null;
+                }
+                if (_sftpService is null)
+                {
+                    await _connectionWorkflowService.DisconnectAsync(session.SessionId, cancellationToken)
+                        .ConfigureAwait(true);
+                    return null;
+                }
+                AppSettings settings = _latestSettings ?? await LoadSettingsSnapshotAsync().ConfigureAwait(true);
+                var document = new SftpDocument(
+                    new SftpDocumentViewModel(
+                        current,
+                        session,
+                        _connectionWorkflowService,
+                        _sftpService,
+                        settings.Transfer,
+                        FileTransfer));
+                Layout.AddDocument(document);
+                Sidebar.SessionTree?.SetSessionStatus(current.Id, SessionStatus.Connected);
+                return document;
+            }
+            catch (OperationCanceledException)
+            {
+                if (session is not null)
+                {
+                    await _connectionWorkflowService.DisconnectAsync(session.SessionId).ConfigureAwait(true);
+                }
+                return null;
+            }
+            catch (Exception ex) when (ex.GetType().Name == "SshAuthenticationException")
+            {
+                if (session is not null)
+                {
+                    await _connectionWorkflowService.DisconnectAsync(session.SessionId).ConfigureAwait(true);
+                }
+                continue;
+            }
+            catch (Exception ex)
+            {
+                if (session is not null)
+                {
+                    await _connectionWorkflowService.DisconnectAsync(session.SessionId).ConfigureAwait(true);
+                }
+                LastConnectionError = DescribeConnectionError(ex, current);
+                StatusBar.Status = LastConnectionError;
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Connects a sidebar "最近连接" entry: resolves the saved profile by id when available,
     /// otherwise reconstructs an ad-hoc profile from the recorded host/port/username.
     /// </summary>
@@ -2226,6 +2346,7 @@ public class MainWindowViewModel : ReactiveObject
         }
         profile ??= new()
         {
+            ConnectionType = entry.ConnectionType,
             Name = entry.Name,
             Host = entry.Host,
             Port = entry.Port,
@@ -2651,6 +2772,18 @@ public class MainWindowViewModel : ReactiveObject
 
     private void SetActiveFromDocument(DockDocument? dockDocument)
     {
+        if (dockDocument is SftpDocument)
+        {
+            ActiveTerminalTab = null;
+            UpdateStatusBarForActiveTab();
+            // Replace the bottom file browser with a blank placeholder so the grid rows collapse;
+            // the terminal's browser stays in _fileBrowserCache with its true IsVisible state.
+            if (FileBrowser.SessionId != Guid.Empty || FileBrowser.IsVisible)
+            {
+                FileBrowser = CreatePlaceholderFileBrowser();
+            }
+            return;
+        }
         if (
             dockDocument is not TerminalDocument document
             || !TabBar.Tabs.Contains(document.Terminal)
@@ -2663,6 +2796,79 @@ public class MainWindowViewModel : ReactiveObject
         {
             TabBar.ActiveTab = document.Terminal;
         }
+        RebindFileBrowser();
+    }
+
+    private Task GetOrCreateSftpCloseTask(SftpDocument document)
+    {
+        lock (_sftpCloseTasksSync)
+        {
+            if (_sftpCloseTasks.TryGetValue(document, out Task? existing))
+            {
+                return existing;
+            }
+
+            Task task = CloseSftpDocumentCoreAsync(document);
+            _sftpCloseTasks[document] = task;
+            _ = task.ContinueWith(
+                _ => RemoveSftpCloseTask(document, task),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+            return task;
+        }
+    }
+
+    private void RemoveSftpCloseTask(SftpDocument document, Task task)
+    {
+        lock (_sftpCloseTasksSync)
+        {
+            if (_sftpCloseTasks.TryGetValue(document, out Task? current) && ReferenceEquals(current, task))
+            {
+                _sftpCloseTasks.Remove(document);
+            }
+        }
+    }
+
+    internal bool HasPendingStandaloneSftpDocuments()
+    {
+        lock (_sftpCloseTasksSync)
+        {
+            return _sftpCloseTasks.Count > 0
+                || Layout.AllDocuments().OfType<SftpDocument>().Any();
+        }
+    }
+
+    private async Task CloseSftpDocumentCoreAsync(SftpDocument document)
+    {
+        try
+        {
+            await document.ViewModel.CloseAsync().ConfigureAwait(false);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+                Sidebar.SessionTree?.SetSessionStatus(
+                    document.ViewModel.Profile.Id,
+                    SessionStatus.Disconnected));
+        }
+        catch (Exception ex)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => LastConnectionError = ex.Message);
+        }
+    }
+
+    internal async Task CloseStandaloneSftpDocumentsAsync()
+    {
+        Task[] closeTasks;
+        lock (_sftpCloseTasksSync)
+        {
+            Task[] trackedTasks = _sftpCloseTasks.Values.ToArray();
+            Task[] currentDocumentTasks = Layout
+                .AllDocuments()
+                .OfType<SftpDocument>()
+                .Select(GetOrCreateSftpCloseTask)
+                .ToArray();
+            closeTasks = trackedTasks.Concat(currentDocumentTasks).Distinct().ToArray();
+        }
+        await Task.WhenAll(closeTasks);
     }
 
     /// <summary>

@@ -290,6 +290,12 @@ public static class Strings
     /// <summary>“移动到”对话框输入提示文案。</summary>
     public static string MoveToPrompt => ResourceManager.GetString(nameof(MoveToPrompt), CultureInfo.CurrentUICulture) ?? nameof(MoveToPrompt);
 
+    /// <summary>“复制到”上下文菜单项文案。</summary>
+    public static string CopyTo => ResourceManager.GetString(nameof(CopyTo), CultureInfo.CurrentUICulture) ?? nameof(CopyTo);
+
+    /// <summary>“复制到”目标路径输入提示文案。</summary>
+    public static string SftpCopyToPrompt => ResourceManager.GetString(nameof(SftpCopyToPrompt), CultureInfo.CurrentUICulture) ?? nameof(SftpCopyToPrompt);
+
     /// <summary>“复制文件路径”菜单文案。</summary>
     public static string CopyFilePath => ResourceManager.GetString(nameof(CopyFilePath), CultureInfo.CurrentUICulture) ?? nameof(CopyFilePath);
 

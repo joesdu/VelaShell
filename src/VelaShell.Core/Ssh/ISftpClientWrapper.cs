@@ -104,4 +104,21 @@ public interface ISftpClientWrapper : IDisposable
     /// three octal digits written as a decimal number (e.g. 755, 644).
     /// </summary>
     void ChangePermissions(string path, short mode);
+
+    /// <summary>
+    /// Opens a remote file for read or write. Use <see cref="FileMode.Append"/> with
+    /// <see cref="FileAccess.Write"/> for resume-capable uploads.
+    /// </summary>
+    Stream Open(string path, FileMode mode, FileAccess access);
+
+    /// <summary>
+    /// Gets the size in bytes of a remote file, or -1 if it does not exist.
+    /// </summary>
+    long GetFileSize(string path);
+
+    /// <summary>
+    /// Uploads a stream to a remote path, seeking to <paramref name="resumeOffset"/> bytes
+    /// before writing. Used for breakpoint-resume uploads.
+    /// </summary>
+    Task UploadAsync(Stream input, string path, long resumeOffset, Action<ulong>? uploadCallback = null, CancellationToken cancellationToken = default);
 }

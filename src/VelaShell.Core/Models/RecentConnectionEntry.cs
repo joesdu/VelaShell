@@ -6,6 +6,13 @@ namespace VelaShell.Core.Models;
 /// </summary>
 public class RecentConnectionEntry
 {
+    /// <summary>连接协议类型;缺失或未知值均按 SSH 处理。</summary>
+    public ConnectionType ConnectionType
+    {
+        get;
+        set => field = value == ConnectionType.SFTP ? ConnectionType.SFTP : ConnectionType.SSH;
+    } = ConnectionType.SSH;
+
     /// <summary>关联的会话配置 Id;快速连接等临时连接为 null。</summary>
     public Guid? ProfileId { get; set; }
 

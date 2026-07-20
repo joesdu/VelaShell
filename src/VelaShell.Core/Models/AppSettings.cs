@@ -619,7 +619,7 @@ public class TransferOptions : ObservableOptions
         set => Set(ref field, value);
     } = true;
 
-    /// <summary>规划中(断点续传):仅持久化,当前无运行时消费者,不出现在设置界面(设置审计 M-02/R-07)。</summary>
+    /// <summary>断点续传开关(已启用):检测到部分传输文件时自动从上次位置续传。</summary>
     public bool AutoResume { get; set; } = true;
 
     /// <summary>是否启用传输带宽限速。</summary>
@@ -664,7 +664,7 @@ public class TransferOptions : ObservableOptions
         set => Set(ref field, value);
     } = "~/.velashell/logs";
 
-    /// <summary>规划中(断点续传):仅持久化,当前无运行时消费者,不出现在设置界面(设置审计 M-02/R-08)。</summary>
+    /// <summary>断点续传开关:检测到部分传输文件时自动从上次位置续传。</summary>
     public bool ResumeEnabled { get; set; } = true;
 
     /// <summary>规划中(传输失败重试):仅持久化,当前无运行时消费者,不出现在设置界面(设置审计 R-09)。</summary>
