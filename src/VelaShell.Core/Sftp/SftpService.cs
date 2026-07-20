@@ -37,11 +37,13 @@ public class SftpService(
     }
 
     /// <summary>将本地文件上传到远端路径,可选限速与进度回报,支持取消。</summary>
+    /// <summary>将本地文件上传到远端路径,可选限速与进度回报,支持断点续传(resumeOffset > 0 时追加上传)。</summary>
     public async Task UploadFileAsync(Guid sessionId,
         string localPath,
         string remotePath,
         IProgress<TransferProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        long resumeOffset = 0)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
         var fileInfo = new FileInfo(localPath);
@@ -49,27 +51,49 @@ public class SftpService(
         string fileName = Path.GetFileName(localPath);
         var stopwatch = Stopwatch.StartNew();
         (long uploadBps, _, _) = await GetTransferTuningAsync().ConfigureAwait(false);
-        Stream fileStream = uploadBps > 0
-                                ? new ThrottledStream(File.OpenRead(localPath), uploadBps)
-                                : File.OpenRead(localPath);
 
-        // NOTE: SSH.NET invokes this progress callback on a detached thread-pool thread
-        // (ThreadPool.QueueUserWorkItem), so throwing from it would be an unhandled exception that
-        // crashes the process. To cancel the in-flight file we instead dispose our own stream, which
-        // makes the worker's read fail; we normalise that into a clean cancellation below.
-        await using (cancellationToken.Register(() => SafeDispose(fileStream)))
+        if (resumeOffset > 0)
         {
-            try
+            // Resume: use the new offset-aware upload path.
+            Stream fileStream = uploadBps > 0
+                                    ? new ThrottledStream(File.OpenRead(localPath), uploadBps)
+                                    : File.OpenRead(localPath);
+            await using (cancellationToken.Register(() => SafeDispose(fileStream)))
             {
-                await client.UploadAsync(fileStream, remotePath, bytesTransferred => { ReportProgress(progress, fileName, (long)bytesTransferred, totalBytes, stopwatch); }, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await client.UploadAsync(fileStream, remotePath, resumeOffset, bytesTransferred => { ReportProgress(progress, fileName, (long)bytesTransferred, totalBytes, stopwatch); }, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is not OperationCanceledException)
+                {
+                    throw new OperationCanceledException(cancellationToken);
+                }
+                finally
+                {
+                    await fileStream.DisposeAsync();
+                }
             }
-            catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is not OperationCanceledException)
+        }
+        else
+        {
+            // Fresh upload: original truncate-and-write path.
+            Stream fileStream = uploadBps > 0
+                                    ? new ThrottledStream(File.OpenRead(localPath), uploadBps)
+                                    : File.OpenRead(localPath);
+            await using (cancellationToken.Register(() => SafeDispose(fileStream)))
             {
-                throw new OperationCanceledException(cancellationToken);
-            }
-            finally
-            {
-                await fileStream.DisposeAsync();
+                try
+                {
+                    await client.UploadAsync(fileStream, remotePath, bytesTransferred => { ReportProgress(progress, fileName, (long)bytesTransferred, totalBytes, stopwatch); }, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is not OperationCanceledException)
+                {
+                    throw new OperationCanceledException(cancellationToken);
+                }
+                finally
+                {
+                    await fileStream.DisposeAsync();
+                }
             }
         }
     }
@@ -79,7 +103,8 @@ public class SftpService(
         string remotePath,
         string localPath,
         IProgress<TransferProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        long resumeOffset = 0)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
         string fileName = GetUnixFileName(remotePath);
@@ -87,25 +112,49 @@ public class SftpService(
         long totalBytes = fileInfo.Size;
         var stopwatch = Stopwatch.StartNew();
         (_, long downloadBps, bool preserveTimestamps) = await GetTransferTuningAsync().ConfigureAwait(false);
-        Stream fileStream = downloadBps > 0
-                                ? new ThrottledStream(File.Create(localPath), downloadBps)
-                                : File.Create(localPath);
 
-        // See UploadFileAsync: the callback runs on a detached thread-pool thread, so we cancel by
-        // disposing our own stream (failing the worker's write) rather than throwing from it.
-        await using (cancellationToken.Register(() => SafeDispose(fileStream)))
+        if (resumeOffset > 0)
         {
-            try
+            // Resume download: append to the partial local file.
+            await using (Stream localStream = new FileStream(localPath, FileMode.Append, FileAccess.Write, FileShare.None))
             {
-                await client.DownloadAsync(remotePath, fileStream, bytesTransferred => { ReportProgress(progress, fileName, (long)bytesTransferred, totalBytes, stopwatch); }, cancellationToken).ConfigureAwait(false);
+                // Download remote from offset using chunked copy.
+                using Stream remoteStream = client.Open(remotePath, FileMode.Open, FileAccess.Read);
+                remoteStream.Seek(resumeOffset, SeekOrigin.Begin);
+
+                byte[] buffer = new byte[32 * 1024];
+                long bytesRead = 0;
+                int read;
+                while ((read = await remoteStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+                {
+                    await localStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                    bytesRead += read;
+                    ReportProgress(progress, fileName, resumeOffset + bytesRead, totalBytes, stopwatch);
+                }
             }
-            catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is not OperationCanceledException)
+        }
+        else
+        {
+            Stream fileStream = downloadBps > 0
+                                    ? new ThrottledStream(File.Create(localPath), downloadBps)
+                                    : File.Create(localPath);
+
+            // See UploadFileAsync: the callback runs on a detached thread-pool thread, so we cancel by
+            // disposing our own stream (failing the worker's write) rather than throwing from it.
+            await using (cancellationToken.Register(() => SafeDispose(fileStream)))
             {
-                throw new OperationCanceledException(cancellationToken);
-            }
-            finally
-            {
-                await fileStream.DisposeAsync();
+                try
+                {
+                    await client.DownloadAsync(remotePath, fileStream, bytesTransferred => { ReportProgress(progress, fileName, (long)bytesTransferred, totalBytes, stopwatch); }, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is not OperationCanceledException)
+                {
+                    throw new OperationCanceledException(cancellationToken);
+                }
+                finally
+                {
+                    await fileStream.DisposeAsync();
+                }
             }
         }
 
@@ -208,8 +257,8 @@ public class SftpService(
 
     /// <summary>
     /// Copies a remote file or directory to another path on the same server.
-    /// Files are copied by downloading to a temp buffer then re-uploading; directories are walked
-    /// recursively. Reports progress per file transferred.
+    /// Single files are copied via a temporary local file (no in-memory buffering of large files).
+    /// Directories are walked recursively with cycle detection.
     /// </summary>
     public async Task CopyAsync(Guid sessionId,
         string sourcePath,
@@ -218,7 +267,7 @@ public class SftpService(
         CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        var identities = await _identities.GetAsync(sessionId).ConfigureAwait(false);
+        RemoteIdentityMap identities = await _identities.GetAsync(sessionId).ConfigureAwait(false);
 
         // Determine if source is a directory by stat'ing it.
         string parentDir = GetUnixParentDirectory(sourcePath);
@@ -228,40 +277,93 @@ public class SftpService(
 
         if (!isDir)
         {
-            // Single file: download to memory, re-upload to destination.
-            using var buffer = new MemoryStream();
-            string fileName = GetUnixFileName(sourcePath);
-            var stopwatch = Stopwatch.StartNew();
-            RemoteFileInfo info = MapToRemoteFileInfo(
-                entry ?? throw new FileNotFoundException($"Remote file not found: {sourcePath}"),
-                identities);
-            long totalBytes = info.Size;
-
-            // Download to memory
-            client.DownloadFile(sourcePath, buffer);
-            buffer.Position = 0;
-
-            // Report progress then upload
-            ReportProgress(progress, fileName, totalBytes, totalBytes, stopwatch);
-            (long uploadBps, _, _) = await GetTransferTuningAsync().ConfigureAwait(false);
-            Stream uploadStream = uploadBps > 0
-                ? new ThrottledStream(buffer, uploadBps)
-                : buffer;
-            await using (uploadStream.ConfigureAwait(false))
-            {
-                await client.UploadAsync(uploadStream, destPath, null, cancellationToken).ConfigureAwait(false);
-            }
+            await CopySingleFileAsync(sessionId, sourcePath, destPath, progress, cancellationToken)
+                .ConfigureAwait(false);
         }
         else
         {
-            // Directory: create destination, then copy each child recursively.
-            await EnsureDirectoryAsync(sessionId, destPath, cancellationToken).ConfigureAwait(false);
-            IEnumerable<SftpEntry> children = client.ListDirectory(sourcePath);
-            foreach (SftpEntry child in children.Where(c => c.Name is not "." and not ".."))
+            await CopyDirectoryAsync(sessionId, sourcePath, destPath, new HashSet<string>(StringComparer.Ordinal), 0, progress, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Copies a single remote file via a temporary local file, never buffering the whole
+    /// file in memory. Reuses DownloadFileAsync/UploadFileAsync for throttling and cancellation.
+    /// </summary>
+    private async Task CopySingleFileAsync(
+        Guid sessionId,
+        string sourcePath,
+        string destPath,
+        IProgress<TransferProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "VelaShell", "copy");
+        Directory.CreateDirectory(tempDir);
+        string tempPath = Path.Combine(tempDir, Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            // Download remote → temp
+            await DownloadFileAsync(sessionId, sourcePath, tempPath, progress, cancellationToken)
+                .ConfigureAwait(false);
+
+            // Upload temp → remote destination
+            await UploadFileAsync(sessionId, tempPath, destPath, progress, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            try { File.Delete(tempPath); } catch { /* best effort */ }
+        }
+    }
+
+    /// <summary>
+    /// Recursively copies a remote directory, with cycle detection via a visited-path set
+    /// and a depth cap to prevent stack overflow from symlink loops.
+    /// </summary>
+    private async Task CopyDirectoryAsync(
+        Guid sessionId,
+        string sourcePath,
+        string destPath,
+        HashSet<string> visited,
+        int depth,
+        IProgress<TransferProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        const int maxDepth = 64;
+        if (depth > maxDepth)
+        {
+            throw new InvalidOperationException($"Copy depth exceeded {maxDepth} levels — possible symlink cycle at {sourcePath}");
+        }
+
+        string canonical = sourcePath.TrimEnd('/');
+        if (!visited.Add(canonical))
+        {
+            throw new InvalidOperationException($"Cycle detected copying {sourcePath} — a directory contains a link to itself.");
+        }
+
+        ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        await EnsureDirectoryAsync(sessionId, destPath, cancellationToken).ConfigureAwait(false);
+
+        IEnumerable<SftpEntry> children = await client.ListDirectoryAsync(sourcePath, cancellationToken).ConfigureAwait(false);
+        foreach (SftpEntry child in children)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (child.Name is "." or "..") continue;
+
+            string childSource = CombineUnixPath(sourcePath, child.Name);
+            string childDest = CombineUnixPath(destPath, child.Name);
+
+            if (child.IsDirectory)
             {
-                string childSource = CombineUnixPath(sourcePath, child.Name);
-                string childDest = CombineUnixPath(destPath, child.Name);
-                await CopyAsync(sessionId, childSource, childDest, progress, cancellationToken).ConfigureAwait(false);
+                await CopyDirectoryAsync(sessionId, childSource, childDest, visited, depth + 1, progress, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                await CopySingleFileAsync(sessionId, childSource, childDest, progress, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
     }

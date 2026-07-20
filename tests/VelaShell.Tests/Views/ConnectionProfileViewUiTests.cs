@@ -34,14 +34,14 @@ public sealed class ConnectionProfileViewUiTests
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            List<Button> protocolButtons = window.GetVisualDescendants()
+            var protocolButtons = window.GetVisualDescendants()
                 .OfType<Button>()
                 .Where(button => button.Classes.Contains("proto-tab"))
                 .ToList();
             Assert.HasCount(2, protocolButtons);
             Assert.IsTrue(protocolButtons.All(button => button.IsTabStop));
 
-            List<Border> legacyProtocols = window.GetVisualDescendants()
+            var legacyProtocols = window.GetVisualDescendants()
                 .OfType<Border>()
                 .Where(border => border.Classes.Contains("proto-tab"))
                 .ToList();

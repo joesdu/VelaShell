@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Reactive;
 using ReactiveUI;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 
 namespace VelaShell.ViewModels;
 
@@ -14,11 +15,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
     private readonly BatchObservableCollection<LocalFileEntry> _entries = [];
     private readonly ObservableCollection<LocalRootEntry> _roots = [];
     private readonly CancellationTokenSource _lifetime = new();
-    private string _currentPath = string.Empty;
     private long _navigationVersion;
-    private bool _isDirectoryLoading;
-    private string? _errorMessage;
-    private LocalRootEntry? _selectedRoot;
     private bool _isSwitchingRoot;
 
     /// <summary>Creates a local pane using the configured transfer download directory.</summary>
@@ -45,8 +42,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
         RefreshRootsCommand = ReactiveCommand.CreateFromTask(() => RefreshRootsAsync(_lifetime.Token));
         DeleteItemCommand = ReactiveCommand.CreateFromTask<LocalFileEntry>(entry => DeleteItemAsync(entry, _lifetime.Token));
         DeleteSelectedCommand = ReactiveCommand.CreateFromTask(() => DeleteSelectedAsync(_lifetime.Token));
-        UploadSelectedCommand = ReactiveCommand.CreateFromTask(
-            () => UploadSelectedAsync?.Invoke() ?? Task.CompletedTask);
+        UploadSelectedCommand = ReactiveCommand.CreateFromTask(() => UploadSelectedAsync?.Invoke() ?? Task.CompletedTask);
         RenameCommand = ReactiveCommand.CreateFromTask<LocalFileEntry>(entry => RenameAsync(entry, _lifetime.Token));
         NewFolderCommand = ReactiveCommand.CreateFromTask(() => NewFolderAsync(_lifetime.Token));
         OpenItemCommand = ReactiveCommand.CreateFromTask<LocalFileEntry>(entry => OpenItemAsync(entry, _lifetime.Token));
@@ -62,8 +58,8 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
     /// <summary>The root containing the current path, selected by longest prefix.</summary>
     public LocalRootEntry? SelectedRoot
     {
-        get => _selectedRoot;
-        private set => this.RaiseAndSetIfChanged(ref _selectedRoot, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>Selected rows used by the host for multi-item operations.</summary>
@@ -126,19 +122,19 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
     /// <summary>The canonical directory currently listed.</summary>
     public string CurrentPath
     {
-        get => _currentPath;
+        get;
         private set
         {
-            if (_currentPath == value)
+            if (field == value)
             {
                 return;
             }
-            this.RaiseAndSetIfChanged(ref _currentPath, value);
+            this.RaiseAndSetIfChanged(ref field, value);
             this.RaisePropertyChanged(nameof(Breadcrumbs));
             this.RaisePropertyChanged(nameof(RootBreadcrumbLabel));
             this.RaisePropertyChanged(nameof(RootBreadcrumbPath));
         }
-    }
+    } = string.Empty;
 
     /// <summary>Clickable breadcrumb segments for the current path, deepest last. Root is handled by RootBreadcrumbLabel.</summary>
     public IReadOnlyList<LocalBreadcrumbSegment> Breadcrumbs
@@ -197,20 +193,20 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
     public string RootBreadcrumbPath => RootBreadcrumbLabel;
 
     /// <summary>OS path separator character for breadcrumb display.</summary>
-    public string PathSeparator => Path.DirectorySeparatorChar.ToString();
+    public static string PathSeparator => Path.DirectorySeparatorChar.ToString();
 
     /// <summary>Whether a directory listing is in progress.</summary>
     public bool IsDirectoryLoading
     {
-        get => _isDirectoryLoading;
-        private set => this.RaiseAndSetIfChanged(ref _isDirectoryLoading, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>The most recent listing or deletion error.</summary>
     public string? ErrorMessage
     {
-        get => _errorMessage;
-        private set => this.RaiseAndSetIfChanged(ref _errorMessage, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     /// <summary>The active sort column.</summary>
@@ -311,7 +307,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
             }
 
             bool changed = !string.Equals(CurrentPath, canonical, PathComparison);
-            HashSet<string> selected = SelectedEntries
+            var selected = SelectedEntries
                 .Where(entry => !entry.IsParentEntry)
                 .Select(entry => entry.FullPath)
                 .ToHashSet(PathComparisonComparer);
@@ -642,18 +638,17 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
         {
             return;
         }
-        string target = Path.Combine(ParentOf(entry.FullPath), newName.Trim());
+        string trimmedName = newName.Trim();
+        if (!LocalPathSafety.IsSafeLeafName(trimmedName))
+        {
+            ErrorMessage = Strings.Get("KeySvc_InvalidName");
+            return;
+        }
+        string target = Path.Combine(ParentOf(entry.FullPath), trimmedName);
         try
         {
             ErrorMessage = null;
-            if (entry.IsDirectory)
-            {
-                Directory.Move(entry.FullPath, target);
-            }
-            else
-            {
-                File.Move(entry.FullPath, target);
-            }
+            await _fileSystem.MoveAsync(entry.FullPath, target, cancellationToken);
             await RefreshAsync(cancellationToken);
         }
         catch (Exception ex)
@@ -673,11 +668,17 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
         {
             return;
         }
-        string target = Path.Combine(CurrentPath, name.Trim());
+        string trimmedName = name.Trim();
+        if (!LocalPathSafety.IsSafeLeafName(trimmedName))
+        {
+            ErrorMessage = Strings.Get("KeySvc_InvalidName");
+            return;
+        }
+        string target = Path.Combine(CurrentPath, trimmedName);
         try
         {
             ErrorMessage = null;
-            Directory.CreateDirectory(target);
+            await _fileSystem.CreateDirectoryAsync(target, cancellationToken);
             await RefreshAsync(cancellationToken);
         }
         catch (Exception ex)

@@ -22,7 +22,7 @@ public sealed class LocalFilePaneViewModelTests
     [TestMethod]
     public void ParentEntry_ExposesOnlyParentIconState()
     {
-        LocalFileEntry parent = LocalFileEntry.CreateParent(Path.GetTempPath());
+        var parent = LocalFileEntry.CreateParent(Path.GetTempPath());
         LocalFileEntry folder = new("folder", Path.Combine(Path.GetTempPath(), "folder"), true, 0, DateTime.UtcNow);
         LocalFileEntry file = new("file.txt", Path.Combine(Path.GetTempPath(), "file.txt"), false, 1, DateTime.UtcNow);
 

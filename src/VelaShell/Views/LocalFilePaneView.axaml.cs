@@ -1,11 +1,11 @@
+using System.Reactive.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Input.Platform;
-using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
-using System.Reactive.Linq;
+using Avalonia.VisualTree;
 using VelaShell.Core.Resources;
+using VelaShell.Core.Sftp;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
@@ -13,9 +13,6 @@ namespace VelaShell.Views;
 /// <summary>Local file pane view with breadcrumbs, context menu, and cross-pane drag-drop.</summary>
 public partial class LocalFilePaneView : UserControl
 {
-    private const string RemoteDragMarker = "VFTP|";
-    private const string LocalDragMarker = "VFTPL|";
-
     // Drag state
     private bool _isDragging;
     private Point _dragOrigin;
@@ -178,7 +175,7 @@ public partial class LocalFilePaneView : UserControl
 
         var data = new DataTransfer();
         var dragItem = new DataTransferItem();
-        dragItem.SetText(LocalDragMarker + string.Join("\n", paths));
+        dragItem.SetText(DragDropFormats.LocalPaths + string.Join("\n", paths));
         data.Add(dragItem);
 
         await DragDrop.DoDragDropAsync(pointerArgs, data, DragDropEffects.Copy);
@@ -193,7 +190,7 @@ public partial class LocalFilePaneView : UserControl
     private void OnLocalDropDragOver(object? sender, DragEventArgs e)
     {
         bool isRemoteDrag = !string.IsNullOrEmpty(e.DataTransfer.TryGetText())
-            && e.DataTransfer.TryGetText()!.StartsWith(RemoteDragMarker);
+            && e.DataTransfer.TryGetText()!.StartsWith(DragDropFormats.RemotePaths);
         bool hasFiles = e.DataTransfer.TryGetFiles()?.Length > 0;
         e.DragEffects = (isRemoteDrag || hasFiles) ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
@@ -203,40 +200,36 @@ public partial class LocalFilePaneView : UserControl
     {
         // Check for cross-pane remote file drag first (VFTP marker).
         string? text = e.DataTransfer.TryGetText();
-        if (!string.IsNullOrEmpty(text) && text.StartsWith(RemoteDragMarker))
+        if (!string.IsNullOrEmpty(text) && text.StartsWith(DragDropFormats.RemotePaths))
         {
-            string[] remotePaths = text[RemoteDragMarker.Length..].Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            string[] remotePaths = text[DragDropFormats.RemotePaths.Length..].Split('\n', StringSplitOptions.RemoveEmptyEntries);
             if (remotePaths.Length == 0) return;
 
-        SftpDocumentViewModel? sftpVm = (this.Parent as Control)?.DataContext as SftpDocumentViewModel
-            ?? (this.Parent?.Parent as Control)?.DataContext as SftpDocumentViewModel;
-        if (sftpVm is null) return;
+            // Use visual-tree ancestor lookup instead of fragile Parent.Parent chain.
+            var sftpVm = this.FindAncestorOfType<SftpDocumentView>()?.DataContext as SftpDocumentViewModel;
+            if (sftpVm is null) return;
 
-        // Select matching remote entries for download.
-        sftpVm.RemoteFiles.SelectedFiles.Clear();
-        foreach (string path in remotePaths)
-        {
-            RemoteFileInfoViewModel? entry = sftpVm.RemoteFiles.Files
-                .FirstOrDefault(f => f.FullPath == path);
-            if (entry is not null && !entry.IsParentEntry)
-                sftpVm.RemoteFiles.SelectedFiles.Add(entry);
-        }
+            // Resolve remote entries from paths without mutating the remote selection.
+            RemoteFileInfoViewModel[] entries = remotePaths
+                .Select(p => sftpVm.RemoteFiles.Files.FirstOrDefault(f => f.FullPath == p))
+                .Where(e => e is not null && !e.IsParentEntry)
+                .ToArray()!;
 
-        if (sftpVm.RemoteFiles.SelectedFiles.Count > 0)
-        {
-            try
+            if (entries.Length > 0)
             {
-                await sftpVm.DownloadSelectedAsync();
-                await sftpVm.LocalFiles.RefreshAsync();
+                try
+                {
+                    await sftpVm.RemoteFiles.DownloadRemoteEntriesAsync(entries, sftpVm.LocalFiles.CurrentPath);
+                    await sftpVm.LocalFiles.RefreshAsync();
+                }
+                catch (FileNotFoundException)
+                {
+                    // File may have been deleted between listing and download; refresh remote listing.
+                    sftpVm.RemoteFiles.RefreshCommand.Execute().Subscribe();
+                }
             }
-            catch (FileNotFoundException)
-            {
-                // File may have been deleted between listing and download; refresh remote listing.
-                sftpVm.RemoteFiles.RefreshCommand.Execute().Subscribe();
-            }
-        }
-        e.Handled = true;
-        return;
+            e.Handled = true;
+            return;
         }
 
         // Also support OS file drops onto local pane (just refresh).

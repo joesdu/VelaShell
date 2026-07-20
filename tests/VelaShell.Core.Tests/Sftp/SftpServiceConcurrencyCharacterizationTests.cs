@@ -13,7 +13,7 @@ public sealed class SftpServiceConcurrencyCharacterizationTests
     public async Task ListDirectoryAsync_WhenCalledConcurrently_AllowsLegacyCallsToOverlap()
     {
         // Given
-        Guid sessionId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
         ISshConnectionService connection = Substitute.For<ISshConnectionService>();
         ISftpClientWrapper client = Substitute.For<ISftpClientWrapper>();
         client.IsConnected.Returns(true);

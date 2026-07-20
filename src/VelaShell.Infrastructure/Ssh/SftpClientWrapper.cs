@@ -168,6 +168,58 @@ public sealed class SftpClientWrapper(SftpClient client) : ISftpClientWrapper
         Guarded(() => _client.ChangePermissions(path, mode));
     }
 
+    /// <summary>Opens a remote file for read or write with the given mode and access.</summary>
+    public Stream Open(string path, FileMode mode, FileAccess access)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return Guarded(() => _client.Open(path, mode, access));
+    }
+
+    /// <summary>Gets the size in bytes of a remote file, or -1 if it does not exist.</summary>
+    public long GetFileSize(string path)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        try
+        {
+            SftpFileAttributes attrs = Guarded(() => _client.GetAttributes(path));
+            return attrs?.Size ?? -1;
+        }
+        catch (SshClientException)
+        {
+            return -1;
+        }
+    }
+
+    /// <summary>
+    /// Uploads a stream to a remote path starting from <paramref name="resumeOffset"/>.
+    /// Opens the remote file with FileMode.Append when resumeOffset > 0.
+    /// </summary>
+    public Task UploadAsync(Stream input, string path, long resumeOffset, Action<ulong>? uploadCallback = null, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return Task.Run(() => Guarded(() =>
+        {
+            using Stream remote = resumeOffset > 0
+                ? _client.Open(path, FileMode.Append, FileAccess.Write)
+                : _client.Create(path);
+            // Seek the input to the resume offset so we only transfer the tail.
+            if (resumeOffset > 0)
+            {
+                input.Seek(resumeOffset, SeekOrigin.Begin);
+            }
+            // Copy with progress reporting.
+            byte[] buffer = new byte[32 * 1024];
+            long totalRead = 0;
+            int bytesRead;
+            while ((bytesRead = input.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                remote.Write(buffer, 0, bytesRead);
+                totalRead += bytesRead;
+                uploadCallback?.Invoke((ulong)(resumeOffset + totalRead));
+            }
+        }), cancellationToken);
+    }
+
     /// <summary>释放包装器并关闭底层 SFTP 客户端。</summary>
     public void Dispose() => Dispose(true);
 

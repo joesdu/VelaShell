@@ -773,6 +773,10 @@ public class MainWindowViewModel : ReactiveObject
         UpdateStatusBarForActiveTab();
     }
 
+    /// <summary>Creates a blank placeholder FileBrowserViewModel for hiding the bottom panel.</summary>
+    private FileBrowserViewModel CreatePlaceholderFileBrowser() =>
+        new(_sftpService, Guid.Empty) { TransferSink = FileTransfer };
+
     /// <summary>
     /// Points the SFTP file browser at the active tab's session (#22). Each connected tab gets
     /// a browser rooted at its own session; without a connected session the panel shows empty.
@@ -800,7 +804,7 @@ public class MainWindowViewModel : ReactiveObject
         {
             if (FileBrowser.SessionId != Guid.Empty || FileBrowser.IsVisible)
             {
-                FileBrowser = new(_sftpService, Guid.Empty) { TransferSink = FileTransfer };
+                FileBrowser = CreatePlaceholderFileBrowser();
             }
             return;
         }
@@ -2776,7 +2780,7 @@ public class MainWindowViewModel : ReactiveObject
             // the terminal's browser stays in _fileBrowserCache with its true IsVisible state.
             if (FileBrowser.SessionId != Guid.Empty || FileBrowser.IsVisible)
             {
-                FileBrowser = new(_sftpService, Guid.Empty) { TransferSink = FileTransfer };
+                FileBrowser = CreatePlaceholderFileBrowser();
             }
             return;
         }

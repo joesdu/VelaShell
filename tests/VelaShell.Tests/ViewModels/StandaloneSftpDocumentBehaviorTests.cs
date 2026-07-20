@@ -1,6 +1,6 @@
 using System.ComponentModel;
-using System.Reflection;
 using System.Reactive.Linq;
+using System.Reflection;
 using Avalonia.Headless;
 using Avalonia.Threading;
 using NSubstitute;
@@ -266,7 +266,7 @@ public sealed class StandaloneSftpDocumentBehaviorTests
             await _session.Dispatch(async () =>
             {
                 int uiThread = Environment.CurrentManagedThreadId;
-                Task invocation = Task.Run(() => (Task)closeMethod.Invoke(vm, [document])!);
+                var invocation = Task.Run(() => (Task)closeMethod.Invoke(vm, [document])!);
                 await closeStarted.Task;
                 await Task.Run(releaseClose.SetResult);
                 await invocation;
@@ -327,7 +327,7 @@ public sealed class StandaloneSftpDocumentBehaviorTests
         await _session.Dispatch(async () =>
         {
             int uiThread = Environment.CurrentManagedThreadId;
-            Task invocation = Task.Run(() => (Task)closeMethod.Invoke(vm, [document])!);
+            var invocation = Task.Run(() => (Task)closeMethod.Invoke(vm, [document])!);
             await closeStarted.Task;
             await Task.Run(releaseClose.SetResult);
             await invocation;

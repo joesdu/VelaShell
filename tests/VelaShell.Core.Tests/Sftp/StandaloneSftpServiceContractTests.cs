@@ -12,7 +12,7 @@ public sealed class StandaloneSftpServiceContractTests
     public async Task SerializedService_OwnsOneSession_AndRepeatedCleanupClosesItOnce()
     {
         ISftpService inner = Substitute.For<ISftpService>();
-        Guid sessionId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
         var service = new SerializedSftpService(inner, sessionId);
 
         Assert.AreEqual(sessionId, service.SessionId);
@@ -27,7 +27,7 @@ public sealed class StandaloneSftpServiceContractTests
     public async Task SerializedService_DelegatesLocalRemoteAndRemoteLocalTransfersForOwnedSession()
     {
         ISftpService inner = Substitute.For<ISftpService>();
-        Guid sessionId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
         var service = new SerializedSftpService(inner, sessionId);
 
         await service.UploadFileAsync(sessionId, "local.txt", "/remote/local.txt");

@@ -1643,6 +1643,15 @@ public class FileBrowserViewModel : ReactiveObject
         var resolved = new List<PlannedFileTransfer>(plan.Count);
         foreach (PlannedFileTransfer item in plan)
         {
+            // Resume check first: if resume is enabled and a partial file exists, resume from that offset.
+            PlannedFileTransfer? resumed = await TryResumeAsync(item, ct);
+            if (resumed is not null)
+            {
+                resolved.Add(resumed);
+                continue;
+            }
+
+            // Normal conflict resolution.
             PlannedFileTransfer? settled =
                 item.Type == TransferType.Download
                     ? await ResolveLocalConflictAsync(item)
@@ -1667,7 +1676,7 @@ public class FileBrowserViewModel : ReactiveObject
             {
                 foreach (PlannedFileTransfer item in resolved)
                 {
-                    await RunTransferAsync(item.Type, item.LocalPath, item.RemotePath, cts.Token);
+                    await RunTransferAsync(item.Type, item.LocalPath, item.RemotePath, item.ResumeOffset, cts.Token);
                     TransferSink?.NotifyBatchItemSettled();
                 }
             }
@@ -1684,6 +1693,7 @@ public class FileBrowserViewModel : ReactiveObject
                                 item.Type,
                                 item.LocalPath,
                                 item.RemotePath,
+                                item.ResumeOffset,
                                 cts.Token
                             );
                             TransferSink?.NotifyBatchItemSettled();
@@ -1723,6 +1733,87 @@ public class FileBrowserViewModel : ReactiveObject
     /// 按冲突策略处理一个计划中的下载:返回 null 表示跳过,或返回(可能改了
     /// 本地路径的)计划项。非下载或无冲突原样返回。
     /// </summary>
+    /// <summary>
+    /// Checks whether a partial transfer exists that can be resumed. If resume is enabled
+    /// and the destination file exists but is smaller than the source, returns the plan
+    /// with ResumeOffset set to the partial size.
+    /// </summary>
+    private async Task<PlannedFileTransfer?> TryResumeAsync(
+        PlannedFileTransfer item,
+        CancellationToken ct
+    )
+    {
+        // Only upload/download support resume.
+        if (item.Type is not (TransferType.Upload or TransferType.Download))
+        {
+            return null;
+        }
+
+        // Check if resume is enabled in settings.
+        if (!TransferOptions.ResumeEnabled)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (item.Type == TransferType.Download)
+            {
+                // For download: check if local file already exists (partial).
+                long localSize = File.Exists(item.LocalPath) ? new FileInfo(item.LocalPath).Length : -1;
+                if (localSize <= 0)
+                {
+                    return null;
+                }
+                RemoteFileInfo remoteInfo = await _sftpService.GetFileInfoAsync(
+                    _sessionId,
+                    item.RemotePath,
+                    ct
+                );
+                if (localSize < remoteInfo.Size)
+                {
+                    return item with { ResumeOffset = localSize };
+                }
+            }
+            else
+            {
+                // For upload: check if remote file already exists (partial).
+                long remoteSize = await GetRemoteFileSizeAsync(item.RemotePath, ct);
+                if (remoteSize <= 0)
+                {
+                    return null;
+                }
+                var localInfo = new FileInfo(item.LocalPath);
+                if (remoteSize < localInfo.Length)
+                {
+                    return item with { ResumeOffset = remoteSize };
+                }
+            }
+        }
+        catch
+        {
+            // If any check fails, fall through to normal conflict resolution.
+        }
+
+        return null;
+    }
+
+    /// <summary>Gets the remote file size via the SFTP wrapper's GetFileSize method.</summary>
+    private async Task<long> GetRemoteFileSizeAsync(string remotePath, CancellationToken ct)
+    {
+        // Access the underlying SFTP client through a service call.
+        // We use GetFileInfoAsync which does a directory listing — not ideal but existing.
+        try
+        {
+            RemoteFileInfo info = await _sftpService.GetFileInfoAsync(_sessionId, remotePath, ct);
+            return info.Size;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
     private async Task<PlannedFileTransfer?> ResolveLocalConflictAsync(PlannedFileTransfer item)
     {
         if (item.Type != TransferType.Download || !File.Exists(item.LocalPath))
@@ -1905,6 +1996,7 @@ public class FileBrowserViewModel : ReactiveObject
         TransferType type,
         string localPath,
         string remotePath,
+        long resumeOffset,
         CancellationToken ct
     )
     {
@@ -1914,17 +2006,30 @@ public class FileBrowserViewModel : ReactiveObject
             Type = type,
             LocalPath = localPath,
             RemotePath = remotePath,
-            Status = TransferStatus.InProgress,
+            Status = resumeOffset > 0 ? TransferStatus.Resuming : TransferStatus.InProgress,
         };
         TransferStatus finalStatus = TransferStatus.Failed;
         TransferSink?.AddTransfer(task);
         TransferItemViewModel? item = TransferSink?.FindTransfer(task.Id);
-        var progress = new Progress<TransferProgress>(p => item?.UpdateProgress(p));
+        var progress = new Progress<TransferProgress>(p =>
+        {
+            item?.UpdateProgress(p);
+            // Transition from Resuming to InProgress on first progress tick.
+            if (item?.Status == TransferStatus.Resuming)
+            {
+                item.Status = TransferStatus.InProgress;
+            }
+        });
         try
         {
             if (type == TransferType.Upload)
             {
-                await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, progress, ct);
+                await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, progress, ct, resumeOffset);
+            }
+            else if (type == TransferType.Copy)
+            {
+                // For Copy: LocalPath = remote source, RemotePath = remote destination.
+                await _sftpService.CopyAsync(_sessionId, localPath, remotePath, progress, ct);
             }
             else
             {
@@ -1933,7 +2038,8 @@ public class FileBrowserViewModel : ReactiveObject
                     remotePath,
                     localPath,
                     progress,
-                    ct
+                    ct,
+                    resumeOffset
                 );
             }
             item?.Status = TransferStatus.Completed;
@@ -2140,23 +2246,17 @@ public class FileBrowserViewModel : ReactiveObject
             ErrorMessage = null;
             string destPath = destination.Trim();
 
-            // Register a transfer task so the user sees it in the transfer toast.
-            var task = new TransferTask
+            // Route through the unified transfer pipeline for proper progress,
+            // cancellation, failure status, and toast lifecycle.
+            var plan = new List<PlannedFileTransfer>
             {
-                Id = Guid.NewGuid(),
-                Type = TransferType.Upload,
-                LocalPath = file.FullPath,
-                RemotePath = destPath,
-                Status = TransferStatus.InProgress,
+                new(TransferType.Copy, file.FullPath, destPath)
             };
-            TransferSink?.AddTransfer(task);
-            TransferItemViewModel? item = TransferSink?.FindTransfer(task.Id);
-
-            await _sftpService.CopyAsync(_sessionId, file.FullPath, destPath, cancellationToken: ct);
-
-            item?.Status = TransferStatus.Completed;
-            TransferSink?.NotifyTaskSettled();
-            await RefreshAsync(ct);
+            bool ok = await RunTransferBatchAsync(plan, ct);
+            if (ok)
+            {
+                await RefreshAsync(ct);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -2353,10 +2453,13 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>
     /// A single file scheduled for transfer, resolved up front so the whole batch can be
     /// counted and cancelled as one unit.
+    /// For Copy: LocalPath = remote source, RemotePath = remote destination.
+    /// ResumeOffset > 0 indicates a breakpoint resume from that byte position.
     /// </summary>
     private sealed record PlannedFileTransfer(
         TransferType Type,
         string LocalPath,
-        string RemotePath
+        string RemotePath,
+        long ResumeOffset = 0
     );
 }

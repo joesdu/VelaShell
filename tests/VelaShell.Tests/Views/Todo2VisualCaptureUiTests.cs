@@ -1,27 +1,26 @@
-using System.Globalization;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using System.Runtime.InteropServices;
-using System.Reflection;
+using System.Globalization;
 using System.Reactive.Linq;
+using System.Reflection;
 using System.Runtime.ExceptionServices;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
-using Avalonia.Media.Imaging;
-using Avalonia.Media;
 using Avalonia.Logging;
-using Avalonia.Platform;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using NSubstitute;
-using VelaShell.Core.Models;
-using VelaShell.Core.Localization;
 using VelaShell.Core.Data;
+using VelaShell.Core.Localization;
+using VelaShell.Core.Models;
 using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;
 using VelaShell.Docking;
@@ -30,9 +29,9 @@ using VelaShell.Localization;
 using VelaShell.Presentation.Services;
 using VelaShell.Presentation.ViewModels;
 using VelaShell.Security;
+using VelaShell.Terminal;
 using VelaShell.ViewModels;
 using VelaShell.Views;
-using VelaShell.Terminal;
 
 namespace VelaShell.Tests.Views;
 
@@ -113,7 +112,7 @@ public sealed class Todo2VisualCaptureUiTests
     public async Task OpenSftp_RendersStandaloneDualPane()
     {
         var completed = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await OnUiAsync((Func<Task>)(async () =>
+        await OnUiAsync(async () =>
         {
             ThemeVariant previousTheme = Application.Current!.RequestedThemeVariant;
             Exception? error = null;
@@ -131,7 +130,7 @@ public sealed class Todo2VisualCaptureUiTests
                 Application.Current.RequestedThemeVariant = previousTheme;
                 completed.TrySetResult(error);
             }
-        }));
+        });
         Exception? error = await completed.Task;
         if (error is not null)
         {
@@ -347,7 +346,7 @@ public sealed class Todo2VisualCaptureUiTests
         CultureInfo previousUiCulture = CultureInfo.CurrentUICulture;
         try
         {
-            CultureInfo culture = CultureInfo.GetCultureInfo(cultureName);
+            var culture = CultureInfo.GetCultureInfo(cultureName);
             CultureInfo.CurrentCulture = culture;
             CultureInfo.CurrentUICulture = culture;
             Application.Current.RequestedThemeVariant = theme;
@@ -366,13 +365,13 @@ public sealed class Todo2VisualCaptureUiTests
             Dispatcher.UIThread.RunJobs();
             window.UpdateLayout();
 
-            List<Button> protocolButtons = window.GetVisualDescendants()
+            var protocolButtons = window.GetVisualDescendants()
                 .OfType<Button>()
                 .Where(button => button.Classes.Contains("proto-tab"))
                 .ToList();
             Assert.HasCount(2, protocolButtons);
             Assert.IsTrue(protocolButtons.All(button => button.IsTabStop));
-            List<Border> disabledProtocols = window.GetVisualDescendants()
+            var disabledProtocols = window.GetVisualDescendants()
                 .OfType<Border>()
                 .Where(border => border.Classes.Contains("proto-tab"))
                 .ToList();
@@ -490,7 +489,7 @@ public sealed class Todo2VisualCaptureUiTests
         CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
         CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("en-US");
         _localization.SetLanguage("en-US");
-        var repository = Substitute.For<ISessionRepository>();
+        ISessionRepository repository = Substitute.For<ISessionRepository>();
         var profile = new SessionProfile
         {
             ConnectionType = connectionType,
@@ -532,7 +531,7 @@ public sealed class Todo2VisualCaptureUiTests
         Assert.IsTrue(openSftpRaised);
         Assert.IsTrue(view.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == profile.Name));
 
-        ContextMenu menu = (ContextMenu)sessionRow.ContextMenu!;
+        ContextMenu menu = sessionRow.ContextMenu!;
         MenuItem openSftp = menu.Items.OfType<MenuItem>().Single(item =>
             item.Header?.ToString() == VelaShell.Core.Resources.Strings.Get("Tree_OpenSftp"));
         MenuItem portForward = menu.Items.OfType<MenuItem>().Single(item =>
@@ -687,8 +686,8 @@ public sealed class Todo2VisualCaptureUiTests
                 BorderThickness = ReadProperty(visual, "BorderThickness"),
             })
             .ToList();
-        TopLevel? topLevel = TopLevel.GetTopLevel(button);
-        AdornerLayer? adornerLayer = AdornerLayer.GetAdornerLayer(button);
+        var topLevel = TopLevel.GetTopLevel(button);
+        var adornerLayer = AdornerLayer.GetAdornerLayer(button);
         Control? adorner = AdornerLayer.GetAdorner(button);
         var adornerVisuals = topLevel?.GetVisualDescendants()
             .Where(visual => visual.GetType().FullName?.Contains("Adorner", StringComparison.OrdinalIgnoreCase) == true

@@ -39,8 +39,14 @@ public class TransferItemViewModel : ReactiveObject
     /// <summary>从远程路径中提取的文件名,用于列表展示。</summary>
     public string FileName => Path.GetFileName(_task.RemotePath);
 
-    /// <summary>传输方向指示符:上传为 "↑",下载为 "↓"。</summary>
-    public string Direction => _task.Type == TransferType.Upload ? "↑" : "↓";
+    /// <summary>传输方向指示符:上传为 "↑",下载为 "↓",远端复制为 "⧉"。</summary>
+    public string Direction => _task.Type switch
+    {
+        TransferType.Upload => "↑",
+        TransferType.Download => "↓",
+        TransferType.Copy => "⧉",
+        _ => "?"
+    };
 
     /// <summary>传输进度百分比(0-100)。</summary>
     public int Progress
@@ -79,8 +85,8 @@ public class TransferItemViewModel : ReactiveObject
         }
     }
 
-    /// <summary>指示任务是否处于活动状态(进行中或排队中)。</summary>
-    public bool IsActive => _status is TransferStatus.InProgress or TransferStatus.Queued;
+    /// <summary>指示任务是否处于活动状态(进行中或排队中或续传中)。</summary>
+    public bool IsActive => _status is TransferStatus.InProgress or TransferStatus.Queued or TransferStatus.Resuming;
 
     /// <summary>指示任务是否已失败。</summary>
     public bool IsFailed => _status == TransferStatus.Failed;

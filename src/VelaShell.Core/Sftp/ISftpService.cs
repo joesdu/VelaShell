@@ -26,10 +26,10 @@ public interface ISftpService : IAsyncDisposable
     Task<List<RemoteFileInfo>> ListDirectoryAsync(Guid sessionId, string path, CancellationToken cancellationToken = default);
 
     /// <summary>Uploads a local file to the given remote path, reporting transfer progress.</summary>
-    Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default);
+    Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0);
 
     /// <summary>Downloads a remote file to the given local path, reporting transfer progress.</summary>
-    Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default);
+    Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0);
 
     /// <summary>
     /// Deletes a file, or a directory and its entire contents (recursively). Reports one

@@ -81,7 +81,7 @@ public sealed class SonnetDbPersistenceTests : IDisposable
     [TestMethod]
     public async Task SessionRepository_LegacyDocumentWithoutConnectionType_DefaultsToSsh()
     {
-        Guid profileId = Guid.NewGuid();
+        var profileId = Guid.NewGuid();
         string json = $$"""{"id":"{{profileId}}","name":"legacy","host":"legacy.example.com","username":"ops","authMethod":0}""";
         await _engine.WithCollectionAsync<object?>(SonnetDbEngine.ProfilesCollection, store =>
         {

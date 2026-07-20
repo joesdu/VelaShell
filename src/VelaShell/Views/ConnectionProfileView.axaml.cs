@@ -22,18 +22,18 @@ public partial class ConnectionProfileView : Window
 
     private void ApplyProtoTabFocusAdorner()
     {
-        List<Button> buttons = this.GetVisualDescendants().OfType<Button>()
+        var buttons = this.GetVisualDescendants().OfType<Button>()
             .Where(button => button.Classes.Contains("proto-tab"))
             .ToList();
         foreach (Button button in buttons)
         {
-            AdornerLayer? layer = AdornerLayer.GetAdornerLayer(button);
+            var layer = AdornerLayer.GetAdornerLayer(button);
             if (layer is not null)
             {
                 layer.DefaultFocusAdorner = null;
             }
 
-            List<Control> controls = new[] { button }
+            var controls = new[] { button }
                 .Concat(button.GetVisualDescendants().OfType<Control>())
                 .ToList();
             foreach (Control control in controls)

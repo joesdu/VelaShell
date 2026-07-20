@@ -12,6 +12,7 @@ using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using VelaShell.Controls.Controls;
 using VelaShell.Core.Resources;
+using VelaShell.Core.Sftp;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
@@ -54,8 +55,6 @@ public partial class FileBrowserView : UserControl
     private RemoteFileInfoViewModel? _dragRow;
     private PointerPressedEventArgs? _dragPointerArgs;
     private const double DragThreshold = 5;
-    private const string RemoteDragMarker = "VFTP|";
-    private const string LocalDragMarker = "VFTPL|";
 
     /// <summary>按下拖拽条那一刻的列宽快照(列键 → 像素),拖拽期间按位移量增量应用。</summary>
     private readonly Dictionary<string, double> _startWidths = [];
@@ -387,7 +386,7 @@ public partial class FileBrowserView : UserControl
         // Accept OS file drops OR cross-pane local-file drags (VFTPL text marker).
         IReadOnlyList<string> osPaths = ExtractLocalPaths(e);
         bool isCrossPane = !string.IsNullOrEmpty(e.DataTransfer.TryGetText())
-            && e.DataTransfer.TryGetText()!.StartsWith(LocalDragMarker);
+            && e.DataTransfer.TryGetText()!.StartsWith(DragDropFormats.LocalPaths);
         e.DragEffects = (osPaths.Count > 0 || isCrossPane) ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
@@ -403,9 +402,9 @@ public partial class FileBrowserView : UserControl
         {
             // Check for cross-pane local file drag (VFTPL marker).
             string? text = e.DataTransfer.TryGetText();
-            if (!string.IsNullOrEmpty(text) && text.StartsWith(LocalDragMarker))
+            if (!string.IsNullOrEmpty(text) && text.StartsWith(DragDropFormats.LocalPaths))
             {
-                paths = text[LocalDragMarker.Length..].Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                paths = text[DragDropFormats.LocalPaths.Length..].Split('\n', StringSplitOptions.RemoveEmptyEntries);
             }
         }
         if (paths.Count == 0)
@@ -646,7 +645,7 @@ public partial class FileBrowserView : UserControl
 
         var data = new DataTransfer();
         var dragItem = new DataTransferItem();
-        dragItem.SetText(RemoteDragMarker + string.Join("\n", paths));
+        dragItem.SetText(DragDropFormats.RemotePaths + string.Join("\n", paths));
         data.Add(dragItem);
 
         await DragDrop.DoDragDropAsync(pointerArgs, data, DragDropEffects.Copy);

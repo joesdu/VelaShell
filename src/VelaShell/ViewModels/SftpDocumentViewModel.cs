@@ -12,7 +12,6 @@ public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
     private readonly IConnectionWorkflowService _workflow;
     private readonly SerializedSftpService _serializedSftp;
     private readonly CancellationTokenSource _lifetime = new();
-    private readonly Task _initialLoad;
     private Task? _closeTask;
     private readonly object _closeSync = new();
 
@@ -46,7 +45,7 @@ public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
         DownloadSelectedCommand = ReactiveCommand.CreateFromTask(DownloadSelectedAsync);
         DeleteLocalSelectedCommand = LocalFiles.DeleteSelectedCommand;
         LocalFiles.ConfirmDelete = message => ConfirmLocalDelete?.Invoke(message) ?? Task.FromResult(false);
-        _initialLoad = LoadAsync();
+        InitialLoadTask = LoadAsync();
     }
 
     /// <summary>The session profile used to establish the connection.</summary>
@@ -70,7 +69,7 @@ public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
     /// <summary>Callback for confirming local file deletions.</summary>
     public Func<string, Task<bool>>? ConfirmLocalDelete { get; set; }
 
-    internal Task InitialLoadTask => _initialLoad;
+    internal Task InitialLoadTask { get; }
 
     /// <summary>Uploads selected local files to the remote server.</summary>
     public async Task UploadSelectedAsync(CancellationToken cancellationToken = default)
@@ -134,7 +133,7 @@ public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
         try
         {
             await _serializedSftp.CloseAsync().ConfigureAwait(false);
-            await _initialLoad.ConfigureAwait(false);
+            await InitialLoadTask.ConfigureAwait(false);
         }
         finally
         {

@@ -11,7 +11,6 @@ public sealed class SerializedSftpService : ISftpService
     private readonly ISftpService _inner;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _lifecycleSync = new();
-    private readonly Guid _sessionId;
     private Task? _closeTask;
     private bool _closing;
 
@@ -19,20 +18,20 @@ public sealed class SerializedSftpService : ISftpService
     public SerializedSftpService(ISftpService inner, Guid sessionId)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-        _sessionId = sessionId;
+        SessionId = sessionId;
     }
 
     /// <summary>The only session ID accepted by this document-scoped service.</summary>
-    public Guid SessionId => _sessionId;
+    public Guid SessionId { get; }
 
     /// <summary>Serialized passthrough for listing a remote directory.</summary>
     public Task<List<RemoteFileInfo>> ListDirectoryAsync(Guid sessionId, string path, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.ListDirectoryAsync(sessionId, path, token), cancellationToken);
 
     /// <summary>Serialized passthrough for uploading a file to the remote host.</summary>
-    public Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.UploadFileAsync(sessionId, localPath, remotePath, progress, token), cancellationToken);
+    public Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0) => ExecuteAsync(sessionId, token => _inner.UploadFileAsync(sessionId, localPath, remotePath, progress, token, resumeOffset), cancellationToken);
 
     /// <summary>Serialized passthrough for downloading a file from the remote host.</summary>
-    public Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.DownloadFileAsync(sessionId, remotePath, localPath, progress, token), cancellationToken);
+    public Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0) => ExecuteAsync(sessionId, token => _inner.DownloadFileAsync(sessionId, remotePath, localPath, progress, token, resumeOffset), cancellationToken);
 
     /// <summary>Serialized passthrough for deleting a remote file or directory.</summary>
     public Task DeleteAsync(Guid sessionId, string remotePath, IProgress<SftpDeleteProgress>? progress = null, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.DeleteAsync(sessionId, remotePath, progress, token), cancellationToken);
@@ -127,7 +126,7 @@ public sealed class SerializedSftpService : ISftpService
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await _inner.CloseSessionAsync(_sessionId, CancellationToken.None).ConfigureAwait(false);
+            await _inner.CloseSessionAsync(SessionId, CancellationToken.None).ConfigureAwait(false);
         }
         finally
         {
@@ -137,7 +136,7 @@ public sealed class SerializedSftpService : ISftpService
 
     private void ValidateSession(Guid sessionId)
     {
-        if (sessionId != _sessionId)
+        if (sessionId != SessionId)
         {
             throw new ArgumentException("The SFTP document service is bound to a different session.", nameof(sessionId));
         }

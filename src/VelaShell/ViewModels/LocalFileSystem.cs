@@ -29,6 +29,21 @@ internal interface ILocalFileSystem
     Task DeleteFileAsync(string path, CancellationToken cancellationToken);
 
     Task DeleteDirectoryAsync(string path, CancellationToken cancellationToken);
+
+    /// <summary>Moves (renames) a local file or directory to a new path in the same volume.</summary>
+    Task MoveAsync(string sourcePath, string destPath, CancellationToken cancellationToken);
+
+    /// <summary>Creates a directory at the given path (idempotent).</summary>
+    Task CreateDirectoryAsync(string path, CancellationToken cancellationToken);
+
+    /// <summary>Returns the file size in bytes, or -1 if the path does not exist or is a directory.</summary>
+    Task<long> GetFileSizeAsync(string path, CancellationToken cancellationToken);
+
+    /// <summary>Opens a file for reading.</summary>
+    Task<Stream> OpenReadAsync(string path, CancellationToken cancellationToken);
+
+    /// <summary>Opens a file for writing with the given mode (e.g. Append for resume).</summary>
+    Task<Stream> OpenWriteAsync(string path, FileMode mode, CancellationToken cancellationToken);
 }
 
 /// <summary>Enumerates platform-local roots without coupling the pane to DriveInfo.</summary>
@@ -78,6 +93,63 @@ internal sealed class PhysicalLocalFileSystem : ILocalFileSystem
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 Directory.Delete(path);
+            },
+            cancellationToken
+        );
+
+    public Task MoveAsync(string sourcePath, string destPath, CancellationToken cancellationToken) =>
+        Task.Run(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (Directory.Exists(sourcePath))
+                {
+                    Directory.Move(sourcePath, destPath);
+                }
+                else
+                {
+                    File.Move(sourcePath, destPath);
+                }
+            },
+            cancellationToken
+        );
+
+    public Task CreateDirectoryAsync(string path, CancellationToken cancellationToken) =>
+        Task.Run(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Directory.CreateDirectory(path);
+            },
+            cancellationToken
+        );
+
+    public Task<long> GetFileSizeAsync(string path, CancellationToken cancellationToken) =>
+        Task.Run<long>(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return File.Exists(path) ? new FileInfo(path).Length : -1;
+            },
+            cancellationToken
+        );
+
+    public Task<Stream> OpenReadAsync(string path, CancellationToken cancellationToken) =>
+        Task.Run<Stream>(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            },
+            cancellationToken
+        );
+
+    public Task<Stream> OpenWriteAsync(string path, FileMode mode, CancellationToken cancellationToken) =>
+        Task.Run<Stream>(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return new FileStream(path, mode, FileAccess.Write, FileShare.None);
             },
             cancellationToken
         );
