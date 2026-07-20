@@ -7,6 +7,7 @@ namespace VelaShell.Docking.Controls;
 /// <summary>Terminal-specific tab behavior retained separately from SFTP tabs.</summary>
 public partial class DockTabItem : DockTabItemBase
 {
+    /// <summary>Initializes the terminal-specific tab control.</summary>
     public DockTabItem() => InitializeComponent();
 
     private TerminalTabViewModel? Terminal => (DataContext as Docking.TerminalDocument)?.Terminal;

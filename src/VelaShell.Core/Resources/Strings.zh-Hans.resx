@@ -403,6 +403,12 @@
   <data name="MoveToPrompt" xml:space="preserve">
     <value>移动到（目标完整路径）</value>
   </data>
+  <data name="CopyTo" xml:space="preserve">
+    <value>复制到…</value>
+  </data>
+  <data name="SftpCopyToPrompt" xml:space="preserve">
+    <value>输入复制目标路径</value>
+  </data>
   <data name="CopyFilePath" xml:space="preserve">
     <value>复制文件路径</value>
   </data>

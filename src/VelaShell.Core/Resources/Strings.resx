@@ -311,6 +311,12 @@
   <data name="MoveToPrompt" xml:space="preserve">
     <value>Move to (full destination path)</value>
   </data>
+  <data name="CopyTo" xml:space="preserve">
+    <value>Copy To…</value>
+  </data>
+  <data name="SftpCopyToPrompt" xml:space="preserve">
+    <value>Enter destination path for copy</value>
+  </data>
   <data name="CopyFilePath" xml:space="preserve">
     <value>Copy Path</value>
   </data>

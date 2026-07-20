@@ -206,6 +206,66 @@ public class SftpService(
         }, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Copies a remote file or directory to another path on the same server.
+    /// Files are copied by downloading to a temp buffer then re-uploading; directories are walked
+    /// recursively. Reports progress per file transferred.
+    /// </summary>
+    public async Task CopyAsync(Guid sessionId,
+        string sourcePath,
+        string destPath,
+        IProgress<TransferProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        var identities = await _identities.GetAsync(sessionId).ConfigureAwait(false);
+
+        // Determine if source is a directory by stat'ing it.
+        string parentDir = GetUnixParentDirectory(sourcePath);
+        string name = GetUnixFileName(sourcePath);
+        SftpEntry? entry = client.ListDirectory(parentDir).FirstOrDefault(f => f.Name == name);
+        bool isDir = entry is { IsDirectory: true };
+
+        if (!isDir)
+        {
+            // Single file: download to memory, re-upload to destination.
+            using var buffer = new MemoryStream();
+            string fileName = GetUnixFileName(sourcePath);
+            var stopwatch = Stopwatch.StartNew();
+            RemoteFileInfo info = MapToRemoteFileInfo(
+                entry ?? throw new FileNotFoundException($"Remote file not found: {sourcePath}"),
+                identities);
+            long totalBytes = info.Size;
+
+            // Download to memory
+            client.DownloadFile(sourcePath, buffer);
+            buffer.Position = 0;
+
+            // Report progress then upload
+            ReportProgress(progress, fileName, totalBytes, totalBytes, stopwatch);
+            (long uploadBps, _, _) = await GetTransferTuningAsync().ConfigureAwait(false);
+            Stream uploadStream = uploadBps > 0
+                ? new ThrottledStream(buffer, uploadBps)
+                : buffer;
+            await using (uploadStream.ConfigureAwait(false))
+            {
+                await client.UploadAsync(uploadStream, destPath, null, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        else
+        {
+            // Directory: create destination, then copy each child recursively.
+            await EnsureDirectoryAsync(sessionId, destPath, cancellationToken).ConfigureAwait(false);
+            IEnumerable<SftpEntry> children = client.ListDirectory(sourcePath);
+            foreach (SftpEntry child in children.Where(c => c.Name is not "." and not ".."))
+            {
+                string childSource = CombineUnixPath(sourcePath, child.Name);
+                string childDest = CombineUnixPath(destPath, child.Name);
+                await CopyAsync(sessionId, childSource, childDest, progress, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
     /// <summary>以三位八进制模式(000-777)设置远端文件/目录的权限。</summary>
     public async Task SetPermissionsAsync(Guid sessionId, string remotePath, short octalMode, CancellationToken cancellationToken = default)
     {
@@ -483,6 +543,9 @@ public class SftpService(
         int lastSlash = remotePath.LastIndexOf('/');
         return lastSlash > 0 ? remotePath[..lastSlash] : "/";
     }
+
+    private static string CombineUnixPath(string directory, string name) =>
+        directory == "/" ? "/" + name : directory.TrimEnd('/') + "/" + name;
 
     private static string GetUnixFileName(string remotePath)
     {

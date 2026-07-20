@@ -47,6 +47,9 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
         DeleteSelectedCommand = ReactiveCommand.CreateFromTask(() => DeleteSelectedAsync(_lifetime.Token));
         UploadSelectedCommand = ReactiveCommand.CreateFromTask(
             () => UploadSelectedAsync?.Invoke() ?? Task.CompletedTask);
+        RenameCommand = ReactiveCommand.CreateFromTask<LocalFileEntry>(entry => RenameAsync(entry, _lifetime.Token));
+        NewFolderCommand = ReactiveCommand.CreateFromTask(() => NewFolderAsync(_lifetime.Token));
+        OpenItemCommand = ReactiveCommand.CreateFromTask<LocalFileEntry>(entry => OpenItemAsync(entry, _lifetime.Token));
         SortCommand = ReactiveCommand.Create<string>(ToggleSort);
     }
 
@@ -78,8 +81,10 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
     /// <summary>Refreshes the current directory listing.</summary>
     public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
 
+    /// <summary>Switches the current directory to a selected root.</summary>
     public ReactiveCommand<LocalRootEntry, Unit> SwitchRootCommand { get; }
 
+    /// <summary>Reloads the list of available local roots.</summary>
     public ReactiveCommand<Unit, Unit> RefreshRootsCommand { get; }
 
     /// <summary>Confirms and permanently deletes one local entry.</summary>
@@ -91,6 +96,16 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
     /// <summary>Host-provided upload delegate for the standalone SFTP document.</summary>
     public ReactiveCommand<Unit, Unit> UploadSelectedCommand { get; }
 
+    /// <summary>Renames a selected local entry in-place.</summary>
+    public ReactiveCommand<LocalFileEntry, Unit> RenameCommand { get; }
+
+    /// <summary>Creates a new folder in the current directory.</summary>
+    public ReactiveCommand<Unit, Unit> NewFolderCommand { get; }
+
+    /// <summary>Opens a local file with the default program or navigates into a directory.</summary>
+    public ReactiveCommand<LocalFileEntry, Unit> OpenItemCommand { get; }
+
+    /// <summary>Host-provided upload delegate invoked by UploadSelectedCommand.</summary>
     public Func<Task>? UploadSelectedAsync { get; set; }
 
     /// <summary>Sorts visible rows by name, size, or modified time.</summary>
@@ -99,6 +114,12 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
     /// <summary>Injected destructive-action confirmation callback.</summary>
     public Func<string, Task<bool>>? ConfirmDelete { get; set; }
 
+    /// <summary>Set by the view: prompts for a line of text (title, initial value) → entered text or null.</summary>
+    public Func<string, string, Task<string?>>? PromptForText { get; set; }
+
+    /// <summary>Set by the view: opens a local file with the OS default program.</summary>
+    public Func<string, Task>? OpenLocalFile { get; set; }
+
     /// <summary>Cancels local work before the document drains and closes its SFTP channel.</summary>
     public void Detach() => _lifetime.Cancel();
 
@@ -106,8 +127,77 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
     public string CurrentPath
     {
         get => _currentPath;
-        private set => this.RaiseAndSetIfChanged(ref _currentPath, value);
+        private set
+        {
+            if (_currentPath == value)
+            {
+                return;
+            }
+            this.RaiseAndSetIfChanged(ref _currentPath, value);
+            this.RaisePropertyChanged(nameof(Breadcrumbs));
+            this.RaisePropertyChanged(nameof(RootBreadcrumbLabel));
+            this.RaisePropertyChanged(nameof(RootBreadcrumbPath));
+        }
     }
+
+    /// <summary>Clickable breadcrumb segments for the current path, deepest last. Root is handled by RootBreadcrumbLabel.</summary>
+    public IReadOnlyList<LocalBreadcrumbSegment> Breadcrumbs
+    {
+        get
+        {
+            string root = RootBreadcrumbLabel;
+            if (string.IsNullOrEmpty(CurrentPath) || CurrentPath == root)
+            {
+                return [];
+            }
+
+            // Guard: RootBreadcrumbLabel may resolve to a place-holder root when CurrentPath is still
+            // empty, so the slice below would fail with startIndex > length.
+            if (root.Length >= CurrentPath.Length || !CurrentPath.StartsWith(root, PathComparison))
+            {
+                return [];
+            }
+
+            char sep = Path.DirectorySeparatorChar;
+            ReadOnlySpan<char> relative = CurrentPath.AsSpan(root.Length).TrimStart(sep);
+            if (relative.Length == 0)
+            {
+                return [];
+            }
+
+            string[] parts = relative.ToString().Split(sep, StringSplitOptions.RemoveEmptyEntries);
+            return [.. parts.Select((part, i) =>
+            {
+                string path = root.TrimEnd(sep) + sep + string.Join(sep, parts.Take(i + 1));
+                return new LocalBreadcrumbSegment(part, path);
+            })];
+        }
+    }
+
+    /// <summary>Label for the root breadcrumb button (e.g. "/" on Linux, "C:\" on Windows).</summary>
+    public string RootBreadcrumbLabel
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(CurrentPath))
+            {
+                return OperatingSystem.IsWindows() ? "C:\\" : "/";
+            }
+            string? root = Path.GetPathRoot(CurrentPath);
+            if (string.IsNullOrEmpty(root))
+            {
+                return "/";
+            }
+            // Ensure Windows roots end with a separator (e.g. "C:\" not "C:")
+            return root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        }
+    }
+
+    /// <summary>Path for the root breadcrumb button navigation.</summary>
+    public string RootBreadcrumbPath => RootBreadcrumbLabel;
+
+    /// <summary>OS path separator character for breadcrumb display.</summary>
+    public string PathSeparator => Path.DirectorySeparatorChar.ToString();
 
     /// <summary>Whether a directory listing is in progress.</summary>
     public bool IsDirectoryLoading
@@ -173,6 +263,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
         SyncSelectedRoot(home);
     }
 
+    /// <summary>Reloads the local roots list, preserving the current path selection.</summary>
     public async Task RefreshRootsAsync(CancellationToken cancellationToken = default)
     {
         IReadOnlyList<LocalRootEntry> roots = await _rootProvider.EnumerateAsync(cancellationToken);
@@ -184,6 +275,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
         SyncSelectedRoot(CurrentPath);
     }
 
+    /// <summary>Switches to the path of the selected root if it is accessible.</summary>
     public async Task SwitchRootAsync(LocalRootEntry? root, CancellationToken cancellationToken = default)
     {
         if (_isSwitchingRoot || root is null || !root.IsAccessible)
@@ -537,4 +629,80 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
     private static StringComparison PathComparison => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     private static StringComparer PathComparisonComparer => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+    private async Task RenameAsync(LocalFileEntry? entry, CancellationToken cancellationToken = default)
+    {
+        entry ??= SelectedEntries.FirstOrDefault(static e => !e.IsParentEntry);
+        if (PromptForText is null || entry is null || entry.IsParentEntry)
+        {
+            return;
+        }
+        string? newName = await PromptForText("Rename", entry.Name);
+        if (string.IsNullOrWhiteSpace(newName) || newName.Trim() == entry.Name)
+        {
+            return;
+        }
+        string target = Path.Combine(ParentOf(entry.FullPath), newName.Trim());
+        try
+        {
+            ErrorMessage = null;
+            if (entry.IsDirectory)
+            {
+                Directory.Move(entry.FullPath, target);
+            }
+            else
+            {
+                File.Move(entry.FullPath, target);
+            }
+            await RefreshAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    private async Task NewFolderAsync(CancellationToken cancellationToken = default)
+    {
+        if (PromptForText is null)
+        {
+            return;
+        }
+        string? name = await PromptForText("New Folder", "");
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+        string target = Path.Combine(CurrentPath, name.Trim());
+        try
+        {
+            ErrorMessage = null;
+            Directory.CreateDirectory(target);
+            await RefreshAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    private async Task OpenItemAsync(LocalFileEntry? entry, CancellationToken cancellationToken = default)
+    {
+        entry ??= SelectedEntries.FirstOrDefault(static e => !e.IsParentEntry);
+        if (entry is null || entry.IsParentEntry)
+        {
+            return;
+        }
+        if (entry.IsDirectory)
+        {
+            await NavigateToAsync(entry.FullPath, cancellationToken);
+        }
+        else if (OpenLocalFile is not null)
+        {
+            await OpenLocalFile(entry.FullPath);
+        }
+    }
 }
+
+/// <summary>One clickable segment of the local path breadcrumb.</summary>
+public sealed record LocalBreadcrumbSegment(string Name, string Path);

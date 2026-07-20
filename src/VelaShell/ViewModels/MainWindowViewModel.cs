@@ -2772,6 +2772,12 @@ public class MainWindowViewModel : ReactiveObject
         {
             ActiveTerminalTab = null;
             UpdateStatusBarForActiveTab();
+            // Replace the bottom file browser with a blank placeholder so the grid rows collapse;
+            // the terminal's browser stays in _fileBrowserCache with its true IsVisible state.
+            if (FileBrowser.SessionId != Guid.Empty || FileBrowser.IsVisible)
+            {
+                FileBrowser = new(_sftpService, Guid.Empty) { TransferSink = FileTransfer };
+            }
             return;
         }
         if (
@@ -2786,6 +2792,7 @@ public class MainWindowViewModel : ReactiveObject
         {
             TabBar.ActiveTab = document.Terminal;
         }
+        RebindFileBrowser();
     }
 
     private Task GetOrCreateSftpCloseTask(SftpDocument document)

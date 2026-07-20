@@ -23,6 +23,7 @@ public class UpdateApplierTests : IDisposable
         {
             Directory.Delete(_appDir, true);
         }
+        GC.SuppressFinalize(this);
     }
 
     private string CreateZip(params (string Path, string Content)[] entries)

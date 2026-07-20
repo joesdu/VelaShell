@@ -33,6 +33,7 @@ public sealed record LocalFileEntry(
     public static LocalFileEntry CreateParent(string parentPath) =>
         new("..", parentPath, true, 0, DateTime.MinValue, false, true);
 
+    /// <summary>Formats a byte count as a human-readable string (e.g. "1.5 MB").</summary>
     public static string FormatSize(long bytes)
     {
         if (bytes == 0)

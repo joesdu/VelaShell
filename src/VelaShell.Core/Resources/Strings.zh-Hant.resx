@@ -641,6 +641,12 @@
   <data name="MoveToPrompt" xml:space="preserve">
     <value>移動到(目的地完整路徑)</value>
   </data>
+  <data name="CopyTo" xml:space="preserve">
+    <value>複製到…</value>
+  </data>
+  <data name="SftpCopyToPrompt" xml:space="preserve">
+    <value>輸入複製目標路徑</value>
+  </data>
   <data name="Msg_AuthFailed" xml:space="preserve">
     <value>驗證失敗：{0} 的使用者名稱、密碼或金鑰不正確。</value>
   </data>

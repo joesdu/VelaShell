@@ -53,6 +53,13 @@ public interface ISftpService : IAsyncDisposable
     Task RenameAsync(Guid sessionId, string oldPath, string newPath, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Copies a remote file or directory tree to another path on the same server. For single files
+    /// this is download-to-memory-then-upload; for directories each file is copied recursively.
+    /// Reports transfer progress per file.
+    /// </summary>
+    Task CopyAsync(Guid sessionId, string sourcePath, string destPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Changes a remote entry's permissions (chmod). <paramref name="octalMode" /> is
     /// three octal digits written as a decimal number (e.g. 755, 644), matching `chmod` notation.
     /// </summary>

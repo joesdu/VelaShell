@@ -36,6 +36,22 @@
     <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
     </Style>
+    <Style Selector="Button.crumb">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="2,1" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaTerminalFont}" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+    <Style Selector="Button.crumb:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
+    </Style>
   </UserControl.Styles>
 
   <Border Background="{DynamicResource VelaBgTerminal}"
@@ -48,9 +64,32 @@
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
             <pc:LucideIcon Width="14" Height="14" Data="{StaticResource Icon.hard-drive}"
                            Foreground="{DynamicResource VelaTextTertiary}" />
-            <TextBlock Text="{Binding CurrentPath}" FontFamily="{DynamicResource VelaTerminalFont}"
-                       FontSize="11" FontWeight="Medium" Foreground="{DynamicResource VelaTextPrimary}"
-                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+            <!-- Clickable breadcrumb segments matching remote FileBrowserView style -->
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True">
+              <Button Classes="crumb" Content="{Binding RootBreadcrumbLabel}"
+                      Command="{Binding NavigateToCommand}"
+                      CommandParameter="{Binding RootBreadcrumbPath}" />
+              <ItemsControl ItemsSource="{Binding Breadcrumbs}" VerticalAlignment="Center">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:LocalBreadcrumbSegment">
+                    <StackPanel Orientation="Horizontal">
+                      <Button Classes="crumb" Content="{Binding Name}"
+                              Command="{Binding $parent[ItemsControl].((vm:LocalFilePaneViewModel)DataContext).NavigateToCommand}"
+                              CommandParameter="{Binding Path}" />
+              <TextBlock Text="{Binding $parent[ItemsControl].((vm:LocalFilePaneViewModel)DataContext).PathSeparator}"
+                         Foreground="{DynamicResource VelaTextMuted}"
+                         FontFamily="{DynamicResource VelaTerminalFont}"
+                         FontSize="11" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
           </StackPanel>
           <ProgressBar Grid.Column="0" Width="54" Height="3" Margin="12,0"
                        HorizontalAlignment="Left" IsIndeterminate="True"
@@ -104,9 +143,24 @@
                DoubleTapped="OnFileDoubleTapped">
         <ListBox.ContextMenu>
           <ContextMenu x:DataType="vm:LocalFilePaneViewModel">
+            <MenuItem Header="{x:Static res:Strings.Refresh}" Command="{Binding RefreshCommand}">
+              <MenuItem.Icon><pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.refresh-cw}" Foreground="{DynamicResource VelaTextTertiary}" /></MenuItem.Icon>
+            </MenuItem>
+            <Separator />
+            <MenuItem Header="{loc:Localize Sftp_Open}" Command="{Binding OpenItemCommand}">
+              <MenuItem.Icon><pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.file-text}" Foreground="{DynamicResource VelaAccent}" /></MenuItem.Icon>
+            </MenuItem>
             <MenuItem Header="{x:Static res:Strings.Upload}" Command="{Binding UploadSelectedCommand}">
               <MenuItem.Icon><pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.upload}" Foreground="{DynamicResource VelaAccent}" /></MenuItem.Icon>
             </MenuItem>
+            <MenuItem Header="{x:Static res:Strings.Rename}" Command="{Binding RenameCommand}">
+              <MenuItem.Icon><pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.pencil}" Foreground="{DynamicResource VelaTextTertiary}" /></MenuItem.Icon>
+            </MenuItem>
+            <Separator />
+            <MenuItem Header="{x:Static res:Strings.NewFolder}" Command="{Binding NewFolderCommand}">
+              <MenuItem.Icon><pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-plus}" Foreground="{DynamicResource VelaTextTertiary}" /></MenuItem.Icon>
+            </MenuItem>
+            <Separator />
             <MenuItem Header="{x:Static res:Strings.Delete}" Command="{Binding DeleteSelectedCommand}" Foreground="{DynamicResource VelaError}">
               <MenuItem.Icon><pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.trash-2}" Foreground="{DynamicResource VelaError}" /></MenuItem.Icon>
             </MenuItem>

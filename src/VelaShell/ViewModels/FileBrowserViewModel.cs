@@ -109,6 +109,7 @@ public class FileBrowserViewModel : ReactiveObject
         );
         RenameCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(RenameAsync);
         MoveCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(MoveAsync);
+        CopyToCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(CopyToAsync);
         CopyPathCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(CopyPathAsync);
         CopyNameCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(CopyNameAsync);
         PropertiesCommand = ReactiveCommand.CreateFromTask<RemoteFileInfoViewModel>(
@@ -341,6 +342,9 @@ public class FileBrowserViewModel : ReactiveObject
         get => _isVisible;
         set => this.RaiseAndSetIfChanged(ref _isVisible, value);
     }
+
+    /// <summary>Whether row drag initiation is enabled. Off in terminal panel; on in SFTP dual-pane.</summary>
+    public bool IsDragEnabled { get; set; }
 
     /// <summary>需要展示给用户的错误提示;为 null 表示无错误。</summary>
     public string? ErrorMessage
@@ -670,6 +674,9 @@ public class FileBrowserViewModel : ReactiveObject
 
     /// <summary>把选中条目移动到输入的目标路径。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> MoveCommand { get; }
+
+    /// <summary>Copies the selected entry to a different remote directory.</summary>
+    public ReactiveCommand<RemoteFileInfoViewModel, Unit> CopyToCommand { get; }
 
     /// <summary>把选中条目的完整远程路径复制到剪贴板。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> CopyPathCommand { get; }
@@ -2107,6 +2114,53 @@ public class FileBrowserViewModel : ReactiveObject
             ErrorMessage = null;
             await _sftpService.RenameAsync(_sessionId, file.FullPath, destination.Trim(), ct);
             await RefreshAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    private async Task CopyToAsync(RemoteFileInfoViewModel? file, CancellationToken ct = default)
+    {
+        if (PromptForText is null || file is null || file.IsParentEntry)
+        {
+            return;
+        }
+        // Pre-fill with current parent directory and same name for easy copy-to-same-dir.
+        string parentDir = ParentOf(file.FullPath);
+        string suggested = CombinePath(parentDir, file.Name);
+        string? destination = await PromptForText(Strings.SftpCopyToPrompt, suggested);
+        if (string.IsNullOrWhiteSpace(destination) || destination.Trim() == file.FullPath)
+        {
+            return;
+        }
+        try
+        {
+            ErrorMessage = null;
+            string destPath = destination.Trim();
+
+            // Register a transfer task so the user sees it in the transfer toast.
+            var task = new TransferTask
+            {
+                Id = Guid.NewGuid(),
+                Type = TransferType.Upload,
+                LocalPath = file.FullPath,
+                RemotePath = destPath,
+                Status = TransferStatus.InProgress,
+            };
+            TransferSink?.AddTransfer(task);
+            TransferItemViewModel? item = TransferSink?.FindTransfer(task.Id);
+
+            await _sftpService.CopyAsync(_sessionId, file.FullPath, destPath, cancellationToken: ct);
+
+            item?.Status = TransferStatus.Completed;
+            TransferSink?.NotifyTaskSettled();
+            await RefreshAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // User cancelled.
         }
         catch (Exception ex)
         {
