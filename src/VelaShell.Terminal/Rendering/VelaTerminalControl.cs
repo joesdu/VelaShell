@@ -1092,7 +1092,10 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
     // ---- Rendering ----------------------------------------------------------
 
-        // 视觉 BEL:整个终端上的一次短暂半透明闪烁(§终端 → 视觉闪烁)。
+    /// <summary>
+    /// 视觉 BEL:整个终端上的一次短暂半透明闪烁(§终端 → 视觉闪烁)
+    /// </summary>
+    /// <param name="context"></param>
     public override void Render(DrawingContext context)
     {
         TerminalScreen screen = Emulator.Screen;
