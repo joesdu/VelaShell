@@ -172,8 +172,8 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         }
         catch (Exception ex) when (ex is Renci.SshNet.Common.SshConnectionException or NullReferenceException && IsTornDown(target))
         {
-            // See SshClientWrapper.RunCommandAsync: teardown mid-command is normalised to the
-            // "session is gone" signal callers already handle.
+            // 参见 SshClientWrapper.RunCommandAsync:命令执行中途拆除会被归一化为调用方
+            // 已处理的"会话已释放"信号。
             throw new ObjectDisposedException(nameof(JumpChainSshClientWrapper), ex);
         }
         catch (Exception ex) when (SshNetInterop.Translate(ex) is { } translated)
@@ -182,7 +182,7 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         }
     }
 
-    /// <summary>True when the wrapper was disposed or the target client lost its connection.</summary>
+    /// <summary>包装器已释放或目标客户端连接丢失时返回 True。</summary>
     private bool IsTornDown(SshClient target)
     {
         if (_disposed)
@@ -195,7 +195,7 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
         }
         catch
         {
-            // IsConnected itself throws once the client is disposed underneath us.
+            // 一旦底层客户端被释放,IsConnected 本身也会抛出异常。
             return true;
         }
     }
@@ -250,7 +250,7 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
             }
             catch
             {
-                // ignore
+                // 忽略
             }
         }
         _hopForwards.Clear();
@@ -262,7 +262,7 @@ public sealed class JumpChainSshClientWrapper : ISshClientWrapper
             }
             catch
             {
-                // ignore
+                // 忽略
             }
         }
         _hopClients.Clear();

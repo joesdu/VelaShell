@@ -1,12 +1,12 @@
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// Terminal operating modes (ANSI and DEC private). Defaults match a freshly reset
-/// xterm: autowrap on, cursor visible, everything else off.
+/// 终端运行模式(ANSI 与 DEC 私有模式)。默认值与刚复位的 xterm 一致:
+/// 自动换行开启、光标可见,其余均关闭。
 /// </summary>
 public sealed class TerminalModes
 {
-    // DEC private modes
+    // DEC 私有模式
     /// <summary>光标键应用模式(DECCKM ?1):方向键发送应用序列而非普通序列。</summary>
     public bool ApplicationCursorKeys; // DECCKM  ?1
     /// <summary>小键盘应用模式(DECKPAM / DECKPNM):小键盘发送应用序列。</summary>
@@ -20,11 +20,11 @@ public sealed class TerminalModes
     /// <summary>光标可见(DECTCEM ?25):是否显示光标,默认可见。</summary>
     public bool CursorVisible = true;  // DECTCEM ?25
 
-    // ANSI modes
+    // ANSI 模式
     /// <summary>插入模式(IRM 4):新字符插入而非覆盖现有字符。</summary>
     public bool InsertMode; // IRM  (4)
 
-    // Mouse tracking (?1000/1002/1003) and encoding (?1006 SGR / ?1015 urxvt)
+    // 鼠标跟踪(?1000/1002/1003)与编码(?1006 SGR / ?1015 urxvt)
     /// <summary>鼠标事件跟踪模式(?1000/1002/1003)。</summary>
     public MouseTracking Mouse = MouseTracking.None;
     /// <summary>鼠标坐标编码方式(?1006 SGR / ?1015 urxvt)。</summary>

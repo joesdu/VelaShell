@@ -108,7 +108,7 @@ public static class InfrastructureServiceCollectionExtensions
             ISettingsService settingsService =
                 serviceProvider.GetRequiredService<ISettingsService>();
             IHostKeyService hostKeyService = serviceProvider.GetRequiredService<IHostKeyService>();
-            // A dedicated SFTP channel per session, built from the same credentials.
+            // 每个会话一个专用 SFTP 通道,使用相同凭据构建。
             return new SftpService(
                 connectionService,
                 session =>

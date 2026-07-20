@@ -17,7 +17,7 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 
-/// <summary>Remote file browser view: file list, resizable columns, drag-and-drop upload, and OS picker/dialog integration.</summary>
+/// <summary>远程文件浏览器视图:文件列表、可拖拽列、拖放上传,以及操作系统选择器/对话框集成。</summary>
 public partial class FileBrowserView : UserControl
 {
     private FileBrowserViewModel? _viewModel;
@@ -49,7 +49,7 @@ public partial class FileBrowserView : UserControl
     private string? _activeSplitter;
     private double _dragStartX;
 
-    // Cross-pane drag initiation state (SFTP dual-pane mode).
+    // 跨面板拖拽发起状态(SFTP 双栏模式)。
     private bool _isDragging;
     private Point _dragOrigin;
     private RemoteFileInfoViewModel? _dragRow;
@@ -59,12 +59,12 @@ public partial class FileBrowserView : UserControl
     /// <summary>按下拖拽条那一刻的列宽快照(列键 → 像素),拖拽期间按位移量增量应用。</summary>
     private readonly Dictionary<string, double> _startWidths = [];
 
-    /// <summary>Initializes the view, supplies the view model with OS pickers/dialogs, and hooks column-splitter and drag-drop handlers.</summary>
+    /// <summary>初始化视图,为视图模型提供操作系统选择器/对话框,并挂接列拖拽条与拖放事件处理。</summary>
     public FileBrowserView()
     {
         InitializeComponent();
 
-        // The VM cannot touch Avalonia storage APIs; the view supplies the OS pickers.
+        // VM 无法访问 Avalonia 的存储 API;由视图提供操作系统的选择器。
         DataContextChanged += (_, _) =>
         {
             _viewModel?.DirectoryChanged -= OnDirectoryChanged;
@@ -89,14 +89,14 @@ public partial class FileBrowserView : UserControl
             vm.ConfirmRemoteOverwrite = ConfirmRemoteOverwriteAsync;
         };
 
-        // Drag-drop receiving: OS file drops (always enabled) + cross-pane drops.
+        // 拖放接收:操作系统文件拖入(始终启用)+ 跨面板拖入。
         if (this.FindControl<ListBox>("FileList") is { } fileList)
         {
             DragDrop.SetAllowDrop(fileList, true);
             fileList.AddHandler(DragDrop.DragOverEvent, OnFileListDragOver);
             fileList.AddHandler(DragDrop.DropEvent, OnFileListDrop);
 
-            // Cross-pane drag initiation (rows → local pane).
+            // 跨面板拖拽发起(行 → 本地面板)。
             fileList.AddHandler(PointerMovedEvent, OnRemoteDragPointerMoved);
             fileList.AddHandler(PointerReleasedEvent, OnRemoteDragPointerReleased);
         }
@@ -126,7 +126,7 @@ public partial class FileBrowserView : UserControl
             return;
         }
 
-        // Use ClickCount here so auto-fit still works even when pointer handling/capture is active.
+        // 这里用 ClickCount,这样即使指针处理/捕获激活时,自适应宽度仍能工作。
         if (e.ClickCount >= 2)
         {
             AutoFitColumnBySplitterTag(vm, tag);
@@ -261,8 +261,7 @@ public partial class FileBrowserView : UserControl
     }
 
     /// <summary>
-    /// Double-clicking a row descends into a directory, or downloads a file to a temp
-    /// folder and opens it with the OS default program (§6).
+    /// 双击一行进入目录,或将文件下载到临时文件夹并用操作系统默认程序打开(§6)。
     /// </summary>
     private void OnFileDoubleTapped(object? sender, TappedEventArgs e)
     {
@@ -277,7 +276,7 @@ public partial class FileBrowserView : UserControl
         vm.ActivateCommand.Execute(row).Subscribe(_ => { }, _ => { });
     }
 
-    /// <summary>Opens a downloaded local file with the platform default handler.</summary>
+    /// <summary>用平台默认处理程序打开已下载的本地文件。</summary>
     private async Task OpenLocalFileAsync(string localPath)
     {
         var top = TopLevel.GetTopLevel(this);
@@ -321,8 +320,8 @@ public partial class FileBrowserView : UserControl
     }
 
     /// <summary>
-    /// Picks the local destination folder for folder/batch downloads, starting at the
-    /// configured 本地下载目录 (设置 → 文件传输).
+    /// 选择文件夹/批量下载的本地目标文件夹,起始位置为设置中的
+    /// 本地下载目录 (设置 → 文件传输).
     /// </summary>
     private async Task<string?> PickDownloadFolderAsync()
     {
@@ -383,7 +382,7 @@ public partial class FileBrowserView : UserControl
             e.DragEffects = DragDropEffects.None;
             return;
         }
-        // Accept OS file drops OR cross-pane local-file drags (VFTPL text marker).
+        // 接受操作系统文件拖入或跨面板的本地文件拖拽(VFTPL 文本标记)。
         IReadOnlyList<string> osPaths = ExtractLocalPaths(e);
         bool isCrossPane = !string.IsNullOrEmpty(e.DataTransfer.TryGetText())
             && e.DataTransfer.TryGetText()!.StartsWith(DragDropFormats.LocalPaths);
@@ -400,7 +399,7 @@ public partial class FileBrowserView : UserControl
         IReadOnlyList<string> paths = ExtractLocalPaths(e);
         if (paths.Count == 0)
         {
-            // Check for cross-pane local file drag (VFTPL marker).
+            // 检查跨面板本地文件拖拽(VFTPL 标记)。
             string? text = e.DataTransfer.TryGetText();
             if (!string.IsNullOrEmpty(text) && text.StartsWith(DragDropFormats.LocalPaths))
             {
@@ -481,8 +480,8 @@ public partial class FileBrowserView : UserControl
     }
 
     /// <summary>
-    /// Modal single-line text prompt used by new folder / new file / rename / move.
-    /// Returns the entered text, or null if the user cancelled.
+    /// 模态单行文本输入,用于新建文件夹 / 新建文件 / 重命名 / 移动。
+    /// 返回用户输入的文本,用户取消则返回 null。
     /// </summary>
     private async Task<string?> PromptForTextAsync(string title, string initialValue)
     {
@@ -493,7 +492,7 @@ public partial class FileBrowserView : UserControl
         return await MessageDialog.PromptAsync(owner, title, initialValue);
     }
 
-    /// <summary>Modal yes/no confirmation for destructive actions (delete). Returns true to proceed.</summary>
+    /// <summary>用于危险操作(删除)的模态确认(是/否)。返回 true 表示继续。</summary>
     private async Task<bool> ConfirmAsync(string message)
     {
         if (TopLevel.GetTopLevel(this) is not Window owner)
@@ -577,7 +576,7 @@ public partial class FileBrowserView : UserControl
     {
         if (!e.GetCurrentPoint(null).Properties.IsRightButtonPressed)
         {
-            // Left button: prepare for potential drag to local pane (SFTP mode only).
+            // 左键:为可能拖往本地面板做准备(仅 SFTP 模式)。
             if (DataContext is FileBrowserViewModel { IsDragEnabled: true } vm
                 && sender is Border { DataContext: RemoteFileInfoViewModel file }
                 && !file.IsParentEntry)
@@ -632,7 +631,7 @@ public partial class FileBrowserView : UserControl
 
     private async Task StartRemoteDragAsync(RemoteFileInfoViewModel source, PointerPressedEventArgs pointerArgs)
     {
-        // Collect all selected remote file paths.
+        // 收集所有选中的远程文件路径。
         var paths = new List<string>();
         if (DataContext is FileBrowserViewModel vm)
         {

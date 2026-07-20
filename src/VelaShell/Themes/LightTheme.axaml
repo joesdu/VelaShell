@@ -1,12 +1,12 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- VelaShell Light Theme — Alucard palette (dracula 官方亮色) -->
+    <!-- VelaShell 亮色主题 —— Alucard 调色板(dracula 官方亮色) -->
 
-    <!-- Accent tokens (adjusted for light background contrast) -->
+    <!-- 强调色标记(为亮色背景对比度调整) -->
     <SolidColorBrush x:Key="VelaAccentText" Color="#644AC9" />
 
-    <!-- Semantic tokens -->
+    <!-- 语义标记 -->
     <SolidColorBrush x:Key="VelaWarning" Color="#846E15" />
     <SolidColorBrush x:Key="VelaError" Color="#CB3A2A" />
     <SolidColorBrush x:Key="VelaInfo" Color="#036A96" />

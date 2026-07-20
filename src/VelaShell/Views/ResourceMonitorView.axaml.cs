@@ -15,8 +15,8 @@ public partial class ResourceMonitorView : UserControl
     {
         InitializeComponent();
 
-        // Poll only while the panel is actually visible (it lives in the tab-hover tooltip):
-        // one immediate fetch on open, then per-second refresh (§11), stopped on close.
+        // 仅在面板实际可见时轮询(它位于标签悬停提示气泡中):
+        // 打开时立即拉取一次,之后每秒刷新(§11),关闭时停止。
         AttachedToVisualTree += OnAttached;
         DetachedFromVisualTree += OnDetached;
     }

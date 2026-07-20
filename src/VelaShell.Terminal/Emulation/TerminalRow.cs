@@ -3,36 +3,36 @@ using System.Text;
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// One row of the terminal grid: a fixed-length array of <see cref="TerminalCell" /> plus
-/// a "wrapped" flag used to reflow soft-wrapped lines on resize and to join lines for copy.
+/// 终端网格中的一行:一个固定长度的 <see cref="TerminalCell" /> 数组,外加一个 "wrapped" 标志,
+/// 用于在改变列宽时重新排版软换行行,以及为复制而合并行。
 /// </summary>
 public sealed class TerminalRow(int columns)
 {
     private TerminalCell[] _cells = new TerminalCell[columns];
 
-    /// <summary>True when the line was ended by autowrap rather than an explicit newline.</summary>
+    /// <summary>当该行由自动换行结束(而非显式换行)时为 true。</summary>
     public bool Wrapped { get; set; }
 
     /// <summary>
-    /// Wall-clock time the row last received output (行号/时间侧栏用)。Null 表示尚未写入过内容
+    /// 该行最后收到输出的墙上时钟时间(行号/时间侧栏用)。Null 表示尚未写入过内容
     /// 的空行——侧栏据此对空行不显示时间。行对象在滚动/换行时按引用迁入 scrollback,时间戳随之保留。
     /// </summary>
     public DateTime? Timestamp { get; set; }
 
-    /// <summary>Number of cells (columns) in this row.</summary>
+    /// <summary>本行的单元格(列)数量。</summary>
     public int Columns => _cells.Length;
 
-    /// <summary>Gets or sets the cell at the given column index.</summary>
+    /// <summary>获取或设置指定列索引处的单元格。</summary>
     public TerminalCell this[int col]
     {
         get => _cells[col];
         set => _cells[col] = value;
     }
 
-    /// <summary>Returns a mutable reference to the cell at the given column for in-place editing.</summary>
+    /// <summary>返回指定列处单元格的可变引用,用于就地编辑。</summary>
     public ref TerminalCell CellRef(int col) => ref _cells[col];
 
-    /// <summary>Fills the entire row with the given cell and clears the wrapped flag and timestamp.</summary>
+    /// <summary>用给定单元格填满整行,并清除 wrapped 标志与时间戳。</summary>
     public void Fill(in TerminalCell cell)
     {
         for (int i = 0; i < _cells.Length; i++)
@@ -44,8 +44,8 @@ public sealed class TerminalRow(int columns)
     }
 
     /// <summary>
-    /// Fills the cells in <paramref name="start" />..<paramref name="endExclusive" /> with the given cell,
-    /// clamped to the row bounds. 若擦完整行已空,时间戳一并作废(与 <see cref="Fill" /> 同一不变量)。
+    /// 把 <paramref name="start" />..<paramref name="endExclusive" /> 范围内的单元格用给定单元格填充,
+    /// 并裁剪到本行边界。若擦完整行已空,时间戳一并作废(与 <see cref="Fill" /> 同一不变量)。
     /// </summary>
     /// <remarks>
     /// 这里必须与 <see cref="Fill" /> 守同一条「空行 = 未写入 = 无时间戳」的规矩:重绘型 shell
@@ -67,9 +67,8 @@ public sealed class TerminalRow(int columns)
     }
 
     /// <summary>
-    /// Hard grow/shrink to an exact width. Only used where reflow doesn't apply
-    /// (the alternate screen, whose programs fully redraw on resize) — the main screen is
-    /// resized via <see cref="TerminalScreen" /> reflow, which preserves content.
+    /// 硬性地增缩到精确宽度。仅用于不适用重新排版的场合(备用屏,其程序在改变列宽时整体重绘)——
+    /// 主屏通过 <see cref="TerminalScreen" /> 的重新排版调整大小,以保留内容。
     /// </summary>
     public void Resize(int columns, in TerminalCell blank)
     {
@@ -87,7 +86,7 @@ public sealed class TerminalRow(int columns)
         _cells = next;
     }
 
-    /// <summary>Deletes <paramref name="count" /> cells at <paramref name="col" />, shifting the tail left.</summary>
+    /// <summary>在 <paramref name="col" /> 处删除 <paramref name="count" /> 个单元格,并将尾部左移。</summary>
     public void DeleteCells(int col, int count, in TerminalCell blank)
     {
         if (count <= 0 || col >= _cells.Length)
@@ -99,7 +98,7 @@ public sealed class TerminalRow(int columns)
         FillRange(_cells.Length - count, _cells.Length, blank);
     }
 
-    /// <summary>Inserts <paramref name="count" /> blank cells at <paramref name="col" />, shifting the tail right.</summary>
+    /// <summary>在 <paramref name="col" /> 处插入 <paramref name="count" /> 个空白单元格,并将尾部右移。</summary>
     public void InsertCells(int col, int count, in TerminalCell blank)
     {
         if (count <= 0 || col >= _cells.Length)
@@ -111,7 +110,7 @@ public sealed class TerminalRow(int columns)
         FillRange(col, col + count, blank);
     }
 
-    /// <summary>Index of the last cell with content, or -1 for an all-blank row.</summary>
+    /// <summary>最后一个有内容的单元格索引;全空行返回 -1。</summary>
     public int LastNonBlank()
     {
         for (int i = _cells.Length - 1; i >= 0; i--)
@@ -124,7 +123,7 @@ public sealed class TerminalRow(int columns)
         return -1;
     }
 
-    /// <summary>Text of the row up to the last non-blank cell (trailing blanks trimmed).</summary>
+    /// <summary>本行截至最后一个非空单元格的文本(尾部空格已裁剪)。</summary>
     public string GetText()
     {
         var sb = new StringBuilder(_cells.Length);
@@ -136,7 +135,7 @@ public sealed class TerminalRow(int columns)
         return sb.ToString();
     }
 
-    /// <summary>Creates a deep copy of the row, preserving cells, the wrapped flag, and the timestamp.</summary>
+    /// <summary>创建本行的深拷贝,保留单元格、wrapped 标志与时间戳。</summary>
     public TerminalRow Clone()
     {
         var clone = new TerminalRow(_cells.Length) { Wrapped = Wrapped, Timestamp = Timestamp };

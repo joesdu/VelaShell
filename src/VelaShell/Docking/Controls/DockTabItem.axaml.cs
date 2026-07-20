@@ -4,10 +4,10 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Docking.Controls;
 
-/// <summary>Terminal-specific tab behavior retained separately from SFTP tabs.</summary>
+/// <summary>终端专用标签行为,与 SFTP 标签分开维护。</summary>
 public partial class DockTabItem : DockTabItemBase
 {
-    /// <summary>Initializes the terminal-specific tab control.</summary>
+    /// <summary>初始化终端专用标签控件。</summary>
     public DockTabItem() => InitializeComponent();
 
     private TerminalTabViewModel? Terminal => (DataContext as Docking.TerminalDocument)?.Terminal;

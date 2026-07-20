@@ -1,17 +1,17 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- VelaShell Dark Theme — Dracula palette -->
+    <!-- VelaShell 暗色主题 —— Dracula 调色板 -->
 
-    <!-- Accent tokens -->
+    <!-- 强调色标记 -->
     <SolidColorBrush x:Key="VelaAccentText" Color="#BD93F9" />
 
-    <!-- Semantic tokens -->
+    <!-- 语义标记 -->
     <SolidColorBrush x:Key="VelaWarning" Color="#FFB86C" />
     <SolidColorBrush x:Key="VelaError"   Color="#FF5555" />
     <SolidColorBrush x:Key="VelaInfo"    Color="#8BE9FD" />
 
-    <!-- Terminal color tokens -->
+    <!-- 终端颜色标记 -->
     <SolidColorBrush x:Key="VelaShellWhite"   Color="#F8F8F2" />
     <SolidColorBrush x:Key="VelaShellGreen"   Color="#50FA7B" />
     <SolidColorBrush x:Key="VelaShellCyan"    Color="#8BE9FD" />

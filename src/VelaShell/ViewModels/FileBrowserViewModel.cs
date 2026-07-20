@@ -11,8 +11,8 @@ using VelaShell.Services;
 namespace VelaShell.ViewModels;
 
 /// <summary>
-/// One clickable segment of the header path breadcrumb (§6): the segment text and the
-/// absolute remote path it navigates to.
+/// 头部路径面包屑的一个可点击分段(§6):分段文本及其
+/// 所导航到的绝对远程路径。
 /// </summary>
 public sealed record BreadcrumbSegment(string Name, string Path);
 
@@ -55,8 +55,8 @@ public class FileBrowserViewModel : ReactiveObject
     private static readonly GridLength CollapsedWidth = new(0);
 
     /// <summary>
-    /// The raw directory listing before the hidden-files filter/sort; the visible
-    /// <see cref="Files" /> collection is rebuilt from this.
+    /// 隐藏文件过滤与排序之前的原始目录列举;可见的
+    /// <see cref="Files" /> 集合据此重建。
     /// </summary>
     private readonly List<RemoteFileInfoViewModel> _allFiles = [];
     private readonly BatchObservableCollection<RemoteFileInfoViewModel> _files;
@@ -67,15 +67,15 @@ public class FileBrowserViewModel : ReactiveObject
     private string _currentPath;
     private long _navigationVersion;
 
-    /// <summary>Cancels the running delete; tripped from the delete overlay's cancel button.</summary>
+    /// <summary>取消正在进行的删除;由删除浮层的取消按钮触发。</summary>
     private CancellationTokenSource? _deleteCts;
 
     /// <summary>在飞的初始加载(合流用,见 LoadInitialAsync)。</summary>
     private Task? _initialLoad;
 
     /// <summary>
-    /// Cancelled when this browser instance is discarded (its tab closed, or the panel rebound to
-    /// another session), so in-flight SFTP work stops racing the session teardown (#tab-close NRE).
+    /// 当本浏览器实例被丢弃(标签关闭,或面板重新绑定到
+    /// 另一会话)时取消,使在飞的 SFTP 工作停止与会话拆除争抢(#tab-close NRE)。
     /// </summary>
     private readonly CancellationTokenSource _lifetime = new();
 
@@ -137,7 +137,7 @@ public class FileBrowserViewModel : ReactiveObject
         SortCommand = ReactiveCommand.Create<string>(ToggleSort);
     }
 
-    /// <summary>The SSH session this browser is rooted at.</summary>
+    /// <summary>本浏览器所根植的 SSH 会话。</summary>
     public Guid SessionId { get; }
 
     /// <summary>
@@ -246,8 +246,8 @@ public class FileBrowserViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Called by the host when this instance is being replaced (tab closed / panel rebound):
-    /// cancels in-flight SFTP operations so they don't race the SFTP channel teardown.
+    /// 当本实例被替换(标签关闭 / 面板重新绑定)时由宿主调用:
+    /// 取消在飞的 SFTP 操作,使它们不会与会话通道拆除争抢。
     /// </summary>
     public void Detach()
     {
@@ -258,13 +258,13 @@ public class FileBrowserViewModel : ReactiveObject
         }
         catch (ObjectDisposedException)
         {
-            // Already detached — nothing left to cancel.
+            // 已拆除 —— 无需取消。
         }
     }
 
     /// <summary>
-    /// Links an operation token to this browser's lifetime. Commands never pass a token, so the
-    /// common case is simply the lifetime token itself (no allocation).
+    /// 将一个操作令牌关联到本浏览器的生命周期。命令从不传入令牌,因此
+    /// 常见情形就是直接复用生命周期令牌本身(无需分配)。
     /// </summary>
     private CancellationToken WithLifetime(CancellationToken ct) =>
         ct.CanBeCanceled
@@ -299,7 +299,7 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
-    /// <summary>Clickable breadcrumb segments for the current path, deepest last (§6 header).</summary>
+    /// <summary>当前路径的可点击面包屑分段,最深的在最后(§6 头部)。</summary>
     public IReadOnlyList<BreadcrumbSegment> Breadcrumbs
     {
         get
@@ -322,7 +322,7 @@ public class FileBrowserViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>Message shown on the busy overlay (loading a directory, or delete progress).</summary>
+    /// <summary>在忙碌遮罩上显示的文案(加载目录,或删除进度)。</summary>
     public string BusyText
     {
         get;
@@ -343,7 +343,7 @@ public class FileBrowserViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _isVisible, value);
     }
 
-    /// <summary>Whether row drag initiation is enabled. Off in terminal panel; on in SFTP dual-pane.</summary>
+    /// <summary>是否启用行拖拽发起。终端面板中关闭;SFTP 双栏中开启。</summary>
     public bool IsDragEnabled { get; set; }
 
     /// <summary>需要展示给用户的错误提示;为 null 表示无错误。</summary>
@@ -359,7 +359,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     public Action<bool>? ShowHiddenFilesToggled { get; set; }
 
-    /// <summary>Whether dotfiles are listed. Off by default per §6 (hidden-files toggle).</summary>
+    /// <summary>是否列出点文件。按 §6(隐藏文件开关)默认关闭。</summary>
     public bool ShowHiddenFiles
     {
         get;
@@ -614,21 +614,21 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>“类型”列右侧拖拽条的宽度。</summary>
     public GridLength TypeSplitterWidth => ShowTypeColumn ? SplitterWidth : CollapsedWidth;
 
-    /// <summary>Whether the loading overlay should show a delete progress bar.</summary>
+    /// <summary>加载遮罩是否应显示删除进度条。</summary>
     public bool IsDeleteProgressVisible
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>Delete progress percentage [0,100] for the overlay progress bar.</summary>
+    /// <summary>用于遮罩进度条的删除进度百分比 [0,100]。</summary>
     public double DeleteProgressPercent
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>When true, delete progress is shown as indeterminate (e.g., before total is known).</summary>
+    /// <summary>为 true 时,删除进度显示为不确定态(例如总数未知之前)。</summary>
     public bool IsDeleteProgressIndeterminate
     {
         get;
@@ -639,8 +639,8 @@ public class FileBrowserViewModel : ReactiveObject
     public ReactiveCommand<string, Unit> NavigateToCommand { get; }
 
     /// <summary>
-    /// Row activation (double-click / Enter): descend into directories, or download a
-    /// file to a temp folder and open it with the OS default program (§6).
+    /// 行激活(双击 / Enter):进入目录,或将文件下载到临时文件夹并用
+    /// 操作系统默认程序打开(§6)。
     /// </summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> ActivateCommand { get; }
 
@@ -650,16 +650,16 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>重新列举当前目录。</summary>
     public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
 
-    /// <summary>Loads the account's home directory (spec: land in ~, not filesystem root).</summary>
+    /// <summary>加载账户的主目录(规范:落在 ~,而非文件系统根)。</summary>
     public ReactiveCommand<Unit, Unit> LoadInitialCommand { get; }
 
-    /// <summary>Uploads OS-picked files into the current directory (toolbar + right-click).</summary>
+    /// <summary>将系统选中的文件上传到当前目录(工具栏 + 右键)。</summary>
     public ReactiveCommand<Unit, Unit> UploadCommand { get; }
 
-    /// <summary>Uploads an OS-picked folder (recursively) into the current directory.</summary>
+    /// <summary>将系统选中的文件夹(递归)上传到当前目录。</summary>
     public ReactiveCommand<Unit, Unit> UploadFolderCommand { get; }
 
-    // Right-click context-menu actions (spec: file operations live in the SFTP context menu).
+    // 右键上下文菜单动作(规范:文件操作置于 SFTP 上下文菜单中)。
     /// <summary>在当前目录下新建文件夹(提示输入名称)。</summary>
     public ReactiveCommand<Unit, Unit> NewFolderCommand { get; }
 
@@ -675,7 +675,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>把选中条目移动到输入的目标路径。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> MoveCommand { get; }
 
-    /// <summary>Copies the selected entry to a different remote directory.</summary>
+    /// <summary>把选中条目复制到另一个远程目录。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> CopyToCommand { get; }
 
     /// <summary>把选中条目的完整远程路径复制到剪贴板。</summary>
@@ -696,41 +696,40 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>「使用默认编辑器打开」:下载到 temp 交给设置里配置的编辑器,保存即上传。</summary>
     public ReactiveCommand<RemoteFileInfoViewModel, Unit> OpenWithDefaultEditorCommand { get; }
 
-    /// <summary>Batch download of the multi-selection into one picked local folder (§6 multi-select).</summary>
+    /// <summary>批量下载所有选中的条目的本地文件夹(§6 多选)。</summary>
     public ReactiveCommand<Unit, Unit> DownloadSelectedCommand { get; }
 
-    /// <summary>Batch delete of the multi-selection after a single confirmation (§6 multi-select).</summary>
+    /// <summary>一次确认后批量删除所有选中的条目(§6 多选)。</summary>
     public ReactiveCommand<Unit, Unit> DeleteSelectedCommand { get; }
 
-    /// <summary>Cancels an in-progress delete, leaving already-deleted entries removed.</summary>
+    /// <summary>取消进行中的删除,已完成的条目保留不移除。</summary>
     public ReactiveCommand<Unit, Unit> CancelDeleteCommand { get; }
 
     /// <summary>
-    /// Reopens the transfer toast so past/active transfers can be reviewed (toolbar button
-    /// next to Upload). Without it the toast auto-hides and there's no way back to the history.
+    /// 重新打开传输浮窗,以便回顾历史/活动传输记录(上传按钮旁的工具栏按钮)。
+    /// 没有它浮窗自动隐藏后就再也回不到传输历史了。
     /// </summary>
     public ReactiveCommand<Unit, Unit> ShowTransfersCommand { get; }
 
     /// <summary>切换文件浏览面板的显示/隐藏。</summary>
     public ReactiveCommand<Unit, Unit> ToggleVisibilityCommand { get; }
 
-    /// <summary>Toggles dotfile visibility (§6 header switch).</summary>
+    /// <summary>切换点文件可见性(§6 头部开关)。</summary>
     public ReactiveCommand<Unit, Unit> ToggleHiddenFilesCommand { get; }
 
     /// <summary>
-    /// Sorts by a column key ("name" | "size" | "permissions" | "modified"); clicking the
-    /// active column again flips the direction.
+    /// 按列键排序("name" | "size" | "permissions" | "modified");再次点击当前排序列则翻转方向。
     /// </summary>
     public ReactiveCommand<string, Unit> SortCommand { get; }
 
-    /// <summary>The column the list is currently ordered by.</summary>
+    /// <summary>列表当前按哪一列排序。</summary>
     public string SortColumn
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = "name";
 
-    /// <summary>Whether the current sort is descending.</summary>
+    /// <summary>当前是否为降序排序。</summary>
     public bool SortDescending
     {
         get;
@@ -761,46 +760,44 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>当前路径按 "/" 拆分后的各级目录名(用于面包屑等)。</summary>
     public string[] PathSegments => CurrentPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
-    /// <summary>Set by the view: opens the OS file picker (multi-select) and returns local paths.</summary>
+    /// <summary>由视图设置:打开系统文件选择器(多选)并返回本地路径。</summary>
     public Func<Task<IReadOnlyList<string>>>? PickFilesForUpload { get; set; }
 
-    /// <summary>Set by the view: opens the OS folder picker and returns the chosen folder, or null.</summary>
+    /// <summary>由视图设置:打开系统文件夹选择器并返回选中的文件夹,或 null。</summary>
     public Func<Task<string?>>? PickFolderForUpload { get; set; }
 
-    /// <summary>Set by the view: asks where to save a download (arg = suggested file name).</summary>
+    /// <summary>由视图设置:询问下载保存位置(参数 = 建议的文件名)。</summary>
     public Func<string, Task<string?>>? PickSavePathForDownload { get; set; }
 
-    /// <summary>Set by the view: picks a local destination folder for folder/batch downloads.</summary>
+    /// <summary>由视图设置:为文件夹/批量下载选取本地目标文件夹。</summary>
     public Func<Task<string?>>? PickFolderForDownload { get; set; }
 
     /// <summary>
-    /// Set by the view: prompts for a line of text (title, initial value) → entered text or
-    /// null if cancelled. Used by new folder / new file / rename / move.
+    /// 由视图设置:提示输入一行文本(标题, 初始值) → 输入的文本,取消则返回 null。
+    /// 用于新文件夹 / 新文件 / 重命名 / 移动。
     /// </summary>
     public Func<string, string, Task<string?>>? PromptForText { get; set; }
 
-    /// <summary>Set by the view: writes text to the OS clipboard (copy path / copy name).</summary>
+    /// <summary>由视图设置:将文本写入系统剪贴板(复制路径 / 复制名称)。</summary>
     public Func<string, Task>? CopyToClipboard { get; set; }
 
     /// <summary>
-    /// Set by the view: shows the combined properties + permissions modal (参考 WinSCP:
-    /// 属性与权限矩阵在同一弹窗)。Returns the changed mode as three octal digits written in
-    /// decimal (e.g. 755), or null when cancelled / unchanged.
+    /// 由视图设置:展示合并的属性 + 权限弹窗(参考 WinSCP:属性与权限矩阵在同一弹窗)。
+    /// 返回三位八进制权限值(十进制表示,如 755),取消或未修改时返回 null。
     /// </summary>
     public Func<RemoteFileInfoViewModel, Task<short?>>? ShowFileProperties { get; set; }
 
     /// <summary>
-    /// Set by the view: asks the user to confirm a destructive action (arg = message) →
-    /// true to proceed. Used before deleting.
+    /// 由视图设置:要求用户确认危险操作(参数 = 提示消息) → true 表示继续。在删除前使用。
     /// </summary>
     public Func<string, Task<bool>>? ConfirmDelete { get; set; }
 
-    /// <summary>Set by the view: opens a local file with the OS default program.</summary>
+    /// <summary>由视图设置:用系统默认程序打开本地文件。</summary>
     public Func<string, Task>? OpenLocalFile { get; set; }
 
     /// <summary>
-    /// Set by the view: opens the built-in AvaloniaEdit editor window.
-    /// (file, localTempPath, uploadCallback) — the editor invokes the callback after each save.
+    /// 由视图设置:打开内置 AvaloniaEdit 编辑器窗口。
+    /// (文件, 本地临时路径, 上传回调) —— 编辑器在每次保存后调用此回调。
     /// </summary>
     public Func<
         RemoteFileInfoViewModel,
@@ -816,7 +813,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>Set by the view: 未配置默认编辑器时的弹窗引导(含"打开设置"直达)。</summary>
     public Func<Task>? PromptConfigureEditor { get; set; }
 
-    /// <summary>The floating transfer toast fed by uploads/downloads started here (spec §9).</summary>
+    /// <summary>此处发起的上传/下载所驱动的浮动传输提示窗(设计 §9)。</summary>
     public FileTransferViewModel? TransferSink { get; set; }
 
     /// <summary>设置 → 文件传输 的选项快照(宿主在绑定与设置保存时刷新)。</summary>
@@ -903,7 +900,7 @@ public class FileBrowserViewModel : ReactiveObject
 
     private static GridLength ClampColumnWidth(GridLength value, double min)
     {
-        // We only support pixel-sized user-resizable columns here.
+        // 仅支持像素值的用户可调列宽。
         double px = value.IsAbsolute ? value.Value : min;
         return new(Math.Max(min, px));
     }
@@ -975,8 +972,7 @@ public class FileBrowserViewModel : ReactiveObject
         }
         catch (OperationCanceledException)
         {
-            // Detached (tab closed / panel rebound) mid-listing — nobody is looking at this
-            // instance any more, so surface no error.
+            // 列举中途被拆除(标签关闭 / 面板重绑定)——已无人关注本实例,故不报错。
         }
         catch (Exception ex)
         {
@@ -1040,7 +1036,7 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
-    /// <summary>Sets or flips the sort, then reorders the currently loaded rows in place.</summary>
+    /// <summary>设置或翻转排序,然后原地重排当前已加载的行。</summary>
     private void ToggleSort(string column)
     {
         if (string.IsNullOrWhiteSpace(column))
@@ -1067,8 +1063,8 @@ public class FileBrowserViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Rebuilds the visible rows from the raw listing: hidden-files filter, the active
-    /// sort, and (outside the root) a leading ".." row that navigates to the parent (§6).
+    /// 从原始列举重建可见行:隐藏文件过滤、当前排序,以及在根目录之外的一个在最上方、
+    /// 导航回父目录的".."行(§6)。
     /// </summary>
     private void RebuildVisibleFiles()
     {
@@ -1101,8 +1097,8 @@ public class FileBrowserViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Orders rows by the active column and direction, keeping directories grouped first
-    /// (a directory's size is meaningless, so mixing them into a size sort reads badly).
+    /// 按当前列与方向给行排序,目录始终分组在最前
+    /// (目录的大小无意义,混入大小排序会导致归到奇怪的位置)。
     /// </summary>
     private IEnumerable<RemoteFileInfoViewModel> SortFiles(
         IEnumerable<RemoteFileInfoViewModel> items
@@ -1158,8 +1154,8 @@ public class FileBrowserViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// §6: double-clicking a file downloads it to a per-session temp folder (progress in
-    /// the transfer toast) and opens it with the OS default program.
+    /// §6:双击文件将其下载到每个会话独立的临时文件夹(进度显示在传输浮窗中),
+    /// 并用系统默认程序打开。
     /// </summary>
     private async Task DownloadAndOpenAsync(RemoteFileInfoViewModel file, CancellationToken ct)
     {
@@ -1189,7 +1185,7 @@ public class FileBrowserViewModel : ReactiveObject
         }
         catch (OperationCanceledException)
         {
-            // User cancelled the download; not an error.
+            // 用户取消了下载;不算错误。
         }
         catch (Exception ex)
         {
@@ -1370,9 +1366,8 @@ public class FileBrowserViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Uploads any mix of local files and folders into the current directory, recursing
-    /// into folders (creating the matching remote directories). Shared by the upload menu items and
-    /// drag-and-drop, so multi-select and dropped folders all funnel through here.
+    /// 上传任意混合的本地文件和文件夹到当前目录,对文件夹做递归
+    /// (创建对应的远程目录)。供上传菜单项与拖放共用,因此多选和拖放文件夹都汇聚到这里。
     /// </summary>
     public async Task UploadLocalPathsAsync(
         IReadOnlyList<string> localPaths,
@@ -1397,7 +1392,7 @@ public class FileBrowserViewModel : ReactiveObject
         }
         catch (OperationCanceledException)
         {
-            // User cancelled while the upload was being planned/run; not an error.
+            // 用户在上传规划/执行过程中取消了;不算错误。
         }
         catch (Exception ex)
         {
@@ -1412,9 +1407,9 @@ public class FileBrowserViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Walks a local file/folder and appends one planned upload per file into
-    /// <paramref name="plan" />, creating the matching remote directories as it goes. Planning up
-    /// front gives the toast an accurate remaining-file count and makes the batch cancellable.
+    /// 遍历本地文件/文件夹,把每个文件的一条计划上传追加到 <paramref name="plan" /> 中,
+    /// 并在过程中创建对应的远程目录。先做规划让传输浮窗获得准确的剩余文件数,
+    /// 并使整批任务可被取消。
     /// </summary>
     private async Task BuildUploadPlanAsync(
         string localPath,
@@ -1474,7 +1469,7 @@ public class FileBrowserViewModel : ReactiveObject
             }
             catch (OperationCanceledException)
             {
-                // User cancelled while the download was being planned/run; not an error.
+                // 用户在下载规划/执行过程中取消了;不算错误。
             }
             catch (Exception ex)
             {
@@ -1500,10 +1495,9 @@ public class FileBrowserViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Walks a remote file or directory (recursively) and appends one planned download per
-    /// file into <paramref name="plan" />, mirroring the remote structure into <paramref name="localDir" />
-    /// (creating the local directories as it goes). Planning up front lets the toast show an accurate
-    /// remaining-file count and lets the whole batch be cancelled. Shared by folder and batch download.
+    /// 遍历远端文件或目录(递归),把每个文件的一条计划下载追加到 <paramref name="plan" /> 中,
+    /// 将远端结构镜像到 <paramref name="localDir" /> 中(过程中创建本地目录)。先做规划让传输浮窗
+    /// 显示准确的剩余文件数,并使整批任务可被取消。供文件夹下载与批量下载共用。
     /// </summary>
     private async Task BuildDownloadPlanAsync(
         string remotePath,
@@ -1550,8 +1544,8 @@ public class FileBrowserViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Downloads explicitly selected remote entries into a caller-owned local directory.
-    /// The existing planning, conflict, progress and recursive-directory logic is reused.
+    /// 将用户显式选中的远端条目下载到调用者自有本地目录中。
+    /// 复用现有的规划、冲突处理、进度与递归目录逻辑。
     /// </summary>
     public async Task DownloadRemoteEntriesAsync(
         IReadOnlyList<RemoteFileInfoViewModel> entries,
@@ -1590,7 +1584,7 @@ public class FileBrowserViewModel : ReactiveObject
         }
         catch (OperationCanceledException)
         {
-            // User cancelled the batch download; not an error.
+            // 用户取消了批量下载;不算错误。
         }
         catch (Exception ex)
         {
@@ -1616,10 +1610,9 @@ public class FileBrowserViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Runs a batch of planned transfers one after another behind a shared cancellation
-    /// scope that the toast's "cancel remaining" control (and folder-download cancellation) can
-    /// trip. The toast shows the remaining-file count; the return value says whether every file
-    /// completed (false if the user cancelled).
+    /// 串行执行一批已规划的传输,共享一个取消域,浮窗的"取消剩余"控件(以及
+    /// 文件夹下载取消)均可以此触发。浮窗显示剩余文件数;返回值指示是否所有文件
+    /// 均已完成(false 表示用户取消了)。
     /// </summary>
     private async Task<bool> RunTransferBatchAsync(
         IReadOnlyList<PlannedFileTransfer> plan,
@@ -1643,7 +1636,7 @@ public class FileBrowserViewModel : ReactiveObject
         var resolved = new List<PlannedFileTransfer>(plan.Count);
         foreach (PlannedFileTransfer item in plan)
         {
-            // Resume check first: if resume is enabled and a partial file exists, resume from that offset.
+            // 先做断点续传检查:若续传已启用且存在部分文件,从该偏移处续传。
             PlannedFileTransfer? resumed = await TryResumeAsync(item, ct);
             if (resumed is not null)
             {
@@ -1651,7 +1644,7 @@ public class FileBrowserViewModel : ReactiveObject
                 continue;
             }
 
-            // Normal conflict resolution.
+            // 常规冲突处理。
             PlannedFileTransfer? settled =
                 item.Type == TransferType.Download
                     ? await ResolveLocalConflictAsync(item)
@@ -1711,7 +1704,7 @@ public class FileBrowserViewModel : ReactiveObject
         }
         catch (OperationCanceledException)
         {
-            // The user cancelled: the file in flight was aborted and the rest were skipped.
+            // 用户取消了:当前传输被中止,其余已跳过。
             return false;
         }
         finally
@@ -1734,22 +1727,21 @@ public class FileBrowserViewModel : ReactiveObject
     /// 本地路径的)计划项。非下载或无冲突原样返回。
     /// </summary>
     /// <summary>
-    /// Checks whether a partial transfer exists that can be resumed. If resume is enabled
-    /// and the destination file exists but is smaller than the source, returns the plan
-    /// with ResumeOffset set to the partial size.
+    /// 检查是否存在可续传的部分传输。若续传已启用且目标文件存在但小于源文件,
+    /// 返回将 ResumeOffset 设为部分大小的计划项。
     /// </summary>
     private async Task<PlannedFileTransfer?> TryResumeAsync(
         PlannedFileTransfer item,
         CancellationToken ct
     )
     {
-        // Only upload/download support resume.
+        // 仅上传/下载支持续传。
         if (item.Type is not (TransferType.Upload or TransferType.Download))
         {
             return null;
         }
 
-        // Check if resume is enabled in settings.
+        // 检查设置中是否启用了续传。
         if (!TransferOptions.ResumeEnabled)
         {
             return null;
@@ -1759,7 +1751,7 @@ public class FileBrowserViewModel : ReactiveObject
         {
             if (item.Type == TransferType.Download)
             {
-                // For download: check if local file already exists (partial).
+                // 下载:检查本地文件是否已存在(部分)。
                 long localSize = File.Exists(item.LocalPath) ? new FileInfo(item.LocalPath).Length : -1;
                 if (localSize <= 0)
                 {
@@ -1777,7 +1769,7 @@ public class FileBrowserViewModel : ReactiveObject
             }
             else
             {
-                // For upload: check if remote file already exists (partial).
+                // 上传:检查远端文件是否已存在(部分)。
                 long remoteSize = await GetRemoteFileSizeAsync(item.RemotePath, ct);
                 if (remoteSize <= 0)
                 {
@@ -1792,17 +1784,17 @@ public class FileBrowserViewModel : ReactiveObject
         }
         catch
         {
-            // If any check fails, fall through to normal conflict resolution.
+            // 任意检查失败时退回到常规冲突处理。
         }
 
         return null;
     }
 
-    /// <summary>Gets the remote file size via the SFTP wrapper's GetFileSize method.</summary>
+    /// <summary>通过 SFTP 包装器的 GetFileSize 方法获取远端文件大小。</summary>
     private async Task<long> GetRemoteFileSizeAsync(string remotePath, CancellationToken ct)
     {
-        // Access the underlying SFTP client through a service call.
-        // We use GetFileInfoAsync which does a directory listing — not ideal but existing.
+        // 通过服务调用访问底层 SFTP 客户端。
+        // 我们用 GetFileInfoAsync 做目录列举 —— 不理想但现成可用。
         try
         {
             RemoteFileInfo info = await _sftpService.GetFileInfoAsync(_sessionId, remotePath, ct);
@@ -1988,9 +1980,9 @@ public class FileBrowserViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Runs one transfer end to end: registers it with the toast, streams progress into
-    /// it, and settles the final state. A failure marks the row red and returns; a cancellation
-    /// marks the row cancelled, removes any partial local file, and propagates so the batch stops.
+    /// 端到端执行一次传输:在传输浮窗中注册,将进度流式推送进去,
+    /// 并落定最终状态。失败将行标红并返回;取消将行标为取消、清理本地部分文件,
+    /// 并传播取消使批量任务中止。
     /// </summary>
     private async Task RunTransferAsync(
         TransferType type,

@@ -4,38 +4,38 @@ using Avalonia.Input;
 namespace VelaShell.Terminal;
 
 /// <summary>
-/// Interface for terminal emulator that can be swapped between implementations
-/// (AvaloniaTerminal, xterm.js, etc.)
+/// 终端仿真器接口,可在多种实现之间切换
+/// (AvaloniaTerminal、xterm.js 等)。
 /// </summary>
 public interface ITerminalEmulator : IDisposable
 {
     /// <summary>
-    /// Current cursor row position
+    /// 当前光标行位置
     /// </summary>
     int CursorRow { get; }
 
     /// <summary>
-    /// Current cursor column position
+    /// 当前光标列位置
     /// </summary>
     int CursorCol { get; }
 
     /// <summary>
-    /// Number of scrollback lines to keep
+    /// 要保留的回滚行数
     /// </summary>
     int ScrollbackLines { get; set; }
 
     /// <summary>
-    /// The Avalonia control to embed in UI
+    /// 要嵌入 UI 的 Avalonia 控件
     /// </summary>
     Control Control { get; }
 
     /// <summary>
-    /// Current number of columns
+    /// 当前列数
     /// </summary>
     int Columns { get; }
 
     /// <summary>
-    /// Current number of rows
+    /// 当前行数
     /// </summary>
     int Rows { get; }
 
@@ -55,17 +55,17 @@ public interface ITerminalEmulator : IDisposable
     int ViewportRow { get; }
 
     /// <summary>
-    /// Feed raw bytes from SSH stream to terminal
+    /// 把来自 SSH 流的原始字节喂入终端
     /// </summary>
     void Feed(byte[] data);
 
     /// <summary>
-    /// Resize the terminal
+    /// 改变终端尺寸
     /// </summary>
     void Resize(int cols, int rows);
 
     /// <summary>
-    /// Event fired when user types input (to send to SSH)
+    /// 用户键入输入时触发(用于发送到 SSH)
     /// </summary>
     event Action<byte[]>? UserInput;
 
@@ -78,13 +78,13 @@ public interface ITerminalEmulator : IDisposable
     event Action<byte[]>? TypedInput;
 
     /// <summary>
-    /// Raised when the terminal's character-cell grid changes size (e.g. the control was
-    /// laid out at a new size) so the host PTY can be resized to match. Args: (columns, rows).
+    /// 终端的字符单元格网格尺寸变化时触发(例如控件以新尺寸完成布局),
+    /// 以便宿主 PTY 调整大小与之匹配。参数:(columns, rows)。
     /// </summary>
     event Action<int, int>? PtySizeChanged;
 
     /// <summary>
-    /// Programmatically send input bytes as if the user typed them
+    /// 以编程方式发送输入字节,如同用户键入一样
     /// </summary>
     void WriteInput(byte[] data);
 
@@ -98,7 +98,7 @@ public interface ITerminalEmulator : IDisposable
     void WritePasteInput(string text);
 
     /// <summary>
-    /// Get the content of a specific line in the terminal buffer
+    /// 获取终端缓冲区中指定行的文本内容
     /// </summary>
     string GetBufferLine(int row);
 }

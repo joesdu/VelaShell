@@ -19,8 +19,7 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
     public StatusBarViewModel()
         : this(DefaultScheduler.Instance) { }
 
-    // The metric segments are always visible; before the first sample (or without a
-    // connected session) they show idle placeholders.
+    // 指标分段始终可见;在首个采样前(或无已连接会话时)显示空闲占位符。
 
     /// <summary>状态栏左侧的当前状态文本,默认显示“就绪”。</summary>
     public string StatusText
@@ -131,21 +130,21 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = Strings.Get("Svc_NetSpeed");
 
-    /// <summary>Swap usage percent; "--" when the host has no swap or no session is live.</summary>
+    /// <summary>交换分区占用率;无交换分区或无实时会话时显示 "--"。</summary>
     public string SwapUsage
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "--";
 
-    /// <summary>Root filesystem usage percent; "--" without a live session.</summary>
+    /// <summary>根文件系统占用率;无实时会话时显示 "--"。</summary>
     public string DiskUsage
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = "--";
 
-    /// <summary>The dominant direction's rate, e.g. "4.2 MB/s" (Android-style readout).</summary>
+    /// <summary>主导方向的速率,例如 "4.2 MB/s"(安卓风格读数)。</summary>
     public string NetSpeed
     {
         get;
@@ -153,8 +152,7 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
     } = "0 B/s";
 
     /// <summary>
-    /// True while the server is actually uploading — lights the ↑ half of the
-    /// arrow-up-down glyph in the accent color.
+    /// 服务器实际上传时为 True —— 点亮上下箭头字形中的 ↑ 半边(强调色)。
     /// </summary>
     public bool IsNetUpActive
     {
@@ -162,7 +160,7 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>True while the server is actually downloading — lights the ↓ half.</summary>
+    /// <summary>服务器实际下载时为 True —— 点亮 ↓ 半边。</summary>
     public bool IsNetDownActive
     {
         get;
@@ -177,8 +175,7 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
     }
 
     /// <summary>
-    /// Feeds one network sample (bytes/second per direction). Each arrow half lights
-    /// up for its own direction; the readout shows the dominant direction's rate.
+    /// 喂入一个网络采样(各方向字节/秒)。每个箭头半边点亮对应方向;读数显示主导方向的速率。
     /// </summary>
     public void UpdateNetwork(double rxBytesPerSec, double txBytesPerSec, bool hasRates)
     {
@@ -190,7 +187,7 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
             return;
         }
 
-        // Keepalives/echo traffic hovers under this; don't light the arrows for noise.
+        // 保活/回显流量通常低于此阈值,不为此噪声点亮箭头。
         const double activeThreshold = 512;
         IsNetUpActive = txBytesPerSec >= activeThreshold;
         IsNetDownActive = rxBytesPerSec >= activeThreshold;
@@ -198,8 +195,7 @@ public sealed class StatusBarViewModel(IScheduler scheduler) : ReactiveObject, I
     }
 
     /// <summary>
-    /// Resets the metric segments to their idle placeholders (no connected session).
-    /// The segments stay visible so the bar layout never jumps.
+    /// 将指标分段重置为空闲占位符(无已连接会话)。分段保持可见,状态栏布局不会跳动。
     /// </summary>
     public void ClearSessionMetrics()
     {

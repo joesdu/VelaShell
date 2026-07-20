@@ -21,7 +21,7 @@ public partial class CommandPaletteView : UserControl
     public CommandPaletteView()
     {
         InitializeComponent();
-        // Tunnel so arrow/enter/escape are intercepted before the search TextBox consumes them.
+        // 用隧道(tunnel)拦截,使方向键/回车/Esc 在搜索 TextBox 消费这些按键之前被截获。
         AddHandler(KeyDownEvent, OnKeyDownTunnel, RoutingStrategies.Tunnel);
         DataContextChanged += OnDataContextChanged;
     }

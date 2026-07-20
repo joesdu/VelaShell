@@ -12,7 +12,7 @@ public class AppSettings
     /// <summary>界面主题标识(如 dark / light)。</summary>
     public string Theme { get; set; } = "dark";
 
-    /// <summary>Accent-color override as a hex string (e.g. "#00D4AA"); empty = use theme default.</summary>
+    /// <summary>强调色覆盖(十六进制字符串,如 "#00D4AA");空 = 使用主题默认值。</summary>
     public string AccentColor { get; set; } = "#E91E63";
 
     /// <summary>终端渲染使用的等宽字体族名。</summary>
@@ -27,10 +27,10 @@ public class AppSettings
     /// <summary>新建 SSH 连接的默认端口。</summary>
     public int DefaultPort { get; set; } = 22;
 
-    /// <summary>Terminal emulation profile advertised as TERM (default xterm-256color).</summary>
+    /// <summary>向对端宣告的终端模拟类型(即 TERM 变量,默认 xterm-256color)。</summary>
     public string TerminalType { get; set; } = "xterm-256color";
 
-    /// <summary>Character encoding used to decode host output (default UTF-8).</summary>
+    /// <summary>用于解码对端输出内容的字符编码(默认 UTF-8)。</summary>
     public string TerminalEncoding { get; set; } = "UTF-8";
 
     // —— 设计 §14 各页面的分组选项(SonnetDB app_config 文档,JSON 嵌套) ——

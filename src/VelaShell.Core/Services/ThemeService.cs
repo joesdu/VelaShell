@@ -1,36 +1,36 @@
 namespace VelaShell.Core.Services;
 
 /// <summary>
-/// Default <see cref="IThemeService"/> implementation that tracks the active theme
-/// ("dark", "light", or "system") and optional accent color, raising change events when either updates.
+/// <see cref="IThemeService"/> 的默认实现,跟踪当前活动主题("dark"、"light" 或 "system")
+/// 与可选的强调色,任一方更新时抛出变更事件。
 /// </summary>
 public class ThemeService(string initialTheme = "dark", string? initialAccent = null) : IThemeService
 {
     private static readonly HashSet<string> ValidThemes = new(StringComparer.OrdinalIgnoreCase) { "dark", "light", "system" };
 
     /// <summary>
-    /// The currently active theme name ("dark", "light", or "system").
+    /// 当前活动的主题名称("dark"、"light" 或 "system")。
     /// </summary>
     public string CurrentTheme { get; private set; } = ValidThemes.Contains(initialTheme) ? initialTheme.ToLowerInvariant() : "dark";
 
     /// <summary>
-    /// Raised when the active theme changes, carrying the new theme name.
+    /// 活动主题变更时触发,携带新的主题名称。
     /// </summary>
     public event Action<string>? ThemeChanged;
 
     /// <summary>
-    /// The current accent color as a normalized hex string, or <c>null</c> when none is set.
+    /// 当前强调色,为规范化后的十六进制字符串;未设置时为 <c>null</c>。
     /// </summary>
     public string? AccentColor { get; private set; } = NormalizeHex(initialAccent);
 
     /// <summary>
-    /// Raised when the accent color changes, carrying the new normalized hex value (or <c>null</c>).
+    /// 强调色变更时触发,携带新的规范化十六进制值(或 <c>null</c>)。
     /// </summary>
     public event Action<string?>? AccentChanged;
 
     /// <summary>
-    /// Sets the accent color from the given hex string (validated and normalized),
-    /// raising <see cref="AccentChanged"/> only when the value actually changes.
+    /// 根据给定十六进制字符串设置强调色(经过校验与规范化),
+    /// 仅当值确实变化时抛出 <see cref="AccentChanged"/>。
     /// </summary>
     public void SetAccent(string? hexColor)
     {
@@ -44,8 +44,8 @@ public class ThemeService(string initialTheme = "dark", string? initialAccent = 
     }
 
     /// <summary>
-    /// Switches the active theme to the given name, raising <see cref="ThemeChanged"/>
-    /// when it changes. Throws <see cref="ArgumentException"/> for an unrecognized theme.
+    /// 将活动主题切换到给定名称,变更时抛出 <see cref="ThemeChanged"/>。
+    /// 对于无法识别的主题抛出 <see cref="ArgumentException"/>。
     /// </summary>
     public void SetTheme(string themeName)
     {
@@ -63,8 +63,8 @@ public class ThemeService(string initialTheme = "dark", string? initialAccent = 
     }
 
     /// <summary>
-    /// Validates a #RGB / #RRGGBB / #RRGGBBAA color, returning it normalized, or null when
-    /// empty. Throws on a malformed value.
+    /// 校验 #RGB / #RRGGBB / #RRGGBBAA 颜色,返回规范化后的值;为空时返回 null。
+    /// 值格式非法时抛出。
     /// </summary>
     private static string? NormalizeHex(string? hex)
     {

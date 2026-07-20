@@ -2,46 +2,45 @@ using System.Text.RegularExpressions;
 
 namespace VelaShell.Terminal.Semantics;
 
-/// <summary>The kind of thing a <see cref="SemanticSpan" /> marks in a line of terminal output.</summary>
+/// <summary>一行终端输出中,由 <see cref="SemanticSpan" /> 标记的内容的语义类别。</summary>
 public enum SemanticKind
 {
-    /// <summary>A URL such as an http or https link.</summary>
+    /// <summary>URL,例如 http 或 https 链接。</summary>
     Url,
 
-    /// <summary>An error-related keyword (error, failed, fatal, panic, ...).</summary>
+    /// <summary>错误相关关键词(error、failed、fatal、panic 等)。</summary>
     Error,
 
-    /// <summary>A warning-related keyword (warn, deprecated, caution, ...).</summary>
+    /// <summary>警告相关关键词(warn、deprecated、caution 等)。</summary>
     Warning,
 
-    /// <summary>A success or healthy-state keyword (ok, done, ready, ...).</summary>
+    /// <summary>成功或健康状态关键词(ok、done、ready 等)。</summary>
     Success,
 
-    /// <summary>A dotted IPv4 address.</summary>
+    /// <summary>点分 IPv4 地址。</summary>
     IpAddress,
 
-    /// <summary>A command-line option flag such as -x or --color.</summary>
+    /// <summary>命令行选项标志,如 -x 或 --color。</summary>
     Option,
 
-    /// <summary>A standalone number, port, count, or timestamp.</summary>
+    /// <summary>独立的数字、端口、计数或时间戳。</summary>
     Number
 }
 
-/// <summary>A matched region within a single line, in character offsets.</summary>
-/// <param name="Start">Character offset where the region begins in the line.</param>
-/// <param name="Length">Length of the region in characters.</param>
-/// <param name="Kind">The semantic category of the matched region.</param>
+/// <summary>单行内的一段匹配区域,以字符偏移表示。</summary>
+/// <param name="Start">该区域在行中的起始字符偏移。</param>
+/// <param name="Length">该区域的长度(字符数)。</param>
+/// <param name="Kind">匹配区域的语义类别。</param>
 public readonly record struct SemanticSpan(int Start, int Length, SemanticKind Kind)
 {
-    /// <summary>The exclusive end offset of the region (<see cref="Start" /> + <see cref="Length" />).</summary>
+    /// <summary>该区域的独占结束偏移(<see cref="Start" /> + <see cref="Length" />)。</summary>
     public int End => Start + Length;
 }
 
 /// <summary>
-/// Finds semantically interesting regions (URLs, error/warning words, IP addresses) in committed
-/// line text so the renderer can color them and links can be made clickable (#9). Operates on
-/// finished text, not the VT byte stream, so it never interferes with emulation. Rules are
-/// intentionally simple and overridable.
+/// 在已提交的整行文本中查找语义上有意义的区域(URL、错误/警告词、IP 地址),
+/// 以便渲染层为其着色、并把链接做成可点击(#9)。它作用于已完成的文本而非 VT 字节流,
+/// 所以绝不会干扰仿真。规则刻意保持简单且可被覆盖。
 /// </summary>
 public sealed partial class SemanticMatcher
 {
@@ -60,20 +59,19 @@ public sealed partial class SemanticMatcher
     [GeneratedRegex(@"\b(?:success|successful|successfully|succeeded|ok|done|enabled|active|running|started|listening|pass|passed|ready|healthy|online|connected)\b", RegexOptions.IgnoreCase)]
     private static partial Regex SuccessRegex();
 
-    // Command-line option flags such as -x, --now, --color=auto. Anchored so it never fires
-    // inside a word or a hyphenated term (well-known, re-run).
+    // 命令行选项标志,如 -x、--now、--color=auto。做了锚定,因此绝不会在一个单词或带连字符的词内误触发(如 well-known、re-run)。
     [GeneratedRegex(@"(?<![\w-])--?[A-Za-z][\w-]*")]
     private static partial Regex OptionRegex();
 
-    // Standalone numbers, including dotted/colon groups (ports, counts, timestamps like 22:37:41).
-    // IP addresses win via priority, so they are not fragmented into numbers.
+    // 独立的数字,包括点分/冒号分组(端口、计数、时间戳如 22:37:41)。
+    // IP 地址因优先级更高而胜出,因此不会被拆成多个数字。
     [GeneratedRegex(@"\b\d+(?:[.:]\d+)*\b")]
     private static partial Regex NumberRegex();
 
     /// <summary>
-    /// Returns non-overlapping spans for the line, ordered by start offset. When regions overlap
-    /// (e.g. digits inside an IP, or an IP inside a URL) the higher-priority kind wins:
-    /// Url &gt; IpAddress &gt; Error &gt; Warning &gt; Success &gt; Option &gt; Number.
+    /// 返回该行中互不重叠的区域,按起始偏移排序。当区域重叠时
+    /// (例如 IP 内的数字,或 URL 内的 IP),优先级更高的类别胜出:
+    /// Url &gt; IpAddress &gt; Error &gt; Warning &gt; Success &gt; Option &gt; Number。
     /// </summary>
     public static IReadOnlyList<SemanticSpan> Match(string? line)
     {
@@ -90,7 +88,7 @@ public sealed partial class SemanticMatcher
         Collect(raw, OptionRegex(), line, SemanticKind.Option);
         Collect(raw, NumberRegex(), line, SemanticKind.Number);
 
-        // Higher priority first, then earliest, so the greedy pass below keeps the best match.
+        // 优先级高者在前,其次起始更早,便于下方贪心遍历保留最佳匹配。
         raw.Sort((a, b) =>
         {
             int byKind = Priority(a.Kind).CompareTo(Priority(b.Kind));
@@ -110,7 +108,7 @@ public sealed partial class SemanticMatcher
         return chosen;
     }
 
-    /// <summary>Returns the URL at the given character offset, or null if none.</summary>
+    /// <summary>返回给定字符偏移处的 URL,若没有则返回 null。</summary>
     public static string? UrlAt(string? line, int offset)
     {
         if (string.IsNullOrEmpty(line) || offset < 0 || offset >= line.Length)

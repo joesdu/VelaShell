@@ -5,9 +5,8 @@ using ReactiveUI;
 namespace VelaShell.ViewModels;
 
 /// <summary>
-/// The command palette (Ctrl+P / Ctrl+K): a fuzzy-searchable, keyboard-driven overlay that
-/// lists sessions and actions grouped by category. The item source is provided by the host so
-/// the palette stays decoupled and unit-testable.
+/// 命令面板(Ctrl+P / Ctrl+K):一个支持模糊搜索、以键盘驱动的浮层,
+/// 按分类列出会话与动作。条目来源由宿主提供,使面板保持解耦且可单元测试。
 /// </summary>
 public sealed class CommandPaletteViewModel : ReactiveObject
 {
@@ -15,10 +14,10 @@ public sealed class CommandPaletteViewModel : ReactiveObject
     private readonly Func<IReadOnlyList<CommandPaletteItem>> _itemsProvider;
     private IReadOnlyList<CommandPaletteItem> _all = [];
 
-    /// <summary>
-    /// Creates the palette view model and wires up its keyboard/mouse commands.
-    /// </summary>
-    /// <param name="itemsProvider">Supplies the current palette items on demand; when null an empty list is used.</param>
+/// <summary>
+/// 创建命令面板视图模型并接好其键盘/鼠标命令。
+/// </summary>
+/// <param name="itemsProvider">按需提供当前面板条目;为 null 时使用空列表。</param>
     public CommandPaletteViewModel(Func<IReadOnlyList<CommandPaletteItem>>? itemsProvider = null)
     {
         _itemsProvider = itemsProvider ?? (() => []);
@@ -31,24 +30,24 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         this.WhenAnyValue(x => x.Query).Subscribe(_ => Rebuild());
     }
 
-    /// <summary>The filtered items arranged into category groups for display.</summary>
+    /// <summary>按分类分组后用于显示的已过滤条目。</summary>
     public ObservableCollection<CommandPaletteGroup> Groups { get; }
 
-    /// <summary>The current search text; changing it re-filters the item list.</summary>
+    /// <summary>当前搜索文本;改动它会重新过滤条目列表。</summary>
     public string Query
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
-    /// <summary>Whether the palette overlay is currently visible.</summary>
+    /// <summary>命令面板浮层当前是否可见。</summary>
     public bool IsOpen
     {
         get;
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>The currently highlighted item; keeps the item's own selection flag in sync.</summary>
+    /// <summary>当前高亮项;同步维护该条目自身的高亮标记。</summary>
     public CommandPaletteItem? SelectedItem
     {
         get;
@@ -61,28 +60,28 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         }
     }
 
-    /// <summary>The number of items currently matching the query.</summary>
+    /// <summary>当前匹配查询的条目数量。</summary>
     public int ResultCount => _flat.Count;
 
-    /// <summary>Whether any item currently matches the query.</summary>
+    /// <summary>当前是否有条目匹配查询。</summary>
     public bool HasResults => _flat.Count > 0;
 
-    /// <summary>Moves the selection to the next matching item.</summary>
+    /// <summary>将选中项移到下一个匹配项。</summary>
     public ReactiveCommand<Unit, Unit> MoveDownCommand { get; }
 
-    /// <summary>Moves the selection to the previous matching item.</summary>
+    /// <summary>将选中项移到上一个匹配项。</summary>
     public ReactiveCommand<Unit, Unit> MoveUpCommand { get; }
 
-    /// <summary>Runs the currently selected item and closes the palette.</summary>
+    /// <summary>运行当前选中项并关闭命令面板。</summary>
     public ReactiveCommand<Unit, Unit> ExecuteSelectedCommand { get; }
 
-    /// <summary>Selects and immediately runs the supplied item (mouse activation).</summary>
+    /// <summary>选中并立即运行所给条目(鼠标激活)。</summary>
     public ReactiveCommand<CommandPaletteItem, Unit> ActivateCommand { get; }
 
-    /// <summary>Closes the palette overlay without running anything.</summary>
+    /// <summary>关闭命令面板浮层,不运行任何条目。</summary>
     public ReactiveCommand<Unit, Unit> CloseCommand { get; }
 
-    /// <summary>Reloads items from the provider, clears the query and shows the palette.</summary>
+    /// <summary>从提供方重新加载条目、清空查询并显示命令面板。</summary>
     public void Open()
     {
         _all = _itemsProvider();
@@ -91,13 +90,13 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         IsOpen = true;
     }
 
-    /// <summary>Hides the palette overlay.</summary>
+    /// <summary>隐藏命令面板浮层。</summary>
     public void Close() => IsOpen = false;
 
-    /// <summary>Advances the selection to the next matching item, wrapping around.</summary>
+    /// <summary>将选中项推进到下一个匹配项,到末尾时回环。</summary>
     public void MoveDown() => Move(1);
 
-    /// <summary>Advances the selection to the previous matching item, wrapping around.</summary>
+    /// <summary>将选中项推进到上一个匹配项,到开头时回环。</summary>
     public void MoveUp() => Move(-1);
 
     private void Move(int delta)
@@ -111,7 +110,7 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         SelectedItem = _flat[index];
     }
 
-    /// <summary>Closes the palette and invokes the currently selected item, if any.</summary>
+    /// <summary>关闭命令面板并触发当前选中项(若有)。</summary>
     public void ExecuteSelected()
     {
         CommandPaletteItem? item = SelectedItem;
@@ -123,7 +122,7 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         item.Invoke();
     }
 
-    /// <summary>Selects and immediately runs an item (used for mouse clicks).</summary>
+    /// <summary>选中并立即运行某条目(用于鼠标点击)。</summary>
     public void Activate(CommandPaletteItem item)
     {
         SelectedItem = item;
@@ -174,7 +173,7 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         return item.Title.Contains(query, StringComparison.OrdinalIgnoreCase) || (item.Hint?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) || Fuzzy(item.Title, query);
     }
 
-    /// <summary>Subsequence fuzzy match: every query char appears in order within the title.</summary>
+    /// <summary>子序列模糊匹配:每个查询字符都在标题中按顺序出现。</summary>
     private static bool Fuzzy(string title, string query)
     {
         int q = 0;

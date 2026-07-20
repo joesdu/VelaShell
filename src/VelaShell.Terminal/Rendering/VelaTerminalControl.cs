@@ -21,10 +21,9 @@ using VelaShell.Terminal.Semantics;
 namespace VelaShell.Terminal.Rendering;
 
 /// <summary>
-/// A fully self-drawn terminal control. It owns a <see cref="TerminalEmulator" />, renders the
-/// screen buffer with cached glyph runs, and translates keyboard / mouse / clipboard input into
-/// host bytes. Implements <see cref="ITerminalEmulator" /> so it drops straight into the existing
-/// <c>SshTerminalBridge</c> and views without any changes to the wiring.
+/// 完全自绘的终端控件。它持有一个 <see cref="TerminalEmulator" />,用缓存的字形运行
+/// 渲染屏幕缓冲,并把键盘 / 鼠标 / 剪贴板输入翻译成主机字节。实现 <see cref="ITerminalEmulator" />,
+/// 因此能直接嵌入现有的 <c>SshTerminalBridge</c> 与各个视图,无需改动任何接线。
 /// </summary>
 public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 {
@@ -39,28 +38,27 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     private readonly Dictionary<uint, ImmutableSolidColorBrush> _brushCache = [];
     private readonly Dictionary<uint, ImmutablePen> _penCache = [];
 
-    // Cache of shaped, colored glyphs keyed by (rune, combining, foreground, style). Terminal
-    // output draws from a tiny alphabet, so hit rate is ~100% and per-frame text shaping —
-    // the dominant render cost — effectively disappears. Cleared when the font/size changes.
+    // 已塑形、着色的字形缓存,键为 (rune, combining, foreground, style)。终端
+    // 输出只从很小的字符集绘制,因此命中率约 100%,每帧文本塑形 ——
+    // 这一主要渲染开销 —— 实际上消失了。字体/字号变化时清空。
     private readonly Dictionary<GlyphKey, FormattedText> _glyphCache = [];
     private readonly List<char> _runChars = [];
     private readonly List<GlyphInfo> _runGlyphs = [];
     private readonly SemanticMatcher _semanticMatcher = new();
 
-    // Client-side semantic coloring (URLs, IPs, error/warning/success words, option flags, numbers)
-    // for text the remote program left in the default color, so plain logs/MOTD get highlighted
-    // without ever clobbering explicit SGR colors (ls --color, git, etc.). Regex results are cached
-    // by line text since the visible lines are re-scanned every frame (cursor blink, output).
+    // 客户端语义着色(URL、IP、错误/警告/成功词、选项标志、数字),针对
+    // 远端程序留在默认颜色下的文本,使普通日志/MOTD 也能被高亮,
+    // 且绝不破坏显式 SGR 颜色(ls --color、git 等)。正则结果按行文本缓存,
+    // 因为可见行每一帧都会被重新扫描(光标闪烁、输出)。
     private readonly Dictionary<string, IReadOnlyList<SemanticSpan>> _semanticSpanCache = [];
 
     // ---- Glyph-run batching -------------------------------------------------
-    // Each visible line is drawn as a handful of GlyphRuns — one per contiguous run of cells
-    // sharing the same font style and foreground — instead of one DrawText per cell. A full-screen
-    // TUI (htop/vim/nano) has thousands of cells; issuing one draw op per cell is what made the
-    // cursor feel sluggish, since every frame recorded thousands of draw operations on the UI
-    // thread. Advances are pinned to the cell width so monospace alignment is exact, spaces are
-    // folded into advances (never drawn), and any glyph the primary font lacks (CJK, symbols) or
-    // any combining sequence falls back to the per-cell FormattedText path so fallback still works.
+    // 每个可见行被绘制为少数几个 GlyphRun —— 每个连续且共享同一字体风格与前景色的
+    // 单元格运行对应一个 —— 而不是每格一次 DrawText。全屏 TUI(htop/vim/nano)有成千上万个
+    // 单元格;每一格一次绘制操作,正是过去光标卡顿的元凶,因为每帧会在 UI 线程
+    // 记录成千上万次绘制操作。步进被钉在单元格宽度上,因此等宽对齐精确,空格被
+    // 并入步进(从不绘制),而主字体缺失的任何字形(CJK、符号)或任何
+    // 组合序列,会回退到逐单元 FormattedText 路径,从而保证回退依旧可用。
     private readonly GlyphTypeface?[] _styleTypefaces = new GlyphTypeface?[4];
     private double _baselineOffset;
 
@@ -68,9 +66,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     private DispatcherTimer? _cursorBlinkTimer;
     private bool _cursorBlinkVisible = true;
 
-    // Latches on the first time the batched GlyphRun path throws at runtime (unexpected platform
-    // behavior), permanently reverting to the proven per-cell FormattedText path so a rendering
-    // API surprise can never leave text missing — it only forfeits the batching speedup.
+    // 一旦批量化 GlyphRun 路径在运行时首次抛异常(意外的平台行为),
+    // 就永久回退到久经考验的逐单元 FormattedText 路径,使渲染 API 的意外
+    // 绝不会让文本缺失 —— 只是放弃了批处理带来的加速。
     private bool _glyphRunUnsupported;
     private double _glyphYOffset;
     private bool _hasFocus;
@@ -79,26 +77,26 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
     private TerminalImeClient? _imeClient;
     private (int Col, int Row) _lastMouseReportCell = (-1, -1);
-    private int _lastScrollbackCount; // scrollback size at the previous output update
+    private int _lastScrollbackCount; // 上一次输出更新时的回滚大小
 
-    // Mouse reporting to the app (htop/btop/vim/tmux): the button held after a reported press, and
-    // the last cell reported, so drag/motion only emits when the cell actually changes.
+    // 向应用上报鼠标(htop/btop/vim/tmux):记录上报按下后保持的按钮,以及
+    // 最近上报的单元格,使得拖拽/移动仅在单元格真正变化时才发送。
     private TerminalMouseButton? _mouseButtonDown;
     private ImmutableSolidColorBrush? _runBrush;
     private uint _runFg;
     private int _runPrevCol;
     private int _runPrevWidth;
     private int _runStartCol;
-    private int _runStyle = -1; // -1 = no active run; else (bold?1) | (italic?2)
+    private int _runStyle = -1; // -1 = 无活动运行;否则 (bold?1) | (italic?2)
 
-    private int _scrollOffset; // lines scrolled up from the bottom (0 = live)
+    private int _scrollOffset; // 从底部向上滚动的行数(0 = 实时)
 
-    /// <summary>Search spans per absolute buffer row; the current hit is tinted differently.</summary>
+    /// <summary>每个绝对缓冲行的搜索区间;当前命中项以不同色调着色。</summary>
     private Dictionary<int, List<(int Start, int End, bool Current)>>? _searchHighlights;
 
     private bool _selecting;
 
-    // Selection (linear), in absolute-row space.
+    // 选区(线性),位于绝对行空间。
     private (int Row, int Col)? _selectionAnchor;
     private (int Row, int Col)? _selectionCaret;
     private bool _styleTypefacesReady;
@@ -124,15 +122,15 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         AddHandler(TextInputMethodClientRequestedEvent, OnTextInputMethodClientRequested);
     }
 
-    /// <summary>Toggles client-side semantic highlighting of default-colored output.</summary>
+    /// <summary>切换对默认颜色输出的客户端语义高亮。</summary>
     private bool SemanticHighlightingEnabled { get; } = true;
 
-    /// <summary>When true, releasing a selection copies it to the clipboard automatically.</summary>
+    /// <summary>为 true 时,松开选区会自动将其复制到剪贴板。</summary>
     public bool CopyOnSelect { get; set; } = true;
 
     // ---- 设置 → 终端(行为选项,由 ApplyLiveTerminalSettings 下发) ----------
 
-    /// <summary>Cursor shape: "bar" (vertical line), "block" (filled cell) or "underline".</summary>
+    /// <summary>光标形状:"bar"(竖线)、"block"(实心单元)或 "underline"(下划线)。</summary>
     public string CursorStyle
     {
         get;
@@ -148,7 +146,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         // ApplyLiveTerminalSettings 下发,这里不声明独立的业务默认值(设置审计 C-07)。
     } = "bar";
 
-    /// <summary>Whether the focused cursor blinks (设置 → 终端 → 光标闪烁).</summary>
+    /// <summary>聚焦光标是否闪烁(设置 → 终端 → 光标闪烁)。</summary>
     public bool CursorBlink
     {
         get;
@@ -164,8 +162,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     } = true;
 
     /// <summary>
-    /// Line-height multiplier (1.0 = font natural height). Extra space is distributed
-    /// evenly above/below the glyphs.
+    /// 行高倍数(1.0 = 字体自然高度)。多余空间在字形上下均匀分配。
     /// </summary>
     public double LineHeight
     {
@@ -188,21 +185,21 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         }
     } = 1.0;
 
-    /// <summary>Right-click pastes the clipboard (off = right-click does nothing).</summary>
+    /// <summary>右键粘贴剪贴板(关闭 = 右键无动作)。</summary>
     public bool RightClickPaste { get; set; } = true;
 
-    /// <summary>Strip trailing whitespace from each copied line.</summary>
+    /// <summary>复制每行时去除行尾空白。</summary>
     public bool TrimTrailingWhitespaceOnCopy { get; set; } = true;
 
-    /// <summary>Double-click selects the word under the pointer.</summary>
+    /// <summary>双击选中指针下的单词。</summary>
     public bool DoubleClickSelectsWord { get; set; } = true;
 
-    /// <summary>Ask before pasting text that contains newlines (accidental multi-line runs).</summary>
+    /// <summary>粘贴含换行符的文本前先询问(避免误执行多行内容)。</summary>
     public bool ConfirmMultilinePaste { get; set; } = true;
 
     /// <summary>
-    /// Host-provided confirmation for multi-line pastes (returns false to abort).
-    /// Null = never ask, the control itself cannot show dialogs.
+    /// 由宿主提供的多行粘贴确认(返回 false 则中止)。
+    /// null = 从不询问,控件本身无法弹出对话框。
     /// </summary>
     public Func<string, Task<bool>>? MultilinePasteConfirmation { get; set; }
 
@@ -212,16 +209,16 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// </summary>
     public bool CtrlCCopiesWhenSelected { get; set; }
 
-    /// <summary>Typing snaps the view back to the live bottom.</summary>
+    /// <summary>打字时把视图拉回实时底部。</summary>
     public bool ScrollOnKeystroke { get; set; } = true;
 
     /// <summary>
-    /// New output snaps a history-scrolled view back to the bottom; off keeps the
-    /// user's history view pinned (#15 behavior).
+    /// 新输出会把历史滚动视图拉回底部;关闭则保持
+    /// 用户的历史视图固定不动(#15 行为)。
     /// </summary>
     public bool ScrollOnOutput { get; set; }
 
-    /// <summary>BEL handling: "system" (beep), "none" (silent) or "visual" (screen flash).</summary>
+    /// <summary>BEL 处理:"system"(蜂鸣)、"none"(静默)或 "visual"(屏幕闪烁)。</summary>
     public string BellMode { get; set; } = "system";
 
     /// <summary>
@@ -277,15 +274,14 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     public GutterMenuLabels GutterMenu { get; set; } = new("行号", "时间戳", "折叠标记", "空白");
 
     /// <summary>
-    /// Enables the OS input method (Chinese/Japanese/Korean composition). Off = the
-    /// terminal never provides an IME client.
+    /// 启用操作系统输入法(中文/日文/韩文组字)。关闭 = 终端从不提供 IME 客户端。
     /// </summary>
     public bool ImeEnabled { get; set; } = true;
 
-    /// <summary>Maximum lines that can be scrolled up (size of the scrollback history).</summary>
+    /// <summary>可向上滚动的最大行数(回滚历史的大小)。</summary>
     public int MaxScrollOffset => Emulator.Screen.ScrollbackCount;
 
-    /// <summary>Lines currently scrolled up from the live bottom (0 = following output).</summary>
+    /// <summary>当前从实时底部向上滚动的行数(0 = 跟随输出)。</summary>
     public int ScrollOffset
     {
         get => _scrollOffset;
@@ -359,27 +355,27 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <summary>网格 reflow 后新的列数/行数,供上层同步调整 PTY 尺寸。</summary>
     public event Action<int, int>? PtySizeChanged;
 
-    /// <summary>Feeds raw host output bytes into the emulator for parsing and display.</summary>
+    /// <summary>将原始主机输出字节喂入模拟器以解析并显示。</summary>
     public void Feed(byte[] data) => Emulator.Feed(data);
 
     /// <summary>Feed 的 span 重载:桥的合批热路径直喂复用缓冲,避免物化精确尺寸数组。</summary>
     public void Feed(ReadOnlySpan<byte> data) => Emulator.Feed(data);
 
-    /// <summary>Resizes the emulator grid to the given columns/rows, resetting scroll, folds and selection.</summary>
+    /// <summary>将模拟器网格调整为给定行列数,重置滚动、折叠与选区。</summary>
     public void Resize(int cols, int rows)
     {
         Emulator.Resize(cols, rows);
         _scrollOffset = 0;
         _lastScrollbackCount = Emulator.Screen.ScrollbackCount;
         ClearFolds(); // reflow 会重建行对象,折叠引用失效。
-        // Row indexes in the selection are absolute and shift on resize; drop it rather than
-        // let a stale range mark (or copy) the wrong text.
+        // 选区的行索引是绝对的,会在调整大小时偏移;与其让陈旧的范围
+        // 标记(或复制)错误的文本,不如直接丢弃它。
         ClearSelection();
         InvalidateVisual();
         ScrollChanged?.Invoke();
     }
 
-    /// <summary>Sends program-generated bytes to the PTY as if the user had typed them.</summary>
+    /// <summary>把程序生成的字节当作用户输入发送往 PTY。</summary>
     public void WriteInput(byte[] data) => SendTypedInput(data);
 
     /// <inheritdoc />
@@ -460,43 +456,43 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         ResetCursorBlink();
     }
 
-    /// <summary>Returns the plain text of the given active-screen row.</summary>
+    /// <summary>返回给定活动屏幕行的纯文本。</summary>
     public string GetBufferLine(int row) => Emulator.Screen.ActiveLine(row).GetText();
 
-    /// <summary>Current cursor row within the active screen.</summary>
+    /// <summary>活动屏幕中的当前光标行。</summary>
     public int CursorRow => Emulator.CursorY;
 
-    /// <summary>Current cursor column within the active screen.</summary>
+    /// <summary>活动屏幕中的当前光标列。</summary>
     public int CursorCol => Emulator.CursorX;
 
-    /// <summary>Maximum number of scrollback lines the buffer retains.</summary>
+    /// <summary>缓冲区保留的最大回滚行数。</summary>
     public int ScrollbackLines
     {
         get => Emulator.Screen.MaxScrollback;
         set => Emulator.Screen.MaxScrollback = value;
     }
 
-    /// <summary>The Avalonia control that renders this terminal (this instance).</summary>
+    /// <summary>渲染此终端的 Avalonia 控件(即本实例)。</summary>
     public Control Control => this;
 
-    /// <summary>Number of columns in the current grid.</summary>
+    /// <summary>当前网格的列数。</summary>
     public int Columns => Emulator.Columns;
 
-    /// <summary>Number of rows in the current grid.</summary>
+    /// <summary>当前网格的行数。</summary>
     public int Rows => Emulator.Rows;
 
-    // Legacy interface members: kept for source compatibility with existing bindings.
-    /// <summary>Legacy scrollback buffer kept only for source compatibility with existing bindings.</summary>
+    // 遗留接口成员:为与既有绑定的源码兼容性而保留。
+    /// <summary>遗留回滚缓冲区,仅为与既有绑定的源码兼容性而保留。</summary>
     public ScrollbackBuffer ScrollbackBuffer { get; } = new(1);
 
-    /// <summary>Total number of buffer rows (scrollback plus the visible screen).</summary>
+    /// <summary>缓冲行总数(回滚区 + 可见屏幕)。</summary>
     public int TotalLines => Emulator.Screen.TotalRows;
 
-    /// <summary>Absolute buffer row currently shown at the top of the viewport.</summary>
+    /// <summary>当前显示在视口顶部的绝对缓冲行。</summary>
     public int ViewportRow =>
         Math.Max(0, Emulator.Screen.TotalRows - Emulator.Rows - _scrollOffset);
 
-    /// <summary>Detaches emulator event handlers and stops the cursor-blink timer.</summary>
+    /// <summary>解除模拟器事件订阅并停止光标闪烁计时器。</summary>
     public void Dispose()
     {
         Emulator.Updated -= OnEmulatorUpdated;
@@ -507,18 +503,17 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>
-    /// Raised (on the UI thread) whenever the remote sends BEL — hosts use it for
-    /// tab-flash alerts.
+    /// 每当远端发送 BEL 时触发(在 UI 线程上)—— 宿主用它做标签闪烁提醒。
     /// </summary>
     public event Action? BellRang;
 
-    /// <summary>Raised whenever the scroll position or scrollable extent changes.</summary>
+    /// <summary>每当滚动位置或可滚动范围变化时触发。</summary>
     public event Action? ScrollChanged;
 
     /// <summary>
-    /// Computes the scroll offset to keep the same history content visible after new lines were
-    /// pushed into scrollback. At the live bottom (offset 0) the view follows output; when the
-    /// user has scrolled up, the offset grows with the scrollback so the view stays pinned.
+    /// 计算滚动偏移,使新行被推入回滚区后,相同的历史内容仍保持可见。在实时底部
+    /// (偏移 0)时视图跟随输出;当用户向上滚动后,偏移随回滚区增长,
+    /// 使视图保持固定不动。
     /// </summary>
     internal static int PinScrollOffset(int currentOffset, int lastScrollback, int newScrollback)
     {
@@ -531,7 +526,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         return Math.Clamp(pinned, 0, Math.Max(0, newScrollback));
     }
 
-    /// <summary>Re-applies the theme palette once the actual theme variant is known after attaching.</summary>
+    /// <summary>挂载后、实际主题变体确定时重新应用主题调色板。</summary>
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
@@ -579,14 +574,14 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     // ReSharper disable once EventNeverSubscribedTo.Global
-    /// <summary>Raised when the remote sets the window/tab title; forwards the underlying emulator event.</summary>
+    /// <summary>远端设置窗口/标签标题时触发;转发底层模拟器事件。</summary>
     public event Action<string>? TitleChanged
     {
         add => Emulator.TitleChanged += value;
         remove => Emulator.TitleChanged -= value;
     }
 
-    /// <summary>Sets the host-output charset (UTF-8 default; GBK/Big5/etc. supported).</summary>
+    /// <summary>设置主机输出字符集(默认 UTF-8;支持 GBK/Big5 等)。</summary>
     public void SetEncoding(Encoding encoding) => Emulator.SetEncoding(encoding);
 
     /// <summary>OSC 52:远端 yank(tmux/vim)写入系统剪贴板;事件来自 feed 线程,落板走 UI 线程。</summary>
@@ -606,8 +601,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     // ---- Bell (设置 → 终端 → 提示音与通知) ----------------------------------
 
     /// <summary>
-    /// Fires on the feed thread; marshals to the UI thread, then flashes / beeps per
-    /// <see cref="BellMode" /> and notifies the host (tab flash).
+    /// 在喂入线程上触发;编组到 UI 线程后,按 <see cref="BellMode" /> 闪烁 / 蜂鸣,
+    /// 并通知宿主(标签闪烁)。
     /// </summary>
     private void OnBell()
     {
@@ -632,8 +627,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     // ---- Cursor blink --------------------------------------------------------
 
     /// <summary>
-    /// Runs the blink timer only while focused with blinking enabled; otherwise the
-    /// cursor stays solid and no per-500ms repaints happen.
+    /// 仅在聚焦且启用闪烁时运行闪烁计时器;否则光标保持实心,
+    /// 不会发生每 500ms 一次的重新绘制。
     /// </summary>
     private void UpdateCursorBlinkTimer()
     {
@@ -666,7 +661,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         }
     }
 
-    /// <summary>Typing resets the blink phase so the cursor is visible right where input lands.</summary>
+    /// <summary>输入会重置闪烁相位,使光标在输入落点处立即可见。</summary>
     private void ResetCursorBlink()
     {
         if (_cursorBlinkTimer is { IsEnabled: true } timer)
@@ -695,9 +690,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
     private void ApplyOutputUpdate()
     {
-        // Follow output only when already at the bottom; otherwise keep the user's history
-        // view pinned so background output doesn't yank them back down (fixes #15) — unless
-        // 设置 → 终端 → 有输出时自动滚动 is on, which snaps the view back to the live bottom.
+        // 仅在已处于底部时才跟随输出;否则保持用户的历史
+        // 视图固定不动,以免后台输出把其拽回下方(修复 #15)—— 除非
+        // 设置 → 终端 → 有输出时自动滚动已开启,此时会把视图拉回实时底部。
         int scrollback = Emulator.Screen.ScrollbackCount;
         if (ScrollOnOutput && _scrollOffset > 0 && scrollback > _lastScrollbackCount)
         {
@@ -714,9 +709,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>
-    /// Hands the OS input method a client anchored at the terminal cursor, so the IME
-    /// candidate window (Chinese/Japanese/Korean composition) opens next to where the text will
-    /// land instead of at the window corner (#14b).
+    /// 为操作系统输入法提供一个锚定在终端光标处的客户端,使 IME
+    /// 候选窗口(中文/日文/韩文组字)在文本将要落下的位置旁打开,
+    /// 而非窗口角落(#14b)。
     /// </summary>
     private void OnTextInputMethodClientRequested(
         object? sender,
@@ -766,7 +761,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         }
     }
 
-    /// <summary>The cursor cell's rectangle in control coordinates (same math as RenderCursor).</summary>
+    /// <summary>光标单元在控件坐标系中的矩形(与 RenderCursor 同一套计算)。</summary>
     private Rect GetImeCursorRect()
     {
         TerminalScreen screen = Emulator.Screen;
@@ -787,7 +782,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     // ---- Palette ------------------------------------------------------------
 
     /// <summary>
-    /// Seeds the palette for the given theme variant (跟随应用主题的默认配色):
+    /// 为给定主题变体初始化调色板(跟随应用主题的默认配色):
     /// dark = Dracula(官方 Windows Terminal 方案),
     /// light = Solarized Light(与设置 → 外观 内置方案同一套色值)。
     /// </summary>
@@ -878,9 +873,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>
-    /// Returns a cached <see cref="FormattedText" /> for a single cell's glyph. Each glyph is
-    /// still drawn at its own grid position by the caller, so wide (CJK) cells and monospace
-    /// alignment are preserved exactly; only the expensive shaping is amortized.
+    /// 返回单个单元字形对应的缓存 <see cref="FormattedText" />。每个字形仍由调用方
+    /// 绘制在各自的网格位置,因此宽字符(CJK)单元与等宽对齐被精确保留;
+    /// 只是把昂贵的塑形开销摊薄了。
     /// </summary>
     private FormattedText GlyphFor(in TerminalCell cell, Rgba fg, bool bold, bool italic)
     {
@@ -891,7 +886,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             return cached;
         }
 
-        // Bound the cache; a full clear is fine because it refills within a frame or two.
+        // 限制缓存大小;整体清空也无妨,因为它会在一两帧内重新填满。
         if (_glyphCache.Count > 8192)
         {
             _glyphCache.Clear();
@@ -932,16 +927,16 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         _glyphYOffset = Math.Max(0, (CellHeightForTest - probe.Height) / 2);
         _baselineOffset = probe.Baseline + _glyphYOffset;
 
-        // Cached glyphs are bound to the old typeface/size; drop them on any metric change.
+        // 缓存的字形绑定在旧的字体/字号上;任何度量变化都应丢弃它们。
         _glyphCache.Clear();
         _ghostFormatted = null;
         _styleTypefacesReady = false;
     }
 
     /// <summary>
-    /// Resolves (and caches) the primary <see cref="GlyphTypeface" /> for a bold/italic
-    /// style combination, used by the batched glyph-run path. Null when the platform can't supply
-    /// one, in which case the caller falls back to the per-cell FormattedText path.
+    /// 解析(并缓存)加粗/斜体风格组合下的主 <see cref="GlyphTypeface" />,
+    /// 供批量化字形运行路径使用。平台无法提供时为 null,此时调用方回退到逐单元
+    /// FormattedText 路径。
     /// </summary>
     private GlyphTypeface? StyleTypeface(int style)
     {
@@ -969,9 +964,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>
-    /// Adds one glyph to the pending run, starting a fresh run (after flushing the current
-    /// one) whenever the style or foreground changes. Columns skipped since the previous glyph
-    /// (spaces, blanks) are folded into the previous glyph's advance so alignment stays exact.
+    /// 向待处理运行追加一个字形;每当风格或前景色变化时,先冲刷当前运行再开启新运行。
+    /// 自上一字形起跳过的列(空格、空白)被并入上一字形的步进中,以保持对齐精确。
     /// </summary>
     private void AppendGlyph(
         DrawingContext context,
@@ -1015,7 +1009,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         _runPrevWidth = width;
     }
 
-    /// <summary>Emits the pending glyph run (if any) as a single DrawGlyphRun and resets the buffers.</summary>
+    /// <summary>将待处理的字形运行(若有)作为单次 DrawGlyphRun 发出,并重置缓冲区。</summary>
     private void FlushGlyphRun(DrawingContext context, double y)
     {
         if (_runGlyphs.Count == 0)
@@ -1038,9 +1032,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             }
             catch
             {
-                // Should never happen, but if the platform rejects our glyph run, stop batching
-                // for the rest of the session and repaint so everything re-renders via the
-                // per-cell FormattedText path (correct, just slower).
+                // 本不应发生,但若平台拒绝我们的字形运行,就停止批处理,
+                // 并在会话余下时间改为重绘,使一切经由逐单元 FormattedText 路径重新渲染
+                // (结果正确,只是更慢)。
                 _glyphRunUnsupported = true;
                 Dispatcher.UIThread.Post(InvalidateVisual);
             }
@@ -1050,7 +1044,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         _runStyle = -1;
     }
 
-    /// <summary>Arranges the control and reflows the grid to the final layout size.</summary>
+    /// <summary>布局控件并把网格 reflow 到最终布局尺寸。</summary>
     protected override Size ArrangeOverride(Size finalSize)
     {
         Size result = base.ArrangeOverride(finalSize);
@@ -1069,10 +1063,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         int cols = (int)((size.Width - GutterWidth()) / CellWidthForTest);
         int rows = (int)(size.Height / CellHeightForTest);
 
-        // Ignore early/degenerate layout passes (zero or sub-cell size). Collapsing the grid
-        // to a single column here is what made the login banner render one char per line: every
-        // subsequent character autowrapped. Keep the current (or default 120x32) grid until a
-        // real size arrives.
+        // 忽略过早/退化的布局过程(尺寸为零或不足一格)。在这里把网格压缩成
+        // 单列,正是过去登录横幅每行只渲染一个字符的元凶:后续每个字符都自动换行。
+        // 在真实尺寸到来之前,保持当前(或默认 120x32)网格。
         if (cols < 2 || rows < 2)
         {
             return;
@@ -1082,17 +1075,15 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             return;
         }
 
-        // The local grid reflows immediately so dragging feels live, and the PTY is told
-        // right away too — the mainstream approach. Local and remote must stay in lockstep:
-        // an earlier debounced notify let the remote's beliefs (readline's prompt row math)
-        // lag many reflows behind, so its relative cursor moves and erasures landed on the
-        // wrong rows and progressively destroyed buffer content. The transport layer
-        // serializes the sends in order, collapsing bursts to the latest size.
+        // 本地网格立即 reflow,使拖拽感觉实时,并且也立刻通知 PTY —— 这是主流做法。
+        // 本地与远端必须保持同步:早期带防抖的通知让远端的认知(readline 的提示符行数学)
+        // 落后许多次 reflow,导致其相对光标移动与擦除落在错误的行上,逐步破坏缓冲内容。
+        // 传输层按顺序串行化发送,将突发合并为最新尺寸。
         Emulator.Resize(cols, rows);
         _scrollOffset = Math.Clamp(_scrollOffset, 0, Emulator.Screen.ScrollbackCount);
         _lastScrollbackCount = Emulator.Screen.ScrollbackCount;
         ClearFolds(); // reflow 会重建行对象,折叠引用失效。
-        // Reflow shifts absolute rows; a stale selection would mark (and copy) the wrong text.
+        // reflow 会移动绝对行;陈旧的选区会标记(并复制)错误的文本。
         ClearSelection();
         InvalidateVisual();
         ScrollChanged?.Invoke();
@@ -1101,7 +1092,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
     // ---- Rendering ----------------------------------------------------------
 
-    /// <summary>Paints the background, gutter, visible lines, cursor and any visual-bell flash.</summary>
+        // 视觉 BEL:整个终端上的一次短暂半透明闪烁(§终端 → 视觉闪烁)。
     public override void Render(DrawingContext context)
     {
         TerminalScreen screen = Emulator.Screen;
@@ -1141,7 +1132,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             }
         }
 
-        // Visual bell: a brief translucent flash over the whole terminal (§终端 → 视觉闪烁).
+        // 视觉 BEL:整个终端上的一次短暂半透明闪烁(§终端 → 视觉闪烁)。
         if (_bellFlashUntil > DateTime.UtcNow)
         {
             context.FillRectangle(BellFlashBrush, new(Bounds.Size));
@@ -1535,9 +1526,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
                 }
             }
 
-            // Recolor only text the program left in the default color, so explicit SGR colors
-            // (ls --color, git, prompts) are never overridden. URLs and IPs also get an underline
-            // to signal they are Ctrl+clickable.
+            // 只对程序留在默认颜色下的文本重新着色,因此显式 SGR 颜色
+            // (ls --color、git、提示符)绝不会被覆盖。URL 与 IP 还会加下划线,
+            // 表示它们可 Ctrl+ 点击。
             bool semanticUnderline = false;
             if (
                 semantic is not null
@@ -1560,9 +1551,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
                 context.FillRectangle(BrushFor(bg), cellRect);
             }
 
-            // A blank/space/invisible cell draws no glyph; it just leaves a gap the next run's
-            // advance absorbs. Everything else is batched into a GlyphRun when the primary font
-            // covers it, or falls back to a per-cell FormattedText draw (CJK, symbols, combining).
+            // 空白/空格/不可见单元不绘制字形;它只留出一段空隙由下一运行的
+            // 步进吸收。其余内容在主要字体能覆盖时批量并入 GlyphRun,
+            // 否则回退到逐单元 FormattedText 绘制(CJK、符号、组合字符)。
             if (cell.Rune != 0 && cell.Rune != ' ' && (cell.Flags & CellFlags.Invisible) == 0)
             {
                 bool italic = (cell.Flags & CellFlags.Italic) != 0;
@@ -1608,14 +1599,14 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             col += width;
         }
 
-        // Emit whatever glyphs remain batched for this line (runs never cross line boundaries).
+        // 把本行中仍被批量缓存的剩余字形全部发出(运行从不跨越行边界)。
         FlushGlyphRun(context, y);
     }
 
     /// <summary>
-    /// Builds a per-column map of semantic kinds for a line: reconstructs the line text (mapping
-    /// each character back to its source column so wide runes line up), matches it, and marks the
-    /// columns each span covers. Returns null when highlighting yields nothing for the line.
+    /// 为一行构建逐列的语义类别映射:重建行文本(把每个字符映射回其源列,
+    /// 使宽字符对齐),对其进行匹配,并标记每个区间覆盖的列。
+    /// 当该行无可高亮内容时返回 null。
     /// </summary>
     private SemanticKind?[]? ComputeSemanticColumns(TerminalRow line, int cols)
     {
@@ -1675,7 +1666,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             return cached;
         }
 
-        // Bound the cache; terminal output has huge line variety, so just reset when it grows.
+        // 限制缓存大小;终端输出行的变化极多,因此增长时直接重置即可。
         if (_semanticSpanCache.Count > 1024)
         {
             _semanticSpanCache.Clear();
@@ -1685,7 +1676,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         return spans;
     }
 
-    /// <summary>Maps a semantic kind to a themeable ANSI color (respects the active .pen palette).</summary>
+    /// <summary>将语义类别映射到可主题化的 ANSI 颜色(遵循当前 .pen 调色板)。</summary>
     private static Rgba SemanticColor(TerminalPalette palette, SemanticKind kind) =>
         kind switch
         {
@@ -1721,13 +1712,12 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         ImmutableSolidColorBrush cursorBrush = BrushFor(palette.CursorColor);
         if (!_hasFocus)
         {
-            // Unfocused: hollow outline regardless of style, so the position stays visible.
+            // 未聚焦:无论何种风格都画空心轮廓,使光标位置保持可见。
             context.DrawRectangle(new Pen(cursorBrush), rect);
             return;
         }
 
-        // Blink phase: the "off" half simply skips drawing (focused only; unfocused outline
-        // never blinks).
+        // 闪烁相位:"熄灭"的那半周期直接跳过绘制(仅聚焦时;未聚焦轮廓从不闪烁)。
         if ((CursorBlink || Emulator.Modes.CursorBlink) && !_cursorBlinkVisible)
         {
             return;
@@ -1748,7 +1738,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
                 break;
             default: // block
                 context.FillRectangle(cursorBrush, rect);
-                // Redraw the glyph under the cursor in the background color for contrast.
+                // 用背景色重绘光标下的字形以增强对比。
                 TerminalCell cell = screen.GetCell(screen.CursorX, screen.CursorY);
                 if (cell.Rune != 0)
                 {
@@ -1799,7 +1789,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         return true;
     }
 
-    /// <summary>Searches the whole buffer (scrollback + screen), case-insensitive (spec §5.3).</summary>
+    /// <summary>搜索整个缓冲区(回滚区 + 屏幕),不区分大小写(规范 §5.3)。</summary>
     public IReadOnlyList<BufferSearchHit> SearchBuffer(string query) =>
         BufferSearch.FindAll(Emulator.Screen, query);
 
@@ -1830,8 +1820,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>
-    /// Paints every search hit (amber) with the current one in accent. Rows are
-    /// absolute buffer rows, so highlights stay attached while scrolling.
+    /// 把所有搜索命中(琥珀色)绘制出来,当前命中项用强调色。行为绝对缓冲行,
+    /// 因此高亮在滚动时始终跟随。
     /// </summary>
     public void SetSearchHighlights(IReadOnlyList<BufferSearchHit> hits, int currentIndex)
     {
@@ -1854,7 +1844,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         InvalidateVisual();
     }
 
-    /// <summary>Removes any search-hit highlighting and repaints.</summary>
+    /// <summary>移除所有搜索命中高亮并重新绘制。</summary>
     public void ClearSearchHighlights()
     {
         if (_searchHighlights is null)
@@ -1866,8 +1856,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>
-    /// Scrolls a search hit into view (roughly centered) and selects it so the
-    /// existing selection highlight marks the match.
+    /// 将搜索命中滚动到可见区域(大致居中)并选中它,
+    /// 使既有选区高亮标记出匹配位置。
     /// </summary>
     public void ShowHit(BufferSearchHit hit)
     {
@@ -1881,7 +1871,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         InvalidateVisual();
     }
 
-    /// <summary>Returns the current selection as text (optionally trimming trailing whitespace per line).</summary>
+    /// <summary>以文本形式返回当前选区(可逐行去除行尾空白)。</summary>
     public string GetSelectedText()
     {
         ((int Row, int Col) Start, (int Row, int Col) End)? sel = NormalizedSelection();
@@ -1924,8 +1914,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     private (int Row, int Col) PointToCell(Point p)
     {
         int col = (int)((p.X - GutterWidth()) / CellWidthForTest);
-        // Clamp the row: while the pointer is captured a drag can leave the control (negative
-        // p.Y), and a negative absolute row used to crash selection copy.
+        // 夹取行号:捕获指针期间,拖拽可能把指针拖出控件(负 p.Y),
+        // 而负的绝对行曾导致选区复制崩溃。
         // 通过本帧屏幕行映射解析绝对行,折叠时命中被折叠后实际可见的那一行。
         int maxRow = Math.Max(0, _screenToAbs.Length - 1);
         int screenRow = Math.Clamp((int)(p.Y / CellHeightForTest), 0, maxRow);
@@ -1940,7 +1930,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
     // ---- Input --------------------------------------------------------------
 
-    /// <summary>Marks the control focused and (re)starts the cursor-blink timer.</summary>
+    /// <summary>标记控件已聚焦并(重新)启动光标闪烁计时器。</summary>
     protected override void OnGotFocus(FocusChangedEventArgs e)
     {
         base.OnGotFocus(e);
@@ -1949,7 +1939,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         InvalidateVisual();
     }
 
-    /// <summary>Marks the control unfocused, stopping the blink and drawing a hollow cursor.</summary>
+    /// <summary>标记控件未聚焦,停止闪烁并绘制空心光标。</summary>
     protected override void OnLostFocus(FocusChangedEventArgs e)
     {
         base.OnLostFocus(e);
@@ -1958,7 +1948,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         InvalidateVisual();
     }
 
-    /// <summary>Encodes committed text input and sends it to the PTY.</summary>
+    /// <summary>对提交的文本输入进行编码并发送往 PTY。</summary>
     protected override void OnTextInput(TextInputEventArgs e)
     {
         if (!string.IsNullOrEmpty(e.Text))
@@ -1979,20 +1969,20 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         base.OnTextInput(e);
     }
 
-    /// <summary>Handles clipboard/scroll shortcuts and encodes key presses into host byte sequences.</summary>
+    /// <summary>处理剪贴板/滚动快捷键,并把按键编码为主机字节序列。</summary>
     protected override async void OnKeyDown(KeyEventArgs e)
     {
-        // While an IME is composing (e.g. picking a Chinese candidate), the keys it consumes are
-        // delivered as ImeProcessed. Encoding them would send stray ESC / arrows / Enter to the
-        // PTY — which is what made typing Chinese into htop's F3 search kill htop (#14a). The
-        // committed text still arrives separately via OnTextInput.
+        // 当 IME 正在组字(例如挑选中文候选)时,其消耗的按键
+        // 会以 ImeProcessed 形式送达。若对它们编码,会把散逸的 ESC / 方向键 / Enter
+        // 发往 PTY —— 这正是过去在 htop 的 F3 搜索里输入中文会杀死 htop 的原因(#14a)。
+        // 已提交的文本仍会经 OnTextInput 单独送达。
         if (e.Key == Key.ImeProcessed)
         {
             base.OnKeyDown(e);
             return;
         }
 
-        // Clipboard shortcuts.
+        // 剪贴板快捷键。
         if (
             e.KeyModifiers.HasFlag(KeyModifiers.Control)
             && e.KeyModifiers.HasFlag(KeyModifiers.Shift)
@@ -2012,8 +2002,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             }
         }
 
-        // Shift+Insert pastes (classic X11 / terminal convention). Intercept before the
-        // encoder, which would otherwise send this as a CSI 2~ sequence.
+        // Shift+Insert 粘贴(经典 X11 / 终端惯例)。在编码器之前拦截,
+        // 否则编码器会把这次按键当作 CSI 2~ 序列发送出去。
         if (e is { Key: Key.Insert, KeyModifiers: KeyModifiers.Shift })
         {
             await PasteAsync();
@@ -2021,9 +2011,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             return;
         }
 
-        // PageUp/PageDown page through the scrollback on the primary
-        // screen (full-screen apps on the alternate screen still receive them as CSI 5~/6~);
-        // the Shift+ variants page everywhere.
+        // PageUp/PageDown 在主屏上翻动回滚历史(备用屏上的全屏程序仍会收到
+        // CSI 5~/6~);Shift+ 变体则在任何位置翻页。
         if (
             e.Key is Key.PageUp or Key.PageDown
             && (
@@ -2038,8 +2027,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             return;
         }
 
-        // Shift+Home/End jump the shell cursor to line start/end: send the plain
-        // Home/End sequences, which readline binds — the shifted CSI 1;2H/F variants it ignores.
+        // Shift+Home/End 将 shell 光标跳到行首/行尾:发送纯 Home/End 序列,
+        // readline 会绑定它们 —— 而带 Shift 的 CSI 1;2H/F 变体会被它忽略。
         KeyModifiers effectiveModifiers = e.KeyModifiers;
         switch (e.Key)
         {
@@ -2071,7 +2060,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         base.OnKeyDown(e);
     }
 
-    /// <summary>Handles gutter clicks, URL Ctrl+click, app mouse reporting and text-selection start.</summary>
+    /// <summary>处理侧栏点击、URL 的 Ctrl+点击、应用鼠标上报以及文本选区起点。</summary>
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
@@ -2102,7 +2091,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             }
         }
 
-        // Ctrl+click on a detected URL opens it in the default browser (#9).
+        // 在检测到的 URL 上 Ctrl+点击会用默认浏览器打开它(#9)。
         if (props.IsLeftButtonPressed && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             (int row, int col) = PointToCell(point);
@@ -2119,9 +2108,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             }
         }
 
-        // When the app has enabled mouse tracking, forward the click to it (htop tabs/buttons,
-        // btop, vim, tmux). Holding Shift bypasses reporting so the user can still select text.
-        // Reporting only makes sense on the live screen, not while scrolled into history.
+        // 当应用启用了鼠标追踪时,把点击转发给它(htop 标签页/按钮、btop、vim、tmux)。
+        // 按住 Shift 可绕过上报,以便用户仍能选择文本。上报只在实时屏幕上才有意义,
+        // 滚动到历史区时则不然。
         if (
             Emulator.Modes.Mouse != MouseTracking.None
             && _scrollOffset == 0
@@ -2160,15 +2149,15 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         }
         else if (props.IsRightButtonPressed && RightClickPaste)
         {
-            // Right click pastes, matching common terminal behavior (可在设置中关闭).
+            // 右键粘贴,符合常见终端行为(可在设置中关闭)。
             _ = PasteAsync();
         }
         e.Handled = true;
     }
 
     /// <summary>
-    /// Selects the contiguous word (letters/digits and common path characters) around
-    /// the given cell; with 选中即复制 on, the word lands on the clipboard immediately.
+    /// 选中给定单元周围连续的单词(字母/数字及常见路径字符);
+    /// 在开启「选中即复制」时,该单词会立即进入剪贴板。
     /// </summary>
     private void SelectWordAt((int Row, int Col) cell)
     {
@@ -2212,7 +2201,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         TerminalCell cell = line[col];
         if (cell.IsWideTrailing)
         {
-            return true; // part of the wide rune that leads it
+            return true; // 属于其前置宽字符的一部分
         }
         if (cell.Rune is 0 or ' ')
         {
@@ -2222,7 +2211,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             || cell.Rune is '_' or '-' or '.' or '/' or '~' or '+' or '@' or ':';
     }
 
-    /// <summary>Tracks fold-column hover, app motion reporting and selection dragging.</summary>
+    /// <summary>跟踪折叠列悬停、应用移动上报以及选区拖拽。</summary>
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
@@ -2241,8 +2230,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             }
         }
 
-        // Report motion to the app in button-event (?1002, only while a button is down) and
-        // any-event (?1003, always) modes, but only when a cell boundary is crossed.
+        // 在按钮事件模式(?1002,仅按住按钮时)与任意事件模式(?1003,始终)下向应用上报移动,
+        // 但仅在跨越单元格边界时才上报。
         MouseTracking tracking = Emulator.Modes.Mouse;
         switch (_selecting)
         {
@@ -2273,7 +2262,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         }
     }
 
-    /// <summary>Clears the fold-column hover marker when the pointer leaves the control.</summary>
+    /// <summary>指针离开控件时清除折叠列悬停标记。</summary>
     protected override void OnPointerExited(PointerEventArgs e)
     {
         base.OnPointerExited(e);
@@ -2284,12 +2273,12 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         }
     }
 
-    /// <summary>Completes app-reported drags or finishes a selection, copying it when 选中即复制 is on.</summary>
+    /// <summary>完成应用上报的拖拽,或结束一次选区;在「选中即复制」开启时复制该选区。</summary>
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
 
-        // Complete an app-reported drag/click with a release event.
+        // 用一次释放事件结束应用上报的拖拽/点击。
         if (_mouseButtonDown is { } down)
         {
             SendMouse(TerminalMouseEventType.Release, down, e.GetPosition(this), e.KeyModifiers);
@@ -2303,24 +2292,24 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             return;
         }
         _selecting = false;
-        // Select-to-copy: releasing a non-empty selection copies it, so the user never
-        // needs a copy shortcut (design §8). A plain click has an empty selection and no-ops.
+        // 选中即复制:松开非空选区即复制它,因此用户永远不需要复制快捷键(设计 §8)。
+        // 普通点击选区为空,相当于无操作。
         if (CopyOnSelect)
         {
             _ = CopyAsync();
         }
     }
 
-    /// <summary>Raised when the font size changes via Ctrl+wheel zoom, so the host can persist it.</summary>
+    /// <summary>字体大小经 Ctrl+滚轮缩放改变时触发,便于宿主持久化。</summary>
     public event Action<double>? FontSizeChanged;
 
-    /// <summary>Ctrl+wheel zooms the font; otherwise forwards to app mouse tracking or scrolls scrollback.</summary>
+    /// <summary>Ctrl+滚轮缩放字体;否则转发给应用鼠标追踪或滚动回滚区。</summary>
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
 
-        // Ctrl+wheel zooms the font instead of scrolling (#21). Changing FontSize recomputes the
-        // cell metrics, reflows the grid and resizes the PTY.
+        // Ctrl+滚轮缩放字体而非滚动(#21)。改变 FontSize 会重算单元格度量、
+        // reflow 网格并调整 PTY 尺寸。
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             double next = Math.Clamp(FontSize + (e.Delta.Y > 0 ? 1 : -1), 6, 40);
@@ -2333,8 +2322,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             return;
         }
 
-        // On the live screen with mouse tracking on, the wheel scrolls the app (htop/btop lists,
-        // less, vim) rather than the local scrollback.
+        // 在启用鼠标追踪的实时屏幕上,滚轮滚动的是应用(htop/btop 列表、less、vim),
+        // 而非本地回滚区。
         if (Emulator.Modes.Mouse != MouseTracking.None && _scrollOffset == 0 && e.Delta.Y != 0)
         {
             TerminalMouseButton button =
@@ -2355,7 +2344,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         e.Handled = true;
     }
 
-    /// <summary>Maps a pointer position to a 0-based cell within the visible screen.</summary>
+    /// <summary>将指针位置映射到可见屏幕内从 0 起始的单元。</summary>
     private (int Col, int Row) ScreenCell(Point p)
     {
         int col = Math.Clamp(
@@ -2368,8 +2357,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>
-    /// Encodes a mouse event under the active tracking mode and sends it to the PTY.
-    /// Returns false when the current mode does not report this event.
+    /// 在当前的追踪模式下编码一次鼠标事件并发送往 PTY。
+    /// 当当前模式不报告此事件时返回 false。
     /// </summary>
     private bool SendMouse(
         TerminalMouseEventType type,
@@ -2433,7 +2422,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         return true;
     }
 
-    /// <summary>Copies the current selection to the system clipboard (no-op when empty).</summary>
+    /// <summary>将当前选区复制到系统剪贴板(为空时无操作)。</summary>
     public async Task CopyAsync()
     {
         string text = GetSelectedText();
@@ -2448,7 +2437,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         }
     }
 
-    /// <summary>Pastes clipboard text into the terminal, honoring bracketed-paste and the multi-line confirmation.</summary>
+    /// <summary>将剪贴板文本粘贴进终端,遵循括号粘贴与多行确认。</summary>
     public async Task PasteAsync()
     {
         IClipboard? clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
@@ -2491,9 +2480,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>
-    /// Minimal IME client: no preedit-in-buffer, no surrounding text — the terminal is
-    /// not an editable document; committed text arrives through OnTextInput as host bytes. Only
-    /// the cursor rectangle matters, to position the candidate window.
+    /// 最小 IME 客户端:无缓冲区内的预编辑、无环绕文本 —— 终端并非可编辑文档;
+    /// 已提交的文本通过 OnTextInput 作为主机字节到达。只有光标矩形有意义,
+    /// 用于定位候选窗口。
     /// </summary>
     private sealed class TerminalImeClient(VelaTerminalControl owner) : TextInputMethodClient
     {

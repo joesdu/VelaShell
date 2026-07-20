@@ -1,6 +1,6 @@
 namespace VelaShell.ViewModels;
 
-/// <summary>One local filesystem entry displayed by the SFTP document's local pane.</summary>
+/// <summary>SFTP 文档本地面板所展示的单个本地文件系统条目。</summary>
 public sealed record LocalFileEntry(
     string Name,
     string FullPath,
@@ -11,29 +11,29 @@ public sealed record LocalFileEntry(
     bool IsParentEntry = false
 )
 {
-    /// <summary>The display name, using <c>..</c> for the synthetic parent row.</summary>
+    /// <summary>显示名称;合成父目录行使用 <c>..</c>。</summary>
     public string DisplayName => IsParentEntry ? ".." : Name;
 
-    /// <summary>Whether this is a real directory rather than the synthetic parent row.</summary>
+    /// <summary>本项是否为真实目录(而非合成父目录行)。</summary>
     public bool IsRegularDirectory => IsDirectory && !IsParentEntry;
 
-    /// <summary>Whether this is a real file rather than the synthetic parent row.</summary>
+    /// <summary>本项是否为真实文件(而非合成父目录行)。</summary>
     public bool IsRegularFile => !IsDirectory && !IsParentEntry;
 
-    /// <summary>The icon key consumed by a future local-pane view.</summary>
+    /// <summary>供未来本地面板视图使用的图标键。</summary>
     public string Icon => IsDirectory ? "folder" : "file";
 
-    /// <summary>Human-readable size; directories and the synthetic parent have no file size.</summary>
+    /// <summary>可读大小;目录与合成父目录没有文件大小。</summary>
     public string FormattedSize => IsDirectory ? string.Empty : FormatSize(SizeBytes);
 
-    /// <summary>Human-readable modified time; the synthetic parent has no metadata.</summary>
+    /// <summary>可读的修改时间;合成父目录没有元数据。</summary>
     public string FormattedModifiedTime => IsParentEntry ? string.Empty : FormatModifiedTime(LastModified);
 
-    /// <summary>Creates the synthetic parent-directory row.</summary>
+    /// <summary>创建合成父目录行。</summary>
     public static LocalFileEntry CreateParent(string parentPath) =>
         new("..", parentPath, true, 0, DateTime.MinValue, false, true);
 
-    /// <summary>Formats a byte count as a human-readable string (e.g. "1.5 MB").</summary>
+    /// <summary>将字节数格式化为可读字符串(如“1.5 MB”)。</summary>
     public static string FormatSize(long bytes)
     {
         if (bytes == 0)

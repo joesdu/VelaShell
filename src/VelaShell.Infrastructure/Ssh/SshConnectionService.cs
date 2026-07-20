@@ -105,9 +105,8 @@ public class SshConnectionService(
         KeyValuePair<Guid, ISshClientWrapper>[] clientEntries = [.. _clients];
         _clients.Clear();
 
-        // Disconnect every session concurrently: each Disconnect() is a blocking network teardown,
-        // so a sequential loop would make app exit take (sessions × teardown) time and stall on any
-        // single unresponsive connection.
+        // 并发断开每个会话:每个 Disconnect() 都是阻塞式网络拆除,顺序循环会让应用退出耗时
+        // 达到(会话数 × 拆除耗时),并在任一无响应连接上卡住。
         IEnumerable<Task> teardowns = clientEntries.Select(entry => Task.Run(() =>
         {
             (Guid sessionId, ISshClientWrapper client) = entry;

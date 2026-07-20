@@ -3,12 +3,11 @@ using System.Text;
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// A DEC-compatible escape-sequence parser implementing the state machine described by
-/// Paul Williams (https://vt100.net/emu/dec_ansi_parser). It consumes a stream of Unicode
-/// scalar values (UTF-8 is decoded upstream so that multibyte text never collides with the
-/// 7-bit control set) and dispatches semantic events to an <see cref="IVtActions" /> sink.
-/// A dedicated VT52-compatibility path is provided because VT52 uses a distinct,
-/// non-CSI escape grammar.
+/// 一个兼容 DEC 的转义序列解析器,实现了 Paul Williams
+/// (https://vt100.net/emu/dec_ansi_parser)所描述的那个状态机。它消费一串 Unicode 标量值
+/// (UTF-8 在上游已解码,使多字节文本不会与 7 位控制字符集冲突),并把语义事件分发给
+/// <see cref="IVtActions" /> 接收端。另提供一条专用的 VT52 兼容路径,因为 VT52 使用的是
+/// 一套不同的、非 CSI 的转义文法。
 /// </summary>
 public sealed class VtParser(IVtActions actions)
 {
@@ -26,10 +25,10 @@ public sealed class VtParser(IVtActions actions)
     private State _state = State.Ground;
     private int _vt52Row;
 
-    /// <summary>When true, the parser interprets input using the VT52 escape grammar.</summary>
+    /// <summary>为 true 时,解析器使用 VT52 转义文法来解释输入。</summary>
     public bool Vt52Mode { get; set; }
 
-    /// <summary>Resets the parser to the ground state, discarding any partially collected sequence.</summary>
+    /// <summary>把解析器重置为 ground 状态,丢弃任何已部分收集到的序列。</summary>
     public void Reset()
     {
         _state = State.Ground;
@@ -40,12 +39,12 @@ public sealed class VtParser(IVtActions actions)
     }
 
     /// <summary>
-    /// Feeds a chunk of decoded terminal output through the state machine, dispatching actions.
+    /// 把一段已解码的终端输出喂入状态机,分发对应动作。
     /// Span 重载是输出热路径(<c>TerminalEmulator.Feed</c> 每帧调用),避免中间 string 物化。
     /// </summary>
     public void Parse(ReadOnlySpan<char> text)
     {
-        // Iterate Unicode scalar values so surrogate pairs are delivered as one rune.
+        // 逐 Unicode 标量值遍历,使代理对作为一个 rune 整体提交。
         for (int i = 0; i < text.Length; i++)
         {
             char c = text[i];
@@ -61,7 +60,7 @@ public sealed class VtParser(IVtActions actions)
         }
     }
 
-    /// <summary>Feeds a chunk of decoded terminal output through the state machine, dispatching actions.</summary>
+    /// <summary>把一段已解码的终端输出喂入状态机,分发对应动作。</summary>
     public void Parse(string text) => Parse(text.AsSpan());
 
     private void Consume(int rune)
@@ -73,15 +72,14 @@ public sealed class VtParser(IVtActions actions)
         }
         switch (rune)
         {
-            // CAN and SUB abort any sequence in progress.
+            // CAN 与 SUB 会中止任何正在进行的序列。
             case 0x18 or 0x1A:
                 _state = State.Ground;
                 ClearParams();
                 _intermediates.Clear();
                 return;
-            // ESC restarts a sequence from most states. OSC/DCS are the exception: their
-            // terminator ST is ESC \, so the collected payload must be dispatched here —
-            // otherwise a string terminated by ST (instead of BEL) is silently discarded.
+            // ESC 会从大多数状态重新开始一个序列。OSC/DCS 是例外:它们的终结符 ST 就是 ESC \,
+            // 因此收集到的载荷必须在此处分发——否则以 ST(而非 BEL)结尾的字符串会被静默丢弃。
             case 0x1B:
                 {
                     // ReSharper disable once ConvertIfStatementToSwitchStatement
@@ -180,7 +178,7 @@ public sealed class VtParser(IVtActions actions)
             actions.Execute((char)rune);
             return;
         }
-        if (rune is >= 0x20 and <= 0x2F) // intermediate
+        if (rune is >= 0x20 and <= 0x2F) // 中间字节
         {
             _intermediates.Append((char)rune);
             _state = State.EscapeIntermediate;
@@ -198,7 +196,7 @@ public sealed class VtParser(IVtActions actions)
             case 'P':
                 _state = State.DcsEntry;
                 return;
-            case 'X' or '^' or '_': // SOS / PM / APC
+            case 'X' or '^' or '_': // SOS / PM / APC 字符串
                 _state = State.SosPmApcString;
                 return;
         }
@@ -334,8 +332,8 @@ public sealed class VtParser(IVtActions actions)
     {
         switch (rune)
         {
-            // Terminated by BEL (0x07) here, or by ST (ESC \) via the global ESC branch in
-            // Consume — ESC never reaches this handler.
+        // 此处以 BEL(0x07)结尾,或在 Consume 的全局 ESC 分支中以 ST(ESC \) 结尾——
+        // ESC 永远不会到达本处理函数。
             case 0x07:
                 DispatchOsc();
                 _state = State.Ground;
@@ -431,7 +429,7 @@ public sealed class VtParser(IVtActions actions)
     {
         switch (rune)
         {
-            // ST (ESC \) is handled by the global ESC branch in Consume — ESC never reaches here.
+            // ST(ESC \) 由 Consume 的全局 ESC 分支处理——ESC 永远不会到达此处。
             case 0x07:
                 DispatchDcs();
                 _state = State.Ground;
@@ -463,7 +461,7 @@ public sealed class VtParser(IVtActions actions)
     {
         switch (rune)
         {
-            // Consume until ST/BEL; content is ignored.
+            // 一直消费到 ST/BEL 为止;内容被忽略。
             case 0x1B:
                 EnterEscape();
                 return;
@@ -498,7 +496,7 @@ public sealed class VtParser(IVtActions actions)
                     _state = State.Vt52CursorRow;
                     return;
                 }
-                // Deliver every other VT52 command as an ESC dispatch with no intermediates.
+                // 将其余所有 VT52 命令作为一个无中间字节的 ESC 分发交付。
                 actions.EscDispatch(string.Empty, (char)rune);
                 _state = State.Ground;
                 return;
@@ -532,7 +530,7 @@ public sealed class VtParser(IVtActions actions)
         }
     }
 
-    // ---- Param helpers ------------------------------------------------------
+    // ---- 参数辅助方法 ------------------------------------------------------
 
     private void HandleParamDigit(int rune)
     {
@@ -586,7 +584,7 @@ public sealed class VtParser(IVtActions actions)
         DcsIgnore,
         SosPmApcString,
 
-        // VT52 sub-states
+        // VT52 子状态
         Vt52Escape,
         Vt52CursorRow,
         Vt52CursorCol

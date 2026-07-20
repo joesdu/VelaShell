@@ -110,14 +110,13 @@
       <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
     </Style>
-    <!-- Avalonia's :focus state is the keyboard-focus hook for this control. Keep the
-         selected underline hierarchy intact; the tokenized focus fill is the additional
-         keyboard affordance. -->
+    <!-- Avalonia 的 :focus 状态是该控件的键盘焦点钩子。保持选中下划线层级不变;
+         带记号的焦点填充是额外的键盘可感知反馈。 -->
     <Style Selector="Button.proto-tab:focus">
       <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
     </Style>
-    <!-- Fluent's focus layer is above the Button background; override only this
-         class so its system accent cannot replace the Vela focus token. -->
+    <!-- Fluent 的焦点层位于 Button 背景之上;只覆盖这个类,
+         使其系统强调色无法替换 Vela 的焦点记号。 -->
     <Style Selector="Button.proto-tab:focus /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
       <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />

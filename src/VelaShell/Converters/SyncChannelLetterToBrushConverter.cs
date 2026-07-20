@@ -11,7 +11,7 @@ namespace VelaShell.Converters;
 /// </summary>
 public sealed class SyncChannelLetterToBrushConverter : IValueConverter
 {
-    /// <summary>Shared singleton for use directly from XAML.</summary>
+    /// <summary>供在 XAML 中直接使用的共享单例。</summary>
     public static readonly SyncChannelLetterToBrushConverter Instance = new();
 
     /// <summary>返回频道字母对应的标识色;未知字母/空串返回透明。</summary>
@@ -25,6 +25,6 @@ public sealed class SyncChannelLetterToBrushConverter : IValueConverter
             _ => Brushes.Transparent
         };
 
-    /// <summary>Reverse conversion is unsupported and always throws <see cref="NotSupportedException" />.</summary>
+    /// <summary>反向转换不受支持,始终抛出 <see cref="NotSupportedException" />。</summary>
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }

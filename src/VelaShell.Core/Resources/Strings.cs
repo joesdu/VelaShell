@@ -265,7 +265,7 @@ public static class Strings
     /// <summary>“私钥口令”输入项标签文案。</summary>
     public static string Passphrase => ResourceManager.GetString(nameof(Passphrase), CultureInfo.CurrentUICulture) ?? nameof(Passphrase);
 
-    // File browser / SFTP (§6)
+    // 文件浏览器 / SFTP(§6)
     /// <summary>“传输历史”面板标题文案。</summary>
     public static string TransferHistory => ResourceManager.GetString(nameof(TransferHistory), CultureInfo.CurrentUICulture) ?? nameof(TransferHistory);
 

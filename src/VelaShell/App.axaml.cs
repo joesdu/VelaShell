@@ -69,7 +69,7 @@ public class App : Application
             .BuildServiceProvider();
         _themeService = _serviceProvider.GetRequiredService<IThemeService>();
 
-        // Live-rebinding localized strings ({loc:Localize}) follow the DI service (#4).
+        // 本地化字符串的实时重绑定({loc:Localize})跟随 DI 服务(#4)。
         ILocalizationService localization =
             _serviceProvider.GetRequiredService<ILocalizationService>();
         LocalizedStrings.Instance.Attach(localization);
@@ -235,12 +235,12 @@ public class App : Application
                 // 防抖:连续保存只推送最后一次。
                 if (!_syncDebounce.TrySwapNew(out CancellationToken token))
                 {
-                    return; // Shut down; do not start new debounce work.
+                    return; // 已关闭;不要再启动新的防抖任务。
                 }
                 await Task.Delay(TimeSpan.FromSeconds(5), token);
                 if (!_syncDebounce.TryStartCurrent(token, () => syncService.SyncNowAsync(CancellationToken.None), out Task? syncTask))
                 {
-                    return; // Shut down or superseded during delay.
+                    return; // 已在延迟期间关闭或被取代。
                 }
                 await syncTask!;
             }
@@ -256,12 +256,11 @@ public class App : Application
     }
 
     /// <summary>
-    /// Releases the DI container on shutdown. Teardown disconnects any live SSH/SFTP sessions —
-    /// each <c>Disconnect()</c> is a blocking network round-trip — and flushes the SonnetDB engine.
-    /// The previous code ran this synchronously via <c>Dispose()</c> on the UI thread, so a slow or
-    /// unresponsive connection left the process alive well after the window closed. We now use async
-    /// disposal (also the correct path for the IAsyncDisposable services) bounded by a short timeout,
-    /// so the app exits promptly; the OS reclaims any still-closing sockets on process teardown.
+    /// 关闭时释放 DI 容器。拆除过程会断开所有仍在线的 SSH/SFTP 会话 —— 每次 <c>Disconnect()</c>
+    /// 都是一次阻塞的网络往返 —— 并冲刷 SonnetDB 引擎。旧代码在 UI 线程上通过 <c>Dispose()</c>
+    /// 同步执行这一步,因此一个缓慢或无响应的连接会让进程在窗口关闭后仍然存活很久。
+    /// 现改为带短超时的异步释放(这也是 IAsyncDisposable 服务的正确处置路径),
+    /// 使应用能及时退出;进程拆除时任何仍在关闭中的套接字由操作系统回收。
     /// </summary>
     private void DisposeServicesOnExit()
     {
@@ -278,13 +277,13 @@ public class App : Application
         }
         catch
         {
-            // Best-effort shutdown: never block or fault the exit path.
+            // 尽力关闭:绝不阻塞或中断退出路径。
         }
     }
 
     /// <summary>
-    /// Applies persisted language / theme / accent before the first window shows,
-    /// so the app starts in the user's chosen look without a visible re-theme flash.
+    /// 在第一个窗口显示之前应用已持久化的语言 / 主题 / 强调色,
+    /// 使应用以用户选定的外观启动,而不出现可见的重新换肤闪烁。
     /// </summary>
     private void ApplyPersistedPreferences()
     {
@@ -314,7 +313,7 @@ public class App : Application
         }
         catch
         {
-            // Corrupt settings must never block startup; defaults apply.
+            // 损坏的设置绝不能阻断启动;将应用默认值。
         }
     }
 
@@ -332,7 +331,7 @@ public class App : Application
                 break;
             case "default":
                 break;
-            default: // remember
+            default: // 记住上次窗口状态
                 AppearanceOptions a = settings.Appearance;
                 if (a is { LastWindowWidth: >= 800, LastWindowHeight: >= 500 })
                 {
@@ -363,9 +362,9 @@ public class App : Application
     }
 
     /// <summary>
-    /// Applies the accent-color override live by shadowing the themed accent brushes at the
-    /// application level; every <c>DynamicResource VelaAccent</c> updates without a restart (#3).
-    /// A null/empty value removes the override and restores the theme's default accent.
+    /// 通过在应用层级遮蔽主题强调色画刷,实时应用强调色覆盖;
+    /// 每个 <c>DynamicResource VelaAccent</c> 无需重启即更新(#3)。
+    /// null/空值会移除覆盖,恢复主题默认的强调色。
     /// </summary>
     private void ApplyAccent(string? hex)
     {
@@ -381,7 +380,7 @@ public class App : Application
             return;
         }
         Resources["VelaAccent"] = new SolidColorBrush(color);
-        // Dim variant: same hue at ~19% opacity, matching the design's #RRGGBB30 tokens.
+        // 暗色变体:相同色相、约 19% 不透明度,对应设计稿中的 #RRGGBB30 令牌。
         Resources["VelaAccentDim"] = new SolidColorBrush(
             new Color(0x30, color.R, color.G, color.B)
         );

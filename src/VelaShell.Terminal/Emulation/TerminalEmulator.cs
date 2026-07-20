@@ -3,37 +3,36 @@ using System.Text;
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// The terminal "brain": consumes parsed escape-sequence events from <see cref="VtParser" />
-/// and applies them to a <see cref="TerminalScreen" />. Owns the current graphic rendition
-/// (pen), character sets, terminal modes, tab stops and the saved-cursor state, and produces
-/// host-bound replies (Device Attributes, cursor reports, etc.) via <see cref="Response" />.
-/// Behavior is gated by the active <see cref="TerminalType" /> so the same engine can emulate
-/// anything from a VT52 up to xterm-256color.
+/// 终端的"大脑":消费来自 <see cref="VtParser" /> 的已解析转义序列事件,并将其施加到
+/// <see cref="TerminalScreen" /> 上。持有当前图形显示属性(画笔)、字符集、终端模式、制表位
+/// 以及保存的光标状态,并通过 <see cref="Response" /> 产生发往宿主的应答
+/// (设备属性、光标报告等)。行为受当前生效的 <see cref="TerminalType" /> 约束,
+/// 因此同一引擎可仿真从 VT52 到 xterm-256color 的任何终端。
 /// </summary>
 public sealed class TerminalEmulator : IVtActions
 {
     /// <summary>OSC 52 载荷上限(base64 解码后),防远端滥发撑爆剪贴板。</summary>
     private const int MaxOsc52Bytes = 1024 * 1024;
 
-    // Character sets: G0..G3 designations, GL/GR invocation, single shift.
-    private readonly bool[] _decGraphics = new bool[4]; // true => DEC special graphics
+    // 字符集:G0..G3 指定,GL/GR 调用,单字符移位。
+    private readonly bool[] _decGraphics = new bool[4]; // true => DEC 特殊图形
     private readonly TerminalScreen _mainScreen;
     private readonly VtParser _parser;
     private readonly Utf8Sink _utf8 = new();
 
-    // Separate save slot for the alternate-screen switch (DECSET 1049). Keeping it distinct from
-    // _saved is what xterm does: an app running in the alt screen (e.g. nano) uses DECSC/DECRC
-    // freely without clobbering the main-screen cursor that must be restored on exit (#14b).
+    // 备用屏切换(DECSET 1049)专用的独立保存槽。与 _saved 区分开来正是 xterm 的做法:
+    // 在备用屏(如 nano)中运行的应用可自由使用 DECSC/DECRC,
+    // 而不会破坏退出时必须恢复的、主屏的光标位置(#14b)。
     private SavedCursor? _altSaved;
-    private TerminalScreen? _altScreen; // alternate buffer (no scrollback)
+    private TerminalScreen? _altScreen; // 备用缓冲区(无回滚)
     private TerminalColor _bg = TerminalColor.Default;
 
-    // Current pen
+    // 当前画笔
     private TerminalColor _fg = TerminalColor.Default;
     private CellFlags _flags = CellFlags.None;
-    private int _gl; // active GL set index
+    private int _gl; // 当前生效的 GL 字符集索引
 
-    private bool _pendingWrap; // deferred autowrap at end of line
+    private bool _pendingWrap; // 行尾的延迟自动换行
     private DateTime _feedTimestamp = DateTime.Now; // 当前 Feed 到达时刻,用于给写入的行盖时间戳(行号侧栏)
 
     // Saved cursor (DECSC / DECRC, CSI s/u, DECSET 1048)
@@ -42,7 +41,7 @@ public sealed class TerminalEmulator : IVtActions
     private int _singleShift = -1;
     private bool[] _tabStops;
 
-    /// <summary>Creates an emulator with the given screen geometry, terminal type and scrollback capacity.</summary>
+    /// <summary>以给定的屏幕尺寸、终端类型与回滚容量创建仿真器。</summary>
     public TerminalEmulator(int columns = 80, int rows = 24, TerminalType type = TerminalType.XtermColor256, int scrollback = 10_000)
     {
         Type = type;
@@ -54,39 +53,39 @@ public sealed class TerminalEmulator : IVtActions
         _parser = new(this) { Vt52Mode = type == TerminalType.Vt52 };
     }
 
-    /// <summary>The terminal type currently being emulated; gates feature behavior.</summary>
+    /// <summary>当前正在仿真的终端类型;约束功能行为。</summary>
     public TerminalType Type { get; private set; }
 
-    /// <summary>The active terminal modes (autowrap, origin, mouse tracking, etc.).</summary>
+    /// <summary>当前生效的终端模式(自动换行、原点模式、鼠标跟踪等)。</summary>
     public TerminalModes Modes { get; }
 
-    /// <summary>The color palette used to resolve indexed colors to concrete RGB values.</summary>
+    /// <summary>用于把索引色解析为具体 RGB 值的调色板。</summary>
     public TerminalPalette Palette { get; }
 
-    /// <summary>The screen buffer currently in effect (main or alternate).</summary>
+    /// <summary>当前生效的屏幕缓冲区(主屏或备用屏)。</summary>
     public TerminalScreen Screen { get; private set; }
 
-    /// <summary>Number of columns in the current screen.</summary>
+    /// <summary>当前屏幕的列数。</summary>
     public int Columns => Screen.Columns;
 
-    /// <summary>Number of rows in the current screen.</summary>
+    /// <summary>当前屏幕的行数。</summary>
     public int Rows => Screen.Rows;
 
-    /// <summary>Current cursor column (0-based).</summary>
+    /// <summary>当前光标列(从 0 开始)。</summary>
     public int CursorX => Screen.CursorX;
 
-    /// <summary>Current cursor row (0-based).</summary>
+    /// <summary>当前光标行(从 0 开始)。</summary>
     public int CursorY => Screen.CursorY;
 
-    /// <summary>True while the alternate screen buffer is active (DECSET 1047/1049).</summary>
+    /// <summary>备用屏缓冲区处于活动状态(DECSET 1047/1049)时为 true。</summary>
     public bool IsAlternateScreen { get; private set; }
 
-    // ---- IVtActions: printing ----------------------------------------------
+    // ---- IVtActions:打印 ----------------------------------------------
 
-    /// <summary>Writes a printable character at the cursor, handling charset translation, wide/combining glyphs and autowrap.</summary>
+    /// <summary>在光标处写入可打印字符,处理字符集翻译、宽/组合字形与自动换行。</summary>
     public void Print(int rune)
     {
-        // Apply active charset translation.
+        // 应用当前生效的字符集翻译。
         int setIndex = _singleShift >= 0 ? _singleShift : _gl;
         _singleShift = -1;
         if (_decGraphics[setIndex])
@@ -95,7 +94,7 @@ public sealed class TerminalEmulator : IVtActions
         }
         int width = CharWidth.Of(rune);
 
-        // Combining marks attach to the previous cell without advancing the cursor.
+        // 组合标记附加到前一个单元格,且不移动光标。
         if (width == 0)
         {
             AttachCombining(rune);
@@ -108,7 +107,7 @@ public sealed class TerminalEmulator : IVtActions
             _pendingWrap = false;
         }
 
-        // Autowrap check for wide chars that won't fit.
+        // 对放不下的宽字符做自动换行检查。
         if (width == 2 && Screen.CursorX == Screen.Columns - 1)
         {
             if (Modes.AutoWrap)
@@ -161,9 +160,9 @@ public sealed class TerminalEmulator : IVtActions
         }
     }
 
-    // ---- IVtActions: C0 controls -------------------------------------------
+    // ---- IVtActions:C0 控制字符 -------------------------------------------
 
-    /// <summary>Executes a C0 control character (BEL, BS, HT, LF/VT/FF, CR, SO/SI).</summary>
+    /// <summary>执行一个 C0 控制字符(BEL、BS、HT、LF/VT/FF、CR、SO/SI)。</summary>
     public void Execute(char control)
     {
         switch (control)
@@ -198,18 +197,18 @@ public sealed class TerminalEmulator : IVtActions
                 _pendingWrap = false;
                 Screen.SetCursorX(0);
                 break;
-            case '\x0E': // SO -> invoke G1 into GL
+            case '\x0E': // SO -> 把 G1 调用进 GL
                 _gl = 1;
                 break;
-            case '\x0F': // SI -> invoke G0 into GL
+            case '\x0F': // SI -> 把 G0 调用进 GL
                 _gl = 0;
                 break;
         }
     }
 
-    // ---- IVtActions: ESC ----------------------------------------------------
+    // ---- IVtActions:ESC ----------------------------------------------------
 
-    /// <summary>Dispatches an ESC sequence (charset designation, IND/RI/NEL, DECSC/DECRC, RIS, etc.).</summary>
+    /// <summary>分发 ESC 序列(字符集指定、IND/RI/NEL、DECSC/DECRC、RIS 等)。</summary>
     public void EscDispatch(string intermediates, char final)
     {
         if (Type == TerminalType.Vt52 && intermediates.Length == 0)
@@ -266,7 +265,7 @@ public sealed class TerminalEmulator : IVtActions
                 FullReset();
                 break; // RIS
             case '\\':
-                break; // ST (string terminator)
+                break; // ST(字符串终结符)
             case 'n':
                 _gl = 2;
                 break; // LS2
@@ -276,9 +275,9 @@ public sealed class TerminalEmulator : IVtActions
         }
     }
 
-    // ---- IVtActions: CSI ----------------------------------------------------
+    // ---- IVtActions:CSI ----------------------------------------------------
 
-    /// <summary>Dispatches a CSI sequence (cursor movement, erase, insert/delete, SGR, mode set/reset, reports, etc.).</summary>
+    /// <summary>分发 CSI 序列(光标移动、擦除、插入/删除、SGR、模式设置/重置、报告等)。</summary>
     public void CsiDispatch(char prefix, IReadOnlyList<int> p, string intermediates, char final)
     {
         if (prefix == '?')
@@ -288,12 +287,12 @@ public sealed class TerminalEmulator : IVtActions
         }
         switch (intermediates)
         {
-            // Intermediate '!' + 'p' => DECSTR soft reset.
+            // 中间字节 '!' + 'p' => DECSTR 软复位。
             case "!" when final == 'p':
                 SoftReset();
                 return;
             case " " when final == 'q':
-                return; // DECSCUSR cursor style (accepted, style handled in UI)
+                return; // DECSCUSR 光标样式(已接受,样式在 UI 中处理)
         }
         switch (final)
         {
@@ -391,7 +390,7 @@ public sealed class TerminalEmulator : IVtActions
                 RestoreCursor();
                 break; // ANSI.SYS restore
             case 't':
-                break; // window ops (ignored)
+                break; // 窗口操作(已忽略)
         }
         return;
 
@@ -408,7 +407,7 @@ public sealed class TerminalEmulator : IVtActions
         int P0(int index) => index < p.Count ? p[index] : 0;
     }
 
-    /// <summary>Dispatches an OSC command (window title changes, OSC 52 clipboard writes).</summary>
+    /// <summary>分发 OSC 命令(窗口标题变更、OSC 52 剪贴板写入)。</summary>
     public void OscDispatch(IReadOnlyList<string> p)
     {
         if (p.Count == 0)
@@ -446,11 +445,11 @@ public sealed class TerminalEmulator : IVtActions
                     }
                 }
                 break;
-                // 4 (palette), 8 (hyperlink) intentionally accepted-and-ignored for now.
+                // 4(调色板)、8(超链接)目前有意接受并忽略。
         }
     }
 
-    /// <summary>Dispatches a DCS sequence; currently handles DECRQSS status requests and silently consumes the rest.</summary>
+    /// <summary>分发 DCS 序列;目前处理 DECRQSS 状态请求,其余静默消费。</summary>
     public void DcsDispatch(char prefix, IReadOnlyList<int> parameters, string intermediates, char final, string data)
     {
         // DECRQSS(DCS $ q Pt ST):按 xterm 惯例应答 DCS 1 $ r <设定> ST(1=有效,0=无效)。
@@ -473,31 +472,31 @@ public sealed class TerminalEmulator : IVtActions
         }
     }
 
-    /// <summary>Bytes the terminal needs to send back to the host (DA/DSR/etc.).</summary>
+    /// <summary>终端需要发回宿主的字节(DA/DSR 等)。</summary>
     public event Action<byte[]>? Response;
 
-    /// <summary>OSC 0/2 window-title changes.</summary>
+    /// <summary>OSC 0/2 窗口标题变更。</summary>
     public event Action<string>? TitleChanged;
 
-    /// <summary>BEL (0x07) received.</summary>
+    /// <summary>收到 BEL(0x07)。</summary>
     public event Action? Bell;
 
-    /// <summary>Raised after a chunk of input has been applied so the UI can repaint.</summary>
+    /// <summary>在一块输入被应用后触发,以便 UI 重绘。</summary>
     public event Action? Updated;
 
-    /// <summary>Switches the emulated terminal type, updating VT52 parsing accordingly.</summary>
+    /// <summary>切换所仿真的终端类型,并相应更新 VT52 解析。</summary>
     public void SetTerminalType(TerminalType type)
     {
         Type = type;
         _parser.Vt52Mode = type == TerminalType.Vt52;
     }
 
-    /// <summary>Changes the byte-decoding charset (UTF-8 by default). Pending bytes are dropped.</summary>
+    /// <summary>改变字节解码所用字符集(默认为 UTF-8)。挂起的字节会被丢弃。</summary>
     public void SetEncoding(Encoding encoding) => _utf8.SetEncoding(encoding);
 
-    // ---- Input --------------------------------------------------------------
+    // ---- 输入 --------------------------------------------------------------
 
-    /// <summary>Feeds raw bytes from the host. UTF-8 is decoded before parsing.</summary>
+    /// <summary>从宿主喂入原始字节。UTF-8 在解析前解码。</summary>
     public void Feed(ReadOnlySpan<byte> bytes)
     {
         _feedTimestamp = DateTime.Now;
@@ -510,10 +509,10 @@ public sealed class TerminalEmulator : IVtActions
         Updated?.Invoke();
     }
 
-    /// <summary>Feeds raw bytes from the host. UTF-8 is decoded before parsing.</summary>
+    /// <summary>从宿主喂入原始字节。UTF-8 在解析前解码。</summary>
     public void Feed(byte[] bytes) => Feed(bytes.AsSpan());
 
-    /// <summary>Resizes both the main and alternate screens (and tab stops) to the given geometry.</summary>
+    /// <summary>把主屏与备用屏(以及制表位)都调整为给定几何尺寸。</summary>
     public void Resize(int columns, int rows)
     {
         columns = Math.Max(1, columns);
@@ -524,7 +523,7 @@ public sealed class TerminalEmulator : IVtActions
         _pendingWrap = false;
     }
 
-    // ---- Helpers ------------------------------------------------------------
+    // ---- 辅助方法 ------------------------------------------------------------
 
     private TerminalCell Blank() => TerminalCell.Blank(_bg, _flags);
 
@@ -638,20 +637,20 @@ public sealed class TerminalEmulator : IVtActions
                 break;
             case 'F':
                 _decGraphics[0] = true;
-                break; // enter graphics
+                break; // 进入图形模式
             case 'G':
                 _decGraphics[0] = false;
-                break; // exit graphics
+                break; // 退出图形模式
         }
     }
 
     private void HandlePrivateMode(IReadOnlyList<int> p, char final)
     {
-        if (final == 'c')
-        {
-            // Some hosts send "CSI ? ... c" style; treat as DA if final is c is handled elsewhere.
-            return;
-        }
+            if (final == 'c')
+            {
+                // 某些宿主发送 "CSI ? ... c" 风格;若 final 为 c 则在别处当作 DA 处理。
+                return;
+            }
         bool set = final == 'h';
         if (final is not 'h' and not 'l')
         {
@@ -702,7 +701,7 @@ public sealed class TerminalEmulator : IVtActions
                     Modes.Mouse = set ? MouseTracking.AnyEvent : MouseTracking.None;
                     break;
                 case 1004:
-                    break; // focus reporting (accepted)
+                    break; // 焦点报告(已接受)
                 case 1006:
                     Modes.MouseEncoding = set ? MouseEncoding.Sgr : MouseEncoding.Default;
                     break;
@@ -748,7 +747,7 @@ public sealed class TerminalEmulator : IVtActions
         }
     }
 
-    // ---- Cursor operations --------------------------------------------------
+    // ---- 光标操作 --------------------------------------------------
 
     private void MoveCursor(int dx, int dy)
     {
@@ -942,7 +941,7 @@ public sealed class TerminalEmulator : IVtActions
         }
     }
 
-    /// <summary>Parses <c>38;5;n</c> / <c>48;5;n</c> (256-color) and <c>38;2;r;g;b</c> (truecolor).</summary>
+    /// <summary>解析 <c>38;5;n</c> / <c>48;5;n</c>(256 色)与 <c>38;2;r;g;b</c>(真彩色)。</summary>
     private int ParseExtendedColor(IReadOnlyList<int> p, int i, ref TerminalColor target)
     {
         if (i + 1 >= p.Count)
@@ -980,11 +979,11 @@ public sealed class TerminalEmulator : IVtActions
         _flags = CellFlags.None;
     }
 
-    // ---- Modes / reset ------------------------------------------------------
+    // ---- 模式 / 复位 ------------------------------------------------------
 
     private void ColumnMode(bool set)
     {
-        // DECCOLM: switch 132/80 columns, clearing the screen.
+        // DECCOLM:切换 132/80 列,并清空屏幕。
         int cols = set ? 132 : 80;
         Screen.EraseInDisplay(2, Blank());
         Screen.SetCursor(0, 0);
@@ -1002,7 +1001,7 @@ public sealed class TerminalEmulator : IVtActions
         Core.ZModem.Diagnostics.ZModemTrace.Log($"ALT-SCREEN switch enable={enable} (was {IsAlternateScreen})");
         if (enable)
         {
-            // Save the MAIN cursor into the dedicated alt slot before switching.
+            // 切换前把主屏光标存入专用的备用屏槽。
             if (saveCursor)
             {
                 _altSaved = CaptureCursor();
@@ -1018,8 +1017,8 @@ public sealed class TerminalEmulator : IVtActions
             _altScreen = null;
             IsAlternateScreen = false;
             Screen = _mainScreen;
-            // Restore the main cursor from the dedicated alt slot — never from _saved, which the
-            // alt-screen app may have overwritten via DECSC.
+            // 从专用备用屏槽恢复主屏光标——绝不从 _saved 恢复,因为
+            // 备用屏应用可能已经通过 DECSC 覆盖过它。
             if (saveCursor)
             {
                 ApplyCursor(_altSaved);
@@ -1098,7 +1097,7 @@ public sealed class TerminalEmulator : IVtActions
         _parser.Reset();
     }
 
-    // ---- Reports ------------------------------------------------------------
+    // ---- 报告 ------------------------------------------------------------
 
     private void DeviceAttributes(char prefix)
     {
@@ -1134,7 +1133,7 @@ public sealed class TerminalEmulator : IVtActions
 
     private void Send(string ascii) => Response?.Invoke(Encoding.ASCII.GetBytes(ascii));
 
-    // ---- IVtActions: OSC / DCS ---------------------------------------------
+    // ---- IVtActions:OSC / DCS ---------------------------------------------
 
     /// <summary>
     /// OSC 52:远端程序(tmux/vim 的 yank)请求写系统剪贴板。只支持写方向;

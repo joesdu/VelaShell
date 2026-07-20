@@ -60,7 +60,7 @@
     </Style>
   </UserControl.Styles>
 
-  <!-- 560px palette panel, matching the design frame FN5dM -->
+  <!-- 560px 命令面板,与设计帧 FN5dM 匹配 -->
   <Border Width="560"
           MaxHeight="460"
           VerticalAlignment="Top"

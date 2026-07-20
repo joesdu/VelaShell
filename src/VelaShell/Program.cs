@@ -14,21 +14,19 @@ namespace VelaShell;
 
 internal static partial class Program
 {
-    // Held for the whole process lifetime so a second launch can detect us. Released on exit.
+    // 整个进程生命周期内持有,以便第二次启动能检测到我们。退出时释放。
     private static Mutex? _singleInstanceMutex;
 
     [STAThread]
     public static void Main(string[] args)
     {
-        // Enable legacy code pages (GBK, Big5, Shift_JIS, …) for the terminal encoding option.
+        // 启用旧代码页(GBK、Big5、Shift_JIS 等)以支持终端编码选项。
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         InstallGlobalExceptionGuards();
 
-        // Only one instance per user may run: SonnetDB holds an exclusive lock on its WAL, so a
-        // second process would otherwise crash at startup with a file-in-use IOException. Detect
-        // the running instance up front and exit cleanly with a friendly notice instead.
-        // After a self-update relaunch (--after-update) the predecessor is still shutting down,
-        // so wait for it to release the lock instead of bailing out immediately.
+        // 每个用户只允许运行一个实例:SonnetDB 对其 WAL 持有独占锁,否则第二个进程会在启动时
+        // 因文件被占用而抛出 IOException 崩溃。改为在启动前检测运行中的实例,并以友好提示干净退出。
+        // 自更新后重启(--after-update)时,前一个进程仍在关闭中,因此等待其释放锁,而非立即退出。
         bool afterUpdate = args.Contains("--after-update", StringComparer.Ordinal);
         if (!TryAcquireSingleInstanceLock(afterUpdate ? TimeSpan.FromSeconds(15) : TimeSpan.Zero))
         {
@@ -42,7 +40,7 @@ internal static partial class Program
         }
         catch (Exception ex)
         {
-            // Last-resort: surface a readable dialog instead of a raw .NET crash box for testers.
+            // 最后手段:向测试人员弹出可读对话框,而非原始的 .NET 崩溃框。
             Trace.WriteLine($"[VelaShell] Fatal startup error: {ex}");
             ShowMessage(Strings.Format("Boot_StartupFailed", ex.Message), Strings.Get("Boot_StartupErrorTitle"));
             throw;
@@ -54,10 +52,9 @@ internal static partial class Program
     }
 
     /// <summary>
-    /// Finishes any self-update left from the previous run: deletes the *.old files a successful
-    /// swap leaves behind, or rolls back a swap that crashed halfway. The old process may still be
-    /// exiting and holding its (renamed) image file, so failed deletions are retried briefly in the
-    /// background and, failing that, picked up again on the next launch. Never throws.
+    /// 完成上一轮留下的自更新:删除成功交换后遗留的 *.old 文件,或回滚中途崩溃的交换。
+    /// 旧进程可能仍在退出并持有其(已重命名的)映像文件,因此删除失败会在后台短暂重试,
+    /// 若仍失败则留待下次启动再处理。永不抛异常。
     /// </summary>
     private static void FinalizePendingUpdate()
     {
@@ -81,12 +78,11 @@ internal static partial class Program
     }
 
     /// <summary>
-    /// Acquires a session-scoped named mutex keyed on the local data directory. Returns false when
-    /// another instance already holds it — the common case being a double-click while the app is
-    /// open. Keyed on the storage path so distinct Windows users (distinct %LocalAppData%) run
-    /// independently. Uses the Local namespace (no SeCreateGlobalPrivilege needed, unlike Global);
-    /// the rare same-user-across-sessions collision is caught later by SonnetDB's file lock and the
-    /// startup error dialog, rather than silently proceeding into a crash.
+    /// 获取一个以本地数据目录为键、作用域限于会话的命名互斥体。当已有其他实例持有时返回 false
+    /// —— 常见情形是应用已打开时的双击启动。以存储路径为键,使不同的 Windows 用户
+    /// (不同的 %LocalAppData%)各自独立运行。使用 Local 命名空间(无需 Global 那样的
+    /// SeCreateGlobalPrivilege);罕见的同用户跨会话冲突,会在之后由 SonnetDB 的文件锁与启动错误
+    /// 对话框捕获,而非静默继续直至崩溃。
     /// </summary>
     private static bool TryAcquireSingleInstanceLock(TimeSpan waitTimeout)
     {
@@ -104,13 +100,13 @@ internal static partial class Program
             }
             catch (AbandonedMutexException)
             {
-                // Previous owner died without releasing (e.g. crash). We now own it — proceed.
+                // 前持有者未释放即终止(例如崩溃)。现在归我们所有 —— 继续。
             }
             return true;
         }
         catch
         {
-            // Never let the guard itself block startup; fall back to allowing the launch.
+            // 绝不让该守卫自身阻塞启动;退路为允许启动。
             return true;
         }
     }
@@ -123,7 +119,7 @@ internal static partial class Program
         }
         catch
         {
-            // Best-effort: process teardown releases the handle regardless.
+            // 尽力而为:进程卸载时无论如何都会释放句柄。
         }
         _singleInstanceMutex?.Dispose();
         _singleInstanceMutex = null;
@@ -132,7 +128,7 @@ internal static partial class Program
     [LibraryImport("user32.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
 
-    /// <summary>Shows a native message box on Windows; falls back to Trace elsewhere.</summary>
+    /// <summary>在 Windows 上显示原生消息框;其他平台退路为 Trace。</summary>
     private static void ShowMessage(string text, string caption)
     {
         if (OperatingSystem.IsWindows())
@@ -147,8 +143,8 @@ internal static partial class Program
     }
 
     /// <summary>
-    /// Last-resort guards so a background/reactive failure (e.g. an SSH auth exception raised
-    /// off a command) is logged rather than terminating the whole client.
+    /// 最后手段的守卫:使后台/响应式失败(例如命令触发的 SSH 认证异常)被记录,
+    /// 而非终止整个客户端。
     /// </summary>
     private static void InstallGlobalExceptionGuards()
     {
@@ -161,7 +157,7 @@ internal static partial class Program
             Trace.WriteLine($"[VelaShell] Unhandled domain exception: {e.ExceptionObject}");
     }
 
-    // Avalonia configuration, don't remove; also used by visual designer.
+    // Avalonia 配置,勿删除;可视化设计器也用到。
     private static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<App>()
                   .UsePlatformDetect()

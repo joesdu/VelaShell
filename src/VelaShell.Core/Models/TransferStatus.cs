@@ -1,7 +1,7 @@
 namespace VelaShell.Core.Models;
 
 /// <summary>
-/// 文件传输(上传/下��)任务的状态。
+/// 文件传输(上传/下载)任务的状态。
 /// </summary>
 public enum TransferStatus
 {

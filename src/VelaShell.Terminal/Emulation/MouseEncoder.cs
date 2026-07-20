@@ -2,47 +2,45 @@ using System.Text;
 
 namespace VelaShell.Terminal.Emulation;
 
-/// <summary>A mouse button (or wheel notch) in xterm button-code terms.</summary>
+/// <summary>以 xterm 按钮码表示的鼠标按键(或滚轮一格)。</summary>
 public enum TerminalMouseButton
 {
-    /// <summary>Left mouse button (xterm button code 0).</summary>
+    /// <summary>鼠标左键(xterm 按钮码 0)。</summary>
     Left = 0,
-    /// <summary>Middle mouse button / wheel press (xterm button code 1).</summary>
+    /// <summary>鼠标中键 / 滚轮按下(xterm 按钮码 1)。</summary>
     Middle = 1,
-    /// <summary>Right mouse button (xterm button code 2).</summary>
+    /// <summary>鼠标右键(xterm 按钮码 2)。</summary>
     Right = 2,
-    /// <summary>No button held; used for buttonless motion or a legacy release (code 3).</summary>
-    None = 3, // buttonless motion / legacy release
-    /// <summary>Wheel scrolled up by one notch (xterm button code 64).</summary>
+    /// <summary>无按键按下;用于无按键移动或传统释放事件(码 3)。</summary>
+    None = 3, // 无按键移动 / 传统释放
+    /// <summary>滚轮向上滚一格(xterm 按钮码 64)。</summary>
     WheelUp = 64,
-    /// <summary>Wheel scrolled down by one notch (xterm button code 65).</summary>
+    /// <summary>滚轮向下滚一格(xterm 按钮码 65)。</summary>
     WheelDown = 65
 }
 
-/// <summary>The kind of pointer event being reported to the terminal application.</summary>
+/// <summary>上报给终端应用程序的指针事件类型。</summary>
 public enum TerminalMouseEventType
 {
-    /// <summary>A button was pressed down.</summary>
+    /// <summary>按键被按下。</summary>
     Press,
-    /// <summary>A button was released.</summary>
+    /// <summary>按键被释放。</summary>
     Release,
-    /// <summary>The pointer moved (motion / drag).</summary>
+    /// <summary>指针移动(移动 / 拖拽)。</summary>
     Move
 }
 
 /// <summary>
-/// Encodes pointer events into the byte sequences an application expects when it has enabled mouse
-/// tracking (DECSET ?9/?1000/?1002/?1003) so programs like htop, btop, vim, tmux receive clicks,
-/// drags and wheel notches. Honors the active encoding: legacy X10 (<c>ESC [ M</c>), SGR
-/// (<c>ESC [ &lt; … M/m</c>, ?1006) and urxvt (<c>ESC [ … M</c>, ?1015). Kept UI-agnostic — the
-/// caller passes plain modifier flags — so it is directly unit-testable.
+/// 把指针事件编码成应用程序在开启鼠标跟踪(DECSET ?9/?1000/?1002/?1003)时所期望的字节序列,
+/// 使 htop、btop、vim、tmux 等程序能够收到点击、拖拽与滚轮事件。遵循当前生效的编码方式:
+/// 传统 X10(<c>ESC [ M</c>)、SGR(<c>ESC [ &lt; … M/m</c>, ?1006)以及 urxvt(<c>ESC [ … M</c>, ?1015)。
+/// 本类与 UI 无关——调用方只传入纯修饰键标志——因此可直接进行单元测试。
 /// </summary>
 public static class MouseEncoder
 {
     /// <summary>
-    /// Returns the bytes to send for a mouse event under the current <paramref name="modes" />, or
-    /// null when the event should not be reported (e.g. motion in a press-only mode, or any event
-    /// while tracking is off). Column/row are 0-based cell coordinates within the visible screen.
+    /// 返回在当前 <paramref name="modes" /> 下为某鼠标事件应发送的字节;当该事件不应上报时(例如
+    /// 在仅按下模式中发生移动,或跟踪关闭时的任意事件)返回 null。列/行是可见屏幕内从 0 开始的单元格坐标。
     /// </summary>
     public static byte[]? Encode(
         TerminalMouseEventType type,
@@ -61,7 +59,7 @@ public static class MouseEncoder
         }
         bool isWheel = button is TerminalMouseButton.WheelUp or TerminalMouseButton.WheelDown;
 
-        // Which event types each tracking mode reports.
+        // 各跟踪模式分别上报哪些事件类型。
         // ReSharper disable once SwitchStatementMissingSomeEnumCasesNoDefault
         switch (tracking)
         {
@@ -98,18 +96,18 @@ public static class MouseEncoder
         }
         else if (type == TerminalMouseEventType.Release && !sgr)
         {
-            cb = 3; // legacy release: button bits = 3
+            cb = 3; // 传统释放:按钮位 = 3
         }
         else
         {
-            cb = (int)button; // 0/1/2, or 3 (None) for buttonless motion
+            cb = (int)button; // 0/1/2,或 3(None)表示无按键移动
         }
         if (type == TerminalMouseEventType.Move)
         {
-            cb += 32; // motion bit
+            cb += 32; // 移动位
         }
 
-        // X10 predates modifier reporting; every other mode carries Shift/Alt/Control.
+        // X10 早于修饰键上报机制;其余模式都携带 Shift/Alt/Control。
         if (tracking != MouseTracking.X10)
         {
             if (shift)
@@ -125,7 +123,7 @@ public static class MouseEncoder
                 cb += 16;
             }
         }
-        int cx = column + 1; // reported coordinates are 1-based
+        int cx = column + 1; // 上报的坐标从 1 开始
         int cy = row + 1;
         return modes.MouseEncoding switch
         {
@@ -135,8 +133,8 @@ public static class MouseEncoder
         };
     }
 
-    // Legacy encoding: ESC [ M, then three bytes each offset by 32. Coordinates are limited to
-    // 223 (255-32); anything larger is clamped, matching xterm.
+    // 传统编码:ESC [ M,随后三个字节各加 32 偏移。坐标上限为
+    // 223(255-32);超出者会被钳制,与 xterm 行为一致。
     private static byte[] EncodeX10(int cb, int cx, int cy)
     {
         byte b = (byte)(32 + (cb & 0xFF));

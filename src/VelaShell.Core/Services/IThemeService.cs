@@ -7,8 +7,7 @@ public interface IThemeService
     string CurrentTheme { get; }
 
     /// <summary>
-    /// The user's accent-color override as a hex string (e.g. "#00D4AA"), or null to use
-    /// the theme's default accent.
+    /// 用户自定义的强调色覆盖,为十六进制字符串(如 "#00D4AA");为 null 时使用主题的默认强调色。
     /// </summary>
     string? AccentColor { get; }
 
@@ -18,9 +17,9 @@ public interface IThemeService
     /// <summary>主题变更时触发,参数为新的主题名称。</summary>
     event Action<string>? ThemeChanged;
 
-    /// <summary>Sets (or clears, when null/empty) the accent-color override; applied live, no restart.</summary>
+    /// <summary>设置(或在为 null/空时清除)强调色覆盖;实时生效,无需重启。</summary>
     void SetAccent(string? hexColor);
 
-    /// <summary>Raised when the accent override changes; argument is the hex color or null for default.</summary>
+    /// <summary>强调色覆盖变更时触发;参数为十六进制颜色,或为 null 表示默认。</summary>
     event Action<string?>? AccentChanged;
 }

@@ -24,10 +24,10 @@ public sealed class SessionTreeNodeViewModel(
     /// <summary>该节点是否允许 SSH 专属操作(终端侧 SFTP/隧道)。</summary>
     public bool IsSshProfile => !IsGroup && ConnectionType == ConnectionType.SSH;
 
-    /// <summary>Whether this node represents a standalone SFTP profile.</summary>
+    /// <summary>该节点是否为独立的 SFTP 配置文件。</summary>
     public bool IsSftpProfile => !IsGroup && ConnectionType == ConnectionType.SFTP;
 
-    /// <summary>Whether the standalone SFTP action is available for this node.</summary>
+    /// <summary>该节点是否支持独立的 SFTP 操作。</summary>
     public bool CanOpenSftp => IsSshProfile || IsSftpProfile;
 
     /// <summary>节点显示名称,可在重命名时更新并触发通知。</summary>

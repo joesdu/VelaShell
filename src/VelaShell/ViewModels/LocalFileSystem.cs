@@ -1,6 +1,6 @@
 namespace VelaShell.ViewModels;
 
-/// <summary>One selectable local filesystem root.</summary>
+/// <summary>一个可选中的本地文件系统根。</summary>
 public sealed record LocalRootEntry(
     string DisplayName,
     string FullPath,
@@ -8,7 +8,7 @@ public sealed record LocalRootEntry(
     string Tooltip
 );
 
-/// <summary>Filesystem metadata used by the local pane's narrow deletion seam.</summary>
+/// <summary>本地面板窄删除缝所用的文件系统元数据。</summary>
 internal sealed record LocalFileSystemEntry(
     string Name,
     string FullPath,
@@ -18,7 +18,7 @@ internal sealed record LocalFileSystemEntry(
     bool IsReparsePoint = false
 );
 
-/// <summary>Minimal filesystem seam for deterministic local-pane traversal and deletion tests.</summary>
+/// <summary>用于确定性本地面板遍历与删除测试的最小文件系统接缝。</summary>
 internal interface ILocalFileSystem
 {
     Task<IReadOnlyList<LocalFileSystemEntry>> EnumerateAsync(
@@ -30,23 +30,23 @@ internal interface ILocalFileSystem
 
     Task DeleteDirectoryAsync(string path, CancellationToken cancellationToken);
 
-    /// <summary>Moves (renames) a local file or directory to a new path in the same volume.</summary>
+    /// <summary>将本地文件或目录移动(重命名)到同一卷内的新路径。</summary>
     Task MoveAsync(string sourcePath, string destPath, CancellationToken cancellationToken);
 
-    /// <summary>Creates a directory at the given path (idempotent).</summary>
+    /// <summary>在给定路径创建目录(幂等)。</summary>
     Task CreateDirectoryAsync(string path, CancellationToken cancellationToken);
 
-    /// <summary>Returns the file size in bytes, or -1 if the path does not exist or is a directory.</summary>
+    /// <summary>返回文件大小(字节);若路径不存在或是一个目录则返回 -1。</summary>
     Task<long> GetFileSizeAsync(string path, CancellationToken cancellationToken);
 
-    /// <summary>Opens a file for reading.</summary>
+    /// <summary>以只读方式打开文件。</summary>
     Task<Stream> OpenReadAsync(string path, CancellationToken cancellationToken);
 
-    /// <summary>Opens a file for writing with the given mode (e.g. Append for resume).</summary>
+    /// <summary>以给定模式(如 Append 用于续传)打开文件写入。</summary>
     Task<Stream> OpenWriteAsync(string path, FileMode mode, CancellationToken cancellationToken);
 }
 
-/// <summary>Enumerates platform-local roots without coupling the pane to DriveInfo.</summary>
+/// <summary>枚举平台本地根,避免面板与 DriveInfo 耦合。</summary>
 internal interface ILocalRootProvider
 {
     Task<IReadOnlyList<LocalRootEntry>> EnumerateAsync(CancellationToken cancellationToken);

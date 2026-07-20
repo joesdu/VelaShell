@@ -17,8 +17,8 @@
         Background="Transparent"
         WindowStartupLocation="CenterOwner">
 
-  <!-- Settings per design §14: 720px, left nav 200 (bg-sidebar, 1px right border) +
-       right scrollable content; Ctrl+, opens; changes apply live on save. -->
+  <!-- 设置页(设计 §14):宽 720px,左侧导航 200(bg-sidebar,右侧 1px 描边) +
+       右侧可滚动内容区;Ctrl+, 打开;改动在保存后立即生效。 -->
 
   <Window.Styles>
     <!-- 分节标题 -->

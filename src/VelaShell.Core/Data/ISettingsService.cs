@@ -9,8 +9,8 @@ namespace VelaShell.Core.Data;
 public interface ISettingsService
 {
     /// <summary>
-    /// Raised after settings are persisted, so live consumers (open terminal tabs,
-    /// theme, …) can re-apply them without a restart (#3/#21).
+    /// 设置持久化后触发,使得在线消费者(已打开的终端标签、
+    /// 主题等)无需重启即可重新应用这些设置 (#3/#21)。
     /// </summary>
     event Action<AppSettings>? SettingsSaved;
 

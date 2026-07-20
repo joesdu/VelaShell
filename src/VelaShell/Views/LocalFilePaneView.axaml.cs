@@ -10,17 +10,17 @@ using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 
-/// <summary>Local file pane view with breadcrumbs, context menu, and cross-pane drag-drop.</summary>
+/// <summary>本地文件面板视图,含面包屑、上下文菜单与跨面板拖放。</summary>
 public partial class LocalFilePaneView : UserControl
 {
-    // Drag state
+    // 拖拽状态
     private bool _isDragging;
     private Point _dragOrigin;
     private LocalFileEntry? _dragRow;
     private PointerPressedEventArgs? _dragPointerArgs;
     private const double DragThreshold = 5;
 
-    /// <summary>Initializes the local file pane view and wires VM delegates.</summary>
+    /// <summary>初始化本地文件面板视图,并接线 VM 委托。</summary>
     public LocalFilePaneView()
     {
         InitializeComponent();
@@ -34,7 +34,7 @@ public partial class LocalFilePaneView : UserControl
             }
         };
 
-        // Drag-drop: receive remote file drops + initiate local file drags.
+        // 拖放:接收远端文件拖入 + 发起本地文件拖拽。
         if (this.FindControl<ListBox>("FileList") is { } fileList)
         {
             DragDrop.SetAllowDrop(fileList, true);
@@ -88,7 +88,7 @@ public partial class LocalFilePaneView : UserControl
     {
         if (!e.GetCurrentPoint(null).Properties.IsRightButtonPressed)
         {
-            // Left button on a non-parent row: prepare for drag to remote pane.
+            // 非父行上按左键:为拖往远端面板做准备。
             if (sender is Border { DataContext: LocalFileEntry entry } && !entry.IsParentEntry)
             {
                 _dragOrigin = e.GetPosition(this.FindControl<ListBox>("FileList"));
@@ -98,7 +98,7 @@ public partial class LocalFilePaneView : UserControl
             }
             return;
         }
-        // Right button: select row for context menu.
+        // 右键:为上下文菜单选中该行。
         if (sender is not Border { DataContext: LocalFileEntry entry2 }
             || entry2.IsParentEntry
             || DataContext is not LocalFilePaneViewModel vm
@@ -136,7 +136,7 @@ public partial class LocalFilePaneView : UserControl
         await top.Launcher.LaunchFileInfoAsync(new(localPath));
     }
 
-    // ── Drag initiation (local → remote) ────────────────────────────────
+    // ── 拖拽发起(本地 → 远端) ────────────────────────────────
 
     private void OnLocalDragPointerMoved(object? sender, PointerEventArgs e)
     {
@@ -185,7 +185,7 @@ public partial class LocalFilePaneView : UserControl
         _dragPointerArgs = null;
     }
 
-    // ── Drop handling (remote → local) ──────────────────────────────────
+    // ── 放置处理(远端 → 本地) ──────────────────────────────────
 
     private void OnLocalDropDragOver(object? sender, DragEventArgs e)
     {
@@ -198,18 +198,18 @@ public partial class LocalFilePaneView : UserControl
 
     private async void OnLocalDrop(object? sender, DragEventArgs e)
     {
-        // Check for cross-pane remote file drag first (VFTP marker).
+        // 先检查跨面板的远端文件拖拽(VFTP 标记)。
         string? text = e.DataTransfer.TryGetText();
         if (!string.IsNullOrEmpty(text) && text.StartsWith(DragDropFormats.RemotePaths))
         {
             string[] remotePaths = text[DragDropFormats.RemotePaths.Length..].Split('\n', StringSplitOptions.RemoveEmptyEntries);
             if (remotePaths.Length == 0) return;
 
-            // Use visual-tree ancestor lookup instead of fragile Parent.Parent chain.
+            // 用可视化树祖先查找,代替脆弱的 Parent.Parent 链式访问。
             var sftpVm = this.FindAncestorOfType<SftpDocumentView>()?.DataContext as SftpDocumentViewModel;
             if (sftpVm is null) return;
 
-            // Resolve remote entries from paths without mutating the remote selection.
+            // 由路径解析远端条目,且不修改远端的选中集合。
             RemoteFileInfoViewModel[] entries = remotePaths
                 .Select(p => sftpVm.RemoteFiles.Files.FirstOrDefault(f => f.FullPath == p))
                 .Where(e => e is not null && !e.IsParentEntry)
@@ -224,7 +224,7 @@ public partial class LocalFilePaneView : UserControl
                 }
                 catch (FileNotFoundException)
                 {
-                    // File may have been deleted between listing and download; refresh remote listing.
+                    // 文件可能已在列举与下载之间被删除;刷新远端列表。
                     sftpVm.RemoteFiles.RefreshCommand.Execute().Subscribe();
                 }
             }
@@ -232,7 +232,7 @@ public partial class LocalFilePaneView : UserControl
             return;
         }
 
-        // Also support OS file drops onto local pane (just refresh).
+        // 也支持将操作系统文件拖入本地面板(仅刷新)。
         IStorageItem[]? files = e.DataTransfer.TryGetFiles();
         if (files is { Length: > 0 })
         {

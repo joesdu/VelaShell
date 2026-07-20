@@ -52,9 +52,9 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// File panel height restored when the panel reopens (§6 drag to grow). Default 360
-    /// = sidebar recent-connections block (320) + footer (40), so the file panel's top divider
-    /// lands on the same horizontal line as the sidebar's tree/recent splitter.
+    /// 面板重新打开时恢复的文件区高度(§6 拖拽放大)。默认 360
+    /// = 侧边栏最近连接块(320) + 底栏(40),使文件区顶部分隔条
+    /// 与侧边栏的树/最近连接分隔条处于同一水平线上。
     /// </summary>
     private double _lastFileRowHeight = 360;
 
@@ -63,12 +63,12 @@ public partial class MainWindow : Window
     private ISettingsService? _settingsService;
     private bool _sidebarOnRight;
 
-    // NOTE: the window's DataContext must be assigned AFTER construction (object initializer in
-    // App): child views' compiled bindings (x:DataType = their own VM) briefly see the inherited
-    // MainWindowViewModel during InitializeComponent if it is set earlier, spraying
-    // InvalidCastException binding errors before each view's local DataContext binding takes over.
-    // The cost is a handful of benign "Value is null" messages from DockControl's theme bindings
-    // ($self.Layout.* with FallbackValue) while Layout is still null — the lesser noise.
+    // 注意:窗口的 DataContext 必须在构造之后(在 App 的对象初始化器中)再赋值:
+    // 若过早设置,子视图的编译期绑定(x:DataType = 各自 VM)会在 InitializeComponent 期间
+    // 短暂看到继承来的 MainWindowViewModel,从而在各自本地 DataContext 绑定接管前
+    // 喷出一连串 InvalidCastException 绑定错误。
+    // 代价是 Layout 仍为空时 DockControl 主题绑定($self.Layout.* 带 FallbackValue)会
+    // 输出少量良性的“Value is null”消息——这点噪声尚可接受。
     /// <summary>创建主窗口,挂接侧边栏事件、文件浏览可见性联动与窗口打开回调(Windows 下额外注册贴靠布局钩子)。</summary>
     public MainWindow()
     {
@@ -271,8 +271,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Collapses/expands the file-panel rows as FileBrowser.IsVisible flips. WhenAnyValue
-    /// tracks through the FileBrowser property itself, so per-tab rebinds re-subscribe automatically.
+    /// 随 FileBrowser.IsVisible 切换折叠/展开文件区行。WhenAnyValue
+    /// 直接跟踪 FileBrowser 属性本身,因此每个标签重绑定时会自动重新订阅。
     /// </summary>
     private void HookFileBrowserVisibility()
     {
@@ -302,7 +302,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            // Remember the user's dragged height so reopening restores it.
+            // 记住用户拖出的高度,以便重新打开时恢复。
             if (fileRow.Height is { IsAbsolute: true, Value: > 0 })
             {
                 _lastFileRowHeight = fileRow.Height.Value;
@@ -591,8 +591,7 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // Per-document cleanup reports expected failures through the VM; keep the
-            // window shutdown path safe if an unexpected aggregate failure escapes.
+            // 逐文档清理通过 VM 报告预期失败;如有未处理的聚合异常逃逸,保持窗口关闭路径安全。
         }
         finally
         {
@@ -695,7 +694,7 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Menu/palette 终端内查找 → opens the visible terminal view's search bar.</summary>
+    /// <summary>菜单/命令面板内的终端查找 → 打开当前可见终端视图的搜索栏。</summary>
     private void OnTerminalSearchRequested(object? sender, EventArgs e)
     {
         foreach (TerminalTabView view in this.GetVisualDescendants().OfType<TerminalTabView>())
@@ -720,7 +719,7 @@ public partial class MainWindow : Window
         }
     }
 
-    // The window uses the native OS title bar per design spec §2 — no custom chrome.
+    // 按设计规范 §2,窗口使用操作系统原生标题栏——不做自绘标题栏。
 
     private void OnSidebarRecentConnectRequested(object? sender, RecentConnectionEntry entry)
     {
@@ -785,7 +784,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        // TryConnectProfileAsync never throws — 连接失败已在标签页内以覆盖层提示(设计 yxjmg),
+        // TryConnectProfileAsync 永不抛异常 —— 连接失败已在标签页内以覆盖层提示(设计 yxjmg),
         // 不再弹全局框。
         await mainWindowViewModel.TryConnectProfileAsync(profile);
     }

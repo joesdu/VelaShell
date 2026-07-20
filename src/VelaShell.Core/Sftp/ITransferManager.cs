@@ -3,8 +3,7 @@ using VelaShell.Core.Models;
 namespace VelaShell.Core.Sftp;
 
 /// <summary>
-/// Delegate for executing a file transfer. Injected by the caller (e.g., SftpService)
-/// to perform the actual upload/download work.
+/// 执行文件传输的委托。由调用方(如 SftpService)注入,以执行实际的上传/下载工作。
 /// </summary>
 public delegate Task TransferExecutor(
     TransferTask task,

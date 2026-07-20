@@ -1,7 +1,7 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-  <!-- lucide icon geometries (24×24 view box, stroke-rendered by LucideIcon).
-       Keys follow the lucide name used in the design file: Icon.<lucide-name>. -->
+  <!-- lucide 图标几何路径(24×24 视图框,由 LucideIcon 以描边方式渲染)。
+       键名沿用设计文件中的 lucide 名称:Icon.<lucide-name>。 -->
 
   <StreamGeometry x:Key="Icon.search">M21 21l-4.34-4.34 M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.copy">M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2Z M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2</StreamGeometry>
@@ -22,8 +22,8 @@
   <StreamGeometry x:Key="Icon.cpu">M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z M9 9h6v6H9Z M15 2v2 M15 20v2 M2 15h2 M2 9h2 M20 15h2 M20 9h2 M9 2v2 M9 20v2</StreamGeometry>
   <StreamGeometry x:Key="Icon.memory-stick">M6 19v-3 M10 19v-3 M14 19v-3 M18 19v-3 M8 11V9 M16 11V9 M12 11V9 M2 15h20 M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.837V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.837Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.arrow-up-down">M21 16l-4 4-4-4 M17 20V4 M3 8l4-4 4 4 M7 4v16</StreamGeometry>
-  <!-- arrow-up-down split into its two halves (same 24×24 view box) so each direction can be
-       tinted independently while overlaying back into the original glyph (状态栏网速指示). -->
+  <!-- arrow-up-down 拆分为上下两半(同为 24×24 视图框),使每个方向可
+       独立着色,同时叠加回原始字形(状态栏网速指示)。 -->
   <StreamGeometry x:Key="Icon.arrow-up-half">M3 8l4-4 4 4 M7 4v16</StreamGeometry>
   <StreamGeometry x:Key="Icon.arrow-down-half">M21 16l-4 4-4-4 M17 20V4</StreamGeometry>
   <StreamGeometry x:Key="Icon.folder">M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z</StreamGeometry>
@@ -47,7 +47,7 @@
   <StreamGeometry x:Key="Icon.hard-drive">M22 12H2 M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z M6 16h.01 M10 16h.01</StreamGeometry>
   <StreamGeometry x:Key="Icon.arrow-right-left">M8 3 4 7l4 4 M4 7h16 M16 21l4-4-4-4 M20 17H4</StreamGeometry>
   <StreamGeometry x:Key="Icon.eye">M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0 M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z</StreamGeometry>
-  <!-- Context-menu icons (design frame e6klM 会话右键菜单) plus the message-dialog status set. -->
+  <!-- 右键菜单图标(design frame e6klM 会话右键菜单)以及消息对话框状态图标集。 -->
   <StreamGeometry x:Key="Icon.plug">M12 22v-5 M9 8V2 M15 8V2 M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.pencil">M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497Z M15 5l4 4</StreamGeometry>
   <StreamGeometry x:Key="Icon.sliders-horizontal">M21 4h-7 M10 4H3 M21 12h-9 M8 12H3 M21 20h-5 M12 20H3 M14 2v4 M8 10v4 M16 18v4</StreamGeometry>

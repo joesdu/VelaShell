@@ -1,42 +1,42 @@
 namespace VelaShell.Core.Models;
 
 /// <summary>
-/// SSH connection information and credentials
+/// SSH 连接信息与凭据
 /// </summary>
 public class ConnectionInfo
 {
     /// <summary>
-    /// Gets or sets the hostname or IP address
+    /// 获取或设置主机名或 IP 地址
     /// </summary>
     public required string Host { get; init; }
 
     /// <summary>
-    /// Gets or sets the SSH port (default: 22)
+    /// 获取或设置 SSH 端口(默认:22)
     /// </summary>
     public int Port { get; init; } = 22;
 
     /// <summary>
-    /// Gets or sets the username
+    /// 获取或设置用户名
     /// </summary>
     public required string Username { get; init; }
 
     /// <summary>
-    /// Gets or sets the authentication method
+    /// 获取或设置认证方式
     /// </summary>
     public required AuthMethod AuthMethod { get; init; }
 
     /// <summary>
-    /// Gets or sets the password (for Password auth)
+    /// 获取或设置密码(用于密码认证)
     /// </summary>
     public string? Password { get; init; }
 
     /// <summary>
-    /// Gets or sets the private key file path (for PrivateKey auth)
+    /// 获取或设置私钥文件路径(用于私钥认证)
     /// </summary>
     public string? PrivateKeyPath { get; init; }
 
     /// <summary>
-    /// Gets or sets the private key passphrase (optional)
+    /// 获取或设置私钥口令(可选)
     /// </summary>
     public string? PrivateKeyPassphrase { get; init; }
 

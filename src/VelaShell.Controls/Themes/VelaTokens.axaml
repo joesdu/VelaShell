@@ -17,7 +17,7 @@
       <SolidColorBrush x:Key="VelaStatusConnected" Color="#50FA7B" />
       <SolidColorBrush x:Key="VelaStatusConnecting" Color="#F1FA8C" />
       <SolidColorBrush x:Key="VelaStatusDisconnected" Color="#FF5555" />
-      <!-- File browser rows (design frame dyuii): orange folder icon, cyan directory names. -->
+      <!-- 文件浏览器行(design frame dyuii):橙色文件夹图标,青色目录名。 -->
       <SolidColorBrush x:Key="VelaFileFolderIcon" Color="#FFB86C" />
       <SolidColorBrush x:Key="VelaFileDirName" Color="#8BE9FD" />
       <FontFamily x:Key="VelaTerminalFont">JetBrains Mono, Cascadia Mono, Consolas, monospace</FontFamily>
@@ -38,7 +38,7 @@
       <SolidColorBrush x:Key="VelaStatusConnected" Color="#14710A" />
       <SolidColorBrush x:Key="VelaStatusConnecting" Color="#846E15" />
       <SolidColorBrush x:Key="VelaStatusDisconnected" Color="#CB3A2A" />
-      <!-- File browser rows: Alucard yellow folders, cyan directory names. -->
+      <!-- 文件浏览器行:Alucard 黄色文件夹,青色目录名。 -->
       <SolidColorBrush x:Key="VelaFileFolderIcon" Color="#9E841A" />
       <SolidColorBrush x:Key="VelaFileDirName" Color="#036A96" />
       <FontFamily x:Key="VelaTerminalFont">JetBrains Mono, Cascadia Mono, Consolas, monospace</FontFamily>

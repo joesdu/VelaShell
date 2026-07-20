@@ -10,9 +10,9 @@
              x:Class="VelaShell.Views.StatusBarView"
              x:DataType="pvm:StatusBarViewModel">
 
-  <!-- Design frame gzmsb: 24px, bg-sidebar, 1px top border, padding [0,12], space-between.
-       Left (1y2au, gap 14): wifi + "SSH • host:port" + | + latency(accent) + | + uptime.
-       Right (4Cio1, gap 12): term type | size | cpu | mem | net | encoding. -->
+  <!-- 设计框 gzmsb:高 24px、背景 bg-sidebar、顶部 1px 边框、内边距 [0,12]、两端对齐。
+       左侧 (1y2au,间距 14):wifi + "SSH • host:port" + | + 延迟(accent) + | + 运行时长。
+       右侧 (4Cio1,间距 12):终端类型 | 尺寸 | CPU | 内存 | 网速 | 编码。 -->
 
   <UserControl.Styles>
     <Style Selector="TextBlock">
@@ -35,7 +35,7 @@
           Padding="12,0">
     <Grid ColumnDefinitions="Auto,*,Auto">
 
-      <!-- Left group (gap 14) -->
+      <!-- 左侧分组(间距 14) -->
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="14">
         <pc:LucideIcon Width="12" Height="12"
                        Data="{StaticResource Icon.wifi}"
@@ -60,9 +60,8 @@
                    IsVisible="{Binding StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       </StackPanel>
 
-      <!-- Right group (gap 12). The live metrics sit LEFT of the fixed-width fields
-           (terminal type / size / encoding) so their varying width never shoves the
-           static text around (#4). -->
+      <!-- 右侧分组(间距 12)。实时指标位于固定宽度的字段(终端类型 / 尺寸 / 编码)左侧,
+           这样它们宽度变化时不会把静态文本挤来挤去(#4)。 -->
       <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
         <!-- 悬停提示为动态详情:CPU 逐核心、内存含交换、磁盘逐挂载点、网速逐网卡。 -->
         <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding CpuTooltip}">
@@ -85,9 +84,8 @@
                          Foreground="{DynamicResource VelaTextTertiary}" VerticalAlignment="Center" />
           <TextBlock Text="{Binding DiskUsage}" Foreground="{DynamicResource VelaTextSecondary}" />
         </StackPanel>
-        <!-- The original arrow-up-down glyph, rebuilt from its two halves so each direction
-             lights up (accent) independently while traffic flows that way; the readout shows
-             the dominant direction's rate (Android-style). -->
+        <!-- 原上下箭头图标由两个半边重建,使每个方向在流量朝该方向流动时独立高亮(accent);
+             读数显示主导方向的速率(类 Android 风格)。 -->
         <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding NetTooltip}">
           <StackPanel.Styles>
             <Style Selector="pc|LucideIcon.updown">

@@ -2,22 +2,22 @@ using VelaShell.Terminal.Emulation;
 
 namespace VelaShell.Terminal;
 
-/// <summary>One search hit inside the terminal buffer, in absolute-row/character space.</summary>
+/// <summary>终端缓冲区内的一次搜索命中,采用绝对行/字符坐标。</summary>
 public readonly record struct BufferSearchHit(int Row, int StartCol, int Length);
 
 /// <summary>
-/// Case-insensitive plain-text search over the whole terminal buffer (scrollback + screen),
-/// used by the in-terminal search bar (spec §5.3). Pure logic — no UI dependencies.
+/// 对整个终端缓冲区(回滚历史 + 当前屏幕)进行不区分大小写的纯文本搜索,
+/// 供终端内搜索栏使用(规范 §5.3)。纯逻辑实现,不依赖任何 UI。
 /// </summary>
 public static class BufferSearch
 {
     /// <summary>
-    /// Returns every case-insensitive match of <paramref name="query" /> across the whole
-    /// terminal buffer (scrollback + screen); an empty query yields no hits.
+    /// 在整个终端缓冲区(回滚历史 + 当前屏幕)中返回 <paramref name="query" /> 的全部不区分大小写匹配项;
+    /// 空查询不会产生任何命中。
     /// </summary>
-    /// <param name="screen">The terminal buffer to search.</param>
-    /// <param name="query">The plain text to search for.</param>
-    /// <returns>All matches in absolute-row/character space, in buffer order.</returns>
+    /// <param name="screen">要搜索的终端缓冲区。</param>
+    /// <param name="query">要搜索的纯文本。</param>
+    /// <returns>全部命中,以绝对行/字符坐标表示,按缓冲区顺序排列。</returns>
     public static IReadOnlyList<BufferSearchHit> FindAll(TerminalScreen screen, string query)
     {
         if (string.IsNullOrEmpty(query))

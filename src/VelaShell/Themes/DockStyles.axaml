@@ -11,10 +11,9 @@
         <Setter Property="Background" Value="{DynamicResource VelaBgPage}" />
     </Style>
 
-    <!-- Single-line inputs center their text vertically (设计稿所有输入框文本均为垂直居中);
-         the Fluent default leaves the presenter top-aligned, which reads as the text floating
-         high whenever the box is taller than one line (worst in the settings panel's 30px
-         NumericUpDown fields). Multi-line boxes keep top alignment. -->
+    <!-- 单行输入框的文本垂直居中(设计稿所有输入框文本均为垂直居中);
+         Fluent 默认让文本呈现器顶对齐,导致当输入框高于一行时文字像是浮在上方
+         (在设置面板 30px 高的 NumericUpDown 上最明显)。多行框保持顶对齐。 -->
     <Style Selector="TextBox">
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
@@ -34,7 +33,7 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
-    <!-- Token-styled tooltips (small-flyout spec: bg-surface + border-secondary + corner 6). -->
+    <!-- Token 风格的工具提示(small-flyout 规范:bg-surface + border-secondary + 圆角 6)。 -->
     <Style Selector="ToolTip">
         <Setter Property="Background" Value="{DynamicResource VelaBgSurface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
@@ -45,9 +44,9 @@
         <Setter Property="FontSize" Value="11" />
     </Style>
 
-    <!-- Context menus (design 会话右键菜单 style): one look for every right-click menu — the
-         session tree, the SFTP list, and the dock tab strip. Same small-flyout tokens as the
-         tooltip (bg-surface + border-secondary + corner 6), JB Mono 11, compact rows. -->
+    <!-- 右键菜单(设计稿会话右键菜单样式):所有右键菜单统一外观 ——
+         会话树、SFTP 列表与停靠标签条。与工具提示相同的 small-flyout 标记
+         (bg-surface + border-secondary + 圆角 6),JB Mono 11,紧凑行高。 -->
     <Style Selector="ContextMenu">
         <Setter Property="Background" Value="{DynamicResource VelaBgSurface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
@@ -64,7 +63,7 @@
         <Setter Property="CornerRadius" Value="4" />
     </Style>
 
-    <!-- Hover/selected highlight uses the shared bg-hover token instead of the Fluent accent fill. -->
+    <!-- 悬停/选中高亮使用共享的 bg-hover 标记,而非 Fluent 的强调色填充。 -->
     <Style Selector="ContextMenu MenuItem:selected /template/ Border#PART_LayoutRoot">
         <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
     </Style>
@@ -75,7 +74,7 @@
         <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
     </Style>
 
-    <!-- Disabled items read as muted, not hidden. -->
+    <!-- 禁用项显示为弱化色,而非隐藏。 -->
     <Style Selector="ContextMenu MenuItem:disabled">
         <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
         <Setter Property="Opacity" Value="0.6" />
@@ -108,7 +107,7 @@
         <Setter Property="Margin" Value="6,4" />
     </Style>
 
-    <!-- Tab-strip overflow controls (design nunbT pZGS4): 24px, corner 3, hover bg-hover. -->
+    <!-- 标签条溢出控件(design nunbT pZGS4):24px,圆角 3,悬停 bg-hover。 -->
     <Style Selector=":is(Button).tab-nav">
         <Setter Property="Width" Value="24" />
         <Setter Property="Height" Value="24" />
@@ -127,7 +126,7 @@
         <Setter Property="Opacity" Value="0.35" />
     </Style>
 
-    <!-- Tab-list dropdown (and any MenuFlyout): same small-flyout look as the context menus. -->
+    <!-- 标签列表下拉框(以及任意 MenuFlyout):与右键菜单相同的 small-flyout 外观。 -->
     <Style Selector="MenuFlyoutPresenter">
         <Setter Property="Background" Value="{DynamicResource VelaBgSurface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />

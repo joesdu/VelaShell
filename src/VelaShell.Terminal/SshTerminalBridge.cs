@@ -12,10 +12,9 @@ public class SshTerminalBridge : IDisposable
     private readonly CancellationTokenSource _cts;
     private readonly List<byte[]> _pending = [];
 
-    // Output-batching pump: the read thread enqueues raw chunks and requests a single
-    // coalesced flush on the UI thread, instead of marshaling + feeding once per read.
-    // Under bursty output (apt/yum, cat, progress bars) this collapses hundreds of
-    // cross-thread hops + full redraws into one Feed per frame.
+    // 输出合批泵:读线程把原始分块入队,并只请求一次 UI 线程的合并刷新,
+    // 而非每次读取都编组并喂入一次。在突发输出(apt/yum、cat、进度条)下,这把
+    // 数百次跨线程跳转 + 整屏重绘,压缩成每帧一次 Feed。
     private readonly Lock _pendingLock = new();
     private readonly IShellStreamWrapper _shellStream;
     private readonly ITerminalEmulator _terminal;
@@ -48,18 +47,17 @@ public class SshTerminalBridge : IDisposable
         ZModemRouter?.SessionEnded -= OnZModemSessionEnded;
         _cts.Cancel();
 
-        // Dispose the stream BEFORE waiting on the read task: SSH.NET's ShellStream.Read blocks
-        // in Monitor.Wait (its ReadAsync is the base Stream wrapper, so the token can't interrupt
-        // it) and Dispose pulses that wait, making the pending read return EOF immediately and
-        // without an exception. The previous order (wait, then dispose) parked the read task for
-        // the full 2s timeout on every tab close.
+        // 必须在等待读任务之前先释放流:SSH.NET 的 ShellStream.Read 阻塞在 Monitor.Wait 中
+        // (其 ReadAsync 只是基类 Stream 的包装,取消令牌无法中断它),而 Dispose 会唤醒该等待,
+        // 使挂起的读取立即且不抛异常地返回 EOF。旧的顺序(先等、再释放)会导致每次关闭标签时读任务
+        // 卡满整个 2 秒超时。
         try
         {
             _shellStream.Dispose();
         }
         catch
         {
-            // Best-effort: the channel may already be torn down by the session disconnect.
+            // 尽力而为:通道可能已被会话断开拆除。
         }
         try
         {
@@ -67,7 +65,7 @@ public class SshTerminalBridge : IDisposable
         }
         catch (AggregateException)
         {
-            // Swallow faults from read task during dispose
+            // 吞掉释放期间读任务抛出的异常
         }
         _cts.Dispose();
         GC.SuppressFinalize(this);
@@ -77,16 +75,16 @@ public class SshTerminalBridge : IDisposable
     public event Action<Exception>? Error;
 
     /// <summary>
-    /// Raw host output chunks, fired on the read thread — used by session logging
-    /// (设置 → 常规 → 会话日志). Subscribers must be fast and never throw.
+    /// 原始主机输出分块,在读线程上触发 —— 供会话日志使用
+    /// (设置 → 常规 → 会话日志)。订阅者必须快速返回且绝不抛异常。
     /// </summary>
     public event Action<byte[]>? DataReceived;
 
     /// <summary>
-    /// Raised when the remote side closes the channel (e.g. the shell ran <c>exit</c> or the
-    /// server rebooted): the read loop ended on its own rather than via <see cref="Dispose" />.
-    /// Lets the session transition to a disconnected state that can be reconnected in place.
-    /// Not raised during intentional teardown. Fired on the read thread — marshal as needed.
+    /// 当远端关闭通道时触发(例如 shell 执行了 <c>exit</c> 或
+    /// 服务器重启):读循环自行结束,而非经由 <see cref="Dispose" />。
+    /// 使会话可转为断开状态并就地重连。
+    /// 主动拆除期间不会触发。在读取线程上触发——按需封送。
     /// </summary>
     public event Action? Closed;
 
@@ -172,17 +170,16 @@ public class SshTerminalBridge : IDisposable
             throw new InvalidOperationException("Bridge already started");
         }
 
-        // Only start reading. Do NOT prime the shell with a newline — the server already sends
-        // its banner and prompt on connect, so an extra '\n' produces a duplicate prompt line.
-        // The token is snapshotted here because Dispose disposes _cts after its 2s grace — a
-        // still-draining loop must not touch the CTS property afterwards (token reads stay valid).
+        // 只启动读取,不要用换行符预热 shell —— 服务器在连接时本就会发送标语和提示符,
+        // 多余的 '\n' 会制造出重复的提示符行。令牌在此处快照,因为 Dispose 会在 2 秒宽限后
+        // 释放 _cts —— 仍在排空的循环此后不得再触碰 CTS 属性(令牌读取仍有效)。
         CancellationToken token = _cts.Token;
         _readTask = Task.Run(() => ReadLoopAsync(token));
     }
 
     private async Task ReadLoopAsync(CancellationToken token)
     {
-        // A larger read buffer means fewer awaits and larger natural batches.
+        // 更大的读取缓冲意味着更少的 await 与更大的自然批次。
         byte[] buffer = new byte[16384];
         bool remoteClosed = false;
         try
@@ -192,7 +189,7 @@ public class SshTerminalBridge : IDisposable
                 int bytesRead = await _shellStream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
                 if (bytesRead == 0)
                 {
-                    // EOF: the remote closed the channel (exit / reboot / dropped connection).
+                    // EOF:远端已关闭通道(exit / 重启 / 连接断开)。
                     remoteClosed = true;
                     break;
                 }
@@ -207,8 +204,8 @@ public class SshTerminalBridge : IDisposable
                     // 日志订阅者异常不允许打断读循环。
                 }
 
-                // Do NOT await a per-read UI hop. Queue the chunk and coalesce; the read
-                // thread keeps pace with the network while the UI drains at frame rate.
+                // 不要为每次读取都 await 一次 UI 跳转。把分块入队并合并;读线程
+                // 跟得上网络节奏,而 UI 以帧率排空。
                 // ZMODEM 路由优先:会话期间返回空终端字节(全部转交引擎),
                 // 命中时仅把引导前的字节嗂终端;未启用时原样嗂入。
                 ZModem.ZModemTerminalRouter? router = ZModemRouter;
@@ -227,7 +224,7 @@ public class SshTerminalBridge : IDisposable
                 }
             }
 
-            // Loop also exits when the stream reports it can no longer be read.
+            // 当流报告自身不再可读时,循环也会退出。
             if (!token.IsCancellationRequested)
             {
                 remoteClosed = true;
@@ -235,11 +232,11 @@ public class SshTerminalBridge : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Expected during shutdown — not an error
+            // 关闭过程中预期会出现,不算错误
         }
         catch (ObjectDisposedException)
         {
-            // Stream disposed during shutdown — not an error
+            // 关闭过程中流已被释放,不算错误
         }
         catch (Exception ex)
         {
@@ -247,7 +244,7 @@ public class SshTerminalBridge : IDisposable
             Error?.Invoke(ex);
         }
 
-        // Signal a remote-initiated close, but not our own Dispose()-driven teardown.
+        // 表示远端主动关闭,但不包括我们自身 Dispose() 驱动的拆除。
         if (remoteClosed && !_disposed)
         {
             Closed?.Invoke();
@@ -261,7 +258,7 @@ public class SshTerminalBridge : IDisposable
             _pending.Add(data);
         }
 
-        // Schedule at most one pending UI flush; further chunks piggyback on it.
+        // 最多只调度一次待处理的 UI 刷新;后续分块搭它的便车。
         if (Interlocked.CompareExchange(ref _flushScheduled, 1, 0) == 0)
         {
             Dispatcher.UIThread.Post(FlushPending);
@@ -274,7 +271,7 @@ public class SshTerminalBridge : IDisposable
 
     private void FlushPending()
     {
-        // Reset first so chunks arriving during the drain schedule a fresh flush.
+        // 先重置,使排空期间到达的分块能调度一次全新刷新。
         Interlocked.Exchange(ref _flushScheduled, 0);
         byte[] buffer;
         int length;
@@ -336,7 +333,7 @@ public class SshTerminalBridge : IDisposable
         }
         try
         {
-            // One Feed per flush => one Updated => one repaint, regardless of chunk count.
+            // 每次刷新只 Feed 一次 => 一次 Updated => 一次重绘,与分块数量无关。
             FeedTerminal(buffer, length);
         }
         catch (Exception ex)
@@ -369,7 +366,7 @@ public class SshTerminalBridge : IDisposable
             return;
         }
 
-        // Fire-and-forget with error handling — this is an event handler so async void is acceptable
+        // 即发即忘并附带错误处理 —— 这是事件处理器,使用 async void 是可接受的
         _ = WriteUserInputAsync(data);
     }
 
@@ -382,7 +379,7 @@ public class SshTerminalBridge : IDisposable
         }
         catch (ObjectDisposedException)
         {
-            // Stream disposed — expected during teardown
+            // 流已释放——拆除期间属正常情况
         }
         catch (Exception ex)
         {

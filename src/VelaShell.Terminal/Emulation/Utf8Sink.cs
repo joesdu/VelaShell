@@ -3,9 +3,9 @@ using System.Text;
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
-/// Incremental byte-stream decoder that buffers partial multibyte sequences across feeds and
-/// substitutes U+FFFD for malformed input. Defaults to UTF-8 but accepts any <see cref="Encoding" />
-/// (e.g. GBK, Big5) so the terminal's charset is configurable while UTF-8 remains the default.
+/// 增量式字节流解码器,在多次喂入之间缓冲不完整的多字节序列,并对畸形输入替换为 U+FFFD。
+/// 默认为 UTF-8,但也接受任意 <see cref="Encoding" />(如 GBK、Big5),从而在保持 UTF-8 为默认的同时
+/// 使终端字符集可配置。
 /// </summary>
 public sealed class Utf8Sink(Encoding? encoding = null)
 {

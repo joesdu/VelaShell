@@ -1,9 +1,9 @@
 namespace VelaShell.ViewModels;
 
-/// <summary>Validates names derived from a remote listing before local path construction.</summary>
+/// <summary>在构造本地路径前,校验派生自远端列举的名称。</summary>
 public static class LocalPathSafety
 {
-    /// <summary>Resolves a remote-derived single filename beneath the current directory.</summary>
+    /// <summary>在当前目录之下解析一个派生自远端的单文件名。</summary>
     public static bool TryResolveDestination(
         string currentDirectory,
         string remoteName,
@@ -109,13 +109,13 @@ public static class LocalPathSafety
         }
     }
 
-    /// <summary>Returns a safe canonical destination, or null when the name is unsafe.</summary>
+    /// <summary>返回安全的规范目标路径;名称不安全时返回 null。</summary>
     public static string? ResolveDestination(string currentDirectory, string remoteName) =>
         TryResolveDestination(currentDirectory, remoteName, out string destination)
             ? destination
             : null;
 
-    /// <summary>Returns whether a remote-derived value is a single safe leaf name.</summary>
+    /// <summary>判断一个派生自远端的值是否为单一安全的叶子名称。</summary>
     public static bool IsSafeLeafName(string name)
     {
         if (string.IsNullOrWhiteSpace(name) || name is "." or "..")
