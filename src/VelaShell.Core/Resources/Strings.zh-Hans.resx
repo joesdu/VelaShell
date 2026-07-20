@@ -177,12 +177,6 @@
   <data name="Refresh" xml:space="preserve">
     <value>刷新</value>
   </data>
-  <data name="SftpLocalRefresh" xml:space="preserve">
-    <value>刷新本地文件</value>
-  </data>
-  <data name="SftpRemoteRefresh" xml:space="preserve">
-    <value>刷新远程文件</value>
-  </data>
   <data name="TransferHistory" xml:space="preserve">
     <value>传输记录</value>
   </data>

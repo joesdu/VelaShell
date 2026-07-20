@@ -1197,12 +1197,6 @@
   <data name="Refresh" xml:space="preserve">
     <value>새로 고침</value>
   </data>
-  <data name="SftpLocalRefresh" xml:space="preserve">
-    <value>로컬 파일 새로 고침</value>
-  </data>
-  <data name="SftpRemoteRefresh" xml:space="preserve">
-    <value>원격 파일 새로 고침</value>
-  </data>
   <data name="Reject" xml:space="preserve">
     <value>거부</value>
   </data>

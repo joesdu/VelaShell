@@ -11,34 +11,6 @@
              x:DataType="vm:SftpDocumentViewModel">
   <Border Background="{DynamicResource VelaBgTerminal}">
     <DockPanel>
-      <Border DockPanel.Dock="Top" Height="36" Padding="14,0"
-              Background="{DynamicResource VelaBgSidebar}"
-              BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
-        <Grid ColumnDefinitions="Auto,*,Auto">
-          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-            <pc:LucideIcon Width="14" Height="14" Data="{StaticResource Icon.folder-open}"
-                           Foreground="{DynamicResource VelaAccent}" />
-            <TextBlock Text="{Binding Title}" FontFamily="{DynamicResource VelaTerminalFont}" FontSize="11"
-                       FontWeight="Medium" Foreground="{DynamicResource VelaTextPrimary}" />
-          </StackPanel>
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
-            <Button x:Name="LocalRefreshButton" Classes="toolbar-btn" Width="24" Height="24" Padding="0"
-                    ToolTip.Tip="{x:Static res:Strings.SftpLocalRefresh}"
-                    AutomationProperties.Name="{x:Static res:Strings.SftpLocalRefresh}"
-                    Command="{Binding LocalFiles.RefreshCommand}">
-              <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.refresh-cw}"
-                             Foreground="{DynamicResource VelaTextTertiary}" />
-            </Button>
-            <Button x:Name="RemoteRefreshButton" Classes="toolbar-btn" Width="24" Height="24" Padding="0"
-                    ToolTip.Tip="{x:Static res:Strings.SftpRemoteRefresh}"
-                    AutomationProperties.Name="{x:Static res:Strings.SftpRemoteRefresh}"
-                    Command="{Binding RemoteFiles.RefreshCommand}">
-              <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.refresh-cw}"
-                             Foreground="{DynamicResource VelaTextTertiary}" />
-            </Button>
-          </StackPanel>
-        </Grid>
-      </Border>
       <Grid MinWidth="564">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*" MinWidth="280" />

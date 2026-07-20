@@ -60,52 +60,55 @@
     <DockPanel>
       <Border DockPanel.Dock="Top" Height="36" Padding="14,0"
               BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
-        <Grid ColumnDefinitions="*,160,Auto">
-          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-            <pc:LucideIcon Width="14" Height="14" Data="{StaticResource Icon.hard-drive}"
-                           Foreground="{DynamicResource VelaTextTertiary}" />
-            <!-- Clickable breadcrumb segments matching remote FileBrowserView style -->
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True">
-              <Button Classes="crumb" Content="{Binding RootBreadcrumbLabel}"
-                      Command="{Binding NavigateToCommand}"
-                      CommandParameter="{Binding RootBreadcrumbPath}" />
-              <ItemsControl ItemsSource="{Binding Breadcrumbs}" VerticalAlignment="Center">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal" />
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:LocalBreadcrumbSegment">
-                    <StackPanel Orientation="Horizontal">
-                      <Button Classes="crumb" Content="{Binding Name}"
-                              Command="{Binding $parent[ItemsControl].((vm:LocalFilePaneViewModel)DataContext).NavigateToCommand}"
-                              CommandParameter="{Binding Path}" />
-              <TextBlock Text="{Binding $parent[ItemsControl].((vm:LocalFilePaneViewModel)DataContext).PathSeparator}"
-                         Foreground="{DynamicResource VelaTextMuted}"
-                         FontFamily="{DynamicResource VelaTerminalFont}"
-                         FontSize="11" VerticalAlignment="Center" />
-                    </StackPanel>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Grid Grid.Column="0" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" ClipToBounds="True">
+              <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.hard-drive}"
+                             Foreground="{DynamicResource VelaTextTertiary}" VerticalAlignment="Center" />
+              <!-- Clickable breadcrumb segments matching remote FileBrowserView style -->
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True">
+                <Button Classes="crumb" Content="{Binding RootBreadcrumbLabel}"
+                        Command="{Binding NavigateToCommand}"
+                        CommandParameter="{Binding RootBreadcrumbPath}" />
+                <ItemsControl ItemsSource="{Binding Breadcrumbs}" VerticalAlignment="Center">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:LocalBreadcrumbSegment">
+                      <StackPanel Orientation="Horizontal">
+                        <Button Classes="crumb" Content="{Binding Name}"
+                                Command="{Binding $parent[ItemsControl].((vm:LocalFilePaneViewModel)DataContext).NavigateToCommand}"
+                                CommandParameter="{Binding Path}" />
+                <TextBlock Text="{Binding $parent[ItemsControl].((vm:LocalFilePaneViewModel)DataContext).PathSeparator}"
+                           Foreground="{DynamicResource VelaTextMuted}"
+                           FontFamily="{DynamicResource VelaTerminalFont}"
+                           FontSize="11" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
             </StackPanel>
-          </StackPanel>
-          <ProgressBar Grid.Column="0" Width="54" Height="3" Margin="12,0"
-                       HorizontalAlignment="Left" IsIndeterminate="True"
-                       IsVisible="{Binding IsDirectoryLoading}" />
-          <ComboBox Grid.Column="1" Width="150" Height="24" Padding="6,0"
-                    ItemsSource="{Binding Roots}" SelectedItem="{Binding SelectedRoot, Mode=OneWay}"
-                    SelectionChanged="OnRootSelectionChanged"
-                    HorizontalAlignment="Right" VerticalContentAlignment="Center">
-            <ComboBox.ItemTemplate>
-              <DataTemplate x:DataType="vm:LocalRootEntry">
-                <TextBlock Text="{Binding DisplayName}" ToolTip.Tip="{Binding Tooltip}"
-                           TextTrimming="CharacterEllipsis" />
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+            <ProgressBar Width="54" Height="3" Margin="12,0"
+                         HorizontalAlignment="Left" IsIndeterminate="True"
+                         VerticalAlignment="Center"
+                         IsVisible="{Binding IsDirectoryLoading}" />
+          </Grid>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <ComboBox MinHeight="0" Height="22" Padding="6,0" FontSize="11"
+                      ItemsSource="{Binding Roots}" SelectedItem="{Binding SelectedRoot, Mode=OneWay}"
+                      SelectionChanged="OnRootSelectionChanged"
+                      VerticalContentAlignment="Center" MaxDropDownHeight="320">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:LocalRootEntry">
+                  <TextBlock Text="{Binding DisplayName}" ToolTip.Tip="{Binding Tooltip}"
+                             TextTrimming="CharacterEllipsis" FontSize="11" Padding="2,1" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
             <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
                     Command="{Binding GoUpCommand}">
               <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.corner-left-up}"

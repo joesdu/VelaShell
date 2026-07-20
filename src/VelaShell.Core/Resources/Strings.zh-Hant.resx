@@ -1197,12 +1197,6 @@
   <data name="Refresh" xml:space="preserve">
     <value>重新整理</value>
   </data>
-  <data name="SftpLocalRefresh" xml:space="preserve">
-    <value>重新整理本機檔案</value>
-  </data>
-  <data name="SftpRemoteRefresh" xml:space="preserve">
-    <value>重新整理遠端檔案</value>
-  </data>
   <data name="Reject" xml:space="preserve">
     <value>拒絕</value>
   </data>
