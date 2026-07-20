@@ -13,9 +13,20 @@
     <Style Selector="local|SftpDockTabItem">
       <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
       <Setter Property="FontFamily" Value="{DynamicResource VelaTerminalFont}" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Foreground" Duration="0:0:0.12" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
     </Style>
     <Style Selector="local|SftpDockTabItem Border#TabRoot">
       <Setter Property="Background" Value="{DynamicResource VelaTabInactiveBg}" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.12" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
     </Style>
     <Style Selector="local|SftpDockTabItem:pointerover:not(:selected)">
       <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />

@@ -235,6 +235,7 @@
                   <TextBox Grid.Column="0"
                            Name="PasswordBox"
                            behaviors:SecurePasswordBox.Enabled="True"
+                           behaviors:EnglishInputLocale.Enabled="True"
                            behaviors:SecurePasswordBox.Password="{Binding Password}"
                            behaviors:SecurePasswordBox.Reveal="{Binding ShowPassword}"
                            Padding="10,0,0,0"
@@ -293,6 +294,7 @@
             <StackPanel>
               <TextBlock Classes="field-label" Text="{loc:Localize Profile_PassphraseOptional}" />
               <TextBox Text="{Binding PrivateKeyPassphrase}"
+                       behaviors:EnglishInputLocale.Enabled="True"
                        PasswordChar="&#x2022;" RevealPassword="False" />
             </StackPanel>
           </StackPanel>

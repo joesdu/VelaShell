@@ -3,6 +3,7 @@
              xmlns:vm="using:VelaShell.ViewModels"
              xmlns:sync="using:VelaShell.Core.Sync"
              xmlns:conv="using:VelaShell.Converters"
+             xmlns:behaviors="using:VelaShell.Behaviors"
              xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Views.Settings.SyncPage"
              x:DataType="vm:SettingsViewModel">
@@ -78,7 +79,7 @@
         <TextBlock Classes="row-desc"
                    Text="{loc:Localize SetSync_TokenDesc}" />
         <Grid ColumnDefinitions="*,8,Auto">
-          <TextBox Grid.Column="0" PasswordChar="●" Text="{Binding TokenInput}"
+          <TextBox Grid.Column="0" PasswordChar="●" behaviors:EnglishInputLocale.Enabled="True" Text="{Binding TokenInput}"
                    PlaceholderText="{loc:Localize SetSync_TokenPlaceholder}" />
           <TextBlock Grid.Column="2" FontSize="12" FontWeight="Medium" VerticalAlignment="Center"
                      Foreground="{DynamicResource VelaAccent}"
@@ -107,7 +108,7 @@
         <TextBlock Classes="row-desc" TextWrapping="Wrap"
                    Text="{loc:Localize SetSync_E2EDesc}" />
         <Grid ColumnDefinitions="*,8,Auto">
-          <TextBox Grid.Column="0" PasswordChar="●" Text="{Binding PassphraseInput}"
+          <TextBox Grid.Column="0" PasswordChar="●" behaviors:EnglishInputLocale.Enabled="True" Text="{Binding PassphraseInput}"
                    PlaceholderText="{loc:Localize SetSync_PassphrasePlaceholder}" />
           <TextBlock Grid.Column="2" FontSize="12" FontWeight="Medium" VerticalAlignment="Center"
                      Foreground="{DynamicResource VelaAccent}"

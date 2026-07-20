@@ -101,6 +101,13 @@
       <Setter Property="Height" Value="32" />
       <Setter Property="CornerRadius" Value="0" />
       <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.12" Easing="CubicEaseOut" />
+          <BrushTransition Property="Foreground" Duration="0:0:0.12" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
     </Style>
     <Style Selector="Button.proto-tab:pointerover">
       <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
@@ -227,6 +234,7 @@
             <Grid ColumnDefinitions="*,Auto">
               <TextBox Grid.Column="0"
                        behaviors:SecurePasswordBox.Enabled="True"
+                       behaviors:EnglishInputLocale.Enabled="True"
                        behaviors:SecurePasswordBox.Password="{Binding Password}"
                        behaviors:SecurePasswordBox.Reveal="{Binding ShowPassword}"
                        Padding="10,0,0,0"
@@ -259,6 +267,7 @@
           <StackPanel>
             <TextBlock Classes="field-label" Text="{loc:Localize Profile_PassphraseOptional}" />
             <TextBox Text="{Binding PrivateKeyPassphrase}"
+                     behaviors:EnglishInputLocale.Enabled="True"
                      PasswordChar="&#x2022;" RevealPassword="False" />
           </StackPanel>
         </StackPanel>

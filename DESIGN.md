@@ -269,6 +269,10 @@ The existing SFTP file browser is the primary reusable component for the dual-pa
 - **Float appearance**: Fade-in (opacity 0 to 1, ~150ms)
 - **Float dismissal**: Fade-out (~150ms) with debounce for hover-triggered panels
 - **Tab scroll**: Instant (no smooth scroll), `ScrollIntoView` on activation
+- **SSH/SFTP protocol tabs**: Selection remains synchronous; `Background`, `BorderBrush`, and `Foreground` settle with `CubicEaseOut` over 120ms. No layout properties animate and tab labels remain aligned at rest.
+- **VelaDock tab selection**: Selection pseudo-classes and `ContentHost.Target` update synchronously. Tab chrome uses 120ms `CubicEaseOut` brush transitions without a permanent offset or opacity bias on inactive labels.
+- **VelaDock content switching**: The cached view is reparented immediately, then the current `ReparentingHost` settles from opacity 0 / `translateY(2px)` to opacity 1 / `translateY(0px)` over 120ms `CubicEaseOut`. A generation guard makes rapid switching safe; stale queued settles cannot affect the latest target. There is no outgoing-content retention or delayed target assignment.
+- **Reduced motion**: Avalonia 12.1 exposes no public reduced-motion preference in this repository, so these transitions are not currently suppressed from an OS preference. Motion remains limited to the scoped 120ms visual states above; no application-wide settings subsystem is introduced.
 
 ### 6.2 Hover Behavior
 

@@ -1,10 +1,13 @@
 using System.ComponentModel;
 using Avalonia;
+using Avalonia.Animation;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Media.Transformation;
+using Avalonia.Threading;
 using VelaShell.Docking.Model;
 
 namespace VelaShell.Docking.Controls;
@@ -17,11 +20,15 @@ namespace VelaShell.Docking.Controls;
 public partial class DockGroupControl : UserControl
 {
     private Func<DockDocument, Control?>? _viewResolver;
+    private int _contentMotionGeneration;
+    private readonly Transitions _contentTransitions;
 
     /// <summary>初始化控件,订阅标签滚动变化并注册全组激活的指针处理器。</summary>
     public DockGroupControl()
     {
         InitializeComponent();
+        _contentTransitions = ContentHost.Transitions
+            ?? throw new InvalidOperationException("ContentHost transitions are not configured.");
         TabScroll.ScrollChanged += (_, _) => UpdateScrollButtons();
         // 点击本组任意位置(含终端内容区)即把本组的选中文档设为全局激活 —— 对应原
         // Dock 的 FocusedDockable 语义;缺了它,分屏后点另一个窗格输入,SFTP 面板与
@@ -76,6 +83,8 @@ public partial class DockGroupControl : UserControl
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
+        _contentMotionGeneration++;
+        RestoreContentMotion();
         if (Group is { } group)
         {
             group.PropertyChanged -= OnGroupPropertyChanged;
@@ -101,8 +110,41 @@ public partial class DockGroupControl : UserControl
     private void UpdateContent()
     {
         DockDocument? active = Group?.ActiveDocument;
-        ContentHost.Target = active is null ? null : _viewResolver?.Invoke(active);
+        Control? view = active is null ? null : _viewResolver?.Invoke(active);
+        int motionGeneration = ++_contentMotionGeneration;
+        if (view is null || !ContentHost.IsEffectivelyVisible)
+        {
+            RestoreContentMotion();
+            ContentHost.Target = view;
+            EmptyHint.IsVisible = Group is { Documents.Count: 0 };
+            return;
+        }
+
+        ContentHost.Transitions = null;
+        ContentHost.Classes.Add("settling");
+        ContentHost.Opacity = 0;
+        ContentHost.RenderTransform = TransformOperations.Parse("translateY(2px)");
+        ContentHost.Target = view;
         EmptyHint.IsVisible = Group is { Documents.Count: 0 };
+        ContentHost.ClearValue(Visual.OpacityProperty);
+        ContentHost.ClearValue(Visual.RenderTransformProperty);
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (motionGeneration == _contentMotionGeneration && ReferenceEquals(ContentHost.Target, view))
+            {
+                ContentHost.Transitions = _contentTransitions;
+                ContentHost.Classes.Remove("settling");
+            }
+        }, DispatcherPriority.Render);
+    }
+
+    private void RestoreContentMotion()
+    {
+        ContentHost.Transitions = null;
+        ContentHost.Classes.Remove("settling");
+        ContentHost.ClearValue(Visual.OpacityProperty);
+        ContentHost.ClearValue(Visual.RenderTransformProperty);
+        ContentHost.Transitions = _contentTransitions;
     }
 
     /// <summary>

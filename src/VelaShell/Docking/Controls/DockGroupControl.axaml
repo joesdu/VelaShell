@@ -9,6 +9,16 @@
              xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Docking.Controls.DockGroupControl"
              x:DataType="m:DockGroup">
+  <UserControl.Styles>
+    <Style Selector="controls|ReparentingHost">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="RenderTransform" Value="translateY(0px)" />
+    </Style>
+    <Style Selector="controls|ReparentingHost.settling">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="RenderTransform" Value="translateY(2px)" />
+    </Style>
+  </UserControl.Styles>
 
   <!-- 一个标签组:标签条(35px + 1px 分割线 = 36px,与侧栏头部分割线同一水平线)+
        内容区。标签条按 TabsPosition 停靠(代码后置调整),溢出时右端
@@ -92,7 +102,14 @@
                    FontSize="11"
                    Foreground="{DynamicResource VelaTextMuted}"
                    IsVisible="False" />
-        <controls:ReparentingHost x:Name="ContentHost" />
+        <controls:ReparentingHost x:Name="ContentHost">
+          <controls:ReparentingHost.Transitions>
+            <Transitions>
+              <DoubleTransition Property="Opacity" Duration="0:0:0.12" Easing="CubicEaseOut" />
+              <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12" Easing="CubicEaseOut" />
+            </Transitions>
+          </controls:ReparentingHost.Transitions>
+        </controls:ReparentingHost>
       </Panel>
     </Border>
   </DockPanel>
