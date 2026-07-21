@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.Reactive;
 using Avalonia.Threading;
 using ReactiveUI;
+using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
@@ -15,8 +16,17 @@ namespace VelaShell.ViewModels;
 /// </summary>
 public class FileTransferViewModel : ReactiveObject
 {
+    /// <summary>面板位置的存储位置(IAppDataStore 的用途之一即 UI 配置)。</summary>
+    private const string LayoutCollection = "ui-layout";
+
+    private const string PanelPositionId = "transfer-panel";
+
     // 可空:无参构造的宿主(单元测试/无 SFTP 服务的场景)不提供传输管理器。
     private readonly ITransferManager? _transferManager;
+
+    // 可空:同上,无存储时面板位置只在本次运行内保持。
+    private readonly IAppDataStore? _dataStore;
+
     private IDisposable? _autoHide;
 
     // 当前批次(一个文件夹/多文件的下载或上传):尚未完成的文件数,
@@ -34,10 +44,13 @@ public class FileTransferViewModel : ReactiveObject
     /// <summary>
     /// 构造视图模型并初始化各命令;<paramref name="transferManager" /> 可为空
     /// (单元测试或无 SFTP 服务的宿主场景不提供传输管理器)。
+    /// <paramref name="dataStore" /> 为空时面板位置只在本次运行内保持,不跨重启。
     /// </summary>
-    public FileTransferViewModel(ITransferManager? transferManager)
+    public FileTransferViewModel(ITransferManager? transferManager, IAppDataStore? dataStore = null)
     {
         _transferManager = transferManager;
+        _dataStore = dataStore;
+        RestorePanelPosition();
         Transfers = [];
         Transfers.CollectionChanged += OnTransfersChanged;
         CancelTransferCommand = ReactiveCommand.Create<Guid>(CancelTransfer);
@@ -295,6 +308,79 @@ public class FileTransferViewModel : ReactiveObject
         }
     }
 
+    // ---- 面板拖拽位置 ----
+    //
+    // 存的是相对默认锚点(右上角)的偏移,而不是绝对坐标:这样窗口缩放/最大化后面板
+    // 仍然贴着右上角的相对位置,不会因为窗口变小而跑到可视区之外。
+    // 越界夹紧由视图负责(只有它知道父容器和自身的实际尺寸)。
+
+    /// <summary>面板相对默认锚点的水平偏移(像素,向左为负)。</summary>
+    public double PanelOffsetX
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>面板相对默认锚点的垂直偏移(像素,向上为负)。</summary>
+    public double PanelOffsetY
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>拖拽结束时由视图调用:把当前位置落盘,供下次打开恢复。失败不影响使用。</summary>
+    public void PersistPanelPosition()
+    {
+        if (_dataStore is null)
+        {
+            return;
+        }
+        var position = new TransferPanelPosition { OffsetX = PanelOffsetX, OffsetY = PanelOffsetY };
+        _ = SaveAsync();
+
+        async Task SaveAsync()
+        {
+            try
+            {
+                await _dataStore.UpsertAsync(LayoutCollection, PanelPositionId, position).ConfigureAwait(false);
+            }
+            catch
+            {
+                // 位置记不住不该影响传输本身;下次拖动会再试一次。
+            }
+        }
+    }
+
+    /// <summary>启动时异步取回上次的位置。取不到就保持默认锚点。</summary>
+    private void RestorePanelPosition()
+    {
+        if (_dataStore is null)
+        {
+            return;
+        }
+        _ = LoadAsync();
+
+        async Task LoadAsync()
+        {
+            try
+            {
+                TransferPanelPosition? saved = await _dataStore
+                                                     .GetAsync<TransferPanelPosition>(LayoutCollection, PanelPositionId)
+                                                     .ConfigureAwait(true);
+                if (saved is null)
+                {
+                    return;
+                }
+                PanelOffsetX = saved.OffsetX;
+                PanelOffsetY = saved.OffsetY;
+            }
+            catch
+            {
+                // 读不出来就用默认位置,不打扰用户。
+            }
+        }
+    }
+
     private void ScheduleAutoHide()
     {
         _autoHide = DispatcherTimer.RunOnce(() =>
@@ -349,4 +435,17 @@ public class FileTransferViewModel : ReactiveObject
             Transfers.Remove(item);
         }
     }
+}
+
+/// <summary>
+/// 传输面板拖拽位置的持久化载体(IAppDataStore 需要引用类型)。
+/// 存偏移而非绝对坐标,理由见 <see cref="FileTransferViewModel.PanelOffsetX" />。
+/// </summary>
+public sealed class TransferPanelPosition
+{
+    /// <summary>相对默认锚点的水平偏移(像素)。</summary>
+    public double OffsetX { get; set; }
+
+    /// <summary>相对默认锚点的垂直偏移(像素)。</summary>
+    public double OffsetY { get; set; }
 }

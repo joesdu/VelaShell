@@ -189,7 +189,7 @@ public class MainWindowViewModel : ReactiveObject
         _tabBar.Tabs.CollectionChanged += OnTabsCollectionChanged;
         _statusBar = new();
         _fileBrowser = new(null, Guid.Empty);
-        _fileTransfer = new(transferManager);
+        _fileTransfer = new(transferManager, appDataStore);
         _tabBar
             .WhenAnyValue(tabBar => tabBar.ActiveTab)
             .Subscribe(activeTab =>

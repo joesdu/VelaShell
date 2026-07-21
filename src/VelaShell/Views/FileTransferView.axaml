@@ -9,6 +9,14 @@
              x:Class="VelaShell.Views.FileTransferView"
              x:DataType="vm:FileTransferViewModel">
 
+  <!-- 拖拽位移加在 UserControl 自身而不是内层 Border:UserControl 的布局尺寸是裹住面板的,
+       把内层移出去会有裁剪与命中测试风险;而 UserControl 的父级是整行 Grid,空间足够。
+       位移相对默认锚点(右上角)而非绝对坐标,窗口缩放后面板仍贴着相对位置。
+       越界夹紧在 code-behind(只有它知道父容器与自身的实际尺寸)。 -->
+  <UserControl.RenderTransform>
+    <TranslateTransform X="{Binding PanelOffsetX}" Y="{Binding PanelOffsetY}" />
+  </UserControl.RenderTransform>
+
   <!-- 浮动传输提示(设计帧 9Ralg):宽 280px,bg-surface,圆角 6,
        1px border-secondary,阴影 blur16 y+4。仅在有传输时存在;
        全部完成后约 3s 自动淡出;x 收起而不取消(规范 §9)。 -->
@@ -23,8 +31,11 @@
     <StackPanel>
 
       <!-- 表头(32px,拖拽手柄):arrow-up-down 强调色 + 传输 + 数量徽标 | x -->
-      <Border Height="32"
+      <Border Name="DragHandle"
+              Height="32"
               Padding="12,0"
+              Cursor="SizeAll"
+              Background="Transparent"
               BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,0,1">
         <Grid ColumnDefinitions="Auto,*,Auto">
