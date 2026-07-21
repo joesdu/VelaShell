@@ -119,7 +119,7 @@ public class SftpService(
             await using (Stream localStream = new FileStream(localPath, FileMode.Append, FileAccess.Write, FileShare.None))
             {
                 // 从偏移处分块拷贝下载远端内容。
-                using Stream remoteStream = client.Open(remotePath, FileMode.Open, FileAccess.Read);
+                using Stream remoteStream = await client.OpenAsync(remotePath, FileMode.Open, FileAccess.Read, cancellationToken).ConfigureAwait(false);
                 remoteStream.Seek(resumeOffset, SeekOrigin.Begin);
 
                 byte[] buffer = new byte[32 * 1024];
@@ -176,30 +176,28 @@ public class SftpService(
     public async Task DeleteAsync(Guid sessionId, string remotePath, IProgress<SftpDeleteProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        await Task.Run(() =>
+        if (!await client.ExistsAsync(remotePath, cancellationToken).ConfigureAwait(false))
         {
-            if (!client.Exists(remotePath))
-            {
-                throw new FileNotFoundException($"Remote path not found: {remotePath}");
-            }
-            string parentDir = GetUnixParentDirectory(remotePath);
-            string name = GetUnixFileName(remotePath);
-            SftpEntry? entry = client.ListDirectory(parentDir).FirstOrDefault(f => f.Name == name);
-            bool isDirectory = entry is { IsDirectory: true };
-            int total = CountEntries(client, remotePath, isDirectory, cancellationToken);
+            throw new FileNotFoundException($"Remote path not found: {remotePath}");
+        }
+        string parentDir = GetUnixParentDirectory(remotePath);
+        string name = GetUnixFileName(remotePath);
+        IEnumerable<SftpEntry> siblings = await client.ListDirectoryAsync(parentDir, cancellationToken).ConfigureAwait(false);
+        SftpEntry? entry = siblings.FirstOrDefault(f => f.Name == name);
+        bool isDirectory = entry is { IsDirectory: true };
+        int total = await CountEntriesAsync(client, remotePath, isDirectory, cancellationToken).ConfigureAwait(false);
 
-            // 先发出一个 "0 / total" 的进度点,使 UI 能立即切换到确定型进度。
-            progress?.Report(new(0, total, remotePath));
-            int deleted = 0;
-            DeleteEntry(client, remotePath, isDirectory, total, ref deleted, progress, cancellationToken);
-        }, cancellationToken).ConfigureAwait(false);
+        // 先发出一个 "0 / total" 的进度点,使 UI 能立即切换到确定型进度。
+        progress?.Report(new(0, total, remotePath));
+        var counter = new DeleteCounter();
+        await DeleteEntryAsync(client, remotePath, isDirectory, total, counter, progress, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>在远端创建指定路径的目录。</summary>
     public async Task CreateDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        await Task.Run(() => client.CreateDirectory(remotePath), CancellationToken.None).ConfigureAwait(false);
+        await client.CreateDirectoryAsync(remotePath, CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>在远端创建一个空文件。</summary>
@@ -214,44 +212,45 @@ public class SftpService(
     public async Task EnsureDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        await Task.Run(() =>
+
+        // 直接创建而非先 Exists 探测:目录已存在时 Tmds.Ssh 的 CreateDirectory 本身不报错,
+        // 上传新文件夹树时逐目录只有一次网络往返。
+        // 创建失败且目录确实已存在 → 幂等成功;其余失败(权限/父目录缺失)照常抛出。
+        try
         {
-            // 直接创建而非先 Exists 探测:SSH.NET 的 Exists 对不存在的路径以内部异常实现,
-            // 上传新文件夹树时会逐目录刷 SftpPathNotFoundException 并各多一次网络往返。
-            // 创建失败且目录确实已存在 → 幂等成功;其余失败(权限/父目录缺失)照常抛出。
-            try
+            await client.CreateDirectoryAsync(remotePath, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SshClientException)
+        {
+            if (!await client.ExistsAsync(remotePath, cancellationToken).ConfigureAwait(false))
             {
-                client.CreateDirectory(remotePath);
+                throw;
             }
-            catch (SshClientException) when (client.Exists(remotePath)) { }
-        }, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>重命名或移动远端文件/目录;普通 rename 被服务器拒绝时回退到 posix-rename 扩展。</summary>
     public async Task RenameAsync(Guid sessionId, string oldPath, string newPath, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        await Task.Run(() =>
+        try
         {
+            await client.RenameFileAsync(oldPath, newPath, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is SftpOperationException or NotSupportedException)
+        {
+            // 部分 SFTP 服务器以 SSH_FX_BAD_MESSAGE(表现为"bad message")拒绝普通的 SSH_FXP_RENAME,
+            // 跨目录移动时常见。改用被广泛支持的 posix-rename@openssh.com 扩展重试;若该路径也不可用,
+            // 则抛出原本更具信息量的错误。
             try
             {
-                client.RenameFile(oldPath, newPath);
+                await client.PosixRenameFileAsync(oldPath, newPath, cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is SftpOperationException or NotSupportedException)
+            catch
             {
-                // 部分 SFTP 服务器以 SSH_FX_BAD_MESSAGE(表现为"bad message")拒绝普通的 SSH_FXP_RENAME,
-                // 跨目录移动时常见。改用被广泛支持的 posix-rename@openssh.com 扩展重试;若该路径也不可用,
-                // 则抛出原本更具信息量的错误。
-                try
-                {
-                    client.PosixRenameFile(oldPath, newPath);
-                }
-                catch
-                {
-                    throw ex;
-                }
+                throw ex;
             }
-        }, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -271,7 +270,8 @@ public class SftpService(
         // 通过 stat 判断源是否为目录。
         string parentDir = GetUnixParentDirectory(sourcePath);
         string name = GetUnixFileName(sourcePath);
-        SftpEntry? entry = client.ListDirectory(parentDir).FirstOrDefault(f => f.Name == name);
+        IEnumerable<SftpEntry> siblings = await client.ListDirectoryAsync(parentDir, cancellationToken).ConfigureAwait(false);
+        SftpEntry? entry = siblings.FirstOrDefault(f => f.Name == name);
         bool isDir = entry is { IsDirectory: true };
 
         if (!isDir)
@@ -375,7 +375,7 @@ public class SftpService(
             throw new ArgumentOutOfRangeException(nameof(octalMode), octalMode, @"Mode must be three octal digits (000-777).");
         }
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        await Task.Run(() => { client.ChangePermissions(remotePath, octalMode); }, CancellationToken.None).ConfigureAwait(false);
+        await client.ChangePermissionsAsync(remotePath, octalMode, CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>获取远端指定路径文件/目录的详细信息;路径不存在时抛出 <see cref="FileNotFoundException" />。</summary>
@@ -394,7 +394,7 @@ public class SftpService(
     public async Task<bool> ExistsAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        return await Task.Run(() => client.Exists(remotePath), CancellationToken.None).ConfigureAwait(false);
+        return await client.ExistsAsync(remotePath, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>返回该会话 SFTP 客户端的当前工作目录。</summary>
@@ -478,47 +478,64 @@ public class SftpService(
         }
     }
 
+    /// <summary>异步递归的已删除计数(async 方法不允许 ref 参数)。</summary>
+    private sealed class DeleteCounter
+    {
+        public int Deleted;
+    }
+
     /// <summary>
     /// 深度优先删除:先移除目录的子项再移除目录自身,因为 SFTP 的 <c>rmdir</c> 仅对空目录成功。
     /// 每移除一个条目回报一次进度。
     /// </summary>
-    private static int CountEntries(ISftpClientWrapper client, string path, bool isDirectory, CancellationToken cancellationToken)
+    private static async Task<int> CountEntriesAsync(ISftpClientWrapper client, string path, bool isDirectory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!isDirectory)
         {
             return 1;
         }
-        return 1 + client.ListDirectory(path).Where(child => child.Name is not ("." or "..")).Sum(child => CountEntries(client, child.FullName, child.IsDirectory, cancellationToken));
+        int total = 1;
+        IEnumerable<SftpEntry> children = await client.ListDirectoryAsync(path, cancellationToken).ConfigureAwait(false);
+        foreach (SftpEntry child in children)
+        {
+            if (child.Name is "." or "..")
+            {
+                continue;
+            }
+            total += await CountEntriesAsync(client, child.FullName, child.IsDirectory, cancellationToken).ConfigureAwait(false);
+        }
+        return total;
     }
 
-    private static void DeleteEntry(ISftpClientWrapper client,
+    private static async Task DeleteEntryAsync(ISftpClientWrapper client,
         string path,
         bool isDirectory,
         int total,
-        ref int deleted,
+        DeleteCounter counter,
         IProgress<SftpDeleteProgress>? progress,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (isDirectory)
         {
-            foreach (SftpEntry child in client.ListDirectory(path))
+            IEnumerable<SftpEntry> children = await client.ListDirectoryAsync(path, cancellationToken).ConfigureAwait(false);
+            foreach (SftpEntry child in children)
             {
                 if (child.Name is "." or "..")
                 {
                     continue;
                 }
-                DeleteEntry(client, child.FullName, child.IsDirectory, total, ref deleted, progress, cancellationToken);
+                await DeleteEntryAsync(client, child.FullName, child.IsDirectory, total, counter, progress, cancellationToken).ConfigureAwait(false);
             }
-            client.DeleteDirectory(path);
+            await client.DeleteDirectoryAsync(path, cancellationToken).ConfigureAwait(false);
         }
         else
         {
-            client.DeleteFile(path);
+            await client.DeleteFileAsync(path, cancellationToken).ConfigureAwait(false);
         }
-        deleted++;
-        progress?.Report(new(deleted, total, path));
+        counter.Deleted++;
+        progress?.Report(new(counter.Deleted, total, path));
     }
 
     private async Task<ISftpClientWrapper> GetOrCreateSftpClientAsync(Guid sessionId, CancellationToken cancellationToken)

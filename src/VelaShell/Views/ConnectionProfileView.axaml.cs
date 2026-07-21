@@ -28,10 +28,7 @@ public partial class ConnectionProfileView : Window
         foreach (Button button in buttons)
         {
             var layer = AdornerLayer.GetAdornerLayer(button);
-            if (layer is not null)
-            {
-                layer.DefaultFocusAdorner = null;
-            }
+            layer?.DefaultFocusAdorner = null;
 
             var controls = new[] { button }
                 .Concat(button.GetVisualDescendants().OfType<Control>())

@@ -52,25 +52,6 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
 
     // ---- Connection methods ----
 
-    public async Task Connect()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_client is not null) return;
-        Tmds.Ssh.SshClient? client = null;
-        try
-        {
-            client = new Tmds.Ssh.SshClient(_settings);
-            await client.ConnectAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            SafeDisposeClient(client);
-            if (TmdsSshInterop.Translate(ex) is { } translated) throw translated;
-            throw;
-        }
-        _client = client;
-    }
-
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -111,17 +92,18 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
     }
 
     /// <summary>
-    /// 在当前连接上打开交互式 shell。Tmds.Ssh 的 pty-req 只接受字符行列数:
+    /// 在当前连接上异步打开交互式 shell。Tmds.Ssh 的 pty-req 只接受字符行列数:
     /// 像素尺寸(width/height)、bufferSize 与 terminalModeValues 无对应 API,被忽略。
     /// </summary>
-    public IShellStreamWrapper CreateShellStream(
+    public async Task<IShellStreamWrapper> CreateShellStreamAsync(
         string terminalName,
         uint columns,
         uint rows,
         uint width,
         uint height,
         int bufferSize,
-        IReadOnlyDictionary<TerminalMode, uint>? terminalModeValues = null)
+        IReadOnlyDictionary<TerminalMode, uint>? terminalModeValues = null,
+        CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_client is null) throw new InvalidOperationException("Not connected.");
@@ -134,11 +116,12 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
                 TerminalWidth = (int)columns,
                 TerminalHeight = (int)rows,
             };
-            Tmds.Ssh.RemoteProcess process = _client.ExecuteShellAsync(options)
-                .GetAwaiter().GetResult();
+            Tmds.Ssh.RemoteProcess process = await _client
+                .ExecuteShellAsync(options, cancellationToken)
+                .ConfigureAwait(false);
             return new ShellStreamWrapper(process);
         }
-        catch (Exception ex) when (TmdsSshInterop.Translate(ex) is { } translated)
+        catch (Exception ex) when (TmdsSshInterop.Translate(ex, cancellationToken) is { } translated)
         {
             throw translated;
         }
@@ -170,15 +153,15 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
         }
     }
 
-    public IPortForwardHandle StartPortForward(PortForwardRequest request)
+    public async Task<IPortForwardHandle> StartPortForwardAsync(PortForwardRequest request, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_client is null) throw new InvalidOperationException("Not connected.");
         try
         {
-            return new TmdsSshPortForwardHandle(_client, request);
+            return await TmdsSshPortForwardHandle.CreateAsync(_client, request, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (TmdsSshInterop.Translate(ex) is { } translated)
+        catch (Exception ex) when (TmdsSshInterop.Translate(ex, cancellationToken) is { } translated)
         {
             throw translated;
         }

@@ -45,6 +45,7 @@ public class ShellStreamWrapper(Tmds.Ssh.RemoteProcess process) : IShellStreamWr
         catch (Tmds.Ssh.SshChannelClosedException) { _readEof = true; return 0; }
         catch (ObjectDisposedException) { _readEof = true; return 0; }
         catch (IOException) { _readEof = true; return 0; }
+        catch (OperationCanceledException) { _readEof = true; return 0; }
     }
 
     /// <summary>向远程进程标准输入写入原始字节。通道已关闭时标记 _disposed 并抛出 ObjectDisposedException。</summary>

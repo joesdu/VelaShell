@@ -646,11 +646,11 @@ public sealed class TerminalEmulator : IVtActions
 
     private void HandlePrivateMode(IReadOnlyList<int> p, char final)
     {
-            if (final == 'c')
-            {
-                // 某些宿主发送 "CSI ? ... c" 风格;若 final 为 c 则在别处当作 DA 处理。
-                return;
-            }
+        if (final == 'c')
+        {
+            // 某些宿主发送 "CSI ? ... c" 风格;若 final 为 c 则在别处当作 DA 处理。
+            return;
+        }
         bool set = final == 'h';
         if (final is not 'h' and not 'l')
         {

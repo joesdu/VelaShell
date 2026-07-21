@@ -200,14 +200,14 @@ public sealed class Todo2VisualCaptureUiTests
         Assert.IsNotNull(vm.Layout.AllDocuments().OfType<SftpDocument>().SingleOrDefault());
         SftpDocument document = vm.Layout.AllDocuments().OfType<SftpDocument>().Single();
         Assert.IsEmpty(vm.TabBar.Tabs);
-        sshClient.DidNotReceive().CreateShellStream(
+        sshClient.DidNotReceive().CreateShellStreamAsync(
             Arg.Any<string>(),
             Arg.Any<uint>(),
             Arg.Any<uint>(),
             Arg.Any<uint>(),
             Arg.Any<uint>(),
             Arg.Any<int>(),
-            Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>());
+            Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>(), Arg.Any<CancellationToken>());
 
         int uiThread = Environment.CurrentManagedThreadId;
         List<int> notificationThreads = [];
@@ -612,7 +612,7 @@ public sealed class Todo2VisualCaptureUiTests
         };
         workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>()).Returns(session);
         sshConnectionService.GetClient(session.SessionId).Returns(sshClient);
-        sshClient.CreateShellStream("xterm-256color", 120, 32, 0, 0, 4096).Returns(shellStream);
+        sshClient.CreateShellStreamAsync("xterm-256color", 120, 32, 0, 0, 4096, Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>(), Arg.Any<CancellationToken>()).Returns(shellStream);
         sftpService.GetWorkingDirectoryAsync(session.SessionId, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult("/home/testuser"));
         sftpService.ListDirectoryAsync(session.SessionId, Arg.Any<string>(), Arg.Any<CancellationToken>())

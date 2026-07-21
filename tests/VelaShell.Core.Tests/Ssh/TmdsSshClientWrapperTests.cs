@@ -32,19 +32,19 @@ public sealed class TmdsSshClientWrapperTests
         });
 
     [TestMethod]
-    public void NewWrapper_IsNotConnected_AndOperationsRequireConnection()
+    public async Task NewWrapper_IsNotConnected_AndOperationsRequireConnection()
     {
-        using var wrapper = CreateWrapper(1);
+        using TmdsSshClientWrapper wrapper = CreateWrapper(1);
 
         Assert.IsFalse(wrapper.IsConnected);
-        Assert.ThrowsExactly<InvalidOperationException>(() =>
-            wrapper.CreateShellStream("xterm", 80, 24, 0, 0, 4096));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            wrapper.CreateShellStreamAsync("xterm", 80, 24, 0, 0, 4096));
     }
 
     [TestMethod]
     public async Task ConnectAsync_Failure_LeavesWrapperDisconnected()
     {
-        using var wrapper = CreateWrapper(GetClosedLoopbackPort());
+        using TmdsSshClientWrapper wrapper = CreateWrapper(GetClosedLoopbackPort());
 
         await Assert.ThrowsAsync<SshClientException>(() => wrapper.ConnectAsync(CancellationToken.None));
 
@@ -55,7 +55,7 @@ public sealed class TmdsSshClientWrapperTests
     [TestMethod]
     public async Task ConnectAsync_CallerCancelled_IsNotReportedAsTimeout()
     {
-        using var wrapper = CreateWrapper(GetClosedLoopbackPort());
+        using TmdsSshClientWrapper wrapper = CreateWrapper(GetClosedLoopbackPort());
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
@@ -79,7 +79,7 @@ public sealed class TmdsSshClientWrapperTests
     [TestMethod]
     public void DisposedWrapper_Throws()
     {
-        var wrapper = CreateWrapper(1);
+        TmdsSshClientWrapper wrapper = CreateWrapper(1);
         wrapper.Dispose();
 
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = wrapper.IsConnected);

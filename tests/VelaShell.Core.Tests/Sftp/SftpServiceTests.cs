@@ -70,7 +70,7 @@ public class SftpServiceTests
     public async Task RenameAsync_CallsRenameFileOnClient()
     {
         await _sftpService.RenameAsync(_sessionId, "/home/user/old.txt", "/home/user/new.txt");
-        _sftpClient.Received(1).RenameFile("/home/user/old.txt", "/home/user/new.txt");
+        await _sftpClient.Received(1).RenameFileAsync("/home/user/old.txt", "/home/user/new.txt", Arg.Any<CancellationToken>());
     }
 
     [TestMethod]
@@ -78,21 +78,21 @@ public class SftpServiceTests
     {
         // Some servers answer the plain SSH_FXP_RENAME with SSH_FX_BAD_MESSAGE.
         _sftpClient
-            .When(c => c.RenameFile("/home/user/dir", "/tmp/dir"))
-            .Do(_ => throw new SftpOperationException("bad message"));
+            .RenameFileAsync("/home/user/dir", "/tmp/dir", Arg.Any<CancellationToken>())
+            .ThrowsAsync(new SftpOperationException("bad message"));
         await _sftpService.RenameAsync(_sessionId, "/home/user/dir", "/tmp/dir");
-        _sftpClient.Received(1).PosixRenameFile("/home/user/dir", "/tmp/dir");
+        await _sftpClient.Received(1).PosixRenameFileAsync("/home/user/dir", "/tmp/dir", Arg.Any<CancellationToken>());
     }
 
     [TestMethod]
     public async Task RenameAsync_WhenBothRenamesFail_SurfacesOriginalError()
     {
         _sftpClient
-            .When(c => c.RenameFile("/home/user/dir", "/tmp/dir"))
-            .Do(_ => throw new SftpOperationException("bad message"));
+            .RenameFileAsync("/home/user/dir", "/tmp/dir", Arg.Any<CancellationToken>())
+            .ThrowsAsync(new SftpOperationException("bad message"));
         _sftpClient
-            .When(c => c.PosixRenameFile("/home/user/dir", "/tmp/dir"))
-            .Do(_ => throw new NotSupportedException("posix-rename not supported"));
+            .PosixRenameFileAsync("/home/user/dir", "/tmp/dir", Arg.Any<CancellationToken>())
+            .ThrowsAsync(new NotSupportedException("posix-rename not supported"));
         SftpOperationException ex = await Assert.ThrowsExactlyAsync<SftpOperationException>(() => _sftpService.RenameAsync(_sessionId, "/home/user/dir", "/tmp/dir"));
         Assert.AreEqual("bad message", ex.Message);
     }
@@ -128,7 +128,7 @@ public class SftpServiceTests
     public async Task SetPermissionsAsync_CallsChangePermissionsOnClient()
     {
         await _sftpService.SetPermissionsAsync(_sessionId, "/home/user/run.sh", 755);
-        _sftpClient.Received(1).ChangePermissions("/home/user/run.sh", 755);
+        await _sftpClient.Received(1).ChangePermissionsAsync("/home/user/run.sh", 755, Arg.Any<CancellationToken>());
     }
 
     [TestMethod]
@@ -139,7 +139,7 @@ public class SftpServiceTests
     public async Task SetPermissionsAsync_RejectsNonOctalModes(short mode)
     {
         await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() => _sftpService.SetPermissionsAsync(_sessionId, "/home/user/run.sh", mode));
-        _sftpClient.DidNotReceive().ChangePermissions(Arg.Any<string>(), Arg.Any<short>());
+        await _sftpClient.DidNotReceive().ChangePermissionsAsync(Arg.Any<string>(), Arg.Any<short>(), Arg.Any<CancellationToken>());
     }
 
     [TestMethod]
@@ -268,16 +268,16 @@ public class SftpServiceTests
         // Arrange
         string remotePath = "/home/user/todelete.txt";
         SftpEntry mockFile = CreateMockSftpFile("todelete.txt", remotePath, 1024, false, "rw-r--r--");
-        _sftpClient.Exists(remotePath).Returns(true);
-        _sftpClient.ListDirectory("/home/user")
-                   .Returns([mockFile]);
+        _sftpClient.ExistsAsync(remotePath, Arg.Any<CancellationToken>()).Returns(true);
+        _sftpClient.ListDirectoryAsync("/home/user", Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([mockFile]));
 
         // Act
         await _sftpService.DeleteAsync(_sessionId, remotePath);
 
         // Assert
-        _sftpClient.Received(1).DeleteFile(remotePath);
-        _sftpClient.DidNotReceive().DeleteDirectory(Arg.Any<string>());
+        await _sftpClient.Received(1).DeleteFileAsync(remotePath, Arg.Any<CancellationToken>());
+        await _sftpClient.DidNotReceive().DeleteDirectoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [TestMethod]
@@ -290,7 +290,7 @@ public class SftpServiceTests
         await _sftpService.CreateDirectoryAsync(_sessionId, remotePath);
 
         // Assert
-        _sftpClient.Received(1).CreateDirectory(remotePath);
+        await _sftpClient.Received(1).CreateDirectoryAsync(remotePath, Arg.Any<CancellationToken>());
     }
 
     [TestMethod]
@@ -299,16 +299,18 @@ public class SftpServiceTests
         // Arrange
         string remotePath = "/home/user/mydir";
         SftpEntry mockDir = CreateMockSftpFile("mydir", remotePath, 0, true, "rwxr-xr-x");
-        _sftpClient.Exists(remotePath).Returns(true);
-        _sftpClient.ListDirectory("/home/user")
-                   .Returns([mockDir]);
+        _sftpClient.ExistsAsync(remotePath, Arg.Any<CancellationToken>()).Returns(true);
+        _sftpClient.ListDirectoryAsync("/home/user", Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([mockDir]));
+        _sftpClient.ListDirectoryAsync(remotePath, Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([]));
 
         // Act
         await _sftpService.DeleteAsync(_sessionId, remotePath);
 
         // Assert
-        _sftpClient.Received(1).DeleteDirectory(remotePath);
-        _sftpClient.DidNotReceive().DeleteFile(Arg.Any<string>());
+        await _sftpClient.Received(1).DeleteDirectoryAsync(remotePath, Arg.Any<CancellationToken>());
+        await _sftpClient.DidNotReceive().DeleteFileAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [TestMethod]
@@ -319,19 +321,22 @@ public class SftpServiceTests
         SftpEntry childFile = CreateMockSftpFile("a.txt", "/home/user/proj/a.txt", 10, false, "rw-r--r--");
         SftpEntry childSub = CreateMockSftpFile("sub", "/home/user/proj/sub", 0, true, "rwxr-xr-x");
         SftpEntry grandchild = CreateMockSftpFile("b.txt", "/home/user/proj/sub/b.txt", 20, false, "rw-r--r--");
-        _sftpClient.Exists(dir).Returns(true);
-        _sftpClient.ListDirectory("/home/user").Returns([mockDir]); // parent listing → proj is a directory
-        _sftpClient.ListDirectory(dir).Returns([childFile, childSub]);
-        _sftpClient.ListDirectory("/home/user/proj/sub").Returns([grandchild]);
+        _sftpClient.ExistsAsync(dir, Arg.Any<CancellationToken>()).Returns(true);
+        _sftpClient.ListDirectoryAsync("/home/user", Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([mockDir])); // parent listing → proj is a directory
+        _sftpClient.ListDirectoryAsync(dir, Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([childFile, childSub]));
+        _sftpClient.ListDirectoryAsync("/home/user/proj/sub", Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([grandchild]));
         var reports = new List<SftpDeleteProgress>();
         await _sftpService.DeleteAsync(_sessionId, dir,
             new SynchronousProgress<SftpDeleteProgress>(reports.Add));
 
         // Files removed, and each directory removed only after its contents.
-        _sftpClient.Received(1).DeleteFile("/home/user/proj/a.txt");
-        _sftpClient.Received(1).DeleteFile("/home/user/proj/sub/b.txt");
-        _sftpClient.Received(1).DeleteDirectory("/home/user/proj/sub");
-        _sftpClient.Received(1).DeleteDirectory(dir);
+        await _sftpClient.Received(1).DeleteFileAsync("/home/user/proj/a.txt", Arg.Any<CancellationToken>());
+        await _sftpClient.Received(1).DeleteFileAsync("/home/user/proj/sub/b.txt", Arg.Any<CancellationToken>());
+        await _sftpClient.Received(1).DeleteDirectoryAsync("/home/user/proj/sub", Arg.Any<CancellationToken>());
+        await _sftpClient.Received(1).DeleteDirectoryAsync(dir, Arg.Any<CancellationToken>());
         Assert.HasCount(5, reports); // initial 0/total + 2 files + 2 directories
         Assert.AreEqual(0, reports[0].DeletedCount);
         Assert.AreEqual(4, reports[0].TotalCount);
@@ -344,7 +349,7 @@ public class SftpServiceTests
     {
         // Arrange
         string remotePath = "/home/user/nonexistent.txt";
-        _sftpClient.Exists(remotePath).Returns(false);
+        _sftpClient.ExistsAsync(remotePath, Arg.Any<CancellationToken>()).Returns(false);
 
         // Act & Assert
         await Assert.ThrowsExactlyAsync<FileNotFoundException>(() => _sftpService.DeleteAsync(_sessionId, remotePath));

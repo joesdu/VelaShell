@@ -332,8 +332,8 @@ public sealed class VtParser(IVtActions actions)
     {
         switch (rune)
         {
-        // 此处以 BEL(0x07)结尾,或在 Consume 的全局 ESC 分支中以 ST(ESC \) 结尾——
-        // ESC 永远不会到达本处理函数。
+            // 此处以 BEL(0x07)结尾,或在 Consume 的全局 ESC 分支中以 ST(ESC \) 结尾——
+            // ESC 永远不会到达本处理函数。
             case 0x07:
                 DispatchOsc();
                 _state = State.Ground;

@@ -14,10 +14,10 @@ public sealed class CommandPaletteViewModel : ReactiveObject
     private readonly Func<IReadOnlyList<CommandPaletteItem>> _itemsProvider;
     private IReadOnlyList<CommandPaletteItem> _all = [];
 
-/// <summary>
-/// 创建命令面板视图模型并接好其键盘/鼠标命令。
-/// </summary>
-/// <param name="itemsProvider">按需提供当前面板条目;为 null 时使用空列表。</param>
+    /// <summary>
+    /// 创建命令面板视图模型并接好其键盘/鼠标命令。
+    /// </summary>
+    /// <param name="itemsProvider">按需提供当前面板条目;为 null 时使用空列表。</param>
     public CommandPaletteViewModel(Func<IReadOnlyList<CommandPaletteItem>>? itemsProvider = null)
     {
         _itemsProvider = itemsProvider ?? (() => []);

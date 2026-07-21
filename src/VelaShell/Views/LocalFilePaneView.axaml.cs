@@ -206,8 +206,7 @@ public partial class LocalFilePaneView : UserControl
             if (remotePaths.Length == 0) return;
 
             // 用可视化树祖先查找,代替脆弱的 Parent.Parent 链式访问。
-            var sftpVm = this.FindAncestorOfType<SftpDocumentView>()?.DataContext as SftpDocumentViewModel;
-            if (sftpVm is null) return;
+            if (this.FindAncestorOfType<SftpDocumentView>()?.DataContext is not SftpDocumentViewModel sftpVm) return;
 
             // 由路径解析远端条目,且不修改远端的选中集合。
             RemoteFileInfoViewModel[] entries = remotePaths

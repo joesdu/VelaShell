@@ -45,12 +45,11 @@ public class SshTerminalBridge : IDisposable
         _disposed = true;
         _terminal.UserInput -= OnUserInput;
         ZModemRouter?.SessionEnded -= OnZModemSessionEnded;
-        _cts.Cancel();
 
-        // 必须在等待读任务之前先释放流:SSH.NET 的 ShellStream.Read 阻塞在 Monitor.Wait 中
-        // (其 ReadAsync 只是基类 Stream 的包装,取消令牌无法中断它),而 Dispose 会唤醒该等待,
-        // 使挂起的读取立即且不抛异常地返回 EOF。旧的顺序(先等、再释放)会导致每次关闭标签时读任务
-        // 卡满整个 2 秒超时。
+        // 先释放流、后取消令牌:释放流会以"通道关闭"唤醒挂起的读取,包装层将其吞为 EOF,
+        // 读循环无异常退出。若先 Cancel,取消会以 OperationCanceledException 打穿底层库的
+        // 整条异步读栈,每次关标签都在调试器里刷一串首次机会异常。令牌保留为兜底:
+        // 个别实现的 Dispose 若未能唤醒读取,Cancel 仍能让循环退出。
         try
         {
             _shellStream.Dispose();
@@ -59,6 +58,7 @@ public class SshTerminalBridge : IDisposable
         {
             // 尽力而为:通道可能已被会话断开拆除。
         }
+        _cts.Cancel();
         try
         {
             _readTask?.Wait(TimeSpan.FromSeconds(2));

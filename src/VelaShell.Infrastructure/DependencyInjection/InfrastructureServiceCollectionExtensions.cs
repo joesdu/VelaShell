@@ -1,5 +1,3 @@
-using System.Net;
-using System.Security.Cryptography;
 using Microsoft.Extensions.DependencyInjection;
 using Tmds.Ssh;
 using VelaShell.Core.Data;
@@ -30,19 +28,19 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<ISecretProtector>(sp => new AesSecretProtector(sp.GetRequiredService<VelaShellStoragePaths>()));
         services.AddSingleton<ISessionRepository>(sp =>
         {
-            var paths = sp.GetRequiredService<VelaShellStoragePaths>();
+            VelaShellStoragePaths paths = sp.GetRequiredService<VelaShellStoragePaths>();
             return new SonnetDbSessionRepository(sp.GetRequiredService<SonnetDbEngine>(),
                 sp.GetRequiredService<ISecretProtector>(), paths.SessionsFile);
         });
         services.AddSingleton<ISettingsService>(sp =>
         {
-            var paths = sp.GetRequiredService<VelaShellStoragePaths>();
+            VelaShellStoragePaths paths = sp.GetRequiredService<VelaShellStoragePaths>();
             return new SonnetDbSettingsService(sp.GetRequiredService<SonnetDbEngine>(),
                 [paths.RootDirectory, paths.LegacyDotDirectory]);
         });
         services.AddSingleton<IHostKeyService>(sp =>
         {
-            var paths = sp.GetRequiredService<VelaShellStoragePaths>();
+            VelaShellStoragePaths paths = sp.GetRequiredService<VelaShellStoragePaths>();
             return new SonnetDbHostKeyService(sp.GetRequiredService<SonnetDbEngine>(),
                 System.IO.Path.Combine(paths.LegacyDotDirectory, "known_hosts.json"));
         });
@@ -51,7 +49,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IAppDataStore, SonnetDbAppDataStore>();
         services.AddSingleton<IQuickCommandRepository>(sp =>
         {
-            var paths = sp.GetRequiredService<VelaShellStoragePaths>();
+            VelaShellStoragePaths paths = sp.GetRequiredService<VelaShellStoragePaths>();
             return new SonnetDbQuickCommandRepository(sp.GetRequiredService<IAppDataStore>(),
                 paths.LegacyQuickCommandsFile);
         });
@@ -63,10 +61,10 @@ public static class InfrastructureServiceCollectionExtensions
         // SSH connection service
         services.AddSingleton<ISshConnectionService>(sp =>
         {
-            var hostKey = sp.GetRequiredService<IHostKeyService>();
-            var settings = sp.GetRequiredService<ISettingsService>();
-            var prompt = sp.GetService<IHostKeyPrompt>();
-            var alerts = sp.GetService<ISecurityAlertService>();
+            IHostKeyService hostKey = sp.GetRequiredService<IHostKeyService>();
+            ISettingsService settings = sp.GetRequiredService<ISettingsService>();
+            IHostKeyPrompt? prompt = sp.GetService<IHostKeyPrompt>();
+            ISecurityAlertService? alerts = sp.GetService<ISecurityAlertService>();
             return new SshConnectionService(ci =>
                 CreateSshClientWrapper(ci, hostKey, settings, prompt, alerts));
         });
@@ -74,18 +72,18 @@ public static class InfrastructureServiceCollectionExtensions
         // SFTP service
         services.AddSingleton<ISftpService>(sp =>
         {
-            var connSvc = sp.GetRequiredService<ISshConnectionService>();
-            var settings = sp.GetRequiredService<ISettingsService>();
+            ISshConnectionService connSvc = sp.GetRequiredService<ISshConnectionService>();
+            ISettingsService settings = sp.GetRequiredService<ISettingsService>();
             return new SftpService(connSvc, session =>
             {
-                var wrapper = connSvc.GetClient(session.SessionId);
+                ISshClientWrapper? wrapper = connSvc.GetClient(session.SessionId);
                 if (wrapper is not TmdsSshClientWrapper tmds)
                     throw new InvalidOperationException("SFTP requires Tmds.Ssh backend.");
                 return new TmdsSftpClientWrapper(async () =>
                 {
                     // SFTP 复用主连接的 SSH 通道。主连接不在时不得偷偷另建连接:
                     // 新连接无人持有、无人释放(泄漏),且会绕过用户可见的连接生命周期。
-                    var inner = tmds.InnerClient
+                    SshClient inner = tmds.InnerClient
                         ?? throw new VelaShell.Core.Ssh.SshConnectionException(
                             "SSH connection is not established; cannot open SFTP channel.");
                     return await inner.OpenSftpClientAsync().ConfigureAwait(false);
@@ -101,7 +99,7 @@ public static class InfrastructureServiceCollectionExtensions
             new SessionMetricsService(sp.GetRequiredService<ISshConnectionService>()));
         services.AddSingleton<ITunnelService>(sp =>
         {
-            var connSvc = sp.GetRequiredService<ISshConnectionService>();
+            ISshConnectionService connSvc = sp.GetRequiredService<ISshConnectionService>();
             return new TunnelService(connSvc, sid =>
                 connSvc.GetClient(sid) ?? throw new InvalidOperationException($"No SSH client for session {sid}."));
         });

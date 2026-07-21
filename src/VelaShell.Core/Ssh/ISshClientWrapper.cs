@@ -20,9 +20,6 @@ public interface ISshClientWrapper : IDisposable
     /// <summary>建立连接时的超时时长。</summary>
     TimeSpan ConnectionTimeout { get; set; }
 
-    /// <summary>同步连接到远程主机。</summary>
-    Task Connect();
-
     /// <summary>异步连接到远程主机。</summary>
     Task ConnectAsync(CancellationToken cancellationToken);
 
@@ -30,24 +27,25 @@ public interface ISshClientWrapper : IDisposable
     void Disconnect();
 
     /// <summary>
-    /// 在当前连接上创建一条交互式 shell 流,使用给定的终端类型、行列尺寸、像素尺寸、缓冲区大小
-    /// 及可选的终端模式参数。
+    /// 在当前连接上异步创建一条交互式 shell 流(打开通道 + pty-req + shell,2~3 个网络往返),
+    /// 使用给定的终端类型、行列尺寸、像素尺寸、缓冲区大小及可选的终端模式参数。
     /// </summary>
-    IShellStreamWrapper CreateShellStream(
+    Task<IShellStreamWrapper> CreateShellStreamAsync(
         string terminalName,
         uint columns,
         uint rows,
         uint width,
         uint height,
         int bufferSize,
-        IReadOnlyDictionary<TerminalMode, uint>? terminalModeValues = null);
+        IReadOnlyDictionary<TerminalMode, uint>? terminalModeValues = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>在远端主机上执行一次性命令并返回其标准输出。</summary>
     Task<string> RunCommandAsync(string commandText, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 建立并启动一条端口转发;返回的句柄负责其停止与清理。
+    /// 异步建立并启动一条端口转发;返回的句柄负责其停止与清理。
     /// 启动失败时抛出且不留下半挂的监听。
     /// </summary>
-    IPortForwardHandle StartPortForward(PortForwardRequest request);
+    Task<IPortForwardHandle> StartPortForwardAsync(PortForwardRequest request, CancellationToken cancellationToken = default);
 }

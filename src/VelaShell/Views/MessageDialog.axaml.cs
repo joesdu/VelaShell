@@ -138,11 +138,19 @@ public partial class MessageDialog : Window
         }
     }
 
-    private void Confirm_Click(object? sender, RoutedEventArgs e) => Close(true);
+    private void Confirm_Click(object? sender, RoutedEventArgs e) => CloseDeferred(true);
 
-    private void Cancel_Click(object? sender, RoutedEventArgs e) => Close(false);
+    private void Cancel_Click(object? sender, RoutedEventArgs e) => CloseDeferred(false);
 
-    private void Close_Click(object? sender, RoutedEventArgs e) => Close(false);
+    private void Close_Click(object? sender, RoutedEventArgs e) => CloseDeferred(false);
+
+    /// <summary>
+    /// 输入事件处理器内不得同步 Close:窗口销毁后,本轮输入事件的剩余路由
+    /// (PointerReleased 等)会打到已无 PlatformImpl 的窗口上,Avalonia 刷
+    /// "PlatformImpl is null, couldn't handle input" 警告。推迟到当前事件出栈后再关。
+    /// </summary>
+    private void CloseDeferred(bool result) =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => Close(result));
 
     /// <summary>拦截 Esc 键关闭弹窗:纯消息框(无取消按钮)时也能用 Esc 取消。</summary>
     protected override void OnKeyDown(KeyEventArgs e)
@@ -150,7 +158,7 @@ public partial class MessageDialog : Window
         // 无取消按钮的纯消息框也要能用 Esc 关闭(IsCancel 只在按钮可见时生效)。
         if (e.Key == Key.Escape)
         {
-            Close(false);
+            CloseDeferred(false);
             e.Handled = true;
             return;
         }

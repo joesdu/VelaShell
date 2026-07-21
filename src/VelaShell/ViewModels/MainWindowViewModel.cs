@@ -1725,11 +1725,10 @@ public class MainWindowViewModel : ReactiveObject
         ISshClientWrapper client =
             _sshConnectionService!.GetClient(session.SessionId)
             ?? throw new InvalidOperationException("SSH client was not created for the session.");
-        // CreateShellStream 是同步网络往返(打开通道 + pty-req + shell,2~3 个 RTT),
-        // 放在线程池上执行,否则每连一个标签 UI 线程就冻结 RTT 的整数倍时长。
-        IShellStreamWrapper shellStream = await Task.Run(
-            () => client.CreateShellStream(terminalType.ToTermName(), 120, 32, 0, 0, 4096),
-            cancellationToken
+        // 通道打开是网络往返(pty-req + shell,2~3 个 RTT);真异步 API,UI 线程零阻塞。
+        IShellStreamWrapper shellStream = await client.CreateShellStreamAsync(
+            terminalType.ToTermName(), 120, 32, 0, 0, 4096,
+            cancellationToken: cancellationToken
         );
         terminalTab.SessionId = session.SessionId;
         terminalTab.AttachTransport(shellStream);
@@ -1809,10 +1808,10 @@ public class MainWindowViewModel : ReactiveObject
                 ?? throw new InvalidOperationException(
                     "SSH client was not created for the session."
                 );
-            // 同 RunHandshakeAsync:通道打开的同步网络往返不能占用 UI 线程。
-            IShellStreamWrapper shellStream = await Task.Run(
-                () => client.CreateShellStream(terminalType.ToTermName(), 120, 32, 0, 0, 4096),
-                cancellationToken
+            // 同 RunHandshakeAsync:通道打开走真异步 API,UI 线程零阻塞。
+            IShellStreamWrapper shellStream = await client.CreateShellStreamAsync(
+                terminalType.ToTermName(), 120, 32, 0, 0, 4096,
+                cancellationToken: cancellationToken
             );
 
             // 在新会话输出到达前做一次完全复位(RIS),使新的标语不至于附加在旧缓冲内容之后。

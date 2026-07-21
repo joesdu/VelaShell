@@ -99,14 +99,14 @@ public sealed class StandaloneSftpDocumentBehaviorTests
         };
         workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>()).Returns(session);
         sshConnectionService.GetClient(session.SessionId).Returns(sshClient);
-        sshClient.CreateShellStream(
+        sshClient.CreateShellStreamAsync(
                 Arg.Any<string>(),
                 Arg.Any<uint>(),
                 Arg.Any<uint>(),
                 Arg.Any<uint>(),
                 Arg.Any<uint>(),
                 Arg.Any<int>(),
-                Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>()
+                Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>(), Arg.Any<CancellationToken>()
             )
             .Returns(shellStream);
 
@@ -124,14 +124,14 @@ public sealed class StandaloneSftpDocumentBehaviorTests
         await vm.OpenSftpForProfileAsync(profile);
 
         await workflow.Received(1).ConnectProfileAsync(profile, Arg.Any<CancellationToken>());
-        sshClient.DidNotReceive().CreateShellStream(
+        sshClient.DidNotReceive().CreateShellStreamAsync(
             Arg.Any<string>(),
             Arg.Any<uint>(),
             Arg.Any<uint>(),
             Arg.Any<uint>(),
             Arg.Any<uint>(),
             Arg.Any<int>(),
-            Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>()
+            Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>(), Arg.Any<CancellationToken>()
         );
         Assert.AreEqual(0, terminalFactoryCalls, "Explorer SFTP must not open a shell terminal first.");
     }

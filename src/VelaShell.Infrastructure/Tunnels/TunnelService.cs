@@ -228,8 +228,8 @@ public class TunnelService(
         };
         try
         {
-            // StartPortForward 建立并启动监听,失败时不留下半挂的端口(见接口契约)。
-            IPortForwardHandle handle = await Task.Run(() => client.StartPortForward(request)).ConfigureAwait(false);
+            // StartPortForwardAsync 建立并启动监听,失败时不留下半挂的端口(见接口契约)。
+            IPortForwardHandle handle = await client.StartPortForwardAsync(request).ConfigureAwait(false);
 
             // 转发通道错误(目标拒绝连接等)不会让监听端口停摆,但每个经过的连接都会失败;
             // 记到 LastError 供界面展示,否则用户只看到"运行中"却连不上。

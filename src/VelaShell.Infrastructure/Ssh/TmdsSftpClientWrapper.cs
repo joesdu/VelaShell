@@ -32,8 +32,6 @@ public sealed class TmdsSftpClientWrapper : ISftpClientWrapper
         }
     }
 
-    public async Task Connect() => await ConnectAsync(CancellationToken.None).ConfigureAwait(false);
-
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -52,108 +50,122 @@ public sealed class TmdsSftpClientWrapper : ISftpClientWrapper
         _client?.Dispose(); _client = null;
     }
 
-    public IEnumerable<SftpEntry> ListDirectory(string path)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return Task.Run(() => ListEntriesAsync(EnsureClient(), path, CancellationToken.None))
-            .GetAwaiter().GetResult();
-    }
-
     public Task<IEnumerable<SftpEntry>> ListDirectoryAsync(string path, CancellationToken ct)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return ListEntriesAsync(EnsureClient(), path, ct);
+        return GuardedAsync(() => ListEntriesAsync(EnsureClient(), path, ct), ct);
     }
 
-    public void UploadFile(Stream input, string path, bool canOverride = true)
+    public Task UploadAsync(Stream input, string path, Action<ulong>? cb = null, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        // overwrite 交给库处理:目标已存在且不允许覆盖时抛 SftpException → 翻译为 SftpOperationException。
-        Guarded(() => EnsureClient().UploadFileAsync(input, path, overwrite: canOverride).GetAwaiter().GetResult());
-    }
-
-    public async Task UploadAsync(Stream input, string path, Action<ulong>? cb = null, CancellationToken ct = default)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        await GuardedAsync(async () => await EnsureClient()
+        return GuardedAsync(async () => await EnsureClient()
             .UploadFileAsync(input, path, overwrite: true, progress: ToProgress(cb), cancellationToken: ct)
             .ConfigureAwait(false), ct);
     }
 
-    public void DownloadFile(string path, Stream output) { ObjectDisposedException.ThrowIf(_disposed, this); Guarded(() => EnsureClient().DownloadFileAsync(path, output).GetAwaiter().GetResult()); }
-
-    public async Task DownloadAsync(string path, Stream output, Action<ulong>? cb = null, CancellationToken ct = default)
+    public Task DownloadAsync(string path, Stream output, Action<ulong>? cb = null, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        await GuardedAsync(async () => await EnsureClient()
+        return GuardedAsync(async () => await EnsureClient()
             .DownloadFileAsync(path, output, ToProgress(cb), ct)
             .ConfigureAwait(false), ct);
     }
 
-    public void DeleteFile(string path) { ObjectDisposedException.ThrowIf(_disposed, this); Guarded(() => EnsureClient().DeleteFileAsync(path).GetAwaiter().GetResult()); }
-    public void DeleteDirectory(string path) { ObjectDisposedException.ThrowIf(_disposed, this); Guarded(() => EnsureClient().DeleteDirectoryAsync(path, true).GetAwaiter().GetResult()); }
-    public void CreateDirectory(string path) { ObjectDisposedException.ThrowIf(_disposed, this); Guarded(() => EnsureClient().CreateDirectoryAsync(path).GetAwaiter().GetResult()); }
-    public void RenameFile(string o, string n) { ObjectDisposedException.ThrowIf(_disposed, this); Guarded(() => EnsureClient().RenameAsync(o, n).GetAwaiter().GetResult()); }
-    public void PosixRenameFile(string o, string n) { ObjectDisposedException.ThrowIf(_disposed, this); Guarded(() => EnsureClient().RenameAsync(o, n).GetAwaiter().GetResult()); }
-
-    public bool Exists(string path) { ObjectDisposedException.ThrowIf(_disposed, this); return Guarded(() => FileExistsSync(path)); }
-
-    public void ChangePermissions(string path, short mode)
+    public Task DeleteFileAsync(string path, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        Guarded(() =>
+        return GuardedAsync(async () => await EnsureClient().DeleteFileAsync(path, ct).ConfigureAwait(false), ct);
+    }
+
+    public Task DeleteDirectoryAsync(string path, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return GuardedAsync(async () => await EnsureClient().DeleteDirectoryAsync(path, true, null, ct).ConfigureAwait(false), ct);
+    }
+
+    public Task CreateDirectoryAsync(string path, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return GuardedAsync(async () => await EnsureClient().CreateDirectoryAsync(path, cancellationToken: ct).ConfigureAwait(false), ct);
+    }
+
+    public Task RenameFileAsync(string o, string n, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return GuardedAsync(async () => await EnsureClient().RenameAsync(o, n, ct).ConfigureAwait(false), ct);
+    }
+
+    // Tmds.Ssh 未单独暴露 posix-rename 扩展;RenameAsync 即其现有的重命名路径。
+    public Task PosixRenameFileAsync(string o, string n, CancellationToken ct = default) => RenameFileAsync(o, n, ct);
+
+    public Task<bool> ExistsAsync(string path, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return GuardedAsync(async () =>
+        {
+            // Tmds.Ssh 的 GetAttributesAsync 对不存在的路径返回 null 而非抛异常
+            // (SSH.NET 是抛 SftpPathNotFoundException):判空即存在性,零异常控制流。
+            Tmds.Ssh.FileEntryAttributes? attrs = await EnsureClient()
+                .GetAttributesAsync(path, true, null, ct).ConfigureAwait(false);
+            return attrs is not null;
+        }, ct);
+    }
+
+    public Task ChangePermissionsAsync(string path, short mode, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return GuardedAsync(async () =>
         {
             var unixMode = (System.IO.UnixFileMode)Convert.ToInt32(mode.ToString(), 8);
             var perms = Tmds.Ssh.UnixFilePermissionsExtensions.ToUnixFilePermissions(unixMode);
-            EnsureClient().SetAttributesAsync(path, permissions: perms).GetAwaiter().GetResult();
-        });
+            await EnsureClient().SetAttributesAsync(path, permissions: perms, cancellationToken: ct).ConfigureAwait(false);
+        }, ct);
     }
 
-    public System.IO.Stream Open(string path, System.IO.FileMode mode, System.IO.FileAccess access)
+    public Task<Stream> OpenAsync(string path, System.IO.FileMode mode, System.IO.FileAccess access, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return Guarded<System.IO.Stream>(() =>
+        return GuardedAsync<Stream>(async () =>
         {
-            var c = EnsureClient();
+            Tmds.Ssh.SftpClient c = EnsureClient();
             Tmds.Ssh.SftpFile? file = mode switch
             {
-                System.IO.FileMode.CreateNew => c.CreateNewFileAsync(path, access, new Tmds.Ssh.FileOpenOptions()).GetAwaiter().GetResult(),
+                System.IO.FileMode.CreateNew => await c.CreateNewFileAsync(path, access, new Tmds.Ssh.FileOpenOptions(), ct).ConfigureAwait(false),
                 // Create/Truncate 语义要求截断旧内容,否则新内容比旧文件短时会残留旧尾部数据
-                System.IO.FileMode.Create => c.OpenOrCreateFileAsync(path, access, new Tmds.Ssh.FileOpenOptions { OpenMode = Tmds.Ssh.OpenMode.Truncate }).GetAwaiter().GetResult(),
-                System.IO.FileMode.Truncate => c.OpenFileAsync(path, access, new Tmds.Ssh.FileOpenOptions { OpenMode = Tmds.Ssh.OpenMode.Truncate }).GetAwaiter().GetResult(),
-                System.IO.FileMode.Append => c.OpenOrCreateFileAsync(path, access, new Tmds.Ssh.FileOpenOptions { OpenMode = Tmds.Ssh.OpenMode.Append }).GetAwaiter().GetResult(),
-                System.IO.FileMode.OpenOrCreate => c.OpenOrCreateFileAsync(path, access, new Tmds.Ssh.FileOpenOptions()).GetAwaiter().GetResult(),
-                _ => c.OpenFileAsync(path, access, new Tmds.Ssh.FileOpenOptions()).GetAwaiter().GetResult(),
+                System.IO.FileMode.Create => await c.OpenOrCreateFileAsync(path, access, new Tmds.Ssh.FileOpenOptions { OpenMode = Tmds.Ssh.OpenMode.Truncate }, ct).ConfigureAwait(false),
+                System.IO.FileMode.Truncate => await c.OpenFileAsync(path, access, new Tmds.Ssh.FileOpenOptions { OpenMode = Tmds.Ssh.OpenMode.Truncate }, ct).ConfigureAwait(false),
+                System.IO.FileMode.Append => await c.OpenOrCreateFileAsync(path, access, new Tmds.Ssh.FileOpenOptions { OpenMode = Tmds.Ssh.OpenMode.Append }, ct).ConfigureAwait(false),
+                System.IO.FileMode.OpenOrCreate => await c.OpenOrCreateFileAsync(path, access, new Tmds.Ssh.FileOpenOptions(), ct).ConfigureAwait(false),
+                _ => await c.OpenFileAsync(path, access, new Tmds.Ssh.FileOpenOptions(), ct).ConfigureAwait(false),
             };
             // Tmds.Ssh 对不存在的文件返回 null 而非抛异常
             return file ?? throw new SftpPathNotFoundException($"File not found: {path}");
-        });
+        }, ct);
     }
 
-    public long GetFileSize(string path)
+    public Task<long> GetFileSizeAsync(string path, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        try
+        return GuardedAsync(async () =>
         {
-            return Guarded(() =>
-            {
-                var result = EnsureClient().GetAttributesAsync(path, true, null, CancellationToken.None).GetAwaiter().GetResult();
-                return result.Length;
-            });
-        }
-        catch (SftpPathNotFoundException) { return -1; }
+            // 不存在返回 null → 契约 -1,零异常控制流。
+            Tmds.Ssh.FileEntryAttributes? attrs = await EnsureClient()
+                .GetAttributesAsync(path, true, null, ct).ConfigureAwait(false);
+            return attrs?.Length ?? -1L;
+        }, ct);
     }
 
-    public async Task UploadAsync(Stream input, string path, long resumeOffset, Action<ulong>? cb = null, CancellationToken ct = default)
+    public Task UploadAsync(Stream input, string path, long resumeOffset, Action<ulong>? cb = null, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        await GuardedAsync(async () =>
+        return GuardedAsync(async () =>
         {
-            var c = EnsureClient();
+            Tmds.Ssh.SftpClient c = EnsureClient();
             if (resumeOffset > 0)
             {
                 input.Seek(resumeOffset, SeekOrigin.Begin);
-                using var r = await c.OpenFileAsync(path, System.IO.FileAccess.Write, new Tmds.Ssh.FileOpenOptions(), ct).ConfigureAwait(false)
+                using Tmds.Ssh.SftpFile r = await c.OpenFileAsync(path, System.IO.FileAccess.Write, new Tmds.Ssh.FileOpenOptions(), ct).ConfigureAwait(false)
                     ?? throw new SftpPathNotFoundException($"File not found: {path}");
                 r.Seek(0, SeekOrigin.End);
                 byte[] b = new byte[32 * 1024]; long t = 0; int n;
@@ -169,16 +181,10 @@ public sealed class TmdsSftpClientWrapper : ISftpClientWrapper
 
     private Tmds.Ssh.SftpClient EnsureClient() => _client ?? throw new InvalidOperationException("Not connected.");
 
-    private bool FileExistsSync(string path)
-    {
-        try { EnsureClient().GetAttributesAsync(path, true, null, CancellationToken.None).GetAwaiter().GetResult(); return true; }
-        catch (Tmds.Ssh.SftpException) { return false; }
-    }
-
     private static async Task<IEnumerable<SftpEntry>> ListEntriesAsync(Tmds.Ssh.SftpClient client, string dir, CancellationToken ct)
     {
         var entries = new List<SftpEntry>();
-        await foreach (var result in Tmds.Ssh.SftpDirectoryExtensions.GetDirectoryEntriesAsync(
+        await foreach ((string Path, Tmds.Ssh.FileEntryAttributes Attributes) result in Tmds.Ssh.SftpDirectoryExtensions.GetDirectoryEntriesAsync(
             client, dir, new Tmds.Ssh.EnumerationOptions())
             .WithCancellation(ct).ConfigureAwait(false))
         {
@@ -190,13 +196,16 @@ public sealed class TmdsSftpClientWrapper : ISftpClientWrapper
     private static SftpEntry MapEntry(string fullPath, Tmds.Ssh.FileEntryAttributes attrs)
     {
         string fn = System.IO.Path.GetFileName(fullPath);
-        var p = attrs.Permissions;
+        Tmds.Ssh.UnixFilePermissions p = attrs.Permissions;
         return new SftpEntry
         {
-            Name = fn, FullName = fullPath, Length = attrs.Length,
+            Name = fn,
+            FullName = fullPath,
+            Length = attrs.Length,
             IsDirectory = attrs.FileType == Tmds.Ssh.UnixFileType.Directory,
             LastWriteTime = attrs.LastWriteTime.DateTime,
-            UserId = (int)attrs.Uid, GroupId = (int)attrs.Gid,
+            UserId = attrs.Uid,
+            GroupId = attrs.Gid,
             OwnerCanRead = (p & Tmds.Ssh.UnixFilePermissions.UserRead) != 0,
             OwnerCanWrite = (p & Tmds.Ssh.UnixFilePermissions.UserWrite) != 0,
             OwnerCanExecute = (p & Tmds.Ssh.UnixFilePermissions.UserExecute) != 0,
@@ -209,9 +218,22 @@ public sealed class TmdsSftpClientWrapper : ISftpClientWrapper
         };
     }
 
-    private T Guarded<T>(Func<T> op) { try { return op(); } catch (NullReferenceException) when (IsTornDown()) { throw new ObjectDisposedException(nameof(TmdsSftpClientWrapper)); } catch (Exception ex) when (TmdsSshInterop.Translate(ex) is { } t) { throw t; } }
-    private void Guarded(Action op) { Guarded(() => { op(); return true; }); }
-    private async Task GuardedAsync(Func<Task> op, CancellationToken ct = default) { try { await op().ConfigureAwait(false); } catch (Exception ex) when (TmdsSshInterop.Translate(ex, ct) is { } t) { throw t; } }
+    /// <summary>
+    /// 统一异常翻译:释放竞态导致的 NRE 归一为 ObjectDisposedException,
+    /// 其余库异常经 <see cref="TmdsSshInterop.Translate" /> 翻译为 Core 中立异常。
+    /// </summary>
+    private async Task<T> GuardedAsync<T>(Func<Task<T>> op, CancellationToken ct = default)
+    {
+        try { return await op().ConfigureAwait(false); }
+        catch (NullReferenceException) when (IsTornDown()) { throw new ObjectDisposedException(nameof(TmdsSftpClientWrapper)); }
+        catch (Exception ex) when (TmdsSshInterop.Translate(ex, ct) is { } t) { throw t; }
+    }
+
+    private async Task GuardedAsync(Func<Task> op, CancellationToken ct = default)
+    {
+        await GuardedAsync(async () => { await op().ConfigureAwait(false); return true; }, ct).ConfigureAwait(false);
+    }
+
     private bool IsTornDown() { if (_disposed) return true; try { return _client is null; } catch { return true; } }
 
     private static ProgressAdapter? ToProgress(Action<ulong>? cb) => cb is null ? null : new ProgressAdapter(cb);
