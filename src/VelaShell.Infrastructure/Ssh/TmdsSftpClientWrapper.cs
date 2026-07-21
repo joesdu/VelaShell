@@ -1,3 +1,4 @@
+using System.Buffers;
 using Tmds.Ssh;
 using VelaShell.Core.Ssh;
 
@@ -9,6 +10,18 @@ namespace VelaShell.Infrastructure.Ssh;
 /// <param name="clientFactory"></param>
 public sealed class TmdsSftpClientWrapper(Func<Task<SftpClient>> clientFactory) : ISftpClientWrapper
 {
+    /// <summary>续传上传每次写入的块大小;高延迟链路上块越大往返越少。</summary>
+    private const int ResumeChunkSize = 256 * 1024;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Tmds.Ssh 单文件传输时最多有 <c>SftpChannel.MaxConcurrentBuffers</c>(64)个写缓冲区在途,
+    /// 每个上限 <c>Constants.MaxDataPacketSize</c>(32KB)。断开时最高偏移已被确认、而其之前
+    /// 尚未确认的缓冲区就成了空洞,所以回退 64 × 32KB = 2MB 才能保证起点之前连续。
+    /// 对 GB 级文件而言重传 2MB 可忽略不计,换来的是"续传出来的文件一定是对的"。
+    /// </remarks>
+    public long ResumeSafetyMargin => 64L * 32 * 1024;
+
     private readonly Func<Task<SftpClient>> _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
     private SftpClient? _client;
     private bool _disposed;
@@ -227,13 +240,13 @@ public sealed class TmdsSftpClientWrapper(Func<Task<SftpClient>> clientFactory) 
             SftpClient c = EnsureClient();
             SftpFile? file = mode switch
             {
-                FileMode.CreateNew => await c.CreateNewFileAsync(path, access, new FileOpenOptions(), ct).ConfigureAwait(false),
+                FileMode.CreateNew => await c.CreateNewFileAsync(path, access, SeekableOptions(), ct).ConfigureAwait(false),
                 // Create/Truncate 语义要求截断旧内容,否则新内容比旧文件短时会残留旧尾部数据
-                FileMode.Create => await c.OpenOrCreateFileAsync(path, access, new FileOpenOptions { OpenMode = OpenMode.Truncate }, ct).ConfigureAwait(false),
-                FileMode.Truncate => await c.OpenFileAsync(path, access, new FileOpenOptions { OpenMode = OpenMode.Truncate }, ct).ConfigureAwait(false),
-                FileMode.Append => await c.OpenOrCreateFileAsync(path, access, new FileOpenOptions { OpenMode = OpenMode.Append }, ct).ConfigureAwait(false),
-                FileMode.OpenOrCreate => await c.OpenOrCreateFileAsync(path, access, new FileOpenOptions(), ct).ConfigureAwait(false),
-                _ => await c.OpenFileAsync(path, access, new FileOpenOptions(), ct).ConfigureAwait(false),
+                FileMode.Create => await c.OpenOrCreateFileAsync(path, access, SeekableOptions(OpenMode.Truncate), ct).ConfigureAwait(false),
+                FileMode.Truncate => await c.OpenFileAsync(path, access, SeekableOptions(OpenMode.Truncate), ct).ConfigureAwait(false),
+                FileMode.Append => await c.OpenOrCreateFileAsync(path, access, SeekableOptions(OpenMode.Append), ct).ConfigureAwait(false),
+                FileMode.OpenOrCreate => await c.OpenOrCreateFileAsync(path, access, SeekableOptions(), ct).ConfigureAwait(false),
+                _ => await c.OpenFileAsync(path, access, SeekableOptions(), ct).ConfigureAwait(false),
             };
             // Tmds.Ssh 对不存在的文件返回 null 而非抛异常
             return file ?? throw new VelaSftpPathNotFoundException($"File not found: {path}");
@@ -259,6 +272,25 @@ public sealed class TmdsSftpClientWrapper(Func<Task<SftpClient>> clientFactory) 
     }
 
     /// <summary>
+    /// 直接 stat 单个条目;不存在返回 <c>null</c>。
+    /// </summary>
+    /// <remarks>
+    /// followLinks 传 true,与 <see cref="ListEntriesAsync" /> 所用的
+    /// <see cref="Tmds.Ssh.EnumerationOptions" /> 默认值(FollowFileLinks / FollowDirectoryLinks 均为 true)
+    /// 保持一致 —— 否则"指向目录的符号链接"会被判成非目录,删除/复制的递归分支就会走错。
+    /// </remarks>
+    public Task<SftpEntry?> GetEntryAsync(string path, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return GuardedAsync<SftpEntry?>(async () =>
+        {
+            FileEntryAttributes? attrs = await EnsureClient()
+                .GetAttributesAsync(path, true, null, ct).ConfigureAwait(false);
+            return attrs is null ? null : MapEntry(path, attrs);
+        }, ct);
+    }
+
+    /// <summary>
     /// Uploads a file to the specified path on the SFTP server, resuming from the given offset. If the client is not connected, an <see cref="InvalidOperationException" /> is thrown.
     /// </summary>
     /// <param name="input"></param>
@@ -274,21 +306,39 @@ public sealed class TmdsSftpClientWrapper(Func<Task<SftpClient>> clientFactory) 
         return GuardedAsync(async () =>
         {
             SftpClient c = EnsureClient();
-            if (resumeOffset > 0)
-            {
-                input.Seek(resumeOffset, SeekOrigin.Begin);
-                using SftpFile r = await c.OpenFileAsync(path, FileAccess.Write, new FileOpenOptions(), ct).ConfigureAwait(false)
-                    ?? throw new VelaSftpPathNotFoundException($"File not found: {path}");
-                r.Seek(0, SeekOrigin.End);
-                byte[] b = new byte[32 * 1024]; long t = 0; int n;
-                while ((n = await input.ReadAsync(b, ct).ConfigureAwait(false)) > 0)
-                {
-                    await r.WriteAsync(b.AsMemory(0, n), ct).ConfigureAwait(false); t += n; cb?.Invoke((ulong)(resumeOffset + t));
-                }
-            }
-            else
+            if (resumeOffset <= 0)
             {
                 await c.UploadFileAsync(input, path, overwrite: true, progress: ToProgress(cb), cancellationToken: ct).ConfigureAwait(false);
+                return;
+            }
+            input.Seek(resumeOffset, SeekOrigin.Begin);
+            await using SftpFile remote = await c.OpenFileAsync(path, FileAccess.Write, new FileOpenOptions(), ct).ConfigureAwait(false)
+                ?? throw new VelaSftpPathNotFoundException($"File not found: {path}");
+
+            // 32KB 一块在高延迟链路上往返次数过多;256KB 显著减少 SFTP 往返。
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(ResumeChunkSize);
+            try
+            {
+                long written = 0;
+                int read;
+                while ((read = await input.ReadAsync(buffer.AsMemory(0, ResumeChunkSize), ct).ConfigureAwait(false)) > 0)
+                {
+                    // 用绝对偏移写(WriteAtAsync),不依赖文件内部位置。
+                    // 原先是 Seek(offset) + 顺序 WriteAsync:位置是隐式状态,一旦被扰动就静默错位,
+                    // 而且"写到哪"与"从哪读"是两处独立推进的,对不上也没人发现。
+                    // 续传起点本身由 Core 的 SftpService.ResolveUploadResumeAsync 负责核实。
+                    await remote.WriteAtAsync(buffer.AsMemory(0, read), resumeOffset + written, ct).ConfigureAwait(false);
+                    written += read;
+                    cb?.Invoke((ulong)(resumeOffset + written));
+                }
+
+                // 必须显式异步关闭:同步 Dispose 不保证挂起的写入已经落地、也不保证把失败抛出来,
+                // 表现就是"上传显示完成,远端文件尾部却缺字节"。
+                await remote.CloseAsync(ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
             }
         }, ct);
     }
@@ -297,6 +347,26 @@ public sealed class TmdsSftpClientWrapper(Func<Task<SftpClient>> clientFactory) 
     /// Disposes the SFTP client and releases all resources.
     /// </summary>
     public void Dispose() { if (_disposed) return; _disposed = true; _client?.Dispose(); _client = null; GC.SuppressFinalize(this); }
+
+    /// <summary>
+    /// 构造可 Seek 的打开选项。
+    /// <para>
+    /// <see cref="ISftpClientWrapper.OpenAsync" /> 的契约要求返回的流支持 Seek(续传起点校验、
+    /// 断点续传下载都要按偏移定位)。而 <see cref="FileOpenOptions" /> 的默认值是
+    /// <c>Seekable = false</c> 且 <c>CacheLength = false</c>,此时 <c>SftpFile.Seek</c> 会直接抛出
+    /// <see cref="NotSupportedException" /> —— 症状就是"上传一半取消后再传同一个文件必报错"。
+    /// </para>
+    /// <para>
+    /// 两个开关互相独立、缺一不可:<c>CanSeek</c> 由 <c>Seekable</c> 决定,而 <c>Seek</c> 内部还要求
+    /// 长度已缓存(<c>CacheLength</c>)。代价是打开时多一次取属性的往返,相对传输本身可忽略。
+    /// </para>
+    /// </summary>
+    private static FileOpenOptions SeekableOptions(OpenMode mode = OpenMode.Default) => new()
+    {
+        OpenMode = mode,
+        Seekable = true,
+        CacheLength = true,
+    };
 
     private SftpClient EnsureClient() => _client ?? throw new InvalidOperationException("Not connected.");
 

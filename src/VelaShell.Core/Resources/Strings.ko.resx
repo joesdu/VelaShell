@@ -2806,4 +2806,10 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="TunnelHelp_Close" xml:space="preserve">
     <value>닫기</value>
   </data>
+  <data name="SftpSvc_ResumeUploadMismatch" xml:space="preserve">
+    <value>{0}을(를) 이어서 업로드할 수 없습니다. 원격에 있는 기존 파일이 이 로컬 파일의 앞부분이 아닙니다. 원격 파일을 삭제하거나 전체를 다시 업로드하세요.</value>
+  </data>
+  <data name="SftpSvc_ResumeDownloadMismatch" xml:space="preserve">
+    <value>{0}을(를) 이어서 내려받을 수 없습니다. 로컬에 남은 파일이 이 원격 파일의 앞부분이 아닙니다. 로컬 파일을 삭제하거나 전체를 다시 내려받으세요.</value>
+  </data>
 </root>

@@ -14,10 +14,10 @@ public sealed class SerializedSftpServiceTests
         var inner = new BlockingSftpService(blockFirstOperation: true);
         var service = new SerializedSftpService(inner, inner.SessionId);
 
-        // When
+        // When —— 全部用元数据操作:传输已刻意不占串行闸,见下面两个专门的测试。
         Task<List<RemoteFileInfo>> list = service.ListDirectoryAsync(inner.SessionId, "/");
         await inner.WaitForFirstOperationAsync();
-        Task upload = service.UploadFileAsync(inner.SessionId, "local", "/upload");
+        Task ensure = service.EnsureDirectoryAsync(inner.SessionId, "/ensure");
         Task delete = service.DeleteAsync(inner.SessionId, "/delete");
         Task close = service.CloseAsync();
         Task<RemoteFileInfo> afterClose = service.GetFileInfoAsync(inner.SessionId, "/after-close");
@@ -25,13 +25,59 @@ public sealed class SerializedSftpServiceTests
 
         // Then
         await list;
-        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => upload);
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => ensure);
         await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => delete);
         await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => afterClose);
         await close;
         Assert.AreEqual(1, inner.MaximumConcurrency);
         Assert.AreEqual(1, inner.CloseCalls);
         Assert.AreSequenceEqual(["ListDirectory", "CloseSession"], inner.OperationNames);
+    }
+
+    /// <summary>
+    /// 传输不占串行闸:一次 GB 级上传跑几十分钟,期间面板的目录刷新必须照常可用。
+    /// 这条也是"最大并发传输数"设置能真正生效的前提 —— 单闸会把它悄悄压回 1。
+    /// </summary>
+    [TestMethod]
+    public async Task Transfer_WhenInFlight_DoesNotBlockMetadataOperations()
+    {
+        // Given:一个卡住不返回的上传占着传输路径。
+        var inner = new BlockingSftpService(blockFirstOperation: true);
+        var service = new SerializedSftpService(inner, inner.SessionId);
+        Task upload = service.UploadFileAsync(inner.SessionId, "local", "/big.bin");
+        await inner.WaitForFirstOperationAsync();
+
+        // When / Then:目录刷新不该排在这次上传后面。
+        await service.ListDirectoryAsync(inner.SessionId, "/").WaitAsync(TimeSpan.FromSeconds(10));
+
+        inner.ReleaseFirstOperation();
+        await upload;
+        Assert.AreEqual(2, inner.MaximumConcurrency, "传输与元数据操作应能并行");
+    }
+
+    /// <summary>
+    /// 传输虽然不占闸,但仍计入在途:关闭必须等它跑完,不能把连接从底下抽掉。
+    /// </summary>
+    [TestMethod]
+    public async Task CloseAsync_WhenTransferInFlight_StillDrainsItBeforeClosingTheSession()
+    {
+        // Given
+        var inner = new BlockingSftpService(blockFirstOperation: true);
+        var service = new SerializedSftpService(inner, inner.SessionId);
+        Task upload = service.UploadFileAsync(inner.SessionId, "local", "/big.bin");
+        await inner.WaitForFirstOperationAsync();
+
+        // When
+        Task close = service.CloseAsync();
+
+        // Then
+        Assert.IsFalse(close.IsCompleted, "because close must wait for the in-flight transfer");
+        Assert.AreEqual(0, inner.CloseCalls);
+        inner.ReleaseFirstOperation();
+        await upload;
+        await close;
+        Assert.AreEqual(1, inner.CloseCalls);
+        Assert.AreSequenceEqual(["Upload", "CloseSession"], inner.OperationNames);
     }
 
     [TestMethod]

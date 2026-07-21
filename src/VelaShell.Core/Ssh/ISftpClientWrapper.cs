@@ -88,8 +88,14 @@ public interface ISftpClientWrapper : IDisposable
     Task ChangePermissionsAsync(string path, short mode, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 以读或写方式打开远端文件。需支持断点续传的上传时,
-    /// 请结合 <see cref="FileMode.Append"/> 与 <see cref="FileAccess.Write"/> 使用。
+    /// 以读或写方式打开远端文件。
+    /// <para>
+    /// **实现必须返回可 Seek 的流**(<see cref="Stream.CanSeek" /> 为 <c>true</c>):
+    /// 续传起点校验与断点续传下载都要按绝对偏移定位。部分 SSH 库默认打开的是不可定位的流,
+    /// 需要显式开启相应选项。断点续传上传请改用带 <c>resumeOffset</c> 的
+    /// <see cref="UploadAsync(Stream, string, long, Action{ulong}, CancellationToken)" /> 重载,
+    /// 不要用 <see cref="FileMode.Append" /> 自行拼接。
+    /// </para>
     /// </summary>
     Task<Stream> OpenAsync(string path, FileMode mode, FileAccess access, CancellationToken cancellationToken = default);
 
@@ -99,8 +105,30 @@ public interface ISftpClientWrapper : IDisposable
     Task<long> GetFileSizeAsync(string path, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 直接 stat 单个远端条目,不存在时返回 <c>null</c>。
+    /// <para>
+    /// 用于替代"列举父目录再从中挑一条"的做法 —— 后者在父目录条目很多时代价极高
+    /// (批量传输会退化成每个文件一次全目录列举)。跟随符号链接,与
+    /// <see cref="ListDirectoryAsync" /> 的默认枚举语义保持一致。
+    /// </para>
+    /// </summary>
+    Task<SftpEntry?> GetEntryAsync(string path, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 将流上传到远端路径,写入前先定位到 <paramref name="resumeOffset"/> 字节处。
     /// 用于断点续传上传。
     /// </summary>
     Task UploadAsync(Stream input, string path, long resumeOffset, Action<ulong>? uploadCallback = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 断点续传前必须从"当前文件长度"回退的字节数。
+    /// <para>
+    /// 底层库为了吞吐会同时投递多个写缓冲区,它们的完成顺序不保证与偏移顺序一致。
+    /// 传输中途断开时,文件长度只代表"已确认的最高偏移",并不代表它之前的每个字节都写进去了 ——
+    /// 中间可能留有读作 0 的空洞。因此不能直接从文件长度处续传:必须回退一整个在途写入窗口,
+    /// 使续传起点之前的数据可信。
+    /// </para>
+    /// <para>返回 0 表示该实现保证写入是连续的,无需回退。</para>
+    /// </summary>
+    long ResumeSafetyMargin { get; }
 }

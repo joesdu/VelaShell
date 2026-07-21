@@ -1,8 +1,10 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 
 namespace VelaShell.Core.Sftp;
@@ -49,52 +51,42 @@ public class SftpService(
         var fileInfo = new FileInfo(localPath);
         long totalBytes = fileInfo.Length;
         string fileName = Path.GetFileName(localPath);
-        var stopwatch = Stopwatch.StartNew();
+        var reporter = new ProgressThrottle(progress, fileName, totalBytes);
+        Action<ulong>? onBytes = reporter.IsEnabled ? bytes => reporter.Report((long)bytes) : null;
         (long uploadBps, _, _) = await GetTransferTuningAsync().ConfigureAwait(false);
 
+        // 以此刻的远端状态重新核实续传起点;核实不通过会抛错,核实为"无可续"则整份重传。
         if (resumeOffset > 0)
         {
-            // 断点续传:使用新的支持偏移的上传路径。
-            Stream fileStream = uploadBps > 0
-                                    ? new ThrottledStream(File.OpenRead(localPath), uploadBps)
-                                    : File.OpenRead(localPath);
-            await using (cancellationToken.Register(() => SafeDispose(fileStream)))
-            {
-                try
-                {
-                    await client.UploadAsync(fileStream, remotePath, resumeOffset, bytesTransferred => { ReportProgress(progress, fileName, (long)bytesTransferred, totalBytes, stopwatch); }, cancellationToken).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is not OperationCanceledException)
-                {
-                    throw new OperationCanceledException(cancellationToken);
-                }
-                finally
-                {
-                    await fileStream.DisposeAsync();
-                }
-            }
+            resumeOffset = await ResolveUploadResumeAsync(client, remotePath, localPath, totalBytes, resumeOffset, cancellationToken).ConfigureAwait(false);
         }
-        else
+
+        // 续传与全新上传只差一个偏移量参数,其余(限速包装、收尾上报)完全一致。
+        Stream source = OpenLocalRead(localPath);
+        Stream fileStream = uploadBps > 0 ? new ThrottledStream(source, uploadBps) : source;
+        try
         {
-            // 全新上传:原始的截断并写入路径。
-            Stream fileStream = uploadBps > 0
-                                    ? new ThrottledStream(File.OpenRead(localPath), uploadBps)
-                                    : File.OpenRead(localPath);
-            await using (cancellationToken.Register(() => SafeDispose(fileStream)))
+            if (resumeOffset > 0)
             {
-                try
-                {
-                    await client.UploadAsync(fileStream, remotePath, bytesTransferred => { ReportProgress(progress, fileName, (long)bytesTransferred, totalBytes, stopwatch); }, cancellationToken).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is not OperationCanceledException)
-                {
-                    throw new OperationCanceledException(cancellationToken);
-                }
-                finally
-                {
-                    await fileStream.DisposeAsync();
-                }
+                await client.UploadAsync(fileStream, remotePath, resumeOffset, onBytes, cancellationToken).ConfigureAwait(false);
             }
+            else
+            {
+                await client.UploadAsync(fileStream, remotePath, onBytes, cancellationToken).ConfigureAwait(false);
+            }
+
+            // 节流会丢弃最后一个时间片内的上报,不强制收尾进度条会停在 99%。
+            reporter.ReportFinal(totalBytes);
+        }
+        catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is not OperationCanceledException)
+        {
+            // 兜底:取消后连接被撕掉之类的场景可能先冒出 IO 错误,统一归一为取消。
+            // 正常路径不会走到这里 —— 底层库自己就响应 CancellationToken 并抛 OperationCanceledException。
+            throw new OperationCanceledException(cancellationToken);
+        }
+        finally
+        {
+            await fileStream.DisposeAsync().ConfigureAwait(false);
         }
     }
 
@@ -110,49 +102,60 @@ public class SftpService(
         string fileName = GetUnixFileName(remotePath);
         RemoteFileInfo fileInfo = await GetFileInfoAsync(sessionId, remotePath, cancellationToken).ConfigureAwait(false);
         long totalBytes = fileInfo.Size;
-        var stopwatch = Stopwatch.StartNew();
+        var reporter = new ProgressThrottle(progress, fileName, totalBytes);
         (_, long downloadBps, bool preserveTimestamps) = await GetTransferTuningAsync().ConfigureAwait(false);
+
+        // 以此刻本地残留文件的实际长度重新核实续传起点(理由同上传侧)。
+        if (resumeOffset > 0)
+        {
+            resumeOffset = await ResolveDownloadResumeAsync(client, remotePath, localPath, totalBytes, resumeOffset, cancellationToken).ConfigureAwait(false);
+        }
 
         if (resumeOffset > 0)
         {
-            // 断点续传下载:向不完整的本地文件追加。
-            await using Stream localStream = new FileStream(localPath, FileMode.Append, FileAccess.Write, FileShare.None);
-            // 从偏移处分块拷贝下载远端内容。
-            using Stream remoteStream = await client.OpenAsync(remotePath, FileMode.Open, FileAccess.Read, cancellationToken).ConfigureAwait(false);
+            // 断点续传下载:从核实过的起点续写。
+            // 不能用 FileMode.Append —— 它追加在"文件实际末尾",而续传起点已经回退过一个在途
+            // 写入窗口,两者对不上就会在文件里留下空隙。这里显式截断到起点再定位过去,
+            // 顺便丢掉起点之后那段可能含空洞的可疑残留。
+            await using var localStream = new FileStream(localPath, FileMode.Open, FileAccess.Write, FileShare.None,
+                LocalStreamBufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            localStream.SetLength(resumeOffset);
+            localStream.Seek(resumeOffset, SeekOrigin.Begin);
+            // 从偏移处分块拷贝下载远端内容。远端流用 await using:同步 Dispose 会阻塞在网络关闭上。
+            await using Stream remoteStream = await client.OpenAsync(remotePath, FileMode.Open, FileAccess.Read, cancellationToken).ConfigureAwait(false);
             remoteStream.Seek(resumeOffset, SeekOrigin.Begin);
 
-            byte[] buffer = new byte[32 * 1024];
+            // 32KB 一次往返对高延迟链路太小;续传路径是自己搬字节,块大些能显著减少往返次数。
+            byte[] buffer = new byte[256 * 1024];
             long bytesRead = 0;
             int read;
             while ((read = await remoteStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
             {
                 await localStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
                 bytesRead += read;
-                ReportProgress(progress, fileName, resumeOffset + bytesRead, totalBytes, stopwatch);
+                reporter.Report(resumeOffset + bytesRead);
             }
+            reporter.ReportFinal(resumeOffset + bytesRead);
         }
         else
         {
-            Stream fileStream = downloadBps > 0
-                                    ? new ThrottledStream(File.Create(localPath), downloadBps)
-                                    : File.Create(localPath);
+            Stream sink = OpenLocalWrite(localPath);
+            Stream fileStream = downloadBps > 0 ? new ThrottledStream(sink, downloadBps) : sink;
+            Action<ulong>? onBytes = reporter.IsEnabled ? bytes => reporter.Report((long)bytes) : null;
 
-            // 参见 UploadFileAsync:回调运行在脱离的线程池线程上,因此我们通过
-            // 释放自己的流(使工作线程的写入失败)来取消,而非从中抛出异常。
-            await using (cancellationToken.Register(() => SafeDispose(fileStream)))
+            try
             {
-                try
-                {
-                    await client.DownloadAsync(remotePath, fileStream, bytesTransferred => { ReportProgress(progress, fileName, (long)bytesTransferred, totalBytes, stopwatch); }, cancellationToken).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is not OperationCanceledException)
-                {
-                    throw new OperationCanceledException(cancellationToken);
-                }
-                finally
-                {
-                    await fileStream.DisposeAsync();
-                }
+                await client.DownloadAsync(remotePath, fileStream, onBytes, cancellationToken).ConfigureAwait(false);
+                reporter.ReportFinal(totalBytes);
+            }
+            catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is not OperationCanceledException)
+            {
+                // 兜底,理由同 UploadFileAsync。
+                throw new OperationCanceledException(cancellationToken);
+            }
+            finally
+            {
+                await fileStream.DisposeAsync().ConfigureAwait(false);
             }
         }
 
@@ -174,15 +177,11 @@ public class SftpService(
     public async Task DeleteAsync(Guid sessionId, string remotePath, IProgress<SftpDeleteProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        if (!await client.ExistsAsync(remotePath, cancellationToken).ConfigureAwait(false))
-        {
-            throw new FileNotFoundException($"Remote path not found: {remotePath}");
-        }
-        string parentDir = GetUnixParentDirectory(remotePath);
-        string name = GetUnixFileName(remotePath);
-        IEnumerable<SftpEntry> siblings = await client.ListDirectoryAsync(parentDir, cancellationToken).ConfigureAwait(false);
-        SftpEntry? entry = siblings.FirstOrDefault(f => f.Name == name);
-        bool isDirectory = entry is { IsDirectory: true };
+
+        // 一次 stat 同时回答"存在吗"和"是不是目录";旧实现是 Exists + 列举整个父目录两趟。
+        SftpEntry entry = await client.GetEntryAsync(remotePath, cancellationToken).ConfigureAwait(false)
+                          ?? throw new FileNotFoundException($"Remote path not found: {remotePath}");
+        bool isDirectory = entry.IsDirectory;
         int total = await CountEntriesAsync(client, remotePath, isDirectory, cancellationToken).ConfigureAwait(false);
 
         // 先发出一个 "0 / total" 的进度点,使 UI 能立即切换到确定型进度。
@@ -263,13 +262,9 @@ public class SftpService(
         CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        RemoteIdentityMap identities = await _identities.GetAsync(sessionId).ConfigureAwait(false);
 
-        // 通过 stat 判断源是否为目录。
-        string parentDir = GetUnixParentDirectory(sourcePath);
-        string name = GetUnixFileName(sourcePath);
-        IEnumerable<SftpEntry> siblings = await client.ListDirectoryAsync(parentDir, cancellationToken).ConfigureAwait(false);
-        SftpEntry? entry = siblings.FirstOrDefault(f => f.Name == name);
+        // 通过 stat 判断源是否为目录(旧实现名为 stat 实为列举整个父目录)。
+        SftpEntry? entry = await client.GetEntryAsync(sourcePath, cancellationToken).ConfigureAwait(false);
         bool isDir = entry is { IsDirectory: true };
 
         if (!isDir)
@@ -378,10 +373,11 @@ public class SftpService(
     public async Task<RemoteFileInfo> GetFileInfoAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        string parentDir = GetUnixParentDirectory(remotePath);
-        string fileName = GetUnixFileName(remotePath);
-        IEnumerable<SftpEntry> files = await client.ListDirectoryAsync(parentDir, cancellationToken).ConfigureAwait(false);
-        SftpEntry? file = files.FirstOrDefault(f => f.Name == fileName) ?? throw new FileNotFoundException($"File not found: {remotePath}");
+
+        // 一次 stat 即可。旧实现是列举整个父目录再从中挑一条:父目录上万条时代价极高,
+        // 而且每次下载都会先走这里 —— 批量传 N 个文件就是 N 次全目录列举。
+        SftpEntry file = await client.GetEntryAsync(remotePath, cancellationToken).ConfigureAwait(false)
+                         ?? throw new FileNotFoundException($"File not found: {remotePath}");
         RemoteIdentityMap identities = await _identities.GetAsync(sessionId).ConfigureAwait(false);
         return MapToRemoteFileInfo(file, identities);
     }
@@ -453,6 +449,152 @@ public class SftpService(
         await ValueTask.CompletedTask.ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }
+
+    /// <summary>大文件传输用的本地流缓冲区(1MB):把 GB 级文件的系统调用次数压到千级。</summary>
+    private const int LocalStreamBufferSize = 1024 * 1024;
+
+    /// <summary>续传前比对的尾部字节数:够识别"同名不同文件",又只值一次往返。</summary>
+    private const int ResumeVerifyBytes = 64 * 1024;
+
+    /// <summary>
+    /// 核实一次上传的续传起点。
+    /// <para>
+    /// 调用方给出的 <paramref name="claimedOffset" /> 是更早之前探测远端大小得到的,从探测到
+    /// 真正开始写之间隔着冲突对话框和传输队列,远端文件完全可能已经变了 —— 直接照着旧偏移
+    /// 追加会静默产出损坏文件。这里以"此刻的远端长度"为准,并比对尾部字节确认远端那半截
+    /// 确实是本地文件的前缀。
+    /// </para>
+    /// </summary>
+    /// <returns>经核实的续传偏移量;返回 0 表示没有可续的半截,应整份重传。</returns>
+    private async Task<long> ResolveUploadResumeAsync(ISftpClientWrapper client,
+        string remotePath,
+        string localPath,
+        long localLength,
+        long claimedOffset,
+        CancellationToken cancellationToken)
+    {
+        long remoteLength = await client.GetFileSizeAsync(remotePath, cancellationToken).ConfigureAwait(false);
+
+        // 远端不存在/为空,或已不短于本地:都不构成"传了一半",退化为整份重传(覆盖写)。
+        if (remoteLength <= 0 || remoteLength >= localLength)
+        {
+            return 0;
+        }
+
+        // 回退一整个在途写入窗口:文件长度只是"已确认的最高偏移",它之前可能还留着未落盘的空洞
+        // (见 ISftpClientWrapper.ResumeSafetyMargin)。不回退的话尾部比对会落在已写入的那段上
+        // 顺利通过,却从一个带洞的位置接着传 —— 那正是"续传出来的文件是坏的"的成因。
+        long candidate = remoteLength - client.ResumeSafetyMargin;
+        if (candidate <= 0)
+        {
+            return 0;
+        }
+        await using Stream remote = await client.OpenAsync(remotePath, FileMode.Open, FileAccess.Read, cancellationToken).ConfigureAwait(false);
+        await using Stream local = OpenLocalRead(localPath);
+        if (!await TailMatchesAsync(remote, local, candidate, cancellationToken).ConfigureAwait(false))
+        {
+            throw new VelaSftpResumeMismatchException(Strings.Format("SftpSvc_ResumeUploadMismatch", remotePath));
+        }
+        return candidate;
+    }
+
+    /// <summary>
+    /// 核实一次下载的续传起点,理由同 <see cref="ResolveUploadResumeAsync" />:
+    /// 以"此刻本地文件的实际长度"为准,并比对尾部确认本地那半截确实是远端文件的前缀。
+    /// </summary>
+    /// <returns>经核实的续传偏移量;返回 0 表示应整份重下(覆盖本地残留)。</returns>
+    private async Task<long> ResolveDownloadResumeAsync(ISftpClientWrapper client,
+        string remotePath,
+        string localPath,
+        long remoteLength,
+        long claimedOffset,
+        CancellationToken cancellationToken)
+    {
+        var local = new FileInfo(localPath);
+        if (!local.Exists)
+        {
+            return 0;
+        }
+        long localLength = local.Length;
+        if (localLength <= 0 || localLength >= remoteLength)
+        {
+            return 0;
+        }
+
+        // 同样回退在途写入窗口:下载侧的本地文件也是底层库并发写出来的,中断后尾部一样可能有空洞。
+        long candidate = localLength - client.ResumeSafetyMargin;
+        if (candidate <= 0)
+        {
+            return 0;
+        }
+        await using Stream remoteStream = await client.OpenAsync(remotePath, FileMode.Open, FileAccess.Read, cancellationToken).ConfigureAwait(false);
+        await using Stream localStream = OpenLocalRead(localPath);
+        if (!await TailMatchesAsync(remoteStream, localStream, candidate, cancellationToken).ConfigureAwait(false))
+        {
+            throw new VelaSftpResumeMismatchException(Strings.Format("SftpSvc_ResumeDownloadMismatch", remotePath));
+        }
+        return candidate;
+    }
+
+    /// <summary>
+    /// 比对两个流在 <c>[offset - N, offset)</c> 区间的内容是否一致(N 最多
+    /// <see cref="ResumeVerifyBytes" />)。两个流都会被定位,调用方不应依赖其原位置。
+    /// </summary>
+    private static async Task<bool> TailMatchesAsync(Stream first, Stream second, long offset, CancellationToken cancellationToken)
+    {
+        // 契约兜底:不可 Seek 的流会让下面的定位抛出底层库的裸 NotSupportedException,
+        // 排查时完全看不出是"打开选项没开 Seekable"。这里提前把话说清楚。
+        // (见 ISftpClientWrapper.OpenAsync 的实现必须返回可 Seek 的流。)
+        if (!first.CanSeek || !second.CanSeek)
+        {
+            throw new InvalidOperationException(
+                "Resume verification requires seekable streams; ISftpClientWrapper.OpenAsync must return a stream with CanSeek == true.");
+        }
+        int length = (int)Math.Min(ResumeVerifyBytes, offset);
+        if (length <= 0)
+        {
+            return true;
+        }
+        long start = offset - length;
+        byte[] firstBuffer = ArrayPool<byte>.Shared.Rent(length);
+        byte[] secondBuffer = ArrayPool<byte>.Shared.Rent(length);
+        try
+        {
+            first.Seek(start, SeekOrigin.Begin);
+            await first.ReadExactlyAsync(firstBuffer.AsMemory(0, length), cancellationToken).ConfigureAwait(false);
+            second.Seek(start, SeekOrigin.Begin);
+            await second.ReadExactlyAsync(secondBuffer.AsMemory(0, length), cancellationToken).ConfigureAwait(false);
+            return firstBuffer.AsSpan(0, length).SequenceEqual(secondBuffer.AsSpan(0, length));
+        }
+        catch (EndOfStreamException)
+        {
+            // 说明某一侧在核实期间又变短了 —— 同样属于"不可信的续传起点"。
+            return false;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(firstBuffer);
+            ArrayPool<byte>.Shared.Return(secondBuffer);
+        }
+    }
+
+    /// <summary>
+    /// 打开本地文件供上传读取。
+    /// <para>
+    /// 必须用 <see cref="FileOptions.Asynchronous" />:<c>File.OpenRead</c> 返回的是同步句柄,
+    /// 其上的每次 <c>ReadAsync</c> 都会真正阻塞一个线程池线程。GB 级文件意味着几十万次这样的
+    /// 阻塞读,线程池只能靠每秒注入一两个线程来补偿,表现就是传输跑一阵后长时间停顿再恢复。
+    /// <see cref="FileOptions.SequentialScan" /> 则让系统预读策略匹配顺序整文件读取。
+    /// </para>
+    /// </summary>
+    private static Stream OpenLocalRead(string path) =>
+        new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, LocalStreamBufferSize,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+    /// <summary>打开本地文件供下载写入(截断已有内容);异步句柄的理由同 <see cref="OpenLocalRead" />。</summary>
+    private static Stream OpenLocalWrite(string path) =>
+        new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, LocalStreamBufferSize,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
 
     /// <summary>带宽限制(设置 → 文件传输):返回字节/秒,0 = 不限速。</summary>
     private async Task<(long UploadBps, long DownloadBps, bool PreserveTimestamps)> GetTransferTuningAsync()
@@ -610,51 +752,97 @@ public class SftpService(
         };
     }
 
-    private static void ReportProgress(IProgress<TransferProgress>? progress, string fileName, long bytesTransferred, long totalBytes, Stopwatch stopwatch)
-    {
-        if (progress == null)
-        {
-            return;
-        }
-        double elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
-        double speed = elapsedSeconds > 0 ? bytesTransferred / elapsedSeconds : 0;
-        long remainingBytes = totalBytes - bytesTransferred;
-        TimeSpan estimatedTimeRemaining = speed > 0
-                                              ? TimeSpan.FromSeconds(remainingBytes / speed)
-                                              : TimeSpan.Zero;
-        var transferProgress = new TransferProgress
-        {
-            FileName = fileName,
-            BytesTransferred = bytesTransferred,
-            TotalBytes = totalBytes,
-            Percentage = totalBytes > 0 ? (int)((bytesTransferred * 100) / totalBytes) : 0,
-            SpeedBytesPerSecond = speed,
-            EstimatedTimeRemaining = estimatedTimeRemaining
-        };
-        progress.Report(transferProgress);
-    }
-
     /// <summary>
-    /// 取消时释放流以中止进行中的传输。运行于 <see cref="CancellationToken" /> 回调中,
-    /// 因此绝不能抛出异常,否则 <see cref="CancellationTokenSource.Cancel()" /> 会把聚合异常
-    /// 抛给发起取消的一方。
+    /// 传输进度节流器。
+    /// <para>
+    /// 底层 SFTP 库按分块(约 32KB)触发进度回调,一个 7.7GB 的文件会产生二十多万次回调。
+    /// 上层的 <see cref="Progress{T}" /> 是在 UI 线程上构造的,每次 Report 都会 Post 一个
+    /// 工作项到 Avalonia 调度器,并在其中触发多个 PropertyChanged + 字符串格式化。
+    /// 网络产出速度远高于 UI 线程的消费速度,队列只增不减 —— 表现就是传到 1GB 左右界面
+    /// 长时间卡死、随后又"追上"继续。这里在源头按时间片收敛上报频率。
+    /// </para>
+    /// <para>
+    /// 分块回调可能并发到达且乱序,因此已传字节数取单调最大值,避免进度条回退。
+    /// </para>
     /// </summary>
-    private static void SafeDispose(Stream stream)
+    private sealed class ProgressThrottle(IProgress<TransferProgress>? sink, string fileName, long totalBytes)
     {
-        try
-        {
-            stream.Dispose();
-        }
-        catch
-        {
-            // 尽力而为:传输仍会失败并以已取消的形式上报。
-        }
-    }
+        /// <summary>两次上报之间的最小间隔:每秒最多刷新 10 次界面,足够顺滑且成本可忽略。</summary>
+        private const long MinIntervalMs = 100;
 
-    private static string GetUnixParentDirectory(string remotePath)
-    {
-        int lastSlash = remotePath.LastIndexOf('/');
-        return lastSlash > 0 ? remotePath[..lastSlash] : "/";
+        private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
+        private long _lastReportMs = -MinIntervalMs;
+        private long _maxBytes;
+
+        /// <summary>是否需要上报(sink 为空时全链路短路,连对象分配都省掉)。</summary>
+        public bool IsEnabled => sink is not null;
+
+        /// <summary>按节流策略上报一次进度;间隔不足则丢弃(下一次仍会带上累计值)。</summary>
+        public void Report(long bytesTransferred)
+        {
+            if (sink is null)
+            {
+                return;
+            }
+            long observed = Monotonic(bytesTransferred);
+            long nowMs = _stopwatch.ElapsedMilliseconds;
+            long last = Volatile.Read(ref _lastReportMs);
+            if (nowMs - last < MinIntervalMs)
+            {
+                return;
+            }
+
+            // CAS 抢占本时间片的上报权:并发回调下只有一个线程真正 Report,其余直接返回。
+            if (Interlocked.CompareExchange(ref _lastReportMs, nowMs, last) != last)
+            {
+                return;
+            }
+            Emit(observed, nowMs);
+        }
+
+        /// <summary>无视节流强制上报一次,用于收尾 —— 否则进度会永远停在最后一个时间片的值上。</summary>
+        public void ReportFinal(long bytesTransferred)
+        {
+            if (sink is null)
+            {
+                return;
+            }
+            Emit(Monotonic(bytesTransferred), _stopwatch.ElapsedMilliseconds);
+        }
+
+        private long Monotonic(long bytesTransferred)
+        {
+            long current = Volatile.Read(ref _maxBytes);
+            while (bytesTransferred > current)
+            {
+                long previous = Interlocked.CompareExchange(ref _maxBytes, bytesTransferred, current);
+                if (previous == current)
+                {
+                    return bytesTransferred;
+                }
+                current = previous;
+            }
+            return current;
+        }
+
+        private void Emit(long bytesTransferred, long elapsedMs)
+        {
+            double elapsedSeconds = elapsedMs / 1000d;
+            double speed = elapsedSeconds > 0 ? bytesTransferred / elapsedSeconds : 0;
+            long remainingBytes = totalBytes - bytesTransferred;
+            TimeSpan estimatedTimeRemaining = speed > 0 && remainingBytes > 0
+                                                  ? TimeSpan.FromSeconds(remainingBytes / speed)
+                                                  : TimeSpan.Zero;
+            sink!.Report(new()
+            {
+                FileName = fileName,
+                BytesTransferred = bytesTransferred,
+                TotalBytes = totalBytes,
+                Percentage = totalBytes > 0 ? (int)((bytesTransferred * 100) / totalBytes) : 0,
+                SpeedBytesPerSecond = speed,
+                EstimatedTimeRemaining = estimatedTimeRemaining
+            });
+        }
     }
 
     private static string CombineUnixPath(string directory, string name) =>
