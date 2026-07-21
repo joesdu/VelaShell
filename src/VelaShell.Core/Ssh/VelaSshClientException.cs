@@ -25,3 +25,10 @@ public class VelaSftpPermissionDeniedException(string message, Exception? innerE
 
 /// <summary>SFTP 路径不存在(SSH_FX_NO_SUCH_FILE)。</summary>
 public class VelaSftpPathNotFoundException(string message, Exception? innerException = null) : VelaSftpOperationException(message, innerException);
+
+/// <summary>
+/// 断点续传的前置校验失败:已有的那半截文件并不是本次要传的文件的前缀
+/// (同名不同内容,或续传探测之后目标被改写)。此时继续追加只会产出损坏的文件,
+/// 因此中止并交由用户决定是否整份重传。
+/// </summary>
+public class VelaSftpResumeMismatchException(string message, Exception? innerException = null) : VelaSftpOperationException(message, innerException);

@@ -54,6 +54,27 @@ internal interface ILocalRootProvider
 
 internal sealed class PhysicalLocalFileSystem : ILocalFileSystem
 {
+    /// <summary>
+    /// 列举选项。
+    /// <para>
+    /// <c>IgnoreInaccessible</c>:用户主目录里散落着 Templates、"我的文档"这类
+    /// Hidden+System+ReparsePoint 的兼容性联接点,它们带拒绝 ACL。无参的
+    /// <c>EnumerateFileSystemInfos()</c> 用的是 <c>EnumerationOptions.Compatible</c>
+    /// (IgnoreInaccessible = false),碰到任何一个进不去的子项就让整张列表抛
+    /// <see cref="UnauthorizedAccessException" /> —— 一个打不开的子项不该连累整个目录。
+    /// </para>
+    /// <para>
+    /// <c>AttributesToSkip = 0</c>:必须显式写,否则默认会跳过 Hidden|System,
+    /// 悄悄改掉"隐藏文件照常显示"的既有行为(无参重载是不跳过的)。
+    /// </para>
+    /// </summary>
+    private static readonly EnumerationOptions ListingOptions = new()
+    {
+        AttributesToSkip = 0,
+        IgnoreInaccessible = true,
+        MatchType = MatchType.Win32,
+    };
+
     public Task<IReadOnlyList<LocalFileSystemEntry>> EnumerateAsync(
         string path,
         CancellationToken cancellationToken
@@ -62,15 +83,44 @@ internal sealed class PhysicalLocalFileSystem : ILocalFileSystem
             () =>
             {
                 var entries = new List<LocalFileSystemEntry>();
-                foreach (FileSystemInfo info in new DirectoryInfo(path).EnumerateFileSystemInfos())
+                foreach (
+                    FileSystemInfo info in new DirectoryInfo(path).EnumerateFileSystemInfos(
+                        "*",
+                        ListingOptions
+                    )
+                )
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    bool reparse = info.Attributes.HasFlag(FileAttributes.ReparsePoint);
-                    bool directory = info.Attributes.HasFlag(FileAttributes.Directory);
-                    long size = directory || reparse ? 0 : ((FileInfo)info).Length;
-                    entries.Add(
-                        new(info.Name, info.FullName, directory, size, info.LastWriteTime, reparse)
-                    );
+                    try
+                    {
+                        bool reparse = info.Attributes.HasFlag(FileAttributes.ReparsePoint);
+                        bool directory = info.Attributes.HasFlag(FileAttributes.Directory);
+                        long size = directory || reparse ? 0 : ((FileInfo)info).Length;
+                        entries.Add(
+                            new(
+                                info.Name,
+                                info.FullName,
+                                directory,
+                                size,
+                                info.LastWriteTime,
+                                reparse
+                            )
+                        );
+                    }
+                    catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+                    {
+                        // 条目在列举过程中被删除,或读属性被拒:跳过这一条,不要连累整张列表。
+                    }
+                }
+
+                // IgnoreInaccessible 也会把"没权限进入这个目录本身"变成"空目录",那是对用户撒谎。
+                // 只在空结果时再用严格模式探一次,把拒绝访问如实抛出来(真的空目录则安然通过)。
+                if (entries.Count == 0)
+                {
+                    using IEnumerator<FileSystemInfo> probe = new DirectoryInfo(path)
+                        .EnumerateFileSystemInfos()
+                        .GetEnumerator();
+                    probe.MoveNext();
                 }
                 return entries;
             },

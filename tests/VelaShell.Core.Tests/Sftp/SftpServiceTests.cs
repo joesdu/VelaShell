@@ -105,18 +105,56 @@ public class SftpServiceTests
         using var cts = new CancellationTokenSource();
         try
         {
-            // Simulate the user cancelling mid-transfer: our token registration disposes the source
-            // stream, so the underlying transfer fails with an IOException-style error. The service
-            // must normalise that to a clean OperationCanceledException (never re-throw from the
-            // progress callback, which SSH.NET runs on a detached thread and would crash the app).
+            // 兜底路径:取消之后连接被撕掉,底层先冒出的是 IO 错误而不是取消异常。
+            // 服务必须把它归一成干净的 OperationCanceledException,别让 IOException 漏到上层
+            // 被当成"传输失败"而标红。
             _sftpClient.UploadAsync(Arg.Any<Stream>(), "/home/user/up.txt",
                            Arg.Any<Action<ulong>?>(), Arg.Any<CancellationToken>())
                        .Returns(_ =>
                        {
                            cts.Cancel();
-                           throw new IOException("stream closed by cancellation");
+                           throw new IOException("connection torn down by cancellation");
                        });
             await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => _sftpService.UploadFileAsync(_sessionId, localPath, "/home/user/up.txt", null, cancellationToken: cts.Token));
+        }
+        finally
+        {
+            File.Delete(localPath);
+        }
+    }
+
+    /// <summary>
+    /// 正常取消路径:底层库自己响应 CancellationToken 抛出 OperationCanceledException,
+    /// 服务原样放行 —— 不额外包一层、也不产生任何多余的异常。
+    /// <para>
+    /// 这条锁定的是"取消不该制造噪音"。早先的实现会在取消时把本地流 Dispose 掉
+    /// (SSH.NET 时代的绕行手法,那时传输不响应取消),导致库内部先抛
+    /// ObjectDisposedException/IOException,再被翻译成取消 —— 一次取消白白多出两个异常,
+    /// 还和正在读写该流的工作线程赛跑。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task UploadFileAsync_WhenLibraryHonoursTheToken_PropagatesCancellationWithoutExtraExceptions()
+    {
+        string localPath = Path.Combine(Path.GetTempPath(), $"vela-up-{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(localPath, "payload");
+        using var cts = new CancellationTokenSource();
+        var thrown = new OperationCanceledException(cts.Token);
+        try
+        {
+            _sftpClient.UploadAsync(Arg.Any<Stream>(), "/home/user/up.txt",
+                           Arg.Any<Action<ulong>?>(), Arg.Any<CancellationToken>())
+                       .Returns(_ =>
+                       {
+                           cts.Cancel();
+                           throw thrown;
+                       });
+
+            OperationCanceledException actual = await Assert.ThrowsExactlyAsync<OperationCanceledException>(
+                () => _sftpService.UploadFileAsync(_sessionId, localPath, "/home/user/up.txt", null, cancellationToken: cts.Token));
+
+            // 同一个实例原样上抛,证明没有被重新包装(重新包装 = 又多一个异常)。
+            Assert.AreSame(thrown, actual);
         }
         finally
         {
@@ -222,8 +260,7 @@ public class SftpServiceTests
         string localPath = Path.Combine(Path.GetTempPath(), $"download_{Guid.NewGuid()}.bin");
         string remotePath = "/home/user/remote.bin";
         SftpEntry mockFile = CreateMockSftpFile("remote.bin", remotePath, 2048, false, "rw-r--r--");
-        _sftpClient.ListDirectoryAsync("/home/user", Arg.Any<CancellationToken>())
-                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([mockFile]));
+        _sftpClient.GetEntryAsync(remotePath, Arg.Any<CancellationToken>()).Returns(mockFile);
         _sftpClient.DownloadAsync(remotePath,
                        Arg.Any<Stream>(),
                        Arg.Do<Action<ulong>?>(callback =>
@@ -268,9 +305,7 @@ public class SftpServiceTests
         // Arrange
         string remotePath = "/home/user/todelete.txt";
         SftpEntry mockFile = CreateMockSftpFile("todelete.txt", remotePath, 1024, false, "rw-r--r--");
-        _sftpClient.ExistsAsync(remotePath, Arg.Any<CancellationToken>()).Returns(true);
-        _sftpClient.ListDirectoryAsync("/home/user", Arg.Any<CancellationToken>())
-                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([mockFile]));
+        _sftpClient.GetEntryAsync(remotePath, Arg.Any<CancellationToken>()).Returns(mockFile);
 
         // Act
         await _sftpService.DeleteAsync(_sessionId, remotePath);
@@ -278,6 +313,9 @@ public class SftpServiceTests
         // Assert
         await _sftpClient.Received(1).DeleteFileAsync(remotePath, Arg.Any<CancellationToken>());
         await _sftpClient.DidNotReceive().DeleteDirectoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        // 单次 stat 就该回答"存在吗 + 是不是目录",不该再去列举父目录。
+        await _sftpClient.DidNotReceive().ListDirectoryAsync("/home/user", Arg.Any<CancellationToken>());
     }
 
     [TestMethod]
@@ -299,9 +337,7 @@ public class SftpServiceTests
         // Arrange
         string remotePath = "/home/user/mydir";
         SftpEntry mockDir = CreateMockSftpFile("mydir", remotePath, 0, true, "rwxr-xr-x");
-        _sftpClient.ExistsAsync(remotePath, Arg.Any<CancellationToken>()).Returns(true);
-        _sftpClient.ListDirectoryAsync("/home/user", Arg.Any<CancellationToken>())
-                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([mockDir]));
+        _sftpClient.GetEntryAsync(remotePath, Arg.Any<CancellationToken>()).Returns(mockDir);
         _sftpClient.ListDirectoryAsync(remotePath, Arg.Any<CancellationToken>())
                    .Returns(Task.FromResult<IEnumerable<SftpEntry>>([]));
 
@@ -321,9 +357,7 @@ public class SftpServiceTests
         SftpEntry childFile = CreateMockSftpFile("a.txt", "/home/user/proj/a.txt", 10, false, "rw-r--r--");
         SftpEntry childSub = CreateMockSftpFile("sub", "/home/user/proj/sub", 0, true, "rwxr-xr-x");
         SftpEntry grandchild = CreateMockSftpFile("b.txt", "/home/user/proj/sub/b.txt", 20, false, "rw-r--r--");
-        _sftpClient.ExistsAsync(dir, Arg.Any<CancellationToken>()).Returns(true);
-        _sftpClient.ListDirectoryAsync("/home/user", Arg.Any<CancellationToken>())
-                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([mockDir])); // parent listing → proj is a directory
+        _sftpClient.GetEntryAsync(dir, Arg.Any<CancellationToken>()).Returns(mockDir); // stat → proj 是目录
         _sftpClient.ListDirectoryAsync(dir, Arg.Any<CancellationToken>())
                    .Returns(Task.FromResult<IEnumerable<SftpEntry>>([childFile, childSub]));
         _sftpClient.ListDirectoryAsync("/home/user/proj/sub", Arg.Any<CancellationToken>())
@@ -434,14 +468,53 @@ public class SftpServiceTests
         await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath,
             new SynchronousProgress<TransferProgress>(p => progressReports.Add(p)));
 
-        // Assert
-        Assert.IsGreaterThanOrEqualTo(4, progressReports.Count);
-        Assert.Contains(p => p.Percentage is >= 25 and < 35, progressReports);
-        Assert.Contains(p => p.Percentage is >= 50 and < 60, progressReports);
-        Assert.Contains(p => p.Percentage is >= 75 and < 85, progressReports);
-        Assert.AreEqual(100, progressReports.Last().Percentage);
+        // Assert —— 进度上报按时间片节流(见 SftpService.ProgressThrottle),因此不保证
+        // "每个底层回调都对应一次上报"。这里断言的是真正的契约:立刻有首帧、单调不回退、
+        // 收尾必达 100%。
+        Assert.IsGreaterThanOrEqualTo(1, progressReports.Count);
+        Assert.AreEqual(100, progressReports[^1].Percentage);
+        Assert.AreEqual(10000, progressReports[^1].BytesTransferred);
+        CollectionAssert.AreEqual(
+            progressReports.Select(p => p.BytesTransferred).OrderBy(b => b).ToList(),
+            progressReports.Select(p => p.BytesTransferred).ToList(),
+            "进度必须单调不回退");
 
         // Cleanup
+        File.Delete(localPath);
+    }
+
+    /// <summary>
+    /// 底层按分块回调,GB 级文件会产生几十万次;若 1:1 转成 IProgress 上报会灌爆 UI 调度器
+    /// (表现为传输到 1GB 左右界面长时间卡死)。这里证明节流确实把洪流收敛掉了。
+    /// </summary>
+    [TestMethod]
+    public async Task UploadFileAsync_FloodOfCallbacks_IsThrottledButStillReaches100()
+    {
+        string localPath = Path.GetTempFileName();
+        const int total = 100_000;
+        await File.WriteAllBytesAsync(localPath, new byte[total]);
+        string remotePath = "/home/user/flood.bin";
+        var progressReports = new List<TransferProgress>();
+        _sftpClient.UploadAsync(Arg.Any<Stream>(),
+                       remotePath,
+                       Arg.Do<Action<ulong>?>(callback =>
+                       {
+                           for (ulong sent = 1; sent <= total; sent++)
+                           {
+                               callback?.Invoke(sent);
+                           }
+                       }),
+                       Arg.Any<CancellationToken>())
+                   .Returns(Task.CompletedTask);
+
+        await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath,
+            new SynchronousProgress<TransferProgress>(p => progressReports.Add(p)));
+
+        // 十万次回调必须被压到极少数几次(首帧 + 每 100ms 一帧 + 收尾),绝不是十万次。
+        Assert.IsLessThan(100, progressReports.Count,
+            $"节流失效:{total} 次回调产生了 {progressReports.Count} 次上报");
+        Assert.AreEqual(100, progressReports[^1].Percentage);
+
         File.Delete(localPath);
     }
 
@@ -451,8 +524,7 @@ public class SftpServiceTests
         // Arrange
         string remotePath = "/home/user/info.txt";
         SftpEntry mockFile = CreateMockSftpFile("info.txt", remotePath, 4096, false, "rw-r--r--");
-        _sftpClient.ListDirectoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([mockFile]));
+        _sftpClient.GetEntryAsync(remotePath, Arg.Any<CancellationToken>()).Returns(mockFile);
 
         // Act
         RemoteFileInfo result = await _sftpService.GetFileInfoAsync(_sessionId, remotePath);
@@ -463,6 +535,20 @@ public class SftpServiceTests
         Assert.AreEqual(remotePath, result.FullPath);
         Assert.AreEqual(4096L, result.Size);
         Assert.IsFalse(result.IsDirectory);
+
+        // 单个文件的 stat 绝不能退化成列举整个父目录 —— 父目录上万条时那是灾难性的。
+        await _sftpClient.DidNotReceive().ListDirectoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>路径不存在时 stat 返回 null,应翻译成 FileNotFoundException(契约不变)。</summary>
+    [TestMethod]
+    public async Task GetFileInfoAsync_WhenEntryMissing_ThrowsFileNotFound()
+    {
+        _sftpClient.GetEntryAsync("/home/user/gone.txt", Arg.Any<CancellationToken>())
+                   .Returns((SftpEntry?)null);
+
+        await Assert.ThrowsExactlyAsync<FileNotFoundException>(
+            () => _sftpService.GetFileInfoAsync(_sessionId, "/home/user/gone.txt"));
     }
 
     // —— 属主/属组的数字 id → 名称翻译(见 RemoteIdentityResolver)————————————
@@ -608,5 +694,202 @@ public class SftpServiceTests
     private class SynchronousProgress<T>(Action<T> handler) : IProgress<T>
     {
         public void Report(T value) => handler(value);
+    }
+
+    // ---- 断点续传的起点核实(SftpService.ResolveUploadResumeAsync / ResolveDownloadResumeAsync)----
+    //
+    // 调用方给出的 resumeOffset 是更早之前探测出来的,从探测到真正开始写之间隔着冲突对话框
+    // 和传输队列。这组测试锁定的行为是:以"此刻的实际长度"为准,并比对尾部确认那半截确实是
+    // 同一个文件的前缀 —— 否则宁可整份重传/直接失败,也不能静默产出损坏文件。
+
+    /// <summary>远端那半截确实是本地文件的前缀 → 按远端实际长度续传。</summary>
+    [TestMethod]
+    public async Task UploadFileAsync_ResumeWithMatchingPrefix_ResumesAtRemoteLength()
+    {
+        string localPath = Path.GetTempFileName();
+        byte[] content = CreatePattern(200_000);
+        await File.WriteAllBytesAsync(localPath, content);
+        const long remoteLength = 120_000;
+        const string remotePath = "/home/user/resume.bin";
+
+        _sftpClient.GetFileSizeAsync(remotePath, Arg.Any<CancellationToken>()).Returns(remoteLength);
+        _sftpClient.OpenAsync(remotePath, FileMode.Open, FileAccess.Read, Arg.Any<CancellationToken>())
+                   .Returns(_ => Task.FromResult<Stream>(new MemoryStream(content[..(int)remoteLength], false)));
+
+        // 调用方声称从 50_000 续 —— 应被"此刻远端实际长度"覆盖为 120_000。
+        await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, null, 50_000);
+
+        await _sftpClient.Received(1).UploadAsync(Arg.Any<Stream>(), remotePath, remoteLength,
+            Arg.Any<Action<ulong>?>(), Arg.Any<CancellationToken>());
+        File.Delete(localPath);
+    }
+
+    /// <summary>
+    /// 底层库并发写多个缓冲区,中断后文件尾部可能留有空洞:文件长度只是"已确认的最高偏移"。
+    /// 续传起点必须从长度处回退一整个在途写入窗口,否则尾部比对会落在已写入的那段上顺利通过,
+    /// 却从一个带洞的位置接着传 —— 产出静默损坏的文件。
+    /// </summary>
+    [TestMethod]
+    public async Task UploadFileAsync_Resume_BacksOffBySafetyMarginBeforeResuming()
+    {
+        string localPath = Path.GetTempFileName();
+        byte[] content = CreatePattern(500_000);
+        await File.WriteAllBytesAsync(localPath, content);
+        const long remoteLength = 300_000;
+        const long margin = 64 * 1024;
+        const long expected = remoteLength - margin;
+        const string remotePath = "/home/user/holes.bin";
+
+        _sftpClient.ResumeSafetyMargin.Returns(margin);
+        _sftpClient.GetFileSizeAsync(remotePath, Arg.Any<CancellationToken>()).Returns(remoteLength);
+        _sftpClient.OpenAsync(remotePath, FileMode.Open, FileAccess.Read, Arg.Any<CancellationToken>())
+                   .Returns(_ => Task.FromResult<Stream>(new MemoryStream(content[..(int)remoteLength], false)));
+
+        await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, null, remoteLength);
+
+        await _sftpClient.Received(1).UploadAsync(Arg.Any<Stream>(), remotePath, expected,
+            Arg.Any<Action<ulong>?>(), Arg.Any<CancellationToken>());
+        File.Delete(localPath);
+    }
+
+    /// <summary>已传部分比安全回退窗口还短 → 没有可信的续传起点,整份重传。</summary>
+    [TestMethod]
+    public async Task UploadFileAsync_ResumeShorterThanSafetyMargin_FallsBackToFullUpload()
+    {
+        string localPath = Path.GetTempFileName();
+        await File.WriteAllBytesAsync(localPath, CreatePattern(500_000));
+        const string remotePath = "/home/user/tiny-partial.bin";
+
+        _sftpClient.ResumeSafetyMargin.Returns(64 * 1024L);
+        _sftpClient.GetFileSizeAsync(remotePath, Arg.Any<CancellationToken>()).Returns(50_000L);
+
+        await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, null, 50_000);
+
+        await _sftpClient.Received(1).UploadAsync(Arg.Any<Stream>(), remotePath,
+            Arg.Any<Action<ulong>?>(), Arg.Any<CancellationToken>());
+        await _sftpClient.DidNotReceive().UploadAsync(Arg.Any<Stream>(), remotePath, Arg.Any<long>(),
+            Arg.Any<Action<ulong>?>(), Arg.Any<CancellationToken>());
+        File.Delete(localPath);
+    }
+
+    /// <summary>远端是同名的另一个文件(内容不同) → 必须报错,而不是接着往后追加。</summary>
+    [TestMethod]
+    public async Task UploadFileAsync_ResumeWithDifferentContent_ThrowsInsteadOfCorrupting()
+    {
+        string localPath = Path.GetTempFileName();
+        await File.WriteAllBytesAsync(localPath, CreatePattern(200_000));
+        byte[] impostor = CreatePattern(120_000, seed: 77);
+        const string remotePath = "/home/user/impostor.bin";
+
+        _sftpClient.GetFileSizeAsync(remotePath, Arg.Any<CancellationToken>()).Returns(impostor.LongLength);
+        _sftpClient.OpenAsync(remotePath, FileMode.Open, FileAccess.Read, Arg.Any<CancellationToken>())
+                   .Returns(_ => Task.FromResult<Stream>(new MemoryStream(impostor, false)));
+
+        await Assert.ThrowsExactlyAsync<VelaSftpResumeMismatchException>(
+            () => _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, null, 120_000));
+
+        // 关键:一个字节都不能写出去。
+        await _sftpClient.DidNotReceive().UploadAsync(Arg.Any<Stream>(), remotePath, Arg.Any<long>(),
+            Arg.Any<Action<ulong>?>(), Arg.Any<CancellationToken>());
+        File.Delete(localPath);
+    }
+
+    /// <summary>远端已不短于本地(已传完/是别的更大文件) → 没有可续的半截,退化为整份重传。</summary>
+    [TestMethod]
+    public async Task UploadFileAsync_ResumeWhenRemoteNotShorter_FallsBackToFullUpload()
+    {
+        string localPath = Path.GetTempFileName();
+        await File.WriteAllBytesAsync(localPath, CreatePattern(100_000));
+        const string remotePath = "/home/user/complete.bin";
+        _sftpClient.GetFileSizeAsync(remotePath, Arg.Any<CancellationToken>()).Returns(100_000L);
+
+        await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, null, 40_000);
+
+        // 走的是不带偏移量的全量重传重载。
+        await _sftpClient.Received(1).UploadAsync(Arg.Any<Stream>(), remotePath,
+            Arg.Any<Action<ulong>?>(), Arg.Any<CancellationToken>());
+        await _sftpClient.DidNotReceive().UploadAsync(Arg.Any<Stream>(), remotePath, Arg.Any<long>(),
+            Arg.Any<Action<ulong>?>(), Arg.Any<CancellationToken>());
+        File.Delete(localPath);
+    }
+
+    /// <summary>本地残留的那半截不是远端文件的前缀 → 报错,不能把错位内容追加进去。</summary>
+    [TestMethod]
+    public async Task DownloadFileAsync_ResumeWithDifferentContent_ThrowsInsteadOfCorrupting()
+    {
+        string localPath = Path.Combine(Path.GetTempPath(), $"vela-resume-{Guid.NewGuid():N}.bin");
+        await File.WriteAllBytesAsync(localPath, CreatePattern(120_000, seed: 77));
+        byte[] remote = CreatePattern(200_000);
+        const string remotePath = "/home/user/download.bin";
+
+        _sftpClient.GetEntryAsync(remotePath, Arg.Any<CancellationToken>())
+                   .Returns(new SftpEntry { Name = "download.bin", FullName = remotePath, Length = remote.LongLength });
+        _sftpClient.OpenAsync(remotePath, FileMode.Open, FileAccess.Read, Arg.Any<CancellationToken>())
+                   .Returns(_ => Task.FromResult<Stream>(new MemoryStream(remote, false)));
+
+        await Assert.ThrowsExactlyAsync<VelaSftpResumeMismatchException>(
+            () => _sftpService.DownloadFileAsync(_sessionId, remotePath, localPath, null, 120_000));
+
+        File.Delete(localPath);
+    }
+
+    /// <summary>
+    /// 续传校验依赖按偏移定位。若 <see cref="ISftpClientWrapper.OpenAsync" /> 的实现返回了不可 Seek 的流,
+    /// 必须给出指明契约的清晰错误,而不是让底层库抛一个看不出所以然的裸 NotSupportedException。
+    /// <para>
+    /// 这条测试针对的是一个真实踩过的坑:Tmds.Ssh 的 FileOpenOptions 默认 Seekable/CacheLength 均为 false,
+    /// 打开的流一 Seek 就抛 NotSupportedException;而当时的测试全用 MemoryStream(可 Seek),
+    /// 于是测试全绿、真机必炸。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task UploadFileAsync_ResumeWithNonSeekableRemoteStream_ReportsTheContractViolation()
+    {
+        string localPath = Path.GetTempFileName();
+        byte[] content = CreatePattern(500_000);
+        await File.WriteAllBytesAsync(localPath, content);
+        const long remoteLength = 300_000;
+        const string remotePath = "/home/user/nonseekable.bin";
+
+        _sftpClient.GetFileSizeAsync(remotePath, Arg.Any<CancellationToken>()).Returns(remoteLength);
+        _sftpClient.OpenAsync(remotePath, FileMode.Open, FileAccess.Read, Arg.Any<CancellationToken>())
+                   .Returns(_ => Task.FromResult<Stream>(
+                       new NonSeekableStream(content[..(int)remoteLength])));
+
+        InvalidOperationException ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, null, remoteLength));
+        Assert.Contains("CanSeek", ex.Message);
+
+        File.Delete(localPath);
+    }
+
+    /// <summary>模拟"打开选项没开 Seekable"的远端流:能读,但不能定位。</summary>
+    private sealed class NonSeekableStream(byte[] content) : Stream
+    {
+        private readonly MemoryStream _inner = new(content, false);
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => _inner.Read(buffer, offset, count);
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush() { }
+    }
+
+    /// <summary>生成可复现的伪随机内容,使"尾部比对"能真正区分开不同文件。</summary>
+    private static byte[] CreatePattern(int length, int seed = 42)
+    {
+        byte[] buffer = new byte[length];
+        new Random(seed).NextBytes(buffer);
+        return buffer;
     }
 }

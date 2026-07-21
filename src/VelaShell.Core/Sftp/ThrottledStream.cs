@@ -31,21 +31,43 @@ public sealed class ThrottledStream(Stream inner, long bytesPerSecond) : Stream
         set => _inner.Position = value;
     }
 
-    private void Throttle(int justTransferred)
+    /// <summary>计算本次传输后还需等待多少毫秒;无需等待返回 0,并顺带滚动配额窗口。</summary>
+    private int NextDelayMs(int justTransferred)
     {
         _windowBytes += justTransferred;
         if (_windowBytes < _bytesPerSecond)
         {
-            return;
+            return 0;
         }
         long elapsed = Environment.TickCount64 - _windowStartTicks;
         long expectedMs = (_windowBytes * 1000) / _bytesPerSecond;
-        if (expectedMs > elapsed)
-        {
-            Thread.Sleep((int)Math.Min(expectedMs - elapsed, 1000));
-        }
+        int delay = expectedMs > elapsed ? (int)Math.Min(expectedMs - elapsed, 1000) : 0;
         _windowBytes = 0;
-        _windowStartTicks = Environment.TickCount64;
+        _windowStartTicks = Environment.TickCount64 + delay;
+        return delay;
+    }
+
+    /// <summary>同步路径只能阻塞等待。</summary>
+    private void Throttle(int justTransferred)
+    {
+        int delay = NextDelayMs(justTransferred);
+        if (delay > 0)
+        {
+            Thread.Sleep(delay);
+        }
+    }
+
+    /// <summary>
+    /// 异步路径必须让出线程:限速本质是"等待",用 <see cref="Thread.Sleep(int)" /> 会把线程池线程
+    /// 按限速时长整段占死,并发传输下足以拖垮整个线程池。
+    /// </summary>
+    private async ValueTask ThrottleAsync(int justTransferred, CancellationToken cancellationToken)
+    {
+        int delay = NextDelayMs(justTransferred);
+        if (delay > 0)
+        {
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>从内部流同步读取,并按带宽上限对读取速率整形。</summary>
@@ -64,8 +86,8 @@ public sealed class ThrottledStream(Stream inner, long bytesPerSecond) : Stream
     /// <returns></returns>
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
-        int n = await _inner.ReadAsync(buffer, cancellationToken);
-        Throttle(n);
+        int n = await _inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+        await ThrottleAsync(n, cancellationToken).ConfigureAwait(false);
         return n;
     }
 
@@ -73,7 +95,7 @@ public sealed class ThrottledStream(Stream inner, long bytesPerSecond) : Stream
     public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
         int n = await _inner.ReadAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false);
-        Throttle(n);
+        await ThrottleAsync(n, cancellationToken).ConfigureAwait(false);
         return n;
     }
 
@@ -93,14 +115,14 @@ public sealed class ThrottledStream(Stream inner, long bytesPerSecond) : Stream
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
         await _inner.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
-        Throttle(buffer.Length);
+        await ThrottleAsync(buffer.Length, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>向内部流异步写入,并按带宽上限对写入速率整形。</summary>
     public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
         await _inner.WriteAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false);
-        Throttle(count);
+        await ThrottleAsync(count, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>刷新内部流的缓冲。</summary>
