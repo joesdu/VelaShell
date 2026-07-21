@@ -44,11 +44,11 @@ public class SshConnectionService(
     /// </summary>
     public Task<SshSession> ConnectAsync(ConnectionInfo connectionInfo, CancellationToken cancellationToken = default)
     {
-        // 并发连接:握手不再串行,多个会话可同时建连,单条慢连接不阻塞其它连接。
-        // 整个建连挪到线程池:同步前缀里有真实的重活(客户端工厂解析/解密私钥、
-        // 同步读取设置的超时与心跳、SSH.NET 建连前的准备),从 UI 线程发起时这些
-        // 会直接吃掉渲染帧,表现为“连接中界面掉帧/点第二条连接更卡”。
-        return Task.Run(() => ConnectInternalAsync(connectionInfo, cancellationToken), cancellationToken);
+        // Tmds.Ssh 建连前的同步前缀(设置构建、凭据包装)均为纯内存操作(无 I/O),
+        // 无需 Task.Run 调度;真正的网络 I/O 在 ConnectInternalAsync 的 await 里。
+        // Task.Run(action, cancellationToken) 会导致外层任务取消时内层仍运行,
+        // 产生大量未观察的异常并造成调试器输出洪流。
+        return ConnectInternalAsync(connectionInfo, cancellationToken);
     }
 
     /// <summary>
@@ -56,7 +56,6 @@ public class SshConnectionService(
     /// </summary>
     public async Task DisconnectAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
-        // 断开也不再走全局锁:每个会话的网络拆除各自并发进行,不阻塞其它连接/断开。
         SshSession? session = GetSession(sessionId) ?? throw new InvalidOperationException($"Session {sessionId} not found");
         if (session.Status == SessionStatus.Disconnected)
         {
@@ -64,11 +63,17 @@ public class SshConnectionService(
         }
         if (_clients.TryRemove(sessionId, out ISshClientWrapper? client))
         {
-            await Task.Run(() =>
+            try
             {
+                // Disconnect/Dispose 为同步 socket 关闭,通道已断开时可能抛出清理噪声。
                 client.Disconnect();
+            }
+            catch { }
+            try
+            {
                 client.Dispose();
-            }, cancellationToken).ConfigureAwait(false);
+            }
+            catch { }
         }
         session.Status = SessionStatus.Disconnected;
         if (logger is not null && logger.IsEnabled(LogLevel.Information))
@@ -185,8 +190,12 @@ public class SshConnectionService(
             {
                 _sessions.Remove(session);
             }
-            logger?.LogError(ex, "Failed to connect SSH session {SessionId} to {Host}:{Port}",
-                session.SessionId, connectionInfo.Host, connectionInfo.Port);
+            if (logger is not null)
+            {
+                string diagnostic = TmdsSshInterop.GetFailureDiagnostic(ex);
+                logger.LogError(ex, "Failed to connect SSH session {SessionId} to {Host}:{Port}, reason: {Reason}",
+                    session.SessionId, connectionInfo.Host, connectionInfo.Port, diagnostic);
+            }
             throw;
         }
     }

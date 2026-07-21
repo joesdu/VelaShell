@@ -2348,16 +2348,31 @@ public class MainWindowViewModel : ReactiveObject
         string target = string.IsNullOrWhiteSpace(profile.Host)
             ? profile.Name
             : $"{profile.Username}@{profile.Host}:{profile.Port}";
+        // 提取 Tmds.Ssh ConnectFailedException 中的具体原因(若存在),以便用户诊断。
+        string detail = ExtractTmdsReason(ex.Message) ?? ex.Message;
         // 按类型名匹配,使 VelaShell.App 无需直接引用 SSH.NET。
         return ex.GetType().Name switch
         {
-            "SshAuthenticationException" => Strings.Format("Msg_AuthFailed", target),
-            "SshConnectionException" => Strings.Format("Msg_ConnectFailed", target),
+            "SshAuthenticationException" => $"{Strings.Format("Msg_AuthFailed", target)}\n{detail}",
+            "SshConnectionException" => $"{Strings.Format("Msg_ConnectFailed", target)}\n{detail}",
             "SocketException" => Strings.Format("Msg_NetworkError", target),
             "SshOperationTimeoutException" => Strings.Format("Msg_ConnectTimeout", target),
             "ProxyException" => Strings.Format("Msg_ProxyError", target),
-            _ => Strings.Format("Msg_ConnectGenericFailed", target, ex.Message),
+            _ => Strings.Format("Msg_ConnectGenericFailed", target, detail),
         };
+    }
+
+    /// <summary>
+    /// Tmds.Ssh 的 ConnectFailedException 消息固定以该前缀开头,
+    /// 格式为 "The connection could not be established - {reason} - {description}"。
+    /// 提取后缀部分用于更精确的错误提示;不属于该格式的返回 null。
+    /// </summary>
+    private static string? ExtractTmdsReason(string message)
+    {
+        const string prefix = "The connection could not be established - ";
+        return !message.AsSpan().StartsWith(prefix, StringComparison.Ordinal)
+            ? null
+            : message[prefix.Length..];
     }
 
     private void ConfigureTerminal(

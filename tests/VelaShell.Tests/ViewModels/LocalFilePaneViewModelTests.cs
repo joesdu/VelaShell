@@ -421,6 +421,36 @@ public sealed class LocalFilePaneViewModelTests
             DeletedDirectories.Add(path);
             return Task.CompletedTask;
         }
+
+        public Task MoveAsync(string sourcePath, string destPath, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+
+        public Task CreateDirectoryAsync(string path, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+
+        public Task<long> GetFileSizeAsync(string path, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(-1L);
+        }
+
+        public Task<Stream> OpenReadAsync(string path, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<Stream>(new MemoryStream());
+        }
+
+        public Task<Stream> OpenWriteAsync(string path, FileMode mode, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<Stream>(new MemoryStream());
+        }
     }
 
     private sealed class FakeLocalRootProvider(params LocalRootEntry[] roots) : ILocalRootProvider

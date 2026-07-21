@@ -334,22 +334,22 @@ public partial class MainWindow : Window
             if (vm.Sidebar.SessionTree is { } tree)
             {
                 tree.ConnectRequested += profile =>
-                    Dispatcher.UIThread.Post(() => _ = vm.TryConnectProfileAsync(profile));
+                    Dispatcher.UIThread.Post(() => SafeFireAndForget(() => vm.TryConnectProfileAsync(profile)));
                 tree.EditRequested += profile =>
                     Dispatcher.UIThread.Post(() => _ = OpenProfileDialogAsync(profile));
 
                 // 打开 SFTP:先连接(已连接则新开标签),随后展开文件浏览面板。
                 tree.OpenSftpRequested += profile =>
-                    Dispatcher.UIThread.Post(() => _ = vm.OpenSftpForProfileAsync(profile));
+                    Dispatcher.UIThread.Post(() => SafeFireAndForget(() => vm.OpenSftpForProfileAsync(profile)));
 
                 // 端口转发:打开隧道管理面板并预选该服务器(全局非模态,见 fuXS7);
                 // 无需先建立终端会话,面板会在创建隧道时后台自动连接。
                 tree.PortForwardRequested += profile =>
-                    Dispatcher.UIThread.Post(() => vm.OpenTunnelPanel(profile));
+                    Dispatcher.UIThread.Post(() => SafeFireAndForget(() => { vm.OpenTunnelPanel(profile); return Task.CompletedTask; }));
 
                 // 连接诊断:对选中的配置打开诊断中心(设计 RGXg1)。
                 tree.DiagnoseRequested += profile =>
-                    Dispatcher.UIThread.Post(() => _ = OpenDiagnosticsDialogAsync(profile));
+                    Dispatcher.UIThread.Post(() => SafeFireAndForget(() => OpenDiagnosticsDialogAsync(profile)));
 
                 // 断开连接:断开该配置所有已连接的终端标签(保留缓冲以便重连)。
                 // 必须按 Profile.Id 匹配——tab.SessionId 是 SSH 连接会话 ID,与配置 ID
@@ -1012,5 +1012,25 @@ public partial class MainWindow : Window
             Strings.Get("Main_PasteMultilineTitle"),
             Strings.Format("Main_PasteMultilineBody", lines.Length, preview)
         );
+    }
+
+    /// <summary>
+    /// 安全的 fire-and-forget 包装:捕获取消与同步异常,防止未观察的任务异常或
+    /// 同步参数校验失败导致应用崩溃。异步异常(网络失败等)由各方法的 try/catch 自行处理。
+    /// </summary>
+    private static async void SafeFireAndForget(Func<Task> action)
+    {
+        try
+        {
+            await action().ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户取消 / 会话取消:正常事件,不记录。
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[VelaShell] Unhandled fire-and-forget error: {ex}");
+        }
     }
 }

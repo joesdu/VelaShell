@@ -210,16 +210,22 @@ public sealed class SerializedSftpServiceTests
 
         public Task<List<RemoteFileInfo>> ListDirectoryAsync(Guid sessionId, string path, CancellationToken cancellationToken = default) => InvokeAsync("ListDirectory", sessionId, new List<RemoteFileInfo>(), cancellationToken);
 
-        public Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default)
+        public Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0)
         {
             progress?.Report(CreateTransferProgress(localPath));
             return InvokeAsync("Upload", sessionId, cancellationToken);
         }
 
-        public Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default)
+        public Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0)
         {
             progress?.Report(CreateTransferProgress(remotePath));
             return InvokeAsync("Download", sessionId, cancellationToken);
+        }
+
+        public Task CopyAsync(Guid sessionId, string sourcePath, string destPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default)
+        {
+            progress?.Report(CreateTransferProgress(sourcePath));
+            return InvokeAsync("Copy", sessionId, cancellationToken);
         }
 
         public Task DeleteAsync(Guid sessionId, string remotePath, IProgress<SftpDeleteProgress>? progress = null, CancellationToken cancellationToken = default)

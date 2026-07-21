@@ -278,9 +278,25 @@ public sealed class ZModemSender(
             {
                 // ReadAtLeastAsync 只在真正 EOF 时才返回不足量,故「读不满 = 文件读完」。
                 // 不拿 item.Size 判尾:声明大小与实际内容不一致时会截断或多发。
-                int read = await stream
-                    .ReadAtLeastAsync(buffer, buffer.Length, throwOnEndOfStream: false, ct)
-                    .ConfigureAwait(false);
+                int read;
+                try
+                {
+                    read = await stream
+                        .ReadAtLeastAsync(buffer, buffer.Length, throwOnEndOfStream: false, ct)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    // 读取失��(文件被删 / 权限变更):只舍弃当前文件,不拖垮整批。
+                    item.Status = ZModemTransferStatus.Failed;
+                    item.ErrorMessage = ex.Message;
+                    _observer?.OnFileSkipped(item);
+                    return false;
+                }
                 bool last = read < buffer.Length;
                 ZModemSubpacketEnd end = last ? ZModemSubpacketEnd.EndNoAck : ZModemSubpacketEnd.MoreNoAck;
                 byte[] wire = ZModemSubpacket.Write(buffer.AsSpan(0, read), end, _useCrc32, _escapeAllControl);
@@ -402,16 +418,20 @@ public sealed class ZModemSender(
     /// <summary>ZFIN 交换并追加 <c>"OO"</c>,收束整个批次(正常发完或用户取消都走这里)。</summary>
     private async Task FinishSessionAsync(ZModemSession session, CancellationToken ct)
     {
+        bool peerAcknowledged = false;
+
         await SendHeaderAsync(ZModemHeader.Empty(ZModemFrameType.ZFIN), ct).ConfigureAwait(false);
 
         // 等对端回 ZFIN。用户取消时 rz 可能在犹豫期间重发过 ZRINIT 等旧帧,需跳过它们直到看到 ZFIN;
-        // 有界等待(PostCancelDrainMax),等不到也照常收尾——文件要么没发、要么已发完,不能无限期挂住终端。
+        // 有界等待(PostCancelDrainMax),等不到时补发 CAN 中止序列兜底——rz 收到 CAN 会打印
+        // "ZMODEM transfer cancelled"并退出(仍好过让用户手动 Ctrl+C)。
         DateTimeOffset deadline = DateTimeOffset.UtcNow + _options.PostCancelDrainMax;
         while (DateTimeOffset.UtcNow < deadline)
         {
             ZModemHeaderResult frame = await ReadHeaderAsync(ct, _options.PostCancelDrainIdle).ConfigureAwait(false);
             if (frame.Status == ZModemReadStatus.Header && frame.Header.Type == ZModemFrameType.ZFIN)
             {
+                peerAcknowledged = true;
                 try
                 {
                     await _duplex.WriteAsync("OO"u8.ToArray(), ct).ConfigureAwait(false);
@@ -425,6 +445,7 @@ public sealed class ZModemSender(
             }
             if (frame.Status == ZModemReadStatus.EndOfStream)
             {
+                peerAcknowledged = true;
                 break; // 对端已退出。
             }
             if (frame.Status == ZModemReadStatus.Timeout)
@@ -433,6 +454,13 @@ public sealed class ZModemSender(
                 await SendHeaderAsync(ZModemHeader.Empty(ZModemFrameType.ZFIN), ct).ConfigureAwait(false);
             }
             // 其它旧帧(ZRINIT 等):忽略,继续等 ZFIN。
+        }
+
+        if (!peerAcknowledged)
+        {
+            // ZFIN 未获对端确认:发送 CAN 中止序列强制 rz 退出。
+            // rz 会打印 "ZMODEM transfer cancelled" 然后退出,总比一直卡着好。
+            await TrySendCancelAsync().ConfigureAwait(false);
         }
 
         if (session.Status is not (ZModemTransferStatus.Cancelled or ZModemTransferStatus.Failed))

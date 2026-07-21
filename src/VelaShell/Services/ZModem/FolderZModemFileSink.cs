@@ -116,8 +116,18 @@ internal sealed class FolderZModemFileSink(
     {
         if (_streams.Remove(item.Id, out FileStream? stream))
         {
-            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-            await stream.DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                // 刷盘失败(磁盘满 / 权限变更):尽力而为,错误不可恢复。
+            }
+            finally
+            {
+                await stream.DisposeAsync().ConfigureAwait(false);
+            }
         }
     }
 
@@ -128,7 +138,14 @@ internal sealed class FolderZModemFileSink(
         _ = cancellationToken;
         if (_streams.Remove(item.Id, out FileStream? stream))
         {
-            await stream.DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                await stream.DisposeAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                // 释放失败不影响会话。
+            }
         }
         // 保留半成品文件(不删除),为将来的断点续传留出空间。
     }

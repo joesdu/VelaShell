@@ -130,7 +130,8 @@ public class TunnelService(
         try
         {
             // Stop 幂等且自带"客户端已随会话释放"的容错(见 IPortForwardHandle 契约)。
-            await Task.Run(handle.Dispose, cancellationToken).ConfigureAwait(false);
+            // handle.Dispose 是纯内存操作(标记 + 字典移除),直接调用即可。
+            handle.Dispose();
             info.Status = TunnelStatus.Stopped;
             if (_sessionTunnels.TryGetValue(info.SessionId, out SourceList<TunnelInfo>? tunnels))
             {
@@ -228,7 +229,7 @@ public class TunnelService(
         try
         {
             // StartPortForward 建立并启动监听,失败时不留下半挂的端口(见接口契约)。
-            IPortForwardHandle handle = await Task.Run(() => client.StartPortForward(request), cancellationToken).ConfigureAwait(false);
+            IPortForwardHandle handle = await Task.Run(() => client.StartPortForward(request)).ConfigureAwait(false);
 
             // 转发通道错误(目标拒绝连接等)不会让监听端口停摆,但每个经过的连接都会失败;
             // 记到 LastError 供界面展示,否则用户只看到"运行中"却连不上。

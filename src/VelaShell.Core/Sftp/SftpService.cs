@@ -199,7 +199,7 @@ public class SftpService(
     public async Task CreateDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        await Task.Run(() => { client.CreateDirectory(remotePath); }, cancellationToken).ConfigureAwait(false);
+        await Task.Run(() => client.CreateDirectory(remotePath), CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>在远端创建一个空文件。</summary>
@@ -375,7 +375,7 @@ public class SftpService(
             throw new ArgumentOutOfRangeException(nameof(octalMode), octalMode, @"Mode must be three octal digits (000-777).");
         }
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        await Task.Run(() => { client.ChangePermissions(remotePath, octalMode); }, cancellationToken).ConfigureAwait(false);
+        await Task.Run(() => { client.ChangePermissions(remotePath, octalMode); }, CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>获取远端指定路径文件/目录的详细信息;路径不存在时抛出 <see cref="FileNotFoundException" />。</summary>
@@ -394,7 +394,7 @@ public class SftpService(
     public async Task<bool> ExistsAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
-        return await Task.Run(() => client.Exists(remotePath), cancellationToken).ConfigureAwait(false);
+        return await Task.Run(() => client.Exists(remotePath), CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>返回该会话 SFTP 客户端的当前工作目录。</summary>

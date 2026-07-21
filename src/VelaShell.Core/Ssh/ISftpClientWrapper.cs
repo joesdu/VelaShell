@@ -25,7 +25,7 @@ public interface ISftpClientWrapper : IDisposable
     /// <summary>
     /// 同步建立 SFTP 连接。
     /// </summary>
-    void Connect();
+    Task Connect();
 
     /// <summary>
     /// 异步建立 SFTP 连接。

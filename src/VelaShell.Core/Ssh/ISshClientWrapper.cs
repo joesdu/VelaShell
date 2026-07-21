@@ -11,11 +11,17 @@ public interface ISshClientWrapper : IDisposable
     /// <summary>当前是否已与远程主机建立连接。</summary>
     bool IsConnected { get; }
 
+    /// <summary>
+    /// 当底层 SSH 连接丢失时被取消的令牌(远端关闭/网络中断)。
+    /// 提供快速断线检测,无需轮询或定时器。
+    /// </summary>
+    CancellationToken Disconnected { get; }
+
     /// <summary>建立连接时的超时时长。</summary>
     TimeSpan ConnectionTimeout { get; set; }
 
     /// <summary>同步连接到远程主机。</summary>
-    void Connect();
+    Task Connect();
 
     /// <summary>异步连接到远程主机。</summary>
     Task ConnectAsync(CancellationToken cancellationToken);
