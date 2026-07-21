@@ -45,7 +45,7 @@ public interface ICommandRegistry
 /// <summary>默认基于内存的 <see cref="ICommandRegistry" />,保留注册顺序。</summary>
 public sealed class CommandRegistry : ICommandRegistry
 {
-    private readonly Dictionary<string, CommandDescriptor> _commands = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CommandDescriptor> _commands = [with(StringComparer.Ordinal)];
     private readonly List<string> _order = [];
 
     /// <summary>注册(或按 id 替换)命令,保留首次出现的顺序。</summary>

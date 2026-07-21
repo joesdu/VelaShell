@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using DynamicData.Kernel;
 using Microsoft.Extensions.DependencyInjection;
 using VelaShell.Controls.Controls;
 using VelaShell.Core.Resources;
@@ -314,9 +315,13 @@ public partial class FileBrowserView : UserControl
             return null;
         }
         IReadOnlyList<IStorageFolder> folders = await top.StorageProvider.OpenFolderPickerAsync(
-            new() { Title = Strings.SelectFolderToUpload, AllowMultiple = false }
+            new()
+            {
+                Title = Strings.SelectFolderToUpload,
+                AllowMultiple = false
+            }
         );
-        return folders.FirstOrDefault()?.TryGetLocalPath();
+        return folders.AsArray().FirstOrDefault()?.TryGetLocalPath();
     }
 
     /// <summary>
@@ -338,7 +343,7 @@ public partial class FileBrowserView : UserControl
                 SuggestedStartLocation = await ResolveDefaultDownloadFolderAsync(top),
             }
         );
-        return folders.FirstOrDefault()?.TryGetLocalPath();
+        return folders.AsArray().FirstOrDefault()?.TryGetLocalPath();
     }
 
     /// <summary>
@@ -577,7 +582,7 @@ public partial class FileBrowserView : UserControl
         if (!e.GetCurrentPoint(null).Properties.IsRightButtonPressed)
         {
             // 左键:为可能拖往本地面板做准备(仅 SFTP 模式)。
-            if (DataContext is FileBrowserViewModel { IsDragEnabled: true } vm
+            if (DataContext is FileBrowserViewModel { IsDragEnabled: true }
                 && sender is Border { DataContext: RemoteFileInfoViewModel file }
                 && !file.IsParentEntry)
             {
@@ -700,7 +705,7 @@ public partial class FileBrowserView : UserControl
             {
                 return;
             }
-            var grid = new Grid { ColumnDefinitions = new("96,*") };
+            var grid = new Grid { ColumnDefinitions = [with("96,*")] };
             var labelText = new TextBlock { Text = label };
             labelText.Classes.Add("dim");
             grid.Children.Add(labelText);
@@ -734,8 +739,8 @@ public partial class FileBrowserView : UserControl
         }
         var grid = new Grid
         {
-            ColumnDefinitions = new("96,Auto,Auto,Auto"),
-            RowDefinitions = new("Auto,Auto,Auto,Auto"),
+            ColumnDefinitions = [with("96,Auto,Auto,Auto")],
+            RowDefinitions = [with("Auto,Auto,Auto,Auto")],
         };
 
         void Place(Control control, int row, int column)
@@ -851,7 +856,7 @@ public partial class FileBrowserView : UserControl
         SyncOctalFromBoxes();
         octalBox.TextChanged += (_, _) => SyncBoxesFromOctal();
         content.Children.Add(grid);
-        var octalRow = new Grid { ColumnDefinitions = new("96,*") };
+        var octalRow = new Grid { ColumnDefinitions = [with("96,*")] };
         var octalLabel = new TextBlock
         {
             Text = Strings.Get("Sftp_Octal"),

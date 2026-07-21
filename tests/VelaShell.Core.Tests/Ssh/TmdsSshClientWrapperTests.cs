@@ -46,7 +46,7 @@ public sealed class TmdsSshClientWrapperTests
     {
         using TmdsSshClientWrapper wrapper = CreateWrapper(GetClosedLoopbackPort());
 
-        await Assert.ThrowsAsync<SshClientException>(() => wrapper.ConnectAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<VelaSshClientException>(() => wrapper.ConnectAsync(CancellationToken.None));
 
         // 失败的客户端不得残留:否则 IsConnected 误报、重连被短路
         Assert.IsFalse(wrapper.IsConnected);
@@ -64,7 +64,7 @@ public sealed class TmdsSshClientWrapperTests
             await wrapper.ConnectAsync(cts.Token);
             Assert.Fail("Expected the connect to fail.");
         }
-        catch (SshOperationTimeoutException)
+        catch (VelaSshOperationTimeoutException)
         {
             Assert.Fail("主动取消不应被翻译为超时异常。");
         }

@@ -92,7 +92,7 @@ public class MainWindowViewModel : ReactiveObject
     /// 标签关闭或连接断开时经 <see cref="EvictFileBrowser" /> 驱逐。
     /// </summary>
     private readonly Dictionary<Guid, FileBrowserViewModel> _fileBrowserCache = [];
-    private readonly object _sftpCloseTasksSync = new();
+    private readonly Lock _sftpCloseTasksSync = new();
     private readonly Dictionary<SftpDocument, Task> _sftpCloseTasks = [];
     private FileTransferViewModel _fileTransfer;
 
@@ -1557,7 +1557,7 @@ public class MainWindowViewModel : ReactiveObject
         }
     }
 
-    private IReadOnlyList<CommandPaletteItem> BuildPaletteItems()
+    private List<CommandPaletteItem> BuildPaletteItems()
     {
         var items = new List<CommandPaletteItem>();
 
@@ -2283,7 +2283,7 @@ public class MainWindowViewModel : ReactiveObject
             {
                 if (session is not null)
                 {
-                    await _connectionWorkflowService.DisconnectAsync(session.SessionId).ConfigureAwait(true);
+                    await _connectionWorkflowService.DisconnectAsync(session.SessionId, cancellationToken).ConfigureAwait(true);
                 }
                 return null;
             }
@@ -2291,7 +2291,7 @@ public class MainWindowViewModel : ReactiveObject
             {
                 if (session is not null)
                 {
-                    await _connectionWorkflowService.DisconnectAsync(session.SessionId).ConfigureAwait(true);
+                    await _connectionWorkflowService.DisconnectAsync(session.SessionId, cancellationToken).ConfigureAwait(true);
                 }
                 continue;
             }
@@ -2299,7 +2299,7 @@ public class MainWindowViewModel : ReactiveObject
             {
                 if (session is not null)
                 {
-                    await _connectionWorkflowService.DisconnectAsync(session.SessionId).ConfigureAwait(true);
+                    await _connectionWorkflowService.DisconnectAsync(session.SessionId, cancellationToken).ConfigureAwait(true);
                 }
                 LastConnectionError = DescribeConnectionError(ex, current);
                 StatusBar.Status = LastConnectionError;
@@ -2859,13 +2859,12 @@ public class MainWindowViewModel : ReactiveObject
         Task[] closeTasks;
         lock (_sftpCloseTasksSync)
         {
-            Task[] trackedTasks = _sftpCloseTasks.Values.ToArray();
-            Task[] currentDocumentTasks = Layout
+            Task[] trackedTasks = [.. _sftpCloseTasks.Values];
+            Task[] currentDocumentTasks = [.. Layout
                 .AllDocuments()
                 .OfType<SftpDocument>()
-                .Select(GetOrCreateSftpCloseTask)
-                .ToArray();
-            closeTasks = trackedTasks.Concat(currentDocumentTasks).Distinct().ToArray();
+                .Select(GetOrCreateSftpCloseTask)];
+            closeTasks = [.. trackedTasks.Concat(currentDocumentTasks).Distinct()];
         }
         await Task.WhenAll(closeTasks);
     }

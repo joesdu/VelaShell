@@ -27,11 +27,11 @@ public class FolderZModemFileSinkTests
     public async Task FirstCancel_RepromptsOnceBeforeAborting()
     {
         var calls = new List<ZModemFolderPromptRequest>();
-        Func<ZModemFolderPromptRequest, CancellationToken, Task<string?>> picker = (req, _) =>
+        Task<string?> picker(ZModemFolderPromptRequest req, CancellationToken _)
         {
             calls.Add(req);
             return Task.FromResult<string?>(null); // 两次都取消。
-        };
+        }
 
         var sink = new FolderZModemFileSink(picker, Settings());
         (ZModemFileDisposition disposition, _) =
@@ -49,11 +49,11 @@ public class FolderZModemFileSinkTests
     {
         string chosen = Path.Combine(Path.GetTempPath(), "vela-zmodem-reprompt-" + Guid.NewGuid().ToString("N"));
         int callCount = 0;
-        Func<ZModemFolderPromptRequest, CancellationToken, Task<string?>> picker = (_, _) =>
+        Task<string?> picker(ZModemFolderPromptRequest _1, CancellationToken _2)
         {
             callCount++;
-            return Task.FromResult<string?>(callCount == 1 ? null : chosen); // 先取消,后选定。
-        };
+            return Task.FromResult(callCount == 1 ? null : chosen); // 先取消,后选定。
+        }
 
         var sink = new FolderZModemFileSink(picker, Settings());
         var item = new ZModemTransferItem { FileName = "b.bin" };
@@ -80,11 +80,11 @@ public class FolderZModemFileSinkTests
     {
         string chosen = Path.Combine(Path.GetTempPath(), "vela-zmodem-once-" + Guid.NewGuid().ToString("N"));
         int callCount = 0;
-        Func<ZModemFolderPromptRequest, CancellationToken, Task<string?>> picker = (_, _) =>
+        Task<string?> picker(ZModemFolderPromptRequest _1, CancellationToken _2)
         {
             callCount++;
             return Task.FromResult<string?>(chosen);
-        };
+        }
 
         var sink = new FolderZModemFileSink(picker, Settings());
         try

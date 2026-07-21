@@ -125,7 +125,7 @@ internal sealed class PhysicalLocalFileSystem : ILocalFileSystem
         );
 
     public Task<long> GetFileSizeAsync(string path, CancellationToken cancellationToken) =>
-        Task.Run<long>(
+        Task.Run(
             () =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -187,7 +187,7 @@ internal sealed class PhysicalLocalRootProvider : ILocalRootProvider
                     candidates.Add(("/", "/"));
                 }
 
-                return candidates
+                return [.. candidates
                     .DistinctBy(candidate => candidate.FullPath, PathComparer)
                     .Select(candidate =>
                     {
@@ -198,8 +198,7 @@ internal sealed class PhysicalLocalRootProvider : ILocalRootProvider
                             accessible,
                             candidate.FullPath
                         );
-                    })
-                    .ToArray();
+                    })];
             },
             cancellationToken
         );

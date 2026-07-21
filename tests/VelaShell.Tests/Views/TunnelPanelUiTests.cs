@@ -139,16 +139,15 @@ public sealed class TunnelPanelUiTests
                 Dispatcher.UIThread.RunJobs();
                 window.UpdateLayout();
 
-                Button[] editButtons = view.GetVisualDescendants()
+                Button[] editButtons = [.. view.GetVisualDescendants()
                     .OfType<Button>()
                     .Where(button => ToolTip.GetTip(button) is string tip
                         && (string.Equals(tip, Strings.Get("Tunnel_EditTip"))
-                            || string.Equals(tip, Strings.Get("Tunnel_EditDisabledTip"))))
-                    .ToArray();
+                            || string.Equals(tip, Strings.Get("Tunnel_EditDisabledTip"))))];
 
                 Assert.HasCount(2, editButtons);
-                Assert.IsFalse(editButtons.Single(button => string.Equals(ToolTip.GetTip(button), Strings.Get("Tunnel_EditDisabledTip"))).IsEnabled);
-                Assert.IsTrue(editButtons.Single(button => string.Equals(ToolTip.GetTip(button), Strings.Get("Tunnel_EditTip"))).IsEnabled);
+                Assert.IsFalse(editButtons.Single(button => Equals(ToolTip.GetTip(button), Strings.Get("Tunnel_EditDisabledTip"))).IsEnabled);
+                Assert.IsTrue(editButtons.Single(button => Equals(ToolTip.GetTip(button), Strings.Get("Tunnel_EditTip"))).IsEnabled);
                 window.Close();
             }
             finally

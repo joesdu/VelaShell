@@ -10,7 +10,7 @@ public partial class DockTabItem : DockTabItemBase
     /// <summary>初始化终端专用标签控件。</summary>
     public DockTabItem() => InitializeComponent();
 
-    private TerminalTabViewModel? Terminal => (DataContext as Docking.TerminalDocument)?.Terminal;
+    private TerminalTabViewModel? Terminal => (DataContext as TerminalDocument)?.Terminal;
 
     private void JoinChannelA_Click(object? sender, RoutedEventArgs e) => Terminal?.JoinSyncChannel(SyncInputChannel.A);
     private void JoinChannelB_Click(object? sender, RoutedEventArgs e) => Terminal?.JoinSyncChannel(SyncInputChannel.B);

@@ -51,7 +51,7 @@ public class SftpServiceTests
     {
         // Open a channel so it gets cached, then close it.
         _sftpClient.ListDirectoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>(new List<SftpEntry>()));
+                   .Returns(Task.FromResult<IEnumerable<SftpEntry>>([]));
         await _sftpService.ListDirectoryAsync(_sessionId, "/");
         await _sftpService.CloseSessionAsync(_sessionId);
         _sftpClient.Received(1).Disconnect();
@@ -79,7 +79,7 @@ public class SftpServiceTests
         // Some servers answer the plain SSH_FXP_RENAME with SSH_FX_BAD_MESSAGE.
         _sftpClient
             .RenameFileAsync("/home/user/dir", "/tmp/dir", Arg.Any<CancellationToken>())
-            .ThrowsAsync(new SftpOperationException("bad message"));
+            .ThrowsAsync(new VelaSftpOperationException("bad message"));
         await _sftpService.RenameAsync(_sessionId, "/home/user/dir", "/tmp/dir");
         await _sftpClient.Received(1).PosixRenameFileAsync("/home/user/dir", "/tmp/dir", Arg.Any<CancellationToken>());
     }
@@ -89,11 +89,11 @@ public class SftpServiceTests
     {
         _sftpClient
             .RenameFileAsync("/home/user/dir", "/tmp/dir", Arg.Any<CancellationToken>())
-            .ThrowsAsync(new SftpOperationException("bad message"));
+            .ThrowsAsync(new VelaSftpOperationException("bad message"));
         _sftpClient
             .PosixRenameFileAsync("/home/user/dir", "/tmp/dir", Arg.Any<CancellationToken>())
             .ThrowsAsync(new NotSupportedException("posix-rename not supported"));
-        SftpOperationException ex = await Assert.ThrowsExactlyAsync<SftpOperationException>(() => _sftpService.RenameAsync(_sessionId, "/home/user/dir", "/tmp/dir"));
+        VelaSftpOperationException ex = await Assert.ThrowsExactlyAsync<VelaSftpOperationException>(() => _sftpService.RenameAsync(_sessionId, "/home/user/dir", "/tmp/dir"));
         Assert.AreEqual("bad message", ex.Message);
     }
 
@@ -116,7 +116,7 @@ public class SftpServiceTests
                            cts.Cancel();
                            throw new IOException("stream closed by cancellation");
                        });
-            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => _sftpService.UploadFileAsync(_sessionId, localPath, "/home/user/up.txt", null, cts.Token));
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => _sftpService.UploadFileAsync(_sessionId, localPath, "/home/user/up.txt", null, cancellationToken: cts.Token));
         }
         finally
         {
@@ -173,10 +173,10 @@ public class SftpServiceTests
         Assert.AreEqual("/home/user/file1.txt", result[0].FullPath);
         Assert.AreEqual(1024L, result[0].Size);
         Assert.IsFalse(result[0].IsDirectory);
-        StringAssert.Contains(result[0].Permissions, "rw-r--r--");
+        Assert.Contains("rw-r--r--", result[0].Permissions);
         Assert.AreEqual("dir1", result[1].Name);
         Assert.IsTrue(result[1].IsDirectory);
-        StringAssert.Contains(result[1].Permissions, "rwxr-xr-x");
+        Assert.Contains("rwxr-xr-x", result[1].Permissions);
     }
 
     [TestMethod]
@@ -399,10 +399,10 @@ public class SftpServiceTests
     {
         // Arrange
         _sftpClient.ListDirectoryAsync("/root/restricted", Arg.Any<CancellationToken>())
-                   .Throws(new SftpPermissionDeniedException("Permission denied"));
+                   .Throws(new VelaSftpPermissionDeniedException("Permission denied"));
 
         // Act & Assert
-        await Assert.ThrowsExactlyAsync<SftpPermissionDeniedException>(() => _sftpService.ListDirectoryAsync(_sessionId, "/root/restricted"));
+        await Assert.ThrowsExactlyAsync<VelaSftpPermissionDeniedException>(() => _sftpService.ListDirectoryAsync(_sessionId, "/root/restricted"));
     }
 
     [TestMethod]
@@ -435,7 +435,7 @@ public class SftpServiceTests
             new SynchronousProgress<TransferProgress>(p => progressReports.Add(p)));
 
         // Assert
-        Assert.IsGreaterThanOrEqualTo(4, progressReports.Count());
+        Assert.IsGreaterThanOrEqualTo(4, progressReports.Count);
         Assert.Contains(p => p.Percentage is >= 25 and < 35, progressReports);
         Assert.Contains(p => p.Percentage is >= 50 and < 60, progressReports);
         Assert.Contains(p => p.Percentage is >= 75 and < 85, progressReports);
@@ -570,7 +570,7 @@ public class SftpServiceTests
         string command = (string)sshClient.ReceivedCalls()
                                           .Single(c => c.GetMethodInfo().Name == nameof(ISshClientWrapper.RunCommandAsync))
                                           .GetArguments()[0]!;
-        StringAssert.Contains(command, "echo '###VELA-GROUPS###'");
+        Assert.Contains("echo '###VELA-GROUPS###'", command);
         Assert.IsFalse(command.Contains("echo ###", StringComparison.Ordinal),
                        "分隔标记未加引号,group 段会被 shell 当注释吞掉。");
     }
@@ -605,15 +605,8 @@ public class SftpServiceTests
         };
     }
 
-    private class SynchronousProgress<T> : IProgress<T>
+    private class SynchronousProgress<T>(Action<T> handler) : IProgress<T>
     {
-        private readonly Action<T> _handler;
-
-        public SynchronousProgress(Action<T> handler)
-        {
-            _handler = handler;
-        }
-
-        public void Report(T value) => _handler(value);
+        public void Report(T value) => handler(value);
     }
 }

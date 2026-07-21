@@ -32,15 +32,15 @@ public class ModelSerializationTests
             Tags = ["production", "critical"]
         };
         string json = JsonSerializer.Serialize(session, _options);
-        StringAssert.Contains(json, "\"name\":");
-        StringAssert.Contains(json, "\"host\":");
-        StringAssert.Contains(json, "\"username\":");
-        StringAssert.Contains(json, "\"password\":");
-        StringAssert.Contains(json, "\"privateKeyPath\":");
-        StringAssert.Contains(json, "\"privateKeyPassphrase\":");
-        StringAssert.Contains(json, "\"groupId\":");
-        StringAssert.Contains(json, "\"lastConnectedAt\":");
-        StringAssert.Contains(json, "\"connectionType\":");
+        Assert.Contains("\"name\":", json);
+        Assert.Contains("\"host\":", json);
+        Assert.Contains("\"username\":", json);
+        Assert.Contains("\"password\":", json);
+        Assert.Contains("\"privateKeyPath\":", json);
+        Assert.Contains("\"privateKeyPassphrase\":", json);
+        Assert.Contains("\"groupId\":", json);
+        Assert.Contains("\"lastConnectedAt\":", json);
+        Assert.Contains("\"connectionType\":", json);
         Assert.DoesNotContain("\"Name\":", json);
         Assert.DoesNotContain("\"Host\":", json);
     }
@@ -79,7 +79,7 @@ public class ModelSerializationTests
         Assert.AreEqual("passphrase", session.PrivateKeyPassphrase);
         Assert.AreEqual(groupId, session.GroupId);
         Assert.AreEqual(new DateTime(2026, 3, 5, 12, 0, 0, DateTimeKind.Utc), session.LastConnectedAt);
-        CollectionAssert.AreEquivalent(new[] { "production", "critical" }.ToList(), session.Tags.ToList());
+        Assert.AreSequenceEqual(["production", "critical"], [.. session.Tags], SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -117,12 +117,12 @@ public class ModelSerializationTests
             DefaultPort = 22
         };
         string json = JsonSerializer.Serialize(settings, _options);
-        StringAssert.Contains(json, "\"language\":");
-        StringAssert.Contains(json, "\"theme\":");
-        StringAssert.Contains(json, "\"terminalFont\":");
-        StringAssert.Contains(json, "\"terminalFontSize\":");
-        StringAssert.Contains(json, "\"scrollbackLines\":");
-        StringAssert.Contains(json, "\"defaultPort\":");
+        Assert.Contains("\"language\":", json);
+        Assert.Contains("\"theme\":", json);
+        Assert.Contains("\"terminalFont\":", json);
+        Assert.Contains("\"terminalFontSize\":", json);
+        Assert.Contains("\"scrollbackLines\":", json);
+        Assert.Contains("\"defaultPort\":", json);
     }
 
     [TestMethod]
@@ -159,14 +159,14 @@ public class ModelSerializationTests
             LastActiveTab = "tab1"
         };
         string json = JsonSerializer.Serialize(state, _options);
-        StringAssert.Contains(json, "\"recentConnections\":");
-        StringAssert.Contains(json, "\"windowPosition\":");
-        StringAssert.Contains(json, "\"windowSize\":");
-        StringAssert.Contains(json, "\"lastActiveTab\":");
-        StringAssert.Contains(json, "\"x\":");
-        StringAssert.Contains(json, "\"y\":");
-        StringAssert.Contains(json, "\"width\":");
-        StringAssert.Contains(json, "\"height\":");
+        Assert.Contains("\"recentConnections\":", json);
+        Assert.Contains("\"windowPosition\":", json);
+        Assert.Contains("\"windowSize\":", json);
+        Assert.Contains("\"lastActiveTab\":", json);
+        Assert.Contains("\"x\":", json);
+        Assert.Contains("\"y\":", json);
+        Assert.Contains("\"width\":", json);
+        Assert.Contains("\"height\":", json);
     }
 
     [TestMethod]
@@ -181,11 +181,11 @@ public class ModelSerializationTests
             Sessions = [Guid.NewGuid(), Guid.NewGuid()]
         };
         string json = JsonSerializer.Serialize(group, _options);
-        StringAssert.Contains(json, "\"id\":");
-        StringAssert.Contains(json, "\"name\":");
-        StringAssert.Contains(json, "\"icon\":");
-        StringAssert.Contains(json, "\"sortOrder\":");
-        StringAssert.Contains(json, "\"sessions\":");
+        Assert.Contains("\"id\":", json);
+        Assert.Contains("\"name\":", json);
+        Assert.Contains("\"icon\":", json);
+        Assert.Contains("\"sortOrder\":", json);
+        Assert.Contains("\"sessions\":", json);
     }
 
     [TestMethod]
@@ -200,11 +200,11 @@ public class ModelSerializationTests
             LastSeenAt = new(2026, 3, 5, 12, 0, 0, DateTimeKind.Utc)
         };
         string json = JsonSerializer.Serialize(host, _options);
-        StringAssert.Contains(json, "\"hostKey\":");
-        StringAssert.Contains(json, "\"fingerprint\":");
-        StringAssert.Contains(json, "\"algorithm\":");
-        StringAssert.Contains(json, "\"firstSeenAt\":");
-        StringAssert.Contains(json, "\"lastSeenAt\":");
+        Assert.Contains("\"hostKey\":", json);
+        Assert.Contains("\"fingerprint\":", json);
+        Assert.Contains("\"algorithm\":", json);
+        Assert.Contains("\"firstSeenAt\":", json);
+        Assert.Contains("\"lastSeenAt\":", json);
     }
 
     [TestMethod]

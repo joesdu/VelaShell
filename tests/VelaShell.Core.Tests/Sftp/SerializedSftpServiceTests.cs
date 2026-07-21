@@ -31,7 +31,7 @@ public sealed class SerializedSftpServiceTests
         await close;
         Assert.AreEqual(1, inner.MaximumConcurrency);
         Assert.AreEqual(1, inner.CloseCalls);
-        CollectionAssert.AreEqual(new List<string> { "ListDirectory", "CloseSession" }, inner.OperationNames);
+        Assert.AreSequenceEqual(["ListDirectory", "CloseSession"], inner.OperationNames);
     }
 
     [TestMethod]
@@ -141,7 +141,7 @@ public sealed class SerializedSftpServiceTests
         await active;
         Assert.IsTrue(await service.ExistsAsync(inner.SessionId, "/resumed"));
         Assert.AreEqual(1, inner.MaximumConcurrency);
-        CollectionAssert.AreEqual(new List<string> { "ListDirectory", "Exists" }, inner.OperationNames);
+        Assert.AreSequenceEqual(["ListDirectory", "Exists"], inner.OperationNames);
     }
 
     [TestMethod]
@@ -156,12 +156,12 @@ public sealed class SerializedSftpServiceTests
 
         // When
         await service.ListDirectoryAsync(inner.SessionId, "/", cancellation.Token);
-        await service.UploadFileAsync(inner.SessionId, "local", "/upload", new InlineProgress<TransferProgress>(transferProgress.Add), cancellation.Token);
-        await service.DownloadFileAsync(inner.SessionId, "/download", "local", new InlineProgress<TransferProgress>(transferProgress.Add), cancellation.Token);
-        await service.DeleteAsync(inner.SessionId, "/delete", new InlineProgress<SftpDeleteProgress>(deleteProgress.Add), cancellation.Token);
-        await service.CreateDirectoryAsync(inner.SessionId, "/directory", cancellation.Token);
-        await service.CreateFileAsync(inner.SessionId, "/file", cancellation.Token);
-        await service.EnsureDirectoryAsync(inner.SessionId, "/ensure", cancellation.Token);
+        await service.UploadFileAsync(inner.SessionId, "local", "/upload", new InlineProgress<TransferProgress>(transferProgress.Add), cancellationToken: cancellation.Token);
+        await service.DownloadFileAsync(inner.SessionId, "/download", "local", new InlineProgress<TransferProgress>(transferProgress.Add), cancellationToken: cancellation.Token);
+        await service.DeleteAsync(inner.SessionId, "/delete", new InlineProgress<SftpDeleteProgress>(deleteProgress.Add), cancellationToken: cancellation.Token);
+        await service.CreateDirectoryAsync(inner.SessionId, "/directory", cancellationToken: cancellation.Token);
+        await service.CreateFileAsync(inner.SessionId, "/file", cancellationToken: cancellation.Token);
+        await service.EnsureDirectoryAsync(inner.SessionId, "/ensure", cancellationToken: cancellation.Token);
         await service.RenameAsync(inner.SessionId, "/old", "/new", cancellation.Token);
         await service.SetPermissionsAsync(inner.SessionId, "/permissions", 755, cancellation.Token);
         await service.GetFileInfoAsync(inner.SessionId, "/info", cancellation.Token);
@@ -170,8 +170,8 @@ public sealed class SerializedSftpServiceTests
         await service.CloseSessionAsync(inner.SessionId, cancellation.Token);
 
         // Then
-        CollectionAssert.AreEqual(
-            new List<string> { "ListDirectory", "Upload", "Download", "Delete", "CreateDirectory", "CreateFile", "EnsureDirectory", "Rename", "SetPermissions", "GetFileInfo", "Exists", "GetWorkingDirectory", "CloseSession" },
+        Assert.AreSequenceEqual(
+            ["ListDirectory", "Upload", "Download", "Delete", "CreateDirectory", "CreateFile", "EnsureDirectory", "Rename", "SetPermissions", "GetFileInfo", "Exists", "GetWorkingDirectory", "CloseSession"],
             inner.OperationNames);
         Assert.IsTrue(inner.CancellationTokens[..^1].All(token => token == cancellation.Token));
         Assert.AreEqual(CancellationToken.None, inner.CancellationTokens[^1]);
@@ -185,18 +185,13 @@ public sealed class SerializedSftpServiceTests
         public void Report(T value) => report(value);
     }
 
-    private sealed class BlockingSftpService : ISftpService
+    private sealed class BlockingSftpService(bool blockFirstOperation = false) : ISftpService
     {
-        private readonly object _sync = new();
+        private readonly Lock _sync = new();
         private readonly TaskCompletionSource _firstOperationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _releaseFirstOperation = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _activeOperations;
-        private int _blockFirstOperation;
-
-        public BlockingSftpService(bool blockFirstOperation = false)
-        {
-            _blockFirstOperation = blockFirstOperation ? 1 : 0;
-        }
+        private int _blockFirstOperation = blockFirstOperation ? 1 : 0;
 
         public Guid SessionId { get; } = Guid.NewGuid();
         public int CloseCalls { get; private set; }
@@ -210,13 +205,13 @@ public sealed class SerializedSftpServiceTests
 
         public Task<List<RemoteFileInfo>> ListDirectoryAsync(Guid sessionId, string path, CancellationToken cancellationToken = default) => InvokeAsync("ListDirectory", sessionId, new List<RemoteFileInfo>(), cancellationToken);
 
-        public Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0)
+        public Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, long resumeOffset = 0, CancellationToken cancellationToken = default)
         {
             progress?.Report(CreateTransferProgress(localPath));
             return InvokeAsync("Upload", sessionId, cancellationToken);
         }
 
-        public Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0)
+        public Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, long resumeOffset = 0, CancellationToken cancellationToken = default)
         {
             progress?.Report(CreateTransferProgress(remotePath));
             return InvokeAsync("Download", sessionId, cancellationToken);

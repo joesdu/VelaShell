@@ -66,12 +66,12 @@ public class GutterFoldTests
 
         List<int>? vis = model.VisibleRowsOrNull(screen);
         Assert.IsNotNull(vis);
-        CollectionAssert.DoesNotContain(vis, 0);
-        CollectionAssert.DoesNotContain(vis, 1);
-        CollectionAssert.DoesNotContain(vis, 2);
-        CollectionAssert.Contains(vis, 3); // 折叠头可见
-        CollectionAssert.Contains(vis, 4);
-        CollectionAssert.Contains(vis, 5);
+        Assert.DoesNotContain(0, vis);
+        Assert.DoesNotContain(1, vis);
+        Assert.DoesNotContain(2, vis);
+        Assert.Contains(3, vis); // 折叠头可见
+        Assert.Contains(4, vis);
+        Assert.Contains(5, vis);
     }
 
     [TestMethod]
@@ -119,11 +119,11 @@ public class GutterFoldTests
         Assert.IsNotNull(vis);
         foreach (int hidden in new[] { 0, 1, 2, 4, 5 })
         {
-            CollectionAssert.DoesNotContain(vis, hidden);
+            Assert.DoesNotContain(hidden, vis);
         }
         foreach (int shown in new[] { 3, 6, 7 })
         {
-            CollectionAssert.Contains(vis, shown);
+            Assert.Contains(shown, vis);
         }
         Assert.IsTrue(model.IsAnchor(screen, 3));
         Assert.IsTrue(model.IsAnchor(screen, 6));
@@ -157,9 +157,9 @@ public class GutterFoldTests
         Assert.IsTrue(model.IsAnchor(e.Screen, absL2), "滚动后折叠头应随行对象保留。");
         List<int>? vis = model.VisibleRowsOrNull(e.Screen);
         Assert.IsNotNull(vis);
-        CollectionAssert.DoesNotContain(vis, FindAbs(e.Screen, "L0"));
-        CollectionAssert.DoesNotContain(vis, FindAbs(e.Screen, "L1"));
-        CollectionAssert.Contains(vis, absL2);
+        Assert.DoesNotContain(FindAbs(e.Screen, "L0"), vis);
+        Assert.DoesNotContain(FindAbs(e.Screen, "L1"), vis);
+        Assert.Contains(absL2, vis);
     }
 
     [TestMethod]
@@ -169,13 +169,13 @@ public class GutterFoldTests
         int offset = 0;
         // total=10, screen=4, offset=0 → 底部 4 行 abs 6..9。
         GutterFoldModel.FillScreenRowMap(map, null, totalRows: 10, screenRows: 4, ref offset);
-        CollectionAssert.AreEqual(new[] { 6, 7, 8, 9 }, map);
+        Assert.AreSequenceEqual([6, 7, 8, 9], map);
 
         // offset 超范围应夹到 (total-screen)=6。
         offset = 999;
         GutterFoldModel.FillScreenRowMap(map, null, 10, 4, ref offset);
         Assert.AreEqual(6, offset);
-        CollectionAssert.AreEqual(new[] { 0, 1, 2, 3 }, map);
+        Assert.AreSequenceEqual([0, 1, 2, 3], map);
     }
 
     [TestMethod]
@@ -186,7 +186,7 @@ public class GutterFoldTests
         // 折叠后可见序列(隐藏了 1,2):[0,3,4,5]。屏幕 4 行 → 全部显示。
         var visible = new List<int> { 0, 3, 4, 5 };
         GutterFoldModel.FillScreenRowMap(map, visible, totalRows: 6, screenRows: 4, ref offset);
-        CollectionAssert.AreEqual(new[] { 0, 3, 4, 5 }, map);
+        Assert.AreSequenceEqual([0, 3, 4, 5], map);
     }
 
     [TestMethod]
@@ -218,9 +218,9 @@ public class GutterFoldTests
         Assert.IsNotNull(vis);
         foreach (int hidden in new[] { 0, 1, 2 })
         {
-            CollectionAssert.DoesNotContain(vis, hidden);
+            Assert.DoesNotContain(hidden, vis);
         }
-        CollectionAssert.Contains(vis, 3);
+        Assert.Contains(3, vis);
 
         // 折叠头 L3 现在在屏幕行 0;再点它 → 展开。
         offset = 0;

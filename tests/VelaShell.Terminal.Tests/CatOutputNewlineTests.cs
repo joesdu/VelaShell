@@ -114,7 +114,7 @@ public class CatOutputNewlineTests
     {
         TerminalEmulator e = NewTerm();
         FeedText(e, "A\tB\tC\r\n测试\r\npi@host:~$ ");
-        StringAssert.StartsWith(Line(e, 0), "A");
+        Assert.StartsWith("A", Line(e, 0));
         Assert.AreEqual("测试", Line(e, 1).TrimEnd());
         Assert.AreEqual("pi@host:~$", Line(e, 2).TrimEnd());
     }

@@ -177,7 +177,7 @@ public class SidebarQuickCommandsUiTests
             treeViewModel.AddSession(profile);
             var treeView = new SessionTreeView { DataContext = treeViewModel };
             var terminalFocusProxy = new TextBox();
-            var panel = new Grid { RowDefinitions = new("*,Auto") };
+            var panel = new Grid { RowDefinitions = [with("*,Auto")] };
             panel.Children.Add(treeView);
             Grid.SetRow(terminalFocusProxy, 1);
             panel.Children.Add(terminalFocusProxy);

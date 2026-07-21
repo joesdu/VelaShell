@@ -1,13 +1,14 @@
+using Tmds.Ssh;
 using VelaShell.Core.Ssh;
 
 namespace VelaShell.Infrastructure.Ssh;
 
 /// <summary>
-/// 将 Tmds.Ssh 的 <see cref="Tmds.Ssh.RemoteProcess" /> 适配到 <see cref="IShellStreamWrapper" />。
+/// 将 Tmds.Ssh 的 <see cref="RemoteProcess" /> 适配到 <see cref="IShellStreamWrapper" />。
 /// </summary>
-public class ShellStreamWrapper(Tmds.Ssh.RemoteProcess process) : IShellStreamWrapper
+public class ShellStreamWrapper(RemoteProcess process) : IShellStreamWrapper
 {
-    private readonly Tmds.Ssh.RemoteProcess _process = process ?? throw new ArgumentNullException(nameof(process));
+    private readonly RemoteProcess _process = process ?? throw new ArgumentNullException(nameof(process));
     private Stream? _outputStream;
     private volatile bool _disposed;
     private bool _readEof;
@@ -35,14 +36,14 @@ public class ShellStreamWrapper(Tmds.Ssh.RemoteProcess process) : IShellStreamWr
         if (_disposed || _readEof) return 0;
         try
         {
-            _outputStream ??= _process.ReadAsStream(Tmds.Ssh.StderrHandler.Ignore);
+            _outputStream ??= _process.ReadAsStream(StderrHandler.Ignore);
             int bytesRead = await _outputStream
                 .ReadAsync(buffer.AsMemory(offset, count), cancellationToken)
                 .ConfigureAwait(false);
             if (bytesRead == 0) _readEof = true;
             return bytesRead;
         }
-        catch (Tmds.Ssh.SshChannelClosedException) { _readEof = true; return 0; }
+        catch (SshChannelClosedException) { _readEof = true; return 0; }
         catch (ObjectDisposedException) { _readEof = true; return 0; }
         catch (IOException) { _readEof = true; return 0; }
         catch (OperationCanceledException) { _readEof = true; return 0; }
@@ -58,7 +59,7 @@ public class ShellStreamWrapper(Tmds.Ssh.RemoteProcess process) : IShellStreamWr
                 new ReadOnlyMemory<byte>(buffer, offset, count), cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (Tmds.Ssh.SshChannelClosedException)
+        catch (SshChannelClosedException)
         {
             _disposed = true;
             throw new ObjectDisposedException(nameof(ShellStreamWrapper));

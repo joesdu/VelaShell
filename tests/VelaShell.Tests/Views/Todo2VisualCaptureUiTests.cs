@@ -39,7 +39,7 @@ namespace VelaShell.Tests.Views;
 [TestCategory("Todo2VisualQA")]
 public sealed class Todo2VisualCaptureUiTests
 {
-    private static readonly object ManifestGate = new();
+    private static readonly Lock ManifestGate = new();
     private static readonly List<CaptureManifestEntry> Manifest = [];
     private static HeadlessUnitTestSession _session = null!;
     private static LocalizationService _localization = null!;
@@ -153,8 +153,8 @@ public sealed class Todo2VisualCaptureUiTests
 
             int uiThread = Environment.CurrentManagedThreadId;
             List<int> notificationThreads = [];
-            PropertyChangedEventHandler propertyChanged = (_, _) => notificationThreads.Add(Environment.CurrentManagedThreadId);
-            NotifyCollectionChangedEventHandler collectionChanged = (_, _) => notificationThreads.Add(Environment.CurrentManagedThreadId);
+            void propertyChanged(object? _1, PropertyChangedEventArgs _2) => notificationThreads.Add(Environment.CurrentManagedThreadId);
+            void collectionChanged(object? _1, NotifyCollectionChangedEventArgs _2) => notificationThreads.Add(Environment.CurrentManagedThreadId);
             document.ViewModel.LocalFiles.PropertyChanged += propertyChanged;
             document.ViewModel.LocalFiles.Entries.CollectionChanged += collectionChanged;
 
@@ -165,7 +165,7 @@ public sealed class Todo2VisualCaptureUiTests
                     Arg.Any<string>(),
                     Arg.Any<string>(),
                     Arg.Any<IProgress<TransferProgress>?>(),
-                    Arg.Any<CancellationToken>())
+                    cancellationToken: Arg.Any<CancellationToken>())
                 .Returns(_ =>
                 {
                     started.SetResult();
@@ -200,7 +200,7 @@ public sealed class Todo2VisualCaptureUiTests
         Assert.IsNotNull(vm.Layout.AllDocuments().OfType<SftpDocument>().SingleOrDefault());
         SftpDocument document = vm.Layout.AllDocuments().OfType<SftpDocument>().Single();
         Assert.IsEmpty(vm.TabBar.Tabs);
-        sshClient.DidNotReceive().CreateShellStreamAsync(
+        await sshClient.DidNotReceive().CreateShellStreamAsync(
             Arg.Any<string>(),
             Arg.Any<uint>(),
             Arg.Any<uint>(),
@@ -211,8 +211,8 @@ public sealed class Todo2VisualCaptureUiTests
 
         int uiThread = Environment.CurrentManagedThreadId;
         List<int> notificationThreads = [];
-        PropertyChangedEventHandler propertyChanged = (_, _) => notificationThreads.Add(Environment.CurrentManagedThreadId);
-        NotifyCollectionChangedEventHandler collectionChanged = (_, _) => notificationThreads.Add(Environment.CurrentManagedThreadId);
+        void propertyChanged(object? _1, PropertyChangedEventArgs _2) => notificationThreads.Add(Environment.CurrentManagedThreadId);
+        void collectionChanged(object? _1, NotifyCollectionChangedEventArgs _2) => notificationThreads.Add(Environment.CurrentManagedThreadId);
         document.ViewModel.LocalFiles.PropertyChanged += propertyChanged;
         document.ViewModel.LocalFiles.Entries.CollectionChanged += collectionChanged;
         document.ViewModel.RemoteFiles.PropertyChanged += propertyChanged;
@@ -261,8 +261,7 @@ public sealed class Todo2VisualCaptureUiTests
                 .SingleOrDefault(control => control.Name == "PART_UploadPillRoot")
                 ?? throw new AssertFailedException("Upload pill PART_UploadPillRoot is missing.");
             Assert.IsNotNull(templateRoot);
-            Assert.IsFalse(uploadPill.GetVisualDescendants().OfType<Control>()
-                .Any(control => control.Name == "PART_FocusAdorner"));
+            Assert.DoesNotContain(control => control.Name == "PART_FocusAdorner", uploadPill.GetVisualDescendants().OfType<Control>());
             Control contentPresenter = uploadPill.GetVisualDescendants().OfType<Control>()
                 .SingleOrDefault(control => control.Name == "PART_ContentPresenter")
                 ?? throw new AssertFailedException("Upload pill PART_ContentPresenter is missing.");
@@ -288,11 +287,11 @@ public sealed class Todo2VisualCaptureUiTests
                 .Single(grid => grid.ColumnDefinitions.Count == 3 && grid.ColumnDefinitions[1].Width.Value == 4);
             Assert.AreEqual(280, paneGrid.ColumnDefinitions[0].MinWidth);
             Assert.AreEqual(280, paneGrid.ColumnDefinitions[2].MinWidth);
-            Assert.IsTrue(localPane.Bounds.X < remotePane.Bounds.X);
-            Assert.IsTrue(localPane.Bounds.Left >= 0);
-            Assert.IsTrue(remotePane.Bounds.Right <= view.Bounds.Width + 1);
-            Assert.IsFalse(localPane.Bounds.Bottom > view.Bounds.Height + 1);
-            Assert.IsFalse(remotePane.Bounds.Bottom > view.Bounds.Height + 1);
+            Assert.IsLessThan(remotePane.Bounds.X, localPane.Bounds.X);
+            Assert.IsGreaterThanOrEqualTo(0, localPane.Bounds.Left);
+            Assert.IsLessThanOrEqualTo(view.Bounds.Width + 1, remotePane.Bounds.Right);
+            Assert.IsLessThanOrEqualTo(view.Bounds.Height + 1, localPane.Bounds.Bottom);
+            Assert.IsLessThanOrEqualTo(view.Bounds.Height + 1, remotePane.Bounds.Bottom);
 
             foreach (Border row in localPane.GetVisualDescendants().OfType<Border>()
                          .Where(border => border.Classes.Contains("file-row")))
@@ -303,8 +302,8 @@ public sealed class Todo2VisualCaptureUiTests
                     .Single(text => text.Classes.Contains("local-size-cell"));
                 Point nameOrigin = nameCell.TranslatePoint(new Point(), view)!.Value;
                 Point sizeOrigin = sizeCell.TranslatePoint(new Point(), view)!.Value;
-                Assert.IsTrue(
-                    nameOrigin.X + nameCell.Bounds.Width <= sizeOrigin.X + 1,
+                Assert.IsLessThanOrEqualTo(
+                    sizeOrigin.X + 1, nameOrigin.X + nameCell.Bounds.Width,
                     $"Local name cell overlaps size column: name={nameCell.Bounds}, size={sizeCell.Bounds}."
                 );
             }
@@ -387,13 +386,12 @@ public sealed class Todo2VisualCaptureUiTests
                 Assert.IsTrue(sftp.IsFocused);
                 Assert.IsInstanceOfType<SolidColorBrush>(sftp.Background);
                 Assert.AreEqual(Color.Parse("#30BD93F9"), ((SolidColorBrush)sftp.Background).Color);
-                Border[] limeFocusLayers = sftp.GetVisualDescendants()
+                Border[] limeFocusLayers = [.. sftp.GetVisualDescendants()
                     .OfType<Border>()
                     .Where(border => border.Background is SolidColorBrush brush
                         && brush.Color.G > 180
                         && brush.Color.R > 100
-                        && brush.Color.B < 100)
-                    .ToArray();
+                        && brush.Color.B < 100)];
                 Assert.IsEmpty(limeFocusLayers, "Fluent system focus overlay replaced the Vela focus token.");
                 WriteFocusRuntimeDiagnostics(sftp, fileName);
             }
@@ -529,13 +527,13 @@ public sealed class Todo2VisualCaptureUiTests
         vm.OpenSftpCommand.Execute().Subscribe();
         Assert.IsTrue(openSftpVisible);
         Assert.IsTrue(openSftpRaised);
-        Assert.IsTrue(view.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == profile.Name));
+        Assert.Contains(text => text.Text == profile.Name, view.GetVisualDescendants().OfType<TextBlock>());
 
         ContextMenu menu = sessionRow.ContextMenu!;
         MenuItem openSftp = menu.Items.OfType<MenuItem>().Single(item =>
-            item.Header?.ToString() == VelaShell.Core.Resources.Strings.Get("Tree_OpenSftp"));
+            item.Header?.ToString() == Core.Resources.Strings.Get("Tree_OpenSftp"));
         MenuItem portForward = menu.Items.OfType<MenuItem>().Single(item =>
-            item.Header?.ToString() == VelaShell.Core.Resources.Strings.Get("Tree_PortForwarding"));
+            item.Header?.ToString() == Core.Resources.Strings.Get("Tree_PortForwarding"));
 
         string? ownerFrame = SaveFrame(window, fileName.Replace(".png", "-owner.png", StringComparison.Ordinal));
         menu.Open(sessionRow);
@@ -545,12 +543,11 @@ public sealed class Todo2VisualCaptureUiTests
         Assert.IsTrue(menu.IsOpen);
         Assert.IsTrue(openSftp.IsVisible);
         Assert.AreEqual(connectionType == ConnectionType.SSH, portForward.IsVisible);
-        MenuItem[] visiblePopupItems = menu.GetVisualDescendants()
+        MenuItem[] visiblePopupItems = [.. menu.GetVisualDescendants()
             .OfType<MenuItem>()
-            .Where(item => item.IsVisible)
-            .ToArray();
-        Assert.IsTrue(visiblePopupItems.Any(item =>
-            item.Header?.ToString() == VelaShell.Core.Resources.Strings.Get("Connect")));
+            .Where(item => item.IsVisible)];
+        Assert.Contains(item =>
+            item.Header?.ToString() == Core.Resources.Strings.Get("Connect"), visiblePopupItems);
         if (connectionType == ConnectionType.SSH)
         {
             Assert.Contains(openSftp, visiblePopupItems);
@@ -676,7 +673,7 @@ public sealed class Todo2VisualCaptureUiTests
             .Select(visual => new
             {
                 Type = visual.GetType().FullName,
-                Name = (visual as Control)?.Name,
+                (visual as Control)?.Name,
                 Bounds = visual.Bounds.ToString(),
                 Background = ReadProperty(visual, "Background"),
                 Fill = ReadProperty(visual, "Fill"),
@@ -695,7 +692,7 @@ public sealed class Todo2VisualCaptureUiTests
             .Select(visual => new
             {
                 Type = visual.GetType().FullName,
-                Name = (visual as Control)?.Name,
+                (visual as Control)?.Name,
                 Bounds = visual.Bounds.ToString(),
                 Background = ReadProperty(visual, "Background"),
                 Fill = ReadProperty(visual, "Fill"),

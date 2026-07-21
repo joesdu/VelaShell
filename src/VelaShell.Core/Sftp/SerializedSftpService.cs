@@ -5,32 +5,26 @@ namespace VelaShell.Core.Sftp;
 /// <summary>
 /// 为单个文档所属的会话串行化 SFTP 操作,而不改变终端侧边栏所用共享 SFTP 服务的行为。
 /// </summary>
-public sealed class SerializedSftpService : ISftpService
+/// <remarks>创建绑定到唯一一个文档所属 SFTP 会话的串行器。</remarks>
+public sealed class SerializedSftpService(ISftpService inner, Guid sessionId) : ISftpService
 {
-    private readonly ISftpService _inner;
+    private readonly ISftpService _inner = inner ?? throw new ArgumentNullException(nameof(inner));
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly object _lifecycleSync = new();
+    private readonly Lock _lifecycleSync = new();
     private Task? _closeTask;
     private bool _closing;
 
-    /// <summary>创建绑定到唯一一个文档所属 SFTP 会话的串行器。</summary>
-    public SerializedSftpService(ISftpService inner, Guid sessionId)
-    {
-        _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-        SessionId = sessionId;
-    }
-
     /// <summary>该文档作用域服务唯一接受的会话 ID。</summary>
-    public Guid SessionId { get; }
+    public Guid SessionId { get; } = sessionId;
 
     /// <summary>列举远端目录的串行化透传。</summary>
     public Task<List<RemoteFileInfo>> ListDirectoryAsync(Guid sessionId, string path, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.ListDirectoryAsync(sessionId, path, token), cancellationToken);
 
     /// <summary>向远端主机上传文件的串行化透传。</summary>
-    public Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0) => ExecuteAsync(sessionId, token => _inner.UploadFileAsync(sessionId, localPath, remotePath, progress, token, resumeOffset), cancellationToken);
+    public Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, long resumeOffset = 0, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.UploadFileAsync(sessionId, localPath, remotePath, progress, resumeOffset, token), cancellationToken);
 
     /// <summary>从远端主机下载文件的串行化透传。</summary>
-    public Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0) => ExecuteAsync(sessionId, token => _inner.DownloadFileAsync(sessionId, remotePath, localPath, progress, token, resumeOffset), cancellationToken);
+    public Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, long resumeOffset = 0, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.DownloadFileAsync(sessionId, remotePath, localPath, progress, resumeOffset, token ), cancellationToken);
 
     /// <summary>删除远端文件或目录的串行化透传。</summary>
     public Task DeleteAsync(Guid sessionId, string remotePath, IProgress<SftpDeleteProgress>? progress = null, CancellationToken cancellationToken = default) => ExecuteAsync(sessionId, token => _inner.DeleteAsync(sessionId, remotePath, progress, token), cancellationToken);

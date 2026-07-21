@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace VelaShell.Core.ZModem.Protocol;
 
 /// <summary>数据子包结束后对端应采取的动作(由帧结束符 ZCRCE/G/Q/W 决定)。</summary>
@@ -204,7 +206,7 @@ public static class ZModemSubpacket
         }
         ushort expected = (ushort)((crcBytes[0] << 8) | crcBytes[1]);
         ushort actual = 0;
-        actual = Crc16Xmodem.Update(actual, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(data));
+        actual = Crc16Xmodem.Update(actual, CollectionsMarshal.AsSpan(data));
         actual = Crc16Xmodem.Update(actual, frameEnd);
         return expected == actual
             ? new(ZModemSubpacketStatus.Ok, [.. data], end)
@@ -225,7 +227,7 @@ public static class ZModemSubpacket
         }
         uint expected = (uint)(crcBytes[0] | (crcBytes[1] << 8) | (crcBytes[2] << 16) | (crcBytes[3] << 24));
         uint running = Crc32ZModem.Initial;
-        running = Crc32ZModem.UpdateRunning(running, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(data));
+        running = Crc32ZModem.UpdateRunning(running, CollectionsMarshal.AsSpan(data));
         running = Crc32ZModem.UpdateRunning(running, frameEnd);
         uint actual = running ^ 0xFFFFFFFF;
         return expected == actual

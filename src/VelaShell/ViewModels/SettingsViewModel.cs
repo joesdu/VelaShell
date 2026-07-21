@@ -71,7 +71,6 @@ public class SettingsViewModel : ReactiveObject
         ISettingsService settingsService,
         IThemeService themeService,
         ILocalizationService? localizationService = null,
-        IAppDataStore? appDataStore = null,
         ISshKeyService? sshKeyService = null,
         IRecentConnectionService? recentConnections = null,
         ISettingsPreviewService? previewService = null,

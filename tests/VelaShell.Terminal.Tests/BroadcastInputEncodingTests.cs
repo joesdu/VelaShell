@@ -47,8 +47,8 @@ public sealed class BroadcastInputEncodingTests
             Assert.IsTrue(normal.WriteKeyInput(Key.Up, KeyModifiers.None));
             Assert.IsTrue(application.WriteKeyInput(Key.Up, KeyModifiers.None));
 
-            CollectionAssert.AreEqual(Encoding.ASCII.GetBytes("\e[A"), normalBytes);
-            CollectionAssert.AreEqual(Encoding.ASCII.GetBytes("\eOA"), applicationBytes);
+            Assert.AreSequenceEqual(Encoding.ASCII.GetBytes("\e[A"), normalBytes);
+            Assert.AreSequenceEqual(Encoding.ASCII.GetBytes("\eOA"), applicationBytes);
         });
     }
 
@@ -66,8 +66,8 @@ public sealed class BroadcastInputEncodingTests
             control.WriteTextInput("中文");
 
             byte[] expected = Encoding.UTF8.GetBytes("中文");
-            CollectionAssert.AreEqual(expected, typed);
-            CollectionAssert.AreEqual(expected, sent);
+            Assert.AreSequenceEqual(expected, typed);
+            Assert.AreSequenceEqual(expected, sent);
             Assert.AreEqual(string.Empty, control.GetBufferLine(control.CursorRow));
         });
     }
@@ -84,7 +84,7 @@ public sealed class BroadcastInputEncodingTests
 
             control.WritePasteInput("one\ntwo");
 
-            CollectionAssert.AreEqual(Encoding.UTF8.GetBytes("\e[200~one\rtwo\e[201~"), sent);
+            Assert.AreSequenceEqual(Encoding.UTF8.GetBytes("\e[200~one\rtwo\e[201~"), sent);
         });
     }
 }

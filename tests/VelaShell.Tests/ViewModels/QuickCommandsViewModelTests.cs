@@ -44,6 +44,7 @@ public class QuickCommandsViewModelTests : IDisposable
         {
             Directory.Delete(_testDirectory, true);
         }
+        GC.SuppressFinalize(this);
     }
 
     [TestMethod]
@@ -51,10 +52,7 @@ public class QuickCommandsViewModelTests : IDisposable
     public void BuiltInDefaults_LoadTheEntireBuiltInCatalog()
     {
         var names = _vm.AllCommands.Select(c => c.Name).ToList();
-        CollectionAssert.AreEquivalent(
-            QuickCommandCatalog.BuiltIns.Select(c => c.Name).ToList(),
-            names
-        );
+        Assert.AreSequenceEqual([.. QuickCommandCatalog.BuiltIns.Select(c => c.Name)], names, SequenceOrder.InAnyOrder);
         Assert.HasCount(BuiltInCount, _vm.AllCommands);
         Assert.IsTrue(_vm.AllCommands.All(c => c.IsBuiltIn));
     }
@@ -118,7 +116,7 @@ public class QuickCommandsViewModelTests : IDisposable
 
         Assert.IsNotNull(request);
         Assert.AreEqual(SampleBuiltIn.CommandText, request.CommandText);
-        CollectionAssert.AreEqual(new[] { currentId }, request.TargetIds.ToArray());
+        Assert.AreSequenceEqual([currentId], [.. request.TargetIds]);
     }
 
     [TestMethod]
@@ -139,7 +137,7 @@ public class QuickCommandsViewModelTests : IDisposable
         runner.SendCommand.Execute(_vm.AllCommands[0]).Subscribe();
 
         Assert.IsNotNull(request);
-        CollectionAssert.AreEquivalent(new[] { firstId, secondId }, request.TargetIds.ToArray());
+        Assert.AreSequenceEqual([firstId, secondId], [.. request.TargetIds], SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -161,7 +159,7 @@ public class QuickCommandsViewModelTests : IDisposable
         runner.ExecutionRequested += (_, e) => request = e;
         runner.SendCommand.Execute(_vm.AllCommands[0]).Subscribe();
         Assert.IsNotNull(request);
-        CollectionAssert.AreEqual(new[] { currentId }, request.TargetIds.ToArray());
+        Assert.AreSequenceEqual([currentId], [.. request.TargetIds]);
     }
 
     [TestMethod]
@@ -170,7 +168,7 @@ public class QuickCommandsViewModelTests : IDisposable
     {
         _vm.AddCommandCommand.Execute().Subscribe();
         Assert.IsTrue(_vm.IsAddingCommand);
-        string ungrouped = VelaShell.Core.Resources.Strings.Get("QuickCmd_Ungrouped");
+        string ungrouped = Core.Resources.Strings.Get("QuickCmd_Ungrouped");
         Assert.AreEqual(ungrouped, _vm.NewCategory);
         _vm.NewName = "my-cmd";
         _vm.NewCommandText = "echo hello";
@@ -229,12 +227,10 @@ public class QuickCommandsViewModelTests : IDisposable
     {
         var expected = QuickCommandGroupCatalog
             .BuiltIns.Select(group => group.Name)
-            .Append(VelaShell.Core.Resources.Strings.Get("QuickCmd_Ungrouped"))
+            .Append(Core.Resources.Strings.Get("QuickCmd_Ungrouped"))
             .ToList();
-        CollectionAssert.AreEqual(
-            expected,
-            _vm.Categories.ToList(),
-            "分类应为内置目录去重排序后的结果"
+        Assert.AreSequenceEqual(
+            expected, [.. _vm.Categories], "分类应为内置目录去重排序后的结果"
         );
     }
 

@@ -238,7 +238,7 @@ public class App : Application
                     return; // 已关闭;不要再启动新的防抖任务。
                 }
                 await Task.Delay(TimeSpan.FromSeconds(5), token);
-                if (!_syncDebounce.TryStartCurrent(token, () => syncService.SyncNowAsync(CancellationToken.None), out Task? syncTask))
+                if (!_syncDebounce.TryStartCurrent(() => syncService.SyncNowAsync(CancellationToken.None), token, out Task? syncTask))
                 {
                     return; // 已在延迟期间关闭或被取代。
                 }

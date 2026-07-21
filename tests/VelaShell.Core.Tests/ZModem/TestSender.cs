@@ -65,7 +65,7 @@ internal sealed class TestSender(IByteDuplex duplex, bool useCrc32, int subpacke
         // 结束握手:ZFIN ↔ ZFIN,再发 "OO"。
         await WriteHeaderAsync(ZModemHeader.Empty(ZModemFrameType.ZFIN), ZModemHeaderFormat.Hex, ct).ConfigureAwait(false);
         await WaitForAsync(ZModemFrameType.ZFIN, ct).ConfigureAwait(false);
-        await duplex.WriteAsync(new byte[] { 0x4F, 0x4F }, ct).ConfigureAwait(false); // "OO"
+        await duplex.WriteAsync("OO"u8.ToArray(), ct).ConfigureAwait(false); // "OO"
         await duplex.FlushAsync(ct).ConfigureAwait(false);
     }
 

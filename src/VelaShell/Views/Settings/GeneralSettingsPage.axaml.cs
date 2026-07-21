@@ -44,7 +44,7 @@ public partial class GeneralSettingsPage : UserControl
             Title = Strings.Get("SetGeneral_ImportDialogTitle"),
             AllowMultiple = false
         });
-        if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path && File.Exists(path))
+        if (files.AsParallel().FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path && File.Exists(path))
         {
             viewModel.TryApplyImportedJson(await File.ReadAllTextAsync(path));
         }

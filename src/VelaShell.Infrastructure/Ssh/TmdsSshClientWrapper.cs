@@ -1,3 +1,4 @@
+using Tmds.Ssh;
 using VelaShell.Core.Ssh;
 
 namespace VelaShell.Infrastructure.Ssh;
@@ -5,20 +6,13 @@ namespace VelaShell.Infrastructure.Ssh;
 /// <summary>
 /// <see cref="ISshClientWrapper" /> 的 Tmds.Ssh 实现。
 /// </summary>
-public sealed class TmdsSshClientWrapper : ISshClientWrapper
+public sealed class TmdsSshClientWrapper(SshClientSettings settings) : ISshClientWrapper
 {
-    private readonly Tmds.Ssh.SshClientSettings _settings;
-    private Tmds.Ssh.SshClient? _client;
-    private TimeSpan _connectionTimeout;
+    private readonly SshClientSettings _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+    private SshClient? _client;
     private bool _disposed;
 
-    public TmdsSshClientWrapper(Tmds.Ssh.SshClientSettings settings)
-    {
-        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
-        _connectionTimeout = settings.ConnectTimeout;
-    }
-
-    internal Tmds.Ssh.SshClient? InnerClient => _client;
+    internal SshClient? InnerClient => _client;
 
     /// <summary>
     /// Tmds.Ssh 的 SshClient 无 IsConnected 属性:_client 仅在连接成功后被赋值,
@@ -33,37 +27,48 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
         }
     }
 
+    /// <summary>
+    /// Tmds.Ssh 的 SshClientSettings.ConnectTimeout 对应 SSH 连接超时,默认 10 秒。
+    /// </summary>
     public TimeSpan ConnectionTimeout
     {
         get
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            return _connectionTimeout;
+            return field;
         }
         set
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            _connectionTimeout = value;
+            field = value;
             _settings.ConnectTimeout = value;
         }
-    }
+    } = settings.ConnectTimeout;
 
+    /// <summary>
+    /// Tmds.Ssh 的 SshClient.Disconnected 令牌,底层连接丢失时取消。
+    /// </summary>
     public CancellationToken Disconnected => _client?.Disconnected ?? CancellationToken.None;
 
     // ---- Connection methods ----
-
+    /// <summary>
+    /// 连接到远程 SSH 服务器,成功后 _client 被赋值,失败时抛出 SshConnectionException。
+    /// </summary>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    /// <exception cref="VelaSshConnectionException"></exception>
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_client is not null) return;
-        Tmds.Ssh.SshClient? client = null;
+        SshClient? client;
         try
         {
-            client = new Tmds.Ssh.SshClient(_settings);
+            client = new SshClient(_settings);
         }
         catch (ArgumentException argEx)
         {
-            throw new SshConnectionException(
+            throw new VelaSshConnectionException(
                 $"SSH client configuration is invalid: {argEx.Message}", argEx);
         }
         try
@@ -73,7 +78,7 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
         catch (ArgumentException argEx)
         {
             SafeDisposeClient(client);
-            throw new SshConnectionException(
+            throw new VelaSshConnectionException(
                 $"SSH connection rejected by Tmds.Ssh with invalid argument: {argEx.Message}", argEx);
         }
         catch (Exception ex)
@@ -85,6 +90,9 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
         _client = client;
     }
 
+    /// <summary>
+    /// 断开当前连接,释放 _client,不抛出异常。
+    /// </summary>
     public void Disconnect()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -109,14 +117,14 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
         if (_client is null) throw new InvalidOperationException("Not connected.");
         try
         {
-            var options = new Tmds.Ssh.ExecuteOptions
+            var options = new ExecuteOptions
             {
                 AllocateTerminal = true,
                 TerminalType = terminalName,
                 TerminalWidth = (int)columns,
                 TerminalHeight = (int)rows,
             };
-            Tmds.Ssh.RemoteProcess process = await _client
+            RemoteProcess process = await _client
                 .ExecuteShellAsync(options, cancellationToken)
                 .ConfigureAwait(false);
             return new ShellStreamWrapper(process);
@@ -127,23 +135,31 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
         }
     }
 
+    /// <summary>
+    /// 在当前连接上异步执行命令,返回标准输出。Tmds.Ssh 的 ExecuteAsync 只返回标准输出,标准错误被忽略。
+    /// </summary>
+    /// <param name="commandText"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException"></exception>
+    /// <exception cref="ObjectDisposedException"></exception>
     public async Task<string> RunCommandAsync(string commandText, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_client is null) throw new InvalidOperationException("Not connected.");
         try
         {
-            using Tmds.Ssh.RemoteProcess process = await _client
+            using RemoteProcess process = await _client
                 .ExecuteAsync(commandText, cancellationToken)
                 .ConfigureAwait(false);
 
             using var reader = new StreamReader(
-                process.ReadAsStream(Tmds.Ssh.StderrHandler.Ignore));
+                process.ReadAsStream(StderrHandler.Ignore));
             string result = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
             await process.GetExitCodeAsync(cancellationToken).ConfigureAwait(false);
             return result;
         }
-        catch (Exception ex) when (ex is Tmds.Ssh.SshConnectionException && IsTornDown())
+        catch (Exception ex) when (ex is SshConnectionException && IsTornDown())
         {
             throw new ObjectDisposedException(nameof(TmdsSshClientWrapper), ex);
         }
@@ -153,6 +169,13 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
         }
     }
 
+    /// <summary>
+    /// 在当前连接上异步启动端口转发,返回 <see cref="IPortForwardHandle" />。Tmds.Ssh 的 ForwardToRemoteAsync 只支持远程转发,本地转发被忽略。
+    /// </summary>
+    /// <param name="request"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException"></exception>
     public async Task<IPortForwardHandle> StartPortForwardAsync(PortForwardRequest request, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -167,6 +190,9 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
         }
     }
 
+    /// <summary>
+    /// 释放当前连接,并将 _client 置 null,不抛出异常。
+    /// </summary>
     public void Dispose()
     {
         if (_disposed) return;
@@ -178,12 +204,12 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
     /// 安全释放 Tmds.Ssh.SshClient:通道关闭时 Dispose 可能抛出 SshChannelClosedException,
     /// 视为正常清理噪声,吞掉即可。
     /// </summary>
-    private static void SafeDisposeClient(Tmds.Ssh.SshClient? client)
+    private static void SafeDisposeClient(SshClient? client)
     {
         try { client?.Dispose(); } catch { }
     }
 
-    private static void SafeDisposeClient(ref Tmds.Ssh.SshClient? client)
+    private static void SafeDisposeClient(ref SshClient? client)
     {
         try { client?.Dispose(); } catch { }
         client = null;

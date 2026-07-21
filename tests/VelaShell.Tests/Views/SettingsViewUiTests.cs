@@ -119,7 +119,7 @@ public class SettingsViewUiTests
                 Dispatcher.UIThread.RunJobs();
             }
 
-            CollectionAssert.AreEqual(expected, received);
+            Assert.AreSequenceEqual(expected, received);
             window.Close();
         });
     }

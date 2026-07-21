@@ -45,7 +45,7 @@ public sealed class ExternalEditSessionManagerTests
                 Arg.Any<string>(),
                 Arg.Any<string>(),
                 Arg.Any<IProgress<TransferProgress>?>(),
-                Arg.Any<CancellationToken>()
+                cancellationToken: Arg.Any<CancellationToken>()
             );
         Assert.IsFalse(Directory.Exists(tempRoot));
     }

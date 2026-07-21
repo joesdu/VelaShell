@@ -55,7 +55,7 @@ public class SshConnectionServiceTests
     {
         ISshClientWrapper? mockClientWrapper = Substitute.For<ISshClientWrapper>();
         mockClientWrapper.When(x => x.ConnectAsync(Arg.Any<CancellationToken>()))
-                         .Do(_ => throw new SshAuthenticationException("Authentication failed"));
+                         .Do(_ => throw new VelaSshAuthenticationException("Authentication failed"));
         var connectionInfo = new ConnectionInfo
         {
             Host = "localhost",
@@ -65,7 +65,7 @@ public class SshConnectionServiceTests
             Password = "wrongpass"
         };
         var service = new SshConnectionService(_ => mockClientWrapper);
-        await Assert.ThrowsExactlyAsync<SshAuthenticationException>(async () => await service.ConnectAsync(connectionInfo));
+        await Assert.ThrowsExactlyAsync<VelaSshAuthenticationException>(async () => await service.ConnectAsync(connectionInfo));
     }
 
     [TestMethod]
@@ -73,7 +73,7 @@ public class SshConnectionServiceTests
     {
         ISshClientWrapper? mockClientWrapper = Substitute.For<ISshClientWrapper>();
         mockClientWrapper.When(x => x.ConnectAsync(Arg.Any<CancellationToken>()))
-                         .Do(_ => throw new SshConnectionException("Connection refused"));
+                         .Do(_ => throw new VelaSshConnectionException("Connection refused"));
         var connectionInfo = new ConnectionInfo
         {
             Host = "localhost",
@@ -83,7 +83,7 @@ public class SshConnectionServiceTests
             Password = "testpass"
         };
         var service = new SshConnectionService(_ => mockClientWrapper);
-        await Assert.ThrowsExactlyAsync<SshConnectionException>(async () => await service.ConnectAsync(connectionInfo));
+        await Assert.ThrowsExactlyAsync<VelaSshConnectionException>(async () => await service.ConnectAsync(connectionInfo));
     }
 
     [TestMethod]
@@ -232,7 +232,7 @@ public class SshConnectionServiceTests
     {
         ISshClientWrapper? mockClientWrapper = Substitute.For<ISshClientWrapper>();
         mockClientWrapper.When(x => x.ConnectAsync(Arg.Any<CancellationToken>()))
-                         .Do(_ => throw new SshConnectionException("Connection refused"));
+                         .Do(_ => throw new VelaSshConnectionException("Connection refused"));
         var connectionInfo = new ConnectionInfo
         {
             Host = "localhost",
@@ -242,7 +242,7 @@ public class SshConnectionServiceTests
             Password = "testpass"
         };
         var service = new SshConnectionService(_ => mockClientWrapper);
-        await Assert.ThrowsExactlyAsync<SshConnectionException>(async () => await service.ConnectAsync(connectionInfo));
+        await Assert.ThrowsExactlyAsync<VelaSshConnectionException>(async () => await service.ConnectAsync(connectionInfo));
         mockClientWrapper.Received(1).Dispose();
     }
 
@@ -251,7 +251,7 @@ public class SshConnectionServiceTests
     {
         ISshClientWrapper? mockClientWrapper = Substitute.For<ISshClientWrapper>();
         mockClientWrapper.When(x => x.ConnectAsync(Arg.Any<CancellationToken>()))
-                         .Do(_ => throw new SshConnectionException("Connection refused"));
+                         .Do(_ => throw new VelaSshConnectionException("Connection refused"));
         var connectionInfo = new ConnectionInfo
         {
             Host = "localhost",
@@ -261,7 +261,7 @@ public class SshConnectionServiceTests
             Password = "testpass"
         };
         var service = new SshConnectionService(_ => mockClientWrapper);
-        await Assert.ThrowsExactlyAsync<SshConnectionException>(async () => await service.ConnectAsync(connectionInfo));
+        await Assert.ThrowsExactlyAsync<VelaSshConnectionException>(async () => await service.ConnectAsync(connectionInfo));
         Assert.AreEqual(0, service.Sessions.Count);
     }
 
@@ -316,8 +316,8 @@ public class SshConnectionServiceTests
         };
         var service = new SshConnectionService(_ => mockClientWrapper);
         TimeoutException ex = await Assert.ThrowsExactlyAsync<TimeoutException>(async () => await service.ConnectAsync(connectionInfo));
-        StringAssert.Contains(ex.Message, "slow.example.com");
-        StringAssert.Contains(ex.Message, "timed out");
+        Assert.Contains("slow.example.com", ex.Message);
+        Assert.Contains("timed out", ex.Message);
         Assert.AreEqual(0, service.Sessions.Count);
     }
 

@@ -1261,7 +1261,7 @@ public class FileBrowserViewModel : ReactiveObject
                 return;
             }
             Directory.CreateDirectory(tempDir);
-            await _sftpService.DownloadFileAsync(_sessionId, file.FullPath, localPath, null, ct);
+            await _sftpService.DownloadFileAsync(_sessionId, file.FullPath, localPath, null, cancellationToken: ct);
             string remotePath = file.FullPath;
             await OpenInBuiltInEditor(
                 file,
@@ -2025,7 +2025,7 @@ public class FileBrowserViewModel : ReactiveObject
         {
             if (type == TransferType.Upload)
             {
-                await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, progress, ct, resumeOffset);
+                await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, progress, resumeOffset, ct);
             }
             else if (type == TransferType.Copy)
             {
@@ -2034,14 +2034,7 @@ public class FileBrowserViewModel : ReactiveObject
             }
             else
             {
-                await _sftpService.DownloadFileAsync(
-                    _sessionId,
-                    remotePath,
-                    localPath,
-                    progress,
-                    ct,
-                    resumeOffset
-                );
+                await _sftpService.DownloadFileAsync(_sessionId, remotePath, localPath, progress, resumeOffset, ct);
             }
             item?.Status = TransferStatus.Completed;
             finalStatus = TransferStatus.Completed;
@@ -2371,10 +2364,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// Deletes the given entries one after another behind a single busy overlay; the
     /// per-entry recursive progress is folded into one running "deleted / total" readout.
     /// </summary>
-    private async Task DeleteManyAsync(
-        IReadOnlyList<RemoteFileInfoViewModel> targets,
-        CancellationToken ct
-    )
+    private async Task DeleteManyAsync(List<RemoteFileInfoViewModel> targets, CancellationToken ct)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _deleteCts = cts;

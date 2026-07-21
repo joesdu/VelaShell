@@ -34,7 +34,7 @@ public class ZdleCodecTests
     {
         var output = new List<byte>();
         ZdleCodec.EscapeByte(0x18, output);
-        CollectionAssert.AreEqual(new byte[] { 0x18, 0x58 }, output);
+        Assert.AreSequenceEqual(new byte[] { 0x18, 0x58 }, output);
     }
 
     [TestMethod]
@@ -42,7 +42,7 @@ public class ZdleCodecTests
     {
         var output = new List<byte>();
         ZdleCodec.EscapeByte(0x41, output);
-        CollectionAssert.AreEqual(new byte[] { 0x41 }, output);
+        Assert.AreSequenceEqual("A"u8.ToArray(), output);
     }
 
     [TestMethod]
@@ -78,7 +78,7 @@ public class ZdleCodecTests
                 decoded.Add(escaped[i]);
             }
         }
-        CollectionAssert.AreEqual(original, decoded.ToArray());
+        Assert.AreSequenceEqual(original, [.. decoded]);
     }
 
     [TestMethod]

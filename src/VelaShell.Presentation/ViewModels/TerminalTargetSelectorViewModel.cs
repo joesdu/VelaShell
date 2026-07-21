@@ -82,10 +82,7 @@ public sealed class TerminalTargetSelectorViewModel : ReactiveObject
     /// <summary>解析显式选择或活动终端回退后的目标标识。</summary>
     public IReadOnlyList<Guid> ResolveTargetIds()
     {
-        Guid[] selected = Targets
-            .Where(target => target.IsSelected)
-            .Select(target => target.Id)
-            .ToArray();
+        Guid[] selected = [.. Targets.Where(target => target.IsSelected).Select(target => target.Id)];
         if (selected.Length > 0)
         {
             return selected;

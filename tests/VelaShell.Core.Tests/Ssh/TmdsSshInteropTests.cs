@@ -6,7 +6,7 @@ namespace VelaShell.Core.Tests.Ssh;
 /// <summary>
 /// 锁定 <see cref="TmdsSshInterop.Translate" /> 的取消/超时语义:
 /// 调用方主动取消必须保留 OperationCanceledException,不得被翻译为超时;
-/// 只有调用方未取消时的取消异常(库内部超时)才映射为 <see cref="SshOperationTimeoutException" />。
+/// 只有调用方未取消时的取消异常(库内部超时)才映射为 <see cref="VelaSshOperationTimeoutException" />。
 /// (Tmds.Ssh 自身异常类型的构造函数均为 internal,其映射由 switch 的编译期类型检查保证。)
 /// </summary>
 [TestClass]
@@ -40,7 +40,7 @@ public sealed class TmdsSshInteropTests
     {
         Exception? translated = TmdsSshInterop.Translate(new OperationCanceledException(), CancellationToken.None);
 
-        Assert.IsInstanceOfType<SshOperationTimeoutException>(translated);
+        Assert.IsInstanceOfType<VelaSshOperationTimeoutException>(translated);
     }
 
     [TestMethod]
@@ -51,7 +51,7 @@ public sealed class TmdsSshInteropTests
         // 调用方 token 存在但未取消 → 取消来自库内部超时
         Exception? translated = TmdsSshInterop.Translate(new OperationCanceledException(), cts.Token);
 
-        Assert.IsInstanceOfType<SshOperationTimeoutException>(translated);
+        Assert.IsInstanceOfType<VelaSshOperationTimeoutException>(translated);
     }
 
     [TestMethod]

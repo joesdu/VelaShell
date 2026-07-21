@@ -42,8 +42,8 @@ public class SftpService(
         string localPath,
         string remotePath,
         IProgress<TransferProgress>? progress = null,
-        CancellationToken cancellationToken = default,
-        long resumeOffset = 0)
+        long resumeOffset = 0,
+        CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
         var fileInfo = new FileInfo(localPath);
@@ -103,8 +103,8 @@ public class SftpService(
         string remotePath,
         string localPath,
         IProgress<TransferProgress>? progress = null,
-        CancellationToken cancellationToken = default,
-        long resumeOffset = 0)
+        long resumeOffset = 0,
+        CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
         string fileName = GetUnixFileName(remotePath);
@@ -116,21 +116,19 @@ public class SftpService(
         if (resumeOffset > 0)
         {
             // 断点续传下载:向不完整的本地文件追加。
-            await using (Stream localStream = new FileStream(localPath, FileMode.Append, FileAccess.Write, FileShare.None))
-            {
-                // 从偏移处分块拷贝下载远端内容。
-                using Stream remoteStream = await client.OpenAsync(remotePath, FileMode.Open, FileAccess.Read, cancellationToken).ConfigureAwait(false);
-                remoteStream.Seek(resumeOffset, SeekOrigin.Begin);
+            await using Stream localStream = new FileStream(localPath, FileMode.Append, FileAccess.Write, FileShare.None);
+            // 从偏移处分块拷贝下载远端内容。
+            using Stream remoteStream = await client.OpenAsync(remotePath, FileMode.Open, FileAccess.Read, cancellationToken).ConfigureAwait(false);
+            remoteStream.Seek(resumeOffset, SeekOrigin.Begin);
 
-                byte[] buffer = new byte[32 * 1024];
-                long bytesRead = 0;
-                int read;
-                while ((read = await remoteStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
-                {
-                    await localStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
-                    bytesRead += read;
-                    ReportProgress(progress, fileName, resumeOffset + bytesRead, totalBytes, stopwatch);
-                }
+            byte[] buffer = new byte[32 * 1024];
+            long bytesRead = 0;
+            int read;
+            while ((read = await remoteStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                await localStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                bytesRead += read;
+                ReportProgress(progress, fileName, resumeOffset + bytesRead, totalBytes, stopwatch);
             }
         }
         else
@@ -220,7 +218,7 @@ public class SftpService(
         {
             await client.CreateDirectoryAsync(remotePath, cancellationToken).ConfigureAwait(false);
         }
-        catch (SshClientException)
+        catch (VelaSshClientException)
         {
             if (!await client.ExistsAsync(remotePath, cancellationToken).ConfigureAwait(false))
             {
@@ -237,7 +235,7 @@ public class SftpService(
         {
             await client.RenameFileAsync(oldPath, newPath, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is SftpOperationException or NotSupportedException)
+        catch (Exception ex) when (ex is VelaSftpOperationException or NotSupportedException)
         {
             // 部分 SFTP 服务器以 SSH_FX_BAD_MESSAGE(表现为"bad message")拒绝普通的 SSH_FXP_RENAME,
             // 跨目录移动时常见。改用被广泛支持的 posix-rename@openssh.com 扩展重试;若该路径也不可用,
@@ -281,7 +279,7 @@ public class SftpService(
         }
         else
         {
-            await CopyDirectoryAsync(sessionId, sourcePath, destPath, new HashSet<string>(StringComparer.Ordinal), 0, progress, cancellationToken)
+            await CopyDirectoryAsync(sessionId, sourcePath, destPath, [with(StringComparer.Ordinal)], 0, progress, cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -304,12 +302,10 @@ public class SftpService(
         try
         {
             // 远端下载 → 临时文件
-            await DownloadFileAsync(sessionId, sourcePath, tempPath, progress, cancellationToken)
-                .ConfigureAwait(false);
+            await DownloadFileAsync(sessionId, sourcePath, tempPath, progress, cancellationToken: cancellationToken).ConfigureAwait(false);
 
             // 临时文件上传 → 远端目标
-            await UploadFileAsync(sessionId, tempPath, destPath, progress, cancellationToken)
-                .ConfigureAwait(false);
+            await UploadFileAsync(sessionId, tempPath, destPath, progress, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         finally
         {

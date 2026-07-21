@@ -16,10 +16,19 @@ using VelaConnectionInfo = VelaShell.Core.Models.ConnectionInfo;
 
 namespace VelaShell.Infrastructure.DependencyInjection;
 
+/// <summary>
+/// Provides extension methods for registering VelaShell infrastructure services in an <see cref="IServiceCollection" />.
+/// </summary>
 public static class InfrastructureServiceCollectionExtensions
 {
     // ---- Persistence & Services (unchanged) ----
-
+    /// <summary>
+    /// Registers the VelaShell infrastructure services, including persistence, SSH connection management, SFTP, and related services, into the provided <see cref="IServiceCollection" />.
+    /// </summary>
+    /// <param name="services"></param>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException"></exception>
+    /// <exception cref="VelaSshConnectionException"></exception>
     public static IServiceCollection AddVelaShellInfrastructure(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -42,7 +51,7 @@ public static class InfrastructureServiceCollectionExtensions
         {
             VelaShellStoragePaths paths = sp.GetRequiredService<VelaShellStoragePaths>();
             return new SonnetDbHostKeyService(sp.GetRequiredService<SonnetDbEngine>(),
-                System.IO.Path.Combine(paths.LegacyDotDirectory, "known_hosts.json"));
+                Path.Combine(paths.LegacyDotDirectory, "known_hosts.json"));
         });
         services.AddSingleton<IRecentConnectionService, SonnetDbRecentConnectionService>();
         services.AddSingleton<IAuditLogService, SonnetDbAuditLogService>();
@@ -84,7 +93,7 @@ public static class InfrastructureServiceCollectionExtensions
                     // SFTP 复用主连接的 SSH 通道。主连接不在时不得偷偷另建连接:
                     // 新连接无人持有、无人释放(泄漏),且会绕过用户可见的连接生命周期。
                     SshClient inner = tmds.InnerClient
-                        ?? throw new VelaShell.Core.Ssh.SshConnectionException(
+                        ?? throw new VelaSshConnectionException(
                             "SSH connection is not established; cannot open SFTP channel.");
                     return await inner.OpenSftpClientAsync().ConfigureAwait(false);
                 });
@@ -194,7 +203,7 @@ public static class InfrastructureServiceCollectionExtensions
             int port = ci.Port;
 
             HostKeyVerification verification = await hostKey
-                .VerifyHostKeyAsync(host, port, keyType, fingerprint).ConfigureAwait(false);
+                .VerifyHostKeyAsync(host, port, keyType, fingerprint, ct).ConfigureAwait(false);
             string target = $"{host}:{port}";
 
             if (verification == HostKeyVerification.Trusted
@@ -223,7 +232,7 @@ public static class InfrastructureServiceCollectionExtensions
             }
             if (decision == HostKeyDecision.TrustPermanently)
             {
-                await hostKey.TrustHostKeyAsync(host, port, keyType, fingerprint);
+                await hostKey.TrustHostKeyAsync(host, port, keyType, fingerprint, ct);
                 if (verification == HostKeyVerification.Changed && alerts is not null)
                     await alerts.RaiseAsync("hostkey-changed-accepted",
                         Strings.Format("KeySvc_AlertChangedAccepted", target, fingerprint));
@@ -263,7 +272,7 @@ public static class InfrastructureServiceCollectionExtensions
             {
                 string fp = ctx.ConnectionInfo.ServerKey.Key.SHA256FingerPrint;
                 string kt = ctx.ConnectionInfo.ServerKey.Key is { } k ? k.GetType().Name : "unknown";
-                HostKeyVerification v = await hostKey.VerifyHostKeyAsync(host, port, kt, fp);
+                HostKeyVerification v = await hostKey.VerifyHostKeyAsync(host, port, kt, fp, ct);
                 return v == HostKeyVerification.Trusted
                     || HostTrustOnceCache.IsTrusted(host, port, fp);
             };

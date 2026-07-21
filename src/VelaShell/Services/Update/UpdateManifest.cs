@@ -64,7 +64,7 @@ public sealed class UpdateManifest
             ?? throw new FormatException("latest.json: version missing");
         string tag = root.GetProperty("tag").GetString()
             ?? throw new FormatException("latest.json: tag missing");
-        Dictionary<string, UpdateAsset> assets = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, UpdateAsset> assets = [with(StringComparer.OrdinalIgnoreCase)];
         foreach (JsonProperty entry in root.GetProperty("assets").EnumerateObject())
         {
             JsonElement v = entry.Value;

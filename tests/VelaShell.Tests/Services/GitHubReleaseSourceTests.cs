@@ -24,6 +24,7 @@ public class GitHubReleaseSourceTests : IDisposable
         {
             Directory.Delete(_dir, true);
         }
+        GC.SuppressFinalize(this);
     }
 
     private static UpdateManifest CreateManifest(string assetName, long size) =>
@@ -180,9 +181,8 @@ public class GitHubReleaseSourceTests : IDisposable
             CreateManifest("pkg.zip", payload.Length), Asset(payload.Length), destination);
 
         Assert.HasCount(3, ranges, "24MB 应切成 3 段并发请求");
-        CollectionAssert.AreEquivalent(
-            new long[] { 0, 8 * 1024 * 1024, 16 * 1024 * 1024 },
-            ranges.Select(r => r.From).ToArray());
+        Assert.AreSequenceEqual(
+            [0, 8 * 1024 * 1024, 16 * 1024 * 1024], ranges.Select(r => r.From).ToArray(), SequenceOrder.InAnyOrder);
         Assert.AreEqual(Convert.ToHexStringLower(SHA256.HashData(payload)), hash);
         Assert.AreEqual(payload.Length, new FileInfo(destination).Length);
         byte[] downloaded = await File.ReadAllBytesAsync(destination);
@@ -221,9 +221,8 @@ public class GitHubReleaseSourceTests : IDisposable
             CreateManifest("pkg.zip", payload.Length), Asset(payload.Length), destination);
 
         Assert.HasCount(2, ranges, "已完成的第一段不应重新请求");
-        CollectionAssert.AreEquivalent(
-            new long[] { segmentLength, 2 * segmentLength },
-            ranges.Select(r => r.From).ToArray());
+        Assert.AreSequenceEqual(
+            [segmentLength, 2 * segmentLength], [.. ranges.Select(r => r.From)], SequenceOrder.InAnyOrder);
         Assert.AreEqual(Convert.ToHexStringLower(SHA256.HashData(payload)), hash, "续传拼装后的整包哈希必须正确");
         byte[] downloaded = await File.ReadAllBytesAsync(destination);
         Assert.IsTrue(payload.AsSpan().SequenceEqual(downloaded));

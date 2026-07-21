@@ -16,7 +16,7 @@ public sealed class VtParser(IVtActions actions)
     private readonly StringBuilder _intermediates = new(4);
     private readonly StringBuilder _oscOrDcs = new(64);
 
-    private readonly List<int> _params = new(MaxParams);
+    private readonly List<int> _params = [with(MaxParams)];
     private int _currentParam;
 
     private char _dcsFinal;

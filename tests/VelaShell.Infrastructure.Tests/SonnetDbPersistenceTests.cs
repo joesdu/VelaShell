@@ -468,9 +468,8 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         Guid[] ids = [.. result.Data.Commands.Select(command => command.Id)];
         var secondRepository = new SonnetDbQuickCommandRepository(store);
         QuickCommandLoadResult secondLoad = await secondRepository.LoadAsync();
-        CollectionAssert.AreEqual(
-            ids,
-            secondLoad.Data.Commands.Select(command => command.Id).ToArray()
+        Assert.AreSequenceEqual(
+            ids, [.. secondLoad.Data.Commands.Select(command => command.Id)]
         );
     }
 

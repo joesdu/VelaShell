@@ -39,7 +39,7 @@ public sealed class SftpServiceConcurrencyCharacterizationTests
             try
             {
                 await releaseCalls.Task.WaitAsync(call.Arg<CancellationToken>());
-                return Enumerable.Empty<SftpEntry>();
+                return [];
             }
             finally
             {

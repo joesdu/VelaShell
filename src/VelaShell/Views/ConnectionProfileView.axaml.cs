@@ -61,11 +61,13 @@ public partial class ConnectionProfileView : Window
 
     private Border CreateVelaFocusAdorner()
     {
-        Border border = new();
-        border.Background = this.FindResource("VelaAccentDim") as IBrush;
-        border.BorderBrush = this.FindResource("VelaAccent") as IBrush;
-        border.BorderThickness = new Avalonia.Thickness(1);
-        border.IsHitTestVisible = false;
+        Border border = new()
+        {
+            Background = this.FindResource("VelaAccentDim") as IBrush,
+            BorderBrush = this.FindResource("VelaAccent") as IBrush,
+            BorderThickness = new Avalonia.Thickness(1),
+            IsHitTestVisible = false
+        };
         return border;
     }
 
@@ -121,7 +123,7 @@ public partial class ConnectionProfileView : Window
             Title = Strings.Get("Profile_SelectKeyFile"),
             AllowMultiple = false
         });
-        if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
+        if (files.AsParallel().FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
         {
             viewModel.PrivateKeyPath = path;
         }

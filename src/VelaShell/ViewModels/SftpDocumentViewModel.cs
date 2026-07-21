@@ -13,7 +13,7 @@ public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
     private readonly SerializedSftpService _serializedSftp;
     private readonly CancellationTokenSource _lifetime = new();
     private Task? _closeTask;
-    private readonly object _closeSync = new();
+    private readonly Lock _closeSync = new();
 
     /// <summary>初始化 SFTP 文档视图模型,并开始加载本地/远程文件树。</summary>
     public SftpDocumentViewModel(
@@ -38,8 +38,10 @@ public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
             IsVisible = true,
             IsDragEnabled = true,
         };
-        LocalFiles = new LocalFilePaneViewModel(transferOptions);
-        LocalFiles.UploadSelectedAsync = () => UploadSelectedAsync();
+        LocalFiles = new LocalFilePaneViewModel(transferOptions)
+        {
+            UploadSelectedAsync = () => UploadSelectedAsync()
+        };
         RemoteFiles.PickFolderForDownload = () => Task.FromResult<string?>(LocalFiles.CurrentPath);
         UploadSelectedCommand = ReactiveCommand.CreateFromTask(UploadSelectedAsync);
         DownloadSelectedCommand = ReactiveCommand.CreateFromTask(DownloadSelectedAsync);
@@ -74,19 +76,16 @@ public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
     /// <summary>将选中的本地文件上传到远程服务器。</summary>
     public async Task UploadSelectedAsync(CancellationToken cancellationToken = default)
     {
-        string[] paths = LocalFiles.SelectedEntries
+        string[] paths = [.. LocalFiles.SelectedEntries
             .Where(entry => !entry.IsParentEntry)
-            .Select(entry => entry.FullPath)
-            .ToArray();
+            .Select(entry => entry.FullPath)];
         await RemoteFiles.UploadLocalPathsAsync(paths, cancellationToken);
     }
 
     /// <summary>将选中的远程文件下载到本机。</summary>
     public async Task DownloadSelectedAsync(CancellationToken cancellationToken = default)
     {
-        RemoteFileInfoViewModel[] entries = RemoteFiles.SelectedFiles
-            .Where(entry => !entry.IsParentEntry)
-            .ToArray();
+        RemoteFileInfoViewModel[] entries = [.. RemoteFiles.SelectedFiles.Where(entry => !entry.IsParentEntry)];
         if (entries.Length == 0 || string.IsNullOrWhiteSpace(LocalFiles.CurrentPath))
         {
             return;

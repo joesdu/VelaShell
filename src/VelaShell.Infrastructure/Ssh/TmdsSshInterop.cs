@@ -1,3 +1,4 @@
+using Tmds.Ssh;
 using VelaShell.Core.Ssh;
 
 namespace VelaShell.Infrastructure.Ssh;
@@ -24,14 +25,14 @@ internal static class TmdsSshInterop
         return ex switch
         {
             // Subtypes must be before base types to avoid unreachable pattern warnings
-            Tmds.Ssh.SshChannelClosedException => new SshClientException(ex.Message, ex),
-            Tmds.Ssh.SshConnectionClosedException => new SshConnectionException(ex.Message, ex),
-            Tmds.Ssh.SshChannelException => new SshClientException(ex.Message, ex),
-            Tmds.Ssh.SshConnectionException sshEx => TranslateSshConnection(sshEx),
-            Tmds.Ssh.SshOperationException => new SshClientException(ex.Message, ex),
-            Tmds.Ssh.SftpException => new SftpOperationException(ex.Message, ex),
-            OperationCanceledException => new SshOperationTimeoutException(ex.Message, ex),
-            Tmds.Ssh.SshException => new SshClientException(ex.Message, ex),
+            SshChannelClosedException => new VelaSshClientException(ex.Message, ex),
+            SshConnectionClosedException => new VelaSshConnectionException(ex.Message, ex),
+            SshChannelException => new VelaSshClientException(ex.Message, ex),
+            SshConnectionException sshEx => TranslateSshConnection(sshEx),
+            SshOperationException => new VelaSshClientException(ex.Message, ex),
+            SftpException => new VelaSftpOperationException(ex.Message, ex),
+            OperationCanceledException => new VelaSshOperationTimeoutException(ex.Message, ex),
+            SshException => new VelaSshClientException(ex.Message, ex),
             _ => null
         };
     }
@@ -41,22 +42,22 @@ internal static class TmdsSshInterop
     /// 按 ConnectFailedReason 分别映射到对应的 Core 异常类型,
     /// 使主窗口的认证重试与错误提示能正常工作。
     /// </summary>
-    private static SshClientException TranslateSshConnection(Tmds.Ssh.SshConnectionException ex)
+    private static VelaSshClientException TranslateSshConnection(SshConnectionException ex)
     {
         // ConnectFailedException 是 internal class,只能通过消息内容判断原因。
         // 消息格式: "The connection could not be established - {reason} - {description}"
         string msg = ex.Message;
         if (!msg.StartsWith(ConnectFailedPrefix, StringComparison.Ordinal))
         {
-            return new SshConnectionException(msg, ex);
+            return new VelaSshConnectionException(msg, ex);
         }
 
         string? reason = ExtractConnectFailedReason(msg);
         return reason switch
         {
-            "AuthenticationFailed" => new SshAuthenticationException(msg, ex),
-            "Timeout" => new SshOperationTimeoutException(msg, ex),
-            _ => new SshConnectionException(msg, ex)
+            "AuthenticationFailed" => new VelaSshAuthenticationException(msg, ex),
+            "Timeout" => new VelaSshOperationTimeoutException(msg, ex),
+            _ => new VelaSshConnectionException(msg, ex)
         };
     }
 

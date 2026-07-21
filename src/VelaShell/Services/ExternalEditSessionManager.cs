@@ -35,7 +35,7 @@ public static class ExternalEditSessionManager
             throw new InvalidOperationException(Strings.Get("KeySvc_InvalidName"));
         }
         Directory.CreateDirectory(directory);
-        await sftpService.DownloadFileAsync(sessionId, remotePath, localPath, null, cancellationToken);
+        await sftpService.DownloadFileAsync(sessionId, remotePath, localPath, null, cancellationToken: cancellationToken);
         var session = new ExternalEditSession(sftpService, sessionId, remotePath, localPath, onError, uploadAsync);
         lock (Sessions)
         {

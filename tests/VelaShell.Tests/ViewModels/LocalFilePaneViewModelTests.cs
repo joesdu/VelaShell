@@ -109,7 +109,7 @@ public sealed class LocalFilePaneViewModelTests
 
         Assert.AreEqual("~", home.DisplayName);
         Assert.AreEqual(home.FullPath, home.Tooltip);
-        Assert.IsTrue(roots.Any(root => root.FullPath == (OperatingSystem.IsWindows() ? Path.GetPathRoot(home.FullPath) : "/")));
+        Assert.Contains(root => root.FullPath == (OperatingSystem.IsWindows() ? Path.GetPathRoot(home.FullPath) : "/"), roots);
     }
 
     [TestMethod]
@@ -180,7 +180,7 @@ public sealed class LocalFilePaneViewModelTests
         await viewModel.NavigateToAsync(inaccessible);
 
         Assert.AreEqual(Path.GetFullPath(temp.Path), viewModel.CurrentPath);
-        Assert.AreEqual(rowCount, viewModel.Entries.Count);
+        Assert.HasCount(rowCount, viewModel.Entries);
         Assert.IsFalse(string.IsNullOrWhiteSpace(viewModel.ErrorMessage));
     }
 
@@ -266,10 +266,10 @@ public sealed class LocalFilePaneViewModelTests
         await viewModel.NavigateToAsync(root);
         await viewModel.DeleteItemAsync(viewModel.Entries.Single(item => item.Name == "folder"));
 
-        CollectionAssert.DoesNotContain(fileSystem.EnumeratedPaths, outside);
-        CollectionAssert.Contains(fileSystem.DeletedDirectories, link);
-        CollectionAssert.Contains(fileSystem.DeletedDirectories, folder);
-        CollectionAssert.DoesNotContain(fileSystem.DeletedFiles, Path.Combine(outside, "must-survive.txt"));
+        Assert.DoesNotContain(outside, fileSystem.EnumeratedPaths);
+        Assert.Contains(link, fileSystem.DeletedDirectories);
+        Assert.Contains(folder, fileSystem.DeletedDirectories);
+        Assert.DoesNotContain(Path.Combine(outside, "must-survive.txt"), fileSystem.DeletedFiles);
     }
 
     [TestMethod]
@@ -305,10 +305,10 @@ public sealed class LocalFilePaneViewModelTests
             cancellation.Token
         );
 
-        CollectionAssert.Contains(fileSystem.DeletedFiles, first);
-        CollectionAssert.DoesNotContain(fileSystem.DeletedFiles, second);
-        CollectionAssert.DoesNotContain(fileSystem.DeletedDirectories, folder);
-        CollectionAssert.Contains(fileSystem.EnumeratedPaths, folder);
+        Assert.Contains(first, fileSystem.DeletedFiles);
+        Assert.DoesNotContain(second, fileSystem.DeletedFiles);
+        Assert.DoesNotContain(folder, fileSystem.DeletedDirectories);
+        Assert.Contains(folder, fileSystem.EnumeratedPaths);
     }
 
     [TestMethod]
@@ -346,7 +346,7 @@ public sealed class LocalFilePaneViewModelTests
     {
         using TempDirectory root = new();
         using TempDirectory outside = new();
-        string link = System.IO.Path.Combine(root.Path, "linked");
+        string link = Path.Combine(root.Path, "linked");
         try
         {
             Directory.CreateSymbolicLink(link, outside.Path);
@@ -385,9 +385,9 @@ public sealed class LocalFilePaneViewModelTests
 
     private sealed class FakeLocalFileSystem : ILocalFileSystem
     {
-        private readonly Dictionary<string, IReadOnlyList<LocalFileSystemEntry>> _children = new(
+        private readonly Dictionary<string, IReadOnlyList<LocalFileSystemEntry>> _children = [with(
             StringComparer.OrdinalIgnoreCase
-        );
+        )];
 
         public List<string> EnumeratedPaths { get; } = [];
         public List<string> DeletedFiles { get; } = [];

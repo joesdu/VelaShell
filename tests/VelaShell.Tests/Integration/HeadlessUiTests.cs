@@ -26,7 +26,7 @@ public class HeadlessUiTests
     {
         var viewModel = new MainWindowViewModel();
         Assert.IsNotNull(viewModel.Sidebar);
-        Assert.IsInstanceOfType(viewModel.Sidebar, typeof(SidebarViewModel));
+        Assert.IsInstanceOfType<SidebarViewModel>(viewModel.Sidebar);
     }
 
     [TestMethod]
@@ -35,7 +35,7 @@ public class HeadlessUiTests
     {
         var viewModel = new MainWindowViewModel();
         Assert.IsNotNull(viewModel.TabBar);
-        Assert.IsInstanceOfType(viewModel.TabBar, typeof(TabBarViewModel));
+        Assert.IsInstanceOfType<TabBarViewModel>(viewModel.TabBar);
     }
 
     [TestMethod]
@@ -44,7 +44,7 @@ public class HeadlessUiTests
     {
         var viewModel = new MainWindowViewModel();
         Assert.IsNotNull(viewModel.StatusBar);
-        Assert.IsInstanceOfType(viewModel.StatusBar, typeof(StatusBarViewModel));
+        Assert.IsInstanceOfType<StatusBarViewModel>(viewModel.StatusBar);
     }
 
     [TestMethod]
@@ -77,7 +77,7 @@ public class HeadlessUiTests
         themeService.SetTheme("light");
         Assert.AreEqual("light", themeService.CurrentTheme);
         Assert.HasCount(3, events);
-        CollectionAssert.AreEqual(new List<string> { "light", "dark", "light" }, events);
+        Assert.AreSequenceEqual(["light", "dark", "light"], events);
     }
 
     [TestMethod]

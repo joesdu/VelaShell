@@ -44,8 +44,10 @@ public class ScrollbackBufferTests
     [TestMethod]
     public void ScrollTo_MovesViewport()
     {
-        var buffer = new ScrollbackBuffer(100);
-        buffer.VisibleRows = 24;
+        var buffer = new ScrollbackBuffer(100)
+        {
+            VisibleRows = 24
+        };
         for (int i = 0; i < 50; i++)
         {
             buffer.AddLine(new() { Content = $"line {i}" });
@@ -57,8 +59,10 @@ public class ScrollbackBufferTests
     [TestMethod]
     public void ScrollUp_MovesViewportUp()
     {
-        var buffer = new ScrollbackBuffer(100);
-        buffer.VisibleRows = 24;
+        var buffer = new ScrollbackBuffer(100)
+        {
+            VisibleRows = 24
+        };
         for (int i = 0; i < 50; i++)
         {
             buffer.AddLine(new() { Content = $"line {i}" });
@@ -71,8 +75,10 @@ public class ScrollbackBufferTests
     [TestMethod]
     public void ScrollDown_MovesViewportDown()
     {
-        var buffer = new ScrollbackBuffer(100);
-        buffer.VisibleRows = 24;
+        var buffer = new ScrollbackBuffer(100)
+        {
+            VisibleRows = 24
+        };
         for (int i = 0; i < 50; i++)
         {
             buffer.AddLine(new() { Content = $"line {i}" });
@@ -102,8 +108,10 @@ public class ScrollbackBufferTests
     [TestMethod]
     public void TotalLines_CountsScrollbackAndVisible()
     {
-        var buffer = new ScrollbackBuffer(100);
-        buffer.VisibleRows = 24;
+        var buffer = new ScrollbackBuffer(100)
+        {
+            VisibleRows = 24
+        };
         for (int i = 0; i < 10; i++)
         {
             buffer.AddLine(new() { Content = $"line {i}" });
@@ -136,8 +144,10 @@ public class ScrollbackBufferTests
     [TestMethod]
     public void ScrollUp_ClampsToZero()
     {
-        var buffer = new ScrollbackBuffer(100);
-        buffer.VisibleRows = 24;
+        var buffer = new ScrollbackBuffer(100)
+        {
+            VisibleRows = 24
+        };
         for (int i = 0; i < 10; i++)
         {
             buffer.AddLine(new() { Content = $"line {i}" });
@@ -150,8 +160,10 @@ public class ScrollbackBufferTests
     [TestMethod]
     public void ScrollDown_ClampsToMaxViewport()
     {
-        var buffer = new ScrollbackBuffer(100);
-        buffer.VisibleRows = 24;
+        var buffer = new ScrollbackBuffer(100)
+        {
+            VisibleRows = 24
+        };
         for (int i = 0; i < 50; i++)
         {
             buffer.AddLine(new() { Content = $"line {i}" });
@@ -177,8 +189,8 @@ public class ScrollbackBufferTests
     {
         var buffer = new ScrollbackBuffer(100);
         buffer.AddLine(new() { Content = "only line" });
-        Func<TerminalLine> act = () => buffer.GetLine(5);
-        Assert.ThrowsExactly<ArgumentOutOfRangeException>(act);
+        TerminalLine act() => buffer.GetLine(5);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>((Func<TerminalLine>)act);
     }
 
     [TestMethod]

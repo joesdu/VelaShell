@@ -101,7 +101,7 @@ public partial class LocalFilePaneView : UserControl
         // 右键:为上下文菜单选中该行。
         if (sender is not Border { DataContext: LocalFileEntry entry2 }
             || entry2.IsParentEntry
-            || DataContext is not LocalFilePaneViewModel vm
+            || DataContext is not LocalFilePaneViewModel
             || FileList is not { } listBox)
         {
             return;

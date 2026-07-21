@@ -2,7 +2,7 @@ namespace VelaShell.Core.Sftp;
 
 /// <summary>
 /// 带宽限制用的包装流(设置 → 文件传输 → 带宽限制):对读/写按字节速率整形。
-/// 上传时包装本地读流(限读),下载时包装本地写流(限写),对 SSH.NET 完全透明。
+/// 上传时包装本地读流(限读),下载时包装本地写流(限写),对 SSH 库完全透明。
 /// 采用简单的滑动窗口:每消耗满一个配额窗口就 sleep 到窗口结束。
 /// </summary>
 public sealed class ThrottledStream(Stream inner, long bytesPerSecond) : Stream
@@ -56,6 +56,19 @@ public sealed class ThrottledStream(Stream inner, long bytesPerSecond) : Stream
         return n;
     }
 
+    /// <summary>
+    /// 从内部流异步读取,并按带宽上限对读取速率整形。
+    /// </summary>
+    /// <param name="buffer"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        int n = await _inner.ReadAsync(buffer, cancellationToken);
+        Throttle(n);
+        return n;
+    }
+
     /// <summary>从内部流异步读取,并按带宽上限对读取速率整形。</summary>
     public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
@@ -69,6 +82,18 @@ public sealed class ThrottledStream(Stream inner, long bytesPerSecond) : Stream
     {
         _inner.Write(buffer, offset, count);
         Throttle(count);
+    }
+
+    /// <summary>
+    /// 向内部流异步写入,并按带宽上限对写入速率整形。
+    /// </summary>
+    /// <param name="buffer"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        await _inner.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
+        Throttle(buffer.Length);
     }
 
     /// <summary>向内部流异步写入,并按带宽上限对写入速率整形。</summary>

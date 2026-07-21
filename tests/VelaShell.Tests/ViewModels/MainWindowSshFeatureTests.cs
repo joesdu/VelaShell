@@ -290,7 +290,7 @@ public sealed class MainWindowSshFeatureTests
         Assert.IsEmpty(vm.TabBar.Tabs);
         Assert.HasCount(1, vm.Layout.AllDocuments().OfType<SftpDocument>());
         await workflow.Received(1).ConnectProfileAsync(profile, Arg.Any<CancellationToken>());
-        sshClient.DidNotReceive().CreateShellStreamAsync(
+        await sshClient.DidNotReceive().CreateShellStreamAsync(
             Arg.Any<string>(),
             Arg.Any<uint>(),
             Arg.Any<uint>(),
@@ -324,8 +324,5 @@ public sealed class MainWindowSshFeatureTests
     }
 
     // Named to match SSH.NET's SshAuthenticationException so the VM's type-name mapping applies.
-    private sealed class SshAuthenticationException : Exception
-    {
-        public SshAuthenticationException(string message) : base(message) { }
-    }
+    private sealed class SshAuthenticationException(string message) : Exception(message) { }
 }

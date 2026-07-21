@@ -72,18 +72,18 @@ public sealed class ConnectionProfileViewUiTests
         {
             Assert.IsNotNull(button.Transitions);
             Assert.HasCount(3, button.Transitions);
-            Assert.IsTrue(button.Transitions!.Any(transition =>
+            Assert.Contains(transition =>
                 transition is BrushTransition { Property: var property, Duration: var duration }
-                && property == Button.BackgroundProperty
-                && duration == TimeSpan.FromMilliseconds(120)));
-            Assert.IsTrue(button.Transitions.Any(transition =>
+                && property == Avalonia.Controls.Primitives.TemplatedControl.BackgroundProperty
+                && duration == TimeSpan.FromMilliseconds(120), button.Transitions);
+            Assert.Contains(transition =>
                 transition is BrushTransition { Property: var property, Duration: var duration }
                 && property == Border.BorderBrushProperty
-                && duration == TimeSpan.FromMilliseconds(120)));
-            Assert.IsTrue(button.Transitions.Any(transition =>
+                && duration == TimeSpan.FromMilliseconds(120), button.Transitions);
+            Assert.Contains(transition =>
                 transition is BrushTransition { Property: var property, Duration: var duration }
-                && property == Button.ForegroundProperty
-                && duration == TimeSpan.FromMilliseconds(120)));
+                && property == Avalonia.Controls.Primitives.TemplatedControl.ForegroundProperty
+                && duration == TimeSpan.FromMilliseconds(120), button.Transitions);
         }
     }
 }
