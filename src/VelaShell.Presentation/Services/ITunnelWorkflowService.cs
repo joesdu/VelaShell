@@ -5,7 +5,7 @@ namespace VelaShell.Presentation.Services;
 /// <summary>
 /// 隧道工作流服务:对 <see cref="Core.Tunnels.ITunnelService" /> 的编排层抽象,
 /// 封装类型分派(CreateTunnelAsync 按 TunnelConfig.Type 路由到本地/远程/动态转发)
-/// 与快照读取(GetActiveTunnels 返回列表副本,避免 UI 层直接持有 IObservableList)。
+/// 与快照读取(GetActiveTunnels 返回列表副本,避免 UI 层直接持有服务内部的可变列表)。
 /// </summary>
 public interface ITunnelWorkflowService
 {

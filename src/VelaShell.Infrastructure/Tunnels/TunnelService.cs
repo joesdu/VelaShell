@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Net.Sockets;
-using DynamicData;
 using Microsoft.Extensions.Logging;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
@@ -20,14 +19,22 @@ public class TunnelService(
 {
     private readonly Func<Guid, ISshClientWrapper> _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
     private readonly ISshConnectionService _connectionService = connectionService ?? throw new ArgumentNullException(nameof(connectionService));
-    private readonly ConcurrentDictionary<Guid, SourceList<TunnelInfo>> _sessionTunnels = new();
+    /// <summary>
+    /// 会话 → 该会话的通道列表。每个 <see cref="List{T}" /> 实例自身即为其内容的锁对象:
+    /// 增删与快照读取都必须 <c>lock</c> 住它,字典本身的并发由 ConcurrentDictionary 保证。
+    /// </summary>
+    private readonly ConcurrentDictionary<Guid, List<TunnelInfo>> _sessionTunnels = new();
+
     private readonly ConcurrentDictionary<Guid, (IPortForwardHandle Handle, TunnelInfo Info)> _tunnelPorts = new();
 
-    /// <summary>获取指定会话当前所有转发通道的可观察列表,列表会随通道的增删自动更新。</summary>
-    public IObservableList<TunnelInfo> GetActiveTunnels(Guid sessionId)
+    /// <summary>获取指定会话当前所有转发通道的列表快照(锁内复制,遍历期间不受并发增删影响)。</summary>
+    public IReadOnlyList<TunnelInfo> GetActiveTunnels(Guid sessionId)
     {
-        SourceList<TunnelInfo> tunnels = _sessionTunnels.GetOrAdd(sessionId, _ => new());
-        return tunnels.AsObservableList();
+        List<TunnelInfo> tunnels = _sessionTunnels.GetOrAdd(sessionId, _ => []);
+        lock (tunnels)
+        {
+            return [.. tunnels];
+        }
     }
 
     /// <summary>在指定会话上创建本地端口转发通道(本地监听端口 → 远端目标)。</summary>
@@ -80,14 +87,17 @@ public class TunnelService(
         {
             await StopTunnelAsync(tunnelId, cancellationToken).ConfigureAwait(false);
         }
-        foreach ((Guid _, SourceList<TunnelInfo> tunnels) in _sessionTunnels)
+        foreach ((Guid _, List<TunnelInfo> tunnels) in _sessionTunnels)
         {
-            TunnelInfo? existing = tunnels.Items.FirstOrDefault(t => t.Id == tunnelId);
-            if (existing is null)
+            lock (tunnels)
             {
-                continue;
+                TunnelInfo? existing = tunnels.Find(t => t.Id == tunnelId);
+                if (existing is null)
+                {
+                    continue;
+                }
+                tunnels.Remove(existing);
             }
-            tunnels.Remove(existing);
             if (logger is not null && logger.IsEnabled(LogLevel.Information))
             {
                 logger.LogInformation("Removed tunnel {TunnelId}", tunnelId);
@@ -133,13 +143,16 @@ public class TunnelService(
             // handle.Dispose 是纯内存操作(标记 + 字典移除),直接调用即可。
             handle.Dispose();
             info.Status = TunnelStatus.Stopped;
-            if (_sessionTunnels.TryGetValue(info.SessionId, out SourceList<TunnelInfo>? tunnels))
+            if (_sessionTunnels.TryGetValue(info.SessionId, out List<TunnelInfo>? tunnels))
             {
-                TunnelInfo? existingTunnel = tunnels.Items.FirstOrDefault(t => t.Id == tunnelId);
-                if (existingTunnel != null)
+                lock (tunnels)
                 {
-                    tunnels.Remove(existingTunnel);
-                    tunnels.Add(info);
+                    TunnelInfo? existingTunnel = tunnels.Find(t => t.Id == tunnelId);
+                    if (existingTunnel != null)
+                    {
+                        tunnels.Remove(existingTunnel);
+                        tunnels.Add(info);
+                    }
                 }
             }
             if (logger is not null && logger.IsEnabled(LogLevel.Information))
@@ -171,10 +184,6 @@ public class TunnelService(
             }
         }
         _tunnelPorts.Clear();
-        foreach ((Guid _, SourceList<TunnelInfo> tunnels) in _sessionTunnels)
-        {
-            tunnels.Dispose();
-        }
         _sessionTunnels.Clear();
         GC.SuppressFinalize(this);
     }
@@ -238,9 +247,12 @@ public class TunnelService(
                 tunnelInfo.LastError = DescribeForwardError(ex);
                 logger?.LogWarning(ex, "Tunnel {TunnelId} channel error", tunnelInfo.Id);
             };
-            SourceList<TunnelInfo> tunnels = _sessionTunnels.GetOrAdd(sessionId, _ => new());
+            List<TunnelInfo> tunnels = _sessionTunnels.GetOrAdd(sessionId, _ => []);
             _tunnelPorts[tunnelInfo.Id] = (handle, tunnelInfo);
-            tunnels.Add(tunnelInfo);
+            lock (tunnels)
+            {
+                tunnels.Add(tunnelInfo);
+            }
             if (logger is not null && logger.IsEnabled(LogLevel.Information))
             {
                 logger?.LogInformation("Created {Direction} forward tunnel {TunnelId} for session {SessionId}: {LocalHost}:{LocalPort} <-> {RemoteHost}:{RemotePort}",

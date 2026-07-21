@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using DynamicData;
 using Microsoft.Extensions.Logging;
 using VelaShell.Core.Models;
 using VelaShell.Core.Ssh;
@@ -16,7 +15,7 @@ public class SshConnectionService(
 {
     private readonly Func<ConnectionInfo, ISshClientWrapper> _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
     private readonly ConcurrentDictionary<Guid, ISshClientWrapper> _clients = new();
-    private readonly SourceList<SshSession> _sessions = new();
+    private readonly List<SshSession> _sessions = [];
 
     /// <summary>
     /// 只保护 <see cref="_sessions" /> 列表的增删/读取(微秒级、无网络 I/O)。
@@ -25,15 +24,15 @@ public class SshConnectionService(
     private readonly Lock _sessionsGate = new();
 
     /// <summary>
-    /// 当前所有 SSH 会话的可观察列表,随会话的新增/移除实时更新。
+    /// 当前所有 SSH 会话的快照:在锁内复制,调用方遍历期间不会受并发增删影响。
     /// </summary>
-    public IObservableList<SshSession> Sessions
+    public IReadOnlyList<SshSession> Sessions
     {
         get
         {
             lock (_sessionsGate)
             {
-                return _sessions.AsObservableList();
+                return [.. _sessions];
             }
         }
     }
@@ -89,7 +88,7 @@ public class SshConnectionService(
     {
         lock (_sessionsGate)
         {
-            return _sessions.Items.FirstOrDefault(s => s.SessionId == sessionId);
+            return _sessions.Find(s => s.SessionId == sessionId);
         }
     }
 
@@ -131,7 +130,7 @@ public class SshConnectionService(
         await Task.WhenAll(teardowns).ConfigureAwait(false);
         lock (_sessionsGate)
         {
-            _sessions.Dispose();
+            _sessions.Clear();
         }
         GC.SuppressFinalize(this);
     }

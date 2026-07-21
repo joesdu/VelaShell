@@ -9,7 +9,7 @@ public sealed class TunnelWorkflowService(ITunnelService tunnelService) : ITunne
     private readonly ITunnelService _tunnelService = tunnelService ?? throw new ArgumentNullException(nameof(tunnelService));
 
     /// <inheritdoc />
-    public IReadOnlyList<TunnelInfo> GetActiveTunnels(Guid sessionId) => [.. _tunnelService.GetActiveTunnels(sessionId).Items];
+    public IReadOnlyList<TunnelInfo> GetActiveTunnels(Guid sessionId) => [.. _tunnelService.GetActiveTunnels(sessionId)];
 
     /// <inheritdoc />
     public Task<TunnelInfo> CreateTunnelAsync(Guid sessionId, TunnelConfig config, CancellationToken cancellationToken = default)

@@ -9,7 +9,6 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using DynamicData.Kernel;
 using Microsoft.Extensions.DependencyInjection;
 using VelaShell.Controls.Controls;
 using VelaShell.Core.Resources;
@@ -321,7 +320,7 @@ public partial class FileBrowserView : UserControl
                 AllowMultiple = false
             }
         );
-        return folders.AsArray().FirstOrDefault()?.TryGetLocalPath();
+        return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
     }
 
     /// <summary>
@@ -343,7 +342,7 @@ public partial class FileBrowserView : UserControl
                 SuggestedStartLocation = await ResolveDefaultDownloadFolderAsync(top),
             }
         );
-        return folders.AsArray().FirstOrDefault()?.TryGetLocalPath();
+        return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
     }
 
     /// <summary>

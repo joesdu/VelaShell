@@ -1,15 +1,14 @@
-using DynamicData;
 using VelaShell.Core.Models;
 
 namespace VelaShell.Core.Ssh;
 
 /// <summary>
-/// SSH 连接服务:管理活动会话的建立、断开与查询,并以可观察列表对外暴露会话集合。
+/// SSH 连接服务:管理活动会话的建立、断开与查询,并以列表快照对外暴露会话集合。
 /// </summary>
 public interface ISshConnectionService : IAsyncDisposable
 {
-    /// <summary>当前所有活动 SSH 会话的可观察列表。</summary>
-    IObservableList<SshSession> Sessions { get; }
+    /// <summary>当前所有活动 SSH 会话的快照;每次读取返回独立副本,调用方持有期间不受后续增删影响。</summary>
+    IReadOnlyList<SshSession> Sessions { get; }
 
     /// <summary>按给定连接信息建立一个新的 SSH 会话并返回。</summary>
     Task<SshSession> ConnectAsync(ConnectionInfo connectionInfo, CancellationToken cancellationToken = default);
