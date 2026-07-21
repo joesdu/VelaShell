@@ -50,7 +50,8 @@ public sealed class SessionTreeViewModel : ReactiveObject
             hasSelectedSession
         );
         IObservable<bool> hasSelectedSftpProfile = this.WhenAnyValue(x => x.SelectedNode)
-            .Select(node => node is { IsGroup: false, IsSshProfile: true } || node is { IsGroup: false, IsSftpProfile: true });
+            .Select(node => node is { IsGroup: false, IsSshProfile: true } or
+            { IsGroup: false, IsSftpProfile: true });
         IObservable<bool> hasSelectedSshSession = this.WhenAnyValue(x => x.SelectedNode)
             .Select(node => node is { IsGroup: false, IsSshProfile: true });
         OpenSftpCommand = ReactiveCommand.Create(

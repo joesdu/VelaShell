@@ -126,8 +126,8 @@ public partial class DockGroupControl : UserControl
         ContentHost.RenderTransform = TransformOperations.Parse("translateY(2px)");
         ContentHost.Target = view;
         EmptyHint.IsVisible = Group is { Documents.Count: 0 };
-        ContentHost.ClearValue(Visual.OpacityProperty);
-        ContentHost.ClearValue(Visual.RenderTransformProperty);
+        ContentHost.ClearValue(OpacityProperty);
+        ContentHost.ClearValue(RenderTransformProperty);
         Dispatcher.UIThread.Post(() =>
         {
             if (motionGeneration == _contentMotionGeneration && ReferenceEquals(ContentHost.Target, view))
@@ -142,8 +142,8 @@ public partial class DockGroupControl : UserControl
     {
         ContentHost.Transitions = null;
         ContentHost.Classes.Remove("settling");
-        ContentHost.ClearValue(Visual.OpacityProperty);
-        ContentHost.ClearValue(Visual.RenderTransformProperty);
+        ContentHost.ClearValue(OpacityProperty);
+        ContentHost.ClearValue(RenderTransformProperty);
         ContentHost.Transitions = _contentTransitions;
     }
 
@@ -156,15 +156,15 @@ public partial class DockGroupControl : UserControl
         bool vertical = position != DockTabsPosition.Top;
         DockPanel.SetDock(TabStripArea, position switch
         {
-            DockTabsPosition.Left => Avalonia.Controls.Dock.Left,
-            DockTabsPosition.Right => Avalonia.Controls.Dock.Right,
-            _ => Avalonia.Controls.Dock.Top
+            DockTabsPosition.Left => Dock.Left,
+            DockTabsPosition.Right => Dock.Right,
+            _ => Dock.Top
         });
         DockPanel.SetDock(StripSeparator, position switch
         {
-            DockTabsPosition.Left => Avalonia.Controls.Dock.Left,
-            DockTabsPosition.Right => Avalonia.Controls.Dock.Right,
-            _ => Avalonia.Controls.Dock.Top
+            DockTabsPosition.Left => Dock.Left,
+            DockTabsPosition.Right => Dock.Right,
+            _ => Dock.Top
         });
         StripSeparator.Height = vertical ? double.NaN : 1;
         StripSeparator.Width = vertical ? 1 : double.NaN;

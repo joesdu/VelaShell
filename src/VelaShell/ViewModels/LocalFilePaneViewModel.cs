@@ -391,7 +391,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject
     /// <summary>经确认后永久删除选中条目,且不跟随链接。</summary>
     public async Task DeleteSelectedAsync(CancellationToken cancellationToken = default)
     {
-        LocalFileEntry[] targets = SelectedEntries.Where(entry => !entry.IsParentEntry).ToArray();
+        LocalFileEntry[] targets = [.. SelectedEntries.Where(entry => !entry.IsParentEntry)];
         if (targets.Length == 0 || ConfirmDelete is null || !await ConfirmDelete($"Delete {targets.Length} item(s) permanently?"))
         {
             return;

@@ -19,6 +19,7 @@ public class LocalizationTests : IDisposable
     {
         CultureInfo.CurrentUICulture = _originalCulture;
         CultureInfo.CurrentCulture = _originalCulture;
+        GC.SuppressFinalize(this);
     }
 
     [TestMethod]

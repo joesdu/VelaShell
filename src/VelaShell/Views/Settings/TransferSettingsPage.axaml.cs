@@ -26,7 +26,7 @@ public partial class TransferSettingsPage : UserControl
             Title = Strings.Get("SelectDownloadFolder"),
             AllowMultiple = false
         });
-        if (folders.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
+        if (folders.AsParallel().FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
         {
             // 直接写控件,由 TwoWay 绑定回写 POCO —— Transfer 引用不变时仅靠
             // RaisePropertyChanged 刷新,绑定可能因引用相同跳过重读(输入框不回显)。
@@ -55,7 +55,7 @@ public partial class TransferSettingsPage : UserControl
             ];
         }
         IReadOnlyList<IStorageFile> files = await top.StorageProvider.OpenFilePickerAsync(options);
-        if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
+        if (files.AsParallel().FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
         {
             EditorPathBox.Text = path;
             viewModel.RaisePropertyChangedForTransfer();

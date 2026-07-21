@@ -17,8 +17,8 @@ public sealed class InputLocaleSwitcherTests
 
         // Then the loaded English handle is activated and the exact prior handle is reported.
         Assert.IsTrue(switched);
-        Assert.AreEqual((nint)0x0411, priorLayout);
-        Assert.AreSequenceEqual([(nint)0x0409], native.ActivatedLayouts);
+        Assert.AreEqual(0x0411, priorLayout);
+        Assert.AreSequenceEqual([0x0409], native.ActivatedLayouts);
     }
 
     [TestMethod]
@@ -33,7 +33,7 @@ public sealed class InputLocaleSwitcherTests
 
         // Then the en-GB HKL is accepted by its English primary LANGID.
         Assert.IsTrue(switched);
-        Assert.AreSequenceEqual([(nint)0x0809], native.ActivatedLayouts);
+        Assert.AreSequenceEqual([0x0809], native.ActivatedLayouts);
     }
 
     [TestMethod]
@@ -48,7 +48,7 @@ public sealed class InputLocaleSwitcherTests
 
         // Then no activation occurs and the current handle is not treated as a restoration.
         Assert.IsFalse(switched);
-        Assert.AreEqual((nint)0x0409, priorLayout);
+        Assert.AreEqual(0x0409, priorLayout);
         Assert.IsEmpty(native.ActivatedLayouts);
     }
 
@@ -79,7 +79,7 @@ public sealed class InputLocaleSwitcherTests
 
         // Then the failed activation is not considered active.
         Assert.IsFalse(switched);
-        Assert.AreSequenceEqual([(nint)0x0409], native.ActivatedLayouts);
+        Assert.AreSequenceEqual([0x0409], native.ActivatedLayouts);
     }
 
     [TestMethod]
@@ -98,8 +98,8 @@ public sealed class InputLocaleSwitcherTests
 
         // Then the returned native prior layout, not the stale snapshot, is restored.
         Assert.IsTrue(switched);
-        Assert.AreEqual((nint)0x0804, priorLayout);
-        Assert.AreSequenceEqual([(nint)0x0409, (nint)0x0804], native.ActivatedLayouts);
+        Assert.AreEqual(0x0804, priorLayout);
+        Assert.AreSequenceEqual([0x0409, 0x0804], native.ActivatedLayouts);
     }
 
     [TestMethod]
@@ -114,7 +114,7 @@ public sealed class InputLocaleSwitcherTests
         switcher.Restore(priorLayout);
 
         // Then the exact prior layout is activated.
-        Assert.AreSequenceEqual([(nint)0x0409, (nint)0x0411], native.ActivatedLayouts);
+        Assert.AreSequenceEqual([0x0409, 0x0411], native.ActivatedLayouts);
     }
 
     [TestMethod]
@@ -128,7 +128,7 @@ public sealed class InputLocaleSwitcherTests
         switcher.Restore(0x0411);
 
         // Then the failure is contained and no exception escapes.
-        Assert.AreSequenceEqual([(nint)0x0411], native.ActivatedLayouts);
+        Assert.AreSequenceEqual([0x0411], native.ActivatedLayouts);
     }
 
     private sealed class FakeKeyboardLayoutNative(nint currentLayout, IReadOnlyList<nint> loadedLayouts) : IKeyboardLayoutNative

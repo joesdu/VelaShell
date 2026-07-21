@@ -29,25 +29,24 @@ internal sealed class FileZModemFileSource(
         var files = new List<ZModemOutgoingFile>(paths.Count);
         foreach (string path in paths)
         {
-            FileInfo info;
             try
             {
-                info = new(path);
+                FileInfo info = new(path);
                 if (!info.Exists)
                 {
                     continue;
                 }
+                files.Add(new(
+                    info.FullName,
+                    info.Name,
+                    info.Length,
+                    new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero)));
             }
             catch (Exception)
             {
-                // 路径不可读(权限 / 已删除):跳过,不拖垮整批。
+                // 路径不可读(权限 / 已删除 / 被锁定):跳过,不拖垮整批。
                 continue;
             }
-            files.Add(new(
-                info.FullName,
-                info.Name,
-                info.Length,
-                new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero)));
         }
         return files;
     }

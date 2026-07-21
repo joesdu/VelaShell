@@ -38,14 +38,14 @@ public sealed class StandaloneSftpServiceContractTests
             "local.txt",
             "/remote/local.txt",
             Arg.Any<IProgress<TransferProgress>?>(),
-            Arg.Any<CancellationToken>()
+            cancellationToken: Arg.Any<CancellationToken>()
         );
         await inner.Received(1).DownloadFileAsync(
             sessionId,
             "/remote/remote.txt",
             "remote.txt",
             Arg.Any<IProgress<TransferProgress>?>(),
-            Arg.Any<CancellationToken>()
+            cancellationToken: Arg.Any<CancellationToken>()
         );
     }
 }

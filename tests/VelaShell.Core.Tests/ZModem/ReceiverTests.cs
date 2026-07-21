@@ -33,7 +33,7 @@ public class ReceiverTests
         await RunAsync([("hello.txt", content)], useCrc32, 1024, sink);
 
         Assert.IsTrue(sink.Completed.ContainsKey("hello.txt"));
-        CollectionAssert.AreEqual(content, sink.Completed["hello.txt"]);
+        Assert.AreSequenceEqual(content, sink.Completed["hello.txt"]);
     }
 
     [TestMethod]
@@ -61,7 +61,7 @@ public class ReceiverTests
         await RunAsync([("blob.bin", content)], useCrc32, 1024, sink);
 
         Assert.IsTrue(sink.Completed.ContainsKey("blob.bin"));
-        CollectionAssert.AreEqual(content, sink.Completed["blob.bin"]);
+        Assert.AreSequenceEqual(content, sink.Completed["blob.bin"]);
     }
 
     [TestMethod]
@@ -77,10 +77,10 @@ public class ReceiverTests
         await RunAsync(files, useCrc32: true, 4, sink);
 
         Assert.HasCount(3, sink.Completed);
-        CollectionAssert.AreEqual("first"u8.ToArray(), sink.Completed["a.txt"]);
-        CollectionAssert.AreEqual("second file body"u8.ToArray(), sink.Completed["b.txt"]);
-        CollectionAssert.AreEqual(new byte[] { 0x00, 0x18, 0x11, 0x13, 0xFF, 0x7F }, sink.Completed["c.bin"]);
-        CollectionAssert.AreEqual(new[] { "a.txt", "b.txt", "c.bin" }, sink.OfferedNames.ToArray());
+        Assert.AreSequenceEqual("first"u8.ToArray(), sink.Completed["a.txt"]);
+        Assert.AreSequenceEqual("second file body"u8.ToArray(), sink.Completed["b.txt"]);
+        Assert.AreSequenceEqual(new byte[] { 0x00, 0x18, 0x11, 0x13, 0xFF, 0x7F }, sink.Completed["c.bin"]);
+        Assert.AreSequenceEqual(["a.txt", "b.txt", "c.bin"], [.. sink.OfferedNames]);
     }
 
     [TestMethod]
@@ -91,7 +91,7 @@ public class ReceiverTests
         // subpacketSize=1 maximizes subpacket count and escape/boundary churn.
         await RunAsync([("s.txt", content)], useCrc32: false, 1, sink);
 
-        CollectionAssert.AreEqual(content, sink.Completed["s.txt"]);
+        Assert.AreSequenceEqual(content, sink.Completed["s.txt"]);
     }
 
     [TestMethod]
@@ -104,7 +104,7 @@ public class ReceiverTests
         info.AddRange(Encoding.ASCII.GetBytes("7 0 0 0 0 7"));
         info.Add(0);
 
-        Core.ZModem.Model.ZModemFileMetadata meta = ZModemReceiver.ParseFileMetadata(info.ToArray());
+        Core.ZModem.Model.ZModemFileMetadata meta = ZModemReceiver.ParseFileMetadata([.. info]);
         Assert.AreEqual("dir/report.log", meta.FileName);
         Assert.AreEqual(7L, meta.Size);
         _ = data;

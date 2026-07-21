@@ -38,7 +38,7 @@ public sealed class InteractiveAuthFlowTests
         workflow.ConnectProfileAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>())
                 .Returns(args => CreateSession((SessionProfile)args[0]));
         ssh.GetClient(Arg.Any<Guid>()).Returns(client);
-        client.CreateShellStream("xterm-256color", 120, 32, 0, 0, 4096).Returns(shell);
+        client.CreateShellStreamAsync("xterm-256color", 120, 32, 0, 0, 4096, Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>(), Arg.Any<CancellationToken>()).Returns(shell);
         var vm = new MainWindowViewModel(workflow, ssh, () => Substitute.For<ITerminalEmulator>());
         int prompted = 0;
         vm.InteractiveAuthenticator = p =>

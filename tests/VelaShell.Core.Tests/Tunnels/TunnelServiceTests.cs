@@ -1,4 +1,3 @@
-using DynamicData;
 using NSubstitute;
 using VelaShell.Core.Models;
 using VelaShell.Core.Ssh;
@@ -93,8 +92,8 @@ public class TunnelServiceTests
         var service = new TunnelService(_mockConnectionService, sessionId => _mockClientWrapper);
         TunnelInfo tunnel = await service.CreateLocalForwardAsync(_sessionId, config);
         await service.StopTunnelAsync(tunnel.Id);
-        IObservableList<TunnelInfo> activeTunnels = service.GetActiveTunnels(_sessionId);
-        TunnelInfo? stoppedTunnel = activeTunnels.Items.FirstOrDefault(t => t.Id == tunnel.Id);
+        IReadOnlyList<TunnelInfo> activeTunnels = service.GetActiveTunnels(_sessionId);
+        TunnelInfo? stoppedTunnel = activeTunnels.FirstOrDefault(t => t.Id == tunnel.Id);
         Assert.AreEqual(TunnelStatus.Stopped, stoppedTunnel?.Status);
     }
 
@@ -122,10 +121,10 @@ public class TunnelServiceTests
         var service = new TunnelService(_mockConnectionService, sessionId => _mockClientWrapper);
         TunnelInfo tunnel1 = await service.CreateLocalForwardAsync(_sessionId, config1);
         TunnelInfo tunnel2 = await service.CreateLocalForwardAsync(_sessionId, config2);
-        IObservableList<TunnelInfo> activeTunnels = service.GetActiveTunnels(_sessionId);
-        Assert.AreEqual(2, activeTunnels.Count);
-        Assert.Contains(t => t.Id == tunnel1.Id, activeTunnels.Items);
-        Assert.Contains(t => t.Id == tunnel2.Id, activeTunnels.Items);
+        IReadOnlyList<TunnelInfo> activeTunnels = service.GetActiveTunnels(_sessionId);
+        Assert.HasCount(2, activeTunnels);
+        Assert.Contains(t => t.Id == tunnel1.Id, activeTunnels);
+        Assert.Contains(t => t.Id == tunnel2.Id, activeTunnels);
     }
 
     [TestMethod]
@@ -153,9 +152,9 @@ public class TunnelServiceTests
         TunnelInfo tunnel1 = await service.CreateLocalForwardAsync(_sessionId, config1);
         TunnelInfo tunnel2 = await service.CreateLocalForwardAsync(_sessionId, config2);
         await service.StopTunnelAsync(tunnel1.Id);
-        IObservableList<TunnelInfo> activeTunnels = service.GetActiveTunnels(_sessionId);
-        TunnelInfo? stoppedTunnel = activeTunnels.Items.FirstOrDefault(t => t.Id == tunnel1.Id);
-        TunnelInfo? activeTunnel = activeTunnels.Items.FirstOrDefault(t => t.Id == tunnel2.Id);
+        IReadOnlyList<TunnelInfo> activeTunnels = service.GetActiveTunnels(_sessionId);
+        TunnelInfo? stoppedTunnel = activeTunnels.FirstOrDefault(t => t.Id == tunnel1.Id);
+        TunnelInfo? activeTunnel = activeTunnels.FirstOrDefault(t => t.Id == tunnel2.Id);
         Assert.AreEqual(TunnelStatus.Stopped, stoppedTunnel?.Status);
         Assert.AreEqual(TunnelStatus.Active, activeTunnel?.Status);
     }

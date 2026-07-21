@@ -10,10 +10,10 @@ public sealed class VelaShellStoragePathsTests
     {
         var paths = new VelaShellStoragePaths();
 
-        StringAssert.Contains(paths.RootDirectory, "VelaShell", StringComparison.OrdinalIgnoreCase);
-        StringAssert.EndsWith(paths.SettingsFile, "settings.json", StringComparison.OrdinalIgnoreCase);
-        StringAssert.EndsWith(paths.SonnetDbDirectory, "sonnetdb", StringComparison.OrdinalIgnoreCase);
-        StringAssert.EndsWith(paths.SecretKeyFile, "secret.key", StringComparison.OrdinalIgnoreCase);
-        StringAssert.EndsWith(paths.LegacyDotDirectory, ".velashell", StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("VelaShell", paths.RootDirectory, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith("settings.json", paths.SettingsFile, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith("sonnetdb", paths.SonnetDbDirectory, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith("secret.key", paths.SecretKeyFile, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(".velashell", paths.LegacyDotDirectory, StringComparison.OrdinalIgnoreCase);
     }
 }

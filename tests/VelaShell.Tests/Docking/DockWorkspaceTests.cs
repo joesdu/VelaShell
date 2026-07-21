@@ -36,7 +36,7 @@ public class DockWorkspaceTests
         ws.AddDocument(a);
 
         Assert.AreSame(ws.PrimaryGroup, ws.Root);
-        CollectionAssert.AreEqual(new[] { a }, ws.PrimaryGroup.Documents.ToArray());
+        Assert.AreSequenceEqual([a], ws.PrimaryGroup.Documents.ToArray());
         Assert.AreSame(a, ws.PrimaryGroup.ActiveDocument);
         Assert.AreSame(a, ws.ActiveDocument);
         Assert.AreSame(a, observed);
@@ -71,7 +71,7 @@ public class DockWorkspaceTests
         ws.CloseDocument(a);
 
         Assert.IsEmpty(ws.PrimaryGroup.Documents);
-        CollectionAssert.AreEqual(new[] { a }, closed);
+        Assert.AreSequenceEqual([a], closed);
         Assert.IsNull(ws.ActiveDocument);
     }
 
@@ -140,16 +140,16 @@ public class DockWorkspaceTests
         ws.SplitDocument(d, DockOrientation.Horizontal);
 
         ws.CloseLeftDocuments(b);
-        CollectionAssert.AreEqual(new[] { b, c }, ws.PrimaryGroup.Documents.ToArray());
+        Assert.AreSequenceEqual([b, c], ws.PrimaryGroup.Documents.ToArray());
 
         ws.CloseRightDocuments(b);
-        CollectionAssert.AreEqual(new[] { b }, ws.PrimaryGroup.Documents.ToArray());
+        Assert.AreSequenceEqual([b], ws.PrimaryGroup.Documents.ToArray());
 
         ws.CloseOtherDocuments(d);
         Assert.Contains(b, ws.AllDocuments(), "其他组的标签不受影响");
 
         ws.CloseAllDocuments(b);
-        CollectionAssert.AreEqual(new[] { d }, ws.AllDocuments().ToArray());
+        Assert.AreSequenceEqual([d], ws.AllDocuments().ToArray());
     }
 
     // ---- 拆分 ----
@@ -171,10 +171,10 @@ public class DockWorkspaceTests
         Assert.HasCount(2, split.Children);
         Assert.AreSame(ws.PrimaryGroup, split.Children[0]);
         var newGroup = (DockGroup)split.Children[1];
-        CollectionAssert.AreEqual(new[] { b }, newGroup.Documents.ToArray());
+        Assert.AreSequenceEqual([b], newGroup.Documents.ToArray());
         Assert.AreSame(b, newGroup.ActiveDocument);
         Assert.AreSame(b, ws.ActiveDocument);
-        CollectionAssert.AreEqual(new[] { a }, ws.PrimaryGroup.Documents.ToArray());
+        Assert.AreSequenceEqual([a], ws.PrimaryGroup.Documents.ToArray());
     }
 
     [TestMethod]
@@ -238,7 +238,7 @@ public class DockWorkspaceTests
         Assert.AreSame(g2, nested.Children[0]);
         Assert.IsEmpty(g2.Documents, "原组留空");
         var g3 = (DockGroup)nested.Children[1];
-        CollectionAssert.AreEqual(new[] { b }, g3.Documents.ToArray());
+        Assert.AreSequenceEqual([b], g3.Documents.ToArray());
         Assert.AreSame(b, ws.ActiveDocument);
     }
 
@@ -297,7 +297,7 @@ public class DockWorkspaceTests
         // 新文档仍然进主组
         TestDocument c = NewDoc("c");
         ws.AddDocument(c);
-        CollectionAssert.AreEqual(new[] { c }, ws.PrimaryGroup.Documents.ToArray());
+        Assert.AreSequenceEqual([c], ws.PrimaryGroup.Documents.ToArray());
     }
 
     [TestMethod]
@@ -334,8 +334,8 @@ public class DockWorkspaceTests
 
         ws.DockTo(b, newGroup, DockPosition.Center);
 
-        CollectionAssert.AreEqual(new[] { a }, ws.PrimaryGroup.Documents.ToArray());
-        CollectionAssert.AreEqual(new[] { c, b }, newGroup.Documents.ToArray());
+        Assert.AreSequenceEqual([a], ws.PrimaryGroup.Documents.ToArray());
+        Assert.AreSequenceEqual([c, b], newGroup.Documents.ToArray());
         Assert.AreSame(b, ws.ActiveDocument);
     }
 
@@ -352,7 +352,7 @@ public class DockWorkspaceTests
 
         ws.DockTo(c, ws.PrimaryGroup, DockPosition.Center, 0);
 
-        CollectionAssert.AreEqual(new[] { c, a, b }, ws.PrimaryGroup.Documents.ToArray());
+        Assert.AreSequenceEqual([c, a, b], ws.PrimaryGroup.Documents.ToArray());
     }
 
     [TestMethod]
@@ -369,7 +369,7 @@ public class DockWorkspaceTests
         var split = (DockSplit)ws.Root;
         Assert.AreEqual(DockOrientation.Horizontal, split.Orientation);
         var newGroup = (DockGroup)split.Children[0];
-        CollectionAssert.AreEqual(new[] { b }, newGroup.Documents.ToArray());
+        Assert.AreSequenceEqual([b], newGroup.Documents.ToArray());
         Assert.AreSame(ws.PrimaryGroup, split.Children[1]);
     }
 
@@ -388,7 +388,7 @@ public class DockWorkspaceTests
         Assert.AreEqual(DockOrientation.Vertical, split.Orientation);
         Assert.AreSame(ws.PrimaryGroup, split.Children[0]);
         var newGroup = (DockGroup)split.Children[1];
-        CollectionAssert.AreEqual(new[] { b }, newGroup.Documents.ToArray());
+        Assert.AreSequenceEqual([b], newGroup.Documents.ToArray());
     }
 
     [TestMethod]
@@ -409,7 +409,7 @@ public class DockWorkspaceTests
         Assert.AreSame(g2, root.Children[1]);
         Assert.IsEmpty(g2.Documents);
         var g3 = (DockGroup)root.Children[2];
-        CollectionAssert.AreEqual(new[] { b }, g3.Documents.ToArray());
+        Assert.AreSequenceEqual([b], g3.Documents.ToArray());
     }
 
     [TestMethod]
@@ -425,6 +425,6 @@ public class DockWorkspaceTests
 
         ws.MoveDocument(a, 2);
 
-        CollectionAssert.AreEqual(new[] { b, c, a }, ws.PrimaryGroup.Documents.ToArray());
+        Assert.AreSequenceEqual([b, c, a], ws.PrimaryGroup.Documents.ToArray());
     }
 }

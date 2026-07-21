@@ -26,6 +26,7 @@ public class CrossPlatformPublishTests : IDisposable
         catch
         {
         }
+        GC.SuppressFinalize(this);
     }
 
     private static string FindSolutionRoot()

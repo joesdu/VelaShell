@@ -99,14 +99,14 @@ public sealed class StandaloneSftpDocumentBehaviorTests
         };
         workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>()).Returns(session);
         sshConnectionService.GetClient(session.SessionId).Returns(sshClient);
-        sshClient.CreateShellStream(
+        sshClient.CreateShellStreamAsync(
                 Arg.Any<string>(),
                 Arg.Any<uint>(),
                 Arg.Any<uint>(),
                 Arg.Any<uint>(),
                 Arg.Any<uint>(),
                 Arg.Any<int>(),
-                Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>()
+                Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>(), Arg.Any<CancellationToken>()
             )
             .Returns(shellStream);
 
@@ -118,20 +118,20 @@ public sealed class StandaloneSftpDocumentBehaviorTests
                 terminalFactoryCalls++;
                 return Substitute.For<ITerminalEmulator>();
             },
-            sftpService: Substitute.For<VelaShell.Core.Sftp.ISftpService>()
+            sftpService: Substitute.For<ISftpService>()
         );
 
         await vm.OpenSftpForProfileAsync(profile);
 
         await workflow.Received(1).ConnectProfileAsync(profile, Arg.Any<CancellationToken>());
-        sshClient.DidNotReceive().CreateShellStream(
+        await sshClient.DidNotReceive().CreateShellStreamAsync(
             Arg.Any<string>(),
             Arg.Any<uint>(),
             Arg.Any<uint>(),
             Arg.Any<uint>(),
             Arg.Any<uint>(),
             Arg.Any<int>(),
-            Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>()
+            Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>(), Arg.Any<CancellationToken>()
         );
         Assert.AreEqual(0, terminalFactoryCalls, "Explorer SFTP must not open a shell terminal first.");
     }
@@ -241,13 +241,13 @@ public sealed class StandaloneSftpDocumentBehaviorTests
         SessionTreeNodeViewModel node = vm.Sidebar.SessionTree.Nodes.Single();
         vm.Sidebar.SessionTree.SetSessionStatus(profile.Id, SessionStatus.Connected);
         List<int> notificationThreads = [];
-        PropertyChangedEventHandler propertyChanged = (_, args) =>
+        void propertyChanged(object? _, PropertyChangedEventArgs args)
         {
             if (args.PropertyName == nameof(SessionTreeNodeViewModel.Status))
             {
                 notificationThreads.Add(Environment.CurrentManagedThreadId);
             }
-        };
+        }
         node.PropertyChanged += propertyChanged;
 
         var document = new SftpDocument(
@@ -515,9 +515,8 @@ public sealed class StandaloneSftpDocumentBehaviorTests
 
             persist.Invoke(window, [settings]);
 
-            CollectionAssert.AreEquivalent(
-                new[] { terminalProfile.Id, sftpProfile.Id },
-                settings.General.LastOpenProfileIds);
+            Assert.AreSequenceEqual(
+                [terminalProfile.Id, sftpProfile.Id], settings.General.LastOpenProfileIds, SequenceOrder.InAnyOrder);
             settingsService.Received(1).SaveSettingsAsync(settings);
             return Task.CompletedTask;
         }, CancellationToken.None);

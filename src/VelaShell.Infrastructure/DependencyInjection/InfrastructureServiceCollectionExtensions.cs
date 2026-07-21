@@ -1,7 +1,5 @@
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Extensions.DependencyInjection;
-using Renci.SshNet;
+using Tmds.Ssh;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Recording;
@@ -14,455 +12,272 @@ using VelaShell.Core.Tunnels;
 using VelaShell.Infrastructure.Persistence;
 using VelaShell.Infrastructure.Ssh;
 using VelaShell.Infrastructure.Tunnels;
-using ConnectionInfo = Renci.SshNet.ConnectionInfo;
 using VelaConnectionInfo = VelaShell.Core.Models.ConnectionInfo;
 
 namespace VelaShell.Infrastructure.DependencyInjection;
 
-/// <summary>基础设施层(持久化、SSH、隧道、同步等)的依赖注入注册扩展。</summary>
+/// <summary>
+/// Provides extension methods for registering VelaShell infrastructure services in an <see cref="IServiceCollection" />.
+/// </summary>
 public static class InfrastructureServiceCollectionExtensions
 {
-    /// <summary>向容器注册 VelaShell 基础设施层所需的存储、SSH、SFTP、隧道与同步服务。</summary>
-    /// <param name="services">要注册服务的服务集合。</param>
-    /// <returns>返回同一服务集合以支持链式调用。</returns>
+    // ---- Persistence & Services (unchanged) ----
+    /// <summary>
+    /// Registers the VelaShell infrastructure services, including persistence, SSH connection management, SFTP, and related services, into the provided <see cref="IServiceCollection" />.
+    /// </summary>
+    /// <param name="services"></param>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException"></exception>
+    /// <exception cref="VelaSshConnectionException"></exception>
     public static IServiceCollection AddVelaShellInfrastructure(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddSingleton<VelaShellStoragePaths>();
-
-        // 所有持久化统一走嵌入式 SonnetDB(文档集合 + 时序 measurement)。
-        services.AddSingleton<SonnetDbEngine>(serviceProvider =>
-            new(serviceProvider.GetRequiredService<VelaShellStoragePaths>())
-        );
-        services.AddSingleton<ISecretProtector>(serviceProvider => new AesSecretProtector(
-            serviceProvider.GetRequiredService<VelaShellStoragePaths>()
-        ));
-        services.AddSingleton<ISessionRepository>(serviceProvider =>
+        services.AddSingleton<SonnetDbEngine>(sp => new(sp.GetRequiredService<VelaShellStoragePaths>()));
+        services.AddSingleton<ISecretProtector>(sp => new AesSecretProtector(sp.GetRequiredService<VelaShellStoragePaths>()));
+        services.AddSingleton<ISessionRepository>(sp =>
         {
-            VelaShellStoragePaths paths =
-                serviceProvider.GetRequiredService<VelaShellStoragePaths>();
-            return new SonnetDbSessionRepository(
-                serviceProvider.GetRequiredService<SonnetDbEngine>(),
-                serviceProvider.GetRequiredService<ISecretProtector>(),
-                paths.SessionsFile
-            );
+            VelaShellStoragePaths paths = sp.GetRequiredService<VelaShellStoragePaths>();
+            return new SonnetDbSessionRepository(sp.GetRequiredService<SonnetDbEngine>(),
+                sp.GetRequiredService<ISecretProtector>(), paths.SessionsFile);
         });
-        services.AddSingleton<ISettingsService>(serviceProvider =>
+        services.AddSingleton<ISettingsService>(sp =>
         {
-            VelaShellStoragePaths paths =
-                serviceProvider.GetRequiredService<VelaShellStoragePaths>();
-            return new SonnetDbSettingsService(
-                serviceProvider.GetRequiredService<SonnetDbEngine>(),
-                [paths.RootDirectory, paths.LegacyDotDirectory]
-            );
+            VelaShellStoragePaths paths = sp.GetRequiredService<VelaShellStoragePaths>();
+            return new SonnetDbSettingsService(sp.GetRequiredService<SonnetDbEngine>(),
+                [paths.RootDirectory, paths.LegacyDotDirectory]);
         });
-        services.AddSingleton<IHostKeyService>(serviceProvider =>
+        services.AddSingleton<IHostKeyService>(sp =>
         {
-            VelaShellStoragePaths paths =
-                serviceProvider.GetRequiredService<VelaShellStoragePaths>();
-            return new SonnetDbHostKeyService(
-                serviceProvider.GetRequiredService<SonnetDbEngine>(),
-                Path.Combine(paths.LegacyDotDirectory, "known_hosts.json")
-            );
+            VelaShellStoragePaths paths = sp.GetRequiredService<VelaShellStoragePaths>();
+            return new SonnetDbHostKeyService(sp.GetRequiredService<SonnetDbEngine>(),
+                Path.Combine(paths.LegacyDotDirectory, "known_hosts.json"));
         });
         services.AddSingleton<IRecentConnectionService, SonnetDbRecentConnectionService>();
         services.AddSingleton<IAuditLogService, SonnetDbAuditLogService>();
         services.AddSingleton<IAppDataStore, SonnetDbAppDataStore>();
-        services.AddSingleton<IQuickCommandRepository>(serviceProvider =>
+        services.AddSingleton<IQuickCommandRepository>(sp =>
         {
-            VelaShellStoragePaths paths =
-                serviceProvider.GetRequiredService<VelaShellStoragePaths>();
-            return new SonnetDbQuickCommandRepository(
-                serviceProvider.GetRequiredService<IAppDataStore>(),
-                paths.LegacyQuickCommandsFile
-            );
+            VelaShellStoragePaths paths = sp.GetRequiredService<VelaShellStoragePaths>();
+            return new SonnetDbQuickCommandRepository(sp.GetRequiredService<IAppDataStore>(),
+                paths.LegacyQuickCommandsFile);
         });
         services.AddSingleton<ISessionRecordingStore, SonnetDbSessionRecordingStore>();
         services.AddSingleton<ISshKeyService>(_ => new SshKeyService());
-        services.AddSingleton<ISecurityAlertService>(serviceProvider => new SecurityAlertService(
-            serviceProvider.GetRequiredService<ISettingsService>(),
-            serviceProvider.GetService<IAuditLogService>()
-        ));
-        services.AddSingleton<ISshConnectionService>(serviceProvider =>
-        {
-            IHostKeyService hostKeyService = serviceProvider.GetRequiredService<IHostKeyService>();
-            ISettingsService settingsService =
-                serviceProvider.GetRequiredService<ISettingsService>();
-            IHostKeyPrompt? hostKeyPrompt = serviceProvider.GetService<IHostKeyPrompt>();
-            ISecurityAlertService? securityAlerts =
-                serviceProvider.GetService<ISecurityAlertService>();
-            return new SshConnectionService(connectionInfo =>
-                CreateSshClientWrapper(
-                    connectionInfo,
-                    hostKeyService,
-                    settingsService,
-                    hostKeyPrompt,
-                    securityAlerts
-                )
-            );
-        });
-        services.AddSingleton<ISftpService>(serviceProvider =>
-        {
-            ISshConnectionService connectionService =
-                serviceProvider.GetRequiredService<ISshConnectionService>();
-            ISettingsService settingsService =
-                serviceProvider.GetRequiredService<ISettingsService>();
-            IHostKeyService hostKeyService = serviceProvider.GetRequiredService<IHostKeyService>();
-            // 每个会话一个专用 SFTP 通道,使用相同凭据构建。
-            return new SftpService(
-                connectionService,
-                session =>
-                {
-                    AuthenticationMethod[] authMethods = CreateAuthenticationMethods(
-                        session.ConnectionInfo
-                    );
-                    var info = new ConnectionInfo(
-                        session.ConnectionInfo.Host,
-                        session.ConnectionInfo.Port,
-                        session.ConnectionInfo.Username,
-                        authMethods
-                    )
-                    {
-                        Timeout = ConnectTimeout(settingsService),
-                    };
-                    var sftpClient = new SftpClient(info);
+        services.AddSingleton<ISecurityAlertService>(sp => new SecurityAlertService(
+            sp.GetRequiredService<ISettingsService>(), sp.GetService<IAuditLogService>()));
 
-                    // SFTP 通道与终端通道同等校验主机指纹(此前未订阅事件 = 默认信任任意指纹,
-                    // 存在中间人缺口)。终端会话先行建立时指纹已入库或已“仅本次信任”,
-                    // 这里只做严格比对、不弹窗:不匹配即拒绝。
-                    string host = session.ConnectionInfo.Host;
-                    int port = session.ConnectionInfo.Port;
-                    sftpClient.HostKeyReceived += (_, e) =>
-                    {
-                        string fingerprint =
-                            "SHA256:"
-                            + Convert.ToBase64String(SHA256.HashData(e.HostKey)).TrimEnd('=');
-                        HostKeyVerification verification = hostKeyService
-                            .VerifyHostKeyAsync(host, port, e.HostKeyName, fingerprint)
-                            .GetAwaiter()
-                            .GetResult();
-                        e.CanTrust =
-                            verification == HostKeyVerification.Trusted
-                            || HostTrustOnceCache.IsTrusted(host, port, fingerprint);
-                    };
-                    return new SftpClientWrapper(sftpClient);
-                },
-                settingsService
-            );
+        // SSH connection service
+        services.AddSingleton<ISshConnectionService>(sp =>
+        {
+            IHostKeyService hostKey = sp.GetRequiredService<IHostKeyService>();
+            ISettingsService settings = sp.GetRequiredService<ISettingsService>();
+            IHostKeyPrompt? prompt = sp.GetService<IHostKeyPrompt>();
+            ISecurityAlertService? alerts = sp.GetService<ISecurityAlertService>();
+            return new SshConnectionService(ci =>
+                CreateSshClientWrapper(ci, hostKey, settings, prompt, alerts));
+        });
+
+        // SFTP service
+        services.AddSingleton<ISftpService>(sp =>
+        {
+            ISshConnectionService connSvc = sp.GetRequiredService<ISshConnectionService>();
+            ISettingsService settings = sp.GetRequiredService<ISettingsService>();
+            return new SftpService(connSvc, session =>
+            {
+                ISshClientWrapper? wrapper = connSvc.GetClient(session.SessionId);
+                if (wrapper is not TmdsSshClientWrapper tmds)
+                    throw new InvalidOperationException("SFTP requires Tmds.Ssh backend.");
+                return new TmdsSftpClientWrapper(async () =>
+                {
+                    // SFTP 复用主连接的 SSH 通道。主连接不在时不得偷偷另建连接:
+                    // 新连接无人持有、无人释放(泄漏),且会绕过用户可见的连接生命周期。
+                    SshClient inner = tmds.InnerClient
+                        ?? throw new VelaSshConnectionException(
+                            "SSH connection is not established; cannot open SFTP channel.");
+                    return await inner.OpenSftpClientAsync().ConfigureAwait(false);
+                });
+            }, settings);
         });
         services.AddSingleton<ITransferManager, TransferManager>();
-
-        // Gist 云同步(设置 → 云同步):设置/连接(含隧道)/代码片段的多端同步。
-        services.AddSingleton<IGistSyncService>(serviceProvider => new Sync.GistSyncService(
-            serviceProvider.GetRequiredService<ISettingsService>(),
-            serviceProvider.GetRequiredService<ISessionRepository>(),
-            serviceProvider.GetRequiredService<IAppDataStore>(),
-            serviceProvider.GetRequiredService<IQuickCommandRepository>(),
-            serviceProvider.GetRequiredService<ISecretProtector>()
-        ));
-        services.AddSingleton<ISessionMetricsService>(sp => new SessionMetricsService(
-            sp.GetRequiredService<ISshConnectionService>()
-        ));
-        services.AddSingleton<ITunnelService>(serviceProvider =>
+        services.AddSingleton<IGistSyncService>(sp => new Sync.GistSyncService(
+            sp.GetRequiredService<ISettingsService>(), sp.GetRequiredService<ISessionRepository>(),
+            sp.GetRequiredService<IAppDataStore>(), sp.GetRequiredService<IQuickCommandRepository>(),
+            sp.GetRequiredService<ISecretProtector>()));
+        services.AddSingleton<ISessionMetricsService>(sp =>
+            new SessionMetricsService(sp.GetRequiredService<ISshConnectionService>()));
+        services.AddSingleton<ITunnelService>(sp =>
         {
-            ISshConnectionService connectionService =
-                serviceProvider.GetRequiredService<ISshConnectionService>();
-            return new TunnelService(
-                connectionService,
-                sessionId =>
-                    connectionService.GetClient(sessionId)
-                    ?? throw new InvalidOperationException(
-                        $"No SSH client found for session {sessionId}."
-                    )
-            );
+            ISshConnectionService connSvc = sp.GetRequiredService<ISshConnectionService>();
+            return new TunnelService(connSvc, sid =>
+                connSvc.GetClient(sid) ?? throw new InvalidOperationException($"No SSH client for session {sid}."));
         });
         return services;
     }
 
-    /// <summary>连接超时(设置 → 常规 → 连接默认值);设置不可读时退回既有的 10 秒。</summary>
-    private static TimeSpan ConnectTimeout(ISettingsService? settingsService)
+    // ---- Settings helpers ----
+
+    private static TimeSpan ConnectTimeout(ISettingsService? s)
+    {
+        try { return TimeSpan.FromSeconds(Math.Clamp(s?.GetSettingsAsync().GetAwaiter().GetResult().General.ConnectTimeoutSeconds ?? 10, 1, 600)); }
+        catch { return TimeSpan.FromSeconds(10); }
+    }
+
+    private static TimeSpan KeepAliveInterval(ISettingsService? s)
     {
         try
         {
-            int seconds =
-                settingsService
-                    ?.GetSettingsAsync()
-                    .GetAwaiter()
-                    .GetResult()
-                    .General.ConnectTimeoutSeconds
-                ?? 10;
-            return TimeSpan.FromSeconds(Math.Clamp(seconds, 1, 600));
+            int sec = s?.GetSettingsAsync().GetAwaiter().GetResult().General.KeepAliveSeconds ?? 0;
+            return sec > 0 ? TimeSpan.FromSeconds(sec) : TimeSpan.Zero;
         }
-        catch
+        catch { return TimeSpan.Zero; }
+    }
+
+    private static SecurityOptions GetSecurityOptions(ISettingsService? s)
+    {
+        try { return s?.GetSettingsAsync().GetAwaiter().GetResult().Security ?? new(); }
+        catch { return new(); }
+    }
+
+    // ---- SSH client factory ----
+
+    private static TmdsSshClientWrapper CreateSshClientWrapper(
+        VelaConnectionInfo ci, IHostKeyService? hostKey, ISettingsService? settings,
+        IHostKeyPrompt? prompt, ISecurityAlertService? alerts)
+    {
+        return new TmdsSshClientWrapper(BuildSshClientSettings(ci, hostKey, settings, prompt, alerts));
+    }
+
+    private static SshClientSettings BuildSshClientSettings(
+        VelaConnectionInfo ci, IHostKeyService? hostKey, ISettingsService? settings,
+        IHostKeyPrompt? prompt, ISecurityAlertService? alerts)
+    {
+        var s = new SshClientSettings($"{ci.Username}@{ci.Host}")
         {
-            return TimeSpan.FromSeconds(10);
+            Port = ci.Port,
+            ConnectTimeout = ConnectTimeout(settings),
+            KeepAliveInterval = KeepAliveInterval(settings),
+        };
+        AddCredential(s, ci);
+
+        // ProxyJump
+        if (ci.JumpHost is not null)
+            s.Proxy = BuildProxyChain(ci.JumpHost, hostKey, settings, prompt, alerts);
+
+        // Host key verification
+        if (hostKey is not null)
+            AddHostAuthentication(s, ci, hostKey, settings, prompt, alerts);
+
+        return s;
+    }
+
+    private static void AddCredential(SshClientSettings s, VelaConnectionInfo ci)
+    {
+        s.Credentials ??= [];
+        switch (ci.AuthMethod)
+        {
+            case AuthMethod.Password:
+                s.Credentials.Add(new PasswordCredential(ci.Password ?? ""));
+                break;
+            case AuthMethod.PrivateKey:
+                s.Credentials.Add(string.IsNullOrWhiteSpace(ci.PrivateKeyPassphrase)
+                    ? new PrivateKeyCredential(ci.PrivateKeyPath!, null, null)
+                    : new PrivateKeyCredential(ci.PrivateKeyPath!, ci.PrivateKeyPassphrase, null));
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(ci), ci.AuthMethod,
+                    @"Unsupported authentication method.");
         }
     }
 
-    /// <summary>主机信任策略(设置 → 安全审计);设置不可读时用默认策略(TOFU + 变更阻断)。</summary>
-    private static SecurityOptions GetSecurityOptions(ISettingsService? settingsService)
+    private static void AddHostAuthentication(
+        SshClientSettings s, VelaConnectionInfo ci, IHostKeyService hostKey,
+        ISettingsService? ss, IHostKeyPrompt? prompt, ISecurityAlertService? alerts)
     {
-        try
+        SecurityOptions security = GetSecurityOptions(ss);
+        s.HostAuthentication = async (ctx, ct) =>
         {
-            return settingsService?.GetSettingsAsync().GetAwaiter().GetResult().Security
-                ?? new SecurityOptions();
-        }
-        catch
-        {
-            return new();
-        }
-    }
+            string fingerprint = ctx.ConnectionInfo.ServerKey.Key.SHA256FingerPrint;
+            string keyType = ctx.ConnectionInfo.ServerKey.Key is { } k ? k.GetType().Name : "unknown";
+            string host = ci.Host;
+            int port = ci.Port;
 
-    /// <summary>心跳间隔(设置 → 常规):0 = 关闭(SSH.NET 用 -1ms 表示禁用)。</summary>
-    private static TimeSpan KeepAliveInterval(ISettingsService? settingsService)
-    {
-        try
-        {
-            int seconds =
-                settingsService
-                    ?.GetSettingsAsync()
-                    .GetAwaiter()
-                    .GetResult()
-                    .General.KeepAliveSeconds
-                ?? 0;
-            return seconds > 0 ? TimeSpan.FromSeconds(seconds) : Timeout.InfiniteTimeSpan;
-        }
-        catch
-        {
-            return Timeout.InfiniteTimeSpan;
-        }
-    }
+            HostKeyVerification verification = await hostKey
+                .VerifyHostKeyAsync(host, port, keyType, fingerprint, ct).ConfigureAwait(false);
+            string target = $"{host}:{port}";
 
-    private static ISshClientWrapper CreateSshClientWrapper(
-        VelaConnectionInfo connectionInfo,
-        IHostKeyService? hostKeyService = null,
-        ISettingsService? settingsService = null,
-        IHostKeyPrompt? hostKeyPrompt = null,
-        ISecurityAlertService? securityAlerts = null
-    )
-    {
-        // 配了跳板(ProxyJump):逐跳建链,每跳按其逻辑主机做指纹校验。
-        if (connectionInfo.JumpHost is not null)
-        {
-            return new JumpChainSshClientWrapper(
-                connectionInfo,
-                (logical, connectHost, connectPort) =>
-                    BuildSshClient(
-                        logical,
-                        connectHost,
-                        connectPort,
-                        hostKeyService,
-                        settingsService,
-                        hostKeyPrompt,
-                        securityAlerts
-                    )
-            );
-        }
-        return new SshClientWrapper(
-            BuildSshClient(
-                connectionInfo,
-                connectionInfo.Host,
-                connectionInfo.Port,
-                hostKeyService,
-                settingsService,
-                hostKeyPrompt,
-                securityAlerts
-            )
-        );
-    }
+            if (verification == HostKeyVerification.Trusted
+                || HostTrustOnceCache.IsTrusted(host, port, fingerprint))
+                return true;
 
-    /// <summary>
-    /// 构建一跳的 SshClient:凭据与主机指纹校验用逻辑连接信息
-    /// <paramref name="connectionInfo" />(host:port 为 known_hosts 键),实际 socket 连
-    /// <paramref name="connectHost" />:<paramref name="connectPort" />(直连时相同,经跳板时
-    /// 是上一跳的本地转发口 —— 指纹绝不能按 127.0.0.1 记录)。
-    /// </summary>
-    private static SshClient BuildSshClient(
-        VelaConnectionInfo connectionInfo,
-        string connectHost,
-        int connectPort,
-        IHostKeyService? hostKeyService,
-        ISettingsService? settingsService,
-        IHostKeyPrompt? hostKeyPrompt,
-        ISecurityAlertService? securityAlerts
-    )
-    {
-        AuthenticationMethod[] authMethods = CreateAuthenticationMethods(connectionInfo);
-        var sshConnectionInfo = new ConnectionInfo(
-            connectHost,
-            connectPort,
-            connectionInfo.Username,
-            authMethods
-        );
-        var client = new SshClient(sshConnectionInfo);
-        client.ConnectionInfo.Timeout = ConnectTimeout(settingsService);
-        client.KeepAliveInterval = KeepAliveInterval(settingsService);
-        if (hostKeyService is not null)
-        {
-            // 主机信任策略(设置 → 安全审计):首次连接默认 TOFU 自动记录,可改为人工确认
-            // (三选项:永久信任 / 仅本次信任 / 取消);指纹变化默认阻断并告警(防中间人),
-            // 可改为弹窗人工裁决。事件在握手线程上触发,同步等待本地存储/UI 弹窗是安全的。
-            client.HostKeyReceived += (_, e) =>
+            HostKeyDecision decision;
+            if (verification == HostKeyVerification.Unknown)
             {
-                string fingerprint =
-                    "SHA256:" + Convert.ToBase64String(SHA256.HashData(e.HostKey)).TrimEnd('=');
-                HostKeyVerification verification = hostKeyService
-                    .VerifyHostKeyAsync(
-                        connectionInfo.Host,
-                        connectionInfo.Port,
-                        e.HostKeyName,
-                        fingerprint
-                    )
-                    .GetAwaiter()
-                    .GetResult();
-                SecurityOptions security = GetSecurityOptions(settingsService);
-                string target = $"{connectionInfo.Host}:{connectionInfo.Port}";
+                decision = security.ConfirmFirstFingerprint && prompt is not null
+                    ? await prompt.DecideAsync(host, port, keyType, fingerprint, verification)
+                    : HostKeyDecision.TrustPermanently;
+            }
+            else
+            {
+                decision = !security.BlockOnFingerprintChange && prompt is not null
+                    ? await prompt.DecideAsync(host, port, keyType, fingerprint, verification)
+                    : HostKeyDecision.Reject;
+            }
 
-                // 已持久信任 → 放行;本次运行内被“仅本次信任”过且指纹一致 → 同样放行
-                // (覆盖同会话重连与 SFTP 通道,不重复弹窗)。
-                if (
-                    verification == HostKeyVerification.Trusted
-                    || HostTrustOnceCache.IsTrusted(
-                        connectionInfo.Host,
-                        connectionInfo.Port,
-                        fingerprint
-                    )
-                )
-                {
-                    e.CanTrust = true;
-                    return;
-                }
-                HostKeyDecision decision;
-                if (verification == HostKeyVerification.Unknown)
-                {
-                    // 首次连接:开关关闭 = TOFU 自动永久记录;开启 = 弹窗人工裁决。
-                    decision =
-                        security.ConfirmFirstFingerprint && hostKeyPrompt is not null
-                            ? hostKeyPrompt
-                                .DecideAsync(
-                                    connectionInfo.Host,
-                                    connectionInfo.Port,
-                                    e.HostKeyName,
-                                    fingerprint,
-                                    verification
-                                )
-                                .GetAwaiter()
-                                .GetResult()
-                            : HostKeyDecision.TrustPermanently;
-                }
-                else
-                {
-                    // 指纹变更:默认阻断;关闭阻断开关后弹窗人工裁决。
-                    decision =
-                        !security.BlockOnFingerprintChange && hostKeyPrompt is not null
-                            ? hostKeyPrompt
-                                .DecideAsync(
-                                    connectionInfo.Host,
-                                    connectionInfo.Port,
-                                    e.HostKeyName,
-                                    fingerprint,
-                                    verification
-                                )
-                                .GetAwaiter()
-                                .GetResult()
-                            : HostKeyDecision.Reject;
-                }
-                e.CanTrust = decision != HostKeyDecision.Reject;
-                switch (decision)
-                {
-                    case HostKeyDecision.TrustPermanently:
-                        hostKeyService
-                            .TrustHostKeyAsync(
-                                connectionInfo.Host,
-                                connectionInfo.Port,
-                                e.HostKeyName,
-                                fingerprint
-                            )
-                            .GetAwaiter()
-                            .GetResult();
-                        if (verification == HostKeyVerification.Changed)
-                        {
-                            securityAlerts?.RaiseAsync(
-                                "hostkey-changed-accepted",
-                                Strings.Format("KeySvc_AlertChangedAccepted", target, fingerprint)
-                            );
-                        }
-                        break;
-                    case HostKeyDecision.TrustOnce:
-                        HostTrustOnceCache.Remember(
-                            connectionInfo.Host,
-                            connectionInfo.Port,
-                            fingerprint
-                        );
-                        securityAlerts?.RaiseAsync(
-                            "hostkey-trusted-once",
-                            verification == HostKeyVerification.Changed
-                                ? Strings.Format(
-                                    "KeySvc_AlertChangedTrustOnce",
-                                    target,
-                                    fingerprint
-                                )
-                                : Strings.Format("KeySvc_AlertFirstTrustOnce", target, fingerprint)
-                        );
-                        break;
-                    case HostKeyDecision.Reject:
-                    default:
-                        securityAlerts?.RaiseAsync(
-                            verification == HostKeyVerification.Changed
-                                ? "hostkey-changed-blocked"
-                                : "hostkey-rejected",
-                            verification == HostKeyVerification.Changed
-                                ? Strings.Format("KeySvc_AlertChangedBlocked", target, fingerprint)
-                                : Strings.Format("KeySvc_AlertFirstRejected", target, fingerprint)
-                        );
-                        break;
-                }
-            };
-        }
-        return client;
-    }
-
-    private static AuthenticationMethod[] CreateAuthenticationMethods(
-        VelaConnectionInfo connectionInfo
-    )
-    {
-        return connectionInfo.AuthMethod switch
-        {
-            AuthMethod.Password =>
-            // byte[] 重载:SSH.NET 会在认证方法释放时清零该缓冲区(string 重载做不到),
-            // 因此密码不会以不可清除的托管字符串常驻在 SSH.NET 内部。
-            [
-                new PasswordAuthenticationMethod(
-                    connectionInfo.Username,
-                    Encoding.UTF8.GetBytes(connectionInfo.Password ?? string.Empty)
-                ),
-            ],
-            AuthMethod.PrivateKey =>
-            [
-                new PrivateKeyAuthenticationMethod(
-                    connectionInfo.Username,
-                    CreatePrivateKeyFile(connectionInfo)
-                ),
-            ],
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(connectionInfo),
-                connectionInfo.AuthMethod,
-                @"Unsupported authentication method."
-            ),
+            if (decision == HostKeyDecision.Reject)
+            {
+                alerts?.RaiseAsync("hostkey-rejected",
+                    Strings.Format("KeySvc_AlertFirstRejected", target, fingerprint));
+                return false;
+            }
+            if (decision == HostKeyDecision.TrustPermanently)
+            {
+                await hostKey.TrustHostKeyAsync(host, port, keyType, fingerprint, ct);
+                if (verification == HostKeyVerification.Changed && alerts is not null)
+                    await alerts.RaiseAsync("hostkey-changed-accepted",
+                        Strings.Format("KeySvc_AlertChangedAccepted", target, fingerprint));
+            }
+            else if (decision == HostKeyDecision.TrustOnce)
+            {
+                HostTrustOnceCache.Remember(host, port, fingerprint);
+                if (alerts is not null)
+                    await alerts.RaiseAsync("hostkey-trusted-once",
+                        verification == HostKeyVerification.Changed
+                            ? Strings.Format("KeySvc_AlertChangedTrustOnce", target, fingerprint)
+                            : Strings.Format("KeySvc_AlertFirstTrustOnce", target, fingerprint));
+            }
+            return true;
         };
     }
 
-    private static PrivateKeyFile CreatePrivateKeyFile(VelaConnectionInfo connectionInfo)
+    private static SshProxy BuildProxyChain(VelaConnectionInfo jumpHost,
+        IHostKeyService? hostKey, ISettingsService? ss,
+        IHostKeyPrompt? prompt, ISecurityAlertService? alerts)
     {
-        string? privateKeyPath = connectionInfo.PrivateKeyPath;
-        if (string.IsNullOrWhiteSpace(privateKeyPath))
+        var proxy = new SshClientSettings($"{jumpHost.Username}@{jumpHost.Host}")
         {
-            throw new InvalidOperationException(
-                "Private key path is required for private key authentication."
-            );
+            Port = jumpHost.Port,
+            ConnectTimeout = ConnectTimeout(ss),
+        };
+        AddCredential(proxy, jumpHost);
+
+        if (jumpHost.JumpHost is not null)
+            proxy.Proxy = BuildProxyChain(jumpHost.JumpHost, hostKey, ss, prompt, alerts);
+
+        if (hostKey is not null)
+        {
+            string host = jumpHost.Host;
+            int port = jumpHost.Port;
+            proxy.HostAuthentication = async (ctx, ct) =>
+            {
+                string fp = ctx.ConnectionInfo.ServerKey.Key.SHA256FingerPrint;
+                string kt = ctx.ConnectionInfo.ServerKey.Key is { } k ? k.GetType().Name : "unknown";
+                HostKeyVerification v = await hostKey.VerifyHostKeyAsync(host, port, kt, fp, ct);
+                return v == HostKeyVerification.Trusted
+                    || HostTrustOnceCache.IsTrusted(host, port, fp);
+            };
         }
-        return string.IsNullOrWhiteSpace(connectionInfo.PrivateKeyPassphrase)
-            ? new(privateKeyPath)
-            : new PrivateKeyFile(privateKeyPath, connectionInfo.PrivateKeyPassphrase);
+
+        return new SshProxy(proxy);
     }
 }

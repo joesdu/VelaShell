@@ -16,7 +16,7 @@ public sealed class VtParser(IVtActions actions)
     private readonly StringBuilder _intermediates = new(4);
     private readonly StringBuilder _oscOrDcs = new(64);
 
-    private readonly List<int> _params = new(MaxParams);
+    private readonly List<int> _params = [with(MaxParams)];
     private int _currentParam;
 
     private char _dcsFinal;
@@ -332,8 +332,8 @@ public sealed class VtParser(IVtActions actions)
     {
         switch (rune)
         {
-        // 此处以 BEL(0x07)结尾,或在 Consume 的全局 ESC 分支中以 ST(ESC \) 结尾——
-        // ESC 永远不会到达本处理函数。
+            // 此处以 BEL(0x07)结尾,或在 Consume 的全局 ESC 分支中以 ST(ESC \) 结尾——
+            // ESC 永远不会到达本处理函数。
             case 0x07:
                 DispatchOsc();
                 _state = State.Ground;

@@ -21,16 +21,16 @@ public class TerminalBridgeTests
     [TestMethod]
     public void Constructor_NullTerminal_ThrowsArgumentNullException()
     {
-        Func<SshTerminalBridge> act = () => new SshTerminalBridge(null!, _shellStream);
-        ArgumentNullException ex = Assert.ThrowsExactly<ArgumentNullException>(act);
+        SshTerminalBridge act() => new(null!, _shellStream);
+        ArgumentNullException ex = Assert.ThrowsExactly<ArgumentNullException>((Func<SshTerminalBridge>)act);
         Assert.AreEqual("terminal", ex.ParamName);
     }
 
     [TestMethod]
     public void Constructor_NullShellStream_ThrowsArgumentNullException()
     {
-        Func<SshTerminalBridge> act = () => new SshTerminalBridge(_terminal, null!);
-        ArgumentNullException ex = Assert.ThrowsExactly<ArgumentNullException>(act);
+        SshTerminalBridge act() => new(_terminal, null!);
+        ArgumentNullException ex = Assert.ThrowsExactly<ArgumentNullException>((Func<SshTerminalBridge>)act);
         Assert.AreEqual("shellStream", ex.ParamName);
     }
 
@@ -42,9 +42,9 @@ public class TerminalBridgeTests
         using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Start();
 
-        Action act = () => bridge.Start();
+        void act() => bridge.Start();
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>(act);
-        StringAssert.Contains(ex.Message, "already started");
+        Assert.Contains("already started", ex.Message);
     }
 
     [TestMethod]

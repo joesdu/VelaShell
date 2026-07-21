@@ -159,10 +159,10 @@ public class SshIntegrationTests
         }
         ISshClientWrapper? mockClient = Substitute.For<ISshClientWrapper>();
         mockClient.ConnectAsync(Arg.Any<CancellationToken>())
-                  .Returns(Task.FromException(new SshAuthenticationException("Authentication failed")));
+                  .Returns(Task.FromException(new VelaSshAuthenticationException("Authentication failed")));
         ConnectionInfo connectionInfo = CreateTestConnectionInfo(password: "wrongpassword");
         var service = new SshConnectionService(_ => mockClient);
-        await Assert.ThrowsExactlyAsync<SshAuthenticationException>(() => service.ConnectAsync(connectionInfo));
+        await Assert.ThrowsExactlyAsync<VelaSshAuthenticationException>(() => service.ConnectAsync(connectionInfo));
         await service.DisposeAsync();
     }
 

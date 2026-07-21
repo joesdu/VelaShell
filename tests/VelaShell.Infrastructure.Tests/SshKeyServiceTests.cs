@@ -29,14 +29,14 @@ public sealed class SshKeyServiceTests : IDisposable
         SshKeyInfo generated = await _service.GenerateRsaKeyAsync("test_key", 2048);
         Assert.AreEqual("test_key", generated.Name);
         Assert.AreEqual("RSA 2048", generated.Type);
-        StringAssert.StartsWith(generated.Fingerprint, "SHA256:");
+        Assert.StartsWith("SHA256:", generated.Fingerprint);
         Assert.IsTrue(File.Exists(Path.Combine(_sshDir, "test_key")));
         Assert.IsTrue(File.Exists(Path.Combine(_sshDir, "test_key.pub")));
         List<SshKeyInfo> listed = await _service.ListKeysAsync();
         Assert.HasCount(1, listed);
         Assert.AreEqual(generated.Fingerprint, listed[0].Fingerprint, "列举解析的指纹应与生成时一致");
         Assert.AreEqual("RSA 2048", listed[0].Type, "公钥 blob 解析出的位数应一致");
-        StringAssert.StartsWith(listed[0].PublicKeyLine, "ssh-rsa ");
+        Assert.StartsWith("ssh-rsa ", listed[0].PublicKeyLine);
         await _service.DeleteKeyAsync("test_key");
         Assert.IsEmpty(await _service.ListKeysAsync());
     }

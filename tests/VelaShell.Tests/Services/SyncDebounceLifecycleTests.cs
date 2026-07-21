@@ -209,7 +209,7 @@ public class SyncDebounceLifecycleTests
         lifecycle.TrySwapNew(out CancellationToken token);
         bool invoked = false;
 
-        bool ok = lifecycle.TryStartCurrent(token, () => { invoked = true; return Task.CompletedTask; }, out Task? task);
+        bool ok = lifecycle.TryStartCurrent(() => { invoked = true; return Task.CompletedTask; }, token, out Task? task);
 
         Assert.IsTrue(ok);
         Assert.IsNotNull(task);
@@ -225,7 +225,7 @@ public class SyncDebounceLifecycleTests
         lifecycle.Shutdown();
         bool invoked = false;
 
-        bool ok = lifecycle.TryStartCurrent(token, () => { invoked = true; return Task.CompletedTask; }, out Task? task);
+        bool ok = lifecycle.TryStartCurrent(() => { invoked = true; return Task.CompletedTask; }, token, out Task? task);
 
         Assert.IsFalse(ok);
         Assert.IsNull(task);
@@ -241,7 +241,7 @@ public class SyncDebounceLifecycleTests
         lifecycle.TrySwapNew(out _); // supersede oldToken
         bool invoked = false;
 
-        bool ok = lifecycle.TryStartCurrent(oldToken, () => { invoked = true; return Task.CompletedTask; }, out Task? task);
+        bool ok = lifecycle.TryStartCurrent(() => { invoked = true; return Task.CompletedTask; }, oldToken, out Task? task);
 
         Assert.IsFalse(ok);
         Assert.IsNull(task);
@@ -255,7 +255,7 @@ public class SyncDebounceLifecycleTests
         var lifecycle = new SyncDebounceLifecycle();
         lifecycle.TrySwapNew(out CancellationToken token);
 
-        lifecycle.TryStartCurrent(token, () => Task.CompletedTask, out Task? _);
+        lifecycle.TryStartCurrent(() => Task.CompletedTask, token, out Task? _);
 
         // After consumption, a new TrySwapNew must succeed (CTS was cleared).
         bool ok = lifecycle.TrySwapNew(out CancellationToken freshToken);
@@ -270,9 +270,9 @@ public class SyncDebounceLifecycleTests
         var lifecycle = new SyncDebounceLifecycle();
         lifecycle.TrySwapNew(out CancellationToken token);
 
-        lifecycle.TryStartCurrent(token, () => Task.CompletedTask, out Task? _);
+        lifecycle.TryStartCurrent(() => Task.CompletedTask, token, out Task? _);
         bool invoked = false;
-        bool ok = lifecycle.TryStartCurrent(token, () => { invoked = true; return Task.CompletedTask; }, out Task? _);
+        bool ok = lifecycle.TryStartCurrent(() => { invoked = true; return Task.CompletedTask; }, token, out Task? _);
 
         Assert.IsFalse(ok, "Second start with same token must fail — CTS was cleared");
         Assert.IsFalse(invoked);
@@ -289,11 +289,11 @@ public class SyncDebounceLifecycleTests
             .GetValue(lifecycle)!;
         bool gateHeld = false;
 
-        bool started = lifecycle.TryStartCurrent(token, () =>
+        bool started = lifecycle.TryStartCurrent(() =>
         {
             gateHeld = Monitor.IsEntered(gate);
             return Task.CompletedTask;
-        }, out _);
+        }, token, out _);
 
         Assert.IsTrue(started);
         Assert.IsTrue(

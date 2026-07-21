@@ -69,9 +69,11 @@ public class StatusBarNetworkTests
     [TestMethod]
     public void ClearSessionMetrics_ResetsToPlaceholders_NotEmpty()
     {
-        var vm = new StatusBarViewModel();
-        vm.CpuUsage = "23.45%";
-        vm.MemUsage = "26.3%";
+        var vm = new StatusBarViewModel
+        {
+            CpuUsage = "23.45%",
+            MemUsage = "26.3%"
+        };
         vm.UpdateNetwork(2_000_000, 100, hasRates: true);
 
         vm.ClearSessionMetrics();

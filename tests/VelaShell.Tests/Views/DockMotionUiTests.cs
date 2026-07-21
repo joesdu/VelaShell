@@ -92,14 +92,14 @@ public sealed class DockMotionUiTests
     {
         Assert.IsNotNull(host.Transitions);
         Assert.HasCount(2, host.Transitions);
-        Assert.IsTrue(host.Transitions!.Any(transition =>
+        Assert.Contains(transition =>
             transition is DoubleTransition { Property: var property, Duration: var duration }
             && property == Visual.OpacityProperty
-            && duration == TimeSpan.FromMilliseconds(120)));
-        Assert.IsTrue(host.Transitions.Any(transition =>
+            && duration == TimeSpan.FromMilliseconds(120), host.Transitions);
+        Assert.Contains(transition =>
             transition is TransformOperationsTransition { Property: var property, Duration: var duration }
             && property == Visual.RenderTransformProperty
-            && duration == TimeSpan.FromMilliseconds(120)));
+            && duration == TimeSpan.FromMilliseconds(120), host.Transitions);
     }
 
     private sealed class TestDocument : DockDocument, IDockViewProvider

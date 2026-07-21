@@ -14,8 +14,8 @@ public class FileTransferViewModelTests
     public FileTransferViewModelTests()
     {
         _transferManager = Substitute.For<ITransferManager>();
-        _transferManager.ActiveTransfers.Returns(new List<TransferTask>());
-        _transferManager.QueuedTransfers.Returns(new List<TransferTask>());
+        _transferManager.ActiveTransfers.Returns([]);
+        _transferManager.QueuedTransfers.Returns([]);
         _vm = new(_transferManager);
     }
 
@@ -249,7 +249,7 @@ public class FileTransferViewModelTests
         Assert.AreEqual(1, _vm.PendingCount);
         _vm.UpdatePreparingCount(42);
         Assert.AreEqual(42, _vm.PendingCount);
-        StringAssert.Contains(_vm.PreparingText, "42");
+        Assert.Contains("42", _vm.PreparingText);
     }
 
     [TestMethod]

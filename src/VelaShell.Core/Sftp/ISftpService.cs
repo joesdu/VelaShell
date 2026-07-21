@@ -24,10 +24,10 @@ public interface ISftpService : IAsyncDisposable
     Task<List<RemoteFileInfo>> ListDirectoryAsync(Guid sessionId, string path, CancellationToken cancellationToken = default);
 
     /// <summary>将本地文件上传到给定远端路径,并报告传输进度。</summary>
-    Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0);
+    Task UploadFileAsync(Guid sessionId, string localPath, string remotePath, IProgress<TransferProgress>? progress = null, long resumeOffset = 0, CancellationToken cancellationToken = default);
 
     /// <summary>将远端文件下载到给定本地路径,并报告传输进度。</summary>
-    Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default, long resumeOffset = 0);
+    Task DownloadFileAsync(Guid sessionId, string remotePath, string localPath, IProgress<TransferProgress>? progress = null, long resumeOffset = 0, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 删除文件,或递归删除目录及其全部内容。每移除一个条目回报一次进度,

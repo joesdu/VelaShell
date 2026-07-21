@@ -23,6 +23,7 @@ public class UpdateServiceTests : IDisposable
         {
             Directory.Delete(_appDir, true);
         }
+        GC.SuppressFinalize(this);
     }
 
     private UpdateService CreateService(

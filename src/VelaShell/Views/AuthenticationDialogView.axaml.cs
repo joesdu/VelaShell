@@ -67,7 +67,7 @@ public partial class AuthenticationDialogView : Window
             Title = Strings.Get("Profile_SelectKeyFile"),
             AllowMultiple = false
         });
-        if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
+        if (files.AsParallel().FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
         {
             viewModel.PrivateKeyPath = path;
         }

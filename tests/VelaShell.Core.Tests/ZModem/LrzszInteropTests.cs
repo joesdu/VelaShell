@@ -86,7 +86,7 @@ public class LrzszInteropTests
 
         // lrzsz 发 0x8A(LF|0x80),我们发裸 0x0A;两者对端都按噪声跳过,故比较时归一。
         byte[] normalized = [.. expected.Select(b => b == 0x8A ? (byte)0x0A : b)];
-        CollectionAssert.AreEqual(normalized, outbound[..normalized.Length]);
+        Assert.AreSequenceEqual(normalized, outbound[..normalized.Length]);
     }
 
     /// <summary>真实 lrzsz <c>sz</c> 的启动序列("rz\r" + ZRQINIT,含 0x8A)必须能被解析。</summary>
@@ -160,7 +160,7 @@ public class LrzszInteropTests
     /// 路由器因此永远停在会话态,把此后所有输出(含 shell 提示符)全部吞掉,终端再也回不来。
     /// </summary>
     [TestMethod]
-    [Timeout(15000)]
+    [Timeout(15000, CooperativeCancellation = true)]
     public async Task Receiver_PeerGoesSilent_FailsFastInsteadOfHangingForever()
     {
         // 对端静默属于握手阶段,走的是 HandshakeTimeout/HandshakeRetries 预算。
@@ -208,7 +208,7 @@ public class LrzszInteropTests
     /// "点击焦点后内容全没、输入无效"。这里用真实发送方状态机扮演 sz,验证它被干净收尾。
     /// </summary>
     [TestMethod]
-    [Timeout(30000)]
+    [Timeout(30000, CooperativeCancellation = true)]
     public async Task Receiver_UserAbortsFolder_SkipsGracefullySoSenderFinishesClean()
     {
         (InMemoryByteDuplex a, InMemoryByteDuplex b) = InMemoryByteDuplex.CreatePair();
@@ -248,7 +248,7 @@ public class LrzszInteropTests
 
     /// <summary>取消令牌应能立刻中止一个正在等待的会话(标签关闭 / 用户中止)。</summary>
     [TestMethod]
-    [Timeout(15000)]
+    [Timeout(15000, CooperativeCancellation = true)]
     public async Task Receiver_Cancellation_EndsSessionPromptly()
     {
         var duplex = new SilentDuplex();

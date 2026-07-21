@@ -27,7 +27,7 @@ public class TerminalColorSchemeTests
         var appearance = new AppearanceOptions();
         TerminalColorScheme.BuiltIn[1].ApplyTo(appearance);
         appearance.TerminalForeground = appearance.TerminalForeground.ToLowerInvariant();
-        appearance.AnsiNormal = appearance.AnsiNormal.Select(c => c.ToLowerInvariant()).ToList();
+        appearance.AnsiNormal = [.. appearance.AnsiNormal.Select(c => c.ToLowerInvariant())];
 
         Assert.IsTrue(TerminalColorScheme.BuiltIn[1].Matches(appearance));
     }

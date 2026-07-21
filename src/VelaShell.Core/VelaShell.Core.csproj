@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <!-- 默认 Strings.resx 即英文(开发语言):CurrentUICulture=en 时直取主程序集,
@@ -8,7 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="ReactiveUI" />
     <!-- Core 不引用任何具体 SSH 库:SSH 能力经 Ssh/ 下的中立抽象
          (ISshClientWrapper/ISftpClientWrapper/SftpEntry/SshClientException 等)访问,

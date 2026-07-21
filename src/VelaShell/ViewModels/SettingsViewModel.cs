@@ -71,7 +71,6 @@ public class SettingsViewModel : ReactiveObject
         ISettingsService settingsService,
         IThemeService themeService,
         ILocalizationService? localizationService = null,
-        IAppDataStore? appDataStore = null,
         ISshKeyService? sshKeyService = null,
         IRecentConnectionService? recentConnections = null,
         ISettingsPreviewService? previewService = null,
@@ -430,7 +429,7 @@ public class SettingsViewModel : ReactiveObject
         $".NET {Environment.Version.Major}.{Environment.Version.Minor}";
 
     /// <summary>关于页显示的 SSH 库版本(版本取自实际引用的 NuGet 包,见 <see cref="PackageVersions" />)。</summary>
-    public static string AboutSshLibrary => Describe("SSH.NET", "SSH.NET");
+    public static string AboutSshLibrary => Describe("Tmds.Ssh", "Tmds.Ssh");
 
     /// <summary>
     /// 拼 "名称 版本";版本读不到时只显示名称 —— 关于页少个版本号可以接受,
@@ -469,10 +468,10 @@ public class SettingsViewModel : ReactiveObject
             "https://github.com/AvaloniaUI/Avalonia/blob/main/licence.md"
         ),
         new(
-            "SSH.NET",
+            "Tmds.Ssh",
             "MIT",
-            "https://github.com/sshnet/SSH.NET",
-            "https://github.com/sshnet/SSH.NET/blob/develop/LICENSE"
+            "https://github.com/Tmds/Tmds.Ssh",
+            "https://github.com/Tmds/Tmds.Ssh/blob/main/LICENSE"
         ),
         new(
             "ReactiveUI",

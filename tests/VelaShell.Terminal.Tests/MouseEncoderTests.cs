@@ -27,7 +27,7 @@ public class MouseEncoderTests
             0, 0, false, false, false, Modes(MouseTracking.X10));
 
         // ESC [ M, then (32+button), (32+col+1), (32+row+1).
-        CollectionAssert.AreEqual(new byte[] { 0x1b, (byte)'[', (byte)'M', 32, 33, 33 }, bytes);
+        Assert.AreSequenceEqual(new byte[] { 0x1b, (byte)'[', (byte)'M', 32, 33, 33 }, bytes);
     }
 
     [TestMethod]
@@ -58,7 +58,7 @@ public class MouseEncoderTests
             0, 0, false, false, false, Modes(MouseTracking.Normal));
 
         // Legacy release reports button bits = 3 → 32+3 = 35.
-        CollectionAssert.AreEqual(new byte[] { 0x1b, (byte)'[', (byte)'M', 35, 33, 33 }, bytes);
+        Assert.AreSequenceEqual(new byte[] { 0x1b, (byte)'[', (byte)'M', 35, 33, 33 }, bytes);
     }
 
     [TestMethod]

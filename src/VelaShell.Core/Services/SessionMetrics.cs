@@ -169,26 +169,26 @@ public sealed class SessionMetrics
         string[] loadParts = Section("__L__").Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (loadParts.Length > 0)
         {
-            double.TryParse(loadParts[0], CultureInfo.InvariantCulture, out load1);
+            _ = double.TryParse(loadParts[0], CultureInfo.InvariantCulture, out load1);
         }
         long memTotal = 0, memUsed = 0, swapTotal = 0, swapUsed = 0;
         string[] memParts = Section("__M__").Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (memParts.Length >= 2)
         {
-            long.TryParse(memParts[0], out memTotal);
-            long.TryParse(memParts[1], out memUsed);
+            _ = long.TryParse(memParts[0], out memTotal);
+            _ = long.TryParse(memParts[1], out memUsed);
         }
         if (memParts.Length >= 4)
         {
-            long.TryParse(memParts[2], out swapTotal);
-            long.TryParse(memParts[3], out swapUsed);
+            _ = long.TryParse(memParts[2], out swapTotal);
+            _ = long.TryParse(memParts[3], out swapUsed);
         }
         long diskTotal = 0, diskUsed = 0;
         string[] diskParts = Section("__D__").Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (diskParts.Length >= 2)
         {
-            long.TryParse(diskParts[0], out diskTotal);
-            long.TryParse(diskParts[1], out diskUsed);
+            _ = long.TryParse(diskParts[0], out diskTotal);
+            _ = long.TryParse(diskParts[1], out diskUsed);
         }
         string os = Section("__O__");
         string kernel = Section("__K__");
@@ -206,11 +206,11 @@ public sealed class SessionMetrics
                     cpuTotal += v;
                 }
             }
-            long.TryParse(statParts[4], out long idle); // 空闲
+            _ = long.TryParse(statParts[4], out long idle); // 空闲
             long iowait = 0;
             if (statParts.Length > 5)
             {
-                long.TryParse(statParts[5], out iowait); // iowait 计入空闲
+                _ = long.TryParse(statParts[5], out iowait); // iowait 计入空闲
             }
             cpuIdle = idle + iowait;
             hasCpuCounters = cpuTotal > 0;
@@ -266,11 +266,11 @@ public sealed class SessionMetrics
                     total += v;
                 }
             }
-            long.TryParse(parts[4], out long coreIdle);
+            _ = long.TryParse(parts[4], out long coreIdle);
             long coreIowait = 0;
             if (parts.Length > 5)
             {
-                long.TryParse(parts[5], out coreIowait);
+                _ = long.TryParse(parts[5], out coreIowait);
             }
             if (total > 0)
             {

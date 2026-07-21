@@ -16,11 +16,11 @@ public class FileZModemFileSourceTests
     public async Task FirstCancel_RepromptsOnceBeforeGivingUp()
     {
         var retryFlags = new List<bool>();
-        Func<bool, CancellationToken, Task<IReadOnlyList<string>>> picker = (isRetry, _) =>
+        Task<IReadOnlyList<string>> picker(bool isRetry, CancellationToken _)
         {
             retryFlags.Add(isRetry);
             return Task.FromResult<IReadOnlyList<string>>([]); // 两次都取消。
-        };
+        }
 
         var source = new FileZModemFileSource(picker);
         IReadOnlyList<ZModemOutgoingFile> files = await source.GetFilesAsync(CancellationToken.None);
@@ -38,11 +38,11 @@ public class FileZModemFileSourceTests
         string tmp = Path.Combine(Path.GetTempPath(), "vela-zmodem-upload-" + Guid.NewGuid().ToString("N") + ".bin");
         await File.WriteAllBytesAsync(tmp, [1, 2, 3, 4, 5]);
         int callCount = 0;
-        Func<bool, CancellationToken, Task<IReadOnlyList<string>>> picker = (_, _) =>
+        Task<IReadOnlyList<string>> picker(bool _1, CancellationToken _2)
         {
             callCount++;
             return Task.FromResult<IReadOnlyList<string>>(callCount == 1 ? [] : [tmp]); // 先取消,后选定。
-        };
+        }
 
         try
         {
@@ -67,11 +67,11 @@ public class FileZModemFileSourceTests
         string tmp = Path.Combine(Path.GetTempPath(), "vela-zmodem-upload1-" + Guid.NewGuid().ToString("N") + ".bin");
         await File.WriteAllBytesAsync(tmp, [9]);
         int callCount = 0;
-        Func<bool, CancellationToken, Task<IReadOnlyList<string>>> picker = (_, _) =>
+        Task<IReadOnlyList<string>> picker(bool _1, CancellationToken _2)
         {
             callCount++;
             return Task.FromResult<IReadOnlyList<string>>([tmp]);
-        };
+        }
 
         try
         {

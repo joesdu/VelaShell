@@ -6,7 +6,7 @@ namespace VelaShell.Core.Services;
 /// </summary>
 public class ThemeService(string initialTheme = "dark", string? initialAccent = null) : IThemeService
 {
-    private static readonly HashSet<string> ValidThemes = new(StringComparer.OrdinalIgnoreCase) { "dark", "light", "system" };
+    private static readonly HashSet<string> ValidThemes = [with(StringComparer.OrdinalIgnoreCase), "dark", "light", "system"];
 
     /// <summary>
     /// 当前活动的主题名称("dark"、"light" 或 "system")。

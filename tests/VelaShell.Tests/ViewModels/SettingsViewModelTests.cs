@@ -42,7 +42,7 @@ public class SettingsViewModelTests
             vm.Appearance.WindowOpacityPercent = value;
         }
 
-        CollectionAssert.AreEqual(new[] { 20, 30, 40, 50 }, opacityValues);
+        Assert.AreSequenceEqual([20, 30, 40, 50], opacityValues);
         Assert.IsEmpty(snapshots);
     }
 

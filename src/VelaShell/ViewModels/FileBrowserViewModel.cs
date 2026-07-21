@@ -1261,7 +1261,7 @@ public class FileBrowserViewModel : ReactiveObject
                 return;
             }
             Directory.CreateDirectory(tempDir);
-            await _sftpService.DownloadFileAsync(_sessionId, file.FullPath, localPath, null, ct);
+            await _sftpService.DownloadFileAsync(_sessionId, file.FullPath, localPath, null, cancellationToken: ct);
             string remotePath = file.FullPath;
             await OpenInBuiltInEditor(
                 file,
@@ -1790,15 +1790,24 @@ public class FileBrowserViewModel : ReactiveObject
         return null;
     }
 
-    /// <summary>通过 SFTP 包装器的 GetFileSize 方法获取远端文件大小。</summary>
+    /// <summary>获取远端文件大小;不存在返回 -1。</summary>
     private async Task<long> GetRemoteFileSizeAsync(string remotePath, CancellationToken ct)
     {
-        // 通过服务调用访问底层 SFTP 客户端。
-        // 我们用 GetFileInfoAsync 做目录列举 —— 不理想但现成可用。
         try
         {
+            // 上传目标通常尚不存在:先走一次无异常的 stat 探测,不存在直接返回。
+            // 直接 GetFileInfoAsync 会为每个新文件抛一次 FileNotFoundException
+            // (异常做控制流,调试输出刷屏),还多付一次整目录列举。
+            if (!await _sftpService.ExistsAsync(_sessionId, remotePath, ct))
+            {
+                return -1;
+            }
             RemoteFileInfo info = await _sftpService.GetFileInfoAsync(_sessionId, remotePath, ct);
             return info.Size;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -2016,7 +2025,7 @@ public class FileBrowserViewModel : ReactiveObject
         {
             if (type == TransferType.Upload)
             {
-                await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, progress, ct, resumeOffset);
+                await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, progress, resumeOffset, ct);
             }
             else if (type == TransferType.Copy)
             {
@@ -2025,14 +2034,7 @@ public class FileBrowserViewModel : ReactiveObject
             }
             else
             {
-                await _sftpService.DownloadFileAsync(
-                    _sessionId,
-                    remotePath,
-                    localPath,
-                    progress,
-                    ct,
-                    resumeOffset
-                );
+                await _sftpService.DownloadFileAsync(_sessionId, remotePath, localPath, progress, resumeOffset, ct);
             }
             item?.Status = TransferStatus.Completed;
             finalStatus = TransferStatus.Completed;
@@ -2362,10 +2364,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// Deletes the given entries one after another behind a single busy overlay; the
     /// per-entry recursive progress is folded into one running "deleted / total" readout.
     /// </summary>
-    private async Task DeleteManyAsync(
-        IReadOnlyList<RemoteFileInfoViewModel> targets,
-        CancellationToken ct
-    )
+    private async Task DeleteManyAsync(List<RemoteFileInfoViewModel> targets, CancellationToken ct)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _deleteCts = cts;

@@ -227,7 +227,7 @@ public class TerminalEmulatorTests
         TerminalEmulator e = New();
         e.SetEncoding(Encoding.GetEncoding("GBK"));
         // "中文" in GBK.
-        e.Feed(new byte[] { 0xD6, 0xD0, 0xCE, 0xC4 });
+        e.Feed([0xD6, 0xD0, 0xCE, 0xC4]);
         Assert.AreEqual('中', e.Screen.GetCell(0, 0).Rune);
         Assert.AreEqual('文', e.Screen.GetCell(2, 0).Rune);
     }

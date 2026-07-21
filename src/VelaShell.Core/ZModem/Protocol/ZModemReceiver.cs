@@ -294,7 +294,20 @@ public sealed class ZModemReceiver(
 
             if (sub.Data.Length > 0)
             {
-                await _sink.WriteAsync(item, sub.Data, ct).ConfigureAwait(false);
+                try
+                {
+                    await _sink.WriteAsync(item, sub.Data, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    // 写盘失败(磁盘满 / 权限变更):只舍弃当前文件,不拖垮整批。
+                    await FailItemAsync(session, item, ex, ct).ConfigureAwait(false);
+                    return false;
+                }
                 item.BytesTransferred += sub.Data.Length;
                 _observer?.OnFileProgress(item);
             }

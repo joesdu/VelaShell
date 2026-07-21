@@ -87,8 +87,8 @@ public class ResizePreservationTests
         {
             all.Add(e.Screen.ViewLine(r).GetText());
         }
-        CollectionAssert.Contains(all, "one");
-        CollectionAssert.Contains(all, "six");
+        Assert.Contains("one", all);
+        Assert.Contains("six", all);
     }
 
     [TestMethod]
@@ -162,8 +162,8 @@ all, "prompt fragments were duplicated");
         }
 
         // The rows below the cursor held content, so nothing may be discarded.
-        CollectionAssert.Contains(all, "one");
-        CollectionAssert.Contains(all, "six");
+        Assert.Contains("one", all);
+        Assert.Contains("six", all);
     }
 
     [TestMethod]

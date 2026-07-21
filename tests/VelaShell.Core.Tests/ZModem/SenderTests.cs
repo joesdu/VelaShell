@@ -42,7 +42,7 @@ public class SenderTests
     }
 
     [TestMethod]
-    [Timeout(30000)]
+    [Timeout(30000, CooperativeCancellation = true)]
     public async Task Send_SingleTextFile_ArrivesIntact()
     {
         byte[] content = Encoding.UTF8.GetBytes("hello from the sender\n");
@@ -51,11 +51,11 @@ public class SenderTests
 
         Assert.AreEqual(ZModemTransferStatus.Completed, send.Status);
         Assert.AreEqual(ZModemTransferStatus.Completed, receive.Status);
-        CollectionAssert.AreEqual(content, sink.Completed["upload.txt"]);
+        Assert.AreSequenceEqual(content, sink.Completed["upload.txt"]);
     }
 
     [TestMethod]
-    [Timeout(30000)]
+    [Timeout(30000, CooperativeCancellation = true)]
     public async Task Send_BinaryFileSpanningManySubpackets_ArrivesIntact()
     {
         // 覆盖 ZDLE 转义路径:包含 0x18/0x10/0x11/0x13 与全部字节值。
@@ -68,12 +68,12 @@ public class SenderTests
         (ZModemSession send, _, InMemoryFileSink sink) = await RoundTripAsync([("blob.bin", content)]);
 
         Assert.AreEqual(ZModemTransferStatus.Completed, send.Status);
-        CollectionAssert.AreEqual(content, sink.Completed["blob.bin"]);
+        Assert.AreSequenceEqual(content, sink.Completed["blob.bin"]);
     }
 
     /// <summary>文件长度恰好是子包大小的整数倍:尾包边界最容易被写错(多发/少发一包)。</summary>
     [TestMethod]
-    [Timeout(30000)]
+    [Timeout(30000, CooperativeCancellation = true)]
     public async Task Send_FileExactlyMultipleOfSubpacketSize_ArrivesIntact()
     {
         byte[] content = new byte[ZModemOptions.Default.SubpacketSize * 4];
@@ -85,11 +85,11 @@ public class SenderTests
         (ZModemSession send, _, InMemoryFileSink sink) = await RoundTripAsync([("aligned.bin", content)]);
 
         Assert.AreEqual(ZModemTransferStatus.Completed, send.Status);
-        CollectionAssert.AreEqual(content, sink.Completed["aligned.bin"]);
+        Assert.AreSequenceEqual(content, sink.Completed["aligned.bin"]);
     }
 
     [TestMethod]
-    [Timeout(30000)]
+    [Timeout(30000, CooperativeCancellation = true)]
     public async Task Send_EmptyFile_Succeeds()
     {
         (ZModemSession send, _, InMemoryFileSink sink) = await RoundTripAsync([("empty.txt", [])]);
@@ -99,7 +99,7 @@ public class SenderTests
     }
 
     [TestMethod]
-    [Timeout(30000)]
+    [Timeout(30000, CooperativeCancellation = true)]
     public async Task Send_BatchOfFiles_AllArrive()
     {
         (string, byte[])[] files =
@@ -114,13 +114,13 @@ public class SenderTests
         Assert.AreEqual(ZModemTransferStatus.Completed, send.Status);
         foreach ((string name, byte[] data) in files)
         {
-            CollectionAssert.AreEqual(data, sink.Completed[name], $"{name} 内容不符");
+            Assert.AreSequenceEqual(data, sink.Completed[name], $"{name} 内容不符");
         }
     }
 
     /// <summary>接收方拒收(ZSKIP)时,发送方应跳过该文件并继续批次。</summary>
     [TestMethod]
-    [Timeout(30000)]
+    [Timeout(30000, CooperativeCancellation = true)]
     public async Task Send_ReceiverSkipsFile_SenderContinues()
     {
         (InMemoryByteDuplex a, InMemoryByteDuplex b) = InMemoryByteDuplex.CreatePair();
@@ -144,7 +144,7 @@ public class SenderTests
     /// ZFIN 让远端 rz 干净退回 shell,不会卡在 "rz waiting to receive." 或打印中止错误。
     /// </summary>
     [TestMethod]
-    [Timeout(30000)]
+    [Timeout(30000, CooperativeCancellation = true)]
     public async Task Send_UserCancelsFilePicker_FinishesGracefullyWithZfinNotCancel()
     {
         (InMemoryByteDuplex a, InMemoryByteDuplex b) = InMemoryByteDuplex.CreatePair();
@@ -180,7 +180,7 @@ public class SenderTests
     /// 而不是一直挂着等文件。这精确复刻 rz 一侧收到 ZFIN 后退回 shell 的行为。
     /// </summary>
     [TestMethod]
-    [Timeout(30000)]
+    [Timeout(30000, CooperativeCancellation = true)]
     public async Task Send_CancelWithEmptyBatch_ReceiverEndsCleanly()
     {
         (InMemoryByteDuplex a, InMemoryByteDuplex b) = InMemoryByteDuplex.CreatePair();

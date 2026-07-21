@@ -63,6 +63,13 @@ public static class LocalPathSafety
             )
             {
                 current = Path.Combine(current, component);
+
+                // 下载目标通常尚不存在:先用不抛异常的 Exists 探测,避免 GetAttributes
+                // 为每个新文件刷一次 FileNotFoundException(首个不存在的组件之下不必再查)。
+                if (!File.Exists(current) && !Directory.Exists(current))
+                {
+                    return true;
+                }
                 try
                 {
                     FileAttributes attributes = File.GetAttributes(current);

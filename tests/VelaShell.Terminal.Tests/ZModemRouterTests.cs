@@ -23,7 +23,7 @@ public class ZModemRouterTests
         ZModemDetectResult result = detector.Process(text);
 
         Assert.IsFalse(result.Detected);
-        CollectionAssert.AreEqual(text, result.TerminalBytes);
+        Assert.AreSequenceEqual(text, result.TerminalBytes);
     }
 
     [TestMethod]
@@ -36,9 +36,9 @@ public class ZModemRouterTests
         ZModemDetectResult result = detector.Process(input);
 
         Assert.IsTrue(result.Detected);
-        CollectionAssert.AreEqual(prefix, result.TerminalBytes);
+        Assert.AreSequenceEqual(prefix, result.TerminalBytes);
         Assert.HasCount(Signature.Length + 2, result.ProtocolBytes);
-        CollectionAssert.AreEqual(Signature, result.ProtocolBytes[..Signature.Length]);
+        Assert.AreSequenceEqual(Signature, result.ProtocolBytes[..Signature.Length]);
     }
 
     [TestMethod]
@@ -51,14 +51,14 @@ public class ZModemRouterTests
 
         Assert.IsFalse(r1.Detected);
         // The 3 signature-prefix bytes must be withheld, only "noise" fed.
-        CollectionAssert.AreEqual("noise"u8.ToArray(), r1.TerminalBytes);
+        Assert.AreSequenceEqual("noise"u8.ToArray(), r1.TerminalBytes);
 
         byte[] second = [Signature[3], Signature[4], Signature[5], 0x30, 0x30];
         ZModemDetectResult r2 = detector.Process(second);
 
         Assert.IsTrue(r2.Detected);
         Assert.IsEmpty(r2.TerminalBytes);
-        CollectionAssert.AreEqual(Signature, r2.ProtocolBytes[..Signature.Length]);
+        Assert.AreSequenceEqual(Signature, r2.ProtocolBytes[..Signature.Length]);
     }
 
     [TestMethod]
@@ -69,11 +69,11 @@ public class ZModemRouterTests
         byte[] input = [.. "data**"u8.ToArray()];
         ZModemDetectResult r = detector.Process(input);
         Assert.IsFalse(r.Detected);
-        CollectionAssert.AreEqual("data"u8.ToArray(), r.TerminalBytes);
+        Assert.AreSequenceEqual("data"u8.ToArray(), r.TerminalBytes);
 
         // If the session never materializes, Flush returns the withheld bytes.
         byte[] flushed = detector.Flush();
-        CollectionAssert.AreEqual("**"u8.ToArray(), flushed);
+        Assert.AreSequenceEqual("**"u8.ToArray(), flushed);
     }
 
     /// <summary>
@@ -92,7 +92,7 @@ public class ZModemRouterTests
 
         Assert.IsTrue(result.Detected);
         Assert.AreEqual(ZModemTrigger.Send, result.Trigger);
-        CollectionAssert.AreEqual(zrinit, result.ProtocolBytes[..zrinit.Length]);
+        Assert.AreSequenceEqual(zrinit, result.ProtocolBytes[..zrinit.Length]);
     }
 
     /// <summary>远端 <c>sz</c> 的 ZRQINIT 必须被识别为「本地接收」。</summary>
@@ -126,7 +126,7 @@ public class ZModemRouterTests
 
         Assert.IsFalse(route.SessionStarted);
         Assert.IsFalse(router.IsInSession);
-        CollectionAssert.AreEqual(zrinit, route.TerminalBytes);
+        Assert.AreSequenceEqual(zrinit, route.TerminalBytes);
     }
 
     [TestMethod]
@@ -160,8 +160,8 @@ public class ZModemRouterTests
         byte[] stream = BuildSenderStream("router.txt", content);
 
         // Feed it in as terminal output; the router should detect and take over.
-        ZModemRouteResult route = router.ProcessIncoming("prompt$ ".u8Array());
-        CollectionAssert.AreEqual("prompt$ ".u8Array(), route.TerminalBytes);
+        ZModemRouteResult route = router.ProcessIncoming("prompt$ ".U8Array());
+        Assert.AreSequenceEqual("prompt$ ".U8Array(), route.TerminalBytes);
 
         ZModemRouteResult route2 = router.ProcessIncoming(stream);
         Assert.IsTrue(route2.SessionStarted);
@@ -170,7 +170,7 @@ public class ZModemRouterTests
         ZModemSession session = await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.AreEqual(ZModemTransferStatus.Completed, session.Status);
         Assert.IsTrue(sink.Completed.ContainsKey("router.txt"));
-        CollectionAssert.AreEqual(content, sink.Completed["router.txt"]);
+        Assert.AreSequenceEqual(content, sink.Completed["router.txt"]);
     }
 
     // Builds a complete non-interactive ZMODEM send stream (receiver drives ZRPOS via ACKs
@@ -191,7 +191,7 @@ public class ZModemRouterTests
         wire.AddRange(ZModemSubpacket.Write(content, ZModemSubpacketEnd.EndNoAck, useCrc32: true));
         wire.AddRange(ZModemFrameWriter.Write(ZModemHeader.WithPosition(ZModemFrameType.ZEOF, (uint)content.Length), ZModemHeaderFormat.Binary32));
         wire.AddRange(ZModemFrameWriter.Write(ZModemHeader.Empty(ZModemFrameType.ZFIN), ZModemHeaderFormat.Hex));
-        wire.AddRange(new byte[] { 0x4F, 0x4F });
+        wire.AddRange([0x4F, 0x4F]);
         return [.. wire];
     }
 
@@ -226,5 +226,5 @@ public class ZModemRouterTests
 
 internal static class Utf8TestExtensions
 {
-    public static byte[] u8Array(this string s) => Encoding.UTF8.GetBytes(s);
+    public static byte[] U8Array(this string s) => Encoding.UTF8.GetBytes(s);
 }

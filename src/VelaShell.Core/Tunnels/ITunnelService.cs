@@ -1,4 +1,3 @@
-using DynamicData;
 using VelaShell.Core.Models;
 
 namespace VelaShell.Core.Tunnels;
@@ -6,8 +5,8 @@ namespace VelaShell.Core.Tunnels;
 /// <summary>SSH 端口转发(隧道)服务:按会话创建、停止与查询本地/远程/动态转发。</summary>
 public interface ITunnelService : IAsyncDisposable
 {
-    /// <summary>获取指定会话当前活动隧道的可观察列表,供界面实时绑定。</summary>
-    IObservableList<TunnelInfo> GetActiveTunnels(Guid sessionId);
+    /// <summary>获取指定会话当前隧道的列表快照;每次读取返回独立副本。</summary>
+    IReadOnlyList<TunnelInfo> GetActiveTunnels(Guid sessionId);
     /// <summary>创建本地端口转发(等价 ssh -L):监听本地端口并转发至远端目标。</summary>
     Task<TunnelInfo> CreateLocalForwardAsync(Guid sessionId, TunnelConfig config, CancellationToken cancellationToken = default);
     /// <summary>创建远程端口转发(等价 ssh -R):在远端监听端口并回转发至本地目标。</summary>

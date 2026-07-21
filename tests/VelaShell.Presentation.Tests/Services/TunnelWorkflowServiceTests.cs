@@ -1,4 +1,3 @@
-using DynamicData;
 using NSubstitute;
 using VelaShell.Core.Models;
 using VelaShell.Core.Tunnels;
@@ -47,8 +46,10 @@ public sealed class TunnelWorkflowServiceTests
     public void GetActiveTunnels_ReturnsSnapshot()
     {
         TunnelInfo info = MakeInfo();
-        var list = new SourceList<TunnelInfo>();
-        list.Add(info);
+        var list = new List<TunnelInfo>
+        {
+            info
+        };
         _tunnelService.GetActiveTunnels(_sessionId).Returns(list);
 
         IReadOnlyList<TunnelInfo> result = CreateService().GetActiveTunnels(_sessionId);

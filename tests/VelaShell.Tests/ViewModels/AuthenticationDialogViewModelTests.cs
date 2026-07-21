@@ -30,9 +30,9 @@ public sealed class AuthenticationDialogViewModelTests
             knownFingerprint: "SHA256:xK3fAbCdEfGhIjKlMnOpQrStUvWxYz9mPq");
 
         // 指纹被截断显示,故只断言前缀出现在“已信任”这条文案里。
-        StringAssert.Contains(vm.FingerprintText, "SHA256:xK3f");
+        Assert.Contains("SHA256:xK3f", vm.FingerprintText);
         Assert.AreNotEqual(Strings.Get("Auth_FingerprintFirstConnect"), vm.FingerprintText);
-        StringAssert.StartsWith(vm.FingerprintText, TrustedPrefix());
+        Assert.StartsWith(TrustedPrefix(), vm.FingerprintText);
     }
 
     /// <summary>取“已信任”文案中占位符 {0} 之前的固定前缀,用来判别走的是哪条文案。</summary>

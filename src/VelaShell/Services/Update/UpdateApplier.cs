@@ -112,13 +112,12 @@ public sealed class UpdateApplier(string applicationDirectory)
         UpdateJournal journal = new()
         {
             Phase = UpdateJournal.PhaseStaged,
-            Files = entries
+            Files = [.. entries
                 .Select(e => new UpdateJournalFile
                 {
                     Path = e.RelativePath,
                     Existed = File.Exists(Path.Combine(ApplicationDirectory, e.RelativePath))
-                })
-                .ToList()
+                })]
         };
         WriteJournal(journal);
         try
@@ -311,7 +310,7 @@ public sealed class UpdateApplier(string applicationDirectory)
     private List<PackageEntry> ReadZipEntries(string archivePath)
     {
         List<PackageEntry> entries = [];
-        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> seen = [with(StringComparer.OrdinalIgnoreCase)];
         using ZipArchive zip = ZipFile.OpenRead(archivePath);
         foreach (ZipArchiveEntry entry in zip.Entries)
         {
@@ -348,7 +347,7 @@ public sealed class UpdateApplier(string applicationDirectory)
             }
             Directory.CreateDirectory(extractDir);
             List<PackageEntry> entries = [];
-            HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> seen = [with(StringComparer.OrdinalIgnoreCase)];
             using FileStream file = File.OpenRead(archivePath);
             using GZipStream gzip = new(file, CompressionMode.Decompress);
             using TarReader tar = new(gzip);
@@ -392,7 +391,7 @@ public sealed class UpdateApplier(string applicationDirectory)
     /// 归一化包内条目路径:统一斜杠、去掉引导 "./";目录条目、空路径、绝对路径、
     /// 含 ".." 的路径,以及落在暂存目录内的条目返回 null(目录/空)或抛异常(可疑路径)。
     /// </summary>
-    private string? NormalizeEntryPath(string rawPath)
+    private static string? NormalizeEntryPath(string rawPath)
     {
         string path = rawPath.Replace('\\', '/').TrimStart('/');
         while (path.StartsWith("./", StringComparison.Ordinal))

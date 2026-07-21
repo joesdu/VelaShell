@@ -44,7 +44,7 @@ internal sealed class SyncDebounceLifecycle
     /// <c>true</c> 并附带已启动的任务;若生命周期已关闭或令牌已被取代,
     /// 则返回 <c>false</c>(task 为 null)。
     /// </summary>
-    public bool TryStartCurrent(CancellationToken token, Func<Task> start, out Task? task)
+    public bool TryStartCurrent(Func<Task> start, CancellationToken token, out Task? task)
     {
         lock (_gate)
         {

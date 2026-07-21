@@ -28,7 +28,7 @@ public partial class KeyManagementPage : UserControl
             Title = Strings.Get("SetKeys_ImportDialogTitle"),
             AllowMultiple = false
         });
-        if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
+        if (files.AsParallel().FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
         {
             await viewModel.SshKeys.ImportAsync(path);
         }

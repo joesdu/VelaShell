@@ -55,7 +55,7 @@ public class SemanticMatcherTests
         IReadOnlyList<SemanticSpan> spans = SemanticMatcher.Match("error at https://a.co after warning");
         var starts = spans.Select(s => s.Start).ToList();
         var sorted = starts.OrderBy(x => x).ToList();
-        CollectionAssert.AreEqual(sorted, starts);
+        Assert.AreSequenceEqual(sorted, starts);
     }
 
     [TestMethod]

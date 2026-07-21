@@ -59,7 +59,7 @@ public class ThemeServiceSwitchTests
     {
         var sut = new ThemeService("dark");
 
-        Action act = () => sut.SetTheme("ocean");
+        void act() => sut.SetTheme("ocean");
 
         Assert.ThrowsExactly<ArgumentException>(act);
     }
@@ -121,7 +121,7 @@ public class ThemeServiceSwitchTests
         sut.SetTheme("dark");
         sut.SetTheme("light");
 
-        CollectionAssert.AreEqual(new List<string> { "light", "dark", "light" }, events);
+        Assert.AreSequenceEqual(["light", "dark", "light"], events);
     }
 
     [TestMethod]

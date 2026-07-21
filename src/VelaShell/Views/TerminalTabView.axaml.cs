@@ -1155,7 +1155,7 @@ public partial class TerminalTabView : UserControl
     // 每段选项限 1~3 个字母,避免误伤 prompt 主题里的 "(feature/xxx)" 分支括号。
     [GeneratedRegex(
         @"[\[(]\s*\p{L}{1,3}(?:\s*/\s*\p{L}{1,3})+\s*[\])]\s*[?？:：.。]?\s*$",
-        System.Text.RegularExpressions.RegexOptions.Compiled
+        RegexOptions.Compiled
     )]
     private static partial Regex ChoiceTokenRegex();
 
@@ -1174,7 +1174,7 @@ public partial class TerminalTabView : UserControl
     // 无法区分,一律不拦,避免误伤把 PS1 设成 "> " 的用户。
     [GeneratedRegex(
         @"(?:(?:mysql|mariadb|sqlite|clickhouse|ftp|sftp|telnet)>|MariaDB \[[^\]]*\]>|\w+=[#>]|In \[\d+\]:|\((?:gdb|lldb|Pdb)\)|i?pdb>|irb\([^)]*\)[^>\n]*>)\s*$",
-        System.Text.RegularExpressions.RegexOptions.Compiled
+        RegexOptions.Compiled
     )]
     private static partial Regex ReplPromptRegex();
 }

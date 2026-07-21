@@ -29,7 +29,7 @@ public class SubpacketTests
         ZModemSubpacketResult result = await ReadOneAsync(wire, useCrc32, wire.Length);
         Assert.AreEqual(ZModemSubpacketStatus.Ok, result.Status);
         Assert.AreEqual(ZModemSubpacketEnd.EndNoAck, result.End);
-        CollectionAssert.AreEqual(payload, result.Data);
+        Assert.AreSequenceEqual(payload, result.Data);
     }
 
     [TestMethod]
@@ -45,7 +45,7 @@ public class SubpacketTests
         ZModemSubpacketResult result = await ReadOneAsync(wire, useCrc32: true, wire.Length);
         Assert.AreEqual(ZModemSubpacketStatus.Ok, result.Status);
         Assert.AreEqual(end, result.End);
-        CollectionAssert.AreEqual(payload, result.Data);
+        Assert.AreSequenceEqual(payload, result.Data);
     }
 
     [TestMethod]
@@ -65,7 +65,7 @@ public class SubpacketTests
 
         ZModemSubpacketResult result = await ReadOneAsync(wire, useCrc32, chunkSize);
         Assert.AreEqual(ZModemSubpacketStatus.Ok, result.Status);
-        CollectionAssert.AreEqual(payload, result.Data);
+        Assert.AreSequenceEqual(payload, result.Data);
     }
 
     [TestMethod]
@@ -101,6 +101,6 @@ public class SubpacketTests
 
         ZModemSubpacketResult result = await ReadOneAsync(wire, useCrc32: true, 64);
         Assert.AreEqual(ZModemSubpacketStatus.Ok, result.Status);
-        CollectionAssert.AreEqual(payload, result.Data);
+        Assert.AreSequenceEqual(payload, result.Data);
     }
 }

@@ -1,29 +1,29 @@
 <Project>
-	<Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+    <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
 
-	<!-- SourceLink Configuration -->
-	<PropertyGroup>
-		<PublishRepositoryUrl>true</PublishRepositoryUrl>
-	</PropertyGroup>
-	<ItemGroup>
-		<PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
-	</ItemGroup>
+    <!-- SourceLink Configuration -->
+    <PropertyGroup>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+    </ItemGroup>
 
-	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
-		<!-- 全仓 GenerateDocumentationFile 只服务于编译期文档注释检查;发布产物不需要
+    <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+        <!-- 全仓 GenerateDocumentationFile 只服务于编译期文档注释检查;发布产物不需要
          XML 文档,这一开关同时挡下本项目与全部引用项目的 *.xml 进入发布目录。 -->
-		<PublishDocumentationFiles>false</PublishDocumentationFiles>
-		<AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)\VelaShell.snk</AssemblyOriginatorKeyFile>
-		<DelaySign>false</DelaySign>
-		<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
-		<Copyright>© joesdu. All rights reserved.</Copyright>
-		<!-- see https://github.com/dotnet/sdk/issues/2679 -->
-		<DebugType>portable</DebugType>
-		<DelaySign>False</DelaySign>
-		<EmbedUntrackedSources>true</EmbedUntrackedSources>
-		<NoWarn>$(NoWarn);</NoWarn>
-		<Optimize>True</Optimize>
-		<SignAssembly>True</SignAssembly>
-		<TreatSpecificWarningsAsErrors />
-	</PropertyGroup>
+        <PublishDocumentationFiles>false</PublishDocumentationFiles>
+        <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)\VelaShell.snk</AssemblyOriginatorKeyFile>
+        <DelaySign>false</DelaySign>
+        <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+        <Copyright>© joesdu. All rights reserved.</Copyright>
+        <!-- see https://github.com/dotnet/sdk/issues/2679 -->
+        <DebugType>portable</DebugType>
+        <DelaySign>False</DelaySign>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <NoWarn>$(NoWarn);</NoWarn>
+        <Optimize>True</Optimize>
+        <SignAssembly>True</SignAssembly>
+        <TreatSpecificWarningsAsErrors />
+    </PropertyGroup>
 </Project>

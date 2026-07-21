@@ -58,7 +58,7 @@ public sealed class EnglishInputLocaleUiTests
                 Assert.IsTrue(other.Focus());
                 Dispatcher.UIThread.RunJobs();
                 Assert.AreEqual(1, fake.RestoreCalls);
-                Assert.AreEqual((nint)0x0411, fake.RestoredLayout);
+                Assert.AreEqual(0x0411, fake.RestoredLayout);
 
                 EnglishInputLocale.SetEnabled(focused, false);
 

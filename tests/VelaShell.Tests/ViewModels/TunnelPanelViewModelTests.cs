@@ -203,7 +203,7 @@ public class TunnelPanelViewModelTests
         itemVm.RefreshLive();
 
         Assert.AreEqual(Strings.Get("Tunnel_EditTip"), itemVm.EditToolTip);
-        CollectionAssert.Contains(changedProperties, nameof(TunnelItemViewModel.EditToolTip));
+        Assert.Contains(nameof(TunnelItemViewModel.EditToolTip), changedProperties);
     }
 
     [TestMethod]

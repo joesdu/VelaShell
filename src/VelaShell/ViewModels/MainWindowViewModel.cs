@@ -92,7 +92,7 @@ public class MainWindowViewModel : ReactiveObject
     /// 标签关闭或连接断开时经 <see cref="EvictFileBrowser" /> 驱逐。
     /// </summary>
     private readonly Dictionary<Guid, FileBrowserViewModel> _fileBrowserCache = [];
-    private readonly object _sftpCloseTasksSync = new();
+    private readonly Lock _sftpCloseTasksSync = new();
     private readonly Dictionary<SftpDocument, Task> _sftpCloseTasks = [];
     private FileTransferViewModel _fileTransfer;
 
@@ -1557,7 +1557,7 @@ public class MainWindowViewModel : ReactiveObject
         }
     }
 
-    private IReadOnlyList<CommandPaletteItem> BuildPaletteItems()
+    private List<CommandPaletteItem> BuildPaletteItems()
     {
         var items = new List<CommandPaletteItem>();
 
@@ -1725,11 +1725,10 @@ public class MainWindowViewModel : ReactiveObject
         ISshClientWrapper client =
             _sshConnectionService!.GetClient(session.SessionId)
             ?? throw new InvalidOperationException("SSH client was not created for the session.");
-        // CreateShellStream 是同步网络往返(打开通道 + pty-req + shell,2~3 个 RTT),
-        // 放在线程池上执行,否则每连一个标签 UI 线程就冻结 RTT 的整数倍时长。
-        IShellStreamWrapper shellStream = await Task.Run(
-            () => client.CreateShellStream(terminalType.ToTermName(), 120, 32, 0, 0, 4096),
-            cancellationToken
+        // 通道打开是网络往返(pty-req + shell,2~3 个 RTT);真异步 API,UI 线程零阻塞。
+        IShellStreamWrapper shellStream = await client.CreateShellStreamAsync(
+            terminalType.ToTermName(), 120, 32, 0, 0, 4096,
+            cancellationToken: cancellationToken
         );
         terminalTab.SessionId = session.SessionId;
         terminalTab.AttachTransport(shellStream);
@@ -1809,10 +1808,10 @@ public class MainWindowViewModel : ReactiveObject
                 ?? throw new InvalidOperationException(
                     "SSH client was not created for the session."
                 );
-            // 同 RunHandshakeAsync:通道打开的同步网络往返不能占用 UI 线程。
-            IShellStreamWrapper shellStream = await Task.Run(
-                () => client.CreateShellStream(terminalType.ToTermName(), 120, 32, 0, 0, 4096),
-                cancellationToken
+            // 同 RunHandshakeAsync:通道打开走真异步 API,UI 线程零阻塞。
+            IShellStreamWrapper shellStream = await client.CreateShellStreamAsync(
+                terminalType.ToTermName(), 120, 32, 0, 0, 4096,
+                cancellationToken: cancellationToken
             );
 
             // 在新会话输出到达前做一次完全复位(RIS),使新的标语不至于附加在旧缓冲内容之后。
@@ -2284,7 +2283,7 @@ public class MainWindowViewModel : ReactiveObject
             {
                 if (session is not null)
                 {
-                    await _connectionWorkflowService.DisconnectAsync(session.SessionId).ConfigureAwait(true);
+                    await _connectionWorkflowService.DisconnectAsync(session.SessionId, cancellationToken).ConfigureAwait(true);
                 }
                 return null;
             }
@@ -2292,7 +2291,7 @@ public class MainWindowViewModel : ReactiveObject
             {
                 if (session is not null)
                 {
-                    await _connectionWorkflowService.DisconnectAsync(session.SessionId).ConfigureAwait(true);
+                    await _connectionWorkflowService.DisconnectAsync(session.SessionId, cancellationToken).ConfigureAwait(true);
                 }
                 continue;
             }
@@ -2300,7 +2299,7 @@ public class MainWindowViewModel : ReactiveObject
             {
                 if (session is not null)
                 {
-                    await _connectionWorkflowService.DisconnectAsync(session.SessionId).ConfigureAwait(true);
+                    await _connectionWorkflowService.DisconnectAsync(session.SessionId, cancellationToken).ConfigureAwait(true);
                 }
                 LastConnectionError = DescribeConnectionError(ex, current);
                 StatusBar.Status = LastConnectionError;
@@ -2348,16 +2347,31 @@ public class MainWindowViewModel : ReactiveObject
         string target = string.IsNullOrWhiteSpace(profile.Host)
             ? profile.Name
             : $"{profile.Username}@{profile.Host}:{profile.Port}";
+        // 提取 Tmds.Ssh ConnectFailedException 中的具体原因(若存在),以便用户诊断。
+        string detail = ExtractTmdsReason(ex.Message) ?? ex.Message;
         // 按类型名匹配,使 VelaShell.App 无需直接引用 SSH.NET。
         return ex.GetType().Name switch
         {
-            "SshAuthenticationException" => Strings.Format("Msg_AuthFailed", target),
-            "SshConnectionException" => Strings.Format("Msg_ConnectFailed", target),
+            "SshAuthenticationException" => $"{Strings.Format("Msg_AuthFailed", target)}\n{detail}",
+            "SshConnectionException" => $"{Strings.Format("Msg_ConnectFailed", target)}\n{detail}",
             "SocketException" => Strings.Format("Msg_NetworkError", target),
             "SshOperationTimeoutException" => Strings.Format("Msg_ConnectTimeout", target),
             "ProxyException" => Strings.Format("Msg_ProxyError", target),
-            _ => Strings.Format("Msg_ConnectGenericFailed", target, ex.Message),
+            _ => Strings.Format("Msg_ConnectGenericFailed", target, detail),
         };
+    }
+
+    /// <summary>
+    /// Tmds.Ssh 的 ConnectFailedException 消息固定以该前缀开头,
+    /// 格式为 "The connection could not be established - {reason} - {description}"。
+    /// 提取后缀部分用于更精确的错误提示;不属于该格式的返回 null。
+    /// </summary>
+    private static string? ExtractTmdsReason(string message)
+    {
+        const string prefix = "The connection could not be established - ";
+        return !message.AsSpan().StartsWith(prefix, StringComparison.Ordinal)
+            ? null
+            : message[prefix.Length..];
     }
 
     private void ConfigureTerminal(
@@ -2845,13 +2859,12 @@ public class MainWindowViewModel : ReactiveObject
         Task[] closeTasks;
         lock (_sftpCloseTasksSync)
         {
-            Task[] trackedTasks = _sftpCloseTasks.Values.ToArray();
-            Task[] currentDocumentTasks = Layout
+            Task[] trackedTasks = [.. _sftpCloseTasks.Values];
+            Task[] currentDocumentTasks = [.. Layout
                 .AllDocuments()
                 .OfType<SftpDocument>()
-                .Select(GetOrCreateSftpCloseTask)
-                .ToArray();
-            closeTasks = trackedTasks.Concat(currentDocumentTasks).Distinct().ToArray();
+                .Select(GetOrCreateSftpCloseTask)];
+            closeTasks = [.. trackedTasks.Concat(currentDocumentTasks).Distinct()];
         }
         await Task.WhenAll(closeTasks);
     }

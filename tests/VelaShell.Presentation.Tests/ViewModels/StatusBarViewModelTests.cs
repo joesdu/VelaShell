@@ -25,9 +25,10 @@ public sealed class StatusBarViewModelTests
     [TestMethod]
     public void SetStatus_Connected_UpdatesIsConnected()
     {
-        var vm = new StatusBarViewModel();
-
-        vm.Status = Strings.Connected;
+        var vm = new StatusBarViewModel
+        {
+            Status = Strings.Connected
+        };
 
         Assert.IsTrue(vm.IsConnected);
     }

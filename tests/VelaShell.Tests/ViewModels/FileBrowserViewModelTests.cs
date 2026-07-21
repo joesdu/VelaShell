@@ -255,7 +255,7 @@ public class FileBrowserViewModelTests
 
         // 多重扩展名取最后一段。这里顺带盯住 Sftp_FileTypeExt 这条资源本身:
         // 上面那种“两边都走 Strings.Format”的写法在资源缺失时会一起退化成键名而依旧相等。
-        StringAssert.Contains(TypeOf("archive.tar.gz", false), "GZ");
+        Assert.Contains("GZ", TypeOf("archive.tar.gz", false));
 
         // 无扩展名、点开头的隐藏文件、以及不像扩展名的尾巴,都归为“文件”。
         Assert.AreEqual(Strings.File, TypeOf("README", false));
@@ -468,7 +468,7 @@ public class FileBrowserViewModelTests
         _vm.NavigateToCommand.ThrownExceptions.Subscribe(ex => thrownEx = ex);
         await _vm.NavigateToCommand.Execute("/forbidden").FirstAsync();
         Assert.IsFalse(string.IsNullOrEmpty(_vm.ErrorMessage));
-        StringAssert.Contains(_vm.ErrorMessage, "Permission denied");
+        Assert.Contains("Permission denied", _vm.ErrorMessage);
     }
 
     [TestMethod]
@@ -706,7 +706,7 @@ public class FileBrowserViewModelTests
                 "/home/user/readme.txt",
                 "C:/local/readme.txt",
                 Arg.Any<IProgress<TransferProgress>?>(),
-                Arg.Any<CancellationToken>()
+                cancellationToken: Arg.Any<CancellationToken>()
             );
     }
 
@@ -732,7 +732,7 @@ public class FileBrowserViewModelTests
                 Arg.Any<string>(),
                 Arg.Any<string>(),
                 Arg.Any<IProgress<TransferProgress>?>(),
-                Arg.Any<CancellationToken>()
+                cancellationToken: Arg.Any<CancellationToken>()
             )
             .Returns(Task.CompletedTask);
         var file = new RemoteFileInfoViewModel(
@@ -759,7 +759,7 @@ public class FileBrowserViewModelTests
                 Arg.Any<string>(),
                 Arg.Any<string>(),
                 Arg.Any<IProgress<TransferProgress>?>(),
-                Arg.Any<CancellationToken>()
+                cancellationToken: Arg.Any<CancellationToken>()
             );
     }
 
@@ -794,7 +794,7 @@ public class FileBrowserViewModelTests
                     Arg.Any<string>(),
                     Arg.Any<string>(),
                     Arg.Any<IProgress<TransferProgress>?>(),
-                    Arg.Any<CancellationToken>()
+                    cancellationToken: Arg.Any<CancellationToken>()
                 );
         }
         finally
@@ -831,7 +831,7 @@ public class FileBrowserViewModelTests
                 Arg.Any<string>(),
                 Arg.Any<string>(),
                 Arg.Any<IProgress<TransferProgress>?>(),
-                Arg.Any<CancellationToken>()
+                cancellationToken: Arg.Any<CancellationToken>()
             );
     }
 
@@ -945,7 +945,7 @@ public class FileBrowserViewModelTests
                     "/home/user/documents/report.pdf",
                     Path.Combine(tempRoot, "documents", "report.pdf"),
                     Arg.Any<IProgress<TransferProgress>?>(),
-                    Arg.Any<CancellationToken>()
+                   cancellationToken: Arg.Any<CancellationToken>()
                 );
         }
         finally
@@ -998,7 +998,7 @@ public class FileBrowserViewModelTests
                     Arg.Any<string>(),
                     Arg.Any<string>(),
                     Arg.Any<IProgress<TransferProgress>?>(),
-                    Arg.Any<CancellationToken>()
+                    cancellationToken: Arg.Any<CancellationToken>()
                 );
         }
         finally
@@ -1069,7 +1069,7 @@ public class FileBrowserViewModelTests
                     Arg.Any<string>(),
                     Arg.Any<string>(),
                     Arg.Any<IProgress<TransferProgress>?>(),
-                    Arg.Any<CancellationToken>()
+                    cancellationToken: Arg.Any<CancellationToken>()
                 );
             await _sftpService
                 .DidNotReceive()
@@ -1163,10 +1163,7 @@ public class FileBrowserViewModelTests
         await _vm.NavigateToCommand.Execute("/denied").FirstAsync();
 
         Assert.AreEqual("/home", _vm.CurrentPath);
-        CollectionAssert.AreEqual(
-            previousRows,
-            _vm.Files.Select(file => file.DisplayName).ToArray()
-        );
+        Assert.AreSequenceEqual(previousRows, [.. _vm.Files.Select(file => file.DisplayName)]);
         Assert.AreEqual("denied", _vm.ErrorMessage);
     }
 
@@ -1434,9 +1431,9 @@ public class FileBrowserViewModelTests
                     "/home/user/readme.txt",
                     Arg.Any<string>(),
                     Arg.Any<IProgress<TransferProgress>?>(),
-                    Arg.Any<CancellationToken>()
+                    cancellationToken: Arg.Any<CancellationToken>()
                 )
-                .Returns<Task>(_ => throw new OperationCanceledException());
+                .Returns(_ => throw new OperationCanceledException());
             await _vm.DownloadSelectedCommand.Execute().FirstAsync();
 
             // The batch stops on cancellation: the second file is never attempted...
@@ -1447,7 +1444,7 @@ public class FileBrowserViewModelTests
                     "/home/user/photo.jpg",
                     Arg.Any<string>(),
                     Arg.Any<IProgress<TransferProgress>?>(),
-                    Arg.Any<CancellationToken>()
+                    cancellationToken: Arg.Any<CancellationToken>()
                 );
             // ...and cancellation is not surfaced as an error.
             Assert.IsTrue(string.IsNullOrEmpty(_vm.ErrorMessage));
@@ -1521,7 +1518,7 @@ public class FileBrowserViewModelTests
                     "/home/user/readme.txt",
                     Path.Combine(tempRoot, "readme.txt"),
                     Arg.Any<IProgress<TransferProgress>?>(),
-                    Arg.Any<CancellationToken>()
+                    cancellationToken: Arg.Any<CancellationToken>()
                 );
             await _sftpService
                 .Received(1)
@@ -1530,7 +1527,7 @@ public class FileBrowserViewModelTests
                     "/home/user/photo.jpg",
                     Path.Combine(tempRoot, "photo.jpg"),
                     Arg.Any<IProgress<TransferProgress>?>(),
-                    Arg.Any<CancellationToken>()
+                    cancellationToken: Arg.Any<CancellationToken>()
                 );
         }
         finally
@@ -1567,7 +1564,7 @@ public class FileBrowserViewModelTests
                     fileA,
                     "/home/user/a.txt",
                     Arg.Any<IProgress<TransferProgress>?>(),
-                    Arg.Any<CancellationToken>()
+                    cancellationToken: Arg.Any<CancellationToken>()
                 );
             await _sftpService
                 .Received(1)
@@ -1576,7 +1573,7 @@ public class FileBrowserViewModelTests
                     fileB,
                     "/home/user/b.log",
                     Arg.Any<IProgress<TransferProgress>?>(),
-                    Arg.Any<CancellationToken>()
+                    cancellationToken: Arg.Any<CancellationToken>()
                 );
         }
         finally
@@ -1632,7 +1629,7 @@ public class FileBrowserViewModelTests
                     rootFile,
                     "/home/user/assets/root.txt",
                     Arg.Any<IProgress<TransferProgress>?>(),
-                    Arg.Any<CancellationToken>()
+                    cancellationToken: Arg.Any<CancellationToken>()
                 );
             await _sftpService
                 .Received(1)
@@ -1641,7 +1638,7 @@ public class FileBrowserViewModelTests
                     nestedFile,
                     "/home/user/assets/nested/child.txt",
                     Arg.Any<IProgress<TransferProgress>?>(),
-                    Arg.Any<CancellationToken>()
+                    cancellationToken: Arg.Any<CancellationToken>()
                 );
         }
         finally
