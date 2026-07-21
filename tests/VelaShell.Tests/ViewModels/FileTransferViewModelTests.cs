@@ -1,4 +1,5 @@
 using NSubstitute;
+using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Sftp;
 using VelaShell.ViewModels;
@@ -320,5 +321,71 @@ public class FileTransferViewModelTests
         Assert.HasCount(2, _vm.Transfers);
         Assert.AreEqual("beta.tar.gz", _vm.Transfers[0].FileName);
         Assert.AreEqual("alpha.zip", _vm.Transfers[1].FileName);
+    }
+
+    // ---- 面板拖拽位置 ----
+
+    /// <summary>拖拽结束后位置要落盘,否则下次打开又回到默认锚点。</summary>
+    [TestMethod]
+    public void PersistPanelPosition_WritesCurrentOffsetToStore()
+    {
+        IAppDataStore store = Substitute.For<IAppDataStore>();
+        var vm = new FileTransferViewModel(_transferManager, store)
+        {
+            PanelOffsetX = -320,
+            PanelOffsetY = 180,
+        };
+
+        vm.PersistPanelPosition();
+
+        store.Received(1).UpsertAsync(
+            "ui-layout",
+            "transfer-panel",
+            Arg.Is<TransferPanelPosition>(p => p.OffsetX == -320 && p.OffsetY == 180),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>构造时从存储恢复上次的位置 —— 这就是"再次打开回到原有位置"。</summary>
+    [TestMethod]
+    public async Task Construction_RestoresPersistedPanelPosition()
+    {
+        IAppDataStore store = Substitute.For<IAppDataStore>();
+        store.GetAsync<TransferPanelPosition>("ui-layout", "transfer-panel", Arg.Any<CancellationToken>())
+             .Returns(new TransferPanelPosition { OffsetX = -240, OffsetY = 96 });
+
+        var vm = new FileTransferViewModel(_transferManager, store);
+
+        // 恢复是异步的,给它一次调度机会。
+        await Task.Yield();
+        await Task.Delay(50);
+
+        Assert.AreEqual(-240, vm.PanelOffsetX);
+        Assert.AreEqual(96, vm.PanelOffsetY);
+    }
+
+    /// <summary>没有存储(单元测试/精简宿主)时不该炸,位置退回默认锚点。</summary>
+    [TestMethod]
+    public void WithoutStore_PanelPositionDefaultsToAnchorAndPersistIsHarmless()
+    {
+        var vm = new FileTransferViewModel(_transferManager);
+
+        Assert.AreEqual(0, vm.PanelOffsetX);
+        Assert.AreEqual(0, vm.PanelOffsetY);
+        vm.PersistPanelPosition();
+    }
+
+    /// <summary>存储读取失败不能把界面带崩 —— 位置记不住是小事,启动不了是大事。</summary>
+    [TestMethod]
+    public async Task Construction_WhenStoreThrows_FallsBackToDefaultPosition()
+    {
+        IAppDataStore store = Substitute.For<IAppDataStore>();
+        store.GetAsync<TransferPanelPosition>("ui-layout", "transfer-panel", Arg.Any<CancellationToken>())
+             .Returns<TransferPanelPosition?>(_ => throw new InvalidOperationException("store offline"));
+
+        var vm = new FileTransferViewModel(_transferManager, store);
+        await Task.Delay(50);
+
+        Assert.AreEqual(0, vm.PanelOffsetX);
+        Assert.AreEqual(0, vm.PanelOffsetY);
     }
 }
