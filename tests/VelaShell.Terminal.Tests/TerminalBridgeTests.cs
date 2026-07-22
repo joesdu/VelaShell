@@ -274,6 +274,53 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
+    public void UserInput_RapidKeystrokes_NeverWriteConcurrently_AndPreserveByteOrder()
+    {
+        // 回归防护:Tmds.Ssh 的通道写没有并发防护,桥必须把击键写串行化。
+        // 旧实现对每个按键即发即忘地 WriteAsync,上一个写因网络延迟挂起时下一个按键
+        // 就并发插队 → 字节乱序抵达远端 → 回显出"字符拆散跳动"(docker status 事故)。
+        _shellStream.CanRead.Returns(false);
+        _shellStream.CanWrite.Returns(true);
+
+        var gate = new object();
+        int inFlight = 0, maxInFlight = 0;
+        var received = new MemoryStream();
+        _shellStream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                lock (gate)
+                {
+                    inFlight++;
+                    maxInFlight = Math.Max(maxInFlight, inFlight);
+                    received.Write(call.ArgAt<byte[]>(0), call.ArgAt<int>(1), call.ArgAt<int>(2));
+                }
+
+                // 模拟发送窗口收紧/网络延迟:写挂起期间后续按键持续到达。
+                await Task.Delay(30);
+                lock (gate)
+                {
+                    inFlight--;
+                }
+            });
+
+        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+
+        byte[] typed = Encoding.UTF8.GetBytes("docker status");
+        foreach (byte b in typed)
+        {
+            _terminal.UserInput += Raise.Event<Action<byte[]>>(new[] { b });
+        }
+
+        Thread.Sleep(1000); // 串行 + 合并后最多几段写,足够全部落盘。
+
+        lock (gate)
+        {
+            Assert.AreEqual(1, maxInFlight, "出站写必须串行:任意时刻至多一个 WriteAsync 在途。");
+            Assert.AreEqual("docker status", Encoding.UTF8.GetString(received.ToArray()), "字节必须按击键顺序完整送达。");
+        }
+    }
+
+    [TestMethod]
     public void UserInput_WriteThrowsObjectDisposed_DoesNotPropagate()
     {
         _shellStream.CanRead.Returns(false);
