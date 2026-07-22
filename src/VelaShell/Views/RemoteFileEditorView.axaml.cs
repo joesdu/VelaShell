@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using VelaShell.Core.Resources;
+using VelaShell.Services.Syntax;
 
 namespace VelaShell.Views;
 
@@ -69,7 +70,37 @@ public partial class RemoteFileEditorView : Window
         _encoding = DetectEncoding(bytes);
         Editor.Text = _encoding.GetString(bytes, PreambleLength(bytes, _encoding), bytes.Length - PreambleLength(bytes, _encoding));
         _dirty = false;
+        ApplySyntaxHighlighting();
         StatusText.Text = Strings.Format("Editor_LoadedStatus", bytes.Length.ToString("N0"));
+    }
+
+    /// <summary>
+    /// 按文件类型着色。类型判定要用**远端文件名**而不是本地临时副本的名字 ——
+    /// 临时副本可能没有扩展名。首行同时交给判定器,以便识别没有扩展名的脚本
+    /// (服务器上 /usr/local/bin 下大量如此),那种情况只有 shebang 能说明它是什么。
+    /// </summary>
+    private void ApplySyntaxHighlighting()
+    {
+        try
+        {
+            Editor.SyntaxHighlighting = SyntaxHighlightingService.Resolve(
+                Title, FirstLineOf(Editor.Text), ActualThemeVariant);
+        }
+        catch (Exception)
+        {
+            // 高亮只是锦上添花:定义有问题时退化为纯文本,绝不能让文件打不开。
+            Editor.SyntaxHighlighting = null;
+        }
+    }
+
+    private static string? FirstLineOf(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return null;
+        }
+        int end = text.IndexOfAny(['\r', '\n']);
+        return end < 0 ? text : text[..end];
     }
 
     private static Encoding DetectEncoding(byte[] bytes)

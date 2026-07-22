@@ -1,0 +1,48 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- Dockerfile。指令集固定且很小,高亮收益却很高(一眼看清构建阶段)。
+     颜色见 Shell.xshd 顶部说明。 -->
+<SyntaxDefinition name="Dockerfile" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+  <Color name="Comment"     foreground="#6272A4" />
+  <Color name="String"      foreground="#F1FA8C" />
+  <Color name="Keyword"     foreground="#FF79C6" />
+  <Color name="Variable"    foreground="#FFB86C" />
+  <Color name="Number"      foreground="#BD93F9" />
+
+  <RuleSet ignoreCase="true">
+
+    <Span color="Comment" begin="#" />
+
+    <Span color="String" multiline="false">
+      <Begin>"</Begin>
+      <End>"</End>
+      <RuleSet>
+        <Span begin="\\" end="." />
+      </RuleSet>
+    </Span>
+
+    <Span color="String" multiline="false">
+      <Begin>'</Begin>
+      <End>'</End>
+    </Span>
+
+    <!-- 指令只在行首有效(可带缩进),写在参数里的同名单词不该被点亮。 -->
+    <Rule color="Keyword">
+      ^\s*(FROM|RUN|CMD|LABEL|MAINTAINER|EXPOSE|ENV|ADD|COPY|ENTRYPOINT|VOLUME|USER|WORKDIR|ARG|ONBUILD|STOPSIGNAL|HEALTHCHECK|SHELL)\b
+    </Rule>
+
+    <!-- 多阶段构建的 AS 别名。 -->
+    <Rule color="Keyword">
+      \bAS\b
+    </Rule>
+
+    <Rule color="Variable">
+      \$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*
+    </Rule>
+
+    <Rule color="Number">
+      \b[0-9]+\b
+    </Rule>
+
+  </RuleSet>
+</SyntaxDefinition>

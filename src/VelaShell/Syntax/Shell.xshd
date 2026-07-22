@@ -1,0 +1,137 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- Shell / Bash。AvaloniaEdit 未内置,而它是远端编辑里最常见的文件类型。
+     颜色只作缺省值:实际配色由 SyntaxHighlightingService 按当前主题(Dracula/Alucard)
+     依 Color 的 name 重新赋值,所以这里的 name 必须与调色板的角色名对齐。 -->
+<SyntaxDefinition name="Shell" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+  <Color name="Comment"     foreground="#6272A4" />
+  <Color name="String"      foreground="#F1FA8C" />
+  <Color name="Keyword"     foreground="#FF79C6" />
+  <Color name="Function"    foreground="#50FA7B" />
+  <Color name="Variable"    foreground="#FFB86C" />
+  <Color name="Number"      foreground="#BD93F9" />
+  <Color name="Punctuation" foreground="#F8F8F2" />
+
+  <RuleSet ignoreCase="false">
+
+    <!-- shebang 单独highlight成注释色:它以 # 开头,本来就会被注释规则吃掉。 -->
+    <Span color="Comment" begin="#" />
+
+    <!-- 单引号内不做任何转义/插值,这是 shell 的硬规则。 -->
+    <Span color="String" multiline="true">
+      <Begin>'</Begin>
+      <End>'</End>
+    </Span>
+
+    <!-- 双引号内允许 \ 转义,并且会插值变量。 -->
+    <Span color="String" multiline="true">
+      <Begin>"</Begin>
+      <End>"</End>
+      <RuleSet>
+        <Span begin="\\" end="." />
+        <Rule color="Variable">\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*|\$[0-9@*#?$!-]</Rule>
+      </RuleSet>
+    </Span>
+
+    <!-- 变量:${VAR} / $VAR / $1 $@ $? 这类特殊参数。 -->
+    <Rule color="Variable">
+      \$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*|\$[0-9@*#?$!-]
+    </Rule>
+
+    <!-- 赋值左侧的变量名:VAR=value(=前不能有空格,shell 的规则)。 -->
+    <Rule color="Variable">
+      \b[A-Za-z_][A-Za-z0-9_]*(?=\=)
+    </Rule>
+
+    <Keywords color="Keyword">
+      <Word>if</Word>
+      <Word>then</Word>
+      <Word>else</Word>
+      <Word>elif</Word>
+      <Word>fi</Word>
+      <Word>case</Word>
+      <Word>esac</Word>
+      <Word>for</Word>
+      <Word>select</Word>
+      <Word>while</Word>
+      <Word>until</Word>
+      <Word>do</Word>
+      <Word>done</Word>
+      <Word>in</Word>
+      <Word>function</Word>
+      <Word>time</Word>
+      <Word>coproc</Word>
+      <Word>return</Word>
+      <Word>break</Word>
+      <Word>continue</Word>
+      <Word>exit</Word>
+      <Word>local</Word>
+      <Word>declare</Word>
+      <Word>typeset</Word>
+      <Word>readonly</Word>
+      <Word>export</Word>
+      <Word>unset</Word>
+      <Word>shift</Word>
+      <Word>trap</Word>
+      <Word>set</Word>
+      <Word>eval</Word>
+      <Word>exec</Word>
+      <Word>source</Word>
+    </Keywords>
+
+    <!-- 常用外部命令:不是语法关键字,但高亮出来能快速看清脚本在做什么。 -->
+    <Keywords color="Function">
+      <Word>echo</Word>
+      <Word>printf</Word>
+      <Word>read</Word>
+      <Word>cd</Word>
+      <Word>pwd</Word>
+      <Word>ls</Word>
+      <Word>cp</Word>
+      <Word>mv</Word>
+      <Word>rm</Word>
+      <Word>mkdir</Word>
+      <Word>rmdir</Word>
+      <Word>touch</Word>
+      <Word>chmod</Word>
+      <Word>chown</Word>
+      <Word>ln</Word>
+      <Word>cat</Word>
+      <Word>grep</Word>
+      <Word>sed</Word>
+      <Word>awk</Word>
+      <Word>find</Word>
+      <Word>xargs</Word>
+      <Word>sort</Word>
+      <Word>uniq</Word>
+      <Word>head</Word>
+      <Word>tail</Word>
+      <Word>cut</Word>
+      <Word>tr</Word>
+      <Word>wc</Word>
+      <Word>tar</Word>
+      <Word>gzip</Word>
+      <Word>curl</Word>
+      <Word>wget</Word>
+      <Word>ssh</Word>
+      <Word>scp</Word>
+      <Word>rsync</Word>
+      <Word>systemctl</Word>
+      <Word>service</Word>
+      <Word>docker</Word>
+      <Word>kubectl</Word>
+      <Word>git</Word>
+      <Word>sudo</Word>
+      <Word>test</Word>
+    </Keywords>
+
+    <Rule color="Number">
+      \b[0-9]+\b
+    </Rule>
+
+    <Rule color="Punctuation">
+      [|&amp;;()\[\]{}&lt;&gt;]
+    </Rule>
+
+  </RuleSet>
+</SyntaxDefinition>
