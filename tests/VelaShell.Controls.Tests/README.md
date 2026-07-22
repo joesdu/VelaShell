@@ -8,7 +8,7 @@
 
 | 文件 | 被测对象 |
 |------|----------|
-| `StatusMetricChipTests` | `StatusMetricChip` 状态指标胶囊控件的属性与呈现逻辑。 |
+| `LucideIconTests` | `LucideIcon` 图标控件的名称解析、几何查找与属性变更行为。 |
 
 ## 运行
 

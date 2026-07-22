@@ -11,6 +11,8 @@
 - **输入编码** — `MouseEncoderTests`、`Input/TerminalInputTrackerTests`、`EchoSuppressorTests`（本地回显抑制）。
 - **侧栏渲染** — `GutterLayoutTests`、`GutterFoldTests`、`GutterFoldUiTests`、`LineTimestampTests`。
 - **桥接与语义** — `TerminalBridgeTests`（SSH ↔ 引擎）、`SemanticMatcherTests`。
+- **ZMODEM 路由** — `ZModemRouterTests`：引导序列检测、会话期间终端停喂、结束后复位回常态。
+- **广播输入** — `BroadcastInputEncodingTests`：多终端同步输入的按键编码一致性。
 
 ## 运行
 

@@ -8,7 +8,7 @@
 
 VelaShell is a keyboard-first, high-density SSH/SFTP terminal client for ops and dev engineers. The surface is dark-primary (Dracula), with a light variant (Alucard) available at runtime. The visual tone is **precise, information-dense, and restrained** -- no decorative elements, no gradient fills, no illustrative imagery. Every pixel serves a functional purpose.
 
-- **Platform**: .NET 10 + Avalonia 12.1, cross-platform desktop (Windows/Linux/macOS)
+- **Platform**: .NET 11 + Avalonia 12.1, cross-platform desktop (Windows/Linux/macOS)
 - **Window**: Self-drawn frameless (`WindowDecorations="None"`), 36px custom title bar via `TitleBarView`
 - **Icon set**: Lucide (stroke weight 2, round caps, 24x24 viewBox scaled to 11-16px)
 - **Fonts**: JetBrains Mono (terminal, data, paths, keys) + Inter (UI chrome, buttons, settings)
