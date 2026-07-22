@@ -1,7 +1,10 @@
 # VelaShell 全平台发布脚本(在 Windows 上运行)
 # 产物(publish/ 目录),与 CI(.github/workflows/release.yml)同构:
 #   Windows x64 / arm64 含运行时(self-contained)→ zip
-#   macOS  x64 / arm64 含运行时 → tar.gz(Apple 签名/公证需在 macOS 上完成)
+#   macOS  x64 / arm64 含运行时 → tar.gz(Apple 签名/公证需在 macOS 上完成;
+#       dmg(VelaShell.app 拖装包)仅由 CI 的 macOS runner 生成 —— hdiutil/iconutil/codesign
+#       都是 macOS 独有工具。tar.gz 是应用内更新器的资产,dmg 只供人工安装,
+#       latest.json 永远只指向 tar.gz,详见 release.yml 文件头"macOS 双产物分工")
 #   Linux  x64 / arm64 含运行时 → tar.gz
 #   latest.json    — 应用内自更新清单(版本/标签/各 RID 产物名+sha256+大小)
 #   SHA256SUMS.txt — 全部产物校验和

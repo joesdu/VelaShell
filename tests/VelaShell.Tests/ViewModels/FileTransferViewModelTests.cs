@@ -142,20 +142,85 @@ public class FileTransferViewModelTests
 
     [TestMethod]
     [TestCategory("FileTransfer")]
-    public void RetryTransfer_RequeuesFailedTransfer()
+    public void RetryTransfer_WithRetryDelegate_RemovesRowAndInvokesDelegate()
     {
-        // Arrange
+        // 重试的语义:移除失败行并执行浏览器视图模型挂上的重试动作
+        // (它会重新探测续传起点并以新行重跑),而不是只把状态改成 Queued。
         TransferTask task = CreateTask(status: TransferStatus.Failed);
-        _transferManager.QueueTransferAsync(Arg.Any<TransferTask>(), Arg.Any<CancellationToken>())
-                        .Returns(Task.CompletedTask);
         _vm.AddTransfer(task);
-        Assert.AreEqual(TransferStatus.Failed, _vm.Transfers[0].Status);
+        bool invoked = false;
+        _vm.Transfers[0].RetryAsync = () =>
+        {
+            invoked = true;
+            return Task.CompletedTask;
+        };
 
-        // Act
         _vm.RetryTransferCommand.Execute(task.Id).Subscribe();
 
-        // Assert
-        Assert.AreEqual(TransferStatus.Queued, _vm.Transfers[0].Status);
+        Assert.IsTrue(invoked, "重试动作必须被执行。");
+        Assert.IsEmpty(_vm.Transfers, "失败行应被移除,新行由重跑的传输自行添加。");
+    }
+
+    [TestMethod]
+    [TestCategory("FileTransfer")]
+    public void RetryTransfer_WithoutRetryDelegate_IsNoOp()
+    {
+        // 重启后从历史恢复的记录没有重试委托(原会话已不存在):命令必须安全无操作。
+        TransferTask task = CreateTask(status: TransferStatus.Failed);
+        _vm.AddTransfer(task);
+
+        _vm.RetryTransferCommand.Execute(task.Id).Subscribe();
+
+        Assert.HasCount(1, _vm.Transfers);
+        Assert.AreEqual(TransferStatus.Failed, _vm.Transfers[0].Status);
+        Assert.IsFalse(_vm.Transfers[0].CanRetry);
+    }
+
+    [TestMethod]
+    [TestCategory("FileTransfer")]
+    public void TransferHistory_SavedOnAdd_AndOnFinalStatus()
+    {
+        IAppDataStore store = Substitute.For<IAppDataStore>();
+        var vm = new FileTransferViewModel(_transferManager, store);
+        TransferTask task = CreateTask(status: TransferStatus.InProgress);
+
+        vm.AddTransfer(task);
+        vm.Transfers[0].Status = TransferStatus.Completed;
+
+        store.Received().UpsertAsync(
+            "transfer-history",
+            "recent",
+            Arg.Is<TransferHistoryDocument>(d =>
+                d.Items.Count == 1
+                && d.Items[0].Id == task.Id
+                && d.Items[0].Status == TransferStatus.Completed),
+            Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    [TestCategory("FileTransfer")]
+    public void TransferHistory_RestoredOnStartup_InterruptedItemsShownAsFailed_WithoutPoppingPanel()
+    {
+        IAppDataStore store = Substitute.For<IAppDataStore>();
+        var doc = new TransferHistoryDocument
+        {
+            Items =
+            [
+                new() { Id = Guid.NewGuid(), Type = TransferType.Download, LocalPath = @"C:\dl\a.bin", RemotePath = "/srv/a.bin", Status = TransferStatus.InProgress },
+                new() { Id = Guid.NewGuid(), Type = TransferType.Upload, LocalPath = @"C:\ul\b.bin", RemotePath = "/srv/b.bin", Status = TransferStatus.Completed }
+            ]
+        };
+        store.GetAsync<TransferHistoryDocument>("transfer-history", "recent", Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult<TransferHistoryDocument?>(doc));
+
+        var vm = new FileTransferViewModel(_transferManager, store);
+
+        Assert.HasCount(2, vm.Transfers);
+        // 退出瞬间仍在传输的项恢复为失败(会话已不存在);半截文件仍在,重新发起会自动续传。
+        Assert.AreEqual(TransferStatus.Failed, vm.Transfers[0].Status);
+        Assert.IsFalse(vm.Transfers[0].CanRetry, "历史恢复的记录没有重试委托,不得出现指向已死会话的重试按钮。");
+        Assert.AreEqual(TransferStatus.Completed, vm.Transfers[1].Status);
+        Assert.IsFalse(vm.IsPanelVisible, "启动恢复历史不该自动弹出传输浮窗。");
     }
 
     [TestMethod]

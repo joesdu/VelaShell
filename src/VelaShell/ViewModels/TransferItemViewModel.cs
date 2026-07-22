@@ -39,6 +39,25 @@ public class TransferItemViewModel : ReactiveObject
     /// <summary>从远程路径中提取的文件名,用于列表展示。</summary>
     public string FileName => Path.GetFileName(_task.RemotePath);
 
+    /// <summary>传输方向(上传/下载/远端复制),供重试与历史持久化使用。</summary>
+    public TransferType Type => _task.Type;
+
+    /// <summary>本地路径(远端复制时为远端源路径),供重试与历史持久化使用。</summary>
+    public string LocalPath => _task.LocalPath;
+
+    /// <summary>远端路径,供重试与历史持久化使用。</summary>
+    public string RemotePath => _task.RemotePath;
+
+    /// <summary>
+    /// 失败后的重试动作,由发起传输的浏览器视图模型在创建时挂上(闭包捕获正确的会话与路径,
+    /// 重试会重新探测续传起点)。为 null 时不可重试 —— 例如重启后从历史恢复的记录,
+    /// 其会话已不存在,只能由用户重新发起同一操作(续传素材仍在,会自动接上)。
+    /// </summary>
+    public Func<Task>? RetryAsync { get; set; }
+
+    /// <summary>失败且有重试动作时,面板显示"重试"按钮。</summary>
+    public bool CanRetry => IsFailed && RetryAsync is not null;
+
     /// <summary>传输方向指示符:上传为 "↑",下载为 "↓",远端复制为 "⧉"。</summary>
     public string Direction => _task.Type switch
     {
@@ -80,6 +99,7 @@ public class TransferItemViewModel : ReactiveObject
             this.RaisePropertyChanged(nameof(IsActive));
             this.RaisePropertyChanged(nameof(IsFailed));
             this.RaisePropertyChanged(nameof(IsCompleted));
+            this.RaisePropertyChanged(nameof(CanRetry));
             this.RaisePropertyChanged(nameof(ProgressText));
             this.RaisePropertyChanged(nameof(InfoLine));
         }

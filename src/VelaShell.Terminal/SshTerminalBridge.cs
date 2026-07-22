@@ -19,12 +19,18 @@ public class SshTerminalBridge : IDisposable
     // 远端 shell 按收到的顺序回显,屏幕上就是"打 docker status 出来字符拆散跳动"。
     // 打字稍快 + 网络延迟让上一个写挂起 await,下一个按键就会插队,竞态必现。
     // (旧 SSH.NET 的 ShellStream 内部有锁掩盖了这一点,迁移 Tmds.Ssh 后暴露。)
-    private readonly Channel<byte[]> _writeQueue = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions
+    private readonly Channel<OutboundItem> _writeQueue = Channel.CreateUnbounded<OutboundItem>(new UnboundedChannelOptions
     {
         SingleReader = true
     });
 
     private readonly Task _writeTask;
+
+    /// <summary>
+    /// 出站队列元素:待发载荷 + 可选的排空信号(仅测试探针使用,写循环处理到该元素
+    /// 且其前所有写都已完成后置位)。
+    /// </summary>
+    private readonly record struct OutboundItem(byte[] Data, TaskCompletionSource? Drained);
 
     // 输出合批泵:读线程把原始分块入队,并只请求一次 UI 线程的合并刷新,
     // 而非每次读取都编组并喂入一次。在突发输出(apt/yum、cat、进度条)下,这把
@@ -186,7 +192,21 @@ public class SshTerminalBridge : IDisposable
         {
             return;
         }
-        _writeQueue.Writer.TryWrite(data);
+        _writeQueue.Writer.TryWrite(new(data, null));
+    }
+
+    /// <summary>
+    /// 测试探针:返回的任务在"此刻已入队的所有写全部落到底层流"后完成。
+    /// 借道队列本身实现(入队一个空载荷哨兵),因此对时序零假设——替代测试里的 Thread.Sleep。
+    /// </summary>
+    internal Task DrainWritesAsync()
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_writeQueue.Writer.TryWrite(new([], tcs)))
+        {
+            tcs.SetResult(); // 队列已封口(Dispose 后):没有在途写可等。
+        }
+        return tcs.Task;
     }
 
     /// <summary>启动后台读循环;仅允许调用一次,重复调用会抛出异常。</summary>
@@ -393,9 +413,21 @@ public class SshTerminalBridge : IDisposable
             return;
         }
 
+        // ZMODEM 会话期间击键不得混进协议流:字节会被对端当帧内容解析,轻则 CRC 错重传,
+        // 重则整笔传输失败。只识别用户的中止意图 —— Ctrl+X(CAN,ZMODEM 规范取消键)与
+        // Ctrl+C(用户本能)都转成会话取消,由引擎发出规范的取消序列;其余击键丢弃。
+        if (ZModemRouter is { IsInSession: true } router)
+        {
+            if (Array.IndexOf(data, (byte)0x18) >= 0 || Array.IndexOf(data, (byte)0x03) >= 0)
+            {
+                router.CancelActiveSession();
+            }
+            return;
+        }
+
         // 只入队不直写:击键与 SendRaw 都在 UI 线程触发,TryWrite 保序;真正的发送
         // 由唯一的写循环按序完成,杜绝对底层通道的并发 WriteAsync(见 _writeQueue 注释)。
-        _writeQueue.Writer.TryWrite(data);
+        _writeQueue.Writer.TryWrite(new(data, null));
     }
 
     /// <summary>
@@ -407,37 +439,65 @@ public class SshTerminalBridge : IDisposable
     {
         while (await _writeQueue.Reader.WaitToReadAsync().ConfigureAwait(false))
         {
-            while (_writeQueue.Reader.TryRead(out byte[]? payload))
+            while (_writeQueue.Reader.TryRead(out OutboundItem item))
             {
-                if (_writeQueue.Reader.TryRead(out byte[]? next))
+                byte[] payload = item.Data;
+                List<TaskCompletionSource>? drains = null;
+                CollectDrain(ref drains, item);
+
+                // 排空本轮已积压的元素。只有攒到第二段非空载荷才物化合并缓冲:
+                // 常态(单段 + 至多一个哨兵)保持零拷贝直传原数组。
+                MemoryStream? merged = null;
+                while (_writeQueue.Reader.TryRead(out OutboundItem more))
                 {
-                    var merged = new MemoryStream(payload.Length + next.Length + 64);
-                    merged.Write(payload);
-                    merged.Write(next);
-                    while (_writeQueue.Reader.TryRead(out byte[]? more))
+                    CollectDrain(ref drains, more);
+                    if (more.Data.Length == 0)
                     {
-                        merged.Write(more);
+                        continue; // 哨兵:只收信号,不参与载荷。
                     }
+                    if (payload.Length == 0)
+                    {
+                        payload = more.Data;
+                        continue;
+                    }
+                    if (merged is null)
+                    {
+                        merged = new MemoryStream(payload.Length + more.Data.Length + 64);
+                        merged.Write(payload);
+                    }
+                    merged.Write(more.Data);
+                }
+                if (merged is not null)
+                {
                     payload = merged.ToArray();
                 }
-                if (_disposed || !_shellStream.CanWrite)
+                if (payload.Length > 0 && !_disposed && _shellStream.CanWrite)
                 {
-                    continue; // 拆除中:弃段快速排空,让循环尽快退出。
+                    try
+                    {
+                        await _shellStream.WriteAsync(payload, 0, payload.Length, CancellationToken.None).ConfigureAwait(false);
+                        _shellStream.Flush();
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // 流已释放——拆除期间属正常情况
+                    }
+                    catch (Exception ex)
+                    {
+                        Error?.Invoke(ex);
+                    }
                 }
-                try
-                {
-                    await _shellStream.WriteAsync(payload, 0, payload.Length, CancellationToken.None).ConfigureAwait(false);
-                    _shellStream.Flush();
-                }
-                catch (ObjectDisposedException)
-                {
-                    // 流已释放——拆除期间属正常情况
-                }
-                catch (Exception ex)
-                {
-                    Error?.Invoke(ex);
-                }
+                // 写成功、写失败、拆除弃段——排空信号一律置位:探针等的是"处理完",不是"送达"。
+                drains?.ForEach(d => d.TrySetResult());
             }
+        }
+    }
+
+    private static void CollectDrain(ref List<TaskCompletionSource>? drains, in OutboundItem item)
+    {
+        if (item.Drained is { } tcs)
+        {
+            (drains ??= []).Add(tcs);
         }
     }
 }

@@ -633,7 +633,7 @@ public class TransferOptions : ObservableOptions
         set => Set(ref field, value);
     } = true;
 
-    /// <summary>断点续传开关(已启用):检测到部分传输文件时自动从上次位置续传。</summary>
+    /// <summary>遗留字段(设置审计 M-02):早期与 <see cref="ResumeEnabled" /> 并存的重复开关,仅保留持久化兼容,运行时不消费。</summary>
     public bool AutoResume { get; set; } = true;
 
     /// <summary>是否启用传输带宽限速。</summary>
@@ -678,14 +678,29 @@ public class TransferOptions : ObservableOptions
         set => Set(ref field, value);
     } = "~/.velashell/logs";
 
-    /// <summary>断点续传开关:检测到部分传输文件时自动从上次位置续传。</summary>
-    public bool ResumeEnabled { get; set; } = true;
+    /// <summary>
+    /// 断点续传(设置 → 文件传输 → 恢复中断的传输):检测到部分传输文件时自动从上次位置续传。
+    /// 开启时失败/取消留下的半截文件<b>有意保留</b>(它是续传素材);起点核实与安全回退见
+    /// SftpService.ResolveUploadResumeAsync / ResolveDownloadResumeAsync。
+    /// </summary>
+    public bool ResumeEnabled
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
 
     /// <summary>规划中(传输失败重试):仅持久化,当前无运行时消费者,不出现在设置界面(设置审计 R-09)。</summary>
     public int TransferMaxRetries { get; set; } = 3;
 
-    /// <summary>规划中(临时文件清理):仅持久化,当前无运行时消费者,不出现在设置界面(设置审计 R-10)。</summary>
-    public bool AutoCleanTempFiles { get; set; } = true;
+    /// <summary>
+    /// 临时文件清理(设置 → 文件传输):失败/取消时删除半截目标文件(上传删远端、下载删本地)。
+    /// 仅在 <see cref="ResumeEnabled" /> 关闭时生效 —— 续传开启时半截文件是续传素材,不清理。
+    /// </summary>
+    public bool AutoCleanTempFiles
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
 
     /// <summary>
     /// SFTP「使用默认编辑器打开」调用的程序(命令名或完整路径,如 notepad、

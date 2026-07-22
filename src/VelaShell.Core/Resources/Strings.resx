@@ -2825,4 +2825,22 @@ Overwrite it? (Cancel skips this file)</value>
   <data name="SftpSvc_ResumeDownloadMismatch" xml:space="preserve">
     <value>Cannot resume the download of {0}: the partial local file is not the beginning of this remote file. Delete the local file, or download it again in full.</value>
   </data>
+  <data name="SetTransfer_Resume" xml:space="preserve">
+    <value>Resume interrupted transfers</value>
+  </data>
+  <data name="SetTransfer_ResumeDesc" xml:space="preserve">
+    <value>Continue partial uploads/downloads from where they stopped, after verifying the partial file matches.</value>
+  </data>
+  <data name="SetTransfer_AutoCleanTemp" xml:space="preserve">
+    <value>Clean up partial files</value>
+  </data>
+  <data name="SetTransfer_AutoCleanTempDesc" xml:space="preserve">
+    <value>Delete the half-written target file when a transfer fails or is cancelled (only applies while resume is off).</value>
+  </data>
+  <data name="Transfer_Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Transfer_ClearCompleted" xml:space="preserve">
+    <value>Clear finished</value>
+  </data>
 </root>
