@@ -554,8 +554,8 @@ public class TunnelPanelViewModelTests
         await _vm.CreateTunnelCommand.Execute().FirstAsync();
         Assert.AreEqual(string.Empty, _vm.NewTunnelName);
         Assert.AreEqual("127.0.0.1", _vm.NewLocalHost);
-        Assert.AreEqual(0, _vm.NewLocalPort);
-        Assert.AreEqual(0, _vm.NewRemotePort);
+        Assert.AreEqual(27017, _vm.NewLocalPort);
+        Assert.AreEqual(27017, _vm.NewRemotePort);
         Assert.AreEqual(TunnelType.LocalForward, _vm.NewTunnelType);
         // 复位后目标重新锁定服务器本机。
         Assert.IsTrue(_vm.ForwardToServerLoopback);

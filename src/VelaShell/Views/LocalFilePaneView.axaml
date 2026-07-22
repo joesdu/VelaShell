@@ -114,8 +114,13 @@
               <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.corner-left-up}"
                              Foreground="{DynamicResource VelaTextTertiary}" />
             </Button>
-            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
-                    Command="{Binding RefreshCommand}" ToolTip.Tip="{x:Static res:Strings.Refresh}">
+            <!-- 双栏下两个刷新按钮必须可区分:提示语与 AutomationProperties.Name 都不能与远程栏那个重名,
+                 否则无论鼠标悬停还是读屏都分不出刷的是哪一栏。 -->
+            <Button x:Name="LocalRefreshButton"
+                    Classes="toolbar-btn" Width="24" Height="24" Padding="0"
+                    Command="{Binding RefreshCommand}"
+                    ToolTip.Tip="{loc:Localize Sftp_RefreshLocalPane}"
+                    AutomationProperties.Name="{loc:Localize Sftp_RefreshLocalPane}">
               <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.refresh-cw}"
                              Foreground="{DynamicResource VelaTextTertiary}" />
             </Button>

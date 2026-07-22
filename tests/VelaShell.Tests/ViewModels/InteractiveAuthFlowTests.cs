@@ -75,7 +75,7 @@ public sealed class InteractiveAuthFlowTests
         IConnectionWorkflowService? workflow = Substitute.For<IConnectionWorkflowService>();
         ISshConnectionService? ssh = Substitute.For<ISshConnectionService>();
         workflow.ConnectProfileAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>())
-                .Returns<Task<SshSession>>(_ => throw new SshAuthenticationException("denied"));
+                .Returns<Task<SshSession>>(_ => throw new VelaSshAuthenticationException("denied"));
         var vm = new MainWindowViewModel(workflow, ssh, () => Substitute.For<ITerminalEmulator>());
         int prompted = 0;
         vm.InteractiveAuthenticator = p =>
@@ -99,11 +99,9 @@ public sealed class InteractiveAuthFlowTests
         await workflow.Received(3).ConnectProfileAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>());
 
         // 比对本地化资源而非中文字面量:该文案随 UI 语言变化,写死会让测试只在中文环境通过。
-        Assert.AreEqual(Strings.Format("Msg_AuthFailed", "root@h:22"), vm.LastConnectionError);
+        // 提示后面还会换行附上底层库给出的具体原因(DescribeConnectionError 有意为之,便于用户诊断),
+        // 所以断言的是「本地化文案 + \n + 原因」,不是裸文案。
+        Assert.AreEqual($"{Strings.Format("Msg_AuthFailed", "root@h:22")}\ndenied", vm.LastConnectionError);
     }
 
-    // Named to match SSH.NET's SshAuthenticationException so the VM's type-name mapping applies.
-    private sealed class SshAuthenticationException(string message) : Exception(message)
-    {
-    }
 }

@@ -232,10 +232,13 @@
                                Foreground="{DynamicResource VelaTextTertiary}" />
               </Panel>
             </Button>
-            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
+            <!-- 提示语与 AutomationProperties.Name 需与本地栏的刷新按钮区分开(见 LocalFilePaneView)。 -->
+            <Button x:Name="RemoteRefreshButton"
+                    Classes="toolbar-btn" Width="24" Height="24" Padding="0"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                     Command="{Binding RefreshCommand}"
-                    ToolTip.Tip="{x:Static res:Strings.Refresh}">
+                    ToolTip.Tip="{loc:Localize Sftp_RefreshRemotePane}"
+                    AutomationProperties.Name="{loc:Localize Sftp_RefreshRemotePane}">
               <pc:LucideIcon Width="13" Height="13"
                              Data="{StaticResource Icon.refresh-cw}"
                              Foreground="{DynamicResource VelaTextTertiary}" />

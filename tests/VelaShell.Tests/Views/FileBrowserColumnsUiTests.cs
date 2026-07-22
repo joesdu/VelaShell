@@ -34,6 +34,24 @@ public class FileBrowserColumnsUiTests
     public static void Init(TestContext _) =>
         _session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(FileBrowserColumnsUiTests).Assembly);
 
+    /// <summary>本次用例开出来的窗口;必须关掉,理由见 <see cref="CloseShownWindow" />。</summary>
+    private static Window? _shownWindow;
+
+    /// <summary>
+    /// 关掉本用例开出来的窗口。**不关会拖垮整个测试运行**:全程序集共用一条 headless UI 线程,
+    /// 残留的窗口会持续往 dispatcher 排布局/渲染工作项,而后续测试里的
+    /// <c>Dispatcher.UIThread.RunJobs()</c> 要等队列排空才返回 —— 队列被残留窗口一直填着,
+    /// 它就永远不返回,UI 线程被占死,再往后每个测试的 Dispatch 都无限期排队。
+    /// (实测:本类 4 个用例各漏一个窗口,紧随其后的 MenuGlyphStyleTests 必卡死;单独跑则秒过。)
+    /// </summary>
+    [TestCleanup]
+    public void CloseShownWindow() =>
+        OnUi(() =>
+        {
+            _shownWindow?.Close();
+            _shownWindow = null;
+        });
+
     [TestMethod]
     public void AllColumnsVisible_HeaderLaysOutEveryColumnAtItsWidth()
     {
@@ -129,6 +147,7 @@ public class FileBrowserColumnsUiTests
         }));
         var view = new FileBrowserView { DataContext = vm };
         var window = new Window { Width = 1200, Height = 400, Content = view };
+        _shownWindow = window;
         window.Show();
         Dispatcher.UIThread.RunJobs();
         window.UpdateLayout();

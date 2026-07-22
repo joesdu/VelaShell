@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  全仓测试运行设置。经 tests/Directory.Build.targets 的 RunSettingsFilePath 自动应用,
+  无需在命令行显式指定。
+
+  TestTimeout 是这里的重点。VelaShell.Tests 的所有 UI 测试共用**同一条** headless UI 线程
+  (每个类都走 HeadlessUnitTestSession.GetOrStartForAssembly),Dispatch 的工作项在这条线程上
+  顺序执行。只要有一个工作项没能返回,这条线程就被永久占住,其后每一个测试的 Dispatch 都会
+  无限期排队 —— 表现为「单独跑秒过,一起跑永远卡住」,而且卡的是谁只取决于执行顺序。
+
+  没有超时的话,这种情况会让整个 run 挂死(实测跑一天也不出结果),连是哪个测试卡的都看不出来。
+  有了超时,它退化成「那一条测试失败」,其余照常跑完,堵点也直接point 出来。
+
+  60 秒对本仓最慢的用例(headless 渲染 + 像素回归)仍有数量级余量。
+-->
+<RunSettings>
+  <MSTest>
+    <!-- 单个测试的默认上限(毫秒);方法上显式的 [Timeout] 优先。 -->
+    <TestTimeout>60000</TestTimeout>
+  </MSTest>
+</RunSettings>

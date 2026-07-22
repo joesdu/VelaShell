@@ -76,6 +76,12 @@
   <data name="Refresh" xml:space="preserve">
     <value>Refresh</value>
   </data>
+  <data name="Sftp_RefreshLocalPane" xml:space="preserve">
+    <value>Refresh local pane</value>
+  </data>
+  <data name="Sftp_RefreshRemotePane" xml:space="preserve">
+    <value>Refresh remote pane</value>
+  </data>
   <data name="TransferHistory" xml:space="preserve">
     <value>Transfer history</value>
   </data>

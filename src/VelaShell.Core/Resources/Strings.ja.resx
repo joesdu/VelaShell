@@ -1197,6 +1197,12 @@
   <data name="Refresh" xml:space="preserve">
     <value>更新</value>
   </data>
+  <data name="Sftp_RefreshLocalPane" xml:space="preserve">
+    <value>ローカルペインを更新</value>
+  </data>
+  <data name="Sftp_RefreshRemotePane" xml:space="preserve">
+    <value>リモートペインを更新</value>
+  </data>
   <data name="Reject" xml:space="preserve">
     <value>拒否</value>
   </data>

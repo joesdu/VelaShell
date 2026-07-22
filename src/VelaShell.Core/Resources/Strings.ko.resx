@@ -1197,6 +1197,12 @@
   <data name="Refresh" xml:space="preserve">
     <value>새로 고침</value>
   </data>
+  <data name="Sftp_RefreshLocalPane" xml:space="preserve">
+    <value>로컬 창 새로 고침</value>
+  </data>
+  <data name="Sftp_RefreshRemotePane" xml:space="preserve">
+    <value>원격 창 새로 고침</value>
+  </data>
   <data name="Reject" xml:space="preserve">
     <value>거부</value>
   </data>

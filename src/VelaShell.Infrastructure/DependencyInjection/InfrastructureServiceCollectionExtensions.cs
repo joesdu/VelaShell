@@ -157,6 +157,14 @@ public static class InfrastructureServiceCollectionExtensions
             Port = ci.Port,
             ConnectTimeout = ConnectTimeout(settings),
             KeepAliveInterval = KeepAliveInterval(settings),
+
+            // 连接必须只由 TmdsSshClientWrapper.ConnectAsync 显式发起。
+            // Tmds.Ssh 的 AutoConnect 默认为 true:会话掉线后,任何一次后续操作
+            // (SFTP 开通道、stat、列目录……)都会各自静默重连一次,失败就抛一发
+            // ConnectFailedException。上传一个文件夹时这是"每个文件一次隐式重连"
+            // ——调试输出被异常刷屏,用户却只看到操作莫名变慢/失败。
+            // 关掉它:会话不在时立刻抛出明确错误,由上层的连接生命周期负责重连。
+            AutoConnect = false,
         };
         AddCredential(s, ci);
 

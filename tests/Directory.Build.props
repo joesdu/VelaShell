@@ -4,4 +4,8 @@
 	<PropertyGroup>
 		<NoWarn>$(NoWarn);CS1591;CS8600;CS8602;CS8604;MSTEST0049;</NoWarn>
 	</PropertyGroup>
+
+	<!-- RunSettingsFilePath 不能设在这里:Directory.Build.props 早于 SDK 的默认属性求值,
+	     在此设它会把测试相关 targets 提前引进来,导致 TargetFramework 解析为空、restore 直接失败
+	     (NETSDK1013)。放在 Directory.Build.targets(项目之后导入)才是正确位置。 -->
 </Project>

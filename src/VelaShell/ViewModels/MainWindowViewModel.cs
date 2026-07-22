@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Reactive;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
@@ -2181,7 +2182,7 @@ public class MainWindowViewModel : ReactiveObject
             {
                 LastConnectionError = DescribeConnectionError(ex, current);
                 StatusBar.Status = LastConnectionError;
-                bool isAuth = ex.GetType().Name == "SshAuthenticationException";
+                bool isAuth = ex is VelaSshAuthenticationException;
 
                 // 认证失败但无法交互重试(headless):保持既有契约,撤标签、返回 null。
                 if (isAuth && InteractiveAuthenticator is null)
@@ -2274,7 +2275,8 @@ public class MainWindowViewModel : ReactiveObject
                         _connectionWorkflowService,
                         _sftpService,
                         settings.Transfer,
-                        FileTransfer));
+                        FileTransfer,
+                        QueryDefaultEditorPathAsync));
                 Layout.AddDocument(document);
                 Sidebar.SessionTree?.SetSessionStatus(current.Id, SessionStatus.Connected);
                 return document;
@@ -2287,7 +2289,7 @@ public class MainWindowViewModel : ReactiveObject
                 }
                 return null;
             }
-            catch (Exception ex) when (ex.GetType().Name == "SshAuthenticationException")
+            catch (VelaSshAuthenticationException)
             {
                 if (session is not null)
                 {
@@ -2349,14 +2351,16 @@ public class MainWindowViewModel : ReactiveObject
             : $"{profile.Username}@{profile.Host}:{profile.Port}";
         // 提取 Tmds.Ssh ConnectFailedException 中的具体原因(若存在),以便用户诊断。
         string detail = ExtractTmdsReason(ex.Message) ?? ex.Message;
-        // 按类型名匹配,使 VelaShell.App 无需直接引用 SSH.NET。
-        return ex.GetType().Name switch
+        // 直接匹配 Core 的中立异常族(VelaSsh*Exception)。
+        // 曾经这里按类型名字符串匹配 SSH.NET 的旧名("SshAuthenticationException" 等),
+        // 迁到 Tmds.Ssh 后实际类型已是 VelaSshAuthenticationException,没有一个分支能命中,
+        // 所有连接错误都掉进兜底文案。派生类型必须排在基类型前面。
+        return ex switch
         {
-            "SshAuthenticationException" => $"{Strings.Format("Msg_AuthFailed", target)}\n{detail}",
-            "SshConnectionException" => $"{Strings.Format("Msg_ConnectFailed", target)}\n{detail}",
-            "SocketException" => Strings.Format("Msg_NetworkError", target),
-            "SshOperationTimeoutException" => Strings.Format("Msg_ConnectTimeout", target),
-            "ProxyException" => Strings.Format("Msg_ProxyError", target),
+            VelaSshAuthenticationException => $"{Strings.Format("Msg_AuthFailed", target)}\n{detail}",
+            VelaSshOperationTimeoutException => Strings.Format("Msg_ConnectTimeout", target),
+            VelaSshConnectionException => $"{Strings.Format("Msg_ConnectFailed", target)}\n{detail}",
+            SocketException => Strings.Format("Msg_NetworkError", target),
             _ => Strings.Format("Msg_ConnectGenericFailed", target, detail),
         };
     }
