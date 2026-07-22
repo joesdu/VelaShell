@@ -80,8 +80,23 @@
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Transfer.ShowHiddenFiles}" VerticalAlignment="Center" />
     </Grid>
-    <!-- 自动续传 / 断点续传 / 传输重试 / 临时文件清理:功能未实现,暂不展示
-         (设置审计 M-02/R-07~R-10);实现后以单一“恢复中断的传输”设置返回。 -->
+    <!-- 断点续传(设置审计 M-02 的"恢复中断的传输",底层链路已实现:探测 → 起点核实 → 安全回退)。 -->
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetTransfer_Resume}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetTransfer_ResumeDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Transfer.ResumeEnabled}" VerticalAlignment="Center" />
+    </Grid>
+    <!-- 从属设置:续传开启时半截文件是续传素材、一律保留,清理项只在续传关闭时有意义(设置审计 §10)。 -->
+    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !Transfer.ResumeEnabled}">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetTransfer_AutoCleanTemp}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetTransfer_AutoCleanTempDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Transfer.AutoCleanTempFiles}" VerticalAlignment="Center" />
+    </Grid>
+    <!-- 传输重试次数(R-09):运行时消费者未实现,暂不展示。 -->
 
     <Border Classes="sep" />
 

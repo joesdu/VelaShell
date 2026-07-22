@@ -2,6 +2,10 @@ using System.Text;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using VelaShell.Core.Ssh;
+using VelaShell.Core.ZModem.Abstractions;
+using VelaShell.Core.ZModem.Model;
+using VelaShell.Core.ZModem.Protocol;
+using VelaShell.Terminal.ZModem;
 
 namespace VelaShell.Terminal.Tests;
 
@@ -16,6 +20,17 @@ public class TerminalBridgeTests
     {
         _terminal = Substitute.For<ITerminalEmulator>();
         _shellStream = Substitute.For<IShellStreamWrapper>();
+    }
+
+    /// <summary>轮询等待条件成立(读循环在后台线程,无确定性探针时用它替代长睡眠)。</summary>
+    private static void WaitUntil(Func<bool> condition, int timeoutMs = 5000)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (!condition() && sw.ElapsedMilliseconds < timeoutMs)
+        {
+            Thread.Sleep(10);
+        }
+        Assert.IsTrue(condition(), $"条件在 {timeoutMs}ms 内未成立。");
     }
 
     [TestMethod]
@@ -48,7 +63,7 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void UserInput_WritesToShellStream()
+    public async Task UserInput_WritesToShellStream()
     {
         _shellStream.CanRead.Returns(false);
         _shellStream.CanWrite.Returns(true);
@@ -61,10 +76,9 @@ public class TerminalBridgeTests
 
         _terminal.UserInput += Raise.Event<Action<byte[]>>(testData);
 
-        // WriteUserInputAsync is fire-and-forget, need to let it complete
-        Thread.Sleep(100);
+        await bridge.DrainWritesAsync();
 
-        _shellStream.Received().WriteAsync(
+        await _shellStream.Received().WriteAsync(
             testData,
             0,
             testData.Length,
@@ -72,7 +86,7 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void UserInput_FlushesAfterWrite()
+    public async Task UserInput_FlushesAfterWrite()
     {
         _shellStream.CanRead.Returns(false);
         _shellStream.CanWrite.Returns(true);
@@ -84,13 +98,13 @@ public class TerminalBridgeTests
         byte[] testData = Encoding.UTF8.GetBytes("hello");
         _terminal.UserInput += Raise.Event<Action<byte[]>>(testData);
 
-        Thread.Sleep(100);
+        await bridge.DrainWritesAsync();
 
         _shellStream.Received().Flush();
     }
 
     [TestMethod]
-    public void Start_DoesNotPrimeShell_SoTheInitialPromptIsNotDuplicated()
+    public async Task Start_DoesNotPrimeShell_SoTheInitialPromptIsNotDuplicated()
     {
         _shellStream.CanRead.Returns(false);
         _shellStream.CanWrite.Returns(true);
@@ -100,11 +114,11 @@ public class TerminalBridgeTests
         using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Start();
 
-        Thread.Sleep(100);
+        await bridge.DrainWritesAsync();
 
         // The server already emits its banner + prompt on connect; sending an extra newline
         // would produce a duplicate prompt line, so Start must not write anything.
-        _shellStream.DidNotReceive().WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        await _shellStream.DidNotReceive().WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
     [TestMethod]
@@ -124,7 +138,7 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void UserInput_WhenStreamCannotWrite_DoesNotWrite()
+    public async Task UserInput_WhenStreamCannotWrite_DoesNotWrite()
     {
         _shellStream.CanRead.Returns(false);
         _shellStream.CanWrite.Returns(false);
@@ -134,9 +148,9 @@ public class TerminalBridgeTests
         byte[] testData = Encoding.UTF8.GetBytes("hello");
         _terminal.UserInput += Raise.Event<Action<byte[]>>(testData);
 
-        Thread.Sleep(100);
+        await bridge.DrainWritesAsync();
 
-        _shellStream.DidNotReceive().WriteAsync(
+        await _shellStream.DidNotReceive().WriteAsync(
             Arg.Any<byte[]>(),
             Arg.Any<int>(),
             Arg.Any<int>(),
@@ -190,9 +204,8 @@ public class TerminalBridgeTests
         bridge.Error += ex => capturedError = ex;
         bridge.Start();
 
-        Thread.Sleep(500);
+        WaitUntil(() => capturedError is not null);
 
-        Assert.IsNotNull(capturedError);
         Assert.AreSame(expectedException, capturedError);
     }
 
@@ -232,9 +245,7 @@ public class TerminalBridgeTests
         bridge.Closed += () => closed = true;
         bridge.Start();
 
-        Thread.Sleep(200);
-
-        Assert.IsTrue(closed);
+        WaitUntil(() => closed);
     }
 
     [TestMethod]
@@ -274,7 +285,7 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void UserInput_RapidKeystrokes_NeverWriteConcurrently_AndPreserveByteOrder()
+    public async Task UserInput_RapidKeystrokes_NeverWriteConcurrently_AndPreserveByteOrder()
     {
         // 回归防护:Tmds.Ssh 的通道写没有并发防护,桥必须把击键写串行化。
         // 旧实现对每个按键即发即忘地 WriteAsync,上一个写因网络延迟挂起时下一个按键
@@ -311,7 +322,7 @@ public class TerminalBridgeTests
             _terminal.UserInput += Raise.Event<Action<byte[]>>(new[] { b });
         }
 
-        Thread.Sleep(1000); // 串行 + 合并后最多几段写,足够全部落盘。
+        await bridge.DrainWritesAsync();
 
         lock (gate)
         {
@@ -320,8 +331,79 @@ public class TerminalBridgeTests
         }
     }
 
+    /// <summary>构造一个已进入会话态的路由器(喂 ZRQINIT 触发接收会话)。</summary>
+    private ZModemTerminalRouter StartInSessionRouter()
+    {
+        var router = new ZModemTerminalRouter(_shellStream, () => Substitute.For<IZModemFileSink>());
+        byte[] zrqinit = ZModemFrameWriter.Write(ZModemHeader.Empty(ZModemFrameType.ZRQINIT), ZModemHeaderFormat.Hex);
+        ZModemRouteResult route = router.ProcessIncoming(zrqinit);
+        Assert.IsTrue(route.SessionStarted);
+        Assert.IsTrue(router.IsInSession);
+        return router;
+    }
+
     [TestMethod]
-    public void UserInput_WriteThrowsObjectDisposed_DoesNotPropagate()
+    public async Task UserInput_DuringZModemSession_IsDroppedNotWritten()
+    {
+        // 会话期间击键混进协议流会被对端当帧内容解析,必须整段丢弃。
+        // 断言字节选 'q':ZMODEM hex 帧只含 0-9a-f 与帧界符,'q' 绝不会由引擎自己写出。
+        _shellStream.CanRead.Returns(false);
+        _shellStream.CanWrite.Returns(true);
+        var written = new List<byte>();
+        _shellStream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                lock (written)
+                {
+                    written.AddRange(new ArraySegment<byte>(call.ArgAt<byte[]>(0), call.ArgAt<int>(1), call.ArgAt<int>(2)));
+                }
+                return Task.CompletedTask;
+            });
+
+        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        ZModemTerminalRouter router = StartInSessionRouter();
+        bridge.ZModemRouter = router;
+
+        _terminal.UserInput += Raise.Event<Action<byte[]>>(Encoding.UTF8.GetBytes("qqq"));
+        await bridge.DrainWritesAsync();
+
+        lock (written)
+        {
+            Assert.IsFalse(written.Contains((byte)'q'), "ZMODEM 会话期间的击键不得写入传输流。");
+        }
+        router.CancelActiveSession();
+    }
+
+    [TestMethod]
+    public async Task UserInput_CtrlXDuringZModemSession_CancelsSession_ThenInputFlowsAgain()
+    {
+        _shellStream.CanRead.Returns(false);
+        _shellStream.CanWrite.Returns(true);
+        _shellStream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        ZModemTerminalRouter router = StartInSessionRouter();
+        bridge.ZModemRouter = router;
+        var ended = new TaskCompletionSource<ZModemSession>(TaskCreationOptions.RunContinuationsAsynchronously);
+        router.SessionEnded += s => ended.TrySetResult(s);
+
+        // Ctrl+X(CAN)= 用户中止意图:转成会话取消,而非把裸字节塞进协议流。
+        _terminal.UserInput += Raise.Event<Action<byte[]>>(new byte[] { 0x18 });
+
+        await ended.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        WaitUntil(() => !router.IsInSession);
+
+        // 会话结束后击键恢复正常流动。
+        byte[] resumed = Encoding.UTF8.GetBytes("q");
+        _terminal.UserInput += Raise.Event<Action<byte[]>>(resumed);
+        await bridge.DrainWritesAsync();
+
+        await _shellStream.Received().WriteAsync(resumed, 0, resumed.Length, Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    public async Task UserInput_WriteThrowsObjectDisposed_DoesNotPropagate()
     {
         _shellStream.CanRead.Returns(false);
         _shellStream.CanWrite.Returns(true);
@@ -335,14 +417,14 @@ public class TerminalBridgeTests
         byte[] testData = Encoding.UTF8.GetBytes("hello");
         _terminal.UserInput += Raise.Event<Action<byte[]>>(testData);
 
-        Thread.Sleep(200);
+        await bridge.DrainWritesAsync();
 
-        // ObjectDisposedException is swallowed per WriteUserInputAsync contract
+        // ObjectDisposedException is swallowed per the write loop's contract
         Assert.IsNull(capturedError);
     }
 
     [TestMethod]
-    public void UserInput_WriteThrowsGenericException_FiresErrorEvent()
+    public async Task UserInput_WriteThrowsGenericException_FiresErrorEvent()
     {
         var expectedException = new InvalidOperationException("write failed");
         _shellStream.CanRead.Returns(false);
@@ -357,7 +439,7 @@ public class TerminalBridgeTests
         byte[] testData = Encoding.UTF8.GetBytes("hello");
         _terminal.UserInput += Raise.Event<Action<byte[]>>(testData);
 
-        Thread.Sleep(200);
+        await bridge.DrainWritesAsync();
 
         Assert.IsNotNull(capturedError);
         Assert.AreSame(expectedException, capturedError);

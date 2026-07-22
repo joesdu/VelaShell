@@ -21,6 +21,14 @@ public class FileTransferViewModel : ReactiveObject
 
     private const string PanelPositionId = "transfer-panel";
 
+    /// <summary>传输历史的存储位置:单文档保存最近若干条记录,重启后可见(断点续传收尾 #2)。</summary>
+    private const string HistoryCollection = "transfer-history";
+
+    private const string HistoryId = "recent";
+
+    /// <summary>历史最多保留的记录数,超出丢弃最旧的。</summary>
+    private const int HistoryLimit = 100;
+
     // 可空:无参构造的宿主(单元测试/无 SFTP 服务的场景)不提供传输管理器。
     private readonly ITransferManager? _transferManager;
 
@@ -53,6 +61,7 @@ public class FileTransferViewModel : ReactiveObject
         RestorePanelPosition();
         Transfers = [];
         Transfers.CollectionChanged += OnTransfersChanged;
+        RestoreTransferHistory();
         CancelTransferCommand = ReactiveCommand.Create<Guid>(CancelTransfer);
         RetryTransferCommand = ReactiveCommand.Create<Guid>(RetryTransfer);
         ClearCompletedCommand = ReactiveCommand.Create(ClearCompleted);
@@ -255,13 +264,42 @@ public class FileTransferViewModel : ReactiveObject
     {
         this.RaisePropertyChanged(nameof(ActiveCount));
         this.RaisePropertyChanged(nameof(PendingCount));
+
+        // 项状态变化(完成/失败)也要触发历史落盘,故对增删的项挂/摘状态监听。
+        if (e.NewItems is not null)
+        {
+            foreach (TransferItemViewModel item in e.NewItems.OfType<TransferItemViewModel>())
+            {
+                item.PropertyChanged += OnTransferItemChanged;
+            }
+        }
+        if (e.OldItems is not null)
+        {
+            foreach (TransferItemViewModel item in e.OldItems.OfType<TransferItemViewModel>())
+            {
+                item.PropertyChanged -= OnTransferItemChanged;
+            }
+        }
+        SaveTransferHistory();
         if (Transfers.Count > 0)
         {
-            IsPanelVisible = true;
+            // 启动时恢复的历史是背景信息,不该一开程序就弹传输浮窗;用户经"传输历史"按钮查看。
+            if (!_restoringHistory)
+            {
+                IsPanelVisible = true;
+            }
         }
         else
         {
             IsPanelVisible = false;
+        }
+    }
+
+    private void OnTransferItemChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TransferItemViewModel.Status))
+        {
+            SaveTransferHistory();
         }
     }
 
@@ -381,6 +419,98 @@ public class FileTransferViewModel : ReactiveObject
         }
     }
 
+    // ---- 传输历史持久化 ----
+    //
+    // 目标是"重启后未完成的传输不凭空消失":每次增删项或项落定状态就把最近 100 条快照
+    // 落进 IAppDataStore。恢复时,退出瞬间仍活动的项(传输中/排队/续传中)标为"失败"呈现——
+    // 那次会话已不存在,只能重新发起;半截文件仍在盘上,重新传同一文件会自动续传接上。
+    // 恢复出来的行没有重试委托(CanRetry=false),不会出现指向已死会话的"重试"按钮。
+
+    private bool _restoringHistory;
+
+    private void RestoreTransferHistory()
+    {
+        if (_dataStore is null)
+        {
+            return;
+        }
+        _ = LoadAsync();
+
+        async Task LoadAsync()
+        {
+            try
+            {
+                TransferHistoryDocument? doc = await _dataStore
+                                                     .GetAsync<TransferHistoryDocument>(HistoryCollection, HistoryId)
+                                                     .ConfigureAwait(true);
+                if (doc is not { Items.Count: > 0 })
+                {
+                    return;
+                }
+                _restoringHistory = true;
+                try
+                {
+                    foreach (TransferHistoryRecord record in doc.Items.Take(HistoryLimit))
+                    {
+                        var task = new TransferTask
+                        {
+                            Id = record.Id,
+                            Type = record.Type,
+                            LocalPath = record.LocalPath,
+                            RemotePath = record.RemotePath,
+                            Status = record.Status is TransferStatus.InProgress or TransferStatus.Queued or TransferStatus.Resuming
+                                ? TransferStatus.Failed // 上次退出时被打断。
+                                : record.Status
+                        };
+                        Transfers.Add(new(task));
+                    }
+                }
+                finally
+                {
+                    _restoringHistory = false;
+                }
+            }
+            catch
+            {
+                // 历史读不出来不影响新传输;下次落盘会重建文档。
+            }
+        }
+    }
+
+    private void SaveTransferHistory()
+    {
+        if (_dataStore is null || _restoringHistory)
+        {
+            return;
+        }
+        var doc = new TransferHistoryDocument
+        {
+            Items = Transfers.Take(HistoryLimit)
+                             .Select(t => new TransferHistoryRecord
+                             {
+                                 Id = t.Id,
+                                 Type = t.Type,
+                                 LocalPath = t.LocalPath,
+                                 RemotePath = t.RemotePath,
+                                 Status = t.Status
+                             })
+                             .ToList()
+        };
+        _ = SaveAsync();
+
+        async Task SaveAsync()
+        {
+            try
+            {
+                await _dataStore.UpsertAsync(HistoryCollection, HistoryId, doc).ConfigureAwait(false);
+            }
+            catch
+            {
+                // 历史记不上不影响传输本身;下一次状态变化会再试。
+            }
+        }
+    }
+
     private void ScheduleAutoHide()
     {
         _autoHide = DispatcherTimer.RunOnce(() =>
@@ -419,11 +549,27 @@ public class FileTransferViewModel : ReactiveObject
     private void RetryTransfer(Guid transferId)
     {
         TransferItemViewModel? item = FindTransfer(transferId);
-        if (item is not { Status: TransferStatus.Failed })
+        if (item is not { Status: TransferStatus.Failed, RetryAsync: not null })
         {
             return;
         }
-        item.Status = TransferStatus.Queued;
+
+        // 移除失败行再执行重试动作:重试会经原浏览器视图模型重新探测续传起点并
+        // 以一条新传输行重跑(RunTransferAsync 会重新 AddTransfer),避免同一文件双行并存。
+        Transfers.Remove(item);
+        _ = GuardedRetryAsync(item);
+    }
+
+    private static async Task GuardedRetryAsync(TransferItemViewModel item)
+    {
+        try
+        {
+            await item.RetryAsync!();
+        }
+        catch
+        {
+            // 重试自身的失败已由 RunTransferAsync 在新行上落定状态(标红 + 错误消息),此处只防未观察异常。
+        }
     }
 
     private void ClearCompleted()
@@ -435,6 +581,32 @@ public class FileTransferViewModel : ReactiveObject
             Transfers.Remove(item);
         }
     }
+}
+
+/// <summary>传输历史的持久化文档:单文档保存最近若干条记录(见 <see cref="TransferHistoryRecord" />)。</summary>
+public sealed class TransferHistoryDocument
+{
+    /// <summary>历史记录,新的在前。</summary>
+    public List<TransferHistoryRecord> Items { get; set; } = [];
+}
+
+/// <summary>一条传输历史记录:恢复展示与"重启后未完成传输不丢失"所需的最小字段。</summary>
+public sealed class TransferHistoryRecord
+{
+    /// <summary>传输任务 Id。</summary>
+    public Guid Id { get; set; }
+
+    /// <summary>传输方向。</summary>
+    public TransferType Type { get; set; }
+
+    /// <summary>本地路径(远端复制时为远端源路径)。</summary>
+    public string LocalPath { get; set; } = "";
+
+    /// <summary>远端路径。</summary>
+    public string RemotePath { get; set; } = "";
+
+    /// <summary>落盘时的状态;活动状态在恢复时映射为失败(会话已不存在)。</summary>
+    public TransferStatus Status { get; set; }
 }
 
 /// <summary>

@@ -1,10 +1,7 @@
 using System.Reactive.Linq;
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
-using Avalonia.Markup.Xaml.Styling;
-using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using NSubstitute;
@@ -21,14 +18,16 @@ namespace VelaShell.Tests.Views;
 [TestCategory("SettingsUi")]
 public class SettingsViewUiTests
 {
+    // 必须与全程序集共用同一个会话(VelaHeadlessApp)。此前这里自起
+    // StartNew(私有 HeadlessTestApp) 并在 ClassCleanup 里 Dispose:第二个 Application
+    // 与共享会话争用进程级单例,Dispose 还会拆掉共享 Dispatcher —— 这正是
+    // "ViewModels+Views 合跑整卷死锁、单类跑全绿"的根因。共享会话建成后活到进程结束,
+    // 任何测试类都不得 Dispose 它。
     private static HeadlessUnitTestSession _session = null!;
 
     [ClassInitialize]
     public static void Init(TestContext _) =>
-        _session = HeadlessUnitTestSession.StartNew(typeof(HeadlessTestApp));
-
-    [ClassCleanup]
-    public static void Cleanup() => _session.Dispose();
+        _session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(SettingsViewUiTests).Assembly);
 
     [TestMethod]
     public void Escape_FromTextBox_ClosesWindowAndRollsBackPreview()
@@ -158,24 +157,4 @@ public class SettingsViewUiTests
 
     private static void OnUi(Func<Task> body) =>
         _session.Dispatch(body, CancellationToken.None).GetAwaiter().GetResult();
-
-    private sealed class HeadlessTestApp : Application
-    {
-        public override void Initialize()
-        {
-            Styles.Add(new FluentTheme());
-            Resources.MergedDictionaries.Add(
-                LoadDictionary("avares://VelaShell.Controls/Themes/VelaTokens.axaml")
-            );
-            Resources.MergedDictionaries.Add(
-                LoadDictionary("avares://VelaShell.Controls/Themes/VelaShellTokens.axaml")
-            );
-            Resources.MergedDictionaries.Add(
-                LoadDictionary("avares://VelaShell.Controls/Themes/Icons.axaml")
-            );
-        }
-
-        private static ResourceInclude LoadDictionary(string uri) =>
-            new(new Uri(uri)) { Source = new(uri) };
-    }
 }

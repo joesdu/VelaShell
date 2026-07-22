@@ -2916,4 +2916,22 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SftpSvc_ResumeDownloadMismatch" xml:space="preserve">
     <value>无法续传 {0}:本地残留的文件并不是远端文件的开头部分。请删除本地文件,或整份重新下载。</value>
   </data>
+  <data name="SetTransfer_Resume" xml:space="preserve">
+    <value>恢复中断的传输</value>
+  </data>
+  <data name="SetTransfer_ResumeDesc" xml:space="preserve">
+    <value>检测到半截文件时,先核实其内容匹配,再从断点继续上传/下载。</value>
+  </data>
+  <data name="SetTransfer_AutoCleanTemp" xml:space="preserve">
+    <value>清理半截文件</value>
+  </data>
+  <data name="SetTransfer_AutoCleanTempDesc" xml:space="preserve">
+    <value>传输失败或取消时删除写了一半的目标文件(仅在断点续传关闭时生效)。</value>
+  </data>
+  <data name="Transfer_Retry" xml:space="preserve">
+    <value>重试</value>
+  </data>
+  <data name="Transfer_ClearCompleted" xml:space="preserve">
+    <value>清除已结束</value>
+  </data>
 </root>

@@ -2025,6 +2025,11 @@ public class FileBrowserViewModel : ReactiveObject
         TransferStatus finalStatus = TransferStatus.Failed;
         TransferSink?.AddTransfer(task);
         TransferItemViewModel? item = TransferSink?.FindTransfer(task.Id);
+        if (item is not null && type is TransferType.Upload or TransferType.Download)
+        {
+            // 失败后可从传输面板重试:闭包捕获本会话与路径,重试时重新探测续传起点。
+            item.RetryAsync = () => RetryTransferAsync(type, localPath, remotePath);
+        }
         var progress = new Progress<TransferProgress>(p =>
         {
             item?.UpdateProgress(p);
@@ -2056,18 +2061,14 @@ public class FileBrowserViewModel : ReactiveObject
         {
             item?.Status = TransferStatus.Cancelled;
             finalStatus = TransferStatus.Cancelled;
-
-            // A cancelled download leaves a half-written file behind; drop it.
-            if (type == TransferType.Download)
-            {
-                TryDeleteLocalFile(localPath);
-            }
+            await CleanupPartialTargetAsync(type, localPath, remotePath);
             throw;
         }
         catch (Exception ex)
         {
             item?.Status = TransferStatus.Failed;
             ErrorMessage = ex.Message;
+            await CleanupPartialTargetAsync(type, localPath, remotePath);
         }
         finally
         {
@@ -2083,6 +2084,57 @@ public class FileBrowserViewModel : ReactiveObject
                     remotePath,
                     finalStatus
                 );
+            }
+        }
+    }
+
+    /// <summary>
+    /// 从传输面板重试一个失败项:重新探测续传起点(半截文件还在就从断点继续,起点核实与
+    /// 安全回退由 SftpService 兜底)后单文件重跑。独立取消域,不属于任何批次。
+    /// </summary>
+    private async Task RetryTransferAsync(TransferType type, string localPath, string remotePath)
+    {
+        var planned = new PlannedFileTransfer(type, localPath, remotePath);
+        PlannedFileTransfer resolved = planned;
+        try
+        {
+            Dictionary<string, HashSet<string>> remoteNames =
+                await ListRemoteNamesForUploadsAsync([planned], CancellationToken.None);
+            resolved = await TryResumeAsync(planned, remoteNames, CancellationToken.None) ?? planned;
+        }
+        catch
+        {
+            // 续传探测失败不阻断重试:退回整份重传。
+        }
+        await RunTransferAsync(resolved.Type, resolved.LocalPath, resolved.RemotePath, resolved.ResumeOffset, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// 失败/取消后半截目标文件的统一处置(修复四条路径各行其是的老问题):
+    /// 断点续传开启 → 一律<b>保留</b>——半截文件是续传素材,下次传同一文件自动从断点继续
+    /// (此前"下载取消即删本地半截"恰好毁掉素材,已纠正);
+    /// 续传关闭且开了"清理半截文件" → 上传删远端半截、下载删本地半截,失败与取消同样对待;
+    /// 两者皆关 → 保留,由用户自行处理。Copy 是远端到远端的原子操作,不产生半截目标。
+    /// </summary>
+    private async Task CleanupPartialTargetAsync(TransferType type, string localPath, string remotePath)
+    {
+        if (TransferOptions.ResumeEnabled || !TransferOptions.AutoCleanTempFiles)
+        {
+            return;
+        }
+        if (type == TransferType.Download)
+        {
+            TryDeleteLocalFile(localPath);
+        }
+        else if (type == TransferType.Upload)
+        {
+            try
+            {
+                await _sftpService.DeleteAsync(_sessionId, remotePath);
+            }
+            catch
+            {
+                // 尽力而为:会话可能已断开;残留的半截文件下次上传会按冲突策略处理。
             }
         }
     }

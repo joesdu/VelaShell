@@ -12,6 +12,7 @@ using Avalonia.Media.TextFormatting;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using VelaShell.Terminal.Emulation;
+using VelaShell.Terminal.Input;
 using VelaShell.Terminal.Semantics;
 
 // ReSharper disable AsyncVoidMethod
@@ -2008,93 +2009,58 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         base.OnTextInput(e);
     }
 
-    /// <summary>处理剪贴板/滚动快捷键,并把按键编码为主机字节序列。</summary>
+    /// <summary>
+    /// 处理剪贴板/滚动快捷键,并把按键编码为主机字节序列。
+    /// 分类决策(快捷键优先级、修饰键改写、编码)全在 <see cref="TerminalKeyRouter" />,
+    /// 这里只执行动作 —— 改键位行为去改路由器,别在这里加分支。
+    /// </summary>
     protected override async void OnKeyDown(KeyEventArgs e)
     {
-        // 当 IME 正在组字(例如挑选中文候选)时,其消耗的按键
-        // 会以 ImeProcessed 形式送达。若对它们编码,会把散逸的 ESC / 方向键 / Enter
-        // 发往 PTY —— 这正是过去在 htop 的 F3 搜索里输入中文会杀死 htop 的原因(#14a)。
-        // 已提交的文本仍会经 OnTextInput 单独送达。
-        if (e.Key == Key.ImeProcessed)
+        TerminalKeyAction action = TerminalKeyRouter.Classify(
+            e.Key,
+            e.KeyModifiers,
+            Emulator.Modes,
+            Emulator.Type,
+            canScrollHistory: Emulator.Screen.MaxScrollback > 0,
+            ctrlCCopiesSelection: CtrlCCopiesWhenSelected && NormalizedSelection() is not null);
+        switch (action.Kind)
         {
-            base.OnKeyDown(e);
-            return;
-        }
+            case TerminalKeyActionKind.ImePassthrough:
+                break; // 已提交文本会经 OnTextInput 单独送达。
 
-        // 剪贴板快捷键。
-        if (
-            e.KeyModifiers.HasFlag(KeyModifiers.Control)
-            && e.KeyModifiers.HasFlag(KeyModifiers.Shift)
-        )
-        {
-            // ReSharper disable once SwitchStatementMissingSomeEnumCasesNoDefault
-            switch (e.Key)
-            {
-                case Key.C:
+            case TerminalKeyActionKind.CopySelection:
+                // Ctrl+C 变体带"复制后清选区"的既有语义;Ctrl+Shift+C 保留选区。
+                if (e.KeyModifiers == KeyModifiers.Control)
+                {
+                    TryCopyOnCtrlC();
+                }
+                else
+                {
                     await CopyAsync();
-                    e.Handled = true;
-                    return;
-                case Key.V:
-                    await PasteAsync();
-                    e.Handled = true;
-                    return;
-            }
-        }
-
-        // Shift+Insert 粘贴(经典 X11 / 终端惯例)。在编码器之前拦截,
-        // 否则编码器会把这次按键当作 CSI 2~ 序列发送出去。
-        if (e is { Key: Key.Insert, KeyModifiers: KeyModifiers.Shift })
-        {
-            await PasteAsync();
-            e.Handled = true;
-            return;
-        }
-
-        // PageUp/PageDown 在主屏上翻动回滚历史(备用屏上的全屏程序仍会收到
-        // CSI 5~/6~);Shift+ 变体则在任何位置翻页。
-        if (
-            e.Key is Key.PageUp or Key.PageDown
-            && (
-                e.KeyModifiers == KeyModifiers.Shift
-                || (e.KeyModifiers == KeyModifiers.None && Emulator.Screen.MaxScrollback > 0)
-            )
-        )
-        {
-            int page = Math.Max(1, Emulator.Rows - 1);
-            ScrollOffset += e.Key == Key.PageUp ? page : -page;
-            e.Handled = true;
-            return;
-        }
-
-        // Shift+Home/End 将 shell 光标跳到行首/行尾:发送纯 Home/End 序列,
-        // readline 会绑定它们 —— 而带 Shift 的 CSI 1;2H/F 变体会被它忽略。
-        KeyModifiers effectiveModifiers = e.KeyModifiers;
-        switch (e.Key)
-        {
-            case Key.Home or Key.End when e.KeyModifiers == KeyModifiers.Shift:
-                effectiveModifiers = KeyModifiers.None;
-                break;
-            // 有选中文本时 Ctrl+C 复制而非发送中断(设置 → 终端 → 输入 → 选中时 Ctrl+C 复制)。
-            case Key.C when e.KeyModifiers == KeyModifiers.Control && TryCopyOnCtrlC():
+                }
                 e.Handled = true;
                 return;
-        }
-        byte[]? encoded = InputEncoder.Encode(
-            e.Key,
-            effectiveModifiers,
-            Emulator.Modes,
-            Emulator.Type
-        );
-        if (encoded is { Length: > 0 })
-        {
-            SendTypedInput(encoded);
-            if (ScrollOnKeystroke)
-            {
-                _scrollOffset = 0;
-            }
-            ClearSelection();
-            ResetCursorBlink();
-            e.Handled = true;
+
+            case TerminalKeyActionKind.PasteClipboard:
+                await PasteAsync();
+                e.Handled = true;
+                return;
+
+            case TerminalKeyActionKind.ScrollHistory:
+                ScrollOffset += action.ScrollPageDirection * Math.Max(1, Emulator.Rows - 1);
+                e.Handled = true;
+                return;
+
+            case TerminalKeyActionKind.SendBytes:
+                SendTypedInput(action.Bytes!);
+                if (ScrollOnKeystroke)
+                {
+                    _scrollOffset = 0;
+                }
+                ClearSelection();
+                ResetCursorBlink();
+                e.Handled = true;
+                break;
         }
         base.OnKeyDown(e);
     }
