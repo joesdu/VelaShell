@@ -10,8 +10,9 @@
   <ItemGroup>
     <PackageReference Include="ReactiveUI" />
     <!-- Core 不引用任何具体 SSH 库:SSH 能力经 Ssh/ 下的中立抽象
-         (ISshClientWrapper/ISftpClientWrapper/SftpEntry/SshClientException 等)访问,
-         SSH.NET 只存在于 VelaShell.Infrastructure 的实现中,便于日后整体替换。 -->
+         (ISshClientWrapper/ISftpClientWrapper/SftpEntry/VelaSshClientException 等)访问,
+         具体库(当前 Tmds.Ssh)只存在于 VelaShell.Infrastructure 的实现中。
+         这条约束已被验证:从 SSH.NET 迁到 Tmds.Ssh 时 Core 一行未改。 -->
   </ItemGroup>
 
   <ItemGroup>

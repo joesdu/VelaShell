@@ -69,6 +69,35 @@ The renderer also supports an optional **line-number / timestamp gutter** on the
 edge (`Terminal/Rendering/GutterLayout` + `GutterFoldModel`): two independently toggled
 side columns with fold markers and blank-gap handling, wired to keyboard shortcuts.
 
+## SSH Transport
+
+SSH/SFTP is provided by **[Tmds.Ssh](https://github.com/tmds/Tmds.Ssh)**, a fully managed,
+async-first .NET SSH library (it replaced SSH.NET). The library's types never leave
+`Infrastructure/Ssh/`: `TmdsSshClientWrapper` / `TmdsSftpClientWrapper` / `ShellStreamWrapper`
+adapt `SshClient` / `SftpClient` / `RemoteProcess` to the neutral `Core.Ssh` interfaces, and
+`TmdsSshInterop` translates library exceptions into the `VelaSsh*Exception` family declared in
+`Core`. ProxyJump uses the library's native `SshProxy` chain, assembled by
+`InfrastructureServiceCollectionExtensions.BuildProxyChain` from the saved jump-host profiles
+(≤5 hops, cycle-checked, host key verified per logical hop).
+
+## ZMODEM
+
+In-terminal `rz` / `sz` file transfer is implemented in-house and split across two projects:
+
+```text
+Core/ZModem/       -> transport-agnostic protocol engine (frames, ZDLE, CRC-16/32,
+                      ZModemSender / ZModemReceiver) over an IByteDuplex abstraction
+Terminal/ZModem/   -> ZModemDetector (spots the ZRQINIT / ZRINIT boot sequence in the
+                      output stream) + ZModemTerminalRouter (sits between the bridge read
+                      loop and the emulator; hands bytes to the engine for the duration of
+                      a session, then resets) + ShellStreamByteDuplex
+App/Services/ZModem/ -> file source (upload), folder sink (download), progress observer
+```
+
+Because the engine only needs an `IByteDuplex`, the same path serves SSH, local ConPTY, and
+future serial / Telnet sessions. Set `VELASHELL_ZMODEM_TRACE=1` to dump protocol frames when
+diagnosing interop problems.
+
 ## Docking (VelaDock)
 
 Split/tabbed layout is provided by an in-house, dependency-free docking framework

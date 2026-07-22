@@ -8,18 +8,20 @@
 
 - **无 UI 依赖**：只引用 `Microsoft.Extensions.Logging.Abstractions` 与 `ReactiveUI`（用于 `ReactiveObject` 数据模型），**不引用 Avalonia**。
 - **接口优先**：对外只暴露接口（`I*Service`、`I*Store`、`I*Wrapper`），具体实现落在 `VelaShell.Infrastructure`。上层通过 DI 注入依赖，便于 Mock 与替换。
-- **SSH 库中立**：Core **不引用 SSH.NET**。SSH/SFTP 能力全部经 `Ssh/` 下的中立抽象（`ISshClientWrapper`、`ISftpClientWrapper`、`SftpEntry`、`SshClientException` 等）访问，具体 SSH.NET 依赖只存在于 Infrastructure，便于日后整体替换传输实现。
+- **SSH 库中立**：Core **不引用任何具体 SSH 库**。SSH/SFTP 能力全部经 `Ssh/` 下的中立抽象（`ISshClientWrapper`、`ISftpClientWrapper`、`SftpEntry`、`VelaSshClientException` 等）访问，具体依赖（当前为 `Tmds.Ssh`）只存在于 Infrastructure。这条约束已被验证有效：从 SSH.NET 迁移到 Tmds.Ssh 时 Core 一行未改。
 
 ## 🗂️ 目录结构
 
 | 目录 | 职责 |
 |------|------|
 | `Models/` | 领域模型与枚举：`ConnectionInfo`、`ServerGroup`、`SshSession`、`AppSettings`、`KnownHost`、`QuickCommand`、`TunnelConfig`、`TransferTask`、`AuditEntry`、`TerminalColorScheme` 等，多为 `ReactiveObject` 或不可变记录。 |
-| `Data/` | 持久化抽象与逻辑：`IAppDataStore`、`ISessionRepository`、`ISettingsService`、`IRecentConnectionService`、`IAuditLogService`、`ISecretProtector`（凭据加密契约），以及 `JsonDataStore` 等中立实现。 |
-| `Ssh/` | SSH/SFTP 中立抽象层：客户端/Shell/SFTP 包装接口、`HostKeyVerification`（主机指纹 TOFU 校验）、`PortForwarding`、`Utf8StreamDecoder`、`SecurityAlertService`、异常类型。 |
-| `Sftp/` | 文件传输领域逻辑：`ISftpService`、`ITransferManager` 及其实现、`ThrottledStream`（限速流）。 |
+| `Data/` | 持久化契约（**纯接口**，实现全在 Infrastructure）：`IAppDataStore`、`ISessionRepository`、`ISettingsService`、`IRecentConnectionService`、`IAuditLogService`、`IQuickCommandRepository`、`ISecretProtector`（凭据加密）。 |
+| `Ssh/` | SSH/SFTP 中立抽象层：客户端/Shell/SFTP 包装接口（`ISshClientWrapper`/`IShellStreamWrapper`/`ISftpClientWrapper`）、`ISshConnectionService`、`ISshKeyService`、`IHostKeyService`/`IHostKeyPrompt`、`HostKeyVerification`（主机指纹 TOFU 校验）、`PortForwarding`、`TerminalMode`、`SecurityAlertService`、`VelaSshClientException` 异常族。 |
+| `Sftp/` | 文件传输领域逻辑：`ISftpService`、`ITransferManager` 及其实现、`SerializedSftpService`（通道串行化）、`RemoteIdentityResolver`、`DragDropFormats`、`ThrottledStream`（限速流）。 |
+| `ZModem/` | **自研 ZMODEM 协议引擎**（传输无关）：`Protocol/`（帧读写、ZDLE 转义、CRC-16/32、`ZModemSender`/`ZModemReceiver`）、`Model/`、`Abstractions/`（`IByteDuplex` 与文件源/汇契约，为未来 Telnet/串口预留）、`Diagnostics/ZModemTrace`（置 `VELASHELL_ZMODEM_TRACE=1` 打开帧跟踪）。 |
 | `Tunnels/` | 端口转发隧道契约 `ITunnelService`。 |
-| `Services/` | 跨层服务契约与逻辑：`IThemeService`、`ISessionMetricsService`（CPU/内存/网速采集）、`SettingsPreviewService`。 |
+| `Sync/` | 云同步契约与载荷：`IGistSyncService`、`SyncModels`、`SyncCrypto`（PBKDF2 + AES-256-GCM 端到端加密）。 |
+| `Services/` | 跨层服务契约与逻辑：`IThemeService`/`ThemeService`、`ISessionMetricsService`（CPU/内存/网速采集）、`SettingsPreviewService`。 |
 | `Recording/` | 会话录制存储契约 `ISessionRecordingStore`。 |
 | `Localization/` | `ILocalizationService` + `LocalizationService`，运行时语言切换。 |
 | `Resources/` | 强类型本地化资源。`Strings.resx`（英文，开发语言）+ `zh-Hans`/`zh-Hant`/`ja`/`ko` 卫星资源。`Strings.cs` 为**手写**的强类型访问层（`Get`/`Format` + 常用键属性），非设计器生成。 |
@@ -27,7 +29,7 @@
 ## 🔑 核心思路
 
 1. **稳定的领域词汇表**：连接、分组、会话、隧道、传输、审计等概念在此一次性定义，所有上层共用同一套模型，杜绝 DTO 转换与概念漂移。
-2. **契约与实现分离**：Core 声明「需要什么能力」（接口），Infrastructure 提供「如何做到」（SonnetDB / SSH.NET / AES）。这让核心逻辑可在无数据库、无网络的环境下单元测试。
+2. **契约与实现分离**：Core 声明「需要什么能力」（接口），Infrastructure 提供「如何做到」（SonnetDB / Tmds.Ssh / AES）。这让核心逻辑可在无数据库、无网络的环境下单元测试。
 3. **可替换的边界**：SSH 库、存储引擎、加密方案都被接口隔离在 Core 之外，替换成本被约束在单一实现项目内。
 
 ## 🌐 本地化回退链

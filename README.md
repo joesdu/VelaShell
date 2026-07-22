@@ -2,7 +2,7 @@
 
 > 一款为运维与开发者打造的现代化跨平台 SSH 终端客户端。
 
-VelaShell 是一个使用 .NET 10 与 Avalonia 构建的桌面终端应用，支持 Windows、Linux 与 macOS。它内置自研 VT 终端引擎、SSH/SFTP 连接、本地终端标签、跳板机（ProxyJump）、两步身份验证与主机指纹校验、端口转发隧道、分组会话管理、自研 VelaDock 可拖拽分屏、命令面板与十一页设置中心；全部数据经嵌入式 SonnetDB 加密持久化。旨在为高频远程操作提供**键盘优先、信息密度高、响应迅速**的使用体验。
+VelaShell 是一个使用 .NET 11 与 Avalonia 构建的桌面终端应用，支持 Windows、Linux 与 macOS。它内置自研 VT 终端引擎、SSH/SFTP 连接、本地终端标签、跳板机（ProxyJump）、两步身份验证与主机指纹校验、端口转发隧道、分组会话管理、自研 VelaDock 可拖拽分屏、命令面板与十一页设置中心；全部数据经嵌入式 SonnetDB 加密持久化。旨在为高频远程操作提供**键盘优先、信息密度高、响应迅速**的使用体验。
 
 ---
 
@@ -24,9 +24,9 @@ VelaShell 是一个使用 .NET 10 与 Avalonia 构建的桌面终端应用，支
 | **名称** | VelaShell |
 | **读音** | `/ˈveɪlə ʃɛl/`（VAY-la shell·薇拉·谢尔） |
 | **类别** | 跨平台 SSH / SFTP 终端客户端 |
-| **当前版本** | `v0.1.0-beta`（活跃开发中，版本号单一来源见 `Directory.Build.props`） |
+| **当前版本** | `v0.0.1-dev`（活跃开发中，版本号单一来源见 `Directory.Build.props`；发版时由 Release 标签经 `-p:Version` 覆盖） |
 | **平台** | Windows 10 / 11 · Linux · macOS（x64 / arm64） |
-| **运行时** | .NET 10 + Avalonia 12.1，Self-contained 发布（免装 Runtime） |
+| **运行时** | .NET 11 + Avalonia 12.1，Self-contained 发布（免装 Runtime） |
 | **许可证** | 双许可：[AGPL-3.0](LICENSE) / [商业授权](LICENSE-COMMERCIAL.md) · © 2026 VelaShell 作者及贡献者 |
 
 ---
@@ -37,10 +37,16 @@ VelaShell 是一个使用 .NET 10 与 Avalonia 构建的桌面终端应用，支
   完整实现 DEC ANSI / VT / Xterm 状态机，支持 256 色、真彩色、DEC 线绘字符、主/备屏、滚动区、应用光标键、鼠标协议、CJK 双宽字符与动态编码切换。内置十种终端 profile（vt52/100/102/220/320/340/420/520/xterm/xterm-256color），默认 xterm-256color。
 
 - **SSH、SFTP 与本地终端**  
-  基于 SSH.NET 实现 Shell、SFTP 文件传输与端口转发。支持密码与私钥认证，缺少凭据时自动进入两步身份验证流程（用户名 → 认证方式），认证失败可原地重试。另经 Windows ConPTY 提供**本地终端标签**（pwsh / PowerShell / CMD / WSL / Git Bash 自动探测）。
+  基于 [Tmds.Ssh](https://github.com/tmds/Tmds.Ssh)（全托管、async-first 的 .NET SSH 库）实现 Shell、SFTP 文件传输与端口转发。支持密码与私钥认证，缺少凭据时自动进入两步身份验证流程（用户名 → 认证方式），认证失败可原地重试。另经 Windows ConPTY 提供**本地终端标签**（pwsh / PowerShell / CMD / WSL / Git Bash 自动探测）。
 
 - **跳板机（ProxyJump）**  
-  一条会话可引用另一条已保存配置作跳板，支持链式多段跳转（≤5 跳、带环检测），指纹按各跳逻辑主机分别校验。
+  一条会话可引用另一条已保存配置作跳板，支持链式多段跳转（≤5 跳、带环检测）；由 Tmds.Ssh 原生 `SshProxy` 逐跳建链，指纹按各跳逻辑主机分别校验。
+
+- **ZMODEM（rz / sz）**  
+  终端内直接收发文件：从输出流中识别 ZMODEM 引导序列后接管通道，由自研 ZMODEM 协议引擎完成传输，结束后自动复位回终端。收发双向、传输无关（SSH / 本地 ConPTY 通用），排障可置 `VELASHELL_ZMODEM_TRACE=1` 打开协议帧跟踪。
+
+- **独立 SFTP 标签与远程文件编辑**  
+  连接配置可选 SSH 或 SFTP 类型；SFTP 标签在停靠工作区内以独立文档呈现，支持本地/远程双栏浏览与拖拽互传。远程文件可在内置编辑器中打开（AvaloniaEdit，按扩展名自动语法高亮），保存即回传；也可交给外部编辑器并监听落盘回传。
 
 - **主机密钥信任**  
   首次连接默认 TOFU 自动记录指纹，可切换为人工确认（永久信任 / 仅本次信任 / 取消）；指纹变化立即拒绝连接，防御中间人攻击；SSH 与 SFTP 通道均校验；设置中可查看与删除已信任主机（支持截图防泄露的地址脱敏）。
@@ -79,7 +85,7 @@ VelaShell 是一个使用 .NET 10 与 Avalonia 构建的桌面终端应用，支
   设计 Token 化，无硬编码颜色，支持运行时切换；终端配色未自定义时随主题联动（暗=Dracula / 亮=Solarized Light）。
 
 - **多语言支持**  
-  五语言资源：简体中文 / English / 繁體中文 / 日本語 / 한국어（867 键五语齐平），运行时动态切换。
+  五语言资源：简体中文 / English / 繁體中文 / 日本語 / 한국어（938 键五语齐平），运行时动态切换。
 
 - **实时状态栏**  
   连接状态、延迟、运行时长、终端尺寸、编码、CPU / 内存 / 网速一目了然。
@@ -102,8 +108,10 @@ VelaShell 是一个使用 .NET 10 与 Avalonia 构建的桌面终端应用，支
 
 ### 环境要求
 
-- [.NET SDK](https://dotnet.microsoft.com/download) 10.0.201 或更高版本（`global.json` 锁定）
+- [.NET SDK](https://dotnet.microsoft.com/download) **11.0.0 或更高版本**（`global.json` 锁定，`rollForward: latestFeature`；当前以 `11.0.100-preview.x` 构建）
 -（可选）Docker，用于启动本地 SSH 测试服务器
+
+> ⚠️ 仓库已切到 **net11.0**，并开启了 `EnablePreviewFeatures` 与 `runtime-async=on`（见 `Directory.Build.props`）。这意味着构建依赖 .NET 11 预览版 SDK；若你需要 LTS 基线，把 `Directory.Build.props` 的 `<TargetFramework>` 与 `global.json` 一并回退到 net10 即可。
 
 ### 克隆与构建
 
@@ -221,8 +229,8 @@ dotnet test --logger "console;verbosity=detailed"
 
 | 测试项目 | 说明 |
 |----------|------|
-| `VelaShell.Core.Tests` | 领域模型、数据存储、服务逻辑、云同步加密 |
-| `VelaShell.Terminal.Tests` | VT 解析、终端仿真、编码、字符宽度与侧栏折叠 |
+| `VelaShell.Core.Tests` | 领域模型、SFTP 与传输队列、隧道、云同步加密、ZMODEM 协议（含 lrzsz 互操作） |
+| `VelaShell.Terminal.Tests` | VT 解析、终端仿真、编码、字符宽度、侧栏折叠与 ZMODEM 路由 |
 | `VelaShell.Presentation.Tests` | ViewModel 工作流与命令 |
 | `VelaShell.Infrastructure.Tests` | SonnetDB 持久化、凭据加密、ConPTY、SSH 密钥管理 |
 | `VelaShell.Controls.Tests` | 自定义控件行为 |
@@ -241,17 +249,21 @@ dotnet test --logger "console;verbosity=detailed"
 - [`docs/交互与界面规格.md`](docs/交互与界面规格.md) — 交互逻辑与设计 Token
 - [`docs/settings-audit.md`](docs/settings-audit.md) — 设置项审计台账与整改记录
 - [`docs/隧道功能规划.md`](docs/隧道功能规划.md) — 端口转发隧道设计
+- [`docs/SFTP双栏与WinSCP差距分析.md`](docs/SFTP双栏与WinSCP差距分析.md) — 双栏 SFTP 与 WinSCP 的逐项差距决策清单
+- [`docs/Telnet与串口可行性调研.md`](docs/Telnet与串口可行性调研.md) — Telnet / 串口会话类型的可行性与改造清单
 - [`plan.md`](plan.md) — 进展记录、已知问题与后续待办（开发跟进以此为准）
 
 ---
 
 ## 🛠️ 技术栈
 
-- **.NET 10** — 目标运行时
+- **.NET 11** — 目标运行时（`net11.0`，启用预览特性与 `runtime-async`）
 - **Avalonia 12.1** — 跨平台 XAML UI 框架
 - **ReactiveUI** — 响应式 MVVM
 - **VelaDock（自研）** — 可拖拽分屏与停靠布局，零第三方依赖
-- **SSH.NET** — SSH / SFTP / 端口转发
+- **Tmds.Ssh** — SSH / SFTP / 端口转发 / ProxyJump（全托管 async-first 实现）
+- **ZMODEM（自研）** — 终端内 rz/sz 收发，协议引擎在 `VelaShell.Core/ZModem/`
+- **AvaloniaEdit** — 远程文件编辑器与语法高亮
 - **SonnetDB** — 嵌入式多模型数据库（文档 + 时序），唯一持久化引擎
 - **自研便携式自更新** — GitHub Releases `latest.json` 清单 + SHA-256 校验 + 原地换版重启，不限定安装位置、不触碰用户数据目录（`src/VelaShell/Services/Update/`）
 - **MSTest** — 单元测试框架
@@ -261,7 +273,7 @@ dotnet test --logger "console;verbosity=detailed"
 
 ## 🚧 开发状态
 
-项目处于活跃开发阶段。核心链路（终端引擎、SSH/SFTP、本地终端、跳板机、会话管理、身份验证、持久化、设置中心、云同步、会话录制）已可用；部分设置项目前仅持久化、待接线到运行时，非 SSH 协议（SFTP 标签页/Telnet/串口）与证书认证暂未开放。完整的完成情况与待办清单见 [`plan.md`](plan.md) §10–§12。
+项目处于活跃开发阶段。核心链路（终端引擎、SSH/SFTP、ZMODEM、本地终端、跳板机、会话管理、身份验证、持久化、设置中心、云同步、会话录制）已可用；部分设置项目前仅持久化、待接线到运行时，**Telnet / 串口**协议与**证书认证**暂未开放（可行性与改造清单见 [`docs/Telnet与串口可行性调研.md`](docs/Telnet与串口可行性调研.md)）。完整的完成情况与待办清单见 [`plan.md`](plan.md) §10–§12。
 
 ---
 
