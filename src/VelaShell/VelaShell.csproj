@@ -9,6 +9,10 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+    <!-- 语法高亮定义(AvaloniaEdit 未内置的那几种)。用 EmbeddedResource 而非 AvaloniaResource:
+         HighlightingLoader 要的是普通 Stream,由 Assembly.GetManifestResourceStream 提供。
+         资源名 = "VelaShell.Syntax.<文件名>",与 SyntaxHighlightingService 里的常量对应。 -->
+    <EmbeddedResource Include="Syntax\*.xshd" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">

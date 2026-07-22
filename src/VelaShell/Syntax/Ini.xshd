@@ -1,0 +1,67 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- INI / conf / properties / toml。覆盖 /etc 下绝大多数配置文件:
+     sshd_config、nginx.conf、my.cnf、fstab、.gitconfig……
+     这类文件形态各异,但共同点就是"注释 + 段落 + 键值",按这三样着色收益最大。
+     颜色见 Shell.xshd 顶部说明。 -->
+<SyntaxDefinition name="Ini" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+  <Color name="Comment"     foreground="#6272A4" />
+  <Color name="String"      foreground="#F1FA8C" />
+  <Color name="Key"         foreground="#50FA7B" />
+  <Color name="Section"     foreground="#8BE9FD" fontWeight="bold" />
+  <Color name="Constant"    foreground="#BD93F9" />
+  <Color name="Number"      foreground="#BD93F9" />
+  <Color name="Punctuation" foreground="#FF79C6" />
+
+  <RuleSet ignoreCase="true">
+
+    <!-- 三种注释风格都要认:# 是 unix 配置主流,; 是经典 ini,// 偶见于 toml 邻近格式。 -->
+    <Span color="Comment" begin="#" />
+    <Span color="Comment" begin=";" />
+
+    <!-- 段落头 [section] / [[array]] -->
+    <Rule color="Section">
+      ^\s*\[\[?[^\]]*\]\]?
+    </Rule>
+
+    <!-- 键:行首到 = 或 : 之前。也覆盖 sshd_config 那种"键 空格 值"的写法。 -->
+    <Rule color="Key">
+      ^\s*[A-Za-z_][A-Za-z0-9_.\-]*(?=\s*[=:])
+    </Rule>
+
+    <Span color="String" multiline="false">
+      <Begin>"</Begin>
+      <End>"</End>
+      <RuleSet>
+        <Span begin="\\" end="." />
+      </RuleSet>
+    </Span>
+
+    <Span color="String" multiline="false">
+      <Begin>'</Begin>
+      <End>'</End>
+    </Span>
+
+    <Keywords color="Constant">
+      <Word>true</Word>
+      <Word>false</Word>
+      <Word>yes</Word>
+      <Word>no</Word>
+      <Word>on</Word>
+      <Word>off</Word>
+      <Word>none</Word>
+      <Word>null</Word>
+      <Word>enabled</Word>
+      <Word>disabled</Word>
+    </Keywords>
+
+    <Rule color="Number">
+      \b[0-9]+([.:][0-9]+)*\b
+    </Rule>
+
+    <Rule color="Punctuation">
+      [=:]
+    </Rule>
+
+  </RuleSet>
+</SyntaxDefinition>
