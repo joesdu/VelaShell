@@ -22,6 +22,9 @@ public partial class DockGroupControl : UserControl
     private Func<DockDocument, Control?>? _viewResolver;
     private int _contentMotionGeneration;
     private readonly Transitions _contentTransitions;
+    private readonly Transitions _indicatorTransitions;
+    private bool _indicatorPlaced;
+    private (double X, double Y, double W, double H) _indicatorGeometry = (-1, -1, -1, -1);
 
     /// <summary>初始化控件,订阅标签滚动变化并注册全组激活的指针处理器。</summary>
     public DockGroupControl()
@@ -29,7 +32,12 @@ public partial class DockGroupControl : UserControl
         InitializeComponent();
         _contentTransitions = ContentHost.Transitions
             ?? throw new InvalidOperationException("ContentHost transitions are not configured.");
+        _indicatorTransitions = ActiveTabIndicator.Transitions
+            ?? throw new InvalidOperationException("ActiveTabIndicator transitions are not configured.");
         TabScroll.ScrollChanged += (_, _) => UpdateScrollButtons();
+        // 标签宽度随标题变化、容器随集合重建 —— 指示器几何跟着布局走最省心;
+        // UpdateActiveTabIndicator 对相同几何短路,不会造成布局风暴。
+        TabsHost.LayoutUpdated += (_, _) => UpdateActiveTabIndicator();
         // 点击本组任意位置(含终端内容区)即把本组的选中文档设为全局激活 —— 对应原
         // Dock 的 FocusedDockable 语义;缺了它,分屏后点另一个窗格输入,SFTP 面板与
         // 状态栏不会跟随切换。Tunnel + handledEventsToo:终端控件会吞掉
@@ -100,10 +108,59 @@ public partial class DockGroupControl : UserControl
         {
             case nameof(DockGroup.ActiveDocument):
                 UpdateContent();
+                UpdateActiveTabIndicator();
                 break;
             case nameof(DockGroup.TabsPosition):
                 ApplyTabsPosition(Group?.TabsPosition ?? DockTabsPosition.Top);
                 break;
+        }
+    }
+
+    /// <summary>
+    /// 把滑动强调线对齐到激活标签:水平模式为贴顶的 2px 横线,垂直模式为贴内侧边的
+    /// 2px 竖线(标签在左 → 线贴条带右缘,反之贴左缘)。首次落位不做动画(指示器
+    /// 不该从别的组的旧位置飘进来),此后位置/宽度经 180ms 过渡滑动 —— 这比每个标签
+    /// 自己的顶线瞬时跳变自然得多。
+    /// </summary>
+    private void UpdateActiveTabIndicator()
+    {
+        DockDocument? active = Group?.ActiveDocument;
+        Control? container = active is null ? null : TabsHost.ContainerFromItem(active);
+        if (container is null || container.Bounds.Width <= 0 || container.Bounds.Height <= 0)
+        {
+            ActiveTabIndicator.IsVisible = false;
+            _indicatorPlaced = false;
+            _indicatorGeometry = (-1, -1, -1, -1);
+            return;
+        }
+        Point origin = container.TranslatePoint(default, TabsOverlay) ?? default;
+        bool vertical = (Group?.TabsPosition ?? DockTabsPosition.Top) != DockTabsPosition.Top;
+        (double X, double Y, double W, double H) geometry = vertical
+            ? (Group?.TabsPosition == DockTabsPosition.Left ? Math.Max(0, TabsOverlay.Bounds.Width - 2) : 0,
+               Math.Round(origin.Y), 2, Math.Round(container.Bounds.Height))
+            : (Math.Round(origin.X), 0, Math.Round(container.Bounds.Width), 2);
+        if (geometry == _indicatorGeometry && ActiveTabIndicator.IsVisible)
+        {
+            return; // 布局回调高频触发;几何没变就绝不重写属性,避免过渡被反复重启。
+        }
+        _indicatorGeometry = geometry;
+
+        bool animate = _indicatorPlaced;
+        if (!animate)
+        {
+            ActiveTabIndicator.Transitions = null;
+        }
+        ActiveTabIndicator.Width = geometry.W;
+        ActiveTabIndicator.Height = geometry.H;
+        ActiveTabIndicator.RenderTransform = TransformOperations.Parse(
+            string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"translate({geometry.X}px, {geometry.Y}px)"));
+        ActiveTabIndicator.IsVisible = true;
+        if (!animate)
+        {
+            _indicatorPlaced = true;
+            Dispatcher.UIThread.Post(() => ActiveTabIndicator.Transitions ??= _indicatorTransitions,
+                DispatcherPriority.Render);
         }
     }
 

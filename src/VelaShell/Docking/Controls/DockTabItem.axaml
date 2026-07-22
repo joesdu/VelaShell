@@ -45,9 +45,11 @@
       <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
       <Setter Property="FontWeight" Value="Medium" />
     </Style>
+    <!-- 激活顶线不再由标签自己画:改由 DockGroupControl 的滑动强调线统一呈现
+         (单条线在标签间滑动,替代逐标签顶线的瞬时跳变);TabRoot 的 2px 顶边厚度
+         保留为占位,保证滑线覆盖处与标签内容的间距不变。 -->
     <Style Selector="local|DockTabItem:selected Border#TabRoot">
       <Setter Property="Background" Value="{DynamicResource VelaTabActiveBg}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
     </Style>
   </UserControl.Styles>
 

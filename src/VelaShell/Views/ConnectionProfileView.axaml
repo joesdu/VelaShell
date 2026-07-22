@@ -113,23 +113,24 @@
       <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
       <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
     </Style>
+    <!-- 选中态只变前景色;下划线由标签条底部的滑动指示条统一呈现(在 SSH/SFTP 间滑动)。 -->
     <Style Selector="Button.proto-tab.selected">
-      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
     </Style>
-    <!-- Avalonia 的 :focus 状态是该控件的键盘焦点钩子。保持选中下划线层级不变;
-         带记号的焦点填充是额外的键盘可感知反馈。 -->
-    <Style Selector="Button.proto-tab:focus">
+    <!-- 焦点记号只给键盘导航(:focus-visible)。此前用 :focus,鼠标点完标签后强调色
+         填充+描边会一直挂在按钮上直到焦点移走 —— 看起来像卡住的高亮,是这个窗口
+         标签切换观感崩坏的主因。 -->
+    <Style Selector="Button.proto-tab:focus-visible">
       <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
     </Style>
     <!-- Fluent 的焦点层位于 Button 背景之上;只覆盖这个类,
          使其系统强调色无法替换 Vela 的焦点记号。 -->
-    <Style Selector="Button.proto-tab:focus /template/ ContentPresenter">
+    <Style Selector="Button.proto-tab:focus-visible /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
       <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
-    <Style Selector="Button.proto-tab:focus /template/ Border#PART_FocusAdorner">
+    <Style Selector="Button.proto-tab:focus-visible /template/ Border#PART_FocusAdorner">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
       <Setter Property="BorderThickness" Value="1" />
@@ -174,26 +175,43 @@
       <Border Height="36" Padding="20,0"
               BorderThickness="0,0,0,1"
               BorderBrush="{DynamicResource VelaBorderPrimary}">
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
-          <Button Classes="proto-tab" Classes.selected="{Binding IsSshSelected}"
-                  Command="{Binding SelectConnectionTypeCommand}"
-                  CommandParameter="{x:Static models:ConnectionType.SSH}">
-            <TextBlock Classes="proto-label" Text="SSH" FontWeight="Medium" />
-          </Button>
-          <Button Classes="proto-tab" Classes.selected="{Binding IsSftpSelected}"
-                  Command="{Binding SelectConnectionTypeCommand}"
-                  CommandParameter="{x:Static models:ConnectionType.SFTP}">
-            <TextBlock Classes="proto-label" Text="SFTP" FontWeight="Medium" />
-          </Button>
-          <Border Classes="proto-tab" IsEnabled="False" ToolTip.Tip="{loc:Localize Profile_NotSupported}">
-            <TextBlock Classes="proto-label" Text="Telnet"
-                       Foreground="{DynamicResource VelaTextTertiary}" />
+        <Panel x:Name="ProtoTabsPanel" VerticalAlignment="Bottom">
+          <StackPanel Orientation="Horizontal">
+            <Button x:Name="SshTab" Classes="proto-tab" Classes.selected="{Binding IsSshSelected}"
+                    Command="{Binding SelectConnectionTypeCommand}"
+                    CommandParameter="{x:Static models:ConnectionType.SSH}">
+              <TextBlock Classes="proto-label" Text="SSH" FontWeight="Medium" />
+            </Button>
+            <Button x:Name="SftpTab" Classes="proto-tab" Classes.selected="{Binding IsSftpSelected}"
+                    Command="{Binding SelectConnectionTypeCommand}"
+                    CommandParameter="{x:Static models:ConnectionType.SFTP}">
+              <TextBlock Classes="proto-label" Text="SFTP" FontWeight="Medium" />
+            </Button>
+            <Border Classes="proto-tab" IsEnabled="False" ToolTip.Tip="{loc:Localize Profile_NotSupported}">
+              <TextBlock Classes="proto-label" Text="Telnet"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+            </Border>
+            <Border Classes="proto-tab" IsEnabled="False" ToolTip.Tip="{loc:Localize Profile_NotSupported}">
+              <TextBlock Classes="proto-label" Text="{loc:Localize Profile_Serial}"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+            </Border>
+          </StackPanel>
+          <!-- 滑动下划线:2px 强调色,在 SSH/SFTP 间平移;位置由代码后置按按钮实际边界驱动。 -->
+          <Border x:Name="ProtoTabIndicator"
+                  Height="2"
+                  Background="{DynamicResource VelaAccent}"
+                  HorizontalAlignment="Left"
+                  VerticalAlignment="Bottom"
+                  IsVisible="False"
+                  IsHitTestVisible="False">
+            <Border.Transitions>
+              <Transitions>
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                <DoubleTransition Property="Width" Duration="0:0:0.18" Easing="CubicEaseOut" />
+              </Transitions>
+            </Border.Transitions>
           </Border>
-          <Border Classes="proto-tab" IsEnabled="False" ToolTip.Tip="{loc:Localize Profile_NotSupported}">
-            <TextBlock Classes="proto-label" Text="{loc:Localize Profile_Serial}"
-                       Foreground="{DynamicResource VelaTextTertiary}" />
-          </Border>
-        </StackPanel>
+        </Panel>
       </Border>
 
       <!-- 表单 -->

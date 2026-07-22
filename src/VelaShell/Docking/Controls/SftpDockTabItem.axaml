@@ -38,9 +38,9 @@
       <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
       <Setter Property="FontWeight" Value="Medium" />
     </Style>
+    <!-- 激活顶线由 DockGroupControl 的滑动强调线统一呈现(与 DockTabItem 同理)。 -->
     <Style Selector="local|SftpDockTabItem:selected Border#TabRoot">
       <Setter Property="Background" Value="{DynamicResource VelaTabActiveBg}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
     </Style>
   </UserControl.Styles>
 
