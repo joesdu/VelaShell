@@ -1,8 +1,15 @@
 # 发布流水线:在 GitHub 页面发布 Release(publish)时自动触发。
-# 三平台原生 runner 构建 6 个 self-contained 产物,统一附加到该 Release:
+# 三平台原生 runner 构建 self-contained 产物,统一附加到该 Release:
 #   Windows x64/arm64 → zip
-#   macOS   x64/arm64 → tar.gz(未签名/未公证;Unix 可执行位在原生 runner 上保留)
+#   macOS   x64/arm64 → tar.gz + dmg(未签名/未公证;Unix 可执行位在原生 runner 上保留)
 #   Linux   x64/arm64 → tar.gz
+# macOS 双产物分工(动 latest.json 前先读这段):
+#   tar.gz — 应用内自更新器的资产,latest.json 只指向它。更新器是"原地换版"
+#            (zip/tar 按相对路径解进应用目录,.new/.old 两段重命名),不认识 dmg。
+#   dmg    — 人类安装资产:VelaShell.app 拖进 /Applications。.app 的 Contents/MacOS
+#            就是 tar.gz 的扁平布局,应用在 bundle 内运行时更新器的应用目录即
+#            Contents/MacOS,后续自更新照常工作(Info.plist/图标不随更新变,可接受)。
+#   因此 dmg 绝不能写进 latest.json 的 assets;二者布局必须保持一致。
 # 另生成两份元数据:
 #   SHA256SUMS.txt — 全部产物的校验和(人工核对用)
 #   latest.json    — 应用内自更新清单(版本号/标签/各 RID 产物名+sha256+大小);
@@ -74,12 +81,50 @@ jobs:
           set -euo pipefail
           version="${TAG_NAME#v}"
           mkdir -p dist
+
+          # AppIcon.icns:从源 png 生成一次,两个 RID 共用。
+          mkdir -p out/AppIcon.iconset
+          for size in 16 32 64 128 256 512; do
+            sips -z "$size" "$size" src/VelaShell/Assets/velashell.png \
+              --out "out/AppIcon.iconset/icon_${size}x${size}.png" >/dev/null
+            sips -z "$((size * 2))" "$((size * 2))" src/VelaShell/Assets/velashell.png \
+              --out "out/AppIcon.iconset/icon_${size}x${size}@2x.png" >/dev/null
+          done
+          iconutil -c icns out/AppIcon.iconset -o out/AppIcon.icns
+
           for rid in osx-x64 osx-arm64; do
             name="VelaShell-$version-$rid"
             dotnet publish "$PROJECT" -c Release -r "$rid" -o "out/$name" \
               -p:Version="$version" -p:SelfContained=true -p:PublishSingleFile=true -p:DebugType=None --nologo
             chmod +x "out/$name/VelaShell"
+
+            # tar.gz:应用内更新器的资产,扁平布局不可改(见文件头"macOS 双产物分工")。
             tar -czf "dist/$name.tar.gz" -C "out/$name" .
+
+            # VelaShell.app:Contents/MacOS = 上面的扁平发布目录,布局与 tar.gz 严格一致,
+            # 这样无论用户从 dmg 装进 /Applications 还是解 tar 便携运行,自更新走同一条原地换版路径。
+            app="out/bundle-$rid/VelaShell.app"
+            mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+            cp -a "out/$name/." "$app/Contents/MacOS/"
+            cp src/VelaShell/Info.plist "$app/Contents/Info.plist"
+            # CFBundleShortVersionString 显示完整版本(含预发布后缀);CFBundleVersion 取纯数字段。
+            /usr/libexec/PlistBuddy \
+              -c "Set :CFBundleShortVersionString $version" \
+              -c "Set :CFBundleVersion ${version%%-*}" \
+              "$app/Contents/Info.plist"
+            cp out/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+            printf 'APPL????' > "$app/Contents/PkgInfo"
+            # ad-hoc 签名:Apple Silicon 拒绝运行完全无签名的二进制;无开发者证书时 ad-hoc 是底线。
+            # 后续自更新替换 Contents/MacOS 里的文件会使 bundle 印章失效 —— 对未公证的
+            # ad-hoc 应用无影响(系统只校验各二进制自身的嵌入签名,dotnet publish 的产物自带)。
+            codesign --force --deep --sign - "$app"
+
+            # dmg:VelaShell.app + /Applications 快捷方式的经典拖装布局。
+            dmgroot="out/dmg-$rid"
+            mkdir -p "$dmgroot"
+            cp -a "$app" "$dmgroot/"
+            ln -s /Applications "$dmgroot/Applications"
+            hdiutil create -volname "VelaShell" -srcfolder "$dmgroot" -ov -format UDZO "dist/$name.dmg"
           done
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
@@ -146,6 +191,8 @@ jobs:
           for rid in win-x64 win-arm64; do
             add_asset "$rid" "VelaShell-$VERSION-$rid.zip"
           done
+          # macOS 固定登记 tar.gz —— 更新器只会原地解包 zip/tar.gz,dmg 是给人手动安装的,
+          # 写进清单会让全体 mac 用户的应用内更新直接报"不支持的包格式"(见文件头)。
           for rid in osx-x64 osx-arm64 linux-x64 linux-arm64; do
             add_asset "$rid" "VelaShell-$VERSION-$rid.tar.gz"
           done
