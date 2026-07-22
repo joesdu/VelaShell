@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Avalonia.Threading;
 using VelaShell.Core.Ssh;
 
@@ -11,6 +12,19 @@ public class SshTerminalBridge : IDisposable
 {
     private readonly CancellationTokenSource _cts;
     private readonly List<byte[]> _pending = [];
+
+    // 出站写队列:所有发往 PTY 的字节(击键 + SendRaw 注入)先入队,由唯一的写循环按序
+    // 逐段 await 后刷出。绝不能对底层流并发 WriteAsync —— Tmds.Ssh 的 SshChannel.WriteAsync
+    // 没有任何并发防护:两个写并发时会各自读发送窗口、交错切包,字节以乱序抵达远端;
+    // 远端 shell 按收到的顺序回显,屏幕上就是"打 docker status 出来字符拆散跳动"。
+    // 打字稍快 + 网络延迟让上一个写挂起 await,下一个按键就会插队,竞态必现。
+    // (旧 SSH.NET 的 ShellStream 内部有锁掩盖了这一点,迁移 Tmds.Ssh 后暴露。)
+    private readonly Channel<byte[]> _writeQueue = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions
+    {
+        SingleReader = true
+    });
+
+    private readonly Task _writeTask;
 
     // 输出合批泵:读线程把原始分块入队,并只请求一次 UI 线程的合并刷新,
     // 而非每次读取都编组并喂入一次。在突发输出(apt/yum、cat、进度条)下,这把
@@ -33,6 +47,7 @@ public class SshTerminalBridge : IDisposable
         _shellStream = shellStream ?? throw new ArgumentNullException(nameof(shellStream));
         _cts = new();
         _terminal.UserInput += OnUserInput;
+        _writeTask = Task.Run(WriteLoopAsync);
     }
 
     /// <summary>停止读循环、退订输入事件并释放 Shell 流与取消源(可安全重复调用)。</summary>
@@ -45,6 +60,9 @@ public class SshTerminalBridge : IDisposable
         _disposed = true;
         _terminal.UserInput -= OnUserInput;
         ZModemRouter?.SessionEnded -= OnZModemSessionEnded;
+
+        // 封口写队列:写循环排空残余(_disposed 已置位,只弃不写)后自行退出。
+        _writeQueue.Writer.TryComplete();
 
         // 先释放流、后取消令牌:释放流会以"通道关闭"唤醒挂起的读取,包装层将其吞为 EOF,
         // 读循环无异常退出。若先 Cancel,取消会以 OperationCanceledException 打穿底层库的
@@ -66,6 +84,15 @@ public class SshTerminalBridge : IDisposable
         catch (AggregateException)
         {
             // 吞掉释放期间读任务抛出的异常
+        }
+        try
+        {
+            // 流已释放:挂起中的写以 ObjectDisposedException 醒来并被吞掉,循环随即因封口退出。
+            _writeTask.Wait(TimeSpan.FromSeconds(1));
+        }
+        catch (AggregateException)
+        {
+            // 吞掉释放期间写任务抛出的异常
         }
         _cts.Dispose();
         GC.SuppressFinalize(this);
@@ -159,7 +186,7 @@ public class SshTerminalBridge : IDisposable
         {
             return;
         }
-        _ = WriteUserInputAsync(data);
+        _writeQueue.Writer.TryWrite(data);
     }
 
     /// <summary>启动后台读循环;仅允许调用一次,重复调用会抛出异常。</summary>
@@ -366,24 +393,51 @@ public class SshTerminalBridge : IDisposable
             return;
         }
 
-        // 即发即忘并附带错误处理 —— 这是事件处理器,使用 async void 是可接受的
-        _ = WriteUserInputAsync(data);
+        // 只入队不直写:击键与 SendRaw 都在 UI 线程触发,TryWrite 保序;真正的发送
+        // 由唯一的写循环按序完成,杜绝对底层通道的并发 WriteAsync(见 _writeQueue 注释)。
+        _writeQueue.Writer.TryWrite(data);
     }
 
-    private async Task WriteUserInputAsync(byte[] data)
+    /// <summary>
+    /// 唯一的出站写者:按入队顺序逐段写入并等待完成,一段未落盘绝不开始下一段。
+    /// 上一段写入挂起期间(发送窗口收紧、网络延迟)攒下的后续段合并为一次写出——
+    /// 语义上等价于按序逐段发送,只是少切几个 SSH 包。
+    /// </summary>
+    private async Task WriteLoopAsync()
     {
-        try
+        while (await _writeQueue.Reader.WaitToReadAsync().ConfigureAwait(false))
         {
-            await _shellStream.WriteAsync(data, 0, data.Length, CancellationToken.None).ConfigureAwait(false);
-            _shellStream.Flush();
-        }
-        catch (ObjectDisposedException)
-        {
-            // 流已释放——拆除期间属正常情况
-        }
-        catch (Exception ex)
-        {
-            Error?.Invoke(ex);
+            while (_writeQueue.Reader.TryRead(out byte[]? payload))
+            {
+                if (_writeQueue.Reader.TryRead(out byte[]? next))
+                {
+                    var merged = new MemoryStream(payload.Length + next.Length + 64);
+                    merged.Write(payload);
+                    merged.Write(next);
+                    while (_writeQueue.Reader.TryRead(out byte[]? more))
+                    {
+                        merged.Write(more);
+                    }
+                    payload = merged.ToArray();
+                }
+                if (_disposed || !_shellStream.CanWrite)
+                {
+                    continue; // 拆除中:弃段快速排空,让循环尽快退出。
+                }
+                try
+                {
+                    await _shellStream.WriteAsync(payload, 0, payload.Length, CancellationToken.None).ConfigureAwait(false);
+                    _shellStream.Flush();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // 流已释放——拆除期间属正常情况
+                }
+                catch (Exception ex)
+                {
+                    Error?.Invoke(ex);
+                }
+            }
         }
     }
 }
