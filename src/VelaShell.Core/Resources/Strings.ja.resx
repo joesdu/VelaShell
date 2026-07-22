@@ -1959,6 +1959,12 @@
   <data name="SetTerm_ImeSupport" xml:space="preserve">
     <value>IME サポート</value>
   </data>
+  <data name="SetTerm_LocalEcho" xml:space="preserve">
+    <value>ローカルエコー</value>
+  </data>
+  <data name="SetTerm_LocalEchoDesc" xml:space="preserve">
+    <value>入力した文字をホストからのエコーを待たずに端末側で表示します。相手がエコーしない接続(半二重 Telnet、シリアル機器)向けです。SSH ではオフのままにしてください —— リモートのシェルがエコーするため、有効にすると文字が二重に表示されます。</value>
+  </data>
   <data name="SetTerm_ImeSupportDesc" xml:space="preserve">
     <value>// 中国語・日本語などの IME のインライン入力を有効化</value>
   </data>

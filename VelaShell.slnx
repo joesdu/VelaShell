@@ -8,6 +8,8 @@
     <File Path="docs/design-specs.md" />
     <File Path="docs/dock-replacement-plan.md" />
     <File Path="docs/settings-audit.md" />
+    <File Path="docs/SFTP双栏与WinSCP差距分析.md" />
+    <File Path="docs/Telnet与串口可行性调研.md" />
     <File Path="docs/交互与界面规格.md" />
     <File Path="docs/架构设计.md" />
     <File Path="docs/隧道功能规划.md" />

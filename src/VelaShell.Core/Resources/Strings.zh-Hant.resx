@@ -1959,6 +1959,12 @@
   <data name="SetTerm_ImeSupport" xml:space="preserve">
     <value>輸入法支援 (IME)</value>
   </data>
+  <data name="SetTerm_LocalEcho" xml:space="preserve">
+    <value>本機回應</value>
+  </data>
+  <data name="SetTerm_LocalEchoDesc" xml:space="preserve">
+    <value>鍵入的字元由終端機自行顯示,不等對端回傳。用於對端不回應的連線(Telnet 半雙工、序列埠裝置)。SSH 請保持關閉 —— 遠端 shell 自己會回應,開啟會導致每個字元顯示兩次。</value>
+  </data>
   <data name="SetTerm_ImeSupportDesc" xml:space="preserve">
     <value>// 啟用中文/日文等輸入法的內嵌輸入</value>
   </data>

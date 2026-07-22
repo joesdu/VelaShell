@@ -36,6 +36,14 @@ public sealed class TerminalModes
     /// <summary>反显模式(DECSCNM ?5):整屏前景色与背景色反转。</summary>
     public bool ReverseVideo; // DECSCNM ?5
 
+    /// <summary>
+    /// 发送/接收模式(SRM 12):**置位(<c>CSI 12 h</c>,默认)表示本地回显关闭** ——
+    /// 终端只把键入发往主机,由主机回显。复位(<c>CSI 12 l</c>)则要求终端本地回显。
+    /// 注意语义是反的:<c>SendReceive == true</c> 意味着**不**本地回显。
+    /// 默认 true 与 SSH 场景一致(远端 shell 自己回显,本地再回显会出现双字符)。
+    /// </summary>
+    public bool SendReceive = true; // SRM (12)
+
     /// <summary>将所有模式恢复为终端复位后的默认状态。</summary>
     public void Reset()
     {
@@ -51,6 +59,7 @@ public sealed class TerminalModes
         MouseEncoding = MouseEncoding.Default;
         InsertMode = false;
         NewLineMode = false;
+        SendReceive = true;
     }
 }
 

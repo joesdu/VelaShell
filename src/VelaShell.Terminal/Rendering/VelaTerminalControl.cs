@@ -213,6 +213,21 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     public bool ScrollOnKeystroke { get; set; } = true;
 
     /// <summary>
+    /// 本地回显(设置 → 终端):对端不回显的链路(Telnet 半双工、串口设备)需要开启,
+    /// 否则打字看不见。默认关 —— SSH 下远端 shell 自己回显,再本地回显会出现双字符。
+    /// 主机以 <c>CSI 12 l</c> 复位 SRM 时即便本项为关也会生效(见 <see cref="LocalEcho.IsEnabled" />)。
+    /// </summary>
+    public bool LocalEchoEnabled { get; set; }
+
+    /// <summary>
+    /// 对端是否自己回显键入。SSH(远端 PTY)与本地终端(ConPTY 里的 shell)都会,故均置 true——
+    /// 此时 <see cref="LocalEchoEnabled" /> 被忽略,避免用户为串口开了开关后 SSH/本地标签全部双字符。
+    /// 将来的 Telnet 半双工 / 串口置 false,走正常逻辑。
+    /// 默认 true:新传输接入时若忘了设,宁可不回显(看得见但要按两下),也好过满屏重影。
+    /// </summary>
+    public bool PeerEchoesInput { get; set; } = true;
+
+    /// <summary>
     /// 新输出会把历史滚动视图拉回底部;关闭则保持
     /// 用户的历史视图固定不动(#15 行为)。
     /// </summary>
@@ -444,6 +459,27 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     {
         TypedInput?.Invoke(data);
         UserInput?.Invoke(data);
+        EchoLocally(data);
+    }
+
+    /// <summary>
+    /// 本地回显:对端不回显时(Telnet 半双工、串口设备,或主机以 <c>CSI 12 l</c> 复位 SRM),
+    /// 把键入的可见部分喂回终端自己显示。默认关闭 —— SSH 下远端 shell 自己回显,再回显会出双字符。
+    /// </summary>
+    /// <remarks>
+    /// 放在发送**之后**:回显只是显示层的补偿,不该影响或延后真正的发送。
+    /// </remarks>
+    private void EchoLocally(byte[] data)
+    {
+        if (!LocalEcho.IsEnabled(LocalEchoEnabled, Emulator.Modes.SendReceive, PeerEchoesInput))
+        {
+            return;
+        }
+        byte[] echo = LocalEcho.Compute(data, Emulator.Modes.NewLineMode);
+        if (echo.Length > 0)
+        {
+            Emulator.Feed(echo);
+        }
     }
 
     private void AfterProgrammaticInput()

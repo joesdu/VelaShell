@@ -740,6 +740,10 @@ public sealed class TerminalEmulator : IVtActions
                 case 4:
                     Modes.InsertMode = set;
                     break; // IRM
+                case 12:
+                    // SRM。语义是反的:置位(12h)= 本地回显关,复位(12l)= 本地回显开。
+                    Modes.SendReceive = set;
+                    break; // SRM
                 case 20:
                     Modes.NewLineMode = set;
                     break; // LNM
