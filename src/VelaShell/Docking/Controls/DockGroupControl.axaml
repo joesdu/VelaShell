@@ -14,9 +14,11 @@
       <Setter Property="Opacity" Value="1" />
       <Setter Property="RenderTransform" Value="translateY(0px)" />
     </Style>
+    <!-- 内容"落定"起点:刻意不从 0 开始 —— 从全黑淡入会让每次切标签都像眨一下眼;
+         0.65 + 4px 让新内容立即可见、只带一丝浮起感,reparent 首帧的布局微调也被盖住。 -->
     <Style Selector="controls|ReparentingHost.settling">
-      <Setter Property="Opacity" Value="0" />
-      <Setter Property="RenderTransform" Value="translateY(2px)" />
+      <Setter Property="Opacity" Value="0.65" />
+      <Setter Property="RenderTransform" Value="translateY(4px)" />
     </Style>
   </UserControl.Styles>
 
@@ -66,21 +68,40 @@
       <ScrollViewer x:Name="TabScroll"
                     HorizontalScrollBarVisibility="Hidden"
                     VerticalScrollBarVisibility="Disabled">
-        <ItemsControl x:Name="TabsHost" ItemsSource="{Binding Documents}">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <StackPanel Orientation="Horizontal" />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.DataTemplates>
-            <DataTemplate x:DataType="docking:TerminalDocument">
-              <local:DockTabItem />
-            </DataTemplate>
-            <DataTemplate x:DataType="docking:SftpDocument">
-              <local:SftpDockTabItem />
-            </DataTemplate>
-          </ItemsControl.DataTemplates>
-        </ItemsControl>
+        <!-- 指示器与标签同处滚动内容里,滚动时二者天然同步,不需要任何偏移换算。 -->
+        <Panel x:Name="TabsOverlay">
+          <ItemsControl x:Name="TabsHost" ItemsSource="{Binding Documents}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.DataTemplates>
+              <DataTemplate x:DataType="docking:TerminalDocument">
+                <local:DockTabItem />
+              </DataTemplate>
+              <DataTemplate x:DataType="docking:SftpDocument">
+                <local:SftpDockTabItem />
+              </DataTemplate>
+            </ItemsControl.DataTemplates>
+          </ItemsControl>
+          <!-- 激活标签的滑动强调线:单条 2px 线在标签间滑动(取代各标签自己顶线的突变),
+               位置/尺寸由代码后置按激活标签的实际边界驱动;水平模式贴顶,垂直模式贴内侧边。 -->
+          <Border x:Name="ActiveTabIndicator"
+                  Background="{DynamicResource VelaAccent}"
+                  HorizontalAlignment="Left"
+                  VerticalAlignment="Top"
+                  IsVisible="False"
+                  IsHitTestVisible="False">
+            <Border.Transitions>
+              <Transitions>
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                <DoubleTransition Property="Width" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                <DoubleTransition Property="Height" Duration="0:0:0.18" Easing="CubicEaseOut" />
+              </Transitions>
+            </Border.Transitions>
+          </Border>
+        </Panel>
       </ScrollViewer>
     </DockPanel>
 
@@ -105,8 +126,8 @@
         <controls:ReparentingHost x:Name="ContentHost">
           <controls:ReparentingHost.Transitions>
             <Transitions>
-              <DoubleTransition Property="Opacity" Duration="0:0:0.12" Easing="CubicEaseOut" />
-              <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12" Easing="CubicEaseOut" />
+              <DoubleTransition Property="Opacity" Duration="0:0:0.14" Easing="CubicEaseOut" />
+              <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.14" Easing="CubicEaseOut" />
             </Transitions>
           </controls:ReparentingHost.Transitions>
         </controls:ReparentingHost>
