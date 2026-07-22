@@ -2117,6 +2117,12 @@
   <data name="SetTerm_ImeSupport" xml:space="preserve">
     <value>输入法支持 (IME)</value>
   </data>
+  <data name="SetTerm_LocalEcho" xml:space="preserve">
+    <value>本地回显</value>
+  </data>
+  <data name="SetTerm_LocalEchoDesc" xml:space="preserve">
+    <value>键入的字符由终端自己显示,不等对端回传。用于对端不回显的链路(Telnet 半双工、串口设备)。SSH 请保持关闭 —— 远端 shell 自己会回显,开启会导致每个字符显示两遍。</value>
+  </data>
   <data name="SetTerm_ImeSupportDesc" xml:space="preserve">
     <value>// 启用中文/日文等输入法的内联输入</value>
   </data>

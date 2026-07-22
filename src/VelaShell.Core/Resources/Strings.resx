@@ -2026,6 +2026,12 @@ Paste anyway?</value>
   <data name="SetTerm_ImeSupport" xml:space="preserve">
     <value>IME support</value>
   </data>
+  <data name="SetTerm_LocalEcho" xml:space="preserve">
+    <value>Local echo</value>
+  </data>
+  <data name="SetTerm_LocalEchoDesc" xml:space="preserve">
+    <value>Show typed characters locally instead of waiting for the host to echo them. For links whose peer does not echo (half-duplex Telnet, serial devices). Leave off for SSH — the remote shell echoes, so enabling this shows every character twice.</value>
+  </data>
   <data name="SetTerm_ImeSupportDesc" xml:space="preserve">
     <value>// Enable inline input for Chinese, Japanese and other IMEs</value>
   </data>

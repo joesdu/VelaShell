@@ -1959,6 +1959,12 @@
   <data name="SetTerm_ImeSupport" xml:space="preserve">
     <value>IME 지원</value>
   </data>
+  <data name="SetTerm_LocalEcho" xml:space="preserve">
+    <value>로컬 에코</value>
+  </data>
+  <data name="SetTerm_LocalEchoDesc" xml:space="preserve">
+    <value>입력한 문자를 호스트의 에코를 기다리지 않고 터미널에서 직접 표시합니다. 상대가 에코하지 않는 연결(반이중 Telnet, 시리얼 장치)용입니다. SSH에서는 꺼 두십시오 —— 원격 셸이 에코하므로 켜면 모든 문자가 두 번 표시됩니다.</value>
+  </data>
   <data name="SetTerm_ImeSupportDesc" xml:space="preserve">
     <value>// 중국어/일본어 등 입력기의 인라인 입력 사용</value>
   </data>

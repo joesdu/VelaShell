@@ -387,6 +387,20 @@ public class TerminalBehaviorOptions : ObservableOptions
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>
+    /// 本地回显:终端把键入的可见字符自己显示一份,不等对端回传。
+    /// <para>
+    /// 默认关闭。SSH 场景下远端 shell 自己会回显,开了会**每个字符显示两遍**;
+    /// 它是给对端不回显的链路用的(Telnet 半双工、串口设备)。
+    /// 主机若以 <c>CSI 12 l</c> 复位 SRM 显式要求终端回显,即便本项为关也会生效。
+    /// </para>
+    /// </summary>
+    public bool LocalEcho
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
     /// <summary>光标形状(如 bar / block / underline)。</summary>
     public string CursorStyle
     {

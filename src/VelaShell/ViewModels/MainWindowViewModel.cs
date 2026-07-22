@@ -2538,6 +2538,14 @@ public class MainWindowViewModel : ReactiveObject
         control.MultilinePasteConfirmation = MultilinePasteConfirmer;
         control.CtrlCCopiesWhenSelected = behavior.CtrlCCopiesWhenSelected;
         control.ImeEnabled = behavior.ImeSupport;
+        control.LocalEchoEnabled = behavior.LocalEcho;
+
+        // 现有两种传输的对端都自己回显:SSH 是远端 PTY,本地终端是 ConPTY 里的 shell。
+        // 因此这两类标签上强制忽略「本地回显」开关 —— 否则用户为串口设备打开它之后,
+        // 所有 SSH 与本地标签都会变成每个字符两遍。
+        // 将来接入 Telnet 半双工 / 串口时,在此按传输置 false,让它们走正常逻辑。
+        // (主机显式 CSI 12 l 要求终端回显时仍然生效,不受本项影响。)
+        control.PeerEchoesInput = true;
 
         // 用户自定义的终端配色(仅覆盖改过的颜色,其余跟随主题)。
         control.PaletteOverrides = TerminalAppearanceMapper.BuildPaletteOverrides(
