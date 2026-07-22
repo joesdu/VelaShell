@@ -1,0 +1,13 @@
+<Project>
+	<!-- 必须显式导入上层的 Directory.Build.targets:本文件的存在会让 MSBuild 不再自动去找上一层,
+	     不导入就等于把根目录那条「禁止在 csproj 里写死 TargetFramework」的校验悄悄关掉了。 -->
+	<Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.targets', '$(MSBuildThisFileDirectory)../'))" />
+
+	<PropertyGroup>
+		<!-- 全测试项目统一应用 runsettings(内含 60s 单测超时,理由见 velashell.runsettings 的注释),
+		     这样 `dotnet test` 无需在命令行显式指定 settings 也生效,IDE 与 CI 行为一致。
+		     注意必须放在 .targets 而不是 .props:后者早于 SDK 默认属性求值,在那里设会把测试 targets
+		     提前引进来,TargetFramework 解析为空、restore 直接失败(NETSDK1013)。 -->
+		<RunSettingsFilePath>$(MSBuildThisFileDirectory)velashell.runsettings</RunSettingsFilePath>
+	</PropertyGroup>
+</Project>

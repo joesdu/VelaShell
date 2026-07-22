@@ -9,7 +9,8 @@ namespace VelaShell.Tests.Behaviors;
 
 [TestClass]
 [TestCategory("EnglishInputLocaleUi")]
-[DoNotParallelize]
+// 不并行的约束已提升到程序集级(见 ModuleInit.cs):共享 headless UI 线程的是全部 UI 测试,
+// 不止这一个类。
 public sealed class EnglishInputLocaleUiTests
 {
     private static HeadlessUnitTestSession _session = null!;

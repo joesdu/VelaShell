@@ -28,7 +28,7 @@ public class PackageVersionsTests
     /// <summary>关于页当前展示的两个包必须查得到,否则界面会退化成只有名称。</summary>
     [TestMethod]
     [DataRow("Avalonia")]
-    [DataRow("SSH.NET")]
+    [DataRow("Tmds.Ssh")]
     public void Of_ResolvesPackagesShownOnTheAboutPage(string packageId)
     {
         string? version = PackageVersions.Of(packageId);
@@ -37,12 +37,12 @@ public class PackageVersionsTests
         Assert.MatchesRegex(new Regex(@"^\d+\.\d+"), version, "版本应形如 12.1.0。");
     }
 
-    /// <summary>SSH.NET 被隔离在 Infrastructure 层,按包名查得到才说明没走类型引用那条路。</summary>
+    /// <summary>SSH 库被隔离在 Infrastructure 层,按包名查得到才说明没走类型引用那条路。</summary>
     [TestMethod]
     public void Of_ResolvesPackages_NotReferencedByThisAssembly()
     {
-        Assert.IsNotNull(PackageVersions.Of("SSH.NET"),
-                         "SSH.NET 不被 VelaShell 直接引用,版本仍应可查(不必为取版本破坏分层)。");
+        Assert.IsNotNull(PackageVersions.Of("Tmds.Ssh"),
+                         "Tmds.Ssh 不被 VelaShell 直接引用,版本仍应可查(不必为取版本号破坏分层)。");
     }
 
     [TestMethod]
@@ -69,9 +69,9 @@ public class PackageVersionsTests
     }
 
     [TestMethod]
-    public void AboutSshLibrary_ShowsTheReferencedSshNetVersion()
+    public void AboutSshLibrary_ShowsTheReferencedSshLibraryVersion()
     {
-        Assert.AreEqual($"SSH.NET {PackageVersions.Of("SSH.NET")}", SettingsViewModel.AboutSshLibrary);
+        Assert.AreEqual($"Tmds.Ssh {PackageVersions.Of("Tmds.Ssh")}", SettingsViewModel.AboutSshLibrary);
     }
 
     /// <summary>关于页不该再出现写死的版本号 —— 这条盯的就是当初那个漂移。</summary>

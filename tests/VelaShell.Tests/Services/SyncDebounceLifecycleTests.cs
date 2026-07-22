@@ -284,14 +284,19 @@ public class SyncDebounceLifecycleTests
     {
         var lifecycle = new SyncDebounceLifecycle();
         lifecycle.TrySwapNew(out CancellationToken token);
-        object gate = typeof(SyncDebounceLifecycle)
+
+        // `_gate` 的类型是 System.Threading.Lock(不是 object):此时 C# 的 lock 语句编译成
+        // Lock.EnterScope(),走的**不是** Monitor。因此 Monitor.IsEntered(gate) 恒为 false,
+        // 哪怕锁确实被持有 —— 必须用 Lock.IsHeldByCurrentThread 才测得准。
+        // (这条测试曾因此假红:被测的不变量一直是成立的,错的是探针。)
+        Lock gate = (Lock)typeof(SyncDebounceLifecycle)
             .GetField("_gate", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .GetValue(lifecycle)!;
         bool gateHeld = false;
 
         bool started = lifecycle.TryStartCurrent(() =>
         {
-            gateHeld = Monitor.IsEntered(gate);
+            gateHeld = gate.IsHeldByCurrentThread;
             return Task.CompletedTask;
         }, token, out _);
 

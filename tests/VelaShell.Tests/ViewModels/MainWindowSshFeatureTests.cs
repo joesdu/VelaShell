@@ -90,9 +90,10 @@ public sealed class MainWindowSshFeatureTests
             Password = "wrong"
         };
 
-        // Simulate SSH.NET rejecting the password (matched by type name in the VM).
+        // 模拟服务端拒绝密码。必须抛 Core 的真实中立类型:VM 按类型匹配(ex is VelaSshAuthenticationException),
+        // 这里以前伪造过一个同名假异常去迎合旧的类型名字符串匹配,结果生产路径从未被覆盖。
         workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>())
-                .Returns<Task<SshSession>>(_ => throw new SshAuthenticationException("Permission denied (password)."));
+                .Returns<Task<SshSession>>(_ => throw new VelaSshAuthenticationException("Permission denied (password)."));
         var vm = new MainWindowViewModel(workflow, sshConnectionService, () => Substitute.For<ITerminalEmulator>());
         TerminalTabViewModel? tab = await vm.TryConnectProfileAsync(profile);
         Assert.IsNull(tab);
@@ -100,7 +101,10 @@ public sealed class MainWindowSshFeatureTests
         Assert.IsFalse(string.IsNullOrEmpty(vm.LastConnectionError));
 
         // 比对本地化资源而非中文字面量:该文案随 UI 语言变化,写死会让测试只在中文环境通过。
-        Assert.AreEqual(Strings.Format("Msg_AuthFailed", "root@prod.example.com:22"), vm.LastConnectionError);
+        // 提示后面还会换行附上底层库给出的具体原因(DescribeConnectionError 有意为之,便于用户诊断)。
+        Assert.AreEqual(
+            $"{Strings.Format("Msg_AuthFailed", "root@prod.example.com:22")}\nPermission denied (password).",
+            vm.LastConnectionError);
     }
 
     [TestMethod]
@@ -322,7 +326,4 @@ public sealed class MainWindowSshFeatureTests
         vm.TabBar.ActiveTab = tabA; // switch back to A
         Assert.AreEqual("SSH • a@host-a:22", vm.StatusBar.ConnectionInfo);
     }
-
-    // Named to match SSH.NET's SshAuthenticationException so the VM's type-name mapping applies.
-    private sealed class SshAuthenticationException(string message) : Exception(message) { }
 }

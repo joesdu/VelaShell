@@ -177,6 +177,12 @@
   <data name="Refresh" xml:space="preserve">
     <value>刷新</value>
   </data>
+  <data name="Sftp_RefreshLocalPane" xml:space="preserve">
+    <value>刷新本地栏</value>
+  </data>
+  <data name="Sftp_RefreshRemotePane" xml:space="preserve">
+    <value>刷新远程栏</value>
+  </data>
   <data name="TransferHistory" xml:space="preserve">
     <value>传输记录</value>
   </data>

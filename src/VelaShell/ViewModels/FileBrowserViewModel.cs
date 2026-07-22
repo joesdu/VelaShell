@@ -1637,7 +1637,9 @@ public class FileBrowserViewModel : ReactiveObject
         foreach (PlannedFileTransfer item in plan)
         {
             // 先做断点续传检查:若续传已启用且存在部分文件,从该偏移处续传。
-            PlannedFileTransfer? resumed = await TryResumeAsync(item, ct);
+            // 传入 remoteNames:续传探测必须复用同一份预列举名单,否则每个文件都要多打一次
+            // 远端(拖入大文件夹 = 上千次无谓往返;链路/通道有问题时还会逐文件抛一次异常刷屏)。
+            PlannedFileTransfer? resumed = await TryResumeAsync(item, remoteNames, ct);
             if (resumed is not null)
             {
                 resolved.Add(resumed);
@@ -1732,6 +1734,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     private async Task<PlannedFileTransfer?> TryResumeAsync(
         PlannedFileTransfer item,
+        Dictionary<string, HashSet<string>> remoteNames,
         CancellationToken ct
     )
     {
@@ -1770,7 +1773,7 @@ public class FileBrowserViewModel : ReactiveObject
             else
             {
                 // 上传:检查远端文件是否已存在(部分)。
-                long remoteSize = await GetRemoteFileSizeAsync(item.RemotePath, ct);
+                long remoteSize = await GetRemoteFileSizeAsync(item.RemotePath, remoteNames, ct);
                 if (remoteSize <= 0)
                 {
                     return null;
@@ -1791,14 +1794,20 @@ public class FileBrowserViewModel : ReactiveObject
     }
 
     /// <summary>获取远端文件大小;不存在返回 -1。</summary>
-    private async Task<long> GetRemoteFileSizeAsync(string remotePath, CancellationToken ct)
+    private async Task<long> GetRemoteFileSizeAsync(
+        string remotePath,
+        Dictionary<string, HashSet<string>> remoteNames,
+        CancellationToken ct
+    )
     {
         try
         {
-            // 上传目标通常尚不存在:先走一次无异常的 stat 探测,不存在直接返回。
-            // 直接 GetFileInfoAsync 会为每个新文件抛一次 FileNotFoundException
-            // (异常做控制流,调试输出刷屏),还多付一次整目录列举。
-            if (!await _sftpService.ExistsAsync(_sessionId, remotePath, ct))
+            // 上传目标通常尚不存在:先判存在性,不存在直接返回。
+            // 走 RemoteExistsAsync 而非裸 ExistsAsync —— 前者优先查本批预列举的目录名单,
+            // 命中即零网络往返;拖入一个大文件夹时这是"每个文件一次往返"与"每个目录一次列举"
+            // 的差别,链路异常时也不会逐文件抛异常刷屏。
+            // 直接 GetFileInfoAsync 则会为每个新文件抛一次 FileNotFoundException(异常做控制流)。
+            if (!await RemoteExistsAsync(remotePath, remoteNames, ct))
             {
                 return -1;
             }
@@ -1849,7 +1858,11 @@ public class FileBrowserViewModel : ReactiveObject
     )
     {
         var map = new Dictionary<string, HashSet<string>>();
-        if (TransferOptions.ConflictPolicy == "overwrite")
+
+        // “覆盖”策略本身不需要名单(直接沿用 SFTP 覆盖语义,省掉列举);
+        // 但断点续传开启时仍要判断远端是否已有半截文件,没有名单就会退化成逐文件 ExistsAsync。
+        // 所以只有“覆盖 且 不续传”才真的可以跳过列举。
+        if (TransferOptions.ConflictPolicy == "overwrite" && !TransferOptions.ResumeEnabled)
         {
             return map;
         }

@@ -53,6 +53,26 @@ public class MenuGlyphStyleTests
     public static void Init(TestContext _) =>
         _session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(MenuGlyphStyleTests).Assembly);
 
+    /// <summary>本次用例开出来的菜单与窗口,由 <see cref="CloseOpenedMenu" /> 收尾。</summary>
+    private static ContextMenu? _openedMenu;
+    private static Window? _openedWindow;
+
+    /// <summary>
+    /// 关掉本用例开出来的右键菜单与窗口。全程序集共用一条 headless UI 线程,残留的窗口/弹出层
+    /// 会持续往 dispatcher 排工作项,而 <see cref="OpenMenu" /> 里的
+    /// <c>Dispatcher.UIThread.RunJobs()</c> 要等队列排空才返回 —— 队列一直被填着,它就永不返回,
+    /// UI 线程被占死,其后所有测试的 Dispatch 无限期排队。本类既是受害者也是泄漏者。
+    /// </summary>
+    [TestCleanup]
+    public void CloseOpenedMenu() =>
+        OnUi(() =>
+        {
+            _openedMenu?.Close();
+            _openedMenu = null;
+            _openedWindow?.Close();
+            _openedWindow = null;
+        });
+
     [TestMethod]
     public void SubmenuChevron_IsScaledDown_ToMatchTheMenuFontSize()
     {
@@ -122,6 +142,9 @@ public class MenuGlyphStyleTests
         OnUi(() =>
         {
             IResourceDictionary res = Application.Current!.Resources;
+
+            // 对照窗口也必须关(理由同 CloseOpenedMenu):留着它会一直往 dispatcher 排工作项。
+            Window? probe = null;
             try
             {
                 // 模拟「设置 → 外观 → 界面字号 = 20」(见 MainWindow.ApplyWindowAppearance)。
@@ -131,10 +154,10 @@ public class MenuGlyphStyleTests
 
                 // 对照:普通控件必须真的跟着变,否则下面那条断言是空的 —— 只能说明设置没生效。
                 var button = new Button { Content = "确定" };
-                var window = new Window { Width = 200, Height = 100, Content = button };
-                window.Show();
+                probe = new Window { Width = 200, Height = 100, Content = button };
+                probe.Show();
                 Dispatcher.UIThread.RunJobs();
-                window.UpdateLayout();
+                probe.UpdateLayout();
                 Assert.AreEqual(20.0, button.FontSize, "界面字号设置本应作用到普通控件上。");
 
                 Assert.AreEqual(MenuFontSize, OpenMenu().Check.FontSize,
@@ -142,6 +165,7 @@ public class MenuGlyphStyleTests
             }
             finally
             {
+                probe?.Close();
                 res.Remove("VelaUiFontSize");
                 res.Remove("ControlContentThemeFontSize");
             }
@@ -161,6 +185,8 @@ public class MenuGlyphStyleTests
 
         var host = new Border { Width = 200, Height = 100, ContextMenu = menu };
         var window = new Window { Width = 400, Height = 300, Content = host };
+        _openedWindow = window;
+        _openedMenu = menu;
         window.Show();
         Dispatcher.UIThread.RunJobs();
         window.UpdateLayout();

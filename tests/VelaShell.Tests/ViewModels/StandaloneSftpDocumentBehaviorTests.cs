@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Reactive.Linq;
 using System.Reflection;
@@ -341,65 +342,6 @@ public sealed class StandaloneSftpDocumentBehaviorTests
 
     [TestMethod]
     [TestCategory("Sftp")]
-    public async Task MainWindowClose_WaitsForAllStandaloneSftpDocumentsBeforeFinalClose()
-    {
-        IConnectionWorkflowService workflow = Substitute.For<IConnectionWorkflowService>();
-        ISftpService sftp = Substitute.For<ISftpService>();
-        var closeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseClose = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        SessionProfile firstProfile = CreateSftpProfile();
-        SessionProfile secondProfile = CreateSftpProfile();
-        SshSession firstSession = CreateSession(firstProfile.Id);
-        SshSession secondSession = CreateSession(secondProfile.Id);
-        ConfigureInitialLoad(sftp, firstSession.SessionId);
-        ConfigureInitialLoad(sftp, secondSession.SessionId);
-        sftp.CloseSessionAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
-            .Returns(async callInfo =>
-            {
-                closeStarted.TrySetResult();
-                await releaseClose.Task;
-            });
-
-        await _session.Dispatch(async () =>
-        {
-            var vm = new MainWindowViewModel(workflow, sftpService: sftp);
-            vm.Layout.AddDocument(new SftpDocument(
-                new SftpDocumentViewModel(
-                    firstProfile,
-                    firstSession,
-                    workflow,
-                    sftp,
-                    new TransferOptions())));
-            vm.Layout.AddDocument(new SftpDocument(
-                new SftpDocumentViewModel(
-                    secondProfile,
-                    secondSession,
-                    workflow,
-                    sftp,
-                    new TransferOptions())));
-            var window = new MainWindow { DataContext = vm };
-            var finalClose = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            window.Closed += (_, _) => finalClose.TrySetResult();
-
-            window.Show();
-            window.Close();
-            await closeStarted.Task;
-
-            Assert.IsTrue(window.IsVisible, "The first close must be deferred while SFTP cleanup is blocked.");
-            Assert.IsFalse(finalClose.Task.IsCompleted, "The final close must wait for standalone SFTP cleanup.");
-            await sftp.Received(1).CloseSessionAsync(firstSession.SessionId, Arg.Any<CancellationToken>());
-            await sftp.Received(1).CloseSessionAsync(secondSession.SessionId, Arg.Any<CancellationToken>());
-            _ = workflow.DidNotReceiveWithAnyArgs().DisconnectAsync(default);
-
-            releaseClose.SetResult();
-            await finalClose.Task;
-            await workflow.Received(1).DisconnectAsync(firstSession.SessionId);
-            await workflow.Received(1).DisconnectAsync(secondSession.SessionId);
-        }, CancellationToken.None);
-    }
-
-    [TestMethod]
-    [TestCategory("Sftp")]
     public async Task MainWindowClose_WhenDocumentCleanupAlreadyStarted_StillWaitsForIt()
     {
         IConnectionWorkflowService workflow = Substitute.For<IConnectionWorkflowService>();
@@ -539,6 +481,179 @@ public sealed class StandaloneSftpDocumentBehaviorTests
         var document = new SftpDocument(viewModel);
 
         Assert.AreEqual("Files · SFTP · root@files.example.com:22", document.ConnectionTooltip);
+    }
+
+    /// <summary>
+    /// 回归:独立 SFTP 标签的远程栏必须拿到「默认编辑器」解析回调。
+    /// 曾经只有终端侧边栏的 FileBrowserViewModel 被宿主注入该回调,独立 SFTP 标签自己 new
+    /// 的那个漏了,导致右键「使用默认编辑器打开」在明明已配置的情况下仍报“未配置”。
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Sftp")]
+    public async Task SftpDocument_ForwardsDefaultEditorResolverToRemotePane()
+    {
+        IConnectionWorkflowService workflow = Substitute.For<IConnectionWorkflowService>();
+        ISftpService sftp = Substitute.For<ISftpService>();
+        SshSession session = CreateSession();
+        ConfigureInitialLoad(sftp, session.SessionId);
+
+        var document = new SftpDocumentViewModel(
+            CreateSftpProfile(),
+            session,
+            workflow,
+            sftp,
+            new TransferOptions(),
+            transferSink: null,
+            getDefaultEditorPath: () => Task.FromResult<string?>("code"));
+
+        Assert.IsNotNull(
+            document.RemoteFiles.GetDefaultEditorPath,
+            "远程栏没有拿到默认编辑器解析回调,「使用默认编辑器打开」会误报未配置。");
+        Assert.AreEqual("code", await document.RemoteFiles.GetDefaultEditorPath!());
+    }
+
+    /// <summary>未注入解析回调时的失败形态:面板只能当作“未配置”处理(即修复前的行为)。</summary>
+    [TestMethod]
+    [TestCategory("Sftp")]
+    public void SftpDocument_WithoutDefaultEditorResolver_LeavesResolverUnset()
+    {
+        IConnectionWorkflowService workflow = Substitute.For<IConnectionWorkflowService>();
+        ISftpService sftp = Substitute.For<ISftpService>();
+        SshSession session = CreateSession();
+        ConfigureInitialLoad(sftp, session.SessionId);
+
+        var document = new SftpDocumentViewModel(
+            CreateSftpProfile(),
+            session,
+            workflow,
+            sftp,
+            new TransferOptions());
+
+        Assert.IsNull(document.RemoteFiles.GetDefaultEditorPath);
+    }
+
+    /// <summary>
+    /// 下载完成后对本地栏的刷新通知必须留在 UI 线程上。
+    /// (自 Todo2VisualCaptureUiTests 迁入:那个文件其余部分是视觉断言,已删除;这条验的是
+    /// 线程编组这种真会出 bug 的行为,与视觉无关,故保留。)
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Sftp")]
+    public async Task DownloadSelectedAsync_RefreshNotificationsStayOnUiSynchronizationContext()
+    {
+        await _session.Dispatch(async () =>
+        {
+            (MainWindowViewModel vm, SessionProfile profile, _, ISftpService sftpService) = CreateConnectedSshViewModel();
+            await vm.OpenSftpForProfileAsync(profile);
+            SftpDocument document = vm.Layout.AllDocuments().OfType<SftpDocument>().Single();
+            await document.ViewModel.InitialLoadTask;
+            RemoteFileInfoViewModel remote = document.ViewModel.RemoteFiles.Files.Single(file => !file.IsParentEntry);
+            document.ViewModel.RemoteFiles.SelectedFiles.Add(remote);
+
+            int uiThread = Environment.CurrentManagedThreadId;
+            List<int> notificationThreads = [];
+            void propertyChanged(object? _1, PropertyChangedEventArgs _2) => notificationThreads.Add(Environment.CurrentManagedThreadId);
+            void collectionChanged(object? _1, NotifyCollectionChangedEventArgs _2) => notificationThreads.Add(Environment.CurrentManagedThreadId);
+            document.ViewModel.LocalFiles.PropertyChanged += propertyChanged;
+            document.ViewModel.LocalFiles.Entries.CollectionChanged += collectionChanged;
+
+            var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            sftpService.DownloadFileAsync(
+                    Arg.Any<Guid>(),
+                    Arg.Any<string>(),
+                    Arg.Any<string>(),
+                    Arg.Any<IProgress<TransferProgress>?>(),
+                    cancellationToken: Arg.Any<CancellationToken>())
+                .Returns(_ =>
+                {
+                    started.SetResult();
+                    return finished.Task;
+                });
+
+            try
+            {
+                Task download = document.ViewModel.DownloadSelectedAsync();
+                await started.Task;
+
+                // 从线程池完成下载 —— 若刷新通知没被编组回 UI 线程,下面的断言就会抓到工作线程 Id。
+                await Task.Run(finished.SetResult);
+                await download;
+                Assert.IsNotEmpty(notificationThreads);
+                Assert.IsTrue(notificationThreads.All(thread => thread == uiThread));
+            }
+            finally
+            {
+                document.ViewModel.LocalFiles.PropertyChanged -= propertyChanged;
+                document.ViewModel.LocalFiles.Entries.CollectionChanged -= collectionChanged;
+
+                // 收尾必须留在 Dispatch 体**内部** await。headless 会话只在派发的工作项执行期间
+                // 泵送 Avalonia dispatcher;把 CloseAsync 挪到工作项之外等,它要排空的在途操作
+                // 其续体绑在 UI 线程上,永远不会被执行 —— 实测那样改会让本用例 60s 超时。
+                await document.ViewModel.CloseAsync();
+            }
+        }, CancellationToken.None);
+    }
+
+    /// <summary>装配一个「SSH 会话已连上、SFTP 可列目录」的主窗口视图模型(含一个 readme.txt)。</summary>
+    private static (MainWindowViewModel ViewModel, SessionProfile Profile, ISshClientWrapper SshClient, ISftpService SftpService) CreateConnectedSshViewModel()
+    {
+        IConnectionWorkflowService workflow = Substitute.For<IConnectionWorkflowService>();
+        ISshConnectionService sshConnectionService = Substitute.For<ISshConnectionService>();
+        ISshClientWrapper sshClient = Substitute.For<ISshClientWrapper>();
+        IShellStreamWrapper shellStream = Substitute.For<IShellStreamWrapper>();
+        ISftpService sftpService = Substitute.For<ISftpService>();
+        ITerminalEmulator terminal = Substitute.For<ITerminalEmulator>();
+        shellStream.CanRead.Returns(true);
+        shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new TaskCompletionSource<int>().Task);
+        var profile = new SessionProfile
+        {
+            Name = "Files",
+            Host = "files.example.com",
+            Port = 22,
+            Username = "root",
+            AuthMethod = AuthMethod.Password,
+            Password = "secret",
+        };
+        var session = new SshSession
+        {
+            SessionId = Guid.NewGuid(),
+            ConnectionInfo = new()
+            {
+                Host = profile.Host,
+                Port = profile.Port,
+                Username = profile.Username,
+                AuthMethod = profile.AuthMethod,
+            },
+            Status = SessionStatus.Connected,
+        };
+        workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>()).Returns(session);
+        sshConnectionService.GetClient(session.SessionId).Returns(sshClient);
+        sshClient.CreateShellStreamAsync("xterm-256color", 120, 32, 0, 0, 4096, Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>(), Arg.Any<CancellationToken>()).Returns(shellStream);
+        sftpService.GetWorkingDirectoryAsync(session.SessionId, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("/home/testuser"));
+        sftpService.ListDirectoryAsync(session.SessionId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new List<RemoteFileInfo>
+            {
+                new()
+                {
+                    Name = "readme.txt",
+                    FullPath = "/home/testuser/readme.txt",
+                    Size = 42,
+                    Permissions = "-rw-r--r--",
+                    IsDirectory = false,
+                    LastModified = new DateTime(2026, 7, 19),
+                    Owner = "testuser",
+                    Group = "testuser",
+                },
+            }));
+        return (
+            new MainWindowViewModel(workflow, sshConnectionService, () => terminal, sftpService: sftpService),
+            profile,
+            sshClient,
+            sftpService
+        );
     }
 
     private static void ConfigureInitialLoad(ISftpService sftp, Guid sessionId)

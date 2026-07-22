@@ -10,10 +10,13 @@ namespace VelaShell.Services;
 /// <remarks>
 /// 之所以走编译期而不是运行时探测,两条路都堵死了(详见 VelaShell.csproj 里那段注释):
 /// · 读 .deps.json:Release 是 PublishSingleFile,该文件被打进 exe 的 bundle,磁盘上没有。
-/// · 读程序集版本:与包版本不是一回事 —— 实测 SSH.NET 的程序集报 2025.1.0.1、
-///   ReactiveUI 报 23.0.0.0,而包版本分别是 2025.1.0 和 23.2.28。
-/// 按包名查还有个好处:不必引用类型。SSH.NET 被刻意隔离在 Infrastructure 层,
+/// · 读程序集版本:与包版本不是一回事 —— 例如 ReactiveUI 的程序集报 23.0.0.0,
+///   而包版本是 23.2.28。
+/// 按包名查还有个好处:不必引用类型。SSH 库(当前 Tmds.Ssh)被刻意隔离在 Infrastructure 层,
 /// 关于页不该为了取个版本号把它引进来。
+/// 注意:这里的包名是**字符串**,换库时不会有编译错误 —— 改 Directory.Packages.props 的同时
+/// 必须同步 SettingsViewModel 的 Describe(...) 与 PackageVersionsTests 的用例
+/// (SSH.NET → Tmds.Ssh 迁移时就漏了后者,关于页版本号会静默变空)。
 /// </remarks>
 internal static class PackageVersions
 {
