@@ -142,6 +142,12 @@ public class SenderTests
     /// <summary>
     /// 用户在文件选择框点取消(空清单)时:发送方应走优雅收尾(发 ZFIN),而不是发 CAN 中止序列。
     /// ZFIN 让远端 rz 干净退回 shell,不会卡在 "rz waiting to receive." 或打印中止错误。
+    /// <para>
+    /// 对端必须**同时预置 ZRINIT 与 ZFIN 应答**:真实的 rz 收到 ZFIN 是会回 ZFIN 的。
+    /// 若对端不应答,发送方会按设计补发 CAN 兜底(见
+    /// <see cref="Send_CancelWhenPeerIgnoresZfin_FallsBackToCancelSequence" />)——
+    /// 那是另一条路径,不该由这条测试来断言。
+    /// </para>
     /// </summary>
     [TestMethod]
     [Timeout(30000, CooperativeCancellation = true)]
@@ -155,11 +161,16 @@ public class SenderTests
         };
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
 
-        // 先让对端把 ZRINIT 放进链路,发送方才能完成握手再问文件。
+        // 对端扮演 rz:先 ZRINIT(发送方据此完成握手再问文件),随后备好 ZFIN 应答。
+        // 预置而不是起后台任务应答 —— a 的出站与 b 的入站是同一条 channel,
+        // 后台读取会和末尾的 DrainOutboundAsync 抢字节。
         await b.WriteAsync(
             ZModemFrameWriter.Write(
                 new ZModemHeader(ZModemFrameType.ZRINIT, 0, 0, 0, ZModemCapabilities.CANFC32),
                 ZModemHeaderFormat.Hex),
+            cts.Token);
+        await b.WriteAsync(
+            ZModemFrameWriter.Write(ZModemHeader.Empty(ZModemFrameType.ZFIN), ZModemHeaderFormat.Hex),
             cts.Token);
 
         ZModemSession session = await new ZModemSender(a, new InMemoryFileSource([]), options).SendAsync(cts.Token);
@@ -172,7 +183,47 @@ public class SenderTests
         Assert.IsTrue(ContainsSequence(outbound, zfin), "取消应发 ZFIN 优雅收尾");
         Assert.IsFalse(
             ContainsSequence(outbound, [ZModemConstants.CAN, ZModemConstants.CAN, ZModemConstants.CAN, ZModemConstants.CAN, ZModemConstants.CAN]),
-            "取消不应发 CAN 中止序列(那会让 rz 报错而非干净退出)");
+            "对端已确认 ZFIN,不该再补 CAN(那会让 rz 报错而非干净退出)");
+    }
+
+    /// <summary>
+    /// 对端收到 ZFIN 却不应答时:发送方在 <see cref="ZModemOptions.PostCancelDrainMax" /> 到期后
+    /// **应当**补发 CAN 中止序列。rz 收到 CAN 会打印 "ZMODEM transfer cancelled" 并退出 ——
+    /// 难看,但总比让用户对着卡死的 "rz waiting to receive." 手动 Ctrl+C 强。
+    /// <para>
+    /// 这是 <see cref="ZModemSender" /> 里一条有意为之的兜底(见 FinishSessionAsync 的 peerAcknowledged 分支),
+    /// 先前无测试覆盖,以致上一条测试误把它当成缺陷。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task Send_CancelWhenPeerIgnoresZfin_FallsBackToCancelSequence()
+    {
+        (InMemoryByteDuplex a, InMemoryByteDuplex b) = InMemoryByteDuplex.CreatePair();
+        var options = new ZModemOptions
+        {
+            PostCancelDrainIdle = TimeSpan.FromMilliseconds(50),
+            PostCancelDrainMax = TimeSpan.FromMilliseconds(200)
+        };
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+        // 只给 ZRINIT,之后装死 —— 模拟一个不响应 ZFIN 的对端。
+        await b.WriteAsync(
+            ZModemFrameWriter.Write(
+                new ZModemHeader(ZModemFrameType.ZRINIT, 0, 0, 0, ZModemCapabilities.CANFC32),
+                ZModemHeaderFormat.Hex),
+            cts.Token);
+
+        ZModemSession session = await new ZModemSender(a, new InMemoryFileSource([]), options).SendAsync(cts.Token);
+
+        Assert.AreEqual(ZModemTransferStatus.Cancelled, session.Status);
+
+        byte[] outbound = await a.DrainOutboundAsync();
+        byte[] zfin = ZModemFrameWriter.Write(ZModemHeader.Empty(ZModemFrameType.ZFIN), ZModemHeaderFormat.Hex);
+        Assert.IsTrue(ContainsSequence(outbound, zfin), "仍应先礼后兵:CAN 之前必须发过 ZFIN");
+        Assert.IsTrue(
+            ContainsSequence(outbound, [ZModemConstants.CAN, ZModemConstants.CAN, ZModemConstants.CAN, ZModemConstants.CAN, ZModemConstants.CAN]),
+            "对端不应答 ZFIN 时应补发 CAN,避免远端一直挂着");
     }
 
     /// <summary>
