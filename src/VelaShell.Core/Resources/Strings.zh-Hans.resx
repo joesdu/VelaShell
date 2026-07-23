@@ -2435,6 +2435,18 @@
   <data name="SetVm_ShortcutToggleFileBrowser" xml:space="preserve">
     <value>切换文件浏览器</value>
   </data>
+  <data name="Sftp_ConflictOverwrite" xml:space="preserve">
+    <value>覆盖</value>
+  </data>
+  <data name="Sftp_ConflictOverwriteAll" xml:space="preserve">
+    <value>全部覆盖</value>
+  </data>
+  <data name="Sftp_ConflictSkip" xml:space="preserve">
+    <value>跳过</value>
+  </data>
+  <data name="Sftp_ConflictSkipAll" xml:space="preserve">
+    <value>全部跳过</value>
+  </data>
   <data name="Sftp_FileExistsTitle" xml:space="preserve">
     <value>文件已存在</value>
   </data>
@@ -2442,7 +2454,7 @@
     <value>本地已有同名文件:
 {0}
 
-覆盖它吗?(取消则跳过该文件)</value>
+覆盖它吗?</value>
   </data>
   <data name="Sftp_NoEditorBody" xml:space="preserve">
     <value>「使用默认编辑器打开」需要先指定编辑器程序:
@@ -2469,7 +2481,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>远端已有同名文件:
 {0}
 
-覆盖它吗?(取消则跳过该文件)</value>
+覆盖它吗?</value>
   </data>
   <data name="Shell_Cmd" xml:space="preserve">
     <value>命令提示符 (CMD)</value>

@@ -155,7 +155,7 @@
       <Border Grid.Row="2" Padding="20,0"
               BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,1,0,0">
-        <StackPanel Orientation="Horizontal" Spacing="8"
+        <StackPanel Name="ButtonBar" Orientation="Horizontal" Spacing="8"
                     HorizontalAlignment="Right" VerticalAlignment="Center">
           <Button Name="CancelButton" Classes="dlg-outline" IsCancel="True" Click="Cancel_Click" />
           <Button Name="ConfirmButton" Classes="dlg-primary" IsDefault="True" Click="Confirm_Click" />
