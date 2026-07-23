@@ -821,15 +821,15 @@ public class FileBrowserViewModel : ReactiveObject
 
     /// <summary>
     /// Set by the view: 下载遇到本地同名文件且策略为“询问”时的覆盖确认
-    /// (arg = 本地路径;true = 覆盖,false = 跳过该文件)。
+    /// (arg = 本地路径;返回覆盖/跳过/全部覆盖/全部跳过,见 <see cref="FileConflictResolution" />)。
     /// </summary>
-    public Func<string, Task<bool>>? ConfirmOverwrite { get; set; }
+    public Func<string, Task<FileConflictResolution>>? ConfirmOverwrite { get; set; }
 
     /// <summary>
     /// Set by the view: 上传遇到远端同名文件且策略为“询问”时的覆盖确认
-    /// (arg = 远端路径;true = 覆盖,false = 跳过该文件)。
+    /// (arg = 远端路径;返回覆盖/跳过/全部覆盖/全部跳过,见 <see cref="FileConflictResolution" />)。
     /// </summary>
-    public Func<string, Task<bool>>? ConfirmRemoteOverwrite { get; set; }
+    public Func<string, Task<FileConflictResolution>>? ConfirmRemoteOverwrite { get; set; }
 
     /// <summary>
     /// 按列键取该列当前的用户可调宽度(视图侧的拖拽与双击自适应用)。
@@ -1634,6 +1634,9 @@ public class FileBrowserViewModel : ReactiveObject
             ct
         );
         var resolved = new List<PlannedFileTransfer>(plan.Count);
+        // 本批次“全部覆盖/全部跳过”的粘性决定:一旦用户在某个冲突上选了“全部…”,
+        // 其余冲突不再逐个弹窗(拖入上千文件时的关键)。null = 尚未决定,仍逐个询问。
+        var conflictDecision = new BatchConflictDecision();
         foreach (PlannedFileTransfer item in plan)
         {
             // 先做断点续传检查:若续传已启用且存在部分文件,从该偏移处续传。
@@ -1649,8 +1652,8 @@ public class FileBrowserViewModel : ReactiveObject
             // 常规冲突处理。
             PlannedFileTransfer? settled =
                 item.Type == TransferType.Download
-                    ? await ResolveLocalConflictAsync(item)
-                    : await ResolveRemoteConflictAsync(item, remoteNames, ct);
+                    ? await ResolveLocalConflictAsync(item, conflictDecision)
+                    : await ResolveRemoteConflictAsync(item, remoteNames, ct, conflictDecision);
             if (settled is not null)
             {
                 resolved.Add(settled);
@@ -1824,7 +1827,10 @@ public class FileBrowserViewModel : ReactiveObject
         }
     }
 
-    private async Task<PlannedFileTransfer?> ResolveLocalConflictAsync(PlannedFileTransfer item)
+    private async Task<PlannedFileTransfer?> ResolveLocalConflictAsync(
+        PlannedFileTransfer item,
+        BatchConflictDecision decision
+    )
     {
         if (item.Type != TransferType.Download || !File.Exists(item.LocalPath))
         {
@@ -1839,11 +1845,60 @@ public class FileBrowserViewModel : ReactiveObject
             case "rename":
                 return item with { LocalPath = NextAvailableLocalName(item.LocalPath) };
             default: // ask
-                if (ConfirmOverwrite is null)
-                {
-                    return item;
-                }
-                return await ConfirmOverwrite(item.LocalPath) ? item : null;
+                return await AskConflictAsync(item, item.LocalPath, ConfirmOverwrite, decision);
+        }
+    }
+
+    /// <summary>本批次“全部覆盖/全部跳过”的粘性决定(见 <see cref="FileConflictResolution" />)。</summary>
+    internal sealed class BatchConflictDecision
+    {
+        /// <summary>true = 全部覆盖,false = 全部跳过,null = 尚未决定(仍逐个询问)。</summary>
+        public bool? OverwriteAll { get; set; }
+    }
+
+    /// <summary>
+    /// “询问”策略下决定单个冲突:覆盖则返回原计划项,跳过则返回 null。粘性决定的判定与
+    /// 记录见 <see cref="DecideConflictAsync" />。
+    /// </summary>
+    private static async Task<PlannedFileTransfer?> AskConflictAsync(
+        PlannedFileTransfer item,
+        string displayPath,
+        Func<string, Task<FileConflictResolution>>? confirm,
+        BatchConflictDecision decision
+    ) => await DecideConflictAsync(displayPath, confirm, decision) ? item : null;
+
+    /// <summary>
+    /// 决定单个冲突是否覆盖(true)还是跳过(false)。已有本批次粘性决定则直接沿用、
+    /// 不再弹窗(拖入上千文件时的关键);否则调 <paramref name="confirm" /> 弹窗,并在用户选
+    /// “全部覆盖/全部跳过”时把决定记入 <paramref name="decision" />,沿用到本批次其余冲突。
+    /// 无 UI 回调(<paramref name="confirm" /> 为 null)时保持既有行为:默认覆盖。
+    /// </summary>
+    internal static async Task<bool> DecideConflictAsync(
+        string displayPath,
+        Func<string, Task<FileConflictResolution>>? confirm,
+        BatchConflictDecision decision
+    )
+    {
+        if (decision.OverwriteAll is { } sticky)
+        {
+            return sticky;
+        }
+        if (confirm is null)
+        {
+            return true;
+        }
+        switch (await confirm(displayPath))
+        {
+            case FileConflictResolution.OverwriteAll:
+                decision.OverwriteAll = true;
+                return true;
+            case FileConflictResolution.SkipAll:
+                decision.OverwriteAll = false;
+                return false;
+            case FileConflictResolution.Overwrite:
+                return true;
+            default: // Skip
+                return false;
         }
     }
 
@@ -1921,7 +1976,8 @@ public class FileBrowserViewModel : ReactiveObject
     private async Task<PlannedFileTransfer?> ResolveRemoteConflictAsync(
         PlannedFileTransfer item,
         Dictionary<string, HashSet<string>> remoteNames,
-        CancellationToken ct
+        CancellationToken ct,
+        BatchConflictDecision decision
     )
     {
         if (item.Type != TransferType.Upload || TransferOptions.ConflictPolicy == "overwrite")
@@ -1946,11 +2002,12 @@ public class FileBrowserViewModel : ReactiveObject
                     ),
                 };
             default: // ask
-                if (ConfirmRemoteOverwrite is null)
-                {
-                    return item;
-                }
-                return await ConfirmRemoteOverwrite(item.RemotePath) ? item : null;
+                return await AskConflictAsync(
+                    item,
+                    item.RemotePath,
+                    ConfirmRemoteOverwrite,
+                    decision
+                );
         }
     }
 

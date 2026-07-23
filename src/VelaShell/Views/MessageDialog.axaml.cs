@@ -82,6 +82,42 @@ public partial class MessageDialog : Window
         return confirmed ? dialog.InputBox.Text : null;
     }
 
+    /// <summary>
+    /// 多选按钮弹窗:按 <paramref name="choices" /> 顺序在按钮栏生成按钮,返回被点按钮的下标;
+    /// 用户按 Esc 或点右上角关闭时返回 <paramref name="cancelResult" />。<paramref name="primaryIndex" />
+    /// 指定的按钮以强调色渲染并作为默认(Enter)动作。用于“文件已存在:覆盖 / 全部覆盖 /
+    /// 跳过 / 全部跳过”等超过两个选项的场景。
+    /// </summary>
+    public static Task<int> ChooseAsync(Window owner,
+        string title,
+        string message,
+        IReadOnlyList<string> choices,
+        int primaryIndex = 0,
+        int cancelResult = -1,
+        MessageDialogKind kind = MessageDialogKind.Question)
+    {
+        var dialog = new MessageDialog();
+        dialog.Configure(title, message, kind, Strings.OK, null, false);
+        dialog._choiceMode = true;
+        dialog._choiceCancelResult = cancelResult;
+        // 复用同一按钮栏:隐去默认的确认/取消,按选项动态铺按钮(顺序即下标)。
+        dialog.ConfirmButton.IsVisible = false;
+        dialog.CancelButton.IsVisible = false;
+        for (int i = 0; i < choices.Count; i++)
+        {
+            int index = i;
+            var button = new Button
+            {
+                Content = choices[i],
+                Classes = { index == primaryIndex ? "dlg-primary" : "dlg-outline" },
+                IsDefault = index == primaryIndex
+            };
+            button.Click += (_, _) => dialog.CloseDeferred(index);
+            dialog.ButtonBar.Children.Add(button);
+        }
+        return dialog.ShowDialog<int>(owner);
+    }
+
     /// <summary>自定义内容(属性表、权限矩阵等):返回 true 表示用户点击了确认。</summary>
     public static Task<bool> ShowCustomAsync(Window owner,
         string title,
@@ -138,18 +174,25 @@ public partial class MessageDialog : Window
         }
     }
 
+    // 多选(ChooseAsync)模式:关闭结果为 int 下标而非 bool;Esc / 右上角关闭返回取消下标。
+    private bool _choiceMode;
+    private int _choiceCancelResult;
+
     private void Confirm_Click(object? sender, RoutedEventArgs e) => CloseDeferred(true);
 
     private void Cancel_Click(object? sender, RoutedEventArgs e) => CloseDeferred(false);
 
-    private void Close_Click(object? sender, RoutedEventArgs e) => CloseDeferred(false);
+    private void Close_Click(object? sender, RoutedEventArgs e) => CloseDeferred(CancelResult());
+
+    /// <summary>取消/关闭时的返回值:多选模式为取消下标(int),否则为 false(bool)。</summary>
+    private object? CancelResult() => _choiceMode ? _choiceCancelResult : false;
 
     /// <summary>
     /// 输入事件处理器内不得同步 Close:窗口销毁后,本轮输入事件的剩余路由
     /// (PointerReleased 等)会打到已无 PlatformImpl 的窗口上,Avalonia 刷
     /// "PlatformImpl is null, couldn't handle input" 警告。推迟到当前事件出栈后再关。
     /// </summary>
-    private void CloseDeferred(bool result) =>
+    private void CloseDeferred(object? result) =>
         Avalonia.Threading.Dispatcher.UIThread.Post(() => Close(result));
 
     /// <summary>拦截 Esc 键关闭弹窗:纯消息框(无取消按钮)时也能用 Esc 取消。</summary>
@@ -158,7 +201,7 @@ public partial class MessageDialog : Window
         // 无取消按钮的纯消息框也要能用 Esc 关闭(IsCancel 只在按钮可见时生效)。
         if (e.Key == Key.Escape)
         {
-            CloseDeferred(false);
+            CloseDeferred(CancelResult());
             e.Handled = true;
             return;
         }

@@ -2344,6 +2344,18 @@ Paste anyway?</value>
   <data name="SetVm_ShortcutToggleFileBrowser" xml:space="preserve">
     <value>Toggle File Browser</value>
   </data>
+  <data name="Sftp_ConflictOverwrite" xml:space="preserve">
+    <value>Overwrite</value>
+  </data>
+  <data name="Sftp_ConflictOverwriteAll" xml:space="preserve">
+    <value>Overwrite All</value>
+  </data>
+  <data name="Sftp_ConflictSkip" xml:space="preserve">
+    <value>Skip</value>
+  </data>
+  <data name="Sftp_ConflictSkipAll" xml:space="preserve">
+    <value>Skip All</value>
+  </data>
   <data name="Sftp_FileExistsTitle" xml:space="preserve">
     <value>File already exists</value>
   </data>
@@ -2351,7 +2363,7 @@ Paste anyway?</value>
     <value>A local file with the same name exists:
 {0}
 
-Overwrite it? (Cancel skips this file)</value>
+Overwrite it?</value>
   </data>
   <data name="Sftp_NoEditorBody" xml:space="preserve">
     <value>"Open with default editor" needs an editor program to be set first:
@@ -2378,7 +2390,7 @@ Open Settings now to configure it?</value>
     <value>A remote file with the same name exists:
 {0}
 
-Overwrite it? (Cancel skips this file)</value>
+Overwrite it?</value>
   </data>
   <data name="Shell_Cmd" xml:space="preserve">
     <value>Command Prompt (CMD)</value>

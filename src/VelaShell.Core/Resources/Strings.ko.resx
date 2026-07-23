@@ -2280,6 +2280,18 @@
   <data name="SetVm_ShortcutToggleFileBrowser" xml:space="preserve">
     <value>파일 브라우저 전환</value>
   </data>
+  <data name="Sftp_ConflictOverwrite" xml:space="preserve">
+    <value>덮어쓰기</value>
+  </data>
+  <data name="Sftp_ConflictOverwriteAll" xml:space="preserve">
+    <value>모두 덮어쓰기</value>
+  </data>
+  <data name="Sftp_ConflictSkip" xml:space="preserve">
+    <value>건너뛰기</value>
+  </data>
+  <data name="Sftp_ConflictSkipAll" xml:space="preserve">
+    <value>모두 건너뛰기</value>
+  </data>
   <data name="Sftp_FileExistsTitle" xml:space="preserve">
     <value>파일이 이미 있습니다</value>
   </data>
@@ -2287,7 +2299,7 @@
     <value>같은 이름의 로컬 파일이 있습니다:
 {0}
 
-덮어쓰시겠습니까? (취소하면 이 파일을 건너뜁니다)</value>
+덮어쓰시겠습니까?</value>
   </data>
   <data name="Sftp_NoEditorBody" xml:space="preserve">
     <value>"기본 편집기로 열기"를 사용하려면 먼저 편집기 프로그램을 지정해야 합니다:
@@ -2314,7 +2326,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
     <value>같은 이름의 원격 파일이 있습니다:
 {0}
 
-덮어쓰시겠습니까? (취소하면 이 파일을 건너뜁니다)</value>
+덮어쓰시겠습니까?</value>
   </data>
   <data name="Shell_Cmd" xml:space="preserve">
     <value>명령 프롬프트 (CMD)</value>

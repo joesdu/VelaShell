@@ -2280,6 +2280,18 @@
   <data name="SetVm_ShortcutToggleFileBrowser" xml:space="preserve">
     <value>切換檔案瀏覽器</value>
   </data>
+  <data name="Sftp_ConflictOverwrite" xml:space="preserve">
+    <value>覆寫</value>
+  </data>
+  <data name="Sftp_ConflictOverwriteAll" xml:space="preserve">
+    <value>全部覆寫</value>
+  </data>
+  <data name="Sftp_ConflictSkip" xml:space="preserve">
+    <value>跳過</value>
+  </data>
+  <data name="Sftp_ConflictSkipAll" xml:space="preserve">
+    <value>全部跳過</value>
+  </data>
   <data name="Sftp_FileExistsTitle" xml:space="preserve">
     <value>檔案已存在</value>
   </data>
@@ -2287,7 +2299,7 @@
     <value>本機已有同名檔案:
 {0}
 
-要覆寫嗎?(取消則跳過該檔案)</value>
+要覆寫嗎?</value>
   </data>
   <data name="Sftp_NoEditorBody" xml:space="preserve">
     <value>「使用預設編輯器開啟」需要先指定編輯器程式:
@@ -2314,7 +2326,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>遠端已有同名檔案:
 {0}
 
-要覆寫嗎?(取消則跳過該檔案)</value>
+要覆寫嗎?</value>
   </data>
   <data name="Shell_Cmd" xml:space="preserve">
     <value>命令提示字元 (CMD)</value>

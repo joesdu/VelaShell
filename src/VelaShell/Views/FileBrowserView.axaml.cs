@@ -453,34 +453,50 @@ public partial class FileBrowserView : UserControl
         return file?.TryGetLocalPath();
     }
 
-    /// <summary>下载遇到本地同名文件且冲突策略为“询问”:覆盖 or 跳过该文件。</summary>
-    private async Task<bool> ConfirmOverwriteAsync(string localPath)
-    {
-        if (TopLevel.GetTopLevel(this) is not Window owner)
-        {
-            return true;
-        }
-        return await MessageDialog.ConfirmAsync(
-            owner,
-            Strings.Get("Sftp_FileExistsTitle"),
-            Strings.Format("Sftp_LocalOverwriteBody", localPath),
-            kind: MessageDialogKind.Warning
-        );
-    }
+    /// <summary>
+    /// 下载遇到本地同名文件且冲突策略为“询问”:覆盖 / 全部覆盖 / 跳过 / 全部跳过。
+    /// 无宿主窗口(理论上不至于)时保守按覆盖处理,与旧行为一致。
+    /// </summary>
+    private Task<FileConflictResolution> ConfirmOverwriteAsync(string localPath) =>
+        AskConflictAsync(Strings.Format("Sftp_LocalOverwriteBody", localPath));
 
-    /// <summary>上传遇到远端同名文件且冲突策略为“询问”:覆盖 or 跳过该文件。</summary>
-    private async Task<bool> ConfirmRemoteOverwriteAsync(string remotePath)
+    /// <summary>
+    /// 上传遇到远端同名文件且冲突策略为“询问”:覆盖 / 全部覆盖 / 跳过 / 全部跳过。
+    /// </summary>
+    private Task<FileConflictResolution> ConfirmRemoteOverwriteAsync(string remotePath) =>
+        AskConflictAsync(Strings.Format("Sftp_RemoteOverwriteBody", remotePath));
+
+    /// <summary>
+    /// 弹出四选一冲突弹窗(覆盖 / 全部覆盖 / 跳过 / 全部跳过),批量传输时“全部…”一次决定
+    /// 沿用到本批次其余冲突,免去逐文件弹窗。Esc / 关闭 = 跳过该文件(不误覆盖)。
+    /// </summary>
+    private async Task<FileConflictResolution> AskConflictAsync(string body)
     {
         if (TopLevel.GetTopLevel(this) is not Window owner)
         {
-            return true;
+            return FileConflictResolution.Overwrite;
         }
-        return await MessageDialog.ConfirmAsync(
+        int choice = await MessageDialog.ChooseAsync(
             owner,
             Strings.Get("Sftp_FileExistsTitle"),
-            Strings.Format("Sftp_RemoteOverwriteBody", remotePath),
+            body,
+            [
+                Strings.Get("Sftp_ConflictOverwrite"),
+                Strings.Get("Sftp_ConflictOverwriteAll"),
+                Strings.Get("Sftp_ConflictSkip"),
+                Strings.Get("Sftp_ConflictSkipAll"),
+            ],
+            primaryIndex: 0,
+            cancelResult: 2, // Esc / 关闭 = 跳过该文件(下标 2)。
             kind: MessageDialogKind.Warning
         );
+        return choice switch
+        {
+            0 => FileConflictResolution.Overwrite,
+            1 => FileConflictResolution.OverwriteAll,
+            3 => FileConflictResolution.SkipAll,
+            _ => FileConflictResolution.Skip,
+        };
     }
 
     /// <summary>
