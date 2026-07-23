@@ -39,6 +39,56 @@ public class SftpServiceTests
     }
 
     [TestMethod]
+    public async Task UploadFileAsync_PreserveTimestampsOn_SetsRemoteMtimeToLocalFileMtime()
+    {
+        // 默认(无设置服务)保留时间戳 = true:上传完成后必须把远端 mtime 设回本地源文件的 mtime(scp -p 语义)。
+        string localPath = Path.Combine(Path.GetTempPath(), $"vela-mtime-{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(localPath, "timestamp probe");
+        var knownUtc = new DateTime(2026, 7, 20, 3, 4, 5, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(localPath, knownUtc);
+        try
+        {
+            _sftpClient.UploadAsync(Arg.Any<Stream>(), Arg.Any<string>(), Arg.Any<Action<ulong>>(), Arg.Any<CancellationToken>())
+                       .Returns(Task.CompletedTask);
+
+            await _sftpService.UploadFileAsync(_sessionId, localPath, "/home/user/up.txt");
+
+            await _sftpClient.Received(1).SetLastWriteTimeAsync(
+                "/home/user/up.txt",
+                Arg.Is<DateTimeOffset>(d => d.UtcDateTime == knownUtc),
+                Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            File.Delete(localPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task UploadFileAsync_PreserveTimestampsOff_DoesNotTouchRemoteMtime()
+    {
+        var settings = Substitute.For<VelaShell.Core.Data.ISettingsService>();
+        settings.GetSettingsAsync().Returns(new AppSettings { Transfer = { PreserveTimestamps = false } });
+        var service = new SftpService(_connectionService, _ => _sftpClient, settings);
+        string localPath = Path.Combine(Path.GetTempPath(), $"vela-mtime-{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(localPath, "timestamp probe");
+        try
+        {
+            _sftpClient.UploadAsync(Arg.Any<Stream>(), Arg.Any<string>(), Arg.Any<Action<ulong>>(), Arg.Any<CancellationToken>())
+                       .Returns(Task.CompletedTask);
+
+            await service.UploadFileAsync(_sessionId, localPath, "/home/user/up.txt");
+
+            await _sftpClient.DidNotReceive().SetLastWriteTimeAsync(
+                Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            File.Delete(localPath);
+        }
+    }
+
+    [TestMethod]
     public async Task GetWorkingDirectoryAsync_ReturnsClientWorkingDirectory()
     {
         _sftpClient.WorkingDirectory.Returns("/home/testuser");

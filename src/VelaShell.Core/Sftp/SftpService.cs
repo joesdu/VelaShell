@@ -53,7 +53,7 @@ public class SftpService(
         string fileName = Path.GetFileName(localPath);
         var reporter = new ProgressThrottle(progress, fileName, totalBytes);
         Action<ulong>? onBytes = reporter.IsEnabled ? bytes => reporter.Report((long)bytes) : null;
-        (long uploadBps, _, _) = await GetTransferTuningAsync().ConfigureAwait(false);
+        (long uploadBps, _, bool preserveTimestamps) = await GetTransferTuningAsync().ConfigureAwait(false);
 
         // 以此刻的远端状态重新核实续传起点;核实不通过会抛错,核实为"无可续"则整份重传。
         if (resumeOffset > 0)
@@ -77,6 +77,25 @@ public class SftpService(
 
             // 节流会丢弃最后一个时间片内的上报,不强制收尾进度条会停在 99%。
             reporter.ReportFinal(totalBytes);
+
+            // 保留时间戳(设置 → 文件传输,scp -p 语义):把远端 mtime 设回本地源文件的
+            // mtime(下载方向的对等实现见 DownloadFileAsync)。尽力而为——个别服务器
+            // 禁 setstat,不能让一次时间戳设置失败把已完成的上传标成失败。
+            if (preserveTimestamps)
+            {
+                try
+                {
+                    await client.SetLastWriteTimeAsync(remotePath, fileInfo.LastWriteTimeUtc, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch
+                {
+                    // 时间戳只是尽力而为。
+                }
+            }
         }
         catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is not OperationCanceledException)
         {

@@ -88,6 +88,12 @@ public interface ISftpClientWrapper : IDisposable
     Task ChangePermissionsAsync(string path, short mode, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 设置远端条目的最后修改时间(SFTP setstat)。用于"保留时间戳"的上传收尾
+    /// (scp -p 语义):上传完成后把远端 mtime 设回本地源文件的 mtime。
+    /// </summary>
+    Task SetLastWriteTimeAsync(string path, DateTimeOffset lastWriteTime, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 以读或写方式打开远端文件。
     /// <para>
     /// **实现必须返回可 Seek 的流**(<see cref="Stream.CanSeek" /> 为 <c>true</c>):
