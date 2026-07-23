@@ -20,7 +20,9 @@
       <!-- 文件浏览器行(design frame dyuii):橙色文件夹图标,青色目录名。 -->
       <SolidColorBrush x:Key="VelaFileFolderIcon" Color="#FFB86C" />
       <SolidColorBrush x:Key="VelaFileDirName" Color="#8BE9FD" />
-      <FontFamily x:Key="VelaTerminalFont">JetBrains Mono, Cascadia Mono, Consolas, monospace</FontFamily>
+      <!-- 终端字体:内置 Cascadia Mono 打头(三平台一致、无连字、含制表/框线字形),
+           系统装了 JetBrains Mono 的用户仍可在设置里切回;CJK 走系统回退。 -->
+      <FontFamily x:Key="VelaTerminalFont">fonts:VelaShell#Cascadia Mono, JetBrains Mono, Consolas, monospace</FontFamily>
       <FontFamily x:Key="VelaUiFont">fonts:Inter#Inter, Segoe UI, Microsoft YaHei, sans-serif</FontFamily>
     </ResourceDictionary>
     <!-- Alucard 亮色:accent=紫 #644AC9,弱文字取 Alucard comment #6C664B。 -->
@@ -41,7 +43,9 @@
       <!-- 文件浏览器行:Alucard 黄色文件夹,青色目录名。 -->
       <SolidColorBrush x:Key="VelaFileFolderIcon" Color="#9E841A" />
       <SolidColorBrush x:Key="VelaFileDirName" Color="#036A96" />
-      <FontFamily x:Key="VelaTerminalFont">JetBrains Mono, Cascadia Mono, Consolas, monospace</FontFamily>
+      <!-- 终端字体:内置 Cascadia Mono 打头(三平台一致、无连字、含制表/框线字形),
+           系统装了 JetBrains Mono 的用户仍可在设置里切回;CJK 走系统回退。 -->
+      <FontFamily x:Key="VelaTerminalFont">fonts:VelaShell#Cascadia Mono, JetBrains Mono, Consolas, monospace</FontFamily>
       <FontFamily x:Key="VelaUiFont">fonts:Inter#Inter, Segoe UI, Microsoft YaHei, sans-serif</FontFamily>
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>

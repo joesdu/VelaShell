@@ -9,4 +9,13 @@
     <PackageReference Include="Avalonia.Themes.Fluent" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 内置字体(随程序分发,三平台一致渲染,SIL OFL 1.1 许可,见 Assets/Fonts/LICENSE.txt):
+         Cascadia Mono 四静态字重(终端默认,无连字——本终端按格钉排,连字无法正确呈现)。
+         CJK 走系统回退;Cascadia Next 待微软发布静态字重后再内置(现只有变量字体,
+         默认字重极细且 Avalonia 不枚举命名实例)。
+         经 Program.BuildAvaloniaApp 的 EmbeddedFontCollection 以 fonts:VelaShell 键注册。 -->
+    <AvaloniaResource Include="Assets/Fonts/**" />
+  </ItemGroup>
+
 </Project>

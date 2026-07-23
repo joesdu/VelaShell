@@ -15,8 +15,12 @@ public class AppSettings
     /// <summary>强调色覆盖(十六进制字符串,如 "#00D4AA");空 = 使用主题默认值。</summary>
     public string AccentColor { get; set; } = "#E91E63";
 
-    /// <summary>终端渲染使用的等宽字体族名。</summary>
-    public string TerminalFont { get; set; } = "JetBrains Mono";
+    /// <summary>
+    /// 终端渲染使用的等宽字体族名。默认内置的 Cascadia Mono(随程序分发,Linux/macOS
+    /// 无需安装;无连字——本终端按格钉排,连字无法正确呈现)。也可填任何系统已装字体;
+    /// 已保存的旧值(如 JetBrains Mono)不受影响。CJK 走系统回退。
+    /// </summary>
+    public string TerminalFont { get; set; } = "Cascadia Mono";
 
     /// <summary>终端字体字号(磅)。</summary>
     public int TerminalFontSize { get; set; } = 14;

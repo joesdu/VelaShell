@@ -1951,7 +1951,7 @@
     <value>ターミナルのフォント</value>
   </data>
   <data name="SetTerm_FontDesc" xml:space="preserve">
-    <value>// ターミナルで使用する等幅フォント</value>
+    <value>// ターミナルの等幅フォント。内蔵:Cascadia Mono(同梱、インストール不要)。インストール済みフォント名も指定可能</value>
   </data>
   <data name="SetTerm_FontDisplaySection" xml:space="preserve">
     <value>フォントと表示</value>

@@ -2508,6 +2508,16 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
+    /// 把设置里的裸字体族名解析为可寻址的 FontFamily 名:内置字体(随程序分发,
+    /// fonts:VelaShell 集合)必须带集合 URI 前缀才能被字体管理器命中,系统字体名原样返回。
+    /// 这使设置页的自由文本框既能填 "Cascadia Mono" 这类内置族,也能填任意系统字体。
+    /// </summary>
+    private static string ResolveTerminalFontFamily(string name) =>
+        name is "Cascadia Mono"
+            ? $"fonts:VelaShell#{name}"
+            : name;
+
+    /// <summary>
     /// 可在活动会话上安全更改的设置:回滚深度、字体、字号、主机输出编码以及完整的
     /// 终端行为/配色选项集。在标签创建时应用,并每次保存设置后重新应用到所有已打开的标签(#3/#15/#21)。
     /// </summary>
@@ -2527,7 +2537,7 @@ public class MainWindowViewModel : ReactiveObject
         if (!string.IsNullOrWhiteSpace(settings.TerminalFont))
         {
             control.FontFamily = new(
-                $"{settings.TerminalFont}, JetBrains Mono, Cascadia Mono, Consolas, Microsoft YaHei, monospace"
+                $"{ResolveTerminalFontFamily(settings.TerminalFont.Trim())}, fonts:VelaShell#Cascadia Mono, JetBrains Mono, Consolas, monospace"
             );
         }
         if (settings.TerminalFontSize > 0)
