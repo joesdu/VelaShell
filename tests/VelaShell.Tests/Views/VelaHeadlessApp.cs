@@ -34,6 +34,12 @@ public class VelaHeadlessApp : Application
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<VelaHeadlessApp>()
                   .UseSkia()
+                  // 与生产 Program.BuildAvaloniaApp 同源的内置字体集合:令牌里的
+                  // fonts:VelaShell#... 在测试里同样可解析,EmbeddedFontTests 据此守住资源接线。
+                  .ConfigureFonts(fontManager => fontManager.AddFontCollection(
+                      new Avalonia.Media.Fonts.EmbeddedFontCollection(
+                          new Uri("fonts:VelaShell"),
+                          new Uri("avares://VelaShell.Controls/Assets/Fonts"))))
                   .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
 
     private static ResourceInclude LoadDictionary(string uri) => new(new Uri(uri)) { Source = new(uri) };

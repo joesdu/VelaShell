@@ -2109,7 +2109,7 @@
     <value>终端字体</value>
   </data>
   <data name="SetTerm_FontDesc" xml:space="preserve">
-    <value>// 终端中使用的等宽字体</value>
+    <value>// 终端等宽字体。内置:Cascadia Mono(随程序分发,无需安装);也可填任何已安装的字体名</value>
   </data>
   <data name="SetTerm_FontDisplaySection" xml:space="preserve">
     <value>字体与显示</value>

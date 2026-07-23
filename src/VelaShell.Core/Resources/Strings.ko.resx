@@ -1951,7 +1951,7 @@
     <value>터미널 글꼴</value>
   </data>
   <data name="SetTerm_FontDesc" xml:space="preserve">
-    <value>// 터미널에서 사용할 고정폭 글꼴</value>
+    <value>// 터미널 고정폭 글꼴. 내장: Cascadia Mono(프로그램에 포함, 설치 불필요); 설치된 글꼴 이름도 사용 가능</value>
   </data>
   <data name="SetTerm_FontDisplaySection" xml:space="preserve">
     <value>글꼴 및 표시</value>

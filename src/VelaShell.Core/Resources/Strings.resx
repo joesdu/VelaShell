@@ -2018,7 +2018,7 @@ Paste anyway?</value>
     <value>Terminal font</value>
   </data>
   <data name="SetTerm_FontDesc" xml:space="preserve">
-    <value>// Monospaced font used in the terminal</value>
+    <value>// Monospaced terminal font. Built-in: Cascadia Mono (bundled, no install needed); any installed font name also works</value>
   </data>
   <data name="SetTerm_FontDisplaySection" xml:space="preserve">
     <value>Font &amp; Display</value>

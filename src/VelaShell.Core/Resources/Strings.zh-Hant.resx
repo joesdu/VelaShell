@@ -1951,7 +1951,7 @@
     <value>終端機字型</value>
   </data>
   <data name="SetTerm_FontDesc" xml:space="preserve">
-    <value>// 終端機使用的等寬字型</value>
+    <value>// 終端機等寬字型。內建:Cascadia Mono(隨程式散佈,無需安裝);亦可填任何已安裝的字型名稱</value>
   </data>
   <data name="SetTerm_FontDisplaySection" xml:space="preserve">
     <value>字型與顯示</value>

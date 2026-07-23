@@ -165,6 +165,15 @@ internal static partial class Program
                   .UseWayland()
 #endif
                   .WithInterFont()
+                  // 内置 Cascadia Mono(fonts:VelaShell 键,四静态字重):Linux/macOS 不自带,
+                  // 内置才能三平台一致的终端字形。CJK 走系统回退(YaHei/PingFang/Noto)。
+                  // 刻意不内置 Cascadia Next SC/TC/JP:它目前是 pre-release 且只发布变量字体,
+                  // fvar 默认字重 200(极细),而 Avalonia 只按默认轴位置渲染、不枚举命名实例——
+                  // 不改字体文件就没法用;等微软发布静态字重后再内置。
+                  .ConfigureFonts(fontManager => fontManager.AddFontCollection(
+                      new Avalonia.Media.Fonts.EmbeddedFontCollection(
+                          new Uri("fonts:VelaShell"),
+                          new Uri("avares://VelaShell.Controls/Assets/Fonts"))))
                   .LogToTrace()
                   .UseReactiveUI(_ => { });
 }
