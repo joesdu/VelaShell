@@ -45,13 +45,25 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     private readonly Dictionary<GlyphKey, FormattedText> _glyphCache = [];
     private readonly List<char> _runChars = [];
     private readonly List<GlyphInfo> _runGlyphs = [];
-    private readonly SemanticMatcher _semanticMatcher = new();
 
     // 客户端语义着色(URL、IP、错误/警告/成功词、选项标志、数字),针对
     // 远端程序留在默认颜色下的文本,使普通日志/MOTD 也能被高亮,
     // 且绝不破坏显式 SGR 颜色(ls --color、git 等)。正则结果按行文本缓存,
     // 因为可见行每一帧都会被重新扫描(光标闪烁、输出)。
     private readonly Dictionary<string, IReadOnlyList<SemanticSpan>> _semanticSpanCache = [];
+
+    // 侧栏文本(时间戳/行号/折叠标记)的 FormattedText 缓存:这些文本帧间高度重复
+    // (行号在滚动稳定时完全不变),不缓存则每行每帧做一次文本塑形。
+    // 键为文本本身;暗色画刷随主题变化时整体失效(见 GutterText)。
+    private readonly Dictionary<string, FormattedText> _gutterTextCache = [];
+    private ImmutableSolidColorBrush? _gutterTextCacheBrush;
+
+    // ComputeSemanticColumns 的复用缓冲:该方法对每个可见行、每一帧都会执行,
+    // 若每次都 new StringBuilder/List/数组,全屏 TUI 下就是每帧几百次堆分配直喂 GC。
+    // 三者都只在 UI 线程的渲染路径内短暂使用,跨行复用安全。
+    private readonly StringBuilder _semanticLineBuilder = new();
+    private readonly List<int> _semanticColByChar = [];
+    private SemanticKind?[] _semanticByColumn = [];
 
     // ---- Glyph-run batching -------------------------------------------------
     // 每个可见行被绘制为少数几个 GlyphRun —— 每个连续且共享同一字体风格与前景色的
@@ -713,15 +725,22 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         }
     }
 
+    // 跨线程输出更新的合批标志:同一帧内多次 Feed 只排一次 UI 回调,后续搭便车。
+    private int _outputUpdateQueued;
+
     private void OnEmulatorUpdated()
     {
         if (Dispatcher.UIThread.CheckAccess())
         {
             ApplyOutputUpdate();
         }
-        else
+        else if (Interlocked.CompareExchange(ref _outputUpdateQueued, 1, 0) == 0)
         {
-            Dispatcher.UIThread.Post(ApplyOutputUpdate);
+            Dispatcher.UIThread.Post(() =>
+            {
+                Interlocked.Exchange(ref _outputUpdateQueued, 0);
+                ApplyOutputUpdate();
+            });
         }
     }
 
@@ -731,6 +750,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         // 视图固定不动,以免后台输出把其拽回下方(修复 #15)—— 除非
         // 设置 → 终端 → 有输出时自动滚动已开启,此时会把视图拉回实时底部。
         int scrollback = Emulator.Screen.ScrollbackCount;
+        int offsetBefore = _scrollOffset;
         if (ScrollOnOutput && _scrollOffset > 0 && scrollback > _lastScrollbackCount)
         {
             _scrollOffset = 0;
@@ -739,9 +759,15 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         {
             _scrollOffset = PinScrollOffset(_scrollOffset, _lastScrollbackCount, scrollback);
         }
+        bool scrollStateChanged = scrollback != _lastScrollbackCount || _scrollOffset != offsetBefore;
         _lastScrollbackCount = scrollback;
         InvalidateVisual();
-        ScrollChanged?.Invoke();
+        // 滚动几何没变(如 htop 原地重绘、进度条刷新)就不惊动滚动条等订阅者:
+        // 稳态输出下这是每次 Feed 一趟的下游刷新,省掉是纯赚。
+        if (scrollStateChanged)
+        {
+            ScrollChanged?.Invoke();
+        }
         _imeClient?.NotifyCursorMoved();
     }
 
@@ -966,6 +992,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
         // 缓存的字形绑定在旧的字体/字号上;任何度量变化都应丢弃它们。
         _glyphCache.Clear();
+        _gutterTextCache.Clear();
+        _gutterTextCacheBrush = null;
         _ghostFormatted = null;
         _styleTypefacesReady = false;
     }
@@ -1269,6 +1297,32 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     internal static bool ShowsGutterFor(TerminalRow line, int absoluteRow, int cursorAbsoluteRow) =>
         line.LastNonBlank() >= 0 || (line.Timestamp is not null && absoluteRow <= cursorAbsoluteRow);
 
+    /// <summary>
+    /// 侧栏文本的缓存取用:命中直接复用已塑形的 <see cref="FormattedText" />。
+    /// 画刷实例变化(主题切换/画刷缓存重建)时整体失效;字体/字号变化时随
+    /// <c>_glyphCache</c> 一起清空。上限防长会话滚动把历史行号无界积累。
+    /// </summary>
+    private FormattedText GutterText(string text, Typeface typeface, ImmutableSolidColorBrush brush)
+    {
+        if (!ReferenceEquals(_gutterTextCacheBrush, brush))
+        {
+            _gutterTextCache.Clear();
+            _gutterTextCacheBrush = brush;
+        }
+        if (_gutterTextCache.TryGetValue(text, out FormattedText? cached))
+        {
+            return cached;
+        }
+        if (_gutterTextCache.Count > 512)
+        {
+            _gutterTextCache.Clear();
+        }
+        var formatted = new FormattedText(
+            text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, FontSize, brush);
+        _gutterTextCache[text] = formatted;
+        return formatted;
+    }
+
     private void RenderGutter(DrawingContext context, TerminalScreen screen, TerminalPalette palette, int rows)
     {
         // 侧栏底色刻意保持与终端背景一致(不再叠色):正文区域整体右移,侧栏落在开头那次全局底色填充上,
@@ -1297,17 +1351,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             {
                 string stamp =
                     "[" + ts.ToString(GutterTimeFormat, CultureInfo.InvariantCulture) + "] ";
-                context.DrawText(
-                    new(
-                        stamp,
-                        CultureInfo.InvariantCulture,
-                        FlowDirection.LeftToRight,
-                        typeface,
-                        FontSize,
-                        dimBrush
-                    ),
-                    new Point(0, y)
-                );
+                context.DrawText(GutterText(stamp, typeface, dimBrush), new Point(0, y));
             }
             if (ShowLineNumber)
             {
@@ -1315,17 +1359,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
                     (absoluteRow + 1)
                         .ToString(CultureInfo.InvariantCulture)
                         .PadLeft(GutterLayout.NumberDigits) + " ";
-                context.DrawText(
-                    new(
-                        number,
-                        CultureInfo.InvariantCulture,
-                        FlowDirection.LeftToRight,
-                        typeface,
-                        FontSize,
-                        dimBrush
-                    ),
-                    new Point(numberLeft, y)
-                );
+                context.DrawText(GutterText(number, typeface, dimBrush), new Point(numberLeft, y));
             }
         }
         if (lastContentRow < 0)
@@ -1355,7 +1389,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         GutterLayout g = Gutter;
         double cx = g.FoldLeft + g.FoldWidth / 2;
         context.DrawLine(
-            new Pen(BrushFor(Blend(dim, palette.DefaultBackground, 0.4)), 1),
+            PenFor(Blend(dim, palette.DefaultBackground, 0.4)),
             new Point(cx, 0),
             new Point(cx, contentBottom)
         );
@@ -1376,14 +1410,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             if (glyph is not null)
             {
                 context.DrawText(
-                    new(
-                        glyph,
-                        CultureInfo.InvariantCulture,
-                        FlowDirection.LeftToRight,
-                        typeface,
-                        FontSize,
-                        glyphBrush
-                    ),
+                    GutterText(glyph, typeface, glyphBrush),
                     new Point(g.FoldLeft, screenRow * CellHeightForTest + _glyphYOffset)
                 );
             }
@@ -1418,11 +1445,32 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <summary>清空所有折叠(列宽 reflow 会重建行对象使引用失效,resize 时调用)。</summary>
     private void ClearFolds() => _foldModel.Clear();
 
+    /// <summary>
+    /// 该绝对行是否可作为折叠交互目标(悬停显示 ▾、点击折叠)。
+    /// 只放行"有内容的行"与既有折叠头:最后一行输出之下的空白屏幕行也是合法的活动屏行,
+    /// 若不拦截,悬停会在空白区凭空冒出 ▾,误点一下就把上方内容整段折叠——
+    /// 看起来就是"终端内容凭空消失"(2026-07-23 实证,用户误点空白区折叠所致)。
+    /// 折叠头无条件放行,保证已折叠的区域永远能展开。
+    /// </summary>
+    internal bool IsFoldTargetRow(int abs)
+    {
+        TerminalScreen screen = Emulator.Screen;
+        if (abs < 0 || abs >= screen.TotalRows)
+        {
+            return false;
+        }
+        if (_foldModel.IsAnchor(screen, abs))
+        {
+            return true;
+        }
+        return ShowsGutterFor(screen.ViewLine(abs), abs, screen.ScrollbackCount + screen.CursorY);
+    }
+
     /// <summary>折叠交互:点击折叠列某屏幕行 —— 折叠头则展开,否则把上方内容折叠到该行(见 <see cref="GutterFoldModel" />)。</summary>
     private void ToggleFoldAt(int screenRow)
     {
         int abs = AbsoluteForScreenRow(screenRow);
-        if (abs >= 0 && _foldModel.Toggle(Emulator.Screen, abs))
+        if (IsFoldTargetRow(abs) && _foldModel.Toggle(Emulator.Screen, abs))
         {
             AfterFoldChange();
         }
@@ -1523,7 +1571,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         ((int Row, int Col) Start, (int Row, int Col) End)? sel
     )
     {
-        SemanticKind?[]? semantic = SemanticHighlightingEnabled
+        // 备用屏(vim/htop/less 等全屏程序)自带配色且行内容每帧都在变:语义扫描
+        // 既无视觉价值又必然缓存 MISS(整行文本为键),是全屏 TUI 卡顿的头号来源,直接跳过。
+        SemanticKind?[]? semantic = SemanticHighlightingEnabled && !Emulator.IsAlternateScreen
             ? ComputeSemanticColumns(line, cols)
             : null;
         int col = 0;
@@ -1662,8 +1712,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         {
             return null;
         }
-        var sb = new StringBuilder(lastNonBlank + 1);
-        var colByChar = new List<int>(lastNonBlank + 1);
+        StringBuilder sb = _semanticLineBuilder.Clear();
+        List<int> colByChar = _semanticColByChar;
+        colByChar.Clear();
         for (int i = 0; i <= lastNonBlank; i++)
         {
             TerminalCell cell = line[i];
@@ -1683,7 +1734,14 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         {
             return null;
         }
-        var byColumn = new SemanticKind?[cols];
+
+        // 复用成员缓冲(按需扩容):调用方只在渲染完当前行前读取,下一行覆写安全。
+        if (_semanticByColumn.Length < cols)
+        {
+            _semanticByColumn = new SemanticKind?[cols];
+        }
+        SemanticKind?[] byColumn = _semanticByColumn;
+        Array.Clear(byColumn, 0, cols);
         foreach (SemanticSpan span in spans)
         {
             int end = Math.Min(span.End, colByChar.Count);
@@ -2222,12 +2280,17 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         base.OnPointerMoved(e);
 
         // 折叠列悬停提示:指针在折叠列上时记住其绝对行(用于画 ▾ 折叠手柄),移出则清除。
+        // 空白行(最后一行输出之下)不给提示——那里折叠无意义且极易误点(内容消失事故)。
         if (ShowFoldMarker && !_selecting)
         {
             Point gp = e.GetPosition(this);
             int hover = Gutter.IsFoldColumnHit(gp.X)
                 ? AbsoluteForScreenRow((int)(gp.Y / CellHeightForTest))
                 : -1;
+            if (hover != -1 && !IsFoldTargetRow(hover))
+            {
+                hover = -1;
+            }
             if (hover != _foldHoverAbs)
             {
                 _foldHoverAbs = hover;

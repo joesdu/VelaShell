@@ -130,6 +130,11 @@ public partial class TerminalTabView : UserControl
     private string? _suppressedInput;
     private int _suggestSeq;
 
+    // 建议查询防抖:每个可打印字节都触发 InputChanged,连打时不该每键都对
+    // 500 条历史全量过滤 + 排序 + 分配一轮(幽灵文本的本地即时消耗不受影响,手感不变)。
+    private IDisposable? _suggestDebounce;
+    private const int SuggestDebounceMs = 90;
+
     /// <summary>幽灵文本对应的完整候选命令(接受时据此设置抑制值);null 即无幽灵。</summary>
     private string? _ghostFull;
 
@@ -220,8 +225,20 @@ public partial class TerminalTabView : UserControl
         }
 
         // 面板未开时结果落到幽灵文本;面板已开(Alt+Enter 召出)则持续跟随键入刷新列表。
-        bool panelOpen = SuggestPopup.IsOpen;
-        _ = UpdateSuggestionsAsync(input, panelOpen ? 20 : 8, openPanel: panelOpen);
+        // 查询防抖:停键 90ms 后才真正打提供者;输入与面板状态在触发时重新取,
+        // 避免用调度时刻的陈旧快照查询。
+        _suggestDebounce?.Dispose();
+        _suggestDebounce = DispatcherTimer.RunOnce(() =>
+        {
+            _suggestDebounce = null;
+            string current = EffectiveInput();
+            if (string.IsNullOrEmpty(current) || current == _suppressedInput)
+            {
+                return;
+            }
+            bool panelOpen = SuggestPopup.IsOpen;
+            _ = UpdateSuggestionsAsync(current, panelOpen ? 20 : 8, openPanel: panelOpen);
+        }, TimeSpan.FromMilliseconds(SuggestDebounceMs));
     }
 
     /// <summary>
@@ -831,6 +848,8 @@ public partial class TerminalTabView : UserControl
 
     private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
+        _suggestDebounce?.Dispose();
+        _suggestDebounce = null;
         DismissSuggestions(suppress: false);
         // 脱离可视树后不该再响应跟踪器(重新 attach 时 HookSuggestions 会幂等重订)。
         _suggestVm?.InputTracker.InputChanged -= OnTrackedInputChanged;

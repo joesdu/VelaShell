@@ -21,8 +21,13 @@ public class AppSettings
     /// <summary>终端字体字号(磅)。</summary>
     public int TerminalFontSize { get; set; } = 14;
 
-    /// <summary>终端可回滚保留的最大历史行数。</summary>
-    public int ScrollbackLines { get; set; } = 50000;
+    /// <summary>
+    /// 终端可回滚保留的最大历史行数。默认 10000(对齐 Windows Terminal 量级):
+    /// 满载时每标签约 20 行宽 KB 级——旧默认 50000 满载单标签可达 100-240MB,
+    /// 十个长会话标签就是 GB 级,是全应用内存占用的第一大头。
+    /// 已保存 50000 的旧配置不强改(用户可自行调整),仅影响新配置。
+    /// </summary>
+    public int ScrollbackLines { get; set; } = 10000;
 
     /// <summary>新建 SSH 连接的默认端口。</summary>
     public int DefaultPort { get; set; } = 22;

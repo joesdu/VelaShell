@@ -78,7 +78,7 @@ public static class SyntaxHighlightingService
                     {
                         continue;
                     }
-                    using XmlReader reader = XmlReader.Create(stream);
+                    using var reader = XmlReader.Create(stream);
                     IHighlightingDefinition definition = HighlightingLoader.Load(reader, HighlightingManager.Instance);
                     HighlightingManager.Instance.RegisterHighlighting(definition.Name, extensions, definition);
                 }

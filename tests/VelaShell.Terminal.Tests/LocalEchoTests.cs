@@ -1,5 +1,4 @@
 using System.Text;
-using VelaShell.Terminal;
 using VelaShell.Terminal.Emulation;
 
 namespace VelaShell.Terminal.Tests;

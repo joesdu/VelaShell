@@ -20,6 +20,13 @@ internal sealed class ZModemTransferObserver(FileTransferViewModel fileTransfer)
     // 每个文件项的测速起点(用于估算速率与剩余时间);后台线程读写,用并发字典。
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> _startedAt = [];
 
+    /// <summary>进度上报的最小间隔:引擎每个 subpacket(默认 1KB)回调一次,
+    /// 不节流的话 100MB 传输就是约十万次 UI 线程 Post + 闭包/进度对象/字符串分配风暴,
+    /// 高吞吐时肉眼可见地卡 UI(SFTP 路径早有同款节流 ProgressThrottle,此处补齐)。</summary>
+    private const int ProgressMinIntervalMs = 100;
+
+    private readonly ConcurrentDictionary<Guid, long> _lastProgressTick = [];
+
     /// <inheritdoc />
     public void OnFileStarted(ZModemTransferItem item)
     {
@@ -49,6 +56,13 @@ internal sealed class ZModemTransferObserver(FileTransferViewModel fileTransfer)
     /// <inheritdoc />
     public void OnFileProgress(ZModemTransferItem item)
     {
+        // 时间片节流:片内的 tick 直接丢弃(完成回调必带 100% 的末次刷新,不会丢终值)。
+        long now = Environment.TickCount64;
+        long last = _lastProgressTick.GetOrAdd(item.Id, now - ProgressMinIntervalMs - 1);
+        if (now - last < ProgressMinIntervalMs || !_lastProgressTick.TryUpdate(item.Id, now, last))
+        {
+            return;
+        }
         double speed = ComputeSpeed(item);
         Guid id = item.Id;
         long bytes = item.BytesTransferred;
@@ -74,6 +88,7 @@ internal sealed class ZModemTransferObserver(FileTransferViewModel fileTransfer)
     public void OnFileCompleted(ZModemTransferItem item)
     {
         _startedAt.TryRemove(item.Id, out _);
+        _lastProgressTick.TryRemove(item.Id, out _);
         Guid id = item.Id;
         long bytes = item.BytesTransferred;
         long? size = item.Size;
@@ -105,6 +120,7 @@ internal sealed class ZModemTransferObserver(FileTransferViewModel fileTransfer)
     public void OnFileSkipped(ZModemTransferItem item)
     {
         _startedAt.TryRemove(item.Id, out _);
+        _lastProgressTick.TryRemove(item.Id, out _);
         Guid id = item.Id;
         Dispatcher.UIThread.Post(() =>
         {

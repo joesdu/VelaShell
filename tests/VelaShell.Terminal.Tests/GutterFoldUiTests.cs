@@ -72,6 +72,38 @@ public class GutterFoldUiTests
     }
 
     [TestMethod]
+    public void RealPointerClick_OnBlankRowBelowOutput_DoesNotFold()
+    {
+        // 2026-07-23 内容消失事故回归:最后一行输出之下的空白屏幕行也是合法活动屏行,
+        // 此前点击其折叠列会把上方内容整段折叠——用户视角就是"终端内容凭空消失"。
+        OnUi(() =>
+        {
+            var control = new VelaTerminalControl { ShowFoldMarker = true };
+            control.Feed(Encoding.UTF8.GetBytes("L0\r\nL1\r\nL2\r\nL3\r\nL4\r\nL5"));
+
+            var window = new Window { Width = 480, Height = 320, Content = control };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            window.CaptureRenderedFrame();
+
+            GutterLayout gutter = control.GutterForTest;
+
+            // 内容行可折叠,空白行不可(直接断言守卫谓词)。
+            Assert.IsTrue(control.IsFoldTargetRow(3), "有内容的行应可作为折叠目标。");
+            Assert.IsFalse(control.IsFoldTargetRow(10), "输出之下的空白行不得作为折叠目标。");
+
+            // 真实点击空白区域的折叠列:必须毫无反应。
+            var blankPoint = new Point(gutter.FoldLeft + 2, 10 * control.CellHeightForTest + 2);
+            Assert.IsTrue(gutter.IsFoldColumnHit(blankPoint.X));
+            window.MouseDown(blankPoint, MouseButton.Left);
+            window.MouseUp(blankPoint, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.AreEqual(0, control.FoldCountForTest, "点击空白行的折叠列不得产生折叠。");
+        });
+    }
+
+    [TestMethod]
     public void GutterContextMenu_HasFourToggles_ReflectingCurrentState()
     {
         OnUi(() =>

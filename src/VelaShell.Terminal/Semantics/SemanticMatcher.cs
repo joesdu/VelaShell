@@ -95,10 +95,20 @@ public sealed partial class SemanticMatcher
             return byKind != 0 ? byKind : a.Start.CompareTo(b.Start);
         });
         var chosen = new List<SemanticSpan>();
-        // ReSharper disable once ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator
+        // 手写重叠检测:此方法在渲染热路径上按行调用,LINQ Any 的委托 + 枚举器分配
+        // 会随行数 × 帧率放大;span 数量很小,平方级比较本身无碍。
         foreach (SemanticSpan span in raw)
         {
-            bool overlaps = chosen.Any(kept => span.Start < kept.End && kept.Start < span.End);
+            bool overlaps = false;
+            for (int i = 0; i < chosen.Count; i++)
+            {
+                SemanticSpan kept = chosen[i];
+                if (span.Start < kept.End && kept.Start < span.End)
+                {
+                    overlaps = true;
+                    break;
+                }
+            }
             if (!overlaps)
             {
                 chosen.Add(span);

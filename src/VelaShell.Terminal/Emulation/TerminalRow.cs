@@ -32,6 +32,9 @@ public sealed class TerminalRow(int columns)
     /// <summary>返回指定列处单元格的可变引用,用于就地编辑。</summary>
     public ref TerminalCell CellRef(int col) => ref _cells[col];
 
+    /// <summary>整行单元格的只读切片(reflow 等批量拷贝路径用,免去逐格索引)。</summary>
+    public ReadOnlySpan<TerminalCell> Span => _cells;
+
     /// <summary>用给定单元格填满整行,并清除 wrapped 标志与时间戳。</summary>
     public void Fill(in TerminalCell cell)
     {

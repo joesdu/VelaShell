@@ -49,6 +49,11 @@ public partial class MainWindow : Window
         {
             grips.IsVisible = WindowState == WindowState.Normal;
         }
+        // 最小化(含隐入托盘)时暂停状态栏的每秒 SSH 探测与周期 ICMP,恢复时重启。
+        if (change.Property == WindowStateProperty && DataContext is MainWindowViewModel vm)
+        {
+            vm.SetStatusPollingSuspended(WindowState == WindowState.Minimized);
+        }
     }
 
     /// <summary>

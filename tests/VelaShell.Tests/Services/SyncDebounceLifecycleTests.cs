@@ -289,7 +289,7 @@ public class SyncDebounceLifecycleTests
         // Lock.EnterScope(),走的**不是** Monitor。因此 Monitor.IsEntered(gate) 恒为 false,
         // 哪怕锁确实被持有 —— 必须用 Lock.IsHeldByCurrentThread 才测得准。
         // (这条测试曾因此假红:被测的不变量一直是成立的,错的是探针。)
-        Lock gate = (Lock)typeof(SyncDebounceLifecycle)
+        var gate = (Lock)typeof(SyncDebounceLifecycle)
             .GetField("_gate", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .GetValue(lifecycle)!;
         bool gateHeld = false;

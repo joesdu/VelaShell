@@ -87,6 +87,32 @@ public partial class DockGroupControl : UserControl
     private void OnDocumentsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) =>
         UpdateContent();
 
+    /// <summary>
+    /// (重新)挂到可视树时恢复订阅与内容。分离处理器为避免双父级会把 Target 置空并退订
+    /// 全部事件——原设计假设"摘下的控件必被丢弃",但任何祖先级的摘挂(窗口内容重排、
+    /// 宿主容器切换、托盘隐藏恢复)都会让**同一实例**重挂:不在这里自愈,重挂回来的
+    /// 就是一个既收不到事件又没有内容的死控件,表现为"终端内容凭空消失"
+    /// (2026-07-23 实证,DockContentBlankHuntTests 序列 4 锁定)。
+    /// </summary>
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        if (Workspace is null || Group is not { } group)
+        {
+            return; // 尚未 Initialize(首挂由 Initialize 完成接线),无从自愈。
+        }
+        // 先退订再订阅:首挂紧跟 Initialize 之后,不加防重会双份订阅。
+        group.PropertyChanged -= OnGroupPropertyChanged;
+        group.Documents.CollectionChanged -= OnDocumentsChanged;
+        group.PropertyChanged += OnGroupPropertyChanged;
+        group.Documents.CollectionChanged += OnDocumentsChanged;
+        if (ContentHost.Target is null)
+        {
+            UpdateContent();
+            UpdateActiveTabIndicator();
+        }
+    }
+
     /// <summary>从可视树分离时退订标签组事件,并释放对缓存视图的引用以避免双父级。</summary>
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -98,7 +124,8 @@ public partial class DockGroupControl : UserControl
             group.PropertyChanged -= OnGroupPropertyChanged;
             group.Documents.CollectionChanged -= OnDocumentsChanged;
         }
-        // 结构重建时本控件被丢弃;释放对缓存视图的引用,避免下一个宿主收养时双父级。
+        // 释放对缓存视图的引用,避免下一个宿主收养时双父级;若本实例被重挂,
+        // OnAttachedToVisualTree 会自愈(重订阅 + 重填内容)。
         ContentHost.Target = null;
     }
 
