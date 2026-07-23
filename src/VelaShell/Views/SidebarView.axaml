@@ -208,13 +208,13 @@
                     VerticalAlignment="Center">
           <Button Width="24" Height="24" Background="Transparent" Padding="0"
                   CornerRadius="3" Command="{Binding NotificationsCommand}"
-                  ToolTip.Tip="{x:Static res:Strings.Notifications}" Cursor="Hand">
+                  ToolTip.Tip="{x:Static res:Strings.Notifications}" ToolTip.Placement="Right" Cursor="Hand">
             <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.bell}"
                            Foreground="{DynamicResource VelaTextTertiary}" />
           </Button>
           <Button Width="24" Height="24" Background="Transparent" Padding="0"
                   CornerRadius="3" Click="OpenSettings_Click"
-                  ToolTip.Tip="{x:Static res:Strings.Settings}" Cursor="Hand">
+                  ToolTip.Tip="{x:Static res:Strings.Settings}" ToolTip.Placement="Right" Cursor="Hand">
             <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.settings}"
                            Foreground="{DynamicResource VelaTextTertiary}" />
           </Button>
