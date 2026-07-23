@@ -224,20 +224,29 @@ public class SftpService(
         await client.UploadAsync(empty, remotePath, null, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>幂等地确保远端目录存在:直接创建,若因已存在而失败则视为成功。</summary>
+    /// <summary>幂等地确保远端目录存在:已存在直接返回,否则创建。</summary>
     public async Task EnsureDirectoryAsync(Guid sessionId, string remotePath, CancellationToken cancellationToken = default)
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
 
-        // 直接创建而非先 Exists 探测:目录已存在时 Tmds.Ssh 的 CreateDirectory 本身不报错,
-        // 上传新文件夹树时逐目录只有一次网络往返。
-        // 创建失败且目录确实已存在 → 幂等成功;其余失败(权限/父目录缺失)照常抛出。
+        // 先 Exists 探测再创建。与直觉相反,Tmds.Ssh 的 CreateDirectory 对"已存在的目录"会抛
+        // SftpException(并非无声成功):重复上传同一文件夹树(与服务端冲突的常见场景)时,
+        // 每个已存在子目录都会甩出一条首发异常,上千文件的文件夹重传即刷出上百条异常噪声。
+        // ExistsAsync 走 GetAttributes(不存在返回 null、零异常控制流),先探测即可对"已存在"
+        // 零异常返回;仅真正缺失的目录才 CreateDirectory(此时创建必然成功,同样不产生异常)。
+        // 代价是新建目录多一次 stat 往返,但目录数远少于文件数,相对整批传输可忽略。
+        if (await client.ExistsAsync(remotePath, cancellationToken).ConfigureAwait(false))
+        {
+            return;
+        }
         try
         {
             await client.CreateDirectoryAsync(remotePath, cancellationToken).ConfigureAwait(false);
         }
         catch (VelaSshClientException)
         {
+            // 探测与创建之间被他方(并发上传/别的客户端)抢先创建的竞态:目录现已存在即幂等
+            // 成功;其余失败(权限/父目录缺失)照常抛出。
             if (!await client.ExistsAsync(remotePath, cancellationToken).ConfigureAwait(false))
             {
                 throw;
@@ -485,7 +494,7 @@ public class SftpService(
     /// </para>
     /// </summary>
     /// <returns>经核实的续传偏移量;返回 0 表示没有可续的半截,应整份重传。</returns>
-    private async Task<long> ResolveUploadResumeAsync(ISftpClientWrapper client,
+    private static async Task<long> ResolveUploadResumeAsync(ISftpClientWrapper client,
         string remotePath,
         string localPath,
         long localLength,
@@ -522,7 +531,7 @@ public class SftpService(
     /// 以"此刻本地文件的实际长度"为准,并比对尾部确认本地那半截确实是远端文件的前缀。
     /// </summary>
     /// <returns>经核实的续传偏移量;返回 0 表示应整份重下(覆盖本地残留)。</returns>
-    private async Task<long> ResolveDownloadResumeAsync(ISftpClientWrapper client,
+    private static async Task<long> ResolveDownloadResumeAsync(ISftpClientWrapper client,
         string remotePath,
         string localPath,
         long remoteLength,
@@ -606,13 +615,13 @@ public class SftpService(
     /// <see cref="FileOptions.SequentialScan" /> 则让系统预读策略匹配顺序整文件读取。
     /// </para>
     /// </summary>
-    private static Stream OpenLocalRead(string path) =>
-        new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, LocalStreamBufferSize,
+    private static FileStream OpenLocalRead(string path) =>
+        new(path, FileMode.Open, FileAccess.Read, FileShare.Read, LocalStreamBufferSize,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
 
     /// <summary>打开本地文件供下载写入(截断已有内容);异步句柄的理由同 <see cref="OpenLocalRead" />。</summary>
-    private static Stream OpenLocalWrite(string path) =>
-        new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, LocalStreamBufferSize,
+    private static FileStream OpenLocalWrite(string path) =>
+        new(path, FileMode.Create, FileAccess.Write, FileShare.None, LocalStreamBufferSize,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
 
     /// <summary>带宽限制(设置 → 文件传输):返回字节/秒,0 = 不限速。</summary>

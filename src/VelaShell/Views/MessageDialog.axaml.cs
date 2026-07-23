@@ -190,10 +190,10 @@ public partial class MessageDialog : Window
     /// <summary>
     /// 输入事件处理器内不得同步 Close:窗口销毁后,本轮输入事件的剩余路由
     /// (PointerReleased 等)会打到已无 PlatformImpl 的窗口上,Avalonia 刷
-    /// "PlatformImpl is null, couldn't handle input" 警告。推迟到当前事件出栈后再关。
+    /// "PlatformImpl is null, couldn't handle input" 警告。推迟到当前事件出栈后再关
+    /// (统一走 <see cref="WindowCloseExtensions.PostClose(Window, object?)" />)。
     /// </summary>
-    private void CloseDeferred(object? result) =>
-        Avalonia.Threading.Dispatcher.UIThread.Post(() => Close(result));
+    private void CloseDeferred(object? result) => this.PostClose(result);
 
     /// <summary>拦截 Esc 键关闭弹窗:纯消息框(无取消按钮)时也能用 Esc 取消。</summary>
     protected override void OnKeyDown(KeyEventArgs e)

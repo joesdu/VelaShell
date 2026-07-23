@@ -29,7 +29,9 @@ public partial class HostKeyPromptView : Window
     {
         if (e.PropertyName == nameof(HostKeyPromptViewModel.Result) && _viewModel?.Result is { } decision)
         {
-            Close(decision);
+            // 信任/拒绝命令由按钮点击触发,仍在输入事件栈内:推迟关闭,避免后续路由
+            // (PointerReleased/KeyUp)打到已销毁的窗口刷 "PlatformImpl is null" 警告。
+            this.PostClose(decision);
         }
     }
 
@@ -44,7 +46,7 @@ public partial class HostKeyPromptView : Window
             }
             else
             {
-                Close();
+                this.PostClose();
             }
             e.Handled = true;
             return;

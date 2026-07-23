@@ -22,14 +22,16 @@ public partial class SettingsView : Window
         };
     }
 
-    private void OnCloseRequested(object? sender, EventArgs e) => Close();
+    // CloseRequested 由保存/取消命令(按钮点击)触发,仍在输入事件栈内:推迟关闭,
+    // 避免后续路由打到已销毁的窗口刷 "PlatformImpl is null" 警告(见 WindowCloseExtensions)。
+    private void OnCloseRequested(object? sender, EventArgs e) => this.PostClose();
 
     /// <summary>Esc 以取消语义关闭设置窗口,未保存预览由 <see cref="OnClosed" /> 回滚。</summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {
-            Close();
+            this.PostClose();
             e.Handled = true;
             return;
         }

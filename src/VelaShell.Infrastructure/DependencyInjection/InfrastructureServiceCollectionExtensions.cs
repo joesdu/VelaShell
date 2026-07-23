@@ -179,23 +179,25 @@ public static class InfrastructureServiceCollectionExtensions
         return s;
     }
 
-    private static void AddCredential(SshClientSettings s, VelaConnectionInfo ci)
+    internal static void AddCredential(SshClientSettings s, VelaConnectionInfo ci)
     {
-        s.Credentials ??= [];
-        switch (ci.AuthMethod)
+        // 用用户配置的凭据【完全替换】Tmds.Ssh 的默认凭据列表,而非 Add 追加。
+        // SshClientSettings 的默认 Credentials 本就非空,含 SshAgentCredentials 与 ~/.ssh 默认私钥:
+        // 只 Add(且 `??= []` 因非空成为空操作)会保留它们,于是每次连接都先尝试 SSH Agent 认证。
+        // Windows 上 Tmds 读 SSH_AUTH_SOCK 要求命名管道 \\.\pipe\...,而本机该变量常指向 msys/WSL/Git
+        // 的 Unix 套接字路径,SshAgent.ConnectAsync 便抛 ArgumentException
+        // ("SSH Agent path on Windows must be a named pipe ...")——被 Tmds 吞掉不影响连接,但每次连接
+        // 稳定刷首发异常(用户在 VS 输出看到的正是这个)。VelaShell 没有"用 agent/默认私钥"这一 UI
+        // 选项,静默回退本就非预期:只用用户显式选择的凭据,既除噪声又避免误用别的密钥。
+        Credential credential = ci.AuthMethod switch
         {
-            case AuthMethod.Password:
-                s.Credentials.Add(new PasswordCredential(ci.Password ?? ""));
-                break;
-            case AuthMethod.PrivateKey:
-                s.Credentials.Add(string.IsNullOrWhiteSpace(ci.PrivateKeyPassphrase)
-                    ? new PrivateKeyCredential(ci.PrivateKeyPath!, null, null)
-                    : new PrivateKeyCredential(ci.PrivateKeyPath!, ci.PrivateKeyPassphrase, null));
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(ci), ci.AuthMethod,
-                    @"Unsupported authentication method.");
-        }
+            AuthMethod.Password => new PasswordCredential(ci.Password ?? ""),
+            AuthMethod.PrivateKey => string.IsNullOrWhiteSpace(ci.PrivateKeyPassphrase)
+                ? new PrivateKeyCredential(ci.PrivateKeyPath!, null, null)
+                : new PrivateKeyCredential(ci.PrivateKeyPath!, ci.PrivateKeyPassphrase, null),
+            _ => throw new ArgumentOutOfRangeException(nameof(ci), ci.AuthMethod, "Unsupported authentication method.")
+        };
+        s.Credentials = [credential];
     }
 
     private static void AddHostAuthentication(
