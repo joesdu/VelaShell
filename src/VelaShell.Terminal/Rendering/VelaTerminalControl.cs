@@ -1375,7 +1375,11 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>
-    /// 折叠列:一条竖直折叠导引线;折叠区域的锚点行画 ▸(展开)标记。折叠交互经指针命中 <see cref="GutterLayout" /> 折叠列区域触发。
+    /// 折叠列(Notepad++ 风格):竖直导引线 + 方框标记 + 底部 └ 转角收尾。
+    /// ⊞(方框内 +)= 已折叠区域的锚点,点击展开;⊟(方框内 −)= 悬停在可折叠行,
+    /// 点击把上方内容折叠到该行。标记用矢量线条绘制而非字体字形——任何字体/字号/DPI 下
+    /// 形状一致且边缘锐利;方框以终端底色填充,天然打断背后的导引线(N++ 的断线观感)。
+    /// 交互不变,折叠点击经指针命中 <see cref="GutterLayout" /> 折叠列区域触发。
     /// </summary>
     private void RenderFoldColumn(
         DrawingContext context,
@@ -1387,14 +1391,25 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     )
     {
         GutterLayout g = Gutter;
-        double cx = g.FoldLeft + g.FoldWidth / 2;
-        context.DrawLine(
-            PenFor(Blend(dim, palette.DefaultBackground, 0.4)),
-            new Point(cx, 0),
-            new Point(cx, contentBottom)
-        );
-        var typeface = new Typeface(FontFamily);
-        ImmutableSolidColorBrush glyphBrush = BrushFor(dim);
+        // 像素对齐:1px 笔画的中心必须落在 x.5/y.5 上,否则反锯齿会把它糊成 2px 灰线。
+        double cx = Math.Floor(g.FoldLeft + g.FoldWidth / 2) + 0.5;
+        ImmutablePen linePen = PenFor(Blend(dim, palette.DefaultBackground, 0.4));
+        ImmutablePen markPen = PenFor(dim);
+        ImmutableSolidColorBrush boxFill = BrushFor(palette.DefaultBackground);
+
+        // 导引线通到最后内容行,并以 └ 转角收尾(指向正文,暗示"折叠作用于上方内容")。
+        double bottomY = Math.Floor(contentBottom - CellHeightForTest / 2) + 0.5;
+        context.DrawLine(linePen, new Point(cx, 0), new Point(cx, bottomY));
+        context.DrawLine(linePen, new Point(cx, bottomY), new Point(cx + Math.Floor(g.FoldWidth / 2) - 1, bottomY));
+
+        // 方框边长:随行高缩放,夹在 7–11px 且取奇数,保证 ± 符号有精确的单像素中心。
+        int box = (int)Math.Clamp(Math.Floor(CellHeightForTest * 0.55), 7, 11);
+        if (box % 2 == 0)
+        {
+            box--;
+        }
+        int half = (box - 1) / 2;
+
         for (int screenRow = 0; screenRow < rows; screenRow++)
         {
             int absoluteRow = _screenToAbs[screenRow];
@@ -1402,17 +1417,24 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             {
                 continue;
             }
-            // 折叠头显示 ▸(点它展开);鼠标悬停的普通行显示 ▾(点它把上方内容折叠到这里)。
-            string? glyph =
-                _foldModel.IsAnchor(screen, absoluteRow) ? "▸"
-                : absoluteRow == _foldHoverAbs ? "▾"
-                : null;
-            if (glyph is not null)
+            bool anchor = _foldModel.IsAnchor(screen, absoluteRow);
+            bool hover = !anchor && absoluteRow == _foldHoverAbs;
+            if (!anchor && !hover)
             {
-                context.DrawText(
-                    GutterText(glyph, typeface, glyphBrush),
-                    new Point(g.FoldLeft, screenRow * CellHeightForTest + _glyphYOffset)
-                );
+                continue;
+            }
+
+            double cy = Math.Floor(screenRow * CellHeightForTest + CellHeightForTest / 2) + 0.5;
+            var rect = new Rect(cx - half, cy - half, box - 1, box - 1);
+
+            // 底色填充盖住背后的导引线段,再描方框边。
+            context.DrawRectangle(boxFill, markPen, rect);
+
+            // −:两种标记都有的水平笔画;+:锚点(已折叠)再加竖直笔画。
+            context.DrawLine(markPen, new Point(rect.Left + 2, cy), new Point(rect.Right - 2, cy));
+            if (anchor)
+            {
+                context.DrawLine(markPen, new Point(cx, rect.Top + 2), new Point(cx, rect.Bottom - 2));
             }
         }
     }
