@@ -138,9 +138,11 @@ public partial class ConnectionProfileView : Window
             }
         };
         UpdateProtoTabIndicator();
-        viewModel.SaveCommand.Subscribe(Close);
-        viewModel.ConnectCommand.Subscribe(Close);
-        viewModel.CancelCommand.Subscribe(Close);
+        // 保存/连接/取消命令由按钮点击触发,回调仍在输入事件栈内:推迟关闭,避免后续路由
+        // 打到已销毁的窗口刷 "PlatformImpl is null" 警告。
+        viewModel.SaveCommand.Subscribe(result => this.PostClose(result));
+        viewModel.ConnectCommand.Subscribe(result => this.PostClose(result));
+        viewModel.CancelCommand.Subscribe(result => this.PostClose(result));
         await viewModel.LoadGroupsAsync();
     }
 
@@ -155,7 +157,7 @@ public partial class ConnectionProfileView : Window
             }
             else
             {
-                Close();
+                this.PostClose();
             }
             e.Handled = true;
             return;

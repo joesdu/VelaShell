@@ -35,14 +35,16 @@ public partial class ConnectionDiagnosticsView : Window
         }
     }
 
-    private void Close_Click(object? sender, RoutedEventArgs e) => Close();
+    // 推迟关闭:同步 Close 会让本轮点击/按键的后续路由打到已销毁的窗口刷
+    // "PlatformImpl is null" 警告(见 WindowCloseExtensions)。
+    private void Close_Click(object? sender, RoutedEventArgs e) => this.PostClose();
 
     /// <summary>Esc 关闭诊断窗口,与右上角关闭按钮同路径。</summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {
-            Close();
+            this.PostClose();
             e.Handled = true;
             return;
         }

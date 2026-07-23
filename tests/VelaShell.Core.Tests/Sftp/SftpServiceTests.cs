@@ -383,6 +383,57 @@ public class SftpServiceTests
     }
 
     [TestMethod]
+    public async Task EnsureDirectoryAsync_WhenAlreadyExists_SkipsCreateAndThrowsNothing()
+    {
+        // 重复上传同一文件夹树的常态:目录已存在。必须先探测后返回,绝不调用 CreateDirectory
+        // ——否则 Tmds.Ssh 会对已存在目录抛 SftpException,上千文件的文件夹重传即刷出上百条异常。
+        string remotePath = "/home/user/existing";
+        _sftpClient.ExistsAsync(remotePath, Arg.Any<CancellationToken>()).Returns(true);
+
+        await _sftpService.EnsureDirectoryAsync(_sessionId, remotePath);
+
+        await _sftpClient.Received(1).ExistsAsync(remotePath, Arg.Any<CancellationToken>());
+        await _sftpClient.DidNotReceive().CreateDirectoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    public async Task EnsureDirectoryAsync_WhenAbsent_CreatesWithoutProbingAgain()
+    {
+        // 目录缺失(默认 ExistsAsync 返回 false):探测一次后创建;创建必然成功,不产生异常。
+        string remotePath = "/home/user/fresh";
+
+        await _sftpService.EnsureDirectoryAsync(_sessionId, remotePath);
+
+        await _sftpClient.Received(1).CreateDirectoryAsync(remotePath, Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
+    public async Task EnsureDirectoryAsync_CreateRacesButExistsAfter_TreatsAsSuccess()
+    {
+        // 探测=不存在,但创建时被并发抢先(抛 VelaSshClientException),随后目录已存在 → 幂等成功。
+        string remotePath = "/home/user/raced";
+        _sftpClient.ExistsAsync(remotePath, Arg.Any<CancellationToken>()).Returns(false, true);
+        _sftpClient.CreateDirectoryAsync(remotePath, Arg.Any<CancellationToken>())
+                   .ThrowsAsync(new VelaSshClientException("already exists"));
+
+        // 不抛即为通过。
+        await _sftpService.EnsureDirectoryAsync(_sessionId, remotePath);
+    }
+
+    [TestMethod]
+    public async Task EnsureDirectoryAsync_CreateFailsAndStillAbsent_Rethrows()
+    {
+        // 创建失败(权限/父目录缺失),复查仍不存在 → 抛出原错,不吞掉真实失败。
+        string remotePath = "/home/user/denied";
+        _sftpClient.ExistsAsync(remotePath, Arg.Any<CancellationToken>()).Returns(false, false);
+        _sftpClient.CreateDirectoryAsync(remotePath, Arg.Any<CancellationToken>())
+                   .ThrowsAsync(new VelaSshClientException("permission denied"));
+
+        await Assert.ThrowsExactlyAsync<VelaSshClientException>(
+            () => _sftpService.EnsureDirectoryAsync(_sessionId, remotePath));
+    }
+
+    [TestMethod]
     public async Task DeleteAsync_WithDirectory_DeletesDirectory()
     {
         // Arrange

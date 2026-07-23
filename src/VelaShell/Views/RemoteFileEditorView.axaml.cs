@@ -176,7 +176,9 @@ public partial class RemoteFileEditorView : Window
         }
         if (e.Key == Key.Escape)
         {
-            Close();
+            // 推迟关闭:同步 Close 会让本轮按键的后续路由(KeyUp)打到已销毁的窗口刷
+            // "PlatformImpl is null" 警告。OnClosing 的未保存守卫在推迟后的 Close 里照常触发。
+            this.PostClose();
             e.Handled = true;
             return;
         }
@@ -231,7 +233,9 @@ public partial class RemoteFileEditorView : Window
 
     private void Save_Click(object? sender, RoutedEventArgs e) => _ = SaveAsync();
 
-    private void Close_Click(object? sender, RoutedEventArgs e) => Close();
+    // 推迟关闭:同步 Close 会让本轮点击的后续路由打到已销毁的窗口刷 "PlatformImpl is null"
+    // 警告(见 WindowCloseExtensions)。OnClosing 的未保存守卫照常触发。
+    private void Close_Click(object? sender, RoutedEventArgs e) => this.PostClose();
 
     private void Maximize_Click(object? sender, RoutedEventArgs e) => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
