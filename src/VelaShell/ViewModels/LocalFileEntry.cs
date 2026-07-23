@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace VelaShell.ViewModels;
 
 /// <summary>SFTP 文档本地面板所展示的单个本地文件系统条目。</summary>
@@ -48,8 +50,6 @@ public sealed record LocalFileEntry(
     private static string FormatModifiedTime(DateTime dateTime)
     {
         DateTime local = dateTime.Kind == DateTimeKind.Unspecified ? dateTime : dateTime.ToLocalTime();
-        return local.Year == DateTime.Now.Year
-            ? local.ToString("MMM d HH:mm")
-            : local.ToString("MMM d, yyyy");
+        return local.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
     }
 }

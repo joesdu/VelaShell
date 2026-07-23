@@ -807,21 +807,78 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <summary>备用屏(DECSET 1047/1049)是否激活。全屏程序(vim/htop)内宿主不启用命令补全。</summary>
     public bool IsAlternateScreenActive => Emulator.IsAlternateScreen;
 
-    /// <summary>
-    /// 光标后叠画的补全建议剩余文本(fish/Warp 式幽灵文本),null/空即不绘制。
-    /// 纯视觉覆盖层,不进屏幕缓冲;由宿主(补全逻辑)设置与清除。
-    /// </summary>
-    public string? GhostText
+    // ---- 幽灵文本(fish/Warp 式补全叠画)---------------------------------------
+    //
+    // 纯视觉覆盖层,不进屏幕缓冲;宿主(补全逻辑)只负责设置/清除"完整候选",
+    // 剩余部分不由宿主逐键推送,而是在每次重绘时按屏上"光标左侧已回显文本"现算。
+    //
+    // 为何这样做:若逐键推送剩余文本,内容(键入时钟,按键即刻)与位置(回显时钟,
+    // 需 PTY 往返)各走一套时钟——键入领先回显时,缩短/增长后的幽灵先画到尚未随回显
+    // 前移的旧光标处、回显到达再 snap 回来,连打即成抖动,退格同理反向抖动,SSH 高延迟
+    // 下尤甚。这里改为:取完整候选中"其前缀恰是光标左侧已回显文本之后缀"的最长重叠,
+    // 剩余部分即候选去掉该重叠。此值纯由屏幕真实状态(已回显文本 + 光标)决定,与回显
+    // 延迟完全无关,故键入/空格/退格都恒贴光标、永不失步(fish/zsh 把建议写进缓冲与
+    // 光标原子刷新,本质相同的不变式:所见即缓冲)。
+
+    private string? _ghostFull;
+
+    /// <summary>当前是否有生效的幽灵候选。</summary>
+    public bool HasGhost => _ghostFull is not null;
+
+    /// <summary>设置完整补全候选(fish 语义:必为当前输入的严格更长同前缀候选)。</summary>
+    public void SetGhostSuggestion(string full)
     {
-        get;
-        set
+        if (_ghostFull == full)
         {
-            if (field != value)
+            return;
+        }
+        _ghostFull = full;
+        InvalidateVisual();
+    }
+
+    /// <summary>清除幽灵候选(立即重绘;移除叠画不会引发位置抖动)。</summary>
+    public void ClearGhostSuggestion()
+    {
+        if (_ghostFull is null)
+        {
+            return;
+        }
+        _ghostFull = null;
+        InvalidateVisual();
+    }
+
+    /// <summary>
+    /// 按屏上真实状态现算当前应显示的幽灵剩余文本:取候选中其前缀恰为光标左侧已回显
+    /// 文本之后缀的最长重叠,剩余即候选去掉该重叠;无候选/无重叠/已键满时为 null。
+    /// 完全由已回显文本与光标决定,与回显延迟无关。供渲染与"→/End 接受"共用,
+    /// 确保接受写入的正是屏上所见。
+    /// </summary>
+    public string? CurrentGhostRemainder()
+    {
+        if (_ghostFull is not { Length: > 0 } full)
+        {
+            return null;
+        }
+        int col = Emulator.CursorX;
+        if (col <= 0)
+        {
+            return null;
+        }
+        string line = Emulator.Screen.ActiveLine(Emulator.CursorY).GetText();
+        // 光标左侧已回显文本(1 单元格≈1 字符,与 HasTextRightOfCursor 等既有假设一致)。
+        int before = Math.Min(col, line.Length);
+        // 最长 k:line 的末 k 字符 == full 的前 k 字符。先求最长(含 k==full.Length),
+        // 再判定:k==full.Length 表示候选已被完整键入 → 无剩余(返回 null),绝不回退到
+        // 更短的偶合后缀(否则 "abcabc" 键满后会误显 "abc")。
+        int max = Math.Min(full.Length, before);
+        for (int k = max; k >= 1; k--)
+        {
+            if (string.CompareOrdinal(line, before - k, full, 0, k) == 0)
             {
-                field = value;
-                InvalidateVisual();
+                return k < full.Length ? full[k..] : null;
             }
         }
+        return null;
     }
 
     /// <summary>光标单元在控件坐标系中的矩形(与 RenderCursor 同一套计算)。</summary>
@@ -1218,7 +1275,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         int cols
     )
     {
-        string? ghost = GhostText;
+        // 剩余部分按真实光标现切(而非宿主逐键推送),与已回显文本同源于本帧光标,恒不失步。
+        string? ghost = CurrentGhostRemainder();
         if (string.IsNullOrEmpty(ghost) || screen.CursorX >= cols)
         {
             return;

@@ -1,3 +1,4 @@
+using System.Globalization;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 
@@ -130,16 +131,14 @@ public class RemoteFileInfoViewModel(RemoteFileInfo model)
     }
 
     /// <summary>
-    /// ls -l 风格时间戳(按设计 dyuii 的 "Jan 12 09:15" 格式):当年显示月日时分,
-    /// 跨年则以年份替换时间。
+    /// 统一的时间戳格式 "yyyy-MM-dd HH:mm:ss"(与本地面板 <see cref="LocalFileEntry"/> 一致)。
+    /// Unspecified 视为已是本地时间,其余转本地时区显示。
     /// </summary>
     private static string FormatModifiedTime(DateTime dateTime)
     {
         DateTime local = dateTime.Kind == DateTimeKind.Unspecified
                              ? dateTime
                              : dateTime.ToLocalTime();
-        return local.Year == DateTime.Now.Year
-                   ? local.ToString("MMM d HH:mm")
-                   : local.ToString("MMM d, yyyy");
+        return local.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
     }
 }

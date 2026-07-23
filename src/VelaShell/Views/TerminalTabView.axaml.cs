@@ -166,7 +166,7 @@ public partial class TerminalTabView : UserControl
     private void ClearGhost()
     {
         _ghostFull = null;
-        _termControl?.GhostText = null;
+        _termControl?.ClearGhostSuggestion();
     }
 
     private void OnTrackedInputChanged()
@@ -206,10 +206,12 @@ public partial class TerminalTabView : UserControl
         }
         _suppressedInput = null;
 
-        // 键入的字符与幽灵一致时本地即时消耗(fish 手感),异步结果回来后再校正。
-        // 未知态(按过方向键等)同样提示:EffectiveInput 已降级为试探段,建议剩余
-        // 部分只在光标处追加,与试探段"紧贴光标之前"的保证同等安全——确定态限制
-        // 曾让一次方向键永久哑掉整行的幽灵提示。
+        // 键入/退格仍与当前候选同前缀时,保持候选不动:控件在每帧按真实光标列自行切出
+        // 剩余部分(见 CurrentGhostRemainder),内容与位置同源于回显后的光标,恒不失步——
+        // 故这里不再逐键推送剩余文本(那会让缩短/增长的幽灵在回显前画到旧光标处而抖动/卡顿)。
+        // InputChanged 在"发往 PTY"时同步触发、早于回显,因此一旦键入偏离候选(下面 else),
+        // 会在该帧回显重绘之前就清除,不会闪出错位的幽灵。未知态(按过方向键)下 EffectiveInput
+        // 降级为试探段,同样按"紧贴光标之前"安全地追加式提示。
         if (
             _ghostFull is { } full
             && full.Length > input.Length
@@ -217,7 +219,7 @@ public partial class TerminalTabView : UserControl
             && !HasTextRightOfCursor()
         )
         {
-            _termControl?.GhostText = full[input.Length..];
+            // 保持:控件持有完整候选与锚列,重绘即现切,无需在此推送或重绘。
         }
         else
         {
@@ -532,7 +534,9 @@ public partial class TerminalTabView : UserControl
             )
             {
                 _ghostFull = item.Text;
-                _termControl.GhostText = item.Text[input.Length..];
+                // 只交完整候选;剩余部分由控件每帧按屏上"光标左侧已回显文本"现算(见
+                // CurrentGhostRemainder),不再逐键回推,故键入/退格/空格均恒贴光标、不受回显延迟影响。
+                _termControl.SetGhostSuggestion(item.Text);
                 SuggestDiag.Log("ghost", $"\"{item.Text}\" remainder {item.Text.Length - input.Length} chars");
                 return;
             }
@@ -599,7 +603,7 @@ public partial class TerminalTabView : UserControl
                 e.KeyModifiers == Avalonia.Input.KeyModifiers.None
                 && e.Key is Key.Right or Key.End
                 && _ghostFull is not null
-                && _termControl?.GhostText is { Length: > 0 } remainder
+                && _termControl?.CurrentGhostRemainder() is { Length: > 0 } remainder
             )
             {
                 // 不设抑制:接受后 InputChanged 里发出的查询若命中更长的候选
@@ -889,7 +893,7 @@ public partial class TerminalTabView : UserControl
             _termControl.LostFocus -= OnTerminalLostFocus;
             // 幽灵是画在控件上的覆盖层:换出的旧控件若在别的面板仍可见,
             // 不清会把幽灵永久残留在旧光标处。
-            _termControl.GhostText = null;
+            _termControl.ClearGhostSuggestion();
         }
         _ghostFull = null;
         _termControl = ctrl;
