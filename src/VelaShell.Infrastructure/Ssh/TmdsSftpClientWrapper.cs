@@ -223,6 +223,18 @@ public sealed class TmdsSftpClientWrapper(Func<Task<SftpClient>> clientFactory) 
         }, ct);
     }
 
+    /// <summary>设置远端条目的最后修改时间(SFTP setstat;协议要求 atime/mtime 成对下发,atime 取同值)。</summary>
+    public Task SetLastWriteTimeAsync(string path, DateTimeOffset lastWriteTime, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return GuardedAsync(async () =>
+        {
+            await EnsureClient()
+                .SetAttributesAsync(path, times: (lastWriteTime, lastWriteTime), cancellationToken: ct)
+                .ConfigureAwait(false);
+        }, ct);
+    }
+
     /// <summary>
     /// Opens a file at the specified path on the SFTP server with the given mode and access. If the client is not connected, an <see cref="InvalidOperationException" /> is thrown.
     /// </summary>
@@ -382,7 +394,7 @@ public sealed class TmdsSftpClientWrapper(Func<Task<SftpClient>> clientFactory) 
         return entries;
     }
 
-    private static SftpEntry MapEntry(string fullPath, FileEntryAttributes attrs)
+    internal static SftpEntry MapEntry(string fullPath, FileEntryAttributes attrs)
     {
         string fn = Path.GetFileName(fullPath);
         UnixFilePermissions p = attrs.Permissions;
@@ -392,7 +404,11 @@ public sealed class TmdsSftpClientWrapper(Func<Task<SftpClient>> clientFactory) 
             FullName = fullPath,
             Length = attrs.Length,
             IsDirectory = attrs.FileType == UnixFileType.Directory,
-            LastWriteTime = attrs.LastWriteTime.DateTime,
+            // 必须 LocalDateTime 而非 .DateTime:后者把 DateTimeOffset 的偏移剥掉,留下
+            // "UTC 墙钟数 + Kind=Unspecified" —— 文件浏览器显示成 +0 时区,下载保留时间戳
+            // (File.SetLastWriteTime 按本地解读)还会再错一次时差。SFTP mtime 是 Unix 纪元秒,
+            // 换算本地时间展示才与 ls -l / date 一致。
+            LastWriteTime = attrs.LastWriteTime.LocalDateTime,
             UserId = attrs.Uid,
             GroupId = attrs.Gid,
             OwnerCanRead = (p & UnixFilePermissions.UserRead) != 0,
