@@ -13,8 +13,18 @@ public struct TerminalCell : IEquatable<TerminalCell>
     /// </summary>
     public int Rune;
 
+    /// <summary>
+    /// 组合标记在 <see cref="CombiningPool" /> 中的索引;0 = 无。存索引而非字符串引用,
+    /// 使本结构不含托管引用:回滚缓冲的数百万格从此不被 GC 逐格扫描,每格再省 4 字节。
+    /// </summary>
+    public int CombiningIndex;
+
     /// <summary>追加在 <see cref="Rune" /> 之后的可选组合标记。常见情况下为 Null。</summary>
-    public string? Combining;
+    public string? Combining
+    {
+        readonly get => CombiningPool.Get(CombiningIndex);
+        set => CombiningIndex = CombiningPool.Intern(value);
+    }
 
     /// <summary>单元格的前景(文字)颜色。</summary>
     public TerminalColor Foreground;
@@ -86,7 +96,7 @@ public struct TerminalCell : IEquatable<TerminalCell>
     /// <returns>各字段均相等时返回 true。</returns>
     public readonly bool Equals(TerminalCell other) =>
         Rune == other.Rune &&
-        Combining == other.Combining &&
+        CombiningIndex == other.CombiningIndex && // 池内驻留:同串必同索引。
         Foreground == other.Foreground &&
         Background == other.Background &&
         Flags == other.Flags;
@@ -98,7 +108,7 @@ public struct TerminalCell : IEquatable<TerminalCell>
 
     /// <summary>返回基于全部字段的哈希码。</summary>
     /// <returns>单元格的哈希码。</returns>
-    public override readonly int GetHashCode() => HashCode.Combine(Rune, Combining, Foreground, Background, Flags);
+    public override readonly int GetHashCode() => HashCode.Combine(Rune, CombiningIndex, Foreground, Background, Flags);
 
     /// <summary>判断两个单元格是否相等。</summary>
     /// <param name="left">左操作数。</param>

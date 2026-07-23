@@ -117,11 +117,15 @@ public class App : Application
             StartupRegistration.Apply(_startupSettings?.General.LaunchAtStartup == true);
 
             // 过期会话/传输日志清理(设置 → 常规/文件传输 → 日志保留天数),后台执行。
-            SessionLogService.CleanupExpired(_startupSettings?.General.LogRetentionDays ?? 30);
-            TransferLogService.CleanupExpired(
-                _startupSettings?.Transfer.LogDirectory,
-                _startupSettings?.Transfer.TransferLogRetentionDays ?? 30
-            );
+            // 真的放到后台:目录枚举+删除是磁盘 IO,日志多时同步跑会拖慢首帧。
+            int logRetentionDays = _startupSettings?.General.LogRetentionDays ?? 30;
+            string? transferLogDirectory = _startupSettings?.Transfer.LogDirectory;
+            int transferLogRetentionDays = _startupSettings?.Transfer.TransferLogRetentionDays ?? 30;
+            _ = Task.Run(() =>
+            {
+                SessionLogService.CleanupExpired(logRetentionDays);
+                TransferLogService.CleanupExpired(transferLogDirectory, transferLogRetentionDays);
+            });
 
             // 过期会话录制清理(随终端会话日志的保留天数)。
             if (_serviceProvider?.GetService<ISessionRecordingStore>() is { } recordingStore)
@@ -154,16 +158,15 @@ public class App : Application
             }
 
             // 云同步(设置 → 云同步):启动后台拉取一次;设置保存后标记本地改动并防抖推送。
+            // 迁移标记并入 WireAutoSync 的后台链执行("先标记、后同步"的顺序不变),
+            // 不再用 GetResult() 在 UI 线程上等一次磁盘写。
             if (_serviceProvider?.GetService<IGistSyncService>() is { } syncService)
             {
-                if (quickCommandLoad?.Migrated == true)
-                {
-                    syncService.MarkLocalChangedAsync().GetAwaiter().GetResult();
-                }
                 WireAutoSync(
                     syncService,
                     _serviceProvider.GetService<ISettingsService>(),
-                    _serviceProvider.GetService<IQuickCommandRepository>()
+                    _serviceProvider.GetService<IQuickCommandRepository>(),
+                    markLocalChangedFirst: quickCommandLoad?.Migrated == true
                 );
             }
 
@@ -188,13 +191,20 @@ public class App : Application
     private void WireAutoSync(
         IGistSyncService syncService,
         ISettingsService? settingsService,
-        IQuickCommandRepository? quickCommandRepository
+        IQuickCommandRepository? quickCommandRepository,
+        bool markLocalChangedFirst = false
     )
     {
         _ = Task.Run(async () =>
         {
             try
             {
+                if (markLocalChangedFirst)
+                {
+                    // 快捷命令迁移改动了本地数据:必须先落"本地已变"标记,再做启动同步,
+                    // 否则拉取可能把刚迁移的结构覆盖回旧远端。
+                    await syncService.MarkLocalChangedAsync();
+                }
                 SyncSettings config = await syncService.GetSyncSettingsAsync();
                 if (config is { Enabled: true, AutoSync: true })
                 {

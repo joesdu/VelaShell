@@ -83,10 +83,10 @@ public sealed class ConnectionProfileViewUiTests
             Dispatcher.UIThread.RunJobs();
             window.UpdateLayout();
 
-            var indicator = window.FindControl<Border>("ProtoTabIndicator")
+            Border indicator = window.FindControl<Border>("ProtoTabIndicator")
                 ?? throw new AssertFailedException("ProtoTabIndicator not found.");
-            var sshTab = window.FindControl<Button>("SshTab")!;
-            var sftpTab = window.FindControl<Button>("SftpTab")!;
+            Button sshTab = window.FindControl<Button>("SshTab")!;
+            Button sftpTab = window.FindControl<Button>("SftpTab")!;
 
             // 初始:下划线对齐 SSH。
             Assert.IsTrue(indicator.IsVisible);

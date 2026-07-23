@@ -512,6 +512,9 @@ public sealed class TerminalScreen
 
         // 2. 按新宽度重新生成逻辑行。
         var rebuilt = new List<TerminalRow>(physical.Count);
+        // 收集缓冲跨逻辑行复用:拖拽改宽会对整个缓冲区反复 reflow,若每条逻辑行
+        // 都 new 一个 List 再逐格 Add,就是一场 O(缓冲区) 的分配风暴。
+        var cells = new List<TerminalCell>(newCols * 2);
         int newCursorRow = -1, newCursorCol = 0;
         int i = 0;
         while (i < physical.Count)
@@ -525,7 +528,7 @@ public sealed class TerminalScreen
 
             // 收集其单元格:被换行的段落贡献其完整宽度,最后一段
             // 在最后一个非空单元格处截断(扩展以覆盖光标)。
-            var cells = new List<TerminalCell>();
+            cells.Clear();
             int cursorOffset = -1;
             DateTime? lineTimestamp = null;
             for (int r = i; r <= j; r++)
@@ -544,10 +547,7 @@ public sealed class TerminalScreen
                     len = Math.Max(len, cursorCol + 1);
                     cursorOffset = cells.Count + cursorCol;
                 }
-                for (int c = 0; c < len; c++)
-                {
-                    cells.Add(row[c]);
-                }
+                cells.AddRange(row.Span[..len]);
             }
             int emittedStart = rebuilt.Count;
             EmitLogicalLine(cells, cursorOffset, newCols, blank, rebuilt, ref newCursorRow, ref newCursorCol);

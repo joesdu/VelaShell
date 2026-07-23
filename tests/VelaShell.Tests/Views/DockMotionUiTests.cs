@@ -1,8 +1,8 @@
 using Avalonia;
 using Avalonia.Animation;
 using Avalonia.Controls;
-using Avalonia.Layout;
 using Avalonia.Headless;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
@@ -118,7 +118,7 @@ public sealed class DockMotionUiTests
         // 现值是动画中间值,基值才是应当停下的终点 —— 断言与真实时间彻底解耦。
         Control container = tabs.ContainerFromItem(document)
             ?? throw new AssertFailedException("Active tab has no realized container.");
-        Visual panel = (Visual)indicator.GetVisualParent()!;
+        Visual panel = indicator.GetVisualParent()!;
         Point origin = container.TranslatePoint(default, panel) ?? default;
         double actualX = indicator.GetBaseValue(Visual.RenderTransformProperty).GetValueOrDefault()?.Value.M31 ?? -1;
         double actualWidth = indicator.GetBaseValue(Layoutable.WidthProperty).GetValueOrDefault(double.NaN);

@@ -160,13 +160,25 @@ public class TransferItemViewModel : ReactiveObject
     /// <param name="progress">最新的传输进度信息。</param>
     public void UpdateProgress(TransferProgress progress)
     {
+        // 只有承载值真变了才广播派生属性:节流后的进度流里仍可能出现同值 tick
+        // (小文件、暂停的连接),白发一次 InfoLine/ProgressText 就是白做一次字符串拼装与重绑。
+        string speed = FormatSpeed(progress.SpeedBytesPerSecond);
+        string remaining = FormatTimeRemaining(progress.EstimatedTimeRemaining);
+        bool changed = _progress != progress.Percentage
+                       || _transferredBytes != progress.BytesTransferred
+                       || _totalSize != progress.TotalBytes
+                       || _speed != speed
+                       || _timeRemaining != remaining;
         Progress = progress.Percentage;
         TransferredBytes = progress.BytesTransferred;
         TotalSize = progress.TotalBytes;
-        Speed = FormatSpeed(progress.SpeedBytesPerSecond);
-        TimeRemaining = FormatTimeRemaining(progress.EstimatedTimeRemaining);
-        this.RaisePropertyChanged(nameof(InfoLine));
-        this.RaisePropertyChanged(nameof(ProgressText));
+        Speed = speed;
+        TimeRemaining = remaining;
+        if (changed)
+        {
+            this.RaisePropertyChanged(nameof(InfoLine));
+            this.RaisePropertyChanged(nameof(ProgressText));
+        }
     }
 
     /// <summary>将字节数格式化为带单位(B/KB/MB/GB/TB)的可读文本。</summary>

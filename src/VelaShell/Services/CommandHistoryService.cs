@@ -16,6 +16,10 @@ public sealed class CommandHistoryService(IAppDataStore? dataStore)
 
     private readonly List<string> _entries = [];
 
+    // 落盘防抖:命令密集执行(脚本粘贴、快速连敲)时,每条都全量序列化 500 条历史
+    // 纯属浪费;合并成静默 1 秒后一次落盘。窗口极小,丢失面可忽略(仅进程被杀时的最后一秒)。
+    private bool _savePending;
+
     /// <summary>最近优先的历史快照。</summary>
     public IReadOnlyList<string> Entries => _entries;
 
@@ -55,14 +59,32 @@ public sealed class CommandHistoryService(IAppDataStore? dataStore)
         {
             _entries.RemoveRange(MaxEntries, _entries.Count - MaxEntries);
         }
-        _ = SaveAsync();
+        ScheduleSave();
     }
 
-    /// <summary>清空全部历史(设置页可挂此入口)。</summary>
+    /// <summary>清空全部历史(设置页可挂此入口)。用户显式操作,立即落盘不防抖。</summary>
     public void Clear()
     {
         _entries.Clear();
         _ = SaveAsync();
+    }
+
+    private void ScheduleSave()
+    {
+        if (_savePending)
+        {
+            return; // 已有待落盘的防抖任务,本次改动搭它的便车。
+        }
+        _savePending = true;
+        _ = FlushAfterQuietPeriodAsync();
+    }
+
+    private async Task FlushAfterQuietPeriodAsync()
+    {
+        // 无 ConfigureAwait(false):延迟结束后回到 UI 线程再快照 _entries(本类的线程契约)。
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        _savePending = false;
+        await SaveAsync();
     }
 
     private async Task SaveAsync()

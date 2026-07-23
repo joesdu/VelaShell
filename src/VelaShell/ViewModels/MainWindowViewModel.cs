@@ -1104,6 +1104,27 @@ public class MainWindowViewModel : ReactiveObject
     }
 
     /// <summary>
+    /// 窗口最小化/隐入托盘时暂停状态栏指标与延迟轮询(由视图按 WindowState 驱动):
+    /// 用户看不见状态栏时,每秒一次的 SSH exec 探测 + 周期 ICMP 纯属浪费 CPU/网络,
+    /// 还会阻止系统进入低功耗。恢复可见即重启,下一秒就有新数据。
+    /// </summary>
+    public void SetStatusPollingSuspended(bool suspended)
+    {
+        if (_statusMetricsTimer is null)
+        {
+            return;
+        }
+        if (suspended)
+        {
+            _statusMetricsTimer.Stop();
+        }
+        else if (!_statusMetricsTimer.IsEnabled)
+        {
+            _statusMetricsTimer.Start();
+        }
+    }
+
+    /// <summary>
     /// 状态栏延迟指示(设计 gzmsb sbLatency,之前缺失):每 3 秒对活动标签的主机
     /// 发一次 ICMP ping,RTT 写入 tab.Latency(经既有 WhenAnyValue 管道刷新状态栏)。
     /// 目标禁 ICMP 或解析失败时清空显示,不打扰;不用 TCP 探测以免刷爆 sshd 日志。
