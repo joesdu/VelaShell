@@ -217,7 +217,9 @@ public partial class TerminalTabView : UserControl
             && !HasTextRightOfCursor()
         )
         {
-            _termControl?.GhostText = full[input.Length..];
+            // 缩短后的幽灵不立即重绘:交给这次键入的回显帧刷新,届时光标已随回显前移,
+            // 幽灵与光标同帧右移,避免在回显到达前把幽灵画到旧光标处引发逐键抖动。
+            _termControl?.SetGhostTextRidingEcho(full[input.Length..]);
         }
         else
         {

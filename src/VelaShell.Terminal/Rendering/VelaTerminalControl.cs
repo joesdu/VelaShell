@@ -813,16 +813,26 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// </summary>
     public string? GhostText
     {
-        get;
+        get => _ghostText;
         set
         {
-            if (field != value)
+            if (_ghostText != value)
             {
-                field = value;
+                _ghostText = value;
                 InvalidateVisual();
             }
         }
     }
+
+    private string? _ghostText;
+
+    /// <summary>
+    /// 更新幽灵文本但不主动重绘:随输入回显的下一帧一起刷新。逐键补全时缩短后的幽灵
+    /// 若立即重绘,会画在尚未随回显前移的旧光标处(左移一格),回显到达后又snap回右,
+    /// 连打即成剧烈抖动。把缩短交给回显帧后,幽灵与光标同帧前移,叠画自然平滑。
+    /// 仅用于"确定会紧接回显"的本地即时消耗路径;首次展示/异步校正/清除仍走属性以立即生效。
+    /// </summary>
+    public void SetGhostTextRidingEcho(string? text) => _ghostText = text;
 
     /// <summary>光标单元在控件坐标系中的矩形(与 RenderCursor 同一套计算)。</summary>
     private Rect GetImeCursorRect()
