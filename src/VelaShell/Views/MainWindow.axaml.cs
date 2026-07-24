@@ -537,7 +537,12 @@ public partial class MainWindow : Window
     public void ForceClose()
     {
         _forceClose = true;
-        Close();
+        // 推迟到当前事件出栈后再关:本方法常在对话框的关闭延续(ShowDialog 的 await 续体)、
+        // 托盘菜单回调或独立 SFTP 收尾的 finally 里被同步调用。若此刻直接 Close(),会在别的
+        // 窗口的 windowWillClose: 通知栈内嵌套关闭本窗口 —— macOS 上 AppKit 隐藏窗口时会回调
+        // firstRectForCharacterRange: 到已拆卸的终端 IME 视图,触发 EXC_BAD_ACCESS(崩溃
+        // EF96F409,0x18 空指针)。用 Post 断开嵌套,让每个窗口在各自干净的栈上关闭。
+        this.PostClose();
     }
 
     /// <summary>
@@ -585,7 +590,25 @@ public partial class MainWindow : Window
             base.OnClosing(e);
             return;
         }
+        EndTextInputSessionBeforeClose();
         base.OnClosing(e);
+    }
+
+    /// <summary>
+    /// 提交关闭前(macOS)主动清除键盘焦点,结束终端的原生输入法会话。
+    /// 终端是一个 IME 文本输入客户端(<c>TextInputMethodClientRequestedEvent</c>);窗口一旦关闭并被
+    /// AppKit 隐藏,系统的光标跟踪器(<c>TUINSCursorUIController</c>)会经 KVO 回调
+    /// <c>-[AvnView firstRectForCharacterRange:]</c> 查询已拆卸的视图 —— libAvaloniaNative 未做空判,
+    /// 触发 EXC_BAD_ACCESS(崩溃 EF96F409)。<c>Focus(null)</c> 把焦点移出终端,促使输入法管理器
+    /// SetClient(null)、在原生隐藏前重置 macOS 输入上下文,系统便无客户端可查询。
+    /// 仅 macOS 需要;其他平台无此原生路径,跳过以免改动焦点行为。
+    /// </summary>
+    private void EndTextInputSessionBeforeClose()
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            FocusManager?.Focus(null);
+        }
     }
 
     private async Task CloseStandaloneSftpDocumentsAndRetryAsync(MainWindowViewModel vm)
