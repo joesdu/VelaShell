@@ -21,6 +21,30 @@
     <Style Selector="Button.toolbar-btn:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
     </Style>
+    <!-- 「跟随终端目录」开关钮:安静图标钮,开启(checked)时图标染强调色;中和 Fluent ToggleButton
+         默认选中背景,使外观与其它工具栏图标钮一致(仅颜色区分开/关)。 -->
+    <Style Selector="ToggleButton.follow-pin">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+    </Style>
+    <Style Selector="ToggleButton.follow-pin:checked">
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
+    </Style>
+    <Style Selector="ToggleButton.follow-pin /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ToggleButton.follow-pin:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="ToggleButton.follow-pin:checked /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ToggleButton.follow-pin:checked:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
     <Style Selector="Button.col-header">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
@@ -145,6 +169,16 @@
                            VerticalAlignment="Center" />
               </StackPanel>
             </Button>
+            <!-- 「跟随终端目录」(map-pin):开启后本会话终端 cd 到新目录时文件浏览器自动同步;
+                 关闭则不同步。手动切目录不改开关,终端下次 cd 再同步到最新(见 FileBrowserViewModel.FollowTerminal)。 -->
+            <ToggleButton Classes="follow-pin" Width="24" Height="24" Padding="0"
+                          HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                          IsChecked="{Binding FollowTerminal}"
+                          ToolTip.Tip="{loc:Localize Sftp_FollowTerminal}">
+              <pc:LucideIcon Width="13" Height="13"
+                             Data="{StaticResource Icon.map-pin}"
+                             Foreground="{Binding $parent[ToggleButton].Foreground}" />
+            </ToggleButton>
             <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                     Command="{Binding ShowTransfersCommand}"
