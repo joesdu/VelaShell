@@ -112,7 +112,7 @@
   <!-- SFTP 面板底色与终端一致(#282A36 家族),而非窗口铬色。 -->
   <Border BorderThickness="0,1,0,0"
           BorderBrush="{DynamicResource VelaBorderPrimary}"
-          Background="{DynamicResource VelaBgTerminal}"
+          Background="{DynamicResource VelaBgSftpPanel}"
           IsVisible="{Binding IsVisible}"
           VerticalAlignment="Stretch"
           MinHeight="120">
@@ -267,7 +267,7 @@
       <Grid RowDefinitions="26,*">
 
         <Border Grid.Row="0"
-                Background="{DynamicResource VelaBgSurface}"
+                Background="{DynamicResource VelaBgContentHeader}"
                 BorderBrush="{DynamicResource VelaBorderPrimary}"
                 BorderThickness="0,0,0,1"
                 Padding="14,0">
