@@ -630,6 +630,13 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         remove => Emulator.TitleChanged -= value;
     }
 
+    /// <summary>OSC 7 当前工作目录变更(直通仿真器)。</summary>
+    public event Action<string>? WorkingDirectoryChanged
+    {
+        add => Emulator.WorkingDirectoryChanged += value;
+        remove => Emulator.WorkingDirectoryChanged -= value;
+    }
+
     /// <summary>设置主机输出字符集(默认 UTF-8;支持 GBK/Big5 等)。</summary>
     public void SetEncoding(Encoding encoding) => Emulator.SetEncoding(encoding);
 
