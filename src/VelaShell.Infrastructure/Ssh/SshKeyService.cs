@@ -93,7 +93,7 @@ public sealed class SshKeyService(string? sshDirectory = null) : ISshKeyService
             // (-----BEGIN RSA PRIVATE KEY-----)与 PKCS#8 都会被判 "Unsupported format" 而当作
             // 无可用凭据【跳过】——认证遂以 "These methods were skipped: publickey" 失败,用户表现为
             // 用本应用生成的密钥怎么都登不上(排障线索:诊断第 4 步 no methods failed、skipped publickey)。
-            File.WriteAllText(privatePath, BuildOpenSshRsaPrivateKeyPem(parameters, comment));
+            File.WriteAllText(privatePath, OpenSshPrivateKey.SerializeRsa(parameters, comment));
             if (!OperatingSystem.IsWindows())
             {
                 File.SetUnixFileMode(privatePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
@@ -187,60 +187,6 @@ public sealed class SshKeyService(string? sshDirectory = null) : ISshKeyService
         byte[] chunk = blob.AsSpan(offset, length).ToArray();
         offset += length;
         return chunk;
-    }
-
-    /// <summary>
-    /// 把 RSA 私钥序列化为 OpenSSH 私钥 PEM(-----BEGIN OPENSSH PRIVATE KEY-----,cipher/kdf=none 未加密)。
-    /// 结构见 PROTOCOL.key:magic "openssh-key-v1\0" ‖ ciphername ‖ kdfname ‖ kdfoptions ‖ 密钥数 ‖
-    /// 公钥 blob ‖ 私钥段;私钥段 = 两个相同 checkint ‖ ("ssh-rsa", n, e, d, iqmp, p, q) ‖ 注释 ‖
-    /// 递增填充至 8 字节对齐。Tmds.Ssh 仅识别此格式(PKCS#1/PKCS#8 均被判 Unsupported format)。
-    /// </summary>
-    private static string BuildOpenSshRsaPrivateKeyPem(RSAParameters p, string comment)
-    {
-        byte[] publicBlob = BuildRsaPublicBlob(p);
-
-        using var priv = new MemoryStream();
-        uint checkInt = BitConverter.ToUInt32(RandomNumberGenerator.GetBytes(4));
-        WriteUInt32(priv, checkInt);
-        WriteUInt32(priv, checkInt); // 两次相同,解密后自校验
-        WriteChunk(priv, Encoding.ASCII.GetBytes("ssh-rsa"));
-        WriteChunk(priv, ToMpint(p.Modulus!));   // n
-        WriteChunk(priv, ToMpint(p.Exponent!));  // e
-        WriteChunk(priv, ToMpint(p.D!));         // d
-        WriteChunk(priv, ToMpint(p.InverseQ!));  // iqmp = q^-1 mod p
-        WriteChunk(priv, ToMpint(p.P!));         // p
-        WriteChunk(priv, ToMpint(p.Q!));         // q
-        WriteChunk(priv, Encoding.UTF8.GetBytes(comment));
-        for (byte pad = 1; priv.Length % 8 != 0; pad++) // cipher=none,块大小 8
-        {
-            priv.WriteByte(pad);
-        }
-
-        using var outer = new MemoryStream();
-        outer.Write("openssh-key-v1\0"u8); // 15 字节魔数,含结尾 NUL,非长度前缀
-        WriteChunk(outer, Encoding.ASCII.GetBytes("none")); // ciphername
-        WriteChunk(outer, Encoding.ASCII.GetBytes("none")); // kdfname
-        WriteChunk(outer, []);                              // kdfoptions
-        WriteUInt32(outer, 1);                              // 密钥数量
-        WriteChunk(outer, publicBlob);
-        WriteChunk(outer, priv.ToArray());
-
-        string base64 = Convert.ToBase64String(outer.ToArray());
-        var pem = new StringBuilder();
-        pem.Append("-----BEGIN OPENSSH PRIVATE KEY-----\n");
-        for (int i = 0; i < base64.Length; i += 70)
-        {
-            pem.Append(base64, i, Math.Min(70, base64.Length - i)).Append('\n');
-        }
-        pem.Append("-----END OPENSSH PRIVATE KEY-----\n");
-        return pem.ToString();
-    }
-
-    private static void WriteUInt32(MemoryStream stream, uint value)
-    {
-        Span<byte> bytes = stackalloc byte[4];
-        BinaryPrimitives.WriteUInt32BigEndian(bytes, value);
-        stream.Write(bytes);
     }
 
     /// <summary>构造 OpenSSH ssh-rsa 公钥 blob:string "ssh-rsa" ‖ mpint e ‖ mpint n。</summary>
