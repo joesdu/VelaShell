@@ -29,6 +29,8 @@ public partial class MainWindow : Window
     private bool _confirmationInProgress;
     private bool _standaloneSftpShutdownInProgress;
     private bool _standaloneSftpShutdownComplete;
+    private bool _openedInitialized;
+    private bool _snapLayoutsInitialized;
 
     /// <summary>自绘缩放抓取区:普通状态按下即进入原生缩放;最大化时整层隐藏(见 OnPropertyChanged)。</summary>
     private void ResizeEdge_PointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
@@ -151,6 +153,13 @@ public partial class MainWindow : Window
 
     private void SetupSnapLayouts()
     {
+        // 只装一次:Opened 每次 Show() 都会重发(从托盘重开亦然),否则每次重开都会再追加一份
+        // 样式回调与 WndProc 钩子,越积越多、白白重复处理每条窗口消息。
+        if (_snapLayoutsInitialized)
+        {
+            return;
+        }
+        _snapLayoutsInitialized = true;
         // 样式回调:Avalonia 每次重算窗口样式后追加 DWM 框架位。
         Win32Properties.AddWindowStylesCallback(
             this,
@@ -320,6 +329,15 @@ public partial class MainWindow : Window
 
     private async void OnWindowOpened(object? sender, EventArgs e)
     {
+        // Avalonia 的 Window 每次 Show() 都会重发 Opened(Hide() 清 _shown,再 Show 即再触发)。
+        // 开启“关闭时最小化到托盘”后,从托盘重新显示走的正是 Show(),若在此重复接线,
+        // tree.ConnectRequested 等订阅会逐次累积 —— 双击连接便按重开次数成倍连接(重开 N 次连 N 个)。
+        // 事件接线与会话初始化只应在窗口生命周期内做一次,故此处早退幂等。
+        if (_openedInitialized)
+        {
+            return;
+        }
+        _openedInitialized = true;
         if (DataContext is MainWindowViewModel vm)
         {
             vm.TerminalSearchRequested += OnTerminalSearchRequested;
