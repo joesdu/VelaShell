@@ -1381,6 +1381,30 @@ Paste anyway?</value>
   <data name="SetAppear_AccentColorDesc" xml:space="preserve">
     <value>// Application accent color (leave empty for theme default)</value>
   </data>
+  <data name="SetAppear_BackgroundImage" xml:space="preserve">
+    <value>Background image</value>
+  </data>
+  <data name="SetAppear_BackgroundImageDesc" xml:space="preserve">
+    <value>// Image shown behind the app; tune with the opacity sliders below</value>
+  </data>
+  <data name="SetAppear_BackgroundImageBrowse" xml:space="preserve">
+    <value>Browse…</value>
+  </data>
+  <data name="SetAppear_BackgroundImageClear" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="SetAppear_BackgroundImageOpacity" xml:space="preserve">
+    <value>Background image opacity</value>
+  </data>
+  <data name="SetAppear_BackgroundImageOpacityDesc" xml:space="preserve">
+    <value>// Lower = fainter image</value>
+  </data>
+  <data name="SetAppear_ContentBgOpacity" xml:space="preserve">
+    <value>Content background opacity</value>
+  </data>
+  <data name="SetAppear_ContentBgOpacityDesc" xml:space="preserve">
+    <value>// Dims the image behind all content (terminal, SFTP, sidebar); lower reveals more of the image</value>
+  </data>
   <data name="SetAppear_Ansi16" xml:space="preserve">
     <value>Terminal ANSI 16 colors</value>
   </data>

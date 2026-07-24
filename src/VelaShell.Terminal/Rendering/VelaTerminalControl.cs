@@ -954,6 +954,49 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         palette.SetAnsi(15, Rgba.FromRgb(0xFF, 0xFF, 0xFF));
     }
 
+    /// <summary>
+    /// 终端「默认背景」整屏填充的不透明度(0..1,默认 1=不透明,行为不变)。低于 1 时整屏默认背景变半透明,
+    /// 透出其后的应用背景图(设置→外观→背景图片)。只作用于整屏默认背景填充,不影响单元格自身着色的背景
+    /// (选区、彩色底等仍不透明),因此不牺牲文本可读性。仅在设置了背景图时由 MainWindowViewModel 下调。
+    /// </summary>
+    public double BackgroundOpacity
+    {
+        get => _backgroundOpacity;
+        set
+        {
+            double clamped = Math.Clamp(value, 0.0, 1.0);
+            if (Math.Abs(clamped - _backgroundOpacity) < 0.001)
+            {
+                return;
+            }
+            _backgroundOpacity = clamped;
+            InvalidateVisual();
+        }
+    }
+
+    private double _backgroundOpacity = 1.0;
+    private ImmutableSolidColorBrush? _bgFillBrush;
+    private uint _bgFillPacked;
+    private int _bgFillOp = -1;
+
+    /// <summary>整屏默认背景填充画刷:不透明时走共享缓存,半透明时按(颜色×不透明度)缓存一支专用画刷。</summary>
+    private ImmutableSolidColorBrush DefaultBackgroundBrush(Rgba bg)
+    {
+        if (_backgroundOpacity >= 0.999)
+        {
+            return BrushFor(bg);
+        }
+        int op = (int)Math.Round(_backgroundOpacity * 1000);
+        if (_bgFillBrush is null || _bgFillPacked != bg.Packed || _bgFillOp != op)
+        {
+            byte a = (byte)Math.Round(bg.A * _backgroundOpacity);
+            _bgFillBrush = new(Color.FromArgb(a, bg.R, bg.G, bg.B));
+            _bgFillPacked = bg.Packed;
+            _bgFillOp = op;
+        }
+        return _bgFillBrush;
+    }
+
     private ImmutableSolidColorBrush BrushFor(Rgba c)
     {
         if (_brushCache.TryGetValue(c.Packed, out ImmutableSolidColorBrush? brush))
@@ -1222,7 +1265,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     {
         TerminalScreen screen = Emulator.Screen;
         TerminalPalette palette = Emulator.Palette;
-        context.FillRectangle(BrushFor(palette.DefaultBackground), new(Bounds.Size));
+        context.FillRectangle(DefaultBackgroundBrush(palette.DefaultBackground), new(Bounds.Size));
         int rows = screen.Rows;
         int cols = screen.Columns;
 

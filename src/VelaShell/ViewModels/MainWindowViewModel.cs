@@ -2544,6 +2544,11 @@ public class MainWindowViewModel : ReactiveObject
         {
             control.FontSize = settings.TerminalFontSize;
         }
+        // 背景图开启时,终端控件自绘填充置全透明(不画背景),终端 tint 改由 TerminalHost 边框单层承担
+        // (VelaBgTerminal 令牌半透明,MainWindow 负责)。若这里仍按不透明度上色,会与该边框两层叠加、
+        // 保存后终端又变得几乎不透明。未开启背景图则恒为不透明(行为不变)。
+        bool backgroundImageActive = !string.IsNullOrWhiteSpace(settings.Appearance.BackgroundImagePath);
+        control.BackgroundOpacity = backgroundImageActive ? 0.0 : 1.0;
         TerminalBehaviorOptions behavior = settings.TerminalBehavior;
         control.LineHeight = behavior.LineHeight;
         control.CursorStyle = behavior.CursorStyle;
@@ -2582,6 +2587,21 @@ public class MainWindowViewModel : ReactiveObject
         control.PaletteOverrides = TerminalAppearanceMapper.BuildPaletteOverrides(
             settings.Appearance
         );
+    }
+
+    /// <summary>
+    /// 把终端默认背景不透明度实时应用到所有已打开的终端标签(背景图即时预览用:拖动滑杆时视图层直接调,
+    /// 不经保存/重建标签)。opacity=1 即不透明,还原默认。
+    /// </summary>
+    public void ApplyTerminalBackgroundOpacityToAllTabs(double opacity)
+    {
+        foreach (TerminalTabViewModel tab in TabBar.Tabs.OfType<TerminalTabViewModel>())
+        {
+            if (tab.TerminalEmulator.Control is VelaTerminalControl control)
+            {
+                control.BackgroundOpacity = opacity;
+            }
+        }
     }
 
     private void OnSettingsSaved(AppSettings settings)

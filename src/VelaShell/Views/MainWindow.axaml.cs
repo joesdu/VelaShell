@@ -3,7 +3,9 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
@@ -87,6 +89,10 @@ public partial class MainWindow : Window
             sidebar.SettingsRequested += (_, _) => _ = OpenSettingsAsync();
         }
         DataContextChanged += (_, _) => HookFileBrowserVisibility();
+        // 主题(暗/亮)切换时,按新主题色重建背景令牌覆盖画刷。否则之前设的覆盖仍持旧主题色、
+        // 一直 shadow 掉换主题后的令牌值,导致终端/SFTP/侧栏等背景停在旧色,须再动一次滑杆才同步。
+        ActualThemeVariantChanged += (_, _) =>
+            ApplyBackgroundOpacities(_lastImageOpacity, _lastContentOpacity);
         Opened += OnWindowOpened;
         if (OperatingSystem.IsWindows())
         {
@@ -412,6 +418,9 @@ public partial class MainWindow : Window
                 previewService.WindowOpacityPreviewRequested += OnSettingsOpacityPreviewedForWindow;
                 Closed += (_, _) =>
                     previewService.WindowOpacityPreviewRequested -= OnSettingsOpacityPreviewedForWindow;
+                previewService.BackgroundOpacityPreviewRequested += OnBackgroundOpacityPreviewedForWindow;
+                Closed += (_, _) =>
+                    previewService.BackgroundOpacityPreviewRequested -= OnBackgroundOpacityPreviewedForWindow;
             }
             try
             {
@@ -489,6 +498,7 @@ public partial class MainWindow : Window
         AppearanceOptions a = settings.Appearance;
         ApplyWindowOpacity(a.WindowOpacityPercent);
         ApplySidebarPosition(a.SidebarPosition == "right");
+        ApplyBackgroundImage(a);
         if (Application.Current is not { } app)
         {
             return;
@@ -511,6 +521,130 @@ public partial class MainWindow : Window
         app.Resources["VelaUiFontSize"] = uiFontSize;
         app.Resources["ControlContentThemeFontSize"] = uiFontSize;
     }
+
+    private Bitmap? _backgroundBitmap;
+    private string? _loadedBackgroundPath;
+    // 最近一次应用的不透明度:主题切换时需按新主题色重建 scrim,故缓存以便重放。
+    private int _lastImageOpacity = 100, _lastContentOpacity = 85;
+
+    // 单一整窗 scrim 方案:背景图铺最底层,其上叠一层【半透明遮罩 scrim】(主题底色,整窗一层),
+    // 再上面所有内容背景令牌全部置【透明】,于是终端/SFTP/侧栏/面板一律透出 scrim+图片。
+    // 因全透明,任意嵌套容器都不会叠加(透明×N 仍透明),彻底消除"多层叠加致某区域偏暗"的问题。
+    // scrim 底色 = 主题 page 色(与 VelaShellTokens 两套变体一致,改那边记得同步)。
+    private static readonly Color ScrimDark = Color.Parse("#191A21");
+    private static readonly Color ScrimLight = Color.Parse("#F2EDDA");
+
+    // 有背景图时置全透明、让 scrim+图片透出的内容背景令牌(仅本窗口)。
+    // VelaBgSurface(弹层/对话框/卡片)、VelaBgInput(输入框)刻意不在其列,保持不透明以保证可读性。
+    private static readonly string[] ContentTokenKeys =
+    [
+        "VelaBgPage", "VelaBgSidebar", "VelaBgTerminal", "VelaBgSftpPanel", "VelaBgDockDocument",
+    ];
+
+    // 内容区的小块「强调底」(选项卡标题、选中项、悬停、输入框/下拉、表头):不能全透明(会丢失可辨识度),
+    // 而是有背景图时压成【半透明】,既保留强调作用又与背景图融合,不再突兀。颜色须与 VelaShellTokens 两套变体一致;
+    // Fraction = 保留的不透明比例(越低越透)。VelaBgSurface 不在其列(弹层/对话框/下拉浮层需不透明保证可读),
+    // 内容区表头改用专门的 VelaBgContentHeader。
+    private static readonly (string Key, Color Dark, Color Light, double Fraction)[] AccentTranslucentTokens =
+    [
+        ("VelaTabActiveBg", Color.Parse("#282A36"), Color.Parse("#FFFBEB"), 0.75),
+        ("VelaTabInactiveBg", Color.Parse("#191A21"), Color.Parse("#EBE5CC"), 0.45),
+        ("VelaBgActive", Color.Parse("#44475A"), Color.Parse("#644AC922"), 0.65),
+        ("VelaBgHover", Color.Parse("#363948"), Color.Parse("#EDE7D0"), 0.5),
+        ("VelaBgInput", Color.Parse("#282A36"), Color.Parse("#F7F2DF"), 0.7),
+        ("VelaBgContentHeader", Color.Parse("#343746"), Color.Parse("#FFFBEB"), 0.6),
+    ];
+
+    /// <summary>
+    /// 应用背景图片(设置 → 外观 → 背景图片):装配窗口最底层的 <c>BackgroundImageLayer</c>。
+    /// 仅在【路径变化】时(重新)解码图片,避免拖动不透明度滑杆时反复读盘;不透明度由
+    /// <see cref="ApplyBackgroundOpacities" /> 单独装配(可被即时预览直接调用)。
+    /// </summary>
+    private void ApplyBackgroundImage(AppearanceOptions a)
+    {
+        string path = a.BackgroundImagePath?.Trim() ?? "";
+        if (!string.Equals(path, _loadedBackgroundPath, StringComparison.Ordinal))
+        {
+            _backgroundBitmap?.Dispose();
+            _backgroundBitmap = null;
+            if (path.Length > 0 && File.Exists(path))
+            {
+                try
+                {
+                    _backgroundBitmap = new Bitmap(path);
+                }
+                catch
+                {
+                    _backgroundBitmap = null; // 解码失败:当作未设置,不打断启动/预览。
+                }
+            }
+            _loadedBackgroundPath = path;
+            if (this.FindControl<Image>("BackgroundImageLayer") is { } layer)
+            {
+                layer.Source = _backgroundBitmap;
+                layer.IsVisible = _backgroundBitmap is not null;
+            }
+        }
+        ApplyBackgroundOpacities(a.BackgroundImageOpacity, a.ContentBackgroundOpacity);
+    }
+
+    /// <summary>
+    /// 装配背景图相关的不透明度(即时预览与保存共用,不涉及图片解码,故可高频调用):图片图层不透明度、
+    /// scrim 遮罩不透明度、以及把内容背景令牌整体置透明(仅本窗口,弹层/对话框/输入框不受影响)。
+    /// 无背景图时隐藏 scrim、移除令牌覆盖、终端填充还原为不透明,完全恢复旧行为。
+    /// </summary>
+    private void ApplyBackgroundOpacities(int imageOpacity, int contentOpacity)
+    {
+        (_lastImageOpacity, _lastContentOpacity) = (imageOpacity, contentOpacity);
+        bool active = _backgroundBitmap is not null;
+        if (this.FindControl<Image>("BackgroundImageLayer") is { } layer)
+        {
+            layer.Opacity = Math.Clamp(imageOpacity, 0, 100) / 100.0;
+        }
+
+        if (this.FindControl<Border>("BackgroundScrim") is { } scrim)
+        {
+            Color baseColor = ActualThemeVariant == ThemeVariant.Light ? ScrimLight : ScrimDark;
+            scrim.Background = new SolidColorBrush(baseColor);
+            scrim.Opacity = Math.Clamp(contentOpacity, 0, 100) / 100.0; // 遮罩越不透明,越盖住背景图
+            scrim.IsVisible = active;
+        }
+
+        foreach (string key in ContentTokenKeys)
+        {
+            if (active)
+            {
+                Resources[key] = Brushes.Transparent;
+            }
+            else
+            {
+                Resources.Remove(key);
+            }
+        }
+
+        // 强调底压成半透明(而非全透明):选项卡标题、选中项、悬停、输入框、内容表头等,融入背景图不再突兀。
+        bool light = ActualThemeVariant == ThemeVariant.Light;
+        foreach ((string key, Color dark, Color lightColor, double fraction) in AccentTranslucentTokens)
+        {
+            if (active)
+            {
+                Color c = light ? lightColor : dark;
+                Resources[key] = new SolidColorBrush(Color.FromArgb((byte)Math.Round(c.A * fraction), c.R, c.G, c.B));
+            }
+            else
+            {
+                Resources.Remove(key);
+            }
+        }
+
+        // 终端控件自绘填充:有图时置全透明(不画背景),透出 scrim+背景图;无图时恒不透明(=1),行为不变。
+        // 终端文字与彩色单元格底(选区/彩色输出)不受影响,照常绘制,不伤可读性。
+        (DataContext as MainWindowViewModel)?.ApplyTerminalBackgroundOpacityToAllTabs(active ? 0.0 : 1.0);
+    }
+
+    /// <summary>背景图/内容背景不透明度的即时预览(拖动滑杆):只调不透明度,不重新解码图片。</summary>
+    private void OnBackgroundOpacityPreviewedForWindow((int Image, int Content) v) =>
+        RunOnUiThread(() => ApplyBackgroundOpacities(v.Image, v.Content));
 
     private void ApplyWindowOpacity(int percent) => Opacity = Math.Clamp(percent, 10, 100) / 100.0;
 
