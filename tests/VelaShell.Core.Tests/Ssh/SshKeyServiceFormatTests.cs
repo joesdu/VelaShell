@@ -1,5 +1,6 @@
 using System.Reflection;
 using Tmds.Ssh;
+using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Ssh;
 
 namespace VelaShell.Core.Tests.Ssh;
@@ -20,10 +21,10 @@ public class SshKeyServiceFormatTests
         try
         {
             var svc = new SshKeyService(dir);
-            var info = await svc.GenerateRsaKeyAsync("id_test", 2048);
+            SshKeyInfo info = await svc.GenerateRsaKeyAsync("id_test", 2048);
 
             string pem = await File.ReadAllTextAsync(info.PrivateKeyPath);
-            StringAssert.StartsWith(pem, "-----BEGIN OPENSSH PRIVATE KEY-----",
+            Assert.StartsWith("-----BEGIN OPENSSH PRIVATE KEY-----", pem,
                 "私钥必须是 OpenSSH 格式,否则 Tmds.Ssh 无法加载");
 
             // Tmds.Ssh 真正加载一遍:能取出密钥即证明格式被接受(不抛 Unsupported format)。

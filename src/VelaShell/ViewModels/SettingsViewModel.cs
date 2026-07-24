@@ -179,7 +179,7 @@ public class SettingsViewModel : ReactiveObject
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
-    } = "JetBrains Mono";
+    } = "Cascadia Mono";
 
     /// <summary>终端字号(磅)。</summary>
     public int TerminalFontSize
