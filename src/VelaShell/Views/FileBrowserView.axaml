@@ -10,62 +10,6 @@
              x:Class="VelaShell.Views.FileBrowserView"
              x:DataType="vm:FileBrowserViewModel">
 
-  <UserControl.Resources>
-    <ControlTheme x:Key="VelaUploadPillButtonTheme" TargetType="Button">
-      <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="CornerRadius" Value="3" />
-      <Setter Property="Padding" Value="8,0" />
-      <Setter Property="FocusAdorner" Value="{x:Null}" />
-      <Setter Property="Template">
-        <ControlTemplate>
-          <Border x:Name="PART_UploadPillRoot"
-                  Background="{TemplateBinding Background}"
-                  BorderBrush="{TemplateBinding BorderBrush}"
-                  BorderThickness="{TemplateBinding BorderThickness}"
-                  CornerRadius="{TemplateBinding CornerRadius}"
-                  Padding="{TemplateBinding Padding}">
-            <ContentPresenter x:Name="PART_ContentPresenter"
-                              Content="{TemplateBinding Content}"
-                              ContentTemplate="{TemplateBinding ContentTemplate}"
-                              Foreground="{TemplateBinding Foreground}"
-                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
-          </Border>
-        </ControlTemplate>
-      </Setter>
-      <Style Selector="^:pointerover">
-        <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
-      </Style>
-      <Style Selector="^:pressed">
-        <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
-      </Style>
-      <Style Selector="^:focus">
-        <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
-      </Style>
-      <Style Selector="^:focus:pointerover">
-        <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
-        <Setter Property="BorderThickness" Value="1" />
-      </Style>
-      <Style Selector="^:focus:pressed">
-        <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
-        <Setter Property="BorderThickness" Value="1" />
-      </Style>
-      <Style Selector="^:disabled">
-        <Setter Property="Background" Value="{DynamicResource VelaBgSurface}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
-        <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
-      </Style>
-    </ControlTheme>
-  </UserControl.Resources>
 
   <UserControl.Styles>
     <Style Selector="Button.toolbar-btn">
@@ -187,7 +131,7 @@
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
             <Button Classes="upload-pill" Height="24" Cursor="Hand"
                     FocusAdorner="{x:Null}"
-                    Theme="{StaticResource VelaUploadPillButtonTheme}"
+                    Theme="{DynamicResource VelaAccentPillButtonTheme}"
                     Command="{Binding UploadCommand}"
                     ToolTip.Tip="{x:Static res:Strings.Upload}">
               <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
