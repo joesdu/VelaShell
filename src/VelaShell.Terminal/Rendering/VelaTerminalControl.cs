@@ -360,7 +360,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             RelayoutFromBounds();
             InvalidateVisual();
         }
-    } = new("Cascadia Mono, Consolas, JetBrains Mono, Microsoft YaHei, Segoe UI, monospace");
+    } = new("fonts:VelaShell#Cascadia Mono, Cascadia Mono, JetBrains Mono, Consolas, Microsoft YaHei, Segoe UI, monospace");
 
     /// <summary>终端字号(磅);修改后重算单元格度量、重排网格并重绘。</summary>
     public double FontSize
