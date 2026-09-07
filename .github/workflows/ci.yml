@@ -19,7 +19,7 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   pull_request:
 
 # 同一分支上新推送会取消上一次还在跑的检查:PR 连推几次时不必把 runner 全占满。
