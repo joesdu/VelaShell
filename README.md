@@ -332,7 +332,7 @@ SDK 另提供测试替身（`VelaShell.PluginSdk.Testing`），插件可在 head
 · [打包发布](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/templates/publishing.md)
 · [设计蓝图 15 篇](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/plugins)
 
-### 六个仓库各管一摊
+### 七个仓库各管一摊
 
 | 仓库 | 管什么 | 怎么交付到本仓库 |
 | --- | --- | --- |
@@ -341,6 +341,7 @@ SDK 另提供测试替身（`VelaShell.PluginSdk.Testing`），插件可在 head
 | [**velashell-plugin-cli**](https://github.com/VelaShellLabs/velashell-plugin-cli) | `vela-plugin` 命令行、`VelaShell.PluginSdk.Build` | **NuGet 包**（插件作者用，本仓库不引用） |
 | [**velashell-plugin-templates**](https://github.com/VelaShellLabs/velashell-plugin-templates) | `dotnet new velaplugin` 模板 | **NuGet 包**（插件作者用，本仓库不引用） |
 | [**velashell-plugins**](https://github.com/VelaShellLabs/velashell-plugins) | Redis / S3 / Telnet / 串口插件 | 各插件的 **`.vpx` 包**（Release 资产 / 插件商店） |
+| [**VelaShell.Plugin.DockerPanel**](https://github.com/VelaShellLabs/VelaShell.Plugin.DockerPanel) | Docker 管理面板插件（自成一仓） | 同上 —— `.vpx` 包，已发布 `0.3.1` |
 | [**velashell-docs**](https://github.com/VelaShellLabs/velashell-docs) | 上面所有仓库的**全部文档** | — |
 
 SDK 契约的版本 pin 在 `src/Directory.Packages.props` 与 `tests/Directory.Packages.props`
@@ -404,11 +405,15 @@ English in [`en/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/en)
 | [`zh/plugins/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/plugins) | 插件系统设计蓝图 15 篇 + [进度总览 STATUS](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/plugins/STATUS.md) |
 | [`zh/sdk/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/sdk) · [`zh/cli/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/cli) · [`zh/templates/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/templates) | SDK 参考、`vela-plugin` 手册、插件开发指南与打包发布 |
 
-留在本仓库的两份，因为它们服务的是「在这个仓库里写代码」这件事：
+留在本仓库的三份，因为它们服务的是「在这个仓库里写代码」这件事：
 
 - [`DESIGN.md`](DESIGN.md) —— 设计系统：色彩 / 字体 / 间距令牌与组件规范
   （XAML 注释与单元测试按章节号直接引用它）
-- [`plan.md`](plan.md) —— 进展记录、已知问题与后续待办，开发跟进以它为准
+- [`plan.md`](plan.md) —— **已经发生的事**：进展记录、当前架构、每次改动的来龙去脉
+- [`feature-plan.md`](feature-plan.md) —— **还没发生的事**：待办、候选特性、确认不做的清单
+
+> 两者分工是硬的：一件事做完了就从 `feature-plan.md` 划掉、在 `plan.md` 补一节；
+> 还没做的就不在 `plan.md` 里留 TODO。
 
 另有 [`AGENTS.md`](AGENTS.md)（给 AI 代理与新加入者的操作约定）、
 [`CONTRIBUTING.md`](CONTRIBUTING.md)、[`SECURITY.md`](SECURITY.md)、[`PRIVACY.md`](PRIVACY.md)。
@@ -441,15 +446,23 @@ English in [`en/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/en)
 以及**插件系统框架层**（双宿主模式、完整能力面、UI 与协议扩展、心跳自愈与空闲回收、
 插件私有存储与卸载清理、`.vpx` 装卸、SDK 测试替身与开发文档）与第一方 **AI 助手插件**。
 
-**由插件提供** —— Telnet、串口（COM / USB 转串口）、Redis、S3。
-均不随安装包预装，按需从[插件商店](https://market.easilynet.top)安装
-（源码在 [velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins)）。
+**由插件提供** —— 均不随安装包预装，按需从[插件商店](https://market.easilynet.top)安装：
 
-**未开放** —— 证书认证；容器管理插件尚未开始；
-系统密钥链与 sudo 凭据自动填充仍在调研。部分设置项目前仅持久化、待接线到运行时。
+- **Telnet、串口（COM / USB 转串口）、Redis、S3** ——
+  源码在 [velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins)。
+- **Docker 面板** ——
+  [VelaShell.Plugin.DockerPanel](https://github.com/VelaShellLabs/VelaShell.Plugin.DockerPanel)（独立仓库）。
+  在**已经连上的 SSH 会话**上开一个完整的 Docker 管理面板：总览 / 容器 / 镜像 / 卷 / 网络 /
+  Compose / 系统七页，外加实时统计、多容器合并日志流、容器内文件编辑与内置 TTY 控制台。
+  **服务器上什么都不用改** —— 经 SSH 会话开一条到远端 `/var/run/docker.sock` 的直连通道
+  （`direct-streamlocal@openssh.com`）说 Docker Engine HTTP API，不必把 daemon 暴露在
+  2375/2376，也不需要第二套凭据；这条通道也不是本地端口转发，同机其它进程连不上去。
 
-完整完成情况与待办清单见 [`plan.md`](plan.md) 与
-[插件进度总览](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/plugins/STATUS.md)。
+**未开放** —— SSH 证书认证；系统密钥链与 sudo 凭据自动填充仍在调研；
+少数设置项目前仅持久化、待接线到运行时（逐条见 `feature-plan.md` 的 P0 表）。
+
+完整完成情况见 [`plan.md`](plan.md)，待办与计划见 [`feature-plan.md`](feature-plan.md)，
+插件侧另见[进度总览](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/plugins/STATUS.md)。
 
 ---
 
