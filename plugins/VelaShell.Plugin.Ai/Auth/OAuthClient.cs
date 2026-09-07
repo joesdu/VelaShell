@@ -318,8 +318,7 @@ public sealed class OAuthClient(HttpClient http)
             payload.GetValueOrDefault("user_code") ?? "",
             verification,
             payload.GetValueOrDefault("verification_uri_complete"),
-            TimeSpan.FromSeconds(Seconds(payload, "expires_in", 900)),
-            // RFC 8628 §3.2:没给 interval 就默认 5 秒
+            TimeSpan.FromSeconds(Seconds(payload, "expires_in", 900)), // RFC 8628 §3.2:没给 interval 就默认 5 秒
             TimeSpan.FromSeconds(Seconds(payload, "interval", 5)));
     }
 
