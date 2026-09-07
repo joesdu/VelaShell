@@ -6,9 +6,15 @@
 | --- | --- | --- | --- | --- |
 | [VelaShell.Plugin.Ai](VelaShell.Plugin.Ai/) | `velashell.ai` | 是 | 进程内 | AI 助手：多提供商流式对话 + Agent 模式（读终端/执行命令带审批）+ 自定义 MCP 服务器 |
 
-其余第一方插件（Redis / S3 / Telnet 与 HelloWorld 示例）住在
-**[VelaShellLabs/velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins)**，
-以各插件的 **`.vpx` 包**（本项目自有的插件包格式）作为 Release 资产交付。本机想连它们一起跑，
+其余第一方插件住在各自的仓库里，都以 **`.vpx` 包**（本项目自有的插件包格式）作为
+Release 资产 / 插件商店条目交付：
+
+| 插件 | 仓库 |
+| --- | --- |
+| Redis / S3 / Telnet / 串口，与 HelloWorld 示例 | **[VelaShellLabs/velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins)** |
+| Docker 管理面板（已发布 `0.3.1`） | **[VelaShellLabs/VelaShell.Plugin.DockerPanel](https://github.com/VelaShellLabs/VelaShell.Plugin.DockerPanel)** |
+
+本机想连它们一起跑，
 把插件目录铺进 `artifacts/plugins/` 即可（或用 `-p:VelaPluginsStageDir=<目录>` 指别处），
 构建与发布都从那里取件 —— 目录可以从 `.vpx` 解出来，也可以直接指向那边的构建产物。
 

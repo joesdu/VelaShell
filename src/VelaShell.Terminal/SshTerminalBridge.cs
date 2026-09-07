@@ -508,6 +508,12 @@ public class SshTerminalBridge : IDisposable
     /// <summary>当前积压字节数(背压回归用例读它)。</summary>
     internal long PendingBytesForTest => Interlocked.Read(ref _pendingBytes);
 
+    /// <summary>
+    /// 高水位(背压回归用例读它)。用例要等的是"读线程真的顶到闸上",
+    /// 判据就是积压越过这个数 —— 让它从这里取,而不是在测试里另抄一份 8 MB。
+    /// </summary>
+    internal static long HighWaterBytesForTest => HighWaterBytes;
+
     /// <summary>最近一次 Feed 交出去的字节数(预算回归用例读它)。</summary>
     internal int LastFeedBytesForTest { get; private set; }
 

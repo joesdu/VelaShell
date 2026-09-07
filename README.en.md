@@ -364,10 +364,13 @@ English in [`en/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/en)
 | [`en/cli/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/en/cli) | [`vela-plugin` manual](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/cli/cli.md) |
 | [`en/sdk/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/en/sdk) | [SDK reference](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/sdk/sdk-reference.md) |
 
-Two documents stay here, because what they serve is writing code *in this repository*:
+Three documents stay here, because what they serve is writing code *in this repository*:
 
 - [`DESIGN.md`](DESIGN.md) — design system: colour/type/spacing tokens and component rules (XAML comments and unit tests cite its section numbers directly)
-- [`plan.md`](plan.md) — progress log, known issues and the backlog (the source of truth for day-to-day work)
+- [`plan.md`](plan.md) — **what already happened**: the progress log, the current architecture, and the reasoning behind every change
+- [`feature-plan.md`](feature-plan.md) — **what has not happened yet**: the backlog, candidate features, and the won't-do list with its reasons
+
+> The split is strict: once something ships it comes off `feature-plan.md` and gets a section in `plan.md`; anything unshipped stays out of `plan.md` — no TODOs there.
 
 ---
 
@@ -397,11 +400,14 @@ The project is under active development.
 
 **Working today**: terminal engine, SSH/SFTP, FTP/FTPS, ZMODEM / XMODEM / YMODEM, local shells, jump hosts, session management and import, authentication, tunnels, persistence, settings centre, cloud sync, session recording, resource monitor / process manager / traceroute, plus the **plugin system framework** (dual hosting modes, the full capability surface, UI extensions, heartbeat self-healing and idle recycling, per-plugin storage with uninstall cleanup, `.vpx` install/uninstall, SDK test doubles and developer docs) and the first-party **AI assistant plugin**.
 
-**Provided by plugins**: Telnet, serial (COM / USB-to-serial), Redis and S3 — none of them preinstalled; install on demand from the [plugin marketplace](https://market.easilynet.top) (sources in [VelaShellLabs/velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins)).
+**Provided by plugins** — none preinstalled; install on demand from the [plugin marketplace](https://market.easilynet.top):
 
-**Not yet available**: certificate authentication; the container-management plugin has not been started. Some settings are persisted but not yet wired to runtime behaviour.
+- **Telnet, serial (COM / USB-to-serial), Redis and S3** — sources in [VelaShellLabs/velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins).
+- **Docker panel** — [VelaShell.Plugin.DockerPanel](https://github.com/VelaShellLabs/VelaShell.Plugin.DockerPanel) (its own repository). A full Docker management surface on top of an **already-connected SSH session**: seven pages (overview / containers / images / volumes / networks / Compose / system) plus live stats, a merged multi-container log stream, in-container file editing and a built-in TTY console. **Nothing changes on the server** — it opens a direct channel to the remote `/var/run/docker.sock` over the SSH session (`direct-streamlocal@openssh.com`) and speaks the Docker Engine HTTP API, so the daemon need not be exposed on 2375/2376 and no second set of credentials is required. Nor is it a local port forward, so no other process on your machine can reach it.
 
-The full completion matrix and backlog live in [`plan.md`](plan.md) §10–§12 and [`velashell-docs en/plugins/STATUS.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/plugins/STATUS.md).
+**Not yet available**: SSH certificate authentication; system keychain and sudo credential autofill are still under investigation. A handful of settings are persisted but not yet wired to runtime behaviour (itemised in the P0 table of `feature-plan.md`).
+
+The completion record lives in [`plan.md`](plan.md), the backlog and plans in [`feature-plan.md`](feature-plan.md), and the plugin-side progress in [`velashell-docs en/plugins/STATUS.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/plugins/STATUS.md).
 
 ---
 

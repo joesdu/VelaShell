@@ -53,7 +53,8 @@ dotnet test  VelaShell.slnx
 | 文件 | 为什么留在这 |
 | --- | --- |
 | [`DESIGN.md`](DESIGN.md) | 设计系统的色彩/字体/间距令牌与组件规范。`ButtonThemes.axaml` 的注释与 `DialogButtonStyleTests` **按章节号直接引用它**,搬走等于把代码的参照物挪到另一个仓库 |
-| [`plan.md`](plan.md) | 进展记录、已知问题与后续待办,开发跟进以它为准 |
+| [`plan.md`](plan.md) | **已经发生的事**:进展记录、当前架构、每次改动的来龙去脉。开发跟进以它为准 |
+| [`feature-plan.md`](feature-plan.md) | **还没发生的事**:待办、候选特性、确认不做的清单(附理由)。⚠️ 两者分工是硬的 —— 做完了就从 `feature-plan.md` 划掉、在 `plan.md` 补一节;**不要在 `plan.md` 里留 TODO** |
 | `README.md` / `README.en.md` / `CONTRIBUTING*.md` / `SECURITY.md` / `PRIVACY.md` | GitHub 仓库门面与流程约定 |
 | `src/**/README.md`、`tests/**/README.md` | 各工程自己的目录职责说明,跟着代码走 |
 
