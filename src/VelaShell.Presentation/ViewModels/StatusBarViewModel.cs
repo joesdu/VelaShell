@@ -19,12 +19,16 @@ namespace VelaShell.Presentation.ViewModels;
 /// <param name="HasDetail">是否有 <paramref name="Detail" />。</param>
 /// <param name="Progress">百分比文本(如 "42%");进度不可知时为空串。</param>
 /// <param name="HasProgress">是否有确定进度。</param>
+/// <param name="Fraction">
+/// 0~1 的进度,供清单里那一圈小进度环画弧;进度不可知时为 0(此时环走不确定动画,不读它)。
+/// </param>
 public sealed record BackgroundActivityItem(
     string Title,
     string Detail,
     bool HasDetail,
     string Progress,
-    bool HasProgress);
+    bool HasProgress,
+    double Fraction);
 
 /// <summary>状态栏视图模型:维护连接状态、终端信息与 CPU/内存/磁盘/网络等实时指标,并驱动运行时长计时。</summary>
 public sealed class StatusBarViewModel(ISequencer scheduler) : ReactiveObject, IDisposable
@@ -342,7 +346,8 @@ public sealed class StatusBarViewModel(ISequencer scheduler) : ReactiveObject, I
             a.Detail ?? string.Empty,
             !string.IsNullOrEmpty(a.Detail),
             a.Progress is { } p ? $"{p * 100:F0}%" : string.Empty,
-            a.Progress is not null))];
+            a.Progress is not null,
+            a.Progress ?? 0))];
 
         bool allDeterminate = activities.All(a => a.Progress is not null);
         IsBackgroundIndeterminate = !allDeterminate;

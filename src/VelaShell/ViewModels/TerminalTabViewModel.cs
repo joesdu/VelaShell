@@ -496,6 +496,8 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             this.RaisePropertyChanged(nameof(ShowDisconnectedOverlay));
             this.RaisePropertyChanged(nameof(DisconnectOverlayTitle));
             this.RaisePropertyChanged(nameof(DisconnectOverlayDetail));
+            this.RaisePropertyChanged(nameof(ShowConnectingOverlay));
+            this.RaisePropertyChanged(nameof(ConnectingOverlayTitle));
         }
     }
 
@@ -543,6 +545,22 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         !_disposed
         && ConnectionStatus is SessionStatus.Disconnected or SessionStatus.Error
         && (Profile is not null || LocalShell is not null);
+
+    /// <summary>
+    /// 标签页内「连接中」覆盖层的可见性:正在握手且是一个真实会话标签时显示。
+    /// </summary>
+    /// <remarks>
+    /// 标签在握手开始前就建好了(见 <c>CreateConnectingTab</c>),这中间正文是一片
+    /// 空白终端 —— 链路一慢,用户看到的就是"点了之后什么都没有"(#385 反馈)。
+    /// 断开/失败早有覆盖层,连接中这一态却一直空着;补上之后三种非正常态各有各的画面。
+    /// </remarks>
+    public bool ShowConnectingOverlay =>
+        !_disposed
+        && ConnectionStatus == SessionStatus.Connecting
+        && (Profile is not null || LocalShell is not null);
+
+    /// <summary>「连接中」覆盖层的标题:正在连接 &lt;会话名&gt;。</summary>
+    public string ConnectingOverlayTitle => Strings.Format("Msg_ConnectingToTitle", OverlayHostLabel);
 
     /// <summary>失败/断开覆盖层的标题:有错误时为“连接失败”,否则为“连接已断开”。</summary>
     public string DisconnectOverlayTitle =>

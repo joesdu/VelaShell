@@ -185,6 +185,16 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     private readonly Dictionary<Guid, FileBrowserViewModel> _fileBrowserCache = [];
     private readonly Lock _sftpCloseTasksSync = new();
     private readonly Dictionary<SftpDocument, Task> _sftpCloseTasks = [];
+
+    /// <summary>
+    /// 后台活动账本:连接期间在这里登记一条,右下角那个圆环才转得起来。
+    /// </summary>
+    /// <remarks>
+    /// 原先只把它转接给状态栏(<see cref="WireBackgroundActivity" />),自己一条都不登记 ——
+    /// 于是圆环只有插件装载与配置同步时才出现,连一台机器连三十秒它一动不动(#385 反馈)。
+    /// 无界面单测不注入,故全部调用点都走 <c>?.</c>。
+    /// </remarks>
+    private readonly IBackgroundActivityService? _backgroundActivity;
     private FileTransferViewModel _fileTransfer;
 
     private AppSettings? _latestSettings;
@@ -332,6 +342,13 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             {
                 _ = CloseWorkspaceDocumentAsync(workspaceDocument);
             }
+            else if (document is ConnectingDocument connecting)
+            {
+                // 关掉一个还在连的占位标签 = 不连了。挂在 DocumentClosed 这一个点上,
+                // 六个关闭入口(标签 ×、Ctrl+W、右键那一族、覆盖层上的「取消」)一并管住;
+                // 连接流程收到取消后会自己收尾(该断的断掉,占位由它撤走)。
+                connecting.Cancel();
+            }
         };
         Layout.ActiveDocumentChanged += SetActiveFromDocument;
         // 每个标签要挂的那几条订阅(同步输入、会话状态圆点、快捷命令目标)随文档进出工作区
@@ -360,6 +377,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         // 彼此紧密、与主窗口其余职责毫不相干。活动标签用委托现取,不缓存 ——
         // 缓存一份就要再操心"什么时候刷新"。
         _statusMetrics = new(_statusBar, () => ActiveTerminalTab, metricsService);
+        _backgroundActivity = backgroundActivity;
         WireBackgroundActivity(backgroundActivity);
         _fileBrowser = new(null, Guid.Empty);
         _fileTransfer = new(transferManager, appDataStore);
@@ -2330,6 +2348,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     )
     {
         TerminalType terminalType = TerminalTypeExtensions.FromTermName(SessionTerminalSettings.TerminalType(profile, settings));
+        // 握手全程在右下角圆环上登记一条:标签页内已经有「连接中」覆盖层,而窗口右下角
+        // 是"这台机器上还有什么在跑"的统一去处 —— 切到别的标签之后也看得见这条还在连。
+        using IBackgroundActivityScope? activity =
+            _backgroundActivity?.Begin(Strings.Connecting, ProfileDisplayName(profile));
         SshSession session = await _connectionWorkflowService!.ConnectProfileAsync(
             profile,
             cancellationToken
@@ -2416,6 +2438,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         tab.ConnectionStatus = SessionStatus.Connecting;
         tab.DetachTransport();
         UpdateStatusBarForActiveTab();
+        // 重连与首连同等对待:右下角圆环也要转起来 —— 自动重连尤其是在后台发生的,
+        // 用户多半不在那个标签上。
+        using IBackgroundActivityScope? activity =
+            _backgroundActivity?.Begin(Strings.Connecting, ProfileDisplayName(tab.Profile));
         try
         {
             AppSettings settings = _settingsService is not null
@@ -3078,6 +3104,15 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         tab.Dispose();
     }
 
+    /// <summary>
+    /// 指代一条连接的名称:优先用用户起的显示名(他认得的那个),没起名才退回主机地址。
+    /// </summary>
+    /// <remarks>刻意不带用户名与端口:这个名字会出现在状态栏与后台任务清单里(安全要求,设计 gzmsb)。</remarks>
+    /// <param name="profile">连接配置。</param>
+    /// <returns>显示名。</returns>
+    private static string ProfileDisplayName(SessionProfile profile) =>
+        string.IsNullOrWhiteSpace(profile.Name) ? profile.Host : profile.Name;
+
     /// <summary>缺少连接所需凭据(用户名/密码/私钥)时需要先走登录验证流程。</summary>
     private static bool RequiresCredentials(SessionProfile profile) =>
         string.IsNullOrWhiteSpace(profile.Username)
@@ -3226,6 +3261,115 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     }
 
     /// <summary>
+    /// 一次文档型连接在界面上的「进行中」表示:工作区里的占位标签、右下角圆环里的一条活动,
+    /// 以及用户点「取消」时要拉的那根绳。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 四条文档型连接路径(独立 SFTP、FTP、插件协议、插件工作台)共用这一个 ——
+    /// 同一套反馈在四处各写一遍,漏一处就是一条"点了没反应"的 bug,而它们的连接流程
+    /// (缺凭据先弹框、认证失败原地重试三次、证书未信任提示后重连)本来就是一模一样的。
+    /// </para>
+    /// <para>
+    /// 与终端标签的分工一致:标签在握手**开始前**就在,连上之后由
+    /// <see cref="DockWorkspace.ReplaceDocument" /> 原位换成真文档。
+    /// </para>
+    /// </remarks>
+    private sealed class DocumentConnectUi : IDisposable
+    {
+        private readonly MainWindowViewModel _owner;
+        private readonly CancellationTokenSource _cancellation;
+        private IBackgroundActivityScope? _activity;
+        private bool _disposed;
+
+        /// <summary>建立(或接手)一次文档型连接的界面表示。</summary>
+        /// <param name="owner">宿主视图模型。</param>
+        /// <param name="profile">正在连接的配置。</param>
+        /// <param name="typeLabel">连接类型展示名(SFTP / FTP / S3 / Redis…)。</param>
+        /// <param name="outer">调用方的取消令牌,与占位标签上的「取消」并联。</param>
+        /// <param name="reuse">重试时接手的既有占位标签;首次连接传 <see langword="null" />。</param>
+        /// <param name="retry">失败卡片上「重新连接」要跑的流程。</param>
+        public DocumentConnectUi(
+            MainWindowViewModel owner,
+            SessionProfile profile,
+            string typeLabel,
+            CancellationToken outer,
+            ConnectingDocument? reuse,
+            Func<ConnectingDocument, Task> retry)
+        {
+            _owner = owner;
+            _cancellation = CancellationTokenSource.CreateLinkedTokenSource(outer);
+            if (reuse is null)
+            {
+                Document = new(profile, typeLabel);
+                _owner.Layout.AddDocument(Document);
+            }
+            else
+            {
+                Document = reuse;
+            }
+            // 每次重试都重挂:上一轮的委托指向的是那一轮已经释放掉的取消源。
+            Document.CancelRequested = Cancel;
+            Document.RetryRequested = () => _ = retry(Document);
+        }
+
+        /// <summary>工作区里的占位标签。</summary>
+        public ConnectingDocument Document { get; }
+
+        /// <summary>连接流程要用的取消令牌(调用方的令牌 ∪ 用户点的「取消」)。</summary>
+        public CancellationToken Token => _cancellation.Token;
+
+        /// <summary>撤销这次连接。占位标签被关掉时(标签 ×、Ctrl+W、覆盖层的「取消」)由宿主调。</summary>
+        public void Cancel()
+        {
+            if (!_disposed)
+            {
+                _cancellation.Cancel();
+            }
+        }
+
+        /// <summary>一次尝试开始:占位回到「连接中」,右下角圆环点亮。</summary>
+        public void BeginAttempt()
+        {
+            Document.MarkConnecting();
+            _activity ??= _owner._backgroundActivity?.Begin(Strings.Connecting, Document.DisplayName);
+        }
+
+        /// <summary>
+        /// 一次尝试结束。要弹凭据框/证书框之前必须调:此刻等的是用户,不是网络,
+        /// 圆环继续转就是在撒谎。
+        /// </summary>
+        public void EndAttempt()
+        {
+            _activity?.Dispose();
+            _activity = null;
+        }
+
+        /// <summary>连上了:占位原位换成真文档(位置与激活状态一并交接)。</summary>
+        /// <param name="real">连接成功后建好的真文档。</param>
+        public void HandOver(DockDocument real) => _owner.Layout.ReplaceDocument(Document, real);
+
+        /// <summary>连不上了:占位留在原地换成失败卡片(重新连接 / 关闭标签页)。</summary>
+        /// <param name="message">面向用户的失败原因。</param>
+        public void Fail(string message) => Document.MarkFailed(message);
+
+        /// <summary>用户中途取消:撤掉占位标签(已被用户关掉时是空操作)。</summary>
+        public void Abandon() => _owner.Layout.RemoveDocument(Document);
+
+        /// <summary>结束这次连接的界面表示:熄掉圆环并释放取消源。</summary>
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+            EndAttempt();
+            _cancellation.Dispose();
+        }
+    }
+
+    /// <summary>
     /// 为 SSH 或 SFTP 配置打开一个独立的 SFTP 文档。此路径绝不创建终端标签或 shell 流。
     /// </summary>
     public async Task<TerminalTabViewModel?> OpenSftpForProfileAsync(
@@ -3240,9 +3384,18 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <summary>
     /// 通过常规工作流连接,并在认证成功后才创建一个文档范围的串行化 SFTP 通道。
     /// </summary>
-    public async Task<SftpDocument?> OpenSftpDocumentForProfileAsync(
+    public Task<SftpDocument?> OpenSftpDocumentForProfileAsync(
         SessionProfile profile,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        OpenSftpDocumentForProfileAsync(profile, null, cancellationToken);
+
+    /// <param name="profile">会话配置。</param>
+    /// <param name="reuse">失败卡片上点「重新连接」时接手的既有占位标签。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    private async Task<SftpDocument?> OpenSftpDocumentForProfileAsync(
+        SessionProfile profile,
+        ConnectingDocument? reuse,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(profile);
         if (_connectionWorkflowService is null)
@@ -3251,21 +3404,27 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         }
 
         SessionProfile current = profile;
-        // 三次认证都没过时的最后一条原因:循环走完就没人再报了,而这条路径不留标签页。
+        // 三次认证都没过时的最后一条原因:循环走完就没人再报了,要写进占位标签的失败卡片。
         Exception? lastAuthFailure = null;
+        using var ui = new DocumentConnectUi(
+            this, profile, "SFTP", cancellationToken, reuse,
+            document => OpenSftpDocumentForProfileAsync(profile, document, CancellationToken.None));
         for (int attempt = 0; attempt < 3; attempt++)
         {
             if (attempt > 0 || RequiresCredentials(current))
             {
                 if (InteractiveAuthenticator is not { } prompt)
                 {
+                    ui.Abandon();
                     return null;
                 }
+                ui.EndAttempt();
                 SessionProfile? prompted = await prompt(current).ConfigureAwait(true);
                 if (prompted is null)
                 {
-                    // 用户取消:这是"不连了",不是失败,不弹提示。
+                    // 用户取消:这是"不连了",不是失败,不弹提示,占位标签一并撤走。
                     LastConnectionError = null;
+                    ui.Abandon();
                     return null;
                 }
                 current = prompted;
@@ -3274,16 +3433,18 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             SshSession? session = null;
             try
             {
-                session = await _connectionWorkflowService.ConnectProfileAsync(current, cancellationToken)
+                ui.BeginAttempt();
+                session = await _connectionWorkflowService.ConnectProfileAsync(current, ui.Token)
                     .ConfigureAwait(true);
                 if (session is null)
                 {
+                    ui.Abandon();
                     return null;
                 }
                 if (_sftpService is null)
                 {
-                    await _connectionWorkflowService.DisconnectAsync(session.SessionId, cancellationToken)
-                        .ConfigureAwait(true);
+                    await DisconnectQuietlyAsync(session.SessionId).ConfigureAwait(true);
+                    ui.Abandon();
                     return null;
                 }
                 AppSettings settings = _latestSettings ?? await LoadSettingsSnapshotAsync().ConfigureAwait(true);
@@ -3296,43 +3457,88 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                         settings.Transfer,
                         FileTransfer,
                         QueryDefaultEditorPathAsync));
-                Layout.AddDocument(document);
+                ui.HandOver(document);
                 // 与 FTP 同理:连接续体可能落在后台线程上,树节点是绑定属性,必须回主线程再改。
                 TrackDocumentSession(session.SessionId, current.Id, SessionStatus.Connected);
                 return document;
             }
             catch (OperationCanceledException)
             {
-                if (session is not null)
-                {
-                    await _connectionWorkflowService.DisconnectAsync(session.SessionId, cancellationToken).ConfigureAwait(true);
-                }
+                await DisconnectQuietlyAsync(session?.SessionId).ConfigureAwait(true);
+                ui.Abandon();
                 return null;
             }
             catch (VelaSshAuthenticationException auth)
             {
-                if (session is not null)
-                {
-                    await _connectionWorkflowService.DisconnectAsync(session.SessionId, cancellationToken).ConfigureAwait(true);
-                }
+                await DisconnectQuietlyAsync(session?.SessionId).ConfigureAwait(true);
                 lastAuthFailure = auth;
                 continue;
             }
             catch (Exception ex)
             {
-                if (session is not null)
-                {
-                    await _connectionWorkflowService.DisconnectAsync(session.SessionId, cancellationToken).ConfigureAwait(true);
-                }
-                await ReportConnectionFailureAsync(current, ex).ConfigureAwait(true);
+                await DisconnectQuietlyAsync(session?.SessionId).ConfigureAwait(true);
+                ReportDocumentConnectFailure(ui, current, ex);
                 return null;
             }
         }
         if (lastAuthFailure is not null)
         {
-            await ReportConnectionFailureAsync(current, lastAuthFailure).ConfigureAwait(true);
+            ReportDocumentConnectFailure(ui, current, lastAuthFailure);
         }
         return null;
+    }
+
+    /// <summary>
+    /// 收尾用的断开:不带调用方的取消令牌。
+    /// </summary>
+    /// <remarks>
+    /// 这里的调用点全在"连接已经失败/被取消"之后,而那正是原令牌已经取消的时刻 ——
+    /// 把它传给断开,等于让清理动作自己取消掉,留下一条没人关的 SSH 连接。
+    /// </remarks>
+    /// <param name="sessionId">要断开的会话;<see langword="null" /> 表示还没连上,无事可做。</param>
+    private async Task DisconnectQuietlyAsync(Guid? sessionId)
+    {
+        if (sessionId is not { } id || _connectionWorkflowService is null)
+        {
+            return;
+        }
+        try
+        {
+            await _connectionWorkflowService.DisconnectAsync(id, CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+            // 收尾失败没有下一步可走,更不该盖掉用户真正要看的那条失败原因。
+        }
+    }
+
+    /// <summary>
+    /// 文档型连接失败的统一上报:浮层一条 + 把原因写进占位标签的失败卡片。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 标签留在原地而不是撤掉:浮层几秒就没了,而"哪条连接失败了、为什么"是用户接下来
+    /// 要处理的事;卡片上的「重新连接」也才有地方放。
+    /// </para>
+    /// <para>
+    /// 刻意**不**走 <see cref="ReportConnectionFailureAsync" /> —— 那条会再弹一扇模态框。
+    /// 终端标签早就把连接失败从全局对话框改成了标签页内的覆盖层(设计 yxjmg),
+    /// 文档型标签有了自己的失败卡片之后同理:失败留在它所属的那个标签里,
+    /// 而不是拿一扇模态框挡住用户手上正在做的别的事。
+    /// </para>
+    /// </remarks>
+    /// <param name="ui">这次连接的界面表示。</param>
+    /// <param name="profile">连接配置。</param>
+    /// <param name="error">失败原因。</param>
+    private void ReportDocumentConnectFailure(
+        DocumentConnectUi ui,
+        SessionProfile profile,
+        Exception error)
+    {
+        string message = DescribeConnectionError(error, profile);
+        LastConnectionError = message;
+        Toasts.Error(message);
+        ui.Fail(message);
     }
 
     /// <summary>
@@ -3343,9 +3549,18 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 此时弹一次信任提示,用户同意就把指纹记进配置再重连(刻意不在证书回调里同步等 UI,那样极易死锁)。
     /// </para>
     /// </summary>
-    public async Task<SftpDocument?> OpenFtpDocumentForProfileAsync(
+    public Task<SftpDocument?> OpenFtpDocumentForProfileAsync(
         SessionProfile profile,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        OpenFtpDocumentForProfileAsync(profile, null, cancellationToken);
+
+    /// <param name="profile">会话配置。</param>
+    /// <param name="reuse">失败卡片上点「重新连接」时接手的既有占位标签。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    private async Task<SftpDocument?> OpenFtpDocumentForProfileAsync(
+        SessionProfile profile,
+        ConnectingDocument? reuse,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(profile);
         if (_ftpSessionService is null || _sftpService is null)
@@ -3354,21 +3569,27 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         }
 
         SessionProfile current = profile;
-        // 三次认证都没过时的最后一条原因:循环走完就没人再报了,而这条路径不留标签页。
+        // 三次认证都没过时的最后一条原因:循环走完就没人再报了,要写进占位标签的失败卡片。
         Exception? lastAuthFailure = null;
+        using var ui = new DocumentConnectUi(
+            this, profile, FtpTypeLabel(profile), cancellationToken, reuse,
+            document => OpenFtpDocumentForProfileAsync(profile, document, CancellationToken.None));
         for (int attempt = 0; attempt < 3; attempt++)
         {
             if (attempt > 0 || RequiresFtpCredentials(current))
             {
                 if (InteractiveAuthenticator is not { } prompt)
                 {
+                    ui.Abandon();
                     return null;
                 }
+                ui.EndAttempt();
                 SessionProfile? prompted = await prompt(current).ConfigureAwait(true);
                 if (prompted is null)
                 {
-                    // 用户取消:这是"不连了",不是失败,不弹提示。
+                    // 用户取消:这是"不连了",不是失败,不弹提示,占位标签一并撤走。
                     LastConnectionError = null;
+                    ui.Abandon();
                     return null;
                 }
                 current = prompted;
@@ -3376,8 +3597,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
 
             try
             {
+                ui.BeginAttempt();
                 Guid sessionId = await _ftpSessionService
-                    .OpenSessionAsync(FtpConnectionInfo.FromProfile(current), cancellationToken)
+                    .OpenSessionAsync(FtpConnectionInfo.FromProfile(current), ui.Token)
                     .ConfigureAwait(true);
                 AppSettings settings = _latestSettings ?? await LoadSettingsSnapshotAsync().ConfigureAwait(true);
                 var document = new SftpDocument(
@@ -3389,17 +3611,19 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                         settings.Transfer,
                         FileTransfer,
                         QueryDefaultEditorPathAsync));
-                Layout.AddDocument(document);
+                ui.HandOver(document);
                 TrackDocumentSession(sessionId, profile.Id, SessionStatus.Connected);
                 return document;
             }
             catch (OperationCanceledException)
             {
+                ui.Abandon();
                 return null;
             }
             catch (VelaFtpCertificateException certificate)
             {
                 // 用户同意信任 → 记下指纹后重来一次;拒绝(或没有提示钩子)→ 按普通连接失败上报。
+                ui.EndAttempt();
                 if (FtpCertificateTrustPrompt is { } trustPrompt &&
                     await trustPrompt(current, certificate).ConfigureAwait(true))
                 {
@@ -3411,6 +3635,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 // 用户自己点了"不信任",原因他清楚 —— 再弹一扇框只是复述他刚做的决定。
                 LastConnectionError = certificate.Message;
                 Toasts.Error(LastConnectionError);
+                ui.Fail(certificate.Message);
                 return null;
             }
             catch (VelaFtpAuthenticationException auth)
@@ -3420,21 +3645,27 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             }
             catch (Exception ex)
             {
-                await ReportConnectionFailureAsync(current, ex).ConfigureAwait(true);
+                ReportDocumentConnectFailure(ui, current, ex);
                 return null;
             }
         }
         if (lastAuthFailure is not null)
         {
-            await ReportConnectionFailureAsync(current, lastAuthFailure).ConfigureAwait(true);
+            ReportDocumentConnectFailure(ui, current, lastAuthFailure);
         }
         return null;
     }
 
+    /// <summary>占位标签上写的连接类型:FTPS 与明文 FTP 是两件事,别都写成 "FTP"。</summary>
+    /// <param name="profile">会话配置。</param>
+    /// <returns>FTP 或 FTPS。</returns>
+    private static string FtpTypeLabel(SessionProfile profile) =>
+        profile.Ftp?.EncryptionMode is null or FtpEncryptionMode.None ? "FTP" : "FTPS";
+
     /// <summary>
     /// 打开一个插件协议文档标签(S3、WebDAV…):建立会话并复用与 SFTP 完全相同的双栏文件面板。
     /// <para>
-    /// 结构与 <see cref="OpenFtpDocumentForProfileAsync" /> 一一对应(同样不走
+    /// 结构与 <see cref="OpenFtpDocumentForProfileAsync(SessionProfile, CancellationToken)" /> 一一对应(同样不走
     /// <see cref="IConnectionWorkflowService" /> —— 那是 SSH 握手,同样在证书不可信时
     /// 弹一次信任提示后重连)。差别只在缺少凭据的判定:声明了 AnonymousAccess 的协议
     /// (如 S3 的公开只读桶)不填凭据也是一条正当路径,弹框会把它堵死。
@@ -3447,9 +3678,18 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <param name="profile">会话配置。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>已打开的文档;失败或取消时为 null。</returns>
-    public async Task<SftpDocument?> OpenPluginDocumentForProfileAsync(
+    public Task<SftpDocument?> OpenPluginDocumentForProfileAsync(
         SessionProfile profile,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        OpenPluginDocumentForProfileAsync(profile, null, cancellationToken);
+
+    /// <param name="profile">会话配置。</param>
+    /// <param name="reuse">失败卡片上点「重新连接」时接手的既有占位标签。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    private async Task<SftpDocument?> OpenPluginDocumentForProfileAsync(
+        SessionProfile profile,
+        ConnectingDocument? reuse,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(profile);
         if (_pluginProtocols is null || _sftpService is null)
@@ -3457,11 +3697,23 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             return null;
         }
 
+        // 占位标签建在解析协议之前:解析可能触发插件的惰性激活(装配、启动进程),
+        // 那往往就是这条路上最慢的一步 —— 等它完再建标签,慢的那段照样没有任何回执。
+        // 类型名此刻还问不到,先挂协议 id,解析出来再换成展示名。
+        using var ui = new DocumentConnectUi(
+            this, profile, profile.PluginProtocolId ?? string.Empty, cancellationToken, reuse,
+            document => OpenPluginDocumentForProfileAsync(profile, document, CancellationToken.None));
+        ui.BeginAttempt();
+
         ProtocolDescriptor? descriptor = null;
         if (profile.PluginProtocolId is { Length: > 0 } protocolId && _protocolRegistry is { } registry)
         {
             // 可能触发插件的惰性激活(用户刚从「最近连接」点开一条 S3 会话)。
             descriptor = (await registry.ResolveAsync(protocolId).ConfigureAwait(true))?.Descriptor;
+        }
+        if (descriptor is { DisplayName.Length: > 0 })
+        {
+            ui.Document.TypeLabel = descriptor.DisplayName;
         }
         bool allowsAnonymous = descriptor?.Features.HasFlag(ProtocolFeatures.AnonymousAccess) == true;
 
@@ -3478,13 +3730,16 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             {
                 if (InteractiveAuthenticator is not { } prompt)
                 {
+                    ui.Abandon();
                     return null;
                 }
+                ui.EndAttempt();
                 SessionProfile? prompted = await prompt(current).ConfigureAwait(true);
                 if (prompted is null)
                 {
-                    // 用户取消:这是"不连了",不是失败,不弹提示。
+                    // 用户取消:这是"不连了",不是失败,不弹提示,占位标签一并撤走。
                     LastConnectionError = null;
+                    ui.Abandon();
                     return null;
                 }
                 current = prompted;
@@ -3492,7 +3747,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
 
             try
             {
-                Guid sessionId = await _pluginProtocols.OpenSessionAsync(current, cancellationToken).ConfigureAwait(true);
+                ui.BeginAttempt();
+                Guid sessionId = await _pluginProtocols.OpenSessionAsync(current, ui.Token).ConfigureAwait(true);
                 AppSettings settings = _latestSettings ?? await LoadSettingsSnapshotAsync().ConfigureAwait(true);
                 var viewModel = new SftpDocumentViewModel(
                     current,
@@ -3511,17 +3767,19 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                         _pluginProtocols.InvokeActionAsync(sessionId, actionId, path, CancellationToken.None);
                 }
                 var document = new SftpDocument(viewModel);
-                Layout.AddDocument(document);
+                ui.HandOver(document);
                 TrackDocumentSession(sessionId, profile.Id, SessionStatus.Connected);
                 return document;
             }
             catch (OperationCanceledException)
             {
+                ui.Abandon();
                 return null;
             }
             catch (PluginProtocolCertificateException certificate)
             {
                 // 用户同意信任 → 记下指纹后重来一次;拒绝(或没有提示钩子)→ 按普通连接失败上报。
+                ui.EndAttempt();
                 if (PluginCertificateTrustPrompt is { } trustPrompt &&
                     await trustPrompt(current, certificate).ConfigureAwait(true))
                 {
@@ -3539,6 +3797,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 // 用户自己点了"不信任",原因他清楚 —— 再弹一扇框只是复述他刚做的决定。
                 LastConnectionError = certificate.Message;
                 Toasts.Error(LastConnectionError);
+                ui.Fail(certificate.Message);
                 return null;
             }
             catch (PluginProtocolAuthenticationException auth)
@@ -3548,13 +3807,13 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             }
             catch (Exception ex)
             {
-                await ReportConnectionFailureAsync(current, ex).ConfigureAwait(true);
+                ReportDocumentConnectFailure(ui, current, ex);
                 return null;
             }
         }
         if (lastAuthFailure is not null)
         {
-            await ReportConnectionFailureAsync(current, lastAuthFailure).ConfigureAwait(true);
+            ReportDocumentConnectFailure(ui, current, lastAuthFailure);
         }
         return null;
     }
@@ -3625,6 +3884,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             terminalType.ToTermName(),
             Math.Max(2, tab.TerminalEmulator.Columns),
             Math.Max(2, tab.TerminalEmulator.Rows));
+        // 打开与重连都经过这里,右下角圆环的登记放在这一处就够(理由同 RunHandshakeAsync)。
+        using IBackgroundActivityScope? activity =
+            _backgroundActivity?.Begin(Strings.Connecting, ProfileDisplayName(profile));
         IShellStreamWrapper stream = await PluginProtocolTerminalConnector
             .OpenAsync(registration, profile, options, cancellationToken)
             .ConfigureAwait(true);
@@ -3679,7 +3941,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <summary>
     /// 打开一条**工作台**会话(Redis 等由插件全权渲染界面的连接类型)。
     /// <para>
-    /// 与 <see cref="OpenPluginDocumentForProfileAsync" /> 共用同一套连接流程纪律:
+    /// 与 <see cref="OpenPluginDocumentForProfileAsync(SessionProfile, CancellationToken)" /> 共用同一套连接流程纪律:
     /// 缺凭据先弹登录框、认证失败原地重试(至多三次)、证书未信任走"提示 → 记指纹 → 重连"
     /// 且证书提示单独计数(否则 <c>attempt--</c> 会把三次上限彻底架空)。
     /// 区别只在最后一步:那边打开宿主的双栏浏览器,这边把插件的控件挂成停靠文档。
@@ -3688,15 +3950,30 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <param name="profile">连接配置。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>已打开的文档;失败或用户取消时为 null。</returns>
-    public async Task<PluginWorkspaceDocument?> OpenWorkspaceDocumentForProfileAsync(
+    public Task<PluginWorkspaceDocument?> OpenWorkspaceDocumentForProfileAsync(
         SessionProfile profile,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        OpenWorkspaceDocumentForProfileAsync(profile, null, cancellationToken);
+
+    /// <param name="profile">连接配置。</param>
+    /// <param name="reuse">失败卡片上点「重新连接」时接手的既有占位标签。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    private async Task<PluginWorkspaceDocument?> OpenWorkspaceDocumentForProfileAsync(
+        SessionProfile profile,
+        ConnectingDocument? reuse,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(profile);
         if (_workspaceLauncher is not { } launcher)
         {
             return null;
         }
+
+        // 同插件协议那条路径:占位标签建在解析之前 —— 惰性激活插件往往是最慢的一步。
+        using var ui = new DocumentConnectUi(
+            this, profile, profile.PluginProtocolId ?? string.Empty, cancellationToken, reuse,
+            document => OpenWorkspaceDocumentForProfileAsync(profile, document, CancellationToken.None));
+        ui.BeginAttempt();
 
         bool allowsAnonymous = false;
         if (_protocolRegistry is { } registry)
@@ -3705,11 +3982,15 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             WorkspaceDescriptor? descriptor =
                 (await registry.ResolveWorkspaceAsync(profile.PluginProtocolId).ConfigureAwait(true))?.Descriptor;
             allowsAnonymous = descriptor?.Features.HasFlag(WorkspaceFeatures.AnonymousAccess) == true;
+            if (descriptor is { DisplayName.Length: > 0 })
+            {
+                ui.Document.TypeLabel = descriptor.DisplayName;
+            }
         }
 
         SessionProfile current = profile;
         int certPrompts = 0;
-        // 三次认证都没过时的最后一条原因:循环走完就没人再报了,而这条路径不留标签页,
+        // 三次认证都没过时的最后一条原因:循环走完就没人再报了,要写进占位标签的失败卡片 ——
         // 不记下来的话用户面对的是"密码弹了三次,然后什么都没有"。
         Exception? lastAuthFailure = null;
         for (int attempt = 0; attempt < 3; attempt++)
@@ -3718,13 +3999,16 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             {
                 if (InteractiveAuthenticator is not { } prompt)
                 {
+                    ui.Abandon();
                     return null;
                 }
+                ui.EndAttempt();
                 SessionProfile? prompted = await prompt(current).ConfigureAwait(true);
                 if (prompted is null)
                 {
-                    // 用户取消:这是"不连了",不是失败,不弹提示。
+                    // 用户取消:这是"不连了",不是失败,不弹提示,占位标签一并撤走。
                     LastConnectionError = null;
+                    ui.Abandon();
                     return null;
                 }
                 current = prompted;
@@ -3732,14 +4016,15 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
 
             try
             {
+                ui.BeginAttempt();
                 // 声明了 SshTunnel 且用户选了跳板机 → 宿主先把 SSH 会话与本地转发建好,
                 // 插件只看到一个已经能连的本地端点(凭据永不出宿主)。
                 (WorkspaceEndpoint? endpoint, Guid tunnelId) =
-                    await EstablishWorkspaceTunnelAsync(current, cancellationToken).ConfigureAwait(true);
+                    await EstablishWorkspaceTunnelAsync(current, ui.Token).ConfigureAwait(true);
                 PluginWorkspaceSession session;
                 try
                 {
-                    session = await launcher.OpenAsync(current, endpoint, cancellationToken).ConfigureAwait(true);
+                    session = await launcher.OpenAsync(current, endpoint, ui.Token).ConfigureAwait(true);
                 }
                 catch
                 {
@@ -3754,16 +4039,18 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 }
                 _workspaceDocuments[session.SessionId] = document;
                 session.Document.StatusChanged += OnWorkspaceStatusChanged;
-                Layout.AddDocument(document);
+                ui.HandOver(document);
                 TrackDocumentSession(session.SessionId, profile.Id, SessionStatus.Connected);
                 return document;
             }
             catch (OperationCanceledException)
             {
+                ui.Abandon();
                 return null;
             }
             catch (PluginProtocolCertificateException certificate)
             {
+                ui.EndAttempt();
                 if (PluginCertificateTrustPrompt is { } trustPrompt &&
                     await trustPrompt(current, certificate).ConfigureAwait(true))
                 {
@@ -3778,6 +4065,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 // 用户自己点了"不信任",原因他清楚 —— 再弹一扇框只是复述他刚做的决定。
                 LastConnectionError = certificate.Message;
                 Toasts.Error(LastConnectionError);
+                ui.Fail(certificate.Message);
                 return null;
             }
             catch (PluginProtocolAuthenticationException auth)
@@ -3787,13 +4075,13 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             }
             catch (Exception ex)
             {
-                await ReportConnectionFailureAsync(current, ex).ConfigureAwait(true);
+                ReportDocumentConnectFailure(ui, current, ex);
                 return null;
             }
         }
         if (lastAuthFailure is not null)
         {
-            await ReportConnectionFailureAsync(current, lastAuthFailure).ConfigureAwait(true);
+            ReportDocumentConnectFailure(ui, current, lastAuthFailure);
         }
         return null;
     }

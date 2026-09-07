@@ -298,6 +298,58 @@
                  HorizontalAlignment="Right"
                  VerticalAlignment="Stretch" />
 
+      <!-- 标签页内「连接中」覆盖层:标签在握手开始前就建好了,这中间正文本是一片空白终端,
+           链路一慢就看不出自己到底点没点上(#385 反馈)。与下面的断开覆盖层同一张卡片,
+           只是图标换成转圈、按钮换成「关闭标签页」——此刻用户能做的决定只有"不等了"。 -->
+      <Border IsVisible="{Binding ShowConnectingOverlay}"
+              Background="{DynamicResource VelaScrim}"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch">
+        <Border Classes="dc-card"
+                Background="{DynamicResource VelaBgSurface}"
+                BorderBrush="{DynamicResource VelaBorderSecondary}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="32,24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                BoxShadow="{DynamicResource VelaShadowWindow}">
+          <StackPanel Orientation="Vertical" Spacing="16" HorizontalAlignment="Center">
+            <Border Width="48" Height="48" CornerRadius="24"
+                    Background="{DynamicResource VelaAccentDim}"
+                    HorizontalAlignment="Center">
+              <pc:CircularProgressRing Width="24" Height="24" StrokeThickness="2.5"
+                                       IsIndeterminate="True"
+                                       TrackBrush="{DynamicResource VelaBorderSecondary}"
+                                       ArcBrush="{DynamicResource VelaAccent}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <TextBlock Text="{Binding ConnectingOverlayTitle}"
+                       Foreground="{DynamicResource VelaTextPrimary}"
+                       FontSize="{DynamicResource VelaFontSize16}" FontWeight="SemiBold"
+                       TextAlignment="Center" TextWrapping="Wrap"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="{loc:Localize Msg_ConnectingDetail}"
+                       Foreground="{DynamicResource VelaTextMuted}"
+                       FontFamily="{DynamicResource VelaUiMonoFont}"
+                       FontSize="{DynamicResource VelaFontSize11}"
+                       MaxWidth="280" TextAlignment="Center" TextWrapping="Wrap"
+                       HorizontalAlignment="Center" />
+            <Button Command="{Binding CloseTabCommand}"
+                    HorizontalAlignment="Center"
+                    Background="Transparent"
+                    BorderBrush="{DynamicResource VelaBorderSecondary}"
+                    BorderThickness="1"
+                    CornerRadius="4" Padding="16,8">
+              <TextBlock Text="{loc:Localize CloseTab}"
+                         Foreground="{DynamicResource VelaTextSecondary}"
+                         FontSize="{DynamicResource VelaFontSize12}" FontWeight="Medium"
+                         VerticalAlignment="Center" />
+            </Button>
+          </StackPanel>
+        </Border>
+      </Border>
+
       <!-- 标签页内失败/断开覆盖层(设计 yxjmg / dcOverlay):连接失败或掉线时居中显示,
            提供“重新连接”“关闭标签页”。连接失败不再弹全局对话框,提示只落在所属标签页内。 -->
       <Border IsVisible="{Binding ShowDisconnectedOverlay}"

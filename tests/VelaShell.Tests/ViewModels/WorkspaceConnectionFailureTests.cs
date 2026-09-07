@@ -10,10 +10,12 @@ namespace VelaShell.Tests.ViewModels;
 /// <summary>
 /// 工作台连接(Redis 等由插件全权渲染界面的类型)连不上时**必须有提示**。
 /// <para>
-/// 这条路径与 SSH 的关键差别:连不上就没有标签页,失败没有地方可画 —— 只写状态栏的话
-/// 用户看到的是"点了连接,什么都没发生"。本机没起 Redis 时点开一条 Redis 会话正是这个样子,
-/// 这组用例守的就是那扇提示框还在。
+/// 这条路径原先与 SSH 有个关键差别:标签页要连上才建,连不上就没有标签,失败没有地方可画,
+/// 于是只能弹一扇模态框。#385 之后标签在握手**开始前**就建好(<see cref="ConnectingDocument" />),
+/// 失败就落回它自己那个标签里 —— 与终端标签页内的失败覆盖层同一条纪律(设计 yxjmg),
+/// 不再拿模态框挡住用户手上正在做的别的事。
 /// </para>
+/// <para>这组用例守的就是:失败**有地方看**,而且看的是那个标签,不是一扇框。</para>
 /// </summary>
 [TestClass]
 public sealed class WorkspaceConnectionFailureTests
@@ -58,10 +60,10 @@ public sealed class WorkspaceConnectionFailureTests
     }
 
     /// <summary>
-    /// 端点不可达(本机没起 Redis):不开标签页,但要把原因报到提示钩子上。
+    /// 端点不可达(本机没起 Redis):不开工作台文档,失败留在那个「连接中」占位标签上。
     /// </summary>
     [TestMethod]
-    public async Task ConnectionRefused_ReportsTheFailure_AndOpensNoDocument()
+    public async Task ConnectionRefused_LeavesTheFailureOnItsOwnTab()
     {
         (MainWindowViewModel vm, SessionProfile profile) =
             Arrange(new ProtocolConnectionException("连不上 127.0.0.1:6379:Connection refused"));
@@ -75,15 +77,25 @@ public sealed class WorkspaceConnectionFailureTests
         PluginWorkspaceDocument? document = await vm.OpenWorkspaceDocumentForProfileAsync(profile);
 
         Assert.IsNull(document);
-        Assert.HasCount(1, reported);
-        Assert.Contains("Connection refused", reported[0]);
+        // 有地方可画之后就不再弹模态框(与终端标签同口径)。
+        Assert.IsEmpty(reported);
+        ConnectingDocument placeholder = SoleConnectingDocument(vm);
+        Assert.IsTrue(placeholder.HasError, "连不上之后占位标签要转成失败卡片。");
+        Assert.Contains("Connection refused", placeholder.OverlayDetail);
         // 匿名连接(Redis 常态)不该拼出 "@127.0.0.1:6379" 这种前面缺了一截的目标。
-        Assert.Contains("127.0.0.1:6379", reported[0]);
-        Assert.DoesNotContain("@127.0.0.1", reported[0]);
+        Assert.Contains("127.0.0.1:6379", placeholder.OverlayDetail);
+        Assert.DoesNotContain("@127.0.0.1", placeholder.OverlayDetail);
         // 状态栏与 LastConnectionError 仍是同一条消息:插件代开会话那条路径靠它区分
         // "没连上"与"人不同意"(见 HostSessionOpener)。
-        Assert.AreEqual(reported[0], vm.LastConnectionError);
-        Assert.IsEmpty(vm.Layout.AllDocuments());
+        Assert.AreEqual(placeholder.OverlayDetail, vm.LastConnectionError);
+    }
+
+    /// <summary>取出工作区里唯一那个「连接中」占位标签。</summary>
+    private static ConnectingDocument SoleConnectingDocument(MainWindowViewModel vm)
+    {
+        ConnectingDocument[] placeholders = [.. vm.Layout.AllDocuments().OfType<ConnectingDocument>()];
+        Assert.HasCount(1, placeholders);
+        return placeholders[0];
     }
 
     /// <summary>
@@ -102,11 +114,11 @@ public sealed class WorkspaceConnectionFailureTests
     }
 
     /// <summary>
-    /// 三次凭据都没过之后,循环走完了也要报一次 —— 否则用户对着密码框输三遍,
-    /// 得到的是一片安静。
+    /// 三次凭据都没过之后,循环走完了最后一条原因也要落到标签上 —— 否则用户对着密码框
+    /// 输三遍,得到的是一片安静。
     /// </summary>
     [TestMethod]
-    public async Task ExhaustedAuthenticationRetries_ReportsTheLastFailure()
+    public async Task ExhaustedAuthenticationRetries_LeavesTheLastFailureOnItsOwnTab()
     {
         (MainWindowViewModel vm, SessionProfile profile) =
             Arrange(new ProtocolAuthenticationException("WRONGPASS 口令不对"));
@@ -118,18 +130,13 @@ public sealed class WorkspaceConnectionFailureTests
             candidate.Password = "nope";
             return Task.FromResult<SessionProfile?>(candidate);
         };
-        var reported = new List<string>();
-        vm.ConnectionFailureReporter = (_, message) =>
-        {
-            reported.Add(message);
-            return Task.CompletedTask;
-        };
 
         Assert.IsNull(await vm.OpenWorkspaceDocumentForProfileAsync(profile));
 
         Assert.AreEqual(3, prompts);
-        Assert.HasCount(1, reported);
-        Assert.Contains("WRONGPASS", reported[0]);
+        ConnectingDocument placeholder = SoleConnectingDocument(vm);
+        Assert.IsTrue(placeholder.HasError);
+        Assert.Contains("WRONGPASS", placeholder.OverlayDetail);
     }
 
     /// <summary>
@@ -154,5 +161,7 @@ public sealed class WorkspaceConnectionFailureTests
 
         Assert.AreEqual(0, reports);
         Assert.IsNull(vm.LastConnectionError);
+        // "不连了"也要把占位标签收走 —— 留下一个空壳等于用户取消了个寂寞。
+        Assert.IsEmpty(vm.Layout.AllDocuments());
     }
 }

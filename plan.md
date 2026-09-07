@@ -1881,3 +1881,129 @@ SessionId == Guid.Empty 兜底 —— 它是 return 而不是换占位」),只�
 `MainWindowViewModelTests.FileBrowser_ConnectingTab_HidesPreviousSessionPanelImmediately`:
 设置关着 → 手动开面板 → 开一个 `Connecting` 且 `SessionId` 为空的新标签 → 断言面板立刻隐藏
 且不指向任何会话,再切回原标签断言面板恢复。把那条 return 加回去,这条用例会红。
+
+## 46. 2026-09-07 连接慢的时候,屏幕上必须有东西在动(#385 反馈)
+
+用户反馈:新建连接、打开插件的标签页,链路一慢就「点了没有任何反应」,右下角那个后台
+状态圆环也不转。查下来现状比反馈还要糙一档:
+
+| 路径 | 点击后立刻看到什么 |
+| --- | --- |
+| SSH 终端标签 | 标签**出现**了,页签上有黄色圆点;但**正文是一片空白终端** —— `ShowDisconnectedOverlay` 只覆盖 `Disconnected`/`Error`,`Connecting` 这一态从来没有覆盖层 |
+| 独立 SFTP / FTP / 插件协议(S3…)/ 插件工作台(Redis…) | **什么都没有**。四处的 `Layout.AddDocument` 全写在 `OpenSessionAsync` / `OpenAsync` **返回之后**,连接期间没有标签、没有圆点 |
+| 资源管理器树上的圆点 | 文档型连接的 `TrackDocumentSession(..., Connected)` 也只在成功后调用,连接期间不会变黄 |
+| 右下角圆环 | 机制齐全(`IBackgroundActivityService` + `CircularProgressRing` + 悬停清单),但**只有插件装载与配置同步登记**,连接路径一条都没有 |
+
+也就是说文档型连接是字面意义上的"点了没反应",SSH 只是"有个空壳"。
+
+### 一、标签先建,再去握手
+
+新增 `ConnectingDocument`(+ `ConnectingDocumentView` / `ConnectingDockTabItem`):点击那一刻
+就进工作区,连上之后由新增的 `DockWorkspace.ReplaceDocument` **原位**换成真文档。
+
+原位换而不是"先 Remove 再 Add":后者永远追加到主组末尾,用户眼看着标签从原地跳到最右边;
+而且旧文档若不是当前激活的(等连接时切去了别的标签),Add 还会把焦点抢回来。事件按
+"旧的走了、新的来了"如实播报 —— 视图层的内容控件缓存正是靠 `DocumentRemoved` 丢弃旧视图的。
+
+四条路径的连接流程(缺凭据先弹框、认证失败原地重试三次、证书未信任提示后重连)本来一模一样,
+于是把界面表示收进一个 `DocumentConnectUi`:占位标签 + 右下角那条活动 + 取消绳。同一套反馈
+在四处各写一遍,漏一处就是一条新的"点了没反应"。
+
+- **取消**:占位标签的「取消」、标签 ×、Ctrl+W、右键关闭全部收敛到 `Layout.DocumentClosed`
+  一个点上 —— 关掉一个还在连的占位标签 = 不连了,取消一路传进插件的握手。
+- **失败**:占位标签留在原地换成失败卡片(原因 + 重新连接 + 关闭标签页),**不再弹模态框**。
+  终端标签早就把连接失败从全局对话框改成了标签页内的覆盖层(设计 yxjmg);文档型标签
+  以前弹框是因为"连不上就没有标签,失败没有地方可画",而现在有了。
+- 顺带修掉一处:收尾用的 `DisconnectAsync` 原先带着调用方的取消令牌,而那正是它已经取消的
+  时刻 —— 清理动作自己取消掉,留下一条没人关的 SSH 连接。抽成 `DisconnectQuietlyAsync`。
+
+### 二、终端标签补上「连接中」覆盖层
+
+`ShowConnectingOverlay` + 与断开覆盖层同一张卡片(转圈 + 「正在连接 X」+ 关闭标签页)。
+三种非正常态现在各有各的画面,且互不重叠。
+
+### 三、右下角圆环接上连接
+
+`MainWindowViewModel` 原先只把 `IBackgroundActivityService` 转接给状态栏,自己一条都不登记。
+留一个字段,在 SSH 握手(`RunHandshakeAsync`)、SSH 重连、插件终端(`AttachPluginTerminalAsync`,
+打开与重连共用)、以及四条文档型路径上各登记一条。
+
+**等用户输入的时候不登记**(`EndAttempt`):凭据框与证书框是在等人,不是在等网络,圆环
+继续转就是在撒谎。
+
+插件面板(`PluginUiApi.ShowPanelAsync`)也登记一条,覆盖"排到 UI 线程 + 构造控件"这段。
+边界说清楚:插件的惰性激活由 `PluginManager` 自己登记(`Msg_PluginLoading`),面板打开后
+插件再去拉自己的数据,那段宿主看不见也管不着 —— 不给它编一个转圈。
+
+### 四、验收
+
+`dotnet test VelaShell.slnx` 全绿(3190 通过)。新增用例:
+
+- `ConnectingDocumentTests` 五条:连接**期间**占位标签就在场且类型名已换成协议展示名、
+  连上之后真文档接手原来那一格且激活状态一并交接、关掉占位标签会把取消传进插件的握手
+  且不留空壳、这段时间后台活动账本里真有一条、`ReplaceDocument` 保位保焦点并如实播报两条事件;
+- `ConnectingDocumentViewUiTests` 三条**渲染**用例:编译期的 AXAML 校验拦不住
+  `{StaticResource Icon.*}` 写错或令牌改名,而这张界面恰好只在"连接慢"时才会被看到 ——
+  最容易带着一个加载不出来的加载界面发版;
+- `TerminalTabViewModelTests.ConnectingOverlay_CoversTheGapBetweenTabCreationAndHandshake`;
+- `WorkspaceConnectionFailureTests` 两条改成钉新契约:失败落在它自己那个标签上,而不是一扇模态框。
+
+五份 resx 补 `Msg_ConnectingToTitle` / `Msg_ConnectingDetail` / `Msg_PluginOpeningPanel`。
+`DESIGN.md` 补 §5.2 的 ProgressRing 与 §5.2b「等待态」两节(唯一的加载指示、不编假进度、
+标签先于会话、失败落在自己的标签里、等人的时候不转圈)。
+
+## 47. 2026-09-07 后台任务浮层是块黑砖,跟哪套主题都不搭(用户反馈)
+
+用户反馈:状态栏右下角那个后台任务浮层"纯黑色背景有点太丑,和整体主题不太搭",并且要能
+跟着其他主题走。
+
+### 一、根因:那层外壳从来就没进过令牌体系
+
+浮层的外观有两种画法,本项目两种都在用:
+
+- **内容自带 Border**(侧栏会话树、快捷命令目标选择器):浮层挂 `FlyoutPresenterClasses="bare"`
+  把 presenter 剥成纯定位容器,底色/描边/圆角全由内容那层 Border 按令牌画;
+- **内容是裸的**(状态栏后台任务浮层):外观就是 presenter 这一层。
+
+第二种一直没人给它设过值,于是吃的是 Fluent 默认的 `FlyoutPresenterBackground` —— 一个**写死的
+近黑色**,不在 `Vela*` 令牌里。`ThemeTokenApplier` 换主题时把令牌整片换掉,唯独换不到它:
+九套主题换来换去这块砖岿然不动,亮色主题下尤其突兀。
+
+`DockStyles.axaml` 里那段注释其实早就点破了这件事(「状态栏后台任务浮层的内容是裸 StackPanel,
+靠的正是 presenter 这层底」),只是当时的结论是"所以别全局剥掉它",而不是"所以得给它上令牌"。
+
+### 二、修法:给 `FlyoutPresenter` 一条走令牌的基础样式
+
+与 `MenuFlyoutPresenter` 同一套值(`VelaBgSurface` / `VelaBorderSecondary` / 1px / 圆角 6),
+浮层与右键菜单看起来才是同一个产品;顺带清掉 Fluent 的 `MinWidth` 下限(窄浮层会被平白撑宽)。
+`.bare` 保持原样,但**必须排在它之后** —— 同优先级的样式按声明顺序后者胜出,写反了那两个
+自带 Border 的浮层就会变回"两层边"。
+
+这条是给**所有**裸内容浮层的,不只是眼下这一个:下次再加一个浮层,不写任何外观也已经是对的。
+
+### 三、顺带把清单本身理一理
+
+截图里标题与第一条活动糊成一块,而且一行字看不出它是在动还是卡住了:
+
+- 标题降到 10px + 字距 + SemiBold,与侧栏那些分组标题同一档,底下加一条发丝线;
+- **每条活动自己带一圈 12px 的进度环**:这张清单回答的正是"还有什么在跑"。有确定进度就画
+  那个进度(`BackgroundActivityItem` 补一个 0~1 的 `Fraction`,原先只有百分比**文本**,
+  环没法用),不可知就走不确定动画。
+
+### 四、验收
+
+`dotnet test VelaShell.slnx` 全绿(3192 通过)。新增 `FlyoutPresenterStyleTests` 两条:
+普通浮层的底色/描边/圆角/MinWidth 取自令牌、`bare` 浮层仍被剥干净(后者钉的是两条样式的
+先后)。把基础样式的选择器改瞎,第一条会红。
+
+`DESIGN.md` §5.2 补 Flyout 外壳的两种画法与选择依据。
+
+### 五、追加:浮层还压着状态栏(同一轮反馈)
+
+`Placement="Top"` 是贴着锚点按钮的上沿摆的,而那颗按钮几乎占满 24px 的状态栏(20px 高、
+上下各留 2px),于是浮层下沿正好压在状态栏上,两块面挨在一起分不出层次。加
+`VerticalOffset="-8"` 抬起来,浮层与状态栏之间留出约 6px 的空。
+
+方向不是猜的:写了个一次性探针在 headless 里真开一次浮层,量出 `0 → -8` 时弹出层在窗口内的
+Y 从 158 变成 150(偏移走屏幕坐标,正 Y 朝下,故负值向上),确认之后把探针删掉。
+这类纯观感的数值不写用例钉 —— 该由眼睛拍板(同 DialogButtonStyleTests 的立场)。

@@ -75,17 +75,36 @@
             </Style>
           </Button.Styles>
           <Button.Flyout>
-            <Flyout Placement="Top" HorizontalOffset="0">
-              <StackPanel MinWidth="240" Spacing="8">
+            <!-- 外观(底色/描边/圆角/内边距)由 FlyoutPresenter 那条全局样式按令牌给,
+                 见 DockStyles —— 这里只管内容,别再自带一层 Border,否则又是两层框。 -->
+            <!-- 往上抬 8px:Top 放置是贴着锚点按钮的上沿摆的,而按钮几乎占满 24px 的状态栏,
+                 浮层的下沿就压在状态栏上,两块面挨在一起分不出层次(用户反馈)。
+                 负值 = 向上(偏移走的是屏幕坐标,正 Y 朝下)。 -->
+            <Flyout Placement="Top" HorizontalOffset="0" VerticalOffset="-8">
+              <StackPanel MinWidth="248" Spacing="8">
+                <!-- 分组标题走 §3 的写法:10px + 字距,与侧栏那些分组标题同一档。 -->
                 <TextBlock Text="{loc:Localize BackgroundTasks}"
                            FontFamily="{DynamicResource VelaUiFont}"
-                           FontSize="{DynamicResource VelaFontSize11}"
+                           FontSize="{DynamicResource VelaFontSize10}"
+                           FontWeight="SemiBold"
+                           LetterSpacing="1"
                            Foreground="{DynamicResource VelaTextTertiary}" />
+                <!-- 标题与清单之间一条发丝线:没有它,标题和第一条活动糊成一块。 -->
+                <Border Height="1" Background="{DynamicResource VelaBorderPrimary}" />
                 <ItemsControl ItemsSource="{Binding BackgroundActivities}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="pvm:BackgroundActivityItem">
-                      <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,4">
-                        <StackPanel Grid.Column="0" Spacing="1">
+                      <Grid ColumnDefinitions="Auto,10,*,Auto" Margin="0,3">
+                        <!-- 每条自己带一圈在转的环:这张清单回答的正是"还有什么在跑",
+                             一行字看不出它是在动还是卡住了。有确定进度就画那个进度。 -->
+                        <pc:CircularProgressRing Grid.Column="0" Width="12" Height="12"
+                                                 StrokeThickness="1.5"
+                                                 VerticalAlignment="Center"
+                                                 IsIndeterminate="{Binding !HasProgress}"
+                                                 Value="{Binding Fraction}"
+                                                 TrackBrush="{DynamicResource VelaBorderSecondary}"
+                                                 ArcBrush="{DynamicResource VelaAccent}" />
+                        <StackPanel Grid.Column="2" Spacing="1">
                           <TextBlock Text="{Binding Title}"
                                      FontFamily="{DynamicResource VelaUiFont}"
                                      FontSize="{DynamicResource VelaFontSize11}"
@@ -97,7 +116,7 @@
                                      FontSize="{DynamicResource VelaFontSize10}"
                                      Foreground="{DynamicResource VelaTextMuted}" />
                         </StackPanel>
-                        <TextBlock Grid.Column="1" Margin="12,0,0,0"
+                        <TextBlock Grid.Column="3" Margin="12,0,0,0"
                                    Text="{Binding Progress}"
                                    IsVisible="{Binding HasProgress}"
                                    VerticalAlignment="Center"

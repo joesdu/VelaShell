@@ -4448,4 +4448,13 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="Validation_NumberRequired" xml:space="preserve">
     <value>Enter a number</value>
   </data>
+  <data name="Msg_ConnectingToTitle" xml:space="preserve">
+    <value>Connecting to {0}</value>
+  </data>
+  <data name="Msg_ConnectingDetail" xml:space="preserve">
+    <value>Establishing the session. On a slow link this can take a few seconds.</value>
+  </data>
+  <data name="Msg_PluginOpeningPanel" xml:space="preserve">
+    <value>Opening panel</value>
+  </data>
 </root>
