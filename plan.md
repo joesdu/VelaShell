@@ -2007,3 +2007,69 @@ SessionId == Guid.Empty 兜底 —— 它是 return 而不是换占位」),只�
 方向不是猜的:写了个一次性探针在 headless 里真开一次浮层,量出 `0 → -8` 时弹出层在窗口内的
 Y 从 158 变成 150(偏移走屏幕坐标,正 Y 朝下,故负值向上),确认之后把探针删掉。
 这类纯观感的数值不写用例钉 —— 该由眼睛拍板(同 DialogButtonStyleTests 的立场)。
+
+## 48. 2026-09-07 关掉「连接中」的标签,连接就该停下(用户反馈)
+
+用户反馈:关闭标签页时后台仍在继续连接,右下角「后台任务」里那条「连接中 Debian13(测试服务器)」
+赖着不走,过一会儿还要弹一句连不上的异常提示。
+
+### 一、根因:终端标签这边一直没有那根"取消绳"
+
+#385 之后,连接的四种文档型入口(独立 SFTP、FTP、插件协议、插件工作台)共用
+`DocumentConnectUi`,它握着一个链接到调用方令牌的 `CancellationTokenSource`,
+`ConnectingDocument` 一被关掉(六个关闭入口都汇到 `DockWorkspace.DocumentClosed`)就拉断它。
+
+终端标签走的是另一条路:`CreateConnectingTab` 先建标签、`RunHandshakeAsync` 再握手,
+中间只传了**调用方的**令牌 —— 而调用方(点一下会话树)早就返回了,那个令牌永远不会被取消。
+于是关标签只做了三件事:移走文档、拆传输、Dispose 标签;握手照旧在后台跑到底:
+
+- `RunHandshakeAsync` 里那条 `using IBackgroundActivityScope` 要等握手结束才释放,
+  右下角的圆环就一直转着一条属于已关闭标签的「连接中」;
+- 几十秒后 TCP 超时,`TryConnectProfileAsync` 的 `catch (Exception ex)` 照常
+  `Toasts.Error(...)` —— 为一个用户十几秒前就亲手关掉的标签报一句"无法连接";
+- 更隐蔽的一种:握手恰好在关标签之后成功。会话建起来了,标签却没了,那条连接
+  (连同它的端口与隧道)再没有任何界面能关掉它。
+
+### 二、修法:标签也挂一根绳,挂在同一个点上
+
+`MainWindowViewModel` 加一张 `_tabConnectCancellations`(标签 → 取消源)与三个方法:
+
+- `BeginTabConnect(tab, outer)` — 每次尝试(首连、认证重试、重连)登记一次,返回
+  「调用方令牌 ∪ 关掉这个标签」的令牌;上一轮的源先收掉,免得关标签拉的是根断绳;
+- `CancelTabConnect(tab)` — 只取消不释放。握手还在飞的时候释放取消源,底层库再往
+  这个令牌上挂回调就会撞 `ObjectDisposedException` —— 那正是"取消"被翻译成一句
+  莫名其妙的连接错误的来路;
+- `EndTabConnect(tab)` — 流程结束(连上/失败/被取消)时在 `finally` 里注销并释放。
+
+取消的触发点与文档型连接**同一个**:`OnDocumentClosed`(六个关闭入口都经过它),
+`RemoveTerminalTab`(连接失败/取消时的静默移除)再幂等地补一次。
+
+三条握手路径都改成用这根绳:`TryConnectProfileAsync` + `RunHandshakeAsync`(SSH 首连)、
+`OpenPluginTerminalForProfileAsync`(Telnet 等插件终端)、`ReconnectTabAsync`(手动与自动重连)。
+
+两处配套:
+
+- **失败分支按令牌判定,而不是按异常类型**:`catch (Exception) when (token.IsCancellationRequested)`
+  取代原先的 `catch (OperationCanceledException)`。取消在底层未必现成一个
+  `OperationCanceledException`(连接被拆掉时也可能是一句 IO 错误),按异常类型判会漏到
+  下面那条弹 Toast 的分支去 —— 用户看到的正是那句多余的"无法连接"。
+- **握手赢了竞速也要收拾**:`RunHandshakeAsync` 里握手成功之后的部分拆成
+  `CompleteHandshakeAsync`,外面包一层 `catch when (取消)` → `TeardownSshSession(session.SessionId)`。
+  重连路径同理(`established` 变量记住已建起的会话)。
+- 还有一段令牌管不到:弹凭据框的时候等的是用户不是网络,标签上还没有绳。那一段改成
+  在框返回后按「标签还在不在」(`FindDocument`)判一次 —— 关掉标签和在框上点取消是同一句话。
+
+### 三、验收
+
+`dotnet test tests/VelaShell.Tests` 通过 1242 条;新增 `ConnectingTabCancellationTests` 两条:
+
+- 握手途中关标签 → 令牌被拉断、标签撤走、`BackgroundActivityService.Activities` 清空、
+  `LastConnectionError` 与 Toast 都是空的;
+- 握手在标签关掉**之后**才回来 → 会话被 `DisconnectAsync` 拆掉,而不是留成一条孤儿连接。
+
+把 `OnDocumentClosed` 里那行 `CancelTabConnect` 注释掉,两条都红 —— 第一条会一直挂到测试超时,
+那正是这个 bug 在用户机器上的样子:握手没有人叫停。
+
+(同一轮里 `ExternalEditSessionManagerTests` 有 6 条失败,与本次改动无关:它断言
+`%TEMP%\VelaShell\remote-edit` 不存在,而本机上跑过的真实应用在那里留下了会话目录,
+`CleanupAll` 只清自己登记过的那些。改前改后同样红。)
