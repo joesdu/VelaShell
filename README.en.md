@@ -260,7 +260,7 @@ repository, one job each:
 | **[VelaShellLabs/velashell-plugin-sdk](https://github.com/VelaShellLabs/velashell-plugin-sdk)** | The plugin contract SDK | `VelaShell.PluginSdk` / `.Testing` **NuGet packages** |
 | **[VelaShellLabs/velashell-plugin-cli](https://github.com/VelaShellLabs/velashell-plugin-cli)** | The `vela-plugin` CLI and `VelaShell.PluginSdk.Build` | **NuGet packages** (for plugin authors; not referenced here) |
 | **[VelaShellLabs/velashell-plugin-templates](https://github.com/VelaShellLabs/velashell-plugin-templates)** | The `dotnet new velaplugin` templates | **NuGet package** (for plugin authors; not referenced here) |
-| **[VelaShellLabs/velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins)** | The Redis / S3 / Telnet / Serial plugins | `velashell-plugins-<version>.zip` **release asset** |
+| **[VelaShellLabs/velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins)** | The Redis / S3 / Telnet / Serial plugins | One **`.vpx` package** per plugin (release assets / marketplace) |
 | **[VelaShellLabs/velashell-docs](https://github.com/VelaShellLabs/velashell-docs)** | **All documentation** for every repository above | — |
 
 > The split happened in steps: on 2026-08-21 the SDK, toolchain and plugins moved into
@@ -281,10 +281,10 @@ The SDK contract is pinned in `src/Directory.Packages.props` and `tests/Director
 there is no version to lock.
 
 To run Redis / S3 / Telnet alongside the app on your own machine, drop their plugin directories
-into the **staging directory** `artifacts/plugins/`: unpack the
-[VelaShellLabs/velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins) release asset
-`velashell-plugins-<version>.zip` (its layout is exactly the installer's `plugins/` level), or
-point straight at that repo's build output. Pass `-p:VelaPluginsStageDir=<dir>` to stage elsewhere.
+into the **staging directory** `artifacts/plugins/`: unpack the per-plugin **`.vpx` packages**
+released by [VelaShellLabs/velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins)
+(`.vpx` is VelaShell's own plugin package format; the container's layout is exactly the installed
+`plugins/<plugin>/` level), or point straight at that repo's build output. Pass `-p:VelaPluginsStageDir=<dir>` to stage elsewhere.
 
 > ⚠️ Do not stage `velashell-ai` — this repo already produces it, and two plugins with the same id
 > make `PluginManager` mark the later one Invalid, which shows up as "the plugin mysteriously

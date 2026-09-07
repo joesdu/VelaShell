@@ -8,8 +8,9 @@
 
 其余第一方插件（Redis / S3 / Telnet 与 HelloWorld 示例）住在
 **[VelaShellLabs/velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins)**，
-以 Release 资产 `velashell-plugins-<版本>.zip` 交付。本机想连它们一起跑，把插件目录铺进
-`artifacts/plugins/` 即可（或用 `-p:VelaPluginsStageDir=<目录>` 指别处），构建与发布都从那里取件。
+以各插件的 **`.vpx` 包**（本项目自有的插件包格式）作为 Release 资产交付。本机想连它们一起跑，
+把插件目录铺进 `artifacts/plugins/` 即可（或用 `-p:VelaPluginsStageDir=<目录>` 指别处），
+构建与发布都从那里取件 —— 目录可以从 `.vpx` 解出来，也可以直接指向那边的构建产物。
 
 插件契约 SDK、`dotnet new` 模板与 `vela-plugin` CLI 分别在
 **[velashell-plugin-sdk](https://github.com/VelaShellLabs/velashell-plugin-sdk)**、

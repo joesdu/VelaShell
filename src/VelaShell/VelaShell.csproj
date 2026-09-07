@@ -129,7 +129,8 @@
        (借宿主的 AvaloniaEdit、必须进程内装载、Avalonia 必须逐字同版)。
 
     ② 第一方插件仓库 joesdu/velashell-plugins(Redis / S3 / Telnet)
-       以 Release 资产 velashell-plugins-<版本>.zip 交付,包内布局就是安装包 plugins/ 那一层。
+       以各插件的 .vpx 包(本项目自有的插件包格式)作为 Release 资产交付,
+       容器内布局就是安装后 plugins/<插件>/ 那一层。
        解到 artifacts/plugins/ 作为**暂存目录**,构建与发布都从这里取件。
 
        ⚠️ 2026-08-22 起②**不再进发行包**:不是每个人都要连 Redis、开 S3、拨 Telnet,
@@ -139,7 +140,7 @@
        这里的机制保留是给**本机**用的:想在自己机器上连同那几个插件一起跑,铺进去即可。
 
     暂存目录怎么来(纯本机手动动作):把插件目录铺进 artifacts/plugins/ 即可 ——
-    可以从插件仓库(joesdu/velashell-plugins)的 Release 资产 velashell-plugins-<版本>.zip
+    可以从插件仓库(joesdu/velashell-plugins)的 Release 资产 —— 各插件的 .vpx 包 ——
     解出来,也可以直接指向那边的构建产物;用 -p:VelaPluginsStageDir=<目录> 能改指别处。
     ⚠️ 别把 velashell-ai 也铺进来:①已经产出它了,同一个 id 出现两份会被 PluginManager 判重,
     后来者标 Invalid,表象是"插件莫名其妙用不了"。
