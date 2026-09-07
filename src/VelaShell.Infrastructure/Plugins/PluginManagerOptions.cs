@@ -203,6 +203,18 @@ public sealed class PluginManagerOptions
     public TimeSpan ActivationTimeout { get; init; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
+    /// 隔离插件的**启动**预算:从拉起 PluginHost 子进程到管道连上、握手完成为止,
+    /// 不含插件自己的 <c>ActivateAsync</c>(那段仍按 <see cref="ActivationTimeout" /> 计)。
+    /// </summary>
+    /// <remarks>
+    /// 与激活时限分开,是因为两者量级根本不同:一边是"插件的一个方法该多快返回"(秒级,
+    /// 长了就是挂死),另一边是"一个 .NET 进程冷启动 + Avalonia 初始化该多慢" ——
+    /// 后者在冷机器、忙机器、Linux 首次建字体缓存时轻松上十秒。合成一个数只能取大的那个,
+    /// 等于把插件挂死的判定也一并放宽;各给各的,两边才都守得住自己那件事。
+    /// </remarks>
+    public TimeSpan IsolatedStartupTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
     /// 后台活动账本(状态栏右下角的圆环据此显示)。缺席时插件加载静默进行,
     /// 行为与引入指示器之前完全一致 —— headless 测试与无界面宿主不受影响。
     /// </summary>

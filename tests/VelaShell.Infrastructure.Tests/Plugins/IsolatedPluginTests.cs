@@ -61,7 +61,11 @@ public class IsolatedPluginTests
             PluginRoots = [_root],
             DataRootDirectory = _dataRoot,
             HostVersion = "1.0.0",
-            ActivationTimeout = TimeSpan.FromSeconds(30), // 子进程冷启动比进程内慢,放宽
+            ActivationTimeout = TimeSpan.FromSeconds(30),
+            // 冷启动一个 .NET 子进程 + 建 Avalonia 归这一项管(见 IsolatedStartupTimeout)。
+            // CI 上四个测试程序集同时在跑,子进程要跟它们抢两个核 —— 这个数只决定
+            // "等多久才判失败",健康时一分钱不花,给足了才不会把机器忙判成插件坏。
+            IsolatedStartupTimeout = TimeSpan.FromSeconds(60),
             DeactivationTimeout = TimeSpan.FromSeconds(10)
         });
         await manager.StartAsync();
@@ -73,6 +77,39 @@ public class IsolatedPluginTests
 
         await manager.DisposeAsync();
         Assert.AreEqual(PluginState.Deactivated, manager.Plugins.Single().State);
+    }
+
+    /// <summary>
+    /// 启动预算耗尽时,报出来的必须是"没连上",而不是激活超时。
+    /// </summary>
+    /// <remarks>
+    /// 这条钉的是一次真实的误导:CI 上隔离插件偶发失败,报告写的是
+    /// 「Activation timed out after 30s」,而用例总耗时只有 10 秒 —— 因为连接阶段
+    /// 那个写死的 10 秒窗口逸出一个裸 OperationCanceledException,被统一记成了激活超时。
+    /// 秒数与阶段全是错的,查的人只能从头猜起。阶段自报家门之后,同样的失败一眼能定位。
+    /// </remarks>
+    [TestMethod]
+    public async Task IsolatedPlugin_StartupBudgetExhausted_BlamesTheConnectPhase()
+    {
+        StageFixture("isolated");
+        var manager = new PluginManager(new()
+        {
+            PluginRoots = [_root],
+            DataRootDirectory = _dataRoot,
+            HostVersion = "1.0.0",
+            ActivationTimeout = TimeSpan.FromSeconds(30),
+            // 子进程再快也起不到 1 毫秒:这一段必然超时,而激活时限还剩得满满的 ——
+            // 两个数分开之后,报错才说得清是哪一段没赶上。
+            IsolatedStartupTimeout = TimeSpan.FromMilliseconds(1),
+            DeactivationTimeout = TimeSpan.FromSeconds(10)
+        });
+        await manager.StartAsync();
+
+        PluginDescriptor descriptor = manager.Plugins.Single();
+        Assert.AreEqual(PluginState.Failed, descriptor.State);
+        Assert.Contains("did not connect", descriptor.Error!, StringComparison.Ordinal);
+        Assert.DoesNotContain("Activation timed out", descriptor.Error!, StringComparison.Ordinal);
+        await manager.DisposeAsync();
     }
 
     [TestMethod]
@@ -104,6 +141,7 @@ public class IsolatedPluginTests
             DataRootDirectory = _dataRoot,
             HostVersion = "1.0.0",
             ActivationTimeout = TimeSpan.FromSeconds(30),
+            IsolatedStartupTimeout = TimeSpan.FromSeconds(60), // 同上:子进程冷启动的预算与激活分开
             DeactivationTimeout = TimeSpan.FromSeconds(10),
             // 测试用极短退避:只允许 1 次自动重启,第二次崩溃即放弃。
             CrashRestartBackoff = [TimeSpan.FromMilliseconds(100)],
@@ -147,6 +185,7 @@ public class IsolatedPluginTests
             DataRootDirectory = _dataRoot,
             HostVersion = "1.0.0",
             ActivationTimeout = TimeSpan.FromSeconds(30),
+            IsolatedStartupTimeout = TimeSpan.FromSeconds(60), // 同上:子进程冷启动的预算与激活分开
             DeactivationTimeout = TimeSpan.FromSeconds(10)
         });
         await manager.StartAsync();

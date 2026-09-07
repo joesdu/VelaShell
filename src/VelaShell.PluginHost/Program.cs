@@ -38,18 +38,39 @@ internal static class Program
             WatchParent(parentPid);
         }
 
+        // ★ 管道先连,Avalonia 后建 —— 顺序不能反。
+        //
+        // 宿主给"进程启动 → 管道连上"留的是一段有限的窗口(见 PluginProcessClient.StartAsync)。
+        // 而 SetupWithoutStarting() 在 Linux 上要连 X11、初始化字体子系统:冷机器上光建
+        // fontconfig 缓存就能吃掉好几秒。它排在连接前面,那几秒全从连接窗口里扣 ——
+        // CI 的 ubuntu 作业上偶发的"连接超时"正是这么来的(机器越忙越容易撞上,
+        // 于是表现为"有时候又能过")。
+        //
+        // 连接是纯 IO,不碰 Avalonia,也就不必等谁:这里只**发起**连接,握手与其余 RPC
+        // 仍旧排在 Avalonia 就绪之后(它们会在派发线程上开窗口,那要求 Avalonia 已经建好)。
+        var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        Task connected = pipe.ConnectAsync(ConnectTimeoutMilliseconds);
+
         // 内建 Avalonia:默认软件渲染 —— 插件面板是轻量界面,不值得每个插件进程
         // 各自映射一整套显卡驱动模块(GPU 后端单进程可多占 ~170MB 常驻)。
         // 需要 GPU 的插件用 VELA_PLUGIN_GPU=1 放开。
         AppBuilder builder = AppBuilder.Configure<PluginHostApp>().UsePlatformDetect();
         if (Environment.GetEnvironmentVariable("VELA_PLUGIN_GPU") != "1")
         {
-            builder = builder.With(new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Software] });
+            // 三个平台各配一份:这条策略说的是"插件面板不值得为它映射一整套显卡驱动",
+            // 与操作系统无关,可原先只写了 Win32 那一份 —— Linux 与 macOS 上默认仍走
+            // GPU 后端。X11 尤其吃亏:探测 GLX/EGL 要开显示连接、枚举 FBConfig,
+            // 在 CI 的虚拟屏(xvfb + llvmpipe)上这一段能慢到秒级,而它换来的东西
+            // 恰恰是插件面板用不上的。
+            builder = builder
+                .With(new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Software] })
+                .With(new X11PlatformOptions { RenderingMode = [X11RenderingMode.Software] })
+                .With(new AvaloniaNativePlatformOptions { RenderingMode = [AvaloniaNativeRenderingMode.Software] });
         }
         builder.SetupWithoutStarting();
 
         // RPC 与插件逻辑全部转后台;主线程专职跑派发循环直至退出信号。
-        Task<int> run = Task.Run(() => RunAsync(pipeName, token, pluginId, pluginVersion, entryPath, dataDirectory));
+        Task<int> run = Task.Run(() => RunAsync(pipe, connected, token, pluginId, pluginVersion, entryPath, dataDirectory));
         using var loopCancel = new CancellationTokenSource();
         _ = run.ContinueWith(_ => loopCancel.Cancel(), TaskScheduler.Default);
         try
@@ -67,11 +88,20 @@ internal static class Program
         return exitCode;
     }
 
-    private static async Task<int> RunAsync(string pipeName, string token, string pluginId, string pluginVersion,
-        string entryPath, string dataDirectory)
+    /// <summary>连接宿主管道的时限:管道在进程被拉起之前就已在监听,连不上就是宿主没了。</summary>
+    private const int ConnectTimeoutMilliseconds = 10_000;
+
+    /// <param name="pipe">已在 <see cref="Main" /> 里发起连接的管道。</param>
+    /// <param name="connected">那次连接的进行中任务(见 Main 里"管道先连"的说明)。</param>
+    /// <param name="token">握手令牌。</param>
+    /// <param name="pluginId">插件 id。</param>
+    /// <param name="pluginVersion">插件版本。</param>
+    /// <param name="entryPath">入口程序集路径。</param>
+    /// <param name="dataDirectory">本插件的数据目录。</param>
+    private static async Task<int> RunAsync(NamedPipeClientStream pipe, Task connected, string token,
+        string pluginId, string pluginVersion, string entryPath, string dataDirectory)
     {
-        var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-        await pipe.ConnectAsync(10_000).ConfigureAwait(false);
+        await connected.ConfigureAwait(false);
 
         using var shutdownSource = new CancellationTokenSource();
         var connection = new RpcConnection(pipe);

@@ -1663,9 +1663,18 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         catch (Exception ex)
         {
             descriptor.State = PluginState.Failed;
-            descriptor.Error = ex is OperationCanceledException
-                ? $"Activation timed out after {options.ActivationTimeout.TotalSeconds:0}s."
-                : ex.Message;
+            // 取消的两种来源要分开说:宿主在关(那不是插件的错,也不是超时),与激活真的超时。
+            // 原先一律写成「Activation timed out after <激活超时>s」,于是任何一段
+            // 被取消的等待都顶着激活超时的名字与秒数出现 —— 报告里那个数字对不上实际
+            // 等过的时间,查的人先被送错方向(隔离插件的连接超时曾整整绕了一圈)。
+            descriptor.Error = ex switch
+            {
+                OperationCanceledException when cancellationToken.IsCancellationRequested
+                                                || _shutdown.IsCancellationRequested
+                    => "Activation was cancelled (the host is shutting down).",
+                OperationCanceledException => $"Activation timed out after {options.ActivationTimeout.TotalSeconds:0}s.",
+                _ => ex.Message
+            };
             Log($"Failed to activate '{manifest.Id}': {descriptor.Error}");
             await CleanupRuntimeAsync(runtime).ConfigureAwait(false);
         }
@@ -1712,7 +1721,8 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         }
         PluginProcessClient client = await PluginProcessClient.StartAsync(manifest, entryPath, context,
             options.HostVersion, context.DataDirectory,
-            debug ? DebugActivationTimeout : options.ActivationTimeout, cts.Token,
+            debug ? DebugActivationTimeout : options.ActivationTimeout,
+            debug ? DebugActivationTimeout : options.IsolatedStartupTimeout, cts.Token,
             options.ThemeTokensProvider, options.EmbedHost, debug).ConfigureAwait(false);
         runtime.Process = client;
         runtime.LastActivityTicks = Environment.TickCount64;
