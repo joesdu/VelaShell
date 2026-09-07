@@ -115,10 +115,13 @@ internal sealed class PluginProcessClient : IAsyncDisposable
     /// </summary>
     public static async Task<PluginProcessClient> StartAsync(PluginManifest manifest, string entryPath,
         PluginContext context, string hostVersion, string dataDirectory,
-        TimeSpan activationTimeout, CancellationToken cancellationToken,
+        TimeSpan activationTimeout, TimeSpan startupTimeout, CancellationToken cancellationToken,
         Func<Task<IReadOnlyList<ThemeTokenDto>>>? themeTokens = null,
         IPluginEmbedHost? embedHost = null, bool waitForDebugger = false)
     {
+        // 启动预算按阶段递减地花:连上占多少,握手就少多少。两段各给一个满额的常数,
+        // 等于把上限悄悄翻了一倍,超时判定也就说不清自己在守什么。
+        var startup = Stopwatch.StartNew();
         string pipeName = CreatePipeName();
         string token = Guid.NewGuid().ToString("N");
         var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1,
@@ -130,21 +133,37 @@ internal sealed class PluginProcessClient : IAsyncDisposable
         {
             process = Launch(manifest, entryPath, pipeName, token, dataDirectory, waitForDebugger);
 
-            // 等连接与等进程夭折二选一:PluginHost 起不来(缺运行时/被杀软拦)时不干等 10 秒。
+            // 等连接与等进程夭折二选一:PluginHost 起不来(缺运行时/被杀软拦)时不干等满预算。
             using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            connectCts.CancelAfter(TimeSpan.FromSeconds(10));
+            connectCts.CancelAfter(startupTimeout);
             Task connect = pipe.WaitForConnectionAsync(connectCts.Token);
             Task exited = process.WaitForExitAsync(connectCts.Token);
-            Task first = await Task.WhenAny(connect, exited).ConfigureAwait(false);
+            await Task.WhenAny(connect, exited).ConfigureAwait(false);
             // 落败的那条支路只会以取消/管道释放收场,且没人会 await 它:显式吞掉,
             // 否则它的异常在 GC 时以未观察任务异常的形式冒出来(调试器里一条无源头的噪声)。
             Observe(connect);
             Observe(exited);
-            if (first == exited)
+            // 判据是 HasExited 而不是"哪条支路先完成":预算到点时两条支路一起被取消,
+            // 而被取消的 exited 与真的退出长得一模一样,这时去读 ExitCode 只会撞上
+            // 「进程尚未退出」的异常,把一次超时报成一句风马牛不相及的错。
+            if (process.HasExited)
             {
                 throw new InvalidOperationException($"Plugin host process exited before connecting (exit code {process.ExitCode}).");
             }
-            await connect.ConfigureAwait(false);
+            try
+            {
+                await connect.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // 把"连接阶段超时"说成它自己。原先这里逸出一个裸 OperationCanceledException,
+                // 被 PluginManager 一律记成「Activation timed out after <激活超时>s」——
+                // 报出来的秒数既不是这一段的预算、也不是实际等过的时间,查起来全是错的方向。
+                throw new TimeoutException(
+                    $"Plugin host process {process.Id} did not connect to the host pipe within "
+                    + $"{startupTimeout.TotalSeconds:0}s (cold process start, or the machine is loaded).");
+            }
+            long connectedMs = startup.ElapsedMilliseconds;
 
             connection = new(pipe);
             router = new(context, connection, token, hostVersion, themeTokens, embedHost);
@@ -152,7 +171,23 @@ internal sealed class PluginProcessClient : IAsyncDisposable
             connection.SetNotificationHandler(router.HandleNotification);
             connection.Start();
 
-            await router.HandshakeCompleted.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false);
+            // 握手用启动预算里剩下的那部分;连接已经花掉多少就减多少,但至少留 5 秒
+            // ——连都连上了,握手只是一次往返,给它一个不至于因四舍五入变成 0 的下限。
+            TimeSpan handshakeBudget = Max(startupTimeout - startup.Elapsed, TimeSpan.FromSeconds(5));
+            try
+            {
+                await router.HandshakeCompleted.WaitAsync(handshakeBudget, cancellationToken).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                throw new TimeoutException(
+                    $"Plugin host process {process.Id} connected but did not complete the handshake within "
+                    + $"{handshakeBudget.TotalSeconds:0}s.");
+            }
+            // 这两个数是隔离插件启动慢时唯一能分清"慢在哪一段"的证据:连接慢 = 进程冷启动
+            // (运行时 + Avalonia),握手慢 = 插件进程起来了但线程被什么占着。
+            Trace.WriteLine($"[PluginManager] '{manifest.Id}' host process {process.Id} connected in {connectedMs}ms, "
+                            + $"handshake done at {startup.ElapsedMilliseconds}ms.");
             // 激活前先下发主题令牌:插件在 Activate 里就开面板也能拿到宿主配色。
             await router.PushThemeTokensAsync().ConfigureAwait(false);
             await connection.RequestAsync<object>(PluginRpc.PluginActivate, new ActivateRequest("startup"),
@@ -185,6 +220,9 @@ internal sealed class PluginProcessClient : IAsyncDisposable
             throw;
         }
     }
+
+    /// <summary>两个时长里较大的那个(启动预算减到 0 时的兜底)。</summary>
+    private static TimeSpan Max(TimeSpan left, TimeSpan right) => left > right ? left : right;
 
     /// <summary>标记一个无人 await 的任务为"已观察",使其异常不再进入未观察任务异常通道。</summary>
     private static void Observe(Task task) =>

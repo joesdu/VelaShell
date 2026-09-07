@@ -63,6 +63,7 @@ public class LazyActivationTests
         DataRootDirectory = _dataRoot,
         HostVersion = "1.0.0",
         ActivationTimeout = TimeSpan.FromSeconds(30),
+        IsolatedStartupTimeout = TimeSpan.FromSeconds(60), // 惰性激活也真的拉子进程:冷启动预算与激活分开
         DeactivationTimeout = TimeSpan.FromSeconds(10),
         CommandsFactory = (_, _) => _commands,
         IdleTimeout = idleTimeout ?? TimeSpan.FromMinutes(15),

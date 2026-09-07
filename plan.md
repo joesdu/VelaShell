@@ -2073,3 +2073,76 @@ Y 从 158 变成 150(偏移走屏幕坐标,正 Y 朝下,故负值向上),确认�
 (同一轮里 `ExternalEditSessionManagerTests` 有 6 条失败,与本次改动无关:它断言
 `%TEMP%\VelaShell\remote-edit` 不存在,而本机上跑过的真实应用在那里留下了会话目录,
 `CleanupAll` 只清自己登记过的那些。改前改后同样红。)
+
+## 49. 2026-09-07 CI 的 ubuntu 作业偶发失败:隔离插件"连不上"被报成"激活超时"
+
+用户反馈:Ubuntu 的构建验证偶尔失败,有时又能过。失败的永远是同一条 ——
+`IsolatedPluginTests.IsolatedPlugin_ActivatesInChildProcess_AndDeactivatesCleanly`,
+报 `Activation timed out after 30s`。
+
+### 一、报出来的那句话是错的,它把人送错了方向
+
+CI 日志里那条用例的耗时是 **10 秒**,而报错说的是 30 秒 —— 两个数对不上,说明超时的
+根本不是激活。`PluginProcessClient.StartAsync` 分三段等:
+
+| 阶段 | 原来的预算 |
+| --- | --- |
+| 拉起进程 → 管道连上 | 写死 10 秒 |
+| 握手往返 | 写死 10 秒 |
+| 插件 `ActivateAsync` | `options.ActivationTimeout`(用例里 30 秒) |
+
+第一段用的是 `CancellationTokenSource.CancelAfter`,超时逸出的是一个裸
+`OperationCanceledException`;而 `PluginManager.ActivateAsync` 的 catch 把**任何**
+`OperationCanceledException` 都写成 `Activation timed out after {ActivationTimeout}s`。
+于是一次 10 秒的连接超时,顶着"激活超时 30 秒"的名字出现在报告里:阶段是错的,秒数也是错的。
+
+### 二、根因:子进程在连管道之前,先去建了一整套 Avalonia
+
+`VelaShell.PluginHost/Program.cs` 的顺序是「`SetupWithoutStarting()` → 起后台线程 →
+连管道」。也就是说,那 10 秒的连接窗口里,子进程有一大段时间在做与连接毫无关系的事:
+初始化 Avalonia。Linux 上这一段尤其贵 —— 连 X11、初始化字体子系统(冷机器上要建
+fontconfig 缓存),而 `UsePlatformDetect` 之后还要探测 GLX/EGL,在 CI 的虚拟屏
+(xvfb + llvmpipe)上这一步能慢到秒级。
+
+为什么只有 ubuntu、而且只是偶发:`dotnet test VelaShell.slnx` **并行**跑八个测试程序集,
+这条用例恰好落在测试步骤刚开始、几个程序集同时冷启动的那半分钟里,子进程要和它们抢核。
+机器闲的时候一两秒就连上了,忙的时候就撞破 10 秒 —— 这正是"有时又能过"的来源。
+(Windows 与 macOS 同一次全绿:Windows 那段初始化便宜得多,macOS runner 是带图形会话的真机。)
+
+### 三、三处改动
+
+**1. 管道先连,Avalonia 后建**(`Program.cs`)。连接是纯 IO,不碰 Avalonia,也就不必等谁:
+`Main` 里先发起 `ConnectAsync`(不等它完成),再 `SetupWithoutStarting()`,握手与其余 RPC
+仍旧排在 Avalonia 就绪之后 —— 它们要在派发线程上开窗口,那确实得等。
+本机实测:连接从 356~512ms 降到 142~163ms,差的那 200~350ms 就是 Avalonia 初始化,
+在 Linux 冷机器上正是会膨胀成好几秒的那一段。
+
+**2. 启动预算与激活时限拆成两个数**(`PluginManagerOptions.IsolatedStartupTimeout`,默认 30 秒)。
+两者量级根本不同:一边是"插件的一个方法该多快返回"(长了就是挂死),另一边是
+"一个 .NET 进程冷启动 + 建 Avalonia 该多慢"。合成一个数只能取大的那个,等于把插件挂死的
+判定也一并放宽。连接与握手现在共花这一个预算(连接用掉多少,握手就少多少,握手保底 5 秒)。
+
+**3. 每一段超时都自报家门**。连接超时抛
+`Plugin host process {pid} did not connect to the host pipe within {n}s`,握手超时抛
+`connected but did not complete the handshake within {n}s`;`ActivateAsync` 也把
+"宿主正在关"与"真的超时"分开写。成功路径补一条 Trace:
+`connected in {x}ms, handshake done at {y}ms` —— 下次再慢,日志直接说得出慢在哪一段。
+
+顺带修掉一个潜伏的错误分支:原先按"`WhenAny` 里哪条支路先完成"判进程是否夭折,而预算到点时
+两条支路是**一起**被取消的,被取消的 `exited` 与真的退出长得一模一样,此时去读 `ExitCode`
+会撞上「进程尚未退出」的异常 —— 一次超时会被报成一句风马牛不相及的错。判据改成 `HasExited`。
+
+顺带一件同源的事:`VELA_PLUGIN_GPU != 1` 时的软件渲染原先**只配了 Win32 那一份**,
+Linux 与 macOS 上默认仍走 GPU 后端。这条策略("插件面板不值得为它映射一整套显卡驱动")
+与操作系统无关,补齐 `X11PlatformOptions` 与 `AvaloniaNativePlatformOptions`。
+
+### 四、验收
+
+`dotnet test VelaShell.slnx`(排除 Docker/CrossPlatform)全绿:3194 通过。
+新增 `IsolatedPlugin_StartupBudgetExhausted_BlamesTheConnectPhase` —— 把启动预算压到 1ms,
+断言错误里写的是 `did not connect` 而**不是** `Activation timed out`。把连接阶段那个
+`catch` 的条件改成永假(即恢复"逸出裸 OperationCanceledException"的旧行为),这条立刻红,
+且红的方式与 CI 上一模一样。
+
+隔离插件那几条用例把 `IsolatedStartupTimeout` 显式放到 60 秒:这个数只决定"等多久才判失败",
+健康时一分钱不花,给足了才不会把"机器忙"判成"插件坏"。
