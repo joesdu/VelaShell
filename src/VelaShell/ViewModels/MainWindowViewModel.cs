@@ -165,6 +165,17 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// </summary>
     private readonly Dictionary<TerminalTabViewModel, IDisposable> _sessionStatusSubscriptions = [];
 
+    /// <summary>
+    /// 还在握手的终端标签 → 撤销这次握手的取消源(关标签时要拉的那根绳)。
+    /// </summary>
+    /// <remarks>
+    /// 文档型连接的这根绳挂在 <see cref="DocumentConnectUi" /> 上,终端标签这边一直没有:
+    /// 关掉一个正在连的标签只是把标签移走,握手照旧在后台跑到底 —— 右下角圆环上那条
+    /// 「连接中」赖着不走,几十秒后还要为一个早就没了的标签弹一句"无法连接"。
+    /// 登记在这里,六个关闭入口(标签 ×、Ctrl+W、右键那一族、命令面板)一并管住。
+    /// </remarks>
+    private readonly Dictionary<TerminalTabViewModel, CancellationTokenSource> _tabConnectCancellations = [];
+
     /// <summary>同步输入频道的对等转发中枢(标签右键菜单 → 同步输入)。</summary>
     private readonly SyncInputCoordinator _syncInput = new();
 
@@ -2353,6 +2364,36 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             profile,
             cancellationToken
         );
+        try
+        {
+            await CompleteHandshakeAsync(terminalTab, profile, settings, session, terminalType, cancellationToken);
+        }
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
+        {
+            // 关标签正好赶在握手完成的同一瞬间:会话已经在服务里建起来了,标签却已经没了。
+            // 不在这里拆,就留下一条谁都看不见、也永远不会被关掉的连接(端口、隧道一并挂着)。
+            TeardownSshSession(session.SessionId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 握手成功之后的收尾:开 shell 通道、挂上传输、拉起日志/监视/文件面板。
+    /// 与 <see cref="RunHandshakeAsync" /> 分开只是为了让"取消就拆会话"那层
+    /// try 包住全部会用到这条会话的步骤。
+    /// </summary>
+    private async Task CompleteHandshakeAsync(
+        TerminalTabViewModel terminalTab,
+        SessionProfile profile,
+        AppSettings settings,
+        SshSession session,
+        TerminalType terminalType,
+        CancellationToken cancellationToken
+    )
+    {
+        // 标签可能在握手的最后一刻被关掉:此时开 shell 通道等于给一个已经不存在的
+        // 标签接线,交给上面那层 catch 去拆会话。
+        cancellationToken.ThrowIfCancellationRequested();
         ISshClientWrapper client =
             _sshConnectionService!.GetClient(session.SessionId)
             ?? throw new InvalidOperationException("SSH client was not created for the session.");
@@ -2421,7 +2462,15 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         // 拿 Telnet 的主机端口去做 SSH 握手 —— 表现为"重连一次就报认证失败"。
         if (tab.Profile is { ConnectionType: ConnectionType.Plugin } pluginProfile)
         {
-            await ReconnectPluginTerminalAsync(tab, pluginProfile, cancellationToken).ConfigureAwait(true);
+            CancellationToken pluginToken = BeginTabConnect(tab, cancellationToken);
+            try
+            {
+                await ReconnectPluginTerminalAsync(tab, pluginProfile, pluginToken).ConfigureAwait(true);
+            }
+            finally
+            {
+                EndTabConnect(tab);
+            }
             return;
         }
         if (
@@ -2439,6 +2488,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         // 用户多半不在那个标签上。
         using IBackgroundActivityScope? activity =
             _backgroundActivity?.Begin(Strings.Connecting, ProfileDisplayName(tab.Profile));
+        // 重连同样是"关标签就不连了":自动重连多半在后台发生,用户看见的往往只有
+        // 右下角那条「连接中」,关掉标签是他能表达"不要了"的唯一方式。
+        CancellationToken reconnectToken = BeginTabConnect(tab, cancellationToken);
+        SshSession? established = null;
         try
         {
             AppSettings settings = _settingsService is not null
@@ -2448,19 +2501,20 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             TerminalType terminalType = TerminalTypeExtensions.FromTermName(SessionTerminalSettings.TerminalType(tab.Profile, settings));
             SshSession session = await _connectionWorkflowService.ConnectProfileAsync(
                 tab.Profile,
-                cancellationToken
+                reconnectToken
             );
+            established = session;
             ISshClientWrapper client =
                 _sshConnectionService.GetClient(session.SessionId)
                 ?? throw new InvalidOperationException(
                     "SSH client was not created for the session."
                 );
             // 同 RunHandshakeAsync:注入前先确认对端是 POSIX shell(#305)。首连已探过的主机命中缓存,不再发探针。
-            bool isPosixShell = await ProbePosixShellAsync(client, tab.Profile, settings, cancellationToken);
+            bool isPosixShell = await ProbePosixShellAsync(client, tab.Profile, settings, reconnectToken);
             // 同 RunHandshakeAsync:通道打开走真异步 API,UI 线程零阻塞。
             IShellStreamWrapper shellStream = await client.CreateShellStreamAsync(
                 terminalType.ToTermName(), 120, 32, 0, 0, 4096,
-                cancellationToken: cancellationToken
+                cancellationToken: reconnectToken
             );
 
             // 在新会话输出到达前做一次完全复位(RIS),使新的标语不至于附加在旧缓冲内容之后。
@@ -2487,8 +2541,14 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             UpdateStatusBarForActiveTab();
             LastConnectionError = null;
         }
-        catch (OperationCanceledException)
+        catch (Exception) when (reconnectToken.IsCancellationRequested)
         {
+            // 取消(关标签 / 调用方撤销):不报错。会话若已经建起来了就一并拆掉 ——
+            // 标签已经没了,没人会再去关它。
+            if (established is not null)
+            {
+                TeardownSshSession(established.SessionId);
+            }
             tab.MarkDisconnected();
         }
         catch (Exception ex)
@@ -2497,6 +2557,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             LastConnectionError = DescribeConnectionError(ex, tab.Profile);
             Toasts.Error(LastConnectionError);
             tab.MarkDisconnected(LastConnectionError);
+        }
+        finally
+        {
+            EndTabConnect(tab);
         }
     }
 
@@ -3085,8 +3149,51 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         }
     }
 
+    /// <summary>
+    /// 为一个「连接中」标签登记取消源:返回的令牌 = 调用方的令牌 ∪ 用户关掉这个标签。
+    /// </summary>
+    /// <remarks>
+    /// 每次尝试(首连、认证重试、重连)各登记一次;上一轮的源在这里先收掉 ——
+    /// 留着的话,关标签拉的是一根早就断了的绳。
+    /// </remarks>
+    /// <param name="tab">正在连接的标签。</param>
+    /// <param name="outer">调用方的取消令牌。</param>
+    /// <returns>本次握手要用的取消令牌。</returns>
+    private CancellationToken BeginTabConnect(TerminalTabViewModel tab, CancellationToken outer)
+    {
+        EndTabConnect(tab);
+        CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(outer);
+        _tabConnectCancellations[tab] = cancellation;
+        return cancellation.Token;
+    }
+
+    /// <summary>本次握手结束(连上、失败或被取消):注销并释放取消源。</summary>
+    /// <remarks>释放放在流程结束这一处,而不是取消的那一刻:握手还在飞的时候释放取消源,
+    /// 底层库再往这个令牌上挂回调就会撞上 <see cref="ObjectDisposedException" /> ——
+    /// 那正是"取消"被翻译成一句莫名其妙的连接错误的来路。</remarks>
+    /// <param name="tab">刚结束握手的标签。</param>
+    private void EndTabConnect(TerminalTabViewModel tab)
+    {
+        if (_tabConnectCancellations.Remove(tab, out CancellationTokenSource? cancellation))
+        {
+            cancellation.Dispose();
+        }
+    }
+
+    /// <summary>撤销这个标签正在进行的握手(标签被关掉时调;没在连接时是空操作)。</summary>
+    /// <param name="tab">被关掉的标签。</param>
+    private void CancelTabConnect(TerminalTabViewModel tab)
+    {
+        if (_tabConnectCancellations.TryGetValue(tab, out CancellationTokenSource? cancellation))
+        {
+            cancellation.Cancel();
+        }
+    }
+
     private void RemoveTerminalTab(TerminalTabViewModel tab, TerminalDocument document)
     {
+        // 静默移除也是"这个标签不要了":还在飞的握手一并撤掉(幂等,通常此刻已经取消过)。
+        CancelTabConnect(tab);
         StopSessionLogging(tab);
         // 防御性驱逐 SFTP 面板缓存:本路径(连接失败/取消)静默移除文档,不触发
         // DocumentClosed,若标签曾短暂连上过,缓存里的面板会悬挂。幂等,无缓存时空操作。
@@ -3201,6 +3308,14 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     current = updated;
                 }
             }
+            // 弹凭据框的这段时间里用户可能已经把这个「连接中」标签关掉了 ——
+            // 那和在框上点取消是同一句话:不连了。取消令牌管不到这一段(此刻等的是用户
+            // 而不是网络,标签上还没有绳可拉),所以在这里按"标签还在不在"判一次。
+            if (tab is not null && FindDocument(tab) is null)
+            {
+                LastConnectionError = null;
+                return null;
+            }
             if (tab is null)
             {
                 (tab, document) = CreateConnectingTab(current, settings);
@@ -3211,14 +3326,18 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 tab.Profile = current;
                 tab.ConnectionStatus = SessionStatus.Connecting;
             }
+            // 从这里到本次尝试结束,「关掉这个标签」与调用方的令牌并联成一根绳。
+            CancellationToken connectToken = BeginTabConnect(tab, cancellationToken);
             try
             {
-                await RunHandshakeAsync(tab, current, settings, cancellationToken);
+                await RunHandshakeAsync(tab, current, settings, connectToken);
                 return tab;
             }
-            catch (OperationCanceledException)
+            catch (Exception) when (connectToken.IsCancellationRequested)
             {
-                // 用户取消(超时):撤掉这个正在连接的标签。
+                // 用户取消(关掉这个正在连的标签 / 超时):撤掉标签,不弹失败提示 ——
+                // 取消在底层未必现成一个 OperationCanceledException(连接被拆掉时也可能
+                // 是一句 IO 错误),按令牌判定才不会为一个已经没了的标签报"无法连接"。
                 if (document is not null)
                 {
                     RemoveTerminalTab(tab, document);
@@ -3250,6 +3369,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
 
                 // 网络/超时等失败:保留标签,标签页内显示失败覆盖层(设计 yxjmg),不弹全局框。
                 return tab;
+            }
+            finally
+            {
+                // 这一轮的绳子用完了(连上、失败、或已被拉断):注销并释放。
+                EndTabConnect(tab);
             }
         }
 
@@ -3843,14 +3967,16 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         AppSettings settings = await LoadSettingsSnapshotAsync().ConfigureAwait(true);
         (TerminalTabViewModel tab, TerminalDocument document) =
             CreateConnectingTab(profile, settings, registration.Descriptor.DisplayName);
+        // 与 SSH 同一条纪律:关掉这个「连接中」标签就把连接撤掉(见 BeginTabConnect)。
+        CancellationToken connectToken = BeginTabConnect(tab, cancellationToken);
         try
         {
-            await AttachPluginTerminalAsync(tab, profile, registration, settings, cancellationToken)
+            await AttachPluginTerminalAsync(tab, profile, registration, settings, connectToken)
                 .ConfigureAwait(true);
             await Sidebar.RecentConnections.RefreshAsync().ConfigureAwait(true);
             return tab;
         }
-        catch (OperationCanceledException)
+        catch (Exception) when (connectToken.IsCancellationRequested)
         {
             RemoveTerminalTab(tab, document);
             return null;
@@ -3863,6 +3989,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             Toasts.Error(LastConnectionError);
             tab.MarkConnectionFailed(LastConnectionError);
             return tab;
+        }
+        finally
+        {
+            EndTabConnect(tab);
         }
     }
 
@@ -3923,8 +4053,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             await AttachPluginTerminalAsync(tab, profile, registration, settings, cancellationToken)
                 .ConfigureAwait(true);
         }
-        catch (OperationCanceledException)
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
         {
+            // 取消(多半是标签被关掉了):安静收场,别为一个已经没了的标签弹失败提示。
             tab.MarkDisconnected();
         }
         catch (Exception ex)
@@ -5137,6 +5268,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     private void OnDocumentClosed(TerminalDocument document)
     {
         TerminalTabViewModel tab = document.Terminal;
+        // 关掉一个还在连的标签 = 不连了。与 ConnectingDocument 同一条纪律:六个关闭入口
+        // 都汇到 DocumentClosed,取消挂在这一个点上。握手流程收到取消后自己收尾
+        // (会话若已建起就断掉),右下角圆环上那条「连接中」随之熄灭,也不再弹失败提示。
+        CancelTabConnect(tab);
         StopSessionLogging(tab);
         CloseSftpForTab(tab);
         tab.Dispose();
