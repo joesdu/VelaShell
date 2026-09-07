@@ -73,7 +73,8 @@ public class App : Application
             // 主窗口视图模型在插件激活(主窗口显示后)前已创建,这里惰性解析即可。
             .AddSingleton<Func<string, IPluginLogger, IUiApi>>(sp =>
                 (pluginId, log) => new Services.Plugins.PluginUiApi(pluginId, log,
-                    () => sp.GetService<MainWindowViewModel>()))
+                    () => sp.GetService<MainWindowViewModel>(),
+                    sp.GetService<Core.Services.IBackgroundActivityService>()))
             // 隔离插件的主题令牌快照:Vela* 资源按当前明暗变体解析后经 RPC 下发,
             // 插件的 {DynamicResource VelaXxx} 跨进程同样生效(进程内天然可用)。
             .AddSingleton<Func<Task<IReadOnlyList<PluginSdk.Rpc.ThemeTokenDto>>>>(_ =>

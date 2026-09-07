@@ -328,6 +328,55 @@ Guarded by `DialogButtonStyleTests`.
 - Class: `.crumb` -- transparent bg, no border, `FontFamily:VelaUiMonoFont`, `FontSize:11`, `FontWeight:Medium`
 - Hover: `VelaBgHover` background, `VelaAccent` foreground
 
+#### Flyout chrome (`FlyoutPresenter`, global style in `DockStyles.axaml`)
+
+Two ways to dress a flyout -- pick by whether the content already draws its own frame:
+
+- **Bare content** (a raw `StackPanel`, e.g. the status bar's background-task list): the presenter
+  *is* the chrome. It takes `VelaBgSurface` / `VelaBorderSecondary` 1px / `CornerRadius:6` /
+  `Padding:[12,10]` from the global style -- the same values as `MenuFlyoutPresenter`, so a flyout
+  and a context menu read as one product. Nothing to write at the call site.
+- **Content with its own `Border`** (session tree, quick-command target picker): set
+  `FlyoutPresenterClasses="bare"` to strip the presenter to a positioning container, otherwise the
+  content's border sits inside a second frame and the corners show a ring of the wrong colour.
+
+Never leave a bare-content flyout on the Fluent default: `FlyoutPresenterBackground` is a hardcoded
+near-black outside the token system, so it survives every theme switch as a black brick.
+The `.bare` style must stay declared *after* the base style -- equal-priority styles resolve by
+declaration order, last one wins.
+
+#### ProgressRing (`pc:CircularProgressRing`)
+- The **only** loading affordance. `TrackBrush:VelaBorderSecondary`, `ArcBrush:VelaAccent`
+  (in a tab strip: `ArcBrush` = that session's accent, so the spinner reads as *that* connection)
+- `IsIndeterminate:True` unless a real, measured fraction exists -- never animate a fabricated
+  percentage. Determinate rings are for work with countable steps (install, verify, prewarm)
+- Sizes: 12x12 `StrokeThickness:1.5` inline (status bar, tab strip);
+  24x24 `StrokeThickness:2.5` inside a 48x48 `VelaAccentDim` circle on a card
+
+### 5.2b Waiting States
+
+Anything that can outlast one frame must say so **where the user just clicked**, and again in the
+status bar. Three surfaces, one rule each:
+
+| Surface | When | What |
+| --- | --- | --- |
+| Tab-content card (`Border.dc-card`) | A session tab exists but has no session yet | 48px ring circle + `Connecting to <name>` + type label + one way out |
+| Tab strip | Same | `.dot.connecting` (amber) + a 12px ring in place of the type icon |
+| Status bar ring (bottom-right) | Any background work, connections included | 12px ring + one-line summary; hover lists every activity |
+
+Rules that are easy to get wrong:
+
+- **The tab comes first, the session second.** A session tab is created the moment the user asks
+  for it, in a connecting state, and is replaced in place once the session exists. Creating the tab
+  only after a successful handshake means a slow link looks like a dead click.
+- **Failure lands in the tab that owns it**, never in a modal dialog -- the same card in its error
+  variant, matching the terminal's in-tab disconnect overlay (`TerminalTabView.axaml`, `Border.dc-card`).
+  A modal blocks work that has nothing to do with the failure.
+- **The ring is off while waiting on a human.** Credential and certificate prompts are not network
+  time; a spinner there claims progress that is not happening.
+- Card widths follow the disconnect overlay: `340` connecting, `560` failed (a failure reason is
+  multi-line technical text and does not fit a narrow centred card).
+
 ### 5.3 File Browser (`FileBrowserView.axaml`)
 
 The existing SFTP file browser is the primary reusable component for the dual-pane SFTP document.

@@ -1,6 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
+using VelaShell.Core.Resources;
+using VelaShell.Core.Services;
 using VelaShell.PluginSdk.Logging;
 using VelaShell.PluginSdk.Ui;
 using VelaShell.ViewModels;
@@ -13,7 +15,11 @@ namespace VelaShell.Services.Plugins;
 /// <see cref="PanelOptions.DisplayMode" /> 呈现为停靠文档或独立窗口;
 /// 实例释放(插件停用)时全部关闭 —— 插件离场,宿主 UI 不残留。
 /// </summary>
-internal sealed class PluginUiApi(string pluginId, IPluginLogger log, Func<MainWindowViewModel?> mainViewModel)
+internal sealed class PluginUiApi(
+    string pluginId,
+    IPluginLogger log,
+    Func<MainWindowViewModel?> mainViewModel,
+    IBackgroundActivityService? backgroundActivity = null)
     : IUiApi, IDisposable
 {
     private readonly Lock _gate = new();
@@ -27,6 +33,12 @@ internal sealed class PluginUiApi(string pluginId, IPluginLogger log, Func<MainW
         ArgumentNullException.ThrowIfNull(contentFactory);
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
+        // 插件多半在后台线程上调这个(SDK 允许),而下面整段要排到 UI 线程上执行:
+        // 排队 + 构造控件这段时间右下角圆环转着,免得"点了一下面板,好一会儿没动静"。
+        // 注意这里覆盖的只是**宿主这一段** —— 插件激活由 PluginManager 自己登记,
+        // 面板打开后插件再去拉自己的数据,那段宿主看不见也管不着。
+        using IBackgroundActivityScope? activity =
+            backgroundActivity?.Begin(Strings.Get("Msg_PluginOpeningPanel"), options.Title);
         PluginPanel panel = await Dispatcher.UIThread.InvokeAsync(() =>
         {
             // 工厂在 UI 线程调用:插件可在其中放心构造任何 Avalonia 控件(含编译期 AXAML 视图)。

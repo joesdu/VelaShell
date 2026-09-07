@@ -172,12 +172,27 @@
         <Setter Property="Opacity" Value="0.35" />
     </Style>
 
-    <!-- 裸浮层(Flyout FlyoutPresenterClasses="bare"):把 presenter 剥成纯定位容器,
-         外观全部交给内容自己那一层 Border。默认的 FlyoutPresenter 自带底色、描边、
-         内边距与圆角,套在内容已有的 Border 外面就是两层框 —— 浮层外面多一圈黑边
-         (会话浮层实测)。MinWidth 也得清:Fluent 默认给了下限,窄浮层会被撑宽。
-         【只作用于挂了 bare 类的浮层】:状态栏后台任务浮层的内容是裸 StackPanel,
-         靠的正是 presenter 这层底,全局剥掉它会变成一块没有背景的悬空文字。 -->
+    <!-- 普通浮层(内容不自带 Border 的那些,如状态栏后台任务浮层):presenter 这层就是
+         浮层的外观,因此必须走令牌。Fluent 默认的 FlyoutPresenterBackground 是一个写死的
+         近黑色,**不在**我们的令牌体系里 —— 于是九套主题换来换去它岿然不动,亮色主题下
+         尤其突兀(用户反馈:"纯黑色背景有点太丑,和整体主题不太搭")。
+         与 MenuFlyoutPresenter 同一套值,浮层与右键菜单看起来才是同一个产品。 -->
+    <Style Selector="FlyoutPresenter">
+        <Setter Property="Background" Value="{DynamicResource VelaBgSurface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="12,10" />
+        <!-- Fluent 给了 MinWidth 下限,窄浮层会被平白撑宽。 -->
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+    </Style>
+
+    <!-- 裸浮层(Flyout FlyoutPresenterClasses="bare"):内容自己那一层 Border 已经把外观
+         画全了(会话树浮层、快捷命令目标选择器),此时把 presenter 剥成纯定位容器 ——
+         否则内容的 Border 外面还套着上面那圈 presenter 的框,浮层就是两层边,圆角处
+         露出一圈底色(实测)。
+         必须排在上面那条**之后**:同优先级的样式按声明顺序后者胜出。 -->
     <Style Selector="FlyoutPresenter.bare">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
