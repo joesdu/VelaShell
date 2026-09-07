@@ -81,14 +81,22 @@ public sealed class TerminalBridgeFloodTests
             bridge.Start();
 
             // 模拟真实的帧节奏:反复把派发队列跑一轮,直到不再有新数据被喂进来。
+            //
+            // ⚠️ 空闲计数**必须等第一个字节到了才开始**。读循环由 Task.Run 排进线程池,
+            // 池里没有空闲工作线程时注入新线程有节流(饱和后约每 500ms 一条);若一上来就计,
+            // 50 轮(约 50ms)能在读线程还没被调度时就走完,于是喂入为空、
+            // `Assert.IsNotEmpty(fed.Lengths)` 挂在一个与被测行为无关的理由上。
+            // 这与 DisposeReleasesAReadLoopWaitingOnBackpressure 那条是同一个根因。
             int idle = 0;
+            bool started = false;
             for (int i = 0; i < 20_000 && idle < 50; i++)
             {
                 long pending = bridge.PendingBytesForTest;
                 peak = Math.Max(peak, pending);
                 long before = fed.Total;
                 Dispatcher.UIThread.RunJobs();
-                idle = fed.Total == before && pending == 0 ? idle + 1 : 0;
+                started |= fed.Total > 0 || pending > 0;
+                idle = started && fed.Total == before && pending == 0 ? idle + 1 : 0;
                 if (idle < 50)
                 {
                     Thread.Sleep(1);
@@ -152,6 +160,34 @@ public sealed class TerminalBridgeFloodTests
             "几十 KB 的输出被切成了很多次 Feed —— 预算切得太碎。");
     }
 
+    /// <summary>
+    /// 轮询等待条件成立;超时返回 false。
+    /// </summary>
+    /// <remarks>
+    /// <b>不要用固定 <c>Thread.Sleep</c> 代替它。</b>读循环跑在**线程池**上
+    /// (<c>SshTerminalBridge.Start</c> 里的 <c>Task.Run</c>),而池里没有空闲工作线程时,
+    /// 注入新线程是**有节流的**(饱和后约每 500ms 才多一条)。于是"睡 N 毫秒,读线程总该
+    /// 跑起来了吧"这个假设在核数少的机器上直接不成立 —— 见下面那条用例的说明。
+    /// <para>
+    /// 调用方跑在 headless UI 线程上,这里的 <c>Sleep</c> 顺带保证了 <c>FlushPending</c>
+    /// 不会被派发,积压因此只增不减 —— 正是等待条件所需要的。
+    /// </para>
+    /// </remarks>
+    private static bool WaitUntil(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = System.Diagnostics.Stopwatch.StartNew();
+        while (deadline.Elapsed < timeout)
+        {
+            if (condition())
+            {
+                return true;
+            }
+            // 让出 CPU:CI 上核数少,忙等会把读线程本身饿住。
+            Thread.Sleep(2);
+        }
+        return condition();
+    }
+
     [TestMethod]
     public void DisposeReleasesAReadLoopWaitingOnBackpressure()
     {
@@ -164,10 +200,24 @@ public sealed class TerminalBridgeFloodTests
         {
             var bridge = new SshTerminalBridge(emulator, stream);
             bridge.Start();
-            // 只跑一轮派发,让读线程有机会冲到高水位并停在闸上。
+            // 只跑一轮派发;此后 UI 线程不再排空,积压只增不减,读线程会一路冲到高水位。
             Dispatcher.UIThread.RunJobs();
-            Thread.Sleep(150);
-            Assert.IsGreaterThan(0, bridge.PendingBytesForTest, "样本没能攒出积压,这条用例就没量到东西。");
+
+            // 等的是**真正的前提**:积压越过高水位 = 读线程已经(或即将)停在闸上。
+            //
+            // 原先这里是 `Thread.Sleep(150)` + 断言积压 > 0,两处都不对:
+            //   · 150ms 是拿固定时长赌"读线程已经跑起来了"。读循环由 Task.Run 排进线程池,
+            //     池里空闲工作线程不够时,注入新线程约每 500ms 才多一条 —— 赌不赢。
+            //     `DOTNET_PROCESSOR_COUNT=2` 下本条用例单跑必挂,加
+            //     `DOTNET_ThreadPool_ForceMinWorkerThreads=10` 立刻转绿,根因即此。
+            //     macos-latest 只有 3 核,与别的测试程序集抢 CPU 时就会撞上(CI run 34159705858)。
+            //   · "积压 > 0" 比这条用例真正需要的前提**弱得多**:只攒了一块 16 KB 时读线程
+            //     根本不在闸上,Dispose 当然快 —— 断言照样绿,却什么也没验到。
+            Assert.IsTrue(
+                WaitUntil(() => bridge.PendingBytesForTest > SshTerminalBridge.HighWaterBytesForTest,
+                          TimeSpan.FromSeconds(20)),
+                $"20 秒内积压没能越过高水位(现为 {bridge.PendingBytesForTest} 字节,高水位 " +
+                $"{SshTerminalBridge.HighWaterBytesForTest})—— 读线程没顶到闸上,这条用例就没量到东西。");
 
             elapsed.Restart();
             bridge.Dispose();

@@ -80,6 +80,7 @@
 | [47](#-47-2026-09-07-后台任务浮层是块黑砖跟哪套主题都不搭用户反馈) | ✅ | 09-07 | 后台任务浮层吃上主题 |
 | [48](#-48-2026-09-07-关掉连接中的标签连接就该停下用户反馈) | ✅ | 09-07 | 关掉「连接中」的标签就该取消握手 |
 | [49](#-49-2026-09-07-ci-的-ubuntu-作业偶发失败隔离插件连不上被报成激活超时) | ✅ | 09-07 | CI ubuntu 偶发失败：管道先连、Avalonia 后建 |
+| [50](#-50-2026-09-08-ci-的-macos-作业偶发失败背压用例拿固定-sleep-赌线程池已经起来了) | ✅ | 09-08 | CI macOS 偶发失败：背压用例改等条件，不再赌固定 sleep |
 
 ## 📈 阶段脉络
 
@@ -92,7 +93,7 @@ timeline
     2026-08 上旬 : 资源监视 / 路由追踪 / 连接诊断 : 会话一键迁移 : FTP / FTPS
     2026-08 中旬 : 插件系统 v1 双宿主模式 : AI 助手插件 : 全局网络代理 : MSIX 商店版
     2026-08 下旬 : 隧道计量与自愈 : 消息中心与资讯源 : 具名主题 12 套
-    2026-09 上旬 : 协作接入 IM 桥接 : 对外 MCP 服务端 : 插件可自行开会话 : 三平台 CI 门禁
+    2026-09 上旬 : 协作接入 IM 桥接 : 对外 MCP 服务端 : 插件可自行开会话 : 三平台 CI 门禁 : 偶发失败的固定 sleep 逐条换成等条件
 ```
 
 ## 🧭 当前基线（2026-09-07）
@@ -2342,3 +2343,121 @@ Linux 与 macOS 上默认仍走 GPU 后端。这条策略("插件面板不值得
 
 隔离插件那几条用例把 `IsolatedStartupTimeout` 显式放到 60 秒:这个数只决定"等多久才判失败",
 健康时一分钱不花,给足了才不会把"机器忙"判成"插件坏"。
+
+## ✅ 50. 2026-09-08 CI 的 macOS 作业偶发失败:背压用例拿固定 sleep 赌线程池已经起来了
+
+用户反馈:macOS 的构建验证又挂了一次([run 34159705858](https://github.com/joesdu/VelaShell/actions/runs/34159705858)),
+Windows 与 ubuntu 同一次全绿。失败的是
+`TerminalBridgeFloodTests.DisposeReleasesAReadLoopWaitingOnBackpressure`:
+
+```
+Assert.IsGreaterThan(0, bridge.PendingBytesForTest)
+样本没能攒出积压,这条用例就没量到东西。
+lower bound: 0    actual: 0
+```
+
+### 一、这条报错把人往产品 bug 上引,而它其实是用例自己的前提没成立
+
+「样本没能攒出积压」听起来像背压坏了。实际挂掉的是**断言之前那一步** ——
+用例给读线程留了固定的 150ms,而那 150ms 里读线程一个字节都没读出来。
+
+原来的写法:
+
+```csharp
+bridge.Start();
+Dispatcher.UIThread.RunJobs();
+Thread.Sleep(150);                                   // ← 赌读线程已经跑起来了
+Assert.IsGreaterThan(0, bridge.PendingBytesForTest); // ← 而且只赌到「> 0」
+```
+
+### 二、根因:读循环排在线程池上,而线程池注入新线程是有节流的
+
+`SshTerminalBridge.Start` 里是 `_readTask = Task.Run(() => ReadLoopAsync(token))`。
+线程池里没有空闲工作线程时,**注入新线程有节流** —— 饱和后大约每 500ms 才多一条。
+于是「睡 150ms,读线程总该跑起来了吧」这个假设,在**核数少**的机器上直接不成立:
+
+- `MinThreads` 默认等于 `ProcessorCount`;
+- macos-latest 只有 **3 核**,而 `dotnet test VelaShell.slnx` 是**并行跑 8 个测试程序集**的。
+  看这次的时间线:20:32:49 起 Core / Controls / Infrastructure 三个程序集同时启动,
+  20:32:50 起 Plugin.Ai(一直跑到 20:35:17),Terminal.Tests 20:33:01 才开始、20:33:06 就挂了 ——
+  那半分钟里机器上至少有三个 testhost 在抢 3 个核,其中 Infrastructure.Tests 还在拉起真正的
+  `PluginHost` 子进程(§49 刚说过它在 CI 上有多贵)。
+
+**证据(本机可复现,不用等 CI 抽风)**:
+
+| 条件 | 结果 |
+| --- | --- |
+| 默认(32 核) | ✅ 通过 |
+| `DOTNET_PROCESSOR_COUNT=2`,单跑这一条 | ❌ **必挂**,与 CI 上一模一样 |
+| `DOTNET_PROCESSOR_COUNT=2` + `DOTNET_ThreadPool_ForceMinWorkerThreads=10` | ✅ 通过 |
+| `DOTNET_PROCESSOR_COUNT=3 / 4` | ✅ 通过 |
+| `DOTNET_PROCESSOR_COUNT=2`,整个类一起跑 | ✅ 通过 |
+
+最后一行正是「偶发」的来源:同类里排在前面的几条用例会把线程池**预热**出工作线程,
+轮到这一条时池子是热的。它挂不挂,取决于此前跑过什么、以及同机别的进程在不在抢 CPU ——
+两者都不是用例能控制的。
+
+**加一条 min worker thread 就转绿**,这一条足以把根因钉死在线程池上,而不是「机器慢」这种含糊的说法。
+
+### 三、顺带发现:那个断言本身也太弱,弱到可能白绿
+
+用例的名字与注释说的是「读线程**停在背压闸上**时 Dispose 要放行它」,
+而断言只要求 `积压 > 0`。**只攒了一块 16 KB 时读线程根本不在闸上** ——
+Dispose 当然快,断言照样绿,却什么都没验到。
+
+也就是说:前提**又脆又弱**。脆是会误报,弱是会漏报。
+
+### 四、改法:等真正的前提,而不是睡一个固定的数
+
+```csharp
+Dispatcher.UIThread.RunJobs();   // 只跑一轮;此后 UI 不再排空,积压只增不减
+
+Assert.IsTrue(
+    WaitUntil(() => bridge.PendingBytesForTest > SshTerminalBridge.HighWaterBytesForTest,
+              TimeSpan.FromSeconds(20)),
+    "…读线程没顶到闸上,这条用例就没量到东西。");
+```
+
+三处改动:
+
+1. **`WaitUntil` 取代 `Thread.Sleep`** —— 轮询到条件成立为止,超时 20 秒。
+   调用方本就跑在 headless UI 线程上,循环里的 `Sleep(2)` 顺带保证了 `FlushPending`
+   不会被派发,积压因此只增不减,正是等待条件所需要的;`Sleep` 而非忙等,是因为 CI 上核数少,
+   忙等会把读线程本身饿住。
+2. **判据换成「越过高水位」** —— 那才是「读线程已经(或即将)停在闸上」的真正判据。
+   为此在 `SshTerminalBridge` 上开一个 `internal static long HighWaterBytesForTest`,
+   让用例从产品代码取这个数,而不是在测试里另抄一份 8 MB。
+3. **`Flood()` 的空闲计数改成「见到第一个字节之后才开始计」**。它原先一上来就计,
+   50 轮(约 50ms)能在读线程还没被调度时就走完 —— 同一个根因下的另一颗雷,
+   只是还没炸过。现在挂上 `started` 标志。
+
+### 五、验收:先证明它还抓得住东西,再证明它不再误报
+
+**负控制(重要)**:第一次做负控制时把 Dispose 里的 `ReleaseDrainGate()` 注释掉,
+用例**仍然是绿的** —— 因为 `_cts.Cancel()` 已经能把 `_drainGate.WaitAsync(cancellationToken)`
+唤醒。也就是说 Dispose 里那句 `ReleaseDrainGate()` 是**双保险**,不是唯一出路
+(Dispose 的注释把令牌写成「兜底」,实际两条路都走得通)。
+
+把两条路一起堵上(注释掉 `ReleaseDrainGate()` **且**让闸的等待不认令牌)之后:
+
+```
+Dispose 花了 2002ms —— 读线程八成一直挂在背压闸上等到超时。
+失败!  - 失败: 1,通过: 0
+```
+
+**红了,而且红在正确的理由上** —— 用例确实在量它声称要量的东西,不是白绿。
+
+**正向验收**:`ProcessorCount` = 1 / 2 / 3 / 4 各跑两遍(单跑这一条 + 整个类),
+八次全绿;`DOTNET_PROCESSOR_COUNT=2` 下整份 `VelaShell.Terminal.Tests` 396 条全绿;
+`dotnet build VelaShell.slnx -warnaserror` 零警告,
+`dotnet test VelaShell.slnx`(排除 Docker/CrossPlatform)**3194 通过**。
+
+### 六、和 §49 是同一类病
+
+§49 是 ubuntu 上「拉起进程 → 连管道」写死 10 秒,§50 是 macOS 上「读线程该起来了」写死 150ms;
+再往前还有 `28b3c6f`「插话用例别再靠 700ms 延时赌'这一轮还在跑'」。三次都是
+**拿一个固定时长去代替一个本该显式等待的条件**,而这个时长在开发机上够、在 CI 上不够。
+
+**留给下一次的判据**:测试里出现 `Thread.Sleep(常数)` 且后面紧跟一条依赖它的断言时,
+问一句「这个数凭什么够」。答不上来就把它换成「等条件 + 给足超时」——
+超时给多大都不要紧,健康时一分钱不花;赌一个固定值才是每次 CI 都要掷一遍的骰子。
