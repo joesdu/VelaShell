@@ -217,5 +217,4 @@ public sealed class CommandPaletteViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(ResultCount));
         this.RaisePropertyChanged(nameof(HasResults));
     }
-
 }

@@ -62,16 +62,12 @@ public sealed class UniqueNamesTests
     }
 
     [TestMethod]
-    public void CandidatesAreBounded()
-    {
+    public void CandidatesAreBounded() =>
         // 一万个同名文件时继续找下去只是把界面卡住;那种目录本身已经出了别的问题。
         Assert.AreEqual(UniqueNames.MaxAttempts - 1, UniqueNames.Candidates("f").Count());
-    }
 
     [TestMethod]
-    public void CandidatesAreLazy()
-    {
+    public void CandidatesAreLazy() =>
         // 调用方通常第一个就用上了;真去枚举一万个候选再挑,等于每次冲突都白算一万次。
         Assert.AreEqual("f (1)", UniqueNames.Candidates("f").First());
-    }
 }

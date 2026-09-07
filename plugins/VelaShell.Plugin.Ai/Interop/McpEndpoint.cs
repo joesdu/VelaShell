@@ -189,7 +189,7 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
             }
             // 一次请求一个任务:tools/call 可能跑几十秒(一条远程命令),不能占着 accept 循环。
             // 任务要**登记**下来:停端点时得等它们收完,不能把监听一关就当结束了。
-            Task worker = Task.Run(() => ServeAsync(http, cancellationToken), cancellationToken);
+            var worker = Task.Run(() => ServeAsync(http, cancellationToken), cancellationToken);
             _inFlight[worker] = 0;
             _ = worker.ContinueWith(t => _inFlight.TryRemove(t, out _), CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);

@@ -1390,7 +1390,7 @@ public sealed class ResourceMonitorWindowViewModel : ReactiveObject, IDisposable
         where TRow : class
         where TKey : notnull
     {
-        Dictionary<TKey, TRow> byKey = new(target.Count);
+        Dictionary<TKey, TRow> byKey = [with(target.Count)];
         foreach (TRow existing in target)
         {
             byKey[keyOf(existing)] = existing;

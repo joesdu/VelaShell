@@ -1,8 +1,8 @@
 using System.IO.Pipes;
-using VelaShell.Infrastructure.Plugins.Isolated;
 using System.Net.Sockets;
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
+using VelaShell.Infrastructure.Plugins.Isolated;
 using VelaShell.PluginSdk;
 using VelaShell.PluginSdk.Rpc;
 

@@ -16,11 +16,9 @@ namespace VelaShell.Tests.ViewModels;
 public sealed class ReconnectBackoffTests
 {
     [TestMethod]
-    public void FirstAttempt_WaitsOneSecond()
-    {
+    public void FirstAttempt_WaitsOneSecond() =>
         // 关键的一条:第一次重试必须"几乎立刻",否则网络抖一下也要等满配置间隔。
         Assert.AreEqual(1, MainWindowViewModel.ReconnectDelaySeconds(attempt: 1, configuredSeconds: 30));
-    }
 
     [TestMethod]
     public void BackoffDoubles_UntilItReachesTheConfiguredCap()

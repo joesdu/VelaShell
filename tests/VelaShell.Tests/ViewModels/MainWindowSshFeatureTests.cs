@@ -7,8 +7,8 @@ using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;
 using VelaShell.Docking;
 using VelaShell.Presentation.Services;
-using VelaShell.Tests.TestSupport;
 using VelaShell.Terminal;
+using VelaShell.Tests.TestSupport;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;

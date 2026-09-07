@@ -45,7 +45,7 @@ public sealed class RecordingPlayerExportTests
                 string[] lines = viewModel.BuildAsciicast()
                     .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-                using JsonDocument evt = JsonDocument.Parse(lines[1]);
+                using var evt = JsonDocument.Parse(lines[1]);
                 Assert.AreEqual(JsonValueKind.Array, evt.RootElement.ValueKind);
                 Assert.AreEqual(3, evt.RootElement.GetArrayLength(), "事件行必须正好是 [时间, 类型, 数据] 三元素。");
                 Assert.AreEqual(1.234, evt.RootElement[0].GetDouble(), 1e-9);
@@ -84,7 +84,7 @@ public sealed class RecordingPlayerExportTests
 
             string decoded = string.Concat(lines.Skip(1).Select(line =>
             {
-                using JsonDocument evt = JsonDocument.Parse(line);
+                using var evt = JsonDocument.Parse(line);
                 return evt.RootElement[2].GetString();
             }));
 
@@ -106,7 +106,7 @@ public sealed class RecordingPlayerExportTests
 
             RecordingPlayerViewModel viewModel = Load(store);
 
-            using JsonDocument header = JsonDocument.Parse(
+            using var header = JsonDocument.Parse(
                 viewModel.BuildAsciicast().Split('\n')[0]);
             Assert.AreEqual(203, header.RootElement.GetProperty("width").GetInt32());
             Assert.AreEqual(57, header.RootElement.GetProperty("height").GetInt32());
@@ -122,7 +122,7 @@ public sealed class RecordingPlayerExportTests
         {
             RecordingPlayerViewModel viewModel = Load(new StubStore(new RecordingChunk(0, "x"u8.ToArray())));
 
-            using JsonDocument header = JsonDocument.Parse(viewModel.BuildAsciicast().Split('\n')[0]);
+            using var header = JsonDocument.Parse(viewModel.BuildAsciicast().Split('\n')[0]);
             Assert.AreEqual(SessionRecording.DefaultColumns, header.RootElement.GetProperty("width").GetInt32());
             Assert.AreEqual(SessionRecording.DefaultRows, header.RootElement.GetProperty("height").GetInt32());
             return Task.CompletedTask;

@@ -27,11 +27,9 @@ public sealed class RemotePathTests
         Assert.AreEqual("/var/log", RemotePath.Combine("/var/", "log"));
 
     [TestMethod]
-    public void CombineAlwaysUsesForwardSlashes()
-    {
+    public void CombineAlwaysUsesForwardSlashes() =>
         // 这是 Path.Combine 在 Windows 上会做错的那一条:它会插一个反斜杠。
         Assert.DoesNotContain(@"\", RemotePath.Combine("/var", "log"));
-    }
 
     [TestMethod]
     public void TheParentOfANestedPathDropsOneLevel() =>

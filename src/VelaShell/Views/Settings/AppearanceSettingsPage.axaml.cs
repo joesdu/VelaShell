@@ -2,8 +2,8 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using VelaShell.Core.Resources;
-using FireAndForget = VelaShell.Services.FireAndForget;
 using VelaShell.ViewModels;
+using FireAndForget = VelaShell.Services.FireAndForget;
 
 namespace VelaShell.Views.Settings;
 
@@ -34,7 +34,7 @@ public partial class AppearanceSettingsPage : UserControl
         {
             vm.Appearance.BackgroundImagePath = path;
         }
-});
+    });
 
     /// <summary>“清除”:移除背景图,恢复纯色主题背景(路径置空即触发所有相关背景还原)。</summary>
     private void ClearBackgroundImage_Click(object? sender, RoutedEventArgs e)

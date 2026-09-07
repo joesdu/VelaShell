@@ -28,9 +28,6 @@ public sealed class TerminalRow(int columns)
 {
     private TerminalCell[] _cells = new TerminalCell[columns];
 
-    /// <summary>本行的逻辑列数;与实际存储长度无关(见类型注释)。</summary>
-    private int _columns = columns;
-
     /// <summary>当该行由自动换行结束(而非显式换行)时为 true。</summary>
     public bool Wrapped { get; set; }
 
@@ -41,7 +38,7 @@ public sealed class TerminalRow(int columns)
     public DateTime? Timestamp { get; set; }
 
     /// <summary>本行的单元格(列)数量。</summary>
-    public int Columns => _columns;
+    public int Columns { get; private set; } = columns;
 
     /// <summary>
     /// 实际存储的列数;截短过的行小于 <see cref="Columns" />。
@@ -112,11 +109,11 @@ public sealed class TerminalRow(int columns)
     /// </remarks>
     private void EnsureStored()
     {
-        if (_cells.Length >= _columns)
+        if (_cells.Length >= Columns)
         {
             return;
         }
-        TerminalCell[] next = new TerminalCell[_columns];
+        var next = new TerminalCell[Columns];
         Array.Copy(_cells, next, _cells.Length);
         _cells = next;
     }
@@ -152,7 +149,7 @@ public sealed class TerminalRow(int columns)
         {
             return;
         }
-        TerminalCell[] next = new TerminalCell[keep];
+        var next = new TerminalCell[keep];
         Array.Copy(_cells, next, keep);
         _cells = next;
     }
@@ -218,7 +215,7 @@ public sealed class TerminalRow(int columns)
     /// </summary>
     public void Resize(int columns, in TerminalCell blank)
     {
-        if (columns == _cells.Length && columns == _columns)
+        if (columns == _cells.Length && columns == Columns)
         {
             return;
         }
@@ -230,7 +227,7 @@ public sealed class TerminalRow(int columns)
             next[i] = blank;
         }
         _cells = next;
-        _columns = columns;
+        Columns = columns;
     }
 
     /// <summary>在 <paramref name="col" /> 处删除 <paramref name="count" /> 个单元格,并将尾部左移。</summary>
@@ -381,7 +378,7 @@ public sealed class TerminalRow(int columns)
         {
             _cells = new TerminalCell[columns];
         }
-        _columns = columns;
+        Columns = columns;
         _cells.AsSpan().Fill(blank);
         Wrapped = false;
         Timestamp = null;
@@ -391,8 +388,12 @@ public sealed class TerminalRow(int columns)
     /// <remarks>截短状态一并复制:拷贝一行不该悄悄把内存翻回满宽。</remarks>
     public TerminalRow Clone()
     {
-        var clone = new TerminalRow(_columns) { Wrapped = Wrapped, Timestamp = Timestamp };
-        clone._cells = new TerminalCell[_cells.Length];
+        var clone = new TerminalRow(Columns)
+        {
+            Wrapped = Wrapped,
+            Timestamp = Timestamp,
+            _cells = new TerminalCell[_cells.Length]
+        };
         Array.Copy(_cells, clone._cells, _cells.Length);
         return clone;
     }

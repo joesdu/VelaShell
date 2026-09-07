@@ -5,8 +5,8 @@ using Avalonia.Media;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Resources;
 using VelaShell.ViewModels;
-using FireAndForget = VelaShell.Services.FireAndForget;
 using VelaShell.Views.Settings;
+using FireAndForget = VelaShell.Services.FireAndForget;
 
 namespace VelaShell.Views;
 

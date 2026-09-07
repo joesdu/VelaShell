@@ -175,7 +175,6 @@ public partial class RemoteFileEditorView : Window
         return end < 0 ? text : text[..end];
     }
 
-
     /// <summary>发起一次保存并记住这个任务(关窗要等它)。</summary>
     private void BeginSave() => _saveTask = SaveAsync();
 

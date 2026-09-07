@@ -141,9 +141,7 @@ public sealed class PluginContentHashTests : IDisposable
     }
 
     [TestMethod]
-    public void AnEmptyDirectoryStillHashes()
-    {
+    public void AnEmptyDirectoryStillHashes() =>
         // 空插件目录不该抛;它只是一份"什么都没有"的指纹。
         Assert.IsNotEmpty(PluginContentHash.Compute(Plugin("empty")));
-    }
 }

@@ -76,8 +76,8 @@ public sealed class SessionStatusRegistryTests
     public void ClosingOneOfTwoDocumentsLeavesTheDotLit()
     {
         SessionStatusRegistry registry = new();
-        Guid first = Guid.NewGuid();
-        Guid second = Guid.NewGuid();
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
         registry.Track(first, Profile, SessionStatus.Connected);
         registry.Track(second, Profile, SessionStatus.Connected);
 
@@ -91,7 +91,7 @@ public sealed class SessionStatusRegistryTests
     public void ClosingTheLastOneGoesBackToDisconnected()
     {
         SessionStatusRegistry registry = new();
-        Guid only = Guid.NewGuid();
+        var only = Guid.NewGuid();
         registry.Track(only, Profile, SessionStatus.Connected);
 
         registry.Forget(only);
@@ -117,7 +117,7 @@ public sealed class SessionStatusRegistryTests
     public void ALateEventDoesNotResurrectAClosedSession()
     {
         SessionStatusRegistry registry = new();
-        Guid session = Guid.NewGuid();
+        var session = Guid.NewGuid();
         registry.Track(session, Profile, SessionStatus.Connected);
         registry.Forget(session);
 
@@ -131,7 +131,7 @@ public sealed class SessionStatusRegistryTests
     public void UpdatingAnOpenSessionMovesTheDot()
     {
         SessionStatusRegistry registry = new();
-        Guid session = Guid.NewGuid();
+        var session = Guid.NewGuid();
         registry.Track(session, Profile, SessionStatus.Connected);
 
         Guid? affected = registry.Update(session, SessionStatus.Disconnected);
@@ -145,7 +145,7 @@ public sealed class SessionStatusRegistryTests
     {
         // 关闭路径与协议自己的 Closed 事件都会走到这里,谁先到都行 —— 必须幂等。
         SessionStatusRegistry registry = new();
-        Guid session = Guid.NewGuid();
+        var session = Guid.NewGuid();
         registry.Track(session, Profile, SessionStatus.Connected);
 
         Assert.AreEqual(Profile, registry.Forget(session));

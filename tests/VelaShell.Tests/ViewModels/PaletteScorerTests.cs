@@ -29,10 +29,7 @@ public sealed class PaletteScorerTests
     }
 
     [TestMethod]
-    public void NonMatchingTitle_ReturnsNoMatch()
-    {
-        Assert.AreEqual(PaletteScorer.NoMatch, Score("Settings", "zzz"));
-    }
+    public void NonMatchingTitle_ReturnsNoMatch() => Assert.AreEqual(PaletteScorer.NoMatch, Score("Settings", "zzz"));
 
     [TestMethod]
     public void EmptyQuery_MatchesEverythingAtTheSameScore()
@@ -42,17 +39,12 @@ public sealed class PaletteScorerTests
     }
 
     [TestMethod]
-    public void ShorterTitleWins_AmongPrefixMatches()
-    {
+    public void ShorterTitleWins_AmongPrefixMatches() =>
         // "Sftp" 该排在 "Sftp 传输队列" 前面 —— 用户敲 sftp 多半就是要那条最短的。
         Assert.IsGreaterThan(Score("Sftp Transfer Queue", "sftp"), Score("Sftp", "sftp"));
-    }
 
     [TestMethod]
-    public void EarlierSubstringWins()
-    {
-        Assert.IsGreaterThan(Score("Very Long Prefix Restart", "st"), Score("Restart", "st"));
-    }
+    public void EarlierSubstringWins() => Assert.IsGreaterThan(Score("Very Long Prefix Restart", "st"), Score("Restart", "st"));
 
     [TestMethod]
     public void MatchingIsCaseInsensitive()

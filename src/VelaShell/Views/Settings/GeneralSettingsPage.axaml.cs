@@ -3,8 +3,8 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Resources;
-using FireAndForget = VelaShell.Services.FireAndForget;
 using VelaShell.ViewModels;
+using FireAndForget = VelaShell.Services.FireAndForget;
 
 namespace VelaShell.Views.Settings;
 
@@ -48,7 +48,7 @@ public partial class GeneralSettingsPage : UserControl
             // 只读目录、盘满、路径被占 —— 这些以前会静静地什么都不发生。
             viewModel.ImportExportStatus = Strings.Format("SetGeneral_ExportFailed", ex.Message);
         }
-});
+    });
 
     private void ImportSettings_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
     {
@@ -99,7 +99,7 @@ public partial class GeneralSettingsPage : UserControl
             SettingsImportResult.AppliedNeedsSecrets => Strings.Get("SetGeneral_ImportDoneNeedsSecrets"),
             _ => Strings.Get("SetGeneral_ImportInvalid")
         };
-});
+    });
 
     /// <summary>清除历史是破坏性操作:先确认再执行(设置审计 §12 破坏性操作需确认)。</summary>
     private void ClearHistory_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
@@ -113,5 +113,5 @@ public partial class GeneralSettingsPage : UserControl
         {
             viewModel.ClearHistoryCommand.Execute().Subscribe();
         }
-});
+    });
 }

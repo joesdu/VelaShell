@@ -330,7 +330,7 @@ public sealed class McpEndpointTests
         await using (endpoint)
         {
             using HttpClient client = CreateClient(port, token);
-            var refused = 0;
+            int refused = 0;
             for (int i = 0; i < 40; i++)
             {
                 using var message = new HttpRequestMessage(HttpMethod.Post, "mcp")

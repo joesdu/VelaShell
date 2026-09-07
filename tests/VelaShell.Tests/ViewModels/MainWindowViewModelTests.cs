@@ -12,8 +12,8 @@ using VelaShell.Presentation.Commands;
 using VelaShell.Presentation.Services;
 using VelaShell.Presentation.ViewModels;
 using VelaShell.Services;
-using VelaShell.Tests.TestSupport;
 using VelaShell.Terminal;
+using VelaShell.Tests.TestSupport;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;

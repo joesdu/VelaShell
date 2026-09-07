@@ -173,7 +173,7 @@ internal static partial class Program
         if (!applier.HasPendingSwap())
         {
             // 纯打扫,晚几秒无所谓。失败也不必重试:下次启动照样会来扫一遍。
-            _ = Task.Run(() => applier.TryFinalizeStartup());
+            _ = Task.Run(applier.TryFinalizeStartup);
             return;
         }
         if (applier.TryFinalizeStartup())

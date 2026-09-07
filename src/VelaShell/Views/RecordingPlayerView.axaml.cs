@@ -4,9 +4,9 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using VelaShell.Core.Recording;
 using VelaShell.Core.Resources;
-using FireAndForget = VelaShell.Services.FireAndForget;
 using VelaShell.Terminal.Rendering;
 using VelaShell.ViewModels;
+using FireAndForget = VelaShell.Services.FireAndForget;
 
 namespace VelaShell.Views;
 
@@ -184,7 +184,7 @@ public partial class RecordingPlayerView : Window
         {
             CleanupButton.IsEnabled = true;
         }
-});
+    });
 
     private static string FormatBytes(long bytes) => bytes switch
     {
@@ -212,5 +212,5 @@ public partial class RecordingPlayerView : Window
         {
             await File.WriteAllTextAsync(path, vm.BuildAsciicast());
         }
-});
+    });
 }

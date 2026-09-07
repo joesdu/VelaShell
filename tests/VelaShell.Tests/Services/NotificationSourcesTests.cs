@@ -1,7 +1,6 @@
 using NSubstitute;
 using VelaShell.Core.Models;
 using VelaShell.Core.Notifications;
-using VelaShell.Core.Services;
 using VelaShell.Services;
 
 namespace VelaShell.Tests.Services;
