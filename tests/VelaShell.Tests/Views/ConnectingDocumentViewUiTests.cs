@@ -5,7 +5,6 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using VelaShell.Controls.Controls;
 using VelaShell.Core.Localization;
-using VelaShell.Core.Models;
 using VelaShell.Docking;
 using VelaShell.Localization;
 using VelaShell.Views;
