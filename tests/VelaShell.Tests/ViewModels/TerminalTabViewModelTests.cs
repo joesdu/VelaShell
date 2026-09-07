@@ -429,4 +429,28 @@ public class TerminalTabViewModelTests
 
         Assert.IsTrue(await _vm.CopyErrorCommand.CanExecute.FirstAsync());
     }
+
+    /// <summary>
+    /// 标签在握手开始前就建好,这中间正文本是一片空白终端 —— 链路一慢就看不出自己
+    /// 到底点没点上(#385 反馈)。三种非正常态现在各有各的画面,且互不重叠。
+    /// </summary>
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void ConnectingOverlay_CoversTheGapBetweenTabCreationAndHandshake()
+    {
+        _vm.Profile = new() { Name = "生产库", Host = "db.example", Port = 22 };
+
+        _vm.ConnectionStatus = SessionStatus.Connecting;
+        Assert.IsTrue(_vm.ShowConnectingOverlay, "连接中要有覆盖层,不能是一片空白终端。");
+        Assert.IsFalse(_vm.ShowDisconnectedOverlay, "两个覆盖层不能同时出现。");
+        Assert.Contains("生产库", _vm.ConnectingOverlayTitle, "标题指名道姓说在连哪一台。");
+
+        _vm.ConnectionStatus = SessionStatus.Connected;
+        Assert.IsFalse(_vm.ShowConnectingOverlay, "连上之后立刻让位给终端正文。");
+        Assert.IsFalse(_vm.ShowDisconnectedOverlay);
+
+        _vm.MarkConnectionFailed("Connection refused");
+        Assert.IsFalse(_vm.ShowConnectingOverlay);
+        Assert.IsTrue(_vm.ShowDisconnectedOverlay, "失败之后换成失败覆盖层。");
+    }
 }

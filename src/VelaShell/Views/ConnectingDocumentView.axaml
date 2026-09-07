@@ -1,0 +1,149 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:docking="using:VelaShell.Docking"
+             xmlns:pc="using:VelaShell.Controls.Controls"
+             xmlns:loc="using:VelaShell.Localization"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             x:Class="VelaShell.Views.ConnectingDocumentView"
+             x:DataType="docking:ConnectingDocument">
+
+  <UserControl.Styles>
+    <!-- 与终端标签页内的断开覆盖层(设计 yxjmg / dcOverlay)同一套卡片:连接中只有一句话,
+         窄卡片居中最好看;失败原因是多行技术文本(认证链、算法名单),要宽卡片左对齐才读得下去。 -->
+    <Style Selector="Border.dc-card">
+      <Setter Property="Width" Value="340" />
+    </Style>
+    <Style Selector="Border.dc-card.error">
+      <Setter Property="Width" Value="560" />
+    </Style>
+    <Style Selector="Border.dc-detail">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="Border.dc-detail.error">
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="14,12" />
+    </Style>
+    <Style Selector="SelectableTextBlock.dc-detail">
+      <Setter Property="TextAlignment" Value="Center" />
+      <Setter Property="MaxWidth" Value="280" />
+    </Style>
+    <Style Selector="SelectableTextBlock.dc-detail.error">
+      <Setter Property="TextAlignment" Value="Left" />
+      <Setter Property="MaxWidth" Value="Infinity" />
+      <Setter Property="LineHeight" Value="18" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Background="{DynamicResource VelaBgDockDocument}">
+    <Border Classes="dc-card" Classes.error="{Binding HasError}"
+            Background="{DynamicResource VelaBgSurface}"
+            BorderBrush="{DynamicResource VelaBorderSecondary}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Padding="32,24"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            BoxShadow="{DynamicResource VelaShadowWindow}">
+      <StackPanel Orientation="Vertical" Spacing="16" HorizontalAlignment="Center">
+
+        <!-- 图标圆底:连接中是一圈转着的进度环(它本身就是"还在动"的证据),
+             失败后换成与终端断开覆盖层同一个 wifi-off 图标,两处的失败长得一样。 -->
+        <Border Width="48" Height="48" CornerRadius="24"
+                IsVisible="{Binding IsConnecting}"
+                Background="{DynamicResource VelaAccentDim}"
+                HorizontalAlignment="Center">
+          <pc:CircularProgressRing Width="24" Height="24" StrokeThickness="2.5"
+                                   IsIndeterminate="True"
+                                   TrackBrush="{DynamicResource VelaBorderSecondary}"
+                                   ArcBrush="{DynamicResource VelaAccent}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+        <Border Width="48" Height="48" CornerRadius="24"
+                IsVisible="{Binding HasError}"
+                Background="{DynamicResource VelaErrorSurface}"
+                HorizontalAlignment="Center">
+          <pc:LucideIcon Width="22" Height="22"
+                         Data="{StaticResource Icon.wifi-off}"
+                         Foreground="{DynamicResource VelaError}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+
+        <TextBlock Text="{Binding OverlayTitle}"
+                   Foreground="{DynamicResource VelaTextPrimary}"
+                   FontSize="{DynamicResource VelaFontSize16}" FontWeight="SemiBold"
+                   TextAlignment="Center" TextWrapping="Wrap"
+                   HorizontalAlignment="Center" />
+
+        <!-- 连接类型(SFTP / FTP / S3 / Redis…):同一台主机可以按几种协议连,
+             光看名字分不出这个标签在等哪一条。 -->
+        <TextBlock Text="{Binding TypeLabel}"
+                   IsVisible="{Binding IsConnecting}"
+                   Foreground="{DynamicResource VelaTextTertiary}"
+                   FontFamily="{DynamicResource VelaUiMonoFont}"
+                   FontSize="{DynamicResource VelaFontSize11}"
+                   TextAlignment="Center" HorizontalAlignment="Center" />
+
+        <Border Classes="dc-detail" Classes.error="{Binding HasError}">
+          <ScrollViewer MaxHeight="200"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+            <!-- SelectableTextBlock:失败原因要能划选、Ctrl+C 拿走(理由同终端覆盖层)。 -->
+            <SelectableTextBlock Classes="dc-detail" Classes.error="{Binding HasError}"
+                                 Text="{Binding OverlayDetail}"
+                                 Foreground="{DynamicResource VelaTextMuted}"
+                                 FontFamily="{DynamicResource VelaUiMonoFont}"
+                                 FontSize="{DynamicResource VelaFontSize11}"
+                                 TextWrapping="Wrap" />
+          </ScrollViewer>
+        </Border>
+
+        <!-- 连接中只给「取消」:此刻能做的决定只有一个 —— 不等了。 -->
+        <Button IsVisible="{Binding IsConnecting}"
+                HorizontalAlignment="Center"
+                Click="Cancel_Click"
+                Background="Transparent"
+                BorderBrush="{DynamicResource VelaBorderSecondary}"
+                BorderThickness="1"
+                CornerRadius="4" Padding="16,8">
+          <TextBlock Text="{loc:Localize Cancel}"
+                     Foreground="{DynamicResource VelaTextSecondary}"
+                     FontSize="{DynamicResource VelaFontSize12}" FontWeight="Medium"
+                     VerticalAlignment="Center" />
+        </Button>
+
+        <!-- 失败后与终端覆盖层给的是同两个动作:重试、关掉这个标签。 -->
+        <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center"
+                    IsVisible="{Binding HasError}">
+          <Button Click="Retry_Click"
+                  Background="{DynamicResource VelaAccent}"
+                  CornerRadius="4" Padding="16,8"
+                  BorderThickness="0">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <pc:LucideIcon Width="13" Height="13"
+                             Data="{StaticResource Icon.refresh-cw}"
+                             Foreground="{DynamicResource VelaAccentForeground}" VerticalAlignment="Center" />
+              <TextBlock Text="{loc:Localize Reconnect}" Foreground="{DynamicResource VelaAccentForeground}"
+                         FontSize="{DynamicResource VelaFontSize12}" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Click="Close_Click"
+                  Background="Transparent"
+                  BorderBrush="{DynamicResource VelaBorderSecondary}"
+                  BorderThickness="1"
+                  CornerRadius="4" Padding="16,8">
+            <TextBlock Text="{loc:Localize CloseTab}"
+                       Foreground="{DynamicResource VelaTextSecondary}"
+                       FontSize="{DynamicResource VelaFontSize12}" FontWeight="Medium" VerticalAlignment="Center" />
+          </Button>
+        </StackPanel>
+
+      </StackPanel>
+    </Border>
+  </Border>
+</UserControl>

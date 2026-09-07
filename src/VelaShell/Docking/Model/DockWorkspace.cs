@@ -164,6 +164,47 @@ public sealed class DockWorkspace : DockElement
         ActivateDocument(document);
     }
 
+    /// <summary>
+    /// 原位替换一个文档:新文档接手旧文档在组内的**位置**与选中/激活状态。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 「连接中」占位标签换成连上之后的真文档走这一条。用"先 Remove 再 Add"是不行的:
+    /// <see cref="AddDocument" /> 永远追加到主组末尾,于是用户眼看着标签从原地跳到最右边;
+    /// 而且旧文档若不是当前激活的(用户在等连接时切去了别的标签),Add 还会把焦点抢回来。
+    /// </para>
+    /// <para>
+    /// 事件按"旧的走了、新的来了"如实播报:视图层的内容控件缓存正是靠
+    /// <see cref="DocumentRemoved" /> 丢弃旧视图的(见 <c>DockWorkspaceControl</c>)。
+    /// </para>
+    /// </remarks>
+    /// <param name="oldDocument">要被替换掉的文档;不在工作区内时本方法为空操作。</param>
+    /// <param name="newDocument">接手其位置的新文档。</param>
+    public void ReplaceDocument(DockDocument oldDocument, DockDocument newDocument)
+    {
+        ArgumentNullException.ThrowIfNull(oldDocument);
+        ArgumentNullException.ThrowIfNull(newDocument);
+        if (FindGroup(oldDocument) is not { } group)
+        {
+            return;
+        }
+        int index = group.Documents.IndexOf(oldDocument);
+        bool wasGroupActive = ReferenceEquals(group.ActiveDocument, oldDocument);
+        bool wasWorkspaceActive = ReferenceEquals(ActiveDocument, oldDocument);
+        group.Documents[index] = newDocument;
+        if (wasGroupActive)
+        {
+            group.ActiveDocument = newDocument;
+        }
+        DocumentRemoved?.Invoke(oldDocument);
+        DocumentAdded?.Invoke(newDocument);
+        // 激活放在两条事件之后:订阅方(宿主的每标签接线)要在活动标签切过去之前就位。
+        if (wasWorkspaceActive)
+        {
+            ActivateDocument(newDocument);
+        }
+    }
+
     /// <summary>激活文档:选中其标签并设为全局激活。</summary>
     public void ActivateDocument(DockDocument document)
     {

@@ -4858,4 +4858,13 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Validation_NumberRequired" xml:space="preserve">
     <value>請輸入數字</value>
   </data>
+  <data name="Msg_ConnectingToTitle" xml:space="preserve">
+    <value>正在連線 {0}</value>
+  </data>
+  <data name="Msg_ConnectingDetail" xml:space="preserve">
+    <value>正在建立工作階段。連線較慢時可能要等上幾秒。</value>
+  </data>
+  <data name="Msg_PluginOpeningPanel" xml:space="preserve">
+    <value>正在開啟面板</value>
+  </data>
 </root>

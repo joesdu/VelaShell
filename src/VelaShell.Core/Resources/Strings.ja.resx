@@ -4447,4 +4447,13 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Validation_NumberRequired" xml:space="preserve">
     <value>数値を入力してください</value>
   </data>
+  <data name="Msg_ConnectingToTitle" xml:space="preserve">
+    <value>{0} に接続しています</value>
+  </data>
+  <data name="Msg_ConnectingDetail" xml:space="preserve">
+    <value>セッションを確立しています。回線が遅い場合は数秒かかることがあります。</value>
+  </data>
+  <data name="Msg_PluginOpeningPanel" xml:space="preserve">
+    <value>パネルを開いています</value>
+  </data>
 </root>

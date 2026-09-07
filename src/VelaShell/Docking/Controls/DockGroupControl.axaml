@@ -90,6 +90,10 @@
               <DataTemplate x:DataType="docking:PluginWorkspaceDocument">
                 <local:WorkspaceDockTabItem />
               </DataTemplate>
+              <!-- 文档型连接握手完成前的占位标签(同理:漏了这条就是一行类型全名)。 -->
+              <DataTemplate x:DataType="docking:ConnectingDocument">
+                <local:ConnectingDockTabItem />
+              </DataTemplate>
             </ItemsControl.DataTemplates>
           </ItemsControl>
           <!-- 激活标签的滑动强调线:单条 2px 线在标签间滑动(取代各标签自己顶线的突变),
