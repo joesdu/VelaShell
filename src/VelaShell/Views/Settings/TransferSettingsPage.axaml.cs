@@ -3,8 +3,8 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
-using FireAndForget = VelaShell.Services.FireAndForget;
 using VelaShell.ViewModels;
+using FireAndForget = VelaShell.Services.FireAndForget;
 
 namespace VelaShell.Views.Settings;
 
@@ -42,7 +42,7 @@ public partial class TransferSettingsPage : UserControl
             DownloadDirBox.Text = path;
             viewModel.RaisePropertyChangedForTransfer();
         }
-});
+    });
 
     private void BrowseEditor_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
     {
@@ -75,5 +75,5 @@ public partial class TransferSettingsPage : UserControl
             EditorPathBox.Text = path;
             viewModel.RaisePropertyChangedForTransfer();
         }
-});
+    });
 }

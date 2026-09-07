@@ -1,7 +1,7 @@
-using Avalonia;
-using Avalonia.Threading;
 using System.Net.NetworkInformation;
 using System.Text;
+using Avalonia;
+using Avalonia.Threading;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Services;
@@ -131,7 +131,7 @@ public sealed class StatusMetricsPoller(
     /// <summary>当前该用的采样间隔:失焦时取「设置值与 10 秒的较大者」,否则取设置值。</summary>
     internal TimeSpan CurrentInterval()
     {
-        TimeSpan interval = TimeSpan.FromSeconds(ConfiguredIntervalSeconds);
+        var interval = TimeSpan.FromSeconds(ConfiguredIntervalSeconds);
         return _reduced && interval < UnfocusedInterval ? UnfocusedInterval : interval;
     }
 
@@ -249,7 +249,6 @@ public sealed class StatusMetricsPoller(
         _timer?.Stop();
         _timer = null;
     }
-
 
     private static string BuildCpuTooltip(SessionMetrics m)
     {

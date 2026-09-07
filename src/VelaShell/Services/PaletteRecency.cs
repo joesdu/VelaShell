@@ -34,7 +34,7 @@ public sealed class PaletteRecency(IAppDataStore? store)
 {
     private const string Collection = "palette_recency";
 
-    private readonly Dictionary<string, PaletteUsage> _usage = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, PaletteUsage> _usage = [with(StringComparer.Ordinal)];
 
     /// <summary>从存储载入既有痕迹;失败时静默退化为空记录(面板照常可用,只是没有加权)。</summary>
     public async Task LoadAsync()

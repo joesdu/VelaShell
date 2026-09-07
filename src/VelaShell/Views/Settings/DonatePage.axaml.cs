@@ -22,7 +22,7 @@ public partial class DonatePage : UserControl
         {
             await top.Launcher.LaunchUriAsync(uri);
         }
-});
+    });
 
     /// <summary>复制 Wise 付款链接,按钮文案短暂切为“已复制”作为反馈。</summary>
     private void CopyWiseLink_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
@@ -37,5 +37,5 @@ public partial class DonatePage : UserControl
             button.Content = "已复制";
             DispatcherTimer.RunOnce(() => button.Content = original, TimeSpan.FromSeconds(1.5));
         }
-});
+    });
 }

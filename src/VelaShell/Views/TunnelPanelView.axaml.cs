@@ -1,8 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using VelaShell.Core.Resources;
-using FireAndForget = VelaShell.Services.FireAndForget;
 using VelaShell.ViewModels;
+using FireAndForget = VelaShell.Services.FireAndForget;
 
 namespace VelaShell.Views;
 
@@ -41,7 +41,7 @@ public partial class TunnelPanelView : UserControl
             return;
         }
         await new TunnelHelpDialog().ShowDialog(owner);
-});
+    });
 
     private async Task<bool> ConfirmDeleteAsync(string message)
     {

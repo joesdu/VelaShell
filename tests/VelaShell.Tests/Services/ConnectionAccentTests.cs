@@ -63,7 +63,7 @@ public sealed class ConnectionAccentTests
     public void TheAutomaticColourIsStableAcrossCalls()
     {
         // 跨启动稳定是这套配色的基本承诺:同一配置在任何会话里都是同一号色。
-        Guid id = Guid.NewGuid();
+        var id = Guid.NewGuid();
 
         Assert.AreEqual(ConnectionAccent.IndexFor(id), ConnectionAccent.IndexFor(id));
     }

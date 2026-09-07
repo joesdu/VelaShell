@@ -418,5 +418,5 @@ public partial class SidebarView : UserControl
         {
             _viewModel.RecentConnections.ClearCommand.Execute().Subscribe();
         }
-});
+    });
 }

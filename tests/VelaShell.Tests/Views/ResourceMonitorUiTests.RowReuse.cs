@@ -22,7 +22,7 @@ public sealed partial class ResourceMonitorUiTests
         {
             (ResourceMonitorWindow window, ResourceMonitorWindowViewModel vm) = Open(WithGpu());
 
-            Dictionary<int, ProcessRow> before = vm.TopMemoryProcesses.ToDictionary(static row => row.Pid);
+            var before = vm.TopMemoryProcesses.ToDictionary(static row => row.Pid);
             Assert.IsNotEmpty(before, "样本里应当有内存占用最高的进程行。");
 
             Pump(vm);
@@ -48,7 +48,7 @@ public sealed partial class ResourceMonitorUiTests
         {
             (ResourceMonitorWindow window, ResourceMonitorWindowViewModel vm) = Open(WithGpu());
 
-            Dictionary<string, PartitionRow> before = vm.Partitions.ToDictionary(static row => row.MountPoint);
+            var before = vm.Partitions.ToDictionary(static row => row.MountPoint);
             Assert.IsNotEmpty(before);
 
             Pump(vm);

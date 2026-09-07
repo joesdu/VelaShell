@@ -57,7 +57,7 @@ public sealed class ConnectingDocumentTests
             remove { }
         }
 
-        public object CreateView() => new object();
+        public object CreateView() => new();
 
         public Task ReconnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 

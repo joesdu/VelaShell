@@ -122,7 +122,7 @@ public static class StartupTrace
         long now = Stopwatch.GetTimestamp();
         try
         {
-            using Process self = Process.GetCurrentProcess();
+            using var self = Process.GetCurrentProcess();
             TimeSpan since = DateTime.Now - self.StartTime;
             // 负值或荒诞的大值说明时钟被调过(或者容器里 StartTime 不可信),不如不用。
             if (since > TimeSpan.Zero && since < TimeSpan.FromMinutes(10))

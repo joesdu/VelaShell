@@ -38,7 +38,23 @@ public class GlyphRenderingTests
     public static void Init(TestContext _) => _session = HeadlessUnitTestSession.StartNew(typeof(SkiaHeadlessApp));
 
     [ClassCleanup]
-    public static void Cleanup() => _session.Dispose();
+    public static void Cleanup()
+    {
+        // Avalonia 12.1.2 的 HeadlessUnitTestSession.StartNew 有竞态:它把 Task.Run 的返回值
+        // 经闭包变量交给会话构造器(源码里那句 `task!`),写入方是调用线程、读取方是工作线程,
+        // 中间没有任何同步。工作线程读到 null 时 _dispatchTask 就永久为 null —— 而它只在
+        // Dispose() 的 _dispatchTask.Wait() 处才炸:所有用例照常通过,只有清理红一条,
+        // 重跑即绿。此时 Cancel() 与 CompleteAdding() 已执行,调度循环必然退出,
+        // 吞掉这条 NRE 不泄漏任何东西。上游 master 至今未修。
+        try
+        {
+            _session.Dispose();
+        }
+        catch (NullReferenceException)
+        {
+            // 见上。
+        }
+    }
 
     private static void OnUi(Action body) =>
         _session.Dispatch(() =>

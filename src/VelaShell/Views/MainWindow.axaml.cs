@@ -520,7 +520,7 @@ public partial class MainWindow : Window
             }
             await RestoreSessionsAsync(_settings);
         }
-});
+    });
 
     /// <summary>
     /// 恢复会话(设置 → 常规 → 启动):重连上次退出时在线的连接。缺凭据的

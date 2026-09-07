@@ -7,8 +7,8 @@ using Avalonia.VisualTree;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
-using FireAndForget = VelaShell.Services.FireAndForget;
 using VelaShell.ViewModels;
+using FireAndForget = VelaShell.Services.FireAndForget;
 
 namespace VelaShell.Views;
 
@@ -329,5 +329,5 @@ public partial class LocalFilePaneView : UserControl
             }
             e.Handled = true;
         }
-});
+    });
 }

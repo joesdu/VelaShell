@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
-using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -210,8 +209,6 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     private SidebarViewModel _sidebar;
     private StatusBarViewModel _statusBar;
 
-    private readonly StatusMetricsPoller _statusMetrics;
-
     /// <summary>
     /// 状态栏那一排实时指标(CPU / 内存 / 磁盘 / 网络 / 延迟)的采样循环。
     /// </summary>
@@ -220,7 +217,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 按 <c>Activated/Deactivated</c> 降频,那是采样循环自己的事,让主窗口视图模型
     /// 替它转述一遍只是把同一件事写两处。
     /// </remarks>
-    public StatusMetricsPoller StatusMetrics => _statusMetrics;
+    public StatusMetricsPoller StatusMetrics { get; }
     private DispatcherTimer? _fontSizePersistDebounce;
     private int _pendingFontSize;
 
@@ -376,7 +373,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         // 采样循环拆成了独立协作者(Q-01):定时器、重入闸、失焦降频与四段悬停提示
         // 彼此紧密、与主窗口其余职责毫不相干。活动标签用委托现取,不缓存 ——
         // 缓存一份就要再操心"什么时候刷新"。
-        _statusMetrics = new(_statusBar, () => ActiveTerminalTab, metricsService);
+        StatusMetrics = new(_statusBar, () => ActiveTerminalTab, metricsService);
         _backgroundActivity = backgroundActivity;
         WireBackgroundActivity(backgroundActivity);
         _fileBrowser = new(null, Guid.Empty);
@@ -458,7 +455,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     SystemSound.Alert();
                 }
             });
-        _statusMetrics.Start();
+        StatusMetrics.Start();
         SetUpNotificationCenter(notificationCenter, announcementFeed, updateService);
         OpenSettingsCommand = ReactiveCommand.Create(() =>
             SettingsRequested?.Invoke(this, EventArgs.Empty)
@@ -4708,7 +4705,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 ApplyLiveSettingsToOpenTabs(settings);
                 // 采样间隔改了要当场生效,而不是等下次启动 —— 用户调它多半正是因为
                 // 现在这个频率让远端不好受。
-                _statusMetrics.ConfiguredIntervalSeconds = settings.General.StatusMetricsIntervalSeconds;
+                StatusMetrics.ConfiguredIntervalSeconds = settings.General.StatusMetricsIntervalSeconds;
 
                 // 已打开的文件浏览器同步最新的传输选项(冲突策略/并发/带宽等)与
                 // “显示隐藏文件”状态(设置审计 C-04:设置中心与工具栏共用一个来源)。
@@ -5136,7 +5133,6 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         }
         await Task.WhenAll(closeTasks);
     }
-
 
     private void OnDocumentClosed(TerminalDocument document)
     {

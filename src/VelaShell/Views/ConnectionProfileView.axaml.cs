@@ -11,8 +11,8 @@ using Avalonia.VisualTree;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
-using FireAndForget = VelaShell.Services.FireAndForget;
 using VelaShell.ViewModels;
+using FireAndForget = VelaShell.Services.FireAndForget;
 
 namespace VelaShell.Views;
 
@@ -241,7 +241,7 @@ public partial class ConnectionProfileView : Window
         viewModel.ConnectCommand.Subscribe(this.PostClose);
         viewModel.CancelCommand.Subscribe(this.PostClose);
         await viewModel.LoadGroupsAsync();
-});
+    });
 
     /// <summary>窗口关闭时退订注册表事件,免得单例注册表上挂满已关闭对话框的视图模型。</summary>
     protected override void OnClosed(EventArgs e)
@@ -303,5 +303,5 @@ public partial class ConnectionProfileView : Window
         {
             viewModel.PrivateKeyPath = path;
         }
-});
+    });
 }

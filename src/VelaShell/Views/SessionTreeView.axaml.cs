@@ -302,7 +302,7 @@ public partial class SessionTreeView : UserControl
             sessionId,
             viewModel.ResolveDropTargetGroupId(FindNodeAt(e.Source))
         );
-});
+    });
 
     /// <summary>
     /// 只有指针真的离开整棵树时才熄灭高亮。

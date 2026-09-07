@@ -1,5 +1,6 @@
 using System.Text;
 using Avalonia.Headless;
+using Avalonia.Media;
 using VelaShell.Core.Localization;
 using VelaShell.Core.Models;
 using VelaShell.Localization;
@@ -186,7 +187,7 @@ public sealed class TerminalSettingsApplierTests
             // 设置里字体是自由文本框,清空是常见操作;那时应当保持现状而不是把字体设成空。
             var control = new VelaTerminalControl();
             TerminalSettingsApplier.Apply(control, new() { TerminalFont = "Consolas" }, Theme());
-            var applied = control.FontFamily;
+            FontFamily applied = control.FontFamily;
 
             TerminalSettingsApplier.Apply(control, new() { TerminalFont = "   " }, Theme());
 

@@ -25,5 +25,5 @@ public partial class AboutPage : UserControl
         {
             await top.Launcher.LaunchUriAsync(uri);
         }
-});
+    });
 }

@@ -99,7 +99,7 @@ public class TerminalCellMemoryTests
     {
         var row = new TerminalRow(80);
         row.Fill(TerminalCell.Empty);
-        TerminalCell painted = TerminalCell.Blank(TerminalColor.FromIndex(196), CellFlags.None);
+        var painted = TerminalCell.Blank(TerminalColor.FromIndex(196), CellFlags.None);
         for (int col = 0; col < 60; col++)
         {
             row[col] = painted;

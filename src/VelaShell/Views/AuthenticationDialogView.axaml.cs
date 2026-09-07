@@ -4,8 +4,8 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Resources;
-using FireAndForget = VelaShell.Services.FireAndForget;
 using VelaShell.ViewModels;
+using FireAndForget = VelaShell.Services.FireAndForget;
 
 namespace VelaShell.Views;
 
@@ -76,5 +76,5 @@ public partial class AuthenticationDialogView : Window
         {
             viewModel.PrivateKeyPath = path;
         }
-});
+    });
 }

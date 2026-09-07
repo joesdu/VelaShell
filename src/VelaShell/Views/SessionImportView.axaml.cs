@@ -35,7 +35,7 @@ public partial class SessionImportView : Window
             }
         });
         await viewModel.InitializeAsync();
-});
+    });
 
     /// <summary>Esc 等价于取消;Enter 直接执行默认(全自动)导入。</summary>
     protected override void OnKeyDown(KeyEventArgs e)
@@ -87,7 +87,7 @@ public partial class SessionImportView : Window
             source.SourceText = picked;
             source.ScanCommand.Execute().Subscribe();
         }
-});
+    });
 
     private async Task<string?> PickFolderAsync(string title)
     {

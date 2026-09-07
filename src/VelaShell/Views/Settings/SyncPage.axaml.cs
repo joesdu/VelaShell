@@ -19,5 +19,5 @@ public partial class SyncPage : UserControl
         {
             await top.Launcher.LaunchUriAsync(uri);
         }
-});
+    });
 }

@@ -1,7 +1,6 @@
 using VelaShell.Core.Models;
 using VelaShell.Core.Notifications;
 using VelaShell.Core.Resources;
-using VelaShell.Core.Services;
 using VelaShell.Infrastructure.Diagnostics;
 
 namespace VelaShell.Services;

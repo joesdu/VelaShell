@@ -1,7 +1,7 @@
 using Avalonia.Headless;
 using Avalonia.Threading;
-using AvaloniaEdit;
 using Avalonia.VisualTree;
+using AvaloniaEdit;
 using VelaShell.Views;
 
 namespace VelaShell.Tests.Views;

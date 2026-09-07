@@ -4,8 +4,8 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
-using FireAndForget = VelaShell.Services.FireAndForget;
 using VelaShell.ViewModels;
+using FireAndForget = VelaShell.Services.FireAndForget;
 
 namespace VelaShell.Views.Settings;
 
@@ -31,7 +31,7 @@ public partial class KeyManagementPage : UserControl
         {
             await viewModel.SshKeys.ImportAsync(path);
         }
-});
+    });
 
     /// <summary>
     /// 删除密钥前先确认,并把**将要删掉的实际文件**摆出来。
@@ -59,7 +59,7 @@ public partial class KeyManagementPage : UserControl
         {
             await viewModel.SshKeys.DeleteAsync(key);
         }
-});
+    });
 
     private void CopyPublicKey_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
     {
@@ -67,5 +67,5 @@ public partial class KeyManagementPage : UserControl
         {
             await clipboard.SetTextAsync(key.PublicKeyLine ?? key.Fingerprint);
         }
-});
+    });
 }

@@ -1,7 +1,7 @@
 using System.IO.Pipes;
-using VelaShell.Infrastructure.Plugins.Isolated;
 using VelaShell.Infrastructure.Plugins;
 using VelaShell.Infrastructure.Plugins.Capabilities;
+using VelaShell.Infrastructure.Plugins.Isolated;
 using VelaShell.PluginSdk;
 using VelaShell.PluginSdk.Rpc;
 using VelaShell.PluginSdk.Testing;

@@ -16,8 +16,8 @@ using VelaShell.Controls.Controls;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
-using FireAndForget = VelaShell.Services.FireAndForget;
 using VelaShell.ViewModels;
+using FireAndForget = VelaShell.Services.FireAndForget;
 
 namespace VelaShell.Views;
 
@@ -479,7 +479,7 @@ public partial class FileBrowserView : UserControl
         }
         await vm.UploadLocalPathsAsync(paths);
         e.Handled = true;
-});
+    });
 
     private static IReadOnlyList<string> ExtractLocalPaths(DragEventArgs e)
     {
