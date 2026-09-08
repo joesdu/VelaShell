@@ -35,7 +35,7 @@ VelaShell 是用 **.NET 11 + Avalonia** 写的桌面终端应用，Windows / Lin
 
 | | |
 | --- | --- |
-| **终端** | 自研 VT 引擎（DEC ANSI / VT / Xterm 状态机）· 十种终端 profile（vt52 → xterm-256color）· 256 色 / 真彩色 / 线绘字符 / 主备屏 / 鼠标协议 / CJK 双宽 · 自绘渲染 · 行 / 块 / 多段不连续选区 · 行号与时间侧栏 |
+| **终端** | 自研 VT 引擎（DEC ANSI / VT / Xterm 状态机）· 十种终端 profile（vt52 → xterm-256color）· 256 色 / 真彩色 / 线绘字符 / 主备屏 / 鼠标协议 / CJK 双宽 · 自绘渲染 · 行 / 块 / 多段不连续选区 · 行号与时间侧栏 · OSC 8 显式超链接（Ctrl+点击直达） |
 | **连接** | SSH · SFTP · FTP / FTPS · 本地终端（Windows ConPTY）· 跳板机 ProxyJump（≤5 跳、环检测）· HTTP / SOCKS5 / 跟随系统代理 · 两步身份验证 · 主机指纹 TOFU · 每条连接各配「认证后执行命令」· 断线自动重连（含睡眠唤醒 / 网络恢复） |
 | **文件** | SFTP 双栏浏览与拖拽互传 · 断点续传与传输队列 · 远程文件内置编辑器（AvaloniaEdit 语法高亮）或交给外部编辑器并监听落盘回传 · ZMODEM / XMODEM / YMODEM 收发（全部自研） |
 | **隧道** | 本地 `-L` / 远程 `-R` / 动态 SOCKS5 `-D` · 自研计量数据面（实时连接数与字节数）· 断线自动恢复 · 端口冲突预检 |

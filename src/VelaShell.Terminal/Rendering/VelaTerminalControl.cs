@@ -2285,6 +2285,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         // 本行的搜索命中区间同样逐行取一次:原先每一格都要在字典里 TryGetValue 一遍。
         List<(int Start, int End, bool Current)>? rowSearchSpans = null;
         _ = _searchHighlights?.TryGetValue(absoluteRow, out rowSearchSpans);
+        // 整行有没有 OSC 8 链接逐行问一次:绝大多数行没有,格子循环里连数组都不必碰。
+        bool hasLinks = line.HasLinks;
         int col = 0;
         while (col < cols)
         {
@@ -2332,6 +2334,19 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             {
                 fg = SemanticColor(palette, kind);
                 semanticUnderline = kind is SemanticKind.Url or SemanticKind.IpAddress;
+            }
+
+            // OSC 8 显式超链接:远端明说了"这段是链接",不受语义高亮开关约束 ——
+            // 那个开关管的是本地猜出来的高亮,而这条是协议事实。下划线无条件画(它是"能点"的
+            // 唯一提示),着色仍守与语义高亮同一条规矩:只染程序留在默认前景色下的文本,
+            // 绝不覆盖 ls --color / git 显式设的颜色。
+            if (hasLinks && line.LinkAt(col) != 0)
+            {
+                semanticUnderline = true;
+                if (!inverse && cell.Foreground.IsDefault)
+                {
+                    fg = SemanticColor(palette, SemanticKind.Url);
+                }
             }
             AppendBackground(context, y, bg, col, width, palette.DefaultBackground);
 
@@ -2984,11 +2999,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         )
         {
             (int row, int col) = PointToCell(point);
-            string lineText =
-                row < Emulator.Screen.TotalRows
-                    ? Emulator.Screen.ViewLine(row).GetText()
-                    : string.Empty;
-            string? url = SemanticMatcher.UrlAt(lineText, col);
+            string? url = LinkAtCell(row, col);
             if (url is not null)
             {
                 OpenLink(url);
@@ -3219,6 +3230,35 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
     private static readonly Cursor HandCursor = new(StandardCursorType.Hand);
 
+    /// <summary>
+    /// 缓冲行 <paramref name="row" />(绝对行号)第 <paramref name="col" /> 列上可打开的链接地址;
+    /// 没有则返回 null。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>OSC 8 优先于文本猜测。</b>显式超链接是远端明确声明的目标,而 <see cref="SemanticMatcher" />
+    /// 是对屏幕文本的猜测 —— OSC 8 的锚文本经常压根不像 URL(<c>点此查看报告</c>),
+    /// 猜测在那里必然落空;反过来,链接文本恰好长得像另一个地址时,该跳的也是声明的那个。
+    /// </para>
+    /// <para>
+    /// 悬停与点击共用本函数(与既有 <c>UrlAt</c> 的用法一致):
+    /// "看起来能点"和"真的能点"因此永远是同一个判定。
+    /// </para>
+    /// </remarks>
+    private string? LinkAtCell(int row, int col)
+    {
+        if (row < 0 || row >= Emulator.Screen.TotalRows || col < 0)
+        {
+            return null;
+        }
+        TerminalRow line = Emulator.Screen.ViewLine(row);
+        if (line.HasLinks && Emulator.Hyperlinks.UriOf(line.LinkAt(col)) is { } explicitUri)
+        {
+            return explicitUri;
+        }
+        return SemanticMatcher.UrlAt(line.GetText(), col);
+    }
+
     /// <summary>当前悬停命中的链接文本;没有命中时为 null。</summary>
     private string? _hoveredLink;
 
@@ -3247,10 +3287,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             return;
         }
         (int row, int col) = PointToCell(position);
-        string lineText = row >= 0 && row < Emulator.Screen.TotalRows
-            ? Emulator.Screen.ViewLine(row).GetText()
-            : string.Empty;
-        string? url = SemanticMatcher.UrlAt(lineText, col);
+        string? url = LinkAtCell(row, col);
         if (url == _hoveredLink)
         {
             return;

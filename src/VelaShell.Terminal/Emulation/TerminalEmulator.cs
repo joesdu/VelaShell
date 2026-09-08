@@ -32,6 +32,10 @@ public sealed class TerminalEmulator : IVtActions
     private CellFlags _flags = CellFlags.None;
     private int _gl; // 当前生效的 GL 字符集索引
 
+    // 当前生效的 OSC 8 超链接句柄(0 = 不在链接内)。它<b>不是画笔的一部分</b>:
+    // OSC 8 与 SGR 相互独立,SGR 0 不会关掉链接,只有 `OSC 8 ; ; ST` 才会(规范如此)。
+    private ushort _link;
+
     private bool _pendingWrap; // 行尾的延迟自动换行
     private DateTime _feedTimestamp = DateTime.Now; // 当前 Feed 到达时刻,用于给写入的行盖时间戳(行号侧栏)
 
@@ -61,6 +65,12 @@ public sealed class TerminalEmulator : IVtActions
 
     /// <summary>用于把索引色解析为具体 RGB 值的调色板。</summary>
     public TerminalPalette Palette { get; }
+
+    /// <summary>
+    /// 本终端的 OSC 8 超链接驻留表:把单元格里的 <see cref="ushort" /> 句柄换回 URI。
+    /// </summary>
+    /// <remarks>渲染层用它决定哪些格该画下划线、Ctrl+点击该打开什么。</remarks>
+    public HyperlinkTable Hyperlinks { get; } = new();
 
     /// <summary>当前生效的屏幕缓冲区(主屏或备用屏)。</summary>
     public TerminalScreen Screen { get; private set; }
@@ -137,7 +147,7 @@ public sealed class TerminalEmulator : IVtActions
             Background = _bg,
             Flags = _flags
         };
-        Screen.SetCell(Screen.CursorX, Screen.CursorY, cell);
+        Screen.SetCell(Screen.CursorX, Screen.CursorY, cell, _link);
         // 行时间戳取「本次 Feed 到达时刻」——按 chunk 取一次,避免逐字符 DateTime.Now;
         // 同一行被多次写入时以最后一次为准(= 该行最后收到输出的时间)。
         Screen.ActiveLine(Screen.CursorY).Timestamp = _feedTimestamp;
@@ -146,7 +156,9 @@ public sealed class TerminalEmulator : IVtActions
             TerminalCell trailing = cell;
             trailing.Rune = 0;
             trailing.Flags |= CellFlags.WideTrailing;
-            Screen.SetCell(Screen.CursorX + 1, Screen.CursorY, trailing);
+            // 尾格与前导格同属一个字符,链接必须一并盖上 —— 否则宽字符链接的右半格
+            // 点不开,悬停时手型在半个字上闪。
+            Screen.SetCell(Screen.CursorX + 1, Screen.CursorY, trailing, _link);
         }
         if (Screen.CursorX + width >= Screen.Columns)
         {
@@ -211,6 +223,9 @@ public sealed class TerminalEmulator : IVtActions
                 template.Rune = text[i + k];
                 cells[k] = template;
             }
+            // 链接同样整段盖一次。传 0 且本行从无链接时是空操作(见 TerminalRow.SetLinkRange),
+            // 所以纯文本洪流这条主路径一分钱不多花;而在链接格上覆写普通文本时,它负责把旧句柄抹掉。
+            row.SetLinkRange(x, x + take, _link);
             // 行时间戳按段取一次,与逐字符路径同一语义(该行最后收到输出的时间)。
             row.Timestamp = _feedTimestamp;
             i += take;
@@ -550,8 +565,64 @@ public sealed class TerminalEmulator : IVtActions
                     WorkingDirectoryChanged?.Invoke(dir);
                 }
                 break;
-                // 4(调色板)、8(超链接)目前有意接受并忽略。
+            case 8:
+                // OSC 8:显式超链接 —— `OSC 8 ; 参数 ; URI ST` 开启,`OSC 8 ; ; ST` 关闭。
+                // 后续打印的每一格都盖上这条链接的句柄,直到被关闭或被下一条链接取代。
+                // 发出方:ls --hyperlink、gcc/cargo 的诊断、gh、delta、systemd 等。
+                SetHyperlink(p);
+                break;
+                // 4(调色板)目前有意接受并忽略。
         }
+    }
+
+    /// <summary>
+    /// 处理 <c>OSC 8 ; params ; URI</c>:驻留链接并把它设为当前画笔的链接,
+    /// URI 为空(或不可接受)则关闭链接。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>URI 必须把 <c>p[2..]</c> 重新拼回来。</b>分号是 OSC 的字段分隔符,而 URI 的查询串里
+    /// 完全可以带分号(<c>?a=1;b=2</c>)—— 解析器按 ';' 无条件切分,只取 <c>p[2]</c> 会把这类
+    /// 地址拦腰截断,点开就是另一个页面。
+    /// </para>
+    /// <para>
+    /// <c>params</c> 是 <c>key=value</c> 以 ':' 分隔的列表,规范目前只定义了 <c>id=</c>
+    /// (把被换行拆开的同一条链接认回同一条)。未知键按规范忽略。
+    /// </para>
+    /// </remarks>
+    private void SetHyperlink(IReadOnlyList<string> p)
+    {
+        if (p.Count < 3)
+        {
+            // `OSC 8 ; ST`(连 URI 字段都没有)按关闭处理,与 `OSC 8 ; ; ST` 一致。
+            _link = 0;
+            return;
+        }
+        string uri = p.Count == 3 ? p[2] : string.Join(';', p.Skip(2));
+        if (uri.Length == 0)
+        {
+            _link = 0;
+            return;
+        }
+        _link = Hyperlinks.Intern(ParseHyperlinkId(p[1]), uri);
+    }
+
+    /// <summary>从 OSC 8 的参数字段(<c>key=value</c> 以 ':' 分隔)里取出 <c>id</c>;没有则返回 null。</summary>
+    private static string? ParseHyperlinkId(string parameters)
+    {
+        if (parameters.Length == 0)
+        {
+            return null;
+        }
+        foreach (Range segment in parameters.AsSpan().Split(':'))
+        {
+            ReadOnlySpan<char> pair = parameters.AsSpan()[segment];
+            if (pair.StartsWith("id=", StringComparison.Ordinal))
+            {
+                return pair[3..].ToString();
+            }
+        }
+        return null;
     }
 
     /// <summary>从 OSC 7 载荷 file://host/path 提取绝对路径(百分号编码按需解码);非法/非绝对路径返回 null。</summary>
@@ -1271,6 +1342,10 @@ public sealed class TerminalEmulator : IVtActions
         }
         Screen.ResetToBlank(Blank());
         Screen.ClearScrollback();
+        // RIS 之后整个缓冲区(含回滚)已被清空,没有任何格还引用旧句柄 ——
+        // 这是唯一能安全整表回收 OSC 8 链接的时机。
+        _link = 0;
+        Hyperlinks.Clear();
         _utf8.Reset();
         _parser.Reset();
     }

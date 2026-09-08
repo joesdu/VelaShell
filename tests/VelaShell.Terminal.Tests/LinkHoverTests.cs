@@ -202,6 +202,71 @@ public sealed class LinkHoverTests
         });
     }
 
+    /// <summary>建一个显示了一条 OSC 8 显式超链接的终端;锚文本刻意不像 URL。</summary>
+    private static (VelaTerminalControl Control, Window Window) ShowWithOsc8Link()
+    {
+        var control = new VelaTerminalControl
+        {
+            ShowLineNumber = false,
+            ShowLineTimestamp = false,
+            ShowFoldMarker = false,
+            CursorBlink = false
+        };
+        control.Feed(Encoding.UTF8.GetBytes("go \e]8;;https://example.com/report\e\\报告\e]8;;\e\\ now"));
+        var window = new Window { Width = 640, Height = 360, Content = control };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        control.Focus();
+        Dispatcher.UIThread.RunJobs();
+        return (control, window);
+    }
+
+    [TestMethod]
+    public void CtrlHoveringAnOsc8Link_ShowsTheDeclaredTarget()
+    {
+        // OSC 8 的锚文本经常压根不像 URL(这里就是「报告」两个字),文本猜测在这里必然落空 ——
+        // 只有认协议声明的目标,悬停才给得出地址。
+        OnUi(() =>
+        {
+            (VelaTerminalControl control, Window window) = ShowWithOsc8Link();
+
+            // "go " 占 3 列,锚文本「报告」是两个双宽字符,占第 3~6 列。
+            MoveTo(window, control, 3, KeyModifiers.Control);
+
+            Assert.AreEqual("https://example.com/report", ToolTip.GetTip(control));
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    public void CtrlHoveringTheTrailingHalfOfAWideAnchor_StillHitsTheLink()
+    {
+        // 第 4 列是「报」的尾格。尾格若没盖上句柄,手型会在半个字上一闪一闪。
+        OnUi(() =>
+        {
+            (VelaTerminalControl control, Window window) = ShowWithOsc8Link();
+
+            MoveTo(window, control, 4, KeyModifiers.Control);
+
+            Assert.AreEqual("https://example.com/report", ToolTip.GetTip(control));
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    public void CtrlHoveringOutsideTheOsc8Run_ShowsNothing()
+    {
+        OnUi(() =>
+        {
+            (VelaTerminalControl control, Window window) = ShowWithOsc8Link();
+
+            MoveTo(window, control, 8, KeyModifiers.Control); // 关闭序列之后的 " now"
+
+            Assert.IsNull(ToolTip.GetTip(control));
+            window.Close();
+        });
+    }
+
     [TestMethod]
     public void HoverJudgementMatchesTheCtrlClickTarget()
     {

@@ -28,6 +28,25 @@ public sealed class TerminalRow(int columns)
 {
     private TerminalCell[] _cells = new TerminalCell[columns];
 
+    /// <summary>
+    /// 与 <see cref="_cells" /> 平行的 OSC 8 超链接句柄数组(0 = 该格无链接);
+    /// 整行都不带链接时为 null,一格不占。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么不塞进 <see cref="TerminalCell" />。</b>单元格是 16 字节且不含托管引用,
+    /// 由 <c>TerminalCellMemoryTests</c> 的两条断言把守;再加一个 <see cref="ushort" /> 会因对齐
+    /// 涨到 20 字节 —— 回滚缓冲每标签页上百万格,那是 25% 的无条件涨幅,而带链接的行万里挑一。
+    /// 平行数组把这笔账精确地记在真正有链接的那些行头上(它们多付 2 B/列),
+    /// 其余行只多一个 null 引用字段。xterm.js 的 <c>_extendedAttrs</c> 是同一取舍。
+    /// </para>
+    /// <para>
+    /// 长度始终跟随 <see cref="_cells" />;读越界返回 0(= 无链接),与索引器读越界合成
+    /// <c>default</c> 单元格是同一套语义。
+    /// </para>
+    /// </remarks>
+    private ushort[]? _links;
+
     /// <summary>当该行由自动换行结束(而非显式换行)时为 true。</summary>
     public bool Wrapped { get; set; }
 
@@ -62,6 +81,87 @@ public sealed class TerminalRow(int columns)
         {
             EnsureStored();
             _cells[col] = value;
+        }
+    }
+
+    /// <summary>本行是否存在 OSC 8 超链接(渲染与命中判定用来整行短路)。</summary>
+    public bool HasLinks => _links is not null;
+
+    /// <summary>指定列的 OSC 8 超链接句柄;0 表示该格不是链接。越界读返回 0。</summary>
+    /// <remarks>句柄由 <see cref="HyperlinkTable" /> 分配,经它换回 URI。</remarks>
+    public ushort LinkAt(int col) =>
+        _links is not null && (uint)col < (uint)_links.Length ? _links[col] : (ushort)0;
+
+    /// <summary>设置指定列的超链接句柄。</summary>
+    /// <remarks>
+    /// 写 0 到一行从未有过链接的行上是纯粹的空操作 —— 不分配数组。打印路径每格都会调用它
+    /// (哪怕当前没有链接),靠的正是这条快路径:少了这一步,"在旧链接上覆写普通文本"
+    /// 会留下点得开的幽灵链接。
+    /// </remarks>
+    public void SetLink(int col, ushort handle)
+    {
+        if (handle == 0 && _links is null)
+        {
+            return;
+        }
+        if ((uint)col >= (uint)Columns)
+        {
+            return;
+        }
+        EnsureStored();
+        EnsureLinkStorage();
+        _links[col] = handle;
+    }
+
+    /// <summary>把 <paramref name="start" />..<paramref name="endExclusive" /> 的超链接句柄整段设为同一值(裁剪到行边界)。</summary>
+    public void SetLinkRange(int start, int endExclusive, ushort handle)
+    {
+        if (handle == 0 && _links is null)
+        {
+            return;
+        }
+        EnsureStored();
+        EnsureLinkStorage();
+        int from = Math.Max(0, start);
+        int to = Math.Min(_links.Length, endExclusive);
+        if (to > from)
+        {
+            _links.AsSpan(from, to - from).Fill(handle);
+        }
+    }
+
+    /// <summary>就地分配/补齐链接数组到当前存储宽度。</summary>
+    [System.Diagnostics.CodeAnalysis.MemberNotNull(nameof(_links))]
+    private void EnsureLinkStorage()
+    {
+        if (_links is null)
+        {
+            _links = new ushort[_cells.Length];
+        }
+        else if (_links.Length < _cells.Length)
+        {
+            Array.Resize(ref _links, _cells.Length);
+        }
+    }
+
+    /// <summary>把链接数组整段清零;整行都没有链接了就把数组一并丢掉(回滚区行常见)。</summary>
+    private void ClearLinks(int start, int endExclusive)
+    {
+        if (_links is null)
+        {
+            return;
+        }
+        int from = Math.Max(0, start);
+        int to = Math.Min(_links.Length, endExclusive);
+        if (to > from)
+        {
+            Array.Clear(_links, from, to - from);
+        }
+        // 清空后整行不再有链接就把数组丢掉:重绘型 shell 反复擦行,不回收的话一条早已滚走的
+        // 链接会让这一行永远多背 2 B/列。只在本就有链接的行上走到这里,故不是热路径。
+        if (Array.TrueForAll(_links, static h => h == 0))
+        {
+            _links = null;
         }
     }
 
@@ -116,6 +216,10 @@ public sealed class TerminalRow(int columns)
         var next = new TerminalCell[Columns];
         Array.Copy(_cells, next, _cells.Length);
         _cells = next;
+        if (_links is not null)
+        {
+            Array.Resize(ref _links, Columns);
+        }
     }
 
     /// <summary>
@@ -135,7 +239,9 @@ public sealed class TerminalRow(int columns)
     public void TrimToContent()
     {
         int last = _cells.Length - 1;
-        while (last >= 0 && _cells[last] == default)
+        // 带链接的空白格也是内容:OSC 8 允许把链接铺在空格上(某些 TUI 用它做整行可点区域),
+        // 只看单元格会把这段可点区域连同句柄一起砍掉。
+        while (last >= 0 && _cells[last] == default && LinkAt(last) == 0)
         {
             last--;
         }
@@ -143,6 +249,7 @@ public sealed class TerminalRow(int columns)
         if (keep == 0)
         {
             _cells = [];
+            _links = null;
             return;
         }
         if (keep * TrimDenominator > _cells.Length * TrimNumerator)
@@ -152,6 +259,10 @@ public sealed class TerminalRow(int columns)
         var next = new TerminalCell[keep];
         Array.Copy(_cells, next, keep);
         _cells = next;
+        if (_links is not null)
+        {
+            Array.Resize(ref _links, keep);
+        }
     }
 
     /// <summary>
@@ -181,6 +292,7 @@ public sealed class TerminalRow(int columns)
         {
             _cells[i] = cell;
         }
+        _links = null; // 整行被空白覆盖:链接随之作废。
         Wrapped = false;
         Timestamp = null; // 整行清空(擦除/复用作滚动新行)→ 视为未写入,时间戳作废。
     }
@@ -202,6 +314,7 @@ public sealed class TerminalRow(int columns)
         {
             _cells[i] = cell;
         }
+        ClearLinks(start, endExclusive); // 擦掉的格连同它的链接一起没了。
         if (Timestamp is not null && LastNonBlank() < 0)
         {
             Wrapped = false;
@@ -227,6 +340,10 @@ public sealed class TerminalRow(int columns)
             next[i] = blank;
         }
         _cells = next;
+        if (_links is not null)
+        {
+            Array.Resize(ref _links, columns); // 增长部分补 0(新格无链接),截断部分随格丢弃
+        }
         Columns = columns;
     }
 
@@ -240,6 +357,11 @@ public sealed class TerminalRow(int columns)
         }
         count = Math.Min(count, _cells.Length - col);
         Array.Copy(_cells, col + count, _cells, col, _cells.Length - col - count);
+        if (_links is not null)
+        {
+            // 链接随格左移:DCH 之后剩下的字符还是原来那些字符,链接归属不能错位。
+            Array.Copy(_links, col + count, _links, col, _links.Length - col - count);
+        }
         FillRange(_cells.Length - count, _cells.Length, blank);
     }
 
@@ -253,6 +375,10 @@ public sealed class TerminalRow(int columns)
         }
         count = Math.Min(count, _cells.Length - col);
         Array.Copy(_cells, col, _cells, col + count, _cells.Length - col - count);
+        if (_links is not null)
+        {
+            Array.Copy(_links, col, _links, col + count, _links.Length - col - count);
+        }
         FillRange(col, col + count, blank);
     }
 
@@ -380,6 +506,7 @@ public sealed class TerminalRow(int columns)
         }
         Columns = columns;
         _cells.AsSpan().Fill(blank);
+        _links = null;
         Wrapped = false;
         Timestamp = null;
     }
@@ -395,6 +522,10 @@ public sealed class TerminalRow(int columns)
             _cells = new TerminalCell[_cells.Length]
         };
         Array.Copy(_cells, clone._cells, _cells.Length);
+        if (_links is not null)
+        {
+            clone._links = (ushort[])_links.Clone();
+        }
         return clone;
     }
 }

@@ -335,6 +335,45 @@ RemoteInitialPath `"/home/user"` → `""`（空 = 家目录）。
 - ✅ **CJK 回退视为已解决**：字体链（Cascadia Mono → JetBrains Mono → Consolas → Microsoft YaHei →
   monospace）+ 渲染器逐格 FormattedText 回退路径已覆盖双宽字形。
 
+### ✅ D. OSC 8 显式超链接（2026-09-08）
+
+`OSC 8 ; params ; URI ST … OSC 8 ; ; ST`：远端**明说**「这段文本是指向该 URI 的链接」，
+显示文本与目标可以完全不同（`ls --hyperlink`、`gh`、`delta`、cargo/gcc 的诊断都在发）。
+在此之前只有 `SemanticMatcher` 的**正则猜测**，锚文本一旦不像 URL（`点此查看报告`）就永远认不出来。
+
+**落点与取舍**
+
+- **句柄而非引用**：`Emulation/HyperlinkTable.cs` 把 `(id, URI)` 驻留成 `ushort` 句柄（0 = 无链接），
+  单元格只存句柄 —— 与 `CombiningPool` 同一路子。
+- **⚠️ 句柄不在 `TerminalCell` 里，而是 `TerminalRow` 上一个平行的 `ushort[]?`。**
+  `feature-plan.md` 原本写的是「`CellFlags` 旁边加一个 link-id」，**做的时候改了**：
+  单元格现在恰好 16 字节（4+4+4+2+2），再加一个 `ushort` 会因对齐涨到 20 —— 那是回滚缓冲
+  **25% 的无条件涨幅**，而带链接的行万里挑一。平行数组把这笔账精确记在真有链接的行上
+  （多付 2 B/列），其余行只多一个 null 引用字段。`TerminalCellMemoryTests` 的两条断言因此原样通过。
+  xterm.js 的 `_extendedAttrs` 是同一取舍。
+- **代价是要逐条接线**：`Fill` / `FillRange` / `DeleteCells` / `InsertCells` / `Resize` /
+  `TrimToContent` / `ResetFor` / `Clone` 每一条都要把链接数组一起搬，`TerminalScreen.ReflowResize`
+  也要拿一个平行 `List<ushort>` 把句柄送过重排 —— **漏掉重排那一处，拖一下窗口宽度所有链接就没了**。
+  `Osc8HyperlinkTests` 逐条守着这些路径。
+- **打印路径每格都盖句柄，哪怕当前没有链接**（`SetLink`/`SetLinkRange` 在「写 0 且本行从无链接」时是
+  纯空操作，不分配）。少了这一步，「在旧链接上覆写普通文本」会留下点得开的幽灵链接。
+  `PrintRun` 快路径同样要盖 —— 否则长链接整段失效、短的（走逐字符路径）看着好好的。
+- **URI 必须把 `p[2..]` 拼回来**：`;` 是 OSC 的字段分隔符，却在查询串里完全合法（`?a=1;b=2`）。
+- **OSC 8 与 SGR 相互独立**：`SGR 0` 不关链接，只有 `OSC 8 ; ; ST` 关。
+
+**安全**：URI 来自不可信的远端输出，而点开它走系统 shell 关联。因此 scheme 走**白名单**
+（`http` / `https` / `ftp` / `ftps` / `mailto`），含控制字符或超长（>2083）的一律不驻留。
+**`file:` 刻意不放行** —— 对 SSH 客户端来说 `ls --hyperlink` 报的是**远端**路径，在本机打开
+既无正确语义，又正好是这条攻击面上最危险的一格。不驻留的链接**照常显示文本**，只是不画下划线、
+点不开，与「看起来能点 = 真的能点」这条既有约定一致。
+
+**表的生命周期**：没有引用计数（回滚区里的格随时可能引用任意一条旧句柄），故设 4096 条上限，
+撞顶后新链接退化为普通文本；只有 RIS 硬复位（缓冲区连同回滚一并清空）才整表回收。
+
+**UI**：渲染层给带句柄的格画下划线（不受「语义高亮」开关约束 —— 那个开关管的是本地猜测，
+这条是协议事实），着色仍只染留在默认前景色下的文本。命中判定统一收进
+`VelaTerminalControl.LinkAtCell`，**OSC 8 优先、正则兜底**，Ctrl+悬停与 Ctrl+点击共用它。
+
 ## 🚧 11. 设计稿分析已记录的问题（供实现时对照）
 
 | 状态 | 项 | 说明 |
