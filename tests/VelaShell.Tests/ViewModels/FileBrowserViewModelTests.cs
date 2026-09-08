@@ -935,6 +935,72 @@ public class FileBrowserViewModelTests
             );
     }
 
+    /// <summary>
+    /// 双击打开的文件也要被监视,保存后自动回传。
+    /// </summary>
+    /// <remarks>
+    /// #396 的真凶:双击走的是"下载 + 交给系统默认程序",全程没有 watcher,
+    /// 而右键「使用默认编辑器打开」是有的 —— 两个入口在界面上长得一模一样。
+    /// 报告人先用右键存了一次(成功),之后改用双击,于是看到的现象是
+    /// 「第一次保存有效,后面再编辑保存就没有效果了」。
+    /// </remarks>
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task DoubleClick_RegistersAnEditSessionThatUploadsOnSave()
+    {
+        RemoteEditSessionManager.CleanupAll();
+        string? tempDirectory = null;
+        try
+        {
+            string? openedPath = null;
+            _vm.OpenLocalFile = path =>
+            {
+                openedPath = path;
+                return Task.CompletedTask;
+            };
+            _sftpService
+                .DownloadFileAsync(
+                    _sessionId,
+                    "/home/user/readme.txt",
+                    Arg.Any<string>(),
+                    Arg.Any<IProgress<TransferProgress>?>(),
+                    cancellationToken: Arg.Any<CancellationToken>()
+                )
+                .Returns(callInfo =>
+                {
+                    File.WriteAllText(callInfo.ArgAt<string>(2), "from the server");
+                    return Task.CompletedTask;
+                });
+
+            await _vm.ActivateCommand.Execute(new(CreateTestFiles()[1])).FirstAsync();
+
+            Assert.IsNotNull(openedPath, "双击没有把文件交给系统默认程序打开。");
+            RemoteEditSession session = RemoteEditSessionManager.ActiveSessions.Single();
+            tempDirectory = Path.GetDirectoryName(session.LocalPath);
+            Assert.AreEqual("/home/user/readme.txt", session.RemotePath);
+            Assert.AreEqual(openedPath, session.LocalPath,
+                            "打开的文件和被监视的文件不是同一个 —— 保存永远传不上去。");
+
+            // 在编辑器里存一次:watcher 必须看见,并把它记成"待回传"。
+            await File.WriteAllTextAsync(session.LocalPath, "edited locally");
+            for (int i = 0; i < 2_000 && !session.HasPendingChange; i++)
+            {
+                await Task.Delay(5);
+            }
+            Assert.IsTrue(session.HasPendingChange, "双击打开的文件保存后没有被监视到。");
+        }
+        finally
+        {
+            // 这个会话故意留着一次没上传的改动,收尾时会<b>刻意保留</b>本地副本
+            //(那是改动唯一的存身之处)。所以得自己把它删掉,别在 %TEMP% 下积草稿。
+            RemoteEditSessionManager.CleanupAll();
+            if (tempDirectory is not null && Directory.Exists(tempDirectory))
+            {
+                Directory.Delete(tempDirectory, true);
+            }
+        }
+    }
+
     [TestMethod]
     [TestCategory("FileBrowser")]
     public async Task OpenWithDefaultEditor_RejectsUnsafeRemoteLeafNameBeforeExternalEdit()
@@ -971,7 +1037,7 @@ public class FileBrowserViewModelTests
         }
         finally
         {
-            ExternalEditSessionManager.CleanupAll();
+            RemoteEditSessionManager.CleanupAll();
         }
     }
 

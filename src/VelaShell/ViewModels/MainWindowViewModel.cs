@@ -4850,6 +4850,14 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     browser.ShowHiddenFiles = settings.Transfer.ShowHiddenFiles;
                     ApplyColumnVisibility(browser, settings.Transfer);
                 }
+
+                // 「编辑后自动上传」是个闸,改了要对<b>已经开着的</b>编辑会话生效 ——
+                // 用户关掉它多半正是因为手边这个文件不想再自动写过去了,让他先关掉编辑器
+                // 再重开一遍才算数,那就等于没有这个开关。
+                foreach (Services.RemoteEditSession session in Services.RemoteEditSessionManager.ActiveSessions)
+                {
+                    session.AutoUpload = settings.Transfer.AutoUploadOnEdit;
+                }
                 RevealActiveSessionInSidebar();
             }
         );

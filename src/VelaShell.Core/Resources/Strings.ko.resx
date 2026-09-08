@@ -4456,4 +4456,58 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Msg_PluginOpeningPanel" xml:space="preserve">
     <value>패널을 여는 중</value>
   </data>
+  <data name="Svc_RemoteEditReusedDraft" xml:space="preserve">
+    <value>{0}에 아직 업로드되지 않은 변경이 있습니다. 다시 내려받아 덮어쓰지 않고 로컬 사본({1})을 그대로 사용합니다.</value>
+  </data>
+  <data name="Transfer_EditingTitle" xml:space="preserve">
+    <value>편집 중</value>
+  </data>
+  <data name="Transfer_EditUploadNow" xml:space="preserve">
+    <value>지금 업로드</value>
+  </data>
+  <data name="Transfer_EditStop" xml:space="preserve">
+    <value>감시 종료</value>
+  </data>
+  <data name="Transfer_EditReveal" xml:space="preserve">
+    <value>로컬 폴더 열기</value>
+  </data>
+  <data name="Transfer_EditWatching" xml:space="preserve">
+    <value>저장 감시 중</value>
+  </data>
+  <data name="Transfer_EditUploading" xml:space="preserve">
+    <value>업로드 중…</value>
+  </data>
+  <data name="Transfer_EditPending" xml:space="preserve">
+    <value>업로드 대기</value>
+  </data>
+  <data name="Transfer_EditUploadedAt" xml:space="preserve">
+    <value>{0}에 업로드됨</value>
+  </data>
+  <data name="Transfer_EditFailed" xml:space="preserve">
+    <value>업로드 실패: {0}</value>
+  </data>
+  <data name="SetTransfer_SectionRemoteEdit" xml:space="preserve">
+    <value>원격 편집</value>
+  </data>
+  <data name="SetTransfer_DoubleClickAction" xml:space="preserve">
+    <value>파일을 두 번 클릭할 때</value>
+  </data>
+  <data name="SetTransfer_DoubleClickActionDesc" xml:space="preserve">
+    <value>세 방식 모두 저장할 때마다 서버로 자동 업로드합니다</value>
+  </data>
+  <data name="SetTransfer_DoubleClickSystem" xml:space="preserve">
+    <value>시스템 기본 앱</value>
+  </data>
+  <data name="SetTransfer_DoubleClickBuiltin" xml:space="preserve">
+    <value>내장 편집기</value>
+  </data>
+  <data name="SetTransfer_DoubleClickEditor" xml:space="preserve">
+    <value>설정한 편집기</value>
+  </data>
+  <data name="SetTransfer_AutoUploadOnEdit" xml:space="preserve">
+    <value>편집 후 자동 업로드</value>
+  </data>
+  <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
+    <value>꺼도 변경은 기록됩니다. 「편집 중」에서 수동으로 업로드하세요</value>
+  </data>
 </root>

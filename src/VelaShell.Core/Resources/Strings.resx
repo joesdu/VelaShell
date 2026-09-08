@@ -4457,4 +4457,58 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="Msg_PluginOpeningPanel" xml:space="preserve">
     <value>Opening panel</value>
   </data>
+  <data name="Svc_RemoteEditReusedDraft" xml:space="preserve">
+    <value>{0} still has changes that were never uploaded. Kept your local copy at {1} instead of overwriting it.</value>
+  </data>
+  <data name="Transfer_EditingTitle" xml:space="preserve">
+    <value>Editing</value>
+  </data>
+  <data name="Transfer_EditUploadNow" xml:space="preserve">
+    <value>Upload now</value>
+  </data>
+  <data name="Transfer_EditStop" xml:space="preserve">
+    <value>Stop watching</value>
+  </data>
+  <data name="Transfer_EditReveal" xml:space="preserve">
+    <value>Open local folder</value>
+  </data>
+  <data name="Transfer_EditWatching" xml:space="preserve">
+    <value>Watching for saves</value>
+  </data>
+  <data name="Transfer_EditUploading" xml:space="preserve">
+    <value>Uploading…</value>
+  </data>
+  <data name="Transfer_EditPending" xml:space="preserve">
+    <value>Waiting to upload</value>
+  </data>
+  <data name="Transfer_EditUploadedAt" xml:space="preserve">
+    <value>Uploaded at {0}</value>
+  </data>
+  <data name="Transfer_EditFailed" xml:space="preserve">
+    <value>Upload failed: {0}</value>
+  </data>
+  <data name="SetTransfer_SectionRemoteEdit" xml:space="preserve">
+    <value>Remote editing</value>
+  </data>
+  <data name="SetTransfer_DoubleClickAction" xml:space="preserve">
+    <value>Double-click a file</value>
+  </data>
+  <data name="SetTransfer_DoubleClickActionDesc" xml:space="preserve">
+    <value>All three open a local copy and upload it back on every save</value>
+  </data>
+  <data name="SetTransfer_DoubleClickSystem" xml:space="preserve">
+    <value>System default app</value>
+  </data>
+  <data name="SetTransfer_DoubleClickBuiltin" xml:space="preserve">
+    <value>Built-in editor</value>
+  </data>
+  <data name="SetTransfer_DoubleClickEditor" xml:space="preserve">
+    <value>Configured editor</value>
+  </data>
+  <data name="SetTransfer_AutoUploadOnEdit" xml:space="preserve">
+    <value>Upload automatically after editing</value>
+  </data>
+  <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
+    <value>Off: changes are still tracked; upload them from the Editing list</value>
+  </data>
 </root>

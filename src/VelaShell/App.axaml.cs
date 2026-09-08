@@ -308,13 +308,13 @@ public class App : Application
             }
 
             // 退出时释放容器,确保 SonnetDB 引擎正常关闭(WAL/段刷盘);
-            // 并清理「默认编辑器打开」遗留的 remote-edit 临时文件。
+            // 并把远程编辑会话未落地的改动传完、清理 remote-edit 临时文件。
             desktop.Exit += (_, _) =>
             {
                 ExternalLaunchInbox.Detach();
                 _launchChannel?.Dispose();
                 _trayIconService?.Dispose();
-                ExternalEditSessionManager.CleanupAll();
+                RemoteEditSessionManager.CleanupAll();
                 CloseTerminalBridgesOnExit(viewModel);
                 DisposeServicesOnExit();
             };

@@ -116,13 +116,20 @@ public sealed class FileTransferPanelUiTests
         public FileTransferViewModel ViewModel { get; }
 
         /// <summary>
-        /// 传输行的滚动视口(视图里只有这一个)。刻意不去认 ItemsControl 的尺寸:
+        /// 传输行的滚动视口。刻意不去认 ItemsControl 的尺寸:
         /// 修复前后 280px 上限落在不同的元素上,而"用户看到多高一块区域"始终是视口说了算。
         /// </summary>
-        public ScrollViewer Viewport => View.GetVisualDescendants().OfType<ScrollViewer>().Single();
+        /// <remarks>
+        /// 按名字找,不按类型找唯一的那个 —— 面板里现在还有一组「正在编辑」的行
+        /// (它的 ItemsControl 即便整组隐藏也留在视觉树里),<c>Single()</c> 会当场炸。
+        /// </remarks>
+        public ScrollViewer Viewport => Named<ScrollViewer>("TransferViewport");
 
-        /// <summary>承载传输行的列表(视图里只有这一个)。</summary>
-        public ItemsControl List => View.GetVisualDescendants().OfType<ItemsControl>().Single();
+        /// <summary>承载传输行的列表。</summary>
+        public ItemsControl List => Named<ItemsControl>("TransferRows");
+
+        private T Named<T>(string name) where T : Control =>
+            View.GetVisualDescendants().OfType<T>().Single(control => control.Name == name);
 
         public static Fixture Show(int transferCount)
         {
@@ -170,7 +177,13 @@ public sealed class FileTransferPanelUiTests
             .. List.ItemsPanelRoot?.Children.Where(child => child.IsVisible) ?? []
         ];
 
-        public void Dispose() => Window.Close();
+        public void Dispose()
+        {
+            Window.Close();
+            // 面板订阅了 RemoteEditSessionManager 那个静态事件;不摘的话它会活到进程结束,
+            // 之后每一次编辑会话变化都要顺带来敲这个早就关掉的窗口一下。
+            ViewModel.Dispose();
+        }
     }
 
     private static void OnUi(Action action) => _session.Dispatch(action, CancellationToken.None).GetAwaiter().GetResult();

@@ -7,6 +7,7 @@ using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
+using VelaShell.Services;
 
 namespace VelaShell.ViewModels;
 
@@ -14,7 +15,7 @@ namespace VelaShell.ViewModels;
 /// 文件传输面板(toast)的视图模型:聚合活动/历史传输项,驱动准备扫描、
 /// 可取消批量传输、徽标计数与自动隐藏等交互逻辑。
 /// </summary>
-public class FileTransferViewModel : ReactiveObject, IDraggablePanel
+public class FileTransferViewModel : ReactiveObject, IDraggablePanel, IDisposable
 {
     /// <summary>面板位置的存储位置(IAppDataStore 的用途之一即 UI 配置)。</summary>
     private const string LayoutCollection = "ui-layout";
@@ -116,10 +117,129 @@ public class FileTransferViewModel : ReactiveObject, IDraggablePanel
         ClearCompletedCommand = ReactiveCommand.Create(ClearCompleted);
         CancelAllCommand = ReactiveCommand.Create(CancelAll);
         HidePanelCommand = ReactiveCommand.Create(() => { IsPanelVisible = false; });
+        Edits = [];
+        UploadEditNowCommand = ReactiveCommand.CreateFromTask<Guid>(UploadEditNowAsync);
+        StopEditCommand = ReactiveCommand.CreateFromTask<Guid>(StopEditAsync);
+        RevealEditCommand = ReactiveCommand.CreateFromTask<Guid>(RevealEditAsync);
+        RemoteEditSessionManager.SessionsChanged += OnRemoteEditSessionsChanged;
+        SyncEdits(announce: false);
+    }
+
+    /// <summary>
+    /// 摘掉对 <see cref="RemoteEditSessionManager.SessionsChanged" /> 的订阅。
+    /// </summary>
+    /// <remarks>
+    /// 那是个<b>静态</b>事件:不摘的话这个面板会被它一直钉在内存里 ——
+    /// 真机上只有一个实例、活到进程结束,无所谓;成百上千地 new 出来的回归用例里就是笔账。
+    /// </remarks>
+    public void Dispose()
+    {
+        RemoteEditSessionManager.SessionsChanged -= OnRemoteEditSessionsChanged;
+        _autoHide?.Dispose();
+        _autoHide = null;
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>当前所有传输项(活动与已完成),新任务插入到列表顶部。</summary>
     public ObservableCollection<TransferItemViewModel> Transfers { get; }
+
+    // ———————————————————— 正在编辑 ————————————————————
+    //
+    // 远程编辑会话(双击 / 右键「使用默认编辑器打开」)在这里露面。传输行是"发生过的事",
+    // 这一组是"还挂着的事":哪些文件正被盯着、上一次回传是什么时候、失败了没有。
+    // #396 之前这一切完全不可见 —— 自动上传静默工作,静默失效,用户无从分辨。
+
+    /// <summary>当前存活的远程编辑会话,每行一个文件。</summary>
+    public ObservableCollection<RemoteEditItemViewModel> Edits { get; }
+
+    /// <summary>有正在编辑的远程文件(决定分组显不显示)。</summary>
+    public bool HasEdits => Edits.Count > 0;
+
+    /// <summary>立即把某个编辑会话的本地副本传回远端(手动上传 / 失败后重试)。</summary>
+    public ReactiveCommand<Guid, RxVoid> UploadEditNowCommand { get; }
+
+    /// <summary>结束某个编辑会话:传完没传的,然后停止监视。</summary>
+    public ReactiveCommand<Guid, RxVoid> StopEditCommand { get; }
+
+    /// <summary>在系统文件管理器里定位本地副本。</summary>
+    public ReactiveCommand<Guid, RxVoid> RevealEditCommand { get; }
+
+    /// <summary>
+    /// 由视图设置:在系统文件管理器里定位一个本地文件(只有它拿得到 TopLevel.Launcher)。
+    /// </summary>
+    public Func<string, Task>? RevealLocalPath { get; set; }
+
+    /// <summary>
+    /// 会话增删/状态变化 → 切回 UI 线程刷新列表(事件可能来自 watcher 线程或上传任务)。
+    /// </summary>
+    /// <remarks>
+    /// <b>一律 Post,不走 <c>CheckAccess()</c> 直调的快路。</b>那条快路曾把整个测试宿主打崩:
+    /// 在没有真正 UI 线程的宿主里 <c>CheckAccess()</c> 会对着 <see cref="FileSystemWatcher" />
+    /// 的线程池线程点头,于是 <c>Edits</c> 的集合变更直接打到绑定的 ItemsControl 上,
+    /// 换来一条 "The calling thread cannot access this object"。省下的那一次投递不值这个价。
+    /// </remarks>
+    private void OnRemoteEditSessionsChanged() => Dispatcher.UIThread.Post(() => SyncEdits(announce: true));
+
+    /// <summary>
+    /// 让 <see cref="Edits" /> 与管理器里的存活会话对齐:留下的行原地更新(不重建,
+    /// 否则每次保存都会让列表闪一下、把悬停的按钮从指针下面抽走)。
+    /// </summary>
+    /// <param name="announce">
+    /// 新出现的会话/新发生的失败是否要把浮窗弹出来。构造时那一次<b>不弹</b> ——
+    /// 面板刚建出来就自己蹦出来不是反馈,而且"面板一造好就是可见的"会踩掉
+    /// 「集合非空 ⇔ 面板可见」这条不变量。
+    /// </param>
+    private void SyncEdits(bool announce)
+    {
+        RemoteEditSnapshot[] live = [.. RemoteEditSessionManager.ActiveSessions.Select(s => s.Snapshot())];
+        for (int i = Edits.Count - 1; i >= 0; i--)
+        {
+            if (!live.Any(s => s.Id == Edits[i].Id))
+            {
+                Edits.RemoveAt(i);
+            }
+        }
+        bool worthShowing = false;
+        foreach (RemoteEditSnapshot snapshot in live)
+        {
+            if (Edits.FirstOrDefault(e => e.Id == snapshot.Id) is { } existing)
+            {
+                // 失败要把面板叫回来:那条改动此刻只存在于本地副本里,不能让它静静躺着。
+                worthShowing |= snapshot.State == RemoteEditState.Failed && !existing.IsFailed;
+                existing.Apply(snapshot);
+            }
+            else
+            {
+                Edits.Add(new(snapshot));
+                worthShowing = true;
+            }
+        }
+        this.RaisePropertyChanged(nameof(HasEdits));
+        if (announce && worthShowing)
+        {
+            // 只在"多了一个会话"或"刚失败"时把面板叫出来。每次成功回传都弹一次的话,
+            // 用户按一下 x 收起,下一次保存它又回来 —— 那不是反馈,是打扰。
+            IsPanelVisible = true;
+        }
+    }
+
+    private static async Task UploadEditNowAsync(Guid id)
+    {
+        if (RemoteEditSessionManager.Find(id) is { } session)
+        {
+            await session.UploadNowAsync();
+        }
+    }
+
+    private static Task StopEditAsync(Guid id) => RemoteEditSessionManager.CloseAsync(id);
+
+    private async Task RevealEditAsync(Guid id)
+    {
+        if (RevealLocalPath is not null && RemoteEditSessionManager.Find(id) is { } session)
+        {
+            await RevealLocalPath(session.LocalPath);
+        }
+    }
 
     /// <summary>进行中(传输中或排队中)的任务数量。</summary>
     public int ActiveCount => Transfers.Count(t => t.IsActive);
@@ -320,7 +440,7 @@ public class FileTransferViewModel : ReactiveObject, IDraggablePanel
         _preparingCount = 0;
         IsPreparing = false;
         this.RaisePropertyChanged(nameof(PendingCount));
-        if (Transfers.Count == 0)
+        if (Transfers.Count == 0 && !HasEdits)
         {
             IsPanelVisible = false;
         }
@@ -448,7 +568,8 @@ public class FileTransferViewModel : ReactiveObject, IDraggablePanel
                 item.PropertyChanged -= OnTransferItemChanged;
             }
         }
-        IsPanelVisible = Transfers.Count > 0;
+        // 有文件正被编辑时不能因为传输行清空就把面板收掉 —— 「正在编辑」还挂在上面。
+        IsPanelVisible = Transfers.Count > 0 || HasEdits;
     }
 
     private void OnTransferItemChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -471,8 +592,9 @@ public class FileTransferViewModel : ReactiveObject, IDraggablePanel
         _autoHide?.Dispose();
         _autoHide = null;
 
-        // 批次有剩余文件时、任一单文件传输仍在进行时、或扫描正在规划下一批次时,保持浮窗开启。
-        if (ActiveCount > 0 || IsBatchActive || IsPreparing)
+        // 批次有剩余文件时、任一单文件传输仍在进行时、扫描正在规划下一批次时,
+        // 或还有文件正被编辑(「正在编辑」分组还挂着)时,保持浮窗开启。
+        if (ActiveCount > 0 || IsBatchActive || IsPreparing || HasEdits)
         {
             _hidePending = false;
             return;
@@ -612,7 +734,7 @@ public class FileTransferViewModel : ReactiveObject, IDraggablePanel
     {
         _autoHide = DispatcherTimer.RunOnce(() =>
         {
-            if (ActiveCount != 0 || _isPointerOver)
+            if (ActiveCount != 0 || _isPointerOver || HasEdits)
             {
                 return;
             }

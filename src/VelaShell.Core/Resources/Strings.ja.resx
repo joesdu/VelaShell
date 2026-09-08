@@ -4456,4 +4456,58 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Msg_PluginOpeningPanel" xml:space="preserve">
     <value>パネルを開いています</value>
   </data>
+  <data name="Svc_RemoteEditReusedDraft" xml:space="preserve">
+    <value>{0} にはまだアップロードされていない変更があります。再ダウンロードして上書きせず、ローカルコピー({1})をそのまま使います。</value>
+  </data>
+  <data name="Transfer_EditingTitle" xml:space="preserve">
+    <value>編集中</value>
+  </data>
+  <data name="Transfer_EditUploadNow" xml:space="preserve">
+    <value>今すぐアップロード</value>
+  </data>
+  <data name="Transfer_EditStop" xml:space="preserve">
+    <value>監視を終了</value>
+  </data>
+  <data name="Transfer_EditReveal" xml:space="preserve">
+    <value>ローカルフォルダーを開く</value>
+  </data>
+  <data name="Transfer_EditWatching" xml:space="preserve">
+    <value>保存を監視中</value>
+  </data>
+  <data name="Transfer_EditUploading" xml:space="preserve">
+    <value>アップロード中…</value>
+  </data>
+  <data name="Transfer_EditPending" xml:space="preserve">
+    <value>アップロード待ち</value>
+  </data>
+  <data name="Transfer_EditUploadedAt" xml:space="preserve">
+    <value>{0} にアップロード済み</value>
+  </data>
+  <data name="Transfer_EditFailed" xml:space="preserve">
+    <value>アップロードに失敗しました: {0}</value>
+  </data>
+  <data name="SetTransfer_SectionRemoteEdit" xml:space="preserve">
+    <value>リモート編集</value>
+  </data>
+  <data name="SetTransfer_DoubleClickAction" xml:space="preserve">
+    <value>ファイルをダブルクリックしたとき</value>
+  </data>
+  <data name="SetTransfer_DoubleClickActionDesc" xml:space="preserve">
+    <value>いずれの方法でも、保存するたびにサーバーへ自動でアップロードされます</value>
+  </data>
+  <data name="SetTransfer_DoubleClickSystem" xml:space="preserve">
+    <value>システム既定のアプリ</value>
+  </data>
+  <data name="SetTransfer_DoubleClickBuiltin" xml:space="preserve">
+    <value>内蔵エディター</value>
+  </data>
+  <data name="SetTransfer_DoubleClickEditor" xml:space="preserve">
+    <value>設定したエディター</value>
+  </data>
+  <data name="SetTransfer_AutoUploadOnEdit" xml:space="preserve">
+    <value>編集後に自動アップロード</value>
+  </data>
+  <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
+    <value>オフでも変更は記録されます。「編集中」から手動でアップロードしてください</value>
+  </data>
 </root>

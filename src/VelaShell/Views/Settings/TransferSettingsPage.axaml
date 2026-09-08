@@ -36,6 +36,29 @@
 
     <Border Classes="sep" />
 
+    <!-- 远程编辑(#396):三个「打开」入口共用一套编辑会话,这里决定双击走哪一个、要不要自动回传。 -->
+    <TextBlock Classes="section-title" Text="{loc:Localize SetTransfer_SectionRemoteEdit}" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetTransfer_DoubleClickAction}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetTransfer_DoubleClickActionDesc}" />
+      </StackPanel>
+      <ComboBox Grid.Column="1" Width="150" SelectedIndex="{Binding DoubleClickActionIndex}" VerticalAlignment="Center">
+        <ComboBoxItem Content="{loc:Localize SetTransfer_DoubleClickSystem}" />
+        <ComboBoxItem Content="{loc:Localize SetTransfer_DoubleClickBuiltin}" />
+        <ComboBoxItem Content="{loc:Localize SetTransfer_DoubleClickEditor}" />
+      </ComboBox>
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetTransfer_AutoUploadOnEdit}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetTransfer_AutoUploadOnEditDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Transfer.AutoUploadOnEdit}" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="sep" />
+
     <!-- 传输行为 -->
     <TextBlock Classes="section-title" Text="{loc:Localize SetTransfer_SectionBehavior}" />
     <Grid ColumnDefinitions="*,Auto">

@@ -101,16 +101,104 @@
                    FontSize="{DynamicResource VelaFontSize10}" />
       </Border>
 
+      <!-- 正在编辑:哪些远端文件正被本地编辑器盯着(双击 / 右键「使用默认编辑器打开」)。
+           这一组是这个功能唯一的可见面:上一次回传是什么时候、有没有还没传上去的改动、
+           失败了的话本地副本在哪儿。#396 之前这些全是隐形的,失效了也没人看得出来。 -->
+      <StackPanel IsVisible="{Binding HasEdits}">
+        <Border Padding="12,6"
+                Background="{DynamicResource VelaBgHover}"
+                BorderBrush="{DynamicResource VelaBorderPrimary}"
+                BorderThickness="0,0,0,1">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <pc:LucideIcon Width="11" Height="11"
+                           Data="{StaticResource Icon.pencil}"
+                           Foreground="{DynamicResource VelaTextTertiary}" />
+            <TextBlock Text="{loc:Localize Transfer_EditingTitle}"
+                       Foreground="{DynamicResource VelaTextTertiary}"
+                       FontFamily="{DynamicResource VelaUiMonoFont}"
+                       FontSize="{DynamicResource VelaFontSize10}" FontWeight="Medium" />
+          </StackPanel>
+        </Border>
+        <ItemsControl Name="EditRows" ItemsSource="{Binding Edits}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:RemoteEditItemViewModel">
+              <Border Padding="12,8"
+                      BorderBrush="{DynamicResource VelaBorderPrimary}"
+                      BorderThickness="0,0,0,1"
+                      ToolTip.Tip="{Binding TargetLine}">
+                <StackPanel Spacing="4">
+                  <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                    <TextBlock Grid.Column="0"
+                               Text="{Binding FileName}"
+                               Foreground="{DynamicResource VelaTextPrimary}"
+                               FontFamily="{DynamicResource VelaUiMonoFont}"
+                               FontSize="{DynamicResource VelaFontSize10}" FontWeight="Medium"
+                               TextTrimming="CharacterEllipsis" />
+                    <!-- 立即上传:自动上传关着时的唯一出口,也是失败后的重试。 -->
+                    <Button Grid.Column="1" Background="Transparent" Padding="4,0" Margin="0,0,4,0" Cursor="Hand"
+                            Command="{Binding $parent[ItemsControl].((vm:FileTransferViewModel)DataContext).UploadEditNowCommand}"
+                            CommandParameter="{Binding Id}"
+                            ToolTip.Tip="{loc:Localize Transfer_EditUploadNow}">
+                      <pc:LucideIcon Width="12" Height="12"
+                                     Data="{StaticResource Icon.upload}"
+                                     Foreground="{DynamicResource VelaAccent}" />
+                    </Button>
+                    <!-- 打开本地副本所在目录:上传一直失败时,用户得能自己把文件捞走。 -->
+                    <Button Grid.Column="2" Background="Transparent" Padding="4,0" Margin="0,0,4,0" Cursor="Hand"
+                            Command="{Binding $parent[ItemsControl].((vm:FileTransferViewModel)DataContext).RevealEditCommand}"
+                            CommandParameter="{Binding Id}"
+                            ToolTip.Tip="{loc:Localize Transfer_EditReveal}">
+                      <pc:LucideIcon Width="12" Height="12"
+                                     Data="{StaticResource Icon.folder}"
+                                     Foreground="{DynamicResource VelaTextTertiary}" />
+                    </Button>
+                    <!-- 结束监视:先把没传的传掉,再停。 -->
+                    <Button Grid.Column="3" Background="Transparent" Padding="4,0" Cursor="Hand"
+                            Command="{Binding $parent[ItemsControl].((vm:FileTransferViewModel)DataContext).StopEditCommand}"
+                            CommandParameter="{Binding Id}"
+                            ToolTip.Tip="{loc:Localize Transfer_EditStop}">
+                      <pc:LucideIcon Width="12" Height="12"
+                                     Data="{StaticResource Icon.x}"
+                                     Foreground="{DynamicResource VelaTextTertiary}" />
+                    </Button>
+                  </Grid>
+                  <TextBlock Text="{Binding StatusLine}"
+                             FontFamily="{DynamicResource VelaUiMonoFont}"
+                             FontSize="{DynamicResource VelaFontSize9}"
+                             TextTrimming="CharacterEllipsis"
+                             Classes.failed="{Binding IsFailed}"
+                             Classes.pending="{Binding HasPendingChange}">
+                    <TextBlock.Styles>
+                      <Style Selector="TextBlock">
+                        <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
+                      </Style>
+                      <!-- 待上传:改动只在本地,用强调色提醒它还没落地。 -->
+                      <Style Selector="TextBlock.pending">
+                        <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
+                      </Style>
+                      <Style Selector="TextBlock.failed">
+                        <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
+                      </Style>
+                    </TextBlock.Styles>
+                  </TextBlock>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+
       <!-- 传输行:限制面板高度(约 5 行)并对溢出内容滚动。
            这里刻意不做虚拟化(默认的 StackPanel 就是要的那个)。它本来就换不来什么:
            行数已在 FileTransferViewModel 里压到 100 以内,一次最多也就实现 100 行;
            而排查那次"下方一大片空白"时,虚拟化面板的实现窗口是最先被怀疑的一环,
            徒增一层不确定。那片空白的真凶是历史恢复(见 FileTransferViewModel 的
            「传输历史」注释):行在面板隐藏期间入列,占着高度却画不出来。 -->
-      <ScrollViewer VerticalScrollBarVisibility="Auto"
+      <ScrollViewer Name="TransferViewport"
+                    VerticalScrollBarVisibility="Auto"
                     HorizontalScrollBarVisibility="Disabled"
                     MaxHeight="280">
-        <ItemsControl ItemsSource="{Binding Transfers}">
+        <ItemsControl Name="TransferRows" ItemsSource="{Binding Transfers}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:TransferItemViewModel">
               <Border Padding="12,8"

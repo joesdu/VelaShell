@@ -1465,47 +1465,40 @@ public class FileBrowserViewModel : ReactiveObject
             await NavigateToAsync(file.FullPath, ct);
             return;
         }
-        await DownloadAndOpenAsync(file, ct);
+
+        // 双击要做什么由设置决定(设置 → 文件传输 → 双击文件时)。默认仍是"系统默认程序"
+        // ——原有的肌肉记忆不动,变的只是它现在也会回传(#396)。
+        switch (TransferOptions.DoubleClickAction)
+        {
+            case "builtin":
+                await OpenItemAsync(file, ct);
+                return;
+            case "editor":
+                await OpenWithDefaultEditorAsync(file, ct);
+                return;
+            default:
+                await DownloadAndOpenAsync(file, ct);
+                return;
+        }
     }
 
     /// <summary>
-    /// §6:双击文件将其下载到每个会话独立的临时文件夹(进度显示在传输浮窗中),
-    /// 并用系统默认程序打开。
+    /// §6:双击文件将其下载到独占的临时子目录(进度显示在传输浮窗中),用系统默认程序打开,
+    /// <b>并侦听本地保存自动回传</b>。
     /// </summary>
+    /// <remarks>
+    /// 这条路径此前只下载 + 打开,全程没有任何监视:用户在记事本里改完保存,远端纹丝不动,
+    /// 而右键「使用默认编辑器打开」是会回传的 —— 两个入口在界面上长得一样,行为却相反,
+    /// 于是有了 #396 里那句「第一次保存有效,后面再编辑保存就没有效果了」
+    /// (第一次用的是右键菜单,后面用的是双击)。现在三个入口共用同一套编辑会话。
+    /// </remarks>
     private async Task DownloadAndOpenAsync(RemoteFileInfoViewModel file, CancellationToken ct)
     {
         if (OpenLocalFile is null)
         {
             return;
         }
-        try
-        {
-            string tempDir = Path.Combine(
-                Path.GetTempPath(),
-                "VelaShell",
-                _sessionId.ToString("N")
-            );
-            if (!LocalPathSafety.TryResolveDestination(tempDir, file.Name, out string localPath))
-            {
-                ErrorMessage = Strings.Get("KeySvc_InvalidName");
-                return;
-            }
-            Directory.CreateDirectory(tempDir);
-            PlannedFileTransfer[] plan = [new(TransferType.Download, localPath, file.FullPath)];
-            bool ok = await RunTransferBatchAsync(plan, ct);
-            if (ok)
-            {
-                await OpenLocalFile(localPath);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // 用户取消了下载;不算错误。
-        }
-        catch (Exception ex)
-        {
-            ErrorMessage = ex.Message;
-        }
+        await OpenRemoteEditSessionAsync(file, RemoteEditOpenWith.SystemDefault, editor: null, ct);
     }
 
     /// <summary>
@@ -1600,8 +1593,8 @@ public class FileBrowserViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// 「使用默认编辑器打开」:交给 ExternalEditSessionManager(下载 → 启动配置的
-    /// 编辑器 → 侦听保存自动上传 → 退出清理 temp)。
+    /// 「使用默认编辑器打开」:交给 <see cref="RemoteEditSessionManager" />(下载 → 启动配置的
+    /// 编辑器 → 侦听保存自动上传)。
     /// </summary>
     private async Task OpenWithDefaultEditorAsync(
         RemoteFileInfoViewModel? file,
@@ -1610,11 +1603,6 @@ public class FileBrowserViewModel : ReactiveObject
     {
         if (file is null || !file.IsRegularFile)
         {
-            return;
-        }
-        if (!LocalPathSafety.IsSafeLeafName(file.Name))
-        {
-            ErrorMessage = Strings.Get("KeySvc_InvalidName");
             return;
         }
         string? editor = GetDefaultEditorPath is null ? null : await GetDefaultEditorPath();
@@ -1631,21 +1619,60 @@ public class FileBrowserViewModel : ReactiveObject
             }
             return;
         }
+        await OpenRemoteEditSessionAsync(file, RemoteEditOpenWith.ConfiguredEditor, editor, ct);
+    }
+
+    /// <summary>
+    /// 开一个远程编辑会话:下载到独占临时目录 → 按 <paramref name="openWith" /> 打开 →
+    /// 侦听保存回传。双击与「使用默认编辑器打开」共用这一条。
+    /// </summary>
+    /// <param name="file">远端文件。</param>
+    /// <param name="openWith">本地副本由谁打开。</param>
+    /// <param name="editor">配置的编辑器命令(仅 <see cref="RemoteEditOpenWith.ConfiguredEditor" /> 用)。</param>
+    /// <param name="ct">取消下载。</param>
+    private async Task OpenRemoteEditSessionAsync(
+        RemoteFileInfoViewModel file,
+        RemoteEditOpenWith openWith,
+        string? editor,
+        CancellationToken ct
+    )
+    {
+        if (!LocalPathSafety.IsSafeLeafName(file.Name))
+        {
+            ErrorMessage = Strings.Get("KeySvc_InvalidName");
+            return;
+        }
+        string remotePath = file.FullPath;
         try
         {
             ErrorMessage = null;
-            await ExternalEditSessionManager.OpenAsync(
-                _sftpService,
-                _sessionId,
-                file.FullPath,
-                file.Name,
-                editor,
-                message => Dispatcher.UIThread.Post(() => ErrorMessage = message),
-                // 保存回传经传输浮窗提示;监听回调在线程池,需切回 UI 线程。
-                (local, remote) =>
-                    Dispatcher.UIThread.InvokeAsync(() => UploadEditedFileAsync(local, remote)),
+            await RemoteEditSessionManager.OpenAsync(
+                new()
+                {
+                    SftpService = _sftpService,
+                    SessionId = _sessionId,
+                    RemotePath = remotePath,
+                    FileName = file.Name,
+                    ServerName = ServerDisplayName,
+                    OpenWith = openWith,
+                    EditorCommand = editor,
+                    OpenLocalAsync = OpenLocalFile,
+                    AutoUpload = TransferOptions.AutoUploadOnEdit,
+                    OnError = message => Dispatcher.UIThread.Post(() => ErrorMessage = message),
+
+                    // 下载与回传都经传输浮窗(进度、限速、可取消)。
+                    // 下载由本方法(UI 线程)直接驱动;回传来自 watcher 线程,要切回 UI 线程。
+                    DownloadAsync = (local, token) =>
+                        RunTransferBatchAsync([new(TransferType.Download, local, remotePath)], token),
+                    UploadAsync = (local, remote) =>
+                        Dispatcher.UIThread.InvokeAsync(() => UploadEditedFileAsync(local, remote)),
+                },
                 ct
             );
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户取消了下载;不算错误。
         }
         catch (Exception ex)
         {

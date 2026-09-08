@@ -1187,6 +1187,28 @@ public class SettingsViewModel : ReactiveObject
         }
     }
 
+    /// <summary>双击行为下拉选中项与 <see cref="TransferOptions.DoubleClickAction" /> 之间的索引映射。</summary>
+    public int DoubleClickActionIndex
+    {
+        get =>
+            Transfer.DoubleClickAction switch
+            {
+                "builtin" => 1,
+                "editor" => 2,
+                _ => 0,
+            };
+        set
+        {
+            Transfer.DoubleClickAction = value switch
+            {
+                1 => "builtin",
+                2 => "editor",
+                _ => "system",
+            };
+            this.RaisePropertyChanged();
+        }
+    }
+
     /// <summary>代理类型下拉选中项与 <see cref="ProxyOptions.Type" /> 之间的索引映射。</summary>
     public int ProxyTypeIndex
     {
@@ -1449,6 +1471,7 @@ public class SettingsViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(CursorStyleIndex));
         this.RaisePropertyChanged(nameof(BellModeIndex));
         this.RaisePropertyChanged(nameof(ConflictPolicyIndex));
+        this.RaisePropertyChanged(nameof(DoubleClickActionIndex));
         this.RaisePropertyChanged(nameof(TabBarPositionIndex));
         this.RaisePropertyChanged(nameof(SidebarPositionIndex));
         this.RaisePropertyChanged(nameof(WindowStateIndex));

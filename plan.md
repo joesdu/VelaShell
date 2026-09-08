@@ -2461,3 +2461,105 @@ Dispose 花了 2002ms —— 读线程八成一直挂在背压闸上等到超时
 **留给下一次的判据**:测试里出现 `Thread.Sleep(常数)` 且后面紧跟一条依赖它的断言时,
 问一句「这个数凭什么够」。答不上来就把它换成「等条件 + 给足超时」——
 超时给多大都不要紧,健康时一分钱不花;赌一个固定值才是每次 CI 都要掷一遍的骰子。
+
+---
+
+## ✅ 51. 2026-09-08 双击打开的远端文件也要自动回传;编辑会话不再赌编辑器进程(#396)
+
+用户报的是「文件编辑之后自动上传」这个功能失效,原话:
+**「第一次保存有效,后面再编辑保存就没有效果了」**(编辑器是 Notepad--,Windows 11)。
+
+### 一、把「只有第一次生效」认出来:两个入口长得一样,行为相反
+
+截图里 Ndd 标题栏的路径是决定性证据:
+
+```
+C:\Users\falcon\AppData\Local\Temp\VelaShell\93f408970803433ea9fbbc10fbd39f32\docker-compose.yml
+```
+
+那 32 位十六进制是 `_sessionId.ToString("N")`,全仓只有一处这么拼路径。当时的三个「打开」是:
+
+| 入口 | 代码 | 临时目录 | 保存后回传 |
+| --- | --- | --- | --- |
+| **双击** | `ActivateAsync` → `DownloadAndOpenAsync` → `Launcher.LaunchFileInfoAsync` | `VelaShell\<sessionId:N>\` | **没有。全程没有 watcher** |
+| 右键「打开」 | `OpenItemAsync` → 内置 AvaloniaEdit | `VelaShell\builtin-edit\<8hex>\` | ✅ 每次 Ctrl+S |
+| 右键「使用默认编辑器打开」 | `OpenWithDefaultEditorAsync` → `ExternalEditSession` | `VelaShell\remote-edit\<8hex>\` | ✅ 600ms 防抖 |
+
+报告人截图里的文件来自第一行。所以「后面再存就没反应」不是失效,
+**是那条路径从来就没有过回传**;而「第一次保存有效」是他此前按维护者的说法用右键菜单开的那一次
+(远端 mtime 12:07:14 对得上)。两个入口在界面上没有任何区别,用户当然分不出来。
+
+逐行核过 `ExternalEditSession` 的防抖/上传闸/pending 记账之后确认:
+**它对连续保存本来就是对的**,第 N 次不会丢。主因就是入口不一致。
+
+### 二、顺带挖出来的第二条复现路径:3 秒启发式
+
+`LaunchEditor` 用「编辑器进程 3 秒内退出就当作是单实例编辑器的引导进程」来判断编辑器是否还开着,
+否则就认为"编辑器关了" —— 停 watcher、删临时目录。而 Notepad-- 恰恰是带标签页的单实例编辑器
+(截图里 nginx.conf 与 docker-compose.yml 同窗口)。冷启动慢一点,引导进程 3.5 秒才退出,
+会话就被当成"编辑器已关闭"拆掉,**此后每一次保存都无声丢失**——
+一模一样的现象,另一条路。进程状态根本判断不出"用户还要不要编辑这个文件"。
+
+### 三、改法
+
+**入口收敛。** `ExternalEditSessionManager` 升成通用的 `RemoteEditSessionManager`
+(`src/VelaShell/Services/RemoteEditSessionManager.cs`),入口只决定**谁来打开**
+(`RemoteEditOpenWith`:系统默认程序 / 配置的编辑器 / 不打开),要不要监视回传是会话自己的事。
+双击现在也下载到 `remote-edit\<8hex>\` 的独占子目录(顺带修掉"每会话共享一个临时目录、
+不同远端目录的同名文件互相覆盖")。会话按 `(SessionId, RemotePath)` 去重:
+同一个远程文件重复打开复用同一份副本与同一个 watcher,不再开第二个对着第二份副本各存各的。
+
+**生命周期不再赌进程。** 删掉 3 秒启发式。进程退出只触发一次补传(`NotifyEditorExitedAsync`),
+**不拆会话**。会话只由三件事结束:用户在浮窗里点「结束监视」、所属远程会话关闭
+(`SftpDocumentViewModel.CloseCoreAsync` → `CloseScopeAsync`,**赶在 SFTP 连接关掉之前**,
+否则那几次补传注定失败)、应用退出(`CleanupAll`,原有的"传不完就留草稿并提示路径"不变)。
+
+**可见性。** 传输浮窗新增「正在编辑」分组(`FileTransferViewModel.Edits` +
+`RemoteEditItemViewModel`):每行是一个被盯着的文件,显示上次回传时刻 / 待上传 / 正在上传 /
+失败原因,行操作 = 立即上传、打开本地目录、结束监视。失败会把面板叫回来并标红,
+「立即上传」同时充当重试入口。此前自动上传是完全隐形的:静默工作,静默失效,
+用户能提供的只有一句"没上传"。
+
+**诊断。** `RemoteEditLog` 常开写 `~/.velashell/logs/remote-edit.log`:
+会话建立/复用、每一次文件事件、上传起止与失败原因、会话销毁。写量很小,
+换来的是下次这类"保存了但什么都没发生"的 issue 有据可查。
+
+**设置。** 设置 → 文件传输 → 远程编辑:「双击文件时」(系统默认程序 / 内置编辑器 /
+配置的编辑器,默认仍是**系统默认程序** —— 改默认值等于动所有存量用户的肌肉记忆,
+这个 issue 要修的是回传,不是打开方式)与「编辑后自动上传」(默认开;
+关掉后改动仍然记账,在「正在编辑」里手动上传)。改这个开关对**已经开着的**会话即时生效。
+
+### 四、途中踩到的两颗雷(都由全量测试抓出来)
+
+1. **`Dispatcher.UIThread.CheckAccess()` 的快路把测试宿主打崩了。**
+   `SyncEdits` 原本"已在 UI 线程就直接调,否则 Post"。在没有真正 UI 线程的宿主里
+   `CheckAccess()` 会对着 `FileSystemWatcher` 的线程池线程点头,于是集合变更直接打到
+   绑定的 `ItemsControl` 上:`The calling thread cannot access this object`。改成**一律 Post**。
+2. **界面异常顺着事件冒回去,把"打开文件"整个跳过了。** 上面那条异常从
+   `RaiseSessionsChanged()` 冒到 `OpenAsync`,让紧随其后的 `LaunchAsync()` 一步没走 ——
+   文件下下来了却没人打开,而报错是 `ErrorMessage` 里一句看不懂的话。
+   `RaiseSessionsChanged` 现在逐个订阅者 try/catch:**界面炸了不能连累编辑会话本身**。
+
+### 五、回归用例
+
+`tests/VelaShell.Tests/Services/RemoteEditSessionManagerTests.cs`(原 `ExternalEditSessionManagerTests`)。
+此前这里覆盖了收尾、慢链路、失败保留草稿 —— **唯独没有一条按住 watcher 连存几次**,
+正是这个 issue 的形状。新增:
+
+- `ConsecutiveSaves_AreEachUploaded` —— 连存三次要传三次(#396 本体)。
+- `AtomicSave_ViaReplace_IsUploaded` —— 写临时文件 + `File.Replace` 的"安全保存"也要认。
+- `AfterTheEditorProcessExits_LaterSavesAreStillUploaded` —— 3 秒启发式的回归。
+- `SavesInsideOneDebounceWindow_UploadTheLatestContentOnce` —— 防抖只合并,不吃掉最后那份内容。
+- `WithAutoUploadOff_...` / `TurningAutoUploadBackOn_FlushesTheHeldChange` / `AfterAFailedUpload_UploadNowRetries`。
+- `OpeningTheSameRemoteFileTwice_ReusesOneSession` / `ReopeningWithUnuploadedChanges_KeepsTheLocalDraft`
+  —— 后者是条硬红线:复用时**绝不能**拿远端内容盖掉还没传上去的本地改动。
+- `FileBrowserViewModelTests.DoubleClick_RegistersAnEditSessionThatUploadsOnSave` —— 入口这一侧的守门。
+
+`dotnet build VelaShell.slnx` 零警告;`dotnet test VelaShell.slnx` **3205 通过 / 0 失败**。
+
+### 六、留给下一次的判据
+
+三个入口做同一件事的三种做法,界面上却完全看不出区别 —— 这类"外观一致、行为分叉"的功能,
+**用户报上来的现象一定不指向真凶**(这次报的是"自动上传失效",真凶是另一个入口压根没这功能)。
+判据:同一个动词在界面上出现多次时,先问"它们的能力集合是不是同一个";不是的话,
+要么补齐,要么让界面说清楚差别 —— 不能靠用户去猜自己点的是哪一个。
