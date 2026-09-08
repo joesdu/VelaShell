@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
@@ -125,11 +127,23 @@ public sealed class TerminalScreen
     public ref TerminalCell CellRef(int x, int y) => ref _lines[y].CellRef(x);
 
     /// <summary>在 (<paramref name="x" />, <paramref name="y" />) 处写入单元格;超出范围的坐标被忽略。</summary>
-    public void SetCell(int x, int y, in TerminalCell cell)
+    /// <remarks>
+    /// 不带 <c>link</c> 的重载写入的是「无链接」的格 —— 覆写一个 OSC 8 链接格时那条链接随之消失。
+    /// 这是刻意的默认值:漏掉链接参数的调用点只会丢链接,绝不会留下一个指向旧地址的幽灵链接。
+    /// </remarks>
+    public void SetCell(int x, int y, in TerminalCell cell) => SetCell(x, y, cell, 0);
+
+    /// <inheritdoc cref="SetCell(int,int,in TerminalCell)" />
+    /// <param name="x">列。</param>
+    /// <param name="y">行。</param>
+    /// <param name="cell">要写入的单元格。</param>
+    /// <param name="link">该格的 OSC 8 超链接句柄(<see cref="HyperlinkTable" /> 分配);0 表示无链接。</param>
+    public void SetCell(int x, int y, in TerminalCell cell, ushort link)
     {
         if ((uint)x < (uint)Columns && (uint)y < (uint)Rows)
         {
             _lines[y][x] = cell;
+            _lines[y].SetLink(x, link);
         }
     }
 
@@ -522,6 +536,10 @@ public sealed class TerminalScreen
         // 收集缓冲跨逻辑行复用:拖拽改宽会对整个缓冲区反复 reflow,若每条逻辑行
         // 都 new 一个 List 再逐格 Add,就是一场 O(缓冲区) 的分配风暴。
         var cells = new List<TerminalCell>(newCols * 2);
+        // 与 cells 平行的 OSC 8 句柄:链接必须穿过 reflow,否则拖一下窗口宽度所有可点链接就没了。
+        // 不做"整段都是 0 就跳过"的优化 —— 两个列表下标必须永远对齐,任何一处漏 Add 都会
+        // 让链接整体错位到别的字符上,那比多存几个 0 糟得多。
+        var links = new List<ushort>(newCols * 2);
         int newCursorRow = -1, newCursorCol = 0;
         int i = 0;
         while (i < physical.Count)
@@ -536,6 +554,7 @@ public sealed class TerminalScreen
             // 收集其单元格:被换行的段落贡献其完整宽度,最后一段
             // 在最后一个非空单元格处截断(扩展以覆盖光标)。
             cells.Clear();
+            links.Clear();
             int cursorOffset = -1;
             DateTime? lineTimestamp = null;
             for (int r = i; r <= j; r++)
@@ -566,7 +585,23 @@ public sealed class TerminalScreen
                 // 回滚行的存储可能比逻辑列宽短(退休时按内容截过)。len 取自 LastOccupied,
                 // 天然落在存储内;上面那条光标分支才可能超出去,而光标那一行永远在活动屏上、
                 // 从不截短。仍夹一道:宁可少收几个尾部空格,也不该在拖拽改窗口大小时抛出。
-                cells.AddRange(row.Span[..Math.Min(len, row.StoredColumns)]);
+                int take = Math.Min(len, row.StoredColumns);
+                cells.AddRange(row.Span[..take]);
+                if (row.HasLinks)
+                {
+                    for (int c = 0; c < take; c++)
+                    {
+                        links.Add(row.LinkAt(c));
+                    }
+                }
+                else
+                {
+                    // 绝大多数行没有链接:补等量的 0 保持下标对齐,不必逐格问行。
+                    // SetCount 不会初始化新露出来的元素(可能是上一条逻辑行留下的旧句柄),必须显式清零。
+                    int before = links.Count;
+                    CollectionsMarshal.SetCount(links, before + take);
+                    CollectionsMarshal.AsSpan(links).Slice(before, take).Clear();
+                }
             }
 
             // 内容已整段复制进 cells,physical[i..j] 这些行对象到此确定无人再读 ——
@@ -578,7 +613,7 @@ public sealed class TerminalScreen
                 Recycle(physical[r]);
             }
             int emittedStart = rebuilt.Count;
-            EmitLogicalLine(cells, cursorOffset, newCols, blank, rebuilt, ref newCursorRow, ref newCursorCol);
+            EmitLogicalLine(cells, links, cursorOffset, newCols, blank, rebuilt, ref newCursorRow, ref newCursorCol);
             for (int r = emittedStart; r < rebuilt.Count; r++)
             {
                 rebuilt[r].Timestamp = lineTimestamp;
@@ -639,6 +674,7 @@ public sealed class TerminalScreen
     /// 留在同一行,除最后一行外每行都标记为软换行,并报告 <paramref name="cursorOffset" /> 落点。
     /// </summary>
     private void EmitLogicalLine(List<TerminalCell> cells,
+        List<ushort> links,
         int cursorOffset,
         int cols,
         in TerminalCell blank,
@@ -670,7 +706,9 @@ public sealed class TerminalScreen
                 cursorRow = output.Count - 1;
                 cursorCol = col;
             }
-            row[col++] = cell;
+            row[col] = cell;
+            row.SetLink(col, links[k]);
+            col++;
             if (wide)
             {
                 if (k + 1 == cursorOffset)
@@ -678,7 +716,9 @@ public sealed class TerminalScreen
                     cursorRow = output.Count - 1;
                     cursorCol = col - 1;
                 }
-                row[col++] = cells[k + 1];
+                row[col] = cells[k + 1];
+                row.SetLink(col, links[k + 1]);
+                col++;
                 k++;
             }
         }

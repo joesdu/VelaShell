@@ -46,7 +46,6 @@ public sealed class RemoteEditRequest
     /// <summary>远端文件名(会被当作本地副本的文件名,先过安全校验)。</summary>
     public required string FileName { get; init; }
 
-
     /// <summary>本地副本下载完成后由谁打开。</summary>
     public RemoteEditOpenWith OpenWith { get; init; } = RemoteEditOpenWith.Nothing;
 
@@ -166,7 +165,6 @@ public static class RemoteEditSessionManager
         await session.LaunchAsync();
         return session;
     }
-
 
     /// <summary>
     /// 所属远程会话(SFTP 标签 / 终端侧栏)关闭时,连带结束它名下的编辑会话。
@@ -359,7 +357,6 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>编辑器保存往往触发多个事件(写入 + 改名 + 属性),攒这么久再传一次。</summary>
     private static readonly TimeSpan DebounceWindow = TimeSpan.FromMilliseconds(600);
 
-
     private readonly Action<string>? _onError;
     private readonly RemoteEditRequest _request;
     private readonly SemaphoreSlim _uploadGate = new(1, 1);
@@ -375,8 +372,6 @@ public sealed class RemoteEditSession : IDisposable
 
     /// <summary>最近一次上传是否失败(失败就保留本地副本,不删临时目录)。</summary>
     private bool _lastUploadFailed;
-
-    private RemoteEditState _state = RemoteEditState.Watching;
     private int _uploadCount;
 
     internal RemoteEditSession(RemoteEditRequest request, string localPath)
@@ -426,7 +421,7 @@ public sealed class RemoteEditSession : IDisposable
     public bool HasPendingChange => Volatile.Read(ref _pendingSave) == 1;
 
     /// <summary>此刻的处境(回归用例与诊断日志读它)。</summary>
-    public RemoteEditState State => _state;
+    public RemoteEditState State { get; private set; } = RemoteEditState.Watching;
 
     /// <summary>拆除会话。上传没能落地时<b>保留</b>本地副本,不删临时目录。</summary>
     public void Dispose()
@@ -641,7 +636,7 @@ public sealed class RemoteEditSession : IDisposable
                     RemoteEditLog.Write("upload", $"skip, local copy missing {LocalPath}");
                     return;
                 }
-                _state = RemoteEditState.Uploading;
+                State = RemoteEditState.Uploading;
                 try
                 {
                     // 编辑器保存后可能短暂持锁:先等到文件可读再上传,保证传输浮窗里只出现一行。
@@ -656,14 +651,14 @@ public sealed class RemoteEditSession : IDisposable
                     }
                     _lastUploadFailed = false;
                     _uploadCount++;
-                    _state = RemoteEditState.Watching;
+                    State = RemoteEditState.Watching;
                     RemoteEditLog.Write("upload", $"ok #{_uploadCount} {RemotePath}");
                 }
                 catch (Exception ex)
                 {
                     // 失败要留痕:本地副本是这份改动唯一的存身之处,Dispose 据此决定不删目录。
                     _lastUploadFailed = true;
-                    _state = RemoteEditState.Failed;
+                    State = RemoteEditState.Failed;
                     Interlocked.Exchange(ref _pendingSave, 1);
                     RemoteEditLog.Write("upload", $"failed {RemotePath}: {ex.Message}");
                     _onError?.Invoke(Strings.Format("Svc_RemoteUpdateFailed", FileName, ex.Message));
@@ -692,5 +687,4 @@ public sealed class RemoteEditSession : IDisposable
             }
         }
     }
-
 }
