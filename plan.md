@@ -81,6 +81,12 @@
 | [48](#-48-2026-09-07-关掉连接中的标签连接就该停下用户反馈) | ✅ | 09-07 | 关掉「连接中」的标签就该取消握手 |
 | [49](#-49-2026-09-07-ci-的-ubuntu-作业偶发失败隔离插件连不上被报成激活超时) | ✅ | 09-07 | CI ubuntu 偶发失败：管道先连、Avalonia 后建 |
 | [50](#-50-2026-09-08-ci-的-macos-作业偶发失败背压用例拿固定-sleep-赌线程池已经起来了) | ✅ | 09-08 | CI macOS 偶发失败：背压用例改等条件，不再赌固定 sleep |
+| [51](#-51-2026-09-08-双击打开的远端文件也要自动回传编辑会话不再赌编辑器进程396) | ✅ | 09-08 | 双击打开的远端文件也自动回传；三个「打开」入口收敛到一套编辑会话（#396） |
+| [52](#-52-2026-09-08-编辑器都关掉了正在编辑那一行还挂着396-反馈) | ✅ | 09-08 | 编辑器关掉后收掉「正在编辑」那一行（#396 反馈） |
+| [53](#-53-2026-09-08-vs-code-关掉了那一行还挂着别拿单个进程句柄代表应用还开着396-反馈二) | ✅ | 09-08 | 别拿单个进程句柄代表「应用还开着」（#396 反馈二） |
+| [54](#-54-2026-09-08-把正在编辑改成只在出问题时出现整段进程跟踪删掉396-反馈三) | ✅ | 09-08 | 「正在编辑」改成只在出问题时出现，整段进程跟踪删掉（#396 反馈三） |
+| [55](#-55-2026-09-08-传输浮窗里那一组整块撤掉远程编辑从此不出现在界面上396-反馈四) | ✅ | 09-08 | 传输浮窗里那一组整块撤掉，远程编辑不再出现在界面上（#396 反馈四） |
+| [56](#-56-2026-09-08-按下-ctrl-那一刻手型就该出来不该等鼠标抖一下397) | ✅ | 09-08 | 按下 Ctrl 立刻给手型，不必再抖一下鼠标（#397） |
 
 ## 📈 阶段脉络
 
@@ -2823,3 +2829,69 @@ C:\Users\falcon\AppData\Local\Temp\VelaShell\93f408970803433ea9fbbc10fbd39f32\do
 2. 更根本的:**用户要的是"保存后自动上传",不是"看见它在自动上传"。**
    为一个能力配一块常驻状态显示之前,先问这块显示解决了谁的什么问题;
    答不上来就别加 —— 加了之后它自己会长出一串需要伺候的问题。
+
+## ✅ 56. 2026-09-08 按下 Ctrl 那一刻手型就该出来,不该等鼠标抖一下(#397)
+
+用户反馈:光标停在链接上按 Ctrl,光标样式不变;必须挪一下鼠标手型才出来。
+
+### 一、根因:判定只挂在指针移动上,而按 Ctrl 时鼠标是静止的
+
+链接悬停反馈(手型 + 地址气泡)整套逻辑只有一个入口 ——
+`VelaTerminalControl.OnPointerMoved` 里那句 `UpdateLinkHover(e)`。而
+`UpdateLinkHover` 的第一句就是从**事件**里读修饰键:
+
+```csharp
+if (_selecting || !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+```
+
+也就是说"Ctrl 有没有按下"这个状态**只在鼠标移动事件里被采样**。用户按 Ctrl 时鼠标一动不动,
+不产生 `PointerMoved`,于是没有任何代码去重新判定 —— 抖一下鼠标才有事件把新的
+`KeyModifiers` 带进来,这正是用户描述的"要移动才会发生变化"。
+
+松开侧反而一直是即时的:`OnKeyUp` 专门认了 `Key.LeftCtrl or Key.RightCtrl` 去
+`ClearLinkHover()`。**按下侧从一开始就没有对称的那一半**。
+
+原注释里写着这套设计的动机 ——「只在 Ctrl 按下时才做匹配,否则每一次鼠标移动都要跑一遍正则」。
+这个取舍本身没错,漏掉的是"按下 Ctrl"这个**边沿事件本身也是一次该重判的时机**。
+
+### 二、修法:把判定与指针事件解耦,补上按下侧
+
+- `UpdateLinkHover(PointerEventArgs)` → `UpdateLinkHover(Point position, bool ctrl)`。
+  按 Ctrl 那一刻根本没有指针事件可传,原签名注定调不到。
+- 新增 `_lastPointerPosition`(`Point?`):`OnPointerMoved` 里更新,`OnPointerExited` 里置 null。
+  指针已经不在控件上,记下的位置就作废 —— 否则之后按 Ctrl 会照着一个旧位置亮手型。
+- `OnKeyDown` 顶部认 `Key.LeftCtrl or Key.RightCtrl`,就地用最后的位置重判一次。
+  裸修饰键在 `TerminalKeyRouter.Classify` 里落到 `TerminalKeyAction.None`(`InputEncoder.Encode`
+  对纯修饰键返回空),插在这里不动下面任何一个分支。
+
+两处状态复位,都是为了让 `_ctrlHeld` 这个新的边沿标记不会卡死:
+
+- `OnKeyUp` 清掉它 —— 按住 Ctrl 会自动重复 KeyDown,只在 false→true 那一瞬做判定,
+  每次重复都跑一遍正则没有意义(这正是原设计要省的那笔开销)。
+- `OnLostFocus` 也清掉 —— **焦点若在 Ctrl 按住时被抢走,那次 KeyUp 会送给新的焦点控件**,
+  这里不清就永远停在按下态,下次再按 Ctrl 会被 `if (_ctrlHeld) return;` 直接吃掉。
+
+### 三、回归用例
+
+`LinkHoverTests` 新增三条:
+
+| 用例 | 守的是什么 |
+| --- | --- |
+| `PressingCtrlWhileAlreadyOverTheLink_ShowsTheFeedbackWithoutMovingTheMouse` | #397 本体:先无修饰键悬上去,鼠标一动不动只按 Ctrl,手型与地址就得出来 |
+| `PressingCtrlOverPlainText_ShowsNothing` | 新入口不能把非链接的地方也点亮 |
+| `PressingCtrlAfterThePointerLeft_ShowsNothing` | 指针移出控件后位置作废,不照着旧位置亮手型 |
+
+把 `src` 侧的改动 stash 掉重跑,第一条如期变红(`expected: "https://example.com/docs",
+actual: null`)—— 那正是这个 bug 在用户机器上的样子。
+
+`dotnet build VelaShell.slnx -warnaserror` 零警告零错误;`dotnet test VelaShell.slnx` 全绿。
+
+### 四、留下的边界(**没修**)
+
+**焦点不在终端控件上**时(比如焦点在 SFTP 面板或搜索框),鼠标悬在终端上按 Ctrl,
+KeyDown 送不到 `VelaTerminalControl`,手型仍然不会出现。要覆盖它得在窗口层挂隧道事件,
+范围与风险都大一截,而 issue 描述的是终端有焦点的正常使用路径。留作已知限制。
+
+判据:**成对的状态转换要么两侧都做,要么两侧都不做。**这个 bug 的形状就是
+"松开侧有 KeyUp 钩子、按下侧没有 KeyDown 钩子",而不对称本身在代码里是看不见的 ——
+`OnKeyUp` 那个方法孤零零地存在,读的时候不会有人问"那按下呢"。

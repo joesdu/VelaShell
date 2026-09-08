@@ -125,6 +125,66 @@ public sealed class LinkHoverTests
     }
 
     [TestMethod]
+    public void PressingCtrlWhileAlreadyOverTheLink_ShowsTheFeedbackWithoutMovingTheMouse()
+    {
+        // 回归 #397:判定原本只挂在 PointerMoved 上,而按 Ctrl 时鼠标是静止的,
+        // 于是必须抖一下鼠标手型才出来 —— 松开侧一直是即时的,按下侧不是。
+        OnUi(() =>
+        {
+            (VelaTerminalControl control, Window window) = ShowWithLink();
+
+            // 先不按 Ctrl 悬到 URL 上:此刻不该有任何反馈。
+            MoveTo(window, control, 8, KeyModifiers.None);
+            Assert.IsNull(ToolTip.GetTip(control));
+
+            // 鼠标一动不动,只按下 Ctrl。
+            window.KeyPress(Key.LeftCtrl, RawInputModifiers.Control, PhysicalKey.ControlLeft, null);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.AreEqual("https://example.com/docs", ToolTip.GetTip(control),
+                "按下 Ctrl 就该立即出现手型与地址,不该等到鼠标移动。");
+
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    public void PressingCtrlOverPlainText_ShowsNothing()
+    {
+        OnUi(() =>
+        {
+            (VelaTerminalControl control, Window window) = ShowWithLink();
+
+            MoveTo(window, control, 1, KeyModifiers.None);
+            window.KeyPress(Key.LeftCtrl, RawInputModifiers.Control, PhysicalKey.ControlLeft, null);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.IsNull(ToolTip.GetTip(control));
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    public void PressingCtrlAfterThePointerLeft_ShowsNothing()
+    {
+        // 指针已经不在控件上,记下的位置就作废了 —— 否则会照着一个旧位置亮手型。
+        OnUi(() =>
+        {
+            (VelaTerminalControl control, Window window) = ShowWithLink();
+
+            MoveTo(window, control, 8, KeyModifiers.None);
+            window.MouseMove(new Point(-10, -10), RawInputModifiers.None);
+            Dispatcher.UIThread.RunJobs();
+
+            window.KeyPress(Key.LeftCtrl, RawInputModifiers.Control, PhysicalKey.ControlLeft, null);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.IsNull(ToolTip.GetTip(control));
+            window.Close();
+        });
+    }
+
+    [TestMethod]
     public void ReleasingCtrl_ClearsTheFeedback()
     {
         // 松开 Ctrl 之后已经点不开了,再指着手型是在骗人。
