@@ -216,6 +216,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         Focusable = true;
         ClipToBounds = true;
         ApplyDesignPalette(Emulator.Palette);
+        NormalizeSelectionColors();
         RecomputeMetrics();
         Emulator.Updated += OnEmulatorUpdated;
         Emulator.Response += bytes => UserInput?.Invoke(bytes); // 协议自动应答:发往 PTY 但不算用户键入(不进 TypedInput)。
@@ -793,7 +794,27 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         ApplyDesignPalette(Emulator.Palette, ActualThemeVariant == ThemeVariant.Light);
         ApplyPaletteOverrides(Emulator.Palette, ThemePalette);
         ApplyPaletteOverrides(Emulator.Palette, PaletteOverrides);
+        NormalizeSelectionColors();
         InvalidateTerminal();
+    }
+
+    /// <summary>选区填充色的感知亮度;渲染热路径上逐个选中格与前景比对,故预先算好。</summary>
+    private double _selectionFillBrightness;
+
+    /// <summary>前景与选区底撞明度时顶上的兜底前景色。</summary>
+    private Rgba _selectionFallbackForeground;
+
+    /// <summary>
+    /// 三层调色板叠完之后,把选区色整定成实际绘制用的填充色。它取决于**最终**的背景色 ——
+    /// 选区色与背景色可能分别来自不同层,所以必须等三层都落定才能算。
+    /// <see cref="ApplyDesignPalette" /> 每次都把整套颜色重置一遍,因此重复调用不会层层叠加。
+    /// </summary>
+    private void NormalizeSelectionColors()
+    {
+        TerminalPalette palette = Emulator.Palette;
+        palette.SelectionBackground = SelectionContrast.Fill(palette.SelectionBackground, palette.DefaultBackground);
+        _selectionFillBrightness = SelectionContrast.Brightness(palette.SelectionBackground);
+        _selectionFallbackForeground = SelectionContrast.ReadableForeground(palette.SelectionBackground, palette.DefaultForeground);
     }
 
     private static void ApplyPaletteOverrides(TerminalPalette palette, TerminalPaletteOverrides? overrides)
@@ -815,9 +836,10 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             palette.CursorColor = cur;
         }
         if (o.Selection is { } sel)
-        // 用户给的是不带透明度的选区色;按既有方案以 ~35% 透明叠加,避免盖住文字。
         {
-            palette.SelectionBackground = new(0x59, sel.R, sel.G, sel.B);
+            // 原样收下,不在这里兑透明度也不在这里比对比度:选区色与背景色可能来自不同层,
+            // 整定要等三层叠完(见 NormalizeSelectionColors)。
+            palette.SelectionBackground = sel;
         }
         for (int i = 0; i < TerminalPaletteOverrides.AnsiCount; i++)
         {
@@ -1171,7 +1193,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             palette.DefaultForeground = Rgba.FromRgb(0x65, 0x7B, 0x83); // base00
             palette.DefaultBackground = Rgba.FromRgb(0xFD, 0xF6, 0xE3); // base3
             palette.CursorColor = Rgba.FromRgb(0x65, 0x7B, 0x83);
-            palette.SelectionBackground = new(0x40, 0x58, 0x6E, 0x75); // base01 @25%(方案原生选区 base2 与背景过近,取更可辨的半透明灰蓝)
+            palette.SelectionBackground = Rgba.FromRgb(0xEE, 0xE8, 0xD5); // base2(方案原生选区色;与背景过近的那点由 SelectionContrast 推开)
             // 搜索高亮:亮底上要压得住又不能盖住字形。暗色那套(半透明琥珀 / 青)贴到
             // Solarized Light 的米色底上几乎看不出来,所以两个变体各给一套。
             palette.SearchMatchBackground = new(0x66, 0xB5, 0x89, 0x00); // yellow @40%
@@ -1197,7 +1219,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         palette.DefaultForeground = Rgba.FromRgb(0xF8, 0xF8, 0xF2);
         palette.DefaultBackground = Rgba.FromRgb(0x28, 0x2A, 0x36);
         palette.CursorColor = Rgba.FromRgb(0xF8, 0xF8, 0xF2);
-        palette.SelectionBackground = new(0x99, 0x44, 0x47, 0x5A); // dracula selection
+        palette.SelectionBackground = Rgba.FromRgb(0x44, 0x47, 0x5A); // dracula selection
         palette.SearchMatchBackground = new(0x59, 0xF1, 0xFA, 0x8C); // dracula yellow @35%
         palette.SearchCurrentBackground = new(0x73, 0x8B, 0xE9, 0xFD); // dracula cyan @45%
         palette.SetAnsi(0, Rgba.FromRgb(0x21, 0x22, 0x2C)); // black
@@ -2462,6 +2484,14 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             if (IsSelectedColumn(rowSpans, col))
             {
                 bg = palette.SelectionBackground;
+
+                // 选区底是不透明的,原本压在终端底上读得清的前景可能正好贴在明度相近的选区底上
+                // (Solarized Dark 的 ansi black #073642 落在自家选区上就是这么消失的)。撞上了才换,
+                // 所以 ls --color / git 的显式配色在绝大多数格上仍原样呈现。
+                if (Math.Abs(SelectionContrast.Brightness(fg) - _selectionFillBrightness) < SelectionContrast.MinForegroundDelta)
+                {
+                    fg = _selectionFallbackForeground;
+                }
             }
             if (rowSearchSpans is not null)
             {

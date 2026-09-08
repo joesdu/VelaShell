@@ -17,6 +17,7 @@
        应用、不跑测试,故签名构建(Release)时省略友元声明,仅在非签名构建(Debug / 本地测试)保留。 -->
   <ItemGroup Condition="'$(SignAssembly)' != 'true'">
     <InternalsVisibleTo Include="VelaShell.Terminal.Tests" />
+    <InternalsVisibleTo Include="VelaShell.Terminal.RenderTests" />
   </ItemGroup>
 
 </Project>
