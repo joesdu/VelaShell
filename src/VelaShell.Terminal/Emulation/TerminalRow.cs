@@ -56,6 +56,24 @@ public sealed class TerminalRow(int columns)
     /// </summary>
     public DateTime? Timestamp { get; set; }
 
+    /// <summary>
+    /// 本行的 OSC 133 语义标记(提示符行 / 命令输出首行);<see cref="PromptMark.None" /> 为普通行。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="Timestamp" /> 同一套生命周期:行对象在滚动 / 换行时按引用迁入 scrollback,
+    /// 标记随之保留;整行被擦空即作废;改列宽重排时由 <c>TerminalScreen.ReflowResize</c> 搬运。
+    /// <b>刻意不像 <c>GutterFoldModel</c> 那样按行对象引用另建一张表</b> —— 那种表在 reflow
+    /// 重建行对象时只能整体作废,而挂在行上的东西能跟着内容一起被搬过去。
+    /// </remarks>
+    public PromptMark Mark { get; set; }
+
+    /// <summary>
+    /// 本块命令的退出码(<c>OSC 133 ; D ; n</c>);仅 <see cref="Mark" /> 为
+    /// <see cref="PromptMark.Prompt" /> 的行有意义,尚未结束或对端没报时为 null。
+    /// </summary>
+    /// <remarks>记在<b>提示符行</b>而不是输出末行:块的身份由提示符行代表,侧栏那个标记也画在这里。</remarks>
+    public int? ExitCode { get; set; }
+
     /// <summary>本行的单元格(列)数量。</summary>
     public int Columns { get; private set; } = columns;
 
@@ -295,6 +313,7 @@ public sealed class TerminalRow(int columns)
         _links = null; // 整行被空白覆盖:链接随之作废。
         Wrapped = false;
         Timestamp = null; // 整行清空(擦除/复用作滚动新行)→ 视为未写入,时间戳作废。
+        ClearMark();
     }
 
     /// <summary>
@@ -319,6 +338,10 @@ public sealed class TerminalRow(int columns)
         {
             Wrapped = false;
             Timestamp = null;
+            // OSC 133 标记跟着时间戳走同一条判据,理由也一样:重绘型 shell 每敲一个字符都要
+            // ESC[K 擦到行尾,若"擦一下就掉标记",提示符行上的标记会在打字过程中不停闪掉。
+            // 只有整行真的空了才算这一行没了。
+            ClearMark();
         }
     }
 
@@ -509,6 +532,14 @@ public sealed class TerminalRow(int columns)
         _links = null;
         Wrapped = false;
         Timestamp = null;
+        ClearMark();
+    }
+
+    /// <summary>清掉本行的 OSC 133 标记与退出码(整行作废时调用)。</summary>
+    private void ClearMark()
+    {
+        Mark = PromptMark.None;
+        ExitCode = null;
     }
 
     /// <summary>创建本行的深拷贝,保留单元格、wrapped 标志与时间戳。</summary>
@@ -519,6 +550,8 @@ public sealed class TerminalRow(int columns)
         {
             Wrapped = Wrapped,
             Timestamp = Timestamp,
+            Mark = Mark,
+            ExitCode = ExitCode,
             _cells = new TerminalCell[_cells.Length]
         };
         Array.Copy(_cells, clone._cells, _cells.Length);

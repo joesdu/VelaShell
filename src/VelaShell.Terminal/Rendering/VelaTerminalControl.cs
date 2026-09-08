@@ -1878,8 +1878,12 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     private const string GutterTimeFormat = "HH:mm:ss";
 
     /// <summary>当前侧栏几何(各部件宽度/偏移/命中区间,见 <see cref="GutterLayout" />)。按当前单元格宽与开关计算。</summary>
+    /// <remarks>
+    /// 命令标记列没有对应的开关,由「对端装没装 shell 集成」自动决定(<see cref="TerminalEmulator.HasPromptMarks" />)——
+    /// 没装的会话它一个像素都不占,装了的会话整段一直在,不随滚动位置抖动。
+    /// </remarks>
     private GutterLayout Gutter =>
-        new(CellWidthForTest, ShowLineTimestamp, ShowLineNumber, ShowFoldMarker, GutterBlank);
+        new(CellWidthForTest, ShowLineTimestamp, ShowLineNumber, ShowFoldMarker, GutterBlank, Emulator.HasPromptMarks);
 
     /// <summary>任一侧栏部件开启即绘制侧栏。</summary>
     private bool GutterEnabled => Gutter.Enabled;
@@ -2048,10 +2052,69 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             return; // 空屏:不画分隔线/折叠列,侧栏完全隐形。
         }
         double contentBottom = (lastContentRow + 1) * CellHeightForTest;
+        if (Emulator.HasPromptMarks)
+        {
+            RenderCommandMarks(context, screen, palette, rows, dim);
+        }
         // 唯一的竖线由折叠列绘制,只保留折叠标记这一条。
         if (ShowFoldMarker)
         {
             RenderFoldColumn(context, screen, palette, rows, dim, contentBottom);
+        }
+    }
+
+    /// <summary>
+    /// 命令标记列:每条 OSC 133 提示符行画一个指向正文的小三角,失败的命令标红。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 与折叠列同样用<b>矢量线条</b>绘制而非字体字形:任何字体 / 字号 / DPI 下形状一致、边缘锐利,
+    /// 也不必担心用户的等宽字体缺这个字符。
+    /// </para>
+    /// <para>
+    /// <b>只有三种状态,刻意不做更细。</b>失败(退出码非 0)标红是这一列的全部价值 ——
+    /// 滚一屏日志一眼就能找到炸掉的那条;成功与「还在跑 / 对端没报退出码」都用暗色,
+    /// 因为把"没报"单独配一种颜色只会让人以为出了什么事。
+    /// </para>
+    /// </remarks>
+    private void RenderCommandMarks(
+        DrawingContext context,
+        TerminalScreen screen,
+        TerminalPalette palette,
+        int rows,
+        Rgba dim
+    )
+    {
+        GutterLayout g = Gutter;
+        // 三角的水平跨度:留出左右各一点余白,免得贴着行号列。
+        double left = Math.Floor(g.CommandMarkLeft + g.CommandMarkWidth * 0.25) + 0.5;
+        double right = Math.Floor(g.CommandMarkLeft + g.CommandMarkWidth * 0.75) + 0.5;
+        double halfHeight = Math.Max(3, Math.Floor(CellHeightForTest * 0.28));
+
+        for (int screenRow = 0; screenRow < rows; screenRow++)
+        {
+            int absoluteRow = _screenToAbs[screenRow];
+            if (absoluteRow < 0)
+            {
+                continue;
+            }
+            TerminalRow line = screen.ViewLine(absoluteRow);
+            if (line.Mark != PromptMark.Prompt)
+            {
+                continue;
+            }
+            double cy = Math.Floor(screenRow * CellHeightForTest + CellHeightForTest / 2) + 0.5;
+            // 退出码非 0 = 失败 → bright red;成功与「还在跑」一律暗色。
+            Rgba tint = line.ExitCode is not null and not 0 ? palette[9] : dim;
+            var triangle = new StreamGeometry();
+            using (StreamGeometryContext geo = triangle.Open())
+            {
+                geo.BeginFigure(new Point(left, cy - halfHeight), true);
+                geo.LineTo(new Point(right, cy));
+                geo.LineTo(new Point(left, cy + halfHeight));
+                geo.EndFigure(true);
+            }
+            context.DrawGeometry(BrushFor(tint), null, triangle);
         }
     }
 
@@ -2170,13 +2233,104 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>折叠交互:点击折叠列某屏幕行 —— 折叠头则展开,否则把上方内容折叠到该行(见 <see cref="GutterFoldModel" />)。</summary>
+    /// <remarks>
+    /// 对端装了 shell 集成(OSC 133)时,折叠<b>按命令块对齐</b>:收起整段输出、把提示符行留在
+    /// 屏幕上。没有标记时原样退回既有的 Notepad++ 式「折叠到点击行」—— 没装集成的会话
+    /// 一点行为变化都感觉不到。
+    /// </remarks>
     private void ToggleFoldAt(int screenRow)
     {
         int abs = AbsoluteForScreenRow(screenRow);
-        if (IsFoldTargetRow(abs) && _foldModel.Toggle(Emulator.Screen, abs))
+        if (!IsFoldTargetRow(abs))
+        {
+            return;
+        }
+        // 已折叠 → 展开。这条必须排在按块折叠之前:折叠头就是提示符行,
+        // 否则点第二下会撞上"该区间已有折叠"而一动不动。
+        if (_foldModel.IsAnchor(Emulator.Screen, abs))
+        {
+            if (_foldModel.Toggle(Emulator.Screen, abs))
+            {
+                AfterFoldChange();
+            }
+            return;
+        }
+        if (Emulator.HasPromptMarks
+            && CommandBlocks.BlockAt(Emulator.Screen, abs) is { HasOutput: true } block
+            && _foldModel.FoldRegion(Emulator.Screen, block.PromptRow, block.PromptRow, block.LastRow))
+        {
+            AfterFoldChange();
+            return;
+        }
+        if (_foldModel.Toggle(Emulator.Screen, abs))
         {
             AfterFoldChange();
         }
+    }
+
+    /// <summary>
+    /// 跳到上(<paramref name="direction" /> = +1)或下(-1)一条 OSC 133 提示符,
+    /// 把它滚到视口顶端;那个方向上没有提示符了就原地不动。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>参照点取视口顶行而非光标行。</b>这是个"读历史"的动作:用户正滚在半屏日志里想
+    /// 一条条往回翻,而光标在实时屏的最底下 —— 拿光标当参照,每次都会从最后一条重新数起,
+    /// 按第二下就跳不动了。
+    /// </para>
+    /// <para>
+    /// 折叠状态下按绝对行算偏移会有几行误差(折叠会缩短可滚动范围),但
+    /// <see cref="ScrollOffset" /> 自带夹取,最差也只是落点差几行 —— 为一个导航便利去
+    /// 反解折叠映射不值得。
+    /// </para>
+    /// </remarks>
+    private void JumpToPrompt(int direction)
+    {
+        TerminalScreen screen = Emulator.Screen;
+        int from = AbsoluteForScreenRow(0);
+        if (from < 0)
+        {
+            from = Math.Max(0, screen.TotalRows - screen.Rows);
+        }
+        int target = direction > 0
+            ? CommandBlocks.PreviousPrompt(screen, from)
+            : CommandBlocks.NextPrompt(screen, from);
+        if (target < 0)
+        {
+            return;
+        }
+        ScrollOffset = screen.TotalRows - screen.Rows - target;
+    }
+
+    /// <summary>
+    /// 选中 <paramref name="screenRow" /> 所属命令块的<b>输出</b>(点侧栏那个小三角触发);
+    /// 该行不属于任何块、或块还没有输出时什么都不做,返回是否真的选中了。
+    /// </summary>
+    /// <remarks>
+    /// 选的是输出而不是整块:提示符和命令本身几乎从不是你想粘走的东西,
+    /// 而「把这条命令的输出发给同事 / 喂给 AI」正是命令块最常用的一件事。
+    /// 命令块没有 <c>C</c> 标记(对端只发了 A/B,或命令还没回车)时不选 —— 见
+    /// <see cref="CommandBlock.HasOutput" />,免得选中一片空气。
+    /// </remarks>
+    private bool SelectCommandOutputAt(int screenRow)
+    {
+        int abs = AbsoluteForScreenRow(screenRow);
+        if (CommandBlocks.BlockAt(Emulator.Screen, abs) is not { HasOutput: true } block)
+        {
+            return false;
+        }
+        _extraSelections.Clear();
+        _selectionAnchor = (block.OutputStart, 0);
+        // 终点取末行的行尾:选区按 (行, 列) 定界,给足列宽才能把最后一行整行圈进去。
+        _selectionCaret = (block.LastRow, Emulator.Screen.Columns);
+        _selecting = false;
+        _blockSelection = false;
+        InvalidateTerminal();
+        if (CopyOnSelect)
+        {
+            _ = CopyAsync();
+        }
+        return true;
     }
 
     private void AfterFoldChange()
@@ -2910,7 +3064,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             Emulator.Modes,
             Emulator.Type,
             canScrollHistory: Emulator.Screen.MaxScrollback > 0,
-            ctrlCCopiesSelection: CtrlCCopiesWhenSelected && HasSelectionAnchor);
+            ctrlCCopiesSelection: CtrlCCopiesWhenSelected && HasSelectionAnchor,
+            hasPromptMarks: Emulator.HasPromptMarks);
         switch (action.Kind)
         {
             case TerminalKeyActionKind.ImePassthrough:
@@ -2936,6 +3091,11 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
             case TerminalKeyActionKind.ScrollHistory:
                 ScrollOffset += action.ScrollPageDirection * Math.Max(1, Emulator.Rows - 1);
+                e.Handled = true;
+                return;
+
+            case TerminalKeyActionKind.JumpPrompt:
+                JumpToPrompt(action.ScrollPageDirection);
                 e.Handled = true;
                 return;
 
@@ -2974,6 +3134,14 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             if (props.IsRightButtonPressed)
             {
                 ShowGutterContextMenu();
+                e.Handled = true;
+                return;
+            }
+            // 命令标记列(OSC 133 那个小三角):点它 = 选中这条命令的输出。
+            // 排在折叠列判定之前 —— 两列相邻,先判窄的那个。
+            if (props.IsLeftButtonPressed && gutter.IsCommandMarkHit(contentPoint.X))
+            {
+                SelectCommandOutputAt((int)(contentPoint.Y / CellHeightForTest));
                 e.Handled = true;
                 return;
             }

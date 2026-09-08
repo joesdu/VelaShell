@@ -21,6 +21,12 @@ public enum TerminalKeyActionKind
     /// <summary>翻动回滚历史(PageUp/PageDown),方向见 <see cref="TerminalKeyAction.ScrollPageDirection" />。</summary>
     ScrollHistory,
 
+    /// <summary>
+    /// 跳到上/下一条 OSC 133 提示符(Ctrl+Shift+↑/↓),方向见
+    /// <see cref="TerminalKeyAction.ScrollPageDirection" />(+1 向上,-1 向下)。
+    /// </summary>
+    JumpPrompt,
+
     /// <summary>把 <see cref="TerminalKeyAction.Bytes" /> 作为键入发送往 PTY。</summary>
     SendBytes
 }
@@ -45,7 +51,7 @@ public readonly record struct TerminalKeyAction(
 /// <c>VelaTerminalControl.OnKeyDown</c> 只按分类结果执行。
 /// </summary>
 /// <remarks>
-/// 决策顺序即优先级,与历史行为逐条对应:IME 透传 → 剪贴板快捷键 → Shift+Insert 粘贴
+/// 决策顺序即优先级,与历史行为逐条对应:IME 透传 → 剪贴板快捷键 → 提示符跳转 → Shift+Insert 粘贴
 /// → 翻页 → 选中时 Ctrl+C 复制 → 编码发送。改动顺序前先想清楚谁该赢
 /// (例如 Shift+Insert 必须先于编码器,否则会被编成 CSI 2~ 发出去)。
 /// </remarks>
@@ -60,13 +66,18 @@ public static class TerminalKeyRouter
     /// <param name="type">终端类型(决定功能键序列方言)。</param>
     /// <param name="canScrollHistory">主屏且有回滚历史(备用屏上的全屏程序应自己收到 CSI 5~/6~)。</param>
     /// <param name="ctrlCCopiesSelection">"选中时 Ctrl+C 复制"此刻是否命中(设置开启且有选区)。</param>
+    /// <param name="hasPromptMarks">
+    /// 对端装了 shell 集成、缓冲区里有 OSC 133 标记。<b>false 时 Ctrl+Shift+↑/↓ 原样编码下发</b> ——
+    /// 没有标记可跳时凭空吞掉一组按键,只会让远端程序的键位神秘失灵。
+    /// </param>
     public static TerminalKeyAction Classify(
         Key key,
         KeyModifiers modifiers,
         TerminalModes modes,
         TerminalType type,
         bool canScrollHistory,
-        bool ctrlCCopiesSelection)
+        bool ctrlCCopiesSelection,
+        bool hasPromptMarks = false)
     {
         // IME 组字消耗的按键(挑选中文候选等)绝不能编码:会把散逸的 ESC/方向键/Enter
         // 发往 PTY(历史事故:htop 的 F3 搜索里输入中文会杀死 htop,#14a)。
@@ -85,6 +96,15 @@ public static class TerminalKeyRouter
                 case Key.V:
                     return new(TerminalKeyActionKind.PasteClipboard);
             }
+        }
+
+        // Ctrl+Shift+↑/↓ 跳到上/下一条提示符(OSC 133 命令块)。只在真有标记时拦截,
+        // 否则原样交给编码器 —— 见 hasPromptMarks 的说明。
+        if (hasPromptMarks
+            && key is Key.Up or Key.Down
+            && modifiers == (KeyModifiers.Control | KeyModifiers.Shift))
+        {
+            return new(TerminalKeyActionKind.JumpPrompt, key == Key.Up ? 1 : -1);
         }
 
         // Shift+Insert 粘贴(经典 X11 / 终端惯例)。必须在编码器之前拦截,

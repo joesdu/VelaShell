@@ -75,46 +75,8 @@ public sealed class PromptHookShellTests
         ]
     ];
 
-    /// <summary>找一个能用的 bash:Unix 上就是自带的那份,Windows 上从 PATH 里挑 Git 带的那份。</summary>
-    /// <remarks>
-    /// Windows 上要<b>跳过</b> <c>%SystemRoot%\System32\bash.exe</c> 与 <c>WindowsApps\bash.exe</c> ——
-    /// 那两个是 WSL 的入口,不是 Git for Windows 的 bash。用它跑脚本会掉进 WSL 的文件系统视图,
-    /// 临时脚本的路径(<c>/c/Users/…</c>)在那边根本不存在(WSL 是 <c>/mnt/c/…</c>),
-    /// 表现是一句莫名其妙的 "No such file or directory"。Git 也不一定装在 Program Files
-    /// (本机就在 D:\Git),所以按 PATH 找而不是猜几个固定路径。
-    /// </remarks>
-    private static string? FindBash()
-    {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return File.Exists("/bin/bash") ? "/bin/bash" : null;
-        }
-        string system = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-        foreach (string dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
-        {
-            if (dir.Length == 0
-                || dir.StartsWith(system, StringComparison.OrdinalIgnoreCase)
-                || dir.Contains("WindowsApps", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-            string candidate;
-            try
-            {
-                candidate = Path.Combine(dir, "bash.exe");
-            }
-            catch (ArgumentException)
-            {
-                // PATH 里混进了带非法字符的项,跳过就是。
-                continue;
-            }
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-        return null;
-    }
+    /// <summary>找一个能用的 bash;实现见 <see cref="BashProbe.Find" />(OSC 133 那组测试同样用它)。</summary>
+    private static string? FindBash() => BashProbe.Find();
 
     /// <summary>
     /// 建一段脚本:摆好初始状态 → 把钩子原样跑三遍 → 打印结果并试着真执行一次。
@@ -183,10 +145,7 @@ public sealed class PromptHookShellTests
         }
     }
 
-    private static string ToBashPath(string path) =>
-        RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-            ? "/" + char.ToLowerInvariant(path[0]) + path[2..].Replace('\\', '/')
-            : path;
+    private static string ToBashPath(string path) => BashProbe.ToBashPath(path);
 
     private static string Extract(string output, string tag)
     {

@@ -2613,6 +2613,12 @@
   <data name="SetTerm_ReportWorkingDirectoryDesc" xml:space="preserve">
     <value>연결 후 bash에 OSC 7 훅을 조용히 설치하여 파일 브라우저의 「터미널 디렉터리 따라가기」에 사용합니다. 끄면 아무 명령도 주입하지 않습니다</value>
   </data>
+  <data name="SetTerm_ShellIntegration" xml:space="preserve">
+    <value>셸 통합(명령 블록)</value>
+  </data>
+  <data name="SetTerm_ShellIntegrationDesc" xml:space="preserve">
+    <value>아래 중 하나를 원격 rc 파일(~/.bashrc, ~/.zshrc)에 복사하면 셸이 프롬프트·명령·출력의 시작 위치를 표시합니다(OSC 133). 그러면 여백 열에 명령별 표시가 나타나고 실패한 명령은 빨갛게 표시되며, Ctrl+Shift+↑/↓ 로 프롬프트 사이를 이동하고 표시를 클릭하면 해당 명령의 출력이 선택됩니다. 자동으로 주입하지 않습니다 —— PS1 을 수정하는데 starship 같은 프롬프트 테마가 매번 이를 덮어쓰기 때문입니다. 최신 fish 는 이 표시를 기본으로 출력합니다.</value>
+  </data>
   <data name="SetTerm_Subtitle" xml:space="preserve">
     <value>// 터미널 표시 및 동작 설정</value>
   </data>
@@ -4248,6 +4254,11 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Sc_KeyWheel" xml:space="preserve"><value>휠</value></data>
   <data name="Sc_KeyTitleBar" xml:space="preserve"><value>제목 표시줄</value></data>
   <data name="Sc_KeyGutter" xml:space="preserve"><value>여백 열</value></data>
+  <data name="Sc_KeyCommandMark" xml:space="preserve"><value>명령 표시 열</value></data>
+  <data name="Sc_JumpPrevPrompt" xml:space="preserve"><value>이전 프롬프트로 이동</value></data>
+  <data name="Sc_JumpNextPrompt" xml:space="preserve"><value>다음 프롬프트로 이동</value></data>
+  <data name="Sc_SelectCommandOutput" xml:space="preserve"><value>이 명령의 출력 선택</value></data>
+  <data name="Sc_NoteShellIntegration" xml:space="preserve"><value>셸 통합(OSC 133) 필요</value></data>
   <data name="Sc_PasteShiftInsert" xml:space="preserve"><value>붙여넣기(기존 X11 키)</value></data>
   <data name="Sc_SearchNext" xml:space="preserve"><value>다음 일치 항목으로 이동</value></data>
   <data name="Sc_SearchPrev" xml:space="preserve"><value>이전 일치 항목으로 이동</value></data>

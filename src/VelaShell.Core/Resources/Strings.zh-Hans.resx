@@ -2863,6 +2863,12 @@
   <data name="SetTerm_ReportWorkingDirectoryDesc" xml:space="preserve">
     <value>连接后向 bash 静默安装 OSC 7 钩子,供文件浏览器「跟随终端目录」使用;关闭则不注入任何命令</value>
   </data>
+  <data name="SetTerm_ShellIntegration" xml:space="preserve">
+    <value>Shell 集成(命令块)</value>
+  </data>
+  <data name="SetTerm_ShellIntegrationDesc" xml:space="preserve">
+    <value>把下面任一段复制进对端的 rc 文件(~/.bashrc、~/.zshrc),shell 就会标出每条提示符、命令与输出各从哪里开始(OSC 133)。之后侧栏会为每条命令画一个标记、失败的标红,Ctrl+Shift+↑/↓ 在提示符间跳转,点标记即选中该命令的输出。这几段不会替你自动注入 —— 它们要改 PS1,而 starship 这类提示符主题每次画提示符都会重写它。较新的 fish 自带这些标记,无需配置。</value>
+  </data>
   <data name="SetTerm_Subtitle" xml:space="preserve">
     <value>// 配置终端的显示和行为</value>
   </data>
@@ -4501,6 +4507,21 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   </data>
   <data name="Sc_KeyGutter" xml:space="preserve">
     <value>侧栏</value>
+  </data>
+  <data name="Sc_KeyCommandMark" xml:space="preserve">
+    <value>命令标记列</value>
+  </data>
+  <data name="Sc_JumpPrevPrompt" xml:space="preserve">
+    <value>跳到上一条提示符</value>
+  </data>
+  <data name="Sc_JumpNextPrompt" xml:space="preserve">
+    <value>跳到下一条提示符</value>
+  </data>
+  <data name="Sc_SelectCommandOutput" xml:space="preserve">
+    <value>选中这条命令的输出</value>
+  </data>
+  <data name="Sc_NoteShellIntegration" xml:space="preserve">
+    <value>需对端装了 shell 集成(OSC 133)</value>
   </data>
   <data name="Sc_PasteShiftInsert" xml:space="preserve">
     <value>粘贴(经典 X11 键位)</value>
