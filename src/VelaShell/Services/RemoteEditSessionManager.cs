@@ -89,6 +89,16 @@ public sealed class RemoteEditRequest
     /// <summary><see cref="RemoteEditOpenWith.SystemDefault" /> 时由宿主执行的打开动作。</summary>
     public Func<string, Task>? OpenLocalAsync { get; init; }
 
+    /// <summary>
+    /// 同上,但<b>把进程句柄交回来</b>(拿不到就返回 <see langword="null" />,回落到
+    /// <see cref="OpenLocalAsync" />)。
+    /// </summary>
+    /// <remarks>
+    /// 没有句柄就不知道用户什么时候关掉了编辑器,那一行会一直挂在「正在编辑」里不走
+    /// —— 用户的原话是「我明明编辑器都关掉了,传输列表还显示正在编辑」。
+    /// </remarks>
+    public Func<string, Task<Process?>>? OpenLocalTrackedAsync { get; init; }
+
     /// <summary>把话说给用户听的通道(失败、草稿保留位置)。</summary>
     public Action<string>? OnError { get; init; }
 
@@ -453,6 +463,18 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>编辑器保存往往触发多个事件(写入 + 改名 + 属性),攒这么久再传一次。</summary>
     private static readonly TimeSpan DebounceWindow = TimeSpan.FromMilliseconds(600);
 
+    /// <summary>
+    /// 进程活得比这还短就当作"引导进程转交完就退了",去找接手的实例,而不是判会话死刑。
+    /// </summary>
+    /// <remarks>
+    /// 单实例编辑器把文件转交给已有实例通常在 1 秒内完成,但冷启动 + 慢盘能拖到好几秒;
+    /// 给得宽一点是刻意的 —— 猜错这一边只是多留一行,猜错另一边是丢用户的改动。
+    /// </remarks>
+    private static readonly TimeSpan BootstrapExitWindow = TimeSpan.FromSeconds(8);
+
+    /// <summary>最多改盯几次接手实例,防的是"一直有同名进程在退"这种打转。</summary>
+    private const int MaxAdoptions = 4;
+
     private readonly Action<string>? _onError;
     private readonly RemoteEditRequest _request;
     private readonly SemaphoreSlim _uploadGate = new(1, 1);
@@ -474,6 +496,14 @@ public sealed class RemoteEditSession : IDisposable
     private DateTime? _lastUploadedAt;
     private string? _lastError;
     private bool _autoUpload;
+
+    /// <summary>当前盯着的编辑器进程是什么时候开始盯的(判断"启动即返回"用)。</summary>
+    private DateTime _trackedSince;
+
+    /// <summary>编辑器进程名,用来找接手的同名实例。退出后取不到,所以启动时就记下来。</summary>
+    private string? _editorProcessName;
+
+    private int _adoptions;
 
     internal RemoteEditSession(RemoteEditRequest request, string localPath)
     {
@@ -664,13 +694,35 @@ public sealed class RemoteEditSession : IDisposable
             case RemoteEditOpenWith.ConfiguredEditor when !string.IsNullOrWhiteSpace(_request.EditorCommand):
                 LaunchEditor(_request.EditorCommand);
                 break;
-            case RemoteEditOpenWith.SystemDefault when _request.OpenLocalAsync is not null:
-                await _request.OpenLocalAsync(LocalPath).ConfigureAwait(false);
+            case RemoteEditOpenWith.SystemDefault:
+                await LaunchWithSystemDefaultAsync().ConfigureAwait(false);
                 break;
             case RemoteEditOpenWith.Nothing:
             default:
                 // 内置编辑器自己弹窗;会话只负责监视与回传。
                 break;
+        }
+    }
+
+    /// <summary>
+    /// 交给系统默认程序。优先走能拿到进程句柄的那条 —— 拿不到句柄,
+    /// 就永远不知道用户什么时候把编辑器关了,这一行会一直挂在「正在编辑」里。
+    /// </summary>
+    private async Task LaunchWithSystemDefaultAsync()
+    {
+        if (_request.OpenLocalTrackedAsync is not null)
+        {
+            Process? process = await _request.OpenLocalTrackedAsync(LocalPath).ConfigureAwait(false);
+            if (process is not null)
+            {
+                Track(process);
+                return;
+            }
+        }
+        if (_request.OpenLocalAsync is not null)
+        {
+            RemoteEditLog.Write("open", $"opened untracked (no process handle) {LocalPath}");
+            await _request.OpenLocalAsync(LocalPath).ConfigureAwait(false);
         }
     }
 
@@ -688,27 +740,146 @@ public sealed class RemoteEditSession : IDisposable
             _onError?.Invoke(ex.Message);
             return;
         }
-        if (process is null)
+        if (process is not null)
         {
-            return;
+            Track(process);
         }
+    }
+
+    /// <summary>盯住一个编辑器进程:它退出时决定这个会话是接着守还是就此收摊。</summary>
+    private void Track(Process process)
+    {
+        _trackedSince = DateTime.UtcNow;
+        try
+        {
+            // 进程名必须在它还活着的时候取 —— 退出之后 ProcessName 直接抛。
+            _editorProcessName ??= process.ProcessName;
+        }
+        catch (InvalidOperationException)
+        {
+            // 已经退了,拿不到名字就没法找接手的实例;下面照常按退出处理。
+        }
+        int[] fired = [0];
+        process.Exited += (_, _) =>
+        {
+            // EnableRaisingEvents 对一个已经退出的进程也会补一次事件,加个闸免得跑两遍。
+            if (Interlocked.Exchange(ref fired[0], 1) == 0)
+            {
+                _ = OnEditorProcessExitedAsync(process, DateTime.UtcNow - _trackedSince);
+            }
+        };
         process.EnableRaisingEvents = true;
-        process.Exited += (_, _) => _ = NotifyEditorExitedAsync();
     }
 
     /// <summary>
-    /// 编辑器进程退出了:把攒着的那次改动传掉,<b>会话继续存活</b>。
+    /// 编辑器进程退出了:先把攒着的那次改动传掉,再判断这是"编辑器真的关了"还是
+    /// "单实例编辑器的引导进程转交完就退了"。
     /// </summary>
     /// <remarks>
-    /// 旧实现在这里做过一次要命的判断:退出得早(&lt;3s)就认为是单实例编辑器的引导进程、
-    /// 保留监听,否则认为编辑器真关了 —— 于是停 watcher、删临时目录。带标签页的单实例编辑器
-    /// (Notepad--、Notepad++、VS Code)冷启动一慢就掉进后一支:文件还在编辑器里开着,
-    /// VelaShell 这边已经不听了,之后每一次保存都无声丢失,这正是 #396 的第二条复现路径。
-    /// 进程状态根本判断不出"用户还要不要编辑这个文件",别再拿它当依据。
+    /// <para>
+    /// 旧实现用「3 秒内退出 = 引导进程,否则编辑器关了 → 停 watcher、删临时目录」。
+    /// 带标签页的单实例编辑器(Notepad--、Notepad++、VS Code)冷启动一慢就掉进后一支:
+    /// 文件还在编辑器里开着,VelaShell 这边已经不听了,之后每一次保存无声丢失 ——
+    /// #396 的第二条复现路径。
+    /// </para>
+    /// <para>
+    /// <b>时长现在只决定"要不要去找接手的实例",不再决定生死。</b>两条岔路的代价差着量级:
+    /// 收早了 = 用户后面的保存<b>悄悄丢掉</b>;收晚了 = 列表里多挂一行。所以只有
+    /// <b>活了一阵才退</b>的进程才算数 —— 那就是编辑器本身,用户把它关了;
+    /// 启动即返回的那种一律往"还开着"的方向猜,顶多让用户自己点一下「结束监视」。
+    /// </para>
     /// </remarks>
-    internal async Task NotifyEditorExitedAsync()
+    /// <param name="process">刚退出的那个进程。</param>
+    /// <param name="aliveFor">它从被盯上到退出活了多久。</param>
+    /// <returns>会话是否就此结束。</returns>
+    internal async Task<bool> OnEditorProcessExitedAsync(Process? process, TimeSpan aliveFor)
     {
-        RemoteEditLog.Write("watch", $"editor process exited {RemotePath}; flushing");
+        RemoteEditLog.Write("watch", $"editor process exited after {aliveFor.TotalSeconds:F1}s ({RemotePath})");
+        await FlushAsync().ConfigureAwait(false);
+        if (_disposed || _closing)
+        {
+            return true;
+        }
+        if (aliveFor < BootstrapExitWindow)
+        {
+            // 启动即返回:多半是引导进程,文件已经转交给一个还活着的同名实例。找到就改盯它。
+            if (TryAdoptSurvivingInstance(process) is { } adopted)
+            {
+                RemoteEditLog.Write("watch", $"adopted surviving instance pid={adopted.Id} ({RemotePath})");
+                Track(adopted);
+                return false;
+            }
+            // 找不到接手的也不能就此收摊 —— 判断错了就是"保存无声丢失"。
+            RemoteEditLog.Write("watch", $"no surviving instance; keeping the session ({RemotePath})");
+            return false;
+        }
+        RemoteEditLog.Write("watch", $"editor closed; ending session ({RemotePath})");
+        await RemoteEditSessionManager.CloseAsync(Id).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>找一个和刚退出那个同名、还活着的进程(单实例编辑器的主实例)。</summary>
+    private Process? TryAdoptSurvivingInstance(Process? exited)
+    {
+        if (_editorProcessName is null || _adoptions >= MaxAdoptions)
+        {
+            return null;
+        }
+        Process[] candidates;
+        try
+        {
+            candidates = Process.GetProcessesByName(_editorProcessName);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or PlatformNotSupportedException)
+        {
+            return null;
+        }
+        Process? chosen = null;
+        foreach (Process candidate in candidates.OrderBy(StartedAt))
+        {
+            // 取最早启动的那个 —— 单实例编辑器里它就是接手文件的主实例。
+            if (chosen is null && candidate.Id != exited?.Id && IsAlive(candidate))
+            {
+                chosen = candidate;
+                continue;
+            }
+            candidate.Dispose();
+        }
+        if (chosen is not null)
+        {
+            _adoptions++;
+        }
+        return chosen;
+
+        static DateTime StartedAt(Process process)
+        {
+            try
+            {
+                return process.StartTime;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or SystemException)
+            {
+                // 权限不足或刚退出:排到最后,别让它顶掉真正的主实例。
+                return DateTime.MaxValue;
+            }
+        }
+
+        static bool IsAlive(Process process)
+        {
+            try
+            {
+                return !process.HasExited;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or SystemException)
+            {
+                return false;
+            }
+        }
+    }
+
+    /// <summary>把攒着的那次改动传掉,会话继续存活。</summary>
+    private async Task FlushAsync()
+    {
         if (_disposed || _closing || !HasPendingChange)
         {
             return;

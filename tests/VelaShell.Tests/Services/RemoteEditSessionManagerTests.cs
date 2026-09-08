@@ -57,6 +57,30 @@ public sealed class RemoteEditSessionManagerTests
         Assert.AreEqual(before, CountTempChildren(), "非法文件名却已经在 temp 下建了目录。");
     }
 
+    /// <summary>
+    /// 经管理器开一个会话(谁也不打开、下载走桩),这样 <c>ActiveSessions</c> 里才有它 ——
+    /// 直接 new 出来的 <c>SessionFixture</c> 没在管理器登记,测不了"会话有没有被收掉"。
+    /// </summary>
+    private static async Task<RemoteEditSession> OpenStubSessionAsync(Func<string, string, Task>? uploadAsync = null)
+    {
+        RemoteEditSession? session = await RemoteEditSessionManager.OpenAsync(new()
+        {
+            SftpService = Substitute.For<ISftpService>(),
+            SessionId = Guid.NewGuid(),
+            RemotePath = "/etc/app.conf",
+            FileName = "app.conf",
+            OpenWith = RemoteEditOpenWith.Nothing,
+            DownloadAsync = async (local, _) =>
+            {
+                await File.WriteAllTextAsync(local, "original");
+                return true;
+            },
+            UploadAsync = uploadAsync ?? ((_, _) => Task.CompletedTask),
+        });
+        Assert.IsNotNull(session);
+        return session;
+    }
+
     /// <summary>remote-edit 临时根下现有的子目录数(不存在算 0)。</summary>
     private static int CountTempChildren() =>
         Directory.Exists(RemoteEditSessionManager.TempRoot)
@@ -106,25 +130,71 @@ public sealed class RemoteEditSessionManagerTests
     }
 
     /// <summary>
-    /// 编辑器进程退出之后,同一个文件的后续保存仍然要回传。
+    /// 「启动即返回」的进程退出之后,同一个文件的后续保存仍然要回传。
     /// </summary>
     /// <remarks>
-    /// 旧实现在进程退出时按「3 秒启发式」决定要不要停掉监视、删掉临时目录 ——
-    /// 单实例编辑器(Notepad--、Notepad++、VS Code)把文件转交给已有实例后引导进程就退出,
-    /// 冷启动慢一点就会被误判成"编辑器关了",此后每一次保存都无声丢失。
-    /// 进程退出现在只触发一次补传。
+    /// 旧实现在进程退出时按「3 秒启发式」直接决定生死 —— 单实例编辑器
+    /// (Notepad--、Notepad++、VS Code)把文件转交给已有实例后引导进程就退出,
+    /// 冷启动慢一点就被误判成"编辑器关了",停 watcher、删临时目录,此后每一次保存无声丢失。
+    /// 现在时长只决定"要不要去找接手的实例":找不到就<b>继续守着</b>,绝不据此收摊。
     /// </remarks>
     [TestMethod]
     [TestCategory("ExternalEdit")]
-    public async Task AfterTheEditorProcessExits_LaterSavesAreStillUploaded()
+    public async Task WhenABootstrapProcessExitsQuickly_TheSessionKeepsWatching()
     {
         using var fixture = new SessionFixture();
 
         await fixture.SaveAndWaitForUploadAsync("before exit", 1);
-        await fixture.Session.NotifyEditorExitedAsync();
-        await fixture.SaveAndWaitForUploadAsync("after exit", 2);
+        bool closed = await fixture.Session.OnEditorProcessExitedAsync(null, TimeSpan.FromSeconds(1));
 
+        Assert.IsFalse(closed, "引导进程一退就把会话收了 —— #396 的第二条复现路径又回来了。");
+        await fixture.SaveAndWaitForUploadAsync("after exit", 2);
         CollectionAssert.AreEqual((string[])["before exit", "after exit"], fixture.UploadedContents);
+    }
+
+    /// <summary>
+    /// 编辑器活了一阵才退出 = 用户把它关了:会话就此结束,「正在编辑」里那一行要走掉。
+    /// </summary>
+    /// <remarks>
+    /// 用户的原话:「我明明编辑器都关掉了,传输列表还显示正在编辑」。
+    /// 上一版把进程退出整个降级成"只补传",于是那一行谁也收不掉。
+    /// </remarks>
+    [TestMethod]
+    [TestCategory("ExternalEdit")]
+    public async Task WhenTheEditorItselfExits_TheSessionEnds()
+    {
+        RemoteEditSessionManager.CleanupAll();
+        RemoteEditSession session = await OpenStubSessionAsync();
+
+        bool closed = await session.OnEditorProcessExitedAsync(null, TimeSpan.FromMinutes(3));
+
+        Assert.IsTrue(closed);
+        Assert.IsEmpty(RemoteEditSessionManager.ActiveSessions,
+                       "编辑器关掉了,「正在编辑」里那一行还挂着。");
+    }
+
+    /// <summary>编辑器关掉时,末次保存必须先落到远端,再收会话。</summary>
+    [TestMethod]
+    [TestCategory("ExternalEdit")]
+    public async Task WhenTheEditorExits_ThePendingSaveIsUploadedBeforeClosing()
+    {
+        RemoteEditSessionManager.CleanupAll();
+        List<string> uploads = [];
+        RemoteEditSession session = await OpenStubSessionAsync(async (local, _) =>
+            uploads.Add(await File.ReadAllTextAsync(local)));
+
+        // 存一次,但不等防抖到点就"关掉编辑器"。
+        await File.WriteAllTextAsync(session.LocalPath, "last words");
+        for (int i = 0; i < 2_000 && !session.HasPendingChange; i++)
+        {
+            await Task.Delay(5);
+        }
+
+        await session.OnEditorProcessExitedAsync(null, TimeSpan.FromMinutes(3));
+
+        Assert.AreEqual("last words", uploads.SingleOrDefault(),
+                        "会话收掉了,可最后那次保存没传上去 —— 这才是真正会丢东西的那一边。");
+        Assert.IsEmpty(RemoteEditSessionManager.ActiveSessions);
     }
 
     /// <summary>防抖窗口里连存两次只传一次,但传的必须是最后那份内容。</summary>
