@@ -174,10 +174,7 @@ public sealed class FileTransferPanelUiTests
             .. List.ItemsPanelRoot?.Children.Where(child => child.IsVisible) ?? []
         ];
 
-        public void Dispose()
-        {
-            Window.Close();
-        }
+        public void Dispose() => Window.Close();
     }
 
     private static void OnUi(Action action) => _session.Dispatch(action, CancellationToken.None).GetAwaiter().GetResult();

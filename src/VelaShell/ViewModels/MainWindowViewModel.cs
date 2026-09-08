@@ -3162,7 +3162,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     private CancellationToken BeginTabConnect(TerminalTabViewModel tab, CancellationToken outer)
     {
         EndTabConnect(tab);
-        CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(outer);
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(outer);
         _tabConnectCancellations[tab] = cancellation;
         return cancellation.Token;
     }
