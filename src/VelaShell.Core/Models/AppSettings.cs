@@ -113,6 +113,13 @@ public class AppSettings
             Proxy.DefaultsMigrated = true;
         }
 
+        // 双击行为是个字符串枚举,磁盘上的内容拦不住:认不出来的一律回落到默认的
+        // "系统默认程序",而不是让面板双击变成什么都不做。
+        if (Transfer.DoubleClickAction is not ("system" or "builtin" or "editor"))
+        {
+            Transfer.DoubleClickAction = "system";
+        }
+
         ClampNumbers();
     }
 
@@ -938,6 +945,35 @@ public class TransferOptions : ObservableOptions
         get;
         set => Set(ref field, value);
     } = "";
+
+    /// <summary>
+    /// 编辑后自动上传(设置 → 文件传输):远程文件的本地副本一保存就传回服务器。
+    /// </summary>
+    /// <remarks>
+    /// <b>关掉 = 根本不监视</b>:本地副本随便改,一个字节也不回传(想同步就手动上传那个文件)。
+    /// 刻意不做成"攒着等人点一下" —— 界面上没有任何手动上传的入口,那笔账就没有出口;
+    /// 而收尾时若把它补传上去,开关写着"不自动上传"、关掉标签页却传了,那是骗人。
+    /// 默认开启:这是这条链路存在的理由。生产机上不想手一抖就写过去的人才关它。
+    /// </remarks>
+    public bool AutoUploadOnEdit
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
+    /// <summary>
+    /// 双击远端文件时做什么:<c>system</c>(系统默认程序,默认)、<c>builtin</c>(内置编辑器)、
+    /// <c>editor</c>(<see cref="DefaultEditorPath" /> 配置的编辑器)。
+    /// </summary>
+    /// <remarks>
+    /// 三者都会侦听保存并自动回传(#396),区别只在"谁来打开"。默认保持 <c>system</c>:
+    /// 改默认值等于动所有存量用户的肌肉记忆,而这个 issue 要修的是回传,不是打开方式。
+    /// </remarks>
+    public string DoubleClickAction
+    {
+        get;
+        set => Set(ref field, value);
+    } = "system";
 }
 
 /// <summary>设置 - 安全审计(设计 glqQE;策略项持久化,审计数据在 SonnetDB audit_log)。</summary>

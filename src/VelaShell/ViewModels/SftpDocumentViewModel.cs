@@ -206,6 +206,11 @@ public sealed class SftpDocumentViewModel : ReactiveObject, IAsyncDisposable
     private async Task CloseCoreAsync()
     {
         Detach();
+
+        // 本会话名下还开着的远程编辑会话先收尾:把没传完的传掉,再停止监视。
+        // 顺序要紧 —— 得赶在 SFTP 连接被关掉之前,否则那几次补传注定失败,
+        // 用户只会看到一串"上传失败",而改动其实本来传得上去。
+        await Services.RemoteEditSessionManager.CloseScopeAsync(SessionId).ConfigureAwait(false);
         try
         {
             await _serializedSftp.CloseAsync().ConfigureAwait(false);

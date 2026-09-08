@@ -107,10 +107,11 @@
            而排查那次"下方一大片空白"时,虚拟化面板的实现窗口是最先被怀疑的一环,
            徒增一层不确定。那片空白的真凶是历史恢复(见 FileTransferViewModel 的
            「传输历史」注释):行在面板隐藏期间入列,占着高度却画不出来。 -->
-      <ScrollViewer VerticalScrollBarVisibility="Auto"
+      <ScrollViewer Name="TransferViewport"
+                    VerticalScrollBarVisibility="Auto"
                     HorizontalScrollBarVisibility="Disabled"
                     MaxHeight="280">
-        <ItemsControl ItemsSource="{Binding Transfers}">
+        <ItemsControl Name="TransferRows" ItemsSource="{Binding Transfers}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:TransferItemViewModel">
               <Border Padding="12,8"

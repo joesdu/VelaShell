@@ -4867,4 +4867,31 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Msg_PluginOpeningPanel" xml:space="preserve">
     <value>正在開啟面板</value>
   </data>
+  <data name="Svc_RemoteEditReusedDraft" xml:space="preserve">
+    <value>{0} 還有沒上傳成功的變更,已沿用本機副本({1}),沒有重新下載覆蓋它。</value>
+  </data>
+  <data name="SetTransfer_SectionRemoteEdit" xml:space="preserve">
+    <value>遠端編輯</value>
+  </data>
+  <data name="SetTransfer_DoubleClickAction" xml:space="preserve">
+    <value>按兩下檔案時</value>
+  </data>
+  <data name="SetTransfer_DoubleClickActionDesc" xml:space="preserve">
+    <value>三種方式都會把本機副本的每次儲存自動傳回伺服器</value>
+  </data>
+  <data name="SetTransfer_DoubleClickSystem" xml:space="preserve">
+    <value>系統預設程式</value>
+  </data>
+  <data name="SetTransfer_DoubleClickBuiltin" xml:space="preserve">
+    <value>內建編輯器</value>
+  </data>
+  <data name="SetTransfer_DoubleClickEditor" xml:space="preserve">
+    <value>設定的編輯器</value>
+  </data>
+  <data name="SetTransfer_AutoUploadOnEdit" xml:space="preserve">
+    <value>編輯後自動上傳</value>
+  </data>
+  <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
+    <value>關閉後完全不監看本機副本，變更一律不回傳</value>
+  </data>
 </root>

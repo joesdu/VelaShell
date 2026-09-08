@@ -4850,6 +4850,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     browser.ShowHiddenFiles = settings.Transfer.ShowHiddenFiles;
                     ApplyColumnVisibility(browser, settings.Transfer);
                 }
+
                 RevealActiveSessionInSidebar();
             }
         );

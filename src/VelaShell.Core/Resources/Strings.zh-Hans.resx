@@ -4867,4 +4867,31 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Msg_PluginOpeningPanel" xml:space="preserve">
     <value>正在打开面板</value>
   </data>
+  <data name="Svc_RemoteEditReusedDraft" xml:space="preserve">
+    <value>{0} 还有没上传成功的改动,已沿用本地副本({1}),没有重新下载覆盖它。</value>
+  </data>
+  <data name="SetTransfer_SectionRemoteEdit" xml:space="preserve">
+    <value>远程编辑</value>
+  </data>
+  <data name="SetTransfer_DoubleClickAction" xml:space="preserve">
+    <value>双击文件时</value>
+  </data>
+  <data name="SetTransfer_DoubleClickActionDesc" xml:space="preserve">
+    <value>三种方式都会把本地副本的每次保存自动传回服务器</value>
+  </data>
+  <data name="SetTransfer_DoubleClickSystem" xml:space="preserve">
+    <value>系统默认程序</value>
+  </data>
+  <data name="SetTransfer_DoubleClickBuiltin" xml:space="preserve">
+    <value>内置编辑器</value>
+  </data>
+  <data name="SetTransfer_DoubleClickEditor" xml:space="preserve">
+    <value>配置的编辑器</value>
+  </data>
+  <data name="SetTransfer_AutoUploadOnEdit" xml:space="preserve">
+    <value>编辑后自动上传</value>
+  </data>
+  <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
+    <value>关闭后完全不监视本地副本，改动一律不回传</value>
+  </data>
 </root>

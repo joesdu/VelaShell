@@ -2461,3 +2461,365 @@ Dispose 花了 2002ms —— 读线程八成一直挂在背压闸上等到超时
 **留给下一次的判据**:测试里出现 `Thread.Sleep(常数)` 且后面紧跟一条依赖它的断言时,
 问一句「这个数凭什么够」。答不上来就把它换成「等条件 + 给足超时」——
 超时给多大都不要紧,健康时一分钱不花;赌一个固定值才是每次 CI 都要掷一遍的骰子。
+
+---
+
+## ✅ 51. 2026-09-08 双击打开的远端文件也要自动回传;编辑会话不再赌编辑器进程(#396)
+
+用户报的是「文件编辑之后自动上传」这个功能失效,原话:
+**「第一次保存有效,后面再编辑保存就没有效果了」**(编辑器是 Notepad--,Windows 11)。
+
+### 一、把「只有第一次生效」认出来:两个入口长得一样,行为相反
+
+截图里 Ndd 标题栏的路径是决定性证据:
+
+```
+C:\Users\falcon\AppData\Local\Temp\VelaShell\93f408970803433ea9fbbc10fbd39f32\docker-compose.yml
+```
+
+那 32 位十六进制是 `_sessionId.ToString("N")`,全仓只有一处这么拼路径。当时的三个「打开」是:
+
+| 入口 | 代码 | 临时目录 | 保存后回传 |
+| --- | --- | --- | --- |
+| **双击** | `ActivateAsync` → `DownloadAndOpenAsync` → `Launcher.LaunchFileInfoAsync` | `VelaShell\<sessionId:N>\` | **没有。全程没有 watcher** |
+| 右键「打开」 | `OpenItemAsync` → 内置 AvaloniaEdit | `VelaShell\builtin-edit\<8hex>\` | ✅ 每次 Ctrl+S |
+| 右键「使用默认编辑器打开」 | `OpenWithDefaultEditorAsync` → `ExternalEditSession` | `VelaShell\remote-edit\<8hex>\` | ✅ 600ms 防抖 |
+
+报告人截图里的文件来自第一行。所以「后面再存就没反应」不是失效,
+**是那条路径从来就没有过回传**;而「第一次保存有效」是他此前按维护者的说法用右键菜单开的那一次
+(远端 mtime 12:07:14 对得上)。两个入口在界面上没有任何区别,用户当然分不出来。
+
+逐行核过 `ExternalEditSession` 的防抖/上传闸/pending 记账之后确认:
+**它对连续保存本来就是对的**,第 N 次不会丢。主因就是入口不一致。
+
+### 二、顺带挖出来的第二条复现路径:3 秒启发式
+
+`LaunchEditor` 用「编辑器进程 3 秒内退出就当作是单实例编辑器的引导进程」来判断编辑器是否还开着,
+否则就认为"编辑器关了" —— 停 watcher、删临时目录。而 Notepad-- 恰恰是带标签页的单实例编辑器
+(截图里 nginx.conf 与 docker-compose.yml 同窗口)。冷启动慢一点,引导进程 3.5 秒才退出,
+会话就被当成"编辑器已关闭"拆掉,**此后每一次保存都无声丢失**——
+一模一样的现象,另一条路。进程状态根本判断不出"用户还要不要编辑这个文件"。
+
+### 三、改法
+
+**入口收敛。** `ExternalEditSessionManager` 升成通用的 `RemoteEditSessionManager`
+(`src/VelaShell/Services/RemoteEditSessionManager.cs`),入口只决定**谁来打开**
+(`RemoteEditOpenWith`:系统默认程序 / 配置的编辑器 / 不打开),要不要监视回传是会话自己的事。
+双击现在也下载到 `remote-edit\<8hex>\` 的独占子目录(顺带修掉"每会话共享一个临时目录、
+不同远端目录的同名文件互相覆盖")。会话按 `(SessionId, RemotePath)` 去重:
+同一个远程文件重复打开复用同一份副本与同一个 watcher,不再开第二个对着第二份副本各存各的。
+
+**生命周期不再赌进程。** 删掉 3 秒启发式。进程退出只触发一次补传(`NotifyEditorExitedAsync`),
+**不拆会话**。会话只由三件事结束:用户在浮窗里点「结束监视」、所属远程会话关闭
+(`SftpDocumentViewModel.CloseCoreAsync` → `CloseScopeAsync`,**赶在 SFTP 连接关掉之前**,
+否则那几次补传注定失败)、应用退出(`CleanupAll`,原有的"传不完就留草稿并提示路径"不变)。
+
+**可见性。** 传输浮窗新增「正在编辑」分组(`FileTransferViewModel.Edits` +
+`RemoteEditItemViewModel`):每行是一个被盯着的文件,显示上次回传时刻 / 待上传 / 正在上传 /
+失败原因,行操作 = 立即上传、打开本地目录、结束监视。失败会把面板叫回来并标红,
+「立即上传」同时充当重试入口。此前自动上传是完全隐形的:静默工作,静默失效,
+用户能提供的只有一句"没上传"。
+
+**诊断。** `RemoteEditLog` 常开写 `~/.velashell/logs/remote-edit.log`:
+会话建立/复用、每一次文件事件、上传起止与失败原因、会话销毁。写量很小,
+换来的是下次这类"保存了但什么都没发生"的 issue 有据可查。
+
+**设置。** 设置 → 文件传输 → 远程编辑:「双击文件时」(系统默认程序 / 内置编辑器 /
+配置的编辑器,默认仍是**系统默认程序** —— 改默认值等于动所有存量用户的肌肉记忆,
+这个 issue 要修的是回传,不是打开方式)与「编辑后自动上传」(默认开;
+关掉后改动仍然记账,在「正在编辑」里手动上传)。改这个开关对**已经开着的**会话即时生效。
+
+### 四、途中踩到的两颗雷(都由全量测试抓出来)
+
+1. **`Dispatcher.UIThread.CheckAccess()` 的快路把测试宿主打崩了。**
+   `SyncEdits` 原本"已在 UI 线程就直接调,否则 Post"。在没有真正 UI 线程的宿主里
+   `CheckAccess()` 会对着 `FileSystemWatcher` 的线程池线程点头,于是集合变更直接打到
+   绑定的 `ItemsControl` 上:`The calling thread cannot access this object`。改成**一律 Post**。
+2. **界面异常顺着事件冒回去,把"打开文件"整个跳过了。** 上面那条异常从
+   `RaiseSessionsChanged()` 冒到 `OpenAsync`,让紧随其后的 `LaunchAsync()` 一步没走 ——
+   文件下下来了却没人打开,而报错是 `ErrorMessage` 里一句看不懂的话。
+   `RaiseSessionsChanged` 现在逐个订阅者 try/catch:**界面炸了不能连累编辑会话本身**。
+
+### 五、回归用例
+
+`tests/VelaShell.Tests/Services/RemoteEditSessionManagerTests.cs`(原 `ExternalEditSessionManagerTests`)。
+此前这里覆盖了收尾、慢链路、失败保留草稿 —— **唯独没有一条按住 watcher 连存几次**,
+正是这个 issue 的形状。新增:
+
+- `ConsecutiveSaves_AreEachUploaded` —— 连存三次要传三次(#396 本体)。
+- `AtomicSave_ViaReplace_IsUploaded` —— 写临时文件 + `File.Replace` 的"安全保存"也要认。
+- `AfterTheEditorProcessExits_LaterSavesAreStillUploaded` —— 3 秒启发式的回归。
+- `SavesInsideOneDebounceWindow_UploadTheLatestContentOnce` —— 防抖只合并,不吃掉最后那份内容。
+- `WithAutoUploadOff_...` / `TurningAutoUploadBackOn_FlushesTheHeldChange` / `AfterAFailedUpload_UploadNowRetries`。
+- `OpeningTheSameRemoteFileTwice_ReusesOneSession` / `ReopeningWithUnuploadedChanges_KeepsTheLocalDraft`
+  —— 后者是条硬红线:复用时**绝不能**拿远端内容盖掉还没传上去的本地改动。
+- `FileBrowserViewModelTests.DoubleClick_RegistersAnEditSessionThatUploadsOnSave` —— 入口这一侧的守门。
+
+`dotnet build VelaShell.slnx` 零警告;`dotnet test VelaShell.slnx` **3205 通过 / 0 失败**。
+
+### 六、留给下一次的判据
+
+三个入口做同一件事的三种做法,界面上却完全看不出区别 —— 这类"外观一致、行为分叉"的功能,
+**用户报上来的现象一定不指向真凶**(这次报的是"自动上传失效",真凶是另一个入口压根没这功能)。
+判据:同一个动词在界面上出现多次时,先问"它们的能力集合是不是同一个";不是的话,
+要么补齐,要么让界面说清楚差别 —— 不能靠用户去猜自己点的是哪一个。
+
+---
+
+## ✅ 52. 2026-09-08 编辑器都关掉了,「正在编辑」那一行还挂着(#396 反馈)
+
+上一节把「编辑器进程退出」整个降级成"只补传、不拆会话",理由是旧的 3 秒启发式会误杀。
+代价当场就来了 —— 用户反馈:**「我明明编辑器都关掉了,传输列表还显示正在编辑」**。
+会话从此只有三个出口(手动结束 / 关会话 / 退应用),**没有一个是"编辑器关了"**,
+而那恰恰是最自然的那个。
+
+### 一、两条岔路的代价差着量级,不能用同一个判据
+
+| 判错的方向 | 后果 |
+| --- | --- |
+| 收早了(编辑器还开着就拆会话) | 用户之后的保存**悄悄丢掉**,还不报错 —— 就是 #396 本身 |
+| 收晚了(编辑器关了还留着) | 列表里多挂一行 |
+
+旧实现的错不在"用了时长",而在**让时长决定生死**:一个 3 秒的阈值同时管着这两条路,
+猜错任一边都要付上面那张表里的代价。
+
+### 二、改法:时长只决定"要不要去找接手的实例"
+
+```
+进程退出
+  ├─ 先把攒着的那次改动传掉(FlushAsync)
+  ├─ 活得比 8 秒短 → 多半是单实例编辑器的引导进程,文件已转交
+  │    ├─ 找到同名的存活实例 → 改盯它(Track),会话继续
+  │    └─ 找不到 → 仍然继续守着。判断错了就是"保存无声丢失",绝不据此收摊
+  └─ 活了一阵才退 → 这就是编辑器本身,用户把它关了 → 收会话
+```
+
+于是**快退出这条路永远不会杀会话**,#396 关掉的门没有再打开;
+而"用户关掉编辑器"走的是慢退出那条,行会自己消失。
+
+接手实例的找法(`TryAdoptSurvivingInstance`):按进程名找还活着的同名进程,取**最早启动**
+的那个 —— 单实例编辑器里它就是主实例。⚠️ 进程名必须在**进程还活着的时候**记下来,
+退出之后 `Process.ProcessName` 直接抛。收养次数封顶 4 次,防的是"一直有同名进程在退"这种打转。
+
+顺带一个正确的副作用:非单实例编辑器(记事本)本来就是我们起的那个进程在编辑,
+它退出必然是慢退出 —— 不会去找同名实例,也就不会因为用户另开着一个记事本而赖着不走。
+
+### 三、双击那条路以前根本拿不到进程句柄
+
+`TopLevel.Launcher.LaunchFileInfoAsync` 只回一个 `bool`。也就是说**默认的双击入口
+从来就没有任何"编辑器关了"的信号** —— 上面那套判断对它一点用都没有。
+
+新增 `FileBrowserView.OpenLocalFileTrackedAsync`:走 `Process.Start` + `UseShellExecute`
+(与 Launcher 同一套文件关联,只是多给一个句柄),拿不到就返回 null 回落到原来的
+`Launcher` 那条。关联走 DDE / COM 复用已有实例时它会返回 null,那种情况下句柄本来也拿不到。
+
+放在**视图**里而不是 VM 里是有意的:回归用例覆盖的是 VM,它们只挂 `OpenLocalFile`,
+于是测试进程里一个真实编辑器也不会被拉起来 —— 否则 CI 上跑一遍就是满屏记事本。
+
+### 四、回归用例
+
+- `WhenABootstrapProcessExitsQuickly_TheSessionKeepsWatching` —— 快退出后再存一次仍要回传
+  (#396 那条门的守卫)。
+- `WhenTheEditorItselfExits_TheSessionEnds` —— 慢退出后 `ActiveSessions` 必须空掉
+  (这次反馈的守卫)。
+- `WhenTheEditorExits_ThePendingSaveIsUploadedBeforeClosing` —— 收会话之前,
+  防抖窗口里那次保存得先落到远端。**这是两条路交界处唯一真会丢东西的地方。**
+
+`dotnet build VelaShell.slnx -warnaserror` 零警告;`dotnet test VelaShell.slnx` **3207 通过 / 0 失败**。
+
+### 五、留给下一次的判据
+
+§51 修的是"收早了",这一节修的是"因此收不掉了" —— 同一个开关来回拨了两次。
+根子在于**拿一个标量(进程活了多久)去回答两个代价不对称的问题**。
+判据:一个判断的两个方向后果差着量级时,别用同一个阈值决定两边;
+让阈值只管那个**便宜的方向**,昂贵的那边要么找到硬证据(这里是"有没有同名实例还活着"),
+要么一律往安全的方向倒。
+
+---
+
+## ✅ 53. 2026-09-08 VS Code 关掉了那一行还挂着:别拿单个进程句柄代表"应用还开着"(#396 反馈二)
+
+用户反馈:双击一个 `.profile`,VS Code 打开;**关掉 VS Code 之后那一行还显示「正在编辑」**;
+而前面用记事本开的 `test.txt` 一切正常。
+
+### 一、差别在于 VS Code 是一堆同名进程
+
+§52 的做法是:引导进程"启动即返回"时,去找一个**同名的存活进程改盯它**(收养)。
+这个模型默认「一个应用 = 一个进程」——
+
+| 编辑器 | 形态 | §52 的结果 |
+| --- | --- | --- |
+| 记事本 | 单进程,我们起的就是真身 | 慢退出 → 收会话 ✅ |
+| VS Code | 一个实例底下一堆同名进程(主进程 + GPU + 渲染 + 扩展宿主) | 收养到谁都不代表"应用还开着" ❌ |
+
+收养到辅助进程,它随时会自己退(而应用还开着);收养到主进程,也未必等得到那个事件。
+两头都不对 —— 因为**这个问题根本不该问"某个进程死了没"**。
+
+### 二、把问题换掉:不问某个进程,问这个名字还有没有活的
+
+```
+进程退出
+  ├─ 活了一阵才退 → 编辑器本身,用户关了它 → 收会话(不变)
+  └─ 启动即返回   → 引导进程转交完就走了
+        └─ 轮询:Process.GetProcessesByName(编辑器名) 还有没有结果
+              ├─ 有 → 记下"见过它起来",继续守
+              └─ 没有,且**之前见过** → 编辑器关了 → 补传 → 收会话
+```
+
+多进程、单实例、启动器转交,三种形态一个答案。轮询 5 秒一次
+(一次 `GetProcessesByName` 的开销可以忽略,而这是"编辑器关了"唯一靠得住的信号)。
+
+**「之前见过」这个前置条件是必需的**:启动器把文件转交出去、真身还在加载的那一瞬,
+名字底下可能一个进程都没有 —— 此时收摊就又回到 #396 那种"保存无声丢失"。
+查不到进程列表(权限/平台)时也一律当作"还活着",继续往安全的方向倒。
+
+⚠️ 每轮轮询 `GetProcessesByName` 都会新开一批进程句柄,**必须逐个 Dispose**,
+否则是一个随时间稳定增长的句柄泄漏。
+
+### 三、还有一种情况是真的没抓手,那就把话说出来
+
+关联程序通过 DDE / COM 复用已有实例时,`Process.Start` 连句柄都不返回,进程名也就无从谈起。
+这种会话确实只能手动结束 —— 但**不能让用户对着一个永远不消失的"正在编辑"发愣**。
+`RemoteEditSnapshot` 加了 `EditorTracked`,为 false 时那一行的状态直接写
+「已在监视 · 用完请手动结束」(`Transfer_EditUntracked`,五份 resx 齐)。
+
+### 四、回归用例的取舍:别拿真实进程当判据
+
+第一版用例真起了一个 `cmd /c exit` 当引导进程,再靠进程名去数存活。**这是错的** ——
+进程名是全机器共享的,CI 上恰好另有一个 `cmd`(或 `sh`、`dotnet`)在跑,用例就随机变红,
+而且红得毫无道理。改成把存活探针做成可注入的(`EditorLivenessProbeForTest`)+
+可手动推进的一次轮询(`PollEditorLivenessForTestAsync`),三条路各自确定:
+
+- `WhenNoInstanceOfTheEditorIsLeft_TheSessionEnds` —— 见过 → 消失 → 收会话(这次反馈)。
+- `WhileAnInstanceOfTheEditorIsStillAlive_TheSessionIsKept` —— 一直在 → 一直守。
+- `BeforeAnyInstanceIsEverSeen_AnEmptyProbeDoesNotEndTheSession` —— 没见过就查不到,不算它关了。
+
+另外把 `WhenTheEditorExits_ThePendingSaveIsUploadedBeforeClosing` 的断言从"只传一次"
+放宽到"最后传上去的是它":一次 `WriteAllText` 在 Windows 上常触发多个 watcher 事件
+(大小 + 修改时间),补传与收尾各拿到一次是正常的 —— 内容相同,不是缺陷。
+断言"恰好一次"测的是文件系统事件的合并时序,不是这条链路的正确性。
+
+`dotnet build VelaShell.slnx -warnaserror` 零警告;`dotnet test VelaShell.slnx` **3210 通过 / 0 失败**。
+
+### 五、留给下一次的判据
+
+§51 → §52 → §53 是同一个开关拨了三次,每一次都因为**判据选得比问题窄**:
+先是"进程退出 = 编辑器关了"(单实例编辑器不成立),再是"某个同名进程活着 = 应用开着"
+(多进程应用不成立)。判据:要判断一个**应用**的生死,别拿**某一个进程**当代理;
+桌面应用与进程早就不是一一对应了。
+
+---
+
+## ✅ 54. 2026-09-08 把「正在编辑」改成只在出问题时出现,整段进程跟踪删掉(#396 反馈三)
+
+用户的质疑,原话:**「为什么不直接 watch 这个文件?编辑后上传即可,不需要在传输列表中
+显示正在被编辑这类东西。」** 这个质疑是对的,而 §52、§53 那两版进程跟踪是我自己绕出来的弯路。
+
+### 一、回传从来只靠 watcher,进程跟踪对功能零贡献
+
+`FileSystemWatcher` 盯 `LastWrite | Size | FileName`,保存 → 600ms 防抖 → 上传。
+这条链从头到尾没有进程什么事。指纹那一层也早就在了:只看 mtime 会漏掉
+「写临时文件再改名顶上去」的安全保存(原文件 mtime 根本不变),所以订阅里带 `FileName`
+并挂了 `Renamed` —— `AtomicSave_ViaReplace_IsUploaded` 守的就是这个。
+
+**进程跟踪存在的唯一理由,是回答「浮窗里那一行什么时候该消失」。**
+而那个问题等价于"编辑器关了没" —— 单实例编辑器(VS Code、Notepad--)把路径通过 IPC
+交给已有实例后引导进程立刻退出,**我们启动的进程根本不是最后拿着文件的那个**,
+真正打开文件的是一个我们从没启动过、也没有任何 OS 层面联系的进程。这个问题答不出来。
+为它试了两版(§52 收养同名进程、§53 轮询同名实例存活),都是在给一个不该问的问题找近似解。
+
+顺带回答"能不能靠文件占用":不能。文本编辑器打开文件是「读进内存 → 立刻关句柄 →
+保存时再开一下写完再关」,用户盯着屏幕改的那半小时里文件完全空闲,占用判断会一直说
+"没在编辑"。真会长期持有句柄的是 Word / Excel 那类,恰好不是这条链路的对象。
+
+### 二、改法:问题本身删掉
+
+「正在编辑」从**常驻列表**改成**只在出问题时出现**:回传失败,或有改动还没传上去
+(`FileTransferViewModel.NeedsAttention`)。于是
+
+- 日常编辑保存全程无感,浮窗里不冒任何东西 —— 用户要的就是这个;
+- 出了事那一行**就该一直在**,直到用户处理掉 —— "什么时候消失"不再是个需要猜的问题;
+- §52 / §53 整段进程跟踪(`Track`、`OnEditorProcessExitedAsync`、`StartLivenessPoll`、
+  `AnyEditorInstanceAlive`、`OpenLocalTrackedAsync` 与视图那侧的 `ShellExecute` 取句柄)全部删除。
+
+**没有整块删掉这一组**,是因为回传失败时本地副本是那份改动<b>唯一的存身之处</b>,
+用户得能看见它、重试它、找到它在哪 —— #396 最初的形态正是"静默失败、无从分辨"。
+`Uploading` 也算需要露面:失败后点「立即上传」的那几秒 pending 已被取走,
+不带上它那一行会当场闪没,重试看起来像是把行删了。
+
+界面上 `Edits` → `PendingEdits`,标题从「正在编辑」改成「待回传」(它现在描述的是
+**这些改动的处境**,不是编辑器的状态)。随之退役的键:`Transfer_EditWatching`、
+`Transfer_EditUploadedAt`、`Transfer_EditUntracked` —— 常驻列表没了,这三种状态再也到不了。
+
+### 三、回归用例
+
+- `AHealthyEditSession_NeverShowsUpInThePanel` —— 一切顺利就不该有行(这次反馈)。
+- `AFailedUpload_ShowsUpInThePanel` —— 失败必须露面(守住不能一起删掉的那半)。
+- 连续保存、原子保存、防抖合并、自动上传开关、失败重试、复用不覆盖草稿等原样保留。
+
+`dotnet build VelaShell.slnx -warnaserror` 零警告;`dotnet test VelaShell.slnx` **3206 通过 / 0 失败**。
+
+### 四、留给下一次的判据
+
+§51 → §54 是同一处改了四次,而 §52、§53 两次<b>都在解一个不该存在的问题</b>:
+它们服务的不是用户要的能力(保存即回传),而是我为了"可见性"顺手加的一块常驻 UI。
+判据:**加一块常驻状态显示之前,先问它需要什么信号来消失,以及那个信号拿不拿得到。**
+拿不到就别做成常驻 —— 改成"例外才出现",既不用回答那个问题,信息密度还更高。
+
+---
+
+## ✅ 55. 2026-09-08 传输浮窗里那一组整块撤掉,远程编辑从此不出现在界面上(#396 反馈四)
+
+用户反馈:**「把显示正在编辑的那个完整的去掉吧。不需要这个。现在闪一闪的,很奇怪的操作。」**
+
+「闪一闪」是 §54 的直接后果,而且是我的判据选错了:那一组的显示条件里带着
+`HasPendingChange`,而**每一次保存都会让它在防抖那 600ms 里为真** ——
+于是每存一次,行就冒出来一下、传完又消失。本来想做成"只在出问题时出现",
+实际做成了"每次保存闪一次"。
+
+### 一、撤掉了什么
+
+- `FileTransferView.axaml` 里那一整组、`FileTransferViewModel` 的
+  `PendingEdits` / `HasPendingEdits` / `NeedsAttention` / 三个行命令 / `RevealLocalPath` /
+  `SyncEdits` / 静态事件订阅(连带 `IDisposable`),以及 `RemoteEditItemViewModel` 整个文件。
+- 服务侧随之失去消费者的读模型:`RemoteEditSnapshot`、`Snapshot()`、`SessionsChanged`
+  与 `RaiseSessionsChanged`、`Publish()`、`Find`、`CloseAsync`、`UploadNowAsync`、
+  `RemoteEditRequest.ServerName`,以及只为显示而存在的 `_lastUploadedAt` / `_lastError`。
+  会话对外只剩 `HasPendingChange` 与 `State`(回归用例与诊断日志读)。
+- 面板的可见性规则回到原样:`Transfers.Count > 0`,自动隐藏不再被编辑会话拦住。
+
+失败仍然说得出话,只是不再自成一组:回传本身走的就是传输行,失败标红;
+`OnError` 把原因写进文件面板;会话收尾时 `Svc_RemoteEditDraftKept` 告诉草稿在哪儿。
+
+### 二、顺带堵掉一个自己造出来的陷阱
+
+`AutoUploadOnEdit` 关掉时,原本是"改动照样记账,等用户在那一组里点上传"。
+那一组没了,**这笔账就没有出口了**;更糟的是收尾时 `ShutdownAsync` 还会把它补传上去 ——
+开关写着"不自动上传",关掉标签页却传了,那是骗人。
+
+现在关掉 = **watcher 根本不启用**(`_watcher.EnableRaisingEvents = request.AutoUpload`,
+复用刷新后也按同一个值恢复)。本地副本随便改,一个字节也不回传。
+设置项说明与五份 resx 一起改成这个口径。这个开关也不再对已开着的会话即时生效
+—— 它现在决定的是"建会话时挂不挂 watcher",对下一次打开生效即可。
+
+### 三、回归用例
+
+- `WithAutoUploadOff_NothingIsWatchedAndNothingIsUploaded` —— 关掉后不记账、不上传,
+  **且收尾也不偷偷补一发**(最后这条断言守的正是上面那个陷阱)。
+- `ReopeningWithUnuploadedChanges_KeepsTheLocalDraft` 改用"回传一直失败"来制造未落地状态
+  (原来靠 `AutoUpload = false`,那个手法随着语义变化失效了)。
+- 连续保存、原子保存、防抖合并、会话复用、收尾补传/草稿保留等原样保留。
+
+`dotnet build VelaShell.slnx -warnaserror` 零警告;`dotnet test VelaShell.slnx` **3202 通过 / 0 失败**。
+
+### 四、留给下一次的判据
+
+§51 加上这块 UI,§52/§53 为它做了两版进程跟踪,§54 想靠"只在异常时显示"救它,§55 整块删掉。
+五节里有三节半在伺候一个**用户从来没要过**的东西 —— 它是我在阶段 2 以"可见性"为名自己加的。
+
+判据两条:
+1. **状态显示的触发条件必须是稳态,不能是过程量。**`HasPendingChange` 是过程量:
+   它在每次保存的防抖窗口里都为真,拿它当显示条件必然闪。
+2. 更根本的:**用户要的是"保存后自动上传",不是"看见它在自动上传"。**
+   为一个能力配一块常驻状态显示之前,先问这块显示解决了谁的什么问题;
+   答不上来就别加 —— 加了之后它自己会长出一串需要伺候的问题。
