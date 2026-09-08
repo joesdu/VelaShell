@@ -27,7 +27,7 @@
          本仓库 net11.0 会解析到那一份 —— 纯托管 DLL,且发布不裁剪、非单文件,无打包风险。
          注意:不要顺手引 FluentFTP.GnuTLS(LGPL-2.1-only),与商业授权冲突,
          详见 velashell-docs 仓库 zh/host/FTP客户端可行性调研.md §4.3。 -->
-    <PackageVersion Include="FluentFTP" Version="54.2.0" />
+    <PackageVersion Include="FluentFTP" Version="54.2.1" />
     <!-- 插件契约程序集,由 VelaShellLabs/velashell-plugin-sdk 发布到 nuget.org。
          注意:S3 插件用的 AWSSDK.S3 曾经登记在这里 —— 那个插件在第一方插件仓库
          (VelaShellLabs/velashell-plugins)里,版本由那边的中央包管理登记,别再加回来。
