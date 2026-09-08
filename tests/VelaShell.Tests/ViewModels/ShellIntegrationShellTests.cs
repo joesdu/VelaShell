@@ -37,7 +37,7 @@ public sealed class ShellIntegrationShellTests
     private static string? _bash;
 
     [ClassInitialize]
-    public static void Init(TestContext _) => _bash = BashProbe.Find();
+    public static void Init(TestContext _) => _bash = BashProbe.FindSupportingPs0();
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -131,7 +131,9 @@ public sealed class ShellIntegrationShellTests
     {
         if (_bash is null)
         {
-            Assert.Inconclusive("没找到 bash(Windows 上来自 Git for Windows),跳过。");
+            Assert.Inconclusive(
+                "没找到 4.4 及以上的 bash,跳过。片段要用的 PS0 与本用例要用的 ${VAR@P} 都是 4.4 引入的;"
+                + "macOS 自带的 /bin/bash 是 3.2(Apple 躲 GPLv3 冻在那儿),`brew install bash` 之后本组即可真跑。");
         }
     }
 

@@ -34,14 +34,24 @@ namespace VelaShell.Core.Models;
 /// </remarks>
 public static class ShellIntegration
 {
-    /// <summary>bash(4.4 及以上,需要 <c>PS0</c>)。</summary>
+    /// <summary>bash <b>4.4 及以上</b>(需要 <c>PS0</c>)。</summary>
     /// <remarks>
+    /// <para>
     /// 已在真 bash 上逐条验过:<c>PS0</c>/<c>PS1</c> 用 bash 自己的提示符展开(<c>${VAR@P}</c>)
     /// 取出实际会打印的字节,<c>PROMPT_COMMAND</c> 比对最终值。见 <c>ShellIntegrationShellTests</c>。
+    /// </para>
+    /// <para>
+    /// <b>4.4 这条下限不是随口写的。</b><c>PS0</c> 正是 4.4 引入的,而 <b>macOS 自带的
+    /// <c>/bin/bash</c> 至今是 3.2</b>(Apple 为躲 GPLv3 冻在那儿)—— 在那上面这段一声不响地
+    /// 什么也不做。片段头两行因此把这件事直接写给用户看,而不是只留在这里。
+    /// CI 的 macOS runner 也是这么翻车的:<c>ShellIntegrationShellTests</c> 现在改用
+    /// <c>BashProbe.FindSupportingPs0</c>,找不到 4.4 就如实跳过而不是假装通过。
+    /// </para>
     /// </remarks>
     public const string Bash =
         """
-        # VelaShell shell integration (OSC 133)
+        # VelaShell shell integration (OSC 133) -- needs bash 4.4+ (PS0)
+        # macOS ships bash 3.2; `brew install bash` or use the zsh snippet instead.
         case "${PS0-}" in *'133;C'*) ;; *) PS0='\033]133;C\033\\'"${PS0-}" ;; esac
         case "${PS1-}" in
           *'133;A'*) ;;

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace VelaShell.Tests.ViewModels;
@@ -52,6 +53,95 @@ internal static class BashProbe
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// 找一个 <b>4.4 及以上</b>的 bash;没有则返回 null。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>macOS 的 <c>/bin/bash</c> 是 3.2</b> —— Apple 为了躲 GPLv3 把它冻在那儿十几年了。
+    /// 3.2 既没有 <c>PS0</c>(4.4 引入),也没有 <c>${VAR@P}</c> 提示符展开(同样 4.4),
+    /// 而 <see cref="ShellIntegrationShellTests" /> 两样都要用:前者是被测片段本身的基础,
+    /// 后者是"不开 PTY 也能看到提示符实际字节"的手段。
+    /// </para>
+    /// <para>
+    /// <b>所以这条与 <see cref="Find" /> 分开,而不是把 <see cref="Find" /> 收紧。</b>
+    /// OSC 7 那段钩子(<see cref="PromptHookShellTests" />)只用到 <c>[[ ]]</c> 与
+    /// <c>${var//a/b}</c>,3.2 跑得好好的 —— 收紧 <see cref="Find" /> 会让它在 macOS 上
+    /// 从"真跑过"退化成"跳过",白丢一份覆盖。
+    /// </para>
+    /// <para>
+    /// macOS 上装了 Homebrew 的 bash 就在 <c>/opt/homebrew/bin</c>(Apple Silicon)或
+    /// <c>/usr/local/bin</c>(Intel),优先于 <c>/bin/bash</c> 试。
+    /// </para>
+    /// </remarks>
+    public static string? FindSupportingPs0()
+    {
+        foreach (string candidate in Ps0Candidates())
+        {
+            if (File.Exists(candidate) && IsAtLeast44(candidate))
+            {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static IEnumerable<string> Ps0Candidates()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            // Windows 上就是 Git for Windows 那份(当前是 5.x),没有别的候选。
+            if (Find() is { } git)
+            {
+                yield return git;
+            }
+            yield break;
+        }
+        yield return "/opt/homebrew/bin/bash"; // Homebrew, Apple Silicon
+        yield return "/usr/local/bin/bash";    // Homebrew, Intel
+        yield return "/bin/bash";              // Linux 上就是它;macOS 上是 3.2,会被版本闸挡下
+        yield return "/usr/bin/bash";
+    }
+
+    /// <summary>问一句候选 bash 的版本够不够 4.4。</summary>
+    /// <remarks>
+    /// 用 <c>$BASH_VERSINFO</c> 而不是解析 <c>--version</c> 的那行散文:前者是数组、
+    /// 各家发行版都一样,后者的措辞会变。
+    /// </remarks>
+    private static bool IsAtLeast44(string bash)
+    {
+        try
+        {
+            ProcessStartInfo psi = new()
+            {
+                FileName = bash,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add("printf '%s %s' \"${BASH_VERSINFO[0]}\" \"${BASH_VERSINFO[1]}\"");
+
+            using Process process = Process.Start(psi)!;
+            string output = process.StandardOutput.ReadToEnd();
+            if (!process.WaitForExit(15_000))
+            {
+                return false;
+            }
+            string[] parts = output.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length == 2
+                   && int.TryParse(parts[0], out int major)
+                   && int.TryParse(parts[1], out int minor)
+                   && (major > 4 || (major == 4 && minor >= 4));
+        }
+        catch (Exception)
+        {
+            // 候选压根不是个能跑的 bash(权限、架构不符…),当它不存在。
+            return false;
+        }
     }
 
     /// <summary>Windows 的 bash 不认盘符路径,转成 <c>/c/...</c> 形式。</summary>
