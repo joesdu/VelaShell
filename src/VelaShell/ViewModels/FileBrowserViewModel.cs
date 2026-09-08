@@ -1138,15 +1138,6 @@ public class FileBrowserViewModel : ReactiveObject
     public Func<string, Task>? OpenLocalFile { get; set; }
 
     /// <summary>
-    /// 由视图设置:同 <see cref="OpenLocalFile" />,但把进程句柄交回来(拿不到返回 null)。
-    /// </summary>
-    /// <remarks>
-    /// 远程编辑会话靠这个句柄知道"用户把编辑器关了",从而收掉传输浮窗里的那一行。
-    /// 没有它也能用,只是那一行得由用户自己点「结束监视」。
-    /// </remarks>
-    public Func<string, Task<System.Diagnostics.Process?>>? OpenLocalFileTracked { get; set; }
-
-    /// <summary>
     /// 由视图设置:打开内置 AvaloniaEdit 编辑器窗口。
     /// (文件, 本地临时路径, 上传回调) —— 编辑器在每次保存后调用此回调。
     /// </summary>
@@ -1666,7 +1657,6 @@ public class FileBrowserViewModel : ReactiveObject
                     OpenWith = openWith,
                     EditorCommand = editor,
                     OpenLocalAsync = OpenLocalFile,
-                    OpenLocalTrackedAsync = OpenLocalFileTracked,
                     AutoUpload = TransferOptions.AutoUploadOnEdit,
                     OnError = message => Dispatcher.UIThread.Post(() => ErrorMessage = message),
 

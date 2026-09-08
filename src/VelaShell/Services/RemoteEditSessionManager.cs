@@ -48,7 +48,6 @@ public enum RemoteEditState
 /// <param name="LastUploadedAt">最近一次成功回传的时刻;从未成功则为 null。</param>
 /// <param name="LastError">最近一次失败原因;没失败过则为 null。</param>
 /// <param name="AutoUpload">保存后是否自动回传。</param>
-/// <param name="EditorTracked">能否自动察觉编辑器关闭;否则这一行只能手动结束。</param>
 public sealed record RemoteEditSnapshot(
     Guid Id,
     Guid SessionId,
@@ -61,8 +60,7 @@ public sealed record RemoteEditSnapshot(
     int UploadCount,
     DateTime? LastUploadedAt,
     string? LastError,
-    bool AutoUpload,
-    bool EditorTracked);
+    bool AutoUpload);
 
 /// <summary>开一个远程编辑会话所需要的一切。</summary>
 public sealed class RemoteEditRequest
@@ -90,16 +88,6 @@ public sealed class RemoteEditRequest
 
     /// <summary><see cref="RemoteEditOpenWith.SystemDefault" /> 时由宿主执行的打开动作。</summary>
     public Func<string, Task>? OpenLocalAsync { get; init; }
-
-    /// <summary>
-    /// 同上,但<b>把进程句柄交回来</b>(拿不到就返回 <see langword="null" />,回落到
-    /// <see cref="OpenLocalAsync" />)。
-    /// </summary>
-    /// <remarks>
-    /// 没有句柄就不知道用户什么时候关掉了编辑器,那一行会一直挂在「正在编辑」里不走
-    /// —— 用户的原话是「我明明编辑器都关掉了,传输列表还显示正在编辑」。
-    /// </remarks>
-    public Func<string, Task<Process?>>? OpenLocalTrackedAsync { get; init; }
 
     /// <summary>把话说给用户听的通道(失败、草稿保留位置)。</summary>
     public Action<string>? OnError { get; init; }
@@ -134,13 +122,11 @@ public sealed class RemoteEditRequest
 /// 现在入口只决定"谁来打开",要不要回传是会话本身的事。
 /// </para>
 /// <para>
-/// <b>会话生命周期不拿单个进程句柄下赌注。</b>旧实现用「进程 3 秒内退出就当作是引导进程」
-/// 判断编辑器还开不开着 —— 单实例编辑器冷启动慢一点就误判成"已关闭",停 watcher、
-/// 删临时目录,此后所有保存无声丢失。现在:进程活了一阵才退 = 用户关了它,收会话;
-/// 启动即返回 = 引导进程转交完就走了,改成轮询「这个编辑器还有没有实例活着」
-/// (VS Code 那种一个实例底下一堆同名进程的形态,盯任何单个句柄都是错的)。
-/// 除此之外,会话由三件事结束:用户在传输浮窗里点结束、所属远程会话关闭、
-/// 应用退出(<see cref="CleanupAll" />)。
+/// <b>会话不跟踪编辑器进程</b>(理由见 <see cref="RemoteEditSession.LaunchAsync" />:
+/// 我们启动的进程不是最后拿着文件的那个,而"谁打开了这个文档"没有任何 OS 接口能回答)。
+/// 会话由三件事结束:用户在传输浮窗里点结束、所属远程会话关闭、
+/// 应用退出(<see cref="CleanupAll" />)。日常编辑全程无感 —— 浮窗里那一组只在
+/// 「回传失败」或「有改动还没传上去」时才出现。
 /// </para>
 /// </remarks>
 public static class RemoteEditSessionManager
@@ -467,24 +453,6 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>编辑器保存往往触发多个事件(写入 + 改名 + 属性),攒这么久再传一次。</summary>
     private static readonly TimeSpan DebounceWindow = TimeSpan.FromMilliseconds(600);
 
-    /// <summary>
-    /// 进程活得比这还短就当作"引导进程转交完就退了",去找接手的实例,而不是判会话死刑。
-    /// </summary>
-    /// <remarks>
-    /// 单实例编辑器把文件转交给已有实例通常在 1 秒内完成,但冷启动 + 慢盘能拖到好几秒;
-    /// 给得宽一点是刻意的 —— 猜错这一边只是多留一行,猜错另一边是丢用户的改动。
-    /// </remarks>
-    private static readonly TimeSpan BootstrapExitWindow = TimeSpan.FromSeconds(8);
-
-    /// <summary>
-    /// 引导进程退出后,每隔这么久看一眼编辑器还有没有实例活着。
-    /// </summary>
-    /// <remarks>
-    /// 一次 <see cref="Process.GetProcessesByName(string)" /> 而已,几秒一次的开销可以忽略;
-    /// 而这是"编辑器关了"唯一靠得住的信号。间隔给 5 秒,是让那一行在用户关掉编辑器之后
-    /// 「差不多马上」消失 —— 再快也只是让轮询更吵,慢了用户又会觉得它没反应。
-    /// </remarks>
-    private static readonly TimeSpan LivenessPollInterval = TimeSpan.FromSeconds(5);
 
     private readonly Action<string>? _onError;
     private readonly RemoteEditRequest _request;
@@ -507,27 +475,6 @@ public sealed class RemoteEditSession : IDisposable
     private DateTime? _lastUploadedAt;
     private string? _lastError;
     private bool _autoUpload;
-
-    /// <summary>当前盯着的编辑器进程是什么时候开始盯的(判断"启动即返回"用)。</summary>
-    private DateTime _trackedSince;
-
-    /// <summary>编辑器进程名,轮询存活用。退出后取不到,所以启动时就记下来。</summary>
-    private string? _editorProcessName;
-
-    /// <summary>引导进程退出后的存活轮询。</summary>
-    private Timer? _livenessPoll;
-
-    /// <summary>见过至少一次这个编辑器的实例。没见过就永远不判它死(见 StartLivenessPoll)。</summary>
-    private bool _sawEditorInstance;
-
-    /// <summary>
-    /// 拿到过任何能判断"编辑器关没关"的抓手(进程句柄或进程名)。
-    /// </summary>
-    /// <remarks>
-    /// 为 <see langword="false" /> 时这一行只能由用户手动结束 —— 界面得说出来,
-    /// 而不是让用户对着一个永远不消失的"正在编辑"发愣。
-    /// </remarks>
-    private bool _editorTracked;
 
     internal RemoteEditSession(RemoteEditRequest request, string localPath)
     {
@@ -600,8 +547,7 @@ public sealed class RemoteEditSession : IDisposable
             _uploadCount,
             _lastUploadedAt,
             _lastError,
-            AutoUpload,
-            _editorTracked);
+            AutoUpload);
 
     /// <summary>拆除会话。上传没能落地时<b>保留</b>本地副本,不删临时目录。</summary>
     public void Dispose()
@@ -614,7 +560,6 @@ public sealed class RemoteEditSession : IDisposable
         _closing = true;
         _watcher.EnableRaisingEvents = false;
         Interlocked.Exchange(ref _debounce, null)?.Dispose();
-        Interlocked.Exchange(ref _livenessPoll, null)?.Dispose();
         _watcher.Dispose();
         if (_lastUploadFailed || Volatile.Read(ref _pendingSave) == 1)
         {
@@ -712,7 +657,22 @@ public sealed class RemoteEditSession : IDisposable
         }
     }
 
-    /// <summary>把本地副本交给配置的编辑器 / 系统默认程序打开。</summary>
+    /// <summary>
+    /// 把本地副本交给配置的编辑器 / 系统默认程序打开。
+    /// </summary>
+    /// <remarks>
+    /// <b>起完就不管了 —— 不盯进程。</b>曾经在这里盯过两版(进程退出 → 收会话;
+    /// 引导进程退出 → 轮询同名实例),都是为了让传输浮窗里那一行在"编辑器关掉时"消失。
+    /// 两版都栽在同一处:<b>我们启动的进程不是最后拿着文件的那个</b> —— 单实例编辑器
+    /// (VS Code、Notepad--)把路径通过 IPC 交给已有实例后引导进程立刻退出,
+    /// 而真正打开文件的是一个我们从没启动过、也没有任何 OS 层面联系的进程。
+    /// 文件占用也帮不上忙:文本编辑器读完就关句柄,你盯着屏幕改的那半小时里文件完全空闲。
+    /// <para>
+    /// 回传从来只靠 <see cref="FileSystemWatcher" />,跟进程一点关系都没有。既然那一行改成
+    /// 只在出问题时才出现(见 <c>FileTransferViewModel.SyncEdits</c>),就不再需要
+    /// 「编辑器关了没」这个答不出来的问题 —— 整段跟踪一并删掉。
+    /// </para>
+    /// </remarks>
     internal async Task LaunchAsync()
     {
         switch (_request.OpenWith)
@@ -720,8 +680,8 @@ public sealed class RemoteEditSession : IDisposable
             case RemoteEditOpenWith.ConfiguredEditor when !string.IsNullOrWhiteSpace(_request.EditorCommand):
                 LaunchEditor(_request.EditorCommand);
                 break;
-            case RemoteEditOpenWith.SystemDefault:
-                await LaunchWithSystemDefaultAsync().ConfigureAwait(false);
+            case RemoteEditOpenWith.SystemDefault when _request.OpenLocalAsync is not null:
+                await _request.OpenLocalAsync(LocalPath).ConfigureAwait(false);
                 break;
             case RemoteEditOpenWith.Nothing:
             default:
@@ -730,232 +690,18 @@ public sealed class RemoteEditSession : IDisposable
         }
     }
 
-    /// <summary>
-    /// 交给系统默认程序。优先走能拿到进程句柄的那条 —— 拿不到句柄,
-    /// 就永远不知道用户什么时候把编辑器关了,这一行会一直挂在「正在编辑」里。
-    /// </summary>
-    private async Task LaunchWithSystemDefaultAsync()
-    {
-        if (_request.OpenLocalTrackedAsync is not null)
-        {
-            Process? process = await _request.OpenLocalTrackedAsync(LocalPath).ConfigureAwait(false);
-            if (process is not null)
-            {
-                Track(process);
-                return;
-            }
-        }
-        if (_request.OpenLocalAsync is not null)
-        {
-            RemoteEditLog.Write("open", $"opened untracked (no process handle) {LocalPath}");
-            await _request.OpenLocalAsync(LocalPath).ConfigureAwait(false);
-        }
-    }
-
     private void LaunchEditor(string editorCommand)
     {
         ProcessStartInfo startInfo = BuildEditorStartInfo(editorCommand.Trim().Trim('"'), LocalPath);
-        Process? process;
         try
         {
-            process = Process.Start(startInfo);
+            Process.Start(startInfo)?.Dispose();
         }
         catch (Exception ex)
         {
             RemoteEditLog.Write("open", $"launch failed {editorCommand}: {ex.Message}");
             _onError?.Invoke(ex.Message);
-            return;
         }
-        if (process is not null)
-        {
-            Track(process);
-        }
-    }
-
-    /// <summary>盯住一个编辑器进程:它退出时决定这个会话是接着守还是就此收摊。</summary>
-    private void Track(Process process)
-    {
-        _trackedSince = DateTime.UtcNow;
-        _editorTracked = true;
-        try
-        {
-            // 进程名必须在它还活着的时候取 —— 退出之后 ProcessName 直接抛。
-            _editorProcessName ??= process.ProcessName;
-            _sawEditorInstance = true;
-        }
-        catch (InvalidOperationException)
-        {
-            // 已经退了,拿不到名字就没法轮询存活;下面照常按退出处理。
-        }
-        int[] fired = [0];
-        process.Exited += (_, _) =>
-        {
-            // EnableRaisingEvents 对一个已经退出的进程也会补一次事件,加个闸免得跑两遍。
-            if (Interlocked.Exchange(ref fired[0], 1) == 0)
-            {
-                _ = OnEditorProcessExitedAsync(process, DateTime.UtcNow - _trackedSince);
-            }
-        };
-        process.EnableRaisingEvents = true;
-    }
-
-    /// <summary>
-    /// 编辑器进程退出了:先把攒着的那次改动传掉,再判断这是"编辑器真的关了"还是
-    /// "单实例编辑器的引导进程转交完就退了"。
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// 旧实现用「3 秒内退出 = 引导进程,否则编辑器关了 → 停 watcher、删临时目录」。
-    /// 带标签页的单实例编辑器(Notepad--、Notepad++、VS Code)冷启动一慢就掉进后一支:
-    /// 文件还在编辑器里开着,VelaShell 这边已经不听了,之后每一次保存无声丢失 ——
-    /// #396 的第二条复现路径。
-    /// </para>
-    /// <para>
-    /// <b>时长现在只决定"要不要去找接手的实例",不再决定生死。</b>两条岔路的代价差着量级:
-    /// 收早了 = 用户后面的保存<b>悄悄丢掉</b>;收晚了 = 列表里多挂一行。所以只有
-    /// <b>活了一阵才退</b>的进程才算数 —— 那就是编辑器本身,用户把它关了;
-    /// 启动即返回的那种一律往"还开着"的方向猜,顶多让用户自己点一下「结束监视」。
-    /// </para>
-    /// </remarks>
-    /// <param name="process">刚退出的那个进程。</param>
-    /// <param name="aliveFor">它从被盯上到退出活了多久。</param>
-    /// <returns>会话是否就此结束。</returns>
-    internal async Task<bool> OnEditorProcessExitedAsync(Process? process, TimeSpan aliveFor)
-    {
-        RemoteEditLog.Write("watch", $"editor process exited after {aliveFor.TotalSeconds:F1}s ({RemotePath})");
-        await FlushAsync().ConfigureAwait(false);
-        if (_disposed || _closing)
-        {
-            return true;
-        }
-        if (aliveFor < BootstrapExitWindow)
-        {
-            // 启动即返回:多半是引导进程,文件已经转交给别的实例。改用"这个编辑器还有没有
-            // 实例活着"来判断,而不是再挑一个进程句柄盯着(理由见 StartLivenessPoll)。
-            RemoteEditLog.Write("watch", $"looks like a bootstrap exit; polling {_editorProcessName ?? "?"} liveness ({RemotePath})");
-            StartLivenessPoll();
-            return false;
-        }
-        RemoteEditLog.Write("watch", $"editor closed; ending session ({RemotePath})");
-        await RemoteEditSessionManager.CloseAsync(Id).ConfigureAwait(false);
-        return true;
-    }
-
-    /// <summary>
-    /// 改用轮询「这个编辑器还有没有实例活着」来判断它关没关。
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// 上一版是"挑一个同名的存活进程改盯它"。<b>对 VS Code 这类多进程应用是错的</b> ——
-    /// 一个 VS Code 实例底下是一堆同名进程(主进程 + GPU + 渲染 + 扩展宿主),
-    /// 收养到哪一个都不代表"应用还开着":收养到辅助进程,它随时会自己退;
-    /// 而收养到主进程也未必等得到事件。用户反馈的正是这个形态 —— 双击 `.profile`,
-    /// VS Code 打开,关掉 VS Code 之后那一行还挂着;而 txt(记事本,单进程、
-    /// 我们起的就是真身)一切正常。
-    /// </para>
-    /// <para>
-    /// 问题问对了就简单了:不问"某个进程死了没",问"这个名字还有活的没有"。
-    /// 多进程、单实例、启动器转交,三种形态一个答案。
-    /// </para>
-    /// <para>
-    /// <b>没见过它起来就永远不判死。</b>启动器把文件转交出去、真身还没起来的那一瞬,
-    /// 名字底下可能一个进程都没有;此时就收摊等于把用户后面的保存悄悄丢掉(#396)。
-    /// 所以要先见到过至少一次实例,之后"全没了"才算关闭。
-    /// </para>
-    /// </remarks>
-    private void StartLivenessPoll()
-    {
-        if (_editorProcessName is null && EditorLivenessProbeForTest is null)
-        {
-            // 连进程名都没拿到就无从判断;那一行只能由用户手动结束(界面会说明)。
-            RemoteEditLog.Write("watch", $"no process name to poll; row must be ended by hand ({RemotePath})");
-            _editorTracked = false;
-            Publish();
-            return;
-        }
-        Interlocked.Exchange(ref _livenessPoll, null)?.Dispose();
-        _livenessPoll = new(_ => _ = PollEditorLivenessAsync(), null, LivenessPollInterval, LivenessPollInterval);
-    }
-
-    private async Task PollEditorLivenessAsync()
-    {
-        if (_disposed || _closing)
-        {
-            return;
-        }
-        if (AnyEditorInstanceAlive())
-        {
-            _sawEditorInstance = true;
-            return;
-        }
-        if (!_sawEditorInstance)
-        {
-            // 还没见过它起来 —— 可能是启动器刚转交完、真身还在加载。别急着判它死。
-            return;
-        }
-        RemoteEditLog.Write("watch", $"no {_editorProcessName} instance left; ending session ({RemotePath})");
-        Interlocked.Exchange(ref _livenessPoll, null)?.Dispose();
-        await FlushAsync().ConfigureAwait(false);
-        await RemoteEditSessionManager.CloseAsync(Id).ConfigureAwait(false);
-    }
-
-    /// <summary>存活探针的替身:回归用例用它把"编辑器还在不在"变成可控输入。</summary>
-    /// <remarks>
-    /// 不这么做的话用例就得真起一个进程,再拿进程名去数 —— 而进程名是全机器共享的:
-    /// CI 上恰好另有一个同名进程(cmd、sh、dotnet 都极可能),用例就随机变红。
-    /// </remarks>
-    internal Func<bool>? EditorLivenessProbeForTest { get; set; }
-
-    /// <summary>引导进程退出后是否真的挂上了存活轮询(回归用例读它)。</summary>
-    internal bool HasLivenessPollForTest => Volatile.Read(ref _livenessPoll) is not null;
-
-    /// <summary>手动推一次存活轮询,免得用例干等定时器(回归用例专用)。</summary>
-    internal Task PollEditorLivenessForTestAsync() => PollEditorLivenessAsync();
-
-    /// <summary>这个编辑器名下还有没有活着的进程。</summary>
-    private bool AnyEditorInstanceAlive()
-    {
-        if (EditorLivenessProbeForTest is { } probe)
-        {
-            return probe();
-        }
-        if (_editorProcessName is null)
-        {
-            return false;
-        }
-        Process[] instances;
-        try
-        {
-            instances = Process.GetProcessesByName(_editorProcessName);
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or PlatformNotSupportedException or SystemException)
-        {
-            // 查不了就当它还活着 —— 往"别把会话收早"的方向倒。
-            return true;
-        }
-        try
-        {
-            return instances.Length > 0;
-        }
-        finally
-        {
-            // 每次轮询都会新开一批句柄,不还回去就是稳定的句柄泄漏。
-            foreach (Process instance in instances)
-            {
-                instance.Dispose();
-            }
-        }
-    }
-
-    /// <summary>把攒着的那次改动传掉,会话继续存活。</summary>
-    private async Task FlushAsync()
-    {
-        if (_disposed || _closing || !HasPendingChange)
-        {
-            return;
-        }
-        Interlocked.Exchange(ref _debounce, null)?.Dispose();
-        await UploadAsync().ConfigureAwait(false);
     }
 
     /// <summary>

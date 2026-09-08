@@ -4460,8 +4460,8 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="Svc_RemoteEditReusedDraft" xml:space="preserve">
     <value>{0} still has changes that were never uploaded. Kept your local copy at {1} instead of overwriting it.</value>
   </data>
-  <data name="Transfer_EditingTitle" xml:space="preserve">
-    <value>Editing</value>
+  <data name="Transfer_EditPendingTitle" xml:space="preserve">
+    <value>Pending upload</value>
   </data>
   <data name="Transfer_EditUploadNow" xml:space="preserve">
     <value>Upload now</value>
@@ -4472,17 +4472,11 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="Transfer_EditReveal" xml:space="preserve">
     <value>Open local folder</value>
   </data>
-  <data name="Transfer_EditWatching" xml:space="preserve">
-    <value>Watching for saves</value>
-  </data>
   <data name="Transfer_EditUploading" xml:space="preserve">
     <value>Uploading…</value>
   </data>
   <data name="Transfer_EditPending" xml:space="preserve">
     <value>Waiting to upload</value>
-  </data>
-  <data name="Transfer_EditUploadedAt" xml:space="preserve">
-    <value>Uploaded at {0}</value>
   </data>
   <data name="Transfer_EditFailed" xml:space="preserve">
     <value>Upload failed: {0}</value>
@@ -4510,8 +4504,5 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   </data>
   <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
     <value>Off: changes are still tracked; upload them from the Editing list</value>
-  </data>
-  <data name="Transfer_EditUntracked" xml:space="preserve">
-    <value>Watching · close this row yourself when done</value>
   </data>
 </root>

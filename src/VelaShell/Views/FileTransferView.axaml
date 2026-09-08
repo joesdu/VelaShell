@@ -101,25 +101,26 @@
                    FontSize="{DynamicResource VelaFontSize10}" />
       </Border>
 
-      <!-- 正在编辑:哪些远端文件正被本地编辑器盯着(双击 / 右键「使用默认编辑器打开」)。
-           这一组是这个功能唯一的可见面:上一次回传是什么时候、有没有还没传上去的改动、
-           失败了的话本地副本在哪儿。#396 之前这些全是隐形的,失效了也没人看得出来。 -->
-      <StackPanel IsVisible="{Binding HasEdits}">
+      <!-- 待回传:远程编辑会话<b>出了问题</b>才在这儿露面 —— 回传失败,或者有改动还没传上去。
+           日常编辑保存全程不出现任何东西(保存即回传只靠 FileSystemWatcher,不需要界面陪着)。
+           留下这一组的理由只有一个:回传失败时,本地副本是那份改动唯一的存身之处,
+           用户得能重试它、找到它在哪 —— #396 最初的形态正是"静默失败、无从分辨"。 -->
+      <StackPanel IsVisible="{Binding HasPendingEdits}">
         <Border Padding="12,6"
                 Background="{DynamicResource VelaBgHover}"
                 BorderBrush="{DynamicResource VelaBorderPrimary}"
                 BorderThickness="0,0,0,1">
           <StackPanel Orientation="Horizontal" Spacing="6">
             <pc:LucideIcon Width="11" Height="11"
-                           Data="{StaticResource Icon.pencil}"
+                           Data="{StaticResource Icon.upload}"
                            Foreground="{DynamicResource VelaTextTertiary}" />
-            <TextBlock Text="{loc:Localize Transfer_EditingTitle}"
+            <TextBlock Text="{loc:Localize Transfer_EditPendingTitle}"
                        Foreground="{DynamicResource VelaTextTertiary}"
                        FontFamily="{DynamicResource VelaUiMonoFont}"
                        FontSize="{DynamicResource VelaFontSize10}" FontWeight="Medium" />
           </StackPanel>
         </Border>
-        <ItemsControl Name="EditRows" ItemsSource="{Binding Edits}">
+        <ItemsControl Name="EditRows" ItemsSource="{Binding PendingEdits}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:RemoteEditItemViewModel">
               <Border Padding="12,8"

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using Avalonia;
@@ -93,7 +92,6 @@ public partial class FileBrowserView : UserControl
             vm.ShowFileProperties = ShowFilePropertiesAsync;
             vm.ConfirmDelete = ConfirmAsync;
             vm.OpenLocalFile = OpenLocalFileAsync;
-            vm.OpenLocalFileTracked = OpenLocalFileTrackedAsync;
             vm.OpenInBuiltInEditor = OpenInBuiltInEditorAsync;
             vm.PromptConfigureEditor = PromptConfigureEditorAsync;
             vm.ConfirmOverwrite = ConfirmOverwriteAsync;
@@ -387,34 +385,6 @@ public partial class FileBrowserView : UserControl
             return;
         }
         await top.Launcher.LaunchFileInfoAsync(new(localPath));
-    }
-
-    /// <summary>
-    /// 同上,但走 <c>ShellExecute</c> 以便<b>拿到进程句柄</b>;拿不到就返回 null,
-    /// 由调用方回落到 <see cref="OpenLocalFileAsync" />。
-    /// </summary>
-    /// <remarks>
-    /// <c>Launcher.LaunchFileInfoAsync</c> 只回一个 bool,于是远程编辑会话永远不知道
-    /// 用户什么时候把编辑器关了,「正在编辑」那一行就一直挂着。<c>ShellExecute</c> 用的是
-    /// 同一套文件关联,只是多给一个句柄 —— 关联走 DDE / COM 复用已有实例时它会返回 null,
-    /// 那种情况下句柄本来也拿不到,回落即可。
-    /// </remarks>
-    private Task<Process?> OpenLocalFileTrackedAsync(string localPath)
-    {
-        try
-        {
-            return Task.FromResult(Process.Start(new ProcessStartInfo(localPath)
-            {
-                UseShellExecute = true,
-                WorkingDirectory = Path.GetDirectoryName(localPath) ?? string.Empty
-            }));
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException
-                                       or PlatformNotSupportedException)
-        {
-            // 没有关联程序 / 平台不吃这套:交给 Launcher 那条路去试。
-            return Task.FromResult<Process?>(null);
-        }
     }
 
     /// <summary>

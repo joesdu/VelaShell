@@ -5,12 +5,12 @@ using VelaShell.Services;
 namespace VelaShell.ViewModels;
 
 /// <summary>
-/// 传输浮窗「正在编辑」分组里的一行:一个远程文件的本地编辑会话。
+/// 传输浮窗「待回传」分组里的一行:一个<b>还没了结</b>的远程编辑会话。
 /// </summary>
 /// <remarks>
-/// 这一行本身就是这个功能的可见性。#396 之前,自动回传是完全隐形的:用户无从知道
-/// 「这个文件到底有没有被盯着」「刚才那次保存传上去了没有」「失败了的话我的改动还在不在」——
-/// 出问题时能提供的只有一句"没上传"。现在这三件事各占一列。
+/// 只在回传失败、或有改动还没传上去时才存在 —— 编辑保存一切顺利的话,用户从头到尾
+/// 看不到这一行。它守的是 #396 里最要命的那半:回传失败时本地副本是那份改动
+/// <b>唯一的存身之处</b>,得让用户看得见、重试得了、找得到它在哪。
 /// </remarks>
 public sealed class RemoteEditItemViewModel : ReactiveObject
 {
@@ -41,19 +41,12 @@ public sealed class RemoteEditItemViewModel : ReactiveObject
     /// <summary>有改动还没落到远端(自动上传关着,或刚失败)。</summary>
     public bool HasPendingChange => _snapshot.HasPendingChange;
 
-    /// <summary>
-    /// 状态行:失败原因 / 正在上传 / 待上传 / 最近一次上传时刻 / 尚未回传过。
-    /// </summary>
+    /// <summary>状态行:失败原因 / 正在上传 / 待上传。</summary>
     public string StatusLine => _snapshot switch
     {
         { State: RemoteEditState.Failed, LastError: { } error } => Strings.Format("Transfer_EditFailed", error),
         { State: RemoteEditState.Uploading } => Strings.Get("Transfer_EditUploading"),
-        { HasPendingChange: true } => Strings.Get("Transfer_EditPending"),
-        { LastUploadedAt: { } at } => Strings.Format("Transfer_EditUploadedAt", at.ToString("HH:mm:ss")),
-        // 拿不到编辑器的任何抓手时说清楚:这一行不会自己消失,得手动结束。
-        // 让用户对着一个永远在的"正在编辑"发愣,比多一句话糟得多。
-        { EditorTracked: false } => Strings.Get("Transfer_EditUntracked"),
-        _ => Strings.Get("Transfer_EditWatching"),
+        _ => Strings.Get("Transfer_EditPending"),
     };
 
     /// <summary>服务器名 + 远端路径,给悬停提示用。</summary>

@@ -4459,8 +4459,8 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Svc_RemoteEditReusedDraft" xml:space="preserve">
     <value>{0} にはまだアップロードされていない変更があります。再ダウンロードして上書きせず、ローカルコピー({1})をそのまま使います。</value>
   </data>
-  <data name="Transfer_EditingTitle" xml:space="preserve">
-    <value>編集中</value>
+  <data name="Transfer_EditPendingTitle" xml:space="preserve">
+    <value>アップロード待ち</value>
   </data>
   <data name="Transfer_EditUploadNow" xml:space="preserve">
     <value>今すぐアップロード</value>
@@ -4471,17 +4471,11 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Transfer_EditReveal" xml:space="preserve">
     <value>ローカルフォルダーを開く</value>
   </data>
-  <data name="Transfer_EditWatching" xml:space="preserve">
-    <value>保存を監視中</value>
-  </data>
   <data name="Transfer_EditUploading" xml:space="preserve">
     <value>アップロード中…</value>
   </data>
   <data name="Transfer_EditPending" xml:space="preserve">
     <value>アップロード待ち</value>
-  </data>
-  <data name="Transfer_EditUploadedAt" xml:space="preserve">
-    <value>{0} にアップロード済み</value>
   </data>
   <data name="Transfer_EditFailed" xml:space="preserve">
     <value>アップロードに失敗しました: {0}</value>
@@ -4509,8 +4503,5 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
     <value>オフでも変更は記録されます。「編集中」から手動でアップロードしてください</value>
-  </data>
-  <data name="Transfer_EditUntracked" xml:space="preserve">
-    <value>監視中 · 終わったら手動で終了してください</value>
   </data>
 </root>
