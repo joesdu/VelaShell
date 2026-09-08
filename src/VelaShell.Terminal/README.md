@@ -56,6 +56,6 @@
 
 - **引用**：`VelaShell.Core`（SSH Shell 抽象、ZMODEM / XMODEM / YMODEM 协议引擎）、`Avalonia`（仅渲染控件用）。
 - **被引用**：`VelaShell.Presentation`、`VelaShell`（App）。
-- `InternalsVisibleTo` 暴露给 [`tests/VelaShell.Terminal.Tests`](../../tests/VelaShell.Terminal.Tests)，可对 `internal` 引擎细节做白盒测试。
+- `InternalsVisibleTo` 暴露给 [`tests/VelaShell.Terminal.Tests`](../../tests/VelaShell.Terminal.Tests) 与 [`tests/VelaShell.Terminal.RenderTests`](../../tests/VelaShell.Terminal.RenderTests)，可对 `internal` 引擎细节做白盒测试。
 
 > 编译需 `AllowUnsafeBlocks`（渲染热路径使用指针以减少分配）。
