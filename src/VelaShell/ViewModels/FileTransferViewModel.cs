@@ -448,7 +448,6 @@ public class FileTransferViewModel : ReactiveObject, IDraggablePanel
                 item.PropertyChanged -= OnTransferItemChanged;
             }
         }
-
         IsPanelVisible = Transfers.Count > 0;
     }
 
@@ -472,8 +471,7 @@ public class FileTransferViewModel : ReactiveObject, IDraggablePanel
         _autoHide?.Dispose();
         _autoHide = null;
 
-        // 批次有剩余文件时、任一单文件传输仍在进行时、扫描正在规划下一批次时,
-        // 或还有文件正被编辑(「正在编辑」分组还挂着)时,保持浮窗开启。
+        // 批次有剩余文件时、任一单文件传输仍在进行时、或扫描正在规划下一批次时,保持浮窗开启。
         if (ActiveCount > 0 || IsBatchActive || IsPreparing)
         {
             _hidePending = false;
