@@ -2613,6 +2613,12 @@
   <data name="SetTerm_ReportWorkingDirectoryDesc" xml:space="preserve">
     <value>接続後に bash へ OSC 7 フックをサイレント設定し、ファイルブラウザーの「ターミナルのディレクトリに追従」で使用します。オフにすると一切注入しません</value>
   </data>
+  <data name="SetTerm_ShellIntegration" xml:space="preserve">
+    <value>シェル統合(コマンドブロック)</value>
+  </data>
+  <data name="SetTerm_ShellIntegrationDesc" xml:space="preserve">
+    <value>下のいずれかをリモートの rc ファイル(~/.bashrc、~/.zshrc)にコピーすると、プロンプト・コマンド・出力の開始位置がシェルから通知されます(OSC 133)。以降ガターにコマンドごとのマークが付き、失敗したものは赤く表示され、Ctrl+Shift+↑/↓ でプロンプト間を移動、マークをクリックするとそのコマンドの出力を選択できます。自動では注入しません —— PS1 を書き換えるため、starship のようなプロンプトテーマと衝突します。新しめの fish はこれらを標準で出力します。</value>
+  </data>
   <data name="SetTerm_Subtitle" xml:space="preserve">
     <value>// ターミナルの表示と動作を設定</value>
   </data>
@@ -4248,6 +4254,11 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Sc_KeyWheel" xml:space="preserve"><value>ホイール</value></data>
   <data name="Sc_KeyTitleBar" xml:space="preserve"><value>タイトルバー</value></data>
   <data name="Sc_KeyGutter" xml:space="preserve"><value>ガター</value></data>
+  <data name="Sc_KeyCommandMark" xml:space="preserve"><value>コマンドマーク欄</value></data>
+  <data name="Sc_JumpPrevPrompt" xml:space="preserve"><value>前のプロンプトへ移動</value></data>
+  <data name="Sc_JumpNextPrompt" xml:space="preserve"><value>次のプロンプトへ移動</value></data>
+  <data name="Sc_SelectCommandOutput" xml:space="preserve"><value>このコマンドの出力を選択</value></data>
+  <data name="Sc_NoteShellIntegration" xml:space="preserve"><value>シェル統合(OSC 133)が必要</value></data>
   <data name="Sc_PasteShiftInsert" xml:space="preserve"><value>貼り付け(従来の X11 キー)</value></data>
   <data name="Sc_SearchNext" xml:space="preserve"><value>次の一致へ移動</value></data>
   <data name="Sc_SearchPrev" xml:space="preserve"><value>前の一致へ移動</value></data>

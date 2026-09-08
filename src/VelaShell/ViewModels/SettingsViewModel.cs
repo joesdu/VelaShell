@@ -378,6 +378,20 @@ public class SettingsViewModel : ReactiveObject
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = new();
 
+    /// <summary>
+    /// bash 的 OSC 133 命令块集成片段(设置 → 终端 → 会话里摆出来给用户复制)。
+    /// </summary>
+    /// <remarks>
+    /// <b>这是给用户抄的,不是我们注入的。</b>完整的 OSC 133 要动 <c>PS0</c> / <c>PS1</c>,
+    /// 而那两个会被 starship / oh-my-posh / powerlevel10k 每次画提示符都重写 ——
+    /// 爆炸半径远大于现有那个只碰 <c>PROMPT_COMMAND</c> 的 OSC 7 钩子。理由详见
+    /// <see cref="ShellIntegration" />。
+    /// </remarks>
+    public static string ShellIntegrationBash => ShellIntegration.Bash;
+
+    /// <inheritdoc cref="ShellIntegrationBash" />
+    public static string ShellIntegrationZsh => ShellIntegration.Zsh;
+
     /// <summary>文件传输页选项(冲突策略、默认下载目录等)。</summary>
     public TransferOptions Transfer
     {

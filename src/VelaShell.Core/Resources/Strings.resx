@@ -2752,6 +2752,12 @@ Paste anyway?</value>
   <data name="SetTerm_ReportWorkingDirectoryDesc" xml:space="preserve">
     <value>Silently installs an OSC 7 hook in bash after connecting so the file browser can follow the terminal directory; turn off to inject nothing at all</value>
   </data>
+  <data name="SetTerm_ShellIntegration" xml:space="preserve">
+    <value>Shell integration (command blocks)</value>
+  </data>
+  <data name="SetTerm_ShellIntegrationDesc" xml:space="preserve">
+    <value>Copy one of these into the remote rc file (~/.bashrc, ~/.zshrc) and the shell will mark where each prompt, command and its output begin (OSC 133). VelaShell then shows a marker per command in the gutter, reddens failed ones, jumps between prompts with Ctrl+Shift+Up/Down, and selects a command's output when you click its marker. Nothing is injected for you — these touch PS1, which prompt themes such as starship rewrite on every prompt. Recent fish versions emit these marks on their own.</value>
+  </data>
   <data name="SetTerm_Subtitle" xml:space="preserve">
     <value>// Configure terminal display and behavior</value>
   </data>
@@ -4249,6 +4255,11 @@ Trusting it will also trust future packages signed by the same key. Plugins can 
   <data name="Sc_KeyWheel" xml:space="preserve"><value>Wheel</value></data>
   <data name="Sc_KeyTitleBar" xml:space="preserve"><value>Title Bar</value></data>
   <data name="Sc_KeyGutter" xml:space="preserve"><value>Gutter</value></data>
+  <data name="Sc_KeyCommandMark" xml:space="preserve"><value>Command mark</value></data>
+  <data name="Sc_JumpPrevPrompt" xml:space="preserve"><value>Jump to the previous prompt</value></data>
+  <data name="Sc_JumpNextPrompt" xml:space="preserve"><value>Jump to the next prompt</value></data>
+  <data name="Sc_SelectCommandOutput" xml:space="preserve"><value>Select this command's output</value></data>
+  <data name="Sc_NoteShellIntegration" xml:space="preserve"><value>requires shell integration (OSC 133)</value></data>
   <data name="Sc_PasteShiftInsert" xml:space="preserve"><value>Paste (classic X11 binding)</value></data>
   <data name="Sc_SearchNext" xml:space="preserve"><value>Jump to the next match</value></data>
   <data name="Sc_SearchPrev" xml:space="preserve"><value>Jump to the previous match</value></data>

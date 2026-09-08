@@ -114,6 +114,43 @@ public sealed class GutterFoldModel
         return true;
     }
 
+    /// <summary>
+    /// 折叠 <paramref name="firstAbs" />..<paramref name="lastAbs" />,并指定其中哪一行作为折叠后
+    /// 仍可见的折叠头。返回是否真的建了一个新区域。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 与 <see cref="Toggle" /> 的区别只在<b>折叠头的位置</b>:<see cref="Toggle" /> 是
+    /// Notepad++ 式的"折叠到点击行",折叠头恒为区域<b>末</b>行;而按 OSC 133 命令块折叠时,
+    /// 该留在屏幕上的显然是<b>提示符行</b>(区域首行)—— 收起来的是那一大段输出,
+    /// 而"哪条命令"必须还看得见,否则折完一屏全是认不出来的横线。
+    /// </para>
+    /// <para>该区间已有折叠、或参数不成区间时返回 false,不做任何改动。</para>
+    /// </remarks>
+    public bool FoldRegion(TerminalScreen screen, int anchorAbs, int firstAbs, int lastAbs)
+    {
+        if (firstAbs < 0 || lastAbs >= screen.TotalRows || lastAbs <= firstAbs
+            || anchorAbs < firstAbs || anchorAbs > lastAbs)
+        {
+            return false;
+        }
+        TerminalRow anchor = screen.ViewLine(anchorAbs);
+        foreach (Region existing in _regions)
+        {
+            if (ReferenceEquals(existing.Anchor, anchor))
+            {
+                return false; // 已经折着了,交给 Toggle 去展开
+            }
+        }
+        var rows = new TerminalRow[lastAbs - firstAbs + 1];
+        for (int i = 0; i < rows.Length; i++)
+        {
+            rows[i] = screen.ViewLine(firstAbs + i);
+        }
+        _regions.Add(new Region { Anchor = anchor, Rows = rows });
+        return true;
+    }
+
     /// <summary>解析既有折叠,返回 <paramref name="abs" /> 之上最近折叠头的下一行(无则 0)。</summary>
     private int NearestBoundaryAbove(TerminalScreen screen, int abs)
     {

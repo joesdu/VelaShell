@@ -36,6 +36,10 @@ public sealed class TerminalEmulator : IVtActions
     // OSC 8 与 SGR 相互独立,SGR 0 不会关掉链接,只有 `OSC 8 ; ; ST` 才会(规范如此)。
     private ushort _link;
 
+    // 本条命令块的提示符行(OSC 133 A 所在行):D 报回来的退出码要记到它头上,而那时光标
+    // 早已在输出末尾。持行对象引用而非行号 —— 行会随滚动迁进 scrollback,行号一直在变。
+    private TerminalRow? _promptRow;
+
     private bool _pendingWrap; // 行尾的延迟自动换行
     private DateTime _feedTimestamp = DateTime.Now; // 当前 Feed 到达时刻,用于给写入的行盖时间戳(行号侧栏)
 
@@ -71,6 +75,16 @@ public sealed class TerminalEmulator : IVtActions
     /// </summary>
     /// <remarks>渲染层用它决定哪些格该画下划线、Ctrl+点击该打开什么。</remarks>
     public HyperlinkTable Hyperlinks { get; } = new();
+
+    /// <summary>
+    /// 本会话是否收到过 OSC 133 语义标记 —— 也就是对端装没装 shell 集成。
+    /// </summary>
+    /// <remarks>
+    /// <b>是个只进不退的锁存位,不是"当前屏上有没有标记"。</b>侧栏的标记列据它决定显不显示,
+    /// 而按帧去扫描屏幕会让列宽在滚动到没有标记的历史区时突然收起来 —— 正文跟着左右抖。
+    /// 锁存之后整个会话宽度恒定,只有 RIS 硬复位(缓冲区连同回滚一并清空)才归零。
+    /// </remarks>
+    public bool HasPromptMarks { get; private set; }
 
     /// <summary>当前生效的屏幕缓冲区(主屏或备用屏)。</summary>
     public TerminalScreen Screen { get; private set; }
@@ -571,8 +585,84 @@ public sealed class TerminalEmulator : IVtActions
                 // 发出方:ls --hyperlink、gcc/cargo 的诊断、gh、delta、systemd 等。
                 SetHyperlink(p);
                 break;
+            case 133:
+                // OSC 133:FinalTerm / FTCS 语义提示符 —— 把一屏输出切成结构化的命令块。
+                // 由对端 shell 发出(fish 自带;bash/zsh 需装一段集成片段,见设置 → 终端 → 会话)。
+                SetPromptMark(p);
+                break;
                 // 4(调色板)目前有意接受并忽略。
         }
+    }
+
+    /// <summary>
+    /// 处理 <c>OSC 133 ; A|B|C|D[;退出码] </c>:在当前光标行上打语义标记。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>标记打在光标所在行</b>,因为四个标记都是 shell 在"此刻这一行"上宣告身份:
+    /// <c>A</c> 发在提示符即将画出的位置、<c>C</c> 发在命令回显换行之后(输出的第一行)。
+    /// </para>
+    /// <para>
+    /// <b><c>D</c> 的退出码记在该块的提示符行上,不是当前行。</b>命令结束时光标在输出末尾,
+    /// 而侧栏那个标记画在提示符行 —— 记错地方,失败标红就会红在一条无关的空行上。
+    /// 为此要一路记着"本块的提示符行"(<see cref="_promptRow" />)。
+    /// </para>
+    /// <para>
+    /// <c>B</c> 被消费但不落行:它标的是列,而列在改列宽重排后会挪位,见
+    /// <see cref="PromptMark" /> 的说明。
+    /// </para>
+    /// </remarks>
+    private void SetPromptMark(IReadOnlyList<string> p)
+    {
+        if (p.Count < 2 || p[1].Length == 0)
+        {
+            return;
+        }
+        // 参数里可能跟着 aid=/cl= 这类键值(多路复用器用来区分会话),按规范一律忽略。
+        switch (p[1][0])
+        {
+            case 'A':
+            {
+                TerminalRow row = Screen.ActiveLine(Screen.CursorY);
+                row.Mark = PromptMark.Prompt;
+                row.ExitCode = null;
+                _promptRow = row;
+                HasPromptMarks = true;
+                break;
+            }
+            case 'C':
+                Screen.ActiveLine(Screen.CursorY).Mark = PromptMark.Output;
+                HasPromptMarks = true;
+                break;
+            case 'D':
+                if (_promptRow is { } prompt)
+                {
+                    prompt.ExitCode = ParseExitCode(p);
+                    _promptRow = null;
+                }
+                break;
+            // B(提示符结束 / 输入开始)有意接受并忽略,理由见 PromptMark 的说明。
+        }
+    }
+
+    /// <summary>
+    /// 从 <c>OSC 133 ; D ; …</c> 的尾部参数里取退出码;没报或报的不是数字时返回 null。
+    /// </summary>
+    /// <remarks>
+    /// 尾部可能是退出码(<c>D;1</c>)、也可能只有键值参数(<c>D;aid=7</c>),还有干脆什么都不带的
+    /// (<c>D</c>)。只认纯数字段,其余一律当"没报退出码" —— 宁可不显示成败,也不要把
+    /// <c>aid=7</c> 里的 7 当成退出码去标红一条其实成功了的命令。
+    /// </remarks>
+    private static int? ParseExitCode(IReadOnlyList<string> p)
+    {
+        for (int i = 2; i < p.Count; i++)
+        {
+            if (int.TryParse(p[i], out int code))
+            {
+                return code;
+            }
+        }
+        return null;
     }
 
     /// <summary>
@@ -743,6 +833,11 @@ public sealed class TerminalEmulator : IVtActions
         _altScreen?.Resize(columns, rows, Blank());
         _tabStops = ResizeTabs(_tabStops, columns);
         _pendingWrap = false;
+        // ⚠️ 必须丢掉在途的提示符行引用:改列宽会走 ReflowResize,它把旧行对象<b>回收复用</b>
+        // (_reflowPool + ResetFor)。攥着一个已被复用的行,等 D 回来时就会把退出码盖到一条
+        // 完全无关的行上 —— 屏幕上表现为某条历史输出凭空标红。标记本身已随内容重排搬过去了,
+        // 这里丢掉的只是"正在跑的这一条命令的退出码",代价可接受。
+        _promptRow = null;
     }
 
     // ---- 辅助方法 ------------------------------------------------------------
@@ -1246,6 +1341,9 @@ public sealed class TerminalEmulator : IVtActions
         // 诊断:记录每次备用屏切换(DECSET 1047/1049)。ZMODEM 传输期间本不该发生此切换,
         // 若日志显示在 sz/rz 取消前后出现 enter=true,即坐实"杂散协议字节污染终端 → 整屏消失"。
         Core.FileTransfer.Diagnostics.TransferTrace.Log($"ALT-SCREEN switch enable={enable} (was {IsAlternateScreen})");
+        // 备用屏整块换掉,在途的提示符行不再属于当前缓冲区(退出备用屏时它还会被整个丢弃)。
+        // 攥着它等于给一条已经不在场的行记退出码。
+        _promptRow = null;
         if (enable)
         {
             // 切换前把主屏光标存入专用的备用屏槽。
@@ -1346,6 +1444,8 @@ public sealed class TerminalEmulator : IVtActions
         // 这是唯一能安全整表回收 OSC 8 链接的时机。
         _link = 0;
         Hyperlinks.Clear();
+        _promptRow = null;
+        HasPromptMarks = false;
         _utf8.Reset();
         _parser.Reset();
     }

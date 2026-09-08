@@ -124,6 +124,10 @@ public static class ShortcutCatalog
                     Item("Sc_ScrollPageDown", ["PageDown"], "Sc_NoteMainScreen"),
                     Item("Sc_ScrollPageUp", [Shift, "PageUp"], "Sc_NoteAnyScreen"),
                     Item("Sc_ScrollPageDown", [Shift, "PageDown"], "Sc_NoteAnyScreen"),
+                    // OSC 133 命令块导航。只在对端装了 shell 集成时拦截,否则原样编码下发 ——
+                    // 没有标记可跳还吞掉一组按键,只会让远端程序的键位神秘失灵。
+                    Item("Sc_JumpPrevPrompt", [Ctrl, Shift, "Up"], "Sc_NoteShellIntegration"),
+                    Item("Sc_JumpNextPrompt", [Ctrl, Shift, "Down"], "Sc_NoteShellIntegration"),
                     Item("Sc_DeleteWord", [Ctrl, "Backspace"]),
                     Item("Sc_LineStart", [Shift, "Home"]),
                     Item("Sc_LineEnd", [Shift, "End"]),
@@ -168,6 +172,7 @@ public static class ShortcutCatalog
                     Item("Sc_FastScroll", [Alt, K("Sc_KeyWheel")]),
                     Item("Sc_GutterMenu", [K("Sc_KeyGutter"), K("Sc_KeyRightClick")]),
                     Item("Sc_ToggleFold", [K("Sc_KeyGutter"), K("Sc_KeyLeftClick")]),
+                    Item("Sc_SelectCommandOutput", [K("Sc_KeyCommandMark"), K("Sc_KeyLeftClick")], "Sc_NoteShellIntegration"),
                 ]
             ),
             Group("Cmd_CommandPalette",

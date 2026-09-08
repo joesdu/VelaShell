@@ -163,6 +163,28 @@
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.ReportWorkingDirectory}" VerticalAlignment="Center" />
     </Grid>
 
+    <!-- Shell 集成(OSC 133 命令块)。刻意不做成开关:完整的 OSC 133 要动 PS0/PS1,
+         而那两个会被 starship / oh-my-posh / p10k 每次画提示符都重写 —— 摆出来给用户自己抄,
+         装不装、装在哪由他决定。片段只读,选中即可复制。 -->
+    <StackPanel Spacing="5">
+      <TextBlock Classes="row-label" Text="{loc:Localize SetTerm_ShellIntegration}" />
+      <TextBlock Classes="row-desc" TextWrapping="Wrap" Text="{loc:Localize SetTerm_ShellIntegrationDesc}" />
+      <TextBlock Classes="row-desc" Text="bash" />
+      <TextBox Text="{Binding ShellIntegrationBash, Mode=OneTime}"
+               IsReadOnly="True"
+               AcceptsReturn="True"
+               TextWrapping="NoWrap"
+               FontFamily="{DynamicResource VelaUiMonoFont}"
+               MaxHeight="180" />
+      <TextBlock Classes="row-desc" Text="zsh" />
+      <TextBox Text="{Binding ShellIntegrationZsh, Mode=OneTime}"
+               IsReadOnly="True"
+               AcceptsReturn="True"
+               TextWrapping="NoWrap"
+               FontFamily="{DynamicResource VelaUiMonoFont}"
+               MaxHeight="180" />
+    </StackPanel>
+
     <Border Classes="sep" />
 
     <!-- 滚动 -->

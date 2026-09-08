@@ -557,6 +557,11 @@ public sealed class TerminalScreen
             links.Clear();
             int cursorOffset = -1;
             DateTime? lineTimestamp = null;
+            // OSC 133 标记同样必须穿过 reflow —— 否则拖一下窗口宽度,命令块的边界与失败标记全没了。
+            // 取该逻辑行各物理段中<b>第一个</b>非 None 的标记:标记标的是"这条逻辑行是块的边界",
+            // 一条逻辑行被换行拆成几段时,边界只在头一段上。
+            PromptMark lineMark = PromptMark.None;
+            int? lineExit = null;
             for (int r = i; r <= j; r++)
             {
                 TerminalRow row = physical[r];
@@ -565,6 +570,11 @@ public sealed class TerminalScreen
                 if (row.Timestamp is { } t)
                 {
                     lineTimestamp = t;
+                }
+                if (lineMark == PromptMark.None && row.Mark != PromptMark.None)
+                {
+                    lineMark = row.Mark;
+                    lineExit = row.ExitCode;
                 }
                 // 取到"最后一个被占用的格"为止,而不是整行宽度。
                 //
@@ -617,6 +627,14 @@ public sealed class TerminalScreen
             for (int r = emittedStart; r < rebuilt.Count; r++)
             {
                 rebuilt[r].Timestamp = lineTimestamp;
+            }
+            // 时间戳铺满这条逻辑行重排出的每一行(侧栏按行显示时间),标记只落头一行 ——
+            // 一条逻辑行是<b>一个</b>块边界,不是每段各算一个;铺满会让一条被换行的提示符
+            // 在侧栏上冒出好几个标记,跳转也会在同一条提示符上原地跳。
+            if (lineMark != PromptMark.None && emittedStart < rebuilt.Count)
+            {
+                rebuilt[emittedStart].Mark = lineMark;
+                rebuilt[emittedStart].ExitCode = lineExit;
             }
             i = j + 1;
         }
