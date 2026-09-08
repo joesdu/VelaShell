@@ -63,7 +63,10 @@ public sealed class ScrollBarMarqueeUiTests
 
         OnUi(() =>
         {
-            var vm = new LocalFilePaneViewModel(
+            // using:视图模型给 root.Path 挂了 FileSystemWatcher。不停掉它,TempDirectory
+            // 释放时的删目录会在 dispatch 结束后从线程池线程回调进来,重建进程级的
+            // Dispatcher.UIThread —— 下一个测试建 Compositor 时 VerifyAccess 就炸。
+            using var vm = new LocalFilePaneViewModel(
                 new TransferOptions { LocalDownloadDirectory = root.Path },
                 rootProvider: new TestRootProvider(new LocalRootEntry("~", root.Path, true, root.Path)));
             PumpUntilComplete(vm.LoadInitialAsync());

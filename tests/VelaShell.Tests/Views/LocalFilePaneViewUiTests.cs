@@ -28,7 +28,10 @@ public sealed class LocalFilePaneViewUiTests
             var inaccessible = new LocalRootEntry("Unavailable", Path.Combine(first.Path, "missing"), false, Path.Combine(first.Path, "missing"));
             var accessible = new LocalRootEntry("~", first.Path, true, first.Path);
             var roots = new TestRootProvider(accessible, inaccessible);
-            var viewModel = new LocalFilePaneViewModel(
+            // using,且声明在 TempDirectory 之后(反序释放):视图模型给临时目录挂了
+            // FileSystemWatcher,不先停掉它,删目录会在 dispatch 结束后从线程池线程回调进来,
+            // 重建进程级的 Dispatcher.UIThread —— 下一个测试建 Compositor 时 VerifyAccess 就炸。
+            using var viewModel = new LocalFilePaneViewModel(
                 new TransferOptions { LocalDownloadDirectory = first.Path },
                 rootProvider: roots);
             await viewModel.LoadInitialAsync();
@@ -69,7 +72,8 @@ public sealed class LocalFilePaneViewUiTests
             }
 
             var accessible = new LocalRootEntry("~", root.Path, true, root.Path);
-            var viewModel = new LocalFilePaneViewModel(
+            // 同上:必须早于 TempDirectory 释放,否则删目录的监视回调会污染 Dispatcher.UIThread。
+            using var viewModel = new LocalFilePaneViewModel(
                 new TransferOptions { LocalDownloadDirectory = root.Path },
                 rootProvider: new TestRootProvider(accessible));
             await viewModel.LoadInitialAsync();

@@ -194,6 +194,14 @@ public sealed class LocalPathPickerMarqueeUiTests
                 // 不关窗整个 headless 套件会永久卡死。
                 dialog.Close();
                 Dispatcher.UIThread.RunJobs();
+                // 必须先于删目录:视图模型给 tempRoot 挂了 FileSystemWatcher。删目录会触发它,
+                // 回调落在线程池线程上,再等 300ms 防抖才真的刷新 —— 那时本次 dispatch 早已结束,
+                // 会话也已把这个测试的 Application 连同进程级的 Dispatcher.UIThread 一起拆掉。
+                // 迟到的刷新一碰 Dispatcher.UIThread,就把它重新绑到那条线程池线程上,
+                // 于是**下一个**测试建 Compositor 时 VerifyAccess 直接炸:
+                // "The calling thread cannot access this object because a different thread owns it."
+                // 先 Dispose 停掉监视与防抖计时器,事件根本不会产生。
+                vm.Dispose();
                 if (Directory.Exists(tempRoot))
                 {
                     Directory.Delete(tempRoot, true);
