@@ -144,100 +144,31 @@ public sealed class RemoteEditSessionManagerTests
         Assert.AreEqual("final", fixture.UploadedContents[^1]);
     }
 
-    /// <summary>关掉自动上传:改动照样记账,但不主动传;点了「立即上传」才传。</summary>
-    [TestMethod]
-    [TestCategory("ExternalEdit")]
-    public async Task WithAutoUploadOff_ChangesAreTrackedButNotUploadedUntilAsked()
-    {
-        using var fixture = new SessionFixture(autoUpload: false);
-
-        await File.WriteAllTextAsync(fixture.LocalPath, "held back");
-        await fixture.WaitForPendingAsync();
-        // 防抖窗口是 600ms;等够它再断言"没传",否则测的只是"还没轮到"。
-        await Task.Delay(TimeSpan.FromSeconds(2));
-
-        Assert.IsEmpty(fixture.UploadedContents, "自动上传关着却还是传了。");
-        Assert.IsTrue(fixture.Session.HasPendingChange, "改动没被记账,用户会以为它不存在。");
-
-        await fixture.Session.UploadNowAsync();
-
-        Assert.AreEqual("held back", fixture.UploadedContents.Single());
-    }
-
-    /// <summary>自动上传从关到开:攒着的那次要当场兑现,不该等用户再存一遍。</summary>
-    [TestMethod]
-    [TestCategory("ExternalEdit")]
-    public async Task TurningAutoUploadBackOn_FlushesTheHeldChange()
-    {
-        using var fixture = new SessionFixture(autoUpload: false);
-
-        await File.WriteAllTextAsync(fixture.LocalPath, "held back");
-        await fixture.WaitForPendingAsync();
-
-        fixture.Session.AutoUpload = true;
-        await fixture.WaitForUploadCountAsync(1);
-
-        Assert.AreEqual("held back", fixture.UploadedContents.Single());
-    }
-
-    /// <summary>上传失败之后再点一次「立即上传」要能真的重来一次。</summary>
-    [TestMethod]
-    [TestCategory("ExternalEdit")]
-    public async Task AfterAFailedUpload_UploadNowRetries()
-    {
-        using var fixture = new SessionFixture { FailUploads = true };
-
-        await File.WriteAllTextAsync(fixture.LocalPath, "precious");
-        await fixture.WaitForStateAsync(RemoteEditState.Failed);
-
-        fixture.FailUploads = false;
-        await fixture.Session.UploadNowAsync();
-
-        Assert.AreEqual("precious", fixture.UploadedContents.Single());
-        Assert.AreEqual(RemoteEditState.Watching, fixture.Session.Snapshot().State);
-    }
-
     /// <summary>
-    /// 一切正常的编辑会话<b>不该在浮窗里露面</b>;回传失败了才露。
+    /// 「编辑后自动上传」关掉 = <b>根本不监视</b>,一个字节也不回传。
     /// </summary>
     /// <remarks>
-    /// 「正在编辑」最初是常驻列表,结果是:关掉编辑器之后那一行谁也收不掉,
-    /// 而"编辑器关了没"这个问题在单实例编辑器上根本答不出来(为它试过两版进程跟踪)。
-    /// 现在它只装还没了结的事 —— 用户的原话:「编辑后上传即可,不需要在传输列表中
-    /// 显示正在被编辑这类东西」。
+    /// 界面上没有任何手动上传的入口(「正在编辑」那一组已整块撤掉),所以"攒着等人点"
+    /// 这个中间态没有出口。更糟的是收尾时 <c>ShutdownAsync</c> 还会把攒的那次传上去 ——
+    /// 开关写着"不自动上传",关掉标签页却传了,那是骗人。
     /// </remarks>
     [TestMethod]
     [TestCategory("ExternalEdit")]
-    public async Task AHealthyEditSession_NeverShowsUpInThePanel()
+    public async Task WithAutoUploadOff_NothingIsWatchedAndNothingIsUploaded()
     {
-        using var fixture = new SessionFixture();
+        using var fixture = new SessionFixture(autoUpload: false);
 
-        await fixture.SaveAndWaitForUploadAsync("all good", 1);
+        await File.WriteAllTextAsync(fixture.LocalPath, "local only");
+        // 防抖是 600ms;等够它再断言"没动静",否则测的只是"还没轮到"。
+        await Task.Delay(TimeSpan.FromSeconds(2));
 
-        Assert.IsFalse(ShouldShowInPanel(fixture.Session.Snapshot()),
-                       "编辑保存一切顺利,浮窗里却冒出来一行 —— 那正是收不掉的那种行。");
+        Assert.IsFalse(fixture.Session.HasPendingChange, "开关关着却还在记账 —— 这笔账没有任何出口。");
+        Assert.IsEmpty(fixture.UploadedContents, "自动上传关着却还是传了。");
+
+        // 收尾也不能偷偷补一发。
+        Assert.IsTrue(await fixture.Session.ShutdownAsync(TimeSpan.FromSeconds(30)));
+        Assert.IsEmpty(fixture.UploadedContents, "关标签页时把那份改动传上去了 —— 开关在骗人。");
     }
-
-    /// <summary>回传失败必须露面:本地副本是那份改动唯一的存身之处。</summary>
-    [TestMethod]
-    [TestCategory("ExternalEdit")]
-    public async Task AFailedUpload_ShowsUpInThePanel()
-    {
-        using var fixture = new SessionFixture { FailUploads = true };
-
-        await File.WriteAllTextAsync(fixture.LocalPath, "precious");
-        await fixture.WaitForStateAsync(RemoteEditState.Failed);
-
-        Assert.IsTrue(ShouldShowInPanel(fixture.Session.Snapshot()),
-                      "回传失败却没在浮窗里露面 —— 用户无从知道改动还没上去,也没法重试。");
-    }
-
-    /// <summary>
-    /// 与 <c>FileTransferViewModel.NeedsAttention</c> 同一口径:两边对不上,
-    /// 这两条用例就成了自说自话。
-    /// </summary>
-    private static bool ShouldShowInPanel(RemoteEditSnapshot snapshot) =>
-        snapshot.HasPendingChange || snapshot.State is RemoteEditState.Failed or RemoteEditState.Uploading;
 
     /// <summary>同一个远程文件重复打开只该有一个会话、一份本地副本。</summary>
     [TestMethod]
@@ -288,22 +219,23 @@ public sealed class RemoteEditSessionManagerTests
             RemotePath = "/etc/app.conf",
             FileName = "app.conf",
             OpenWith = RemoteEditOpenWith.Nothing,
-            AutoUpload = false,
             OnError = errors.Add,
             DownloadAsync = async (local, _) =>
             {
                 await File.WriteAllTextAsync(local, "server side");
                 return true;
             },
-            UploadAsync = (_, _) => Task.CompletedTask,
+            // 让回传一直失败,改动就一直停在"没落地"的状态 —— 这正是复用时最怕被覆盖的那份。
+            UploadAsync = (_, _) => throw new IOException("connection reset"),
         };
 
         RemoteEditSession session = (await RemoteEditSessionManager.OpenAsync(Request()))!;
         await File.WriteAllTextAsync(session.LocalPath, "my unsaved work");
-        for (int i = 0; i < 2_000 && !session.HasPendingChange; i++)
+        for (int i = 0; i < 3_000 && session.State != RemoteEditState.Failed; i++)
         {
             await Task.Delay(5);
         }
+        Assert.AreEqual(RemoteEditState.Failed, session.State, "回传没能进入失败态,后面测的就不是那件事了。");
 
         await RemoteEditSessionManager.OpenAsync(Request());
 
@@ -499,11 +431,11 @@ public sealed class RemoteEditSessionManagerTests
 
         public async Task WaitForStateAsync(RemoteEditState state)
         {
-            for (int i = 0; i < 3_000 && Session.Snapshot().State != state; i++)
+            for (int i = 0; i < 3_000 && Session.State != state; i++)
             {
                 await Task.Delay(5);
             }
-            Assert.AreEqual(state, Session.Snapshot().State);
+            Assert.AreEqual(state, Session.State);
         }
 
         public void Dispose()

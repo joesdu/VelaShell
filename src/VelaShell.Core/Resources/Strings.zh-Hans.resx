@@ -4870,27 +4870,6 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Svc_RemoteEditReusedDraft" xml:space="preserve">
     <value>{0} 还有没上传成功的改动,已沿用本地副本({1}),没有重新下载覆盖它。</value>
   </data>
-  <data name="Transfer_EditPendingTitle" xml:space="preserve">
-    <value>待回传</value>
-  </data>
-  <data name="Transfer_EditUploadNow" xml:space="preserve">
-    <value>立即上传</value>
-  </data>
-  <data name="Transfer_EditStop" xml:space="preserve">
-    <value>结束监视</value>
-  </data>
-  <data name="Transfer_EditReveal" xml:space="preserve">
-    <value>打开本地目录</value>
-  </data>
-  <data name="Transfer_EditUploading" xml:space="preserve">
-    <value>正在上传…</value>
-  </data>
-  <data name="Transfer_EditPending" xml:space="preserve">
-    <value>待上传</value>
-  </data>
-  <data name="Transfer_EditFailed" xml:space="preserve">
-    <value>上传失败:{0}</value>
-  </data>
   <data name="SetTransfer_SectionRemoteEdit" xml:space="preserve">
     <value>远程编辑</value>
   </data>
@@ -4913,6 +4892,6 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>编辑后自动上传</value>
   </data>
   <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
-    <value>关闭后改动仍会记录,在「正在编辑」里手动上传</value>
+    <value>关闭后完全不监视本地副本，改动一律不回传</value>
   </data>
 </root>

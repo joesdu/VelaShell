@@ -1653,7 +1653,6 @@ public class FileBrowserViewModel : ReactiveObject
                     SessionId = _sessionId,
                     RemotePath = remotePath,
                     FileName = file.Name,
-                    ServerName = ServerDisplayName,
                     OpenWith = openWith,
                     EditorCommand = editor,
                     OpenLocalAsync = OpenLocalFile,

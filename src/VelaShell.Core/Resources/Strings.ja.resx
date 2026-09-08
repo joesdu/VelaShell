@@ -4459,27 +4459,6 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Svc_RemoteEditReusedDraft" xml:space="preserve">
     <value>{0} にはまだアップロードされていない変更があります。再ダウンロードして上書きせず、ローカルコピー({1})をそのまま使います。</value>
   </data>
-  <data name="Transfer_EditPendingTitle" xml:space="preserve">
-    <value>アップロード待ち</value>
-  </data>
-  <data name="Transfer_EditUploadNow" xml:space="preserve">
-    <value>今すぐアップロード</value>
-  </data>
-  <data name="Transfer_EditStop" xml:space="preserve">
-    <value>監視を終了</value>
-  </data>
-  <data name="Transfer_EditReveal" xml:space="preserve">
-    <value>ローカルフォルダーを開く</value>
-  </data>
-  <data name="Transfer_EditUploading" xml:space="preserve">
-    <value>アップロード中…</value>
-  </data>
-  <data name="Transfer_EditPending" xml:space="preserve">
-    <value>アップロード待ち</value>
-  </data>
-  <data name="Transfer_EditFailed" xml:space="preserve">
-    <value>アップロードに失敗しました: {0}</value>
-  </data>
   <data name="SetTransfer_SectionRemoteEdit" xml:space="preserve">
     <value>リモート編集</value>
   </data>
@@ -4502,6 +4481,6 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>編集後に自動アップロード</value>
   </data>
   <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
-    <value>オフでも変更は記録されます。「編集中」から手動でアップロードしてください</value>
+    <value>オフの場合はローカルコピーを監視せず、変更を送り返しません</value>
   </data>
 </root>

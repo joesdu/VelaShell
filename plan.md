@@ -2765,3 +2765,61 @@ C:\Users\falcon\AppData\Local\Temp\VelaShell\93f408970803433ea9fbbc10fbd39f32\do
 它们服务的不是用户要的能力(保存即回传),而是我为了"可见性"顺手加的一块常驻 UI。
 判据:**加一块常驻状态显示之前,先问它需要什么信号来消失,以及那个信号拿不拿得到。**
 拿不到就别做成常驻 —— 改成"例外才出现",既不用回答那个问题,信息密度还更高。
+
+---
+
+## ✅ 55. 2026-09-08 传输浮窗里那一组整块撤掉,远程编辑从此不出现在界面上(#396 反馈四)
+
+用户反馈:**「把显示正在编辑的那个完整的去掉吧。不需要这个。现在闪一闪的,很奇怪的操作。」**
+
+「闪一闪」是 §54 的直接后果,而且是我的判据选错了:那一组的显示条件里带着
+`HasPendingChange`,而**每一次保存都会让它在防抖那 600ms 里为真** ——
+于是每存一次,行就冒出来一下、传完又消失。本来想做成"只在出问题时出现",
+实际做成了"每次保存闪一次"。
+
+### 一、撤掉了什么
+
+- `FileTransferView.axaml` 里那一整组、`FileTransferViewModel` 的
+  `PendingEdits` / `HasPendingEdits` / `NeedsAttention` / 三个行命令 / `RevealLocalPath` /
+  `SyncEdits` / 静态事件订阅(连带 `IDisposable`),以及 `RemoteEditItemViewModel` 整个文件。
+- 服务侧随之失去消费者的读模型:`RemoteEditSnapshot`、`Snapshot()`、`SessionsChanged`
+  与 `RaiseSessionsChanged`、`Publish()`、`Find`、`CloseAsync`、`UploadNowAsync`、
+  `RemoteEditRequest.ServerName`,以及只为显示而存在的 `_lastUploadedAt` / `_lastError`。
+  会话对外只剩 `HasPendingChange` 与 `State`(回归用例与诊断日志读)。
+- 面板的可见性规则回到原样:`Transfers.Count > 0`,自动隐藏不再被编辑会话拦住。
+
+失败仍然说得出话,只是不再自成一组:回传本身走的就是传输行,失败标红;
+`OnError` 把原因写进文件面板;会话收尾时 `Svc_RemoteEditDraftKept` 告诉草稿在哪儿。
+
+### 二、顺带堵掉一个自己造出来的陷阱
+
+`AutoUploadOnEdit` 关掉时,原本是"改动照样记账,等用户在那一组里点上传"。
+那一组没了,**这笔账就没有出口了**;更糟的是收尾时 `ShutdownAsync` 还会把它补传上去 ——
+开关写着"不自动上传",关掉标签页却传了,那是骗人。
+
+现在关掉 = **watcher 根本不启用**(`_watcher.EnableRaisingEvents = request.AutoUpload`,
+复用刷新后也按同一个值恢复)。本地副本随便改,一个字节也不回传。
+设置项说明与五份 resx 一起改成这个口径。这个开关也不再对已开着的会话即时生效
+—— 它现在决定的是"建会话时挂不挂 watcher",对下一次打开生效即可。
+
+### 三、回归用例
+
+- `WithAutoUploadOff_NothingIsWatchedAndNothingIsUploaded` —— 关掉后不记账、不上传,
+  **且收尾也不偷偷补一发**(最后这条断言守的正是上面那个陷阱)。
+- `ReopeningWithUnuploadedChanges_KeepsTheLocalDraft` 改用"回传一直失败"来制造未落地状态
+  (原来靠 `AutoUpload = false`,那个手法随着语义变化失效了)。
+- 连续保存、原子保存、防抖合并、会话复用、收尾补传/草稿保留等原样保留。
+
+`dotnet build VelaShell.slnx -warnaserror` 零警告;`dotnet test VelaShell.slnx` **3202 通过 / 0 失败**。
+
+### 四、留给下一次的判据
+
+§51 加上这块 UI,§52/§53 为它做了两版进程跟踪,§54 想靠"只在异常时显示"救它,§55 整块删掉。
+五节里有三节半在伺候一个**用户从来没要过**的东西 —— 它是我在阶段 2 以"可见性"为名自己加的。
+
+判据两条:
+1. **状态显示的触发条件必须是稳态,不能是过程量。**`HasPendingChange` 是过程量:
+   它在每次保存的防抖窗口里都为真,拿它当显示条件必然闪。
+2. 更根本的:**用户要的是"保存后自动上传",不是"看见它在自动上传"。**
+   为一个能力配一块常驻状态显示之前,先问这块显示解决了谁的什么问题;
+   答不上来就别加 —— 加了之后它自己会长出一串需要伺候的问题。

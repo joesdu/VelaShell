@@ -31,37 +31,6 @@ public enum RemoteEditState
     Failed,
 }
 
-/// <summary>供界面展示的一次状态快照。</summary>
-/// <remarks>
-/// 会话状态在线程池上(watcher 回调、上传任务)变,界面在 UI 线程读。
-/// 用整体快照替换而不是逐字段读写,免掉一圈只为显示服务的锁。
-/// </remarks>
-/// <param name="Id">会话标识(界面按它下发命令)。</param>
-/// <param name="SessionId">所属的远程会话标识。</param>
-/// <param name="FileName">文件名(界面主行)。</param>
-/// <param name="RemotePath">远端完整路径。</param>
-/// <param name="LocalPath">本地临时副本路径。</param>
-/// <param name="ServerName">服务器显示名,空串表示未知。</param>
-/// <param name="State">此刻的处境。</param>
-/// <param name="HasPendingChange">有改动还没落到远端。</param>
-/// <param name="UploadCount">迄今成功回传的次数。</param>
-/// <param name="LastUploadedAt">最近一次成功回传的时刻;从未成功则为 null。</param>
-/// <param name="LastError">最近一次失败原因;没失败过则为 null。</param>
-/// <param name="AutoUpload">保存后是否自动回传。</param>
-public sealed record RemoteEditSnapshot(
-    Guid Id,
-    Guid SessionId,
-    string FileName,
-    string RemotePath,
-    string LocalPath,
-    string ServerName,
-    RemoteEditState State,
-    bool HasPendingChange,
-    int UploadCount,
-    DateTime? LastUploadedAt,
-    string? LastError,
-    bool AutoUpload);
-
 /// <summary>开一个远程编辑会话所需要的一切。</summary>
 public sealed class RemoteEditRequest
 {
@@ -77,8 +46,6 @@ public sealed class RemoteEditRequest
     /// <summary>远端文件名(会被当作本地副本的文件名,先过安全校验)。</summary>
     public required string FileName { get; init; }
 
-    /// <summary>服务器显示名,只用于界面。</summary>
-    public string ServerName { get; init; } = "";
 
     /// <summary>本地副本下载完成后由谁打开。</summary>
     public RemoteEditOpenWith OpenWith { get; init; } = RemoteEditOpenWith.Nothing;
@@ -124,9 +91,9 @@ public sealed class RemoteEditRequest
 /// <para>
 /// <b>会话不跟踪编辑器进程</b>(理由见 <see cref="RemoteEditSession.LaunchAsync" />:
 /// 我们启动的进程不是最后拿着文件的那个,而"谁打开了这个文档"没有任何 OS 接口能回答)。
-/// 会话由三件事结束:用户在传输浮窗里点结束、所属远程会话关闭、
-/// 应用退出(<see cref="CleanupAll" />)。日常编辑全程无感 —— 浮窗里那一组只在
-/// 「回传失败」或「有改动还没传上去」时才出现。
+/// 会话由两件事结束:所属远程会话关闭(SFTP 标签关掉)、
+/// 应用退出(<see cref="CleanupAll" />)。<b>界面上完全不露面</b> —— 保存即回传是后台的事,
+/// 回传本身会像普通传输一样在浮窗里出现一行,失败则标红并在文件面板报错。
 /// </para>
 /// </remarks>
 public static class RemoteEditSessionManager
@@ -137,9 +104,6 @@ public static class RemoteEditSessionManager
 
     /// <summary>所有编辑副本的临时根目录:%TEMP%/VelaShell/remote-edit。</summary>
     public static string TempRoot { get; } = Path.Combine(Path.GetTempPath(), "VelaShell", "remote-edit");
-
-    /// <summary>会话增删或状态变化;界面据此刷新「正在编辑」列表。可能在任意线程触发。</summary>
-    public static event Action? SessionsChanged;
 
     /// <summary>当前存活的会话(拷贝,可安全遍历)。</summary>
     public static IReadOnlyList<RemoteEditSession> ActiveSessions
@@ -152,17 +116,6 @@ public static class RemoteEditSessionManager
             }
         }
     }
-
-    /// <summary>按会话标识找一个存活会话;找不到返回 <see langword="null" />。</summary>
-    /// <param name="id">会话标识。</param>
-    public static RemoteEditSession? Find(Guid id)
-    {
-        lock (Gate)
-        {
-            return Sessions.FirstOrDefault(s => s.Id == id);
-        }
-    }
-
     /// <summary>
     /// 打开(或复用)一个远程文件的本地编辑会话:下载到独占临时目录 → 按
     /// <see cref="RemoteEditRequest.OpenWith" /> 打开 → 侦听保存并回传。
@@ -210,27 +163,10 @@ public static class RemoteEditSessionManager
         }
         RemoteEditLog.Write("open",
                             $"new {request.RemotePath} -> {localPath} (openWith={request.OpenWith}, autoUpload={request.AutoUpload})");
-        RaiseSessionsChanged();
         await session.LaunchAsync();
         return session;
     }
 
-    /// <summary>
-    /// 结束一个会话(用户在「正在编辑」里点结束):先把没传完的传掉,再按结果决定
-    /// 删不删本地副本。
-    /// </summary>
-    /// <param name="id">会话标识。</param>
-    public static async Task CloseAsync(Guid id)
-    {
-        RemoteEditSession? session = Find(id);
-        if (session is null)
-        {
-            return;
-        }
-        await session.ShutdownAsync(RemoteEditSession.ShutdownUploadTimeout).ConfigureAwait(false);
-        Remove(session);
-        session.Dispose();
-    }
 
     /// <summary>
     /// 所属远程会话(SFTP 标签 / 终端侧栏)关闭时,连带结束它名下的编辑会话。
@@ -313,7 +249,6 @@ public static class RemoteEditSessionManager
         }
         if (pending.Length > 0)
         {
-            RaiseSessionsChanged();
         }
         // 只清空壳:还留着草稿的子目录由 Dispose 决定保不保,这里不能一把全删。
         TryDeleteEmptyTree(TempRoot);
@@ -383,35 +318,6 @@ public static class RemoteEditSessionManager
         }
         if (removed)
         {
-            RaiseSessionsChanged();
-        }
-    }
-
-    /// <summary>
-    /// 广播会话变化。<b>订阅者炸了不能连累编辑会话本身。</b>
-    /// </summary>
-    /// <remarks>
-    /// 这个事件是从 watcher 线程和上传任务里发出来的,而订阅者是界面。让一个界面异常
-    /// 沿着调用栈冒回来,结果是"打开文件"或"保存回传"整条链路当场失败 —— 实测过一次:
-    /// 一个跨线程的集合更新异常,把 <see cref="OpenAsync" /> 里紧随其后的"启动编辑器"
-    /// 整个跳过了,文件下下来了却没人打开。
-    /// </remarks>
-    internal static void RaiseSessionsChanged()
-    {
-        if (SessionsChanged is not { } handlers)
-        {
-            return;
-        }
-        foreach (Delegate handler in handlers.GetInvocationList())
-        {
-            try
-            {
-                ((Action)handler)();
-            }
-            catch (Exception ex)
-            {
-                RemoteEditLog.Write("ui", $"sessions-changed subscriber threw: {ex.Message}");
-            }
         }
     }
 
@@ -472,15 +378,11 @@ public sealed class RemoteEditSession : IDisposable
 
     private RemoteEditState _state = RemoteEditState.Watching;
     private int _uploadCount;
-    private DateTime? _lastUploadedAt;
-    private string? _lastError;
-    private bool _autoUpload;
 
     internal RemoteEditSession(RemoteEditRequest request, string localPath)
     {
         _request = request;
         _onError = request.OnError;
-        _autoUpload = request.AutoUpload;
         LocalPath = localPath;
         _watcher = new(Path.GetDirectoryName(localPath)!, Path.GetFileName(localPath))
         {
@@ -493,7 +395,16 @@ public sealed class RemoteEditSession : IDisposable
         _watcher.Created += (_, e) => OnFileEvent("created", e.Name);
         _watcher.Renamed += (_, e) => OnFileEvent("renamed", e.Name);
         _watcher.Error += (_, e) => RemoteEditLog.Write("watch", $"error {RemotePath}: {e.GetException().Message}");
-        _watcher.EnableRaisingEvents = true;
+
+        // 「编辑后自动上传」关掉 = <b>根本不监视</b>,而不是"攒着等人来点一下"。
+        // 界面上没有任何手动上传的入口(那一组已经整块撤掉了),攒下来的改动就没人兑现得了;
+        // 更糟的是收尾时 ShutdownAsync 还会把它传上去 —— 开关写着"不自动上传",
+        // 关掉标签页却传了,那是骗人。关掉就是:本地副本随便改,一个字节也不回传。
+        _watcher.EnableRaisingEvents = request.AutoUpload;
+        if (!request.AutoUpload)
+        {
+            RemoteEditLog.Write("open", $"auto-upload off; watching nothing for {RemotePath}");
+        }
     }
 
     /// <summary>会话标识(界面按它下发命令)。</summary>
@@ -511,43 +422,11 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>文件名。</summary>
     public string FileName => Path.GetFileName(RemotePath);
 
-    /// <summary>保存后是否自动回传。设置改了之后由宿主刷新。</summary>
-    public bool AutoUpload
-    {
-        get => Volatile.Read(ref _autoUpload);
-        set
-        {
-            if (Volatile.Read(ref _autoUpload) == value)
-            {
-                return;
-            }
-            Volatile.Write(ref _autoUpload, value);
-            // 从关到开:把攒着的那次改动立刻兑现,否则用户打开开关后还得再存一次。
-            if (value && Volatile.Read(ref _pendingSave) == 1)
-            {
-                ScheduleUpload();
-            }
-            Publish();
-        }
-    }
-
-    /// <summary>有改动还没落到远端。</summary>
+    /// <summary>有改动还没落到远端(回归用例读它)。</summary>
     public bool HasPendingChange => Volatile.Read(ref _pendingSave) == 1;
 
-    /// <summary>取一份当前状态的快照。</summary>
-    public RemoteEditSnapshot Snapshot() =>
-        new(Id,
-            SessionId,
-            FileName,
-            RemotePath,
-            LocalPath,
-            _request.ServerName,
-            _state,
-            HasPendingChange,
-            _uploadCount,
-            _lastUploadedAt,
-            _lastError,
-            AutoUpload);
+    /// <summary>此刻的处境(回归用例与诊断日志读它)。</summary>
+    public RemoteEditState State => _state;
 
     /// <summary>拆除会话。上传没能落地时<b>保留</b>本地副本,不删临时目录。</summary>
     public void Dispose()
@@ -597,21 +476,6 @@ public sealed class RemoteEditSession : IDisposable
     }
 
     /// <summary>
-    /// 立即回传一次(界面上的「立即上传」/失败后的重试;自动上传关掉时的唯一出口)。
-    /// </summary>
-    public async Task UploadNowAsync()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-        Interlocked.Exchange(ref _pendingSave, 1);
-        Interlocked.Exchange(ref _debounce, null)?.Dispose();
-        RemoteEditLog.Write("upload", $"manual {RemotePath}");
-        await UploadAsync().ConfigureAwait(false);
-    }
-
-    /// <summary>
     /// 复用会话时把远端的最新内容取回本地副本。
     /// </summary>
     /// <remarks>
@@ -653,7 +517,7 @@ public sealed class RemoteEditSession : IDisposable
         {
             Interlocked.Exchange(ref _pendingSave, 0);
             Interlocked.Exchange(ref _debounce, null)?.Dispose();
-            _watcher.EnableRaisingEvents = true;
+            _watcher.EnableRaisingEvents = _request.AutoUpload;
         }
     }
 
@@ -751,16 +615,9 @@ public sealed class RemoteEditSession : IDisposable
         // 否则改完立刻关编辑器就会把那次保存丢在防抖窗口里。
         Interlocked.Exchange(ref _pendingSave, 1);
         Interlocked.Exchange(ref _debounce, null)?.Dispose();
-        if (!AutoUpload)
-        {
-            // 自动上传关掉了:改动仍然记账并在界面上显示成"待上传",等用户点「立即上传」。
-            Publish();
-            return;
-        }
         // ReSharper disable once RedundantAssignment
         // ReSharper disable once AllUnderscoreLocalParameterName
         _debounce = new(_ => _ = UploadAsync(), null, DebounceWindow, Timeout.InfiniteTimeSpan);
-        Publish();
     }
 
     /// <summary>
@@ -785,7 +642,6 @@ public sealed class RemoteEditSession : IDisposable
                     return;
                 }
                 _state = RemoteEditState.Uploading;
-                Publish();
                 try
                 {
                     // 编辑器保存后可能短暂持锁:先等到文件可读再上传,保证传输浮窗里只出现一行。
@@ -799,22 +655,17 @@ public sealed class RemoteEditSession : IDisposable
                         await _request.SftpService.UploadFileAsync(SessionId, LocalPath, RemotePath).ConfigureAwait(false);
                     }
                     _lastUploadFailed = false;
-                    _lastError = null;
                     _uploadCount++;
-                    _lastUploadedAt = DateTime.Now;
                     _state = RemoteEditState.Watching;
                     RemoteEditLog.Write("upload", $"ok #{_uploadCount} {RemotePath}");
-                    Publish();
                 }
                 catch (Exception ex)
                 {
                     // 失败要留痕:本地副本是这份改动唯一的存身之处,Dispose 据此决定不删目录。
                     _lastUploadFailed = true;
-                    _lastError = ex.Message;
                     _state = RemoteEditState.Failed;
                     Interlocked.Exchange(ref _pendingSave, 1);
                     RemoteEditLog.Write("upload", $"failed {RemotePath}: {ex.Message}");
-                    Publish();
                     _onError?.Invoke(Strings.Format("Svc_RemoteUpdateFailed", FileName, ex.Message));
                     return;
                 }
@@ -842,5 +693,4 @@ public sealed class RemoteEditSession : IDisposable
         }
     }
 
-    private static void Publish() => RemoteEditSessionManager.RaiseSessionsChanged();
 }

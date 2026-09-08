@@ -4459,27 +4459,6 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Svc_RemoteEditReusedDraft" xml:space="preserve">
     <value>{0}에 아직 업로드되지 않은 변경이 있습니다. 다시 내려받아 덮어쓰지 않고 로컬 사본({1})을 그대로 사용합니다.</value>
   </data>
-  <data name="Transfer_EditPendingTitle" xml:space="preserve">
-    <value>업로드 대기</value>
-  </data>
-  <data name="Transfer_EditUploadNow" xml:space="preserve">
-    <value>지금 업로드</value>
-  </data>
-  <data name="Transfer_EditStop" xml:space="preserve">
-    <value>감시 종료</value>
-  </data>
-  <data name="Transfer_EditReveal" xml:space="preserve">
-    <value>로컬 폴더 열기</value>
-  </data>
-  <data name="Transfer_EditUploading" xml:space="preserve">
-    <value>업로드 중…</value>
-  </data>
-  <data name="Transfer_EditPending" xml:space="preserve">
-    <value>업로드 대기</value>
-  </data>
-  <data name="Transfer_EditFailed" xml:space="preserve">
-    <value>업로드 실패: {0}</value>
-  </data>
   <data name="SetTransfer_SectionRemoteEdit" xml:space="preserve">
     <value>원격 편집</value>
   </data>
@@ -4502,6 +4481,6 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
     <value>편집 후 자동 업로드</value>
   </data>
   <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
-    <value>꺼도 변경은 기록됩니다. 「편집 중」에서 수동으로 업로드하세요</value>
+    <value>끄면 로컬 사본을 감시하지 않으며 변경을 보내지 않습니다</value>
   </data>
 </root>

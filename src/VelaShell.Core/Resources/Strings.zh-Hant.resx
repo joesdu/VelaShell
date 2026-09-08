@@ -4870,27 +4870,6 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Svc_RemoteEditReusedDraft" xml:space="preserve">
     <value>{0} 還有沒上傳成功的變更,已沿用本機副本({1}),沒有重新下載覆蓋它。</value>
   </data>
-  <data name="Transfer_EditPendingTitle" xml:space="preserve">
-    <value>待回傳</value>
-  </data>
-  <data name="Transfer_EditUploadNow" xml:space="preserve">
-    <value>立即上傳</value>
-  </data>
-  <data name="Transfer_EditStop" xml:space="preserve">
-    <value>結束監看</value>
-  </data>
-  <data name="Transfer_EditReveal" xml:space="preserve">
-    <value>開啟本機目錄</value>
-  </data>
-  <data name="Transfer_EditUploading" xml:space="preserve">
-    <value>正在上傳…</value>
-  </data>
-  <data name="Transfer_EditPending" xml:space="preserve">
-    <value>待上傳</value>
-  </data>
-  <data name="Transfer_EditFailed" xml:space="preserve">
-    <value>上傳失敗:{0}</value>
-  </data>
   <data name="SetTransfer_SectionRemoteEdit" xml:space="preserve">
     <value>遠端編輯</value>
   </data>
@@ -4913,6 +4892,6 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>編輯後自動上傳</value>
   </data>
   <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
-    <value>關閉後變更仍會記錄,在「正在編輯」中手動上傳</value>
+    <value>關閉後完全不監看本機副本，變更一律不回傳</value>
   </data>
 </root>
