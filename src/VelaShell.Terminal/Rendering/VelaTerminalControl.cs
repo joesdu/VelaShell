@@ -2841,6 +2841,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         base.OnLostFocus(e);
         _hasFocus = false;
         // 焦点走了,修饰键状态就不再可信 —— 撤掉链接悬停的手型与地址提示。
+        // _ctrlHeld 一并复位:松开 Ctrl 的那次 KeyUp 会送给新的焦点控件,这里再不清就永远卡在按下态。
+        _ctrlHeld = false;
         ClearLinkHover();
         UpdateCursorBlinkTimer();
         InvalidateTerminal();
@@ -2881,6 +2883,12 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// </remarks>
     protected override void OnKeyDown(KeyEventArgs e)
     {
+        // 纯修饰键不会被路由器编码成任何动作(落到 TerminalKeyAction.None),
+        // 在这里顺手补一次链接悬停判定不影响下面任何分支。
+        if (e.Key is Key.LeftCtrl or Key.RightCtrl)
+        {
+            UpdateLinkHoverOnCtrlDown();
+        }
         TerminalKeyAction action = TerminalKeyRouter.Classify(
             e.Key,
             e.KeyModifiers,
@@ -3149,7 +3157,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-        UpdateLinkHover(e);
+        _lastPointerPosition = e.GetPosition(this);
+        UpdateLinkHover(_lastPointerPosition.Value, e.KeyModifiers.HasFlag(KeyModifiers.Control));
 
         // 折叠列悬停提示:指针在折叠列上时记住其绝对行(用于画 ▾ 折叠手柄),移出则清除。
         // 空白行(最后一行输出之下)不给提示——那里折叠无意义且极易误点(内容消失事故)。
@@ -3214,20 +3223,30 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     private string? _hoveredLink;
 
     /// <summary>
+    /// 指针最后一次落在控件内的位置;指针移出控件后为 null。
+    /// 判定要在"按下 Ctrl"这一刻也跑一遍,而那一刻没有任何指针事件可问位置(#397)。
+    /// </summary>
+    private Point? _lastPointerPosition;
+
+    /// <summary>Ctrl 是否已被本控件记为按下 —— 用来只在按下那一瞬做判定,而非每次自动重复都做。</summary>
+    private bool _ctrlHeld;
+
+    /// <summary>
     /// 按住 Ctrl 悬停在 URL 上时把光标变成手型,并用提示气泡给出完整地址。
     /// </summary>
     /// <remarks>
     /// 复用 <see cref="SemanticMatcher.UrlAt" /> —— 与 Ctrl+点击是同一个判定函数,
     /// 于是"看起来能点"和"真的能点"永远一致,不会出现指了手型却点不开的情况。
+    /// 取位置与修饰键而非指针事件:按下 Ctrl 时鼠标是静止的,没有事件可传。
     /// </remarks>
-    private void UpdateLinkHover(PointerEventArgs e)
+    private void UpdateLinkHover(Point position, bool ctrl)
     {
-        if (_selecting || !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        if (_selecting || !ctrl)
         {
             ClearLinkHover();
             return;
         }
-        (int row, int col) = PointToCell(e.GetPosition(this));
+        (int row, int col) = PointToCell(position);
         string lineText = row >= 0 && row < Emulator.Screen.TotalRows
             ? Emulator.Screen.ViewLine(row).GetText()
             : string.Empty;
@@ -3267,7 +3286,29 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         base.OnKeyUp(e);
         if (e.Key is Key.LeftCtrl or Key.RightCtrl)
         {
+            _ctrlHeld = false;
             ClearLinkHover();
+        }
+    }
+
+    /// <summary>
+    /// 按下 Ctrl 的那一刻就地重判一次悬停 —— 补上按下侧,与 <see cref="OnKeyUp" /> 的松开侧对称。
+    /// </summary>
+    /// <remarks>
+    /// 回归 #397:判定原本只挂在 <see cref="OnPointerMoved" /> 上,而按 Ctrl 时鼠标是静止的,
+    /// 不产生指针事件,于是必须抖一下鼠标手型才出来。松开侧一直是即时的,按下侧不是,前后不一致。
+    /// 只在 false→true 这一次做:按住 Ctrl 会自动重复,每次重复都跑一遍正则没有意义。
+    /// </remarks>
+    private void UpdateLinkHoverOnCtrlDown()
+    {
+        if (_ctrlHeld)
+        {
+            return;
+        }
+        _ctrlHeld = true;
+        if (_lastPointerPosition is { } position)
+        {
+            UpdateLinkHover(position, ctrl: true);
         }
     }
 
@@ -3275,6 +3316,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     protected override void OnPointerExited(PointerEventArgs e)
     {
         base.OnPointerExited(e);
+        // 指针已不在控件上,记下的位置随即作废 —— 否则之后按 Ctrl 会照着一个旧位置亮手型。
+        _lastPointerPosition = null;
         ClearLinkHover();
         if (_foldHoverAbs != -1)
         {
