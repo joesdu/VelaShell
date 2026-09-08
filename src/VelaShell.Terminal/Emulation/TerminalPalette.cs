@@ -42,8 +42,11 @@ public sealed class TerminalPalette
     /// <summary>绘制光标所用的颜色。</summary>
     public Rgba CursorColor { get; set; } = Rgba.FromRgb(0x00, 0xD4, 0xAA);
 
-    /// <summary>选中文本背后所绘制的填充色。</summary>
-    public Rgba SelectionBackground { get; set; } = new(0x60, 0x1C, 0x2A, 0x3F);
+    /// <summary>
+    /// 选中文本背后所绘制的填充色。<b>不透明</b> —— 半透明叠加正是选区看不见的根因,
+    /// 实际下发前一律经 <c>SelectionContrast.Fill</c> 整定(见那里的说明)。
+    /// </summary>
+    public Rgba SelectionBackground { get; set; } = Rgba.FromRgb(0x1C, 0x2A, 0x3F);
 
     /// <summary>终端内搜索:非当前命中项背后的填充色。</summary>
     /// <remarks>
