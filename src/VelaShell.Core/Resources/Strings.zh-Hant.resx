@@ -4921,4 +4921,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
     <value>關閉後變更仍會記錄,在「正在編輯」中手動上傳</value>
   </data>
+  <data name="Transfer_EditUntracked" xml:space="preserve">
+    <value>已在監看 · 用完請手動結束</value>
+  </data>
 </root>

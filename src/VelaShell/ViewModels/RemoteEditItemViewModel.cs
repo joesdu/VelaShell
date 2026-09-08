@@ -50,6 +50,9 @@ public sealed class RemoteEditItemViewModel : ReactiveObject
         { State: RemoteEditState.Uploading } => Strings.Get("Transfer_EditUploading"),
         { HasPendingChange: true } => Strings.Get("Transfer_EditPending"),
         { LastUploadedAt: { } at } => Strings.Format("Transfer_EditUploadedAt", at.ToString("HH:mm:ss")),
+        // 拿不到编辑器的任何抓手时说清楚:这一行不会自己消失,得手动结束。
+        // 让用户对着一个永远在的"正在编辑"发愣,比多一句话糟得多。
+        { EditorTracked: false } => Strings.Get("Transfer_EditUntracked"),
         _ => Strings.Get("Transfer_EditWatching"),
     };
 

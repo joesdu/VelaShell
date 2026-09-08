@@ -173,6 +173,78 @@ public sealed class RemoteEditSessionManagerTests
                        "编辑器关掉了,「正在编辑」里那一行还挂着。");
     }
 
+    /// <summary>
+    /// 引导进程退出后靠"这个编辑器还有没有实例活着"收尾,而不是盯某一个进程句柄。
+    /// </summary>
+    /// <remarks>
+    /// 用户反馈:双击 `.profile` → VS Code 打开 → 关掉 VS Code,那一行还挂着;
+    /// 而 txt(记事本)一切正常。差别在于 VS Code 一个实例底下是一堆同名进程
+    /// (主进程 + GPU + 渲染 + 扩展宿主),"收养某一个同名进程"根本代表不了"应用还开着"。
+    /// 这里起一个真实的短命子进程当引导进程,它一退,同名实例就一个不剩,会话必须收掉。
+    /// </remarks>
+    [TestMethod]
+    [TestCategory("ExternalEdit")]
+    public async Task WhenNoInstanceOfTheEditorIsLeft_TheSessionEnds()
+    {
+        RemoteEditSessionManager.CleanupAll();
+        RemoteEditSession session = await OpenStubSessionAsync();
+        bool editorAlive = true;
+        session.EditorLivenessProbeForTest = () => editorAlive;
+
+        await session.OnEditorProcessExitedAsync(null, TimeSpan.FromSeconds(1));
+        Assert.IsTrue(session.HasLivenessPollForTest, "引导进程退出后没有挂上存活轮询。");
+
+        // 先见到编辑器起来,再让它消失 —— 这才是"用户把它关了"。
+        await session.PollEditorLivenessForTestAsync();
+        Assert.HasCount(1, RemoteEditSessionManager.ActiveSessions);
+
+        editorAlive = false;
+        await session.PollEditorLivenessForTestAsync();
+
+        Assert.IsEmpty(RemoteEditSessionManager.ActiveSessions,
+                       "编辑器一个实例都不剩了,「正在编辑」里那一行还挂着。");
+    }
+
+    /// <summary>还有实例活着就别动它 —— 那正是单实例编辑器转交完文件之后的样子。</summary>
+    [TestMethod]
+    [TestCategory("ExternalEdit")]
+    public async Task WhileAnInstanceOfTheEditorIsStillAlive_TheSessionIsKept()
+    {
+        RemoteEditSessionManager.CleanupAll();
+        RemoteEditSession session = await OpenStubSessionAsync();
+        session.EditorLivenessProbeForTest = () => true;
+
+        await session.OnEditorProcessExitedAsync(null, TimeSpan.FromSeconds(1));
+        await session.PollEditorLivenessForTestAsync();
+        await session.PollEditorLivenessForTestAsync();
+
+        Assert.HasCount(1, RemoteEditSessionManager.ActiveSessions,
+                        "编辑器还开着就把会话收了 —— 用户后面的保存会悄悄丢掉。");
+    }
+
+    /// <summary>
+    /// 还<b>没见过</b>编辑器起来的时候,一个实例都查不到不算"它关了"。
+    /// </summary>
+    /// <remarks>
+    /// 启动器把文件转交出去、真身还在加载的那一瞬,名字底下可能一个进程都没有。
+    /// 此时收摊等于把用户后面的保存悄悄丢掉 —— 这条路必须往"还开着"的方向倒。
+    /// </remarks>
+    [TestMethod]
+    [TestCategory("ExternalEdit")]
+    public async Task BeforeAnyInstanceIsEverSeen_AnEmptyProbeDoesNotEndTheSession()
+    {
+        RemoteEditSessionManager.CleanupAll();
+        RemoteEditSession session = await OpenStubSessionAsync();
+        session.EditorLivenessProbeForTest = () => false;
+
+        await session.OnEditorProcessExitedAsync(null, TimeSpan.FromSeconds(1));
+        await session.PollEditorLivenessForTestAsync();
+        await session.PollEditorLivenessForTestAsync();
+
+        Assert.HasCount(1, RemoteEditSessionManager.ActiveSessions,
+                        "编辑器还没起来就被判死了 —— 之后的保存会无声丢失。");
+    }
+
     /// <summary>编辑器关掉时,末次保存必须先落到远端,再收会话。</summary>
     [TestMethod]
     [TestCategory("ExternalEdit")]
@@ -181,7 +253,13 @@ public sealed class RemoteEditSessionManagerTests
         RemoteEditSessionManager.CleanupAll();
         List<string> uploads = [];
         RemoteEditSession session = await OpenStubSessionAsync(async (local, _) =>
-            uploads.Add(await File.ReadAllTextAsync(local)));
+        {
+            string content = await File.ReadAllTextAsync(local);
+            lock (uploads)
+            {
+                uploads.Add(content);
+            }
+        });
 
         // 存一次,但不等防抖到点就"关掉编辑器"。
         await File.WriteAllTextAsync(session.LocalPath, "last words");
@@ -192,8 +270,13 @@ public sealed class RemoteEditSessionManagerTests
 
         await session.OnEditorProcessExitedAsync(null, TimeSpan.FromMinutes(3));
 
-        Assert.AreEqual("last words", uploads.SingleOrDefault(),
-                        "会话收掉了,可最后那次保存没传上去 —— 这才是真正会丢东西的那一边。");
+        // 只断言"最后传上去的是它"。一次 WriteAllText 在 Windows 上常触发多个 watcher 事件
+        // (大小 + 修改时间),补传与收尾各拿到一次是正常的 —— 内容相同,不是缺陷。
+        lock (uploads)
+        {
+            Assert.IsNotEmpty(uploads, "会话收掉了,可最后那次保存一次都没传上去 —— 这才是真会丢东西的那一边。");
+            Assert.AreEqual("last words", uploads[^1]);
+        }
         Assert.IsEmpty(RemoteEditSessionManager.ActiveSessions);
     }
 

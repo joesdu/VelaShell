@@ -48,6 +48,7 @@ public enum RemoteEditState
 /// <param name="LastUploadedAt">最近一次成功回传的时刻;从未成功则为 null。</param>
 /// <param name="LastError">最近一次失败原因;没失败过则为 null。</param>
 /// <param name="AutoUpload">保存后是否自动回传。</param>
+/// <param name="EditorTracked">能否自动察觉编辑器关闭;否则这一行只能手动结束。</param>
 public sealed record RemoteEditSnapshot(
     Guid Id,
     Guid SessionId,
@@ -60,7 +61,8 @@ public sealed record RemoteEditSnapshot(
     int UploadCount,
     DateTime? LastUploadedAt,
     string? LastError,
-    bool AutoUpload);
+    bool AutoUpload,
+    bool EditorTracked);
 
 /// <summary>开一个远程编辑会话所需要的一切。</summary>
 public sealed class RemoteEditRequest
@@ -132,10 +134,12 @@ public sealed class RemoteEditRequest
 /// 现在入口只决定"谁来打开",要不要回传是会话本身的事。
 /// </para>
 /// <para>
-/// <b>会话生命周期不再赌编辑器进程。</b>旧实现用「进程 3 秒内退出就当作是单实例编辑器的引导进程」
-/// 来判断编辑器是否还开着 —— 带标签页的单实例编辑器(Notepad--、Notepad++、VS Code)冷启动
-/// 慢一点就会误判成"编辑器已关闭",于是停 watcher、删临时目录,此后所有保存无声丢失。
-/// 现在进程退出只触发一次补传,会话只由三件事结束:用户在传输浮窗里点结束、所属远程会话关闭、
+/// <b>会话生命周期不拿单个进程句柄下赌注。</b>旧实现用「进程 3 秒内退出就当作是引导进程」
+/// 判断编辑器还开不开着 —— 单实例编辑器冷启动慢一点就误判成"已关闭",停 watcher、
+/// 删临时目录,此后所有保存无声丢失。现在:进程活了一阵才退 = 用户关了它,收会话;
+/// 启动即返回 = 引导进程转交完就走了,改成轮询「这个编辑器还有没有实例活着」
+/// (VS Code 那种一个实例底下一堆同名进程的形态,盯任何单个句柄都是错的)。
+/// 除此之外,会话由三件事结束:用户在传输浮窗里点结束、所属远程会话关闭、
 /// 应用退出(<see cref="CleanupAll" />)。
 /// </para>
 /// </remarks>
@@ -472,8 +476,15 @@ public sealed class RemoteEditSession : IDisposable
     /// </remarks>
     private static readonly TimeSpan BootstrapExitWindow = TimeSpan.FromSeconds(8);
 
-    /// <summary>最多改盯几次接手实例,防的是"一直有同名进程在退"这种打转。</summary>
-    private const int MaxAdoptions = 4;
+    /// <summary>
+    /// 引导进程退出后,每隔这么久看一眼编辑器还有没有实例活着。
+    /// </summary>
+    /// <remarks>
+    /// 一次 <see cref="Process.GetProcessesByName(string)" /> 而已,几秒一次的开销可以忽略;
+    /// 而这是"编辑器关了"唯一靠得住的信号。间隔给 5 秒,是让那一行在用户关掉编辑器之后
+    /// 「差不多马上」消失 —— 再快也只是让轮询更吵,慢了用户又会觉得它没反应。
+    /// </remarks>
+    private static readonly TimeSpan LivenessPollInterval = TimeSpan.FromSeconds(5);
 
     private readonly Action<string>? _onError;
     private readonly RemoteEditRequest _request;
@@ -500,10 +511,23 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>当前盯着的编辑器进程是什么时候开始盯的(判断"启动即返回"用)。</summary>
     private DateTime _trackedSince;
 
-    /// <summary>编辑器进程名,用来找接手的同名实例。退出后取不到,所以启动时就记下来。</summary>
+    /// <summary>编辑器进程名,轮询存活用。退出后取不到,所以启动时就记下来。</summary>
     private string? _editorProcessName;
 
-    private int _adoptions;
+    /// <summary>引导进程退出后的存活轮询。</summary>
+    private Timer? _livenessPoll;
+
+    /// <summary>见过至少一次这个编辑器的实例。没见过就永远不判它死(见 StartLivenessPoll)。</summary>
+    private bool _sawEditorInstance;
+
+    /// <summary>
+    /// 拿到过任何能判断"编辑器关没关"的抓手(进程句柄或进程名)。
+    /// </summary>
+    /// <remarks>
+    /// 为 <see langword="false" /> 时这一行只能由用户手动结束 —— 界面得说出来,
+    /// 而不是让用户对着一个永远不消失的"正在编辑"发愣。
+    /// </remarks>
+    private bool _editorTracked;
 
     internal RemoteEditSession(RemoteEditRequest request, string localPath)
     {
@@ -576,7 +600,8 @@ public sealed class RemoteEditSession : IDisposable
             _uploadCount,
             _lastUploadedAt,
             _lastError,
-            AutoUpload);
+            AutoUpload,
+            _editorTracked);
 
     /// <summary>拆除会话。上传没能落地时<b>保留</b>本地副本,不删临时目录。</summary>
     public void Dispose()
@@ -589,6 +614,7 @@ public sealed class RemoteEditSession : IDisposable
         _closing = true;
         _watcher.EnableRaisingEvents = false;
         Interlocked.Exchange(ref _debounce, null)?.Dispose();
+        Interlocked.Exchange(ref _livenessPoll, null)?.Dispose();
         _watcher.Dispose();
         if (_lastUploadFailed || Volatile.Read(ref _pendingSave) == 1)
         {
@@ -750,14 +776,16 @@ public sealed class RemoteEditSession : IDisposable
     private void Track(Process process)
     {
         _trackedSince = DateTime.UtcNow;
+        _editorTracked = true;
         try
         {
             // 进程名必须在它还活着的时候取 —— 退出之后 ProcessName 直接抛。
             _editorProcessName ??= process.ProcessName;
+            _sawEditorInstance = true;
         }
         catch (InvalidOperationException)
         {
-            // 已经退了,拿不到名字就没法找接手的实例;下面照常按退出处理。
+            // 已经退了,拿不到名字就没法轮询存活;下面照常按退出处理。
         }
         int[] fired = [0];
         process.Exited += (_, _) =>
@@ -802,15 +830,10 @@ public sealed class RemoteEditSession : IDisposable
         }
         if (aliveFor < BootstrapExitWindow)
         {
-            // 启动即返回:多半是引导进程,文件已经转交给一个还活着的同名实例。找到就改盯它。
-            if (TryAdoptSurvivingInstance(process) is { } adopted)
-            {
-                RemoteEditLog.Write("watch", $"adopted surviving instance pid={adopted.Id} ({RemotePath})");
-                Track(adopted);
-                return false;
-            }
-            // 找不到接手的也不能就此收摊 —— 判断错了就是"保存无声丢失"。
-            RemoteEditLog.Write("watch", $"no surviving instance; keeping the session ({RemotePath})");
+            // 启动即返回:多半是引导进程,文件已经转交给别的实例。改用"这个编辑器还有没有
+            // 实例活着"来判断,而不是再挑一个进程句柄盯着(理由见 StartLivenessPoll)。
+            RemoteEditLog.Write("watch", $"looks like a bootstrap exit; polling {_editorProcessName ?? "?"} liveness ({RemotePath})");
+            StartLivenessPoll();
             return false;
         }
         RemoteEditLog.Write("watch", $"editor closed; ending session ({RemotePath})");
@@ -818,61 +841,108 @@ public sealed class RemoteEditSession : IDisposable
         return true;
     }
 
-    /// <summary>找一个和刚退出那个同名、还活着的进程(单实例编辑器的主实例)。</summary>
-    private Process? TryAdoptSurvivingInstance(Process? exited)
+    /// <summary>
+    /// 改用轮询「这个编辑器还有没有实例活着」来判断它关没关。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 上一版是"挑一个同名的存活进程改盯它"。<b>对 VS Code 这类多进程应用是错的</b> ——
+    /// 一个 VS Code 实例底下是一堆同名进程(主进程 + GPU + 渲染 + 扩展宿主),
+    /// 收养到哪一个都不代表"应用还开着":收养到辅助进程,它随时会自己退;
+    /// 而收养到主进程也未必等得到事件。用户反馈的正是这个形态 —— 双击 `.profile`,
+    /// VS Code 打开,关掉 VS Code 之后那一行还挂着;而 txt(记事本,单进程、
+    /// 我们起的就是真身)一切正常。
+    /// </para>
+    /// <para>
+    /// 问题问对了就简单了:不问"某个进程死了没",问"这个名字还有活的没有"。
+    /// 多进程、单实例、启动器转交,三种形态一个答案。
+    /// </para>
+    /// <para>
+    /// <b>没见过它起来就永远不判死。</b>启动器把文件转交出去、真身还没起来的那一瞬,
+    /// 名字底下可能一个进程都没有;此时就收摊等于把用户后面的保存悄悄丢掉(#396)。
+    /// 所以要先见到过至少一次实例,之后"全没了"才算关闭。
+    /// </para>
+    /// </remarks>
+    private void StartLivenessPoll()
     {
-        if (_editorProcessName is null || _adoptions >= MaxAdoptions)
+        if (_editorProcessName is null && EditorLivenessProbeForTest is null)
         {
-            return null;
+            // 连进程名都没拿到就无从判断;那一行只能由用户手动结束(界面会说明)。
+            RemoteEditLog.Write("watch", $"no process name to poll; row must be ended by hand ({RemotePath})");
+            _editorTracked = false;
+            Publish();
+            return;
         }
-        Process[] candidates;
+        Interlocked.Exchange(ref _livenessPoll, null)?.Dispose();
+        _livenessPoll = new(_ => _ = PollEditorLivenessAsync(), null, LivenessPollInterval, LivenessPollInterval);
+    }
+
+    private async Task PollEditorLivenessAsync()
+    {
+        if (_disposed || _closing)
+        {
+            return;
+        }
+        if (AnyEditorInstanceAlive())
+        {
+            _sawEditorInstance = true;
+            return;
+        }
+        if (!_sawEditorInstance)
+        {
+            // 还没见过它起来 —— 可能是启动器刚转交完、真身还在加载。别急着判它死。
+            return;
+        }
+        RemoteEditLog.Write("watch", $"no {_editorProcessName} instance left; ending session ({RemotePath})");
+        Interlocked.Exchange(ref _livenessPoll, null)?.Dispose();
+        await FlushAsync().ConfigureAwait(false);
+        await RemoteEditSessionManager.CloseAsync(Id).ConfigureAwait(false);
+    }
+
+    /// <summary>存活探针的替身:回归用例用它把"编辑器还在不在"变成可控输入。</summary>
+    /// <remarks>
+    /// 不这么做的话用例就得真起一个进程,再拿进程名去数 —— 而进程名是全机器共享的:
+    /// CI 上恰好另有一个同名进程(cmd、sh、dotnet 都极可能),用例就随机变红。
+    /// </remarks>
+    internal Func<bool>? EditorLivenessProbeForTest { get; set; }
+
+    /// <summary>引导进程退出后是否真的挂上了存活轮询(回归用例读它)。</summary>
+    internal bool HasLivenessPollForTest => Volatile.Read(ref _livenessPoll) is not null;
+
+    /// <summary>手动推一次存活轮询,免得用例干等定时器(回归用例专用)。</summary>
+    internal Task PollEditorLivenessForTestAsync() => PollEditorLivenessAsync();
+
+    /// <summary>这个编辑器名下还有没有活着的进程。</summary>
+    private bool AnyEditorInstanceAlive()
+    {
+        if (EditorLivenessProbeForTest is { } probe)
+        {
+            return probe();
+        }
+        if (_editorProcessName is null)
+        {
+            return false;
+        }
+        Process[] instances;
         try
         {
-            candidates = Process.GetProcessesByName(_editorProcessName);
+            instances = Process.GetProcessesByName(_editorProcessName);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or PlatformNotSupportedException)
+        catch (Exception ex) when (ex is InvalidOperationException or PlatformNotSupportedException or SystemException)
         {
-            return null;
+            // 查不了就当它还活着 —— 往"别把会话收早"的方向倒。
+            return true;
         }
-        Process? chosen = null;
-        foreach (Process candidate in candidates.OrderBy(StartedAt))
+        try
         {
-            // 取最早启动的那个 —— 单实例编辑器里它就是接手文件的主实例。
-            if (chosen is null && candidate.Id != exited?.Id && IsAlive(candidate))
-            {
-                chosen = candidate;
-                continue;
-            }
-            candidate.Dispose();
+            return instances.Length > 0;
         }
-        if (chosen is not null)
+        finally
         {
-            _adoptions++;
-        }
-        return chosen;
-
-        static DateTime StartedAt(Process process)
-        {
-            try
+            // 每次轮询都会新开一批句柄,不还回去就是稳定的句柄泄漏。
+            foreach (Process instance in instances)
             {
-                return process.StartTime;
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or SystemException)
-            {
-                // 权限不足或刚退出:排到最后,别让它顶掉真正的主实例。
-                return DateTime.MaxValue;
-            }
-        }
-
-        static bool IsAlive(Process process)
-        {
-            try
-            {
-                return !process.HasExited;
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or SystemException)
-            {
-                return false;
+                instance.Dispose();
             }
         }
     }

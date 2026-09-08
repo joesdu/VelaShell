@@ -4510,4 +4510,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
     <value>オフでも変更は記録されます。「編集中」から手動でアップロードしてください</value>
   </data>
+  <data name="Transfer_EditUntracked" xml:space="preserve">
+    <value>監視中 · 終わったら手動で終了してください</value>
+  </data>
 </root>

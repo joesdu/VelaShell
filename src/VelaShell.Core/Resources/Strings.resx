@@ -4511,4 +4511,7 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
     <value>Off: changes are still tracked; upload them from the Editing list</value>
   </data>
+  <data name="Transfer_EditUntracked" xml:space="preserve">
+    <value>Watching · close this row yourself when done</value>
+  </data>
 </root>

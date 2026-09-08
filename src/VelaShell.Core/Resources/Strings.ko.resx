@@ -4510,4 +4510,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
     <value>꺼도 변경은 기록됩니다. 「편집 중」에서 수동으로 업로드하세요</value>
   </data>
+  <data name="Transfer_EditUntracked" xml:space="preserve">
+    <value>감시 중 · 끝나면 직접 종료하세요</value>
+  </data>
 </root>
