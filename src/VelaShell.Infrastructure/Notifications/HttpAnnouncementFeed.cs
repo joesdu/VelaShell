@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using VelaShell.Core.Models;
 using VelaShell.Core.Notifications;
@@ -68,6 +69,9 @@ public sealed class HttpAnnouncementFeed(
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException or InvalidOperationException)
         {
             // 源不可达是常态(离线、内网、地址写错),当作"这次没有新消息"。
+            // 但要留一行:这条请求是开箱默认发的,失败时调试输出里只会浮出一串裸的 TLS/套接字
+            // 异常 —— 不写下是"哪个地址、什么原因",看到的人无从判断该查网络还是查代码。
+            Trace.WriteLine($"[VelaShell] Announcement feed {feed.Host} is unreachable: {ex.Message}");
             return [];
         }
         try
