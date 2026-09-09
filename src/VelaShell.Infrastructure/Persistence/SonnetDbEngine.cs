@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using SonnetDB.Catalog;
 using SonnetDB.Documents;
 using SonnetDB.Engine;
@@ -59,6 +60,9 @@ public sealed class SonnetDbEngine : IDisposable
     /// </summary>
     private const long SegmentMemoryMapThresholdBytes = 1024 * 1024;
 
+    /// <summary>刷盘写段文件时的中间产物;成功后改名成 <c>*.SDBSEG</c>。</summary>
+    private const string SegmentTempFilePattern = "*.SDBSEG.tmp";
+
     private readonly Tsdb _db;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ConcurrentDictionary<string, DocumentCollectionStore> _stores = new(StringComparer.Ordinal);
@@ -77,6 +81,8 @@ public sealed class SonnetDbEngine : IDisposable
         }
         Directory.CreateDirectory(rootDirectory);
         RootDirectory = rootDirectory;
+        // 快照要在开库**之前**取,删除要在开库**之后**做 —— 见 SweepOrphanSegmentTempFiles。
+        SegmentTempFile[] orphans = SnapshotSegmentTempFiles(rootDirectory);
         _db = Tsdb.Open(new()
         {
             RootDirectory = rootDirectory,
@@ -86,6 +92,7 @@ public sealed class SonnetDbEngine : IDisposable
                 MemoryMappedFileThresholdBytes = SegmentMemoryMapThresholdBytes
             }
         });
+        SweepOrphanSegmentTempFiles(orphans);
         EnsureSchema();
     }
 
@@ -361,6 +368,80 @@ public sealed class SonnetDbEngine : IDisposable
         finally
         {
             _gate.Release();
+        }
+    }
+
+    /// <summary>一个段临时文件的身份(路径 + 大小 + 修改时间),用来判定开库前后它有没有被动过。</summary>
+    private readonly record struct SegmentTempFile(string Path, long Length, DateTime WrittenUtc);
+
+    /// <summary>开库前扫一遍已经躺在盘上的段临时文件。</summary>
+    private static SegmentTempFile[] SnapshotSegmentTempFiles(string rootDirectory)
+    {
+        try
+        {
+            return
+            [
+                .. Directory.EnumerateFiles(rootDirectory, SegmentTempFilePattern, SearchOption.AllDirectories)
+                    .Select(static path =>
+                    {
+                        FileInfo info = new(path);
+                        return new SegmentTempFile(path, info.Length, info.LastWriteTimeUtc);
+                    })
+            ];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// 清掉上一次运行留下的段临时文件。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么必须清。</b>刷盘落段走的是「先写 <c>*.SDBSEG.tmp</c>,写成了再改名」。进程要是死在
+    /// 这两步之间(调试器停止、崩溃、退出时刷盘被超时掐断),tmp 就留在盘上了 —— 而 SonnetDB
+    /// 之后再用到同一个段号时是按「新建」开文件的,一头撞上
+    /// <c>The file '….SDBSEG.tmp' already exists.</c>,那一次刷盘连同内存表里的数据一起失败。
+    /// 关键在于它<b>不会自愈</b>:那个文件不会有人去动,于是此后每一次落到这个段号的刷盘都照样失败。
+    /// 已经踩到过一次 —— 一个留了一个多小时的 <c>0000000000000270.SDBSEG.tmp</c>,
+    /// 让退出时的最后一次刷盘直接抛在了它身上。
+    /// </para>
+    /// <para>
+    /// <b>为什么删得安全。</b>段是靠改名落地的,所以没改过名的 tmp 按定义不属于任何已提交的段,
+    /// 删掉不会丢任何已落盘的数据;那些确实还没落盘的点在 WAL 里,由开库时的重放负责。
+    /// </para>
+    /// <para>
+    /// <b>为什么是「开库前快照、开库后删除」。</b>删除得等到 <c>Tsdb.Open</c> 拿下 WAL 独占锁之后 ——
+    /// 在那之前我们没资格断言这些文件是孤儿,它可能正被另一个进程写着(设计器预览器就干过这事)。
+    /// 而清单必须在开库前取:开库之后新生的 tmp 是本进程正在写的,一个都不能碰。
+    /// 双保险是再比一次大小与修改时间,期间被动过就放着不管。
+    /// </para>
+    /// </remarks>
+    private static void SweepOrphanSegmentTempFiles(SegmentTempFile[] orphans)
+    {
+        foreach (SegmentTempFile orphan in orphans)
+        {
+            try
+            {
+                FileInfo info = new(orphan.Path);
+                if (!info.Exists)
+                {
+                    continue; // 开库时被引擎自己收拾掉了
+                }
+                if (info.Length != orphan.Length || info.LastWriteTimeUtc != orphan.WrittenUtc)
+                {
+                    continue; // 开库过程中被动过,不是孤儿
+                }
+                info.Delete();
+                Trace.WriteLine($"[VelaShell] Removed an orphaned SonnetDB segment temp file: {orphan.Path}");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // 删不掉(被占用/无权限)就算了:开库绝不能因为一次清理失败而崩。
+                Trace.WriteLine($"[VelaShell] Could not remove the orphaned segment temp file {orphan.Path}: {ex.Message}");
+            }
         }
     }
 
