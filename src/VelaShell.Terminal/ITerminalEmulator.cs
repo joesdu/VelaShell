@@ -20,7 +20,7 @@ public interface ITerminalEmulator : IDisposable
     int CursorCol { get; }
 
     /// <summary>
-    /// 要保留的回滚行数
+    /// 要保留的回滚行数(主屏;备用屏恒无回滚)
     /// </summary>
     int ScrollbackLines { get; set; }
 

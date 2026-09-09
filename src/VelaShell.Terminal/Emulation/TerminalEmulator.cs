@@ -89,6 +89,21 @@ public sealed class TerminalEmulator : IVtActions
     /// <summary>当前生效的屏幕缓冲区(主屏或备用屏)。</summary>
     public TerminalScreen Screen { get; private set; }
 
+    /// <summary>主屏保留的最大回滚行数(设置 → 终端 → 回滚行数)。</summary>
+    /// <remarks>
+    /// <b>读写的恒是主屏,与此刻是否在备用屏无关。</b>备用屏的容量恒为 0 且不可配 ——
+    /// 它归全屏程序(vim / htop / less)所有:一旦给了它回滚容量,退休行会被压进历史
+    /// (<c>TerminalScreen.ScrollUp</c>),改窗口大小还会连带触发一次它本不该做的 reflow
+    /// (<c>TerminalScreen.Resize</c> —— 备用屏靠 SIGWINCH 自行重绘)。
+    /// 早先控件直接写 <see cref="Screen" />,于是「在 vim 里保存设置」两头落空:
+    /// 主屏没改到(用户以为生效了),备用屏反而被弄脏。
+    /// </remarks>
+    public int ScrollbackLines
+    {
+        get => _mainScreen.MaxScrollback;
+        set => _mainScreen.MaxScrollback = value;
+    }
+
     /// <summary>当前屏幕的列数。</summary>
     public int Columns => Screen.Columns;
 
@@ -622,14 +637,14 @@ public sealed class TerminalEmulator : IVtActions
         switch (p[1][0])
         {
             case 'A':
-            {
-                TerminalRow row = Screen.ActiveLine(Screen.CursorY);
-                row.Mark = PromptMark.Prompt;
-                row.ExitCode = null;
-                _promptRow = row;
-                HasPromptMarks = true;
-                break;
-            }
+                {
+                    TerminalRow row = Screen.ActiveLine(Screen.CursorY);
+                    row.Mark = PromptMark.Prompt;
+                    row.ExitCode = null;
+                    _promptRow = row;
+                    HasPromptMarks = true;
+                    break;
+                }
             case 'C':
                 Screen.ActiveLine(Screen.CursorY).Mark = PromptMark.Output;
                 HasPromptMarks = true;
@@ -641,7 +656,7 @@ public sealed class TerminalEmulator : IVtActions
                     _promptRow = null;
                 }
                 break;
-            // B(提示符结束 / 输入开始)有意接受并忽略,理由见 PromptMark 的说明。
+                // B(提示符结束 / 输入开始)有意接受并忽略,理由见 PromptMark 的说明。
         }
     }
 

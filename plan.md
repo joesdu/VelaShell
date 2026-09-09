@@ -3320,3 +3320,70 @@ Thin / Light / Regular / Medium / SemiBold / Bold **六个真实静态字面**(�
 
 ⚠️ 固定高度的两个下拉(`LocalFilePaneView` / `LocalPathPickerDialog`,`Height=22`)
 字号上调后未做像素复核,是本次唯一没验到的地方。
+
+## ✅ 61. 2026-09-09 回滚行数这个设置项存下来了,只是有两处根本不生效(用户反馈)
+
+用户要求「把 scrollback 行数可配做全」,并指出「目前应该是已经有配置的地方了」—— 说对了。
+`feature-plan.md` A 组那一条写的是「现在硬编码 10 000,只差一个设置项 + 接线」,**这句是错的**:
+`AppSettings.ScrollbackLines`(默认 10 000、`ClampNumbers` 钳在 100..200 000)、
+设置页的 `NumericUpDown`、五种语言的资源串、`SettingsViewModel` 的读写、
+`TerminalSettingsApplier.Apply` 的下发,整条线一年前就通了。
+
+**缺的不是开关,是开关拨下去之后的那一段。** 又一例「复核结论本身会过期」——
+路线图那一条 09-08 才写,写的时候没核到设置页。
+
+### 一、洞一:调小不当场裁,内存不还
+
+`TerminalScreen.MaxScrollback` 是个自动属性,而裁剪只发生在 `TrimScrollbackToMax()` 里,
+它的调用点只有两处:`ScrollUp`(滚动时)与 `Resize` 的 reflow。于是把 200 000 调到 1 000,
+那 199 000 行**要等下一次滚动才退休**。
+
+问题在于用户调小它几乎只有一个动机 —— 收回内存(200 列 × 20 万行 × 16 B ≈ 640 MB / 标签页,
+见 `TerminalRow` 的类型注释)。而最该收的恰恰是**跑完就停在那儿的标签页**:
+一个刷完日志、此后再无输出的会话,「下一次滚动」可能永远不来。
+
+改法:`MaxScrollback` 改成带 setter 的属性,钳到非负后当场 `TrimScrollbackToMax()`。
+构造函数原本自己做的 `Math.Max(0, ...)` 收进 setter,只留一处。
+
+### 二、洞二:在 vim 里保存设置,值落到了备用屏上
+
+`VelaTerminalControl.ScrollbackLines` 原先读写的是 `Emulator.Screen.MaxScrollback` ——
+**`Screen` 是「当前」缓冲区**。用户正开着 vim / htop / less(备用屏活动)时按下保存,
+`TerminalSettingsApplier` 对每个标签重设一遍,于是:
+
+1. **主屏一个字没改** —— 用户以为生效了,退出 vim 才发现没有。这正是 P0 那张表里
+   「界面在骗人」的形态,只不过它不是「零消费者」,而是「消费者接错了地方」。
+2. **备用屏被弄脏** —— 它的容量本该恒为 0(`SetAlternateScreen` 里 `new(cols, rows, 0)`)。
+   一旦有了容量,`ScrollUp` 的 `if (fullScreen && MaxScrollback > 0)` 会把 vim 的退休行压进历史
+   (在 vim 里能往回滚出「历史」,是错的),而 `Resize` 的 `if (columns != Columns && MaxScrollback > 0)`
+   还会给备用屏做一次**它本不该做的 reflow** —— 那行注释写得很清楚:
+   备用屏靠 SIGWINCH 自行重绘,重排只会和应用打架。
+
+改法:把这个属性上提到引擎,`TerminalEmulator.ScrollbackLines` **恒读写 `_mainScreen`**,
+与此刻在哪个屏无关;控件转发过去。读回来也一并修好了 —— 原先在 vim 里打开设置页,
+显示的是备用屏的 0。
+
+### 三、裁剪要连带收的三样
+
+裁剪把绝对行号整体前移,所以控件那一侧在值真的裁到了东西时还得收口:
+
+- **滚动位置**:可能正停在一行已经不存在的历史上,`_scrollOffset` 与 `_lastScrollbackCount`
+  一起收回新量程(后者不同步的话,下一次 `ApplyOutputUpdate` 的 `PinScrollOffset` 会按一个
+  虚构的增量再挪一次)。
+- **折叠**:折叠头可能刚被裁掉 —— 走既有的 `ClearFolds()`。
+- **选区**:按绝对行寻址,留着只会复制到错的文本。与 resize 同一条纪律(见 §12-13 那句
+  「与其让陈旧的范围标记错误的文本,不如直接丢弃它」)。
+
+只在 `ScrollbackCount` 真的变了才做这一套:每次保存设置都会对所有标签重设一遍,
+调大或没到上限时不该白惊动滚动条的订阅者。
+
+### 四、验收
+
+`dotnet build VelaShell.slnx -warnaserror` 零警告零错误;`dotnet test VelaShell.slnx`
+**3310 通过 / 19 跳过 / 0 失败**。新增 `ScrollbackCapacityTests`(6 条):调小当场裁、
+调大不丢已有历史、负值兜底钳零(插件能力面 `PluginTerminalViewApi` 也能写这个属性)、
+备用屏上设置落到主屏且备用屏保持零回滚、备用屏上读回来的是主屏的值、裁剪后滚动位置回到量程内。
+
+⚠️ **本机缺 `global.json` 钉的 SDK**(要求 `11.0.100-rc.1.26425.128`,机器上只有
+`11.0.100-preview.7` 与 `10.0.400`),上面两条命令是在仓库外的目录里跑的 —— 那样
+global.json 不参与解析,落到 preview.7。**与 CI 的 SDK 不是同一个**,结论按此打折看。
