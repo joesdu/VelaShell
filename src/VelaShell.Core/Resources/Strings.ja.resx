@@ -4231,6 +4231,18 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
 信頼すると、同じ鍵で署名された今後のパッケージも信頼されます。プラグインはユーザー権限でコードを実行できます。</value></data>
   <data name="PluginManager_InstallAnyway" xml:space="preserve"><value>続行してインストール</value></data>
   <data name="PluginManager_TrustAndInstall" xml:space="preserve"><value>発行元を信頼してインストール</value></data>
+  <data name="PluginManager_PublisherChangedTitle" xml:space="preserve"><value>プラグインの発行元が変わりました</value></data>
+  <data name="PluginManager_PublisherChangedWarning" xml:space="preserve"><value>「{0}」をインストールしたパッケージは、次の発行元が署名していました：
+
+{1}
+
+このパッケージの発行元は別です：
+
+{2}
+
+通常の鍵のローテーションと、発行者アカウントの乗っ取りは、ここからはまったく同じに見えます。作者が公式の経路でこの新しい鍵を告知している場合にのみ続行してください —— 差し替わるプラグインはユーザー権限で実行されます。</value></data>
+  <data name="PluginManager_PackageUnsigned" xml:space="preserve"><value>（このパッケージはそもそも署名されていません）</value></data>
+  <data name="PluginManager_PublisherPinned" xml:space="preserve"><value>発行元 {0}</value></data>
   <data name="PluginManager_SecurityTip" xml:space="preserve"><value>プラグインはユーザー権限で実行され、ローカルファイル・セッション・ネットワークにアクセスできます。インストール前に配布元を確認し、署名のフィンガープリントを照合したうえで、信頼できる発行元のプラグインのみをインストールしてください。</value></data>
   <data name="PluginManager_Market" xml:space="preserve"><value>プラグインストア</value></data>
   <data name="PluginManager_MarketTip" xml:space="preserve"><value>market.easilynet.top で審査済みプラグインを見る</value></data>

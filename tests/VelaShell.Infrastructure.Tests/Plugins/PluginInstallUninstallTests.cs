@@ -480,4 +480,106 @@ public class PluginInstallUninstallTests
         Assert.AreEqual(PluginState.Active, manager.Plugins.Single(p => p.Id == id).State);
         await manager.DisposeAsync();
     }
+
+    [TestMethod]
+    public async Task InstallFromVpx_UpgradeFromTheSamePublisher_InstallsWithoutAskingAgain()
+    {
+        using var engine = new SonnetDbEngine(Path.Combine(_trustDbRoot, "publisher-same-db"));
+        var repository = new PluginTrustRepository(engine, new TestSecretProtector());
+        using var publisher = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        const string id = "acme.pinned";
+
+        PluginManager manager = CreateManager(repository);
+        await manager.StartAsync();
+        await manager.InstallFromVpxAsync(BuildSignedVpx(publisher, id), allowUntrustedPackage: true);
+        string? pinned = await manager.GetPinnedPublisherFingerprintAsync(id);
+        Assert.StartsWith("SHA256:", pinned, "管理页装的包,发布者要被钉进收据。");
+
+        // 同一把私钥签的下一版:身份没变,这一闸不该拦。
+        await manager.InstallFromVpxAsync(BuildSignedVpx(publisher, id), allowUntrustedPackage: true);
+
+        Assert.ContainsSingle(p => p.Id == id, manager.Plugins);
+        Assert.AreEqual(pinned, await manager.GetPinnedPublisherFingerprintAsync(id));
+        await manager.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task InstallFromVpx_PackageFromAnotherPublisher_IsRejectedUntilTheChangeIsApproved()
+    {
+        // 顶替已装插件的形状:同一个 id,签名完全有效,只是签它的换了个人。
+        // 验签本身对此一言不发 —— 拦住它的只有"还是不是上次那个人"这一问。
+        using var engine = new SonnetDbEngine(Path.Combine(_trustDbRoot, "publisher-rotate-db"));
+        var repository = new PluginTrustRepository(engine, new TestSecretProtector());
+        using var original = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var impostor = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        const string id = "acme.hijacked";
+
+        PluginManager manager = CreateManager(repository);
+        await manager.StartAsync();
+        await manager.InstallFromVpxAsync(BuildSignedVpx(original, id), allowUntrustedPackage: true);
+        string? pinned = await manager.GetPinnedPublisherFingerprintAsync(id);
+
+        string replacement = BuildSignedVpx(impostor, id);
+        PluginPublisherChangedException rejected = await Assert.ThrowsExactlyAsync<PluginPublisherChangedException>(
+            () => manager.InstallFromVpxAsync(replacement, allowUntrustedPackage: true));
+
+        Assert.AreEqual(id, rejected.PluginId);
+        Assert.AreEqual(pinned, rejected.PinnedFingerprint);
+        Assert.AreNotEqual(pinned, rejected.PackageFingerprint, "对话框要摆两个指纹,它们必须真的不一样。");
+        // 拦下的那一刻,用户手上那个还装着的插件必须一根毫毛都没动 —— 闸在卸载旧版之前。
+        Assert.AreEqual(PluginState.Active, manager.Plugins.Single(p => p.Id == id).State);
+        Assert.AreEqual(pinned, await manager.GetPinnedPublisherFingerprintAsync(id));
+
+        // 用户看过两个指纹、认了:装上去,并且新公钥成为此后的基线。
+        await manager.InstallFromVpxAsync(replacement, allowUntrustedPackage: true, allowPublisherChange: true);
+        Assert.AreEqual(rejected.PackageFingerprint, await manager.GetPinnedPublisherFingerprintAsync(id));
+        await manager.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task InstallFromVpx_UnsignedPackageOverASignedPlugin_IsRejectedAsAPublisherChange()
+    {
+        // "把签名去掉"不是一次密钥轮换,是降级:它让下一次覆盖安装再也无从比对。
+        using var engine = new SonnetDbEngine(Path.Combine(_trustDbRoot, "publisher-downgrade-db"));
+        var repository = new PluginTrustRepository(engine, new TestSecretProtector());
+        using var publisher = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        const string id = "acme.downgraded";
+
+        PluginManager manager = CreateManager(repository);
+        await manager.StartAsync();
+        await manager.InstallFromVpxAsync(BuildSignedVpx(publisher, id), allowUntrustedPackage: true);
+
+        PluginPublisherChangedException rejected = await Assert.ThrowsExactlyAsync<PluginPublisherChangedException>(
+            () => manager.InstallFromVpxAsync(BuildVpx(id), allowUntrustedPackage: true));
+
+        Assert.IsNull(rejected.PackageFingerprint, "没签名就是没有身份,不该给它编一个指纹。");
+        Assert.AreEqual(await manager.GetPinnedPublisherFingerprintAsync(id), rejected.PinnedFingerprint);
+        await manager.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task SideLoadedPlugin_PinsNoPublisher_AndIsStillReplaceableFromThePluginManager()
+    {
+        // 命令行 vela-plugin install 与"直接把目录放进插件根"落到的都是这条路:收据是 TOFU 基线,
+        // 里面没有公钥,也没有任何东西能替它补一个。发布者连续性闸对这一类必须闭嘴 ——
+        // 否则命令行装过的插件从此在管理页一个都更新不上,而那是文档写明支持的安装路径。
+        using var engine = new SonnetDbEngine(Path.Combine(_trustDbRoot, "publisher-sideload-db"));
+        var repository = new PluginTrustRepository(engine, new TestSecretProtector());
+        using var publisher = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        const string id = "acme.cli-installed";
+        Directory.Move(StagePlugin(id), Path.Combine(_userRoot, id));
+
+        PluginManager manager = CreateManager(repository);
+        await manager.StartAsync();
+        Assert.AreEqual(PluginState.Active, manager.Plugins.Single(p => p.Id == id).State);
+        Assert.IsNull(await manager.GetPinnedPublisherFingerprintAsync(id), "旁装目录没有可钉的发布者。");
+
+        // 从管理页装一个签名包上去:没有可比对的身份,不该被当成"换发布者"拦下。
+        await manager.InstallFromVpxAsync(BuildSignedVpx(publisher, id), allowUntrustedPackage: true);
+
+        Assert.ContainsSingle(p => p.Id == id, manager.Plugins);
+        Assert.StartsWith("SHA256:", await manager.GetPinnedPublisherFingerprintAsync(id),
+                          "这一次是宿主亲手解的包,从此就钉得住发布者了。");
+        await manager.DisposeAsync();
+    }
 }

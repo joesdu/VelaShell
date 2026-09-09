@@ -259,6 +259,15 @@
                                      FontSize="{DynamicResource VelaFontSize9}" VerticalAlignment="Center"
                                      TextTrimming="CharacterEllipsis" />
                         </StackPanel>
+                        <!-- 安装时钉住的发布者指纹。清单里的 author 是插件自己写的一行字,谁都能写;
+                             这一行是密码学身份 —— 后续版本换了签名者就装不上去,除非用户再点一次头。
+                             截断只发生在显示上,完整指纹在悬停提示里(截短的指纹核对不了,却看着像能核对)。 -->
+                        <TextBlock Text="{Binding PublisherText}" IsVisible="{Binding HasPublisher}"
+                                   ToolTip.Tip="{Binding PublisherFingerprint}"
+                                   Foreground="{DynamicResource VelaTextMuted}"
+                                   FontFamily="{DynamicResource VelaUiMonoFont}"
+                                   FontSize="{DynamicResource VelaFontSize9}"
+                                   TextTrimming="CharacterEllipsis" />
                         <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
                                    Foreground="{DynamicResource VelaError}" FontSize="{DynamicResource VelaFontSize10}"
                                    TextWrapping="Wrap" Margin="0,2,0,0" />

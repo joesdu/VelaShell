@@ -144,6 +144,7 @@ pie showData
 | :---: | :---: | --- | --- | --- |
 | ✅ | — | ~~容器管理插件（DockerPanel）~~ | **已完成**（2026-09-03，`0.3.1`）。独立仓库 [VelaShell.Plugin.DockerPanel](https://github.com/VelaShellLabs/VelaShell.Plugin.DockerPanel)，从插件商店按需安装 | — |
 | ⏳ | 🟡 P2 | **AI 插件的 MCP 服务端能力面对齐** | 对外 MCP 走 `AgentToolbox` 产出工具，但那条路上**没有审批界面** | 现状是「询问」模式等于一律拒绝写操作 —— 这是刻意的（`plan.md` §33-四）。可选的增强：带外审批（推到 IM 渠道或桌面通知）后再放行 |
+| 📄 | 🟠 P1 | **发布者连续性已落地** | 同一个 id 的后续版本必须仍由钉住的那把私钥签名，换钥/去签名要用户看过两个指纹再点头；管理页每行显示钉住的指纹；旁装（`vela-plugin install`）不受影响（`plan.md` §57）。代码已落地，**velashell-docs 还没跟上** | 在 `{zh,en}` 两棵树里补：`plugins/STATUS.md` 签名验证那一格改成「验签 + 连续性已做、信任根未做」；`cli/cli.md` 与 `templates/dev-guide.md` 补一句「旁装的代价现在多一条：钉不住发布者，宿主也就无从拦截冒名的覆盖安装」；`host/交互与界面规格.md` 补管理页那行指纹与换发布者的确认框 |
 
 ---
 
@@ -226,7 +227,7 @@ pie showData
 | :---: | :---: | --- | --- | --- |
 | ⏳ | 🟠 P1 | **SSH Agent 转发** | Xshell / MobaXterm / Tabby / WindTerm / Termius | 六家全有，我们没有 —— **对标矩阵里最扎眼的一格**。跳板场景下没有它，用户只能把私钥拷到跳板机上，那是实打实的安全倒退。⚠️ **动手前先确认 Tmds.Ssh 是否支持 `auth-agent-req@openssh.com`**；不支持就要么等上游、要么按 [`AGENTS.md`](AGENTS.md) 的纪律给它提 issue，**不要自己在 `Infrastructure/Ssh/` 外面绕**。与 [Agent 自动加载](#-p0--存了但不生效的开关)是同一条线上的两件事 |
 | ⏳ | 🟡 P2 | **算法协商可配（cipher / kex / hostkey / MAC）** | Xshell / SecureCRT / PuTTY | 连老设备（网络设备、老 RHEL）时是刚需。**一半已经有了**：`Infrastructure/Ssh/SshAlgorithmDiagnostics.cs` 已经会在协商失败时算出「两边交集为空」并说清缺哪类算法 —— 从「诊断得出来」到「让用户配得上」，只差把清单落到 `SessionProfile` 并接进 `SshClientSettings` |
-| ⏳ | 🟢 P3 | **SSH 压缩开关** | 各家都有 | 弱网 / 高延迟链路上有意义。落点同上，一个 profile 字段 + 一个 `SshClientSettings` 属性 |
+| ⏳ | 🟢 P3 | **SSH 压缩开关** | 各家都有 | 弱网 / 高延迟链路上有意义。⚠️ **「落点同上」已核实为错（2026-09-08，Tmds.Ssh 0.24.0）**：kex / cipher / mac / hostkey 四类算法在 `SshClientSettings` 上都是 `public` 可配的，**唯独 `CompressionAlgorithmsClientToServer` / `ServerToClient` 是 `internal`**；且 `SupportedCompressionAlgorithms`、`EnableCompressionAlgorithms` 两份内部名单里都只有一个 `none` —— 库里**没有 zlib 实现**（整个程序集搜不到 `zlib`），`SshConfigOption` 枚举里也没有 `Compression`。0.24.0 已是 nuget 上的最新版。所以这条**不是「接一根线」**，而是要么等上游、要么按 [`AGENTS.md`](AGENTS.md) 的纪律给 Tmds.Ssh 提 issue / PR（与 SSH Agent 转发同一条纪律，不要自己在 `Infrastructure/Ssh/` 外面绕）。**上游支持之前不要加这个开关** —— 加了就是 [P0 那张表](#-p0--存了但不生效的开关)里的新一条 |
 | 💡 | 🟢 P3 | **更多协议插件** | — | RDP / VNC / Kubernetes exec / 数据库客户端。**这正是 `Protocols` + `Workspaces` 能力面存在的意义** —— 宿主一行不用改，Telnet / 串口 / Redis / S3 / Docker 面板已经把这条路走通了五遍。优先级交给插件市场的真实下载量决定，不要在宿主里拍脑袋排 |
 | ❌ | — | **X11 转发** | MobaXterm（自带 X 服务端） | 见下面的[确认不做](#-确认不做)一栏 |
 
@@ -234,7 +235,7 @@ pie showData
 
 | 状态 | 优先级 | 项 | 对标 | 架构落点 |
 | :---: | :---: | --- | --- | --- |
-| ⏳ | 🔴 P0 | **插件发布者签名验证** | VS Code / JetBrains | **当前生态最大的安全缺口。** 商店已经上线（market.easilynet.top + `velashell-markets` + `velashell-identity` 三件套都在跑），但 `STATUS.md` 里签名验证仍标着「未做」—— 也就是**装的是什么，现在只能靠商店的审核**。`PluginPackageExtractor` 那三道闸挡的是畸形包，不是坏作者。信任根（`velashell-identity`）已经有了，缺的是「发布时签、安装时验」这一段 |
+| 🚧 | 🟠 P1 | **插件发布者的信任根** | VS Code / JetBrains | ✅ **验签 + 发布者连续性已落地**（`plan.md` §57，2026-09-08）：同一个 id 的后续版本必须仍由安装时钉住的那把私钥签名，换钥与「把签名去掉」都要用户看过两个指纹再点一次头；旁装（`vela-plugin install`）钉不住发布者，那一闸对它闭嘴。⚠️ **剩下的才是信任根**：`velashell-identity` 是 OIDC **账号**服务（它回答「你是 sub=xxx」），**不是发布者公钥注册表** —— 原先这一格写的「信任根已经有了」是记错了。市场那边知道每个插件已发布版本的公钥，但宿主没有市场 API 客户端，装包这条路上问不到它。所以现在是 TOFU（钉住 + 连续性），不是「这把钥匙属于市场认证过的某某作者」。要闭合得先有一处**可验证的「插件 id ↔ 公钥」映射**（市场侧出接口 + 宿主侧一个只读客户端），⚠️ 别顺手做成开机外呼，理由见 `PRIVACY.md` |
 | ⏳ | 🟠 P1 | **录制与日志的输出脱敏** | — | ⚠️ **这是一个现实风险，不是洁癖。**「输入脱敏不做」的结论是对的（只录输出、密码无回显），但**输出里照样会出现密钥**：`cat .env`、`kubectl get secret -o yaml`、`env | grep TOKEN`。会话日志与录制存的是**原始字节**，等于把 token 落了盘。落点：`SshTerminalBridge.DataReceived` 这条旁路本来就是记录专用的（见它的注释），在那里过一遍可配的脱敏规则最合适，**不影响显示路径**。规则表可与[自定义高亮规则](#-数据与可观测)共用 |
 | ⏳ | 🟡 P2 | **凭据管理器集成** | Termius（自营保险库） | 1Password / Bitwarden / KeePassXC 的 CLI，或系统密钥链。**接缝已经现成**：`ISecretProtector` 就是那层抽象，加一个 `ICredentialProvider` 让它可插拔即可。与[系统密钥链调研](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/host/系统密钥链与sudo凭据填充可行性调研.md)是同一件事的两个入口 |
 | ⏳ | 🟡 P2 | **known_hosts 与 OpenSSH 互通** | 各家都有 | 现在只能在设置里看和删。导入 / 导出 `~/.ssh/known_hosts` 之后，与命令行 ssh 共用一份信任基线 —— 对同时用两者的人是实打实的省事 |
