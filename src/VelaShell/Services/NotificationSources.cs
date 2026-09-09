@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using VelaShell.Core.Models;
 using VelaShell.Core.Notifications;
 using VelaShell.Core.Resources;
@@ -111,9 +112,12 @@ public static class NotificationSources
         {
             hasUpdate = await updateService.CheckForUpdateAsync().ConfigureAwait(true);
         }
-        catch
+        catch (Exception ex)
         {
-            // 离线或更新源不可达是常态。
+            // 离线或更新源不可达是常态。但要留一行:这条请求是开箱默认发的(设置 → 通用 →
+            // 启动时检查更新),失败时调试输出里只浮出一串裸的 TLS/套接字异常,看到的人
+            // 无从判断是自己的网络不通、还是更新检查本身坏了 —— 而这两件事的处置完全不同。
+            Trace.WriteLine($"[VelaShell] Update check failed: {ex.Message}");
             return null;
         }
         if (!hasUpdate || updateService.AvailableVersion is not { Length: > 0 } available)
