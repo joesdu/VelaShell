@@ -26,8 +26,20 @@ namespace VelaShell.Terminal.RenderTests;
 [TestCategory("GlyphRendering")]
 public class SelectionVisibilityRenderTests
 {
-    /// <summary>选区带与终端底之间必须让人一眼看出的感知明度差(CIE L*,0–100 标度)。</summary>
-    private const double MinLightnessDelta = 12.0;
+    /// <summary>
+    /// 选区带与终端底之间必须让人一眼看出的感知明度差(CIE L*,0–100 标度)。
+    /// <para>
+    /// 刻意<b>低于两档中较低的那一档</b>(暗底 20 / 亮底 16):这条是屏幕级的独立度量仪,
+    /// 量的是"眼睛能不能看出来",不是"实现有没有算到它自己那个数"。把它钉到和实现一样的值,
+    /// 这个测试就退化成把被测代码的算术抄一遍再和自己对答案。
+    /// </para>
+    /// <para>
+    /// 余量也是必需的:整定用二分停在**刚好够**的那一步,填充色再量化到 8bit,
+    /// 屏幕上量到的总比算出来的低那么零点几(16.0 → 15.87,当年 14.0 → 13.9 是同一回事)。
+    /// 地板贴着实现值走,这个测试会因为一个色阶的舍入而红。
+    /// </para>
+    /// </summary>
+    private const double MinLightnessDelta = 14.0;
 
     private static HeadlessUnitTestSession Session => SkiaTestSession.Current;
 
