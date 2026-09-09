@@ -1090,8 +1090,58 @@ public class KeyOptions : ObservableOptions
         set => Set(ref field, value ?? "");
     } = "";
 
-    /// <summary>规划中(ssh-agent 集成):仅持久化,当前无运行时消费者,不出现在设置界面(设置审计 R-06)。</summary>
+    /// <summary>规划中(把密钥写进 agent,即 <c>ssh-add</c>):仅持久化,当前无运行时消费者,不出现在设置界面(设置审计 R-06)。</summary>
+    /// <remarks>
+    /// ⚠️ 别与 <see cref="AgentForwardingEnabled" /> 混淆:那条是**读**本机 agent 并把签名能力
+    /// 转发给远端(已落地);这条是**写**本机 agent,需要实现 <c>SSH_AGENTC_ADD_IDENTITY</c>
+    /// 的私钥线格式编码(每种密钥类型一套),仍未做。
+    /// </remarks>
     public bool AutoLoadToAgent { get; set; } = true;
+
+    /// <summary>
+    /// SSH agent 转发的**全局默认**:新建/未单独设置的会话是否转发本机 agent
+    /// (<c>SessionProfile.AgentForwarding</c> 为 null 时取本值)。
+    /// </summary>
+    /// <remarks>
+    /// <b>默认关,而且应当一直默认关。</b>转发意味着远端上任何能读到 <c>SSH_AUTH_SOCK</c> 的人
+    /// (含 root)都能在转发存续期间借你的私钥签名 —— 这是 agent 转发与生俱来的代价,
+    /// 换来的是"不必把私钥拷到跳板机上"。哪台机器值得这份信任只有用户知道,
+    /// 因此这是一个**逐台开**的能力,全局默认只服务于"我这批机器全都是自己的"那种场景。
+    /// </remarks>
+    public bool AgentForwardingEnabled
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
+    /// <summary>
+    /// 本机 agent 的端点(Windows 命名管道如 <c>\\.\pipe\openssh-ssh-agent</c>,
+    /// 类 Unix 为套接字路径);空 = 自动探测(<c>SSH_AUTH_SOCK</c> → 平台默认)。
+    /// </summary>
+    /// <remarks>
+    /// 留这个口子是因为 Windows 上的 <c>SSH_AUTH_SOCK</c> 极不可靠:装了 Git for Windows /
+    /// msys2 的机器上它多半指向一个 Win32 程序打不开的伪套接字,而真正的 agent 在
+    /// <c>\\.\pipe\openssh-ssh-agent</c>。自动探测按"环境变量优先"走是对的,
+    /// 但用户得有办法一口咬定用哪个。
+    /// </remarks>
+    public string AgentEndpoint
+    {
+        get;
+        set => Set(ref field, value ?? "");
+    } = "";
+
+    /// <summary>
+    /// 把 agent 转发上的每一次签名请求写进审计日志(类别 <c>security</c>,动作 <c>agent-sign</c>)。
+    /// </summary>
+    /// <remarks>
+    /// 默认开:转发出去的是私钥的使用权,"远端什么时候、用哪把钥匙签了名"是这项能力
+    /// 唯一说得清的证据。量也不大 —— 一次 <c>ssh</c> 登录通常只有个位数条。
+    /// </remarks>
+    public bool AuditAgentSignRequests
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
 }
 
 /// <summary>

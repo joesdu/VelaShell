@@ -4507,4 +4507,46 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
     <value>Off: the local copy is not watched at all and nothing is sent back</value>
   </data>
+  <data name="Msg_AgentForwardEnabled" xml:space="preserve">
+    <value>SSH agent forwarding is on — SSH_AUTH_SOCK={0}</value>
+  </data>
+  <data name="Msg_AgentForwardFailed" xml:space="preserve">
+    <value>SSH agent forwarding could not start: {0}</value>
+  </data>
+  <data name="Msg_AgentForwardNotPosix" xml:space="preserve">
+    <value>SSH agent forwarding skipped: the remote shell is not POSIX.</value>
+  </data>
+  <data name="Profile_AgentForwarding" xml:space="preserve">
+    <value>Forward SSH agent</value>
+  </data>
+  <data name="Profile_AgentForwardingHint" xml:space="preserve">
+    <value>Lets ssh on this host sign with the keys held by your local agent, so a private key never has to be copied onto a jump box. While the session lasts, anyone with root on that host can use those keys too. Leave it indeterminate to follow the global default.</value>
+  </data>
+  <data name="Keys_AgentTitle" xml:space="preserve">
+    <value>SSH Agent</value>
+  </data>
+  <data name="Keys_AgentAvailable" xml:space="preserve">
+    <value>Connected — {0} ({1} key(s))</value>
+  </data>
+  <data name="Keys_AgentUnavailable" xml:space="preserve">
+    <value>Unavailable — {0}</value>
+  </data>
+  <data name="Keys_AgentEndpoint" xml:space="preserve">
+    <value>Agent endpoint</value>
+  </data>
+  <data name="Keys_AgentEndpointHint" xml:space="preserve">
+    <value>Leave empty to auto-detect (SSH_AUTH_SOCK, then the platform default). On Windows the agent must be a named pipe such as \\.\pipe\openssh-ssh-agent; an SSH_AUTH_SOCK left behind by msys2 or Git Bash points at a pseudo-socket that cannot be opened.</value>
+  </data>
+  <data name="Keys_AgentForwardDefault" xml:space="preserve">
+    <value>Forward the agent to new sessions by default</value>
+  </data>
+  <data name="Keys_AgentForwardDefaultHint" xml:space="preserve">
+    <value>Off by default, and worth leaving off: forwarding hands the use of your private keys to the remote host for as long as the session lasts. Turn it on per session in the connection dialog instead, unless every host you connect to is your own.</value>
+  </data>
+  <data name="Keys_AgentAuditSigns" xml:space="preserve">
+    <value>Record every signature request in the audit log</value>
+  </data>
+  <data name="Keys_AgentRefresh" xml:space="preserve">
+    <value>Re-detect</value>
+  </data>
 </root>

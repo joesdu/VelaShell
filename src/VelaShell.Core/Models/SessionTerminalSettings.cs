@@ -84,6 +84,22 @@ public static class SessionTerminalSettings
             ? null
             : profile.Terminal.StartupDirectory.Trim();
 
+    /// <summary>
+    /// 这一条会话是否转发本机 SSH agent:配置里显式选过就听它,否则跟随全局默认。
+    /// </summary>
+    /// <param name="profile">会话配置;null 表示没有配置(本地终端等)——一律不转发。</param>
+    /// <param name="settings">全局设置。</param>
+    /// <returns>是否启用 agent 转发。</returns>
+    /// <remarks>
+    /// 没有会话配置时返回 <see langword="false" /> 而不是取全局:本地终端与插件借用的终端
+    /// 根本没有 SSH 连接可转发,让它跟随全局只会在那条路径上凭空多出一次注定失败的尝试。
+    /// </remarks>
+    public static bool AgentForwarding(SessionProfile? profile, AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return profile is not null && (profile.AgentForwarding ?? settings.Keys.AgentForwardingEnabled);
+    }
+
     private static string Pick(string? overrideValue, string globalValue) =>
         string.IsNullOrWhiteSpace(overrideValue) ? globalValue : overrideValue.Trim();
 }

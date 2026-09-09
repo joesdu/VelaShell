@@ -4935,4 +4935,46 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
     <value>关闭后完全不监视本地副本，改动一律不回传</value>
   </data>
+  <data name="Msg_AgentForwardEnabled" xml:space="preserve">
+    <value>SSH agent 转发已启用 —— SSH_AUTH_SOCK={0}</value>
+  </data>
+  <data name="Msg_AgentForwardFailed" xml:space="preserve">
+    <value>SSH agent 转发未能启用：{0}</value>
+  </data>
+  <data name="Msg_AgentForwardNotPosix" xml:space="preserve">
+    <value>已跳过 SSH agent 转发：远端不是 POSIX shell。</value>
+  </data>
+  <data name="Profile_AgentForwarding" xml:space="preserve">
+    <value>转发 SSH agent</value>
+  </data>
+  <data name="Profile_AgentForwardingHint" xml:space="preserve">
+    <value>让这台机器上的 ssh 用本机 agent 里的密钥签名，从此不必把私钥拷到跳板机上。代价是会话存续期间，那台机器上的 root 同样能用你的密钥。留空（不确定态）＝跟随全局默认。</value>
+  </data>
+  <data name="Keys_AgentTitle" xml:space="preserve">
+    <value>SSH Agent</value>
+  </data>
+  <data name="Keys_AgentAvailable" xml:space="preserve">
+    <value>已连接 —— {0}（{1} 把密钥）</value>
+  </data>
+  <data name="Keys_AgentUnavailable" xml:space="preserve">
+    <value>不可用 —— {0}</value>
+  </data>
+  <data name="Keys_AgentEndpoint" xml:space="preserve">
+    <value>Agent 端点</value>
+  </data>
+  <data name="Keys_AgentEndpointHint" xml:space="preserve">
+    <value>留空＝自动探测（先 SSH_AUTH_SOCK，再平台默认）。Windows 上 agent 必须是命名管道，如 \.\pipe\openssh-ssh-agent；msys2 / Git Bash 留下的 SSH_AUTH_SOCK 指向的是 Win32 程序打不开的伪套接字。</value>
+  </data>
+  <data name="Keys_AgentForwardDefault" xml:space="preserve">
+    <value>新会话默认转发 agent</value>
+  </data>
+  <data name="Keys_AgentForwardDefaultHint" xml:space="preserve">
+    <value>默认关，而且值得一直关着：转发意味着会话存续期间把私钥的使用权交给了远端。除非你连的每一台都是自己的机器，否则请在连接对话框里逐台开。</value>
+  </data>
+  <data name="Keys_AgentAuditSigns" xml:space="preserve">
+    <value>把每一次签名请求记入审计日志</value>
+  </data>
+  <data name="Keys_AgentRefresh" xml:space="preserve">
+    <value>重新探测</value>
+  </data>
 </root>

@@ -4506,4 +4506,46 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
     <value>끄면 로컬 사본을 감시하지 않으며 변경을 보내지 않습니다</value>
   </data>
+  <data name="Msg_AgentForwardEnabled" xml:space="preserve">
+    <value>SSH 에이전트 전달이 활성화되었습니다 — SSH_AUTH_SOCK={0}</value>
+  </data>
+  <data name="Msg_AgentForwardFailed" xml:space="preserve">
+    <value>SSH 에이전트 전달을 시작하지 못했습니다: {0}</value>
+  </data>
+  <data name="Msg_AgentForwardNotPosix" xml:space="preserve">
+    <value>SSH 에이전트 전달을 건너뛰었습니다: 원격이 POSIX 셸이 아닙니다.</value>
+  </data>
+  <data name="Profile_AgentForwarding" xml:space="preserve">
+    <value>SSH 에이전트 전달</value>
+  </data>
+  <data name="Profile_AgentForwardingHint" xml:space="preserve">
+    <value>이 호스트의 ssh가 로컬 에이전트에 있는 키로 서명할 수 있게 되어, 개인 키를 점프 호스트로 복사할 필요가 없습니다. 다만 세션이 유지되는 동안에는 그 호스트의 root도 같은 키를 쓸 수 있습니다. 미정 상태로 두면 전역 기본값을 따릅니다.</value>
+  </data>
+  <data name="Keys_AgentTitle" xml:space="preserve">
+    <value>SSH 에이전트</value>
+  </data>
+  <data name="Keys_AgentAvailable" xml:space="preserve">
+    <value>연결됨 — {0}(키 {1}개)</value>
+  </data>
+  <data name="Keys_AgentUnavailable" xml:space="preserve">
+    <value>사용할 수 없음 — {0}</value>
+  </data>
+  <data name="Keys_AgentEndpoint" xml:space="preserve">
+    <value>에이전트 엔드포인트</value>
+  </data>
+  <data name="Keys_AgentEndpointHint" xml:space="preserve">
+    <value>비워 두면 자동으로 찾습니다(SSH_AUTH_SOCK 다음 플랫폼 기본값). Windows에서는 \.\pipe\openssh-ssh-agent 같은 명명된 파이프여야 합니다. msys2나 Git Bash가 남긴 SSH_AUTH_SOCK은 Win32에서 열 수 없는 유사 소켓을 가리킵니다.</value>
+  </data>
+  <data name="Keys_AgentForwardDefault" xml:space="preserve">
+    <value>새 세션에서 기본으로 에이전트를 전달</value>
+  </data>
+  <data name="Keys_AgentForwardDefaultHint" xml:space="preserve">
+    <value>기본값은 꺼짐이며 그대로 두는 편이 좋습니다. 전달은 세션이 유지되는 동안 개인 키의 사용 권한을 원격에 넘기는 일입니다. 접속하는 호스트가 모두 본인 것이 아니라면 연결 대화 상자에서 호스트마다 켜십시오.</value>
+  </data>
+  <data name="Keys_AgentAuditSigns" xml:space="preserve">
+    <value>모든 서명 요청을 감사 로그에 기록</value>
+  </data>
+  <data name="Keys_AgentRefresh" xml:space="preserve">
+    <value>다시 탐지</value>
+  </data>
 </root>

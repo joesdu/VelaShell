@@ -96,6 +96,23 @@ public class SessionProfile
     public const int MaxPostAuthCommandDelaySeconds = 60;
 
     /// <summary>
+    /// 这一条配置是否转发本机 SSH agent;<see langword="null" /> = 跟随全局
+    /// (<c>AppSettings.Keys.AgentForwardingEnabled</c>)。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 三态而不是 <c>bool</c>:agent 转发是**按机器**判断值不值得的能力 —— 自家跳板机开,
+    /// 客户现场那台不开。只有两态的话,用户改了全局默认就会把每一条老配置一起改掉,
+    /// 而那正是最不该被批量改的东西。
+    /// </para>
+    /// <para>
+    /// 开启的代价见 <c>KeyOptions.AgentForwardingEnabled</c> 的注释:转发存续期间,
+    /// 远端上能读到 <c>SSH_AUTH_SOCK</c> 的人都能借你的私钥签名。
+    /// </para>
+    /// </remarks>
+    public bool? AgentForwarding { get; set; }
+
+    /// <summary>
     /// FTP / FTPS 的协议专属设置;仅在 <see cref="ConnectionType" /> 为
     /// <see cref="ConnectionType.FTP" /> 时有意义,其余协议为 null。
     /// </summary>
@@ -193,6 +210,7 @@ public class SessionProfile
             JumpHostProfileId = JumpHostProfileId,
             PostAuthCommand = PostAuthCommand,
             PostAuthCommandDelaySeconds = PostAuthCommandDelaySeconds,
+            AgentForwarding = AgentForwarding,
             Ftp = Ftp?.Clone(),
             PluginProtocolId = PluginProtocolId,
             PluginSettings = CloneSettings(PluginSettings),

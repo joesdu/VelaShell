@@ -93,6 +93,18 @@ public static class InfrastructureServiceCollectionExtensions
         });
         services.AddSingleton<ISessionRecordingStore, SonnetDbSessionRecordingStore>();
         services.AddSingleton<ISshKeyService>(_ => new SshKeyService());
+        // 本机 agent 客户端。端点用委托而不是构造时取值:用户在设置里改了端点、
+        // 或者中途把 ssh-agent 服务起起来,都不该要求重启应用才认。
+        services.AddSingleton<ISshAgentClient>(sp =>
+        {
+            ISettingsService settingsService = sp.GetRequiredService<ISettingsService>();
+            return new LocalSshAgentClient(() =>
+            {
+                // 读设置失败(首次启动、文件损坏)不该让 agent 探测跟着炸:回落到自动探测。
+                try { return settingsService.GetSnapshotBlocking().Keys.AgentEndpoint; }
+                catch { return null; }
+            });
+        });
         services.AddSingleton<ISecurityAlertService>(sp => new SecurityAlertService(
             sp.GetRequiredService<ISettingsService>(), sp.GetService<IAuditLogService>()));
 

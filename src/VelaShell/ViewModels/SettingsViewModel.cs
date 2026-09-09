@@ -138,7 +138,8 @@ public class SettingsViewModel : ReactiveObject
         IGistSyncService? gistSyncService = null,
         IUpdateService? updateService = null,
         QuickCommandsViewModel? snippets = null,
-        IQuickCommandRepository? quickCommandRepository = null
+        IQuickCommandRepository? quickCommandRepository = null,
+        ISshAgentClient? sshAgentClient = null
     )
     {
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
@@ -208,7 +209,7 @@ public class SettingsViewModel : ReactiveObject
                 _hookedProxy = proxy;
                 proxy?.PropertyChanged += OnProxyItemChanged;
             });
-        SshKeys = new(sshKeyService);
+        SshKeys = new(sshKeyService, sshAgentClient);
         Snippets =
             snippets
             ?? (
@@ -1395,6 +1396,10 @@ public class SettingsViewModel : ReactiveObject
         // SelectedItem TwoWay 绑定,ItemsSource 为空时回填值匹配不到会被
         // ComboBox 强制清成 null 并写回模型,已保存的选择就此丢失。
         await SshKeys.RefreshAsync();
+        // agent 探测是本机 IPC(命名管道/套接字),放在这里不会拖慢设置页打开:
+        // 连不上时两秒超时,连得上时是微秒级。刻意不 fire-and-forget ——
+        // 状态那一行要么显示结论,要么显示"不可用",不该先闪一下空白。
+        await SshKeys.ProbeAgentAsync();
         ApplyToViewModel(_loaded);
         this.RaisePropertyChanged(nameof(Keys)); // 列表就位后重新评估选中项
         await RefreshKnownHostsAsync();

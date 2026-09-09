@@ -579,6 +579,21 @@
                        Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize10}" TextWrapping="Wrap" />
           </StackPanel>
 
+          <!-- SSH agent 转发。三态:勾 = 开、叉 = 关、不确定 = 跟随全局默认(设置 → 密钥管理)。
+               只对 SSH 出现 —— 转发要在远端建 unix 套接字,别的协议连 shell 都没有。
+               提示文字把代价写全:它是安全敏感开关,只写好处就是在骗人。 -->
+          <StackPanel IsVisible="{Binding SupportsPostAuthCommand}" Margin="0,10,0,0">
+            <CheckBox IsChecked="{Binding AgentForwarding}" IsThreeState="True"
+                      Padding="0" MinHeight="0" VerticalAlignment="Center">
+              <TextBlock Text="{loc:Localize Profile_AgentForwarding}"
+                         Margin="6,0,0,0"
+                         Foreground="{DynamicResource VelaTextSecondary}"
+                         FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium" />
+            </CheckBox>
+            <TextBlock Text="{loc:Localize Profile_AgentForwardingHint}" Margin="0,4,0,0"
+                       Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize10}" TextWrapping="Wrap" />
+          </StackPanel>
+
           <!-- 会话级终端覆盖(F-06):全局设置只能有一套,但机器不是一样的 ——
                堡垒机输出 GBK、开发机 UTF-8;生产环境希望标签一眼看出是红的。
                这些差异按机器走,挤进一个全局开关里就只能二选一。

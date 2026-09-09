@@ -63,6 +63,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     private string? _privateKeyPath;
     private string? _postAuthCommand;
     private int _postAuthCommandDelaySeconds = new SessionProfile().PostAuthCommandDelaySeconds;
+    private bool? _agentForwarding;
     private bool _rememberPassword = true;
     private GroupOption? _selectedGroup;
     private GroupOption? _selectedJumpHost;
@@ -148,6 +149,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
             _jumpHostProfileId = existing.JumpHostProfileId;
             _postAuthCommand = existing.PostAuthCommand;
             _postAuthCommandDelaySeconds = existing.PostAuthCommandDelaySeconds;
+            _agentForwarding = existing.AgentForwarding;
             if (existing.Ftp is { } ftp)
             {
                 _ftpEncryption = ftp.EncryptionMode;
@@ -247,7 +249,10 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
         // 与插件高级字段同一条纪律:编辑既有配置时,用户填过的东西不能藏在折叠区里。
         // 「认证后执行命令」/「默认打开路径」不展开的话,重开对话框看到的是一片空白 ——
         // 用户会当成配置丢了,然后再配一遍。
-        if (existing?.PostAuthCommand is { Length: > 0 } || existing?.Ftp?.InitialRemotePath is { Length: > 0 })
+        // agent 转发同理,而且更要紧:它是安全敏感开关,「开着但看不见」正是最坏的一种状态。
+        if (existing?.PostAuthCommand is { Length: > 0 }
+            || existing?.Ftp?.InitialRemotePath is { Length: > 0 }
+            || existing?.AgentForwarding is not null)
         {
             IsAdvancedVisible = true;
         }
@@ -792,6 +797,20 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     public int MaxPostAuthCommandDelaySeconds => SessionProfile.MaxPostAuthCommandDelaySeconds;
 
     /// <summary>
+    /// 这一条配置是否转发本机 SSH agent(高级选项);<see langword="null" /> = 跟随全局默认。
+    /// </summary>
+    /// <remarks>
+    /// 三态直接绑给 <c>CheckBox.IsChecked</c>(<c>IsThreeState="True"</c>):不确定态就是「跟随全局」。
+    /// 不用两个单选或一个下拉,是因为这三个状态里有两个是同一件事的正反面,
+    /// 而第三个是"我不表态" —— 三态复选正是为这个形状存在的控件。
+    /// </remarks>
+    public bool? AgentForwarding
+    {
+        get => _agentForwarding;
+        set => this.RaiseAndSetIfChanged(ref _agentForwarding, value);
+    }
+
+    /// <summary>
     /// 「认证后执行命令」这一栏是否出现。只对 SSH 成立 —— 命令是往 shell 通道里注入的,
     /// 而 SFTP / FTP / 对象存储这些连接根本没有终端,摆一个永远不会执行的输入框只会骗人。
     /// </summary>
@@ -1187,6 +1206,9 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
             // 命令,而且切回 SSH 时会诈尸执行一次。空白也一律归 null,免得存进一个只有空格的命令。
             PostAuthCommand = postAuthCommand,
             PostAuthCommandDelaySeconds = _postAuthCommandDelaySeconds,
+            // 同上:只有 SSH 转发得了 agent。换到别的协议就归 null(= 跟随全局),
+            // 而不是把一个"已开启"存在一条永远用不上它的配置里。
+            AgentForwarding = SupportsPostAuthCommand ? _agentForwarding : null,
             // 只有 FTP 才落这块设置:其余协议保持 null,旧数据与旧版本读取零影响。
             Ftp = ConnectionType == ConnectionType.FTP
                 ? new FtpSettings

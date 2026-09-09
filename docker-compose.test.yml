@@ -16,6 +16,11 @@ services:
       - "2222:2222"
     volumes:
       - ssh-test-config:/config
+      # 镜像模板默认 `AllowTcpForwarding no`,而 sshd 把 streamlocal 的远程转发也挡在
+      # 那道闸后面（实测:即便 AllowStreamLocalForwarding yes 也照样拒）。
+      # SSH agent 转发的端到端用例走的正是这条通道，故在此一次性测试容器里打开。
+      # 详见 tests/fixtures/ssh-init/enable-forwarding.sh 与 plan.md §58。
+      - ./tests/fixtures/ssh-init:/custom-cont-init.d:ro
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 2222 || exit 1"]
       interval: 5s

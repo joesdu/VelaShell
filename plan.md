@@ -87,6 +87,8 @@
 | [54](#-54-2026-09-08-把正在编辑改成只在出问题时出现整段进程跟踪删掉396-反馈三) | ✅ | 09-08 | 「正在编辑」改成只在出问题时出现，整段进程跟踪删掉（#396 反馈三） |
 | [55](#-55-2026-09-08-传输浮窗里那一组整块撤掉远程编辑从此不出现在界面上396-反馈四) | ✅ | 09-08 | 传输浮窗里那一组整块撤掉，远程编辑不再出现在界面上（#396 反馈四） |
 | [56](#-56-2026-09-08-按下-ctrl-那一刻手型就该出来不该等鼠标抖一下397) | ✅ | 09-08 | 按下 Ctrl 立刻给手型，不必再抖一下鼠标（#397） |
+| [57](#-57-2026-09-08-插件的发布者得一直是同一个人用户反馈) | ✅ | 09-08 | 插件的发布者连续性：换钥要看过两个指纹再点头 |
+| [58](#-58-2026-09-08-ssh-agent-转发上游没有这条路于是走远端-unix-套接字) | ✅ | 09-08 | **SSH Agent 转发**：上游没有 `auth-agent-req`，改走远端 unix 套接字 |
 
 ## 📈 阶段脉络
 
@@ -3079,3 +3081,222 @@ dev-guide 都写明支持的安装路径。用例 `SideLoadedPlugin_PinsNoPublis
 "验签 + 发布者连续性已做,信任根未做")、`{zh,en}/cli/cli.md` 与 `{zh,en}/templates/dev-guide.md`
 (旁装的代价现在多一条:钉不住发布者)、`{zh,en}/host/交互与界面规格.md`(管理页多了一行指纹,
 以及换发布者的确认框)。
+
+---
+
+## ✅ 58. 2026-09-08 SSH Agent 转发:上游没有这条路,于是走远端 unix 套接字
+
+对标矩阵里唯一一格「六家全有、我们全无」的能力([`feature-plan.md`](feature-plan.md) D 组)。
+缺它的代价不是少个功能,而是**逼用户做出降低安全性的替代** —— 要在跳板机上继续往里 `ssh`,
+就得把私钥拷到跳板机上。这一条落地之后,那个拷贝动作不必再发生。
+
+### 一、先证伪:`auth-agent-req@openssh.com` 这条路是堵的
+
+`feature-plan.md` 那条写着「动手前先确认 Tmds.Ssh 是否支持」。核过了,**不支持**(0.24.0,
+nuget 上的最新版):
+
+- 程序集里搜不到 `auth-agent-req@openssh.com`,也搜不到 `auth-agent@openssh.com`
+  (对照组:`direct-tcpip` / `forwarded-tcpip` / `pty-req` / `streamlocal-forward@openssh.com`
+  都在,说明搜法本身是有效的)。
+- 公开类型面里没有任何「接受服务端发起的通道」的入口。标准 agent 转发的后半程恰恰是
+  服务端反向开通道回来 —— 没有这个入口,协议原生的做法就无从谈起。
+- 上游仓库没有相关 issue。
+
+按 [`AGENTS.md`](AGENTS.md) 的纪律,这种时候不在 `Infrastructure/Ssh/` 外面绕。
+
+### 二、于是走它支持的那条路:远端 unix 套接字转发
+
+`SshClient.ListenUnixAsync`(SSH 的 `streamlocal-forward@openssh.com`)是**公开且支持**的:
+让 sshd 在远端建一个 unix 域套接字,连上它的字节都送回本机。把这个路径写进远端的
+`SSH_AUTH_SOCK`,对端的 `ssh` 就会像用本地 agent 一样用它 —— **效果与 `ssh -A` 等价**,
+用的却全是库已有的公开 API,一行都没绕到 `Infrastructure/Ssh/` 外面去。
+
+代价有三,都写在 `SshAgentForwardHandle` 的类注释里,不藏:
+
+| 代价 | 处置 |
+| --- | --- |
+| 远端必须是 POSIX(要有 unix 套接字与 `$HOME`) | 复用 `RemoteShellProbe`,非 POSIX 一律不试,终端里说明原因。§18-B/E 那次「盲注」的教训 |
+| sshd 必须**同时**允许 `AllowTcpForwarding` 与 `AllowStreamLocalForwarding` | 起不来就只喂一行灰字,**连接照常**。⚠️ 前者也管得着这条通道 —— 反直觉,实测撞出来的,见下面第五节 |
+| `SSH_AUTH_SOCK` 得由我们注入 —— sshd 不知道这个套接字是个 agent | 走已有的 `SendSilentCommand`(与「认证后执行命令」同一条通道),排在它之前 |
+
+### 三、套接字放家目录下的 700 子目录,不放 `/tmp`
+
+sshd 按登录会话的 umask 建这个套接字,通常是 `srwxr-xr-x`。摆在 `/tmp` 里,
+**同机任何用户都能连上来用你的钥匙签名** —— 那就把这项能力的全部意义抵消了。
+所以先 `umask 077; mkdir -p "$HOME/.velashell/agent" && chmod 700 …`,套接字建在里面:
+套接字本身的权限管不住,靠父目录管(OpenSSH 自己的 `/tmp/ssh-XXXX/` 也是 700,同一个思路)。
+
+`chmod` 与 `umask` 都写上,而不是只靠 `mkdir -m 700`:这个目录**很可能已经存在**
+(同一台机器连第二次),而 `mkdir -m` 对已存在的目录不生效。少了这一步,上面那段话就白写了。
+
+停止转发时尽力 `rm -f` 掉它 —— sshd 在正常取消转发时会自己 unlink,但连接被硬断时不会,
+留下的死套接字会让用户在下次登录时看到一个自己没建过的文件。
+
+### 四、比 `ssh -A` 严:转发的是签名能力,不是对 agent 的完全控制
+
+`ssh -A` 是**裸转发**,这正是 agent 转发多年来那条著名警告的由来:远端上任何能读到
+`SSH_AUTH_SOCK` 的人(含 root)不只能借你的钥匙签名,还能 `ssh-add -D` 把你的 agent 清空、
+`ssh-add -x` 把它锁上。
+
+我们逐帧看一眼消息号,**只放行两种**:`SSH_AGENTC_REQUEST_IDENTITIES`(11)与
+`SSH_AGENTC_SIGN_REQUEST`(13)。其余 —— 加钥匙、删钥匙、清空、上锁、智能卡、扩展消息 ——
+一律就地回 `SSH_AGENT_FAILURE`,**本机 agent 连被打开都不会**。
+
+白名单而非黑名单:协议还在长(扩展消息 27 之后又加过若干),黑名单会在下一次扩展时
+默默漏一个过去,而漏过去的每一个都是本机 agent 的一次额外权限。
+
+顺带,长度前缀封顶 256 KiB(与 OpenSSH 的 `AGENT_MAX_LEN` 同口径)。这不是调优是闸门:
+长度字段来自远端,不封顶的话对端报一个 `0xFFFFFFFF` 就能让我们替它申请 4 GiB ——
+那是一条只需要发四个字节的拒绝服务。
+
+### 五、实测撞出来的一条:`AllowTcpForwarding no` 会一并挡掉它
+
+原本以为 unix 套接字转发只归 `AllowStreamLocalForwarding` 管。**端到端一跑就被打脸**:
+`docker-compose.test.yml` 那台 sshd(linuxserver/openssh-server,Alpine 的 OpenSSH)
+`allowstreamlocalforwarding yes` 明明是开的,`streamlocal-forward@openssh.com` 照样回
+`SSH_MSG_REQUEST_FAILURE`,服务端日志写着:
+
+```
+Received request from … to remote forward to path "/config/.velashell/agent/agent-….sock",
+but the request was denied.
+```
+
+做了 A/B:把 `AllowTcpForwarding` 从 `no` 改成 `yes`(其余一字不动)→ 通;改回 `no` → 又被拒。
+**结论:sshd 把 streamlocal 的远程转发也挡在 TCP 转发那道闸后面。**
+
+这不是可以一笑置之的细节,它是**本方案相对协议原生 `auth-agent-req@openssh.com` 的实质差距**:
+后者归 `AllowAgentForwarding` 管,在一台刻意关掉 TCP 转发的机器上**仍然可用**,而我们不行。
+上游哪天支持了原生通道,这一条就是换过去的理由 —— 记在这里,免得下次有人以为「反正等价」。
+
+两处处置:
+
+- **报错要能照着做**。Tmds 只能如实转述 `SSH_MSG_REQUEST_FAILURE`,那句话对用户毫无用处。
+  这里把它翻成「请检查远端 sshd 的 `AllowTcpForwarding` 与 `AllowStreamLocalForwarding`」,
+  并把 `AllowTcpForwarding` 排在前面 —— 那才是实际上更常被关掉的那一条。
+- **测试容器要能跑通**。镜像模板默认就是 `AllowTcpForwarding no`,照原样起容器,
+  端到端用例永远跑不了。于是 `docker-compose.test.yml` 挂了一个
+  `tests/fixtures/ssh-init/enable-forwarding.sh`(linuxserver 的 `custom-cont-init.d` 机制)
+  把两条都打开。用旧容器跑的人会看到一条 `Assert.Inconclusive`,里面写着重建命令。
+
+### 六、逐次签名进审计日志
+
+转发出去的是私钥的使用权,「远端什么时候、用哪把钥匙签了名」是这项能力唯一说得清的证据。
+于是从签名请求里解出公钥 blob 算 `SHA256:` 指纹(与 `ssh-add -l` 同格式),写进 `audit_log`
+(类别 `security`,动作 `agent-sign`)。量不大 —— 一次 `ssh` 登录通常只有个位数条。
+
+**被拒绝的请求一律记,不看那个开关。**放行的签名是日常操作,可以由用户选择不记;
+而一次被拒的请求意味着远端在试图**改动**你的 agent —— 那是这项能力唯一值得半夜叫醒人的信号,
+不该被一个「少写点日志」的开关关掉。
+
+事件在转发的搬运线程上触发,写库甩到后台:远端每签一次名都等一次磁盘 I/O 是不行的。
+
+### 七、默认关,而且是逐台开
+
+- `AppSettings.Keys.AgentForwardingEnabled` —— 全局默认,**默认 false**。
+- `SessionProfile.AgentForwarding` —— `bool?` 三态,`null` = 跟随全局。
+
+三态而不是 `bool`:哪台机器值得这份信任只有用户知道。两态的话,用户改一次全局默认
+就会把每一条老配置一起改掉,而**在某台机器上明确关掉的转发**正是最不该被批量改的东西。
+`SessionTerminalSettingsTests` 把这四种组合逐条钉住了。
+
+没有会话配置(本地终端、插件借用的终端)时一律不转发,哪怕全局是开的:那些路径上
+根本没有 SSH 连接可转发,跟随全局只会平白多一次注定失败的尝试。
+
+编辑既有配置时,只要这一项表过态就自动展开「高级选项」——它是安全敏感开关,
+「开着但看不见」是最坏的一种状态。
+
+### 八、界面上看得见
+
+- **连接对话框 → 高级选项**:一个三态复选框 + 把代价写全的说明(不只写好处)。
+- **设置 → 密钥管理**:新增「SSH Agent」一节 —— 端点输入框(留空 = 自动探测)、
+  「重新探测」按钮、带状态圆点的一行结论、agent 里现有密钥的清单(类型 / 指纹 / 注释),
+  以及全局默认与签名审计两个开关。
+- **终端里**:转发起来时喂一行灰字给出 `SSH_AUTH_SOCK`;起不来时喂一行说明原因。
+
+需要「重新探测」是因为 agent 的可用性会在应用运行期间变:用户可能刚把 ssh-agent 服务起起来、
+刚 `ssh-add` 了一把钥匙、或者刚改了端点。没有它,用户只能重启应用。
+
+### 九、Windows 上那个 `SSH_AUTH_SOCK` 陷阱,顺手说清楚了
+
+端点按三级取:用户配置 → `SSH_AUTH_SOCK` → 平台默认(Windows 是
+`\.\pipe\openssh-ssh-agent`;类 Unix 没有默认可言,套接字名带随机后缀)。
+
+⚠️ 装了 Git for Windows / msys2 / Cygwin 的机器上,`SSH_AUTH_SOCK` 多半指向它们的**伪套接字**
+(一个带魔法内容的普通文件 + 一条环回 TCP),任何 Win32 程序都连不上 ——
+这正是 `AddCredential` 那段注释里说的、每次连接刷一发 `ArgumentException` 的根源。
+现在这条路上会**如实说出原因**("Windows 上 agent 必须是命名管道……msys2 / Git Bash 留下的
+`SSH_AUTH_SOCK` 指向的是伪套接字"),而不是报一句毫不相干的"文件找不到";
+用户配置那一级的存在,就是为了让人能一口咬定用哪个。
+
+`AddCredential` 那段「整体替换默认凭据列表」的逻辑**没有动** ——
+它排除的是 Tmds 自带的 `SshAgentCredentials`(用 agent **认证**),与这里做的
+「把 agent **转发**给远端」是两件事。同理,`KeyOptions.AutoLoadToAgent`(往 agent 里
+**写**密钥,等价 `ssh-add`)仍未实现,仍在设置审计 R-06 那一栏挂着 ——
+它要的是 `SSH_AGENTC_ADD_IDENTITY` 的私钥线格式编码,每种密钥类型一套。
+两处的注释都补了这句区分,免得下一个人把三件事当成一件。
+
+### 十、代码落点
+
+| 层 | 文件 | 职责 |
+| --- | --- | --- |
+| Core | `Ssh/SshAgentProtocol.cs` | 分帧、策略白名单、`SHA256:` 指纹、身份列表解析。纯字节运算 |
+| Core | `Ssh/SshAgentRelay.cs` | 一条转发连接的搬运循环。**只依赖两条 `Stream`** |
+| Core | `Ssh/ISshAgentClient.cs` / `IAgentForwardHandle.cs` | 本机 agent 与转发句柄的库中立抽象 |
+| Infra | `Ssh/LocalSshAgentClient.cs` | 命名管道 / AF_UNIX 的平台差异 |
+| Infra | `Ssh/SshAgentForwardHandle.cs` | `ListenUnixAsync` + accept 循环 + 远端目录与清理 |
+| App | `MainWindowViewModel` | 握手与重连两条路径上的启停、`SSH_AUTH_SOCK` 注入、审计接线 |
+| 测试 | `tests/fixtures/ssh-init/enable-forwarding.sh` | 测试容器的 `custom-cont-init.d` 钩子:打开两条转发开关(见第五节) |
+
+搬运循环刻意做成只依赖两条 `Stream` 并放在 Core:这条路径出错的代价是「本机 agent 被远端
+拿去做了不该做的事」,而它恰恰最难在真机上复现 —— 要一台开着 agent 的本机、一台允许
+streamlocal 转发的远端,还要远端上有人恰好去 `ssh-add -D`。用两个内存流就能把
+「拒绝改钥匙」「谎报长度即断开」「agent 半路没了」这些分支逐条钉住,不必架服务器。
+
+**重连要重开转发**:重连拿到的是一条全新会话,旧会话上那个远端套接字已经随它一起没了。
+不重开的话,重连之后 `SSH_AUTH_SOCK` 指向一个死文件 —— 比没有转发更糟,
+用户看到的是「重连一次 agent 就失灵了」。
+
+### 十一、验收
+
+`dotnet build VelaShell.slnx` 零警告零错误。新增 29 个测试方法(含数据行共 43 例):
+`SshAgentProtocolTests`(策略白名单逐消息号、长度封顶、指纹格式、谎报 nkeys 不空转)、
+`SshAgentRelayTests`(拒绝时不打开 agent、签名转发与应答回传、一条连接复用一条 agent 流、
+谎报长度/截断报文安静收场、agent 半路没了回 FAILURE 并停)、
+`LocalSshAgentClientTests`(端点三级优先、管道与套接字路径不互相误判、探测不抛,
+外加**对着一个真的 `NamedPipeServerStream` 跑完整往返** —— 连上、发 REQUEST_IDENTITIES、
+收 IDENTITIES_ANSWER、解出身份;不需要机器上真有 ssh-agent 服务)、
+`SessionTerminalSettingsTests`(三态解析四种组合、无配置时不转发、默认值),
+外加 2 条端到端用例(见下)。五份 resx 各补 14 条文案,键集平价。
+
+**端到端跑过了真 sshd**(`SshAgentForwardIntegrationTests`,`TestCategory=SshIntegration`,
+对着 `docker-compose.test.yml` 起的 linuxserver/openssh-server):
+
+1. 起转发 → 远端 `SSH_AUTH_SOCK=… ssh-add -l` **列出了本机 agent 里那把钥匙**,
+   OpenSSH 自己算的指纹与 `SshAgentProtocol.Fingerprint` 逐字相同 —— 字节确实从容器里
+   绕了一圈回到本机。
+2. 远端 `ssh-add -D` **被策略闸门拒掉**(退出码非 0),`DeniedRequests` 计数 +1。
+   这一条最值得端到端验:它就是本实现与 `ssh -A` 的实质差别。
+3. `stat -c %a "$HOME/.velashell/agent"` = **700**。
+4. 句柄释放后 `test -e <socket>` = **gone**,远端不留死套接字。
+5. 本机没有 agent 时,远端**一个套接字都不建**(先探本机、探不到就不动远端)。
+
+本机 agent 那一头用的是**进程内起的一条假命名管道**(答一份固定身份列表),
+不依赖机器上真有 ssh-agent 服务 —— Windows 上那个服务默认是禁用的,启用还要管理员。
+第五节那条 `AllowTcpForwarding` 的发现,正是这组用例第一次跑就撞出来的。
+
+**没跑过的**:类 Unix 上的本机 agent(AF_UNIX 那半边)、真实私钥的签名往返
+(假 agent 只答身份列表,不签名)。前者靠 `LocalSshAgentClient` 的端点解析用例兜着,
+后者的协议路径与列举身份完全同构(同一条 `PumpAsync`,只差消息号),风险有限。
+
+`dotnet test VelaShell.slnx`(测试容器已起):**3335 通过 / 11 跳过 / 0 失败**。
+没起容器时那两条端到端用例自动跳过(`Assert.Inconclusive`),不会把别人的构建搞红;
+非 Windows 上同样跳过 —— 假 agent 用的是命名管道。
+
+**没有做、也不打算在这一条里做的**:往 agent 里写密钥(`AutoLoadToAgent`,见第八节)、
+Pageant 的专有 IPC(PuTTY ≥ 0.75 也开了命名管道,填进端点框即可,没有专门适配)、
+按密钥过滤转发(只转发选中的那几把)。
+
+⚠️ **文档待同步 velashell-docs**:`{zh,en}/host/settings-audit.md`(新增
+`Keys.AgentForwardingEnabled` / `Keys.AgentEndpoint` / `Keys.AuditAgentSignRequests` 三项,
+均已接线;R-06 那条的措辞要改成「往 agent 里写密钥仍未做」)、
+`{zh,en}/host/交互与界面规格.md`(连接对话框高级选项多了三态复选框,密钥管理页多了一整节)。

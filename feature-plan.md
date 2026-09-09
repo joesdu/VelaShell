@@ -34,7 +34,7 @@
 
 ## 📊 待办分布
 
-**欠账**（⏳ + 🚧 + 💡，共 23 项）与**路线图**（共 33 项）分开计：
+**欠账**（⏳ + 🚧 + 💡，共 23 项）与**路线图**（共 32 项）分开计：
 
 ```mermaid
 pie showData
@@ -50,18 +50,18 @@ pie showData
 
 ```mermaid
 pie showData
-    title 路线图 —— 对标六家后的空档（33 项）
+    title 路线图 —— 对标六家后的空档（32 项）
     "A 终端体验" : 5
     "B 会话与工作区" : 5
     "C 文件与传输" : 5
     "E 安全与合规" : 5
     "G 生态与分发" : 5
-    "D 连接与协议" : 4
+    "D 连接与协议" : 3
     "F 性能与稳定" : 4
 ```
 
 > 「文件传输」算 2 项 —— 那一节的「传输失败重试」是指回 P0 表的交叉引用、不重复计数，「远程编辑的三个入口已统一」是 📄 文档待同步、不计入欠账。
-> 「会话与工作区」从 4 降到 3：会话标签颜色已在 `b9ae31f` 落地（见该节）。
+> 「会话与工作区」从 4 降到 3：会话标签颜色已在 `b9ae31f` 落地（见该节）。「D 连接与协议」从 4 降到 3：SSH Agent 转发已在 `plan.md` §58 落地（2026-09-08）。
 
 ---
 
@@ -76,7 +76,7 @@ pie showData
 | 状态 | 项 | 字段 | 现状 | 闭合要做什么 |
 | :---: | --- | --- | --- | --- |
 | ⏳ | **主密码保护** | `AppSettings.MasterPasswordProtection`（`AppSettings.cs:342`） | 字段存在，运行时零消费者；UI 已撤下并留注释 R-04 | 主密码派生密钥替换 `AesSecretProtector` 的本机密钥文件 + 启动解锁弹窗 + 存量密文迁移。**安全敏感，需单独设计后再动手** |
-| ⏳ | **自动加载密钥到 Agent** | `AppSettings.AutoLoadToAgent`（`AppSettings.cs:1058`，默认 `true`） | 字段存在且默认开，零消费者（R-06） | 集成 Windows OpenSSH ssh-agent（命名管道协议）或 Pageant。⚠️ 实现时**必须**同步调整 `plan.md` §17-A：凭据装配曾**刻意整体替换**默认凭据列表以排除 `SshAgentCredentials`（Windows 上 `SSH_AUTH_SOCK` 非命名管道会刷异常） |
+| ⏳ | **自动加载密钥到 Agent** | `AppSettings.Keys.AutoLoadToAgent` | 字段存在且默认开，零消费者（R-06） | ⚠️ **范围已缩小**：读本机 agent（命名管道 / AF_UNIX 探测 + 列举身份）已随 [SSH Agent 转发](#d-连接与协议)落地（`LocalSshAgentClient`，`plan.md` §58）。这条剩下的是**往 agent 里写密钥**（等价 `ssh-add`），要实现 `SSH_AGENTC_ADD_IDENTITY` 的私钥线格式编码，每种密钥类型一套。注：`AddCredential` 那段「整体替换默认凭据列表」排除的是用 agent **认证**，与转发是两件事，别混 |
 | ⏳ | **自动下载更新** | `AppSettings.AutoDownloadUpdates`（`AppSettings.cs:231`） | 字段存在，零消费者、零 UI | 下载调度 + SHA-256 完整性校验 + 静默换版流程。注：**启动时自动检查**（`CheckUpdatesOnStartup`）已实现并接进消息中心，别和这条混淆 |
 | ⏳ | **传输失败重试** | `AppSettings.TransferMaxRetries` | 字段存在，零消费者 | 需要传输队列持久化才有意义（重试要知道「重试什么」）。同组的 `AutoResume` 已降级为遗留兼容字段，实际开关是 `ResumeEnabled`，**不要**再给它接线 |
 | ⏳ | **标签栏位置（顶部/底部）** | `AppearanceOptions.TabBarPosition` + `SettingsViewModel.TabBarPositionIndex:1219` | 字段与索引映射都在，Docking 层零消费；VelaDock 替换后 UI 已从外观页撤下 | 自研 `DockGroupControl` 之后技术上已可做（改标签条停靠边）。**低成本**，按需排期 |
@@ -91,7 +91,7 @@ pie showData
 | ⏳ | 🟠 P1 | **`audit_log` / `conn_history` 保留策略** | 无 retention，长期运行只增不减 | 复用会话录制那套「保留天数 + drop 回写压缩」的兜底路径（`plan.md` §13-F） |
 | ⏳ | 🟡 P2 | **ed25519 / ecdsa 密钥生成** | `ISshKeyService` 只有 `GenerateRsaKeyAsync`；ed25519 / ecdsa **仅用于识别已有密钥类型** | .NET 无内置 OpenSSH ed25519 私钥导出 —— 要么自行实现 OpenSSH 私钥封装格式，要么引入 BouncyCastle（注意许可证与体积） |
 | ⏳ | 🟡 P2 | **密钥管理的三处小缺口** | 导入不校验私钥有效性；删除无二次确认；导出未做（已信任主机同样只能删不能导） | 各自独立、都是小改动，可一批做掉 |
-| ⏳ | 🟡 P2 | **SSH 证书（certificate）认证** | 代码零踪迹（`src/` 下 Certificate 命中全部是 FTPS/TLS 证书）；连接对话框第 2 步「证书」项仍禁用 | 先评估 Tmds.Ssh 对 OpenSSH user certificate 的支持程度，不支持就要么等上游要么放弃 |
+| ⏳ | 🟡 P2 | **SSH 证书（certificate）认证** | 代码零踪迹（`src/` 下 Certificate 命中全部是 FTPS/TLS 证书）；连接对话框第 2 步「证书」项仍禁用 | ✅ **上游评估有结果了（2026-09-08，Tmds.Ssh 0.24.0）：支持。** `CertificateCredential(string, PrivateKeyCredential)` 是公开构造，`SshConfigOption` 里有 `CertificateFile` 与 `CASignatureAlgorithms`，`SshClientSettings.ServerHostKeyCertificateAlgorithms` 也在，程序集里有 `-cert-v01@openssh.com`。所以这条**不再是「等上游」，而是纯宿主接线**：`AuthMethod` 加一枚 `Certificate`、`AddCredential` 加一个分支、连接对话框第 2 步把那个禁用项打开（⚠️ `SessionProfile` 新增字段要按 `plan.md` §37 的清单同步）|
 | 🚧 | 🟠 P1 | **配置导出的选择性与脱敏** | 导出 / 导入是**全量 `AppSettings` 序列化 + 整体覆盖**。⚠️ **全量导出含 Security / Proxy 等敏感块，代理密码是明文** | 分类勾选导出 + 敏感块默认排除（或强制加密）。注：Gist 云同步（`plan.md` §13-C）已覆盖跨设备迁移场景，本条的价值主要在**别把明文代理密码写进一个用户随手分享的文件** |
 
 ---
@@ -177,7 +177,7 @@ pie showData
 | 插件系统 | ✅ **双模 + 商店** | — | — | ✅ | — | — |
 | AI 助手 / Agent | ✅ **含 IM 桥接 + MCP** | — | — | 插件 | — | ✅ 有限 |
 | 云同步 | ✅ 自己的 Gist | — | ✅ | ✅ | ✅ | ✅ 自营 |
-| **SSH Agent 转发** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **SSH Agent 转发** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **X11 转发** | ❌ | ✅ | ✅ 自带 X 服务端 | — | ✅ | — |
 | **OSC 8 超链接** | ✅ | — | — | ✅ | — | — |
 | **命令块 / 提示符语义（OSC 133）** | ✅ | — | — | — | — | — |
@@ -188,7 +188,7 @@ pie showData
 
 **结论**：连接与运维这条主线已经追平甚至反超（计量隧道、录制回放、双模插件、AI 协作接入都是别家没有的）。
 真正的空档集中在三处：**① 终端本身的现代化**（键盘复制模式；OSC 8 与 OSC 133 命令块均已于 09-08 落地，见 `plan.md` §10-D / §10-E）、
-**② 凭据与团队**（agent 转发、密钥库集成、共享配置）、**③ 文件侧的深水区**（目录同步、符号链接）。
+**② 凭据与团队**（密钥库集成、共享配置 —— agent 转发已于 09-08 落地，见 `plan.md` §58）、**③ 文件侧的深水区**（目录同步、符号链接）。
 
 ---
 
@@ -225,7 +225,7 @@ pie showData
 
 | 状态 | 优先级 | 项 | 对标 | 架构落点 |
 | :---: | :---: | --- | --- | --- |
-| ⏳ | 🟠 P1 | **SSH Agent 转发** | Xshell / MobaXterm / Tabby / WindTerm / Termius | 六家全有，我们没有 —— **对标矩阵里最扎眼的一格**。跳板场景下没有它，用户只能把私钥拷到跳板机上，那是实打实的安全倒退。⚠️ **动手前先确认 Tmds.Ssh 是否支持 `auth-agent-req@openssh.com`**；不支持就要么等上游、要么按 [`AGENTS.md`](AGENTS.md) 的纪律给它提 issue，**不要自己在 `Infrastructure/Ssh/` 外面绕**。与 [Agent 自动加载](#-p0--存了但不生效的开关)是同一条线上的两件事 |
+| ✅ | — | ~~**SSH Agent 转发**~~ | — | **已完成**（2026-09-08，`plan.md` §58）。先证伪：Tmds.Ssh 0.24.0 **不支持** `auth-agent-req@openssh.com`。于是改走它支持的 `ListenUnixAsync`（`streamlocal-forward@openssh.com`）+ 注入 `SSH_AUTH_SOCK`，效果等价 `ssh -A`，代码全在 `Infrastructure/Ssh/` 内。**比 `ssh -A` 严**：只放行「列举身份」与「签名」，改钥匙 / 清空 / 上锁一律就地拒绝并记审计。默认关、按会话三态开。已对真 sshd 端到端验过。⚠️ **留下一条与原生做法的实质差距**：本方案要远端 `AllowTcpForwarding yes`（实测：它也管得着 streamlocal 转发），而原生 `auth-agent-req` 只归 `AllowAgentForwarding` 管 —— 上游哪天支持了原生通道，这就是换过去的理由 |
 | ⏳ | 🟡 P2 | **算法协商可配（cipher / kex / hostkey / MAC）** | Xshell / SecureCRT / PuTTY | 连老设备（网络设备、老 RHEL）时是刚需。**一半已经有了**：`Infrastructure/Ssh/SshAlgorithmDiagnostics.cs` 已经会在协商失败时算出「两边交集为空」并说清缺哪类算法 —— 从「诊断得出来」到「让用户配得上」，只差把清单落到 `SessionProfile` 并接进 `SshClientSettings` |
 | ⏳ | 🟢 P3 | **SSH 压缩开关** | 各家都有 | 弱网 / 高延迟链路上有意义。⚠️ **「落点同上」已核实为错（2026-09-08，Tmds.Ssh 0.24.0）**：kex / cipher / mac / hostkey 四类算法在 `SshClientSettings` 上都是 `public` 可配的，**唯独 `CompressionAlgorithmsClientToServer` / `ServerToClient` 是 `internal`**；且 `SupportedCompressionAlgorithms`、`EnableCompressionAlgorithms` 两份内部名单里都只有一个 `none` —— 库里**没有 zlib 实现**（整个程序集搜不到 `zlib`），`SshConfigOption` 枚举里也没有 `Compression`。0.24.0 已是 nuget 上的最新版。所以这条**不是「接一根线」**，而是要么等上游、要么按 [`AGENTS.md`](AGENTS.md) 的纪律给 Tmds.Ssh 提 issue / PR（与 SSH Agent 转发同一条纪律，不要自己在 `Infrastructure/Ssh/` 外面绕）。**上游支持之前不要加这个开关** —— 加了就是 [P0 那张表](#-p0--存了但不生效的开关)里的新一条 |
 | 💡 | 🟢 P3 | **更多协议插件** | — | RDP / VNC / Kubernetes exec / 数据库客户端。**这正是 `Protocols` + `Workspaces` 能力面存在的意义** —— 宿主一行不用改，Telnet / 串口 / Redis / S3 / Docker 面板已经把这条路走通了五遍。优先级交给插件市场的真实下载量决定，不要在宿主里拍脑袋排 |
@@ -272,9 +272,10 @@ pie showData
    记得把**注入侧的爆炸半径**单独算一笔。
 2. **插件签名验证**（E 组）—— 商店已经在跑了，这个洞开着的每一天都在放大。
    信任根现成，属于「补最后一段」而不是「从零建」。
-3. **SSH Agent 转发**（D 组）—— 对标矩阵里唯一六家全有、我们全无的格子，
-   而且缺它会逼用户做出**降低安全性**的替代（把私钥拷上跳板机）。
-   ⚠️ 先确认 Tmds.Ssh 的支持情况再排期。
+3. ~~**SSH Agent 转发**（D 组）~~ —— **已于 2026-09-08 落地**（`plan.md` §58）。
+   「先确认上游支不支持」这一步是对的，而且**结论是不支持** —— 但它没有变成「等上游」：
+   库里另有一条公开且支持的路（远端 unix 套接字转发 + 注入 `SSH_AUTH_SOCK`），效果等价。
+   下一个人写「等上游」之前，先把上游**已经支持的原语**列一遍：堵死的往往只是那条最正统的路。
 
 ### 📌 排这份路线图时的几条纪律
 
@@ -298,6 +299,7 @@ pie showData
 | ✅ | `plan.md` §41 | ~~对外 MCP 的「允许操作的服务器」描述改成勾选式~~ —— **2026-09-07 已同步**，中英两棵树各新增「2.4 允许操作的服务器怎么配」 |
 | ✅ | `plan.md` §33 | ~~新增 `{zh,en}/plugins/协作接入.md` 并在 STATUS 登记~~ —— **已完成** |
 | ⏳ | `en/` 树 | `zh/` 有 **7 篇** `en/` 里没有的文档：Redis 调研、S3 两篇、系统密钥链调研，以及三份 `release-process.md`。缺口已在 [`en/host/README.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/host/README.md) 与根 README 逐篇列出（不再是**静默**漂移），但翻译本身仍欠着 |
+| ⏳ | `plan.md` §58 | **SSH Agent 转发**：`{zh,en}/host/settings-audit.md` 补 `Keys.AgentForwardingEnabled` / `Keys.AgentEndpoint` / `Keys.AuditAgentSignRequests` 三项（均已接线），并把 R-06 那条的措辞改成「往 agent 里**写**密钥仍未做」；`{zh,en}/host/交互与界面规格.md` 补连接对话框高级选项那个三态复选框与密钥管理页新增的「SSH Agent」一节；顺带写清**为什么不是 `auth-agent-req@openssh.com`**（上游不支持）与**比 `ssh -A` 严在哪**（只放行列举与签名） |
 
 ---
 

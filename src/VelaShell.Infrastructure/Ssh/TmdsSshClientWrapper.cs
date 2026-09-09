@@ -398,6 +398,29 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
     }
 
     /// <summary>
+    /// 在当前连接上启动 SSH agent 转发。
+    /// </summary>
+    /// <remarks>
+    /// 走的是远端 unix 套接字转发而非 <c>auth-agent-req@openssh.com</c> —— 后者 Tmds.Ssh 0.24.0
+    /// 不支持,理由与取舍写在 <see cref="SshAgentForwardHandle" /> 的类注释里。
+    /// </remarks>
+    public async Task<IAgentForwardHandle> StartAgentForwardAsync(
+        ISshAgentClient agent, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_client is null) throw new InvalidOperationException("Not connected.");
+        try
+        {
+            return await SshAgentForwardHandle.CreateAsync(_client, agent, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (TmdsSshInterop.Translate(ex, cancellationToken) is { } translated)
+        {
+            throw translated;
+        }
+    }
+
+    /// <summary>
     /// 在当前连接上开一条到远端 unix 域套接字的双工字节流。
     /// </summary>
     public async Task<Stream> OpenUnixConnectionAsync(string socketPath, CancellationToken cancellationToken = default)

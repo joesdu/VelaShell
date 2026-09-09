@@ -108,6 +108,21 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     private readonly ISessionMetricsService? _metricsService;
     private readonly IRemoteProcessService? _remoteProcessService;
 
+    // ---- SSH agent 转发(设置 → 密钥管理 / 连接对话框 → 高级选项) ----
+
+    private readonly ISshAgentClient? _sshAgentClient;
+    private readonly IAuditLogService? _auditLogService;
+
+    /// <summary>
+    /// 会话 id → 该会话上的 agent 转发句柄。
+    /// </summary>
+    /// <remarks>
+    /// 必须按会话记住:转发的生命周期与 SSH 会话严格同长 —— 会话一断,远端那个套接字
+    /// 就该被撤掉。漏掉一条的后果不是资源泄漏那么轻,而是"用户以为已经关掉了转发,
+    /// 实际还开着"。并发字典是因为拆会话走的是后台任务(见 <see cref="TeardownSshSession" />)。
+    /// </remarks>
+    private readonly ConcurrentDictionary<Guid, IAgentForwardHandle> _agentForwards = new();
+
     // ---- 会话日志(设置 → 常规 → 数据与存储) ----
 
     private readonly Dictionary<TerminalTabViewModel, SessionLogWriter> _sessionLogs = [];
@@ -268,9 +283,13 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         IAnnouncementFeed? announcementFeed = null,
         IUpdateService? updateService = null,
         IThemeService? themeService = null,
-        IConnectivityMonitor? connectivityMonitor = null
+        IConnectivityMonitor? connectivityMonitor = null,
+        ISshAgentClient? sshAgentClient = null,
+        IAuditLogService? auditLogService = null
     )
     {
+        _sshAgentClient = sshAgentClient;
+        _auditLogService = auditLogService;
         // 注册表可注入(DI 里与插件命令桥共享同一单例);无 UI 单测传 null 时自建。
         Commands = commandRegistry ?? new CommandRegistry();
         _remoteProcessService = remoteProcessService;
@@ -2412,6 +2431,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         await FeedJumpChainNoticeAsync(terminalTab, profile);
         StartSessionLogging(terminalTab, settings);
         SendStartupCommand(terminalTab, settings, isPosixShell);
+        // 排在「认证后执行命令」之前:那条命令很可能就是 `ssh 下一跳`,
+        // 而它要用的正是这里导出的 SSH_AUTH_SOCK。
+        await TryStartAgentForwardAsync(
+            terminalTab, profile, settings, client, session.SessionId, isPosixShell, cancellationToken);
         SendPostAuthCommand(terminalTab, profile);
 
         // 会话 Id 从现在起才存在(握手完成后)——活动标签订阅在它被赋值前已触发,
@@ -2527,6 +2550,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             tab.ResetReconnectAttempts();
             StartSessionLogging(tab, settings);
             SendStartupCommand(tab, settings, isPosixShell);
+            // 转发同样要重开:重连拿到的是一条**全新的会话**,旧会话上那个远端套接字
+            // 已经随它一起没了。不重开的话,重连之后 SSH_AUTH_SOCK 指向一个死文件 ——
+            // 比没有转发更糟,用户看到的是"重连一次 agent 就失灵了"。
+            await TryStartAgentForwardAsync(
+                tab, tab.Profile, settings, client, session.SessionId, isPosixShell, reconnectToken);
             // 重连也要跑:配置里那条命令描述的是"每次登进这台机器要做什么"
             // (进 tmux、切目录、sudo),断线重连回来同样成立。
             SendPostAuthCommand(tab, tab.Profile);
@@ -2614,8 +2642,154 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 传输层,底层 SshClient 仍保持 TCP 连接;这里显式断开并释放,避免"界面显示已断开、
     /// 连接实际还活着"。该会话上的隧道也一并停止。
     /// </summary>
+    /// <summary>
+    /// 按需为这条会话启动 SSH agent 转发,并把远端套接字路径导出成 <c>SSH_AUTH_SOCK</c>。
+    /// <para>
+    /// 有了它,跳板场景下用户不必再把私钥拷到跳板机上 —— 那是实打实的安全倒退,
+    /// 而这正是这项能力存在的全部理由。
+    /// </para>
+    /// </summary>
+    /// <param name="tab">已挂上传输、状态已置为已连接的终端标签。</param>
+    /// <param name="profile">本次连接所用的配置。</param>
+    /// <param name="settings">当前设置。</param>
+    /// <param name="client">这条会话的 SSH 客户端。</param>
+    /// <param name="sessionId">这条会话的 id。</param>
+    /// <param name="isPosixShell"><see cref="ProbePosixShellAsync" /> 的结论。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <remarks>
+    /// <para>
+    /// <b>失败绝不阻断连接。</b>sshd 关掉了 <c>AllowStreamLocalForwarding</c>、本机没有 agent、
+    /// 远端家目录只读 —— 这些都会让转发起不来,但用户要的首先是登上这台机器。
+    /// 于是失败只往终端里喂一行灰字说明原因,连接照常。
+    /// </para>
+    /// <para>
+    /// <b>非 POSIX 远端一律不试。</b>转发要在远端建 unix 套接字、要用 <c>$HOME</c>,
+    /// Windows 远端两样都没有。盲试的结果是终端里冒出一串 <c>'mkdir' 不是内部或外部命令</c>
+    /// —— §18-B/E 那次教训。
+    /// </para>
+    /// </remarks>
+    private async Task TryStartAgentForwardAsync(
+        TerminalTabViewModel tab,
+        SessionProfile profile,
+        AppSettings settings,
+        ISshClientWrapper client,
+        Guid sessionId,
+        bool isPosixShell,
+        CancellationToken cancellationToken
+    )
+    {
+        // 每条会话最多一份;重连走的是新会话 id,旧的那份由拆会话路径撤掉。
+        StopAgentForward(sessionId);
+        if (_sshAgentClient is null || !SessionTerminalSettings.AgentForwarding(profile, settings))
+        {
+            return;
+        }
+        if (!isPosixShell)
+        {
+            FeedNotice(tab, Strings.Get("Msg_AgentForwardNotPosix"));
+            return;
+        }
+        try
+        {
+            IAgentForwardHandle handle = await client.StartAgentForwardAsync(_sshAgentClient, cancellationToken);
+            _agentForwards[sessionId] = handle;
+            WireAgentForwardAudit(handle, profile, settings);
+
+            // 路径由我们自己拼(家目录 + 固定前缀 + 随机十六进制),但家目录来自远端,
+            // 理论上可以带引号 —— 转义一次,别把自己的注入口留在这儿。
+            string quoted = handle.RemoteSocketPath.Replace("'", "'\\''", StringComparison.Ordinal);
+            tab.SendSilentCommand($"export SSH_AUTH_SOCK='{quoted}'");
+            FeedNotice(tab, Strings.Format("Msg_AgentForwardEnabled", handle.RemoteSocketPath));
+            await WriteAgentAuditAsync(profile, "agent-forward-start", handle.RemoteSocketPath);
+        }
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            FeedNotice(tab, Strings.Format("Msg_AgentForwardFailed", ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// 把转发上的请求接到审计日志。
+    /// </summary>
+    /// <remarks>
+    /// <b>被拒绝的请求一律记,不看设置开关。</b>放行的签名请求是日常操作,量大且可以由用户
+    /// 选择不记;而一次被拒的请求意味着远端试图**改动**你的 agent(清空、上锁、加钥匙)——
+    /// 那是这项能力唯一值得半夜叫醒人的信号,不该被一个"少写点日志"的开关关掉。
+    /// </remarks>
+    private void WireAgentForwardAudit(IAgentForwardHandle handle, SessionProfile profile, AppSettings settings)
+    {
+        bool auditSigns = settings.Keys.AuditAgentSignRequests;
+        handle.RequestHandled += e =>
+        {
+            if (e.Allowed && (!auditSigns || e.MessageType != SshAgentProtocol.SignRequest))
+            {
+                return;
+            }
+            // 事件在转发的搬运线程上触发:写库必须甩到别处去,否则远端每签一次名
+            // 都要等一次磁盘 I/O。
+            _ = WriteAgentAuditAsync(
+                profile,
+                e.Allowed ? "agent-sign" : "agent-request-denied",
+                e.Allowed
+                    ? e.Fingerprint ?? "unknown key"
+                    : $"message type {e.MessageType} refused by policy");
+        };
+    }
+
+    /// <summary>写一条 agent 转发相关的审计记录;失败不打扰任何人。</summary>
+    private async Task WriteAgentAuditAsync(SessionProfile profile, string action, string detail)
+    {
+        if (_auditLogService is null)
+        {
+            return;
+        }
+        try
+        {
+            await _auditLogService.WriteAsync(new()
+            {
+                Category = "security",
+                Action = action,
+                ProfileId = profile.Id,
+                Detail = $"{profile.Username}@{profile.Host}:{profile.Port} — {detail}"
+            });
+        }
+        catch
+        {
+            // 审计写不进去不该让一次成功的签名看起来失败了 —— 签名早就发回远端了。
+        }
+    }
+
+    /// <summary>停止并撤掉这条会话上的 agent 转发(若有)。</summary>
+    /// <param name="sessionId">会话 id。</param>
+    /// <remarks>
+    /// 释放是异步的(要向远端发一条 <c>rm -f</c>),但调用点全在同步路径上 ——
+    /// 于是甩成后台任务。丢在那儿不等它,是因为等它意味着"关标签要等一次网络往返",
+    /// 而此刻连接多半已经断了,那一等就是等到超时。
+    /// </remarks>
+    private void StopAgentForward(Guid sessionId)
+    {
+        if (!_agentForwards.TryRemove(sessionId, out IAgentForwardHandle? handle))
+        {
+            return;
+        }
+        _ = Task.Run(async () =>
+        {
+            try { await handle.DisposeAsync(); }
+            catch { /* 要停的东西本来就在停 */ }
+        });
+    }
+
+    /// <summary>往终端里喂一行灰色提示(与跳板链提示同一形态)。</summary>
+    private static void FeedNotice(TerminalTabViewModel tab, string text) =>
+        tab.TerminalEmulator.Feed(Encoding.UTF8.GetBytes($"\e[90m● {text}\e[0m\r\n"));
+
     private void TeardownSshSession(Guid sessionId)
     {
+        StopAgentForward(sessionId);
         if (sessionId == Guid.Empty || _connectionWorkflowService is null)
         {
             return;

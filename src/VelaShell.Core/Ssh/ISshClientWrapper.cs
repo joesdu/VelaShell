@@ -81,6 +81,23 @@ public interface ISshClientWrapper : IDisposable
     Task<IPortForwardHandle> StartPortForwardAsync(PortForwardRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 在当前连接上启动 <b>SSH agent 转发</b>:在远端建一个 unix 域套接字,把连上它的
+    /// 请求送回本机 agent。返回的句柄负责其停止与远端清理。
+    /// <para>
+    /// 调用方拿到 <see cref="IAgentForwardHandle.RemoteSocketPath" /> 之后,还要把它写进
+    /// 远端 shell 的 <c>SSH_AUTH_SOCK</c> —— 少了那一步,套接字建好了也没人会去用它。
+    /// </para>
+    /// <para>
+    /// ⚠️ 只对 POSIX 远端有意义(要有 unix 套接字与 <c>$HOME</c>);调用前应先过
+    /// <see cref="RemoteShellProbe" />。
+    /// </para>
+    /// </summary>
+    /// <param name="agent">本机 agent 客户端。</param>
+    /// <param name="cancellationToken">取消令牌(只作用于建立阶段)。</param>
+    /// <returns>已启动的转发句柄;调用方负责释放。</returns>
+    Task<IAgentForwardHandle> StartAgentForwardAsync(ISshAgentClient agent, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 在当前连接上开一条到远端 <b>unix 域套接字</b>的双工字节流
     /// (SSH 的 <c>direct-streamlocal@openssh.com</c> 通道)。
     /// <para>

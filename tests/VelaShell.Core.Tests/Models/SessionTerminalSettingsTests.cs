@@ -123,4 +123,49 @@ public sealed class SessionTerminalSettingsTests
         Assert.IsFalse(new TerminalOverrides { KeepAliveSeconds = 0 }.IsEmpty,
             "显式设成 0(关闭保活)是一次真实的覆盖,不是「没设」。");
     }
+
+    /// <summary>
+    /// agent 转发的三态解析:配置里表过态就听它,没表态才跟随全局。
+    /// </summary>
+    /// <remarks>
+    /// 这条比其它覆盖项要紧一档:它是安全开关。把「显式关掉」误判成「跟随全局」,
+    /// 用户在某台机器上明确关掉的转发就会因为改了一次全局默认而被悄悄打开 ——
+    /// 那正是三态存在的全部理由。
+    /// </remarks>
+    [TestMethod]
+    [DataRow(null, false, false)]
+    [DataRow(null, true, true)]
+    [DataRow(true, false, true)]
+    [DataRow(false, true, false)]
+    public void AgentForwardingFollowsTheProfileFirstThenTheGlobalDefault(
+        bool? perProfile, bool globalDefault, bool expected)
+    {
+        SessionProfile profile = new() { AgentForwarding = perProfile };
+        AppSettings settings = new();
+        settings.Keys.AgentForwardingEnabled = globalDefault;
+
+        Assert.AreEqual(expected, SessionTerminalSettings.AgentForwarding(profile, settings));
+    }
+
+    /// <summary>
+    /// 没有会话配置(本地终端、插件借用的终端)时一律不转发,哪怕全局默认是开的:
+    /// 那些路径上根本没有 SSH 连接可转发,跟随全局只会平白多一次注定失败的尝试。
+    /// </summary>
+    [TestMethod]
+    public void AgentForwardingIsOffWhenThereIsNoProfile()
+    {
+        AppSettings settings = new();
+        settings.Keys.AgentForwardingEnabled = true;
+
+        Assert.IsFalse(SessionTerminalSettings.AgentForwarding(null, settings));
+    }
+
+    /// <summary>默认必须是关的。转发把私钥的使用权交给远端,这个默认值不该被顺手改掉。</summary>
+    [TestMethod]
+    public void AgentForwardingDefaultsToOff()
+    {
+        Assert.IsFalse(new AppSettings().Keys.AgentForwardingEnabled);
+        Assert.IsNull(new SessionProfile().AgentForwarding, "新配置不表态 = 跟随全局");
+        Assert.IsTrue(new AppSettings().Keys.AuditAgentSignRequests, "签名审计默认开:那是这项能力唯一的证据");
+    }
 }

@@ -111,7 +111,71 @@
                 SelectedItem="{Binding Keys.DefaultKeyName}"
                 VerticalAlignment="Center" />
     </Grid>
-    <!-- 自动加载密钥到 Agent:Windows OpenSSH Agent/Pageant 集成未实现,暂不展示
-         (设置审计 R-06);当前连接时直接读取密钥文件。字段仍持久化,实现后恢复展示。 -->
+    <!-- 自动加载密钥到 Agent(AutoLoadToAgent):往 agent 里【写】密钥(等价 ssh-add)仍未实现,
+         需要 SSH_AGENTC_ADD_IDENTITY 的私钥线格式编码,暂不展示(设置审计 R-06)。
+         下面这一节是另一件事:【读】本机 agent 并把签名能力转发给远端。 -->
+
+    <Border Classes="sep" />
+
+    <!-- SSH Agent 与转发 -->
+    <TextBlock Classes="section-title" Text="{loc:Localize Keys_AgentTitle}" />
+
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize Keys_AgentEndpoint}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize Keys_AgentEndpointHint}" TextWrapping="Wrap" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <TextBox Width="260" Text="{Binding Keys.AgentEndpoint}" />
+        <Button Classes="dlg-outline" Content="{loc:Localize Keys_AgentRefresh}"
+                Command="{Binding SshKeys.ProbeAgentCommand}" />
+      </StackPanel>
+    </Grid>
+
+    <!-- 探测结论。前面那个圆点按可用性变色 —— 这一行是用户判断「转发到底能不能用」的唯一依据,
+         和上面那段静态说明长得一样的话,等于没说。 -->
+    <StackPanel Orientation="Horizontal" Spacing="6"
+                IsVisible="{Binding SshKeys.AgentStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+      <TextBlock Text="●" VerticalAlignment="Center" FontSize="{DynamicResource VelaFontSize10}"
+                 Foreground="{DynamicResource VelaShellGreen}"
+                 IsVisible="{Binding SshKeys.IsAgentAvailable}" />
+      <TextBlock Text="●" VerticalAlignment="Center" FontSize="{DynamicResource VelaFontSize10}"
+                 Foreground="{DynamicResource VelaTextTertiary}"
+                 IsVisible="{Binding !SshKeys.IsAgentAvailable}" />
+      <TextBlock Classes="row-desc" TextWrapping="Wrap" Text="{Binding SshKeys.AgentStatus}" />
+    </StackPanel>
+    <ItemsControl ItemsSource="{Binding SshKeys.AgentIdentities}" Margin="0,2,0,0">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="ssh:SshAgentIdentity">
+          <Grid ColumnDefinitions="80,*,Auto" Height="22">
+            <TextBlock Text="{Binding KeyType}"
+                       Foreground="{DynamicResource VelaTextSecondary}"
+                       FontFamily="{DynamicResource VelaUiMonoFont}" FontSize="{DynamicResource VelaFontSize10}"
+                       VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Text="{Binding Fingerprint}"
+                       Foreground="{DynamicResource VelaTextMuted}"
+                       FontFamily="{DynamicResource VelaUiMonoFont}" FontSize="{DynamicResource VelaFontSize10}"
+                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="2" Text="{Binding Comment}"
+                       Foreground="{DynamicResource VelaTextTertiary}"
+                       FontSize="{DynamicResource VelaFontSize10}"
+                       TextTrimming="CharacterEllipsis" MaxWidth="200" VerticalAlignment="Center" />
+          </Grid>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize Keys_AgentForwardDefault}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize Keys_AgentForwardDefaultHint}" TextWrapping="Wrap" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Keys.AgentForwardingEnabled}" VerticalAlignment="Center" />
+    </Grid>
+
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="row-label" Text="{loc:Localize Keys_AgentAuditSigns}" VerticalAlignment="Center" />
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Keys.AuditAgentSignRequests}" VerticalAlignment="Center" />
+    </Grid>
   </StackPanel>
 </UserControl>

@@ -10,17 +10,75 @@ namespace VelaShell.ViewModels;
 public class SshKeyManagerViewModel : ReactiveObject
 {
     private readonly ISshKeyService? _keyService;
+    private readonly ISshAgentClient? _agentClient;
 
-    /// <summary>构造密钥管理视图模型,注入密钥服务并初始化集合与命令。</summary>
-    public SshKeyManagerViewModel(ISshKeyService? keyService = null)
+    /// <summary>构造密钥管理视图模型,注入密钥服务与本机 agent 客户端并初始化集合与命令。</summary>
+    public SshKeyManagerViewModel(ISshKeyService? keyService = null, ISshAgentClient? agentClient = null)
     {
         _keyService = keyService;
+        _agentClient = agentClient;
         Keys = [];
         FilteredKeys = [];
         KeyNames = [];
+        AgentIdentities = [];
         RefreshCommand = ReactiveCommand.CreateFromTask(RefreshAsync);
         GenerateCommand = ReactiveCommand.CreateFromTask(GenerateAsync);
+        ProbeAgentCommand = ReactiveCommand.CreateFromTask(ProbeAgentAsync);
         this.WhenAnyValue(x => x.SearchQuery).Subscribe(_ => ApplyFilter());
+    }
+
+    /// <summary>本机 agent 当前持有的密钥;探不到 agent 时为空。</summary>
+    public ObservableCollection<SshAgentIdentity> AgentIdentities { get; }
+
+    /// <summary>本机 agent 的一行状态描述(端点 + 密钥数,或不可用的原因)。</summary>
+    public string AgentStatus
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
+
+    /// <summary>本机 agent 是否可用;界面据此决定状态文字的颜色。</summary>
+    public bool IsAgentAvailable
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>重新探测本机 agent 的命令。</summary>
+    /// <remarks>
+    /// 需要一个显式的「重新探测」是因为 agent 的可用性会在应用运行期间变:
+    /// 用户可能刚把 ssh-agent 服务起起来、刚 <c>ssh-add</c> 了一把钥匙、
+    /// 或者刚在上面那个输入框里改了端点。没有它,用户只能重启应用。
+    /// </remarks>
+    public ReactiveCommand<RxVoid, RxVoid> ProbeAgentCommand { get; }
+
+    /// <summary>探测本机 agent 并刷新状态与密钥列表。失败不抛 —— 「没有 agent」是常态。</summary>
+    public async Task ProbeAgentAsync()
+    {
+        if (_agentClient is null)
+        {
+            AgentStatus = Strings.Format("Keys_AgentUnavailable", "no agent client");
+            IsAgentAvailable = false;
+            return;
+        }
+        SshAgentProbe probe;
+        try
+        {
+            probe = await _agentClient.ProbeAsync();
+        }
+        catch (Exception ex)
+        {
+            probe = new(false, string.Empty, SshAgentEndpointSource.None, [], ex.Message);
+        }
+        AgentIdentities.Clear();
+        foreach (SshAgentIdentity identity in probe.Identities)
+        {
+            AgentIdentities.Add(identity);
+        }
+        IsAgentAvailable = probe.IsAvailable;
+        AgentStatus = probe.IsAvailable
+                          ? Strings.Format("Keys_AgentAvailable", probe.Endpoint, probe.Identities.Count)
+                          : Strings.Format("Keys_AgentUnavailable", probe.Error ?? "unknown");
     }
 
     /// <summary>已枚举到的全部 ~/.ssh 密钥。</summary>

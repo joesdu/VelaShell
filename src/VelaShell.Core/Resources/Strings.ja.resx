@@ -4506,4 +4506,46 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SetTransfer_AutoUploadOnEditDesc" xml:space="preserve">
     <value>オフの場合はローカルコピーを監視せず、変更を送り返しません</value>
   </data>
+  <data name="Msg_AgentForwardEnabled" xml:space="preserve">
+    <value>SSH エージェント転送を有効にしました — SSH_AUTH_SOCK={0}</value>
+  </data>
+  <data name="Msg_AgentForwardFailed" xml:space="preserve">
+    <value>SSH エージェント転送を開始できませんでした: {0}</value>
+  </data>
+  <data name="Msg_AgentForwardNotPosix" xml:space="preserve">
+    <value>SSH エージェント転送をスキップしました: リモートが POSIX シェルではありません。</value>
+  </data>
+  <data name="Profile_AgentForwarding" xml:space="preserve">
+    <value>SSH エージェントを転送</value>
+  </data>
+  <data name="Profile_AgentForwardingHint" xml:space="preserve">
+    <value>このホスト上の ssh がローカルエージェントの鍵で署名できるようになり、踏み台へ秘密鍵をコピーする必要がなくなります。ただしセッションが続く間は、そのホストの root も同じ鍵を使えます。未確定のままにすると全体の既定値に従います。</value>
+  </data>
+  <data name="Keys_AgentTitle" xml:space="preserve">
+    <value>SSH エージェント</value>
+  </data>
+  <data name="Keys_AgentAvailable" xml:space="preserve">
+    <value>接続済み — {0}（鍵 {1} 本）</value>
+  </data>
+  <data name="Keys_AgentUnavailable" xml:space="preserve">
+    <value>利用できません — {0}</value>
+  </data>
+  <data name="Keys_AgentEndpoint" xml:space="preserve">
+    <value>エージェントのエンドポイント</value>
+  </data>
+  <data name="Keys_AgentEndpointHint" xml:space="preserve">
+    <value>空欄にすると自動検出します（SSH_AUTH_SOCK、次にプラットフォーム既定）。Windows では \.\pipe\openssh-ssh-agent のような名前付きパイプである必要があります。msys2 や Git Bash が残した SSH_AUTH_SOCK は Win32 から開けない疑似ソケットを指しています。</value>
+  </data>
+  <data name="Keys_AgentForwardDefault" xml:space="preserve">
+    <value>新しいセッションで既定としてエージェントを転送する</value>
+  </data>
+  <data name="Keys_AgentForwardDefaultHint" xml:space="preserve">
+    <value>既定はオフで、そのままにしておく価値があります。転送はセッションが続く間、秘密鍵の使用権をリモートに渡すことを意味します。接続先がすべて自分のホストでない限り、接続ダイアログでホストごとに有効化してください。</value>
+  </data>
+  <data name="Keys_AgentAuditSigns" xml:space="preserve">
+    <value>署名要求をすべて監査ログに記録する</value>
+  </data>
+  <data name="Keys_AgentRefresh" xml:space="preserve">
+    <value>再検出</value>
+  </data>
 </root>
