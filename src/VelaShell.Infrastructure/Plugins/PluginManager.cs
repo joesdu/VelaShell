@@ -286,10 +286,22 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     /// 安装后按激活策略激活。返回安装的插件 id。
     /// </summary>
     /// <exception cref="InvalidOperationException">无用户插件目录、清单校验失败或签名策略拒绝。</exception>
+    /// <exception cref="PluginPublisherChangedException">
+    /// 包的发布者与该插件安装时钉住的那一个对不上,且调用方没有给出明确授权。
+    /// </exception>
     /// <exception cref="VpxFormatException">包不是合法的 <c>.vpx</c> 容器,或已损坏/被篡改。</exception>
+    /// <param name="vpxPath">包路径。</param>
+    /// <param name="allowUntrustedPackage">是否单次放行"未签名 / 发布者陌生"的包(由界面取得用户明确授权)。</param>
+    /// <param name="allowPublisherChange">
+    /// 是否单次放行"换了发布者"的覆盖安装。与 <paramref name="allowUntrustedPackage" /> 分开,
+    /// 因为它们问的是两件事:一件是"这个包我认不认识",另一件是"它还是不是上次那个人"。
+    /// 合成一个开关的话,用户为前者点一次"仍要安装",就顺带把后者也答了。
+    /// </param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public async Task<string> InstallFromVpxAsync(
         string vpxPath,
         bool allowUntrustedPackage = false,
+        bool allowPublisherChange = false,
         CancellationToken cancellationToken = default)
     {
         if (options.UserPluginRoot is not { } userRoot)
@@ -331,6 +343,11 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             {
                 throw new InvalidOperationException($"Entry assembly '{manifest.Entry}' is missing from the package.");
             }
+
+            // 发布者连续性:到这里才做得了 —— 要比对哪一条收据,得先从包里读出插件 id。
+            // 位置卡在"卸载旧版"之前:被拒时用户手上那个还装着的插件必须一根毫毛都没动。
+            await CheckPublisherContinuityAsync(manifest, packageInfo, allowPublisherChange, cancellationToken)
+                .ConfigureAwait(false);
 
             // 同 id 已装 → 先卸载旧版(用户目录的)或拒绝(应用自带的,避免覆盖只读自带件)。
             lock (_gate)
@@ -458,6 +475,105 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     {
         using Stream _ = VpxContainer.OpenPayload(packagePath, out VpxPackageInfo info);
         return GetSignatureState(info);
+    }
+
+    /// <summary>
+    /// 发布者身份连续性:同一个插件 id 的后续版本,必须仍由安装时钉住的那把私钥签名。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 验签只回答一件事:<b>这个包从签完之后没被人动过</b>。它<b>不回答</b>"签它的人还是不是上次那个人" ——
+    /// 而少了后面这一问,任何一个能骗你点下"安装"的 <c>.vpx</c> 只要复用同一个 id,就能把已经装着的
+    /// 插件整个换掉,且它自己的签名完全有效。容器那三道闸挡的是畸形包,挡不住这个;
+    /// 真正挡住坏作者的是这一条。
+    /// </para>
+    /// <para>
+    /// <b>只有管理页装的插件钉得住发布者</b>:它的收据是宿主在解包那一刻亲手落的,里面才有公钥。
+    /// 旁装(命令行 <c>vela-plugin install</c>、或者直接把目录放进插件根)的收据是 TOFU 基线,
+    /// 没有公钥也没有任何东西能替它补一个 —— 这类插件在这里一律放行,与
+    /// <see cref="VerifyOrAdoptInstallReceiptAsync" /> 收养基线是同一条纪律。
+    /// <b>命令行装的插件不受本闸影响</b>,后续无论从哪条路更新都不会因为"没钉过发布者"被拦。
+    /// </para>
+    /// <para>
+    /// 从"有签名"退回"没签名"同样拦下:那是降级的形状,不是一次密钥轮换。
+    /// 放行与否不由宿主判断(机器判不了),而是抛 <see cref="PluginPublisherChangedException" />
+    /// 让界面把两个指纹摆给用户;用户认了,调用方带着 <c>allowPublisherChange</c> 再来一次,
+    /// 新公钥随即被安装收据钉成新的基线。
+    /// </para>
+    /// </remarks>
+    private async Task CheckPublisherContinuityAsync(
+        PluginManifest manifest,
+        VpxPackageInfo packageInfo,
+        bool allowPublisherChange,
+        CancellationToken cancellationToken)
+    {
+        if (options.TrustRepository is null || _trustState is null)
+        {
+            return;
+        }
+        string? pinnedKey;
+        await _trustStateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            pinnedKey = _trustState.Receipts.GetValueOrDefault(manifest.Id)?.PublisherPublicKey;
+        }
+        finally
+        {
+            _trustStateGate.Release();
+        }
+        // 没钉过发布者:首装,或者上一次是旁装/未签名装的。没有可比对的身份,这一闸不该发言。
+        if (string.IsNullOrEmpty(pinnedKey))
+        {
+            return;
+        }
+        string? packageKey = packageInfo.Signature?.PublicKey;
+        if (string.Equals(pinnedKey, packageKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+        string pinned = Fingerprint(pinnedKey) ?? pinnedKey;
+        string? incoming = Fingerprint(packageKey);
+        if (!allowPublisherChange)
+        {
+            throw new PluginPublisherChangedException(manifest.Id, DisplayNameOf(manifest), pinned, incoming,
+                incoming is null
+                    ? $"'{manifest.Id}' was installed from a package signed by {pinned}, but this package is not signed. "
+                      + "Explicit approval is required to replace it."
+                    : $"'{manifest.Id}' was installed from a package signed by {pinned}, but this package is signed by "
+                      + $"{incoming}. Explicit approval is required to replace it.");
+        }
+        Log(incoming is null
+            ? $"Publisher signature of '{manifest.Id}' is gone (was {pinned}); replaced with explicit user approval."
+            : $"Publisher key of '{manifest.Id}' changed ({pinned} -> {incoming}); replaced with explicit user approval.");
+    }
+
+    /// <summary>
+    /// 该插件安装时钉住的发布者指纹(<c>SHA256:…</c>);没钉过就是 <see langword="null" />。
+    /// </summary>
+    /// <remarks>
+    /// 三种情况都是 <see langword="null" />,而且这三种在界面上本来就该看起来一样("这条没有可核对的身份"):
+    /// 应用自带插件(没有收据)、旁装的(TOFU 基线里没有公钥)、以及从未签名的包装上的。
+    /// </remarks>
+    /// <param name="pluginId">插件 id。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>指纹,或 <see langword="null" />。</returns>
+    public async Task<string?> GetPinnedPublisherFingerprintAsync(
+        string pluginId, CancellationToken cancellationToken = default)
+    {
+        await EnsureTrustInitializedAsync(cancellationToken).ConfigureAwait(false);
+        if (_trustState is null)
+        {
+            return null;
+        }
+        await _trustStateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return Fingerprint(_trustState.Receipts.GetValueOrDefault(pluginId)?.PublisherPublicKey);
+        }
+        finally
+        {
+            _trustStateGate.Release();
+        }
     }
 
     /// <summary>读取包签名及可供用户通过独立渠道核对的 SHA-256 公钥指纹。</summary>

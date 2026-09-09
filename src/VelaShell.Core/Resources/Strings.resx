@@ -4232,6 +4232,18 @@ Overwrite it?</value>
 Trusting it will also trust future packages signed by the same key. Plugins can execute code with your account permissions.</value></data>
   <data name="PluginManager_InstallAnyway" xml:space="preserve"><value>Install anyway</value></data>
   <data name="PluginManager_TrustAndInstall" xml:space="preserve"><value>Trust publisher and install</value></data>
+  <data name="PluginManager_PublisherChangedTitle" xml:space="preserve"><value>Plugin publisher changed</value></data>
+  <data name="PluginManager_PublisherChangedWarning" xml:space="preserve"><value>"{0}" was installed from a package signed by:
+
+{1}
+
+This package comes from a different publisher:
+
+{2}
+
+A routine key rotation and a hijacked publishing identity look exactly the same from here. Continue only if the author announced this key through their official channel — the replacement runs with your account permissions.</value></data>
+  <data name="PluginManager_PackageUnsigned" xml:space="preserve"><value>(this package is not signed at all)</value></data>
+  <data name="PluginManager_PublisherPinned" xml:space="preserve"><value>publisher {0}</value></data>
   <data name="PluginManager_SecurityTip" xml:space="preserve"><value>Plugins run with your account permissions and can reach your files, sessions and network. Before installing, confirm where the package came from and check its signature fingerprint — install only from publishers you trust.</value></data>
   <data name="PluginManager_Market" xml:space="preserve"><value>Plugin store</value></data>
   <data name="PluginManager_MarketTip" xml:space="preserve"><value>Browse reviewed plugins at market.easilynet.top</value></data>

@@ -4439,6 +4439,26 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="PluginManager_TrustAndInstall" xml:space="preserve">
     <value>信任发布者并安装</value>
   </data>
+  <data name="PluginManager_PublisherChangedTitle" xml:space="preserve">
+    <value>插件的发布者变了</value>
+  </data>
+  <data name="PluginManager_PublisherChangedWarning" xml:space="preserve">
+    <value>“{0}”当初装的那个包，由这个发布者签名：
+
+{1}
+
+而这个包来自另一个发布者：
+
+{2}
+
+一次正常的密钥轮换，与发布身份被劫持，从这里看长得一模一样。只有作者在官方渠道公告过这把新钥匙时才继续 —— 换上去的插件以你的账户权限运行。</value>
+  </data>
+  <data name="PluginManager_PackageUnsigned" xml:space="preserve">
+    <value>（这个包根本没有签名）</value>
+  </data>
+  <data name="PluginManager_PublisherPinned" xml:space="preserve">
+    <value>发布者 {0}</value>
+  </data>
   <data name="PluginManager_SecurityTip" xml:space="preserve">
     <value>插件以你的账户权限运行，可读写本地文件、会话与网络。安装前请核实插件来源并核对签名指纹，只安装来自可信发布者的插件，以免恶意插件窃取数据或破坏系统。</value>
   </data>

@@ -4439,6 +4439,26 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="PluginManager_TrustAndInstall" xml:space="preserve">
     <value>信任發行者並安裝</value>
   </data>
+  <data name="PluginManager_PublisherChangedTitle" xml:space="preserve">
+    <value>外掛的發行者變了</value>
+  </data>
+  <data name="PluginManager_PublisherChangedWarning" xml:space="preserve">
+    <value>「{0}」當初安裝的那個套件，由這個發行者簽章：
+
+{1}
+
+而這個套件來自另一個發行者：
+
+{2}
+
+一次正常的金鑰輪換，與發行身分遭劫持，從這裡看長得一模一樣。只有作者在官方管道公告過這把新金鑰時才繼續 —— 換上去的外掛以你的帳戶權限執行。</value>
+  </data>
+  <data name="PluginManager_PackageUnsigned" xml:space="preserve">
+    <value>（這個套件根本沒有簽章）</value>
+  </data>
+  <data name="PluginManager_PublisherPinned" xml:space="preserve">
+    <value>發行者 {0}</value>
+  </data>
   <data name="PluginManager_SecurityTip" xml:space="preserve">
     <value>外掛以你的帳戶權限執行，可讀寫本機檔案、工作階段與網路。安裝前請核實外掛來源並核對簽章指紋，只安裝來自可信發行者的外掛，以免惡意外掛竊取資料或破壞系統。</value>
   </data>

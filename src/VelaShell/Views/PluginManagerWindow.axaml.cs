@@ -145,6 +145,7 @@ public partial class PluginManagerWindow : Window
                 return;
             }
             bool allowUntrusted = false;
+            bool trustPublisher = false;
             if (trust.State == VpxSignatureState.Unsigned)
             {
                 allowUntrusted = await MessageDialog.ConfirmAsync(this,
@@ -159,7 +160,7 @@ public partial class PluginManagerWindow : Window
             }
             else if (trust.State == VpxSignatureState.Untrusted)
             {
-                bool trustPublisher = await MessageDialog.ConfirmAsync(this,
+                trustPublisher = await MessageDialog.ConfirmAsync(this,
                     Strings.Get("PluginManager_UntrustedTitle"),
                     Strings.Format("PluginManager_UntrustedWarning",
                         Path.GetFileName(path), trust.PublisherFingerprint ?? "(unavailable)"),
@@ -169,20 +170,67 @@ public partial class PluginManagerWindow : Window
                 {
                     return;
                 }
+                allowUntrusted = true;
+            }
+            // 信任发布者这一步挪到安装之后:这个包可能正是在顶替一个已装插件的发布者身份,
+            // 而那一问要等解出包里的 id 才问得出来。先把新公钥收进信任库,等于用户还没被告知
+            // "换人了",就已经替这把钥匙签下了"以后它的包一律直接信任"。
+            if (!await InstallWithPublisherCheckAsync(vm, path, allowUntrusted))
+            {
+                return;
+            }
+            if (trustPublisher)
+            {
                 try
                 {
                     await vm.TrustPackagePublisherAsync(path);
                 }
                 catch (Exception ex)
                 {
+                    // 装是装上了(它自带的收据钉住了这把公钥),只是没进全局信任库 ——
+                    // 失败方向朝着"信任更少",说清楚即可,不必回滚一次用户明确要的安装。
                     await MessageDialog.ShowMessageAsync(this,
                         Strings.Get("PluginManager_UntrustedTitle"), ex.Message, MessageDialogKind.Error);
-                    return;
                 }
             }
-            await vm.InstallFromVpxAsync(path, allowUntrusted);
         }
     });
+
+    /// <summary>
+    /// 装一次;撞上"发布者换了"就把两个指纹摆给用户,认了再带着授权装第二次。
+    /// </summary>
+    /// <remarks>
+    /// 拦下时那个已经装着的插件一根毫毛都没动(闸在卸载旧版之前),所以"再来一次"是安全的。
+    /// 之所以不由界面先去解析包、把这一问并进前面那个对话框:那样"问的时候看到的"与
+    /// "装下去的"就成了两次独立的解析,中间留一条缝。判断只在 PluginManager 里做一次,
+    /// 界面只负责把它抛出来的那几个字段念给用户听。
+    /// </remarks>
+    /// <returns>是否已经装上。</returns>
+    private async Task<bool> InstallWithPublisherCheckAsync(
+        PluginManagerViewModel vm, string path, bool allowUntrusted)
+    {
+        try
+        {
+            await vm.InstallFromVpxAsync(path, allowUntrusted);
+            return true;
+        }
+        catch (PluginPublisherChangedException ex)
+        {
+            bool approved = await MessageDialog.ConfirmAsync(this,
+                Strings.Get("PluginManager_PublisherChangedTitle"),
+                Strings.Format("PluginManager_PublisherChangedWarning",
+                    ex.DisplayName, ex.PinnedFingerprint,
+                    ex.PackageFingerprint ?? Strings.Get("PluginManager_PackageUnsigned")),
+                confirmText: Strings.Get("PluginManager_InstallAnyway"),
+                danger: true);
+            if (!approved)
+            {
+                return false;
+            }
+            await vm.InstallFromVpxAsync(path, allowUntrusted, allowPublisherChange: true);
+            return true;
+        }
+    }
 
     /// <summary>点击"插件商店"链接:交给系统默认浏览器打开(地址存放在控件 Tag)。</summary>
     private void OpenMarket_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>

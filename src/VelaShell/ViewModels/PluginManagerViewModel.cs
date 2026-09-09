@@ -88,6 +88,23 @@ public sealed class PluginRowViewModel(PluginDescriptor descriptor, bool hasTerm
     /// <summary>是否可卸载(用户安装,非应用自带)。</summary>
     public bool CanUninstall { get; init; }
 
+    /// <summary>
+    /// 安装时钉住的发布者公钥指纹;<see langword="null" /> = 这一条没有可核对的身份
+    /// (应用自带、命令行旁装、或者装的就是个未签名的包)。
+    /// </summary>
+    public string? PublisherFingerprint { get; init; }
+
+    /// <summary>是否有发布者身份可展示(没有就整块隐藏,而不是显示一行"未知")。</summary>
+    public bool HasPublisher => !string.IsNullOrEmpty(PublisherFingerprint);
+
+    /// <summary>
+    /// 发布者展示文案。指纹<b>给全</b>,由界面负责截断显示与悬停出全文 ——
+    /// 在这里先截成八位再交出去,用户拿到的就是一串没法跟作者官方渠道对照的东西,
+    /// 而"看着像能核对"比"明说不能核对"更糟。
+    /// </summary>
+    public string PublisherText =>
+        HasPublisher ? Strings.Format("PluginManager_PublisherPinned", PublisherFingerprint!) : "";
+
     /// <summary>卸载按钮文案。</summary>
     [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
     public string UninstallText => Strings.Get("PluginManager_Uninstall");
@@ -231,12 +248,27 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         _manager.TrustPackagePublisherAsync(vpxPath);
 
     /// <summary>从 .vpx 文件安装。未知来源只能由界面明确确认后单次放行。</summary>
-    public async Task InstallFromVpxAsync(string vpxPath, bool allowUntrustedPackage = false)
+    /// <param name="vpxPath">包路径。</param>
+    /// <param name="allowUntrustedPackage">是否单次放行未签名 / 发布者陌生的包。</param>
+    /// <param name="allowPublisherChange">是否单次放行"换了发布者"的覆盖安装。</param>
+    /// <exception cref="PluginPublisherChangedException">
+    /// 发布者与钉住的那一个对不上,而调用方没给授权。**这一条不吞** —— 它不是失败,
+    /// 而是只有界面才问得出口的一个问题(要摆两个指纹给用户看)。吞成一行状态提示,
+    /// 用户看到的就是"装不上",既不知道为什么,也没有回答的机会。
+    /// </exception>
+    public async Task InstallFromVpxAsync(string vpxPath, bool allowUntrustedPackage = false,
+        bool allowPublisherChange = false)
     {
         try
         {
-            string id = await _manager.InstallFromVpxAsync(vpxPath, allowUntrustedPackage).ConfigureAwait(false);
+            string id = await _manager
+                              .InstallFromVpxAsync(vpxPath, allowUntrustedPackage, allowPublisherChange)
+                              .ConfigureAwait(false);
             SetNotice(Strings.Format("PluginManager_Installed", id));
+        }
+        catch (PluginPublisherChangedException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -254,7 +286,11 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         foreach (PluginDescriptor descriptor in descriptors)
         {
             bool grant = _gate is not null && await _gate.HasGrantAsync(descriptor.Id).ConfigureAwait(false);
-            rows.Add(new(descriptor, grant) { CanUninstall = _manager.IsUninstallable(descriptor.Id) });
+            rows.Add(new(descriptor, grant)
+            {
+                CanUninstall = _manager.IsUninstallable(descriptor.Id),
+                PublisherFingerprint = await _manager.GetPinnedPublisherFingerprintAsync(descriptor.Id).ConfigureAwait(false)
+            });
         }
         void Apply()
         {
