@@ -3159,5 +3159,9 @@ OpenSSH 的配置文件**从不存密码**。所以 `HasEncryptedPassword` 恒�
 文件不存在给空结果,外加一条读**本机真实 `~/.ssh/config`** 的端到端冒烟(没有该文件时
 `Assert.Inconclusive`,按 AGENTS.md 的纪律留 `[SKIP]` 痕迹)。
 
-⚠️ **文档待同步 velashell-docs**:`{zh,en}/host/交互与界面规格.md`(导入对话框现在是三个来源,
-预览行多了「使用密钥文件」一态)。
+**文档已同步 velashell-docs**:[VelaShellLabs/velashell-docs#26](https://github.com/VelaShellLabs/velashell-docs/pull/26)
+—— 新开 `{zh,en}/host/{会话导入,session-import}.md`。原以为该改 `交互与界面规格.md`,
+翻过去才发现**会话导入从 2026-07 落地起就一篇文档都没有**,而那份规格是按屏幕区域组织的
+(侧边栏、标签行、状态栏……),一扇按需弹出的对话框放不进去。所以补的是整块:三个来源、
+对话框行为、`ssh_config` 的解析规则、以及明写**不认哪些关键字**。已挂进两份 host README
+与仓库首页快速入口表。
