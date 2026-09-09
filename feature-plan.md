@@ -226,7 +226,7 @@ pie showData
 | :---: | :---: | --- | --- | --- |
 | ⏳ | 🟠 P1 | **SSH Agent 转发** | Xshell / MobaXterm / Tabby / WindTerm / Termius | 六家全有，我们没有 —— **对标矩阵里最扎眼的一格**。跳板场景下没有它，用户只能把私钥拷到跳板机上，那是实打实的安全倒退。⚠️ **动手前先确认 Tmds.Ssh 是否支持 `auth-agent-req@openssh.com`**；不支持就要么等上游、要么按 [`AGENTS.md`](AGENTS.md) 的纪律给它提 issue，**不要自己在 `Infrastructure/Ssh/` 外面绕**。与 [Agent 自动加载](#-p0--存了但不生效的开关)是同一条线上的两件事 |
 | ⏳ | 🟡 P2 | **算法协商可配（cipher / kex / hostkey / MAC）** | Xshell / SecureCRT / PuTTY | 连老设备（网络设备、老 RHEL）时是刚需。**一半已经有了**：`Infrastructure/Ssh/SshAlgorithmDiagnostics.cs` 已经会在协商失败时算出「两边交集为空」并说清缺哪类算法 —— 从「诊断得出来」到「让用户配得上」，只差把清单落到 `SessionProfile` 并接进 `SshClientSettings` |
-| ⏳ | 🟢 P3 | **SSH 压缩开关** | 各家都有 | 弱网 / 高延迟链路上有意义。落点同上，一个 profile 字段 + 一个 `SshClientSettings` 属性 |
+| ⏳ | 🟢 P3 | **SSH 压缩开关** | 各家都有 | 弱网 / 高延迟链路上有意义。⚠️ **「落点同上」已核实为错（2026-09-08，Tmds.Ssh 0.24.0）**：kex / cipher / mac / hostkey 四类算法在 `SshClientSettings` 上都是 `public` 可配的，**唯独 `CompressionAlgorithmsClientToServer` / `ServerToClient` 是 `internal`**；且 `SupportedCompressionAlgorithms`、`EnableCompressionAlgorithms` 两份内部名单里都只有一个 `none` —— 库里**没有 zlib 实现**（整个程序集搜不到 `zlib`），`SshConfigOption` 枚举里也没有 `Compression`。0.24.0 已是 nuget 上的最新版。所以这条**不是「接一根线」**，而是要么等上游、要么按 [`AGENTS.md`](AGENTS.md) 的纪律给 Tmds.Ssh 提 issue / PR（与 SSH Agent 转发同一条纪律，不要自己在 `Infrastructure/Ssh/` 外面绕）。**上游支持之前不要加这个开关** —— 加了就是 [P0 那张表](#-p0--存了但不生效的开关)里的新一条 |
 | 💡 | 🟢 P3 | **更多协议插件** | — | RDP / VNC / Kubernetes exec / 数据库客户端。**这正是 `Protocols` + `Workspaces` 能力面存在的意义** —— 宿主一行不用改，Telnet / 串口 / Redis / S3 / Docker 面板已经把这条路走通了五遍。优先级交给插件市场的真实下载量决定，不要在宿主里拍脑袋排 |
 | ❌ | — | **X11 转发** | MobaXterm（自带 X 服务端） | 见下面的[确认不做](#-确认不做)一栏 |
 
