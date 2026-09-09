@@ -42,8 +42,8 @@ public sealed class NotificationSourcesTests
 
         IReadOnlyList<NotificationItem> collected = await NotificationSources.CollectAsync(settings, feed, null);
 
-        Assert.IsFalse(collected.Any(i => i.Kind == NotificationKind.Promotion));
-        Assert.IsTrue(collected.Any(i => i.Id == "news"), "公告本身照常收。");
+        Assert.DoesNotContain(i => i.Kind == NotificationKind.Promotion, collected);
+        Assert.Contains(i => i.Id == "news", collected, "公告本身照常收。");
     }
 
     [TestMethod]
@@ -54,7 +54,7 @@ public sealed class NotificationSourcesTests
 
         IReadOnlyList<NotificationItem> collected = await NotificationSources.CollectAsync(settings, feed, null);
 
-        Assert.IsTrue(collected.Any(i => i.Id == "sale"));
+        Assert.Contains(i => i.Id == "sale", collected);
     }
 
     /// <summary>「启动时检查更新」关掉时,连网络请求都不该发。</summary>

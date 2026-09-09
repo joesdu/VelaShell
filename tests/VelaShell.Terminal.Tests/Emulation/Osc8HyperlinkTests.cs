@@ -160,7 +160,7 @@ public class Osc8HyperlinkTests
         TerminalEmulator e = New(60);
         Feed(e, Link(Uri, "abcdefghijklmnopqrstuvwxyz"));
 
-        Assert.IsTrue(e.PrintRunCharsForTest > 0, "本用例必须真的走到批量快路径,否则它什么也没验。");
+        Assert.IsGreaterThan(0, e.PrintRunCharsForTest, "本用例必须真的走到批量快路径,否则它什么也没验。");
         for (int col = 0; col < 26; col++)
         {
             Assert.AreEqual(Uri, UriAt(e, col), $"第 {col} 列。");

@@ -28,7 +28,7 @@ public sealed class SessionRecorderTests
         recorder.Write("hello world"u8.ToArray());
         await recorder.DisposeAsync();
 
-        Assert.AreEqual(1, store.Chunks.Count, "最后一块没有落盘。");
+        Assert.HasCount(1, store.Chunks, "最后一块没有落盘。");
         Assert.AreEqual("hello world", System.Text.Encoding.UTF8.GetString(store.Chunks[0].Data));
         SessionRecording saved = store.LastSaved!;
         Assert.IsNotNull(saved.EndedAtUtc, "结束时间没写进去 —— 列表里会显示成一条永远在录的记录。");
@@ -116,7 +116,7 @@ public sealed class SessionRecorderTests
         recorder.Write("second"u8.ToArray());
         await recorder.DisposeAsync();
 
-        Assert.AreEqual(chunksAtFailure, store.Chunks.Count);
+        Assert.HasCount(chunksAtFailure, store.Chunks);
     }
 
     private static async Task WaitUntilAsync(Func<bool> done)

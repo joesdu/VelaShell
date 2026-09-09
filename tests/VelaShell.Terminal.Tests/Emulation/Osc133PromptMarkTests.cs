@@ -28,10 +28,7 @@ public class Osc133PromptMarkTests
     private static string D(int code) => $"\e]133;D;{code}\e\\";
 
     /// <summary>跑一条完整的命令：提示符 → 命令回显 → 换行 → 输出 → 结束。</summary>
-    private static void RunCommand(TerminalEmulator e, string command, string output, int exitCode)
-    {
-        Feed(e, A + "$ " + B + command + "\r\n" + C + output + "\r\n" + D(exitCode));
-    }
+    private static void RunCommand(TerminalEmulator e, string command, string output, int exitCode) => Feed(e, A + "$ " + B + command + "\r\n" + C + output + "\r\n" + D(exitCode));
 
     private static PromptMark MarkAt(TerminalEmulator e, int abs) => e.Screen.ViewLine(abs).Mark;
 
@@ -208,7 +205,7 @@ public class Osc133PromptMarkTests
                 prompts.Add((abs, e.Screen.ViewLine(abs).ExitCode));
             }
         }
-        Assert.AreEqual(2, prompts.Count, "重排前后提示符条数应当一条不差。");
+        Assert.HasCount(2, prompts, "重排前后提示符条数应当一条不差。");
         Assert.AreEqual(0, prompts[0].Exit);
         Assert.AreEqual(3, prompts[1].Exit, "失败的退出码也要活过重排。");
     }
@@ -262,7 +259,7 @@ public class Osc133PromptMarkTests
         }
 
         int prompt = CommandBlocks.NextPrompt(e.Screen, -1);
-        Assert.IsTrue(prompt >= 0, "滚进回滚区的提示符标记应当还在。");
+        Assert.IsGreaterThanOrEqualTo(0, prompt, "滚进回滚区的提示符标记应当还在。");
         Assert.AreEqual(7, e.Screen.ViewLine(prompt).ExitCode);
     }
 

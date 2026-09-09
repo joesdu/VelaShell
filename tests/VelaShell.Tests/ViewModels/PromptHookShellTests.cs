@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;

@@ -162,7 +162,7 @@ public sealed class CommandBlockUiTests
         // 没有标记可跳还吞掉一组按键,只会让远端程序的键位神秘失灵。
         OnUi(() =>
         {
-            var control = NewControl();
+            VelaTerminalControl control = NewControl();
             var sent = new List<byte[]>();
             control.TypedInput += bytes => sent.Add(bytes);
             (_, Window window) = Show(control);

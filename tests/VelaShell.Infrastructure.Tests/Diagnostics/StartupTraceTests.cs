@@ -59,7 +59,7 @@ public sealed class StartupTraceTests
         StartupTrace.Mark("");
         StartupTrace.Mark("   ");
 
-        Assert.AreEqual(before, StartupTrace.Marks.Count);
+        Assert.HasCount(before, StartupTrace.Marks);
     }
 
     [TestMethod]
@@ -91,7 +91,7 @@ public sealed class StartupTraceTests
             StartupTrace.WriteSummaryOnce();
 
             // 不假设本测试是进程里第一个调用者(静态闸是进程级的):只断言"第一次之后再叫也不写"。
-            Assert.IsTrue(afterFirst <= 1, $"第一次调用最多写一份,实际写了 {afterFirst} 份。");
+            Assert.IsLessThanOrEqualTo(1, afterFirst, $"第一次调用最多写一份,实际写了 {afterFirst} 份。");
             Assert.AreEqual(afterFirst, listener.Count, "第二次起应当是纯空操作。");
         }
         finally

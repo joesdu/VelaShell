@@ -64,7 +64,7 @@ public sealed class UniqueNamesTests
     [TestMethod]
     public void CandidatesAreBounded() =>
         // 一万个同名文件时继续找下去只是把界面卡住;那种目录本身已经出了别的问题。
-        Assert.AreEqual(UniqueNames.MaxAttempts - 1, UniqueNames.Candidates("f").Count());
+        Assert.HasCount(UniqueNames.MaxAttempts - 1, UniqueNames.Candidates("f"));
 
     [TestMethod]
     public void CandidatesAreLazy() =>

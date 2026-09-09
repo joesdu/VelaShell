@@ -104,7 +104,7 @@ internal static class SessionImportWriter
         {
             return;
         }
-        Dictionary<Guid, SessionProfile> byId = byAlias.Values
+        var byId = byAlias.Values
             .DistinctBy(static p => p.Id)
             .ToDictionary(static p => p.Id);
 
