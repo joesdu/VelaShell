@@ -166,7 +166,7 @@
             </StackPanel>
           </StackPanel>
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-            <ComboBox MinHeight="0" Height="22" Padding="6,0" FontSize="{DynamicResource VelaFontSize11}"
+            <ComboBox MinHeight="0" Height="22" Padding="6,0" FontSize="{DynamicResource VelaFontSize12}"
                       ItemsSource="{Binding Roots}" SelectedItem="{Binding SelectedRoot, Mode=OneWay}"
                       SelectionChanged="OnRootSelectionChanged"
                       VerticalContentAlignment="Center" MaxDropDownHeight="320">

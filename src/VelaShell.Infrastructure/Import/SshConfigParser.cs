@@ -301,7 +301,7 @@ internal static class SshConfigParser
     /// <summary>按空白切分记号,并去掉每个记号两端的引号。</summary>
     private static IEnumerable<string> SplitTokens(string value)
     {
-        foreach (string token in value.Split((char[])[' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (string token in value.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             string unquoted = Unquote(token);
             if (unquoted.Length > 0)

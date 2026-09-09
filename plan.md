@@ -3245,3 +3245,78 @@ ANSI 前景与各自选区底的亮度差,低于 `MinForegroundDelta`(0.18)即�
 而且整定二分停在「刚好够」的那一步、填充色再量化到 8bit,屏幕上量到的总比算出来的低零点几
 (这次 16.0 → 15.87,#405 当年 14.0 → 13.9 是同一回事)。地板贴着实现值走,它会因为
 一个色阶的舍入而红 —— 第一次改成 18 时正是这么红的。
+
+---
+
+## ✅ 60. 2026-09-09 下拉列表的字为什么在亮色主题下发糊:两条假设被像素实测推翻(用户反馈)
+
+用户报「切换主题后字体变得非常糊」,并指明是下拉列表(主题选择那个 ComboBox)的文字,
+且「所有亮色都不行,所有深色看起来都没问题」。
+
+### 一、先说两条被推翻的假设 —— 都是猜的,都被实测打掉
+
+1. **「弹层表面半透明,文字画在非不透明表面上丢了次像素抗锯齿」**。听着合理,
+   写了个 headless 探针把 Fluent 的资源读出来:`ComboBoxDropDownBackground` 是
+   **完全不透明**的 `#2B2B2B`(亮色变体 `#F2F2F2`)。假设不成立。
+2. **「弹层落在半个像素上,所以字形填不满」**。采截图像素时看到 y=130/131 两行都不是底色,
+   判成「边框被劈成两行」。**读错了** —— 那是两条不同的线:y=130 是 ComboBox 自己的下边框
+   (`#F3D9E3`),y=131 是弹层的上边框(`#E3BECC`),各自都是干净的单像素。弹层没有偏移。
+
+留着这两条,是因为下次再遇到「界面发糊」大概率还会先想到它们。
+
+### 二、真因:11px 的比例字体填不满像素
+
+决定性的一步是**同款对同款**:闭合框里的字与弹层里的字**一样糊**,而它俩一个在弹层外、
+一个在弹层内 —— 于是跟弹层无关。逐区采样同一张截图(设置页,Sakura):
+
+| 文字 | 字号 / 字重 | 达到实墨的像素数 |
+| --- | --- | --- |
+| 页面标题「外观」 | 18 SemiBold | 21 |
+| row-label「主题模式」 | 12 Medium | 17 |
+| row-desc(等宽 Cascadia) | ~11 Regular | 50 |
+| **闭合框「Sakura」** | **11 Regular 比例(Inter)** | **1** |
+| **弹层每一条** | **11 Regular 比例(Inter)** | **1** |
+
+11px 的 Inter Regular 笔画只有一个像素出头,**没有任何一个像素被完全覆盖**。
+深色主题上半覆盖的亮笔画照样发亮,看不出来;亮色主题上半覆盖的深笔画读作灰 ——
+「所有亮色不行、深色没问题」就是这么来的,不是配色对比度不够。
+
+### 三、顺带查出一处真缺陷:下拉是唯一没纳入令牌体系的弹层
+
+同一次探针把 Fluent 的整套下拉资源打了出来,全是**写死值**、不在令牌体系内:
+底 `#2B2B2B` / 边框 `Black` / 条目字恒为 `White`·`Black` / 选中底 `#0078D7`
+(Windows 经典蓝,不属于任何一套 VelaShell 主题)。
+
+而 `DockStyles.axaml` 里那段注释早就写过同一个病因 —— 当时治了 `FlyoutPresenter`、
+`ToolTip`、`ContextMenu`、`MenuFlyoutPresenter`,**唯独漏了 ComboBox 下拉**。
+于是九套主题换来换去,那一块岿然不动。
+
+改法是把这十个 Fluent 键别名到令牌上,写在 `ThemeTokenApplier` 的**主题字典那一格**,
+而不是 `DockStyles` 的模板部件选择器上:部件名(`Border#PopupBorder` 之类)是 Fluent 的
+内部实现、会随 Avalonia 版本改,资源键才是公开契约;写在同一格还保证弹层底与条目文字
+出自同一次写入,不会一个新一个旧。
+
+### 四、落地的是字号,不是字重
+
+字号 11 → 12。全仓有 **5 处**把下拉钉死在 11(`SettingsView` / `ConnectionProfileView`
+两个样式,`LocalFilePaneView` / `LocalPathPickerDialog` / `TunnelPanelView` 三个内联),
+其余走默认 13 —— 这正是用户说「**部分**下拉列表还是不清晰」的那一部分。
+**字号会继承进 `ComboBoxItem`**(实测:在 ComboBox 上设 12,容器读出来就是 12),
+所以改 ComboBox 这一处即同时管住闭合态与下拉列表。
+
+⚠️ **中途试过压字重(Regular → Medium → SemiBold),最终由用户撤下**,本次未合入。
+过程中查清两件仍然有用的事,记在这里免得重查:Avalonia 的 Inter 包内置
+Thin / Light / Regular / Medium / SemiBold / Bold **六个真实静态字面**(不是合成加粗);
+而回退路径 Segoe UI 上 `Medium`(500) 会被吸附回 `Normal`(400),`SemiBold`(600) 才落到
+真实的 "Segoe UI Semibold" —— 没装 Inter 的环境下 Medium 是个空操作。
+
+### 五、验收
+
+`dotnet build VelaShell.slnx -warnaserror` 零警告零错误;`dotnet test VelaShell.slnx`
+3301 通过 / 19 跳过 / 0 失败。`ThemeTokenApplierTests` 新增
+`EveryTheme_OverridesFluentComboBoxPopupBrushes`:逐主题核对那十个 Fluent 键都被顶掉,
+并钉住「弹层底 = `VelaBgSurface`、条目字 = `VelaTextPrimary`」——
+它们一个跟主题走、另一个不跟,正是这次要消掉的形态。
+
+⚠️ 固定高度的两个下拉(`LocalFilePaneView` / `LocalPathPickerDialog`,`Height=22`)
+字号上调后未做像素复核,是本次唯一没验到的地方。

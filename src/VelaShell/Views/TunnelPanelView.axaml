@@ -114,7 +114,7 @@
               BorderThickness="0,0,0,1">
         <StackPanel Spacing="4">
           <TextBlock Classes="form-label" Text="{loc:Localize Tunnel_ServerLabel}" />
-          <ComboBox MinHeight="26" FontSize="{DynamicResource VelaFontSize11}"
+          <ComboBox MinHeight="26" FontSize="{DynamicResource VelaFontSize12}"
                     FontFamily="{DynamicResource VelaUiMonoFont}"
                     HorizontalAlignment="Stretch"
                     PlaceholderText="{loc:Localize Tunnel_SelectServerPlaceholder}"

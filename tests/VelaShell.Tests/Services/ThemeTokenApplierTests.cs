@@ -36,10 +36,44 @@ public sealed class ThemeTokenApplierTests
             [
                 .. resources.Keys.OfType<string>()
                     .Where(key => key != "VelaShadowWindow")
+                    // Fluent 别名键(ComboBox 下拉那几个)不是令牌本身,由下面那条用例单独核对。
+                    .Where(key => !ThemeTokenApplier.FluentAliasKeys.Contains(key))
                     .Order(StringComparer.Ordinal),
             ];
             Assert.AreSequenceEqual(expected, actual, $"{theme.Name} 写出的令牌集合与其它主题不一致。");
             Assert.IsTrue(resources.ContainsKey("VelaShadowWindow"), $"{theme.Name} 少了浮层投影令牌。");
+        }
+    }
+
+    /// <summary>
+    /// Fluent 下拉弹层那几个键必须逐主题被顶掉。
+    /// <para>
+    /// 不顶的话它们是 Fluent 写死的值(实测:底 <c>#2B2B2B</c>、条目字 <c>White</c>、
+    /// 选中底 <c>#0078D7</c> 这个 Windows 经典蓝),九套主题换来换去岿然不动 ——
+    /// 切完主题打开下拉,那一块与周围每一处已上色的表面都对不上。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void EveryTheme_OverridesFluentComboBoxPopupBrushes()
+    {
+        Assert.IsNotEmpty(ThemeTokenApplier.FluentAliasKeys);
+        foreach (UiTheme theme in UiThemeCatalog.All)
+        {
+            var resources = new ResourceDictionary();
+            ThemeTokenApplier.Fill(resources, theme);
+            foreach (string key in ThemeTokenApplier.FluentAliasKeys)
+            {
+                Assert.IsTrue(resources.ContainsKey(key), $"{theme.Name} 没顶掉 Fluent 的 {key}。");
+            }
+            // 弹层底与条目文字必须来自同一套令牌 —— 一个跟主题走、另一个不跟,正是"糊"的来源。
+            Assert.AreEqual(
+                ColorOf(resources, "VelaBgSurface"),
+                ColorOf(resources, "ComboBoxDropDownBackground"),
+                $"{theme.Name} 的下拉底不是 VelaBgSurface。");
+            Assert.AreEqual(
+                ColorOf(resources, "VelaTextPrimary"),
+                ColorOf(resources, "ComboBoxItemForeground"),
+                $"{theme.Name} 的下拉条目文字不是 VelaTextPrimary。");
         }
     }
 

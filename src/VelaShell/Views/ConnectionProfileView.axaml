@@ -52,7 +52,9 @@
       <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="MinHeight" Value="32" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <!-- 12 而非 11:11px 的比例字体笔画填不满像素,亮色主题下整列读作灰(同 SettingsView 那处的说明)。
+           字号继承进弹层条目,一处管两处。 -->
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
       <Setter Property="HorizontalAlignment" Value="Stretch" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
