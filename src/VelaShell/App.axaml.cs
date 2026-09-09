@@ -36,6 +36,17 @@ namespace VelaShell;
 /// </summary>
 public class App : Application
 {
+    /// <summary>
+    /// 拆除 DI 容器的时限。要装得下最慢那个插件的停用
+    /// (<c>PluginManagerOptions.DeactivationTimeout</c>,2 秒)外加其余服务的收尾 ——
+    /// 装不下的话,IM 桥接那条长连接的 Close 握手每次退出都会被打断,于是从 WebSocket
+    /// 到 TLS 到套接字连锁抛一串「连接被中止」,平台侧看到的也不是"它下线了"。
+    /// </summary>
+    private static readonly TimeSpan ServiceDisposeBudget = TimeSpan.FromSeconds(3);
+
+    /// <summary>数据库刷盘关库的时限(独立于容器,见 <see cref="DisposeServicesOnExit" />)。</summary>
+    private static readonly TimeSpan DatabaseDisposeBudget = TimeSpan.FromSeconds(5);
+
     private ServiceProvider? _serviceProvider;
     private AppSettings? _startupSettings;
     private readonly SyncDebounceLifecycle _syncDebounce = new();
@@ -489,6 +500,13 @@ public class App : Application
     /// 同步执行这一步,因此一个缓慢或无响应的连接会让进程在窗口关闭后仍然存活很久。
     /// 现改为带短超时的异步释放(这也是 IAsyncDisposable 服务的正确处置路径),
     /// 使应用能及时退出;进程拆除时任何仍在关闭中的套接字由操作系统回收。
+    /// <para>
+    /// <b>数据库不共用这个预算。</b>容器的超时是给「可能永远回不来的网络收尾」兜底的,而刷盘不是
+    /// 那类事:它只是本地 I/O,而且是唯一一件被掐断就会丢数据的事 —— 被掐断的刷盘还会在盘上留下
+    /// 半截段临时文件,毒到之后每一次落到同一段号的刷盘(见
+    /// <see cref="Infrastructure.Persistence.SonnetDbEngine" /> 的清理)。所以引擎单独拿一份
+    /// 预算,排在容器之后:前面的插件停用、SSH 断开再慢,也吃不到刷盘头上。
+    /// </para>
     /// </summary>
     private void DisposeServicesOnExit()
     {
@@ -499,9 +517,38 @@ public class App : Application
         {
             return;
         }
+        // 先把引擎拿在手上:容器的预算耗尽、拆除半途而废时,下面那步还能补上刷盘。
+        // (此刻它必然已经建好 —— 启动读设置就是经它来的,这里不会引发一次新的开库。)
+        Infrastructure.Persistence.SonnetDbEngine? engine =
+            provider.GetService<Infrastructure.Persistence.SonnetDbEngine>();
         try
         {
-            provider.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2));
+            provider.DisposeAsync().AsTask().Wait(ServiceDisposeBudget);
+        }
+        catch
+        {
+            // 尽力关闭:绝不阻塞或中断退出路径。
+        }
+        FlushDatabaseOnExit(engine);
+    }
+
+    /// <summary>
+    /// 确保 SonnetDB 引擎关干净(WAL 与内存表落盘)。
+    /// </summary>
+    /// <remarks>
+    /// <c>Dispose</c> 幂等:容器已经关过了,这里立刻返回;没关成才真去刷。放后台任务上等,
+    /// 是为了刷盘真卡住时仍能退出 —— 那种情况下我们不比改动前更糟,而常态下换来的是
+    /// 「刷盘一定跑完」。
+    /// </remarks>
+    private static void FlushDatabaseOnExit(Infrastructure.Persistence.SonnetDbEngine? engine)
+    {
+        if (engine is null)
+        {
+            return;
+        }
+        try
+        {
+            Task.Run(engine.Dispose).Wait(DatabaseDisposeBudget);
         }
         catch
         {

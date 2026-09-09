@@ -20,8 +20,21 @@ namespace VelaShell.Plugin.Ai.Bridge;
 /// </remarks>
 internal static class ChannelShutdown
 {
-    /// <summary>优雅关闭的宽限:发 Close 帧、以及等对端回 Close 各给这么多时间。</summary>
-    private static readonly TimeSpan CloseGrace = TimeSpan.FromSeconds(2);
+    /// <summary>
+    /// 优雅关闭的宽限:发 Close 帧、以及等对端回 Close 各给这么多时间。
+    /// </summary>
+    /// <remarks>
+    /// <b>这个数是被上游的退出预算框住的,不是随手定的。</b>两段宽限是串起来花的,最坏一条连接
+    /// 要 2×,而整个插件的停用被宿主卡在 <c>PluginManagerOptions.DeactivationTimeout</c>
+    /// (2 秒)之内。原来这里写 2 秒 —— 光第一段就把停用预算用光了,于是优雅收摊<b>永远走不完</b>:
+    /// 进程在 Close 握手中途退出,底下的 WebSocket / TLS / 套接字连锁抛出一串
+    /// 「连接被中止」,正是这个类开头要避免的那件事。
+    /// <para>
+    /// 700ms 对一次 Close 帧往返是十来倍的余量(对端在线时实测几十毫秒),而对端真失联时,
+    /// 多等的每一毫秒都只是在拖慢退出 —— 那条路的结局是 <c>Abort</c>,等多久都一样。
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan CloseGrace = TimeSpan.FromMilliseconds(700);
 
     /// <summary>
     /// 可取消的等待:等满返回 true,被取消返回 false —— 不抛。
