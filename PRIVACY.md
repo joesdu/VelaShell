@@ -52,9 +52,10 @@ The application data folder is `~/.velashell` on Windows, macOS, and Linux. On f
 after this location changed, VelaShell migrates the former platform-specific data directory
 into this folder and removes the former directory after verification.
 
-VelaShell also **reads** your existing OpenSSH configuration in `~/.ssh` (keys and
-`known_hosts`) so that keys you already use with OpenSSH, Git, and other tools work without
-being duplicated. These files are read from and written to on your device only.
+VelaShell also **reads** your existing OpenSSH configuration in `~/.ssh` (keys, `known_hosts`,
+and — only when you run the session import — `config`) so that keys you already use with
+OpenSSH, Git, and other tools work without being duplicated. These files are read from and
+written to on your device only.
 
 You can delete all of this at any time by removing the corresponding folder, or by using the
 in-app controls under Settings or Plugin Manager.
@@ -191,8 +192,9 @@ VelaShell 发起的每一个网络连接,都完整列在下方。
 应用数据目录在 Windows、macOS 与 Linux 上统一为 `~/.velashell`。位置变更后的首次启动会把
 原平台数据目录迁入此目录，校验成功后删除原目录。
 
-VelaShell 还会**读取**你既有的 OpenSSH 配置(`~/.ssh` 下的密钥与 `known_hosts`),使你已经在
-OpenSSH、Git 等工具中配置好的密钥无需重复配置即可使用。这些文件的读写全部发生在你的设备上。
+VelaShell 还会**读取**你既有的 OpenSSH 配置(`~/.ssh` 下的密钥、`known_hosts`,以及仅在你执行
+会话导入时读取的 `config`),使你已经在 OpenSSH、Git 等工具中配置好的密钥无需重复配置即可使用。
+这些文件的读写全部发生在你的设备上。
 
 你可以随时删除对应目录,或通过设置、插件管理器中的相应功能清除这些数据。
 

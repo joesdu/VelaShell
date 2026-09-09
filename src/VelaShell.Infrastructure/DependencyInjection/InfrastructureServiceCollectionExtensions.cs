@@ -74,8 +74,11 @@ public static class InfrastructureServiceCollectionExtensions
             new(sp.GetRequiredService<ISessionRepository>()));
         services.AddSingleton<WinScpImportService>(sp =>
             new(sp.GetRequiredService<ISessionRepository>()));
+        services.AddSingleton<SshConfigImportService>(sp =>
+            new(sp.GetRequiredService<ISessionRepository>()));
         services.AddSingleton<ISessionImportService>(sp => sp.GetRequiredService<XshellImportService>());
         services.AddSingleton<ISessionImportService>(sp => sp.GetRequiredService<WinScpImportService>());
+        services.AddSingleton<ISessionImportService>(sp => sp.GetRequiredService<SshConfigImportService>());
         services.AddSingleton<IHostKeyService>(sp =>
         {
             VelaShellStoragePaths paths = sp.GetRequiredService<VelaShellStoragePaths>();

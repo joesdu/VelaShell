@@ -205,7 +205,7 @@
                                          FontSize="{DynamicResource VelaFontSize10}"
                                          FontFamily="{DynamicResource VelaUiMonoFont}" />
                             </StackPanel>
-                            <TextBlock Grid.Column="3" Text="{Binding PasswordStatus}"
+                            <TextBlock Grid.Column="3" Text="{Binding CredentialStatus}"
                                        Foreground="{DynamicResource VelaTextMuted}"
                                        FontSize="{DynamicResource VelaFontSize10}" VerticalAlignment="Center" />
                           </Grid>

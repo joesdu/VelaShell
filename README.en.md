@@ -74,7 +74,7 @@ Together, VelaShell means **"a terminal as your sail, riding the signal winds to
   A dock framework written from scratch with zero third-party dependencies (it replaced Dock.Avalonia): tabs, five-zone edge splitting, merging across groups and tab reordering, so multiple terminals can run side by side.
 
 - **Session management and import**  
-  The explorer keeps connection profiles in groups (create/edit/delete/double-click to connect); the sidebar's "recent connections" shows name-group plus relative time, survives restarts, and reconnects on double-click. Existing sessions can be imported from **WinSCP** and **Xshell**.
+  The explorer keeps connection profiles in groups (create/edit/delete/double-click to connect); the sidebar's "recent connections" shows name-group plus relative time, survives restarts, and reconnects on double-click. Existing sessions can be imported from **WinSCP**, **Xshell** and your OpenSSH **`~/.ssh/config`** (`Host` aliases, with `IdentityFile` becoming key auth and `ProxyJump` becoming a jump-host link).
 
 - **Resource monitor**  
   Live charts for the remote host: CPU (overall, per core, time breakdown, clock, context switches), memory (including cache/buffers/swap), disks (devices, mount points, filesystems, capacity), network connections and the process list.

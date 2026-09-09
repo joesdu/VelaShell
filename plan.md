@@ -458,7 +458,7 @@ RemoteInitialPath `"/home/user"` → `""`（空 = 家目录）。
 | :---: | :---: | --- | --- |
 | 7 | ✅ | **多会话同步输入** | `Services/SyncInputCoordinator.cs` 对等频道模型（标签右键 A/B/C/D 频道菜单）。挂钩 `TypedInput`（**仅用户产生的输入**，不含协议自动应答），直写同频道其他标签的 PTY —— 走桥的 `SendRaw`，不经接收端输入事件，因此既不回环也不驱动接收端的补全弹层 |
 | 8 | ✅ | **ZMODEM（rz/sz）** | **自研协议引擎**（未走 trzsz）：`Core/ZModem/` 传输无关引擎 + `Terminal/ZModem/` 自动接管路由。后续补齐 XMODEM / YMODEM（`Core/XYModem/`）。⚠️ **测试教训**：互操作期望值必须按 lrzsz `zm.c`/`zmodem.h` **手工构造**（见 `LrzszInteropTests`）—— 用自家编码器生成期望值时，编解码同时错也照样全绿，CRC 双重增广的 bug 当初正是这么溜进来的 |
-| 9 | ⏳ | SSH config 导入 | 见 [`feature-plan.md`](feature-plan.md#-会话与工作区) —— 导入框架已就绪，追加一行 DI 即可 |
+| 9 | ✅ | **SSH config 导入** | 2026-09-09 落地（§58）：`Infrastructure/Import/SshConfigParser.cs` 按 OpenSSH 语义解析 `~/.ssh/config`（块结构 + `Include` 就地展开 + 「先出现者胜」取值 + 通配/取反匹配），`SshConfigImportService` 作为第三个来源接进同一扇导入对话框。`IdentityFile` → 私钥认证，`ProxyJump` → 跳板引用（取离目标最近的最后一跳，批内解析、成环即断） |
 | 10 | ✅ | **连接代理** | 2026-08-14 落地为**应用级全局代理**（非按会话）。统一抽象 `Core/Net/IProxyResolver`（唯一代理出口，新功能接网络一律消费它）+ `Infrastructure/Net/`（自研 HTTP CONNECT / SOCKS5 握手、环回中继、进程级 `HttpClient.DefaultProxy`）。三条通道：SSH 走环回中继、FTP 走 FluentFTP 代理子类（代理下强制被动模式）、全部 HttpClient 由 `VelaWebProxy.Install` 接管。**代理配置不完整时抛错拒连，绝不静默直连**。ICMP 与连接诊断的裸 TCP **有意不走代理** |
 | 11 | ⏳ | 防空闲断开（Anti-idle） | 见 [`feature-plan.md`](feature-plan.md#-终端与协议) |
 | 12 | ✅ | **known_hosts 管理界面** | 设置 → 安全审计 → 已信任主机（列出 / 删除 / 截图防泄露地址脱敏）。⏳ 导出未做 |
@@ -3079,3 +3079,85 @@ dev-guide 都写明支持的安装路径。用例 `SideLoadedPlugin_PinsNoPublis
 "验签 + 发布者连续性已做,信任根未做")、`{zh,en}/cli/cli.md` 与 `{zh,en}/templates/dev-guide.md`
 (旁装的代价现在多一条:钉不住发布者)、`{zh,en}/host/交互与界面规格.md`(管理页多了一行指纹,
 以及换发布者的确认框)。
+
+---
+
+## ✅ 58. 2026-09-09 SSH config 导入:框架早就备好了那一格,难的是把 OpenSSH 的取值规则照抄对
+
+`feature-plan.md` 把这条标成「全清单里成本最低的一条 —— 在 DI 追加一行即可」。DI 那一行确实是
+一行,但那一行背后要有一个**把 `ssh_config` 读对**的解析器,而 `ssh_config` 不是 INI:它没有
+"节内取值"这回事,同一个关键字可以在多个块里出现,谁生效由**块的顺序**决定。照 INI 的思路写,
+写出来的东西在简单配置上全对,在任何一份带 `Host *` 兜底的真实配置上全错。
+
+### 一、取值规则:先出现者胜,而不是后写的覆盖先写的
+
+OpenSSH 的规则是**首次取得的值获胜**(`ssh_config(5)` 原文:"the first obtained value for
+each parameter is used"),所以约定俗成的写法是具名块在前、`Host *` 兜底在后 —— 兜底块只补
+前面没写过的键。反过来实现成"后者覆盖前者",结果是每一条会话的 User / Port 都被文件末尾那个
+兜底块拿走,而用户完全无从察觉:导进来的会话看着都对,只是全都连错了账号。
+
+`SshConfigParser` 因此保留**完整的块结构**(`SshConfigBlock`:模式列表 + 有序选项),
+`ResolveOptions` 按块顺序遍历所有匹配该别名的块,每个关键字 `TryAdd` —— 已经取到的不再被覆盖。
+只挑关键字而丢掉块归属,这条规则就做反了。
+
+### 二、`Include` 必须就地展开,不能读完再拼
+
+`Include` 在文件里的位置**决定优先级**:写在开头的 include 里的 `User`,胜过主文件后面的兜底块;
+挪到末尾则相反。所以展开发生在解析的那一刻(`Accumulate` 遇到 `Include` 先把当前块收口,
+把被包含文件的块插进来,再另起一个同模式的块继续累积),而不是"先收集所有文件再按某个顺序拼"。
+
+相对路径以 `~/.ssh` 为基准(OpenSSH 用户配置的规则),不是配置文件自身所在目录 —— 用户手动指定
+别处的配置文件时,里面的 `Include conf.d/*` 仍该指向 `~/.ssh/conf.d`。互相 include 由
+"已访问文件集合 + 深度上限 8"两道兜住;末段通配展开后**排序**,否则同一份配置在不同文件系统上
+导出的顺序不一样。
+
+### 三、哪些别名算「一台机器」
+
+只导入**字面量别名**。`Host *`、`Host *.internal !secret.internal` 这类块是给别人兜底用的模板,
+本身不是可连的机器;它们的选项会通过取值规则渗到具名别名上,这正是 OpenSSH 的语义,
+不需要也不应该单独产出一条会话。
+
+`Match` 块**整块跳过**:它的条件(`exec`、`originalhost`、`canonical`)要到真正连接时才有答案。
+跳过而不是当成 `Host *`,是因为后者会把只在特定条件下才生效的选项无条件套到每一条会话上 ——
+一个 `Match exec "on-vpn"` 里的内网跳板,会就这么长到所有会话头上。
+
+不写 `HostName` 时,**别名本身就是主机名**(`Host build01` 不写 HostName 时 ssh 直接连 build01)。
+这条不做,一份"全靠别名 + 全局 User"的配置会一条都导不出来。
+
+### 四、导入框架跟着补了两个字段
+
+`ImportedSession` 加 `PrivateKeyPath` 与 `JumpHostAlias`,`SessionImportWriter` 消费它们 ——
+两者都是既有的三个来源共享的能力,而不是 SSH config 专属的旁路:
+
+- **`IdentityFile` → 私钥认证**。写入器原先把 `AuthMethod` 写死成 `Password`(Xshell / WinSCP
+  存的确实只有密码),现在有私钥路径就落 `AuthMethod.PrivateKey` + `PrivateKeyPath`。
+  路径**不校验存在性**:密钥可能还没从另一台机器拷过来,把路径带进配置比悄悄丢掉有用得多。
+- **`ProxyJump` → 跳板引用**。必须是**第二趟**:跳板那条会话可能排在被跳的会话后面导入,
+  第一趟走到它时 id 还不存在。多跳的 `ProxyJump a,b` 取**最后一跳** —— 语义是「经 a 到 b、
+  再由 b 抵达目标」,离目标最近的是 b,而 VelaShell 的跳板是逐条链式引用,取第一跳会把链接反。
+  `user@host:port` 只认 host 段,带方括号的 IPv6 整段取出。
+
+跳板**只在本批次内按别名解析**。拿 config 里的局部别名去撞用户既有会话的名字,会把毫不相干的
+两台机器串成一条跳板链;找不到就留直连,用户在连接对话框里补一下即可。config 自己写出环
+(a→b→a)时断掉后建立的那一条 —— 留着只会让连接工作流的环检测报错,断成直连是这两条会话里
+唯一还能用的形态。
+
+### 五、这里没有密码可还原
+
+另外两个来源有一半的代码在解密码(RC4、0xA3 编码、主密码检测),这里一行都没有:
+OpenSSH 的配置文件**从不存密码**。所以 `HasEncryptedPassword` 恒为 false、
+`MasterPasswordEnabled` 恒为 false,预览行的三态提示随之多了第四态「使用密钥文件」
+(`XImport_PwKey`,五份 resx 已齐)—— 原来那句"无密码"对一条配了 `IdentityFile` 的会话是**误导**,
+它不是缺凭据,它的凭据是另一种。属性也从 `PasswordStatus` 改名成 `CredentialStatus`。
+
+### 六、验收
+
+`dotnet build VelaShell.slnx` 零警告零错误。新增 17 条用例(`SshConfigImportTests`):
+基础字段、别名兜底为主机名、具名块胜过 `Host *`、通配与取反不产出会话、`Match` 块被忽略、
+`Include` 就地展开与互相 include 不死循环、`关键字=值`/引号/整行注释、`IdentityFile` 落私钥认证、
+`ProxyJump` 取最后一跳 / 反向声明也能接上 / 接不上留直连 / 成环即断、已存在目标标重复、
+文件不存在给空结果,外加一条读**本机真实 `~/.ssh/config`** 的端到端冒烟(没有该文件时
+`Assert.Inconclusive`,按 AGENTS.md 的纪律留 `[SKIP]` 痕迹)。
+
+⚠️ **文档待同步 velashell-docs**:`{zh,en}/host/交互与界面规格.md`(导入对话框现在是三个来源,
+预览行多了「使用密钥文件」一态)。

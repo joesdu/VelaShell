@@ -3986,6 +3986,9 @@ Overwrite it?</value>
   <data name="XImport_PwNone" xml:space="preserve">
     <value>No password</value>
   </data>
+  <data name="XImport_PwKey" xml:space="preserve">
+    <value>Uses key file</value>
+  </data>
   <data name="XImport_Duplicate" xml:space="preserve">
     <value>Already exists</value>
   </data>

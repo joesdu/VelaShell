@@ -26,7 +26,7 @@
 | `Pty/ConPtyShellStream.cs` | Windows ConPTY 本地终端流（本地 Shell 会话）。 |
 | `Ftp/` | FTP/FTPS 后端：`FtpFileService`（远程文件操作）、`FtpConnectionPool`（控制连接池）、`FluentFtpInterop`（FluentFTP 异常 → Core 中立异常的翻译）。 |
 | `Sftp/RoutingRemoteFileService.cs` | 远程文件操作的**协议路由**：按会话归属把调用分派给 FTP 后端或 SSH 上的 SFTP 实现。之所以能这么干，是因为 `ISftpService` 全部以 `sessionId` 为键、返回协议无关的 `RemoteFileInfo` —— 文件浏览器、传输管理器、限速、拖放对新增协议零改动。 |
-| `Import/` | 从其他工具导入会话：`WinScpImportService`（含 `WinScpCrypto`）、`XshellImportService`（`XshellCrypto` + `XshellIniParser` + `Rc4`）、`SessionImportWriter`（去重后写入仓储）。 |
+| `Import/` | 从其他工具导入会话：`WinScpImportService`（含 `WinScpCrypto`）、`XshellImportService`（`XshellCrypto` + `XshellIniParser` + `Rc4`）、`SshConfigImportService`（`SshConfigParser` + `SshPathResolver`，按 OpenSSH 语义解析 `~/.ssh/config`）、`SessionImportWriter`（去重后写入仓储，并把 `IdentityFile` / `ProxyJump` 落成私钥认证与跳板引用）。 |
 | `Diagnostics/` | `PingTraceRouteService`（逐跳路由追踪）与 `MmdbIpGeolocationService`（MaxMind 库离线解析 IP 归属地）。 |
 | `Tunnels/TunnelService.cs` | 本地(`-L`)/远程(`-R`)/动态 SOCKS5(`-D`)端口转发统一管理。 |
 | `Sync/GistSyncService.cs` `GistApiClient.cs` | GitHub Gist 云同步：设置/连接/片段同步到私密 Gist，支持版本历史与可选 PBKDF2 + AES-256-GCM 端到端加密。 |

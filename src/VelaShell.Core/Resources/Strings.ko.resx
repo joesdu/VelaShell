@@ -3985,6 +3985,9 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="XImport_PwNone" xml:space="preserve">
     <value>암호 없음</value>
   </data>
+  <data name="XImport_PwKey" xml:space="preserve">
+    <value>키 파일 사용</value>
+  </data>
   <data name="XImport_Duplicate" xml:space="preserve">
     <value>이미 있음</value>
   </data>

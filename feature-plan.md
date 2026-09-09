@@ -110,7 +110,7 @@ pie showData
 
 | 状态 | 优先级 | 项 | 现状 | 要做什么 |
 | :---: | :---: | --- | --- | --- |
-| ⏳ | 🟠 P1 | **SSH config 导入** | 导入框架已就绪：`ISessionImportService` 多来源自动扫描 + Xshell / WinSCP 两个导入器已落地（`plan.md` §18-H） | 解析 `~/.ssh/config`（Host / HostName / Port / User / IdentityFile / ProxyJump），**在 DI 追加一行**即可。全清单里成本最低的一条 |
+| ✅ | — | ~~SSH config 导入~~ | **已完成**（2026-09-09，`plan.md` §58）：`SshConfigImportService` + `SshConfigParser` 作为第三个来源接进导入对话框，解析 Host / HostName / Port / User / IdentityFile / ProxyJump，含 `Include` 展开与 OpenSSH 的「先出现者胜」取值 | ⏳ 反向的**导出**到 `~/.ssh/config` 未做（与 known_hosts 互通是同一条线，见[终端与协议](#-终端与协议)） |
 | ✅ | — | ~~会话标签自定义颜色~~ | **已完成**（`b9ae31f`，2026-09-06）：`TerminalOverrides.TabColor` → `ConnectionAccent.cs:66` 优先读它，连接对话框有输入框（`ConnectionProfileView.axaml:610`）。留空才回退到按 `profileId` 哈希取色。「生产红 / 测试绿」已经能做 | ⏳ **图标**仍未做（见[路线图 B 组](#b-会话与工作区)） |
 | ⏳ | 🟡 P2 | **Dock 布局持久化** | 缓做中。单独恢复布局无意义 —— 文档即活动会话 | 需与「恢复会话」联动：布局节点 ↔ profileId 映射 + 自定义 document 还原器 |
 | 💡 | 🟢 P3 | **触发器 / 自动应答** | 全仓无「输出匹配 → 自动发送」机制 | expect 式：输出命中正则时自动发送响应（自动 yes、密码带外输入）。与上面的自定义高亮规则**共用同一套用户规则表**，适合一起做 |
