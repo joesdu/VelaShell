@@ -35,6 +35,25 @@ public sealed class ImportedSession
     /// <summary>是否成功还原出密码明文(即 <see cref="Password" /> 非空)。</summary>
     public bool PasswordRecovered => Password is { Length: > 0 };
 
+    /// <summary>
+    /// 私钥文件路径(来自 OpenSSH config 的 <c>IdentityFile</c> 等);非空即以私钥认证方式导入。
+    /// </summary>
+    /// <remarks>
+    /// 路径不校验是否存在:密钥可能还没从另一台机器拷过来,把路径原样带进配置里
+    /// 比悄悄丢掉更有用 —— 用户在连接对话框里一眼就能看见并修正。
+    /// </remarks>
+    public string? PrivateKeyPath { get; init; }
+
+    /// <summary>
+    /// 跳板主机的**别名**(来自 <c>ProxyJump</c>);由写入器在同一批导入的会话里按
+    /// <see cref="Name" /> 解析成 <c>SessionProfile.JumpHostProfileId</c>。
+    /// </summary>
+    /// <remarks>
+    /// 存别名而不是直接存 id:扫描阶段跳板那条会话还没落盘,根本没有 id;
+    /// 而两条会话是否一起被勾选,要到用户点「导入」那一刻才知道。
+    /// </remarks>
+    public string? JumpHostAlias { get; init; }
+
     /// <summary>VelaShell 中是否已存在同主机/端口/用户名的会话(用于提示重复)。</summary>
     public bool AlreadyExists { get; init; }
 

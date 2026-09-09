@@ -19,6 +19,7 @@
 | `FtpSupportTests` | FTP/FTPS：导入器协议映射、远程文件服务的会话路由、FluentFTP 异常翻译、连接参数回落。 |
 | `Ftp/FtpFileServiceIntegrationTests` `Ftp/LoopbackFtpServer` | 对着进程内环回 FTP 服务器跑真实协议：登录（含匿名）、PASV/EPSV 数据连接、Unix LIST 解析、上传/下载往返、目录增删改、连接池并发。 |
 | `WinScpImportTests` `XshellImportTests` | 会话导入:密码解码、INI/注册表解析、协议映射。 |
+| `SshConfigImportTests` | `~/.ssh/config` 导入:OpenSSH 取值规则(先出现者胜 + 通配兜底 + 取反 + `Match` 跳过)、`Include` 就地展开与环终止、`IdentityFile` → 私钥认证、`ProxyJump` → 跳板引用(取最后一跳、反向声明、成环即断)。末条读本机真实 `~/.ssh/config`,没有该文件时 `Inconclusive`。 |
 
 ## 运行
 

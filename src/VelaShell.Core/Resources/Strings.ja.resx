@@ -3985,6 +3985,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="XImport_PwNone" xml:space="preserve">
     <value>パスワードなし</value>
   </data>
+  <data name="XImport_PwKey" xml:space="preserve">
+    <value>鍵ファイルを使用</value>
+  </data>
   <data name="XImport_Duplicate" xml:space="preserve">
     <value>既に存在します</value>
   </data>

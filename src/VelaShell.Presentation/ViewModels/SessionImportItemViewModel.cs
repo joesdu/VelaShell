@@ -40,11 +40,12 @@ public sealed class SessionImportItemViewModel : ReactiveObject
     /// <summary>该行是否可被勾选(不支持的协议禁用勾选)。</summary>
     public bool CanSelect => Source.IsSupported;
 
-    /// <summary>密码状态文案:已还原 / 未还原(需手填) / 无密码。</summary>
-    public string PasswordStatus =>
+    /// <summary>凭据状态文案:已还原 / 未还原(需手填) / 用密钥 / 无密码。</summary>
+    public string CredentialStatus =>
         !Source.IsSupported ? Strings.Get("XImport_Unsupported") :
         Source.PasswordRecovered ? Strings.Get("XImport_PwRecovered") :
         Source.HasEncryptedPassword ? Strings.Get("XImport_PwFailed") :
+        Source.PrivateKeyPath is { Length: > 0 } ? Strings.Get("XImport_PwKey") :
         Strings.Get("XImport_PwNone");
 
     /// <summary>

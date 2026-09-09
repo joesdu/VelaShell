@@ -4123,6 +4123,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="XImport_PwNone" xml:space="preserve">
     <value>無密碼</value>
   </data>
+  <data name="XImport_PwKey" xml:space="preserve">
+    <value>使用金鑰檔案</value>
+  </data>
   <data name="XImport_Duplicate" xml:space="preserve">
     <value>已存在</value>
   </data>
