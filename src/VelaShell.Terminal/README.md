@@ -31,6 +31,7 @@
 | `Rendering/TerminalSelectionMath.cs` | 选区几何的纯计算：线性选区与矩形块选（Alt+拖拽）共用的归一化/逐行列区间规则，以及一段选区的表示 `SelectionSpan`（不连续多段选区 = 一串它）。行为对齐 Windows Terminal —— 块选与否在**按下那一刻**由 Alt 决定，拖拽途中改按不影响。 |
 | `Rendering/GutterLayout.cs` `GutterFoldModel.cs` | 侧栏（行号 / 时间戳）布局与折叠模型。 |
 | `Rendering/TerminalPaletteOverrides.cs` | 主题层对调色板的运行时覆盖。 |
+| `Rendering/SelectionContrast.cs` | 选区高亮的对比度整定:选区底**不透明**绘制,并保证与终端底至少拉开 **CIE L\* 20(暗底)/ 16(亮底)** 的感知明度差(对齐 VS Code 自家明暗主题的 20.8 / 15.9),不够就往远离背景的方向推、够了原样保留方案自己的色。判据用 L\* 而非 WCAG 对比度——后者在暗端压缩得厉害,明暗两套没法用同一个数说话。另有一道前景守卫:选中格前景与选区底撞明度时才换色。 |
 | `Input/TerminalKeyRouter.cs` | 一次按键的动作归类（编码为字节 / 命中快捷键 / IME 组字中间态不得编码 / 交还基类），把路由决策从控件里剥离出来单测。 |
 | `LocalEcho.cs` | 本地回显策略：把「即将发往主机的键入字节」翻译成「应当喂回终端显示的字节」。用于对端不回显的链路（Telnet 半双工、串口）或主机以 SRM 复位显式要求；SSH 默认关闭，否则远端回显叠加本地回显会出双字符。 |
 | `ScrollbackBuffer.cs` `TerminalLine.cs` | 回滚历史缓冲与逻辑行。 |

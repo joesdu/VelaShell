@@ -48,8 +48,8 @@ public class SelectionContrastTests
         Rgba fill = SelectionContrast.Fill(selection, background);
 
         double delta = Math.Abs(SelectionContrast.Lightness(fill) - SelectionContrast.Lightness(background));
-        Assert.IsTrue(delta >= SelectionContrast.MinLightnessDelta - 0.01,
-            $"{name}:选区底与终端底只差 L* {delta:F1},低于 {SelectionContrast.MinLightnessDelta} 就等于没画。");
+        Assert.IsTrue(delta >= SelectionContrast.MinLightnessDeltaFor(background) - 0.01,
+            $"{name}:选区底与终端底只差 L* {delta:F1},低于 {SelectionContrast.MinLightnessDeltaFor(background)} 就等于没画。");
         Assert.AreEqual(0xFF, fill.A, $"{name}:选区底必须不透明 —— 半透明正是原先看不见的根因。");
     }
 
@@ -57,8 +57,31 @@ public class SelectionContrastTests
     [TestMethod]
     public void Fill_LeavesAlreadyVisibleSchemesAlone()
     {
+        // Tokyo Night 原生 ΔL* 20.6,是内置 16 套里唯一自己就跨过暗色档(20)的。
         Assert.AreEqual(Hex(0x33467C), SelectionContrast.Fill(Hex(0x33467C), Hex(0x1A1B26)), "Tokyo Night");
-        Assert.AreEqual(Hex(0x49483E), SelectionContrast.Fill(Hex(0x49483E), Hex(0x272822)), "Monokai");
+    }
+
+    /// <summary>
+    /// 阈值分两档:暗底 20、亮底 16(对齐 VS Code 自家明暗主题的 20.8 / 15.9)。
+    /// <para>
+    /// 此前明暗共用 14。Monokai 的原生 ΔL* 14.6 曾因此原样放行,归到暗色档下就得被推开 ——
+    /// 这条用例钉的正是这次抬档:换回单一 14 会红。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void Fill_UsesASeparateFloorPerBackgroundLightness()
+    {
+        Assert.AreEqual(20.0, SelectionContrast.MinLightnessDeltaFor(Hex(0x272822)), 1e-9, "暗底走 20 那一档。");
+        Assert.AreEqual(16.0, SelectionContrast.MinLightnessDeltaFor(Hex(0xFDF6E3)), 1e-9, "亮底走 16 那一档。");
+
+        Assert.AreNotEqual(Hex(0x49483E), SelectionContrast.Fill(Hex(0x49483E), Hex(0x272822)),
+            "Monokai 原生只有 ΔL* 14.6,跨不过暗色档,不该被原样放行。");
+
+        // 亮底吃的是 16 那一档,不该被暗色档带高 —— 压得越深越贴近亮色主题的深色文字。
+        Rgba onLight = SelectionContrast.Fill(Hex(0xEEE8D5), Hex(0xFDF6E3));
+        double delta = Math.Abs(
+            SelectionContrast.Lightness(onLight) - SelectionContrast.Lightness(Hex(0xFDF6E3)));
+        Assert.IsTrue(delta is >= 16.0 - 0.01 and < 20.0, $"亮底整定到 L* {delta:F1},应落在 16 那一档。");
     }
 
     /// <summary>推的方向由背景明暗定:暗底上提亮、亮底上压深。</summary>
@@ -80,7 +103,7 @@ public class SelectionContrastTests
         {
             Rgba fill = SelectionContrast.Fill(bg, bg);
             double delta = Math.Abs(SelectionContrast.Lightness(fill) - SelectionContrast.Lightness(bg));
-            Assert.IsTrue(delta >= SelectionContrast.MinLightnessDelta - 0.01, $"背景 {bg.Packed:X8} 上推不开。");
+            Assert.IsTrue(delta >= SelectionContrast.MinLightnessDeltaFor(bg) - 0.01, $"背景 {bg.Packed:X8} 上推不开。");
         }
     }
 
@@ -121,7 +144,8 @@ public class SelectionContrastTests
                 - SelectionContrast.Lightness(palette.DefaultBackground));
 
             Assert.AreEqual(0xFF, palette.SelectionBackground.A);
-            Assert.IsTrue(delta >= SelectionContrast.MinLightnessDelta - 0.01, $"只差 L* {delta:F1}。");
+            Assert.IsTrue(delta >= SelectionContrast.MinLightnessDeltaFor(palette.DefaultBackground) - 0.01,
+                $"只差 L* {delta:F1}。");
         });
     }
 

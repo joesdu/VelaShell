@@ -12,23 +12,51 @@ namespace VelaShell.Terminal.Rendering;
 /// </para>
 /// <para>
 /// 所以这里做两件事:选区底<b>不透明</b>绘制;并且保证它与终端底之间至少拉开
-/// <see cref="MinLightnessDelta" /> 的感知明度差 —— 不够就把它往远离背景的方向推
-/// (暗底推向白、亮底推向黑),够了就原样用方案自己的色,不夺方案的设计。
+/// <see cref="MinLightnessDeltaOnDark" /> / <see cref="MinLightnessDeltaOnLight" /> 的感知明度差
+/// —— 不够就把它往远离背景的方向推(暗底推向白、亮底推向黑),够了就原样用方案自己的色,
+/// 不夺方案的设计。
 /// </para>
 /// <para>
 /// 判据用 CIE L*(感知明度)而非 WCAG 对比度:后者在暗端被压缩得厉害,同一个阈值在暗色主题上
 /// 只挪一点点、在亮色主题上却会把选区压成一条灰带,明暗两套没法用同一个数说话。
+/// (顺带:WCAG 那把尺子在这里连量程都不够 —— 21:1 是纯黑配纯白的极限,
+/// 要选区底与 Dracula 的 #282A36 之间做到 20:1,那条带子只能是近乎纯白的实心块。)
 /// </para>
 /// </summary>
 internal static class SelectionContrast
 {
     /// <summary>
-    /// 选区底与终端底之间必须拉开的感知明度差(CIE L*,0–100 标度)。
-    /// 14 是照着公认「看得见但不喧宾夺主」的那档取的:VS Code 的选区在自家明暗主题上分别是
-    /// 20.8 与 15.9,取稍低一档,既托住 Solarized(原生只有 4.8)这类过淡的方案,
-    /// 又不会去动 Dracula / Monokai / Tokyo Night 这些本就够用的。
+    /// <b>暗色</b>终端底上,选区底必须拉开的感知明度差(CIE L*,0–100 标度)。
     /// </summary>
-    internal const double MinLightnessDelta = 14.0;
+    /// <remarks>
+    /// 对齐 VS Code 自家暗色主题的 20.8。此前取 14 是「稍低一档」的保守值,实测下来仍偏弱:
+    /// 14 那一档只有 Tokyo Night(20.6)本来就够,其余方案被推到刚好 14 出头就停手,
+    /// 拖选时仍要盯一眼才确认选中了。
+    /// </remarks>
+    internal const double MinLightnessDeltaOnDark = 20.0;
+
+    /// <summary>
+    /// <b>亮色</b>终端底上,选区底必须拉开的感知明度差(CIE L*,0–100 标度)。
+    /// </summary>
+    /// <remarks>
+    /// <para>对齐 VS Code 自家亮色主题的 15.9。</para>
+    /// <para>
+    /// 比暗色低一档不是凑数:亮色主题的文字是<b>深色</b>的,而这里推选区底的方向是**压深** ——
+    /// 推得越狠,选区底就越贴近文字自身的明度,<see cref="ReadableForeground" /> 那道守卫
+    /// 被触发得越多,代价是选中一段就把 <c>ls --color</c> 的配色抹成兜底色。
+    /// 暗色主题上推的方向是提亮,离深色文字越推越远,没有这一层张力,因此吃得起更高的一档。
+    /// </para>
+    /// </remarks>
+    internal const double MinLightnessDeltaOnLight = 16.0;
+
+    /// <summary>
+    /// 给定终端底该用哪一档明度差 —— 由**背景**明暗决定,与选区色自身无关
+    /// (推的方向同样由它决定,两者必须用同一个判据,否则会出现"往亮里推、却按暗色档收手")。
+    /// </summary>
+    /// <param name="background">终端默认背景色。</param>
+    /// <returns><see cref="MinLightnessDeltaOnDark" /> 或 <see cref="MinLightnessDeltaOnLight" />。</returns>
+    internal static double MinLightnessDeltaFor(Rgba background) =>
+        Lightness(background) < 50 ? MinLightnessDeltaOnDark : MinLightnessDeltaOnLight;
 
     /// <summary>
     /// 选中格的前景与选区底之间的最小感知亮度差(0–1 标度)。
@@ -40,30 +68,33 @@ internal static class SelectionContrast
 
     /// <summary>
     /// 把方案给的选区色整定成实际绘制用的填充色:强制不透明,并保证与
-    /// <paramref name="background" /> 至少差 <see cref="MinLightnessDelta" /> 的 L*。
+    /// <paramref name="background" /> 至少差 <see cref="MinLightnessDeltaFor" /> 那一档的 L*。
     /// </summary>
     /// <param name="selection">配色方案 / 用户设置里的选区色(其 alpha 被忽略)。</param>
     /// <param name="background">终端默认背景色。</param>
     public static Rgba Fill(Rgba selection, Rgba background)
     {
         double backgroundLightness = Lightness(background);
-        if (Math.Abs(Lightness(selection) - backgroundLightness) >= MinLightnessDelta)
+        bool onDark = backgroundLightness < 50;
+        double minDelta = onDark ? MinLightnessDeltaOnDark : MinLightnessDeltaOnLight;
+        if (Math.Abs(Lightness(selection) - backgroundLightness) >= minDelta)
         {
             return Opaque(selection);
         }
 
         // 推的方向由背景明暗定,不由选区色定:暗底上把选区提亮、亮底上把它压深,才是
         // 各家终端一致的观感。混合目标取纯白/纯黑,是最省事又能保住原色相的 tint/shade。
-        byte target = backgroundLightness < 50 ? (byte)0xFF : (byte)0x00;
+        byte target = onDark ? (byte)0xFF : (byte)0x00;
 
         // 二分出**刚好够**的混合比例:够看见就停手,不多推一分。上界 1.0 必然满足
-        // (背景 L* < 50 时推到白至少差 50,反之推到黑至少差 50),所以搜索必然收敛。
+        // (背景 L* < 50 时推到白至少差 50,反之推到黑至少差 50,两档阈值都在 50 以内),
+        // 所以搜索必然收敛。
         double low = 0.0;
         double high = 1.0;
         for (int i = 0; i < 12; i++)
         {
             double mid = (low + high) / 2;
-            if (Math.Abs(Lightness(Mix(selection, target, mid)) - backgroundLightness) >= MinLightnessDelta)
+            if (Math.Abs(Lightness(Mix(selection, target, mid)) - backgroundLightness) >= minDelta)
             {
                 high = mid;
             }
