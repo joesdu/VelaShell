@@ -79,7 +79,12 @@
       <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="MinHeight" Value="30" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <!-- 12 而非 11(用户反馈「下拉列表字体不清晰」)。像素级实测:11px 的比例字体(Inter)
+           Regular 笔画只有一个像素出头,逐像素都只是部分覆盖 —— 屏幕上没有一个像素落到实墨。
+           同页 12px 的 row-label 则能填满。深色主题上半覆盖的亮笔画仍然发亮,看不出问题;
+           亮色主题上半覆盖的深笔画读作灰,整列字就"发糊"。
+           字号会继承进弹层条目(实测),所以改这一处就同时管住闭合态与下拉列表。 -->
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
       <Setter Property="MinWidth" Value="140" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>

@@ -57,16 +57,69 @@ internal static class ThemeTokenApplier
     {
         ArgumentNullException.ThrowIfNull(resources);
         ArgumentNullException.ThrowIfNull(theme);
-        foreach ((string key, Color color) in BuildTokens(theme))
+        Dictionary<string, Color> tokens = BuildTokens(theme);
+        foreach ((string key, Color color) in tokens)
         {
             resources[key] = new SolidColorBrush(color);
         }
+        FillFluentAliases(resources, tokens);
         // 自绘窗体/浮层的投影:几何两套主题一致,只有不透明度分明暗 —— 同一个 50% 纯黑
         // 压在亮色卡片下面会糊成一块发脏的矩形(见 DarkTheme.axaml 的说明)。
         resources["VelaShadowWindow"] = BoxShadows.Parse(
             theme.IsDark
                 ? "0 1 3 0 #40000000, 0 4 12 0 #66000000"
                 : "0 1 3 0 #1A000000, 0 4 12 0 #33000000");
+    }
+
+    /// <summary>
+    /// Fluent 自带、但**不在令牌体系里**的资源键 → 该由哪个 <c>Vela*</c> 令牌顶上。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ComboBox 的下拉弹层是最后一个还吃 Fluent 默认值的弹层表面 —— <c>ToolTip</c>、
+    /// <c>ContextMenu</c>、<c>FlyoutPresenter</c>、<c>MenuFlyoutPresenter</c> 早已在
+    /// <c>DockStyles.axaml</c> 里改贴令牌(那里的注释写着同一个病因)。实测 Fluent 给的是:
+    /// 弹层底 <c>#2B2B2B</c>(亮色变体 <c>#F2F2F2</c>)、边框 <c>Black</c>、条目文字恒为
+    /// <c>White</c> / <c>Black</c>、选中底 <c>#0078D7</c> —— 最后那个是 Windows 经典蓝,
+    /// 不属于任何一套 VelaShell 主题。
+    /// </para>
+    /// <para>
+    /// 后果是九套主题换来换去,下拉弹层岿然不动:一块不跟主题走的中性灰底,配一个不跟主题走的
+    /// 纯白/纯黑字。周围每一处表面都已按主题重上色,唯独这一块没有 —— 切完主题再打开下拉,
+    /// 看到的就是这个对不上的色块。
+    /// </para>
+    /// <para>
+    /// <b>为什么别名写在这里,而不是 <c>DockStyles.axaml</c> 的模板部件选择器上</b>:
+    /// 那需要选中 <c>ComboBox /template/ Border#PopupBorder</c> 这类**模板部件名**,
+    /// 而部件名是 Fluent 的内部实现、会随 Avalonia 版本改;这些资源键则是它的公开契约。
+    /// 写在主题字典这一格还顺带解决了另一件事:它与 <c>Vela*</c> 令牌同格同时替换,
+    /// 弹层底与条目文字永远出自同一次写入,不会一个新一个旧。
+    /// </para>
+    /// </remarks>
+    private static readonly (string FluentKey, string TokenKey)[] FluentAliases =
+    [
+        ("ComboBoxDropDownBackground", "VelaBgSurface"),
+        ("ComboBoxDropDownBorderBrush", "VelaBorderSecondary"),
+        ("ComboBoxDropDownGlyphForeground", "VelaTextSecondary"),
+        ("ComboBoxItemForeground", "VelaTextPrimary"),
+        ("ComboBoxItemForegroundPointerOver", "VelaTextPrimary"),
+        ("ComboBoxItemForegroundSelected", "VelaTextPrimary"),
+        ("ComboBoxItemForegroundSelectedPointerOver", "VelaTextPrimary"),
+        ("ComboBoxItemBackgroundPointerOver", "VelaBgHover"),
+        ("ComboBoxItemBackgroundSelected", "VelaBgActive"),
+        ("ComboBoxItemBackgroundSelectedPointerOver", "VelaBgActive"),
+    ];
+
+    /// <summary>Fluent 别名键的清单(供用例逐主题核对)。</summary>
+    internal static IReadOnlyList<string> FluentAliasKeys { get; } = [.. FluentAliases.Select(static a => a.FluentKey)];
+
+    /// <summary>把 <see cref="FluentAliases" /> 里的每个键指到当前主题对应的令牌色上。</summary>
+    private static void FillFluentAliases(IResourceDictionary resources, Dictionary<string, Color> tokens)
+    {
+        foreach ((string fluentKey, string tokenKey) in FluentAliases)
+        {
+            resources[fluentKey] = new SolidColorBrush(tokens[tokenKey]);
+        }
     }
 
     /// <summary>用户自定义强调色会遮蔽的三个令牌(见 <see cref="ResetAccent" />)。</summary>
