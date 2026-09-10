@@ -737,10 +737,19 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// HISTCONTROL=ignoreboth 不记历史;抑制针 needle 不含该空格(空格太常见,
     /// 不适合做流匹配锚点)。注入本身要占掉 shell 的一个提示符周期,想让屏幕保持干净
     /// 可在命令里自行清行(如 printf "\r\033[2K")。
+    /// <para>
+    /// 「静默」还包括**不留在命令历史里**:整行前面接一段 <see cref="ShellHistoryScrub" />,
+    /// 由 bash 自己把这一条从历史里摘掉。屏幕上隐形、方向键一按却整行冒出来 ——
+    /// 那不是用户敲的,他也不知道那是什么,第一反应是「谁往我服务器上注了东西」(用户反馈)。
+    /// 前导空格只对配了 <c>HISTCONTROL=ignorespace</c> 的人有效,而它默认是空的,拦不住。
+    /// </para>
     /// </summary>
     public void SendSilentCommand(string command)
     {
-        string payload = command.Trim();
+        // 摘历史那段接在**前面**:这一行最终的退出码因此仍由用户自己那条命令决定
+        // (提示符会把 $? 画出来),而不是被收尾动作抹成 0。抑制针必须按整行装 ——
+        // 回显的是整行,少一截就对不上,那行就会露在屏幕上。
+        string payload = ShellHistoryScrub.Prepend(command.Trim());
         if (Bridge is null || payload.Length == 0)
         {
             return;
