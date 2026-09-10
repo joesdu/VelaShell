@@ -604,7 +604,7 @@
             <TextBlock Classes="field-label" Text="{loc:Localize Profile_SessionOverrides}" Margin="0,12,0,0" />
             <TextBlock Text="{loc:Localize Profile_SessionOverridesHint}"
                        Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize10}" TextWrapping="Wrap" />
-            <Grid ColumnDefinitions="*,8,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,4,0,0">
+            <Grid ColumnDefinitions="*,8,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,4,0,0">
               <StackPanel Grid.Row="0" Grid.Column="0">
                 <TextBlock Classes="field-label" Text="{loc:Localize Profile_OverrideEncoding}" />
                 <ComboBox HorizontalAlignment="Stretch"
@@ -641,6 +641,21 @@
                                Increment="10" FormatString="0" ShowButtonSpinner="False" />
               </StackPanel>
               <TextBlock Grid.Row="3" Grid.Column="2" Text="{loc:Localize Profile_OverrideKeepAliveHint}"
+                         Margin="0,4,0,0"
+                         Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize10}" TextWrapping="Wrap" />
+              <!-- 防空闲断开:与上面的保活是两件事 —— 保活是协议层心跳,防的是 NAT 把闲置连接收掉;
+                   这一项按间隔往会话里送一个不可见字节,防的是服务端 shell 嫌你闲(TMOUT、堡垒机
+                   会话超时),而那些只认 tty 上有没有输入。提示文字把这层区别说清楚,
+                   否则用户看见两个"秒"只会以为设错了地方。 -->
+              <StackPanel Grid.Row="4" Grid.Column="0" Margin="0,8,0,0">
+                <TextBlock Classes="field-label" Text="{loc:Localize Profile_AntiIdle}" />
+                <NumericUpDown Value="{Binding AntiIdleSeconds}"
+                               Minimum="0"
+                               Maximum="{Binding MaxAntiIdleSeconds}"
+                               Increment="30" FormatString="0" ShowButtonSpinner="False" />
+              </StackPanel>
+              <TextBlock Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3"
+                         Text="{loc:Localize Profile_AntiIdleHint}"
                          Margin="0,4,0,0"
                          Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize10}" TextWrapping="Wrap" />
             </Grid>

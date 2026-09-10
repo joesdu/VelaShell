@@ -197,6 +197,41 @@ public class TerminalTabViewModelTests
         Assert.AreSame(stream, vm.ShellStream);
     }
 
+    /// <summary>
+    /// 防空闲按本会话的高级设置走,而且<b>每次挂载传输都要重设一遍</b>。
+    /// </summary>
+    /// <remarks>
+    /// 重连会新建一条桥,漏掉这一步的表现是"断线重连之后又开始被踢" —— 用户不会把这件事
+    /// 和重连联系起来,而这条路平时又跑得最勤(掉线、换网、休眠唤醒)。
+    /// </remarks>
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void AttachTransport_AppliesTheSessionsAntiIdleInterval()
+    {
+        var vm = new TerminalTabViewModel(_terminalEmulator)
+        {
+            Profile = new SessionProfile { Terminal = new() { AntiIdleSeconds = 90 } }
+        };
+
+        vm.AttachTransport(Substitute.For<IShellStreamWrapper>());
+        Assert.AreEqual(TimeSpan.FromSeconds(90), vm.Bridge!.AntiIdleInterval);
+
+        vm.AttachTransport(Substitute.For<IShellStreamWrapper>()); // 重连:新的桥,同一份配置。
+        Assert.AreEqual(TimeSpan.FromSeconds(90), vm.Bridge!.AntiIdleInterval);
+    }
+
+    /// <summary>没有会话配置的标签(本地终端)恒为关闭:那条 shell 里根本没有谁会来踢人。</summary>
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void AttachTransport_WithoutAProfile_LeavesAntiIdleOff()
+    {
+        var vm = new TerminalTabViewModel(_terminalEmulator);
+
+        vm.AttachTransport(Substitute.For<IShellStreamWrapper>());
+
+        Assert.AreEqual(TimeSpan.Zero, vm.Bridge!.AntiIdleInterval);
+    }
+
     [TestMethod]
     [TestCategory("TerminalTab")]
     public void AttachTransport_Null_Throws()

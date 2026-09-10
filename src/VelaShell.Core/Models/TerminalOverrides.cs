@@ -60,9 +60,34 @@ public sealed class TerminalOverrides
     /// <summary>保活心跳间隔的上限秒数;与 <c>AppSettings.General.KeepAliveSeconds</c> 同一口径。</summary>
     public const int MaxKeepAliveSeconds = 3600;
 
+    /// <summary>
+    /// 防空闲断开:每隔这么多秒往会话的输入流里送一个不可见字节(0 = 关闭);null = 没开。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 与 <see cref="KeepAliveSeconds" /> 是两件事,互补,不能互相替代。保活是 SSH <b>协议层</b>
+    /// 的心跳,防的是 NAT 与防火墙把闲置的 TCP 连接悄悄回收;这一项防的是<b>服务端</b>按空闲
+    /// 把人踢掉(bash 的 <c>TMOUT</c>、sshd 的 <c>ClientAliveCountMax</c>、堡垒机的会话超时)——
+    /// 那些是按"有没有人往 tty 里输入"计时的,协议层的心跳包它们根本看不见。
+    /// </para>
+    /// <para>
+    /// 唯独这一项没有全局对应值,所以 null 的含义是"没开"而不是"跟随全局":会踢人的只是
+    /// 特定那几台机器,给每条会话都灌注入字节,只会让其余那些平白多担一份风险 ——
+    /// 注入的字节终究是打进对端 tty 的,而对端此刻可能正停在某个交互程序的按键提示上。
+    /// </para>
+    /// </remarks>
+    public int? AntiIdleSeconds
+    {
+        get;
+        set => field = value is null ? null : Math.Clamp(value.Value, 0, MaxAntiIdleSeconds);
+    }
+
+    /// <summary>防空闲注入间隔的上限秒数;与 <see cref="MaxKeepAliveSeconds" /> 同一口径。</summary>
+    public const int MaxAntiIdleSeconds = 3600;
+
     /// <summary>是否一项都没覆盖(等价于整个对象为 null)。</summary>
     /// <remarks>
-    /// 界面把六项都清空之后应当存回 <c>null</c> 而不是一个全空对象:后者会让每条老配置
+    /// 界面把七项都清空之后应当存回 <c>null</c> 而不是一个全空对象:后者会让每条老配置
     /// 的落盘 JSON 平白多出一段,也让"有没有覆盖"这件事有了两种表示。
     /// </remarks>
     public bool IsEmpty =>
@@ -71,7 +96,8 @@ public sealed class TerminalOverrides
         && string.IsNullOrWhiteSpace(ColorScheme)
         && string.IsNullOrWhiteSpace(TabColor)
         && string.IsNullOrWhiteSpace(StartupDirectory)
-        && KeepAliveSeconds is null;
+        && KeepAliveSeconds is null
+        && AntiIdleSeconds is null;
 
     /// <summary>返回本对象的副本。</summary>
     /// <returns>与本实例等值的新实例。</returns>
@@ -83,6 +109,7 @@ public sealed class TerminalOverrides
             ColorScheme = ColorScheme,
             TabColor = TabColor,
             StartupDirectory = StartupDirectory,
-            KeepAliveSeconds = KeepAliveSeconds
+            KeepAliveSeconds = KeepAliveSeconds,
+            AntiIdleSeconds = AntiIdleSeconds
         };
 }

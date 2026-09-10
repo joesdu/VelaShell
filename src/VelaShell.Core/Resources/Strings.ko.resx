@@ -1583,6 +1583,12 @@
   <data name="Profile_OverrideKeepAliveHint" xml:space="preserve">
     <value>-1 = 전역 설정 따름, 0 = 사용 안 함.</value>
   </data>
+  <data name="Profile_AntiIdle" xml:space="preserve">
+    <value>유휴 방지(초)</value>
+  </data>
+  <data name="Profile_AntiIdleHint" xml:space="preserve">
+    <value>0 = 사용 안 함. 이 간격으로 보이지 않는 바이트(NUL)를 보내 서버가 유휴 상태로 판단해 세션을 끊는 것을 막습니다. 연결 유지는 프로토콜 링크만 지키므로 서로 보완합니다.</value>
+  </data>
   <data name="Profile_PostAuthCommandPlaceholder" xml:space="preserve">
     <value>예: sudo su - / tmux attach</value>
   </data>

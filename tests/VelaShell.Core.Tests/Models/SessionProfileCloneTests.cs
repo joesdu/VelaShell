@@ -54,7 +54,8 @@ public sealed class SessionProfileCloneTests
                 ColorScheme = "Nord",
                 TabColor = "#E05252",
                 StartupDirectory = "/var/log",
-                KeepAliveSeconds = 15
+                KeepAliveSeconds = 15,
+                AntiIdleSeconds = 120
             },
             AutoStartTunnelIds = [Guid.NewGuid(), Guid.NewGuid()]
         };

@@ -1873,6 +1873,12 @@
   <data name="Profile_OverrideKeepAliveHint" xml:space="preserve">
     <value>-1 = 跟隨全域;0 = 關閉。</value>
   </data>
+  <data name="Profile_AntiIdle" xml:space="preserve">
+    <value>防閒置(秒)</value>
+  </data>
+  <data name="Profile_AntiIdleHint" xml:space="preserve">
+    <value>0 = 關閉。依此間隔向工作階段送出一個不可見位元組(NUL),避免伺服器依閒置將工作階段踢除。與上方的保活互補:保活只管連線,管不到伺服器的閒置計時。</value>
+  </data>
   <data name="Profile_PostAuthCommandPlaceholder" xml:space="preserve">
     <value>例如 sudo su - / tmux attach</value>
   </data>

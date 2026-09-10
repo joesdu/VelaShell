@@ -60,6 +60,47 @@ public sealed class ConnectionProfileViewModelTests
         Assert.IsNull(saved.PostAuthCommand);
     }
 
+    /// <summary>
+    /// 防空闲是一条会话自己的事:打开已存的配置要回显,保存要原样带回去,清成 0 要存回 null。
+    /// </summary>
+    /// <remarks>
+    /// 会按空闲踢人的只是特定那几台机器(堡垒机、跳板机),所以这一项没有全局开关可跟随 ——
+    /// 0 就是关。存回 null 而不是 0,是为了不给每条从没碰过这一项的配置留下假痕迹。
+    /// </remarks>
+    [TestMethod]
+    public async Task AntiIdle_RoundTripsThroughTheEditDialog()
+    {
+        var existing = new SessionProfile
+        {
+            Name = "bastion",
+            Host = "10.0.0.1",
+            Username = "ops",
+            Terminal = new() { AntiIdleSeconds = 90 },
+        };
+
+        var vm = new ConnectionProfileViewModel(existing);
+        Assert.AreEqual(90, vm.AntiIdleSeconds);
+
+        SessionProfile? saved = await vm.SaveCommand.Execute().FirstAsync();
+        Assert.IsNotNull(saved);
+        Assert.AreEqual(90, saved.Terminal?.AntiIdleSeconds);
+
+        vm.AntiIdleSeconds = 0;
+        SessionProfile? off = await vm.SaveCommand.Execute().FirstAsync();
+        Assert.IsNotNull(off);
+        Assert.IsNull(off.Terminal?.AntiIdleSeconds, "关掉之后不该在配置里留下一段「设过,设的是关」。");
+    }
+
+    [TestMethod]
+    public void AntiIdle_IsClampedToTheSupportedRange()
+    {
+        var vm = new ConnectionProfileViewModel { AntiIdleSeconds = 99_999 };
+        Assert.AreEqual(TerminalOverrides.MaxAntiIdleSeconds, vm.AntiIdleSeconds);
+
+        vm.AntiIdleSeconds = -5;
+        Assert.AreEqual(0, vm.AntiIdleSeconds, "负数没有意义,归零(= 关闭)。");
+    }
+
     [TestMethod]
     public void PostAuthCommandDelay_IsClampedToTheSupportedRange()
     {

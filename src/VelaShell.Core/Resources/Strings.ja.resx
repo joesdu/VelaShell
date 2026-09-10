@@ -1583,6 +1583,12 @@
   <data name="Profile_OverrideKeepAliveHint" xml:space="preserve">
     <value>-1 = グローバルに従う、0 = 無効。</value>
   </data>
+  <data name="Profile_AntiIdle" xml:space="preserve">
+    <value>アイドル防止(秒)</value>
+  </data>
+  <data name="Profile_AntiIdleHint" xml:space="preserve">
+    <value>0 = 無効。この間隔で不可視バイト(NUL)を送り、サーバーがアイドルとみなしてセッションを切断するのを防ぎます。キープアライブは接続経路だけを守るため、両者は補完関係です。</value>
+  </data>
   <data name="Profile_PostAuthCommandPlaceholder" xml:space="preserve">
     <value>例: sudo su - / tmux attach</value>
   </data>
