@@ -133,6 +133,7 @@ pie showData
 | 状态 | 优先级 | 项 | 现状 | 要做什么 |
 | :---: | :---: | --- | --- | --- |
 | ✅ | — | ~~防空闲断开（Anti-idle）~~ | **已完成**（2026-09-10，`plan.md` §65）：连接对话框的高级选项里新增「防空闲（秒）」，与保活并排；`TerminalOverrides.AntiIdleSeconds` → `AntiIdleKeeper` 按间隔往 PTY 送一个 `NUL`，只在真的空闲时发，ZMODEM 会话期间让路 | ⏳ **只按会话，没有全局开关**（刻意的：会踢人的只是特定那几台机器，注入的字节终究打进对端 tty）。📄 velashell-docs 还没跟上 |
+| ⏳ | 🟡 P2 | **非 bash 的 shell 干脆别注入目录上报钩子** | 钩子由 `test -n "${BASH_VERSION:-}"` 守卫，在 zsh / dash 上是个**空操作** —— 却照样占掉一个提示符周期，还在用户历史里留下一整行（`plan.md` §66 的摘历史只对 bash 有效：zsh 没有 `history -d`） | `RemoteShellProbe` 目前只回答「是不是 POSIX」，让它顺带报出 shell 家族（探针命令加一段 `${BASH_VERSION:+-bash}` / `${ZSH_VERSION:+-zsh}`，标记向后兼容），**确认是 zsh 时跳过注入**。⚠️ 只在**正面认出**非 bash 时才跳 —— 认不出来照旧注入，免得误伤「登录 shell 是 /bin/sh、交互 shell 是 bash」那种机器 |
 | 💡 | 🟢 P3 | **终端内搜索的增强** | 基础搜索已实现（`MainWindowViewModel.TerminalSearchRequested:1616`） | 正则、大小写、全部高亮、上一个/下一个的循环计数 —— 按用户反馈再定 |
 | 📄 | 🟠 P1 | **设计稿的两处残留** | Logo 有一个 `enabled:false` 残留图标；文件列表「修改时间」列无固定宽度 | 小到可以顺手做掉，记在这里免得忘 |
 

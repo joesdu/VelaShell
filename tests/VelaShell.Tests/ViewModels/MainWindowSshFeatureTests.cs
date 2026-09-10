@@ -191,8 +191,10 @@ public sealed class MainWindowSshFeatureTests
         Assert.IsNotNull(tab);
         string payload = await injected.Task.WaitAsync(TimeSpan.FromSeconds(10));
         // 首尾空白在保存与注入两处都会被裁掉;注入本身按 SendSilentCommand 的约定
-        // 前置一个空格(避免进 shell 历史)、以 \n 收尾。
-        Assert.AreEqual(" tmux attach\n", payload);
+        // 前置一个空格、以 \n 收尾,并在整行最前面接上摘历史那段 —— 用户不该在方向键里
+        // 看见自己没敲过的东西(那个前导空格只对配了 HISTCONTROL=ignorespace 的人有用,
+        // 而它默认是空的)。摘历史在**前**,所以这一行的退出码仍由 tmux attach 自己决定。
+        Assert.AreEqual($" {ShellHistoryScrub.Command}; tmux attach\n", payload);
     }
 
     [TestMethod]
