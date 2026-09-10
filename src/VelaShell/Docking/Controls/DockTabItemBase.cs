@@ -53,6 +53,14 @@ public abstract class DockTabItemBase : UserControl
         }
 
         PointerPoint point = e.GetCurrentPoint(this);
+        if (point.Properties.IsMiddleButtonPressed)
+        {
+            // 中键关标签:浏览器与各家编辑器通用的手势,省掉"先瞄准那枚 11px 的 ×"。
+            // 同样走 RequestClose —— 已连接会话的确认闸对哪个入口都得生效。
+            e.Handled = true;
+            workspace.RequestClose(document);
+            return;
+        }
         if (point.Properties.IsLeftButtonPressed)
         {
             workspace.ActivateDocument(document);
@@ -86,6 +94,15 @@ public abstract class DockTabItemBase : UserControl
     protected void CloseLeft_Click(object? sender, RoutedEventArgs e) => Workspace?.CloseLeftDocuments(Document!);
     /// <summary>关闭当前标签右侧的全部文档。</summary>
     protected void CloseRight_Click(object? sender, RoutedEventArgs e) => Workspace?.CloseRightDocuments(Document!);
+    /// <summary>把本窗格最大化到整片工作区,或从最大化状态还原。</summary>
+    protected void ToggleMaximizePane_Click(object? sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace && Group is { } group)
+        {
+            workspace.ToggleMaximizeGroup(group);
+        }
+    }
+
     /// <summary>将文档水平拆分为新组。</summary>
     protected void SplitHorizontal_Click(object? sender, RoutedEventArgs e) => Workspace?.SplitDocument(Document!, DockOrientation.Horizontal);
     /// <summary>将文档垂直拆分为新组。</summary>

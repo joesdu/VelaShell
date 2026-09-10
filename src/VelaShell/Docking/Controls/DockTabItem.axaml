@@ -127,6 +127,13 @@
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </MenuItem.Icon>
       </MenuItem>
+      <!-- 窗格最大化(Ctrl+Shift+X):分屏之后想把某一格看仔细,不必先拆了再拼回去。 -->
+      <MenuItem Header="{loc:Localize Dock_ToggleMaximizePane}" Click="ToggleMaximizePane_Click">
+        <MenuItem.Icon>
+          <pc:LucideIcon Width="13" Height="13" Data="{DynamicResource Icon.maximize}"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+        </MenuItem.Icon>
+      </MenuItem>
       <Separator />
       <MenuItem Header="{loc:Localize Dock_TabsPosition}">
         <MenuItem.Icon>

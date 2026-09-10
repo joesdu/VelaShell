@@ -1246,7 +1246,22 @@
     <value>關閉右側分頁</value>
   </data>
   <data name="Dock_DropTabHere" xml:space="preserve">
-    <value>將分頁拖曳至此</value>
+    <value>把其他窗格的分頁拖到這裡</value>
+  </data>
+  <data name="Dock_NoSessionOpen" xml:space="preserve">
+    <value>尚未開啟任何工作階段</value>
+  </data>
+  <data name="Dock_NoSessionOpenHint" xml:space="preserve">
+    <value>從資源管理器裡選一台機器,或者新增一個連線</value>
+  </data>
+  <data name="Dock_ClosePane" xml:space="preserve">
+    <value>關閉窗格</value>
+  </data>
+  <data name="Dock_EqualizePanes" xml:space="preserve">
+    <value>平分窗格</value>
+  </data>
+  <data name="Dock_ToggleMaximizePane" xml:space="preserve">
+    <value>窗格最大化 / 還原</value>
   </data>
   <data name="Dock_SplitHorizontal" xml:space="preserve">
     <value>水平分割</value>
@@ -3091,6 +3106,9 @@
   <data name="Sc_NoteSplitOnly" xml:space="preserve">
     <value>僅在分割畫面時生效;未分割時該鍵原樣送往遠端</value>
   </data>
+  <data name="Sc_NoteNeedsSplit" xml:space="preserve">
+    <value>僅在分割畫面時生效</value>
+  </data>
   <data name="Sc_NoteZoomOutTakesUnitSeparator" xml:space="preserve">
     <value>會佔用 ^_;要傳送它請用 Ctrl+Shift+-</value>
   </data>
@@ -4554,6 +4572,21 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="Sc_KeyCommandMark" xml:space="preserve">
     <value>命令標記欄</value>
+  </data>
+  <data name="Sc_KeyMiddleClick" xml:space="preserve">
+    <value>中鍵</value>
+  </data>
+  <data name="Sc_KeyTabItem" xml:space="preserve">
+    <value>分頁</value>
+  </data>
+  <data name="Sc_KeyTabStrip" xml:space="preserve">
+    <value>分頁列</value>
+  </data>
+  <data name="Sc_KeySplitter" xml:space="preserve">
+    <value>分割條</value>
+  </data>
+  <data name="Sc_ScrollTabs" xml:space="preserve">
+    <value>捲動分頁列</value>
   </data>
   <data name="Sc_JumpPrevPrompt" xml:space="preserve">
     <value>跳到上一條提示符</value>

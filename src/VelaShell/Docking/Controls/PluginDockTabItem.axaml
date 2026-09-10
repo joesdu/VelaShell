@@ -51,6 +51,7 @@
       <Separator />
       <MenuItem Header="{loc:Localize Dock_SplitHorizontal}" Click="SplitHorizontal_Click" />
       <MenuItem Header="{loc:Localize Dock_SplitVertical}" Click="SplitVertical_Click" />
+      <MenuItem Header="{loc:Localize Dock_ToggleMaximizePane}" Click="ToggleMaximizePane_Click" />
     </ContextMenu>
   </UserControl.ContextMenu>
 

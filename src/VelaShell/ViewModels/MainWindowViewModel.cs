@@ -1205,6 +1205,36 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 Icon: "Icon.rows-2"
             )
         );
+        // 窗格最大化(tmux 的 resize-pane -Z):分屏之后想把某一格看仔细,不必先把布局
+        // 拆了、看完再照原样拼回去 —— 那两步手工活正是分屏用起来累的原因。
+        Commands.Register(
+            new(
+                "pane.maximize",
+                Strings.Get("Dock_ToggleMaximizePane"),
+                Strings.Get("CmdCat_Actions"),
+                () =>
+                {
+                    if (Layout.ActiveDocument is { } document && Layout.FindGroup(document) is { } group)
+                    {
+                        Layout.ToggleMaximizeGroup(group);
+                    }
+                },
+                () => Layout.HasMultipleGroups,
+                "Ctrl+Shift+X",
+                Icon: "Icon.maximize"
+            )
+        );
+        // 平分窗格:分割条拖歪之后的一键复位(双击任意一条分割条只平分那一条所在的分栏)。
+        Commands.Register(
+            new(
+                "pane.equalize",
+                Strings.Get("Dock_EqualizePanes"),
+                Strings.Get("CmdCat_Actions"),
+                Layout.EqualizePanes,
+                () => Layout.HasMultipleGroups,
+                Icon: "Icon.layout-grid"
+            )
+        );
         // XMODEM / YMODEM 手动入口。ZMODEM 会自动接管(远端 sz/rz 的引导序列可识别),
         // 而这一族协议在链路上没有可识别的引导 —— sb/sx 静默等接收方发 'C',rb/rx 只吐裸 'C',
         // 在终端输出里与普通字符无异,自动检测必然误触发。所以只能由用户在远端敲好命令后手动发起。

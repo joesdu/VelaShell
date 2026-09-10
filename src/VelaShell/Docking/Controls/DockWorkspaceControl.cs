@@ -69,7 +69,8 @@ public sealed class DockWorkspaceControl : Panel
 
     private void OnWorkspaceModelChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(DockWorkspace.Root))
+        // 最大化只换渲染的起点,与换根同样是"整树重建"这一件事。
+        if (e.PropertyName is nameof(DockWorkspace.Root) or nameof(DockWorkspace.MaximizedGroup))
         {
             Rebuild();
         }
@@ -128,7 +129,8 @@ public sealed class DockWorkspaceControl : Panel
         {
             return;
         }
-        Children.Add(BuildNode(workspace, workspace.Root));
+        // 最大化的窗格直接当根渲染:布局树一动不动,其余窗格的视图留在缓存里等着被收养回来。
+        Children.Add(BuildNode(workspace, workspace.MaximizedGroup ?? workspace.Root));
         Children.Add(Overlay);
     }
 
@@ -160,7 +162,9 @@ public sealed class DockWorkspaceControl : Panel
         {
             if (i > 0)
             {
-                AddSplitterTrack(grid, horizontal, trackIndex, () => SaveProportions(tracks, horizontal));
+                AddSplitterTrack(grid, horizontal, trackIndex,
+                                 () => SaveProportions(tracks, horizontal),
+                                 () => ResetProportions(tracks));
                 trackIndex++;
             }
             DockNode child = split.Children[i];
@@ -197,9 +201,15 @@ public sealed class DockWorkspaceControl : Panel
 
     /// <summary>
     /// 5px 分割条轨道:1px 主题线 + 透明 GridSplitter(与主窗口侧栏/文件面板分割条同款,
-    /// 视觉轻、抓取区宽)。拖动结束把 star 值回写为各子节点的 Proportion。
+    /// 视觉轻、抓取区宽)。拖动结束把 star 值回写为各子节点的 Proportion;
+    /// 双击复位为均分 —— 拖歪一条缝之后,没有这一下就只能靠手再瞄准一次。
     /// </summary>
-    private static void AddSplitterTrack(Grid grid, bool horizontal, int trackIndex, Action onDragCompleted)
+    private static void AddSplitterTrack(
+        Grid grid,
+        bool horizontal,
+        int trackIndex,
+        Action onDragCompleted,
+        Action onReset)
     {
         var line = new Border();
         line.Bind(Border.BackgroundProperty, line.GetResourceObservable("VelaBorderPrimary"));
@@ -211,6 +221,11 @@ public sealed class DockWorkspaceControl : Panel
             ResizeDirection = horizontal ? GridResizeDirection.Columns : GridResizeDirection.Rows
         };
         splitter.DragCompleted += (_, _) => onDragCompleted();
+        splitter.DoubleTapped += (_, e) =>
+        {
+            onReset();
+            e.Handled = true;
+        };
         if (horizontal)
         {
             grid.ColumnDefinitions.Add(new ColumnDefinition(5, GridUnitType.Pixel));
@@ -229,6 +244,18 @@ public sealed class DockWorkspaceControl : Panel
         }
         grid.Children.Add(line);
         grid.Children.Add(splitter);
+    }
+
+    /// <summary>
+    /// 把这一条分栏的子节点恢复成均分。写回模型的 NaN 即可 ——
+    /// 轨道订阅了 Proportion(见 <see cref="OnNodeChanged" />),界面自己跟上。
+    /// </summary>
+    private static void ResetProportions(List<(DefinitionBase Definition, DockNode Node)> tracks)
+    {
+        foreach ((_, DockNode node) in tracks)
+        {
+            node.Proportion = double.NaN;
+        }
     }
 
     private static void SaveProportions(List<(DefinitionBase Definition, DockNode Node)> tracks, bool horizontal)

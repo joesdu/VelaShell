@@ -1135,7 +1135,22 @@ If this keeps happening, close any other VelaShell windows and try again.</value
     <value>Close Tabs to the Right</value>
   </data>
   <data name="Dock_DropTabHere" xml:space="preserve">
-    <value>Drag a tab here</value>
+    <value>Drag a tab from another pane here</value>
+  </data>
+  <data name="Dock_NoSessionOpen" xml:space="preserve">
+    <value>No session open</value>
+  </data>
+  <data name="Dock_NoSessionOpenHint" xml:space="preserve">
+    <value>Pick a machine in the explorer, or create a new connection</value>
+  </data>
+  <data name="Dock_ClosePane" xml:space="preserve">
+    <value>Close pane</value>
+  </data>
+  <data name="Dock_EqualizePanes" xml:space="preserve">
+    <value>Even out panes</value>
+  </data>
+  <data name="Dock_ToggleMaximizePane" xml:space="preserve">
+    <value>Maximize / restore pane</value>
   </data>
   <data name="Dock_SplitHorizontal" xml:space="preserve">
     <value>Split Horizontally</value>
@@ -2980,6 +2995,9 @@ Paste anyway?</value>
   <data name="Sc_NoteSplitOnly" xml:space="preserve">
     <value>Only when the window is split; otherwise the key goes to the remote shell</value>
   </data>
+  <data name="Sc_NoteNeedsSplit" xml:space="preserve">
+    <value>Only when the window is split</value>
+  </data>
   <data name="Sc_NoteZoomOutTakesUnitSeparator" xml:space="preserve">
     <value>Takes over ^_; use Ctrl+Shift+- to send it</value>
   </data>
@@ -4292,6 +4310,21 @@ A routine key rotation and a hijacked publishing identity look exactly the same 
   <data name="Sc_KeyTitleBar" xml:space="preserve"><value>Title Bar</value></data>
   <data name="Sc_KeyGutter" xml:space="preserve"><value>Gutter</value></data>
   <data name="Sc_KeyCommandMark" xml:space="preserve"><value>Command mark</value></data>
+  <data name="Sc_KeyMiddleClick" xml:space="preserve">
+    <value>Middle Click</value>
+  </data>
+  <data name="Sc_KeyTabItem" xml:space="preserve">
+    <value>Tab</value>
+  </data>
+  <data name="Sc_KeyTabStrip" xml:space="preserve">
+    <value>Tab strip</value>
+  </data>
+  <data name="Sc_KeySplitter" xml:space="preserve">
+    <value>Splitter</value>
+  </data>
+  <data name="Sc_ScrollTabs" xml:space="preserve">
+    <value>Scroll the tab strip</value>
+  </data>
   <data name="Sc_JumpPrevPrompt" xml:space="preserve"><value>Jump to the previous prompt</value></data>
   <data name="Sc_JumpNextPrompt" xml:space="preserve"><value>Jump to the next prompt</value></data>
   <data name="Sc_SelectCommandOutput" xml:space="preserve"><value>Select this command's output</value></data>

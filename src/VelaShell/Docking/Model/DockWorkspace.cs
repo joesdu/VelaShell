@@ -5,7 +5,7 @@ namespace VelaShell.Docking.Model;
 /// (docs/dock-replacement-plan.md §2.3)。取代原 TerminalDockFactory + Dock.Model:
 /// 新文档进主组;用户关闭走 <see cref="CloseDocument" />(触发 <see cref="DocumentClosed" />,
 /// 下游据此断 SSH/SFTP/日志);程序撤除走 <see cref="RemoveDocument" />(静默)。
-/// 空的非主组自动折叠,单子分栏自动提升。
+/// 空组自动折叠(主组先把兜底身份交给邻居再退场,只有根留着),单子分栏自动提升。
 /// </summary>
 public sealed class DockWorkspace : DockElement
 {
@@ -25,8 +25,28 @@ public sealed class DockWorkspace : DockElement
         private set => SetField(ref _root, value);
     }
 
-    /// <summary>新文档默认加入的组;清空后也不折叠。</summary>
-    public DockGroup PrimaryGroup { get; }
+    /// <summary>
+    /// 布局的兜底组:唯一一个不会被折叠掉的组,也是找不到更合适落点时新文档的归宿。
+    /// </summary>
+    /// <remarks>
+    /// 主组清空而布局里还有别的组时,这个身份会交给幸存的邻居(见 <see cref="TryHandOverPrimary" />),
+    /// 所以**不要把它缓存起来**。
+    /// </remarks>
+    public DockGroup PrimaryGroup { get; private set; }
+
+    /// <summary>
+    /// 当前被最大化(独占整片工作区)的窗格;<c>null</c> = 按布局树正常平铺。
+    /// </summary>
+    /// <remarks>
+    /// 与 tmux 的 <c>resize-pane -Z</c> 是同一件事:分屏之后想把某一格看仔细,
+    /// 不必先拆掉布局、看完再拼回去。**只影响渲染,不动布局树** —— 解除时原样恢复,
+    /// 连比例都不用记;因此它也不需要参与任何持久化。
+    /// </remarks>
+    public DockGroup? MaximizedGroup
+    {
+        get;
+        private set => SetField(ref field, value);
+    }
 
     /// <summary>全局激活文档(最后交互的组的选中标签),驱动 ActiveTerminalTab/状态栏联动。</summary>
     public DockDocument? ActiveDocument
@@ -154,14 +174,43 @@ public sealed class DockWorkspace : DockElement
 
     // ---- 增删与激活 ----
 
-    /// <summary>加入主组并激活(与原 Dock 行为一致:新终端总进第一组)。</summary>
+    /// <summary>把文档放进最合适的窗格并激活(落点规则见 <see cref="TargetGroupForNewDocument" />)。</summary>
     public void AddDocument(DockDocument document)
     {
-        PrimaryGroup.Documents.Add(document);
+        TargetGroupForNewDocument().Documents.Add(document);
         // 先报"来了"再激活:订阅方(宿主的每标签接线)要在活动标签切过去之前就位,
         // 否则激活回调里读到的还是一个没接好线的标签。
         DocumentAdded?.Invoke(document);
         ActivateDocument(document);
+    }
+
+    /// <summary>新文档的落点:空窗格 &gt; 正在用的窗格 &gt; 主组。</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>空窗格优先</b>:拆分只有一个标签的组会在原地留下一块写着"拖放标签到这里"的空面板,
+    /// 那块空白就是等着被填的 —— 新开的会话理应落进去,而不是挤进旁边那条已经有标签的条,
+    /// 把空面板晾在一边。
+    /// </para>
+    /// <para>
+    /// <b>其次是当前窗格</b>:分屏之后人眼盯着右半屏工作,新标签却开在左半屏的标签条上 ——
+    /// 焦点跟着跑过去,视线还留在原处。"新标签开在我正在用的这半边"是 VS Code /
+    /// Windows Terminal 一致的做法,也是分屏之后唯一不让人找标签的做法。
+    /// </para>
+    /// <para>
+    /// 主组只作兜底:没有空窗格、也没有活动文档(刚启动的空布局)时用它。
+    /// </para>
+    /// </remarks>
+    private DockGroup TargetGroupForNewDocument()
+    {
+        if (PrimaryGroup.Documents.Count == 0)
+        {
+            return PrimaryGroup;
+        }
+        if (AllGroups().FirstOrDefault(group => group.Documents.Count == 0) is { } empty)
+        {
+            return empty;
+        }
+        return ActiveDocument is { } active && FindGroup(active) is { } activeGroup ? activeGroup : PrimaryGroup;
     }
 
     /// <summary>
@@ -212,8 +261,60 @@ public sealed class DockWorkspace : DockElement
         {
             return;
         }
+        // 切到别的窗格 = 此刻想同时看见它们:与 tmux 的 select-pane 一样顺手解除最大化。
+        // 否则用户会对着一个"焦点已经在别处、屏幕上却还是那一格"的界面发愣。
+        if (MaximizedGroup is { } maximized && !ReferenceEquals(maximized, group))
+        {
+            MaximizedGroup = null;
+        }
         group.ActiveDocument = document;
         ActiveDocument = document;
+    }
+
+    /// <summary>切换某个窗格的最大化状态;布局里只有一个窗格时是空操作(没有可让位的邻居)。</summary>
+    /// <param name="group">要最大化 / 还原的窗格。</param>
+    public void ToggleMaximizeGroup(DockGroup group)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+        if (ReferenceEquals(MaximizedGroup, group))
+        {
+            MaximizedGroup = null;
+            return;
+        }
+        if (HasMultipleGroups && IsOnTree(group))
+        {
+            MaximizedGroup = group;
+        }
+    }
+
+    /// <summary>把所有分栏恢复成均分 —— 分割条拖乱之后的一键复位。</summary>
+    public void EqualizePanes()
+    {
+        foreach (DockNode node in EnumerateNodes(Root))
+        {
+            node.Proportion = double.NaN; // NaN = 与兄弟均分(渲染层按 1 星处理)
+        }
+    }
+
+    /// <summary>
+    /// 关掉整个窗格:还有标签就走确认闸逐一关闭(关空之后窗格自会折叠),
+    /// 已经是空窗格则直接从布局里撤掉。
+    /// </summary>
+    /// <remarks>
+    /// 空窗格(拆分留下的那块"拖放标签到这里")在此之前<b>没有任何撤销入口</b> ——
+    /// 只能把邻居的标签拖进去、再拖回来,靠副作用把它挤掉。一个显式的"关闭窗格"
+    /// 才是这块空白该有的出口。
+    /// </remarks>
+    /// <param name="group">要关闭的窗格。</param>
+    public void ClosePane(DockGroup group)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+        if (group.Documents.Count > 0)
+        {
+            RequestCloseMany(group.Documents.ToArray());
+            return;
+        }
+        CollapseIfEmpty(group);
     }
 
     /// <summary>
@@ -408,7 +509,7 @@ public sealed class DockWorkspace : DockElement
         DockGroup newGroup = DetachToNewGroup(document, source);
         // source 若因清空被折叠,目标组仍在树上(source != target 已由上面分支保证),
         // 极端情况下兜底锚定主组。
-        DockGroup anchor = FindNode(target) ? target : PrimaryGroup;
+        DockGroup anchor = IsOnTree(target) ? target : PrimaryGroup;
         InsertNeighbor(anchor, newGroup, orientation, after);
         ActivateDocument(document);
     }
@@ -497,7 +598,8 @@ public sealed class DockWorkspace : DockElement
 
     // ---- 树维护 ----
 
-    private bool FindNode(DockNode node)
+    /// <summary>节点是否还挂在当前布局树上(折叠掉的组仍被调用方持有引用,得能问出来)。</summary>
+    private bool IsOnTree(DockNode node)
     {
         DockNode current = node;
         while (current.Parent is { } parent)
@@ -505,6 +607,23 @@ public sealed class DockWorkspace : DockElement
             current = parent;
         }
         return ReferenceEquals(current, Root);
+    }
+
+    /// <summary>深度遍历布局树的全部节点(分栏与组都算)。</summary>
+    private static IEnumerable<DockNode> EnumerateNodes(DockNode node)
+    {
+        yield return node;
+        if (node is not DockSplit split)
+        {
+            yield break;
+        }
+        foreach (DockNode child in split.Children.ToArray())
+        {
+            foreach (DockNode descendant in EnumerateNodes(child))
+            {
+                yield return descendant;
+            }
+        }
     }
 
     private void ReplaceNode(DockNode oldNode, DockNode newNode)
@@ -520,14 +639,61 @@ public sealed class DockWorkspace : DockElement
         parent.Children[index] = newNode;
     }
 
+    /// <summary>
+    /// 空组从布局里退场:主组同样退场,只是先把"兜底"的身份交出去。
+    /// </summary>
+    /// <remarks>
+    /// 早先这里对主组一律早退(<c>IsPrimary || …</c>),结果是分屏之后关光左侧的标签,
+    /// 右侧那半永远填不满整片区域 —— 左边留着的正是那个空的、"永不折叠"的主组。
+    /// 需要不折叠的其实只有<b>根</b>(布局树总得有个底),而不是某个特定的组;
+    /// 由 <c>group.Parent is not { } parent</c> 这一条兜住:根节点没有父分栏。
+    /// </remarks>
     private void CollapseIfEmpty(DockGroup group)
     {
-        if (group.IsPrimary || group.Documents.Count > 0 || group.Parent is not { } parent)
+        if (group.Documents.Count > 0 || group.Parent is not { } parent)
         {
             return;
         }
+        if (group.IsPrimary && !TryHandOverPrimary(group))
+        {
+            return; // 没人能接手兜底,主组只好原地留着。
+        }
         parent.Children.Remove(group);
         HoistIfSingle(parent);
+        NormalizeMaximized();
+    }
+
+    /// <summary>把"主组"的身份交给幸存的邻居;没人可交则返回 false(调用方据此放弃折叠)。</summary>
+    /// <remarks>
+    /// 优先交给同一分栏里的兄弟,而且是折叠之后<b>会接管这块地方</b>的那个 ——
+    /// 于是新文档出现在用户眼睛刚才盯着的位置,而不是布局树另一头的某个窗格。
+    /// </remarks>
+    /// <param name="leaving">即将退场的空主组。</param>
+    /// <returns>成功易主返回 <c>true</c>。</returns>
+    private bool TryHandOverPrimary(DockGroup leaving)
+    {
+        DockGroup? successor = leaving.Parent?.Children
+                                      .Where(child => !ReferenceEquals(child, leaving))
+                                      .Select(child => Descend(child, enterFromEnd: false))
+                                      .FirstOrDefault(group => group is not null);
+        successor ??= AllGroups().FirstOrDefault(group => !ReferenceEquals(group, leaving));
+        if (successor is null)
+        {
+            return false;
+        }
+        leaving.IsPrimary = false;
+        successor.IsPrimary = true;
+        PrimaryGroup = successor;
+        return true;
+    }
+
+    /// <summary>结构变动后校正最大化状态:被最大化的窗格已不在树上、或布局只剩一格时解除。</summary>
+    private void NormalizeMaximized()
+    {
+        if (MaximizedGroup is { } maximized && (!IsOnTree(maximized) || !HasMultipleGroups))
+        {
+            MaximizedGroup = null;
+        }
     }
 
     private void HoistIfSingle(DockSplit split)
@@ -541,9 +707,10 @@ public sealed class DockWorkspace : DockElement
         child.Proportion = split.Proportion;
         ReplaceNode(split, child);
 
-        // 提升出来的若是一个空的次级组(拆分留下的空面板,兄弟已全部关闭),
-        // 顺带回收,不让空面板独自留在布局里;递归令上层分栏继续收敛。
-        if (child is DockGroup { IsPrimary: false, Documents.Count: 0 } emptyGroup)
+        // 提升出来的若是一个空组(拆分留下的空面板,兄弟已全部关闭),顺带回收,
+        // 不让空面板独自留在布局里;递归令上层分栏继续收敛。主组不必在这里特判 ——
+        // CollapseIfEmpty 自己会先交出兜底身份,而升到根之后它没有父分栏、自然留下。
+        if (child is DockGroup { Documents.Count: 0 } emptyGroup)
         {
             CollapseIfEmpty(emptyGroup);
         }

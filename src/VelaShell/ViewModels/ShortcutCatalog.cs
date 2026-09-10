@@ -103,6 +103,9 @@ public static class ShortcutCatalog
                     Item("Cmd_GotoLastTab", [Ctrl, Alt, "9"]),
                     Item("Dock_SplitHorizontal", [Ctrl, Shift, "D"]),
                     Item("Dock_SplitVertical", [Ctrl, Shift, "S"]),
+                    // 用 NeedsSplit 而不是 SplitOnly:这一条是无条件抢下的全局键位,
+                    // 未分屏时它只是没事可做,并不会把按键送去远端(Alt+方向才会)。
+                    Item("Dock_ToggleMaximizePane", [Ctrl, Shift, "X"], "Sc_NoteNeedsSplit"),
                     Item("Sc_FocusPane", [Alt, "←", "→", "↑", "↓"], "Sc_NoteSplitOnly"),
                     Item("Cmd_ToggleSidebar", [Ctrl, "B"]),
                     Item("Sc_ToggleFileBrowser", [Ctrl, Shift, "F"]),
@@ -170,6 +173,10 @@ public static class ShortcutCatalog
                     Item("Sc_RightClickPaste", [K("Sc_KeyRightClick")], "Sc_NoteOptional"),
                     Item("Sc_ZoomFont", [Ctrl, K("Sc_KeyWheel")]),
                     Item("Sc_FastScroll", [Alt, K("Sc_KeyWheel")]),
+                    // 停靠区的三个鼠标手势:不写进来就只有读过源码的人知道它们存在。
+                    Item("CloseTab", [K("Sc_KeyTabItem"), K("Sc_KeyMiddleClick")]),
+                    Item("Sc_ScrollTabs", [K("Sc_KeyTabStrip"), K("Sc_KeyWheel")]),
+                    Item("Dock_EqualizePanes", [K("Sc_KeySplitter"), K("Sc_KeyDoubleClick")], "Sc_NoteNeedsSplit"),
                     Item("Sc_GutterMenu", [K("Sc_KeyGutter"), K("Sc_KeyRightClick")]),
                     Item("Sc_ToggleFold", [K("Sc_KeyGutter"), K("Sc_KeyLeftClick")]),
                     Item("Sc_SelectCommandOutput", [K("Sc_KeyCommandMark"), K("Sc_KeyLeftClick")], "Sc_NoteShellIntegration"),

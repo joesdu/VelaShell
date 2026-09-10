@@ -452,7 +452,22 @@
     <value>右側のタブを閉じる</value>
   </data>
   <data name="Dock_DropTabHere" xml:space="preserve">
-    <value>ここにタブをドラッグ</value>
+    <value>他のペインのタブをここにドラッグ</value>
+  </data>
+  <data name="Dock_NoSessionOpen" xml:space="preserve">
+    <value>セッションが開かれていません</value>
+  </data>
+  <data name="Dock_NoSessionOpenHint" xml:space="preserve">
+    <value>エクスプローラーからマシンを選ぶか、新しい接続を作成してください</value>
+  </data>
+  <data name="Dock_ClosePane" xml:space="preserve">
+    <value>ペインを閉じる</value>
+  </data>
+  <data name="Dock_EqualizePanes" xml:space="preserve">
+    <value>ペインを均等化</value>
+  </data>
+  <data name="Dock_ToggleMaximizePane" xml:space="preserve">
+    <value>ペインの最大化 / 復元</value>
   </data>
   <data name="Dock_SplitHorizontal" xml:space="preserve">
     <value>横に分割</value>
@@ -2874,6 +2889,9 @@
   <data name="Sc_NoteSplitOnly" xml:space="preserve">
     <value>分割時のみ有効。分割していないときはそのままリモートへ送られます</value>
   </data>
+  <data name="Sc_NoteNeedsSplit" xml:space="preserve">
+    <value>画面分割時のみ有効</value>
+  </data>
   <data name="Sc_NoteZoomOutTakesUnitSeparator" xml:space="preserve">
     <value>^_ を占有します。送信するには Ctrl+Shift+- を使ってください</value>
   </data>
@@ -4291,6 +4309,21 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Sc_KeyTitleBar" xml:space="preserve"><value>タイトルバー</value></data>
   <data name="Sc_KeyGutter" xml:space="preserve"><value>ガター</value></data>
   <data name="Sc_KeyCommandMark" xml:space="preserve"><value>コマンドマーク欄</value></data>
+  <data name="Sc_KeyMiddleClick" xml:space="preserve">
+    <value>中クリック</value>
+  </data>
+  <data name="Sc_KeyTabItem" xml:space="preserve">
+    <value>タブ</value>
+  </data>
+  <data name="Sc_KeyTabStrip" xml:space="preserve">
+    <value>タブバー</value>
+  </data>
+  <data name="Sc_KeySplitter" xml:space="preserve">
+    <value>分割バー</value>
+  </data>
+  <data name="Sc_ScrollTabs" xml:space="preserve">
+    <value>タブバーをスクロール</value>
+  </data>
   <data name="Sc_JumpPrevPrompt" xml:space="preserve"><value>前のプロンプトへ移動</value></data>
   <data name="Sc_JumpNextPrompt" xml:space="preserve"><value>次のプロンプトへ移動</value></data>
   <data name="Sc_SelectCommandOutput" xml:space="preserve"><value>このコマンドの出力を選択</value></data>
