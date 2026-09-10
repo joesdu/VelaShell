@@ -74,12 +74,29 @@ jobs:
           repository: VelaShellLabs/velashell-docs
           path: velashell-docs
 
-      # runner 镜像通常已带这些,列全是为了镜像换代时不至于悄悄少一个 —— 已装的 apt 直接跳过。
+      # runner 镜像通常已带这些,列全是为了镜像换代时不至于悄悄少一个。
+      #
+      # 一个都不缺时**连 apt 都不碰**。镜像里还配着 Chrome 等第三方源,它们的索引偶尔会
+      # Hash Sum mismatch,而 `apt-get update` 只要有一个源没取下来就整体退 100 ——
+      # 本仓被它拦下过一次(run 34384262772:Linux 作业连编译都没跑到,见 plan.md §62)。
+      # 真缺包时才更新索引,且更新失败只记一行:要装的包全在 Ubuntu 主仓,第三方源坏掉不该
+      # 拦下代码 PR;真装不上的话,下面这条 install 会如实失败 —— 判据在装,不在索引。
       - name: 安装虚拟显示 (Linux)
         if: runner.os == 'Linux'
-        run: >
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends
-          xvfb libx11-6 libice6 libsm6 libfontconfig1
+        shell: bash
+        run: |
+          packages=(xvfb libx11-6 libice6 libsm6 libfontconfig1)
+          missing=()
+          for package in "${packages[@]}"; do
+            dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q 'ok installed' || missing+=("$package")
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "镜像已带齐:${packages[*]}"
+            exit 0
+          fi
+          echo "缺少:${missing[*]}"
+          sudo apt-get update || echo "::warning::apt-get update 有源没取下来,继续尝试安装。"
+          sudo apt-get install -y --no-install-recommends "${missing[@]}"
 
       - uses: actions/setup-dotnet@v6
         with:

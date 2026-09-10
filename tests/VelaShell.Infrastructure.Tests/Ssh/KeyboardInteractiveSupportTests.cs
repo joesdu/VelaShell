@@ -35,8 +35,8 @@ public sealed class KeyboardInteractiveSupportTests
         ];
 
         Assert.IsNotEmpty(credentials, "一个凭据类型都没找到 —— 反射扫描失效了,这条用例等于没测。");
-        Assert.IsFalse(
-            credentials.Any(t => t.Name.Contains("KeyboardInteractive", StringComparison.OrdinalIgnoreCase)),
+        Assert.DoesNotContain(
+            t => t.Name.Contains("KeyboardInteractive", StringComparison.OrdinalIgnoreCase), credentials,
             "Tmds.Ssh 现在提供了键盘交互式凭据:请实现真正的 2FA / OTP 流程,"
             + "并撤掉 Msg_AuthFailedTwoFactorHint 那句「本版无法连接」的说明。"
             + $"当前凭据类型:{string.Join("、", credentials.Select(t => t.Name))}");
@@ -75,8 +75,8 @@ public sealed class KeyboardInteractiveSupportTests
 
         Assert.IsNotEmpty(methods, "一种认证方式都没扫到 —— 反射失效了,这条用例等于没测。");
         Assert.Contains("PublicKeyAuth", methods, "连 PublicKeyAuth 都没扫到,说明扫描方式不对。");
-        Assert.IsFalse(
-            methods.Any(n => n.Contains("Interactive", StringComparison.OrdinalIgnoreCase)),
+        Assert.DoesNotContain(
+            n => n.Contains("Interactive", StringComparison.OrdinalIgnoreCase), methods,
             "Tmds.Ssh 实现了键盘交互式认证:请实现真正的 2FA / OTP 流程,"
             + $"并撤掉 Msg_AuthFailedTwoFactorHint。当前实现的方式:{string.Join("、", methods)}");
     }

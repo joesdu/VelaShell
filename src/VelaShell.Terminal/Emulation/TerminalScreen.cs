@@ -29,7 +29,7 @@ public sealed class TerminalScreen
     {
         Columns = Math.Max(1, columns);
         Rows = Math.Max(1, rows);
-        MaxScrollback = Math.Max(0, maxScrollback);
+        MaxScrollback = maxScrollback; // setter 负责钳到非负并当场裁剪
         _lines = NewLines(Rows, Columns);
         ScrollTop = 0;
         ScrollBottom = Rows - 1;
@@ -42,7 +42,21 @@ public sealed class TerminalScreen
     public int Rows { get; private set; }
 
     /// <summary>为主屏保留的最大回滚行数。</summary>
-    public int MaxScrollback { get; set; }
+    /// <remarks>
+    /// <b>调小当场生效</b>:setter 立刻把超出的历史裁掉,而不是等下一次滚动时顺手裁。
+    /// 用户调小这个值几乎都是为了收回内存(200 列 × 20 万行 × 16 B ≈ 640 MB / 标签页,
+    /// 见 <see cref="TerminalRow" /> 的类型注释),而一个跑完就停在那儿的标签页可能
+    /// 再也不会滚动一次 —— 那样就等于「调了不生效」。
+    /// </remarks>
+    public int MaxScrollback
+    {
+        get;
+        set
+        {
+            field = Math.Max(0, value);
+            TrimScrollbackToMax();
+        }
+    }
 
     /// <summary>当前光标列(从 0 开始)。</summary>
     public int CursorX { get; private set; }

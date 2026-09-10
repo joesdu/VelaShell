@@ -3320,3 +3320,161 @@ Thin / Light / Regular / Medium / SemiBold / Bold **六个真实静态字面**(�
 
 ⚠️ 固定高度的两个下拉(`LocalFilePaneView` / `LocalPathPickerDialog`,`Height=22`)
 字号上调后未做像素复核,是本次唯一没验到的地方。
+
+## ✅ 61. 2026-09-09 回滚行数这个设置项存下来了,只是有两处根本不生效(用户反馈)
+
+用户要求「把 scrollback 行数可配做全」,并指出「目前应该是已经有配置的地方了」—— 说对了。
+`feature-plan.md` A 组那一条写的是「现在硬编码 10 000,只差一个设置项 + 接线」,**这句是错的**:
+`AppSettings.ScrollbackLines`(默认 10 000、`ClampNumbers` 钳在 100..200 000)、
+设置页的 `NumericUpDown`、五种语言的资源串、`SettingsViewModel` 的读写、
+`TerminalSettingsApplier.Apply` 的下发,整条线一年前就通了。
+
+**缺的不是开关,是开关拨下去之后的那一段。** 又一例「复核结论本身会过期」——
+路线图那一条 09-08 才写,写的时候没核到设置页。
+
+### 一、洞一:调小不当场裁,内存不还
+
+`TerminalScreen.MaxScrollback` 是个自动属性,而裁剪只发生在 `TrimScrollbackToMax()` 里,
+它的调用点只有两处:`ScrollUp`(滚动时)与 `Resize` 的 reflow。于是把 200 000 调到 1 000,
+那 199 000 行**要等下一次滚动才退休**。
+
+问题在于用户调小它几乎只有一个动机 —— 收回内存(200 列 × 20 万行 × 16 B ≈ 640 MB / 标签页,
+见 `TerminalRow` 的类型注释)。而最该收的恰恰是**跑完就停在那儿的标签页**:
+一个刷完日志、此后再无输出的会话,「下一次滚动」可能永远不来。
+
+改法:`MaxScrollback` 改成带 setter 的属性,钳到非负后当场 `TrimScrollbackToMax()`。
+构造函数原本自己做的 `Math.Max(0, ...)` 收进 setter,只留一处。
+
+### 二、洞二:在 vim 里保存设置,值落到了备用屏上
+
+`VelaTerminalControl.ScrollbackLines` 原先读写的是 `Emulator.Screen.MaxScrollback` ——
+**`Screen` 是「当前」缓冲区**。用户正开着 vim / htop / less(备用屏活动)时按下保存,
+`TerminalSettingsApplier` 对每个标签重设一遍,于是:
+
+1. **主屏一个字没改** —— 用户以为生效了,退出 vim 才发现没有。这正是 P0 那张表里
+   「界面在骗人」的形态,只不过它不是「零消费者」,而是「消费者接错了地方」。
+2. **备用屏被弄脏** —— 它的容量本该恒为 0(`SetAlternateScreen` 里 `new(cols, rows, 0)`)。
+   一旦有了容量,`ScrollUp` 的 `if (fullScreen && MaxScrollback > 0)` 会把 vim 的退休行压进历史
+   (在 vim 里能往回滚出「历史」,是错的),而 `Resize` 的 `if (columns != Columns && MaxScrollback > 0)`
+   还会给备用屏做一次**它本不该做的 reflow** —— 那行注释写得很清楚:
+   备用屏靠 SIGWINCH 自行重绘,重排只会和应用打架。
+
+改法:把这个属性上提到引擎,`TerminalEmulator.ScrollbackLines` **恒读写 `_mainScreen`**,
+与此刻在哪个屏无关;控件转发过去。读回来也一并修好了 —— 原先在 vim 里打开设置页,
+显示的是备用屏的 0。
+
+### 三、裁剪要连带收的三样
+
+裁剪把绝对行号整体前移,所以控件那一侧在值真的裁到了东西时还得收口:
+
+- **滚动位置**:可能正停在一行已经不存在的历史上,`_scrollOffset` 与 `_lastScrollbackCount`
+  一起收回新量程(后者不同步的话,下一次 `ApplyOutputUpdate` 的 `PinScrollOffset` 会按一个
+  虚构的增量再挪一次)。
+- **折叠**:折叠头可能刚被裁掉 —— 走既有的 `ClearFolds()`。
+- **选区**:按绝对行寻址,留着只会复制到错的文本。与 resize 同一条纪律(见 §12-13 那句
+  「与其让陈旧的范围标记错误的文本,不如直接丢弃它」)。
+
+只在 `ScrollbackCount` 真的变了才做这一套:每次保存设置都会对所有标签重设一遍,
+调大或没到上限时不该白惊动滚动条的订阅者。
+
+### 四、验收
+
+`dotnet build VelaShell.slnx -warnaserror` 零警告零错误;`dotnet test VelaShell.slnx`
+**3310 通过 / 19 跳过 / 0 失败**。新增 `ScrollbackCapacityTests`(6 条):调小当场裁、
+调大不丢已有历史、负值兜底钳零(插件能力面 `PluginTerminalViewApi` 也能写这个属性)、
+备用屏上设置落到主屏且备用屏保持零回滚、备用屏上读回来的是主屏的值、裁剪后滚动位置回到量程内。
+
+⚠️ **本机缺 `global.json` 钉的 SDK**(要求 `11.0.100-rc.1.26425.128`,机器上只有
+`11.0.100-preview.7` 与 `10.0.400`),上面两条命令是在仓库外的目录里跑的 —— 那样
+global.json 不参与解析,落到 preview.7。**与 CI 的 SDK 不是同一个**,结论按此打折看。
+
+## ✅ 62. 2026-09-09 #414 的 CI 两处红:一处是用不到的 apt 源,一处是预热等超时后撒了手
+
+[#414](https://github.com/joesdu/VelaShell/pull/414) 的
+[run 34384262772](https://github.com/joesdu/VelaShell/actions/runs/34384262772) 三平台挂了两个,
+而**两处都与那一版的改动(§61 回滚行数)无关** —— macOS 全绿,挂掉的两处一处在装依赖、
+一处在数据库预热,都碰不到终端缓冲区。但红着的门禁就是拦着的门禁,得各自钉死。
+
+### 一、ubuntu:一个我们不用的源没取下来,`apt-get update` 整体退 100
+
+```
+E: Failed to fetch https://dl.google.com/linux/chrome-stable/deb/dists/stable/main/binary-amd64/Packages.gz  Hash Sum mismatch
+E: Some index files failed to download. They have been ignored, or old ones used instead.
+##[error]Process completed with exit code 100
+```
+
+作业在**「安装虚拟显示」那一步就断了**,编译一行都没跑到(14 秒结束)。取不下来的是 runner
+镜像自带的 Chrome 源,而这一步要的五个包(`xvfb libx11-6 libice6 libsm6 libfontconfig1`)
+全在 Ubuntu 主仓 —— 一个用不到的第三方源抽风,把整条代码门禁拦下了。
+
+`apt-get update` 的语义就是如此:任何一个源没取下来都算整体失败。而这一步的注释里本来就写着
+「runner 镜像通常已带这些」—— 那就先看缺不缺:
+
+- **一个都不缺时连 apt 都不碰**。这是绝大多数次的情况,索引根本不必更新,也就没有第三方源
+  什么事;
+- 真缺包时才 `apt-get update`,且它失败只记一行 `::warning::` ——
+  **判据落到 install 上**:包真装不上,`apt-get install` 会如实失败。原注释里
+  「列全是为了镜像换代时不至于悄悄少一个」那句话要的正是这个,而它从来不需要索引全绿。
+
+### 二、windows:预热的库等不到,`Discard` 撒手,用例撞上还占着的 WAL
+
+`StartupWarmupTests.AWarmupForAnotherRootIsClosedInsteadOfHandedOver` 跑了 13 秒后:
+
+```
+System.IO.IOException: The process cannot access the file
+'…\vela-warmup-other-e7eee7bf…\sonnetdb\wal\0000000000000001.SDBWAL'
+because it is being used by another process.
+```
+
+同一份报告里那行 Debug Trace 把根因说完了:
+
+```
+[VelaShell] Timed out waiting for the warmed database engine to open; leaving it to the process exit.
+```
+
+`StartupWarmup.Discard` 的 10 秒等到头了。链条是:
+
+1. 用例先 `Begin(other)` 预热另一个根,再 `Claim(_root)`;
+2. 根目录对不上,`Claim` 调 `Discard` 去关掉预热那一个 —— 但后台那次开库排在**线程池**上,
+   10 秒没跑完;
+3. `Discard` 打完那行日志就返回,**引擎留着不管**;
+4. 用例紧接着去开 `other`,撞上还被占着的 WAL。
+
+**为什么排这么久**:与 §50 同一个根因 —— `dotnet test VelaShell.slnx` **并行跑八个测试程序集**,
+而 runner 只有三四个核;线程池饱和后注入新线程约每 500 ms 才多一条,一个 `Task.Run` 排多久
+不是用例能控制的。本机(32 核)这一类六条 1 秒跑完,`DOTNET_PROCESSOR_COUNT=1` 把整个
+Infrastructure 程序集跑完也全绿 —— **单机复现不出来,恰恰说明它要的是多进程抢核**。
+
+#### 「超时就撒手」不只是用例脆,那是产品侧的缺陷
+
+原注释写的是「宁可漏一个句柄也不能让应用停在这儿不动」。后半句对,前半句在 `Claim` 这条路上
+把代价估低了:进程**才刚起来**,接下来要跑几个钟头 —— 这几个钟头里,另一个库的 WAL 一直被
+一个没人要的引擎占着。用户把 `--data-root` 换回去、或另开一个实例指向那个目录,撞上的就是
+「数据库被占用」。**那正是这个类存在的理由,只不过这回是它自己造出来的。**
+
+而「不能让应用停在这儿不动」并不需要靠撒手来换:超时之后挂一个续延,开库真跑完的那一刻把它
+关掉。等待照样有上限,句柄却不再漏。
+
+- 超时分支改成 `pending.ContinueWith(CloseWhenOpened, TaskScheduler.Default)`;
+- **排到线程池上,不用 `ExecuteSynchronously`**:后者在挂续延时任务恰好刚完成的话会就地跑在
+  调用方那条线程上 —— 把上面刚刚拒绝掉的那次等待又变回一次等待;
+- 预热本身就失败(多半是库被占用)时没有句柄要收,异常观察掉即可 —— 真正的报错仍由 `Claim`
+  那次就地新建抛出,`Program.Main` 的 `IsDatabaseLockedFailure` 才接得住。
+
+#### 用例改成等条件,不赌时长
+
+`OpenOnceReleased` 轮询到能打开为止,上限 25 秒(在 `StartupWarmup` 那 10 秒之上留够余量,
+又不越过 runsettings 里 60 秒的 `TestTimeout`)。要测的是「会不会放开」,不是「多快放开」;
+真没放开时照样失败,抛出的仍是原来那句「文件正被另一个进程使用」。
+`AnUnclaimedWarmupReleasesTheDatabaseAgain` 押的是一模一样的注,只是这次没轮到它,一并改掉。
+
+### 三、验收
+
+`dotnet build VelaShell.slnx -c Debug -warnaserror` 零警告零错误;
+`dotnet test VelaShell.slnx`(按 CI 那条过滤,并指上 `VELASHELL_DOCS_DIR`)
+**3309 通过 / 5 跳过 / 0 失败**;`StartupWarmupTests` 六条全过。
+**这次是 `global.json` 钉的那个 SDK**(`11.0.100-rc.1.26425.128` 已装上),
+不再有 §61 结尾那条打折说明。
+
+ubuntu 那一步没法在本机验证(Git Bash 里没有 `dpkg-query`):`bash -n` 过了语法,
+`js-yaml` 解析出来的 `run` 与写下的一字不差,逻辑的判据留在 CI 上。

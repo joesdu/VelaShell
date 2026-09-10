@@ -137,7 +137,7 @@ public sealed class ToastHostViewModelTests
 
         Assert.HasCount(ToastHostViewModel.MaxVisible, host.Toasts);
         Assert.AreEqual($"第 {ToastHostViewModel.MaxVisible + 1} 条", host.Toasts[0].Message);
-        Assert.IsFalse(host.Toasts.Any(t => t.Message == "第 0 条"), "最老的那条应当被挤掉。");
+        Assert.DoesNotContain(t => t.Message == "第 0 条", host.Toasts, "最老的那条应当被挤掉。");
     }
 
     [TestMethod]

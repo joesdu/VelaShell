@@ -73,7 +73,7 @@ public sealed class RecordingPlayerExportTests
         OnUi(() =>
         {
             byte[] han = Encoding.UTF8.GetBytes("中");
-            Assert.AreEqual(3, han.Length, "前置:这个字在 UTF-8 下就是三个字节。");
+            Assert.HasCount(3, han, "前置:这个字在 UTF-8 下就是三个字节。");
 
             RecordingPlayerViewModel viewModel = Load(new StubStore(
                 new RecordingChunk(0, han[..2]),

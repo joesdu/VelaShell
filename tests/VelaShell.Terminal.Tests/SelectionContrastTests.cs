@@ -48,18 +48,16 @@ public class SelectionContrastTests
         Rgba fill = SelectionContrast.Fill(selection, background);
 
         double delta = Math.Abs(SelectionContrast.Lightness(fill) - SelectionContrast.Lightness(background));
-        Assert.IsTrue(delta >= SelectionContrast.MinLightnessDeltaFor(background) - 0.01,
+        Assert.IsGreaterThanOrEqualTo(SelectionContrast.MinLightnessDeltaFor(background) - 0.01, delta,
             $"{name}:选区底与终端底只差 L* {delta:F1},低于 {SelectionContrast.MinLightnessDeltaFor(background)} 就等于没画。");
         Assert.AreEqual(0xFF, fill.A, $"{name}:选区底必须不透明 —— 半透明正是原先看不见的根因。");
     }
 
     /// <summary>够用的方案不该被动:整定只托底,不夺方案自己的设计。</summary>
     [TestMethod]
-    public void Fill_LeavesAlreadyVisibleSchemesAlone()
-    {
+    public void Fill_LeavesAlreadyVisibleSchemesAlone() =>
         // Tokyo Night 原生 ΔL* 20.6,是内置 16 套里唯一自己就跨过暗色档(20)的。
         Assert.AreEqual(Hex(0x33467C), SelectionContrast.Fill(Hex(0x33467C), Hex(0x1A1B26)), "Tokyo Night");
-    }
 
     /// <summary>
     /// 阈值分两档:暗底 20、亮底 16(对齐 VS Code 自家明暗主题的 20.8 / 15.9)。
@@ -91,8 +89,8 @@ public class SelectionContrastTests
         Rgba onDark = SelectionContrast.Fill(Hex(0x073642), Hex(0x002B36));
         Rgba onLight = SelectionContrast.Fill(Hex(0xEEE8D5), Hex(0xFDF6E3));
 
-        Assert.IsTrue(SelectionContrast.Lightness(onDark) > SelectionContrast.Lightness(Hex(0x002B36)));
-        Assert.IsTrue(SelectionContrast.Lightness(onLight) < SelectionContrast.Lightness(Hex(0xFDF6E3)));
+        Assert.IsGreaterThan(SelectionContrast.Lightness(Hex(0x002B36)), SelectionContrast.Lightness(onDark));
+        Assert.IsLessThan(SelectionContrast.Lightness(Hex(0xFDF6E3)), SelectionContrast.Lightness(onLight));
     }
 
     /// <summary>选区色与背景撞成同一个色也要能推开(最坏情况不能死循环或原样返回)。</summary>
@@ -103,7 +101,7 @@ public class SelectionContrastTests
         {
             Rgba fill = SelectionContrast.Fill(bg, bg);
             double delta = Math.Abs(SelectionContrast.Lightness(fill) - SelectionContrast.Lightness(bg));
-            Assert.IsTrue(delta >= SelectionContrast.MinLightnessDeltaFor(bg) - 0.01, $"背景 {bg.Packed:X8} 上推不开。");
+            Assert.IsGreaterThanOrEqualTo(SelectionContrast.MinLightnessDeltaFor(bg) - 0.01, delta, $"背景 {bg.Packed:X8} 上推不开。");
         }
     }
 
@@ -115,9 +113,9 @@ public class SelectionContrastTests
 
         Assert.AreEqual(Hex(0x839496), SelectionContrast.ReadableForeground(fill, Hex(0x839496)),
             "默认前景读得清就用默认前景。");
-        Assert.IsTrue(
-            Math.Abs(SelectionContrast.Brightness(SelectionContrast.ReadableForeground(fill, fill))
-                - SelectionContrast.Brightness(fill)) >= SelectionContrast.MinForegroundDelta,
+        Assert.IsGreaterThanOrEqualTo(
+            SelectionContrast.MinForegroundDelta, Math.Abs(SelectionContrast.Brightness(SelectionContrast.ReadableForeground(fill, fill))
+                - SelectionContrast.Brightness(fill)),
             "默认前景自己也撞的话得退到纯白/纯黑。");
     }
 
@@ -144,7 +142,7 @@ public class SelectionContrastTests
                 - SelectionContrast.Lightness(palette.DefaultBackground));
 
             Assert.AreEqual(0xFF, palette.SelectionBackground.A);
-            Assert.IsTrue(delta >= SelectionContrast.MinLightnessDeltaFor(palette.DefaultBackground) - 0.01,
+            Assert.IsGreaterThanOrEqualTo(SelectionContrast.MinLightnessDeltaFor(palette.DefaultBackground) - 0.01, delta,
                 $"只差 L* {delta:F1}。");
         });
     }

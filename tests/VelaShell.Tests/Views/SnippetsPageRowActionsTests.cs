@@ -67,8 +67,8 @@ public sealed class SnippetsPageRowActionsTests
             RaiseClick(page, "DeleteSnippet_Click", target);
             Dispatcher.UIThread.RunJobs();
 
-            Assert.IsFalse(
-                snippets.AllCommands.Any(c => c.Id == id),
+            Assert.DoesNotContain(
+                c => c.Id == id, snippets.AllCommands,
                 "删除没有生效 —— 绑定改成代码后置之后功能丢了。");
             return Task.CompletedTask;
         });

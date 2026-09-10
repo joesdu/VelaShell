@@ -69,18 +69,18 @@ public sealed class ConnectingTabCancellationTests
         // 标签在握手开始前就在了,右下角也已经登记了一条「连接中」。
         TerminalTabViewModel tab = vm.TerminalTabs.Single();
         Assert.AreEqual(SessionStatus.Connecting, tab.ConnectionStatus);
-        Assert.AreEqual(1, activity.Activities.Count);
+        Assert.HasCount(1, activity.Activities);
 
         vm.CloseTerminalTab(tab);
 
         Assert.IsNull(await connecting);
         Assert.IsTrue(handshakeToken.IsCancellationRequested, "关标签必须把握手的取消令牌拉断。");
-        Assert.AreEqual(0, vm.TerminalTabs.Count());
+        Assert.IsEmpty(vm.TerminalTabs);
         // 后台任务清单里不能留下一条为已关闭标签转着的「连接中」。
-        Assert.AreEqual(0, activity.Activities.Count);
+        Assert.IsEmpty(activity.Activities);
         // 用户自己关掉的标签不该再被报一句"无法连接"。
         Assert.IsNull(vm.LastConnectionError);
-        Assert.AreEqual(0, vm.Toasts.Toasts.Count);
+        Assert.IsEmpty(vm.Toasts.Toasts);
     }
 
     /// <summary>
@@ -112,7 +112,7 @@ public sealed class ConnectingTabCancellationTests
         });
 
         Assert.IsNull(await connecting);
-        Assert.AreEqual(0, vm.TerminalTabs.Count());
+        Assert.IsEmpty(vm.TerminalTabs);
         Assert.IsNull(vm.LastConnectionError);
         // 拆会话是后台线程上的事(见 TeardownSshSession),给它一小段时间落地。
         for (int i = 0; i < 50 && workflow.ReceivedCalls().All(c => c.GetMethodInfo().Name != nameof(IConnectionWorkflowService.DisconnectAsync)); i++)

@@ -140,13 +140,16 @@ public static class StartupWarmup
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>同步等,不是尽力而为。</b>丢弃这件事的全部意义就是「那个库确实不占着了」——
-    /// 挂个 <c>ContinueWith</c> 就返回的话,调用方紧接着去开同一个库仍会撞上 WAL 占用,
-    /// 而那正是这段代码要防的事。半开的库直接不管更糟:文件句柄漏在后台线程上。
+    /// <b>先同步等,不是挂个续延就走。</b>丢弃这件事的全部意义就是「那个库确实不占着了」——
+    /// 立刻返回的话,调用方紧接着去开同一个库仍会撞上 WAL 占用,而那正是这段代码要防的事。
+    /// 半开的库直接不管更糟:文件句柄漏在后台线程上。
     /// </para>
     /// <para>
-    /// 给一个上限是因为这两个调用点都在启动/退出路径上:开库要是真卡住了,
-    /// 宁可漏一个句柄也不能让应用停在这儿不动。超时会留一行日志。
+    /// 给一个上限是因为这两个调用点都在启动/退出路径上:开库要是真卡住了,不能让应用停在这儿不动。
+    /// <b>但超时不等于撒手</b> —— 开库迟早会跑完,那一刻改由续延把它关掉。原先那句
+    /// 「留给进程退出」在 <see cref="Claim" /> 这条路上尤其糟:进程才刚起来、接下来要跑几个钟头,
+    /// 而这几个钟头里另一个库的 WAL 一直被占着 —— 正是本类要防的那件事,只不过这回是它自己干的。
+    /// (CI 上撞见过一次,见 plan.md §62。)
     /// </para>
     /// </remarks>
     private static void Discard(Task<SonnetDbEngine> pending)
@@ -155,7 +158,8 @@ public static class StartupWarmup
         {
             if (!pending.Wait(DiscardTimeout))
             {
-                Trace.WriteLine("[VelaShell] Timed out waiting for the warmed database engine to open; leaving it to the process exit.");
+                Trace.WriteLine("[VelaShell] Timed out waiting for the warmed database engine to open; it will be closed once the open finishes.");
+                _ = pending.ContinueWith(CloseWhenOpened, TaskScheduler.Default);
                 return;
             }
             pending.Result.Dispose();
@@ -168,6 +172,29 @@ public static class StartupWarmup
         catch (Exception ex)
         {
             Trace.WriteLine($"[VelaShell] Discarding warmed database engine failed: {ex}");
+        }
+    }
+
+    /// <summary>把一个「等超时之后才开出来」的引擎关掉。</summary>
+    /// <remarks>
+    /// 排到线程池上跑,而不是 <c>ExecuteSynchronously</c>:后者在挂续延时任务恰好刚完成的话,
+    /// 会就地跑在调用方(启动/退出)那条线程上 —— 把上面刚刚拒绝的那次等待又变回一次等待。
+    /// </remarks>
+    private static void CloseWhenOpened(Task<SonnetDbEngine> finished)
+    {
+        if (!finished.IsCompletedSuccessfully)
+        {
+            // 预热压根没开出来,没有句柄要收;异常观察掉即可(理由同 Discard)。
+            _ = finished.Exception;
+            return;
+        }
+        try
+        {
+            finished.Result.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[VelaShell] Closing the late warmed database engine failed: {ex}");
         }
     }
 

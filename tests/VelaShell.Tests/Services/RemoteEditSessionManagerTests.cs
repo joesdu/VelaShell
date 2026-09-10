@@ -312,8 +312,8 @@ public sealed class RemoteEditSessionManagerTests
 
         Assert.IsFalse(landed);
         Assert.IsTrue(File.Exists(fixture.LocalPath), "上传失败却把本地副本删了 —— 改动就此丢失。");
-        Assert.IsTrue(
-            fixture.Errors.Any(e => e.Contains(fixture.LocalPath, StringComparison.Ordinal)),
+        Assert.Contains(
+            e => e.Contains(fixture.LocalPath, StringComparison.Ordinal), fixture.Errors,
             "没有告诉用户草稿留在哪儿。");
     }
 
@@ -425,7 +425,7 @@ public sealed class RemoteEditSessionManagerTests
             {
                 await Task.Delay(5);
             }
-            Assert.AreEqual(expected, UploadedContents.Length,
+            Assert.HasCount(expected, UploadedContents,
                             $"等不到第 {expected} 次回传 —— 监视或防抖在第一次之后就不再工作了。");
         }
 

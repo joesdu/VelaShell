@@ -719,11 +719,30 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <summary>活动屏幕中的当前光标列。</summary>
     public int CursorCol => Emulator.CursorX;
 
-    /// <summary>缓冲区保留的最大回滚行数。</summary>
+    /// <summary>缓冲区保留的最大回滚行数(恒作用于主屏,见 <see cref="TerminalEmulator.ScrollbackLines" />)。</summary>
+    /// <remarks>
+    /// 调小会当场裁掉超出的历史,于是滚动位置可能正停在一行已经不存在的历史上、滚动条的量程
+    /// 也变了 —— 这里立刻把两者收回新量程内。等下一次输出再收是不行的:一个已经跑完、
+    /// 不再有输出的标签页,「下一次」可能永远不来。
+    /// </remarks>
     public int ScrollbackLines
     {
-        get => Emulator.Screen.MaxScrollback;
-        set => Emulator.Screen.MaxScrollback = value;
+        get => Emulator.ScrollbackLines;
+        set
+        {
+            int retiredBefore = Emulator.Screen.ScrollbackCount;
+            Emulator.ScrollbackLines = value;
+            if (Emulator.Screen.ScrollbackCount == retiredBefore)
+            {
+                return; // 没裁到东西(调大、或本就没到上限)。每次保存设置都会对所有标签重设一遍,别白惊动订阅者。
+            }
+            _scrollOffset = Math.Clamp(_scrollOffset, 0, Emulator.Screen.ScrollbackCount);
+            _lastScrollbackCount = Emulator.Screen.ScrollbackCount;
+            ClearFolds(); // 折叠头可能刚被裁掉。
+            ClearSelection(); // 选区按绝对行寻址,裁剪把绝对行整体前移了 —— 留着只会复制到错的文本。
+            InvalidateTerminal();
+            ScrollChanged?.Invoke();
+        }
     }
 
     /// <summary>渲染此终端的 Avalonia 控件(即本实例)。</summary>
