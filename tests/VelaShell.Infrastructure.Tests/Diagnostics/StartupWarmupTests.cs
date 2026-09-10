@@ -98,8 +98,8 @@ public sealed class StartupWarmupTests
             using SonnetDbEngine engine = StartupWarmup.Claim(Paths());
 
             Assert.StartsWith(Paths().RootDirectory, engine.RootDirectory);
-            // 预热那一个已被关掉,所以另一个库现在能正常打开 —— 没关的话这里会撞上 WAL 占用。
-            using SonnetDbEngine reopened = new(Paths(other));
+            // 预热那一个必须被关掉,所以另一个库要能重新打开 —— 没关的话这里会撞上 WAL 占用。
+            using SonnetDbEngine reopened = OpenOnceReleased(Paths(other));
             Assert.StartsWith(Paths(other).RootDirectory, reopened.RootDirectory);
         }
         finally
@@ -115,6 +115,37 @@ public sealed class StartupWarmupTests
         }
     }
 
+    /// <summary>等预热那一个真把库放开,然后打开它。</summary>
+    /// <remarks>
+    /// <b>别写回直接 <c>new</c>。</b>放开有两条路:<c>Claim</c> 里那次同步等(上限 10 秒),
+    /// 等不到则转由续延在开库真正跑完时关掉。而后台那次开库排在**线程池**上 —— CI 上
+    /// <c>dotnet test VelaShell.slnx</c> 并行跑八个测试程序集抢三四个核,它排多久不是这条用例
+    /// 能控制的(§62 就是这么挂的;同一个根因见 §50)。所以这里**等条件、不赌时长**:
+    /// 要测的是「会不会放开」,不是「多快放开」。
+    /// <para>
+    /// 真没放开时照样失败:超时之后那一次 <c>new</c> 不再兜异常,抛出的仍是原来那句
+    /// 「文件正被另一个进程使用」。外面还有 runsettings 里 60 秒的 <c>TestTimeout</c> 兜底。
+    /// </para>
+    /// </remarks>
+    private static SonnetDbEngine OpenOnceReleased(VelaShellStoragePaths paths)
+    {
+        System.Diagnostics.Stopwatch elapsed = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
+        {
+            try
+            {
+                return new(paths);
+            }
+            catch (IOException) when (elapsed.Elapsed < ReleaseTimeout)
+            {
+                Thread.Sleep(20);
+            }
+        }
+    }
+
+    /// <summary>等库被放开的上限:比 <c>StartupWarmup</c> 那 10 秒宽,又给 60 秒的测试上限留足余量。</summary>
+    private static readonly TimeSpan ReleaseTimeout = TimeSpan.FromSeconds(25);
+
     [TestMethod]
     public void AnUnclaimedWarmupReleasesTheDatabaseAgain()
     {
@@ -126,7 +157,8 @@ public sealed class StartupWarmupTests
         StartupWarmup.DiscardIfUnclaimed();
 
         Assert.IsFalse(StartupWarmup.IsPending);
-        using SonnetDbEngine reopened = new(Paths());
+        // 同上:放开这件事等条件,不赌后台那次开库有多快。
+        using SonnetDbEngine reopened = OpenOnceReleased(Paths());
         Assert.StartsWith(Paths().RootDirectory, reopened.RootDirectory);
     }
 

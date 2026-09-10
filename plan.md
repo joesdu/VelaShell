@@ -3387,3 +3387,94 @@ Thin / Light / Regular / Medium / SemiBold / Bold **六个真实静态字面**(�
 ⚠️ **本机缺 `global.json` 钉的 SDK**(要求 `11.0.100-rc.1.26425.128`,机器上只有
 `11.0.100-preview.7` 与 `10.0.400`),上面两条命令是在仓库外的目录里跑的 —— 那样
 global.json 不参与解析,落到 preview.7。**与 CI 的 SDK 不是同一个**,结论按此打折看。
+
+## ✅ 62. 2026-09-09 #414 的 CI 两处红:一处是用不到的 apt 源,一处是预热等超时后撒了手
+
+[#414](https://github.com/joesdu/VelaShell/pull/414) 的
+[run 34384262772](https://github.com/joesdu/VelaShell/actions/runs/34384262772) 三平台挂了两个,
+而**两处都与那一版的改动(§61 回滚行数)无关** —— macOS 全绿,挂掉的两处一处在装依赖、
+一处在数据库预热,都碰不到终端缓冲区。但红着的门禁就是拦着的门禁,得各自钉死。
+
+### 一、ubuntu:一个我们不用的源没取下来,`apt-get update` 整体退 100
+
+```
+E: Failed to fetch https://dl.google.com/linux/chrome-stable/deb/dists/stable/main/binary-amd64/Packages.gz  Hash Sum mismatch
+E: Some index files failed to download. They have been ignored, or old ones used instead.
+##[error]Process completed with exit code 100
+```
+
+作业在**「安装虚拟显示」那一步就断了**,编译一行都没跑到(14 秒结束)。取不下来的是 runner
+镜像自带的 Chrome 源,而这一步要的五个包(`xvfb libx11-6 libice6 libsm6 libfontconfig1`)
+全在 Ubuntu 主仓 —— 一个用不到的第三方源抽风,把整条代码门禁拦下了。
+
+`apt-get update` 的语义就是如此:任何一个源没取下来都算整体失败。而这一步的注释里本来就写着
+「runner 镜像通常已带这些」—— 那就先看缺不缺:
+
+- **一个都不缺时连 apt 都不碰**。这是绝大多数次的情况,索引根本不必更新,也就没有第三方源
+  什么事;
+- 真缺包时才 `apt-get update`,且它失败只记一行 `::warning::` ——
+  **判据落到 install 上**:包真装不上,`apt-get install` 会如实失败。原注释里
+  「列全是为了镜像换代时不至于悄悄少一个」那句话要的正是这个,而它从来不需要索引全绿。
+
+### 二、windows:预热的库等不到,`Discard` 撒手,用例撞上还占着的 WAL
+
+`StartupWarmupTests.AWarmupForAnotherRootIsClosedInsteadOfHandedOver` 跑了 13 秒后:
+
+```
+System.IO.IOException: The process cannot access the file
+'…\vela-warmup-other-e7eee7bf…\sonnetdb\wal\0000000000000001.SDBWAL'
+because it is being used by another process.
+```
+
+同一份报告里那行 Debug Trace 把根因说完了:
+
+```
+[VelaShell] Timed out waiting for the warmed database engine to open; leaving it to the process exit.
+```
+
+`StartupWarmup.Discard` 的 10 秒等到头了。链条是:
+
+1. 用例先 `Begin(other)` 预热另一个根,再 `Claim(_root)`;
+2. 根目录对不上,`Claim` 调 `Discard` 去关掉预热那一个 —— 但后台那次开库排在**线程池**上,
+   10 秒没跑完;
+3. `Discard` 打完那行日志就返回,**引擎留着不管**;
+4. 用例紧接着去开 `other`,撞上还被占着的 WAL。
+
+**为什么排这么久**:与 §50 同一个根因 —— `dotnet test VelaShell.slnx` **并行跑八个测试程序集**,
+而 runner 只有三四个核;线程池饱和后注入新线程约每 500 ms 才多一条,一个 `Task.Run` 排多久
+不是用例能控制的。本机(32 核)这一类六条 1 秒跑完,`DOTNET_PROCESSOR_COUNT=1` 把整个
+Infrastructure 程序集跑完也全绿 —— **单机复现不出来,恰恰说明它要的是多进程抢核**。
+
+#### 「超时就撒手」不只是用例脆,那是产品侧的缺陷
+
+原注释写的是「宁可漏一个句柄也不能让应用停在这儿不动」。后半句对,前半句在 `Claim` 这条路上
+把代价估低了:进程**才刚起来**,接下来要跑几个钟头 —— 这几个钟头里,另一个库的 WAL 一直被
+一个没人要的引擎占着。用户把 `--data-root` 换回去、或另开一个实例指向那个目录,撞上的就是
+「数据库被占用」。**那正是这个类存在的理由,只不过这回是它自己造出来的。**
+
+而「不能让应用停在这儿不动」并不需要靠撒手来换:超时之后挂一个续延,开库真跑完的那一刻把它
+关掉。等待照样有上限,句柄却不再漏。
+
+- 超时分支改成 `pending.ContinueWith(CloseWhenOpened, TaskScheduler.Default)`;
+- **排到线程池上,不用 `ExecuteSynchronously`**:后者在挂续延时任务恰好刚完成的话会就地跑在
+  调用方那条线程上 —— 把上面刚刚拒绝掉的那次等待又变回一次等待;
+- 预热本身就失败(多半是库被占用)时没有句柄要收,异常观察掉即可 —— 真正的报错仍由 `Claim`
+  那次就地新建抛出,`Program.Main` 的 `IsDatabaseLockedFailure` 才接得住。
+
+#### 用例改成等条件,不赌时长
+
+`OpenOnceReleased` 轮询到能打开为止,上限 25 秒(在 `StartupWarmup` 那 10 秒之上留够余量,
+又不越过 runsettings 里 60 秒的 `TestTimeout`)。要测的是「会不会放开」,不是「多快放开」;
+真没放开时照样失败,抛出的仍是原来那句「文件正被另一个进程使用」。
+`AnUnclaimedWarmupReleasesTheDatabaseAgain` 押的是一模一样的注,只是这次没轮到它,一并改掉。
+
+### 三、验收
+
+`dotnet build VelaShell.slnx -c Debug -warnaserror` 零警告零错误;
+`dotnet test VelaShell.slnx`(按 CI 那条过滤,并指上 `VELASHELL_DOCS_DIR`)
+**3309 通过 / 5 跳过 / 0 失败**;`StartupWarmupTests` 六条全过。
+**这次是 `global.json` 钉的那个 SDK**(`11.0.100-rc.1.26425.128` 已装上),
+不再有 §61 结尾那条打折说明。
+
+ubuntu 那一步没法在本机验证(Git Bash 里没有 `dpkg-query`):`bash -n` 过了语法,
+`js-yaml` 解析出来的 `run` 与写下的一字不差,逻辑的判据留在 CI 上。
