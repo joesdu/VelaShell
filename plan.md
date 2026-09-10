@@ -3478,3 +3478,121 @@ Infrastructure 程序集跑完也全绿 —— **单机复现不出来,恰恰说
 
 ubuntu 那一步没法在本机验证(Git Bash 里没有 `dpkg-query`):`bash -n` 过了语法,
 `js-yaml` 解析出来的 `run` 与写下的一字不差,逻辑的判据留在 CI 上。
+
+## ✅ 63. 2026-09-10 SSH 证书认证:上游早就备好了,缺的只是这一路接线
+
+连接对话框第 2 步那个「证书」按钮一直禁用着写「暂未支持」,而 `src/` 下搜 `Certificate`
+命中的全是 FTPS/TLS 那一套 —— 看上去像在等上游。**先查上游,结论是不必等**:
+
+```
+T:Tmds.Ssh.CertificateCredential  →  "Credential for certificate-based authentication."
+M:...CertificateCredential.#ctor(System.String, Tmds.Ssh.PrivateKeyCredential)
+     path      →  "Path to the certificate file."
+     privateKey→  "PrivateKeyCredential matching the certificate."
+```
+
+程序集里 8 个 OpenSSH 证书算法一个不缺(`ssh-rsa` / `rsa-sha2-256` / `rsa-sha2-512` /
+`ecdsa-*-nistp256|384|521` / `ssh-ed25519`,各带 `-cert-v01@openssh.com`),
+而且**这套 API 在 0.23 就有了,我们锁的 0.24 早就够用,包版本一行没动**。
+「代码零踪迹」的原因不是上游没有,是这边压根没接:`AddCredential` 的 switch 只写了
+密码与私钥两路,`default` 直接抛 `ArgumentOutOfRangeException`。那个禁用的按钮是在
+如实反映现状,不是在等谁。
+
+### 一、证书页不另起一套表单,它就是密钥页再加一个字段
+
+`CertificateCredential` **只有 `(证书路径, PrivateKeyCredential)` 这一个构造函数** ——
+这条约束直接决定了界面长什么样:证书认证不是"选一个文件",而是证书 + 私钥 + 口令三件套。
+因为**签名始终由私钥出,证书只是 CA 的背书**。
+
+于是这一路整个复用私钥那一路,连 `BuildPrivateKeyCredential` 里那套 PEM→OpenSSH 兼容转换
+(§见 `OpenSshPrivateKey`)一起继承;界面上两块面板也合成一块,由 `ShowsPrivateKeyFields`
+控制 —— 校验、浏览按钮、错误提示因此都只有一份,不会两边各改各的。
+
+`BuildPrivateKeyCredential` 的返回类型顺势从 `Credential` 收窄到 `PrivateKeyCredential`:
+不是为了好看,是那个构造函数只收这个类型。
+
+**选完证书自动补私钥**:ssh-keygen 产出的两个文件永远同目录、名字只差一个 `-cert.pub` 后缀。
+不自动补的话,用户要在两个文件选择器里把同一个目录翻两遍,还容易挑到隔壁那把不匹配的私钥 ——
+**而那种错配到连接时只会得到一句笼统的 `publickey` 被拒**,从错误信息里根本看不出是选错了文件。
+推断逻辑落在 `Core/Ssh/OpenSshCertificate` 而不是各写进两个对话框:重复一份的代价是将来改了
+后缀只改好其中一处。
+
+### 二、同一个空字符串,两种认证下的含义是相反的
+
+`PrivateKeyPathError` 原先只有一条判断,现在必须分开:
+
+- **私钥认证留空是合法的**,含义是「用默认密钥」—— 这是原注释里就写明的;
+- **证书认证留空是硬错**。证书自己签不了名,少了私钥连不上。
+
+证书路径则是空着也算错:私钥还能退回默认密钥,**证书没有任何默认位置可退**。
+
+### 三、顺带修掉一处漏网:切到 FTP 之后,证书页再也切不回来
+
+`NormalizeAuthMethodForProtocol` 只判 `IsKeyAuth`。它上面那段注释把病症写得很清楚 ——
+切到 FTP/插件协议后认证方式下拉恰好是隐藏的,**界面上再没有任何途径把它切回来,
+保存下去的却仍是那个用不上的认证方式**。证书认证掉进的是同一个坑,而且比私钥那页更难自救:
+它还多一个同样切不回来的证书字段。
+
+判据改成 `ShowsPrivateKeyFields`。`SwitchingToFtp_FallsBackFromCertificateAuth` 守着它 ——
+**把修复临时退回验证过,用例确实变红**,不是空转。
+
+### 四、枚举序号那道闸
+
+`AuthMethod` 没挂 `JsonStringEnumConverter`(同仓的 `QuickCommandGroupKind` 挂了),
+落盘的是**序号**而不是名字。往中间插一个值,已存档配置里的 `1` 就会从「私钥」变成别的东西 ——
+用户的连接静默改用另一套凭据,而配置文件看上去毫无变化,几乎无从排查。所以 `Certificate`
+只能加在末尾,并由 `AuthMethod_OrdinalValues_MustStayStable` 钉住。
+
+那条用例**盯的是落盘产物**(`"authMethod": 0/1/2`)而不是 `(int)AuthMethod.X`:后者是编译期常量,
+分析器(MSTEST0032)会判成恒真的废断言,而真正要守住的本来也就是存档里的那个数字。
+
+### 五、真机验证:靶机不设阴性对照,"通过"就是假的
+
+这一步最容易做错,也最值得写下来。**只要服务端还留着任何一条回退路径,"连上了"就不能证明
+证书生效** —— 走的可能是普通公钥或密码,而你以为验的是证书。这类假阳性长得和成功一模一样。
+
+`tests/cert-lab/` 那台靶机因此把每条路都堵死:
+
+```
+trustedusercakeys /etc/ssh/velashell_user_ca.pub
+authorizedkeysfile none          ← 堵死普通公钥
+passwordauthentication no        ← 堵死密码
+gssapiauthentication no
+kbdinteractiveauthentication no
+```
+
+其中 `authorizedkeysfile none` 尤其要紧:基础镜像(Tmds.Ssh 测试套件留下的 `test_sshserver`)
+**给 testuser 预置了 authorized_keys**,不删掉的话阴性对照根本立不住。
+
+服务端日志是最终的判据 —— 注意同一个指纹,带 `-CERT` 的被接受、不带的被拒:
+
+```
+Accepted certificate ID "velashell-lab" (serial 0) signed by ED25519 CA SHA256:uDQwg/PF…
+Accepted publickey for testuser … ED25519-CERT SHA256:ieiyD4L3… ID velashell-lab CA …
+Failed   publickey for testuser … ED25519      SHA256:ieiyD4L3…
+```
+
+靶机资产由 `setup.sh` 就地生成、`.gitignore` 挡住 —— **一把能登录的私钥不该躺在版本历史里,
+哪怕只是测试用的**。基础镜像会自动探测:拉不到公共仓库时(国内网络的常态)优先用本机已有的
+`test_sshserver`。集成测试标了 `DockerIntegration`,CI 那条过滤本就排除它;
+没有靶机时按 §62 立下的口径 `Assert.Inconclusive`,如实记为「未执行」而不是安静地记成通过。
+
+### 六、范围之外
+
+`SessionImportWriter` 与 `ExternalLaunchCoordinator` **没有动**:`ImportedSession` 没有证书字段,
+PuTTY/Xshell 那几个解析器不产出证书,`ssh://` URL 同理 —— 输入端本来就没有这个概念,
+在那里加分支只是死代码。要支持得先扩解析器,那是另一件事。
+
+主机证书(`HostKey.CertificateInfo` / `ServerHostKeyCertificateAlgorithms`,即用 CA 签的
+host key 替代 known_hosts 逐台指纹)是**相反方向**的另一件事,接得上现有的 `AddHostAuthentication`,
+但不在这一版里。
+
+### 七、验收
+
+`dotnet build VelaShell.slnx -c Debug -warnaserror` 零警告零错误;
+`dotnet test VelaShell.slnx`(按 CI 那条过滤)**3325 通过 / 5 跳过 / 0 失败**
+—— 比 §62 的 3309 多出的 16 条正是这一版加的。
+
+端到端另算:靶机起着时 `VELASHELL_CERT_LAB` 一指,
+`SshCertificateIntegrationTests` 两条(阳性 + 阴性对照)全过,
+服务端日志里 `Accepted certificate` 与 `Failed publickey` 一并留痕。
