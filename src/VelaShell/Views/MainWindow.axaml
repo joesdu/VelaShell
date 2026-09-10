@@ -43,6 +43,8 @@
     <!-- 分屏。Ctrl+Shift+S 的 S = stack(下方分屏);它在终端里没有用途,可以安全占用。 -->
     <KeyBinding Gesture="Ctrl+Shift+D" Command="{Binding RunCommand}" CommandParameter="split.horizontal" />
     <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding RunCommand}" CommandParameter="split.vertical" />
+    <!-- 窗格最大化 / 还原(Terminator 的 Ctrl+Shift+X 同款)。 -->
+    <KeyBinding Gesture="Ctrl+Shift+X" Command="{Binding RunCommand}" CommandParameter="pane.maximize" />
 
     <!-- 跳到第 N 个标签。用 Ctrl+Alt+数字 而不是 Ctrl+数字:Ctrl+2…7 是控制字符
          (^@ ^[ ^\ ^] ^^ ^_),占掉它们等于让远端再也收不到这六个字节。

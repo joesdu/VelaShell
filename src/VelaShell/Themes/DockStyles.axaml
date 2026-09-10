@@ -153,6 +153,14 @@
         <Setter Property="Margin" Value="6,4" />
     </Style>
 
+    <!-- 正在被拖动的标签:半透明 + 移动光标。DockDragController 一直在给它挂 .dragging 类,
+         但全仓没有任何一条样式认这个类 —— 于是拖拽过程中标签本身毫无反应,唯一的反馈是
+         落点高亮,"我手上拿着的到底是哪一个"全靠脑补。外观统一放这里,五种标签一次到位。 -->
+    <Style Selector=":is(dockc|DockTabItemBase).dragging">
+        <Setter Property="Opacity" Value="0.45" />
+        <Setter Property="Cursor" Value="SizeAll" />
+    </Style>
+
     <!-- 标签条溢出控件(design nunbT pZGS4):24px,圆角 3,悬停 bg-hover。 -->
     <Style Selector=":is(Button).tab-nav">
         <Setter Property="Width" Value="24" />

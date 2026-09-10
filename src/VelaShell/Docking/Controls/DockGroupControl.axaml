@@ -20,6 +20,29 @@
       <Setter Property="Opacity" Value="0.65" />
       <Setter Property="RenderTransform" Value="translateY(4px)" />
     </Style>
+    <!-- 非活动窗格的强调线弱化。分屏之后每个窗格都画着自己那条激活标签线,全是 accent
+         的话根本看不出键盘输入会落到哪一格 —— 唯一的线索是"我刚才点了哪儿",而那正是
+         用户回头看屏幕时最先忘掉的事。弱化到 0.3:两条线并排一眼分得出主次,单窗格时
+         (它必然是活动窗格)没有任何变化。 -->
+    <Style Selector="local|DockGroupControl:not(:activepane) Border#ActiveTabIndicator">
+      <Setter Property="Opacity" Value="0.3" />
+    </Style>
+    <!-- 空窗格上的"关闭窗格":安静的次要按钮,别抢那句拖放提示的戏。 -->
+    <Style Selector="Button.pane-action">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="10,4" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+    </Style>
+    <Style Selector="Button.pane-action:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+      <Setter Property="TextElement.Foreground" Value="{DynamicResource VelaTextSecondary}" />
+    </Style>
   </UserControl.Styles>
 
   <!-- 一个标签组:标签条(35px + 1px 分割线 = 36px,与侧栏头部分割线同一水平线)+
@@ -109,6 +132,9 @@
                 <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.18" Easing="CubicEaseOut" />
                 <DoubleTransition Property="Width" Duration="0:0:0.18" Easing="CubicEaseOut" />
                 <DoubleTransition Property="Height" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                <!-- 刻意**不给 Opacity 加过渡**:活动窗格的明暗是"我的键盘输入落在哪"的指示,
+                     该在点下去的那一刻就成立。淡入淡出除了让这条指示晚 180ms 之外没有别的作用,
+                     还会把它变成一个只能靠时序观测的状态(界面测试里正是这样卡住的)。 -->
               </Transitions>
             </Border.Transitions>
           </Border>
@@ -126,14 +152,47 @@
          组为空时(拆分留下的空面板)显示拖放提示。 -->
     <Border Background="{DynamicResource VelaBgDockDocument}" ClipToBounds="True">
       <Panel>
-        <TextBlock x:Name="EmptyHint"
-                   Text="{loc:Localize Dock_DropTabHere}"
-                   HorizontalAlignment="Center"
-                   VerticalAlignment="Center"
-                   FontFamily="{DynamicResource VelaUiMonoFont}"
-                   FontSize="{DynamicResource VelaFontSize11}"
-                   Foreground="{DynamicResource VelaTextMuted}"
-                   IsVisible="False" />
+        <!-- 「空」有两种,是两件不同的事,提示也必须是两套(代码后置按有无父分栏判定):
+             ① 拆分留下的空窗格 —— 旁边有别的标签可以拖进来,它自己也撤得掉;
+             ② 整个工作区都空了(根窗格)—— 没有标签可拖,也没有窗格可关。
+             在 ② 上挂一句「拖标签到这里」外加一枚点了不会有任何反应的按钮,
+             是在指挥用户做两件做不到的事(用户实测反馈)。 -->
+        <Panel x:Name="EmptyHint"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center"
+               IsVisible="False">
+
+          <!-- ① 拆分留下的空窗格。没有这枚按钮的话,它唯一的消除办法是把邻居的标签
+               拖进来再拖回去 —— 靠副作用做撤销。 -->
+          <StackPanel x:Name="DropTargetHint" Spacing="12" IsVisible="False">
+            <TextBlock Text="{loc:Localize Dock_DropTabHere}"
+                       HorizontalAlignment="Center"
+                       FontFamily="{DynamicResource VelaUiMonoFont}"
+                       FontSize="{DynamicResource VelaFontSize11}"
+                       Foreground="{DynamicResource VelaTextMuted}" />
+            <Button x:Name="ClosePaneButton"
+                    Classes="pane-action"
+                    HorizontalAlignment="Center"
+                    Content="{loc:Localize Dock_ClosePane}"
+                    Click="ClosePane_Click" />
+          </StackPanel>
+
+          <!-- ② 一个会话都没开:只说现状,再给一条真能走通的下一步。 -->
+          <StackPanel x:Name="NoSessionHint" Spacing="6" IsVisible="False">
+            <TextBlock Text="{loc:Localize Dock_NoSessionOpen}"
+                       HorizontalAlignment="Center"
+                       FontFamily="{DynamicResource VelaUiMonoFont}"
+                       FontSize="{DynamicResource VelaFontSize11}"
+                       Foreground="{DynamicResource VelaTextMuted}" />
+            <TextBlock Text="{loc:Localize Dock_NoSessionOpenHint}"
+                       HorizontalAlignment="Center"
+                       TextAlignment="Center"
+                       FontFamily="{DynamicResource VelaUiMonoFont}"
+                       FontSize="{DynamicResource VelaFontSize10}"
+                       Foreground="{DynamicResource VelaTextMuted}"
+                       Opacity="0.75" />
+          </StackPanel>
+        </Panel>
         <controls:ReparentingHost x:Name="ContentHost">
           <controls:ReparentingHost.Transitions>
             <Transitions>

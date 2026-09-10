@@ -19,6 +19,9 @@ namespace VelaShell.Docking.Controls;
 /// </summary>
 public partial class DockGroupControl : UserControl
 {
+    /// <summary>一格滚轮翻过的像素数:约合半个标签,连滚几下能过一屏,又不会一下窜到头。</summary>
+    private const double WheelStep = 80;
+
     private Func<DockDocument, Control?>? _viewResolver;
     private int _contentMotionGeneration;
     private readonly Transitions _contentTransitions;
@@ -35,6 +38,9 @@ public partial class DockGroupControl : UserControl
         _indicatorTransitions = ActiveTabIndicator.Transitions
             ?? throw new InvalidOperationException("ActiveTabIndicator transitions are not configured.");
         TabScroll.ScrollChanged += (_, _) => UpdateScrollButtons();
+        // 隧道阶段接管滚轮:ScrollViewer 自己会把滚轮当纵向滚动,而标签条是横排的,
+        // 于是"在标签条上滚一下"什么也不会发生,标签一多就只能去够右端那两枚小箭头。
+        TabScroll.AddHandler(PointerWheelChangedEvent, OnTabsWheel, RoutingStrategies.Tunnel);
         // 标签宽度随标题变化、容器随集合重建 —— 指示器几何跟着布局走最省心;
         // UpdateActiveTabIndicator 对相同几何短路,不会造成布局风暴。
         TabsHost.LayoutUpdated += (_, _) => UpdateActiveTabIndicator();
@@ -44,6 +50,27 @@ public partial class DockGroupControl : UserControl
         // 指针事件,冒泡阶段收不到。点标签时本处理器先按组当前选中激活一次,随后
         // DockTabItem 再精确激活被点的标签,结果一致。
         AddHandler(PointerPressedEvent, OnAnyPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+    }
+
+    /// <summary>标签条上滚滚轮 = 沿标签排列方向翻标签(纵排标签条则是上下翻)。</summary>
+    /// <remarks>没有溢出时不吞事件 —— 那一下该照常传给下面的人,而不是变成一次静默的空操作。</remarks>
+    private void OnTabsWheel(object? sender, PointerWheelEventArgs e)
+    {
+        bool vertical = (Group?.TabsPosition ?? DockTabsPosition.Top) != DockTabsPosition.Top;
+        double delta = e.Delta.Y != 0 ? e.Delta.Y : e.Delta.X;
+        double extent = vertical ? TabScroll.Extent.Height : TabScroll.Extent.Width;
+        double viewport = vertical ? TabScroll.Viewport.Height : TabScroll.Viewport.Width;
+        if (delta == 0 || extent <= viewport + 0.5)
+        {
+            return;
+        }
+        // 滚轮向前(远离自己)= 往标签条的前端翻,与列表滚动的方向感一致。
+        double max = extent - viewport;
+        Vector offset = TabScroll.Offset;
+        TabScroll.Offset = vertical
+                               ? offset.WithY(Math.Clamp(offset.Y - (delta * WheelStep), 0, max))
+                               : offset.WithX(Math.Clamp(offset.X - (delta * WheelStep), 0, max));
+        e.Handled = true;
     }
 
     private void OnAnyPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -75,6 +102,7 @@ public partial class DockGroupControl : UserControl
         Workspace = workspace;
         WorkspaceControl = workspaceControl;
         _viewResolver = viewResolver;
+        workspace.ActiveDocumentChanged += OnWorkspaceActiveDocumentChanged;
         if (Group is { } group)
         {
             group.PropertyChanged += OnGroupPropertyChanged;
@@ -82,10 +110,24 @@ public partial class DockGroupControl : UserControl
             ApplyTabsPosition(group.TabsPosition);
         }
         UpdateContent();
+        UpdateActivePaneState();
     }
 
-    private void OnDocumentsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) =>
+    private void OnDocumentsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
         UpdateContent();
+        // 标签换了个组住,而全局激活文档**没变**(把当前标签直接拖到隔壁窗格就是这样),
+        // ActiveDocumentChanged 不会响;活动窗格的归属却已经变了,得在这里补一次。
+        UpdateActivePaneState();
+    }
+
+    private void OnWorkspaceActiveDocumentChanged(DockDocument? document) => UpdateActivePaneState();
+
+    /// <summary>本组是否是"活动窗格"(承载着全局激活文档的那一格),供样式弱化其余窗格的强调线。</summary>
+    private void UpdateActivePaneState() =>
+        PseudoClasses.Set(
+            ":activepane",
+            Workspace?.ActiveDocument is { } active && Group is { } group && group.Documents.Contains(active));
 
     /// <summary>
     /// (重新)挂到可视树时恢复订阅与内容。分离处理器为避免双父级会把 Target 置空并退订
@@ -97,15 +139,18 @@ public partial class DockGroupControl : UserControl
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        if (Workspace is null || Group is not { } group)
+        if (Workspace is not { } workspace || Group is not { } group)
         {
             return; // 尚未 Initialize(首挂由 Initialize 完成接线),无从自愈。
         }
         // 先退订再订阅:首挂紧跟 Initialize 之后,不加防重会双份订阅。
         group.PropertyChanged -= OnGroupPropertyChanged;
         group.Documents.CollectionChanged -= OnDocumentsChanged;
+        workspace.ActiveDocumentChanged -= OnWorkspaceActiveDocumentChanged;
         group.PropertyChanged += OnGroupPropertyChanged;
         group.Documents.CollectionChanged += OnDocumentsChanged;
+        workspace.ActiveDocumentChanged += OnWorkspaceActiveDocumentChanged;
+        UpdateActivePaneState();
         if (ContentHost.Target is null)
         {
             UpdateContent();
@@ -123,6 +168,10 @@ public partial class DockGroupControl : UserControl
         {
             group.PropertyChanged -= OnGroupPropertyChanged;
             group.Documents.CollectionChanged -= OnDocumentsChanged;
+        }
+        if (Workspace is { } workspace)
+        {
+            workspace.ActiveDocumentChanged -= OnWorkspaceActiveDocumentChanged;
         }
         // 释放对缓存视图的引用,避免下一个宿主收养时双父级;若本实例被重挂,
         // OnAttachedToVisualTree 会自愈(重订阅 + 重填内容)。
@@ -200,7 +249,7 @@ public partial class DockGroupControl : UserControl
         {
             RestoreContentMotion();
             ContentHost.Target = view;
-            EmptyHint.IsVisible = Group is { Documents.Count: 0 };
+            UpdateEmptyState();
             return;
         }
 
@@ -209,7 +258,7 @@ public partial class DockGroupControl : UserControl
         ContentHost.Opacity = 0;
         ContentHost.RenderTransform = TransformOperations.Parse("translateY(2px)");
         ContentHost.Target = view;
-        EmptyHint.IsVisible = Group is { Documents.Count: 0 };
+        UpdateEmptyState();
         ContentHost.ClearValue(OpacityProperty);
         ContentHost.ClearValue(RenderTransformProperty);
         Dispatcher.UIThread.Post(() =>
@@ -220,6 +269,25 @@ public partial class DockGroupControl : UserControl
                 ContentHost.Classes.Remove("settling");
             }
         }, DispatcherPriority.Render);
+    }
+
+    /// <summary>
+    /// 空窗格的提示分两种:能撤掉的空窗格给"拖标签进来 / 关掉它",
+    /// 整个工作区都空了则只说现状与下一步。
+    /// </summary>
+    /// <remarks>
+    /// 判据是**有没有父分栏**,而不是"是不是主组":根窗格没有父分栏,
+    /// <see cref="DockWorkspace.ClosePane" /> 对它是空操作 —— 在那儿摆一枚点了不会有
+    /// 任何反应的按钮,比没有按钮更糟;同理,一个标签都没有的时候,
+    /// "把标签拖到这里"指的是一件当下做不到的事(用户实测反馈)。
+    /// </remarks>
+    private void UpdateEmptyState()
+    {
+        bool empty = Group is { Documents.Count: 0 };
+        bool removable = empty && Group?.Parent is not null;
+        EmptyHint.IsVisible = empty;
+        DropTargetHint.IsVisible = removable;
+        NoSessionHint.IsVisible = empty && !removable;
     }
 
     private void RestoreContentMotion()
@@ -281,6 +349,15 @@ public partial class DockGroupControl : UserControl
         TabScroll.Offset = TabScroll.Offset.WithX(Math.Min(
             Math.Max(0, TabScroll.Extent.Width - TabScroll.Viewport.Width),
             TabScroll.Offset.X + 120));
+
+    /// <summary>空窗格上的"关闭窗格":把这块空面板从布局里撤掉,兄弟随之填满整片区域。</summary>
+    private void ClosePane_Click(object? sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace && Group is { } group)
+        {
+            workspace.ClosePane(group);
+        }
+    }
 
     /// <summary>标签列表下拉(设计 nunbT tabListDrop):点击时按当前标签动态生成。</summary>
     private void TabListDrop_Click(object? sender, RoutedEventArgs e)

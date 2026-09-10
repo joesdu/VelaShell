@@ -25,8 +25,13 @@ public sealed class DockGroup : DockNode
     } = DockTabsPosition.Top;
 
     /// <summary>
-    /// 主组:新终端默认加入的组,清空后也不折叠(对应原 DocumentDock 的
-    /// IsCollapsable=false)。整个工作区有且只有一个。
+    /// 主组:布局里那个兜底的组 —— 它是唯一一个即使清空也不会被折叠掉的组,
+    /// 因而永远有地方接住新文档。整个工作区有且只有一个。
     /// </summary>
-    public bool IsPrimary { get; init; }
+    /// <remarks>
+    /// 这个身份**可以易主**:主组清空而布局里还有别的组时,
+    /// <see cref="DockWorkspace" /> 会把它交给幸存的邻居,自己退场。钉死在最初那个组上的话,
+    /// 分屏后把左边一路关完,右半屏会一直挤在右边 —— 因为左边那块空白正是"永不折叠"的主组本人。
+    /// </remarks>
+    public bool IsPrimary { get; internal set; }
 }

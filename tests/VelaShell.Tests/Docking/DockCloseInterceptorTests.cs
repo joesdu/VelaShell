@@ -142,6 +142,21 @@ public sealed class DockCloseInterceptorTests
     }
 
     [TestMethod]
+    public void ClosePane_GoesThroughTheInterceptor()
+    {
+        // 「关闭窗格」是第七个入口(空窗格上的那枚按钮 / 一次关掉整格)。它同样是批量关闭,
+        // 绕开确认闸就等于把这道闸开了个后门。
+        (DockWorkspace ws, TestDocument[] docs, List<IReadOnlyList<DockDocument>> seen) = Setup(allow: false);
+
+        ws.ClosePane(ws.PrimaryGroup);
+
+        Assert.HasCount(4, ws.PrimaryGroup.Documents);
+        Assert.HasCount(1, seen, "一次询问放行整格,而不是逐个弹框");
+        Assert.HasCount(4, seen[0]);
+        Assert.Contains(docs[0], seen[0]);
+    }
+
+    [TestMethod]
     public void AllowedBulkClose_ClosesEveryTarget()
     {
         (DockWorkspace ws, TestDocument[] docs, _) = Setup(allow: true);

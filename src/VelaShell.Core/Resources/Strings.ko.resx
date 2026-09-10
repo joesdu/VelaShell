@@ -452,7 +452,22 @@
     <value>오른쪽 탭 닫기</value>
   </data>
   <data name="Dock_DropTabHere" xml:space="preserve">
-    <value>탭을 여기로 드래그</value>
+    <value>다른 창의 탭을 여기로 드래그</value>
+  </data>
+  <data name="Dock_NoSessionOpen" xml:space="preserve">
+    <value>열린 세션이 없습니다</value>
+  </data>
+  <data name="Dock_NoSessionOpenHint" xml:space="preserve">
+    <value>탐색기에서 머신을 고르거나 새 연결을 만드세요</value>
+  </data>
+  <data name="Dock_ClosePane" xml:space="preserve">
+    <value>창 닫기</value>
+  </data>
+  <data name="Dock_EqualizePanes" xml:space="preserve">
+    <value>창 크기 균등화</value>
+  </data>
+  <data name="Dock_ToggleMaximizePane" xml:space="preserve">
+    <value>창 최대화 / 복원</value>
   </data>
   <data name="Dock_SplitHorizontal" xml:space="preserve">
     <value>가로 분할</value>
@@ -2874,6 +2889,9 @@
   <data name="Sc_NoteSplitOnly" xml:space="preserve">
     <value>분할했을 때만 동작하며, 그렇지 않으면 키가 원격으로 전달됩니다</value>
   </data>
+  <data name="Sc_NoteNeedsSplit" xml:space="preserve">
+    <value>화면이 분할된 경우에만</value>
+  </data>
   <data name="Sc_NoteZoomOutTakesUnitSeparator" xml:space="preserve">
     <value>^_ 를 가로챕니다. 보내려면 Ctrl+Shift+- 를 사용하세요</value>
   </data>
@@ -4291,6 +4309,21 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Sc_KeyTitleBar" xml:space="preserve"><value>제목 표시줄</value></data>
   <data name="Sc_KeyGutter" xml:space="preserve"><value>여백 열</value></data>
   <data name="Sc_KeyCommandMark" xml:space="preserve"><value>명령 표시 열</value></data>
+  <data name="Sc_KeyMiddleClick" xml:space="preserve">
+    <value>가운데 클릭</value>
+  </data>
+  <data name="Sc_KeyTabItem" xml:space="preserve">
+    <value>탭</value>
+  </data>
+  <data name="Sc_KeyTabStrip" xml:space="preserve">
+    <value>탭 바</value>
+  </data>
+  <data name="Sc_KeySplitter" xml:space="preserve">
+    <value>분할 바</value>
+  </data>
+  <data name="Sc_ScrollTabs" xml:space="preserve">
+    <value>탭 바 스크롤</value>
+  </data>
   <data name="Sc_JumpPrevPrompt" xml:space="preserve"><value>이전 프롬프트로 이동</value></data>
   <data name="Sc_JumpNextPrompt" xml:space="preserve"><value>다음 프롬프트로 이동</value></data>
   <data name="Sc_SelectCommandOutput" xml:space="preserve"><value>이 명령의 출력 선택</value></data>

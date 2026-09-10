@@ -1246,7 +1246,22 @@
     <value>关闭右侧标签页</value>
   </data>
   <data name="Dock_DropTabHere" xml:space="preserve">
-    <value>将标签拖到此处</value>
+    <value>把其他窗格的标签页拖到这里</value>
+  </data>
+  <data name="Dock_NoSessionOpen" xml:space="preserve">
+    <value>还没有打开任何会话</value>
+  </data>
+  <data name="Dock_NoSessionOpenHint" xml:space="preserve">
+    <value>从资源管理器里选一台机器,或者新建一个连接</value>
+  </data>
+  <data name="Dock_ClosePane" xml:space="preserve">
+    <value>关闭窗格</value>
+  </data>
+  <data name="Dock_EqualizePanes" xml:space="preserve">
+    <value>平分窗格</value>
+  </data>
+  <data name="Dock_ToggleMaximizePane" xml:space="preserve">
+    <value>窗格最大化 / 还原</value>
   </data>
   <data name="Dock_SplitHorizontal" xml:space="preserve">
     <value>水平拆分</value>
@@ -3091,6 +3106,9 @@
   <data name="Sc_NoteSplitOnly" xml:space="preserve">
     <value>仅在分屏时生效;未分屏时该键原样送往远端</value>
   </data>
+  <data name="Sc_NoteNeedsSplit" xml:space="preserve">
+    <value>仅在分屏时生效</value>
+  </data>
   <data name="Sc_NoteZoomOutTakesUnitSeparator" xml:space="preserve">
     <value>会占用 ^_;要发送它请用 Ctrl+Shift+-</value>
   </data>
@@ -4554,6 +4572,21 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   </data>
   <data name="Sc_KeyCommandMark" xml:space="preserve">
     <value>命令标记列</value>
+  </data>
+  <data name="Sc_KeyMiddleClick" xml:space="preserve">
+    <value>中键</value>
+  </data>
+  <data name="Sc_KeyTabItem" xml:space="preserve">
+    <value>标签页</value>
+  </data>
+  <data name="Sc_KeyTabStrip" xml:space="preserve">
+    <value>标签条</value>
+  </data>
+  <data name="Sc_KeySplitter" xml:space="preserve">
+    <value>分割条</value>
+  </data>
+  <data name="Sc_ScrollTabs" xml:space="preserve">
+    <value>滚动标签条</value>
   </data>
   <data name="Sc_JumpPrevPrompt" xml:space="preserve">
     <value>跳到上一条提示符</value>

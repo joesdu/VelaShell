@@ -208,6 +208,8 @@ pie showData
 | ⏳ | 🟡 P2 | **标签（Tags）检索与过滤** | Termius / Royal TS | ⚠️ **`SessionProfile.Tags` 已经存在也能编辑**（`ConnectionProfileViewModel.cs:147`），但**全仓没有任何地方消费它** —— 这是一个已经存在的「存了但不生效」。补法很便宜：会话树加过滤框、命令面板按 tag 匹配（`PaletteScorer` 现成） |
 | ⏳ | 🟡 P2 | **会话标签页图标** | Xshell / Termius | 颜色已经做完（见上），图标是同一处扩展：`TerminalOverrides` 加一个图标 id，`LucideIcon` 的图标集现成。⚠️ 记得 `SessionProfile` 是**逐字段手写拷贝**，新增字段要同步五处（`plan.md` §37 列了名单） |
 | ⏳ | 🟡 P2 | **整组批量操作** | MobaXterm | 对一个分组批量连接 / 批量下发命令。同步输入的频道模型（`SyncInputCoordinator`）已经是对等广播，按分组建频道是自然延伸 |
+| ⏳ | 🟢 P3 | **标签条上的「+」新建按钮** | Windows Terminal / Chrome | 分屏后「在**这一格**里新开一个会话」目前只能靠 `Ctrl+T`（`plan.md` §64 之后它已经落到活动窗格，够用但不直观）。⚠️ 卡点不在按钮而在**分层**：`Docking/` 不认识"会话"这个概念，要么 `DockWorkspaceControl` 抛一个 `NewTabRequested(group)` 由宿主接，要么把新建入口做成注入的回调 —— **别让停靠层直接去 new 一个终端** |
+| ⏳ | 🟢 P3 | **纵排标签条的溢出控件** | — | 标签条停到左/右侧时，溢出三连钮由 `WidthOverflowConverter` 按**宽度**判定，因而永不出现；滚动按钮的 `ScrollLeft/Right_Click` 也只动 `Offset.X`。`plan.md` §64 补的滚轮两轴都认，功能上不再是死路，但按钮这一路仍是横排专用。做的时候连那个转换器一起改成按轴取值 |
 | 💡 | 🟢 P3 | **会话健康巡检面板** | — | 对已保存配置定期探活（复用 `ConnectionDiagnosticsService` 的四步诊断），出一张「哪几台连不上」的表。**别做成定时外呼** —— 得像资讯源那样由用户显式开启，理由见 `PRIVACY.md` |
 
 ### C. 文件与传输

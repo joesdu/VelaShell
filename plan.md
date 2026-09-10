@@ -203,7 +203,7 @@ graph RL
 
 ## ✅ 5. 停靠 / 分屏(自研 VelaDock,已替换 Dock.Avalonia)
 
-- **模型层** `Docking/Model/`(纯 INPC,可单测):`DockWorkspace`(结构操作 + `DocumentClosed`/`ActiveDocumentChanged` 事件)、`DockGroup`(标签组,主组不折叠)、`DockSplit`(分栏树)、`DockDocument`;空的次级组自动折叠、单子分栏自动提升。方案与集成面分析见 `velashell-docs zh/host/dock-replacement-plan.md`。
+- **模型层** `Docking/Model/`(纯 INPC,可单测):`DockWorkspace`(结构操作 + `DocumentClosed`/`ActiveDocumentChanged` 事件)、`DockGroup`(标签组)、`DockSplit`(分栏树)、`DockDocument`;空组自动折叠(主组先把兜底身份交给邻居再退场,**只有根留着**,见 §64)、单子分栏自动提升;`MaximizedGroup` 只影响渲染、不动树。方案与集成面分析见 `velashell-docs zh/host/dock-replacement-plan.md`。
 - **控件层** `Docking/Controls/`:`DockWorkspaceControl`(按树渲染 Grid+GridSplitter,star ↔ Proportion 回写;**按文档缓存视图**,切标签复用同一 `TerminalTabView`,取代原 ControlRecycling)、`DockGroupControl`(标签条 + 溢出三连钮 + 标签列表下拉)、`DockTabItem`(标签视觉 + 右键菜单:关闭系列/水平垂直拆分/标签位置)、`DockDragController` + `DockDropOverlay`(拖拽重排插入线、跨组并入、五区拖放分屏,Esc 取消;浮动窗口按产品决策不存在)。
 - `Docking/TerminalDocument.cs` 包装 `TerminalTabViewModel`,实现 `IDockViewProvider` 自建视图。
 - `MainWindow.axaml` 用 `<dockc:DockWorkspaceControl Workspace="{Binding Layout}" />` 承载;`TabBar`(Ctrl+Tab/W 逻辑集合)与工作区激活态**双向同步**(原 Dock 集成缺 TabBar→文档区半边)。
@@ -3596,3 +3596,148 @@ host key 替代 known_hosts 逐台指纹)是**相反方向**的另一件事,接�
 端到端另算:靶机起着时 `VELASHELL_CERT_LAB` 一指,
 `SshCertificateIntegrationTests` 两条(阳性 + 阴性对照)全过,
 服务端日志里 `Accepted certificate` 与 `Failed publickey` 一并留痕。
+
+---
+
+## ✅ 64. 2026-09-10 VelaDock:关掉左半屏,右半屏该铺满(用户反馈)
+
+> 「拖动分屏后,关闭掉所有左侧的窗口,右侧的窗口也还是保持在右侧,没有自动填充满整个区域。
+> 并且检查当前实现和操作上是否存在其他优化的点。」
+
+### 一、不该折叠的是「根」,不是「主组」
+
+复现只要三步:开两个标签 → 把其中一个拖到右缘分屏 → 把左半屏的标签全关掉。左边留下一块
+空白,右边的窗格纹丝不动 —— 而那块空白正是 `PrimaryGroup`。
+
+根因在 `CollapseIfEmpty` 的第一行:
+
+```csharp
+if (group.IsPrimary || group.Documents.Count > 0 || group.Parent is not { } parent)
+```
+
+`IsPrimary ||` 这一条是**在保护一个不需要保护的东西**。真正的约束只有一个:布局树得有个底,
+新文档才有地方落。而"底"是**根**,不是某个特定的组 —— 后半句的 `group.Parent is not { } parent`
+本来就把根兜住了(根节点没有父分栏)。多出来的那一判,把"永不折叠"从根钉到了一个具体实例上,
+于是它一旦被拖到侧边、又被关空,就成了一块谁也赶不走的空白。
+
+改法不是"给主组开个例外",是**让这个身份可以易主**:`TryHandOverPrimary` 把兜底的差事交给
+折叠之后**会接管这块地方**的那个邻居(沿父分栏找兄弟,再向下钻到具体的组),然后自己退场。
+新文档于是出现在用户眼睛刚才盯着的位置,而不是布局树另一头。`DockGroup.IsPrimary` 因此从
+`init` 放宽成 `internal set`,`DockWorkspace.PrimaryGroup` 从只读变成 `private set`。
+
+同因异形的还有一处,一并好了:**把主组最后一个标签拖进邻居**(走 `MoveToGroup` → 同一个
+`CollapseIfEmpty`),此前同样会留下一块空白。
+
+`HoistIfSingle` 里那句 `IsPrimary: false` 的特判也跟着删掉:折叠的判据统一收在
+`CollapseIfEmpty` 里一处,提升到根之后它自然没有父分栏、自然留下。
+
+**测试口径要跟着改口**:`PrimaryGroup_NeverCollapses` 这条用例把这个 bug 逐字钉成了规范
+(它断言的正是"主组即使为空也保留"),留着它就等于让测试替 bug 站岗。换成三条:
+关光主组要铺满、拖空主组也要铺满、以及**唯一的那个组即使空着也留下**(根的约束还在)。
+
+### 二、顺着这条线:新标签到底该开在哪一格
+
+原来的规则是"永远进主组"。分屏之后它的实际表现是:人在右半屏工作,`Ctrl+T` 却在左半屏的
+标签条上开出一个新标签 —— 焦点跟着跑过去,视线还留在原处。
+
+新的落点规则(`TargetGroupForNewDocument`)是三级:**空窗格 > 当前正在用的窗格 > 主组**。
+
+- 空窗格排第一,是因为拆分只有一个标签的组会**故意**在原地留下一块写着"拖放标签到这里"的
+  空面板(这是既有设计)。那块空白就是等着被填的,新会话理应落进去。这一条也保证了老流程
+  ——「拆分,然后开一个新会话把另一半填上」—— 一如既往。
+- 没有空窗格时才轮到活动窗格,与 VS Code / Windows Terminal 一致。
+- 主组降级为纯兜底:没有空窗格、也没有活动文档(刚启动的空布局)时用它。
+
+### 三、空窗格此前没有出口
+
+拆分留下的空面板,在这一版之前**没有任何撤销入口**:唯一的办法是把邻居的标签拖进来、再拖
+回去,靠副作用把它挤掉。现在空面板上直接放一枚「关闭窗格」,走新的 `ClosePane(group)`;
+非空的窗格它也接(逐一走确认闸),于是这是关闭闸的**第七个入口** ——
+`DockCloseInterceptorTests` 里补了一条守着它,免得日后成为那道闸的后门。
+
+顺带,「关闭所有标签页」现在会让该窗格一并收掉(第一节的直接结果),不再留下空壳。
+
+### 四、窗格最大化(tmux 的 `resize-pane -Z`)
+
+分屏之后想把某一格看仔细,原先只能"先拆掉布局,看完再照原样拼回去"——那两步手工活正是
+分屏用起来累的地方。`MaximizedGroup` **只影响渲染,不动布局树**:解除时原样恢复,连比例都
+不用记,因此也不需要参与将来的布局持久化。
+
+三条自我解除的规矩,都是为了不留下"解不掉的状态":
+
+- 焦点切到别的窗格就解除(与 tmux 的 `select-pane` 同一条规矩)—— 否则会出现"焦点已经在
+  别处、屏幕上却还是那一格"的呆滞界面;
+- 被最大化的窗格离开布局树(关空了)就解除;
+- 布局收敛回一格就解除。
+
+入口:`Ctrl+Shift+X`(Terminator 同款键位)、命令面板、四处标签右键菜单。
+
+⚠️ 这一条真正的风险不在模型而在控件:内容视图是**按文档缓存、跨宿主收养**的,而最大化会
+把整棵可视树换成一个窗格再换回来 —— 正是 `DockContentBlankHuntTests` 记的那次"终端内容
+凭空消失"的同款场景。`DockPaneUiTests` 因此盯的是**还原之后 `ReparentingHost.Target` 是不是
+同一个实例**,而不只是"控件数量对不对"。
+
+### 五、三个一直缺席的鼠标手势
+
+- **中键关标签**:浏览器与各家编辑器的通用手势,省掉"先瞄准那枚 11px 的 ×"。挂在
+  `DockTabItemBase` 上,五种标签一次到位;同样走 `RequestClose`,确认闸对它照旧生效。
+- **标签条滚轮**:`ScrollViewer` 默认把滚轮当纵向滚动,而标签条是横排的 —— 于是"在标签条上
+  滚一下"此前**什么也不会发生**,标签一多就只能去够右端那两枚小箭头。隧道阶段接管,按标签
+  排列方向翻;没有溢出时不吞事件。
+- **分割条双击 = 平分**:拖歪一条缝之后原先只能靠手再瞄一次。另有命令面板的「平分窗格」
+  一次性复位整棵树。
+
+外加一处纯粹的遗漏:`DockDragController` 一直在给拖动中的标签挂 `.dragging` 类,而**全仓没有
+任何一条样式认这个类** —— 拖拽过程中标签本身零反馈,"我手上拿着的到底是哪一个"全靠脑补。
+补了半透明 + 移动光标。
+
+### 六、分屏时看不出焦点在哪一格
+
+每个标签组各自画着一条 accent 强调线,两格并排时两条线一样亮,**唯一的线索是"我刚才点了
+哪儿"**,而那正是回头看屏幕时最先忘掉的事。加 `:activepane` 伪类,非活动格的强调线弱到 0.3。
+
+两处细节:
+
+- **刻意不给这条线的 `Opacity` 加过渡**。它是"我的键盘输入落在哪"的指示,该在点下去那一刻
+  就成立;淡入淡出除了让指示晚 180ms,还会把它变成一个只能靠时序观测的状态 ——
+  界面测试正是先在这里卡住的,那说明人眼也会卡在同一处。
+- 把**当前激活的标签**整个拖进隔壁窗格时,`ActiveDocument` 的**值没有变**,
+  `ActiveDocumentChanged` 因此不会响,可活动窗格已经易主。所以 `Documents.CollectionChanged`
+  上也补了一次刷新,`DockPaneUiTests` 里单独有一步盯着这个场景。
+
+### 七、返工:两种「空」是两件事(同批实测反馈)
+
+上面第三节那枚「关闭窗格」按钮,第一版无差别地挂在**任何**空窗格上。实测截图打回来的是
+一个会话都没开的主界面:正中间一句「将标签拖到此处」,底下一枚「关闭窗格」——
+
+- 那枚按钮**点了不会有任何反应**:`ClosePane` 对根窗格是空操作(根没有父分栏,
+  `CollapseIfEmpty` 直接早退)。一枚点下去毫无动静的按钮,比没有按钮更糟;
+- 那句提示说的是一件**当下做不到的事**:一个标签都不存在,拖什么?用户还把它读成了
+  "拖点什么进来就能打开连接",而那个功能并不存在 —— 文案自己招来了这个误会。
+
+判据是**有没有父分栏**,不是"是不是主组"(与第一节同一个教训:别把结构性质钉到实例身份上)。
+空状态因此分两套:能撤掉的空窗格给「把其他窗格的标签页拖到这里」+ 关闭按钮;
+整个工作区空了则只说现状与下一步 —— 「还没有打开任何会话 / 从资源管理器里选一台机器,
+或者新建一个连接」。
+
+`Dock_DropTabHere` 的五份译文一并改写成「把**其他窗格的标签页**拖到这里」,把"拖的是已经
+存在的标签页"说死。两句新文案不写具体键位 —— 快捷键的唯一事实来源是 `ShortcutCatalog`,
+在 resx 里再抄一份,改键位那天它就开始骗人。
+
+⚠️ 两套提示都**留在 XAML 里靠 `IsVisible` 切换**,不从代码写 `Text`:`{loc:Localize}` 给的是
+活绑定,换语言即时刷新;代码赋值会把这两句钉死在赋值那一刻的语言上。
+
+### 八、验收
+
+`dotnet build VelaShell.slnx -c Debug -warnaserror` 零警告零错误;
+`dotnet test VelaShell.slnx`(整解全量,不带 CI 那条过滤)**3343 通过 / 21 跳过 / 0 失败**,
+其中 17 条是这一版的净增量(新增 18、删掉 1 条替 bug 站岗的)。
+新增用例:模型层 10 条(`DockWorkspaceTests` 折叠/落点/关窗格/最大化/平分)+ 关闭闸 1 条 +
+界面层 6 条(`DockPaneUiTests`:最大化往返不丢内容、活动窗格标记与弱化、空窗格的出口、
+空工作区不给死按钮、标签条滚轮、中键关标签)。
+
+`ShortcutCatalog` 与 `velashell-docs` 的 `快捷键参考.md` / `keyboard-shortcuts.md` 同步补齐
+`Ctrl+Shift+X` 与三条鼠标手势(`Doc_ListsEveryCatalogEntry` 实跑通过,不是 Inconclusive);
+`dock-replacement-plan.md` 中英两份把"主组永不消失""新终端总进第一组"这两句**过期的规范**
+改掉并注明修正日期 —— 它们正是第一节那个 bug 的书面出处。界面文案五份 resx 各补 11 个键、
+改写 1 个键。
