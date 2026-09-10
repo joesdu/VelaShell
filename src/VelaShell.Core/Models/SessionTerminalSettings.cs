@@ -50,6 +50,19 @@ public static class SessionTerminalSettings
     }
 
     /// <summary>
+    /// 生效的防空闲注入间隔(秒);0 = 关闭。
+    /// </summary>
+    /// <remarks>
+    /// 与其它几项不同,这一项<b>只按会话走</b>,没有全局值可回落 —— 理由见
+    /// <see cref="TerminalOverrides.AntiIdleSeconds" />:注入的字节是打进对端 tty 的,
+    /// 该不该冒这个风险,答案在"这台机器会不会踢人",而不在一个全局开关上。
+    /// </remarks>
+    /// <param name="profile">会话配置;null 表示没有配置(本地终端等)。</param>
+    /// <returns>会话设定值,或 0(关闭)。</returns>
+    public static int AntiIdleSeconds(SessionProfile? profile) =>
+        Math.Max(0, profile?.Terminal?.AntiIdleSeconds ?? 0);
+
+    /// <summary>
     /// 生效的终端配色方案名;null = 不覆盖,沿用全局那套颜色。
     /// </summary>
     /// <remarks>

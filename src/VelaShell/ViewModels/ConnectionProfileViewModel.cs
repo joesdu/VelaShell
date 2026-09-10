@@ -78,6 +78,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     private string? _overrideTabColor;
     private string? _overrideStartupDirectory;
     private int _overrideKeepAliveSeconds = -1;
+    private int _antiIdleSeconds;
 
     // ---- 插件协议 ----
     private readonly PluginProtocolRegistry? _protocolRegistry;
@@ -172,6 +173,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
                 _overrideTabColor = overrides.TabColor;
                 _overrideStartupDirectory = overrides.StartupDirectory;
                 _overrideKeepAliveSeconds = overrides.KeepAliveSeconds ?? -1;
+                _antiIdleSeconds = overrides.AntiIdleSeconds ?? 0;
             }
         }
         else
@@ -963,6 +965,27 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
     public int MaxKeepAliveSeconds => TerminalOverrides.MaxKeepAliveSeconds;
 
+    /// <summary>
+    /// 本会话的防空闲注入间隔(秒);<c>0</c> = 关闭。
+    /// </summary>
+    /// <remarks>
+    /// 这一项没有「跟随全局」可选,因此 0 就是关闭,不必像保活那样借一个 <c>-1</c> 当哨兵:
+    /// 会按空闲踢人的只是特定那几台机器,一个全局开关反而会把注入撒到不需要它的会话上。
+    /// 它与上面的保活是两件事——保活防的是链路被回收,这一项防的是服务端 shell 嫌你闲。
+    /// </remarks>
+    public int AntiIdleSeconds
+    {
+        get => _antiIdleSeconds;
+        set => this.RaiseAndSetIfChanged(
+            ref _antiIdleSeconds,
+            Math.Clamp(value, 0, TerminalOverrides.MaxAntiIdleSeconds));
+    }
+
+    /// <summary>防空闲输入框的上限,供界面绑定。</summary>
+    /// <remarks>同上,不能写成 static。</remarks>
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
+    public int MaxAntiIdleSeconds => TerminalOverrides.MaxAntiIdleSeconds;
+
     /// <summary>下拉选中「跟随全局」时归一化为 null。</summary>
     private string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) || value == FollowGlobalOption ? null : value;
@@ -1293,7 +1316,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
         };
     }
 
-    /// <summary>把界面上的六个覆盖项收成一个对象;一项都没设时返回 null。</summary>
+    /// <summary>把界面上的七个会话级终端项收成一个对象;一项都没设时返回 null。</summary>
     private TerminalOverrides? BuildTerminalOverrides()
     {
         TerminalOverrides overrides = new()
@@ -1305,7 +1328,10 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
             StartupDirectory = string.IsNullOrWhiteSpace(_overrideStartupDirectory)
                 ? null
                 : _overrideStartupDirectory.Trim(),
-            KeepAliveSeconds = _overrideKeepAliveSeconds < 0 ? null : _overrideKeepAliveSeconds
+            KeepAliveSeconds = _overrideKeepAliveSeconds < 0 ? null : _overrideKeepAliveSeconds,
+            // 0 存回 null 而不是 0:两者对运行时是一回事(都不注入),但存 null 才不会给
+            // 每条从没碰过这一项的配置留下一段"我设过、设的是关"的假痕迹。
+            AntiIdleSeconds = _antiIdleSeconds <= 0 ? null : _antiIdleSeconds
         };
         return overrides.IsEmpty ? null : overrides;
     }

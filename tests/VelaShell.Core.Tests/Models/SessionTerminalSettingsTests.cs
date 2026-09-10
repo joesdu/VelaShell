@@ -25,6 +25,7 @@ public sealed class SessionTerminalSettingsTests
         Assert.AreEqual("xterm-256color", SessionTerminalSettings.TerminalType(profile, settings));
         Assert.AreEqual("UTF-8", SessionTerminalSettings.Encoding(profile, settings));
         Assert.AreEqual(settings.General.KeepAliveSeconds, SessionTerminalSettings.KeepAliveSeconds(profile, settings));
+        Assert.AreEqual(0, SessionTerminalSettings.AntiIdleSeconds(profile), "防空闲没有全局值可跟随,没设就是关。");
         Assert.IsNull(SessionTerminalSettings.ColorScheme(profile));
         Assert.IsNull(SessionTerminalSettings.TabColor(profile));
         Assert.IsNull(SessionTerminalSettings.StartupDirectory(profile));
@@ -116,11 +117,47 @@ public sealed class SessionTerminalSettingsTests
     [TestMethod]
     public void AnAllEmptyOverrideObjectReportsItself()
     {
-        // 界面把六项都清空之后应当存回 null 而不是一个全空对象:后者会让"有没有覆盖"
+        // 界面把七项都清空之后应当存回 null 而不是一个全空对象:后者会让"有没有覆盖"
         // 这件事有了两种表示,也给每条老配置的落盘 JSON 平白多出一段。
         Assert.IsTrue(new TerminalOverrides().IsEmpty);
         Assert.IsTrue(new TerminalOverrides { Encoding = "  ", TabColor = "" }.IsEmpty);
         Assert.IsFalse(new TerminalOverrides { KeepAliveSeconds = 0 }.IsEmpty,
             "显式设成 0(关闭保活)是一次真实的覆盖,不是「没设」。");
+        Assert.IsFalse(new TerminalOverrides { AntiIdleSeconds = 90 }.IsEmpty);
+    }
+
+    /// <summary>
+    /// 防空闲是<b>只按会话</b>的一项:没有全局值可回落,所以"没设"与"设成 0"都等于关。
+    /// </summary>
+    /// <remarks>
+    /// 它与保活极易被当成同一件事,于是"配了保活还是被踢"成了查不明白的抱怨:保活是协议层
+    /// 心跳,防的是 NAT 收连接;防空闲要真的往 tty 里写字节,因为踢人的 <c>TMOUT</c>
+    /// 与堡垒机超时只认输入。两条路各走各的,这条用例钉住的是"各走各的"。
+    /// </remarks>
+    [TestMethod]
+    public void AntiIdleIsSessionOnlyAndOffUntilItIsSet()
+    {
+        Assert.AreEqual(0, SessionTerminalSettings.AntiIdleSeconds(null), "本地终端没有会话配置,不能因此抛。");
+        Assert.AreEqual(0, SessionTerminalSettings.AntiIdleSeconds(new SessionProfile()));
+
+        SessionProfile configured = new() { Terminal = new() { AntiIdleSeconds = 90 } };
+        Assert.AreEqual(90, SessionTerminalSettings.AntiIdleSeconds(configured));
+
+        SessionProfile keepAliveOnly = new() { Terminal = new() { KeepAliveSeconds = 30 } };
+        Assert.AreEqual(0, SessionTerminalSettings.AntiIdleSeconds(keepAliveOnly),
+            "配了保活不等于配了防空闲 —— 它俩防的不是同一件事,不能互相代劳。");
+    }
+
+    [TestMethod]
+    public void AntiIdleIsClampedAtTheSameCeilingAsKeepAlive()
+    {
+        TerminalOverrides overrides = new() { AntiIdleSeconds = 99_999 };
+        Assert.AreEqual(TerminalOverrides.MaxAntiIdleSeconds, overrides.AntiIdleSeconds);
+
+        overrides.AntiIdleSeconds = -5;
+        Assert.AreEqual(0, overrides.AntiIdleSeconds, "负数没有意义,归零(= 关闭)。");
+
+        overrides.AntiIdleSeconds = null;
+        Assert.IsNull(overrides.AntiIdleSeconds, "null 是「没设」,不该被钳成 0 而在 JSON 里留下痕迹。");
     }
 }

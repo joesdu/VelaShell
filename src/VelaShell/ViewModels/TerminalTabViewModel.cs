@@ -779,6 +779,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         var bridge = new SshTerminalBridge(TerminalEmulator, shellStream);
         bridge.Closed += OnBridgeClosed;
         AttachTransferRouter(bridge, shellStream);
+        ApplyAntiIdle(bridge);
         Bridge = bridge;
         _started = false;
 
@@ -789,6 +790,18 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         // 导致终端下半部分空白。
         SyncPtySize();
     }
+
+    /// <summary>
+    /// 按本会话的高级设置打开/关闭防空闲注入(没有配置的标签 —— 本地终端 —— 恒为关闭)。
+    /// </summary>
+    /// <remarks>
+    /// 挂在挂载传输这一步,首连与重连就都覆盖到了:重连会新建一条桥,设置得跟着走过去,
+    /// 否则"断线重连之后又开始被踢"这种事没人查得出来。改了配置要等下次连接才生效 ——
+    /// 与同一栏里的保活间隔一个口径。
+    /// </remarks>
+    /// <param name="bridge">刚建好、尚未启动的桥。</param>
+    private void ApplyAntiIdle(SshTerminalBridge bridge) =>
+        bridge.AntiIdleInterval = TimeSpan.FromSeconds(SessionTerminalSettings.AntiIdleSeconds(Profile));
 
     /// <summary>
     /// 把模拟器当前的网格尺寸重新发送到实时 shell 流,使远程 PTY 的

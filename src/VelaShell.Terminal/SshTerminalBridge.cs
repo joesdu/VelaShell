@@ -72,12 +72,18 @@ public class SshTerminalBridge : IDisposable
     private Task? _readTask;
     private int _started;
 
+    // 防空闲注入器。默认关闭(间隔为零),由宿主按会话配置打开 —— 本地终端与没配这一项的
+    // 会话上它一个字节都不会发。构造在字段初始化里而不是等宿主来设,是为了让"记一次活动"
+    // 这件事在整条出站路径上无条件成立,不必到处判空。
+    private readonly AntiIdleKeeper _antiIdle;
+
     /// <summary>绑定终端模拟器与 Shell 流,并订阅终端的用户输入事件。</summary>
     public SshTerminalBridge(ITerminalEmulator terminal, IShellStreamWrapper shellStream)
     {
         _terminal = terminal ?? throw new ArgumentNullException(nameof(terminal));
         _shellStream = shellStream ?? throw new ArgumentNullException(nameof(shellStream));
         _cts = new();
+        _antiIdle = new(EnqueueOutbound, CanInjectAntiIdle);
         _terminal.UserInput += OnUserInput;
         _writeTask = Task.Run(WriteLoopAsync);
     }
@@ -92,6 +98,9 @@ public class SshTerminalBridge : IDisposable
         _disposed = true;
         _terminal.UserInput -= OnUserInput;
         TransferRouter?.SessionEnded -= OnFileTransferSessionEnded;
+
+        // 防空闲的闹钟第一个停:它在线程池上跑,晚一步就可能往正在拆的流上再送一发。
+        _antiIdle.Dispose();
 
         // 封口写队列:写循环排空残余(_disposed 已置位,只弃不写)后自行退出。
         _writeQueue.Writer.TryComplete();
@@ -242,8 +251,34 @@ public class SshTerminalBridge : IDisposable
         {
             return;
         }
-        _writeQueue.Writer.TryWrite(new(data, null));
+        EnqueueOutbound(data);
     }
+
+    /// <summary>
+    /// 防空闲断开:会话静默满这么久就往 PTY 送一个 NUL,让服务端重新开始计空闲。
+    /// <see cref="TimeSpan.Zero" /> = 关闭(默认)。
+    /// </summary>
+    /// <remarks>
+    /// 与 SSH 的保活心跳互补而不重叠:心跳是协议层的,防的是 NAT 收连接;这一项防的是
+    /// 服务端 shell 按空闲踢人(<c>TMOUT</c>、堡垒机超时),而那是按 tty 上有没有输入算的。
+    /// 由宿主按会话配置设定,细节见 <see cref="AntiIdleKeeper" />。
+    /// </remarks>
+    public TimeSpan AntiIdleInterval
+    {
+        get => _antiIdle.Interval;
+        set => _antiIdle.Interval = value;
+    }
+
+    /// <summary>此刻能不能注入防空闲字节。</summary>
+    /// <remarks>
+    /// ZMODEM 会话进行中一律不发:那条流上跑的是协议帧,插一个字节进去轻则 CRC 错重传,
+    /// 重则整笔传输失败 —— 与击键在传输期间被拦下是同一个理由。
+    /// </remarks>
+    private bool CanInjectAntiIdle() =>
+        !_disposed && _shellStream.CanWrite && TransferRouter is not { IsInSession: true };
+
+    /// <summary>测试探针:同步跑一次防空闲的定时器回调。</summary>
+    internal void AntiIdleTickForTest() => _antiIdle.TickForTest();
 
     /// <summary>
     /// 测试探针:返回的任务在"此刻已入队的所有写全部落到底层流"后完成。
@@ -695,6 +730,20 @@ public class SshTerminalBridge : IDisposable
 
         // 只入队不直写:击键与 SendRaw 都在 UI 线程触发,TryWrite 保序;真正的发送
         // 由唯一的写循环按序完成,杜绝对底层通道的并发 WriteAsync(见 _writeQueue 注释)。
+        EnqueueOutbound(data);
+    }
+
+    /// <summary>
+    /// 出站的唯一入口:入队,并把这一下记成一次活动。
+    /// </summary>
+    /// <remarks>
+    /// 记账放在这里而不是各调用点,是因为"最近一次往对端写字节是什么时候"必须<b>一处不漏</b> ——
+    /// 漏掉击键这一路,防空闲就会在用户正打字的时候插字节;漏掉注入这一路,它又会在
+    /// 刚发过一发之后立刻再发一发。
+    /// </remarks>
+    private void EnqueueOutbound(byte[] data)
+    {
+        _antiIdle.NoteActivity();
         _writeQueue.Writer.TryWrite(new(data, null));
     }
 

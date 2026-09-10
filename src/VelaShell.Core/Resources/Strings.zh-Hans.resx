@@ -1873,6 +1873,12 @@
   <data name="Profile_OverrideKeepAliveHint" xml:space="preserve">
     <value>-1 = 跟随全局;0 = 关闭。</value>
   </data>
+  <data name="Profile_AntiIdle" xml:space="preserve">
+    <value>防空闲(秒)</value>
+  </data>
+  <data name="Profile_AntiIdleHint" xml:space="preserve">
+    <value>0 = 关闭。按该间隔向会话送一个不可见字节(NUL),避免服务端按空闲把会话踢掉。与上面的保活互补:保活只管链路,管不到服务端的空闲计时。</value>
+  </data>
   <data name="Profile_PostAuthCommandPlaceholder" xml:space="preserve">
     <value>如 sudo su - / tmux attach</value>
   </data>

@@ -1762,6 +1762,12 @@ Paste anyway?</value>
   <data name="Profile_OverrideKeepAliveHint" xml:space="preserve">
     <value>-1 = follow global; 0 = disabled.</value>
   </data>
+  <data name="Profile_AntiIdle" xml:space="preserve">
+    <value>Anti-idle (s)</value>
+  </data>
+  <data name="Profile_AntiIdleHint" xml:space="preserve">
+    <value>0 = off. Sends an invisible byte (NUL) at this interval so the server does not drop the session as idle. Complements keep-alive, which only guards the protocol link.</value>
+  </data>
   <data name="Profile_PostAuthCommandPlaceholder" xml:space="preserve">
     <value>e.g. sudo su - / tmux attach</value>
   </data>
