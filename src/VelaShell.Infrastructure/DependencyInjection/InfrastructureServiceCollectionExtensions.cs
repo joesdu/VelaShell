@@ -326,6 +326,12 @@ public static class InfrastructureServiceCollectionExtensions
         {
             AuthMethod.Password => new PasswordCredential(ci.Password ?? ""),
             AuthMethod.PrivateKey => BuildPrivateKeyCredential(ci.PrivateKeyPath!, ci.PrivateKeyPassphrase),
+            // 证书认证:证书本身不签名,签名仍由私钥出 —— Tmds 的 CertificateCredential 也正是
+            // 「证书文件 + 匹配的 PrivateKeyCredential」两件套,所以这里整个复用私钥那一路,
+            // 连它的 PEM→OpenSSH 兼容转换一起继承。
+            AuthMethod.Certificate => new CertificateCredential(
+                ci.CertificatePath!,
+                BuildPrivateKeyCredential(ci.PrivateKeyPath!, ci.PrivateKeyPassphrase)),
             _ => throw new ArgumentOutOfRangeException(nameof(ci), ci.AuthMethod, "Unsupported authentication method.")
         };
         s.Credentials = [credential];
@@ -336,8 +342,12 @@ public static class InfrastructureServiceCollectionExtensions
     /// PKCS#1(-----BEGIN RSA PRIVATE KEY-----)、PKCS#8、加密 PKCS#8 会被判 Unsupported format
     /// 而【跳过】,认证以 "skipped: publickey" 失败。这里先用 BCL 读入并转成 OpenSSH 格式再交给 Tmds;
     /// 已是 OpenSSH 格式或无法读取/转换时,原样交回文件路径,让 Tmds 按其原生路径处理并给出错误。
+    /// <para>
+    /// 返回类型收窄到 <see cref="PrivateKeyCredential" /> 而不是 <see cref="Credential" />:
+    /// 证书认证要把它当作内层凭据塞进 <see cref="CertificateCredential" />,那个构造函数只收这个类型。
+    /// </para>
     /// </summary>
-    internal static Credential BuildPrivateKeyCredential(string path, string? passphrase)
+    internal static PrivateKeyCredential BuildPrivateKeyCredential(string path, string? passphrase)
     {
         try
         {

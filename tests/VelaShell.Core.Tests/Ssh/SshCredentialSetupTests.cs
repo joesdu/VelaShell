@@ -42,6 +42,29 @@ public class SshCredentialSetupTests
             "不得保留 Tmds 默认的 SSH Agent 凭据——它在 Windows 上会因 SSH_AUTH_SOCK 非命名管道每次连接抛 ArgumentException");
     }
 
+    /// <summary>
+    /// 证书认证同样只留一条凭据。证书本身不签名 —— 它是「证书文件 + 匹配私钥」两件套,
+    /// 内层复用私钥那一路,所以这里顺带盯住:装配出来的必须是 CertificateCredential,
+    /// 而不是退化成一条普通的 PrivateKeyCredential(那样服务端根本看不到 CA 签名)。
+    /// </summary>
+    [TestMethod]
+    public void AddCredential_Certificate_ReplacesDefaultsWithOnlyCertificate()
+    {
+        var s = new SshClientSettings("user@host");
+        InfrastructureServiceCollectionExtensions.AddCredential(s, new ConnectionInfo
+        {
+            Host = "host",
+            Username = "user",
+            AuthMethod = AuthMethod.Certificate,
+            PrivateKeyPath = "/home/user/.ssh/id_ed25519",
+            CertificatePath = "/home/user/.ssh/id_ed25519-cert.pub",
+        });
+
+        Assert.HasCount(1, s.Credentials);
+        Assert.IsInstanceOfType<CertificateCredential>(s.Credentials[0]);
+        Assert.DoesNotContain(c => c is SshAgentCredentials, s.Credentials);
+    }
+
     [TestMethod]
     public void AddCredential_PrivateKey_ReplacesDefaultsWithOnlyPrivateKey()
     {

@@ -11,6 +11,7 @@ using Avalonia.VisualTree;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
+using VelaShell.Core.Ssh;
 using VelaShell.ViewModels;
 using FireAndForget = VelaShell.Services.FireAndForget;
 
@@ -302,6 +303,39 @@ public partial class ConnectionProfileView : Window
         if (files.AsParallel().FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
         {
             viewModel.PrivateKeyPath = path;
+        }
+    });
+
+    /// <summary>
+    /// 选择 OpenSSH 用户证书文件。选完之后若私钥还空着,按 OpenSSH 的
+    /// <c>&lt;key&gt;-cert.pub</c> 命名约定顺手把私钥补上。
+    /// </summary>
+    /// <remarks>
+    /// 证书与私钥是 ssh-keygen 成对产出的,文件名只差一个后缀。不自动补的话,用户要在
+    /// 两个文件选择器里把同一个目录翻两遍,还容易挑到隔壁那把不匹配的私钥 ——
+    /// 而那种错配到连接时只会得到一句笼统的 publickey 被拒。
+    /// 推不出来(自定义命名)或推出的文件不存在就什么都不做,交回用户自己选。
+    /// </remarks>
+    private void BrowseCertificateFile_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    {
+        if (DataContext is not ConnectionProfileViewModel viewModel)
+        {
+            return;
+        }
+        IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new()
+        {
+            Title = Strings.Get("Profile_SelectCertFile"),
+            AllowMultiple = false,
+            SuggestedStartLocation = await StorageDefaults.SshAsync(this)
+        });
+        if (files.Count == 0 || files[0].TryGetLocalPath() is not { Length: > 0 } path)
+        {
+            return;
+        }
+        viewModel.CertificatePath = path;
+        if (string.IsNullOrWhiteSpace(viewModel.PrivateKeyPath) && OpenSshCertificate.InferPrivateKeyPath(path) is { } keyPath)
+        {
+            viewModel.PrivateKeyPath = keyPath;
         }
     });
 }

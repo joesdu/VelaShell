@@ -219,7 +219,8 @@
                       Classes.active="{Binding IsPasswordMethod}"
                       Command="{Binding SelectPasswordCommand}" />
               <Button Grid.Column="2" Classes="seg-tab" Content="{loc:Localize Auth_Certificate}"
-                      IsEnabled="False" ToolTip.Tip="{loc:Localize Profile_NotSupported}" />
+                      Classes.active="{Binding IsCertificateMethod}"
+                      Command="{Binding SelectCertificateCommand}" />
               <Button Grid.Column="4" Classes="seg-tab" Content="{loc:Localize Auth_Key}"
                       Classes.active="{Binding IsKeyMethod}"
                       Command="{Binding SelectKeyCommand}" />
@@ -280,8 +281,19 @@
             </Grid>
           </StackPanel>
 
-          <!-- 密钥 -->
-          <StackPanel IsVisible="{Binding IsKeyMethod}" Spacing="14">
+          <!-- 密钥 / 证书。证书页不另起一套表单:它就是密钥页再加一个证书文件 —— 签名
+               始终由私钥出,证书只是 CA 的背书。 -->
+          <StackPanel IsVisible="{Binding ShowsKeyFields}" Spacing="14">
+            <!-- 证书排在私钥前面:选完证书能按 OpenSSH 的 key-cert.pub 约定把私钥自动补上。 -->
+            <StackPanel IsVisible="{Binding IsCertificateMethod}">
+              <TextBlock Classes="field-label" Text="{loc:Localize Profile_CertificateFile}" />
+              <Grid ColumnDefinitions="*,8,Auto">
+                <TextBox Grid.Column="0" Text="{Binding CertificatePath}"
+                         PlaceholderText="~/.ssh/id_ed25519-cert.pub" />
+                <Button Grid.Column="2" Classes="dlg-outline"
+                        Content="{loc:Localize BrowseKeyFile}" Click="BrowseCertificateFile_Click" />
+              </Grid>
+            </StackPanel>
             <StackPanel>
               <TextBlock Classes="field-label" Text="{loc:Localize Profile_PrivateKeyFile}" />
               <Grid ColumnDefinitions="*,8,Auto">

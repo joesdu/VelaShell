@@ -353,6 +353,9 @@ public sealed class ConnectionDiagnosticsService(
         {
             AuthMethod.Password => !string.IsNullOrEmpty(profile.Password),
             AuthMethod.PrivateKey => !string.IsNullOrEmpty(profile.PrivateKeyPath),
+            // 证书这一路要两个文件都在:少了私钥就没人能签名,少了证书就退化成普通公钥认证。
+            AuthMethod.Certificate => !string.IsNullOrEmpty(profile.CertificatePath)
+                                      && !string.IsNullOrEmpty(profile.PrivateKeyPath),
             _ => false
         };
 
@@ -378,7 +381,9 @@ public sealed class ConnectionDiagnosticsService(
         if (ContainsAny(reason, "Permission denied", "denied", "认证", "password", "publickey", "Authentication"))
         {
             yield return Strings.Get("DiagSvc_SuggestCheckCreds");
-            if (profile.AuthMethod == AuthMethod.PrivateKey)
+            // 证书认证失败的排查方向与私钥一致 —— 都是"服务端不认这把私钥的签名",
+            // 只是证书那边还多一层 CA 是否被 TrustedUserCAKeys 收录。
+            if (profile.AuthMethod is AuthMethod.PrivateKey or AuthMethod.Certificate)
             {
                 yield return Strings.Get("DiagSvc_SuggestKeyMatch");
             }

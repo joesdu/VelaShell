@@ -1792,8 +1792,23 @@
   <data name="Profile_KeyAuth" xml:space="preserve">
     <value>金鑰驗證</value>
   </data>
-  <data name="Profile_NotSupported" xml:space="preserve">
-    <value>尚未支援</value>
+  <data name="Profile_CertAuth" xml:space="preserve">
+    <value>憑證驗證</value>
+  </data>
+  <data name="Profile_CertificateFile" xml:space="preserve">
+    <value>憑證檔案</value>
+  </data>
+  <data name="Profile_SelectCertFile" xml:space="preserve">
+    <value>選擇憑證檔案</value>
+  </data>
+  <data name="Profile_ErrCertRequired" xml:space="preserve">
+    <value>請選擇憑證檔案</value>
+  </data>
+  <data name="Profile_ErrCertMissing" xml:space="preserve">
+    <value>找不到該憑證檔案</value>
+  </data>
+  <data name="Profile_ErrCertKeyRequired" xml:space="preserve">
+    <value>憑證驗證還需要與之相符的私鑰</value>
   </data>
   <data name="Profile_PassphraseOptional" xml:space="preserve">
     <value>私鑰密碼短語(選填)</value>
@@ -3231,6 +3246,12 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="Svc_PrivateKeyRequired" xml:space="preserve">
     <value>私鑰驗證需要選擇私鑰檔案。</value>
+  </data>
+  <data name="Svc_CertificateRequired" xml:space="preserve">
+    <value>憑證驗證需要選擇憑證檔案。</value>
+  </data>
+  <data name="Svc_CertificateKeyRequired" xml:space="preserve">
+    <value>憑證驗證需要與憑證相符的私鑰檔案。</value>
   </data>
   <data name="Svc_ProfileNameRequired" xml:space="preserve">
     <value>請填寫連線名稱。</value>

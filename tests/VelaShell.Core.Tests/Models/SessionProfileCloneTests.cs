@@ -36,6 +36,7 @@ public sealed class SessionProfileCloneTests
             RememberPassword = false,
             PrivateKeyPath = @"C:\keys\id_ed25519",
             PrivateKeyPassphrase = "phrase",
+            CertificatePath = @"C:\keys\id_ed25519-cert.pub",
             GroupId = Guid.NewGuid(),
             LastConnectedAt = new DateTime(2026, 9, 5, 12, 0, 0, DateTimeKind.Utc),
             Tags = ["prod", "bastion"],

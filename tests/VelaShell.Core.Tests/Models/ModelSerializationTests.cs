@@ -376,6 +376,7 @@ public class ModelSerializationTests
             Password = "pass",
             PrivateKeyPath = "/key",
             PrivateKeyPassphrase = "phrase",
+            CertificatePath = "/key-cert.pub",
             GroupId = Guid.NewGuid(),
             LastConnectedAt = DateTime.UtcNow,
             Tags = ["tag1", "tag2"]
@@ -384,6 +385,33 @@ public class ModelSerializationTests
         SessionProfile? deserialized = JsonSerializer.Deserialize<SessionProfile>(json, _options);
         Assert.AreEqual(JsonSerializer.Serialize(original, _options),
             JsonSerializer.Serialize(deserialized, _options));
+    }
+
+    /// <summary>
+    /// <see cref="AuthMethod" /> 的序号必须钉死,新值只能加在末尾。
+    /// </summary>
+    /// <remarks>
+    /// 这个枚举没挂 JsonStringEnumConverter(同仓的 QuickCommandGroupKind 挂了),落盘的是序号
+    /// 而不是名字。往中间插一个值,已存档配置里的 1 就会从"私钥"变成别的东西 —— 用户的连接
+    /// 静默改用另一套凭据,而配置文件看上去毫无变化,几乎无从排查。这条用例就是那道闸。
+    /// </remarks>
+    [TestMethod]
+    public void AuthMethod_OrdinalValues_MustStayStable()
+    {
+        string Persist(AuthMethod method) =>
+            JsonSerializer.Serialize(new SessionProfile { AuthMethod = method }, _options);
+
+        // 盯落盘产物而不是直接比 (int)AuthMethod.X —— 后者是编译期常量,分析器会判成恒真的废断言,
+        // 而真正要守住的本来也就是存档里的那个数字。
+        Assert.Contains("\"authMethod\": 0", Persist(AuthMethod.Password));
+        Assert.Contains("\"authMethod\": 1", Persist(AuthMethod.PrivateKey));
+        Assert.Contains("\"authMethod\": 2", Persist(AuthMethod.Certificate));
+        // 反向:一条 authMethod=2 的存档读回来必须仍是证书认证。
+        SessionProfile? restored = JsonSerializer.Deserialize<SessionProfile>(
+            """{"authMethod":2,"certificatePath":"/key-cert.pub"}""", _options);
+        Assert.IsNotNull(restored);
+        Assert.AreEqual(AuthMethod.Certificate, restored!.AuthMethod);
+        Assert.AreEqual("/key-cert.pub", restored.CertificatePath);
     }
 
     [TestMethod]

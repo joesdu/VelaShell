@@ -1502,8 +1502,23 @@
   <data name="Profile_KeyAuth" xml:space="preserve">
     <value>키 인증</value>
   </data>
-  <data name="Profile_NotSupported" xml:space="preserve">
-    <value>아직 지원되지 않음</value>
+  <data name="Profile_CertAuth" xml:space="preserve">
+    <value>인증서 인증</value>
+  </data>
+  <data name="Profile_CertificateFile" xml:space="preserve">
+    <value>인증서 파일</value>
+  </data>
+  <data name="Profile_SelectCertFile" xml:space="preserve">
+    <value>인증서 파일 선택</value>
+  </data>
+  <data name="Profile_ErrCertRequired" xml:space="preserve">
+    <value>인증서 파일을 선택하세요</value>
+  </data>
+  <data name="Profile_ErrCertMissing" xml:space="preserve">
+    <value>인증서 파일을 찾을 수 없습니다</value>
+  </data>
+  <data name="Profile_ErrCertKeyRequired" xml:space="preserve">
+    <value>인증서 인증에는 일치하는 개인 키도 필요합니다</value>
   </data>
   <data name="Profile_PassphraseOptional" xml:space="preserve">
     <value>개인 키 암호 문구(선택)</value>
@@ -3032,6 +3047,12 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="Svc_PrivateKeyRequired" xml:space="preserve">
     <value>개인 키 인증에는 개인 키 파일이 필요합니다.</value>
+  </data>
+  <data name="Svc_CertificateRequired" xml:space="preserve">
+    <value>인증서 인증에는 인증서 파일이 필요합니다.</value>
+  </data>
+  <data name="Svc_CertificateKeyRequired" xml:space="preserve">
+    <value>인증서 인증에는 인증서와 일치하는 개인 키 파일이 필요합니다.</value>
   </data>
   <data name="Svc_ProfileNameRequired" xml:space="preserve">
     <value>연결 이름을 입력하세요.</value>

@@ -1681,8 +1681,23 @@ Paste anyway?</value>
   <data name="Profile_KeyAuth" xml:space="preserve">
     <value>Key Authentication</value>
   </data>
-  <data name="Profile_NotSupported" xml:space="preserve">
-    <value>Not supported yet</value>
+  <data name="Profile_CertAuth" xml:space="preserve">
+    <value>Certificate Authentication</value>
+  </data>
+  <data name="Profile_CertificateFile" xml:space="preserve">
+    <value>Certificate File</value>
+  </data>
+  <data name="Profile_SelectCertFile" xml:space="preserve">
+    <value>Select Certificate File</value>
+  </data>
+  <data name="Profile_ErrCertRequired" xml:space="preserve">
+    <value>Certificate file is required</value>
+  </data>
+  <data name="Profile_ErrCertMissing" xml:space="preserve">
+    <value>Certificate file not found</value>
+  </data>
+  <data name="Profile_ErrCertKeyRequired" xml:space="preserve">
+    <value>Certificate authentication also needs the matching private key</value>
   </data>
   <data name="Profile_PassphraseOptional" xml:space="preserve">
     <value>Private Key Passphrase (optional)</value>
@@ -3120,6 +3135,12 @@ Overwrite it?</value>
   </data>
   <data name="Svc_PrivateKeyRequired" xml:space="preserve">
     <value>Private key authentication requires a private key path.</value>
+  </data>
+  <data name="Svc_CertificateRequired" xml:space="preserve">
+    <value>Certificate authentication requires a certificate file.</value>
+  </data>
+  <data name="Svc_CertificateKeyRequired" xml:space="preserve">
+    <value>Certificate authentication requires the private key matching the certificate.</value>
   </data>
   <data name="Svc_ProfileNameRequired" xml:space="preserve">
     <value>Connection profile name is required.</value>
