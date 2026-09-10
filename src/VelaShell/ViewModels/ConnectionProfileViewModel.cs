@@ -44,6 +44,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     private readonly Guid _profileId;
     private readonly ISessionRepository? _sessionRepository;
     private AuthMethod _authMethod = AuthMethod.Password;
+    private string? _certificatePath;
     private ConnectionType _connectionType = ConnectionType.SSH;
     private FtpEncryptionMode _ftpEncryption = FtpEncryptionMode.Auto;
     private bool _ftpPassive = true;
@@ -53,6 +54,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     private string? _ftpInitialRemotePath;
     private Guid? _groupId;
     private string _host = string.Empty;
+    private bool _isCertAuth;
     private bool _isKeyAuth;
     private bool _isPasswordAuth = true;
     private Guid? _jumpHostProfileId;
@@ -140,9 +142,11 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
             _password = SecureStringConvert.FromPlaintext(existing.Password);
             _privateKeyPath = existing.PrivateKeyPath;
             _privateKeyPassphrase = existing.PrivateKeyPassphrase;
+            _certificatePath = existing.CertificatePath;
             _groupId = existing.GroupId;
             _isPasswordAuth = existing.AuthMethod == AuthMethod.Password;
             _isKeyAuth = existing.AuthMethod == AuthMethod.PrivateKey;
+            _isCertAuth = existing.AuthMethod == AuthMethod.Certificate;
             _rememberPassword = existing.RememberPassword;
             _tagsText = string.Join(", ", existing.Tags);
             _jumpHostProfileId = existing.JumpHostProfileId;
@@ -179,6 +183,8 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
             {
                 IsPasswordAuth = method == AuthMethod.Password;
                 IsKeyAuth = method == AuthMethod.PrivateKey;
+                IsCertAuth = method == AuthMethod.Certificate;
+                this.RaisePropertyChanged(nameof(ShowsPrivateKeyFields));
             });
 
         // Skip(1):WhenAnyValue 订阅时会立即用当前值(默认“未分组”/“直连”)触发一次,
@@ -252,6 +258,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
             IsAdvancedVisible = true;
         }
         BrowseKeyFileCommand = ReactiveCommand.Create(() => { });
+        BrowseCertificateFileCommand = ReactiveCommand.Create(() => { });
         ToggleAdvancedCommand = ReactiveCommand.Create(() => { IsAdvancedVisible = !IsAdvancedVisible; });
         TogglePasswordVisibilityCommand = ReactiveCommand.Create(() => { ShowPassword = !ShowPassword; });
     }
@@ -535,7 +542,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
         }
     }
 
-    /// <summary>认证方式(密码或私钥);变更时同步刷新 <see cref="AuthMethodIndex" />。</summary>
+    /// <summary>认证方式(密码 / 私钥 / 证书);变更时同步刷新 <see cref="AuthMethodIndex" /> 与两条路径校验。</summary>
     public AuthMethod AuthMethod
     {
         get => _authMethod;
@@ -544,14 +551,19 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
             this.RaiseAndSetIfChanged(ref _authMethod, value);
             this.RaisePropertyChanged(nameof(AuthMethodIndex));
             this.RaisePropertyChanged(nameof(PrivateKeyPathError));
+            this.RaisePropertyChanged(nameof(CertificatePathError));
         }
     }
 
-    /// <summary>认证方式下拉的索引(0=密码认证,1=密钥认证)。</summary>
+    /// <summary>认证方式下拉的索引(0=密码认证,1=密钥认证,2=证书认证)。</summary>
+    /// <remarks>
+    /// 下拉项的顺序与 <see cref="Core.Models.AuthMethod" /> 的枚举值一一对应,所以这里就是一次强转。
+    /// 越界值(手改过的配置文件)落回密码认证 —— 与从前那句"非 1 即 0"的兜底口径一致。
+    /// </remarks>
     public int AuthMethodIndex
     {
-        get => AuthMethod == AuthMethod.PrivateKey ? 1 : 0;
-        set => AuthMethod = value == 1 ? AuthMethod.PrivateKey : AuthMethod.Password;
+        get => (int)AuthMethod;
+        set => AuthMethod = Enum.IsDefined((AuthMethod)value) ? (AuthMethod)value : AuthMethod.Password;
     }
 
     /// <summary>密码以 SecureString 承载;ASCII 过滤由 <c>SecurePasswordBox</c> 输入行为负责。</summary>
@@ -561,7 +573,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
         set => this.RaiseAndSetIfChanged(ref _password, value);
     }
 
-    /// <summary>私钥文件路径(密钥认证时使用)。</summary>
+    /// <summary>私钥文件路径(密钥认证与证书认证都用它签名)。</summary>
     public string? PrivateKeyPath
     {
         get => _privateKeyPath;
@@ -569,6 +581,17 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
         {
             this.RaiseAndSetIfChanged(ref _privateKeyPath, value);
             this.RaisePropertyChanged(nameof(PrivateKeyPathError));
+        }
+    }
+
+    /// <summary>OpenSSH 用户证书文件路径(证书认证时使用,通常叫 <c>*-cert.pub</c>)。</summary>
+    public string? CertificatePath
+    {
+        get => _certificatePath;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _certificatePath, value);
+            this.RaisePropertyChanged(nameof(CertificatePathError));
         }
     }
 
@@ -601,16 +624,54 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     /// 私钥文件不存在时的提示;没问题为 null。
     /// </summary>
     /// <remarks>
+    /// <para>
     /// 这一条是**新增的校验**,不只是把已有门槛写出来:填错私钥路径原先要等到连接失败、
-    /// 从一句笼统的认证错误里猜。只在密钥认证且填了路径时才判 —— 空路径的含义是
-    /// "用默认密钥",不是错误。
+    /// 从一句笼统的认证错误里猜。
+    /// </para>
+    /// <para>
+    /// 两种认证下"留空"的含义不一样,所以不能合成一个判断:密钥认证留空是合法的
+    /// (含义是"用默认密钥"),证书认证留空则是硬错 —— 证书只是 CA 的背书,签名始终由私钥出,
+    /// 少了它连不上,而失败信息只会是一句笼统的 publickey 被拒。
+    /// </para>
     /// </remarks>
-    public string? PrivateKeyPathError =>
-        AuthMethod == AuthMethod.PrivateKey
-        && !string.IsNullOrWhiteSpace(PrivateKeyPath)
-        && !FileExistsSafe(PrivateKeyPath)
-            ? Strings.Get("Profile_ErrKeyMissing")
-            : null;
+    public string? PrivateKeyPathError
+    {
+        get
+        {
+            if (AuthMethod is not (AuthMethod.PrivateKey or AuthMethod.Certificate))
+            {
+                return null;
+            }
+            if (string.IsNullOrWhiteSpace(PrivateKeyPath))
+            {
+                return AuthMethod == AuthMethod.Certificate ? Strings.Get("Profile_ErrCertKeyRequired") : null;
+            }
+            return FileExistsSafe(PrivateKeyPath) ? null : Strings.Get("Profile_ErrKeyMissing");
+        }
+    }
+
+    /// <summary>
+    /// 证书文件缺失或不存在时的提示;没问题为 null。
+    /// </summary>
+    /// <remarks>
+    /// 与私钥那条不同,空路径在这里也算错:私钥留空还能退回默认密钥,
+    /// 证书没有任何默认位置可退。
+    /// </remarks>
+    public string? CertificatePathError
+    {
+        get
+        {
+            if (AuthMethod != AuthMethod.Certificate)
+            {
+                return null;
+            }
+            if (string.IsNullOrWhiteSpace(CertificatePath))
+            {
+                return Strings.Get("Profile_ErrCertRequired");
+            }
+            return FileExistsSafe(CertificatePath) ? null : Strings.Get("Profile_ErrCertMissing");
+        }
+    }
 
     private static bool FileExistsSafe(string path)
     {
@@ -663,6 +724,21 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
         get => _isKeyAuth;
         private set => this.RaiseAndSetIfChanged(ref _isKeyAuth, value);
     }
+
+    /// <summary>当前是否为证书认证;由认证方式派生,控制证书文件字段的可见性。</summary>
+    public bool IsCertAuth
+    {
+        get => _isCertAuth;
+        private set => this.RaiseAndSetIfChanged(ref _isCertAuth, value);
+    }
+
+    /// <summary>私钥与口令两个字段是否可见:密钥认证与证书认证都要用到它们。</summary>
+    /// <remarks>
+    /// 证书页不是另起一套表单,而是密钥页再加一个证书文件字段 —— Tmds 的
+    /// CertificateCredential 本就是「证书 + 匹配私钥」两件套,签名始终由私钥出。
+    /// 共用同一块面板,校验与浏览按钮也就只有一份,不会两边各改各的。
+    /// </remarks>
+    public bool ShowsPrivateKeyFields => IsKeyAuth || IsCertAuth;
 
     /// <summary>是否正忙(保存/连接/测试进行中);用于禁用命令与显示进度。</summary>
     public bool IsBusy
@@ -949,6 +1025,9 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     /// <summary>浏览私钥文件命令;由视图层挂接文件选择对话框。</summary>
     public ReactiveCommand<RxVoid, RxVoid> BrowseKeyFileCommand { get; }
 
+    /// <summary>浏览证书文件命令;由视图层挂接文件选择对话框。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> BrowseCertificateFileCommand { get; }
+
     /// <summary>切换高级选项区域展开/收起的命令。</summary>
     public ReactiveCommand<RxVoid, RxVoid> ToggleAdvancedCommand { get; }
 
@@ -1180,6 +1259,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
             RememberPassword = RememberPassword,
             PrivateKeyPath = PrivateKeyPath,
             PrivateKeyPassphrase = PrivateKeyPassphrase,
+            CertificatePath = CertificatePath,
             GroupId = GroupId,
             Tags = [.. TagsText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)],
             JumpHostProfileId = _jumpHostProfileId,
@@ -1703,13 +1783,15 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     }
 
     /// <summary>
-    /// FTP 与插件协议都没有私钥认证:切过去时把认证方式落回口令。
+    /// FTP 与插件协议既没有私钥认证也没有证书认证:切过去时把认证方式落回口令。
     /// 不做这一步,表单会停在一个用不上的私钥页,而那时认证方式下拉恰好是隐藏的 ——
     /// 界面上再没有任何途径把它切回来,保存下去的却仍是 PrivateKey。
     /// </summary>
     private void NormalizeAuthMethodForProtocol()
     {
-        if (!RequiresSshAuth && IsKeyAuth)
+        // 判的是 ShowsPrivateKeyFields 而不是 IsKeyAuth:证书认证掉进的是同一个坑,
+        // 而且比私钥那页更难自救 —— 它还多一个同样切不回来的证书字段。
+        if (!RequiresSshAuth && ShowsPrivateKeyFields)
         {
             AuthMethodIndex = 0;
         }

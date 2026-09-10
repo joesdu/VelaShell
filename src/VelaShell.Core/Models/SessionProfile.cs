@@ -46,6 +46,15 @@ public class SessionProfile
     /// <summary>私钥的解锁口令;私钥未加密时可为空。</summary>
     public string? PrivateKeyPassphrase { get; set; }
 
+    /// <summary>
+    /// OpenSSH 用户证书文件路径(<c>*-cert.pub</c>);仅在证书认证时使用,可为空。
+    /// </summary>
+    /// <remarks>
+    /// 不加密落盘:证书是 CA 签发的公开凭证,和 <c>.pub</c> 公钥一样本就该给人看,
+    /// 真正的机密仍是 <see cref="PrivateKeyPassphrase" /> 保护的那把私钥。
+    /// </remarks>
+    public string? CertificatePath { get; set; }
+
     /// <summary>所属分组的标识;未分组时为 null。</summary>
     public Guid? GroupId { get; set; }
 
@@ -187,6 +196,7 @@ public class SessionProfile
             RememberPassword = RememberPassword,
             PrivateKeyPath = PrivateKeyPath,
             PrivateKeyPassphrase = PrivateKeyPassphrase,
+            CertificatePath = CertificatePath,
             GroupId = GroupId,
             LastConnectedAt = LastConnectedAt,
             Tags = [.. Tags],

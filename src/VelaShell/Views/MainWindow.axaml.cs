@@ -1540,6 +1540,9 @@ public partial class MainWindow : Window
         {
             profile.PrivateKeyPath = result.PrivateKeyPath;
             profile.PrivateKeyPassphrase = result.PrivateKeyPassphrase;
+            // 证书路径无条件跟着写回,包括写回 null:从证书认证切回密钥认证时它必须被清掉,
+            // 否则 AuthMethod 已经是 PrivateKey、证书路径却还留着上一次的值。
+            profile.CertificatePath = result.CertificatePath;
         }
         return profile;
     }

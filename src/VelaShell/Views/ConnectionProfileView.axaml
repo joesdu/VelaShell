@@ -350,6 +350,7 @@
             <ComboBox SelectedIndex="{Binding AuthMethodIndex}">
               <ComboBoxItem Content="{loc:Localize Profile_PasswordAuth}" />
               <ComboBoxItem Content="{loc:Localize Profile_KeyAuth}" />
+              <ComboBoxItem Content="{loc:Localize Profile_CertAuth}" />
             </ComboBox>
           </StackPanel>
           <!-- FTP 没有私钥认证,这一格换成加密方式 -->
@@ -490,9 +491,23 @@
           </Border>
         </StackPanel>
 
-        <!-- 私钥(密钥认证;FTP 不支持) -->
-        <StackPanel IsVisible="{Binding IsKeyAuth}" Spacing="14"
+        <!-- 私钥 / 证书(FTP 不支持)。证书认证不另起一套表单:它就是密钥认证再加一个
+             证书文件 —— 签名始终由私钥出,证书只是 CA 的背书。 -->
+        <StackPanel IsVisible="{Binding ShowsPrivateKeyFields}" Spacing="14"
                     IsEnabled="{Binding RequiresSshAuth}">
+          <!-- 证书排在私钥前面:选完证书能按 OpenSSH 的 <key>-cert.pub 约定把私钥自动补上,
+               反过来推不出来。 -->
+          <StackPanel IsVisible="{Binding IsCertAuth}">
+            <TextBlock Classes="field-label" Text="{loc:Localize Profile_CertificateFile}" />
+            <Grid ColumnDefinitions="*,8,Auto">
+              <TextBox Grid.Column="0" Text="{Binding CertificatePath}"
+                       PlaceholderText="~/.ssh/id_ed25519-cert.pub" />
+              <Button Grid.Column="2" Classes="dlg-outline"
+                      Content="{loc:Localize BrowseKeyFile}" Click="BrowseCertificateFile_Click" />
+            </Grid>
+            <TextBlock Classes="field-error" Text="{Binding CertificatePathError}"
+                       IsVisible="{Binding CertificatePathError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
           <StackPanel>
             <TextBlock Classes="field-label" Text="{loc:Localize Profile_PrivateKeyFile}" />
             <Grid ColumnDefinitions="*,8,Auto">

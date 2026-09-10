@@ -4,13 +4,14 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Resources;
+using VelaShell.Core.Ssh;
 using VelaShell.ViewModels;
 using FireAndForget = VelaShell.Services.FireAndForget;
 
 namespace VelaShell.Views;
 
 /// <summary>
-/// 身份验证对话框视图:采集连接凭据(密码/私钥),并在登录或取消命令完成后自动关闭窗口。
+/// 身份验证对话框视图:采集连接凭据(密码 / 证书 / 私钥),并在登录或取消命令完成后自动关闭窗口。
 /// </summary>
 public partial class AuthenticationDialogView : Window
 {
@@ -75,6 +76,36 @@ public partial class AuthenticationDialogView : Window
         if (files.AsParallel().FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
         {
             viewModel.PrivateKeyPath = path;
+        }
+    });
+
+    /// <summary>
+    /// 选择 OpenSSH 用户证书文件;私钥还空着时按 <c>&lt;key&gt;-cert.pub</c> 约定顺手补上。
+    /// </summary>
+    /// <remarks>
+    /// 与连接配置页同一套口径,推断逻辑落在 <see cref="OpenSshCertificate" /> 里 ——
+    /// 两个对话框各写一份的话,改了后缀只会改好其中一处。
+    /// </remarks>
+    private void BrowseCertificateFile_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    {
+        if (DataContext is not AuthenticationDialogViewModel viewModel)
+        {
+            return;
+        }
+        IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new()
+        {
+            Title = Strings.Get("Profile_SelectCertFile"),
+            AllowMultiple = false,
+            SuggestedStartLocation = await StorageDefaults.SshAsync(this)
+        });
+        if (files.Count == 0 || files[0].TryGetLocalPath() is not { Length: > 0 } path)
+        {
+            return;
+        }
+        viewModel.CertificatePath = path;
+        if (string.IsNullOrWhiteSpace(viewModel.PrivateKeyPath) && OpenSshCertificate.InferPrivateKeyPath(path) is { } keyPath)
+        {
+            viewModel.PrivateKeyPath = keyPath;
         }
     });
 }

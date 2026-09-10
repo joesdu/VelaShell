@@ -11,10 +11,11 @@ namespace VelaShell.ViewModels;
 /// 由消费方负责在使用后 Dispose。
 /// </summary>
 /// <param name="Username">登录用户名。</param>
-/// <param name="AuthMethod">选用的认证方式(密码或密钥)。</param>
+/// <param name="AuthMethod">选用的认证方式(密码 / 证书 / 密钥)。</param>
 /// <param name="Password">以 SecureString 承载的登录密码;消费方负责在使用后 Dispose。</param>
 /// <param name="PrivateKeyPath">私钥文件路径(密钥认证时使用)。</param>
 /// <param name="PrivateKeyPassphrase">私钥口令短语(如私钥已加密)。</param>
+/// <param name="CertificatePath">OpenSSH 用户证书文件路径(证书认证时使用)。</param>
 /// <param name="RememberPassword">是否记住本次登录密码。</param>
 public sealed record AuthenticationResult(
     string Username,
@@ -22,6 +23,7 @@ public sealed record AuthenticationResult(
     SecureString? Password,
     string? PrivateKeyPath,
     string? PrivateKeyPassphrase,
+    string? CertificatePath,
     bool RememberPassword);
 
 /// <summary>
@@ -31,7 +33,7 @@ public sealed record AuthenticationResult(
 public class AuthenticationDialogViewModel : ReactiveObject
 {
     private readonly int _port;
-    private int _methodIndex; // 0=密码 1=证书(暂未支持) 2=密钥
+    private int _methodIndex; // 0=密码 1=证书 2=密钥;顺序即分段选择器上从左到右的顺序
 
     private string _username;
 
@@ -48,7 +50,14 @@ public class AuthenticationDialogViewModel : ReactiveObject
         TargetText = host;
         _port = port;
         _username = username ?? string.Empty;
-        _methodIndex = initialMethod == AuthMethod.PrivateKey ? 2 : 0;
+        // 分段选择器的顺序(密码/证书/密钥)与 AuthMethod 的枚举顺序不一致,这里显式映射,
+        // 不要图省事写成强转 —— 那会把证书认证的配置打开成密钥页。
+        _methodIndex = initialMethod switch
+        {
+            AuthMethod.Certificate => 1,
+            AuthMethod.PrivateKey => 2,
+            _ => 0
+        };
         FingerprintText = string.IsNullOrEmpty(knownFingerprint)
                               ? Strings.Get("Auth_FingerprintFirstConnect")
                               : Strings.Format("Auth_FingerprintTrusted", Shorten(knownFingerprint));
@@ -60,14 +69,18 @@ public class AuthenticationDialogViewModel : ReactiveObject
         IObservable<bool> canLogin = this.WhenAnyValue(x => x.MethodIndex,
             x => x.Password,
             x => x.PrivateKeyPath,
-            (method, password, keyPath) => method switch
+            x => x.CertificatePath,
+            (method, password, keyPath, certPath) => method switch
             {
                 0 => password is { Length: > 0 },
+                // 证书那一路要两个文件都齐:证书是 CA 的背书,签名仍旧由私钥出。
+                1 => !string.IsNullOrWhiteSpace(certPath) && !string.IsNullOrWhiteSpace(keyPath),
                 2 => !string.IsNullOrWhiteSpace(keyPath),
                 _ => false
             });
         LoginCommand = ReactiveCommand.Create(BuildResult, canLogin);
         SelectPasswordCommand = ReactiveCommand.Create(() => { MethodIndex = 0; });
+        SelectCertificateCommand = ReactiveCommand.Create(() => { MethodIndex = 1; });
         SelectKeyCommand = ReactiveCommand.Create(() => { MethodIndex = 2; });
         TogglePasswordVisibilityCommand = ReactiveCommand.Create(() => { ShowPassword = !ShowPassword; });
         this.WhenAnyValue(x => x.Step)
@@ -84,6 +97,8 @@ public class AuthenticationDialogViewModel : ReactiveObject
             {
                 this.RaisePropertyChanged(nameof(IsPasswordMethod));
                 this.RaisePropertyChanged(nameof(IsKeyMethod));
+                this.RaisePropertyChanged(nameof(IsCertificateMethod));
+                this.RaisePropertyChanged(nameof(ShowsKeyFields));
             });
     }
 
@@ -133,7 +148,7 @@ public class AuthenticationDialogViewModel : ReactiveObject
         }
     }
 
-    /// <summary>当前选中的认证方式索引:0=密码,1=证书(暂未支持),2=密钥。</summary>
+    /// <summary>当前选中的认证方式索引:0=密码,1=证书,2=密钥。</summary>
     public int MethodIndex
     {
         get => _methodIndex;
@@ -145,6 +160,16 @@ public class AuthenticationDialogViewModel : ReactiveObject
 
     /// <summary>当前是否选择密钥认证方式。</summary>
     public bool IsKeyMethod => MethodIndex == 2;
+
+    /// <summary>当前是否选择证书认证方式。</summary>
+    public bool IsCertificateMethod => MethodIndex == 1;
+
+    /// <summary>私钥与口令两个字段是否可见:密钥认证与证书认证都要用到它们。</summary>
+    /// <remarks>
+    /// 证书页就是密钥页再加一个证书文件 —— Tmds 的 CertificateCredential 本就是
+    /// 「证书 + 匹配私钥」两件套,共用一块面板,校验与浏览按钮才不会两边各改各的。
+    /// </remarks>
+    public bool ShowsKeyFields => IsKeyMethod || IsCertificateMethod;
 
     /// <summary>以 SecureString 承载的登录密码。</summary>
     public SecureString? Password
@@ -181,6 +206,13 @@ public class AuthenticationDialogViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>OpenSSH 用户证书文件路径(证书认证方式使用)。</summary>
+    public string? CertificatePath
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
     /// <summary>从第 1 步进入第 2 步的命令(用户名非空时可用)。</summary>
     public ReactiveCommand<RxVoid, RxVoid> NextCommand { get; }
 
@@ -199,17 +231,30 @@ public class AuthenticationDialogViewModel : ReactiveObject
     /// <summary>切换到密钥认证方式的命令。</summary>
     public ReactiveCommand<RxVoid, RxVoid> SelectKeyCommand { get; }
 
+    /// <summary>切换到证书认证方式的命令。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> SelectCertificateCommand { get; }
+
     /// <summary>切换密码明文/密文显示状态的命令。</summary>
     public ReactiveCommand<RxVoid, RxVoid> TogglePasswordVisibilityCommand { get; }
 
     private AuthenticationResult BuildResult()
     {
+        // 分段选择器的索引不等于枚举值(选择器是密码/证书/密钥),照抄会把证书存成私钥。
+        AuthMethod method = MethodIndex switch
+        {
+            1 => AuthMethod.Certificate,
+            2 => AuthMethod.PrivateKey,
+            _ => AuthMethod.Password
+        };
         return new(Username.Trim(),
-            IsKeyMethod ? AuthMethod.PrivateKey : AuthMethod.Password,
+            method,
             // 传一份副本,与弹窗自身的生命周期解耦;消费方负责 Dispose。
             IsPasswordMethod ? Password?.Copy() : null,
-            IsKeyMethod ? PrivateKeyPath : null,
-            IsKeyMethod ? PrivateKeyPassphrase : null,
+            // 私钥两项走 ShowsKeyFields 而不是 IsKeyMethod:证书认证同样靠私钥签名,
+            // 只按 IsKeyMethod 取会把用户刚填的私钥原地丢掉。
+            ShowsKeyFields ? PrivateKeyPath : null,
+            ShowsKeyFields ? PrivateKeyPassphrase : null,
+            IsCertificateMethod ? CertificatePath : null,
             RememberPassword);
     }
 

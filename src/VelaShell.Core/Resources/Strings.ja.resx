@@ -1502,8 +1502,23 @@
   <data name="Profile_KeyAuth" xml:space="preserve">
     <value>鍵認証</value>
   </data>
-  <data name="Profile_NotSupported" xml:space="preserve">
-    <value>未対応</value>
+  <data name="Profile_CertAuth" xml:space="preserve">
+    <value>証明書認証</value>
+  </data>
+  <data name="Profile_CertificateFile" xml:space="preserve">
+    <value>証明書ファイル</value>
+  </data>
+  <data name="Profile_SelectCertFile" xml:space="preserve">
+    <value>証明書ファイルを選択</value>
+  </data>
+  <data name="Profile_ErrCertRequired" xml:space="preserve">
+    <value>証明書ファイルを選択してください</value>
+  </data>
+  <data name="Profile_ErrCertMissing" xml:space="preserve">
+    <value>証明書ファイルが見つかりません</value>
+  </data>
+  <data name="Profile_ErrCertKeyRequired" xml:space="preserve">
+    <value>証明書認証には対応する秘密鍵も必要です</value>
   </data>
   <data name="Profile_PassphraseOptional" xml:space="preserve">
     <value>秘密鍵のパスフレーズ(任意)</value>
@@ -3032,6 +3047,12 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="Svc_PrivateKeyRequired" xml:space="preserve">
     <value>秘密鍵認証には秘密鍵ファイルが必要です。</value>
+  </data>
+  <data name="Svc_CertificateRequired" xml:space="preserve">
+    <value>証明書認証には証明書ファイルが必要です。</value>
+  </data>
+  <data name="Svc_CertificateKeyRequired" xml:space="preserve">
+    <value>証明書認証には証明書に対応する秘密鍵ファイルが必要です。</value>
   </data>
   <data name="Svc_ProfileNameRequired" xml:space="preserve">
     <value>接続名を入力してください。</value>

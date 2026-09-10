@@ -1792,8 +1792,23 @@
   <data name="Profile_KeyAuth" xml:space="preserve">
     <value>密钥认证</value>
   </data>
-  <data name="Profile_NotSupported" xml:space="preserve">
-    <value>暂未支持</value>
+  <data name="Profile_CertAuth" xml:space="preserve">
+    <value>证书认证</value>
+  </data>
+  <data name="Profile_CertificateFile" xml:space="preserve">
+    <value>证书文件</value>
+  </data>
+  <data name="Profile_SelectCertFile" xml:space="preserve">
+    <value>选择证书文件</value>
+  </data>
+  <data name="Profile_ErrCertRequired" xml:space="preserve">
+    <value>请选择证书文件</value>
+  </data>
+  <data name="Profile_ErrCertMissing" xml:space="preserve">
+    <value>找不到该证书文件</value>
+  </data>
+  <data name="Profile_ErrCertKeyRequired" xml:space="preserve">
+    <value>证书认证还需要与之匹配的私钥</value>
   </data>
   <data name="Profile_PassphraseOptional" xml:space="preserve">
     <value>私钥口令(可选)</value>
@@ -3231,6 +3246,12 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   </data>
   <data name="Svc_PrivateKeyRequired" xml:space="preserve">
     <value>私钥认证需要选择私钥文件。</value>
+  </data>
+  <data name="Svc_CertificateRequired" xml:space="preserve">
+    <value>证书认证需要选择证书文件。</value>
+  </data>
+  <data name="Svc_CertificateKeyRequired" xml:space="preserve">
+    <value>证书认证需要与证书匹配的私钥文件。</value>
   </data>
   <data name="Svc_ProfileNameRequired" xml:space="preserve">
     <value>请填写连接名称。</value>

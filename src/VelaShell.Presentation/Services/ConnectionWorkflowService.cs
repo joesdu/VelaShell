@@ -224,6 +224,7 @@ public sealed class ConnectionWorkflowService(
                 Password = profile.Password,
                 PrivateKeyPath = profile.PrivateKeyPath,
                 PrivateKeyPassphrase = profile.PrivateKeyPassphrase,
+                CertificatePath = profile.CertificatePath,
                 // 会话级保活覆盖(F-06);null = 跟随全局。跳板链上每一跳各带各的。
                 KeepAliveSeconds = profile.Terminal?.KeepAliveSeconds,
                 JumpHost = jump
@@ -248,6 +249,7 @@ public sealed class ConnectionWorkflowService(
             Password = profile.Password,
             PrivateKeyPath = profile.PrivateKeyPath,
             PrivateKeyPassphrase = profile.PrivateKeyPassphrase,
+            CertificatePath = profile.CertificatePath,
             KeepAliveSeconds = profile.Terminal?.KeepAliveSeconds,
             JumpHost = jump
         };
@@ -288,6 +290,19 @@ public sealed class ConnectionWorkflowService(
         if (profile.AuthMethod == AuthMethod.PrivateKey && string.IsNullOrWhiteSpace(profile.PrivateKeyPath))
         {
             throw new ArgumentException(Strings.Get("Svc_PrivateKeyRequired"), nameof(profile));
+        }
+        // 证书认证缺两样中的任意一样都连不上:证书标明"我是谁",私钥才是签名的那把。
+        // 分两条消息而不是合成一句,是为了让用户知道该去补哪一个。
+        if (profile.AuthMethod == AuthMethod.Certificate)
+        {
+            if (string.IsNullOrWhiteSpace(profile.CertificatePath))
+            {
+                throw new ArgumentException(Strings.Get("Svc_CertificateRequired"), nameof(profile));
+            }
+            if (string.IsNullOrWhiteSpace(profile.PrivateKeyPath))
+            {
+                throw new ArgumentException(Strings.Get("Svc_CertificateKeyRequired"), nameof(profile));
+            }
         }
     }
 }

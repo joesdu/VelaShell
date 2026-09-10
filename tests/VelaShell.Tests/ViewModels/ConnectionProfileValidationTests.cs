@@ -148,4 +148,99 @@ public sealed class ConnectionProfileValidationTests
         Assert.Contains(nameof(ConnectionProfileViewModel.UsernameError), changed);
         Assert.Contains(nameof(ConnectionProfileViewModel.PrivateKeyPathError), changed);
     }
+
+    [TestMethod]
+    public void CertificateAuth_WithoutCertificatePath_ReportsAnError()
+    {
+        // 与私钥不同,证书没有任何默认位置可退:空路径本身就是错。
+        ConnectionProfileViewModel vm = NewViewModel();
+        vm.AuthMethod = AuthMethod.Certificate;
+
+        Assert.IsNotNull(vm.CertificatePathError);
+    }
+
+    [TestMethod]
+    public void CertificatePath_IsNotCheckedOutsideCertificateAuth()
+    {
+        ConnectionProfileViewModel vm = NewViewModel();
+        vm.AuthMethod = AuthMethod.PrivateKey;
+        vm.CertificatePath = "/definitely/not/here/id_ed25519-cert.pub";
+
+        Assert.IsNull(vm.CertificatePathError, "密钥认证下不该校验证书路径。");
+    }
+
+    [TestMethod]
+    public void MissingCertificateFile_ReportsAnError()
+    {
+        ConnectionProfileViewModel vm = NewViewModel();
+        vm.AuthMethod = AuthMethod.Certificate;
+        vm.CertificatePath = Path.Combine(Path.GetTempPath(), $"velashell-missing-{Guid.NewGuid():N}-cert.pub");
+
+        Assert.IsNotNull(vm.CertificatePathError);
+    }
+
+    [TestMethod]
+    public void ExistingCertificateFile_IsAccepted()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"velashell-cert-{Guid.NewGuid():N}-cert.pub");
+        File.WriteAllText(path, "not a real certificate");
+        try
+        {
+            ConnectionProfileViewModel vm = NewViewModel();
+            vm.AuthMethod = AuthMethod.Certificate;
+            vm.CertificatePath = path;
+
+            Assert.IsNull(vm.CertificatePathError);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void CertificateAuth_TreatsEmptyPrivateKeyAsAnError()
+    {
+        // 同一个空字符串,两种认证下的含义相反:私钥认证是"用默认密钥"(合法),
+        // 证书认证则是缺了签名用的那把私钥 —— 证书只是 CA 的背书,自己签不了名。
+        ConnectionProfileViewModel vm = NewViewModel();
+        vm.AuthMethod = AuthMethod.Certificate;
+        vm.PrivateKeyPath = "";
+
+        Assert.IsNotNull(vm.PrivateKeyPathError);
+    }
+
+    [TestMethod]
+    public void CertificateAuth_KeepsTheKeyFieldsVisible()
+    {
+        // 证书页是密钥页再加一个证书字段,私钥与口令两栏必须照常出现 ——
+        // 藏起来的话用户根本没地方填那把用来签名的私钥。
+        ConnectionProfileViewModel vm = NewViewModel();
+
+        vm.AuthMethod = AuthMethod.PrivateKey;
+        Assert.IsTrue(vm.ShowsPrivateKeyFields);
+        Assert.IsFalse(vm.IsCertAuth);
+
+        vm.AuthMethod = AuthMethod.Certificate;
+        Assert.IsTrue(vm.ShowsPrivateKeyFields);
+        Assert.IsTrue(vm.IsCertAuth);
+        Assert.IsFalse(vm.IsKeyAuth);
+        Assert.IsFalse(vm.IsPasswordAuth);
+
+        vm.AuthMethod = AuthMethod.Password;
+        Assert.IsFalse(vm.ShowsPrivateKeyFields);
+    }
+
+    [TestMethod]
+    public void SwitchingToFtp_FallsBackFromCertificateAuth()
+    {
+        // FTP 没有证书认证,而切过去之后认证方式下拉恰好是隐藏的:不归一化的话,
+        // 界面上再没有任何途径把它切回来,保存下去的却仍是 Certificate。
+        ConnectionProfileViewModel vm = NewViewModel();
+        vm.AuthMethod = AuthMethod.Certificate;
+
+        vm.SelectConnectionTypeCommand.Execute(ConnectionType.FTP).Subscribe();
+
+        Assert.AreEqual(AuthMethod.Password, vm.AuthMethod);
+    }
 }

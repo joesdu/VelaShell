@@ -3217,13 +3217,20 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     private static string ProfileDisplayName(SessionProfile profile) =>
         string.IsNullOrWhiteSpace(profile.Name) ? profile.Host : profile.Name;
 
-    /// <summary>缺少连接所需凭据(用户名/密码/私钥)时需要先走登录验证流程。</summary>
+    /// <summary>缺少连接所需凭据(用户名/密码/私钥/证书)时需要先走登录验证流程。</summary>
     private static bool RequiresCredentials(SessionProfile profile) =>
         string.IsNullOrWhiteSpace(profile.Username)
         || (profile.AuthMethod == AuthMethod.Password && string.IsNullOrEmpty(profile.Password))
         || (
             profile.AuthMethod == AuthMethod.PrivateKey
             && string.IsNullOrWhiteSpace(profile.PrivateKeyPath)
+        )
+        // 证书那一路缺任一个文件都得先问用户:证书说明"我是谁",私钥才是签名的那把,
+        // 少了哪个都只会换来一句笼统的 publickey 被拒。
+        || (
+            profile.AuthMethod == AuthMethod.Certificate
+            && (string.IsNullOrWhiteSpace(profile.CertificatePath)
+                || string.IsNullOrWhiteSpace(profile.PrivateKeyPath))
         );
 
     /// <summary>

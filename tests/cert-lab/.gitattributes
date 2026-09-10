@@ -1,0 +1,5 @@
+# Dockerfile 要交给 Linux 侧的构建器读。根 .gitattributes 的 `* text=auto` 会把它
+# 在 Windows 上 checkout 成 CRLF,而 RUN 的反斜杠续行一旦跟上 \r 就会断在半路 ——
+# 本地建得起来、别人 clone 下来建不起来,是最难查的那种。
+# (*.sh 已由根 .gitattributes 第 71 行钉成 LF,这里不必重复。)
+Dockerfile text eol=lf
