@@ -137,10 +137,16 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             : Avalonia.Media.Brushes.Transparent;
 
     /// <summary>
+    /// 插件协议终端(串口 / Telnet …)由插件自报的标签页图标;宿主内建协议为 null。
+    /// 由宿主在建标签时从 <c>ProtocolDescriptor.Icon</c> 取来塞进这里。
+    /// </summary>
+    public PluginSdk.PluginIcon? PluginTabIcon { get; set; }
+
+    /// <summary>
     /// 标签页上的协议图标(SSH / 插件协议终端)。本地终端无配置,返回 null —— 标签不画图标,
     /// 这本身就是「这不是一条远程会话」的信号。
     /// </summary>
-    public Avalonia.Media.Geometry? TabIcon => ConnectionIcon.ForProfile(Profile);
+    public TabIcon? TabIcon => ConnectionIcon.ForSession(Profile, PluginTabIcon);
 
     // ---- 同步输入频道(标签右键菜单 → 同步输入,对等转发见 SyncInputCoordinator) ----
 

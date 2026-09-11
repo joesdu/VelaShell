@@ -4012,3 +4012,71 @@ warning MMDBSG001: Type '...MmdbIpGeolocationService.MmdbRecord' is not accessib
 
 `dotnet build VelaShell.slnx -c Debug -warnaserror` 零警告零错误;
 `dotnet test VelaShell.slnx`(按 CI 那条过滤)**3375 通过 / 5 跳过 / 0 失败**。
+
+---
+
+## ✅ 69. 2026-09-11 插件自己的标签页图标:一个入口,以及一次当天推翻的设计
+
+§68 把宿主内建的三种协议接上了图标,插件那一半当时留了个洞:Redis、串口、AI 面板
+一律画同一个通用插头。这一节补完它 —— 顺带记下中途被用户一句话推翻的设计。
+
+### 一、宿主里不放「插件 id → 图标」的表
+
+最快的做法是在 `ConnectionIcon` 里写一张 `velashell.redis → Redis 标` 的映射。
+没那么做,理由与 `Protocols` / `Workspaces` 存在的理由是同一条:**那张表第三方插件永远进不去**。
+于是口子开在 SDK 一侧,插件把图标交出来。
+
+### 二、被推翻的那版:同一个概念,三处各写三个平行属性
+
+第一版给 `ProtocolDescriptor` 与 `WorkspaceDescriptor` 各加了一组
+`IconPathData` / `IconViewBoxSize` / `IconIsFilled`,发了 2.0.3。
+紧接着发现**面板那条路是漏的** —— AI 助手的聊天页清单里只有 `commands`,
+它经 `Ui.ShowPanelAsync(PanelOptions)` 开标签,不走描述符。于是给 `PanelOptions` 抄了第三份。
+
+用户在 review 里一句话点破:「这两种图标都是给插件的标签页添加图标,为什么搞成 2 套了?」
+
+问得对。「一段路径 + 它的视框 + 描边还是填充」是**一件事**,拆成三个平行属性挂在三个类型上,
+插件作者要记的是九个名字而不是一个。收成一个 `PluginIcon`,三处都填它,并带两个便捷构造
+把两种真实用法直接说出来:`PluginIcon.Stroked(path)` 与 `PluginIcon.Filled(path, viewBoxSize)`。
+
+**这是对 2.0.3 的破坏性变更,而敢改是因为核过一遍零消费者**:插件仓还锁在 2.0.2,
+宿主与 AI 插件都没读过那几个字段(仓库里命中 `IconPathData` 的两处是早就存在的
+`PanelTitleAction`,画的是窗口标题栏按钮,另一回事)。2.0.3 发出去还不到一天,
+改的窗口就是那一刻 —— **等有插件用上了再改就晚了**。收敛后发 2.0.4。
+
+版本历史里把 2.0.3 如实标成废弃而不是悄悄不提:它真的发出去过,装了那一版的人得知道往哪走。
+
+### 三、三样必须一起走到渲染层
+
+宿主侧新增 `TabIcon`(几何 + 视框 + 填充画刷)。**少一样都不行**:
+
+- 少视框 —— 一个视框 1024 的品牌 logo 会被按 lucide 的 24 缩放,放大四十多倍,屏幕上什么也没有;
+- 少填充 —— 实心图形被 2px 圆头画笔描边,得到的是它的轮廓线,一团糊。
+
+所以四个标签控件的 XAML 都是三个绑定一起给。`SessionTabIconUiTests` 钉到**渲染层**而不是
+视图模型层,正是为了守住这一条:反证时去掉 `ViewBoxSize` 那一行绑定,用例立刻红。
+
+### 四、解析插件给的路径:这里刻意 catch 所有异常
+
+`FromPlugin` 里那个 `catch (Exception)` 与仓库里逐类型列举的写法不同,是有意的。
+解析的是**插件给的任意字符串**,而 Avalonia 的 `PathMarkupParser` 抛什么取决于错在哪一位 ——
+光是写用例试出来的就有 `InvalidDataException`(命令字认不出)与 `FormatException`(数字坏了)。
+枚举类型在这里是在猜,而**猜漏一个的代价是整条标签条连带主窗口一起炸**。
+
+这一条不是推演出来的:`AMalformedPluginPathFallsBackInsteadOfThrowing` 写完第一次跑就红了,
+红在 `InvalidDataException` 不在当时的捕获列表里。用例刚落地就抓到了真问题。
+
+### 五、AI 插件用上了
+
+`PanelOptions.Icon = PluginIcon.Filled(AiIcon.PathData, 1024)`。路径数据单独放
+`AiIcon.cs` 而不是塞进 `AiPlugin`:一千多字符夹在打开面板的逻辑中间,读代码的人要翻很久。
+
+### 六、还没做的
+
+`velashell-plugins` 那三个插件(Redis / 串口 / S3)**尚未填图标**,今天画的仍是通用插头。
+宿主一行都不用再动,记在 `feature-plan.md` 的插件生态那一节。
+
+### 七、验收
+
+`dotnet build VelaShell.slnx -c Debug -warnaserror` 零警告零错误;
+`dotnet test VelaShell.slnx`(按 CI 那条过滤)**3379 通过 / 5 跳过 / 0 失败**。

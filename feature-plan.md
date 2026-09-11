@@ -34,18 +34,18 @@
 
 ## 📊 待办分布
 
-**欠账**（⏳ + 🚧 + 💡，共 23 项）与**路线图**（共 29 项）分开计：
+**欠账**（⏳ + 🚧 + 💡，共 22 项）与**路线图**（共 29 项）分开计：
 
 ```mermaid
 pie showData
-    title 欠账 —— 现状与代码对不上的部分（23 项）
+    title 欠账 —— 现状与代码对不上的部分（22 项）
     "P0 存了但不生效" : 5
     "安全与凭据" : 5
     "会话与工作区" : 3
     "数据与可观测" : 3
     "终端与协议" : 3
     "文件传输" : 2
-    "插件生态" : 2
+    "插件生态" : 1
 ```
 
 ```mermaid
@@ -63,7 +63,7 @@ pie showData
 > 「文件传输」算 2 项 —— 那一节的「传输失败重试」是指回 P0 表的交叉引用、不重复计数，「远程编辑的三个入口已统一」是 📄 文档待同步、不计入欠账。
 > 「会话与工作区」从 4 降到 3：会话标签颜色已在 `b9ae31f` 落地（见该节）。
 > 「安全与凭据」从 6 降到 5：SSH 证书认证已在 `bbfa1877` 落地（见该节）。
-> 「插件生态」从 1 升到 2：新增「插件自报标签页图标」—— 契约已写、等 SDK 发版（见该节）。
+> 「插件生态」升到 2 又回到 1：插件自报标签页图标当天就闭合了（SDK 2.0.4,见该节）。
 
 ---
 
@@ -146,7 +146,7 @@ pie showData
 | 状态 | 优先级 | 项 | 现状 | 要做什么 |
 | :---: | :---: | --- | --- | --- |
 | ✅ | — | ~~容器管理插件（DockerPanel）~~ | **已完成**（2026-09-03，`0.3.1`）。独立仓库 [VelaShell.Plugin.DockerPanel](https://github.com/VelaShellLabs/VelaShell.Plugin.DockerPanel)，从插件商店按需安装 | — |
-| ⏳ | 🟠 P1 | **插件自报标签页图标（等 SDK 发版）** | 契约已就位、**未发布**：`ProtocolDescriptor` / `WorkspaceDescriptor` 各加了 `IconPathData` + `IconViewBoxSize` + `IconIsFilled`（[velashell-plugin-sdk PR](https://github.com/VelaShellLabs/velashell-plugin-sdk)，按该仓 `AGENTS.md` 的纪律**没有动版本号**）。宿主侧渲染能力也已就位（`LucideIcon` 的 `Fill` / `ViewBoxSize`，`plan.md` §68）。现状是 Redis / 串口 / S3 的标签一律画通用插头 | 三步，**必须按序**：①发一版 SDK；②`velashell-plugins` 抬包版并填图标 —— 串口用 lucide `usb-c-port`（`M6 12h12 M6 8h12a4 4 0 0 1 0 8H6a4 4 0 0 1 0-8Z`），Redis 用品牌 logo（实心，`IconViewBoxSize = 1030`、`IconIsFilled = true`）；③宿主抬包版，`ConnectionIcon` 改成「描述符优先、通用插头兜底」。⚠️ 宿主里**不要**建「插件 id → 图标」对照表 —— 第三方插件永远进不去那张表 |
+| ✅ | — | ~~插件自报标签页图标~~ | **宿主侧已完成**（2026-09-11，`plan.md` §69，SDK 2.0.4）：`PluginIcon` 一个入口三处共用（`ProtocolDescriptor.Icon` / `WorkspaceDescriptor.Icon` / `PanelOptions.Icon`），宿主 `ConnectionIcon` 按「插件自报优先、通用插头兜底」解析，`LucideIcon` 的 `Fill` / `ViewBoxSize` 支持实心品牌 logo。AI 插件已用上（机器人字形）| ⏳ 只差 **`velashell-plugins` 那三个插件填图标**：抬包版到 2.0.4，串口用 lucide `usb-c-port`（`M6 12h12 M6 8h12a4 4 0 0 1 0 8H6a4 4 0 0 1 0-8Z`）、Redis 用品牌 logo（`PluginIcon.Filled(path, 1030)`）、S3 用云或桶的描边字形。**宿主一行都不用再动** —— 那三个插件今天画的仍是通用插头 |
 | ⏳ | 🟡 P2 | **AI 插件的 MCP 服务端能力面对齐** | 对外 MCP 走 `AgentToolbox` 产出工具，但那条路上**没有审批界面** | 现状是「询问」模式等于一律拒绝写操作 —— 这是刻意的（`plan.md` §33-四）。可选的增强：带外审批（推到 IM 渠道或桌面通知）后再放行 |
 | 📄 | 🟠 P1 | **发布者连续性已落地** | 同一个 id 的后续版本必须仍由钉住的那把私钥签名，换钥/去签名要用户看过两个指纹再点头；管理页每行显示钉住的指纹；旁装（`vela-plugin install`）不受影响（`plan.md` §57）。代码已落地，**velashell-docs 还没跟上** | 在 `{zh,en}` 两棵树里补：`plugins/STATUS.md` 签名验证那一格改成「验签 + 连续性已做、信任根未做」；`cli/cli.md` 与 `templates/dev-guide.md` 补一句「旁装的代价现在多一条：钉不住发布者，宿主也就无从拦截冒名的覆盖安装」；`host/交互与界面规格.md` 补管理页那行指纹与换发布者的确认框 |
 

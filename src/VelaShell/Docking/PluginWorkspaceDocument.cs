@@ -30,7 +30,10 @@ public sealed class PluginWorkspaceDocument : DockDocument, IDockViewProvider
     /// <param name="sessionId">宿主分配的会话 id。</param>
     /// <param name="typeName">连接类型的展示名(如 <c>Redis</c>),用于提示文本。</param>
     /// <param name="workspace">插件交出的文档。</param>
-    public PluginWorkspaceDocument(SessionProfile profile, Guid sessionId, string typeName, IWorkspaceDocument workspace)
+    /// <param name="icon">插件在 <c>WorkspaceDescriptor.Icon</c> 里自报的图标;没给就是通用插头。</param>
+    public PluginWorkspaceDocument(
+        SessionProfile profile, Guid sessionId, string typeName, IWorkspaceDocument workspace,
+        PluginSdk.PluginIcon? icon = null)
     {
         Profile = profile ?? throw new ArgumentNullException(nameof(profile));
         Workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
@@ -38,6 +41,8 @@ public sealed class PluginWorkspaceDocument : DockDocument, IDockViewProvider
         SessionId = sessionId;
         Id = sessionId.ToString("N");
         Title = string.IsNullOrWhiteSpace(profile.Name) ? profile.Host : profile.Name;
+        // 算一次存下来:插件那段路径每次读都重新解析没有意义,而标签图标一辈子不变。
+        TabIcon = ConnectionIcon.ForSession(profile, icon);
         IsSessionDocument = true;
         Status = Map(SafeState());
         // 标签上的状态圆点跟着插件报的状态走。插件在**任意线程**触发这个事件,
@@ -95,10 +100,10 @@ public sealed class PluginWorkspaceDocument : DockDocument, IDockViewProvider
     public IBrush ConnectionAccentBrush => ConnectionAccent.BrushForProfile(Profile);
 
     /// <summary>
-    /// 标签页上的协议图标。目前是插件协议的通用图标 —— 宿主不认识这是 Redis 还是别的什么,
-    /// 要让插件亮出自己的标,得等 SDK 的描述符加上图标字段(见 <c>feature-plan.md</c>)。
+    /// 标签页上的图标:插件在 <c>WorkspaceDescriptor.Icon</c> 里自报的那个,没给就是通用插头。
+    /// 宿主不认识这是 Redis 还是别的什么 —— 也不该认识。
     /// </summary>
-    public Geometry? TabIcon => ConnectionIcon.ForProfile(Profile);
+    public TabIcon? TabIcon { get; }
 
     /// <summary>显示连接详情的提示文本。</summary>
     public string ConnectionTooltip => $"{Title} · {TypeName} · {Profile.Host}:{Profile.Port}";

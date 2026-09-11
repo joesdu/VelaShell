@@ -187,7 +187,9 @@
         <!-- 协议图标:SSH 是带框的终端字形,插件协议终端(串口/Telnet)是通用的插头。
              本地终端没有配置,TabIcon 为 null —— 连位置一起收掉,别在标签里留一块空。 -->
         <pc:LucideIcon Width="13" Height="13" VerticalAlignment="Center"
-                       Data="{Binding Terminal.TabIcon}"
+                       Data="{Binding Terminal.TabIcon.Geometry}"
+                       ViewBoxSize="{Binding Terminal.TabIcon.ViewBoxSize}"
+                       Fill="{Binding Terminal.TabIcon.Fill}"
                        IsVisible="{Binding Terminal.TabIcon, Converter={x:Static ObjectConverters.IsNotNull}}"
                        Foreground="{Binding Terminal.ConnectionAccentBrush}">
           <pc:LucideIcon.RenderTransform>

@@ -94,7 +94,10 @@
               Background="{Binding ConnectionAccentBrush}" />
       <!-- 插件工作台的图标。原先写死 hard-drive,与 SFTP 标签撞成同一个字形 —— 而这两种标签
            的内容毫无关系。改绑 TabIcon:现在是通用插头,插件能自报图标之后由插件说了算。 -->
-      <pc:LucideIcon Width="13" Height="13" Data="{Binding TabIcon}"
+      <pc:LucideIcon Width="13" Height="13"
+                     Data="{Binding TabIcon.Geometry}"
+                     ViewBoxSize="{Binding TabIcon.ViewBoxSize}"
+                     Fill="{Binding TabIcon.Fill}"
                      IsVisible="{Binding TabIcon, Converter={x:Static ObjectConverters.IsNotNull}}"
                      Foreground="{Binding ConnectionAccentBrush}" />
       <TextBlock Text="{Binding Title}" VerticalAlignment="Center" ToolTip.ShowDelay="250"
