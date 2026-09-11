@@ -4237,3 +4237,31 @@ AI 插件把聊天标签、协作窗口、模型配置/MCP 那一组对话框统
 `dotnet build VelaShell.slnx` 零警告零错误;`dotnet test VelaShell.slnx`
 **3389 通过 / 21 跳过 / 0 失败**。市场侧 `dotnet test VelaShell.Market.slnx`
 **42 通过 / 0 失败**(含 5 条新的选版规则用例)。
+
+### 六、CI 上浮出来的一条竞态(与本次改动无关,但被它撞出来了)
+
+本次 PR 的 windows-latest 跑挂了一条 **AI 插件**的用例
+(`ChatPanelViewUiTests.ClickingAQueuedChip_TakesTheMessageBack`),三平台里只有 Windows 挂,
+本机连跑八轮全过。它跟插件更新没有任何交集 —— 是一条早就潜伏在那儿的竞态,
+被这次多出来的几条用例改变了 CI 的时序,正好撞了出来。
+
+根因在 `ChatPanelView.QueueFollowUpAsync`:按下回车后它**先清空输入框**,再
+`await ResolveAttachmentsAsync(...)`(展开引用可能走一趟 SFTP),回来才 `Enqueue` 并
+`RenderQueuedChips()`。也就是说排队芯片是跨了一个 await 之后才出现的,而三条用例都写成
+`PressEnter(input); await PumpAsync(10);` —— 固定泵十轮共约 50 毫秒,**没有重试**。
+本机跑得赢,windows-latest 是双核共享 runner、八个测试程序集并行,就未必。
+
+三条**全部**改成文件里既有的 `WaitForAsync` 轮询(它每轮 `RunJobs()` 再判条件)。
+只改输的那一条等于把另外两条留在原地等下次 —— 它们是同一个形状。
+
+**中途撞上的一个坑,值得记一笔**:把 `PumpAsync(10)` 整个删掉之后,
+`EnterWhileBusy_...` 反而当场红了 —— `stub.Requests` 是 **0** 而不是 2。
+原来那句固定泵**在兼两份差事**:既等芯片画出来,也顺带给 stub 那一头
+把请求记上。只把“等芯片”换成条件等待,“等请求”那份就掉了。
+所以 `Assert.HasCount(1, stub.Requests)` 之前另补了一句等 `>= 1` ——
+先等它真的发生,再断言“只有这一条”,否则是拿一个还没发生的事实当证据。
+
+**验证方式**:本机 24 核本来复现不出来,于是开 48 个忙循环把 CPU 压满再跑 ——
+**旧代码 3/3 挂,新代码同样压力下 3/3 过**(单轮耗时从 4 秒拉到 23 秒,压力是真的)。
+不做这一步的话,“改完本机还是绿的”证明不了任何事情 —— 它本来就是绿的。
+
