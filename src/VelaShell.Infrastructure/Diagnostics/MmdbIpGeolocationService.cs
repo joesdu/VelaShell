@@ -189,9 +189,11 @@ public sealed class MmdbIpGeolocationService : IIpGeolocationService, IDisposabl
     }
 
     // MMDB 记录的最小映射:只取落点与名称,不引入厂商专有字段。
+    // 这四个模型是 internal 而不是 private:MaxMind.Db 5.2 起改用源生成器产出反序列化代码,
+    // 而生成的那份代码落在本程序集的另一处,看不见 private 嵌套类型(MMDBSG001)——
+    // 报警的同时它会静默退回反射,将来一旦开启裁剪/AOT 就是运行期才炸的那种失败。
     [method: Constructor]
-    // MMDB 记录的最小映射:只取落点与名称,不引入厂商专有字段。
-    private sealed class MmdbRecord(
+    internal sealed class MmdbRecord(
         [MapKey("city")] MmdbNamed? city,
         [MapKey("country")] MmdbCountry? country,
         [MapKey("location")] MmdbLocation? location
@@ -205,13 +207,13 @@ public sealed class MmdbIpGeolocationService : IIpGeolocationService, IDisposabl
     }
 
     [method: Constructor]
-    private class MmdbNamed([MapKey("names")] IReadOnlyDictionary<string, string>? names)
+    internal class MmdbNamed([MapKey("names")] IReadOnlyDictionary<string, string>? names)
     {
         public IReadOnlyDictionary<string, string>? Names { get; } = names;
     }
 
     [method: Constructor]
-    private sealed class MmdbCountry(
+    internal sealed class MmdbCountry(
         [MapKey("names")] IReadOnlyDictionary<string, string>? names,
         [MapKey("iso_code")] string? isoCode
         ) : MmdbNamed(names)
@@ -220,7 +222,7 @@ public sealed class MmdbIpGeolocationService : IIpGeolocationService, IDisposabl
     }
 
     [method: Constructor]
-    private sealed class MmdbLocation(
+    internal sealed class MmdbLocation(
         [MapKey("latitude")] double? latitude,
         [MapKey("longitude")] double? longitude
         )

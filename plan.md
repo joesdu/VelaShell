@@ -3888,3 +3888,51 @@ bash 跑:注入行不留痕、用户自己的命令一条不少、退出码由�
 所以这一组用管道喂 `bash --norc -i`,`HISTFILE` 一律指到临时文件 —— 测试绝不能碰开发者自己的
 `~/.bash_history`。另外做过一次反证:把 `Prepend` 改成原样返回,这 4 条里有 2 条立刻红,
 不是"怎么改都绿"的假用例。
+
+---
+
+## ✅ 67. 2026-09-10 MaxMind.Db 5.2 的 4 条 MMDBSG001:private 嵌套类型,源生成器看不见
+
+`d3422b79` 把 MaxMind.Db 从 5.1.0 升到 5.2.0 之后,`MmdbIpGeolocationService` 头上多出 4 条:
+
+```
+warning MMDBSG001: Type '...MmdbIpGeolocationService.MmdbRecord' is not accessible from source-generated code
+                   (MmdbNamed / MmdbCountry / MmdbLocation 同)
+```
+
+**这不是可以按掉的洁癖警告**:CI 那步构建走 `-warnaserror`(`ci.yml:107`),4 条警告就是 4 条错误。
+
+### 一、5.2 起多了一个源生成器
+
+包里新增了 `analyzers/dotnet/cs/MaxMind.Db.SourceGenerator.dll`:它扫 `[Constructor]` 标注的模型,
+产出一份挂着 `[ModuleInitializer]` 的 `Register()`,把每个类型的激活器提前注册进
+`MaxMind.Db.SourceGeneratorSupport` —— 为的是不在运行期用反射构造。
+
+而生成的那份代码落在**本程序集的另一处**,不是嵌在 `MmdbIpGeolocationService` 里面。
+四个模型当时写成 `private` 嵌套类型,对它就是不可见的。
+
+### 二、真正的代价不是那行黄字
+
+生成不出激活器时,库并不会失败,而是**静默退回反射**那条老路。包里那条路径自己的注释写得很直白:
+「unsupported in trimmed applications」。当前 `PublishTrimmed=false`(`VelaShell.csproj:40`),
+所以运行期一切照旧、查询结果没有任何差别 —— 但这等于埋了一颗**开启裁剪/AOT 那天才炸**的雷,
+而那种失败是运行期的、只在特定构建配置下复现的。**警告消失只是副产品,把 AOT 那条路接上才是目的。**
+
+### 三、`private` → `internal`,但不必搬出去
+
+四个模型仍旧嵌在 `MmdbIpGeolocationService` 里:外层类型是 public,内层改成 `internal` 就足够让
+同程序集的生成代码看见它们。**没有必要为了迁就生成器把模型提到顶层** —— 那会让四个只服务于一处
+实现细节的类型跑进 `VelaShell.Infrastructure.Diagnostics` 命名空间,是更大的代价。
+
+改动处留了注释写明这四个为什么不是 `private`,免得下一个人按「能收窄就收窄」的直觉又改回去。
+顺手删掉 `MmdbRecord` 头上重复了两遍的同一行注释。
+
+### 四、验收:不能只看警告没了
+
+`-p:EmitCompilerGeneratedFiles=true` 落一份生成物出来核过,
+`MaxMind.Db.SourceGenerator.g.cs` 里四个 `RegisterType<…>` 加一条 `RegisterDictionary` 齐了,
+`MmdbRecord` 的三个参数按 `city` / `country` / `location` 正确映射 —— 生成的激活器确实接上了,
+而不只是诊断被绕过去。
+
+`dotnet build VelaShell.slnx -c Debug -warnaserror` 零警告零错误;
+`dotnet test VelaShell.slnx`(按 CI 那条过滤)**3364 通过 / 5 跳过 / 0 失败**。
