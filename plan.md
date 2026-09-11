@@ -4080,3 +4080,54 @@ warning MMDBSG001: Type '...MmdbIpGeolocationService.MmdbRecord' is not accessib
 
 `dotnet build VelaShell.slnx -c Debug -warnaserror` 零警告零错误;
 `dotnet test VelaShell.slnx`(按 CI 那条过滤)**3379 通过 / 5 跳过 / 0 失败**。
+
+---
+
+## ✅ 70. 2026-09-11 插件窗口的标题栏图标,以及一组「怎么改都绿」的用例(用户反馈)
+
+> 「插件中的窗口,比如 AI 插件中的模型设置、MCP 设置等窗口,打开后还是显示为通用的插件图标,
+> 是否可以让他也跟随标签页图标的设置。这样的话,不同的插件打开不同的窗口也不容易混淆。」
+
+§69 让插件的**标签页**能自报图标,窗口那一路漏了。摸过去发现两侧的毛病还不一样:
+
+- **进程内**(`PluginPanelWindow.axaml`)标题栏写死 `Icon.plug`;
+- **隔离进程**(`PluginHostShellWindow`)标题栏**一个图标都没有**,只有标题 + 插件 id。
+
+两侧都改成读 `PanelOptions.Icon`。契约一个字没动 —— 2.0.4 的字段本来就在那儿,
+只是宿主此前没用它;改的是行为与文档(SDK 那句「窗口模式忽略」现在是假话)。
+
+AI 插件把聊天标签、协作窗口、模型配置/MCP 那一组对话框统一挂上同一个 `AiIcon.Panel`。
+它们本来就该长一样:标题栏上认的是「这扇窗属于哪个插件」,不是「这是哪个功能」。
+
+### 一、隔离进程那侧不能复用 LucideIcon
+
+`VelaShell.PluginHost` 只引 SDK 与 Avalonia,**刻意不依赖 `VelaShell.Controls`**,
+所以那边自己搭 `Path`。两处差别照抄主程序的口径:实心只填充;描边的笔画按
+`2 * 视框 / 24` 算,于是视框放大多少笔就跟着粗多少,任何视框下都保持 lucide 的粗细比例。
+
+### 二、意外收获:一组用例「怎么改都绿」
+
+给这件事写用例时,**反证失败了** —— 把接线整行删掉,用例照样通过。
+
+根因是 `HeadlessUnitTestSession` 的重载选择:
+`Dispatch<T>(Func<Task<T>>)` 会 await,而 `Dispatch<TResult>(Func<TResult>)` 不会。
+`_session.Dispatch(async () => { ... })` 这种**无返回值**的 async lambda 是 `Func<Task>`,
+绑到后者 —— 那个 Task 没人 await,断言抛出的异常**被它整个吞掉**。
+
+这个坑 `ConnectingDocumentViewUiTests` 的注释里早就记过,但 `PluginPanelUiTests` 等文件仍在用。
+实测:往一条既有用例的第一行插 `Assert.Fail`,它照样通过。全仓扫下来,
+**11 条**这样的用例(`PluginPanelUiTests` 5、`StandaloneSftpDocumentBehaviorTests` 3、
+`LocalFilePaneViewUiTests` 2、`PluginThemeTokensTests` 1)。
+
+**试过机械修法,不成立**:给每个 lambda 补一句 `return true;` 改绑到会 await 的重载之后,
+7 条当场变成**超时**(各 1 分钟)—— 它们 await 的东西在无头环境里根本不会完成。
+也就是说这些用例不是"少写了一个 return",而是异步流程本身需要重做,一条一条来。
+本次**未改**它们:把假绿换成真卡,是更坏的状态。已记进 `feature-plan.md`。
+
+本次新增的两条用例用的是同文件里正确的那种写法(同步 body + 返回值),并做过反证:
+删掉 `SetIcon` 那一行,`WindowPanel_TitleIcon_FollowsThePluginsOwnIcon` 立刻红。
+
+### 三、验收
+
+`dotnet build VelaShell.slnx -c Debug -warnaserror` 零警告零错误;
+`dotnet test VelaShell.slnx`(按 CI 那条过滤)**3381 通过 / 5 跳过 / 0 失败**。

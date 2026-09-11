@@ -37,7 +37,10 @@ internal sealed partial class PluginHostShellWindow : Window
     private readonly Border _titleStrip;
     private readonly Panel _resizeGrips;
 
-    public PluginHostShellWindow(string title, string subtitle, Control content, IReadOnlyList<PanelTitleAction>? titleActions = null)
+    public PluginHostShellWindow(
+        string title, string subtitle, Control content,
+        IReadOnlyList<PanelTitleAction>? titleActions = null,
+        PluginSdk.PluginIcon? icon = null)
     {
         WindowDecorations = WindowDecorations.None;
         TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
@@ -45,7 +48,7 @@ internal sealed partial class PluginHostShellWindow : Window
         Title = title;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
-        _titleStrip = BuildTitleBar(title, subtitle, titleActions ?? []);
+        _titleStrip = BuildTitleBar(title, subtitle, titleActions ?? [], icon);
         var grid = new Grid { RowDefinitions = [with("40,*")] };
         grid.Children.Add(_titleStrip);
         var contentHost = new ContentControl { Content = content };
@@ -82,7 +85,9 @@ internal sealed partial class PluginHostShellWindow : Window
         }
     }
 
-    private Border BuildTitleBar(string title, string subtitle, IReadOnlyList<PanelTitleAction> titleActions)
+    private Border BuildTitleBar(
+        string title, string subtitle, IReadOnlyList<PanelTitleAction> titleActions,
+        PluginSdk.PluginIcon? icon)
     {
         var titleText = new TextBlock
         {
@@ -109,6 +114,12 @@ internal sealed partial class PluginHostShellWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(14, 0, 0, 0)
         };
+        // 插件自报的图标(PanelOptions.Icon)。这一侧原先一个图标都没有,于是隔离插件的窗口
+        // 标题栏彼此完全一样;而进程内那扇窗写死通用插头,同样分不出谁是谁。
+        if (TitleIcon(icon) is { } glyph)
+        {
+            left.Children.Add(glyph);
+        }
         left.Children.Add(titleText);
         left.Children.Add(subtitleText);
 
@@ -144,6 +155,56 @@ internal sealed partial class PluginHostShellWindow : Window
         var icon = new Avalonia.Controls.Shapes.Path { Data = geometry, StrokeThickness = 1.4, StrokeLineCap = PenLineCap.Round };
         Bind(icon, Avalonia.Controls.Shapes.Shape.StrokeProperty, "VelaTextSecondary");
         return CaptionButton(icon, close, onClick);
+    }
+
+    /// <summary>
+    /// 标题栏最左的插件图标。插件没给、或那段路径解析不了,就不画 ——
+    /// 这一侧本来就没有通用兜底图标可退(那是主程序 ConnectionIcon 的事)。
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ 这里刻意捕获所有异常,理由与主程序 <c>ConnectionIcon.FromPlugin</c> 逐字相同:
+    /// 解析的是插件给的任意字符串,Avalonia 的 <c>PathMarkupParser</c> 抛什么取决于错在哪一位
+    /// (试出来的就有 <c>InvalidDataException</c> 与 <c>FormatException</c>),
+    /// 枚举类型是在猜,而猜漏一个的代价是整扇窗连带插件进程一起起不来。
+    /// </remarks>
+    private static Viewbox? TitleIcon(PluginSdk.PluginIcon? icon)
+    {
+        if (icon is null || string.IsNullOrWhiteSpace(icon.PathData))
+        {
+            return null;
+        }
+        Geometry geometry;
+        try
+        {
+            geometry = Geometry.Parse(icon.PathData);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+        // 视框不报就是 24(lucide)。非正数/非有限值同样按 24 —— 一个写错的值不该让图标消失。
+        double box = icon.ViewBoxSize is > 0 and < double.PositiveInfinity ? icon.ViewBoxSize : 24d;
+        var path = new Avalonia.Controls.Shapes.Path { Width = box, Height = box, Data = geometry };
+        if (icon.IsFilled)
+        {
+            // 实心图形只填充。再描一圈边等于给每个色块套上轮廓,比不描更糟。
+            Bind(path, Avalonia.Controls.Shapes.Shape.FillProperty, "VelaAccent");
+        }
+        else
+        {
+            // 描边保持 lucide 2/24 的粗细比例 —— 视框放大多少,笔就跟着粗多少。
+            path.StrokeThickness = 2 * box / 24d;
+            path.StrokeLineCap = PenLineCap.Round;
+            path.StrokeJoin = PenLineJoin.Round;
+            Bind(path, Avalonia.Controls.Shapes.Shape.StrokeProperty, "VelaAccent");
+        }
+        return new Viewbox
+        {
+            Width = 13,
+            Height = 13,
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = path
+        };
     }
 
     /// <summary>插件的标题栏动作:lucide 24×24 路径缩到 12px,描边 2 与主程序 LucideIcon 一致。</summary>

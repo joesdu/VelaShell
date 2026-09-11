@@ -40,6 +40,22 @@ public partial class PluginPanelWindow : Window
     }
 
     /// <summary>
+    /// 设置标题栏图标。插件没自报(或路径解析不了)就保持 AXAML 里那个通用插头 ——
+    /// 标题栏上少一个图标会让整行文字左移,比画一个通用的更难看。
+    /// </summary>
+    /// <param name="icon">插件在 <c>PanelOptions.Icon</c> 里交出来的图标。</param>
+    public void SetIcon(Services.TabIcon? icon)
+    {
+        if (icon is null)
+        {
+            return;
+        }
+        TitleIcon.Data = icon.Geometry;
+        TitleIcon.ViewBoxSize = icon.ViewBoxSize;
+        TitleIcon.Fill = icon.Fill;
+    }
+
+    /// <summary>
     /// 把插件声明的标题栏动作按钮插到最小化键左侧(按给出的顺序)。
     /// 与三连按钮同一套 caption 样式,只是图标换成插件给的路径、悬停带提示。
     /// </summary>
