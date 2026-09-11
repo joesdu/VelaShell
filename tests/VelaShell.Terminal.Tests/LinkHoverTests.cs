@@ -21,7 +21,7 @@ namespace VelaShell.Terminal.Tests;
 [TestCategory("Mouse")]
 public sealed class LinkHoverTests
 {
-    private static Avalonia.Headless.HeadlessUnitTestSession Session => HeadlessTestSession.Current;
+    private static HeadlessUnitTestSession Session => HeadlessTestSession.Current;
 
     private static void OnUi(Action body) =>
         Session.Dispatch(() =>

@@ -99,7 +99,7 @@ public class SessionRoutingTests
             Shutdown = CancellationToken.None
         };
         var hostConnection = new RpcConnection(serverPipe);
-        var router = new Infrastructure.Plugins.Isolated.PluginCapabilityRouter(context, hostConnection, "token", "1.0.0");
+        var router = new PluginCapabilityRouter(context, hostConnection, "token", "1.0.0");
         hostConnection.SetRequestHandler(router.HandleRequestAsync);
         hostConnection.SetNotificationHandler(router.HandleNotification);
         hostConnection.Start();
@@ -113,7 +113,7 @@ public class SessionRoutingTests
     }
 
     private sealed class Cleanup(RpcConnection plugin, RpcConnection host,
-        Infrastructure.Plugins.Isolated.PluginCapabilityRouter router, string dataDir) : IAsyncDisposable
+        PluginCapabilityRouter router, string dataDir) : IAsyncDisposable
     {
         public async ValueTask DisposeAsync()
         {

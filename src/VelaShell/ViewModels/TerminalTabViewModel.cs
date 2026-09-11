@@ -464,7 +464,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// <summary>
     /// 本标签的文件传输路由器(ZMODEM 自动接管 + XMODEM/YMODEM 手动接管);未接线时为 null。
     /// </summary>
-    public Terminal.FileTransfer.TerminalTransferRouter? TransferRouter => Bridge?.TransferRouter;
+    public TerminalTransferRouter? TransferRouter => Bridge?.TransferRouter;
 
     /// <summary>
     /// 当前是否可以手动发起指定方向的 XMODEM / YMODEM 传输:要有活着的路由器、
@@ -871,7 +871,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         }
         Func<bool, CancellationToken, Task<IReadOnlyList<string>>>? uploadPicker = TransferUploadFilePicker;
         var observer = new TerminalTransferObserver(transfer);
-        bridge.TransferRouter = new Terminal.FileTransfer.TerminalTransferRouter(
+        bridge.TransferRouter = new TerminalTransferRouter(
             shellStream,
             () => new FolderTransferFileSink(picker, settings),
             uploadPicker is null ? null : () => new PickedFilesTransferSource(uploadPicker),

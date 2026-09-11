@@ -17,7 +17,7 @@ namespace VelaShell.Terminal.Tests;
 public sealed class ShiftExtendSelectionTests
 {
     /// <summary>全程序集共用的 headless 会话(见 HeadlessTestSession:每类各起一个时,拆除会互相踩)。</summary>
-    private static Avalonia.Headless.HeadlessUnitTestSession _session => HeadlessTestSession.Current;
+    private static HeadlessUnitTestSession _session => HeadlessTestSession.Current;
 
     private const string Sample = "abcdefgh\r\nijklmnop\r\nqrstuvwx";
 

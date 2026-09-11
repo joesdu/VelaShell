@@ -52,7 +52,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<VelaShellStoragePaths>();
         // 认领 Program.Main 起的那次后台预热(见 StartupWarmup):数据库在 Avalonia 初始化的
         // 同时就已经开着了。没预热过(测试、设计期)就地新建,行为不变。
-        services.AddSingleton<SonnetDbEngine>(sp =>
+        services.AddSingleton(sp =>
             StartupWarmup.Claim(sp.GetRequiredService<VelaShellStoragePaths>()));
         services.AddSingleton<ISecretProtector>(sp => new AesSecretProtector(sp.GetRequiredService<VelaShellStoragePaths>()));
         services.AddSingleton<ISessionRepository>(sp =>
@@ -205,7 +205,7 @@ public static class InfrastructureServiceCollectionExtensions
             new SessionMetricsService(sp.GetRequiredService<ISshConnectionService>()));
         services.AddSingleton<IRemoteProcessService>(sp =>
             new RemoteProcessService(sp.GetRequiredService<ISshConnectionService>()));
-        services.AddSingleton<ITraceRouteService, Diagnostics.PingTraceRouteService>();
+        services.AddSingleton<ITraceRouteService, PingTraceRouteService>();
         services.AddSingleton<IIpGeolocationService>(sp =>
         {
             var paths = new VelaShellStoragePaths();
@@ -219,7 +219,7 @@ public static class InfrastructureServiceCollectionExtensions
             {
                 // 设置读不出来就用默认目录,不该因此让追踪窗口开不了。
             }
-            return new Diagnostics.MmdbIpGeolocationService(configured, paths.GeoIpDirectory);
+            return new MmdbIpGeolocationService(configured, paths.GeoIpDirectory);
         });
         services.AddSingleton<ITunnelService>(sp =>
         {

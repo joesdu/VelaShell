@@ -79,7 +79,7 @@ public sealed class ChatGrant
 /// <summary>一个已配置的渠道。</summary>
 /// <remarks>
 /// <b>机密不在这里。</b>应用密钥(飞书 app_secret / 钉钉 clientSecret / Telegram bot token /
-/// 企微 secret 与 EncodingAESKey)一律走 <see cref="VelaShell.PluginSdk.Secrets.ISecretsApi" />,
+/// 企微 secret 与 EncodingAESKey)一律走 <see cref="PluginSdk.Secrets.ISecretsApi" />,
 /// 键名见 <see cref="BridgeSettingsStore.SecretName" /> —— 这份配置是明文 JSON,躺在插件存储里。
 /// </remarks>
 public sealed class ChannelConfig

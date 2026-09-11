@@ -85,7 +85,7 @@ public class App : Application
             .AddSingleton<Func<string, IPluginLogger, IUiApi>>(sp =>
                 (pluginId, log) => new Services.Plugins.PluginUiApi(pluginId, log,
                     () => sp.GetService<MainWindowViewModel>(),
-                    sp.GetService<Core.Services.IBackgroundActivityService>()))
+                    sp.GetService<IBackgroundActivityService>()))
             // 隔离插件的主题令牌快照:Vela* 资源按当前明暗变体解析后经 RPC 下发,
             // 插件的 {DynamicResource VelaXxx} 跨进程同样生效(进程内天然可用)。
             .AddSingleton<Func<Task<IReadOnlyList<PluginSdk.Rpc.ThemeTokenDto>>>>(_ =>
@@ -110,7 +110,7 @@ public class App : Application
             .AddSingleton<Infrastructure.Plugins.IPluginSessionOpener>(sp =>
                 new Services.Plugins.HostSessionOpener(
                     () => sp.GetService<MainWindowViewModel>(),
-                    sp.GetRequiredService<Core.Ssh.ISshConnectionService>(),
+                    sp.GetRequiredService<ISshConnectionService>(),
                     sp.GetRequiredService<Infrastructure.Plugins.PluginPermissionGate>()))
             // 插件终端能力:读取/搜索终端缓冲 + 授权回写(经主窗口视图模型解析会话仿真器)。
             .AddSingleton<Func<string, IPluginLogger, PluginSdk.Terminal.ITerminalApi>>(sp =>
