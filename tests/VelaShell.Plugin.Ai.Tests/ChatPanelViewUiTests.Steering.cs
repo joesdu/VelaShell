@@ -75,12 +75,18 @@ public sealed partial class ChatPanelViewUiTests
                 TextEditor input = Find<TextEditor>(panel, "InputBox");
                 input.Text = "只看最近一小时的";
                 PressEnter(input);
-                await PumpAsync(10);
 
+                // 入队要跨一个 await(展开引用可能走一趟 SFTP),芯片是那之后才画的。
+                // 固定泵几十毫秒等于赌调度 —— 本机赌得赢,CI 上一忙就赌输(见 plan.md §71-六)。
                 WrapPanel queued = Find<WrapPanel>(panel, "QueuedBar");
+                Assert.IsTrue(await WaitForAsync(() => queued.Children.Count == 1, maxRounds: 120),
+                    "排队的那句该出现在输入框上方");
                 Assert.IsTrue(queued.IsVisible, "排队的那句要在输入框上方看得见");
-                Assert.HasCount(1, queued.Children);
                 Assert.IsEmpty(input.Text, "排完队输入框就该空了,否则用户会再敲一次回车");
+                // 请求是 stub 那一头记的,同样不是按下回车就当场有了 ——
+                // 先等它真的记上,再断言「只有这一条」,否则等于拿一个还没发生的事实当证据。
+                Assert.IsTrue(await WaitForAsync(() => stub.Requests.Count >= 1, maxRounds: 120),
+                    "这一轮的请求该已经发出去了");
                 Assert.HasCount(1, stub.Requests, "不许打断正在跑的这一次请求");
 
                 // 排队的都看完了,这才让这一轮答完
@@ -121,8 +127,9 @@ public sealed partial class ChatPanelViewUiTests
                 TextEditor input = Find<TextEditor>(panel, "InputBox");
                 input.Text = "算了,先看磁盘";
                 PressEnter(input);
-                await PumpAsync(10);
-                Assert.IsTrue(Find<WrapPanel>(panel, "QueuedBar").IsVisible);
+                WrapPanel queuedBar = Find<WrapPanel>(panel, "QueuedBar");
+                Assert.IsTrue(await WaitForAsync(() => queuedBar.IsVisible, maxRounds: 120),
+                    "得先排上队,才谈得上按停之后退回输入框");
 
                 stop.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
 
@@ -156,10 +163,10 @@ public sealed partial class ChatPanelViewUiTests
                 TextEditor input = Find<TextEditor>(panel, "InputBox");
                 input.Text = "说错了,撤回";
                 PressEnter(input);
-                await PumpAsync(10);
 
                 WrapPanel queued = Find<WrapPanel>(panel, "QueuedBar");
-                Assert.HasCount(1, queued.Children, "这一句该排在那儿等着被撤回");
+                Assert.IsTrue(await WaitForAsync(() => queued.Children.Count == 1, maxRounds: 120),
+                    "这一句该排在那儿等着被撤回");
                 var chip = (Border)queued.Children[0];
                 chip.RaiseEvent(new PointerPressedEventArgs(chip, new Pointer(0, PointerType.Mouse, true),
                     chip, default, 0, new PointerPointProperties(), KeyModifiers.None));

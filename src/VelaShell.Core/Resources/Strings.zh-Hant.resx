@@ -4246,6 +4246,33 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="PluginManager_Reload" xml:space="preserve">
     <value>重新載入</value>
   </data>
+  <data name="PluginManager_UpdateTo" xml:space="preserve">
+    <value>更新到 {0}</value>
+  </data>
+  <data name="PluginManager_UpdateNeedsHost" xml:space="preserve">
+    <value>有新版 {0}，但需要更新的 VelaShell（{1}）。</value>
+  </data>
+  <data name="PluginManager_UpdateAll" xml:space="preserve">
+    <value>全部更新</value>
+  </data>
+  <data name="PluginManager_CheckUpdates" xml:space="preserve">
+    <value>檢查更新</value>
+  </data>
+  <data name="PluginManager_CheckingUpdates" xml:space="preserve">
+    <value>正在檢查外掛程式更新…</value>
+  </data>
+  <data name="PluginManager_NoUpdates" xml:space="preserve">
+    <value>所有外掛程式都是最新的。</value>
+  </data>
+  <data name="PluginManager_UpdatesFound" xml:space="preserve">
+    <value>{0} 個外掛程式有新版本。</value>
+  </data>
+  <data name="PluginManager_Updating" xml:space="preserve">
+    <value>正在更新“{0}”…</value>
+  </data>
+  <data name="PluginManager_UpdateFailed" xml:space="preserve">
+    <value>更新失敗：{0}</value>
+  </data>
   <data name="PluginManager_WaitingForDebugger" xml:space="preserve">
     <value>外掛「{0}」的宿主行程正在等待偵錯工具附加,行程 id {1}。</value>
   </data>

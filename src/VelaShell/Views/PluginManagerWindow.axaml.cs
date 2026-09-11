@@ -133,68 +133,141 @@ public partial class PluginManagerWindow : Window
         });
         if (files is [{ } file] && file.TryGetLocalPath() is { } path)
         {
-            PluginPackageTrustInfo trust;
-            try
-            {
-                trust = vm.InspectPackageTrust(path);
-            }
-            catch
-            {
-                // 让统一安装路径生成本地化错误提示(损坏摘要/错误格式等)。
-                await vm.InstallFromVpxAsync(path);
-                return;
-            }
-            bool allowUntrusted = false;
-            bool trustPublisher = false;
-            if (trust.State == VpxSignatureState.Unsigned)
-            {
-                allowUntrusted = await MessageDialog.ConfirmAsync(this,
-                    Strings.Get("PluginManager_UntrustedTitle"),
-                    Strings.Format("PluginManager_UnsignedWarning", Path.GetFileName(path)),
-                    confirmText: Strings.Get("PluginManager_InstallAnyway"),
-                    danger: true);
-                if (!allowUntrusted)
-                {
-                    return;
-                }
-            }
-            else if (trust.State == VpxSignatureState.Untrusted)
-            {
-                trustPublisher = await MessageDialog.ConfirmAsync(this,
-                    Strings.Get("PluginManager_UntrustedTitle"),
-                    Strings.Format("PluginManager_UntrustedWarning",
-                        Path.GetFileName(path), trust.PublisherFingerprint ?? "(unavailable)"),
-                    confirmText: Strings.Get("PluginManager_TrustAndInstall"),
-                    danger: true);
-                if (!trustPublisher)
-                {
-                    return;
-                }
-                allowUntrusted = true;
-            }
-            // 信任发布者这一步挪到安装之后:这个包可能正是在顶替一个已装插件的发布者身份,
-            // 而那一问要等解出包里的 id 才问得出来。先把新公钥收进信任库,等于用户还没被告知
-            // "换人了",就已经替这把钥匙签下了"以后它的包一律直接信任"。
-            if (!await InstallWithPublisherCheckAsync(vm, path, allowUntrusted))
-            {
-                return;
-            }
-            if (trustPublisher)
-            {
-                try
-                {
-                    await vm.TrustPackagePublisherAsync(path);
-                }
-                catch (Exception ex)
-                {
-                    // 装是装上了(它自带的收据钉住了这把公钥),只是没进全局信任库 ——
-                    // 失败方向朝着"信任更少",说清楚即可,不必回滚一次用户明确要的安装。
-                    await MessageDialog.ShowMessageAsync(this,
-                        Strings.Get("PluginManager_UntrustedTitle"), ex.Message, MessageDialogKind.Error);
-                }
-            }
+            await InstallWithPromptsAsync(vm, path);
         }
     });
+
+    /// <summary>
+    /// 走一遍"该问的都问过"的安装:未签名 / 陌生发布者先确认一次,装的时候撞上"换了发布者"
+    /// 再把两个指纹摆出来问第二次。
+    /// </summary>
+    /// <remarks>
+    /// 手动装 <c>.vpx</c> 与"更新时发布者变过"共用这一条。两条路各写一份的话,
+    /// 迟早有一份会漏掉其中一问 —— 而漏掉的那一问正是拦住冒名覆盖安装的那道闸。
+    /// </remarks>
+    /// <param name="vm">插件管理视图模型。</param>
+    /// <param name="path">包路径。</param>
+    private async Task InstallWithPromptsAsync(PluginManagerViewModel vm, string path)
+    {
+        PluginPackageTrustInfo trust;
+        try
+        {
+            trust = vm.InspectPackageTrust(path);
+        }
+        catch
+        {
+            // 让统一安装路径生成本地化错误提示(损坏摘要/错误格式等)。
+            await vm.InstallFromVpxAsync(path);
+            return;
+        }
+        bool allowUntrusted = false;
+        bool trustPublisher = false;
+        if (trust.State == VpxSignatureState.Unsigned)
+        {
+            allowUntrusted = await MessageDialog.ConfirmAsync(this,
+                Strings.Get("PluginManager_UntrustedTitle"),
+                Strings.Format("PluginManager_UnsignedWarning", Path.GetFileName(path)),
+                confirmText: Strings.Get("PluginManager_InstallAnyway"),
+                danger: true);
+            if (!allowUntrusted)
+            {
+                return;
+            }
+        }
+        else if (trust.State == VpxSignatureState.Untrusted)
+        {
+            trustPublisher = await MessageDialog.ConfirmAsync(this,
+                Strings.Get("PluginManager_UntrustedTitle"),
+                Strings.Format("PluginManager_UntrustedWarning",
+                    Path.GetFileName(path), trust.PublisherFingerprint ?? "(unavailable)"),
+                confirmText: Strings.Get("PluginManager_TrustAndInstall"),
+                danger: true);
+            if (!trustPublisher)
+            {
+                return;
+            }
+            allowUntrusted = true;
+        }
+        // 信任发布者这一步挪到安装之后:这个包可能正是在顶替一个已装插件的发布者身份,
+        // 而那一问要等解出包里的 id 才问得出来。先把新公钥收进信任库,等于用户还没被告知
+        // "换人了",就已经替这把钥匙签下了"以后它的包一律直接信任"。
+        if (!await InstallWithPublisherCheckAsync(vm, path, allowUntrusted))
+        {
+            return;
+        }
+        if (trustPublisher)
+        {
+            try
+            {
+                await vm.TrustPackagePublisherAsync(path);
+            }
+            catch (Exception ex)
+            {
+                // 装是装上了(它自带的收据钉住了这把公钥),只是没进全局信任库 ——
+                // 失败方向朝着"信任更少",说清楚即可,不必回滚一次用户明确要的安装。
+                await MessageDialog.ShowMessageAsync(this,
+                    Strings.Get("PluginManager_UntrustedTitle"), ex.Message, MessageDialogKind.Error);
+            }
+        }
+    }
+
+    /// <summary>行内「更新到 x.y.z」:先把包下下来,再按发布者变没变决定怎么装。</summary>
+    /// <remarks>
+    /// 指纹与安装时钉住的那一个对得上,就直接装 —— 用户当初点头认下的就是这把钥匙,
+    /// 为同一个人的下一版再问一遍,问的是同一个问题。对不上(换人了,或者这一版干脆没签名)
+    /// 则一律走完整确认流程,把指纹摆出来让用户自己判断。
+    /// </remarks>
+    private void Update_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    {
+        if (sender is Control { DataContext: PluginRowViewModel row } && ViewModel is { } vm)
+        {
+            await UpdateRowAsync(vm, row);
+        }
+    });
+
+    /// <summary>「全部更新」:把此刻能直接装的都装了。</summary>
+    private void UpdateAll_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    {
+        if (ViewModel is not { } vm)
+        {
+            return;
+        }
+        // 先快照:每装完一个,Changed 事件都会把 Plugins 整体重建,边遍历边重建必然出事。
+        foreach (PluginRowViewModel row in vm.Plugins.Where(r => r.CanUpdate).ToList())
+        {
+            await UpdateRowAsync(vm, row);
+        }
+    });
+
+    /// <summary>「检查更新」:离线时那一次查不到,用户得有个地方重来。</summary>
+    private void CheckUpdates_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    {
+        if (ViewModel is { } vm)
+        {
+            await vm.CheckUpdatesAsync();
+        }
+    });
+
+    /// <summary>下载并安装某一行的新版本。</summary>
+    /// <param name="vm">插件管理视图模型。</param>
+    /// <param name="row">要更新的那一行。</param>
+    private async Task UpdateRowAsync(PluginManagerViewModel vm, PluginRowViewModel row)
+    {
+        if (await vm.DownloadUpdateAsync(row) is not { } package)
+        {
+            return;
+        }
+        if (row.PublisherUnchanged)
+        {
+            // 同一把私钥签的下一版:发布者连续性那一闸自会放行。这里的 allowUntrustedPackage
+            // 补的是另一种情况 —— 这把公钥本就不在全局信任库里(它当初正是这么装进来的),
+            // 不给放行的话,一个从未换过人的插件反而永远升不了级。
+            await vm.InstallFromVpxAsync(package, allowUntrustedPackage: true);
+            return;
+        }
+        await InstallWithPromptsAsync(vm, package);
+    }
+
 
     /// <summary>
     /// 装一次;撞上"发布者换了"就把两个指纹摆给用户,认了再带着授权装第二次。

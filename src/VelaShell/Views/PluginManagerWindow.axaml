@@ -180,13 +180,27 @@
             </Border>
 
             <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
-              <Button Grid.Column="0" Classes="tool" Click="Install_Click" IsVisible="{Binding CanInstall}">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.download}"
-                                 Foreground="{DynamicResource VelaTextSecondary}" VerticalAlignment="Center" />
-                  <TextBlock Text="{Binding InstallText}" VerticalAlignment="Center" />
-                </StackPanel>
-              </Button>
+              <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                <Button Classes="tool" Click="Install_Click" IsVisible="{Binding CanInstall}">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.download}"
+                                   Foreground="{DynamicResource VelaTextSecondary}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding InstallText}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+                <!-- 打开这个页面时已经自动查过一次。留这个按钮是为了离线那一次:
+                     查不到的时候,用户得有个地方重来,而不是只能关掉窗口再开一遍。 -->
+                <Button Classes="tool" Click="CheckUpdates_Click" IsVisible="{Binding CanCheckUpdates}">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.refresh-cw}"
+                                   Foreground="{DynamicResource VelaTextSecondary}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding CheckUpdatesText}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+                <Button Classes="tool" Click="UpdateAll_Click" IsVisible="{Binding HasUpdates}">
+                  <TextBlock Text="{Binding UpdateAllText}" VerticalAlignment="Center" />
+                </Button>
+              </StackPanel>
               <TextBlock Grid.Column="1" Text="{Binding Notice}"
                          IsVisible="{Binding Notice, Converter={x:Static ObjectConverters.IsNotNull}}"
                          Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize10}"
@@ -271,6 +285,14 @@
                         <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
                                    Foreground="{DynamicResource VelaError}" FontSize="{DynamicResource VelaFontSize10}"
                                    TextWrapping="Wrap" Margin="0,2,0,0" />
+                        <!-- 商店上有新版,但这台宿主装不上(apiLevel / minHostVersion / minSdkVersion
+                             有一样没够)。这时只给提示、不给按钮:摆一个按下去必然失败的按钮,
+                             比不摆更糟 —— 用户会反复点它,而失败的原因跟插件一点关系都没有。 -->
+                        <TextBlock Text="{Binding UpdateBlockedText}" IsVisible="{Binding IsUpdateBlocked}"
+                                   ToolTip.Tip="{Binding UpdateBlocker}"
+                                   Foreground="{DynamicResource VelaWarning}"
+                                   FontSize="{DynamicResource VelaFontSize10}"
+                                   TextWrapping="Wrap" Margin="0,2,0,0" />
                       </StackPanel>
                       <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <Button Classes="row-action" Content="{Binding RevokeText}"
@@ -278,6 +300,8 @@
                         <!-- 开发内环:重编后点这里就跑上新代码(开发期挂载的插件才有)。 -->
                         <Button Classes="row-action" Content="{Binding ReloadText}"
                                 IsVisible="{Binding CanReload}" Click="Reload_Click" />
+                        <Button Classes="row-action" Content="{Binding UpdateText}"
+                                IsVisible="{Binding CanUpdate}" Click="Update_Click" />
                         <Button Classes="row-action" Content="{Binding ToggleText}"
                                 IsVisible="{Binding CanToggle}" Click="Toggle_Click" />
                         <Button Classes="row-action row-danger" Content="{Binding UninstallText}"

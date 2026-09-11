@@ -127,6 +127,10 @@ public class App : Application
             .AddVelaShellPlugins(typeof(App).Assembly
                                             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
                                  ?? "0.0.0")
+            // 插件商店的只读客户端:插件管理页据此检查更新。不登录、不上传、不带任何身份信息,
+            // 请求里唯一与本机有关的东西是"装了哪几个插件的 id" —— 那是问它们有没有新版绕不开的输入。
+            .AddSingleton<Infrastructure.Plugins.Market.IPluginMarketClient>(
+                _ => new Infrastructure.Plugins.Market.HttpPluginMarketClient())
             .AddSingleton<IThemeService>(_ => new ThemeService("system"))
             .AddSingleton<ISettingsPreviewService, SettingsPreviewService>()
             .AddSingleton<IHostKeyPrompt, HostKeyPromptDialogService>()

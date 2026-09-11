@@ -281,6 +281,31 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     }
 
     /// <summary>
+    /// 商店上那一版装不装得到这台宿主上;装得上时为 <see langword="null" />,
+    /// 装不上时给出"缺什么"的简短说明(如 <c>VelaShell 0.6.0</c>、<c>apiLevel 3</c>)。
+    /// </summary>
+    /// <remarks>
+    /// 判据与发现期那三闸(见 <see cref="Describe" />)**是同一套**:apiLevel、minHostVersion、
+    /// minSdkVersion。另写一套的下场是管理页说"可以升",装下去却变成 Incompatible ——
+    /// 用户点了更新、等完下载,换来一行红字,而且插件还退不回去。
+    /// </remarks>
+    /// <param name="apiLevel">那一版声明的 apiLevel。</param>
+    /// <param name="minHostVersion">那一版要求的最低宿主版本。</param>
+    /// <param name="minSdkVersion">那一版要求的最低 SDK 版本。</param>
+    public string? DescribeUpdateBlocker(int apiLevel, string? minHostVersion, string? minSdkVersion)
+    {
+        if (apiLevel > VelaPluginApi.Level)
+        {
+            return $"apiLevel {apiLevel}";
+        }
+        if (minHostVersion is { } minHost && IsHostOlderThan(minHost))
+        {
+            return $"VelaShell {minHost}";
+        }
+        return minSdkVersion is { } minSdk && IsOlder(VelaPluginApi.SdkVersion, minSdk) ? $"SDK {minSdk}" : null;
+    }
+
+    /// <summary>
     /// 从 <c>.vpx</c> 包安装插件(专属容器:魔数头 + SHA-256 + 可选签名,内含 zip 载荷)。
     /// 解包到用户插件目录(zip-slip 与解压炸弹防护),校验清单;同 id 已存在则先卸载旧版。
     /// 安装后按激活策略激活。返回安装的插件 id。
@@ -349,7 +374,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             await CheckPublisherContinuityAsync(manifest, packageInfo, allowPublisherChange, cancellationToken)
                 .ConfigureAwait(false);
 
-            // 同 id 已装 → 先卸载旧版(用户目录的)或拒绝(应用自带的,避免覆盖只读自带件)。
+            // 同 id 已装 → 换掉它(用户目录的)或拒绝(应用自带的,避免覆盖只读自带件)。
             lock (_gate)
             {
                 if (_plugins.FirstOrDefault(p => p.Descriptor.Id == manifest.Id) is { } existing
@@ -359,55 +384,38 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
                         $"A built-in plugin with id '{manifest.Id}' already exists and cannot be replaced.");
                 }
             }
-            if (_plugins.Any(p => p.Descriptor.Id == manifest.Id))
-            {
-                await UninstallAsync(manifest.Id).ConfigureAwait(false);
-            }
+            // 覆盖安装走"停用 → 换目录",而不是卸载重装。卸载会连带清掉插件的 KV、机密与
+            // 时序数据(UninstallAsync → PurgePluginDataAsync),那是"用户不要这个插件了"
+            // 才该发生的事 —— 升一版就把 API Key 与聊天记录一并抹掉,没有人会预料到。
+            // 旁装那条路(vela-plugin update)一直只换文件,两边行为本来就该是一套。
+            bool upgrade = await DetachForUpgradeAsync(manifest.Id).ConfigureAwait(false);
 
             string target = Path.Combine(userRoot, manifest.Id);
             Directory.CreateDirectory(userRoot);
-            TryDeleteDirectory(target);
-            Directory.Move(staging, target);
-            staging = target; // 已搬走,finally 不再删
-            activity?.Report(0.7);
-
+            string? backup = MoveAsideForUpgrade(userRoot, manifest.Id);
             try
             {
+                Directory.Move(staging, target);
+                staging = target; // 已搬走,finally 不再删
+                activity?.Report(0.7);
                 await SaveInstallReceiptAsync(manifest.Id, target, packageInfo, cancellationToken).ConfigureAwait(false);
             }
             catch
             {
-                // 没有受保护收据的目录绝不能留下来被下次启动误认为已安装。
+                // 没有受保护收据的目录绝不能留下来被下次启动误认为已安装;旧版则原样搬回去
+                // 重新挂上 —— 它那张收据从头到尾没被动过,恢复之后仍然对得上。
                 TryDeleteDirectory(target);
+                await RestoreUpgradeBackupAsync(backup, target, cancellationToken).ConfigureAwait(false);
                 throw;
             }
+            CleanUpgradeBackup(backup);
 
             activity?.Report(0.9);
-            PluginDescriptor installed = Describe(target, Path.Combine(target, PluginManifestReader.FileName), [], false,
-                out bool needsVerification);
-            // 装完随即激活会把 SaveInstallReceiptAsync 刚算过的目录哈希再算一遍。看着是浪费,
-            // 但**不要**在这里预置校验结果去省它:那等于把"落凭据 → 首次装载"之间的窗口
-            // 排除在校验之外,而省下的只是一次热缓存目录的哈希(几十毫秒)。
-            // 这个仓库对插件信任面的态度一贯是宁可多算一遍,别为这点时间换窗口。
-            var runtime = new PluginRuntime { Descriptor = installed, NeedsVerification = needsVerification };
-            lock (_gate)
-            {
-                _plugins.Add(runtime);
-            }
-            if (runtime.Descriptor.State == PluginState.Discovered)
-            {
-                DeclareProtocols(runtime);
-                if (manifest.ActivatesOnStartup)
-                {
-                    await EnsureActivatedAsync(runtime, cancellationToken).ConfigureAwait(false);
-                }
-                else
-                {
-                    RegisterActivationTriggers(runtime);
-                }
-            }
+            await AttachAsync(target, cancellationToken).ConfigureAwait(false);
             activity?.Report(1);
-            Log($"Installed plugin '{manifest.Id}' v{manifest.Version} from package.");
+            Log(upgrade
+                ? $"Upgraded plugin '{manifest.Id}' to v{manifest.Version} from package; its data was kept."
+                : $"Installed plugin '{manifest.Id}' v{manifest.Version} from package.");
         }
         finally
         {
@@ -817,7 +825,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         }
     }
 
-    /// <summary>删除某插件的 DB 命名空间与数据目录(卸载/覆盖安装时)。</summary>
+    /// <summary>删除某插件的 DB 命名空间与数据目录(只有卸载才走这里,覆盖安装不清数据)。</summary>
     private async Task PurgePluginDataAsync(string pluginId)
     {
         if (options.DataStore is { } dataStore)
@@ -843,6 +851,166 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             : StringComparison.Ordinal;
         return full.StartsWith(rootFull + Path.DirectorySeparatorChar, comparison)
                || string.Equals(full, rootFull, comparison);
+    }
+
+    /// <summary>覆盖安装前把旧版从运行时摘下来:停用、释放命令能力、撤掉协议登记、移出集合。</summary>
+    /// <remarks>
+    /// 与 <see cref="UninstallAsync" /> 的区别全在**没做**的那三件事:不删目录(交给换名),
+    /// 不清数据,不动安装收据。升级换的是插件的代码,不是用户在它里面攒下来的东西;
+    /// 而收据要留到新版那张落盘为止 —— 换名失败时它还得替搬回来的旧版作数。
+    /// </remarks>
+    /// <param name="pluginId">插件 id。</param>
+    /// <returns>确实摘下了一个旧版(即本次安装是升级)时为 <see langword="true" />。</returns>
+    private async Task<bool> DetachForUpgradeAsync(string pluginId)
+    {
+        PluginRuntime? runtime;
+        lock (_gate)
+        {
+            runtime = _plugins.FirstOrDefault(p => p.Descriptor.Id == pluginId);
+        }
+        if (runtime is null)
+        {
+            return false;
+        }
+        await runtime.ActivationGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (runtime.Descriptor.State == PluginState.Active)
+            {
+                await DeactivateAsync(runtime).ConfigureAwait(false);
+            }
+            (runtime.CommandsApi as IDisposable)?.Dispose();
+            runtime.CommandsApi = null;
+            options.ProtocolRegistry?.RemovePlugin(pluginId);
+            lock (_gate)
+            {
+                _plugins.Remove(runtime);
+            }
+        }
+        finally
+        {
+            runtime.ActivationGate.Release();
+        }
+        return true;
+    }
+
+    /// <summary>升级时旧插件目录的临时窝(用户插件根下的一个子目录)。</summary>
+    /// <remarks>
+    /// 放在用户插件根**下面**是因为 <see cref="Directory.Move(string,string)" /> 要求同卷;
+    /// 而发现期只认根下一层里带 <c>plugin.json</c> 的目录(见 <see cref="Discover" />),
+    /// 备份被套了一层,扫不进来 —— 不会变成一个与正版撞 id 的幽灵插件。
+    /// </remarks>
+    private const string UpgradeBackupDirectoryName = ".upgrade";
+
+    /// <summary>
+    /// 把旧插件目录挪进备份窝并返回备份路径;没有旧目录(全新安装)时返回 <see langword="null" />。
+    /// 同 id 的历史残留顺手清掉:本次安装马上就要写下这个 id 的新副本,它们再没有用处。
+    /// </summary>
+    /// <param name="userRoot">用户插件安装根。</param>
+    /// <param name="pluginId">插件 id。</param>
+    private static string? MoveAsideForUpgrade(string userRoot, string pluginId)
+    {
+        string backupRoot = Path.Combine(userRoot, UpgradeBackupDirectoryName);
+        if (Directory.Exists(backupRoot))
+        {
+            foreach (string stale in Directory.EnumerateDirectories(backupRoot, $"{pluginId}-*"))
+            {
+                TryDeleteDirectory(stale);
+            }
+        }
+        string target = Path.Combine(userRoot, pluginId);
+        if (!Directory.Exists(target))
+        {
+            return null;
+        }
+        Directory.CreateDirectory(backupRoot);
+        string backup = Path.Combine(backupRoot, $"{pluginId}-{Guid.CreateVersion7():n}");
+        Directory.Move(target, backup);
+        return backup;
+    }
+
+    /// <summary>删掉换名成功后的备份,顺带收掉空了的备份窝 —— 插件根下不留看不懂的空目录。</summary>
+    /// <param name="backup"><see cref="MoveAsideForUpgrade" /> 给出的备份路径;<see langword="null" /> 时什么都不做。</param>
+    private static void CleanUpgradeBackup(string? backup)
+    {
+        if (backup is null)
+        {
+            return;
+        }
+        TryDeleteDirectory(backup);
+        try
+        {
+            string backupRoot = Path.GetDirectoryName(backup)!;
+            if (Directory.Exists(backupRoot) && !Directory.EnumerateFileSystemEntries(backupRoot).Any())
+            {
+                Directory.Delete(backupRoot);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 空窝删不掉无所谓,下次升级照样用它。
+        }
+    }
+
+    /// <summary>
+    /// 升级失败后把旧版搬回原位并重新挂上。搬不回去只记一行 —— 这已经是失败路径,
+    /// 再抛一个异常只会盖掉用户真正该看到的那个原因。
+    /// </summary>
+    /// <param name="backup"><see cref="MoveAsideForUpgrade" /> 给出的备份路径;<see langword="null" /> 表示本次是全新安装。</param>
+    /// <param name="target">插件的正式目录。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    private async Task RestoreUpgradeBackupAsync(string? backup, string target, CancellationToken cancellationToken)
+    {
+        if (backup is null || !Directory.Exists(backup))
+        {
+            return;
+        }
+        try
+        {
+            Directory.Move(backup, target);
+            await AttachAsync(target, cancellationToken).ConfigureAwait(false);
+            Log($"Restored the previous version of '{Path.GetFileName(target)}' after a failed upgrade.");
+        }
+        catch (Exception ex)
+        {
+            Log($"Could not restore '{Path.GetFileName(target)}' after a failed upgrade: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 把一个刚落到用户插件根下的目录挂进运行时:读清单定状态、登记协议与命令触发器,
+    /// 该开机激活的就激活。安装成功与回滚恢复走同一条,两条路因此不会长歪。
+    /// </summary>
+    /// <remarks>
+    /// 装完随即激活会把 <see cref="SaveInstallReceiptAsync" /> 刚算过的目录哈希再算一遍。
+    /// 看着是浪费,但**不要**在这里预置校验结果去省它:那等于把"落凭据 → 首次装载"之间的
+    /// 窗口排除在校验之外,而省下的只是一次热缓存目录的哈希(几十毫秒)。
+    /// 这个仓库对插件信任面的态度一贯是宁可多算一遍,别为这点时间换窗口。
+    /// </remarks>
+    /// <param name="directory">插件目录。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    private async Task AttachAsync(string directory, CancellationToken cancellationToken)
+    {
+        PluginDescriptor descriptor = Describe(directory, Path.Combine(directory, PluginManifestReader.FileName), [],
+            false, out bool needsVerification);
+        var runtime = new PluginRuntime { Descriptor = descriptor, NeedsVerification = needsVerification };
+        lock (_gate)
+        {
+            _plugins.Add(runtime);
+        }
+        if (descriptor.State != PluginState.Discovered)
+        {
+            return;
+        }
+        DeclareProtocols(runtime);
+        if (descriptor.Manifest!.ActivatesOnStartup)
+        {
+            await EnsureActivatedAsync(runtime, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            RegisterActivationTriggers(runtime);
+        }
     }
 
     private static void TryDeleteDirectory(string directory)

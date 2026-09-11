@@ -1380,7 +1380,8 @@ public partial class MainWindow : Window
             return;
         }
         var viewModel = new PluginManagerViewModel(manager,
-            services.GetService<Infrastructure.Plugins.PluginPermissionGate>());
+            services.GetService<Infrastructure.Plugins.PluginPermissionGate>(),
+            services.GetService<Infrastructure.Plugins.Market.IPluginMarketClient>());
         _pluginManagerWindow = new PluginManagerWindow { DataContext = viewModel };
         _pluginManagerWindow.Closed += (_, _) => _pluginManagerWindow = null;
         _pluginManagerWindow.Show(this);

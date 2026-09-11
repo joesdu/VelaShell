@@ -89,11 +89,21 @@ VelaShell connects to the network only in these situations:
    GitHub receives your IP address and the request, as with any website visit. **In the
    Microsoft Store version this feature is disabled entirely**, because the Store handles updates.
 
-5. **Contributor avatars.** Opening the About page loads contributor profile pictures from
+5. **Plugin update checks.** When you open the Plugin Manager window, VelaShell asks the plugin
+   marketplace (<https://market.easilynet.top>, https only) whether the plugins you installed have
+   newer versions. The request carries **the ids of the plugins you installed yourself** — bundled
+   plugins and development-mounted ones are not included — because there is no way to ask whether
+   they have updates without naming them. No account, no token, no install identifier: that server
+   sees only your IP address. **This happens only when you open that window** — not at startup, not
+   on a background timer. If you never open it, no request is ever made. A plugin package is
+   downloaded only after you click Update, and the digest the marketplace declares is verified
+   before it is installed.
+
+6. **Contributor avatars.** Opening the About page loads contributor profile pictures from
    GitHub, which discloses your IP address to GitHub in the same way. If the request fails,
    placeholder initials are shown and nothing else is affected.
 
-6. **Cloud sync — off by default, entirely optional.** If you enable it, VelaShell stores your
+7. **Cloud sync — off by default, entirely optional.** If you enable it, VelaShell stores your
    settings, connection profiles, and snippets in a **secret GitHub Gist in your own GitHub
    account**, using a personal access token that you supply. The data goes to your GitHub
    account, never to us. You may additionally set an end-to-end encryption passphrase, in which
@@ -222,10 +232,18 @@ VelaShell 仅在以下情形联网:
    以便有新版本时投一条消息到消息中心。与访问任何网站一样,GitHub 会收到你的 IP 地址与
    该请求。**Microsoft Store 版本完全禁用了该功能**,更新由商店接管。
 
-5. **贡献者头像。** 打开"关于"页面会从 GitHub 加载贡献者头像,同样会向 GitHub 暴露你的
+5. **插件更新检查。** 打开「插件管理」窗口时,VelaShell 会向插件商店
+   (<https://market.easilynet.top>,仅 https)问一次:你装的这几个插件有没有新版本。
+   请求里带的是**你自己安装的那些插件的 id** —— 应用自带的与开发期挂载的不在其中 ——
+   因为"它们有没有新版"这个问题,没办法在不说出是哪几个插件的前提下问出口。
+   不带账号、不带令牌、不带任何安装标识符,那台服务器看到的只有你的 IP 地址。
+   **只在你打开那个窗口时发生** —— 不在启动时,也不在后台定时发生;你不打开它,
+   一个请求都不会发出。插件包只有在你点了「更新」之后才会下载,装之前会核对商店声明的摘要。
+
+6. **贡献者头像。** 打开"关于"页面会从 GitHub 加载贡献者头像,同样会向 GitHub 暴露你的
    IP 地址。请求失败时显示首字母占位图,不影响其他功能。
 
-6. **云同步 —— 默认关闭,完全可选。** 若你启用,VelaShell 会使用你自己提供的个人访问令牌,
+7. **云同步 —— 默认关闭,完全可选。** 若你启用,VelaShell 会使用你自己提供的个人访问令牌,
    把设置、连接配置与代码片段保存到**你自己 GitHub 账户下的一个 secret Gist** 中。数据进入
    的是你的 GitHub 账户,而非我们。你还可以额外设置端到端加密口令,此时载荷会在你的设备上
    用 AES-GCM 加密后再上传,GitHub 只能拿到密文。同步范围由你勾选,可随时关闭或删除该 Gist。

@@ -4246,6 +4246,33 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="PluginManager_Reload" xml:space="preserve">
     <value>重新加载</value>
   </data>
+  <data name="PluginManager_UpdateTo" xml:space="preserve">
+    <value>更新到 {0}</value>
+  </data>
+  <data name="PluginManager_UpdateNeedsHost" xml:space="preserve">
+    <value>有新版 {0}，但需要更新的 VelaShell（{1}）。</value>
+  </data>
+  <data name="PluginManager_UpdateAll" xml:space="preserve">
+    <value>全部更新</value>
+  </data>
+  <data name="PluginManager_CheckUpdates" xml:space="preserve">
+    <value>检查更新</value>
+  </data>
+  <data name="PluginManager_CheckingUpdates" xml:space="preserve">
+    <value>正在检查插件更新…</value>
+  </data>
+  <data name="PluginManager_NoUpdates" xml:space="preserve">
+    <value>所有插件都是最新的。</value>
+  </data>
+  <data name="PluginManager_UpdatesFound" xml:space="preserve">
+    <value>{0} 个插件有新版本。</value>
+  </data>
+  <data name="PluginManager_Updating" xml:space="preserve">
+    <value>正在更新“{0}”…</value>
+  </data>
+  <data name="PluginManager_UpdateFailed" xml:space="preserve">
+    <value>更新失败：{0}</value>
+  </data>
   <data name="PluginManager_WaitingForDebugger" xml:space="preserve">
     <value>插件“{0}”的宿主进程正在等待调试器附加,进程 id {1}。</value>
   </data>
