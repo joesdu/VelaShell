@@ -34,18 +34,18 @@
 
 ## 📊 待办分布
 
-**欠账**（⏳ + 🚧 + 💡，共 22 项）与**路线图**（共 29 项）分开计：
+**欠账**（⏳ + 🚧 + 💡，共 23 项）与**路线图**（共 29 项）分开计：
 
 ```mermaid
 pie showData
-    title 欠账 —— 现状与代码对不上的部分（22 项）
+    title 欠账 —— 现状与代码对不上的部分（23 项）
     "P0 存了但不生效" : 5
     "安全与凭据" : 5
     "会话与工作区" : 3
     "数据与可观测" : 3
     "终端与协议" : 3
     "文件传输" : 2
-    "插件生态" : 1
+    "插件生态" : 2
 ```
 
 ```mermaid
@@ -63,7 +63,7 @@ pie showData
 > 「文件传输」算 2 项 —— 那一节的「传输失败重试」是指回 P0 表的交叉引用、不重复计数，「远程编辑的三个入口已统一」是 📄 文档待同步、不计入欠账。
 > 「会话与工作区」从 4 降到 3：会话标签颜色已在 `b9ae31f` 落地（见该节）。
 > 「安全与凭据」从 6 降到 5：SSH 证书认证已在 `bbfa1877` 落地（见该节）。
-> 「插件生态」升到 2 又回到 1：插件自报标签页图标当天就闭合了（SDK 2.0.4,见该节）。
+> 「插件生态」现为 2：插件自报图标当天闭合，但新增了一条 🔴 P0「11 条怎么改都绿的 UI 用例」（见该节）。
 
 ---
 
@@ -147,6 +147,7 @@ pie showData
 | :---: | :---: | --- | --- | --- |
 | ✅ | — | ~~容器管理插件（DockerPanel）~~ | **已完成**（2026-09-03，`0.3.1`）。独立仓库 [VelaShell.Plugin.DockerPanel](https://github.com/VelaShellLabs/VelaShell.Plugin.DockerPanel)，从插件商店按需安装 | — |
 | ✅ | — | ~~插件自报标签页图标~~ | **宿主侧已完成**（2026-09-11，`plan.md` §69，SDK 2.0.4）：`PluginIcon` 一个入口三处共用（`ProtocolDescriptor.Icon` / `WorkspaceDescriptor.Icon` / `PanelOptions.Icon`），宿主 `ConnectionIcon` 按「插件自报优先、通用插头兜底」解析，`LucideIcon` 的 `Fill` / `ViewBoxSize` 支持实心品牌 logo。AI 插件已用上（机器人字形）| ⏳ 只差 **`velashell-plugins` 那三个插件填图标**：抬包版到 2.0.4，串口用 lucide `usb-c-port`（`M6 12h12 M6 8h12a4 4 0 0 1 0 8H6a4 4 0 0 1 0-8Z`）、Redis 用品牌 logo（`PluginIcon.Filled(path, 1030)`）、S3 用云或桶的描边字形。**宿主一行都不用再动** —— 那三个插件今天画的仍是通用插头 |
+| ⏳ | 🔴 P0 | **11 条「怎么改都绿」的 UI 用例** | `_session.Dispatch(async () => { … })` 这种**无返回值**的 async lambda 绑到 `Dispatch<TResult>(Func<TResult>)` 而不是会 await 的 `Dispatch<T>(Func<Task<T>>)` —— 那个 Task 没人 await,断言抛的异常被整个吞掉。**实测:往第一行插 `Assert.Fail` 照样通过**。分布:`PluginPanelUiTests` 5、`StandaloneSftpDocumentBehaviorTests` 3、`LocalFilePaneViewUiTests` 2、`PluginThemeTokensTests` 1（`plan.md` §70） | ⚠️ **机械修法不成立**：补 `return true;` 改绑之后 7 条当场超时（各 1 分钟）—— 它们 await 的东西在无头环境里根本不会完成。要一条一条重做异步流程。同文件里正确的写法是**同步 body + 返回值**，可作模板 |
 | ⏳ | 🟡 P2 | **AI 插件的 MCP 服务端能力面对齐** | 对外 MCP 走 `AgentToolbox` 产出工具，但那条路上**没有审批界面** | 现状是「询问」模式等于一律拒绝写操作 —— 这是刻意的（`plan.md` §33-四）。可选的增强：带外审批（推到 IM 渠道或桌面通知）后再放行 |
 | 📄 | 🟠 P1 | **发布者连续性已落地** | 同一个 id 的后续版本必须仍由钉住的那把私钥签名，换钥/去签名要用户看过两个指纹再点头；管理页每行显示钉住的指纹；旁装（`vela-plugin install`）不受影响（`plan.md` §57）。代码已落地，**velashell-docs 还没跟上** | 在 `{zh,en}` 两棵树里补：`plugins/STATUS.md` 签名验证那一格改成「验签 + 连续性已做、信任根未做」；`cli/cli.md` 与 `templates/dev-guide.md` 补一句「旁装的代价现在多一条：钉不住发布者，宿主也就无从拦截冒名的覆盖安装」；`host/交互与界面规格.md` 补管理页那行指纹与换发布者的确认框 |
 

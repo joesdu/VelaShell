@@ -68,7 +68,7 @@ public class TimeSeriesRoutingTests
             Shutdown = CancellationToken.None
         };
         var hostConnection = new RpcConnection(serverPipe);
-        var router = new Infrastructure.Plugins.Isolated.PluginCapabilityRouter(context, hostConnection, "token", "1.0.0");
+        var router = new PluginCapabilityRouter(context, hostConnection, "token", "1.0.0");
         hostConnection.SetRequestHandler(router.HandleRequestAsync);
         hostConnection.SetNotificationHandler(router.HandleNotification);
         hostConnection.Start();

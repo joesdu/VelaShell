@@ -8,7 +8,7 @@ namespace VelaShell.Terminal;
 /// <remarks>
 /// <see cref="StartCol" /> 与 <see cref="Length" /> 都以列计,不是行文本里的字符下标 ——
 /// 渲染层拿它们直接画高亮、拉选区,单位错了就是整体错位。两者的换算见
-/// <see cref="Emulation.TerminalRow.CopyTextTo(System.Span{char}, System.Span{int})" />。
+/// <see cref="TerminalRow.CopyTextTo(Span{char}, Span{int})" />。
 /// </remarks>
 /// <param name="Row">缓冲区内的绝对行号(含回滚区)。</param>
 /// <param name="StartCol">命中起始屏幕列。</param>

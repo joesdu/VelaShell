@@ -20,7 +20,7 @@ namespace VelaShell.Terminal.Tests;
 [TestCategory("Mouse")]
 public sealed class AlternateScrollTests
 {
-    private static Avalonia.Headless.HeadlessUnitTestSession _session => HeadlessTestSession.Current;
+    private static HeadlessUnitTestSession _session => HeadlessTestSession.Current;
 
     /// <summary>进入备用屏(?1049h)并收集滚轮产生的输入字节。</summary>
     private static byte[] WheelOnAlternateScreen(

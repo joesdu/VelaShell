@@ -231,6 +231,9 @@ public partial class ChatPanelView
             IPluginPanel panel = await _context.Ui.ShowPanelAsync(new PanelOptions
             {
                 Title = title,
+                // 模型配置、MCP 设置这些窗口都从这里开。标题栏顶着 AI 的标,
+                // 与别的插件的设置窗口并排开着时才分得清哪扇是谁的。
+                Icon = AiIcon.Panel,
                 DisplayMode = PanelDisplayMode.Window,
                 WindowWidth = width,
                 WindowHeight = height,

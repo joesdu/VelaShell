@@ -195,6 +195,9 @@ internal sealed class PluginPanel : IPluginPanel
             Height = Math.Max(options.WindowHeight, 200)
         };
         _window.SetTitle(options.Title, pluginId);
+        // 标题栏图标与标签页那条走同一个解析:几个插件的设置窗口并排开着,
+        // 标题栏全是同一个插头的话,分不出哪扇窗是谁的。
+        _window.SetIcon(ConnectionIcon.ForPanel(options.Icon));
         _window.SetTitleActions(options.TitleActions);
         _window.SetContent(content);
         _window.Closed += (_, _) => NotifyClosed();

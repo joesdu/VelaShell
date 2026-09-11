@@ -49,7 +49,10 @@
                 PointerPressed="Header_PointerPressed">
           <Grid ColumnDefinitions="*,Auto" Margin="14,0,0,0">
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-              <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.plug}"
+              <!-- 插件自报的图标(PanelOptions.Icon),没给才是通用插头 —— 由 SetIcon 填。
+                   写死插头的时候,几个插件的设置窗口并排开着标题栏长得一模一样。 -->
+              <pc:LucideIcon x:Name="TitleIcon" Width="13" Height="13"
+                             Data="{StaticResource Icon.plug}"
                              Foreground="{DynamicResource VelaAccent}" VerticalAlignment="Center" />
               <TextBlock x:Name="TitleText"
                          Foreground="{DynamicResource VelaTextPrimary}"

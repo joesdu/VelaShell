@@ -16,6 +16,12 @@ namespace VelaShell.Plugin.Ai;
 /// </remarks>
 internal static class AiIcon
 {
+    /// <summary>
+    /// 交给宿主的那份图标。聊天标签、协作窗口、模型配置窗口三处共用同一个实例 ——
+    /// 它们本来就该长一样:标题栏上认的是「这扇窗属于哪个插件」。
+    /// </summary>
+    public static readonly PluginSdk.PluginIcon Panel = PluginSdk.PluginIcon.Filled(PathData, ViewBoxSize);
+
     /// <summary>视框边长(原始 SVG 是 <c>0 0 1024 1024</c>)。</summary>
     public const double ViewBoxSize = 1024d;
 

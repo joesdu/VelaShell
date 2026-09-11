@@ -24,7 +24,7 @@ namespace VelaShell.Terminal.Tests;
 public sealed class HostGridReconcileUiTests
 {
     /// <summary>全程序集共用的 headless 会话(见 HeadlessTestSession:每类各起一个时,拆除会互相踩)。</summary>
-    private static Avalonia.Headless.HeadlessUnitTestSession _session => HeadlessTestSession.Current;
+    private static HeadlessUnitTestSession _session => HeadlessTestSession.Current;
 
     /// <summary>xterm-256color 的 <c>is2</c>:里面的 <c>ESC[?3l</c> 就是 #253 的扳机。</summary>
     private const string XtermInitString = "\x1b[!p\x1b[?3;4l\x1b[4l\x1b>";

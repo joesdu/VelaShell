@@ -502,7 +502,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// 当前界面主题配套的**整套**终端配色(前景/背景/光标/选区 + ANSI 16 色),由宿主随
     /// 主题切换下发。null = 用控件自带的明暗缺省。
     /// <para>
-    /// 为什么不能只看 <see cref="Avalonia.Styling.ThemeVariant" />:具名主题里有五套暗色、
+    /// 为什么不能只看 <see cref="ThemeVariant" />:具名主题里有五套暗色、
     /// 四套亮色,VelaDark 换到 Tokyo Night 时变体根本没变,控件无从得知该换配色。
     /// </para>
     /// </summary>

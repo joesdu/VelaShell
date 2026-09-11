@@ -153,7 +153,7 @@ public sealed class SettingsViewUiTests
     /// <summary>在某个控件上按一下左键(事件照常往上冒泡)。</summary>
     private static void Press(Control control)
         => control.RaiseEvent(new PointerPressedEventArgs(
-            control, new Avalonia.Input.Pointer(0, PointerType.Mouse, true), control, default, 0,
+            control, new Pointer(0, PointerType.Mouse, true), control, default, 0,
             new PointerPointProperties(RawInputModifiers.LeftMouseButton, PointerUpdateKind.LeftButtonPressed),
             KeyModifiers.None));
 

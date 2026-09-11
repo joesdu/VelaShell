@@ -280,4 +280,90 @@ public sealed class PluginPanelUiTests
             }
         }, CancellationToken.None).GetAwaiter().GetResult();
     }
+
+    /// <summary>
+    /// 窗口标题栏的图标跟着 <c>PanelOptions.Icon</c> 走。
+    /// </summary>
+    /// <remarks>
+    /// 原先那里写死通用插头,于是几个插件的设置窗口(AI 的模型配置、MCP 设置…)并排开着时
+    /// 标题栏长得一模一样,分不出哪扇是谁的。⚠️ 与 <c>TitleActions</c> 不是一回事:
+    /// 那个画的是右侧的动作按钮,这个是最左边那一个。
+    /// </remarks>
+    [TestMethod]
+    public void WindowPanel_TitleIcon_FollowsThePluginsOwnIcon() =>
+        OnUi(() =>
+        {
+            var panel = new PluginPanel("acme.demo", new NullLog(),
+                new()
+                {
+                    Title = "Demo",
+                    DisplayMode = PluginSdk.Ui.PanelDisplayMode.Window,
+                    // 实心 + 非 24 视框:品牌 logo 的典型形状,两样都要走到渲染层。
+                    Icon = PluginSdk.PluginIcon.Filled("M4 4h16v16H4Z", viewBoxSize: 1024)
+                },
+                new Border(), owner: null);
+            Dispatcher.UIThread.RunJobs();
+            try
+            {
+                Controls.Controls.LucideIcon icon = TitleIconOf(panel);
+
+                Assert.IsNotNull(icon.Data);
+                Assert.AreEqual(new Rect(4, 4, 16, 16), icon.Data!.Bounds, "标题栏画的应当是插件那段路径。");
+                Assert.AreEqual(1024d, icon.ViewBoxSize, "视框没到渲染层:按 24 缩放会把它放大四十多倍。");
+                Assert.IsNotNull(icon.Fill, "填充没到渲染层:实心 logo 会被描成一圈轮廓线。");
+            }
+            finally
+            {
+                Close(panel);
+            }
+        });
+
+    [TestMethod]
+    public void WindowPanel_WithoutAnIcon_KeepsTheGenericPlug() =>
+        // 插件没自报就保持通用插头 —— 标题栏上少一个图标会让整行文字左移,比画一个通用的更难看。
+        OnUi(() =>
+        {
+            var panel = new PluginPanel("acme.demo", new NullLog(),
+                new() { Title = "Demo", DisplayMode = PluginSdk.Ui.PanelDisplayMode.Window },
+                new Border(), owner: null);
+            Dispatcher.UIThread.RunJobs();
+            try
+            {
+                Controls.Controls.LucideIcon icon = TitleIconOf(panel);
+
+                Assert.IsNotNull(icon.Data, "没有图标时也得画点什么,不能是空。");
+                Assert.AreNotEqual(new Rect(4, 4, 16, 16), icon.Data!.Bounds, "这不该是插件的图标。");
+                Assert.IsNull(icon.Fill, "通用插头是描边字形,不该被填充。");
+            }
+            finally
+            {
+                Close(panel);
+            }
+        });
+
+    /// <summary>窗口是面板的私有字段,测试里直接掏出来(不为它开公共口子)。</summary>
+    private static Controls.Controls.LucideIcon TitleIconOf(PluginPanel panel)
+    {
+        var shell = (VelaShell.Views.PluginPanelWindow)panel.GetType()
+            .GetField("_window", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .GetValue(panel)!;
+        return shell.GetControl<Controls.Controls.LucideIcon>("TitleIcon");
+    }
+
+    private static void Close(PluginPanel panel)
+    {
+        // 关窗是清场,不是被验的行为 —— 不 await:那会把整个 body 变成 async lambda,
+        // 而 async lambda 绑到 Dispatch(Func<TResult>) 之后,断言抛出的异常会被那个
+        // 没人 await 的 Task 吞掉,用例**怎么改都绿**(见 ConnectingDocumentViewUiTests 的注释)。
+        _ = panel.CloseAsync();
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    /// <summary>同步 body + 返回值,绕开上面那个 async lambda 陷阱。</summary>
+    private static void OnUi(Action body) =>
+        _session.Dispatch(() =>
+        {
+            body();
+            return true;
+        }, CancellationToken.None).GetAwaiter().GetResult();
 }

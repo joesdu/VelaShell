@@ -140,6 +140,7 @@ public sealed class AiPlugin : IVelaPlugin
             new PanelOptions
             {
                 Title = loc["Collaboration"],
+                Icon = AiIcon.Panel,
                 DisplayMode = PanelDisplayMode.Window,
                 WindowWidth = 860,
                 WindowHeight = 780
@@ -173,9 +174,9 @@ public sealed class AiPlugin : IVelaPlugin
             new PanelOptions
             {
                 Title = new Loc(context.Host.Locale)["Title"],
-                // 标签页上认得出是 AI 的那个标。不给的话宿主画一个通用插头 ——
+                // 标签页/标题栏上认得出是 AI 的那个标。不给的话宿主画一个通用插头 ——
                 // 它对每个插件都一样,等于没有。
-                Icon = PluginIcon.Filled(AiIcon.PathData, AiIcon.ViewBoxSize),
+                Icon = AiIcon.Panel,
                 DisplayMode = mode,
                 // 聊天面板的位置对齐 VSCode 的 Copilot:标签区右侧独立一栏,
                 // 终端与它并排看得见,而不是把当前终端顶掉
