@@ -26,6 +26,14 @@ public sealed class SftpDocument : DockDocument, IDockViewProvider
     /// <summary>从连接配置派生的强调色画刷,用于视觉标识。</summary>
     public IBrush ConnectionAccentBrush => ConnectionAccent.BrushForProfile(ViewModel.Profile);
 
+    /// <summary>
+    /// 插件文件协议(S3 …)由插件自报的标签页图标;宿主内建的 SFTP / FTP 为 null。
+    /// </summary>
+    public PluginSdk.PluginIcon? PluginTabIcon { get; set; }
+
+    /// <summary>标签页上的协议图标。SFTP / FTP 的标签里是双栏文件浏览器,不是终端。</summary>
+    public TabIcon? TabIcon => ConnectionIcon.ForSession(ViewModel.Profile, PluginTabIcon);
+
     /// <summary>显示连接详情与配置信息的提示文本。</summary>
     public string ConnectionTooltip =>
         $"{Title} · SFTP · {ViewModel.Profile.Username}@{ViewModel.Profile.Host}:{ViewModel.Profile.Port}";

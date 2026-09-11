@@ -49,7 +49,7 @@ internal sealed class PluginPanel : IPluginPanel
         _pluginId = pluginId;
         _log = log;
         _workspace = workspace;
-        _document = new(PanelId, options.Title, pluginId, content);
+        _document = new(PanelId, options.Title, pluginId, content, options.Icon);
         // 用户关闭标签(CloseDocument)与程序撤除都会走 DocumentRemoved —— 单一挂点,
         // 面板生死与文档在树上的存在性严格一致。
         _onDocumentRemoved = removed =>

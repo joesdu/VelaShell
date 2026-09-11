@@ -58,7 +58,14 @@
   <Border x:Name="TabRoot" MinHeight="32" Padding="14,0" BorderThickness="0,2,0,0"
           BorderBrush="Transparent" VerticalAlignment="Stretch">
     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-      <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.plug}"
+      <!-- 面板图标:插件在 PanelOptions.Icon 里自报的那个,没给才是通用插头(在 TabIcon 里兜底)。
+           实心的品牌 logo 要连视框与填充一起绑 —— 只绑几何的话,一个 1024 视框的 logo
+           会被按 24 缩放,放大四十多倍,屏幕上什么也看不见。 -->
+      <pc:LucideIcon Width="13" Height="13"
+                     Data="{Binding TabIcon.Geometry}"
+                     ViewBoxSize="{Binding TabIcon.ViewBoxSize}"
+                     Fill="{Binding TabIcon.Fill}"
+                     IsVisible="{Binding TabIcon, Converter={x:Static ObjectConverters.IsNotNull}}"
                      Foreground="{DynamicResource VelaAccent}" />
       <TextBlock Text="{Binding Title}" VerticalAlignment="Center" ToolTip.ShowDelay="250"
                  ToolTip.Placement="Pointer" ToolTip.Tip="{Binding Tooltip}" />

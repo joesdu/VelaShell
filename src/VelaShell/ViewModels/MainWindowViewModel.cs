@@ -3924,7 +3924,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     viewModel.RemoteFiles.InvokeProtocolAction = (actionId, path) =>
                         _pluginProtocols.InvokeActionAsync(sessionId, actionId, path, CancellationToken.None);
                 }
-                var document = new SftpDocument(viewModel);
+                // 插件文件协议(S3 …)的标签图标由插件自报;没给就退回通用插头。
+                var document = new SftpDocument(viewModel) { PluginTabIcon = descriptor?.Icon };
                 ui.HandOver(document);
                 TrackDocumentSession(sessionId, profile.Id, SessionStatus.Connected);
                 return document;
@@ -4042,6 +4043,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         CancellationToken cancellationToken)
     {
         TerminalType terminalType = TerminalTypeExtensions.FromTermName(SessionTerminalSettings.TerminalType(profile, settings));
+        // 标签页图标由插件自报(串口的接口字形、Telnet 的…),没给就退回通用插头。
+        // 放在这里而不是建标签处:那时协议还没解析,拿不到描述符。
+        tab.PluginTabIcon = registration.Descriptor.Icon;
         // 初始行列取模拟器当前值:标签刚建出来还没布局过时它是默认值,
         // 真实尺寸随后由控件的 Resize 通知补上(Telnet 会重发一次 NAWS)。
         var options = new ProtocolTerminalOptions(
@@ -4141,10 +4145,12 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         ui.BeginAttempt();
 
         bool allowsAnonymous = false;
+        // 描述符要活到建文档那一步 —— 标签页图标也从它身上取(descriptor.Icon)。
+        WorkspaceDescriptor? descriptor = null;
         if (_protocolRegistry is { } registry)
         {
             // 可能触发插件的惰性激活(用户刚从「最近连接」点开一条 Redis 会话)。
-            WorkspaceDescriptor? descriptor =
+            descriptor =
                 (await registry.ResolveWorkspaceAsync(profile.PluginProtocolId).ConfigureAwait(true))?.Descriptor;
             allowsAnonymous = descriptor?.Features.HasFlag(WorkspaceFeatures.AnonymousAccess) == true;
             if (descriptor is { DisplayName.Length: > 0 })
@@ -4197,7 +4203,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     await RemoveWorkspaceTunnelAsync(tunnelId).ConfigureAwait(true);
                     throw;
                 }
-                var document = new PluginWorkspaceDocument(current, session.SessionId, session.TypeName, session.Document);
+                var document = new PluginWorkspaceDocument(
+                    current, session.SessionId, session.TypeName, session.Document, descriptor?.Icon);
                 if (tunnelId != Guid.Empty)
                 {
                     _workspaceTunnels[session.SessionId] = tunnelId;
