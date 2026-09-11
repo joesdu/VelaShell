@@ -4061,6 +4061,15 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="PluginManager_Install"><value>.vpx 설치…</value></data>
   <data name="PluginManager_Uninstall"><value>제거</value></data>
   <data name="PluginManager_Reload"><value>다시 로드</value></data>
+  <data name="PluginManager_UpdateTo"><value>{0}(으)로 업데이트</value></data>
+  <data name="PluginManager_UpdateNeedsHost"><value>새 버전 {0}이(가) 있지만 더 새로운 VelaShell이 필요합니다({1}).</value></data>
+  <data name="PluginManager_UpdateAll"><value>모두 업데이트</value></data>
+  <data name="PluginManager_CheckUpdates"><value>업데이트 확인</value></data>
+  <data name="PluginManager_CheckingUpdates"><value>플러그인 업데이트를 확인하는 중…</value></data>
+  <data name="PluginManager_NoUpdates"><value>모든 플러그인이 최신입니다.</value></data>
+  <data name="PluginManager_UpdatesFound"><value>플러그인 {0}개에 새 버전이 있습니다.</value></data>
+  <data name="PluginManager_Updating"><value>“{0}” 업데이트 중…</value></data>
+  <data name="PluginManager_UpdateFailed"><value>업데이트 실패: {0}</value></data>
   <data name="PluginManager_WaitingForDebugger"><value>플러그인 "{0}"의 호스트 프로세스가 디버거 연결을 기다리는 중입니다(프로세스 ID {1}).</value></data>
   <data name="PluginManager_Installed"><value>"{0}"을(를) 설치했습니다.</value></data>
   <data name="PluginManager_InstallFailed"><value>설치 실패: {0}</value></data>

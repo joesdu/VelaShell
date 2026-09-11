@@ -4,8 +4,26 @@ using Avalonia.Threading;
 using ReactiveUI;
 using VelaShell.Core.Resources;
 using VelaShell.Infrastructure.Plugins;
+using VelaShell.Infrastructure.Plugins.Market;
+using VelaShell.Services.Update;
 
 namespace VelaShell.ViewModels;
+
+/// <summary>一行插件在「有没有新版」这件事上的处境。</summary>
+public enum PluginUpdateState
+{
+    /// <summary>还没查过,或者商店上没有这个插件(旁装的、私有的、应用自带的)。</summary>
+    Unknown,
+
+    /// <summary>查过了,本地这一版就是最新的。</summary>
+    UpToDate,
+
+    /// <summary>有新版,而且这台宿主装得上。</summary>
+    Available,
+
+    /// <summary>有新版,但宿主太旧 —— 得先升级 VelaShell。</summary>
+    BlockedByHost
+}
 
 /// <summary>插件管理页里的一行。</summary>
 public sealed class PluginRowViewModel(PluginDescriptor descriptor, bool hasTerminalGrant)
@@ -105,6 +123,37 @@ public sealed class PluginRowViewModel(PluginDescriptor descriptor, bool hasTerm
     public string PublisherText =>
         HasPublisher ? Strings.Format("PluginManager_PublisherPinned", PublisherFingerprint!) : "";
 
+    /// <summary>商店上的最新版本号;没有比本地更新的版本时为 <see langword="null" />。</summary>
+    public string? AvailableVersion { get; init; }
+
+    /// <summary>这一行的更新处境。</summary>
+    public PluginUpdateState UpdateState { get; init; }
+
+    /// <summary>宿主太旧时缺的那一项(如 <c>VelaShell 0.6.0</c>);其余情况为 <see langword="null" />。</summary>
+    public string? UpdateBlocker { get; init; }
+
+    /// <summary>
+    /// 商店上那一版的发布者,与安装时钉住的是不是同一个。
+    /// </summary>
+    /// <remarks>
+    /// 为真时更新可以直接装 —— 用户当初点头认下的就是这把钥匙。为假(换人了、这一版没签名、
+    /// 或者本机压根没钉住过谁)则必须走完整确认流程,把指纹摆出来让用户自己判断。
+    /// </remarks>
+    public bool PublisherUnchanged { get; init; }
+
+    /// <summary>是否显示「更新到 x.y.z」按钮。</summary>
+    public bool CanUpdate => UpdateState == PluginUpdateState.Available && CanUninstall;
+
+    /// <summary>是否显示「先升级 VelaShell」的提示。</summary>
+    public bool IsUpdateBlocked => UpdateState == PluginUpdateState.BlockedByHost;
+
+    /// <summary>更新按钮文案。</summary>
+    public string UpdateText => Strings.Format("PluginManager_UpdateTo", AvailableVersion ?? "");
+
+    /// <summary>宿主太旧时的提示文案。</summary>
+    public string UpdateBlockedText =>
+        Strings.Format("PluginManager_UpdateNeedsHost", AvailableVersion ?? "", UpdateBlocker ?? "");
+
     /// <summary>卸载按钮文案。</summary>
     [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
     public string UninstallText => Strings.Get("PluginManager_Uninstall");
@@ -118,6 +167,14 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
 {
     private readonly PluginManager _manager;
     private readonly PluginPermissionGate? _gate;
+    private readonly IPluginMarketClient? _market;
+
+    /// <summary>上次问到的商店版本表(按插件 id)。每次刷新列表都拿它比对,不再重新外呼。</summary>
+    private IReadOnlyDictionary<string, PluginMarketVersion> _latest =
+        new Dictionary<string, PluginMarketVersion>(StringComparer.Ordinal);
+
+    /// <summary>检查更新的重入闸。与界面无关,纯粹是"别把同一个请求发两遍"。</summary>
+    private int _checking;
     private readonly Action _onChanged;
     private readonly Action<string, int> _onDebugAttach;
 
@@ -154,6 +211,24 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
     [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
     public string MarketUrl => "https://market.easilynet.top";
 
+    /// <summary>「检查更新」按钮文案。</summary>
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
+    public string CheckUpdatesText => Strings.Get("PluginManager_CheckUpdates");
+
+    /// <summary>「全部更新」按钮文案。</summary>
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
+    public string UpdateAllText => Strings.Get("PluginManager_UpdateAll");
+
+    /// <summary>能不能检查更新(有商店客户端,且这台机器装得了插件)。</summary>
+    public bool CanCheckUpdates => _market is not null && _manager.IsInstallSupported;
+
+    /// <summary>是否存在可以直接装的更新(「全部更新」按钮据此显隐)。</summary>
+    public bool HasUpdates
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
     /// <summary>空态文案。</summary>
     [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
     public string EmptyText => Strings.Get("PluginManager_Empty");
@@ -173,10 +248,17 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
     } = true;
 
     /// <summary>构造并加载。</summary>
-    public PluginManagerViewModel(PluginManager manager, PluginPermissionGate? gate)
+    /// <param name="manager">插件运行时。</param>
+    /// <param name="gate">终端回写授权闸;缺席时不显示撤销入口。</param>
+    /// <param name="market">
+    /// 插件商店的只读客户端;缺席时整个更新检查不存在(headless 测试与离线部署走这条)。
+    /// </param>
+    public PluginManagerViewModel(PluginManager manager, PluginPermissionGate? gate,
+        IPluginMarketClient? market = null)
     {
         _manager = manager;
         _gate = gate;
+        _market = market;
         _onChanged = () => Dispatcher.UIThread.Post(() => _ = ReloadAsync());
         // 等待调试器的隔离插件:把 pid 摆到管理页上。它同时进日志、落 pid 文件,
         // 但开发者此刻多半正开着这个页面,让他去翻日志属于本可以省掉的一步。
@@ -185,6 +267,9 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         _manager.Changed += _onChanged;
         _manager.DebugAttachRequested += _onDebugAttach;
         _ = ReloadAsync();
+        // 打开这个页面的人本来就是来管插件的,此刻问一次商店符合预期;
+        // 其余任何时候都不外呼(见 PRIVACY.md 对每一条出站请求的逐条交代)。
+        _ = CheckUpdatesAsync();
     }
 
     /// <summary>切换某插件启停。</summary>
@@ -239,6 +324,70 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         }
     }
 
+    /// <summary>问一次商店:本机装的这些插件有没有新版。结果留在内存里,不重复外呼。</summary>
+    /// <remarks>
+    /// 只把**用户自己装的**插件 id 带出门:应用自带件与开发期挂载的插件商店上根本没有,
+    /// 把它们的 id 一并发出去,多说的每一个字都没有换来任何东西。
+    /// </remarks>
+    public async Task CheckUpdatesAsync()
+    {
+        if (_market is null || Interlocked.CompareExchange(ref _checking, 1, 0) != 0)
+        {
+            return;
+        }
+        try
+        {
+            string[] ids = [.. _manager.Plugins
+                                       .Where(p => p.Manifest is not null && _manager.IsUninstallable(p.Id))
+                                       .Select(p => p.Id)];
+            if (ids.Length == 0)
+            {
+                return;
+            }
+            SetNotice(Strings.Get("PluginManager_CheckingUpdates"));
+            _latest = await _market.GetLatestAsync(ids).ConfigureAwait(false);
+            await ReloadAsync().ConfigureAwait(false);
+            int outdated = _manager.Plugins.Count(p =>
+                ResolveUpdate(p, _manager.IsUninstallable(p.Id)).State
+                    is PluginUpdateState.Available or PluginUpdateState.BlockedByHost);
+            SetNotice(outdated == 0
+                ? Strings.Get("PluginManager_NoUpdates")
+                : Strings.Format("PluginManager_UpdatesFound", outdated));
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _checking, 0);
+        }
+    }
+
+    /// <summary>把某一行对应的新版包下到临时目录并返回路径;失败时返回 <see langword="null" />。</summary>
+    /// <remarks>
+    /// **只下载,不安装。** 装不装、要不要先问一句,由窗口按发布者变没变来决定 ——
+    /// 那一问要摆两个指纹给用户看,只有界面问得出口。
+    /// </remarks>
+    /// <param name="row">要更新的那一行。</param>
+    public async Task<string?> DownloadUpdateAsync(PluginRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        if (_market is null || row.AvailableVersion is not { Length: > 0 } version)
+        {
+            return null;
+        }
+        string destination = Path.Combine(
+            Path.GetTempPath(), "velashell-plugin-updates", $"{row.Id}-{version}.vpx");
+        SetNotice(Strings.Format("PluginManager_Updating", row.DisplayName));
+        try
+        {
+            await _market.DownloadAsync(row.Id, version, destination).ConfigureAwait(false);
+            return destination;
+        }
+        catch (Exception ex)
+        {
+            SetNotice(Strings.Format("PluginManager_UpdateFailed", ex.Message));
+            return null;
+        }
+    }
+
     /// <summary>校验插件包并返回发布者信任状态与公钥指纹。</summary>
     public PluginPackageTrustInfo InspectPackageTrust(string vpxPath) =>
         _manager.InspectPackageTrust(vpxPath);
@@ -286,10 +435,20 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         foreach (PluginDescriptor descriptor in descriptors)
         {
             bool grant = _gate is not null && await _gate.HasGrantAsync(descriptor.Id).ConfigureAwait(false);
+            bool uninstallable = _manager.IsUninstallable(descriptor.Id);
+            string? pinned = await _manager.GetPinnedPublisherFingerprintAsync(descriptor.Id).ConfigureAwait(false);
+            (PluginUpdateState state, string? available, string? blocker) = ResolveUpdate(descriptor, uninstallable);
             rows.Add(new(descriptor, grant)
             {
-                CanUninstall = _manager.IsUninstallable(descriptor.Id),
-                PublisherFingerprint = await _manager.GetPinnedPublisherFingerprintAsync(descriptor.Id).ConfigureAwait(false)
+                CanUninstall = uninstallable,
+                PublisherFingerprint = pinned,
+                UpdateState = state,
+                AvailableVersion = available,
+                UpdateBlocker = blocker,
+                PublisherUnchanged = pinned is not null
+                                     && _latest.TryGetValue(descriptor.Id, out PluginMarketVersion? offered)
+                                     && offered.PublisherFingerprint is { Length: > 0 } fingerprint
+                                     && string.Equals(fingerprint, pinned, StringComparison.OrdinalIgnoreCase)
             });
         }
         void Apply()
@@ -300,6 +459,7 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
                 Plugins.Add(row);
             }
             IsEmpty = Plugins.Count == 0;
+            HasUpdates = Plugins.Any(p => p.CanUpdate);
         }
         if (Dispatcher.UIThread.CheckAccess())
         {
@@ -309,6 +469,36 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         {
             await Dispatcher.UIThread.InvokeAsync(Apply);
         }
+    }
+
+    /// <summary>把「商店上那一版」与「本地这一版」对起来:该不该升、升不升得上去。</summary>
+    /// <remarks>
+    /// 版本比较走 <see cref="UpdateVersion" />(应用自更新用的那一套),**不是**
+    /// <c>PluginManager</c> 内部判 minHostVersion 的那个 IsOlder —— 后者整段丢掉预发布后缀,
+    /// 本地装着 <c>1.2.0-beta.1</c> 时它会认为商店上的 <c>1.2.0</c> 不算更新。
+    /// </remarks>
+    /// <param name="descriptor">本地插件。</param>
+    /// <param name="uninstallable">是不是用户自己装的(只有这种才谈得上更新)。</param>
+    private (PluginUpdateState State, string? Available, string? Blocker) ResolveUpdate(
+        PluginDescriptor descriptor, bool uninstallable)
+    {
+        if (!uninstallable
+            || descriptor.Manifest is not { } manifest
+            || !_latest.TryGetValue(descriptor.Id, out PluginMarketVersion? latest))
+        {
+            // 应用自带、开发期挂载、商店上查不到的,都没有"更新"这个动作。
+            return (PluginUpdateState.Unknown, null, null);
+        }
+        if (!UpdateVersion.TryParse(latest.Version, out UpdateVersion remote)
+            || !UpdateVersion.TryParse(manifest.Version, out UpdateVersion local)
+            || remote.CompareTo(local) <= 0)
+        {
+            return (PluginUpdateState.UpToDate, null, null);
+        }
+        string? blocker = _manager.DescribeUpdateBlocker(latest.ApiLevel, latest.MinHostVersion, latest.MinSdkVersion);
+        return blocker is null
+            ? (PluginUpdateState.Available, latest.Version, null)
+            : (PluginUpdateState.BlockedByHost, latest.Version, blocker);
     }
 
     /// <inheritdoc />

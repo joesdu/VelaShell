@@ -9,7 +9,7 @@ using VelaShell.TestPlugin;
 
 namespace VelaShell.Infrastructure.Tests.Plugins;
 
-/// <summary>卸载与 .vpx 安装:仅用户目录可卸载,zip-slip 防护,覆盖安装,清数据。</summary>
+/// <summary>卸载与 .vpx 安装:仅用户目录可卸载,zip-slip 防护,覆盖安装保数据,卸载才清数据。</summary>
 [TestClass]
 [TestCategory("Plugins")]
 public class PluginInstallUninstallTests
@@ -86,22 +86,22 @@ public class PluginInstallUninstallTests
         });
 
     /// <summary>把夹具插件摊成一个待打包目录(plugin.json + dll)。</summary>
-    private static string StagePlugin(string id, string manifestExtras = "")
+    private static string StagePlugin(string id, string manifestExtras = "", string version = "1.0.0")
     {
         string stage = Path.Combine(Path.GetTempPath(), "velashell-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(stage);
         File.Copy(typeof(TestFixturePlugin).Assembly.Location, Path.Combine(stage, "VelaShell.TestPlugin.dll"));
         File.WriteAllText(Path.Combine(stage, "plugin.json"), $$"""
-            { "id": "{{id}}", "version": "1.0.0", "displayName": "Packaged", "author": "Test Author",
+            { "id": "{{id}}", "version": "{{version}}", "displayName": "Packaged", "author": "Test Author",
               "entry": "VelaShell.TestPlugin.dll"{{manifestExtras}} }
             """);
         return stage;
     }
 
     /// <summary>打一个真正的 .vpx(专属容器:魔数 + 摘要 + 掩码)。</summary>
-    private static string BuildVpx(string id = "acme.packaged", string manifestExtras = "")
+    private static string BuildVpx(string id = "acme.packaged", string manifestExtras = "", string version = "1.0.0")
     {
-        string stage = StagePlugin(id, manifestExtras);
+        string stage = StagePlugin(id, manifestExtras, version);
         string vpx = stage + ".vpx";
         VpxContainer.Pack(stage, vpx);
         return vpx;
@@ -480,6 +480,33 @@ public class PluginInstallUninstallTests
         Assert.AreEqual(PluginState.Active, manager.Plugins.Single(p => p.Id == id).State);
         await manager.DisposeAsync();
     }
+
+    [TestMethod]
+    public async Task InstallFromVpx_OverAnInstalledVersion_KeepsThePluginsData()
+    {
+        const string id = "acme.upgrade";
+        PluginManager manager = CreateManager();
+        await manager.StartAsync();
+        await manager.InstallFromVpxAsync(BuildVpx(id), allowUntrustedPackage: true);
+
+        // 插件攒在自己数据目录里的东西 —— AI 插件的供应商配置与聊天记录就在这一层。
+        string dataDirectory = Path.Combine(_dataRoot, id);
+        Directory.CreateDirectory(dataDirectory);
+        string keepsake = Path.Combine(dataDirectory, "settings.json");
+        await File.WriteAllTextAsync(keepsake, """{"provider":"kept"}""");
+
+        await manager.InstallFromVpxAsync(BuildVpx(id, version: "2.0.0"), allowUntrustedPackage: true);
+
+        Assert.IsTrue(File.Exists(keepsake), "升级换的是插件的代码,用户攒下的东西必须原样还在。");
+        Assert.DoesNotContain(id, _dataStore.Purged, "覆盖安装不该走卸载那条清库路径。");
+        PluginDescriptor upgraded = manager.Plugins.Single(p => p.Id == id);
+        Assert.AreEqual("2.0.0", upgraded.Manifest!.Version, "跑的应该是新版。");
+        Assert.AreEqual(PluginState.Active, upgraded.State);
+        Assert.IsFalse(Directory.Exists(Path.Combine(_userRoot, ".upgrade")),
+            "换完就该把旧版备份连同那个窝一起收掉,别在插件根下养垃圾。");
+        await manager.DisposeAsync();
+    }
+
 
     [TestMethod]
     public async Task InstallFromVpx_UpgradeFromTheSamePublisher_InstallsWithoutAskingAgain()

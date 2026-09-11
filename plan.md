@@ -4131,3 +4131,109 @@ AI 插件把聊天标签、协作窗口、模型配置/MCP 那一组对话框统
 
 `dotnet build VelaShell.slnx -c Debug -warnaserror` 零警告零错误;
 `dotnet test VelaShell.slnx`(按 CI 那条过滤)**3381 通过 / 5 跳过 / 0 失败**。
+
+## ✅ 71. 2026-09-11 插件更新:先把「升级会毁数据」堵上,再谈检查更新
+
+起点是一个问题 ——「插件管理界面能不能检查版本、更新插件」。查下来的结论是:
+市场、CLI、宿主自更新三边的基础设施已经够用了,但**这条路上有个坑必须先填**。
+
+### 一、覆盖安装会把插件数据清光
+
+`InstallFromVpxAsync` 撞上同 id 已装时,走的是完整卸载:
+`UninstallAsync` → `PurgePluginDataAsync` → `IPluginDataStore.PurgeAsync`
+(**KV + 机密 + 时序 measurement 整体删除**)外加删掉数据目录。
+
+对 AI 插件意味着:供应商配置(Storage)、API Key 与 OAuth 令牌(Secrets)、
+进时序库的聊天记录 —— **升一版全部归零**。
+
+对照组很说明问题:**`vela-plugin update` 那条路一直是对的**。它的 `PluginInstaller.Swap`
+只做「旧目录备份 → 换名 → 失败回滚」,从不碰插件数据 —— 它根本不知道数据存在。
+同一个升级动作,走命令行数据还在,走管理页数据没了。
+
+而既有用例 `InstallFromVpx_SameId_ReplacesOldVersion` 只断言「替换成功、状态是 Active」,
+没有任何人守着数据。
+
+改法照抄 CLI:
+
+- `DetachForUpgradeAsync` —— 停用、释放命令能力、撤协议登记、移出集合。
+  与 `UninstallAsync` 的区别全在**没做**的那三件事:不删目录、不清数据、不动安装收据。
+  收据要留到新版那张落盘为止 —— 换名失败时它还得替搬回来的旧版作数。
+- `MoveAsideForUpgrade` —— 旧目录挪进 `<插件根>/.upgrade/<id>-<guid>`。
+  放在插件根**下面**是因为换名要求同卷;而发现期只认根下一层里带 `plugin.json` 的目录,
+  备份被套了一层,扫不进来,不会变成一个与正版撞 id 的幽灵插件。
+- 失败回滚 —— 删掉半成品新目录,把旧版搬回原位,`AttachAsync` 重新挂上。
+
+**为什么必须是原子换名,而不是「先删再装」**:`PurgeUninstalledDataAsync` 会把数据根下
+每个「没有对应插件目录」的子目录当作卸载残留整个删掉。升级中途崩溃留下一个没有目录的 id,
+下次启动数据就被当残留清掉了。换名把这个窗口关死。
+
+新用例 `InstallFromVpx_OverAnInstalledVersion_KeepsThePluginsData` 做过反证:
+把这次的修复 stash 掉,它立刻红。
+
+### 二、商店侧:按 id 问,不做全量索引
+
+新端点 `GET /api/plugins/latest?ids=a.b,c.d[&pre=true]`(匿名,上限 200 个 id)。
+
+**刻意不做 `latest.json` 那样的全量索引。** 插件多起来以后,让每个客户端为了看几个插件的
+版本去下整张表,服务端和客户端两头都在做无用功;按 id 问,请求规模只跟本机装了几个插件有关,
+与商店有多大无关。
+
+选版规则抽成纯函数 `SelectLatest` 并单测,与 `vela-plugin` 的 `SelectVersion`
+**逐条对齐**(含末尾那条「一个正式版都没有时放宽到最新预发布」—— 宿主自更新的稳定通道
+也是这么兜的)。三处口径不同会得到「命令行说该升、管理页说没变」这种没法解释的结果。
+
+**`Plugin.LatestVersion` 不能拿来顶替它**:那个字段按 semver 取最高、预发布也算在内,
+作者一发 beta,所有人的「最新版」就成了那个 beta。
+
+响应带 `publisherFingerprint`,宿主因此能在**下载之前**判断这一版换没换发布者 ——
+换了人的那一版不该悄悄装上去,而「先下完再被拒」白费的是用户的流量。
+
+### 三、宿主侧:打开管理页时问一次
+
+`IPluginMarketClient` / `HttpPluginMarketClient` 落在 Infrastructure,规矩与
+`HttpAnnouncementFeed` 一套:只走 https、响应体有上限、元数据短超时、失败不抛只留一行
+`Trace`,出站自动继承 `VelaWebProxy` 装的进程级代理。不发账号、不发令牌、不发安装标识符。
+
+几处值得记下来的判断:
+
+- **版本比较用 `UpdateVersion`(应用自更新那一套),不是 `PluginManager.IsOlder`。**
+  后者整段丢掉预发布后缀 —— 本地装着 `1.2.0-beta.1` 时,它会认为商店上的 `1.2.0`
+  「不算更新」。顺带记一笔:全仓目前有**四套**版本比较口径(`PluginManager.IsOlder`、
+  `UpdateVersion`、CLI 的 `VersionOrder`、市场的 `SemVerComparer`),彼此并不一致,
+  已记进 `feature-plan.md`。
+- **兼容性复用发现期那三闸**(`DescribeUpdateBlocker` 与 `Describe` 同一套判据)。
+  宿主太旧时**给提示、不给按钮** —— 摆一个按下去必然失败的按钮比不摆更糟,
+  用户会反复点它,而失败的原因跟插件一点关系都没有。
+- **发布者没变就直接装**(指纹与安装时钉住的那个对得上);换了人、或者这一版干脆没签名,
+  一律走完整确认流程。为此把 `Install_Click` 里那段「该问的都问过」抽成
+  `InstallWithPromptsAsync`,手动装包与更新共用一条 —— 各写一份的话,
+  迟早有一份会漏掉其中一问,而漏掉的那一问正是拦住冒名覆盖安装的闸。
+- **只在打开插件管理页时外呼一次**,不在启动时、也不在后台定时。`PRIVACY.md`
+  中英两份都补了对应的一条(它逐条交代每一个出站请求,新增一条就必须写进去)。
+
+### 四、文档
+
+按 `AGENTS.md` 第二节,velashell-docs 的 `zh/` 与 `en/` 两棵树同步改了三对文件:
+
+- `plugins/STATUS.md` —— 「插件商店 / 插件源」整行**从「❌ 未开始」挪进「⏳ 部分完成」**
+  (商店早已上线、宿主现在也有客户端了,留在「未开始」是这份文档在骗人),
+  并把那格里「仍未做:发布者签名验证」改准 —— 验签与发布者连续性其实早就落地了,
+  缺的是**信任根**。同页那句「下载不在应用内」也不再成立:浏览仍在浏览器,更新已经在应用内。
+- `plugins/10-packaging-and-distribution.md` —— 蓝图头部补一条 2026-09-11 实现注记,
+  逐条列出与 §2/§3 的出入:没有静态签名索引(改按 id 批量问)、不做后台定时检查、
+  默认不吃预发布、自动更新与降级仍然不做、升级不再清数据。
+- `cli/cli.md` —— `update` 一节点明宿主管理页用的是**同一套选版规则**;
+  「自建商店」那段补上第四个必须提供的只读接口。
+
+市场仓库的 `docs/` 尚未并入 velashell-docs(那边 `AGENTS.md` 写明是唯一例外),
+新端点记在它自己的 `docs/api.md` 公开接口表里。
+
+**没做的一件事**:`host/交互与界面规格.md` 里**从来就没有插件管理页这一节** ——
+不是缺这次新增的几个按钮,是整个窗口都没写过。补它是新写一节规格,不该塞进这个改动里,
+已记进 `feature-plan.md`。
+
+### 五、验收
+
+`dotnet build VelaShell.slnx` 零警告零错误;`dotnet test VelaShell.slnx`
+**3389 通过 / 21 跳过 / 0 失败**。市场侧 `dotnet test VelaShell.Market.slnx`
+**42 通过 / 0 失败**(含 5 条新的选版规则用例)。

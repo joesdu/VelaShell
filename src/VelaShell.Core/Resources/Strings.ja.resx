@@ -4061,6 +4061,15 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="PluginManager_Install"><value>.vpx をインストール…</value></data>
   <data name="PluginManager_Uninstall"><value>アンインストール</value></data>
   <data name="PluginManager_Reload"><value>再読み込み</value></data>
+  <data name="PluginManager_UpdateTo"><value>{0} に更新</value></data>
+  <data name="PluginManager_UpdateNeedsHost"><value>新しいバージョン {0} がありますが、より新しい VelaShell が必要です（{1}）。</value></data>
+  <data name="PluginManager_UpdateAll"><value>すべて更新</value></data>
+  <data name="PluginManager_CheckUpdates"><value>更新を確認</value></data>
+  <data name="PluginManager_CheckingUpdates"><value>プラグインの更新を確認しています…</value></data>
+  <data name="PluginManager_NoUpdates"><value>すべてのプラグインは最新です。</value></data>
+  <data name="PluginManager_UpdatesFound"><value>{0} 個のプラグインに新しいバージョンがあります。</value></data>
+  <data name="PluginManager_Updating"><value>「{0}」を更新しています…</value></data>
+  <data name="PluginManager_UpdateFailed"><value>更新に失敗しました: {0}</value></data>
   <data name="PluginManager_WaitingForDebugger"><value>プラグイン「{0}」のホストプロセスがデバッガーの接続を待機しています(プロセス ID {1})。</value></data>
   <data name="PluginManager_Installed"><value>「{0}」をインストールしました。</value></data>
   <data name="PluginManager_InstallFailed"><value>インストール失敗: {0}</value></data>
