@@ -136,6 +136,12 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             ? ConnectionAccent.BrushForProfile(profile)
             : Avalonia.Media.Brushes.Transparent;
 
+    /// <summary>
+    /// 标签页上的协议图标(SSH / 插件协议终端)。本地终端无配置,返回 null —— 标签不画图标,
+    /// 这本身就是「这不是一条远程会话」的信号。
+    /// </summary>
+    public Avalonia.Media.Geometry? TabIcon => ConnectionIcon.ForProfile(Profile);
+
     // ---- 同步输入频道(标签右键菜单 → 同步输入,对等转发见 SyncInputCoordinator) ----
 
     /// <summary>所属同步输入频道;null = 未加入。经 <see cref="JoinSyncChannel" /> / <see cref="LeaveSyncChannel" /> 变更。</summary>

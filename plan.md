@@ -3936,3 +3936,79 @@ warning MMDBSG001: Type '...MmdbIpGeolocationService.MmdbRecord' is not accessib
 
 `dotnet build VelaShell.slnx -c Debug -warnaserror` 零警告零错误;
 `dotnet test VelaShell.slnx`(按 CI 那条过滤)**3364 通过 / 5 跳过 / 0 失败**。
+
+---
+
+## ✅ 68. 2026-09-10 标签页的协议图标:颜色答「哪一台」,图标答「哪一种」(用户需求)
+
+> 「为我的 SSH 链接的选项卡标签页添加一个图标,可以使用 square-terminal,同时 SFTP、FTP 等
+> 可以使用 hard-drive,redis 可能要使用 REDIS.svg,lucide 目前没有 redis 的图标,
+> 然后串口使用图标 usb-c-port。是否需要调整插件让其支持配置或者设置标签页图标的功能。」
+
+摸现状先摸出一件与预期相反的事:**SFTP 与插件工作台的标签早就有图标了**,
+`SftpDockTabItem` 写死 `Icon.folder-open`、`WorkspaceDockTabItem` 写死 `Icon.hard-drive`。
+真正一个图标都没有的是 SSH 终端标签。而那两个写死的值本身也有问题:
+
+- Redis 的工作台标签顶着 `hard-drive`,与 SFTP 标签**撞不撞**取决于运气 —— 这一版里恰好要撞,
+  因为用户点名 SFTP / FTP 用的就是 hard-drive;
+- `folder-open` 画的是「打开文件夹」这个**动作**,而标签要答的是「这是哪一种连接」。
+
+### 一、颜色与图标答的不是同一个问题
+
+`ConnectionAccent` 已经在标签上了,按 profileId 哈希(或用户指定)给一条色带,答的是
+**「哪一台机器」**。新加的 `Services/ConnectionIcon` 答的是**「哪一种连接」**。
+两者都挂在同一条标签上,但一旦混起来就都失效 —— 颜色被协议占用就分不出机器,
+图标按 id 随机就分不出类型。所以是并排的两个服务,不是一个。
+
+映射只有三条,而且**只认宿主内建的协议**:
+
+| 连接类型 | 图标 |
+| --- | --- |
+| SSH | `Icon.square-terminal` |
+| SFTP / FTP | `Icon.hard-drive` |
+| 插件协议(Redis / 串口 / S3 …) | `Icon.plug`(通用插头) |
+| 本地终端(无配置) | 不画,连位置一起收掉 |
+
+本地终端那条不是省事:标签里留一块空,与旁边有图标的标签对不齐,看着像渲染坏了。
+`IsVisible` 绑 `ObjectConverters.IsNotNull`,收掉整个位置。
+
+### 二、插件的图标不进宿主的对照表
+
+用户问的「是否需要调整插件」——**需要,而且只能那么做**。
+宿主里放一张「`velashell.redis` → Redis 标」的表是最快的,但那张表**第三方插件永远进不去**,
+与 `Protocols` / `Workspaces` 这套能力面存在的意义正相反(§见 feature-plan 的排期纪律)。
+
+所以契约加在 SDK 一侧,`ProtocolDescriptor` 与 `WorkspaceDescriptor` 各三个字段:
+`IconPathData` / `IconViewBoxSize` / `IconIsFilled`。传**路径数据**而不是资源键 ——
+这不是新发明,`PanelTitleAction.IconPathData` 早就是这么定的,理由一字不改:
+隔离进程里没有宿主的 `Icon.*` 资源字典。
+
+⚠️ **这一段还不能用**:按 velashell-plugin-sdk 那边 `AGENTS.md` 的纪律,
+「发版是人的决定」—— 契约写好了,版本号没动,也没造本地包。
+在 SDK 真的发布之前,宿主与插件两边都不抬包版,Redis / 串口的标签**照旧画通用插头**。
+三步的顺序与各自要填什么,记在 `feature-plan.md` 的插件生态那一节。
+
+### 三、实心 logo 与描边图标是两种画法
+
+用户给的 REDIS.svg 是**填充式**的、视框 `0 0 1030 1024`。而 `LucideIcon` 干的事是
+「按 24×24 视框缩放,再用 2/24 的圆头画笔**描边**」。直接喂进去会连撞两堵墙:
+按 24 缩放等于把它放大四十多倍,以及用描边去画实心图形得到的是它的**轮廓线**,一团糊。
+
+于是控件开了两个口子:`Fill`(非空则填充、**且不再描边**)与 `ViewBoxSize`(默认 24)。
+两个都只为插件的品牌图标存在,宿主自己的图标集一律不碰它们 —— lucide 的描边语言不该被破坏。
+`ViewBoxSize` 取到非正数时按 24 处理:一个写错的值不该让整条标签条的图标消失。
+
+### 四、验收:资源键写错是不会报错的
+
+`{StaticResource Icon.*}` 的键写错**没有任何编译期报错**,取不到就是不画 ——
+静默少一个图标。同一个教训 `ConnectingDocumentViewUiTests` 上已经吃过一次,
+所以这次的 `SessionTabIconUiTests` 把三个键都放进真正的应用资源字典里解析一遍。
+
+新增用例 11 条。**做过反证**:把 `ConnectionIcon.SshKey` 改成一个不存在的键,
+`SessionTabIconUiTests` 立刻红 2 条 —— 不是"怎么改都绿"的假用例。
+
+「三种字形互不相同」那一条比的是**解析出来的几何**而不是那三个常量键:
+后者是编译期常量,分析器(MSTEST0032)会判成恒真的废断言(§见 63 里同样的坑)。
+
+`dotnet build VelaShell.slnx -c Debug -warnaserror` 零警告零错误;
+`dotnet test VelaShell.slnx`(按 CI 那条过滤)**3375 通过 / 5 跳过 / 0 失败**。

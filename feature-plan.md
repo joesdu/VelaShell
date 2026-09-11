@@ -34,18 +34,18 @@
 
 ## 📊 待办分布
 
-**欠账**（⏳ + 🚧 + 💡，共 22 项）与**路线图**（共 29 项）分开计：
+**欠账**（⏳ + 🚧 + 💡，共 23 项）与**路线图**（共 29 项）分开计：
 
 ```mermaid
 pie showData
-    title 欠账 —— 现状与代码对不上的部分（22 项）
+    title 欠账 —— 现状与代码对不上的部分（23 项）
     "P0 存了但不生效" : 5
     "安全与凭据" : 5
     "会话与工作区" : 3
     "数据与可观测" : 3
     "终端与协议" : 3
     "文件传输" : 2
-    "插件生态" : 1
+    "插件生态" : 2
 ```
 
 ```mermaid
@@ -63,6 +63,7 @@ pie showData
 > 「文件传输」算 2 项 —— 那一节的「传输失败重试」是指回 P0 表的交叉引用、不重复计数，「远程编辑的三个入口已统一」是 📄 文档待同步、不计入欠账。
 > 「会话与工作区」从 4 降到 3：会话标签颜色已在 `b9ae31f` 落地（见该节）。
 > 「安全与凭据」从 6 降到 5：SSH 证书认证已在 `bbfa1877` 落地（见该节）。
+> 「插件生态」从 1 升到 2：新增「插件自报标签页图标」—— 契约已写、等 SDK 发版（见该节）。
 
 ---
 
@@ -145,6 +146,7 @@ pie showData
 | 状态 | 优先级 | 项 | 现状 | 要做什么 |
 | :---: | :---: | --- | --- | --- |
 | ✅ | — | ~~容器管理插件（DockerPanel）~~ | **已完成**（2026-09-03，`0.3.1`）。独立仓库 [VelaShell.Plugin.DockerPanel](https://github.com/VelaShellLabs/VelaShell.Plugin.DockerPanel)，从插件商店按需安装 | — |
+| ⏳ | 🟠 P1 | **插件自报标签页图标（等 SDK 发版）** | 契约已就位、**未发布**：`ProtocolDescriptor` / `WorkspaceDescriptor` 各加了 `IconPathData` + `IconViewBoxSize` + `IconIsFilled`（[velashell-plugin-sdk PR](https://github.com/VelaShellLabs/velashell-plugin-sdk)，按该仓 `AGENTS.md` 的纪律**没有动版本号**）。宿主侧渲染能力也已就位（`LucideIcon` 的 `Fill` / `ViewBoxSize`，`plan.md` §68）。现状是 Redis / 串口 / S3 的标签一律画通用插头 | 三步，**必须按序**：①发一版 SDK；②`velashell-plugins` 抬包版并填图标 —— 串口用 lucide `usb-c-port`（`M6 12h12 M6 8h12a4 4 0 0 1 0 8H6a4 4 0 0 1 0-8Z`），Redis 用品牌 logo（实心，`IconViewBoxSize = 1030`、`IconIsFilled = true`）；③宿主抬包版，`ConnectionIcon` 改成「描述符优先、通用插头兜底」。⚠️ 宿主里**不要**建「插件 id → 图标」对照表 —— 第三方插件永远进不去那张表 |
 | ⏳ | 🟡 P2 | **AI 插件的 MCP 服务端能力面对齐** | 对外 MCP 走 `AgentToolbox` 产出工具，但那条路上**没有审批界面** | 现状是「询问」模式等于一律拒绝写操作 —— 这是刻意的（`plan.md` §33-四）。可选的增强：带外审批（推到 IM 渠道或桌面通知）后再放行 |
 | 📄 | 🟠 P1 | **发布者连续性已落地** | 同一个 id 的后续版本必须仍由钉住的那把私钥签名，换钥/去签名要用户看过两个指纹再点头；管理页每行显示钉住的指纹；旁装（`vela-plugin install`）不受影响（`plan.md` §57）。代码已落地，**velashell-docs 还没跟上** | 在 `{zh,en}` 两棵树里补：`plugins/STATUS.md` 签名验证那一格改成「验签 + 连续性已做、信任根未做」；`cli/cli.md` 与 `templates/dev-guide.md` 补一句「旁装的代价现在多一条：钉不住发布者，宿主也就无从拦截冒名的覆盖安装」；`host/交互与界面规格.md` 补管理页那行指纹与换发布者的确认框 |
 
@@ -208,7 +210,7 @@ pie showData
 | :---: | :---: | --- | --- | --- |
 | ⏳ | 🟠 P1 | **命名布局模板（工作区）** | Royal TS / mRemoteNG / Tabby | 「打开这一组机器并按这个分屏排好」。现有的 [Dock 布局持久化](#-会话与工作区)只想着「恢复上次」，其实**同一套序列化能力做成命名模板价值大得多**：VelaDock 的模型层是纯 INPC、本来就可单测可序列化，缺的只是 `布局节点 ↔ profileId` 的映射与一个模板列表 |
 | ⏳ | 🟡 P2 | **标签（Tags）检索与过滤** | Termius / Royal TS | ⚠️ **`SessionProfile.Tags` 已经存在也能编辑**（`ConnectionProfileViewModel.cs:147`），但**全仓没有任何地方消费它** —— 这是一个已经存在的「存了但不生效」。补法很便宜：会话树加过滤框、命令面板按 tag 匹配（`PaletteScorer` 现成） |
-| ⏳ | 🟡 P2 | **会话标签页图标** | Xshell / Termius | 颜色已经做完（见上），图标是同一处扩展：`TerminalOverrides` 加一个图标 id，`LucideIcon` 的图标集现成。⚠️ 记得 `SessionProfile` 是**逐字段手写拷贝**，新增字段要同步五处（`plan.md` §37 列了名单） |
+| 🚧 | 🟡 P2 | **会话标签页图标** | Xshell / Termius | **按协议的默认图标已完成**（2026-09-10，`plan.md` §68）：SSH → `square-terminal`、SFTP / FTP → `hard-drive`、插件协议 → 通用插头，由 `Services/ConnectionIcon` 统一决定。⏳ 还差**按会话自定义**那一半：`TerminalOverrides` 加一个图标 id，让用户像挑颜色一样挑图标。⚠️ 记得 `SessionProfile` 是**逐字段手写拷贝**，新增字段要同步五处（`plan.md` §37 列了名单） |
 | ⏳ | 🟡 P2 | **整组批量操作** | MobaXterm | 对一个分组批量连接 / 批量下发命令。同步输入的频道模型（`SyncInputCoordinator`）已经是对等广播，按分组建频道是自然延伸 |
 | ⏳ | 🟢 P3 | **标签条上的「+」新建按钮** | Windows Terminal / Chrome | 分屏后「在**这一格**里新开一个会话」目前只能靠 `Ctrl+T`（`plan.md` §64 之后它已经落到活动窗格，够用但不直观）。⚠️ 卡点不在按钮而在**分层**：`Docking/` 不认识"会话"这个概念，要么 `DockWorkspaceControl` 抛一个 `NewTabRequested(group)` 由宿主接，要么把新建入口做成注入的回调 —— **别让停靠层直接去 new 一个终端** |
 | ⏳ | 🟢 P3 | **纵排标签条的溢出控件** | — | 标签条停到左/右侧时，溢出三连钮由 `WidthOverflowConverter` 按**宽度**判定，因而永不出现；滚动按钮的 `ScrollLeft/Right_Click` 也只动 `Offset.X`。`plan.md` §64 补的滚轮两轴都认，功能上不再是死路，但按钮这一路仍是横排专用。做的时候连那个转换器一起改成按轴取值 |
@@ -302,6 +304,7 @@ pie showData
 | ✅ | `plan.md` §33 | ~~新增 `{zh,en}/plugins/协作接入.md` 并在 STATUS 登记~~ —— **已完成** |
 | ⏳ | `en/` 树 | `zh/` 有 **7 篇** `en/` 里没有的文档：Redis 调研、S3 两篇、系统密钥链调研，以及三份 `release-process.md`。缺口已在 [`en/host/README.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/host/README.md) 与根 README 逐篇列出（不再是**静默**漂移），但翻译本身仍欠着 |
 | ⏳ | `plan.md` §63 | **SSH 证书认证已落地，中英两棵树里各有两处口径还停在「密码 / 私钥」**：`zh/host/架构设计.md:37`（能力表那一行）、`zh/host/交互与界面规格.md:451` 的「认证方式（密码 / 密钥 / 跳板机）」，以及英文镜像 `en/host/architecture-design.md:37` 与 `en/host/interaction-and-ui-specs.md:463`。要补的语义：证书 + 私钥是**两件套**（签名始终由私钥出，证书只是 CA 的背书）、选完证书按 `-cert.pub` 自动补私钥、**证书路径留空是硬错**（私钥还能退回默认密钥，证书没有默认位置可退） |
+| ⏳ | `plan.md` §68 | 标签页协议图标：`zh/host/交互与界面规格.md` 与英文镜像补一句标签条上图标的口径（SSH / 文件协议 / 插件协议三种字形，本地终端不画）。⚠️ SDK 那三个图标字段**等发版后再写进** `{zh,en}/sdk/sdk-reference.md` —— 现在写等于告诉插件作者一个还调不到的 API |
 | ⏳ | `plan.md` §61 | 回滚行数（`设置 → 终端`）的行为补一句：**调小当场生效**，超出上限的历史立刻裁掉、不可恢复；以及它作用于主屏，全屏程序（vim / htop / less）的备用屏恒无回滚，与这个值无关 |
 
 ---

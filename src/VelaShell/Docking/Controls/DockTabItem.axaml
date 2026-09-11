@@ -184,6 +184,16 @@
             <TranslateTransform Y="-1" />
           </Border.RenderTransform>
         </Border>
+        <!-- 协议图标:SSH 是带框的终端字形,插件协议终端(串口/Telnet)是通用的插头。
+             本地终端没有配置,TabIcon 为 null —— 连位置一起收掉,别在标签里留一块空。 -->
+        <pc:LucideIcon Width="13" Height="13" VerticalAlignment="Center"
+                       Data="{Binding Terminal.TabIcon}"
+                       IsVisible="{Binding Terminal.TabIcon, Converter={x:Static ObjectConverters.IsNotNull}}"
+                       Foreground="{Binding Terminal.ConnectionAccentBrush}">
+          <pc:LucideIcon.RenderTransform>
+            <TranslateTransform Y="-1" />
+          </pc:LucideIcon.RenderTransform>
+        </pc:LucideIcon>
         <!-- 标题:悬停 400ms 浮出该会话的资源面板(§4B.4/§11)。
              Tip 绑定 VM 而非直接内嵌视图:直接内嵌会在每个标签创建时就 eager 实例化
              整个 ResourceMonitorView(磁盘列表 + 进度条 + 十余条活绑定),N 个标签

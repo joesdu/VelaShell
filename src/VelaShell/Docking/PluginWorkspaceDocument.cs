@@ -94,6 +94,12 @@ public sealed class PluginWorkspaceDocument : DockDocument, IDockViewProvider
     /// <summary>从连接配置派生的强调色画刷,用于视觉标识(与终端/SFTP 标签同一套)。</summary>
     public IBrush ConnectionAccentBrush => ConnectionAccent.BrushForProfile(Profile);
 
+    /// <summary>
+    /// 标签页上的协议图标。目前是插件协议的通用图标 —— 宿主不认识这是 Redis 还是别的什么,
+    /// 要让插件亮出自己的标,得等 SDK 的描述符加上图标字段(见 <c>feature-plan.md</c>)。
+    /// </summary>
+    public Geometry? TabIcon => ConnectionIcon.ForProfile(Profile);
+
     /// <summary>显示连接详情的提示文本。</summary>
     public string ConnectionTooltip => $"{Title} · {TypeName} · {Profile.Host}:{Profile.Port}";
 
