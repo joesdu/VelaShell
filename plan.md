@@ -474,7 +474,7 @@ RemoteInitialPath `"/home/user"` → `""`（空 = 家目录）。
 | 17 | ✅ | **OSC 52 剪贴板** | 见 §10-C（只支持写方向，1MB 上限） |
 | 18 | ⏳ | 触发器 / 自动应答 | 见 [`feature-plan.md`](feature-plan.md#-会话与工作区) |
 | 19 | ❌ | **多窗口** | 与单实例 / 唯一组合根 / 无浮动窗口三处硬冲突，理由见 [`feature-plan.md`](feature-plan.md#-确认不做)。多屏需求由分屏承担 |
-| 20 | ❌ / ⏳ | **Mosh ❌ / SSH 证书认证 ⏳** | Mosh 确认不做（需并行维护第二套 UDP 传输与终端预测引擎）；证书认证待评估 Tmds.Ssh 支持度。均见 [`feature-plan.md`](feature-plan.md#-确认不做) |
+| 20 | ❌ / ✅ | **Mosh ❌ / SSH 证书认证 ✅** | Mosh 确认不做（需并行维护第二套 UDP 传输与终端预测引擎），见 [`feature-plan.md`](feature-plan.md#-确认不做)；**证书认证已于 2026-09-10 落地**（§63）—— 「待评估 Tmds.Ssh 支持度」那句已过期：`CertificateCredential` 在 0.23 就有，我们锁的 0.24 早就够用 |
 
 ### ✅ 同期落地、不在原清单里的
 
