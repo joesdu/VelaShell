@@ -3424,9 +3424,6 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Tree_PortForwarding" xml:space="preserve">
     <value>端口转发</value>
   </data>
-  <data name="Tree_SessionSettings" xml:space="preserve">
-    <value>会话设置</value>
-  </data>
   <data name="Tunnel_AliasLabel" xml:space="preserve">
     <value>别名(可选)</value>
   </data>

@@ -3424,9 +3424,6 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Tree_PortForwarding" xml:space="preserve">
     <value>連接埠轉發</value>
   </data>
-  <data name="Tree_SessionSettings" xml:space="preserve">
-    <value>工作階段設定</value>
-  </data>
   <data name="Tunnel_AliasLabel" xml:space="preserve">
     <value>別名(可選)</value>
   </data>

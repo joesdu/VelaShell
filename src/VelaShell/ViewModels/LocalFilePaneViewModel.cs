@@ -428,7 +428,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject, IDisposable
             return;
         }
 
-        if (!await ConfirmDelete($"Delete '{entry.Name}' permanently?"))
+        if (!await ConfirmDelete(ConfirmDeleteMessage(entry)))
         {
             return;
         }
@@ -449,11 +449,22 @@ public sealed class LocalFilePaneViewModel : ReactiveObject, IDisposable
         }
     }
 
+    /// <summary>与远端 FileBrowserViewModel 共用同一组文案,按目录/文件区分措辞。</summary>
+    private static string ConfirmDeleteMessage(LocalFileEntry entry) =>
+        Strings.Format(entry.IsDirectory ? "ConfirmDeleteFolder" : "ConfirmDeleteFile", entry.Name);
+
     /// <summary>经确认后永久删除选中条目,且不跟随链接。</summary>
     public async Task DeleteSelectedAsync(CancellationToken cancellationToken = default)
     {
         LocalFileEntry[] targets = [.. SelectedEntries.Where(entry => !entry.IsParentEntry)];
-        if (targets.Length == 0 || ConfirmDelete is null || !await ConfirmDelete($"Delete {targets.Length} item(s) permanently?"))
+        if (targets.Length == 0 || ConfirmDelete is null)
+        {
+            return;
+        }
+        string message = targets.Length == 1
+            ? ConfirmDeleteMessage(targets[0])
+            : Strings.Format("ConfirmDeleteMultiple", targets.Length);
+        if (!await ConfirmDelete(message))
         {
             return;
         }
@@ -718,7 +729,7 @@ public sealed class LocalFilePaneViewModel : ReactiveObject, IDisposable
         {
             return;
         }
-        string? name = await PromptForText("New Folder", "");
+        string? name = await PromptForText(Strings.Get("NewFolder"), "");
         if (string.IsNullOrWhiteSpace(name))
         {
             return;

@@ -3313,9 +3313,6 @@ Overwrite it?</value>
   <data name="Tree_PortForwarding" xml:space="preserve">
     <value>Port Forwarding</value>
   </data>
-  <data name="Tree_SessionSettings" xml:space="preserve">
-    <value>Session Settings</value>
-  </data>
   <data name="Tunnel_AliasLabel" xml:space="preserve">
     <value>Alias (optional)</value>
   </data>

@@ -3246,9 +3246,6 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Tree_PortForwarding" xml:space="preserve">
     <value>포트 포워딩</value>
   </data>
-  <data name="Tree_SessionSettings" xml:space="preserve">
-    <value>세션 설정</value>
-  </data>
   <data name="TrustOnce" xml:space="preserve">
     <value>이번만 신뢰</value>
   </data>

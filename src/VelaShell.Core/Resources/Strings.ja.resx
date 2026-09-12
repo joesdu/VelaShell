@@ -3246,9 +3246,6 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Tree_PortForwarding" xml:space="preserve">
     <value>ポート転送</value>
   </data>
-  <data name="Tree_SessionSettings" xml:space="preserve">
-    <value>セッション設定</value>
-  </data>
   <data name="TrustOnce" xml:space="preserve">
     <value>今回のみ信頼</value>
   </data>
