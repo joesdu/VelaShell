@@ -32,12 +32,10 @@ public sealed class OpenSshCertificateTests
     }
 
     [TestMethod]
-    public void InferPrivateKeyPath_WhenKeyFileAbsent_ReturnsNull()
-    {
+    public void InferPrivateKeyPath_WhenKeyFileAbsent_ReturnsNull() =>
         // 证书旁边没有同名私钥:多半是用户只拷了证书过来。填一个不存在的路径进去
         // 只会把"没选私钥"变成"选了个坏路径",后者更难查。
         Assert.IsNull(OpenSshCertificate.InferPrivateKeyPath("/home/user/.ssh/id_ed25519-cert.pub", _ => false));
-    }
 
     [TestMethod]
     public void InferPrivateKeyPath_OnCustomName_ReturnsNull()
@@ -48,11 +46,9 @@ public sealed class OpenSshCertificateTests
     }
 
     [TestMethod]
-    public void InferPrivateKeyPath_OnBareSuffix_ReturnsNull()
-    {
+    public void InferPrivateKeyPath_OnBareSuffix_ReturnsNull() =>
         // 文件名整个就是后缀:剥掉之后剩空串,那不是路径。
         Assert.IsNull(OpenSshCertificate.InferPrivateKeyPath("-cert.pub", _ => true));
-    }
 
     [TestMethod]
     public void InferPrivateKeyPath_OnEmptyInput_ReturnsNull()

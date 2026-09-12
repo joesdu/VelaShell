@@ -129,7 +129,7 @@ public sealed class StartupWarmupTests
     /// </remarks>
     private static SonnetDbEngine OpenOnceReleased(VelaShellStoragePaths paths)
     {
-        System.Diagnostics.Stopwatch elapsed = System.Diagnostics.Stopwatch.StartNew();
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
         while (true)
         {
             try

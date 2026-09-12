@@ -25,9 +25,6 @@
   <!-- Auth (7) -->
   <!-- Settings Dialog -->
   <!-- File Browser / SFTP (§6) -->
-  <data name="AddCommand" xml:space="preserve">
-    <value>コマンドを追加</value>
-  </data>
   <data name="AppName" xml:space="preserve">
     <value>VelaShell</value>
   </data>
@@ -1448,9 +1445,6 @@
   <data name="Palette_SearchPlaceholder" xml:space="preserve">
     <value>コマンドを入力またはセッションを検索…</value>
   </data>
-  <data name="Passphrase" xml:space="preserve">
-    <value>パスフレーズ</value>
-  </data>
   <data name="Password" xml:space="preserve">
     <value>パスワード</value>
   </data>
@@ -1477,9 +1471,6 @@
   </data>
   <data name="Port" xml:space="preserve">
     <value>ポート</value>
-  </data>
-  <data name="PrivateKey" xml:space="preserve">
-    <value>秘密鍵</value>
   </data>
   <data name="Profile_AdvancedOptions" xml:space="preserve">
     <value>詳細オプション</value>
@@ -1749,9 +1740,6 @@
   <data name="Sftp_RefreshRemotePane" xml:space="preserve">
     <value>リモートペインを更新</value>
   </data>
-  <data name="Reject" xml:space="preserve">
-    <value>拒否</value>
-  </data>
   <data name="RemoteForward" xml:space="preserve">
     <value>リモート転送</value>
   </data>
@@ -1766,9 +1754,6 @@
   </data>
   <data name="ScrollbackLines" xml:space="preserve">
     <value>スクロールバック行数</value>
-  </data>
-  <data name="Search" xml:space="preserve">
-    <value>検索</value>
   </data>
   <data name="SelectDownloadFolder" xml:space="preserve">
     <value>保存先フォルダーを選択</value>
@@ -3000,9 +2985,6 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Size" xml:space="preserve">
     <value>サイズ</value>
   </data>
-  <data name="Split" xml:space="preserve">
-    <value>分割</value>
-  </data>
   <data name="Status_Selected" xml:space="preserve">
     <value>{0} 文字を選択中</value>
   </data>
@@ -3189,9 +3171,6 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="TerminalDisconnectedNotice" xml:space="preserve">
     <value>接続が切断されました。</value>
   </data>
-  <data name="TerminalEncoding" xml:space="preserve">
-    <value>文字エンコーディング</value>
-  </data>
   <data name="TerminalReconnectHint" xml:space="preserve">
     <value>Enter キーで再接続します。</value>
   </data>
@@ -3245,9 +3224,6 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="Tree_PortForwarding" xml:space="preserve">
     <value>ポート転送</value>
-  </data>
-  <data name="Tree_SessionSettings" xml:space="preserve">
-    <value>セッション設定</value>
   </data>
   <data name="TrustOnce" xml:space="preserve">
     <value>今回のみ信頼</value>

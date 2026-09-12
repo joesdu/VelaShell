@@ -25,9 +25,6 @@
   <!-- Auth (7) -->
   <!-- Settings Dialog -->
   <!-- File Browser / SFTP (§6) -->
-  <data name="AddCommand" xml:space="preserve">
-    <value>명령 추가</value>
-  </data>
   <data name="AppName" xml:space="preserve">
     <value>VelaShell</value>
   </data>
@@ -1448,9 +1445,6 @@
   <data name="Palette_SearchPlaceholder" xml:space="preserve">
     <value>명령 입력 또는 세션 검색…</value>
   </data>
-  <data name="Passphrase" xml:space="preserve">
-    <value>암호 문구</value>
-  </data>
   <data name="Password" xml:space="preserve">
     <value>비밀번호</value>
   </data>
@@ -1477,9 +1471,6 @@
   </data>
   <data name="Port" xml:space="preserve">
     <value>포트</value>
-  </data>
-  <data name="PrivateKey" xml:space="preserve">
-    <value>개인 키</value>
   </data>
   <data name="Profile_AdvancedOptions" xml:space="preserve">
     <value>고급 옵션</value>
@@ -1749,9 +1740,6 @@
   <data name="Sftp_RefreshRemotePane" xml:space="preserve">
     <value>원격 창 새로 고침</value>
   </data>
-  <data name="Reject" xml:space="preserve">
-    <value>거부</value>
-  </data>
   <data name="RemoteForward" xml:space="preserve">
     <value>원격 포워딩</value>
   </data>
@@ -1766,9 +1754,6 @@
   </data>
   <data name="ScrollbackLines" xml:space="preserve">
     <value>스크롤백 줄 수</value>
-  </data>
-  <data name="Search" xml:space="preserve">
-    <value>검색</value>
   </data>
   <data name="SelectDownloadFolder" xml:space="preserve">
     <value>저장 위치 선택</value>
@@ -3000,9 +2985,6 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Size" xml:space="preserve">
     <value>크기</value>
   </data>
-  <data name="Split" xml:space="preserve">
-    <value>분할</value>
-  </data>
   <data name="Status_Selected" xml:space="preserve">
     <value>{0}자 선택됨</value>
   </data>
@@ -3189,9 +3171,6 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="TerminalDisconnectedNotice" xml:space="preserve">
     <value>연결이 끊어졌습니다.</value>
   </data>
-  <data name="TerminalEncoding" xml:space="preserve">
-    <value>문자 인코딩</value>
-  </data>
   <data name="TerminalReconnectHint" xml:space="preserve">
     <value>Enter 키를 눌러 다시 연결합니다.</value>
   </data>
@@ -3245,9 +3224,6 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="Tree_PortForwarding" xml:space="preserve">
     <value>포트 포워딩</value>
-  </data>
-  <data name="Tree_SessionSettings" xml:space="preserve">
-    <value>세션 설정</value>
   </data>
   <data name="TrustOnce" xml:space="preserve">
     <value>이번만 신뢰</value>

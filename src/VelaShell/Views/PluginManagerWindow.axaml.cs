@@ -268,7 +268,6 @@ public partial class PluginManagerWindow : Window
         await InstallWithPromptsAsync(vm, package);
     }
 
-
     /// <summary>
     /// 装一次;撞上"发布者换了"就把两个指纹摆给用户,认了再带着授权装第二次。
     /// </summary>

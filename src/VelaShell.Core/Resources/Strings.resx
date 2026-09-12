@@ -417,14 +417,8 @@
   <data name="CloseTab" xml:space="preserve">
     <value>Close Tab</value>
   </data>
-  <data name="Search" xml:space="preserve">
-    <value>Search</value>
-  </data>
   <data name="Copy" xml:space="preserve">
     <value>Copy</value>
-  </data>
-  <data name="Split" xml:space="preserve">
-    <value>Split</value>
   </data>
   <data name="Status_Selected" xml:space="preserve">
     <value>{0} chars selected</value>
@@ -511,9 +505,6 @@
   <data name="QuickCmd_Ungrouped" xml:space="preserve"><value>Ungrouped</value></data>
   <data name="QuickCmd_GroupPlaceholder" xml:space="preserve"><value>Group name</value></data>
   <data name="QuickCmd_EditSnippet" xml:space="preserve"><value>Edit snippet</value></data>
-  <data name="AddCommand" xml:space="preserve">
-    <value>Add Command</value>
-  </data>
   <data name="Description" xml:space="preserve">
     <value>Description</value>
   </data>
@@ -596,15 +587,9 @@
   <data name="TerminalType" xml:space="preserve">
     <value>Terminal Type</value>
   </data>
-  <data name="TerminalEncoding" xml:space="preserve">
-    <value>Encoding</value>
-  </data>
   <!-- Auth (7) -->
   <data name="Password" xml:space="preserve">
     <value>Password</value>
-  </data>
-  <data name="PrivateKey" xml:space="preserve">
-    <value>Private Key</value>
   </data>
   <data name="Username" xml:space="preserve">
     <value>Username</value>
@@ -643,9 +628,6 @@
   <data name="KeyType" xml:space="preserve">
     <value>Key Type</value>
   </data>
-  <data name="Reject" xml:space="preserve">
-    <value>Reject</value>
-  </data>
   <data name="TrustPermanently" xml:space="preserve">
     <value>Trust Permanently</value>
   </data>
@@ -657,9 +639,6 @@
   </data>
   <data name="Group" xml:space="preserve">
     <value>Group</value>
-  </data>
-  <data name="Passphrase" xml:space="preserve">
-    <value>Passphrase</value>
   </data>
   <!-- File Browser / SFTP (§6) -->
   <data name="UploadHere" xml:space="preserve">
@@ -3312,9 +3291,6 @@ Overwrite it?</value>
   </data>
   <data name="Tree_PortForwarding" xml:space="preserve">
     <value>Port Forwarding</value>
-  </data>
-  <data name="Tree_SessionSettings" xml:space="preserve">
-    <value>Session Settings</value>
   </data>
   <data name="Tunnel_AliasLabel" xml:space="preserve">
     <value>Alias (optional)</value>
