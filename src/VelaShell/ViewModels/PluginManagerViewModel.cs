@@ -55,8 +55,16 @@ public sealed class PluginRowViewModel(PluginDescriptor descriptor, bool hasTerm
     /// <summary>是否为开发期挂载的插件(显示 DEV 角标)。</summary>
     public bool IsDevelopment => descriptor.IsDevelopment;
 
-    /// <summary>已本地化的状态文案。</summary>
-    public string StatusText => Strings.Get($"PluginState_{descriptor.State}");
+    /// <summary>
+    /// 已本地化的状态文案。已激活但名下没有开着的面板/标签时显示"后台运行":
+    /// 进程内插件激活后常驻,关掉它的标签不会停用它,一律写"运行中"会让人以为关标签没生效。
+    /// </summary>
+    public string StatusText => descriptor.State == PluginState.Active && OpenSurfaces == 0
+        ? Strings.Get("PluginState_Background")
+        : Strings.Get($"PluginState_{descriptor.State}");
+
+    /// <summary>该插件此刻开着的面板 / 工作台文档 / 协议会话数(见 <see cref="PluginManager.GetOpenSurfaceCount" />)。</summary>
+    public int OpenSurfaces { get; init; }
 
     /// <summary>状态点着色:运行中为绿。</summary>
     public bool IsOk => descriptor.State == PluginState.Active;
@@ -441,6 +449,7 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
             rows.Add(new(descriptor, grant)
             {
                 CanUninstall = uninstallable,
+                OpenSurfaces = _manager.GetOpenSurfaceCount(descriptor.Id),
                 PublisherFingerprint = pinned,
                 UpdateState = state,
                 AvailableVersion = available,

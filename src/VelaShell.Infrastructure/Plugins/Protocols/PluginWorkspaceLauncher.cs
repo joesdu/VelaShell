@@ -44,9 +44,41 @@ public sealed record PluginWorkspaceSession(Guid SessionId, string TypeName, IWo
 /// </para>
 /// </summary>
 /// <param name="registry">连接类型注册表。</param>
-public sealed class PluginWorkspaceLauncher(PluginProtocolRegistry registry)
+public sealed class PluginWorkspaceLauncher(PluginProtocolRegistry registry) : IPluginSurfaceSource
 {
     private readonly ConcurrentDictionary<Guid, (string TypeId, IWorkspaceDocument Document)> _sessions = new();
+
+    /// <summary>正在打开、文档还没交出来的会话(键只用来配对增删,值是连接类型 id)。</summary>
+    private readonly ConcurrentDictionary<Guid, string> _opening = new();
+
+    /// <inheritdoc />
+    public event Action? SurfacesChanged;
+
+    /// <inheritdoc />
+    /// <remarks>正在打开的也算:从解析(可能刚惰性激活)到插件交出文档之间,空闲回收不能把插件卸掉。</remarks>
+    public int CountOpenSurfaces(PluginSdk.PluginManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (manifest.Contributes?.Workspaces is not { Length: > 0 } workspaces)
+        {
+            return 0;
+        }
+        bool Owns(string typeId) =>
+            workspaces.Any(workspace => workspace.Id.Equals(typeId, StringComparison.OrdinalIgnoreCase));
+        return _sessions.Values.Count(session => Owns(session.TypeId)) + _opening.Values.Count(Owns);
+    }
+
+    private void RaiseSurfacesChanged()
+    {
+        try
+        {
+            SurfacesChanged?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[PluginWorkspace] Surface change handler threw: {ex.Message}");
+        }
+    }
 
     /// <summary>
     /// 某个连接类型被注销(插件停用/卸载)时触发,参数是该类型名下还开着的会话 id。
@@ -69,6 +101,23 @@ public sealed class PluginWorkspaceLauncher(PluginProtocolRegistry registry)
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(profile);
+        var opening = Guid.NewGuid();
+        _opening[opening] = profile.PluginProtocolId ?? string.Empty;
+        try
+        {
+            return await OpenCoreAsync(profile, endpoint, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _opening.TryRemove(opening, out _);
+        }
+    }
+
+    private async Task<PluginWorkspaceSession> OpenCoreAsync(
+        SessionProfile profile,
+        WorkspaceEndpoint? endpoint,
+        CancellationToken cancellationToken)
+    {
         string? typeId = profile.PluginProtocolId;
         PluginWorkspaceRegistration? registration = await registry.ResolveWorkspaceAsync(typeId).ConfigureAwait(false) ?? throw new PluginProtocolUnavailableException(typeId,
                 string.IsNullOrWhiteSpace(typeId)
@@ -105,12 +154,19 @@ public sealed class PluginWorkspaceLauncher(PluginProtocolRegistry registry)
                 $"Connection type '{registration.Descriptor.Id}' returned no document.");
         }
         _sessions[sessionId] = (registration.Descriptor.Id, document);
+        RaiseSurfacesChanged();
         return new(sessionId, registration.Descriptor.DisplayName, document);
     }
 
     /// <summary>把一条会话从登记表里摘掉(界面关闭标签页后调用;文档本身由界面释放)。</summary>
     /// <param name="sessionId">会话 id。</param>
-    public void Forget(Guid sessionId) => _sessions.TryRemove(sessionId, out _);
+    public void Forget(Guid sessionId)
+    {
+        if (_sessions.TryRemove(sessionId, out _))
+        {
+            RaiseSurfacesChanged();
+        }
+    }
 
     /// <summary>
     /// 某种连接类型被注销:通知界面关掉它名下的会话。
@@ -129,6 +185,7 @@ public sealed class PluginWorkspaceLauncher(PluginProtocolRegistry registry)
             {
                 continue;
             }
+            RaiseSurfacesChanged();
             try
             {
                 SessionAbandoned?.Invoke(pair.Key);

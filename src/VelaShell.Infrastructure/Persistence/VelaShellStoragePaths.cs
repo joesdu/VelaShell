@@ -28,6 +28,7 @@ public sealed class VelaShellStoragePaths
         HostRegistryFile = Path.Combine(root, PluginSdk.Hosting.HostRegistry.FileName);
         DevPluginListFile = Path.Combine(root, "plugins.dev.txt");
         DevPluginDisabledFile = Path.Combine(root, "plugins.dev.disabled");
+        PluginDisabledFile = Path.Combine(root, "plugins.disabled");
         DevPluginShadowDirectory = Path.Combine(root, "dev-shadow");
         LogsDirectory = Path.Combine(root, "logs");
         SettingsFile = Path.Combine(root, "settings.json");
@@ -67,6 +68,12 @@ public sealed class VelaShellStoragePaths
     /// </para>
     /// </summary>
     public string DevPluginDisabledFile { get; } = "";
+
+    /// <summary>
+    /// 应用自带插件的禁用登记(每行一个插件 id)。自带插件在安装目录里,那里只读、且随升级整体替换,
+    /// 写进去的 <c>.disabled</c> 标记留不住 —— 表现为"禁用了,重启又在运行中"。
+    /// </summary>
+    public string PluginDisabledFile { get; } = "";
 
     /// <summary>
     /// 开发期插件的影子副本目录。装载前把插件目录整份复制到这里再从副本加载,

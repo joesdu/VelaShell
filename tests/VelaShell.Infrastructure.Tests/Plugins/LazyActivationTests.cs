@@ -57,7 +57,8 @@ public class LazyActivationTests
             """);
     }
 
-    private PluginManager CreateManager(TimeSpan? idleTimeout = null) => new(new()
+    private PluginManager CreateManager(TimeSpan? idleTimeout = null, TimeSpan? inProcessIdleTimeout = null,
+        IReadOnlyList<IPluginSurfaceSource>? surfaces = null) => new(new()
     {
         PluginRoots = [_root],
         DataRootDirectory = _dataRoot,
@@ -67,8 +68,76 @@ public class LazyActivationTests
         DeactivationTimeout = TimeSpan.FromSeconds(10),
         CommandsFactory = (_, _) => _commands,
         IdleTimeout = idleTimeout ?? TimeSpan.FromMinutes(15),
-        IdleCheckInterval = TimeSpan.FromMilliseconds(300)
+        // 默认关掉进程内回收:其余用例断言的是激活后的状态,不该和一个 1 分钟的计时器赛跑。
+        InProcessIdleTimeout = inProcessIdleTimeout ?? Timeout.InfiniteTimeSpan,
+        IdleCheckInterval = TimeSpan.FromMilliseconds(300),
+        SurfaceSources = surfaces ?? []
     });
+
+    /// <summary>可控的界面数来源:测试直接拨数字。</summary>
+    private sealed class FakeSurfaceSource : IPluginSurfaceSource
+    {
+        public int Count { get; set; }
+
+        public event Action? SurfacesChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public int CountOpenSurfaces(PluginManifest manifest) => Count;
+    }
+
+    [TestMethod]
+    public async Task InProcessLazyPlugin_IdleRecycles_ThenReactivatesOnTrigger()
+    {
+        // 进程内插件原先激活后一律常驻:用过一次、关掉标签,它的程序集与对象就永远占着宿主内存。
+        StageFixture(""", "activationEvents": ["onCommand:velashell.test-fixture.list-sessions"]""");
+        PluginManager manager = CreateManager(inProcessIdleTimeout: TimeSpan.FromSeconds(1));
+        await manager.StartAsync();
+        await _commands.RunAsync("velashell.test-fixture.list-sessions");
+        Assert.AreEqual(PluginState.Active, manager.Plugins.Single().State, manager.Plugins.Single().Error);
+
+        await WaitForAsync(() => manager.Plugins.Single().State == PluginState.Discovered,
+            TimeSpan.FromSeconds(30), "没有开着的界面、也没有执行中的命令时,进程内惰性插件应被回收");
+
+        // 占位命令已回挂:再触发即重新激活。
+        await _commands.RunAsync("velashell.test-fixture.list-sessions");
+        Assert.AreEqual(PluginState.Active, manager.Plugins.Single().State, manager.Plugins.Single().Error);
+        await manager.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task InProcessLazyPlugin_WithOpenSurface_IsNotRecycled_UntilItCloses()
+    {
+        StageFixture(""", "activationEvents": ["onCommand:velashell.test-fixture.list-sessions"]""");
+        var surfaces = new FakeSurfaceSource { Count = 1 };
+        PluginManager manager = CreateManager(inProcessIdleTimeout: TimeSpan.FromSeconds(1), surfaces: [surfaces]);
+        await manager.StartAsync();
+        await _commands.RunAsync("velashell.test-fixture.list-sessions");
+
+        await Task.Delay(TimeSpan.FromSeconds(3));
+        Assert.AreEqual(PluginState.Active, manager.Plugins.Single().State, "还开着标签就不能回收");
+
+        surfaces.Count = 0;
+        await WaitForAsync(() => manager.Plugins.Single().State == PluginState.Discovered,
+            TimeSpan.FromSeconds(30), "标签全关、空闲过阈值后应被回收");
+        await manager.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task StartupPlugin_IsNeverRecycledInProcess()
+    {
+        // onStartup 的插件就是要常驻(AI 助手的 IM 桥接靠它随时收消息),空闲回收不碰它。
+        StageFixture("");
+        PluginManager manager = CreateManager(inProcessIdleTimeout: TimeSpan.FromMilliseconds(500));
+        await manager.StartAsync();
+        Assert.AreEqual(PluginState.Active, manager.Plugins.Single().State, manager.Plugins.Single().Error);
+
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        Assert.AreEqual(PluginState.Active, manager.Plugins.Single().State);
+        await manager.DisposeAsync();
+    }
 
     [TestMethod]
     public async Task LazyPlugin_StaysDiscovered_UntilPlaceholderCommandTriggersActivation()

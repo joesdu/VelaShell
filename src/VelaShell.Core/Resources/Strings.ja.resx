@@ -4020,6 +4020,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="PluginManager_Disable"><value>無効化</value></data>
   <data name="PluginManager_RevokePermission"><value>ターミナル権限を取り消す</value></data>
   <data name="PluginState_Active"><value>実行中</value></data>
+  <data name="PluginState_Background"><value>バックグラウンド実行中</value></data>
   <data name="PluginState_Discovered"><value>待機中</value></data>
   <data name="PluginState_Disabled"><value>無効</value></data>
   <data name="PluginState_Failed"><value>失敗</value></data>

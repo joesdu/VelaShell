@@ -4171,6 +4171,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="PluginState_Active" xml:space="preserve">
     <value>執行中</value>
   </data>
+  <data name="PluginState_Background" xml:space="preserve">
+    <value>背景執行</value>
+  </data>
   <data name="PluginState_Discovered" xml:space="preserve">
     <value>待啟用</value>
   </data>

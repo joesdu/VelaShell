@@ -4171,6 +4171,9 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="PluginState_Active" xml:space="preserve">
     <value>运行中</value>
   </data>
+  <data name="PluginState_Background" xml:space="preserve">
+    <value>后台运行</value>
+  </data>
   <data name="PluginState_Discovered" xml:space="preserve">
     <value>待激活</value>
   </data>
