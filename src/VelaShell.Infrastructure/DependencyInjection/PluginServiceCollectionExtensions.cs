@@ -56,6 +56,7 @@ public static class PluginServiceCollectionExtensions
                 // 可以边跑边重编,改完在管理页点"重新加载"即可(Windows 上尤其关键)。
                 DevShadowRootDirectory = paths.DevPluginShadowDirectory,
                 DevDisabledStateFile = paths.DevPluginDisabledFile,
+                DisabledStateFile = paths.PluginDisabledFile,
                 DevAutoReload = Startup.VelaShellStartupArguments.Current.DevWatch,
                 DiagnosticsDirectory = paths.LogsDirectory,
                 DataRootDirectory = Path.Combine(paths.RootDirectory, "plugin-data"),
@@ -85,6 +86,16 @@ public static class PluginServiceCollectionExtensions
                 TerminalView = sp.GetService<PluginSdk.TerminalView.ITerminalViewApi>(),
                 // 协议注册表:清单声明的协议页签在发现期登记于此,插件激活后补上实现。
                 ProtocolRegistry = sp.GetService<Plugins.Protocols.PluginProtocolRegistry>(),
+                // 管理页区分"运行中 / 后台运行"要知道插件名下还开着几个标签:
+                // 工作台文档(Redis…)与协议文件会话(S3…)从这两处数,插件自己的面板由界面能力数。
+                SurfaceSources =
+                [
+                    .. new object?[]
+                    {
+                        sp.GetService<Plugins.Protocols.PluginWorkspaceLauncher>(),
+                        sp.GetService<Plugins.Protocols.PluginProtocolFileService>()
+                    }.OfType<IPluginSurfaceSource>()
+                ],
                 // 后台活动账本:插件的校验/激活/预读都在状态栏右下角的圆环上有交代。
                 Activity = sp.GetService<IBackgroundActivityService>(),
                 // 冷启动预读的排障急停开关(与 VELASHELL_DISABLE_PLUGINS 同一体例)。

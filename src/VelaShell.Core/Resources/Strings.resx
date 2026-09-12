@@ -4021,6 +4021,7 @@ Overwrite it?</value>
   <data name="PluginManager_Disable"><value>Disable</value></data>
   <data name="PluginManager_RevokePermission"><value>Revoke terminal access</value></data>
   <data name="PluginState_Active"><value>Active</value></data>
+  <data name="PluginState_Background"><value>Running in background</value></data>
   <data name="PluginState_Discovered"><value>Idle</value></data>
   <data name="PluginState_Disabled"><value>Disabled</value></data>
   <data name="PluginState_Failed"><value>Failed</value></data>

@@ -54,7 +54,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         /// 每插件的命令能力实例:占位命令与激活后的真实注册共用同一实例,
         /// 真实注册按 id 替换占位。停用/失败后置空,下次激活/回挂重建。
         /// </summary>
-        public ICommandsApi? CommandsApi { get; set; }
+        public ActivityTrackingCommands? CommandsApi { get; set; }
 
         /// <summary>激活/回收互斥闸:惰性触发、崩溃重启与空闲回收不并发换态。</summary>
         public SemaphoreSlim ActivationGate { get; } = new(1, 1);
@@ -79,6 +79,15 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
 
         /// <summary>校验过程是否已把该插件的文件读了一遍(读过就等于预读过,不必再预热)。</summary>
         public bool ContentRead { get; set; }
+
+        /// <summary>
+        /// 该插件这一次激活的停机令牌源(交给插件的 <c>IPluginContext.Shutdown</c>)。
+        /// 与宿主总令牌联动,但停用这一个插件时单独触发。未激活时为 null。
+        /// </summary>
+        public CancellationTokenSource? Lifetime { get; set; }
+
+        /// <summary>正在执行的插件命令数(Interlocked 读写);非零时不回收。</summary>
+        public int RunningCommands;
     }
 
     private readonly List<PluginRuntime> _plugins = [];
@@ -92,7 +101,8 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     private readonly CancellationTokenSource _shutdown = new();
     /// <summary>开发期插件的重建监视(见 <see cref="PluginDevWatcher" />);未开启自动重载时为 null。</summary>
     private PluginDevWatcher? _devWatcher;
-    private readonly Lock _devDisabledGate = new();
+    private readonly DisabledPluginList _devDisabled = new(options.DevDisabledStateFile);
+    private readonly DisabledPluginList _hostDisabled = new(options.DisabledStateFile);
     private bool _started;
     private bool _disposed;
 
@@ -153,7 +163,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             {
                 await DeactivateAsync(runtime).ConfigureAwait(false);
             }
-            (runtime.CommandsApi as IDisposable)?.Dispose();
+            runtime.CommandsApi?.Dispose();
             runtime.CommandsApi = null;
             // 先写终态再撤注册,顺序固定:反过来的话,撤注册与写状态之间的窗口里
             // 若有激活线程完成,它会把 State 覆盖回 Active 并重新注册协议。
@@ -260,7 +270,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             {
                 await DeactivateAsync(runtime).ConfigureAwait(false);
             }
-            (runtime.CommandsApi as IDisposable)?.Dispose();
+            runtime.CommandsApi?.Dispose();
             runtime.CommandsApi = null;
             options.ProtocolRegistry?.RemovePlugin(pluginId);
             TryDeleteDirectory(runtime.Descriptor.Directory);
@@ -879,7 +889,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             {
                 await DeactivateAsync(runtime).ConfigureAwait(false);
             }
-            (runtime.CommandsApi as IDisposable)?.Dispose();
+            runtime.CommandsApi?.Dispose();
             runtime.CommandsApi = null;
             options.ProtocolRegistry?.RemovePlugin(pluginId);
             lock (_gate)
@@ -1042,19 +1052,36 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     }
 
     /// <summary>
-    /// 落/清禁用标记。已安装插件写插件目录里的 <c>.disabled</c>;
-    /// **开发期插件写数据根一侧的登记文件** —— 它的"插件目录"是工程的构建产物目录,
-    /// 标记写进去既会被 <c>dotnet clean</c> 顺手抹掉,又不会被 <c>dotnet build</c> 清除,
-    /// 于是表现为"我明明重编了怎么还是禁用状态"。
+    /// 落/清禁用状态。用户安装的插件写插件目录里的 <c>.disabled</c>(命令行工具也认这个标记);
+    /// 另外两类记在数据根一侧的登记文件里:
+    /// <list type="bullet">
+    /// <item>
+    /// 开发期插件:它的"插件目录"是工程的构建产物目录,标记写进去既会被 <c>dotnet clean</c>
+    /// 顺手抹掉,又不会被 <c>dotnet build</c> 清除,于是表现为"我明明重编了怎么还是禁用状态"。
+    /// </item>
+    /// <item>
+    /// 应用自带插件:安装目录在装好之后多半只读,写失败原先被静默吞掉 —— 禁用只在本次运行有效,
+    /// 重启后插件又回到"运行中";就算写得进,下一次升级替换安装目录也会把标记一并抹掉。
+    /// </item>
+    /// </list>
     /// </summary>
     private void SetDisabledMarker(PluginDescriptor descriptor, bool disabled)
     {
         if (descriptor.IsDevelopment)
         {
-            SetDevDisabled(descriptor.Id, disabled);
+            _devDisabled.Set(descriptor.Id, disabled);
             return;
         }
-        string marker = Path.Combine(descriptor.Directory, ".disabled");
+        if (UsesHostDisabledList(descriptor.Directory))
+        {
+            _hostDisabled.Set(descriptor.Id, disabled);
+            if (disabled)
+            {
+                return;
+            }
+            // 启用时继续往下走:顺手清掉旧版本写进安装目录的标记,否则发现期仍会认它。
+        }
+        string marker = Path.Combine(descriptor.Directory, PluginContentHash.DisabledMarkerName);
         try
         {
             if (disabled)
@@ -1068,72 +1095,87 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // 应用目录只读(商店版)时标记写不进:运行时状态仍已切换,只是重启不持久。
+            // 运行时状态仍已切换,只是这一次落不了盘 —— 至少留一行,别再静默。
+            Log($"Could not {(disabled ? "write" : "remove")} the disabled marker of '{descriptor.Id}': {ex.Message}");
         }
     }
 
-    /// <summary>开发期插件的禁用集合(懒加载;登记文件缺席或读不出时为空集)。</summary>
-    private HashSet<string> DevDisabled
+    /// <summary>该插件的禁用状态是否记在数据根一侧(应用自带插件,且宿主配了登记文件)。</summary>
+    private bool UsesHostDisabledList(string directory) =>
+        options.DisabledStateFile is not null && !IsUserPluginDirectory(directory);
+
+    /// <summary>
+    /// 数据根一侧的禁用登记(每行一个插件 id)。懒加载;登记文件缺席或读不出时为空集,
+    /// 没配文件时只在本次运行内有效(headless 测试路径)。
+    /// </summary>
+    private sealed class DisabledPluginList(string? file)
     {
-        get
+        private readonly Lock _gate = new();
+        private HashSet<string>? _ids;
+
+        public bool Contains(string pluginId)
         {
-            lock (_devDisabledGate)
+            lock (_gate)
             {
-                if (field is not null)
+                return Load().Contains(pluginId);
+            }
+        }
+
+        public void Set(string pluginId, bool disabled)
+        {
+            lock (_gate)
+            {
+                HashSet<string> ids = Load();
+                if (disabled ? !ids.Add(pluginId) : !ids.Remove(pluginId))
                 {
-                    return field;
+                    return; // 状态没变,不必落盘。
                 }
-                var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (file is null)
+                {
+                    return;
+                }
                 try
                 {
-                    if (options.DevDisabledStateFile is { } file && File.Exists(file))
+                    string? directory = Path.GetDirectoryName(file);
+                    if (!string.IsNullOrEmpty(directory))
                     {
-                        foreach (string line in File.ReadAllLines(file))
-                        {
-                            string id = line.Trim();
-                            if (id.Length > 0 && !id.StartsWith('#'))
-                            {
-                                set.Add(id);
-                            }
-                        }
+                        Directory.CreateDirectory(directory);
                     }
+                    File.WriteAllLines(file, ids.Order(StringComparer.OrdinalIgnoreCase));
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    Log($"Could not read the development disable list: {ex.Message}");
+                    Log($"Could not persist the plugin disable list '{file}': {ex.Message}");
                 }
-                return field = set;
             }
         }
-    }
 
-    /// <summary>登记/撤销某开发期插件的禁用状态(持久化到数据根一侧的登记文件)。</summary>
-    private void SetDevDisabled(string pluginId, bool disabled)
-    {
-        lock (_devDisabledGate)
+        private HashSet<string> Load()
         {
-            HashSet<string> set = DevDisabled;
-            if (disabled ? !set.Add(pluginId) : !set.Remove(pluginId))
+            if (_ids is not null)
             {
-                return; // 状态没变,不必落盘。
+                return _ids;
             }
-            if (options.DevDisabledStateFile is not { } file)
-            {
-                return; // 没配登记文件:仅本次运行有效(headless 测试路径)。
-            }
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             try
             {
-                string? directory = Path.GetDirectoryName(file);
-                if (!string.IsNullOrEmpty(directory))
+                if (file is not null && File.Exists(file))
                 {
-                    Directory.CreateDirectory(directory);
+                    foreach (string line in File.ReadAllLines(file))
+                    {
+                        string id = line.Trim();
+                        if (id.Length > 0 && !id.StartsWith('#'))
+                        {
+                            ids.Add(id);
+                        }
+                    }
                 }
-                File.WriteAllLines(file, set.Order(StringComparer.OrdinalIgnoreCase));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                Log($"Could not persist the development disable list: {ex.Message}");
+                Log($"Could not read the plugin disable list '{file}': {ex.Message}");
             }
+            return _ids = ids;
         }
     }
 
@@ -1151,6 +1193,10 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         if (options.ProtocolRegistry is { } registry)
         {
             registry.ActivationRequested = ActivateForProtocolAsync;
+        }
+        foreach (IPluginSurfaceSource source in options.SurfaceSources)
+        {
+            source.SurfacesChanged += RaiseChanged;
         }
         await EnsureTrustInitializedAsync(cancellationToken).ConfigureAwait(false);
         Discover();
@@ -1358,7 +1404,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         // 若有激活线程完成,它会把 State 覆盖回 Active 并重新注册协议。
         runtime.Descriptor.State = PluginState.Invalid;
         runtime.Descriptor.Error = rejection;
-        (runtime.CommandsApi as IDisposable)?.Dispose();
+        runtime.CommandsApi?.Dispose();
         runtime.CommandsApi = null;
         options.ProtocolRegistry?.RemovePlugin(runtime.Descriptor.Id);
         Log($"Refusing to load '{runtime.Descriptor.Id}': {rejection}");
@@ -1515,8 +1561,17 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         manifest is { DisplayName: { Length: > 0 } name } ? name : manifest.Id;
 
     /// <summary>
-    /// 空闲巡检(蓝图 04 §资源控制,仅隔离模式):可回收插件连续空闲
-    /// (无 RPC 往来且无打开面板)超时即停用回收进程,占位命令留守等待再触发。
+    /// 空闲巡检。两类插件会被回收,清单占位(命令、连接页签)留守,再触发即重新激活:
+    /// <list type="bullet">
+    /// <item>
+    /// 隔离插件(<c>idlePolicy: "recyclable"</c>,蓝图 04 §资源控制):连续无 RPC 往来且无打开面板,
+    /// 超过 <see cref="PluginManagerOptions.IdleTimeout" />。
+    /// </item>
+    /// <item>
+    /// 进程内惰性插件:名下没有开着的界面、没有执行中的命令、没有打开的隧道,
+    /// 持续 <see cref="PluginManagerOptions.InProcessIdleTimeout" />。
+    /// </item>
+    /// </list>
     /// </summary>
     private async Task IdleMonitorAsync()
     {
@@ -1526,35 +1581,93 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             {
                 return; // 停机
             }
-            List<PluginRuntime> idle;
+            List<PluginRuntime> isolated;
+            List<PluginRuntime> inProcess;
             long now = Environment.TickCount64;
             lock (_gate)
             {
-                idle = [.. _plugins.Where(r =>
-                    r is { Process: not null, OpenSurfaces: 0 }
-                    && r.Descriptor.State == PluginState.Active
-                    && r.Descriptor.Manifest is { IdlePolicy: PluginIdlePolicy.Recyclable } manifest
-                    && (manifest.Contributes?.Commands.Length ?? 0) > 0 // 没有回程触发器就不回收
-                    && now - r.LastActivityTicks >= options.IdleTimeout.TotalMilliseconds)];
+                isolated = [.. _plugins.Where(r => IsRecyclableIsolated(r)
+                                                   && now - r.LastActivityTicks >= options.IdleTimeout.TotalMilliseconds)];
+                inProcess = [.. _plugins.Where(IsRecyclableInProcess)];
             }
-            foreach (PluginRuntime runtime in idle)
+            foreach (PluginRuntime runtime in isolated)
             {
                 await RecycleAsync(runtime).ConfigureAwait(false);
+            }
+            foreach (PluginRuntime runtime in inProcess)
+            {
+                // 数界面要进各来源自己的锁,所以放在 _gate 外面做。
+                // 忙就把起点挪到现在:阈值量的是"最后一个标签关掉之后",不是"激活之后"。
+                if (IsInProcessBusy(runtime))
+                {
+                    runtime.LastActivityTicks = now;
+                }
+                else if (now - runtime.LastActivityTicks >= options.InProcessIdleTimeout.TotalMilliseconds)
+                {
+                    await RecycleAsync(runtime).ConfigureAwait(false);
+                }
             }
         }
     }
 
-    /// <summary>回收一个空闲的隔离插件:干净停用 → 回到 Discovered → 占位命令回挂。</summary>
+    private static bool IsRecyclableIsolated(PluginRuntime runtime) =>
+        runtime is { Process: not null, OpenSurfaces: 0 }
+        && runtime.Descriptor.State == PluginState.Active
+        && runtime.Descriptor.Manifest is { IdlePolicy: PluginIdlePolicy.Recyclable } manifest
+        && (manifest.Contributes?.Commands.Length ?? 0) > 0; // 没有回程触发器就不回收
+
+    private bool IsRecyclableInProcess(PluginRuntime runtime) =>
+        options.InProcessIdleTimeout >= TimeSpan.Zero
+        && runtime is { Process: null, LoadContext: not null }
+        && runtime.Descriptor is { State: PluginState.Active, Manifest: { ActivatesOnStartup: false } manifest }
+        && HasReactivationTrigger(manifest);
+
+    /// <summary>回收之后还有没有东西能把它叫回来:占位命令、协议页签或工作台页签。</summary>
+    private static bool HasReactivationTrigger(PluginManifest manifest) =>
+        manifest.Contributes is { } contributes
+        && (contributes.Commands.Length > 0 || contributes.Protocols.Length > 0 || contributes.Workspaces.Length > 0);
+
+    /// <summary>
+    /// 进程内插件此刻是否还在被用:开着的面板 / 文档 / 会话(含正在打开的)、执行中的命令、打开的隧道。
+    /// 数不出来时按"忙"处理 —— 宁可晚回收,也不把正在用的插件卸掉。
+    /// </summary>
+    private bool IsInProcessBusy(PluginRuntime runtime)
+    {
+        try
+        {
+            return Volatile.Read(ref runtime.RunningCommands) > 0
+                   || runtime.Context?.RemoteTunnel.ActiveTunnels > 0
+                   || runtime.Descriptor.Manifest is not { } manifest
+                   || CountOpenSurfaces(runtime, manifest) > 0;
+        }
+        catch (Exception ex)
+        {
+            Log($"Could not tell whether plugin '{runtime.Descriptor.Id}' is idle; keeping it loaded: {ex.Message}");
+            return true;
+        }
+    }
+
+    /// <summary>回收一个空闲插件:干净停用(隔离插件连进程一起)→ 回到 Discovered → 占位命令回挂。</summary>
     private async Task RecycleAsync(PluginRuntime runtime)
     {
         await runtime.ActivationGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (runtime.Descriptor.State != PluginState.Active || runtime.Process is null || _shutdown.IsCancellationRequested)
+            if (runtime.Descriptor.State != PluginState.Active || _shutdown.IsCancellationRequested)
             {
                 return;
             }
-            Log($"Recycling idle plugin '{runtime.Descriptor.Id}' (no RPC activity and no open panels).");
+            bool isolated = runtime.Process is not null;
+            // 闸内复核:排队等闸的这段时间里,用户完全可能刚打开了一个标签或触发了一条命令。
+            if (!isolated && IsInProcessBusy(runtime))
+            {
+                runtime.LastActivityTicks = Environment.TickCount64;
+                return;
+            }
+            Log(isolated
+                ? $"Recycling idle plugin '{runtime.Descriptor.Id}' (no RPC activity and no open panels)."
+                : $"Recycling idle in-process plugin '{runtime.Descriptor.Id}' "
+                  + "(no open panels, documents or sessions, no running commands or tunnels).");
             await DeactivateAsync(runtime).ConfigureAwait(false);
             runtime.Descriptor.State = PluginState.Discovered;
             runtime.Descriptor.Error = null;
@@ -1564,6 +1677,8 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         {
             runtime.ActivationGate.Release();
         }
+        // 管理页开着时要看得到它从"后台运行"回到"待激活"。
+        RaiseChanged();
     }
 
     /// <summary>可取消延时,经 ContinueWith 观察取消(不制造首发异常);返回是否已停机。</summary>
@@ -1633,6 +1748,44 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         {
             Log($"Uninstalled-plugin directory sweep failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// 该插件此刻开着的界面数:它弹出的面板、名下的工作台文档与协议会话;隔离插件另加其进程上报的面板数。
+    /// 不在 <see cref="PluginState.Active" /> 时恒为 0。
+    /// </summary>
+    /// <remarks>
+    /// 管理页据此区分"运行中"与"后台运行"。进程内插件激活后常驻,关掉标签不会停用它 ——
+    /// 这是有意的(停用会丢掉插件的内存态,再开要重付激活成本),但界面上得说清楚。
+    /// </remarks>
+    /// <param name="pluginId">插件 id。</param>
+    /// <returns>开着的界面数。</returns>
+    public int GetOpenSurfaceCount(string pluginId)
+    {
+        PluginRuntime? runtime;
+        lock (_gate)
+        {
+            runtime = _plugins.FirstOrDefault(p => p.Descriptor.Id == pluginId);
+        }
+        if (runtime is not { Descriptor: { State: PluginState.Active, Manifest: { } manifest } })
+        {
+            return 0;
+        }
+        return CountOpenSurfaces(runtime, manifest);
+    }
+
+    private int CountOpenSurfaces(PluginRuntime runtime, PluginManifest manifest)
+    {
+        int count = runtime.Process is null ? 0 : runtime.OpenSurfaces;
+        if (runtime.Context?.Ui is IPluginSurfaceSource ui)
+        {
+            count += ui.CountOpenSurfaces(manifest);
+        }
+        foreach (IPluginSurfaceSource source in options.SurfaceSources)
+        {
+            count += source.CountOpenSurfaces(manifest);
+        }
+        return count;
     }
 
     /// <summary>隔离插件的子进程 id(测试与诊断用);非隔离/未运行返回 null。</summary>
@@ -1755,8 +1908,9 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             descriptor.Error = $"Duplicate plugin id '{manifest.Id}' (already provided by an earlier plugin root).";
         }
         else if (isDevelopment
-                     ? DevDisabled.Contains(manifest.Id)
-                     : File.Exists(Path.Combine(dir, ".disabled")))
+                     ? _devDisabled.Contains(manifest.Id)
+                     : File.Exists(Path.Combine(dir, PluginContentHash.DisabledMarkerName))
+                       || (UsesHostDisabledList(dir) && _hostDisabled.Contains(manifest.Id)))
         {
             descriptor.State = PluginState.Disabled;
         }
@@ -1942,6 +2096,8 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
                 await ActivateInProcessAsync(runtime, manifest, entryPath, context, cancellationToken).ConfigureAwait(false);
             }
             descriptor.State = PluginState.Active;
+            // 空闲回收从激活完成起计:命令触发激活后,插件往往还要再过一会儿才把面板弹出来。
+            runtime.LastActivityTicks = Environment.TickCount64;
             Log($"Activated '{manifest.Id}' v{manifest.Version} ({manifest.HostMode}) in {stopwatch.ElapsedMilliseconds}ms.");
         }
         catch (Exception ex)
@@ -2028,7 +2184,11 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         }
         client.Crashed += () => OnIsolatedCrashed(runtime);
         client.Activity += () => runtime.LastActivityTicks = Environment.TickCount64;
-        client.SurfacesChanged += count => runtime.OpenSurfaces = count;
+        client.SurfacesChanged += count =>
+        {
+            runtime.OpenSurfaces = count;
+            RaiseChanged();
+        };
         // 调试目标不发心跳:断点会冻住插件进程的全部线程,ping 必然连续失败,
         // 而心跳失败的处置是强杀 —— 那就等于"下断点即插件被杀"。
         client.StartHeartbeat(debug ? TimeSpan.Zero : options.HeartbeatInterval);
@@ -2080,8 +2240,23 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         {
             return;
         }
-        Log($"Restarting crashed plugin '{runtime.Descriptor.Id}'.");
-        await ActivateAsync(runtime, CancellationToken.None).ConfigureAwait(false);
+        // 走激活闸并复核状态:退避等待的这几秒里,用户完全来得及在管理页禁用/卸载/重载它。
+        // 原先直调 ActivateAsync,于是被禁用的插件会在退避到点后被拉起、状态写回 Active ——
+        // 磁盘上写着已禁用,管理页却显示"运行中"。
+        await runtime.ActivationGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (runtime.Descriptor.State != PluginState.Crashed || _shutdown.IsCancellationRequested)
+            {
+                return;
+            }
+            Log($"Restarting crashed plugin '{runtime.Descriptor.Id}'.");
+            await ActivateAsync(runtime, CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            runtime.ActivationGate.Release();
+        }
     }
 
     private static TracePluginLogger GetOrCreateLogger(PluginRuntime runtime)
@@ -2091,8 +2266,41 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     private ICommandsApi GetOrCreateCommandsApi(PluginRuntime runtime)
     {
         TracePluginLogger log = GetOrCreateLogger(runtime);
-        return runtime.CommandsApi ??= options.CommandsFactory?.Invoke(runtime.Descriptor.Id, log)
-                                       ?? new NullCommandsApi(log);
+        return runtime.CommandsApi ??= new ActivityTrackingCommands(
+            options.CommandsFactory?.Invoke(runtime.Descriptor.Id, log) ?? new NullCommandsApi(log), runtime);
+    }
+
+    /// <summary>
+    /// 命令能力的计数外壳:插件命令执行期间记为忙,空闲回收不在命令跑到一半时把插件卸掉 ——
+    /// 例如"从 SSH 会话探测 Redis"在后台扫端口,那段时间插件名下一个标签都没开。
+    /// </summary>
+    private sealed class ActivityTrackingCommands(ICommandsApi inner, PluginRuntime runtime) : ICommandsApi, IDisposable
+    {
+        public IDisposable Register(PluginCommandDescriptor command)
+        {
+            ArgumentNullException.ThrowIfNull(command);
+            Func<CancellationToken, Task> execute = command.ExecuteAsync;
+            return inner.Register(command with
+            {
+                ExecuteAsync = async cancellationToken =>
+                {
+                    Interlocked.Increment(ref runtime.RunningCommands);
+                    try
+                    {
+                        await execute(cancellationToken).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        Interlocked.Decrement(ref runtime.RunningCommands);
+                        runtime.LastActivityTicks = Environment.TickCount64;
+                    }
+                }
+            });
+        }
+
+        public bool TryExecute(string commandId) => inner.TryExecute(commandId);
+
+        public void Dispose() => (inner as IDisposable)?.Dispose();
     }
 
     private PluginContext CreateContext(PluginManifest manifest, PluginRuntime runtime)
@@ -2100,6 +2308,11 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         string dataDirectory = Path.Combine(options.DataRootDirectory, manifest.Id);
         Directory.CreateDirectory(dataDirectory);
         TracePluginLogger log = GetOrCreateLogger(runtime);
+        // 每插件一份停机令牌:停用这一个插件时单独触发,宿主退出时随总令牌一起触发。
+        // 原先交出去的是宿主的总令牌,按契约监听它的后台循环只有退出应用才会停 ——
+        // 禁用插件后它们照跑,还攥着插件自己的委托,把可收集 ALC 钉在内存里。
+        runtime.Lifetime?.Dispose();
+        runtime.Lifetime = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
         return new()
         {
             PluginId = manifest.Id,
@@ -2133,7 +2346,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             Theme = options.Theme is null
                 ? new StaticHostTheme()
                 : new HostThemeCapability(log, _themeSource.Value),
-            Ui = options.UiFactory?.Invoke(manifest.Id, log) ?? new NullUiApi(log),
+            Ui = CreateUi(manifest.Id, log),
             Secrets = options.DataStore is { } dataStore
                 ? dataStore.CreateSecrets(manifest.Id)
                 : options.SecretProtector is { } protector
@@ -2148,8 +2361,23 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             Workspaces = options.ProtocolRegistry is { } workspaces
                 ? new WorkspacesCapability(manifest.Id, workspaces, log)
                 : new UnavailableWorkspaces(),
-            Shutdown = _shutdown.Token
+            Shutdown = runtime.Lifetime.Token
         };
+    }
+
+    /// <summary>
+    /// 造插件的界面能力。实例若能统计自己开着的面板,就把它的变化接到 <see cref="Changed" /> 上:
+    /// 管理页开着时,插件的面板一开一关,"运行中 / 后台运行"随之刷新。
+    /// 订阅只让界面能力实例(宿主类型)指向本管理器,不反向握住插件的任何东西。
+    /// </summary>
+    private PluginSdk.Ui.IUiApi CreateUi(string pluginId, TracePluginLogger log)
+    {
+        PluginSdk.Ui.IUiApi ui = options.UiFactory?.Invoke(pluginId, log) ?? new NullUiApi(log);
+        if (ui is IPluginSurfaceSource source)
+        {
+            source.SurfacesChanged += RaiseChanged;
+        }
+        return ui;
     }
 
     /// <summary>停用全部活跃插件并卸载其 ALC。退出路径上有严格时限,不被慢插件拖住。</summary>
@@ -2166,6 +2394,10 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             active = [.. _plugins.Where(p => p.Descriptor.State == PluginState.Active)];
         }
         StopDevWatchers();
+        foreach (IPluginSurfaceSource source in options.SurfaceSources)
+        {
+            source.SurfacesChanged -= RaiseChanged;
+        }
         await _shutdown.CancelAsync().ConfigureAwait(false);
         // 并发停用:退出耗时 = 最慢一个插件(带上限),而非全体之和。
         await Task.WhenAll(active.Select(DeactivateAsync)).ConfigureAwait(false);
@@ -2177,7 +2409,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         }
         foreach (PluginRuntime runtime in leftovers)
         {
-            (runtime.CommandsApi as IDisposable)?.Dispose();
+            runtime.CommandsApi?.Dispose();
             runtime.CommandsApi = null;
         }
         if (_themeSource.IsValueCreated)
@@ -2189,6 +2421,8 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
 
     private async Task DeactivateAsync(PluginRuntime runtime)
     {
+        // 先发停机信号,再请插件停用:与宿主退出路径(先取消总令牌、再逐个停用)同一顺序。
+        CancelLifetime(runtime);
         try
         {
             if (runtime.Process is { } process)
@@ -2231,7 +2465,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     /// 异步路径上的清理:进程回收与同步清理并发进行,但方法返回时进程确实已被杀掉、
     /// 管道确实已断开——退出流程据此保证不留孤儿子进程。
     /// </summary>
-    private static async Task CleanupRuntimeAsync(PluginRuntime runtime)
+    private async Task CleanupRuntimeAsync(PluginRuntime runtime)
     {
         Task disposeProcess = Task.CompletedTask;
         if (runtime.Process is { } process)
@@ -2248,13 +2482,18 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     /// 同步入口只供 Process.Exited 这类无法 await 的回调使用,进程回收退化为后台尽力而为;
     /// 能 await 的地方一律走 <see cref="CleanupRuntimeAsync" />。
     /// </summary>
-    private static void CleanupRuntime(PluginRuntime runtime)
+    private void CleanupRuntime(PluginRuntime runtime)
     {
         if (runtime.Process is { } process)
         {
             runtime.Process = null;
             _ = DisposeProcessAsync(process); // 杀进程 + 断管道,后台尽力而为
         }
+        // 崩溃与激活失败不经 DeactivateAsync,令牌在这里补触发(已触发过的再取消是空操作)。
+        // Dispose 不能省:它把联动注册从宿主总令牌上摘下来,否则插件挂在令牌上的回调一直可达。
+        CancelLifetime(runtime);
+        runtime.Lifetime?.Dispose();
+        runtime.Lifetime = null;
         try
         {
             runtime.Context?.Dispose();
@@ -2267,15 +2506,94 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         runtime.Instance = null;
         // 命令能力随上下文释放(占位/真实注册全部注销);置空使重启/回挂重建新实例。
         runtime.CommandsApi = null;
+        if (runtime.LoadContext is { } loadContext)
+        {
+            runtime.LoadContext = null;
+            try
+            {
+                loadContext.Unload();
+                ObserveUnload(runtime.Descriptor.Id, new WeakReference(loadContext));
+            }
+            catch
+            {
+                // 已卸载或不可卸载:忽略。
+            }
+        }
+    }
+
+    /// <summary>触发插件自己的停机令牌。插件挂在令牌上的回调抛异常也不能打断停用。</summary>
+    private static void CancelLifetime(PluginRuntime runtime)
+    {
         try
         {
-            runtime.LoadContext?.Unload();
+            runtime.Lifetime?.Cancel();
         }
-        catch
+        catch (Exception ex) when (ex is AggregateException or ObjectDisposedException)
         {
-            // 已卸载或不可卸载:忽略。
+            Log($"Shutdown callbacks of plugin '{runtime.Descriptor.Id}' threw: {ex.Message}");
         }
-        runtime.LoadContext = null;
+    }
+
+    /// <summary>卸载观察的 GC 轮数与间隔:面板关闭是排到 UI 线程上的,头几轮 GC 可能还早于它。</summary>
+    private const int UnloadCollectAttempts = 10;
+
+    private static readonly TimeSpan UnloadCollectInterval = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>卸载观察结果(插件 id,ALC 是否已被回收);在后台线程触发。供测试与诊断。</summary>
+    internal event Action<string, bool>? UnloadObserved;
+
+    /// <summary>
+    /// 催 GC 把刚 <c>Unload()</c> 的 ALC 真正收走,并如实记下收没收掉。
+    /// <para>
+    /// <c>Unload()</c> 只是"允许回收":没有人触发 GC 的话,插件的程序集、JIT 代码与它攥着的对象
+    /// 会一直留在堆上,表现就是"插件全关了,内存纹丝不动"。收走之后再做一次激进的压缩 GC,
+    /// 把空出来的段还给操作系统 —— 否则托管堆变空了,任务管理器里的数字照样不降。
+    /// </para>
+    /// <para>
+    /// 若干轮后仍然活着,说明宿主或共享框架里还有东西引用着插件的类型(静态事件、缓存、计时器、
+    /// 没摘干净的界面元素),那份内存在进程结束前都回不来 —— 这一行日志就是排查的起点。
+    /// </para>
+    /// </summary>
+    private void ObserveUnload(string pluginId, WeakReference loadContext)
+    {
+        if (_shutdown.IsCancellationRequested)
+        {
+            return; // 退出路径:进程马上就没了,逼 GC 只会拖慢退出。
+        }
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                for (int attempt = 1; attempt <= UnloadCollectAttempts; attempt++)
+                {
+                    if (await DelayObservedAsync(UnloadCollectInterval).ConfigureAwait(false))
+                    {
+                        return;
+                    }
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    if (!loadContext.IsAlive)
+                    {
+                        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+                        Log($"Plugin '{pluginId}' unloaded; its assemblies were collected after {attempt} GC pass(es).");
+                        UnloadObserved?.Invoke(pluginId, true);
+                        return;
+                    }
+                }
+                Log($"Plugin '{pluginId}' was deactivated but its load context is still alive after "
+                    + $"{UnloadCollectAttempts} GC passes: something still references the plugin's types "
+                    + "(static event, cache, timer or UI element), so its memory cannot be reclaimed until restart.");
+                UnloadObserved?.Invoke(pluginId, false);
+            }
+            catch (ObjectDisposedException)
+            {
+                // 观察途中宿主停机、总令牌已释放:不再观察。
+            }
+            catch (Exception ex)
+            {
+                Log($"Observing the unload of '{pluginId}' failed: {ex.Message}");
+            }
+        });
     }
 
     // ---- 开发内环:影子拷贝 / 重新加载 / 自动重载 --------------------------------
@@ -2460,7 +2778,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             {
                 await DeactivateAsync(old).ConfigureAwait(false);
             }
-            (old.CommandsApi as IDisposable)?.Dispose();
+            old.CommandsApi?.Dispose();
             old.CommandsApi = null;
             options.ProtocolRegistry?.RemovePlugin(pluginId);
             await CleanupRuntimeAsync(old).ConfigureAwait(false);

@@ -392,6 +392,44 @@ public sealed class PluginWorkspaceTests
         Assert.AreEqual("3", request.GetString("db"), "填过的字段要覆盖默认值。");
     }
 
+    /// <summary>
+    /// 启动器按插件清单声明的工作台 id 数开着的文档:插件管理页据此把"已激活但标签全关了"的插件
+    /// 显示为后台运行。开、关、被注销三条路都要发变化通知,管理页开着时才能跟着刷新。
+    /// </summary>
+    [TestMethod]
+    public async Task Launcher_CountsOpenDocumentsPerPlugin_AndRaisesSurfacesChanged()
+    {
+        var registry = new PluginProtocolRegistry();
+        registry.RegisterWorkspace(PluginId, Descriptor(), new FakeWorkspaceProvider());
+        var launcher = new PluginWorkspaceLauncher(registry);
+        PluginManifest owner = PluginManifestReader.Parse("""
+        {
+          "id": "acme.cache", "version": "1.0.0", "displayName": "Acme", "entry": "Acme.dll",
+          "contributes": { "workspaces": [ { "id": "acme.cache", "displayName": "Acme Cache", "defaultPort": 6379 } ] }
+        }
+        """);
+        PluginManifest stranger = PluginManifestReader.Parse("""
+        { "id": "other.vendor", "version": "1.0.0", "displayName": "Other", "entry": "Other.dll" }
+        """);
+        int changes = 0;
+        launcher.SurfacesChanged += () => Interlocked.Increment(ref changes);
+
+        PluginWorkspaceSession first = await launcher.OpenAsync(Profile());
+        await launcher.OpenAsync(Profile());
+        Assert.AreEqual(2, launcher.CountOpenSurfaces(owner));
+        Assert.AreEqual(0, launcher.CountOpenSurfaces(stranger), "别人名下的文档不算");
+        Assert.AreEqual(2, changes);
+
+        launcher.Forget(first.SessionId);
+        launcher.Forget(first.SessionId); // 幂等:第二次既不减数也不再通知
+        Assert.AreEqual(1, launcher.CountOpenSurfaces(owner));
+        Assert.AreEqual(3, changes);
+
+        launcher.OnUnregistered(WorkspaceId);
+        Assert.AreEqual(0, launcher.CountOpenSurfaces(owner));
+        Assert.AreEqual(4, changes);
+    }
+
     /// <summary>机密字段与普通设置合并进同一张表(插件不必区分它们从哪儿来)。</summary>
     [TestMethod]
     public async Task Launcher_MergesSecretsIntoSettings()

@@ -47,6 +47,21 @@ public sealed class PluginManagerOptions
     public string? DevDisabledStateFile { get; init; }
 
     /// <summary>
+    /// 应用自带插件(不在 <see cref="UserPluginRoot" /> 下的正式插件)的禁用登记文件(每行一个插件 id)。
+    /// 自带插件装在安装目录里,那里通常只读(Program Files、签过名的 .app、商店包),
+    /// 而且每次升级 VelaShell 都会被整体替换 —— <c>.disabled</c> 标记要么写不进,要么活不过一次升级。
+    /// 缺省时退回写插件目录里的标记(headless 测试路径)。
+    /// </summary>
+    public string? DisabledStateFile { get; init; }
+
+    /// <summary>
+    /// 统计插件名下开着的标签(工作台文档、协议会话…)的宿主侧来源。插件自己弹出的面板由它的
+    /// 界面能力实例统计(<see cref="UiFactory" /> 产出的实例实现 <see cref="IPluginSurfaceSource" /> 即可),
+    /// 不必登记在这里。缺省为空(headless 测试路径:管理页一律按"后台运行"显示已激活插件)。
+    /// </summary>
+    public IReadOnlyList<IPluginSurfaceSource> SurfaceSources { get; init; } = [];
+
+    /// <summary>
     /// 是否监视开发期插件根,检测到构建产物变化后自动重载(启动参数 <c>--dev-watch</c>)。
     /// 默认关:文件监视器在共享盘/网络盘上会抖,不该是所有人默认承担的成本。
     /// </summary>
@@ -191,13 +206,26 @@ public sealed class PluginManagerOptions
     public TimeSpan HeartbeatInterval { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// 空闲回收阈值(蓝图 04,仅隔离模式 + <c>idlePolicy: "recyclable"</c>):
+    /// 隔离插件的空闲回收阈值(蓝图 04,<c>idlePolicy: "recyclable"</c>):
     /// 连续无 RPC 往来且无打开面板达到该时长即停用回收进程,占位命令留守待再触发。
     /// </summary>
     public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromMinutes(15);
 
-    /// <summary>空闲巡检间隔。</summary>
-    public TimeSpan IdleCheckInterval { get; init; } = TimeSpan.FromMinutes(1);
+    /// <summary>
+    /// 进程内**惰性**插件的空闲回收阈值:名下的面板、工作台文档、协议会话全部关掉,
+    /// 且没有执行中的命令、没有打开的隧道,持续该时长即停用并卸载;清单占位(命令、连接页签)留守,
+    /// 再触发即重新激活。
+    /// <para>
+    /// 进程内插件原先激活后一律常驻:插件程序集与它攥着的对象一直占着宿主内存,
+    /// 用过几个插件、关掉标签之后,用户看到的就是"内存越来越大"。
+    /// 声明了 <c>onStartup</c> 的插件本来就要常驻(如 AI 助手的 IM 桥接),不在此列。
+    /// </para>
+    /// <para><see cref="Timeout.InfiniteTimeSpan" /> 关闭进程内回收。</para>
+    /// </summary>
+    public TimeSpan InProcessIdleTimeout { get; init; } = TimeSpan.FromMinutes(1);
+
+    /// <summary>空闲巡检间隔(实际回收时刻 = 阈值 + 至多一个巡检间隔)。</summary>
+    public TimeSpan IdleCheckInterval { get; init; } = TimeSpan.FromSeconds(15);
 
     /// <summary>单插件激活时限;超时判 Failed 并卸载。</summary>
     public TimeSpan ActivationTimeout { get; init; } = TimeSpan.FromSeconds(10);

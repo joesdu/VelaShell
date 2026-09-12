@@ -25,8 +25,29 @@ namespace VelaShell.Infrastructure.Plugins.Protocols;
 /// </para>
 /// </summary>
 /// <param name="registry">协议注册表。</param>
-public sealed class PluginProtocolFileService(PluginProtocolRegistry registry) : ISftpService, IPluginProtocolSessionService
+public sealed class PluginProtocolFileService(PluginProtocolRegistry registry)
+    : ISftpService, IPluginProtocolSessionService, IPluginSurfaceSource
 {
+    /// <inheritdoc />
+    public event Action? SurfacesChanged;
+
+    /// <summary>正在打开、会话还没建好的连接(键只用来配对增删,值是协议 id)。</summary>
+    private readonly ConcurrentDictionary<Guid, string> _opening = new();
+
+    /// <inheritdoc />
+    /// <remarks>正在打开的也算:从解析(可能刚惰性激活)到连接建好之间,空闲回收不能把插件卸掉。</remarks>
+    public int CountOpenSurfaces(PluginSdk.PluginManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (manifest.Contributes?.Protocols is not { Length: > 0 } protocols)
+        {
+            return 0;
+        }
+        bool Owns(string protocolId) =>
+            protocols.Any(protocol => protocol.Id.Equals(protocolId, StringComparison.OrdinalIgnoreCase));
+        return _sessions.Values.Count(session => Owns(session.Descriptor.Id)) + _opening.Values.Count(Owns);
+    }
+
     /// <summary>一条已建立的插件协议会话。</summary>
     /// <param name="Descriptor">协议描述(异常翻译要用到它的证书字段声明)。</param>
     /// <param name="FileSystem">协议实现。</param>
@@ -46,6 +67,20 @@ public sealed class PluginProtocolFileService(PluginProtocolRegistry registry) :
     public async Task<Guid> OpenSessionAsync(SessionProfile profile, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(profile);
+        var opening = Guid.NewGuid();
+        _opening[opening] = profile.PluginProtocolId ?? string.Empty;
+        try
+        {
+            return await OpenSessionCoreAsync(profile, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _opening.TryRemove(opening, out _);
+        }
+    }
+
+    private async Task<Guid> OpenSessionCoreAsync(SessionProfile profile, CancellationToken cancellationToken)
+    {
         EnsureSubscribed();
         string? protocolId = profile.PluginProtocolId;
         PluginProtocolRegistration? registration = await registry.ResolveAsync(protocolId).ConfigureAwait(false) ?? throw new PluginProtocolUnavailableException(protocolId,
@@ -80,6 +115,7 @@ public sealed class PluginProtocolFileService(PluginProtocolRegistry registry) :
             throw Translate(ex, registration.Descriptor);
         }
         _sessions[sessionId] = new(registration.Descriptor, fileSystem, key);
+        RaiseSurfacesChanged();
         return sessionId;
     }
 
@@ -302,6 +338,23 @@ public sealed class PluginProtocolFileService(PluginProtocolRegistry registry) :
         catch (Exception ex)
         {
             Trace.WriteLine($"[PluginProtocols] Session state handler threw: {ex.Message}");
+        }
+        // 三条关闭路径(主动关、插件上报断开、协议被注销)都先摘表再走到这里报 Closed。
+        if (state == PluginProtocolSessionState.Closed)
+        {
+            RaiseSurfacesChanged();
+        }
+    }
+
+    private void RaiseSurfacesChanged()
+    {
+        try
+        {
+            SurfacesChanged?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[PluginProtocols] Surface change handler threw: {ex.Message}");
         }
     }
 

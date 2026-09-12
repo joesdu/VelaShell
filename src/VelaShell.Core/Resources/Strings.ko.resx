@@ -4020,6 +4020,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="PluginManager_Disable"><value>비활성화</value></data>
   <data name="PluginManager_RevokePermission"><value>터미널 권한 취소</value></data>
   <data name="PluginState_Active"><value>실행 중</value></data>
+  <data name="PluginState_Background"><value>백그라운드 실행 중</value></data>
   <data name="PluginState_Discovered"><value>대기 중</value></data>
   <data name="PluginState_Disabled"><value>비활성화됨</value></data>
   <data name="PluginState_Failed"><value>실패</value></data>

@@ -20,11 +20,24 @@ internal sealed class PluginUiApi(
     IPluginLogger log,
     Func<MainWindowViewModel?> mainViewModel,
     IBackgroundActivityService? backgroundActivity = null)
-    : IUiApi, IDisposable
+    : IUiApi, Infrastructure.Plugins.IPluginSurfaceSource, IDisposable
 {
     private readonly Lock _gate = new();
     private readonly List<PluginPanel> _panels = [];
     private bool _disposed;
+
+    /// <inheritdoc />
+    public event Action? SurfacesChanged;
+
+    /// <inheritdoc />
+    /// <remarks>本实例只属于一个插件,清单用不上:数的就是它自己弹出去、还开着的面板。</remarks>
+    public int CountOpenSurfaces(PluginSdk.PluginManifest manifest)
+    {
+        lock (_gate)
+        {
+            return _panels.Count;
+        }
+    }
 
     public async Task<IPluginPanel> ShowPanelAsync(PanelOptions options, Func<object> contentFactory,
         CancellationToken cancellationToken = default)
@@ -63,12 +76,30 @@ internal sealed class PluginUiApi(
         }
         panel.Closed += () =>
         {
+            bool removed;
             lock (_gate)
             {
-                _panels.Remove(panel);
+                removed = _panels.Remove(panel);
+            }
+            if (removed)
+            {
+                RaiseSurfacesChanged();
             }
         };
+        RaiseSurfacesChanged();
         return panel;
+    }
+
+    private void RaiseSurfacesChanged()
+    {
+        try
+        {
+            SurfacesChanged?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            log.Error("Panel count change handler threw.", ex);
+        }
     }
 
     private static Window? MainWindow() =>
@@ -88,6 +119,8 @@ internal sealed class PluginUiApi(
             panels = [.. _panels];
             _panels.Clear();
         }
+        // 插件在停用:它的状态本身就要变,不必再为面板数单独通知一次。
+        SurfacesChanged = null;
         foreach (PluginPanel panel in panels)
         {
             _ = panel.CloseAsync();
