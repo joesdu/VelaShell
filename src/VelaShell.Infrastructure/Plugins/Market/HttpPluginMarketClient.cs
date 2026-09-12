@@ -93,7 +93,7 @@ public sealed class HttpPluginMarketClient(string? baseUrl = null, HttpClient? h
                       ?? throw new InvalidOperationException(
                           $"The marketplace has no downloadable package for {pluginId} v{version}.");
 
-        using JsonDocument ticket = JsonDocument.Parse(json);
+        using var ticket = JsonDocument.Parse(json);
         JsonElement root = ticket.RootElement;
         string url = root.TryGetProperty("url", out JsonElement urlElement) ? urlElement.GetString() ?? "" : "";
         if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? download)
@@ -203,7 +203,7 @@ public sealed class HttpPluginMarketClient(string? baseUrl = null, HttpClient? h
     /// <summary>把 <c>/api/plugins/latest</c> 的响应读进结果表。</summary>
     private static void Parse(string json, Dictionary<string, PluginMarketVersion> into)
     {
-        using JsonDocument document = JsonDocument.Parse(json);
+        using var document = JsonDocument.Parse(json);
         if (!document.RootElement.TryGetProperty("plugins", out JsonElement plugins)
             || plugins.ValueKind != JsonValueKind.Object)
         {

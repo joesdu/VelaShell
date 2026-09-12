@@ -507,7 +507,6 @@ public class PluginInstallUninstallTests
         await manager.DisposeAsync();
     }
 
-
     [TestMethod]
     public async Task InstallFromVpx_UpgradeFromTheSamePublisher_InstallsWithoutAskingAgain()
     {
