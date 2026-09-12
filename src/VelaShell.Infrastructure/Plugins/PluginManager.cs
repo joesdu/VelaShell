@@ -54,7 +54,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         /// 每插件的命令能力实例:占位命令与激活后的真实注册共用同一实例,
         /// 真实注册按 id 替换占位。停用/失败后置空,下次激活/回挂重建。
         /// </summary>
-        public ICommandsApi? CommandsApi { get; set; }
+        public ActivityTrackingCommands? CommandsApi { get; set; }
 
         /// <summary>激活/回收互斥闸:惰性触发、崩溃重启与空闲回收不并发换态。</summary>
         public SemaphoreSlim ActivationGate { get; } = new(1, 1);
@@ -163,7 +163,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             {
                 await DeactivateAsync(runtime).ConfigureAwait(false);
             }
-            (runtime.CommandsApi as IDisposable)?.Dispose();
+            runtime.CommandsApi?.Dispose();
             runtime.CommandsApi = null;
             // 先写终态再撤注册,顺序固定:反过来的话,撤注册与写状态之间的窗口里
             // 若有激活线程完成,它会把 State 覆盖回 Active 并重新注册协议。
@@ -270,7 +270,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             {
                 await DeactivateAsync(runtime).ConfigureAwait(false);
             }
-            (runtime.CommandsApi as IDisposable)?.Dispose();
+            runtime.CommandsApi?.Dispose();
             runtime.CommandsApi = null;
             options.ProtocolRegistry?.RemovePlugin(pluginId);
             TryDeleteDirectory(runtime.Descriptor.Directory);
@@ -889,7 +889,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             {
                 await DeactivateAsync(runtime).ConfigureAwait(false);
             }
-            (runtime.CommandsApi as IDisposable)?.Dispose();
+            runtime.CommandsApi?.Dispose();
             runtime.CommandsApi = null;
             options.ProtocolRegistry?.RemovePlugin(pluginId);
             lock (_gate)
@@ -1404,7 +1404,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         // 若有激活线程完成,它会把 State 覆盖回 Active 并重新注册协议。
         runtime.Descriptor.State = PluginState.Invalid;
         runtime.Descriptor.Error = rejection;
-        (runtime.CommandsApi as IDisposable)?.Dispose();
+        runtime.CommandsApi?.Dispose();
         runtime.CommandsApi = null;
         options.ProtocolRegistry?.RemovePlugin(runtime.Descriptor.Id);
         Log($"Refusing to load '{runtime.Descriptor.Id}': {rejection}");
@@ -2409,7 +2409,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         }
         foreach (PluginRuntime runtime in leftovers)
         {
-            (runtime.CommandsApi as IDisposable)?.Dispose();
+            runtime.CommandsApi?.Dispose();
             runtime.CommandsApi = null;
         }
         if (_themeSource.IsValueCreated)
@@ -2778,7 +2778,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             {
                 await DeactivateAsync(old).ConfigureAwait(false);
             }
-            (old.CommandsApi as IDisposable)?.Dispose();
+            old.CommandsApi?.Dispose();
             old.CommandsApi = null;
             options.ProtocolRegistry?.RemovePlugin(pluginId);
             await CleanupRuntimeAsync(old).ConfigureAwait(false);
