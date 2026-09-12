@@ -519,14 +519,8 @@
   <data name="CloseTab" xml:space="preserve">
     <value>关闭标签页</value>
   </data>
-  <data name="Search" xml:space="preserve">
-    <value>搜索</value>
-  </data>
   <data name="Copy" xml:space="preserve">
     <value>复制</value>
-  </data>
-  <data name="Split" xml:space="preserve">
-    <value>拆分</value>
   </data>
   <data name="Status_Selected" xml:space="preserve">
     <value>已选 {0} 字符</value>
@@ -630,9 +624,6 @@
   <data name="QuickCmd_EditSnippet" xml:space="preserve">
     <value>编辑代码片段</value>
   </data>
-  <data name="AddCommand" xml:space="preserve">
-    <value>添加命令</value>
-  </data>
   <data name="Description" xml:space="preserve">
     <value>描述</value>
   </data>
@@ -711,14 +702,8 @@
   <data name="TerminalType" xml:space="preserve">
     <value>终端类型</value>
   </data>
-  <data name="TerminalEncoding" xml:space="preserve">
-    <value>字符编码</value>
-  </data>
   <data name="Password" xml:space="preserve">
     <value>密码</value>
-  </data>
-  <data name="PrivateKey" xml:space="preserve">
-    <value>私钥</value>
   </data>
   <data name="Username" xml:space="preserve">
     <value>用户名</value>
@@ -756,9 +741,6 @@
   <data name="KeyType" xml:space="preserve">
     <value>密钥类型</value>
   </data>
-  <data name="Reject" xml:space="preserve">
-    <value>拒绝</value>
-  </data>
   <data name="TrustPermanently" xml:space="preserve">
     <value>永久信任</value>
   </data>
@@ -770,9 +752,6 @@
   </data>
   <data name="Group" xml:space="preserve">
     <value>分组</value>
-  </data>
-  <data name="Passphrase" xml:space="preserve">
-    <value>密码短语</value>
   </data>
   <data name="UploadHere" xml:space="preserve">
     <value>上传到当前目录</value>

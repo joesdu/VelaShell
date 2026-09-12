@@ -35,12 +35,15 @@ public partial class UnusedLocalizedKeyTests
     ];
 
     /// <summary>
-    /// 字面量与标记里的裸词,用作「这个键还有人提」的宽松证据。
-    /// 长度不设下限:首版写成至少三个字符,结果两字母的 <c>OK</c> 键永远扫不到,
-    /// 被当成死键删掉后 MessageDialog 立刻编译不过 —— 短键正是最容易被漏判的那一类。
+    /// 真正取文案的写法:<c>{loc:Localize Key}</c>、<c>Strings.Key</c>(含 x:Static)、
+    /// <c>nameof(Key)</c>,以及恰好等于键名的字符串字面量(覆盖 <c>Strings.Get("Key")</c>、
+    /// <c>_loc["Key"]</c> 与先把键名存进表再取的写法)。
+    /// 2026-09-12 前这里是「任意裸词」,于是 Search/Split/Reject/PrivateKey 这类键
+    /// 只要代码里有同名方法、枚举成员或 string.Split 就一直被判活,7 个死键因此躲过清理。
+    /// 长度不设下限:两字母的 <c>OK</c> 键同样要能匹配到。
     /// </summary>
-    [GeneratedRegex(@"[A-Za-z][A-Za-z0-9_]*")]
-    private static partial Regex Word { get; }
+    [GeneratedRegex(@"(?:Localize\s+|Strings\.|nameof\((?:[A-Za-z0-9_]+\.)*)(?<key>[A-Za-z][A-Za-z0-9_]*)|""(?<key>[A-Za-z][A-Za-z0-9_]*)""")]
+    private static partial Regex KeyReference { get; }
 
     [TestMethod]
     public void EveryResourceKey_IsReferencedSomewhere()
@@ -81,9 +84,9 @@ public partial class UnusedLocalizedKeyTests
                 continue;
             }
             scanned++;
-            foreach (Match match in Word.Matches(File.ReadAllText(file)))
+            foreach (Match match in KeyReference.Matches(File.ReadAllText(file)))
             {
-                words.Add(match.Value);
+                words.Add(match.Groups["key"].Value);
             }
         }
 

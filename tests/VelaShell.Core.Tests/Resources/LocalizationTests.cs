@@ -102,9 +102,7 @@ public class LocalizationTests : IDisposable
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Notifications));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.NewTab));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.CloseTab));
-        Assert.IsFalse(string.IsNullOrEmpty(Strings.Search));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Copy));
-        Assert.IsFalse(string.IsNullOrEmpty(Strings.Split));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.FileName));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Size));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Permissions));
@@ -137,7 +135,6 @@ public class LocalizationTests : IDisposable
         Assert.IsFalse(string.IsNullOrEmpty(Strings.FontSize));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.ScrollbackLines));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Password));
-        Assert.IsFalse(string.IsNullOrEmpty(Strings.PrivateKey));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Username));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Host));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Port));
@@ -154,9 +151,7 @@ public class LocalizationTests : IDisposable
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Notifications));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.NewTab));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.CloseTab));
-        Assert.IsFalse(string.IsNullOrEmpty(Strings.Search));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Copy));
-        Assert.IsFalse(string.IsNullOrEmpty(Strings.Split));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.FileName));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Size));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Permissions));
@@ -189,7 +184,6 @@ public class LocalizationTests : IDisposable
         Assert.IsFalse(string.IsNullOrEmpty(Strings.FontSize));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.ScrollbackLines));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Password));
-        Assert.IsFalse(string.IsNullOrEmpty(Strings.PrivateKey));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Username));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Host));
         Assert.IsFalse(string.IsNullOrEmpty(Strings.Port));

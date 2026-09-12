@@ -49,14 +49,8 @@ public static class Strings
     /// <summary>“关闭标签页”菜单/按钮文案。</summary>
     public static string CloseTab => ResourceManager.GetString(nameof(CloseTab), CultureInfo.CurrentUICulture) ?? nameof(CloseTab);
 
-    /// <summary>“搜索”标签/按钮文案。</summary>
-    public static string Search => ResourceManager.GetString(nameof(Search), CultureInfo.CurrentUICulture) ?? nameof(Search);
-
     /// <summary>“复制”菜单/按钮文案。</summary>
     public static string Copy => ResourceManager.GetString(nameof(Copy), CultureInfo.CurrentUICulture) ?? nameof(Copy);
-
-    /// <summary>“拆分”窗格菜单/按钮文案。</summary>
-    public static string Split => ResourceManager.GetString(nameof(Split), CultureInfo.CurrentUICulture) ?? nameof(Split);
 
     /// <summary>文件列表“文件名”列标题文案。</summary>
     public static string FileName => ResourceManager.GetString(nameof(FileName), CultureInfo.CurrentUICulture) ?? nameof(FileName);
@@ -72,9 +66,6 @@ public static class Strings
 
     /// <summary>“终端类型”设置项标签文案。</summary>
     public static string TerminalType => ResourceManager.GetString(nameof(TerminalType), CultureInfo.CurrentUICulture) ?? nameof(TerminalType);
-
-    /// <summary>“终端编码”设置项标签文案。</summary>
-    public static string TerminalEncoding => ResourceManager.GetString(nameof(TerminalEncoding), CultureInfo.CurrentUICulture) ?? nameof(TerminalEncoding);
 
     /// <summary>“上传”按钮文案。</summary>
     public static string Upload => ResourceManager.GetString(nameof(Upload), CultureInfo.CurrentUICulture) ?? nameof(Upload);
@@ -105,9 +96,6 @@ public static class Strings
 
     /// <summary>“快捷命令”面板标题文案。</summary>
     public static string QuickCommands => ResourceManager.GetString(nameof(QuickCommands), CultureInfo.CurrentUICulture) ?? nameof(QuickCommands);
-
-    /// <summary>“添加命令”按钮文案。</summary>
-    public static string AddCommand => ResourceManager.GetString(nameof(AddCommand), CultureInfo.CurrentUICulture) ?? nameof(AddCommand);
 
     /// <summary>“描述”输入项标签文案。</summary>
     public static string Description => ResourceManager.GetString(nameof(Description), CultureInfo.CurrentUICulture) ?? nameof(Description);
@@ -184,9 +172,6 @@ public static class Strings
     /// <summary>“密码”输入项标签文案。</summary>
     public static string Password => ResourceManager.GetString(nameof(Password), CultureInfo.CurrentUICulture) ?? nameof(Password);
 
-    /// <summary>“私钥”认证方式/输入项标签文案。</summary>
-    public static string PrivateKey => ResourceManager.GetString(nameof(PrivateKey), CultureInfo.CurrentUICulture) ?? nameof(PrivateKey);
-
     /// <summary>“用户名”输入项标签文案。</summary>
     public static string Username => ResourceManager.GetString(nameof(Username), CultureInfo.CurrentUICulture) ?? nameof(Username);
 
@@ -223,9 +208,6 @@ public static class Strings
     /// <summary>“密钥类型”标签文案。</summary>
     public static string KeyType => ResourceManager.GetString(nameof(KeyType), CultureInfo.CurrentUICulture) ?? nameof(KeyType);
 
-    /// <summary>“拒绝”按钮文案。</summary>
-    public static string Reject => ResourceManager.GetString(nameof(Reject), CultureInfo.CurrentUICulture) ?? nameof(Reject);
-
     /// <summary>“永久信任”选项文案。</summary>
     public static string TrustPermanently => ResourceManager.GetString(nameof(TrustPermanently), CultureInfo.CurrentUICulture) ?? nameof(TrustPermanently);
 
@@ -237,9 +219,6 @@ public static class Strings
 
     /// <summary>“分组”输入项标签文案。</summary>
     public static string Group => ResourceManager.GetString(nameof(Group), CultureInfo.CurrentUICulture) ?? nameof(Group);
-
-    /// <summary>“私钥口令”输入项标签文案。</summary>
-    public static string Passphrase => ResourceManager.GetString(nameof(Passphrase), CultureInfo.CurrentUICulture) ?? nameof(Passphrase);
 
     // 文件浏览器 / SFTP(§6)
     /// <summary>“传输历史”面板标题文案。</summary>
