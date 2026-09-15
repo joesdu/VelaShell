@@ -24,5 +24,23 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # 多 shell 靶子:bash / zsh / fish / dash / ash 各一个账号,外加两个"用户已经动过手脚"的账号。
+  # 上面那台 linuxserver 的 sshd 以普通用户身份运行,一台只认一个用户,验不了分 shell 的行为。
+  # 见 tests/fixtures/ssh-shells/Dockerfile。
+  ssh-shells:
+    build: ./tests/fixtures/ssh-shells
+    image: velashell-test-shells:latest
+    container_name: velashell-test-shells
+    hostname: velashell-test-shells
+    ports:
+      - "2223:2222"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 2222 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
 volumes:
   ssh-test-config:

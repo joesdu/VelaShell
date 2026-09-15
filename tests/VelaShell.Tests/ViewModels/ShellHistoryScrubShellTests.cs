@@ -26,7 +26,7 @@ namespace VelaShell.Tests.ViewModels;
 /// </para>
 /// </remarks>
 [TestClass]
-public sealed class ShellHistoryScrubShellTests
+public sealed partial class ShellHistoryScrubShellTests
 {
     private static string? _bash;
 
@@ -35,7 +35,7 @@ public sealed class ShellHistoryScrubShellTests
 
     /// <summary>宿主真正会注入的那一行:目录上报钩子 + 摘历史前缀,与 SendSilentCommand 一字不差。</summary>
     private static string InjectedLine =>
-        ShellHistoryScrub.Prepend(MainWindowViewModel.WorkingDirectoryReportHook);
+        ShellHistoryScrub.Prepend(ShellIntegrationScript.Bash);
 
     [TestMethod]
     public void TheInjectedLine_DoesNotStayInHistory()
@@ -121,20 +121,24 @@ public sealed class ShellHistoryScrubShellTests
             .Select(m => m.Groups["cmd"].Value.TrimEnd())];
     }
 
-    /// <summary>把行首残留的转义序列剥掉再解析。</summary>
+    /// <summary>把行里残留的 OSC 序列整条剥掉再解析。</summary>
     /// <remarks>
-    /// 钩子装好之后<b>每次提示符</b>都真的会发一串 OSC 7,而没有 tty 的 bash 把它和随后的输出
-    /// 挤在同一行上 —— <c>history</c> 的第一行于是长成「一串 OSC 7 + <c>    1  echo user-1</c>」,
+    /// <para>
+    /// 钩子装好之后<b>每次提示符</b>都真的会发上报序列,而没有 tty 的 bash 把它和随后的输出
+    /// 挤在同一行上 —— <c>history</c> 的第一行于是长成「一串 OSC + <c>    1  echo user-1</c>」,
     /// 行首锚定的正则一条也匹配不上。这不是被测代码的问题,是解析的问题:先剥干净再比对。
-    /// 剥法取最后一个 ESC 之后的部分,再去掉 ST(<c>ESC \</c>)剩下的那个反斜杠 ——
-    /// 历史里是普通命令,不会自带 ESC。
+    /// </para>
+    /// <para>
+    /// <b>必须按「整条序列」剥,不能取巧成「最后一个 ESC 之后」。</b>钩子一次发<b>两条</b>
+    /// (先通用的 OSC 7,后 VS Code 那条 OSC 633),取巧的写法会把第二条的正文当成命令行,
+    /// 于是那一行被正则丢掉、看上去像是"用户的命令被我们删了" —— 排查了半天才发现是它。
+    /// </para>
     /// </remarks>
-    private static string StripEscapes(string line)
-    {
-        int lastEscape = line.LastIndexOf((char)27);
-        string tail = lastEscape < 0 ? line : line[(lastEscape + 1)..];
-        return tail.StartsWith((char)92) ? tail[1..] : tail; // 92 = 反斜杠,即 ST 的后半个字节
-    }
+    private static string StripEscapes(string line) => OscSequence().Replace(line, string.Empty);
+
+    /// <summary>一条 OSC:<c>ESC ]</c> 开头,BEL 或 ST(<c>ESC \</c>)收尾。</summary>
+    [GeneratedRegex("\e\\][^\a\e]*(?:\a|\e\\\\)")]
+    private static partial Regex OscSequence();
 
     private static string[] RunInteractiveRaw(string? histControl, params string[] lines)
     {

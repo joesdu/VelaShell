@@ -587,11 +587,40 @@ public sealed class TerminalEmulator : IVtActions
                 break;
             case 7:
                 // OSC 7:shell 上报当前工作目录(file://host/path)。用于「文件浏览器跟随终端目录」。
-                // 由对端 shell 发出(SSH bash 会话会自动安装 PROMPT_COMMAND 钩子;
-                // 其他 shell 也可通过各自的提示符钩子上报)。
+                // 由对端 shell 发出 —— SSH 会话会按对端 shell 的种类自动安装对应的钩子
+                // (bash 走 PROMPT_COMMAND、zsh 走 precmd_functions、fish 走 --on-variable PWD、
+                // dash/ash/ksh 走 PS1,见 VelaShell.Core.Ssh.ShellIntegrationScript);
+                // 用户自己在 rc 里发的同样认。
                 if (p.Count > 1 && ParseOsc7Path(p[1]) is { Length: > 0 } dir)
                 {
                     WorkingDirectoryChanged?.Invoke(dir);
+                }
+                break;
+            case 9:
+                // OSC 9 ; 9 ; <路径>:ConEmu 首创、Windows Terminal 也认的工作目录上报。
+                // 裸的 OSC 9(iTerm2 的桌面通知)与目录无关,故必须先认第二个参数是不是 "9"。
+                if (p.Count > 2 && p[1] == "9" && ParsePlainPath(JoinFrom(p, 2)) is { Length: > 0 } cwd9)
+                {
+                    WorkingDirectoryChanged?.Invoke(cwd9);
+                }
+                break;
+            case 633:
+                // OSC 633:VS Code 的 shell 集成协议(electerm 等也在用)。我们自己注入的钩子
+                // 发的是通用的 OSC 7,这里认 633 是为了**白捡**已经为 VS Code 配过 rc 的用户:
+                // 他们什么都不用改,跟随就能工作。A/B/C/D 与 OSC 133 同义,直接并到同一套命令块标记上。
+                SetPromptMark(p);
+                if (p.Count > 2 && p[1] == "P"
+                    && ParseKeyedPath(JoinFrom(p, 2), "Cwd=") is { Length: > 0 } cwd633)
+                {
+                    WorkingDirectoryChanged?.Invoke(cwd633);
+                }
+                break;
+            case 1337:
+                // OSC 1337 ; CurrentDir=<路径>:iTerm2 的 shell 集成。同 633,认它是为了兼容
+                // 用户已有的配置(iTerm2 官方安装脚本会把它写进 rc)。
+                if (p.Count > 1 && ParseKeyedPath(JoinFrom(p, 1), "CurrentDir=") is { Length: > 0 } cwd1337)
+                {
+                    WorkingDirectoryChanged?.Invoke(cwd1337);
                 }
                 break;
             case 8:
@@ -753,6 +782,78 @@ public sealed class TerminalEmulator : IVtActions
             // 解码失败:用原始路径。
         }
         return path.StartsWith('/') ? path : null;
+    }
+
+    /// <summary>
+    /// 把 <paramref name="from" /> 之后的 OSC 参数用 ';' 原样拼回来。
+    /// </summary>
+    /// <remarks>
+    /// 分号是 OSC 的字段分隔符,解析器按它无条件切分 —— 可路径里完全可以有分号
+    /// (<c>/srv/a;b</c>)。VS Code 的规范要求发送方把它转义成 <c>\x3b</c>,但发送方不止一个,
+    /// 谁都可能漏;拼回来再解码,漏转义的那一份也还原得回去。同 OSC 8 的 URI 处理。
+    /// </remarks>
+    private static string JoinFrom(IReadOnlyList<string> p, int from)
+    {
+        if (p.Count <= from)
+        {
+            return string.Empty;
+        }
+        if (p.Count == from + 1)
+        {
+            return p[from];
+        }
+        var sb = new StringBuilder(p[from]);
+        for (int i = from + 1; i < p.Count; i++)
+        {
+            sb.Append(';').Append(p[i]);
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// 从 <c>键=值</c> 形式的载荷里取路径(OSC 633 的 <c>Cwd=</c>、OSC 1337 的 <c>CurrentDir=</c>);
+    /// 键对不上或路径非法时返回 null。
+    /// </summary>
+    private static string? ParseKeyedPath(string payload, string key) =>
+        payload.StartsWith(key, StringComparison.Ordinal)
+            ? ParsePlainPath(payload[key.Length..])
+            : null;
+
+    /// <summary>
+    /// 解析<b>未经 URL 编码</b>的绝对路径(OSC 633 / 1337 / 9;9 发的都是裸路径,不是 file:// URI)。
+    /// 非绝对路径一律返回 null。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 先做 VS Code 那套反转义:<c>\x3b</c> → <c>;</c>(分号是 OSC 分隔符,必须转义才发得出来)、
+    /// <c>\\</c> → <c>\</c>。只认这两个,不做通用的 <c>\xNN</c> 解码 —— Windows 路径里
+    /// <c>C:\x64\bin</c> 这种写法一旦被当成十六进制转义,就会被吃成一个字符。
+    /// </para>
+    /// <para>
+    /// 绝对路径的判据同时认两种:POSIX 的 <c>/</c> 开头,以及 Windows 的盘符
+    /// (<c>C:\</c> / <c>C:/</c>)—— OSC 9;9 本就是 Windows 那边的方言,对端是
+    /// Windows OpenSSH 时报回来的正是盘符路径。
+    /// </para>
+    /// </remarks>
+    private static string? ParsePlainPath(string payload)
+    {
+        if (payload.Length == 0)
+        {
+            return null;
+        }
+        string path = payload
+            .Replace(@"\x3b", ";", StringComparison.OrdinalIgnoreCase)
+            .Replace(@"\\", @"\", StringComparison.Ordinal)
+            .Trim();
+        if (path.StartsWith('/'))
+        {
+            return path;
+        }
+        bool drive = path.Length >= 3
+                     && char.IsAsciiLetter(path[0])
+                     && path[1] == ':'
+                     && path[2] is '\\' or '/';
+        return drive ? path : null;
     }
 
     /// <summary>分发 DCS 序列;目前处理 DECRQSS 状态请求,其余静默消费。</summary>

@@ -384,7 +384,7 @@ public class SettingsViewModel : ReactiveObject
     /// <remarks>
     /// <b>这是给用户抄的,不是我们注入的。</b>完整的 OSC 133 要动 <c>PS0</c> / <c>PS1</c>,
     /// 而那两个会被 starship / oh-my-posh / powerlevel10k 每次画提示符都重写 ——
-    /// 爆炸半径远大于现有那个只碰 <c>PROMPT_COMMAND</c> 的 OSC 7 钩子。理由详见
+    /// 爆炸半径远大于那几段只碰提示符钩子链的 OSC 7 上报脚本(<c>ShellIntegrationScript</c>)。理由详见
     /// <see cref="ShellIntegration" />。
     /// </remarks>
     public static string ShellIntegrationBash => ShellIntegration.Bash;

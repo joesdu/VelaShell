@@ -56,7 +56,10 @@ public class SshTerminalBridge : IDisposable
     private volatile bool _disposed;
 
     // 连接初始化命令的回显抑制器(静默执行);仅在 UI 线程读写(Arm 与 FlushPending 同线程)。
-    private EchoSuppressor? _echoSuppressor;
+    // volatile:注入现在推迟到"对端安静"之后,由线程池上的轮询触发(见 RunWhenOutputIdle),
+    // 因此这个字段会被 UI 线程(FlushPending)与线程池线程(OpenInjectionWindow)同时碰。
+    // EchoSuppressor 自身是加锁的,这里只需保证引用的可见性。
+    private volatile EchoSuppressor? _echoSuppressor;
 
     // 同一个抑制针的第二份实例,专供旁路记录(DataReceived → 会话日志 / 会话录制)。
     // 记录挂在读线程的原始流上,拿不到显示路径抑制后的结果 —— 于是注入的初始化脚本
@@ -168,10 +171,207 @@ public class SshTerminalBridge : IDisposable
     /// 回显最多出现两次(内核规范模式 + readline 预输入重绘),窗口过后自动失效。
     /// 显示路径与旁路记录路径(<see cref="DataReceived" />)各装一份实例,理由见字段注释。
     /// </summary>
+    /// <param name="needle">注入的整行(含换行),即 PTY 会回显出来的那串字节。</param>
+    /// <remarks>
+    /// <para>
+    /// <b>只给短命令用。</b>整行一旦超出终端宽度,各家 shell 的折行重绘就没法逐字节匹配了
+    /// (真机实测三种形态);那种情形走 <see cref="OpenInjectionWindow" />。
+    /// 这条路今天只服务两种场景:探不出 shell 种类、或对端是 cmd.exe / PowerShell ——
+    /// 那上面 <c>printf</c> 未必存在,哨兵回不来,窗口只能白等到超时。
+    /// </para>
+    /// <para>
+    /// <b>连着发好几条时是「加一根针」,不是「换一个抑制器」。</b>握手那一串
+    /// (目录上报脚本 → 初始目录 <c>cd</c> → 认证后命令)是**同一瞬间**连着写进 PTY 的,
+    /// 换实例会让前一个在见到任何数据之前就被顶掉 —— 它那行回显于是原样留在屏幕上
+    /// (用户看到的那串 <c>test -n "${BASH_VERSION:-}" &amp;&amp; eval …</c> 正是这么来的)。
+    /// 加针对<b>注入窗口</b>那个实例同样成立:窗口闭合后它退回剥针,后面那几条照样剥得掉。
+    /// </para>
+    /// </remarks>
     public void SuppressEchoOnce(byte[] needle)
     {
-        _echoSuppressor = new(needle, 2, TimeSpan.FromSeconds(10));
-        _tapEchoSuppressor = new(needle, 2, TimeSpan.FromSeconds(10));
+        // 太短的针不装:构造会抛(短针在流里到处都是,扣住它会剪坏正常输出)。
+        // 真会走到这里的是"非 POSIX 对端 + 一条极短的认证后命令"(<c>w</c> 之类)——
+        // 那一行的回显会露在屏幕上,但那远好过握手时甩一个异常出来。
+        if (needle.Length < EchoSuppressor.MinNeedleBytes)
+        {
+            return;
+        }
+        if (_echoSuppressor is { Expired: false } active)
+        {
+            active.AddNeedle(needle);
+        }
+        else
+        {
+            _echoSuppressor = new(needle, 2, TimeSpan.FromSeconds(10));
+        }
+        if (_tapEchoSuppressor is { Expired: false } tap)
+        {
+            tap.AddNeedle(needle);
+        }
+        else
+        {
+            _tapEchoSuppressor = new(needle, 2, TimeSpan.FromSeconds(10));
+        }
+    }
+
+    /// <summary>
+    /// 只开一个「注入窗口」:从这一刻起扣住显示路径上的一切,直到 <paramref name="sentinel" /> 出现。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 内置的目录上报脚本走这条路而不是抑制针:它有八九百字符,超出终端宽度之后各家 shell
+    /// 的回显重绘五花八门(ash 插 <c>CR LF</c>、zsh 重复断点字符、fish 整行重排),
+    /// 逐字节匹配根本咬不住 —— 真机上三种全撞到了。整段扣住反而简单且必然正确。
+    /// 理由详见 <see cref="EchoSuppressor.OpenWindow" />。
+    /// </para>
+    /// <para>
+    /// <b>调用方必须先等对端安静下来</b>(<see cref="RunWhenOutputIdle" />),否则横幅 / MOTD
+    /// 会连同注入的副作用一起被扣住。
+    /// </para>
+    /// <para>
+    /// <b>旁路记录(会话日志 / 录制)不装窗口</b>:日志要如实记下远端到底回了什么。
+    /// 注入行的回显因此会出现在日志里 —— 那是排障线索,而且长注入的回显本来也剥不干净。
+    /// </para>
+    /// </remarks>
+    public void OpenInjectionWindow(byte[] sentinel)
+    {
+        if (sentinel.Length == 0)
+        {
+            return;
+        }
+        _echoSuppressor = EchoSuppressor.OpenWindow(sentinel, TimeSpan.FromSeconds(10));
+        ArmGateFlushTimer();
+    }
+
+    /// <summary>
+    /// 等对端<b>安静下来</b>再执行 <paramref name="action" />(UI 线程)。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 连上之后横幅、MOTD、rc 的欢迎语、第一个提示符会连着涌过来。注入窗口是"从现在起整段扣住",
+    /// armed 得太早就会把这些一起吞掉 —— 用户登进去面对一块空屏,那比看见一行报错糟糕得多。
+    /// 所以等:至少收到过一块输出,且此后静默满 <paramref name="idle" />,再动手。
+    /// </para>
+    /// <para>
+    /// <paramref name="max" /> 是兜底:有的服务器登录后一直在刷东西(动态 MOTD、fortune、
+    /// 实时日志),不能为此永远不注入。到点就注,大不了窗口里多扣几行 —— 到期照样放行。
+    /// </para>
+    /// <para>
+    /// electerm 也在等(它等的是"第一块数据到达"),但只等到第一块就动手,横幅还没放完 ——
+    /// 这里多等一个静默期,代价是几百毫秒,换的是横幅一个字节都不会丢。
+    /// </para>
+    /// </remarks>
+    /// <param name="idle">静默多久算"安静了"。</param>
+    /// <param name="max">最长等这么久,到点无条件执行。</param>
+    /// <param name="action">
+    /// 只执行一次的动作。<b>在线程池线程上执行,不编组回 UI 线程</b> ——
+    /// 注入这条路上真正被碰的只有 <see cref="_echoSuppressor" />(volatile + 自身加锁)
+    /// 与出站写队列(本来就是并发安全的)。刻意不编组是因为编组会把"能不能注入"绑死在
+    /// "UI 线程此刻有没有在处理作业"上,而那件事在测试宿主里并不总是成立,
+    /// 在真实界面卡顿时也会平白拖慢注入。真正非 UI 线程不可的那点收尾(定时兜底、
+    /// 喂终端)各自再 Post 回去。
+    /// </param>
+    public void RunWhenOutputIdle(TimeSpan idle, TimeSpan max, Action action)
+    {
+        DateTime deadline = DateTime.UtcNow + max;
+        TimeSpan poll = TimeSpan.FromMilliseconds(50);
+        bool ReadyNow()
+        {
+            // 流都读不了了(远端已关、或压根没接上),就不会再有输出了 —— 等什么安静。
+            if (!_shellStream.CanRead)
+            {
+                return true;
+            }
+            return Volatile.Read(ref _sawOutput)
+                   && DateTime.UtcNow - new DateTime(Interlocked.Read(ref _lastOutputTicks), DateTimeKind.Utc) >= idle;
+        }
+        // 先同步判一次:条件已经成立时不该平白多等一个轮询周期,
+        // 而且这让"流根本没接上"这种情形在调用点就地结束,不依赖任何定时器。
+        if (ReadyNow())
+        {
+            action();
+            return;
+        }
+
+        // 轮询放在线程池上、只把最后那一下 Post 回 UI 线程,而不是用 DispatcherTimer 连环续期:
+        // 前者只依赖"UI 线程会处理 Post 进来的作业"这一条(输出泵本来就靠它),
+        // 后者还额外依赖调度器的定时器队列被驱动 —— 而 headless 测试里那条队列不一定在跑。
+        _ = Task.Run(async () =>
+        {
+            while (!_disposed && DateTime.UtcNow < deadline && !ReadyNow())
+            {
+                await Task.Delay(poll).ConfigureAwait(false);
+            }
+            if (_disposed)
+            {
+                return;
+            }
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                // 这是个即发即弃的任务:不接住就是一个**无人观察**的异常 ——
+                // 注入悄无声息地没发生,屏幕上什么都不显示,查都没处查。
+                Error?.Invoke(ex);
+            }
+        });
+    }
+
+    /// <summary>最后一次收到远端输出的时刻(UTC ticks);读线程写、UI 线程读。</summary>
+    private long _lastOutputTicks = DateTime.UtcNow.Ticks;
+
+    /// <summary>收到过远端输出没有 —— 一个字节都还没来的时候不该判定为"安静"。</summary>
+    private bool _sawOutput;
+
+    /// <summary>
+    /// 给注入窗口挂一个一次性的兜底定时器。
+    /// </summary>
+    /// <remarks>
+    /// 吞噬阶段靠"下一块输出到来"推进,而注入失败时远端<b>恰恰不会再有输出</b> ——
+    /// 报错和提示符都已经扣在抑制器手里,没人再来敲门,屏幕就空在那儿等着用户按回车。
+    /// 定时器到点把它们放出来(<see cref="EchoSuppressor.ForceFlush" />),
+    /// 因此屏幕最差也只是"和以前一样"。
+    /// <para>
+    /// 比抑制器自己的吞噬窗口(<see cref="EchoSuppressor.DefaultSwallowWindow" />)多给
+    /// 250 毫秒:定时器只是兜底,正常路径上应该是 <see cref="FlushPending" /> 里那次
+    /// Process 先把窗口关掉,而不是靠它。两个时长因此绑在同一个常量上,改一处即可。
+    /// </para>
+    /// </remarks>
+    private void ArmGateFlushTimer()
+    {
+        // 定时器与随后的 FeedTerminal 都只能在 UI 线程上做,而武装动作本身可能来自线程池
+        // (注入被推迟到"对端安静"之后,见 RunWhenOutputIdle)。所以先 Post 过去再挂。
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(ArmGateFlushTimer);
+            return;
+        }
+        EchoSuppressor? armed = _echoSuppressor;
+        DispatcherTimer.RunOnce(
+            () =>
+            {
+                // 认实例而不是认"有没有抑制器":这几秒里可能又注入了一条命令(用户配的
+                // 启动命令紧随其后),那时 _echoSuppressor 已经是**别人**了,不该被这次定时器收尾。
+                if (_disposed || !ReferenceEquals(_echoSuppressor, armed) || armed is null)
+                {
+                    return;
+                }
+                // ForceFlush 只结束**吞噬**,抑制器随后退回继续剥针 —— 后面还排着
+                // 第二、第三条注入的回显没剥,这里把实例丢掉就等于把它们漏到屏幕上。
+                byte[] pending = armed.ForceFlush();
+                if (armed.Expired)
+                {
+                    _echoSuppressor = null;
+                }
+                if (pending.Length > 0)
+                {
+                    FeedTerminal(pending, pending.Length);
+                }
+            },
+            EchoSuppressor.DefaultSwallowWindow + TimeSpan.FromMilliseconds(250)
+        );
     }
 
     /// <summary>
@@ -369,6 +569,10 @@ public class SshTerminalBridge : IDisposable
 
     private void EnqueueForFeed(PendingChunk chunk)
     {
+        // 记一笔"刚收到输出":RunWhenOutputIdle 靠它判断对端安静了没有。记在读线程而不是
+        // UI 线程,是因为注入的时机该跟着**网络**走,不该跟着界面排空的节奏走。
+        Interlocked.Exchange(ref _lastOutputTicks, DateTime.UtcNow.Ticks);
+        Volatile.Write(ref _sawOutput, true);
         lock (_pendingLock)
         {
             _pending.Add(chunk);

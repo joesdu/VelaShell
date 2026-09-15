@@ -16,24 +16,60 @@ namespace VelaShell.Tests.ViewModels;
 [TestClass]
 public sealed class MainWindowSshFeatureTests
 {
+    /// <summary>开关开着时,每种 shell 都该拿到**自己那一段**,而不是千篇一律的 bash 钩子。</summary>
+    /// <remarks>
+    /// 旧版只有 bash 一段,守卫 <c>test -n "$BASH_VERSION"</c> 把 zsh 一并短路掉了 ——
+    /// zsh 用户不报错,但「跟随终端目录」就是不工作。这组断言盯的正是那个洞。
+    /// </remarks>
     [TestMethod]
-    public void BuildStartupCommand_WithoutUserCommand_InstallsWorkingDirectoryReporter()
+    [DataRow(RemoteShellKind.Bash, "PROMPT_COMMAND")]
+    [DataRow(RemoteShellKind.Zsh, "precmd_functions")]
+    [DataRow(RemoteShellKind.Fish, "--on-variable PWD")]
+    [DataRow(RemoteShellKind.PosixSh, "PS1=")]
+    public void WorkingDirectoryScript_PicksScriptForShellKind(RemoteShellKind kind, string hookMechanism)
     {
-        string command = MainWindowViewModel.BuildStartupCommand(null);
+        AppSettings settings = new();
 
-        Assert.Contains("PROMPT_COMMAND", command);
-        Assert.Contains("vela_shell_osc7", command);
-        Assert.Contains(@"\033]7;file://%s%s", command);
+        string script = MainWindowViewModel.WorkingDirectoryScript(settings, kind);
+        ShellIntegrationInjection injection = ShellIntegrationScript.Build(kind);
+
+        Assert.Contains(hookMechanism, script);
+        Assert.Contains("vela_shell_osc7", script);
+        Assert.Contains("]7;file://", script, "通用那条(给 tmux / 别家终端用)");
+        Assert.Contains("]633;P;Cwd=", script, "VS Code 那条 —— 排在后面发,后到者为准");
+
+        // 哨兵必须是"这一行自己会打出来的那条",而且整条序列都在里面 ——
+        // 少了框架就会把 BEL 漏成一声真响的铃(见 ShellIntegrationInjection)。
+        Assert.StartsWith("\e]633;P;VelaShell=", injection.Sentinel);
+        Assert.EndsWith("\a", injection.Sentinel);
+        Assert.Contains(injection.Sentinel[3..^1], injection.CommandLine, "哨兵的文本必须真的出现在被注入的那一行里");
+        Assert.Contains(script, injection.CommandLine, "装载脚本必须原样落在被注入的那一行里");
     }
 
+    /// <summary>
+    /// 每次注入一枚新 nonce。固定串会让前一条注入的哨兵把后一条的窗口提前关掉 ——
+    /// 重连、多开标签都会连着注入,这不是假想的情形。
+    /// </summary>
     [TestMethod]
-    public void BuildStartupCommand_WithUserCommand_AppendsItToReporter()
+    public void ShellIntegrationBuild_UsesAFreshNoncePerInjection()
     {
-        string command = MainWindowViewModel.BuildStartupCommand("  cd /srv/app  ");
+        AppSettings settings = new();
 
-        Assert.Contains("vela_shell_osc7", command);
-        Assert.EndsWith("; cd /srv/app", command);
+        string first = ShellIntegrationScript.Build(RemoteShellKind.Bash).Sentinel;
+        string second = ShellIntegrationScript.Build(RemoteShellKind.Bash).Sentinel;
+
+        Assert.AreNotEqual(first, second);
     }
+
+    /// <summary>
+    /// 探不出种类(<see cref="RemoteShellKind.Unknown" />)与认定不是 POSIX
+    /// (<see cref="RemoteShellKind.NonPosix" />,即 cmd.exe / PowerShell,#305)一律不注入。
+    /// </summary>
+    [TestMethod]
+    [DataRow(RemoteShellKind.Unknown)]
+    [DataRow(RemoteShellKind.NonPosix)]
+    public void WorkingDirectoryScript_WithoutUsableShell_InjectsNothing(RemoteShellKind kind) =>
+        Assert.IsEmpty(MainWindowViewModel.WorkingDirectoryScript(new(), kind));
 
     /// <summary>
     /// 关掉「上报终端工作目录」后必须一个字节都不注入(#286):用户报的就是每次开窗
@@ -41,23 +77,14 @@ public sealed class MainWindowSshFeatureTests
     /// 连多余的回车都不会有。
     /// </summary>
     [TestMethod]
-    public void BuildStartupCommand_WhenReportingDisabled_WithoutUserCommand_InjectsNothing()
+    public void WorkingDirectoryScript_WhenReportingDisabled_InjectsNothing()
     {
-        string command = MainWindowViewModel.BuildStartupCommand(null, reportWorkingDirectory: false);
+        AppSettings settings = new();
+        settings.TerminalBehavior.ReportWorkingDirectory = false;
 
-        Assert.IsEmpty(command);
+        Assert.IsEmpty(MainWindowViewModel.WorkingDirectoryScript(settings, RemoteShellKind.Bash));
     }
 
-    /// <summary>关掉钩子不该连累用户自己的"连接后执行命令" —— 那是两件事。</summary>
-    [TestMethod]
-    public void BuildStartupCommand_WhenReportingDisabled_KeepsUserCommandOnly()
-    {
-        string command = MainWindowViewModel.BuildStartupCommand("  cd /srv/app  ", reportWorkingDirectory: false);
-
-        Assert.AreEqual("cd /srv/app", command);
-        Assert.DoesNotContain("vela_shell_osc7", command);
-        Assert.DoesNotContain("BASH_VERSION", command);
-    }
 
     [TestMethod]
     public async Task ConnectProfileAsync_AddsTerminalTab_AndUpdatesStatusBar()
@@ -122,7 +149,7 @@ public sealed class MainWindowSshFeatureTests
     /// <summary>
     /// 配置自带的「认证后执行命令」必须真的注入到这条会话的 shell 里(延迟 0 = 握手完立刻发)。
     /// 它与设置里那条全局命令是两件事,顺序固定「先全局、后本条」—— 与用户在两个界面上
-    /// 看到的顺序一致。只断言本条命令确实落到了线上:全局那条由 BuildStartupCommand 的用例覆盖。
+    /// 看到的顺序一致。只断言本条命令确实落到了线上:全局那条由 WorkingDirectoryScript 的用例覆盖。
     /// </summary>
     [TestMethod]
     public async Task ConnectProfileAsync_InjectsThePerProfilePostAuthCommand()
@@ -189,6 +216,11 @@ public sealed class MainWindowSshFeatureTests
         TerminalTabViewModel? tab = await vm.TryConnectProfileAsync(profile);
 
         Assert.IsNotNull(tab);
+
+        // 注入不再与握手同步完成:它推迟到「对端安静下来」之后才发(见
+        // MainWindowViewModel.SendSessionInjections —— 注入窗口是整段扣住输出的,
+        // armed 得太早会把横幅和第一个提示符一起吞掉)。这个替身流永远不吐数据,
+        // 于是会一路等到 3 秒的上限才注入,所以这里给的余量比那个上限宽。
         string payload = await injected.Task.WaitAsync(TimeSpan.FromSeconds(10));
         // 首尾空白在保存与注入两处都会被裁掉;注入本身按 SendSilentCommand 的约定
         // 前置一个空格、以 \n 收尾,并在整行最前面接上摘历史那段 —— 用户不该在方向键里

@@ -340,8 +340,9 @@ public class FileBrowserViewModel : ReactiveObject
     /// <summary>
     /// 「跟随终端目录」(map-pin 按钮):开启时,本会话终端 shell 的 cwd 变化(经 OSC 7)会自动把文件浏览器
     /// 切到该目录。开启当下立即同步到终端当前目录;关闭则不同步。手动切换目录不影响开关——终端下次 cd 到
-    /// 新目录时再同步到最新。依赖 shell 发出 OSC 7;SSH bash 会话会自动安装上报钩子,
-    /// 其他 shell 可在自己的提示符钩子中发送 OSC 7。
+    /// 新目录时再同步到最新。依赖 shell 发出上报序列;SSH 会话会按对端 shell 的种类自动注入对应的
+    /// 钩子(bash / zsh / fish / POSIX sh 各一段,见 <c>ShellIntegrationScript</c>),
+    /// 用户自己在 rc 里配的 OSC 7 / 633 / 1337 / 9;9 同样认。
     /// </summary>
     public bool FollowTerminal
     {
@@ -360,9 +361,9 @@ public class FileBrowserViewModel : ReactiveObject
             }
 
             // 一次上报都没收到过就打开开关 = 点了之后什么都不会发生。必须说清为什么:
-            // Windows 远端(cmd.exe/PowerShell)压根不上报 —— 那串 bash 钩子只对 POSIX shell
-            // 注入(#305),而受限 sshd 上探测不出来时也不注入。判据用"有没有真收到过 OSC 7"
-            // 而不是探测结论:用户自己在 rc 里发 OSC 7 的情形照样算数,不能误伤。
+            // Windows 远端(cmd.exe/PowerShell)压根不上报 —— 钩子只对认得出种类的 POSIX shell
+            // 注入(#305),而受限 sshd 上探测不出来时也不注入。判据用"有没有真收到过上报序列"
+            // 而不是探测结论:用户自己在 rc 里配了 OSC 7 / 633 / 1337 / 9;9 的情形照样算数,不能误伤。
             if (value)
             {
                 ErrorMessage = Strings.Get("Sftp_FollowTerminalNoReport");

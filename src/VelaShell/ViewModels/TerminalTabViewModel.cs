@@ -392,7 +392,17 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// <summary>本标签持有的终端模拟器,跨重连保持不变(拥有滚动缓冲区)。</summary>
     public ITerminalEmulator TerminalEmulator { get; }
 
-    /// <summary>该终端 shell 当前工作目录(经 OSC 7 上报);未知/未上报时为 null。</summary>
+    /// <summary>
+    /// 本会话远端 shell 的种类(<see cref="RemoteShellProbe" /> 的结论,握手时写入)。
+    /// 本地终端、以及探不出来的会话都是 <see cref="RemoteShellKind.Unknown" />。
+    /// </summary>
+    /// <remarks>
+    /// <see cref="SendSilentCommand" /> 靠它决定要不要给注入行接上那段摘历史前缀 ——
+    /// 那段前缀在 fish 里会让**整行**解析失败,理由见 <see cref="ShellHistoryScrub.SupportedBy" />。
+    /// </remarks>
+    public RemoteShellKind RemoteShellKind { get; set; }
+
+    /// <summary>该终端 shell 当前工作目录(经 OSC 7 / 633 / 1337 / 9;9 上报);未知/未上报时为 null。</summary>
     public string? TerminalWorkingDirectory { get; private set; }
 
     /// <summary>终端 shell 工作目录【变化】时触发(去重:同值不重复触发)。参数为绝对路径。</summary>
@@ -400,7 +410,8 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     private void OnEmulatorWorkingDirectoryChanged(string path)
     {
-        // OSC 7 每次提示符都发(即使 cwd 未变);只在真正变化时对外播报,避免把用户在文件浏览器里
+        // bash/zsh/sh 那几段钩子挂在提示符上,每次回车都会发一遍(即使 cwd 没变;只有 fish 那段
+        // 是挂在 PWD 变量上、真变了才响)。这里只在真正变化时对外播报,避免把用户在文件浏览器里
         // 的手动切换在每次回车时都拽回终端目录(仅当终端 cd 到新目录才同步)。
         if (string.IsNullOrEmpty(path) || string.Equals(path, TerminalWorkingDirectory, StringComparison.Ordinal))
         {
@@ -684,21 +695,54 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// 前导空格只对配了 <c>HISTCONTROL=ignorespace</c> 的人有效,而它默认是空的,拦不住。
     /// </para>
     /// </summary>
-    public void SendSilentCommand(string command)
+    /// <param name="command">要静默执行的整条命令;空白则什么都不发。</param>
+    public void SendSilentCommand(string command) => SendInjection(null, command);
+
+    /// <summary>
+    /// 注入目录上报脚本:<paramref name="installScript" /> 连输出带报错一起藏掉,
+    /// <paramref name="firstReport" /> 的输出留着(文件浏览器一连上就要靠它拿到 cwd)。
+    /// </summary>
+    /// <remarks>
+    /// 和 <see cref="SendSilentCommand" /> 分成两个入口而不是加个 bool:这一条是<b>两段</b>,
+    /// 一段藏一段不藏,而"藏不藏"正是靠哨兵插在中间实现的(见 <see cref="SilentCommand.Build" />)。
+    /// 用一个布尔开关表达不了"一行里有两种待遇"。
+    /// </remarks>
+    public void SendShellIntegration(string installScript, string firstReport) =>
+        SendInjection(installScript, firstReport);
+
+    /// <summary>
+    /// 静默注入的唯一出口:组装整行、按需开注入窗口、直写 PTY。
+    /// </summary>
+    /// <param name="hidden">排在哨兵<b>之前</b>的部分 —— 它的输出与报错都不上屏。</param>
+    /// <param name="visible">排在哨兵<b>之后</b>的部分 —— 它的输出原样显示。</param>
+    private void SendInjection(string? hidden, string? visible)
     {
-        // 摘历史那段接在**前面**:这一行最终的退出码因此仍由用户自己那条命令决定
-        // (提示符会把 $? 画出来),而不是被收尾动作抹成 0。抑制针必须按整行装 ——
-        // 回显的是整行,少一截就对不上,那行就会露在屏幕上。
-        string payload = ShellHistoryScrub.Prepend(command.Trim());
-        if (Bridge is null || payload.Length == 0)
+        // 整行的组装(摘历史前缀在前、哨兵插在中间)一律交给 SilentCommand ——
+        // 它同时是 Docker 端到端测试里那条链路的起点,两边不能各拼各的。
+        ShellIntegrationInjection injection = SilentCommand.Build(RemoteShellKind, hidden, visible);
+        if (Bridge is null || injection.IsEmpty)
         {
             return;
         }
-        Bridge.SuppressEchoOnce(Encoding.UTF8.GetBytes(payload + "\r\n"));
+        if (injection.Sentinel.Length > 0)
+        {
+            // 有哨兵:从现在起整段扣住,看见哨兵才恢复放行。回显长什么样都无所谓 ——
+            // 而那正是关键:整行一旦超出终端宽度,各家 shell 的折行重绘就没法逐字节匹配了
+            // (真机实测三种形态,见 EchoSuppressor.OpenWindow)。
+            Bridge.OpenInjectionWindow(Encoding.UTF8.GetBytes(injection.Sentinel));
+        }
+        else
+        {
+            // 探不出种类 / 对端是 cmd.exe:那上面 printf 未必存在,哨兵永远回不来,
+            // 窗口只能白等到超时。退回按回显匹配的抑制针 —— 这些场景下我们本来也只发
+            // 用户自己那条短命令,短命令不会折行,针咬得住。
+            Bridge.SuppressEchoOnce(Encoding.UTF8.GetBytes(injection.CommandLine + "\r\n"));
+        }
 
         // 直写 PTY(SendRaw)而非 WriteInput:注入不是用户键入,不得进入命令补全的
         // 行跟踪——补行脚本里的 ESC 字节曾把跟踪器打进未知态,SSH 标签建议全灭。
-        Bridge.SendRaw(Encoding.UTF8.GetBytes(" " + payload + "\n"));
+        // 前导空格是给配了 HISTCONTROL=ignorespace 的人的;真正的防线是摘历史前缀。
+        Bridge.SendRaw(Encoding.UTF8.GetBytes(" " + injection.CommandLine + "\n"));
     }
 
     /// <summary>启动桥接的 I/O 泵送(幂等;无桥或已启动时为空操作)。</summary>

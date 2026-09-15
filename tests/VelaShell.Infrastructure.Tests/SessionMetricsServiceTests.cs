@@ -14,7 +14,7 @@ public class SessionMetricsServiceTests
     /// 不答这一句,服务就认定对端跑不了 /proc 探测,一条命令都不会发。
     /// </summary>
     private static void StubPosixShell(ISshClientWrapper client) =>
-        client.RunCommandDetailedAsync(RemoteShellProbe.ProbeCommand, Arg.Any<CancellationToken>())
+        client.RunCommandDetailedAsync(RemoteShellProbe.PosixProbeCommand, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new RemoteCommandResult(RemoteShellProbe.PosixMarker + "\n", "", 0)));
 
     private static string Probe(long cpuBusy, long cpuIdle, long rx, long tx) =>
@@ -173,7 +173,7 @@ public class SessionMetricsServiceTests
         ISshClientWrapper client = Substitute.For<ISshClientWrapper>();
         client.IsConnected.Returns(true);
         // cmd.exe 的回答:printf 不是内部或外部命令。
-        client.RunCommandDetailedAsync(RemoteShellProbe.ProbeCommand, Arg.Any<CancellationToken>())
+        client.RunCommandDetailedAsync(RemoteShellProbe.PosixProbeCommand, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new RemoteCommandResult("", "'printf' 不是内部或外部命令", 1)));
         // 万一门没关住,让采集命令返回 cmd 那种"整行回声",以便断言能抓到假数据。
         client.RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())

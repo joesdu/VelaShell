@@ -22,3 +22,21 @@
 它们不是示例代码 —— 想看插件怎么写,读第一方插件仓库的
 [`plugins/`](https://github.com/VelaShellLabs/velashell-plugins/tree/main/plugins)
 与 [开发指南](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/templates/dev-guide.md)。
+
+## ssh-shells —— 多 shell SSH 靶子(不是插件夹具)
+
+[ssh-shells](ssh-shells/Dockerfile) 是另一类夹具:一台 sshd 容器,七个账号,登录 shell
+分别是 bash / zsh / fish / dash / ash,外加两个「用户已经动过手脚」的 bash 账号
+(`vela-pyenv` 的 `PROMPT_COMMAND` 结尾带分号、`vela-starship` 每次提示符重写 `PS1`)。
+
+它服务的是 [VelaShell.ShellIntegration.Tests](../VelaShell.ShellIntegration.Tests/README.md) ——
+「文件浏览器跟随终端目录」那条链路只有在真 shell、真 PTY 上才暴露得出问题
+(回显折行重绘、fish 的解析期报错、`;;` 语法错误)。
+
+为什么不复用 `docker-compose.test.yml` 里那台 `openssh-server`:它的 sshd 以**普通用户**
+身份运行(rootless),没法 setuid,因此一台只认一个用户 —— 而这里要验的恰恰是
+「同一份代码面对不同登录 shell 各自怎么表现」。
+
+```bash
+docker compose -f docker-compose.test.yml up -d ssh-shells   # 端口 2223,口令一律 velapass
+```

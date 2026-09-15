@@ -79,8 +79,14 @@ public interface ITerminalEmulator : IDisposable
     event Action<int, int>? PtySizeChanged;
 
     /// <summary>
-    /// shell 经 OSC 7 上报当前工作目录时触发(绝对路径)。用于「文件浏览器跟随终端目录」。
-    /// 仅在 shell 发出 OSC 7 时有效(SSH bash 会话会自动安装上报钩子)。来自 feed 线程。
+    /// shell 上报当前工作目录时触发(绝对路径)。用于「文件浏览器跟随终端目录」。来自 feed 线程。
+    /// <para>
+    /// <b>发的只有 OSC 7,认的是一整族。</b>SSH 会话会按对端 shell 的种类自动注入一段
+    /// OSC 7 上报钩子(bash / zsh / fish / POSIX sh 各一段,见
+    /// <c>VelaShell.Core.Ssh.ShellIntegrationScript</c>);而解析端同时认 OSC 7、
+    /// OSC 633(VS Code)、OSC 1337(iTerm2)与 OSC 9;9(ConEmu / Windows Terminal)——
+    /// 早就为别家配过 rc 的用户,什么都不用改就能用。
+    /// </para>
     /// </summary>
     event Action<string>? WorkingDirectoryChanged;
 
