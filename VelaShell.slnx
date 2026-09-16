@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/.github/">
     <File Path=".github/dependabot.yml" />
+    <File Path=".github/FUNDING.yml" />
     <File Path=".github/pull_request_template.md" />
   </Folder>
   <Folder Name="/.github/workflows/">

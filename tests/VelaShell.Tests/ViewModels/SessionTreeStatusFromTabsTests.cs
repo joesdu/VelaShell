@@ -110,7 +110,7 @@ public sealed class SessionTreeStatusFromTabsTests
     }
 
     private static TerminalTabViewModel CreateTab(SessionProfile profile, SessionStatus status) =>
-        new(Substitute.For<ITerminalEmulator>())
+        new(FakeTerminal.Emulator())
         {
             Title = profile.Name,
             Profile = profile,

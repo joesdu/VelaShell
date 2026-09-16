@@ -1,3 +1,4 @@
+using System.Text;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Services;
@@ -70,8 +71,30 @@ public sealed class SyncInputCoordinator
                 && !peer.IsSyncPaused
             )
             {
-                peer.WriteSyncInput(data);
+                peer.WriteSyncInput(
+                    Transcode(
+                        data,
+                        source.TerminalEmulator.SessionEncoding,
+                        peer.TerminalEmulator.SessionEncoding
+                    )
+                );
             }
         }
     }
+
+    /// <summary>
+    /// 把一段输入字节从源标签的字符集换到目标标签的字符集;两边一致时原样返回。
+    /// </summary>
+    /// <remarks>
+    /// 频道里的标签各有各的编码 —— 一台 GBK 的堡垒机和一台 UTF-8 的容器同框广播是常事。
+    /// 原样转发的话,源标签编出来的 <c>D6 D0 CE C4</c> 落到 UTF-8 那边就是四个替换字符;
+    /// 从前这一路碰巧没问题,只是因为那时输入写死了 UTF-8。
+    /// <para>
+    /// 按包整段转换是安全的:一次 <c>TypedInput</c> 就是一次键入/粘贴/注入,编码器产出的
+    /// 多字节序列不会跨包切开;按键与鼠标上报是 ASCII,在两侧字符集里都逐字节不变。
+    /// 目标字符集表示不了的字符会退化成 <c>?</c> —— 那是那台机器本来也收不下的字。
+    /// </para>
+    /// </remarks>
+    internal static byte[] Transcode(byte[] data, Encoding from, Encoding to) =>
+        from.CodePage == to.CodePage ? data : to.GetBytes(from.GetString(data));
 }

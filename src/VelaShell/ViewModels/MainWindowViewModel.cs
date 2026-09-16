@@ -2505,7 +2505,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 "\e[90m● "
                 + Strings.Format("Msg_JumpChainNotice", string.Join(" → ", names), target)
                 + "\e[0m\r\n";
-            tab.TerminalEmulator.Feed(Encoding.UTF8.GetBytes(notice));
+            // 与断开横幅同理:喂进去的是字节,解码走会话字符集,写死 UTF-8 会让这行提示在
+            // GBK 会话上变成乱码。
+            tab.TerminalEmulator.Feed(tab.TerminalEmulator.SessionEncoding.GetBytes(notice));
         }
         catch
         {
@@ -4755,7 +4757,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     }
 
     /// <summary>
-    /// 可在活动会话上安全更改的设置:回滚深度、字体、字号、主机输出编码以及完整的
+    /// 可在活动会话上安全更改的设置:回滚深度、字体、字号、主机字符集以及完整的
     /// 终端行为/配色选项集。在标签创建时应用,并每次保存设置后重新应用到所有已打开的标签(#3/#15/#21)。
     /// </summary>
     private void ApplyLiveTerminalSettings(

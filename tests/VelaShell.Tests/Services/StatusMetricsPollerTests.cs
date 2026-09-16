@@ -21,7 +21,7 @@ namespace VelaShell.Tests.Services;
 public sealed class StatusMetricsPollerTests
 {
     private static TerminalTabViewModel ConnectedTab(Guid? sessionId = null) =>
-        new(Substitute.For<ITerminalEmulator>())
+        new(FakeTerminal.Emulator())
         {
             Profile = new() { Name = "host", Host = "10.0.0.1" },
             SessionId = sessionId ?? Guid.NewGuid(),

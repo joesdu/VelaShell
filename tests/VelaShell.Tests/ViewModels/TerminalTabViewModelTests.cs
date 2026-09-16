@@ -16,7 +16,7 @@ public class TerminalTabViewModelTests
 
     public TerminalTabViewModelTests()
     {
-        _terminalEmulator = Substitute.For<ITerminalEmulator>();
+        _terminalEmulator = FakeTerminal.Emulator();
         _shellStream = Substitute.For<IShellStreamWrapper>();
         _vm = new(_terminalEmulator, _shellStream);
     }
@@ -160,7 +160,7 @@ public class TerminalTabViewModelTests
     public void Id_IsUniquePerInstance()
     {
         var vm2 = new TerminalTabViewModel(
-            Substitute.For<ITerminalEmulator>(),
+            FakeTerminal.Emulator(),
             Substitute.For<IShellStreamWrapper>()
         );
         Assert.AreNotEqual(vm2.Id, _vm.Id);

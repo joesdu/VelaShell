@@ -50,7 +50,7 @@ public sealed class StandaloneSftpDocumentBehaviorTests
             () =>
             {
                 terminalFactoryCalls++;
-                return Substitute.For<ITerminalEmulator>();
+                return FakeTerminal.Emulator();
             }
         );
 
@@ -71,7 +71,7 @@ public sealed class StandaloneSftpDocumentBehaviorTests
         var vm = new MainWindowViewModel(
             workflow,
             sshConnectionService,
-            () => Substitute.For<ITerminalEmulator>()
+            () => FakeTerminal.Emulator()
         );
 
         await vm.OpenSftpForProfileAsync(profile);
@@ -122,7 +122,7 @@ public sealed class StandaloneSftpDocumentBehaviorTests
             () =>
             {
                 terminalFactoryCalls++;
-                return Substitute.For<ITerminalEmulator>();
+                return FakeTerminal.Emulator();
             },
             sftpService: Substitute.For<ISftpService>()
         );
@@ -440,7 +440,7 @@ public sealed class StandaloneSftpDocumentBehaviorTests
         await _session.Dispatch(() =>
         {
             var vm = new MainWindowViewModel(workflow, sftpService: sftp);
-            vm.Layout.AddDocument(new TerminalDocument(new TerminalTabViewModel(Substitute.For<ITerminalEmulator>())
+            vm.Layout.AddDocument(new TerminalDocument(new TerminalTabViewModel(FakeTerminal.Emulator())
             {
                 Profile = terminalProfile,
                 ConnectionStatus = SessionStatus.Connected,
@@ -608,7 +608,7 @@ public sealed class StandaloneSftpDocumentBehaviorTests
         ISshClientWrapper sshClient = Substitute.For<ISshClientWrapper>();
         IShellStreamWrapper shellStream = Substitute.For<IShellStreamWrapper>();
         ISftpService sftpService = Substitute.For<ISftpService>();
-        ITerminalEmulator terminal = Substitute.For<ITerminalEmulator>();
+        ITerminalEmulator terminal = FakeTerminal.Emulator();
         shellStream.CanRead.Returns(true);
         shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(new TaskCompletionSource<int>().Task);

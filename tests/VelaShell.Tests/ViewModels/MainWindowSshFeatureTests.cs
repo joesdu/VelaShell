@@ -93,7 +93,7 @@ public sealed class MainWindowSshFeatureTests
         ISshConnectionService? sshConnectionService = Substitute.For<ISshConnectionService>();
         ISshClientWrapper? sshClient = Substitute.For<ISshClientWrapper>();
         IShellStreamWrapper? shellStream = Substitute.For<IShellStreamWrapper>();
-        ITerminalEmulator? terminal = Substitute.For<ITerminalEmulator>();
+        ITerminalEmulator? terminal = FakeTerminal.Emulator();
 
         // 模拟活连接:读循环阻塞在 ReadAsync(不立即 EOF),否则桥会异步触发 Closed 与连接
         // 结果竞态,把刚连上的标签翻回断开(真实连接不会立即 EOF)。
@@ -158,7 +158,7 @@ public sealed class MainWindowSshFeatureTests
         ISshConnectionService? sshConnectionService = Substitute.For<ISshConnectionService>();
         ISshClientWrapper? sshClient = Substitute.For<ISshClientWrapper>();
         IShellStreamWrapper? shellStream = Substitute.For<IShellStreamWrapper>();
-        ITerminalEmulator? terminal = Substitute.For<ITerminalEmulator>();
+        ITerminalEmulator? terminal = FakeTerminal.Emulator();
 
         // 同上一个用例:读循环必须阻塞而不是立刻 EOF,否则桥会把刚连上的标签翻回断开。
         shellStream.CanRead.Returns(true);
@@ -248,7 +248,7 @@ public sealed class MainWindowSshFeatureTests
         // 这里以前伪造过一个同名假异常去迎合旧的类型名字符串匹配,结果生产路径从未被覆盖。
         workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>())
                 .Returns<Task<SshSession>>(_ => throw new VelaSshAuthenticationException("Permission denied (password)."));
-        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => Substitute.For<ITerminalEmulator>());
+        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => FakeTerminal.Emulator());
         TerminalTabViewModel? tab = await vm.TryConnectProfileAsync(profile);
         Assert.IsNull(tab);
         Assert.IsEmpty(vm.TerminalTabs);
@@ -283,7 +283,7 @@ public sealed class MainWindowSshFeatureTests
         };
         workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>())
                 .Returns<Task<SshSession>>(_ => throw new SocketException());
-        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => Substitute.For<ITerminalEmulator>());
+        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => FakeTerminal.Emulator());
         TerminalTabViewModel? tab = await vm.TryConnectProfileAsync(profile);
         Assert.IsNotNull(tab);
         Assert.HasCount(1, vm.TerminalTabs);
@@ -305,7 +305,7 @@ public sealed class MainWindowSshFeatureTests
         shellStream.CanRead.Returns(true);
         shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                    .Returns(new TaskCompletionSource<int>().Task);
-        ITerminalEmulator? terminal = Substitute.For<ITerminalEmulator>();
+        ITerminalEmulator? terminal = FakeTerminal.Emulator();
         var profile = new SessionProfile
         {
             Name = "Prod",
@@ -352,7 +352,7 @@ public sealed class MainWindowSshFeatureTests
     {
         IConnectionWorkflowService? workflow = Substitute.For<IConnectionWorkflowService>();
         ISshConnectionService? sshConnectionService = Substitute.For<ISshConnectionService>();
-        ITerminalEmulator? terminal = Substitute.For<ITerminalEmulator>();
+        ITerminalEmulator? terminal = FakeTerminal.Emulator();
         var vm = new MainWindowViewModel(workflow, sshConnectionService, () => terminal);
         var tab = new TerminalTabViewModel(terminal)
         {
@@ -399,7 +399,7 @@ public sealed class MainWindowSshFeatureTests
             Username = "root",
         };
 
-        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => Substitute.For<ITerminalEmulator>());
+        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => FakeTerminal.Emulator());
 
         TerminalTabViewModel? tab = await vm.TryConnectRecentAsync(entry);
 
@@ -467,13 +467,13 @@ public sealed class MainWindowSshFeatureTests
     public void StatusBar_FollowsActiveTab_ConnectionInfo()
     {
         var vm = new MainWindowViewModel();
-        var tabA = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>(), Substitute.For<IShellStreamWrapper>())
+        var tabA = new TerminalTabViewModel(FakeTerminal.Emulator(), Substitute.For<IShellStreamWrapper>())
         {
             Title = "A",
             ConnectionStatus = SessionStatus.Connected,
             ConnectionSummary = "SSH • a@host-a:22"
         };
-        var tabB = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>(), Substitute.For<IShellStreamWrapper>())
+        var tabB = new TerminalTabViewModel(FakeTerminal.Emulator(), Substitute.For<IShellStreamWrapper>())
         {
             Title = "B",
             ConnectionStatus = SessionStatus.Connected,

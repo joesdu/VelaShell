@@ -61,7 +61,7 @@ public sealed class ConnectingTabCancellationTests
         var vm = new MainWindowViewModel(
             workflow,
             ssh,
-            () => Substitute.For<ITerminalEmulator>(),
+            () => FakeTerminal.Emulator(),
             backgroundActivity: activity);
 
         Task<TerminalTabViewModel?> connecting = vm.TryConnectProfileAsync(Profile());
@@ -97,7 +97,7 @@ public sealed class ConnectingTabCancellationTests
         workflow
             .ConnectProfileAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>())
             .Returns(_ => gate.Task);
-        var vm = new MainWindowViewModel(workflow, ssh, () => Substitute.For<ITerminalEmulator>());
+        var vm = new MainWindowViewModel(workflow, ssh, () => FakeTerminal.Emulator());
 
         Task<TerminalTabViewModel?> connecting = vm.TryConnectProfileAsync(Profile());
         TerminalTabViewModel tab = vm.TerminalTabs.Single();

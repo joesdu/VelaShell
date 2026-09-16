@@ -523,7 +523,7 @@ public partial class TerminalTabView : UserControl
                 // (如 "git checkout" → "git checkout -b"),继续以幽灵形式接力提示
                 // (fish 语义);幽灵只显示严格更长的候选,不会原样重现。
                 ClearGhost();
-                _termControl.WriteInput(Encoding.UTF8.GetBytes(remainder));
+                _termControl.WriteInput(_termControl.SessionEncoding.GetBytes(remainder));
                 e.Handled = true;
                 return true;
             }
@@ -609,7 +609,7 @@ public partial class TerminalTabView : UserControl
         // 只显示严格更长的候选——接受后若存在更长的延续(参数、子选项)就接力提示。
         if (payload.Length > 0)
         {
-            _termControl.WriteInput(Encoding.UTF8.GetBytes(payload));
+            _termControl.WriteInput(_termControl.SessionEncoding.GetBytes(payload));
         }
         FocusTerminal();
     }
@@ -1037,18 +1037,33 @@ public partial class TerminalTabView : UserControl
         }
     }
 
-    /// <summary>将文本输入以 UTF-8 编码转发到终端。</summary>
+    /// <summary>将文本输入按会话字符集编码后转发到终端。</summary>
     protected override void OnTextInput(TextInputEventArgs e)
     {
         if (!string.IsNullOrEmpty(e.Text))
         {
-            byte[] bytes = Encoding.UTF8.GetBytes(e.Text);
-            SendBytesToTerminal(bytes);
+            SendTextToTerminal(e.Text);
             e.Handled = true;
         }
         base.OnTextInput(e);
     }
 
+    /// <summary>
+    /// 按会话字符集编码后送进终端的输入通道(键入与粘贴共用)。
+    /// </summary>
+    /// <remarks>
+    /// 编码只能问终端要:它是解码对端输出的那一套,两边必须同源 —— 各写一个 UTF-8
+    /// 就是本次要修的那个 bug 的由来。
+    /// </remarks>
+    private void SendTextToTerminal(string text)
+    {
+        if (DataContext is TerminalTabViewModel vm)
+        {
+            vm.TerminalEmulator.WriteInput(vm.TerminalEmulator.SessionEncoding.GetBytes(text));
+        }
+    }
+
+    /// <summary>送一段已经成型的控制字节(^C 这类);它们不是文本,不经字符集。</summary>
     private void SendBytesToTerminal(byte[] data)
     {
         if (DataContext is TerminalTabViewModel vm)
@@ -1081,8 +1096,7 @@ public partial class TerminalTabView : UserControl
         string? text = await clipboard.TryGetTextAsync();
         if (!string.IsNullOrEmpty(text))
         {
-            byte[] bytes = Encoding.UTF8.GetBytes(text);
-            SendBytesToTerminal(bytes);
+            SendTextToTerminal(text);
         }
     }
 

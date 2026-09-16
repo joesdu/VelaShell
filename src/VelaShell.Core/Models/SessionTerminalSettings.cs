@@ -27,7 +27,13 @@ public static class SessionTerminalSettings
         return Pick(profile?.Terminal?.TerminalType, settings.TerminalType);
     }
 
-    /// <summary>生效的输出解码编码名。</summary>
+    /// <summary>
+    /// 生效的会话字符集名:解码远端输出与编码用户键入共用这一套。
+    /// </summary>
+    /// <remarks>
+    /// 两个方向必须同一套 —— 远端的行编辑(readline / zle)按 <c>LANG</c> 的字符集数「字符」,
+    /// 送进去的字节若不是那套编码,退格会删半个字、光标移动错位,而不只是显示乱码。
+    /// </remarks>
     /// <param name="profile">会话配置;null 表示没有配置。</param>
     /// <param name="settings">全局设置。</param>
     /// <returns>会话覆盖值,或全局值;两者都空时为 <c>UTF-8</c>。</returns>

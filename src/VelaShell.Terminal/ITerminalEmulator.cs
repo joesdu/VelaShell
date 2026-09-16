@@ -1,3 +1,4 @@
+using System.Text;
 using Avalonia.Controls;
 using Avalonia.Input;
 
@@ -89,6 +90,15 @@ public interface ITerminalEmulator : IDisposable
     /// </para>
     /// </summary>
     event Action<string>? WorkingDirectoryChanged;
+
+    /// <summary>
+    /// 当前会话字符集:解码对端输出与编码用户输入共用同一套。
+    /// </summary>
+    /// <remarks>
+    /// 宿主侧凡是要自己拼字节送进 <see cref="WriteInput" /> 的地方(快捷命令、接受补全、
+    /// 同步输入转发)都必须按它编码,否则那几条路会绕过终端的编码路径,变回写死的 UTF-8。
+    /// </remarks>
+    Encoding SessionEncoding { get; }
 
     /// <summary>
     /// 以编程方式发送输入字节,如同用户键入一样

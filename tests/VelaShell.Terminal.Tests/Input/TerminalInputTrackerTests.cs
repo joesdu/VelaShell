@@ -198,4 +198,47 @@ public class TerminalInputTrackerTests
         tracker.Process([0x7F]);
         Assert.AreEqual(2, fired);
     }
+
+    [TestMethod]
+    public void UseEncoding_DecodesTypedBytesWithTheSessionCharset()
+    {
+        // 跟踪器看到的是终端刚编出去的字节。会话是 GBK 时它仍按 UTF-8 解,
+        // 命令补全与命令历史里存的就是乱码。
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        Encoding gbk = Encoding.GetEncoding("GBK");
+        var tracker = new TerminalInputTracker();
+        tracker.UseEncoding(gbk);
+
+        tracker.Process(gbk.GetBytes("cd 中文"));
+
+        Assert.AreEqual("cd 中文", tracker.CurrentInput);
+    }
+
+    [TestMethod]
+    public void UseEncoding_BackspaceStillRemovesOneWholeCharacter()
+    {
+        // 双字节字符集的尾字节最低到 0x40,不会被误判成控制字节;回删仍按「字符」走。
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        Encoding gbk = Encoding.GetEncoding("GBK");
+        var tracker = new TerminalInputTracker();
+        tracker.UseEncoding(gbk);
+
+        tracker.Process(gbk.GetBytes("ls 中"));
+        tracker.Process([0x7F]);
+
+        Assert.AreEqual("ls ", tracker.CurrentInput);
+    }
+
+    [TestMethod]
+    public void UseEncoding_IsANoOpForTheSameCodePage()
+    {
+        // 每键都会调一次(切换点有好几个,在用的那一处同步最稳),不能每次都重建解码器 ——
+        // 那会把半个多字节字符的状态丢掉。
+        var tracker = new TerminalInputTracker();
+        tracker.Process([0xE4, 0xB8]); // "中" 的前两字节
+        tracker.UseEncoding(Encoding.UTF8);
+        tracker.Process([0xAD]);
+
+        Assert.AreEqual("中", tracker.CurrentInput);
+    }
 }

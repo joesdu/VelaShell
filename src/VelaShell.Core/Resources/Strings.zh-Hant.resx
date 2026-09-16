@@ -2783,10 +2783,10 @@
     <value>決定新連線的遠端工作階段是否自動開啟 SFTP 檔案瀏覽器;此後每個分頁各自記憶自己的顯示/隱藏狀態,互不影響。</value>
   </data>
   <data name="SetTerm_OutputEncoding" xml:space="preserve">
-    <value>輸出編碼</value>
+    <value>字元編碼</value>
   </data>
   <data name="SetTerm_OutputEncodingDesc" xml:space="preserve">
-    <value>// 解析遠端輸出所用的字元編碼</value>
+    <value>// 與遠端收發文字共用的字元集(輸入與輸出一致)</value>
   </data>
   <data name="SetTerm_RightClickPaste" xml:space="preserve">
     <value>右鍵貼上</value>
