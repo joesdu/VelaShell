@@ -2674,10 +2674,10 @@ Paste anyway?</value>
     <value>Decides whether the SFTP file browser opens when a new remote session connects. Each tab then remembers its own show/hide state independently.</value>
   </data>
   <data name="SetTerm_OutputEncoding" xml:space="preserve">
-    <value>Output encoding</value>
+    <value>Character encoding</value>
   </data>
   <data name="SetTerm_OutputEncodingDesc" xml:space="preserve">
-    <value>// Character encoding used to decode remote output</value>
+    <value>// Character set shared by remote output and your keystrokes</value>
   </data>
   <data name="SetTerm_RightClickPaste" xml:space="preserve">
     <value>Right-click paste</value>

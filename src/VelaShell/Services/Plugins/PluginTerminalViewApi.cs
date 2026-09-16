@@ -123,7 +123,9 @@ internal sealed class PluginTerminalView(VelaTerminalControl control) : IPluginT
         {
             return;
         }
-        Feed(Encoding.UTF8.GetBytes(text));
+        // 按控件当前的会话字符集编码:这个视图的外观(含编码)是跟着宿主设置走的,
+        // 宿主设成 GBK 时再喂 UTF-8 字节,插件打出来的中文自己就是乱码。
+        Feed(control.SessionEncoding.GetBytes(text));
     }
 
     // 清屏 + 清回滚:CSI H(回原点)· CSI 2J(清屏)· CSI 3J(清回滚)。

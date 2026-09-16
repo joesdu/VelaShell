@@ -30,7 +30,7 @@ namespace VelaShell.Tests.ViewModels;
 public sealed class WorkspaceIsTheTabSourceOfTruthTests
 {
     private static TerminalTabViewModel Tab(string name) =>
-        new(Substitute.For<ITerminalEmulator>())
+        new(FakeTerminal.Emulator())
         {
             Title = name,
             Profile = new() { Name = name, Host = $"{name}.example" },

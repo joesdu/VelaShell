@@ -5,14 +5,34 @@ namespace VelaShell.Terminal.Emulation;
 
 /// <summary>
 /// 把 Avalonia 的按键事件翻译成宿主所期望的字节序列,遵循应用光标键模式、VT52 模式
-/// 以及 xterm 的修饰键编码。文本(可打印)输入则单独以 UTF-8 编码。
+/// 以及 xterm 的修饰键编码。文本(可打印)输入按会话字符集编码。
 /// </summary>
+/// <remarks>
+/// 按键与鼠标上报一律走 ASCII:它们是协议序列,不是文本,任何字符集里 0x00-0x7F
+/// 都是同一组字节(GBK / Big5 / Shift_JIS / EUC-KR / Latin-1 全部实测逐字节相同),
+/// 因此只有<b>文本</b>那一路需要知道会话字符集。
+/// </remarks>
 public static class InputEncoder
 {
     private static readonly byte[] Empty = [];
 
-    /// <summary>把普通文本(来自 IME / TextInput)以 UTF-8 编码。</summary>
-    public static byte[] EncodeText(string text) => string.IsNullOrEmpty(text) ? Empty : Encoding.UTF8.GetBytes(text);
+    /// <summary>
+    /// 把普通文本(来自 IME / TextInput / 粘贴)按会话字符集编码。
+    /// </summary>
+    /// <remarks>
+    /// 必须与解码对端输出用的是同一套字符集:远端的行编辑(readline / zle)是按
+    /// <c>LANG</c> 的字符集数「字符」的,送进去的字节一旦不是那套编码,坏掉的不只是显示 ——
+    /// 退格会删半个字、光标左右移动错位、Tab 补全按错误的字符边界切。
+    /// <para>
+    /// 字符集表示不了的字符(emoji 进 GBK、简体字进 Big5)由编码器兜底成 <c>?</c>(0x3F),
+    /// 与 PuTTY 等同;这是字符集本身的限制,不是这里能修的。
+    /// </para>
+    /// </remarks>
+    /// <param name="text">要发送的文本。</param>
+    /// <param name="encoding">会话字符集;null = UTF-8。</param>
+    /// <returns>编码后的字节,文本为空时返回空数组。</returns>
+    public static byte[] EncodeText(string text, Encoding? encoding = null) =>
+        string.IsNullOrEmpty(text) ? Empty : (encoding ?? Encoding.UTF8).GetBytes(text);
 
     /// <summary>
     /// 编码一次非文本按键。当该按键不产生直接序列时返回 null

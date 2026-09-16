@@ -2539,10 +2539,10 @@
     <value>新しく接続するリモートセッションで SFTP ファイルブラウザーを自動的に開くかどうかを決めます。以降は各タブが表示/非表示の状態を個別に記憶します。</value>
   </data>
   <data name="SetTerm_OutputEncoding" xml:space="preserve">
-    <value>出力エンコーディング</value>
+    <value>文字エンコーディング</value>
   </data>
   <data name="SetTerm_OutputEncodingDesc" xml:space="preserve">
-    <value>// リモート出力の解析に使う文字エンコーディング</value>
+    <value>// リモートとの送受信で共用する文字セット(入力と出力で同一)</value>
   </data>
   <data name="SetTerm_RightClickPaste" xml:space="preserve">
     <value>右クリックで貼り付け</value>

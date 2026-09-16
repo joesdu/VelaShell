@@ -234,6 +234,10 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     private void OnUserInputForTracker(byte[] data)
     {
+        // 跟在终端后面走:编码是状态栏上可以随时热切的,而跟踪器解的正是终端刚编出去的
+        // 那串字节。在这里同步而不是在切换处推一把,是因为切换点有好几个
+        // (状态栏热切、设置热更新、重连重建标签),漏掉任何一个都会静默解成乱码。
+        InputTracker.UseEncoding(TerminalEmulator.SessionEncoding);
         InputTracker.Process(data);
         // 每键路径:先查开关再拼实参,否则关着诊断每键也分配 3 个字符串。
         if (SuggestDiag.IsEnabled)
@@ -666,7 +670,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         IsProgrammaticInput = true;
         try
         {
-            TerminalEmulator.WriteInput(Encoding.UTF8.GetBytes(payload));
+            // 按会话字符集编码:快捷命令里可能带中文(路径、grep 的关键字),
+            // 写死 UTF-8 的话在 GBK 主机上送过去就是乱码。
+            TerminalEmulator.WriteInput(TerminalEmulator.SessionEncoding.GetBytes(payload));
         }
         finally
         {
@@ -730,20 +736,23 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             // 有哨兵:从现在起整段扣住,看见哨兵才恢复放行。回显长什么样都无所谓 ——
             // 而那正是关键:整行一旦超出终端宽度,各家 shell 的折行重绘就没法逐字节匹配了
             // (真机实测三种形态,见 EchoSuppressor.OpenWindow)。
-            Bridge.OpenInjectionWindow(Encoding.UTF8.GetBytes(injection.Sentinel));
+            Bridge.OpenInjectionWindow(TerminalEmulator.SessionEncoding.GetBytes(injection.Sentinel));
         }
         else
         {
             // 探不出种类 / 对端是 cmd.exe:那上面 printf 未必存在,哨兵永远回不来,
             // 窗口只能白等到超时。退回按回显匹配的抑制针 —— 这些场景下我们本来也只发
             // 用户自己那条短命令,短命令不会折行,针咬得住。
-            Bridge.SuppressEchoOnce(Encoding.UTF8.GetBytes(injection.CommandLine + "\r\n"));
+            Bridge.SuppressEchoOnce(
+                TerminalEmulator.SessionEncoding.GetBytes(injection.CommandLine + "\r\n"));
         }
 
         // 直写 PTY(SendRaw)而非 WriteInput:注入不是用户键入,不得进入命令补全的
         // 行跟踪——补行脚本里的 ESC 字节曾把跟踪器打进未知态,SSH 标签建议全灭。
         // 前导空格是给配了 HISTCONTROL=ignorespace 的人的;真正的防线是摘历史前缀。
-        Bridge.SendRaw(Encoding.UTF8.GetBytes(" " + injection.CommandLine + "\n"));
+        // 注入行同样按会话字符集编码:用户配的「认证后执行命令」与初始目录里可能有中文,
+        // 而抑制针 / 哨兵必须与真正送出去的那串字节同一套编码,否则回显匹配不上。
+        Bridge.SendRaw(TerminalEmulator.SessionEncoding.GetBytes(" " + injection.CommandLine + "\n"));
     }
 
     /// <summary>启动桥接的 I/O 泵送(幂等;无桥或已启动时为空操作)。</summary>
@@ -913,7 +922,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
             $"\r\n\u001b[0m\u001b[31m● {Strings.TerminalDisconnectedNotice}\u001b[0m\r\n\u001b[90m{Strings.TerminalReconnectHint}\u001b[0m\r\n";
         try
         {
-            TerminalEmulator.Feed(Encoding.UTF8.GetBytes(notice));
+            // 横幅是我们自己生成的文本,但喂进去的是**字节**,而解码那一侧用的是会话字符集 ——
+            // 写死 UTF-8 的话,GBK 会话上这行中文提示自己就是乱码。
+            TerminalEmulator.Feed(TerminalEmulator.SessionEncoding.GetBytes(notice));
         }
         catch
         {

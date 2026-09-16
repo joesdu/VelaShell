@@ -197,7 +197,7 @@ public sealed class SessionTabIconUiTests
 
     private static TerminalDocument TabFor(SessionProfile? profile)
     {
-        var terminal = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>()) { Profile = profile };
+        var terminal = new TerminalTabViewModel(FakeTerminal.Emulator()) { Profile = profile };
         return new(terminal);
     }
 

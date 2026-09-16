@@ -628,7 +628,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <inheritdoc />
     public void WriteTextInput(string text)
     {
-        byte[] encoded = InputEncoder.EncodeText(text);
+        byte[] encoded = InputEncoder.EncodeText(text, SessionEncoding);
         if (encoded.Length == 0)
         {
             return;
@@ -665,17 +665,16 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         {
             return;
         }
-        var payload = new StringBuilder();
-        if (Emulator.Modes.BracketedPaste)
-        {
-            payload.Append("\e[200~");
-        }
-        payload.Append(text.Replace("\r\n", "\r").Replace('\n', '\r'));
-        if (Emulator.Modes.BracketedPaste)
-        {
-            payload.Append("\e[201~");
-        }
-        SendTypedInput(Encoding.UTF8.GetBytes(payload.ToString()));
+        // 括号粘贴标记与正文分开编:标记是协议序列,必须逐字节是 ASCII;
+        // 正文是文本,按会话字符集走。两者拼成一串再整体编码看似等价
+        // (这 7 种字符集的 ASCII 区确实都不变),但那是在赌下一个加进来的字符集
+        // 也这么老实 —— 标记被改写一个字节,远端就收不到粘贴括号了。
+        byte[] body = InputEncoder.EncodeText(
+            text.Replace("\r\n", "\r").Replace('\n', '\r'), SessionEncoding);
+        SendTypedInput(
+            Emulator.Modes.BracketedPaste
+                ? [.. Encoding.ASCII.GetBytes("\e[200~"), .. body, .. Encoding.ASCII.GetBytes("\e[201~")]
+                : body);
         AfterProgrammaticInput();
     }
 
@@ -898,8 +897,22 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         remove => Emulator.WorkingDirectoryChanged -= value;
     }
 
-    /// <summary>设置主机输出字符集(默认 UTF-8;支持 GBK/Big5 等)。</summary>
-    public void SetEncoding(Encoding encoding) => Emulator.SetEncoding(encoding);
+    /// <summary>
+    /// 设置会话字符集(默认 UTF-8;支持 GBK/Big5 等)。**输入与输出同时换**。
+    /// </summary>
+    /// <remarks>
+    /// 两个方向必须同一刻切换:只换解码那一侧的话,用户接着键入的字节仍是上一套编码,
+    /// 远端的行编辑会按新 <c>LANG</c> 去数字符,退格与光标移动当场错位。
+    /// </remarks>
+    public void SetEncoding(Encoding encoding)
+    {
+        ArgumentNullException.ThrowIfNull(encoding);
+        SessionEncoding = encoding;
+        Emulator.SetEncoding(encoding);
+    }
+
+    /// <inheritdoc />
+    public Encoding SessionEncoding { get; private set; } = Encoding.UTF8;
 
     /// <summary>OSC 52:远端 yank(tmux/vim)写入系统剪贴板;事件来自 feed 线程,落板走 UI 线程。</summary>
     private void OnRemoteClipboardWrite(string text)
@@ -3374,7 +3387,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     {
         if (!string.IsNullOrEmpty(e.Text))
         {
-            byte[] bytes = InputEncoder.EncodeText(e.Text);
+            byte[] bytes = InputEncoder.EncodeText(e.Text, SessionEncoding);
             if (bytes.Length > 0)
             {
                 SendTypedInput(bytes);

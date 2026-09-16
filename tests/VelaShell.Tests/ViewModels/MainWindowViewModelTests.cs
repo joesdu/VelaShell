@@ -104,7 +104,7 @@ public class MainWindowViewModelTests
             "No active SSH terminal must keep the panel closed."
         );
 
-        var first = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>())
+        var first = new TerminalTabViewModel(FakeTerminal.Emulator())
         {
             Profile = new() { Name = "one", Host = "one.example" },
             SessionId = Guid.NewGuid(),
@@ -121,7 +121,7 @@ public class MainWindowViewModelTests
         vm.ToggleFileBrowser();
         Assert.IsFalse(vm.FileBrowser.IsVisible);
 
-        var second = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>())
+        var second = new TerminalTabViewModel(FakeTerminal.Emulator())
         {
             Profile = new() { Name = "two", Host = "two.example" },
             SessionId = Guid.NewGuid(),
@@ -144,7 +144,7 @@ public class MainWindowViewModelTests
         second.ConnectionStatus = SessionStatus.Disconnected;
         Assert.IsFalse(vm.CanToggleFileBrowser);
 
-        var local = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>())
+        var local = new TerminalTabViewModel(FakeTerminal.Emulator())
         {
             LocalShell = new("pwsh", "PowerShell", "pwsh.exe"),
             ConnectionStatus = SessionStatus.Connected,
@@ -160,7 +160,7 @@ public class MainWindowViewModelTests
         IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
         var library = new QuickCommandsViewModel(repository);
         var vm = new MainWindowViewModel(quickCommands: library);
-        ITerminalEmulator emulator = Substitute.For<ITerminalEmulator>();
+        ITerminalEmulator emulator = FakeTerminal.Emulator();
         var tab = new TerminalTabViewModel(emulator)
         {
             Profile = new() { Name = "server", Host = "server.example" },
@@ -189,7 +189,7 @@ public class MainWindowViewModelTests
         IQuickCommandRepository repository = Substitute.For<IQuickCommandRepository>();
         var library = new QuickCommandsViewModel(repository);
         var vm = new MainWindowViewModel(quickCommands: library);
-        ITerminalEmulator emulator = Substitute.For<ITerminalEmulator>();
+        ITerminalEmulator emulator = FakeTerminal.Emulator();
         var tab = new TerminalTabViewModel(emulator) { ConnectionStatus = SessionStatus.Connected };
         vm.Layout.AddDocument(new TerminalDocument(tab));
         bool focusRequested = false;
@@ -204,7 +204,7 @@ public class MainWindowViewModelTests
     [TestCategory("SyncInput")]
     public void SyncChannel_JoinPauseLeave_UpdatesTabState()
     {
-        var tab = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>());
+        var tab = new TerminalTabViewModel(FakeTerminal.Emulator());
 
         tab.JoinSyncChannel(SyncInputChannel.A);
         Assert.IsTrue(tab.IsInSyncChannel);
@@ -228,9 +228,9 @@ public class MainWindowViewModelTests
     public void SyncChannel_CloseChannel_RemovesAllChannelMembersOnly()
     {
         var vm = new MainWindowViewModel();
-        var first = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>());
-        var second = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>());
-        var other = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>());
+        var first = new TerminalTabViewModel(FakeTerminal.Emulator());
+        var second = new TerminalTabViewModel(FakeTerminal.Emulator());
+        var other = new TerminalTabViewModel(FakeTerminal.Emulator());
         vm.Layout.AddDocument(new TerminalDocument(first));
         vm.Layout.AddDocument(new TerminalDocument(second));
         vm.Layout.AddDocument(new TerminalDocument(other));
@@ -250,7 +250,7 @@ public class MainWindowViewModelTests
     public void SyncChannel_RemovedTab_LeavesChannel()
     {
         var vm = new MainWindowViewModel();
-        var tab = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>());
+        var tab = new TerminalTabViewModel(FakeTerminal.Emulator());
         vm.Layout.AddDocument(new TerminalDocument(tab));
         tab.JoinSyncChannel(SyncInputChannel.C);
 
@@ -264,8 +264,8 @@ public class MainWindowViewModelTests
     public void SyncChannel_ForwardedInput_BypassesPeerEmulatorInputEvents()
     {
         var vm = new MainWindowViewModel();
-        ITerminalEmulator firstEmulator = Substitute.For<ITerminalEmulator>();
-        ITerminalEmulator secondEmulator = Substitute.For<ITerminalEmulator>();
+        ITerminalEmulator firstEmulator = FakeTerminal.Emulator();
+        ITerminalEmulator secondEmulator = FakeTerminal.Emulator();
         var first = new TerminalTabViewModel(firstEmulator)
         {
             ConnectionStatus = SessionStatus.Connected,
@@ -292,7 +292,7 @@ public class MainWindowViewModelTests
     public void SettingsSaved_ReappliesScrollbackToOpenTabs()
     {
         ISettingsService settingsService = Substitute.For<ISettingsService>();
-        ITerminalEmulator emulator = Substitute.For<ITerminalEmulator>();
+        ITerminalEmulator emulator = FakeTerminal.Emulator();
         var vm = new MainWindowViewModel(settingsService: settingsService);
 
         var tab = new TerminalTabViewModel(emulator);
@@ -450,7 +450,7 @@ public class MainWindowViewModelTests
     }
 
     private static TerminalTabViewModel CreateConnectedSshTab() =>
-        new(Substitute.For<ITerminalEmulator>())
+        new(FakeTerminal.Emulator())
         {
             Profile = new() { Name = "srv", Host = "srv.example" },
             SessionId = Guid.NewGuid(),
@@ -575,7 +575,7 @@ public class MainWindowViewModelTests
 
         // 新开一个标签:会话 id 要到握手完成才分配,这段时间下方不能还挂着
         // 上一个会话的文件面板(#385)。
-        var connecting = new TerminalTabViewModel(Substitute.For<ITerminalEmulator>())
+        var connecting = new TerminalTabViewModel(FakeTerminal.Emulator())
         {
             Profile = new() { Name = "next", Host = "next.example" },
             ConnectionStatus = SessionStatus.Connecting,
@@ -622,7 +622,7 @@ public class MainWindowViewModelTests
         await vm.InitializeAsync();
 
         vm.Layout.AddDocument(new TerminalDocument(
-            new TerminalTabViewModel(Substitute.For<ITerminalEmulator>()) { Profile = profile }
+            new TerminalTabViewModel(FakeTerminal.Emulator()) { Profile = profile }
         ));
 
         Assert.AreEqual(profile.Id, vm.Sidebar.SessionTree?.SelectedNode?.Id);
@@ -656,7 +656,7 @@ public class MainWindowViewModelTests
         await vm.InitializeAsync();
 
         vm.Layout.AddDocument(new TerminalDocument(
-            new TerminalTabViewModel(Substitute.For<ITerminalEmulator>()) { Profile = profile }
+            new TerminalTabViewModel(FakeTerminal.Emulator()) { Profile = profile }
         ));
 
         Assert.IsNull(vm.Sidebar.SessionTree?.SelectedNode);

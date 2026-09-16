@@ -18,7 +18,8 @@ namespace VelaShell.Core.Models;
 public sealed class TerminalOverrides
 {
     /// <summary>
-    /// 解码对端输出用的编码(取值来自 <see cref="TerminalEncodings.All" />);null = 跟随全局。
+    /// 与对端收发文本共用的字符集(取值来自 <see cref="TerminalEncodings.All" />);null = 跟随全局。
+    /// <b>解码远端输出与编码用户键入是同一套</b>。
     /// </summary>
     /// <remarks>
     /// 覆盖需求最强的一项:同一个人同时连 UTF-8 的容器和 GBK 的老服务器,全局只能配一个,

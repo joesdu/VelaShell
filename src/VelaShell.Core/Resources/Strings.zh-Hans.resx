@@ -2783,10 +2783,10 @@
     <value>决定新连接的远程会话是否自动打开 SFTP 文件浏览器;此后每个标签页各自记忆自己的显示/隐藏状态,互不影响。</value>
   </data>
   <data name="SetTerm_OutputEncoding" xml:space="preserve">
-    <value>输出编码</value>
+    <value>字符编码</value>
   </data>
   <data name="SetTerm_OutputEncodingDesc" xml:space="preserve">
-    <value>// 解析远端输出使用的字符编码</value>
+    <value>// 与远端收发文本共用的字符集(输入与输出一致)</value>
   </data>
   <data name="SetTerm_RightClickPaste" xml:space="preserve">
     <value>右键粘贴</value>

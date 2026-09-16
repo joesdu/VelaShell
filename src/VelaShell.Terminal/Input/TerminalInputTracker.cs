@@ -30,7 +30,8 @@ public sealed class TerminalInputTracker
 
     private readonly StringBuilder _buffer = new();
     private readonly StringBuilder _tentative = new();
-    private readonly Decoder _decoder = Encoding.UTF8.GetDecoder();
+    private Encoding _encoding = Encoding.UTF8;
+    private Decoder _decoder = Encoding.UTF8.GetDecoder();
     private EscState _esc;
     private bool _unknown;
 
@@ -61,6 +62,33 @@ public sealed class TerminalInputTracker
     /// (提示符之后的文本),否则"按过一次方向键的命令"永远进不了历史。
     /// </summary>
     public event Action? UnknownLineSubmitted;
+
+    /// <summary>
+    /// 切换解码键入字节所用的字符集(须与终端发出去时用的那套一致)。
+    /// </summary>
+    /// <remarks>
+    /// 跟踪器看到的是**已经编码好**的输入字节,所以它必须和编码侧用同一套字符集,
+    /// 否则 GBK 会话里键入的中文在这里会被解成乱码 —— 命令补全与命令历史吃的正是这份文本。
+    /// <para>
+    /// 只换解码器、不清行:换编码是状态栏上的一次热切,用户此刻可能正打到一半,
+    /// 把已经认出来的那半行丢掉只会更糟。同一套编码重复调用是空操作。
+    /// </para>
+    /// <para>
+    /// 双字节字符集的尾字节最低到 0x40(GBK / Big5 / Shift_JIS 皆然),不会落进
+    /// <see cref="Process" /> 里那几个控制字节分支,因此逐字节推进的判定照旧成立。
+    /// </para>
+    /// </remarks>
+    /// <param name="encoding">会话字符集。</param>
+    public void UseEncoding(Encoding encoding)
+    {
+        ArgumentNullException.ThrowIfNull(encoding);
+        if (encoding.CodePage == _encoding.CodePage)
+        {
+            return;
+        }
+        _encoding = encoding;
+        _decoder = encoding.GetDecoder();
+    }
 
     /// <summary>处理一段发往 PTY 的用户输入字节(与 TypedInput 事件的粒度一致)。</summary>
     public void Process(byte[] data)

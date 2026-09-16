@@ -39,7 +39,7 @@ public sealed class InteractiveAuthFlowTests
                 .Returns(args => CreateSession((SessionProfile)args[0]));
         ssh.GetClient(Arg.Any<Guid>()).Returns(client);
         client.CreateShellStreamAsync("xterm-256color", 120, 32, 0, 0, 4096, Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>(), Arg.Any<CancellationToken>()).Returns(shell);
-        var vm = new MainWindowViewModel(workflow, ssh, () => Substitute.For<ITerminalEmulator>());
+        var vm = new MainWindowViewModel(workflow, ssh, () => FakeTerminal.Emulator());
         int prompted = 0;
         vm.InteractiveAuthenticator = p =>
         {
@@ -58,7 +58,7 @@ public sealed class InteractiveAuthFlowTests
     {
         IConnectionWorkflowService? workflow = Substitute.For<IConnectionWorkflowService>();
         ISshConnectionService? ssh = Substitute.For<ISshConnectionService>();
-        var vm = new MainWindowViewModel(workflow, ssh, () => Substitute.For<ITerminalEmulator>())
+        var vm = new MainWindowViewModel(workflow, ssh, () => FakeTerminal.Emulator())
         {
             InteractiveAuthenticator = _ => Task.FromResult<SessionProfile?>(null)
         };
@@ -76,7 +76,7 @@ public sealed class InteractiveAuthFlowTests
         ISshConnectionService? ssh = Substitute.For<ISshConnectionService>();
         workflow.ConnectProfileAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>())
                 .Returns<Task<SshSession>>(_ => throw new VelaSshAuthenticationException("denied"));
-        var vm = new MainWindowViewModel(workflow, ssh, () => Substitute.For<ITerminalEmulator>());
+        var vm = new MainWindowViewModel(workflow, ssh, () => FakeTerminal.Emulator());
         int prompted = 0;
         vm.InteractiveAuthenticator = p =>
         {
