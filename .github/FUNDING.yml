@@ -1,11 +1,13 @@
 # 仓库主页右侧的 "Sponsor this project" 按钮由本文件驱动。
 # 文档：https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
 
-github: [joesdu]
+# GitHub Sponsors 收款走 Stripe Connect，中国大陆不在其支持区域，暂不启用。
+# github: [joesdu]
 
 # custom 最多 4 个链接，会原样列在赞助弹层里。
 custom:
   - https://wise.com/pay/me/yud162
+  # - https://afdian.com/a/你的爱发电ID
 
 # 其余平台开通后取消注释即可：
 # open_collective: velashell
