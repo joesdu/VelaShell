@@ -1,10 +1,11 @@
 using System.Diagnostics;
+using VelaShell.Core.Ssh;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;
 
 /// <summary>
-/// 把 <c>MainWindowViewModel.WorkingDirectoryReportHook</c> 原样交给<b>真正的 bash</b> 跑一遍。
+/// 把 <c>ShellIntegrationScript.Bash</c> 原样交给<b>真正的 bash</b> 跑一遍。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -81,13 +82,12 @@ public sealed class PromptHookShellTests
     /// 建一段脚本:摆好初始状态 → 把钩子原样跑三遍 → 打印结果并试着真执行一次。
     /// </summary>
     /// <remarks>
-    /// 钩子那三行整个重定向到 /dev/null:它末尾那记清行(<c>printf "\r\033[2K"</c>)会往
-    /// stdout 写控制字符,混进来就没法比对了。跑完把 <c>vela_shell_osc7</c> 覆盖成空操作,
-    /// 免得末尾那次试执行真的吐一串 OSC 7 出来。
+    /// 钩子那三行整个重定向到 /dev/null:装载本身不该有输出,但万一有,混进来就没法比对了。
+    /// 跑完把 <c>vela_shell_osc7</c> 覆盖成空操作,免得末尾那次试执行真的吐一串上报序列出来。
     /// </remarks>
     private static string BuildScript(string? initial)
     {
-        string hook = MainWindowViewModel.WorkingDirectoryReportHook;
+        string hook = ShellIntegrationScript.Bash;
         // 刻意用逐行拼接而不是内插原始字符串:脚本里大括号很多(函数体、命令组),
         // 内插会逼着把每一个都写成 {{ }},读起来比脚本本身还难。
         string[] lines =
@@ -197,7 +197,7 @@ public sealed class PromptHookShellTests
         string script = Path.Combine(Path.GetTempPath(), $"vela-prompt-hook-{Guid.NewGuid():N}.sh");
         File.WriteAllText(
             script,
-            $"BASH_VERSION=''\n{MainWindowViewModel.WorkingDirectoryReportHook}\nprintf 'AFTER<%s>\\n' \"${{PROMPT_COMMAND:-}}\"\n"
+            $"BASH_VERSION=''\n{ShellIntegrationScript.Bash}\nprintf 'AFTER<%s>\\n' \"${{PROMPT_COMMAND:-}}\"\n"
                 .ReplaceLineEndings("\n"));
         try
         {
@@ -215,9 +215,13 @@ public sealed class PromptHookShellTests
             process.WaitForExit(30_000);
 
             Assert.IsEmpty(Extract(stdout, "AFTER"), "守卫为假却动了 PROMPT_COMMAND");
-            // 清行之外一个可见字符都不许有。
+
+            // 守卫为假时这一行必须是**彻底的空操作**:一个可见字符、一个控制序列都不许有。
+            // 旧版末尾缀着一记清行(printf "\r\033[2K")用来擦掉注入行留下的痕迹;
+            // 现在那件事由注入窗口整段负责(EchoSuppressor 的哨兵),清行反而成了多余的动作 ——
+            // 它擦的是光标所在行,而那一行此刻属于谁并不由我们说了算。
             Assert.DoesNotContain(HookFunction, stdout, "守卫为假却把脚本内容回显了出来");
-            Assert.StartsWith("\r[2K", stdout, "末尾那记清行不见了 —— 注入的那一行会留在屏幕上");
+            Assert.AreEqual("AFTER<>\n", stdout.ReplaceLineEndings("\n"), "守卫为假时不该有任何输出");
         }
         finally
         {

@@ -759,10 +759,21 @@ public class TerminalBehaviorOptions : ObservableOptions
     } = "";
 
     /// <summary>
-    /// 连接后静默注入 bash 目录上报钩子(OSC 7),默认开(#286)。
-    /// 关 = 一个字节都不注入,终端里再不会出现那串 <c>test -n "$BASH_VERSION" &amp;&amp; eval ...</c>;
-    /// 代价是 SFTP 文件浏览器的「跟随终端目录」(map-pin)拿不到 cwd,除非用户自己的提示符发 OSC 7。
+    /// 连接后静默注入目录上报钩子(OSC 7),默认开(#286)。
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 注入哪一段由 <c>RemoteShellProbe</c> 探出的 shell 种类决定(bash / zsh / fish /
+    /// POSIX sh 各一段,见 <c>ShellIntegrationScript</c>);探不出种类、或对端是
+    /// cmd.exe / PowerShell 时一个字节都不发(#305)。
+    /// </para>
+    /// <para>
+    /// 关 = 连探针那条 exec 通道都不开,终端里再不会出现那串
+    /// <c>test -n "$BASH_VERSION" &amp;&amp; eval ...</c>;代价是 SFTP 文件浏览器的
+    /// 「跟随终端目录」(map-pin)拿不到 cwd,除非用户自己的提示符发
+    /// OSC 7 / 633 / 1337 / 9;9 —— 那几种解析端照样认。
+    /// </para>
+    /// </remarks>
     public bool ReportWorkingDirectory
     {
         get;

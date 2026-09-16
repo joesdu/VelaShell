@@ -588,7 +588,20 @@ Core 的中立抽象证明有效——**迁移一行 Core 代码都没改**,改�
 
 **E. 远端任务管理器(07-25,08-29 修正)**:SSH 进程管理(`IRemoteProcessService`/`RemoteProcessService`),入口:标题栏"进程管理器"图标。采集前按 `RemoteShellProbe` 判定对端是否 POSIX shell,不是就直接报"不可用"而不发命令 —— cmd.exe 会把整行探测命令原样 echo 回来,`Parse` 只在输出为空时返回 null,于是面板显示的是一张 CPU 0.0%、0 进程的**假空表**而非那句"需要一个已连接的 Linux 会话"。
 
-**F. 文件浏览器跟随终端目录(07-24,08-20、08-29 修复)**:SFTP 上传按钮右侧 map-pin 开关(`FileBrowserViewModel.FollowTerminal`);终端 cwd 由对端 shell 的提示符发 OSC 7,`TerminalEmulator` 解析(`ParseOsc7Path`)→去重→浏览器同步。SSH bash 会话会静默安装一个仅负责 OSC 7 上报的 `PROMPT_COMMAND` 钩子(不再包含已撤除的提示符补行/光标查询逻辑);其他 shell 可在远端 rc 中按各自机制上报 OSC 7。注入前先由 `RemoteShellProbe` 走一条独立 exec 通道确认对端认 sh 语法(考验 `printf` 与 `$((...))` 算术展开,结果按主机缓存),Windows OpenSSH(默认 shell 为 cmd.exe/PowerShell)一律不注入 —— 否则整行会被当命令执行,屏幕上留下 `'test' 不是内部或外部命令`(#305)。
+
+**F. 文件浏览器跟随终端目录(07-24,08-20、08-29 修复;09-15 以 VS Code 的 shell 集成为基础整体重构)**:SFTP 上传按钮右侧 map-pin 开关(`FileBrowserViewModel.FollowTerminal`);终端 cwd 由对端 shell 的提示符上报,`TerminalEmulator` 解析→去重→浏览器同步。
+
+**为什么不能照搬 VS Code。** 它的自动注入靠的是**自己启动 shell**(bash 给 `--init-file`、zsh 换 `ZDOTDIR`、fish 加 `XDG_DATA_DIRS`),官方文档也白纸黑字写着"普通 `ssh` 会话用不了这招"。SSH 客户端没有那个口子,只能往一个**已经跑起来的交互式 shell 的 PTY 里打字** —— 于是回显、命令历史、语法报错、探测、多条注入互相顶掉,这一整类问题得自己解决。能照搬的是协议(OSC 633)与片段写法,搬不了的是投递方式。
+
+- **分 shell 注入(`ShellIntegrationScript`)**:bash 走 `PROMPT_COMMAND`、zsh 走 `precmd_functions`(刻意不用 `add-zsh-hook`——它是 autoload 函数,NixOS 这类 `fpath` 不全的机器上会静默失败)、fish 走 `--on-variable PWD`、dash/ash/ksh 走 `PS1='$(…)'` 单引号赋值。旧版只有 bash 一段,守卫 `test -n "$BASH_VERSION"` 把 **zsh 一并短路**掉了——zsh 用户不报错但功能就是不工作(macOS 默认 shell、oh-my-zsh 全体)。钩子一律**还原 `$?`**:bash 跑完全部 `PROMPT_COMMAND` 才展开 `PS1`,不还原就把用户提示符里的"上条退出码"永久钉死成 0。
+- **两道探针(`RemoteShellProbe`→`RemoteShellKind`)**:第一道考 `printf` + `$((…))` + `${var:-}`(挡住 cmd.exe / PowerShell,#305),顺带用 `$BASH_VERSION`/`$ZSH_VERSION` 带回种类;**只有它失败时**才追问第二道 `echo vela-fish-$FISH_VERSION`。一条命令做不到两件事:挡 PowerShell 靠的正是 fish 不认的那种展开。「没人回答」(两道都拿不到结果)记 `Unknown` 且不缓存,只有真回了东西却对不上号才记 `NonPosix`。
+- **注入窗口(`EchoSuppressor.OpenWindow` + `SilentCommand`)**:整行里埋一条**带随机 nonce 的哨兵**(`OSC 633;P;VelaShell=<nonce>`),终端从写下这一行起**整段扣住输出**,看见哨兵才恢复放行。**哨兵的位置决定藏什么**——排在命令后面就连输出带报错一起藏(我们自己的脚本),排在前面就只藏回显(用户配的命令)。两件事因此干净地分开:我们的注入藏得干干净净,用户的命令一个字节都不少。
+- **为什么不再按回显匹配**:真机上注入行超出终端宽度后,各家 shell 的折行重绘五花八门——ash 插 `CR LF`、zsh 用 `CR`+`ESC[K` 重绘并**重复**断点字符、fish 整行按列重排,逐字节匹配全部失效(三种形态都由 `ShellIntegrationDockerTests` 抓到过)。而"超宽"并不罕见:光是 `ShellHistoryScrub` 前缀就两百多字符,连 `echo hi` 加上它也会折行——这条既有 bug 一并修掉了。
+- **注入推迟到对端安静之后(`SshTerminalBridge.RunWhenOutputIdle`)**:窗口是"从武装那一刻起整段扣住",armed 得太早会把横幅、MOTD、第一个提示符一起吞掉。等"收到过输出且此后静默 300ms"(上限 3s)再动手。四条注入(钩子→全局启动命令→初始目录→认证后命令)一起推迟,顺序不变——用户命令里可能有 `exec zsh`/`tmux attach`,它必须排在钩子之后。
+- **超时放行而不是丢弃**(与 electerm 的分歧):它超时即丢,我们是连上就注入,丢掉会把**提示符本身**一起吞掉,用户面对一块空屏。约定是"成功就藏干净,失败最多退回到和以前一样,绝不倒扣"。
+- **发两种、认一族**:钩子一次发 OSC 7(通用,给 tmux / 别家终端)+ OSC 633(VS Code,排后面因此**后到者为准**,顺带绕开 OSC 7 对路径里 `%` 的歧义);解析端另认 1337(iTerm2)、9;9(ConEmu),白捡已经为别家配过 rc 的用户。在 tmux 里**额外**再发一份包进 DCS 的拷贝(裸的那份留给 tmux 自己记 pane cwd)。
+- **摘历史前缀按 shell 放行(`ShellHistoryScrub.SupportedBy`)**:前缀里的 `${BASH_VERSION:-}` 在 fish 里是**解析期**语法错误,fish 先解析完整行再执行 ⇒ 整行连同后面真正要跑的命令一起死掉,而注入窗口还会把报错藏起来。fish / NonPosix 一律不接。
+- **验证**:`PromptHookShellTests`(真 bash)、`ShellIntegrationScriptShellTests`(真 zsh/fish/sh)、以及 `VelaShell.ShellIntegration.Tests`——**真 sshd + 真 PTY**,五种登录 shell × 探测/注入/跟随/隔离/历史/退出码/tmux 各跑一遍,外加 pyenv 式 `PROMPT_COMMAND` 与 starship 式 `PS1` 重写两个"用户已动手脚"的账号。靶子见 `tests/fixtures/ssh-shells/`。
 
 **G. SFTP 传输面板增强(07-27 ~ 07-29)**:框选、批量操作、文件+文件夹混选上传、冲突与历史交互优化;文件传输 toast 面板(`FileTransferView`,浮动活动/历史项,不跨重启持久化)。
 
@@ -3862,7 +3875,7 @@ starship / powerlevel10k 会把上一条命令的退出码画在提示符上 —
 输出会在序号后多一列时间戳,而序号正是按"开头的数字"取的。
 
 整段仍旧包在 `eval '…'` 里、由 `BASH_VERSION` 守卫,理由与目录上报钩子逐字相同(§见
-`WorkingDirectoryReportHook` 的注释):shell 先把整行解析完再执行,裸写的 `case`/`${var//}`
+`ShellIntegrationScript.Bash` 的注释):shell 先把整行解析完再执行,裸写的 `case`/`${var//}`
 会让 fish 在**解析阶段**就报错,那时守卫还没来得及短路。
 
 ### 三、作用范围是「所有静默注入」,不只是那个钩子

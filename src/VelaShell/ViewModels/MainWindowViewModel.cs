@@ -48,57 +48,6 @@ namespace VelaShell.ViewModels;
 /// </summary>
 public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalResolver
 {
-    /// <summary>
-    /// bash 提示符目录上报钩子(内置、静默注入):每次提示符出现时发送 OSC 7,
-    /// 供 SFTP 文件浏览器的「跟随终端目录」功能读取当前工作目录。
-    /// 由「设置 → 终端 → 会话 → 上报终端工作目录」开关控制,关掉即一字节不注入(#286)。
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>bash 代码必须留在单引号包裹的 eval 参数里。</b>shell 会先把整行解析完再执行,
-    /// 裸写的函数定义与 <c>[[ ]]</c>、<c>${var//a/b}</c> 会让 fish 在<b>解析阶段</b>就报错 ——
-    /// 那时外层守卫还没来得及短路。包进单引号后 fish 只看到一个字符串,静默跳过,屏幕上一个字符都不留。
-    /// </para>
-    /// <para>
-    /// 这道守卫只在 POSIX 世界内部有效:它挡得住 fish/csh,挡不住 cmd.exe ——
-    /// Windows OpenSSH 的默认 shell 把整行当命令执行,屏幕上就是
-    /// <c>'test' 不是内部或外部命令</c>(#305)。所以注入前必须先用
-    /// <see cref="RemoteShellProbe" /> 确认对端认 sh 语法,守卫是第二道闸不是第一道。
-    /// </para>
-    /// <para>
-    /// <b>装法是"先把自己摘掉、清干净首尾、再装回去",不是"发现装过就跳过"。</b>
-    /// 后者看着更省事,实际漏了两种情况,而这两种在真机上都撞到了:
-    /// </para>
-    /// <list type="number">
-    /// <item>
-    /// 原值结尾自带分号时会拼出 <c>;;</c>。pyenv-virtualenv 的初始化在 PROMPT_COMMAND 为空时
-    /// 就是设成 <c>_pyenv_virtualenv_hook;</c>,于是追加后成了
-    /// <c>_pyenv_virtualenv_hook;;vela_shell_osc7</c> —— <c>;;</c> 出了 case 就是语法错误,
-    /// 用户**每敲一次回车**都会看到一行报错。所以追加前必须把尾部的分号与空白剪掉。
-    /// </item>
-    /// <item>
-    /// 会话一旦已经是坏的,"跳过"就永远修不回来:去重看到里面已有 <c>vela_shell_osc7</c>,
-    /// 认定装过了,坏值原样留着。改成无条件重装之后,这种会话再连一次就自愈。
-    /// </item>
-    /// </list>
-    /// <para>
-    /// <b>只剪首尾,绝不动中间。</b>看着更彻底的 <c>${PROMPT_COMMAND//;;/;}</c> 会把用户
-    /// PROMPT_COMMAND 里合法的 <c>case</c> 分支(<c>… ;; *) … ;; esac</c>)切坏 ——
-    /// 换来的是另一个语法错误。问题出在尾部,就只该剪尾部。
-    /// </para>
-    /// <para>
-    /// 摘自己时先去 <c>;vela_shell_osc7</c> 再去裸的 <c>vela_shell_osc7</c>:前者把分隔符一并带走,
-    /// 免得在中间留下 <c>;;</c>;后者收尾开头那份或分号后带空格的写法。
-    /// 这段是 shell 语义,C# 单测只断言得了字符串里有什么,拦不住"跑起来才炸" ——
-    /// 真正的状态矩阵在 <c>tests/VelaShell.Tests/ViewModels/PromptHookShellTests.cs</c>,
-    /// 它把这个常量原样交给真正的 bash 跑。
-    /// </para>
-    /// </remarks>
-    internal const string WorkingDirectoryReportHook =
-        """
-        test -n "${BASH_VERSION:-}" && eval 'vela_shell_osc7() { printf "\033]7;file://%s%s\033\\\\" "${HOSTNAME:-}" "$PWD"; }; PROMPT_COMMAND="${PROMPT_COMMAND:-}"; PROMPT_COMMAND="${PROMPT_COMMAND//;vela_shell_osc7/}"; PROMPT_COMMAND="${PROMPT_COMMAND//vela_shell_osc7/}"; while [[ -n $PROMPT_COMMAND && $PROMPT_COMMAND == [\;[:space:]]* ]]; do PROMPT_COMMAND=${PROMPT_COMMAND#?}; done; while [[ -n $PROMPT_COMMAND && $PROMPT_COMMAND == *[\;[:space:]] ]]; do PROMPT_COMMAND=${PROMPT_COMMAND%?}; done; PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND;}vela_shell_osc7"'; printf "\r\033[2K"
-        """;
-
     /// <summary>RIS(ESC c)完全重置序列:重开会话前清掉旧进程的残留缓冲。</summary>
     private static readonly byte[] RisResetSequence = [0x1B, (byte)'c']; // ESC c
 
@@ -2350,9 +2299,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         ISshClientWrapper client =
             _sshConnectionService!.GetClient(session.SessionId)
             ?? throw new InvalidOperationException("SSH client was not created for the session.");
-        // 先问一句对端是不是 POSIX shell,再决定要不要注入目录上报钩子(#305)。
+        // 先问一句对端是**哪一种** shell,再决定注入哪一段目录上报脚本(#305)。
         // 独立 exec 通道,用完即关;每台主机只探一次,之后走缓存。
-        bool isPosixShell = await ProbePosixShellAsync(client, profile, settings, cancellationToken);
+        RemoteShellKind shellKind = await ProbeShellKindAsync(client, profile, settings, cancellationToken);
         // 通道打开是网络往返(pty-req + shell,2~3 个 RTT);真异步 API,UI 线程零阻塞。
         IShellStreamWrapper shellStream = await client.CreateShellStreamAsync(
             terminalType.ToTermName(), 120, 32, 0, 0, 4096,
@@ -2364,8 +2313,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         terminalTab.ConnectionStatus = SessionStatus.Connected;
         await FeedJumpChainNoticeAsync(terminalTab, profile);
         StartSessionLogging(terminalTab, settings);
-        SendStartupCommand(terminalTab, settings, isPosixShell);
-        SendPostAuthCommand(terminalTab, profile);
+        // 探针结论先落到标签上:SendSilentCommand 靠它决定注入行要不要接摘历史前缀
+        // (那段在 fish 里会让整行解析失败,见 ShellHistoryScrub.SupportedBy)。
+        terminalTab.RemoteShellKind = shellKind;
+        SendSessionInjections(terminalTab, settings, shellKind, profile);
 
         // 会话 Id 从现在起才存在(握手完成后)——活动标签订阅在它被赋值前已触发,
         // 因此在这里绑定 SFTP 浏览器(并展示+加载),否则它将一直指向空占位,永远加载不到列表(#22)。
@@ -2462,8 +2413,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 ?? throw new InvalidOperationException(
                     "SSH client was not created for the session."
                 );
-            // 同 RunHandshakeAsync:注入前先确认对端是 POSIX shell(#305)。首连已探过的主机命中缓存,不再发探针。
-            bool isPosixShell = await ProbePosixShellAsync(client, tab.Profile, settings, reconnectToken);
+            // 同 RunHandshakeAsync:注入前先问出 shell 种类(#305)。首连已探过的主机命中缓存,不再发探针。
+            RemoteShellKind shellKind = await ProbeShellKindAsync(client, tab.Profile, settings, reconnectToken);
             // 同 RunHandshakeAsync:通道打开走真异步 API,UI 线程零阻塞。
             IShellStreamWrapper shellStream = await client.CreateShellStreamAsync(
                 terminalType.ToTermName(), 120, 32, 0, 0, 4096,
@@ -2479,10 +2430,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             await FeedJumpChainNoticeAsync(tab, tab.Profile);
             tab.ResetReconnectAttempts();
             StartSessionLogging(tab, settings);
-            SendStartupCommand(tab, settings, isPosixShell);
+            tab.RemoteShellKind = shellKind; // 同 RunHandshakeAsync:注入前先落结论
             // 重连也要跑:配置里那条命令描述的是"每次登进这台机器要做什么"
             // (进 tmux、切目录、sudo),断线重连回来同样成立。
-            SendPostAuthCommand(tab, tab.Profile);
+            SendSessionInjections(tab, settings, shellKind, tab.Profile);
             if (_metricsService is not null)
             {
                 tab.ResourceMonitor = new(_metricsService, session.SessionId, tab.Title);
@@ -2833,29 +2784,85 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     }
 
     /// <summary>
-    /// 探一句对端是不是 POSIX shell(#305):只有它认 sh 语法,才敢注入目录上报钩子。
-    /// 「上报终端工作目录」关着时直接返回 false —— 连探针那条 exec 通道都不开,守住
-    /// "关掉就一个字节都不发"的承诺(#286)。结果按主机缓存,只有每台机器的首次连接付这次往返。
+    /// 探一句对端是<b>哪一种</b> shell(#305),据此决定注入
+    /// <see cref="ShellIntegrationScript" /> 里的哪一段目录上报脚本,或者干脆不注入。
+    /// 「上报终端工作目录」关着时直接返回 <see cref="RemoteShellKind.Unknown" /> ——
+    /// 连探针那条 exec 通道都不开,守住"关掉就一个字节都不发"的承诺(#286)。
+    /// 结果按主机缓存,只有每台机器的首次连接付这次往返。
     /// </summary>
     /// <remarks>
     /// 刻意排在开 shell 通道**之前**、而不是与之并行:一是探针用完即关,不与 shell 通道并存,
     /// 对 <c>MaxSessions 1</c> 的严苛服务端也只占一个通道名额;二是结论在注入前就已就绪,
-    /// 注入仍然赶在 shell 画出提示符之前,钩子末尾那记清行(见
-    /// <see cref="WorkingDirectoryReportHook" />)才落在该落的地方。
+    /// 注入仍然赶在 shell 画出提示符之前,bash 那段末尾的清行才落在该落的地方。
     /// </remarks>
-    private static Task<bool> ProbePosixShellAsync(
+    private static Task<RemoteShellKind> ProbeShellKindAsync(
         ISshClientWrapper client,
         SessionProfile? profile,
         AppSettings settings,
         CancellationToken cancellationToken
     ) =>
         settings.TerminalBehavior.ReportWorkingDirectory
-            ? RemoteShellProbe.IsPosixShellAsync(
+            ? RemoteShellProbe.DetectAsync(
                 client,
                 RemoteShellProbe.CacheKey(profile?.Host, profile?.Port ?? 22, profile?.Username),
                 cancellationToken
             )
-            : Task.FromResult(false);
+            : Task.FromResult(RemoteShellKind.Unknown);
+
+    /// <summary>注入前要等对端静默多久。</summary>
+    private static readonly TimeSpan InjectionIdleWindow = TimeSpan.FromMilliseconds(300);
+
+    /// <summary>等静默的上限:有的服务器登录后一直在刷东西,不能为此永远不注入。</summary>
+    private static readonly TimeSpan InjectionMaxWait = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// 连接/重连成功后的全部注入(目录上报钩子 → 全局启动命令 → 本条配置的初始目录与认证后命令),
+    /// <b>统一推迟到对端安静下来之后</b>再发。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么必须等。</b>目录上报脚本的注入窗口是"从现在起整段扣住,直到哨兵返回"
+    /// (理由见 <see cref="EchoSuppressor.OpenWindow" />:那一行太长,回显会被各家 shell
+    /// 折行重绘,逐字节匹配咬不住)。窗口 armed 得太早就会把横幅、MOTD、rc 的欢迎语
+    /// 连同第一个提示符一起吞掉 —— 用户登进去面对一块空屏。等它们先放完,窗口里就只剩我们自己的东西。
+    /// </para>
+    /// <para>
+    /// <b>为什么四条一起推迟,而不是只推迟钩子。</b>顺序是有意义的:钩子先装好,用户命令里的
+    /// <c>cd</c> 才报得出来;而用户命令里可能有 <c>exec zsh</c> / <c>tmux attach</c> 这种会换掉
+    /// 整个 shell 的东西,它必须排在钩子之后。只推迟钩子就会把这个顺序颠倒过来。
+    /// </para>
+    /// <para>
+    /// 这几百毫秒里标签可能已经断开、被关掉,或者已经重连成另一个会话 —— 回调里因此重新验一遍
+    /// 桥还是不是原来那个,不然就是把命令灌进了别人的 shell。
+    /// </para>
+    /// </remarks>
+    private static void SendSessionInjections(
+        TerminalTabViewModel tab,
+        AppSettings settings,
+        RemoteShellKind shellKind,
+        SessionProfile? profile
+    )
+    {
+        if (tab.Bridge is not { } bridge)
+        {
+            return;
+        }
+        bridge.RunWhenOutputIdle(
+            InjectionIdleWindow,
+            InjectionMaxWait,
+            () =>
+            {
+                if (!ReferenceEquals(tab.Bridge, bridge) || !tab.IsConnected)
+                {
+                    return;
+                }
+                SendStartupCommand(tab, settings, shellKind);
+                if (profile is not null)
+                {
+                    SendPostAuthCommand(tab, profile);
+                }
+            });
+    }
 
     /// <summary>
     /// 连接成功后按设置注入目录上报钩子,并追加用户配置的"连接后执行命令"
@@ -2864,38 +2871,56 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// </summary>
     /// <param name="tab">已挂上传输的终端标签。</param>
     /// <param name="settings">当前设置。</param>
-    /// <param name="isPosixShell">
-    /// <see cref="ProbePosixShellAsync" /> 的结论;false 时不注入钩子。
+    /// <param name="shellKind">
+    /// <see cref="ProbeShellKindAsync" /> 的结论,决定发哪一段脚本;
+    /// <see cref="RemoteShellKind.Unknown" />/<see cref="RemoteShellKind.NonPosix" /> 时一个字节都不发。
     /// 用户自己配的"连接后执行命令"不受它影响 —— 那是用户明确要求执行的东西,
     /// 对端是什么 shell 由用户自己负责。
     /// </param>
+    /// <remarks>
+    /// <para>
+    /// <b>钩子与用户命令分两条发,钩子那条带「注入窗口」</b>(把注入<b>引发的</b>输出也一并扣住,
+    /// 见 <see cref="EchoSuppressor" />),用户命令那条不带 —— 它是用户明确要跑的东西,
+    /// 输出与报错都必须照常显示。
+    /// </para>
+    /// <para>
+    /// 两条分开发而不是拼成一行,靠的是抑制器**一个实例装多根针**:后来那条只是搭车剥回显,
+    /// 不会把还开着的窗口顶掉。而字节序天然把两者分得很干净 —— shell 是一行一行读的,
+    /// <c>回显(钩子) → 钩子的副作用 → 提示符(带 OSC 7,窗口在此闭合) → 回显(用户命令) →
+    /// 用户命令的输出</c>,窗口罩住的正好只有钩子那一段。
+    /// </para>
+    /// <para>
+    /// 顺序是「先钩子、后用户命令」:钩子先装好,用户命令里的 <c>cd</c> 才报得出来。
+    /// </para>
+    /// </remarks>
     private static void SendStartupCommand(
         TerminalTabViewModel tab,
         AppSettings settings,
-        bool isPosixShell
-    ) =>
-        tab.SendSilentCommand(
-            BuildStartupCommand(settings.TerminalBehavior.StartupCommand, isPosixShell)
-        );
+        RemoteShellKind shellKind
+    )
+    {
+        if (WorkingDirectoryScript(settings, shellKind) is { Length: > 0 } script)
+        {
+            // 装载排在哨兵之前(可能炸,而用户没敲过这一行,凭什么为它的报错买单);
+            // 末尾那次上报排在哨兵之后(必须让仿真器看见,否则文件浏览器要等到用户第一次 cd)。
+            tab.SendShellIntegration(script, ShellIntegrationScript.FunctionName);
+        }
+        if (settings.TerminalBehavior.StartupCommand?.Trim() is { Length: > 0 } userCommand)
+        {
+            tab.SendSilentCommand(userCommand);
+        }
+    }
 
     /// <summary>
-    /// 组合内置目录上报钩子与用户启动命令;保持一次注入以共用同一个回显抑制窗口。
+    /// 本次该注入的目录上报脚本:开关关着、或探不出 shell 种类时一律返回空串
+    /// (<see cref="TerminalTabViewModel.SendShellIntegration" /> 对空串直接不发,连回车都不会多出来)。
     /// </summary>
-    /// <param name="userCommand">用户配置的"连接后执行命令";空则只剩钩子。</param>
-    /// <param name="reportWorkingDirectory">
-    /// 是否注入 OSC 7 目录上报钩子(设置 → 终端 → 会话,#286)。关掉时两者皆空 =
-    /// 返回空串,<see cref="TerminalTabViewModel.SendSilentCommand" /> 对空串直接不发,
-    /// 连回车都不会多出来。
-    /// </param>
-    internal static string BuildStartupCommand(string? userCommand, bool reportWorkingDirectory = true)
-    {
-        string user = userCommand?.Trim() ?? string.Empty;
-        if (!reportWorkingDirectory)
-        {
-            return user;
-        }
-        return user.Length == 0 ? WorkingDirectoryReportHook : WorkingDirectoryReportHook + "; " + user;
-    }
+    /// <param name="settings">当前设置 —— 「上报终端工作目录」开关在这里(#286)。</param>
+    /// <param name="shellKind">探针结论;见 <see cref="ShellIntegrationScript.For" />。</param>
+    internal static string WorkingDirectoryScript(AppSettings settings, RemoteShellKind shellKind) =>
+        settings.TerminalBehavior.ReportWorkingDirectory
+            ? ShellIntegrationScript.For(shellKind)
+            : string.Empty;
 
     /// <summary>
     /// 注入**这一条配置专属**的「认证后执行命令」(连接对话框 → 高级选项)。
@@ -2936,7 +2961,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
 
         // 会话 id 在握手里刚被赋值;它就是"还是同一条会话吗"的判据。
         Guid sessionId = tab.SessionId;
-        DispatcherTimer.RunOnce(
+        void Arm() => DispatcherTimer.RunOnce(
             () =>
             {
                 if (tab.SessionId == sessionId && tab.ConnectionStatus == SessionStatus.Connected)
@@ -2946,6 +2971,17 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             },
             TimeSpan.FromSeconds(delaySeconds)
         );
+
+        // 整条注入链现在推迟到「对端安静下来」之后才跑,而那一下是在线程池线程上触发的
+        // (见 SendSessionInjections);DispatcherTimer 只能在 UI 线程上挂,所以先编组回去。
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            Arm();
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(Arm);
+        }
     }
 
     /// <summary>

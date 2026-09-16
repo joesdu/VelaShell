@@ -8,7 +8,7 @@ namespace VelaShell.Core.Models;
 /// <para>
 /// <b>为什么不自动注入。</b>完整的 OSC 133 要标出「命令输出从这里开始」(<c>C</c>),
 /// 而那个位置只能由 <c>PS0</c> / <c>preexec</c> 给出 —— 都得动用户的提示符变量。
-/// 现有的 OSC 7 钩子只碰 <c>PROMPT_COMMAND</c> 就已经踩过两次真机事故
+/// 现有的 OSC 7 钩子(<see cref="Ssh.ShellIntegrationScript" />)只碰提示符钩子链就已经踩过两次真机事故
 /// (pyenv 的 <c>;;</c> 语法错误、fish 解析阶段就炸),而 <c>PS1</c> 会被 starship /
 /// oh-my-posh / powerlevel10k <b>每次画提示符都重写</b>,爆炸半径大得多。
 /// 这些片段因此是「摆出来给你抄」,装不装、装在哪由用户决定。

@@ -31,7 +31,7 @@ namespace VelaShell.Core.Ssh;
 /// </list>
 /// <para>
 /// <b>整段仍旧包在 <c>eval '…'</c> 里,由 <c>BASH_VERSION</c> 守卫。</b>理由与目录上报钩子
-/// 逐字相同(见 <c>MainWindowViewModel.WorkingDirectoryReportHook</c>):shell 先把整行解析完
+/// 逐字相同(见 <see cref="ShellIntegrationScript.Bash" />):shell 先把整行解析完
 /// 再执行,裸写的 <c>case</c>/<c>${var//}</c> 会让 fish 在<b>解析阶段</b>就报错,那时守卫还没
 /// 来得及短路。zsh 没有 <c>history -d</c>,守卫同样把它挡在外面 —— 代价是 zsh 上那一行仍会
 /// 留在历史里,但那一行在 zsh 上本来就是个空操作(该做的是干脆别注入,另说)。
@@ -57,6 +57,27 @@ public static class ShellHistoryScrub
         """
         test -n "${BASH_VERSION:-}" && eval '__vela_hist_scrub=$(HISTTIMEFORMAT= builtin history 1); __vela_hist_scrub=${__vela_hist_scrub#"${__vela_hist_scrub%%[![:space:]]*}"}; case "$__vela_hist_scrub" in *__vela_hist_scrub*) builtin history -d "${__vela_hist_scrub%%[![:digit:]]*}";; esac; unset __vela_hist_scrub'
         """;
+
+    /// <summary>
+    /// 这段前缀能不能安全地接在发往该种 shell 的命令前面。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>fish 不行,而且是致命的不行。</b>前缀里的 <c>${BASH_VERSION:-}</c> 在 fish 里不是
+    /// "求值得到空串",而是<b>解析期语法错误</b>(<c>Expected a variable name after this $</c>)——
+    /// fish 先把整行解析完再执行,于是<b>整行连同后面真正要跑的命令一起死掉</b>。
+    /// 也就是说:不挡这一下,fish 会话的目录上报脚本、初始目录 <c>cd</c>、认证后命令
+    /// <b>一条都不会执行</b>,而注入窗口还会把那行报错藏起来 —— 表现就是"功能莫名其妙不工作"。
+    /// </para>
+    /// <para>
+    /// <see cref="RemoteShellKind.NonPosix" />(cmd.exe / PowerShell)一并挡掉:那上面本就
+    /// 不该出现 sh 代码(#305)。其余(bash / zsh / dash / ash / ksh,以及探不出种类的
+    /// <see cref="RemoteShellKind.Unknown" />)都认得 <c>${var:-}</c>,前缀在它们那里
+    /// 要么真的摘历史(bash),要么被守卫短路成空操作 —— 与重构之前的行为一致。
+    /// </para>
+    /// </remarks>
+    public static bool SupportedBy(RemoteShellKind kind) =>
+        kind is not (RemoteShellKind.Fish or RemoteShellKind.NonPosix);
 
     /// <summary>
     /// 把摘历史那段接在注入命令<b>前面</b>,返回可直接发给 PTY 的一整行。

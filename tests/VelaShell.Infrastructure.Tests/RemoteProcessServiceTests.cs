@@ -24,7 +24,7 @@ public class RemoteProcessServiceTests
         var sessionId = Guid.NewGuid();
         ISshClientWrapper client = Substitute.For<ISshClientWrapper>();
         client.IsConnected.Returns(true);
-        client.RunCommandDetailedAsync(RemoteShellProbe.ProbeCommand, Arg.Any<CancellationToken>())
+        client.RunCommandDetailedAsync(RemoteShellProbe.PosixProbeCommand, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new RemoteCommandResult("", "'printf' 不是内部或外部命令", 1)));
         client.RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns("__N__; nproc ; echo __P__; cat /proc/stat\n");
@@ -44,7 +44,7 @@ public class RemoteProcessServiceTests
         var sessionId = Guid.NewGuid();
         ISshClientWrapper client = Substitute.For<ISshClientWrapper>();
         client.IsConnected.Returns(true);
-        client.RunCommandDetailedAsync(RemoteShellProbe.ProbeCommand, Arg.Any<CancellationToken>())
+        client.RunCommandDetailedAsync(RemoteShellProbe.PosixProbeCommand, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new RemoteCommandResult(RemoteShellProbe.PosixMarker + "\n", "", 0)));
         client.RunCommandAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("");
         ISshConnectionService connections = Substitute.For<ISshConnectionService>();
