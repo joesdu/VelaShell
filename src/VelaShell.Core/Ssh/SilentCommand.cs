@@ -38,6 +38,41 @@ namespace VelaShell.Core.Ssh;
 public static class SilentCommand
 {
     /// <summary>
+    /// 紧跟在哨兵后面的「收回提示符行」:<c>CR</c> + <c>ESC[2K</c>(回到行首、清掉整行)。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>注入要占掉 shell 的一个提示符周期,而那个周期的提示符已经画在屏幕上了。</b>
+    /// 注入是等对端安静下来才发的 —— 那一刻光标正停在<b>已经画好的那个提示符</b>后面。
+    /// 接着整行回显、副作用、连同这一行跑完后 shell 画的<b>下一个</b>提示符,
+    /// 全被窗口扣住(<c>EchoSuppressor.OpenWindow</c>),屏幕上一个字节都没动过;
+    /// 窗口在哨兵处闭合,后面那个提示符才放出来 —— 于是它紧挨着前一个画了出来:
+    /// </para>
+    /// <code>
+    /// root@host:~# root@host:~#
+    /// </code>
+    /// <para>
+    /// 一条命令都没敲,提示符却出现了两次。用户看到的就是登录后凭空多一个提示符(#448)。
+    /// </para>
+    /// <para>
+    /// <b>所以哨兵之后第一件事是把那一行收回来。</b>光标此刻就停在旧提示符的末尾,
+    /// <c>CR</c> 回到行首、<c>ESC[2K</c> 清掉整行,随后到达的提示符正好画在原地 ——
+    /// 屏幕上自始至终只有一个提示符,和没注入过一模一样。
+    /// </para>
+    /// <para>
+    /// <b>为什么是这一行、而不是终端那边补一下。</b>抑制器只<b>删</b>字节、从不<b>造</b>字节,
+    /// 那是它能同时服务显示与旁路记录(会话日志 / 录制)的前提;而这一下必须真的发生在流里,
+    /// 记录与回放才和屏幕一致。放进哨兵那条 <c>printf</c> 还顺带保证了时序:
+    /// 它与哨兵是同一次写,绝不可能一前一后错开。
+    /// </para>
+    /// <para>
+    /// <b>只清一行,不清更多。</b>powerlevel10k 那种两行提示符只会被收回最后一行,上面那半截还留着;
+    /// 但再往上清就会吃到横幅 / MOTD —— 那是用户真正要看的东西。宁可多留半行,不可少给一行。
+    /// </para>
+    /// </remarks>
+    private const string PromptReclaim = @"\r\033[2K";
+
+    /// <summary>
     /// 这种 shell 能不能用哨兵(要求它有 <c>printf</c>,也就是得是 POSIX 家族或 fish)。
     /// </summary>
     /// <remarks>
@@ -78,7 +113,7 @@ public static class SilentCommand
             return new(WithScrub(kind, plain), string.Empty);
         }
         string token = ShellIntegrationScript.NewNonce();
-        string marker = $"printf '\\033]633;P;{ShellIntegrationScript.SentinelKey}={token}\\007'";
+        string marker = $"printf '\\033]633;P;{ShellIntegrationScript.SentinelKey}={token}\\007{PromptReclaim}'";
         string line = WithScrub(kind, Join(Join(before, marker), after));
         return new(line, $"\e]633;P;{ShellIntegrationScript.SentinelKey}={token}\a");
     }

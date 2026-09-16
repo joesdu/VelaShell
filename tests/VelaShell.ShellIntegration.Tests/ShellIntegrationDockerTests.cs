@@ -88,6 +88,71 @@ public sealed class ShellIntegrationDockerTests
         AssertNoTrace(harness);
     }
 
+    /// <summary>
+    /// 注入之后,屏幕上仍旧只有<b>一个</b>提示符。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 注入要占掉 shell 的一个提示符周期,而那个周期的提示符在注入<b>之前</b>就画好了
+    /// (注入是等对端安静下来才发的)。整行回显与副作用被窗口扣住、一个字节都没上屏,
+    /// 于是这一行跑完后 shell 画的<b>下一个</b>提示符,就紧挨着前一个画了出来:
+    /// <c>root@host:~# root@host:~#</c> —— 一条命令都没敲,提示符出现了两次(#448)。
+    /// </para>
+    /// <para>
+    /// 收口的是 <c>SilentCommand.PromptReclaim</c>:哨兵后面紧跟 <c>CR</c> + <c>ESC[2K</c>,
+    /// 把旧提示符那一行收回来,后到的提示符正好画在原地。
+    /// </para>
+    /// <para>
+    /// <b>断言只能问渲染后的屏幕</b>(<see cref="ShellIntegrationHarness.Screen" />):
+    /// 清行与覆写在字节流里是看得见的,在屏幕上却不留痕 —— 拿字节流去数提示符,
+    /// 修好了也照样是两份。
+    /// </para>
+    /// </remarks>
+    [TestMethod]
+    [DynamicData(nameof(Shells))]
+    [Timeout(60_000)]
+    public async Task Injection_LeavesExactlyOnePromptOnTheScreen(string user, RemoteShellKind expected)
+    {
+        const string prompt = "VELAPROMPT>";
+        using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
+        RemoteShellKind kind = await harness.DetectShellKindAsync();
+        Assert.AreEqual(expected, kind);
+
+        // 换一个认得出来的提示符,再擦掉整屏:此后屏幕上出现几次它,就是画了几个提示符。
+        await harness.TypeAsync(SetPromptCommand(kind, prompt));
+        await harness.TypeAsync(@"printf '\033[2J\033[H'");
+        harness.WaitFor(() => Occurrences(harness.Screen, prompt) == 1, $"换好的提示符 {prompt}");
+
+        harness.WaitForOutputIdle();
+        await harness.InjectShellIntegrationAsync(kind);
+        harness.WaitForWorkingDirectory(HomeOf(user));
+        harness.WaitForOutputIdle();
+
+        Assert.AreEqual(
+            1,
+            Occurrences(harness.Screen, prompt),
+            $"注入在屏幕上多留了一个提示符:\n{ShellIntegrationHarness.Escape(harness.Screen)}");
+    }
+
+    /// <summary>把提示符换成一个认得出来的常量 —— fish 的提示符是个函数,另外三种是 <c>PS1</c>。</summary>
+    private static string SetPromptCommand(RemoteShellKind kind, string prompt) =>
+        kind == RemoteShellKind.Fish
+            ? $"function fish_prompt; printf '{prompt} '; end"
+            : $"PS1='{prompt} '";
+
+    /// <summary>屏幕上出现了几次。</summary>
+    private static int Occurrences(string text, string value)
+    {
+        int count = 0;
+        for (int at = text.IndexOf(value, StringComparison.Ordinal);
+             at >= 0;
+             at = text.IndexOf(value, at + value.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+        return count;
+    }
+
     /// <summary>终端里 <c>cd</c> 到别处,必须再报一次 —— 这才是"跟随"两个字的意思。</summary>
     [TestMethod]
     [DynamicData(nameof(Shells))]

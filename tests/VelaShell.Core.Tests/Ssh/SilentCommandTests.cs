@@ -74,6 +74,50 @@ public class SilentCommandTests
     }
 
     /// <summary>
+    /// 哨兵后面紧跟一条「收回提示符行」(<c>CR</c> + <c>ESC[2K</c>)。
+    /// </summary>
+    /// <remarks>
+    /// 注入占掉的那个提示符周期,提示符在注入之前就画好了;整行的回显与副作用被窗口扣住之后,
+    /// 这一行跑完时 shell 画的下一个提示符就紧挨着前一个显示出来 ——
+    /// <c>root@host:~# root@host:~#</c>,一条命令都没敲却有两个提示符(#448)。
+    /// 清行必须排在哨兵<b>之后</b>:排在前面就和注入的副作用一起被吞掉,等于没发。
+    /// </remarks>
+    [TestMethod]
+    public void Build_RightAfterTheSentinel_ReclaimsThePromptLine()
+    {
+        ShellIntegrationInjection injection =
+            SilentCommand.Build(RemoteShellKind.Bash, "install_me", "report_now");
+
+        Assert.Contains(@"\007\r\033[2K'", injection.CommandLine, "哨兵之后必须紧跟 CR + ESC[2K");
+        int reclaim = injection.CommandLine.IndexOf(@"\r\033[2K", StringComparison.Ordinal);
+        int visible = injection.CommandLine.IndexOf("report_now", StringComparison.Ordinal);
+        Assert.IsGreaterThan(reclaim, visible, "清行要赶在后面那段真正要显示的输出之前");
+    }
+
+    /// <summary>
+    /// 清行<b>不算</b>哨兵的一部分 —— 算进去的话窗口就会把它一起吞掉,那个多出来的提示符也就留住了。
+    /// </summary>
+    [TestMethod]
+    public void Build_PromptReclaimIsNotPartOfTheSentinel()
+    {
+        ShellIntegrationInjection injection = SilentCommand.Build(RemoteShellKind.Zsh, null, "echo hi");
+
+        Assert.EndsWith("\a", injection.Sentinel);
+        Assert.DoesNotContain("\r", injection.Sentinel);
+        Assert.DoesNotContain("\e[2K", injection.Sentinel);
+    }
+
+    /// <summary>
+    /// 没有哨兵的那条路(探不出种类 / cmd.exe)也不发清行:那上面 <c>printf</c> 未必存在,
+    /// 发出去只会变成屏幕上一串没人认得的字面量。
+    /// </summary>
+    [TestMethod]
+    [DataRow(RemoteShellKind.Unknown)]
+    [DataRow(RemoteShellKind.NonPosix)]
+    public void Build_WithoutSentinelSupport_SendsNoPromptReclaim(RemoteShellKind kind) =>
+        Assert.DoesNotContain(@"\033[2K", SilentCommand.Build(kind, null, "tmux attach").CommandLine);
+
+    /// <summary>
     /// 每次一枚新 nonce:固定串会让前一条注入的哨兵把后一条的窗口提前关掉,
     /// 而握手时本来就是连着注入好几条的。
     /// </summary>

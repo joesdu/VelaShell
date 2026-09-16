@@ -686,8 +686,9 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// 把初始化命令注入远端 shell 并静默执行:发送前在桥上装回显抑制器,
     /// 把 PTY 回显的这一行从输出流剥掉,不在界面显示。前导空格让
     /// HISTCONTROL=ignoreboth 不记历史;抑制针 needle 不含该空格(空格太常见,
-    /// 不适合做流匹配锚点)。注入本身要占掉 shell 的一个提示符周期,想让屏幕保持干净
-    /// 可在命令里自行清行(如 printf "\r\033[2K")。
+    /// 不适合做流匹配锚点)。注入本身要占掉 shell 的一个提示符周期,那个周期的提示符
+    /// 已经画在屏幕上了 —— 收回它的清行动作由 <see cref="SilentCommand" /> 接在哨兵后面
+    /// 一并发出(见那边的 <c>PromptReclaim</c>),调用方不必操心。
     /// <para>
     /// 「静默」还包括**不留在命令历史里**:整行前面接一段 <see cref="ShellHistoryScrub" />,
     /// 由 bash 自己把这一条从历史里摘掉。屏幕上隐形、方向键一按却整行冒出来 ——

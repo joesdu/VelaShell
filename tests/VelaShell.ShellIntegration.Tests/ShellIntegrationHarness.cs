@@ -77,6 +77,31 @@ internal sealed class ShellIntegrationHarness : IDisposable
         }
     }
 
+    /// <summary>
+    /// 仿真器<b>渲染之后</b>的屏幕(每行一条,已去掉行尾空白)。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="Visible" /> 的差别正是"喂进去的字节"与"画出来的样子"之差:
+    /// 光标移动、清行、覆写这些在字节流里看得见、在屏幕上却不留痕。
+    /// "屏幕上到底有几个提示符"这类断言只能问它 —— 问字节流永远是"有两份提示符文本",
+    /// 哪怕第二份把第一份原地覆盖掉了。
+    /// </remarks>
+    public string Screen
+    {
+        get
+        {
+            lock (_sync)
+            {
+                var sb = new StringBuilder();
+                for (int row = 0; row < _emulator.Rows; row++)
+                {
+                    sb.Append(_emulator.Screen.ActiveLine(row).GetText().TrimEnd()).Append('\n');
+                }
+                return sb.ToString();
+            }
+        }
+    }
+
     /// <summary>抑制之前的原始字节,仅用于断言失败时把现场打出来。</summary>
     public string Raw
     {
@@ -292,8 +317,11 @@ internal sealed class ShellIntegrationHarness : IDisposable
                         continue;
                     }
                     _visible.Append(Encoding.UTF8.GetString(chunk));
+
+                    // 喂仿真器也在锁里:用例线程会读 Screen(它要遍历整屏的行),
+                    // 而仿真器不是线程安全的 —— 放到锁外就是边写边读。
+                    _emulator.Feed(chunk);
                 }
-                _emulator.Feed(chunk);
             }
         }
         catch (Exception)
