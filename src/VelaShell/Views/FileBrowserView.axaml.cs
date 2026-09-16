@@ -43,8 +43,8 @@ public partial class FileBrowserView : UserControl
     /// <summary>单根拖拽条的宽度(同 axaml 的拖拽条列定义)。</summary>
     private const double SplitterWidth = 6;
 
-    /// <summary>表头/行的左右内边距合计(axaml 里 Padding="14,0")。</summary>
-    private const double HorizontalPadding = 28;
+    /// <summary>表头/行的左右内边距合计(axaml 里 Padding="14,0,20,0";右侧的 20 是让开覆盖式滚动条)。</summary>
+    private const double HorizontalPadding = 34;
 
     // 列宽靠度量文字算出来,度量字体必须与实际渲染字体一致 —— 不一致(旧值以 JetBrains Mono
     // 打头、且不含内置 Cascadia)字形步进就对不上,列自适应/截断会错位。渲染用的是

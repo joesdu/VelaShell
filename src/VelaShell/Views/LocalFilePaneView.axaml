@@ -133,7 +133,9 @@
           </StackPanel>
         </Grid>
       </Border>
-      <Border DockPanel.Dock="Top" Height="26" Padding="14,0"
+      <!-- 右内边距 20 > 滚动条展开宽 16(VelaScrollBarSize):滚动条是覆盖式的,留 14 时
+           展开的滑道会压住末列(修改时间)的末尾。表头与行必须同值,否则列对不齐。 -->
+      <Border DockPanel.Dock="Top" Height="26" Padding="14,0,20,0"
               Background="{DynamicResource VelaBgContentHeader}"
               BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
         <Grid ColumnDefinitions="*,90,130">
@@ -184,7 +186,7 @@
         </ListBox.ContextMenu>
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="vm:LocalFileEntry">
-            <Border Classes="file-row" Classes.parent="{Binding IsParentEntry}" Height="28" Padding="14,0"
+            <Border Classes="file-row" Classes.parent="{Binding IsParentEntry}" Height="28" Padding="14,0,20,0"
                     BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1"
                     PointerPressed="OnFileRowPointerPressed">
               <Grid ColumnDefinitions="*,90,130">

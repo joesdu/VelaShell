@@ -49,7 +49,9 @@
     <!-- 录制列表:选中/悬停用主题令牌(与设置导航一致),替换 Fluent 默认的
          低对比蓝色选中背景;选中项标题以强调色突出。 -->
     <Style Selector="ListBox.rec-list">
-      <Setter Property="Padding" Value="4" />
+      <!-- 右侧 10 + 条目自身的 10 = 20 > 滚动条展开宽 16(VelaScrollBarSize):
+           滚动条是覆盖式的,四边都留 4 时展开的滑道会压住行尾的删除键。 -->
+      <Setter Property="Padding" Value="4,4,10,4" />
     </Style>
     <Style Selector="ListBox.rec-list ListBoxItem">
       <Setter Property="Padding" Value="10,8" />

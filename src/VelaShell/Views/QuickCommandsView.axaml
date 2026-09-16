@@ -114,7 +114,9 @@
                          IsVisible="{Binding !HasTargets}" />
               <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto"
                             IsVisible="{Binding HasTargets}">
-                <ItemsControl ItemsSource="{Binding Targets}">
+                <!-- 右外边距 18 + 复选框自身 2 = 20 > 滚动条展开宽 16(VelaScrollBarSize):
+                     覆盖式滚动条展开后会压住较长终端名的末尾。 -->
+                <ItemsControl ItemsSource="{Binding Targets}" Margin="0,0,18,0">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="pvm:QuickCommandTargetViewModel">
                       <CheckBox IsChecked="{Binding IsSelected}"
@@ -159,7 +161,9 @@
 
     <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled">
-      <ItemsControl ItemsSource="{Binding Library.FilteredGroups}" Margin="4,0,4,6">
+      <!-- 右外边距 12 + 组头自身 7 的内边距 ≈ 19 > 滚动条展开宽 16(VelaScrollBarSize):
+           滚动条是覆盖式的,留 4 时展开的滑道会压住组头右端的条目计数徽标。 -->
+      <ItemsControl ItemsSource="{Binding Library.FilteredGroups}" Margin="4,0,12,6">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="pvm:QuickCommandGroupViewModel">
             <StackPanel Margin="0,2">

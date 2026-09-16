@@ -638,6 +638,58 @@ public sealed partial class ResourceMonitorUiTests
         });
     }
 
+    /// <summary>
+    /// 每页滚动内容的右留白都要越过滚动条(#454:出现滚动条时占用率的百分号被切掉半个)。
+    /// 滚动条是覆盖式的 —— 展开态那条 16px 的不透明滑道直接压在内容上,不占布局宽度,
+    /// 所以留白必须由内容自己让出来,且要大于滑道宽,否则贴右的读数就少掉最后几像素。
+    /// </summary>
+    [TestMethod]
+    public void EveryPage_LeavesTheScrollBarItsOwnGutter()
+    {
+        OnUi(() =>
+        {
+            UseChinese();
+            (ResourceMonitorWindow window, ResourceMonitorWindowViewModel vm) = OpenWarm(WithGpu());
+
+            // 滑道宽 = 主题里的 VelaScrollBarSize。
+            const double barSize = 16;
+            var checkedAny = false;
+
+            foreach (string page in new[] { "Cpu", "Gpu", "Memory", "Disk", "Network", "Overview" })
+            {
+                vm.SelectPageCommand.Execute(page).Subscribe();
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+
+                foreach (ScrollViewer scroller in window.GetVisualDescendants().OfType<ScrollViewer>())
+                {
+                    // 只看纵向滚的那些:GPU/网卡卡片条是横向滚的,它让开的是底边(见各自注释)。
+                    if (!scroller.IsEffectivelyVisible
+                        || scroller.VerticalScrollBarVisibility != ScrollBarVisibility.Auto
+                        || scroller.Content is not Control content
+                        || !content.IsEffectivelyVisible
+                        || scroller.Viewport.Width <= 0)
+                    {
+                        continue;
+                    }
+
+                    // 内容的 Bounds 不含自身外边距,而承载它的 presenter 宽度就是视口宽,
+                    // 两者之差正是让给滚动条的那条留白。
+                    double gutter = scroller.Viewport.Width - content.Bounds.Right;
+                    Assert.IsGreaterThan(
+                        barSize,
+                        gutter,
+                        $"{page} 页有一处滚动内容只留了 {gutter:F0}px,滚动条展开后会压掉右侧读数的末尾。");
+                    checkedAny = true;
+                }
+            }
+
+            Assert.IsTrue(checkedAny, "一处纵向滚动区都没量到,断言等于没跑。");
+
+            window.Close();
+        });
+    }
+
     [TestMethod]
     public void WithoutGpu_HidesTheGpuNavigationEntry()
     {
