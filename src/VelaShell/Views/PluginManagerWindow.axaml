@@ -230,7 +230,11 @@
           </StackPanel>
 
           <ScrollViewer IsVisible="{Binding !IsEmpty}" Padding="14,12">
-            <ItemsControl ItemsSource="{Binding Plugins}">
+            <!-- 右侧再补 6(合计 20)> 滚动条展开宽 16(VelaScrollBarSize):滚动条是覆盖式的,
+                 只有 14 时展开的滑道会压住卡片右沿的启停/设置按钮。这 6 走内容的 Margin
+                 而不是把 ScrollViewer.Padding 改成不对称值 —— 后者会让子项按视口宽排布、
+                 按视口宽减留白报告宽度,右边反而被裁。 -->
+            <ItemsControl ItemsSource="{Binding Plugins}" Margin="0,0,6,0">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:PluginRowViewModel">
                   <Border Background="{DynamicResource VelaBgInput}"

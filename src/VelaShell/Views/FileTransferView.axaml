@@ -114,7 +114,9 @@
         <ItemsControl Name="TransferRows" ItemsSource="{Binding Transfers}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:TransferItemViewModel">
-              <Border Padding="12,8"
+              <!-- 右内边距 20 > 滚动条展开宽 16(VelaScrollBarSize):滚动条是覆盖式的,
+                   留 12 时展开的滑道会压住行尾的百分比读数。 -->
+              <Border Padding="12,8,20,8"
                       BorderBrush="{DynamicResource VelaBorderPrimary}"
                       BorderThickness="0,0,0,1">
                 <StackPanel Spacing="4">

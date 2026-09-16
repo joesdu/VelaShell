@@ -329,7 +329,10 @@
               Background="{DynamicResource VelaBgContentHeader}"
               BorderBrush="{DynamicResource VelaBorderSecondary}"
               BorderThickness="0,0,0,1"
-              Padding="12,0">
+              Padding="12,0,20,0">
+        <!-- 右内边距 20 > 滚动条展开宽 16(VelaScrollBarSize):滚动条是覆盖式的,展开时那条
+             不透明滑道会压住最后一列(命令行)的末尾;表头与行必须取同一个值,否则星号列
+             宽度不同,右侧几列会整体错开。 -->
         <!-- 数值列的表头必须与数据一样右对齐、且用同一个右边距,否则表头贴左、数字贴右,
              整张表看着就是错位的(截图里 PID/CPU/内存/线程/运行时长 全中招)。 -->
         <Grid x:Name="HeaderColumns" ColumnDefinitions="220,72,110,64,90,58,58,92,*">
@@ -397,7 +400,8 @@
                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
         <ListBox.Styles>
           <Style Selector="ListBoxItem">
-            <Setter Property="Padding" Value="12,0" />
+            <!-- 右内边距与上面的表头同为 20:见表头处关于覆盖式滚动条的注释。 -->
+            <Setter Property="Padding" Value="12,0,20,0" />
             <Setter Property="MinHeight" Value="22" />
           </Style>
         </ListBox.Styles>

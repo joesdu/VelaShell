@@ -79,12 +79,14 @@
       </Style>
 
       <!-- 会话行:子级缩进 36,根级(未分组)与分组行同缩进 12;选中行 bg-active。 -->
+      <!-- 右内边距 20 > 滚动条展开宽 16(VelaScrollBarSize):树装在侧栏的 ScrollViewer 里,
+           而滚动条是覆盖式的 —— 留 12 时展开的滑道会压住行尾的状态徽标/长会话名的末尾。 -->
       <Style Selector="Border.session">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Padding" Value="36,0,12,0" />
+        <Setter Property="Padding" Value="36,0,20,0" />
       </Style>
       <Style Selector="Border.session.rootlevel">
-        <Setter Property="Padding" Value="12,0" />
+        <Setter Property="Padding" Value="12,0,20,0" />
       </Style>
       <Style Selector="Border.session:pointerover">
         <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
