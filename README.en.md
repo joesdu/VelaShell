@@ -419,6 +419,28 @@ Found a security vulnerability? **Do not open a public issue** — follow the pr
 
 ---
 
+## 💖 Sponsor
+
+VelaShell is **free forever** for individuals and companies alike. Sponsoring is entirely
+voluntary — it unlocks nothing, and there is no "sponsor build" separate from the free one.
+
+| Channel | Best for | Link |
+| --- | --- | --- |
+| Wise | International, card or bank transfer | <https://wise.com/pay/me/yud162> |
+| Afdian (爱发电) | Mainland China, Alipay / WeChat Pay | <https://afdian.com/a/velashell> |
+
+Or scan directly:
+
+<div align="center">
+  <img src="src/VelaShell/Assets/donate-alipay.png" width="200" alt="Alipay" />
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="src/VelaShell/Assets/donate-wechat.png" width="200" alt="WeChat Pay" />
+</div>
+
+The same links live in the app under **Settings → Support & Donate**. Thank you to everyone who chips in.
+
+---
+
 ## 📄 License
 
 VelaShell is **dual-licensed**:

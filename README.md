@@ -481,6 +481,28 @@ English in [`en/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/en)
 
 ---
 
+## 💖 赞助
+
+VelaShell 对个人与企业**永久免费**，赞助纯属自愿 —— 不解锁任何功能，
+也不存在「赞助版」与「免费版」的区别。
+
+| 渠道 | 适用 | 链接 |
+| --- | --- | --- |
+| 爱发电 | 国内，支持支付宝 / 微信 | <https://afdian.com/a/velashell> |
+| Wise | 海外，支持信用卡 / 银行转账 | <https://wise.com/pay/me/yud162> |
+
+也可以直接扫码：
+
+<div align="center">
+  <img src="src/VelaShell/Assets/donate-alipay.png" width="200" alt="支付宝" />
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="src/VelaShell/Assets/donate-wechat.png" width="200" alt="微信支付" />
+</div>
+
+应用内 **设置 → 支持与捐赠** 有同样的入口。感谢每一位赞助者。
+
+---
+
 ## 📄 许可证
 
 本项目采用**双许可（Dual License）**模式：
