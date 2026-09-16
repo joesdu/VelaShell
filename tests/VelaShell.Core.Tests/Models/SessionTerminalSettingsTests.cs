@@ -26,7 +26,6 @@ public sealed class SessionTerminalSettingsTests
         Assert.AreEqual("UTF-8", SessionTerminalSettings.Encoding(profile, settings));
         Assert.AreEqual(settings.General.KeepAliveSeconds, SessionTerminalSettings.KeepAliveSeconds(profile, settings));
         Assert.AreEqual(0, SessionTerminalSettings.AntiIdleSeconds(profile), "防空闲没有全局值可跟随,没设就是关。");
-        Assert.IsNull(SessionTerminalSettings.ColorScheme(profile));
         Assert.IsNull(SessionTerminalSettings.TabColor(profile));
         Assert.IsNull(SessionTerminalSettings.StartupDirectory(profile));
     }
@@ -53,7 +52,6 @@ public sealed class SessionTerminalSettingsTests
         // 不能因此抛,那几条路径都在启动/连接的热路上。
         Assert.AreEqual("xterm-256color", SessionTerminalSettings.TerminalType(null, Global()));
         Assert.AreEqual("UTF-8", SessionTerminalSettings.Encoding(null, Global()));
-        Assert.IsNull(SessionTerminalSettings.ColorScheme(null));
     }
 
     [TestMethod]
@@ -79,25 +77,6 @@ public sealed class SessionTerminalSettingsTests
         AppSettings broken = new() { TerminalEncoding = "" };
 
         Assert.AreEqual("UTF-8", SessionTerminalSettings.Encoding(new SessionProfile(), broken));
-    }
-
-    [TestMethod]
-    public void AnUnknownColorSchemeIsTreatedAsNoOverride()
-    {
-        // 用新版选过某个方案再退回旧版就是这个情形:那时应当照常显示全局配色,
-        // 而不是空白一片。
-        SessionProfile profile = new() { Terminal = new() { ColorScheme = "方案名不存在" } };
-
-        Assert.IsNull(SessionTerminalSettings.ColorScheme(profile));
-    }
-
-    [TestMethod]
-    public void AKnownColorSchemeResolvesToTheBuiltInOne()
-    {
-        string name = TerminalColorScheme.BuiltIn[1].Name;
-        SessionProfile profile = new() { Terminal = new() { ColorScheme = name } };
-
-        Assert.AreEqual(name, SessionTerminalSettings.ColorScheme(profile)?.Name);
     }
 
     [TestMethod]

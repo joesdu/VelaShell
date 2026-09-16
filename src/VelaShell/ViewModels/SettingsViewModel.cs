@@ -598,21 +598,8 @@ public class SettingsViewModel : ReactiveObject
             Strings.Get("SetAppear_ThemeSystem"),
         ];
 
-    // xterm-256color 是首选/推荐配置,排在最前。
-    /// <summary>终端类型下拉可选值(推荐项 xterm-256color 置首)。</summary>
-    public string[] AvailableTerminalTypes { get; } =
-    [
-        "xterm-256color",
-        "xterm",
-        "vt520",
-        "vt420",
-        "vt340",
-        "vt320",
-        "vt220",
-        "vt102",
-        "vt100",
-        "vt52",
-    ];
+    /// <summary>终端类型下拉可选值(与连接配置里的会话级覆盖共用同一张表)。</summary>
+    public string[] AvailableTerminalTypes { get; } = TerminalTypes.All;
 
     /// <summary>终端编码下拉可选值(与状态栏的编码热切菜单共用同一张表)。</summary>
     public string[] AvailableEncodings { get; } = TerminalEncodings.All;

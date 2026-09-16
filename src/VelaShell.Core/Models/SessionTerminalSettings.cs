@@ -63,25 +63,6 @@ public static class SessionTerminalSettings
         Math.Max(0, profile?.Terminal?.AntiIdleSeconds ?? 0);
 
     /// <summary>
-    /// 生效的终端配色方案名;null = 不覆盖,沿用全局那套颜色。
-    /// </summary>
-    /// <remarks>
-    /// 与其它几项不同,这一项<b>没有</b>「全局值」可回落:全局配色是一整组颜色字段,
-    /// 不是一个方案名。所以这里返回 null 就是"别动,用全局那组颜色"。
-    /// 认不出来的方案名同样当作没覆盖 —— 用新版选过某个方案再退回旧版就是这个情形,
-    /// 那时应当照常显示,而不是空白一片。
-    /// </remarks>
-    /// <param name="profile">会话配置;null 表示没有配置。</param>
-    /// <returns>内置方案,或 null。</returns>
-    public static TerminalColorScheme? ColorScheme(SessionProfile? profile)
-    {
-        string? name = profile?.Terminal?.ColorScheme;
-        return string.IsNullOrWhiteSpace(name)
-            ? null
-            : Array.Find(TerminalColorScheme.BuiltIn, scheme => scheme.Name == name);
-    }
-
-    /// <summary>
     /// 用户指定的标签强调色(<c>#RRGGBB</c>);null = 按配置 id 自动配色。
     /// </summary>
     /// <param name="profile">会话配置;null 表示没有配置。</param>

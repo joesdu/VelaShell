@@ -51,7 +51,6 @@ public sealed class SessionProfileCloneTests
             {
                 Encoding = "GBK",
                 TerminalType = "vt220",
-                ColorScheme = "Nord",
                 TabColor = "#E05252",
                 StartupDirectory = "/var/log",
                 KeepAliveSeconds = 15,

@@ -1547,9 +1547,6 @@
   <data name="Profile_OverrideTerminalType" xml:space="preserve">
     <value>터미널 유형</value>
   </data>
-  <data name="Profile_OverrideColorScheme" xml:space="preserve">
-    <value>색 구성표</value>
-  </data>
   <data name="Profile_OverrideTabColor" xml:space="preserve">
     <value>탭 색상</value>
   </data>

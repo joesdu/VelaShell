@@ -1,4 +1,5 @@
 using System.Text;
+using VelaShell.Core.Models;
 using VelaShell.Terminal.Emulation;
 
 namespace VelaShell.Terminal.Tests.Emulation;
@@ -241,6 +242,17 @@ public class TerminalEmulatorTests
     [DataRow("vt52", TerminalType.Vt52)]
     [DataRow("unknown-term", TerminalType.XtermColor256)]
     public void FromTermName_ParsesKnownProfiles(string term, TerminalType expected) => Assert.AreEqual(expected, TerminalTypeExtensions.FromTermName(term));
+
+    [TestMethod]
+    public void EveryOfferedTermNameIsOneTheEmulatorActuallyKnows()
+    {
+        // 下拉里的档位若仿真器不认识,FromTermName 会把它静默当成 xterm-256color ——
+        // 用户选了 A、发出去的是 B,而界面上看不出任何异样("linux"就这么在连接配置里躺过一阵)。
+        foreach (string term in TerminalTypes.All)
+        {
+            Assert.AreEqual(term, TerminalTypeExtensions.FromTermName(term).ToTermName(), $"「{term}」不在仿真器认识的档位里。");
+        }
+    }
 
     [TestMethod]
     public void ReverseIndex_ScrollsDownAtTop()
