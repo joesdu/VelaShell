@@ -123,6 +123,10 @@ public sealed partial class ChatPanelViewUiTests
                 panel.SendExternal("看看日志");
                 Button stop = Find<Button>(panel, "StopButton");
                 Assert.IsTrue(await WaitForAsync(() => stop.IsVisible, maxRounds: 60), "这一轮该跑起来了");
+                // 请求是 stub 那一头记的:界面亮起停止键只说明这一轮开跑了,不代表请求已经落到 stub。
+                // 先等它真的记上,下面「只发了一次」才是在断已发生的事实(macOS runner 上就是这么挂的)。
+                Assert.IsTrue(await WaitForAsync(() => stub.Requests.Count >= 1, maxRounds: 120),
+                    "这一轮的请求该已经发出去了");
 
                 TextEditor input = Find<TextEditor>(panel, "InputBox");
                 input.Text = "算了,先看磁盘";
