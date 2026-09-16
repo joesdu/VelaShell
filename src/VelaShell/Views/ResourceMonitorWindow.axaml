@@ -876,7 +876,7 @@
                       <ScrollViewer x:Name="HeatScroller"
                                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                     IsVisible="{Binding IsHeatView}">
-                        <pc:UsageHeatGrid Margin="0,0,14,0" Values="{Binding CorePercents}" Labels="{Binding CoreLabels}"
+                        <pc:UsageHeatGrid Margin="0,0,20,0" Values="{Binding CorePercents}" Labels="{Binding CoreLabels}"
                                           ViewportHeight="{Binding #HeatScroller.Viewport.Height}"
                                           MaxCellHeight="200" MaxCellWidth="360"
                                           Revision="{Binding Revision}"
@@ -895,7 +895,7 @@
                       <ScrollViewer x:Name="SparkScroller"
                                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                     IsVisible="{Binding IsSparkView}">
-                        <pc:UsageHeatGrid Margin="0,0,14,0" Mode="Sparkline"
+                        <pc:UsageHeatGrid Margin="0,0,20,0" Mode="Sparkline"
                                           Values="{Binding CorePercents}" Labels="{Binding CoreLabels}"
                                           Histories="{Binding CoreHistories}" Revision="{Binding Revision}"
                                           ViewportHeight="{Binding #SparkScroller.Viewport.Height}"
@@ -913,13 +913,13 @@
 
                       <!-- 列表:逐核心一行,大量核心时靠虚拟化保持流畅 -->
                       <DockPanel IsVisible="{Binding IsListView}">
-                        <Grid DockPanel.Dock="Top" ColumnDefinitions="120,*,80" Margin="0,0,14,4">
+                        <Grid DockPanel.Dock="Top" ColumnDefinitions="120,*,80" Margin="0,0,20,4">
                           <TextBlock Text="{loc:Localize Monitor_ColCore}" Classes="col" />
                           <TextBlock Grid.Column="1" Text="{loc:Localize Monitor_ColLoad}" Classes="col" />
                           <TextBlock Grid.Column="2" Text="%" Classes="col" TextAlignment="Right" />
                         </Grid>
                         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                          <ItemsControl Margin="0,0,14,0" ItemsSource="{Binding CoreRows}">
+                          <ItemsControl Margin="0,0,20,0" ItemsSource="{Binding CoreRows}">
                             <ItemsControl.ItemsPanel>
                               <ItemsPanelTemplate>
                                 <VirtualizingStackPanel />
@@ -1117,14 +1117,14 @@
                                        Foreground="{DynamicResource VelaShellMagenta}" VerticalAlignment="Center" />
                         <TextBlock Text="{loc:Localize Monitor_GpuProcesses}" Classes="card-title" />
                       </StackPanel>
-                      <Grid DockPanel.Dock="Top" ColumnDefinitions="*,70,70,110" Margin="0,0,14,4">
+                      <Grid DockPanel.Dock="Top" ColumnDefinitions="*,70,70,110" Margin="0,0,20,4">
                         <TextBlock Text="{loc:Localize Monitor_ColProcess}" Classes="col" />
                         <TextBlock Grid.Column="1" Text="{loc:Localize Monitor_Gpu}" Classes="col" TextAlignment="Right" />
                         <TextBlock Grid.Column="2" Text="PID" Classes="col" TextAlignment="Right" />
                         <TextBlock Grid.Column="3" Text="{loc:Localize Monitor_Vram}" Classes="col" TextAlignment="Right" />
                       </Grid>
                       <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                        <ItemsControl Margin="0,0,14,0" ItemsSource="{Binding GpuProcesses}">
+                        <ItemsControl Margin="0,0,20,0" ItemsSource="{Binding GpuProcesses}">
                           <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:GpuProcessRow">
                               <Grid ColumnDefinitions="*,70,70,110" Height="24">
@@ -1287,7 +1287,7 @@
                       <TextBlock Text="{loc:Localize Monitor_TopByMemory}" Classes="card-title" />
                     </StackPanel>
                     <!-- 列宽两处必须一模一样:表头与行分属两棵子树,列定义写岔了肉眼很难发现。 -->
-                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,80,90,70,90,90,70" Margin="0,0,14,4">
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,80,90,70,90,90,70" Margin="0,0,20,4">
                       <TextBlock Text="{loc:Localize Monitor_ColProcess}" Classes="col" />
                       <TextBlock Grid.Column="1" Text="PID" Classes="col" TextAlignment="Right" />
                       <TextBlock Grid.Column="2" Text="{loc:Localize Monitor_ColRss}" Classes="col" TextAlignment="Right" />
@@ -1297,7 +1297,7 @@
                       <TextBlock Grid.Column="6" Text="{loc:Localize Monitor_ColCpu}" Classes="col" TextAlignment="Right" />
                     </Grid>
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                      <ItemsControl Margin="0,0,14,0" ItemsSource="{Binding TopMemoryProcesses}">
+                      <ItemsControl Margin="0,0,20,0" ItemsSource="{Binding TopMemoryProcesses}">
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="vm:ProcessRow">
                             <Grid ColumnDefinitions="*,80,90,70,90,90,70" Height="26">
@@ -1335,9 +1335,12 @@
                       </StackPanel>
                       <!-- 滚动条留白放在内容的 Margin 上,不用 ScrollViewer.Padding:
                            后者会让 ItemsControl 按"视口宽"排布子项、按"视口宽减留白"报告自身宽度,
-                           子项因此被排成比容器还宽,右侧读数被裁掉半个字。 -->
+                           子项因此被排成比容器还宽,右侧读数被裁掉半个字。
+                           本页每处滚动内容的右留白都取 20:滚动条是覆盖式的,展开态滑道整整
+                           16px 宽(VelaScrollBarSize)且不透明,留 14 时滑道会压掉右侧读数末尾
+                           那两像素(#454 的"百分号显示不全");20 = 16 + 4px 的呼吸缝。 -->
                       <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                        <ItemsControl ItemsSource="{Binding Disks}" Margin="0,0,14,0">
+                        <ItemsControl ItemsSource="{Binding Disks}" Margin="0,0,20,0">
                           <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:DiskDeviceRow">
                               <!-- 卡片本体就是按钮:外面再套一层 Border 时,按钮模板的方角背景会盖住
@@ -1433,39 +1436,39 @@
                                      Foreground="{DynamicResource VelaShellGreen}" VerticalAlignment="Center" />
                       <TextBlock Text="{loc:Localize Monitor_Partitions}" Classes="card-title" />
                     </StackPanel>
-                    <!-- 列序同设计稿:挂载点 / 设备 / 文件系统 / 占用条 / 已用总量 / 使用率。
+                    <!-- 列序:挂载点 / 设备 / 文件系统 / 占用条 / 使用率 / 已用总量。
+                         百分比紧跟占用条(同 CPU 逐核列表),不是甩到行尾 —— 条与数是同一个量的
+                         两种画法,中间隔着"已用总量"时,眼睛要横跳一次才对得上,条子就白画了。
                          表头与行的列定义必须逐字一致,写岔了读数会串列。 -->
-                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,190,90,180,150,64" Margin="0,0,14,2">
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,190,120,180,32,180" Margin="0,0,20,2">
                       <TextBlock Text="{loc:Localize Monitor_ColMount}" Classes="col" />
                       <TextBlock Grid.Column="1" Text="{loc:Localize Monitor_ColDevice}" Classes="col" />
                       <TextBlock Grid.Column="2" Text="{loc:Localize Monitor_ColFsType}" Classes="col" />
                       <TextBlock Grid.Column="3" Text="{loc:Localize Monitor_ColUsage}" Classes="col" />
-                      <TextBlock Grid.Column="4" Text="{loc:Localize Monitor_ColCapacity}" Classes="col"
-                                 TextAlignment="Right" />
-                      <TextBlock Grid.Column="5" Text="%" Classes="col" TextAlignment="Right" />
+                      <TextBlock Grid.Column="4" Text="%" Classes="col" />
+                      <TextBlock Grid.Column="5" Text="{loc:Localize Monitor_ColCapacity}" Classes="col" TextAlignment="Right" />
                     </Grid>
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                      <ItemsControl x:Name="PartitionList" Margin="0,0,14,0" ItemsSource="{Binding Partitions}">
+                      <ItemsControl x:Name="PartitionList" Margin="0,0,20,0" ItemsSource="{Binding Partitions}">
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="vm:PartitionRow">
                             <!-- 隔行压一层浅底:挂载点这类长路径逐行扫视时,没有底纹很容易看串行。 -->
-                            <Border Classes="row" Height="30" CornerRadius="4" Padding="6,0" Margin="-6,0">
-                              <Grid ColumnDefinitions="*,190,90,180,150,64">
+                            <Border Classes="row" Height="24" CornerRadius="4" Padding="6,0" Margin="-6,0">
+                              <Grid ColumnDefinitions="*,190,120,180,32,180">
                                 <TextBlock Text="{Binding MountPoint}" Classes="cell"
                                            Foreground="{DynamicResource VelaTextPrimary}" Margin="0,0,10,0" />
                                 <TextBlock Grid.Column="1" Text="{Binding Source}" Classes="cell" Margin="0,0,10,0" />
                                 <TextBlock Grid.Column="2" Text="{Binding FsType}" Classes="cell" Margin="0,0,10,0" />
-                                <pc:MeterBar Grid.Column="3" Height="8" Margin="0,0,20,0"
+                                <!-- 条右侧只留 12(不是 20):百分比要贴着条尾,读数与条长才是一眼的事。 -->
+                                <pc:MeterBar Grid.Column="3" Height="8" Margin="0,0,12,0"
                                              VerticalAlignment="Center" Value="{Binding Percent}"
                                              TrackBrush="{DynamicResource VelaGaugeTrack}"
                                              FillBrush="{DynamicResource VelaShellGreen}"
                                              WarnBrush="{DynamicResource VelaWarning}"
                                              CritBrush="{DynamicResource VelaError}" />
-                                <TextBlock Grid.Column="4" Text="{Binding UsedText}" Classes="cell"
-                                           TextAlignment="Right" Margin="0,0,10,0" />
-                                <TextBlock Grid.Column="5" Text="{Binding PercentText}" Classes="cell pct"
-                                           Classes.warn="{Binding IsWarn}" Classes.crit="{Binding IsCrit}"
-                                           TextAlignment="Right" />
+                                <TextBlock Grid.Column="4" Text="{Binding PercentText}" Classes="cell pct"
+                                           Classes.warn="{Binding IsWarn}" Classes.crit="{Binding IsCrit}" Margin="0,0,10,0" />
+                                <TextBlock Grid.Column="5" Text="{Binding UsedText}" Classes="cell" TextAlignment="Right" />
                               </Grid>
                             </Border>
                           </DataTemplate>
@@ -1643,7 +1646,7 @@
                       </StackPanel>
                       <!-- 对端定宽、进程占星号:改成整行后再让对端吃星号,地址与进程名之间
                            会拉开一千多像素的空档(截帧眼校)。320 够放下 IPv6 socket 地址。 -->
-                      <Grid DockPanel.Dock="Top" ColumnDefinitions="320,*,110,110" Margin="0,0,14,4"
+                      <Grid DockPanel.Dock="Top" ColumnDefinitions="320,*,110,110" Margin="0,0,20,4"
                             IsVisible="{Binding !ConnectionsUnavailable}">
                         <TextBlock Text="{loc:Localize Monitor_ColPeer}" Classes="col" />
                         <TextBlock Grid.Column="1" Text="{loc:Localize Monitor_ColProcess}" Classes="col" />
@@ -1653,7 +1656,7 @@
                       <Panel>
                         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                       IsVisible="{Binding !ConnectionsUnavailable}">
-                          <ItemsControl Margin="0,0,14,0" ItemsSource="{Binding TopConnections}">
+                          <ItemsControl Margin="0,0,20,0" ItemsSource="{Binding TopConnections}">
                             <ItemsControl.ItemTemplate>
                               <DataTemplate x:DataType="vm:ConnectionRow">
                                 <Grid ColumnDefinitions="320,*,110,110" Height="26">

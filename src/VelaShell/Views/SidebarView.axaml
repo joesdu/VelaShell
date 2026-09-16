@@ -197,7 +197,9 @@
             <ItemsControl ItemsSource="{Binding RecentConnections.Connections}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:RecentConnectionItemViewModel">
-                  <Border Height="32" Padding="12,0" Cursor="Hand"
+                  <!-- 右内边距 20 > 滚动条展开宽 16(VelaScrollBarSize):滚动条是覆盖式的,
+                       留 12 时展开的滑道会压住名称的省略号那一截。 -->
+                  <Border Height="32" Padding="12,0,20,0" Cursor="Hand"
                           Background="Transparent" ToolTip.Tip="{Binding Tooltip}"
                           DoubleTapped="RecentConnection_DoubleTapped">
                     <Border.Styles>

@@ -183,10 +183,13 @@
 
         <Grid Grid.Column="2" RowDefinitions="22,*">
       <!-- 列头 -->
+      <!-- 右内边距 20 > 滚动条展开宽 16(VelaScrollBarSize):滚动条是覆盖式的,展开时那条
+           不透明滑道会压住最后一列(Last 毫秒数)的末尾几个像素。表头与行必须取同一个值,
+           否则星号列宽度不同,右侧几列会整体错开。 -->
       <Border Grid.Row="0"
               Background="{DynamicResource VelaBgContentHeader}"
               BorderBrush="{DynamicResource VelaBorderSecondary}"
-              BorderThickness="0,0,0,1" Padding="12,0">
+              BorderThickness="0,0,0,1" Padding="12,0,20,0">
         <Grid ColumnDefinitions="30,*,150,58,58,58">
           <TextBlock Grid.Column="0" Classes="col" Text="#" />
           <TextBlock Grid.Column="1" Classes="col" Text="{loc:Localize Trace_ColHost}" />
@@ -202,7 +205,8 @@
                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
         <ListBox.Styles>
           <Style Selector="ListBoxItem">
-            <Setter Property="Padding" Value="12,0" />
+            <!-- 右内边距与上面的表头同为 20:见表头处关于覆盖式滚动条的注释。 -->
+            <Setter Property="Padding" Value="12,0,20,0" />
             <Setter Property="MinHeight" Value="22" />
           </Style>
         </ListBox.Styles>

@@ -170,7 +170,9 @@
       <ItemsControl ItemsSource="{Binding Tunnels}">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="vm:TunnelItemViewModel">
-            <Border Padding="12,10"
+            <!-- 右内边距 20 > 滚动条展开宽 16(VelaScrollBarSize):滚动条是覆盖式的,
+                 留 12 时展开的滑道会压住行尾的删除键。 -->
+            <Border Padding="12,10,20,10"
                     BorderBrush="{DynamicResource VelaBorderPrimary}"
                     BorderThickness="0,0,0,1">
               <StackPanel Spacing="6">
