@@ -166,18 +166,18 @@ public sealed class TerminalSettingsApplierTests
         });
 
     [TestMethod]
-    public void ASessionColourSchemeOverridesTheGlobalPalette() =>
+    public void ASessionNeverGetsAPaletteOfItsOwn() =>
         OnUi(() =>
         {
+            // 配色一律跟随全局:一条连接单独换一套颜色,同一个窗口里的标签就各说各话了;
+            // 「这台是生产」由标签颜色去标,那一项仍然按会话走。
             var control = new VelaTerminalControl();
-            AppSettings settings = new();
-            string scheme = TerminalColorScheme.BuiltIn[1].Name;
-            SessionProfile profile = new() { Terminal = new() { ColorScheme = scheme } };
+            SessionProfile profile = new() { Terminal = new() { TerminalType = "vt220", TabColor = "#E05252" } };
 
-            TerminalSettingsApplier.Apply(control, settings, Theme(), profile: profile);
+            TerminalSettingsApplier.Apply(control, new(), Theme(), profile: profile);
 
-            Assert.IsNotNull(control.PaletteOverrides,
-                "会话指定了配色方案时必须整套压下去,而不是沿用全局那组颜色。");
+            Assert.IsNull(control.PaletteOverrides,
+                "全局处于「跟随主题」时,带不带会话配置都不该压下一套配色。");
         });
 
     [TestMethod]

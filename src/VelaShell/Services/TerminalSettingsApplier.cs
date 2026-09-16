@@ -109,12 +109,9 @@ public static class TerminalSettingsApplier
         // 当前具名主题配套的整套终端配色(VelaDark→Dracula、Nord→Nord…),
         // 再叠上用户自定义的那几个单色(没改过的颜色一律跟随主题)。
         control.ThemePalette = TerminalAppearanceMapper.BuildThemePalette(theme.Terminal);
-        // 会话级配色覆盖(F-06)压在全局之上:整套下发,与用户在设置页里选一个方案是同一条路。
-        // 没指定时 ColorScheme 返回 null,行为与改动前逐字相同。
-        control.PaletteOverrides =
-            SessionTerminalSettings.ColorScheme(profile) is { } sessionScheme
-                ? TerminalAppearanceMapper.BuildThemePalette(sessionScheme)
-                : TerminalAppearanceMapper.BuildPaletteOverrides(settings.Appearance);
+        // 配色一律跟随全局:一条连接单独换一套颜色只会让同一个窗口里的标签各说各话,
+        // 而"这台机器是生产"用标签颜色标出来就够了。
+        control.PaletteOverrides = TerminalAppearanceMapper.BuildPaletteOverrides(settings.Appearance);
     }
 
     /// <summary>

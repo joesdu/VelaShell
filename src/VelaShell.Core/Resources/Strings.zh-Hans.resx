@@ -1825,9 +1825,6 @@
   <data name="Profile_OverrideTerminalType" xml:space="preserve">
     <value>终端类型</value>
   </data>
-  <data name="Profile_OverrideColorScheme" xml:space="preserve">
-    <value>配色方案</value>
-  </data>
   <data name="Profile_OverrideTabColor" xml:space="preserve">
     <value>标签颜色</value>
   </data>

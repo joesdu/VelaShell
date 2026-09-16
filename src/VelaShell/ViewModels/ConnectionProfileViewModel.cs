@@ -74,7 +74,6 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     // ---- 会话级终端覆盖项(F-06);null / -1 = 跟随全局 ----
     private string? _overrideEncoding;
     private string? _overrideTerminalType;
-    private string? _overrideColorScheme;
     private string? _overrideTabColor;
     private string? _overrideStartupDirectory;
     private int _overrideKeepAliveSeconds = -1;
@@ -169,7 +168,6 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
             {
                 _overrideEncoding = overrides.Encoding;
                 _overrideTerminalType = overrides.TerminalType;
-                _overrideColorScheme = overrides.ColorScheme;
                 _overrideTabColor = overrides.TabColor;
                 _overrideStartupDirectory = overrides.StartupDirectory;
                 _overrideKeepAliveSeconds = overrides.KeepAliveSeconds ?? -1;
@@ -889,13 +887,9 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     /// <summary>可选编码,首项为「跟随全局」。</summary>
     public string[] EncodingOptions { get; } = [Strings.Get("Profile_FollowGlobal"), .. TerminalEncodings.All];
 
-    /// <summary>可选终端类型,首项为「跟随全局」。</summary>
+    /// <summary>可选终端类型,首项为「跟随全局」;其余与设置页的全局下拉同一张表。</summary>
     public string[] TerminalTypeOptions { get; } =
-        [Strings.Get("Profile_FollowGlobal"), "xterm-256color", "xterm", "vt220", "vt100", "linux"];
-
-    /// <summary>可选配色方案,首项为「跟随全局」。</summary>
-    public string[] ColorSchemeOptions { get; } =
-        [Strings.Get("Profile_FollowGlobal"), .. TerminalColorScheme.BuiltIn.Select(scheme => scheme.Name)];
+        [Strings.Get("Profile_FollowGlobal"), .. TerminalTypes.All];
 
     /// <summary>会话级编码覆盖;「跟随全局」= 不覆盖。</summary>
     public string OverrideEncoding
@@ -909,13 +903,6 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     {
         get => _overrideTerminalType ?? FollowGlobalOption;
         set => this.RaiseAndSetIfChanged(ref _overrideTerminalType, Normalize(value));
-    }
-
-    /// <summary>会话级配色方案覆盖;「跟随全局」= 不覆盖。</summary>
-    public string OverrideColorScheme
-    {
-        get => _overrideColorScheme ?? FollowGlobalOption;
-        set => this.RaiseAndSetIfChanged(ref _overrideColorScheme, Normalize(value));
     }
 
     /// <summary>
@@ -1316,14 +1303,13 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
         };
     }
 
-    /// <summary>把界面上的七个会话级终端项收成一个对象;一项都没设时返回 null。</summary>
+    /// <summary>把界面上的六个会话级终端项收成一个对象;一项都没设时返回 null。</summary>
     private TerminalOverrides? BuildTerminalOverrides()
     {
         TerminalOverrides overrides = new()
         {
             Encoding = _overrideEncoding,
             TerminalType = _overrideTerminalType,
-            ColorScheme = _overrideColorScheme,
             TabColor = string.IsNullOrWhiteSpace(_overrideTabColor) ? null : _overrideTabColor.Trim(),
             StartupDirectory = string.IsNullOrWhiteSpace(_overrideStartupDirectory)
                 ? null

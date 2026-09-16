@@ -30,11 +30,6 @@ public sealed class TerminalOverrides
     public string? TerminalType { get; set; }
 
     /// <summary>
-    /// 终端配色方案名(须存在于 <see cref="TerminalColorScheme.BuiltIn" />);null = 跟随全局。
-    /// </summary>
-    public string? ColorScheme { get; set; }
-
-    /// <summary>
     /// 标签页强调色(<c>#RRGGBB</c>);null = 按配置 id 自动配色。
     /// </summary>
     /// <remarks>
@@ -87,13 +82,12 @@ public sealed class TerminalOverrides
 
     /// <summary>是否一项都没覆盖(等价于整个对象为 null)。</summary>
     /// <remarks>
-    /// 界面把七项都清空之后应当存回 <c>null</c> 而不是一个全空对象:后者会让每条老配置
+    /// 界面把六项都清空之后应当存回 <c>null</c> 而不是一个全空对象:后者会让每条老配置
     /// 的落盘 JSON 平白多出一段,也让"有没有覆盖"这件事有了两种表示。
     /// </remarks>
     public bool IsEmpty =>
         string.IsNullOrWhiteSpace(Encoding)
         && string.IsNullOrWhiteSpace(TerminalType)
-        && string.IsNullOrWhiteSpace(ColorScheme)
         && string.IsNullOrWhiteSpace(TabColor)
         && string.IsNullOrWhiteSpace(StartupDirectory)
         && KeepAliveSeconds is null
@@ -106,7 +100,6 @@ public sealed class TerminalOverrides
         {
             Encoding = Encoding,
             TerminalType = TerminalType,
-            ColorScheme = ColorScheme,
             TabColor = TabColor,
             StartupDirectory = StartupDirectory,
             KeepAliveSeconds = KeepAliveSeconds,
