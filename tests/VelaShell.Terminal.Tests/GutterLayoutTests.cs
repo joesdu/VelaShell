@@ -33,6 +33,15 @@ public class GutterLayoutTests
     }
 
     [TestMethod]
+    public void TimestampMillisOff_ShrinksToSecondsWidth()
+    {
+        // 毫秒开关关闭时时间戳列退回秒级宽度("[HH:mm:ss] " = 11 列),侧栏随之变窄。
+        var g = new GutterLayout(CellW, showTimestamp: true, showNumber: true, showFold: true, blank: true, showTimestampMillis: false);
+        Assert.AreEqual(11 * CellW, g.TimeWidth);
+        Assert.AreEqual(g.TimeWidth, g.NumberLeft);
+    }
+
+    [TestMethod]
     public void FoldColumnHit_OnlyWithinFoldPlusBlank()
     {
         // 时间+行号+折叠+空白都开:折叠列在时间/行号之后。
