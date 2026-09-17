@@ -352,7 +352,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>
-    /// 左侧栏显示每行的收行时间 <c>[HH:mm:ss]</c>(设置 → 终端 / 侧栏右键)。与 <see cref="ShowLineNumber" />
+    /// 左侧栏显示每行的收行时间 <c>[HH:mm:ss.fff]</c>(设置 → 终端 / 侧栏右键)。与 <see cref="ShowLineNumber" />
     /// 等相互独立。任一侧栏部件开启都会占用左侧宽度(减少可用列数,PTY 随之改列宽)。
     /// </summary>
     public bool ShowLineTimestamp
@@ -2210,7 +2210,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
 
     // ---- Line gutter(时间/行号/折叠侧栏,WindTerm 式) ---------------------
 
-    private const string GutterTimeFormat = "HH:mm:ss";
+    private const string GutterTimeFormat = "HH:mm:ss.fff";
 
     /// <summary>当前侧栏几何(各部件宽度/偏移/命中区间,见 <see cref="GutterLayout" />)。按当前单元格宽与开关计算。</summary>
     /// <remarks>
@@ -2276,7 +2276,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <c>_glyphCache</c> 一起清空。上限防长会话滚动把历史行号无界积累。
     /// </summary>
     /// <remarks>
-    /// 取 span 而非 string:调用方在栈上拼好 "[HH:mm:ss] " / 右对齐行号,命中缓存时
+    /// 取 span 而非 string:调用方在栈上拼好 "[HH:mm:ss.fff] " / 右对齐行号,命中缓存时
     /// (滚动稳定期几乎恒命中)连缓存键都不必物化。只有 miss 才 <c>ToString()</c> 建键。
     /// </remarks>
     private FormattedText GutterText(ReadOnlySpan<char> text, Typeface typeface, ImmutableSolidColorBrush brush)
@@ -2302,7 +2302,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>
-    /// 把行时间戳写成 <c>"[HH:mm:ss] "</c>,返回 <paramref name="buffer" /> 中写好的那一段。
+    /// 把行时间戳写成 <c>"[HH:mm:ss.fff] "</c>,返回 <paramref name="buffer" /> 中写好的那一段。
     /// 缓冲至少需要 <c>GutterTimeFormat.Length + 3</c> 个字符。
     /// </summary>
     /// <remarks>
