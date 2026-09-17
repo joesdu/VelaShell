@@ -23,7 +23,7 @@ public class GutterLayoutTests
     public void Widths_AddUp_LeftToRight()
     {
         var g = new GutterLayout(CellW, showTimestamp: true, showNumber: true, showFold: true, blank: true);
-        Assert.AreEqual(11 * CellW, g.TimeWidth);
+        Assert.AreEqual(15 * CellW, g.TimeWidth);
         Assert.AreEqual((GutterLayout.NumberDigits + 1) * CellW, g.NumberWidth);
         Assert.AreEqual(Math.Ceiling(CellW * 1.6), g.FoldWidth);
         Assert.AreEqual(GutterLayout.BlankPixels, g.BlankWidth);

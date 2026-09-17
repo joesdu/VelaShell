@@ -21,7 +21,7 @@ public readonly struct GutterLayout(
     public const double BlankPixels = 5.0;
 
     /// <summary>时间戳列宽(px);关闭时为 0。</summary>
-    public double TimeWidth { get; } = showTimestamp ? 11 * cellWidth : 0;                // "[HH:mm:ss] " = 11 cells
+    public double TimeWidth { get; } = showTimestamp ? 15 * cellWidth : 0;                // "[HH:mm:ss.fff] " = 15 cells
     /// <summary>行号列宽(px);关闭时为 0。</summary>
     public double NumberWidth { get; } = showNumber ? (NumberDigits + 1) * cellWidth : 0; // "NNNNN " = 6 cells
 
