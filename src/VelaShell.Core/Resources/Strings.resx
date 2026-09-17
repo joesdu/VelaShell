@@ -429,6 +429,12 @@
   <data name="StatusBar_OpenMonitor" xml:space="preserve">
     <value>Open resource monitor</value>
   </data>
+  <data name="StatusBar_IssuesLink" xml:space="preserve">
+    <value>Feedback</value>
+  </data>
+  <data name="StatusBar_IssuesLinkTip" xml:space="preserve">
+    <value>Open GitHub Issues in the browser</value>
+  </data>
   <!-- File Browser (7) -->
   <data name="FileName" xml:space="preserve">
     <value>File Name</value>

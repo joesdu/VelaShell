@@ -2991,6 +2991,12 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="StatusBar_OpenMonitor" xml:space="preserve">
     <value>리소스 모니터 열기</value>
   </data>
+  <data name="StatusBar_IssuesLink" xml:space="preserve">
+    <value>문제 신고</value>
+  </data>
+  <data name="StatusBar_IssuesLinkTip" xml:space="preserve">
+    <value>GitHub Issues를 브라우저에서 열기</value>
+  </data>
   <data name="Svc_Active" xml:space="preserve">
     <value>활성</value>
   </data>

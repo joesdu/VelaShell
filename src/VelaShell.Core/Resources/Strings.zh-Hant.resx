@@ -531,6 +531,12 @@
   <data name="StatusBar_OpenMonitor" xml:space="preserve">
     <value>開啟資源監視器</value>
   </data>
+  <data name="StatusBar_IssuesLink" xml:space="preserve">
+    <value>回報問題</value>
+  </data>
+  <data name="StatusBar_IssuesLinkTip" xml:space="preserve">
+    <value>去 GitHub 提 Issue(瀏覽器開啟)</value>
+  </data>
   <data name="FileName" xml:space="preserve">
     <value>檔案名稱</value>
   </data>
