@@ -361,6 +361,13 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         set => SetGutterOption(ref field, value);
     }
 
+    /// <summary>行时间戳是否显示毫秒(设置 → 终端,默认开)。关 = 秒级 <c>[HH:mm:ss]</c>,侧栏窄 4 列。</summary>
+    public bool ShowLineTimestampMillis
+    {
+        get;
+        set => SetGutterOption(ref field, value);
+    } = true;
+
     /// <summary>左侧栏显示每行的缓冲区行号。与其他侧栏部件相互独立。</summary>
     public bool ShowLineNumber
     {
@@ -2211,6 +2218,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     // ---- Line gutter(时间/行号/折叠侧栏,WindTerm 式) ---------------------
 
     private const string GutterTimeFormat = "HH:mm:ss.fff";
+    private const string GutterTimeFormatSeconds = "HH:mm:ss";
 
     /// <summary>当前侧栏几何(各部件宽度/偏移/命中区间,见 <see cref="GutterLayout" />)。按当前单元格宽与开关计算。</summary>
     /// <remarks>
@@ -2218,7 +2226,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// 没装的会话它一个像素都不占,装了的会话整段一直在,不随滚动位置抖动。
     /// </remarks>
     private GutterLayout Gutter =>
-        new(CellWidthForTest, ShowLineTimestamp, ShowLineNumber, ShowFoldMarker, GutterBlank, Emulator.HasPromptMarks);
+        new(CellWidthForTest, ShowLineTimestamp, ShowLineNumber, ShowFoldMarker, GutterBlank, Emulator.HasPromptMarks, ShowLineTimestampMillis);
 
     /// <summary>任一侧栏部件开启即绘制侧栏。</summary>
     private bool GutterEnabled => Gutter.Enabled;
@@ -2302,18 +2310,20 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <summary>
-    /// 把行时间戳写成 <c>"[HH:mm:ss.fff] "</c>,返回 <paramref name="buffer" /> 中写好的那一段。
-    /// 缓冲至少需要 <c>GutterTimeFormat.Length + 3</c> 个字符。
+    /// 把行时间戳写成 <c>"[HH:mm:ss.fff] "</c>(毫秒开)或 <c>"[HH:mm:ss] "</c>(毫秒关),
+    /// 返回 <paramref name="buffer" /> 中写好的那一段。
+    /// 缓冲至少需要 <c>GutterTimeFormat.Length + 3</c> 个字符(毫秒格式最长,秒级一定装得下)。
     /// </summary>
     /// <remarks>
     /// 这些文本只是 <see cref="GutterText" /> 的缓存键,却在每个可见行、每一帧上重算
     /// (光标闪烁也会重绘)。写进调用方的栈缓冲,把原先每行 2 个中间 string 降为零。
     /// internal 是为了让 <c>GutterTextFormattingTests</c> 直接锁住与原 <c>PadLeft</c> 写法的逐字等价。
     /// </remarks>
-    internal static ReadOnlySpan<char> FormatGutterTimestamp(DateTime timestamp, Span<char> buffer)
+    internal static ReadOnlySpan<char> FormatGutterTimestamp(DateTime timestamp, Span<char> buffer, bool showMillis)
     {
         buffer[0] = '[';
-        timestamp.TryFormat(buffer[1..], out int length, GutterTimeFormat, CultureInfo.InvariantCulture);
+        string format = showMillis ? GutterTimeFormat : GutterTimeFormatSeconds;
+        timestamp.TryFormat(buffer[1..], out int length, format, CultureInfo.InvariantCulture);
         buffer[++length] = ']';
         buffer[++length] = ' ';
         return buffer[..++length];
@@ -2373,7 +2383,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             // 每个可见行、每一帧(光标闪烁也算)白扔一轮。栈缓冲足够容下最长形态。
             if (ShowLineTimestamp && line.Timestamp is { } ts)
             {
-                context.DrawText(GutterText(FormatGutterTimestamp(ts, stampBuffer), typeface, dimBrush), new Point(0, y));
+                context.DrawText(GutterText(FormatGutterTimestamp(ts, stampBuffer, ShowLineTimestampMillis), typeface, dimBrush), new Point(0, y));
             }
             if (ShowLineNumber)
             {

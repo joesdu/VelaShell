@@ -17,7 +17,7 @@ public class GutterTextFormattingTests
     private const int StampBufferSize = 12 + 3; // "HH:mm:ss.fff" 12 位 + '[' + ']' + 尾随空格
 
     [TestMethod]
-    public void FormatGutterTimestamp_MatchesLegacyConcatenation()
+    public void FormatGutterTimestamp_MillisOn_MatchesLegacyConcatenation()
     {
         DateTime[] samples =
         [
@@ -30,9 +30,19 @@ public class GutterTextFormattingTests
         foreach (DateTime ts in samples)
         {
             string expected = "[" + ts.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture) + "] ";
-            string actual = new(VelaTerminalControl.FormatGutterTimestamp(ts, buffer));
+            string actual = new(VelaTerminalControl.FormatGutterTimestamp(ts, buffer, showMillis: true));
             Assert.AreEqual(expected, actual, $"时间戳 {ts:O} 的侧栏文本与原拼接写法不一致。");
         }
+    }
+
+    [TestMethod]
+    public void FormatGutterTimestamp_MillisOff_FallsBackToSeconds()
+    {
+        // 毫秒开关关闭时退回秒级(issue #460 的可选项):同一缓冲必须装得下,残留更短。
+        DateTime ts = new(2026, 8, 28, 9, 5, 3, 456);
+        Span<char> buffer = stackalloc char[StampBufferSize];
+        string actual = new(VelaTerminalControl.FormatGutterTimestamp(ts, buffer, showMillis: false));
+        Assert.AreEqual("[09:05:03] ", actual, "毫秒关闭时应显示秒级时间戳。");
     }
 
     [TestMethod]
