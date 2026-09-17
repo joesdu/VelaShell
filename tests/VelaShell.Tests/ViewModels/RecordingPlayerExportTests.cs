@@ -177,8 +177,18 @@ public sealed class RecordingPlayerExportTests
             RecordingPlayerViewModel viewModel = Load(new StubStore(new RecordingChunk(0, "x"u8.ToArray())));
             Assert.IsTrue(viewModel.HasSelection, "前置:选中且有块。");
 
-            var raised = new List<string?>();
-            viewModel.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+            // 只收具名通知:`PropertyName == null` 是「全部属性都变了」的约定,满足不了下面
+            // 按名字的断言;元素类型也必须是非空 string,否则 MSTest 4.4.1 的
+            // Assert.Contains<T, TCollection>(TCollection : IEnumerable<T>) 会报 CS8631
+            // (CI 带 -warnaserror)。同 StatusBarSelectionTests。
+            var raised = new List<string>();
+            viewModel.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName is { } name)
+                {
+                    raised.Add(name);
+                }
+            };
 
             viewModel.SelectedRecording = null;
             Dispatcher.UIThread.RunJobs();

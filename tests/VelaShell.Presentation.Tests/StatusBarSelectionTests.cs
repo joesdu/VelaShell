@@ -22,8 +22,19 @@ public sealed class StatusBarSelectionTests
     public void SettingALength_ShowsTheSegment_AndRaisesTheDerivedProperties()
     {
         using var vm = new StatusBarViewModel();
-        List<string?> changed = [];
-        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        // 只收具名通知。`PropertyName == null` 在 INotifyPropertyChanged 的约定里是
+        // 「全部属性都变了」,它既满足不了下面那两条按名字断言,也不该把 changed 的元素类型
+        // 拖成 string? —— MSTest 4.4.1 起 Assert.Contains 的约束是 TCollection : IEnumerable<T>,
+        // T 由 nameof(...) 推成非空 string,传 List<string?> 会因可空性不匹配报 CS8631,
+        // 而 CI 的构建带 -warnaserror。
+        List<string> changed = [];
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is { } name)
+            {
+                changed.Add(name);
+            }
+        };
 
         vm.SelectionLength = 42;
 
