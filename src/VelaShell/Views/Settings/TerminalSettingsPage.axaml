@@ -55,6 +55,13 @@
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetTerm_ShowLineTimestampMillis}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetTerm_ShowLineTimestampMillisDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.ShowLineTimestampMillis}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="{loc:Localize SetTerm_ShowLineNumber}" />
         <TextBlock Classes="row-desc" Text="{loc:Localize SetTerm_ShowLineNumberDesc}" />
       </StackPanel>
