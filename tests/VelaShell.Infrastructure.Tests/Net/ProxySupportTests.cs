@@ -66,7 +66,6 @@ public class ProxySupportTests
         var route = new ProxyRoute(ProxyKind.Socks5, "127.0.0.1", server.Port);
         await using Stream tunnel = await ProxyStreamConnector.ConnectAsync(route, "target.example", 2222, cts.Token);
 
-        // await 不能写在 Assert.AreSequenceEqual 的实参位置,理由见 AreSequenceEqualAwaitTests.cs。
         byte[] greetingBytes = await greeting.Task;
         Assert.AreSequenceEqual(new byte[] { 0x05, 0x01, 0x00 }, greetingBytes);
         byte[] expectedRequest =
@@ -100,7 +99,6 @@ public class ProxySupportTests
         var route = new ProxyRoute(ProxyKind.Socks5, "127.0.0.1", server.Port, "us", "secret");
         await using Stream tunnel = await ProxyStreamConnector.ConnectAsync(route, "target.example", 22, cts.Token);
 
-        // 同上:await 先落到局部变量。
         byte[] greetingBytes = await greeting.Task;
         Assert.AreSequenceEqual(new byte[] { 0x05, 0x02, 0x00, 0x02 }, greetingBytes);
         byte[] expectedAuth =
@@ -147,7 +145,6 @@ public class ProxySupportTests
         var route = new ProxyRoute(ProxyKind.Socks5, "127.0.0.1", server.Port, ProxyDns: false);
         await using Stream tunnel = await ProxyStreamConnector.ConnectAsync(route, "localhost", 2222, cts.Token);
 
-        // 同上:await 先落到局部变量。
         byte[] requestBytes = await request.Task;
         Assert.AreSequenceEqual(
             new byte[] { 0x05, 0x01, 0x00, 0x01, 127, 0, 0, 1, 0x08, 0xAE },

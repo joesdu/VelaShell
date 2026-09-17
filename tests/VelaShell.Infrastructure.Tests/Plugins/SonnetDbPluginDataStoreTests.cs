@@ -65,7 +65,6 @@ public class SonnetDbPluginDataStoreTests
         Snapshot? snapshot = await storage.GetAsync<Snapshot>("snapshot");
         Assert.AreEqual("s1", snapshot!.Name);
         Assert.AreSequenceEqual(SnapshotValues, snapshot.Values);
-        // await 不能写在 Assert.AreSequenceEqual 的实参位置,理由见 AreSequenceEqualAwaitTests.cs。
         string[] keys = [.. await storage.GetKeysAsync()];
         Assert.AreSequenceEqual(CountAndSnapshotKeys, keys, SequenceOrder.InAnyOrder);
         Assert.IsTrue(await storage.RemoveAsync("count"));
@@ -113,7 +112,6 @@ public class SonnetDbPluginDataStoreTests
         await _store.CreateSecrets("acme.one").SetAsync("s", "v");
         await _store.CreateStorage("acme.two").SetAsync("k", 2);
 
-        // 同上:await 先落到局部变量。
         string[] before = [.. await _store.ListPluginIdsAsync()];
         Assert.AreSequenceEqual(BothPluginIds, before);
         await _store.PurgeAsync("acme.one");
