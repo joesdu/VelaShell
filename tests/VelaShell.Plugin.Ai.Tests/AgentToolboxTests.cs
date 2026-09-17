@@ -156,7 +156,7 @@ public sealed class AgentToolboxTests
 
         Assert.Contains("DENIED", await InvokeAsync(toolbox, "run_command", new() { ["command"] = "rm -rf /tmp/x" }));
         Assert.Contains("DENIED", await InvokeAsync(toolbox, "write_terminal", new() { ["text"] = "reboot\n" }));
-        Assert.AreSequenceEqual((string[])["run_command", "write_terminal"], asked,
+        Assert.AreSequenceEqual(["run_command", "write_terminal"], asked,
             "只读放行只覆盖 run_command 里确实只读的那些,写终端一律照问");
     }
 

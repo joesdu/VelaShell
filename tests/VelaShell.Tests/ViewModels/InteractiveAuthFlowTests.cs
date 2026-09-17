@@ -3,7 +3,6 @@ using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Presentation.Services;
-using VelaShell.Terminal;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;

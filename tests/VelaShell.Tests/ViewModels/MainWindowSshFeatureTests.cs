@@ -53,7 +53,7 @@ public sealed class MainWindowSshFeatureTests
     [TestMethod]
     public void ShellIntegrationBuild_UsesAFreshNoncePerInjection()
     {
-        AppSettings settings = new();
+        _ = new AppSettings();
 
         string first = ShellIntegrationScript.Build(RemoteShellKind.Bash).Sentinel;
         string second = ShellIntegrationScript.Build(RemoteShellKind.Bash).Sentinel;
@@ -84,7 +84,6 @@ public sealed class MainWindowSshFeatureTests
 
         Assert.IsEmpty(MainWindowViewModel.WorkingDirectoryScript(settings, RemoteShellKind.Bash));
     }
-
 
     [TestMethod]
     public async Task ConnectProfileAsync_AddsTerminalTab_AndUpdatesStatusBar()

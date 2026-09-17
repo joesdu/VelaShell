@@ -205,7 +205,7 @@ public class TerminalInputTrackerTests
         // 跟踪器看到的是终端刚编出去的字节。会话是 GBK 时它仍按 UTF-8 解,
         // 命令补全与命令历史里存的就是乱码。
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        Encoding gbk = Encoding.GetEncoding("GBK");
+        var gbk = Encoding.GetEncoding("GBK");
         var tracker = new TerminalInputTracker();
         tracker.UseEncoding(gbk);
 
@@ -219,7 +219,7 @@ public class TerminalInputTrackerTests
     {
         // 双字节字符集的尾字节最低到 0x40,不会被误判成控制字节;回删仍按「字符」走。
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        Encoding gbk = Encoding.GetEncoding("GBK");
+        var gbk = Encoding.GetEncoding("GBK");
         var tracker = new TerminalInputTracker();
         tracker.UseEncoding(gbk);
 
