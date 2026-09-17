@@ -5,7 +5,8 @@ namespace VelaShell.Presentation.Tests.Fakes;
 /// </summary>
 /// <remarks>
 /// 挂在真实时钟上的用例只能靠 <c>Task.Delay</c> 去赌,而那种用例迟早会成为下一条偶发失败 ——
-/// 本仓已经为此吃过两次亏(<c>AreSequenceEqualAwaitTests</c> 的引信、插件的二维码用例)。
+/// 本仓已经为此吃过两次亏:一条靠真实文件 IO 制造挂起的断言引信(<c>ReadAllBytesAsync</c>
+/// 命中页缓存时同步返回,它就误报),以及插件的二维码用例。
 /// <para>
 /// 刻意不用 ReactiveUI 那套 <c>ISequencer</c>:它没有带虚拟时间的测试替身,
 /// 自己实现一个要连 <c>IWorkItem</c> 一族一起实现。被测代码那边只需要一个窄委托。

@@ -304,8 +304,24 @@ public class App : Application
                 _ = Task.Run(() => HostRegistrationService.Register(storagePaths));
             }
 
-            // 插件运行时:主窗口就绪后在后台线程发现并激活插件(启动路径零阻塞)。
+            // 插件运行时:**首帧画完之后**在后台线程发现并激活插件。
             // VELASHELL_DISABLE_PLUGINS=1 为排障急停开关;停用随 DI 容器释放执行。
+            //
+            // 这里此前是直接 Task.Run,注释写的是"启动路径零阻塞" —— 线程上确实零阻塞,
+            // 但冷启动真正的瓶颈在 Defender 的过滤驱动里,而它是排队的:随包分发的 AI 插件
+            // 有 48 个未签名文件 / 33.7 MB,首次装载实测要 ~1,973 ms 的扫描(比整个 .NET
+            // 运行时的 264 个文件 / 193 MB 还贵,因为运行时是微软签名的,走快速路径),
+            // 而 velashell.ai 的清单声明了 onStartup,于是这 48 个文件正好和首帧要的
+            // Avalonia/Skia 程序集挤在同一条队里。打点上看得很清楚:WindowOpened→FirstFrame
+            // 冷启动 1,165 ms、热启动只要 391 ms。
+            //
+            // 挪到首帧之后,一个字节都没少读,只是不再和首帧抢那条队。IM 桥接晚一秒建连
+            // 没有任何代价(飞书那头本来就是长连接重试语义)。
+            //
+            // 代价说清楚:插件贡献的命令、协议与工作区会晚约一帧出现。它们本来就是异步登记的
+            // (StartAsync 一直是 fire-and-forget),这里只是把窗口从"几百毫秒"拉到"首帧 + 几百
+            // 毫秒";真正受影响的边角是冷启动瞬间到达的插件协议链接(如 redis://),此前也已经
+            // 是竞态,现在窗口更宽 —— 届时由 PluginManager 的协议激活路径兜底重试。
             if (Environment.GetEnvironmentVariable("VELASHELL_DISABLE_PLUGINS") != "1"
                 && _serviceProvider?.GetService<Infrastructure.Plugins.PluginManager>() is { } pluginManager)
             {
@@ -313,6 +329,9 @@ public class App : Application
                 {
                     try
                     {
+                        // 超时是保险丝:窗口没开起来(headless、设计器)时照常启动插件,
+                        // 退回信号引入之前的行为。10 秒远大于实测最慢的冷启动首帧(7.6 s)。
+                        await FirstFrameSignal.WaitAsync(TimeSpan.FromSeconds(10));
                         await pluginManager.StartAsync();
                     }
                     catch (Exception ex)

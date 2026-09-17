@@ -134,8 +134,18 @@ public sealed class ConnectionProfileValidationTests
     {
         // 不发通知的话,字段下方那行提示只在对话框第一次画出来时是对的。
         ConnectionProfileViewModel vm = NewViewModel();
-        List<string?> changed = [];
-        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        // 只收具名通知:`PropertyName == null` 是「全部属性都变了」的约定,满足不了下面
+        // 按名字的断言;元素类型也必须是非空 string,否则 MSTest 4.4.1 的
+        // Assert.Contains<T, TCollection>(TCollection : IEnumerable<T>) 会报 CS8631
+        // (CI 带 -warnaserror)。同 StatusBarSelectionTests。
+        List<string> changed = [];
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is { } name)
+            {
+                changed.Add(name);
+            }
+        };
 
         vm.Host = "h";
         vm.Port = 2222;

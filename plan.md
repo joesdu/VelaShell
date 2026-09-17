@@ -4668,3 +4668,104 @@ X11(在 Wayland 会话中由 XWayland 承载)。显式配置 `X11PlatformOptions
   (本地无强名称密钥,以 `-p:SignAssembly=false` 构建)。用户安装后实测:
   应用图标正常显示,鼠标指针不再模糊。
 - **没有验证的**:本地测试套件;linux-arm64 包;KDE 等其他桌面环境。
+
+## ✅ 78. 2026-09-17 冷启动 7 秒:瓶颈不在 JIT,在 Defender 扫未签名程序集(用户反馈)
+
+用户反馈首次冷启动很慢,且「开了 R2R 似乎也没什么帮助」。
+
+`~/.velashell/logs` 里 `StartupTrace` 已攒下 37 次样本,是干净的两态分布:
+全热 `FirstFrame` 0.96–1.28 s,全冷 6.07–7.63 s。关键线索是**每一段都在按同一比例放大** ——
+连 `BuildServiceProvider` 这种纯内存操作都从 75 ms 涨到 1,875 ms。纯内存操作不会因为「冷」
+而变慢,慢的只可能是它所在的程序集第一次装载这件事。
+
+在本机(NVMe + i7-13700,Defender 实时防护开启,发行目录 `D:\VelaShell` 227 MB / 317 文件)
+把三个候选原因拆开量了一遍:
+
+| 测量 | 结果 | 结论 |
+| --- | ---: | --- |
+| robocopy 整目录复制 | 188 ms | 磁盘不是瓶颈 |
+| 复制到新路径后首次全量读 | 3,934 ms | Defender 首次扫描 |
+| 同一批文件再读一遍 | 87 ms | 扫描结果已缓存 |
+
+再按 Authenticode 签名状态拆开,**体积几乎相同而代价差 4.4 倍**:
+
+| 签名状态 | 文件数 | 体积 | 首次扫描 | ms/文件 | ms/MB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| NotSigned | 94 | 113 MB | 3,153 ms | 33.5 | 27.9 |
+| Valid(微软签的运行时) | 207 | 109 MB | 712 ms | 3.4 | 6.5 |
+
+`ms/文件` 差 10 倍说明大头是**每文件的信誉查询**而非按字节扫描 —— 最极端的是
+`plugins/velashell-ai/ExCSS.dll`,只有 0.33 MB 却花了 312 ms。未签名的那 113 MB 正是
+`VelaShell.*` / `Avalonia.*` / `SonnetDB` / `BouncyCastle` 与随包分发的 AI 插件。
+
+**R2R 为什么白开**:它省的是 JIT,那是 CPU 时间、冷热两态一样多,碰不到上面这 6 秒;
+而它把未签名程序集的体积几乎翻倍(`VelaShell.dll` 2.9 MB IL → 8.4 MB 代码段,
+`Avalonia.Base` 2.3 → 7.4 MB,`SonnetDB.Core` 16 → 21.4 MB),等于直接加钱买扫描时间。
+省下的 JIT ≈ 多出来的扫描,净收益接近零。
+
+根治是 Authenticode 签名(同样的字节,签过名就从 27.9 ms/MB 掉到个位数,并顺带解决 #299
+的报毒),但眼下没有证书。本轮先做三件不依赖证书的事:
+
+**一、插件运行时的启动激活挪到首帧之后。** `App.OnFrameworkInitializationCompleted` 里那句
+`Task.Run(() => pluginManager.StartAsync())` 的原注释写着「启动路径零阻塞」——
+线程上确实零阻塞,但 Defender 的过滤驱动是**排队**的:随包分发的 AI 插件有 48 个未签名文件 /
+33.7 MB,首次装载实测 ~1,973 ms 的扫描(比整个 .NET 运行时的 264 文件 / 193 MB 还贵,
+因为运行时走微软签名的快速路径),而 `velashell.ai` 的清单声明了 `onStartup`,于是这 48 个
+文件正好和首帧要的 Avalonia/Skia 程序集挤在同一条队里 —— 打点上 `WindowOpened→FirstFrame`
+冷启动 1,165 ms、热启动只要 391 ms。
+
+新增 `FirstFrameSignal`(`VelaShell.Infrastructure/Diagnostics/`):`MainWindow` 在首帧回调里
+`Signal()`,`App` 那条后台链 `WaitAsync(10 s)` 之后再 `StartAsync()`。一个字节都没少读,
+只是不再和首帧抢那条队。超时是保险丝 —— 窗口没开起来(headless 测试、设计器)时照常启动插件,
+退回信号引入之前的行为。已有的 `PluginManagerOptions.PrewarmDelay` 表达的是同一诉求
+(注释原话「让主窗口先把首帧画完」),但它用的是拍脑袋的 5 秒定时;这里给出的是真正的信号。
+
+代价:插件贡献的命令、协议与工作区晚约一帧出现。它们本来就异步登记(`StartAsync` 一直是
+fire-and-forget),真正受影响的边角是冷启动瞬间到达的插件协议链接(如 `redis://`),
+此前也已经是竞态,现在窗口更宽。
+
+**二、R2R 改成可开关,并把账写进 csproj。** 新增 `VelaShellReadyToRun` 属性(默认 `true`,
+行为与此前一致),`-p:VelaShellReadyToRun=false` 即可发一版不带 R2R 的包做对比。
+
+⚠️ 这里修正了一个一开始想当然的判断:Defender 是在**程序集被装载时**扫它,不是启动时把整个
+目录扫一遍。所以启动路径上根本不装载的程序集(`BouncyCastle` 只在首次 SSH 握手时用、
+`FluentFTP` 只在 FTP 会话里用),它们的 R2R 膨胀**不花冷启动的钱** —— 把它们列进
+`PublishReadyToRunExclude` 只能省包体和首次连接的 JIT,换不来首帧。因此**没有**放一份凭直觉
+猜出来的排除清单:那是拿一个未知换另一个未知。
+
+真正要回答的是「启动路径上那 ~55 MB 的 R2R 到底值不值」,而它有一个**不需要重新构建**的
+判决性实验 —— 用同一份二进制跑,扫描成本因此完全恒定,差值就是纯 JIT:
+
+```powershell
+$env:VELASHELL_STARTUP_TRACE='1'; D:\VelaShell\VelaShell.exe   # 基线
+$env:DOTNET_ReadyToRun='0';       D:\VelaShell\VelaShell.exe   # 忽略 R2R 本机代码,全部 JIT
+```
+
+两次都在热态下跑(连开两次取第二次)。拿差值和「R2R 多出来的字节 × 27.9 ms/MB」
+(当前约 20 MB → ~560 ms)比:省下的 JIT 少于 560 ms,R2R 在 Windows 上就是净亏。
+Linux/macOS 不受这笔账影响(没有 Defender 那一层),真要关也应当只关 Windows 这一支。
+
+**三、`AvaloniaUI.DiagnosticsSupport` 那个从没生效的 Condition。** `VelaShell.csproj` 里
+注释写着「Condition below is needed to remove Avalonia.Diagnostics package from build output in
+Release configuration」,但 Condition **从没落到元素上**(注释是 Avalonia 模板带来的)。
+后果:发行包里一直躺着 3.1 MB 的 `AvaloniaUI.DiagnosticsSupport.Avalonia.dll`,
+`VelaShell.runtimeconfig.json` 里 `Avalonia.Diagnostics.Diagnostic.IsEnabled` 也一直是 `true` ——
+**DevTools 在用户手上的版本里是开着的**。补上 `Condition="'$(Configuration)' != 'Release'"`;
+全仓没有任何代码引用 `Avalonia.Diagnostics` 的 API(纯 MSBuild/runtimeconfig 集成),不影响编译。
+
+验证:
+
+- `dotnet build src/VelaShell -c Debug` 零警告零错误。
+- `dotnet msbuild -getProperty:PublishReadyToRun`:Release+RID → `true`;
+  加 `-p:VelaShellReadyToRun=false` → 空;Release 无 RID → 空(NETSDK1095 的退路不变)。
+- `dotnet msbuild -getItem:PackageReference`:Debug 含 `AvaloniaUI.DiagnosticsSupport`,
+  Release 不含。
+- `VelaShell.Tests` 1405 通过 / 0 失败。`VelaShell.Infrastructure.Tests` 471 通过 /
+  1 失败 —— 失败的是 `AreSequenceEqualAwaitTests`(看门狗用例,断言上游 MSTest 的 bug
+  仍在;它现在报「已修好」),与本次改动无关,按该文件自己的说明另行清理。
+- **没有验证的**:真实冷启动的收益数字。本机无法可靠地把页缓存与 Defender 扫描缓存一起清空,
+  必须重启后实测 —— 见下一条。
+- **待用户实测**:重启后冷启一次,对比日志里的 `[Startup] timeline`,重点看
+  `WindowOpened → FirstFrame` 这一段(基线:冷 1,165 ms / 热 391 ms)。
+  作为对照,`Add-MpPreference -ExclusionPath 'D:\VelaShell'` 后再冷启一次,能量出
+  Defender 在这台机器上占的全部份额(预期 ~4 s),从而给「要不要买证书」定价。
