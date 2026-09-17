@@ -52,8 +52,55 @@
 
       不开 PublishReadyToRunComposite:复合模式启动更快,但把整个自包含运行时熔成一个
       巨大镜像,包体与构建时间的涨幅都不是这一轮想付的。
+
+      ======================= 2026-09-17:R2R 在 Windows 上未必划算 =======================
+      冷启动打点(~/.velashell/logs 的 [Startup] timeline,37 次样本)是干净的两态分布:
+      全热 0.96–1.28 s,全冷 6.07–7.63 s。差的这 ~6 秒里,连 BuildServiceProvider 这种
+      纯内存操作都慢了 1.8 秒 —— 纯内存操作不会因为"冷"而变慢,慢的只能是它所在的程序集
+      第一次装载这件事。
+
+      实测(NVMe + i7-13700,Defender 实时防护开启,发行目录 227 MB / 317 文件):
+        · 整目录复制                        188 ms   ← 磁盘完全不是瓶颈
+        · 复制到新路径后首次全量读        3,934 ms   ← Defender 首次扫描
+        · 同一批文件再读一遍                 87 ms
+      按 Authenticode 签名状态拆开,体积几乎相同而代价差 4.4 倍:
+        · NotSigned  94 文件 / 113 MB → 3,153 ms   (33.5 ms/文件, 27.9 ms/MB)
+        · Valid(微软签的运行时) 207 / 109 MB →  712 ms   ( 3.4 ms/文件,  6.5 ms/MB)
+      未签名的那 113 MB 就是 VelaShell.* / Avalonia.* / SonnetDB / BouncyCastle 与 AI 插件。
+
+      R2R 省的是 JIT —— 那是 CPU 时间,冷热两种情况下一样多,碰不到上面这 6 秒。而它把
+      未签名程序集的体积几乎翻倍(VelaShell.dll 2.9 MB IL → 8.4 MB 代码段;Avalonia.Base
+      2.3 → 7.4 MB;SonnetDB.Core 16 → 21.4 MB),等于直接加钱买 Defender 的扫描时间。
+      这正是"开了 R2R 也没见变快"的定量解释:省下的 JIT ≈ 多出来的扫描,净收益接近零。
+
+      ⚠️ 一个容易搞错的地方:Defender 是在**程序集被装载时**扫它,不是启动时把整个目录扫一遍。
+      所以启动路径上根本不装载的程序集(BouncyCastle 只在首次 SSH 握手时用、FluentFTP 只在
+      FTP 会话里用),它们的 R2R 膨胀**不花冷启动的钱** —— 把它们列进
+      PublishReadyToRunExclude 只能省包体和首次连接的 JIT,换不来首帧。因此这里**不**放
+      一份凭直觉猜出来的排除清单:那是拿一个未知去换另一个未知。
+
+      真正要回答的是"启动路径上那 ~55 MB 的 R2R 到底值不值",而这个问题有一个**不需要重新
+      构建**的判决性实验,用同一份二进制跑(扫描成本因此完全恒定,差值就是纯 JIT):
+
+        # 基线(R2R 生效)
+        $env:VELASHELL_STARTUP_TRACE='1'; D:\VelaShell\VelaShell.exe
+        # 让运行时忽略 R2R 的本机代码,全部回退到 JIT
+        $env:DOTNET_ReadyToRun='0';       D:\VelaShell\VelaShell.exe
+
+      两次都在**热态**下跑(连开两次取第二次),差值即 R2R 省下的 JIT 时间。拿它和
+      "R2R 多出来的字节 × 27.9 ms/MB"(当前约 20 MB → ~560 ms)比:
+        · JIT 省下的 >  560 ms  → R2R 划算,保持现状;
+        · JIT 省下的 <  560 ms  → R2R 在 Windows 上是净亏,用下面的开关关掉再发一版对比。
+
+      下面的 VelaShellReadyToRun 就是为这一步准备的(默认 true,行为与此前一致):
+        dotnet publish src/VelaShell -c Release -r win-x64 -p:VelaShellReadyToRun=false
+      Linux/macOS 不受这笔账影响(没有 Defender 那一层),真要关也应当只关 Windows 这一支。
+
+      根治仍然是 Authenticode 签名:同样的字节,签过名就从 27.9 ms/MB 掉到个位数,
+      而且顺带解决 #299 的报毒。上面这些都只是在没有证书之前把损失压小。
     -->
-    <PublishReadyToRun Condition="'$(RuntimeIdentifier)' != ''">true</PublishReadyToRun>
+    <VelaShellReadyToRun Condition="'$(VelaShellReadyToRun)' == ''">true</VelaShellReadyToRun>
+    <PublishReadyToRun Condition="'$(RuntimeIdentifier)' != '' and '$(VelaShellReadyToRun)' == 'true'">true</PublishReadyToRun>
   </PropertyGroup>
 
   <ItemGroup>
@@ -61,8 +108,22 @@
     <PackageReference Include="Avalonia.Themes.Fluent" />
     <PackageReference Include="Avalonia.Fonts.Inter" />
     <PackageReference Include="Avalonia.AvaloniaEdit" />
-    <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
-    <PackageReference Include="AvaloniaUI.DiagnosticsSupport" />
+    <!--
+      DevTools 支持包:**只进非 Release 构建**。
+
+      这个 Condition 一直只写在注释里、从没落到元素上(注释是 Avalonia 模板带来的),于是发行包里
+      一直躺着 3.1 MB 的 AvaloniaUI.DiagnosticsSupport.Avalonia.dll,VelaShell.runtimeconfig.json
+      里的 Avalonia.Diagnostics.Diagnostic.IsEnabled 也一直是 true —— 也就是说 DevTools 在用户
+      手上的版本里是开着的。
+
+      冷启动上的账见下面 PublishReadyToRun 处的注释:未签名程序集装载时要过一遍 Defender,
+      实测约 27.9 ms/MB 外加每文件 ~33.5 ms 的信誉查询,这 3.1 MB 合计 ~120 ms —— 花在一个
+      用户根本用不到的调试面板上。
+
+      本仓库没有任何代码引用 Avalonia.Diagnostics 的 API(它是纯 MSBuild/runtimeconfig 集成),
+      因此摘掉不影响 Release 编译。
+    -->
+    <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Condition="'$(Configuration)' != 'Release'" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="ReactiveUI.Avalonia" />
   </ItemGroup>

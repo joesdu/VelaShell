@@ -387,6 +387,9 @@ public partial class MainWindow : Window
         {
             StartupTrace.Mark("FirstFrame");
             StartupTrace.WriteSummaryOnce();
+            // 让路的那几件事在这里开闸(当前是插件运行时的启动激活,见 App 里的 StartAsync 调用)。
+            // 放在打点之后:信号一响等待方就会开始装载程序集,那笔开销不该算进首帧。
+            FirstFrameSignal.Signal();
         }, DispatcherPriority.Background);
         // 启动期的侧栏状态回填(设置/AppState 异步读回来的折叠态)不做动画,过了这一阵才开闸。
         // 用定时器而不是接在某个初始化步骤之后:回填是视图模型那边异步完成的,这里等不到确切时机,
