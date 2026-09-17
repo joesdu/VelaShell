@@ -774,12 +774,16 @@ public sealed partial class ResourceMonitorUiTests
 
             // 指标读数已收进弹窗:无后台活动时状态栏右侧只剩这一个可见按钮
             // (后台活动圆环按钮此刻 IsVisible=false,但仍留在视觉树上,故按可见性筛)。
-            // 无后台活动时状态栏右侧有两个可见按钮:资源监视(带命令)与编码热切(带 Flyout)。
+            // 无后台活动时状态栏右侧有三个可见按钮:资源监视(带命令)、编码(带 Flyout)与反馈(走 Click 跳转)。
             // 读数本身仍不在状态栏上 —— 那是这条用例真正要守的东西。
             Button[] buttons = [.. window.GetVisualDescendants().OfType<Button>().Where(b => b.IsVisible)];
-            Assert.HasCount(2, buttons, "状态栏右侧应为资源监视 + 编码两个按钮。");
+            Assert.HasCount(3, buttons, "状态栏右侧应为资源监视 + 编码 + 反馈三个按钮。");
             Assert.IsNotNull(buttons[0].Command, "资源监视按钮没绑到打开命令。");
             Assert.IsNotNull(buttons[1].Flyout, "编码按钮应挂着可选编码的菜单。");
+            Assert.Contains(
+                t => t.Text == Strings.Get("StatusBar_IssuesLink") && t.IsEffectivelyVisible,
+                window.GetVisualDescendants().OfType<TextBlock>(),
+                "反馈入口没出现在状态栏上。");
             Assert.IsEmpty(
                 window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Text == "36%"),
                 "读数不应再出现在状态栏上。");
