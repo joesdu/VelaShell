@@ -2815,6 +2815,12 @@
   <data name="SetTerm_ShowLineTimestampDesc" xml:space="preserve">
     <value>在左侧栏显示每行的收行时间(HH:mm:ss.fff),会占用一定宽度。</value>
   </data>
+  <data name="SetTerm_ShowLineTimestampMillis" xml:space="preserve">
+    <value>毫秒时间戳</value>
+  </data>
+  <data name="SetTerm_ShowLineTimestampMillisDesc" xml:space="preserve">
+    <value>行时间戳显示到毫秒(HH:mm:ss.fff)。</value>
+  </data>
   <data name="SetTerm_ShowLineNumber" xml:space="preserve">
     <value>行号侧栏</value>
   </data>
