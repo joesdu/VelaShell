@@ -665,6 +665,13 @@ public class TerminalBehaviorOptions : ObservableOptions
         set => Set(ref field, value);
     }
 
+    /// <summary>开 = 行时间戳精确到毫秒 [HH:mm:ss.fff];关 = 只到秒 [HH:mm:ss](默认开,issue #460)。</summary>
+    public bool ShowLineTimestampMillis
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
     /// <summary>开 = 每行左侧显示缓冲区行号(默认关,占用左侧宽度)。与 <see cref="ShowLineTimestamp" /> 独立。</summary>
     public bool ShowLineNumber
     {
