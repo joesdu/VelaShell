@@ -4,7 +4,6 @@ using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Docking;
 using VelaShell.Presentation.ViewModels;
-using VelaShell.Terminal;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;

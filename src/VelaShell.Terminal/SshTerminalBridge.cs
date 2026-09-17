@@ -274,7 +274,7 @@ public class SshTerminalBridge : IDisposable
     public void RunWhenOutputIdle(TimeSpan idle, TimeSpan max, Action action)
     {
         DateTime deadline = DateTime.UtcNow + max;
-        TimeSpan poll = TimeSpan.FromMilliseconds(50);
+        var poll = TimeSpan.FromMilliseconds(50);
         bool ReadyNow()
         {
             // 流都读不了了(远端已关、或压根没接上),就不会再有输出了 —— 等什么安静。

@@ -1,4 +1,3 @@
-using System.Text;
 using Avalonia.Threading;
 using ReactiveUI;
 using ReactiveUI.Primitives;

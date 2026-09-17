@@ -4,14 +4,12 @@ using Avalonia.Headless;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using NSubstitute;
 using VelaShell.Controls.Controls;
 using VelaShell.Core.Models;
 using VelaShell.Docking;
 using VelaShell.Docking.Controls;
 using VelaShell.PluginSdk;
 using VelaShell.Services;
-using VelaShell.Terminal;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.Views;

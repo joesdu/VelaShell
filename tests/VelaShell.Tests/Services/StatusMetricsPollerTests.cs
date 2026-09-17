@@ -3,7 +3,6 @@ using VelaShell.Core.Models;
 using VelaShell.Core.Services;
 using VelaShell.Presentation.ViewModels;
 using VelaShell.Services;
-using VelaShell.Terminal;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.Services;

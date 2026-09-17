@@ -653,7 +653,7 @@ public sealed partial class ResourceMonitorUiTests
 
             // 滑道宽 = 主题里的 VelaScrollBarSize。
             const double barSize = 16;
-            var checkedAny = false;
+            bool checkedAny = false;
 
             foreach (string page in new[] { "Cpu", "Gpu", "Memory", "Disk", "Network", "Overview" })
             {

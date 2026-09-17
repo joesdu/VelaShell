@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using VelaShell.Core.Ssh;
-using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;
 

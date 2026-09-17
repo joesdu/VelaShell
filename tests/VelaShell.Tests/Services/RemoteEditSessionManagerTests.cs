@@ -81,7 +81,7 @@ public sealed class RemoteEditSessionManagerTests
         await fixture.SaveAndWaitForUploadAsync("third", 3);
 
         Assert.AreSequenceEqual(
-            (string[])["first", "second", "third"], fixture.UploadedContents, "保存了三次,远端只拿到了其中一部分 —— 这就是 #396 报的那个形态。");
+            ["first", "second", "third"], fixture.UploadedContents, "保存了三次,远端只拿到了其中一部分 —— 这就是 #396 报的那个形态。");
     }
 
     /// <summary>

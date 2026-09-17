@@ -4,7 +4,6 @@ using VelaShell.Core.Models;
 using VelaShell.Core.Sftp;
 using VelaShell.Docking;
 using VelaShell.Docking.Model;
-using VelaShell.Terminal;
 using VelaShell.Tests.TestSupport;
 using VelaShell.ViewModels;
 

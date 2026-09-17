@@ -170,7 +170,7 @@ public class SshConfigImportTests
 
         IReadOnlyList<SshConfigBlock> blocks = SshConfigParser.ParseFile(main, directory);
 
-        Assert.AreSequenceEqual((string[])["inc01"], (string[])[.. SshConfigParser.CollectHostAliases(blocks)]);
+        Assert.AreSequenceEqual(["inc01"], [.. SshConfigParser.CollectHostAliases(blocks)]);
         IReadOnlyDictionary<string, string> options = SshConfigParser.ResolveOptions(blocks, "inc01");
         Assert.AreEqual("172.16.0.1", options["HostName"]);
         Assert.AreEqual("included", options["User"]); // 被包含文件先出现,胜过后面的兜底
@@ -188,7 +188,7 @@ public class SshConfigImportTests
 
         IReadOnlyList<SshConfigBlock> blocks = SshConfigParser.ParseFile(a, directory);
 
-        Assert.AreSequenceEqual((string[])["fromB", "fromA"], (string[])[.. SshConfigParser.CollectHostAliases(blocks)]);
+        Assert.AreSequenceEqual(["fromB", "fromA"], [.. SshConfigParser.CollectHostAliases(blocks)]);
     }
 
     /// <summary><c>关键字=值</c> 写法、引号包裹的值与整行注释都要认。</summary>
