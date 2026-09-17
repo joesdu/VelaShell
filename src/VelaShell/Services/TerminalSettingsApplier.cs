@@ -79,6 +79,7 @@ public static class TerminalSettingsApplier
         control.ScrollOnOutput = behavior.ScrollOnOutput;
         control.AlternateScrollEnabled = behavior.AlternateScroll;
         control.ShowLineTimestamp = behavior.ShowLineTimestamp;
+        control.ShowLineTimestampMillis = behavior.ShowLineTimestampMillis;
         control.ShowLineNumber = behavior.ShowLineNumber;
         control.ShowFoldMarker = behavior.ShowFoldMarker;
         control.GutterBlank = behavior.GutterBlank;

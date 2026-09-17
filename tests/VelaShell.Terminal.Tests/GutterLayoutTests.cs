@@ -23,13 +23,22 @@ public class GutterLayoutTests
     public void Widths_AddUp_LeftToRight()
     {
         var g = new GutterLayout(CellW, showTimestamp: true, showNumber: true, showFold: true, blank: true);
-        Assert.AreEqual(11 * CellW, g.TimeWidth);
+        Assert.AreEqual(15 * CellW, g.TimeWidth);
         Assert.AreEqual((GutterLayout.NumberDigits + 1) * CellW, g.NumberWidth);
         Assert.AreEqual(Math.Ceiling(CellW * 1.6), g.FoldWidth);
         Assert.AreEqual(GutterLayout.BlankPixels, g.BlankWidth);
         Assert.AreEqual(g.TimeWidth, g.NumberLeft);
         Assert.AreEqual(g.TimeWidth + g.NumberWidth, g.FoldLeft);
         Assert.AreEqual(g.TimeWidth + g.NumberWidth + g.FoldWidth + g.BlankWidth, g.TotalWidth);
+    }
+
+    [TestMethod]
+    public void TimestampMillisOff_ShrinksToSecondsWidth()
+    {
+        // 毫秒开关关闭时时间戳列退回秒级宽度("[HH:mm:ss] " = 11 列),侧栏随之变窄。
+        var g = new GutterLayout(CellW, showTimestamp: true, showNumber: true, showFold: true, blank: true, showTimestampMillis: false);
+        Assert.AreEqual(11 * CellW, g.TimeWidth);
+        Assert.AreEqual(g.TimeWidth, g.NumberLeft);
     }
 
     [TestMethod]

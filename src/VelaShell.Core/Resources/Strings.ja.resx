@@ -2569,7 +2569,13 @@
     <value>行の時刻余白</value>
   </data>
   <data name="SetTerm_ShowLineTimestampDesc" xml:space="preserve">
-    <value>各行の受信時刻(HH:mm:ss)を左側の余白に表示します(幅を消費します)。</value>
+    <value>各行の受信時刻(HH:mm:ss.fff)を左側の余白に表示します(幅を消費します)。</value>
+  </data>
+  <data name="SetTerm_ShowLineTimestampMillis" xml:space="preserve">
+    <value>ミリ秒タイムスタンプ</value>
+  </data>
+  <data name="SetTerm_ShowLineTimestampMillisDesc" xml:space="preserve">
+    <value>行のタイムスタンプにミリ秒まで表示します(HH:mm:ss.fff)。</value>
   </data>
   <data name="SetTerm_ShowLineNumber" xml:space="preserve">
     <value>行番号の余白</value>

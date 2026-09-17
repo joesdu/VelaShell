@@ -12,7 +12,8 @@ public readonly struct GutterLayout(
     bool showNumber,
     bool showFold,
     bool blank,
-    bool showCommandMark = false)
+    bool showCommandMark = false,
+    bool showTimestampMillis = true)
 {
     /// <summary>行号列固定 5 位(右对齐):默认 1 万行 scrollback 的最大行号约 5 位,宽度全程恒定。</summary>
     public const int NumberDigits = 5;
@@ -21,7 +22,7 @@ public readonly struct GutterLayout(
     public const double BlankPixels = 5.0;
 
     /// <summary>时间戳列宽(px);关闭时为 0。</summary>
-    public double TimeWidth { get; } = showTimestamp ? 11 * cellWidth : 0;                // "[HH:mm:ss] " = 11 cells
+    public double TimeWidth { get; } = showTimestamp ? (showTimestampMillis ? 15 : 11) * cellWidth : 0; // "[HH:mm:ss.fff] " = 15 cells / "[HH:mm:ss] " = 11 cells
     /// <summary>行号列宽(px);关闭时为 0。</summary>
     public double NumberWidth { get; } = showNumber ? (NumberDigits + 1) * cellWidth : 0; // "NNNNN " = 6 cells
 
