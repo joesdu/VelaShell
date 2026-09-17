@@ -94,8 +94,8 @@ public sealed partial class ResourceMonitorUiTests
             Assert.IsTrue(vm.IsCpuPage);
             Assert.HasCount(2, vm.CorePercents);
 
-            // 2 核 ≤ 32,按规范默认落在迷你折线视图;这里显式切回热力图再量。
-            vm.SetCoreViewCommand.Execute("Heat").Subscribe();
+            // 默认即热力图;直接量热力网格。
+            Assert.IsTrue(vm.IsHeatView, "默认应落在热力图视图。");
             Dispatcher.UIThread.RunJobs();
             window.UpdateLayout();
 
@@ -157,8 +157,11 @@ public sealed partial class ResourceMonitorUiTests
             vm.SelectPageCommand.Execute("Cpu").Subscribe();
             Dispatcher.UIThread.RunJobs();
 
-            // 2 核 ≤ 32:默认迷你折线(规范"核心数 > 32 时自动热力图")。
-            Assert.IsTrue(vm.IsSparkView, "少核机器应默认落在迷你折线视图。");
+            // 默认热力图;显式切到迷你折线再量。
+            Assert.IsTrue(vm.IsHeatView, "默认应落在热力图视图。");
+
+            vm.SetCoreViewCommand.Execute("Spark").Subscribe();
+            Dispatcher.UIThread.RunJobs();
 
             UsageHeatGrid spark = window.GetVisualDescendants().OfType<UsageHeatGrid>()
                 .Single(g => g.Mode == CoreGridMode.Sparkline);
