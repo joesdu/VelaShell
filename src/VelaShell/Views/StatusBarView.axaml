@@ -192,6 +192,25 @@
         <TextBlock Text="{Binding SelectionLabel}"
                    Foreground="{DynamicResource VelaTextSecondary}"
                    IsVisible="{Binding HasSelection}" />
+        <Border Classes="divider" />
+        <!-- 反馈入口:直达 GitHub Issues(浏览器打开),与 WindTerm 底栏同类入口对齐。
+             放最末尾:选区读数出现时它会被向左顶一位,但既有字段相对位置不动。 -->
+        <Button Classes="monitor" Padding="4,0" Height="20" VerticalAlignment="Center"
+                Background="Transparent" BorderThickness="0" CornerRadius="4" Cursor="Hand"
+                ToolTip.Tip="{loc:Localize StatusBar_IssuesLinkTip}" ToolTip.Placement="Left"
+                Click="Issues_Click">
+          <Button.Styles>
+            <Style Selector="Button.monitor:pointerover /template/ ContentPresenter">
+              <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+            </Style>
+          </Button.Styles>
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.bug}"
+                           Foreground="{DynamicResource VelaAccent}" VerticalAlignment="Center" />
+            <TextBlock Text="{loc:Localize StatusBar_IssuesLink}"
+                       Foreground="{DynamicResource VelaTextMuted}" />
+          </StackPanel>
+        </Button>
       </StackPanel>
 
     </Grid>

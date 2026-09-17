@@ -2991,6 +2991,12 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="StatusBar_OpenMonitor" xml:space="preserve">
     <value>リソースモニターを開く</value>
   </data>
+  <data name="StatusBar_IssuesLink" xml:space="preserve">
+    <value>問題を報告</value>
+  </data>
+  <data name="StatusBar_IssuesLinkTip" xml:space="preserve">
+    <value>GitHub Issues をブラウザで開く</value>
+  </data>
   <data name="Svc_Active" xml:space="preserve">
     <value>アクティブ</value>
   </data>
