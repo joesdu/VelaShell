@@ -658,7 +658,7 @@ public class TerminalBehaviorOptions : ObservableOptions
         set => Set(ref field, value);
     } = true;
 
-    /// <summary>开 = 每行左侧显示 [HH:mm:ss] 收行时间(默认关,占用左侧宽度)。与 <see cref="ShowLineNumber" /> 独立。</summary>
+    /// <summary>开 = 每行左侧显示 [HH:mm:ss.fff] 收行时间(默认关,占用左侧宽度)。与 <see cref="ShowLineNumber" /> 独立。</summary>
     public bool ShowLineTimestamp
     {
         get;
