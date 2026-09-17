@@ -2704,7 +2704,7 @@ Paste anyway?</value>
     <value>Line timestamp gutter</value>
   </data>
   <data name="SetTerm_ShowLineTimestampDesc" xml:space="preserve">
-    <value>Show each line's receive time (HH:mm:ss) in a left gutter.</value>
+    <value>Show each line's receive time (HH:mm:ss.fff) in a left gutter.</value>
   </data>
   <data name="SetTerm_ShowLineNumber" xml:space="preserve">
     <value>Line number gutter</value>

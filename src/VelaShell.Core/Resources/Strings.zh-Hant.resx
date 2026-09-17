@@ -2813,7 +2813,7 @@
     <value>行時間側欄</value>
   </data>
   <data name="SetTerm_ShowLineTimestampDesc" xml:space="preserve">
-    <value>在左側欄顯示每行的收行時間(HH:mm:ss),會佔用一定寬度。</value>
+    <value>在左側欄顯示每行的收行時間(HH:mm:ss.fff),會佔用一定寬度。</value>
   </data>
   <data name="SetTerm_ShowLineNumber" xml:space="preserve">
     <value>行號側欄</value>
