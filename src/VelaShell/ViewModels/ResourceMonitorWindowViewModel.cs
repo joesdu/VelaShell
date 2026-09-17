@@ -12,10 +12,10 @@ namespace VelaShell.ViewModels;
 /// <summary>逻辑处理器区块的三种视图(设计稿 CPU 页的分段控件)。</summary>
 public enum CoreView
 {
-    /// <summary>热力图:一格一色,核心多时唯一读得过来的形态(&gt;32 核默认)。</summary>
+    /// <summary>热力图:一格一色,默认视图。</summary>
     Heat,
 
-    /// <summary>迷你折线:每格一条该核心的 60 秒趋势(≤32 核默认)。</summary>
+    /// <summary>迷你折线:每格一条该核心的 60 秒趋势。</summary>
     Spark,
 
     /// <summary>列表:逐核心一行,带占用条,可滚动。</summary>
@@ -88,7 +88,6 @@ public sealed class ResourceMonitorWindowViewModel : ReactiveObject, IDisposable
     private string[] _coreLabels = [];
     private IReadOnlyList<double>[] _coreHistoryViews = [];
     private int[] _coreOrder = [];
-    private bool _coreViewChosen;
     private bool _refreshing;
     private bool _disposed;
     private SessionStaticInfo? _static;
@@ -1223,12 +1222,7 @@ public sealed class ResourceMonitorWindowViewModel : ReactiveObject, IDisposable
             _coreHistories[i].Push(cores[i]);
         }
 
-        // 核心数一旦确定就按规范定默认视图:>32 核用热力图,否则用迷你折线(用户手动选过就不再改)。
-        if (!_coreViewChosen)
-        {
-            CoreViewMode = n > 32 ? CoreView.Heat : CoreView.Spark;
-            RaiseCoreViewFlags();
-        }
+        // 默认即热力图(属性初始值):用户手动切换后保持选择,不按核心数自动改写。
 
         if (_corePercents.Length != n)
         {
@@ -1287,7 +1281,6 @@ public sealed class ResourceMonitorWindowViewModel : ReactiveObject, IDisposable
         {
             return;
         }
-        _coreViewChosen = true;
         CoreViewMode = parsed;
         RaiseCoreViewFlags();
         if (parsed == CoreView.List)
