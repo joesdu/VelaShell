@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media;
@@ -23,8 +24,12 @@ namespace VelaShell.Tests.Views;
 /// 用户截图反馈:副标题与「代理类型」的说明都跑到界面外。
 /// 根因是 <c>TextBlock.page-subtitle</c> 漏了 <c>TextWrapping</c>:它按单行自身宽度量,
 /// 超出卡片的部分被直接裁掉(内容区只有纵向滚动条,横向没得救),同页的 row-desc
-/// 也因此紧贴右侧控件。headless 里实测:NoWrap 时副标题 Desired 高 14px(只有一行,
-/// 文字被裁),Wrap 后 28px(两行,完整显示)—— 这就是断言要抓的差别。
+/// 也因此紧贴右侧控件。
+/// <para>
+/// 断言刻意**不依赖字体度量**:这几句中文里的 CJK 走的是系统的回退字体,Windows 与 CI 的
+/// ubuntu runner 量出来的宽度不一样(同一句话本地两行、CI 一行),拿"几行"当断言就是拿
+/// 运行环境当断言 —— 第一版就是这么在 CI 上假红的。
+/// </para>
 /// </remarks>
 [TestClass]
 [TestCategory("SettingsUi")]
@@ -58,20 +63,32 @@ public sealed class ProxySettingsPageUiTests
             }
         });
 
-    /// <summary>副标题真的折了行 —— 只把属性设上、布局没生效的话这条会红。</summary>
+    /// <summary>副标题真的会折行 —— 只把属性设上、布局没生效的话这条会红。</summary>
+    /// <remarks>
+    /// **不拿真实窗口宽度下的行数当断言。** 那句中文在 CI 的 ubuntu runner 上由系统的 CJK
+    /// 回退字体渲染,比本地 Windows 窄,一行就装得下(实测高度 13px vs 本地 28px)——
+    /// 拿它断言等于断言运行环境的字体度量,同一份代码在两个平台上给出不同结论。
+    /// 这里改成"把可用宽度砍成自然宽度的一半":无论字体多窄,只要 <c>TextWrapping</c> 真的生效
+    /// 就必须变成多行;不生效(NoWrap)则高度纹丝不动。与字体、平台都无关。
+    /// </remarks>
     [TestMethod]
-    public void ProxyPage_Subtitle_WrapsInsteadOfBeingClipped() =>
+    public void ProxyPage_Subtitle_WrapsWhenWidthIsTight() =>
         OnProxyPage((page, _) =>
         {
             TextBlock subtitle = page.GetVisualDescendants()
                 .OfType<TextBlock>()
                 .First(t => t.Classes.Contains("page-subtitle"));
 
-            // 单行 ≈ 1.27 倍字号(实测 11px → 14px);超过两倍字号就说明真的折了行。
+            subtitle.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double naturalWidth = subtitle.DesiredSize.Width;
+            double oneLineHeight = subtitle.DesiredSize.Height;
+            Assert.IsGreaterThan(0, naturalWidth, "副标题没量出宽度,下面的断言会失去意义");
+
+            subtitle.Measure(new Size(naturalWidth / 2, double.PositiveInfinity));
             Assert.IsGreaterThan(
-                subtitle.FontSize * 2,
+                oneLineHeight,
                 subtitle.DesiredSize.Height,
-                $"副标题只有一行,文字被裁掉了:「{subtitle.Text}」");
+                $"可用宽度只有一半时仍然只有一行 —— TextWrapping 没生效,文字会被裁:「{subtitle.Text}」");
         });
 
     [TestMethod]
