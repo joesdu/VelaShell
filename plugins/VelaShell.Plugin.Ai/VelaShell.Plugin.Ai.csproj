@@ -57,7 +57,7 @@
          CSharpMath 内嵌 Latin Modern Math 字体,不依赖系统字体。 -->
     <PackageReference Include="LiveMarkdown.Avalonia.Math" Version="2.4.2" />
     <!-- SVG:给图片管线注册 SVG 解码器。用 Svg.Controls.Avalonia 后端(非 Skia,用户决策)。 -->
-    <PackageReference Include="LiveMarkdown.Avalonia.Svg" Version="2.4.1" />
+    <PackageReference Include="LiveMarkdown.Avalonia.Svg" Version="2.4.2" />
     <!-- 二维码(协作接入页上「把机器人拉进群」的链接)自己编,见 Ui/QrCode.cs。
          这里曾经引 QRCoder 1.8.0,当时判断是"MIT,netstandard2.0,无传递依赖" ——
          这条判断是错的:它的 netstandard2.0 目标依赖 System.Drawing.Common 6.0.0
