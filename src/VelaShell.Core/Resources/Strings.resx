@@ -4161,13 +4161,13 @@ Overwrite it?</value>
     <value>Proxy</value>
   </data>
   <data name="SetProxy_Subtitle" xml:space="preserve">
-    <value>// Route all outbound connections (SSH / FTP / HTTP) through a proxy</value>
+    <value>// How the first outbound TCP hop is made: SSH / SFTP / FTP, updates, sync and plugins all follow this setting (tunnels -L / -R / -D are inbound and unrelated)</value>
   </data>
   <data name="SetProxy_Type" xml:space="preserve">
     <value>Proxy type</value>
   </data>
   <data name="SetProxy_TypeDesc" xml:space="preserve">
-    <value>// Only HTTP and SOCKS5 take host, port and credentials</value>
+    <value>// Only HTTP and SOCKS5 take host, port and credentials. "System proxy" resolves the OS setting into HTTP or SOCKS5 and covers every outbound channel; for SSH / FTP prefer SOCKS5, since HTTP proxies often refuse CONNECT to :22 / :21.</value>
   </data>
   <data name="SetProxy_TypeNone" xml:space="preserve">
     <value>No proxy</value>
@@ -4201,6 +4201,30 @@ Overwrite it?</value>
   </data>
   <data name="SetProxy_ProxyDnsDesc" xml:space="preserve">
     <value>// On: the proxy resolves hostnames; off: resolve locally, then connect via proxy</value>
+  </data>
+  <data name="SetProxy_ModesTitle" xml:space="preserve">
+    <value>How the four modes differ</value>
+  </data>
+  <data name="SetProxy_ModesIntro" xml:space="preserve">
+    <value>// All four decide one thing only: how VelaShell makes the first TCP hop to the remote host. The inbound tunnels (-L / -R / -D) are a separate layer and have nothing to do with them. A change applies from the next connection — no restart.</value>
+  </data>
+  <data name="SetProxy_ModeNoneDesc" xml:space="preserve">
+    <value>Direct. Never consults the OS proxy, never reads HTTP_PROXY / ALL_PROXY.</value>
+  </data>
+  <data name="SetProxy_ModeSystemDesc" xml:space="preserve">
+    <value>A resolver, not a protocol: reads the current OS proxy (Windows: Internet Settings incl. PAC) and resolves it into HTTP or SOCKS5 — SOCKS if the OS says SOCKS. Unset, bypassed or a PAC failure falls back to direct.</value>
+  </data>
+  <data name="SetProxy_ModeHttpDesc" xml:space="preserve">
+    <value>Application layer (L7): the whole connection is tunnelled with CONNECT. TCP only, no UDP; FTP must be passive. Whether it can reach :22 depends on the proxy implementation.</value>
+  </data>
+  <data name="SetProxy_ModeSocks5Desc" xml:space="preserve">
+    <value>Session / transport layer: forwards bytes without parsing them, and is the first choice for proxying SSH / FTP. Hostnames are resolved by the proxy by default (socks5h semantics).</value>
+  </data>
+  <data name="SetProxy_ModesScope" xml:space="preserve">
+    <value>// Covers SSH / SFTP / FTP (control + passive data), update checks, Gist, feeds and plugin HTTP.</value>
+  </data>
+  <data name="SetProxy_ModesPick" xml:space="preserve">
+    <value>// Picking: None when the server is directly reachable; SOCKS5 when you must egress through a proxy.</value>
   </data>
   <data name="Msg_ProxyMisconfigured" xml:space="preserve">
     <value>Proxy is enabled but its host or port is not configured. Check Settings &gt; Proxy.</value>

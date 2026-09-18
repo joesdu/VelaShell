@@ -1120,10 +1120,24 @@ public class ProxyOptions : ObservableOptions
 {
     /// <summary>代理类型:none(强制直连)/ system(跟随系统代理)/ http(HTTP CONNECT)/ socks5。</summary>
     /// <remarks>
+    /// <para>
+    /// 这四种模式只决定「VelaShell 自己连远程主机的第一跳 TCP 怎么走」,作用于**全部出站**
+    /// (SSH / SFTP / FTP 控制与数据 / 更新检查 / Gist / 资讯源 / AI 插件 HTTP)。
+    /// 隧道(<c>-L</c> / <c>-R</c> / <c>-D</c>)是**入站**,由 <see cref="TunnelType" /> 单独表达,
+    /// 与这里无关。
+    /// </para>
+    /// <para>
     /// <b>默认 system,不是 none。</b><c>VelaWebProxy.Install</c> 把本类型解析出的路由装成进程级
     /// <c>HttpClient.DefaultProxy</c>,<b>顶掉 .NET 原本的系统代理</b>。默认值若是 none,
     /// 就成了"装了 VelaShell 反而把系统代理关掉了" —— 浏览器出得去、本程序出不去,
     /// 而用户完全无从察觉。none 保留"我就是要强制直连"这个明确语义,只是不再当默认。
+    /// </para>
+    /// <para>
+    /// <b>system 是解析器,不是协议</b>:读 OS 当前代理(Windows 为 Internet Settings,
+    /// 含 PAC;其余平台为 <c>http_proxy</c> / <c>https_proxy</c> / <c>all_proxy</c>),
+    /// 折成 http 或 socks5 再走;系统配的是 SOCKS 就按 SOCKS5,不硬套 HTTP CONNECT。
+    /// 系统代理变更不需要重启:数据源是实时的,每次连接前重读。
+    /// </para>
     /// </remarks>
     public string Type
     {
