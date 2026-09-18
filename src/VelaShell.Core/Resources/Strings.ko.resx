@@ -4158,13 +4158,13 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
     <value>프록시</value>
   </data>
   <data name="SetProxy_Subtitle" xml:space="preserve">
-    <value>// 모든 아웃바운드 연결(SSH / FTP / HTTP)에 프록시 설정</value>
+    <value>// VelaShell이 대상에 첫 TCP 연결을 어떻게 맺을지 정합니다: SSH / SFTP / FTP·업데이트 확인·동기화·플러그인이 모두 이 설정을 따릅니다(터널 -L / -R / -D는 인바운드이며 무관)</value>
   </data>
   <data name="SetProxy_Type" xml:space="preserve">
     <value>프록시 유형</value>
   </data>
   <data name="SetProxy_TypeDesc" xml:space="preserve">
-    <value>// 호스트·포트·자격 증명은 HTTP 및 SOCKS5에서만 사용</value>
+    <value>// 호스트·포트·자격 증명은 HTTP 및 SOCKS5에서만 사용합니다. 시스템 프록시는 OS 설정을 HTTP 또는 SOCKS5로 해석해 모든 아웃바운드 연결에 적용합니다. SSH / FTP에는 SOCKS5를 권장합니다(HTTP 프록시는 :22 / :21로의 CONNECT를 거부하는 경우가 많음).</value>
   </data>
   <data name="SetProxy_TypeNone" xml:space="preserve">
     <value>프록시 없음</value>
@@ -4198,6 +4198,30 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="SetProxy_ProxyDnsDesc" xml:space="preserve">
     <value>// 켬 = 프록시가 호스트 이름을 확인, 끔 = 로컬에서 확인 후 연결</value>
+  </data>
+  <data name="SetProxy_ModesTitle" xml:space="preserve">
+    <value>네 가지 모드의 차이</value>
+  </data>
+  <data name="SetProxy_ModesIntro" xml:space="preserve">
+    <value>// 네 가지 모드가 정하는 것은 하나뿐입니다: VelaShell이 대상에 첫 TCP 연결을 어떻게 맺는가. 터널(-L / -R / -D)은 인바운드이며 이것들과 무관합니다. 변경은 다음 연결부터 적용되고 재시작은 필요 없습니다.</value>
+  </data>
+  <data name="SetProxy_ModeNoneDesc" xml:space="preserve">
+    <value>직접 연결. 시스템 프록시를 보지 않고 HTTP_PROXY / ALL_PROXY도 읽지 않습니다.</value>
+  </data>
+  <data name="SetProxy_ModeSystemDesc" xml:space="preserve">
+    <value>프로토콜이 아니라 해석기. OS의 현재 프록시(Windows는 PAC 포함 Internet Settings)를 읽어 HTTP 또는 SOCKS5로 해석합니다 —— OS가 SOCKS면 SOCKS5. 미설정·우회·PAC 실패 시 직접 연결합니다.</value>
+  </data>
+  <data name="SetProxy_ModeHttpDesc" xml:space="preserve">
+    <value>애플리케이션 계층(L7). CONNECT로 연결 전체를 터널링합니다. TCP만 지원(UDP 불가), FTP는 패시브 필수. :22 도달 가능 여부는 프록시 구현에 달려 있습니다.</value>
+  </data>
+  <data name="SetProxy_ModeSocks5Desc" xml:space="preserve">
+    <value>세션 / 전송 계층. 바이트를 그대로 전달하며 SSH / FTP 프록시의 첫 선택입니다. 호스트 이름은 기본적으로 프록시가 해석합니다(socks5h 상당).</value>
+  </data>
+  <data name="SetProxy_ModesScope" xml:space="preserve">
+    <value>// 대상: SSH / SFTP / FTP(제어 + 패시브 데이터), 업데이트 확인, Gist, 피드, 플러그인 HTTP.</value>
+  </data>
+  <data name="SetProxy_ModesPick" xml:space="preserve">
+    <value>// 선택: 서버에 직결되면 '사용 안 함', 프록시를 거쳐 나가야 하면 SOCKS5.</value>
   </data>
   <data name="Msg_ProxyMisconfigured" xml:space="preserve">
     <value>프록시가 활성화되어 있지만 호스트 또는 포트가 설정되지 않았습니다. &apos;설정 → 프록시&apos;를 확인하세요.</value>

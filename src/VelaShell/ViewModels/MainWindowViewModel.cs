@@ -4804,6 +4804,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
 
     private void OnSettingsSaved(AppSettings settings)
     {
+        // 代理设置变了要当场生效:新连接本来就每次重读设置,这里再补上半截 ——
+        // 把一个「连接失败」的标签自动重连一次。用户改代理多半正是因为刚才连不上,
+        // 不该逼他改完设置再手动点一次「重新连接」(甚至以为要重启应用)。
+        AppSettings? previous = _latestSettings;
+        bool proxyChanged = previous is not null && ProxyChanged(previous.Proxy, settings.Proxy);
         _latestSettings = settings;
 
         // SaveSettingsAsync 可能在线程池的回调中完成;字体/字号涉及布局,
@@ -4830,8 +4835,53 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 }
 
                 RevealActiveSessionInSidebar();
+
+                if (proxyChanged)
+                {
+                    ReconnectFailedTabsAfterProxyChange();
+                }
             }
         );
+    }
+
+    /// <summary>
+    /// 代理配置是否真的变了(类型/端点/凭据/DNS 任一)。<see cref="ProxyOptions" /> 没有值相等语义,
+    /// 逐字段比 —— 只在真变了的时候才去动用户的标签。
+    /// </summary>
+    internal static bool ProxyChanged(ProxyOptions? before, ProxyOptions after)
+    {
+        if (before is null)
+        {
+            return false;
+        }
+        return !string.Equals(before.Type, after.Type, StringComparison.Ordinal)
+               || !string.Equals(before.Host, after.Host, StringComparison.Ordinal)
+               || before.Port != after.Port
+               || !string.Equals(before.Username, after.Username, StringComparison.Ordinal)
+               || !string.Equals(before.Password, after.Password, StringComparison.Ordinal)
+               || before.ProxyDns != after.ProxyDns;
+    }
+
+    /// <summary>
+    /// 代理设置变更后,把**连接失败**的 SSH 标签自动重连一次。
+    /// </summary>
+    /// <remarks>
+    /// 只碰 <see cref="SessionStatus.Error" />(上一次尝试失败、失败覆盖层还留在那儿)。
+    /// 已断开的标签不在此列:那是用户自己的意图(或已有 <see cref="ReconnectAllAfterResume" />
+    /// 那条按 AutoReconnect 设置走的自动重连),不能因为改了个代理就替他做主。
+    /// 本地终端与插件协议同样跳过 —— 它们不看这份代理设置。
+    /// </remarks>
+    private void ReconnectFailedTabsAfterProxyChange()
+    {
+        foreach (TerminalTabViewModel tab in TerminalTabs.ToArray())
+        {
+            if (tab.ConnectionStatus != SessionStatus.Error
+                || tab.Profile is not { ConnectionType: ConnectionType.SSH })
+            {
+                continue;
+            }
+            _ = ReconnectTabAsync(tab);
+        }
     }
 
     /// <summary>

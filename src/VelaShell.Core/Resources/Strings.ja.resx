@@ -4158,13 +4158,13 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>プロキシ</value>
   </data>
   <data name="SetProxy_Subtitle" xml:space="preserve">
-    <value>// すべての送信接続(SSH / FTP / HTTP)にプロキシを設定</value>
+    <value>// VelaShell が接続先へ最初の TCP をどう張るかを決めます:SSH / SFTP / FTP・更新確認・同期・プラグインがすべてこれに従います(トンネル -L / -R / -D は受信側で無関係)</value>
   </data>
   <data name="SetProxy_Type" xml:space="preserve">
     <value>プロキシの種類</value>
   </data>
   <data name="SetProxy_TypeDesc" xml:space="preserve">
-    <value>// ホスト・ポート・資格情報は HTTP と SOCKS5 のみ</value>
+    <value>// ホスト・ポート・資格情報は HTTP と SOCKS5 のみ。システムプロキシは OS の設定を HTTP または SOCKS5 に解決し、すべての送信接続に適用されます。SSH / FTP には SOCKS5 を推奨(HTTP プロキシは :22 / :21 への CONNECT を拒否することが多い)。</value>
   </data>
   <data name="SetProxy_TypeNone" xml:space="preserve">
     <value>プロキシなし</value>
@@ -4198,6 +4198,30 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="SetProxy_ProxyDnsDesc" xml:space="preserve">
     <value>// オン = ホスト名をプロキシ側で解決、オフ = ローカルで解決してから接続</value>
+  </data>
+  <data name="SetProxy_ModesTitle" xml:space="preserve">
+    <value>4つのモードの違い</value>
+  </data>
+  <data name="SetProxy_ModesIntro" xml:space="preserve">
+    <value>// 4つのモードが決めるのは1つだけ:VelaShell が接続先へ最初の TCP をどう張るか。トンネル(-L / -R / -D)は受信側で、これらとは無関係です。変更は次回の接続から有効になり、再起動は不要です。</value>
+  </data>
+  <data name="SetProxy_ModeNoneDesc" xml:space="preserve">
+    <value>直接接続。システムプロキシを見ず、HTTP_PROXY / ALL_PROXY も読みません。</value>
+  </data>
+  <data name="SetProxy_ModeSystemDesc" xml:space="preserve">
+    <value>プロトコルではなく解析器。OS の現在のプロキシ(Windows は PAC を含む Internet Settings)を読み、HTTP または SOCKS5 に解決します —— OS が SOCKS なら SOCKS5。未設定・バイパス・PAC 失敗時は直接接続します。</value>
+  </data>
+  <data name="SetProxy_ModeHttpDesc" xml:space="preserve">
+    <value>アプリケーション層(L7)。CONNECT で接続全体をトンネルします。TCP のみで UDP 非対応、FTP はパッシブ必須。:22 に到達できるかはプロキシの実装次第です。</value>
+  </data>
+  <data name="SetProxy_ModeSocks5Desc" xml:space="preserve">
+    <value>セッション / トランスポート層。バイト列をそのまま転送し、SSH / FTP をプロキシする際の第一候補です。ホスト名は既定でプロキシ側が解決します(socks5h 相当)。</value>
+  </data>
+  <data name="SetProxy_ModesScope" xml:space="preserve">
+    <value>// 対象:SSH / SFTP / FTP(制御 + パッシブデータ)、更新確認、Gist、フィード、プラグインの HTTP。</value>
+  </data>
+  <data name="SetProxy_ModesPick" xml:space="preserve">
+    <value>// 選び方:サーバーに直結できるなら「なし」、プロキシ経由で外に出るなら SOCKS5。</value>
   </data>
   <data name="Msg_ProxyMisconfigured" xml:space="preserve">
     <value>プロキシが有効ですが、ホストまたはポートが未設定です。「設定 → プロキシ」を確認してください。</value>

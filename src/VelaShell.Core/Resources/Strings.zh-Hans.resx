@@ -4376,13 +4376,13 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>网络代理</value>
   </data>
   <data name="SetProxy_Subtitle" xml:space="preserve">
-    <value>// 为应用全部出站连接(SSH / FTP / HTTP)配置代理</value>
+    <value>// 决定「VelaShell 连远程主机的第一跳 TCP 怎么走」:SSH / SFTP / FTP、更新检查、同步与插件都按它执行(隧道 -L / -R / -D 是入站,与这里无关)</value>
   </data>
   <data name="SetProxy_Type" xml:space="preserve">
     <value>代理类型</value>
   </data>
   <data name="SetProxy_TypeDesc" xml:space="preserve">
-    <value>// 仅 HTTP 与 SOCKS5 需要填写主机、端口与凭据</value>
+    <value>// 仅 HTTP 与 SOCKS5 需要填写主机、端口与凭据。「系统代理」会把系统设置解析成 HTTP 或 SOCKS5,并作用于全部出站连接;SSH / FTP 建议优先用 SOCKS5 —— HTTP 代理常拒绝 CONNECT 到 :22 / :21。</value>
   </data>
   <data name="SetProxy_TypeNone" xml:space="preserve">
     <value>无代理</value>
@@ -4416,6 +4416,30 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   </data>
   <data name="SetProxy_ProxyDnsDesc" xml:space="preserve">
     <value>// 开 = 主机名交给代理端解析;关 = 本地解析后再经代理连接</value>
+  </data>
+  <data name="SetProxy_ModesTitle" xml:space="preserve">
+    <value>四种模式的区别</value>
+  </data>
+  <data name="SetProxy_ModesIntro" xml:space="preserve">
+    <value>// 四种模式只决定一件事:VelaShell 连远程主机的第一跳 TCP 怎么走。隧道(-L / -R / -D)是入站,与它们无关。改完立即对下一次连接生效,不用重启。</value>
+  </data>
+  <data name="SetProxy_ModeNoneDesc" xml:space="preserve">
+    <value>直连。不回看系统代理,也不读 HTTP_PROXY / ALL_PROXY。</value>
+  </data>
+  <data name="SetProxy_ModeSystemDesc" xml:space="preserve">
+    <value>解析器,不是协议:读 OS 当前代理(Windows 含 PAC),折成 HTTP 或 SOCKS5 —— 系统是 SOCKS 就按 SOCKS5。没配、命中绕过或 PAC 求值失败则直连。</value>
+  </data>
+  <data name="SetProxy_ModeHttpDesc" xml:space="preserve">
+    <value>应用层(第 7 层):用 CONNECT 把整条连接当隧道。只走 TCP,不支持 UDP;FTP 必须被动模式。能否连 :22 取决于代理端实现。</value>
+  </data>
+  <data name="SetProxy_ModeSocks5Desc" xml:space="preserve">
+    <value>会话 / 传输层:只转发字节、不解析内容,是给 SSH / FTP 挂代理时的首选。默认把主机名交给代理解析(等价 socks5h)。</value>
+  </data>
+  <data name="SetProxy_ModesScope" xml:space="preserve">
+    <value>// 覆盖 SSH / SFTP / FTP(控制 + 被动数据)、更新检查、Gist、资讯源与插件 HTTP。</value>
+  </data>
+  <data name="SetProxy_ModesPick" xml:space="preserve">
+    <value>// 怎么选:服务器能直连就用「无代理」;需要借代理出国时优先 SOCKS5。</value>
   </data>
   <data name="Msg_ProxyMisconfigured" xml:space="preserve">
     <value>已启用代理,但代理主机或端口未配置,请检查「设置 → 网络代理」。</value>
