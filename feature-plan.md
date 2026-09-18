@@ -34,16 +34,16 @@
 
 ## 📊 待办分布
 
-**欠账**（⏳ + 🚧 + 💡，共 23 项）与**路线图**（共 27 项）分开计：
+**欠账**（⏳ + 🚧 + 💡，共 24 项）与**路线图**（共 27 项）分开计：
 
 ```mermaid
 pie showData
-    title 欠账 —— 现状与代码对不上的部分（23 项）
+    title 欠账 —— 现状与代码对不上的部分（24 项）
     "P0 存了但不生效" : 5
     "安全与凭据" : 5
     "会话与工作区" : 3
     "数据与可观测" : 3
-    "终端与协议" : 3
+    "终端与协议" : 4
     "文件传输" : 2
     "插件生态" : 2
 ```
@@ -64,6 +64,7 @@ pie showData
 > 「会话与工作区」从 4 降到 3：会话标签颜色已在 `b9ae31f` 落地（见该节）。
 > 「安全与凭据」从 6 降到 5：SSH 证书认证已在 `bbfa1877` 落地（见该节）。
 > 「插件生态」现为 2：插件自报图标当天闭合，但新增了一条 🔴 P0「11 条怎么改都绿的 UI 用例」（见该节）。
+> 「终端与协议」从 3 加到 4：新增「SSH PTY 像素尺寸贯通」（卡上游 Tmds.Ssh#519，见该节）。
 
 ---
 
@@ -137,8 +138,369 @@ pie showData
 | :---: | :---: | --- | --- | --- |
 | ✅ | — | ~~防空闲断开（Anti-idle）~~ | **已完成**（2026-09-10，`plan.md` §65）：连接对话框的高级选项里新增「防空闲（秒）」，与保活并排；`TerminalOverrides.AntiIdleSeconds` → `AntiIdleKeeper` 按间隔往 PTY 送一个 `NUL`，只在真的空闲时发，ZMODEM 会话期间让路 | ⏳ **只按会话，没有全局开关**（刻意的：会踢人的只是特定那几台机器，注入的字节终究打进对端 tty）。📄 velashell-docs 还没跟上 |
 | ⏳ | 🟡 P2 | **非 bash 的 shell 干脆别注入目录上报钩子** | 钩子由 `test -n "${BASH_VERSION:-}"` 守卫，在 zsh / dash 上是个**空操作** —— 却照样占掉一个提示符周期，还在用户历史里留下一整行（`plan.md` §66 的摘历史只对 bash 有效：zsh 没有 `history -d`） | `RemoteShellProbe` 目前只回答「是不是 POSIX」，让它顺带报出 shell 家族（探针命令加一段 `${BASH_VERSION:+-bash}` / `${ZSH_VERSION:+-zsh}`，标记向后兼容），**确认是 zsh 时跳过注入**。⚠️ 只在**正面认出**非 bash 时才跳 —— 认不出来照旧注入，免得误伤「登录 shell 是 /bin/sh、交互 shell 是 bash」那种机器 |
+| ⏳ | 🟢 P3 | **SSH PTY 像素尺寸贯通** | `pty-req` / `window-change` 的像素字段恒为 `0`：Tmds.Ssh 0.24.0 无像素 API，`TmdsSshClientWrapper.cs:233-234` 已注明「像素尺寸…被忽略」——`CreateShellStreamAsync` 的 `width`/`height` 参数被丢、`ShellStreamWrapper.Resize` 只有字符行列 | ⚠️ **卡上游，只能等**：依赖 [tmds/Tmds.Ssh#519](https://github.com/tmds/Tmds.Ssh/pull/519)（**未合并、未发版**）。发版后的完整实施细节见下文「SSH PTY 像素尺寸贯通 —— 实施细节」 |
 | 💡 | 🟢 P3 | **终端内搜索的增强** | 基础搜索已实现（`MainWindowViewModel.TerminalSearchRequested:1616`） | 正则、大小写、全部高亮、上一个/下一个的循环计数 —— 按用户反馈再定 |
 | 📄 | 🟠 P1 | **设计稿的两处残留** | Logo 有一个 `enabled:false` 残留图标；文件列表「修改时间」列无固定宽度 | 小到可以顺手做掉，记在这里免得忘 |
+
+### SSH PTY 像素尺寸贯通 —— 实施细节
+
+> 状态：⏳ 待办，**卡上游**。等 tmds/Tmds.Ssh 发布含 PR #519 的版本后**一次性落地**（不分阶段）。
+> 依据：[tmds/Tmds.Ssh#519](https://github.com/tmds/Tmds.Ssh/pull/519) 新增 `ExecuteOptions.TerminalWidthPixels` / `TerminalHeightPixels` + `RemoteProcess.SetTerminalSize(width, height, widthPixels, heightPixels)` 四参重载。
+
+**前置条件**
+
+- Tmds.Ssh 发版含 #519 的 API。当前锁在 `0.24.0`（`src/Directory.Packages.props:25`），无此 API。
+- **不触发 PluginSdk 发版**：插件终端协议（Telnet NAWS / 串口）本无像素概念，`IProtocolTerminalSession.ResizeAsync` 保持不变。
+
+**设计决策**
+
+1. 拓宽共享接口 `IShellStreamWrapper.Resize` 承载像素（而非 SSH 专用窄路径）。
+2. 一次性落地，等发版后实施。
+3. 新增共享结构体 `PtySize`，`PtySizeChanged` 事件改携带该结构体；插件视图 API 用适配 lambda 保持对外 `Action<int,int>` 不变。`ITerminalEmulator` 另暴露 `CurrentPtySize` 属性，供挂载传输时手动重推完整尺寸（见步骤 3a / 4）。
+4. 单位换算：DIP → 物理像素乘 `RenderScaling`。
+
+**新增共享类型** `src/VelaShell.Core/Pty/PtySize.cs`：
+
+```csharp
+public readonly record struct PtySize(int Columns, int Rows, int WidthPixels, int HeightPixels);
+```
+
+`IShellStreamWrapper.cs` 与 `ITerminalEmulator.cs` 各加 `using VelaShell.Core.Pty;`。
+
+**实施步骤**（按依赖顺序，每步给出改前 → 改后代码示例）
+
+**1. 抬 Tmds.Ssh 版本** —— `src/Directory.Packages.props:25`（`tests/Directory.Packages.props` 同名条目同步）：
+
+```xml
+<!-- 改前 -->
+<PackageVersion Include="Tmds.Ssh" Version="0.24.0" />
+
+<!-- 改后（以官方实际发版号为准） -->
+<PackageVersion Include="Tmds.Ssh" Version="<含 #519 的官方版号>" />
+```
+
+**2. 接口层** —— `IShellStreamWrapper.cs:57-61`：
+
+```csharp
+// 改前
+/// <summary>
+/// 发送 SSH 窗口变更请求,使远端 PTY 匹配本地终端尺寸。
+/// 像素尺寸报告为 0(仅使用字符单元尺寸)。
+/// </summary>
+void Resize(int columns, int rows);
+
+// 改后(文件顶部补 using VelaShell.Core.Pty;)
+/// <summary>发送 SSH 窗口变更请求,使远端 PTY 匹配本地终端尺寸。</summary>
+void Resize(PtySize size);
+```
+
+**3. 终端模拟器（像素源）**
+
+3a. `ITerminalEmulator.cs:76-80` —— 事件改携带 `PtySize`，并新增 `CurrentPtySize` 供 VM 手动重推：
+
+```csharp
+// 改前
+/// <summary>
+/// 终端的字符单元格网格尺寸变化时触发(例如控件以新尺寸完成布局),
+/// 以便宿主 PTY 调整大小与之匹配。参数:(columns, rows)。
+/// </summary>
+event Action<int, int>? PtySizeChanged;
+
+// 改后(文件顶部补 using VelaShell.Core.Pty;)
+/// <summary>
+/// 终端的字符单元格网格尺寸变化时触发(例如控件以新尺寸完成布局),
+/// 以便宿主 PTY 调整大小与之匹配。参数:列、行与物理像素宽高。
+/// </summary>
+event Action<PtySize>? PtySizeChanged;
+
+/// <summary>当前网格对应的完整 PTY 尺寸(含物理像素),供挂载传输时手动重推。</summary>
+PtySize CurrentPtySize { get; }
+```
+
+3b. `VelaTerminalControl.cs` —— 事件声明、缩放读取、像素换算与 `CurrentPtySize`：
+
+```csharp
+// 改前(:608)
+public event Action<int, int>? PtySizeChanged;
+
+// 改后
+public event Action<PtySize>? PtySizeChanged;
+
+// 新增(参照 RefreshPixelGrid :1913-1914 的 RenderScalingOverrideForTest 分支)
+private double RenderScaling =>
+    RenderScalingOverrideForTest > 0
+        ? RenderScalingOverrideForTest
+        : TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
+
+private int WidthPixels(int columns) =>
+    (int)Math.Round(columns * CellWidthForTest * RenderScaling);
+
+private int HeightPixels(int rows) =>
+    (int)Math.Round(rows * CellHeightForTest * RenderScaling);
+
+public PtySize CurrentPtySize =>
+    new(Emulator.Columns, Emulator.Rows,
+        WidthPixels(Emulator.Columns), HeightPixels(Emulator.Rows));
+```
+
+3c. 两处触发点 `:1861` 与 `:1898`：
+
+```csharp
+// 改前
+PtySizeChanged?.Invoke(cols, rows);
+
+// 改后(两处一致)
+PtySizeChanged?.Invoke(new PtySize(cols, rows, WidthPixels(cols), HeightPixels(rows)));
+```
+
+> 注意:`PtySizeChanged` 在布局路径触发,早于 `Render` 里的 `RefreshPixelGrid`;故 `RenderScaling` 用 `TopLevel.GetTopLevel` 直接取,布局阶段可独立取值。
+
+**4. 转发层（VM）** —— `TerminalTabViewModel.cs`：
+
+```csharp
+// 改前(:27)
+private (int Columns, int Rows)? _pendingPtySize;
+
+// 改后
+private PtySize? _pendingPtySize;
+
+// 改前(:939)
+private void OnPtySizeChanged(int columns, int rows)
+{
+    if (_disposed || ShellStream is null || !ShellStream.CanWrite) return;
+    lock (_ptyResizeGate)
+    {
+        _pendingPtySize = (columns, rows);
+        if (_ptyResizeSending) return;
+        _ptyResizeSending = true;
+    }
+    _ = Task.Run(DrainPtyResizeQueue);
+}
+
+// 改后
+private void OnPtySizeChanged(PtySize size)
+{
+    if (_disposed || ShellStream is null || !ShellStream.CanWrite) return;
+    lock (_ptyResizeGate)
+    {
+        _pendingPtySize = size;
+        if (_ptyResizeSending) return;
+        _ptyResizeSending = true;
+    }
+    _ = Task.Run(DrainPtyResizeQueue);
+}
+
+// 改前(:961-984,DrainPtyResizeQueue 摘取与转发)
+(int Columns, int Rows) size;
+lock (_ptyResizeGate)
+{
+    if (_pendingPtySize is null) { _ptyResizeSending = false; return; }
+    size = _pendingPtySize.Value;
+    _pendingPtySize = null;
+}
+// ...
+stream.Resize(size.Columns, size.Rows);
+
+// 改后
+PtySize size;
+lock (_ptyResizeGate)
+{
+    if (_pendingPtySize is null) { _ptyResizeSending = false; return; }
+    size = _pendingPtySize.Value;
+    _pendingPtySize = null;
+}
+// ...
+stream.Resize(size);
+
+// 改前(:811-817,SyncPtySize)
+private void SyncPtySize()
+{
+    if (TerminalEmulator is { Columns: > 0, Rows: > 0 })
+    {
+        OnPtySizeChanged(TerminalEmulator.Columns, TerminalEmulator.Rows);
+    }
+}
+
+// 改后(直接取完整尺寸,列/行 + 像素一起重推)
+private void SyncPtySize()
+{
+    if (TerminalEmulator is { Columns: > 0, Rows: > 0 })
+    {
+        OnPtySizeChanged(TerminalEmulator.CurrentPtySize);
+    }
+}
+```
+
+**5. 三个 Shell 流实现**
+
+SSH `ShellStreamWrapper.cs:125-144`：
+
+```csharp
+// 改前
+public void Resize(int columns, int rows)
+{
+    if (_disposed || _channelClosed || columns <= 0 || rows <= 0) return;
+    try
+    {
+        _process.SetTerminalSize(columns, rows);
+    }
+    catch (Exception ex) when (ex is SshChannelClosedException
+                                  or SshConnectionClosedException
+                                  or ObjectDisposedException)
+    {
+        _channelClosed = true;
+    }
+    catch
+    {
+        // 调整尺寸失败不影响会话本身。
+    }
+}
+
+// 改后(依赖步骤 1 的四参重载;文件顶部补 using VelaShell.Core.Pty;)
+public void Resize(PtySize size)
+{
+    if (_disposed || _channelClosed || size.Columns <= 0 || size.Rows <= 0) return;
+    try
+    {
+        _process.SetTerminalSize(size.Columns, size.Rows, size.WidthPixels, size.HeightPixels);
+    }
+    catch (Exception ex) when (ex is SshChannelClosedException
+                                  or SshConnectionClosedException
+                                  or ObjectDisposedException)
+    {
+        _channelClosed = true;
+    }
+    catch
+    {
+        // 调整尺寸失败不影响会话本身。
+    }
+}
+```
+
+本地 ConPTY `ConPtyShellStream.cs:113-124`：
+
+```csharp
+// 改前
+public void Resize(int columns, int rows)
+{
+    if (_closed || _disposed) return;
+    _ = NativeMethods.ResizePseudoConsole(_console, new()
+    {
+        X = (short)Math.Clamp(columns, 2, 500),
+        Y = (short)Math.Clamp(rows, 2, 500)
+    });
+}
+
+// 改后(COORD 无像素字段,像素忽略;文件顶部补 using VelaShell.Core.Pty;)
+public void Resize(PtySize size)
+{
+    if (_closed || _disposed) return;
+    _ = NativeMethods.ResizePseudoConsole(_console, new()
+    {
+        X = (short)Math.Clamp(size.Columns, 2, 500),
+        Y = (short)Math.Clamp(size.Rows, 2, 500)
+    });
+}
+```
+
+插件 `PluginTerminalShellStream.cs:112-130`：
+
+```csharp
+// 改前
+public void Resize(int columns, int rows)
+{
+    if (_disposed) return;
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await session.ResizeAsync(columns, rows, _lifetime.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Trace.WriteLine($"[PluginTerminal] Resize on '{protocolId}' failed: {ex.Message}");
+        }
+    });
+}
+
+// 改后(插件协议无像素概念,丢弃;文件顶部补 using VelaShell.Core.Pty;)
+public void Resize(PtySize size)
+{
+    if (_disposed) return;
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await session.ResizeAsync(size.Columns, size.Rows, _lifetime.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Trace.WriteLine($"[PluginTerminal] Resize on '{protocolId}' failed: {ex.Message}");
+        }
+    });
+}
+```
+
+**6. 插件视图 API** —— `PluginTerminalViewApi.cs:167-171`：
+
+```csharp
+// 改前
+public event Action<int, int>? Resized
+{
+    add => control.PtySizeChanged += value;
+    remove => control.PtySizeChanged -= value;
+}
+
+// 改后(对外仍是 Action<int,int>;事件已改为 Action<PtySize>,用命名方法适配以支持正确退订)
+public event Action<int, int>? Resized
+{
+    add => control.PtySizeChanged += ControlOnPtySizeChanged;
+    remove => control.PtySizeChanged -= ControlOnPtySizeChanged;
+}
+
+private void ControlOnPtySizeChanged(PtySize size) =>
+    Resized?.Invoke(size.Columns, size.Rows);
+```
+
+**7. 初始 pty-req（通路 A）** —— `TmdsSshClientWrapper.cs:250-256`：
+
+```csharp
+// 改前
+var options = new ExecuteOptions
+{
+    AllocateTerminal = true,
+    TerminalType = terminalName,
+    TerminalWidth = (int)columns,
+    TerminalHeight = (int)rows,
+};
+
+// 改后(兑现接口已有的 width/height 参数)
+var options = new ExecuteOptions
+{
+    AllocateTerminal = true,
+    TerminalType = terminalName,
+    TerminalWidth = (int)columns,
+    TerminalHeight = (int)rows,
+    TerminalWidthPixels = (int)width,
+    TerminalHeightPixels = (int)height,
+};
+```
+
+调用点 `MainWindowViewModel.cs:2307` / `:2420` **维持 `0, 0` 不改**（布局前像素不可知，首个 window-change 会覆盖）。
+
+**测试改动**
+
+| 文件 | 改动 |
+| --- | --- |
+| `tests/VelaShell.Terminal.Tests/HostGridReconcileUiTests.cs:73` | `PtySizeChanged` 订阅签名改新结构体 |
+| `tests/VelaShell.Infrastructure.Tests/Plugins/PluginTerminalProtocolTests.cs:175` | `stream.Resize(132, 43)` → `stream.Resize(new PtySize(132, 43, 0, 0))` |
+| `tests/VelaShell.Infrastructure.Tests/Plugins/PluginTerminalProtocolEndToEndTests.cs:167` | 同上 |
+| `tests/VelaShell.Tests/FakeTerminal.cs` | 无需改（NSubstitute 自动适配新事件签名与新属性） |
+| `CreateShellStreamAsync` 相关 mock | 签名未变，无需改 |
+
+**验证**：`dotnet build VelaShell.slnx` && `dotnet test VelaShell.slnx`；手动拖拽缩放确认 `window-change` 载荷像素非零。
+
+**非目标**：不引入本地 Tmds.Ssh 包、不改插件 SDK 契约、不动 `CreateShellStreamAsync` 接口签名、不为通路 A 传真实像素。
 
 ---
 
