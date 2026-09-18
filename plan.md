@@ -4769,3 +4769,133 @@ Release configuration」,但 Condition **从没落到元素上**(注释是 Avalo
   `WindowOpened → FirstFrame` 这一段(基线:冷 1,165 ms / 热 391 ms)。
   作为对照,`Add-MpPreference -ExclusionPath 'D:\VelaShell'` 后再冷启一次,能量出
   Defender 在这台机器上占的全部份额(预期 ~4 s),从而给「要不要买证书」定价。
+
+## ✅ 79. 2026-09-18 四种出站代理按规约对齐:system 是解析器,none 必须真直连(用户反馈 #464)
+
+用户(#464)反馈:Clash Verge 开着系统代理时,VelaShell 选「系统代理」连不上海外服务器,
+改成「无代理」就正常;并称切换代理模式后必须重启应用才生效。
+
+**先把链路拆开量了**(本机就装着 Clash Verge,system proxy `127.0.0.1:7897`,rules 模式,TUN 关):
+
+| 测量 | 结果 |
+| --- | --- |
+| `HttpClient.DefaultProxy` 解析 `hw.easilynet.top:22` | `http://127.0.0.1:7897/` —— 协议、端口都对 |
+| Clash 日志 | `hw.easilynet.top:22 match Match using 节点选择[新加坡-优化3]` —— CONNECT **确实到了 Clash** |
+| **直连** `hw.easilynet.top:22` | `SSH-2.0-OpenSSH_10.2p1 Ubuntu-2ubuntu3.6` |
+| **经 Clash** CONNECT 同一目标 | `200 Connection established` 之后**一个字节都没有**(超时) |
+| 经 Clash CONNECT 到 `ssh.github.com:443` | 横幅正常,能走到主机指纹校验 |
+
+结论:HTTP CONNECT / 环回中继**没有 bug**,CONNECT 建得起来;是那个节点到不了目标 `:22`
+—— 也就是**代理节点侧的出口问题**,不是 VelaShell 的解析或隧道问题。
+
+用户随后给了一份**出站代理规约**,据此把四种模式逐个对齐(期间我先按"system 只作用于 HTTP 通道"
+实现过一版,与规约冲突,已回退):
+
+| 模式 | 位置 | 覆盖范围 | 本次落实 |
+| --- | --- | --- | --- |
+| **none** | 直连 | — | **真直连**:不回看系统代理,也不读 `HTTP_PROXY` / `ALL_PROXY` |
+| **system** | OS 设置 | **全部出站** | **解析器不是协议**:折成 http 或 socks5;系统是 SOCKS 就按 SOCKS5,不硬套 CONNECT;解析不出(没配 / bypass / PAC 失败)则直连 |
+| **http** | 第 7 层 | HTTP/HTTPS + `CONNECT` 裸 TCP 隧道 | 不支持 UDP;FTP 已强制被动模式、数据连接走同一条 CONNECT |
+| **socks5** | 会话/传输层 | TCP | SSH / FTP 挂代理时的首选;`socks5h` 语义(远程解析) |
+
+改动落点:
+
+- `ProxyResolver.Resolve`:`system` 重新作用于**全部出站 TCP**(SSH / SFTP / FTP 控制与数据 / HTTP),
+  只有 HTTP 通道传 `schemeHint` 用于让按 URL 分流的 PAC 问得准;裸 TCP 按 `http` 探针问,
+  **PAC 回 DIRECT 是合法答案**,照它直连,不当失败。
+- `system` 的解析结果按 scheme 落成 http 或 socks5(`MapProxyScheme`),不再在系统是 SOCKS 时硬套 CONNECT。
+- `none` 在 `Resolve` 里直接短路成 `Direct`,注释写明"不再回看系统代理,也不读环境变量";
+  进程级 `HttpClient.DefaultProxy` 已被 `VelaWebProxy` 接管,因此 .NET 那边也不会有环境变量兜底。
+- **系统代理变更无需重启**:数据源是实时的 `HttpClient.DefaultProxy`(Windows 给 Internet Settings
+  注册了变更通知),`ProxyResolver` 每次解析重读;另实测把 `ProxyEnable` 置 0/1,同一个代理实例立刻改口。
+- **DNS 默认远程解析**(`ProxyDns` 默认开 = socks5h 语义),只有 `none` 本机解析。
+- 代理只作用于**第一跳**:跳板链上真正出 TCP 的只有最内层那一跳(原本就是这样,已补文档)。
+- **代理设置变更后把「连接失败」的 SSH 标签自动重连一次**(`ProxyChanged` 逐字段比对;
+  只碰 `SessionStatus.Error` 的 SSH 标签,断开标签可能是用户意图,本地终端与插件协议不看这份设置)。
+
+文案与文档同步:五份 resx 的 `SetProxy_Subtitle` / `SetProxy_TypeDesc`、AI 插件 `Loc.cs` 的
+unreachable 提示、`velashell-docs` 的 `zh/en/host/architecture.md`(补了四种模式的对照表)。
+
+**明确没做的**(规约里是"建议",且与既有产品决策冲突,留待确认):
+
+- **每条会话覆盖全局代理**:规约的"建议产品模型"里有,但 `feature-plan.md` 已把「按会话的独立代理」
+  记为**不做**(落地为应用级全局)。要做需先推翻那条决策。
+- **「测试代理」按钮按协议分别探**(HTTP `CONNECT` 看 200 / SOCKS5 握手 / system 先打印解析结果再测):
+  尚无此按钮;目前只有 SSH 侧的连接测试与会话内报错。
+- Windows 的 **WinHTTP 机器级代理**:我们跟随 .NET 的 `HttpClient.DefaultProxy`(Windows 为
+  Internet Settings + PAC,即桌面应用与浏览器看到的同一份)。WinHTTP 的机器级静态配置
+  (`netsh winhttp`)对桌面应用基本是空的,且常被安装器写脏 —— 有意不合并,规约里把它列为易错点,
+  这里按"跟随桌面应用一致的来源"取舍。
+
+验证:
+
+- `Infrastructure.Tests` 481(478 通过 / 3 跳过)、`Core.Tests` 441(437 / 4)、
+  `VelaShell.Tests` 1426(1410 / 16),零失败;本地化键位对齐用例(8 条)通过。
+- 新增/重写代理用例:`Resolver_SystemType_HttpSystemProxy_CoversBareTcp`(SSH/FTP 跟随系统代理)、
+  `Resolver_SystemType_SocksSystemProxy_ResolvesToSocks5`(系统是 SOCKS 不硬套 CONNECT)、
+  `Resolver_NoneType_IgnoresSystemProxyEntirely`(none 真直连,HttpClient 侧也返回 null)、
+  `Resolver_SystemType_ProbeFailure_FallsBackToDirect`(PAC 失败明确回退直连)、
+  `Resolver_SystemType_DefaultsToRemoteDns`(默认远程解析)、
+  `Resolver_ProxyTypeChange_TakesEffectWithoutRestart`(同实例内换快照立即改口),
+  以及 `ProxySettingsHotApplyTests`。
+- **没有验证的**:真实服务器 + Clash 下"改完设置自动重连"的观感 —— 本机没有可连的凭据;
+  经 Clash 到 `hw.easilynet.top:22` 拿不到数据是节点出口问题,客户端侧无法修复。
+
+### §79 追加(2026-09-18 晚):把"经系统代理连不上"钉到端口级
+
+用户追问"为什么开了系统代理还是连不上"。同一台机器、同一个 Clash,逐项再量一遍:
+
+| 路径 | 结果 |
+| --- | --- |
+| HTTP CONNECT `hw.easilynet.top:22` | `200` 之后**静默黑洞**(6 s 无任何字节,连 RST 都没有) |
+| **SOCKS5**(同一混合端口)`hw.easilynet.top:22` | 应答"granted",之后同样**静默黑洞** —— 不是 HTTP CONNECT 被特殊限制 |
+| HTTP CONNECT **直接用解析出的 IP** `154.12.41.59:22` | 同样隧道建立后无数据 —— 与 DNS / 域名规则无关 |
+| HTTP CONNECT `hw.easilynet.top:443` | 隧道建立后**立刻被关**(那里没有服务,RST 能穿透节点传回来) |
+| HTTP CONNECT `hw.easilynet.top:80` + `HEAD /` | 收到 **`HTTP/1.1 200 OK`** —— 该节点**能**到达这台主机 |
+| HTTP CONNECT `feeds.easilynet.top:443` | TLS 1.3 握手完成 |
+| **直连** `hw.easilynet.top:22` | 收到 `SSH-2.0-OpenSSH_10.2p1` |
+
+结论:节点到得了这台主机(:80 有正常 HTTP 响应、:443 的"无服务"也会传回 RST),
+**唯独 :22 是被丢弃(blackhole)的**。所以要么机场/节点出口丢弃 22 端口(常见策略),
+要么服务器防火墙对该来源 IP 只在 22 上丢包 —— 两者都在 VelaShell 之外。
+客户端侧能做的只有:选「无代理」、在 Clash 里给这台主机加 `DIRECT` 规则,或换一个放行 22 的节点。
+
+⚠️ 曾据此给报错补过一段说明(中继加 `TunnelEstablished` + 新键 `Msg_ProxyTunnelSilent`,
+指出"隧道已建立但对端没回音、代理出口可能丢了该端口"),**维护者要求移除,已回退** ——
+报错保持原样,只由平台侧的连接超时/关闭语义呈现。
+
+## ✅ 80. 2026-09-19 网络代理页:说明文字被裁 + 补一块「四种模式的区别」(用户截图反馈)
+
+用户截图:副标题与「代理类型」的说明都跑到卡片外面。
+
+**根因是 `TextBlock.page-subtitle` 漏了 `TextWrapping`。** `TextBlock.row-desc` 早就设了
+`Wrap`,其样式注释也写明「不换行的话长句子会顶出设置行右边的控件、跑到可视区外
+(内容区只有纵向滚动条,横向没有可以救)」—— 但 `page-subtitle` 一直没跟上。
+一句长副标题(网络代理页那句 46 字)按**单行自身宽度**量,超出的部分被直接裁掉,
+同页的 `row-desc` 也因此紧贴右侧控件。这条按**类**修,所有设置页一并受益。
+
+headless 里量到的差别(网络代理页,视口 714px):
+
+| | 副标题 Desired | 结果 |
+| --- | ---: | --- |
+| 修复前 | 658 × 14 | 只有一行,文字被裁 |
+| 修复后 | 645 × 28 | 两行,完整显示 |
+
+同时:
+- 「代理类型」那行的左列加了 `Margin="0,0,16,0"`,说明换行时不再贴着下拉框。
+- 页面下方补了一块**四种模式的区别**。第一版做成只读文本框,用户反馈「太乱」——
+  项目符号后的长句换行后从行首续写,眼睛找不到下一项从哪开始。改成**表格**
+  (`Border Classes="table"`,与密钥 / 版本历史同款):模式名对齐成一列
+  (直接复用下拉框那套词 `SetProxy_TypeNone/…`,不另造一份译名),
+  说明在右列自动换行;表格下再加「覆盖范围」「怎么选」两条注。
+  文案因此从单个长文本键换成 `SetProxy_Mode{None,System,Http,Socks5}Desc` +
+  `ModesScope` / `ModesPick`,五语齐。
+
+验证:
+
+- 新增 `ProxySettingsPageUiTests`(headless):本页所有说明文字必须 `Wrap`;
+  副标题必须真的折成多行(只设属性而布局没生效也会红);说明区是**四行表格**、
+  模式名对齐成一列(四行名字列宽一致)、每行说明都换行;并断言正文覆盖四种模式的判别特征。
+  **反向验证过**:把 `page-subtitle` 的 `TextWrapping` 去掉,前两条立刻变红并打印出被裁的句子。
+- `Infrastructure.Tests` 485(482 / 3 跳过)、`Core.Tests` 441(437 / 4)、
+  `VelaShell.Tests` 1429(1413 / 16),零失败。

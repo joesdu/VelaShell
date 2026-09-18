@@ -10,6 +10,13 @@ namespace VelaShell.Infrastructure.Net;
 /// <see cref="IProxyResolver" /> 实现:每次解析都读当前设置(设置服务有进程内 JSON 缓存,
 /// 读取廉价),保存代理设置后新建的连接立即生效,无需订阅保存事件。
 /// </summary>
+/// <remarks>
+/// <b>system 是解析器,不是协议</b>:读 OS 当前代理并折成 http / socks5,作用于**全部出站 TCP**
+/// (SSH / SFTP / FTP 控制与数据 / 全部 HTTP 请求)。数据源是**实时**的
+/// <see cref="HttpClient.DefaultProxy" />(Windows 上会给 Internet Settings 注册变更通知,
+/// Clash 开关系统代理后不需要重启应用)。
+/// <b>none 必须真正直连</b>:不回看系统代理,也不读 <c>HTTP_PROXY</c> / <c>ALL_PROXY</c>。
+/// </remarks>
 public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
 {
     /// <summary>
@@ -31,7 +38,11 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
         {
             "http" => Explicit(ProxyKind.Http, o),
             "socks5" => Explicit(ProxyKind.Socks5, o),
+            // system 是**解析器**,不是协议:读 OS 当前代理,折成 http / socks5 再交给调用方,
+            // 作用于**全部出站 TCP**(SSH / SFTP / FTP 控制与数据 / HTTP)。
             "system" => FromSystem(targetHost, targetPort, o, schemeHint),
+            // none = 强制直连。到这里就**不再回看系统代理、也不读 HTTP_PROXY / ALL_PROXY**
+            // (进程级 HttpClient.DefaultProxy 已被 VelaWebProxy 接管,不会有环境变量兜底)。
             _ => ProxyRoute.Direct,
         };
     }
@@ -60,7 +71,7 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
 
     private static int Utf8ByteCount(string s) => System.Text.Encoding.UTF8.GetByteCount(s ?? "");
 
-    private static ProxyRoute FromSystem(string targetHost, int targetPort, ProxyOptions o, string? schemeHint = null)
+    private static ProxyRoute FromSystem(string targetHost, int targetPort, ProxyOptions o, string? schemeHint)
     {
         IWebProxy sys = SystemProxySource ?? HttpClient.DefaultProxy;
         if (sys is VelaWebProxy)
@@ -70,11 +81,9 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
         }
         try
         {
-            // 裸 TCP(SSH/FTP)不是 HTTPS:只用 https 探针会撞上按 scheme 分流的 PAC/绕过规则(#464)。
-            // 有 schemeHint(HTTP 通道带目标协议)时只按该协议探针;无 hint 时双探针,
-            // 任一说走代理就走代理(取先说走代理的那一档)。端口同样参与 bypass 判断,故带上真实端口。
-            Uri? probe = SelectSystemProbe(sys, targetHost, targetPort, schemeHint);
-            if (probe is null)
+            // 探针 URL 见 BuildSystemProbe:HTTP 通道按自身协议问,裸 TCP 按 http 问。
+            Uri? probe = BuildSystemProbe(targetHost, targetPort, schemeHint);
+            if (probe is null || SafeIsBypassed(sys, probe))
             {
                 return ProxyRoute.Direct;
             }
@@ -83,6 +92,7 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
             {
                 return ProxyRoute.Direct;
             }
+            // 系统配的是 SOCKS 就按 SOCKS5 走,绝不硬套 HTTP CONNECT。
             ProxyKind kind = MapProxyScheme(p.Scheme);
             int port = p.Port is < 1 or > 65535 ? DefaultProxyPort(kind) : p.Port;
             if (string.IsNullOrWhiteSpace(p.Host))
@@ -94,51 +104,33 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
         }
         catch
         {
-            // 系统代理探询失败(非法主机名等)不阻断连接:system 档语义是"跟随系统",系统无代理即直连。
+            // 系统代理探询失败(非法主机名、PAC 求值抛错等):按直连。
+            // 系统代理的语义是"跟随系统",取不到就当作系统没配代理 —— 明确回退,不静默乱连。
             return ProxyRoute.Direct;
         }
     }
 
     /// <summary>
-    /// 系统代理探针选择:有 <paramref name="schemeHint" />(http/https)时只按该协议探针,
-    /// 与调用方的真实目标协议一致;无 hint(SSH/FTP 裸 TCP)时双探针,任一命中代理即返回该探针;
-    /// 都绕过则返回 null。单用 https 探针问裸 TCP 是 #464 的误路由根源之一。
+    /// 系统代理探针 URL。
     /// </summary>
-    private static Uri? SelectSystemProbe(IWebProxy sys, string targetHost, int targetPort, string? schemeHint = null)
+    /// <remarks>
+    /// HTTP 通道按自己的协议问(http / https)—— 按 URL 分流的 PAC 只有问对协议才拿得准。
+    /// SSH / SFTP / FTP 是裸 TCP,协议无名可问,统一按 <c>http</c> 探:系统代理多是手工配置的
+    /// host:port,与 scheme 无关,http 是最通用的一档。遇到按 URL 分流的 PAC 时它可能直接回
+    /// DIRECT —— 那是**合法答案**,照它直连,不当失败(#464)。
+    /// </remarks>
+    private static Uri? BuildSystemProbe(string targetHost, int targetPort, string? schemeHint)
     {
         string formatted = FormatHost(targetHost.Trim());
-        bool wantHttp = string.Equals(schemeHint, "http", StringComparison.OrdinalIgnoreCase);
-        bool wantHttps = string.Equals(schemeHint, "https", StringComparison.OrdinalIgnoreCase);
-        Uri httpProbe;
-        Uri httpsProbe;
+        string scheme = string.Equals(schemeHint, "https", StringComparison.OrdinalIgnoreCase) ? "https" : "http";
         try
         {
-            httpProbe = new($"http://{formatted}:{targetPort}/");
-            httpsProbe = new($"https://{formatted}:{targetPort}/");
+            return new($"{scheme}://{formatted}:{targetPort}/");
         }
         catch
         {
             return null;
         }
-        if (wantHttp)
-        {
-            return SafeIsBypassed(sys, httpProbe) ? null : httpProbe;
-        }
-        if (wantHttps)
-        {
-            return SafeIsBypassed(sys, httpsProbe) ? null : httpsProbe;
-        }
-        bool httpBypassed = SafeIsBypassed(sys, httpProbe);
-        bool httpsBypassed = SafeIsBypassed(sys, httpsProbe);
-        if (!httpBypassed)
-        {
-            return httpProbe;
-        }
-        if (!httpsBypassed)
-        {
-            return httpsProbe;
-        }
-        return null;
     }
 
     private static bool SafeIsBypassed(IWebProxy sys, Uri target)

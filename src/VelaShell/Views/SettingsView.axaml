@@ -55,6 +55,9 @@
       <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
       <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <!-- 副标题也必须换行。原先漏了这条:一句长副标题(网络代理页)按自身宽度量,
+           被裁在卡片右缘(横向没有滚动条可以救),同页说明也紧贴/压到右侧控件上。 -->
+      <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
     <!-- 节分隔线 -->
     <Style Selector="Border.sep">

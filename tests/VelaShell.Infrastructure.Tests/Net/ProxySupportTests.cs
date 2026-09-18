@@ -257,7 +257,7 @@ public class ProxySupportTests
     }
 
     /// <summary>
-    /// 没配过代理时跟随系统,而不是强制直连。
+    /// 没配过代理时 HTTP 通道跟随系统代理,而不是强制直连。
     /// </summary>
     /// <remarks>
     /// 解析结果会被装成进程级 <c>HttpClient.DefaultProxy</c>,顶掉 .NET 原本的系统代理 ——
@@ -272,7 +272,8 @@ public class ProxySupportTests
             ProxyResolver.SystemProxySource = new WebProxy("http://sysproxy.example:8080");
             ProxyResolver resolver = CreateResolver(new ProxyOptions());
 
-            ProxyRoute route = resolver.Resolve("example.com", 443);
+            // schemeHint 由 HTTP 通道给出(VelaWebProxy 传 destination.Scheme)。
+            ProxyRoute route = resolver.Resolve("example.com", 443, "https");
 
             Assert.AreEqual(ProxyKind.Http, route.Kind);
             Assert.AreEqual("sysproxy.example", route.Host);
@@ -332,13 +333,13 @@ public class ProxySupportTests
             };
             ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "system", ProxyDns = false });
 
-            ProxyRoute route = resolver.Resolve("example.com", 443);
+            ProxyRoute route = resolver.Resolve("example.com", 443, "https");
             Assert.AreEqual(ProxyKind.Http, route.Kind);
             Assert.AreEqual("sysproxy.example", route.Host);
             Assert.AreEqual(8080, route.Port);
             Assert.IsFalse(route.ProxyDns);
 
-            Assert.AreEqual(ProxyKind.None, resolver.Resolve("bypassed.example", 443).Kind);
+            Assert.AreEqual(ProxyKind.None, resolver.Resolve("bypassed.example", 443, "https").Kind);
         }
         finally
         {
@@ -357,7 +358,7 @@ public class ProxySupportTests
         Assert.IsTrue(webProxy.IsBypassed(new Uri("http://127.0.0.1:8384/")));
     }
 
-    /// <summary>#464:系统代理 URI 自带 userinfo 时,凭据必须带到 SSH 握手里(以前直接丢空必吃 407)。</summary>
+    /// <summary>#464:系统代理 URI 自带 userinfo 时,凭据必须带进隧道握手(以前直接丢空必吃 407)。</summary>
     [TestMethod]
     public void Resolver_SystemType_PreservesCredentialsFromProxyUri()
     {
@@ -367,12 +368,16 @@ public class ProxySupportTests
             ProxyResolver.SystemProxySource = new WebProxy("http://u:p@sysproxy.example:8080");
             ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "system" });
 
-            ProxyRoute route = resolver.Resolve("example.com", 22);
+            // SSH(裸 TCP)与 HTTPS 都走同一个系统代理,凭据都要带上。
+            ProxyRoute ssh = resolver.Resolve("example.com", 22);
+            Assert.AreEqual(ProxyKind.Http, ssh.Kind);
+            Assert.AreEqual("sysproxy.example", ssh.Host);
+            Assert.AreEqual("u", ssh.Username);
+            Assert.AreEqual("p", ssh.Password);
 
-            Assert.AreEqual(ProxyKind.Http, route.Kind);
-            Assert.AreEqual("sysproxy.example", route.Host);
-            Assert.AreEqual("u", route.Username);
-            Assert.AreEqual("p", route.Password);
+            ProxyRoute https = resolver.Resolve("example.com", 443, "https");
+            Assert.AreEqual(ProxyKind.Http, https.Kind);
+            Assert.AreEqual("u", https.Username);
         }
         finally
         {
@@ -389,21 +394,189 @@ public class ProxySupportTests
         Assert.AreEqual(ProxyKind.Http, ProxyResolver.MapProxyScheme("http"));
     }
 
-    /// <summary>#464:SSH(:22)只用 https 探针会撞上按 scheme 分流的 PAC;http 说走代理就必须走代理。</summary>
+    /// <summary>
+    /// 规约:system 是**解析器**。系统配的是 HTTP,就作用于全部出站 —— SSH / SFTP / FTP 控制与数据
+    /// 都走它,而不是"只代理 HTTP 更新"。
+    /// </summary>
     [TestMethod]
-    public void Resolver_SystemType_SshProbesHttpAsWellAsHttps()
+    public void Resolver_SystemType_HttpSystemProxy_CoversBareTcp()
     {
         IWebProxy? saved = ProxyResolver.SystemProxySource;
         try
         {
-            // https 探针绕过、http 探针走代理:旧实现只问 https 会误判直连。
-            ProxyResolver.SystemProxySource = new SchemeSplitProxy();
+            ProxyResolver.SystemProxySource = new WebProxy("http://sysproxy.example:8080");
+            ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "system" });
+
+            Assert.AreEqual(ProxyKind.Http, resolver.Resolve("example.com", 22).Kind, "SSH 跟随系统代理");
+            Assert.AreEqual(ProxyKind.Http, resolver.Resolve("example.com", 21).Kind, "FTP 控制连接跟随系统代理");
+            Assert.AreEqual(ProxyKind.Http, resolver.Resolve("example.com", 2222).Kind, "自定义 SSH 端口同样跟随");
+            Assert.AreEqual(ProxyKind.Http, resolver.Resolve("example.com", 443, "https").Kind, "HTTP 通道也跟随");
+        }
+        finally
+        {
+            ProxyResolver.SystemProxySource = saved;
+        }
+    }
+
+    /// <summary>
+    /// 规约:系统配的是 SOCKS 就按 SOCKS5 走,绝不硬套 HTTP CONNECT。
+    /// </summary>
+    [TestMethod]
+    public void Resolver_SystemType_SocksSystemProxy_ResolvesToSocks5()
+    {
+        IWebProxy? saved = ProxyResolver.SystemProxySource;
+        try
+        {
+            ProxyResolver.SystemProxySource = new WebProxy("socks5://sysproxy.example:1080");
             ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "system" });
 
             ProxyRoute route = resolver.Resolve("example.com", 22);
 
-            Assert.AreEqual(ProxyKind.Http, route.Kind);
+            Assert.AreEqual(ProxyKind.Socks5, route.Kind);
             Assert.AreEqual("sysproxy.example", route.Host);
+            Assert.AreEqual(1080, route.Port);
+        }
+        finally
+        {
+            ProxyResolver.SystemProxySource = saved;
+        }
+    }
+
+    /// <summary>
+    /// 规约:系统代理默认**远程解析** DNS(把主机名交给代理)。只有 none 才本机解析。
+    /// </summary>
+    [TestMethod]
+    public void Resolver_SystemType_DefaultsToRemoteDns()
+    {
+        IWebProxy? saved = ProxyResolver.SystemProxySource;
+        try
+        {
+            ProxyResolver.SystemProxySource = new WebProxy("http://sysproxy.example:8080");
+            ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "system" });
+
+            Assert.IsTrue(resolver.Resolve("example.com", 22).ProxyDns, "默认把主机名交给代理解析");
+            Assert.IsTrue(resolver.Resolve("example.com", 443, "https").ProxyDns);
+        }
+        finally
+        {
+            ProxyResolver.SystemProxySource = saved;
+        }
+    }
+
+    /// <summary>
+    /// 规约:PAC / 系统代理探询失败时明确回退直连,不静默乱连、也不把失败当成"代理已生效"。
+    /// </summary>
+    [TestMethod]
+    public void Resolver_SystemType_ProbeFailure_FallsBackToDirect()
+    {
+        IWebProxy? saved = ProxyResolver.SystemProxySource;
+        try
+        {
+            ProxyResolver.SystemProxySource = new ThrowingProxy();
+            ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "system" });
+
+            Assert.AreEqual(ProxyKind.None, resolver.Resolve("example.com", 22).Kind);
+            Assert.AreEqual(ProxyKind.None, resolver.Resolve("example.com", 443, "https").Kind);
+        }
+        finally
+        {
+            ProxyResolver.SystemProxySource = saved;
+        }
+    }
+
+    /// <summary>
+    /// 规约:none 必须**真正直连** —— 即便系统代理可用,none 也不回看它(更不会读环境变量)。
+    /// "选了无代理仍绕出去"是这类客户端最常见的故障。
+    /// </summary>
+    [TestMethod]
+    public void Resolver_NoneType_IgnoresSystemProxyEntirely()
+    {
+        IWebProxy? saved = ProxyResolver.SystemProxySource;
+        try
+        {
+            ProxyResolver.SystemProxySource = new WebProxy("http://sysproxy.example:8080");
+            ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "none" });
+
+            Assert.AreEqual(ProxyKind.None, resolver.Resolve("example.com", 22).Kind);
+            Assert.AreEqual(ProxyKind.None, resolver.Resolve("example.com", 443, "https").Kind);
+
+            // HttpClient 侧同样直连:GetProxy 返回 null = 不走代理。
+            var webProxy = new VelaWebProxy(resolver);
+            Assert.IsNull(webProxy.GetProxy(new Uri("https://api.github.com/")));
+            Assert.IsTrue(webProxy.IsBypassed(new Uri("https://api.github.com/")));
+        }
+        finally
+        {
+            ProxyResolver.SystemProxySource = saved;
+        }
+    }
+
+    /// <summary>抛错的假系统代理:模拟 PAC 求值失败 / 系统代理配置损坏。</summary>
+    private sealed class ThrowingProxy : IWebProxy
+    {
+        public ICredentials? Credentials { get; set; }
+        public bool IsBypassed(Uri host) => throw new InvalidOperationException("PAC evaluation failed");
+        public Uri? GetProxy(Uri destination) => throw new InvalidOperationException("PAC evaluation failed");
+    }
+
+    /// <summary>裸 TCP 也能被显式 http / socks5 代理:那条路不看系统代理。</summary>
+    [TestMethod]
+    public void Resolver_ExplicitProxy_StillAppliesToBareTcp()
+    {
+        ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "socks5", Host = "proxy.example", Port = 1080 });
+        Assert.AreEqual(ProxyKind.Socks5, resolver.Resolve("example.com", 22).Kind);
+    }
+
+    /// <summary>
+    /// #464:保存代理设置后,同一个解析器实例的**下一次**解析就必须用新值 —— 不必重启应用。
+    /// 设置服务的只读快照在保存时被整体替换,解析器每次都读它,这里把这个契约钉住。
+    /// </summary>
+    [TestMethod]
+    public void Resolver_ProxyTypeChange_TakesEffectWithoutRestart()
+    {
+        ISettingsService settings = Substitute.For<ISettingsService>();
+        settings.CurrentSnapshot.Returns(new AppSettings
+        {
+            Proxy = new ProxyOptions { Type = "none" },
+        });
+        var resolver = new ProxyResolver(settings);
+
+        Assert.AreEqual(ProxyKind.None, resolver.Resolve("example.com", 22).Kind);
+
+        // 用户切到 SOCKS5 代理并保存。
+        settings.CurrentSnapshot.Returns(new AppSettings
+        {
+            Proxy = new ProxyOptions { Type = "socks5", Host = "proxy.example", Port = 1080 },
+        });
+        ProxyRoute viaProxy = resolver.Resolve("example.com", 22);
+        Assert.AreEqual(ProxyKind.Socks5, viaProxy.Kind);
+        Assert.AreEqual("proxy.example", viaProxy.Host);
+        Assert.AreEqual(1080, viaProxy.Port);
+
+        // 再切回无代理:立刻直连,不需要重启。
+        settings.CurrentSnapshot.Returns(new AppSettings
+        {
+            Proxy = new ProxyOptions { Type = "none" },
+        });
+        Assert.AreEqual(ProxyKind.None, resolver.Resolve("example.com", 22).Kind);
+    }
+
+    /// <summary>
+    /// system 档对 HTTP 通道跟随系统代理(VelaWebProxy 会把目标 scheme 透传下去)——
+    /// AI 插件取模型列表、更新检查这类网页请求在需要代理的网络里照常工作。
+    /// </summary>
+    [TestMethod]
+    public void VelaWebProxy_SystemType_ProxiesHttpChannels()
+    {
+        IWebProxy? saved = ProxyResolver.SystemProxySource;
+        try
+        {
+            ProxyResolver.SystemProxySource = new WebProxy("http://sysproxy.example:8080");
+            ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "system" });
+            var webProxy = new VelaWebProxy(resolver);
+
+            Assert.AreEqual(new Uri("http://sysproxy.example:8080"), webProxy.GetProxy(new Uri("https://api.github.com/")));
+            Assert.IsFalse(webProxy.IsBypassed(new Uri("https://api.github.com/")));
         }
         finally
         {
@@ -420,7 +593,7 @@ public class ProxySupportTests
         public Uri? GetProxy(Uri destination) => new("http://sysproxy.example:8080");
     }
 
-    /// <summary>schemeHint 让 HTTP 通道按真实协议探针:https 目标不再被 http 规则误判走代理。</summary>
+    /// <summary>HTTP 通道按真实协议探针:https 目标不再被 http 规则误判走代理。</summary>
     [TestMethod]
     public void Resolver_SchemeHint_FollowsCallerScheme()
     {
@@ -434,7 +607,7 @@ public class ProxySupportTests
             Assert.AreEqual(ProxyKind.None, resolver.Resolve("example.com", 443, "https").Kind);
             // 同一目标按 http 问:http 探针命中 → 走代理。
             Assert.AreEqual(ProxyKind.Http, resolver.Resolve("example.com", 443, "http").Kind);
-            // 裸 TCP(SSH/FTP,无 hint):双探针,http 命中即走代理(保持 #464 修复行为)。
+            // 裸 TCP(SSH / FTP,无 hint):按 http 探针问 → 同样走代理(system 覆盖全部出站)。
             Assert.AreEqual(ProxyKind.Http, resolver.Resolve("example.com", 22).Kind);
         }
         finally

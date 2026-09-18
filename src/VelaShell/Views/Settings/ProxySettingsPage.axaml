@@ -14,7 +14,9 @@
 
     <!-- 代理类型 -->
     <Grid ColumnDefinitions="*,Auto">
-      <StackPanel Spacing="2">
+      <!-- 右侧给下拉框留出 16px 呼吸位:说明文字换行时不会贴着(更不会压到)控件。
+           说明靠 row-desc 的 Wrap 换行 —— 它只在被约束的左列里才真的换。 -->
+      <StackPanel Spacing="2" Margin="0,0,16,0">
         <TextBlock Classes="row-label" Text="{loc:Localize SetProxy_Type}" />
         <TextBlock Classes="row-desc" Text="{loc:Localize SetProxy_TypeDesc}" />
       </StackPanel>
@@ -62,6 +64,48 @@
         <ToggleSwitch Grid.Column="1" x:Name="ProxyDnsToggle"
                       IsChecked="{Binding Proxy.ProxyDns}" VerticalAlignment="Center" />
       </Grid>
+    </StackPanel>
+
+    <Border Classes="sep" />
+
+    <!-- 四种模式的区别:按表格排 —— 模式名对齐成一列(用下拉框里同一套词),
+         说明在右列自动换行。原先是一整块纯文本,用户反馈「太乱」:
+         项目符号后面的长句换行后从行首续写,眼睛找不到下一项从哪开始。 -->
+    <StackPanel x:Name="ProxyModesHelp" Spacing="5">
+      <TextBlock Classes="section-title" Text="{loc:Localize SetProxy_ModesTitle}" />
+      <TextBlock Classes="row-desc" Text="{loc:Localize SetProxy_ModesIntro}" />
+
+      <Border Classes="table" Margin="0,3,0,0">
+        <StackPanel>
+          <Border Padding="12,9" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="104,*">
+              <TextBlock Classes="row-label" TextWrapping="Wrap" Text="{loc:Localize SetProxy_TypeNone}" />
+              <TextBlock Grid.Column="1" Classes="row-desc" Margin="12,0,0,0" Text="{loc:Localize SetProxy_ModeNoneDesc}" />
+            </Grid>
+          </Border>
+          <Border Padding="12,9" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="104,*">
+              <TextBlock Classes="row-label" TextWrapping="Wrap" Text="{loc:Localize SetProxy_TypeSystem}" />
+              <TextBlock Grid.Column="1" Classes="row-desc" Margin="12,0,0,0" Text="{loc:Localize SetProxy_ModeSystemDesc}" />
+            </Grid>
+          </Border>
+          <Border Padding="12,9" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="104,*">
+              <TextBlock Classes="row-label" TextWrapping="Wrap" Text="{loc:Localize SetProxy_TypeHttp}" />
+              <TextBlock Grid.Column="1" Classes="row-desc" Margin="12,0,0,0" Text="{loc:Localize SetProxy_ModeHttpDesc}" />
+            </Grid>
+          </Border>
+          <Border Padding="12,9" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="104,*">
+              <TextBlock Classes="row-label" TextWrapping="Wrap" Text="{loc:Localize SetProxy_TypeSocks5}" />
+              <TextBlock Grid.Column="1" Classes="row-desc" Margin="12,0,0,0" Text="{loc:Localize SetProxy_ModeSocks5Desc}" />
+            </Grid>
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Classes="row-desc" Margin="0,2,0,0" Text="{loc:Localize SetProxy_ModesScope}" />
+      <TextBlock Classes="row-desc" Text="{loc:Localize SetProxy_ModesPick}" />
     </StackPanel>
   </StackPanel>
 </UserControl>

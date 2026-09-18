@@ -4376,13 +4376,13 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>網路代理</value>
   </data>
   <data name="SetProxy_Subtitle" xml:space="preserve">
-    <value>// 為應用全部出站連線(SSH / FTP / HTTP)設定代理</value>
+    <value>// 決定「VelaShell 連遠端主機的第一跳 TCP 怎麼走」:SSH / SFTP / FTP、更新檢查、同步與外掛都依它執行(隧道 -L / -R / -D 是入站,與這裡無關)</value>
   </data>
   <data name="SetProxy_Type" xml:space="preserve">
     <value>代理類型</value>
   </data>
   <data name="SetProxy_TypeDesc" xml:space="preserve">
-    <value>// 僅 HTTP 與 SOCKS5 需要填寫主機、連接埠與憑證。注意：HTTP 代理常拒絕 CONNECT 到 SSH(:22)/FTP(:21)，連這類服務請優先用 SOCKS5。</value>
+    <value>// 僅 HTTP 與 SOCKS5 需要填寫主機、連接埠與憑證。「系統代理」會把系統設定解析成 HTTP 或 SOCKS5,並作用於全部出站連線;SSH / FTP 建議優先用 SOCKS5 —— HTTP 代理常拒絕 CONNECT 到 :22 / :21。</value>
   </data>
   <data name="SetProxy_TypeNone" xml:space="preserve">
     <value>無代理</value>
@@ -4416,6 +4416,30 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="SetProxy_ProxyDnsDesc" xml:space="preserve">
     <value>// 開 = 主機名稱交給代理端解析;關 = 本地解析後再經代理連線</value>
+  </data>
+  <data name="SetProxy_ModesTitle" xml:space="preserve">
+    <value>四種模式的差異</value>
+  </data>
+  <data name="SetProxy_ModesIntro" xml:space="preserve">
+    <value>// 四種模式只決定一件事:VelaShell 連遠端主機的第一跳 TCP 怎麼走。隧道(-L / -R / -D)是入站,與它們無關。改完立即對下一次連線生效,不用重啟。</value>
+  </data>
+  <data name="SetProxy_ModeNoneDesc" xml:space="preserve">
+    <value>直連。不回看系統代理,也不讀 HTTP_PROXY / ALL_PROXY。</value>
+  </data>
+  <data name="SetProxy_ModeSystemDesc" xml:space="preserve">
+    <value>解析器,不是協定:讀 OS 目前代理(Windows 含 PAC),折成 HTTP 或 SOCKS5 —— 系統是 SOCKS 就按 SOCKS5。未設定、命中繞過或 PAC 求值失敗則直連。</value>
+  </data>
+  <data name="SetProxy_ModeHttpDesc" xml:space="preserve">
+    <value>應用層(第 7 層):用 CONNECT 把整條連線當隧道。只走 TCP,不支援 UDP;FTP 必須被動模式。能否連 :22 取決於代理端實作。</value>
+  </data>
+  <data name="SetProxy_ModeSocks5Desc" xml:space="preserve">
+    <value>工作階段 / 傳輸層:只轉發位元組、不解析內容,是給 SSH / FTP 掛代理時的首選。預設把主機名稱交給代理解析(等價 socks5h)。</value>
+  </data>
+  <data name="SetProxy_ModesScope" xml:space="preserve">
+    <value>// 覆蓋 SSH / SFTP / FTP(控制 + 被動資料)、更新檢查、Gist、資訊源與外掛 HTTP。</value>
+  </data>
+  <data name="SetProxy_ModesPick" xml:space="preserve">
+    <value>// 怎麼選:伺服器能直連就用「無代理」;需要借代理出國時優先 SOCKS5。</value>
   </data>
   <data name="Msg_ProxyMisconfigured" xml:space="preserve">
     <value>已啟用代理,但代理主機或連接埠未設定,請檢查「設定 → 網路代理」。</value>
