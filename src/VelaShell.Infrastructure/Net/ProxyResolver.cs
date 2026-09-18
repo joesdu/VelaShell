@@ -57,27 +57,120 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
         }
         try
         {
-            // 系统代理按 URL 配置(可带 bypass 列表),用 https 目标探询最通用的一档。
-            var target = new Uri($"https://{FormatHost(targetHost)}:{targetPort}/");
-            if (sys.IsBypassed(target))
+            // SSH 是裸 TCP,不是 HTTPS:只用 https 探针会撞上按 scheme 分流的 PAC/绕过规则。
+            // http 与 https 各问一次,任一说走代理就走代理(取先说走代理的那一档)。
+            // 端口同样参与 bypass 判断,故带上真实目标端口(#464)。
+            Uri? probe = SelectSystemProbe(sys, targetHost, targetPort);
+            if (probe is null)
             {
                 return ProxyRoute.Direct;
             }
-            Uri? p = sys.GetProxy(target);
-            if (p is null || p == target)
+            Uri? p = SafeGetProxy(sys, probe);
+            if (p is null || IsSameTarget(p, probe))
             {
                 return ProxyRoute.Direct;
             }
-            ProxyKind kind = p.Scheme.StartsWith("socks", StringComparison.OrdinalIgnoreCase)
-                ? ProxyKind.Socks5
-                : ProxyKind.Http;
-            return new(kind, p.Host, p.Port, "", "", o.ProxyDns);
+            ProxyKind kind = MapProxyScheme(p.Scheme);
+            int port = p.Port is < 1 or > 65535 ? DefaultProxyPort(kind) : p.Port;
+            if (string.IsNullOrWhiteSpace(p.Host))
+            {
+                return ProxyRoute.Direct;
+            }
+            (string user, string pass) = ExtractProxyCredentials(sys, p);
+            return new(kind, p.Host, port, user, pass, o.ProxyDns);
         }
         catch
         {
             // 系统代理探询失败(非法主机名等)不阻断连接:system 档语义是"跟随系统",系统无代理即直连。
             return ProxyRoute.Direct;
         }
+    }
+
+    /// <summary>
+    /// 系统代理探针选择:http/https 各问一次,任一命中代理即返回该探针;都绕过则返回 null。
+    /// SSH 走裸 TCP,与 https 没有绑定关系,单用 https 探针是 #464 的误路由根源之一。
+    /// </summary>
+    private static Uri? SelectSystemProbe(IWebProxy sys, string targetHost, int targetPort)
+    {
+        string formatted = FormatHost(targetHost.Trim());
+        Uri httpProbe;
+        Uri httpsProbe;
+        try
+        {
+            httpProbe = new($"http://{formatted}:{targetPort}/");
+            httpsProbe = new($"https://{formatted}:{targetPort}/");
+        }
+        catch
+        {
+            return null;
+        }
+        bool httpBypassed = SafeIsBypassed(sys, httpProbe);
+        bool httpsBypassed = SafeIsBypassed(sys, httpsProbe);
+        if (!httpBypassed)
+        {
+            return httpProbe;
+        }
+        if (!httpsBypassed)
+        {
+            return httpsProbe;
+        }
+        return null;
+    }
+
+    private static bool SafeIsBypassed(IWebProxy sys, Uri target)
+    {
+        try { return sys.IsBypassed(target); }
+        catch { return true; }
+    }
+
+    private static Uri? SafeGetProxy(IWebProxy sys, Uri target)
+    {
+        try { return sys.GetProxy(target); }
+        catch { return null; }
+    }
+
+    private static bool IsSameTarget(Uri proxy, Uri probe) =>
+        Uri.Compare(proxy, probe, UriComponents.HostAndPort | UriComponents.Scheme, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0;
+
+    /// <summary>代理协议映射:socks 系一律按 SOCKS5 处理(含 socks5h),http/https 按 HTTP CONNECT 处理。</summary>
+    internal static ProxyKind MapProxyScheme(string scheme) =>
+        scheme.StartsWith("socks", StringComparison.OrdinalIgnoreCase)
+            ? ProxyKind.Socks5
+            : ProxyKind.Http;
+
+    private static int DefaultProxyPort(ProxyKind kind) => kind == ProxyKind.Socks5 ? 1080 : 80;
+
+    /// <summary>
+    /// 系统代理凭据提取(#464):优先解析代理 URI 自带的 userinfo,
+    /// 其次取 <see cref="IWebProxy.Credentials" />(WebProxy 上用户配过的账号)。
+    /// 以往此处直接返回空,带认证的系统代理必吃 407。
+    /// </summary>
+    internal static (string Username, string Password) ExtractProxyCredentials(IWebProxy sys, Uri proxyUri)
+    {
+        if (!string.IsNullOrEmpty(proxyUri.UserInfo))
+        {
+            string userInfo = Uri.UnescapeDataString(proxyUri.UserInfo);
+            int sep = userInfo.IndexOf(':');
+            if (sep >= 0)
+            {
+                return (userInfo[..sep], userInfo[(sep + 1)..]);
+            }
+            return (userInfo, "");
+        }
+        try
+        {
+            NetworkCredential? cred = sys.Credentials?.GetCredential(proxyUri, "Basic")
+                ?? sys.Credentials?.GetCredential(proxyUri, proxyUri.Scheme);
+            if (cred is not null && !string.IsNullOrEmpty(cred.UserName))
+            {
+                return (cred.UserName, cred.Password ?? "");
+            }
+        }
+        catch
+        {
+            // 凭据探询失败按无凭据处理,由后续握手的 407 报错,而不是在这里阻断。
+        }
+        return ("", "");
     }
 
     /// <summary>环回目标永不走代理:代理自身的环回中继、本机实验环境都依赖这一点。</summary>

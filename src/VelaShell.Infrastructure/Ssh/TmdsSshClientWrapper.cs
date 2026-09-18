@@ -16,6 +16,8 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
     private readonly int _firstHopPort;
     private readonly IProxyResolver? _proxyResolver;
     private LoopbackProxyRelay? _relay;
+    private ProxyRoute? _lastRoute;
+    private string _lastTarget = "";
     private SshClient? _client;
     private bool _disposed;
 
@@ -126,7 +128,7 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
                 : null;
             DisposeRelay();
             if (proxyError is not null)
-                throw new VelaSshConnectionException(proxyError.Message, proxyError);
+                throw new VelaSshConnectionException(DescribeProxyError(proxyError), proxyError);
             if (mismatch is not null)
                 throw new VelaSshConnectionException($"{ex.Message}\n{mismatch}", ex);
             if (TmdsSshInterop.Translate(ex, cancellationToken) is { } translated) throw translated;
@@ -167,6 +169,7 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
     private void PrepareProxyRelay()
     {
         DisposeRelay();
+        _lastRoute = null;
         if (_proxyResolver is null) return;
         ProxyRoute route;
         try
@@ -183,9 +186,31 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
             _firstHopSettings.Port = _firstHopPort;
             return;
         }
+        _lastRoute = route;
+        _lastTarget = $"{_firstHopHost}:{_firstHopPort}";
         _relay = LoopbackProxyRelay.Start(route, _firstHopHost, _firstHopPort);
         _firstHopSettings.HostName = "127.0.0.1";
         _firstHopSettings.Port = _relay.Port;
+    }
+
+    /// <summary>
+    /// 代理失败的错误补全(#464):原来只抛握手本身的消息,用户看不出走了哪个代理、
+    /// 去往哪个目标,更看不出"HTTP 代理拒绝 CONNECT :22 该换 SOCKS5"这一层。
+    /// 后缀是纯技术信息(host:port),不新增本地化键。
+    /// </summary>
+    private string DescribeProxyError(Exception proxyError)
+    {
+        if (_lastRoute is null)
+        {
+            return proxyError.Message;
+        }
+        string via = $" (via {(_lastRoute.Kind == ProxyKind.Socks5 ? "socks5" : "http")} {_lastRoute.Host}:{_lastRoute.Port} → {_lastTarget})";
+        // SSH 默认 22 端口经 HTTP CONNECT 常被代理软件限制(只放行 80/443):
+        // 此时直指换 SOCKS5/直连,免得用户对着通用报错干瞪眼。
+        string hint = _lastRoute.Kind == ProxyKind.Http && _lastTarget.EndsWith(":22", StringComparison.Ordinal)
+            ? " If the proxy refuses CONNECT to port 22, switch Proxy to socks5 (e.g. 127.0.0.1:10808) or none for TUN."
+            : "";
+        return proxyError.Message + via + hint;
     }
 
     private void DisposeRelay()

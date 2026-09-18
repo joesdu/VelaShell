@@ -357,6 +357,69 @@ public class ProxySupportTests
         Assert.IsTrue(webProxy.IsBypassed(new Uri("http://127.0.0.1:8384/")));
     }
 
+    /// <summary>#464:系统代理 URI 自带 userinfo 时,凭据必须带到 SSH 握手里(以前直接丢空必吃 407)。</summary>
+    [TestMethod]
+    public void Resolver_SystemType_PreservesCredentialsFromProxyUri()
+    {
+        IWebProxy? saved = ProxyResolver.SystemProxySource;
+        try
+        {
+            ProxyResolver.SystemProxySource = new WebProxy("http://u:p@sysproxy.example:8080");
+            ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "system" });
+
+            ProxyRoute route = resolver.Resolve("example.com", 22);
+
+            Assert.AreEqual(ProxyKind.Http, route.Kind);
+            Assert.AreEqual("sysproxy.example", route.Host);
+            Assert.AreEqual("u", route.Username);
+            Assert.AreEqual("p", route.Password);
+        }
+        finally
+        {
+            ProxyResolver.SystemProxySource = saved;
+        }
+    }
+
+    /// <summary>#464:socks5h 与 socks 系 scheme 一律按 SOCKS5 处理,不再误判成 HTTP CONNECT。</summary>
+    [TestMethod]
+    public void Resolver_SystemType_MapsSocksVariantsToSocks5()
+    {
+        Assert.AreEqual(ProxyKind.Socks5, ProxyResolver.MapProxyScheme("socks5h"));
+        Assert.AreEqual(ProxyKind.Socks5, ProxyResolver.MapProxyScheme("SOCKS5"));
+        Assert.AreEqual(ProxyKind.Http, ProxyResolver.MapProxyScheme("http"));
+    }
+
+    /// <summary>#464:SSH(:22)只用 https 探针会撞上按 scheme 分流的 PAC;http 说走代理就必须走代理。</summary>
+    [TestMethod]
+    public void Resolver_SystemType_SshProbesHttpAsWellAsHttps()
+    {
+        IWebProxy? saved = ProxyResolver.SystemProxySource;
+        try
+        {
+            // https 探针绕过、http 探针走代理:旧实现只问 https 会误判直连。
+            ProxyResolver.SystemProxySource = new SchemeSplitProxy();
+            ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "system" });
+
+            ProxyRoute route = resolver.Resolve("example.com", 22);
+
+            Assert.AreEqual(ProxyKind.Http, route.Kind);
+            Assert.AreEqual("sysproxy.example", route.Host);
+        }
+        finally
+        {
+            ProxyResolver.SystemProxySource = saved;
+        }
+    }
+
+    /// <summary>只对 https 绕过的假系统代理:复现按 scheme 分流的 PAC 行为。</summary>
+    private sealed class SchemeSplitProxy : IWebProxy
+    {
+        public ICredentials? Credentials { get; set; }
+        public bool IsBypassed(Uri host) =>
+            string.Equals(host.Scheme, "https", StringComparison.OrdinalIgnoreCase);
+        public Uri? GetProxy(Uri destination) => new("http://sysproxy.example:8080");
+    }
+
     // ———— 基建 ————
 
     private static ProxyResolver CreateResolver(ProxyOptions options)
