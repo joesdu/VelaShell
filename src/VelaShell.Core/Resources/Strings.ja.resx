@@ -4164,7 +4164,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>プロキシの種類</value>
   </data>
   <data name="SetProxy_TypeDesc" xml:space="preserve">
-    <value>// ホスト・ポート・資格情報は HTTP と SOCKS5 のみ</value>
+    <value>// ホスト・ポート・資格情報は HTTP と SOCKS5 のみ。注意: HTTP プロキシは SSH(:22)/FTP(:21)への CONNECT を拒否することが多いため、その場合は SOCKS5 推奨。</value>
   </data>
   <data name="SetProxy_TypeNone" xml:space="preserve">
     <value>プロキシなし</value>

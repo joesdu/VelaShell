@@ -45,10 +45,16 @@ public sealed record ProxyRoute(
 public interface IProxyResolver
 {
     /// <summary>
-    /// 解析连接到 <paramref name="targetHost" />:<paramref name="targetPort" /> 应使用的代理路由。
+    /// 解析连接到目标应使用的代理路由。
     /// none 或环回目标返回 <see cref="ProxyRoute.Direct" />;system 按系统代理折算;
     /// http / socks5 校验主机端口,配置不完整时抛 <see cref="InvalidOperationException" />
     /// (用户显式要求走代理时绝不静默直连)。
     /// </summary>
-    ProxyRoute Resolve(string targetHost, int targetPort);
+    /// <param name="targetHost">目标主机名或 IP。</param>
+    /// <param name="targetPort">目标端口。</param>
+    /// <param name="schemeHint">
+    /// 目标 URL 协议(仅 HTTP 通道传,如 <c>http</c>/<c>https</c>):system 档按该协议探针,
+    /// 避免按 scheme 分流的 PAC 被另一协议的规则误判。SSH/FTP 等裸 TCP 通道传 null(双探针)。
+    /// </param>
+    ProxyRoute Resolve(string targetHost, int targetPort, string? schemeHint = null);
 }

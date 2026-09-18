@@ -4382,7 +4382,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>代理类型</value>
   </data>
   <data name="SetProxy_TypeDesc" xml:space="preserve">
-    <value>// 仅 HTTP 与 SOCKS5 需要填写主机、端口与凭据</value>
+    <value>// 仅 HTTP 与 SOCKS5 需要填写主机、端口与凭据。注意：HTTP 代理常拒绝 CONNECT 到 SSH(:22)/FTP(:21)，连这类服务请优先用 SOCKS5。</value>
   </data>
   <data name="SetProxy_TypeNone" xml:space="preserve">
     <value>无代理</value>

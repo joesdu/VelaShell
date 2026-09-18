@@ -4167,7 +4167,7 @@ Overwrite it?</value>
     <value>Proxy type</value>
   </data>
   <data name="SetProxy_TypeDesc" xml:space="preserve">
-    <value>// Only HTTP and SOCKS5 take host, port and credentials</value>
+    <value>// Only HTTP and SOCKS5 take host, port and credentials. Note: HTTP proxies often refuse CONNECT to SSH (:22) / FTP (:21) — prefer SOCKS5 for those.</value>
   </data>
   <data name="SetProxy_TypeNone" xml:space="preserve">
     <value>No proxy</value>

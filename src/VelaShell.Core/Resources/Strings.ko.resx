@@ -4164,7 +4164,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
     <value>프록시 유형</value>
   </data>
   <data name="SetProxy_TypeDesc" xml:space="preserve">
-    <value>// 호스트·포트·자격 증명은 HTTP 및 SOCKS5에서만 사용</value>
+    <value>// 호스트·포트·자격 증명은 HTTP 및 SOCKS5에서만 사용. 참고: HTTP 프록시는 SSH(:22)/FTP(:21)로의 CONNECT를 거부하는 경우가 많으므로 해당 서비스에는 SOCKS5 권장.</value>
   </data>
   <data name="SetProxy_TypeNone" xml:space="preserve">
     <value>프록시 없음</value>

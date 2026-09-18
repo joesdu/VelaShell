@@ -420,6 +420,53 @@ public class ProxySupportTests
         public Uri? GetProxy(Uri destination) => new("http://sysproxy.example:8080");
     }
 
+    /// <summary>schemeHint 让 HTTP 通道按真实协议探针:https 目标不再被 http 规则误判走代理。</summary>
+    [TestMethod]
+    public void Resolver_SchemeHint_FollowsCallerScheme()
+    {
+        IWebProxy? saved = ProxyResolver.SystemProxySource;
+        try
+        {
+            ProxyResolver.SystemProxySource = new SchemeSplitProxy();
+            ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "system" });
+
+            // https 目标:https 探针说绕过 → 直连。
+            Assert.AreEqual(ProxyKind.None, resolver.Resolve("example.com", 443, "https").Kind);
+            // 同一目标按 http 问:http 探针命中 → 走代理。
+            Assert.AreEqual(ProxyKind.Http, resolver.Resolve("example.com", 443, "http").Kind);
+            // 裸 TCP(SSH/FTP,无 hint):双探针,http 命中即走代理(保持 #464 修复行为)。
+            Assert.AreEqual(ProxyKind.Http, resolver.Resolve("example.com", 22).Kind);
+        }
+        finally
+        {
+            ProxyResolver.SystemProxySource = saved;
+        }
+    }
+
+    /// <summary>环回豁免补齐:127/8 整段、尾点 FQDN、IPv4 映射 IPv6 一律不走代理。</summary>
+    [TestMethod]
+    public void Resolver_LoopbackVariants_BypassEvenWithExplicitProxy()
+    {
+        ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "socks5", Host = "proxy.example", Port = 1080 });
+        Assert.AreEqual(ProxyKind.None, resolver.Resolve("127.0.0.2", 22).Kind);
+        Assert.AreEqual(ProxyKind.None, resolver.Resolve("localhost.", 22).Kind);
+        Assert.AreEqual(ProxyKind.None, resolver.Resolve("::ffff:127.0.0.1", 22).Kind);
+        // 非环回不受影响。
+        Assert.AreEqual(ProxyKind.Socks5, resolver.Resolve("192.0.2.1", 22).Kind);
+    }
+
+    /// <summary>SOCKS5 凭据超 255 字节(RFC 1929 长度字段上限)在 Resolve 即报错,不等握手失败。</summary>
+    [TestMethod]
+    public void Resolver_Socks5OversizedCredentials_ThrowsEarly()
+    {
+        string longUser = new('u', 300);
+        ProxyResolver socks = CreateResolver(new ProxyOptions { Type = "socks5", Host = "proxy.example", Port = 1080, Username = longUser });
+        Assert.ThrowsExactly<InvalidOperationException>(() => socks.Resolve("example.com", 22));
+        // HTTP Basic 无此限制,不应误伤。
+        ProxyResolver http = CreateResolver(new ProxyOptions { Type = "http", Host = "proxy.example", Port = 8080, Username = longUser });
+        Assert.AreEqual(ProxyKind.Http, http.Resolve("example.com", 22).Kind);
+    }
+
     // ———— 基建 ————
 
     private static ProxyResolver CreateResolver(ProxyOptions options)

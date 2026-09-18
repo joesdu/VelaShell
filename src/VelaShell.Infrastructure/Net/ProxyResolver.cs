@@ -20,7 +20,7 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
     internal static IWebProxy? SystemProxySource { get; set; }
 
     /// <inheritdoc />
-    public ProxyRoute Resolve(string targetHost, int targetPort)
+    public ProxyRoute Resolve(string targetHost, int targetPort, string? schemeHint = null)
     {
         if (IsLoopback(targetHost))
         {
@@ -31,7 +31,7 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
         {
             "http" => Explicit(ProxyKind.Http, o),
             "socks5" => Explicit(ProxyKind.Socks5, o),
-            "system" => FromSystem(targetHost, targetPort, o),
+            "system" => FromSystem(targetHost, targetPort, o, schemeHint),
             _ => ProxyRoute.Direct,
         };
     }
@@ -42,12 +42,25 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
         catch { return new(); }
     }
 
-    private static ProxyRoute Explicit(ProxyKind kind, ProxyOptions o) =>
-        string.IsNullOrWhiteSpace(o.Host) || o.Port is < 1 or > 65535
-            ? throw new InvalidOperationException(Strings.Get("Msg_ProxyMisconfigured"))
-            : new(kind, o.Host.Trim(), o.Port, o.Username, o.Password, o.ProxyDns);
+    private static ProxyRoute Explicit(ProxyKind kind, ProxyOptions o)
+    {
+        if (string.IsNullOrWhiteSpace(o.Host) || o.Port is < 1 or > 65535)
+        {
+            throw new InvalidOperationException(Strings.Get("Msg_ProxyMisconfigured"));
+        }
+        if (kind == ProxyKind.Socks5 && (Utf8ByteCount(o.Username) > 255 || Utf8ByteCount(o.Password) > 255))
+        {
+            // SOCKS5 用户名密码子协商(RFC 1929)长度字段各 1 字节:握手必失败,
+            // 在这里前置报错,别等到隧道握手时才抛连接失败。
+            throw new InvalidOperationException(
+                Strings.Format("Msg_ProxyConnectFailed", "SOCKS5 username/password exceeds 255 bytes"));
+        }
+        return new(kind, o.Host.Trim(), o.Port, o.Username, o.Password, o.ProxyDns);
+    }
 
-    private static ProxyRoute FromSystem(string targetHost, int targetPort, ProxyOptions o)
+    private static int Utf8ByteCount(string s) => System.Text.Encoding.UTF8.GetByteCount(s ?? "");
+
+    private static ProxyRoute FromSystem(string targetHost, int targetPort, ProxyOptions o, string? schemeHint = null)
     {
         IWebProxy sys = SystemProxySource ?? HttpClient.DefaultProxy;
         if (sys is VelaWebProxy)
@@ -57,10 +70,10 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
         }
         try
         {
-            // SSH 是裸 TCP,不是 HTTPS:只用 https 探针会撞上按 scheme 分流的 PAC/绕过规则。
-            // http 与 https 各问一次,任一说走代理就走代理(取先说走代理的那一档)。
-            // 端口同样参与 bypass 判断,故带上真实目标端口(#464)。
-            Uri? probe = SelectSystemProbe(sys, targetHost, targetPort);
+            // 裸 TCP(SSH/FTP)不是 HTTPS:只用 https 探针会撞上按 scheme 分流的 PAC/绕过规则(#464)。
+            // 有 schemeHint(HTTP 通道带目标协议)时只按该协议探针;无 hint 时双探针,
+            // 任一说走代理就走代理(取先说走代理的那一档)。端口同样参与 bypass 判断,故带上真实端口。
+            Uri? probe = SelectSystemProbe(sys, targetHost, targetPort, schemeHint);
             if (probe is null)
             {
                 return ProxyRoute.Direct;
@@ -87,12 +100,15 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
     }
 
     /// <summary>
-    /// 系统代理探针选择:http/https 各问一次,任一命中代理即返回该探针;都绕过则返回 null。
-    /// SSH 走裸 TCP,与 https 没有绑定关系,单用 https 探针是 #464 的误路由根源之一。
+    /// 系统代理探针选择:有 <paramref name="schemeHint" />(http/https)时只按该协议探针,
+    /// 与调用方的真实目标协议一致;无 hint(SSH/FTP 裸 TCP)时双探针,任一命中代理即返回该探针;
+    /// 都绕过则返回 null。单用 https 探针问裸 TCP 是 #464 的误路由根源之一。
     /// </summary>
-    private static Uri? SelectSystemProbe(IWebProxy sys, string targetHost, int targetPort)
+    private static Uri? SelectSystemProbe(IWebProxy sys, string targetHost, int targetPort, string? schemeHint = null)
     {
         string formatted = FormatHost(targetHost.Trim());
+        bool wantHttp = string.Equals(schemeHint, "http", StringComparison.OrdinalIgnoreCase);
+        bool wantHttps = string.Equals(schemeHint, "https", StringComparison.OrdinalIgnoreCase);
         Uri httpProbe;
         Uri httpsProbe;
         try
@@ -103,6 +119,14 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
         catch
         {
             return null;
+        }
+        if (wantHttp)
+        {
+            return SafeIsBypassed(sys, httpProbe) ? null : httpProbe;
+        }
+        if (wantHttps)
+        {
+            return SafeIsBypassed(sys, httpsProbe) ? null : httpsProbe;
         }
         bool httpBypassed = SafeIsBypassed(sys, httpProbe);
         bool httpsBypassed = SafeIsBypassed(sys, httpsProbe);
@@ -173,10 +197,33 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
         return ("", "");
     }
 
-    /// <summary>环回目标永不走代理:代理自身的环回中继、本机实验环境都依赖这一点。</summary>
-    private static bool IsLoopback(string host) =>
-        host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
-        || (IPAddress.TryParse(host, out IPAddress? ip) && IPAddress.IsLoopback(ip));
+    /// <summary>
+    /// 环回目标永不走代理:代理自身的环回中继、本机实验环境都依赖这一点。
+    /// 覆盖 127/8 整段(含只认 127.0.0.1/::1 的 <see cref="IPAddress.IsLoopback" /> 漏掉的 127.0.0.2 等)、
+    /// IPv4 映射的 IPv6 形式(::ffff:127.x)与 FQDN 尾点(localhost.)。
+    /// </summary>
+    private static bool IsLoopback(string host)
+    {
+        string h = host.Trim().TrimEnd('.');
+        if (h.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        if (!IPAddress.TryParse(h, out IPAddress? ip))
+        {
+            return false;
+        }
+        if (IPAddress.IsLoopback(ip))
+        {
+            return true;
+        }
+        if (ip.IsIPv4MappedToIPv6)
+        {
+            ip = ip.MapToIPv4();
+        }
+        byte[] bytes = ip.GetAddressBytes();
+        return bytes.Length == 4 && bytes[0] == 127;
+    }
 
     /// <summary>IPv6 字面量拼进 URL 需要方括号。</summary>
     internal static string FormatHost(string host) =>

@@ -4382,7 +4382,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>代理類型</value>
   </data>
   <data name="SetProxy_TypeDesc" xml:space="preserve">
-    <value>// 僅 HTTP 與 SOCKS5 需要填寫主機、連接埠與憑證</value>
+    <value>// 僅 HTTP 與 SOCKS5 需要填寫主機、連接埠與憑證。注意：HTTP 代理常拒絕 CONNECT 到 SSH(:22)/FTP(:21)，連這類服務請優先用 SOCKS5。</value>
   </data>
   <data name="SetProxy_TypeNone" xml:space="preserve">
     <value>無代理</value>
