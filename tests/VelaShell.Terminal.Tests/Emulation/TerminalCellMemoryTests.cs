@@ -143,6 +143,91 @@ public class TerminalCellMemoryTests
         Assert.AreEqual(default, row[40]);
     }
 
+    /// <summary>
+    /// 截短边界要精确落在最后一个有内容的格上,与它是否压到向量块边界无关。
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TerminalRow.TrimToContent" /> 现在按字节成块找最后一个非零字节再换算回格索引
+    /// (见 <c>TerminalRow.LastNonDefaultCellIndex</c>)。这条用例把内容格在整行里挪遍所有位置,
+    /// 覆盖「块内命中 / 块外余量命中 / 恰好落在块首块尾」三种情况,钉住换算不差一格。
+    /// 列宽取 512 以远大于一个向量块的格数,确保走到成块扫描那一路。
+    /// </remarks>
+    [TestMethod]
+    public void Trimming_LandsExactlyOnTheLastContentCell_WhereverItSits()
+    {
+        const int columns = 512;
+        // 阈值是 keep/存留 <= 3/4 才截短,取值到 3/4-1 保证每次都会真的截短。
+        for (int contentAt = 0; contentAt < columns * 3 / 4; contentAt++)
+        {
+            var row = new TerminalRow(columns);
+            row.Fill(default);
+            row[contentAt] = new() { Rune = 'x' };
+
+            row.TrimToContent();
+
+            Assert.AreEqual(
+                contentAt + 1,
+                row.StoredColumns,
+                $"内容在第 {contentAt} 格时,截短后应恰好存到该格为止。");
+            Assert.AreEqual('x', row[contentAt].Rune);
+        }
+    }
+
+    /// <summary>整行都是默认空格时,截短把存储整个放掉。</summary>
+    [TestMethod]
+    public void Trimming_AnAllBlankRow_FreesTheStorage()
+    {
+        var row = new TerminalRow(200);
+        row.Fill(default);
+
+        row.TrimToContent();
+
+        Assert.AreEqual(0, row.StoredColumns);
+        Assert.AreEqual(200, row.Columns, "逻辑列宽不随截短变化。");
+        Assert.AreEqual(default, row[0]);
+    }
+
+    /// <summary>铺在空格上的 OSC 8 链接也算内容,不能连同句柄一起被截掉。</summary>
+    [TestMethod]
+    public void Trimming_KeepsATrailingLinkEvenWhenTheCellsAreBlank()
+    {
+        const int columns = 512;
+        const int linkAt = 100; // 落在 3/4 阈值内,确保真的走到截短分支。
+        var row = new TerminalRow(columns);
+        row.Fill(default);
+        row.SetLink(linkAt, 7);
+
+        row.TrimToContent();
+
+        Assert.AreEqual(linkAt + 1, row.StoredColumns, "链接格是内容,截短边界要把它包住。");
+        Assert.AreEqual(7, row.LinkAt(linkAt));
+    }
+
+    /// <summary>行宽小于一个向量块(16/32 字节)时,改走余量那一路也不能算错。</summary>
+    [TestMethod]
+    public void Trimming_HandlesRowsNarrowerThanOneVectorBlock()
+    {
+        for (int columns = 1; columns <= 8; columns++)
+        {
+            for (int contentAt = 0; contentAt < columns; contentAt++)
+            {
+                var row = new TerminalRow(columns);
+                row.Fill(default);
+                row[contentAt] = new() { Rune = 'x' };
+
+                row.TrimToContent();
+
+                // 阈值只在真正丢得掉至少 1/4 时才截短;窄行上大多是「不截」。
+                bool expectTrim = (contentAt + 1) * 4 <= columns * 3;
+                Assert.AreEqual(
+                    expectTrim ? contentAt + 1 : columns,
+                    row.StoredColumns,
+                    $"列宽 {columns}、内容在第 {contentAt} 格时的截短结果不符。");
+                Assert.AreEqual('x', row[contentAt].Rune);
+            }
+        }
+    }
+
     [TestMethod]
     public void TerminalColor_PackedRoundTrip_PreservesAllKinds()
     {

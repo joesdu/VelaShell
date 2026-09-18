@@ -28,6 +28,24 @@ public class EchoSuppressorTests
         Assert.AreEqual("banner\r\n pi@host:~$ ", result);
     }
 
+    /// <summary>
+    /// <see cref="EchoSuppressor.IndexOf" /> 的边界语义。它现在是 BCL <c>Span.IndexOf</c> 的薄封装,
+    /// 其中「空针」这一条与 BCL 的约定相反(BCL 返回 0,这里约定为「没找到」),得钉住。
+    /// </summary>
+    [TestMethod]
+    public void IndexOf_EdgeCases()
+    {
+        byte[] hay = Encoding.ASCII.GetBytes("abcabc");
+
+        Assert.AreEqual(0, EchoSuppressor.IndexOf(hay, Encoding.ASCII.GetBytes("abc")), "首个匹配在下标 0。");
+        Assert.AreEqual(1, EchoSuppressor.IndexOf(hay, Encoding.ASCII.GetBytes("bc")), "重复子串应返回首个匹配。");
+        Assert.AreEqual(2, EchoSuppressor.IndexOf(hay, Encoding.ASCII.GetBytes("c")), "单字节针。");
+        Assert.AreEqual(0, EchoSuppressor.IndexOf(hay, Encoding.ASCII.GetBytes("abcabc")), "整段相等。");
+        Assert.AreEqual(-1, EchoSuppressor.IndexOf(hay, Encoding.ASCII.GetBytes("abd")), "不存在。");
+        Assert.AreEqual(-1, EchoSuppressor.IndexOf(hay, Encoding.ASCII.GetBytes("abcabcabc")), "针比干草长。");
+        Assert.AreEqual(-1, EchoSuppressor.IndexOf(hay, []), "空针约定为「没找到」(与 BCL 不同)。");
+    }
+
     [TestMethod]
     public void TwoOccurrences_BothRemoved()
     {
