@@ -10,6 +10,13 @@ namespace VelaShell.Infrastructure.Net;
 /// <see cref="IProxyResolver" /> 实现:每次解析都读当前设置(设置服务有进程内 JSON 缓存,
 /// 读取廉价),保存代理设置后新建的连接立即生效,无需订阅保存事件。
 /// </summary>
+/// <remarks>
+/// <b>system 是解析器,不是协议</b>:读 OS 当前代理并折成 http / socks5,作用于**全部出站 TCP**
+/// (SSH / SFTP / FTP 控制与数据 / 全部 HTTP 请求)。数据源是**实时**的
+/// <see cref="HttpClient.DefaultProxy" />(Windows 上会给 Internet Settings 注册变更通知,
+/// Clash 开关系统代理后不需要重启应用)。
+/// <b>none 必须真正直连</b>:不回看系统代理,也不读 <c>HTTP_PROXY</c> / <c>ALL_PROXY</c>。
+/// </remarks>
 public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
 {
     /// <summary>
@@ -20,7 +27,7 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
     internal static IWebProxy? SystemProxySource { get; set; }
 
     /// <inheritdoc />
-    public ProxyRoute Resolve(string targetHost, int targetPort)
+    public ProxyRoute Resolve(string targetHost, int targetPort, string? schemeHint = null)
     {
         if (IsLoopback(targetHost))
         {
@@ -31,7 +38,11 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
         {
             "http" => Explicit(ProxyKind.Http, o),
             "socks5" => Explicit(ProxyKind.Socks5, o),
-            "system" => FromSystem(targetHost, targetPort, o),
+            // system 是**解析器**,不是协议:读 OS 当前代理,折成 http / socks5 再交给调用方,
+            // 作用于**全部出站 TCP**(SSH / SFTP / FTP 控制与数据 / HTTP)。
+            "system" => FromSystem(targetHost, targetPort, o, schemeHint),
+            // none = 强制直连。到这里就**不再回看系统代理、也不读 HTTP_PROXY / ALL_PROXY**
+            // (进程级 HttpClient.DefaultProxy 已被 VelaWebProxy 接管,不会有环境变量兜底)。
             _ => ProxyRoute.Direct,
         };
     }
@@ -42,12 +53,25 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
         catch { return new(); }
     }
 
-    private static ProxyRoute Explicit(ProxyKind kind, ProxyOptions o) =>
-        string.IsNullOrWhiteSpace(o.Host) || o.Port is < 1 or > 65535
-            ? throw new InvalidOperationException(Strings.Get("Msg_ProxyMisconfigured"))
-            : new(kind, o.Host.Trim(), o.Port, o.Username, o.Password, o.ProxyDns);
+    private static ProxyRoute Explicit(ProxyKind kind, ProxyOptions o)
+    {
+        if (string.IsNullOrWhiteSpace(o.Host) || o.Port is < 1 or > 65535)
+        {
+            throw new InvalidOperationException(Strings.Get("Msg_ProxyMisconfigured"));
+        }
+        if (kind == ProxyKind.Socks5 && (Utf8ByteCount(o.Username) > 255 || Utf8ByteCount(o.Password) > 255))
+        {
+            // SOCKS5 用户名密码子协商(RFC 1929)长度字段各 1 字节:握手必失败,
+            // 在这里前置报错,别等到隧道握手时才抛连接失败。
+            throw new InvalidOperationException(
+                Strings.Format("Msg_ProxyConnectFailed", "SOCKS5 username/password exceeds 255 bytes"));
+        }
+        return new(kind, o.Host.Trim(), o.Port, o.Username, o.Password, o.ProxyDns);
+    }
 
-    private static ProxyRoute FromSystem(string targetHost, int targetPort, ProxyOptions o)
+    private static int Utf8ByteCount(string s) => System.Text.Encoding.UTF8.GetByteCount(s ?? "");
+
+    private static ProxyRoute FromSystem(string targetHost, int targetPort, ProxyOptions o, string? schemeHint)
     {
         IWebProxy sys = SystemProxySource ?? HttpClient.DefaultProxy;
         if (sys is VelaWebProxy)
@@ -57,33 +81,141 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
         }
         try
         {
-            // 系统代理按 URL 配置(可带 bypass 列表),用 https 目标探询最通用的一档。
-            var target = new Uri($"https://{FormatHost(targetHost)}:{targetPort}/");
-            if (sys.IsBypassed(target))
+            // 探针 URL 见 BuildSystemProbe:HTTP 通道按自身协议问,裸 TCP 按 http 问。
+            Uri? probe = BuildSystemProbe(targetHost, targetPort, schemeHint);
+            if (probe is null || SafeIsBypassed(sys, probe))
             {
                 return ProxyRoute.Direct;
             }
-            Uri? p = sys.GetProxy(target);
-            if (p is null || p == target)
+            Uri? p = SafeGetProxy(sys, probe);
+            if (p is null || IsSameTarget(p, probe))
             {
                 return ProxyRoute.Direct;
             }
-            ProxyKind kind = p.Scheme.StartsWith("socks", StringComparison.OrdinalIgnoreCase)
-                ? ProxyKind.Socks5
-                : ProxyKind.Http;
-            return new(kind, p.Host, p.Port, "", "", o.ProxyDns);
+            // 系统配的是 SOCKS 就按 SOCKS5 走,绝不硬套 HTTP CONNECT。
+            ProxyKind kind = MapProxyScheme(p.Scheme);
+            int port = p.Port is < 1 or > 65535 ? DefaultProxyPort(kind) : p.Port;
+            if (string.IsNullOrWhiteSpace(p.Host))
+            {
+                return ProxyRoute.Direct;
+            }
+            (string user, string pass) = ExtractProxyCredentials(sys, p);
+            return new(kind, p.Host, port, user, pass, o.ProxyDns);
         }
         catch
         {
-            // 系统代理探询失败(非法主机名等)不阻断连接:system 档语义是"跟随系统",系统无代理即直连。
+            // 系统代理探询失败(非法主机名、PAC 求值抛错等):按直连。
+            // 系统代理的语义是"跟随系统",取不到就当作系统没配代理 —— 明确回退,不静默乱连。
             return ProxyRoute.Direct;
         }
     }
 
-    /// <summary>环回目标永不走代理:代理自身的环回中继、本机实验环境都依赖这一点。</summary>
-    private static bool IsLoopback(string host) =>
-        host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
-        || (IPAddress.TryParse(host, out IPAddress? ip) && IPAddress.IsLoopback(ip));
+    /// <summary>
+    /// 系统代理探针 URL。
+    /// </summary>
+    /// <remarks>
+    /// HTTP 通道按自己的协议问(http / https)—— 按 URL 分流的 PAC 只有问对协议才拿得准。
+    /// SSH / SFTP / FTP 是裸 TCP,协议无名可问,统一按 <c>http</c> 探:系统代理多是手工配置的
+    /// host:port,与 scheme 无关,http 是最通用的一档。遇到按 URL 分流的 PAC 时它可能直接回
+    /// DIRECT —— 那是**合法答案**,照它直连,不当失败(#464)。
+    /// </remarks>
+    private static Uri? BuildSystemProbe(string targetHost, int targetPort, string? schemeHint)
+    {
+        string formatted = FormatHost(targetHost.Trim());
+        string scheme = string.Equals(schemeHint, "https", StringComparison.OrdinalIgnoreCase) ? "https" : "http";
+        try
+        {
+            return new($"{scheme}://{formatted}:{targetPort}/");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool SafeIsBypassed(IWebProxy sys, Uri target)
+    {
+        try { return sys.IsBypassed(target); }
+        catch { return true; }
+    }
+
+    private static Uri? SafeGetProxy(IWebProxy sys, Uri target)
+    {
+        try { return sys.GetProxy(target); }
+        catch { return null; }
+    }
+
+    private static bool IsSameTarget(Uri proxy, Uri probe) =>
+        Uri.Compare(proxy, probe, UriComponents.HostAndPort | UriComponents.Scheme, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0;
+
+    /// <summary>代理协议映射:socks 系一律按 SOCKS5 处理(含 socks5h),http/https 按 HTTP CONNECT 处理。</summary>
+    internal static ProxyKind MapProxyScheme(string scheme) =>
+        scheme.StartsWith("socks", StringComparison.OrdinalIgnoreCase)
+            ? ProxyKind.Socks5
+            : ProxyKind.Http;
+
+    private static int DefaultProxyPort(ProxyKind kind) => kind == ProxyKind.Socks5 ? 1080 : 80;
+
+    /// <summary>
+    /// 系统代理凭据提取(#464):优先解析代理 URI 自带的 userinfo,
+    /// 其次取 <see cref="IWebProxy.Credentials" />(WebProxy 上用户配过的账号)。
+    /// 以往此处直接返回空,带认证的系统代理必吃 407。
+    /// </summary>
+    internal static (string Username, string Password) ExtractProxyCredentials(IWebProxy sys, Uri proxyUri)
+    {
+        if (!string.IsNullOrEmpty(proxyUri.UserInfo))
+        {
+            string userInfo = Uri.UnescapeDataString(proxyUri.UserInfo);
+            int sep = userInfo.IndexOf(':');
+            if (sep >= 0)
+            {
+                return (userInfo[..sep], userInfo[(sep + 1)..]);
+            }
+            return (userInfo, "");
+        }
+        try
+        {
+            NetworkCredential? cred = sys.Credentials?.GetCredential(proxyUri, "Basic")
+                ?? sys.Credentials?.GetCredential(proxyUri, proxyUri.Scheme);
+            if (cred is not null && !string.IsNullOrEmpty(cred.UserName))
+            {
+                return (cred.UserName, cred.Password ?? "");
+            }
+        }
+        catch
+        {
+            // 凭据探询失败按无凭据处理,由后续握手的 407 报错,而不是在这里阻断。
+        }
+        return ("", "");
+    }
+
+    /// <summary>
+    /// 环回目标永不走代理:代理自身的环回中继、本机实验环境都依赖这一点。
+    /// 覆盖 127/8 整段(含只认 127.0.0.1/::1 的 <see cref="IPAddress.IsLoopback" /> 漏掉的 127.0.0.2 等)、
+    /// IPv4 映射的 IPv6 形式(::ffff:127.x)与 FQDN 尾点(localhost.)。
+    /// </summary>
+    private static bool IsLoopback(string host)
+    {
+        string h = host.Trim().TrimEnd('.');
+        if (h.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        if (!IPAddress.TryParse(h, out IPAddress? ip))
+        {
+            return false;
+        }
+        if (IPAddress.IsLoopback(ip))
+        {
+            return true;
+        }
+        if (ip.IsIPv4MappedToIPv6)
+        {
+            ip = ip.MapToIPv4();
+        }
+        byte[] bytes = ip.GetAddressBytes();
+        return bytes.Length == 4 && bytes[0] == 127;
+    }
 
     /// <summary>IPv6 字面量拼进 URL 需要方括号。</summary>
     internal static string FormatHost(string host) =>

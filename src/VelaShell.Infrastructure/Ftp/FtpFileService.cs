@@ -10,6 +10,7 @@ using FluentFTP.Proxy.AsyncProxy;
 using VelaShell.Core.Ftp;
 using VelaShell.Core.Models;
 using VelaShell.Core.Net;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
 using VelaShell.Infrastructure.Net;
 using CoreDataMode = VelaShell.Core.Models.FtpDataConnectionMode;
@@ -51,13 +52,21 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         catch (Exception ex)
         {
             await pool.DisposeAsync().ConfigureAwait(false);
+            // 代理配错了(显式开了代理但 host/port 不完整):Resolve 抛的 Msg_ProxyMisconfigured
+            // 本身已经说清楚了,别让下面的 Translate 把它翻成笼统的“连接丢失”。
+            if (IsProxyMisconfigured(ex))
+            {
+                throw;
+            }
             // 证书没过校验时,FluentFTP 抛出来的是一个笼统的连接失败;这里换成带指纹的专用异常,
             // 上层才能弹出「是否信任该证书」并把指纹写回配置。
-            throw probe.Failure is { } failure
-                ? new VelaFtpCertificateException(
+            if (probe.Failure is { } failure)
+            {
+                throw new VelaFtpCertificateException(
                     $"The server certificate for {info.Host} is not trusted ({failure.PolicyErrors}).",
-                    failure.Thumbprint, failure.Subject, failure.Issuer, failure.ExpiresOn, failure.PolicyErrors, ex)
-                : FluentFtpInterop.Translate(ex, "connect");
+                    failure.Thumbprint, failure.Subject, failure.Issuer, failure.ExpiresOn, failure.PolicyErrors, ex);
+            }
+            throw WithProxyContext(FluentFtpInterop.Translate(ex, "connect"), info);
         }
         var sessionId = Guid.NewGuid();
         _sessions[sessionId] = pool;
@@ -613,6 +622,45 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             throw;
         }
     }
+
+    /// <summary>
+    /// 连接层失败的代理语境补全(与 SSH 侧 <c>TmdsSshClientWrapper.DescribeProxyError</c> 对齐):
+    /// 只包隧道层异常(<see cref="VelaFtpConnectionException" />,即代理拨号/握手/Socket/TLS 失败),
+    /// 认证/权限/路径等应用层异常原样透出 —— 那些说明隧道本身是通的。
+    /// 后缀是纯技术信息(host:port),不新增本地化键。
+    /// </summary>
+    private Exception WithProxyContext(Exception translated, FtpConnectionInfo info)
+    {
+        if (translated is not VelaFtpConnectionException)
+        {
+            return translated;
+        }
+        ProxyRoute route;
+        try
+        {
+            route = proxyResolver?.Resolve(info.Host, info.Port) ?? ProxyRoute.Direct;
+        }
+        catch
+        {
+            // 重算路由失败(多为显式代理配错,原异常就是那条)时不画蛇添足。
+            return translated;
+        }
+        if (route.Kind == ProxyKind.None)
+        {
+            return translated;
+        }
+        string via = $" (via {(route.Kind == ProxyKind.Socks5 ? "socks5" : "http")} {route.Host}:{route.Port} → {info.Host}:{info.Port})";
+        // FTP :21 经 HTTP CONNECT 同样常被代理软件限制(只放行 80/443),直指换 SOCKS5/直连。
+        string hint = route.Kind == ProxyKind.Http
+            ? " If the proxy refuses CONNECT, switch Proxy to socks5 or none for TUN."
+            : "";
+        return new VelaFtpConnectionException(translated.Message + via + hint, translated);
+    }
+
+    /// <summary>显式代理配错时 <see cref="IProxyResolver.Resolve" /> 的原样错误,不应被翻译淹没。</summary>
+    private static bool IsProxyMisconfigured(Exception ex) =>
+        ex is InvalidOperationException
+        && string.Equals(ex.Message, Strings.Get("Msg_ProxyMisconfigured"), StringComparison.Ordinal);
 
     /// <summary>
     /// 按统一代理路由实例化 FTP 客户端:直连用普通 <see cref="AsyncFtpClient" />,

@@ -30,7 +30,7 @@ public sealed class VelaWebProxy(IProxyResolver resolver) : IWebProxy
     /// <summary>代理认证凭据;按当前设置动态给出,setter 为满足接口而存在(忽略写入)。</summary>
     public ICredentials? Credentials
     {
-        get => SafeRoute("proxy-credential-probe.invalid", 443)?.ToCredential();
+        get => SafeRoute("proxy-credential-probe.invalid", 443, "https")?.ToCredential();
         set { }
     }
 
@@ -42,7 +42,8 @@ public sealed class VelaWebProxy(IProxyResolver resolver) : IWebProxy
             return null;
         }
         // 解析失败(代理已启用但配置不完整)必须让请求失败,绝不静默直连泄漏流量。
-        ProxyRoute route = resolver.Resolve(destination.Host, destination.Port);
+        // scheme 必须透传:系统 PAC 可按协议分流,不带 scheme 会被另一协议的规则误判。
+        ProxyRoute route = resolver.Resolve(destination.Host, destination.Port, destination.Scheme);
         return route.Kind switch
         {
             ProxyKind.Http => new Uri($"http://{ProxyResolver.FormatHost(route.Host)}:{route.Port}"),
@@ -53,12 +54,12 @@ public sealed class VelaWebProxy(IProxyResolver resolver) : IWebProxy
 
     /// <inheritdoc />
     public bool IsBypassed(Uri? host) =>
-        host is null || SafeRoute(host.Host, host.Port) is { Kind: ProxyKind.None };
+        host is null || SafeRoute(host.Host, host.Port, host.Scheme) is { Kind: ProxyKind.None };
 
     /// <summary>IsBypassed/Credentials 语境下的容错解析:配置不完整时按“不绕过”处理,让 GetProxy 抛出明确错误。</summary>
-    private ProxyRoute? SafeRoute(string host, int port)
+    private ProxyRoute? SafeRoute(string host, int port, string? schemeHint = null)
     {
-        try { return resolver.Resolve(host, port); }
+        try { return resolver.Resolve(host, port, schemeHint); }
         catch { return null; }
     }
 }
