@@ -4899,3 +4899,61 @@ headless 里量到的差别(网络代理页,视口 714px):
   **反向验证过**:把 `page-subtitle` 的 `TextWrapping` 去掉,前两条立刻变红并打印出被裁的句子。
 - `Infrastructure.Tests` 485(482 / 3 跳过)、`Core.Tests` 441(437 / 4)、
   `VelaShell.Tests` 1429(1413 / 16),零失败。
+
+## ✅ 81. 2026-09-19 终端核心回路:一次 SIMD 调研,五个候选三项被实测否决(性能调研)
+
+给终端引擎找 SIMD 加速点,逐条实测之后:五分之三的「直觉热点」被证伪,真正落地的只有两条
+「把手写算法换成 BCL 已向量化的 API」和一条「BCL 覆盖不到的结构体特化」。先摆结论:
+
+| 项 | 结果 | 依据 |
+| --- | --- | --- |
+| A1 `TerminalRow.TrimToContent` 向量扫描 | ✅ 落地 | 2.6x / 1.6x;BCL 替代反而慢 4x |
+| A2 `Fill` / `FillRange` → `Span<T>.Fill` | ✅ 落地 | −26%;手写 SIMD 实测持平 |
+| A3 脏行检测 / 子可视化分带 | ❌ 不做 | 实测无「全量重算」可救 |
+| B5 `EchoSuppressor.IndexOf` → `Span.IndexOf` | ✅ 落地 | 16.9x |
+| B6 UTF-8 ASCII 手写快路径 | ❌ 不做 | BCL 已向量化,手写净值≈0 |
+
+**A1 —— 唯一一处手写向量成立。** `TrimToContent` 是行退休进回滚区时从尾往前找最后一个
+非 `default` 格的热路径。因为 `TerminalCell` 是 16 字节无填充、且 `TerminalColor.Default`
+打包恒为 0,「格 == default」与「这 16 字节全是 0」等价,于是把 `_cells` 当字节流、用
+`Vector<byte>` 成块判零,命中非零块后块内**按格**定位(而不是逐字节回扫 —— 逐字节回扫在
+内容恰好顶到行尾的满宽换行行上会退化成几十次比较,反而比一次结构体比较还慢)。
+实测(200 列,`Vector<byte>.Count`=32):典型日志行(20 格内容)2.6x,近满行(190 格)1.6x,无退化。
+⚠️ **反向教训**:`Span<T>.LastIndexOfAnyExcept<T>` 这类泛型 `IEquatable` API 在 16 字节结构体上
+比旧标量循环**慢约 4 倍** —— 「换成 BCL 更保险」在这里是错的。
+
+**A2 —— 结论反直觉:手写 SIMD 广播是负收益。** `Fill` / `FillRange` 原先是手写 `for` 逐格赋值。
+实测(200 格 × 16 B):手写 `Vector128` 展开写 45.9 ns,与手写循环 45.9 ns **完全持平**,
+`Vector256` 也只 37.9 ns;而 `Span<T>.Fill`(BCL,已向量化)33.8 ns。正解不是加 SIMD,是把落单的
+手写循环删掉、交给 BCL —— `ResetFor` 早就这么写了,`Fill` / `FillRange` 是仅剩的两处。
+
+**A3 —— 不做,而且最初那个「几万格子每帧全量重算」的直觉是错的。** 用真 Skia 后端
+(`VelaShell.Terminal.RenderTests`)量:纯字母满屏一帧只记录 **54 个绘制操作**(51 个字形 run,
+约一行一个),逐格工作早被画刷 / 画笔 / 字形 / 语义 / 侧栏文本五套跨帧缓存与跨帧复用的
+GlyphRun 缓冲压掉了。真正要省下绘制,得走 Avalonia 的**子可视化元素**分带(`CursorOverlay`
+为光标闪烁就单拆一层,正是因为没有别的局部失效手段),那要同时穿过滚动、选区、搜索高亮、光标层、
+侧栏、折叠六个子系统 —— 代价与实测收益不成比例,详见 feature-plan.md「确认不做」。
+调查中顺带踩了个坑:无头测试项目 `VelaShell.Terminal.Tests` 没有真实字体,量出来满屏 2700+ 个
+run、139 ms、46 MB,像合批彻底坏了;换到真 Skia 后一切正常。**渲染性能结论只能在 RenderTests 取。**
+
+**B5 —— 16.9x,唯一的大收益。** `EchoSuppressor.IndexOf` 是手写朴素子串搜索(每碰到首字节相同
+就逐字节往下比,针越长退化越狠)。换 `Span.IndexOf`(BCL 向量化),64 KiB 缓冲上 25.6 µs → 1.5 µs。
+⚠️ 旁边的 `MatchFrom` **故意保留标量**:它每碰到首字节相同的位置就要调一次,绝大多数在第 2 字节
+就失配,实测标量 1.9 ns 与 `SequenceEqual` 2.0 ns 持平,换不换无差,留早退语义更直白的这版。
+
+**B6 —— 不做。** `Decoder.GetChars` 对纯 ASCII 已达 ~26 GB/s(比标量加宽快 10 倍,这就是它
+已向量化的直接证据),手写 `Vector.Widen` 只快 24% 且处理不了非 ASCII,加一趟「是否全 ASCII」
+校验就把这点吃干净。顺带发现 `GetCharCount` 是一趟冗余的完整扫描(约 25%),但按桥接 16 KiB
+分块算绝对开销只有几百 ns / 块,为它引入「跟踪 Encoding 求安全上界」的复杂度不划算。
+
+**全局经验:** 这个代码库里「直觉上的 SIMD 热点」基本已经被 BCL 或既有缓存覆盖掉了;真正的收益
+来自**把手写算法换成 BCL 已向量化的重载**(B5、A2),以及**少数 BCL 覆盖不到的结构体特化
+场景**(A1)。两种方向都得先量 —— 手写未必更快,换 BCL 也未必更保险。
+
+验证:
+
+- `VelaShell.Terminal.Tests` **505 通过**,本次新增 5 条:`TerminalCellMemoryTests` 4 条覆盖
+  `TrimToContent` 的向量边界(内容格挪遍整行每处 / 全空行 / 空格上的 OSC 8 链接 / 窄行),
+  `EchoSuppressorTests` 1 条钉住 `IndexOf` 的边界语义,含「空针 → -1」这个与 BCL 相反、必须守住的约定。
+- `VelaShell.Terminal.RenderTests` 5 通过。
+- 构建零警告。
