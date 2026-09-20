@@ -58,6 +58,20 @@ public class SessionProfile
     /// <summary>所属分组的标识;未分组时为 null。</summary>
     public Guid? GroupId { get; set; }
 
+    /// <summary>
+    /// 是否置顶(#474):置顶的连接在资源管理器里被提到树的最前面,按名称排。
+    /// </summary>
+    /// <remarks>
+    /// 提到最前而不是在组内上浮,是为了和「启动时折叠分组」
+    /// (<c>GeneralOptions.CollapseGroupsByDefault</c>)配套 —— 组都折上了,
+    /// 只在组内上浮的置顶项照样看不见,等于没置顶。
+    /// <para>
+    /// <see cref="GroupId" /> 不受影响:置顶只改<b>显示位置</b>,分组归属原样保留,
+    /// 取消置顶后它回到自己那一组。
+    /// </para>
+    /// </remarks>
+    public bool IsPinned { get; set; }
+
     /// <summary>最近一次成功连接的时间;从未连接时为 null。</summary>
     public DateTime? LastConnectedAt { get; set; }
 
@@ -198,6 +212,7 @@ public class SessionProfile
             PrivateKeyPassphrase = PrivateKeyPassphrase,
             CertificatePath = CertificatePath,
             GroupId = GroupId,
+            IsPinned = IsPinned,
             LastConnectedAt = LastConnectedAt,
             Tags = [.. Tags],
             JumpHostProfileId = JumpHostProfileId,

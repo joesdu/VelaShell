@@ -37,6 +37,11 @@ public class SftpServiceTests
         };
         _session = session;
         _connectionService.GetSession(_sessionId).Returns(session);
+
+        // 这一组用例测的是**纯 SFTP 路径**:没有 exec 通道,目录删除只能靠逐条递归。
+        // 必须显式写成 null —— NSubstitute 的递归替身会给接口返回值自动造一个替身,
+        // 于是 GetClient 交回一个凭空出现的 SSH 客户端,目录删除会拐进 rm -rf 快路径(#474)。
+        _connectionService.GetClient(_sessionId).Returns((ISshClientWrapper?)null);
         _sftpClient.IsConnected.Returns(true);
         _sftpService = new SftpService(_connectionService, _ => _sftpClient);
     }

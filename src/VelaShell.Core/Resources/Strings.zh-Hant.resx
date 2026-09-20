@@ -5271,4 +5271,22 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Sync_CompareFellBack" xml:space="preserve">
     <value>(SHA-256 不可用,依大小與時間比較)</value>
   </data>
+  <data name="Tree_PinSession" xml:space="preserve">
+    <value>置頂</value>
+  </data>
+  <data name="Tree_UnpinSession" xml:space="preserve">
+    <value>取消置頂</value>
+  </data>
+  <data name="SetGeneral_CollapseGroups" xml:space="preserve">
+    <value>啟動時摺疊群組</value>
+  </data>
+  <data name="SetGeneral_CollapseGroupsDesc" xml:space="preserve">
+    <value>資源管理器的群組預設摺疊;手動展開後的狀態在本次執行內保持。</value>
+  </data>
+  <data name="SetTransfer_FastRecursiveDelete" xml:space="preserve">
+    <value>用 rm -rf 刪除遠端目錄</value>
+  </data>
+  <data name="SetTransfer_FastRecursiveDeleteDesc" xml:space="preserve">
+    <value>僅 SSH 工作階段:一條命令取代逐個檔案的 SFTP 往返。命令不可用或失敗時自動回退到 SFTP 遞迴刪除。刪除前的確認不變,但這條路上沒有逐個檔案的進度。</value>
+  </data>
 </root>

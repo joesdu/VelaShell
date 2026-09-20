@@ -4822,4 +4822,22 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Sync_CompareFellBack" xml:space="preserve">
     <value>(SHA-256 사용 불가, 크기/시간으로 비교)</value>
   </data>
+  <data name="Tree_PinSession" xml:space="preserve">
+    <value>맨 위에 고정</value>
+  </data>
+  <data name="Tree_UnpinSession" xml:space="preserve">
+    <value>고정 해제</value>
+  </data>
+  <data name="SetGeneral_CollapseGroups" xml:space="preserve">
+    <value>시작할 때 그룹 접기</value>
+  </data>
+  <data name="SetGeneral_CollapseGroupsDesc" xml:space="preserve">
+    <value>탐색기의 그룹을 접은 상태로 시작합니다. 직접 펼친 상태는 앱을 닫을 때까지 유지됩니다.</value>
+  </data>
+  <data name="SetTransfer_FastRecursiveDelete" xml:space="preserve">
+    <value>rm -rf로 원격 폴더 삭제</value>
+  </data>
+  <data name="SetTransfer_FastRecursiveDeleteDesc" xml:space="preserve">
+    <value>SSH 세션 전용: 파일마다 SFTP를 왕복하는 대신 명령 한 번으로 삭제합니다. 명령을 쓸 수 없거나 실패하면 SFTP 재귀 삭제로 되돌아갑니다. 삭제 전 확인은 그대로이며, 파일별 진행률은 표시되지 않습니다.</value>
+  </data>
 </root>

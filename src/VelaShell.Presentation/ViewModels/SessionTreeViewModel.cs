@@ -12,7 +12,18 @@ namespace VelaShell.Presentation.ViewModels;
 public sealed class SessionTreeViewModel : ReactiveObject
 {
     private readonly ISessionRepository _repository;
+    private readonly ISettingsService? _settings;
     private readonly Dictionary<Guid, SessionProfile> _sessionCache = [];
+
+    /// <summary>
+    /// 各分组在本次运行里的展开态记忆(#474):键为分组 Id。
+    /// </summary>
+    /// <remarks>
+    /// 没有这份记忆,「启动时折叠分组」会在每次 <see cref="LoadTreeAsync" /> 上重新生效 ——
+    /// 而新建/编辑/删除一条连接、云同步回来都会重建整棵树,于是刚展开的分组又折回去了。
+    /// 记忆只活在进程内:设置管的是「应用打开时」,重启后本就该回到设置说的那个状态。
+    /// </remarks>
+    private readonly Dictionary<Guid, bool> _groupExpansion = [];
 
     /// <summary>
     /// 各配置最近一次上报的连接状态;重建树(LoadTreeAsync)后重放,状态圆点
@@ -25,9 +36,13 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
     /// <summary>用指定的会话仓储构造视图模型,并初始化各右键菜单命令及其可用性约束。</summary>
     /// <param name="repository">提供会话与分组读写、持久化的仓储。</param>
-    public SessionTreeViewModel(ISessionRepository repository)
+    /// <param name="settings">
+    /// 设置服务,用于读取「启动时折叠分组」(#474)。为 null(无头宿主/单测)时按展开处理。
+    /// </param>
+    public SessionTreeViewModel(ISessionRepository repository, ISettingsService? settings = null)
     {
         _repository = repository;
+        _settings = settings;
         Nodes = [];
         Nodes.CollectionChanged += OnNodesChanged;
         _hasNoSessions = true;
@@ -77,6 +92,10 @@ public sealed class SessionTreeViewModel : ReactiveObject
         DeleteGroupCommand = ReactiveCommand.CreateFromTask(
             DeleteSelectedGroupAsync,
             this.WhenAnyValue(x => x.SelectedNode).Select(node => node is { IsGroup: true })
+        );
+        TogglePinCommand = ReactiveCommand.CreateFromTask(
+            TogglePinSelectedAsync,
+            hasSelectedSession
         );
     }
 
@@ -158,10 +177,16 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
     private void OnNodePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(SessionTreeNodeViewModel.IsExpanded))
+        if (e.PropertyName != nameof(SessionTreeNodeViewModel.IsExpanded))
         {
-            SyncRows();
+            return;
         }
+        // 记下用户这次的展开/折叠选择,重建树时照这份记忆恢复(#474)。
+        if (sender is SessionTreeNodeViewModel { IsGroup: true } group)
+        {
+            _groupExpansion[group.Id] = group.IsExpanded;
+        }
+        SyncRows();
     }
 
     private void OnChildrenChanged(object? sender, NotifyCollectionChangedEventArgs e) => SyncRows();
@@ -177,12 +202,26 @@ public sealed class SessionTreeViewModel : ReactiveObject
     private void SyncRows()
     {
         var desired = new List<SessionTreeNodeViewModel>(Rows.Count);
+
+        // 置顶的会话先摊在最前(#474)。它们在 Nodes 里的位置**一点没动** —— 只是这一层
+        // 换个顺序摊出来,于是分组归属、拖放落点、"分组空了就删掉"那些规则一条都不用改。
+        desired.AddRange(
+            EnumerateSessionNodes()
+                .Where(node => node.IsPinned)
+                .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
+        );
         foreach (SessionTreeNodeViewModel node in Nodes)
         {
+            if (node.IsPinned)
+            {
+                // 根级的置顶会话:已经摊在最前了,不能再摊一次 —— 同一个实例在
+                // 列表里出现两次,选中与容器复用都会错乱。
+                continue;
+            }
             desired.Add(node);
             if (node.IsGroup && node.IsExpanded)
             {
-                desired.AddRange(node.Children);
+                desired.AddRange(node.Children.Where(child => !child.IsPinned));
             }
         }
         var keep = new HashSet<SessionTreeNodeViewModel>(desired);
@@ -276,6 +315,9 @@ public sealed class SessionTreeViewModel : ReactiveObject
     /// <summary>删除选中的分组,连同组内全部连接一并删除(落库 + 移除树节点)。</summary>
     public ReactiveCommand<RxVoid, RxVoid> DeleteGroupCommand { get; }
 
+    /// <summary>置顶 / 取消置顶选中的会话(#474),落库后立刻重排行序。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> TogglePinCommand { get; }
+
     /// <summary>
     /// 删除分组前的确认回调,由视图提供弹窗;参数是已本地化好的提示语,返回 true 才继续删。
     /// 与 <c>FileBrowserViewModel.ConfirmDelete</c> 同形:未挂回调(无头宿主/单测)时直接删,
@@ -334,7 +376,10 @@ public sealed class SessionTreeViewModel : ReactiveObject
     public void AddSession(SessionProfile session)
     {
         _sessionCache[session.Id] = session;
-        var sessionNode = new SessionTreeNodeViewModel(session.Id, session.Name, false, session.ConnectionType);
+        var sessionNode = new SessionTreeNodeViewModel(session.Id, session.Name, false, session.ConnectionType)
+        {
+            IsPinned = session.IsPinned,
+        };
         if (session.GroupId is null)
         {
             // 未分组会话直接挂树根(设计 FrJPu),不再有“未分组”目录。
@@ -421,7 +466,11 @@ public sealed class SessionTreeViewModel : ReactiveObject
             sourceNode.IsRootLevel = false;
             InsertSorted(targetGroup.Children, sourceNode);
             // 拖进折叠着的分组时展开一下,否则会话看起来像是"没了"。
-            targetGroup.IsExpanded = true;
+            // 置顶的会话不用:它本来就摊在树顶,展开目标分组只是平白多铺开一片。
+            if (!sourceNode.IsPinned)
+            {
+                targetGroup.IsExpanded = true;
+            }
         }
         bool sourceGroupEmptied = sourceGroup is { Children.Count: 0 };
         if (sourceGroupEmptied)
@@ -551,7 +600,11 @@ public sealed class SessionTreeViewModel : ReactiveObject
         {
             return false;
         }
-        parentGroup?.IsExpanded = true;
+        // 置顶的会话恒在树顶可见,不必为了露出它把整个分组铺开。
+        if (!node.IsPinned)
+        {
+            parentGroup?.IsExpanded = true;
+        }
         foreach (SessionTreeNodeViewModel current in EnumerateSessionNodes())
         {
             current.IsSelected = ReferenceEquals(current, node);
@@ -606,6 +659,31 @@ public sealed class SessionTreeViewModel : ReactiveObject
         await MoveSessionToGroupAsync(node.Id, targetGroup.Id);
     }
 
+    /// <summary>
+    /// 翻转选中会话的置顶态并落库。只改显示位置,分组归属(<see cref="SessionProfile.GroupId" />)
+    /// 原样保留 —— 取消置顶后它回到自己那一组。
+    /// </summary>
+    /// <remarks>
+    /// 末尾显式调一次 <see cref="SyncRows" />:置顶只改节点自身的一个属性,既没动
+    /// <see cref="Nodes" /> 也没动任何分组的 <c>Children</c>,而分组子节点的属性变更
+    /// 本就不在监听范围里(只有根级节点挂了 PropertyChanged),不叫它行序不会变。
+    /// </remarks>
+    private async Task TogglePinSelectedAsync()
+    {
+        if (
+            SelectedNode is not { IsGroup: false } node
+            || !_sessionCache.TryGetValue(node.Id, out SessionProfile? session)
+        )
+        {
+            return;
+        }
+        bool pinned = !node.IsPinned;
+        session.IsPinned = pinned;
+        node.IsPinned = pinned;
+        SyncRows();
+        await _repository.SaveSessionAsync(session);
+    }
+
     private async Task DuplicateSelectedSessionAsync()
     {
         if (
@@ -632,6 +710,11 @@ public sealed class SessionTreeViewModel : ReactiveObject
         GroupNodes.Clear();
         _sessionCache.Clear();
 
+        // 分组的初始展开态:设置说了算(#474),但用户这次运行里手动改过的以记忆为准 ——
+        // 新建一条连接就把刚展开的分组折回去,比不折叠更烦人。
+        bool defaultExpanded = _settings is null
+            || !(await _settings.GetSnapshotAsync().ConfigureAwait(true)).General.CollapseGroupsByDefault;
+
         // 以会话的 GroupId 为唯一事实来源分组;无分组的会话归入“未分组”节点。
         List<ServerGroup> groups = await _repository.GetAllGroupsAsync();
         List<SessionProfile> sessions = await _repository.GetAllSessionsAsync();
@@ -647,6 +730,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
             {
                 // 文件夹图标按设计 FrJPu 以 warning/info/accent 轮换配色。
                 GroupColorIndex = groupIndex++ % 3,
+                IsExpanded = _groupExpansion.GetValueOrDefault(group.Id, defaultExpanded),
             };
             if (byGroup.TryGetValue(group.Id, out List<SessionProfile>? members))
             {
@@ -686,6 +770,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
         var node = new SessionTreeNodeViewModel(session.Id, session.Name, false, session.ConnectionType)
         {
             IsRootLevel = isRootLevel,
+            IsPinned = session.IsPinned,
         };
         if (_statusCache.TryGetValue(session.Id, out SessionStatus status))
         {

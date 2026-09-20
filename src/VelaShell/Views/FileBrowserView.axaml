@@ -161,6 +161,15 @@
                                  Foreground="{DynamicResource VelaTextMuted}"
                                  VerticalAlignment="Center" />
                 </Button>
+                <!-- 复制当前路径(#474)。命令与空白区右键的那一项是同一个;摆在这里是因为
+                     路径就在眼前时,想复制它却要先点铅笔进编辑态再手动选中,绕得没有道理。 -->
+                <Button Classes="crumb"
+                        Command="{Binding CopyCurrentPathCommand}"
+                        ToolTip.Tip="{loc:Localize CopyCurrentFolderPath}">
+                  <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.copy}"
+                                 Foreground="{DynamicResource VelaTextMuted}"
+                                 VerticalAlignment="Center" />
+                </Button>
               </StackPanel>
               <!-- 回车提交、Esc 取消、失焦取消,均在代码后置(OnPathEditKeyDown / OnPathEditLostFocus)。 -->
               <TextBox x:Name="PathEditBox"

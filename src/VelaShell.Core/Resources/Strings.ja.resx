@@ -4822,4 +4822,22 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Sync_CompareFellBack" xml:space="preserve">
     <value>(SHA-256 使用不可、サイズと日時で比較)</value>
   </data>
+  <data name="Tree_PinSession" xml:space="preserve">
+    <value>先頭に固定</value>
+  </data>
+  <data name="Tree_UnpinSession" xml:space="preserve">
+    <value>固定を解除</value>
+  </data>
+  <data name="SetGeneral_CollapseGroups" xml:space="preserve">
+    <value>起動時にグループを折りたたむ</value>
+  </data>
+  <data name="SetGeneral_CollapseGroupsDesc" xml:space="preserve">
+    <value>エクスプローラーのグループを折りたたんだ状態で開始します。手動で展開した状態はアプリを閉じるまで保持されます。</value>
+  </data>
+  <data name="SetTransfer_FastRecursiveDelete" xml:space="preserve">
+    <value>rm -rf でリモートフォルダーを削除</value>
+  </data>
+  <data name="SetTransfer_FastRecursiveDeleteDesc" xml:space="preserve">
+    <value>SSH セッションのみ:ファイルごとの SFTP 往復ではなくコマンド 1 回で削除します。コマンドが使えない、または失敗した場合は SFTP の再帰削除に戻ります。削除前の確認は変わりませんが、ファイル単位の進捗は表示されません。</value>
+  </data>
 </root>
