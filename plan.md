@@ -5161,3 +5161,41 @@ Tmds.Ssh 0.24 的 `ConnectTimeout` 覆盖**整个**握手,`HostAuthentication` �
   VelaShell.Tests 1438,其余不变)。
 - 📄 velashell-docs 已同步(中英各 4 个文件):架构图那一支的 `立即拒绝(fail-closed)` 改口径、
   `设置项审计.md` 补第五批、`交互与界面规格.md` 的指纹确认一条重写、`Xshell兼容登录.md` 措辞。
+
+## ✅ 84. 2026-09-20 `-newtab` 的标签名被当成了 URL:先到先得改成按可信度取用(用户反馈 #475)
+
+JumpServer Client 4.1.6 把 VelaShell 配成 SSH 工具,网页点一下"连接",VelaShell 开了、却没有任何
+连接提示。报告人贴出的命令行是这样的:
+
+```
+-newtab root@Linux[2026_09_20_09_45_18] -url ssh://JMS-x:一次性口令@192.168.1.1:2222
+```
+
+`-newtab` 后面那个是**标签名**,真正的目标在 `-url` 里。而 `XshellLaunchParser` 原本把 `-url` 与
+`-newtab` 并在同一个 `case` 里、用 `url ??=` 收第一个,于是先出现的标签名占了坑,后面的 `-url`
+再也挤不进来 —— 拿 `root@Linux[2026_09_20_09_45_18]` 去解析主机,`[` 过不了 `LooksLikeHost` 的
+字符集检查,`ParseUrl` 返回 null,`TryParse` 也就返回 null:一次正常启动,没有连接,也没有错误。
+
+这是"先到先得"在一个**顺序不由我们决定**的输入上必然会栽的地方。改法是把三处 URL 来源分开收,
+最后按可信度择优:
+
+- `-url` —— 调用方明说的目标,最高;
+- 裸位置参数 —— URL 协议关联那条路(`exe -url "%1"`)之外,有调用方直接把 URL 甩在第一个参数上;
+- `-newtab` —— 最低,因为它多半只是个标签名。
+
+光分优先级还不够:`-newtab` 的值仍会在没有 `-url` 时被当成目标,而 `LooksLikeUrl` 只看"有没有
+`://`、有没有 `@` 且不含空格",标签名 `root@Linux[…]` 正好全中。所以 `-newtab` 的值现在还要
+**真能解析出主机**(`ParseUrl(...) is not null`)才收 —— 解析不出就只当标签名,原样丢掉。
+`-url` 与裸参数不加这层:前者是明说的,后者本来就只在"看着像 URL"时才收。
+
+⚠️ 顺带明确:`-newtab` 的标签名目前**只是被忽略**,没有拿去当标签页标题。要用它得给
+`ExternalLaunchRequest` 加字段,并一路过单实例转发的那份 JSON,不在这次修复范围内。
+
+### 验证
+
+- 新增 4 条用例:#475 原样的命令行、`-url` 与 `-newtab` 两种前后顺序都由 `-url` 说了算、
+  `-newtab` 确实带 URL 时仍然认、只有标签名时不拿一个解析不出主机的串去"连接"。
+  回退源码文件跑一遍确认前两条确实红。
+- `dotnet test tests/VelaShell.Infrastructure.Tests` 全绿(490 通过,3 条按环境跳过)。
+- 📄 velashell-docs 已同步(中英各 1 个文件):`Xshell兼容登录.md` / `xshell-compatible-login.md`
+  的调用形态表补上 `-newtab` 也可能带标签名,并写明三个来源的取用顺序。
