@@ -57,13 +57,14 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
     {
         if (string.IsNullOrWhiteSpace(o.Host) || o.Port is < 1 or > 65535)
         {
-            throw new InvalidOperationException(Strings.Get("Msg_ProxyMisconfigured"));
+            throw new ProxyMisconfiguredException(Strings.Get("Msg_ProxyMisconfigured"));
         }
         if (kind == ProxyKind.Socks5 && (Utf8ByteCount(o.Username) > 255 || Utf8ByteCount(o.Password) > 255))
         {
             // SOCKS5 用户名密码子协商(RFC 1929)长度字段各 1 字节:握手必失败,
             // 在这里前置报错,别等到隧道握手时才抛连接失败。
-            throw new InvalidOperationException(
+            // 与上面同属「代理配置本身不成立」,类型必须一致 —— 各通道按类型决定不再翻译这条错误。
+            throw new ProxyMisconfiguredException(
                 Strings.Format("Msg_ProxyConnectFailed", "SOCKS5 username/password exceeds 255 bytes"));
         }
         return new(kind, o.Host.Trim(), o.Port, o.Username, o.Password, o.ProxyDns);
@@ -118,6 +119,13 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
     /// SSH / SFTP / FTP 是裸 TCP,协议无名可问,统一按 <c>http</c> 探:系统代理多是手工配置的
     /// host:port,与 scheme 无关,http 是最通用的一档。遇到按 URL 分流的 PAC 时它可能直接回
     /// DIRECT —— 那是**合法答案**,照它直连,不当失败(#464)。
+    /// <para>
+    /// ⚠️ 裸 TCP 的探针 scheme 在 #464 里从 <c>https</c> 改成了 <c>http</c>,这是**行为变更**
+    /// 而非等价改写:Windows 上分协议配置(<c>http=A;https=B</c>)的用户,SSH / FTP 会从
+    /// 走 B 变成走 A。单端点配置(Clash 这类把全部流量指到同一个 host:port 的)无差别。
+    /// 两者都是启发式 —— 裸 TCP 本就没有"正确"的 scheme 可报;选 http 是因为手工配置的
+    /// 系统代理里它是最常被填、也最常被当作通配的一档。
+    /// </para>
     /// </remarks>
     private static Uri? BuildSystemProbe(string targetHost, int targetPort, string? schemeHint)
     {
@@ -189,37 +197,35 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
         return ("", "");
     }
 
-    /// <summary>
-    /// 环回目标永不走代理:代理自身的环回中继、本机实验环境都依赖这一点。
-    /// 覆盖 127/8 整段(含只认 127.0.0.1/::1 的 <see cref="IPAddress.IsLoopback" /> 漏掉的 127.0.0.2 等)、
-    /// IPv4 映射的 IPv6 形式(::ffff:127.x)与 FQDN 尾点(localhost.)。
-    /// </summary>
+    /// <summary>环回目标永不走代理:代理自身的环回中继、本机实验环境都依赖这一点。</summary>
+    /// <remarks>
+    /// 地址层面交给 <see cref="IPAddress.IsLoopback" /> 就够 —— 它比对的是首字节,
+    /// 127/8 整段(127.0.0.2…)与 IPv4 映射的 IPv6(::ffff:127.x)本来就在内;
+    /// <c>IPAddress.TryParse</c> 也接受 <c>[::1]</c> 这种带方括号的
+    /// <see cref="Uri.Host" /> 形式。这里只补它管不到的字符串层面两件事:
+    /// 两端空白,以及 FQDN 尾点(<c>localhost.</c> / <c>127.0.0.1.</c>)。
+    /// </remarks>
     private static bool IsLoopback(string host)
     {
         string h = host.Trim().TrimEnd('.');
-        if (h.Equals("localhost", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-        if (!IPAddress.TryParse(h, out IPAddress? ip))
-        {
-            return false;
-        }
-        if (IPAddress.IsLoopback(ip))
-        {
-            return true;
-        }
-        if (ip.IsIPv4MappedToIPv6)
-        {
-            ip = ip.MapToIPv4();
-        }
-        byte[] bytes = ip.GetAddressBytes();
-        return bytes.Length == 4 && bytes[0] == 127;
+        return h.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+               || (IPAddress.TryParse(h, out IPAddress? ip) && IPAddress.IsLoopback(ip));
     }
 
     /// <summary>IPv6 字面量拼进 URL 需要方括号。</summary>
-    internal static string FormatHost(string host) =>
-        IPAddress.TryParse(host, out IPAddress? ip) && ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+    /// <remarks>
+    /// 入参可能**已经**是带方括号的 <see cref="Uri.Host" />(<c>VelaWebProxy</c> 传的就是它,
+    /// 系统代理折出来的 <c>p.Host</c> 同理)。再套一层会得到 <c>[[::1]]</c>,
+    /// 后面的 <see cref="Uri" /> 构造直接抛 —— 必须先认出来。
+    /// </remarks>
+    internal static string FormatHost(string host)
+    {
+        if (host.StartsWith('[') && host.EndsWith(']'))
+        {
+            return host;
+        }
+        return IPAddress.TryParse(host, out IPAddress? ip) && ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
             ? $"[{host}]"
             : host;
+    }
 }

@@ -315,9 +315,9 @@ public class ProxySupportTests
     public void Resolver_EnabledButIncomplete_Throws()
     {
         ProxyResolver noHost = CreateResolver(new ProxyOptions { Type = "http", Host = "", Port = 8080 });
-        Assert.ThrowsExactly<InvalidOperationException>(() => noHost.Resolve("example.com", 22));
+        Assert.ThrowsExactly<ProxyMisconfiguredException>(() => noHost.Resolve("example.com", 22));
         ProxyResolver badPort = CreateResolver(new ProxyOptions { Type = "socks5", Host = "proxy.example", Port = 0 });
-        Assert.ThrowsExactly<InvalidOperationException>(() => badPort.Resolve("example.com", 22));
+        Assert.ThrowsExactly<ProxyMisconfiguredException>(() => badPort.Resolve("example.com", 22));
     }
 
     /// <summary>system 档按系统代理折算;命中 bypass 列表时直连。</summary>
@@ -616,16 +616,74 @@ public class ProxySupportTests
         }
     }
 
-    /// <summary>环回豁免补齐:127/8 整段、尾点 FQDN、IPv4 映射 IPv6 一律不走代理。</summary>
+    /// <summary>环回豁免:127/8 整段、尾点 FQDN、IPv4 映射 IPv6、带方括号的 Uri.Host 一律不走代理。</summary>
     [TestMethod]
     public void Resolver_LoopbackVariants_BypassEvenWithExplicitProxy()
     {
         ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "socks5", Host = "proxy.example", Port = 1080 });
         Assert.AreEqual(ProxyKind.None, resolver.Resolve("127.0.0.2", 22).Kind);
         Assert.AreEqual(ProxyKind.None, resolver.Resolve("localhost.", 22).Kind);
+        Assert.AreEqual(ProxyKind.None, resolver.Resolve("127.0.0.1.", 22).Kind);
+        Assert.AreEqual(ProxyKind.None, resolver.Resolve("  localhost  ", 22).Kind);
         Assert.AreEqual(ProxyKind.None, resolver.Resolve("::ffff:127.0.0.1", 22).Kind);
+        // VelaWebProxy 传的是 Uri.Host,IPv6 时自带方括号。
+        Assert.AreEqual(ProxyKind.None, resolver.Resolve("[::1]", 22).Kind);
         // 非环回不受影响。
         Assert.AreEqual(ProxyKind.Socks5, resolver.Resolve("192.0.2.1", 22).Kind);
+    }
+
+    /// <summary>
+    /// <c>FormatHost</c> 不能给已经带方括号的主机再套一层:<c>[[::1]]</c> 会让
+    /// <see cref="Uri" /> 构造直接抛,而 <c>VelaWebProxy</c> 传进来的正是 <c>Uri.Host</c>。
+    /// </summary>
+    [TestMethod]
+    public void FormatHost_DoesNotDoubleBracketIpv6()
+    {
+        Assert.AreEqual("[::1]", ProxyResolver.FormatHost("::1"), "裸 IPv6 要补方括号");
+        Assert.AreEqual("[::1]", ProxyResolver.FormatHost("[::1]"), "已带方括号的不能再套一层");
+        Assert.AreEqual("example.com", ProxyResolver.FormatHost("example.com"));
+        Assert.AreEqual("127.0.0.1", ProxyResolver.FormatHost("127.0.0.1"));
+        // 拼出来的必须真能构造成 Uri —— 这才是双重方括号的实际后果。
+        foreach (string host in (string[])["::1", "[::1]", "2001:db8::1", "[2001:db8::1]", "example.com"])
+        {
+            _ = new Uri($"http://{ProxyResolver.FormatHost(host)}:8080/");
+        }
+    }
+
+    /// <summary>
+    /// IPv6 代理端点经 <c>VelaWebProxy</c> 出去时不能炸:<c>route.Host</c> 来自 <c>Uri.Host</c>,
+    /// 已经是 <c>[::1]</c> 的形状。
+    /// </summary>
+    [TestMethod]
+    public void VelaWebProxy_Ipv6ProxyEndpoint_ProducesAUsableUri()
+    {
+        IWebProxy? saved = ProxyResolver.SystemProxySource;
+        try
+        {
+            ProxyResolver.SystemProxySource = new WebProxy("http://[2001:db8::1]:8080");
+            var webProxy = new VelaWebProxy(CreateResolver(new ProxyOptions { Type = "system" }));
+
+            Assert.AreEqual(new Uri("http://[2001:db8::1]:8080"), webProxy.GetProxy(new Uri("https://api.github.com/")));
+        }
+        finally
+        {
+            ProxyResolver.SystemProxySource = saved;
+        }
+    }
+
+    /// <summary>
+    /// 专用类型仍是 <see cref="InvalidOperationException" /> 的子类。
+    /// </summary>
+    /// <remarks>
+    /// SSH 侧 <c>PrepareProxyRelay</c> 的 <c>catch (InvalidOperationException)</c> 靠这条继承关系
+    /// 才照常命中;换成独立异常基类会让"代理配错"在 SSH 通道上变成未处理异常。
+    /// </remarks>
+    [TestMethod]
+    public void ProxyMisconfigured_StaysAnInvalidOperationException()
+    {
+        ProxyResolver noHost = CreateResolver(new ProxyOptions { Type = "http", Port = 8080 });
+        Assert.IsInstanceOfType<InvalidOperationException>(
+            Assert.ThrowsExactly<ProxyMisconfiguredException>(() => noHost.Resolve("example.com", 22)));
     }
 
     /// <summary>SOCKS5 凭据超 255 字节(RFC 1929 长度字段上限)在 Resolve 即报错,不等握手失败。</summary>
@@ -634,7 +692,9 @@ public class ProxySupportTests
     {
         string longUser = new('u', 300);
         ProxyResolver socks = CreateResolver(new ProxyOptions { Type = "socks5", Host = "proxy.example", Port = 1080, Username = longUser });
-        Assert.ThrowsExactly<InvalidOperationException>(() => socks.Resolve("example.com", 22));
+        // 与"没填全 host/port"同属代理配置不成立,类型必须一致 —— 否则 FTP 侧那条
+        // "别翻译这条错误"的分支会漏掉它。
+        Assert.ThrowsExactly<ProxyMisconfiguredException>(() => socks.Resolve("example.com", 22));
         // HTTP Basic 无此限制,不应误伤。
         ProxyResolver http = CreateResolver(new ProxyOptions { Type = "http", Host = "proxy.example", Port = 8080, Username = longUser });
         Assert.AreEqual(ProxyKind.Http, http.Resolve("example.com", 22).Kind);

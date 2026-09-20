@@ -10,7 +10,6 @@ using FluentFTP.Proxy.AsyncProxy;
 using VelaShell.Core.Ftp;
 using VelaShell.Core.Models;
 using VelaShell.Core.Net;
-using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
 using VelaShell.Infrastructure.Net;
 using CoreDataMode = VelaShell.Core.Models.FtpDataConnectionMode;
@@ -42,7 +41,8 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
     {
         ArgumentNullException.ThrowIfNull(info);
         var probe = new CertificateProbe(info.Settings.TrustedCertificateThumbprint);
-        var pool = new FtpConnectionPool(info, token => CreateConnectedClientAsync(info, probe, proxyResolver, token));
+        var routeProbe = new RouteProbe();
+        var pool = new FtpConnectionPool(info, token => CreateConnectedClientAsync(info, probe, proxyResolver, routeProbe, token));
         try
         {
             // 第一次租借即完成 TCP 连接、TLS 握手与登录 —— 把失败暴露在「打开会话」这一步,
@@ -52,9 +52,9 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         catch (Exception ex)
         {
             await pool.DisposeAsync().ConfigureAwait(false);
-            // 代理配错了(显式开了代理但 host/port 不完整):Resolve 抛的 Msg_ProxyMisconfigured
-            // 本身已经说清楚了,别让下面的 Translate 把它翻成笼统的“连接丢失”。
-            if (IsProxyMisconfigured(ex))
+            // 代理配错了(显式开了代理但 host/port 不完整、或凭据超长):这条错误本身
+            // 已经说清楚了,别让下面的 Translate 把它翻成笼统的“连接丢失”。
+            if (ex is ProxyMisconfiguredException)
             {
                 throw;
             }
@@ -66,7 +66,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                     $"The server certificate for {info.Host} is not trusted ({failure.PolicyErrors}).",
                     failure.Thumbprint, failure.Subject, failure.Issuer, failure.ExpiresOn, failure.PolicyErrors, ex);
             }
-            throw WithProxyContext(FluentFtpInterop.Translate(ex, "connect"), info);
+            throw WithProxyContext(FluentFtpInterop.Translate(ex, "connect"), info, routeProbe.Used);
         }
         var sessionId = Guid.NewGuid();
         _sessions[sessionId] = pool;
@@ -591,9 +591,10 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         return translated;
     }
 
-    private static async Task<AsyncFtpClient> CreateConnectedClientAsync(FtpConnectionInfo info, CertificateProbe probe, IProxyResolver? proxyResolver, CancellationToken cancellationToken)
+    private static async Task<AsyncFtpClient> CreateConnectedClientAsync(FtpConnectionInfo info, CertificateProbe probe, IProxyResolver? proxyResolver, RouteProbe routeProbe, CancellationToken cancellationToken)
     {
         ProxyRoute route = proxyResolver?.Resolve(info.Host, info.Port) ?? ProxyRoute.Direct;
+        routeProbe.Used = route;
         var config = new FtpConfig
         {
             EncryptionMode = MapEncryption(info.Settings.EncryptionMode),
@@ -624,28 +625,30 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
     }
 
     /// <summary>
+    /// 本次连接**实际用过**的代理路由,由 <see cref="CreateConnectedClientAsync" /> 在拨号前写入。
+    /// </summary>
+    /// <remarks>
+    /// 失败之后重新 <c>Resolve</c> 一次是不可靠的:<c>system</c> 档跟随的是 OS **当前**代理,
+    /// 两次调用之间用户可能刚把 Clash 的系统代理关掉 —— 那样报出来的 via 就不是真正失败的那一条,
+    /// 反而把人往错方向带。与 SSH 侧 <c>TmdsSshClientWrapper._lastRoute</c> 的做法对齐。
+    /// </remarks>
+    private sealed class RouteProbe
+    {
+        /// <summary>拨号用的路由;<c>Resolve</c> 就抛了(代理配错)时保持 null。</summary>
+        public ProxyRoute? Used { get; set; }
+    }
+
+    /// <summary>
     /// 连接层失败的代理语境补全(与 SSH 侧 <c>TmdsSshClientWrapper.DescribeProxyError</c> 对齐):
     /// 只包隧道层异常(<see cref="VelaFtpConnectionException" />,即代理拨号/握手/Socket/TLS 失败),
     /// 认证/权限/路径等应用层异常原样透出 —— 那些说明隧道本身是通的。
     /// 后缀是纯技术信息(host:port),不新增本地化键。
     /// </summary>
-    private Exception WithProxyContext(Exception translated, FtpConnectionInfo info)
+    private static Exception WithProxyContext(Exception translated, FtpConnectionInfo info, ProxyRoute? route)
     {
-        if (translated is not VelaFtpConnectionException)
-        {
-            return translated;
-        }
-        ProxyRoute route;
-        try
-        {
-            route = proxyResolver?.Resolve(info.Host, info.Port) ?? ProxyRoute.Direct;
-        }
-        catch
-        {
-            // 重算路由失败(多为显式代理配错,原异常就是那条)时不画蛇添足。
-            return translated;
-        }
-        if (route.Kind == ProxyKind.None)
+        if (translated is not VelaFtpConnectionException
+            || route is null
+            || route.Kind == ProxyKind.None)
         {
             return translated;
         }
@@ -656,11 +659,6 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             : "";
         return new VelaFtpConnectionException(translated.Message + via + hint, translated);
     }
-
-    /// <summary>显式代理配错时 <see cref="IProxyResolver.Resolve" /> 的原样错误,不应被翻译淹没。</summary>
-    private static bool IsProxyMisconfigured(Exception ex) =>
-        ex is InvalidOperationException
-        && string.Equals(ex.Message, Strings.Get("Msg_ProxyMisconfigured"), StringComparison.Ordinal);
 
     /// <summary>
     /// 按统一代理路由实例化 FTP 客户端:直连用普通 <see cref="AsyncFtpClient" />,
