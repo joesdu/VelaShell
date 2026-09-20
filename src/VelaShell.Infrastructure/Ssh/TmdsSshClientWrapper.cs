@@ -15,6 +15,7 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
     private readonly string _firstHopHost;
     private readonly int _firstHopPort;
     private readonly IProxyResolver? _proxyResolver;
+    private readonly HostKeyPromptOutcome? _hostKeyOutcome;
     private LoopbackProxyRelay? _relay;
     private ProxyRoute? _lastRoute;
     private string _lastTarget = "";
@@ -31,16 +32,19 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
     /// 带网络代理支持的构造。<paramref name="firstHopSettings" /> 是发起真实 TCP 出站的
     /// 那份设置(有跳板链时为最内层跳板,否则即主设置),连接时若代理生效,
     /// 其 HostName/Port 会被改写到环回中继;<paramref name="firstHopHost" />/<paramref name="firstHopPort" />
-    /// 保存原始目标,供代理解析与无代理时还原。
+    /// 保存原始目标,供代理解析与无代理时还原。<paramref name="hostKeyOutcome" /> 是链上各跳
+    /// 主机指纹裁决共用的原因牌(见 <see cref="HostKeyPromptOutcome" />),连接失败时据它报错与补连。
     /// </summary>
     public TmdsSshClientWrapper(SshClientSettings settings, SshClientSettings firstHopSettings,
-        string firstHopHost, int firstHopPort, IProxyResolver? proxyResolver)
+        string firstHopHost, int firstHopPort, IProxyResolver? proxyResolver,
+        HostKeyPromptOutcome? hostKeyOutcome = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _firstHopSettings = firstHopSettings ?? settings;
         _firstHopHost = firstHopHost;
         _firstHopPort = firstHopPort;
         _proxyResolver = proxyResolver;
+        _hostKeyOutcome = hostKeyOutcome;
         ConnectionTimeout = settings.ConnectTimeout;
     }
 
@@ -93,6 +97,24 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_client is not null) return;
+        _hostKeyOutcome?.Reset();
+        if (await TryConnectOnceAsync(true, cancellationToken).ConfigureAwait(false)) return;
+
+        // 到这儿只有一种情况:用户刚在指纹弹窗里点了"信任",而这一次握手已经被
+        // Tmds 的连接超时判死(它的计时器覆盖整个握手,弹窗摆着的时间照样算)。
+        // 裁决已经生效(落了 known_hosts 或进了本次运行的临时信任),原地补连一次 ——
+        // 只补一次,第二次再不成就是真的连不上,照常抛它自己的错。
+        _hostKeyOutcome?.Reset();
+        await TryConnectOnceAsync(false, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 发起一次连接。正常成功返回 <see langword="true" />;失败一律抛出,唯一的例外是
+    /// "用户在指纹弹窗里认了、但这一轮已经超时" —— 那时(且仅当 <paramref name="canRetry" />)
+    /// 返回 <see langword="false" />,由 <see cref="ConnectAsync" /> 补连一次。
+    /// </summary>
+    private async Task<bool> TryConnectOnceAsync(bool canRetry, CancellationToken cancellationToken)
+    {
         PrepareProxyRelay();
         SshClient? client;
         try
@@ -119,14 +141,26 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
         catch (Exception ex)
         {
             SafeDisposeClient(client);
+            // 指纹被拒时,Tmds 抛的是一句英文的 UntrustedPeer,看不出是主机密钥变了,
+            // 更不知道该去哪删记录 —— 换成握手回调写下的那句人话(#476)。
+            string? hostKeyRejection = _hostKeyOutcome?.Rejection;
             // 代理拨号/握手失败时,Tmds 只看到连接被断;用中继记录的真实原因报错。
-            Exception? proxyError = _relay?.Error;
+            Exception? proxyError = hostKeyRejection is null ? _relay?.Error : null;
             // 算法协商失败时回探一次对端的 KEXINIT,把"对端提供什么、我们支持什么"补进消息。
             // 必须赶在 DisposeRelay 之前:走代理时 _settings.HostName 指的正是那条环回中继。
-            string? mismatch = proxyError is null
+            string? mismatch = hostKeyRejection is null && proxyError is null
                 ? await TryDescribeAlgorithmMismatchAsync(ex, cancellationToken).ConfigureAwait(false)
                 : null;
             DisposeRelay();
+            if (hostKeyRejection is not null)
+                throw new VelaSshConnectionException(hostKeyRejection, ex);
+            // 用户在弹窗里认了指纹,这一轮却已被连接超时判死:交给 ConnectAsync 补连一次。
+            if (canRetry
+                && _hostKeyOutcome is { ApprovedAfterPrompt: true }
+                && IsConnectTimeout(ex, cancellationToken))
+            {
+                return false;
+            }
             if (proxyError is not null)
                 throw new VelaSshConnectionException(DescribeProxyError(proxyError), proxyError);
             if (mismatch is not null)
@@ -135,7 +169,20 @@ public sealed class TmdsSshClientWrapper : ISshClientWrapper
             throw;
         }
         _client = client;
+        return true;
     }
+
+    /// <summary>
+    /// 这次失败是不是 Tmds 自己的连接超时(而非调用方取消)。
+    /// </summary>
+    /// <remarks>
+    /// 调用方取消(关掉"连接中"的标签)必须原样上抛,绝不能被当成超时去重连一次 ——
+    /// 那正好是用户刚刚叫停的那件事。
+    /// </remarks>
+    private static bool IsConnectTimeout(Exception ex, CancellationToken callerToken) =>
+        !callerToken.IsCancellationRequested
+        && (ex is OperationCanceledException
+            || TmdsSshInterop.ExtractConnectFailedReason(ex.Message) is "Timeout");
 
     /// <summary>
     /// 只在算法协商失败(<c>KeyExchangeFailed</c>)时回探对端算法名单。其余失败原因 —— 认证不过、

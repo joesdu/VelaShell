@@ -628,6 +628,15 @@
   <data name="HostKeyUnknown" xml:space="preserve">
     <value>First connection to this host</value>
   </data>
+  <data name="HostKeyKnownFingerprint" xml:space="preserve">
+    <value>Recorded</value>
+  </data>
+  <data name="HostKeyChangedAdvice" xml:space="preserve">
+    <value>The server may have been reinstalled or replaced. If that is expected, accept the new key to overwrite the recorded one; if not, the connection may be intercepted — reject it.</value>
+  </data>
+  <data name="HostKeyUnknownAdvice" xml:space="preserve">
+    <value>There is no recorded key to compare against yet. Verify the fingerprint with the server administrator before trusting it.</value>
+  </data>
   <data name="Fingerprint" xml:space="preserve">
     <value>Fingerprint</value>
   </data>
@@ -1388,6 +1397,12 @@ Paste anyway?</value>
   </data>
   <data name="Msg_HistoryCleared" xml:space="preserve">
     <value>Recent connection history cleared.</value>
+  </data>
+  <data name="Msg_HostKeyChangedBlocked" xml:space="preserve">
+    <value>The host key of {0} does not match the trusted record (recorded {1}, now {2}). If the server really was reinstalled or replaced, delete its entry under Settings → Security &amp; Audit → Trusted hosts, or turn off "Block and alert on fingerprint change" to be asked instead of blocked.</value>
+  </data>
+  <data name="Msg_HostKeyRejected" xml:space="preserve">
+    <value>Host key {1} of {0} was not trusted; the connection was aborted.</value>
   </data>
   <data name="Msg_ImportFailed" xml:space="preserve">
     <value>Import failed: {0}</value>
@@ -2359,7 +2374,7 @@ Paste anyway?</value>
     <value>Block and alert on fingerprint change</value>
   </data>
   <data name="SetSecurity_BlockOnChangeDesc" xml:space="preserve">
-    <value>// Refuse the connection if it doesn't match the known_hosts record, preventing man-in-the-middle attacks</value>
+    <value>// On: refuse outright when the key differs from the known_hosts record. Off (default): warn and let you accept or reject it</value>
   </data>
   <data name="SetSecurity_ConfirmFirstFingerprint" xml:space="preserve">
     <value>Require manual fingerprint confirmation on first connect</value>

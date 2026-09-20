@@ -268,7 +268,10 @@ public static class InfrastructureServiceCollectionExtensions
         VelaConnectionInfo ci, IHostKeyService? hostKey, ISettingsService? settings,
         IHostKeyPrompt? prompt, ISecurityAlertService? alerts, IProxyResolver? proxyResolver = null)
     {
-        SshClientSettings s = BuildSshClientSettings(ci, hostKey, settings, prompt, alerts,
+        // 指纹裁决的原因牌:链上每一跳的 HostAuthentication 都写同一块,
+        // 连接失败时由包装器读出来(见 HostKeyPromptOutcome)。
+        HostKeyPromptOutcome hostKeyOutcome = new();
+        SshClientSettings s = BuildSshClientSettings(ci, hostKey, settings, prompt, alerts, hostKeyOutcome,
             out SshClientSettings firstHop);
         // 网络代理作用于首个真实 TCP 出站(有跳板链时是最内层跳板,其余各跳都在 SSH 通道里);
         // 中继在 ConnectAsync 时按当前设置决定,故这里只传目标与设置引用。
@@ -277,12 +280,13 @@ public static class InfrastructureServiceCollectionExtensions
         {
             firstCi = firstCi.JumpHost;
         }
-        return new TmdsSshClientWrapper(s, firstHop, firstCi.Host, firstCi.Port, proxyResolver);
+        return new TmdsSshClientWrapper(s, firstHop, firstCi.Host, firstCi.Port, proxyResolver, hostKeyOutcome);
     }
 
     private static SshClientSettings BuildSshClientSettings(
         VelaConnectionInfo ci, IHostKeyService? hostKey, ISettingsService? settings,
-        IHostKeyPrompt? prompt, ISecurityAlertService? alerts, out SshClientSettings firstHopSettings)
+        IHostKeyPrompt? prompt, ISecurityAlertService? alerts, HostKeyPromptOutcome outcome,
+        out SshClientSettings firstHopSettings)
     {
         var s = new SshClientSettings($"{ci.Username}@{ci.Host}")
         {
@@ -303,11 +307,11 @@ public static class InfrastructureServiceCollectionExtensions
         // ProxyJump
         firstHopSettings = s;
         if (ci.JumpHost is not null)
-            s.Proxy = BuildProxyChain(ci.JumpHost, hostKey, settings, prompt, alerts, out firstHopSettings);
+            s.Proxy = BuildProxyChain(ci.JumpHost, hostKey, settings, prompt, alerts, outcome, out firstHopSettings);
 
         // Host key verification
         if (hostKey is not null)
-            AddHostAuthentication(s, ci, hostKey, settings, prompt, alerts);
+            AddHostAuthentication(s, ci.Host, ci.Port, hostKey, settings, prompt, alerts, outcome);
 
         return s;
     }
@@ -367,17 +371,32 @@ public static class InfrastructureServiceCollectionExtensions
             : new PrivateKeyCredential(path, passphrase, null);
     }
 
+    /// <summary>
+    /// 给一跳装上主机指纹校验。三条出路:已信任直接放行、按设置弹窗裁决、fail-closed 拒绝。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// **指纹变更默认走弹窗而不是直接拒**(#476)。「换了台服务器、IP 没变」是运维里最常见的
+    /// 正当变更,旧行为把它当成一条连接错误抛出来,用户看到的只有一句英文的
+    /// <c>UntrustedPeer</c>,唯一的出路是去 <c>.velashell</c> 里手动删记录 —— 而其它 SSH 客户端
+    /// 在这里弹的是一个「接受并覆盖 / 拒绝」的框。要严格 fail-closed 的,把
+    /// 「指纹变更时阻断并告警」打开即可。
+    /// </para>
+    /// <para>
+    /// 被拒时把**人话**写进 <paramref name="outcome" />:回调只能返回 true/false,
+    /// 原因得另外递给包装器,否则用户拿到的还是那句 <c>UntrustedPeer</c>。
+    /// </para>
+    /// </remarks>
     private static void AddHostAuthentication(
-        SshClientSettings s, VelaConnectionInfo ci, IHostKeyService hostKey,
-        ISettingsService? ss, IHostKeyPrompt? prompt, ISecurityAlertService? alerts)
+        SshClientSettings s, string host, int port, IHostKeyService hostKey,
+        ISettingsService? ss, IHostKeyPrompt? prompt, ISecurityAlertService? alerts,
+        HostKeyPromptOutcome outcome)
     {
         SecurityOptions security = GetSecurityOptions(ss);
         s.HostAuthentication = async (ctx, ct) =>
         {
             string fingerprint = ctx.ConnectionInfo.ServerKey.Key.SHA256FingerPrint;
             string keyType = ctx.ConnectionInfo.ServerKey.Key is { } k ? k.GetType().Name : "unknown";
-            string host = ci.Host;
-            int port = ci.Port;
 
             HostKeyVerification verification = await hostKey
                 .VerifyHostKeyAsync(host, port, keyType, fingerprint, ct).ConfigureAwait(false);
@@ -389,24 +408,37 @@ public static class InfrastructureServiceCollectionExtensions
                 return true;
             }
 
-            HostKeyDecision decision;
-            if (verification == HostKeyVerification.Unknown)
+            // 变更时把旧指纹取出来,弹窗与错误文案都要摆它 —— 用户靠两把对照才判断得了
+            // 这是自己刚重装的那台,还是路上有人。读不到就当没有,绝不因此阻断判定。
+            string? knownFingerprint = null;
+            if (verification == HostKeyVerification.Changed)
             {
-                decision = security.ConfirmFirstFingerprint && prompt is not null
-                    ? await prompt.DecideAsync(host, port, keyType, fingerprint, verification)
-                    : HostKeyDecision.TrustPermanently;
+                try
+                {
+                    knownFingerprint = (await hostKey.FindKnownHostAsync(host, port, ct).ConfigureAwait(false))
+                        ?.Fingerprint;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    System.Diagnostics.Trace.WriteLine($"[VelaShell] known_hosts lookup failed: {ex}");
+                }
             }
-            else
-            {
-                decision = !security.BlockOnFingerprintChange && prompt is not null
-                    ? await prompt.DecideAsync(host, port, keyType, fingerprint, verification)
+
+            bool firstSeen = verification == HostKeyVerification.Unknown;
+            bool askUser = prompt is not null
+                           && (firstSeen ? security.ConfirmFirstFingerprint : !security.BlockOnFingerprintChange);
+            HostKeyDecision decision = askUser
+                ? await prompt!.DecideAsync(host, port, keyType, fingerprint, verification, knownFingerprint)
+                // 不问的两条默认:首次连接按 TOFU 记下,指纹变更 fail-closed 拒掉。
+                : firstSeen
+                    ? HostKeyDecision.TrustPermanently
                     : HostKeyDecision.Reject;
-            }
 
             if (decision == HostKeyDecision.Reject)
             {
                 alerts?.RaiseAsync("hostkey-rejected",
                     Strings.Format("KeySvc_AlertFirstRejected", target, fingerprint));
+                outcome.MarkRejected(DescribeRejection(target, fingerprint, knownFingerprint, verification, askUser));
                 return false;
             }
             if (decision == HostKeyDecision.TrustPermanently)
@@ -429,13 +461,28 @@ public static class InfrastructureServiceCollectionExtensions
                             : Strings.Format("KeySvc_AlertFirstTrustOnce", target, fingerprint));
                 }
             }
+            if (askUser)
+            {
+                // 弹窗期间 Tmds 的连接超时照样在跑;裁决已经生效,包装器据此补连一次。
+                outcome.MarkApproved();
+            }
             return true;
         };
     }
 
+    /// <summary>被拒时给用户看的那句话:说清是哪台、哪把指纹、以及下一步去哪操作。</summary>
+    private static string DescribeRejection(
+        string target, string fingerprint, string? knownFingerprint,
+        HostKeyVerification verification, bool askedUser) =>
+        verification == HostKeyVerification.Changed && !askedUser
+            // 阻断开关开着:用户根本没被问过,得告诉他这是策略拦的,以及两条出路。
+            ? Strings.Format("Msg_HostKeyChangedBlocked", target, knownFingerprint ?? "-", fingerprint)
+            : Strings.Format("Msg_HostKeyRejected", target, fingerprint);
+
     private static SshProxy BuildProxyChain(VelaConnectionInfo jumpHost,
         IHostKeyService? hostKey, ISettingsService? ss,
-        IHostKeyPrompt? prompt, ISecurityAlertService? alerts, out SshClientSettings firstHopSettings)
+        IHostKeyPrompt? prompt, ISecurityAlertService? alerts, HostKeyPromptOutcome outcome,
+        out SshClientSettings firstHopSettings)
     {
         var proxy = new SshClientSettings($"{jumpHost.Username}@{jumpHost.Host}")
         {
@@ -447,21 +494,13 @@ public static class InfrastructureServiceCollectionExtensions
         // 最内层跳板(无自己的跳板)才是真实 TCP 出站的那一跳。
         firstHopSettings = proxy;
         if (jumpHost.JumpHost is not null)
-            proxy.Proxy = BuildProxyChain(jumpHost.JumpHost, hostKey, ss, prompt, alerts, out firstHopSettings);
+            proxy.Proxy = BuildProxyChain(jumpHost.JumpHost, hostKey, ss, prompt, alerts, outcome, out firstHopSettings);
 
+        // 跳板与终点走同一套策略。此前这里是另写的一段:未知 / 变更一律返回 false,
+        // 既不弹窗也不说原因 —— 于是「只当跳板、从没单独连过的机器」第一次用就连不上,
+        // 而跳板换了机器更是一条查不出所以然的失败。
         if (hostKey is not null)
-        {
-            string host = jumpHost.Host;
-            int port = jumpHost.Port;
-            proxy.HostAuthentication = async (ctx, ct) =>
-            {
-                string fp = ctx.ConnectionInfo.ServerKey.Key.SHA256FingerPrint;
-                string kt = ctx.ConnectionInfo.ServerKey.Key is { } k ? k.GetType().Name : "unknown";
-                HostKeyVerification v = await hostKey.VerifyHostKeyAsync(host, port, kt, fp, ct);
-                return v == HostKeyVerification.Trusted
-                    || HostTrustOnceCache.IsTrusted(host, port, fp);
-            };
-        }
+            AddHostAuthentication(proxy, jumpHost.Host, jumpHost.Port, hostKey, ss, prompt, alerts, outcome);
 
         return new SshProxy(proxy);
     }

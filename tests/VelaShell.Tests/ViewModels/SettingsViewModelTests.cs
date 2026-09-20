@@ -348,6 +348,39 @@ public class SettingsViewModelTests
         Assert.IsFalse(vmUnknown.IsChanged);
     }
 
+    /// <summary>
+    /// 指纹变更时必须把 known_hosts 里的旧指纹一并摆出来(#476):只喊一句"变了"
+    /// 用户无从判断这是自己刚重装的那台,还是一次劫持。首次连接没有旧指纹,那一行不显示。
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Settings")]
+    public void HostKeyPrompt_ChangedKey_ShowsRecordedFingerprint()
+    {
+        var vmChanged = new HostKeyPromptViewModel(
+            "server.local",
+            22,
+            "ssh-ed25519",
+            "SHA256:new",
+            HostKeyVerification.Changed,
+            "SHA256:old"
+        );
+
+        Assert.IsTrue(vmChanged.HasKnownFingerprint);
+        Assert.AreEqual("SHA256:old", vmChanged.KnownFingerprint);
+        Assert.AreNotEqual(vmChanged.AdviceText, string.Empty);
+
+        var vmUnknown = new HostKeyPromptViewModel(
+            "server.local",
+            22,
+            "ssh-ed25519",
+            "SHA256:new",
+            HostKeyVerification.Unknown
+        );
+
+        Assert.IsFalse(vmUnknown.HasKnownFingerprint);
+        Assert.AreNotEqual(vmChanged.AdviceText, vmUnknown.AdviceText, "变更与首次连接给的是两套建议");
+    }
+
     [TestMethod]
     [TestCategory("Settings")]
     public void ConnectionProfile_PortValidation_AcceptsValidRange()

@@ -31,6 +31,13 @@ public sealed class SonnetDbHostKeyService(SonnetDbEngine engine, string? legacy
                    : HostKeyVerification.Changed;
     }
 
+    /// <summary>取指定 host:port 的已知主机记录;没有记录返回 null。</summary>
+    public async Task<KnownHost?> FindKnownHostAsync(string host, int port, CancellationToken cancellationToken = default)
+    {
+        await EnsureMigratedAsync(cancellationToken).ConfigureAwait(false);
+        return await GetAsync(host, port, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>信任指定主机的密钥:新增或更新 known_hosts 记录的类型、指纹与最近可见时间。</summary>
     public async Task TrustHostKeyAsync(string host, int port, string keyType, string fingerprint, CancellationToken cancellationToken = default)
     {

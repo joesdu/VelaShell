@@ -5097,3 +5097,67 @@ Windows 上分协议配置(`http=A;https=B`)的用户,SSH / FTP 会从走 B 变�
 - `Infrastructure.Tests` 488(485 通过 / 3 跳过),`VelaShell.Tests` 1439(1423 / 16);
   本次净增 13 条用例。
 - 构建零警告。
+
+## ✅ 83. 2026-09-20 换了台服务器、IP 没变:指纹变更从"报错"改成"弹窗裁决"(用户需求 #476)
+
+报告人描述的是一件很常见的事:服务器换了新机器,IP 沿用,双击资源管理器里的会话 ——
+VelaShell 把它当成一条连接错误,让人去排查服务器;而其它 SSH 工具在这里弹的是一句
+`WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!` 加一个「接受并覆盖 / 不接受」的框。
+他绕过去的办法是去 `.velashell` 里删数据。
+
+**那个框 VelaShell 本来就有**(§13 第二批做的三选项弹窗),被一个默认值挡住了而已。
+
+### 一、默认值:`BlockOnFingerprintChange` 由 `true` 改为 `false`
+
+`AddHostAuthentication` 里指纹变更那一支原本是「开关开着 → 直接 `Reject`,不问」,而开关
+**默认开着**。于是这条路上永远走不到弹窗。改默认值,并按本仓库既有的两次先例
+(`RecordingOptInMigrated` / `Proxy.DefaultsMigrated`)加一次性迁移
+`Security.FingerprintChangeDefaultMigrated`:存量配置里那个 `true` 分不清是用户选的还是
+旧默认值带的,统一关一次、打标记,此后主动打开的阻断永远算数 —— 要严格 fail-closed 的人
+把开关打回去,行为与旧默认一字不差。
+
+### 二、弹窗要摆出旧指纹,还要说清两种可能
+
+只喊一句"主机密钥已更改"对用户没有帮助:他判断不了这是自己刚重装的那台,还是路上有人。
+- `IHostKeyService` 补 `FindKnownHostAsync(host, port)`(取单条,而不是让调用方去
+  `GetKnownHostsAsync` 里翻),`IHostKeyPrompt.DecideAsync` 尾部补可选的 `knownFingerprint`;
+- 弹窗新增「已记录指纹」一行(仅变更时显示,弱化配色与本次指纹并排),以及告警下面一段
+  `HostKeyChangedAdvice` / `HostKeyUnknownAdvice` —— 前者点名"重装/换机"与"劫持"两种可能。
+
+### 三、被拒时说人话,而不是一句 `UntrustedPeer`
+
+握手回调只能返回 true/false,真实原因递不出来 —— 这与 §79 里代理失败遇到的是同一个形状,
+于是照 `LoopbackProxyRelay.Error` 的套路做了块原因牌 `HostKeyPromptOutcome`(链上各跳共用,
+`Volatile` 读写):
+- **策略阻断**(用户根本没被问过)→ `Msg_HostKeyChangedBlocked`:点名哪台、旧指纹、新指纹,
+  以及"去 设置 → 安全与审计 → 已信任主机 删记录,或关掉阻断开关"两条出路;
+- **用户自己点的取消** → `Msg_HostKeyRejected`。
+
+`TmdsSshClientWrapper.ConnectAsync` 的 catch 里,这块牌排在代理错误与算法回探之前。
+
+### 四、跳板链走同一套策略(顺带修掉的既有缺陷)
+
+`BuildProxyChain` 里那一跳原本是另写的一段校验:`v == Trusted || IsTrusted(...)`,
+**未知与变更一律静默返回 false**。于是「只当跳板、从没单独连过的那台机器」第一次用就连不上,
+而且不弹窗、不说原因。现在与终点共用同一个 `AddHostAuthentication`(为此它的签名从
+`VelaConnectionInfo` 收窄成 `host, port` —— 跳板那一跳要的就只是这两样)。
+
+### 五、弹窗开着的时候,连接超时还在跑
+
+Tmds.Ssh 0.24 的 `ConnectTimeout` 覆盖**整个**握手,`HostAuthentication` 回调也算在内
+(`RunConnectionAsync` 里那个 `Timer` 一路传到 `AuthenticateAsync`)。默认 30 秒,用户盯着
+一条红色警告多想十几秒再点"永久信任",裁决刚落盘连接已经被判超时 —— 明明认了却报连不上。
+
+不能改已经点着的计时器,于是 `ConnectAsync` 拆成一层薄壳 + `TryConnectOnceAsync(canRetry)`:
+只在「用户在弹窗里认了指纹(`ApprovedAfterPrompt`)」且「这次失败确实是库内部超时而非调用方
+取消」两条同时成立时补连一次,**且只补一次**(第二轮 `canRetry: false`,照常抛它自己的错)。
+调用方取消必须原样上抛 —— 那正是用户刚刚叫停的那件事,把它当超时去重连等于跟用户较劲。
+
+### 验证
+
+- 新增 6 条用例:迁移的三条(默认关 / 存量 `true` 抬一次 / 抬过之后听用户)、
+  `FindKnownHostAsync` 的单条取值与端口不串、弹窗旧指纹与两套建议文案。
+- `dotnet build` 零警告;全量 `dotnet test` 通过(Core 449、Infrastructure 486、
+  VelaShell.Tests 1438,其余不变)。
+- 📄 velashell-docs 已同步(中英各 4 个文件):架构图那一支的 `立即拒绝(fail-closed)` 改口径、
+  `设置项审计.md` 补第五批、`交互与界面规格.md` 的指纹确认一条重写、`Xshell兼容登录.md` 措辞。

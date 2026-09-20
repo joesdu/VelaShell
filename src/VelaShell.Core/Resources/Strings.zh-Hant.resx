@@ -741,6 +741,15 @@
   <data name="HostKeyUnknown" xml:space="preserve">
     <value>首次連線到此主機</value>
   </data>
+  <data name="HostKeyKnownFingerprint" xml:space="preserve">
+    <value>已記錄指紋</value>
+  </data>
+  <data name="HostKeyChangedAdvice" xml:space="preserve">
+    <value>伺服器可能已重新安裝或更換。若變更在預期內，接受新金鑰即可覆寫原記錄；否則連線可能正被劫持，請拒絕。</value>
+  </data>
+  <data name="HostKeyUnknownAdvice" xml:space="preserve">
+    <value>本機還沒有可比對的記錄。信任前請與伺服器管理員核對該指紋。</value>
+  </data>
   <data name="Fingerprint" xml:space="preserve">
     <value>指紋</value>
   </data>
@@ -1497,6 +1506,12 @@
   </data>
   <data name="Msg_HistoryCleared" xml:space="preserve">
     <value>已清除最近連線記錄。</value>
+  </data>
+  <data name="Msg_HostKeyChangedBlocked" xml:space="preserve">
+    <value>{0} 的主機金鑰與已信任記錄不符（已記錄 {1}，本次 {2}）。若這台伺服器確實被重新安裝或更換，請到 設定 → 安全與稽核 → 已信任主機 刪除該記錄，或關閉「指紋變更時阻斷並告警」改為每次詢問。</value>
+  </data>
+  <data name="Msg_HostKeyRejected" xml:space="preserve">
+    <value>未信任 {0} 的主機金鑰 {1}，連線已中止。</value>
   </data>
   <data name="Msg_ImportFailed" xml:space="preserve">
     <value>匯入失敗:{0}</value>
@@ -2468,7 +2483,7 @@
     <value>指紋變更時阻斷並告警</value>
   </data>
   <data name="SetSecurity_BlockOnChangeDesc" xml:space="preserve">
-    <value>// 與 known_hosts 記錄不符即拒絕連線,防中間人攻擊</value>
+    <value>// 開啟：與 known_hosts 記錄不符即直接拒絕；關閉（預設）：彈窗告知變更，由你決定接受還是拒絕</value>
   </data>
   <data name="SetSecurity_ConfirmFirstFingerprint" xml:space="preserve">
     <value>首次連線需人工確認指紋</value>
