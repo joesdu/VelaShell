@@ -5409,3 +5409,29 @@ r=8 的圆头上(质心约 y10),下半部只剩一根收尖的尾巴 —— 眼�
 顺带把样式类 `follow-pin` 改名 `follow-terminal`(只在本文件内出现,无外部引用),
 并补 `AutomationProperties.Name`。`Icon.map-pin` 的几何留在 `Icons.axaml` 里不删 ——
 那是共用图标库,`map-pinned` 还在标题栏与 traceroute 用着。
+
+### 补:清掉三个真·孤儿图标键,并把「这张字典谁在用」写进注释
+
+顺着上面那颗 map-pin 腾空,把 `Icons.axaml` 全表按精确边界扫了一遍,本仓库内零引用的有
+五个:`map-pin`、`folder-up`、`arrow-up-half`、`arrow-down-half`、`gauge`。
+
+但「本仓库零引用」**不等于可以删**。判断要跨到 velashell-plugins 去看:进程内插件拿得到
+宿主的 `Application.Resources`,第一方的 Docker / Redis / AI 三个面板各按键名取了 45 / 34 / 39
+个字形。上面五个里,`gauge` 被 Docker 与 Redis 两个面板用着,`arrow-down-half` 被 Redis 的
+「自动滚动」用着 —— 照本仓库的 grep 结果删,会直接打坏两个插件,而且是**静默**的:
+`Glyph.ResolveKey()` 里 `TryFindResource` 失败就 return,`Data` 保持 null,`Render` 早退,
+图标凭空消失,不抛异常,本仓库测试照样全绿。
+
+反过来,插件也**不是**这张字典的契约用户 —— `zh/templates/dev-guide.md` 写明插件图标走
+`PluginIcon` 交 24×24 路径数据、不走资源键,隔离进程里根本看不到这张字典;品牌字形归插件
+自己的字典(`DockerTheme.axaml` 里的 `Docker.*`)。所以第三方插件按文档写就不会踩到,
+会踩的只有我们自己那三个进程内面板,而它们在我们自己的仓库里,可控。
+
+据此:
+
+- **删掉** `Icon.map-pin`、`Icon.folder-up` —— 宿主、测试、三个第一方插件全都零引用。
+- **留下** `Icon.gauge` 与 `arrow-up-half` / `arrow-down-half` 这一对,但把注释改成实话:
+  网速指示早就改用整只 `arrow-up-down` 了,这两半今天只剩 Redis 在用下半;两半是一对,
+  要删一起删。删除的前置条件写在注释里 —— 先让插件把字形收进自己的字典,**并且**等在装的
+  旧版插件更新过一轮(已发布的 `.vpx` 是运行期按键名取的,宿主先删就会打坏已安装的旧版)。
+- 字典头部补一段约定,把上面这套判断固化下来,免得下次再从头排查一遍。

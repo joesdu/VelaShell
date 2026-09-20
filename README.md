@@ -336,8 +336,7 @@ SDK 另提供测试替身（`VelaShell.PluginSdk.Testing`），插件可在 head
 | [**velashell-plugin-sdk**](https://github.com/VelaShellLabs/velashell-plugin-sdk) | 插件契约 SDK | `VelaShell.PluginSdk` / `.Testing` **NuGet 包** |
 | [**velashell-plugin-cli**](https://github.com/VelaShellLabs/velashell-plugin-cli) | `vela-plugin` 命令行、`VelaShell.PluginSdk.Build` | **NuGet 包**（插件作者用，本仓库不引用） |
 | [**velashell-plugin-templates**](https://github.com/VelaShellLabs/velashell-plugin-templates) | `dotnet new velaplugin` 模板 | **NuGet 包**（插件作者用，本仓库不引用） |
-| [**velashell-plugins**](https://github.com/VelaShellLabs/velashell-plugins) | Redis / S3 / Telnet / 串口插件 | 各插件的 **`.vpx` 包**（Release 资产 / 插件商店） |
-| [**VelaShell.Plugin.DockerPanel**](https://github.com/VelaShellLabs/VelaShell.Plugin.DockerPanel) | Docker 管理面板插件（自成一仓） | 同上 —— `.vpx` 包，已发布 `0.3.1` |
+| [**velashell-plugins**](https://github.com/VelaShellLabs/velashell-plugins) | Redis / S3 / Telnet / 串口 / Docker 管理面板插件 | 各插件的 **`.vpx` 包**（Release 资产 / 插件商店） |
 | [**velashell-docs**](https://github.com/VelaShellLabs/velashell-docs) | 上面所有仓库的**全部文档** | — |
 
 SDK 契约的版本 pin 在 `src/Directory.Packages.props` 与 `tests/Directory.Packages.props`
@@ -447,7 +446,7 @@ English in [`en/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/en)
 - **Telnet、串口（COM / USB 转串口）、Redis、S3** ——
   源码在 [velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins)。
 - **Docker 面板** ——
-  [VelaShell.Plugin.DockerPanel](https://github.com/VelaShellLabs/VelaShell.Plugin.DockerPanel)（独立仓库）。
+  [VelaShell.Plugin.DockerPanel](https://github.com/VelaShellLabs/velashell-plugins/tree/main/plugins/VelaShell.Plugin.DockerPanel)（在 velashell-plugins 仓内）。
   在**已经连上的 SSH 会话**上开一个完整的 Docker 管理面板：总览 / 容器 / 镜像 / 卷 / 网络 /
   Compose / 系统七页，外加实时统计、多容器合并日志流、容器内文件编辑与内置 TTY 控制台。
   **服务器上什么都不用改** —— 经 SSH 会话开一条到远端 `/var/run/docker.sock` 的直连通道
