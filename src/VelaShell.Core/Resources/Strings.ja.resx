@@ -916,6 +916,15 @@
   <data name="HostKeyUnknown" xml:space="preserve">
     <value>このホストへの初回接続です</value>
   </data>
+  <data name="HostKeyKnownFingerprint" xml:space="preserve">
+    <value>記録済み指紋</value>
+  </data>
+  <data name="HostKeyChangedAdvice" xml:space="preserve">
+    <value>サーバーが再構築または交換された可能性があります。想定内の変更であれば、新しいキーを受け入れて記録を上書きしてください。そうでない場合は通信が傍受されているおそれがあるため拒否してください。</value>
+  </data>
+  <data name="HostKeyUnknownAdvice" xml:space="preserve">
+    <value>照合できる記録がまだありません。信頼する前にサーバー管理者と指紋を確認してください。</value>
+  </data>
   <data name="HostKeyVerification" xml:space="preserve">
     <value>ホストキーの検証</value>
   </data>
@@ -1162,6 +1171,12 @@
   </data>
   <data name="Msg_HistoryCleared" xml:space="preserve">
     <value>最近の接続履歴をクリアしました。</value>
+  </data>
+  <data name="Msg_HostKeyChangedBlocked" xml:space="preserve">
+    <value>{0} のホストキーが信頼済みの記録と一致しません（記録 {1}、今回 {2}）。サーバーを再構築または交換したのであれば、設定 → セキュリティと監査 → 信頼済みホスト で該当の記録を削除するか、「フィンガープリント変更時にブロックして警告」をオフにして毎回確認する設定にしてください。</value>
+  </data>
+  <data name="Msg_HostKeyRejected" xml:space="preserve">
+    <value>{0} のホストキー {1} は信頼されませんでした。接続を中止しました。</value>
   </data>
   <data name="Msg_ImportFailed" xml:space="preserve">
     <value>インポートに失敗しました: {0}</value>
@@ -2218,7 +2233,7 @@
     <value>フィンガープリント変更時にブロックして警告</value>
   </data>
   <data name="SetSecurity_BlockOnChangeDesc" xml:space="preserve">
-    <value>// known_hosts の記録と一致しない場合は接続を拒否し、中間者攻撃を防ぎます</value>
+    <value>// オン：known_hosts の記録と一致しない場合は即座に拒否。オフ（既定）：変更を知らせ、受け入れるか拒否するかを選べます</value>
   </data>
   <data name="SetSecurity_ConfirmFirstFingerprint" xml:space="preserve">
     <value>初回接続時にフィンガープリントを手動確認</value>

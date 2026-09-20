@@ -12,12 +12,19 @@ namespace VelaShell.ViewModels;
 public class HostKeyPromptViewModel : ReactiveObject
 {
     /// <summary>用主机连接信息与密钥校验结果构造弹窗视图模型,并据此初始化三个处置命令。</summary>
+    /// <param name="host">目标主机地址。</param>
+    /// <param name="port">目标主机端口。</param>
+    /// <param name="keyType">本次主机密钥的算法类型。</param>
+    /// <param name="fingerprint">本次主机密钥的指纹。</param>
+    /// <param name="verificationResult">本次指纹相对 known_hosts 的校验结果。</param>
+    /// <param name="knownFingerprint">known_hosts 里已记录的旧指纹;首次连接时为 null。</param>
     public HostKeyPromptViewModel(
         string host,
         int port,
         string keyType,
         string fingerprint,
-        HostKeyVerification verificationResult)
+        HostKeyVerification verificationResult,
+        string? knownFingerprint = null)
     {
         Host = host;
         Port = port;
@@ -25,6 +32,7 @@ public class HostKeyPromptViewModel : ReactiveObject
         Fingerprint = fingerprint;
         VerificationResult = verificationResult;
         IsChanged = verificationResult == HostKeyVerification.Changed;
+        KnownFingerprint = knownFingerprint ?? string.Empty;
 
         // 与主流 SSH 客户端一致的三选项:永久信任(写入 known_hosts)/
         // 仅本次信任(本次运行有效,不落盘)/ 取消(拒绝并中止连接)。
@@ -45,6 +53,12 @@ public class HostKeyPromptViewModel : ReactiveObject
     /// <summary>待确认的主机密钥指纹。</summary>
     public string Fingerprint { get; }
 
+    /// <summary>known_hosts 里已记录的旧指纹;首次连接时为空串。</summary>
+    public string KnownFingerprint { get; }
+
+    /// <summary>是否有旧指纹可摆出来对照(= 指纹变更且记录读得到)。</summary>
+    public bool HasKnownFingerprint => KnownFingerprint.Length > 0;
+
     /// <summary>本次主机密钥的校验结果(未知 / 已变更等)。</summary>
     public HostKeyVerification VerificationResult { get; }
 
@@ -55,6 +69,14 @@ public class HostKeyPromptViewModel : ReactiveObject
     public string WarningText => IsChanged
                                      ? Strings.HostKeyChanged
                                      : Strings.HostKeyUnknown;
+
+    /// <summary>
+    /// 告警下面那段"该怎么判断"的说明。变更时点名两种可能(服务器重装/换机 vs 中间人),
+    /// 首次连接时提示与管理员核对 —— 只喊一句“变了”对用户毫无帮助。
+    /// </summary>
+    public string AdviceText => IsChanged
+                                    ? Strings.Get("HostKeyChangedAdvice")
+                                    : Strings.Get("HostKeyUnknownAdvice");
 
     /// <summary>用户的最终处置结果;未做选择时为 null。</summary>
     public HostKeyDecision? Result

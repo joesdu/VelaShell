@@ -20,5 +20,15 @@ public enum HostKeyDecision
 public interface IHostKeyPrompt
 {
     /// <summary>询问用户如何处置该指纹;实现方失败时必须返回 <see cref="HostKeyDecision.Reject" />(fail-closed)。</summary>
-    Task<HostKeyDecision> DecideAsync(string host, int port, string keyType, string fingerprint, HostKeyVerification verification);
+    /// <param name="host">目标主机地址(主机名或 IP)。</param>
+    /// <param name="port">目标主机的 SSH 端口。</param>
+    /// <param name="keyType">本次服务端主机密钥的算法类型。</param>
+    /// <param name="fingerprint">本次服务端主机密钥的指纹。</param>
+    /// <param name="verification">本次指纹相对 known_hosts 的校验结果。</param>
+    /// <param name="knownFingerprint">
+    /// known_hosts 里已记录的旧指纹;首次连接(无记录)时为 <see langword="null" />。
+    /// 指纹变更时必须摆出来 —— 用户要靠"原来是哪一把"才能判断这是自己重装的那台还是一次劫持。
+    /// </param>
+    Task<HostKeyDecision> DecideAsync(string host, int port, string keyType, string fingerprint,
+        HostKeyVerification verification, string? knownFingerprint = null);
 }

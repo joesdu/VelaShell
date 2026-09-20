@@ -741,6 +741,15 @@
   <data name="HostKeyUnknown" xml:space="preserve">
     <value>首次连接此主机</value>
   </data>
+  <data name="HostKeyKnownFingerprint" xml:space="preserve">
+    <value>已记录指纹</value>
+  </data>
+  <data name="HostKeyChangedAdvice" xml:space="preserve">
+    <value>服务器可能已重装或更换。若变更在预期内，接受新密钥即可覆盖原记录；否则连接可能正被劫持，请拒绝。</value>
+  </data>
+  <data name="HostKeyUnknownAdvice" xml:space="preserve">
+    <value>本地还没有可比对的记录。信任前请与服务器管理员核对该指纹。</value>
+  </data>
   <data name="Fingerprint" xml:space="preserve">
     <value>指纹</value>
   </data>
@@ -1497,6 +1506,12 @@
   </data>
   <data name="Msg_HistoryCleared" xml:space="preserve">
     <value>已清除最近连接记录。</value>
+  </data>
+  <data name="Msg_HostKeyChangedBlocked" xml:space="preserve">
+    <value>{0} 的主机密钥与已信任记录不符（已记录 {1}，本次 {2}）。若这台服务器确实被重装或更换，请到 设置 → 安全与审计 → 已信任主机 删除该记录，或关闭「指纹变更时阻断并告警」改为每次询问。</value>
+  </data>
+  <data name="Msg_HostKeyRejected" xml:space="preserve">
+    <value>未信任 {0} 的主机密钥 {1}，连接已中止。</value>
   </data>
   <data name="Msg_ImportFailed" xml:space="preserve">
     <value>导入失败:{0}</value>
@@ -2468,7 +2483,7 @@
     <value>指纹变更时阻断并告警</value>
   </data>
   <data name="SetSecurity_BlockOnChangeDesc" xml:space="preserve">
-    <value>// 与 known_hosts 记录不符即拒绝连接,防中间人</value>
+    <value>// 开启：与 known_hosts 记录不符即直接拒绝；关闭（默认）：弹窗告知变更，由你决定接受还是拒绝</value>
   </data>
   <data name="SetSecurity_ConfirmFirstFingerprint" xml:space="preserve">
     <value>首次连接需人工确认指纹</value>

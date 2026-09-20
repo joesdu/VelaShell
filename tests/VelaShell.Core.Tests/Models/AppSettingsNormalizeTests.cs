@@ -90,4 +90,39 @@ public class AppSettingsNormalizeTests
 
         Assert.IsTrue(settings.Security.RecordProductionSessions);
     }
+
+    /// <summary>
+    /// 「换了台服务器、IP 没变」是最常见的正当指纹变更(#476)。默认直接阻断会把它报成一条
+    /// 连接错误,用户只能去删数据库里的记录 —— 默认改为弹窗裁决。
+    /// </summary>
+    [TestMethod]
+    public void FingerprintChange_IsNotBlockedByDefault() =>
+        Assert.IsFalse(new AppSettings().Security.BlockOnFingerprintChange);
+
+    /// <summary>存量配置里的 <c>true</c> 分不清是用户选的还是旧默认值,统一关一次。</summary>
+    [TestMethod]
+    public void LegacyFingerprintBlock_IsTurnedOffOnce()
+    {
+        AppSettings settings = new();
+        settings.Security.BlockOnFingerprintChange = true;
+        settings.Security.FingerprintChangeDefaultMigrated = false;
+
+        settings.Normalize();
+
+        Assert.IsFalse(settings.Security.BlockOnFingerprintChange);
+        Assert.IsTrue(settings.Security.FingerprintChangeDefaultMigrated, "迁移标记要落下,之后不再插手用户的选择");
+    }
+
+    /// <summary>迁移只做一次:用户此后自己打开阻断,再次载入设置不能又给关掉。</summary>
+    [TestMethod]
+    public void FingerprintBlock_AfterMigration_IsRespected()
+    {
+        AppSettings settings = new();
+        settings.Security.BlockOnFingerprintChange = true;
+        settings.Security.FingerprintChangeDefaultMigrated = true;
+
+        settings.Normalize();
+
+        Assert.IsTrue(settings.Security.BlockOnFingerprintChange);
+    }
 }

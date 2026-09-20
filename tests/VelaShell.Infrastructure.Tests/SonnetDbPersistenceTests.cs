@@ -256,6 +256,26 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         Assert.IsEmpty(await service.GetKnownHostsAsync());
     }
 
+    /// <summary>
+    /// 指纹变更弹窗要摆出"原来记的是哪一把"(#476),所以单条记录必须取得到,
+    /// 而不是让调用方去 <c>GetKnownHostsAsync</c> 里翻。
+    /// </summary>
+    [TestMethod]
+    public async Task HostKeyService_FindKnownHost_ReturnsRecordedFingerprint()
+    {
+        var service = new SonnetDbHostKeyService(_engine);
+        Assert.IsNull(await service.FindKnownHostAsync("host2", 2222));
+
+        await service.TrustHostKeyAsync("host2", 2222, "ssh-ed25519", "SHA256:old");
+        KnownHost? found = await service.FindKnownHostAsync("host2", 2222);
+
+        Assert.IsNotNull(found);
+        Assert.AreEqual("SHA256:old", found.Fingerprint);
+        Assert.AreEqual("ssh-ed25519", found.KeyType);
+        // 端口是主键的一半:同主机不同端口不能互相串。
+        Assert.IsNull(await service.FindKnownHostAsync("host2", 22));
+    }
+
     [TestMethod]
     public async Task RecentConnections_RecordAndQuery_DedupesAndOrdersByTimeDesc()
     {

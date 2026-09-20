@@ -119,22 +119,26 @@
                            VerticalAlignment="Top"
                            Data="{DynamicResource Icon.triangle-alert}"
                            Foreground="{DynamicResource VelaWarning}" />
-            <TextBlock Text="{Binding WarningText}"
-                       Foreground="{DynamicResource VelaWarning}"
-                       FontSize="{DynamicResource VelaFontSize12}"
-                       FontWeight="SemiBold"
-                       TextWrapping="Wrap"
-                       MaxWidth="360"
-                       VerticalAlignment="Center"
-                       IsVisible="{Binding !IsChanged}" />
-            <TextBlock Text="{Binding WarningText}"
-                       Foreground="{DynamicResource VelaError}"
-                       FontSize="{DynamicResource VelaFontSize12}"
-                       FontWeight="SemiBold"
-                       TextWrapping="Wrap"
-                       MaxWidth="360"
-                       VerticalAlignment="Center"
-                       IsVisible="{Binding IsChanged}" />
+            <!-- 告警一行 + 说明一行:只喊"变了"用户无从判断该不该接受,
+                 说明里点名"服务器重装/换机"与"中间人"两种可能。 -->
+            <StackPanel Spacing="6" MaxWidth="360" VerticalAlignment="Center">
+              <TextBlock Text="{Binding WarningText}"
+                         Foreground="{DynamicResource VelaWarning}"
+                         FontSize="{DynamicResource VelaFontSize12}"
+                         FontWeight="SemiBold"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding !IsChanged}" />
+              <TextBlock Text="{Binding WarningText}"
+                         Foreground="{DynamicResource VelaError}"
+                         FontSize="{DynamicResource VelaFontSize12}"
+                         FontWeight="SemiBold"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding IsChanged}" />
+              <TextBlock Text="{Binding AdviceText}"
+                         Foreground="{DynamicResource VelaTextSecondary}"
+                         FontSize="{DynamicResource VelaFontSize11}"
+                         TextWrapping="Wrap" />
+            </StackPanel>
           </StackPanel>
         </Border>
 
@@ -162,6 +166,16 @@
               <TextBlock Grid.Column="0" Classes="info-label" Text="{x:Static res:Strings.Fingerprint}" />
               <TextBlock Grid.Column="1" Classes="mono"
                          Text="{Binding Fingerprint}"
+                         TextWrapping="Wrap" />
+            </Grid>
+
+            <!-- 变更时把 known_hosts 里的旧指纹一并摆出来:用户要两把对照才判断得了
+                 "这是我刚重装的那台"还是"路上有人"。首次连接没有旧指纹,整行不显示。 -->
+            <Grid ColumnDefinitions="100,*" IsVisible="{Binding HasKnownFingerprint}">
+              <TextBlock Grid.Column="0" Classes="info-label" Text="{loc:Localize HostKeyKnownFingerprint}" />
+              <TextBlock Grid.Column="1" Classes="mono"
+                         Foreground="{DynamicResource VelaTextTertiary}"
+                         Text="{Binding KnownFingerprint}"
                          TextWrapping="Wrap" />
             </Grid>
 

@@ -101,6 +101,15 @@ public class AppSettings
             Security.RecordingOptInMigrated = true;
         }
 
+        // 指纹变更从"直接阻断"改为"弹窗裁决"(见 SecurityOptions.BlockOnFingerprintChange)。
+        // 老配置里落盘的那个 true 同样分不清是用户选的还是旧默认值 —— 只抬这一次,
+        // 抬完打标记,此后主动打开的阻断永远算数。
+        if (!Security.FingerprintChangeDefaultMigrated)
+        {
+            Security.BlockOnFingerprintChange = false;
+            Security.FingerprintChangeDefaultMigrated = true;
+        }
+
         // 代理默认值从 none 改成 system(见 ProxyOptions.Type)。老配置里落盘的那个 none
         // 分不清是"用户选的"还是"从来没动过",而两者在没有系统代理时行为一模一样 ——
         // 于是只抬这一次:抬完打标记,此后主动选的 none 永远算数。
@@ -1059,12 +1068,27 @@ public class SecurityOptions : ObservableOptions
         set => Set(ref field, value);
     }
 
-    /// <summary>主机指纹变化时是否阻止连接。</summary>
+    /// <summary>
+    /// 主机指纹变化时是否**直接阻断**(不询问)。默认关闭:变更走确认弹窗,由用户当场裁决
+    /// (与 PuTTY / Xshell / SecureCRT 一致)。
+    /// </summary>
+    /// <remarks>
+    /// 早先默认开启,于是"换了台机器、IP 没变"这种最常见的正当变更被当成一条连接错误报出来,
+    /// 用户唯一的出路是去删 <c>.velashell</c> 里的记录(#476)。阻断本身仍留着给要严格 fail-closed
+    /// 的人用,只是不再是默认。
+    /// </remarks>
     public bool BlockOnFingerprintChange
     {
         get;
         set => Set(ref field, value);
-    } = true;
+    }
+
+    /// <summary>
+    /// <see cref="BlockOnFingerprintChange" />「改为默认不阻断」的一次性迁移标记。
+    /// 存量配置里的 <see langword="true" /> 分不清是用户选的还是旧默认值带的,
+    /// 于是统一关一次并打上标记,之后完全听用户的(见 <see cref="AppSettings.Normalize" />)。
+    /// </summary>
+    public bool FingerprintChangeDefaultMigrated { get; set; }
 
     /// <summary>安全事件发生时是否在应用内弹出告警。</summary>
     public bool AlertInApp
