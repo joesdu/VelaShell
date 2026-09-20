@@ -143,8 +143,89 @@ public class XshellLaunchParserTests
     [TestMethod]
     public void Parse_NewTabLabelAlone_IsNotMistakenForATarget()
     {
-        // 只有标签名、没有任何目标:宁可当作普通启动,也不能拿一个解析不出主机的串去"连接"。
+        // 只有标签名、没有任何目标:宁可当作普通启动,也不能拿一个标签名去"连接"。
         Assert.IsNull(XshellLaunchParser.TryParse(["-newtab", "root@Linux[2026_09_20_09_45_18]"]));
+        // 更阴的一条:标签名恰好长得就是 user@host,与一条省了 scheme 的 URL 一模一样。
+        // Xshell 官方语义里 -newtab 的参数本就是会话名,所以不带 scheme 的一律不当目标 ——
+        // 猜错的代价是连到一台根本不存在的主机上。
+        Assert.IsNull(XshellLaunchParser.TryParse(["-newtab", "root@webserver01"]));
+    }
+
+    [TestMethod]
+    public void Parse_UrlOption_WithoutScheme_IsStillATarget()
+    {
+        // 调用方已经明说这是 URL,只是写得糙(省了 ssh://)。挑剔它"长得像不像"的代价是
+        // 一次静默失败:窗口开了、不连接、也没有任何提示 —— 与 #475 是同一个家族。
+        ExternalLaunchRequest request = XshellLaunchParser.TryParse(["-url", "10.0.3.21:2222"])!;
+
+        Assert.AreEqual("10.0.3.21", request.Host);
+        Assert.AreEqual(2222, request.Port);
+        Assert.AreEqual("ssh", request.Scheme, "没写 scheme 时按 ssh 兜底。");
+    }
+
+    [TestMethod]
+    public void Parse_PasswordStartingWithDash_IsNotMistakenForAnOption()
+    {
+        // 一次性口令是现发的随机串,以 - 开头完全正常。按"开头有没有破折号"一刀切会把它吞掉,
+        // 结果是连上了却没带密码 —— 用户看到的是一个莫名其妙的登录框。
+        ExternalLaunchRequest request = XshellLaunchParser.TryParse(
+            ["-l", "root", "-pw", "-Abc123", "-url", "ssh://10.0.3.21:22"])!;
+
+        Assert.AreEqual("root", request.Username);
+        Assert.AreEqual("-Abc123", request.Password);
+    }
+
+    [TestMethod]
+    public void Parse_UnimplementedOption_IsNotSwallowedAsAValue()
+    {
+        // 反过来也得站得住:-e / -s 我们刻意不实现(见 velashell-docs),但调用方照发不误。
+        // 缺了口令的 -pw 后面跟着 -e 时,那个 -e 不能被当成口令收下。
+        ExternalLaunchRequest request = XshellLaunchParser.TryParse(
+            ["-url", "ssh://root@10.0.3.21:22", "-pw", "-e", "uptime"])!;
+
+        Assert.IsNull(request.Password);
+    }
+
+    [TestMethod]
+    public void Parse_IPv6ZoneId_IsKeptAndUnescaped()
+    {
+        // 链路本地地址带网卡名;RFC 6874 在 URL 里把 % 转义成 %25,套接字要的是还原后的那个。
+        ExternalLaunchRequest request = XshellLaunchParser.TryParse(["-url", "ssh://root@[fe80::1%25eth0]:2222"])!;
+
+        Assert.AreEqual("fe80::1%eth0", request.Host);
+        Assert.AreEqual(2222, request.Port);
+    }
+
+    [TestMethod]
+    public void Parse_UnparsableUrlOption_FallsBackToTheNextSource()
+    {
+        // 高优先级那条解析不出主机时还得有退路,否则一个写坏的 -url 会把整条命令行
+        // 拖成"什么都不发生"—— 正是 #475 里最难查的那个症状。
+        ExternalLaunchRequest fromTab = XshellLaunchParser.TryParse(
+            ["-url", "nope!!", "-newtab", "ssh://root@10.0.3.21:2222"])!;
+
+        Assert.AreEqual("10.0.3.21", fromTab.Host);
+        Assert.AreEqual(2222, fromTab.Port);
+
+        string path = Path.Combine(Path.GetTempPath(), $"vela-{Guid.NewGuid():N}.xsh");
+        File.WriteAllText(path, """
+            [CONNECTION]
+            Protocol=SSH
+            Host=10.0.3.22
+            Port=2200
+
+            """, Encoding.Unicode);
+        try
+        {
+            ExternalLaunchRequest fromFile = XshellLaunchParser.TryParse(["-url", "nope!!", "-f", path])!;
+
+            Assert.AreEqual("10.0.3.22", fromFile.Host);
+            Assert.AreEqual(ExternalLaunchOrigin.SessionFile, fromFile.Origin);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [TestMethod]

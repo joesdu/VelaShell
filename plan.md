@@ -5199,3 +5199,61 @@ JumpServer Client 4.1.6 把 VelaShell 配成 SSH 工具,网页点一下"连接",
 - `dotnet test tests/VelaShell.Infrastructure.Tests` 全绿(490 通过,3 条按环境跳过)。
 - 📄 velashell-docs 已同步(中英各 1 个文件):`Xshell兼容登录.md` / `xshell-compatible-login.md`
   的调用形态表补上 `-newtab` 也可能带标签名,并写明三个来源的取用顺序。
+
+## ✅ 85. 2026-09-20 复查 #475:同一个家族里另有三处静默失败(代码复查)
+
+§84 只堵住了报告人踩到的那一条。把解析器架到一个探针上灌 23 条真实/刁钻命令行跑一遍
+(`dotnet run probe.cs`,文件式应用直接引工程),又翻出三处**同一个症状**的洞 ——
+窗口开了、不连接、也不报错,或者连上了却少带凭据:
+
+| 输入 | 修之前 | 病因 |
+| --- | --- | --- |
+| `-url 10.0.3.21:2222` | 不连接 | 调用方**明说**了这是 url,只是省了 scheme,却被 `LooksLikeUrl` 挡住 |
+| `-l root -pw -Abc123 -url …` | 连上但**密码丢了** | `PeekValue` 拒收以 `-` 开头的值 |
+| `-url ssh://root@[fe80::1%25eth0]:2222` | 不连接 | IPv6 zone id 里的字母过不了 `LooksLikeHost` 的十六进制收紧 |
+
+### 一、`-url` 的值不再挑剔长相
+
+`LooksLikeUrl`(有没有 `://`、有没有 `@` 且不含空格)本来是给**裸位置参数**设的:要在 Avalonia
+自己的参数、拖拽进来的路径里挑出一条 URL。套到 `-url` 上属于用错了地方 —— 调用方都明说是 url 了,
+我们还去猜它像不像,猜错的代价就是一次静默失败。现在 `-url` 的值原样交给 `ParseUrl`,
+`-url 10.0.3.21:2222`(按 ssh 兜底)照连。
+
+### 二、三个来源改成逐条试,而不是「选中一条再解析」
+
+上一条放开之后冒出个新问题:一个写坏的 `-url` 会把 `url` 变成非 null,于是 `-newtab`、裸参数、
+`-f` 全都没机会了。改成 `ParseUrl(-url) ?? ParseUrl(裸参数) ?? ParseUrl(-newtab) ?? ParseSessionFile(-f)`,
+高优先级那条解析不出主机时接着试下一条。**优先级没变,只是多了退让。**
+
+### 三、`-newtab` 收紧到「必须带 scheme」
+
+`-newtab root@webserver01` 这种标签名恰好能解析出主机,§84 那道「真能解析出主机才认」拦不住它,
+于是会去连一台叫 `webserver01` 的机器。Xshell 官方语义里 `-newtab` 的参数本就是**会话名**,
+所以现在只认带 `://` 的;不带的一律当标签名丢掉。确有调用方往 `-newtab` 里塞完整 URL,那条不受影响。
+
+### 四、「下一个 token 是不是选项」按名字判,不按破折号
+
+`PeekValue` 原本是「开头有 `-` 就不是值」。一次性口令是现发的随机串,`-Abc123` 完全正常,
+被吞掉的结果是连上了却没带密码 —— 用户看到一个莫名其妙的登录框,还以为是堡垒机发错了。
+改成认名字(我们消费的那几个,外加 `-e` / `-s` / `-ssh` 这些**刻意不实现**但调用方照发的),
+反向也堵住:`-pw -e uptime` 里的 `-e` 不会被当成口令收下。
+
+### 五、IPv6 zone id
+
+`LooksLikeHost` 对带 `:` 的一段收紧到十六进制数字,是为了不让 `user:pass` 这样的凭据片段冒充
+IPv6 主机(那条注释还在)。但 zone id 是 `eth0` / `en0` 这种网卡名,一收就把整条链路本地地址判死。
+现在按第一个 `%` 拆开:地址那半照旧严格,zone 那半放宽到字母数字与 `. - _`;
+并在 `TrySplitHostPort` 里按 RFC 6874 把 `%25` 还原成 `%`(URL 里是转义的,套接字要的是还原后的)。
+
+### 验证
+
+- 新增 6 条用例(累计 28 条),覆盖上表三条 + `-newtab root@webserver01` 不当目标 +
+  `-pw -e` 不吞选项 + 写坏的 `-url` 分别退到 `-newtab` 与 `-f`。
+- 23 条探针重跑:四条修好,其余 19 条逐字未变(含 #475 原样、华为 CBH、PuTTY 风格 `-ssh -P -pw`、
+  口令里带 `@ : /` 与空格、`?folder=prod` 查询串、`SSH://` 大写 scheme)。
+- `dotnet build VelaShell.slnx` 零警告;`dotnet test tests/VelaShell.Infrastructure.Tests` 通过
+  (495 通过、3 条按环境跳过)。
+- ⚠️ SecureCRT 的斜杠风格(`/SSH2 /L root /PASSWORD pw host`)仍然完全不认 —— 本兼容层只认 Xshell
+  的调用约定,要不要接是另一件事,已记在 `feature-plan.md`。
+- 📄 velashell-docs 已同步(中英各 1 个文件):`-url` 不挑长相、`-newtab` 必须带 scheme、逐条试的退让、
+  以 `-` 开头的值、IPv6 zone id。
