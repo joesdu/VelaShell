@@ -5271,4 +5271,22 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Sync_CompareFellBack" xml:space="preserve">
     <value>(SHA-256 不可用,按大小与时间比较)</value>
   </data>
+  <data name="Tree_PinSession" xml:space="preserve">
+    <value>置顶</value>
+  </data>
+  <data name="Tree_UnpinSession" xml:space="preserve">
+    <value>取消置顶</value>
+  </data>
+  <data name="SetGeneral_CollapseGroups" xml:space="preserve">
+    <value>启动时折叠分组</value>
+  </data>
+  <data name="SetGeneral_CollapseGroupsDesc" xml:space="preserve">
+    <value>资源管理器的分组默认折叠;手动展开后的状态在本次运行内保持。</value>
+  </data>
+  <data name="SetTransfer_FastRecursiveDelete" xml:space="preserve">
+    <value>用 rm -rf 删除远端目录</value>
+  </data>
+  <data name="SetTransfer_FastRecursiveDeleteDesc" xml:space="preserve">
+    <value>仅 SSH 会话:一条命令代替逐个文件的 SFTP 往返。命令不可用或失败时自动回退到 SFTP 递归删除。删除前的确认不变,但这条路上没有逐个文件的进度。</value>
+  </data>
 </root>

@@ -103,6 +103,14 @@
       </StackPanel>
       <ToggleSwitch Grid.Column="1" IsChecked="{Binding Transfer.ShowHiddenFiles}" VerticalAlignment="Center" />
     </Grid>
+    <!-- 目录删除的快路径(#474):只对有 exec 通道的 SSH 会话生效,失败自动回退 SFTP 递归。 -->
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetTransfer_FastRecursiveDelete}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetTransfer_FastRecursiveDeleteDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Transfer.UseRecursiveDeleteCommand}" VerticalAlignment="Center" />
+    </Grid>
     <!-- 断点续传(设置审计 M-02 的"恢复中断的传输",底层链路已实现:探测 → 起点核实 → 安全回退)。 -->
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">

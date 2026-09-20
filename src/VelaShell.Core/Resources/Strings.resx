@@ -4825,4 +4825,22 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="Sync_CompareFellBack" xml:space="preserve">
     <value>(SHA-256 unavailable, compared by size/time)</value>
   </data>
+  <data name="Tree_PinSession" xml:space="preserve">
+    <value>Pin to Top</value>
+  </data>
+  <data name="Tree_UnpinSession" xml:space="preserve">
+    <value>Unpin</value>
+  </data>
+  <data name="SetGeneral_CollapseGroups" xml:space="preserve">
+    <value>Collapse groups on startup</value>
+  </data>
+  <data name="SetGeneral_CollapseGroupsDesc" xml:space="preserve">
+    <value>Groups in the explorer start collapsed; expanding one is remembered until the app is closed.</value>
+  </data>
+  <data name="SetTransfer_FastRecursiveDelete" xml:space="preserve">
+    <value>Delete remote folders with rm -rf</value>
+  </data>
+  <data name="SetTransfer_FastRecursiveDeleteDesc" xml:space="preserve">
+    <value>SSH sessions only: one command instead of one SFTP round trip per file. Falls back to the SFTP walk if the command is unavailable or fails. The confirmation prompt is unchanged, but per-file progress is not available.</value>
+  </data>
 </root>

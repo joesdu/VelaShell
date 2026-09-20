@@ -55,11 +55,55 @@ public sealed class SessionTreeNodeViewModel(
     /// 未分组会话直接挂在树根(设计 FrJPu:不再有“未分组”目录),此时行内缩进
     /// 与分组行对齐而不是子项缩进。
     /// </summary>
+    /// <remarks>
+    /// 这是**数据事实**(这条会话没有分组),由树加载与「移动到分组」维护。
+    /// 界面的缩进绑的不是它而是 <see cref="ShowsAtRootIndent" /> —— 置顶的会话虽然
+    /// 仍属于某个分组,却被提到了树顶显示,缩进得跟着显示位置走。
+    /// </remarks>
     public bool IsRootLevel
     {
         get;
-        set => this.RaiseAndSetIfChanged(ref field, value);
+        set
+        {
+            if (field == value)
+            {
+                return;
+            }
+            this.RaiseAndSetIfChanged(ref field, value);
+            this.RaisePropertyChanged(nameof(ShowsAtRootIndent));
+        }
     }
+
+    /// <summary>
+    /// 会话是否被置顶(#474):置顶的会话被提到整棵树的最前面显示,
+    /// 折叠分组时照样看得见。分组节点恒为 false。
+    /// </summary>
+    /// <remarks>
+    /// 只是<b>显示位置</b>的调整,节点本身仍挂在原分组下(见
+    /// <c>SessionTreeViewModel.SyncRows</c>)—— 分组归属、拖放落点、
+    /// 「分组空了就删掉」这些规则因此一条都不用改。
+    /// </remarks>
+    public bool IsPinned
+    {
+        get;
+        set
+        {
+            if (field == value)
+            {
+                return;
+            }
+            this.RaiseAndSetIfChanged(ref field, value);
+            this.RaisePropertyChanged(nameof(ShowsAtRootIndent));
+            this.RaisePropertyChanged(nameof(PinToggleText));
+        }
+    }
+
+    /// <summary>行是否按根级缩进渲染:本就在树根,或因置顶被提到了树顶。</summary>
+    public bool ShowsAtRootIndent => IsRootLevel || IsPinned;
+
+    /// <summary>右键菜单里那一项的文案:未置顶显示「置顶」,已置顶显示「取消置顶」。</summary>
+    public string PinToggleText =>
+        IsPinned ? Strings.Get("Tree_UnpinSession") : Strings.Get("Tree_PinSession");
 
     /// <summary>
     /// 状态圆点与标签(设计 FrJPu):Connected→绿点+「活跃」,Connecting→黄点+

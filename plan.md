@@ -4957,3 +4957,69 @@ run、139 ms、46 MB,像合批彻底坏了;换到真 Skia 后一切正常。**�
   `EchoSuppressorTests` 1 条钉住 `IndexOf` 的边界语义,含「空针 → -1」这个与 BCL 相反、必须守住的约定。
 - `VelaShell.Terminal.RenderTests` 5 通过。
 - 构建零警告。
+
+## ✅ 82. 2026-09-20 资源管理器的折叠与置顶、rm -rf 删目录、路径栏复制(用户需求 #474)
+
+Issue #474 一口气提了五条,标题只写了第一条。逐条落地四条,第三条按维护者既有决策不做:
+
+| # | 诉求 | 处置 |
+| --- | --- | --- |
+| 1 | 启动时默认折叠分组 | ✅ `设置 → 常规` 新开关 |
+| 2 | 置顶连接 | ✅ 右键置顶,提到整棵树最前 |
+| 3 | SFTP 拖拽移动文件 | ❌ 维护者既有决策:太容易误触发,"文件乱飞",早先就是因此关掉的。见 feature-plan.md「确认不做」 |
+| 4 | 删目录走 `rm -rf` | ✅ SSH 会话上的快路径,失败自动回退 |
+| 5 | 路径栏加复制按钮 | ✅ 命令早就有,只差一个按钮 |
+
+**1 与 2 是一件事,不是两件。** 起初想把置顶做成「在组内上浮」—— 改动最小。但把它和第 1 条摆在一起
+就露馅了:分组全折上之后,组内上浮的置顶项照样看不见,等于没置顶。所以置顶最终做成
+**提到整棵树的最前**,与折叠配套才有意义。`SessionTreePinAndCollapseTests` 里那条
+`PinnedSessionInACollapsedGroup_IsStillVisible` 钉的就是这条性质。
+
+**置顶只动"摊平"那一层,不动树本身。** 会话树是 `Nodes`(两层:分组 → 会话)经 `SyncRows`
+摊成 `Rows` 给界面画。置顶的实现整个落在 `SyncRows` 里:先把置顶的会话摊在最前,再摊其余节点,
+且跳过已经摊过的那些。节点在 `Nodes` 里的位置**一点没动** —— 于是分组归属、拖放落点解析、
+「分组空了就连分组一起删」这些规则一条都不用改,`SessionProfile.GroupId` 也原样保留,
+取消置顶它就回到自己那一组。
+⚠️ 一个必须守住的点:同一个节点实例在 `Rows` 里只能出现一次。摊两遍(置顶区一次、组内再一次)
+会让列表控件的选中与容器复用错乱,`PinnedSessionInAnExpandedGroup_AppearsExactlyOnce` 守这条。
+缩进另开了 `ShowsAtRootIndent`(= `IsRootLevel || IsPinned`):`IsRootLevel` 仍是**数据事实**
+(这条会话没有分组),而缩进要跟着**显示位置**走,两者在置顶的组内会话上第一次分岔。
+
+**折叠设置必须配一份进程内的展开态记忆,否则它会变成骚扰。** 设置说的是「应用打开时」,
+而 `LoadTreeAsync` 被调用的时机远不止启动:新建 / 编辑 / 删除连接、云同步回来都会重建整棵树。
+只看设置的话,每加一条连接就把刚展开的分组又折回去。所以 `SessionTreeViewModel` 记一份
+`_groupExpansion`:重建时**记忆优先、设置兜底**。记忆只活在进程内 —— 重启后本就该回到设置说的状态。
+
+**`rm -rf` 是快路径,不是替换。** 删一棵上万文件的树,SFTP 这条路要先把整棵树列一遍算总数
+(为了那根进度条),再对每个条目发一次 `SSH_FXP_REMOVE`/`RMDIR`;往返次数与文件数成正比。
+`rm -rf` 是一次往返。但它只在**有 exec 通道的 SSH 会话**上成立,所以做成快路径,四道闸:
+只对真目录(链接仍按叶子删,语义与原来一致)、`GetClient` 拿得到 SSH 客户端、设置允许、
+路径是绝对路径且不是根。任何一条不满足,或者命令退非零码 / 抛异常,一律回退到原来的 SFTP 递归 ——
+**回退路径会把真正的失败原因带出来**,而不是一句没有上下文的 "rm: exit 1"。
+路径按 POSIX 单引号包起来(`'` → `'\''`),空格、`$`、`;`、通配符在 shell 那一层全部失去特殊含义。
+代价如实写进了设置项说明:这条路上没有逐条进度(进度条转不确定态),取消只能关通道、远端的 rm 可能已经删完。
+二次确认不受影响,照旧。
+
+⚠️ **一个被 NSubstitute 掩盖的测试陷阱**:`ISshConnectionService.GetClient` 返回接口,
+而 NSubstitute 的**递归替身**会给接口返回值凭空造一个替身 —— 不是 null。于是既有的
+`SftpServiceTests`(本意是"纯 SFTP、没有 exec 通道")在加了快路径之后会悄悄拐进 `rm -rf` 分支。
+表现是 `DeleteAsync_RecursivelyDeletesDirectoryContents_AndReportsProgress` 多出一条进度回报。
+修法是把意图写明:`GetClient(...).Returns((ISshClientWrapper?)null)`。
+**凡是"这个依赖不存在"的用例,null 都得显式写出来。**
+
+**第 5 条只差一个按钮。** `CopyCurrentPathCommand` 早就有(空白区右键那一项),
+只是没挂到路径栏上;用户原先要复制路径得先点铅笔进编辑态再手动选中。铅笔旁边加一枚
+`Icon.copy` 绑上去即可,复用既有的 `CopyCurrentFolderPath` 文案,零新增字符串。
+
+验证:
+
+- 新增 `SftpRecursiveDeleteCommandTests` 9 条(快路径成立 / 只报不确定进度 / 退非零码回退 /
+  抛异常回退 / 无 exec 通道 / 设置关闭 / 单文件不走命令 / 引号与空格的转义 / 根目录不走命令)。
+- 新增 `SessionTreePinAndCollapseTests` 12 条(折叠开关两态 + 无设置服务 / 手动展开与手动折叠
+  各自扛过一次重建 / 置顶上浮 / 折叠时仍可见 / 只出现一次 / 根级缩进 / 置顶与取消置顶落库 /
+  分组行上命令不可用)。
+- 新增 `PinAndCopyPathBindingUiTests` 2 条守 XAML 侧的反射绑定(右键置顶项、路径栏复制按钮)。
+  ⚠️ 用带返回值的 `Dispatch(async () => { …; return true; })`,并**实测**过插一条
+  `Assert.Fail` 确实会让用例红 —— 无返回值写法会拿到一个从未被等待的 `Task<Task>`。
+- headless 截图人眼核对过三张:分组全折叠 + 两条置顶、全展开、SFTP 路径栏。
+- 五份 resx 各补 6 个键;`dotnet build VelaShell.slnx` 零警告,`dotnet test VelaShell.slnx` 全绿。

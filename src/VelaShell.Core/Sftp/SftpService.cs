@@ -247,6 +247,15 @@ public class SftpService : ISftpService
                           ?? throw new FileNotFoundException($"Remote path not found: {remotePath}");
         // 链接一律当叶子删(只删链接本身):沿链接递归,删掉的会是链接**指向的**那棵树。
         bool isDirectory = IsTraversableDirectory(entry);
+
+        // 目录树先试一条 rm -rf(#474):SFTP 递归的往返次数与文件数成正比,
+        // 一次 exec 则是一次往返。试不成(没有 exec 通道、非 Unix 主机、命令退非零码)
+        // 就照旧走下面的 SFTP 递归 —— 回退路径会把真正的失败原因带出来。
+        if (isDirectory
+            && await TryDeleteDirectoryByCommandAsync(sessionId, remotePath, progress, cancellationToken).ConfigureAwait(false))
+        {
+            return;
+        }
         int total = await CountEntriesAsync(client, remotePath, isDirectory, cancellationToken).ConfigureAwait(false);
 
         // 先发出一个 "0 / total" 的进度点,使 UI 能立即切换到确定型进度。
@@ -760,6 +769,101 @@ public class SftpService : ISftpService
             return (0, 0, true);
         }
     }
+
+    /// <summary>
+    /// 目录树删除的快路径(#474):在 SSH 的 exec 通道上跑一条 <c>rm -rf</c>。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 只在**真的能跑命令**的会话上成立。独立 SFTP 配置、FTP、S3 等协议走的是另外的
+    /// <c>ISftpService</c> 实现或没有 <see cref="ISshClientWrapper" />,
+    /// <see cref="ISshConnectionService.GetClient" /> 返回 null,这里直接返回 false。
+    /// </para>
+    /// <para>
+    /// 退非零码即判失败并回退 —— 包括"删了一半卡在某个只读文件上"这种半成功:
+    /// 剩下的由 SFTP 递归接着删,删不动时抛出的是那条路径上的真实错误,
+    /// 而不是一句没有上下文的 "rm: exit 1"。
+    /// </para>
+    /// <para>
+    /// 进度只报一个不确定态的起点:远端一条命令跑完才返回,中途无从计数。
+    /// </para>
+    /// </remarks>
+    /// <param name="sessionId">会话标识。</param>
+    /// <param name="remotePath">要删除的远端目录的绝对路径。</param>
+    /// <param name="progress">删除进度回报。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>true = 已经删完,调用方不必再走 SFTP 递归。</returns>
+    private async Task<bool> TryDeleteDirectoryByCommandAsync(Guid sessionId,
+        string remotePath,
+        IProgress<SftpDeleteProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (!IsCommandDeletablePath(remotePath) || !await IsRecursiveDeleteCommandEnabledAsync().ConfigureAwait(false))
+        {
+            return false;
+        }
+        ISshClientWrapper? ssh = _connectionService.GetClient(sessionId);
+        if (ssh is null)
+        {
+            return false;
+        }
+        try
+        {
+            // 0 / 0 = 不确定态:这条路上没有逐条进度,界面据此显示转圈而不是一根不动的进度条。
+            progress?.Report(new(0, 0, remotePath));
+            RemoteCommandResult result = await ssh
+                .RunCommandDetailedAsync($"rm -rf -- {QuoteForShell(remotePath)}", cancellationToken)
+                .ConfigureAwait(false);
+            return result.ExitCode == 0;
+        }
+        catch (OperationCanceledException)
+        {
+            // 取消要如实往上抛:调用方(文件浏览器)据此重新列目录,
+            // 而不是把它当成"快路径不可用"再默默用 SFTP 把剩下的删完。
+            throw;
+        }
+        catch
+        {
+            // 没有 exec 通道、通道中途断开、非 Unix 主机:回退 SFTP 递归。
+            return false;
+        }
+    }
+
+    /// <summary>设置里是否允许用 <c>rm -rf</c> 删目录;读不到设置时按默认(允许)处理。</summary>
+    private async Task<bool> IsRecursiveDeleteCommandEnabledAsync()
+    {
+        if (_settingsService is null)
+        {
+            return true;
+        }
+        try
+        {
+            return (await _settingsService.GetSnapshotAsync().ConfigureAwait(false)).Transfer.UseRecursiveDeleteCommand;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// 这条路径能不能交给 <c>rm -rf</c>:必须是绝对路径,且不能是根。
+    /// </summary>
+    /// <remarks>
+    /// 根的那一刀挡的是 <c>rm -rf -- /</c>。相对路径同样拒绝:exec 通道的工作目录是登录目录,
+    /// 与文件浏览器当前所在的目录没有任何关系 —— 同一个相对路径在两条通道上指的不是一个东西。
+    /// (文件浏览器本就只传绝对路径,这里是不依赖调用方自觉的那道闸。)
+    /// </remarks>
+    private static bool IsCommandDeletablePath(string remotePath) =>
+        remotePath.StartsWith('/') && remotePath.TrimEnd('/').Length > 0;
+
+    /// <summary>
+    /// 把路径包成一个 POSIX shell 单引号字符串:单引号内除了单引号自身之外一切都是字面量,
+    /// 于是空格、<c>$</c>、<c>;</c>、换行、通配符全部失去特殊含义。路径里的每个单引号
+    /// 按 <c>'\''</c> 的老办法拼接(收尾、转义一个、再开头)。
+    /// </summary>
+    private static string QuoteForShell(string value) =>
+        $"'{value.Replace("'", @"'\''", StringComparison.Ordinal)}'";
 
     /// <summary>异步递归的已删除计数(async 方法不允许 ref 参数)。</summary>
     private sealed class DeleteCounter

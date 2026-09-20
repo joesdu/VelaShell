@@ -325,7 +325,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         _sidebar.PropertyChanged += OnSidebarStateChanged;
         if (sessionRepository is not null)
         {
-            _sidebar.SessionTree = new(sessionRepository);
+            // 设置服务一并传进去:会话树要据此决定分组的初始展开态(#474)。
+            _sidebar.SessionTree = new(sessionRepository, settingsService);
         }
         _statusBar = new();
         // 采样循环拆成了独立协作者(Q-01):定时器、重入闸、失焦降频与四段悬停提示

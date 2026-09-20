@@ -212,7 +212,7 @@
           <Border IsVisible="{Binding !IsGroup}"
                   Classes="session"
                   Classes.selected="{Binding IsSelected}"
-                  Classes.rootlevel="{Binding IsRootLevel}"
+                  Classes.rootlevel="{Binding ShowsAtRootIndent}"
                   Height="28"
                   Cursor="Hand"
                   DoubleTapped="Session_DoubleTapped"
@@ -255,6 +255,16 @@
                           IsVisible="{Binding !IsGroup}">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.copy}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
+                <!-- 置顶(#474):文案随当前置顶态翻转,置顶项被提到整棵树的最前。 -->
+                <MenuItem Header="{Binding PinToggleText}"
+                          Command="{Binding $parent[ListBox].((vm:SessionTreeViewModel)DataContext).TogglePinCommand}"
+                          IsVisible="{Binding !IsGroup}">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13"
+                                   Data="{StaticResource Icon.pin}"
                                    Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
@@ -335,6 +345,13 @@
                          FontSize="{DynamicResource VelaFontSize11}"
                          FontWeight="Bold"
                          VerticalAlignment="Center" />
+
+              <!-- 置顶徽标(#474):没有它,被提到树顶的那几行看起来像是排序坏了。 -->
+              <pc:LucideIcon Width="11" Height="11"
+                             Data="{StaticResource Icon.pin}"
+                             IsVisible="{Binding IsPinned}"
+                             Foreground="{DynamicResource VelaAccent}"
+                             VerticalAlignment="Center" />
 
               <Ellipse Classes="dot"
                        Classes.connected="{Binding IsConnected}"
