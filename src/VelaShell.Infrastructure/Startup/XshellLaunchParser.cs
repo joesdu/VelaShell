@@ -25,7 +25,12 @@ public static class XshellLaunchParser
     /// <summary>解析 argv;没有任何连接意图时返回 <see langword="null" />(正常启动)。</summary>
     public static ExternalLaunchRequest? TryParse(IReadOnlyList<string>? args)
     {
-        string? url = null;
+        // URL 可能从三处来,按可信度分开收,最后再择优 —— 同一条命令行里三者可以同时出现:
+        //     -newtab root@Linux[2026_09_20_09_45_18] -url ssh://JMS-x:口令@堡垒机:2222
+        // 先到先得的话,-newtab 后面那个**标签名**会把真正的 -url 挡在门外。
+        string? urlOption = null;
+        string? positionalUrl = null;
+        string? tabUrl = null;
         string? sessionFile = null;
         string? user = null;
         string? password = null;
@@ -44,9 +49,9 @@ public static class XshellLaunchParser
             if (!arg.StartsWith('-'))
             {
                 // 裸位置参数:只有看着像 URL 才收,其余(Avalonia 自己的东西、拖拽进来的路径)放过。
-                if (url is null && LooksLikeUrl(arg))
+                if (positionalUrl is null && LooksLikeUrl(arg))
                 {
-                    url = Unquote(arg);
+                    positionalUrl = Unquote(arg);
                 }
                 continue;
             }
@@ -55,11 +60,20 @@ public static class XshellLaunchParser
             switch (name)
             {
                 case "-url":
-                case "-newtab":
-                    // -newtab 在 Xshell 里既可带 URL,也可只是「开新标签」的开关;带值才当 URL 用。
-                    if ((inline ?? PeekValue(args, ref i)) is { Length: > 0 } newUrl && LooksLikeUrl(newUrl))
+                    if ((inline ?? PeekValue(args, ref i)) is { Length: > 0 } explicitUrl && LooksLikeUrl(explicitUrl))
                     {
-                        url ??= Unquote(newUrl);
+                        urlOption ??= Unquote(explicitUrl);
+                    }
+                    break;
+                case "-newtab":
+                    // -newtab 在 Xshell 里有三种用法:光秃秃的「开新标签」开关、带 URL、带**标签名**。
+                    // 第三种是 JumpServer 客户端发的(-newtab root@Linux[2026_09_20_09_45_18]),那个名字
+                    // 里带 @ 却根本不是地址;所以这里不光看长得像不像,还得真能解析出主机才认。
+                    if ((inline ?? PeekValue(args, ref i)) is { Length: > 0 } tabValue
+                        && LooksLikeUrl(tabValue)
+                        && ParseUrl(tabValue) is not null)
+                    {
+                        tabUrl ??= Unquote(tabValue);
                     }
                     break;
                 case "-f":
@@ -89,6 +103,8 @@ public static class XshellLaunchParser
             }
         }
 
+        // -url 是调用方明说的目标,压过裸位置参数;-newtab 最弱 —— 它多半只是个标签名。
+        string? url = urlOption ?? positionalUrl ?? tabUrl;
         ExternalLaunchRequest? request = url is not null
             ? ParseUrl(url, LooksLikeProtocolInvocation(args) ? ExternalLaunchOrigin.UrlProtocol : ExternalLaunchOrigin.CommandLine)
             : sessionFile is { Length: > 0 } file

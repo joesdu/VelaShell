@@ -96,6 +96,58 @@ public class XshellLaunchParserTests
     }
 
     [TestMethod]
+    public void Parse_JumpServerCommandLine_PrefersUrlOverTheNewTabLabel()
+    {
+        // 地面真值(#475):JumpServer Client 4.1.6 把**标签名**塞进 -newtab,真正的目标在 -url:
+        //     VelaShell.exe -newtab root@Linux[2026_09_20_09_45_18] -url ssh://JMS-x:口令@堡垒机:2222
+        // 那个标签名里有 @ 却不是地址;先到先得地把它当 URL 收下,后面的 -url 就再也挤不进来 ——
+        // 用户看到的就是"VelaShell 开了,但没有连接提示"。
+        ExternalLaunchRequest request = XshellLaunchParser.TryParse(
+            ["-newtab", "root@Linux[2026_09_20_09_45_18]", "-url", "ssh://JMS-7f3a:lD9xKq2m@192.168.1.1:2222"])!;
+
+        Assert.AreEqual("192.168.1.1", request.Host);
+        Assert.AreEqual(2222, request.Port);
+        Assert.AreEqual("JMS-7f3a", request.Username);
+        Assert.AreEqual("lD9xKq2m", request.Password);
+        Assert.IsTrue(request.IsSupported);
+    }
+
+    [TestMethod]
+    public void Parse_UrlOption_WinsRegardlessOfArgumentOrder()
+    {
+        // -url 是调用方明说的目标,放在 -newtab 前后都得是它说了算。
+        foreach (string[] args in new[]
+                 {
+                     new[] { "-url", "ssh://root@10.0.3.21:22", "-newtab", "root@Linux[2026_09_20_09_45_18]" },
+                     ["-newtab", "root@Linux[2026_09_20_09_45_18]", "-url", "ssh://root@10.0.3.21:22"]
+                 })
+        {
+            ExternalLaunchRequest request = XshellLaunchParser.TryParse(args)!;
+
+            Assert.AreEqual("10.0.3.21", request.Host, $"参数顺序不该改变结果:{string.Join(' ', args)}");
+            Assert.AreEqual("root", request.Username);
+        }
+    }
+
+    [TestMethod]
+    public void Parse_NewTabCarryingARealUrl_IsStillAccepted()
+    {
+        // 反向兜底:确实有调用方把 URL 放在 -newtab 后面,没有 -url 时它仍然是唯一的目标。
+        ExternalLaunchRequest request = XshellLaunchParser.TryParse(["-newtab", "ssh://root@10.0.3.21:2222"])!;
+
+        Assert.AreEqual("10.0.3.21", request.Host);
+        Assert.AreEqual(2222, request.Port);
+        Assert.AreEqual("root", request.Username);
+    }
+
+    [TestMethod]
+    public void Parse_NewTabLabelAlone_IsNotMistakenForATarget()
+    {
+        // 只有标签名、没有任何目标:宁可当作普通启动,也不能拿一个解析不出主机的串去"连接"。
+        Assert.IsNull(XshellLaunchParser.TryParse(["-newtab", "root@Linux[2026_09_20_09_45_18]"]));
+    }
+
+    [TestMethod]
     public void Parse_CredentialsWithHashSlashOrQuestionMark_DoNotTruncateTheHost()
     {
         // 一次性口令是现发的随机串,# / ? 都可能原样出现在里面(调用方不会替我们转义)。
