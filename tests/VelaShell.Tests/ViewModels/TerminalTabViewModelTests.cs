@@ -453,6 +453,43 @@ public class TerminalTabViewModelTests
         Assert.IsTrue(_vm.ErrorCopied);
     }
 
+    /// <summary>
+    /// 连接失败后标签停在 <see cref="SessionStatus.Disconnected" /> + <c>ConnectionError</c>,
+    /// **没有** <see cref="SessionStatus.Error" /> 这一态。
+    /// </summary>
+    /// <remarks>
+    /// 这不是实现细节,是所有"挑出失败标签"的逻辑必须照着写的前提 ——
+    /// #464 的「改完代理自动重连失败标签」第一版就是按 <c>SessionStatus.Error</c> 筛的,
+    /// 于是一个标签都选不中、整段成了死代码。谁要是把这里改成 Error,
+    /// <c>ReconnectPolicy.ShouldReconnectAfterProxyChange</c> 的调用点得跟着改。
+    /// </remarks>
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void MarkConnectionFailed_LeavesDisconnectedPlusError_NotErrorStatus()
+    {
+        _vm.ConnectionStatus = SessionStatus.Connecting;
+
+        _vm.MarkConnectionFailed("Connection timed out");
+
+        Assert.AreEqual(SessionStatus.Disconnected, _vm.ConnectionStatus,
+            "终端标签没有 Error 态;按它筛选失败标签会一个都选不中。");
+        Assert.IsTrue(_vm.HasConnectionError, "失败原因是区分「连接失败」与「连接已断开」的唯一标志。");
+        Assert.IsTrue(_vm.ShowDisconnectedOverlay || _vm.Profile is null,
+            "有 Profile 时失败覆盖层要亮着 —— 那是用户看到的「连接失败」。");
+    }
+
+    /// <summary>连上之后失败原因必须被清掉,否则重连成功的标签仍会被当成"失败标签"。</summary>
+    [TestMethod]
+    [TestCategory("TerminalTab")]
+    public void ConnectingSuccessfully_ClearsTheFailureMarker()
+    {
+        _vm.MarkConnectionFailed("Connection timed out");
+
+        _vm.ConnectionStatus = SessionStatus.Connected;
+
+        Assert.IsFalse(_vm.HasConnectionError);
+    }
+
     [TestMethod]
     [TestCategory("TerminalTab")]
     public async Task CopyErrorCommand_IsUnavailable_UntilThereIsAFailureToCopy()

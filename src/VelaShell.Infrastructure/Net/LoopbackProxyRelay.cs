@@ -16,12 +16,21 @@ public sealed class LoopbackProxyRelay : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private volatile TcpClient? _inbound;
     private volatile Stream? _outbound;
+    private volatile Exception? _error;
 
     /// <summary>中继监听的环回端口,发起方把连接目标改写为 127.0.0.1:此端口。</summary>
     public int Port { get; }
 
     /// <summary>代理拨号/握手阶段的失败原因;客户端库只会看到连接被断,持有方据此补全错误信息。</summary>
-    public Exception? Error { get; private set; }
+    /// <remarks>
+    /// 写在 <see cref="RunAsync" /> 所在的线程池线程,读在发起方连接失败的 catch 里,
+    /// 两边不是同一个线程 —— 后备字段必须 <c>volatile</c>(修饰符只能加在字段上,不能加在属性上)。
+    /// 因果顺序本来就是对的:失败时先写 <c>_error</c>,再由 <c>finally</c> 的
+    /// <see cref="CloseStreams" /> 关掉环回连接,而正是那次关闭才让客户端库的连接失败;
+    /// volatile 补的是这条因果链缺的那道内存屏障,免得读侧看见一个过期的 null
+    /// 而把带路由的报错退化成一句光秃秃的"连接被关闭"。
+    /// </remarks>
+    public Exception? Error => _error;
 
     private LoopbackProxyRelay(TcpListener listener)
     {
@@ -66,7 +75,7 @@ public sealed class LoopbackProxyRelay : IDisposable
         }
         catch (Exception ex) when (!_cts.IsCancellationRequested)
         {
-            Error = ex;
+            _error = ex;
         }
         catch
         {
