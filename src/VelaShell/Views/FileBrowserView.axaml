@@ -23,26 +23,26 @@
     </Style>
     <!-- 「跟随终端目录」开关钮:安静图标钮,开启(checked)时图标染强调色;中和 Fluent ToggleButton
          默认选中背景,使外观与其它工具栏图标钮一致(仅颜色区分开/关)。 -->
-    <Style Selector="ToggleButton.follow-pin">
+    <Style Selector="ToggleButton.follow-terminal">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
     </Style>
-    <Style Selector="ToggleButton.follow-pin:checked">
+    <Style Selector="ToggleButton.follow-terminal:checked">
       <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
     </Style>
-    <Style Selector="ToggleButton.follow-pin /template/ ContentPresenter">
+    <Style Selector="ToggleButton.follow-terminal /template/ ContentPresenter">
       <Setter Property="Background" Value="Transparent" />
     </Style>
-    <Style Selector="ToggleButton.follow-pin:pointerover /template/ ContentPresenter">
+    <Style Selector="ToggleButton.follow-terminal:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
     </Style>
-    <Style Selector="ToggleButton.follow-pin:checked /template/ ContentPresenter">
+    <Style Selector="ToggleButton.follow-terminal:checked /template/ ContentPresenter">
       <Setter Property="Background" Value="Transparent" />
     </Style>
-    <Style Selector="ToggleButton.follow-pin:checked:pointerover /template/ ContentPresenter">
+    <Style Selector="ToggleButton.follow-terminal:checked:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
     </Style>
     <Style Selector="Button.col-header">
@@ -154,22 +154,31 @@
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <Button Classes="crumb" Margin="2,0,0,0"
-                        Command="{Binding BeginPathEditCommand}"
-                        ToolTip.Tip="{loc:Localize Sftp_EditPath}">
-                  <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.pencil}"
-                                 Foreground="{DynamicResource VelaTextMuted}"
-                                 VerticalAlignment="Center" />
-                </Button>
-                <!-- 复制当前路径(#474)。命令与空白区右键的那一项是同一个;摆在这里是因为
-                     路径就在眼前时,想复制它却要先点铅笔进编辑态再手动选中,绕得没有道理。 -->
-                <Button Classes="crumb"
-                        Command="{Binding CopyCurrentPathCommand}"
-                        ToolTip.Tip="{loc:Localize CopyCurrentFolderPath}">
-                  <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.copy}"
-                                 Foreground="{DynamicResource VelaTextMuted}"
-                                 VerticalAlignment="Center" />
-                </Button>
+                <!-- 路径动作钮(编辑 / 复制):它们是「对当前路径动手」的图标钮,不是面包屑的
+                     一级,所以不再蹭 crumb 的内联尺寸 —— 改用与右侧工具栏图标钮同一规格
+                     (24×24 命中区 + 13px 图标 + tertiary 前景)。与最后一级面包屑之间留 8px、
+                     两钮之间留 2px,免得挨太近点错。 -->
+                <StackPanel Orientation="Horizontal" Spacing="2"
+                            Margin="8,0,0,0" VerticalAlignment="Center">
+                  <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
+                          HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                          Command="{Binding BeginPathEditCommand}"
+                          ToolTip.Tip="{loc:Localize Sftp_EditPath}"
+                          AutomationProperties.Name="{loc:Localize Sftp_EditPath}">
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.pencil}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </Button>
+                  <!-- 复制当前路径(#474)。命令与空白区右键的那一项是同一个;摆在这里是因为
+                       路径就在眼前时,想复制它却要先点铅笔进编辑态再手动选中,绕得没有道理。 -->
+                  <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
+                          HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                          Command="{Binding CopyCurrentPathCommand}"
+                          ToolTip.Tip="{loc:Localize CopyCurrentFolderPath}"
+                          AutomationProperties.Name="{loc:Localize CopyCurrentFolderPath}">
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.copy}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </Button>
+                </StackPanel>
               </StackPanel>
               <!-- 回车提交、Esc 取消、失焦取消,均在代码后置(OnPathEditKeyDown / OnPathEditLostFocus)。 -->
               <TextBox x:Name="PathEditBox"
@@ -207,14 +216,23 @@
                            VerticalAlignment="Center" />
               </StackPanel>
             </Button>
-            <!-- 「跟随终端目录」(map-pin):开启后本会话终端 cd 到新目录时文件浏览器自动同步;
-                 关闭则不同步。手动切目录不改开关,终端下次 cd 再同步到最新(见 FileBrowserViewModel.FollowTerminal)。 -->
-            <ToggleButton Classes="follow-pin" Width="24" Height="24" Padding="0"
+            <!-- 「跟随终端目录」:开启后本会话终端 cd 到新目录时文件浏览器自动同步;关闭则不同步。
+                 手动切目录不改开关,终端下次 cd 再同步到最新(见 FileBrowserViewModel.FollowTerminal)。
+                 字形用 terminal(`>_`)—— 这颗钮讲的就是「跟不跟终端走」,开/关靠 accent 色区分。
+                 原先的 map-pin 有两个毛病:一是 pin 表达的是「钉住不动」,与「跟着走」正好相反;
+                 二是它在 24 网格里占 y2–22,比同排图标(y3–21)更高,而视觉重心全压在上半部的
+                 圆头、下半部只剩一根尖尾 —— 于是这一颗与其它图标怎么摆都不在一条线上。terminal
+                 的字形 y5–19 正对 12 居中,与 history / folder-plus / refresh-cw 齐平。
+                 ⚠️ 此处不能用 link-2(本视图的右键菜单里它是「新建符号链接」)、folder-sync 或
+                 git-compare(正上方 SftpDocumentView 工具栏里是「同步」「比较目录」),
+                 也不用 square-terminal(按 Icons.axaml 的分工,那个字形专指「一条 SSH 会话」)。 -->
+            <ToggleButton Classes="follow-terminal" Width="24" Height="24" Padding="0"
                           HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                           IsChecked="{Binding FollowTerminal}"
-                          ToolTip.Tip="{loc:Localize Sftp_FollowTerminal}">
+                          ToolTip.Tip="{loc:Localize Sftp_FollowTerminal}"
+                          AutomationProperties.Name="{loc:Localize Sftp_FollowTerminal}">
               <pc:LucideIcon Width="13" Height="13"
-                             Data="{StaticResource Icon.map-pin}"
+                             Data="{StaticResource Icon.terminal}"
                              Foreground="{Binding $parent[ToggleButton].Foreground}" />
             </ToggleButton>
             <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"

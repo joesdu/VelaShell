@@ -5363,3 +5363,49 @@ axaml 里那串 `ComboBoxItem` 只按同样顺序摆文案,靠 `SelectedIndex` �
 - `dotnet build VelaShell.slnx` 零警告零错误;`dotnet test VelaShell.slnx` **3590 通过、0 失败**
   (23 条按环境跳过)。
 - 📄 velashell-docs **待同步**:与 §86 合并成一条登记(见 `feature-plan.md` 的「文档待同步」)。
+
+## ✅ 88. 2026-09-20 SFTP 路径栏:编辑 / 复制两颗钮改用工具栏图标钮规格(用户反馈)
+
+路径栏尾部那两颗钮(铅笔=进路径编辑态、拷贝=复制当前目录路径)一直挂着 `Classes="crumb"` ——
+它们跟着面包屑分段用了同一套内联尺寸:`Padding="2,1"` + 11px 图标,命中区不到 15×13,而且
+两颗之间**一点间距都没有**(只有铅笔那颗带了 `Margin="2,0,0,0"` 把它跟最后一级面包屑分开)。
+于是同一条表头上出现两种图标钮:左边这两颗挤在一起的小钮,右边一排 24×24 / 13px 的工具栏钮。
+靠得太近容易点错,大小不一致则是同一行里两套尺度。
+
+改动只在 `FileBrowserView.axaml` 的路径区:
+
+- 两颗钮从 `crumb` 换成 `toolbar-btn`,并与右侧工具栏钮取**完全相同的规格** ——
+  `Width/Height=24`、`Padding=0`、内容居中、图标 13×13、前景 `VelaTextTertiary`
+  (原先是 `VelaTextMuted`,比右侧那排更暗,也是一处不一致)。
+- 两颗钮包进一个 `Spacing="2"` 的横向 `StackPanel`,整体 `Margin="8,0,0,0"`:与最后一级
+  面包屑拉开 8px,彼此留 2px。
+- 顺手补上 `AutomationProperties.Name`(取与 `ToolTip.Tip` 同一个本地化键),此前这两颗
+  纯图标钮对读屏是空的。
+
+`crumb` 样式本身没动 —— 面包屑分段仍然要那套紧凑的内联尺寸,它们是文字链而不是图标钮;
+这次要分开的正是「面包屑的一级」与「对当前路径动手的钮」这两类东西。
+
+`PinAndCopyPathBindingUiTests` 按 `Command` 引用找按钮,不依赖 class 或尺寸,继续通过。
+
+### 补:「跟随终端目录」换字形 map-pin → terminal
+
+同一条表头上的另一处不齐。`map-pin` 在 lucide 的 24 网格里占 **y2–22**,比同排图标(history /
+folder-plus / refresh-cw 都是 y3–21)上下各多出一点;更要命的是它的重心全压在上半部那个
+r=8 的圆头上(质心约 y10),下半部只剩一根收尖的尾巴 —— 眼睛锚在圆头上,轮廓却垂到最低,
+这一颗跟谁都对不齐。`LucideIcon` 是按 24 视图框等比缩放居中绘制的,不做外接框归一化,
+所以字形自己的外接框偏到哪,画出来就偏到哪,调 `Margin` 只是把偏差换个地方。
+
+换成 `Icon.terminal`(`>_`):外接框 **x4–20 / y5–19**,横竖都正对 12 居中,与同排图标齐平。
+语义上也更直:这颗钮讲的就是「跟不跟终端走」,开/关本来就靠 checked 的 accent 色区分
+(`follow-pin` 样式里早写明了「仅颜色区分开/关」),而 pin 表达的「钉住不动」恰好是反义。
+
+同排还有三个字形**不能**用,它们在同一屏里已经各有所指:
+
+- `link-2` —— 本视图右键菜单的「新建符号链接」;
+- `folder-sync` / `git-compare` —— 正上方 `SftpDocumentView` 工具栏的「同步…」「比较目录」;
+- `square-terminal` —— 按 `Icons.axaml` 里写明的分工,那个带框字形专指「一条 SSH 会话」
+  (标签页协议图标,`ConnectionIcon.SshKey`),不用于工具栏动作。
+
+顺带把样式类 `follow-pin` 改名 `follow-terminal`(只在本文件内出现,无外部引用),
+并补 `AutomationProperties.Name`。`Icon.map-pin` 的几何留在 `Icons.axaml` 里不删 ——
+那是共用图标库,`map-pinned` 还在标题栏与 traceroute 用着。
