@@ -5257,3 +5257,109 @@ IPv6 主机(那条注释还在)。但 zone id 是 `eth0` / `en0` 这种网卡名
   的调用约定,要不要接是另一件事,已记在 `feature-plan.md`。
 - 📄 velashell-docs 已同步(中英各 1 个文件):`-url` 不挑长相、`-newtab` 必须带 scheme、逐条试的退让、
   以 `-` 开头的值、IPv6 zone id。
+
+## ✅ 86. 2026-09-20 密钥生成默认给 Ed25519(`feature-plan.md` 🔒 P2 项)
+
+密钥管理页那个「生成密钥」按钮从第一天起就只会产出 RSA 4096。`ssh-keygen` 自 9.5(2023)
+起默认给的已经是 Ed25519,我们还在给一把生成要等秒级、公钥贴进 `authorized_keys` 长达七行的
+RSA —— 而且有些 CA / 堡垒机近年已经开始拒收 `ssh-rsa` 签名算法。现在默认换成 Ed25519,
+RSA 保留为可选项。
+
+### 一、为什么最终引了 BouncyCastle
+
+`feature-plan.md` 那条把选择列为「自行实现 OpenSSH 私钥封装格式,或引入 BouncyCastle
+(注意许可证与体积)」。两个顾虑现在都不成立:
+
+- **体积**:BouncyCastle **本来就是 Tmds.Ssh 的依赖**,`BouncyCastle.Cryptography.dll` 早就躺在
+  输出目录里。这次只是把传递依赖抬成 `src/Directory.Packages.props` 里的显式依赖,增量为零。
+- **许可证**:MIT 改写版,与本仓库的双许可不冲突(对照当初拒掉 `FluentFTP.GnuTLS` 的理由)。
+
+而「自行实现」指的其实是两件事,得拆开看:**OpenSSH 的私钥封装格式**本来就已经自己实现了
+(`OpenSshPrivateKey`,为了把导入的 PEM 转成 Tmds.Ssh 唯一认的格式,见 §"导入私钥兼容转换"),
+这次只是多加一个 `SerializeEd25519`;真正需要外援的是**由 32 字节种子导出公钥**那一步的曲线标量乘法
+—— .NET 11 的 BCL 至今没有独立的 Ed25519(只有 `CompositeMLDsaAlgorithm.MLDsa44WithEd25519`
+那个复合算法标识符),而手写曲线运算是那种**能把私钥悄悄写废、还一路绿灯**的地方。
+种子仍旧取自 BCL 的 `RandomNumberGenerator`。
+
+⚠️ 中央包里 `BouncyCastle.Cryptography` 的版本**必须跟着 Tmds.Ssh 走**,别让显式引用反向压低它。
+
+### 二、接口从「生成 RSA」改成「生成密钥」
+
+`GenerateRsaKeyAsync(name, bits)` → `GenerateKeyAsync(name, algorithm = Ed25519, rsaBits = 4096)`,
+新增枚举 `SshKeyAlgorithm { Ed25519, Rsa }`。不留两个并列的生成方法,是因为它们的差别只是一个参数。
+界面那个按钮不带选项、直接走默认值;RSA 这一路仍然完整可用(老堡垒机把 `ssh-rsa` 写死进白名单的
+情况还在),只是要从 API 指定。自动命名也从 `velashell_rsa` 改成 `velashell_ed25519`
+—— 老用户 `~/.ssh` 下那把 `velashell_rsa` 不会被动到,照常列出、照常可用。
+
+### 三、一个躲在结构合法背后的坑
+
+OpenSSH 的 ed25519 私钥字段存的是 **seed ‖ pub 共 64 字节**,不是那 32 字节种子本身
+(`ssh-keygen` 沿用 NaCl 的 `crypto_sign` 习惯)。只写种子的话:文件结构完全合法、
+Tmds.Ssh 也加载得动 —— 一路绿灯,直到真去连一台服务器才以签名验证失败告终。
+所以 `SshKeyServiceFormatTests` 里**单独**有一条把封装拆开对字节的用例,不依赖「能加载」这个信号。
+另:公钥在 blob 里是**定长字节串,不是 mpint**,不裁前导零也不补符号位。
+
+### 验证
+
+- 新增 3 条用例:默认算法的生成/列举/删除回合、Ed25519 的 OpenSSH 封装逐字节拆解;
+  原先那条 Tmds.Ssh 真加载的格式用例改成 `DataRow` 覆盖 Ed25519 与 RSA 两路。
+- **系统自带的 OpenSSH 交叉验证**(这条比任何单元测试都硬):`ssh-keygen -y -f <私钥>`
+  从我们写出的私钥反推公钥,与我们写出的 `.pub` **逐字节相同**;`ssh-keygen -lf` 给的指纹
+  也与 `SshKeyInfo.Fingerprint` 一致(`256 SHA256:… (ED25519)`)。RSA 那一路同样对得上,
+  证明重构没有把 e / n 写反。
+- `dotnet build VelaShell.slnx` 零警告零错误;`VelaShell.Core.Tests` 70 通过、
+  `VelaShell.Infrastructure.Tests` 496 通过 / 3 条按环境跳过。
+- ⚠️ **ECDSA 生成仍然没做**(`feature-plan.md` 原条目是「ed25519 / ecdsa」)。
+  `OpenSshPrivateKey.SerializeEcdsa` 其实已经在了(导入转换那条路上用着),接上去是小事,
+  只是 Ed25519 之后它的实际需求近乎为零,留在 `feature-plan.md` 里。
+- 📄 velashell-docs **待同步**:密钥管理页的行为描述(生成的是 Ed25519 而不是 RSA)。
+
+## ✅ 87. 2026-09-20 把密钥生成做完整:ECDSA 三条曲线 + 界面给算法下拉(接 §86)
+
+§86 只换掉了默认算法,留了两处明说的缺口:ECDSA 生成没接,界面不给选。两条都补上了,
+`feature-plan.md` 那条「ed25519 / ecdsa 密钥生成」现在整条闭合。
+
+### 一、ECDSA:曲线表只留一份
+
+`OpenSshPrivateKey.SerializeEcdsa` 本来就在(导入 PEM 转 OpenSSH 那条路上用着),只是私有。
+改成 public,再把内部拼公钥 blob 那几行拆成 `BuildEcdsaPublicBlob` —— 生成路要把同一个 blob
+写进 `.pub`,不拆就得抄第二遍。
+
+更要紧的是**曲线表**:位数 →(算法名, 曲线名, 坐标定长)原本写死在 `TryLoadEcdsa` 里,
+生成路再抄一份就是两份。提成 `DescribeCurve(int keySize)`,两边共用。
+⚠️ P-521 的坐标是 **66** 字节(521 位向上取整),不是 65 —— 这类数字抄第二遍就是抄错的开始。
+
+`bits` 的语义顺手统一了:`rsaBits` 改名 `bits`,**0 表示按算法取默认值**(RSA 4096、ECDSA 256),
+Ed25519 定长、一律忽略。SSH 只定义了三条 NIST 曲线的算法名,给别的位数连个能写进公钥行的
+名字都没有,所以 ECDSA 不像 RSA 那样收任意位数,直接抛。
+
+### 二、界面:下拉的唯一事实来源在视图模型
+
+工具栏加了个算法下拉(Ed25519 / ECDSA 256·384·521 / RSA 4096),默认第一项。
+**位数不给选**:RSA 只给 4096 —— 4096 能用的地方 2048 一定能用,反过来不成立,列出来只是个坑。
+
+档位表 `SshKeyManagerViewModel.AlgorithmChoices` 是唯一事实来源(算法、位数、建议文件名、文案键),
+axaml 里那串 `ComboBoxItem` 只按同样顺序摆文案,靠 `SelectedIndex` 对齐。
+**这条缝错了不会报错**:插一项、删一项、调个顺序,编译照过、界面照常渲染,
+用户选「Ed25519」拿到的却是 RSA —— 列表里如实写着 RSA,可没人会怀疑自己刚选的那一项。
+所以 `SshKeyChoiceCatalogTests` 直接读 axaml 文本逐项比对键名与顺序。
+
+建议文件名也跟着算法走:`velashell_ed25519` / `velashell_ecdsa256|384|521` / `velashell_rsa`
+(重名自动加 `_2`)。
+
+### 验证
+
+- **两条新测试都先证明过会红**,不是摆设:把 axaml 里两个 `ComboBoxItem` 对调 →
+  `SshKeyChoiceCatalogTests` 失败;把 `SelectedIndex` 的绑定改成 `Mode=OneWay` →
+  `KeyManagementPageUiTests` 失败(它补的正是文本比对够不着的那一半:控件真装配起来之后
+  选择写不写得回视图模型。绑成单向的话编译照过、下拉照样能选,用户选什么都拿到第一档)。
+- **系统自带 OpenSSH 交叉验证五把**:`ssh-keygen -y -f` 从私钥反推的公钥,与我们写出的 `.pub`
+  逐字节相同 —— Ed25519、ECDSA 256/384/521、RSA 4096 全数通过,`ssh-keygen -lf` 报的位数与
+  类型也对(`256 … (ED25519)`、`521 … (ECDSA)`、`4096 … (RSA)`)。
+- 界面绑定不必靠跑起来验:`AvaloniaUseCompiledBindingsByDefault` 为 true,
+  `{Binding SshKeys.SelectedAlgorithmIndex}` 在编译期就按 `x:DataType` 校验过路径。
+- 五份 resx 各补 6 个键(`SetKeys_Algorithm` 与五个档位文案)。ECDSA / RSA 那几档各语言同形
+  —— 算法名不是可翻译的散文,只有 Ed25519 那档带「推荐」标记需要翻。
+- `dotnet build VelaShell.slnx` 零警告零错误;`dotnet test VelaShell.slnx` **3590 通过、0 失败**
+  (23 条按环境跳过)。
+- 📄 velashell-docs **待同步**:与 §86 合并成一条登记(见 `feature-plan.md` 的「文档待同步」)。

@@ -13,7 +13,8 @@ namespace VelaShell.Infrastructure.Ssh;
 /// 用户导入的传统 PEM —— PKCS#1(-----BEGIN RSA PRIVATE KEY-----)、PKCS#8
 /// (-----BEGIN PRIVATE KEY-----)、加密 PKCS#8 —— 会被判 "Unsupported format" 而当作无可用凭据
 /// 【跳过】,认证以 "skipped: publickey" 失败。这里在连接前把它们转成 OpenSSH 格式补齐兼容性。
-/// Ed25519 传统 PEM 因 BCL 不支持而不在此列(但 Ed25519 几乎总是 OpenSSH 格式,Tmds 直接可读)。
+/// Ed25519 传统 PEM 因 BCL 不支持而不在【转换】之列(但 Ed25519 几乎总是 OpenSSH 格式,Tmds 直接可读);
+/// 本应用自己生成的 Ed25519 走 <see cref="SerializeEd25519" />,不经 BCL,不受这条限制。
 /// </remarks>
 internal static class OpenSshPrivateKey
 {
@@ -60,18 +61,63 @@ internal static class OpenSshPrivateKey
         return Wrap(publicBlob, priv);
     }
 
+    /// <summary>把 Ed25519 的 32 字节种子与公钥序列化为 OpenSSH 私钥 PEM(未加密)。</summary>
+    /// <remarks>
+    /// OpenSSH 的私钥字段存的是 <b>seed ‖ pub 共 64 字节</b>,不是那 32 字节种子本身
+    /// —— 这是 RFC 8032 里 <c>ssh-keygen</c> 沿用 NaCl 的习惯(`crypto_sign` 的 secret key
+    /// 就是这么拼的)。只写种子的话文件结构合法、`ssh-keygen -y` 也读得出来,
+    /// 但公钥字段与私钥字段对不上,验证会当场失败。
+    /// </remarks>
+    /// <param name="seed">32 字节私钥种子。</param>
+    /// <param name="publicKey">由种子导出的 32 字节公钥。</param>
+    /// <param name="comment">写进私钥与公钥的注释。</param>
+    public static string SerializeEd25519(ReadOnlySpan<byte> seed, byte[] publicKey, string comment)
+    {
+        byte[] publicBlob = BuildEd25519PublicBlob(publicKey);
+
+        using var priv = new MemoryStream();
+        WriteCheckInts(priv);
+        WriteChunk(priv, "ssh-ed25519"u8.ToArray());
+        WriteChunk(priv, publicKey);
+        WriteChunk(priv, [.. seed, .. publicKey]); // seed ‖ pub,见上
+        WriteChunk(priv, Encoding.UTF8.GetBytes(comment));
+
+        return Wrap(publicBlob, priv);
+    }
+
+    /// <summary>
+    /// 构造 OpenSSH ecdsa-sha2-* 公钥 blob:string 算法名 ‖ string 曲线名 ‖ string 未压缩公开点。
+    /// </summary>
+    /// <param name="q">公开点。</param>
+    /// <param name="sshName">SSH 算法名,如 <c>ecdsa-sha2-nistp256</c>。</param>
+    /// <param name="curveName">SSH 曲线名,如 <c>nistp256</c>。</param>
+    /// <param name="fieldLen">该曲线的坐标定长字节数(32 / 48 / 66)。</param>
+    public static byte[] BuildEcdsaPublicBlob(ECPoint q, string sshName, string curveName, int fieldLen)
+    {
+        using var stream = new MemoryStream();
+        WriteChunk(stream, Encoding.ASCII.GetBytes(sshName));
+        WriteChunk(stream, Encoding.ASCII.GetBytes(curveName));
+        WriteChunk(stream, BuildEcPoint(q, fieldLen));
+        return stream.ToArray();
+    }
+
+    /// <summary>构造 OpenSSH ssh-ed25519 公钥 blob:string "ssh-ed25519" ‖ string pub(32 字节定长)。</summary>
+    /// <remarks>公钥是定长字节串,<b>不是 mpint</b> —— 不裁前导零也不补符号位,原样写进去。</remarks>
+    public static byte[] BuildEd25519PublicBlob(byte[] publicKey)
+    {
+        using var stream = new MemoryStream();
+        WriteChunk(stream, "ssh-ed25519"u8.ToArray());
+        WriteChunk(stream, publicKey);
+        return stream.ToArray();
+    }
+
     /// <summary>把 ECDSA(nistp256/384/521)私钥序列化为 OpenSSH 私钥 PEM(未加密)。</summary>
-    private static string SerializeEcdsa(ECParameters p, string sshName, string curveName, int fieldLen, string comment)
+    public static string SerializeEcdsa(ECParameters p, string sshName, string curveName, int fieldLen, string comment)
     {
         byte[] point = BuildEcPoint(p.Q, fieldLen); // 0x04 ‖ X ‖ Y(各定长)
         byte[] sshNameBytes = Encoding.ASCII.GetBytes(sshName);
         byte[] curveNameBytes = Encoding.ASCII.GetBytes(curveName);
-
-        using var pub = new MemoryStream();
-        WriteChunk(pub, sshNameBytes);
-        WriteChunk(pub, curveNameBytes);
-        WriteChunk(pub, point);
-        byte[] publicBlob = pub.ToArray();
+        byte[] publicBlob = BuildEcdsaPublicBlob(p.Q, sshName, curveName, fieldLen);
 
         using var priv = new MemoryStream();
         WriteCheckInts(priv);
@@ -114,13 +160,7 @@ internal static class OpenSshPrivateKey
         {
             using var ecdsa = ECDsa.Create();
             ImportPem(ecdsa, pem, passphrase);
-            (sshName, curveName, fieldLen) = ecdsa.KeySize switch
-            {
-                256 => ("ecdsa-sha2-nistp256", "nistp256", 32),
-                384 => ("ecdsa-sha2-nistp384", "nistp384", 48),
-                521 => ("ecdsa-sha2-nistp521", "nistp521", 66),
-                _ => (null, null, 0)
-            };
+            (sshName, curveName, fieldLen) = DescribeCurve(ecdsa.KeySize);
             if (sshName is null)
             {
                 return false; // 非标准 NIST 曲线:不支持,回退。
@@ -133,6 +173,22 @@ internal static class OpenSshPrivateKey
             return false;
         }
     }
+
+    /// <summary>
+    /// 曲线位数 → (SSH 算法名, SSH 曲线名, 坐标定长)。非标准 NIST 曲线返回一组 null / 0。
+    /// </summary>
+    /// <remarks>
+    /// 导入转换与生成两条路都要这张表,放在一处 —— P-521 的坐标是 <b>66</b> 字节(521 位向上取整),
+    /// 不是 65,这类数字抄第二遍就是抄错的开始。
+    /// </remarks>
+    public static (string? SshName, string? CurveName, int FieldLength) DescribeCurve(int keySize) =>
+        keySize switch
+        {
+            256 => ("ecdsa-sha2-nistp256", "nistp256", 32),
+            384 => ("ecdsa-sha2-nistp384", "nistp384", 48),
+            521 => ("ecdsa-sha2-nistp521", "nistp521", 66),
+            _ => (null, null, 0)
+        };
 
     private static void ImportPem(AsymmetricAlgorithm key, string pem, string? passphrase)
     {

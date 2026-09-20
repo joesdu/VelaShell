@@ -29,10 +29,59 @@ public sealed class SshKeyServiceTests : IDisposable
         }
     }
 
+    /// <summary>不指定算法时给的是 Ed25519 —— 生成、列举、删除走一圈,类型与公钥前缀都要对上。</summary>
+    [TestMethod]
+    public async Task Generate_DefaultsToEd25519_AndRoundTrips()
+    {
+        SshKeyInfo generated = await _service.GenerateKeyAsync("test_key");
+        Assert.AreEqual("ED25519", generated.Type);
+        Assert.StartsWith("SHA256:", generated.Fingerprint);
+        Assert.IsTrue(File.Exists(Path.Combine(_sshDir, "test_key")));
+        Assert.IsTrue(File.Exists(Path.Combine(_sshDir, "test_key.pub")));
+        List<SshKeyInfo> listed = await _service.ListKeysAsync();
+        Assert.HasCount(1, listed);
+        Assert.AreEqual("ED25519", listed[0].Type, "列举时从公钥 blob 解析出的类型应一致");
+        Assert.AreEqual(generated.Fingerprint, listed[0].Fingerprint);
+        Assert.StartsWith("ssh-ed25519 ", listed[0].PublicKeyLine);
+        await _service.DeleteKeyAsync("test_key");
+        Assert.IsEmpty(await _service.ListKeysAsync());
+    }
+
+    /// <summary>三条 NIST 曲线各生成一把,类型标签与公钥行的算法名都要对上。</summary>
+    [TestMethod]
+    [DataRow(256, "ECDSA 256", "ecdsa-sha2-nistp256")]
+    [DataRow(384, "ECDSA 384", "ecdsa-sha2-nistp384")]
+    [DataRow(521, "ECDSA 521", "ecdsa-sha2-nistp521")]
+    public async Task Generate_Ecdsa_UsesTheRequestedCurve(int bits, string expectedType, string expectedAlgorithm)
+    {
+        SshKeyInfo generated = await _service.GenerateKeyAsync($"ec{bits}", SshKeyAlgorithm.Ecdsa, bits);
+        Assert.AreEqual(expectedType, generated.Type);
+        Assert.StartsWith(expectedAlgorithm + " ", generated.PublicKeyLine);
+
+        // 列举走的是另一条路(从 .pub 的 blob 反解),两边必须给出同一个答案。
+        SshKeyInfo listed = (await _service.ListKeysAsync()).Single(k => k.Name == $"ec{bits}");
+        Assert.AreEqual(expectedType, listed.Type);
+        Assert.AreEqual(generated.Fingerprint, listed.Fingerprint);
+    }
+
+    /// <summary>bits 给 0 表示「按算法取默认值」:ECDSA 落到 256,RSA 落到 4096。</summary>
+    [TestMethod]
+    public async Task Generate_ZeroBits_FallsBackToTheAlgorithmDefault()
+    {
+        Assert.AreEqual("ECDSA 256", (await _service.GenerateKeyAsync("ec_default", SshKeyAlgorithm.Ecdsa)).Type);
+        Assert.AreEqual("RSA 4096", (await _service.GenerateKeyAsync("rsa_default", SshKeyAlgorithm.Rsa)).Type);
+    }
+
+    /// <summary>SSH 只定义了三条 NIST 曲线的算法名,别的位数连个能写进公钥行的名字都没有。</summary>
+    [TestMethod]
+    public async Task Generate_Ecdsa_WithUnsupportedCurve_Throws() =>
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(
+            () => _service.GenerateKeyAsync("ec_bad", SshKeyAlgorithm.Ecdsa, 512));
+
     [TestMethod]
     public async Task Generate_List_Delete_RoundTrips()
     {
-        SshKeyInfo generated = await _service.GenerateRsaKeyAsync("test_key", 2048);
+        SshKeyInfo generated = await _service.GenerateKeyAsync("test_key", SshKeyAlgorithm.Rsa, 2048);
         Assert.AreEqual("test_key", generated.Name);
         Assert.AreEqual("RSA 2048", generated.Type);
         Assert.StartsWith("SHA256:", generated.Fingerprint);
@@ -50,8 +99,8 @@ public sealed class SshKeyServiceTests : IDisposable
     [TestMethod]
     public async Task Generate_DuplicateName_Throws()
     {
-        await _service.GenerateRsaKeyAsync("dup", 2048);
-        await Assert.ThrowsExactlyAsync<IOException>(() => _service.GenerateRsaKeyAsync("dup", 2048));
+        await _service.GenerateKeyAsync("dup", SshKeyAlgorithm.Rsa, 2048);
+        await Assert.ThrowsExactlyAsync<IOException>(() => _service.GenerateKeyAsync("dup", SshKeyAlgorithm.Rsa, 2048));
     }
 
     [TestMethod]
@@ -133,7 +182,7 @@ public sealed class SshKeyServiceTests : IDisposable
     [TestMethod]
     public async Task Import_WhenTheNameIsTaken_ReturnsNullAndKeepsTheExistingKey()
     {
-        SshKeyInfo existing = await _service.GenerateRsaKeyAsync("taken", 2048);
+        SshKeyInfo existing = await _service.GenerateKeyAsync("taken", SshKeyAlgorithm.Rsa, 2048);
         (string privatePath, _) = await CreateExternalKeyAsync("taken");
 
         Assert.IsNull(await _service.ImportKeyAsync(privatePath));
@@ -165,7 +214,7 @@ public sealed class SshKeyServiceTests : IDisposable
     private async Task<(string PrivatePath, string PublicPath)> CreateExternalKeyAsync(string name)
     {
         var source = new SshKeyService(_external);
-        await source.GenerateRsaKeyAsync(name, 2048);
+        await source.GenerateKeyAsync(name, SshKeyAlgorithm.Rsa, 2048);
         return (Path.Combine(_external, name), Path.Combine(_external, name + ".pub"));
     }
 }
