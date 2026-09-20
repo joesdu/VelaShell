@@ -4991,7 +4991,7 @@ issue 里对报告人承诺的那条能力实际不存在。
   不是 `Error`」这个前提;`ReconnectPolicyTests` 钉判据;`ProxySettingsHotApplyTests` 拿真标签
   走一遍真实失败路径钉选取。**做过变异验证**:把判据改回 `SessionStatus.Error`,后两条立刻红。
 
-### 另外三处
+### 另外几处
 
 - **`IsLoopback` 的注释是错的,新增代码是冗余的。** 注释称在补 `IPAddress.IsLoopback`
   「漏掉的 127.0.0.2」。.NET 11 实测 `IsLoopback(127.0.0.2)` 与 `IsLoopback(::ffff:127.0.0.1)`
@@ -5011,6 +5011,13 @@ issue 里对报告人承诺的那条能力实际不存在。
   而 `system` 档跟随的是 OS **当前**代理 —— 两次调用之间用户可能刚把 Clash 关掉,
   报出来的就不是真正失败的那一条,反而把人往错方向带。改为拨号前写进 `RouteProbe`,
   与 SSH 侧 `_lastRoute` 的做法对齐;`WithProxyContext` 随之变成静态纯函数。
+- **`LoopbackProxyRelay.Error` 补 `volatile`**(既有缺陷,顺手一并修)。它写在中继所在的
+  线程池线程、读在发起方连接失败的 catch 里,原本是个普通自动属性。因果顺序本来就是对的
+  —— 失败时先写 `Error`,再由 `finally` 的 `CloseStreams()` 关掉环回连接,而正是那次关闭
+  才让 Tmds.Ssh 的连接失败 —— 但这条链上缺一道内存屏障,读侧理论上可能看见过期的 null,
+  于是 `DescribeProxyError` 退化成一句光秃秃的"连接被关闭",#464 刚补上的 `via` 路由丢失。
+  `volatile` 只能加在字段上,因此改成 volatile 后备字段 + 只读属性,与同类里的
+  `_inbound` / `_outbound` 写法一致。
 
 ### 一处只补文档、不改行为
 
