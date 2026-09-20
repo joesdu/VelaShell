@@ -259,7 +259,7 @@ repository, one job each:
 | **[VelaShellLabs/velashell-plugin-sdk](https://github.com/VelaShellLabs/velashell-plugin-sdk)** | The plugin contract SDK | `VelaShell.PluginSdk` / `.Testing` **NuGet packages** |
 | **[VelaShellLabs/velashell-plugin-cli](https://github.com/VelaShellLabs/velashell-plugin-cli)** | The `vela-plugin` CLI and `VelaShell.PluginSdk.Build` | **NuGet packages** (for plugin authors; not referenced here) |
 | **[VelaShellLabs/velashell-plugin-templates](https://github.com/VelaShellLabs/velashell-plugin-templates)** | The `dotnet new velaplugin` templates | **NuGet package** (for plugin authors; not referenced here) |
-| **[VelaShellLabs/velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins)** | The Redis / S3 / Telnet / Serial plugins | One **`.vpx` package** per plugin (release assets / marketplace) |
+| **[VelaShellLabs/velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins)** | The Redis / S3 / Telnet / serial and Docker-panel plugins | One **`.vpx` package** per plugin (release assets / marketplace) |
 | **[VelaShellLabs/velashell-docs](https://github.com/VelaShellLabs/velashell-docs)** | **All documentation** for every repository above | — |
 
 > The split happened in steps: on 2026-08-21 the SDK, toolchain and plugins moved into
@@ -401,7 +401,7 @@ The project is under active development.
 **Provided by plugins** — none preinstalled; install on demand from the [plugin marketplace](https://market.easilynet.top):
 
 - **Telnet, serial (COM / USB-to-serial), Redis and S3** — sources in [VelaShellLabs/velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins).
-- **Docker panel** — [VelaShell.Plugin.DockerPanel](https://github.com/VelaShellLabs/VelaShell.Plugin.DockerPanel) (its own repository). A full Docker management surface on top of an **already-connected SSH session**: seven pages (overview / containers / images / volumes / networks / Compose / system) plus live stats, a merged multi-container log stream, in-container file editing and a built-in TTY console. **Nothing changes on the server** — it opens a direct channel to the remote `/var/run/docker.sock` over the SSH session (`direct-streamlocal@openssh.com`) and speaks the Docker Engine HTTP API, so the daemon need not be exposed on 2375/2376 and no second set of credentials is required. Nor is it a local port forward, so no other process on your machine can reach it.
+- **Docker panel** — [VelaShell.Plugin.DockerPanel](https://github.com/VelaShellLabs/velashell-plugins/tree/main/plugins/VelaShell.Plugin.DockerPanel) (inside the velashell-plugins repository). A full Docker management surface on top of an **already-connected SSH session**: seven pages (overview / containers / images / volumes / networks / Compose / system) plus live stats, a merged multi-container log stream, in-container file editing and a built-in TTY console. **Nothing changes on the server** — it opens a direct channel to the remote `/var/run/docker.sock` over the SSH session (`direct-streamlocal@openssh.com`) and speaks the Docker Engine HTTP API, so the daemon need not be exposed on 2375/2376 and no second set of credentials is required. Nor is it a local port forward, so no other process on your machine can reach it.
 
 **Not yet available**: SSH certificate authentication; system keychain and sudo credential autofill are still under investigation. A handful of settings are persisted but not yet wired to runtime behaviour (itemised in the P0 table of `feature-plan.md`).
 
