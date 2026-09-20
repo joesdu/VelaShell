@@ -315,6 +315,20 @@ public class GeneralOptions : ObservableOptions
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>
+    /// 启动时资源管理器的分组是否默认折叠(#474)。
+    /// </summary>
+    /// <remarks>
+    /// 只决定<b>本次运行首次见到</b>某个分组时的初始状态:手动展开/折叠之后的选择由会话树
+    /// 在进程内记着(见 <c>SessionTreeViewModel</c> 的展开态记忆),新建/编辑连接触发的
+    /// 整树重建不会把它重新折回去 —— 否则每加一条连接就得把刚展开的分组再点开一遍。
+    /// </remarks>
+    public bool CollapseGroupsByDefault
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
     /// <summary>连接断开时是否弹出通知。</summary>
     public bool NotifyOnDisconnect
     {
@@ -943,6 +957,31 @@ public class TransferOptions : ObservableOptions
 
     /// <summary>规划中(传输失败重试):仅持久化,当前无运行时消费者,不出现在设置界面(设置审计 R-09)。</summary>
     public int TransferMaxRetries { get; set; } = 3;
+
+    /// <summary>
+    /// 删除远端目录时先试一条 <c>rm -rf</c>(#474),而不是用 SFTP 逐个条目递归删。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 删一棵上万文件的目录树,SFTP 协议这条路要先把整棵树<b>列一遍</b>算总数(为了那根进度条),
+    /// 再对每个条目发一次 <c>SSH_FXP_REMOVE</c>/<c>RMDIR</c> —— 往返次数与文件数成正比,
+    /// 跨洋链路上就是以分钟计。<c>rm -rf</c> 是一次往返。
+    /// </para>
+    /// <para>
+    /// 只在**有 exec 通道的 SSH 会话**上成立:独立 SFTP 配置、FTP、S3 等插件协议没有命令通道,
+    /// 一律照旧走 SFTP 递归。命令不存在(非 Unix 主机)、被策略禁掉、或只删了一半就退非零码时,
+    /// 同样自动回退到 SFTP 递归 —— 回退路径会把真正的失败原因带出来。
+    /// </para>
+    /// <para>
+    /// 代价是这条路上<b>没有逐条进度</b>(远端一条命令,中途无从计数),进度条转为不确定态;
+    /// 取消只能关掉通道,远端的 rm 可能已经删完。删除前的二次确认不受影响,照旧。
+    /// </para>
+    /// </remarks>
+    public bool UseRecursiveDeleteCommand
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
 
     /// <summary>
     /// 临时文件清理(设置 → 文件传输):失败/取消时删除半截目标文件(上传删远端、下载删本地)。
