@@ -98,5 +98,5 @@ Docker 与 `docker-compose.test.yml`,`CrossPlatformPublishTests` 需 `VELASHELL_
 ### 提交约束
 
 - **所有提交信息与 PR 描述都不要附加 Claude Code 等 AI 工具的作者信息** —— 不加 `Co-Authored-By: Claude …` 行,也不加 `🤖 Generated with Claude Code` 之类的署名。VelaShellLabs 下所有仓库一致适用。
-- 只有仓库所有者才需要从dev分支发 PR,其他人都从 feature 分支发 PR。feature 分支的命名规则是 `feature/xxx` 或 `bugfix/xxx`,其中 `xxx` 是简短描述,不许用中文。
+- 只有仓库所有者才需要从dev分支发 PR,其他人都从 feature 分支发 PR。feature 分支的命名规则是 `feat/xxx` 或 `fix/xxx`,其中 `xxx` 是简短描述,不许用中文。
 - 创建PR的时候直接选择合并到main分支,但是在PR描述中必须写明本次PR的主要改动内容,以及是否涉及到文档的修改,如果涉及到文档的修改,请在PR描述中附上对应的文档链接。
