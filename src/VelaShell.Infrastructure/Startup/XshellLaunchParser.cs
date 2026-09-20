@@ -60,18 +60,21 @@ public static class XshellLaunchParser
             switch (name)
             {
                 case "-url":
-                    if ((inline ?? PeekValue(args, ref i)) is { Length: > 0 } explicitUrl && LooksLikeUrl(explicitUrl))
+                    // 调用方已经明说这是 URL,就**不再**拿 LooksLikeUrl 去挑剔它长得像不像 ——
+                    // 那道门槛是给裸位置参数设的。`-url 10.0.3.21:2222`(省了 scheme)照收,
+                    // 解析不出来时下面还会退到别的来源,而不是在这里就悄悄丢掉。
+                    if ((inline ?? PeekValue(args, ref i)) is { Length: > 0 } explicitUrl)
                     {
                         urlOption ??= Unquote(explicitUrl);
                     }
                     break;
                 case "-newtab":
-                    // -newtab 在 Xshell 里有三种用法:光秃秃的「开新标签」开关、带 URL、带**标签名**。
-                    // 第三种是 JumpServer 客户端发的(-newtab root@Linux[2026_09_20_09_45_18]),那个名字
-                    // 里带 @ 却根本不是地址;所以这里不光看长得像不像,还得真能解析出主机才认。
+                    // Xshell 官方语义里 -newtab 的参数是**会话名**,不是地址(它也可以光秃秃地只当
+                    // 「开新标签」的开关)。确有调用方往里塞 URL,所以带 scheme 的仍然认;但没有 scheme
+                    // 的一律当标签名 —— `root@webserver01`、`root@Linux[2026_09_20_09_45_18]` 这种
+                    // 名字与一条省了 scheme 的 URL 长得一模一样,猜错就是连到一台根本不存在的主机上。
                     if ((inline ?? PeekValue(args, ref i)) is { Length: > 0 } tabValue
-                        && LooksLikeUrl(tabValue)
-                        && ParseUrl(tabValue) is not null)
+                        && tabValue.Contains("://", StringComparison.Ordinal))
                     {
                         tabUrl ??= Unquote(tabValue);
                     }
@@ -104,12 +107,15 @@ public static class XshellLaunchParser
         }
 
         // -url 是调用方明说的目标,压过裸位置参数;-newtab 最弱 —— 它多半只是个标签名。
-        string? url = urlOption ?? positionalUrl ?? tabUrl;
-        ExternalLaunchRequest? request = url is not null
-            ? ParseUrl(url, LooksLikeProtocolInvocation(args) ? ExternalLaunchOrigin.UrlProtocol : ExternalLaunchOrigin.CommandLine)
-            : sessionFile is { Length: > 0 } file
-                ? ParseSessionFile(file)
-                : null;
+        // 逐条试而不是「选中一条再解析」:高优先级那条解析不出主机时,还有下一条可以接着用,
+        // 最后才退到 -f 会话文件。少了这层退让,一个写坏的 -url 会把整条命令行拖成"什么都不发生"。
+        ExternalLaunchOrigin origin = LooksLikeProtocolInvocation(args)
+            ? ExternalLaunchOrigin.UrlProtocol
+            : ExternalLaunchOrigin.CommandLine;
+        ExternalLaunchRequest? request = ParseUrl(urlOption, origin)
+                                         ?? ParseUrl(positionalUrl, origin)
+                                         ?? ParseUrl(tabUrl, origin)
+                                         ?? (sessionFile is { Length: > 0 } file ? ParseSessionFile(file) : null);
 
         if (request is null)
         {
@@ -315,6 +321,10 @@ public static class XshellLaunchParser
     /// 这一段读起来像不像 <c>host[:port]</c>。只做字符集判断:主机名/IPv4 只允许字母数字与
     /// <c>. - _</c>(字母按 Unicode 认,IDN 主机名照常放行);带 <c>:</c> 的按 IPv6 收紧到
     /// 十六进制数字 —— 否则 <c>user:pass</c> 这样的凭据片段也会被当成 IPv6 主机放行,分界就切歪了。
+    /// <para>
+    /// IPv6 的 zone id(<c>fe80::1%eth0</c>,RFC 6874 在 URL 里写作 <c>%25eth0</c>)单独放宽:
+    /// 网卡名是 <c>eth0</c> / <c>en0</c> / <c>12</c> 这种,按十六进制收会把整条链路本地地址判死。
+    /// </para>
     /// </summary>
     private static bool LooksLikeHost(string value)
     {
@@ -322,21 +332,22 @@ public static class XshellLaunchParser
         {
             return false;
         }
-        bool ipv6 = host.Contains(':', StringComparison.Ordinal);
-        foreach (char c in host)
+        if (!host.Contains(':', StringComparison.Ordinal))
         {
-            bool accepted = ipv6
-                ? char.IsAsciiHexDigit(c) || c is ':' or '.' or '%'
-                : char.IsLetterOrDigit(c) || c is '.' or '-' or '_';
-            if (!accepted)
-            {
-                return false;
-            }
+            return host.All(static c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_');
         }
-        return true;
+        int percent = host.IndexOf('%', StringComparison.Ordinal);
+        string address = percent >= 0 ? host[..percent] : host;
+        string zone = percent >= 0 ? host[(percent + 1)..] : string.Empty;
+        return address.All(static c => char.IsAsciiHexDigit(c) || c is ':' or '.')
+               && (percent < 0
+                   || (zone.Length > 0 && zone.All(static c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_')));
     }
 
-    /// <summary>切分 <c>host[:port]</c>,兼容 IPv6 的 <c>[::1]:22</c> 写法。</summary>
+    /// <summary>
+    /// 切分 <c>host[:port]</c>,兼容 IPv6 的 <c>[::1]:22</c> 写法。IPv6 的 zone id 按 RFC 6874
+    /// 在 URL 里是转义过的(<c>[fe80::1%25eth0]</c>),这里还原成套接字要的 <c>fe80::1%eth0</c>。
+    /// </summary>
     private static bool TrySplitHostPort(string authority, out string host, out int port)
     {
         host = authority.Trim();
@@ -348,7 +359,7 @@ public static class XshellLaunchParser
             {
                 return false;
             }
-            string bracketed = host[1..close];
+            string bracketed = DecodeZoneId(host[1..close]);
             string rest = host[(close + 1)..];
             host = bracketed;
             return rest.Length == 0
@@ -361,8 +372,15 @@ public static class XshellLaunchParser
             port = parsed;
             host = host[..colon];
         }
+        host = DecodeZoneId(host);
         return true;
     }
+
+    /// <summary>把 IPv6 zone id 的 <c>%25</c> 还原成 <c>%</c>;不是 IPv6 就原样返回。</summary>
+    private static string DecodeZoneId(string host) =>
+        host.Contains(':', StringComparison.Ordinal)
+            ? host.Replace("%25", "%", StringComparison.OrdinalIgnoreCase)
+            : host;
 
     /// <summary>逐行读出一个已按 UTF-16 打开的 <c>.xsh</c>。</summary>
     private static List<string> ReadAllLines(TextReader reader)
@@ -393,10 +411,22 @@ public static class XshellLaunchParser
         value.Contains("://", StringComparison.Ordinal)
         || value.Contains('@', StringComparison.Ordinal) && !value.Contains(' ', StringComparison.Ordinal);
 
+    /// <summary>
+    /// 这套语法里「下一个 token 是选项而不是值」的判据。认的是**名字**,而不是"开头有没有破折号" ——
+    /// 堡垒机现发的一次性口令是随机串,`-Abc123` 这样以 `-` 开头完全正常,按破折号一刀切会把它吞掉,
+    /// 结果是连上了却没带密码。这里连 Xshell / PuTTY 那几个我们**不实现**的选项一并列进来,
+    /// 免得 `-pw -e ls` 里的 `-e` 被当成口令。
+    /// </summary>
+    private static bool IsOption(string arg) =>
+        arg.StartsWith("--", StringComparison.Ordinal)
+        || SplitOption(arg).Name is "-url" or "-newtab" or "-f" or "-file" or "-l" or "-user"
+            or "-p" or "-port" or "-pw" or "-password" or "-i" or "-identity"
+            or "-e" or "-s" or "-ssh" or "-sftp" or "-ftp" or "-telnet" or "-rlogin" or "-serial";
+
     /// <summary>取下一个参数作为值;下一个已是选项(或没有下一个)时返回 null 并保持位置不动。</summary>
     private static string? PeekValue(IReadOnlyList<string> args, ref int index)
     {
-        if (index + 1 >= args.Count || args[index + 1].StartsWith('-'))
+        if (index + 1 >= args.Count || IsOption(args[index + 1]))
         {
             return null;
         }
