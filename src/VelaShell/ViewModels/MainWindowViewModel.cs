@@ -4867,23 +4867,46 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 代理设置变更后,把**连接失败**的 SSH 标签自动重连一次。
     /// </summary>
     /// <remarks>
-    /// 只碰 <see cref="SessionStatus.Error" />(上一次尝试失败、失败覆盖层还留在那儿)。
-    /// 已断开的标签不在此列:那是用户自己的意图(或已有 <see cref="ReconnectAllAfterResume" />
+    /// 只碰失败覆盖层还停在「连接失败」的那些标签,判据见
+    /// <see cref="ReconnectPolicy.ShouldReconnectAfterProxyChange" /> —— 注意终端标签
+    /// **没有** <see cref="SessionStatus.Error" /> 这一态,按它判会一个都选不中。
+    /// 干净断开的标签不在此列:那是用户自己的意图(或已有 <see cref="ReconnectAllAfterResume" />
     /// 那条按 AutoReconnect 设置走的自动重连),不能因为改了个代理就替他做主。
     /// 本地终端与插件协议同样跳过 —— 它们不看这份代理设置。
     /// </remarks>
     private void ReconnectFailedTabsAfterProxyChange()
     {
-        foreach (TerminalTabViewModel tab in TerminalTabs.ToArray())
+        foreach (TerminalTabViewModel tab in FailedSshTabsAfterProxyChange(TerminalTabs))
         {
-            if (tab.ConnectionStatus != SessionStatus.Error
-                || tab.Profile is not { ConnectionType: ConnectionType.SSH })
-            {
-                continue;
-            }
+            // 这是用户刚改完设置的一次显式重试,不该继承上一轮自动重连烧掉的次数额度。
+            tab.ResetReconnectAttempts();
             _ = ReconnectTabAsync(tab);
         }
     }
+
+    /// <summary>
+    /// 代理设置变更后该被救回来的那些标签:停在「连接失败」覆盖层上的 SSH 标签。
+    /// </summary>
+    /// <remarks>
+    /// 拆成可测的一步,是因为**这一步**才是会错的地方 —— 第一版按
+    /// <see cref="SessionStatus.Error" /> 筛,而终端标签根本没有那一态
+    /// (<c>MarkConnectionFailed</c> 写的是 <c>Disconnected</c> + <c>ConnectionError</c>),
+    /// 于是整段成了死代码:编译得过、测试全绿、功能一次都没触发过(#464)。
+    /// 判定条件本身在 <see cref="ReconnectPolicy.ShouldReconnectAfterProxyChange" />。
+    /// <para>结果是一份快照:重连会改标签状态,不能边遍历边动。</para>
+    /// </remarks>
+    internal static List<TerminalTabViewModel> FailedSshTabsAfterProxyChange(IEnumerable<TerminalTabViewModel> tabs) =>
+    [
+        .. tabs.Where(tab =>
+            // 本地终端与插件协议不看这份代理设置。
+            tab.Profile is { ConnectionType: ConnectionType.SSH }
+            && ReconnectPolicy.ShouldReconnectAfterProxyChange(
+                tab.ConnectionStatus == SessionStatus.Disconnected,
+                tab.HasConnectionError,
+                tab.UserRequestedDisconnect,
+                tab.LocalShell is not null,
+                tab.RemoteShellExited))
+    ];
 
     /// <summary>
     /// 文件浏览器工具栏切换“显示隐藏文件”后写回持久化设置(设置审计 C-04),

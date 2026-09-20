@@ -54,6 +54,46 @@ public static class ReconnectPolicy
         && !remoteShellExited;
 
     /// <summary>
+    /// 代理设置刚被改过,这条会话该不该被自动重连一次。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 与 <see cref="ShouldReconnect" /> 的差别只在入口:那条救的是"连上过又掉了",
+    /// 这条救的是"**上一次连接尝试失败了**,失败覆盖层还停在那儿" —— 用户改代理多半正是
+    /// 因为刚才连不上,不该逼他改完设置再手动点一次「重新连接」。也因此不看
+    /// AutoReconnect 开关:这是用户刚刚做出的动作,不是后台自动行为。
+    /// </para>
+    /// <para>
+    /// ⚠️ 判据是 <paramref name="hasConnectionError" />,不是某个 <c>Error</c> 状态。
+    /// 终端标签**没有** <c>SessionStatus.Error</c> 这一态:<c>MarkConnectionFailed</c> 写的是
+    /// <c>Disconnected</c> + <c>ConnectionError</c>,覆盖层
+    /// (<c>ShowDisconnectedOverlay</c> / <c>DisconnectOverlayTitle</c>)认的也是后者 ——
+    /// 「连接失败」与「连接已断开」这两句话的区别就在 <c>ConnectionError</c> 有没有值。
+    /// 按状态枚举判会一个标签都选不中,那正是这条策略第一版的毛病(#464)。
+    /// </para>
+    /// <para>
+    /// 用户主动断开、远端 exit、本地终端一律不碰,理由同 <see cref="ShouldReconnect" />。
+    /// </para>
+    /// </remarks>
+    /// <param name="isDisconnected">当前是否处于断开状态。</param>
+    /// <param name="hasConnectionError">覆盖层上是否停着一条失败原因(即显示为「连接失败」)。</param>
+    /// <param name="userRequestedDisconnect">是不是用户主动断开的。</param>
+    /// <param name="isLocalShell">是不是本地终端(不看代理设置)。</param>
+    /// <param name="remoteShellExited">远端 shell 是不是自己正常退出的。</param>
+    /// <returns>符合条件时为 true。</returns>
+    public static bool ShouldReconnectAfterProxyChange(
+        bool isDisconnected,
+        bool hasConnectionError,
+        bool userRequestedDisconnect,
+        bool isLocalShell,
+        bool remoteShellExited) =>
+        isDisconnected
+        && hasConnectionError
+        && !userRequestedDisconnect
+        && !isLocalShell
+        && !remoteShellExited;
+
+    /// <summary>
     /// 还能不能再试一次。
     /// </summary>
     /// <param name="attemptsSoFar">已经试过几次。</param>

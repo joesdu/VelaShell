@@ -119,4 +119,69 @@ public sealed class ReconnectPolicyTests
             Assert.IsGreaterThan(0, ReconnectPolicy.DelaySeconds(attempt, 300));
         }
     }
+
+    // ———— 代理设置变更后的热生效(#464) ————
+
+    /// <summary>
+    /// 停在「连接失败」覆盖层上的标签要被救 —— 那正是用户去改代理的原因。
+    /// </summary>
+    [TestMethod]
+    public void AFailedAttemptReconnectsAfterAProxyChange() =>
+        Assert.IsTrue(ReconnectPolicy.ShouldReconnectAfterProxyChange(
+            isDisconnected: true, hasConnectionError: true,
+            userRequestedDisconnect: false, isLocalShell: false, remoteShellExited: false));
+
+    /// <summary>
+    /// 干净断开的不碰:覆盖层写的是「连接已断开」而不是「连接失败」,
+    /// 那条归 AutoReconnect 管,不该因为改了个代理就替用户做主。
+    /// </summary>
+    [TestMethod]
+    public void ACleanDisconnectIsLeftAlone() =>
+        Assert.IsFalse(ReconnectPolicy.ShouldReconnectAfterProxyChange(
+            isDisconnected: true, hasConnectionError: false,
+            userRequestedDisconnect: false, isLocalShell: false, remoteShellExited: false));
+
+    /// <summary>
+    /// 连着的、正在连的不碰 —— 改个代理不该把用户正在用的会话踹掉重连。
+    /// </summary>
+    [TestMethod]
+    public void ALiveSessionIsNeverTouched() =>
+        Assert.IsFalse(ReconnectPolicy.ShouldReconnectAfterProxyChange(
+            isDisconnected: false, hasConnectionError: true,
+            userRequestedDisconnect: false, isLocalShell: false, remoteShellExited: false));
+
+    /// <summary>用户主动断开 / 远端 exit / 本地终端,三条豁免与 <see cref="ReconnectPolicy.ShouldReconnect" /> 一致。</summary>
+    [TestMethod]
+    public void TheSameThreeExemptionsApply()
+    {
+        Assert.IsFalse(ReconnectPolicy.ShouldReconnectAfterProxyChange(
+            isDisconnected: true, hasConnectionError: true,
+            userRequestedDisconnect: true, isLocalShell: false, remoteShellExited: false), "用户主动断开的不碰");
+        Assert.IsFalse(ReconnectPolicy.ShouldReconnectAfterProxyChange(
+            isDisconnected: true, hasConnectionError: true,
+            userRequestedDisconnect: false, isLocalShell: true, remoteShellExited: false), "本地终端不看代理设置");
+        Assert.IsFalse(ReconnectPolicy.ShouldReconnectAfterProxyChange(
+            isDisconnected: true, hasConnectionError: true,
+            userRequestedDisconnect: false, isLocalShell: false, remoteShellExited: true), "远端 exit 的不碰");
+    }
+
+    /// <summary>
+    /// 与 <see cref="ReconnectPolicy.ShouldReconnect" /> 的分工:AutoReconnect 关着也照样救。
+    /// </summary>
+    /// <remarks>
+    /// 这是用户刚刚做出的动作(改完代理点保存),不是后台自动行为 ——
+    /// 拿"自动重连"的总开关去拦它就成了"改了设置却什么也没发生"。
+    /// </remarks>
+    [TestMethod]
+    public void ItDoesNotHangOffTheAutoReconnectSwitch()
+    {
+        // 同一条会话:AutoReconnect 语境下不合格(没掉过线之说,失败态也不看错误文本),
+        // 但改完代理这条要救。两条判定各管各的入口,不能互相替代。
+        Assert.IsTrue(ReconnectPolicy.ShouldReconnectAfterProxyChange(
+            isDisconnected: true, hasConnectionError: true,
+            userRequestedDisconnect: false, isLocalShell: false, remoteShellExited: false));
+        Assert.IsFalse(ReconnectPolicy.ShouldReconnect(
+            autoReconnectEnabled: false, isDisconnected: true,
+            userRequestedDisconnect: false, isLocalShell: false, remoteShellExited: false));
+    }
 }

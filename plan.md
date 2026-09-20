@@ -4811,7 +4811,9 @@ Release configuration」,但 Condition **从没落到元素上**(注释是 Avalo
 - **DNS 默认远程解析**(`ProxyDns` 默认开 = socks5h 语义),只有 `none` 本机解析。
 - 代理只作用于**第一跳**:跳板链上真正出 TCP 的只有最内层那一跳(原本就是这样,已补文档)。
 - **代理设置变更后把「连接失败」的 SSH 标签自动重连一次**(`ProxyChanged` 逐字段比对;
-  只碰 `SessionStatus.Error` 的 SSH 标签,断开标签可能是用户意图,本地终端与插件协议不看这份设置)。
+  断开标签可能是用户意图,本地终端与插件协议不看这份设置)。
+  ⚠️ 这一条的**第一版是死代码**:按 `SessionStatus.Error` 筛标签,而终端标签根本没有那一态 ——
+  一个都选不中,功能从未触发过。见 §82。
 
 文案与文档同步:五份 resx 的 `SetProxy_Subtitle` / `SetProxy_TypeDesc`、AI 插件 `Loc.cs` 的
 unreachable 提示、`velashell-docs` 的 `zh/en/host/architecture.md`(补了四种模式的对照表)。
@@ -5023,3 +5025,75 @@ Issue #474 一口气提了五条,标题只写了第一条。逐条落地四条,�
   `Assert.Fail` 确实会让用例红 —— 无返回值写法会拿到一个从未被等待的 `Task<Task>`。
 - headless 截图人眼核对过三张:分组全折叠 + 两条置顶、全展开、SFTP 路径栏。
 - 五份 resx 各补 6 个键;`dotnet build VelaShell.slnx` 零警告,`dotnet test VelaShell.slnx` 全绿。
+
+## ✅ 82. 2026-09-20 复查 #464 的修复:自动重连那一条是死代码,另修三处(代码复查)
+
+对 §79 / §80 那批改动做了一次复查。代理解析层(`ProxyResolver` / `VelaWebProxy` / SSH / FTP /
+文案 / 文档)站得住,但**四项承诺里有一项从未执行过**,另有三处不准确或不可靠。
+
+### P0:「改完代理自动重连失败的 SSH 标签」一次都没触发过
+
+筛选条件写的是 `tab.ConnectionStatus != SessionStatus.Error → continue`,
+而**终端标签没有 `Error` 这一态**:连接失败走 `MarkConnectionFailed`,它写的是
+`Disconnected` + `ConnectionError`;失败覆盖层(`ShowDisconnectedOverlay` /
+`DisconnectOverlayTitle`)认的也是后者 ——「连接失败」与「连接已断开」这两句话的区别
+就在 `ConnectionError` 有没有值。`SessionStatus.Error` 全仓库只落在 `ConnectingDocument.Status`
+与资源管理器树节点上,从没落到 `TerminalTabViewModel` 上。于是整个循环恒 `continue`,
+issue 里对报告人承诺的那条能力实际不存在。
+
+写注释时把「失败覆盖层还留在那儿」直接推成了「状态是 Error」,而覆盖层接受
+`Disconnected or Error` 两种 —— 这一步推理没有任何测试拦得住,因为当时的用例
+(`ProxySettingsHotApplyTests`)只测了纯函数 `ProxyChanged`,一行都没碰筛选逻辑。
+
+修:
+
+- 判据抽成 `ReconnectPolicy.ShouldReconnectAfterProxyChange(isDisconnected, hasConnectionError,
+  userRequestedDisconnect, isLocalShell, remoteShellExited)` —— 和 `ShouldReconnect` 放同一处,
+  正是这个类存在的理由(条件散落两处就会漂)。不看 AutoReconnect 总开关:这是用户刚做出的动作,
+  不是后台自动行为。
+- 选取抽成 `MainWindowViewModel.FailedSshTabsAfterProxyChange(tabs)`,可以拿**真实标签**测。
+- 顺带补上 `ResetReconnectAttempts()`:用户显式重试不该继承上一轮烧掉的次数额度。
+- 用例三层:`TerminalTabViewModelTests` 钉住「失败后是 `Disconnected` + `ConnectionError`,
+  不是 `Error`」这个前提;`ReconnectPolicyTests` 钉判据;`ProxySettingsHotApplyTests` 拿真标签
+  走一遍真实失败路径钉选取。**做过变异验证**:把判据改回 `SessionStatus.Error`,后两条立刻红。
+
+### 另外几处
+
+- **`IsLoopback` 的注释是错的,新增代码是冗余的。** 注释称在补 `IPAddress.IsLoopback`
+  「漏掉的 127.0.0.2」。.NET 11 实测 `IsLoopback(127.0.0.2)` 与 `IsLoopback(::ffff:127.0.0.1)`
+  **都是 true**(它比的是首字节),`TryParse` 也接受 `[::1]` 这种 `Uri.Host` 形式。
+  真正新增的只有 `Trim()` 与尾点 FQDN。已按事实重写注释、删掉冗余分支,用例补上
+  `127.0.0.1.` / 前后空格 / `[::1]`。
+- **`FormatHost` 会给已带方括号的 IPv6 再套一层。** `VelaWebProxy` 传的就是 `Uri.Host`
+  (IPv6 时自带方括号),`[[::1]]` 会让 `Uri` 构造直接抛 —— 探针那条被 catch 吞成直连,
+  `GetProxy` 那条(系统代理本身是 IPv6 端点)会抛到调用方。已先认方括号再决定加不加。
+- **代理配错的识别改用专用类型。** 原先 FTP 侧拿**本地化后的消息文本**比对
+  (`ex.Message == Strings.Get("Msg_ProxyMisconfigured")`),换一种界面语言即失效,
+  而且漏掉了同批新增的「SOCKS5 凭据超 255 字节」——那条走的是另一个键,会被
+  `FluentFtpInterop.Translate` 翻成笼统的「连接丢失」,正是这段代码想避免的事。
+  新增 `ProxyMisconfiguredException`(**刻意继承 `InvalidOperationException`**,
+  SSH 侧 `PrepareProxyRelay` 的既有 catch 照常命中),两处抛点统一,FTP 侧按类型判。
+- **FTP 报错里的 `via` 改成记录实际用过的路由。** 原先是失败后重新 `Resolve` 一次,
+  而 `system` 档跟随的是 OS **当前**代理 —— 两次调用之间用户可能刚把 Clash 关掉,
+  报出来的就不是真正失败的那一条,反而把人往错方向带。改为拨号前写进 `RouteProbe`,
+  与 SSH 侧 `_lastRoute` 的做法对齐;`WithProxyContext` 随之变成静态纯函数。
+- **`LoopbackProxyRelay.Error` 补 `volatile`**(既有缺陷,顺手一并修)。它写在中继所在的
+  线程池线程、读在发起方连接失败的 catch 里,原本是个普通自动属性。因果顺序本来就是对的
+  —— 失败时先写 `Error`,再由 `finally` 的 `CloseStreams()` 关掉环回连接,而正是那次关闭
+  才让 Tmds.Ssh 的连接失败 —— 但这条链上缺一道内存屏障,读侧理论上可能看见过期的 null,
+  于是 `DescribeProxyError` 退化成一句光秃秃的"连接被关闭",#464 刚补上的 `via` 路由丢失。
+  `volatile` 只能加在字段上,因此改成 volatile 后备字段 + 只读属性,与同类里的
+  `_inbound` / `_outbound` 写法一致。
+
+### 一处只补文档、不改行为
+
+裸 TCP 的系统代理探针 scheme 在 §79 里从 `https` 改成了 `http`,这是**行为变更**而非等价改写:
+Windows 上分协议配置(`http=A;https=B`)的用户,SSH / FTP 会从走 B 变成走 A;单端点配置
+(Clash 这类)无差别。两者都是启发式 —— 裸 TCP 本就没有"正确"的 scheme 可报。保持现状,
+但在 `BuildSystemProbe` 的注释里写明这是变更,免得下次复查又要重新推一遍。
+
+验证:
+
+- `Infrastructure.Tests` 488(485 通过 / 3 跳过),`VelaShell.Tests` 1439(1423 / 16);
+  本次净增 13 条用例。
+- 构建零警告。
