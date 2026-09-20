@@ -2316,6 +2316,24 @@ Paste anyway?</value>
   <data name="SetGeneral_UiLanguageDesc" xml:space="preserve">
     <value>// Display language of the application</value>
   </data>
+  <data name="SetKeys_AlgoEcdsa256" xml:space="preserve">
+    <value>ECDSA 256</value>
+  </data>
+  <data name="SetKeys_AlgoEcdsa384" xml:space="preserve">
+    <value>ECDSA 384</value>
+  </data>
+  <data name="SetKeys_AlgoEcdsa521" xml:space="preserve">
+    <value>ECDSA 521</value>
+  </data>
+  <data name="SetKeys_AlgoEd25519" xml:space="preserve">
+    <value>Ed25519 (recommended)</value>
+  </data>
+  <data name="SetKeys_AlgoRsa4096" xml:space="preserve">
+    <value>RSA 4096</value>
+  </data>
+  <data name="SetKeys_Algorithm" xml:space="preserve">
+    <value>Algorithm</value>
+  </data>
   <data name="SetKeys_CopyPublicKey" xml:space="preserve">
     <value>Copy public key</value>
   </data>

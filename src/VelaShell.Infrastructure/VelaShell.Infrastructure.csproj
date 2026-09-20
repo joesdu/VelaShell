@@ -16,6 +16,8 @@
     <PackageReference Include="MaxMind.Db" />
     <PackageReference Include="SonnetDB.Core" />
     <PackageReference Include="Tmds.Ssh" />
+    <!-- 仅用于 Ed25519 密钥生成(SshKeyService):BCL 至今没有 Ed25519。见中央包版本处的注释。 -->
+    <PackageReference Include="BouncyCastle.Cryptography" />
     <!-- DPAPI(CurrentUser)包裹本地 AES 密钥文件;仅 Windows 运行时可用,其余平台已代码守卫。 -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
   </ItemGroup>

@@ -13,10 +13,25 @@
     </StackPanel>
 
     <!-- 工具栏 -->
-    <Grid ColumnDefinitions="200,*,Auto,8,Auto">
+    <Grid ColumnDefinitions="200,*,Auto,8,Auto,8,Auto">
       <TextBox Grid.Column="0" Text="{Binding SshKeys.SearchQuery}" PlaceholderText="{loc:Localize SetKeys_SearchPlaceholder}" />
-      <Button Grid.Column="2" Classes="dlg-outline" Content="{loc:Localize SetKeys_Import}" Click="ImportKey_Click" />
-      <Button Grid.Column="4" Classes="dlg-primary" Content="{loc:Localize SetKeys_Generate}"
+      <!-- 生成算法。**这串条目的顺序必须与 SshKeyManagerViewModel.AlgorithmChoices 一一对应** ——
+           那边才是唯一事实来源,这里只按同样顺序摆文案、用 SelectedIndex 对齐。错位的后果是
+           用户选 Ed25519 拿到一把 RSA 且界面看不出异常,所以 SshKeyChoiceCatalogTests 会读本文件
+           逐项比对;要增删档位,先改 AlgorithmChoices。 -->
+      <ComboBox Grid.Column="2" Width="150" VerticalAlignment="Center"
+                Name="AlgorithmSelector"
+                ToolTip.Tip="{loc:Localize SetKeys_Algorithm}"
+                AutomationProperties.Name="{loc:Localize SetKeys_Algorithm}"
+                SelectedIndex="{Binding SshKeys.SelectedAlgorithmIndex}">
+        <ComboBoxItem Content="{loc:Localize SetKeys_AlgoEd25519}" />
+        <ComboBoxItem Content="{loc:Localize SetKeys_AlgoEcdsa256}" />
+        <ComboBoxItem Content="{loc:Localize SetKeys_AlgoEcdsa384}" />
+        <ComboBoxItem Content="{loc:Localize SetKeys_AlgoEcdsa521}" />
+        <ComboBoxItem Content="{loc:Localize SetKeys_AlgoRsa4096}" />
+      </ComboBox>
+      <Button Grid.Column="4" Classes="dlg-outline" Content="{loc:Localize SetKeys_Import}" Click="ImportKey_Click" />
+      <Button Grid.Column="6" Classes="dlg-primary" Content="{loc:Localize SetKeys_Generate}"
               Command="{Binding SshKeys.GenerateCommand}" />
     </Grid>
 

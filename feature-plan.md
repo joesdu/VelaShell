@@ -38,9 +38,9 @@
 
 ```mermaid
 pie showData
-    title 欠账 —— 现状与代码对不上的部分（24 项）
+    title 欠账 —— 现状与代码对不上的部分（23 项）
     "P0 存了但不生效" : 5
-    "安全与凭据" : 5
+    "安全与凭据" : 4
     "会话与工作区" : 3
     "数据与可观测" : 3
     "终端与协议" : 4
@@ -62,7 +62,7 @@ pie showData
 
 > 「文件传输」算 2 项 —— 那一节的「传输失败重试」是指回 P0 表的交叉引用、不重复计数，「远程编辑的三个入口已统一」是 📄 文档待同步、不计入欠账。
 > 「会话与工作区」从 4 降到 3：会话标签颜色已在 `b9ae31f` 落地（见该节）。
-> 「安全与凭据」从 6 降到 5：SSH 证书认证已在 `bbfa1877` 落地（见该节）。
+> 「安全与凭据」从 6 降到 4：SSH 证书认证已在 `bbfa1877` 落地，ed25519 密钥生成已在 `plan.md` §86 落地（均见该节）。
 > 「插件生态」现为 2：插件自报图标当天闭合，但新增了一条 🔴 P0「11 条怎么改都绿的 UI 用例」（见该节）。
 > 「终端与协议」从 3 加到 4：新增「SSH PTY 像素尺寸贯通」（卡上游 Tmds.Ssh#519，见该节）。
 
@@ -93,7 +93,7 @@ pie showData
 | ✅ | — | ~~SSH 证书（certificate）认证~~ | **已完成**（2026-09-10，`plan.md` §63，`bbfa1877` + `31922005`）：`AuthMethod.Certificate`（只能追加在枚举末尾，序号由 `AuthMethod_OrdinalValues_MustStayStable` 钉住）→ `AddCredential` 装配 Tmds.Ssh 的 `CertificateCredential`（证书 + 复用私钥那一路的 `PrivateKeyCredential`，连 PEM→OpenSSH 兼容转换一起继承）。连接配置页与登录弹窗的「证书」项都已启用，选完证书按 `<key>-cert.pub` 约定自动补上私钥（`Core/Ssh/OpenSshCertificate`）。`tests/cert-lab/` 一台**堵死全部回退路径**的靶机做端到端验证（阳性 + 阴性对照） | ⏳ 三处**当时刻意留在范围外**：①**主机证书**（CA 签的 host key 替代逐台指纹）是相反方向的另一件事，接得上现有的 `AddHostAuthentication`；②会话导入（PuTTY / Xshell / `ssh://`）与外部启动不产出证书字段，要支持得先扩解析器；③📄 velashell-docs 还没跟上（见下面的[文档待同步](#-文档待同步velashell-docs)） |
 | ⏳ | 🟠 P1 | **审计日志查看界面** | `audit_log` 一直在写（connect / connect-failed），但 `SonnetDbAuditLogService.QueryAsync` 在 UI 层**零调用** —— 写了没人看得见 | 安全审计页加一个可筛选的列表（时间 / 会话 / 结果）。数据侧现成，纯 UI 工作 |
 | ⏳ | 🟠 P1 | **`audit_log` / `conn_history` 保留策略** | 无 retention，长期运行只增不减 | 复用会话录制那套「保留天数 + drop 回写压缩」的兜底路径（`plan.md` §13-F） |
-| ⏳ | 🟡 P2 | **ed25519 / ecdsa 密钥生成** | `ISshKeyService` 只有 `GenerateRsaKeyAsync`；ed25519 / ecdsa **仅用于识别已有密钥类型** | .NET 无内置 OpenSSH ed25519 私钥导出 —— 要么自行实现 OpenSSH 私钥封装格式，要么引入 BouncyCastle（注意许可证与体积） |
+| ✅ | — | ~~**ed25519 / ecdsa 密钥生成**~~ | **已完成**（2026-09-20，`plan.md` §86 + §87）：`GenerateRsaKeyAsync` 换成 `GenerateKeyAsync(name, algorithm = Ed25519, bits)` + 新枚举 `SshKeyAlgorithm { Ed25519, Ecdsa, Rsa }`（`bits` 给 0 表示按算法取默认值：RSA 4096、ECDSA 256）。密钥管理页工具栏加了算法下拉：**Ed25519（默认）/ ECDSA 256·384·521 / RSA 4096**；位数不给选 —— 4096 能用的地方 2048 一定能用，反过来不成立，列出来只是个坑。当初记的两个顾虑都不成立：BouncyCastle **本就是 Tmds.Ssh 的依赖**、早在输出目录里，抬成显式依赖体积增量为零；许可证是 MIT 改写版，不与双许可冲突。OpenSSH 的私钥封装格式本来就自己实现着（`OpenSshPrivateKey`），ed25519 只加了一个 `SerializeEd25519`，ecdsa 的 `SerializeEcdsa` 早就在（导入转换那条路上用着）；真正借外力的只有 ed25519「由种子导出公钥」那步曲线标量乘法 —— .NET 11 的 BCL 至今没有独立 Ed25519。五把（含 ECDSA 三条曲线）都用系统自带 `ssh-keygen -y` 反推公钥交叉验证过，与我们写出的 `.pub` 逐字节相同 | ⏳ 两处留在范围外：①**下拉档位表与 axaml 靠 `SelectedIndex` 对齐**，错位不会报错 —— 已由 `SshKeyChoiceCatalogTests` 读 axaml 逐项比对钉死，增删档位要先改 `SshKeyManagerViewModel.AlgorithmChoices`；②📄 velashell-docs 还没跟上（见下面的[文档待同步](#-文档待同步velashell-docs)） |
 | ⏳ | 🟡 P2 | **密钥管理的三处小缺口** | 导入不校验私钥有效性；删除无二次确认；导出未做（已信任主机同样只能删不能导） | 各自独立、都是小改动，可一批做掉 |
 | 🚧 | 🟠 P1 | **配置导出的选择性与脱敏** | 导出 / 导入是**全量 `AppSettings` 序列化 + 整体覆盖**。⚠️ **全量导出含 Security / Proxy 等敏感块，代理密码是明文** | 分类勾选导出 + 敏感块默认排除（或强制加密）。注：Gist 云同步（`plan.md` §13-C）已覆盖跨设备迁移场景，本条的价值主要在**别把明文代理密码写进一个用户随手分享的文件** |
 
@@ -676,6 +676,7 @@ var options = new ExecuteOptions
 | ✅ | `plan.md` §72 | ~~**远端符号链接**~~ —— **2026-09-13 已同步**（[velashell-docs#33](https://github.com/VelaShellLabs/velashell-docs/pull/33) 已合入）。原登记内容：`zh/host/交互与界面规格.md` 文件浏览器一节与英文镜像补：链接行的两种图标与悬停「→ 目标」、类型列「符号链接」、属性弹窗「链接目标」行、右键「新建符号链接」（先问目标再问名称）。行为口径要写明四条：**删链接只删链接**、**复制链接得到链接**（cp -P）、**文件夹下载不跟进嵌套的目录链接**（rsync -r 口径，显式选中的那一个照常跟随）、FTP 只在支持 `SITE SYMLINK` 的服务器上能建链接，插件协议一律不支持。`SFTP双栏与WinSCP差距分析.md` 里符号链接那一格改为已完成 |
 | ⏳ | `plan.md` §74 / §75 | **目录比较与同步**：已开 [velashell-docs#35](https://github.com/VelaShellLabs/velashell-docs/pull/35)，**待合入**。`{zh,en}/host/SFTP双栏与WinSCP差距分析.md`（C1 改为已实现、优先级第 10 条划掉、新增第七节：比较目录、同步窗口选项表与执行规则、保持远端最新、比较口径、未做与已知限制）；`{zh,en}/host/交互与界面规格.md` §6 补文档工具条、同步窗口布局与「保持远端最新」。§75 的 SHA-256 优先比较也已写进同两份文档（选项表、7.4 比较口径、7.5 代价与缓存限制）。合入后把这一行改成 ✅ |
 | ⏳ | `plan.md` §82 | #474 的四条改动要同步文档：**已在 velashell-docs 的 `docs/474-explorer-sftp` 分支上改好（中英各 3 个文件），待开 PR 与宿主 PR 互相引用后一起合**。内容：`{zh,en}/host/交互与界面规格.md` 资源管理器一节补**置顶**（右键入口、提到整棵树最前、`GroupId` 不变、与折叠配套的理由、分组计数仍按成员数）与 SFTP 路径栏的**复制当前路径**按钮；`{zh,en}/host/设置项审计.md` 补两条新设置（`General.CollapseGroupsByDefault`、`Transfer.UseRecursiveDeleteCommand`）；`Transfer` 那条要写明**只对有 exec 通道的 SSH 会话生效、失败自动回退、没有逐条进度**三句口径 |
+| ⏳ | `plan.md` §86 / §87 | **密钥生成默认给 Ed25519，并新增算法下拉**：`{zh,en}/host/交互与界面规格.md` 密钥管理页一节改口径 —— 工具栏在「导入」左边多了一个算法下拉（**Ed25519（默认）/ ECDSA 256·384·521 / RSA 4096**，位数刻意不给选），「生成密钥」按下拉选中的那一档产出，不再恒为 RSA 4096；自动命名随算法走（`velashell_ed25519` / `velashell_ecdsa256|384|521` / `velashell_rsa`，重名自动加 `_2`），老用户 `~/.ssh` 下那把 `velashell_rsa` 不受影响。`{zh,en}/host/架构设计.md` 若有「只能生成 RSA」一类的口径也要一并改 |
 | ⏳ | `plan.md` §61 | 回滚行数（`设置 → 终端`）的行为补一句：**调小当场生效**，超出上限的历史立刻裁掉、不可恢复；以及它作用于主屏，全屏程序（vim / htop / less）的备用屏恒无回滚，与这个值无关 |
 
 ---

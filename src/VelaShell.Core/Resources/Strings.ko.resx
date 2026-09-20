@@ -2175,6 +2175,24 @@
   <data name="SetGeneral_UiLanguageDesc" xml:space="preserve">
     <value>// 애플리케이션 표시 언어</value>
   </data>
+  <data name="SetKeys_AlgoEcdsa256" xml:space="preserve">
+    <value>ECDSA 256</value>
+  </data>
+  <data name="SetKeys_AlgoEcdsa384" xml:space="preserve">
+    <value>ECDSA 384</value>
+  </data>
+  <data name="SetKeys_AlgoEcdsa521" xml:space="preserve">
+    <value>ECDSA 521</value>
+  </data>
+  <data name="SetKeys_AlgoEd25519" xml:space="preserve">
+    <value>Ed25519(권장)</value>
+  </data>
+  <data name="SetKeys_AlgoRsa4096" xml:space="preserve">
+    <value>RSA 4096</value>
+  </data>
+  <data name="SetKeys_Algorithm" xml:space="preserve">
+    <value>알고리즘</value>
+  </data>
   <data name="SetKeys_CopyPublicKey" xml:space="preserve">
     <value>공개 키 복사</value>
   </data>

@@ -13,6 +13,28 @@ public sealed record SshKeyInfo(
     string PrivateKeyPath,
     string? PublicKeyLine);
 
+/// <summary>生成密钥时可选的算法。</summary>
+public enum SshKeyAlgorithm
+{
+    /// <summary>
+    /// Ed25519(默认)。OpenSSH 6.5(2014)起支持,固定 256 位强度、私钥只有 32 字节,
+    /// 生成与签名都远快于 RSA。除非对端是十来年前的老 SSH 服务端,都该用这个。
+    /// </summary>
+    Ed25519,
+
+    /// <summary>
+    /// ECDSA(NIST P-256 / P-384 / P-521)。曲线由 <c>bits</c> 取 256 / 384 / 521 指定,默认 256。
+    /// 比 RSA 短小,但用的是 NIST 曲线 —— 没有非它不可的理由时优先 Ed25519。
+    /// </summary>
+    Ecdsa,
+
+    /// <summary>
+    /// RSA。留给不认 Ed25519 的老服务端 —— 以及那些只把 <c>ssh-rsa</c> 写进白名单的堡垒机。
+    /// 位数由 <c>bits</c> 指定,默认 4096;低于 2048 位请不要用。
+    /// </summary>
+    Rsa
+}
+
 /// <summary>SSH 密钥管理(设置 - 密钥管理页):枚举、导入、生成、删除 ~/.ssh 下的密钥对。</summary>
 public interface ISshKeyService
 {
@@ -22,8 +44,21 @@ public interface ISshKeyService
     /// <summary>把外部私钥(及同名 .pub)复制进 ~/.ssh。返回 null 表示同名文件已存在。</summary>
     Task<SshKeyInfo?> ImportKeyAsync(string sourcePrivateKeyPath, CancellationToken cancellationToken = default);
 
-    /// <summary>生成 RSA 密钥对(PEM 私钥 + OpenSSH 公钥行)。名称已存在时抛 IOException。</summary>
-    Task<SshKeyInfo> GenerateRsaKeyAsync(string name, int bits = 4096, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 生成密钥对(OpenSSH 格式私钥 + OpenSSH 公钥行),默认 Ed25519。名称已存在时抛 IOException。
+    /// </summary>
+    /// <param name="name">密钥名称,即 ~/.ssh 下的私钥文件名。</param>
+    /// <param name="algorithm">密钥算法,默认 <see cref="SshKeyAlgorithm.Ed25519" />。</param>
+    /// <param name="bits">
+    /// RSA 的模数位数,或 ECDSA 的曲线(256 / 384 / 521)。<b>0 表示按算法取默认值</b>
+    /// (RSA 4096、ECDSA 256);Ed25519 是定长的,这个值一律忽略。
+    /// </param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task<SshKeyInfo> GenerateKeyAsync(
+        string name,
+        SshKeyAlgorithm algorithm = SshKeyAlgorithm.Ed25519,
+        int bits = 0,
+        CancellationToken cancellationToken = default);
 
     /// <summary>删除指定名称的密钥对(私钥及同名 .pub)。</summary>
     Task DeleteKeyAsync(string name, CancellationToken cancellationToken = default);

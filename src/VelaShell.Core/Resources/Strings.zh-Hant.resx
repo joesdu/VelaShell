@@ -2425,6 +2425,24 @@
   <data name="SetGeneral_UiLanguageDesc" xml:space="preserve">
     <value>// 應用程式顯示語言</value>
   </data>
+  <data name="SetKeys_AlgoEcdsa256" xml:space="preserve">
+    <value>ECDSA 256</value>
+  </data>
+  <data name="SetKeys_AlgoEcdsa384" xml:space="preserve">
+    <value>ECDSA 384</value>
+  </data>
+  <data name="SetKeys_AlgoEcdsa521" xml:space="preserve">
+    <value>ECDSA 521</value>
+  </data>
+  <data name="SetKeys_AlgoEd25519" xml:space="preserve">
+    <value>Ed25519(建議)</value>
+  </data>
+  <data name="SetKeys_AlgoRsa4096" xml:space="preserve">
+    <value>RSA 4096</value>
+  </data>
+  <data name="SetKeys_Algorithm" xml:space="preserve">
+    <value>演算法</value>
+  </data>
   <data name="SetKeys_CopyPublicKey" xml:space="preserve">
     <value>複製公鑰</value>
   </data>

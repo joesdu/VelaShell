@@ -23,6 +23,13 @@
     <PackageVersion Include="MaxMind.Db" Version="5.2.0" />
     <PackageVersion Include="SonnetDB.Core" Version="3.1.0" />
     <PackageVersion Include="Tmds.Ssh" Version="0.24.0" />
+    <!-- Ed25519 密钥生成(MIT 改写版许可,与商业授权不冲突)。**这个版本号必须跟着 Tmds.Ssh 走** ——
+         它本来就是 Tmds.Ssh 的依赖,已经在输出目录里躺着了,这里只是把传递依赖抬成显式依赖,
+         体积零增量。抬上来的原因是编译期用到了它:.NET 11 的 BCL 仍然没有独立的 Ed25519
+         (只有 CompositeMLDsa 里那个复合算法标识符),靠传递依赖能编过但没有任何约束,
+         哪天 Tmds.Ssh 换掉它,编译就在一个跟密钥毫不相干的地方碎掉。
+         升 Tmds.Ssh 时用 `dotnet list package` 的传递依赖清单对一眼,别让这里反向压低它。 -->
+    <PackageVersion Include="BouncyCastle.Cryptography" Version="2.7.0" />
     <!-- FTP / FTPS 客户端(MIT,零依赖)。截至 54.2.0 最高只出到 net9.0 资产,
          本仓库 net11.0 会解析到那一份 —— 纯托管 DLL,且发布不裁剪、非单文件,无打包风险。
          注意:不要顺手引 FluentFTP.GnuTLS(LGPL-2.1-only),与商业授权冲突,
