@@ -783,4 +783,50 @@ public class TunnelPanelViewModelTests
         Assert.IsTrue(_vm.ForwardToServerLoopback);
         Assert.AreEqual("127.0.0.1", _vm.NewRemoteHost);
     }
+
+    /// <summary>
+    /// 端口转发跑在 SSH 通道上,SFTP / FTP / 插件协议的会话给不了这条通道。
+    /// 它们出现在服务器下拉框里,用户选中后只会撞上一次注定失败的后台连接。
+    /// </summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task OpenAsync_ListsOnlySshProfiles()
+    {
+        SessionProfile ssh = new() { Name = "ssh", Host = "10.0.0.1", Username = "root" };
+        SessionProfile sftp = new() { Name = "sftp", Host = "10.0.0.2", ConnectionType = ConnectionType.SFTP };
+        SessionProfile ftp = new() { Name = "ftp", Host = "10.0.0.3", ConnectionType = ConnectionType.FTP };
+        SessionProfile plugin = new() { Name = "s3", Host = "10.0.0.4", ConnectionType = ConnectionType.Plugin };
+        TunnelPanelViewModel vm = new(
+            _workflowService,
+            () => Task.FromResult<IReadOnlyList<SessionProfile>>([sftp, ssh, ftp, plugin]),
+            (_, _) => Task.FromResult(_sessionId),
+            _ => true,
+            _ => Task.CompletedTask);
+
+        await vm.OpenAsync();
+
+        Assert.HasCount(1, vm.Servers);
+        Assert.AreSame(ssh, vm.Servers[0]);
+        // 预选也只能落在 SSH 上:非 SSH 的 id 传进来时不该把它塞进列表当选中项。
+        Assert.AreSame(ssh, vm.SelectedServer);
+    }
+
+    /// <summary>非 SSH 的 id 传进 <see cref="TunnelPanelViewModel.OpenAsync" /> 时不预选它。</summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task OpenAsync_NonSshPreselect_FallsBackToFirstSshServer()
+    {
+        SessionProfile ssh = new() { Name = "ssh", Host = "10.0.0.1", Username = "root" };
+        SessionProfile ftp = new() { Name = "ftp", Host = "10.0.0.3", ConnectionType = ConnectionType.FTP };
+        TunnelPanelViewModel vm = new(
+            _workflowService,
+            () => Task.FromResult<IReadOnlyList<SessionProfile>>([ssh, ftp]),
+            (_, _) => Task.FromResult(_sessionId),
+            _ => true,
+            _ => Task.CompletedTask);
+
+        await vm.OpenAsync(ftp.Id);
+
+        Assert.AreSame(ssh, vm.SelectedServer);
+    }
 }

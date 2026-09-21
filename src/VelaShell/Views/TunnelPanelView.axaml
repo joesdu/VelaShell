@@ -45,6 +45,14 @@
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
       <Setter Property="FontSize" Value="{DynamicResource VelaFontSize10}" />
     </Style>
+    <!-- 表单末尾两行复选框。Fluent 的 CheckBox 模板里,盛放勾选框的那层匿名 Grid 写死了
+         Height="32",而框本身只有 20×20 —— 上下各留 6px 死高,且 MinHeight / Padding 都压不动它
+         (模板里的直接赋值是 LocalValue,优先级高于外部样式的 Setter,改不动)。于是两行复选框被
+         撑成 40px 一跳,肉眼看就是"自动重连那行离上面差着一大截",与设计 tunNewForm 的 8px 行距
+         对不上。负外边距把这 12px 死高原样吃掉,行距回到 StackPanel 的 Spacing="8",也就是设计值。 -->
+    <Style Selector="CheckBox">
+      <Setter Property="Margin" Value="0,-6" />
+    </Style>
     <Style Selector="Button.row-action">
       <Setter Property="Width" Value="20" />
       <Setter Property="Height" Value="20" />
