@@ -110,6 +110,18 @@ public partial class ChatPanelView : UserControl
     private StackPanel MessagesPanel => Cur.Messages;
 
     private AiSettings _settings = new();
+
+    /// <summary>
+    /// 初始化那一趟(读设置、拉会话列表、开历史库)。<b>凡是要读 <see cref="_settings" /> 的入口
+    /// 都先等它。</b>
+    /// </summary>
+    /// <remarks>
+    /// 它不再是构造的一部分(见 <see cref="InitAsync" />),于是面板可能比设置先上屏 ——
+    /// 在那之间点「模型设置」拿到的会是一份<b>默认</b>设置,改一下存回去就把真配置整份盖掉了。
+    /// 窗口只有几毫秒,但代价是用户的全部接入,不值得赌。
+    /// </remarks>
+    private readonly Task _initTask;
+
     /// <summary>当前该不该显示空状态(还要再与"中部正显示聊天流"取与,见 <see cref="SetActiveView" />)。</summary>
     private bool _showEmptyState;
     /// <summary>已摆出来的是哪一版空状态(true = 引导去配模型那版);null = 还没摆。</summary>
@@ -264,7 +276,7 @@ public partial class ChatPanelView : UserControl
         _context.Events.SessionDisconnected += OnSessionEvent;
         _context.Events.LocaleChanged += OnLocaleChanged;
 
-        _ = InitAsync();
+        _initTask = InitAsync();
     }
 
     /// <summary>面板关闭时由插件调用,拆除宿主事件订阅并取消进行中的请求。</summary>
@@ -308,8 +320,26 @@ public partial class ChatPanelView : UserControl
 
     // ---------- 初始化与状态 ----------
 
+    /// <summary>
+    /// 读设置、拉会话列表、开历史库。由构造函数<b>发起</b>,但一步都不在构造里跑。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 开头这一次 <see cref="Task.Yield" /> 是<b>必需的</b>,不是风格问题。面板由宿主在
+    /// <c>Dispatcher.UIThread.InvokeAsync</c> 里构造(见 <c>PluginUiApi.ShowPanelAsync</c>),
+    /// 构造期间主窗口是停着的;而下面这些 <c>await</c> 能不能让出线程,取决于宿主那几个能力
+    /// 的实现 —— 一个同步实现的 <c>Storage.GetAsync</c> 返回的是已完成任务,<c>await</c> 它
+    /// 一次线程都不换,于是"读设置 → 刷会话 → 开三张时序表 → 扫 ↑↓ 历史"整段原地跑完,
+    /// 面板才被交出去。那正是"点开 AI 面板,主程序先卡住几秒"的来历。
+    /// </para>
+    /// <para>
+    /// 让出一拍之后,构造立刻返回、面板先成型,初始化在其后的调度轮次里补。代价是设置比
+    /// 面板晚到一点点,由 <see cref="_initTask" /> 兜住(发送与两个设置窗口都先等它)。
+    /// </para>
+    /// </remarks>
     private async Task InitAsync()
     {
+        await Task.Yield();
         try
         {
             _settings = await _store.LoadAsync();
@@ -1150,6 +1180,10 @@ public partial class ChatPanelView : UserControl
     /// </param>
     private async Task SendAsync(string text, bool fromUser = true, SteeringMessage? prepared = null)
     {
+        // 初始化不再随构造跑完(见 InitAsync),设置可能还没到手。这时直接往下走会撞上
+        // "尚未配置模型"并把设置窗口弹到脸上 —— 而用户什么都没配错。已完成时这里是一次同步返回。
+        // 「解释终端输出」那条命令正是开完面板立刻发一条,踩的就是这几毫秒。
+        await _initTask;
         text = text.Trim();
         // 记下这一轮属于哪份对话:通常就是正显示的这份;后台续跑的下一轮(队列排空)沿用原来那份。
         // 置进 _turnScope 后,这条方法(及它 await 出去的整条流水线)所有代理都落到这份上,

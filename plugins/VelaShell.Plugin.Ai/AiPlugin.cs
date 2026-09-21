@@ -1,9 +1,12 @@
+using System.Reflection;
+using System.Runtime.Loader;
 using VelaShell.Plugin.Ai.Bridge;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.Plugin.Ai.Interop;
 using VelaShell.Plugin.Ai.Ui;
 using VelaShell.PluginSdk;
 using VelaShell.PluginSdk.Commands;
+using VelaShell.PluginSdk.Hosting;
 using VelaShell.PluginSdk.Sessions;
 using VelaShell.PluginSdk.Ui;
 
@@ -73,7 +76,74 @@ public sealed class AiPlugin : IVelaPlugin
             {
                 context.Log.Error($"Starting the MCP server failed: {ex}");
             }
+            // 两条服务先起来,再去预热面板的依赖:预热是纯磁盘活,让它排在后面,
+            // 免得和建连抢这一会儿的 IO。
+            PrewarmPanelAssemblies(context, cancellationToken);
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// 把聊天面板要用的那几十兆依赖<b>提前</b>装进来(后台线程,尽力而为)。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 面板是在 <b>UI 线程</b>上构造的(宿主把内容工厂排进 <c>Dispatcher.UIThread.InvokeAsync</c>,
+    /// 见 <c>PluginUiApi.ShowPanelAsync</c>),而第一次构造会连带把 LiveMarkdown / Mermaid /
+    /// CSharpMath / Svg / Anthropic / OpenAI 这一串程序集从盘上读进来 —— 本插件目录下是
+    /// 三十来个 dll、三十多兆。文件缓存冷的时候这就是几秒钟的磁盘 IO,而且<b>整段压在 UI 线程上</b>:
+    /// 表现就是"点开 AI 面板,主窗口直接变成未响应"。
+    /// (实测同一台机器上,光是激活期要碰的那 5 个程序集,冷缓存 2925 ms、热缓存 28 ms ——
+    /// 差的全是 IO,不是代码。)
+    /// </para>
+    /// <para>
+    /// 本插件本来就是 <c>onStartup</c> 常驻的,这份代价早晚要付;挪到启动之后的后台线程上付,
+    /// 用户点开时就只剩控件构造那点事。
+    /// </para>
+    /// <para>
+    /// <b>只装载程序集,不碰里面的类型。</b>装载本身线程安全,而类型的静态构造不是 ——
+    /// Avalonia 控件的样式属性注册就跑在静态构造里,这会儿 UI 线程正忙着建主窗口,
+    /// 在后台线程上把它们引爆等于两头同时往同一张注册表里写。静态构造留给 UI 线程
+    /// 第一次真正用到时再跑,那时该付的 IO 已经付过了。
+    /// </para>
+    /// </remarks>
+    /// <param name="context">日志用。</param>
+    /// <param name="cancellationToken">
+    /// 宿主在关时立刻收手 —— 冷缓存下这一趟能跑十几秒,退出不该陪它读完盘。
+    /// </param>
+    private static void PrewarmPanelAssemblies(IPluginContext context, CancellationToken cancellationToken)
+    {
+        Assembly self = typeof(AiPlugin).Assembly;
+        // 两个条件缺一不可。
+        // 其一,装载上下文必须是 PluginAssemblyLoadContext —— 这既是"我确实是作为插件被装载的"
+        // 的判据,也意味着目录里躺着的正好是我自己那份私有依赖,可以整目录横扫。
+        // 换个环境(headless 测试、宿主直接引用)这里是默认 ALC,目录里是别人的东西,不能碰。
+        // 其二,要走这个上下文去装而不是 Assembly.Load:Avalonia* 与 SDK 得回落到宿主那一份,
+        // 规矩写在 PluginAssemblyLoadContext 里,绕过它就会装出第二套类型。
+        if (AssemblyLoadContext.GetLoadContext(self) is not PluginAssemblyLoadContext loadContext
+            || Path.GetDirectoryName(self.Location) is not { Length: > 0 } directory)
+        {
+            return; // 不是插件装载路径(或单文件装载,没有目录):跳过,面板照常能开。
+        }
+        var warmed = 0;
+        foreach (string path in Directory.EnumerateFiles(directory, "*.dll"))
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            try
+            {
+                loadContext.LoadFromAssemblyName(AssemblyName.GetAssemblyName(path));
+                warmed++;
+            }
+            catch (Exception ex) when (ex is BadImageFormatException or FileLoadException
+                                          or FileNotFoundException or IOException or UnauthorizedAccessException)
+            {
+                // 原生 dll、或者这一个就是装不动:预热失败只是没热到,不该影响任何事。
+                context.Log.Warn($"Preloading '{Path.GetFileName(path)}' failed: {ex.Message}");
+            }
+        }
+        context.Log.Info($"Preloaded {warmed} plugin assemblies; the first chat panel no longer pays for them on the UI thread.");
     }
 
     /// <inheritdoc />
