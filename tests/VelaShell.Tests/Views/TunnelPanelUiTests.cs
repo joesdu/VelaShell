@@ -94,6 +94,42 @@ public sealed class TunnelPanelUiTests
         });
     }
 
+    /// <summary>
+    /// 表单末尾两行复选框之间只留设计 tunNewForm 给的 8px。Fluent 的 CheckBox 模板在框上下
+    /// 各塞了 6px 死高(模板里写死 Height="32",外部样式压不动),不抵消掉就是 20px 的行距 ——
+    /// 肉眼看就是「自动重连」那行离上面差着一大截。
+    /// </summary>
+    [TestMethod]
+    public void Panel_FormCheckBoxes_KeepTheDesignedEightPixelGap()
+    {
+        OnUi(() =>
+        {
+            var vm = new TunnelPanelViewModel(Substitute.For<ITunnelWorkflowService>());
+            var view = new TunnelPanelView { DataContext = vm };
+            var window = new Window { Width = 380, Height = 760, Content = view };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+
+            CheckBox[] boxes = [.. view.GetVisualDescendants().OfType<CheckBox>()];
+            Assert.HasCount(2, boxes, "表单里应当只有「转发到本机」与「自动重连」两个复选框。");
+
+            // 复选框自身的布局高度,而不是模板撑出来的 32。
+            foreach (CheckBox box in boxes)
+            {
+                Assert.AreEqual(20d, box.DesiredSize.Height, 0.5,
+                    "复选框应当只占勾选框本身的高度,模板多出来的 12px 死高要被抵消掉。");
+            }
+
+            double gap = boxes[1].TranslatePoint(new(0, 0), window)!.Value.Y
+                         - boxes[0].TranslatePoint(new(0, 0), window)!.Value.Y
+                         - boxes[0].DesiredSize.Height;
+            Assert.AreEqual(8d, gap, 0.5, "两行复选框之间应当就是 StackPanel 的 Spacing=8。");
+
+            window.Close();
+        });
+    }
+
     [TestMethod]
     public void Panel_EditButtons_ReflectTunnelStatusAndTooltip()
     {

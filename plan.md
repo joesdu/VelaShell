@@ -251,7 +251,7 @@ graph RL
 - Bash 工具用 Git Bash;不要用 `Read`/`Grep` 直接读 `.pen`(加密,只能走 pencil MCP)。
 - 记忆索引见 `C:\Users\Joe\.claude\projects\G--VelaShell\memory\`(terminal-engine、docking、sonnetdb-storage、connect-flow)。
 - SonnetDB 要点:`Tsdb.Open(new TsdbOptions{RootDirectory})`;文档 `db.Documents.Open(name)` 的 Upsert/Get/Scan/Delete;时序 `db.Write(Point.Create(...))` + `SqlExecutor.Execute` SELECT;`FieldType` 在 `SonnetDB.Storage.Format`(是 `Int64` 不是 `Long`,写值用 `FieldValue.FromLong`);**时序 tag 值不允许空串**(临时连接不写 profile_id);**SQL 方言:`ORDER BY time` 要求 SELECT 列表包含 time 列**;`DELETE FROM measurement` 可能不受支持(录制存储以 drop+回写压缩兜底回收);仓储加密必须写副本、不可原地改传入的 profile(内存明文用于活动连接)。
-- Avalonia 12 坑:`Run.Text` 绑定会在卸载等时机回写(展示转换器 `ConvertBack` 返回 `BindingOperations.DoNothing`、绑定标 `Mode=OneWay`);ComboBox 的 `SelectedItem` 在 ItemsSource 为空/Clear 时会把 null 写回数据源(载入顺序先填列表再回填选中,见默认密钥修复);XML 属性值中的换行被规范化为空格(多行文案拆多个 TextBlock)。
+- Avalonia 12 坑:`Run.Text` 绑定会在卸载等时机回写(展示转换器 `ConvertBack` 返回 `BindingOperations.DoNothing`、绑定标 `Mode=OneWay`);ComboBox 的 `SelectedItem` 在 ItemsSource 为空/Clear 时会把 null 写回数据源(载入顺序先填列表再回填选中,见默认密钥修复);XML 属性值中的换行被规范化为空格(多行文案拆多个 TextBlock);**`ControlTemplate` 里直接写的属性值是 `LocalValue`,优先级高于外部样式的 `Setter`** —— `Style Selector="X /template/ Y"` 只改得动模板里没赋过值的属性,模板写死的(如 Fluent `CheckBox` 那层匿名 Grid 的 `Height="32"`)改不动,要换只能整份重写 `ControlTheme` 或在外层抵消(见 §90)。
 
 ## ✅ 9. 2026-07-08 完成情况(6 次提交,514 测试全绿)
 
@@ -5524,3 +5524,51 @@ TextMateSharp.Grammars —— 最后这个是被 `ChatPanelView` 那个 `private
   已经靠第一、二条挪出 UI 线程和开面板的关键路径,真正收窄要等有人抱怨再说。
 
 全量测试 3572 项通过。
+
+## ✅ 90. 2026-09-21 隧道面板:服务器下拉混进了 FTP/SFTP,自动重连那行被模板撑远(用户反馈)
+
+两处都在 `B3Rth` 那张 340px 浮动面板上,一处是逻辑、一处是布局,互不相干。
+
+### 一、服务器下拉里不该有 SSH 以外的协议
+
+`TunnelPanelViewModel.LoadServersAsync` 把 `GetAllSessionsAsync()` 的结果**原样**倒进
+`Servers`,而那是**全部**已保存会话 —— SFTP、FTP/FTPS、以及插件协议(S3 / WebDAV…)都在里头。
+面板的前提却是"选一台服务器 → 后台自动建立**专用 SSH 连接** → 在这条通道上开端口转发":
+端口转发是 SSH 的能力,别的协议给不出这条通道。选中一条 FTP,只会撞上一次注定失败的后台连接。
+
+`MainWindowViewModel.OpenTunnelPanel` 其实早就挡过一道 —— `preselect` 是 SFTP/FTP/Plugin 时
+直接 return,不开面板。但那只管"从哪条会话点进来",管不到面板自己去列表里拉的那一把,
+于是下拉框照样把它们摆出来。过滤补在 VM 里(而不是调用方那条 lambda 上):
+"隧道只走 SSH"是这个面板的前提,前提该由持有它的那一层保证,换一个调用方也不会漏。
+
+顺带,`OpenAsync(preferredProfileId)` 的预选走的是 `Servers.FirstOrDefault(...)`,
+过滤之后非 SSH 的 id 自然落空、回退到第一台 SSH 服务器,不需要另写一段。
+
+### 二、⚠️ Fluent 的 CheckBox 模板有 12px 死高,`MinHeight` / `Padding` 压不动
+
+表单末尾两行复选框(`tunLoopback` / `tunAutoReconnect`)在设计里是 14px 行高 + 8px 行距,
+实际跑出来两行**相距 40px** —— "自动重连"那行看着像掉了队。
+
+量出来的原因:Fluent 的 `CheckBox` 模板里,盛放勾选框的那层匿名 `Grid` 直接写死了
+`Height="32"`,而框本身(`NormalRectangle`)只有 20×20,居中放着,**上下各空出 6px**。
+视图上已经写了 `MinHeight="0" Padding="0"`,一点用都没有:
+
+> **模板 XAML 里的直接赋值是 `LocalValue`,优先级高于外部样式的 `Setter`。**
+> 也就是说,`Style Selector="CheckBox /template/ ..."` 改得动模板里**没赋过值**的属性
+> (实测 `Width` 能改,因为那层 Grid 的宽是列定义给的),改不动模板里写死的那几个。
+> 要真正换尺寸,只能整份重写 `ControlTheme`。
+
+为这两行复选框重写一整套 `ControlTheme`(checked / indeterminate / hover / pressed /
+disabled / 焦点框全得自己来,还要新增一个 `Icon.check` 进共用图标字典)不划算 ——
+真正碍眼的是那 12px 死高,不是勾选框大小。所以在 `TunnelPanelView` 的样式里给 `CheckBox`
+加 `Margin="0,-6"`,把模板多出来的死高原样吃掉:两行的**可见间距**回到 `StackPanel` 的
+`Spacing="8"`,也就是设计值。勾选框仍是 Fluent 的 20×20(设计给的是 14),与本仓库其余
+复选框保持一致 —— 差的是框的尺寸,不是间距。
+
+面板整体因此收窄约 24px。
+
+`TunnelPanelUiTests.Panel_FormCheckBoxes_KeepTheDesignedEightPixelGap` 把这条钉住:
+断言每个复选框的布局高度是 20(而不是模板撑出来的 32),两行之间正好 8px。
+另加两条 `TunnelPanelViewModelTests` 覆盖协议过滤与预选回退。三条测试在改动前全部失败。
+
+全量测试通过(ShellIntegration 32 项按环境早退跳过,属既有行为)。

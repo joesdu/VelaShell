@@ -350,7 +350,9 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
             IReadOnlyList<SessionProfile> profiles = await _savedProfilesProvider();
             Guid? selectedId = SelectedServer?.Id;
             Servers.Clear();
-            foreach (SessionProfile profile in profiles)
+            // 隧道是 SSH 的能力(端口转发跑在 SSH 通道上),而保存的会话里还有 SFTP / FTP /
+            // 插件协议 —— 它们进了下拉框只会让人选中一条永远连不起来的服务器。
+            foreach (SessionProfile profile in profiles.Where(p => p.ConnectionType == ConnectionType.SSH))
             {
                 Servers.Add(profile);
             }
