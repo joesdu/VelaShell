@@ -123,15 +123,34 @@ public sealed class SonnetDbEngine : IDisposable
         }
     }
 
-    /// <summary>在引擎锁内执行文档集合操作。</summary>
-    public async Task<T> WithCollectionAsync<T>(string collection, Func<DocumentCollectionStore, T> action, CancellationToken cancellationToken = default)
+    /// <summary>在引擎锁内、<b>线程池上</b>跑一次库操作,并把结果带回来。</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>这里的 <see cref="Task.Run{TResult}(Func{TResult}, CancellationToken)" /> 不是装饰,
+    /// 它是本类这些 <c>*Async</c> 真正"异步"的唯一来源。</b>不争用时
+    /// <see cref="SemaphoreSlim.WaitAsync(CancellationToken)" /> 返回的是一个<b>已完成</b>的任务 ——
+    /// 只靠它的话 <c>await</c> 一次线程都不换,整段库操作原地跑在调用方线程上。
+    /// 调用方是 UI 线程时(插件面板就在 <c>Dispatcher.UIThread.InvokeAsync</c> 里构造,
+    /// 见 <c>PluginUiApi.ShowPanelAsync</c>),那就是一次货真价实的界面冻结:
+    /// 签名是异步的,行为不是,而调用方没有任何办法看出这一点。
+    /// </para>
+    /// <para>
+    /// 闸仍在<b>调用方线程上</b>取,不一并塞进 <c>Task.Run</c>:
+    /// <see cref="SemaphoreSlim" /> 按到达顺序放行,先发出的操作因此仍然先排到,
+    /// 与改动前的顺序语义一致。
+    /// </para>
+    /// <para>
+    /// <see cref="ThrowIfDisposed" /> 由 <paramref name="work" /> 自己调,本方法不代劳:
+    /// <see cref="TryExecuteAsync(string,CancellationToken)" /> 那一类把"引擎已释放"
+    /// 一并算作"这条路走不通"吞掉,判定必须落在它们自己的 <c>try</c> 里面。
+    /// </para>
+    /// </remarks>
+    private async Task<T> InLockAsync<T>(Func<T> work, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(action);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            ThrowIfDisposed();
-            return action(OpenStore(collection));
+            return await Task.Run(work, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -139,57 +158,67 @@ public sealed class SonnetDbEngine : IDisposable
         }
     }
 
+    /// <inheritdoc cref="InLockAsync{T}" />
+    private async Task InLockAsync(Action work, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await Task.Run(work, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>在引擎锁内执行文档集合操作。</summary>
+    public Task<T> WithCollectionAsync<T>(string collection, Func<DocumentCollectionStore, T> action, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        return InLockAsync(() =>
+        {
+            ThrowIfDisposed();
+            return action(OpenStore(collection));
+        }, cancellationToken);
+    }
+
     /// <summary>写入一条时序数据点。</summary>
-    public async Task WritePointAsync(
+    public Task WritePointAsync(
         string measurement,
         DateTimeOffset timestamp,
         IReadOnlyDictionary<string, string> tags,
         IReadOnlyDictionary<string, FieldValue> fields,
-        CancellationToken cancellationToken = default)
-    {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        CancellationToken cancellationToken = default) =>
+        InLockAsync(() =>
         {
             ThrowIfDisposed();
             _db.Write(Point.Create(measurement, timestamp.ToUnixTimeMilliseconds(), tags, fields));
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
+        }, cancellationToken);
 
     /// <summary>批量写入时序数据点(单次入库,少一轮加锁)。</summary>
-    public async Task WriteManyAsync(IEnumerable<Point> points, CancellationToken cancellationToken = default)
+    public Task WriteManyAsync(IEnumerable<Point> points, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(points);
         Point[] batch = [.. points];
-        if (batch.Length == 0)
-        {
-            return;
-        }
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            ThrowIfDisposed();
-            _db.WriteMany(batch);
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        return batch.Length == 0
+            ? Task.CompletedTask
+            : InLockAsync(() =>
+            {
+                ThrowIfDisposed();
+                _db.WriteMany(batch);
+            }, cancellationToken);
     }
 
     /// <summary>
     /// 执行带参数的时序 SQL 查询(SELECT)。取值一律走参数,不拼进 SQL 文本 ——
     /// 插件提供的标签值等外来输入由此与语法隔离。
     /// </summary>
-    public async Task<SelectExecutionResult> QueryAsync(string sql, SqlParameters parameters,
+    public Task<SelectExecutionResult> QueryAsync(string sql, SqlParameters parameters,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        return InLockAsync(() =>
         {
             ThrowIfDisposed();
             return SqlExecutor.Execute(_db, null, sql, parameters, null) switch
@@ -197,44 +226,37 @@ public sealed class SonnetDbEngine : IDisposable
                 SelectExecutionResult select => select,
                 var other => throw new InvalidOperationException($"Expected a SELECT result but got {other?.GetType().Name ?? "null"} for: {sql}")
             };
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        }, cancellationToken);
     }
 
     /// <summary>
     /// 执行带参数的 DELETE;返回受影响的序列数,方言不支持或语句失败时返回 -1
     /// (调用方自行降级,与 <see cref="TryExecuteAsync(string,CancellationToken)" /> 同纪律)。
     /// </summary>
-    public async Task<int> TryDeleteAsync(string sql, SqlParameters parameters, CancellationToken cancellationToken = default)
+    public Task<int> TryDeleteAsync(string sql, SqlParameters parameters, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        return InLockAsync(() =>
         {
-            ThrowIfDisposed();
-            return SqlExecutor.Execute(_db, null, sql, parameters, null) is DeleteExecutionResult result
-                ? result.SeriesAffected
-                : -1;
-        }
-        catch
-        {
-            return -1;
-        }
-        finally
-        {
-            _gate.Release();
-        }
+            try
+            {
+                ThrowIfDisposed();
+                return SqlExecutor.Execute(_db, null, sql, parameters, null) is DeleteExecutionResult result
+                    ? result.SeriesAffected
+                    : -1;
+            }
+            catch
+            {
+                return -1;
+            }
+        }, cancellationToken);
     }
 
     /// <summary>按给定 schema 创建 measurement(已存在则原样沿用);返回生效的 schema。</summary>
-    public async Task<MeasurementSchema> EnsureMeasurementAsync(MeasurementSchema schema, CancellationToken cancellationToken = default)
+    public Task<MeasurementSchema> EnsureMeasurementAsync(MeasurementSchema schema, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(schema);
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        return InLockAsync(() =>
         {
             ThrowIfDisposed();
             if (_db.Measurements.TryGet(schema.Name) is { } existing)
@@ -243,63 +265,36 @@ public sealed class SonnetDbEngine : IDisposable
             }
             _db.CreateMeasurement(schema);
             return schema;
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        }, cancellationToken);
     }
 
     /// <summary>取 measurement 的 schema;不存在时返回 <see langword="null" />。</summary>
-    public async Task<MeasurementSchema?> GetMeasurementAsync(string name, CancellationToken cancellationToken = default)
-    {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+    public Task<MeasurementSchema?> GetMeasurementAsync(string name, CancellationToken cancellationToken = default) =>
+        InLockAsync(() =>
         {
             ThrowIfDisposed();
             return _db.Measurements.TryGet(name);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
+        }, cancellationToken);
 
     /// <summary>列出全部 measurement 的 schema 快照。</summary>
-    public async Task<IReadOnlyList<MeasurementSchema>> ListMeasurementsAsync(CancellationToken cancellationToken = default)
-    {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+    public Task<IReadOnlyList<MeasurementSchema>> ListMeasurementsAsync(CancellationToken cancellationToken = default) =>
+        InLockAsync<IReadOnlyList<MeasurementSchema>>(() =>
         {
             ThrowIfDisposed();
             return _db.Measurements.Snapshot();
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
+        }, cancellationToken);
 
     /// <summary>删除 measurement 及其数据;返回此前是否存在。</summary>
-    public async Task<bool> DropMeasurementAsync(string name, CancellationToken cancellationToken = default)
-    {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+    public Task<bool> DropMeasurementAsync(string name, CancellationToken cancellationToken = default) =>
+        InLockAsync(() =>
         {
             ThrowIfDisposed();
             return _db.DropMeasurement(name);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
+        }, cancellationToken);
 
     /// <summary>执行时序 SQL 查询(SELECT)。</summary>
-    public async Task<SelectExecutionResult> QueryAsync(string sql, CancellationToken cancellationToken = default)
-    {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+    public Task<SelectExecutionResult> QueryAsync(string sql, CancellationToken cancellationToken = default) =>
+        InLockAsync(() =>
         {
             ThrowIfDisposed();
             return SqlExecutor.Execute(_db, sql) switch
@@ -307,69 +302,46 @@ public sealed class SonnetDbEngine : IDisposable
                 SelectExecutionResult select => select,
                 var other => throw new InvalidOperationException($"Expected a SELECT result but got {other?.GetType().Name ?? "null"} for: {sql}")
             };
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
+        }, cancellationToken);
 
     /// <summary>
     /// 执行非查询时序 SQL(如 DELETE);返回是否成功。SonnetDB 的 SQL 方言若不支持
     /// 该语句则返回 false,调用方自行降级(例如仅删元数据,数据块留作不可见孤儿)。
     /// </summary>
-    public async Task<bool> TryExecuteAsync(string sql, CancellationToken cancellationToken = default)
-    {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+    public Task<bool> TryExecuteAsync(string sql, CancellationToken cancellationToken = default) =>
+        InLockAsync(() =>
         {
-            ThrowIfDisposed();
-            SqlExecutor.Execute(_db, sql);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
+            try
+            {
+                ThrowIfDisposed();
+                SqlExecutor.Execute(_db, sql);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }, cancellationToken);
 
     /// <summary>
     /// 把内存表立刻刷成段文件。批量回灌大量数据时必须周期性调用 —— 否则写进去的点会一直堆在
     /// 内存表里(默认要攒满 100 万点或 5 分钟才自动刷),搬运几 GB 录制就等于把几 GB 顶进内存。
     /// </summary>
-    public async Task FlushAsync(CancellationToken cancellationToken = default)
-    {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+    public Task FlushAsync(CancellationToken cancellationToken = default) =>
+        InLockAsync(() =>
         {
             ThrowIfDisposed();
             _db.FlushNow();
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
+        }, cancellationToken);
 
     /// <summary>删除并重建一个 measurement(用于清空历史)。</summary>
-    public async Task ResetMeasurementAsync(string measurement, CancellationToken cancellationToken = default)
-    {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+    public Task ResetMeasurementAsync(string measurement, CancellationToken cancellationToken = default) =>
+        InLockAsync(() =>
         {
             ThrowIfDisposed();
             _db.DropMeasurement(measurement);
             CreateMeasurementIfMissing(measurement);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
+        }, cancellationToken);
 
     /// <summary>一个段临时文件的身份(路径 + 大小 + 修改时间),用来判定开库前后它有没有被动过。</summary>
     private readonly record struct SegmentTempFile(string Path, long Length, DateTime WrittenUtc);

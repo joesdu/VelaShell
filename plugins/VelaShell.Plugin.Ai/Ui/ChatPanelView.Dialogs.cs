@@ -34,8 +34,17 @@ public partial class ChatPanelView
     private McpServersView? _mcpView;
 
     /// <summary>打开设置窗口(已开着就带到前面,不重复开)。</summary>
-    private void OpenSettingsDialog()
+    private void OpenSettingsDialog() => _ = OpenSettingsDialogAsync();
+
+    /// <inheritdoc cref="OpenSettingsDialog" />
+    /// <remarks>
+    /// 开窗前先等 <see cref="_initTask" />。这张表单吃的是<b>整份</b> <see cref="_settings" />,
+    /// 改动也是整份回写 —— 抢在设置读回来之前把它开出来,交到它手上的就是一份默认值,
+    /// 用户在里面拨一个开关,存下去的是"默认值 + 那个开关",全部接入连同登录态一起没了。
+    /// </remarks>
+    private async Task OpenSettingsDialogAsync()
     {
+        await _initTask;
         if (Activate(_settingsPanel))
         {
             return;
@@ -126,8 +135,13 @@ public partial class ChatPanelView
     }
 
     /// <summary>打开"配置工具"窗口。</summary>
-    private void OpenToolsDialog()
+    private void OpenToolsDialog() => _ = OpenToolsDialogAsync();
+
+    /// <inheritdoc cref="OpenToolsDialog" />
+    /// <remarks>先等 <see cref="_initTask" />,理由与 <see cref="OpenSettingsDialogAsync" /> 同:工具勾选也落在整份设置里。</remarks>
+    private async Task OpenToolsDialogAsync()
     {
+        await _initTask;
         if (Activate(_toolsPanel))
         {
             return;

@@ -5435,3 +5435,92 @@ r=8 的圆头上(质心约 y10),下半部只剩一根收尖的尾巴 —— 眼�
   要删一起删。删除的前置条件写在注释里 —— 先让插件把字形收进自己的字典,**并且**等在装的
   旧版插件更新过一轮(已发布的 `.vpx` 是运行期按键名取的,宿主先删就会打坏已安装的旧版)。
 - 字典头部补一段约定,把上面这套判断固化下来,免得下次再从头排查一遍。
+
+## ✅ 89. 2026-09-21 打开 AI 面板会把主窗口冻住:三处都压在 UI 线程上(用户反馈)
+
+反馈原话是「AI 插件现在打开会比较卡,时间会很长,而且还可能会造成主程序未响应」。
+"未响应"这个词把范围一下子收窄了:那是 UI 线程被占住超过五秒时 Windows 画出来的,
+不是"慢",是**堵**。顺着"谁在 UI 线程上干了重活"查,查出三处,彼此独立。
+
+### 一、宿主的库操作是「异步签名、同步实现」
+
+`SonnetDbEngine` 上每个 `*Async` 都长这样:
+
+```csharp
+await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+try { ThrowIfDisposed(); return action(OpenStore(collection)); }
+finally { _gate.Release(); }
+```
+
+闸不争用时 `SemaphoreSlim.WaitAsync` 返回的是一个**已完成**的任务,`await` 它一次线程都不换 ——
+于是 `action(...)` 原地跑在**调用方线程**上。签名是异步的,行为不是,而调用方没有任何办法看出来。
+
+插件那三样能力(`IPluginStorage` / `ISecretsApi` / `ITimeSeriesApi`)全都架在它上面,
+而插件面板是宿主在 `Dispatcher.UIThread.InvokeAsync` 里构造的(`PluginUiApi.ShowPanelAsync`)。
+两件事一碰头,`await context.Storage.GetAsync(...)` 就是一次不折不扣的界面冻结。
+日志里那条 `[02] [Plugin:velashell.ai] Stored sign-in for provider … could not be read`
+打在主线程上,走的正是这条路。
+
+**改法**:加一个 `InLockAsync`,闸照旧在调用方线程上取(`SemaphoreSlim` 按到达顺序放行,
+顺序语义不变),闸内的活整个扔进 `Task.Run`。全类 13 个 `*Async` 一律改走它。
+`TryExecuteAsync` / `TryDeleteAsync` 把 `ThrowIfDisposed()` 留在自己的 `try` 里面 ——
+它们把"引擎已释放"也算作"这条路走不通"吞掉,判定不能提到外面去。
+
+### 二、面板的初始化整个跑在构造函数里
+
+`ChatPanelView` 构造函数末尾是 `_ = InitAsync()`。配上第一条,那个 `_ =` 是假的:
+里面"读设置 → 刷会话列表 → 开三张时序表 → 扫 ↑↓ 输入历史"一步都不让出线程,
+整段跑完面板才被交给宿主。
+
+**改法**:`InitAsync` 开头 `await Task.Yield()`,构造立刻返回、面板先成型。
+代价是设置比面板晚到一点点,所以把那趟初始化记成 `_initTask`,凡是要读整份 `_settings`
+的入口先等它:`SendAsync`(「解释终端输出」就是开完面板立刻发一条,踩的正是这几毫秒)、
+`OpenSettingsDialog`、`OpenToolsDialog`、`RefreshHistoryListAsync`。
+
+这一条**必须**和 `_initTask` 一起改。两个设置窗口拿的是整份设置、关窗整份回写 ——
+抢在设置读回来之前开出来,交到它手上的是一份默认值,用户在里面拨一个开关,
+存下去的就是"默认值 + 那个开关",全部接入连同登录态一起没了。
+
+### 三、真正的大头:第一次开面板要在 UI 线程上读三十多兆程序集
+
+前两条加起来解释得了"卡",解释不了"十几秒的未响应"。把插件目录单独拎出来量了一下:
+
+| 动作 | 冷缓存 | 热缓存 |
+| --- | ---: | ---: |
+| `GetExportedTypes()`(激活期,5 个程序集 ≈7 MB) | 2925 ms | 28 ms |
+| 装载插件目录全部 32 个程序集(≈35 MB) | 16770 ms | 33 ms |
+| `new ChatPanelView(...)`(headless,程序集已热) | 275 ms | 3 ms |
+
+差的全是磁盘 IO,不是代码。激活期只碰得到 5 个(SDK / Avalonia.Base / Avalonia.Controls /
+TextMateSharp.Grammars —— 最后这个是被 `ChatPanelView` 那个 `private ThemeName` 字段
+拖进来的:值类型字段要算布局,`GetExportedTypes()` 就得把它那个程序集装进来)。
+剩下的 LiveMarkdown ×4 / CSharpMath ×3 / Svg ×4 / Markdig / Mermaider / Anthropic / OpenAI…
+**全都等到第一次构造面板时才装,而那是在 UI 线程上**。冷缓存下就是十几秒的"未响应",
+热了之后同一个动作几十毫秒 —— 和"重启后第一次开特别慢、之后就还好"完全对得上。
+用户日志里两次启动的 `Activated 'velashell.ai' … in 6315ms` / `2941ms` 是同一回事的激活期版本。
+
+**改法**:`AiPlugin.StartServices` 那条后台任务里,等 IM 桥接与 MCP 服务端起来之后,
+把插件目录下的程序集预先装一遍(`PrewarmPanelAssemblies`)。本插件本来就是 `onStartup`
+常驻的,这份 IO 早晚要付,挪到启动后的后台线程上付,用户点开时就只剩控件构造那点事。
+
+三条约束写在代码注释里,这里只记要点:
+
+- **只装载程序集,不碰里面的类型。**装载线程安全,类型的静态构造不是 —— Avalonia 控件的
+  样式属性注册就跑在静态构造里,而这会儿 UI 线程正忙着建主窗口,在后台线程上引爆它
+  等于两头同时往同一张注册表里写。
+- **走本插件的 `PluginAssemblyLoadContext`,不用 `Assembly.Load`。**Avalonia* 与 SDK
+  要回落到宿主那一份(规矩写在那个 ALC 里),绕过去就会装出第二套类型。
+- **装载上下文不是 `PluginAssemblyLoadContext` 就整个跳过。**它同时是"我确实是作为插件
+  被装载的"的判据 —— 换成 headless 测试,这里是默认 ALC、目录里是测试宿主那两百来个 dll,
+  横扫过去既慢又没道理。
+
+### 顺带说明:不是问题的那两处
+
+- **`plugin_data` 文档集合 11 MB / 实际存活 6 份文档共 14 KB**(追加写不回收)。
+  `Documents.Open` 热缓存 46 ms,而且发生在激活期、不在开面板这条路上,与本次现象无关。
+- **`RecentUserInputsAsync` 走的是 `SELECT … LIMIT 20000` 全表扫 `chat_messages`**
+  (`MaxScanRows = 4 × MaxQueryLimit`),连 32 KB 上限的 `text` 字段一起拉回来。
+  现在只有 21 条、34 ms,所以这次不是它;但它是**随聊天记录线性增长**的那一项,
+  已经靠第一、二条挪出 UI 线程和开面板的关键路径,真正收窄要等有人抱怨再说。
+
+全量测试 3572 项通过。

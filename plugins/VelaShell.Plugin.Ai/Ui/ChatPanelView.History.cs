@@ -66,8 +66,13 @@ public partial class ChatPanelView
     // ---------- 会话列表 ----------
 
     /// <summary>重建历史会话列表(最近更新在前;当前会话高亮)。搜索是本地筛,不重复查库。</summary>
+    /// <remarks>
+    /// 先等 <see cref="_initTask" />:历史库是在那一趟里打开的(见 <see cref="InitAsync" />),
+    /// 抢在它前面查会拿到一张空表 —— 而且那张空表会一直摆着,直到用户想起来再开合一次。
+    /// </remarks>
     private async Task RefreshHistoryListAsync()
     {
+        await _initTask;
         _historySessions = await _historyStore.ListSessionsAsync();
         RenderHistoryList();
     }
