@@ -120,13 +120,18 @@ public class SshTerminalBridge : IAsyncDisposable
         // 读循环无异常退出。若先 Cancel,取消会以 OperationCanceledException 打穿底层库的
         // 整条异步读栈,每次关标签都在调试器里刷一串首次机会异常。令牌保留为兜底:
         // 个别实现的 Dispose 若未能唤醒读取,Cancel 仍能让循环退出。
+        //
+        // 释放本身也带预算:SSH 通道的释放要往对端发 CHANNEL_CLOSE,半死的链路上(发送缓冲
+        // 塞满、对端卡在重协商里)这一发可能挂上几分钟;插件的流更是第三方代码。等不到就
+        // 放它在后台自己收尾 —— 关标签与重连不能被一条坏掉的链路拖住。
+        Task dispose = DisposeStreamQuietlyAsync(_shellStream);
         try
         {
-            await _shellStream.DisposeAsync().ConfigureAwait(false);
+            await dispose.WaitAsync(StreamDisposeBudget).ConfigureAwait(false);
         }
-        catch
+        catch (TimeoutException)
         {
-            // 尽力而为:通道可能已被会话断开拆除。
+            // 预算用完:释放仍在后台进行,异常已由 DisposeStreamQuietlyAsync 吞掉。
         }
         await _cts.CancelAsync().ConfigureAwait(false);
 
@@ -147,6 +152,21 @@ public class SshTerminalBridge : IAsyncDisposable
         // 没排空就**不释放**:循环还活着,这会儿释放只会让它在 _drainGate.WaitAsync 或
         // CTS 属性上炸 ObjectDisposedException。两者都不持有非托管句柄,交给 GC 是安全的。
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>释放 shell 流的预算;超出之后不再等,释放在后台继续。</summary>
+    private static readonly TimeSpan StreamDisposeBudget = TimeSpan.FromSeconds(2);
+
+    private static async Task DisposeStreamQuietlyAsync(IShellStreamWrapper stream)
+    {
+        try
+        {
+            await stream.DisposeAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // 尽力而为:通道可能已被会话断开拆除。
+        }
     }
 
     /// <summary>等一个循环退出,最多等 <paramref name="budget" />;返回它是否真的退出了。</summary>

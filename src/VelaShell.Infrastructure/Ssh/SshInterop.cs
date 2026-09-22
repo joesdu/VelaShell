@@ -53,7 +53,7 @@ internal static class SshInterop
             SshNegotiationException negotiation => new VelaSshConnectionException(Describe(negotiation), negotiation),
             SshChannelException channel => new VelaSshClientException(channel.Message, channel),
             SshForwardException forward => new VelaSshClientException(forward.Message, forward),
-            SshConnectionClosedException closed => new VelaSshConnectionException(closed.Message, closed),
+            SshConnectionClosedException closed => new VelaSshConnectionException(Localize(closed), closed),
             SshConnectException connect => TranslateConnect(connect),
             SshProtocolException protocol => new VelaSshConnectionException(protocol.Message, protocol),
             OperationCanceledException => new VelaSshOperationTimeoutException(ex.Message, ex),
@@ -73,9 +73,49 @@ internal static class SshInterop
         ex.Reason switch
         {
             SshFailureReason.Timeout or SshFailureReason.TcpTimeout or SshFailureReason.KeepAliveTimeout =>
-                new VelaSshOperationTimeoutException(ex.Message, ex),
-            _ => new VelaSshConnectionException(ex.Message, ex),
+                new VelaSshOperationTimeoutException(Localize(ex), ex),
+            _ => new VelaSshConnectionException(Localize(ex), ex),
         };
+
+    /// <summary>
+    /// 按原因码给出界面语言的一句话,原文留在 <see cref="Exception.InnerException" /> 里。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 库的异常消息是写给开发者看的(而且是中文);上一版底层库给的是英文。直接透传的话,
+    /// 英 / 日 / 韩界面的用户在换库之后会突然看到中文报错。
+    /// </para>
+    /// <para>
+    /// 只翻有把握的那几类。<see cref="SshFailureReason.ProxyRefused" /> 不在其中:它的消息是
+    /// <c>ProxyTransportDialer</c> 拼的,带着「经哪个代理去哪」与换 SOCKS5 的提示,比一句
+    /// 泛泛的「代理拒绝」有用得多。<see cref="SshFailureReason.HostKeyRejected" /> 同理:消息是
+    /// <c>VelaHostKeyPolicy</c> 用本地化文案写的拒绝理由(含新旧指纹)。认不出的原因照旧用原文。
+    /// </para>
+    /// <para>
+    /// 尾巴上的 <c>[原因 @ 阶段]</c> 不翻译 —— 那是给提 issue 时贴日志用的,跨语言一致才好搜。
+    /// </para>
+    /// </remarks>
+    internal static string Localize(SshException ex)
+    {
+        string? key = ex.Reason switch
+        {
+            SshFailureReason.DnsFailure => "SshErr_DnsFailure",
+            SshFailureReason.TcpRefused => "SshErr_TcpRefused",
+            SshFailureReason.TcpTimeout => "SshErr_TcpTimeout",
+            SshFailureReason.TcpUnreachable => "SshErr_TcpUnreachable",
+            SshFailureReason.ProxyAuthRequired => "SshErr_ProxyAuthRequired",
+            SshFailureReason.NotAnSshServer => "SshErr_NotAnSshServer",
+            SshFailureReason.VersionMismatch => "SshErr_VersionMismatch",
+            SshFailureReason.HostKeyChanged => "SshErr_HostKeyChanged",
+            SshFailureReason.Timeout => "SshErr_Timeout",
+            SshFailureReason.KeepAliveTimeout => "SshErr_KeepAliveTimeout",
+            SshFailureReason.ClosedByPeer => "SshErr_ClosedByPeer",
+            SshFailureReason.Disconnected => "SshErr_Disconnected",
+            _ => null,
+        };
+
+        return key is null ? ex.Message : $"{Strings.Get(key)} [{ex.Reason} @ {ex.Phase}]";
+    }
 
     /// <summary>
     /// SFTP 的失败要分出「没这个文件」与「没权限」—— 上层据此决定是提示用户还是静默跳过。

@@ -56,7 +56,17 @@ internal sealed class ProxyTransportDialer(IProxyResolver? proxyResolver) : ISsh
         string host = target.EndPoint.Host;
         int port = target.EndPoint.Port;
 
-        ProxyRoute route = proxyResolver?.Resolve(host, port) ?? ProxyRoute.Direct;
+        ProxyRoute route;
+        try
+        {
+            route = proxyResolver?.Resolve(host, port) ?? ProxyRoute.Direct;
+        }
+        catch (InvalidOperationException ex)
+        {
+            // 代理配置本身不合法(地址写错、类型不认识):仍然是一次「连不上」,
+            // 要落到 SSH 异常体系里,宿主那边才翻得成连接失败而不是一个裸异常。
+            throw new SshConnectException(SshFailureReason.ProxyRefused, SshPhase.Dialing, ex.Message, ex);
+        }
         _lastRoute = route;
 
         if (route.Kind == ProxyKind.None)
@@ -91,7 +101,7 @@ internal sealed class ProxyTransportDialer(IProxyResolver? proxyResolver) : ISsh
         catch (SocketException ex)
         {
             socket.Dispose();
-            throw new SshConnectException(ReasonFor(ex), SshPhase.Dialing, $"连不上 {host}:{port}:{ex.Message}", ex);
+            throw new SshConnectException(ReasonFor(ex), SshPhase.Dialing, $"{host}:{port}: {ex.Message}", ex);
         }
         catch
         {

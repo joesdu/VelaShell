@@ -165,6 +165,24 @@ public class SftpServiceTests
     }
 
     [TestMethod]
+    public async Task RenameAsync_WhenTargetExists_DoesNotFallBackToOverwritingPosixRename()
+    {
+        // posix-rename overwrites atomically; falling back to it when the plain rename failed
+        // because the target exists would silently destroy the user's file.
+        _sftpClient
+            .RenameFileAsync("/home/user/a.txt", "/home/user/b.txt", Arg.Any<CancellationToken>())
+            .ThrowsAsync(new VelaSftpOperationException("failure"));
+        _sftpClient.ExistsAsync("/home/user/b.txt", Arg.Any<CancellationToken>()).Returns(true);
+
+        VelaSftpOperationException ex = await Assert.ThrowsExactlyAsync<VelaSftpOperationException>(
+            () => _sftpService.RenameAsync(_sessionId, "/home/user/a.txt", "/home/user/b.txt"));
+
+        Assert.AreEqual("failure", ex.Message);
+        await _sftpClient.DidNotReceive().PosixRenameFileAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestMethod]
     public async Task RenameAsync_WhenBothRenamesFail_SurfacesOriginalError()
     {
         _sftpClient

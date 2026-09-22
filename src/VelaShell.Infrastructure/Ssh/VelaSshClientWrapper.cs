@@ -233,7 +233,16 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
 
         try
         {
-            command = await connection.ExecuteAsync(commandText, cancellationToken: cancellationToken)
+            // 不要 stderr 时让库直接丢弃,而不是缓冲着没人读:缓冲的那份只有被读走才回补窗口,
+            // 窗口一满对端就停发 —— stdout 也跟着停住,`docker logs -f` 这类长驻命令会就此卡死。
+            SshExecutionOptions? options = includeStandardError
+                ? null
+                : new SshExecutionOptions
+                {
+                    Channel = SshChannelOptions.Default with { StderrPolicy = SshStderrPolicy.Discard },
+                };
+
+            command = await connection.ExecuteAsync(commandText, options, cancellationToken)
                 .ConfigureAwait(false);
 
             Task<long> stdout = PumpLinesAsync(command.StandardOutput, false, onLine, cancellationToken);

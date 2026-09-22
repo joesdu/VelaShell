@@ -7,6 +7,8 @@ using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Core.Tunnels;
+using VelaShell.Ssh.Channels;
+using VelaShell.Ssh.Diagnostics;
 
 namespace VelaShell.Infrastructure.Tunnels;
 
@@ -292,13 +294,28 @@ public class TunnelService(
     /// </summary>
     private static string DescribeForwardError(Exception ex)
     {
-        SocketException? socket = ex as SocketException ?? ex.InnerException as SocketException;
+        // 库把底层异常包在 SshForwardException / SshChannelException 里,
+        // 宿主的 SshInterop 又会再包一层 —— 所以沿整条 InnerException 链找,而不是只看一层。
+        SocketException? socket = null;
+        for (Exception? e = ex; e is not null && socket is null; e = e.InnerException)
+        {
+            socket = e as SocketException;
+        }
         switch (socket?.SocketErrorCode)
         {
             case SocketError.ConnectionRefused:
                 return Strings.Get("TunnelSvc_TargetRefused");
             case SocketError.TimedOut or SocketError.HostUnreachable:
                 return Strings.Get("TunnelSvc_TargetUnreachable");
+        }
+        // 认原因码而不是认文案:库的消息是中文,「administratively prohibited」这串字只在
+        // 服务端原文里才有。原因码是协议定死的(RFC 4254 §5.1),不随谁的措辞变。
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+        {
+            if (e is SshChannelException { OpenFailureReason: SshChannelOpenFailureReason.AdministrativelyProhibited })
+            {
+                return Strings.Get("TunnelSvc_ForwardProhibited");
+            }
         }
         if (ex.Message.Contains("administratively prohibited", StringComparison.OrdinalIgnoreCase))
         {

@@ -322,6 +322,25 @@ public class SftpService : ISftpService
             // 部分 SFTP 服务器以 SSH_FX_BAD_MESSAGE(表现为"bad message")拒绝普通的 SSH_FXP_RENAME,
             // 跨目录移动时常见。改用被广泛支持的 posix-rename@openssh.com 扩展重试;若该路径也不可用,
             // 则抛出原本更具信息量的错误。
+            //
+            // ⚠️ 目标已存在时**不回退**:posix-rename 的语义是原子覆盖,而普通 rename 失败的
+            // 最常见原因恰恰就是「目标已存在」。回退过去等于把用户「改名撞了同名文件」
+            // 变成静默覆盖 —— 数据就这么没了。上一版底层库的 posix-rename 是假的(转调普通
+            // rename),所以这个坑以前没现形。
+            bool targetExists;
+            try
+            {
+                targetExists = await client.ExistsAsync(newPath, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception probe) when (probe is not OperationCanceledException)
+            {
+                // 连存在与否都问不出来,就别冒覆盖的险。
+                targetExists = true;
+            }
+            if (targetExists)
+            {
+                throw;
+            }
             try
             {
                 await client.PosixRenameFileAsync(oldPath, newPath, cancellationToken).ConfigureAwait(false);

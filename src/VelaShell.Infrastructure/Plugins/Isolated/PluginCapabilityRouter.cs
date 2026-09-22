@@ -507,6 +507,18 @@ internal sealed class PluginCapabilityRouter : IDisposable
             ? element.Deserialize<T>() ?? throw new ArgumentException("Malformed payload.")
             : throw new ArgumentException("Missing payload.");
 
+    private static async Task DisposeStreamQuietlyAsync(Stream stream)
+    {
+        try
+        {
+            await stream.DisposeAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // 释放尽力而为。
+        }
+    }
+
     /// <summary>拆除命令/面板注册(context 本体由 PluginManager 统一释放)。</summary>
     public void Dispose()
     {
@@ -521,16 +533,11 @@ internal sealed class PluginCapabilityRouter : IDisposable
         }
         _commandRegistrations.Clear();
         // 在途的流式读取随插件停用释放。
+        // 走异步释放、不等它:远端文件流的关闭是一次 SSH_FXP_CLOSE 往返,同步 Dispose
+        // 只能阻塞着等网络(sync-over-async),而这里在插件停用 / 崩溃的路径上。
         foreach (Stream stream in _openStreams.Values.ToArray())
         {
-            try
-            {
-                stream.Dispose();
-            }
-            catch
-            {
-                // 释放尽力而为。
-            }
+            _ = DisposeStreamQuietlyAsync(stream);
         }
         _openStreams.Clear();
         // 插件停用/崩溃:嵌入的停靠标签一并撤下(面板 Closed 会尝试通知插件进程,断连时静默)。

@@ -26,7 +26,7 @@ public sealed class SonnetDbHostKeyService(SonnetDbEngine engine, string? legacy
         {
             return HostKeyVerification.Unknown;
         }
-        return existing.Fingerprint == fingerprint
+        return SameFingerprint(existing.Fingerprint, fingerprint)
                    ? HostKeyVerification.Trusted
                    : HostKeyVerification.Changed;
     }
@@ -74,6 +74,29 @@ public sealed class SonnetDbHostKeyService(SonnetDbEngine engine, string? legacy
             store.Delete(DocId(host, port));
             return null;
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 两个 SHA-256 指纹是不是同一把钥。
+    /// </summary>
+    /// <remarks>
+    /// 换底层库之前存下的记录是**裸 base64**(上一版库的 <c>SHA256FingerPrint</c> 不带前缀),
+    /// 现在拿到的是 OpenSSH 风格的 <c>SHA256:</c> 前缀形式。逐字节比的话,换库之后每一台
+    /// 已保存的主机都会被判成「指纹已变更」—— 开了「变更即阻断」的用户会一台也连不上。
+    /// 所以比之前两边都去掉前缀与 base64 填充;旧记录不迁移,下次信任时自然改写成新形式。
+    /// </remarks>
+    internal static bool SameFingerprint(string? stored, string? current) =>
+        stored is not null && current is not null
+        && string.Equals(NormalizeFingerprint(stored), NormalizeFingerprint(current), StringComparison.Ordinal);
+
+    private static string NormalizeFingerprint(string fingerprint)
+    {
+        string value = fingerprint.Trim();
+        if (value.StartsWith("SHA256:", StringComparison.OrdinalIgnoreCase))
+        {
+            value = value["SHA256:".Length..];
+        }
+        return value.TrimEnd('=');
     }
 
     private static string DocId(string host, int port) => $"{host}:{port}";

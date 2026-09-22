@@ -1,4 +1,5 @@
 using System.Net;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Ssh.Forwarding;
 using VelaShell.Ssh.Session;
@@ -31,15 +32,28 @@ internal sealed class LibraryPortForwardHandle : IPortForwardHandle
 {
     private readonly PortForwarder? _local;
     private readonly RemoteForwarder? _remote;
+    private readonly CancellationTokenRegistration _disconnected;
     private bool _stopped;
 
-    private LibraryPortForwardHandle(PortForwarder? local, RemoteForwarder? remote)
+    private LibraryPortForwardHandle(SshConnection connection, PortForwarder? local, RemoteForwarder? remote)
     {
         _local = local;
         _remote = remote;
 
         local?.Error += OnError;
         remote?.Error += OnError;
+
+        // 连接断了,转发也就没了 —— 但转发器自己不会为此发 Error(它只报单条连接的失败)。
+        // 上一版的计量句柄在这里会上报一条通道错误,隧道面板靠它把「运行中」换成带原因的状态;
+        // 不补上的话,远程转发在掉线之后会一直显示得好好的。
+        _disconnected = connection.Disconnected.Register(static state =>
+        {
+            LibraryPortForwardHandle self = (LibraryPortForwardHandle)state!;
+            if (!self._stopped)
+            {
+                self.ChannelError?.Invoke(new VelaSshConnectionException(Strings.Get("SshErr_ClosedByPeer")));
+            }
+        }, this);
     }
 
     /// <inheritdoc />
@@ -79,6 +93,7 @@ internal sealed class LibraryPortForwardHandle : IPortForwardHandle
                         BindPort = (int)request.BoundPort,
                     };
                     return new(
+                        connection,
                         PortForwarder.StartLocal(
                             connection, request.TargetHost!, (int)request.TargetPort!, options),
                         null);
@@ -91,7 +106,7 @@ internal sealed class LibraryPortForwardHandle : IPortForwardHandle
                         BindAddress = ParseBindAddress(request.BoundHost),
                         BindPort = (int)request.BoundPort,
                     };
-                    return new(PortForwarder.StartDynamic(connection, options), null);
+                    return new(connection, PortForwarder.StartDynamic(connection, options), null);
                 }
 
             case PortForwardKind.Remote:
@@ -104,7 +119,7 @@ internal sealed class LibraryPortForwardHandle : IPortForwardHandle
                     RemoteForwarder forwarder = await RemoteForwarder.StartAsync(
                         connection, ResolveOutboundHost(request.TargetHost!), (int)request.TargetPort!,
                         options, cancellationToken).ConfigureAwait(false);
-                    return new(null, forwarder);
+                    return new(connection, null, forwarder);
                 }
 
             default:
@@ -154,6 +169,7 @@ internal sealed class LibraryPortForwardHandle : IPortForwardHandle
         }
         _stopped = true;
 
+        await _disconnected.DisposeAsync().ConfigureAwait(false);
         _local?.Error -= OnError;
         _remote?.Error -= OnError;
 

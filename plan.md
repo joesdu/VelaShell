@@ -5718,3 +5718,31 @@ SSH PTY 像素尺寸贯通(原本等 `tmds/Tmds.Ssh#519`)、SSH Agent 转发、S
 剩下的全是宿主侧接线。
 
 **未推送**:分支与改动都留在本地,等用户先跑一轮看效果。
+
+### 七、合并前审查:改回来的六处行为漂移
+
+合并前对着旧实现逐项对照了一遍(迁移完整性 + 「是不是真异步」两条线)。能力上**没有缺项**,
+但有几处行为悄悄变了 —— 都是换库带出来的,单测替身测不出来:
+
+| 漂移 | 后果 | 改法 |
+| --- | --- | --- |
+| **指纹格式变了**:旧库的 `SHA256FingerPrint` 是裸 base64,新库的 `Sha256Fingerprint` 带 `SHA256:` 前缀 | `SonnetDbHostKeyService` 逐字节比对 → 换库之后**每一台已保存的主机**都判成「指纹已变更」;开了「变更即阻断」的用户一台也连不上 | 比对前两边都去掉前缀与 base64 填充(`SameFingerprint`)。旧记录不迁移,下次信任时自然改写成新形式 |
+| **重命名撞上同名目标会静默覆盖** | 普通 rename 失败后回退到 `posix-rename` —— 旧库那条是假的(转调普通 rename),新库是**真的原子覆盖**。「改名撞了同名文件」变成数据丢失 | 目标已存在(或问不出来)时不回退,抛原错误 |
+| exec 不要 stderr 时库仍缓冲它 | 缓冲的 stderr 只在被读走时回补窗口;没人读 → 窗口满 → stdout 也停,`docker logs -f` 卡死 | 此时通道选 `SshStderrPolicy.Discard` |
+| 「端口被占用」「转发被禁止」两条本地化提示不再出现 | 绑定失败被库包成 `SshForwardException`、宿主再包一层;「administratively prohibited」原来按英文文案认,库的消息是中文 | 沿 `InnerException` 链找 `SocketException`;禁止转发改认 `SshChannelOpenFailureReason.AdministrativelyProhibited` 原因码 |
+| **非中文界面看到中文报错** | 库的异常消息是中文,`SshInterop` 原样透传 | 连接类失败按 `SshFailureReason` 给本地化标题 + `[原因 @ 阶段]` 尾注(`SshErr_*` 12 个键,五份 resx)。代理失败与主机密钥拒绝不翻 —— 那两条的消息是宿主自己拼的,信息更多 |
+| 远程转发掉线后仍显示「运行中」 | 旧的计量句柄会上报一条通道错误;库的转发器只报单条连接的失败 | `LibraryPortForwardHandle` 订阅 `SshConnection.Disconnected` |
+
+另外两处是异步那条线上的:
+
+- **`SshTerminalBridge` 释放 shell 流没有上限**。释放要往对端发 `CHANNEL_CLOSE`,半死的链路上
+  可能挂几分钟,关标签与重连就被拖住。改成 `WaitAsync(2s)`,超时让它在后台自己收尾。
+- **插件停用时同步 `Dispose` 在途的远端读流**。那是一次 `SSH_FXP_CLOSE` 往返,同步释放
+  只能阻塞着等网络。改成不等待的 `DisposeAsync`。
+
+代理解析器自己抛的 `InvalidOperationException`(代理地址写错)以前会被包成连接失败,
+换库后变成了一个裸异常 —— `ProxyTransportDialer` 里补回包装。
+
+**库侧的三条**(已交给 velashell-ssh 那边,不在本仓库改):主机密钥弹窗的等待被计入了
+连接超时(用户 10 秒内没点就连接失败,「永久信任」也可能没存上);`SftpFileStream.Dispose(bool)`
+仍是同步等异步;`SshChannel.DisposeAsync` 的关闭报文没有时间上限。
