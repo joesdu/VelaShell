@@ -5358,4 +5358,67 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SshErr_Disconnected" xml:space="preserve">
     <value>服务器结束了会话。</value>
   </data>
+  <data name="Profile_AgentAuth" xml:space="preserve">
+    <value>SSH Agent</value>
+  </data>
+  <data name="Profile_AgentAuthHint" xml:space="preserve">
+    <value>用本机 ssh-agent 里的密钥签名,配置里不存任何凭据。Windows 上是「OpenSSH Authentication Agent」服务(先启动它,再用 ssh-add 加载密钥);其它系统用 SSH_AUTH_SOCK 指向的 agent。</value>
+  </data>
+  <data name="Profile_SshFeatures" xml:space="preserve">
+    <value>SSH 连接选项</value>
+  </data>
+  <data name="Profile_SshCompression" xml:space="preserve">
+    <value>启用压缩(适合高延迟 / 低带宽链路)</value>
+  </data>
+  <data name="Profile_SshCompressionHint" xml:space="preserve">
+    <value>延迟较高(跨境、跨洋,往返 100 ms 以上)或带宽紧张时建议开启:终端输出与文本文件能省下大量流量。局域网、或主要传输图片 / 压缩包这类已压缩数据时不建议开 —— 只会白白多占 CPU。服务端不支持时自动退回不压缩。</value>
+  </data>
+  <data name="Profile_SshAgentForwarding" xml:space="preserve">
+    <value>转发 ssh-agent(-A)</value>
+  </data>
+  <data name="Profile_SshAgentForwardingHint" xml:space="preserve">
+    <value>在这台服务器上继续 ssh 到下一跳时,用的是本机 agent 里的密钥,私钥不必拷到服务器上。会话期间,这台服务器上的 root 也能借你的 agent 签名 —— 只对信得过的机器开启。</value>
+  </data>
+  <data name="Profile_SshX11Forwarding" xml:space="preserve">
+    <value>X11 转发(在本机显示远端图形界面)</value>
+  </data>
+  <data name="Profile_SshX11ForwardingHint" xml:space="preserve">
+    <value>需要本机运行一个 X 服务器 —— Windows 上如 VcXsrv、Xming、X410(关闭访问控制,或配好对应的 .Xauthority)—— 服务端也要开 X11Forwarding 并装有 xauth。服务端拒绝时会话照常打开,终端里会提示原因。</value>
+  </data>
+  <data name="Profile_SshX11Display" xml:space="preserve">
+    <value>本机 X 显示</value>
+  </data>
+  <data name="Profile_SshX11Trusted" xml:space="preserve">
+    <value>受信任(-Y)</value>
+  </data>
+  <data name="Profile_SshX11TrustedHint" xml:space="preserve">
+    <value>受信任转发让远端 X 程序对本机显示有完全的访问权。Windows 上的 X 服务器通常只支持这种模式;非受信模式需要本机装有 xauth。</value>
+  </data>
+  <data name="Ssh_X11ForwardOn" xml:space="preserve">
+    <value>X11 转发已开启 → 本机显示 {0}</value>
+  </data>
+  <data name="Ssh_AgentForwardOn" xml:space="preserve">
+    <value>ssh-agent 转发已开启</value>
+  </data>
+  <data name="Ssh_X11ForwardFailed" xml:space="preserve">
+    <value>X11 转发未能启用:{0}</value>
+  </data>
+  <data name="Ssh_AgentForwardFailed" xml:space="preserve">
+    <value>ssh-agent 转发未能启用:{0}</value>
+  </data>
+  <data name="Ssh_X11BadDisplay" xml:space="preserve">
+    <value>认不出显示地址「{0}」(应形如 localhost:0.0)</value>
+  </data>
+  <data name="SshErr_AgentUnavailable" xml:space="preserve">
+    <value>连不上本机 ssh-agent:{0}</value>
+  </data>
+  <data name="SshErr_AgentNotRunning" xml:space="preserve">
+    <value>它没有在运行。Windows 上请启动「OpenSSH Authentication Agent」服务(Get-Service ssh-agent / Start-Service ssh-agent)。</value>
+  </data>
+  <data name="SshErr_AgentNoKeys" xml:space="preserve">
+    <value>本机 ssh-agent 里一把密钥都没有。请先加载,例如 ssh-add ~/.ssh/id_ed25519。</value>
+  </data>
+  <data name="DiagSvc_SuggestAgentKeys" xml:space="preserve">
+    <value>确认 ssh-agent 正在运行,并且加载了这台服务器认可的那把密钥:ssh-add -l 可列出已加载的密钥。</value>
+  </data>
 </root>

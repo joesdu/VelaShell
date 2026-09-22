@@ -4909,4 +4909,67 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SshErr_Disconnected" xml:space="preserve">
     <value>서버가 세션을 종료했습니다.</value>
   </data>
+  <data name="Profile_AgentAuth" xml:space="preserve">
+    <value>SSH 에이전트</value>
+  </data>
+  <data name="Profile_AgentAuthHint" xml:space="preserve">
+    <value>로컬 ssh-agent에 있는 키로 서명하며, 이 프로필에는 자격 증명을 저장하지 않습니다. Windows에서는 &quot;OpenSSH Authentication Agent&quot; 서비스(서비스를 시작한 뒤 ssh-add로 키를 로드), 다른 OS에서는 SSH_AUTH_SOCK이 가리키는 agent를 사용합니다.</value>
+  </data>
+  <data name="Profile_SshFeatures" xml:space="preserve">
+    <value>SSH 옵션</value>
+  </data>
+  <data name="Profile_SshCompression" xml:space="preserve">
+    <value>압축 사용(지연이 크거나 대역폭이 낮은 회선용)</value>
+  </data>
+  <data name="Profile_SshCompressionHint" xml:space="preserve">
+    <value>지연이 크거나(국경·대륙 간 회선, 왕복 100 ms 이상) 대역폭이 부족할 때 켜는 것을 권장합니다. 터미널 출력과 텍스트 파일의 전송량이 크게 줄어듭니다. LAN이거나 이미지·압축 파일처럼 이미 압축된 데이터를 주로 전송할 때는 CPU만 소모하므로 권장하지 않습니다. 서버가 지원하지 않으면 자동으로 압축 없이 연결합니다.</value>
+  </data>
+  <data name="Profile_SshAgentForwarding" xml:space="preserve">
+    <value>ssh-agent 전달(-A)</value>
+  </data>
+  <data name="Profile_SshAgentForwardingHint" xml:space="preserve">
+    <value>이 서버에서 다음 서버로 ssh할 때 로컬 agent의 키를 사용하므로 개인 키를 서버에 복사할 필요가 없습니다. 세션 동안 이 서버의 root도 여러분의 agent로 서명할 수 있으므로 신뢰하는 서버에서만 켜세요.</value>
+  </data>
+  <data name="Profile_SshX11Forwarding" xml:space="preserve">
+    <value>X11 전달(원격 GUI를 로컬에 표시)</value>
+  </data>
+  <data name="Profile_SshX11ForwardingHint" xml:space="preserve">
+    <value>이 컴퓨터에서 X 서버가 실행 중이어야 합니다(Windows에서는 VcXsrv, Xming, X410 등. 접근 제어를 끄거나 해당 .Xauthority를 준비). 서버에도 X11Forwarding yes와 xauth가 필요합니다. 서버가 거부해도 세션은 열리며 터미널에 이유가 표시됩니다.</value>
+  </data>
+  <data name="Profile_SshX11Display" xml:space="preserve">
+    <value>로컬 X 디스플레이</value>
+  </data>
+  <data name="Profile_SshX11Trusted" xml:space="preserve">
+    <value>신뢰(-Y)</value>
+  </data>
+  <data name="Profile_SshX11TrustedHint" xml:space="preserve">
+    <value>신뢰 전달은 원격 X 클라이언트가 로컬 디스플레이에 완전히 접근하게 합니다. Windows의 X 서버는 보통 이 모드만 지원하며, 비신뢰 모드에는 로컬에 xauth가 필요합니다.</value>
+  </data>
+  <data name="Ssh_X11ForwardOn" xml:space="preserve">
+    <value>X11 전달 사용 중 → 로컬 디스플레이 {0}</value>
+  </data>
+  <data name="Ssh_AgentForwardOn" xml:space="preserve">
+    <value>ssh-agent 전달 사용 중</value>
+  </data>
+  <data name="Ssh_X11ForwardFailed" xml:space="preserve">
+    <value>X11 전달을 사용할 수 없습니다: {0}</value>
+  </data>
+  <data name="Ssh_AgentForwardFailed" xml:space="preserve">
+    <value>ssh-agent 전달을 사용할 수 없습니다: {0}</value>
+  </data>
+  <data name="Ssh_X11BadDisplay" xml:space="preserve">
+    <value>디스플레이 &quot;{0}&quot;을(를) 인식할 수 없습니다(localhost:0.0 형식이어야 합니다)</value>
+  </data>
+  <data name="SshErr_AgentUnavailable" xml:space="preserve">
+    <value>로컬 ssh-agent에 연결할 수 없습니다: {0}</value>
+  </data>
+  <data name="SshErr_AgentNotRunning" xml:space="preserve">
+    <value>실행 중이 아닙니다. Windows에서는 &quot;OpenSSH Authentication Agent&quot; 서비스를 시작하세요(Get-Service ssh-agent / Start-Service ssh-agent).</value>
+  </data>
+  <data name="SshErr_AgentNoKeys" xml:space="preserve">
+    <value>로컬 ssh-agent에 키가 없습니다. 먼저 로드하세요(예: ssh-add ~/.ssh/id_ed25519).</value>
+  </data>
+  <data name="DiagSvc_SuggestAgentKeys" xml:space="preserve">
+    <value>ssh-agent가 실행 중이고 이 서버가 허용하는 키가 로드되어 있는지 확인하세요(ssh-add -l로 로드된 키를 볼 수 있습니다).</value>
+  </data>
 </root>

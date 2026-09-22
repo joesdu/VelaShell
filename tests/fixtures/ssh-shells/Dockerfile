@@ -12,7 +12,8 @@
 #   vela-starship —— rc 里每次都重写 PS1(starship / p10k 那一类的最小复现)
 FROM alpine:3.21
 
-RUN apk add --no-cache openssh bash zsh fish dash \
+# xauth:sshd 的 X11 转发要用它把(假)cookie 写进用户的 .Xauthority,没有它 x11-req 会被拒。
+RUN apk add --no-cache openssh bash zsh fish dash xauth \
     && ssh-keygen -A \
     && printf '/bin/bash\n/bin/zsh\n/usr/bin/fish\n/usr/bin/dash\n/bin/ash\n' >> /etc/shells
 
@@ -31,6 +32,8 @@ RUN printf '%s\n' \
     'Subsystem sftp internal-sftp' \
     'PerSourcePenalties no' \
     'MaxStartups 100' \
+    'X11Forwarding yes' \
+    'AllowAgentForwarding yes' \
     > /etc/ssh/sshd_config
 
 RUN set -eu; \

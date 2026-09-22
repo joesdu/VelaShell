@@ -351,6 +351,8 @@
               <ComboBoxItem Content="{loc:Localize Profile_PasswordAuth}" />
               <ComboBoxItem Content="{loc:Localize Profile_KeyAuth}" />
               <ComboBoxItem Content="{loc:Localize Profile_CertAuth}" />
+              <!-- 顺序即 AuthMethod 的枚举值(AuthMethodIndex 是一次强转),新项只能加在末尾。 -->
+              <ComboBoxItem Content="{loc:Localize Profile_AgentAuth}" />
             </ComboBox>
           </StackPanel>
           <!-- FTP 没有私钥认证,这一格换成加密方式 -->
@@ -528,6 +530,13 @@
           </StackPanel>
         </StackPanel>
 
+        <!-- SSH Agent 认证:没有要填的东西,但得告诉用户密钥从哪来 ——
+             agent 没起或没加载密钥时,报错是在连接那一刻才出现的。 -->
+        <TextBlock IsVisible="{Binding IsAgentAuth}"
+                   Text="{loc:Localize Profile_AgentAuthHint}"
+                   Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize10}"
+                   TextWrapping="Wrap" />
+
         <!-- 记住密码 -->
         <StackPanel Orientation="Horizontal" Spacing="8"
                     IsVisible="{Binding ShowPasswordField}">
@@ -653,6 +662,61 @@
                          Margin="0,4,0,0"
                          Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize10}" TextWrapping="Wrap" />
             </Grid>
+          </StackPanel>
+
+          <!-- SSH 协议层的可选能力。三项默认全关(与 OpenSSH 一致),每项下面一行灰字说清
+               「什么时候该开」—— 压缩开错了只是多耗 CPU,两个转发开错了是把本机能力借给远端。
+               压缩 SSH / SFTP 都有;两个转发只挂在交互式 shell 上,SFTP 配置不显示。 -->
+          <StackPanel IsVisible="{Binding RequiresSshAuth}" Spacing="4">
+            <TextBlock Classes="field-label" Text="{loc:Localize Profile_SshFeatures}" Margin="0,12,0,0" />
+
+            <CheckBox IsChecked="{Binding SshCompression}"
+                      Padding="0" MinHeight="0" VerticalAlignment="Center">
+              <TextBlock Text="{loc:Localize Profile_SshCompression}"
+                         Margin="6,0,0,0"
+                         Foreground="{DynamicResource VelaTextSecondary}"
+                         FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium" />
+            </CheckBox>
+            <TextBlock Text="{loc:Localize Profile_SshCompressionHint}" Margin="0,0,0,4"
+                       Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize10}" TextWrapping="Wrap" />
+
+            <StackPanel IsVisible="{Binding SupportsPostAuthCommand}" Spacing="4">
+              <CheckBox IsChecked="{Binding SshAgentForwarding}"
+                        Padding="0" MinHeight="0" VerticalAlignment="Center">
+                <TextBlock Text="{loc:Localize Profile_SshAgentForwarding}"
+                           Margin="6,0,0,0"
+                           Foreground="{DynamicResource VelaTextSecondary}"
+                           FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium" />
+              </CheckBox>
+              <TextBlock Text="{loc:Localize Profile_SshAgentForwardingHint}" Margin="0,0,0,4"
+                         Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize10}" TextWrapping="Wrap" />
+
+              <CheckBox IsChecked="{Binding SshX11Forwarding}"
+                        Padding="0" MinHeight="0" VerticalAlignment="Center">
+                <TextBlock Text="{loc:Localize Profile_SshX11Forwarding}"
+                           Margin="6,0,0,0"
+                           Foreground="{DynamicResource VelaTextSecondary}"
+                           FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium" />
+              </CheckBox>
+              <TextBlock Text="{loc:Localize Profile_SshX11ForwardingHint}"
+                         Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize10}" TextWrapping="Wrap" />
+              <!-- 显示地址与受信任只在开了 X11 时才有意义,关着就收起。 -->
+              <Grid ColumnDefinitions="*,12,Auto" IsVisible="{Binding SshX11Forwarding}" Margin="0,4,0,0">
+                <StackPanel Grid.Column="0">
+                  <TextBlock Classes="field-label" Text="{loc:Localize Profile_SshX11Display}" />
+                  <TextBox Text="{Binding SshX11Display}"
+                           PlaceholderText="{Binding SshX11DisplayPlaceholder}" />
+                </StackPanel>
+                <CheckBox Grid.Column="2" IsChecked="{Binding SshX11Trusted}"
+                          Padding="0" MinHeight="0" VerticalAlignment="Bottom" Margin="0,0,0,8"
+                          ToolTip.Tip="{loc:Localize Profile_SshX11TrustedHint}">
+                  <TextBlock Text="{loc:Localize Profile_SshX11Trusted}"
+                             Margin="6,0,0,0"
+                             Foreground="{DynamicResource VelaTextSecondary}"
+                             FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium" />
+                </CheckBox>
+              </Grid>
+            </StackPanel>
           </StackPanel>
 
           <!-- FTP / FTPS 的「默认打开路径」:上传目标常年是同一个目录,而 FTP 给的登录工作目录

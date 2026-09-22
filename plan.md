@@ -5746,3 +5746,46 @@ SSH PTY 像素尺寸贯通(原本等 `tmds/Tmds.Ssh#519`)、SSH Agent 转发、S
 **库侧的三条**(已交给 velashell-ssh 那边,不在本仓库改):主机密钥弹窗的等待被计入了
 连接超时(用户 10 秒内没点就连接失败,「永久信任」也可能没存上);`SftpFileStream.Dispose(bool)`
 仍是同步等异步;`SshChannel.DisposeAsync` 的关闭报文没有时间上限。
+
+## ✅ 92. 2026-09-23 SSH Agent 认证与转发、X11 转发、压缩开关(用户需求)
+
+换库(§91)之后这三件在底层都已经有了,本节是宿主侧的接线。落在连接配置的「高级选项」里,
+新增 `SessionProfile.Ssh`(`SshSessionOptions`,三项都关时整个存 `null`,老配置零迁移)。
+
+### 一、四样东西
+
+| 项 | 界面 | 接到哪 |
+| --- | --- | --- |
+| **SSH Agent 认证** | 认证方式下拉末项「SSH Agent」(`AuthMethod.Agent`,枚举按序号落盘,只能加在末尾) | `SshConnectionAssembler`:连本机 agent → 每把钥一个 `PublicKeyCredential`,agent 客户端活到认证结束再释放 |
+| **压缩** | 「启用压缩(适合高延迟 / 低带宽链路)」+ 一行何时该开的说明;SSH 与 SFTP 都有 | `SshConnectionAssembler.Algorithms`:`SshAlgorithmSet.Default.WithCompression()`(`zlib@openssh.com` 在前、`none` 兜底) |
+| **agent 转发** | 「转发 ssh-agent(-A)」+ 风险说明;只对 SSH | `SshShellOptions.AgentForwarding` |
+| **X11 转发** | 「X11 转发」,打开后多出「本机 X 显示」与「受信任(-Y)」;只对 SSH | `SshShellOptions.X11`(`SshForwardingOptions` 负责翻译) |
+
+### 二、几处取舍
+
+- **压缩没有做成「按延迟自动开」**。压缩算法在握手最开头的 KEXINIT 里就定了,那时还没有任何
+  延迟数据;要做自动只能拿上一次连接的测量值猜,猜错了用户也看不出为什么。所以是一个手动开关,
+  说明文字里直接写清「往返 100 ms 以上、或带宽紧张时开;局域网与已压缩数据别开」。
+- **转发被拒不连累会话**。库的 `SshForwardException` 不区分是哪一项被拒,两项都开时靠重试定位
+  (先去掉 X11,再去掉 agent),只在失败路径上多几个往返。结果写进 `IShellStreamWrapper.Notices`
+  (带默认实现的接口成员,ConPTY / 插件流零改动),主窗口在首连与重连时以灰字 / 黄字写进终端顶部。
+- **X11 默认受信任、整条会话有效**。Windows 上的 X 服务器没有 SECURITY 扩展、本机也没有 xauth,
+  非受信模式在那里根本跑不起来;库默认 20 分钟后拒绝新 X11 通道,交互式会话里只会被当成坏了。
+  显示地址按「配置 → `DISPLAY` → `localhost:0.0`」依次取。**不带 X 服务端**(`feature-plan.md`「确认不做」)。
+- **连 agent 带 3 秒上限**。Windows 上 agent 服务没起时命名管道不存在,不带超时的管道连接会一直
+  重试到整条连接超时;现在 3 秒内报「连不上本机 ssh-agent」并附 `Start-Service ssh-agent`。
+  `SSH_AUTH_SOCK` 在 Windows 上只认 `\.\pipe\…`(Git Bash / WSL 的 Unix 套接字连不上)。
+
+### 三、验证
+
+- 单测:`SshSessionFeaturesTests`(算法集、X11/agent 选项翻译)、`ConnectionProfileViewModelTests`
+  三条(编辑往返、SFTP 丢掉转发、Agent 下拉位置)。
+- **端到端**(`SshSessionFeaturesIntegrationTests`,ssh-shells 靶机,本次给它开了 `X11Forwarding`
+  并装了 xauth):压缩真的协商成 `zlib@openssh.com`;远端用 bash 的 `/dev/tcp` 手搓一个 X 客户端,
+  本机假 X 服务器收到了换过 cookie 的建立报文;远端 `ssh-add -l` 问到了本机的假 agent;
+  私钥只在假 agent 里的情况下以「SSH Agent」认证登录成功。6/6 通过。
+- 全量测试通过;ShellIntegration 32/32。
+
+**没做的**:「自动加载密钥到 Agent」(R-06,要往 agent 里**加**钥,库的 agent 客户端还不会)、
+Pageant、agent 转发的「只转发指定密钥 / 逐次确认」界面(库已支持)。均记在 `feature-plan.md`。
+文档:velashell-docs `zh|en/host/交互与界面规格.md` 同步。
