@@ -630,7 +630,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
     /// <remarks>
     /// 失败之后重新 <c>Resolve</c> 一次是不可靠的:<c>system</c> 档跟随的是 OS **当前**代理,
     /// 两次调用之间用户可能刚把 Clash 的系统代理关掉 —— 那样报出来的 via 就不是真正失败的那一条,
-    /// 反而把人往错方向带。与 SSH 侧 <c>TmdsSshClientWrapper._lastRoute</c> 的做法对齐。
+    /// 反而把人往错方向带。
     /// </remarks>
     private sealed class RouteProbe
     {
@@ -639,7 +639,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
     }
 
     /// <summary>
-    /// 连接层失败的代理语境补全(与 SSH 侧 <c>TmdsSshClientWrapper.DescribeProxyError</c> 对齐):
+    /// 连接层失败的代理语境补全:
     /// 只包隧道层异常(<see cref="VelaFtpConnectionException" />,即代理拨号/握手/Socket/TLS 失败),
     /// 认证/权限/路径等应用层异常原样透出 —— 那些说明隧道本身是通的。
     /// 后缀是纯技术信息(host:port),不新增本地化键。

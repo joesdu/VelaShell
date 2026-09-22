@@ -102,7 +102,7 @@ public class SshConnectionServiceTests
         var service = new SshConnectionService(_ => mockClientWrapper);
         SshSession session = await service.ConnectAsync(connectionInfo);
         await service.DisconnectAsync(session.SessionId);
-        mockClientWrapper.Received(1).Disconnect();
+        await mockClientWrapper.Received(1).DisposeAsync();
         Assert.AreEqual(SessionStatus.Disconnected, session.Status);
     }
 
@@ -243,7 +243,7 @@ public class SshConnectionServiceTests
         };
         var service = new SshConnectionService(_ => mockClientWrapper);
         await Assert.ThrowsExactlyAsync<VelaSshConnectionException>(async () => await service.ConnectAsync(connectionInfo));
-        mockClientWrapper.Received(1).Dispose();
+        await mockClientWrapper.Received(1).DisposeAsync();
     }
 
     [TestMethod]
@@ -266,7 +266,7 @@ public class SshConnectionServiceTests
     }
 
     [TestMethod]
-    public async Task DisposeAsync_DisconnectsAndDisposesAllClients()
+    public async Task DisposeAsync_DisposesAllClients()
     {
         ISshClientWrapper? mockClient1 = Substitute.For<ISshClientWrapper>();
         mockClient1.IsConnected.Returns(true);
@@ -293,10 +293,8 @@ public class SshConnectionServiceTests
         await service.ConnectAsync(connectionInfo1);
         await service.ConnectAsync(connectionInfo2);
         await service.DisposeAsync();
-        mockClient1.Received(1).Disconnect();
-        mockClient1.Received(1).Dispose();
-        mockClient2.Received(1).Disconnect();
-        mockClient2.Received(1).Dispose();
+        await mockClient1.Received(1).DisposeAsync();
+        await mockClient2.Received(1).DisposeAsync();
     }
 
     [TestMethod]
@@ -348,7 +346,7 @@ public class SshConnectionServiceTests
         var service = new SshConnectionService(_ => mockClientWrapper);
         await Assert.ThrowsAsync<OperationCanceledException>(
             async () => await service.ConnectAsync(connectionInfo, cts.Token));
-        mockClientWrapper.Received(1).Dispose();
+        await mockClientWrapper.Received(1).DisposeAsync();
         Assert.IsEmpty(service.Sessions);
     }
 

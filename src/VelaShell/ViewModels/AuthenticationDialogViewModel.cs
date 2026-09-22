@@ -166,7 +166,7 @@ public class AuthenticationDialogViewModel : ReactiveObject
 
     /// <summary>私钥与口令两个字段是否可见:密钥认证与证书认证都要用到它们。</summary>
     /// <remarks>
-    /// 证书页就是密钥页再加一个证书文件 —— Tmds 的 CertificateCredential 本就是
+    /// 证书页就是密钥页再加一个证书文件 —— 证书凭据本就是
     /// 「证书 + 匹配私钥」两件套,共用一块面板,校验与浏览按钮才不会两边各改各的。
     /// </remarks>
     public bool ShowsKeyFields => IsKeyMethod || IsCertificateMethod;

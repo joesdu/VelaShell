@@ -1,16 +1,21 @@
 using System.Buffers.Binary;
-using System.Reflection;
 using System.Text;
-using Tmds.Ssh;
 using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Ssh;
+using VelaShell.Ssh.Auth;
+using VelaShell.Ssh.Keys;
 
 namespace VelaShell.Core.Tests.Ssh;
 
 /// <summary>
-/// 生成的私钥必须是 Tmds.Ssh 能加载的 OpenSSH 格式。曾用 <c>ExportRSAPrivateKeyPem()</c> 写 PKCS#1
-/// (-----BEGIN RSA PRIVATE KEY-----),Tmds.Ssh 0.23 判 "Unsupported format" 而跳过 publickey,
+/// 生成的私钥必须是 OpenSSH 格式。曾用 <c>ExportRSAPrivateKeyPem()</c> 写 PKCS#1
+/// (-----BEGIN RSA PRIVATE KEY-----),上一版底层库判 "Unsupported format" 而跳过 publickey,
 /// 用户用本应用生成的密钥无法登录(诊断第 4 步:no methods failed、skipped publickey)。
+/// <para>
+/// 换库之后「库读不读得动」这条松了(VelaShell.Ssh 认得传统 PEM),
+/// 但**格式本身仍然要是 OpenSSH** —— 生成出来的文件还要给 <c>ssh-copy-id</c>、
+/// 给服务端的 <c>authorized_keys</c>、给别的客户端用。
+/// </para>
 /// </summary>
 [TestClass]
 [TestCategory("Ssh")]
@@ -22,7 +27,7 @@ public class SshKeyServiceFormatTests
     [DataRow(SshKeyAlgorithm.Ecdsa, 384, DisplayName = "ECDSA nistp384")]
     [DataRow(SshKeyAlgorithm.Ecdsa, 521, DisplayName = "ECDSA nistp521")]
     [DataRow(SshKeyAlgorithm.Rsa, 2048, DisplayName = "RSA 2048")]
-    public async Task GeneratedKey_IsOpenSshFormat_AndLoadableByTmdsSsh(SshKeyAlgorithm algorithm, int bits)
+    public async Task GeneratedKey_IsOpenSshFormat_AndUsableForSigning(SshKeyAlgorithm algorithm, int bits)
     {
         string dir = NewTempDir();
         try
@@ -32,15 +37,26 @@ public class SshKeyServiceFormatTests
 
             string pem = await File.ReadAllTextAsync(info.PrivateKeyPath);
             Assert.StartsWith("-----BEGIN OPENSSH PRIVATE KEY-----", pem,
-                "私钥必须是 OpenSSH 格式,否则 Tmds.Ssh 无法加载");
+                "私钥必须是 OpenSSH 格式 —— 它还要给 ssh-copy-id 与别的客户端用");
 
-            // Tmds.Ssh 真正加载一遍:能取出密钥即证明格式被接受(不抛 Unsupported format)。
-            var cred = new PrivateKeyCredential(info.PrivateKeyPath, null, "test");
-            MethodInfo load = typeof(PrivateKeyCredential).GetMethod("LoadKeyAsync",
-                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!;
-            object valueTask = load.Invoke(cred, [CancellationToken.None])!;
-            var t = (Task)valueTask.GetType().GetMethod("AsTask")!.Invoke(valueTask, null)!;
-            await t; // 不抛即通过
+            // 真正加载一遍,并让它**签一次名、再用公钥验回去**。
+            // 只「加载不抛」是不够的:一把结构合法、内容错位的私钥照样加载得动,
+            // 要到真去连服务器才以签名验证失败告终(见下面那条 Ed25519 用例的说明)。
+            //
+            // 顺带把上一版这里的反射去掉了:原先要反射进底层库的 internal LoadKeyAsync
+            // 才验得了「格式被接受」—— 那种断言随上游改一个方法名就会静默失效。
+            ISshSigner signer = await SshPrivateKeyFile.LoadAsync(info.PrivateKeyPath);
+            byte[] data = "velashell key self-check"u8.ToArray();
+            string sigAlgorithm = signer.SignatureAlgorithms[0];
+            byte[] signature = await signer.SignAsync(data, sigAlgorithm);
+
+            Assert.IsTrue(signer.PublicKey.VerifySignature(signature, data, sigAlgorithm),
+                "生成的私钥签的名,它自己的公钥验不过 —— 密钥材料写错位了");
+
+            // 公钥行也必须与私钥里的那一把一致,否则 authorized_keys 放上去照样登不上。
+            byte[] publicLineBlob = Convert.FromBase64String(info.PublicKeyLine!.Split(' ')[1]);
+            CollectionAssert.AreEqual(publicLineBlob, signer.PublicKey.Blob.ToArray(),
+                ".pub 里的公钥必须与私钥导出的公钥逐字节一致");
         }
         finally
         {
@@ -52,7 +68,7 @@ public class SshKeyServiceFormatTests
     /// Ed25519 私钥里的公钥字段必须与 <c>.pub</c> 一致,私钥字段必须是 <b>seed ‖ pub</b> 的 64 字节。
     /// </summary>
     /// <remarks>
-    /// 这条单独立着,是因为「只写 32 字节种子」是一个 <b>Tmds.Ssh 加载得动、结构也完全合法</b>的错 ——
+    /// 这条单独立着,是因为「只写 32 字节种子」是一个 <b>加载得动、结构也完全合法</b>的错 ——
     /// 上面那条一路绿灯,直到真去连一台服务器才会以签名验证失败告终。这里直接把封装拆开对字节。
     /// </remarks>
     [TestMethod]

@@ -4873,4 +4873,40 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SetTransfer_FastRecursiveDeleteDesc" xml:space="preserve">
     <value>SSH セッションのみ:ファイルごとの SFTP 往復ではなくコマンド 1 回で削除します。コマンドが使えない、または失敗した場合は SFTP の再帰削除に戻ります。削除前の確認は変わりませんが、ファイル単位の進捗は表示されません。</value>
   </data>
+  <data name="SshErr_DnsFailure" xml:space="preserve">
+    <value>ホスト名を解決できません。</value>
+  </data>
+  <data name="SshErr_TcpRefused" xml:space="preserve">
+    <value>接続が拒否されました。そのポートで待ち受けているサービスがありません。</value>
+  </data>
+  <data name="SshErr_TcpTimeout" xml:space="preserve">
+    <value>TCP 接続がタイムアウトしました。</value>
+  </data>
+  <data name="SshErr_TcpUnreachable" xml:space="preserve">
+    <value>ネットワークまたはホストに到達できません。</value>
+  </data>
+  <data name="SshErr_ProxyAuthRequired" xml:space="preserve">
+    <value>プロキシが認証を要求していますが、プロキシの資格情報が設定されていません。</value>
+  </data>
+  <data name="SshErr_NotAnSshServer" xml:space="preserve">
+    <value>接続先は SSH サーバーではありません(正しいプロトコル識別子を受信できませんでした)。</value>
+  </data>
+  <data name="SshErr_VersionMismatch" xml:space="preserve">
+    <value>サーバーがサポートされていない SSH プロトコル バージョンを使用しています。</value>
+  </data>
+  <data name="SshErr_HostKeyChanged" xml:space="preserve">
+    <value>サーバーのホスト キーが記録済みのものと一致しません。</value>
+  </data>
+  <data name="SshErr_Timeout" xml:space="preserve">
+    <value>接続がタイムアウトしました。</value>
+  </data>
+  <data name="SshErr_KeepAliveTimeout" xml:space="preserve">
+    <value>サーバーがキープアライブに応答しなくなったため、接続が切断されたと判断しました。</value>
+  </data>
+  <data name="SshErr_ClosedByPeer" xml:space="preserve">
+    <value>サーバーが接続を閉じました。</value>
+  </data>
+  <data name="SshErr_Disconnected" xml:space="preserve">
+    <value>サーバーがセッションを終了しました。</value>
+  </data>
 </root>

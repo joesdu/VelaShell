@@ -4873,4 +4873,40 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SetTransfer_FastRecursiveDeleteDesc" xml:space="preserve">
     <value>SSH 세션 전용: 파일마다 SFTP를 왕복하는 대신 명령 한 번으로 삭제합니다. 명령을 쓸 수 없거나 실패하면 SFTP 재귀 삭제로 되돌아갑니다. 삭제 전 확인은 그대로이며, 파일별 진행률은 표시되지 않습니다.</value>
   </data>
+  <data name="SshErr_DnsFailure" xml:space="preserve">
+    <value>호스트 이름을 확인할 수 없습니다.</value>
+  </data>
+  <data name="SshErr_TcpRefused" xml:space="preserve">
+    <value>연결이 거부되었습니다. 해당 포트에서 대기 중인 서비스가 없습니다.</value>
+  </data>
+  <data name="SshErr_TcpTimeout" xml:space="preserve">
+    <value>TCP 연결 시간이 초과되었습니다.</value>
+  </data>
+  <data name="SshErr_TcpUnreachable" xml:space="preserve">
+    <value>네트워크 또는 호스트에 연결할 수 없습니다.</value>
+  </data>
+  <data name="SshErr_ProxyAuthRequired" xml:space="preserve">
+    <value>프록시에서 인증을 요구하지만 프록시 자격 증명이 설정되지 않았습니다.</value>
+  </data>
+  <data name="SshErr_NotAnSshServer" xml:space="preserve">
+    <value>상대방이 SSH 서버가 아닙니다(올바른 프로토콜 식별자를 받지 못했습니다).</value>
+  </data>
+  <data name="SshErr_VersionMismatch" xml:space="preserve">
+    <value>서버가 지원되지 않는 SSH 프로토콜 버전을 사용합니다.</value>
+  </data>
+  <data name="SshErr_HostKeyChanged" xml:space="preserve">
+    <value>서버의 호스트 키가 기록된 키와 일치하지 않습니다.</value>
+  </data>
+  <data name="SshErr_Timeout" xml:space="preserve">
+    <value>연결 시간이 초과되었습니다.</value>
+  </data>
+  <data name="SshErr_KeepAliveTimeout" xml:space="preserve">
+    <value>서버가 연결 유지 신호에 응답하지 않아 연결이 끊어진 것으로 판단했습니다.</value>
+  </data>
+  <data name="SshErr_ClosedByPeer" xml:space="preserve">
+    <value>서버가 연결을 닫았습니다.</value>
+  </data>
+  <data name="SshErr_Disconnected" xml:space="preserve">
+    <value>서버가 세션을 종료했습니다.</value>
+  </data>
 </root>

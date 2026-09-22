@@ -56,17 +56,17 @@ public class RemoteShellProbeTests
     /// <c>${var:-默认值}</c>,展开成空。只考算术就会在这里翻车 —— 后半截 ok 就是为它准备的。
     /// </summary>
     [TestMethod]
-    public void IsPosixShell_WhenOnlyArithmeticExpanded_IsFalse() =>
+    public async Task IsPosixShell_WhenOnlyArithmeticExpanded_IsFalse() =>
         Assert.IsFalse(RemoteShellProbe.IsPosixShell(new("vela-posix-42\n", "", 0)));
 
     /// <summary>ForceCommand 之类:退出码 0,但回来的是别的东西。</summary>
     [TestMethod]
-    public void IsPosixShell_WhenOutputIsUnrelated_IsFalse() =>
+    public async Task IsPosixShell_WhenOutputIsUnrelated_IsFalse() =>
         Assert.IsFalse(RemoteShellProbe.IsPosixShell(new("Welcome to the gateway\n", "", 0)));
 
     /// <summary>底层根本没给结果(通道开不出来的替身默认值)。</summary>
     [TestMethod]
-    public void IsPosixShell_WithNullResult_IsFalse() => Assert.IsFalse(RemoteShellProbe.IsPosixShell(null));
+    public async Task IsPosixShell_WithNullResult_IsFalse() => Assert.IsFalse(RemoteShellProbe.IsPosixShell(null));
 
     /// <summary>同一台主机只探一次:重连、开新标签都吃缓存,不该反复占对端的 exec 通道。</summary>
     [TestMethod]

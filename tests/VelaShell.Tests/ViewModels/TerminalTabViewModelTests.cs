@@ -123,18 +123,18 @@ public class TerminalTabViewModelTests
 
     [TestMethod]
     [TestCategory("TerminalTab")]
-    public void Dispose_DisposesBridgeAndTerminalEmulator()
+    public async Task Dispose_DisposesBridgeAndTerminalEmulator()
     {
-        _vm.Dispose();
+        await _vm.DisposeAsync();
         _terminalEmulator.Received(1).Dispose();
     }
 
     [TestMethod]
     [TestCategory("TerminalTab")]
-    public void Dispose_CalledTwice_OnlyDisposesOnce()
+    public async Task Dispose_CalledTwice_OnlyDisposesOnce()
     {
-        _vm.Dispose();
-        _vm.Dispose();
+        await _vm.DisposeAsync();
+        await _vm.DisposeAsync();
         _terminalEmulator.Received(1).Dispose();
     }
 
@@ -188,11 +188,11 @@ public class TerminalTabViewModelTests
 
     [TestMethod]
     [TestCategory("TerminalTab")]
-    public void AttachTransport_WiresBridgeAndShellStream()
+    public async Task AttachTransport_WiresBridgeAndShellStream()
     {
         var vm = new TerminalTabViewModel(_terminalEmulator);
         IShellStreamWrapper? stream = Substitute.For<IShellStreamWrapper>();
-        vm.AttachTransport(stream);
+        await vm.AttachTransportAsync(stream);
         Assert.IsNotNull(vm.Bridge);
         Assert.AreSame(stream, vm.ShellStream);
     }
@@ -206,48 +206,49 @@ public class TerminalTabViewModelTests
     /// </remarks>
     [TestMethod]
     [TestCategory("TerminalTab")]
-    public void AttachTransport_AppliesTheSessionsAntiIdleInterval()
+    public async Task AttachTransport_AppliesTheSessionsAntiIdleInterval()
     {
         var vm = new TerminalTabViewModel(_terminalEmulator)
         {
             Profile = new SessionProfile { Terminal = new() { AntiIdleSeconds = 90 } }
         };
 
-        vm.AttachTransport(Substitute.For<IShellStreamWrapper>());
+        await vm.AttachTransportAsync(Substitute.For<IShellStreamWrapper>());
         Assert.AreEqual(TimeSpan.FromSeconds(90), vm.Bridge!.AntiIdleInterval);
 
-        vm.AttachTransport(Substitute.For<IShellStreamWrapper>()); // 重连:新的桥,同一份配置。
+        await vm.AttachTransportAsync(Substitute.For<IShellStreamWrapper>()); // 重连:新的桥,同一份配置。
         Assert.AreEqual(TimeSpan.FromSeconds(90), vm.Bridge!.AntiIdleInterval);
     }
 
     /// <summary>没有会话配置的标签(本地终端)恒为关闭:那条 shell 里根本没有谁会来踢人。</summary>
     [TestMethod]
     [TestCategory("TerminalTab")]
-    public void AttachTransport_WithoutAProfile_LeavesAntiIdleOff()
+    public async Task AttachTransport_WithoutAProfile_LeavesAntiIdleOff()
     {
         var vm = new TerminalTabViewModel(_terminalEmulator);
 
-        vm.AttachTransport(Substitute.For<IShellStreamWrapper>());
+        await vm.AttachTransportAsync(Substitute.For<IShellStreamWrapper>());
 
         Assert.AreEqual(TimeSpan.Zero, vm.Bridge!.AntiIdleInterval);
     }
 
     [TestMethod]
     [TestCategory("TerminalTab")]
-    public void AttachTransport_Null_Throws()
+    public async Task AttachTransport_Null_Throws()
     {
         var vm = new TerminalTabViewModel(_terminalEmulator);
-        Assert.ThrowsExactly<ArgumentNullException>(() => vm.AttachTransport(null!));
+        await Assert.ThrowsExactlyAsync<ArgumentNullException>(
+            async () => await vm.AttachTransportAsync(null!));
     }
 
     [TestMethod]
     [TestCategory("TerminalTab")]
-    public void AttachTransport_AfterDisposed_Throws()
+    public async Task AttachTransport_AfterDisposed_Throws()
     {
         var vm = new TerminalTabViewModel(_terminalEmulator);
-        vm.Dispose();
-        Assert.ThrowsExactly<ObjectDisposedException>(() =>
-            vm.AttachTransport(Substitute.For<IShellStreamWrapper>())
+        await vm.DisposeAsync();
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(async () =>
+            await vm.AttachTransportAsync(Substitute.For<IShellStreamWrapper>())
         );
     }
 
@@ -258,10 +259,10 @@ public class TerminalTabViewModelTests
     /// </remarks>
     [TestMethod]
     [TestCategory("TerminalTab")]
-    public void ARemoteShellThatExits_IsRememberedAsSuch()
+    public async Task ARemoteShellThatExits_IsRememberedAsSuch()
     {
         var vm = new TerminalTabViewModel(_terminalEmulator);
-        vm.AttachTransport(ClosingStream(ShellCloseReason.RemoteExited));
+        await vm.AttachTransportAsync(ClosingStream(ShellCloseReason.RemoteExited));
         vm.Start();
 
         WaitUntil(() => vm.RemoteShellExited);
@@ -271,10 +272,10 @@ public class TerminalTabViewModelTests
     /// <summary>掉线不是用户意图,不能被当成 exit —— 那正是自动重连要救的场景。</summary>
     [TestMethod]
     [TestCategory("TerminalTab")]
-    public void ADroppedConnection_IsNotMistakenForAnExit()
+    public async Task ADroppedConnection_IsNotMistakenForAnExit()
     {
         var vm = new TerminalTabViewModel(_terminalEmulator);
-        vm.AttachTransport(ClosingStream(ShellCloseReason.ConnectionLost));
+        await vm.AttachTransportAsync(ClosingStream(ShellCloseReason.ConnectionLost));
         vm.Start();
 
         WaitUntil(() => vm.ConnectionStatus == SessionStatus.Disconnected || vm.RemoteShellExited);
@@ -284,14 +285,14 @@ public class TerminalTabViewModelTests
     /// <summary>重连挂上新传输后标志复位,否则一次 exit 会永久禁掉这个标签的自动重连。</summary>
     [TestMethod]
     [TestCategory("TerminalTab")]
-    public void AttachTransport_ClearsTheRemoteExitFlag()
+    public async Task AttachTransport_ClearsTheRemoteExitFlag()
     {
         var vm = new TerminalTabViewModel(_terminalEmulator);
-        vm.AttachTransport(ClosingStream(ShellCloseReason.RemoteExited));
+        await vm.AttachTransportAsync(ClosingStream(ShellCloseReason.RemoteExited));
         vm.Start();
         WaitUntil(() => vm.RemoteShellExited);
 
-        vm.AttachTransport(Substitute.For<IShellStreamWrapper>());
+        await vm.AttachTransportAsync(Substitute.For<IShellStreamWrapper>());
         Assert.IsFalse(vm.RemoteShellExited);
     }
 
@@ -319,9 +320,9 @@ public class TerminalTabViewModelTests
 
     [TestMethod]
     [TestCategory("TerminalTab")]
-    public void DetachTransport_ClearsBridgeAndShellStream()
+    public async Task DetachTransport_ClearsBridgeAndShellStream()
     {
-        _vm.DetachTransport();
+        await _vm.DetachTransportAsync();
         Assert.IsNull(_vm.Bridge);
         Assert.IsNull(_vm.ShellStream);
     }

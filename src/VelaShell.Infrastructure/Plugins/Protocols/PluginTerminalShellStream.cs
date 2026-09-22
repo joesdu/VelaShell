@@ -129,8 +129,14 @@ internal sealed class PluginTerminalShellStream(IProtocolTerminalSession session
         });
     }
 
-    /// <summary>拆掉会话:取消读令牌唤醒读循环,插件那侧的关闭推到后台完成(绝不在此阻塞)。</summary>
-    public void Dispose()
+    /// <summary>拆掉会话:取消读令牌唤醒读循环,再等插件那侧真的关完。</summary>
+    /// <remarks>
+    /// 原先这里是 <c>Task.Run</c> 把插件侧的关闭甩到后台 —— 因为契约是同步的
+    /// <c>IDisposable</c>,而插件的 <c>DisposeAsync</c> 在这里既不能等(会卡住关标签页)
+    /// 也不能丢。契约改成 <see cref="IAsyncDisposable" /> 之后那一层不需要了:
+    /// 直接 await,关标签页这个动作在插件真的收完之后才算完。
+    /// </remarks>
+    public async ValueTask DisposeAsync()
     {
         if (_disposed)
         {
@@ -143,24 +149,22 @@ internal sealed class PluginTerminalShellStream(IProtocolTerminalSession session
         }
         catch (ObjectDisposedException)
         {
-            // 并发 Dispose:忽略。
+            // 并发释放:忽略。
         }
-        _ = Task.Run(async () =>
+
+        try
         {
-            try
-            {
-                await session.DisposeAsync().ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                Trace.WriteLine($"[PluginTerminal] Disposing '{protocolId}' threw: {ex.Message}");
-            }
-            finally
-            {
-                _linked?.Dispose();
-                _lifetime.Dispose();
-            }
-        });
+            await session.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[PluginTerminal] Disposing '{protocolId}' threw: {ex.Message}");
+        }
+        finally
+        {
+            _linked?.Dispose();
+            _lifetime.Dispose();
+        }
     }
 
     /// <summary>

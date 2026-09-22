@@ -127,7 +127,7 @@ public sealed class PluginTerminalProtocolTests
         var terminal = new FakeTerminal();
         var registration = new PluginProtocolRegistration("test", Descriptor(), FileSystem: null, terminal);
 
-        using IShellStreamWrapper stream = await PluginProtocolTerminalConnector.OpenAsync(
+        await using IShellStreamWrapper stream = await PluginProtocolTerminalConnector.OpenAsync(
             registration, Profile(), new("xterm-256color", 100, 40));
 
         Assert.IsNotNull(terminal.Request);
@@ -160,7 +160,7 @@ public sealed class PluginTerminalProtocolTests
     {
         var terminal = new FakeTerminal();
         var registration = new PluginProtocolRegistration("test", Descriptor(), FileSystem: null, terminal);
-        using IShellStreamWrapper stream = await PluginProtocolTerminalConnector.OpenAsync(
+        await using IShellStreamWrapper stream = await PluginProtocolTerminalConnector.OpenAsync(
             registration, Profile(), new("xterm", 80, 24));
 
         terminal.Push("ok");
@@ -194,7 +194,7 @@ public sealed class PluginTerminalProtocolTests
         Task<int> pending = stream.ReadAsync(new byte[8], 0, 8, CancellationToken.None);
         Assert.IsFalse(pending.IsCompleted, "读应当挂着(替身模拟阻塞在传输上)。");
 
-        stream.Dispose();
+        await stream.DisposeAsync();
         int read = await pending.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.AreEqual(0, read, "被唤醒的读必须归一化为 EOF,而不是抛取消异常。");
         await terminal.Released.WaitAsync(TimeSpan.FromSeconds(5));
@@ -206,7 +206,7 @@ public sealed class PluginTerminalProtocolTests
     {
         // 插件的传输层什么异常都可能抛;对终端来说结论只有一个:这条会话结束了。
         var registration = new PluginProtocolRegistration("test", Descriptor(), FileSystem: null, new FaultingTerminal());
-        using IShellStreamWrapper stream = await PluginProtocolTerminalConnector.OpenAsync(
+        await using IShellStreamWrapper stream = await PluginProtocolTerminalConnector.OpenAsync(
             registration, Profile(), new("xterm", 80, 24));
         Assert.AreEqual(0, await stream.ReadAsync(new byte[8], 0, 8, CancellationToken.None));
     }

@@ -5572,3 +5572,177 @@ disabled / 焦点框全得自己来,还要新增一个 `Icon.check` 进共用图
 另加两条 `TunnelPanelViewModelTests` 覆盖协议过滤与预选回退。三条测试在改动前全部失败。
 
 全量测试通过(ShellIntegration 32 项按环境早退跳过,属既有行为)。
+
+## ✅ 91. 2026-09-22 Tmds.Ssh → VelaShell.Ssh:换掉底层 SSH 库,并把「释放」全面异步化(用户需求)
+
+分支 `feat/velashell-ssh`。底层 SSH 从 [Tmds.Ssh](https://github.com/tmds/Tmds.Ssh) 0.24.0 换成
+自研的 [VelaShell.Ssh](https://github.com/VelaShellLabs/velashell-ssh)(MIT,net11.0),
+走**工程引用**(`..\..\..\velashell-ssh\src\VelaShell.Ssh\VelaShell.Ssh.csproj`)——
+两个仓库还在并排开发,先用相对路径把两边钉在一起,CI 因此会红,这是明知的代价。
+
+行数上几乎是平的:已跟踪文件 +1172 / −3821(其中 14 个文件整份删除,计 2832 行),
+新增的未跟踪文件 2623 行 —— 加总下来净 −26 行。**但成分完全不同**:
+删掉的近 1200 行是为绕开上一版底层库而存在的,换回来的是一层薄适配。
+
+### 一、先把库的两个缺口补齐,再动迁移
+
+换库前先确认新库能接住现有的**全部**用法。两条缺口是动手前就点清的:
+
+**A. 加密的 OpenSSH 私钥**(`bcrypt_pbkdf`)。这是本库「不手写密码学原语,无例外」那条规矩的
+**唯一一次破例**,并且写进了 `docs/design/architecture.md` §11.2.18 与 `AGENTS.md` §3.3:
+BCL 没有 Blowfish,而 `bcrypt_pbkdf` 是 OpenSSH 私钥容器唯一用的 KDF,不实现就等于
+「带口令的私钥一律打不开」。Blowfish 的 P 盒 / S 盒**不是抄表**,而是按 Machin 公式
+现算 π 的十六进制展开(`BuildInitialState` / `ArcTangentReciprocal`),测试拿它与
+已知向量对账 —— 抄一张 1042 个 32 位常数的表,错一个字节也不会有人看出来。
+
+**B. OpenSSH 用户证书**(`*-cert-v01@openssh.com`)。`OpenSshCertificate` 解析容器,
+`SshCertificateSigner` 校验「证书是用户证书」「证书与私钥配对」后把签名委托给私钥,
+并在发签名算法名时剥掉 `-cert-v01@openssh.com` 后缀 —— 证书只换封装,签名始终由私钥出。
+**CA 签名不在这里验**:那是服务端的活,客户端验了也说明不了什么。
+
+⚠️ **AEAD 的认证标签被我放错了地方,而且症状极具欺骗性。**
+一开始我以为 chacha20-poly1305 / aes-gcm 的 tag 在 openssh-key-v1 的私钥 string **里面**。
+测试全绿 —— 因为流密码把前缀解出来之后,两个 checkint 照样对得上,而 tag 从头到尾**没被验过**。
+靠实测才看出来:同一批 fixture 里,`section` 长度 176,容器末尾还**多出 16 个裸字节**。
+tag 在那个 string 的**外面**,不带长度前缀。改成 `reader.ReadRemaining()` 单独读,
+密文与 tag 分开传给 `OpenSshKeyCipher.Decrypt`。
+
+两条都对着真实 OpenSSH 10.3 验过(库侧互操作 18/18,零跳过)。
+
+### 二、删掉的 ~1200 行,每一行当初都是为了绕开上一版底层库
+
+| 删掉的 | 行数 | 它当初在绕什么 |
+| --- | ---: | --- |
+| `MeteredPortForwardHandle` | 376 | 上一版库把转发的搬运整个做在内部,**不暴露任何计数**。隧道面板要显示字节数与连接数,只能自建 `TcpListener` + `direct-tcpip` 把数据面整个接管过来。新库的 `PortForwarder` / `RemoteForwarder` 自带 `BytesTransferred` / `TotalConnections` / `ActiveConnections`,于是只剩一层薄适配(`LibraryPortForwardHandle`) |
+| `SshAlgorithmProbe` + `SshAlgorithmDiagnostics` | 304 | 协商失败时上一版库只给一句话,两边到底各有什么算法拿不到。于是**再连一次**、逐类缩小候选集去倒推。新库直接抛 `SshNegotiationException`,两边清单都在异常上 |
+| `LoopbackProxyRelay` | 107 | 上一版库的代理接入只认「地址」,不认「一条已经建好的流」。于是本机起一个监听端口、把代理连接接力过去。新库有 `ISshTransportDialer`,`ProxyTransportDialer` 把现成的 `ProxyStreamConnector` 直接交给它,**本机不再开监听端口** |
+| `TmdsSshInterop` | 106 | 库的 `ConnectFailedException` 是 `internal`,只能**按消息前缀做字符串解析**再分派 —— §A 那节早就标过它是已知脆弱点。`SshInterop` 按异常类型分派,**没有一处字符串解析** |
+| `HostKeyPromptOutcome` | 48 | 主机密钥回调的返回值塞不下「拒绝的理由」。新库的 `SshHostKeyVerdict.Reject(reason)` 本来就带 |
+| `OpenSshPrivateKey.TryConvertToOpenSsh` | -78 | 上一版库只认 OpenSSH 格式,导入的 PKCS#1 / PKCS#8 会被判 "Unsupported format" 而**静默跳过** publickey。新库三种格式原生都认,转换整段删掉 —— `LegacyPrivateKeyFormatTests` 也从「转换器转对了没有」改成「库直接读得出来没有」,盯的是同一个用户可见行为 |
+
+`TmdsSshClientWrapper`(541)/ `TmdsSftpClientWrapper`(502)则是被
+`VelaSshClientWrapper` / `VelaSftpClientWrapper` 等量替换,不计入上面这笔账。
+
+顺带补上的两件事:`pty-req` 的**像素尺寸不再被丢掉**(新库的 `TerminalSize` 带
+`pixelWidth` / `pixelHeight`),以及 SFTP 的 `posix-rename@openssh.com`
+在服务端支持时走真正的原子改名。
+
+### 三、⚠️ 两条纪律,都是在踩坑之后由用户定下来的
+
+**「永远不要搞这种假的异步 `Task.Run`。若是底层库不支持则去改 SSH 库。」**
+
+起因是一个只在**连着跑**时才出现的死锁:Docker 集成用例里 `ssh.Dispose()` 挂满 60 秒超时。
+用 `TempDisposeProbe` 探出来的结论很干净 —— 异步释放**永远**成功,
+`DisposeAsync().AsTask().GetAwaiter().GetResult()` **永远**死锁。
+
+我先交的方案是 `AsyncTeardown`:`Task.Run` + `Wait(超时)`。被否掉了,而且否得对:
+那不是「异步」,只是把死锁换成「卡到超时为止」,还白占一条线程池线程。
+第二版想在库里加一个原生同步的 `Dispose()`,也被下一条纪律直接盖过去了。
+
+**「所有操作,包括释放,都尽可能用异步版本,而不是同步版本。」**
+
+于是 VelaShell 这边四个契约整体改成 `IAsyncDisposable`:
+`ISshClientWrapper` / `ISftpClientWrapper` / `IShellStreamWrapper` / `IPortForwardHandle`,
+拆连接那条链一路 await 到底 —— `SshConnectionService` / `SftpService` / `TunnelService` /
+`SshTerminalBridge` / `TerminalTabViewModel` / `MainWindowViewModel` 全部跟着改。
+`ConPtyShellStream.DisposeAsync` 返回 `ValueTask.CompletedTask` 并注明理由:
+它收尾的是**原生同步**的 ConPTY 句柄,不是「假装异步」。
+
+这一改带来两个连锁:
+
+1. **`Disconnect()` / `Stop()` 成了死代码,连同接口一起删掉。** 生产代码里已经没有调用方,
+   实现也退化成 `_ = DisposeAsync()` 这种即发即忘 —— 正是纪律要去掉的东西。
+   测试里那几处 `Received(1).Disconnect()` 相应改成 `await ….Received(1).DisposeAsync()`:
+   拆连接现在**整个**在 `DisposeAsync` 里完成,不再有「先断后放」两步。
+
+2. **`SshTerminalBridge.DisposeAsync` 的等待要有预算,但那预算不能靠 `Task.Wait`。**
+   改成全 await 之后它变成**无界等待**,`ReconnectTabAsync` 那条用例当场挂满 60 秒 ——
+   替身流的 `ReadAsync` 返回一个永不完成的 Task,而替身的 `DisposeAsync` 什么也不做。
+   这不只是替身的问题:「释放流会唤醒挂起的读取」是**实现方的约定**,自带的
+   `ShellStreamWrapper` / `ConPtyShellStream` 都守着,而插件提供的终端协议流是第三方代码。
+   补回预算,但等法是 `Task.WaitAsync(budget)`(读 2s / 写 1s),
+   **不占线程、不阻塞 UI**;超时之后**不释放** `_cts` 与 `_drainGate` ——
+   循环还活着,这会儿释放只会让它炸一串 `ObjectDisposedException`。
+
+退出路径上的 `Task.WhenAll(...).Wait(2s)` 保留:`desktop.Exit` 是同步事件,
+进程正在退,那是最后一个真正的同步边界,不是「同步等异步」的懒办法。
+
+### 四、⚠️ 证书靶机占了别人的端口 —— 撞端口的后果不是「起不来」
+
+`tests/cert-lab/` 那台「只认证书」的 sshd 原先监听 **2223**,而
+`docker-compose.test.yml` 的 `ssh-shells` 服务早就占着这个端口。
+后果不是端口冲突报错,而是 **`ShellIntegrationHarness` 连上了证书靶机**,
+然后以一句莫名其妙的「对端在发出版本标识串之前关闭了连接」告终 —— 32 条用例
+从「按环境跳过」变成「全部失败」。挪到 2224,并在脚本里把 2222/2223 已被占用这件事写明。
+
+同一节里另外三处也一并收紧:
+
+- **基础镜像挑本机已有的**。Docker Hub 在这台机器上拉不动,原先硬写 `alpine:3.20` 会在
+  第一步就失败。改成按「越现成越靠前」依次试 `test_sshserver` → `linuxserver/openssh-server`
+  → `alpine`;linuxserver 那份 sshd 的二进制叫 `sshd.pam`,统一软链成 `/usr/local/sbin/sshd`。
+- **`ENTRYPOINT []` 必须清掉**。基底自带 s6 init,不清的话我们的 CMD 只是被当成参数塞给它,
+  **它那份 sshd 也会跟着起来** —— 一台「除了证书哪条路都不通」的靶机上凭空多一条没配过的认证路径。
+- **账号不能是锁着的**。`adduser -D` 建出来的用户 shadow 里是 `!`,sshd 对锁着的账号
+  **连公钥认证都直接拒**(`account is locked`)—— 证书对了也登不上。口令字段置成 `*`。
+
+最要紧的是给 Dockerfile 补了一段**硬自检**:`sshd -T` 的实际生效配置里没出现我们的 CA、
+或还留着别的认证路径、或账号锁着,就让构建当场失败。这一段是被一次真实的假阳性逼出来的 ——
+发行版把 `Include /etc/ssh/sshd_config.d/*.conf` 那行**注释掉**了,我们的 `00-cert-only.conf`
+于是一个字都没生效,而脚本只是把结果打出来给人看,没人会逐行去核。
+(`AuthorizedKeysFile none` 的表现是这一项在 `-T` 里**根本不出现**,断言要按「不存在」写。)
+
+### 五、验证
+
+- `dotnet build VelaShell.slnx`:**0 警告 0 错误**。
+- `dotnet test VelaShell.slnx`:**3604 通过 / 0 失败 / 43 跳过**。
+  跳过的是 32 条 ShellIntegration(需要拉不到的 `ssh-shells` 镜像)加 11 条环境门禁用例。
+- `VelaShell.Core.Tests` **零跳过**:证书靶机起来之后,那两条端到端用例真的在跑。
+  服务端日志给出双向证据 —— `Accepted certificate ID "velashell-lab" … via /etc/ssh/velashell_user_ca.pub`
+  (阳性),以及同一把私钥**不带证书**时的 `Failed publickey`(阴性对照)。
+- 之前死锁的 `Symlinks_ListCreateResolveAndDelete_AgainstRealOpenSsh` 现在 269ms 通过。
+
+### 六、顺带清掉的文档漂移
+
+换库之后仓库里散着几十处「当前用的是 Tmds.Ssh」。留着比没有更糟:它们看起来像事实。
+`README.md` / `README.en.md` / 两个 `README.md`(Core / Infrastructure)/ `Directory.Packages.props` /
+`feature-plan.md` 全部对齐,`Directory.Packages.props` 里那条已经没人引用的
+`PackageVersion Include="Tmds.Ssh"` 删掉。**历史陈述一律保留**
+(「本项目先后基于 SSH.NET、Tmds.Ssh」这类),改掉的只有把过去说成现在的那些。
+
+⚠️ `BouncyCastle.Cryptography` 的版本注释也跟着改了,而且多了一句:SSH 库如今在**隔壁仓库**、
+有它自己的 `Directory.Packages.props`,两边不一致时 NuGet 取高的那个 —— 「能编过」依然不等于「钉住了」。
+
+`feature-plan.md` 这边有四项因为换库**不再卡上游**,已就地改掉结论:
+SSH PTY 像素尺寸贯通(原本等 `tmds/Tmds.Ssh#519`)、SSH Agent 转发、SSH 压缩开关
+(原本等我们自己提的 `#513` 合并发版)、算法协商可配。四项的底层能力现在都在自研库里,
+剩下的全是宿主侧接线。
+
+**未推送**:分支与改动都留在本地,等用户先跑一轮看效果。
+
+### 七、合并前审查:改回来的六处行为漂移
+
+合并前对着旧实现逐项对照了一遍(迁移完整性 + 「是不是真异步」两条线)。能力上**没有缺项**,
+但有几处行为悄悄变了 —— 都是换库带出来的,单测替身测不出来:
+
+| 漂移 | 后果 | 改法 |
+| --- | --- | --- |
+| **指纹格式变了**:旧库的 `SHA256FingerPrint` 是裸 base64,新库的 `Sha256Fingerprint` 带 `SHA256:` 前缀 | `SonnetDbHostKeyService` 逐字节比对 → 换库之后**每一台已保存的主机**都判成「指纹已变更」;开了「变更即阻断」的用户一台也连不上 | 比对前两边都去掉前缀与 base64 填充(`SameFingerprint`)。旧记录不迁移,下次信任时自然改写成新形式 |
+| **重命名撞上同名目标会静默覆盖** | 普通 rename 失败后回退到 `posix-rename` —— 旧库那条是假的(转调普通 rename),新库是**真的原子覆盖**。「改名撞了同名文件」变成数据丢失 | 目标已存在(或问不出来)时不回退,抛原错误 |
+| exec 不要 stderr 时库仍缓冲它 | 缓冲的 stderr 只在被读走时回补窗口;没人读 → 窗口满 → stdout 也停,`docker logs -f` 卡死 | 此时通道选 `SshStderrPolicy.Discard` |
+| 「端口被占用」「转发被禁止」两条本地化提示不再出现 | 绑定失败被库包成 `SshForwardException`、宿主再包一层;「administratively prohibited」原来按英文文案认,库的消息是中文 | 沿 `InnerException` 链找 `SocketException`;禁止转发改认 `SshChannelOpenFailureReason.AdministrativelyProhibited` 原因码 |
+| **非中文界面看到中文报错** | 库的异常消息是中文,`SshInterop` 原样透传 | 连接类失败按 `SshFailureReason` 给本地化标题 + `[原因 @ 阶段]` 尾注(`SshErr_*` 12 个键,五份 resx)。代理失败与主机密钥拒绝不翻 —— 那两条的消息是宿主自己拼的,信息更多 |
+| 远程转发掉线后仍显示「运行中」 | 旧的计量句柄会上报一条通道错误;库的转发器只报单条连接的失败 | `LibraryPortForwardHandle` 订阅 `SshConnection.Disconnected` |
+
+另外两处是异步那条线上的:
+
+- **`SshTerminalBridge` 释放 shell 流没有上限**。释放要往对端发 `CHANNEL_CLOSE`,半死的链路上
+  可能挂几分钟,关标签与重连就被拖住。改成 `WaitAsync(2s)`,超时让它在后台自己收尾。
+- **插件停用时同步 `Dispose` 在途的远端读流**。那是一次 `SSH_FXP_CLOSE` 往返,同步释放
+  只能阻塞着等网络。改成不等待的 `DisposeAsync`。
+
+代理解析器自己抛的 `InvalidOperationException`(代理地址写错)以前会被包成连接失败,
+换库后变成了一个裸异常 —— `ProxyTransportDialer` 里补回包装。
+
+**库侧的三条**(已交给 velashell-ssh 那边,不在本仓库改):主机密钥弹窗的等待被计入了
+连接超时(用户 10 秒内没点就连接失败,「永久信任」也可能没存上);`SftpFileStream.Dispose(bool)`
+仍是同步等异步;`SshChannel.DisposeAsync` 的关闭报文没有时间上限。

@@ -257,6 +257,27 @@ public sealed class SonnetDbPersistenceTests : IDisposable
     }
 
     /// <summary>
+    /// 换库之前存下的指纹是裸 base64(上一版库不带 <c>SHA256:</c> 前缀),现在拿到的带前缀。
+    /// 两者必须判为同一把钥 —— 否则换库之后每台已保存的主机都会弹「指纹已变更」。
+    /// </summary>
+    [TestMethod]
+    public async Task HostKeyService_LegacyBareFingerprint_StillVerifiesAsTrusted()
+    {
+        var service = new SonnetDbHostKeyService(_engine);
+        await service.TrustHostKeyAsync("legacy", 22, "PublicKey", "kmYcvdi2Y9bXAbc+/Def");
+
+        Assert.AreEqual(
+            HostKeyVerification.Trusted,
+            await service.VerifyHostKeyAsync("legacy", 22, "ssh-ed25519", "SHA256:kmYcvdi2Y9bXAbc+/Def"));
+        Assert.AreEqual(
+            HostKeyVerification.Trusted,
+            await service.VerifyHostKeyAsync("legacy", 22, "ssh-ed25519", "SHA256:kmYcvdi2Y9bXAbc+/Def="));
+        Assert.AreEqual(
+            HostKeyVerification.Changed,
+            await service.VerifyHostKeyAsync("legacy", 22, "ssh-ed25519", "SHA256:somethingElse"));
+    }
+
+    /// <summary>
     /// 指纹变更弹窗要摆出"原来记的是哪一把"(#476),所以单条记录必须取得到,
     /// 而不是让调用方去 <c>GetKnownHostsAsync</c> 里翻。
     /// </summary>

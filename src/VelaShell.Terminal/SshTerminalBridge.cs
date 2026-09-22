@@ -9,7 +9,7 @@ namespace VelaShell.Terminal;
 /// SSH ShellStream 与终端模拟器之间的桥接:后台读线程批量拉取主机输出、合并后在 UI 线程一次性喂入,
 /// 并把用户输入写回 PTY。同时负责回显抑制与远端关闭通知。
 /// </summary>
-public class SshTerminalBridge : IDisposable
+public class SshTerminalBridge : IAsyncDisposable
 {
     private readonly CancellationTokenSource _cts;
     /// <summary>
@@ -29,11 +29,12 @@ public class SshTerminalBridge : IDisposable
     private readonly List<PendingChunk> _draining = [];
 
     // 出站写队列:所有发往 PTY 的字节(击键 + SendRaw 注入)先入队,由唯一的写循环按序
-    // 逐段 await 后刷出。绝不能对底层流并发 WriteAsync —— Tmds.Ssh 的 SshChannel.WriteAsync
-    // 没有任何并发防护:两个写并发时会各自读发送窗口、交错切包,字节以乱序抵达远端;
+    // 逐段 await 后刷出。绝不能对底层流并发 WriteAsync —— 通道的写不保证并发安全:
+    // 两个写并发时会各自读发送窗口、交错切包,字节以乱序抵达远端;
     // 远端 shell 按收到的顺序回显,屏幕上就是"打 docker status 出来字符拆散跳动"。
     // 打字稍快 + 网络延迟让上一个写挂起 await,下一个按键就会插队,竞态必现。
-    // (旧 SSH.NET 的 ShellStream 内部有锁掩盖了这一点,迁移 Tmds.Ssh 后暴露。)
+    // (SSH.NET 的 ShellStream 内部有锁掩盖了这一点,迁到 Tmds.Ssh 后才暴露出来;
+    //  串行化这件事是宿主该保证的,不该指望换哪个库能替我们兜住。)
     private readonly Channel<OutboundItem> _writeQueue = Channel.CreateUnbounded<OutboundItem>(new UnboundedChannelOptions
     {
         SingleReader = true
@@ -88,7 +89,15 @@ public class SshTerminalBridge : IDisposable
     }
 
     /// <summary>停止读循环、退订输入事件并释放 Shell 流与取消源(可安全重复调用)。</summary>
-    public void Dispose()
+    /// <remarks>
+    /// 释放是异步的:它要等读写循环真的退出、等 shell 通道关完。
+    /// 原先是同步 <c>Dispose</c> 加两处 <c>Task.Wait(超时)</c> —— 那是在 UI 线程上
+    /// 阻塞等网络收尾,超时只是把「卡死」换成「卡两秒」。现在一路 await:
+    /// 关标签页这个动作在收尾真的完成之后才算完,过程中也不占着 UI 线程。
+    /// 收尾仍带一份预算(见 <see cref="DrainAsync" />),但那是给不守约定的流实现兜底的,
+    /// 不是替代等待本身 —— 守约定的流一被释放,两个循环立刻退出,预算一秒都用不上。
+    /// </remarks>
+    public async ValueTask DisposeAsync()
     {
         if (_disposed)
         {
@@ -104,43 +113,83 @@ public class SshTerminalBridge : IDisposable
         _writeQueue.Writer.TryComplete();
 
         // 读循环可能正等在背压闸上(积压超高水位)。此刻 UI 再也不会来排空了,
-        // 不放行它就会一直挂在那里 —— 下面的 _readTask.Wait 白等满 2 秒才超时返回。
+        // 不放行它就会一直挂在那里 —— 下面的 DrainAsync 白等满 2 秒预算才返回。
         ReleaseDrainGate();
 
         // 先释放流、后取消令牌:释放流会以"通道关闭"唤醒挂起的读取,包装层将其吞为 EOF,
         // 读循环无异常退出。若先 Cancel,取消会以 OperationCanceledException 打穿底层库的
         // 整条异步读栈,每次关标签都在调试器里刷一串首次机会异常。令牌保留为兜底:
         // 个别实现的 Dispose 若未能唤醒读取,Cancel 仍能让循环退出。
+        //
+        // 释放本身也带预算:SSH 通道的释放要往对端发 CHANNEL_CLOSE,半死的链路上(发送缓冲
+        // 塞满、对端卡在重协商里)这一发可能挂上几分钟;插件的流更是第三方代码。等不到就
+        // 放它在后台自己收尾 —— 关标签与重连不能被一条坏掉的链路拖住。
+        Task dispose = DisposeStreamQuietlyAsync(_shellStream);
         try
         {
-            _shellStream.Dispose();
+            await dispose.WaitAsync(StreamDisposeBudget).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            // 预算用完:释放仍在后台进行,异常已由 DisposeStreamQuietlyAsync 吞掉。
+        }
+        await _cts.CancelAsync().ConfigureAwait(false);
+
+        // 等两个循环真的退出 —— 但**不无限等**。「释放流会唤醒挂起的读取」是实现方的约定,
+        // 自带的 ShellStreamWrapper 与 ConPtyShellStream 都守着;插件提供的终端协议流是第三方
+        // 代码,不守时这里就永远等不回来,而拆桥正处在关标签与退出这两条路上。
+        // 等法本身是异步的(await,不是 Task.Wait):既不占线程池线程,也不阻塞 UI。
+        bool readDrained = await DrainAsync(_readTask, TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        // 流已释放:挂起中的写以 ObjectDisposedException 醒来并被吞掉,循环随即因封口退出。
+        bool writeDrained = await DrainAsync(_writeTask, TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+
+        if (readDrained && writeDrained)
+        {
+            _cts.Dispose();
+            // 闸最后释放:两个循环都退出了,读循环已经不可能再碰它。
+            _drainGate.Dispose();
+        }
+        // 没排空就**不释放**:循环还活着,这会儿释放只会让它在 _drainGate.WaitAsync 或
+        // CTS 属性上炸 ObjectDisposedException。两者都不持有非托管句柄,交给 GC 是安全的。
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>释放 shell 流的预算;超出之后不再等,释放在后台继续。</summary>
+    private static readonly TimeSpan StreamDisposeBudget = TimeSpan.FromSeconds(2);
+
+    private static async Task DisposeStreamQuietlyAsync(IShellStreamWrapper stream)
+    {
+        try
+        {
+            await stream.DisposeAsync().ConfigureAwait(false);
         }
         catch
         {
             // 尽力而为:通道可能已被会话断开拆除。
         }
-        _cts.Cancel();
+    }
+
+    /// <summary>等一个循环退出,最多等 <paramref name="budget" />;返回它是否真的退出了。</summary>
+    /// <remarks>
+    /// 返回值决定调用方还能不能释放循环仍在使用的同步原语 —— 超时后释放它们,
+    /// 换来的只是循环里一串 <see cref="ObjectDisposedException" />。
+    /// </remarks>
+    private static async ValueTask<bool> DrainAsync(Task? loop, TimeSpan budget)
+    {
+        if (loop is null)
+        {
+            return true;
+        }
         try
         {
-            _readTask?.Wait(TimeSpan.FromSeconds(2));
+            await loop.WaitAsync(budget).ConfigureAwait(false);
         }
-        catch (AggregateException)
+        catch (Exception)
         {
-            // 吞掉释放期间读任务抛出的异常
+            // 释放期间循环抛出的异常一律吞掉。它究竟退出没有以 IsCompleted 为准,
+            // 而不是以异常类型 —— 循环自己抛 TimeoutException 也不该被当成"没退出"。
         }
-        try
-        {
-            // 流已释放:挂起中的写以 ObjectDisposedException 醒来并被吞掉,循环随即因封口退出。
-            _writeTask.Wait(TimeSpan.FromSeconds(1));
-        }
-        catch (AggregateException)
-        {
-            // 吞掉释放期间写任务抛出的异常
-        }
-        _cts.Dispose();
-        // 闸最后释放:上面两个 Wait 返回之后,读循环已经不可能再碰它。
-        _drainGate.Dispose();
-        GC.SuppressFinalize(this);
+        return loop.IsCompleted;
     }
 
     /// <summary>读写或喂入终端过程中发生异常时触发。</summary>
@@ -156,7 +205,7 @@ public class SshTerminalBridge : IDisposable
 
     /// <summary>
     /// 当远端关闭通道时触发(例如 shell 执行了 <c>exit</c> 或
-    /// 服务器重启):读循环自行结束,而非经由 <see cref="Dispose" />。
+    /// 服务器重启):读循环自行结束,而非经由 <see cref="DisposeAsync" />。
     /// 使会话可转为断开状态并就地重连。
     /// 主动拆除期间不会触发。在读取线程上触发——按需封送。
     /// <para>

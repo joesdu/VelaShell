@@ -75,9 +75,9 @@ public sealed class TerminalBridgeFloodTests
         IShellStreamWrapper stream = FloodStream(totalBytes, () => emitted, n => emitted += n);
         long peak = 0;
 
-        Session.Dispatch(() =>
+        Session.Dispatch(async () =>
         {
-            using var bridge = new SshTerminalBridge(emulator, stream);
+            await using var bridge = new SshTerminalBridge(emulator, stream);
             bridge.Start();
 
             // 模拟真实的帧节奏:反复把派发队列跑一轮,直到不再有新数据被喂进来。
@@ -102,7 +102,7 @@ public sealed class TerminalBridgeFloodTests
                     Thread.Sleep(1);
                 }
             }
-            return Task.CompletedTask;
+            return true;   // 带返回值的重载：见 AGENTS.md 那条 headless 用例的硬约束
         }, CancellationToken.None).GetAwaiter().GetResult();
 
         return (fed, peak, emitted);
@@ -189,14 +189,14 @@ public sealed class TerminalBridgeFloodTests
     }
 
     [TestMethod]
-    public void DisposeReleasesAReadLoopWaitingOnBackpressure()
+    public async Task DisposeReleasesAReadLoopWaitingOnBackpressure()
     {
         // 读线程可能正等在背压闸上。关标签时若不放行它,Dispose 会白等满 2 秒超时。
         ITerminalEmulator emulator = Substitute.For<ITerminalEmulator>();
         IShellStreamWrapper stream = FloodStream(64L * 1024 * 1024, static () => 0, static _ => { });
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
 
-        Session.Dispatch(() =>
+        Session.Dispatch(async () =>
         {
             var bridge = new SshTerminalBridge(emulator, stream);
             bridge.Start();
@@ -220,9 +220,9 @@ public sealed class TerminalBridgeFloodTests
                 $"{SshTerminalBridge.HighWaterBytesForTest})—— 读线程没顶到闸上,这条用例就没量到东西。");
 
             elapsed.Restart();
-            bridge.Dispose();
+            await bridge.DisposeAsync();
             elapsed.Stop();
-            return Task.CompletedTask;
+            return true;   // 同上
         }, CancellationToken.None).GetAwaiter().GetResult();
 
         Assert.IsLessThan(1500, elapsed.ElapsedMilliseconds,

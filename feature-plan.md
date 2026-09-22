@@ -64,7 +64,7 @@ pie showData
 > 「会话与工作区」从 4 降到 3：会话标签颜色已在 `b9ae31f` 落地（见该节）。
 > 「安全与凭据」从 6 降到 4：SSH 证书认证已在 `bbfa1877` 落地，ed25519 密钥生成已在 `plan.md` §86 落地（均见该节）。
 > 「插件生态」现为 2：插件自报图标当天闭合，但新增了一条 🔴 P0「11 条怎么改都绿的 UI 用例」（见该节）。
-> 「终端与协议」从 3 加到 4：新增「SSH PTY 像素尺寸贯通」（卡上游 Tmds.Ssh#519，见该节）。
+> 「终端与协议」从 3 加到 4：新增「SSH PTY 像素尺寸贯通」（2026-09-22 换成自研 SSH 库后**不再卡上游**，见该节）。
 
 ---
 
@@ -90,10 +90,10 @@ pie showData
 
 | 状态 | 优先级 | 项 | 现状 | 要做什么 |
 | :---: | :---: | --- | --- | --- |
-| ✅ | — | ~~SSH 证书（certificate）认证~~ | **已完成**（2026-09-10，`plan.md` §63，`bbfa1877` + `31922005`）：`AuthMethod.Certificate`（只能追加在枚举末尾，序号由 `AuthMethod_OrdinalValues_MustStayStable` 钉住）→ `AddCredential` 装配 Tmds.Ssh 的 `CertificateCredential`（证书 + 复用私钥那一路的 `PrivateKeyCredential`，连 PEM→OpenSSH 兼容转换一起继承）。连接配置页与登录弹窗的「证书」项都已启用，选完证书按 `<key>-cert.pub` 约定自动补上私钥（`Core/Ssh/OpenSshCertificate`）。`tests/cert-lab/` 一台**堵死全部回退路径**的靶机做端到端验证（阳性 + 阴性对照） | ⏳ 三处**当时刻意留在范围外**：①**主机证书**（CA 签的 host key 替代逐台指纹）是相反方向的另一件事，接得上现有的 `AddHostAuthentication`；②会话导入（PuTTY / Xshell / `ssh://`）与外部启动不产出证书字段，要支持得先扩解析器；③📄 velashell-docs 还没跟上（见下面的[文档待同步](#-文档待同步velashell-docs)） |
+| ✅ | — | ~~SSH 证书（certificate）认证~~ | **已完成**（2026-09-10，`plan.md` §63，`bbfa1877` + `31922005`）：`AuthMethod.Certificate`（只能追加在枚举末尾，序号由 `AuthMethod_OrdinalValues_MustStayStable` 钉住）→ 凭据装配出「证书 + 匹配私钥」两件套（当时是 Tmds.Ssh 的 `CertificateCredential`；2026-09-22 换库后改由 `SshConnectionAssembler` 装 `VelaShell.Ssh` 的证书签名器，PEM→OpenSSH 那段兼容转换连同它一起删了——新库原生认三种格式）。连接配置页与登录弹窗的「证书」项都已启用，选完证书按 `<key>-cert.pub` 约定自动补上私钥（`Core/Ssh/OpenSshCertificate`）。`tests/cert-lab/` 一台**堵死全部回退路径**的靶机做端到端验证（阳性 + 阴性对照） | ⏳ 三处**当时刻意留在范围外**：①**主机证书**（CA 签的 host key 替代逐台指纹）是相反方向的另一件事，接得上现有的 `AddHostAuthentication`；②会话导入（PuTTY / Xshell / `ssh://`）与外部启动不产出证书字段，要支持得先扩解析器；③📄 velashell-docs 还没跟上（见下面的[文档待同步](#-文档待同步velashell-docs)） |
 | ⏳ | 🟠 P1 | **审计日志查看界面** | `audit_log` 一直在写（connect / connect-failed），但 `SonnetDbAuditLogService.QueryAsync` 在 UI 层**零调用** —— 写了没人看得见 | 安全审计页加一个可筛选的列表（时间 / 会话 / 结果）。数据侧现成，纯 UI 工作 |
 | ⏳ | 🟠 P1 | **`audit_log` / `conn_history` 保留策略** | 无 retention，长期运行只增不减 | 复用会话录制那套「保留天数 + drop 回写压缩」的兜底路径（`plan.md` §13-F） |
-| ✅ | — | ~~**ed25519 / ecdsa 密钥生成**~~ | **已完成**（2026-09-20，`plan.md` §86 + §87）：`GenerateRsaKeyAsync` 换成 `GenerateKeyAsync(name, algorithm = Ed25519, bits)` + 新枚举 `SshKeyAlgorithm { Ed25519, Ecdsa, Rsa }`（`bits` 给 0 表示按算法取默认值：RSA 4096、ECDSA 256）。密钥管理页工具栏加了算法下拉：**Ed25519（默认）/ ECDSA 256·384·521 / RSA 4096**；位数不给选 —— 4096 能用的地方 2048 一定能用，反过来不成立，列出来只是个坑。当初记的两个顾虑都不成立：BouncyCastle **本就是 Tmds.Ssh 的依赖**、早在输出目录里，抬成显式依赖体积增量为零；许可证是 MIT 改写版，不与双许可冲突。OpenSSH 的私钥封装格式本来就自己实现着（`OpenSshPrivateKey`），ed25519 只加了一个 `SerializeEd25519`，ecdsa 的 `SerializeEcdsa` 早就在（导入转换那条路上用着）；真正借外力的只有 ed25519「由种子导出公钥」那步曲线标量乘法 —— .NET 11 的 BCL 至今没有独立 Ed25519。五把（含 ECDSA 三条曲线）都用系统自带 `ssh-keygen -y` 反推公钥交叉验证过，与我们写出的 `.pub` 逐字节相同 | ⏳ 两处留在范围外：①**下拉档位表与 axaml 靠 `SelectedIndex` 对齐**，错位不会报错 —— 已由 `SshKeyChoiceCatalogTests` 读 axaml 逐项比对钉死，增删档位要先改 `SshKeyManagerViewModel.AlgorithmChoices`；②📄 velashell-docs 还没跟上（见下面的[文档待同步](#-文档待同步velashell-docs)） |
+| ✅ | — | ~~**ed25519 / ecdsa 密钥生成**~~ | **已完成**（2026-09-20，`plan.md` §86 + §87）：`GenerateRsaKeyAsync` 换成 `GenerateKeyAsync(name, algorithm = Ed25519, bits)` + 新枚举 `SshKeyAlgorithm { Ed25519, Ecdsa, Rsa }`（`bits` 给 0 表示按算法取默认值：RSA 4096、ECDSA 256）。密钥管理页工具栏加了算法下拉：**Ed25519（默认）/ ECDSA 256·384·521 / RSA 4096**；位数不给选 —— 4096 能用的地方 2048 一定能用，反过来不成立，列出来只是个坑。当初记的两个顾虑都不成立：BouncyCastle **本就是 SSH 库的依赖**、早在输出目录里，抬成显式依赖体积增量为零；许可证是 MIT 改写版，不与双许可冲突。OpenSSH 的私钥封装格式本来就自己实现着（`OpenSshPrivateKey`），ed25519 只加了一个 `SerializeEd25519`，ecdsa 的 `SerializeEcdsa` 早就在（导入转换那条路上用着）；真正借外力的只有 ed25519「由种子导出公钥」那步曲线标量乘法 —— .NET 11 的 BCL 至今没有独立 Ed25519。五把（含 ECDSA 三条曲线）都用系统自带 `ssh-keygen -y` 反推公钥交叉验证过，与我们写出的 `.pub` 逐字节相同 | ⏳ 两处留在范围外：①**下拉档位表与 axaml 靠 `SelectedIndex` 对齐**，错位不会报错 —— 已由 `SshKeyChoiceCatalogTests` 读 axaml 逐项比对钉死，增删档位要先改 `SshKeyManagerViewModel.AlgorithmChoices`；②📄 velashell-docs 还没跟上（见下面的[文档待同步](#-文档待同步velashell-docs)） |
 | ⏳ | 🟡 P2 | **密钥管理的三处小缺口** | 导入不校验私钥有效性；删除无二次确认；导出未做（已信任主机同样只能删不能导） | 各自独立、都是小改动，可一批做掉 |
 | 🚧 | 🟠 P1 | **配置导出的选择性与脱敏** | 导出 / 导入是**全量 `AppSettings` 序列化 + 整体覆盖**。⚠️ **全量导出含 Security / Proxy 等敏感块，代理密码是明文** | 分类勾选导出 + 敏感块默认排除（或强制加密）。注：Gist 云同步（`plan.md` §13-C）已覆盖跨设备迁移场景，本条的价值主要在**别把明文代理密码写进一个用户随手分享的文件** |
 
@@ -138,24 +138,24 @@ pie showData
 | :---: | :---: | --- | --- | --- |
 | ✅ | — | ~~防空闲断开（Anti-idle）~~ | **已完成**（2026-09-10，`plan.md` §65）：连接对话框的高级选项里新增「防空闲（秒）」，与保活并排；`TerminalOverrides.AntiIdleSeconds` → `AntiIdleKeeper` 按间隔往 PTY 送一个 `NUL`，只在真的空闲时发，ZMODEM 会话期间让路 | ⏳ **只按会话，没有全局开关**（刻意的：会踢人的只是特定那几台机器，注入的字节终究打进对端 tty）。📄 velashell-docs 还没跟上 |
 | ⏳ | 🟡 P2 | **非 bash 的 shell 干脆别注入目录上报钩子** | 钩子由 `test -n "${BASH_VERSION:-}"` 守卫，在 zsh / dash 上是个**空操作** —— 却照样占掉一个提示符周期，还在用户历史里留下一整行（`plan.md` §66 的摘历史只对 bash 有效：zsh 没有 `history -d`） | `RemoteShellProbe` 目前只回答「是不是 POSIX」，让它顺带报出 shell 家族（探针命令加一段 `${BASH_VERSION:+-bash}` / `${ZSH_VERSION:+-zsh}`，标记向后兼容），**确认是 zsh 时跳过注入**。⚠️ 只在**正面认出**非 bash 时才跳 —— 认不出来照旧注入，免得误伤「登录 shell 是 /bin/sh、交互 shell 是 bash」那种机器 |
-| ⏳ | 🟢 P3 | **SSH PTY 像素尺寸贯通** | `pty-req` / `window-change` 的像素字段恒为 `0`：Tmds.Ssh 0.24.0 无像素 API，`TmdsSshClientWrapper.cs:233-234` 已注明「像素尺寸…被忽略」——`CreateShellStreamAsync` 的 `width`/`height` 参数被丢、`ShellStreamWrapper.Resize` 只有字符行列 | ⚠️ **卡上游，只能等**：依赖 [tmds/Tmds.Ssh#519](https://github.com/tmds/Tmds.Ssh/pull/519)（**未合并、未发版**）。发版后的完整实施细节见下文「SSH PTY 像素尺寸贯通 —— 实施细节」 |
+| ⏳ | 🟢 P3 | **SSH PTY 像素尺寸贯通** | `window-change` 的像素字段恒为 `0`：`IShellStreamWrapper.Resize(int, int)` 只有字符行列，终端控件的 `PtySizeChanged` 也只报列/行，`ShellStreamWrapper.ResizeCoreAsync` 于是只能 `new TerminalSize(columns, rows)` | ✅ **上游那道坎没有了**：2026-09-22 换成自研的 VelaShell.Ssh（`plan.md` §91），`pty-req` 与 `window-change` 两条路都原生带像素 —— `TerminalSize(columns, rows, pixelWidth, pixelHeight)`，建流那一步（`CreateShellStreamAsync(…, width, height, …)`）**已经把像素传下去了**。剩下的全是宿主侧的活：让终端控件报出物理像素、让 `Resize` 带着它走。实施细节见下文「SSH PTY 像素尺寸贯通 —— 实施细节」 |
 | 💡 | 🟢 P3 | **终端内搜索的增强** | 基础搜索已实现（`MainWindowViewModel.TerminalSearchRequested:1616`） | 正则、大小写、全部高亮、上一个/下一个的循环计数 —— 按用户反馈再定 |
 | 📄 | 🟠 P1 | **设计稿的两处残留** | Logo 有一个 `enabled:false` 残留图标；文件列表「修改时间」列无固定宽度 | 小到可以顺手做掉，记在这里免得忘 |
 
 ### SSH PTY 像素尺寸贯通 —— 实施细节
 
-> 状态：⏳ 待办，**卡上游**。等 tmds/Tmds.Ssh 发布含 PR #519 的版本后**一次性落地**（不分阶段）。
-> 依据：[tmds/Tmds.Ssh#519](https://github.com/tmds/Tmds.Ssh/pull/519) 新增 `ExecuteOptions.TerminalWidthPixels` / `TerminalHeightPixels` + `RemoteProcess.SetTerminalSize(width, height, widthPixels, heightPixels)` 四参重载。
+> 状态：⏳ 待办。**上游那道坎在 2026-09-22 随换库一并消失**（`plan.md` §91）—— 底层换成自研的 VelaShell.Ssh，不必再等谁发版。余下的宿主侧改动**一次性落地**（不分阶段）。
+> 依据：`VelaShell.Ssh` 的 `TerminalSize(columns, rows, pixelWidth, pixelHeight)`，经 `SshChannel.RequestPtyAsync` 与 `SshShell.ResizeAsync(TerminalSize)` 两条路发出。
 
 **前置条件**
 
-- Tmds.Ssh 发版含 #519 的 API。当前锁在 `0.24.0`（`src/Directory.Packages.props:25`），无此 API。
+- ~~Tmds.Ssh 发版含 #519 的 API~~ —— **已不适用**：自研库原生支持，`CreateShellStreamAsync` 那一路已经在传像素了。
 - **不触发 PluginSdk 发版**：插件终端协议（Telnet NAWS / 串口）本无像素概念，`IProtocolTerminalSession.ResizeAsync` 保持不变。
 
 **设计决策**
 
 1. 拓宽共享接口 `IShellStreamWrapper.Resize` 承载像素（而非 SSH 专用窄路径）。
-2. 一次性落地，等发版后实施。
+2. 一次性落地（原计划是"等上游发版"，现在没有这个前提了）。
 3. 新增共享结构体 `PtySize`，`PtySizeChanged` 事件改携带该结构体；插件视图 API 用适配 lambda 保持对外 `Action<int,int>` 不变。`ITerminalEmulator` 另暴露 `CurrentPtySize` 属性，供挂载传输时手动重推完整尺寸（见步骤 3a / 4）。
 4. 单位换算：DIP → 物理像素乘 `RenderScaling`。
 
@@ -169,15 +169,9 @@ public readonly record struct PtySize(int Columns, int Rows, int WidthPixels, in
 
 **实施步骤**（按依赖顺序，每步给出改前 → 改后代码示例）
 
-**1. 抬 Tmds.Ssh 版本** —— `src/Directory.Packages.props:25`（`tests/Directory.Packages.props` 同名条目同步）：
-
-```xml
-<!-- 改前 -->
-<PackageVersion Include="Tmds.Ssh" Version="0.24.0" />
-
-<!-- 改后（以官方实际发版号为准） -->
-<PackageVersion Include="Tmds.Ssh" Version="<含 #519 的官方版号>" />
-```
+**~~1. 抬 Tmds.Ssh 版本~~** —— **这一步没有了**。底层已在 2026-09-22 换成自研的 VelaShell.Ssh
+（工程引用，不是 NuGet 包，`plan.md` §91），`TerminalSize` 本就带 `pixelWidth` / `pixelHeight`。
+下面从第 2 步开始，步骤编号保持原样，免得与已写好的代码示例对不上。
 
 **2. 接口层** —— `IShellStreamWrapper.cs:57-61`：
 
@@ -462,7 +456,7 @@ private void ControlOnPtySizeChanged(PtySize size) =>
     Resized?.Invoke(size.Columns, size.Rows);
 ```
 
-**7. 初始 pty-req（通路 A）** —— `TmdsSshClientWrapper.cs:250-256`：
+**7. 初始 pty-req（通路 A）** —— `VelaSshClientWrapper.CreateShellStreamAsync`（换库后这一步**已经在传像素**，留着示例只为说明通路 A 与 B 的区别）：
 
 ```csharp
 // 改前
@@ -500,7 +494,7 @@ var options = new ExecuteOptions
 
 **验证**：`dotnet build VelaShell.slnx` && `dotnet test VelaShell.slnx`；手动拖拽缩放确认 `window-change` 载荷像素非零。
 
-**非目标**：不引入本地 Tmds.Ssh 包、不改插件 SDK 契约、不动 `CreateShellStreamAsync` 接口签名、不为通路 A 传真实像素。
+**非目标**：不改插件 SDK 契约、不动 `CreateShellStreamAsync` 接口签名、不为通路 A 传真实像素。
 
 ---
 
@@ -597,9 +591,9 @@ var options = new ExecuteOptions
 
 | 状态 | 优先级 | 项 | 对标 | 架构落点 |
 | :---: | :---: | --- | --- | --- |
-| ⏳ | 🟠 P1 | **SSH Agent 转发** | Xshell / MobaXterm / Tabby / WindTerm / Termius | 六家全有，我们没有 —— **对标矩阵里最扎眼的一格**。跳板场景下没有它，用户只能把私钥拷到跳板机上，那是实打实的安全倒退。⚠️ **动手前先确认 Tmds.Ssh 是否支持 `auth-agent-req@openssh.com`**；不支持就要么等上游、要么按 [`AGENTS.md`](AGENTS.md) 的纪律给它提 issue，**不要自己在 `Infrastructure/Ssh/` 外面绕**。与 [Agent 自动加载](#-p0--存了但不生效的开关)是同一条线上的两件事 |
-| ⏳ | 🟡 P2 | **算法协商可配（cipher / kex / hostkey / MAC）** | Xshell / SecureCRT / PuTTY | 连老设备（网络设备、老 RHEL）时是刚需。**一半已经有了**：`Infrastructure/Ssh/SshAlgorithmDiagnostics.cs` 已经会在协商失败时算出「两边交集为空」并说清缺哪类算法 —— 从「诊断得出来」到「让用户配得上」，只差把清单落到 `SessionProfile` 并接进 `SshClientSettings` |
-| 🚧 | 🟢 P3 | **SSH 压缩开关** | 各家都有 | 弱网 / 高延迟链路上有意义。~~「上游没有 zlib 实现，要么等要么提 PR」（2026-09-08，Tmds.Ssh 0.24.0）~~ —— 那条复核没写错，但**已被我们自己推翻**：2026-09-10 按 [`AGENTS.md`](AGENTS.md) 的纪律给上游提了 PR（[tmds/Tmds.Ssh#513](https://github.com/tmds/Tmds.Ssh/pull/513)），实现 `zlib` 与 `zlib@openssh.com`（后者认证后才开始压缩，每次 kex 重置压缩上下文）、把 `CompressionAlgorithmsClientToServer` / `ServerToClient` 由 `internal` 改为 `public`、给 `SshConfigOption` 补上 `Compression`；默认仍不开启（与 OpenSSH 一致，不改变现有行为）。**现在卡的是上游合并 + 发版，不再是能力缺失**。上游可用后我们这边只剩接线：`SessionProfile` 加压缩字段 → 接进 `SshClientSettings.CompressionAlgorithms*` —— 与上一行「算法协商可配」是同一处落点，**该一并做**。⚠️ 纪律不变：**没接线之前不要先加这个开关**，否则就是 [P0 那张表](#-p0--存了但不生效的开关)里的新一条 |
+| ⏳ | 🟠 P1 | **SSH Agent 转发** | Xshell / MobaXterm / Tabby / WindTerm / Termius | 六家全有，我们没有 —— **对标矩阵里最扎眼的一格**。跳板场景下没有它，用户只能把私钥拷到跳板机上，那是实打实的安全倒退。✅ **能力这一关过了**：2026-09-22 换成自研的 VelaShell.Ssh（`plan.md` §91），`Forwarding/AgentForwarder` 已实现 `auth-agent-req@openssh.com` / `auth-agent@openssh.com`，还带 Windows 命名管道那一路的 agent 客户端。剩下的是宿主侧接线（会话上加开关 → 建流时挂上转发器），**不再有"等上游"这一说**。与 [Agent 自动加载](#-p0--存了但不生效的开关)是同一条线上的两件事 |
+| ⏳ | 🟡 P2 | **算法协商可配（cipher / kex / hostkey / MAC）** | Xshell / SecureCRT / PuTTY | 连老设备（网络设备、老 RHEL）时是刚需。**一半已经有了**：协商失败时底层直接抛 `SshNegotiationException`（**带着两边各自的算法清单**，不必再像换库前那样靠探测重连去倒推），`Infrastructure/Ssh/SshInterop` 把它翻成一条说清「缺哪类算法、两边各有什么」的消息 —— 从「诊断得出来」到「让用户配得上」，只差把清单落到 `SessionProfile` 并接进 `SshConnectionOptions.Algorithms`（`SshAlgorithmSet`） |
+| 🚧 | 🟢 P3 | **SSH 压缩开关** | 各家都有 | 弱网 / 高延迟链路上有意义。~~「上游没有 zlib 实现，要么等要么提 PR」（2026-09-08）~~ → ~~「已提 PR [tmds/Tmds.Ssh#513](https://github.com/tmds/Tmds.Ssh/pull/513)，卡上游合并 + 发版」（2026-09-10）~~ —— **两条都作废了**：2026-09-22 换成自研的 VelaShell.Ssh（`plan.md` §91），`Crypto/SshCompressor` 已实现 `zlib` 与 `zlib@openssh.com`（后者认证后才开始压缩，每次 kex 重置压缩上下文），用的是 BCL 自带的原生 zlib。默认仍不开启（与 OpenSSH 一致）。我们这边只剩接线：`SessionProfile` 加压缩字段 → `SshConnectionAssembler` 里 `Algorithms = SshAlgorithmSet.Default.WithCompression()` —— 与上一行「算法协商可配」是同一处落点，**该一并做**。⚠️ 纪律不变：**没接线之前不要先加这个开关**，否则就是 [P0 那张表](#-p0--存了但不生效的开关)里的新一条 |
 | 💡 | 🟢 P3 | **SecureCRT 风格的斜杠命令行** | SecureCRT | 外部拉起目前只认 Xshell 的调用约定（`-url` / `-newtab` / `-f` / `-l` / `-p` / `-pw` / `-i`，见 `plan.md` §84–85）。SecureCRT 那套 `/SSH2 /L root /PASSWORD pw host` 现在一个都不认，被整条忽略。**要接之前先确认有没有真实调用方** —— 这条兼容层的存在理由是「堡垒机客户端已经在发」，不是「补齐一张对标表格」；没有人发的写法接进来只是多一条攻击面。⚠️ `/` 开头的 token 与 Unix 路径、Avalonia 自己的参数会撞，得先想清楚怎么区分 |
 | 💡 | 🟢 P3 | **更多协议插件** | — | RDP / VNC / Kubernetes exec / 数据库客户端。**这正是 `Protocols` + `Workspaces` 能力面存在的意义** —— 宿主一行不用改，Telnet / 串口 / Redis / S3 / Docker 面板已经把这条路走通了五遍。优先级交给插件市场的真实下载量决定，不要在宿主里拍脑袋排 |
 | ❌ | — | **X11 转发** | MobaXterm（自带 X 服务端） | 见下面的[确认不做](#-确认不做)一栏 |
@@ -647,7 +641,7 @@ var options = new ExecuteOptions
    信任根现成，属于「补最后一段」而不是「从零建」。
 3. **SSH Agent 转发**（D 组）—— 对标矩阵里唯一六家全有、我们全无的格子，
    而且缺它会逼用户做出**降低安全性**的替代（把私钥拷上跳板机）。
-   ⚠️ 先确认 Tmds.Ssh 的支持情况再排期。
+   ✅ 2026-09-22 换库后**底层已经有了**：`VelaShell.Ssh` 的 `AgentForwarder` 实现了 `auth-agent-req@openssh.com`，剩下的是宿主侧接线。
 
 ### 📌 排这份路线图时的几条纪律
 

@@ -948,9 +948,25 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
             OperationCanceledException => Strings.Get("Msg_OperationCancelled"),
             InvalidOperationException when ex.Message.Contains("not connected", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase)
                 => Strings.Get("Msg_ServerConnectionUnavailable"),
-            SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse } => Strings.Format("Msg_LocalPortInUse", NewLocalPort),
+            _ when IsAddressInUse(ex) => Strings.Format("Msg_LocalPortInUse", NewLocalPort),
             _ => ex.Message
         };
+
+    /// <summary>
+    /// 端口被占用:沿 InnerException 链找 —— 绑定失败被 SSH 库包成转发异常、
+    /// 又被宿主的异常翻译再包一层,只看最外层的话这条本地化提示永远出不来。
+    /// </summary>
+    private static bool IsAddressInUse(Exception ex)
+    {
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+        {
+            if (e is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse })
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private void ResetForm()
     {

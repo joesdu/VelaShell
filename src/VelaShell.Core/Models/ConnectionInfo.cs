@@ -48,7 +48,7 @@ public class ConnectionInfo
     /// <summary>
     /// 跳板主机(ProxyJump):先连它,再经它连到本机。递归嵌套即多段跳;
     /// 由工作流按 <c>SessionProfile.JumpHostProfileId</c> 链解析(带环检测)。null = 直连。
-    /// 具体建链方式由 Infrastructure 决定(当前为 Tmds.Ssh 原生 SshProxy 链)。
+    /// 具体建链方式由 Infrastructure 决定(当前为 VelaShell.Ssh 的嵌套连接 + direct-tcpip 隧道)。
     /// </summary>
     public ConnectionInfo? JumpHost { get; init; }
 

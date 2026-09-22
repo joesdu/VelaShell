@@ -44,10 +44,10 @@ Together, VelaShell means **"a terminal as your sail, riding the signal winds to
   A full DEC ANSI / VT / Xterm state machine: 256 colours, true colour, DEC line-drawing glyphs, primary/alternate screens, scroll regions, application cursor keys, mouse protocols, CJK double-width characters and on-the-fly encoding switching. Ten terminal profiles are built in (vt52/100/102/220/320/340/420/520/xterm/xterm-256color), defaulting to xterm-256color. The terminal is a custom-drawn Avalonia control — glyphs, selection and scrolling are all rendered by us. Selection supports linear and block modes, `Shift+click` to extend, and **disjoint multi-span selection** via `Ctrl+Shift+drag` (copy line 1 and line 3 in one go). **OSC 8 hyperlinks** emitted by modern CLIs (`ls --hyperlink`, `gh`, `delta`, cargo/gcc diagnostics) are underlined and open on `Ctrl+click`, even when the anchor text looks nothing like a URL; schemes are allow-listed because terminal output is untrusted input. **OSC 133 command blocks** turn a screenful of output into structured `[prompt][command][output][exit code]` blocks: a per-command marker in the gutter that reddens on failure, `Ctrl+Shift+Up/Down` to walk between prompts, click a marker to select that command's output, and folding that snaps to block boundaries. Nothing is injected into your shell — the settings page hands you a snippet to paste into your own rc file.
 
 - **SSH, SFTP and local shells**  
-  Shell sessions, SFTP transfers and port forwarding are powered by [Tmds.Ssh](https://github.com/tmds/Tmds.Ssh) (a fully managed, async-first .NET SSH library). Password and private-key auth are supported; when credentials are missing the app walks a two-step authentication flow (username → auth method) and lets you retry in place after a failure. **Local terminal tabs** auto-detect pwsh / PowerShell / CMD / WSL / Git Bash — implemented on ConPTY, so they are **Windows-only for now**.
+  Shell sessions, SFTP transfers and port forwarding are powered by [VelaShell.Ssh](https://github.com/VelaShellLabs/velashell-ssh), our own fully managed, async-first .NET SSH library (MIT). Password and private-key auth are supported; when credentials are missing the app walks a two-step authentication flow (username → auth method) and lets you retry in place after a failure. **Local terminal tabs** auto-detect pwsh / PowerShell / CMD / WSL / Git Bash — implemented on ConPTY, so they are **Windows-only for now**.
 
 - **Jump hosts (ProxyJump)**  
-  A session can reference another saved profile as its jump host, chained up to 5 hops with cycle detection. Chains are built hop by hop through Tmds.Ssh's native `SshProxy`, and fingerprints are verified per logical host at every hop.
+  A session can reference another saved profile as its jump host, chained up to 5 hops with cycle detection. Chains are built hop by hop as nested connections carrying a `direct-tcpip` tunnel, and fingerprints are verified per logical host at every hop.
 
 - **Network proxy**  
   A global proxy setting (Settings → Proxy): direct / follow system / HTTP CONNECT / SOCKS5, with proxy authentication and an option to let SOCKS5 resolve DNS proxy-side (so target hostnames never leak). It applies to **all outbound traffic** — SSH, FTP, and HTTP requests such as cloud sync and update checks.
@@ -379,7 +379,7 @@ Three documents stay here, because what they serve is writing code *in this repo
 - **Avalonia 12.1** — cross-platform XAML UI framework
 - **ReactiveUI** — reactive MVVM
 - **VelaDock (in-house)** — draggable split/dock layout with zero third-party dependencies
-- **Tmds.Ssh** — SSH / SFTP / port forwarding / ProxyJump (fully managed, async-first)
+- **VelaShell.Ssh (in-house)** — SSH / SFTP / port forwarding / SOCKS5 / ProxyJump (fully managed, async-first)
 - **FluentFTP** — FTP / FTPS client
 - **AvaloniaEdit** — remote file editor and the AI composer (syntax highlighting, inline reference chips)
 - **SonnetDB** — embedded multi-model database (document + time series), the only persistence engine

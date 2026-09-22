@@ -124,11 +124,17 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
     }
 
     /// <summary>释放会话:优先经 Job Object 秒杀整棵进程树,关闭伪控制台与管道句柄。</summary>
-    public void Dispose()
+    /// <remarks>
+    /// 这一份释放**本来就是同步的** —— 全是内核句柄操作,没有一处要等的 I/O。
+    /// 走 <see cref="IAsyncDisposable" /> 只是为了与 <see cref="IShellStreamWrapper" />
+    /// 的契约一致(那条契约之所以是异步的,是因为 SSH 那个实现必须异步)。
+    /// 这里不做任何假的异步包装:干完直接返回一个已完成的 <see cref="ValueTask" />。
+    /// </remarks>
+    public ValueTask DisposeAsync()
     {
         if (_disposed)
         {
-            return;
+            return ValueTask.CompletedTask;
         }
         _disposed = true;
 
@@ -164,6 +170,7 @@ public sealed partial class ConPtyShellStream : IShellStreamWrapper
             NativeMethods.CloseHandle(_job);
         }
         _process.Dispose();
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>启动本地 shell 并挂上伪控制台。commandLine 含参数(如 "bash.exe --login -i")。</summary>

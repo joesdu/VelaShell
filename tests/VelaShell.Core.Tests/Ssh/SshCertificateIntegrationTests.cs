@@ -1,13 +1,14 @@
 using System.Net.Sockets;
-using Tmds.Ssh;
 using VelaShell.Core.Models;
-using VelaShell.Infrastructure.DependencyInjection;
+using VelaShell.Infrastructure.Ssh;
+using VelaShell.Ssh.HostKeys;
+using VelaShell.Ssh.Session;
 using VelaConnectionInfo = VelaShell.Core.Models.ConnectionInfo;
 
 namespace VelaShell.Core.Tests.Ssh;
 
 /// <summary>
-/// OpenSSH 用户证书认证的端到端验证:打通 <c>AddCredential</c> → Tmds.Ssh → 真实 sshd。
+/// OpenSSH 用户证书认证的端到端验证:打通 <c>SshConnectionAssembler</c> → VelaShell.Ssh → 真实 sshd。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -27,7 +28,7 @@ namespace VelaShell.Core.Tests.Ssh;
 public sealed class SshCertificateIntegrationTests
 {
     private const string TestHost = "127.0.0.1";
-    private const int CertPort = 2223;
+    private const int CertPort = 2224;
     private const string TestUser = "testuser";
 
     /// <summary>靶机资产(CA、用户私钥、证书)所在目录;由 VELASHELL_CERT_LAB 指定。</summary>
@@ -62,21 +63,16 @@ public sealed class SshCertificateIntegrationTests
         }
     }
 
-    /// <summary>按连接信息装配 settings —— 凭据那一段走的正是生产代码。</summary>
-    private static SshClientSettings BuildSettings(VelaConnectionInfo ci)
-    {
-        var settings = new SshClientSettings($"{ci.Username}@{ci.Host}")
+    /// <summary>按连接信息连上去 —— 凭据那一段走的正是生产代码。</summary>
+    private static async ValueTask<SshConnection> ConnectAsync(VelaConnectionInfo ci, CancellationToken ct) =>
+        await new SshConnectionOptions(ci.Username, ci.Host, ci.Port)
         {
-            Port = ci.Port,
-            AutoConnect = false,
-            ConnectTimeout = TimeSpan.FromSeconds(15),
+            Credentials = await SshConnectionAssembler.BuildCredentialsAsync(ci, ct),
             // 本用例要验的是【用户】认证,主机认证不是被测对象:靶机的主机密钥每次
             // 重建镜像都会变,在这里较真只会把用例变成 known_hosts 的维护负担。
-            HostAuthentication = (_, _) => ValueTask.FromResult(true)
-        };
-        InfrastructureServiceCollectionExtensions.AddCredential(settings, ci);
-        return settings;
-    }
+            HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
+            ConnectTimeout = TimeSpan.FromSeconds(15),
+        }.ConnectAsync(ct);
 
     private static VelaConnectionInfo CertificateConnection() =>
         new()
@@ -94,16 +90,15 @@ public sealed class SshCertificateIntegrationTests
     {
         RequireCertServer();
 
-        using var client = new SshClient(BuildSettings(CertificateConnection()));
-        await client.ConnectAsync(TestCancellation);
+        CancellationToken ct = TestCancellation;
+        await using SshConnection connection = await ConnectAsync(CertificateConnection(), ct);
 
         // 连上还不够:跑一条命令才能证明这是一条可用的会话,而不只是握手成功。
         // 顺带确认服务端认下来的身份就是证书 principals 里那个 testuser。
-        using RemoteProcess process = await client.ExecuteAsync("id -un", cancellationToken: TestCancellation);
-        (string stdout, string stderr) = await process.ReadToEndAsStringAsync(TestCancellation);
+        SshCommandOutput output = await connection.RunAsync("id -un", cancellationToken: ct);
 
         // stderr 带进失败消息:命令没输出时,原因通常就写在那里。
-        Assert.AreEqual(TestUser, stdout.Trim(), $"stderr: {stderr}");
+        Assert.AreEqual(TestUser, output.StandardOutput.Trim(), $"stderr: {output.StandardError}");
     }
 
     [TestMethod]
@@ -122,11 +117,10 @@ public sealed class SshCertificateIntegrationTests
             PrivateKeyPath = KeyPath
         };
 
-        using var client = new SshClient(BuildSettings(plainKey));
-        // 用基类而不是某个具体子类:被测的是"必须被拒",不是 Tmds 内部选了哪一种异常 ——
-        // 钉死子类只会让上游换个类型就红一片,而那与本用例想守的东西无关。
-        await Assert.ThrowsAsync<SshConnectionException>(
-            async () => await client.ConnectAsync(TestCancellation));
+        // 用基类而不是某个具体子类:被测的是"必须被拒",不是库内部选了哪一种异常 ——
+        // 钉死子类只会让库换个类型就红一片,而那与本用例想守的东西无关。
+        await Assert.ThrowsAsync<VelaShell.Ssh.Diagnostics.SshException>(
+            async () => await ConnectAsync(plainKey, TestCancellation));
     }
 
     private static CancellationToken TestCancellation => new CancellationTokenSource(TimeSpan.FromSeconds(30)).Token;

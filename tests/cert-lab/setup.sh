@@ -9,7 +9,10 @@ set -e
 cd "$(dirname "$0")"
 
 NAME=velashell-cert-lab
-PORT=${VELASHELL_CERT_PORT:-2223}
+# 2222 与 2223 已经被 docker-compose.test.yml 占着(openssh-server / ssh-shells),
+# 这里必须另挑一个:端口撞上的后果不是"起不来",而是**另一边的测试连到了这台靶机**,
+# 然后以一句莫名其妙的握手失败告终。
+PORT=${VELASHELL_CERT_PORT:-2224}
 
 if [ "$1" = "--down" ]; then
     docker rm -f "$NAME" >/dev/null 2>&1 && echo "已停掉 $NAME" || echo "$NAME 未在运行"
@@ -31,13 +34,22 @@ fi
 chmod 600 id_ed25519 2>/dev/null || true
 
 # ---- 2. 选基础镜像 ----
-# 拉不到公共仓库时(常见于国内网络),本机若有 Tmds.Ssh 测试套件留下的
-# test_sshserver 就直接拿来用,省掉一次外网拉取。
-if docker image inspect test_sshserver:latest >/dev/null 2>&1; then
-    BASE=test_sshserver:latest
-else
-    BASE=alpine:3.20
-fi
+# 先挑本机**已经有**的:Docker Hub 在不少网络下拉不动,现装 openssh-server 会卡在第一步。
+# 候选按"越现成越靠前"排:test_sshserver 是 SSH 测试套件留下的,linuxserver 那两个是
+# docker-compose.test.yml 用的靶机镜像(sshd 在里面叫 sshd.pam,Dockerfile 已经兼容)。
+BASE=
+for candidate in \
+    test_sshserver:latest \
+    linuxserver/openssh-server:latest \
+    lscr.io/linuxserver/openssh-server:latest \
+    alpine:3.20
+do
+    if docker image inspect "$candidate" >/dev/null 2>&1; then
+        BASE="$candidate"
+        break
+    fi
+done
+BASE=${BASE:-alpine:3.20}
 echo "==> 基础镜像: $BASE"
 
 # ---- 3. build & run ----
@@ -47,10 +59,18 @@ docker run -d --name "$NAME" -p "$PORT":22 "$NAME" >/dev/null
 sleep 1
 
 # ---- 4. 自检:配置真的只剩证书这一条路吗 ----
+# 镜像构建时已经硬校验过一遍(见 Dockerfile 末尾),这里再对**跑起来的那个容器**
+# 确认一次并打印出来 —— 构建缓存命中、或有人手改了容器,都能在这一步露馅。
 echo "==> 生效配置"
-docker exec "$NAME" sshd -T 2>/dev/null | grep -iE \
+EFFECTIVE=$(docker exec "$NAME" sh -c 'sshd -T' 2>/dev/null)
+echo "$EFFECTIVE" | grep -iE \
     "^(trustedusercakeys|authorizedkeysfile|passwordauthentication|gssapiauthentication|kbdinteractiveauthentication) " \
     | sed 's/^/    /'
+
+if ! echo "$EFFECTIVE" | grep -qix 'trustedusercakeys /etc/ssh/velashell_user_ca.pub'; then
+    echo "!! 靶机没有加载我们的 CA —— 现在连上去也不能证明证书生效,不要用它跑测试。" >&2
+    exit 1
+fi
 
 cat <<EOF
 

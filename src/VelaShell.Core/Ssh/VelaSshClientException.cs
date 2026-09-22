@@ -1,6 +1,6 @@
 namespace VelaShell.Core.Ssh;
 
-// 库中立的 SSH/SFTP 异常层级:Infrastructure 的包装器(当前 TmdsSshInterop)把具体库
+// 库中立的 SSH/SFTP 异常层级:Infrastructure 的包装器(当前 SshInterop)把具体库
 // 的异常翻译成这些类型,Core/App 只依赖它们。更换底层库时只需在新包装器里做同样的翻译。
 //
 // 上层请**直接按类型匹配**(`ex is VelaSshAuthenticationException`),不要按类型名字符串。

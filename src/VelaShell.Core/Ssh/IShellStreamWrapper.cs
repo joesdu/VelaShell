@@ -3,7 +3,7 @@ namespace VelaShell.Core.Ssh;
 /// <summary>
 /// 交互式 SSH shell 流之上的库中立抽象,将调用方与底层 SSH 实现解耦。
 /// </summary>
-public interface IShellStreamWrapper : IDisposable
+public interface IShellStreamWrapper : IAsyncDisposable
 {
     /// <summary>获取一个值,指示流上当前是否缓冲有未读数据。</summary>
     bool DataAvailable { get; }

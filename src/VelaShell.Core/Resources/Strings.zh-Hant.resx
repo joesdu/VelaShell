@@ -5322,4 +5322,40 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SetTransfer_FastRecursiveDeleteDesc" xml:space="preserve">
     <value>僅 SSH 工作階段:一條命令取代逐個檔案的 SFTP 往返。命令不可用或失敗時自動回退到 SFTP 遞迴刪除。刪除前的確認不變,但這條路上沒有逐個檔案的進度。</value>
   </data>
+  <data name="SshErr_DnsFailure" xml:space="preserve">
+    <value>無法解析主機名稱。</value>
+  </data>
+  <data name="SshErr_TcpRefused" xml:space="preserve">
+    <value>連線被拒絕:該連接埠上沒有服務在監聽。</value>
+  </data>
+  <data name="SshErr_TcpTimeout" xml:space="preserve">
+    <value>TCP 連線逾時。</value>
+  </data>
+  <data name="SshErr_TcpUnreachable" xml:space="preserve">
+    <value>網路或主機無法連線。</value>
+  </data>
+  <data name="SshErr_ProxyAuthRequired" xml:space="preserve">
+    <value>代理伺服器要求驗證,但未設定代理憑據。</value>
+  </data>
+  <data name="SshErr_NotAnSshServer" xml:space="preserve">
+    <value>對端不是 SSH 服務(未收到合法的協定識別)。</value>
+  </data>
+  <data name="SshErr_VersionMismatch" xml:space="preserve">
+    <value>伺服器使用了不受支援的 SSH 協定版本。</value>
+  </data>
+  <data name="SshErr_HostKeyChanged" xml:space="preserve">
+    <value>伺服器的主機金鑰與已記錄的不一致。</value>
+  </data>
+  <data name="SshErr_Timeout" xml:space="preserve">
+    <value>連線逾時。</value>
+  </data>
+  <data name="SshErr_KeepAliveTimeout" xml:space="preserve">
+    <value>伺服器不再回應保活探測,連線已判定中斷。</value>
+  </data>
+  <data name="SshErr_ClosedByPeer" xml:space="preserve">
+    <value>伺服器關閉了連線。</value>
+  </data>
+  <data name="SshErr_Disconnected" xml:space="preserve">
+    <value>伺服器結束了工作階段。</value>
+  </data>
 </root>

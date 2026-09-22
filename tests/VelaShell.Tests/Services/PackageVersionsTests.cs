@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using VelaShell.Infrastructure.Ssh;
 using VelaShell.Services;
 using VelaShell.ViewModels;
 
@@ -29,10 +30,9 @@ public partial class PackageVersionsTests
         Assert.IsGreaterThan(0, versions.Count, "构建目标 EmbedPackageVersions 应把包版本写进程序集元数据。");
     }
 
-    /// <summary>关于页当前展示的两个包必须查得到,否则界面会退化成只有名称。</summary>
+    /// <summary>关于页当前展示的包必须查得到,否则界面会退化成只有名称。</summary>
     [TestMethod]
     [DataRow("Avalonia")]
-    [DataRow("Tmds.Ssh")]
     public void Of_ResolvesPackagesShownOnTheAboutPage(string packageId)
     {
         string? version = PackageVersions.Of(packageId);
@@ -41,12 +41,20 @@ public partial class PackageVersionsTests
         Assert.MatchesRegex(VersionPrefix, version, "版本应形如 12.1.0。");
     }
 
-    /// <summary>SSH 库被隔离在 Infrastructure 层,按包名查得到才说明没走类型引用那条路。</summary>
+    /// <summary>
+    /// 按包名查得到「本程序集并不直接引用」的包 —— 守的是「不必为取版本号破坏分层」。
+    /// </summary>
+    /// <remarks>
+    /// 原先这里举的例子是 SSH 库。它现在是自研库、走工程引用,压根没有包版本可查,
+    /// 版本改由 <c>SshBackend</c> 从程序集元数据交出来
+    /// (见 <see cref="AboutSshLibrary_ShowsTheBackendVersion" />)。
+    /// 换一个同样不被直接引用的包来守同一条性质。
+    /// </remarks>
     [TestMethod]
     public void Of_ResolvesPackages_NotReferencedByThisAssembly()
     {
-        Assert.IsNotNull(PackageVersions.Of("Tmds.Ssh"),
-                         "Tmds.Ssh 不被 VelaShell 直接引用,版本仍应可查(不必为取版本号破坏分层)。");
+        Assert.IsNotNull(PackageVersions.Of("SonnetDB.Core"),
+                         "SonnetDB.Core 不被 VelaShell 直接引用,版本仍应可查(不必为取版本号破坏分层)。");
     }
 
     [TestMethod]
@@ -63,8 +71,20 @@ public partial class PackageVersionsTests
     [TestMethod]
     public void AboutFramework_ShowsTheReferencedAvaloniaVersion() => Assert.AreEqual($"Avalonia UI {PackageVersions.Of("Avalonia")}", SettingsViewModel.AboutFramework);
 
+    /// <summary>
+    /// 关于页显示的 SSH 后端 —— 现在是自研库,版本由 <c>SshBackend</c> 从程序集元数据读出来。
+    /// </summary>
+    /// <remarks>
+    /// 断言「带得出一个版本号」而不是比对某个写死的数字:版本由 CI 的 tag 覆盖,
+    /// 钉死一个就等于每次发版都要回来改一次,而这条真正要守的是「别退化成只有名称」。
+    /// </remarks>
     [TestMethod]
-    public void AboutSshLibrary_ShowsTheReferencedSshLibraryVersion() => Assert.AreEqual($"Tmds.Ssh {PackageVersions.Of("Tmds.Ssh")}", SettingsViewModel.AboutSshLibrary);
+    public void AboutSshLibrary_ShowsTheBackendVersion()
+    {
+        Assert.IsNotNull(SshBackend.Version, "取不到版本时关于页会退化成只有名称。");
+        Assert.MatchesRegex(VersionPrefix, SshBackend.Version, "版本应形如 0.0.1。");
+        Assert.AreEqual($"{SshBackend.Name} {SshBackend.Version}", SettingsViewModel.AboutSshLibrary);
+    }
 
     /// <summary>关于页不该再出现写死的版本号 —— 这条盯的就是当初那个漂移。</summary>
     [TestMethod]

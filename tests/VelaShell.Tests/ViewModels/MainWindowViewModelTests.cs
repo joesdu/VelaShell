@@ -289,7 +289,7 @@ public class MainWindowViewModelTests
 
     [TestMethod]
     [TestCategory("UI")]
-    public void SettingsSaved_ReappliesScrollbackToOpenTabs()
+    public async Task SettingsSaved_ReappliesScrollbackToOpenTabs()
     {
         ISettingsService settingsService = Substitute.For<ISettingsService>();
         ITerminalEmulator emulator = FakeTerminal.Emulator();
@@ -308,7 +308,7 @@ public class MainWindowViewModelTests
         SpinWait.SpinUntil(() => emulator.ScrollbackLines == 88_000, TimeSpan.FromSeconds(5));
         Assert.AreEqual(88_000, emulator.ScrollbackLines);
 
-        tab.Dispose();
+        await tab.DisposeAsync();
     }
 
     [TestMethod]

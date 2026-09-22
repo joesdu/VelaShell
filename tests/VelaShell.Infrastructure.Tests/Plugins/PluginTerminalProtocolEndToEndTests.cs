@@ -141,7 +141,7 @@ public sealed class PluginTerminalProtocolEndToEndTests
             ConnectionType = ConnectionType.Plugin,
             PluginProtocolId = ProtocolId
         };
-        using IShellStreamWrapper stream = await PluginProtocolTerminalConnector.OpenAsync(
+        await using IShellStreamWrapper stream = await PluginProtocolTerminalConnector.OpenAsync(
             registration, profile, new("xterm-256color", 100, 40));
 
         using TcpClient server = await accepted.WaitAsync(TimeSpan.FromSeconds(5));

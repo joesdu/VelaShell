@@ -1,9 +1,12 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net.Sockets;
-using Tmds.Ssh;
 using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Ssh;
+using VelaShell.Ssh.Auth;
+using VelaShell.Ssh.HostKeys;
+using VelaShell.Ssh.Session;
+using VelaShell.Ssh.Sftp;
 
 namespace VelaShell.Core.Tests.Ssh;
 
@@ -15,7 +18,7 @@ namespace VelaShell.Core.Tests.Ssh;
 ///   <item>readdir 带回的是 lstat 属性还是 stat 属性,决定了列表里还认不认得出链接;</item>
 ///   <item>SSH_FXP_REMOVE 对链接删的是链接本身还是目标。</item>
 /// </list>
-/// 放在 Core.Tests 是因为要用 <c>TmdsSshClientWrapper.InnerClient</c>(internal,只对本工程开放)。
+/// 放在 Core.Tests 是因为要用 <c>VelaSshClientWrapper.InnerConnection</c>（internal，只对本工程开放）。
 /// </summary>
 [SuppressMessage("Usage", "MSTEST0045:Use cooperative cancellation with [Timeout]",
     Justification = "被等待的 docker/SSH 操作不接受测试取消令牌,协作取消无法中断它们。")]
@@ -37,13 +40,14 @@ public class SftpSymlinkIntegrationTests
         RequireDockerAndSsh();
 
         string root = $"/tmp/vela-links-{Guid.NewGuid():N}";
-        TmdsSshClientWrapper ssh = await ConnectAsync();
+        VelaSshClientWrapper ssh = await ConnectAsync();
         try
         {
             await ssh.RunCommandAsync(
                 $"mkdir -p {root}/real && echo hi > {root}/real/a.txt && ln -s real {root}/dirlink && ln -s missing {root}/broken");
-            SshClient inner = ssh.InnerClient ?? throw new InvalidOperationException("SSH not connected.");
-            using var sftp = new TmdsSftpClientWrapper(async () => await inner.OpenSftpClientAsync());
+            SshConnection inner = ssh.InnerConnection ?? throw new InvalidOperationException("SSH not connected.");
+            await using var sftp = new VelaSftpClientWrapper(
+                async ct => await SftpFileSystem.ConnectAsync(inner, cancellationToken: ct));
             await sftp.ConnectAsync(CancellationToken.None);
 
             // 列表:认得出链接,且指向目录的链接仍判为目录(能进去);断链不是目录。
@@ -83,7 +87,7 @@ public class SftpSymlinkIntegrationTests
             {
                 // 清理尽力而为;容器本来就是一次性的。
             }
-            ssh.Dispose();
+            await ssh.DisposeAsync();
         }
     }
 
@@ -130,20 +134,18 @@ public class SftpSymlinkIntegrationTests
             return false;
         }
     }
-
-    private static async Task<TmdsSshClientWrapper> ConnectAsync()
+    private static async Task<VelaSshClientWrapper> ConnectAsync()
     {
-        var settings = new SshClientSettings($"{TestUser}@{TestHost}")
-        {
-            Port = TestPort,
-            AutoConnect = false,
-            ConnectTimeout = TimeSpan.FromSeconds(10),
-            // 测试容器的主机键每次重建都变:无条件信任,不写 known_hosts。
-            HostAuthentication = (_, _) => ValueTask.FromResult(true),
-            UpdateKnownHostsFileAfterAuthentication = false
-        };
-        settings.Credentials.Add(new PasswordCredential(TestPassword));
-        var client = new TmdsSshClientWrapper(settings);
+        VelaSshClientWrapper client = new(
+            ct => new SshConnectionOptions(TestUser, TestHost, TestPort)
+            {
+                Credentials = [new PasswordCredential(TestPassword)],
+                // 测试容器的主机键每次重建都变：无条件信任，不写 known_hosts。
+                HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
+                ConnectTimeout = TimeSpan.FromSeconds(10),
+            }.ConnectAsync(ct),
+            TimeSpan.FromSeconds(10));
+
         await client.ConnectAsync(CancellationToken.None);
         return client;
     }

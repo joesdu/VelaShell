@@ -8,7 +8,7 @@
 
 - **无 UI 依赖**：唯一的包引用是 `ReactiveUI`（用于 `ReactiveObject` 数据模型），**不引用 Avalonia**。
 - **接口优先**：对外只暴露接口（`I*Service`、`I*Store`、`I*Wrapper`），具体实现落在 `VelaShell.Infrastructure`。上层通过 DI 注入依赖，便于 Mock 与替换。
-- **SSH 库中立**：Core **不引用任何具体 SSH 库**。SSH/SFTP 能力全部经 `Ssh/` 下的中立抽象（`ISshClientWrapper`、`ISftpClientWrapper`、`SftpEntry`、`VelaSshClientException` 等）访问，具体依赖（当前为 `Tmds.Ssh`）只存在于 Infrastructure。这条约束已被验证有效：从 SSH.NET 迁移到 Tmds.Ssh 时 Core 一行未改。
+- **SSH 库中立**：Core **不引用任何具体 SSH 库**。SSH/SFTP 能力全部经 `Ssh/` 下的中立抽象（`ISshClientWrapper`、`ISftpClientWrapper`、`SftpEntry`、`VelaSshClientException` 等）访问，具体依赖（当前为自研的 `VelaShell.Ssh`）只存在于 Infrastructure。这条约束已被验证有效：从 SSH.NET 迁到 Tmds.Ssh 时 Core 一行未改；再迁到 VelaShell.Ssh 时 Core 只动了契约本身（释放全面异步化），没有一处实现细节泄漏进来。
 
 ## 🗂️ 目录结构
 
@@ -32,7 +32,7 @@
 ## 🔑 核心思路
 
 1. **稳定的领域词汇表**：连接、分组、会话、隧道、传输、审计等概念在此一次性定义，所有上层共用同一套模型，杜绝 DTO 转换与概念漂移。
-2. **契约与实现分离**：Core 声明「需要什么能力」（接口），Infrastructure 提供「如何做到」（SonnetDB / Tmds.Ssh / AES）。这让核心逻辑可在无数据库、无网络的环境下单元测试。
+2. **契约与实现分离**：Core 声明「需要什么能力」（接口），Infrastructure 提供「如何做到」（SonnetDB / VelaShell.Ssh / AES）。这让核心逻辑可在无数据库、无网络的环境下单元测试。
 3. **可替换的边界**：SSH 库、存储引擎、加密方案都被接口隔离在 Core 之外，替换成本被约束在单一实现项目内。
 
 ## 🌐 本地化回退链

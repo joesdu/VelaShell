@@ -154,7 +154,7 @@ public sealed class AntiIdleTests
         stream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
-        using var bridge = new SshTerminalBridge(terminal, stream);
+        await using var bridge = new SshTerminalBridge(terminal, stream);
         Assert.AreEqual(TimeSpan.Zero, bridge.AntiIdleInterval);
 
         bridge.AntiIdleTickForTest();
@@ -165,7 +165,7 @@ public sealed class AntiIdleTests
     }
 
     [TestMethod]
-    public void Bridge_WithAnInterval_ReallyWritesToTheStream()
+    public async Task Bridge_WithAnInterval_ReallyWritesToTheStream()
     {
         // 上面几条验的是决策,这一条验接线:定时器→出站队列→写循环→底层流,一段都不能断。
         ITerminalEmulator terminal = Substitute.For<ITerminalEmulator>();
@@ -184,7 +184,7 @@ public sealed class AntiIdleTests
                 }
             });
 
-        using var bridge = new SshTerminalBridge(terminal, stream);
+        await using var bridge = new SshTerminalBridge(terminal, stream);
         bridge.AntiIdleInterval = TimeSpan.FromMilliseconds(50);
 
         bool SawNul()

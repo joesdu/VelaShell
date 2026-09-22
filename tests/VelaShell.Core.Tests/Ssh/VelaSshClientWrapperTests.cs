@@ -2,16 +2,19 @@ using System.Net;
 using System.Net.Sockets;
 using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Ssh;
+using VelaShell.Ssh.Auth;
+using VelaShell.Ssh.HostKeys;
+using VelaShell.Ssh.Session;
 
 namespace VelaShell.Core.Tests.Ssh;
 
 /// <summary>
-/// 锁定 <see cref="TmdsSshClientWrapper" /> 的连接状态语义:
+/// 锁定 <see cref="VelaSshClientWrapper" /> 的连接状态语义:
 /// 连接失败不得残留半初始化的客户端(IsConnected 必须仍为 false),
 /// 调用方主动取消不得被误报为超时异常。
 /// </summary>
 [TestClass]
-public sealed class TmdsSshClientWrapperTests
+public sealed class VelaSshClientWrapperTests
 {
     /// <summary>取一个刚被释放的本机端口:对它发起连接会被快速拒绝。</summary>
     private static int GetClosedLoopbackPort()
@@ -23,18 +26,19 @@ public sealed class TmdsSshClientWrapperTests
         return port;
     }
 
-    private static TmdsSshClientWrapper CreateWrapper(int port) => new(
-        new Tmds.Ssh.SshClientSettings("user@127.0.0.1")
+    private static VelaSshClientWrapper CreateWrapper(int port) => new(
+        ct => new SshConnectionOptions("user", "127.0.0.1", port)
         {
-            Port = port,
+            Credentials = [new PasswordCredential("unused")],
+            HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
             ConnectTimeout = TimeSpan.FromSeconds(5),
-            Credentials = [new Tmds.Ssh.PasswordCredential("unused")],
-        });
+        }.ConnectAsync(ct),
+        TimeSpan.FromSeconds(5));
 
     [TestMethod]
     public async Task NewWrapper_IsNotConnected_AndOperationsRequireConnection()
     {
-        using TmdsSshClientWrapper wrapper = CreateWrapper(1);
+        await using VelaSshClientWrapper wrapper = CreateWrapper(1);
 
         Assert.IsFalse(wrapper.IsConnected);
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
@@ -44,7 +48,7 @@ public sealed class TmdsSshClientWrapperTests
     [TestMethod]
     public async Task ConnectAsync_Failure_LeavesWrapperDisconnected()
     {
-        using TmdsSshClientWrapper wrapper = CreateWrapper(GetClosedLoopbackPort());
+        await using VelaSshClientWrapper wrapper = CreateWrapper(GetClosedLoopbackPort());
 
         await Assert.ThrowsAsync<VelaSshClientException>(() => wrapper.ConnectAsync(CancellationToken.None));
 
@@ -55,7 +59,7 @@ public sealed class TmdsSshClientWrapperTests
     [TestMethod]
     public async Task ConnectAsync_CallerCancelled_IsNotReportedAsTimeout()
     {
-        using TmdsSshClientWrapper wrapper = CreateWrapper(GetClosedLoopbackPort());
+        await using VelaSshClientWrapper wrapper = CreateWrapper(GetClosedLoopbackPort());
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
@@ -68,11 +72,25 @@ public sealed class TmdsSshClientWrapperTests
         Assert.IsFalse(wrapper.IsConnected);
     }
 
+    /// <summary>
+    /// 没连上时 <see cref="ISshClientWrapper.Disconnected" /> 必须是一个**未取消**的令牌。
+    /// </summary>
+    /// <remarks>
+    /// 给一个已取消的令牌会让终端的读循环在连接建立之前就退出 —— 表现成「一连就断」。
+    /// </remarks>
     [TestMethod]
-    public void DisposedWrapper_Throws()
+    public async Task NotConnected_DisconnectedTokenIsNotCancelled()
     {
-        TmdsSshClientWrapper wrapper = CreateWrapper(1);
-        wrapper.Dispose();
+        await using VelaSshClientWrapper wrapper = CreateWrapper(1);
+
+        Assert.IsFalse(wrapper.Disconnected.IsCancellationRequested);
+    }
+
+    [TestMethod]
+    public async Task DisposedWrapper_Throws()
+    {
+        VelaSshClientWrapper wrapper = CreateWrapper(1);
+        await wrapper.DisposeAsync();
 
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = wrapper.IsConnected);
     }

@@ -7,6 +7,8 @@ using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Core.Tunnels;
+using VelaShell.Ssh.Channels;
+using VelaShell.Ssh.Diagnostics;
 
 namespace VelaShell.Infrastructure.Tunnels;
 
@@ -156,7 +158,7 @@ public class TunnelService(
     }
 
     /// <summary>停止指定转发通道:释放底层监听端口并将其状态置为 <see cref="TunnelStatus.Stopped" />;找不到通道时抛出异常。</summary>
-    public Task StopTunnelAsync(Guid tunnelId, CancellationToken cancellationToken = default)
+    public async Task StopTunnelAsync(Guid tunnelId, CancellationToken cancellationToken = default)
     {
         if (!_tunnelPorts.TryRemove(tunnelId, out (IPortForwardHandle Handle, TunnelInfo Info) tunnelData))
         {
@@ -171,9 +173,10 @@ public class TunnelService(
             info.TotalConnections = handle.TotalConnections;
             info.ActiveConnections = 0;
 
-            // Stop 幂等且自带"客户端已随会话释放"的容错(见 IPortForwardHandle 契约),
-            // 且只做取消令牌 + 关监听这类同步收尾,直接调用即可。
-            handle.Dispose();
+            // 释放幂等,且自带"客户端已随会话释放"的容错(见 IPortForwardHandle 契约)。
+            // **等它真的收完**再把状态置为已停止 —— 否则界面上显示「已停止」的那一刻
+            // 监听端口可能还没放开,用户紧接着重开同一条隧道会撞上「端口被占用」。
+            await handle.DisposeAsync().ConfigureAwait(false);
             info.Status = TunnelStatus.Stopped;
             if (_sessionTunnels.TryGetValue(info.SessionId, out List<TunnelInfo>? tunnels))
             {
@@ -198,8 +201,6 @@ public class TunnelService(
             logger?.LogError(ex, "Failed to stop tunnel {TunnelId}", tunnelId);
             throw;
         }
-        // 收尾全是同步的(取消令牌 + 关监听);签名留成 Task 是 ITunnelService 的契约。
-        return Task.CompletedTask;
     }
 
     /// <summary>释放服务:停止并释放所有会话下的转发通道与可观察列表资源。</summary>
@@ -209,7 +210,9 @@ public class TunnelService(
         {
             try
             {
-                await Task.Run(handle.Dispose).ConfigureAwait(false);
+                // 原先是 Task.Run —— 那时停一条隧道是同步阻塞的,在退出路径上会卡住。
+                // 现在释放本身是异步的,直接 await。
+                await handle.DisposeAsync().ConfigureAwait(false);
                 info.Status = TunnelStatus.Stopped;
             }
             catch (Exception ex)
@@ -291,13 +294,28 @@ public class TunnelService(
     /// </summary>
     private static string DescribeForwardError(Exception ex)
     {
-        SocketException? socket = ex as SocketException ?? ex.InnerException as SocketException;
+        // 库把底层异常包在 SshForwardException / SshChannelException 里,
+        // 宿主的 SshInterop 又会再包一层 —— 所以沿整条 InnerException 链找,而不是只看一层。
+        SocketException? socket = null;
+        for (Exception? e = ex; e is not null && socket is null; e = e.InnerException)
+        {
+            socket = e as SocketException;
+        }
         switch (socket?.SocketErrorCode)
         {
             case SocketError.ConnectionRefused:
                 return Strings.Get("TunnelSvc_TargetRefused");
             case SocketError.TimedOut or SocketError.HostUnreachable:
                 return Strings.Get("TunnelSvc_TargetUnreachable");
+        }
+        // 认原因码而不是认文案:库的消息是中文,「administratively prohibited」这串字只在
+        // 服务端原文里才有。原因码是协议定死的(RFC 4254 §5.1),不随谁的措辞变。
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+        {
+            if (e is SshChannelException { OpenFailureReason: SshChannelOpenFailureReason.AdministrativelyProhibited })
+            {
+                return Strings.Get("TunnelSvc_ForwardProhibited");
+            }
         }
         if (ex.Message.Contains("administratively prohibited", StringComparison.OrdinalIgnoreCase))
         {

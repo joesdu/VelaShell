@@ -72,7 +72,7 @@ public class SshConnectionService(
     /// 多条连接可并发建立,单条慢连接不会阻塞其它连接。
     /// </summary>
     public Task<SshSession> ConnectAsync(ConnectionInfo connectionInfo, CancellationToken cancellationToken = default) =>
-        // Tmds.Ssh 建连前的同步前缀(设置构建、凭据包装)均为纯内存操作(无 I/O),
+        // 建连前的同步前缀(设置构建、凭据包装)均为纯内存操作(无 I/O),
         // 无需 Task.Run 调度;真正的网络 I/O 在 ConnectInternalAsync 的 await 里。
         // Task.Run(action, cancellationToken) 会导致外层任务取消时内层仍运行,
         // 产生大量未观察的异常并造成调试器输出洪流。
@@ -81,7 +81,7 @@ public class SshConnectionService(
     /// <summary>
     /// 异步断开指定标识的 SSH 会话,拆除底层网络连接并将会话状态置为已断开。
     /// </summary>
-    public Task DisconnectAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    public async Task DisconnectAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         // 断开一个已经不存在的会话是幂等的无操作,不是错误:关闭应用时标签关闭与会话拆除
         // 是两条并发路径,后到的那条必然找不到会话。此前这里抛 InvalidOperationException,
@@ -89,24 +89,16 @@ public class SshConnectionService(
         if (GetSession(sessionId) is not { } session || session.Status == SessionStatus.Disconnected)
         {
             _clients.TryRemove(sessionId, out _);
-            return Task.CompletedTask;
+            return;
         }
         if (_clients.TryRemove(sessionId, out ISshClientWrapper? client))
         {
-            // Disconnect/Dispose 为同步 socket 关闭,通道已断开时可能抛出清理噪声。
+            // 拆连接是网络操作,通道已断开时可能抛出清理噪声。
             // 吞掉是对的(要断的东西已经断了),但**必须留痕**:这里正是排查
             // "会话关不干净、句柄泄漏" 时唯一能看到的地方。
             try
             {
-                client.Disconnect();
-            }
-            catch (Exception ex)
-            {
-                Trace.WriteLine($"[SshConnectionService] 会话 {sessionId} 断开时报错(忽略):{ex.Message}");
-            }
-            try
-            {
-                client.Dispose();
+                await client.DisposeAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -119,9 +111,23 @@ public class SshConnectionService(
             logger.LogInformation("SSH session {SessionId} disconnected", sessionId);
         }
         RaiseSessionEvent(SessionDisconnected, session);
-        // 整个过程全是同步的 socket 关闭与状态置位;签名留成 Task 只为满足
-        // ISshConnectionService 的契约,不值一个 async 状态机。
-        return Task.CompletedTask;
+    }
+
+    /// <summary>尽力释放一个客户端;失败留痕但不上抛 —— 要断的东西已经在断了。</summary>
+    private static async ValueTask DisposeQuietlyAsync(ISshClientWrapper? client)
+    {
+        if (client is null)
+        {
+            return;
+        }
+        try
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[SshConnectionService] 释放 SSH 客户端时报错(忽略):{ex.Message}");
+        }
     }
 
     /// <summary>
@@ -152,24 +158,24 @@ public class SshConnectionService(
         KeyValuePair<Guid, ISshClientWrapper>[] clientEntries = [.. _clients];
         _clients.Clear();
 
-        // 并发断开每个会话:每个 Disconnect() 都是阻塞式网络拆除,顺序循环会让应用退出耗时
+        // 并发断开每个会话:拆一条连接是一次网络往返,顺序循环会让应用退出耗时
         // 达到(会话数 × 拆除耗时),并在任一无响应连接上卡住。
-        IEnumerable<Task> teardowns = clientEntries.Select(entry => Task.Run(() =>
+        //
+        // 这里原先是 Task.Run —— 因为那时释放是同步阻塞的,要并发就只能各占一条线程池线程。
+        // 现在释放本身是异步的,并发靠的是「同时起这些 ValueTask,再一起 await」,
+        // 一条线程都不用额外占。
+        IEnumerable<Task> teardowns = clientEntries.Select(async entry =>
         {
             (Guid sessionId, ISshClientWrapper client) = entry;
             try
             {
-                if (client.IsConnected)
-                {
-                    client.Disconnect();
-                }
-                client.Dispose();
+                await client.DisposeAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 logger?.LogWarning(ex, "Error disposing SSH client for session {SessionId}", sessionId);
             }
-        }));
+        });
         await Task.WhenAll(teardowns).ConfigureAwait(false);
         lock (_sessionsGate)
         {
@@ -196,7 +202,7 @@ public class SshConnectionService(
             await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
             if (!client.IsConnected)
             {
-                client.Dispose();
+                await DisposeQuietlyAsync(client).ConfigureAwait(false);
                 client = null;
                 throw new InvalidOperationException("Client connection failed without exception");
             }
@@ -216,11 +222,11 @@ public class SshConnectionService(
         // `catch (OperationCanceledException)`(安静撤掉"连接中"标签的路径)永远命中不了,
         // 用户取消反而会看到"连接超时"的失败覆盖层并留下一个连不上的死标签。
         // 只有调用方没取消却收到取消(= 底层库内部超时)才翻成 TimeoutException,
-        // 与 TmdsSshInterop.Translate 的取消语义保持一致。
+        // 与 SshInterop.Translate 的取消语义保持一致。
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
         {
-            client?.Dispose();
+            await DisposeQuietlyAsync(client).ConfigureAwait(false);
             session.Status = SessionStatus.Error;
             session.ErrorMessage = $"Connection to {connectionInfo.Host}:{connectionInfo.Port} was cancelled.";
             lock (_sessionsGate)
@@ -237,7 +243,7 @@ public class SshConnectionService(
         }
         catch (OperationCanceledException)
         {
-            client?.Dispose();
+            await DisposeQuietlyAsync(client).ConfigureAwait(false);
             session.Status = SessionStatus.Error;
             session.ErrorMessage = $"Connection to {connectionInfo.Host}:{connectionInfo.Port} timed out. Please check the host and port, then retry.";
             lock (_sessionsGate)
@@ -250,7 +256,7 @@ public class SshConnectionService(
         }
         catch (Exception ex)
         {
-            client?.Dispose();
+            await DisposeQuietlyAsync(client).ConfigureAwait(false);
             session.Status = SessionStatus.Error;
             session.ErrorMessage = ex.Message;
             lock (_sessionsGate)
@@ -259,7 +265,7 @@ public class SshConnectionService(
             }
             if (logger is not null)
             {
-                string diagnostic = TmdsSshInterop.GetFailureDiagnostic(ex);
+                string diagnostic = SshInterop.GetFailureDiagnostic(ex);
                 logger.LogError(ex, "Failed to connect SSH session {SessionId} to {Host}:{Port}, reason: {Reason}",
                     session.SessionId, connectionInfo.Host, connectionInfo.Port, diagnostic);
             }

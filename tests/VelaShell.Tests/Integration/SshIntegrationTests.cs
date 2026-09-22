@@ -193,7 +193,7 @@ public class SshIntegrationTests
         Assert.AreEqual(SessionStatus.Connected, session.Status);
         await service.DisconnectAsync(session.SessionId);
         Assert.AreEqual(SessionStatus.Disconnected, session.Status);
-        mockClient.Received(1).Disconnect();
+        await mockClient.Received(1).DisposeAsync();
         await service.DisposeAsync();
     }
 
@@ -289,8 +289,9 @@ public class SshIntegrationTests
         await service.DisposeAsync();
         foreach (ISshClientWrapper client in clients)
         {
-            client.Received(1).Disconnect();
-            client.Received(1).Dispose();
+            // 释放一次即可:拆连接现在整个在 DisposeAsync 里完成,
+            // 不再需要先 Disconnect() 再 Dispose() 那两步(前者是同步 socket 关闭的遗留)。
+            await client.Received(1).DisposeAsync();
         }
     }
 

@@ -5,43 +5,24 @@ using System.Text;
 namespace VelaShell.Infrastructure.Ssh;
 
 /// <summary>
-/// 把 BCL 能加载的私钥(RSA / ECDSA;PKCS#1、PKCS#8、SEC1,含加密 PKCS#8)序列化为
-/// OpenSSH 私钥格式(未加密)。
+/// 把密钥参数序列化成 OpenSSH 私钥格式(未加密)与公钥 blob。
 /// </summary>
 /// <remarks>
-/// Tmds.Ssh 0.23 的私钥解析器【只认 OpenSSH 格式】(-----BEGIN OPENSSH PRIVATE KEY-----)。
-/// 用户导入的传统 PEM —— PKCS#1(-----BEGIN RSA PRIVATE KEY-----)、PKCS#8
-/// (-----BEGIN PRIVATE KEY-----)、加密 PKCS#8 —— 会被判 "Unsupported format" 而当作无可用凭据
-/// 【跳过】,认证以 "skipped: publickey" 失败。这里在连接前把它们转成 OpenSSH 格式补齐兼容性。
-/// Ed25519 传统 PEM 因 BCL 不支持而不在【转换】之列(但 Ed25519 几乎总是 OpenSSH 格式,Tmds 直接可读);
-/// 本应用自己生成的 Ed25519 走 <see cref="SerializeEd25519" />,不经 BCL,不受这条限制。
+/// <para>
+/// <b>只服务「本应用生成密钥」这一件事</b>(<see cref="SshKeyService" />):
+/// 生成出来的文件要能被 <c>ssh-copy-id</c>、被服务端的 <c>authorized_keys</c>、
+/// 被任何别的客户端直接用,所以必须是 OpenSSH 格式。
+/// </para>
+/// <para>
+/// 这里原先还有一半是**导入转换**:<c>TryConvertToOpenSsh</c> 把用户导入的传统 PEM
+/// (PKCS#1 / PKCS#8 / 加密 PKCS#8 / SEC1)转成 OpenSSH 格式,因为上一版底层库
+/// 只认 OpenSSH 格式,其余会被判 "Unsupported format" 而**静默跳过**,
+/// 认证以一句 "skipped: publickey" 失败(用户反馈过「用 PKCS#1 的 id_rsa 登不上」)。
+/// VelaShell.Ssh 原生认这些格式,那一半连同它的两个 BCL 加载器一起删掉了。
+/// </para>
 /// </remarks>
 internal static class OpenSshPrivateKey
 {
-    /// <summary>
-    /// 尝试把任意 PEM 私钥转成 OpenSSH 格式(未加密)。已是 OpenSSH 格式或无法识别时返回
-    /// <see langword="null" />(调用方应原样把文件路径交给 Tmds 处理)。
-    /// </summary>
-    /// <param name="pem">私钥 PEM 文本。</param>
-    /// <param name="passphrase">加密私钥的口令(仅加密 PKCS#8 需要),可为 null/空。</param>
-    public static char[]? TryConvertToOpenSsh(string pem, string? passphrase)
-    {
-        if (pem.TrimStart().StartsWith("-----BEGIN OPENSSH PRIVATE KEY-----", StringComparison.Ordinal))
-        {
-            return null; // 已是 OpenSSH:原样交给 Tmds(它也负责按口令解密 OpenSSH 加密私钥)。
-        }
-        const string comment = "velashell-imported";
-        if (TryLoadRsa(pem, passphrase, out RSAParameters rsa))
-        {
-            return SerializeRsa(rsa, comment).ToCharArray();
-        }
-        if (TryLoadEcdsa(pem, passphrase, out ECParameters ec, out string? sshName, out string? curveName, out int fieldLen))
-        {
-            return SerializeEcdsa(ec, sshName!, curveName!, fieldLen, comment).ToCharArray();
-        }
-        return null; // 未知格式/缺口令:交回原路径,让 Tmds 给出其原生错误。
-    }
-
     /// <summary>把 RSA 私钥参数序列化为 OpenSSH 私钥 PEM(cipher/kdf=none,未加密)。</summary>
     public static string SerializeRsa(RSAParameters p, string comment)
     {
@@ -130,56 +111,12 @@ internal static class OpenSshPrivateKey
         return Wrap(publicBlob, priv);
     }
 
-    // ---- 加载(BCL)----------------------------------------------------------
-
-    private static bool TryLoadRsa(string pem, string? passphrase, out RSAParameters parameters)
-    {
-        parameters = default;
-        try
-        {
-            using var rsa = RSA.Create();
-            ImportPem(rsa, pem, passphrase);
-            parameters = rsa.ExportParameters(includePrivateParameters: true);
-            return true;
-        }
-        catch
-        {
-            return false; // 非 RSA、加密但缺口令、或格式非 BCL 可读 —— 交由后续尝试/回退。
-        }
-    }
-
-    private static bool TryLoadEcdsa(
-        string pem, string? passphrase,
-        out ECParameters parameters, out string? sshName, out string? curveName, out int fieldLen)
-    {
-        parameters = default;
-        sshName = null;
-        curveName = null;
-        fieldLen = 0;
-        try
-        {
-            using var ecdsa = ECDsa.Create();
-            ImportPem(ecdsa, pem, passphrase);
-            (sshName, curveName, fieldLen) = DescribeCurve(ecdsa.KeySize);
-            if (sshName is null)
-            {
-                return false; // 非标准 NIST 曲线:不支持,回退。
-            }
-            parameters = ecdsa.ExportParameters(includePrivateParameters: true);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     /// <summary>
     /// 曲线位数 → (SSH 算法名, SSH 曲线名, 坐标定长)。非标准 NIST 曲线返回一组 null / 0。
     /// </summary>
     /// <remarks>
-    /// 导入转换与生成两条路都要这张表,放在一处 —— P-521 的坐标是 <b>66</b> 字节(521 位向上取整),
-    /// 不是 65,这类数字抄第二遍就是抄错的开始。
+    /// P-521 的坐标是 <b>66</b> 字节(521 位向上取整),不是 65 ——
+    /// 这类数字抄第二遍就是抄错的开始,所以只留这一张表。
     /// </remarks>
     public static (string? SshName, string? CurveName, int FieldLength) DescribeCurve(int keySize) =>
         keySize switch

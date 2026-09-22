@@ -5,7 +5,7 @@ namespace VelaShell.Infrastructure.Ftp;
 
 /// <summary>
 /// FluentFTP 异常 → Core 的 <see cref="VelaFtpClientException" /> 族的一处翻译。
-/// 与 SSH 侧的 <c>TmdsSshInterop</c> 同样的约定:具体库的异常类型不得越过 Infrastructure 边界
+/// 与 SSH 侧的 <c>SshInterop</c> 同样的约定:具体库的异常类型不得越过 Infrastructure 边界
 /// (见 docs/架构设计.md 的分层硬规则)。
 /// </summary>
 internal static class FluentFtpInterop

@@ -16,7 +16,7 @@ namespace VelaShell.ViewModels;
 /// 单个终端标签页的视图模型:持有终端模拟器与(可选的)SSH/本地传输,负责连接状态、
 /// 断开/重连、PTY 尺寸同步与命令补全的行跟踪。
 /// </summary>
-public class TerminalTabViewModel : TabViewModel, IDisposable
+public class TerminalTabViewModel : TabViewModel, IAsyncDisposable
 {
     /// <summary>「已复制」回执停留的时长;与连接配置页保持一致。</summary>
     private static readonly TimeSpan CopyFeedbackDuration = TimeSpan.FromSeconds(2);
@@ -30,7 +30,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     /// <summary>
     /// 创建一个拥有终端模拟器但尚未建立实时传输的标签。用于让标签立即以
-    /// “连接中”状态显示;待 shell 流可用时(#17)调用 <see cref="AttachTransport" />,
+    /// “连接中”状态显示;待 shell 流可用时(#17)调用 <see cref="AttachTransportAsync" />,
     /// 重连时同样调用它就地重连(#19)。
     /// </summary>
     public TerminalTabViewModel(ITerminalEmulator terminalEmulator)
@@ -56,11 +56,11 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
         // 工具栏快捷操作:拆除传输但保留标签,
         // 或请求宿主就地重连(#19 流程)。
-        DisconnectCommand = ReactiveCommand.Create(
-            () =>
+        DisconnectCommand = ReactiveCommand.CreateFromTask(
+            async () =>
             {
                 UserRequestedDisconnect = true;
-                DetachTransport();
+                await DetachTransportAsync().ConfigureAwait(true);
                 MarkDisconnected();
             },
             this.WhenAnyValue(x => x.IsConnected)
@@ -97,7 +97,8 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
 
     /// <summary>创建一个标签并立即挂载实时传输(已建立连接的场景)。</summary>
     public TerminalTabViewModel(ITerminalEmulator terminalEmulator, IShellStreamWrapper shellStream)
-        : this(terminalEmulator) => AttachTransport(shellStream ?? throw new ArgumentNullException(nameof(shellStream)));
+        // 新标签上没有旧桥可拆,所以这里直接挂 —— 不需要（构造函数里也无法）await。
+        : this(terminalEmulator) => AttachTransportCore(shellStream ?? throw new ArgumentNullException(nameof(shellStream)));
 
     /// <summary>该标签所属会话的唯一标识,用于与宿主的会话管理关联。</summary>
     public Guid SessionId { get; set; }
@@ -588,7 +589,7 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// 释放标签资源:解绑事件、即时销毁终端模拟器(UI 安全),并把耗时的网络拆除
     /// (取消读循环、关闭 SSH 通道)放到后台线程,避免关闭标签时卡住 UI(#18)。
     /// </summary>
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         if (_disposed)
         {
@@ -612,15 +613,16 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         // Updated 事件处理,不涉及网络 I/O。
         TerminalEmulator.Dispose();
 
-        // 网络拆除(取消读循环、关闭 SSH 通道)最多可能阻塞数秒,因此放到
-        // 调用方(UI)线程之外执行 —— 此时标签已经消失。
-        // 修复了“关闭标签卡住 UI”的问题(#18)。Bridge.Dispose 是幂等的。
+        // 网络拆除(取消读循环、关闭 SSH 通道)是异步的:await 它,不占 UI 线程,
+        // 也不像从前那样 Task.Run 甩出去就不管了 —— 那时标签早就消失,而连接
+        // 还在后台慢慢断,关不干净的会话只能等进程退出。
+        // (#18「关闭标签卡住 UI」修的是同一件事,当时的手段是甩到线程池。)
         SshTerminalBridge? bridge = Bridge;
         if (bridge is not null)
         {
             bridge.Closed -= OnBridgeClosed;
             Bridge = null;
-            Task.Run(bridge.Dispose);
+            await bridge.DisposeAsync().ConfigureAwait(false);
         }
         GC.SuppressFinalize(this);
     }
@@ -770,11 +772,20 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
     /// 会先在后台拆除任何先前的传输,因此它同时充当复用同一标签与回滚
     /// 缓冲区的重连入口(#19)。
     /// </summary>
-    public void AttachTransport(IShellStreamWrapper shellStream)
+    public async ValueTask AttachTransportAsync(IShellStreamWrapper shellStream)
     {
         ArgumentNullException.ThrowIfNull(shellStream);
         ObjectDisposedException.ThrowIf(_disposed, this);
-        DetachTransport();
+
+        // **等旧桥真的拆完**再挂新的:不等的话两条读循环会同时对着同一个模拟器写,
+        // 表现是重连之后屏幕上混进上一条会话的残余输出。
+        await DetachTransportAsync().ConfigureAwait(true);
+        AttachTransportCore(shellStream);
+    }
+
+    /// <summary>挂上一条新传输。调用前必须确保没有旧桥。</summary>
+    private void AttachTransportCore(IShellStreamWrapper shellStream)
+    {
         UserRequestedDisconnect = false;
         RemoteShellExited = false;
         ShellStream = shellStream;
@@ -816,8 +827,14 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         }
     }
 
-    /// <summary>在 UI 线程外拆除当前传输,同时保留标签与缓冲区完好。</summary>
-    public void DetachTransport()
+    /// <summary>拆除当前传输,同时保留标签与缓冲区完好。</summary>
+    /// <remarks>
+    /// 原先是 <c>Task.Run(bridge.Dispose)</c> —— 因为那时拆桥是同步阻塞的,
+    /// 在 UI 线程上做会卡住(#18)。现在拆桥本身是异步的:直接 await,
+    /// **拆完才返回**。这一点对重连这条路很重要 —— <see cref="AttachTransportAsync" />
+    /// 会先调它再挂新桥,不等旧桥收完就挂新的,两条读循环会同时对着同一个模拟器写。
+    /// </remarks>
+    public async ValueTask DetachTransportAsync()
     {
         SshTerminalBridge? bridge = Bridge;
         if (bridge is null)
@@ -829,8 +846,8 @@ public class TerminalTabViewModel : TabViewModel, IDisposable
         ShellStream = null;
         _started = false;
 
-        // Bridge.Dispose 也会释放 shell 流;放到调用方线程之外执行。
-        Task.Run(bridge.Dispose);
+        // 拆桥也会释放 shell 流。
+        await bridge.DisposeAsync().ConfigureAwait(false);
     }
 
     private void OnBridgeClosed(ShellCloseReason reason)

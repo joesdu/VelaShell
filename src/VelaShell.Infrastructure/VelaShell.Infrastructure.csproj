@@ -6,6 +6,22 @@
 
   <ItemGroup>
     <ProjectReference Include="..\VelaShell.Core\VelaShell.Core.csproj" />
+    <!--
+      ⚠️ **跨仓库的工程引用,是过渡形态,不能这样合进 main。**
+
+      VelaShell.Ssh 是自研的 SSH 库(VelaShellLabs/velashell-ssh),用来替换 Tmds.Ssh。
+      它还没发 NuGet,所以这里先按「两个仓库是平级目录」直接引工程 ——
+      本机改库、改宿主可以一起编、一起跑,不必每次重打包。
+
+      代价有两条,合之前必须先解掉:
+        · CI 上 velashell-ssh 没有 checkout,这一行会让编译直接失败;
+        · Release 会签名(src/Directory.Build.props),而被引工程没签,会报 CS8002。
+
+      正路是等 velashell-ssh 发一版 NuGet,把这里换回 PackageReference
+      (与插件 SDK 同一条规矩:AGENTS.md「插件 SDK 一律走 NuGet 包」)。
+      在那之前这条分支只在本机跑。
+    -->
+    <ProjectReference Include="..\..\..\velashell-ssh\src\VelaShell.Ssh\VelaShell.Ssh.csproj" />
     <!-- 插件契约程序集。取 nuget.org 上的正式包,版本 = 根 Directory.Build.props 的
          VelaSdkVersion(由 joesdu/velashell-plugin-toolchain 发布)。 -->
     <PackageReference Include="VelaShell.PluginSdk" />
@@ -15,7 +31,6 @@
     <PackageReference Include="FluentFTP" />
     <PackageReference Include="MaxMind.Db" />
     <PackageReference Include="SonnetDB.Core" />
-    <PackageReference Include="Tmds.Ssh" />
     <!-- 仅用于 Ed25519 密钥生成(SshKeyService):BCL 至今没有 Ed25519。见中央包版本处的注释。 -->
     <PackageReference Include="BouncyCastle.Cryptography" />
     <!-- DPAPI(CurrentUser)包裹本地 AES 密钥文件;仅 Windows 运行时可用,其余平台已代码守卫。 -->
@@ -23,7 +38,7 @@
   </ItemGroup>
 
   <!-- 见 VelaShell.Terminal.csproj 同处注释:签名构建(Release)省略友元声明,非签名构建保留。
-       本项目的友元是 VelaShell.Core.Tests(Tmds.Ssh 包装类与异常翻译的白盒测试放在那边)。 -->
+       本项目的友元是 VelaShell.Core.Tests(SSH 包装类与异常翻译的白盒测试放在那边)。 -->
   <ItemGroup Condition="'$(SignAssembly)' != 'true'">
     <InternalsVisibleTo Include="VelaShell.Core.Tests" />
     <InternalsVisibleTo Include="VelaShell.Infrastructure.Tests" />

@@ -31,11 +31,11 @@ public sealed record PortForwardRequest(
 
 /// <summary>
 /// 一条运行中的端口转发的句柄,由 <see cref="ISshClientWrapper.StartPortForwardAsync" /> 返回。
-/// 创建即启动;<see cref="Stop" />/Dispose 停止监听并从客户端摘除(幂等,底层已随
+/// 创建即启动;<see cref="IAsyncDisposable.DisposeAsync" /> 停止监听并从客户端摘除(幂等,底层已随
 /// 连接失效时静默成功)。转发通道内的错误(如目标拒绝连接)不会停掉监听端口,
 /// 经 <see cref="ChannelError" /> 上报供界面展示。
 /// </summary>
-public interface IPortForwardHandle : IDisposable
+public interface IPortForwardHandle : IAsyncDisposable
 {
     /// <summary>转发是否处于已启动(监听中)状态。</summary>
     bool IsStarted { get; }
@@ -54,7 +54,4 @@ public interface IPortForwardHandle : IDisposable
 
     /// <summary>转发通道错误(每个经过的连接失败时触发,监听端口本身仍在)。</summary>
     event Action<Exception>? ChannelError;
-
-    /// <summary>停止监听并从客户端摘除该转发(幂等)。</summary>
-    void Stop();
 }

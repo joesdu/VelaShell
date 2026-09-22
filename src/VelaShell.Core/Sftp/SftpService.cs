@@ -284,7 +284,7 @@ public class SftpService : ISftpService
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
 
-        // 先 Exists 探测再创建。与直觉相反,Tmds.Ssh 的 CreateDirectory 对"已存在的目录"会抛
+        // 先 Exists 探测再创建。与直觉相反,SFTP 的 MKDIR 对"已存在的目录"会回错误而抛
         // SftpException(并非无声成功):重复上传同一文件夹树(与服务端冲突的常见场景)时,
         // 每个已存在子目录都会甩出一条首发异常,上千文件的文件夹重传即刷出上百条异常噪声。
         // ExistsAsync 走 GetAttributes(不存在返回 null、零异常控制流),先探测即可对"已存在"
@@ -322,6 +322,25 @@ public class SftpService : ISftpService
             // 部分 SFTP 服务器以 SSH_FX_BAD_MESSAGE(表现为"bad message")拒绝普通的 SSH_FXP_RENAME,
             // 跨目录移动时常见。改用被广泛支持的 posix-rename@openssh.com 扩展重试;若该路径也不可用,
             // 则抛出原本更具信息量的错误。
+            //
+            // ⚠️ 目标已存在时**不回退**:posix-rename 的语义是原子覆盖,而普通 rename 失败的
+            // 最常见原因恰恰就是「目标已存在」。回退过去等于把用户「改名撞了同名文件」
+            // 变成静默覆盖 —— 数据就这么没了。上一版底层库的 posix-rename 是假的(转调普通
+            // rename),所以这个坑以前没现形。
+            bool targetExists;
+            try
+            {
+                targetExists = await client.ExistsAsync(newPath, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception probe) when (probe is not OperationCanceledException)
+            {
+                // 连存在与否都问不出来,就别冒覆盖的险。
+                targetExists = true;
+            }
+            if (targetExists)
+            {
+                throw;
+            }
             try
             {
                 await client.PosixRenameFileAsync(oldPath, newPath, cancellationToken).ConfigureAwait(false);
@@ -564,21 +583,22 @@ public class SftpService : ISftpService
         {
             return;
         }
-        await Task.Run(() =>
+        // 这里原先要 Task.Run 把释放甩到线程池 —— 因为那时释放是同步阻塞的,
+        // 在调用线程上做会卡住关标签页这个动作。现在释放本身就是异步的,直接 await。
+        await DisposeQuietlyAsync(client).ConfigureAwait(false);
+    }
+
+    /// <summary>尽力拆解一个 SFTP 客户端;标签页已经不在了,失败没有补救动作。</summary>
+    private static async ValueTask DisposeQuietlyAsync(ISftpClientWrapper client)
+    {
+        try
         {
-            try
-            {
-                if (client.IsConnected)
-                {
-                    client.Disconnect();
-                }
-                client.Dispose();
-            }
-            catch
-            {
-                // 尽力拆解;标签页已经不在了。
-            }
-        }, cancellationToken).ConfigureAwait(false);
+            await client.DisposeAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // 尽力拆解。
+        }
     }
 
     /// <summary>断开并释放所有缓存的 SFTP 客户端,尽力清理全部会话资源。</summary>
@@ -588,21 +608,9 @@ public class SftpService : ISftpService
         _connectionService.SessionDisconnected -= OnSshSessionDisconnected;
         foreach (KeyValuePair<Guid, ISftpClientWrapper> kvp in _sftpClients)
         {
-            try
-            {
-                if (kvp.Value.IsConnected)
-                {
-                    kvp.Value.Disconnect();
-                }
-                kvp.Value.Dispose();
-            }
-            catch
-            {
-                // 释放期间的尽力清理
-            }
+            await DisposeQuietlyAsync(kvp.Value).ConfigureAwait(false);
         }
         _sftpClients.Clear();
-        await ValueTask.CompletedTask.ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }
 

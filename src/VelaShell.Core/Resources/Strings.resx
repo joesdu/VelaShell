@@ -4876,4 +4876,40 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="SetTransfer_FastRecursiveDeleteDesc" xml:space="preserve">
     <value>SSH sessions only: one command instead of one SFTP round trip per file. Falls back to the SFTP walk if the command is unavailable or fails. The confirmation prompt is unchanged, but per-file progress is not available.</value>
   </data>
+  <data name="SshErr_DnsFailure" xml:space="preserve">
+    <value>Could not resolve the host name.</value>
+  </data>
+  <data name="SshErr_TcpRefused" xml:space="preserve">
+    <value>The connection was refused: nothing is listening on that port.</value>
+  </data>
+  <data name="SshErr_TcpTimeout" xml:space="preserve">
+    <value>The TCP connection timed out.</value>
+  </data>
+  <data name="SshErr_TcpUnreachable" xml:space="preserve">
+    <value>The network or host is unreachable.</value>
+  </data>
+  <data name="SshErr_ProxyAuthRequired" xml:space="preserve">
+    <value>The proxy requires authentication, but no proxy credentials are configured.</value>
+  </data>
+  <data name="SshErr_NotAnSshServer" xml:space="preserve">
+    <value>The remote end is not an SSH server (no valid protocol identification was received).</value>
+  </data>
+  <data name="SshErr_VersionMismatch" xml:space="preserve">
+    <value>The server speaks an unsupported SSH protocol version.</value>
+  </data>
+  <data name="SshErr_HostKeyChanged" xml:space="preserve">
+    <value>The server&apos;s host key does not match the recorded one.</value>
+  </data>
+  <data name="SshErr_Timeout" xml:space="preserve">
+    <value>The connection timed out.</value>
+  </data>
+  <data name="SshErr_KeepAliveTimeout" xml:space="preserve">
+    <value>The server stopped answering keep-alive probes; the connection is considered dead.</value>
+  </data>
+  <data name="SshErr_ClosedByPeer" xml:space="preserve">
+    <value>The server closed the connection.</value>
+  </data>
+  <data name="SshErr_Disconnected" xml:space="preserve">
+    <value>The server ended the session.</value>
+  </data>
 </root>

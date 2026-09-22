@@ -32,6 +32,11 @@
     <Project Path="src/VelaShell.Terminal/VelaShell.Terminal.csproj" />
     <Project Path="src/VelaShell/VelaShell.csproj" />
   </Folder>
+  <!-- 过渡:VelaShell.Ssh 还没发 NuGet,跨仓库工程引用必须登记在解决方案里,
+       否则 VS 的 NuGet 还原拿不到它的项目信息。换回 PackageReference 后删掉这个文件夹。 -->
+  <Folder Name="/external/">
+    <Project Path="../velashell-ssh/src/VelaShell.Ssh/VelaShell.Ssh.csproj" />
+  </Folder>
   <Folder Name="/plugins/">
     <File Path="plugins/Directory.Build.props" />
     <File Path="plugins/Directory.Build.targets" />

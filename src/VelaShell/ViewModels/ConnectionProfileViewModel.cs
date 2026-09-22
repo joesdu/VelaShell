@@ -734,8 +734,8 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
 
     /// <summary>私钥与口令两个字段是否可见:密钥认证与证书认证都要用到它们。</summary>
     /// <remarks>
-    /// 证书页不是另起一套表单,而是密钥页再加一个证书文件字段 —— Tmds 的
-    /// CertificateCredential 本就是「证书 + 匹配私钥」两件套,签名始终由私钥出。
+    /// 证书页不是另起一套表单,而是密钥页再加一个证书文件字段 —— 证书凭据的
+    /// 「证书 + 匹配私钥」本就是两件套,签名始终由私钥出。
     /// 共用同一块面板,校验与浏览按钮也就只有一份,不会两边各改各的。
     /// </remarks>
     public bool ShowsPrivateKeyFields => IsKeyAuth || IsCertAuth;

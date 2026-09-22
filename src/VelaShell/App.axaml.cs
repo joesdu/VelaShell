@@ -482,14 +482,14 @@ public class App : Application
     /// 退出时先把还开着的终端标签拆掉,再去释放容器。
     /// </summary>
     /// <remarks>
-    /// 关标签这条路上,<see cref="SshTerminalBridge.Dispose" /> 是按顺序来的:先释放 shell 流
+    /// 关标签这条路上,<see cref="SshTerminalBridge.DisposeAsync" /> 是按顺序来的:先释放 shell 流
     /// (挂起的读取以"通道关闭"醒来,包装层吞成 EOF),再取消令牌、等读写循环收摊。退出时却
     /// 谁也没走这一步 —— 容器一释放,<c>SshConnectionService</c> 直接把底下的 <c>SshClient</c>
     /// 全 Dispose 掉,而读循环还挂在各自的通道上。于是每个开着的标签都要在退出时炸出一串
     /// <c>SshChannelClosedException</c> / <c>IOException</c>,远端看到的也不是一次干净的通道
     /// 关闭,而是连接被直接掐断。
     /// <para>
-    /// 这里补上那一步:并发拆桥(每个 <c>Dispose</c> 内部最多等 3 秒),整体再压一个 2 秒的
+    /// 这里补上那一步:并发拆桥(各自的 <c>DisposeAsync</c> 同时起、一起等),整体压一个 2 秒的
     /// 总预算 —— 退出路径绝不为一条无响应的连接挂住。超时未拆完的部分随进程退出由系统回收,
     /// 与改动前的行为一致。
     /// </para>
@@ -508,7 +508,10 @@ public class App : Application
         }
         try
         {
-            Task.WhenAll([.. bridges.Select(bridge => Task.Run(bridge.Dispose))])
+            // 原先是 Task.Run(bridge.Dispose) —— 那时拆桥是同步阻塞的,要并发就只能
+            // 各占一条线程池线程。现在拆桥本身是异步的:同时起这些 ValueTask 再一起等,
+            // 一条线程都不额外占。整体仍压一个 2 秒预算 —— 退出路径绝不为一条无响应的连接挂住。
+            Task.WhenAll([.. bridges.Select(bridge => bridge.DisposeAsync().AsTask())])
                 .Wait(TimeSpan.FromSeconds(2));
         }
         catch
@@ -518,8 +521,8 @@ public class App : Application
     }
 
     /// <summary>
-    /// 关闭时释放 DI 容器。拆除过程会断开所有仍在线的 SSH/SFTP 会话 —— 每次 <c>Disconnect()</c>
-    /// 都是一次阻塞的网络往返 —— 并冲刷 SonnetDB 引擎。旧代码在 UI 线程上通过 <c>Dispose()</c>
+    /// 关闭时释放 DI 容器。拆除过程会断开所有仍在线的 SSH/SFTP 会话 —— 每次拆连接
+    /// 都是一次网络往返 —— 并冲刷 SonnetDB 引擎。旧代码在 UI 线程上通过 <c>Dispose()</c>
     /// 同步执行这一步,因此一个缓慢或无响应的连接会让进程在窗口关闭后仍然存活很久。
     /// 现改为带短超时的异步释放(这也是 IAsyncDisposable 服务的正确处置路径),
     /// 使应用能及时退出;进程拆除时任何仍在关闭中的套接字由操作系统回收。
