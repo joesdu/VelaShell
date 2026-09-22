@@ -17,6 +17,9 @@ RUN apk add --no-cache openssh bash zsh fish dash \
     && printf '/bin/bash\n/bin/zsh\n/usr/bin/fish\n/usr/bin/dash\n/bin/ash\n' >> /etc/shells
 
 # sshd 整份重写:Alpine 自带的那份没有 sshd_config.d 的 Include,追加不如直写清楚。
+# PerSourcePenalties 必须关:Docker 的 NAT 让所有连接都来自同一个网关地址,而每个用例的
+# RequireContainer 都先开一条「不认证就关」的 TCP 探测 —— OpenSSH 9.8+ 把它记为 noauth 罚分,
+# 攒满之后整批连接在版本交换前就被丢掉。症状是跑完一轮紧接着再跑就全红,而且跨实现串味。
 RUN printf '%s\n' \
     'Port 2222' \
     'PermitRootLogin no' \
@@ -26,6 +29,8 @@ RUN printf '%s\n' \
     'PrintMotd no' \
     'AcceptEnv LANG LC_*' \
     'Subsystem sftp internal-sftp' \
+    'PerSourcePenalties no' \
+    'MaxStartups 100' \
     > /etc/ssh/sshd_config
 
 RUN set -eu; \
