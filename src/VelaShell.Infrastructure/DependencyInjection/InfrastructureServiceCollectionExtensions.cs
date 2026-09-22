@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Tmds.Ssh;
 using VelaShell.Core.Data;
 using VelaShell.Core.Diagnostics;
 using VelaShell.Core.Ftp;
@@ -26,6 +25,8 @@ using VelaShell.Infrastructure.Plugins.Protocols;
 using VelaShell.Infrastructure.Sftp;
 using VelaShell.Infrastructure.Ssh;
 using VelaShell.Infrastructure.Tunnels;
+using VelaShell.Ssh.Session;
+using VelaShell.Ssh.Sftp;
 using VelaConnectionInfo = VelaShell.Core.Models.ConnectionInfo;
 
 namespace VelaShell.Infrastructure.DependencyInjection;
@@ -181,16 +182,16 @@ public static class InfrastructureServiceCollectionExtensions
             return new SftpService(connSvc, session =>
             {
                 ISshClientWrapper? wrapper = connSvc.GetClient(session.SessionId);
-                if (wrapper is not TmdsSshClientWrapper tmds)
-                    throw new InvalidOperationException("SFTP requires Tmds.Ssh backend.");
-                return new TmdsSftpClientWrapper(async () =>
+                if (wrapper is not VelaSshClientWrapper ssh)
+                    throw new InvalidOperationException("SFTP requires the VelaShell.Ssh backend.");
+                return new VelaSftpClientWrapper(async ct =>
                 {
                     // SFTP 复用主连接的 SSH 通道。主连接不在时不得偷偷另建连接:
                     // 新连接无人持有、无人释放(泄漏),且会绕过用户可见的连接生命周期。
-                    SshClient inner = tmds.InnerClient
+                    SshConnection inner = ssh.InnerConnection
                         ?? throw new VelaSshConnectionException(
                             "SSH connection is not established; cannot open SFTP channel.");
-                    return await inner.OpenSftpClientAsync().ConfigureAwait(false);
+                    return await SftpFileSystem.ConnectAsync(inner, cancellationToken: ct).ConfigureAwait(false);
                 });
             }, settings);
         });
@@ -230,278 +231,25 @@ public static class InfrastructureServiceCollectionExtensions
         return services;
     }
 
-    // ---- Settings helpers ----
-
-    private static TimeSpan ConnectTimeout(ISettingsService? s)
-    {
-        try { return TimeSpan.FromSeconds(Math.Clamp(s.GetSnapshotBlocking().General.ConnectTimeoutSeconds, 1, 600)); }
-        catch { return TimeSpan.FromSeconds(10); }
-    }
+    // ---- SSH 客户端工厂 ----
 
     /// <summary>
-    /// 保活心跳间隔:本次连接有会话级覆盖就用它,否则跟随全局设置。
+    /// 按一份连接信息装配出 SSH 包装器。
     /// </summary>
     /// <remarks>
-    /// 覆盖值随 <see cref="VelaConnectionInfo.KeepAliveSeconds" /> 一路带下来(F-06)。
-    /// 跳板链上每一跳各带各的 —— 这一层手里只有一个 <c>ConnectionInfo</c>,
-    /// 它自己无从知道当前这一跳对应哪条配置。
+    /// 原先这里跟着四个私有方法（<c>BuildSshClientSettings</c> / <c>AddCredential</c> /
+    /// <c>BuildProxyChain</c> / <c>AddHostAuthentication</c>，约 230 行），把「怎么连上去」
+    /// 整个摊在 DI 注册文件里。它们已经搬进 <see cref="SshConnectionAssembler" />：
+    /// 那本来就是同一件事的几个部分，而放在这里让人要在两百行里跳着找。
     /// </remarks>
-    private static TimeSpan KeepAliveInterval(ISettingsService? s, VelaConnectionInfo? ci = null)
-    {
-        try
-        {
-            int sec = ci?.KeepAliveSeconds ?? s.GetSnapshotBlocking().General.KeepAliveSeconds;
-            return sec > 0 ? TimeSpan.FromSeconds(sec) : TimeSpan.Zero;
-        }
-        catch { return TimeSpan.Zero; }
-    }
-
-    private static SecurityOptions GetSecurityOptions(ISettingsService? s)
-    {
-        try { return s.GetSnapshotBlocking().Security; }
-        catch { return new(); }
-    }
-
-    // ---- SSH client factory ----
-
-    private static TmdsSshClientWrapper CreateSshClientWrapper(
+    private static VelaSshClientWrapper CreateSshClientWrapper(
         VelaConnectionInfo ci, IHostKeyService? hostKey, ISettingsService? settings,
         IHostKeyPrompt? prompt, ISecurityAlertService? alerts, IProxyResolver? proxyResolver = null)
     {
-        // 指纹裁决的原因牌:链上每一跳的 HostAuthentication 都写同一块,
-        // 连接失败时由包装器读出来(见 HostKeyPromptOutcome)。
-        HostKeyPromptOutcome hostKeyOutcome = new();
-        SshClientSettings s = BuildSshClientSettings(ci, hostKey, settings, prompt, alerts, hostKeyOutcome,
-            out SshClientSettings firstHop);
-        // 网络代理作用于首个真实 TCP 出站(有跳板链时是最内层跳板,其余各跳都在 SSH 通道里);
-        // 中继在 ConnectAsync 时按当前设置决定,故这里只传目标与设置引用。
-        VelaConnectionInfo firstCi = ci;
-        while (firstCi.JumpHost is not null)
-        {
-            firstCi = firstCi.JumpHost;
-        }
-        return new TmdsSshClientWrapper(s, firstHop, firstCi.Host, firstCi.Port, proxyResolver, hostKeyOutcome);
-    }
+        SshConnectionAssembler.Assembled assembled =
+            SshConnectionAssembler.Create(ci, hostKey, settings, prompt, alerts, proxyResolver);
 
-    private static SshClientSettings BuildSshClientSettings(
-        VelaConnectionInfo ci, IHostKeyService? hostKey, ISettingsService? settings,
-        IHostKeyPrompt? prompt, ISecurityAlertService? alerts, HostKeyPromptOutcome outcome,
-        out SshClientSettings firstHopSettings)
-    {
-        var s = new SshClientSettings($"{ci.Username}@{ci.Host}")
-        {
-            Port = ci.Port,
-            ConnectTimeout = ConnectTimeout(settings),
-            KeepAliveInterval = KeepAliveInterval(settings, ci),
-
-            // 连接必须只由 TmdsSshClientWrapper.ConnectAsync 显式发起。
-            // Tmds.Ssh 的 AutoConnect 默认为 true:会话掉线后,任何一次后续操作
-            // (SFTP 开通道、stat、列目录……)都会各自静默重连一次,失败就抛一发
-            // ConnectFailedException。上传一个文件夹时这是"每个文件一次隐式重连"
-            // ——调试输出被异常刷屏,用户却只看到操作莫名变慢/失败。
-            // 关掉它:会话不在时立刻抛出明确错误,由上层的连接生命周期负责重连。
-            AutoConnect = false,
-        };
-        AddCredential(s, ci);
-
-        // ProxyJump
-        firstHopSettings = s;
-        if (ci.JumpHost is not null)
-            s.Proxy = BuildProxyChain(ci.JumpHost, hostKey, settings, prompt, alerts, outcome, out firstHopSettings);
-
-        // Host key verification
-        if (hostKey is not null)
-            AddHostAuthentication(s, ci.Host, ci.Port, hostKey, settings, prompt, alerts, outcome);
-
-        return s;
-    }
-
-    internal static void AddCredential(SshClientSettings s, VelaConnectionInfo ci)
-    {
-        // 用用户配置的凭据【完全替换】Tmds.Ssh 的默认凭据列表,而非 Add 追加。
-        // SshClientSettings 的默认 Credentials 本就非空,含 SshAgentCredentials 与 ~/.ssh 默认私钥:
-        // 只 Add(且 `??= []` 因非空成为空操作)会保留它们,于是每次连接都先尝试 SSH Agent 认证。
-        // Windows 上 Tmds 读 SSH_AUTH_SOCK 要求命名管道 \\.\pipe\...,而本机该变量常指向 msys/WSL/Git
-        // 的 Unix 套接字路径,SshAgent.ConnectAsync 便抛 ArgumentException
-        // ("SSH Agent path on Windows must be a named pipe ...")——被 Tmds 吞掉不影响连接,但每次连接
-        // 稳定刷首发异常(用户在 VS 输出看到的正是这个)。VelaShell 没有"用 agent/默认私钥"这一 UI
-        // 选项,静默回退本就非预期:只用用户显式选择的凭据,既除噪声又避免误用别的密钥。
-        Credential credential = ci.AuthMethod switch
-        {
-            AuthMethod.Password => new PasswordCredential(ci.Password ?? ""),
-            AuthMethod.PrivateKey => BuildPrivateKeyCredential(ci.PrivateKeyPath!, ci.PrivateKeyPassphrase),
-            // 证书认证:证书本身不签名,签名仍由私钥出 —— Tmds 的 CertificateCredential 也正是
-            // 「证书文件 + 匹配的 PrivateKeyCredential」两件套,所以这里整个复用私钥那一路,
-            // 连它的 PEM→OpenSSH 兼容转换一起继承。
-            AuthMethod.Certificate => new CertificateCredential(
-                ci.CertificatePath!,
-                BuildPrivateKeyCredential(ci.PrivateKeyPath!, ci.PrivateKeyPassphrase)),
-            _ => throw new ArgumentOutOfRangeException(nameof(ci), ci.AuthMethod, "Unsupported authentication method.")
-        };
-        s.Credentials = [credential];
-    }
-
-    /// <summary>
-    /// 构造私钥凭据,兼容传统 PEM 格式。Tmds.Ssh 只认 OpenSSH 私钥格式;用户导入的
-    /// PKCS#1(-----BEGIN RSA PRIVATE KEY-----)、PKCS#8、加密 PKCS#8 会被判 Unsupported format
-    /// 而【跳过】,认证以 "skipped: publickey" 失败。这里先用 BCL 读入并转成 OpenSSH 格式再交给 Tmds;
-    /// 已是 OpenSSH 格式或无法读取/转换时,原样交回文件路径,让 Tmds 按其原生路径处理并给出错误。
-    /// <para>
-    /// 返回类型收窄到 <see cref="PrivateKeyCredential" /> 而不是 <see cref="Credential" />:
-    /// 证书认证要把它当作内层凭据塞进 <see cref="CertificateCredential" />,那个构造函数只收这个类型。
-    /// </para>
-    /// </summary>
-    internal static PrivateKeyCredential BuildPrivateKeyCredential(string path, string? passphrase)
-    {
-        try
-        {
-            string pem = File.ReadAllText(path);
-            if (OpenSshPrivateKey.TryConvertToOpenSsh(pem, passphrase) is { } openSshKey)
-            {
-                // 转换后的 OpenSSH 私钥是未加密的(口令已在转换时用掉),故不再传口令。
-                return new PrivateKeyCredential(openSshKey, null, path);
-            }
-        }
-        catch
-        {
-            // 读文件/转换失败绝不阻断:退回原路径,由 Tmds 加载并报其原生错误。
-        }
-        return string.IsNullOrWhiteSpace(passphrase)
-            ? new PrivateKeyCredential(path, null, null)
-            : new PrivateKeyCredential(path, passphrase, null);
-    }
-
-    /// <summary>
-    /// 给一跳装上主机指纹校验。三条出路:已信任直接放行、按设置弹窗裁决、fail-closed 拒绝。
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// **指纹变更默认走弹窗而不是直接拒**(#476)。「换了台服务器、IP 没变」是运维里最常见的
-    /// 正当变更,旧行为把它当成一条连接错误抛出来,用户看到的只有一句英文的
-    /// <c>UntrustedPeer</c>,唯一的出路是去 <c>.velashell</c> 里手动删记录 —— 而其它 SSH 客户端
-    /// 在这里弹的是一个「接受并覆盖 / 拒绝」的框。要严格 fail-closed 的,把
-    /// 「指纹变更时阻断并告警」打开即可。
-    /// </para>
-    /// <para>
-    /// 被拒时把**人话**写进 <paramref name="outcome" />:回调只能返回 true/false,
-    /// 原因得另外递给包装器,否则用户拿到的还是那句 <c>UntrustedPeer</c>。
-    /// </para>
-    /// </remarks>
-    private static void AddHostAuthentication(
-        SshClientSettings s, string host, int port, IHostKeyService hostKey,
-        ISettingsService? ss, IHostKeyPrompt? prompt, ISecurityAlertService? alerts,
-        HostKeyPromptOutcome outcome)
-    {
-        SecurityOptions security = GetSecurityOptions(ss);
-        s.HostAuthentication = async (ctx, ct) =>
-        {
-            string fingerprint = ctx.ConnectionInfo.ServerKey.Key.SHA256FingerPrint;
-            string keyType = ctx.ConnectionInfo.ServerKey.Key is { } k ? k.GetType().Name : "unknown";
-
-            HostKeyVerification verification = await hostKey
-                .VerifyHostKeyAsync(host, port, keyType, fingerprint, ct).ConfigureAwait(false);
-            string target = $"{host}:{port}";
-
-            if (verification == HostKeyVerification.Trusted
-                || HostTrustOnceCache.IsTrusted(host, port, fingerprint))
-            {
-                return true;
-            }
-
-            // 变更时把旧指纹取出来,弹窗与错误文案都要摆它 —— 用户靠两把对照才判断得了
-            // 这是自己刚重装的那台,还是路上有人。读不到就当没有,绝不因此阻断判定。
-            string? knownFingerprint = null;
-            if (verification == HostKeyVerification.Changed)
-            {
-                try
-                {
-                    knownFingerprint = (await hostKey.FindKnownHostAsync(host, port, ct).ConfigureAwait(false))
-                        ?.Fingerprint;
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    System.Diagnostics.Trace.WriteLine($"[VelaShell] known_hosts lookup failed: {ex}");
-                }
-            }
-
-            bool firstSeen = verification == HostKeyVerification.Unknown;
-            bool askUser = prompt is not null
-                           && (firstSeen ? security.ConfirmFirstFingerprint : !security.BlockOnFingerprintChange);
-            HostKeyDecision decision = askUser
-                ? await prompt!.DecideAsync(host, port, keyType, fingerprint, verification, knownFingerprint)
-                // 不问的两条默认:首次连接按 TOFU 记下,指纹变更 fail-closed 拒掉。
-                : firstSeen
-                    ? HostKeyDecision.TrustPermanently
-                    : HostKeyDecision.Reject;
-
-            if (decision == HostKeyDecision.Reject)
-            {
-                alerts?.RaiseAsync("hostkey-rejected",
-                    Strings.Format("KeySvc_AlertFirstRejected", target, fingerprint));
-                outcome.MarkRejected(DescribeRejection(target, fingerprint, knownFingerprint, verification, askUser));
-                return false;
-            }
-            if (decision == HostKeyDecision.TrustPermanently)
-            {
-                await hostKey.TrustHostKeyAsync(host, port, keyType, fingerprint, ct);
-                if (verification == HostKeyVerification.Changed && alerts is not null)
-                {
-                    await alerts.RaiseAsync("hostkey-changed-accepted",
-                        Strings.Format("KeySvc_AlertChangedAccepted", target, fingerprint));
-                }
-            }
-            else if (decision == HostKeyDecision.TrustOnce)
-            {
-                HostTrustOnceCache.Remember(host, port, fingerprint);
-                if (alerts is not null)
-                {
-                    await alerts.RaiseAsync("hostkey-trusted-once",
-                        verification == HostKeyVerification.Changed
-                            ? Strings.Format("KeySvc_AlertChangedTrustOnce", target, fingerprint)
-                            : Strings.Format("KeySvc_AlertFirstTrustOnce", target, fingerprint));
-                }
-            }
-            if (askUser)
-            {
-                // 弹窗期间 Tmds 的连接超时照样在跑;裁决已经生效,包装器据此补连一次。
-                outcome.MarkApproved();
-            }
-            return true;
-        };
-    }
-
-    /// <summary>被拒时给用户看的那句话:说清是哪台、哪把指纹、以及下一步去哪操作。</summary>
-    private static string DescribeRejection(
-        string target, string fingerprint, string? knownFingerprint,
-        HostKeyVerification verification, bool askedUser) =>
-        verification == HostKeyVerification.Changed && !askedUser
-            // 阻断开关开着:用户根本没被问过,得告诉他这是策略拦的,以及两条出路。
-            ? Strings.Format("Msg_HostKeyChangedBlocked", target, knownFingerprint ?? "-", fingerprint)
-            : Strings.Format("Msg_HostKeyRejected", target, fingerprint);
-
-    private static SshProxy BuildProxyChain(VelaConnectionInfo jumpHost,
-        IHostKeyService? hostKey, ISettingsService? ss,
-        IHostKeyPrompt? prompt, ISecurityAlertService? alerts, HostKeyPromptOutcome outcome,
-        out SshClientSettings firstHopSettings)
-    {
-        var proxy = new SshClientSettings($"{jumpHost.Username}@{jumpHost.Host}")
-        {
-            Port = jumpHost.Port,
-            ConnectTimeout = ConnectTimeout(ss),
-        };
-        AddCredential(proxy, jumpHost);
-
-        // 最内层跳板(无自己的跳板)才是真实 TCP 出站的那一跳。
-        firstHopSettings = proxy;
-        if (jumpHost.JumpHost is not null)
-            proxy.Proxy = BuildProxyChain(jumpHost.JumpHost, hostKey, ss, prompt, alerts, outcome, out firstHopSettings);
-
-        // 跳板与终点走同一套策略。此前这里是另写的一段:未知 / 变更一律返回 false,
-        // 既不弹窗也不说原因 —— 于是「只当跳板、从没单独连过的机器」第一次用就连不上,
-        // 而跳板换了机器更是一条查不出所以然的失败。
-        if (hostKey is not null)
-            AddHostAuthentication(proxy, jumpHost.Host, jumpHost.Port, hostKey, ss, prompt, alerts, outcome);
-
-        return new SshProxy(proxy);
+        return new VelaSshClientWrapper(
+            assembled.Connect, assembled.ConnectTimeout, assembled.DialerLifetime);
     }
 }

@@ -56,13 +56,13 @@ VelaShell 是用 **.NET 11 + Avalonia** 写的桌面终端应用，Windows / Lin
   不依赖任何已停维护的第三方终端控件。选区支持行 / 块两种模式、`Shift+左键` 扩展，
   以及 `Ctrl+Shift+拖拽` 追加的多段不连续选区（可一次复制第 1 行 + 第 3 行）。
 
-- **SSH 栈** —— 基于 [Tmds.Ssh](https://github.com/tmds/Tmds.Ssh)（全托管、async-first）。
-  跳板机由其原生 `SshProxy` 逐跳建链，指纹按各跳逻辑主机分别校验。
+- **SSH 栈** —— 基于自研的 [VelaShell.Ssh](https://github.com/VelaShellLabs/velashell-ssh)（全托管、async-first，MIT）。
+  跳板机以嵌套连接 + `direct-tcpip` 逐跳建链，指纹按各跳逻辑主机分别校验。
   首次连接默认 TOFU 记录指纹，可切换为人工确认；指纹变化立即拒绝连接。
 
-- **隧道的数据面是自研的** —— Tmds.Ssh 把转发的搬运做在库内部、不暴露任何计数，
-  于是本地转发改为自建 `TcpListener` + `direct-tcpip`，动态转发自研 SOCKS5 服务端握手
-  （RFC 1928），远程转发经本机计量监听接力。搬运保留半关闭语义，否则
+- **隧道的数据面也在自研库里** —— 本地 / 动态 / 远程三种转发，连同 SOCKS5 服务端握手
+  （RFC 1928），都由 `VelaShell.Ssh` 自己实现；逐条转发的字节数与并发连接数直接从库里读，
+  宿主不必再套一层计量中继。搬运保留半关闭语义，否则
   「发完请求就 shutdown 再等响应」的协议全部读不到东西。
 
 - **FTP / FTPS** —— 基于 [FluentFTP](https://github.com/robinrodricks/FluentFTP)，
@@ -420,8 +420,8 @@ English in [`en/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/en)
 | | |
 | --- | --- |
 | **运行时 / UI** | .NET 11（`net11.0`，启用预览特性与 `runtime-async`）· Avalonia 12.1 · ReactiveUI |
-| **自研** | VT 终端引擎 · VelaDock 停靠分屏 · 计量端口转发与 SOCKS5 服务端 · 插件运行时（可收集 ALC + 独立宿主进程 + 命名管道 RPC + `.vpx` 打包）· 便携式自更新 |
-| **网络** | Tmds.Ssh（SSH / SFTP / 端口转发 / ProxyJump，全托管 async-first）· FluentFTP（FTP / FTPS） |
+| **自研** | VT 终端引擎 · VelaDock 停靠分屏 · VelaShell.Ssh（SSH / SFTP / 端口转发 / SOCKS5 服务端）· 插件运行时（可收集 ALC + 独立宿主进程 + 命名管道 RPC + `.vpx` 打包）· 便携式自更新 |
+| **网络** | VelaShell.Ssh（自研，SSH / SFTP / 端口转发 / ProxyJump，全托管 async-first）· FluentFTP（FTP / FTPS） |
 | **存储** | SonnetDB —— 嵌入式多模型数据库（文档 + 时序），唯一持久化引擎 |
 | **编辑 / 渲染** | AvaloniaEdit（远程文件编辑器与 AI 输入框）· LiveMarkdown.Avalonia（增量 Markdown，含 Mermaid / LaTeX / SVG 扩展） |
 | **AI** | Microsoft.Extensions.AI（统一模型抽象与 Agent 工具循环）· ModelContextProtocol（MCP 客户端与服务端） |

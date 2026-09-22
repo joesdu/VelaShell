@@ -47,11 +47,11 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void Start_CalledTwice_ThrowsInvalidOperationException()
+    public async Task Start_CalledTwice_ThrowsInvalidOperationException()
     {
         _shellStream.CanRead.Returns(false);
 
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Start();
 
         void Act() => bridge.Start();
@@ -67,7 +67,7 @@ public class TerminalBridgeTests
         _shellStream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
 
         byte[] testData = Encoding.UTF8.GetBytes("hello");
 
@@ -90,7 +90,7 @@ public class TerminalBridgeTests
         _shellStream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
 
         byte[] testData = Encoding.UTF8.GetBytes("hello");
         _terminal.UserInput += Raise.Event<Action<byte[]>>(testData);
@@ -108,7 +108,7 @@ public class TerminalBridgeTests
         _shellStream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Start();
 
         await bridge.DrainWritesAsync();
@@ -119,15 +119,15 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void UserInput_WhenDisposed_DoesNotWriteToShellStream()
+    public async Task UserInput_WhenDisposed_DoesNotWriteToShellStream()
     {
         _shellStream.CanRead.Returns(false);
         _shellStream.CanWrite.Returns(true);
 
         var bridge = new SshTerminalBridge(_terminal, _shellStream);
-        bridge.Dispose();
+        await bridge.DisposeAsync();
 
-        _shellStream.DidNotReceive().WriteAsync(
+        await _shellStream.DidNotReceive().WriteAsync(
             Arg.Any<byte[]>(),
             Arg.Any<int>(),
             Arg.Any<int>(),
@@ -140,7 +140,7 @@ public class TerminalBridgeTests
         _shellStream.CanRead.Returns(false);
         _shellStream.CanWrite.Returns(false);
 
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
 
         byte[] testData = Encoding.UTF8.GetBytes("hello");
         _terminal.UserInput += Raise.Event<Action<byte[]>>(testData);
@@ -155,17 +155,17 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void ReadLoop_WhenCanReadFalse_ExitsImmediately()
+    public async Task ReadLoop_WhenCanReadFalse_ExitsImmediately()
     {
         _shellStream.CanRead.Returns(false);
 
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Start();
 
         // Task.Run in Start() needs time to enter and exit the loop
         Thread.Sleep(200);
 
-        _shellStream.DidNotReceive().ReadAsync(
+        await _shellStream.DidNotReceive().ReadAsync(
             Arg.Any<byte[]>(),
             Arg.Any<int>(),
             Arg.Any<int>(),
@@ -173,13 +173,13 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void ReadLoop_WhenReadReturnsZero_ExitsGracefully()
+    public async Task ReadLoop_WhenReadReturnsZero_ExitsGracefully()
     {
         _shellStream.CanRead.Returns(true);
         _shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(0));
 
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Start();
 
         Thread.Sleep(200);
@@ -188,7 +188,7 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void ReadLoop_WhenExceptionOccurs_FiresErrorEvent()
+    public async Task ReadLoop_WhenExceptionOccurs_FiresErrorEvent()
     {
         var expectedException = new IOException("connection lost");
         Exception? capturedError = null;
@@ -197,7 +197,7 @@ public class TerminalBridgeTests
         _shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(expectedException);
 
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Error += ex => capturedError = ex;
         bridge.Start();
 
@@ -207,7 +207,7 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void Dispose_CancelsReadLoopAndDisposesStream()
+    public async Task Dispose_CancelsReadLoopAndDisposesStream()
     {
         _shellStream.CanRead.Returns(true);
 
@@ -225,20 +225,20 @@ public class TerminalBridgeTests
 
         Thread.Sleep(100);
 
-        bridge.Dispose();
+        await bridge.DisposeAsync();
 
-        _shellStream.Received().Dispose();
+        await _shellStream.Received().DisposeAsync();
     }
 
     [TestMethod]
-    public void ReadLoop_WhenRemoteCloses_FiresClosed()
+    public async Task ReadLoop_WhenRemoteCloses_FiresClosed()
     {
         _shellStream.CanRead.Returns(true);
         _shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(0)); // EOF => remote closed the channel
 
         bool closed = false;
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Closed += _ => closed = true;
         bridge.Start();
 
@@ -251,7 +251,7 @@ public class TerminalBridgeTests
     /// 所以桥的职责只有一条:把流给出的结论完整带上去,让宿主据此决定要不要自动重连。
     /// </remarks>
     [TestMethod]
-    public void ReadLoop_WhenRemoteShellExits_ReportsThatReason()
+    public async Task ReadLoop_WhenRemoteShellExits_ReportsThatReason()
     {
         _shellStream.CanRead.Returns(true);
         _shellStream.CloseReason.Returns(ShellCloseReason.RemoteExited);
@@ -259,7 +259,7 @@ public class TerminalBridgeTests
             .Returns(Task.FromResult(0));
 
         ShellCloseReason? reported = null;
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Closed += reason => reported = reason;
         bridge.Start();
 
@@ -269,7 +269,7 @@ public class TerminalBridgeTests
 
     /// <summary>读取抛异常的那条路不可能是"shell 正常退出",一律报连接中断。</summary>
     [TestMethod]
-    public void ReadLoop_WhenReadThrows_ReportsConnectionLost()
+    public async Task ReadLoop_WhenReadThrows_ReportsConnectionLost()
     {
         _shellStream.CanRead.Returns(true);
 
@@ -279,7 +279,7 @@ public class TerminalBridgeTests
             .Returns<Task<int>>(_ => throw new IOException("connection reset"));
 
         ShellCloseReason? reported = null;
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Closed += reason => reported = reason;
         bridge.Start();
 
@@ -288,7 +288,7 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void Dispose_DoesNotFireClosed()
+    public async Task Dispose_DoesNotFireClosed()
     {
         _shellStream.CanRead.Returns(true);
         _shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -305,7 +305,7 @@ public class TerminalBridgeTests
         bridge.Start();
 
         Thread.Sleep(100);
-        bridge.Dispose(); // intentional teardown must not look like a remote close
+        await bridge.DisposeAsync(); // intentional teardown must not look like a remote close
 
         Thread.Sleep(100);
 
@@ -313,20 +313,20 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void Dispose_CalledMultipleTimes_DoesNotThrow()
+    public async Task Dispose_CalledMultipleTimes_DoesNotThrow()
     {
         _shellStream.CanRead.Returns(false);
 
         var bridge = new SshTerminalBridge(_terminal, _shellStream);
 
-        bridge.Dispose();
-        bridge.Dispose();
+        await bridge.DisposeAsync();
+        await bridge.DisposeAsync();
     }
 
     [TestMethod]
     public async Task UserInput_RapidKeystrokes_NeverWriteConcurrently_AndPreserveByteOrder()
     {
-        // 回归防护:Tmds.Ssh 的通道写没有并发防护,桥必须把击键写串行化。
+        // 回归防护:通道写不保证并发安全,桥必须把击键写串行化。
         // 旧实现对每个按键即发即忘地 WriteAsync,上一个写因网络延迟挂起时下一个按键
         // 就并发插队 → 字节乱序抵达远端 → 回显出"字符拆散跳动"(docker status 事故)。
         _shellStream.CanRead.Returns(false);
@@ -353,7 +353,7 @@ public class TerminalBridgeTests
                 }
             });
 
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
 
         byte[] typed = Encoding.UTF8.GetBytes("docker status");
         foreach (byte b in typed)
@@ -392,7 +392,7 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void ReadLoop_PooledChunks_NeverLeakBytesBeyondTheReadLength()
+    public async Task ReadLoop_PooledChunks_NeverLeakBytesBeyondTheReadLength()
     {
         // 读循环的每块副本改成租自 ArrayPool 之后,拿到的数组几乎总是比请求的长
         // (池按 2 的幂分桶:请求 13 字节给 16 字节),而且带着上一位租客的残留数据。
@@ -410,7 +410,7 @@ public class TerminalBridgeTests
         ScriptReads(first, second);
 
         var logged = new MemoryStream();
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.DataReceived += chunk =>
         {
             lock (logged)
@@ -443,7 +443,7 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void DataReceived_StripsInjectedInitCommandEcho_SoRecordingsAndLogsMatchTheScreen()
+    public async Task DataReceived_StripsInjectedInitCommandEcho_SoRecordingsAndLogsMatchTheScreen()
     {
         // 会话录制/会话日志挂的是读线程上的原始流,拿不到显示路径抑制后的结果 ——
         // 于是注入的初始化脚本在终端里隐形,回放时却整行冒出来(用户反馈)。
@@ -457,7 +457,7 @@ public class TerminalBridgeTests
             Encoding.UTF8.GetBytes("[root@192 ~]# "));
 
         var logged = new MemoryStream();
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.DataReceived += chunk =>
         {
             lock (logged)
@@ -486,7 +486,7 @@ public class TerminalBridgeTests
     }
 
     [TestMethod]
-    public void DataReceived_EchoSplitAcrossChunks_IsStillStripped()
+    public async Task DataReceived_EchoSplitAcrossChunks_IsStillStripped()
     {
         // 回显会被网络任意切开;跨块的部分命中必须扣住续判,而不是漏半行进录制。
         const string injected = "prompt_nl() { local c; ((c>1)) && echo; }; PROMPT_COMMAND=prompt_nl";
@@ -499,7 +499,7 @@ public class TerminalBridgeTests
             Encoding.UTF8.GetBytes("[root@192 ~]# "));
 
         var logged = new MemoryStream();
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.DataReceived += chunk =>
         {
             lock (logged)
@@ -533,7 +533,7 @@ public class TerminalBridgeTests
             .ThrowsAsync(new ObjectDisposedException("stream"));
 
         Exception? capturedError = null;
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Error += ex => capturedError = ex;
 
         byte[] testData = Encoding.UTF8.GetBytes("hello");
@@ -555,7 +555,7 @@ public class TerminalBridgeTests
             .ThrowsAsync(expectedException);
 
         Exception? capturedError = null;
-        using var bridge = new SshTerminalBridge(_terminal, _shellStream);
+        await using var bridge = new SshTerminalBridge(_terminal, _shellStream);
         bridge.Error += ex => capturedError = ex;
 
         byte[] testData = Encoding.UTF8.GetBytes("hello");

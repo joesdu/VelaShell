@@ -61,13 +61,13 @@ public class SftpServiceTests
         await _sftpService.GetWorkingDirectoryAsync(_sessionId);
 
         var disposed = new TaskCompletionSource();
-        _sftpClient.When(c => c.Dispose()).Do(_ => disposed.TrySetResult());
+        _sftpClient.When(c => c.DisposeAsync()).Do(_ => disposed.TrySetResult());
 
         _connectionService.SessionDisconnected += Raise.Event<Action<SshSession>>(_session);
 
         // 清理是即发即忘的:断开路径不等它,所以这里得等。
         await disposed.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        _sftpClient.Received(1).Disconnect();
+        await _sftpClient.Received(1).DisposeAsync();
     }
 
     [TestMethod]
@@ -129,23 +129,21 @@ public class SftpServiceTests
     }
 
     [TestMethod]
-    public async Task CloseSessionAsync_DisconnectsAndDisposesClient()
+    public async Task CloseSessionAsync_DisposesClient()
     {
         // Open a channel so it gets cached, then close it.
         _sftpClient.ListDirectoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
                    .Returns(Task.FromResult<IEnumerable<SftpEntry>>([]));
         await _sftpService.ListDirectoryAsync(_sessionId, "/");
         await _sftpService.CloseSessionAsync(_sessionId);
-        _sftpClient.Received(1).Disconnect();
-        _sftpClient.Received(1).Dispose();
+        await _sftpClient.Received(1).DisposeAsync();
     }
 
     [TestMethod]
     public async Task CloseSessionAsync_UnknownSession_IsNoOp()
     {
         await _sftpService.CloseSessionAsync(Guid.NewGuid());
-        _sftpClient.DidNotReceive().Disconnect();
-        _sftpClient.DidNotReceive().Dispose();
+        await _sftpClient.DidNotReceive().DisposeAsync();
     }
 
     [TestMethod]
@@ -417,7 +415,7 @@ public class SftpServiceTests
     public async Task EnsureDirectoryAsync_WhenAlreadyExists_SkipsCreateAndThrowsNothing()
     {
         // 重复上传同一文件夹树的常态:目录已存在。必须先探测后返回,绝不调用 CreateDirectory
-        // ——否则 Tmds.Ssh 会对已存在目录抛 SftpException,上千文件的文件夹重传即刷出上百条异常。
+        // ——否则底层库会对已存在目录抛 SftpException,上千文件的文件夹重传即刷出上百条异常。
         string remotePath = "/home/user/existing";
         _sftpClient.ExistsAsync(remotePath, Arg.Any<CancellationToken>()).Returns(true);
 
@@ -545,7 +543,7 @@ public class SftpServiceTests
     }
 
     [TestMethod]
-    public async Task DisposeAsync_DisconnectsAndDisposesAllClients()
+    public async Task DisposeAsync_DisposesAllClients()
     {
         // Arrange — trigger client caching by calling any method
         SftpEntry mockFile = CreateMockSftpFile("file.txt", "/home/user/file.txt", 0, false, "rw-r--r--");
@@ -557,8 +555,7 @@ public class SftpServiceTests
         await _sftpService.DisposeAsync();
 
         // Assert
-        _sftpClient.Received(1).Disconnect();
-        _sftpClient.Received(1).Dispose();
+        await _sftpClient.Received(1).DisposeAsync();
     }
 
     [TestMethod]
@@ -1062,7 +1059,7 @@ public class SftpServiceTests
     /// 续传校验依赖按偏移定位。若 <see cref="ISftpClientWrapper.OpenAsync" /> 的实现返回了不可 Seek 的流,
     /// 必须给出指明契约的清晰错误,而不是让底层库抛一个看不出所以然的裸 NotSupportedException。
     /// <para>
-    /// 这条测试针对的是一个真实踩过的坑:Tmds.Ssh 的 FileOpenOptions 默认 Seekable/CacheLength 均为 false,
+    /// 这条测试针对的是一个真实踩过的坑:上一版底层库的 FileOpenOptions 默认 Seekable/CacheLength 均为 false,
     /// 打开的流一 Seek 就抛 NotSupportedException;而当时的测试全用 MemoryStream(可 Seek),
     /// 于是测试全绿、真机必炸。
     /// </para>

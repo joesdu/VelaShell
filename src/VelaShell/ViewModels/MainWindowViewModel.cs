@@ -144,6 +144,16 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     private readonly Dictionary<SftpDocument, Task> _sftpCloseTasks = [];
 
     /// <summary>
+    /// 正在关闭中的终端文档。
+    /// </summary>
+    /// <remarks>
+    /// <c>DocumentClosed</c> 是同步事件,而关一个终端文档要拆桥、断连接 —— 全是 I/O。
+    /// 与 SFTP 文档同一条路子:同步登记一件在跑的关闭工作,退出路径上一起等完;
+    /// 用例也靠它等关闭真正跑完,而不是 sleep 一下赌它结束了。
+    /// </remarks>
+    private readonly Dictionary<TerminalDocument, Task> _terminalCloseTasks = [];
+
+    /// <summary>
     /// 后台活动账本:连接期间在这里登记一条,右下角那个圆环才转得起来。
     /// </summary>
     /// <remarks>
@@ -287,7 +297,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             if (document is TerminalDocument terminalDocument)
             {
-                OnDocumentClosed(terminalDocument);
+                // DocumentClosed 是同步事件,而关一个终端文档要断连接、拆桥 —— 全是 I/O。
+                // 与下面 SftpDocument 那条同一个写法:把它登记成一件在跑的关闭工作,
+                // 退出路径上由 WaitForDocumentClosesAsync 统一等完。
+                _ = TrackTerminalCloseTask(terminalDocument);
             }
             else if (document is SftpDocument sftpDocument)
             {
@@ -1224,12 +1237,12 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                AttachLocalShell(terminalTab, shell, settings);
+                await AttachLocalShellAsync(terminalTab, shell, settings).ConfigureAwait(true);
             }
         }
         catch (Exception ex)
         {
-            RemoveTerminalTab(terminalTab, document);
+            await RemoveTerminalTabAsync(terminalTab, document).ConfigureAwait(true);
             LastConnectionError = Strings.Format(
                 "Msg_LocalShellStartFailed",
                 shell.Name,
@@ -1240,16 +1253,16 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     }
 
     /// <summary>重开本地终端标签:RIS 清屏后重新拉起 shell(与 SSH 重连同语义)。</summary>
-    private void ReopenLocalShell(TerminalTabViewModel tab, LocalShellInfo shell)
+    private async Task ReopenLocalShellAsync(TerminalTabViewModel tab, LocalShellInfo shell)
     {
         tab.ConnectionStatus = SessionStatus.Connecting;
-        tab.DetachTransport();
+        await tab.DetachTransportAsync().ConfigureAwait(true);
         try
         {
             tab.TerminalEmulator.Feed(RisResetSequence);
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                AttachLocalShell(tab, shell, _latestSettings ?? new AppSettings());
+                await AttachLocalShellAsync(tab, shell, _latestSettings ?? new AppSettings()).ConfigureAwait(true);
             }
             LastConnectionError = null;
         }
@@ -1269,7 +1282,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 拉起本地 shell 进程并挂上标签(打开与重开共用)。
     /// </summary>
     [SupportedOSPlatform(nameof(OSPlatform.Windows))]
-    private void AttachLocalShell(
+    private async Task AttachLocalShellAsync(
         TerminalTabViewModel tab,
         LocalShellInfo shell,
         AppSettings settings
@@ -1281,7 +1294,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             tab.TerminalEmulator.Columns,
             tab.TerminalEmulator.Rows
         );
-        tab.AttachTransport(stream);
+        await tab.AttachTransportAsync(stream).ConfigureAwait(true);
         tab.Start();
         tab.ConnectionStatus = SessionStatus.Connected;
         tab.ResetReconnectAttempts();
@@ -2309,7 +2322,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             cancellationToken: cancellationToken
         );
         terminalTab.SessionId = session.SessionId;
-        terminalTab.AttachTransport(shellStream);
+        await terminalTab.AttachTransportAsync(shellStream).ConfigureAwait(true);
         terminalTab.Start();
         terminalTab.ConnectionStatus = SessionStatus.Connected;
         await FeedJumpChainNoticeAsync(terminalTab, profile);
@@ -2359,7 +2372,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         // 本地终端标签:重开 = 重新拉起 shell 进程(复用同一标签与缓冲)。
         if (tab.LocalShell is { } localShell)
         {
-            ReopenLocalShell(tab, localShell);
+            await ReopenLocalShellAsync(tab, localShell).ConfigureAwait(true);
             return;
         }
 
@@ -2387,7 +2400,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             return;
         }
         tab.ConnectionStatus = SessionStatus.Connecting;
-        tab.DetachTransport();
+        await tab.DetachTransportAsync().ConfigureAwait(true);
         UpdateStatusBarForActiveTab();
         // 重连与首连同等对待:右下角圆环也要转起来 —— 自动重连尤其是在后台发生的,
         // 用户多半不在那个标签上。
@@ -2425,7 +2438,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             // 在新会话输出到达前做一次完全复位(RIS),使新的标语不至于附加在旧缓冲内容之后。
             tab.TerminalEmulator.Feed("\ec"u8.ToArray());
             tab.SessionId = session.SessionId;
-            tab.AttachTransport(shellStream);
+            await tab.AttachTransportAsync(shellStream).ConfigureAwait(true);
             tab.Start();
             tab.ConnectionStatus = SessionStatus.Connected;
             await FeedJumpChainNoticeAsync(tab, tab.Profile);
@@ -3182,7 +3195,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         }
     }
 
-    private void RemoveTerminalTab(TerminalTabViewModel tab, TerminalDocument document)
+    private async Task RemoveTerminalTabAsync(TerminalTabViewModel tab, TerminalDocument document)
     {
         // 静默移除也是"这个标签不要了":还在飞的握手一并撤掉(幂等,通常此刻已经取消过)。
         CancelTabConnect(tab);
@@ -3197,7 +3210,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             // 停靠布局里还剩的第一个终端文档,没有就置空。
             ActiveTerminalTab = TerminalTabs.FirstOrDefault();
         }
-        tab.Dispose();
+        await tab.DisposeAsync().ConfigureAwait(true);
     }
 
     /// <summary>
@@ -3300,7 +3313,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                         LastConnectionError = null;
                         if (tab is not null && document is not null)
                         {
-                            RemoveTerminalTab(tab, document);
+                            await RemoveTerminalTabAsync(tab, document).ConfigureAwait(true);
                         }
                         return null;
                     }
@@ -3339,7 +3352,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 // 是一句 IO 错误),按令牌判定才不会为一个已经没了的标签报"无法连接"。
                 if (document is not null)
                 {
-                    RemoveTerminalTab(tab, document);
+                    await RemoveTerminalTabAsync(tab, document).ConfigureAwait(true);
                 }
                 return null;
             }
@@ -3354,7 +3367,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 {
                     if (document is not null)
                     {
-                        RemoveTerminalTab(tab, document);
+                        await RemoveTerminalTabAsync(tab, document).ConfigureAwait(true);
                     }
                     return null;
                 }
@@ -3980,7 +3993,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         }
         catch (Exception) when (connectToken.IsCancellationRequested)
         {
-            RemoveTerminalTab(tab, document);
+            await RemoveTerminalTabAsync(tab, document).ConfigureAwait(true);
             return null;
         }
         catch (Exception ex)
@@ -4022,7 +4035,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         IShellStreamWrapper stream = await PluginProtocolTerminalConnector
             .OpenAsync(registration, profile, options, cancellationToken)
             .ConfigureAwait(true);
-        tab.AttachTransport(stream);
+        await tab.AttachTransportAsync(stream).ConfigureAwait(true);
         tab.Start();
         tab.ConnectionStatus = SessionStatus.Connected;
         tab.ResetReconnectAttempts();
@@ -4039,7 +4052,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         CancellationToken cancellationToken)
     {
         tab.ConnectionStatus = SessionStatus.Connecting;
-        tab.DetachTransport();
+        await tab.DetachTransportAsync().ConfigureAwait(true);
         UpdateStatusBarForActiveTab();
         try
         {
@@ -4606,19 +4619,25 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             : string.IsNullOrWhiteSpace(profile.Username)
                 ? $"{profile.Host}:{profile.Port}"
                 : $"{profile.Username}@{profile.Host}:{profile.Port}";
-        // 提取 Tmds.Ssh ConnectFailedException 中的具体原因(若存在),以便用户诊断。
-        string detail = ExtractTmdsReason(ex.Message) ?? ex.Message;
+        // 消息里已经是可读的原因了 —— 不再需要从 "The connection could not be established - …"
+        // 这种前缀里切一段出来。那段解析是上一版底层库逼出来的:它把原因码声明成 internal,
+        // 只能按消息前缀猜,而上游改一次措辞就静默失效。现在原因是强类型的
+        // (SshFailureReason),分流在 Infrastructure 的 SshInterop 里一次做完。
+        string detail = ex.Message;
         // 直接匹配 Core 的中立异常族(VelaSsh*Exception)。
         // 曾经这里按类型名字符串匹配 SSH.NET 的旧名("SshAuthenticationException" 等),
-        // 迁到 Tmds.Ssh 后实际类型已是 VelaSshAuthenticationException,没有一个分支能命中,
+        // 换库之后实际类型已是 VelaSshAuthenticationException,没有一个分支能命中,
         // 所有连接错误都掉进兜底文案。派生类型必须排在基类型前面。
         return ex switch
         {
             // 认证失败时补一句两步验证的说明。原文案直接断言"用户名、密码或密钥不正确",
             // 而服务器只放行 keyboard-interactive(2FA / OTP)时这句是**错的** ——
-            // 凭据没问题,是本版根本不会那套认证:底层 Tmds.Ssh 0.24 的凭据类型只有
-            // 密码 / 私钥 / 证书 / Kerberos / ssh-agent / 无,程序集里连 "keyboard-interactive"
-            // 这个方法名都不存在(有 "publickey")。用户按错文案去反复改密码,永远改不对。
+            // 用户按错文案去反复改密码,永远改不对。
+            //
+            // ⚠️ 换到 VelaShell.Ssh 之后,库本身已经支持 keyboard-interactive,
+            // 密码那一路也默认应答它(于是「关了 PasswordAuthentication 但走 PAM」的服务器
+            // 现在直接就能登上)。**还缺的是真正的动态码交互界面** —— 弹个框让用户输 OTP。
+            // 那个流程接上之前这句说明先留着;接上之后把它撤掉。见 feature-plan.md。
             VelaSshAuthenticationException =>
                 $"{Strings.Format("Msg_AuthFailed", target)}\n{Strings.Get("Msg_AuthFailedTwoFactorHint")}\n{detail}",
             // TimeoutException 来自 SshConnectionService:底层库内部超时(调用方并未取消)时它对外
@@ -4633,19 +4652,6 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 or PluginProtocolUnavailableException => detail,
             _ => Strings.Format("Msg_ConnectGenericFailed", target, detail),
         };
-    }
-
-    /// <summary>
-    /// Tmds.Ssh 的 ConnectFailedException 消息固定以该前缀开头,
-    /// 格式为 "The connection could not be established - {reason} - {description}"。
-    /// 提取后缀部分用于更精确的错误提示;不属于该格式的返回 null。
-    /// </summary>
-    private static string? ExtractTmdsReason(string message)
-    {
-        const string prefix = "The connection could not be established - ";
-        return !message.AsSpan().StartsWith(prefix, StringComparison.Ordinal)
-            ? null
-            : message[prefix.Length..];
     }
 
     private void ConfigureTerminal(
@@ -5246,6 +5252,46 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         }
     }
 
+    /// <summary>登记一件终端文档的关闭工作;同一个文档重复触发时复用同一件。</summary>
+    private Task TrackTerminalCloseTask(TerminalDocument document)
+    {
+        lock (_sftpCloseTasksSync)
+        {
+            if (_terminalCloseTasks.TryGetValue(document, out Task? existing))
+            {
+                return existing;
+            }
+
+            Task task = OnDocumentClosedAsync(document);
+            _terminalCloseTasks[document] = task;
+            _ = task.ContinueWith(
+                _ =>
+                {
+                    lock (_sftpCloseTasksSync)
+                    {
+                        if (_terminalCloseTasks.TryGetValue(document, out Task? current)
+                            && ReferenceEquals(current, task))
+                        {
+                            _terminalCloseTasks.Remove(document);
+                        }
+                    }
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+            return task;
+        }
+    }
+
+    /// <summary>测试探针:取该终端文档正在进行的关闭任务;没有则返回已完成任务。</summary>
+    internal Task TerminalCloseTaskFor(TerminalDocument document)
+    {
+        lock (_sftpCloseTasksSync)
+        {
+            return _terminalCloseTasks.TryGetValue(document, out Task? task) ? task : Task.CompletedTask;
+        }
+    }
+
     private void RemoveSftpCloseTask(SftpDocument document, Task task)
     {
         lock (_sftpCloseTasksSync)
@@ -5313,12 +5359,17 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 .AllDocuments()
                 .OfType<SftpDocument>()
                 .Select(GetOrCreateSftpCloseTask)];
-            closeTasks = [.. trackedTasks.Concat(currentDocumentTasks).Distinct()];
+            // 终端文档的关闭同样是异步的,一起等 —— 漏掉它的话,退出时会有连接
+            // 还没断干净进程就没了,远端看到的是被掐断而不是一次干净的关闭。
+            closeTasks = [.. trackedTasks
+                .Concat(currentDocumentTasks)
+                .Concat(_terminalCloseTasks.Values)
+                .Distinct()];
         }
         await Task.WhenAll(closeTasks);
     }
 
-    private void OnDocumentClosed(TerminalDocument document)
+    private async Task OnDocumentClosedAsync(TerminalDocument document)
     {
         TerminalTabViewModel tab = document.Terminal;
         // 关掉一个还在连的标签 = 不连了。与 ConnectingDocument 同一条纪律:六个关闭入口
@@ -5327,7 +5378,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         CancelTabConnect(tab);
         StopSessionLogging(tab);
         CloseSftpForTab(tab);
-        tab.Dispose();
+        await tab.DisposeAsync().ConfigureAwait(true);
         // Dispose 只拆终端传输;底层 SSH 客户端也要断开释放。
         TeardownSshSession(tab.SessionId);
 

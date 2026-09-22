@@ -1,5 +1,4 @@
-using System.Reflection;
-using Tmds.Ssh;
+using VelaShell.Ssh.Auth;
 
 namespace VelaShell.Infrastructure.Tests.Ssh;
 
@@ -8,16 +7,19 @@ namespace VelaShell.Infrastructure.Tests.Ssh;
 /// </summary>
 /// <remarks>
 /// <para>
-/// F-11 的结论是「做不了,只能把话说清楚」:堡垒机上的 Google Authenticator、Duo 一类走的是
-/// SSH 的 <c>keyboard-interactive</c> 方法,而 Tmds.Ssh 0.24 压根没实现它 —— 凭据类型只有
-/// 密码 / 私钥 / 证书 / Kerberos / ssh-agent / 无。于是那种服务器上认证必然失败,
-/// 而失败文案曾经直接断言「用户名、密码或密钥不正确」,把用户引向一条永远改不对的路。
+/// <b>这条引信已经烧过一次了。</b>它原先断言的是「还不支持」——
+/// F-11 的结论当时是「做不了,只能把话说清楚」:堡垒机上的 Google Authenticator、
+/// Duo 一类走的是 SSH 的 <c>keyboard-interactive</c>,而上一版底层库压根没实现它,
+/// 凭据类型只有密码 / 私钥 / 证书 / Kerberos / ssh-agent / 无。
 /// </para>
 /// <para>
-/// <b>这条用例是给未来的引信。</b>它断言的是「现在还不支持」——
-/// Tmds.Ssh 哪天加上了,这里会红,那时就该去实现真正的两步验证流程,并把
-/// <c>Msg_AuthFailedTwoFactorHint</c> 那句说明撤掉。没有这条引信,那句说明会一直留着,
-/// 在早已支持之后继续误导人。
+/// 换到 VelaShell.Ssh 之后它是一等公民,于是引信响了,断言方向随之翻转:
+/// <b>现在盯的是「别把它丢了」</b> —— 哪天凭据类型里没有它,这里会红。
+/// </para>
+/// <para>
+/// ⚠️ <b>支持 ≠ 已经接好。</b>库这一层有了,但宿主还没有「弹个框让用户输动态码」
+/// 的界面流程,所以 <c>Msg_AuthFailedTwoFactorHint</c> 那句说明**暂时保留**。
+/// 把它撤掉的前提是接上真正的交互流程 —— 记在 feature-plan.md。
 /// </para>
 /// </remarks>
 [TestClass]
@@ -25,59 +27,33 @@ namespace VelaShell.Infrastructure.Tests.Ssh;
 public sealed class KeyboardInteractiveSupportTests
 {
     [TestMethod]
-    public void TheSshLibraryStillOffersNoKeyboardInteractiveCredential()
+    public void TheSshLibraryOffersAKeyboardInteractiveCredential()
     {
         Type[] credentials =
         [
-            .. typeof(Credential).Assembly
-                                 .GetExportedTypes()
-                                 .Where(t => typeof(Credential).IsAssignableFrom(t) && t != typeof(Credential))
+            .. typeof(SshCredential).Assembly
+                                    .GetExportedTypes()
+                                    .Where(t => typeof(SshCredential).IsAssignableFrom(t) && t != typeof(SshCredential))
         ];
 
         Assert.IsNotEmpty(credentials, "一个凭据类型都没找到 —— 反射扫描失效了,这条用例等于没测。");
-        Assert.DoesNotContain(
+        Assert.Contains(
             t => t.Name.Contains("KeyboardInteractive", StringComparison.OrdinalIgnoreCase), credentials,
-            "Tmds.Ssh 现在提供了键盘交互式凭据:请实现真正的 2FA / OTP 流程,"
-            + "并撤掉 Msg_AuthFailedTwoFactorHint 那句「本版无法连接」的说明。"
-            + $"当前凭据类型:{string.Join("、", credentials.Select(t => t.Name))}");
+            "键盘交互式凭据不见了:2FA / OTP 的服务器会重新变成连不上,而失败文案会把用户引向一条改不对的路。");
     }
 
     /// <summary>
-    /// 公开凭据类型之外再验一道:库内部实现了哪几种认证方式。
+    /// 密码凭据默认也应答 <c>keyboard-interactive</c>。
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Tmds.Ssh 把每种认证方式实现成 <c>UserAuthentication</c> 下的一个嵌套类型
-    /// (<c>NoneAuth</c> / <c>PasswordAuth</c> / <c>PublicKeyAuth</c> / <c>CertificateAuth</c>
-    /// / <c>GssApiAuth</c> / <c>SshAgentAuth</c>)。这一层比公开凭据类更贴近事实 ——
-    /// 万一哪天它加了键盘交互式支持却没配套加公开凭据类,上面那条会漏,这条不会。
-    /// </para>
-    /// <para>
-    /// <b>不要改回按字符串扫程序集。</b>那样会误判:库里确实存在 <c>keyboard-interactive</c>、
-    /// <c>kbdinteractiveauthentication</c>、<c>kbdinteractivedevices</c> 这几个字面量,
-    /// 但它们是它**解析** ssh_config 时认识的选项名,不是它实现了那套认证。
-    /// 第一版就是这么写的,当场误报。
-    /// </para>
+    /// 这一条覆盖的是最常见的那种「2FA」——其实只是服务端关了 <c>PasswordAuthentication</c>
+    /// 而走 PAM,用户填的还是同一个密码。它不需要任何界面改动就能生效。
     /// </remarks>
     [TestMethod]
-    public void TheLibraryImplementsNoKeyboardInteractiveAuthMethod()
+    public void PasswordCredentialAnswersKeyboardInteractiveByDefault()
     {
-        Type? userAuth = typeof(Credential).Assembly.GetType("Tmds.Ssh.UserAuthentication");
-        Assert.IsNotNull(userAuth, "找不到 Tmds.Ssh.UserAuthentication —— 库的内部结构变了,这条用例要重写。");
+        PasswordCredential credential = new("hunter2");
 
-        string[] methods =
-        [
-            .. userAuth.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)
-                       .Select(t => t.Name)
-                       .Where(n => n.EndsWith("Auth", StringComparison.Ordinal))
-                       .OrderBy(n => n, StringComparer.Ordinal)
-        ];
-
-        Assert.IsNotEmpty(methods, "一种认证方式都没扫到 —— 反射失效了,这条用例等于没测。");
-        Assert.Contains("PublicKeyAuth", methods, "连 PublicKeyAuth 都没扫到,说明扫描方式不对。");
-        Assert.DoesNotContain(
-            n => n.Contains("Interactive", StringComparison.OrdinalIgnoreCase), methods,
-            "Tmds.Ssh 实现了键盘交互式认证:请实现真正的 2FA / OTP 流程,"
-            + $"并撤掉 Msg_AuthFailedTwoFactorHint。当前实现的方式:{string.Join("、", methods)}");
+        Assert.IsTrue(credential.AlsoAnswerKeyboardInteractive);
     }
 }

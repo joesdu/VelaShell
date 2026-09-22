@@ -58,7 +58,7 @@ public sealed class ShellIntegrationDockerTests
     [Timeout(60_000)]
     public async Task Probe_IdentifiesTheLoginShell(string user, RemoteShellKind expected)
     {
-        using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
+        await using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
 
         RemoteShellKind kind = await harness.DetectShellKindAsync();
 
@@ -77,7 +77,7 @@ public sealed class ShellIntegrationDockerTests
     [Timeout(60_000)]
     public async Task Injection_ReportsCwdImmediately_AndLeavesNoTrace(string user, RemoteShellKind expected)
     {
-        using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
+        await using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
         RemoteShellKind kind = await harness.DetectShellKindAsync();
         Assert.AreEqual(expected, kind);
 
@@ -114,7 +114,7 @@ public sealed class ShellIntegrationDockerTests
     public async Task Injection_LeavesExactlyOnePromptOnTheScreen(string user, RemoteShellKind expected)
     {
         const string prompt = "VELAPROMPT>";
-        using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
+        await using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
         RemoteShellKind kind = await harness.DetectShellKindAsync();
         Assert.AreEqual(expected, kind);
 
@@ -159,7 +159,7 @@ public sealed class ShellIntegrationDockerTests
     [Timeout(60_000)]
     public async Task Injection_FollowsSubsequentCd(string user, RemoteShellKind expected)
     {
-        using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
+        await using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
         RemoteShellKind kind = await harness.DetectShellKindAsync();
         Assert.AreEqual(expected, kind);
         harness.WaitForOutputIdle();
@@ -184,7 +184,7 @@ public sealed class ShellIntegrationDockerTests
     public async Task UserCommandRightAfterTheInjection_IsFullyVisible(string user, RemoteShellKind expected)
     {
         const string marker = "VELA-USER-OUTPUT-1234";
-        using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
+        await using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
         RemoteShellKind kind = await harness.DetectShellKindAsync();
         Assert.AreEqual(expected, kind);
 
@@ -212,7 +212,7 @@ public sealed class ShellIntegrationDockerTests
     public async Task UsersOwnPromptCommand_IsNeitherBrokenNorLost()
     {
         const string user = "vela-pyenv";
-        using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
+        await using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
         RemoteShellKind kind = await harness.DetectShellKindAsync();
         harness.WaitForOutputIdle();
         await harness.InjectShellIntegrationAsync(kind);
@@ -239,7 +239,7 @@ public sealed class ShellIntegrationDockerTests
     public async Task PromptRewrittenEveryTime_DoesNotBreakReporting()
     {
         const string user = "vela-starship";
-        using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
+        await using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
         RemoteShellKind kind = await harness.DetectShellKindAsync();
         harness.WaitForOutputIdle();
         await harness.InjectShellIntegrationAsync(kind);
@@ -264,7 +264,7 @@ public sealed class ShellIntegrationDockerTests
     public async Task TheInjectedLine_DoesNotStayInHistory()
     {
         const string user = "vela-bash";
-        using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
+        await using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
         RemoteShellKind kind = await harness.DetectShellKindAsync();
         harness.WaitForOutputIdle();
         await harness.InjectShellIntegrationAsync(kind);
@@ -294,7 +294,7 @@ public sealed class ShellIntegrationDockerTests
     public async Task TheHook_IsTransparentToTheExitStatus()
     {
         const string user = "vela-bash";
-        using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
+        await using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
         RemoteShellKind kind = await harness.DetectShellKindAsync();
         harness.WaitForOutputIdle();
         await harness.InjectShellIntegrationAsync(kind);
@@ -332,7 +332,7 @@ public sealed class ShellIntegrationDockerTests
     [DataRow("vela-fish", "set -x TMUX fake-tmux", "fish:单引号但折叠规则不同")]
     public async Task InsideTmux_AlsoEmitsThePassthroughCopy(string user, string setTmux, string because)
     {
-        using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
+        await using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
         RemoteShellKind kind = await harness.DetectShellKindAsync();
         harness.WaitForOutputIdle();
         await harness.InjectShellIntegrationAsync(kind);

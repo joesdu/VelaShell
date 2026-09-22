@@ -1,84 +1,102 @@
-using Tmds.Ssh;
 using VelaShell.Core.Models;
-using VelaShell.Infrastructure.DependencyInjection;
+using VelaShell.Infrastructure.Ssh;
+using VelaShell.Ssh.Auth;
 
 namespace VelaShell.Core.Tests.Ssh;
 
 /// <summary>
-/// 连接凭据装配(<see cref="InfrastructureServiceCollectionExtensions.AddCredential" />):必须用用户
-/// 选择的凭据【替换】Tmds.Ssh 的默认凭据列表,而非追加。默认列表含 SshAgentCredentials,Windows 上
-/// 每次连接都会因 SSH_AUTH_SOCK 非命名管道抛 ArgumentException 刷屏(且 VelaShell 无 agent 选项)。
+/// 连接凭据装配(<see cref="SshConnectionAssembler.BuildCredentialsAsync" />):
+/// **只给用户显式选择的那一条,不做任何隐式回退**。
 /// </summary>
+/// <remarks>
+/// <para>
+/// 这条约束的来历是一个具体缺陷:上一版底层库的默认凭据列表**非空**,含 SSH Agent
+/// 与 <c>~/.ssh</c> 下的默认私钥。只 Add 不替换的话,每次连接都会先试一遍 agent ——
+/// Windows 上 <c>SSH_AUTH_SOCK</c> 常指向 msys/WSL 的 Unix 套接字路径,
+/// 于是每次连接稳定刷一条首发异常;更糟的是它可能拿一把用户根本没打算用的钥去认证。
+/// </para>
+/// <para>
+/// 换到自研库之后**库本身也不回退**(不自动读 <c>~/.ssh/id_*</c>、不自动连 ssh-agent),
+/// 所以这条用例从「盯住我们有没有替换掉默认值」变成「盯住我们没有自己加回来」——
+/// 它防的是同一件事。
+/// </para>
+/// </remarks>
 [TestClass]
 [TestCategory("Ssh")]
 public class SshCredentialSetupTests
 {
-    [TestMethod]
-    public void FreshSettings_DefaultCredentials_IncludeSshAgent()
+    private static ConnectionInfo Password() => new()
     {
-        // 缺陷前提:Tmds 默认凭据非空且含 SSH Agent —— 这正是必须"替换而非追加"的原因。
-        // 若某天 Tmds 改了默认(此断言失败),说明噪声根源已消失,可回来简化本处逻辑。
-        var s = new SshClientSettings("user@host");
-        Assert.IsGreaterThan(0, s.Credentials.Count);
-        Assert.Contains(c => c is SshAgentCredentials, s.Credentials,
-            "前提假设:Tmds.Ssh 默认凭据含 SshAgentCredentials");
-    }
+        Host = "host",
+        Username = "user",
+        AuthMethod = AuthMethod.Password,
+        Password = "pw",
+    };
 
     [TestMethod]
-    public void AddCredential_Password_ReplacesDefaultsWithOnlyPassword()
+    public async Task Password_YieldsOnlyOnePasswordCredential()
     {
-        var s = new SshClientSettings("user@host");
-        InfrastructureServiceCollectionExtensions.AddCredential(s, new ConnectionInfo
-        {
-            Host = "host",
-            Username = "user",
-            AuthMethod = AuthMethod.Password,
-            Password = "pw",
-        });
+        IReadOnlyList<SshCredential> credentials =
+            await SshConnectionAssembler.BuildCredentialsAsync(Password(), TestContext.CancellationToken);
 
-        Assert.HasCount(1, s.Credentials);
-        Assert.IsInstanceOfType<PasswordCredential>(s.Credentials[0]);
-        Assert.DoesNotContain(c => c is SshAgentCredentials, s.Credentials,
-            "不得保留 Tmds 默认的 SSH Agent 凭据——它在 Windows 上会因 SSH_AUTH_SOCK 非命名管道每次连接抛 ArgumentException");
+        Assert.HasCount(1, credentials);
+        Assert.IsInstanceOfType<PasswordCredential>(credentials[0]);
     }
 
     /// <summary>
-    /// 证书认证同样只留一条凭据。证书本身不签名 —— 它是「证书文件 + 匹配私钥」两件套,
-    /// 内层复用私钥那一路,所以这里顺带盯住:装配出来的必须是 CertificateCredential,
-    /// 而不是退化成一条普通的 PrivateKeyCredential(那样服务端根本看不到 CA 签名)。
+    /// 密码那一路要**同时应答 <c>keyboard-interactive</c>**。
     /// </summary>
+    /// <remarks>
+    /// 很多服务端(关了 <c>PasswordAuthentication</c> 却开着 PAM 的)只接受后者,
+    /// 而用户填的就是同一个密码。不应答的表现是「密码明明是对的却登不上」。
+    /// </remarks>
     [TestMethod]
-    public void AddCredential_Certificate_ReplacesDefaultsWithOnlyCertificate()
+    public async Task Password_AlsoAnswersKeyboardInteractive()
     {
-        var s = new SshClientSettings("user@host");
-        InfrastructureServiceCollectionExtensions.AddCredential(s, new ConnectionInfo
-        {
-            Host = "host",
-            Username = "user",
-            AuthMethod = AuthMethod.Certificate,
-            PrivateKeyPath = "/home/user/.ssh/id_ed25519",
-            CertificatePath = "/home/user/.ssh/id_ed25519-cert.pub",
-        });
+        IReadOnlyList<SshCredential> credentials =
+            await SshConnectionAssembler.BuildCredentialsAsync(Password(), TestContext.CancellationToken);
 
-        Assert.HasCount(1, s.Credentials);
-        Assert.IsInstanceOfType<CertificateCredential>(s.Credentials[0]);
-        Assert.DoesNotContain(c => c is SshAgentCredentials, s.Credentials);
+        PasswordCredential credential = (PasswordCredential)credentials[0];
+        Assert.IsTrue(credential.AlsoAnswerKeyboardInteractive);
     }
 
+    /// <summary>
+    /// 私钥路径读不出来时要抛,而不是悄悄退化成「没有可用凭据」。
+    /// </summary>
+    /// <remarks>
+    /// 悄悄退化的表现是服务端一句 <c>Permission denied (publickey)</c> ——
+    /// 用户会去反复检查服务端的 <c>authorized_keys</c>,而问题在本地。
+    /// </remarks>
     [TestMethod]
-    public void AddCredential_PrivateKey_ReplacesDefaultsWithOnlyPrivateKey()
+    public async Task PrivateKey_MissingFile_Throws()
     {
-        var s = new SshClientSettings("user@host");
-        InfrastructureServiceCollectionExtensions.AddCredential(s, new ConnectionInfo
+        ConnectionInfo info = new()
         {
             Host = "host",
             Username = "user",
             AuthMethod = AuthMethod.PrivateKey,
-            PrivateKeyPath = "/home/user/.ssh/id_ed25519",
-        });
+            PrivateKeyPath = Path.Combine(Path.GetTempPath(), "velashell-does-not-exist-" + Guid.NewGuid()),
+        };
 
-        Assert.HasCount(1, s.Credentials);
-        Assert.IsInstanceOfType<PrivateKeyCredential>(s.Credentials[0]);
-        Assert.DoesNotContain(c => c is SshAgentCredentials, s.Credentials);
+        await Assert.ThrowsAsync<Exception>(async () =>
+            await SshConnectionAssembler.BuildCredentialsAsync(info, TestContext.CancellationToken));
     }
+
+    /// <summary>不认识的认证方式要当场抛,不能落到一条空凭据列表上。</summary>
+    [TestMethod]
+    public async Task UnknownMethod_Throws()
+    {
+        ConnectionInfo info = new()
+        {
+            Host = "host",
+            Username = "user",
+            AuthMethod = (AuthMethod)999,
+        };
+
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(async () =>
+            await SshConnectionAssembler.BuildCredentialsAsync(info, TestContext.CancellationToken));
+    }
+
+    /// <summary>MSTest 注入的测试上下文。</summary>
+    public TestContext TestContext { get; set; } = null!;
 }

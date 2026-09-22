@@ -27,7 +27,7 @@ public class ConPtyShellStreamTests
     [OSCondition(OperatingSystems.Windows)]
     public async Task ConPty_SpawnsShell_DeliversConhostHandshake()
     {
-        using var stream = ConPtyShellStream.Start("cmd.exe", workingDirectory: null, columns: 80, rows: 25);
+        await using var stream = ConPtyShellStream.Start("cmd.exe", workingDirectory: null, columns: 80, rows: 25);
 
         string output = await ReadUntilAsync(stream, s => s.Contains('\x1b'), TimeSpan.FromSeconds(15));
 
@@ -49,7 +49,7 @@ public class ConPtyShellStreamTests
     [OSCondition(OperatingSystems.Windows)]
     public async Task ConPty_WhenChildExitsOnItsOwn_ReadSideSignalsEof()
     {
-        using var stream = ConPtyShellStream.Start("cmd.exe /c exit", workingDirectory: null, columns: 80, rows: 25);
+        await using var stream = ConPtyShellStream.Start("cmd.exe /c exit", workingDirectory: null, columns: 80, rows: 25);
 
         bool sawEof = await ReadToEofAsync(stream, TimeSpan.FromSeconds(20));
 
@@ -59,13 +59,13 @@ public class ConPtyShellStreamTests
 
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
-    public void ConPty_Dispose_KillsProcess_AndIsIdempotent()
+    public async Task ConPty_Dispose_KillsProcess_AndIsIdempotent()
     {
         var stream = ConPtyShellStream.Start("cmd.exe", workingDirectory: null, columns: 80, rows: 25);
         Assert.IsTrue(stream.CanRead);
 
-        stream.Dispose();
-        stream.Dispose(); // 幂等
+        await stream.DisposeAsync();
+        await stream.DisposeAsync(); // 幂等
 
         Assert.IsFalse(stream.CanRead);
         Assert.IsFalse(stream.CanWrite);

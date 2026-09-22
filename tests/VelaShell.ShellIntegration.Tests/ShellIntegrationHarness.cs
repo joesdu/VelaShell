@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Net.Sockets;
 using System.Text;
-using Tmds.Ssh;
+using VelaShell.Ssh.Auth;
+using VelaShell.Ssh.HostKeys;
+using VelaShell.Ssh.Session;
 using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Ssh;
 using VelaShell.Terminal;
@@ -26,7 +28,7 @@ namespace VelaShell.ShellIntegration.Tests;
 /// 起不来就整组报 Inconclusive —— 全绿的报告里不能混着一行断言都没跑的用例。
 /// </para>
 /// </remarks>
-internal sealed class ShellIntegrationHarness : IDisposable
+internal sealed class ShellIntegrationHarness : IAsyncDisposable
 {
     /// <summary>写 IPv4 字面量:localhost 先解析到 ::1,而 Docker Desktop 的端口转发只在 IPv4 上应答。</summary>
     public const string Host = "127.0.0.1";
@@ -37,7 +39,7 @@ internal sealed class ShellIntegrationHarness : IDisposable
     /// <summary>容器里所有账号的口令,见 fixture 的 Dockerfile。</summary>
     public const string Password = "velapass";
 
-    private readonly TmdsSshClientWrapper _client;
+    private readonly VelaSshClientWrapper _client;
     private readonly IShellStreamWrapper _shell;
     private readonly TerminalEmulator _emulator = new(120, 40, TerminalType.XtermColor256);
     private readonly CancellationTokenSource _cts = new();
@@ -51,7 +53,7 @@ internal sealed class ShellIntegrationHarness : IDisposable
     /// <summary>最后一次收到远端输出的时刻(UTC ticks);读循环写、用例线程读。</summary>
     private long _lastOutputTicks;
 
-    private ShellIntegrationHarness(TmdsSshClientWrapper client, IShellStreamWrapper shell)
+    private ShellIntegrationHarness(VelaSshClientWrapper client, IShellStreamWrapper shell)
     {
         _client = client;
         _shell = shell;
@@ -130,17 +132,16 @@ internal sealed class ShellIntegrationHarness : IDisposable
     /// <param name="user">账号名,例如 <c>vela-bash</c>。</param>
     public static async Task<ShellIntegrationHarness> ConnectAsync(string user)
     {
-        var settings = new SshClientSettings($"{user}@{Host}")
-        {
-            Port = Port,
-            AutoConnect = false,
-            ConnectTimeout = TimeSpan.FromSeconds(10),
-            // 测试容器的主机键每次重建都变:无条件信任,不写 known_hosts。
-            HostAuthentication = (_, _) => ValueTask.FromResult(true),
-            UpdateKnownHostsFileAfterAuthentication = false
-        };
-        settings.Credentials.Add(new PasswordCredential(Password));
-        var client = new TmdsSshClientWrapper(settings);
+        VelaSshClientWrapper client = new(
+            ct => new SshConnectionOptions(user, Host, Port)
+            {
+                Credentials = [new PasswordCredential(Password)],
+                // 测试容器的主机键每次重建都变：无条件信任，不写 known_hosts。
+                HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
+                ConnectTimeout = TimeSpan.FromSeconds(10),
+            }.ConnectAsync(ct),
+            TimeSpan.FromSeconds(10));
+
         await client.ConnectAsync(CancellationToken.None);
         IShellStreamWrapper shell = await client.CreateShellStreamAsync(
             "xterm-256color", 120, 40, 0, 0, 4096, cancellationToken: CancellationToken.None);
@@ -253,12 +254,12 @@ internal sealed class ShellIntegrationHarness : IDisposable
     public Task<RemoteShellKind> DetectShellKindAsync() =>
         RemoteShellProbe.DetectAsync(_client, string.Empty, CancellationToken.None);
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _cts.Cancel();
+        await _cts.CancelAsync();
         try
         {
-            _shell.Dispose();
+            await _shell.DisposeAsync();
         }
         catch
         {
@@ -266,13 +267,13 @@ internal sealed class ShellIntegrationHarness : IDisposable
         }
         try
         {
-            _pump.Wait(TimeSpan.FromSeconds(2));
+            await _pump;
         }
-        catch (AggregateException)
+        catch (Exception)
         {
             // 拆除期间读循环抛出的异常与断言无关。
         }
-        _client.Dispose();
+        await _client.DisposeAsync();
         _cts.Dispose();
     }
 

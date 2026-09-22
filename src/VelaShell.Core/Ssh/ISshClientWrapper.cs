@@ -3,10 +3,21 @@ namespace VelaShell.Core.Ssh;
 /// <summary>
 /// SSH 客户端的库中立抽象:Core/App 只依赖此接口与本命名空间的中立类型
 /// (<see cref="SftpEntry" />、<see cref="PortForwardRequest" />、SshClientException 层级),
-/// 具体 SSH 库(当前为 SSH.NET)被隔离在 Infrastructure 的实现里,更换底层库时
+/// 具体 SSH 库被隔离在 Infrastructure 的实现里,更换底层库时
 /// 只需提供新的实现与异常翻译。
 /// </summary>
-public interface ISshClientWrapper : IDisposable
+/// <remarks>
+/// <b>释放是异步的,而且只能是异步的。</b>关一条 SSH 连接要关掉各条通道、
+/// 让收发泵收尾、再关传输 —— 全是 I/O。把它挤进同步的 <see cref="IDisposable" />
+/// 只有两种写法:阻塞等,或者甩出去不等。前者**会死锁**(迁移到 VelaShell.Ssh 时实测撞上,
+/// 表现是关会话时界面卡死,而且单独跑不复现);后者则让释放时机不可控。
+/// <para>
+/// 所以这条链路从上到下都走 <see cref="IAsyncDisposable" />:调用方一律 <c>await using</c>
+/// 或 <c>await x.DisposeAsync()</c>。<see cref="ISftpClientWrapper" />、
+/// <see cref="IShellStreamWrapper" />、<see cref="IPortForwardHandle" /> 同此。
+/// </para>
+/// </remarks>
+public interface ISshClientWrapper : IAsyncDisposable
 {
     /// <summary>当前是否已与远程主机建立连接。</summary>
     bool IsConnected { get; }
@@ -22,9 +33,6 @@ public interface ISshClientWrapper : IDisposable
 
     /// <summary>异步连接到远程主机。</summary>
     Task ConnectAsync(CancellationToken cancellationToken);
-
-    /// <summary>断开与远程主机的连接。</summary>
-    void Disconnect();
 
     /// <summary>
     /// 在当前连接上异步创建一条交互式 shell 流(打开通道 + pty-req + shell,2~3 个网络往返),

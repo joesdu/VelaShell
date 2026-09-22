@@ -6,12 +6,14 @@ using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Net;
 using VelaShell.Infrastructure.Net;
+using VelaShell.Infrastructure.Ssh;
+using VelaShell.Ssh.Transport;
 
 namespace VelaShell.Infrastructure.Tests.Net;
 
 /// <summary>
 /// 统一代理层:HTTP CONNECT 与 SOCKS5 握手对着 RFC 字节序列断言(期望值为地面真值,
-/// 不用被测代码自证),环回中继与解析器覆盖直连/环回豁免/配置校验/系统代理折算。
+/// 不用被测代码自证),SSH 拨号器与解析器覆盖直连/环回豁免/配置校验/系统代理折算。
 /// </summary>
 [TestClass]
 [TestCategory("Proxy")]
@@ -215,11 +217,20 @@ public class ProxySupportTests
             ProxyStreamConnector.ConnectAsync(route, "target.example", 22, cts.Token));
     }
 
-    // ———— 环回中继 ————
+    // ———— SSH 的代理拨号器 ————
 
-    /// <summary>客户端连中继端口 → 中继经 SOCKS5 打通目标 → 双向转发原样传输。</summary>
+    /// <summary>
+    /// SSH 拨号器经 SOCKS5 打通目标，拿回来的流双向原样传输。
+    /// </summary>
+    /// <remarks>
+    /// 这条用例原先测的是 <c>LoopbackProxyRelay</c>：为了让一个只认 host:port 的 SSH 库
+    /// 走代理，宿主在 127.0.0.1 上开一个一次性监听，把库骗过去，再在背后打通代理隧道。
+    /// 换到 VelaShell.Ssh 之后那整条路没有了 —— 代理隧道就是一条 Stream，
+    /// 由 <see cref="ProxyTransportDialer" /> 直接交给库，**本机不再开监听端口**。
+    /// 所以这里改成对着拨号器测，覆盖的是真正在跑的那条路径。
+    /// </remarks>
     [TestMethod]
-    public async Task LoopbackRelay_ForwardsBothDirectionsThroughProxy()
+    public async Task SshDialer_ForwardsBothDirectionsThroughProxy()
     {
         using CancellationTokenSource cts = Deadline();
         await using var server = new FakeServer(async s =>
@@ -233,16 +244,20 @@ public class ProxySupportTests
             await s.WriteAsync(echo, cts.Token);
         });
 
-        var route = new ProxyRoute(ProxyKind.Socks5, "127.0.0.1", server.Port);
-        using var relay = LoopbackProxyRelay.Start(route, "target.example", 2222);
-        using var client = new TcpClient();
-        await client.ConnectAsync(IPAddress.Loopback, relay.Port, cts.Token);
-        NetworkStream stream = client.GetStream();
+        IProxyResolver resolver = Substitute.For<IProxyResolver>();
+        resolver.Resolve("target.example", 2222)
+                .Returns(new ProxyRoute(ProxyKind.Socks5, "127.0.0.1", server.Port));
+
+        ProxyTransportDialer dialer = new(resolver);
+        await using Stream stream = await dialer.DialAsync(
+            SshDialTarget.Direct("target.example", 2222), cts.Token);
 
         Assert.AreEqual("hello", Encoding.ASCII.GetString(await ReadAsync(stream, 5, cts.Token)));
         await stream.WriteAsync(Encoding.ASCII.GetBytes("ping"), cts.Token);
         Assert.AreEqual("ping", Encoding.ASCII.GetString(await ReadAsync(stream, 4, cts.Token)));
-        Assert.IsNull(relay.Error);
+
+        // 走了代理，拨号器要如实报出自己这一跳的种类 —— 日志里靠它分辨直连与代理。
+        Assert.AreEqual(SshDialKind.Socks5, dialer.Kind);
     }
 
     // ———— 解析器 ————

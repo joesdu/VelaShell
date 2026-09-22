@@ -171,11 +171,13 @@ public sealed class SshKeyService(string? sshDirectory = null) : ISshKeyService
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>私钥必须写 OpenSSH 格式</b>(<c>-----BEGIN OPENSSH PRIVATE KEY-----</c>)。
-    /// Tmds.Ssh 0.23 起的私钥解析器只认这一种,<c>ExportRSAPrivateKeyPem()</c> 产出的 PKCS#1
-    /// (<c>-----BEGIN RSA PRIVATE KEY-----</c>)与 PKCS#8 都会被判 "Unsupported format" 而当作
-    /// 无可用凭据【跳过】—— 认证遂以 "These methods were skipped: publickey" 失败,用户表现为
-    /// 用本应用生成的密钥怎么都登不上(排障线索:诊断第 4 步 no methods failed、skipped publickey)。
+    /// <b>私钥写 OpenSSH 格式</b>(<c>-----BEGIN OPENSSH PRIVATE KEY-----</c>)。
+    /// 这一条曾经是硬性的:上一版底层库的解析器只认这一种,<c>ExportRSAPrivateKeyPem()</c> 产出的
+    /// PKCS#1(<c>-----BEGIN RSA PRIVATE KEY-----</c>)与 PKCS#8 都会被判 "Unsupported format"
+    /// 而当作无可用凭据【跳过】—— 认证遂以 "These methods were skipped: publickey" 失败,用户表现为
+    /// 用本应用生成的密钥怎么都登不上。换到 VelaShell.Ssh 之后这三种格式都原生读得出
+    /// (见 <c>LegacyPrivateKeyFormatTests</c>),但生成端仍只写 OpenSSH 格式:Ed25519 在 BCL 里
+    /// 根本没有 PEM 导出,而这也正是今天 <c>ssh-keygen</c> 的产物,拷到别处照样能用。
     /// </para>
     /// <para>
     /// <b>默认给 Ed25519,而不是 RSA。</b>OpenSSH 自 6.5(2014)起支持,`ssh-keygen` 自 9.5(2023)
@@ -225,7 +227,7 @@ public sealed class SshKeyService(string? sshDirectory = null) : ISshKeyService
     /// <remarks>
     /// 种子用 BCL 的 <see cref="RandomNumberGenerator" /> 取,标量乘法交给 BouncyCastle ——
     /// .NET 11 的 BCL 至今没有独立的 Ed25519(只有 <c>CompositeMLDsaAlgorithm</c> 里那个复合标识符),
-    /// 而 BouncyCastle 本就是 Tmds.Ssh 的依赖、早已在输出目录里,这里只是把它抬成显式引用。
+    /// 而 BouncyCastle 本就是 VelaShell.Ssh 的依赖、早已在输出目录里,这里只是把它抬成显式引用。
     /// 自己手写曲线运算不在考虑之列:那是能把私钥悄悄写废的地方。
     /// </remarks>
     private static (string Pem, byte[] Blob, string AlgorithmName, string Type) CreateEd25519(string comment)

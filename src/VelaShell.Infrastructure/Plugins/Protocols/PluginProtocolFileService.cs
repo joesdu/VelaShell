@@ -480,7 +480,7 @@ public sealed class PluginProtocolFileService(PluginProtocolRegistry registry)
     }
 
     /// <summary>
-    /// SDK 异常 → Core 中立异常族。与 AWSSDK / FluentFTP / Tmds.Ssh 同一条分层硬规则:
+    /// SDK 异常 → Core 中立异常族。与 AWSSDK / FluentFTP / VelaShell.Ssh 同一条分层硬规则:
     /// 插件 SDK 的类型不越过 Infrastructure 边界,界面只认 <c>VelaShell.Core.Protocols</c> 那几个。
     /// 认不出的异常原样放行 —— 包装成"未知错误"只会把插件给出的可读信息埋掉。
     /// </summary>

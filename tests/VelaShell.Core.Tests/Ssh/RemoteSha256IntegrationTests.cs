@@ -3,7 +3,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
-using Tmds.Ssh;
+using VelaShell.Ssh.Auth;
+using VelaShell.Ssh.HostKeys;
+using VelaShell.Ssh.Session;
 using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Ssh;
@@ -42,7 +44,7 @@ public class RemoteSha256IntegrationTests
             ("$HOME;echo pwned", "dollar"),
             ("new\nline.txt", "newline"),
         ];
-        TmdsSshClientWrapper ssh = await ConnectAsync();
+        VelaSshClientWrapper ssh = await ConnectAsync();
         try
         {
             var setup = new StringBuilder($"mkdir -p {RemoteSha256.Quote(root)}");
@@ -77,7 +79,7 @@ public class RemoteSha256IntegrationTests
             {
                 // 清理尽力而为;容器本来就是一次性的。
             }
-            ssh.Dispose();
+            await ssh.DisposeAsync();
         }
     }
 
@@ -125,19 +127,18 @@ public class RemoteSha256IntegrationTests
         }
     }
 
-    private static async Task<TmdsSshClientWrapper> ConnectAsync()
+    private static async Task<VelaSshClientWrapper> ConnectAsync()
     {
-        var settings = new SshClientSettings($"{TestUser}@{TestHost}")
-        {
-            Port = TestPort,
-            AutoConnect = false,
-            ConnectTimeout = TimeSpan.FromSeconds(10),
-            // 测试容器的主机键每次重建都变:无条件信任,不写 known_hosts。
-            HostAuthentication = (_, _) => ValueTask.FromResult(true),
-            UpdateKnownHostsFileAfterAuthentication = false
-        };
-        settings.Credentials.Add(new PasswordCredential(TestPassword));
-        var client = new TmdsSshClientWrapper(settings);
+        VelaSshClientWrapper client = new(
+            ct => new SshConnectionOptions(TestUser, TestHost, TestPort)
+            {
+                Credentials = [new PasswordCredential(TestPassword)],
+                // 测试容器的主机键每次重建都变：无条件信任，不写 known_hosts。
+                HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
+                ConnectTimeout = TimeSpan.FromSeconds(10),
+            }.ConnectAsync(ct),
+            TimeSpan.FromSeconds(10));
+
         await client.ConnectAsync(CancellationToken.None);
         return client;
     }

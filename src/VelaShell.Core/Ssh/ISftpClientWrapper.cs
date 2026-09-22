@@ -3,10 +3,10 @@ namespace VelaShell.Core.Ssh;
 /// <summary>
 /// SFTP 客户端的库中立抽象(参见 <see cref="ISshClientWrapper" /> 的隔离说明):
 /// 目录条目以 <see cref="SftpEntry" /> 返回,失败以 SshClientException 层级抛出,
-/// 不暴露任何具体 SSH 库的类型。底层库(Tmds.Ssh)原生全异步,本接口成员一律异步,
+/// 不暴露任何具体 SSH 库的类型。底层库(VelaShell.Ssh)原生全异步,本接口成员一律异步,
 /// 不再提供同步阻塞变体。
 /// </summary>
-public interface ISftpClientWrapper : IDisposable
+public interface ISftpClientWrapper : IAsyncDisposable
 {
     /// <summary>
     /// 指示 SFTP 会话当前是否已连接。
@@ -27,11 +27,6 @@ public interface ISftpClientWrapper : IDisposable
     /// 异步建立 SFTP 连接。
     /// </summary>
     Task ConnectAsync(CancellationToken cancellationToken);
-
-    /// <summary>
-    /// 断开 SFTP 连接。
-    /// </summary>
-    void Disconnect();
 
     /// <summary>
     /// 异步列出指定远端目录下的条目。

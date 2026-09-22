@@ -284,7 +284,7 @@ public class SftpService : ISftpService
     {
         ISftpClientWrapper client = await GetOrCreateSftpClientAsync(sessionId, cancellationToken).ConfigureAwait(false);
 
-        // 先 Exists 探测再创建。与直觉相反,Tmds.Ssh 的 CreateDirectory 对"已存在的目录"会抛
+        // 先 Exists 探测再创建。与直觉相反,SFTP 的 MKDIR 对"已存在的目录"会回错误而抛
         // SftpException(并非无声成功):重复上传同一文件夹树(与服务端冲突的常见场景)时,
         // 每个已存在子目录都会甩出一条首发异常,上千文件的文件夹重传即刷出上百条异常噪声。
         // ExistsAsync 走 GetAttributes(不存在返回 null、零异常控制流),先探测即可对"已存在"
@@ -564,21 +564,22 @@ public class SftpService : ISftpService
         {
             return;
         }
-        await Task.Run(() =>
+        // 这里原先要 Task.Run 把释放甩到线程池 —— 因为那时释放是同步阻塞的,
+        // 在调用线程上做会卡住关标签页这个动作。现在释放本身就是异步的,直接 await。
+        await DisposeQuietlyAsync(client).ConfigureAwait(false);
+    }
+
+    /// <summary>尽力拆解一个 SFTP 客户端;标签页已经不在了,失败没有补救动作。</summary>
+    private static async ValueTask DisposeQuietlyAsync(ISftpClientWrapper client)
+    {
+        try
         {
-            try
-            {
-                if (client.IsConnected)
-                {
-                    client.Disconnect();
-                }
-                client.Dispose();
-            }
-            catch
-            {
-                // 尽力拆解;标签页已经不在了。
-            }
-        }, cancellationToken).ConfigureAwait(false);
+            await client.DisposeAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // 尽力拆解。
+        }
     }
 
     /// <summary>断开并释放所有缓存的 SFTP 客户端,尽力清理全部会话资源。</summary>
@@ -588,21 +589,9 @@ public class SftpService : ISftpService
         _connectionService.SessionDisconnected -= OnSshSessionDisconnected;
         foreach (KeyValuePair<Guid, ISftpClientWrapper> kvp in _sftpClients)
         {
-            try
-            {
-                if (kvp.Value.IsConnected)
-                {
-                    kvp.Value.Disconnect();
-                }
-                kvp.Value.Dispose();
-            }
-            catch
-            {
-                // 释放期间的尽力清理
-            }
+            await DisposeQuietlyAsync(kvp.Value).ConfigureAwait(false);
         }
         _sftpClients.Clear();
-        await ValueTask.CompletedTask.ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }
 

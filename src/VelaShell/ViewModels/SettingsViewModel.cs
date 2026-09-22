@@ -15,6 +15,7 @@ using VelaShell.Core.Ssh;
 using VelaShell.Core.Sync;
 using VelaShell.Infrastructure.Diagnostics;
 using VelaShell.Infrastructure.Persistence;
+using VelaShell.Infrastructure.Ssh;
 using VelaShell.Presentation.ViewModels;
 using VelaShell.Services;
 
@@ -646,8 +647,15 @@ public class SettingsViewModel : ReactiveObject
     public static string AboutRuntime =>
         $".NET {Environment.Version.Major}.{Environment.Version.Minor}";
 
-    /// <summary>关于页显示的 SSH 库版本(版本取自实际引用的 NuGet 包,见 <see cref="PackageVersions" />)。</summary>
-    public static string AboutSshLibrary => Describe("Tmds.Ssh", "Tmds.Ssh");
+    /// <summary>
+    /// 关于页显示的 SSH 库版本。
+    /// </summary>
+    /// <remarks>
+    /// 这一条不走 <see cref="PackageVersions" />:SSH 后端现在是自研库、走工程引用,
+    /// 没有包版本可查。改由持有它的那一层交出来(见 <c>SshBackend</c>)。
+    /// </remarks>
+    public static string AboutSshLibrary =>
+        SshBackend.Version is { } version ? $"{SshBackend.Name} {version}" : SshBackend.Name;
 
     /// <summary>
     /// 拼 "名称 版本";版本读不到时只显示名称 —— 关于页少个版本号可以接受,
@@ -701,10 +709,10 @@ public class SettingsViewModel : ReactiveObject
             "https://github.com/AvaloniaUI/Avalonia/blob/main/licence.md"
         ),
         new(
-            "Tmds.Ssh",
-            "MIT",
-            "https://github.com/Tmds/Tmds.Ssh",
-            "https://github.com/Tmds/Tmds.Ssh/blob/main/LICENSE"
+            SshBackend.Name,
+            SshBackend.License,
+            SshBackend.ProjectUrl,
+            SshBackend.LicenseUrl
         ),
         new(
             "ReactiveUI",
