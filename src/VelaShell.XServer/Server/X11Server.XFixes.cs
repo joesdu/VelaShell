@@ -8,8 +8,7 @@
 //   §7「Cursor Names」、§10「Cursor Visibility」(HideCursor / ShowCursor)、§11「Pointer Barriers」、
 //   附录「Protocol Encoding」(请求次操作码 0–32、事件、错误 BadRegion)
 //
-//   实现到版本 5。指针屏障(v5)只登记不生效 —— 宿主的系统指针不归我们限制;
-//   CreateRegionFromPicture / SetPictureClipRegion 等 RENDER 就位后再接。
+//   实现到版本 5。指针屏障(v5)只登记不生效 —— 宿主的系统指针不归我们限制。
 
 using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Protocol;
@@ -146,8 +145,12 @@ public sealed partial class X11Server
                     AddResource(c, new XRegionResource(id, c, region));
                     break;
                 }
-            case 9:   // CreateRegionFromPicture:RENDER 就位后接
-                throw new XProtocolError(XErrorCode.Implementation);
+            case 9:   // CreateRegionFromPicture
+                {
+                    uint id = r.U32();
+                    AddResource(c, new XRegionResource(id, c, PictureClipRegion(r.U32())));
+                    break;
+                }
             case 10:  // DestroyRegion
                 {
                     uint id = r.U32();
@@ -235,8 +238,14 @@ public sealed partial class X11Server
                     SetShape(window, kind, regionId == 0 ? null : RegionRes(regionId).Region.Clone().Translate(dx, dy));
                     break;
                 }
-            case 22:  // SetPictureClipRegion:RENDER 就位后接
-                throw new XProtocolError(XErrorCode.Implementation);
+            case 22:  // SetPictureClipRegion
+                {
+                    uint picture = r.U32();
+                    uint regionId = r.U32();
+                    short x = r.I16(), y = r.I16();
+                    SetPictureClipRegion(picture, regionId == 0 ? null : RegionRes(regionId).Region.Clone(), x, y);
+                    break;
+                }
             case 23:  // SetCursorName:名字只用于 GetCursorName 回显
             case 26:  // ChangeCursor
             case 27:  // ChangeCursorByName
