@@ -36,6 +36,7 @@
     <Project Path="src/VelaShell.Presentation/VelaShell.Presentation.csproj" />
     <Project Path="src/VelaShell.Ssh/VelaShell.Ssh.csproj" />
     <Project Path="src/VelaShell.Terminal/VelaShell.Terminal.csproj" />
+    <Project Path="src/VelaShell.XServer/VelaShell.XServer.csproj" />
     <Project Path="src/VelaShell/VelaShell.csproj" />
   </Folder>
   <Folder Name="/scripts/ssh/">
@@ -45,6 +46,11 @@
     <File Path="scripts/ssh/interop/Dockerfile" />
     <File Path="scripts/ssh/interop/Start-TestServer.ps1" />
     <File Path="scripts/ssh/interop/Stop-TestServer.ps1" />
+  </Folder>
+  <Folder Name="/scripts/xserver/">
+    <File Path="scripts/xserver/interop/Dockerfile" />
+    <File Path="scripts/xserver/interop/Run-Client.ps1" />
+    <File Path="scripts/xserver/interop/run-server.cs" />
   </Folder>
   <Folder Name="/plugins/">
     <File Path="plugins/Directory.Build.props" />
@@ -69,5 +75,6 @@
     <Project Path="tests/VelaShell.Terminal.RenderTests/VelaShell.Terminal.RenderTests.csproj" />
     <Project Path="tests/VelaShell.Terminal.Tests/VelaShell.Terminal.Tests.csproj" />
     <Project Path="tests/VelaShell.Tests/VelaShell.Tests.csproj" />
+    <Project Path="tests/VelaShell.XServer.Tests/VelaShell.XServer.Tests.csproj" />
   </Folder>
 </Solution>

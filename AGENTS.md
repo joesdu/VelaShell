@@ -62,6 +62,7 @@ dotnet test  VelaShell.slnx
 | `README.md` / `README.en.md` / `CONTRIBUTING*.md` / `SECURITY.md` / `PRIVACY.md` | GitHub 仓库门面与流程约定                                                                                                   |
 | `src/**/README.md`、`tests/**/README.md`                                          | 各工程自己的目录职责说明,跟着代码走                                                                                                 |
 | `src/VelaShell.Ssh/AGENTS.md` / `LICENSE` / `NOTICE.md`                           | SSH 库专属的开发约定(净室规程)、它自己的 MIT 授权与独立性声明 —— 服务的是「改这个库」,且许可证必须跟着代码走                                                              |
+| `src/VelaShell.XServer/AGENTS.md` / `LICENSE` / `NOTICE.md`                       | X11 服务端库的开发约定(同样的净室规程)、MIT 授权、独立性声明与内置字体的来源 —— 理由同上                                                                          |
 
 
 改 UI 相关代码前先读 `DESIGN.md`:**XAML 与 C# 里不许出现颜色字面量**,一律用
@@ -86,6 +87,10 @@ Docker 与 `docker-compose.test.yml`,`CrossPlatformPublishTests` 需 `VELASHELL_
 **净室规程**:写实现时不许打开任何其它 SSH 实现的源码,实现依据只能是 RFC 与 velashell-docs 的
 `zh/ssh/spec/`。该目录按 **MIT** 授权,
 别把宿主其余部分的代码挪进去。它的测试一律用 Debug 跑(Release 签名会省掉 `InternalsVisibleTo`)。
+- **改 `src/VelaShell.XServer/` 之前先读 [`src/VelaShell.XServer/AGENTS.md`](src/VelaShell.XServer/AGENTS.md)**。
+那是可嵌入的 X11 服务端库(2026-09-23 立项,MIT,尚未接入宿主),与 SSH 库同一套净室规程:
+实现依据只能是 X.Org 的协议规范、ICCCM 与 EWMH,不许打开任何其它 X 服务端的源码。
+真实客户端用例需 Docker 镜像 `velashell-xclients` 与 `VELASHELL_XSERVER_INTEROP=1`,不满足时同样早退记为通过。
 - **插件 SDK 一律走 NuGet 包**,不做工程引用。版本在 `src/Directory.Packages.props`。
 - **不要自己决定 SDK 版本号,也不要造本地包**。宿主的改动需要 SDK 的新契约时,正确做法是:
 在 velashell-plugin-sdk 里把契约写好(那边**同样**不动版本号),然后**明确交代**

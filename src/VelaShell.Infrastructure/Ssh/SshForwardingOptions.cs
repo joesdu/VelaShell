@@ -21,9 +21,11 @@ internal static class SshForwardingOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// 显示地址按「配置里填的 → <c>DISPLAY</c> 环境变量 → <see cref="SshSessionOptions.DefaultX11Display" />」
-    /// 依次取。Windows 上几乎没人设 <c>DISPLAY</c>,而 VcXsrv / Xming / X410 默认都监听
-    /// <c>localhost:0</c> —— 最后那一档照顾的就是这种「装好 X 服务器、什么都没配」的情形。
+    /// 显示地址按「配置里填的 → VelaShell 管理的本机 X Server(<paramref name="localServerDisplay" />)→
+    /// <c>DISPLAY</c> 环境变量 → <see cref="SshSessionOptions.DefaultX11Display" />」依次取。
+    /// 本机 X Server 排在 <c>DISPLAY</c> 前面:它在运行就说明用户此刻要的就是它,而它的显示号可能不是 0
+    /// (自动模式下 :0 被别的 X 服务端占着时会顺延)。Windows 上几乎没人设 <c>DISPLAY</c>,而 VcXsrv / Xming / X410
+    /// 默认都监听 <c>localhost:0</c> —— 最后那一档照顾的就是这种「装好 X 服务器、什么都没配」的情形。
     /// </para>
     /// <para>
     /// <b>不设有效期</b>(<see cref="TimeSpan.Zero" />)。库默认 20 分钟后拒绝新的 X11 通道,
@@ -37,7 +39,8 @@ internal static class SshForwardingOptions
     /// 由 <see cref="VelaSshClientWrapper" /> 转成终端里的提示 —— 不必为了 X11 重开一次 shell。
     /// </para>
     /// </remarks>
-    public static X11ForwardOptions? X11(SshSessionOptions? features, List<ShellStreamNotice> notices)
+    public static X11ForwardOptions? X11(
+        SshSessionOptions? features, List<ShellStreamNotice> notices, string? localServerDisplay = null)
     {
         if (features is not { X11Forwarding: true })
         {
@@ -46,9 +49,11 @@ internal static class SshForwardingOptions
 
         string text = !string.IsNullOrWhiteSpace(features.X11Display)
             ? features.X11Display.Trim()
-            : Environment.GetEnvironmentVariable("DISPLAY") is { Length: > 0 } fromEnvironment
-                ? fromEnvironment
-                : SshSessionOptions.DefaultX11Display;
+            : !string.IsNullOrWhiteSpace(localServerDisplay)
+                ? localServerDisplay
+                : Environment.GetEnvironmentVariable("DISPLAY") is { Length: > 0 } fromEnvironment
+                    ? fromEnvironment
+                    : SshSessionOptions.DefaultX11Display;
 
         if (X11Display.Parse(text) is not { } display)
         {

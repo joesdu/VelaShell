@@ -33,6 +33,7 @@ public class SettingsSectionKeyTests
             Strings.Get("SetVm_SectionTransfer"),
             Strings.Get("SetVm_SectionSecurity"),
             Strings.Get("SetVm_SectionProxy"),
+            Strings.Get("SetVm_SectionXServer"),
             Strings.Get("SetVm_SectionSnippets"),
             Strings.Get("SetVm_SectionSync"),
             Strings.Get("SetVm_SectionAbout"),

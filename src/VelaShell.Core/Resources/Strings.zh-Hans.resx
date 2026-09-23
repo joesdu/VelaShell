@@ -5502,4 +5502,523 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Profile_SshAgentKeySourceFile" xml:space="preserve">
     <value>~/.ssh</value>
   </data>
+  <data name="SetVm_SectionXServer" xml:space="preserve">
+    <value>X Server</value>
+  </data>
+  <data name="SetXServer_Title" xml:space="preserve">
+    <value>X Server</value>
+  </data>
+  <data name="SetXServer_Subtitle" xml:space="preserve">
+    <value>本机 X 服务端(VcXsrv),用于经 SSH X11 转发在本机显示远端的图形程序。改动在下次启动 X Server 时生效。</value>
+  </data>
+  <data name="SetXServer_Unsupported" xml:space="preserve">
+    <value>本机 X Server 目前只在 Windows 上提供。Linux 上 X11 转发直接经 DISPLAY 使用桌面自带的 X 服务端(或 XWayland);macOS 上装好 XQuartz 后同样经 DISPLAY 使用。</value>
+  </data>
+  <data name="SetXServer_SectionProgram" xml:space="preserve">
+    <value>程序</value>
+  </data>
+  <data name="SetXServer_Executable" xml:space="preserve">
+    <value>VcXsrv 程序位置</value>
+  </data>
+  <data name="SetXServer_ExecutableAuto" xml:space="preserve">
+    <value>自动查找</value>
+  </data>
+  <data name="SetXServer_Detected" xml:space="preserve">
+    <value>将使用:{0}</value>
+  </data>
+  <data name="SetXServer_NotDetected" xml:space="preserve">
+    <value>在常见安装位置与 PATH 中都没有找到 VcXsrv。</value>
+  </data>
+  <data name="SetXServer_InstallHint" xml:space="preserve">
+    <value>VelaShell 不捆绑 X 服务端,而是启动你已安装的 VcXsrv。可以这样安装:</value>
+  </data>
+  <data name="SetXServer_InstallHintManual" xml:space="preserve">
+    <value>也可以从 VcXsrv 项目(SourceForge / GitHub)下载安装包。装在别处的话,在上面填上它的路径。</value>
+  </data>
+  <data name="SetXServer_SelectExecutableTitle" xml:space="preserve">
+    <value>选择 vcxsrv.exe</value>
+  </data>
+  <data name="SetXServer_SectionDisplay" xml:space="preserve">
+    <value>显示</value>
+  </data>
+  <data name="SetXServer_DisplayNumber" xml:space="preserve">
+    <value>显示编号</value>
+  </data>
+  <data name="SetXServer_DisplayNumberDesc" xml:space="preserve">
+    <value>即 DISPLAY=localhost:N 里的 N(TCP 端口 6000+N)。自动 = 挑第一个空闲的,已在运行的 X 服务端占着的号会跳过。</value>
+  </data>
+  <data name="SetXServer_DisplayAuto" xml:space="preserve">
+    <value>自动</value>
+  </data>
+  <data name="SetXServer_WindowMode" xml:space="preserve">
+    <value>窗口模式</value>
+  </data>
+  <data name="SetXServer_WindowModeDesc" xml:space="preserve">
+    <value>多窗口:每个远端程序都是一个独立的 Windows 窗口;其余几种把整个 X 屏幕放进一个窗口。</value>
+  </data>
+  <data name="SetXServer_ModeMultiWindow" xml:space="preserve">
+    <value>多窗口</value>
+  </data>
+  <data name="SetXServer_ModeWindowed" xml:space="preserve">
+    <value>单个大窗口</value>
+  </data>
+  <data name="SetXServer_ModeNoDecoration" xml:space="preserve">
+    <value>单个无标题栏窗口</value>
+  </data>
+  <data name="SetXServer_ModeFullscreen" xml:space="preserve">
+    <value>全屏</value>
+  </data>
+  <data name="SetXServer_ModeRootless" xml:space="preserve">
+    <value>无根窗口(用远端窗口管理器)</value>
+  </data>
+  <data name="SetXServer_SectionClipboard" xml:space="preserve">
+    <value>剪贴板</value>
+  </data>
+  <data name="SetXServer_Clipboard" xml:space="preserve">
+    <value>启用剪贴板</value>
+  </data>
+  <data name="SetXServer_ClipboardDesc" xml:space="preserve">
+    <value>让 X 的 CLIPBOARD 选区与 Windows 剪贴板互通(-clipboard)。</value>
+  </data>
+  <data name="SetXServer_CopyOnSelection" xml:space="preserve">
+    <value>选中即复制</value>
+  </data>
+  <data name="SetXServer_CopyOnSelectionDesc" xml:space="preserve">
+    <value>把 PRIMARY 选区也映射过去:在 X 程序里选中文字就直接进入 Windows 剪贴板(-primary)。</value>
+  </data>
+  <data name="SetXServer_SectionKeyboard" xml:space="preserve">
+    <value>键盘</value>
+  </data>
+  <data name="SetXServer_KeyboardLayout" xml:space="preserve">
+    <value>键盘布局</value>
+  </data>
+  <data name="SetXServer_KeyboardLayoutDesc" xml:space="preserve">
+    <value>X 程序使用的 XKB 布局(-xkblayout)。自动 = 跟随 Windows 当前的布局。</value>
+  </data>
+  <data name="SetXServer_LayoutAuto" xml:space="preserve">
+    <value>自动 - 跟随 Windows 当前布局</value>
+  </data>
+  <data name="SetXServer_KeyboardModel" xml:space="preserve">
+    <value>键盘型号</value>
+  </data>
+  <data name="SetXServer_KeyboardModelDesc" xml:space="preserve">
+    <value>XKB 型号(-xkbmodel)。多数键盘用 pc105 即可;日文 / 韩文键盘选 jp106 / kr106。</value>
+  </data>
+  <data name="SetXServer_KeyHook" xml:space="preserve">
+    <value>捕获 Windows 特殊按键</value>
+  </data>
+  <data name="SetXServer_KeyHookDesc" xml:space="preserve">
+    <value>把 Alt+Tab、Win 键、菜单键等交给 X 程序,而不是由 Windows 处理(-keyhook)。</value>
+  </data>
+  <data name="SetXServer_SectionExtensions" xml:space="preserve">
+    <value>扩展</value>
+  </data>
+  <data name="SetXServer_NativeOpenGl" xml:space="preserve">
+    <value>原生 OpenGL(WGL)</value>
+  </data>
+  <data name="SetXServer_NativeOpenGlDesc" xml:space="preserve">
+    <value>经 Windows 的 WGL 接口做硬件加速 OpenGL(-wgl)。3D 程序显示异常时可以关掉试试。</value>
+  </data>
+  <data name="SetXServer_DisableAccessControl" xml:space="preserve">
+    <value>关闭访问控制</value>
+  </data>
+  <data name="SetXServer_DisableAccessControlDesc" xml:space="preserve">
+    <value>任何能连到端口的主机都能在你的屏幕上开窗口、读取键盘输入(-ac)。SSH X11 转发不需要它;只在可信网络里才打开。</value>
+  </data>
+  <data name="SetXServer_SectionAdvanced" xml:space="preserve">
+    <value>高级</value>
+  </data>
+  <data name="SetXServer_ExtraArguments" xml:space="preserve">
+    <value>VcXsrv 附加参数</value>
+  </data>
+  <data name="SetXServer_ExtraArgumentsDesc" xml:space="preserve">
+    <value>追加在上面各项生成的参数之后;同一个开关后写的覆盖先写的。含空格的值用双引号括起来。</value>
+  </data>
+  <data name="SetXServer_Help" xml:space="preserve">
+    <value>帮助</value>
+  </data>
+  <data name="SetXServer_CommandPreview" xml:space="preserve">
+    <value>下次启动时使用的命令行:</value>
+  </data>
+  <data name="SetXServer_SectionStartup" xml:space="preserve">
+    <value>启动</value>
+  </data>
+  <data name="SetXServer_StartOnLaunch" xml:space="preserve">
+    <value>在 VelaShell 启动时自动打开</value>
+  </data>
+  <data name="SetXServer_StartOnLaunchDesc" xml:space="preserve">
+    <value>主窗口打开后在后台启动 X Server。</value>
+  </data>
+  <data name="SetXServer_AutoStartForX11" xml:space="preserve">
+    <value>X11 转发时自动启动</value>
+  </data>
+  <data name="SetXServer_AutoStartForX11Desc" xml:space="preserve">
+    <value>开了 X11 转发的 SSH 会话连上、而配置里没写显示地址时,先启动 X Server。本机 localhost:0 上已有别的 X 服务端时不插手。</value>
+  </data>
+  <data name="SetXServer_ShowTrayIcon" xml:space="preserve">
+    <value>显示托盘图标</value>
+  </data>
+  <data name="SetXServer_ShowTrayIconDesc" xml:space="preserve">
+    <value>在通知区域显示 VcXsrv 自己的图标(-trayicon)。</value>
+  </data>
+  <data name="XServer_ErrUnsupported" xml:space="preserve">
+    <value>本机 X Server 只在 Windows 上可用。</value>
+  </data>
+  <data name="XServer_ErrNotFound" xml:space="preserve">
+    <value>没有找到 VcXsrv。请先安装(winget install marha.VcXsrv),或在 设置 → X Server 里填上它的路径。</value>
+  </data>
+  <data name="XServer_ErrConfiguredNotFound" xml:space="preserve">
+    <value>填写的 VcXsrv 路径不存在:{0}</value>
+  </data>
+  <data name="XServer_ErrDisplayInUse" xml:space="preserve">
+    <value>显示 :{0} 已被另一个 X 服务端占用。请换一个显示编号,或改成“自动”。</value>
+  </data>
+  <data name="XServer_ErrNoFreeDisplay" xml:space="preserve">
+    <value>显示 :0 到 :{0} 全都被占用了。</value>
+  </data>
+  <data name="XServer_ErrLaunch" xml:space="preserve">
+    <value>无法启动 VcXsrv:{0}</value>
+  </data>
+  <data name="XServer_ErrExited" xml:space="preserve">
+    <value>VcXsrv 在启动过程中退出了(退出码 {0})。日志:{1}</value>
+  </data>
+  <data name="XServer_ErrTimeout" xml:space="preserve">
+    <value>VcXsrv 在 {0} 秒内没有开始监听。日志:{1}</value>
+  </data>
+  <data name="XServer_AutoStartFailed" xml:space="preserve">
+    <value>未能自动启动本机 X Server:{0}</value>
+  </data>
+  <data name="XServer_Started" xml:space="preserve">
+    <value>X Server 已启动:{0}</value>
+  </data>
+  <data name="XServer_StartFailed" xml:space="preserve">
+    <value>X Server 启动失败:{0}</value>
+  </data>
+  <data name="XServer_OpenSettings" xml:space="preserve">
+    <value>去设置</value>
+  </data>
+  <data name="XServer_TipStart" xml:space="preserve">
+    <value>启动 X Server</value>
+  </data>
+  <data name="XServer_TipStarting" xml:space="preserve">
+    <value>X Server 正在启动…</value>
+  </data>
+  <data name="XServer_TipStop" xml:space="preserve">
+    <value>X Server 运行中({0}),点击停止</value>
+  </data>
+  <data name="Cmd_ToggleXServer" xml:space="preserve">
+    <value>启动 / 停止 X Server</value>
+  </data>
+  <data name="XHelp_Title" xml:space="preserve">
+    <value>VcXsrv 参数说明</value>
+  </data>
+  <data name="XHelp_Intro" xml:space="preserve">
+    <value>以下是 VcXsrv 命令行接受的全部参数(整理自 vcxsrv -help)。“VcXsrv 附加参数”里填的内容会追加在设置页生成的参数之后。参数区分大小写。</value>
+  </data>
+  <data name="XHelp_FilterPlaceholder" xml:space="preserve">
+    <value>按参数或说明过滤</value>
+  </data>
+  <data name="XHelp_ExtensionsNote" xml:space="preserve">
+    <value>只有下列扩展可以在运行时开启或关闭:</value>
+  </data>
+  <data name="XHelp_NoMatch" xml:space="preserve">
+    <value>没有匹配的参数。</value>
+  </data>
+  <data name="XHelp_Source" xml:space="preserve">
+    <value>来源:VcXsrv -help</value>
+  </data>
+  <data name="XHelpGroup_General" xml:space="preserve">
+    <value>通用 X 服务端参数</value>
+  </data>
+  <data name="XHelpGroup_Extensions" xml:space="preserve">
+    <value>扩展</value>
+  </data>
+  <data name="XHelpGroup_Xdmcp" xml:space="preserve">
+    <value>XDMCP(远程登录)</value>
+  </data>
+  <data name="XHelpGroup_VcXsrv" xml:space="preserve">
+    <value>VcXsrv 专有参数</value>
+  </data>
+  <data name="XHelp_SilentDupError" xml:space="preserve">
+    <value>显示号已被占用时,不弹出致命错误对话框。</value>
+  </data>
+  <data name="XHelp_A" xml:space="preserve">
+    <value>默认的指针加速倍数。</value>
+  </data>
+  <data name="XHelp_Ac" xml:space="preserve">
+    <value>关闭访问控制限制:任何主机都可以连接。</value>
+  </data>
+  <data name="XHelp_Audit" xml:space="preserve">
+    <value>设置审计记录的级别。</value>
+  </data>
+  <data name="XHelp_Auth" xml:space="preserve">
+    <value>使用指定的授权文件。</value>
+  </data>
+  <data name="XHelp_Br" xml:space="preserve">
+    <value>根窗口使用黑色背景。</value>
+  </data>
+  <data name="XHelp_BsOn" xml:space="preserve">
+    <value>启用 backing store 支持。</value>
+  </data>
+  <data name="XHelp_BsOff" xml:space="preserve">
+    <value>禁用 backing store 支持。</value>
+  </data>
+  <data name="XHelp_Cc" xml:space="preserve">
+    <value>默认的颜色视觉类型(visual class)。</value>
+  </data>
+  <data name="XHelp_NoCursor" xml:space="preserve">
+    <value>不显示光标。</value>
+  </data>
+  <data name="XHelp_Core" xml:space="preserve">
+    <value>发生致命错误时生成 core dump。</value>
+  </data>
+  <data name="XHelp_DisplayFd" xml:space="preserve">
+    <value>服务端可以接受连接时,把显示号写入这个文件描述符。</value>
+  </data>
+  <data name="XHelp_Dpi" xml:space="preserve">
+    <value>屏幕分辨率:auto = 使用系统原生 DPI,也可以直接给一个数值。</value>
+  </data>
+  <data name="XHelp_Dpms" xml:space="preserve">
+    <value>禁用 VESA DPMS 显示器电源管理。</value>
+  </data>
+  <data name="XHelp_DeferGlyphs" xml:space="preserve">
+    <value>延迟加载字形:none(不延迟)、all(全部)或 16(仅 16 位字形)。</value>
+  </data>
+  <data name="XHelp_F" xml:space="preserve">
+    <value>响铃基础音量(0–100)。</value>
+  </data>
+  <data name="XHelp_FakeScreenFps" xml:space="preserve">
+    <value>虚拟屏幕的默认帧率(1–600)。</value>
+  </data>
+  <data name="XHelp_Fp" xml:space="preserve">
+    <value>默认的字体路径。</value>
+  </data>
+  <data name="XHelp_Help" xml:space="preserve">
+    <value>打印参数列表。</value>
+  </data>
+  <data name="XHelp_IglxOn" xml:space="preserve">
+    <value>允许创建间接 GLX 上下文(默认)。</value>
+  </data>
+  <data name="XHelp_IglxOff" xml:space="preserve">
+    <value>禁止创建间接 GLX 上下文。</value>
+  </data>
+  <data name="XHelp_IgnoreRest" xml:space="preserve">
+    <value>忽略其后的所有参数。</value>
+  </data>
+  <data name="XHelp_MaxClients" xml:space="preserve">
+    <value>最多允许的客户端数(2 的幂)。</value>
+  </data>
+  <data name="XHelp_NoListen" xml:space="preserve">
+    <value>不在指定协议上监听(如 tcp)。</value>
+  </data>
+  <data name="XHelp_Listen" xml:space="preserve">
+    <value>在指定协议上监听(如 tcp)。</value>
+  </data>
+  <data name="XHelp_NoReset" xml:space="preserve">
+    <value>最后一个客户端退出后不重置。</value>
+  </data>
+  <data name="XHelp_Background" xml:space="preserve">
+    <value>根窗口不绘制背景。</value>
+  </data>
+  <data name="XHelp_Reset" xml:space="preserve">
+    <value>最后一个客户端退出后重置。</value>
+  </data>
+  <data name="XHelp_Pn" xml:space="preserve">
+    <value>允许部分端口监听失败。</value>
+  </data>
+  <data name="XHelp_NoPn" xml:space="preserve">
+    <value>任一端口监听失败即报错退出。</value>
+  </data>
+  <data name="XHelp_RepeatOff" xml:space="preserve">
+    <value>关闭按键自动重复。</value>
+  </data>
+  <data name="XHelp_RepeatOn" xml:space="preserve">
+    <value>打开按键自动重复。</value>
+  </data>
+  <data name="XHelp_Render" xml:space="preserve">
+    <value>RENDER 扩展的颜色分配策略:default、mono、gray 或 color。</value>
+  </data>
+  <data name="XHelp_Retro" xml:space="preserve">
+    <value>以经典的点状花纹根窗口启动。</value>
+  </data>
+  <data name="XHelp_Seat" xml:space="preserve">
+    <value>运行在哪个 seat 上。</value>
+  </data>
+  <data name="XHelp_T" xml:space="preserve">
+    <value>默认的指针加速阈值(像素)。</value>
+  </data>
+  <data name="XHelp_Terminate" xml:space="preserve">
+    <value>服务端重置时退出;可选地延迟若干秒。</value>
+  </data>
+  <data name="XHelp_Tst" xml:space="preserve">
+    <value>禁用测试用扩展。</value>
+  </data>
+  <data name="XHelp_Wr" xml:space="preserve">
+    <value>根窗口使用白色背景。</value>
+  </data>
+  <data name="XHelp_XineramaOn" xml:space="preserve">
+    <value>启用 XINERAMA 扩展。</value>
+  </data>
+  <data name="XHelp_XineramaOff" xml:space="preserve">
+    <value>禁用 XINERAMA 扩展。</value>
+  </data>
+  <data name="XHelp_DumbSched" xml:space="preserve">
+    <value>禁用智能调度与多线程输入,恢复旧行为。</value>
+  </data>
+  <data name="XHelp_SchedInterval" xml:space="preserve">
+    <value>调度间隔(毫秒)。</value>
+  </data>
+  <data name="XHelp_AccessX" xml:space="preserve">
+    <value>启用(+)或禁用(-)AccessX 辅助功能按键序列,可附超时与掩码。</value>
+  </data>
+  <data name="XHelp_VmId" xml:space="preserve">
+    <value>接受来自这台 Hyper-V 虚拟机(GUID)的 VSock 连接。</value>
+  </data>
+  <data name="XHelp_VsockPort" xml:space="preserve">
+    <value>VSock 连接的监听端口(默认 106000)。</value>
+  </data>
+  <data name="XHelp_ExtensionOn" xml:space="preserve">
+    <value>启用指定的扩展。</value>
+  </data>
+  <data name="XHelp_ExtensionOff" xml:space="preserve">
+    <value>禁用指定的扩展。</value>
+  </data>
+  <data name="XHelp_Query" xml:space="preserve">
+    <value>向指定主机发起 XDMCP 查询(远程桌面登录)。</value>
+  </data>
+  <data name="XHelp_Broadcast" xml:space="preserve">
+    <value>以广播方式查找 XDMCP 主机。</value>
+  </data>
+  <data name="XHelp_Multicast" xml:space="preserve">
+    <value>以 IPv6 组播查找 XDMCP 主机,可指定地址与跳数。</value>
+  </data>
+  <data name="XHelp_Indirect" xml:space="preserve">
+    <value>向指定主机发起间接 XDMCP 查询。</value>
+  </data>
+  <data name="XHelp_Port" xml:space="preserve">
+    <value>XDMCP 消息发往的 UDP 端口。</value>
+  </data>
+  <data name="XHelp_From" xml:space="preserve">
+    <value>从哪个本机地址发起连接。</value>
+  </data>
+  <data name="XHelp_Once" xml:space="preserve">
+    <value>一次会话结束后即退出服务端。</value>
+  </data>
+  <data name="XHelp_Class" xml:space="preserve">
+    <value>Manage 请求中发送的显示类别。</value>
+  </data>
+  <data name="XHelp_Cookie" xml:space="preserve">
+    <value>XDMCP 使用的 magic cookie(XDM-AUTHORIZATION)。</value>
+  </data>
+  <data name="XHelp_DisplayId" xml:space="preserve">
+    <value>请求中发送的厂商显示 ID。</value>
+  </data>
+  <data name="XHelp_Clipboard" xml:space="preserve">
+    <value>启用[禁用]与 Windows 剪贴板的集成。默认启用。</value>
+  </data>
+  <data name="XHelp_Primary" xml:space="preserve">
+    <value>开启剪贴板集成时,把[不把] X11 的 PRIMARY 选区映射到 Windows 剪贴板。CLIPBOARD 选区始终会映射。默认映射。</value>
+  </data>
+  <data name="XHelp_ClipUpdates" xml:space="preserve">
+    <value>当更新区域达到这么多个矩形时,用裁剪区域把影子缓冲的刷新限制在变动部分。当前的 Windows 已会批量合并 GDI 操作,效果不明显。</value>
+  </data>
+  <data name="XHelp_CompositeWm" xml:space="preserve">
+    <value>在多窗口模式下启用[禁用] Composite 扩展(默认启用)。为每个顶层 X 窗口保留一份位图,被遮住的窗口在任务栏与任务切换预览中也能正确显示。</value>
+  </data>
+  <data name="XHelp_CompositeAlpha" xml:space="preserve">
+    <value>把带逐像素透明度的 X 窗口合成到 Windows 桌面上[或不合成]。</value>
+  </data>
+  <data name="XHelp_Depth" xml:space="preserve">
+    <value>全屏模式下使用 DirectDraw 引擎时的色深。</value>
+  </data>
+  <data name="XHelp_Emulate3Buttons" xml:space="preserve">
+    <value>模拟[不模拟]三键鼠标,可附超时(毫秒)。</value>
+  </data>
+  <data name="XHelp_Engine" xml:space="preserve">
+    <value>覆盖自动选择的绘制引擎:
+1 - Shadow GDI
+4 - Shadow DirectDraw4 Non-Locking</value>
+  </data>
+  <data name="XHelp_Fullscreen" xml:space="preserve">
+    <value>以全屏模式运行。</value>
+  </data>
+  <data name="XHelp_HostInTitle" xml:space="preserve">
+    <value>多窗口模式下,在窗口标题里加上[不加]远端主机名。</value>
+  </data>
+  <data name="XHelp_Icon" xml:space="preserve">
+    <value>窗口模式下设置屏幕窗口的图标。</value>
+  </data>
+  <data name="XHelp_IgnoreInput" xml:space="preserve">
+    <value>忽略键盘与鼠标输入。</value>
+  </data>
+  <data name="XHelp_KeyHook" xml:space="preserve">
+    <value>捕获[不捕获] Alt+Tab、菜单键等 Windows 特殊按键。</value>
+  </data>
+  <data name="XHelp_LessPointer" xml:space="preserve">
+    <value>指针在 VcXsrv 窗口上时隐藏 Windows 鼠标指针,避免它画在 X 光标上面形成重影。</value>
+  </data>
+  <data name="XHelp_LogFile" xml:space="preserve">
+    <value>把日志写到指定文件。</value>
+  </data>
+  <data name="XHelp_LogVerbose" xml:space="preserve">
+    <value>日志详细程度(目前只有部分消息遵守):
+0 - 只记致命错误
+1 - 另加配置信息
+2 - 另加运行时信息(默认)
+3 - 另加调试与跟踪信息</value>
+  </data>
+  <data name="XHelp_MultiMonitors" xml:space="preserve">
+    <value>有多个显示器时使用[不使用]整个虚拟屏幕。</value>
+  </data>
+  <data name="XHelp_MultiWindow" xml:space="preserve">
+    <value>以多窗口模式运行:每个 X 窗口都是一个原生窗口。不能与 -rootless 或 -fullscreen 同时使用。</value>
+  </data>
+  <data name="XHelp_NoDecoration" xml:space="preserve">
+    <value>不绘制窗口边框与标题栏。仅用于窗口模式,与 -fullscreen 同用时忽略。</value>
+  </data>
+  <data name="XHelp_Refresh" xml:space="preserve">
+    <value>全屏模式下使用 DirectDraw 引擎时的刷新率(Hz)。</value>
+  </data>
+  <data name="XHelp_Resize" xml:space="preserve">
+    <value>窗口模式下能否调整窗口大小:none = 不允许,scrollbars = 按需出现滚动条,randr = 通过 RANDR 扩展调整 X 屏幕大小(默认)。</value>
+  </data>
+  <data name="XHelp_Rootless" xml:space="preserve">
+    <value>使用透明根窗口,配合外部窗口管理器(如 openbox)。不能与 -multiwindow 或 -fullscreen 同时使用。</value>
+  </data>
+  <data name="XHelp_Screen" xml:space="preserve">
+    <value>启用编号为 scr_num 的屏幕,可指定大小与位置。加上显示器编号(@m)后坐标都相对于那台显示器。示例依次为:第 2 台显示器偏移 100,100、大小 800x600;第 3 台显示器 1024x768;第 1 台显示器全分辨率(默认)。</value>
+  </data>
+  <data name="XHelp_SwCursor" xml:space="preserve">
+    <value>不使用 Windows 光标,改用 X11 软件光标。</value>
+  </data>
+  <data name="XHelp_TrayIcon" xml:space="preserve">
+    <value>创建[不创建]通知区域图标(默认每个屏幕一个)。可以先用 -notrayicon 全局关闭,再对个别屏幕用 -trayicon 打开。</value>
+  </data>
+  <data name="XHelp_UnixKill" xml:space="preserve">
+    <value>Ctrl+Alt+Backspace 退出[不退出] X 服务端。默认禁用。</value>
+  </data>
+  <data name="XHelp_Wgl" xml:space="preserve">
+    <value>通过 Windows 原生 WGL 接口启用[禁用] GLX,实现硬件加速的 OpenGL。</value>
+  </data>
+  <data name="XHelp_SwrastWgl" xml:space="preserve">
+    <value>通过基于 swrast(软件光栅化)的 Windows WGL 接口启用 GLX。</value>
+  </data>
+  <data name="XHelp_WinKill" xml:space="preserve">
+    <value>Alt+F4 退出[不退出] X 服务端。</value>
+  </data>
+  <data name="XHelp_XkbLayout" xml:space="preserve">
+    <value>XKB 键盘布局。默认取与 Windows 当前布局对应的那一个,找不到对应的则为 us。</value>
+  </data>
+  <data name="XHelp_XkbModel" xml:space="preserve">
+    <value>XKB 键盘型号。默认 pc105。</value>
+  </data>
+  <data name="XHelp_XkbOptions" xml:space="preserve">
+    <value>XKB 选项。默认不设置。</value>
+  </data>
+  <data name="XHelp_XkbRules" xml:space="preserve">
+    <value>XKB 规则。默认 xorg。</value>
+  </data>
+  <data name="XHelp_XkbVariant" xml:space="preserve">
+    <value>XKB 变体。默认不设置。</value>
+  </data>
 </root>
