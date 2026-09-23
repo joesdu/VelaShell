@@ -143,7 +143,8 @@ public static class XAuthority
     /// <returns>找到返回 cookie，否则 <see langword="null"/>。</returns>
     /// <remarks>
     /// 匹配规则：协议名必须是 <c>MIT-MAGIC-COOKIE-1</c>；显示号要对上
-    /// （记录里的显示号是空串时当通配）；地址族是
+    /// （按十进制<b>数值</b>比，<c>"05"</c> 与显示 5 算对上；记录里的显示号是空串时当通配；
+    /// 带符号、空白或其它字符而解析不了的不匹配）；地址族是
     /// <see cref="FamilyWild"/> 时不看地址，是 <see cref="FamilyLocal"/>
     /// 时按主机名比（<b>不区分大小写</b> —— 主机名本来就不区分）。
     /// </remarks>
@@ -154,7 +155,6 @@ public static class XAuthority
         ArgumentNullException.ThrowIfNull(display);
 
         string host = hostName ?? SafeHostName();
-        string wanted = display.Number.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         foreach (XAuthorityEntry entry in entries)
         {
@@ -165,8 +165,7 @@ public static class XAuthority
                 continue;
             }
 
-            if (entry.DisplayNumber.Length != 0
-                && !string.Equals(entry.DisplayNumber, wanted, StringComparison.Ordinal))
+            if (!DisplayNumberMatches(entry.DisplayNumber, display.Number))
             {
                 continue;
             }
@@ -189,6 +188,28 @@ public static class XAuthority
         }
 
         return null;
+    }
+
+    /// <summary>记录里的显示号字段是否指向 <paramref name="wanted"/>。</summary>
+    /// <remarks>
+    /// 按<b>数值</b>比，不按文本比：字段是 ASCII 十进制数，按文本比的话 <c>"05"</c>
+    /// 与显示 5 对不上。只认纯十进制数字 —— 不带符号、不带空白、与区域设置无关；
+    /// 空串是通配；非空而解析不了（或超出范围）的字段不匹配任何显示，
+    /// 而不是被当成通配 —— 读不懂的条目不该拿来开门。
+    /// </remarks>
+    private static bool DisplayNumberMatches(string field, int wanted)
+    {
+        if (field.Length == 0)
+        {
+            return true;
+        }
+
+        return int.TryParse(
+                field,
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out int number)
+            && number == wanted;
     }
 
     private static string SafeHostName()

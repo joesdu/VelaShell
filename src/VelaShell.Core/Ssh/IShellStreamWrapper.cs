@@ -59,4 +59,20 @@ public interface IShellStreamWrapper : IAsyncDisposable
     /// 像素尺寸报告为 0(仅使用字符单元尺寸)。
     /// </summary>
     void Resize(int columns, int rows);
+
+    /// <summary>
+    /// 打开这条流时顺带发生、值得让用户知道的事(已本地化,一条一行):
+    /// X11 / agent 转发开成了没有、没开成是为什么。
+    /// </summary>
+    /// <remarks>
+    /// 转发被服务端拒绝时 shell 照样打开(去掉那一项重开一次)—— 为一个附带功能让整条会话
+    /// 连不上是本末倒置。但静默去掉又会让用户对着「cannot open display」不知所以,
+    /// 所以原因留在这里,由宿主以一行灰字写进终端。没有这类事的实现返回空。
+    /// </remarks>
+    IReadOnlyList<ShellStreamNotice> Notices => [];
 }
+
+/// <summary>打开 shell 流时附带的一条提示。</summary>
+/// <param name="Text">已本地化的提示文本。</param>
+/// <param name="IsWarning">是不是「没开成」这一类(宿主用醒目一点的颜色)。</param>
+public readonly record struct ShellStreamNotice(string Text, bool IsWarning);

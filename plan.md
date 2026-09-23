@@ -5747,6 +5747,49 @@ SSH PTY 像素尺寸贯通(原本等 `tmds/Tmds.Ssh#519`)、SSH Agent 转发、S
 连接超时(用户 10 秒内没点就连接失败,「永久信任」也可能没存上);`SftpFileStream.Dispose(bool)`
 仍是同步等异步;`SshChannel.DisposeAsync` 的关闭报文没有时间上限。
 
+## ✅ 92. 2026-09-23 SSH Agent 认证与转发、X11 转发、压缩开关(用户需求)
+
+换库(§91)之后这三件在底层都已经有了,本节是宿主侧的接线。落在连接配置的「高级选项」里,
+新增 `SessionProfile.Ssh`(`SshSessionOptions`,三项都关时整个存 `null`,老配置零迁移)。
+
+### 一、四样东西
+
+| 项 | 界面 | 接到哪 |
+| --- | --- | --- |
+| **SSH Agent 认证** | 认证方式下拉末项「SSH Agent」(`AuthMethod.Agent`,枚举按序号落盘,只能加在末尾) | `SshConnectionAssembler`:连本机 agent → 每把钥一个 `PublicKeyCredential`,agent 客户端活到认证结束再释放 |
+| **压缩** | 「启用压缩(适合高延迟 / 低带宽链路)」+ 一行何时该开的说明;SSH 与 SFTP 都有 | `SshConnectionAssembler.Algorithms`:`SshAlgorithmSet.Default.WithCompression()`(`zlib@openssh.com` 在前、`none` 兜底) |
+| **agent 转发** | 「转发 ssh-agent(-A)」+ 风险说明;只对 SSH | `SshShellOptions.AgentForwarding` |
+| **X11 转发** | 「X11 转发」,打开后多出「本机 X 显示」与「受信任(-Y)」;只对 SSH | `SshShellOptions.X11`(`SshForwardingOptions` 负责翻译) |
+
+### 二、几处取舍
+
+- **压缩没有做成「按延迟自动开」**。压缩算法在握手最开头的 KEXINIT 里就定了,那时还没有任何
+  延迟数据;要做自动只能拿上一次连接的测量值猜,猜错了用户也看不出为什么。所以是一个手动开关,
+  说明文字里直接写清「往返 100 ms 以上、或带宽紧张时开;局域网与已压缩数据别开」。
+- **转发被拒不连累会话**。库的 `SshForwardException` 不区分是哪一项被拒,两项都开时靠重试定位
+  (先去掉 X11,再去掉 agent),只在失败路径上多几个往返。结果写进 `IShellStreamWrapper.Notices`
+  (带默认实现的接口成员,ConPTY / 插件流零改动),主窗口在首连与重连时以灰字 / 黄字写进终端顶部。
+- **X11 默认受信任、整条会话有效**。Windows 上的 X 服务器没有 SECURITY 扩展、本机也没有 xauth,
+  非受信模式在那里根本跑不起来;库默认 20 分钟后拒绝新 X11 通道,交互式会话里只会被当成坏了。
+  显示地址按「配置 → `DISPLAY` → `localhost:0.0`」依次取。**不带 X 服务端**(`feature-plan.md`「确认不做」)。
+- **连 agent 带 3 秒上限**。Windows 上 agent 服务没起时命名管道不存在,不带超时的管道连接会一直
+  重试到整条连接超时;现在 3 秒内报「连不上本机 ssh-agent」并附 `Start-Service ssh-agent`。
+  `SSH_AUTH_SOCK` 在 Windows 上只认 `\.\pipe\…`(Git Bash / WSL 的 Unix 套接字连不上)。
+
+### 三、验证
+
+- 单测:`SshSessionFeaturesTests`(算法集、X11/agent 选项翻译)、`ConnectionProfileViewModelTests`
+  三条(编辑往返、SFTP 丢掉转发、Agent 下拉位置)。
+- **端到端**(`SshSessionFeaturesIntegrationTests`,ssh-shells 靶机,本次给它开了 `X11Forwarding`
+  并装了 xauth):压缩真的协商成 `zlib@openssh.com`;远端用 bash 的 `/dev/tcp` 手搓一个 X 客户端,
+  本机假 X 服务器收到了换过 cookie 的建立报文;远端 `ssh-add -l` 问到了本机的假 agent;
+  私钥只在假 agent 里的情况下以「SSH Agent」认证登录成功。6/6 通过。
+- 全量测试通过;ShellIntegration 32/32。
+
+**没做的**:「自动加载密钥到 Agent」(R-06,要往 agent 里**加**钥,库的 agent 客户端还不会)、
+Pageant、agent 转发的「只转发指定密钥 / 逐次确认」界面(库已支持)。均记在 `feature-plan.md`。
+文档:velashell-docs `zh|en/host/交互与界面规格.md` 同步。
+
 ## ✅ 92. 2026-09-23 把 VelaShell.Ssh 并进本仓库,不再单独发 NuGet(用户需求)
 
 §91 换库时 VelaShell.Ssh 还在独立仓库 `VelaShellLabs/velashell-ssh`,宿主走跨仓库的工程引用
@@ -5811,3 +5854,65 @@ SSH PTY 像素尺寸贯通(原本等 `tmds/Tmds.Ssh#519`)、SSH Agent 转发、S
 velashell-docs 那边的配套改动:新增 `zh/ssh/` 与 `en/ssh/`(architecture、spec 00–09、getting-started 与索引页),
 挂进仓库首页、`zh|en/README.md` 与 AGENTS.md 的目录表。原文 architecture.md 首行标题与一处被折断的
 `chacha20-poly1305@openssh.com` 在搬运时顺手修了。
+
+## ✅ 93. 2026-09-23 CI 去掉 `ssh-interop` 作业,解决方案补齐 `.github` 文件(用户需求)
+
+- `ci.yml` 删掉 §92 加进来的 `ssh-interop` 作业。它只在推 main 与手动触发时跑，在 PR 的检查列表里
+  永远显示为一项 Skipped,看着像没跑的门禁。互操作用例改为本地按需跑:`scripts/ssh/interop/Start-TestServer.ps1`
+  起靶机，再 `dotnet test tests/VelaShell.Ssh.Tests -c Debug --filter "TestCategory=Interop"`(环境变量见脚本输出)。
+  主测试作业里的 `TestCategory!=Interop` 过滤保留;`workflow_dispatch` 也保留，手动重跑整套门禁仍然有用。
+- `VelaShell.slnx` 补上 `.github/ISSUE_TEMPLATE/` 下的三个文件 —— 此前 `.github` 里只有它们没进解决方案。
+
+## ✅ 94. 2026-09-23 关通道时 stdin 泵撞上「reader 完成后不许再读」(用户反馈)
+
+调试输出里关标签 / 断开时总有一条 `InvalidOperationException: Reading is not allowed after reader was completed`
+(System.IO.Pipelines)。来源是 `SshChannel.FinishClose` 从外面把 stdin 管道的 **reader** 完成了，而那个 reader 归
+`PumpStandardInputAsync` 所有：泵正读到一半或刚 `AdvanceTo` 完要回头再读，就撞上它。异常被泵的 catch 接住，
+没有功能后果，但每次关通道都在调试器里冒一条。
+
+改成 reader 只由泵自己完成(各条退出路径统一在泵尾部 `CompleteAsync`);`FinishClose` 只完成 writer、取消 `_lifetime`,
+泵从没起来(通道没开成)时才由它代为完成 reader。
+
+同一段输出里的 `OperationCanceledException` / `TaskCanceledException` 是断开时取消在途读写的正常首次机会异常，不需要改。
+
+## ✅ 95. 2026-09-23 宿主接上 SSH 库的 X11 尽力而为(`BestEffort`)(用户需求)
+
+SSH 库给 `X11ForwardOptions` 加了 `BestEffort`:设置失败时不抛、shell 照常开，原因放在 `SshShell.X11SetupFailure`。
+宿主配置里的 X11 开关本来就是连接级的、失败要降级(§92),于是接上:
+
+- `SshForwardingOptions.X11` 产出的选项一律 `BestEffort = true`。
+- `VelaSshClientWrapper.OpenShellWithFallbackAsync` 删掉「挨个去掉转发来定位是哪项被拒」的多轮重试:
+  X11 不会再抛，能接到的 `SshForwardException` 只会来自 agent —— 去掉 agent、保留 X11 重开一次即可。
+  以前 X11 被拒时要多开一次 shell(两项都开时最多开四次),现在 X11 被拒不产生任何额外往返。
+- `shell.X11SetupFailure` 非空时写一行黄字(`Ssh_X11ForwardFailed`),与以前的提示同一条文案。
+- ssh-shells 靶机给 `vela-dash` 单独关了 `X11Forwarding`(`Match User`),新增端到端用例
+  `X11_RefusedByServer_KeepsAgentForwardingAndWarnsOnce`:服务端拒绝 X11 时 shell 开成、agent 转发照常、只有一条黄字。
+
+velashell-docs:`zh/host/交互与界面规格.md` 与 `en/host/interaction-and-ui-specs.md`「被拒不连累会话」一段同步改写。
+
+## ✅ 96. 2026-09-23 标签页协议图标的绑定错误(用户反馈)
+
+每开一个本地终端，调试输出里刷三条 `[Binding] ... binding 'Data' to 'Terminal.TabIcon.Geometry' at 'TabIcon': 'Value is null.'`
+(外加 `ViewBoxSize` / `Fill`)。本地终端没有配置,`TabIcon` 是 null,而图标的三个属性直接绑 `Terminal.TabIcon.Xxx`,
+路径走到 null 就断。图标本来就靠 `IsVisible` 收掉了，功能没问题，但刷多了会把真错误淹掉。
+
+四个标签模板(`DockTabItem` / `SftpDockTabItem` / `WorkspaceDockTabItem` / `PluginDockTabItem`)统一改成
+把图标的 `DataContext` 收窄到 `TabIcon`(`x:DataType="services:TabIcon"`),子属性绑 `Geometry` / `ViewBoxSize` / `Fill`;
+DataContext 为 null 时绑定静默不取值。可见性改绑 `$self.DataContext`,前景色经 `$parent[...]` 回到标签的数据上下文。
+回归用例 `SessionTabIconUiTests.ALocalTerminalTabBindsWithoutErrors`:本地终端标签零绑定错误，SSH 标签零错误且图标拿到连接标识色。
+
+## ✅ 97. 2026-09-23 CI 在 Linux / macOS 上随机红:请求账本「入队后才登记」的竞态(#492)
+
+SSH 库并入之后,CI 的 Linux / macOS 作业几乎每次都有几条 `VelaShell.Ssh.Tests` 随机失败,Windows 从来不挂;
+每次挂的用例都不一样,症状却高度一致:「服务端拒绝执行这条命令 / 分配伪终端 / X11 转发」、`IsAlive` 为 false、等状态超时。
+测试桩只在脚本要求时才拒绝，所以这些「拒绝」是客户端自己造出来的。
+
+根因在 `SshConnectionSend.EnqueueAsync`:带登记回调的发送是「`TryWrite` 入队 → 回调登记账本」。
+`_enqueueLock` 只让入队者之间互斥，挡不住另一个线程上的发送泵 —— 入队那一刻泵就可能把帧发出去，
+内存传输上的测试服务端立刻应答，接收循环看到「没有对应请求的应答」,按 FIFO 失步把整条连接判死;
+随后所有通道收尾，挂着的请求被 `Close(false)` 一律结算成「拒绝」。泵线程能立刻抢到核的 Linux / macOS 上才频繁撞上。
+`FifoRequestLedger` 自己的注释早就写着「登记必须在发送之前」,是实现没兑现。
+
+改成先登记、再入队(仍在同一把锁里，登记顺序与上线顺序照样一致)。全局请求与通道请求都走这一处，一并修好。
+回归用例 `ChannelTests.请求账本的登记先于报文上线`:在登记回调里睡 300ms 把窗口撑大，断言回调结束前服务端没看到这一帧 ——
+修复前在 Windows 上也稳定失败，修复后通过。

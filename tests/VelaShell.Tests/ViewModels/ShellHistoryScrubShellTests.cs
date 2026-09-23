@@ -46,8 +46,8 @@ public sealed partial class ShellHistoryScrubShellTests
             "echo user-2");
 
         AssertNotInHistory(history);
-        CollectionAssert.Contains(history, "echo user-1", "用户自己的命令不能跟着一起被摘掉。");
-        CollectionAssert.Contains(history, "echo user-2");
+        Assert.Contains("echo user-1", history, "用户自己的命令不能跟着一起被摘掉。");
+        Assert.Contains("echo user-2", history);
     }
 
     /// <summary>
@@ -81,7 +81,7 @@ public sealed partial class ShellHistoryScrubShellTests
             " " + InjectedLine);
 
         AssertNotInHistory(history);
-        CollectionAssert.Contains(history, "echo keep-me", "注入行没进历史,却把用户上一条删掉了。");
+        Assert.Contains("echo keep-me", history, "注入行没进历史,却把用户上一条删掉了。");
     }
 
     /// <summary>
@@ -98,7 +98,7 @@ public sealed partial class ShellHistoryScrubShellTests
             " " + InjectedLine);
 
         AssertNotInHistory(history);
-        CollectionAssert.Contains(history, "echo user-1");
+        Assert.Contains("echo user-1", history);
     }
 
     private static void AssertNotInHistory(string[] history)

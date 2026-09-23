@@ -30,7 +30,7 @@ public sealed class ProxyDialerTests
     [TestMethod]
     public async Task 经SOCKS5代理连上且主机名交给代理解析()
     {
-        await using FakeSocks5Proxy proxy = FakeSocks5Proxy.Start();
+        await using var proxy = FakeSocks5Proxy.Start();
 
         await using SshConnection connection = await ConnectAsync(DialerChain.Socks5("127.0.0.1", proxy.Port));
         SshCommandOutput output = await connection.RunAsync("hello");
@@ -47,7 +47,7 @@ public sealed class ProxyDialerTests
     [TestMethod]
     public async Task SOCKS5的用户名口令认证()
     {
-        await using FakeSocks5Proxy proxy = FakeSocks5Proxy.Start(required: new SshProxyCredentials("alice", "s3cret"));
+        await using var proxy = FakeSocks5Proxy.Start(required: new SshProxyCredentials("alice", "s3cret"));
 
         await using SshConnection connection = await ConnectAsync(
             DialerChain.Socks5("127.0.0.1", proxy.Port, new SshProxyCredentials("alice", "s3cret")));
@@ -58,7 +58,7 @@ public sealed class ProxyDialerTests
     [TestMethod]
     public async Task SOCKS5要认证而没配凭据时报ProxyAuthRequired()
     {
-        await using FakeSocks5Proxy proxy = FakeSocks5Proxy.Start(required: new SshProxyCredentials("alice", "s3cret"));
+        await using var proxy = FakeSocks5Proxy.Start(required: new SshProxyCredentials("alice", "s3cret"));
 
         SshConnectException ex = await Assert.ThrowsExactlyAsync<SshConnectException>(
             async () => await ConnectAsync(DialerChain.Socks5("127.0.0.1", proxy.Port)));
@@ -69,13 +69,13 @@ public sealed class ProxyDialerTests
     [TestMethod]
     public async Task SOCKS5拒绝时带着结果码与每一跳()
     {
-        await using FakeSocks5Proxy proxy = FakeSocks5Proxy.Start(replyCode: 5);
+        await using var proxy = FakeSocks5Proxy.Start(replyCode: 5);
 
         SshConnectException ex = await Assert.ThrowsExactlyAsync<SshConnectException>(
             async () => await ConnectAsync(DialerChain.Socks5("127.0.0.1", proxy.Port)));
 
         Assert.AreEqual(SshFailureReason.ProxyRefused, ex.Reason);
-        StringAssert.Contains(ex.Message, "目标拒绝连接");
+        Assert.Contains("目标拒绝连接", ex.Message);
 
         // 从近到远：到代理成功，代理到目标失败。
         Assert.HasCount(2, ex.Hops);
@@ -95,7 +95,7 @@ public sealed class ProxyDialerTests
             async () => await ConnectAsync(DialerChain.Socks5("127.0.0.1", closedPort)));
 
         Assert.AreEqual(SshFailureReason.TcpRefused, ex.Reason);
-        StringAssert.Contains(ex.Message, "SOCKS5 代理");
+        Assert.Contains("SOCKS5 代理", ex.Message);
         Assert.AreEqual(SshDialKind.Tcp, ex.Hops.Single().Kind);
         Assert.IsFalse(ex.Hops.Single().Succeeded);
     }
@@ -105,7 +105,7 @@ public sealed class ProxyDialerTests
     {
         byte[] v4 = Socks5Dialer.BuildConnectRequest(new SshEndPoint("10.0.0.9", 22));
         Assert.AreEqual(1, v4[3]);
-        CollectionAssert.AreEqual(new byte[] { 10, 0, 0, 9 }, v4[4..8]);
+        Assert.AreSequenceEqual(new byte[] { 10, 0, 0, 9 }, v4[4..8]);
 
         byte[] v6 = Socks5Dialer.BuildConnectRequest(new SshEndPoint("::1", 2222));
         Assert.AreEqual(4, v6[3]);
@@ -113,7 +113,7 @@ public sealed class ProxyDialerTests
 
         byte[] idn = Socks5Dialer.BuildConnectRequest(new SshEndPoint("例子.测试", 22));
         Assert.AreEqual(3, idn[3]);
-        StringAssert.StartsWith(Encoding.ASCII.GetString(idn, 5, idn[4]), "xn--");
+        Assert.StartsWith("xn--", Encoding.ASCII.GetString(idn, 5, idn[4]));
     }
 
     // ------------------------------------------------------------ HTTP CONNECT
@@ -124,7 +124,7 @@ public sealed class ProxyDialerTests
     [TestMethod]
     public async Task 经HTTP代理连上且应答后紧跟的标识串不丢()
     {
-        await using FakeHttpProxy proxy = FakeHttpProxy.Start("HTTP/1.1 200 Connection established");
+        await using var proxy = FakeHttpProxy.Start("HTTP/1.1 200 Connection established");
 
         await using SshConnection connection = await ConnectAsync(
             DialerChain.HttpConnect("127.0.0.1", proxy.Port, new SshProxyCredentials("bob", "pw")));
@@ -132,42 +132,42 @@ public sealed class ProxyDialerTests
         Assert.AreEqual("来自目标", (await connection.RunAsync("hello")).StandardOutput);
 
         string request = proxy.Requests.Single();
-        StringAssert.StartsWith(request, $"CONNECT {TargetHost}:22 HTTP/1.1\r\n");
-        StringAssert.Contains(request, $"Host: {TargetHost}:22\r\n");
-        StringAssert.Contains(
-            request, $"Proxy-Authorization: Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes("bob:pw"))}\r\n");
+        Assert.StartsWith($"CONNECT {TargetHost}:22 HTTP/1.1\r\n", request);
+        Assert.Contains($"Host: {TargetHost}:22\r\n", request);
+        Assert.Contains(
+$"Proxy-Authorization: Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes("bob:pw"))}\r\n", request);
     }
 
     [TestMethod]
     public async Task HTTP代理407报ProxyAuthRequired()
     {
-        await using FakeHttpProxy proxy = FakeHttpProxy.Start(
+        await using var proxy = FakeHttpProxy.Start(
             "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"corp\"");
 
         SshConnectException ex = await Assert.ThrowsExactlyAsync<SshConnectException>(
             async () => await ConnectAsync(DialerChain.HttpConnect("127.0.0.1", proxy.Port)));
 
         Assert.AreEqual(SshFailureReason.ProxyAuthRequired, ex.Reason);
-        StringAssert.Contains(ex.Message, "Basic realm");
+        Assert.Contains("Basic realm", ex.Message);
     }
 
     [TestMethod]
     public async Task HTTP代理拒绝22端口时给出建议()
     {
-        await using FakeHttpProxy proxy = FakeHttpProxy.Start("HTTP/1.1 403 Forbidden");
+        await using var proxy = FakeHttpProxy.Start("HTTP/1.1 403 Forbidden");
 
         SshConnectException ex = await Assert.ThrowsExactlyAsync<SshConnectException>(
             async () => await ConnectAsync(DialerChain.HttpConnect("127.0.0.1", proxy.Port)));
 
         Assert.AreEqual(SshFailureReason.ProxyRefused, ex.Reason);
-        StringAssert.Contains(ex.Message, "80/443");
+        Assert.Contains("80/443", ex.Message);
     }
 
     /// <summary>嵌套：经 HTTP 代理到达 SOCKS5 代理，再由它连目标。跳信息从近到远。</summary>
     [TestMethod]
     public async Task 代理可以嵌套且失败时跳信息从近到远()
     {
-        await using FakeHttpProxy http = FakeHttpProxy.Start("HTTP/1.1 502 Bad Gateway");
+        await using var http = FakeHttpProxy.Start("HTTP/1.1 502 Bad Gateway");
 
         SshConnectException ex = await Assert.ThrowsExactlyAsync<SshConnectException>(
             async () => await ConnectAsync(
@@ -239,7 +239,7 @@ public sealed class ProxyDialerTests
         IOException ex = await Assert.ThrowsExactlyAsync<IOException>(
             async () => await stream.ReadExactlyAsync(new byte[16]));
 
-        StringAssert.Contains(ex.Message, "退出码 3");
+        Assert.Contains("退出码 3", ex.Message);
     }
 
     // ------------------------------------------------------------ 脚手架

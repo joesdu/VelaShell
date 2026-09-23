@@ -115,6 +115,6 @@ public sealed class BridgeAgentRunnerTests
             () => Create(context).RunAsync(new BridgeConversation("ch1", "chat-1"),
                 new BridgeSettings { Mode = ChatMode.Chat }, Message(), Deny, English, null, null, CancellationToken.None));
 
-        StringAssert.StartsWith(error.Message, "Acme / some-model:");
+        Assert.StartsWith("Acme / some-model:", error.Message);
     }
 }

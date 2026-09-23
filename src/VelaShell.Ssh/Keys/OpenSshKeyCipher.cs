@@ -124,7 +124,7 @@ internal static class OpenSshKeyCipher
     private static void DecryptCounterMode(
         ReadOnlySpan<byte> ciphertext, ReadOnlySpan<byte> key, ReadOnlySpan<byte> iv, Span<byte> plaintext)
     {
-        using Aes aes = Aes.Create();
+        using var aes = Aes.Create();
         aes.Key = key.ToArray();
 
         Span<byte> counter = stackalloc byte[16];
@@ -149,7 +149,7 @@ internal static class OpenSshKeyCipher
     private static void DecryptCipherBlockChaining(
         ReadOnlySpan<byte> ciphertext, ReadOnlySpan<byte> key, ReadOnlySpan<byte> iv, Span<byte> plaintext)
     {
-        using Aes aes = Aes.Create();
+        using var aes = Aes.Create();
         aes.Key = key.ToArray();
         aes.DecryptCbc(ciphertext, iv, plaintext, PaddingMode.None);
     }

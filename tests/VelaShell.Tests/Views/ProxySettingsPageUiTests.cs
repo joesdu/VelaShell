@@ -104,7 +104,7 @@ public sealed class ProxySettingsPageUiTests
             TextBlock[] descs = [.. rows.Select(row => row.GetVisualDescendants().OfType<TextBlock>().Skip(1).First())];
 
             // 模式名对齐成一列 —— 这就是"表格化"相对于一整块纯文本的全部价值。
-            Assert.AreEqual(1, names.Select(n => n.Bounds.Width).Distinct().Count(), "模式名没有对齐成一列");
+            Assert.HasCount(1, names.Select(n => n.Bounds.Width).Distinct(), "模式名没有对齐成一列");
             Assert.IsTrue(descs.All(d => d.TextWrapping == TextWrapping.Wrap), "说明要换行,否则会顶到表格外");
             Assert.IsTrue(names.All(n => n.Text is { Length: > 0 }), "每行都要有模式名");
 
@@ -113,10 +113,10 @@ public sealed class ProxySettingsPageUiTests
 
             // 断言按**每种模式的判别特征**写,不绑界面语言(测试宿主跑在哪个语言下都成立)。
             string text = string.Join("\n", help.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
-            StringAssert.Contains(text, "HTTP_PROXY", "无代理那条要写明它不读环境变量");
-            StringAssert.Contains(text, "PAC", "系统代理那条要写明它含 PAC、是解析器");
-            StringAssert.Contains(text, "CONNECT", "HTTP 代理那条要写明它用 CONNECT 打隧道");
-            StringAssert.Contains(text, "socks5h", "SOCKS5 那条要写明默认由代理解析主机名");
+            Assert.Contains("HTTP_PROXY", text, "无代理那条要写明它不读环境变量");
+            Assert.Contains("PAC", text, "系统代理那条要写明它含 PAC、是解析器");
+            Assert.Contains("CONNECT", text, "HTTP 代理那条要写明它用 CONNECT 打隧道");
+            Assert.Contains("socks5h", text, "SOCKS5 那条要写明默认由代理解析主机名");
         });
 
     /// <summary>四种模式的说明区(标题 + 表格 + 两条注)。</summary>

@@ -150,13 +150,13 @@ public sealed class PortForwardTests
             TunnelHandler = UppercaseEchoAsync,
         });
 
-        await using PortForwarder forwarder = PortForwarder.StartLocal(
+        await using var forwarder = PortForwarder.StartLocal(
             harness.Connection, "10.0.0.9", 80,
             new PortForwardOptions { BindPort = 0 });
 
         // 端口给 0 → 由系统分配，结果在 BoundEndPoint 里。
-        IPEndPoint bound = (IPEndPoint)forwarder.BoundEndPoint!;
-        Assert.IsTrue(bound.Port > 0);
+        var bound = (IPEndPoint)forwarder.BoundEndPoint!;
+        Assert.IsGreaterThan(0, bound.Port);
         Assert.AreEqual(IPAddress.Loopback, bound.Address, "默认绑环回，不是 0.0.0.0");
 
         using Socket client = new(SocketType.Stream, ProtocolType.Tcp);
@@ -168,8 +168,7 @@ public sealed class PortForwardTests
         int read = await ReadAllAsync(client, buffer, harness.Token);
 
         Assert.AreEqual("HELLO TUNNEL", Encoding.UTF8.GetString(buffer, 0, read));
-        CollectionAssert.AreEqual(new[] { "10.0.0.9:80" }, harness.Observed.TunnelTargets,
-            "目标要如实传给服务端");
+        Assert.AreSequenceEqual(new[] { "10.0.0.9:80" }, harness.Observed.TunnelTargets, "目标要如实传给服务端");
     }
 
     [TestMethod]
@@ -180,7 +179,7 @@ public sealed class PortForwardTests
             TunnelHandler = UppercaseEchoAsync,
         });
 
-        await using PortForwarder forwarder = PortForwarder.StartLocal(
+        await using var forwarder = PortForwarder.StartLocal(
             harness.Connection, "target", 1234);
 
         List<ForwardConnectionEventArgs> closed = [];
@@ -213,7 +212,7 @@ public sealed class PortForwardTests
             RejectTunnelWith = SshChannelOpenFailureReason.AdministrativelyProhibited,
         });
 
-        await using PortForwarder forwarder = PortForwarder.StartLocal(
+        await using var forwarder = PortForwarder.StartLocal(
             harness.Connection, "blocked", 80);
 
         List<ForwardErrorEventArgs> errors = [];
@@ -231,7 +230,7 @@ public sealed class PortForwardTests
         // **单条连接的失败绝不影响转发器本身。**一条隧道要能跑几天，
         // 期间必然有连不上的目标。把这些当成致命错误，隧道就没法用了。
         Assert.AreEqual("channel-open", errors[0].Reason);
-        StringAssert.Contains(errors[0].Message, "AllowTcpForwarding");
+        Assert.Contains("AllowTcpForwarding", errors[0].Message);
         Assert.IsTrue(forwarder.IsActive, "转发器必须还活着");
 
         // 再来一条，仍然能被接受（并仍然失败）。
@@ -245,7 +244,7 @@ public sealed class PortForwardTests
     {
         await using Harness harness = await Harness.StartAsync(new TestChannelScript());
 
-        await using PortForwarder first = PortForwarder.StartLocal(
+        await using var first = PortForwarder.StartLocal(
             harness.Connection, "t", 1, new PortForwardOptions { BindPort = 0 });
 
         int taken = ((IPEndPoint)first.BoundEndPoint!).Port;
@@ -254,7 +253,7 @@ public sealed class PortForwardTests
             () => PortForwarder.StartLocal(
                 harness.Connection, "t", 1, new PortForwardOptions { BindPort = taken }));
 
-        StringAssert.Contains(error.Message, "端口可能已被占用");
+        Assert.Contains("端口可能已被占用", error.Message);
     }
 
     // ------------------------------------------------------------ 动态转发
@@ -267,7 +266,7 @@ public sealed class PortForwardTests
             TunnelHandler = UppercaseEchoAsync,
         });
 
-        await using PortForwarder forwarder = PortForwarder.StartDynamic(harness.Connection);
+        await using var forwarder = PortForwarder.StartDynamic(harness.Connection);
         Assert.AreEqual(ForwardKind.Dynamic, forwarder.Kind);
 
         using Socket client = new(SocketType.Stream, ProtocolType.Tcp);
@@ -277,7 +276,7 @@ public sealed class PortForwardTests
         await client.SendAsync(new byte[] { 0x05, 0x01, 0x00 }, harness.Token);
         byte[] methodReply = new byte[2];
         await client.ReceiveAsync(methodReply, harness.Token);
-        CollectionAssert.AreEqual(new byte[] { 0x05, 0x00 }, methodReply);
+        Assert.AreSequenceEqual(new byte[] { 0x05, 0x00 }, methodReply);
 
         // CONNECT 到一个**域名** —— 不该在本地解析。
         byte[] host = Encoding.ASCII.GetBytes("db.internal");
@@ -295,8 +294,7 @@ public sealed class PortForwardTests
         int read = await ReadAllAsync(client, buffer, harness.Token);
 
         Assert.AreEqual("VIA SOCKS", Encoding.UTF8.GetString(buffer, 0, read));
-        CollectionAssert.AreEqual(new[] { "db.internal:5201" }, harness.Observed.TunnelTargets,
-            "域名要原样送到服务端 —— 本地解析会让内网域名直接失效，而且泄漏访问目标");
+        Assert.AreSequenceEqual(new[] { "db.internal:5201" }, harness.Observed.TunnelTargets, "域名要原样送到服务端 —— 本地解析会让内网域名直接失效，而且泄漏访问目标");
     }
 
     [TestMethod]
@@ -308,7 +306,7 @@ public sealed class PortForwardTests
             RejectTunnelWith = SshChannelOpenFailureReason.ConnectFailed,
         });
 
-        await using PortForwarder forwarder = PortForwarder.StartDynamic(harness.Connection);
+        await using var forwarder = PortForwarder.StartDynamic(harness.Connection);
 
         using Socket client = new(SocketType.Stream, ProtocolType.Tcp);
         await client.ConnectAsync(forwarder.BoundEndPoint!, harness.Token);
@@ -355,9 +353,8 @@ public sealed class PortForwardTests
         Assert.AreEqual(34567, forwarder.BoundPort);
         Assert.AreEqual("localhost", forwarder.BindAddress);
 
-        CollectionAssert.AreEqual(
-            new[] { ("localhost", 0) }, harness.Observed.RemoteForwardBinds,
-            "绑定地址要原样传，不做规范化");
+        Assert.AreSequenceEqual(
+            new[] { ("localhost", 0) }, harness.Observed.RemoteForwardBinds, "绑定地址要原样传，不做规范化");
     }
 
     [TestMethod]
@@ -373,7 +370,7 @@ public sealed class PortForwardTests
                 harness.Connection, "127.0.0.1", 8080,
                 new RemoteForwardOptions { BindPort = 9999 }, harness.Token));
 
-        StringAssert.Contains(error.Message, "AllowTcpForwarding");
+        Assert.Contains("AllowTcpForwarding", error.Message);
         Assert.IsTrue(harness.Connection.IsAlive, "被拒绝不该连累会话");
     }
 
@@ -399,7 +396,7 @@ public sealed class PortForwardTests
         byte[] received = await ReadAllPipeAsync(tunnel.StandardOutput, harness.Token);
 
         Assert.AreEqual("NO LISTENER HERE", Encoding.UTF8.GetString(received));
-        CollectionAssert.AreEqual(new[] { "127.0.0.1:8080" }, harness.Observed.TunnelTargets);
+        Assert.AreSequenceEqual(new[] { "127.0.0.1:8080" }, harness.Observed.TunnelTargets);
     }
 
     [TestMethod]
@@ -419,7 +416,7 @@ public sealed class PortForwardTests
         byte[] received = await ReadAllPipeAsync(tunnel.StandardOutput, harness.Token);
 
         Assert.AreEqual("DOCKER", Encoding.UTF8.GetString(received));
-        CollectionAssert.AreEqual(new[] { "/var/run/docker.sock" }, harness.Observed.TunnelTargets);
+        Assert.AreSequenceEqual(new[] { "/var/run/docker.sock" }, harness.Observed.TunnelTargets);
     }
 
     // ------------------------------------------------------------ 工具
@@ -490,9 +487,9 @@ public sealed class PortForwardTests
         Assert.AreEqual(remotePath, forwarder.RemoteEndpointName,
             "隧道面板要显示「这条转发开在哪」，两种形态得有统一的说法");
 
-        CollectionAssert.Contains(
-            harness.Observed.GlobalRequests, SshAlgorithmNames.RequestStreamLocalForward);
-        CollectionAssert.AreEqual(new[] { remotePath }, harness.Observed.StreamLocalForwardBinds);
+        Assert.Contains(
+SshAlgorithmNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
+        Assert.AreSequenceEqual(new[] { remotePath }, harness.Observed.StreamLocalForwardBinds);
     }
 
     [TestMethod]
@@ -509,7 +506,7 @@ public sealed class PortForwardTests
                 cancellationToken: harness.Token));
 
         // 失败消息要能指向下一步 —— sshd_config 的开关、路径已存在、目录不可写。
-        StringAssert.Contains(error.Message, "AllowStreamLocalForwarding");
+        Assert.Contains("AllowStreamLocalForwarding", error.Message);
     }
 
     [TestMethod]

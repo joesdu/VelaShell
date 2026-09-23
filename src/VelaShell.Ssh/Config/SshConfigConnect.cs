@@ -368,8 +368,16 @@ public sealed partial class SshHostConfig
     /// </summary>
     /// <param name="template">起点；<see langword="null"/> 用默认 shell 参数。</param>
     /// <remarks>
+    /// <para>
     /// 它们不是连接参数：同一条连接上的不同会话可以各开各的转发。
     /// 模板里已经显式设了的不会被覆盖。
+    /// </para>
+    /// <para>
+    /// 〔<c>velashell-docs/zh/ssh/spec/07</c> §7.5.8〕<c>ForwardX11 yes</c> 产生的 X11 选项是
+    /// <b>尽力而为</b>的（<see cref="X11ForwardOptions.BestEffort"/>）：本机没有显示、没有 <c>xauth</c>、
+    /// 服务端拒绝时 shell 照常启动，原因见 <see cref="SshShell.X11SetupFailure"/> ——
+    /// 一份存量配置不该让所有会话都起不来。模板里调用方自己给的 X11 选项保持原样（显式的，失败就抛）。
+    /// </para>
     /// </remarks>
     public SshShellOptions ApplyToShell(SshShellOptions? template = null)
     {
@@ -382,7 +390,10 @@ public sealed partial class SshHostConfig
 
         if (ForwardX11 && options.X11 is null)
         {
-            options = options with { X11 = new X11ForwardOptions { Trusted = ForwardX11Trusted } };
+            options = options with
+            {
+                X11 = new X11ForwardOptions { Trusted = ForwardX11Trusted, BestEffort = true },
+            };
         }
 
         return options;

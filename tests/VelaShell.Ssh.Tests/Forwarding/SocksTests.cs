@@ -71,7 +71,7 @@ public sealed class SocksTests
         Assert.AreEqual("internal.corp.example", target.Value.Host);
         Assert.AreEqual(443, target.Value.Port);
 
-        CollectionAssert.AreEqual(new byte[] { 0x05, 0x00 }, reply, "只该回一个方法协商应答");
+        Assert.AreSequenceEqual(new byte[] { 0x05, 0x00 }, reply, "只该回一个方法协商应答");
     }
 
     [TestMethod]
@@ -120,7 +120,7 @@ public sealed class SocksTests
         (SocksTarget? target, byte[] reply) = await RunAsync([0x04, 0x01, 0x00, 0x50]);
 
         Assert.IsNull(target);
-        Assert.AreEqual(0, reply.Length, "不认识的版本不回任何东西");
+        Assert.IsEmpty(reply, "不认识的版本不回任何东西");
     }
 
     [TestMethod]
@@ -130,7 +130,7 @@ public sealed class SocksTests
         (SocksTarget? target, byte[] reply) = await RunAsync([0x05, 0x01, 0x02]);
 
         Assert.IsNull(target);
-        CollectionAssert.AreEqual(new byte[] { 0x05, 0xFF }, reply, "回「没有可接受的方法」");
+        Assert.AreSequenceEqual(new byte[] { 0x05, 0xFF }, reply, "回「没有可接受的方法」");
     }
 
     [TestMethod]
@@ -195,6 +195,6 @@ public sealed class SocksTests
         Assert.AreEqual(0x05, reply[0]);
         Assert.AreEqual(0x00, reply[1]);
         Assert.AreEqual(0x04, reply[3], "IPv6 的请求要回 IPv6 形状的应答");
-        Assert.AreEqual(4 + 16 + 2, reply.Length);
+        Assert.HasCount(4 + 16 + 2, reply);
     }
 }

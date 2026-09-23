@@ -4,6 +4,11 @@
     <File Path=".github/FUNDING.yml" />
     <File Path=".github/pull_request_template.md" />
   </Folder>
+  <Folder Name="/.github/ISSUE_TEMPLATE/">
+    <File Path=".github/ISSUE_TEMPLATE/bug_report.yml" />
+    <File Path=".github/ISSUE_TEMPLATE/config.yml" />
+    <File Path=".github/ISSUE_TEMPLATE/feature_request.yml" />
+  </Folder>
   <Folder Name="/.github/workflows/">
     <File Path=".github/workflows/ci.yml" />
     <File Path=".github/workflows/release.yml" />
@@ -32,12 +37,6 @@
     <Project Path="src/VelaShell.Ssh/VelaShell.Ssh.csproj" />
     <Project Path="src/VelaShell.Terminal/VelaShell.Terminal.csproj" />
     <Project Path="src/VelaShell/VelaShell.csproj" />
-  </Folder>
-  <Folder Name="/src/VelaShell.Ssh/">
-    <File Path="src/VelaShell.Ssh/AGENTS.md" />
-    <File Path="src/VelaShell.Ssh/LICENSE" />
-    <File Path="src/VelaShell.Ssh/NOTICE.md" />
-    <File Path="src/VelaShell.Ssh/README.md" />
   </Folder>
   <Folder Name="/scripts/ssh/">
     <File Path="scripts/ssh/Update-PublicApi.ps1" />

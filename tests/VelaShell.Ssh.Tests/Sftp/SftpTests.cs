@@ -135,7 +135,7 @@ public sealed class SftpTests
         // 〔决策〕连上就对 "." 做一次 REALPATH —— 这是唯一可靠的
         // 「用户家目录在哪」的答案，比拼 /home/{user} 靠谱得多。
         Assert.AreEqual("/home/joe", harness.Sftp.WorkingDirectory);
-        CollectionAssert.Contains(harness.SftpServer.ReceivedTypes, SftpMessageType.RealPath);
+        Assert.Contains(SftpMessageType.RealPath, harness.SftpServer.ReceivedTypes);
     }
 
     [TestMethod]
@@ -179,7 +179,7 @@ public sealed class SftpTests
         SftpUnavailableException error = await Assert.ThrowsExactlyAsync<SftpUnavailableException>(
             async () => await Harness.StartAsync(sftpOptions: new TestSftpOptions { Version = 2 }));
 
-        StringAssert.Contains(error.Message, "v2");
+        Assert.Contains("v2", error.Message);
     }
 
     [TestMethod]
@@ -211,16 +211,15 @@ public sealed class SftpTests
     {
         byte[] payload = new byte[20_000];
         Random.Shared.NextBytes(payload);
-
+        // 服务端每次只回 100 字节 —— 协议允许，这不是错误
         await using Harness harness = await Harness.StartAsync(
             server => server.AddFile("/home/joe/big.bin", payload),
-            // **服务端每次只回 100 字节** —— 协议允许，这不是错误。
             new TestSftpOptions { ShortReadLimit = 100 });
 
         byte[] content = await harness.Sftp.ReadAllBytesAsync("/home/joe/big.bin", harness.Token);
 
         // 不循环读的实现会在这里只拿到 100 字节，而且**不报错**。
-        CollectionAssert.AreEqual(payload, content, "READ 返回的数据可以少于请求的长度，必须循环读");
+        Assert.AreSequenceEqual(payload, content, "READ 返回的数据可以少于请求的长度，必须循环读");
     }
 
     [TestMethod]
@@ -233,7 +232,7 @@ public sealed class SftpTests
 
         // EOF 不是错误 —— 它就是「读完了」。把它抛出去的话，
         // 每次正常读完一个文件都会变成一次异常。
-        Assert.AreEqual(0, content.Length);
+        Assert.IsEmpty(content);
     }
 
     [TestMethod]
@@ -245,7 +244,7 @@ public sealed class SftpTests
             "/home/joe/new.txt", Text("写进去的内容"), cancellationToken: harness.Token);
 
         TestSftpNode node = harness.SftpServer.Nodes["/home/joe/new.txt"];
-        CollectionAssert.AreEqual(Text("写进去的内容"), node.Content.ToArray());
+        Assert.AreSequenceEqual(Text("写进去的内容"), [.. node.Content]);
         Assert.AreEqual(SftpProtocol.DefaultFilePermissions, node.Permissions,
             "创建时要传明确的权限 —— 不传会让服务端用受 umask 影响的默认值，结果不可预测");
     }
@@ -261,8 +260,8 @@ public sealed class SftpTests
 
         await harness.Sftp.WriteAllBytesAsync("/home/joe/big.bin", payload, cancellationToken: harness.Token);
 
-        CollectionAssert.AreEqual(payload, harness.SftpServer.Nodes["/home/joe/big.bin"].Content.ToArray());
-        Assert.IsTrue(harness.SftpServer.WriteCount > 20, "应当被切成多个 WRITE");
+        Assert.AreSequenceEqual(payload, [.. harness.SftpServer.Nodes["/home/joe/big.bin"].Content]);
+        Assert.IsGreaterThan(20, harness.SftpServer.WriteCount, "应当被切成多个 WRITE");
     }
 
     [TestMethod]
@@ -277,7 +276,7 @@ public sealed class SftpTests
         await harness.Sftp.WriteAllBytesAsync("/home/joe/round.bin", payload, cancellationToken: harness.Token);
         byte[] back = await harness.Sftp.ReadAllBytesAsync("/home/joe/round.bin", harness.Token);
 
-        CollectionAssert.AreEqual(payload, back);
+        Assert.AreSequenceEqual(payload, back);
     }
 
     // ------------------------------------------------------------ 流水线与 DurableLength
@@ -293,8 +292,7 @@ public sealed class SftpTests
                 {
                     server.AddFile($"/home/joe/f{i}.txt", new byte[i * 10]);
                 }
-            },
-            // **服务端故意把应答倒着发。**
+            }, // 服务端故意把应答倒着发
             new TestSftpOptions { ShuffleResponses = true });
 
         // 一口气发出去，不逐个等 —— 这才有多个在途请求可供打乱。
@@ -314,7 +312,7 @@ public sealed class SftpTests
                 $"f{i + 1}.txt 的长度应当是 {(i + 1) * 10}");
         }
 
-        Assert.IsTrue(harness.SftpServer.ReversedBatches > 0,
+        Assert.IsGreaterThan(0, harness.SftpServer.ReversedBatches,
             "服务端必须真的倒着发过至少一批，否则这条用例是空跑的");
     }
 
@@ -345,8 +343,7 @@ public sealed class SftpTests
         Random.Shared.NextBytes(payload);
 
         await using Harness harness = await Harness.StartAsync(
-            // 前 3 个 WRITE 正常应答，之后干脆不回 —— 模拟中途断开。
-            sftpOptions: new TestSftpOptions { FailWritesAfter = 3 },
+            sftpOptions: new TestSftpOptions { FailWritesAfter = 3 }, // 前 3 个 WRITE 正常应答，之后干脆不回 —— 模拟中途断开。
             clientOptions: SftpOptions.Default with { BlockSize = 4096, MaxInFlight = 4 });
 
         SftpFileStream stream = await harness.Sftp.OpenWriteAsync(
@@ -448,9 +445,9 @@ public sealed class SftpTests
 
         byte[] all = await harness.Sftp.ReadAllBytesAsync("/home/joe/resume.bin", harness.Token);
 
-        Assert.AreEqual(10_000, all.Length);
-        CollectionAssert.AreEqual(first, all[..5000]);
-        CollectionAssert.AreEqual(second, all[5000..]);
+        Assert.HasCount(10_000, all);
+        Assert.AreSequenceEqual(first, all[..5000]);
+        Assert.AreSequenceEqual(second, all[5000..]);
     }
 
     // ------------------------------------------------------------ 目录
@@ -474,10 +471,9 @@ public sealed class SftpTests
         }
 
         // 每批只给 2 项 —— READDIR 返回的是**一批**，不是全部。
-        Assert.AreEqual(7, entries.Count);
-        CollectionAssert.AreEquivalent(
-            Enumerable.Range(0, 7).Select(i => $"f{i}.txt").ToArray(),
-            entries.Select(e => e.Name).ToArray());
+        Assert.HasCount(7, entries);
+        Assert.AreSequenceEqual(
+            [.. Enumerable.Range(0, 7).Select(i => $"f{i}.txt")], [.. entries.Select(e => e.Name)], SequenceOrder.InAnyOrder);
         Assert.AreEqual("/home/joe/f0.txt", entries.First(e => e.Name == "f0.txt").FullPath);
     }
 
@@ -557,7 +553,7 @@ public sealed class SftpTests
         // 它与「磁盘满」「权限不足」的信息，所以必须原样留着。
         Assert.AreEqual(SftpStatusCode.Failure, error.StatusCode);
         Assert.AreEqual("目录非空", error.ServerMessage);
-        StringAssert.Contains(error.Message, "目录非空");
+        Assert.Contains("目录非空", error.Message);
     }
 
     [TestMethod]
@@ -666,7 +662,7 @@ public sealed class SftpTests
         await harness.Sftp.RenameAsync("/home/joe/a.txt", "/home/joe/b.txt", overwrite: true, harness.Token);
 
         Assert.IsFalse(harness.SftpServer.Nodes.ContainsKey("/home/joe/a.txt"));
-        CollectionAssert.AreEqual(Text("A"), harness.SftpServer.Nodes["/home/joe/b.txt"].Content.ToArray());
+        Assert.AreSequenceEqual(Text("A"), [.. harness.SftpServer.Nodes["/home/joe/b.txt"].Content]);
     }
 
     [TestMethod]
@@ -687,7 +683,7 @@ public sealed class SftpTests
         // 悄悄换成普通 rename 会让上层以为自己拿到了原子语义。
         // 「先删再改名」不是原子的 —— 中途失败会两个都没有。
         Assert.IsTrue(error.IsUnsupported);
-        StringAssert.Contains(error.Message, "不是原子的");
+        Assert.Contains("不是原子的", error.Message);
         Assert.IsFalse(harness.Sftp.Capabilities.HasPosixRename);
     }
 
@@ -715,7 +711,7 @@ public sealed class SftpTests
                 node.ModifyTime = 1_600_000_000;
             });
 
-        DateTimeOffset newTime = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var newTime = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
         await harness.Sftp.SetLastWriteTimeAsync("/home/joe/t.txt", newTime, harness.Token);
 
         TestSftpNode result = harness.SftpServer.Nodes["/home/joe/t.txt"];
@@ -766,7 +762,7 @@ public sealed class SftpTests
 
         // 句柄泄漏在服务端是看不见的 —— 直到撞上 MaxSessions 或者 max-open-handles。
         Assert.AreEqual(0, harness.SftpServer.OpenHandleCount, "所有句柄都该被关掉");
-        Assert.IsTrue(harness.SftpServer.PeakOpenHandles > 0, "确实开过句柄");
+        Assert.IsGreaterThan(0, harness.SftpServer.PeakOpenHandles, "确实开过句柄");
     }
 
     /// <summary>〔架构原则 1〕同步读写不提供 —— 当场说清楚该用哪个，而不是阻塞线程假装同步。</summary>
@@ -779,7 +775,7 @@ public sealed class SftpTests
         await using SftpFileStream stream = await harness.Sftp.OpenReadAsync("/home/joe/a.txt", harness.Token);
 
         NotSupportedException read = Assert.ThrowsExactly<NotSupportedException>(() => stream.Read(new byte[4], 0, 4));
-        StringAssert.Contains(read.Message, "ReadAsync");
+        Assert.Contains("ReadAsync", read.Message);
         Assert.ThrowsExactly<NotSupportedException>(() => stream.Write([1], 0, 1));
         Assert.ThrowsExactly<NotSupportedException>(() => stream.SetLength(0));
 

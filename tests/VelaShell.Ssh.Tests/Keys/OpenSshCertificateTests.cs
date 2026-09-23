@@ -41,21 +41,21 @@ public sealed class OpenSshCertificateTests
         Assert.AreEqual(SshCertificateType.User, cert.CertificateType);
         Assert.AreEqual("joe@velashell", cert.KeyId);
         Assert.AreEqual(4242UL, cert.Serial);
-        CollectionAssert.AreEqual(new[] { "joe", "deploy" }, cert.ValidPrincipals.ToArray());
+        Assert.AreSequenceEqual(new[] { "joe", "deploy" }, [.. cert.ValidPrincipals]);
         Assert.IsEmpty(cert.CriticalOptions);
-        CollectionAssert.Contains(cert.Extensions.ToArray(), "permit-pty");
-        CollectionAssert.Contains(cert.Extensions.ToArray(), "permit-agent-forwarding");
+        Assert.Contains("permit-pty", [.. cert.Extensions]);
+        Assert.Contains("permit-agent-forwarding", [.. cert.Extensions]);
 
         Assert.AreEqual(2026, cert.ValidAfterTime?.Year);
         Assert.AreEqual(2027, cert.ValidBeforeTime?.Year);
 
         // 被签发的那把钥就是 cert-ed25519.pub。
         Assert.AreEqual(SshAlgorithmNames.SshEd25519, cert.Key.KeyType);
-        CollectionAssert.AreEqual(ReadPublicBlob("cert-ed25519.pub"), cert.Key.Blob.ToArray());
+        Assert.AreSequenceEqual(ReadPublicBlob("cert-ed25519.pub"), cert.Key.Blob.ToArray());
 
         // 签发它的 CA 就是 ca.pub。
         Assert.IsNotNull(cert.SignatureKey);
-        CollectionAssert.AreEqual(ReadPublicBlob("ca.pub"), cert.SignatureKey.Blob.ToArray());
+        Assert.AreSequenceEqual(ReadPublicBlob("ca.pub"), cert.SignatureKey.Blob.ToArray());
     }
 
     [TestMethod]
@@ -69,7 +69,7 @@ public sealed class OpenSshCertificateTests
 
         Assert.AreEqual(expectedKeyType + "-cert-v01@openssh.com", cert.Algorithm);
         Assert.AreEqual(expectedKeyType, cert.Key.KeyType);
-        CollectionAssert.AreEqual(ReadPublicBlob(name + ".pub"), cert.Key.Blob.ToArray());
+        Assert.AreSequenceEqual(ReadPublicBlob(name + ".pub"), cert.Key.Blob.ToArray());
     }
 
     /// <summary>
@@ -80,10 +80,10 @@ public sealed class OpenSshCertificateTests
     {
         SshCertificateSigner signer = await LoadCertificateSignerAsync("cert-ed25519");
 
-        CollectionAssert.AreEqual(signer.Certificate.Blob.ToArray(), signer.PublicKey.Blob.ToArray());
+        Assert.AreSequenceEqual(signer.Certificate.Blob.ToArray(), signer.PublicKey.Blob.ToArray());
         Assert.IsTrue(signer.PublicKey.IsCertificate);
-        CollectionAssert.AreEqual(
-            new[] { "ssh-ed25519-cert-v01@openssh.com" }, signer.SignatureAlgorithms.ToArray());
+        Assert.AreSequenceEqual(
+            new[] { "ssh-ed25519-cert-v01@openssh.com" }, [.. signer.SignatureAlgorithms]);
     }
 
     /// <summary>RSA 证书要把三个签名算法各带一次后缀，顺序仍是 SHA-512 优先。</summary>
@@ -92,14 +92,13 @@ public sealed class OpenSshCertificateTests
     {
         SshCertificateSigner signer = await LoadCertificateSignerAsync("cert-rsa");
 
-        CollectionAssert.AreEqual(
+        Assert.AreSequenceEqual(
             new[]
             {
                 "rsa-sha2-512-cert-v01@openssh.com",
                 "rsa-sha2-256-cert-v01@openssh.com",
                 "ssh-rsa-cert-v01@openssh.com",
-            },
-            signer.SignatureAlgorithms.ToArray());
+            }, [.. signer.SignatureAlgorithms]);
     }
 
     /// <summary>
@@ -116,7 +115,7 @@ public sealed class OpenSshCertificateTests
         byte[] signature = await signer.SignAsync(data, certAlgorithm, TestContext.CancellationToken);
 
         // 签名 blob 的头一个字段是普通算法名。
-        StringAssert.Contains(System.Text.Encoding.ASCII.GetString(signature[4..15]), "ssh-ed25519");
+        Assert.Contains("ssh-ed25519", System.Text.Encoding.ASCII.GetString(signature[4..15]));
 
         // 拿带后缀的名字去验也要过（后缀在比对前被去掉）。
         Assert.IsTrue(signer.PublicKey.VerifySignature(signature, data, certAlgorithm));
@@ -136,7 +135,7 @@ public sealed class OpenSshCertificateTests
 
         SshCertificateException ex = Assert.ThrowsExactly<SshCertificateException>(
             () => SshCertificateSigner.Create(cert, inner));
-        StringAssert.Contains(ex.Message, "主机");
+        Assert.Contains("主机", ex.Message);
     }
 
     /// <summary>
@@ -153,10 +152,10 @@ public sealed class OpenSshCertificateTests
         SshCertificateException ex = Assert.ThrowsExactly<SshCertificateException>(
             () => SshCertificateSigner.Create(cert, other));
 
-        StringAssert.Contains(ex.Message, "不是一对");
+        Assert.Contains("不是一对", ex.Message);
         // 两把钥的指纹都要摆出来 —— 不摆的话用户无从判断是证书选错了还是私钥选错了。
-        StringAssert.Contains(ex.Message, cert.Key.Sha256Fingerprint);
-        StringAssert.Contains(ex.Message, other.PublicKey.Sha256Fingerprint);
+        Assert.Contains(cert.Key.Sha256Fingerprint, ex.Message);
+        Assert.Contains(other.PublicKey.Sha256Fingerprint, ex.Message);
     }
 
     /// <summary>过期的证书仍然解得出来 —— 它是事实，由上层决定怎么说。</summary>
@@ -179,7 +178,7 @@ public sealed class OpenSshCertificateTests
 
         SshCertificateException ex = Assert.ThrowsExactly<SshCertificateException>(
             () => OpenSshCertificate.Parse(blob));
-        StringAssert.Contains(ex.Message, "-cert-v01@openssh.com");
+        Assert.Contains("-cert-v01@openssh.com", ex.Message);
     }
 
     /// <summary>反过来：证书 blob 走普通公钥的解析口要被挡住，而不是解出个半成品。</summary>

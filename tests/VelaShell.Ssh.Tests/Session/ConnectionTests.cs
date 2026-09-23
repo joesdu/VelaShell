@@ -233,8 +233,8 @@ public sealed class ConnectionTests
             () => output.EnsureSuccess("不存在的命令"));
 
         // 「命令失败了」而不说它抱怨了什么，等于让调用方再跑一遍去看。
-        StringAssert.Contains(error.Message, "没有那个文件或目录");
-        StringAssert.Contains(error.Message, "退出码 127");
+        Assert.Contains("没有那个文件或目录", error.Message);
+        Assert.Contains("退出码 127", error.Message);
     }
 
     [TestMethod]
@@ -252,7 +252,7 @@ public sealed class ConnectionTests
         SshException error = await Assert.ThrowsExactlyAsync<SshConnectException>(
             async () => await options.ConnectAsync());
 
-        StringAssert.Contains(error.Message, "不在允许列表里");
+        Assert.Contains("不在允许列表里", error.Message);
     }
 
     [TestMethod]
@@ -271,8 +271,8 @@ public sealed class ConnectionTests
         SshAuthenticationException error = await Assert.ThrowsExactlyAsync<SshAuthenticationException>(
             async () => await options.ConnectAsync());
 
-        Assert.IsTrue(error.Attempts.Count > 0);
-        StringAssert.Contains(error.DescribeAttempts(), "password");
+        Assert.IsNotEmpty(error.Attempts);
+        Assert.Contains("password", error.DescribeAttempts());
     }
 
     [TestMethod]
@@ -302,7 +302,7 @@ public sealed class ConnectionTests
 
         await using SshConnection connection = await options.ConnectAsync();
 
-        CollectionAssert.AreEqual(new[] { "未经授权的访问将被记录。" }, banners);
+        Assert.AreSequenceEqual(new[] { "未经授权的访问将被记录。" }, banners);
     }
 
     [TestMethod]
@@ -343,7 +343,7 @@ public sealed class ConnectionTests
             async () => await options.ConnectAsync());
 
         Assert.AreEqual(SshFailureReason.DnsFailure, error.Reason);
-        StringAssert.Contains(error.Message, "DNS");
+        Assert.Contains("DNS", error.Message);
     }
 
     // ------------------------------------------------------------ 保活

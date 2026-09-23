@@ -137,7 +137,7 @@ public sealed class SshPublicKeyTests
 
         foreach ((string name, string curveName, ECCurve curve, int coord) in cases)
         {
-            using ECDsa ecdsa = ECDsa.Create(curve);
+            using var ecdsa = ECDsa.Create(curve);
             ECParameters p = ecdsa.ExportParameters(false);
 
             byte[] point = new byte[1 + (coord * 2)];
@@ -152,7 +152,7 @@ public sealed class SshPublicKeyTests
                 WriteString(w, point);
             });
 
-            SshPublicKey key = SshPublicKey.Parse(blob);
+            var key = SshPublicKey.Parse(blob);
             Assert.AreEqual(name, key.KeyType, name);
 
             byte[] data = RandomNumberGenerator.GetBytes(100);
@@ -185,7 +185,7 @@ public sealed class SshPublicKeyTests
     public void Ecdsa的曲线名不符会被拒绝()
     {
         // blob 里重复了一次曲线名。不一致说明它被拼错或被改过。
-        using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         ECParameters p = ecdsa.ExportParameters(false);
         byte[] point = new byte[65];
         point[0] = 0x04;
@@ -207,7 +207,7 @@ public sealed class SshPublicKeyTests
     [TestMethod]
     public void Rsa公钥能解析并按三种签名算法验签()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         RSAParameters p = rsa.ExportParameters(false);
 
         // ⚠️ RSA 的 blob 里类型串**永远是 ssh-rsa**，即使签名算法是 rsa-sha2-512。
@@ -218,7 +218,7 @@ public sealed class SshPublicKeyTests
             WriteMpint(w, p.Modulus!);
         });
 
-        SshPublicKey key = SshPublicKey.Parse(blob);
+        var key = SshPublicKey.Parse(blob);
         Assert.AreEqual(SshAlgorithmNames.SshRsa, key.KeyType, "密钥类型名恒为 ssh-rsa");
         Assert.AreEqual(2048, key.KeyBits);
 
@@ -252,7 +252,7 @@ public sealed class SshPublicKeyTests
     public void 签名算法名与协商结果不符时拒绝()
     {
         // 放过它 = 允许对端把 rsa-sha2-512 降级成 ssh-rsa（SHA-1）。
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         RSAParameters p = rsa.ExportParameters(false);
         byte[] blob = Blob(w =>
         {
@@ -260,7 +260,7 @@ public sealed class SshPublicKeyTests
             WriteMpint(w, p.Exponent!);
             WriteMpint(w, p.Modulus!);
         });
-        SshPublicKey key = SshPublicKey.Parse(blob);
+        var key = SshPublicKey.Parse(blob);
 
         byte[] data = RandomNumberGenerator.GetBytes(50);
         byte[] signature = rsa.SignData(data, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -283,7 +283,7 @@ public sealed class SshPublicKeyTests
         (SshPublicKey key, _) = CreateEd25519();
         string fingerprint = key.Sha256Fingerprint;
 
-        StringAssert.StartsWith(fingerprint, "SHA256:");
+        Assert.StartsWith("SHA256:", fingerprint);
         Assert.DoesNotContain("=", fingerprint,
             "OpenSSH 显示的指纹不带 base64 填充 —— 带上用户就没法与 ssh-keygen -lf 的输出对照");
         // SHA-256 是 32 字节 → base64 无填充是 43 个字符

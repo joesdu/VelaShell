@@ -31,7 +31,7 @@ public sealed class TcpTransportDialer : ISshTransportDialer
     {
         ArgumentNullException.ThrowIfNull(target);
 
-        using CancellationTokenSource timeout = CancellationTokenSource
+        using var timeout = CancellationTokenSource
             .CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(ConnectTimeout);
 

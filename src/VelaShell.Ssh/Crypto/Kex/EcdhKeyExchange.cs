@@ -107,7 +107,7 @@ public sealed class EcdhKeyExchange : ISshKeyExchange
         {
             // ECDiffieHellman.Create(ECParameters) 会校验点确实在曲线上并且不是无穷远点。
             // 不校验就等于接受任意点，那是一条可以泄漏私钥的路（无效曲线攻击）。
-            using ECDiffieHellman peerKey = ECDiffieHellman.Create(peer);
+            using var peerKey = ECDiffieHellman.Create(peer);
 
             // DeriveRawSecretAgreement 给的是共享点的 **X 坐标**，正是 SSH 要的 K。
             // 不要用 DeriveKeyMaterial —— 那会再套一层 KDF，与协议不符。

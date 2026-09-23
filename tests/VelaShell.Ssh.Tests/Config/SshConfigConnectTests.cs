@@ -6,6 +6,7 @@
 using VelaShell.Ssh.Config;
 using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Diagnostics;
+using VelaShell.Ssh.Forwarding;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Protocol;
 using VelaShell.Ssh.Session;
@@ -62,11 +63,11 @@ public sealed class SshConfigConnectTests
             blocks, "target", new SshConfigConnectSettings { DefaultUserName = "me" });
 
         // 目标经 inner；inner 经 bastion；bastion 直连。
-        SshJumpDialer last = (SshJumpDialer)options.Dialer;
+        var last = (SshJumpDialer)options.Dialer;
         Assert.AreEqual("10.1.0.1", last.JumpHost.Host);
         Assert.AreEqual("jumper", last.JumpHost.UserName);
 
-        SshJumpDialer first = (SshJumpDialer)last.JumpHost.Dialer;
+        var first = (SshJumpDialer)last.JumpHost.Dialer;
         Assert.AreEqual("bastion.example.com", first.JumpHost.Host);
         Assert.AreEqual(2200, first.JumpHost.Port);
         Assert.AreEqual("ops", first.JumpHost.UserName);
@@ -88,7 +89,7 @@ public sealed class SshConfigConnectTests
 
         SshConnectionOptions options = await SshConfigFile.CreateConnectionOptionsAsync(blocks, "target");
 
-        SshJumpDialer jump = (SshJumpDialer)options.Dialer;
+        var jump = (SshJumpDialer)options.Dialer;
         Assert.AreEqual("alice", jump.JumpHost.UserName);
         Assert.AreEqual(2022, jump.JumpHost.Port);
     }
@@ -105,7 +106,7 @@ public sealed class SshConfigConnectTests
 
         SshConnectException ex = await Assert.ThrowsExactlyAsync<SshConnectException>(
             async () => await SshConfigFile.CreateConnectionOptionsAsync(blocks, "a"));
-        StringAssert.Contains(ex.Message, "环");
+        Assert.Contains("环", ex.Message);
     }
 
     [TestMethod]
@@ -123,7 +124,7 @@ public sealed class SshConfigConnectTests
             """);
 
         SshConnectionOptions viaCommand = await SshConfigFile.CreateConnectionOptionsAsync(blocks, "viacmd");
-        ProxyCommandDialer command = (ProxyCommandDialer)viaCommand.Dialer;
+        var command = (ProxyCommandDialer)viaCommand.Dialer;
         Assert.AreEqual("nc -x proxy:1080 %h %p", command.CommandTemplate);
         Assert.AreEqual("joe", command.UserName);
 
@@ -191,6 +192,25 @@ public sealed class SshConfigConnectTests
         Assert.IsNotNull(shell.AgentForwarding);
         Assert.IsNotNull(shell.X11);
         Assert.IsTrue(shell.X11.Trusted);
+
+        // §7.5.8：连接级开关打开的 X11 是尽力而为的 —— 失败不该让 shell 起不来。
+        Assert.IsTrue(shell.X11.BestEffort);
+    }
+
+    [TestMethod]
+    public void 模板里调用方给的X11选项保持严格()
+    {
+        IReadOnlyList<SshConfigBlock> blocks = SshConfigFile.Parse("""
+            Host gui
+                ForwardX11 yes
+            """);
+
+        X11ForwardOptions explicitX11 = new() { Trusted = true };
+        SshShellOptions shell = SshConfigFile.Resolve(blocks, "gui")
+            .ApplyToShell(new SshShellOptions { X11 = explicitX11 });
+
+        Assert.AreSame(explicitX11, shell.X11, "模板里显式设了的不会被覆盖");
+        Assert.IsFalse(shell.X11!.BestEffort);
     }
 
     [TestMethod]

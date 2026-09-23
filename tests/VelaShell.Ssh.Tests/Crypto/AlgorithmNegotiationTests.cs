@@ -49,11 +49,10 @@ public sealed class AlgorithmNegotiationTests
         ArrayBufferWriter<byte> writer = new();
         SshKexInitMessage.Encode(SshAlgorithmSet.Default, includeIndicators: true, writer);
 
-        SshKexInitMessage decoded = SshKexInitMessage.Decode(writer.WrittenMemory);
+        var decoded = SshKexInitMessage.Decode(writer.WrittenMemory);
 
-        CollectionAssert.AreEqual(
-            SshAlgorithmSet.Default.HostKey.ToArray(),
-            decoded.ServerHostKeyAlgorithms.ToArray());
+        Assert.AreSequenceEqual(
+            [.. SshAlgorithmSet.Default.HostKey], [.. decoded.ServerHostKeyAlgorithms]);
         Assert.IsFalse(decoded.FirstKexPacketFollows, "我们自己发送时恒为 false");
     }
 
@@ -67,8 +66,8 @@ public sealed class AlgorithmNegotiationTests
         SshKexInitMessage.Encode(SshAlgorithmSet.Default, includeIndicators: true, writer);
         byte[] original = writer.WrittenSpan.ToArray();
 
-        SshKexInitMessage decoded = SshKexInitMessage.Decode(original);
-        CollectionAssert.AreEqual(original, decoded.Payload.ToArray());
+        var decoded = SshKexInitMessage.Decode(original);
+        Assert.AreSequenceEqual(original, decoded.Payload.ToArray());
     }
 
     [TestMethod]
@@ -92,15 +91,15 @@ public sealed class AlgorithmNegotiationTests
         // 重协商时再发是协议违规，某些服务端会直接断连。
         ArrayBufferWriter<byte> first = new();
         SshKexInitMessage.Encode(SshAlgorithmSet.Default, includeIndicators: true, first);
-        SshKexInitMessage firstMsg = SshKexInitMessage.Decode(first.WrittenMemory);
-        Assert.Contains(SshAlgorithmNames.ExtInfoClient, firstMsg.KeyExchangeAlgorithms.ToArray());
-        Assert.Contains(SshAlgorithmNames.StrictKexClient, firstMsg.KeyExchangeAlgorithms.ToArray());
+        var firstMsg = SshKexInitMessage.Decode(first.WrittenMemory);
+        Assert.Contains(SshAlgorithmNames.ExtInfoClient, [.. firstMsg.KeyExchangeAlgorithms]);
+        Assert.Contains(SshAlgorithmNames.StrictKexClient, [.. firstMsg.KeyExchangeAlgorithms]);
 
         ArrayBufferWriter<byte> rekey = new();
         SshKexInitMessage.Encode(SshAlgorithmSet.Default, includeIndicators: false, rekey);
-        SshKexInitMessage rekeyMsg = SshKexInitMessage.Decode(rekey.WrittenMemory);
-        Assert.DoesNotContain(SshAlgorithmNames.ExtInfoClient, rekeyMsg.KeyExchangeAlgorithms.ToArray());
-        Assert.DoesNotContain(SshAlgorithmNames.StrictKexClient, rekeyMsg.KeyExchangeAlgorithms.ToArray());
+        var rekeyMsg = SshKexInitMessage.Decode(rekey.WrittenMemory);
+        Assert.DoesNotContain(SshAlgorithmNames.ExtInfoClient, [.. rekeyMsg.KeyExchangeAlgorithms]);
+        Assert.DoesNotContain(SshAlgorithmNames.StrictKexClient, [.. rekeyMsg.KeyExchangeAlgorithms]);
     }
 
     // ------------------------------------------------------------ 协商规则
@@ -153,7 +152,7 @@ public sealed class AlgorithmNegotiationTests
         // 不发会让只支持非 AEAD 的对端无法与我们协商（velashell-docs/zh/ssh/spec/03 §2.2）。
         ArrayBufferWriter<byte> writer = new();
         SshKexInitMessage.Encode(SshAlgorithmSet.Default, true, writer);
-        SshKexInitMessage decoded = SshKexInitMessage.Decode(writer.WrittenMemory);
+        var decoded = SshKexInitMessage.Decode(writer.WrittenMemory);
 
         Assert.IsNotEmpty(decoded.MacClientToServer);
         Assert.IsNotEmpty(decoded.MacServerToClient);
@@ -197,7 +196,7 @@ public sealed class AlgorithmNegotiationTests
             () => SshAlgorithmNegotiator.Negotiate(SshAlgorithmSet.Default, peer, "SSH-2.0-Ancient_1.0"));
 
         Assert.AreEqual(SshNegotiationCategory.EncryptionClientToServer, ex.Category);
-        CollectionAssert.AreEqual(new[] { SshAlgorithmNames.Aes128Cbc }, ex.OfferedByPeer.ToArray());
+        Assert.AreSequenceEqual(new[] { SshAlgorithmNames.Aes128Cbc }, [.. ex.OfferedByPeer]);
         Assert.IsNotEmpty(ex.OfferedByUs);
         Assert.AreEqual("SSH-2.0-Ancient_1.0", ex.PeerVersion);
         Assert.AreEqual(SshFailureReason.NegotiationFailed, ex.Reason);
@@ -213,8 +212,8 @@ public sealed class AlgorithmNegotiationTests
             () => SshAlgorithmNegotiator.Negotiate(
                 SshAlgorithmSet.Default, PeerOffering(kex: ["nonexistent-kex"]), "SSH-2.0-Test"));
 
-        Assert.DoesNotContain(SshAlgorithmNames.ExtInfoClient, ex.OfferedByUs.ToArray());
-        Assert.DoesNotContain(SshAlgorithmNames.StrictKexClient, ex.OfferedByUs.ToArray());
+        Assert.DoesNotContain(SshAlgorithmNames.ExtInfoClient, [.. ex.OfferedByUs]);
+        Assert.DoesNotContain(SshAlgorithmNames.StrictKexClient, [.. ex.OfferedByUs]);
     }
 
     [TestMethod]
@@ -233,10 +232,10 @@ public sealed class AlgorithmNegotiationTests
     public void 默认清单不含任何已弃用算法()
     {
         SshAlgorithmSet d = SshAlgorithmSet.Default;
-        Assert.DoesNotContain(SshAlgorithmNames.DiffieHellmanGroup14Sha1, d.KeyExchange.ToArray());
-        Assert.DoesNotContain(SshAlgorithmNames.SshRsa, d.HostKey.ToArray());
-        Assert.DoesNotContain(SshAlgorithmNames.HmacSha1, d.MacClientToServer.ToArray());
-        Assert.DoesNotContain(SshAlgorithmNames.Aes256Cbc, d.EncryptionClientToServer.ToArray());
+        Assert.DoesNotContain(SshAlgorithmNames.DiffieHellmanGroup14Sha1, [.. d.KeyExchange]);
+        Assert.DoesNotContain(SshAlgorithmNames.SshRsa, [.. d.HostKey]);
+        Assert.DoesNotContain(SshAlgorithmNames.HmacSha1, [.. d.MacClientToServer]);
+        Assert.DoesNotContain(SshAlgorithmNames.Aes256Cbc, [.. d.EncryptionClientToServer]);
     }
 
     [TestMethod]

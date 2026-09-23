@@ -229,7 +229,7 @@ public sealed class AdaptiveWindowTests
         await delayed.WriteAsync(new byte[16]);
         TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
 
-        Assert.IsTrue(elapsed >= TimeSpan.FromMilliseconds(40),
+        Assert.IsGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(40), elapsed,
             $"单向时延 50 ms 的链路上一次写至少要 ~50 ms，实际 {elapsed.TotalMilliseconds:0} ms");
 
         await b.DisposeAsync();
@@ -270,7 +270,7 @@ public sealed class AdaptiveWindowTests
         }
         TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
 
-        Assert.IsTrue(elapsed >= TimeSpan.FromMilliseconds(150),
+        Assert.IsGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(150), elapsed,
             $"1 MB/s 上连发 {writes} 个 {chunk} 字节，要等掉前 {writes - 1} 份额度 " +
             $"（~200 ms），实际 {elapsed.TotalMilliseconds:0} ms");
 
@@ -312,8 +312,8 @@ public sealed class AdaptiveWindowTests
 
         // 每一轮回补之间只隔一个 RTT（40 ms < 250 ms 阈值），
         // 说明窗口就是瓶颈 —— 它应当翻倍上去。
-        Assert.IsTrue(
-            finalWindow > window,
+        Assert.IsGreaterThan(
+            window, finalWindow,
             $"自适应窗口应当从 {window} 长上去，实际停在 {finalWindow}");
     }
 
@@ -360,8 +360,8 @@ public sealed class AdaptiveWindowTests
             payload);
 
         Assert.AreEqual(payload, m.Bytes, "窗口长大之后数据不能丢");
-        Assert.IsTrue(
-            m.FinalWindow > window * 2,
+        Assert.IsGreaterThan(
+            window * 2, m.FinalWindow,
             $"前提：窗口要真的长过老水位（{window * 2}），实际 {m.FinalWindow}");
     }
 
@@ -390,10 +390,10 @@ public sealed class AdaptiveWindowTests
 
         Assert.AreEqual(payload, fixedWindow.Bytes);
         Assert.AreEqual(payload, adaptive.Bytes);
-        Assert.IsTrue(adaptive.FinalWindow > window, "前提：窗口确实长大了");
+        Assert.IsGreaterThan(window, adaptive.FinalWindow, "前提：窗口确实长大了");
 
-        Assert.IsTrue(
-            adaptive.WindowAdjusts < fixedWindow.WindowAdjusts,
+        Assert.IsLessThan(
+            fixedWindow.WindowAdjusts, adaptive.WindowAdjusts,
             $"自适应应当用更少的往返：实际 {adaptive.WindowAdjusts} 次 vs " +
             $"固定窗口 {fixedWindow.WindowAdjusts} 次");
     }
@@ -414,6 +414,6 @@ public sealed class AdaptiveWindowTests
         int finalWindow = m.FinalWindow;
 
         // 上限就是**单条通道最坏的接收缓冲占用** —— 它必须是硬的。
-        Assert.IsTrue(finalWindow <= cap, $"窗口 {finalWindow} 超过了上限 {cap}");
+        Assert.IsLessThanOrEqualTo(cap, finalWindow, $"窗口 {finalWindow} 超过了上限 {cap}");
     }
 }

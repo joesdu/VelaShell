@@ -98,7 +98,7 @@ public class PluginManagerEnableDisableTests
         Assert.AreEqual(PluginState.Active, manager.Plugins.Single().State, manager.Plugins.Single().Error);
         await manager.DisableAsync(TestFixturePlugin.Id);
         Assert.IsFalse(File.Exists(Path.Combine(dir, ".disabled")), "自带插件的禁用状态不该写进安装目录");
-        CollectionAssert.Contains(File.ReadAllLines(stateFile), TestFixturePlugin.Id);
+        Assert.Contains(TestFixturePlugin.Id, File.ReadAllLines(stateFile));
         await manager.DisposeAsync();
 
         PluginManager restarted = CreateBundledManager();

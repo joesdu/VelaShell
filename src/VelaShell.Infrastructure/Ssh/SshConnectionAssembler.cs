@@ -1,8 +1,10 @@
 using VelaShell.Core.Models;
 using VelaShell.Core.Net;
 using VelaShell.Core.Data;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Ssh.Auth;
+using VelaShell.Ssh.Crypto;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Keys;
 using VelaShell.Ssh.Session;
@@ -101,16 +103,121 @@ internal static class SshConnectionAssembler
         TimeSpan connectTimeout,
         CancellationToken cancellationToken)
     {
-        SshConnectionOptions options = new(info.Username, info.Host, info.Port)
+        // agent 这一路的签名要回到 agent 去做,所以 agent 客户端得一直活到认证结束 ——
+        // 连接建好之后就不再需要它(重协商不会重新认证),在这里释放。
+        SshAgentClient? agent = null;
+        try
         {
-            Dialer = dialer,
-            HostKeyPolicy = policy,
-            Credentials = await BuildCredentialsAsync(info, cancellationToken).ConfigureAwait(false),
-            ConnectTimeout = connectTimeout,
-            KeepAlive = KeepAlive(settings, info),
-        };
+            IReadOnlyList<SshCredential> credentials;
+            if (info.AuthMethod == AuthMethod.Agent)
+            {
+                agent = await ConnectAgentAsync(cancellationToken).ConfigureAwait(false);
+                credentials = await AgentCredentialsAsync(agent, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                credentials = await BuildCredentialsAsync(info, cancellationToken).ConfigureAwait(false);
+            }
 
-        return await options.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            SshConnectionOptions options = new(info.Username, info.Host, info.Port)
+            {
+                Dialer = dialer,
+                HostKeyPolicy = policy,
+                Credentials = credentials,
+                ConnectTimeout = connectTimeout,
+                KeepAlive = KeepAlive(settings, info),
+                Algorithms = Algorithms(info),
+            };
+
+            return await options.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (agent is not null)
+            {
+                await agent.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 这一跳的算法集:开了压缩就把 <c>zlib@openssh.com</c> 排在 <c>none</c> 前面。
+    /// </summary>
+    /// <remarks>
+    /// 压缩是**协商**出来的:服务端没开(<c>Compression no</c>)时自动落回不压缩,
+    /// 不会因此连不上。用的是 <c>zlib@openssh.com</c>(认证之后才开始压缩)而不是
+    /// 老式的 <c>zlib</c> —— 后者在认证之前就压缩,是历史上 CRIME 一类攻击的入口。
+    /// </remarks>
+    internal static SshAlgorithmSet Algorithms(VelaConnectionInfo info) =>
+        info.Ssh is { Compression: true }
+            ? SshAlgorithmSet.Default.WithCompression()
+            : SshAlgorithmSet.Default;
+
+    /// <summary>
+    /// 本机 agent 的端点:Windows 上默认是 OpenSSH Authentication Agent 服务的命名管道。
+    /// </summary>
+    /// <remarks>
+    /// Windows 上 <c>SSH_AUTH_SOCK</c> 只在它本身就是命名管道时才采用(1Password、KeePassXC
+    /// 之类会这样配);它更常指向 Git Bash / WSL 的 Unix 套接字,那是另一套 agent,.NET 连不上。
+    /// 其它平台交给库按 <c>SSH_AUTH_SOCK</c> 取。
+    /// </remarks>
+    internal static string? AgentEndpoint()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+        string? socket = Environment.GetEnvironmentVariable("SSH_AUTH_SOCK");
+        return socket is not null && socket.StartsWith(@"\\.\pipe\", StringComparison.Ordinal) ? socket : null;
+    }
+
+    /// <summary>连本机 agent 的上限。</summary>
+    /// <remarks>
+    /// Windows 上 agent 服务没起时命名管道根本不存在,而不带超时的管道连接会<b>一直重试</b>
+    /// 直到管道出现 —— 用户看到的是连接转圈转到整条连接超时,原因只字不提。
+    /// 本机 IPC 用不了多久,三秒足够分辨「在跑」与「没在跑」。
+    /// </remarks>
+    private static readonly TimeSpan AgentConnectTimeout = TimeSpan.FromSeconds(3);
+
+    private static async ValueTask<SshAgentClient> ConnectAgentAsync(CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(AgentConnectTimeout);
+        try
+        {
+            return await SshAgentClient.ConnectAsync(AgentEndpoint(), timeout.Token).ConfigureAwait(false);
+        }
+        catch (SshAgentException ex)
+        {
+            throw new VelaSshAuthenticationException(Strings.Format("SshErr_AgentUnavailable", ex.Message), ex);
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new VelaSshAuthenticationException(
+                Strings.Format("SshErr_AgentUnavailable", Strings.Get("SshErr_AgentNotRunning")), ex);
+        }
+    }
+
+    /// <summary>agent 里的每一把钥都作为一个候选凭据,由库按顺序逐把试。</summary>
+    /// <remarks>
+    /// agent 里一把钥都没有时直接说清楚,而不是把一个空凭据列表交给库 ——
+    /// 那样用户拿到的是一句笼统的「认证方法已用尽」,看不出问题在本机。
+    /// </remarks>
+    private static async ValueTask<IReadOnlyList<SshCredential>> AgentCredentialsAsync(
+        SshAgentClient agent, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<SshCredential> credentials;
+        try
+        {
+            credentials = await agent.GetCredentialsAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (SshAgentException ex)
+        {
+            throw new VelaSshAuthenticationException(Strings.Format("SshErr_AgentUnavailable", ex.Message), ex);
+        }
+        return credentials.Count > 0
+            ? credentials
+            : throw new VelaSshAuthenticationException(Strings.Get("SshErr_AgentNoKeys"));
     }
 
     /// <summary>
@@ -120,8 +227,9 @@ internal static class SshConnectionAssembler
     /// <para>
     /// <b>只用用户显式选择的那一种,不做任何隐式回退。</b>库本身也不回退
     /// (不自动读 <c>~/.ssh/id_*</c>、不自动连 ssh-agent),两边是一致的。
-    /// VelaShell 没有「用 agent / 默认私钥」这个 UI 选项,静默回退本就非预期 ——
-    /// 它既会制造噪声,也可能拿一把用户没打算用的钥去认证。
+    /// 要用 agent,得在认证方式里显式选「SSH Agent」(<see cref="AuthMethod.Agent" />,
+    /// 不经过这里,见 <c>ConnectAsync</c>);选了别的方式就不会再去碰 agent ——
+    /// 静默回退既会制造噪声,也可能拿一把用户没打算用的钥去认证。
     /// </para>
     /// <para>
     /// <b>密码那一路同时应答 <c>keyboard-interactive</c>。</b>很多服务端

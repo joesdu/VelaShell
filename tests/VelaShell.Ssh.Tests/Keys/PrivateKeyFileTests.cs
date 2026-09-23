@@ -127,7 +127,7 @@ public sealed class PrivateKeyFileTests
         SshPrivateKeyException error = Assert.ThrowsExactly<SshPrivateKeyException>(
             () => SshPrivateKeyFile.Parse("PuTTY-User-Key-File-9: ssh-ed25519\nEncryption: none\n"));
 
-        StringAssert.Contains(error.Message, "不支持的 .ppk 版本");
+        Assert.Contains("不支持的 .ppk 版本", error.Message);
     }
 
     // ------------------------------------------------------------ OpenSSH 格式
@@ -157,8 +157,7 @@ public sealed class PrivateKeyFileTests
         ISshSigner signer = SshPrivateKeyFile.Parse(pem);
 
         Assert.AreEqual(SshAlgorithmNames.SshEd25519, signer.PublicKey.KeyType);
-        CollectionAssert.AreEqual(publicBlob, signer.PublicKey.Blob.ToArray(),
-            "从私钥导出的公钥要与文件里带的那份一致");
+        Assert.AreSequenceEqual(publicBlob, signer.PublicKey.Blob.ToArray(), "从私钥导出的公钥要与文件里带的那份一致");
 
         // 真的签一次，再用解析出来的公钥验 —— 只比公钥是不够的，
         // 私钥的种子取错了（比如把 64 字节整个当种子）照样能得出正确的公钥 blob。
@@ -173,7 +172,7 @@ public sealed class PrivateKeyFileTests
     [TestMethod]
     public async Task 读出RSA私钥并且能签能验()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         RSAParameters p = rsa.ExportParameters(includePrivateParameters: true);
 
         ArrayBufferWriter<byte> blobBuffer = new();
@@ -221,7 +220,7 @@ public sealed class PrivateKeyFileTests
                 (SshAlgorithmNames.EcdsaSha2Nistp521, "nistp521", 66, ECCurve.NamedCurves.nistP521),
             })
         {
-            using ECDsa ecdsa = ECDsa.Create(curve);
+            using var ecdsa = ECDsa.Create(curve);
             ECParameters p = ecdsa.ExportParameters(includePrivateParameters: true);
 
             byte[] point = new byte[1 + (coordinate * 2)];
@@ -289,7 +288,7 @@ public sealed class PrivateKeyFileTests
         SshPrivateKeyException error = Assert.ThrowsExactly<SshPrivateKeyException>(
             () => SshPrivateKeyFile.Parse(pem));
 
-        StringAssert.Contains(error.Message, "校验字不匹配");
+        Assert.Contains("校验字不匹配", error.Message);
     }
 
     /// <summary>
@@ -321,9 +320,9 @@ public sealed class PrivateKeyFileTests
         SshPrivateKeyException error = Assert.ThrowsExactly<SshPrivateKeyException>(
             () => SshPrivateKeyFile.Parse(pem, "口令"));
 
-        StringAssert.Contains(error.Message, "3des-cbc");
-        StringAssert.Contains(error.Message, "aes256-ctr");
-        StringAssert.Contains(error.Message, "ssh-keygen -p -Z");
+        Assert.Contains("3des-cbc", error.Message);
+        Assert.Contains("aes256-ctr", error.Message);
+        Assert.Contains("ssh-keygen -p -Z", error.Message);
     }
 
     // ------------------------------------------------------------ BCL 能读的格式
@@ -331,7 +330,7 @@ public sealed class PrivateKeyFileTests
     [TestMethod]
     public async Task 读出PKCS8的RSA私钥()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         string pem = rsa.ExportPkcs8PrivateKeyPem();
 
         ISshSigner signer = SshPrivateKeyFile.Parse(pem);
@@ -344,7 +343,7 @@ public sealed class PrivateKeyFileTests
     [TestMethod]
     public async Task 读出PKCS8的ECDSA私钥()
     {
-        using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         string pem = ecdsa.ExportPkcs8PrivateKeyPem();
 
         ISshSigner signer = SshPrivateKeyFile.Parse(pem);
@@ -358,7 +357,7 @@ public sealed class PrivateKeyFileTests
     [TestMethod]
     public async Task 读出带口令的PKCS8私钥()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         PbeParameters pbe = new(PbeEncryptionAlgorithm.Aes256Cbc, HashAlgorithmName.SHA256, 10_000);
         string pem = rsa.ExportEncryptedPkcs8PrivateKeyPem("正确的口令", pbe);
 
@@ -372,7 +371,7 @@ public sealed class PrivateKeyFileTests
     [TestMethod]
     public void 带口令的私钥没给口令时说清楚()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         PbeParameters pbe = new(PbeEncryptionAlgorithm.Aes256Cbc, HashAlgorithmName.SHA256, 10_000);
         string pem = rsa.ExportEncryptedPkcs8PrivateKeyPem("口令", pbe);
 
@@ -382,13 +381,13 @@ public sealed class PrivateKeyFileTests
         // 「需要口令」与「口令不对」在界面上是两件事：前者该弹输入框，
         // 后者该说「口令不对，再试一次」。
         Assert.IsTrue(error.NeedsPassphrase);
-        StringAssert.Contains(error.Message, "需要口令");
+        Assert.Contains("需要口令", error.Message);
     }
 
     [TestMethod]
     public void 口令不对时说得出是口令不对()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         PbeParameters pbe = new(PbeEncryptionAlgorithm.Aes256Cbc, HashAlgorithmName.SHA256, 10_000);
         string pem = rsa.ExportEncryptedPkcs8PrivateKeyPem("正确的", pbe);
 
@@ -396,13 +395,13 @@ public sealed class PrivateKeyFileTests
             () => SshPrivateKeyFile.Parse(pem, "错的"));
 
         Assert.IsTrue(error.NeedsPassphrase);
-        StringAssert.Contains(error.Message, "口令多半不对");
+        Assert.Contains("口令多半不对", error.Message);
     }
 
     [TestMethod]
     public async Task 从文件读()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         string path = Path.Combine(Path.GetTempPath(), $"velashell-key-{Guid.NewGuid():N}.pem");
 
         try

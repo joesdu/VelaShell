@@ -24,11 +24,11 @@
          PrivateAssets=all + ExcludeAssets=runtime:编译期能看见类型,输出目录里不留 dll ——
          装载时它必须与宿主是同一份程序集,复制过去就成了两份类型。
          版本须与 src/Directory.Packages.props 里宿主引的那一条一致。 -->
-    <PackageReference Include="VelaShell.PluginSdk" Version="2.0.4" PrivateAssets="all" ExcludeAssets="runtime">
+    <PackageReference Include="VelaShell.PluginSdk" Version="2.0.5" PrivateAssets="all" ExcludeAssets="runtime">
       <IncludeAssets>compile; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <!-- 仅编译期引用 Avalonia,运行时由装载方共享同一套(版本须与宿主一致)。 -->
-    <PackageReference Include="Avalonia" Version="12.1.2" ExcludeAssets="runtime" />
+    <PackageReference Include="Avalonia" Version="12.1.3" ExcludeAssets="runtime" />
     <!-- 输入框是 AvaloniaEdit(Markdown 高亮 + @ 引用芯片,纯 TextBox 给不了内联富文本)。
          程序集名 AvaloniaEdit 命中 PluginAssemblyLoadContext 的 SharedPrefixes("Avalonia"),
          运行时一律回落到装载方那份,故此处同样只要编译期引用。
@@ -40,7 +40,7 @@
          这些依赖随插件目录分发,由插件 ALC 按 deps.json 隔离解析,与宿主互不干扰。 -->
     <PackageReference Include="Microsoft.Extensions.AI" Version="10.10.0" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.10.0" />
-    <PackageReference Include="Anthropic" Version="12.49.0" />
+    <PackageReference Include="Anthropic" Version="12.50.0" />
     <!-- MCP 官方 C# SDK(Core = 纯客户端/低层,无 Hosting/DI 依赖):
          McpClientTool 即 M.E.AI 的 AIFunction,直接并入 Agent 工具循环。 -->
     <PackageReference Include="ModelContextProtocol.Core" Version="2.2.0" />

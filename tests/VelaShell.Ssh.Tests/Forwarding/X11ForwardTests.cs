@@ -51,7 +51,7 @@ public sealed class X11ForwardTests
 
         // 而且它确实是个合法的十六进制 cookie（不是原始字节被当成文本）。
         byte[] sent = Convert.FromHexString(request.AuthCookieHex);
-        Assert.AreEqual(16, sent.Length);
+        Assert.HasCount(16, sent);
         CollectionAssert.AreNotEqual(_realCookie, sent);
     }
 
@@ -64,7 +64,7 @@ public sealed class X11ForwardTests
             async () => await X11Forwarder.RequestAsync(
                 fixture.Harness.Connection, fixture.Session, fixture.Options, fixture.Harness.Token));
 
-        StringAssert.Contains(error.Message, "X11Forwarding");
+        Assert.Contains("X11Forwarding", error.Message);
 
         // 处理器要摘干净 —— 不然服务端之后开的 x11 通道会被一个
         // 半挂的转发器接走。
@@ -80,7 +80,7 @@ public sealed class X11ForwardTests
         // 端到端：起一个假的 X server，让服务端开一条 x11 通道，
         // 用假 cookie 走完 X11 建立握手，检查落到 X server 上的是**真** cookie。
         await using Fixture fixture = await Fixture.StartAsync();
-        using FakeXServer xserver = FakeXServer.Start();
+        using var xserver = FakeXServer.Start();
 
         await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
             fixture.Harness.Connection, fixture.Session,
@@ -102,9 +102,8 @@ public sealed class X11ForwardTests
             X11SetupMessage.TryParse(new ReadOnlySequence<byte>(arrived), out X11SetupMessage.Parsed parsed),
             "落到 X server 上的应当是一个完整的建立报文");
 
-        CollectionAssert.AreEqual(
-            _realCookie, parsed.ProtocolData,
-            "转给本机 X server 的必须是**真** cookie —— 假的那个 X server 不认");
+        Assert.AreSequenceEqual(
+            _realCookie, parsed.ProtocolData, "转给本机 X server 的必须是**真** cookie —— 假的那个 X server 不认");
 
         Assert.AreEqual(1, forwarder.AcceptedChannels);
         Assert.AreEqual(0, forwarder.RejectedChannels);
@@ -115,7 +114,7 @@ public sealed class X11ForwardTests
     {
         // ⚠️ 放过去就等于把本机显示交给任何知道端口的人。
         await using Fixture fixture = await Fixture.StartAsync();
-        using FakeXServer xserver = FakeXServer.Start();
+        using var xserver = FakeXServer.Start();
 
         await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
             fixture.Harness.Connection, fixture.Session,
@@ -142,7 +141,7 @@ public sealed class X11ForwardTests
     public async Task 非MIT_MAGIC_COOKIE_1的授权协议会被拒绝()
     {
         await using Fixture fixture = await Fixture.StartAsync();
-        using FakeXServer xserver = FakeXServer.Start();
+        using var xserver = FakeXServer.Start();
 
         await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
             fixture.Harness.Connection, fixture.Session,
@@ -178,7 +177,7 @@ public sealed class X11ForwardTests
     public async Task 过期之后不再接受新的x11通道()
     {
         await using Fixture fixture = await Fixture.StartAsync();
-        using FakeXServer xserver = FakeXServer.Start();
+        using var xserver = FakeXServer.Start();
 
         await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
             fixture.Harness.Connection, fixture.Session,
@@ -212,7 +211,7 @@ public sealed class X11ForwardTests
     public async Task 同一连接上两个会话的X11转发各自可用()
     {
         await using Fixture fixture = await Fixture.StartAsync();
-        using FakeXServer xserver = FakeXServer.Start();
+        using var xserver = FakeXServer.Start();
         X11ForwardOptions options = fixture.Options with { Display = xserver.Display };
 
         await using X11Forwarder first = await X11Forwarder.RequestAsync(
@@ -261,7 +260,7 @@ public sealed class X11ForwardTests
     public async Task 单连接模式在本端强制()
     {
         await using Fixture fixture = await Fixture.StartAsync();
-        using FakeXServer xserver = FakeXServer.Start();
+        using var xserver = FakeXServer.Start();
 
         await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
             fixture.Harness.Connection, fixture.Session,
@@ -305,8 +304,86 @@ public sealed class X11ForwardTests
 
         string[] order = [.. fixture.Harness.Channels.Observation.Requests
             .Where(static r => r is "pty-req" or "x11-req" or "env" or "shell")];
-        CollectionAssert.AreEqual(new[] { "pty-req", "x11-req", "env", "shell" }, order);
+        Assert.AreSequenceEqual(new[] { "pty-req", "x11-req", "env", "shell" }, order);
     }
+
+    /// <summary>§7.5.8：连接级开关打开的 X11，服务端拒绝时记下原因、shell 照常启动。</summary>
+    [TestMethod]
+    public async Task 尽力而为的X11被服务端拒绝时shell照常启动()
+    {
+        await using Fixture fixture = await Fixture.StartAsync(grantX11: false);
+
+        await using SshShell shell = await fixture.Harness.Connection.OpenShellAsync(
+            new SshShellOptions { X11 = fixture.Options with { BestEffort = true } },
+            fixture.Harness.Token);
+
+        Assert.IsNull(shell.X11, "没开成就不该有转发器");
+        Assert.IsNotNull(shell.X11SetupFailure, "没开成的原因要交给调用方");
+        Assert.Contains("X11Forwarding", shell.X11SetupFailure.Message);
+
+        string[] order = [.. fixture.Harness.Channels.Observation.Requests
+            .Where(static r => r is "pty-req" or "x11-req" or "shell")];
+        Assert.AreSequenceEqual(new[] { "pty-req", "x11-req", "shell" }, order);
+
+        // 吞掉的失败不能在连接上留下半挂的转发 —— 否则服务端之后开的 x11 通道会被接走。
+        Stream? channel = await fixture.Harness.Channels.OpenChannelToClientAsync(
+            SshAlgorithmNames.ChannelX11, X11Origin(), fixture.Harness.Token);
+        Assert.IsNull(channel, "X11 没开成，这条连接不该接受 x11 通道");
+    }
+
+    /// <summary>§7.5.8：调用方显式要求的 X11（默认就是显式的），失败照样抛，shell 不启动。</summary>
+    [TestMethod]
+    public async Task 显式要求的X11被服务端拒绝时照样抛()
+    {
+        await using Fixture fixture = await Fixture.StartAsync(grantX11: false);
+
+        Assert.IsFalse(fixture.Options.BestEffort, "默认必须是严格的");
+
+        SshForwardException error = await Assert.ThrowsExactlyAsync<SshForwardException>(
+            async () => await fixture.Harness.Connection.OpenShellAsync(
+                new SshShellOptions { X11 = fixture.Options }, fixture.Harness.Token));
+
+        Assert.Contains("X11Forwarding", error.Message);
+        Assert.DoesNotContain("shell", fixture.Harness.Channels.Observation.Requests);
+    }
+
+    /// <summary>§7.5.8：本机这一侧就失败（xauth 跑不起来）时，尽力而为的命令照常执行、x11-req 根本不发。</summary>
+    [TestMethod]
+    public async Task 尽力而为的X11在本机拿不到cookie时命令照常执行()
+    {
+        await using Fixture fixture = await Fixture.StartAsync();
+
+        await using SshCommand command = await fixture.Harness.Connection.ExecuteAsync(
+            "xclock",
+            new SshExecutionOptions { X11 = UnrunnableXAuth(fixture.Options) with { BestEffort = true } },
+            fixture.Harness.Token);
+
+        Assert.IsNull(command.X11);
+        Assert.IsNotNull(command.X11SetupFailure);
+        Assert.IsEmpty(fixture.Harness.Channels.Observation.X11Requests, "本机就失败了，不该再发 x11-req");
+        Assert.Contains("xclock", fixture.Harness.Channels.Observation.Commands);
+    }
+
+    [TestMethod]
+    public async Task 显式要求的X11在本机拿不到cookie时照样抛()
+    {
+        await using Fixture fixture = await Fixture.StartAsync();
+
+        await Assert.ThrowsExactlyAsync<SshForwardException>(
+            async () => await fixture.Harness.Connection.ExecuteAsync(
+                "xclock",
+                new SshExecutionOptions { X11 = UnrunnableXAuth(fixture.Options) },
+                fixture.Harness.Token));
+
+        Assert.IsEmpty(fixture.Harness.Channels.Observation.Commands, "显式要求失败时命令不该被执行");
+    }
+
+    /// <summary>非受信模式 + 一个不存在的 <c>xauth</c>：在本机这一侧就失败。</summary>
+    private static X11ForwardOptions UnrunnableXAuth(X11ForwardOptions options) => options with
+    {
+        Trusted = false,
+        XAuthLocation = Path.Combine(Path.GetTempPath(), $"velashell-no-xauth-{Guid.NewGuid():N}", "xauth"),
+    };
 
     [TestMethod]
     public void 非受信模式的xauth一定写进临时文件()
@@ -317,9 +394,8 @@ public sealed class X11ForwardTests
         // ⚠️ 少了 -f，受限 cookie 会覆盖使用者 .Xauthority 里的完全授权 cookie。
         Assert.AreEqual("-f", arguments[0]);
         Assert.AreEqual("/tmp/velashell-x11-abc/xauthfile", arguments[1]);
-        CollectionAssert.AreEqual(
-            new[] { "generate", ":3", XAuthority.MitMagicCookie1, "untrusted", "timeout", "1200" },
-            arguments.Skip(2).ToArray());
+        Assert.AreSequenceEqual(
+            new[] { "generate", ":3", XAuthority.MitMagicCookie1, "untrusted", "timeout", "1200" }, [.. arguments.Skip(2)]);
     }
 
     [TestMethod]

@@ -86,7 +86,7 @@ public sealed class TestSshServerHost : IAsyncDisposable
         channels.AttachServer(server);
 
         // 服务端一侧整条线跑在一个任务上：握手 → 认证 → 通道层收包循环。
-        Task serverSide = Task.Run(async () =>
+        var serverSide = Task.Run(async () =>
         {
             TestSshServerHandshake handshake = await server.HandshakeAsync(cts.Token);
 

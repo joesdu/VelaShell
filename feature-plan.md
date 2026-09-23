@@ -79,7 +79,7 @@ pie showData
 | 状态 | 项 | 字段 | 现状 | 闭合要做什么 |
 | :---: | --- | --- | --- | --- |
 | ⏳ | **主密码保护** | `AppSettings.MasterPasswordProtection`（`AppSettings.cs:342`） | 字段存在，运行时零消费者；UI 已撤下并留注释 R-04 | 主密码派生密钥替换 `AesSecretProtector` 的本机密钥文件 + 启动解锁弹窗 + 存量密文迁移。**安全敏感，需单独设计后再动手** |
-| ⏳ | **自动加载密钥到 Agent** | `AppSettings.AutoLoadToAgent`（`AppSettings.cs:1058`，默认 `true`） | 字段存在且默认开，零消费者（R-06） | 集成 Windows OpenSSH ssh-agent（命名管道协议）或 Pageant。⚠️ 实现时**必须**同步调整 `plan.md` §17-A：凭据装配曾**刻意整体替换**默认凭据列表以排除 `SshAgentCredentials`（Windows 上 `SSH_AUTH_SOCK` 非命名管道会刷异常） |
+| ⏳ | **自动加载密钥到 Agent** | `AppSettings.AutoLoadToAgent`（`AppSettings.cs:1058`，默认 `true`） | 字段存在且默认开，零消费者（R-06） | ~~集成 Windows OpenSSH ssh-agent（命名管道协议）~~ —— **连 agent 这一半已经有了**（2026-09-22，`plan.md` §92）：「SSH Agent」认证方式与 agent 转发都走 `VelaShell.Ssh` 的 `SshAgentClient`（Windows 命名管道 / `SSH_AUTH_SOCK`）。§17-A 那条顾虑也随之解除：agent 只在用户**显式选了**「SSH Agent」认证时才会被连，别的认证方式不碰它。剩下的是这条本身 —— **往** agent 里加钥（`SSH_AGENTC_ADD_IDENTITY`），库的 agent 客户端目前只会列身份与签名，要先在 velashell-ssh 补这条请求。Pageant 仍未支持 |
 | ⏳ | **自动下载更新** | `AppSettings.AutoDownloadUpdates`（`AppSettings.cs:231`） | 字段存在，零消费者、零 UI | 下载调度 + SHA-256 完整性校验 + 静默换版流程。注：**启动时自动检查**（`CheckUpdatesOnStartup`）已实现并接进消息中心，别和这条混淆 |
 | ⏳ | **传输失败重试** | `AppSettings.TransferMaxRetries` | 字段存在，零消费者 | 需要传输队列持久化才有意义（重试要知道「重试什么」）。同组的 `AutoResume` 已降级为遗留兼容字段，实际开关是 `ResumeEnabled`，**不要**再给它接线 |
 | ⏳ | **标签栏位置（顶部/底部）** | `AppearanceOptions.TabBarPosition` + `SettingsViewModel.TabBarPositionIndex:1219` | 字段与索引映射都在，Docking 层零消费；VelaDock 替换后 UI 已从外观页撤下 | 有了 VelaDock 的 `DockGroupControl` 之后技术上已可做（改标签条停靠边）。**低成本**，按需排期 |
@@ -542,8 +542,8 @@ var options = new ExecuteOptions
 | 插件系统 | ✅ **双模 + 商店** | — | — | ✅ | — | — |
 | AI 助手 / Agent | ✅ **含 IM 桥接 + MCP** | — | — | 插件 | — | ✅ 有限 |
 | 云同步 | ✅ 自己的 Gist | — | ✅ | ✅ | ✅ | ✅ 自营 |
-| **SSH Agent 转发** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **X11 转发** | ❌ | ✅ | ✅ 自带 X 服务端 | — | ✅ | — |
+| **SSH Agent 转发** | ✅ 含 Agent 认证 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **X11 转发** | ✅ 需自备 X 服务端 | ✅ | ✅ 自带 X 服务端 | — | ✅ | — |
 | **OSC 8 超链接** | ✅ | — | — | ✅ | — | — |
 | **命令块 / 提示符语义（OSC 133）** | ✅ | — | — | — | — | — |
 | **键盘复制模式** | ❌ 不做 | — | — | — | ✅ | — |
@@ -554,7 +554,7 @@ var options = new ExecuteOptions
 **结论**：连接与运维这条主线已经追平甚至反超（计量隧道、录制回放、双模插件、AI 协作接入都是别家没有的）。
 终端本身的现代化这一格已经补完：OSC 8 与 OSC 133 命令块均已于 09-08 落地（`plan.md` §10-D / §10-E），
 键盘复制模式经评估**确认不做**（理由见[确认不做](#-确认不做)）。剩下的空档集中在两处：
-**① 凭据与团队**（agent 转发、密钥库集成、共享配置）、**② 文件侧的深水区**（远端搜索、传输队列持久化；符号链接与目录比较同步均已于 09-12 落地，见 `plan.md` §72 / §74）。
+**① 凭据与团队**（密钥库集成、共享配置；agent 转发与 X11 转发已于 09-22 落地，见 `plan.md` §92）、**② 文件侧的深水区**（远端搜索、传输队列持久化；符号链接与目录比较同步均已于 09-12 落地，见 `plan.md` §72 / §74）。
 
 ---
 
@@ -596,7 +596,6 @@ var options = new ExecuteOptions
 | 🚧 | 🟢 P3 | **SSH 压缩开关** | 各家都有 | 弱网 / 高延迟链路上有意义。~~「上游没有 zlib 实现，要么等要么提 PR」（2026-09-08）~~ → ~~「已提 PR [tmds/Tmds.Ssh#513](https://github.com/tmds/Tmds.Ssh/pull/513)，卡上游合并 + 发版」（2026-09-10）~~ —— **两条都作废了**：2026-09-22 换成 VelaShell.Ssh（`plan.md` §91），`Crypto/SshCompressor` 已实现 `zlib` 与 `zlib@openssh.com`（后者认证后才开始压缩，每次 kex 重置压缩上下文），用的是 BCL 自带的原生 zlib。默认仍不开启（与 OpenSSH 一致）。我们这边只剩接线：`SessionProfile` 加压缩字段 → `SshConnectionAssembler` 里 `Algorithms = SshAlgorithmSet.Default.WithCompression()` —— 与上一行「算法协商可配」是同一处落点，**该一并做**。⚠️ 纪律不变：**没接线之前不要先加这个开关**，否则就是 [P0 那张表](#-p0--存了但不生效的开关)里的新一条 |
 | 💡 | 🟢 P3 | **SecureCRT 风格的斜杠命令行** | SecureCRT | 外部拉起目前只认 Xshell 的调用约定（`-url` / `-newtab` / `-f` / `-l` / `-p` / `-pw` / `-i`，见 `plan.md` §84–85）。SecureCRT 那套 `/SSH2 /L root /PASSWORD pw host` 现在一个都不认，被整条忽略。**要接之前先确认有没有真实调用方** —— 这条兼容层的存在理由是「堡垒机客户端已经在发」，不是「补齐一张对标表格」；没有人发的写法接进来只是多一条攻击面。⚠️ `/` 开头的 token 与 Unix 路径、Avalonia 自己的参数会撞，得先想清楚怎么区分 |
 | 💡 | 🟢 P3 | **更多协议插件** | — | RDP / VNC / Kubernetes exec / 数据库客户端。**这正是 `Protocols` + `Workspaces` 能力面存在的意义** —— 宿主一行不用改，Telnet / 串口 / Redis / S3 / Docker 面板已经把这条路走通了五遍。优先级交给插件市场的真实下载量决定，不要在宿主里拍脑袋排 |
-| ❌ | — | **X11 转发** | MobaXterm（自带 X 服务端） | 见下面的[确认不做](#-确认不做)一栏 |
 
 ### E. 安全与合规
 
@@ -639,9 +638,7 @@ var options = new ExecuteOptions
    记得把**注入侧的爆炸半径**单独算一笔。
 2. **插件签名验证**（E 组）—— 商店已经在跑了，这个洞开着的每一天都在放大。
    信任根现成，属于「补最后一段」而不是「从零建」。
-3. **SSH Agent 转发**（D 组）—— 对标矩阵里唯一六家全有、我们全无的格子，
-   而且缺它会逼用户做出**降低安全性**的替代（把私钥拷上跳板机）。
-   ✅ 2026-09-22 换库后**底层已经有了**：`VelaShell.Ssh` 的 `AgentForwarder` 实现了 `auth-agent-req@openssh.com`，剩下的是宿主侧接线。
+3. ~~**SSH Agent 转发**（D 组）~~ —— **已于 2026-09-22 落地**（`plan.md` §92），连同「SSH Agent」认证方式、X11 转发与压缩开关一起。
 
 ### 📌 排这份路线图时的几条纪律
 
@@ -683,7 +680,7 @@ var options = new ExecuteOptions
 | --- | --- |
 | **多窗口（新开独立主窗口）** | 与现架构三处硬冲突：①应用为**单实例**（`Program.cs` 命名 Mutex，自更新重启依赖锁交接）；②主窗口是唯一组合根（单个 `MainWindowViewModel` 持有会话 / 布局 / 状态栏全部状态，无多窗口状态分片）；③VelaDock **产品决策不做浮动窗口**，多主窗意味着跨窗口拖拽与布局持久化整套推翻重做。**多屏需求由五区拖放分屏承担** |
 | **Mosh** | 全部远程通道抽象建立在 SSH 流式通道之上（`ISshClientWrapper` / `IShellStreamWrapper`）。Mosh 是独立的 UDP + 状态同步（SSP）协议栈，.NET 无可用实现，接入等于并行维护第二套传输与终端预测引擎，收益不成比例。**弱网由自动重连 + keepalive 缓解** |
-| **X11 转发** | 转发本身只是一条 SSH 通道，不难；**难的是另一头** —— Windows 上要么捆一个 X 服务端（MobaXterm 就是这么做的，代价是安装包与维护面整个变一个量级），要么把用户推去装 VcXsrv 再教他配 `DISPLAY`，那种「装完还得再装一个」的体验与本项目「解压即跑」的分发模型直接冲突。**远程图形界面的需求由 RDP / VNC 插件承接更合适**（`Protocols` + `Workspaces` 能力面正是为此存在），宿主不背这个包 |
+| **内置 X 服务端** | X11 **转发**已于 2026-09-22 落地(`plan.md` §92),用户自备 VcXsrv / Xming / X410 即可。**不做**的是另一头 —— 像 MobaXterm 那样捆一个 X 服务端:安装包与维护面整个变一个量级,与本项目「解压即跑」的分发模型直接冲突。远程图形界面的重度需求由 RDP / VNC 插件承接(`Protocols` + `Workspaces` 能力面正是为此存在) |
 | **键盘复制模式（vi-like）** | 产品决策（2026-09-09）：**没见过这种用法**，为它付的代价却不小。技术上不难（选区模型三种形态 `TerminalSelectionMath` 已经全在），但它要新起一个**模式态**，而模式态要同时穿过两层输入路径：`TerminalKeyRouter` 与抢在它前面的 `TerminalTabView.OnPreviewKeyDown`（`Ctrl+F` 搜索栏、`Esc`、补全弹层的 `↑↓/Tab/Esc` 都在那一层被截走）。此外还要处理三件事：进模式必须关 IME（否则中文输入法下 `j` 到手是 `ImeProcessed`，原始键拿不回来，模式看着像死了）、`Ctrl+C` 的三重身份要重新定义、以及一个不可省的模式指示器。而**它的主场景已被别的功能吃掉**：选中整条命令输出走 OSC 133 的命令块，找文本走 `Ctrl+F`，抢鼠标的程序里走 `Shift+拖拽` —— 剩下的净增量只有「选任意一段」。⚠️ 与「自定义键位」那条决策也冲突：键位定死了就改不了，Dvorak / Colemak 上 `hjkl` 的位置是错的 |
 | **SFTP 面板内拖拽移动文件** | 维护者既有决策（#474 回复）：**做过，因为太容易误触发而关掉了** —— 文件列表上一次不经意的拖动就把文件挪走，用户事后往往不知道东西去了哪，「文件乱飞」。现有的 `DragDrop` 装配（`FileBrowserView.axaml.cs`）只认**本地路径落入**与**跨面板传输**，`DragEffects` 只给 `Copy`；远端内部的移动请用右键「重命名」或双栏。再提之前先想清楚怎么防误触发，光把开关打开等于把老问题原样搬回来 |
 | **连字（Ligatures）** | 自绘渲染器按**单元格**排版，无法跨字符连字。这是自绘换来渲染控制权的固有代价 |

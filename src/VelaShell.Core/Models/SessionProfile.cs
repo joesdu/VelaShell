@@ -168,6 +168,12 @@ public class SessionProfile
     public TerminalOverrides? Terminal { get; set; }
 
     /// <summary>
+    /// SSH 协议层的可选能力(压缩、agent 转发、X11 转发);null = 全关。
+    /// </summary>
+    /// <remarks>只对 SSH 生效;其余协议保存时一律存 null。</remarks>
+    public SshSessionOptions? Ssh { get; set; }
+
+    /// <summary>
     /// 连接建立后自动开启的隧道 id 列表;null 或空 = 不自动开。
     /// </summary>
     /// <remarks>
@@ -223,6 +229,7 @@ public class SessionProfile
             PluginSettings = CloneSettings(PluginSettings),
             PluginSecrets = CloneSettings(PluginSecrets),
             Terminal = Terminal?.Clone(),
+            Ssh = Ssh?.Clone(),
             AutoStartTunnelIds = AutoStartTunnelIds is null ? null : [.. AutoStartTunnelIds]
         };
 }

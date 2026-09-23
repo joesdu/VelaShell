@@ -48,7 +48,7 @@ internal sealed class LibraryPortForwardHandle : IPortForwardHandle
         // 不补上的话,远程转发在掉线之后会一直显示得好好的。
         _disconnected = connection.Disconnected.Register(static state =>
         {
-            LibraryPortForwardHandle self = (LibraryPortForwardHandle)state!;
+            var self = (LibraryPortForwardHandle)state!;
             if (!self._stopped)
             {
                 self.ChannelError?.Invoke(new VelaSshConnectionException(Strings.Get("SshErr_ClosedByPeer")));

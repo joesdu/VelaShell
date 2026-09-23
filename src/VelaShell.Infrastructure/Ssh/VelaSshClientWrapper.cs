@@ -1,9 +1,12 @@
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Text;
+using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Diagnostics;
+using VelaShell.Ssh.Forwarding;
 using VelaShell.Ssh.Session;
 
 namespace VelaShell.Infrastructure.Ssh;
@@ -28,6 +31,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
 {
     private readonly Func<CancellationToken, ValueTask<SshConnection>> _connect;
     private readonly IAsyncDisposable? _dialerLifetime;
+    private readonly SshSessionOptions? _features;
     private SshConnection? _connection;
     private bool _disposed;
 
@@ -40,13 +44,19 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
     /// 跟着本包装器一起释放的拨号器(跳板链持有的跳板连接在里面);没有跳板时为
     /// <see langword="null" />。
     /// </param>
+    /// <param name="features">
+    /// 交互式 shell 上要请求的转发(X11 / agent);<see langword="null" /> = 都不请求。
+    /// 压缩不在这里 —— 它是建链时协商的,已经装进 <paramref name="connect" /> 了。
+    /// </param>
     public VelaSshClientWrapper(
         Func<CancellationToken, ValueTask<SshConnection>> connect,
         TimeSpan connectTimeout,
-        IAsyncDisposable? dialerLifetime = null)
+        IAsyncDisposable? dialerLifetime = null,
+        SshSessionOptions? features = null)
     {
         _connect = connect ?? throw new ArgumentNullException(nameof(connect));
         _dialerLifetime = dialerLifetime;
+        _features = features;
         ConnectionTimeout = connectTimeout;
     }
 
@@ -133,10 +143,29 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
                 TerminalType = terminalName,
                 Size = new TerminalSize((int)columns, (int)rows, (int)width, (int)height),
                 Modes = BuildModes(terminalModeValues),
+                AgentEndpoint = SshConnectionAssembler.AgentEndpoint(),
             };
 
-            SshShell shell = await connection.OpenShellAsync(options, cancellationToken).ConfigureAwait(false);
-            return new ShellStreamWrapper(shell);
+            List<ShellStreamNotice> notices = [];
+            X11ForwardOptions? x11 = SshForwardingOptions.X11(_features, notices);
+            AgentForwardPolicy? agent = SshForwardingOptions.Agent(_features);
+
+            SshShell shell = await OpenShellWithFallbackAsync(
+                connection, options, x11, agent, notices, cancellationToken).ConfigureAwait(false);
+
+            if (shell.X11SetupFailure is { } x11Failure)
+            {
+                notices.Add(ForwardFailed("Ssh_X11ForwardFailed", x11Failure));
+            }
+            if (shell.X11 is { } forwarder)
+            {
+                notices.Add(new(Strings.Format("Ssh_X11ForwardOn", SshForwardingOptions.Describe(forwarder.Display)), false));
+            }
+            if (shell.Agent is not null)
+            {
+                notices.Add(new(Strings.Get("Ssh_AgentForwardOn"), false));
+            }
+            return new ShellStreamWrapper(shell, notices);
         }
         catch (Exception ex) when (SshInterop.Translate(ex, cancellationToken) is { } translated)
         {
@@ -165,6 +194,47 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
         }
         return modes;
     }
+
+    /// <summary>
+    /// 开 shell;agent 转发被拒时去掉它再开,原因记进 <paramref name="notices" />。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 转发是附带功能:服务端 <c>X11Forwarding no</c>、没装 xauth、<c>AllowAgentForwarding no</c>
+    /// 都很常见,为它们让整条会话连不上是本末倒置。
+    /// </para>
+    /// <para>
+    /// X11 是尽力而为的(见 <see cref="SshForwardingOptions.X11" />):它失败时库不抛,
+    /// 原因在 <see cref="SshShell.X11SetupFailure" /> 上,由调用方转成提示。所以这里能接到的
+    /// <see cref="SshForwardException" /> 只可能来自 agent —— 去掉 agent、保留 X11 重开一次就够了,
+    /// 不再需要「挨个去掉来定位是哪一项被拒」的多轮重试。
+    /// </para>
+    /// </remarks>
+    private static async Task<SshShell> OpenShellWithFallbackAsync(
+        SshConnection connection,
+        SshShellOptions options,
+        X11ForwardOptions? x11,
+        AgentForwardPolicy? agent,
+        List<ShellStreamNotice> notices,
+        CancellationToken cancellationToken)
+    {
+        ValueTask<SshShell> Open(AgentForwardPolicy? withAgent) =>
+            connection.OpenShellAsync(options with { X11 = x11, AgentForwarding = withAgent }, cancellationToken);
+
+        try
+        {
+            return await Open(agent).ConfigureAwait(false);
+        }
+        catch (SshForwardException agentFailure) when (agent is not null)
+        {
+            notices.Add(ForwardFailed("Ssh_AgentForwardFailed", agentFailure));
+            return await Open(null).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>「某项转发没开成」的提示:本地化的标题 + 库给的原因(服务端配置、本机缺 xauth…)。</summary>
+    private static ShellStreamNotice ForwardFailed(string key, SshForwardException ex) =>
+        new(Strings.Format(key, ex.Message), true);
 
     /// <inheritdoc />
     public async Task<string> RunCommandAsync(string commandText, CancellationToken cancellationToken = default)

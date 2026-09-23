@@ -131,7 +131,7 @@ public sealed class SshInteropTests
         Exception? translated = SshInterop.Translate(original);
 
         Assert.IsInstanceOfType<VelaSshAuthenticationException>(translated);
-        StringAssert.Contains(translated!.Message, "id_ed25519",
+        Assert.Contains("id_ed25519", translated!.Message,
             "逐条尝试记录必须进到消息里 —— 它是用户唯一能据以判断下一步的东西");
     }
 
@@ -154,9 +154,9 @@ public sealed class SshInteropTests
         Exception? translated = SshInterop.Translate(original);
 
         Assert.IsInstanceOfType<VelaSshConnectionException>(translated);
-        StringAssert.Contains(translated!.Message, "aes128-ctr", "对端提供了什么必须说出来");
-        StringAssert.Contains(translated.Message, "aes256-gcm@openssh.com", "本端支持什么也必须说出来");
-        StringAssert.Contains(translated.Message, "OpenSSH_7.4", "对端版本串是判断「这台设备太老」的依据");
+        Assert.Contains("aes128-ctr", translated!.Message, "对端提供了什么必须说出来");
+        Assert.Contains("aes256-gcm@openssh.com", translated.Message, "本端支持什么也必须说出来");
+        Assert.Contains("OpenSSH_7.4", translated.Message, "对端版本串是判断「这台设备太老」的依据");
     }
 
     // ------------------------------------------------------------ SFTP 的分流
@@ -196,6 +196,6 @@ public sealed class SshInteropTests
             new SftpException(SftpStatusCode.Failure, "Disk quota exceeded", "/home/joe/big.bin", "写入"));
 
         Assert.IsInstanceOfType<VelaSftpOperationException>(translated);
-        StringAssert.Contains(translated!.Message, "Disk quota exceeded");
+        Assert.Contains("Disk quota exceeded", translated!.Message);
     }
 }

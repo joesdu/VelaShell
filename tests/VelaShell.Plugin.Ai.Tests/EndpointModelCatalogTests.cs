@@ -123,7 +123,7 @@ public sealed class EndpointModelCatalogTests
             ]}
             """);
 
-        Assert.AreSequenceEqual(["gpt-4o-audio-preview", "gpt-5"], ids.ToArray());
+        Assert.AreSequenceEqual(["gpt-4o-audio-preview", "gpt-5"], [.. ids]);
     }
 
     [TestMethod]
@@ -149,7 +149,7 @@ public sealed class EndpointModelCatalogTests
             {"models":[{"name":"llama3.1:8b","size":1},{"name":"qwen3:14b","size":2}]}
             """);
 
-        Assert.AreSequenceEqual(["llama3.1:8b", "qwen3:14b"], ids.ToArray());
+        Assert.AreSequenceEqual(["llama3.1:8b", "qwen3:14b"], [.. ids]);
     }
 
     [TestMethod]
@@ -159,7 +159,7 @@ public sealed class EndpointModelCatalogTests
             {"data":[{"id":"b"},{"id":"a"},{"id":"B"}]}
             """);
 
-        Assert.AreSequenceEqual(["a", "b"], ids.ToArray());
+        Assert.AreSequenceEqual(["a", "b"], [.. ids]);
     }
 
     [TestMethod]

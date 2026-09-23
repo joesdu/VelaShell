@@ -40,7 +40,11 @@ public sealed record SshAuthenticationResult(
 /// 理由见 <see cref="SshCredential"/>。
 /// </para>
 /// </remarks>
-public sealed class SshAuthenticator
+/// <remarks>创建一个认证执行器。</remarks>
+/// <param name="transport">已完成密钥交换的传输。</param>
+/// <param name="userName">用户名。</param>
+/// <param name="sessionId">会话标识（公钥签名的第一个输入）。</param>
+public sealed class SshAuthenticator(SshPacketTransport transport, string userName, byte[] sessionId)
 {
     private const int MaxFieldBytes = 64 * 1024;
     private const int MaxBannerBytes = 256 * 1024;
@@ -55,9 +59,9 @@ public sealed class SshAuthenticator
     /// <summary>一轮 keyboard-interactive 允许的最大提示数。</summary>
     public const int MaxKeyboardPrompts = 32;
 
-    private readonly SshPacketTransport _transport;
-    private readonly string _userName;
-    private readonly byte[] _sessionId;
+    private readonly SshPacketTransport _transport = transport ?? throw new ArgumentNullException(nameof(transport));
+    private readonly string _userName = userName ?? throw new ArgumentNullException(nameof(userName));
+    private readonly byte[] _sessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
 
     private readonly List<SshAuthAttempt> _attempts = [];
     private readonly List<string> _banner = [];
@@ -67,17 +71,6 @@ public sealed class SshAuthenticator
     private string[] _serverOffered = [];
     private string[] _serverSignatureAlgorithms = [];
     private bool _partialSuccessAchieved;
-
-    /// <summary>创建一个认证执行器。</summary>
-    /// <param name="transport">已完成密钥交换的传输。</param>
-    /// <param name="userName">用户名。</param>
-    /// <param name="sessionId">会话标识（公钥签名的第一个输入）。</param>
-    public SshAuthenticator(SshPacketTransport transport, string userName, byte[] sessionId)
-    {
-        _transport = transport ?? throw new ArgumentNullException(nameof(transport));
-        _userName = userName ?? throw new ArgumentNullException(nameof(userName));
-        _sessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
-    }
 
     /// <summary>
     /// 同一个方法连续失败多少次之后不再重试。
@@ -283,11 +276,11 @@ public sealed class SshAuthenticator
         _transport.WritePacket(request.WrittenSpan);
         await _transport.FlushAsync(cancellationToken).ConfigureAwait(false);
 
+        // SSH_MSG_USERAUTH_PASSWD_CHANGEREQ：服务端要求先改密码。
+        // 〔决策 velashell-docs/zh/ssh/spec/04 §5.1〕我们不实现改密码流程，但**要把原因说清楚** ——
+        // 「客户端直接断开且不说为什么」是用户最难自救的一种失败。
         return await ReadAuthOutcomeAsync(
             onMethodSpecific: (number, payload) => number == 60
-                // SSH_MSG_USERAUTH_PASSWD_CHANGEREQ：服务端要求先改密码。
-                // 〔决策 velashell-docs/zh/ssh/spec/04 §5.1〕我们不实现改密码流程，但**要把原因说清楚** ——
-                // 「客户端直接断开且不说为什么」是用户最难自救的一种失败。
                 ? new AuthStepResult(SshAuthOutcome.Failure, "服务端要求先修改密码（本库尚未实现改密码流程）。")
                 : null,
             cancellationToken).ConfigureAwait(false);
@@ -412,10 +405,9 @@ public sealed class SshAuthenticator
                 // 不是 INFO_REQUEST —— 认证已经有结论了。
                 return outcome;
             }
-
+            // 纯展示轮：不该弹窗要输入，但**仍然把 instruction 交给回调** ——
+            // 否则用户对着一个没反应的界面干等，而服务端正等他去按硬件令牌。
             IReadOnlyList<string> responses = challenge.IsInformationalOnly
-                // 纯展示轮：不该弹窗要输入，但**仍然把 instruction 交给回调** ——
-                // 否则用户对着一个没反应的界面干等，而服务端正等他去按硬件令牌。
                 ? await NotifyInformationalAsync(credential, challenge, cancellationToken).ConfigureAwait(false)
                 : await credential.RespondAsync(challenge, cancellationToken).ConfigureAwait(false);
 

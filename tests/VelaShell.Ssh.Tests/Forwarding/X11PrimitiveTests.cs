@@ -51,7 +51,7 @@ public sealed class X11PrimitiveTests
     {
         // launchd 会把 DISPLAY 设成一个套接字路径。按 host:N 去切会得到
         // 一个荒谬的「主机名」，然后连不上。
-        X11Display? display = X11Display.Parse(
+        var display = X11Display.Parse(
             "/private/tmp/com.apple.launchd.AbC/org.xquartz:0");
 
         Assert.IsNotNull(display);
@@ -66,15 +66,15 @@ public sealed class X11PrimitiveTests
         IReadOnlyList<EndPoint> candidates = display.GetCandidateEndPoints();
 
         // 至少要有回环 TCP —— Windows 上的 VcXsrv 只听这个。
-        Assert.IsTrue(
-            candidates.OfType<IPEndPoint>().Any(e =>
-                e.Address.Equals(IPAddress.Loopback) && e.Port == X11Display.TcpPortBase),
+        Assert.Contains(
+            e =>
+                e.Address.Equals(IPAddress.Loopback) && e.Port == X11Display.TcpPortBase, candidates.OfType<IPEndPoint>(),
             "本机显示 :0 应当能走 127.0.0.1:6000");
 
         if (!OperatingSystem.IsWindows() && Socket.OSSupportsUnixDomainSockets)
         {
-            Assert.IsTrue(
-                candidates.OfType<UnixDomainSocketEndPoint>().Any(),
+            Assert.IsNotEmpty(
+                candidates.OfType<UnixDomainSocketEndPoint>(),
                 "非 Windows 上应当先试 Unix 套接字");
         }
     }
@@ -87,7 +87,7 @@ public sealed class X11PrimitiveTests
         Assert.IsFalse(display.IsLocal);
         IReadOnlyList<EndPoint> candidates = display.GetCandidateEndPoints();
 
-        DnsEndPoint only = (DnsEndPoint)candidates.Single();
+        var only = (DnsEndPoint)candidates.Single();
         Assert.AreEqual("box.example.com", only.Host);
         Assert.AreEqual(X11Display.TcpPortBase + 7, only.Port);
     }
@@ -107,10 +107,10 @@ public sealed class X11PrimitiveTests
         ];
 
         IReadOnlyList<XAuthorityEntry> entries = XAuthority.Parse(file);
-        Assert.AreEqual(2, entries.Count);
+        Assert.HasCount(2, entries);
 
         byte[]? found = XAuthority.FindCookie(entries, X11Display.Parse(":0")!);
-        CollectionAssert.AreEqual(cookie, found, "应当挑本机主机名那一条");
+        Assert.AreSequenceEqual(cookie, found, "应当挑本机主机名那一条");
     }
 
     [TestMethod]
@@ -136,6 +136,28 @@ public sealed class X11PrimitiveTests
     }
 
     [TestMethod]
+    public void 显示号按数值比而不是按文本比()
+    {
+        // 前导零只是写法不同：数值上就是 5。
+        byte[] padded = Entry(XAuthority.FamilyWild, "", "05", XAuthority.MitMagicCookie1, [1, 2, 3, 4]);
+        Assert.IsNotNull(XAuthority.FindCookie(XAuthority.Parse(padded), X11Display.Parse(":5")!));
+        Assert.IsNull(XAuthority.FindCookie(XAuthority.Parse(padded), X11Display.Parse(":0")!));
+
+        // 空串仍是通配。
+        byte[] wild = Entry(XAuthority.FamilyWild, "", "", XAuthority.MitMagicCookie1, [1, 2, 3, 4]);
+        Assert.IsNotNull(XAuthority.FindCookie(XAuthority.Parse(wild), X11Display.Parse(":9")!));
+
+        // 非空而解析不了的（符号、空白、非数字、溢出）不匹配任何显示 —— 更不当通配。
+        foreach (string bad in (string[])["+5", "-5", " 5", "5 ", "5x", "x", "99999999999"])
+        {
+            byte[] file = Entry(XAuthority.FamilyWild, "", bad, XAuthority.MitMagicCookie1, [1, 2, 3, 4]);
+            Assert.IsNull(
+                XAuthority.FindCookie(XAuthority.Parse(file), X11Display.Parse(":5")!),
+                $"显示号 \"{bad}\" 不该匹配");
+        }
+    }
+
+    [TestMethod]
     public void 截断的Xauthority不抛异常且前面的记录仍然可用()
     {
         // 文件可能正被别的程序写入。一个半截的文件不该让整条连接失败。
@@ -145,10 +167,9 @@ public sealed class X11PrimitiveTests
         byte[] file = [.. good, .. good.AsSpan(0, good.Length / 2)];
 
         IReadOnlyList<XAuthorityEntry> entries = XAuthority.Parse(file);
-        Assert.AreEqual(1, entries.Count, "截断处之前的记录要保留");
-        CollectionAssert.AreEqual(
-            new byte[] { 7, 7, 7, 7 },
-            XAuthority.FindCookie(entries, X11Display.Parse(":0")!));
+        Assert.HasCount(1, entries, "截断处之前的记录要保留");
+        Assert.AreSequenceEqual(
+            new byte[] { 7, 7, 7, 7 }, XAuthority.FindCookie(entries, X11Display.Parse(":0")!));
     }
 
     // ------------------------------------------------------------ 连接建立报文
@@ -169,7 +190,7 @@ public sealed class X11PrimitiveTests
 
             Assert.AreEqual(bigEndian, parsed.BigEndian);
             Assert.AreEqual(XAuthority.MitMagicCookie1, parsed.ProtocolName);
-            CollectionAssert.AreEqual(cookie, parsed.ProtocolData);
+            Assert.AreSequenceEqual(cookie, parsed.ProtocolData);
             Assert.AreEqual(message.Length, parsed.TotalLength);
         }
     }
@@ -199,7 +220,7 @@ public sealed class X11PrimitiveTests
         FormatException error = Assert.ThrowsExactly<FormatException>(
             () => X11SetupMessage.TryParse(new ReadOnlySequence<byte>(message), out _));
 
-        StringAssert.Contains(error.Message, "字节序");
+        Assert.Contains("字节序", error.Message);
     }
 
     [TestMethod]
@@ -217,7 +238,7 @@ public sealed class X11PrimitiveTests
 
         // 换出来的报文要能再解一遍，而且里面是**真** cookie。
         Assert.IsTrue(X11SetupMessage.TryParse(new ReadOnlySequence<byte>(rewritten), out X11SetupMessage.Parsed again));
-        CollectionAssert.AreEqual(real, again.ProtocolData, "转给本机 X server 的必须是真 cookie");
+        Assert.AreSequenceEqual(real, again.ProtocolData, "转给本机 X server 的必须是真 cookie");
         Assert.AreEqual(XAuthority.MitMagicCookie1, again.ProtocolName);
         Assert.IsTrue(again.BigEndian);
     }
@@ -256,7 +277,7 @@ public sealed class X11PrimitiveTests
         byte[] a = X11SetupMessage.CreateFakeCookie();
         byte[] b = X11SetupMessage.CreateFakeCookie();
 
-        Assert.AreEqual(16, a.Length);
+        Assert.HasCount(16, a);
         Assert.IsFalse(a.SequenceEqual(b), "两次生成不该相同");
     }
 
@@ -272,7 +293,7 @@ public sealed class X11PrimitiveTests
 
     private static void AssertDisplay(string value, string host, int number, int screen)
     {
-        X11Display? display = X11Display.Parse(value);
+        var display = X11Display.Parse(value);
         Assert.IsNotNull(display, $"应当能解析 {value}");
         Assert.AreEqual(host, display.Host, $"{value} 的 host");
         Assert.AreEqual(number, display.Number, $"{value} 的显示号");

@@ -292,7 +292,7 @@ public sealed class SshPublicKey
 
         try
         {
-            ECDsa ecdsa = ECDsa.Create(new ECParameters
+            var ecdsa = ECDsa.Create(new ECParameters
             {
                 Curve = curve,
                 Q = new ECPoint
@@ -323,7 +323,7 @@ public sealed class SshPublicKey
 
         try
         {
-            RSA rsa = RSA.Create();
+            var rsa = RSA.Create();
             rsa.ImportParameters(new RSAParameters { Modulus = modulus, Exponent = exponent });
             return new SshPublicKey(keyType, blob, rsa, null, null, modulus.Length * 8);
         }

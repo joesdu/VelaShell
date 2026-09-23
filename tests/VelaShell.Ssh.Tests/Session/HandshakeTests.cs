@@ -70,10 +70,8 @@ public sealed class HandshakeTests
     {
         (SshKeyExchangeResult client, TestSshServerHandshake server) = await HandshakeAsync();
 
-        CollectionAssert.AreEqual(server.ExchangeHash, client.ExchangeHash,
-            "两侧独立算出的交换哈希必须逐字节相同 —— 不同就说明某个字段的顺序或编码错了");
-        CollectionAssert.AreEqual(client.ExchangeHash, client.SessionId,
-            "首次密钥交换时 session_id 就是 H");
+        Assert.AreSequenceEqual(server.ExchangeHash, client.ExchangeHash, "两侧独立算出的交换哈希必须逐字节相同 —— 不同就说明某个字段的顺序或编码错了");
+        Assert.AreSequenceEqual(client.ExchangeHash, client.SessionId, "首次密钥交换时 session_id 就是 H");
         Assert.AreEqual(server.Negotiated.KeyExchange, client.Algorithms.KeyExchange);
         Assert.AreEqual(SshAlgorithmNames.SshEd25519, client.HostKey.KeyType);
     }
@@ -89,13 +87,13 @@ public sealed class HandshakeTests
             client.WritePacket(toServer);
             await client.FlushAsync();
             SshInboundPacket received = await server.ReadPacketAsync();
-            CollectionAssert.AreEqual(toServer, received.Payload.ToArray(), "客户端→服务端方向");
+            Assert.AreSequenceEqual(toServer, received.Payload.ToArray(), "客户端→服务端方向");
 
             byte[] toClient = [(byte)SshMessageNumber.ServiceAccept, .. "ssh-userauth"u8];
             server.WritePacket(toClient);
             await server.FlushAsync();
             SshInboundPacket back = await client.ReadPacketAsync();
-            CollectionAssert.AreEqual(toClient, back.Payload.ToArray(), "服务端→客户端方向");
+            Assert.AreSequenceEqual(toClient, back.Payload.ToArray(), "服务端→客户端方向");
         });
     }
 
@@ -113,7 +111,7 @@ public sealed class HandshakeTests
             (SshKeyExchangeResult client, TestSshServerHandshake server) = await HandshakeAsync(algorithms);
 
             Assert.AreEqual(kex, client.Algorithms.KeyExchange, kex);
-            CollectionAssert.AreEqual(server.ExchangeHash, client.ExchangeHash, $"{kex}：交换哈希不一致");
+            Assert.AreSequenceEqual(server.ExchangeHash, client.ExchangeHash, $"{kex}：交换哈希不一致");
         }
     }
 
@@ -157,7 +155,7 @@ public sealed class HandshakeTests
                 client.WritePacket(payload);
                 await client.FlushAsync();
                 SshInboundPacket received = await server.ReadPacketAsync();
-                CollectionAssert.AreEqual(payload, received.Payload.ToArray(), cipher);
+                Assert.AreSequenceEqual(payload, received.Payload.ToArray(), cipher);
             });
         }
     }
@@ -188,7 +186,7 @@ public sealed class HandshakeTests
                     byte[] payload = [(byte)SshMessageNumber.Ignore, .. System.Text.Encoding.ASCII.GetBytes(mac)];
                     c.WritePacket(payload);
                     await c.FlushAsync();
-                    CollectionAssert.AreEqual(payload, (await s.ReadPacketAsync()).Payload.ToArray(), mac);
+                    Assert.AreSequenceEqual(payload, (await s.ReadPacketAsync()).Payload.ToArray(), mac);
                 });
 
             Assert.AreEqual(mac, client.Algorithms.MacClientToServer, mac);
@@ -213,9 +211,9 @@ public sealed class HandshakeTests
         SshVersionExchangeResult versions =
             await SshVersionExchange.ExchangeAsync(clientTransport, cancellationToken: cts.Token);
 
-        Assert.AreEqual(2, versions.PreAuthBanner.Count);
+        Assert.HasCount(2, versions.PreAuthBanner);
         Assert.AreEqual("Authorized use only.", versions.PreAuthBanner[0]);
-        StringAssert.StartsWith(versions.ServerVersion, "SSH-2.0-");
+        Assert.StartsWith("SSH-2.0-", versions.ServerVersion);
 
         SshKeyExchangeRunner runner = new(clientTransport, SshAlgorithmSet.Default, new DangerousAcceptAnyHostKeyPolicy());
         _ = await runner.RunAsync(versions, "test.invalid", 22, cancellationToken: cts.Token);
@@ -233,7 +231,7 @@ public sealed class HandshakeTests
         Assert.DoesNotContain(" ", id, "不发注释");
         Assert.DoesNotContain("NET", id, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Windows", id, StringComparison.OrdinalIgnoreCase);
-        StringAssert.StartsWith(id, "SSH-2.0-");
+        Assert.StartsWith("SSH-2.0-", id);
     }
 
     // ------------------------------------------------------------ 失败路径
@@ -249,7 +247,7 @@ public sealed class HandshakeTests
 
         Assert.AreEqual(SshFailureReason.HostKeyRejected, ex.Reason);
         Assert.AreEqual(SshPhase.KeyExchange, ex.Phase);
-        StringAssert.Contains(ex.Message, "签名验证失败");
+        Assert.Contains("签名验证失败", ex.Message);
     }
 
     [TestMethod]
@@ -262,7 +260,7 @@ public sealed class HandshakeTests
                 serverOptions: new TestSshServerOptions { InjectIgnoreDuringKex = true }));
 
         Assert.AreEqual(SshFailureReason.ProtocolError, ex.Reason);
-        StringAssert.Contains(ex.Message, "Terrapin");
+        Assert.Contains("Terrapin", ex.Message);
     }
 
     [TestMethod]
@@ -310,7 +308,7 @@ public sealed class HandshakeTests
         SshConnectException ex = await Assert.ThrowsExactlyAsync<SshConnectException>(
             async () => await HandshakeAsync(policy: new PinnedFingerprintHostKeyPolicy([fingerprint])));
         Assert.AreEqual(SshFailureReason.HostKeyRejected, ex.Reason);
-        StringAssert.Contains(ex.Message, "不在允许列表里");
+        Assert.Contains("不在允许列表里", ex.Message);
     }
 
     [TestMethod]
@@ -327,8 +325,8 @@ public sealed class HandshakeTests
 
         Assert.AreEqual(SshNegotiationCategory.EncryptionClientToServer, ex.Category);
         Assert.IsNotEmpty(ex.OfferedByPeer);
-        CollectionAssert.AreEqual(new[] { "cipher-that-does-not-exist" }, ex.OfferedByUs.ToArray());
-        StringAssert.StartsWith(ex.PeerVersion, "SSH-2.0-");
+        Assert.AreSequenceEqual(new[] { "cipher-that-does-not-exist" }, [.. ex.OfferedByUs]);
+        Assert.StartsWith("SSH-2.0-", ex.PeerVersion);
     }
 
     [TestMethod]

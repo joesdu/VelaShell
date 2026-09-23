@@ -190,7 +190,7 @@ public sealed class RelayTests
 
         Task<RelayResult> relay = DuplexRelay.RunAsync(left, right);
 
-        Task feed = Task.Run(async () =>
+        var feed = Task.Run(async () =>
         {
             await left.FeedAsync(payload);
             left.FeedComplete();
@@ -202,6 +202,6 @@ public sealed class RelayTests
         await feed;
         await relay;
 
-        CollectionAssert.AreEqual(payload, atRight);
+        Assert.AreSequenceEqual(payload, atRight);
     }
 }

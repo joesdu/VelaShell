@@ -156,7 +156,7 @@ public readonly record struct SftpFileAttributes
     /// <summary>从报文里读出来。</summary>
     internal static SftpFileAttributes Read(ref SshDataReader reader)
     {
-        SftpAttributeFields flags = (SftpAttributeFields)reader.ReadUInt32();
+        var flags = (SftpAttributeFields)reader.ReadUInt32();
 
         ulong size = 0;
         uint uid = 0;

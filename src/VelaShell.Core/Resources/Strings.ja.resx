@@ -4909,4 +4909,67 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SshErr_Disconnected" xml:space="preserve">
     <value>サーバーがセッションを終了しました。</value>
   </data>
+  <data name="Profile_AgentAuth" xml:space="preserve">
+    <value>SSH エージェント</value>
+  </data>
+  <data name="Profile_AgentAuthHint" xml:space="preserve">
+    <value>ローカルの ssh-agent にある鍵で署名します。このプロファイルには資格情報を保存しません。Windows では「OpenSSH Authentication Agent」サービス(起動してから ssh-add で鍵を読み込みます)、その他の OS では SSH_AUTH_SOCK が指す agent を使います。</value>
+  </data>
+  <data name="Profile_SshFeatures" xml:space="preserve">
+    <value>SSH オプション</value>
+  </data>
+  <data name="Profile_SshCompression" xml:space="preserve">
+    <value>圧縮を有効にする(高遅延・低帯域の回線向け)</value>
+  </data>
+  <data name="Profile_SshCompressionHint" xml:space="preserve">
+    <value>遅延が大きい(国境・大陸をまたぐ回線、往復 100 ms 以上)か帯域が限られている場合に有効にしてください。端末出力やテキストファイルの転送量を大きく減らせます。LAN 内や、画像・アーカイブなど圧縮済みデータが中心の場合は CPU を消費するだけなのでおすすめしません。サーバーが対応していない場合は自動的に無圧縮に戻ります。</value>
+  </data>
+  <data name="Profile_SshAgentForwarding" xml:space="preserve">
+    <value>ssh-agent を転送する(-A)</value>
+  </data>
+  <data name="Profile_SshAgentForwardingHint" xml:space="preserve">
+    <value>このサーバーからさらに ssh するとき、ローカル agent の鍵を使えるので秘密鍵をサーバーにコピーする必要がありません。セッション中はこのサーバーの root もあなたの agent で署名できるため、信頼できるサーバーでのみ有効にしてください。</value>
+  </data>
+  <data name="Profile_SshX11Forwarding" xml:space="preserve">
+    <value>X11 転送(リモートの GUI をローカルに表示)</value>
+  </data>
+  <data name="Profile_SshX11ForwardingHint" xml:space="preserve">
+    <value>このコンピューターで X サーバーが動いている必要があります(Windows なら VcXsrv、Xming、X410 など。アクセス制御を無効にするか、対応する .Xauthority を用意)。サーバー側でも X11Forwarding yes と xauth が必要です。サーバーに拒否されてもセッションは開き、理由がターミナルに表示されます。</value>
+  </data>
+  <data name="Profile_SshX11Display" xml:space="preserve">
+    <value>ローカルの X ディスプレイ</value>
+  </data>
+  <data name="Profile_SshX11Trusted" xml:space="preserve">
+    <value>信頼済み(-Y)</value>
+  </data>
+  <data name="Profile_SshX11TrustedHint" xml:space="preserve">
+    <value>信頼済み転送では、リモートの X クライアントがローカルのディスプレイに完全にアクセスできます。Windows の X サーバーは通常このモードにしか対応していません。非信頼モードにはローカルに xauth が必要です。</value>
+  </data>
+  <data name="Ssh_X11ForwardOn" xml:space="preserve">
+    <value>X11 転送が有効です → ローカル ディスプレイ {0}</value>
+  </data>
+  <data name="Ssh_AgentForwardOn" xml:space="preserve">
+    <value>ssh-agent 転送が有効です</value>
+  </data>
+  <data name="Ssh_X11ForwardFailed" xml:space="preserve">
+    <value>X11 転送を有効にできませんでした: {0}</value>
+  </data>
+  <data name="Ssh_AgentForwardFailed" xml:space="preserve">
+    <value>ssh-agent 転送を有効にできませんでした: {0}</value>
+  </data>
+  <data name="Ssh_X11BadDisplay" xml:space="preserve">
+    <value>ディスプレイ「{0}」を認識できません(localhost:0.0 のような形式にしてください)</value>
+  </data>
+  <data name="SshErr_AgentUnavailable" xml:space="preserve">
+    <value>ローカルの ssh-agent に接続できません: {0}</value>
+  </data>
+  <data name="SshErr_AgentNotRunning" xml:space="preserve">
+    <value>起動していません。Windows では「OpenSSH Authentication Agent」サービスを開始してください(Get-Service ssh-agent / Start-Service ssh-agent)。</value>
+  </data>
+  <data name="SshErr_AgentNoKeys" xml:space="preserve">
+    <value>ローカルの ssh-agent に鍵がありません。先に読み込んでください(例: ssh-add ~/.ssh/id_ed25519)。</value>
+  </data>
+  <data name="DiagSvc_SuggestAgentKeys" xml:space="preserve">
+    <value>ssh-agent が起動していて、このサーバーが受け付ける鍵が読み込まれているか確認してください(ssh-add -l で一覧表示できます)。</value>
+  </data>
 </root>

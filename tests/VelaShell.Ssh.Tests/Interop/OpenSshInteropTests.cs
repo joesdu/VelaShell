@@ -99,7 +99,7 @@ public sealed class OpenSshInteropTests
         SshCommandOutput result = await connection.RunAsync("echo 你好 && uname -s");
 
         Assert.AreEqual(0, result.ExitCode, result.StandardError);
-        StringAssert.Contains(result.StandardOutput, "你好");
+        Assert.Contains("你好", result.StandardOutput);
         Assert.IsNotNull(connection.HostKey);
     }
 
@@ -134,8 +134,8 @@ public sealed class OpenSshInteropTests
         }
 
         // 至少要有一个能通 —— 一个都不通说明不是「对端不支持」，是我们坏了。
-        Assert.IsTrue(
-            failed.Count < SshAlgorithmSet.Default.KeyExchange.Count,
+        Assert.IsLessThan(
+            SshAlgorithmSet.Default.KeyExchange.Count, failed.Count,
             "没有任何一种密钥交换能与对端握手：" + Environment.NewLine + string.Join(Environment.NewLine, failed));
 
         Console.WriteLine(failed.Count == 0
@@ -170,8 +170,8 @@ public sealed class OpenSshInteropTests
             }
         }
 
-        Assert.IsTrue(
-            failed.Count < SshAlgorithmSet.Default.EncryptionClientToServer.Count,
+        Assert.IsLessThan(
+            SshAlgorithmSet.Default.EncryptionClientToServer.Count, failed.Count,
             "没有任何一种加密算法能与对端收发：" + Environment.NewLine + string.Join(Environment.NewLine, failed));
     }
 
@@ -192,7 +192,7 @@ public sealed class OpenSshInteropTests
 
         SshCommandOutput result = await connection.RunAsync("id -un");
         Assert.AreEqual(0, result.ExitCode, result.StandardError);
-        StringAssert.Contains(result.StandardOutput, User);
+        Assert.Contains(User, result.StandardOutput);
     }
 
     /// <summary>
@@ -225,7 +225,7 @@ public sealed class OpenSshInteropTests
 
         SshCommandOutput result = await connection.RunAsync("id -un");
         Assert.AreEqual(0, result.ExitCode, result.StandardError);
-        StringAssert.Contains(result.StandardOutput, User);
+        Assert.Contains(User, result.StandardOutput);
     }
 
     /// <summary>口令错了要报口令错，而不是连到一半才失败。</summary>
@@ -269,7 +269,7 @@ public sealed class OpenSshInteropTests
 
         ISshSigner key = await SshPrivateKeyFile.LoadAsync(KeyPath);
         OpenSshCertificate certificate = await OpenSshCertificate.LoadAsync(certPath);
-        SshCertificateSigner signer = SshCertificateSigner.Create(certificate, key);
+        var signer = SshCertificateSigner.Create(certificate, key);
 
         Assert.AreEqual(SshCertificateType.User, certificate.CertificateType);
         Assert.IsTrue(
@@ -281,7 +281,7 @@ public sealed class OpenSshInteropTests
 
         SshCommandOutput result = await connection.RunAsync("id -un");
         Assert.AreEqual(0, result.ExitCode, result.StandardError);
-        StringAssert.Contains(result.StandardOutput, User);
+        Assert.Contains(User, result.StandardOutput);
     }
 
     // ------------------------------------------------------------ 各层
@@ -368,7 +368,7 @@ public sealed class OpenSshInteropTests
         }
 
         // 有 pty 的话 tty 会报 /dev/pts/N；没有的话它报 "not a tty"。
-        StringAssert.Contains(output.ToString(), "/dev/pts");
+        Assert.Contains("/dev/pts", output.ToString());
     }
 
     [TestMethod]
@@ -379,7 +379,7 @@ public sealed class OpenSshInteropTests
         await using SshConnection connection = await Options().ConnectAsync();
         await using SftpFileSystem sftp = await SftpFileSystem.ConnectAsync(connection);
 
-        Assert.IsTrue(sftp.WorkingDirectory.Length > 0);
+        Assert.IsGreaterThan(0, sftp.WorkingDirectory.Length);
         Console.WriteLine($"工作目录：{sftp.WorkingDirectory}；能力：" +
             $"posix-rename={sftp.Capabilities.HasPosixRename}，" +
             $"limits={sftp.Capabilities.HasLimits}，块大小={sftp.BlockSize}");
@@ -394,7 +394,7 @@ public sealed class OpenSshInteropTests
             await sftp.WriteAllBytesAsync(path, payload);
             byte[] back = await sftp.ReadAllBytesAsync(path);
 
-            CollectionAssert.AreEqual(payload, back, "1 MiB 往返要一字节不差");
+            Assert.AreSequenceEqual(payload, back, "1 MiB 往返要一字节不差");
 
             SftpFileAttributes attributes = await sftp.GetAttributesAsync(path);
             Assert.AreEqual((ulong)payload.Length, attributes.Size);
@@ -439,7 +439,7 @@ public sealed class OpenSshInteropTests
             }
         }
 
-        Assert.IsTrue(total > 0, "/usr/lib 不该是空的");
+        Assert.IsGreaterThan(0, total, "/usr/lib 不该是空的");
         Console.WriteLine($"列了 {total} 项，其中 {links} 个符号链接。");
     }
 
@@ -476,8 +476,8 @@ public sealed class OpenSshInteropTests
         // `.Length` 是字符数，而这一行是 13 个中日韩字符 + 换行 = 14 个字符、
         // 40 个字节。拿「> 50000」去卡字符数就会莫名其妙地挂 ——
         // 第一版正是这么写的，而它在真实服务端上一跑就红了。
-        Assert.AreEqual(
-            2000, result.StandardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length,
+        Assert.HasCount(
+            2000, result.StandardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries),
             "压缩流上的行数要一行不差");
         Assert.AreEqual(
             2000 * 40, Encoding.UTF8.GetByteCount(result.StandardOutput),
@@ -499,15 +499,15 @@ public sealed class OpenSshInteropTests
         // 隧道的目标是从服务端视角解析的。两者只在默认端口下恰好相等；
         // 换一个映射端口（比如 2222 被占用时 -Port 2224）就会得到「Connection refused」，
         // 看上去像转发坏了。
-        const int SshdPortInsideContainer = 2222;
-        await using SshChannel tunnel = await connection.OpenTcpTunnelAsync("127.0.0.1", SshdPortInsideContainer);
+        const int sshdPortInsideContainer = 2222;
+        await using SshChannel tunnel = await connection.OpenTcpTunnelAsync("127.0.0.1", sshdPortInsideContainer);
 
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(20));
         System.IO.Pipelines.ReadResult read = await tunnel.StandardOutput.ReadAsync(timeout.Token);
         string banner = Encoding.ASCII.GetString(read.Buffer.FirstSpan);
         tunnel.StandardOutput.AdvanceTo(read.Buffer.End);
 
-        StringAssert.StartsWith(banner, "SSH-2.0-", "隧道对面应当是那台 sshd");
+        Assert.StartsWith("SSH-2.0-", banner, "隧道对面应当是那台 sshd");
     }
 
     /// <summary>
@@ -525,7 +525,7 @@ public sealed class OpenSshInteropTests
         {
             HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
             Credentials = [new PasswordCredential(Password)],
-            Dialer = VelaShell.Ssh.Transport.DialerChain.Jump(Options()),
+            Dialer = Ssh.Transport.DialerChain.Jump(Options()),
             ConnectTimeout = TimeSpan.FromSeconds(30),
         };
 
@@ -533,7 +533,7 @@ public sealed class OpenSshInteropTests
         SshCommandOutput result = await connection.RunAsync("echo 经跳板");
 
         Assert.AreEqual(0, result.ExitCode, result.StandardError);
-        StringAssert.Contains(result.StandardOutput, "经跳板");
+        Assert.Contains("经跳板", result.StandardOutput);
     }
 
     [TestMethod]
@@ -550,7 +550,6 @@ public sealed class OpenSshInteropTests
         Assert.IsTrue(connection.IsAlive);
         Console.WriteLine($"保活应答：{alive}");
     }
-
 
     // ------------------------------------------------------------ X11 转发
 
@@ -596,13 +595,11 @@ public sealed class OpenSshInteropTests
         (SshCommandResult result, string output, _) = await command.ReadToEndAsync();
         Assert.AreEqual(0, result.ExitCode);
 
-        StringAssert.Contains(output, "DISPLAY=localhost:", "sshd 应当给这条会话配上转发的显示");
-        StringAssert.Contains(output, XAuthority.MitMagicCookie1);
+        Assert.Contains("DISPLAY=localhost:", output, "sshd 应当给这条会话配上转发的显示");
+        Assert.Contains(XAuthority.MitMagicCookie1, output);
 
         // 远端 xauth 里存的那个 cookie，必须**正好是我们发出去的假 cookie**。
-        StringAssert.Contains(
-            output, expected,
-            $"远端 xauth 存的应当是我们发的假 cookie（{expected}）—— 对不上就是十六进制编码写错了");
+        Assert.Contains(expected, output, $"远端 xauth 存的应当是我们发的假 cookie（{expected}）—— 对不上就是十六进制编码写错了");
     }
 
     [TestMethod]
@@ -612,7 +609,7 @@ public sealed class OpenSshInteropTests
         // 通道回来；我们核对假 cookie、换成真 cookie，转给本机一个假的 X server。
         RequireX11Server();
 
-        using FakeXServer xserver = FakeXServer.Start();
+        using var xserver = FakeXServer.Start();
         string xauthority = WriteXAuthority(out byte[] realCookie);
 
         try
@@ -650,9 +647,8 @@ public sealed class OpenSshInteropTests
                 X11SetupMessage.TryParse(new ReadOnlySequence<byte>(arrived), out X11SetupMessage.Parsed parsed),
                 "落到本机 X server 上的应当是一个完整的建立报文");
 
-            CollectionAssert.AreEqual(
-                realCookie, parsed.ProtocolData,
-                "转给本机 X server 的必须是**真** cookie —— 假的那个只在 SSH 线上出现");
+            Assert.AreSequenceEqual(
+                realCookie, parsed.ProtocolData, "转给本机 X server 的必须是**真** cookie —— 假的那个只在 SSH 线上出现");
 
             Assert.AreEqual(1, command.X11!.AcceptedChannels);
             Assert.AreEqual(0, command.X11!.RejectedChannels);

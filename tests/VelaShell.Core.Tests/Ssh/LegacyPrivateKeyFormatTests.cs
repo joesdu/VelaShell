@@ -29,7 +29,7 @@ public sealed class LegacyPrivateKeyFormatTests
     [TestMethod]
     public void Rsa_Pkcs1_IsReadDirectly()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
 
         ISshSigner signer = SshPrivateKeyFile.Parse(rsa.ExportRSAPrivateKeyPem());
 
@@ -40,7 +40,7 @@ public sealed class LegacyPrivateKeyFormatTests
     [TestMethod]
     public void Rsa_Pkcs8_IsReadDirectly()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
 
         ISshSigner signer = SshPrivateKeyFile.Parse(rsa.ExportPkcs8PrivateKeyPem());
 
@@ -50,7 +50,7 @@ public sealed class LegacyPrivateKeyFormatTests
     [TestMethod]
     public void Rsa_EncryptedPkcs8_IsReadWithPassphrase()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         string pem = rsa.ExportEncryptedPkcs8PrivateKeyPem(
             "s3cret",
             new PbeParameters(PbeEncryptionAlgorithm.Aes256Cbc, HashAlgorithmName.SHA256, 100_000));
@@ -67,7 +67,7 @@ public sealed class LegacyPrivateKeyFormatTests
     [DataRow(521, "ecdsa-sha2-nistp521")]
     public void Ecdsa_Sec1_IsReadDirectly(int bits, string expectedKeyType)
     {
-        using ECDsa ecdsa = ECDsa.Create(bits switch
+        using var ecdsa = ECDsa.Create(bits switch
         {
             256 => ECCurve.NamedCurves.nistP256,
             384 => ECCurve.NamedCurves.nistP384,
@@ -89,7 +89,7 @@ public sealed class LegacyPrivateKeyFormatTests
     [TestMethod]
     public void EncryptedKey_WrongPassphrase_AsksAgain()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         string pem = rsa.ExportEncryptedPkcs8PrivateKeyPem(
             "s3cret",
             new PbeParameters(PbeEncryptionAlgorithm.Aes256Cbc, HashAlgorithmName.SHA256, 100_000));

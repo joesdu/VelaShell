@@ -134,7 +134,7 @@ public class SyncPlannerTests
             IgnoreCase = false,
         });
 
-        Assert.AreSequenceEqual(["local-newer.txt", "remote-newer.txt"], plan.Keys.ToArray(), SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual(["local-newer.txt", "remote-newer.txt"], [.. plan.Keys], SequenceOrder.InAnyOrder);
         Assert.IsTrue(plan.Values.All(k => k == SyncActionKind.SetRemoteTime));
     }
 

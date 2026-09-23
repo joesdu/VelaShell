@@ -148,7 +148,7 @@ internal sealed class X11ChannelRouter : IIncomingChannelHandler
     private static async ValueTask<(X11SetupMessage.Parsed Setup, byte[] Original)?> ReadSetupAsync(
         SshChannel channel, CancellationToken cancellationToken)
     {
-        using CancellationTokenSource timeout =
+        using var timeout =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(SetupTimeout);
 

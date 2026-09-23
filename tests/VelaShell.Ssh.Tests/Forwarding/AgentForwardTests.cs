@@ -164,7 +164,7 @@ public sealed class AgentForwardTests
     {
         await using Harness harness = await Harness.StartAsync();
 
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         harness.Agent.Add(key, "~/.ssh/id_ed25519");
 
         (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);
@@ -173,8 +173,8 @@ public sealed class AgentForwardTests
             IReadOnlyList<(SshPublicKey Key, string Comment)> listed =
                 await TestRemoteAgentClient.ListAsync(remote, harness.Token);
 
-            Assert.AreEqual(1, listed.Count);
-            CollectionAssert.AreEqual(key.PublicKey.Blob.ToArray(), listed[0].Key.Blob.ToArray());
+            Assert.HasCount(1, listed);
+            Assert.AreSequenceEqual(key.PublicKey.Blob.ToArray(), listed[0].Key.Blob.ToArray());
             Assert.AreEqual("~/.ssh/id_ed25519", listed[0].Comment);
         }
 
@@ -188,7 +188,7 @@ public sealed class AgentForwardTests
     {
         await using Harness harness = await Harness.StartAsync();
 
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         harness.Agent.Add(key, "id_ed25519");
 
         (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);
@@ -216,8 +216,8 @@ public sealed class AgentForwardTests
     {
         await using Harness harness = await Harness.StartAsync();
 
-        using System.Security.Cryptography.RSA rsa = System.Security.Cryptography.RSA.Create(2048);
-        using InMemorySshSigner key = InMemorySshSigner.FromRsa(rsa);
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        using var key = InMemorySshSigner.FromRsa(rsa);
         harness.Agent.Add(key, "id_rsa");
 
         (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);
@@ -246,8 +246,8 @@ public sealed class AgentForwardTests
     {
         await using Harness harness = await Harness.StartAsync();
 
-        using InMemorySshSigner allowed = InMemorySshSigner.GenerateEd25519();
-        using InMemorySshSigner secret = InMemorySshSigner.GenerateEd25519();
+        using var allowed = InMemorySshSigner.GenerateEd25519();
+        using var secret = InMemorySshSigner.GenerateEd25519();
         harness.Agent.Add(allowed, "给跳板机用的");
         harness.Agent.Add(secret, "生产环境的钥匙");
 
@@ -260,7 +260,7 @@ public sealed class AgentForwardTests
                 await TestRemoteAgentClient.ListAsync(remote, harness.Token);
 
             // 一台跳板机没有理由能用到你所有的密钥 —— 它只需要下一跳那一把。
-            Assert.AreEqual(1, listed.Count, "只该看到放行的那一把");
+            Assert.HasCount(1, listed, "只该看到放行的那一把");
             Assert.AreEqual("给跳板机用的", listed[0].Comment);
 
             // 看不到还不够 —— **直接拿 blob 来签也必须被拒**。
@@ -283,7 +283,7 @@ public sealed class AgentForwardTests
     {
         await using Harness harness = await Harness.StartAsync();
 
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         harness.Agent.Add(key, "~/.ssh/id_ed25519");
 
         List<AgentSignatureRequest> asked = [];
@@ -313,7 +313,7 @@ public sealed class AgentForwardTests
             Assert.IsNotNull(granted, "批准之后才签");
         }
 
-        Assert.AreEqual(2, asked.Count, "每一次都要问，不是只问第一次");
+        Assert.HasCount(2, asked, "每一次都要问，不是只问第一次");
 
         // 弹窗里要说得出是哪把钥 —— 「有人要用某把 ed25519 签名」没什么用。
         Assert.AreEqual("~/.ssh/id_ed25519", asked[0].Comment);
@@ -330,7 +330,7 @@ public sealed class AgentForwardTests
     {
         await using Harness harness = await Harness.StartAsync();
 
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         harness.Agent.Add(key, "k");
 
         (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);
@@ -343,7 +343,7 @@ public sealed class AgentForwardTests
                 byte[] response = await TestRemoteAgentClient.ExchangeAsync(
                     remote, [messageType], harness.Token);
 
-                Assert.AreEqual(1, response.Length, $"报文 {messageType}");
+                Assert.HasCount(1, response, $"报文 {messageType}");
                 Assert.AreEqual(5, response[0], $"报文 {messageType} 应当被拒（FAILURE）");
             }
         }
@@ -371,7 +371,7 @@ public sealed class AgentForwardTests
                 harness.Connection, session,
                 connectAgent: harness.ConnectAgentAsync, cancellationToken: harness.Token));
 
-        StringAssert.Contains(error.Message, "AllowAgentForwarding");
+        Assert.Contains("AllowAgentForwarding", error.Message);
 
         // 失败之后不能把处理器留在会话上 —— 否则服务端随后发来的
         // auth-agent 通道会被一个没人管的处理器接住。
@@ -399,7 +399,7 @@ public sealed class AgentForwardTests
     {
         await using Harness harness = await Harness.StartAsync();
 
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         harness.Agent.Add(key, "k");
 
         (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);

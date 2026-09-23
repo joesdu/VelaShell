@@ -45,7 +45,7 @@ public sealed class KnownHostsTests
 
         IReadOnlyList<KnownHostEntry> entries = KnownHostsFile.Parse(content);
 
-        Assert.AreEqual(1, entries.Count);
+        Assert.HasCount(1, entries);
         Assert.AreEqual(4, entries[0].LineNumber, "行号要按原文件算，注释与空行也占行");
     }
 
@@ -63,8 +63,8 @@ public sealed class KnownHostsTests
 
         // 真实的 known_hosts 里什么都有。为其中一行报错，
         // 等于让用户所有已知主机一起失效。
-        Assert.AreEqual(1, entries.Count);
-        CollectionAssert.AreEqual(new[] { "good.example.com" }, entries[0].Patterns.ToArray());
+        Assert.HasCount(1, entries);
+        Assert.AreSequenceEqual(new[] { "good.example.com" }, [.. entries[0].Patterns]);
     }
 
     [TestMethod]
@@ -74,7 +74,7 @@ public sealed class KnownHostsTests
         IReadOnlyList<KnownHostEntry> entries =
             KnownHostsFile.Parse(Line("a.example.com,b.example.com,10.0.0.1", key));
 
-        Assert.AreEqual(3, entries[0].Patterns.Count);
+        Assert.HasCount(3, entries[0].Patterns);
 
         foreach (string host in new[] { "a.example.com", "b.example.com", "10.0.0.1" })
         {
@@ -129,7 +129,7 @@ public sealed class KnownHostsTests
         KnownHostLookup lookup = KnownHostsFile.Lookup(entries, "example.com", 22, different);
 
         Assert.AreEqual(KnownHostStatus.Changed, lookup.Status);
-        Assert.AreEqual(1, lookup.ConflictingEntries.Count);
+        Assert.HasCount(1, lookup.ConflictingEntries);
 
         // 行号要能指出来 —— 否则用户不知道该去删哪一行。
         Assert.AreEqual(2, lookup.ConflictingEntries[0].LineNumber);
@@ -138,8 +138,8 @@ public sealed class KnownHostsTests
     [TestMethod]
     public void 同一台主机可以有多把不同类型的密钥()
     {
-        SshPublicKey ed25519 = SshPublicKey.Parse(TestHostKey.Create("ssh-ed25519").PublicKeyBlob);
-        SshPublicKey rsa = SshPublicKey.Parse(TestHostKey.Create("ssh-rsa").PublicKeyBlob);
+        var ed25519 = SshPublicKey.Parse(TestHostKey.Create("ssh-ed25519").PublicKeyBlob);
+        var rsa = SshPublicKey.Parse(TestHostKey.Create("ssh-rsa").PublicKeyBlob);
 
         IReadOnlyList<KnownHostEntry> entries = KnownHostsFile.Parse(
             Line("example.com", ed25519) + "\n" + Line("example.com", rsa) + "\n");
@@ -268,10 +268,10 @@ public sealed class KnownHostsTests
             Assert.AreEqual(SshHostKeyDecision.Reject, verdict.Decision);
 
             // 消息里必须把三件事说清楚：变了、可能是什么、下一步怎么办。
-            StringAssert.Contains(verdict.Reason!, "变了");
-            StringAssert.Contains(verdict.Reason!, "中间人");
-            StringAssert.Contains(verdict.Reason!, "第 1 行");
-            StringAssert.Contains(verdict.Reason!, different.Sha256Fingerprint);
+            Assert.Contains("变了", verdict.Reason!);
+            Assert.Contains("中间人", verdict.Reason!);
+            Assert.Contains("第 1 行", verdict.Reason!);
+            Assert.Contains(different.Sha256Fingerprint, verdict.Reason!);
         }
         finally
         {
@@ -326,7 +326,7 @@ public sealed class KnownHostsTests
         SshHostKeyVerdict verdict = await policy.EvaluateAsync(Context("new.example.com", 22, key));
 
         Assert.AreEqual(SshHostKeyDecision.Reject, verdict.Decision);
-        StringAssert.Contains(verdict.Reason!, key.Sha256Fingerprint);
+        Assert.Contains(key.Sha256Fingerprint, verdict.Reason!);
     }
 
     [TestMethod]
@@ -354,7 +354,7 @@ public sealed class KnownHostsTests
             SshHostKeyVerdict verdict = await policy.EvaluateAsync(Context("example.com", 22, key));
 
             Assert.AreEqual(SshHostKeyDecision.Reject, verdict.Decision);
-            StringAssert.Contains(verdict.Reason!, "@revoked");
+            Assert.Contains("@revoked", verdict.Reason!);
         }
         finally
         {

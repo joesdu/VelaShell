@@ -171,7 +171,7 @@ public sealed class SshKeyExchangeRunner
         byte[] serverKexInitPayload = peerKexInit ?? (await ReadKexPacketAsync(
                 SshMessageNumber.KexInit, strictKex: false, cancellationToken).ConfigureAwait(false))
             .Payload.ToArray();
-        SshKexInitMessage serverKexInit = SshKexInitMessage.Decode(serverKexInitPayload);
+        var serverKexInit = SshKexInitMessage.Decode(serverKexInitPayload);
 
         // ② 协商。任一类没有交集就抛 SshNegotiationException（带双方名单）。
         SshNegotiatedAlgorithms negotiated =
@@ -337,7 +337,7 @@ public sealed class SshKeyExchangeRunner
         ConnectDeadline?.Pause();
         try
         {
-            using CancellationTokenSource decisionCts = CancellationTokenSource.CreateLinkedTokenSource(outer);
+            using var decisionCts = CancellationTokenSource.CreateLinkedTokenSource(outer);
             if (HostKeyDecisionTimeout != Timeout.InfiniteTimeSpan)
             {
                 decisionCts.CancelAfter(HostKeyDecisionTimeout);

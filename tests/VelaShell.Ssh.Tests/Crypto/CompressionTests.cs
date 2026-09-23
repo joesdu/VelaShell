@@ -37,7 +37,7 @@ public sealed class CompressionTests
         byte[] payload = Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat("重复的内容 ", 200)));
         byte[] back = RoundTrip(sender, receiver, payload);
 
-        CollectionAssert.AreEqual(payload, back);
+        Assert.AreSequenceEqual(payload, back);
     }
 
     [TestMethod]
@@ -61,7 +61,7 @@ public sealed class CompressionTests
             //    zlib 会直接报「unknown compression method」。
             ArrayBufferWriter<byte> sink = new();
             receiver.Decompress(new ReadOnlySequence<byte>(compressed.WrittenMemory), sink, 1 << 20);
-            CollectionAssert.AreEqual(payload, sink.WrittenSpan.ToArray(), $"第 {i} 个");
+            Assert.AreSequenceEqual(payload, sink.WrittenSpan.ToArray(), $"第 {i} 个");
 
             if (i == 0)
             {
@@ -72,8 +72,8 @@ public sealed class CompressionTests
 
         // **这就是压缩率的全部来源。**每个报文各压各的话，
         // SSH 那种几十字节的小报文几乎压不动 —— 共用一本字典才有意义。
-        Assert.IsTrue(
-            lastSize < firstSize / 2,
+        Assert.IsLessThan(
+            firstSize / 2, lastSize,
             $"第 10 个相同报文应当明显更小：首个 {firstSize} 字节，第 10 个 {lastSize} 字节");
     }
 
@@ -89,7 +89,7 @@ public sealed class CompressionTests
             byte[] back = RoundTrip(sender, receiver, payload);
 
             // 一个报文对不上，后面全乱 —— 字典是跨报文的。
-            CollectionAssert.AreEqual(payload, back, $"第 {i} 个");
+            Assert.AreSequenceEqual(payload, back, $"第 {i} 个");
         }
     }
 
@@ -100,7 +100,7 @@ public sealed class CompressionTests
         using ZlibCompressor receiver = new();
 
         byte[] back = RoundTrip(sender, receiver, []);
-        Assert.AreEqual(0, back.Length);
+        Assert.IsEmpty(back);
     }
 
     [TestMethod]
@@ -113,7 +113,7 @@ public sealed class CompressionTests
         Random.Shared.NextBytes(payload);   // 随机数据压不动，走的是「压完更长」那条路
 
         byte[] back = RoundTrip(sender, receiver, payload);
-        CollectionAssert.AreEqual(payload, back);
+        Assert.AreSequenceEqual(payload, back);
     }
 
     [TestMethod]
@@ -128,7 +128,7 @@ public sealed class CompressionTests
         ArrayBufferWriter<byte> compressed = new();
         sender.Compress(bomb, compressed);
 
-        Assert.IsTrue(compressed.WrittenCount < 64 * 1024, "前提：它确实压得很小");
+        Assert.IsLessThan(64 * 1024, compressed.WrittenCount, "前提：它确实压得很小");
 
         ArrayBufferWriter<byte> output = new();
 
@@ -137,7 +137,7 @@ public sealed class CompressionTests
             () => receiver.Decompress(
                 new ReadOnlySequence<byte>(compressed.WrittenMemory), output, maxOutputLength: 64 * 1024));
 
-        StringAssert.Contains(error.Message, "压缩炸弹");
+        Assert.Contains("压缩炸弹", error.Message);
     }
 
     [TestMethod]
@@ -149,7 +149,7 @@ public sealed class CompressionTests
         byte[] payload = Encoding.UTF8.GetBytes("原样");
         byte[] back = RoundTrip(none, none, payload);
 
-        CollectionAssert.AreEqual(payload, back);
+        Assert.AreSequenceEqual(payload, back);
     }
 
     [TestMethod]
@@ -174,17 +174,15 @@ public sealed class CompressionTests
     {
         SshAlgorithmSet withCompression = SshAlgorithmSet.Default.WithCompression();
 
-        CollectionAssert.Contains(
-            withCompression.CompressionClientToServer.ToArray(), SshAlgorithmNames.ZlibOpenSsh);
-        CollectionAssert.Contains(
-            withCompression.CompressionClientToServer.ToArray(), SshAlgorithmNames.None,
-            "none 要留在清单里 —— 对端不支持压缩时还得能连上");
+        Assert.Contains(
+SshAlgorithmNames.ZlibOpenSsh, [.. withCompression.CompressionClientToServer]);
+        Assert.Contains(
+SshAlgorithmNames.None, [.. withCompression.CompressionClientToServer], "none 要留在清单里 —— 对端不支持压缩时还得能连上");
 
         // 默认**不开**压缩：交互式会话上它几乎没有收益（终端输出本来就小），
         // 而 OpenSSH 的默认也是 none。
-        CollectionAssert.AreEqual(
-            new[] { SshAlgorithmNames.None },
-            SshAlgorithmSet.Default.CompressionClientToServer.ToArray());
+        Assert.AreSequenceEqual(
+            new[] { SshAlgorithmNames.None }, [.. SshAlgorithmSet.Default.CompressionClientToServer]);
     }
 
     // ------------------------------------------------------------ 接进传输层
@@ -215,14 +213,14 @@ public sealed class CompressionTests
             await client.FlushAsync();
 
             SshInboundPacket received = await server.ReadPacketAsync();
-            CollectionAssert.AreEqual(up, received.Payload.ToArray(), $"上行第 {i} 条");
+            Assert.AreSequenceEqual(up, received.Payload.ToArray(), $"上行第 {i} 条");
 
             byte[] down = Encoding.UTF8.GetBytes($"服务端第 {i} 条：{new string('b', 700)}");
             server.WritePacket(down);
             await server.FlushAsync();
 
             SshInboundPacket back = await client.ReadPacketAsync();
-            CollectionAssert.AreEqual(down, back.Payload.ToArray(), $"下行第 {i} 条");
+            Assert.AreSequenceEqual(down, back.Payload.ToArray(), $"下行第 {i} 条");
         }
     }
 
@@ -243,12 +241,12 @@ public sealed class CompressionTests
         byte[] up = Encoding.UTF8.GetBytes("压过的上行");
         client.WritePacket(up);
         await client.FlushAsync();
-        CollectionAssert.AreEqual(up, (await server.ReadPacketAsync()).Payload.ToArray());
+        Assert.AreSequenceEqual(up, (await server.ReadPacketAsync()).Payload.ToArray());
 
         byte[] down = Encoding.UTF8.GetBytes("没压的下行");
         server.WritePacket(down);
         await server.FlushAsync();
-        CollectionAssert.AreEqual(down, (await client.ReadPacketAsync()).Payload.ToArray());
+        Assert.AreSequenceEqual(down, (await client.ReadPacketAsync()).Payload.ToArray());
     }
 
     [TestMethod]
@@ -259,8 +257,8 @@ public sealed class CompressionTests
         long withoutCompression = await MeasureWireBytesAsync(payload, compress: false);
         long withCompression = await MeasureWireBytesAsync(payload, compress: true);
 
-        Assert.IsTrue(
-            withCompression < withoutCompression / 2,
+        Assert.IsLessThan(
+            withoutCompression / 2, withCompression,
             $"压过之后线上字节应当明显更少：{withCompression} vs {withoutCompression}");
     }
 
@@ -286,7 +284,7 @@ public sealed class CompressionTests
         await client.FlushAsync();
 
         SshInboundPacket received = await server.ReadPacketAsync();
-        CollectionAssert.AreEqual(payload, received.Payload.ToArray(), "压缩不能改变内容");
+        Assert.AreSequenceEqual(payload, received.Payload.ToArray(), "压缩不能改变内容");
 
         return server.BytesReceived;
     }
@@ -297,7 +295,7 @@ public sealed class CompressionTests
         // 前面那些用例都是手搭传输。这一条走**完整的连接建立流程**，
         // 因为「认证成功之后才挂压缩」这个切换点只有在真流程里才存在，
         // 而切换点错一个报文，症状就是连上之后第一个报文解不开。
-        byte[] payload = System.Text.Encoding.UTF8.GetBytes(
+        byte[] payload = Encoding.UTF8.GetBytes(
             string.Concat(Enumerable.Repeat("可压缩的一行\n", 100)));
 
         await using TestKit.TestSshServerHost host = await TestKit.TestSshServerHost.StartAsync(
@@ -309,11 +307,10 @@ public sealed class CompressionTests
             host.Connection.Algorithms!.Value.CompressionServerToClient);
 
         VelaShell.Ssh.Session.SshCommandOutput output =
-            await VelaShell.Ssh.Session.SshConnectionExtensions.RunAsync(host.Connection, "压", cancellationToken: host.Token);
+            await Ssh.Session.SshConnectionExtensions.RunAsync(host.Connection, "压", cancellationToken: host.Token);
 
-        CollectionAssert.AreEqual(
-            payload, System.Text.Encoding.UTF8.GetBytes(output.StandardOutput),
-            "整条连接上压缩要能原样往返");
+        Assert.AreSequenceEqual(
+            payload, Encoding.UTF8.GetBytes(output.StandardOutput), "整条连接上压缩要能原样往返");
     }
 
     /// <summary>
@@ -326,7 +323,7 @@ public sealed class CompressionTests
     [TestMethod]
     public async Task 普通zlib从首次NEWKEYS起就压()
     {
-        byte[] payload = System.Text.Encoding.UTF8.GetBytes(
+        byte[] payload = Encoding.UTF8.GetBytes(
             string.Concat(Enumerable.Repeat("普通 zlib\n", 100)));
 
         SshAlgorithmSet plainZlib = SshAlgorithmSet.Default with
@@ -342,8 +339,8 @@ public sealed class CompressionTests
         Assert.AreEqual(SshAlgorithmNames.Zlib, host.Connection.Algorithms!.Value.CompressionClientToServer);
 
         VelaShell.Ssh.Session.SshCommandOutput output =
-            await VelaShell.Ssh.Session.SshConnectionExtensions.RunAsync(host.Connection, "压", cancellationToken: host.Token);
+            await Ssh.Session.SshConnectionExtensions.RunAsync(host.Connection, "压", cancellationToken: host.Token);
 
-        CollectionAssert.AreEqual(payload, System.Text.Encoding.UTF8.GetBytes(output.StandardOutput));
+        Assert.AreSequenceEqual(payload, Encoding.UTF8.GetBytes(output.StandardOutput));
     }
 }

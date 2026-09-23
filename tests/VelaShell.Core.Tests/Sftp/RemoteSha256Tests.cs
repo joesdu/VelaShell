@@ -14,7 +14,7 @@ public sealed class RemoteSha256Tests
     {
         string command = RemoteSha256.BuildCommand(["/srv/a b.txt", "/srv/it's.txt", "/srv/$HOME;rm"]);
 
-        StringAssert.StartsWith(command, "sh -c '");
+        Assert.StartsWith("sh -c '", command);
         Assert.Contains("'/srv/a b.txt'", command);
         Assert.Contains("'/srv/it'\\''s.txt'", command, "内嵌单引号必须写成 '\\''");
         Assert.Contains("'/srv/$HOME;rm'", command, "单引号里的 $ 与 ; 不会被展开或断句");

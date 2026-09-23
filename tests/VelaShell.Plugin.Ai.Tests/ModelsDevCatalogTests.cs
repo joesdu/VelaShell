@@ -221,7 +221,7 @@ public sealed class ModelsDevCatalogTests
         Assert.AreEqual(2, total);
         Assert.HasCount(2, provider.Models);
         Assert.AreSequenceEqual(
-            ["gpt-5", "gpt-5.3-codex"], provider.Models.Select(m => m.Model).ToArray(), SequenceOrder.InAnyOrder);
+            ["gpt-5", "gpt-5.3-codex"], [.. provider.Models.Select(m => m.Model)], SequenceOrder.InAnyOrder);
         // 顺带把规格填好,不是光加一行空模型
         AiModelConfig codex = provider.Models.First(m => m.Model == "gpt-5.3-codex");
         Assert.AreEqual(400000, codex.MaxInputTokens);
@@ -300,7 +300,7 @@ public sealed class ModelsDevCatalogTests
         List<ResolvedModel> resolved = settings.ResolveModels();
         Assert.HasCount(2, resolved);
         Assert.AreSequenceEqual(
-            ["gpt-5", "gpt-5.3-codex"], resolved.Select(r => r.Model).ToArray(), SequenceOrder.InAnyOrder);
+            ["gpt-5", "gpt-5.3-codex"], [.. resolved.Select(r => r.Model)], SequenceOrder.InAnyOrder);
     }
 
     // ---- 默认模型的选法 ----
