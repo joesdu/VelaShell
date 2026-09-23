@@ -9,6 +9,7 @@ using ReactiveUI.Primitives;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
+using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Plugins.Protocols;
 using VelaShell.PluginSdk.Protocols;
 using VelaShell.Presentation.Services;
@@ -82,6 +83,11 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     // ---- SSH 协议层可选能力(压缩 / agent 转发 / X11 转发);默认全关 ----
     private bool _sshCompression;
     private bool _sshAgentForwarding;
+    private bool _sshAgentForwardRestrict;
+    private bool _sshAgentForwardConfirm;
+    private List<string> _savedAgentForwardKeys = [];
+    private bool _agentForwardKeysLoaded;
+    private readonly ISshKeyService? _keyService;
     private bool _sshX11Forwarding;
     private string? _sshX11Display;
     private bool _sshX11Trusted = new SshSessionOptions().X11Trusted;
@@ -115,9 +121,11 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
         ISessionRepository? sessionRepository = null,
         int defaultPort = 22,
         string? defaultPrivateKeyPath = null,
-        PluginProtocolRegistry? protocolRegistry = null)
+        PluginProtocolRegistry? protocolRegistry = null,
+        ISshKeyService? keyService = null)
     {
         _protocolRegistry = protocolRegistry;
+        _keyService = keyService;
         _connectionWorkflowService = connectionWorkflowService;
         _sessionRepository = sessionRepository;
         Groups = [new(null, UngroupedName)];
@@ -184,6 +192,9 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
             {
                 _sshCompression = ssh.Compression;
                 _sshAgentForwarding = ssh.AgentForwarding;
+                _sshAgentForwardRestrict = ssh.AgentForwardKeys is not null;
+                _savedAgentForwardKeys = ssh.AgentForwardKeys is { } keys ? [.. keys] : [];
+                _sshAgentForwardConfirm = ssh.AgentForwardConfirm;
                 _sshX11Forwarding = ssh.X11Forwarding;
                 _sshX11Display = ssh.X11Display;
                 _sshX11Trusted = ssh.X11Trusted;
@@ -192,6 +203,11 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
         else
         {
             _profileId = Guid.NewGuid();
+        }
+        // 编辑一条已经限定了密钥的配置:清单一打开就要摆出来(勾选状态来自存过的那些)。
+        if (_sshAgentForwarding && _sshAgentForwardRestrict)
+        {
+            _ = LoadAgentForwardKeysAsync();
         }
         this.WhenAnyValue(x => x.AuthMethod)
             .Subscribe(method =>
@@ -908,8 +924,135 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     public bool SshAgentForwarding
     {
         get => _sshAgentForwarding;
-        set => this.RaiseAndSetIfChanged(ref _sshAgentForwarding, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _sshAgentForwarding, value);
+            if (value && _sshAgentForwardRestrict)
+            {
+                _ = LoadAgentForwardKeysAsync();
+            }
+        }
     }
+
+    /// <summary>
+    /// 只转发下面勾选的密钥;关着时 agent 里的钥全部可见(与 <c>ssh -A</c> 一致)。
+    /// </summary>
+    public bool SshAgentForwardRestrict
+    {
+        get => _sshAgentForwardRestrict;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _sshAgentForwardRestrict, value);
+            if (value)
+            {
+                _ = LoadAgentForwardKeysAsync();
+            }
+        }
+    }
+
+    /// <summary>远端每次请求签名时弹窗确认。</summary>
+    public bool SshAgentForwardConfirm
+    {
+        get => _sshAgentForwardConfirm;
+        set => this.RaiseAndSetIfChanged(ref _sshAgentForwardConfirm, value);
+    }
+
+    /// <summary>「只转发指定密钥」的候选清单。</summary>
+    public ObservableCollection<AgentForwardKeyChoice> AgentForwardKeyChoices { get; } = [];
+
+    /// <summary>候选清单是空的(agent 没在跑、~/.ssh 下也没有公钥);界面据此给一行说明。</summary>
+    public bool HasNoAgentForwardKeyChoices
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>
+    /// 填候选清单:配置里存过的 → agent 里的 → ~/.ssh 下的,按指纹去重。只在第一次需要时加载。
+    /// </summary>
+    /// <remarks>
+    /// 存过的钥即使已经不在 agent 与 ~/.ssh 里也列出来并保持勾选 —— 否则打开再保存一次,
+    /// 限定就悄悄少了一把(更糟的是少到零,那条会话就不再转发)。
+    /// agent 没在跑时 <see cref="ISshKeyService.ListAgentKeysAsync" /> 返回空,不当错误。
+    /// </remarks>
+    internal async Task LoadAgentForwardKeysAsync()
+    {
+        if (_agentForwardKeysLoaded)
+        {
+            return;
+        }
+        _agentForwardKeysLoaded = true;
+
+        HashSet<string> saved = new(StringComparer.Ordinal);
+        List<AgentForwardKeyChoice> choices = [];
+        foreach (string line in _savedAgentForwardKeys)
+        {
+            if (AgentForwardKeyChoice.TryCreate(line, null, Strings.Get("Profile_SshAgentKeySourceSaved")) is { } choice
+                && saved.Add(choice.Fingerprint))
+            {
+                choice.IsSelected = true;
+                choices.Add(choice);
+            }
+        }
+
+        List<(string Line, string Label, string Source)> discovered = [];
+        if (_keyService is { } keys)
+        {
+            try
+            {
+                foreach (SshKeyInfo key in await keys.ListAgentKeysAsync())
+                {
+                    discovered.Add((key.PublicKeyLine!, key.Name, Strings.Get("Profile_SshAgentKeySourceAgent")));
+                }
+                foreach (SshKeyInfo key in await keys.ListKeysAsync())
+                {
+                    if (key.PublicKeyLine is { } line)
+                    {
+                        discovered.Add((line, key.Name, Strings.Get("Profile_SshAgentKeySourceFile")));
+                    }
+                }
+            }
+            catch
+            {
+                // 列不出来就只剩存过的那些,照样能保存。
+            }
+        }
+
+        foreach ((string line, string label, string source) in discovered)
+        {
+            if (AgentForwardKeyChoice.TryCreate(line, label, source) is not { } choice)
+            {
+                continue;
+            }
+            int existing = choices.FindIndex(c => c.Fingerprint == choice.Fingerprint);
+            if (existing < 0)
+            {
+                choices.Add(choice);
+            }
+            else if (saved.Contains(choice.Fingerprint) && choices[existing].Source == Strings.Get("Profile_SshAgentKeySourceSaved"))
+            {
+                // 存过、现在又找到了:换成带名字与来源的那一行,勾选照旧。
+                choice.IsSelected = true;
+                choices[existing] = choice;
+            }
+        }
+
+        // 由界面线程上的属性 setter 发起、全程不 ConfigureAwait(false),回到这里时仍在界面线程。
+        AgentForwardKeyChoices.Clear();
+        foreach (AgentForwardKeyChoice choice in choices)
+        {
+            AgentForwardKeyChoices.Add(choice);
+        }
+        HasNoAgentForwardKeyChoices = AgentForwardKeyChoices.Count == 0;
+    }
+
+    /// <summary>
+    /// 保存时实际写进配置的限定:没打开限定为 <see langword="null" />;清单还没加载过就原样带回存过的那些。
+    /// </summary>
+    private List<string>? SelectedAgentForwardKeys() =>
+        !_sshAgentForwardRestrict ? null
+        : _agentForwardKeysLoaded ? [.. AgentForwardKeyChoices.Where(c => c.IsSelected).Select(c => c.PublicKeyLine)]
+        : [.. _savedAgentForwardKeys];
 
     /// <summary>X11 转发;关着时显示地址与受信任两项收起。</summary>
     public bool SshX11Forwarding
@@ -1211,6 +1354,12 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
             BeginBusy();
             ErrorMessage = null;
             await ResolveGroupFromTextAsync();
+            // 限定了密钥却一把都没勾:存下去就是一条永远不转发的配置,而用户以为转发开着。
+            if (SupportsPostAuthCommand && RequiresSshAuth && _sshAgentForwarding
+                && SelectedAgentForwardKeys() is { Count: 0 })
+            {
+                throw new InvalidOperationException(Strings.Get("Profile_SshAgentForwardKeysEmpty"));
+            }
             SessionProfile profile = BuildProfile();
             if (_connectionWorkflowService is null)
             {
@@ -1386,6 +1535,8 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
         {
             Compression = _sshCompression,
             AgentForwarding = shell && _sshAgentForwarding,
+            AgentForwardKeys = shell && _sshAgentForwarding ? SelectedAgentForwardKeys() : null,
+            AgentForwardConfirm = shell && _sshAgentForwarding && _sshAgentForwardConfirm,
             X11Forwarding = shell && _sshX11Forwarding,
             X11Display = shell && _sshX11Forwarding && !string.IsNullOrWhiteSpace(_sshX11Display)
                 ? _sshX11Display.Trim()

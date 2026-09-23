@@ -119,6 +119,48 @@ public class DialogButtonStyleTests
         });
     }
 
+    /// <summary>
+    /// agent 签名确认框:动作按钮走共享主题;「拒绝」同时是默认键与取消键,且一弹出就拿到焦点。
+    /// </summary>
+    /// <remarks>
+    /// 这个窗口会在用户正往终端里打字时弹出来 —— 顺手的一个回车、一个 Esc 只能落在拒绝上,
+    /// 绝不能替用户批准一次签名。
+    /// </remarks>
+    [TestMethod]
+    public void AgentSignPrompt_DenyIsTheDefaultAndCancel_AndButtonsUseSharedThemes()
+    {
+        OnUi(() =>
+        {
+            var window = new AgentSignPromptView
+            {
+                DataContext = new AgentSignPromptViewModel(new Core.Ssh.AgentSignRequest(
+                    "ops@10.0.0.3:22", "ssh-ed25519", "SHA256:abc", "C:/keys/id", TimeSpan.FromSeconds(60)))
+            };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            try
+            {
+                Button deny = ButtonNamed(window, "DenyButton");
+                Button once = ButtonNamed(window, "AllowOnceButton");
+                Button session = ButtonNamed(window, "AllowForSessionButton");
+
+                Assert.IsTrue(deny.IsDefault, "回车必须落在拒绝上");
+                Assert.IsTrue(deny.IsCancel, "Esc 必须落在拒绝上");
+                Assert.IsFalse(once.IsDefault || session.IsDefault, "任何「允许」都不能是默认键");
+                Assert.IsTrue(deny.IsFocused, "弹出时焦点应当在拒绝上");
+
+                Assert.AreEqual(Theme("VelaAccentPillButtonTheme"), once.Theme);
+                Assert.AreEqual(Theme("VelaOutlineButtonTheme"), deny.Theme);
+                Assert.AreEqual(Theme("VelaOutlineButtonTheme"), session.Theme);
+                Assert.AreEqual(once.Bounds.Height, deny.Bounds.Height, "同一条动作条上的按钮要等高");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
     private static Button ButtonNamed(Window window, string name) =>
         window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == name);
 

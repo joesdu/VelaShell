@@ -691,6 +691,56 @@
               <TextBlock Text="{loc:Localize Profile_SshAgentForwardingHint}" Margin="0,0,0,4"
                          Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize10}" TextWrapping="Wrap" />
 
+              <!-- agent 转发的两道收紧:只借出指定的钥、每次签名都问一句。只在开了转发时出现。 -->
+              <StackPanel IsVisible="{Binding SshAgentForwarding}" Margin="20,0,0,6" Spacing="4">
+                <CheckBox IsChecked="{Binding SshAgentForwardRestrict}"
+                          Padding="0" MinHeight="0" VerticalAlignment="Center">
+                  <TextBlock Text="{loc:Localize Profile_SshAgentForwardRestrict}"
+                             Margin="6,0,0,0"
+                             Foreground="{DynamicResource VelaTextSecondary}"
+                             FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium" />
+                </CheckBox>
+                <TextBlock Text="{loc:Localize Profile_SshAgentForwardRestrictHint}"
+                           Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize10}" TextWrapping="Wrap" />
+
+                <StackPanel IsVisible="{Binding SshAgentForwardRestrict}" Margin="20,2,0,4" Spacing="2">
+                  <ItemsControl ItemsSource="{Binding AgentForwardKeyChoices}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:AgentForwardKeyChoice">
+                        <CheckBox IsChecked="{Binding IsSelected}"
+                                  Padding="0" MinHeight="0" Margin="0,2">
+                          <StackPanel Margin="6,0,0,0" Spacing="1">
+                            <TextBlock Text="{Binding Label}"
+                                       Foreground="{DynamicResource VelaTextSecondary}"
+                                       FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Foreground="{DynamicResource VelaTextMuted}"
+                                       FontFamily="{DynamicResource VelaUiMonoFont}"
+                                       FontSize="{DynamicResource VelaFontSize10}"
+                                       TextTrimming="CharacterEllipsis">
+                              <Run Text="{Binding KeyType}" /><Run Text="  " /><Run Text="{Binding Fingerprint}" /><Run Text="  · " /><Run Text="{Binding Source}" />
+                            </TextBlock>
+                          </StackPanel>
+                        </CheckBox>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock Text="{loc:Localize Profile_SshAgentForwardNoKeyChoices}"
+                             IsVisible="{Binding HasNoAgentForwardKeyChoices}"
+                             Foreground="{DynamicResource VelaWarning}" FontSize="{DynamicResource VelaFontSize10}" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <CheckBox IsChecked="{Binding SshAgentForwardConfirm}"
+                          Padding="0" MinHeight="0" VerticalAlignment="Center" Margin="0,4,0,0">
+                  <TextBlock Text="{loc:Localize Profile_SshAgentForwardConfirm}"
+                             Margin="6,0,0,0"
+                             Foreground="{DynamicResource VelaTextSecondary}"
+                             FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium" />
+                </CheckBox>
+                <TextBlock Text="{loc:Localize Profile_SshAgentForwardConfirmHint}"
+                           Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize10}" TextWrapping="Wrap" />
+              </StackPanel>
+
               <CheckBox IsChecked="{Binding SshX11Forwarding}"
                         Padding="0" MinHeight="0" VerticalAlignment="Center">
                 <TextBlock Text="{loc:Localize Profile_SshX11Forwarding}"

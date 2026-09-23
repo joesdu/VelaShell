@@ -6019,6 +6019,7 @@ macOS 挂了 `ChatPanelViewUiTests.ClickingAQueuedChip_TakesTheMessageBack`:等�
 不代表请求已发到 stub;而 `SteeringChatClient` 每次发请求前都会把队列 `DrainAll()` —— 回车若赶在那之前,
 那句话就被并进第一次请求,芯片根本不出现。同文件 `StoppingTheTurn_…` 早就按「先等 `stub.Requests.Count >= 1` 再按回车」修过,
 这次把 `ClickingAQueuedChip_…` 与写法相同的 `EnterWhileBusy_…` 一并改成同样的顺序。产品代码无改动。
+
 ## ✅ 100. 2026-09-23 本机 X Server:设置页 + 标题栏开关 + 拉起 VcXsrv(用户需求)
 
 用户要在 VelaShell 里直接显示远端的图形程序,参照 WindTerm 的「X Server」设置。§92 做的是 X11 **转发**那一端,
@@ -6109,3 +6110,51 @@ X 服务端库(X11.Net 是客户端绑定;yserver 只跑 Linux DRM;node-x11 的�
 **没做的**(记在 `feature-plan.md`):M2 的 RENDER / XKB / SHAPE / XFIXES / RANDR / XInput2(GTK3 / Qt5 需要)与剪贴板互通,
 M3 的宿主接入(Avalonia 原生窗口、HiDPI、替换 VcXsrv 路径)。
 文档:velashell-docs 新增 `zh|en/xserver/`(README 与 `design/architecture.md`)。
+
+
+## ✅ 102. 2026-09-23 agent 转发:只转发选中的密钥、每次签名前询问(`feature-plan.md` D 组)
+
+§92 接上 agent 转发时用的是库的默认策略:agent 里的钥全部可见、远端签名不经过任何人。
+库早就支持 `AgentForwardPolicy.AllowedKeys` / `ConfirmEachSignature`(spec/07 §7.2 的三条硬约束之二、之三),
+这次把界面接上。SSH 库本身没有改动。
+
+### 一、配置与界面
+
+- `SshSessionOptions` 新增 `AgentForwardKeys`(OpenSSH 公钥行列表,`null` = 不限定)与 `AgentForwardConfirm`。
+  存公钥本身而不是指纹:开 shell 时直接交给库,不必先连 agent 按指纹找钥。
+- 连接配置里「转发 ssh-agent」下面缩进两项:「只转发选中的密钥」+ 候选清单、「每次签名前询问」。
+  候选 = 本机 agent 里的钥(`ISshKeyService.ListAgentKeysAsync`,新增,agent 没在跑返回空)+ `~/.ssh` 下的公钥
+  + 这条配置已存的钥,按 `SHA256` 指纹去重。**存过的钥即使已不在别处也列出并保持勾选** —— 否则打开再保存一次就悄悄少一把。
+- 勾了限定却一把都没选:**不许保存**(页脚报错)。SFTP 与转发关着时两项都不存。
+
+### 二、fail-closed 的几处
+
+- **限定的钥一把都解析不出来时不转发**,终端顶部写黄字。库把空的 `AllowedKeys` 解释成「整个 agent 可见」,
+  直接交过去等于把最严的设置翻成最宽的一档。
+- 确认走 `IAgentSignPrompt`(Core)→ `AgentSignPromptDialogService`(App),与 `IHostKeyPrompt` 同一个模式。
+  **60 秒无人应答按拒绝**(这就是 feature-plan 里「没人看着时是拒还是等」的答案:拒 —— 后台会话里的脚本
+  可能正在用你的身份,而你不在电脑前);通道关了、没有主窗口、弹窗出错一律拒;实现方过了期限才交回「允许」也照样拒。
+  没有注册弹窗的宿主(无界面)开了确认就一律拒签。
+- 「本次会话内允许」记在策略闭包里,跟着这一条 shell 的转发器走,会话关了就没了;过了期限的迟到「允许」不会被记下。
+- 多条会话同时请求时弹窗**排队逐个弹**,排队期间期限照样在走。
+
+### 三、确认框
+
+`AgentSignPromptView`:外壳同主机密钥弹窗,动作按钮按 DESIGN.md §5.1 走共享主题(拒绝 / 本次会话内允许为描边,
+允许一次为强调药丸)。**「拒绝」同时是 `IsDefault` 与 `IsCancel`,弹出即获焦点** —— 窗口会在用户正往终端里打字时
+弹出,顺手的回车或 Esc 只能落在拒绝上。信息条列出会话(`用户@主机:端口`)、密钥类型、指纹、agent 注释。
+
+shell 开成后那行灰字带上两项,如「ssh-agent 转发已开启 · 仅转发 1 把密钥 · 每次签名都要确认」。
+
+### 四、验证
+
+- `SshSessionFeaturesTests`:默认策略、限定(坏行跳过)、限定却全坏时不转发、允许一次每次都问、
+  本次会话内允许每把钥只问一次、拒绝与无弹窗时拒签、到期无人应答拒签、过期后才交回的「允许」照样拒且不被记下、灰字内容。
+- `ConnectionProfileViewModelTests`:限定与确认的往返、勾了限定没选钥不许保存、候选三处合并去重且存过的钥保持勾选、SFTP 不存。
+- `DialogButtonStyleTests.AgentSignPrompt_…`:拒绝是默认键与取消键且获焦点,按钮主题与等高。
+- **端到端**(`SshSessionFeaturesIntegrationTests.AgentForwarding_OnlySelectedKeysAreVisibleRemotely`,ssh-shells 靶机,
+  真实 OpenSSH):本机假 agent 持有一把钥,限定成另一把时远端 `ssh-add -l` 为空,限定成这把时远端看得见它的指纹。
+  已确认实际跑过(无 `[SKIP]`)。
+- 未做真机弹窗验证:本机 Windows 的 ssh-agent 服务处于禁用状态。
+
+文档:velashell-docs `zh/host/交互与界面规格.md` / `en/host/interaction-and-ui-specs.md` 的 SSH 连接选项一节。

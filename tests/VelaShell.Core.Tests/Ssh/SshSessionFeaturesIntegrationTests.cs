@@ -185,6 +185,42 @@ public class SshSessionFeaturesIntegrationTests
     }
 
     /// <summary>
+    /// 「只转发选中的密钥」在真实 OpenSSH 上生效:本机 agent 里有钥,但限定的是另一把时,
+    /// 远端 <c>ssh-add -l</c> 什么都看不见;限定的正是这把时,远端看得见它。
+    /// </summary>
+    [TestMethod]
+    [Timeout(60_000)]
+    public async Task AgentForwarding_OnlySelectedKeysAreVisibleRemotely()
+    {
+        RequireContainer();
+        RequireWindowsPipes();
+        using ECDsa held = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        ISshSigner signer = SshPrivateKeyFile.Parse(held.ExportPkcs8PrivateKeyPem());
+        using InMemorySshSigner other = InMemorySshSigner.GenerateEd25519();
+        await using var agent = FakeAgent.Start(signer);
+        using EnvironmentScope scope = new("SSH_AUTH_SOCK", agent.Endpoint);
+
+        static string Line(ISshSigner key) =>
+            $"{key.PublicKey.KeyType} {Convert.ToBase64String(key.PublicKey.Blob.Span)}";
+
+        await using (VelaSshClientWrapper ssh = await ConnectAsync(
+            new SshSessionOptions { AgentForwarding = true, AgentForwardKeys = [Line(other)] }))
+        await using (IShellStreamWrapper shell = await OpenShellAsync(ssh))
+        {
+            string hidden = await RunInShellAsync(shell, "ssh-add -l; echo AGENT-$((1+1))DONE", "AGENT-2DONE");
+            Assert.Contains("no identities", hidden, $"限定的不是这把钥,远端不该看见它:\n{hidden}");
+        }
+
+        await using (VelaSshClientWrapper ssh = await ConnectAsync(
+            new SshSessionOptions { AgentForwarding = true, AgentForwardKeys = [Line(signer)] }))
+        await using (IShellStreamWrapper shell = await OpenShellAsync(ssh))
+        {
+            string visible = await RunInShellAsync(shell, "ssh-add -l; echo AGENT-$((1+1))DONE", "AGENT-2DONE");
+            Assert.Contains(signer.PublicKey.Sha256Fingerprint, visible, $"限定的就是这把钥,远端应当看见它:\n{visible}");
+        }
+    }
+
+    /// <summary>
     /// SSH Agent 认证:私钥只在(假)agent 里,配置里一个字的凭据都没有,也能登上去。
     /// </summary>
     [TestMethod]

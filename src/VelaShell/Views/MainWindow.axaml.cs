@@ -1174,7 +1174,9 @@ public partial class MainWindow : Window
             defaultKeyPath,
             // 协议注册表:连接页据此画出插件协议页签(不装载任何插件程序集),
             // 用户点到某个页签才触发它的惰性激活。
-            app.Services.GetService<Infrastructure.Plugins.Protocols.PluginProtocolRegistry>()
+            app.Services.GetService<Infrastructure.Plugins.Protocols.PluginProtocolRegistry>(),
+            // 「只转发指定密钥」的候选:本机 agent 里的钥与 ~/.ssh 下的公钥。
+            app.Services.GetService<Core.Ssh.ISshKeyService>()
         );
         var dialog = new ConnectionProfileView { DataContext = connectionProfileViewModel };
         SessionProfile? profile = await dialog.ShowDialog<SessionProfile?>(this);

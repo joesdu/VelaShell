@@ -35,6 +35,30 @@ public sealed class SshSessionOptions
     /// </remarks>
     public bool AgentForwarding { get; set; }
 
+    /// <summary>
+    /// 只转发这些密钥(OpenSSH 公钥行,<c>类型 base64 [注释]</c>);<see langword="null" /> = agent 里的钥全部可见。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 一台跳板机通常只需要下一跳那一把钥,没有理由看得见 agent 里的全部。
+    /// 存公钥本身而不是指纹:开 shell 时直接就能交给库,不必先连 agent 去按指纹找钥。
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>非 null 就是「限定」,哪怕一把都解析不出来也不会退回「全部」</b> ——
+    /// 那种情况下干脆不转发(见 <c>SshForwardingOptions.Agent</c>)。空列表在界面上保存不了。
+    /// </para>
+    /// </remarks>
+    public List<string>? AgentForwardKeys { get; set; }
+
+    /// <summary>
+    /// 远端每次请求用 agent 签名时,先弹窗问一次(类似 <c>ssh-add -c</c>)。
+    /// </summary>
+    /// <remarks>
+    /// 对跳板场景这是唯一能看见「那台机器拿你的身份做了什么、做了几次」的办法。
+    /// 没人应答时按拒绝处理。
+    /// </remarks>
+    public bool AgentForwardConfirm { get; set; }
+
     /// <summary>把远端图形程序的窗口转发到本机的 X 服务器上显示(<c>ssh -X</c> / <c>-Y</c>)。</summary>
     public bool X11Forwarding { get; set; }
 
@@ -67,6 +91,8 @@ public sealed class SshSessionOptions
         {
             Compression = Compression,
             AgentForwarding = AgentForwarding,
+            AgentForwardKeys = AgentForwardKeys is null ? null : [.. AgentForwardKeys],
+            AgentForwardConfirm = AgentForwardConfirm,
             X11Forwarding = X11Forwarding,
             X11Display = X11Display,
             X11Trusted = X11Trusted

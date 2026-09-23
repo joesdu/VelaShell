@@ -3,6 +3,8 @@ using ReactiveUI.Primitives;
 using VelaShell.Behaviors;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
+using VelaShell.Core.Ssh;
 using VelaShell.Presentation.Services;
 using VelaShell.Security;
 using VelaShell.ViewModels;
@@ -160,6 +162,108 @@ public sealed class ConnectionProfileViewModelTests
         Assert.IsTrue(profile.Ssh.Compression);
         Assert.IsFalse(profile.Ssh.AgentForwarding);
         Assert.IsFalse(profile.Ssh.X11Forwarding);
+        Assert.IsNull(profile.Ssh.AgentForwardKeys, "SFTP 没有 shell,限定的密钥也不该留下");
+        Assert.IsFalse(profile.Ssh.AgentForwardConfirm);
+    }
+
+    // 三把测试用公钥(随手拼的 ed25519 blob,只用来算指纹与去重,不参与任何签名)。
+    private static string KeyLine(byte seed, string? comment = null)
+    {
+        byte[] blob = [0, 0, 0, 11, .. "ssh-ed25519"u8, 0, 0, 0, 32, .. Enumerable.Repeat(seed, 32)];
+        return $"ssh-ed25519 {Convert.ToBase64String(blob)}" + (comment is null ? "" : " " + comment);
+    }
+
+    /// <summary>限定的密钥与逐次确认:打开回显、原样保存;没动过清单时存过的钥一把都不能丢。</summary>
+    [TestMethod]
+    public async Task AgentForwardRestriction_RoundTripsThroughTheEditDialog()
+    {
+        var existing = new SessionProfile
+        {
+            Name = "bastion",
+            Host = "10.0.0.3",
+            Username = "ops",
+            Ssh = new() { AgentForwarding = true, AgentForwardKeys = [KeyLine(1, "next-hop")], AgentForwardConfirm = true },
+        };
+
+        var vm = new ConnectionProfileViewModel(existing);
+        Assert.IsTrue(vm.SshAgentForwardRestrict);
+        Assert.IsTrue(vm.SshAgentForwardConfirm);
+
+        SessionProfile? saved = await vm.SaveCommand.Execute().FirstAsync();
+        Assert.IsNotNull(saved?.Ssh);
+        Assert.AreSequenceEqual(new[] { KeyLine(1, "next-hop") }, [.. saved.Ssh.AgentForwardKeys!]);
+        Assert.IsTrue(saved.Ssh.AgentForwardConfirm);
+
+        // 关掉转发:两项附属设置一并不存,免得下次打开转发时悄悄生效
+        vm.SshAgentForwarding = false;
+        SessionProfile? off = await vm.SaveCommand.Execute().FirstAsync();
+        Assert.IsNull(off?.Ssh);
+    }
+
+    /// <summary>勾了「只转发选中的密钥」却一把都没选:不许保存 —— 那是一条永远不转发、用户却以为开着的配置。</summary>
+    [TestMethod]
+    public async Task AgentForwardRestriction_WithNothingSelected_CannotBeSaved()
+    {
+        ISshKeyService keys = Substitute.For<ISshKeyService>();
+        keys.ListAgentKeysAsync(Arg.Any<CancellationToken>())
+            .Returns([new SshKeyInfo("from-agent", "ED25519", "", "", KeyLine(2))]);
+        keys.ListKeysAsync(Arg.Any<CancellationToken>()).Returns([]);
+        var vm = new ConnectionProfileViewModel(keyService: keys)
+        {
+            Host = "10.0.0.4",
+            Username = "ops",
+            Password = SecureStringConvert.FromPlaintext("secret"),
+            SshAgentForwarding = true,
+        };
+        vm.SshAgentForwardRestrict = true;
+        await vm.LoadAgentForwardKeysAsync();
+
+        SessionProfile? refused = await vm.SaveCommand.Execute().FirstAsync();
+        Assert.IsNull(refused);
+        Assert.AreEqual(Strings.Get("Profile_SshAgentForwardKeysEmpty"), vm.ErrorMessage);
+
+        vm.AgentForwardKeyChoices.Single().IsSelected = true;
+        SessionProfile? saved = await vm.SaveCommand.Execute().FirstAsync();
+        Assert.AreSequenceEqual(new[] { KeyLine(2) }, [.. saved!.Ssh!.AgentForwardKeys!]);
+    }
+
+    /// <summary>
+    /// 候选清单:存过的 + agent 里的 + ~/.ssh 下的,按指纹去重。
+    /// 存过的钥即使已不在别处也要列出并保持勾选,否则打开再保存就悄悄少了一把。
+    /// </summary>
+    [TestMethod]
+    public async Task AgentForwardKeyChoices_MergeSavedAgentAndFileKeys()
+    {
+        ISshKeyService keys = Substitute.For<ISshKeyService>();
+        keys.ListAgentKeysAsync(Arg.Any<CancellationToken>()).Returns(
+        [
+            new SshKeyInfo("C:/keys/work", "ED25519", "", "", KeyLine(1, "C:/keys/work")),
+            new SshKeyInfo("C:/keys/home", "ED25519", "", "", KeyLine(2, "C:/keys/home")),
+        ]);
+        keys.ListKeysAsync(Arg.Any<CancellationToken>()).Returns(
+        [
+            new SshKeyInfo("id_home", "ED25519", "", "C:/Users/u/.ssh/id_home", KeyLine(2, "home")),   // 与 agent 里那把同一把
+            new SshKeyInfo("id_file", "ED25519", "", "C:/Users/u/.ssh/id_file", KeyLine(3)),
+            new SshKeyInfo("no_pub", "RSA", "", "C:/Users/u/.ssh/no_pub", null),
+        ]);
+        var existing = new SessionProfile
+        {
+            Name = "b",
+            Host = "h",
+            Username = "u",
+            Ssh = new() { AgentForwarding = true, AgentForwardKeys = [KeyLine(1), KeyLine(9, "gone")] },
+        };
+
+        var vm = new ConnectionProfileViewModel(existing, keyService: keys);
+        await vm.LoadAgentForwardKeysAsync();
+
+        List<AgentForwardKeyChoice> choices = [.. vm.AgentForwardKeyChoices];
+        Assert.HasCount(4, choices, "1、9(存过)、2(agent 与 ~/.ssh 各一份,合并)、3");
+        Assert.IsTrue(choices.Single(c => c.Label == "C:/keys/work").IsSelected, "存过、又在 agent 里找到:换成带名字的那行,仍勾选");
+        Assert.IsTrue(choices.Single(c => c.Label == "gone").IsSelected, "存过、已不在别处:照样列出并勾选");
+        Assert.IsFalse(choices.Single(c => c.Label == "C:/keys/home").IsSelected);
+        Assert.IsFalse(choices.Single(c => c.Label == "id_file").IsSelected);
+        Assert.IsFalse(vm.HasNoAgentForwardKeyChoices);
     }
 
     /// <summary>SSH Agent 认证排在下拉末尾(枚举值即下标),选中后密码与私钥字段都不再出现。</summary>

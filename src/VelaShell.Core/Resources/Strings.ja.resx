@@ -4981,6 +4981,78 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="DiagSvc_SuggestAgentKeys" xml:space="preserve">
     <value>ssh-agent が起動していて、このサーバーが受け付ける鍵が読み込まれているか確認してください(ssh-add -l で一覧表示できます)。</value>
   </data>
+  <data name="Ssh_AgentForwardNoKeys" xml:space="preserve">
+    <value>この接続で限定した鍵を 1 つも読み取れません</value>
+  </data>
+  <data name="Ssh_AgentForwardOnlyKeys" xml:space="preserve">
+    <value> · {0} 個の鍵のみ転送</value>
+  </data>
+  <data name="Ssh_AgentForwardConfirmEach" xml:space="preserve">
+    <value> · 署名のたびに確認</value>
+  </data>
+  <data name="AgentSign_Title" xml:space="preserve">
+    <value>agent 署名リクエスト</value>
+  </data>
+  <data name="AgentSign_Warning" xml:space="preserve">
+    <value>リモートのセッションが、ローカル ssh-agent の鍵で署名しようとしています</value>
+  </data>
+  <data name="AgentSign_Advice" xml:space="preserve">
+    <value>通常は、あなたがそのサーバー上で ssh や git を実行して次のマシンに接続しようとしているところです。心当たりがなければ拒否してください。そのサーバー上の誰かがあなたの ID を使おうとしている可能性があります。</value>
+  </data>
+  <data name="AgentSign_Session" xml:space="preserve">
+    <value>セッション</value>
+  </data>
+  <data name="AgentSign_KeyType" xml:space="preserve">
+    <value>鍵の種類</value>
+  </data>
+  <data name="AgentSign_Fingerprint" xml:space="preserve">
+    <value>フィンガープリント</value>
+  </data>
+  <data name="AgentSign_Comment" xml:space="preserve">
+    <value>鍵</value>
+  </data>
+  <data name="AgentSign_TimeoutHint" xml:space="preserve">
+    <value>{0} 秒以内に応答がない場合は自動的に拒否します。</value>
+  </data>
+  <data name="AgentSign_Deny" xml:space="preserve">
+    <value>拒否</value>
+  </data>
+  <data name="AgentSign_AllowOnce" xml:space="preserve">
+    <value>今回だけ許可</value>
+  </data>
+  <data name="AgentSign_AllowForSession" xml:space="preserve">
+    <value>このセッション中は許可</value>
+  </data>
+  <data name="AgentSign_AllowForSessionTip" xml:space="preserve">
+    <value>このセッションを閉じるまで、この鍵については確認しません</value>
+  </data>
+  <data name="Profile_SshAgentForwardRestrict" xml:space="preserve">
+    <value>選択した鍵だけを転送する</value>
+  </data>
+  <data name="Profile_SshAgentForwardRestrictHint" xml:space="preserve">
+    <value>踏み台サーバーに必要なのは、たいてい次のホスト用の鍵 1 つだけです。選択していない鍵はサーバーからは見えません。</value>
+  </data>
+  <data name="Profile_SshAgentForwardNoKeyChoices" xml:space="preserve">
+    <value>選択できる鍵が見つかりません。ssh-agent を起動して ssh-add するか、公開鍵(.pub)を ~/.ssh に置いてください。</value>
+  </data>
+  <data name="Profile_SshAgentForwardConfirm" xml:space="preserve">
+    <value>署名のたびに確認する</value>
+  </data>
+  <data name="Profile_SshAgentForwardConfirmHint" xml:space="preserve">
+    <value>サーバーがあなたの agent で署名するたびに、どのセッションのどの鍵かを示すダイアログが表示されます。60 秒応答がなければ拒否します。</value>
+  </data>
+  <data name="Profile_SshAgentForwardKeysEmpty" xml:space="preserve">
+    <value>「選択した鍵だけを転送する」がオンですが、鍵が 1 つも選択されていません。少なくとも 1 つ選択するか、このオプションをオフにしてください。</value>
+  </data>
+  <data name="Profile_SshAgentKeySourceSaved" xml:space="preserve">
+    <value>この接続に保存済み</value>
+  </data>
+  <data name="Profile_SshAgentKeySourceAgent" xml:space="preserve">
+    <value>agent 内</value>
+  </data>
+  <data name="Profile_SshAgentKeySourceFile" xml:space="preserve">
+    <value>~/.ssh</value>
+  </data>
   <data name="SetVm_SectionXServer" xml:space="preserve">
     <value>X Server</value>
   </data>
