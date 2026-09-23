@@ -5980,3 +5980,19 @@ Windows 的 OpenSSH agent 会把加进去的钥存进注册表,**重启后仍在
 **没做的**:证书加钥、Pageant、agent 转发的「只转发指定密钥 / 逐次确认」界面 —— 后者登记在 `feature-plan.md` D 组。
 文档:velashell-docs `zh|en/ssh/spec/07-forwarding.md` §7.3、`zh|en/ssh/getting-started.md`、
 `zh|en/host/settings-audit.md` R-06、`zh|en/host/交互与界面规格.md` 密钥管理一节、`zh|en/host/架构设计.md` 未实现清单。
+
+## ✅ 99. 2026-09-23 CI 在 Linux 上随机红:测试桩重协商「发出之后才登记」(CI 反馈)
+
+PR #493 的 ubuntu 作业挂了一条 `RekeyTests.服务端发起的重协商能接住并且连接继续可用`,25 秒超时;Windows / macOS 通过。
+与本 PR 的改动无关,是 `TestChannelServer` 自己的竞态,和 §97 请求账本那次同一类。
+
+`RequestRekeyAsync` 写的是 `_pendingRekeyKexInit = await _server.BeginRekeyAsync(...)`:KEXINIT 在 `BeginRekeyAsync` **里面**
+就发出去了,赋值却要等发送返回。客户端回 KEXINIT 够快时,另一个线程上的收包循环进 `OnClientKexInitAsync` 读到 null,
+把这次当成「客户端发起」、走 `RespondToRekeyAsync` 再发一份 KEXINIT —— 两边从此对不上,等重协商完成的任务永远不结束。
+
+改成在发送回调里、字节上线**之前**把 KEXINIT 记下(`Volatile.Write`),收包侧用 `Interlocked.Exchange` 取走。
+SSH 库本身没有改动。
+
+回归用例 `RekeyTests.客户端的KEXINIT赶在服务端发送返回之前到达也能完成重协商`:测试桩新增 `DelayAfterRekeyKexInitSent`,
+把「KEXINIT 已上线、发送未返回」的窗口撑到 300ms。把赋值挪回发送之后时它稳定挂在 25 秒超时上,修复后通过;
+`VelaShell.Ssh.Tests` 全量连跑三遍均 0 失败。

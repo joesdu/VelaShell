@@ -52,6 +52,32 @@ public sealed class RekeyTests
         Assert.IsTrue(host.Connection.IsAlive, "重协商不该把连接弄坏");
     }
 
+    /// <summary>
+    /// 测试桩自己的回归：服务端发起重协商时，「我们发过 KEXINIT」必须在它上线之前就记下。
+    /// </summary>
+    /// <remarks>
+    /// 以前是发送返回之后才记。客户端回 KEXINIT 够快时，收包循环读到「没发过」，
+    /// 把它当成客户端发起的重协商再发一份 KEXINIT，两边从此对不上 —— Linux CI 上偶发的
+    /// 「服务端发起的重协商…」25 秒超时就是它。这里把发送之后的窗口撑到 300ms，
+    /// 修复前稳定复现、修复后通过。
+    /// </remarks>
+    [TestMethod]
+    public async Task 客户端的KEXINIT赶在服务端发送返回之前到达也能完成重协商()
+    {
+        await using TestSshServerHost host = await TestSshServerHost.StartAsync(new TestChannelScript
+        {
+            StandardOutput = Encoding.UTF8.GetBytes("ok\n"),
+            ExitCode = 0,
+        });
+        host.Channels.DelayAfterRekeyKexInitSent = TimeSpan.FromMilliseconds(300);
+
+        await host.Channels.RequestRekeyAsync().WaitAsync(host.Token);
+
+        SshCommandOutput output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
+        Assert.AreEqual("ok\n", output.StandardOutput);
+        Assert.AreEqual(1, host.Connection.RekeyCount, "只该有一次重协商 —— 两份 KEXINIT 说明被当成了两次");
+    }
+
     [TestMethod]
     public async Task 重协商之后session_id不变()
     {
