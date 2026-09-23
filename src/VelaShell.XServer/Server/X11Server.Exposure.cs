@@ -369,12 +369,16 @@ public sealed partial class X11Server
         uint delete = Intern("WM_DELETE_WINDOW");
         handle.SupportsDeleteWindow = top.Properties.TryGetValue(protocols, out XProperty? p) && p.Format == 32
                                       && Enumerable.Range(0, p.Data.Length / 4).Any(i => BitConverter.ToUInt32(p.Data, i * 4) == delete);
+        RefreshWindowManagerHints(top, handle);
     }
 
     /// <summary>顶层窗口的属性变了:标题、类名、协议、瞬态父窗口可能跟着变,告诉宿主。</summary>
     private void OnTopLevelPropertyChanged(XWindow window, uint property)
     {
-        _ = property;
+        if (!AffectsHandle(property))
+        {
+            return;   // _NET_WM_USER_TIME 之类:客户端每次输入都改,与宿主无关
+        }
         if (window.IsTopLevel && _topLevelHandles.TryGetValue(window, out XTopLevelWindow? handle))
         {
             RefreshHandle(window, handle);

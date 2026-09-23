@@ -661,6 +661,7 @@ public sealed partial class X11Server
             return;
         }
         _focus = focus;
+        UpdateActiveWindow(old, focus);
         const byte nonlinear = 3;
         if (old is { IsRoot: false })
         {

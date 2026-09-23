@@ -70,6 +70,7 @@ public sealed partial class X11Server
         _monitors = monitors;
         _layoutTime = Now;
         RebuildRandRModes();
+        UpdateDesktopGeometry();
 
         if (resized)
         {

@@ -45,6 +45,16 @@ public sealed record XServerOptions
     public bool SyncPrimary { get; init; }
 
     /// <summary>
+    /// 告诉客户端「窗口管理器支持客户端自绘阴影」(在 <c>_NET_SUPPORTED</c> 里列出 <c>_GTK_FRAME_EXTENTS</c>)。
+    /// 打开后 GTK 的自绘标题栏窗口会在四周画半透明阴影,宿主必须能显示带 alpha 的窗口并按
+    /// <see cref="XTopLevelWindow.ClientFrameExtents" /> 处理;默认关,GTK 于是画无阴影的窗口。
+    /// </summary>
+    public bool ClientSideShadows { get; init; }
+
+    /// <summary>窗口管理器的名字(<c>_NET_SUPPORTING_WM_CHECK</c> 窗口上的 <c>_NET_WM_NAME</c>)。</summary>
+    public string WindowManagerName { get; init; } = "VelaShell";
+
+    /// <summary>
     /// 诊断日志:连接进出、每条发给客户端的协议错误(带操作码)、未实现的请求。null = 不记。
     /// 在执行线程上调用,不要在里面阻塞。
     /// </summary>

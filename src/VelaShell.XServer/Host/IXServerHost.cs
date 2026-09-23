@@ -45,4 +45,13 @@ public interface IXServerHost
     /// 服务端已把内容取了过来。宿主把它写进系统剪贴板;反方向用 <see cref="Server.X11Server.SetClipboardText" />。
     /// </summary>
     void ClipboardChanged(string text);
+
+    /// <summary>
+    /// 客户端向窗口管理器提出了请求(拖动 / 缩放、最大化、全屏、激活、关闭、最小化……,见 <see cref="XWindowManagerRequest" /> 的派生类)。
+    /// 宿主就是窗口管理器:照办的,改完原生窗口后调服务端对应的方法(如 <c>SetTopLevelStates</c>)把结果告诉客户端。
+    /// 默认实现什么也不做 —— 相当于一个拒绝所有请求的窗口管理器。
+    /// </summary>
+    void WindowManagerRequest(XWindowManagerRequest request)
+    {
+    }
 }

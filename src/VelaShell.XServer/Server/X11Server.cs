@@ -74,6 +74,7 @@ public sealed partial class X11Server : IAsyncDisposable
         InitXSettings();
         InitSyncCounters();
         InitXkbRulesNames();
+        InitEwmh();
         _pointerWindow = Root;
         _focus = Root;   // 初始焦点是 PointerRoot(与 X.Org 一致;窗口管理器 —— 这里是宿主 —— 之后再把焦点给具体的顶层)
         _loopTask = Task.Run(RunLoopAsync);

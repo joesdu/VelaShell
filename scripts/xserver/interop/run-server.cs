@@ -157,7 +157,23 @@ sealed class ShotHost(string outDir) : IXServerHost
         Console.WriteLine($"[host] mapped 0x{w.Id:x} {w.Width}x{w.Height}+{w.X}+{w.Y} '{w.Title}' override={w.OverrideRedirect}");
     }
     public void TopLevelUnmapped(XTopLevelWindow w) => Console.WriteLine($"[host] unmapped 0x{w.Id:x}");
-    public void TopLevelChanged(XTopLevelWindow w) => Console.WriteLine($"[host] changed 0x{w.Id:x} {w.Width}x{w.Height}+{w.X}+{w.Y} '{w.Title}' class='{w.ClassName}' shape={(w.Shape is null ? "none" : w.Shape.Count + " rects")}");
+    public void TopLevelChanged(XTopLevelWindow w) => Console.WriteLine($"[host] changed 0x{w.Id:x} {w.Width}x{w.Height}+{w.X}+{w.Y} '{w.Title}' class='{w.ClassName}' shape={(w.Shape is null ? "none" : w.Shape.Count + " rects")} type={w.WindowType} decorated={w.Decorated} states={w.States} min={w.MinWidth}x{w.MinHeight} icons={w.Icons.Count}");
+
+    // 像一个听话的窗口管理器:状态请求照办(最大化时铺满 1920×1080),其余只记下来。
+    public void WindowManagerRequest(XWindowManagerRequest request)
+    {
+        Console.WriteLine($"[wm] {request}");
+        if (request is XStateChangeRequest change && Server is { } server)
+        {
+            XWindowStates states = (change.Window.States | change.Add) & ~change.Remove;
+            server.SetTopLevelStates(change.Window.Id, states);
+            if ((change.Add & XWindowStates.Maximized) != 0)
+            {
+                server.MoveTopLevel(change.Window.Id, 0, 0);
+                server.ResizeTopLevel(change.Window.Id, 1920, 1080);
+            }
+        }
+    }
     public void CursorChanged(XTopLevelWindow? w, int glyph) { }
     public void Bell(int percent) => Console.WriteLine("[host] bell");
     public void ClipboardChanged(string text) => Console.WriteLine($"[host] clipboard {text.Length} chars '{text[..Math.Min(text.Length, 40)]}'");

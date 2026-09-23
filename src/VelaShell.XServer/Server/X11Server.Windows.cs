@@ -257,6 +257,7 @@ public sealed partial class X11Server
         CleanupDamage(null, window);
         CleanupCompositeDbe(null, window);
         CleanupPresent(null, window);
+        CleanupEwmh(window);
         foreach (var (atom, owner) in _selections.ToArray())
         {
             if (ReferenceEquals(owner.Window, window))
@@ -341,6 +342,7 @@ public sealed partial class X11Server
             handle.IsMapped = true;
             ExposeWindowTree(window, new Drawing.Region(window.Buffer.Bounds));
             _host.TopLevelMapped(handle);
+            OnTopLevelMappedEwmh(window);
         }
         else if (window.TopLevel is { } top)
         {
@@ -378,6 +380,7 @@ public sealed partial class X11Server
             {
                 handle.IsMapped = false;
                 _host.TopLevelUnmapped(handle);
+                OnTopLevelUnmappedEwmh(window);
             }
         }
         else if (wasViewable && window.TopLevel is { } top)
@@ -481,6 +484,10 @@ public sealed partial class X11Server
         if (stackMode >= 0 && window.Parent is { } parent)
         {
             Restack(parent, window, sibling, stackMode);
+            if (window.IsTopLevel && window.Mapped)
+            {
+                UpdateClientLists();
+            }
         }
         InvalidateVisibility();
 

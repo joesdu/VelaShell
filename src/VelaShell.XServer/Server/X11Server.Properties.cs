@@ -370,6 +370,10 @@ public sealed partial class X11Server
         {
             return;
         }
+        if (ReferenceEquals(target, Root) && code == XEventCode.ClientMessage)
+        {
+            OnRootClientMessage(c, raw);   // 发给窗口管理器的请求;之后照常投递(没有别的客户端会重定向根窗口)
+        }
         if (ReferenceEquals(target, _selectionWindow))
         {
             // 发给服务端自己的请求窗口:这是选区属主回的 SelectionNotify。
