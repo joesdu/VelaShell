@@ -5854,3 +5854,11 @@ Pageant、agent 转发的「只转发指定密钥 / 逐次确认」界面(库已
 velashell-docs 那边的配套改动:新增 `zh/ssh/` 与 `en/ssh/`(architecture、spec 00–09、getting-started 与索引页),
 挂进仓库首页、`zh|en/README.md` 与 AGENTS.md 的目录表。原文 architecture.md 首行标题与一处被折断的
 `chacha20-poly1305@openssh.com` 在搬运时顺手修了。
+
+## ✅ 93. 2026-09-23 CI 去掉 `ssh-interop` 作业,解决方案补齐 `.github` 文件(用户需求)
+
+- `ci.yml` 删掉 §92 加进来的 `ssh-interop` 作业。它只在推 main 与手动触发时跑，在 PR 的检查列表里
+  永远显示为一项 Skipped,看着像没跑的门禁。互操作用例改为本地按需跑:`scripts/ssh/interop/Start-TestServer.ps1`
+  起靶机，再 `dotnet test tests/VelaShell.Ssh.Tests -c Debug --filter "TestCategory=Interop"`(环境变量见脚本输出)。
+  主测试作业里的 `TestCategory!=Interop` 过滤保留;`workflow_dispatch` 也保留，手动重跑整套门禁仍然有用。
+- `VelaShell.slnx` 补上 `.github/ISSUE_TEMPLATE/` 下的三个文件 —— 此前 `.github` 里只有它们没进解决方案。

@@ -6,7 +6,7 @@
 #     VelaShell.snk。fork 与 Dependabot 的 PR 拿不到仓库 secret,用 Release 会直接构建失败。
 #   * 排除 DockerIntegration / CrossPlatform / Interop:DockerIntegration 要 Docker 守护进程,
 #     CrossPlatform 要 VELASHELL_PUBLISH_TESTS=1,Interop 要一台真 sshd
-#     (由下面的 ssh-interop 作业起)。没有环境时它们会 Assert.Inconclusive(如实记为跳过),
+#     (本地用 scripts/ssh/interop/ 起)。没有环境时它们会 Assert.Inconclusive(如实记为跳过),
 #     在 CI 上跑一遍只是白花时间,不跑也不会掩盖什么。
 #   * **本仓检出在 VelaShell/ 子目录**:文档仓库要与它并排(velashell-docs/),
 #     快捷键总表与《快捷键参考》的比对用例才找得到。所以各步都带 working-directory。
@@ -22,7 +22,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  # 手动触发:VelaShell.Ssh 的互操作矩阵(ssh-interop)不进 PR 门禁,想在分支上验一次时用它。
   workflow_dispatch:
 
 # 同一分支上新推送会取消上一次还在跑的检查:PR 连推几次时不必把 runner 全占满。
@@ -154,72 +153,3 @@ jobs:
       # 而同进程并行的用例没法各设各的。所以单跑一个进程。
       - name: 压缩 · 严格校验开关
         run: dotnet run scripts/ssh/compression/verify-strict-validation.cs
-
-  # ---------------------------------------------------------------------------
-  # VelaShell.Ssh 互操作矩阵(velashell-docs 仓库 zh/ssh/design/architecture.md §10.3)。
-  #
-  # 测试桩再全,也只能验证「我们对规范的理解与自己一致」。
-  # 真正的坑在「OpenSSH 实际怎么做」与「规范怎么写」的差值里 ——
-  # SFTP 的 SYMLINK 参数顺序就是最有名的一个。所以必须有真对端。
-  #
-  # 要起容器,慢且依赖网络,所以不进 PR 门禁 —— 只在 main 与手动触发时跑。
-  # 用 Debug:Release 会强名签名,签名构建省略 InternalsVisibleTo,测试工程编不过。
-  # ---------------------------------------------------------------------------
-  ssh-interop:
-    name: VelaShell.Ssh · 互操作 (${{ matrix.server }})
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # 新版:后量子混合密钥交换、ML-KEM 都在这里才有。
-          - server: openssh-current
-            image: lscr.io/linuxserver/openssh-server:latest
-          # 老版:验证我们没有默默依赖新算法 —— 真实世界里
-          # 有大量停在几年前的设备。
-          - server: openssh-9.3
-            image: lscr.io/linuxserver/openssh-server:version-9.3_p2-r1
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-dotnet@v6
-        with:
-          global-json-file: global.json
-
-      # -X11 会在容器里装 xauth 并打开 X11Forwarding。
-      # 没有它的话 X11 那两条用例只会自报 Inconclusive。
-      - name: 起 sshd
-        run: pwsh scripts/ssh/interop/Start-TestServer.ps1 -Image "${{ matrix.image }}" -X11
-
-      - name: 跑互操作用例
-        env:
-          VELASHELL_SSH_INTEROP: '1'
-          VELASHELL_SSH_INTEROP_X11: '1'
-          VELASHELL_SSH_INTEROP_HOST: 127.0.0.1
-          VELASHELL_SSH_INTEROP_PORT: '2222'
-          VELASHELL_SSH_INTEROP_USER: velashell
-          VELASHELL_SSH_INTEROP_PASSWORD: velashell
-          VELASHELL_SSH_INTEROP_KEY: ${{ github.workspace }}/artifacts/interop/id_ed25519
-        run: >
-          dotnet test tests/VelaShell.Ssh.Tests/VelaShell.Ssh.Tests.csproj -c Debug --nologo
-          --filter "TestCategory=Interop"
-          --logger "trx;LogFileName=interop-${{ matrix.server }}.trx"
-          --results-directory ${{ github.workspace }}/artifacts/test-results
-
-      - name: sshd 日志(失败时)
-        if: failure()
-        run: docker logs velashell-ssh-interop
-
-      - name: 收掉 sshd
-        if: always()
-        run: pwsh scripts/ssh/interop/Stop-TestServer.ps1
-
-      - name: 上传结果
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ssh-interop-results-${{ matrix.server }}
-          path: artifacts/test-results
