@@ -6019,3 +6019,93 @@ macOS 挂了 `ChatPanelViewUiTests.ClickingAQueuedChip_TakesTheMessageBack`:等�
 不代表请求已发到 stub;而 `SteeringChatClient` 每次发请求前都会把队列 `DrainAll()` —— 回车若赶在那之前,
 那句话就被并进第一次请求,芯片根本不出现。同文件 `StoppingTheTurn_…` 早就按「先等 `stub.Requests.Count >= 1` 再按回车」修过,
 这次把 `ClickingAQueuedChip_…` 与写法相同的 `EnterWhileBusy_…` 一并改成同样的顺序。产品代码无改动。
+## ✅ 100. 2026-09-23 本机 X Server:设置页 + 标题栏开关 + 拉起 VcXsrv(用户需求)
+
+用户要在 VelaShell 里直接显示远端的图形程序,参照 WindTerm 的「X Server」设置。§92 做的是 X11 **转发**那一端,
+本机的 X 服务端要用户自己开;这一节补上另一端 —— **但仍然不捆绑 X 服务端**(`feature-plan.md`「确认不做」的理由
+没变),而是**拉起用户装好的 VcXsrv**(与 WindTerm 同一个 X 服务端)。自己写一个 X 服务端不现实:GTK / Qt 程序
+要的不只是核心协议,还有 RENDER / XKB / GLX 一串扩展。
+
+### 一、分层
+
+| 层 | 东西 | 作用 |
+| --- | --- | --- |
+| Core | `Models/XServerOptions`(`AppSettings.XServer`) | 设置;`Normalize` 补缺失的节、回落认不出来的窗口模式、钳制显示号 |
+| Core | `XServer/ILocalXServer` | 契约:状态、显示地址、找程序、启动 / 停止、为 SSH 转发解析显示 |
+| Core | `XServer/XServerCommandLine` | 设置 → VcXsrv 命令行(纯函数,单测全覆盖) |
+| Core | `XServer/XServerHelpCatalog` | 帮助对话框的内容:VcXsrv `-help` 的全部参数,分四组,说明文字走 resx |
+| Infrastructure | `XServer/VcXsrvLocator` | 找 `vcxsrv.exe`:配置的路径(填目录也认)→ Program Files → Scoop → PATH |
+| Infrastructure | `XServer/VcXsrvLocalXServer` | 进程管理:选显示号、拉起、等 `6000+N` 真能连上才算「运行中」、退出时随容器释放杀掉 |
+| App | 设置 → X Server 页、`XServerHelpDialog`、标题栏按钮(`XServerToggleViewModel`)、命令 `tools.xserver` | |
+
+### 二、几处取舍
+
+- **「运行中」以端口为准,不以进程为准**。进程起来到开始监听之间有一段(首次建字体缓存能到好几秒),
+  这段时间把显示交给 SSH 转发,第一个 X 客户端就连个空。启动等端口,上限 20 秒,超时杀掉并给出日志位置
+  (VcXsrv 的日志被 `-logfile` 指到 VelaShell 的日志目录,「关于 → 打开日志目录」就能看到)。
+- **SSH 转发的显示解析顺序**变成「配置里填的 → 本机 X Server → `DISPLAY` → `localhost:0.0`」。本机 X Server
+  排在 `DISPLAY` 前:它在运行就说明用户此刻要的是它,而自动模式下它的显示号可能不是 0。
+- **X11 转发时自动启动**(默认开)有两种情况**静默不插手**:本机 :0 上已有别的 X 服务端(X410、手开的 VcXsrv),
+  以及根本没装 VcXsrv —— 否则没装的人每连一次都会收到一条黄字。其余启动失败写一行黄字,不拦 shell。
+- **每个开关显式写两态**(`-clipboard` / `-noclipboard`…),不依赖 VcXsrv 的默认值;附加参数排在最后,
+  同一开关后写的覆盖先写的,作为逃生口。页面下方实时预览下次启动的完整命令行。
+- **显示号 :0–:15**。设置页下拉与 `Normalize` 的钳制、自动模式的扫描范围同一口径。
+- **`-silent-dup-error` 总是带上**:显示号冲突由我们在启动前查端口报出来,不要 VcXsrv 再弹一个模态框。
+- **只管自己拉起的那个进程**:外面另开的 X 服务端不碰;VelaShell 退出时把自己拉起的 VcXsrv 关掉。
+- **只在 Windows 上启用**。Linux 桌面自带 X / XWayland、macOS 用 XQuartz,都经 `DISPLAY`,不需要我们管;
+  这两个平台上标题栏按钮与命令面板条目都不出现,设置页只剩一段说明。
+- 键盘布局 / 型号下拉的条目名沿用 XKB 的英文描述(要和远端 `setxkbmap` 对照着看),只有「自动」跟随界面语言。
+
+### 三、验证
+
+- 单测:`XServerCommandLineTests`(参数表、两态开关、附加参数切分与排序、帮助表五语齐全)、
+  `XServerOptionsNormalizeTests`、`VcXsrvLocatorTests`、`VcXsrvLocalXServerTests`(端口探测注入:自动选号、
+  三种静默不接管、固定号被占用启动前即失败)、`SshSessionFeaturesTests` 两条显示优先级、
+  `SettingsXServerTests`(下拉索引映射、找程序状态行、命令行预览)、`XServerSettingsUiTests`
+  (页面真渲染、下拉双向、帮助对话框过滤)。全量测试通过。
+- **没有在装了 VcXsrv 的机器上跑过真实启动**:开发机上没装。进程拉起 / 等端口 / 退出清理这条路径只有
+  单元层面的覆盖,首次在真机上用时留意 VcXsrv 日志。
+
+文档:velashell-docs `zh|en/host/交互与界面规格.md`(标题栏按钮、X11 转发的显示解析、设置页一览)与
+`zh|en/host/settings-audit.md`(第六批)同步。
+
+## ✅ 101. 2026-09-23 X11 服务端库 VelaShell.XServer:M1 核心协议(用户需求)
+
+§100 让宿主能拉起用户装好的 VcXsrv;用户希望更进一步 —— **不必装任何额外程序**。调研结论是 .NET 生态里没有可用的
+X 服务端库(X11.Net 是客户端绑定;yserver 只跑 Linux DRM;node-x11 的服务端画在浏览器 canvas 上;WeirdX 是 GPL),
+于是照 `VelaShell.Ssh` 的做法新建一个独立的 MIT 库 `src/VelaShell.XServer/`,**先做库、完成后再接进宿主**(本节只有库,宿主未改)。
+
+### 一、定位与纪律
+
+- **可嵌入、rootless、零原生依赖、跨平台**:每个顶层 X 窗口一块自己的 32 位像素缓冲,宿主(`IXServerHost`)把它画成原生窗口;
+  宿主就是窗口管理器(移动 / 缩放 / 关闭经 `MoveTopLevel` / `ResizeTopLevel` / `CloseTopLevel` 回到服务端)。
+- **净室规程同 VelaShell.Ssh**:实现依据只能是 X.Org 的协议规范、ICCCM、EWMH、BDF 规范;每个协议文件头写明依据;
+  不看任何其它 X 服务端的源码。库自己的 `AGENTS.md` / `LICENSE` / `NOTICE.md`,根 AGENTS.md 已登记。
+- 内置字体是 X.Org `font-misc-misc` 的 BDF(公有领域),按字符范围裁剪后作为嵌入资源,来源写在 `Fonts/Data/README.md`。
+
+### 二、M1 做了什么
+
+| 部分 | 内容 |
+| --- | --- |
+| 传输与握手 | TCP 6000+N(默认只听 127.0.0.1)或 `ServeAsync(stream)` 直接喂双工流(以后 SSH 的 x11 通道可以不经端口);两种字节序;`MIT-MAGIC-COOKIE-1`(常数时间比较)或「仅本机」 |
+| 执行模型 | 单执行线程串行执行全部请求(X 的语义本就全局串行),读 / 写各一个任务,GrabServer 暂存他人请求;损伤按批合并后通知宿主 |
+| 请求 | **全部 119 个核心请求** + BIG-REQUESTS + XC-MISC;抓取只实现异步模式 |
+| 窗口 | 窗口树、映射 / 配置 / 堆叠 / 重设父窗口、可见区域(Region)、边框与背景(像素 / 平铺 / ParentRelative / None)、Expose、结构事件、SubstructureRedirect 改道 |
+| 绘图 | 软件光栅化:16 种光栅操作、平面掩码、实色 / 平铺 / 点画 / 不透明点画、裁剪矩形与裁剪位图、细线(Bresenham)与宽线、虚线、弧、多边形(奇偶 / 非零)、CopyArea / CopyPlane(GraphicsExposure / NoExposure)、PutImage / GetImage(Bitmap / XYPixmap / ZPixmap;深度 1/4/8/15/16/24/32) |
+| 文字 | 内置 fixed / 6x13 / 9x15 / 10x20(及 Bold、ISO8859-1 与 ISO10646-1 两种编码、XLFD 通配)、合成的 cursor 与 nil2;PolyText / ImageText 8 与 16 |
+| 输入 | evdev 键码(+8)与 US 键值表、修饰键映射、指针与键盘事件的传播、自动 / 主动 / 被动抓取、Enter / Leave 的五种 detail、焦点;宿主注入 API |
+| 属性与选区 | 属性按本机序存放、跨字节序读写一致;选区三件套;SendEvent 按事件布局换字节序;WM_NAME / _NET_WM_NAME / WM_CLASS / WM_TRANSIENT_FOR / WM_DELETE_WINDOW 同步给宿主 |
+
+### 三、验证
+
+- 单元测试 40 条(`tests/VelaShell.XServer.Tests`,内存双工流 + 逐字节的测试客户端,约 0.2 秒):握手(两种字节序、cookie、仅本机)、
+  原子、属性分段读取与跨字节序、BIG-REQUESTS 大请求、错误报文、映射 + 背景 + Expose、子窗口裁剪与边框、填充与 CopyArea、
+  GXxor 画两遍复原、ImageText 字形、QueryFont / ListFonts、宿主注入的点击 / 按键 / 缩放 / 关闭、区域运算与光栅化。
+- **真实客户端**(`[TestCategory("Interop")]`,Docker 镜像 `velashell-xclients`,`VELASHELL_XSERVER_INTEROP=1`):
+  `xdpyinfo`、`xterm`、`xeyes`、`xclock`、`xlogo` 全部映射窗口、画出内容、**零协议错误**,5/5 通过。
+  手动经 `scripts/xserver/interop/run-server.cs` 注入按键:在 xterm 里敲 `echo Typed: $((6*7)) ABC` 回车,容器里的 sh 执行并回显 `Typed: 42 ABC`。
+- 调试中修掉的:像素图深度只认 1/24/32(Xt 会建 4/8 深度的像素图)、xterm 要的 nil2 字体、测试客户端释放时挂住的管道读。
+
+**没做的**(记在 `feature-plan.md`):M2 的 RENDER / XKB / SHAPE / XFIXES / RANDR / XInput2(GTK3 / Qt5 需要)与剪贴板互通,
+M3 的宿主接入(Avalonia 原生窗口、HiDPI、替换 VcXsrv 路径)。
+文档:velashell-docs 新增 `zh|en/xserver/`(README 与 `design/architecture.md`)。
