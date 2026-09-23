@@ -822,7 +822,11 @@ public sealed class SshChannel : IAsyncDisposable
         catch (Exception ex)
         {
             await reader.CompleteAsync(ex).ConfigureAwait(false);
+            return;
         }
+
+        // reader 归泵所有，由泵自己收尾 —— 见 FinishClose 里的说明。
+        await reader.CompleteAsync().ConfigureAwait(false);
     }
 
     /// <summary>等到发送窗口能放下至少一个字节，返回这次能发多少。</summary>
@@ -900,7 +904,16 @@ public sealed class SshChannel : IAsyncDisposable
 
         CompleteReceivePipes();
         _stdinPipe.Writer.Complete();
-        _stdinPipe.Reader.Complete();
+
+        // stdin 的 reader 在泵起来之后**归泵所有**，这里不能替它完成：
+        // 泵可能正读到一半，或者刚 AdvanceTo 完要回头再读 —— 从外面完成 reader
+        // 会让它撞上「reader 完成后不许再读」。完成 writer、取消 _lifetime 之后，
+        // 泵的每条路径都会退出，并在退出时自己完成 reader。
+        // 泵从没起来（通道没开成）时才由这里完成。
+        if (_stdinPump is null)
+        {
+            _stdinPipe.Reader.Complete();
+        }
 
         _sendWindowGate.Signal();
         _consumedGate.Signal();

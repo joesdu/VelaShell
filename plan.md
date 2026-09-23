@@ -5862,3 +5862,15 @@ velashell-docs 那边的配套改动:新增 `zh/ssh/` 与 `en/ssh/`(architecture
   起靶机，再 `dotnet test tests/VelaShell.Ssh.Tests -c Debug --filter "TestCategory=Interop"`(环境变量见脚本输出)。
   主测试作业里的 `TestCategory!=Interop` 过滤保留;`workflow_dispatch` 也保留，手动重跑整套门禁仍然有用。
 - `VelaShell.slnx` 补上 `.github/ISSUE_TEMPLATE/` 下的三个文件 —— 此前 `.github` 里只有它们没进解决方案。
+
+## ✅ 94. 2026-09-23 关通道时 stdin 泵撞上「reader 完成后不许再读」(用户反馈)
+
+调试输出里关标签 / 断开时总有一条 `InvalidOperationException: Reading is not allowed after reader was completed`
+(System.IO.Pipelines)。来源是 `SshChannel.FinishClose` 从外面把 stdin 管道的 **reader** 完成了，而那个 reader 归
+`PumpStandardInputAsync` 所有：泵正读到一半或刚 `AdvanceTo` 完要回头再读，就撞上它。异常被泵的 catch 接住，
+没有功能后果，但每次关通道都在调试器里冒一条。
+
+改成 reader 只由泵自己完成(各条退出路径统一在泵尾部 `CompleteAsync`);`FinishClose` 只完成 writer、取消 `_lifetime`,
+泵从没起来(通道没开成)时才由它代为完成 reader。
+
+同一段输出里的 `OperationCanceledException` / `TaskCanceledException` 是断开时取消在途读写的正常首次机会异常，不需要改。
