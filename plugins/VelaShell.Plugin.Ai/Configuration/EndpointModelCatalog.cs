@@ -11,7 +11,7 @@ namespace VelaShell.Plugin.Ai.Configuration;
 /// <b>它与 <see cref="ModelsDevCatalog" /> 是互补,不是替代。</b> 两者各知道一半:
 /// </para>
 /// <list type="bullet">
-/// <item>端点知道<b>这个地址实际供应哪些型号</b> —— 中转站只转发其中一部分,自建的
+/// <item>端点知道<b>这个地址实际供应哪些型号</b> —— 中转站只转发其中一部分,自行部署的
 /// Ollama 装了哪几个权重,models.dev 一概不知道,也没法知道。</item>
 /// <item>models.dev 知道<b>规格</b>(上下文窗口、三档单价)—— 而 <c>/models</c> 只给一串 id。
 /// 那两项恰恰是本插件里最难填、填错了又<b>不报错</b>的东西(窗口错则输入框下方的占比错,

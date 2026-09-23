@@ -45,7 +45,7 @@ public sealed class PluginPanelUiTests
             PluginDocument document = workspace.AllDocuments().OfType<PluginDocument>().Single();
             Assert.AreEqual("Demo", document.Title);
             Assert.AreEqual("acme.demo", document.PluginId);
-            // 内容 = 插件自建控件原物(不包壳、不复制)。
+            // 内容 = 插件自己创建的控件原物(不包壳、不复制)。
             Assert.AreSame(content, document.CreateView());
             Assert.IsTrue(panel.IsOpen);
 

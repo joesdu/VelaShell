@@ -123,7 +123,7 @@ public sealed class OAuthConfig
 
     /// <summary>
     /// 客户端密钥。桌面程序是"公共客户端",<b>通常留空</b> —— 装在用户机器上的密钥不是密钥。
-    /// 只为少数强制要求它的自建服务留这个口子。
+    /// 只为少数自行部署、又强制要求它的服务留这个口子。
     /// </summary>
     public string ClientSecret { get; set; } = "";
 

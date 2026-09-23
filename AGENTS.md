@@ -94,12 +94,14 @@ Docker 与 `docker-compose.test.yml`,`CrossPlatformPublishTests` 需 `VELASHELL_
 绝不要 `dotnet pack` 一个本地包、往 `nuget.config` 塞本地源、或者把包版本指到一个
 还不存在的号 —— 下一版发什么号是排期决定的,你猜一个就把所有下游都钉死在那个号上了;
 何况本地包未签名(`VelaShell.snk` 不在仓库里),一编译就是一片 `CS0012` 假错误。
-- **不许用「自研」(英文不许用 in-house)给东西贴标签**。代码注释、README、`plan.md`、界面文案、
+- **不许用「自研」「自建」(英文不许用 in-house)给东西贴标签**。代码注释、README、`plan.md`、界面文案、
 提交信息与 PR 描述一律适用,换成同义的招牌词(自主研发 / 自有 / 自家 / 原创 / home-grown / our own)也不行。
-这个词现在不是褒义词,满篇「自研」只会显得在自夸。直接写名字和事实:
+这两个词现在都不是褒义词,满篇「自研」「自建」只会显得在自夸。直接写名字和事实:
 「VT 终端引擎」而不是「自研 VT 终端引擎」,「VelaShell.Ssh(本仓库 `src/VelaShell.Ssh`)」而不是「自研 SSH 库」。
 确实需要强调「没用第三方库」时写**具体事实**:「零第三方停靠依赖」「不依赖 Dock.Avalonia」
 「在插件内实现编码器、替换 QRCoder」。
+「自建」表示自行部署时写「自行部署的 MinIO」,表示自己创建时写「插件自己创建的控件」;
+唯一保留的是企业微信后台的官方菜单名「自建应用」(那是产品术语,改了用户就找不到入口)。
 - 永远不要试图使用Python来执行脚本或者进行什么操作.可以使用PowerShell或C#的单文件脚本的方式来处理.可以参考文档: [https://learn.microsoft.com/zh-cn/dotnet/core/sdk/file-based-apps](https://learn.microsoft.com/zh-cn/dotnet/core/sdk/file-based-apps)
 
 ### 相关仓库

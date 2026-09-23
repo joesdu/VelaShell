@@ -83,7 +83,7 @@
           </Grid>
         </Border>
 
-        <!-- 内容 = 插件自建的 Avalonia 控件,原样呈现(布局/样式/滚动都由插件自理)。 -->
+        <!-- 内容 = 插件自己创建的 Avalonia 控件,原样呈现(布局/样式/滚动都由插件自理)。 -->
         <ContentControl x:Name="PanelContent" Grid.Row="1" />
       </Grid>
     </Border>

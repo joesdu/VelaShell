@@ -10,7 +10,7 @@ using VelaShell.Views;
 namespace VelaShell.Services.Plugins;
 
 /// <summary>
-/// <see cref="IPluginPanel" /> 的宿主实现(进程内插件):内容是插件自建的 Avalonia 控件,
+/// <see cref="IPluginPanel" /> 的宿主实现(进程内插件):内容是插件自己创建的 Avalonia 控件,
 /// 呈现为停靠文档或独立窗口。面板只管生命周期 —— 控件的事件与更新由插件直接操作,
 /// 不经过宿主。关闭从任意线程封送到 UI 线程。
 /// </summary>

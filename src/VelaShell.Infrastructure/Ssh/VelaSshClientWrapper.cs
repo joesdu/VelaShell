@@ -357,7 +357,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
 
     /// <inheritdoc />
     /// <remarks>
-    /// <b>计量在库里</b>,所以这里只是转交。宿主自建的那条计量中继(376 行)
+    /// <b>计量在库里</b>,所以这里只是转交。宿主自己写的那条计量中继(376 行)
     /// 连同它在本机开的监听端口一起没了 —— 见 <see cref="LibraryPortForwardHandle" />。
     /// </remarks>
     public async Task<IPortForwardHandle> StartPortForwardAsync(

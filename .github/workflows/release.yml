@@ -6,7 +6,7 @@
 #                       x64 runner 上交叉打包出 amd64/arm64 两份,理由见各自的打包脚本:
 #                       build/appimage/ 与 build/linux-packages/)
 # 随包分发的插件(plugins/<目录名>/,目录名 = id 把点换成短横,原因见 macOS job 的签名一步)
-# **只有本仓库 plugins/ 下自建的那些**(当前是 AI 插件 velashell.ai),随 publish 一起构建、
+# **只有本仓库 plugins/ 下的那些**(当前是 AI 插件 velashell.ai),随 publish 一起构建、
 # 由 src/VelaShell/VelaShell.csproj 的 AddVelaPluginsToPublish 登记入包。
 # 哪个进包由各插件的 <VelaPluginShip> 把关(示例插件 velashell.hello-world 设为 false,
 # 只作开发范例不进产物)。

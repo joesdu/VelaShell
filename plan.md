@@ -129,7 +129,7 @@ timeline
 | IP 归属地 | MaxMind.Db 5.1.0(**只是 mmdb 格式读取库**,数据用的是 DB-IP Lite City / CC BY 4.0) |
 | 插件契约 | **VelaShell.PluginSdk 2.0.2**(nuget.org 正式包,**不做工程引用**;版本 pin 在 `src/` 与 `tests/` 两份 `Directory.Packages.props`) |
 | 打包     | 便携压缩包(zip / tar.gz,6 RID)+ `.AppImage` / `.deb` / `.rpm` / `.dmg` / MSIX;应用内自更新(GitHub Releases `latest.json`;Velopack 已移除 2026-07-17,WiX MSI 已于 `241c2a2` 移除)            |
-| 依赖管理 | **集中式**:`src/Directory.Packages.props` 统一 NuGet 版本(`ManagePackageVersionsCentrally`);SourceLink.GitHub 构建期启用。⚠️ `plugins/` 下的自建插件**不走**中央包管理,版本写在各自 csproj |
+| 依赖管理 | **集中式**:`src/Directory.Packages.props` 统一 NuGet 版本(`ManagePackageVersionsCentrally`);SourceLink.GitHub 构建期启用。⚠️ `plugins/` 下的插件**不走**中央包管理,版本写在各自 csproj |
 | 测试     | **MSTest 4.4.0**(已从 xUnit 全量迁移;FluentAssertions 已移除)+ BenchmarkDotNet 0.16.0-preview.1                                                     |
 | AI 栈    | Microsoft.Extensions.AI 10.9.0 · ModelContextProtocol.Core 2.2.0 · LiveMarkdown.Avalonia 2.4.0(含 Mermaid / Math / Svg 扩展)—— 均只在 AI 插件里 |
 
@@ -205,7 +205,7 @@ graph RL
 
 - **模型层** `Docking/Model/`(纯 INPC,可单测):`DockWorkspace`(结构操作 + `DocumentClosed`/`ActiveDocumentChanged` 事件)、`DockGroup`(标签组)、`DockSplit`(分栏树)、`DockDocument`;空组自动折叠(主组先把兜底身份交给邻居再退场,**只有根留着**,见 §64)、单子分栏自动提升;`MaximizedGroup` 只影响渲染、不动树。方案与集成面分析见 `velashell-docs zh/host/dock-replacement-plan.md`。
 - **控件层** `Docking/Controls/`:`DockWorkspaceControl`(按树渲染 Grid+GridSplitter,star ↔ Proportion 回写;**按文档缓存视图**,切标签复用同一 `TerminalTabView`,取代原 ControlRecycling)、`DockGroupControl`(标签条 + 溢出三连钮 + 标签列表下拉)、`DockTabItem`(标签视觉 + 右键菜单:关闭系列/水平垂直拆分/标签位置)、`DockDragController` + `DockDropOverlay`(拖拽重排插入线、跨组并入、五区拖放分屏,Esc 取消;浮动窗口按产品决策不存在)。
-- `Docking/TerminalDocument.cs` 包装 `TerminalTabViewModel`,实现 `IDockViewProvider` 自建视图。
+- `Docking/TerminalDocument.cs` 包装 `TerminalTabViewModel`,实现 `IDockViewProvider` 自己创建视图。
 - `MainWindow.axaml` 用 `<dockc:DockWorkspaceControl Workspace="{Binding Layout}" />` 承载;`TabBar`(Ctrl+Tab/W 逻辑集合)与工作区激活态**双向同步**(原 Dock 集成缺 TabBar→文档区半边)。
 - `Controls/ReparentingHost.cs` — 沿用:内容宿主挂缓存视图前先从旧父级摘除,保证共享终端控件任一时刻只有一个父级。
 - `Themes/DockStyles.axaml` 保留全局通用样式(ToolTip/ContextMenu/MenuFlyout/tab-nav 等);标签视觉内联在 `DockTabItem.axaml`。
@@ -629,8 +629,8 @@ Core 的中立抽象证明有效——**迁移一行 Core 代码都没改**,改�
 **A. 转发的数据面从库内搬到宿主自己接管(`Infrastructure/Ssh/MeteredPortForwardHandle`)**:
 Tmds.Ssh 把 LocalForward / SocksForward 的搬运整个做在内部,**不暴露任何连接数或字节计数**
 ——`TunnelInfo.BytesTransferred` 一直恒为 0 就是这个原因。要出统计只能自己接管:本地转发 =
-自建 `TcpListener` + `SshClient.OpenTcpConnectionAsync`(direct-tcpip,与库内部同构,无额外跳数);
-动态转发 = 自建监听 + 自己实现的 SOCKS5 服务端握手(`Socks5Negotiation`,RFC 1928,仅 CONNECT + 无认证);
+自己开 `TcpListener` + `SshClient.OpenTcpConnectionAsync`(direct-tcpip,与库内部同构,无额外跳数);
+动态转发 = 自己监听 + 自己实现的 SOCKS5 服务端握手(`Socks5Negotiation`,RFC 1928,仅 CONNECT + 无认证);
 远程转发的监听端只有库能开,于是让它转发到本机一个临时计量监听,再由宿主接力到真实目标
 (多一次环回拷贝换来同样的统计)。搬运保留**半关闭语义**(SSH 侧 `SshDataStream.WriteEof`,
 套接字侧 `Shutdown(Send)`)—— 做成整条拆链的话,"发完请求就 shutdown 再等响应"的协议全部读不到东西,
@@ -4236,7 +4236,7 @@ AI 插件把聊天标签、协作窗口、模型配置/MCP 那一组对话框统
   逐条列出与 §2/§3 的出入:没有静态签名索引(改按 id 批量问)、不做后台定时检查、
   默认不吃预发布、自动更新与降级仍然不做、升级不再清数据。
 - `cli/cli.md` —— `update` 一节点明宿主管理页用的是**同一套选版规则**;
-  「自建商店」那段补上第四个必须提供的只读接口。
+  「自行部署的商店」那段补上第四个必须提供的只读接口。
 
 市场仓库的 `docs/` 尚未并入 velashell-docs(那边 `AGENTS.md` 写明是唯一例外),
 新端点记在它自己的 `docs/api.md` 公开接口表里。
@@ -5613,7 +5613,7 @@ tag 在那个 string 的**外面**,不带长度前缀。改成 `reader.ReadRemai
 
 | 删掉的 | 行数 | 它当初在绕什么 |
 | --- | ---: | --- |
-| `MeteredPortForwardHandle` | 376 | 上一版库把转发的搬运整个做在内部,**不暴露任何计数**。隧道面板要显示字节数与连接数,只能自建 `TcpListener` + `direct-tcpip` 把数据面整个接管过来。新库的 `PortForwarder` / `RemoteForwarder` 自带 `BytesTransferred` / `TotalConnections` / `ActiveConnections`,于是只剩一层薄适配(`LibraryPortForwardHandle`) |
+| `MeteredPortForwardHandle` | 376 | 上一版库把转发的搬运整个做在内部,**不暴露任何计数**。隧道面板要显示字节数与连接数,只能自己开 `TcpListener` + `direct-tcpip` 把数据面整个接管过来。新库的 `PortForwarder` / `RemoteForwarder` 自带 `BytesTransferred` / `TotalConnections` / `ActiveConnections`,于是只剩一层薄适配(`LibraryPortForwardHandle`) |
 | `SshAlgorithmProbe` + `SshAlgorithmDiagnostics` | 304 | 协商失败时上一版库只给一句话,两边到底各有什么算法拿不到。于是**再连一次**、逐类缩小候选集去倒推。新库直接抛 `SshNegotiationException`,两边清单都在异常上 |
 | `LoopbackProxyRelay` | 107 | 上一版库的代理接入只认「地址」,不认「一条已经建好的流」。于是本机起一个监听端口、把代理连接接力过去。新库有 `ISshTransportDialer`,`ProxyTransportDialer` 把现成的 `ProxyStreamConnector` 直接交给它,**本机不再开监听端口** |
 | `TmdsSshInterop` | 106 | 库的 `ConnectFailedException` 是 `internal`,只能**按消息前缀做字符串解析**再分派 —— §A 那节早就标过它是已知脆弱点。`SshInterop` 按异常类型分派,**没有一处字符串解析** |

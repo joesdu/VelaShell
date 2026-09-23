@@ -100,7 +100,7 @@ VelaShell 是用 **.NET 11 + Avalonia** 写的桌面终端应用，Windows / Lin
 - **Agent 模式** —— 基于 `Microsoft.Extensions.AI` 的 `FunctionInvokingChatClient` 工具循环，
   工具桥接到 sessions / terminal / remoteExec / remoteFs，危险操作面板内逐条审批；
   可挂接自定义 **MCP 服务器**（stdio / HTTP）扩展工具集；另带网页检索与抓取工具
-  （默认走公共 SearXNG 实例，可换成自建）。
+  （默认走公共 SearXNG 实例，可换成自行部署的实例）。
 - **协作接入** —— 把 agent 接到 **飞书 / 钉钉 / Telegram / 企业微信**：
   配对码授权群聊（不用再回电脑）、一键放行敲过门的会话、`[测试]` 按钮填完当场验连通性；
   无头回合另起一条，不动桌面上的聊天面板。
@@ -160,7 +160,7 @@ dotnet watch run --project src/VelaShell/VelaShell.csproj   # 开发模式（热
 <details>
 <summary>本机想连 Redis / S3 / Telnet 插件一起跑？</summary>
 
-干净克隆构建出来只带本仓库自建的 **AI 插件**。把其余插件目录铺进暂存目录
+干净克隆构建出来只带本仓库的 **AI 插件**。把其余插件目录铺进暂存目录
 `artifacts/plugins/`（或用 `-p:VelaPluginsStageDir=<目录>` 指别处），构建时会自动镜像到
 应用输出目录的 `plugins/<插件目录名>/`，F5 即可加载。插件目录可以从
 [velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins) 的 Release 资产
@@ -210,14 +210,14 @@ pwsh scripts/publish-all.ps1     # 一键产出全平台发布包 → publish/
 ```
 
 产物覆盖三平台 x64 / arm64，全部是含运行时的自包含发布。包内除主程序外还带着隔离插件的
-宿主进程 `VelaShell.PluginHost`，以及只放着自建 AI 插件的 `plugins/` 目录。
+宿主进程 `VelaShell.PluginHost`，以及只放着 AI 插件的 `plugins/` 目录。
 `.dmg` 只在 CI 的 macOS runner 上生成（`hdiutil` / `iconutil` / `codesign` 是 macOS 独有工具）；
 Linux 的 `.AppImage`（见 [`build/appimage/`](build/appimage/README.md)）与
 `.deb` / `.rpm`（装进 `/opt/velashell`，登记菜单项与 `/usr/bin/velashell`，
 见 [`build/linux-packages/`](build/linux-packages/README.md)）两种架构各一份，
 全部在同一台 x64 runner 上交叉打出。
 
-> `dotnet publish` 仅在自建插件与暂存目录**两边都空**时才失败 ——
+> `dotnet publish` 仅在 plugins/ 下的插件与暂存目录**两边都空**时才失败 ——
 > 发行包不接受「插件系统看着在、实则没插件」。
 
 **应用内自动更新**（设置 → 关于 → 检查更新）：从 GitHub Releases 读 `latest.json` 清单，
@@ -332,7 +332,7 @@ SDK 另提供测试替身（`VelaShell.PluginSdk.Testing`），插件可在 head
 
 | 仓库 | 管什么 | 怎么交付到本仓库 |
 | --- | --- | --- |
-| **joesdu/VelaShell**（本仓库） | 主程序 + 宿主侧插件运行时 + 自建的 AI 插件 | — |
+| **joesdu/VelaShell**（本仓库） | 主程序 + 宿主侧插件运行时 + AI 插件 | — |
 | [**velashell-plugin-sdk**](https://github.com/VelaShellLabs/velashell-plugin-sdk) | 插件契约 SDK | `VelaShell.PluginSdk` / `.Testing` **NuGet 包** |
 | [**velashell-plugin-cli**](https://github.com/VelaShellLabs/velashell-plugin-cli) | `vela-plugin` 命令行、`VelaShell.PluginSdk.Build` | **NuGet 包**（插件作者用，本仓库不引用） |
 | [**velashell-plugin-templates**](https://github.com/VelaShellLabs/velashell-plugin-templates) | `dotnet new velaplugin` 模板 | **NuGet 包**（插件作者用，本仓库不引用） |

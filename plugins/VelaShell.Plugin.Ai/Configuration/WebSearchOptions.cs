@@ -30,7 +30,7 @@ public sealed class WebSearchOptions
     /// <item>查询内容对该实例可见(运维场景里那往往是报错信息、主机名、内网服务名),
     /// 所以设置页的说明必须把这件事讲明白,不能让它悄悄生效。</item>
     /// <item>SearXNG 的引擎多数是抓页面的,量一大就会被对端封;它挂掉时所有用户一起没得搜。
-    /// 因此这个框始终可编辑 —— 用户随时能换成自建实例,那条路一天都没堵上。</item>
+    /// 因此这个框始终可编辑 —— 用户随时能换成自行部署的实例,那条路一天都没堵上。</item>
     /// </list>
     /// </remarks>
     public const string DefaultInstance = "https://searxng.easilynet.top";
@@ -40,7 +40,7 @@ public sealed class WebSearchOptions
     /// 清空则关闭检索(<c>web_fetch</c> 不受影响)。
     /// </summary>
     /// <remarks>
-    /// 自建时注意:实例的 <c>settings.yml</c> 必须把 <c>json</c> 列进 <c>search.formats</c> ——
+    /// 自行部署时注意:实例的 <c>settings.yml</c> 必须把 <c>json</c> 列进 <c>search.formats</c> ——
     /// 默认只有 <c>html</c>,这时 <c>?format=json</c> 会被回 403。
     /// </remarks>
     public string SearxngBaseUrl { get; set; } = DefaultInstance;

@@ -25,7 +25,7 @@ public class UpdateService : IUpdateService
     private string? _downloadedArchivePath;
 
     /// <summary>
-    /// 以 GitHub 仓库地址构造:更新源即该仓库的 Releases,无需自建服务器。
+    /// 以 GitHub 仓库地址构造:更新源即该仓库的 Releases,无需自己架服务器。
     /// <paramref name="channelProvider" /> 返回更新通道("preview" 时预发布版也纳入,
     /// 其余走稳定通道;beta 阶段没有正式版时稳定通道自动放宽到最新预发布)。
     /// </summary>

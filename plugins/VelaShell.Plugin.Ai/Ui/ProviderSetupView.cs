@@ -22,7 +22,7 @@ namespace VelaShell.Plugin.Ai.Ui;
 /// <b>设计的第一条:能自动的绝不问用户。</b>参数齐全的那些家,点行(或点行尾的「登录」)
 /// 立刻开浏览器,授权完成后自动落库、自动建好模型 —— 全程零输入。
 /// 只有"程序确实不知道"的东西才会露出输入框,而且<b>只露缺的那几个</b>:
-/// 自建服务不知道地址,那就问地址;还没注册 OAuth 应用,那就问客户端 id;
+/// 自行部署的服务不知道地址,那就问地址;还没注册 OAuth 应用,那就问客户端 id;
 /// 走 API Key 的,那就只问一把 Key。名称、模型 id、协议这些目录里都有,
 /// 收进「高级」里,想改的人找得到,不想改的人看不见。
 /// </para>
@@ -49,7 +49,7 @@ public sealed class ProviderSetupView : UserControl
         /// <summary>没有 API Key。</summary>
         ApiKey = 1,
 
-        /// <summary>没有基地址(自建 / 按资源分配地址的云服务)。</summary>
+        /// <summary>没有基地址(自行部署 / 按资源分配地址的云服务)。</summary>
         BaseUrl = 2,
 
         /// <summary>OAuth 客户端 id 还空着(VelaShell 尚未在这家注册应用)。</summary>

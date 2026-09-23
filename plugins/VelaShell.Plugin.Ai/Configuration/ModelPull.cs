@@ -44,7 +44,7 @@ public static class ModelPull
     /// <remarks>
     /// <para>
     /// <b>端点优先。</b> 先问端点它实际供应什么(那是唯一知道这件事的人 —— 中转站只转发
-    /// 其中一部分,自建的 Ollama 装了哪几个权重,目录那边一概不知),再拿 id 去 models.dev
+    /// 其中一部分,自行部署的 Ollama 装了哪几个权重,目录那边一概不知),再拿 id 去 models.dev
     /// 配窗口与单价。端点没有这条接口、或请求失败时,整条退回 models.dev 的清单,
     /// 也就是这个功能存在之前的行为。
     /// </para>

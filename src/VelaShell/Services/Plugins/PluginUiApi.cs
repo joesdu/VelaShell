@@ -11,7 +11,7 @@ namespace VelaShell.Services.Plugins;
 
 /// <summary>
 /// 每插件一个的界面能力(<see cref="IUiApi" />)实现(进程内插件):
-/// 在宿主 UI 线程调用内容工厂拿到插件自建的 Avalonia 控件,按
+/// 在宿主 UI 线程调用内容工厂拿到插件自己创建的 Avalonia 控件,按
 /// <see cref="PanelOptions.DisplayMode" /> 呈现为停靠文档或独立窗口;
 /// 实例释放(插件停用)时全部关闭 —— 插件离场,宿主 UI 不残留。
 /// </summary>

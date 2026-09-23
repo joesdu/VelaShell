@@ -6,8 +6,8 @@
 #       都是 macOS 独有工具。tar.gz 是应用内更新器的资产,dmg 只供人工安装,
 #       latest.json 永远只指向 tar.gz,详见 release.yml 文件头"macOS 双产物分工")
 #   Linux  x64 / arm64 含运行时 → tar.gz
-# 每份产物内含 plugins/<目录名>/(目录名 = 插件 id 把点换成短横),来源是本仓库 plugins/ 下
-#   自建的 AI 插件(velashell.ai),随 publish 一起构建。
+# 每份产物内含 plugins/<目录名>/(目录名 = 插件 id 把点换成短横),来源是本仓库 plugins/ 下的
+#   AI 插件(velashell.ai),随 publish 一起构建。
 #   Redis / S3 / Telnet 住在 joesdu/velashell-plugins,2026-08-22 起不再随发行包预装 ——
 #   用户按需从插件商店 https://market.easilynet.top 自行安装。想让本机产物也带上它们,
 #   自己把插件目录铺进 artifacts/plugins/(或 -p:VelaPluginsStageDir=<目录>),

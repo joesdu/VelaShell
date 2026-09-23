@@ -40,7 +40,7 @@
 | 1 | **规范优先，源码不作依据** | 实现依据只能是 RFC / OpenSSH `PROTOCOL*` / IETF draft。**每个协议实现文件头必须写明它实现的是哪份文档的哪一节** —— 写不出来，说明当时抄的是别人的代码 |
 | 2 | **两阶段隔离** | 写实现时**不要打开任何其它 SSH 实现的源码**。先有 `velashell-docs/zh/ssh/spec/` 下的行为规格（纯自然语言 + 报文字段表 + 时序图，零代码片段），再照规格写。用 AI 辅助时：分析会话与实现会话**不共享上下文** |
 | 3 | **标识符体系整体另起** | 不复用其它库的类名 / 方法名 / 字段名 / 枚举成员名的**组合**。对照表见 architecture.md §6.1 |
-| 4 | **架构真的不同** | Pipelines 替自建缓冲、状态机 + 发送闸门替信号量握手、统一 `RequestLedger` 替多套 pending、`IDuplexPipe` 替双 buffer 读。**这一条是前三条的地基** |
+| 4 | **架构真的不同** | Pipelines 替手写缓冲、状态机 + 发送闸门替信号量握手、统一 `RequestLedger` 替多套 pending、`IDuplexPipe` 替双 buffer 读。**这一条是前三条的地基** |
 | 5 | **测试向量只取公开来源** | RFC 向量、NIST CAVP、OpenSSH regress 的**思路**。不复制任何他人的测试文件 |
 | 6 | **相似度门禁** | [`scripts/ssh/similarity-gate/`](../../scripts/ssh/similarity-gate/) 每次 CI 跑（`ci.yml` 的 `ssh-checks` 作业）。**别等最后再补**。本机跑之前**先 `--fetch`** —— 没有语料时它会输出一个毫无意义的 `0.00%`，看输出第一行的「语料: N 个文件」确认 N 不是 0 |
 | 7 | **NOTICE 如实写** | 致谢是诚实，不是风险。见 `NOTICE.md` |

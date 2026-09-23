@@ -2571,7 +2571,7 @@ public partial class ChatPanelView : UserControl
 
     /// <summary>
     /// 一段流式 Markdown。追加直接进 <see cref="ObservableStringBuilder" />,由
-    /// LiveMarkdown 合并变更、后台解析、按脏节点更新可视树 —— 这里不再需要自建节流,
+    /// LiveMarkdown 合并变更、后台解析、按脏节点更新可视树 —— 这里不再需要自己做节流,
     /// 半截文本也由它自己兜住。约束:builder 只能在 UI 线程改(调用方经 DrainUpdates 保证)。
     /// </summary>
     private sealed class MarkdownSegment

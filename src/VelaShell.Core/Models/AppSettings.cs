@@ -1278,7 +1278,7 @@ public class NotificationOptions : ObservableOptions
 
     /// <summary>
     /// 资讯源地址(**仅 https**)。默认为 <see cref="OfficialFeedUrl" />;
-    /// 留空 = 不订阅、不联网。可换成自建源,格式见
+    /// 留空 = 不订阅、不联网。可换成自行部署的源,格式见
     /// <c>Core/Notifications/AnnouncementFeedDocument</c> 的契约说明。
     /// </summary>
     public string FeedUrl

@@ -33,7 +33,7 @@
     2026-08-22 起它们不随发行包预装(用户按需从插件商店装),本机想连它们一起跑就自己把
     插件目录铺进 artifacts/plugins/,见 src/VelaShell/VelaShell.csproj 的 VelaPluginsStageDir。
 
-    **例外:AI 插件(velashell.ai)是本仓库自建的第一方插件**,源码在 plugins/ 下,
+    **例外:AI 插件(velashell.ai)是本仓库的第一方插件**,源码在 plugins/ 下,
     随主程序一起构建、一起发布 —— 它与宿主的耦合最紧(要用宿主的 AvaloniaEdit 作输入框、
     必须进程内装载、Avalonia 版本必须与宿主逐字一致),分在两个仓库时每改一处 UI 都要
     先发一次插件仓库的 Release 才能联调。详见 plugins/README.md。

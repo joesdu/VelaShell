@@ -15,7 +15,7 @@ internal sealed record SearchHit(string Title, string Url, string Snippet);
 /// </summary>
 /// <remarks>
 /// <para>
-/// 全网索引没法在本地自建 —— 那正是搜索引擎在做的事。SearXNG 是绕过这一点的办法:
+/// 全网索引没法在本地自己搭 —— 那正是搜索引擎在做的事。SearXNG 是绕过这一点的办法:
 /// 它自己是<b>元搜索引擎</b>,替你去问 Google/Bing/DDG/Brave 再合并去重,
 /// <c>?format=json</c> 直接给结构化结果。不用办任何 Key,查询也不经第三方检索服务的手。
 /// </para>
@@ -127,7 +127,7 @@ internal sealed class WebSearchEngine(WebAccess access, WebSearchOptions options
     /// <c>unresponsive_engines</c>:形如 <c>[["google cse","timeout"],["startpage","CAPTCHA"]]</c>。
     /// </summary>
     /// <remarks>
-    /// 自建实例上这一项几乎总是非空(VPS 出口 IP 容易被 startpage 之类要求验证码),
+    /// 自行部署的实例上这一项几乎总是非空(VPS 出口 IP 容易被 startpage 之类要求验证码),
     /// 有结果时不值得拿它去打扰模型;只有<b>一条结果都没有</b>时它才是答案本身。
     /// </remarks>
     private static (int Count, string Names) Unresponsive(JsonElement root)

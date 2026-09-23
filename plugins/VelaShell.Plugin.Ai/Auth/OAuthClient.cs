@@ -108,7 +108,7 @@ public sealed class OAuthClient(HttpClient http)
             query.Add(extra);
         }
         var builder = new UriBuilder(config.AuthorizationUrl);
-        // 授权地址本身可能已经带着查询串(带 tenant / project 的自建服务常见),别把它冲掉
+        // 授权地址本身可能已经带着查询串(自行部署、带 tenant / project 的服务常见),别把它冲掉
         string existing = builder.Query.TrimStart('?');
         string appended = string.Join('&', query.Select(p =>
             $"{Uri.EscapeDataString(p.Key)}={Uri.EscapeDataString(p.Value)}"));
@@ -372,7 +372,7 @@ public sealed class OAuthClient(HttpClient http)
         }
     }
 
-    /// <summary>公共客户端不带密钥,带了的(自建服务)一并发过去。</summary>
+    /// <summary>公共客户端不带密钥,带了的(自行部署的服务)一并发过去。</summary>
     private static void AddClientCredentials(List<KeyValuePair<string, string>> form, OAuthConfig config)
     {
         if (!string.IsNullOrWhiteSpace(config.ClientId))

@@ -111,7 +111,7 @@ public sealed class ModelsDevCatalog(IPluginContext context)
     /// 宁可让单价空着:空着至少还写在脸上。
     /// </para>
     /// </remarks>
-    /// <param name="modelsDevId">这一家在 models.dev 的 id;空表示那边没收录(自定义 / 自建)。</param>
+    /// <param name="modelsDevId">这一家在 models.dev 的 id;空表示那边没收录(自定义 / 自行部署)。</param>
     /// <param name="ids">端点报上来的模型 id。</param>
     public IReadOnlyList<ModelSpec> Describe(string? modelsDevId, IReadOnlyList<string> ids)
     {
