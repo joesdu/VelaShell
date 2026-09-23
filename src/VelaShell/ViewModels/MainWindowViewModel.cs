@@ -728,7 +728,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <summary>当前是否存在活动的终端标签。</summary>
     public bool HasActiveTerminalTab => ActiveTerminalTab is not null;
 
-    /// <summary>自研 VelaDock 工作区:承载终端文档(标签可拖拽重排、拆分分屏)。</summary>
+    /// <summary>VelaDock 工作区:承载终端文档(标签可拖拽重排、拆分分屏)。</summary>
     public DockWorkspace Layout { get; }
 
     /// <summary>当前会话的 SFTP 文件浏览面板(按会话缓存,随活动标签切换重绑)。</summary>

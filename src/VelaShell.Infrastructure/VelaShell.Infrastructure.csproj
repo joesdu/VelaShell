@@ -7,7 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="..\VelaShell.Core\VelaShell.Core.csproj" />
     <!--
-      VelaShell.Ssh 是自研的 SSH 库(替换了 Tmds.Ssh)。它原本在独立仓库
+      VelaShell.Ssh 是宿主的 SSH 库(替换了 Tmds.Ssh)。它原本在独立仓库
       VelaShellLabs/velashell-ssh,2026-09-23 并入本仓库 src/VelaShell.Ssh,不再单独发 NuGet ——
       它只有宿主一个使用者,为它维护一条发版流水线得不偿失;同仓以后改库、改宿主一个 PR 就够。
       作为本仓工程它随 Release 一起强名签名,不存在引未签名程序集的 CS8002 问题。

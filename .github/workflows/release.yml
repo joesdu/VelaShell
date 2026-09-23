@@ -246,7 +246,7 @@ jobs:
             # 撞上就是一句看不出该动哪里的 "bundle format unrecognized, invalid, or unsuitable":
             # 1.2.0 栽在插件目录名 velashell.ai 上(应对是改目录名,见 plugins/README.md),
             # 1.4.8 栽在 QRCoder → System.Drawing.Common 带进来的 runtimes/win/lib/net6.0/ 上
-            # (应对是把 QRCoder 换成自研编码器,见 plugins/VelaShell.Plugin.Ai/Ui/QrCode.cs)。
+            # (应对是把 QRCoder 换成插件内实现的编码器,见 plugins/VelaShell.Plugin.Ai/Ui/QrCode.cs)。
             # 两次都是"新加一个依赖"引发的,而报错里完全看不出这层因果 —— 所以先自己扫一遍,
             # 把话说清楚再失败。目前包内 34 个目录一个带点号的都没有,这道闸平时不作声。
             dotted="$(find "$app" -mindepth 1 -type d -name '*.*')"

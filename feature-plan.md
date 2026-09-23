@@ -64,7 +64,7 @@ pie showData
 > 「会话与工作区」从 4 降到 3：会话标签颜色已在 `b9ae31f` 落地（见该节）。
 > 「安全与凭据」从 6 降到 4：SSH 证书认证已在 `bbfa1877` 落地，ed25519 密钥生成已在 `plan.md` §86 落地（均见该节）。
 > 「插件生态」现为 2：插件自报图标当天闭合，但新增了一条 🔴 P0「11 条怎么改都绿的 UI 用例」（见该节）。
-> 「终端与协议」从 3 加到 4：新增「SSH PTY 像素尺寸贯通」（2026-09-22 换成自研 SSH 库后**不再卡上游**，见该节）。
+> 「终端与协议」从 3 加到 4：新增「SSH PTY 像素尺寸贯通」（2026-09-22 换成 SSH 库 VelaShell.Ssh 后**不再卡上游**，见该节）。
 
 ---
 
@@ -82,7 +82,7 @@ pie showData
 | ⏳ | **自动加载密钥到 Agent** | `AppSettings.AutoLoadToAgent`（`AppSettings.cs:1058`，默认 `true`） | 字段存在且默认开，零消费者（R-06） | 集成 Windows OpenSSH ssh-agent（命名管道协议）或 Pageant。⚠️ 实现时**必须**同步调整 `plan.md` §17-A：凭据装配曾**刻意整体替换**默认凭据列表以排除 `SshAgentCredentials`（Windows 上 `SSH_AUTH_SOCK` 非命名管道会刷异常） |
 | ⏳ | **自动下载更新** | `AppSettings.AutoDownloadUpdates`（`AppSettings.cs:231`） | 字段存在，零消费者、零 UI | 下载调度 + SHA-256 完整性校验 + 静默换版流程。注：**启动时自动检查**（`CheckUpdatesOnStartup`）已实现并接进消息中心，别和这条混淆 |
 | ⏳ | **传输失败重试** | `AppSettings.TransferMaxRetries` | 字段存在，零消费者 | 需要传输队列持久化才有意义（重试要知道「重试什么」）。同组的 `AutoResume` 已降级为遗留兼容字段，实际开关是 `ResumeEnabled`，**不要**再给它接线 |
-| ⏳ | **标签栏位置（顶部/底部）** | `AppearanceOptions.TabBarPosition` + `SettingsViewModel.TabBarPositionIndex:1219` | 字段与索引映射都在，Docking 层零消费；VelaDock 替换后 UI 已从外观页撤下 | 自研 `DockGroupControl` 之后技术上已可做（改标签条停靠边）。**低成本**，按需排期 |
+| ⏳ | **标签栏位置（顶部/底部）** | `AppearanceOptions.TabBarPosition` + `SettingsViewModel.TabBarPositionIndex:1219` | 字段与索引映射都在，Docking 层零消费；VelaDock 替换后 UI 已从外观页撤下 | 有了 VelaDock 的 `DockGroupControl` 之后技术上已可做（改标签条停靠边）。**低成本**，按需排期 |
 
 ---
 
@@ -138,18 +138,18 @@ pie showData
 | :---: | :---: | --- | --- | --- |
 | ✅ | — | ~~防空闲断开（Anti-idle）~~ | **已完成**（2026-09-10，`plan.md` §65）：连接对话框的高级选项里新增「防空闲（秒）」，与保活并排；`TerminalOverrides.AntiIdleSeconds` → `AntiIdleKeeper` 按间隔往 PTY 送一个 `NUL`，只在真的空闲时发，ZMODEM 会话期间让路 | ⏳ **只按会话，没有全局开关**（刻意的：会踢人的只是特定那几台机器，注入的字节终究打进对端 tty）。📄 velashell-docs 还没跟上 |
 | ⏳ | 🟡 P2 | **非 bash 的 shell 干脆别注入目录上报钩子** | 钩子由 `test -n "${BASH_VERSION:-}"` 守卫，在 zsh / dash 上是个**空操作** —— 却照样占掉一个提示符周期，还在用户历史里留下一整行（`plan.md` §66 的摘历史只对 bash 有效：zsh 没有 `history -d`） | `RemoteShellProbe` 目前只回答「是不是 POSIX」，让它顺带报出 shell 家族（探针命令加一段 `${BASH_VERSION:+-bash}` / `${ZSH_VERSION:+-zsh}`，标记向后兼容），**确认是 zsh 时跳过注入**。⚠️ 只在**正面认出**非 bash 时才跳 —— 认不出来照旧注入，免得误伤「登录 shell 是 /bin/sh、交互 shell 是 bash」那种机器 |
-| ⏳ | 🟢 P3 | **SSH PTY 像素尺寸贯通** | `window-change` 的像素字段恒为 `0`：`IShellStreamWrapper.Resize(int, int)` 只有字符行列，终端控件的 `PtySizeChanged` 也只报列/行，`ShellStreamWrapper.ResizeCoreAsync` 于是只能 `new TerminalSize(columns, rows)` | ✅ **上游那道坎没有了**：2026-09-22 换成自研的 VelaShell.Ssh（`plan.md` §91），`pty-req` 与 `window-change` 两条路都原生带像素 —— `TerminalSize(columns, rows, pixelWidth, pixelHeight)`，建流那一步（`CreateShellStreamAsync(…, width, height, …)`）**已经把像素传下去了**。剩下的全是宿主侧的活：让终端控件报出物理像素、让 `Resize` 带着它走。实施细节见下文「SSH PTY 像素尺寸贯通 —— 实施细节」 |
+| ⏳ | 🟢 P3 | **SSH PTY 像素尺寸贯通** | `window-change` 的像素字段恒为 `0`：`IShellStreamWrapper.Resize(int, int)` 只有字符行列，终端控件的 `PtySizeChanged` 也只报列/行，`ShellStreamWrapper.ResizeCoreAsync` 于是只能 `new TerminalSize(columns, rows)` | ✅ **上游那道坎没有了**：2026-09-22 换成 VelaShell.Ssh（`plan.md` §91），`pty-req` 与 `window-change` 两条路都原生带像素 —— `TerminalSize(columns, rows, pixelWidth, pixelHeight)`，建流那一步（`CreateShellStreamAsync(…, width, height, …)`）**已经把像素传下去了**。剩下的全是宿主侧的活：让终端控件报出物理像素、让 `Resize` 带着它走。实施细节见下文「SSH PTY 像素尺寸贯通 —— 实施细节」 |
 | 💡 | 🟢 P3 | **终端内搜索的增强** | 基础搜索已实现（`MainWindowViewModel.TerminalSearchRequested:1616`） | 正则、大小写、全部高亮、上一个/下一个的循环计数 —— 按用户反馈再定 |
 | 📄 | 🟠 P1 | **设计稿的两处残留** | Logo 有一个 `enabled:false` 残留图标；文件列表「修改时间」列无固定宽度 | 小到可以顺手做掉，记在这里免得忘 |
 
 ### SSH PTY 像素尺寸贯通 —— 实施细节
 
-> 状态：⏳ 待办。**上游那道坎在 2026-09-22 随换库一并消失**（`plan.md` §91）—— 底层换成自研的 VelaShell.Ssh，不必再等谁发版。余下的宿主侧改动**一次性落地**（不分阶段）。
+> 状态：⏳ 待办。**上游那道坎在 2026-09-22 随换库一并消失**（`plan.md` §91）—— 底层换成 VelaShell.Ssh，不必再等谁发版。余下的宿主侧改动**一次性落地**（不分阶段）。
 > 依据：`VelaShell.Ssh` 的 `TerminalSize(columns, rows, pixelWidth, pixelHeight)`，经 `SshChannel.RequestPtyAsync` 与 `SshShell.ResizeAsync(TerminalSize)` 两条路发出。
 
 **前置条件**
 
-- ~~Tmds.Ssh 发版含 #519 的 API~~ —— **已不适用**：自研库原生支持，`CreateShellStreamAsync` 那一路已经在传像素了。
+- ~~Tmds.Ssh 发版含 #519 的 API~~ —— **已不适用**：VelaShell.Ssh 原生支持，`CreateShellStreamAsync` 那一路已经在传像素了。
 - **不触发 PluginSdk 发版**：插件终端协议（Telnet NAWS / 串口）本无像素概念，`IProtocolTerminalSession.ResizeAsync` 保持不变。
 
 **设计决策**
@@ -169,7 +169,7 @@ public readonly record struct PtySize(int Columns, int Rows, int WidthPixels, in
 
 **实施步骤**（按依赖顺序，每步给出改前 → 改后代码示例）
 
-**~~1. 抬 Tmds.Ssh 版本~~** —— **这一步没有了**。底层已在 2026-09-22 换成自研的 VelaShell.Ssh
+**~~1. 抬 Tmds.Ssh 版本~~** —— **这一步没有了**。底层已在 2026-09-22 换成 VelaShell.Ssh
 （工程引用，不是 NuGet 包，`plan.md` §91），`TerminalSize` 本就带 `pixelWidth` / `pixelHeight`。
 下面从第 2 步开始，步骤编号保持原样，免得与已写好的代码示例对不上。
 
@@ -529,14 +529,14 @@ var options = new ExecuteOptions
 
 | 能力 | VelaShell | Xshell | MobaXterm | Tabby | WindTerm | Termius |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| 自研 VT 引擎 / 自绘渲染 | ✅ | — | — | (xterm.js) | ✅ | (xterm.js) |
+| 不依赖第三方的 VT 引擎 / 自绘渲染 | ✅ | — | — | (xterm.js) | ✅ | (xterm.js) |
 | SSH / SFTP / 跳板机 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | FTP / FTPS | ✅ | ✅ | ✅ | — | ✅ | — |
 | Telnet / 串口 | ✅ 插件 | ✅ | ✅ | ✅ | ✅ | ✅ |
 | X/Y/ZMODEM | ❌ 不支持 | ✅ | ✅ | — | ✅ | — |
 | 拖拽分屏 | ✅ VelaDock | 有限 | ✅ | ✅ | ✅ | ✅ |
 | 多会话同步输入 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 端口转发 + 流量计量 | ✅ **自研计量** | ✅ 无计量 | ✅ | ✅ | ✅ | ✅ |
+| 端口转发 + 流量计量 | ✅ **带计量** | ✅ 无计量 | ✅ | ✅ | ✅ | ✅ |
 | 会话录制 / 回放 | ✅ + asciicast | — | — | — | ✅ | — |
 | 资源监视 / 进程 / 路由追踪 | ✅ | — | ✅ | — | ✅ | — |
 | 插件系统 | ✅ **双模 + 商店** | — | — | ✅ | — | — |
@@ -591,9 +591,9 @@ var options = new ExecuteOptions
 
 | 状态 | 优先级 | 项 | 对标 | 架构落点 |
 | :---: | :---: | --- | --- | --- |
-| ⏳ | 🟠 P1 | **SSH Agent 转发** | Xshell / MobaXterm / Tabby / WindTerm / Termius | 六家全有，我们没有 —— **对标矩阵里最扎眼的一格**。跳板场景下没有它，用户只能把私钥拷到跳板机上，那是实打实的安全倒退。✅ **能力这一关过了**：2026-09-22 换成自研的 VelaShell.Ssh（`plan.md` §91），`Forwarding/AgentForwarder` 已实现 `auth-agent-req@openssh.com` / `auth-agent@openssh.com`，还带 Windows 命名管道那一路的 agent 客户端。剩下的是宿主侧接线（会话上加开关 → 建流时挂上转发器），**不再有"等上游"这一说**。与 [Agent 自动加载](#-p0--存了但不生效的开关)是同一条线上的两件事 |
+| ⏳ | 🟠 P1 | **SSH Agent 转发** | Xshell / MobaXterm / Tabby / WindTerm / Termius | 六家全有，我们没有 —— **对标矩阵里最扎眼的一格**。跳板场景下没有它，用户只能把私钥拷到跳板机上，那是实打实的安全倒退。✅ **能力这一关过了**：2026-09-22 换成 VelaShell.Ssh（`plan.md` §91），`Forwarding/AgentForwarder` 已实现 `auth-agent-req@openssh.com` / `auth-agent@openssh.com`，还带 Windows 命名管道那一路的 agent 客户端。剩下的是宿主侧接线（会话上加开关 → 建流时挂上转发器），**不再有"等上游"这一说**。与 [Agent 自动加载](#-p0--存了但不生效的开关)是同一条线上的两件事 |
 | ⏳ | 🟡 P2 | **算法协商可配（cipher / kex / hostkey / MAC）** | Xshell / SecureCRT / PuTTY | 连老设备（网络设备、老 RHEL）时是刚需。**一半已经有了**：协商失败时底层直接抛 `SshNegotiationException`（**带着两边各自的算法清单**，不必再像换库前那样靠探测重连去倒推），`Infrastructure/Ssh/SshInterop` 把它翻成一条说清「缺哪类算法、两边各有什么」的消息 —— 从「诊断得出来」到「让用户配得上」，只差把清单落到 `SessionProfile` 并接进 `SshConnectionOptions.Algorithms`（`SshAlgorithmSet`） |
-| 🚧 | 🟢 P3 | **SSH 压缩开关** | 各家都有 | 弱网 / 高延迟链路上有意义。~~「上游没有 zlib 实现，要么等要么提 PR」（2026-09-08）~~ → ~~「已提 PR [tmds/Tmds.Ssh#513](https://github.com/tmds/Tmds.Ssh/pull/513)，卡上游合并 + 发版」（2026-09-10）~~ —— **两条都作废了**：2026-09-22 换成自研的 VelaShell.Ssh（`plan.md` §91），`Crypto/SshCompressor` 已实现 `zlib` 与 `zlib@openssh.com`（后者认证后才开始压缩，每次 kex 重置压缩上下文），用的是 BCL 自带的原生 zlib。默认仍不开启（与 OpenSSH 一致）。我们这边只剩接线：`SessionProfile` 加压缩字段 → `SshConnectionAssembler` 里 `Algorithms = SshAlgorithmSet.Default.WithCompression()` —— 与上一行「算法协商可配」是同一处落点，**该一并做**。⚠️ 纪律不变：**没接线之前不要先加这个开关**，否则就是 [P0 那张表](#-p0--存了但不生效的开关)里的新一条 |
+| 🚧 | 🟢 P3 | **SSH 压缩开关** | 各家都有 | 弱网 / 高延迟链路上有意义。~~「上游没有 zlib 实现，要么等要么提 PR」（2026-09-08）~~ → ~~「已提 PR [tmds/Tmds.Ssh#513](https://github.com/tmds/Tmds.Ssh/pull/513)，卡上游合并 + 发版」（2026-09-10）~~ —— **两条都作废了**：2026-09-22 换成 VelaShell.Ssh（`plan.md` §91），`Crypto/SshCompressor` 已实现 `zlib` 与 `zlib@openssh.com`（后者认证后才开始压缩，每次 kex 重置压缩上下文），用的是 BCL 自带的原生 zlib。默认仍不开启（与 OpenSSH 一致）。我们这边只剩接线：`SessionProfile` 加压缩字段 → `SshConnectionAssembler` 里 `Algorithms = SshAlgorithmSet.Default.WithCompression()` —— 与上一行「算法协商可配」是同一处落点，**该一并做**。⚠️ 纪律不变：**没接线之前不要先加这个开关**，否则就是 [P0 那张表](#-p0--存了但不生效的开关)里的新一条 |
 | 💡 | 🟢 P3 | **SecureCRT 风格的斜杠命令行** | SecureCRT | 外部拉起目前只认 Xshell 的调用约定（`-url` / `-newtab` / `-f` / `-l` / `-p` / `-pw` / `-i`，见 `plan.md` §84–85）。SecureCRT 那套 `/SSH2 /L root /PASSWORD pw host` 现在一个都不认，被整条忽略。**要接之前先确认有没有真实调用方** —— 这条兼容层的存在理由是「堡垒机客户端已经在发」，不是「补齐一张对标表格」；没有人发的写法接进来只是多一条攻击面。⚠️ `/` 开头的 token 与 Unix 路径、Avalonia 自己的参数会撞，得先想清楚怎么区分 |
 | 💡 | 🟢 P3 | **更多协议插件** | — | RDP / VNC / Kubernetes exec / 数据库客户端。**这正是 `Protocols` + `Workspaces` 能力面存在的意义** —— 宿主一行不用改，Telnet / 串口 / Redis / S3 / Docker 面板已经把这条路走通了五遍。优先级交给插件市场的真实下载量决定，不要在宿主里拍脑袋排 |
 | ❌ | — | **X11 转发** | MobaXterm（自带 X 服务端） | 见下面的[确认不做](#-确认不做)一栏 |

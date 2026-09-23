@@ -24,7 +24,7 @@
 VelaShell 是用 **.NET 11 + Avalonia** 写的桌面终端应用，Windows / Linux / macOS 三平台原生发布、
 自包含（目标机器不装 .NET Runtime 也能跑）。
 
-它把远程运维一天里要用到的东西装进了同一个窗口：**自研 VT 终端引擎**、SSH / SFTP / FTP 连接、
+它把远程运维一天里要用到的东西装进了同一个窗口：**VT 终端引擎**、SSH / SFTP / FTP 连接、
 本机终端标签、跳板机与网络代理、端口转发隧道、SFTP 双栏传输与远程编辑、资源监视与路由追踪、
 会话录制回放、命令面板与十二页设置中心。持久化统一走嵌入式 SonnetDB，凭据 AES-256-GCM 落盘。
 再往外，是一套**双模插件系统**（进程内 / 独立进程）与第一方 **AI 助手插件**。
@@ -37,12 +37,12 @@ VelaShell 是用 **.NET 11 + Avalonia** 写的桌面终端应用，Windows / Lin
 
 | | |
 | --- | --- |
-| **终端** | 自研 VT 引擎（DEC ANSI / VT / Xterm 状态机）· 十种终端 profile（vt52 → xterm-256color）· 256 色 / 真彩色 / 线绘字符 / 主备屏 / 鼠标协议 / CJK 双宽 · 自绘渲染 · 行 / 块 / 多段不连续选区 · 行号与时间侧栏 · OSC 8 显式超链接（Ctrl+点击直达） · OSC 133 命令块（失败命令标红 · 提示符间跳转 · 一键选中命令输出 · 按块折叠） |
+| **终端** | VT 引擎（DEC ANSI / VT / Xterm 状态机）· 十种终端 profile（vt52 → xterm-256color）· 256 色 / 真彩色 / 线绘字符 / 主备屏 / 鼠标协议 / CJK 双宽 · 自绘渲染 · 行 / 块 / 多段不连续选区 · 行号与时间侧栏 · OSC 8 显式超链接（Ctrl+点击直达） · OSC 133 命令块（失败命令标红 · 提示符间跳转 · 一键选中命令输出 · 按块折叠） |
 | **连接** | SSH · SFTP · FTP / FTPS · 本地终端（Windows ConPTY）· 跳板机 ProxyJump（≤5 跳、环检测）· HTTP / SOCKS5 / 跟随系统代理 · 两步身份验证 · 主机指纹 TOFU · 每条连接各配「认证后执行命令」· 断线自动重连（含睡眠唤醒 / 网络恢复） |
 | **文件** | SFTP 双栏浏览与拖拽互传 · 断点续传与传输队列 · 远程文件内置编辑器（AvaloniaEdit 语法高亮）或交给外部编辑器并监听落盘回传 |
-| **隧道** | 本地 `-L` / 远程 `-R` / 动态 SOCKS5 `-D` · 自研计量数据面（实时连接数与字节数）· 断线自动恢复 · 端口冲突预检 |
+| **隧道** | 本地 `-L` / 远程 `-R` / 动态 SOCKS5 `-D` · 带计量的数据面（实时连接数与字节数）· 断线自动恢复 · 端口冲突预检 |
 | **运维** | 资源监视器（CPU / 内存 / 磁盘 / 网络 / 进程）· 进程管理器 · 路由追踪（带地理信息）· 连接诊断 · 会话录制与回放（可导出 asciicast v2） |
-| **工作区** | 自研 VelaDock 拖拽分屏 · 分组会话管理 · 从 WinSCP / Xshell / OpenSSH `~/.ssh/config` 导入 · 命令面板（`Ctrl+P` / `Ctrl+K`）· 快捷命令片段 · **多终端同步输入** · 命令智能补全（历史 + 片段，程序提问时自动闭嘴）· 消息中心与安全资讯源 |
+| **工作区** | VelaDock 拖拽分屏 · 分组会话管理 · 从 WinSCP / Xshell / OpenSSH `~/.ssh/config` 导入 · 命令面板（`Ctrl+P` / `Ctrl+K`）· 快捷命令片段 · **多终端同步输入** · 命令智能补全（历史 + 片段，程序提问时自动闭嘴）· 消息中心与安全资讯源 |
 | **数据** | 嵌入式 SonnetDB（文档 + 时序双模型）· AES-256-GCM 凭据加密 · GitHub Gist 云同步（可选口令端到端加密、版本可回溯）· 安全审计日志 · 会话日志 |
 | **外观** | 12 套具名主题（7 暗 5 亮，含 Tokyo Night / Nord / Gruvbox / One Dark / Sakura…）· 16 套内置终端配色，与界面主题成对联动 · 全令牌化零硬编码颜色 · 内置 Cascadia Mono 四款字形 |
 | **本地化** | 简体中文 / English / 繁體中文 / 日本語 / 한국어 —— 五份 resx 键集完全一致，漏译与孤儿键都会让测试变红 |
@@ -52,15 +52,15 @@ VelaShell 是用 **.NET 11 + Avalonia** 写的桌面终端应用，Windows / Lin
 <details>
 <summary><b>展开：几处值得多说两句的实现</b></summary>
 
-- **自研 VT 终端引擎** —— 终端是自绘的 Avalonia 控件，字形、选区与滚动全部自己渲染，
+- **VT 终端引擎** —— 终端是自绘的 Avalonia 控件，字形、选区与滚动全部自己渲染，
   不依赖任何已停维护的第三方终端控件。选区支持行 / 块两种模式、`Shift+左键` 扩展，
   以及 `Ctrl+Shift+拖拽` 追加的多段不连续选区（可一次复制第 1 行 + 第 3 行）。
 
-- **SSH 栈** —— 基于自研的 [VelaShell.Ssh](src/VelaShell.Ssh/)（全托管、async-first，MIT，源码就在本仓库 `src/VelaShell.Ssh`）。
+- **SSH 栈** —— 基于 [VelaShell.Ssh](src/VelaShell.Ssh/)（全托管、async-first，MIT，源码在本仓库 `src/VelaShell.Ssh`）。
   跳板机以嵌套连接 + `direct-tcpip` 逐跳建链，指纹按各跳逻辑主机分别校验。
   首次连接默认 TOFU 记录指纹，可切换为人工确认；指纹变化立即拒绝连接。
 
-- **隧道的数据面也在自研库里** —— 本地 / 动态 / 远程三种转发，连同 SOCKS5 服务端握手
+- **隧道的数据面也在 SSH 库里** —— 本地 / 动态 / 远程三种转发，连同 SOCKS5 服务端握手
   （RFC 1928），都由 `VelaShell.Ssh` 自己实现；逐条转发的字节数与并发连接数直接从库里读，
   宿主不必再套一层计量中继。搬运保留半关闭语义，否则
   「发完请求就 shutdown 再等响应」的协议全部读不到东西。
@@ -253,7 +253,7 @@ CI 有几处刻意的选择：用 **Debug**（强名签名只在 Release 打开�
 VelaShell/
 ├── src/
 │   ├── VelaShell/                  # 桌面应用入口、DI 组合根、XAML 视图、VelaDock 停靠与全局样式
-│   ├── VelaShell.Terminal/         # 自研 VT 终端引擎与 Avalonia 渲染控件
+│   ├── VelaShell.Terminal/         # VT 终端引擎与 Avalonia 渲染控件
 │   ├── VelaShell.Presentation/     # 跨层 ViewModel、工作流与 Presentation DI 模块
 │   ├── VelaShell.Controls/         # 复用控件库、主题令牌与内置字体
 │   ├── VelaShell.Core/             # 领域模型、服务契约、持久化抽象、协议引擎与本地化（无 UI 依赖）
@@ -283,8 +283,8 @@ VelaShell/
 - **单一组合根** —— 所有 DI 注册集中在 [`src/VelaShell/App.axaml.cs`](src/VelaShell/App.axaml.cs)，
   各层通过 `*ServiceCollectionExtensions` 贡献注册。
 - **自绘渲染** —— 终端通过自定义 Avalonia Control 直接渲染字形、选区与滚动。
-- **自研停靠** —— VelaDock 的模型层（纯 INPC，可单测）与控件层分离，
-  拖拽 / 分屏 / 标签重排全套自研，零第三方停靠依赖。
+- **停靠分屏** —— VelaDock 的模型层（纯 INPC，可单测）与控件层分离，
+  拖拽 / 分屏 / 标签重排都在本仓库实现，零第三方停靠依赖。
 - **单引擎持久化** —— 一个嵌入式 SonnetDB 实例承载文档（配置 / 业务数据）与时序
   （连接历史 / 审计 / 录制 / 插件数据）两类模型，接口在 Core、实现在 Infrastructure，退出时统一刷盘。
 - **设计令牌化** —— **XAML 与 C# 里不许出现颜色字面量**，一律 `DynamicResource`
@@ -298,7 +298,7 @@ VelaShell/
 
 **双模宿主** —— 插件既可**进程内**装载（可收集 `AssemblyLoadContext` 隔离，
 UI 直接并入停靠工作区），也可跑在**独立进程** `VelaShell.PluginHost` 里
-（自研命名管道 RPC，崩溃不波及主程序，带心跳、自愈重启与空闲回收）。
+（命名管道 RPC，崩溃不波及主程序，带心跳、自愈重启与空闲回收）。
 装载方式由插件清单声明，两种模式共用同一套 SDK 契约。依赖按插件自己的 `deps.json` 解析，
 只有 SDK 契约与 `Avalonia*` 框架程序集回落到宿主，保证跨边界类型同一。
 
@@ -420,8 +420,8 @@ English in [`en/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/en)
 | | |
 | --- | --- |
 | **运行时 / UI** | .NET 11（`net11.0`，启用预览特性与 `runtime-async`）· Avalonia 12.1 · ReactiveUI |
-| **自研** | VT 终端引擎 · VelaDock 停靠分屏 · VelaShell.Ssh（SSH / SFTP / 端口转发 / SOCKS5 服务端）· 插件运行时（可收集 ALC + 独立宿主进程 + 命名管道 RPC + `.vpx` 打包）· 便携式自更新 |
-| **网络** | VelaShell.Ssh（自研，SSH / SFTP / 端口转发 / ProxyJump，全托管 async-first）· FluentFTP（FTP / FTPS） |
+| **核心组件** | VT 终端引擎 · VelaDock 停靠分屏 · VelaShell.Ssh（SSH / SFTP / 端口转发 / SOCKS5 服务端）· 插件运行时（可收集 ALC + 独立宿主进程 + 命名管道 RPC + `.vpx` 打包）· 便携式自更新 |
+| **网络** | VelaShell.Ssh（SSH / SFTP / 端口转发 / ProxyJump，全托管 async-first）· FluentFTP（FTP / FTPS） |
 | **存储** | SonnetDB —— 嵌入式多模型数据库（文档 + 时序），唯一持久化引擎 |
 | **编辑 / 渲染** | AvaloniaEdit（远程文件编辑器与 AI 输入框）· LiveMarkdown.Avalonia（增量 Markdown，含 Mermaid / LaTeX / SVG 扩展） |
 | **AI** | Microsoft.Extensions.AI（统一模型抽象与 Agent 工具循环）· ModelContextProtocol（MCP 客户端与服务端） |

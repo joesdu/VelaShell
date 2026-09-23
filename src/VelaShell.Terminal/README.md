@@ -1,6 +1,6 @@
 # VelaShell.Terminal
 
-> 自研 VT 终端引擎 + Avalonia 自绘渲染控件。
+> VT 终端引擎 + Avalonia 自绘渲染控件。
 
 `VelaShell.Terminal` 是 VelaShell 的心脏：一个从零实现的、不依赖任何第三方终端控件的终端仿真器与渲染层。它将远端字节流解析为屏幕状态，再由自定义 Avalonia `Control` 直接绘制字形、选区、滚动与光标。
 

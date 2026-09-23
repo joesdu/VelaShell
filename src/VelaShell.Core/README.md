@@ -8,7 +8,7 @@
 
 - **无 UI 依赖**：唯一的包引用是 `ReactiveUI`（用于 `ReactiveObject` 数据模型），**不引用 Avalonia**。
 - **接口优先**：对外只暴露接口（`I*Service`、`I*Store`、`I*Wrapper`），具体实现落在 `VelaShell.Infrastructure`。上层通过 DI 注入依赖，便于 Mock 与替换。
-- **SSH 库中立**：Core **不引用任何具体 SSH 库**。SSH/SFTP 能力全部经 `Ssh/` 下的中立抽象（`ISshClientWrapper`、`ISftpClientWrapper`、`SftpEntry`、`VelaSshClientException` 等）访问，具体依赖（当前为自研的 `VelaShell.Ssh`）只存在于 Infrastructure。这条约束已被验证有效：从 SSH.NET 迁到 Tmds.Ssh 时 Core 一行未改；再迁到 VelaShell.Ssh 时 Core 只动了契约本身（释放全面异步化），没有一处实现细节泄漏进来。
+- **SSH 库中立**：Core **不引用任何具体 SSH 库**。SSH/SFTP 能力全部经 `Ssh/` 下的中立抽象（`ISshClientWrapper`、`ISftpClientWrapper`、`SftpEntry`、`VelaSshClientException` 等）访问，具体依赖（当前为 `VelaShell.Ssh`）只存在于 Infrastructure。这条约束已被验证有效：从 SSH.NET 迁到 Tmds.Ssh 时 Core 一行未改；再迁到 VelaShell.Ssh 时 Core 只动了契约本身（释放全面异步化），没有一处实现细节泄漏进来。
 
 ## 🗂️ 目录结构
 

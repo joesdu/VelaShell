@@ -1,6 +1,6 @@
 # VelaShell.Ssh
 
-**宿主自研的 SSH 客户端库 —— 全异步、低分配、AOT 友好。** 宿主用它替换了 Tmds.Ssh。
+**宿主的 SSH 客户端库 —— 全异步、低分配、AOT 友好。** 宿主用它替换了 Tmds.Ssh。
 
 一套**独立实现**的 SSH 客户端库：远程命令、交互式 shell（含 PTY）、SFTP、
 端口转发与隧道。它不是任何现有库的 fork —— 见 [`NOTICE.md`](NOTICE.md)。

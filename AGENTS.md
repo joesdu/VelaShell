@@ -19,7 +19,7 @@ VelaShell 生态的**全部文档**集中在一个仓库:
 | [`zh/sdk/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/sdk)             | 插件契约 SDK 参考、SDK 仓库的发版流程                                                                                                                       |
 | [`zh/cli/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/cli)             | `vela-plugin` 命令行手册、CLI 仓库的发版流程                                                                                                               |
 | [`zh/templates/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/templates) | 插件开发指南、打包与发布、模板仓库的发版流程                                                                                                                        |
-| [`zh/ssh/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/ssh)             | 自研 SSH 库 `src/VelaShell.Ssh` 的架构与原理(含净室论证)、行为规格 00–09、上手                                                                                      |
+| [`zh/ssh/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/ssh)             | SSH 库 `src/VelaShell.Ssh` 的架构与原理(含净室论证)、行为规格 00–09、上手                                                                                      |
 
 
 英文镜像在 [`en/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/en),与 `zh/` 同构。
@@ -82,7 +82,7 @@ Docker 与 `docker-compose.test.yml`,`CrossPlatformPublishTests` 需 `VELASHELL_
 `HeadlessUnitTestSession` 没有 `Func<Task>` 重载,写成无返回值会拿到一个从未被等待的
 `Task<Task>`,测试跑到第一个 `await` 就"通过",断言失败全部丢失。
 - **改 `src/VelaShell.Ssh/` 之前先读 [`src/VelaShell.Ssh/AGENTS.md`](src/VelaShell.Ssh/AGENTS.md)**。
-那是自研的 SSH 库(2026-09-23 从 velashell-ssh 仓库并入,不单独发 NuGet),有一条宿主其余部分没有的
+那是宿主的 SSH 库(2026-09-23 从 velashell-ssh 仓库并入,不单独发 NuGet),有一条宿主其余部分没有的
 **净室规程**:写实现时不许打开任何其它 SSH 实现的源码,实现依据只能是 RFC 与 velashell-docs 的
 `zh/ssh/spec/`;CI 的相似度门禁(`ssh-checks` 作业)会把关。该目录按 **MIT** 授权,
 别把宿主其余部分的代码挪进去。它的测试一律用 Debug 跑(Release 签名会省掉 `InternalsVisibleTo`)。
@@ -94,6 +94,12 @@ Docker 与 `docker-compose.test.yml`,`CrossPlatformPublishTests` 需 `VELASHELL_
 绝不要 `dotnet pack` 一个本地包、往 `nuget.config` 塞本地源、或者把包版本指到一个
 还不存在的号 —— 下一版发什么号是排期决定的,你猜一个就把所有下游都钉死在那个号上了;
 何况本地包未签名(`VelaShell.snk` 不在仓库里),一编译就是一片 `CS0012` 假错误。
+- **不许用「自研」(英文不许用 in-house)给东西贴标签**。代码注释、README、`plan.md`、界面文案、
+提交信息与 PR 描述一律适用,换成同义的招牌词(自主研发 / 自有 / 自家 / 原创 / home-grown / our own)也不行。
+这个词现在不是褒义词,满篇「自研」只会显得在自夸。直接写名字和事实:
+「VT 终端引擎」而不是「自研 VT 终端引擎」,「VelaShell.Ssh(本仓库 `src/VelaShell.Ssh`)」而不是「自研 SSH 库」。
+确实需要强调「没用第三方库」时写**具体事实**:「零第三方停靠依赖」「不依赖 Dock.Avalonia」
+「在插件内实现编码器、替换 QRCoder」。
 - 永远不要试图使用Python来执行脚本或者进行什么操作.可以使用PowerShell或C#的单文件脚本的方式来处理.可以参考文档: [https://learn.microsoft.com/zh-cn/dotnet/core/sdk/file-based-apps](https://learn.microsoft.com/zh-cn/dotnet/core/sdk/file-based-apps)
 
 ### 相关仓库
