@@ -138,6 +138,9 @@ public sealed class X11Forwarder : IAsyncDisposable
 
     private long _acceptedChannels;
     private long _rejectedChannels;
+
+    /// <summary>单连接模式下那唯一的名额是否已被认领（0 / 1）。</summary>
+    private int _singleConnectionClaimed;
     private int _disposed;
 
     private X11Forwarder(
@@ -253,6 +256,14 @@ public sealed class X11Forwarder : IAsyncDisposable
 
     internal void NoteRejected() => Interlocked.Increment(ref _rejectedChannels);
 
+    private void ReleaseSingle(bool claimed)
+    {
+        if (claimed)
+        {
+            Volatile.Write(ref _singleConnectionClaimed, 0);
+        }
+    }
+
     /// <summary>cookie 已经对上了：连本机显示，把换好的建立报文发过去，然后对搬。</summary>
     internal async Task RelayAsync(SshChannel channel, byte[] rewrittenSetup, CancellationToken cancellationToken)
     {
@@ -264,34 +275,47 @@ public sealed class X11Forwarder : IAsyncDisposable
         }
 
         // 单连接模式：本端强制，不指望服务端。
-        if (_options.SingleConnection && Interlocked.Read(ref _acceptedChannels) > 0)
+        //
+        // ⚠️ 名额要**原子地认领**。以前是「看 _acceptedChannels 是否 > 0」，而计数要等建立报文
+        // 发给本机显示之后才加一 —— 两条 x11 通道挨着到达时，第二条看到的还是 0，两条都被放行。
+        bool claimedSingle = false;
+        if (_options.SingleConnection)
         {
-            NoteRejected();
-            return;
+            if (Interlocked.Exchange(ref _singleConnectionClaimed, 1) != 0)
+            {
+                NoteRejected();
+                return;
+            }
+            claimedSingle = true;
         }
 
         if (!_slots.Wait(0, CancellationToken.None))
         {
+            ReleaseSingle(claimedSingle);
             NoteRejected();
             return;
         }
 
         Socket? local = null;
+        bool accepted = false;
         try
         {
             local = await ConnectDisplayAsync(cancellationToken).ConfigureAwait(false);
             if (local is null)
             {
-                return;   // 本机显示连不上 —— 通道随后由会话关掉
+                return;   // 本机显示连不上 —— 通道随后由会话关掉；名额在 finally 里退回
             }
+
+            // 显示连上了就算接纳，**在建立报文上线之前**计数：
+            // X server 一收到报文，外面就可能来读这个计数。
+            Interlocked.Increment(ref _acceptedChannels);
+            accepted = true;
 
             NetworkStream stream = new(local, ownsSocket: false);
 
             // 先把换好的建立报文发过去，再进入对搬。
             await stream.WriteAsync(rewrittenSetup, cancellationToken).ConfigureAwait(false);
             await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-
-            Interlocked.Increment(ref _acceptedChannels);
 
             Socket socket = local;
             await using StreamRelayEndpoint localEnd = new(
@@ -312,6 +336,12 @@ public sealed class X11Forwarder : IAsyncDisposable
         {
             local?.Dispose();
             _slots.Release();
+
+            // 没接纳（显示连不上、连的时候出错）就等于什么都没转发出去 —— 单连接的名额退回。
+            if (!accepted)
+            {
+                ReleaseSingle(claimedSingle);
+            }
         }
     }
 

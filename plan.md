@@ -5981,7 +5981,9 @@ Windows 的 OpenSSH agent 会把加进去的钥存进注册表,**重启后仍在
 文档:velashell-docs `zh|en/ssh/spec/07-forwarding.md` §7.3、`zh|en/ssh/getting-started.md`、
 `zh|en/host/settings-audit.md` R-06、`zh|en/host/交互与界面规格.md` 密钥管理一节、`zh|en/host/架构设计.md` 未实现清单。
 
-## ✅ 99. 2026-09-23 CI 在 Linux 上随机红:测试桩重协商「发出之后才登记」(CI 反馈)
+## ✅ 99. 2026-09-23 CI 随机红的三处:重协商测试桩、X11 单连接放行两条、AI 插话用例赌调度(CI 反馈)
+
+### 一、重协商测试桩「发出之后才登记」
 
 PR #493 的 ubuntu 作业挂了一条 `RekeyTests.服务端发起的重协商能接住并且连接继续可用`,25 秒超时;Windows / macOS 通过。
 与本 PR 的改动无关,是 `TestChannelServer` 自己的竞态,和 §97 请求账本那次同一类。
@@ -5996,3 +5998,24 @@ SSH 库本身没有改动。
 回归用例 `RekeyTests.客户端的KEXINIT赶在服务端发送返回之前到达也能完成重协商`:测试桩新增 `DelayAfterRekeyKexInitSent`,
 把「KEXINIT 已上线、发送未返回」的窗口撑到 300ms。把赋值挪回发送之后时它稳定挂在 25 秒超时上,修复后通过;
 `VelaShell.Ssh.Tests` 全量连跑三遍均 0 失败。
+
+### 二、X11 单连接模式会放行两条(库的缺陷,不只是用例不稳)
+
+推上去之后 ubuntu 又挂了 `X11ForwardTests.单连接模式在本端强制`。根因在 `X11Forwarder.RelayAsync`:
+单连接判断是「看 `_acceptedChannels` 是否 > 0」,而计数要等建立报文**发给本机 X server 之后**才加一。
+用例在 X server 读到第一条的建立报文后立刻开第二条,第二条看到的仍是 0,于是也被放行。
+脱开用例看,「先看再加」本身不是原子的:两条 x11 通道挨着到达时两条都会被转发,违背 spec/07 §7.5.3「第一条之后一律拒绝」。
+
+- 名额改成 `Interlocked.Exchange` 原子认领;本机显示没连上(或连的时候出错)时在 `finally` 里退回 ——
+  什么都没转发出去,不该占掉唯一的名额,与原先「只有接纳才计数」的口径一致。
+- `_acceptedChannels` 挪到**建立报文上线之前**加一,X server 收到报文时计数已经可读
+  (`同一连接上两个会话的cookie互不相通` 里 `ReadSetupAsync` 之后立刻断言计数,同样受益)。
+- 回归用例 `单连接模式下同时到达的两条通道只放行一条`:两条通道同时写建立报文。旧代码在 Windows 上 6/6 稳定失败
+  (两条都被放行),修复后 X11 这组连跑 6 遍全过。规格本来就是这么写的,velashell-docs 无需改。
+
+### 三、AI 插件插话用例:回车按在第一次请求发出之前
+
+macOS 挂了 `ChatPanelViewUiTests.ClickingAQueuedChip_TakesTheMessageBack`:等不到排队芯片。停止键亮起只说明这一轮开跑了,
+不代表请求已发到 stub;而 `SteeringChatClient` 每次发请求前都会把队列 `DrainAll()` —— 回车若赶在那之前,
+那句话就被并进第一次请求,芯片根本不出现。同文件 `StoppingTheTurn_…` 早就按「先等 `stub.Requests.Count >= 1` 再按回车」修过,
+这次把 `ClickingAQueuedChip_…` 与写法相同的 `EnterWhileBusy_…` 一并改成同样的顺序。产品代码无改动。

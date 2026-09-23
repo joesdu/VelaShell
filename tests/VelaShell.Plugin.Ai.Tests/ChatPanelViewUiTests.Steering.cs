@@ -71,6 +71,10 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsTrue(await WaitForAsync(() => stop.IsVisible, maxRounds: 60), "这一轮该跑起来了");
                 Assert.IsTrue(Find<Button>(panel, "SendButton").IsVisible,
                     "忙的时候发送键也得留着 —— 它此刻是「排队」");
+                // 停止键亮起只说明这一轮开跑了。SteeringChatClient 每次发请求前都会把队列取空 ——
+                // 回车若赶在第一次请求发出之前,那句话会被并进第一次请求,而不是排着等下一轮。
+                Assert.IsTrue(await WaitForAsync(() => stub.Requests.Count >= 1, maxRounds: 120),
+                    "这一轮的请求该已经发出去了");
 
                 TextEditor input = Find<TextEditor>(panel, "InputBox");
                 input.Text = "只看最近一小时的";
@@ -163,6 +167,10 @@ public sealed partial class ChatPanelViewUiTests
             {
                 panel.SendExternal("看看日志");
                 Assert.IsTrue(await WaitForAsync(() => Find<Button>(panel, "StopButton").IsVisible, maxRounds: 60));
+                // 必须等第一次请求真的落到 stub 再按回车:SteeringChatClient 每次发请求前都会把队列取空,
+                // 回车若赶在请求发出之前,那句话就并进了第一次请求,芯片根本不会出现(macOS runner 上就是这么挂的)。
+                Assert.IsTrue(await WaitForAsync(() => stub.Requests.Count >= 1, maxRounds: 120),
+                    "这一轮的请求该已经发出去了");
 
                 TextEditor input = Find<TextEditor>(panel, "InputBox");
                 input.Text = "说错了,撤回";
