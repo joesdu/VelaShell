@@ -33,12 +33,7 @@
     <Project Path="src/VelaShell.Terminal/VelaShell.Terminal.csproj" />
     <Project Path="src/VelaShell/VelaShell.csproj" />
   </Folder>
-  <Folder Name="/src/VelaShell.Ssh/">
-    <File Path="src/VelaShell.Ssh/AGENTS.md" />
-    <File Path="src/VelaShell.Ssh/LICENSE" />
-    <File Path="src/VelaShell.Ssh/NOTICE.md" />
-    <File Path="src/VelaShell.Ssh/README.md" />
-  </Folder>
+  <Folder Name="/scripts/" />
   <Folder Name="/scripts/ssh/">
     <File Path="scripts/ssh/Update-PublicApi.ps1" />
     <File Path="scripts/ssh/benchmarks/benchmarks.cs" />
