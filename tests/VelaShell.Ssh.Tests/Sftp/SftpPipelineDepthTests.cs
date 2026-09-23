@@ -145,7 +145,7 @@ public sealed class SftpPipelineDepthTests
             link, options, server => server.AddFile("/home/joe/big.bin", payload));
 
         byte[] content = await harness.Sftp.ReadAllBytesAsync("/home/joe/big.bin", harness.Token);
-        CollectionAssert.AreEqual(payload, content, "数据要一字节不差");
+        Assert.AreSequenceEqual(payload, content, "数据要一字节不差");
     }
 
     [TestMethod]
@@ -167,10 +167,10 @@ public sealed class SftpPipelineDepthTests
 
         byte[] content = await harness.Sftp.ReadAllBytesAsync("/home/joe/f.bin", harness.Token);
 
-        Assert.AreEqual(payload.Length, content.Length);
+        Assert.HasCount(payload.Length, content);
 
         // 需要确定性内存占用的场景（在途数 × 块大小）靠的就是这一条。
-        Assert.IsFalse(SftpOptions.Default with { AdaptivePipelineDepth = false } is null);
+        Assert.IsNotNull(SftpOptions.Default with { AdaptivePipelineDepth = false });
     }
 
     [TestMethod]
@@ -207,7 +207,7 @@ public sealed class SftpPipelineDepthTests
         byte[] first = await harness.Sftp.ReadAllBytesAsync("/home/joe/x.bin", harness.Token);
         byte[] second = await harness.Sftp.ReadAllBytesAsync("/home/joe/x.bin", harness.Token);
 
-        CollectionAssert.AreEqual(payload, first);
-        CollectionAssert.AreEqual(payload, second, "第二遍也要对 —— 额度不能在第一遍之后泄漏");
+        Assert.AreSequenceEqual(payload, first);
+        Assert.AreSequenceEqual(payload, second, "第二遍也要对 —— 额度不能在第一遍之后泄漏");
     }
 }

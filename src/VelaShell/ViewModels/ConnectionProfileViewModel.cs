@@ -933,7 +933,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     }
 
     /// <summary>X11 显示地址输入框的占位:没配 <c>DISPLAY</c> 时实际会用的那个值。</summary>
-    public string SshX11DisplayPlaceholder =>
+    public static string SshX11DisplayPlaceholder =>
         Environment.GetEnvironmentVariable("DISPLAY") is { Length: > 0 } display
             ? display
             : SshSessionOptions.DefaultX11Display;

@@ -72,14 +72,14 @@ public sealed class DirectorySyncViewModelTests
         Assert.IsNull(vm.ErrorText, vm.ErrorText);
         Assert.AreSequenceEqual(
             ["changed.txt:Upload", "extra.txt:DeleteRemote", "new.txt:Upload"],
-            vm.Items.Select(i => $"{i.Action.RelativePath}:{i.Action.Kind}").ToArray(),
+            [.. vm.Items.Select(i => $"{i.Action.RelativePath}:{i.Action.Kind}")],
             SequenceOrder.InAnyOrder);
 
         await vm.SynchronizeCommand.Execute().FirstAsync();
 
         Assert.HasCount(1, confirmations, "有删除时必须先确认");
-        Assert.AreSequenceEqual([RemoteRoot + "/changed.txt", RemoteRoot + "/new.txt"], _remote.Uploads.ToArray(), SequenceOrder.InAnyOrder);
-        Assert.AreSequenceEqual([RemoteRoot + "/extra.txt"], _remote.Deletes.ToArray());
+        Assert.AreSequenceEqual([RemoteRoot + "/changed.txt", RemoteRoot + "/new.txt"], [.. _remote.Uploads], SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual([RemoteRoot + "/extra.txt"], [.. _remote.Deletes]);
         Assert.AreEqual(localNew, _remote.TimesSet[RemoteRoot + "/new.txt"], "上传后远端时间必须对齐本地,否则下次比较会判成远端较新");
         Assert.IsFalse(vm.HasItems, "复查后不该还有剩余操作");
         Assert.AreEqual(Strings.Format("Sync_DoneVerified", 3, 0), vm.StatusText);
@@ -96,7 +96,7 @@ public sealed class DirectorySyncViewModelTests
         vm.Items.Single(i => i.Action.RelativePath == "skip.txt").IsChecked = false;
         await vm.SynchronizeCommand.Execute().FirstAsync();
 
-        Assert.AreSequenceEqual([RemoteRoot + "/keep.txt"], _remote.Uploads.ToArray());
+        Assert.AreSequenceEqual([RemoteRoot + "/keep.txt"], [.. _remote.Uploads]);
         Assert.AreEqual(Strings.Format("Sync_DoneRemaining", 1, 0, 1), vm.StatusText, "没勾的那一项复查时仍然待同步");
     }
 
@@ -111,7 +111,7 @@ public sealed class DirectorySyncViewModelTests
         await vm.CompareCommand.Execute().FirstAsync();
         Assert.AreSequenceEqual(
             ["logs:CreateLocalDirectory", "logs/app.log:Download"],
-            vm.Items.Select(i => $"{i.Action.RelativePath}:{i.Action.Kind}").ToArray());
+            [.. vm.Items.Select(i => $"{i.Action.RelativePath}:{i.Action.Kind}")]);
         await vm.SynchronizeCommand.Execute().FirstAsync();
 
         string downloaded = Path.Combine(_local, "logs", "app.log");
@@ -137,7 +137,7 @@ public sealed class DirectorySyncViewModelTests
         // 对照:关掉校验就退回按时间比较,本地较新 → 上传。
         vm.CompareByChecksum = false;
         await vm.CompareCommand.Execute().FirstAsync();
-        Assert.AreSequenceEqual(["a.txt:Upload"], vm.Items.Select(i => $"{i.Action.RelativePath}:{i.Action.Kind}").ToArray());
+        Assert.AreSequenceEqual(["a.txt:Upload"], [.. vm.Items.Select(i => $"{i.Action.RelativePath}:{i.Action.Kind}")]);
     }
 
     [TestMethod]
@@ -153,7 +153,7 @@ public sealed class DirectorySyncViewModelTests
 
         Assert.AreSequenceEqual(
             ["a.txt:Upload"],
-            vm.Items.Select(i => $"{i.Action.RelativePath}:{i.Action.Kind}").ToArray(),
+            [.. vm.Items.Select(i => $"{i.Action.RelativePath}:{i.Action.Kind}")],
             message: "大小与时间都一样、内容却变了:只有摘要看得出来");
     }
 
@@ -167,7 +167,7 @@ public sealed class DirectorySyncViewModelTests
 
         await vm.CompareCommand.Execute().FirstAsync();
 
-        Assert.AreSequenceEqual(["a.txt:Upload"], vm.Items.Select(i => $"{i.Action.RelativePath}:{i.Action.Kind}").ToArray());
+        Assert.AreSequenceEqual(["a.txt:Upload"], [.. vm.Items.Select(i => $"{i.Action.RelativePath}:{i.Action.Kind}")]);
         Assert.Contains(Strings.Format("Sync_NoteChecksumUnsupported", FakeRemote.UnsupportedReason), vm.NoteText);
     }
 
@@ -231,7 +231,7 @@ public sealed class DirectorySyncViewModelTests
         await vm.ToggleWatchCommand.Execute().FirstAsync();
 
         Assert.IsTrue(vm.IsWatching);
-        Assert.AreSequenceEqual([RemoteRoot + "/existing.txt"], _remote.Uploads.ToArray(), message: "开始时先完整对齐一次");
+        Assert.AreSequenceEqual([RemoteRoot + "/existing.txt"], [.. _remote.Uploads], message: "开始时先完整对齐一次");
 
         Directory.CreateDirectory(Path.Combine(_local, "sub"));
         WriteLocal("sub/nested.txt", "y", DateTime.UtcNow);

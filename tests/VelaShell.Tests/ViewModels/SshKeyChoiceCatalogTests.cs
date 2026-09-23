@@ -35,8 +35,7 @@ public partial class SshKeyChoiceCatalogTests
         string[] keysInXaml = [.. ItemKey.Matches(combo.Value).Select(m => m.Groups[1].Value)];
         string[] keysInCatalog = [.. SshKeyManagerViewModel.AlgorithmChoices.Select(c => c.LocalizationKey)];
 
-        CollectionAssert.AreEqual(keysInCatalog, keysInXaml,
-                                  "下拉条目与 AlgorithmChoices 对不上(顺序也算)。唯一事实来源是 " +
+        Assert.AreSequenceEqual(keysInCatalog, keysInXaml, "下拉条目与 AlgorithmChoices 对不上(顺序也算)。唯一事实来源是 " +
                                   "SshKeyManagerViewModel.AlgorithmChoices,要增删档位先改那里,再照着改 axaml。\n" +
                                   $"  axaml   : {string.Join(", ", keysInXaml)}\n" +
                                   $"  catalog : {string.Join(", ", keysInCatalog)}");
@@ -56,7 +55,7 @@ public partial class SshKeyChoiceCatalogTests
     public void BaseNames_AreDistinct()
     {
         string[] names = [.. SshKeyManagerViewModel.AlgorithmChoices.Select(c => c.BaseName)];
-        Assert.AreEqual(names.Length, names.Distinct(StringComparer.Ordinal).Count(),
+        Assert.HasCount(names.Length, names.Distinct(StringComparer.Ordinal),
                         $"建议文件名有重复:{string.Join(", ", names)}");
     }
 

@@ -55,7 +55,7 @@ public sealed class SyncChecksumsTests
 
         SyncChecksumOutcome outcome = await SyncChecksums.ApplyAsync(local, remote, Checksum, sftp, _session);
 
-        Assert.AreSequenceEqual(["/r/same.txt"], asked.ToArray(), message: "大小不同已经证明内容不同,不必再读两遍");
+        Assert.AreSequenceEqual(["/r/same.txt"], [.. asked], message: "大小不同已经证明内容不同,不必再读两遍");
         Assert.AreEqual(1, outcome.Candidates);
         Assert.AreEqual(1, outcome.Verified);
         Assert.IsNull(outcome.RemoteFailure);

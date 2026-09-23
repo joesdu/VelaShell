@@ -122,7 +122,7 @@ public sealed class SshPacketTransportTests
             Assert.AreEqual("SSH-2.0-Test", await b.ReadLineAsync());
             SshInboundPacket packet = await b.ReadPacketAsync();
             Assert.IsFalse(packet.IsEndOfStream);
-            CollectionAssert.AreEqual(payload, packet.Payload.ToArray());
+            Assert.AreSequenceEqual(payload, packet.Payload.ToArray());
         }
     }
 
@@ -140,7 +140,7 @@ public sealed class SshPacketTransportTests
             await a.FlushAsync();
 
             SshInboundPacket packet = await b.ReadPacketAsync();
-            CollectionAssert.AreEqual(payload, packet.Payload.ToArray());
+            Assert.AreSequenceEqual(payload, packet.Payload.ToArray());
             Assert.AreEqual(SshMessageNumber.KexInit, packet.MessageNumber);
         }
     }
@@ -161,7 +161,7 @@ public sealed class SshPacketTransportTests
                 await a.FlushAsync();
 
                 SshInboundPacket packet = await b.ReadPacketAsync();
-                CollectionAssert.AreEqual(payload, packet.Payload.ToArray(), $"第 {i} 个报文");
+                Assert.AreSequenceEqual(payload, packet.Payload.ToArray(), $"第 {i} 个报文");
             }
         }
     }
@@ -189,7 +189,7 @@ public sealed class SshPacketTransportTests
             for (int i = 0; i < 64; i++)
             {
                 SshInboundPacket packet = await b.ReadPacketAsync();
-                CollectionAssert.AreEqual(sent[i], packet.Payload.ToArray(), $"第 {i} 帧");
+                Assert.AreSequenceEqual(sent[i], packet.Payload.ToArray(), $"第 {i} 帧");
             }
 
             Assert.AreEqual(64, a.PacketsSent);
@@ -254,7 +254,7 @@ public sealed class SshPacketTransportTests
 
             SshInboundPacket packet = await pending.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.AreEqual(SshMessageNumber.KexInit, packet.MessageNumber);
-            Assert.AreEqual(301, packet.Payload.Length);
+            Assert.HasCount(301, packet.Payload);
         }
     }
 
@@ -369,7 +369,7 @@ public sealed class SshPacketTransportTests
             await a.FlushAsync();
 
             SshInboundPacket packet = await b.ReadPacketAsync();
-            Assert.AreEqual(0, packet.Payload.Length);
+            Assert.HasCount(0, packet.Payload);
             Assert.ThrowsExactly<SshFrameFormatException>(() => _ = packet.MessageNumber);
         }
     }

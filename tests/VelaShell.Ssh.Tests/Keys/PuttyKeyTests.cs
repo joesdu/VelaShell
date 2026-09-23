@@ -246,7 +246,7 @@ public sealed class PuttyKeyTests
             string ppk = BuildPpk(3, SshAlgorithmNames.SshEd25519, pub, priv);
             ISshSigner signer = SshPrivateKeyFile.Parse(ppk);
 
-            CollectionAssert.AreEqual(expected.PublicKey.Blob.ToArray(), signer.PublicKey.Blob.ToArray());
+            Assert.AreSequenceEqual(expected.PublicKey.Blob.ToArray(), signer.PublicKey.Blob.ToArray());
 
             byte[] data = Encoding.UTF8.GetBytes("签一下");
             byte[] signature = await signer.SignAsync(data, SshAlgorithmNames.SshEd25519);
@@ -281,7 +281,7 @@ public sealed class PuttyKeyTests
             string ppk = BuildPpk(3, SshAlgorithmNames.SshEd25519, pub, priv, passphrase: "正确的口令");
             ISshSigner signer = SshPrivateKeyFile.Parse(ppk, "正确的口令");
 
-            CollectionAssert.AreEqual(expected.PublicKey.Blob.ToArray(), signer.PublicKey.Blob.ToArray());
+            Assert.AreSequenceEqual(expected.PublicKey.Blob.ToArray(), signer.PublicKey.Blob.ToArray());
 
             byte[] data = Encoding.UTF8.GetBytes("加密的也要能签");
             byte[] signature = await signer.SignAsync(data, SshAlgorithmNames.SshEd25519);
@@ -380,7 +380,7 @@ public sealed class PuttyKeyTests
                 () => SshPrivateKeyFile.Parse(ppk));
 
             Assert.IsTrue(error.NeedsPassphrase);
-            StringAssert.Contains(error.Message, "需要口令");
+            Assert.Contains("需要口令", error.Message);
         }
     }
 
@@ -398,7 +398,7 @@ public sealed class PuttyKeyTests
             // 先验 MAC 再用私钥 —— 不然报出来的会是「参数不成立」之类，
             // 而真正的原因是口令打错了。
             Assert.IsTrue(error.NeedsPassphrase);
-            StringAssert.Contains(error.Message, "口令多半不对");
+            Assert.Contains("口令多半不对", error.Message);
         }
     }
 
@@ -417,7 +417,7 @@ public sealed class PuttyKeyTests
                 () => SshPrivateKeyFile.Parse(tampered));
 
             Assert.IsFalse(error.NeedsPassphrase, "这不是口令问题");
-            StringAssert.Contains(error.Message, "MAC 对不上");
+            Assert.Contains("MAC 对不上", error.Message);
         }
     }
 
@@ -427,7 +427,7 @@ public sealed class PuttyKeyTests
         SshPrivateKeyException error = Assert.ThrowsExactly<SshPrivateKeyException>(
             () => PuttyPrivateKeyFile.Parse("PuTTY-User-Key-File-1: ssh-rsa\nEncryption: none\n"));
 
-        StringAssert.Contains(error.Message, "不支持的 .ppk 版本");
+        Assert.Contains("不支持的 .ppk 版本", error.Message);
     }
 
     [TestMethod]
@@ -442,7 +442,7 @@ public sealed class PuttyKeyTests
                 await File.WriteAllTextAsync(path, BuildPpk(3, SshAlgorithmNames.SshEd25519, pub, priv));
 
                 ISshSigner signer = await SshPrivateKeyFile.LoadAsync(path);
-                CollectionAssert.AreEqual(
+                Assert.AreSequenceEqual(
                     expected.PublicKey.Blob.ToArray(), signer.PublicKey.Blob.ToArray());
             }
             finally

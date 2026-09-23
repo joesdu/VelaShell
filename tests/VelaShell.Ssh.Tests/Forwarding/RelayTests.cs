@@ -202,6 +202,6 @@ public sealed class RelayTests
         await feed;
         await relay;
 
-        CollectionAssert.AreEqual(payload, atRight);
+        Assert.AreSequenceEqual(payload, atRight);
     }
 }

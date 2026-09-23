@@ -29,8 +29,8 @@ public class SshSessionFeaturesTests
     {
         SshAlgorithmSet algorithms = SshConnectionAssembler.Algorithms(Info(null));
 
-        CollectionAssert.AreEqual(new[] { "none" }, algorithms.CompressionClientToServer.ToArray());
-        CollectionAssert.AreEqual(new[] { "none" }, algorithms.CompressionServerToClient.ToArray());
+        Assert.AreSequenceEqual(new[] { "none" }, [.. algorithms.CompressionClientToServer]);
+        Assert.AreSequenceEqual(new[] { "none" }, [.. algorithms.CompressionServerToClient]);
     }
 
     /// <summary>
@@ -45,10 +45,10 @@ public class SshSessionFeaturesTests
     {
         SshAlgorithmSet algorithms = SshConnectionAssembler.Algorithms(Info(new SshSessionOptions { Compression = true }));
 
-        CollectionAssert.AreEqual(
-            new[] { "zlib@openssh.com", "none" }, algorithms.CompressionClientToServer.ToArray());
-        CollectionAssert.AreEqual(
-            new[] { "zlib@openssh.com", "none" }, algorithms.CompressionServerToClient.ToArray());
+        Assert.AreSequenceEqual(
+            new[] { "zlib@openssh.com", "none" }, [.. algorithms.CompressionClientToServer]);
+        Assert.AreSequenceEqual(
+            new[] { "zlib@openssh.com", "none" }, [.. algorithms.CompressionServerToClient]);
     }
 
     /// <summary>只开压缩不影响其余算法 —— 那一套是安全默认值,不该被顺手改掉。</summary>
@@ -57,9 +57,9 @@ public class SshSessionFeaturesTests
     {
         SshAlgorithmSet on = SshConnectionAssembler.Algorithms(Info(new SshSessionOptions { Compression = true }));
 
-        CollectionAssert.AreEqual(SshAlgorithmSet.Default.KeyExchange.ToArray(), on.KeyExchange.ToArray());
-        CollectionAssert.AreEqual(
-            SshAlgorithmSet.Default.EncryptionClientToServer.ToArray(), on.EncryptionClientToServer.ToArray());
+        Assert.AreSequenceEqual([.. SshAlgorithmSet.Default.KeyExchange], [.. on.KeyExchange]);
+        Assert.AreSequenceEqual(
+            [.. SshAlgorithmSet.Default.EncryptionClientToServer], [.. on.EncryptionClientToServer]);
     }
 
     [TestMethod]
@@ -107,7 +107,7 @@ public class SshSessionFeaturesTests
         Assert.IsNull(options);
         Assert.HasCount(1, notices);
         Assert.IsTrue(notices[0].IsWarning);
-        StringAssert.Contains(notices[0].Text, "not-a-display");
+        Assert.Contains("not-a-display", notices[0].Text);
     }
 
     [TestMethod]

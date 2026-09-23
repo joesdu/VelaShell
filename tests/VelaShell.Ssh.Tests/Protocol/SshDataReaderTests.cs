@@ -102,7 +102,7 @@ public sealed class SshDataReaderTests
     public void String_读出长度前缀之后的字节()
     {
         SshDataReader r = Reader(0, 0, 0, 3, (byte)'a', (byte)'b', (byte)'c');
-        CollectionAssert.AreEqual("abc"u8.ToArray(), r.ReadString(64).ToArray());
+        Assert.AreSequenceEqual("abc"u8.ToArray(), r.ReadString(64).ToArray());
         Assert.IsTrue(r.IsEmpty);
     }
 
@@ -112,7 +112,7 @@ public sealed class SshDataReaderTests
         // PipeReader 给的常是多段序列。按单段假设写的代码在这里会漏。
         byte[] raw = [0, 0, 0, 5, (byte)'h', (byte)'e', (byte)'l', (byte)'l', (byte)'o'];
         var r = new SshDataReader(Segmented(raw, chunk: 2));
-        CollectionAssert.AreEqual("hello"u8.ToArray(), r.ReadString(64).ToArray());
+        Assert.AreSequenceEqual("hello"u8.ToArray(), r.ReadString(64).ToArray());
     }
 
     [TestMethod]
@@ -177,14 +177,14 @@ public sealed class SshDataReaderTests
     public void Mpint_去掉补码用的前导零()
     {
         SshDataReader r = Reader(0, 0, 0, 2, 0x00, 0x80);
-        CollectionAssert.AreEqual(new byte[] { 0x80 }, r.ReadMpint(64).ToArray());
+        Assert.AreSequenceEqual(new byte[] { 0x80 }, r.ReadMpint(64).ToArray());
     }
 
     [TestMethod]
     public void Mpint_没有前导零时原样返回()
     {
         SshDataReader r = Reader(0, 0, 0, 1, 0x7F);
-        CollectionAssert.AreEqual(new byte[] { 0x7F }, r.ReadMpint(64).ToArray());
+        Assert.AreSequenceEqual(new byte[] { 0x7F }, r.ReadMpint(64).ToArray());
     }
 
     [TestMethod]
@@ -214,8 +214,7 @@ public sealed class SshDataReaderTests
             w.WriteMpint(value);
 
             var r = new SshDataReader(new ReadOnlySequence<byte>(buffer.WrittenMemory));
-            CollectionAssert.AreEqual(value, r.ReadMpint(1024).ToArray(),
-                $"mpint 往返失真: {Convert.ToHexString(value)}");
+            Assert.AreSequenceEqual(value, r.ReadMpint(1024).ToArray(), $"mpint 往返失真: {Convert.ToHexString(value)}");
             Assert.IsTrue(r.IsEmpty, "往返之后应当恰好读完");
         }
     }
@@ -228,14 +227,14 @@ public sealed class SshDataReaderTests
         byte[] raw = [0, 0, 0, 9, (byte)'z', (byte)'l', (byte)'i', (byte)'b', (byte)',',
                       (byte)'n', (byte)'o', (byte)'n', (byte)'e'];
         SshDataReader r = new(new ReadOnlySequence<byte>(raw));
-        CollectionAssert.AreEqual(new[] { "zlib", "none" }, r.ReadNameList(1024));
+        Assert.AreSequenceEqual(new[] { "zlib", "none" }, r.ReadNameList(1024));
     }
 
     [TestMethod]
     public void 空NameList_返回空数组()
     {
         SshDataReader r = Reader(0, 0, 0, 0);
-        Assert.AreEqual(0, r.ReadNameList(1024).Length);
+        Assert.IsEmpty(r.ReadNameList(1024));
     }
 
     [TestMethod]

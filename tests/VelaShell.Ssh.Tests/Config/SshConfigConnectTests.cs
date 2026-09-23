@@ -105,7 +105,7 @@ public sealed class SshConfigConnectTests
 
         SshConnectException ex = await Assert.ThrowsExactlyAsync<SshConnectException>(
             async () => await SshConfigFile.CreateConnectionOptionsAsync(blocks, "a"));
-        StringAssert.Contains(ex.Message, "环");
+        Assert.Contains("环", ex.Message);
     }
 
     [TestMethod]

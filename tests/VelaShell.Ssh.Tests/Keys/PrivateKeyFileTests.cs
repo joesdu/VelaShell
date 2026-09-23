@@ -127,7 +127,7 @@ public sealed class PrivateKeyFileTests
         SshPrivateKeyException error = Assert.ThrowsExactly<SshPrivateKeyException>(
             () => SshPrivateKeyFile.Parse("PuTTY-User-Key-File-9: ssh-ed25519\nEncryption: none\n"));
 
-        StringAssert.Contains(error.Message, "不支持的 .ppk 版本");
+        Assert.Contains("不支持的 .ppk 版本", error.Message);
     }
 
     // ------------------------------------------------------------ OpenSSH 格式
@@ -157,8 +157,7 @@ public sealed class PrivateKeyFileTests
         ISshSigner signer = SshPrivateKeyFile.Parse(pem);
 
         Assert.AreEqual(SshAlgorithmNames.SshEd25519, signer.PublicKey.KeyType);
-        CollectionAssert.AreEqual(publicBlob, signer.PublicKey.Blob.ToArray(),
-            "从私钥导出的公钥要与文件里带的那份一致");
+        Assert.AreSequenceEqual(publicBlob, signer.PublicKey.Blob.ToArray(), "从私钥导出的公钥要与文件里带的那份一致");
 
         // 真的签一次，再用解析出来的公钥验 —— 只比公钥是不够的，
         // 私钥的种子取错了（比如把 64 字节整个当种子）照样能得出正确的公钥 blob。
@@ -289,7 +288,7 @@ public sealed class PrivateKeyFileTests
         SshPrivateKeyException error = Assert.ThrowsExactly<SshPrivateKeyException>(
             () => SshPrivateKeyFile.Parse(pem));
 
-        StringAssert.Contains(error.Message, "校验字不匹配");
+        Assert.Contains("校验字不匹配", error.Message);
     }
 
     /// <summary>
@@ -321,9 +320,9 @@ public sealed class PrivateKeyFileTests
         SshPrivateKeyException error = Assert.ThrowsExactly<SshPrivateKeyException>(
             () => SshPrivateKeyFile.Parse(pem, "口令"));
 
-        StringAssert.Contains(error.Message, "3des-cbc");
-        StringAssert.Contains(error.Message, "aes256-ctr");
-        StringAssert.Contains(error.Message, "ssh-keygen -p -Z");
+        Assert.Contains("3des-cbc", error.Message);
+        Assert.Contains("aes256-ctr", error.Message);
+        Assert.Contains("ssh-keygen -p -Z", error.Message);
     }
 
     // ------------------------------------------------------------ BCL 能读的格式
@@ -382,7 +381,7 @@ public sealed class PrivateKeyFileTests
         // 「需要口令」与「口令不对」在界面上是两件事：前者该弹输入框，
         // 后者该说「口令不对，再试一次」。
         Assert.IsTrue(error.NeedsPassphrase);
-        StringAssert.Contains(error.Message, "需要口令");
+        Assert.Contains("需要口令", error.Message);
     }
 
     [TestMethod]
@@ -396,7 +395,7 @@ public sealed class PrivateKeyFileTests
             () => SshPrivateKeyFile.Parse(pem, "错的"));
 
         Assert.IsTrue(error.NeedsPassphrase);
-        StringAssert.Contains(error.Message, "口令多半不对");
+        Assert.Contains("口令多半不对", error.Message);
     }
 
     [TestMethod]

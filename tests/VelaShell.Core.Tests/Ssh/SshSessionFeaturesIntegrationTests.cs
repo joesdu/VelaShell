@@ -90,7 +90,7 @@ public class SshSessionFeaturesIntegrationTests
             });
             await using IShellStreamWrapper shell = await OpenShellAsync(ssh);
             AssertNoWarnings(shell);
-            Assert.IsTrue(shell.Notices.Any(n => n.Text.Contains($"127.0.0.1:{display}.0", StringComparison.Ordinal)),
+            Assert.Contains(n => n.Text.Contains($"127.0.0.1:{display}.0", StringComparison.Ordinal), shell.Notices,
                 "开成了要告诉用户转发到了哪个显示。");
 
             // 用 bash 的 /dev/tcp 手搓一个 X 客户端:建立报文 + 远端 .Xauthority 里那个(假)cookie。
@@ -128,9 +128,9 @@ public class SshSessionFeaturesIntegrationTests
         });
         await using IShellStreamWrapper shell = await OpenShellAsync(ssh);
 
-        Assert.IsTrue(shell.Notices.Any(n => n.IsWarning));
+        Assert.Contains(n => n.IsWarning, shell.Notices);
         string output = await RunInShellAsync(shell, "echo \"D=[$DISPLAY]\"; echo SHELL-$((1+1))OK", "SHELL-2OK");
-        StringAssert.Contains(output, "D=[]", "没请求 X11 时远端不该有 DISPLAY。");
+        Assert.Contains("D=[]", output, "没请求 X11 时远端不该有 DISPLAY。");
     }
 
     /// <summary>
@@ -151,7 +151,7 @@ public class SshSessionFeaturesIntegrationTests
 
         string output = await RunInShellAsync(shell, "ssh-add -l; echo AGENT-$((1+1))DONE", "AGENT-2DONE");
 
-        StringAssert.Contains(output, "no identities", $"远端输出:\n{output}");
+        Assert.Contains("no identities", output, $"远端输出:\n{output}");
         Assert.IsGreaterThan(0, agent.Requests, "本机 agent 一次都没被问到 —— 转发没通。");
     }
 
@@ -230,7 +230,7 @@ public class SshSessionFeaturesIntegrationTests
             cancellationToken: TestContext.CancellationToken);
 
     private static void AssertNoWarnings(IShellStreamWrapper shell) =>
-        Assert.IsFalse(shell.Notices.Any(n => n.IsWarning),
+        Assert.DoesNotContain(n => n.IsWarning, shell.Notices,
             "不该有转发失败的提示:" + string.Join(" | ", shell.Notices.Select(n => n.Text)));
 
     /// <summary>往交互式 shell 里敲一行,读到 <paramref name="marker" /> 为止,返回期间的全部输出。</summary>

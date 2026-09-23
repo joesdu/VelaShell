@@ -55,8 +55,7 @@ public class SshKeyServiceFormatTests
 
             // 公钥行也必须与私钥里的那一把一致,否则 authorized_keys 放上去照样登不上。
             byte[] publicLineBlob = Convert.FromBase64String(info.PublicKeyLine!.Split(' ')[1]);
-            CollectionAssert.AreEqual(publicLineBlob, signer.PublicKey.Blob.ToArray(),
-                ".pub 里的公钥必须与私钥导出的公钥逐字节一致");
+            Assert.AreSequenceEqual(publicLineBlob, signer.PublicKey.Blob.ToArray(), ".pub 里的公钥必须与私钥导出的公钥逐字节一致");
         }
         finally
         {
@@ -86,18 +85,17 @@ public class SshKeyServiceFormatTests
 
             byte[] inner = UnwrapOpenSshPrivateKey(await File.ReadAllTextAsync(info.PrivateKeyPath));
             int offset = 0;
-            CollectionAssert.AreEqual(pubBlob, ReadChunk(inner, ref offset),
-                "私钥外层的公钥 blob 应与 .pub 逐字节一致");
+            Assert.AreSequenceEqual(pubBlob, ReadChunk(inner, ref offset), "私钥外层的公钥 blob 应与 .pub 逐字节一致");
             byte[] section = ReadChunk(inner, ref offset);
 
             int inner2 = 8; // 两个 checkint
             Assert.AreEqual("ssh-ed25519", Encoding.ASCII.GetString(ReadChunk(section, ref inner2)));
             byte[] publicKey = ReadChunk(section, ref inner2);
             byte[] secret = ReadChunk(section, ref inner2);
-            Assert.AreEqual(32, publicKey.Length);
-            Assert.AreEqual(64, secret.Length, "OpenSSH 的 ed25519 私钥字段是 seed ‖ pub,不是那 32 字节种子");
-            CollectionAssert.AreEqual(publicKey, secret[32..], "私钥字段后 32 字节必须就是公钥");
-            CollectionAssert.AreEqual(publicKey, pubBlob[^32..], "公钥 blob 尾部的定长公钥应与私钥段一致");
+            Assert.HasCount(32, publicKey);
+            Assert.HasCount(64, secret, "OpenSSH 的 ed25519 私钥字段是 seed ‖ pub,不是那 32 字节种子");
+            Assert.AreSequenceEqual(publicKey, secret[32..], "私钥字段后 32 字节必须就是公钥");
+            Assert.AreSequenceEqual(publicKey, pubBlob[^32..], "公钥 blob 尾部的定长公钥应与私钥段一致");
         }
         finally
         {

@@ -101,7 +101,7 @@ public sealed class SendGateTests
             order.Add($"{f}:{len}");
         }
 
-        CollectionAssert.AreEqual(new[] { "1:1", "2:2", "3:3" }, order);
+        Assert.AreSequenceEqual(new[] { "1:1", "2:2", "3:3" }, order);
         Assert.AreEqual(0, gate.StashedBytes, "排空后字节计量必须归零");
     }
 
@@ -199,7 +199,7 @@ public sealed class SendGateTests
 
         IReadOnlyList<string> drained = gate.DrainForAbort();
 
-        CollectionAssert.AreEqual(new[] { "a", "b" }, drained.ToArray());
+        Assert.AreSequenceEqual(new[] { "a", "b" }, [.. drained]);
         Assert.AreEqual(0, gate.StashedCount);
         Assert.AreEqual(0, gate.StashedBytes);
     }
@@ -207,7 +207,7 @@ public sealed class SendGateTests
     [TestMethod]
     public void 中止时暂存区为空则返回空列表()
     {
-        Assert.AreEqual(0, NewGate().DrainForAbort().Count);
+        Assert.IsEmpty(NewGate().DrainForAbort());
     }
 
     // ------------------------------------------------------------ 参数校验

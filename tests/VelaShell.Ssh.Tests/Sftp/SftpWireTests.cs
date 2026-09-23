@@ -30,10 +30,10 @@ public sealed class SftpWireTests
         byte[] bytes = buffer.WrittenSpan.ToArray();
 
         // length(4) + type(1) + version(4) = 9 字节，而 length 字段写的是 5。
-        Assert.AreEqual(9, bytes.Length);
-        CollectionAssert.AreEqual(new byte[] { 0, 0, 0, 5 }, bytes[..4], "length 不含自身这 4 字节");
+        Assert.HasCount(9, bytes);
+        Assert.AreSequenceEqual(new byte[] { 0, 0, 0, 5 }, bytes[..4], "length 不含自身这 4 字节");
         Assert.AreEqual((byte)SftpMessageType.Init, bytes[4]);
-        CollectionAssert.AreEqual(new byte[] { 0, 0, 0, 3 }, bytes[5..]);
+        Assert.AreSequenceEqual(new byte[] { 0, 0, 0, 3 }, bytes[5..]);
     }
 
     [TestMethod]
@@ -73,9 +73,8 @@ public sealed class SftpWireTests
             types.Add(frame.Type);
         }
 
-        CollectionAssert.AreEqual(
-            new[] { SftpMessageType.Stat, SftpMessageType.LStat, SftpMessageType.RealPath },
-            types);
+        Assert.AreSequenceEqual(
+            new[] { SftpMessageType.Stat, SftpMessageType.LStat, SftpMessageType.RealPath }, types);
         Assert.AreEqual(0, input.Length);
     }
 
@@ -89,7 +88,7 @@ public sealed class SftpWireTests
         SshProtocolException error = Assert.ThrowsExactly<SshProtocolException>(
             () => SftpWire.TryReadFrame(ref input, out _));
 
-        StringAssert.Contains(error.Message, "超过上限");
+        Assert.Contains("超过上限", error.Message);
     }
 
     [TestMethod]
@@ -100,7 +99,7 @@ public sealed class SftpWireTests
         SshProtocolException error = Assert.ThrowsExactly<SshProtocolException>(
             () => SftpWire.TryReadFrame(ref input, out _));
 
-        StringAssert.Contains(error.Message, "连类型字节都放不下");
+        Assert.Contains("连类型字节都放不下", error.Message);
     }
 
     [TestMethod]
@@ -346,7 +345,7 @@ public sealed class SftpWireTests
         SshProtocolException error = Assert.ThrowsExactly<SshProtocolException>(
             () => SftpWire.ReadHandle(new ReadOnlySequence<byte>(payload.WrittenSpan.ToArray())));
 
-        StringAssert.Contains(error.Message, "上限");
+        Assert.Contains("上限", error.Message);
     }
 
     [TestMethod]
@@ -362,7 +361,7 @@ public sealed class SftpWireTests
         SshProtocolException error = Assert.ThrowsExactly<SshProtocolException>(
             () => SftpWire.ReadName(new ReadOnlySequence<byte>(payload.WrittenSpan.ToArray())));
 
-        StringAssert.Contains(error.Message, "声称有 3 项");
+        Assert.Contains("声称有 3 项", error.Message);
     }
 
     [TestMethod]
@@ -378,7 +377,7 @@ public sealed class SftpWireTests
             () => SftpWire.ReadDataInto(
                 new ReadOnlySequence<byte>(payload.WrittenSpan.ToArray()), destination));
 
-        StringAssert.Contains(error.Message, "超过我们请求的");
+        Assert.Contains("超过我们请求的", error.Message);
     }
 
     [TestMethod]
@@ -396,7 +395,7 @@ public sealed class SftpWireTests
             SftpWire.ReadVersion(new ReadOnlySequence<byte>(payload.WrittenSpan.ToArray()));
 
         Assert.AreEqual(3U, version);
-        Assert.AreEqual(2, extensions.Count);
+        Assert.HasCount(2, extensions);
         Assert.IsTrue(extensions.ContainsKey(SftpExtensionNames.PosixRename));
 
         // 不认识的扩展也要收下 —— 生态就是这么演进的，

@@ -66,15 +66,15 @@ public sealed class X11PrimitiveTests
         IReadOnlyList<EndPoint> candidates = display.GetCandidateEndPoints();
 
         // 至少要有回环 TCP —— Windows 上的 VcXsrv 只听这个。
-        Assert.IsTrue(
-            candidates.OfType<IPEndPoint>().Any(e =>
-                e.Address.Equals(IPAddress.Loopback) && e.Port == X11Display.TcpPortBase),
+        Assert.Contains(
+            e =>
+                e.Address.Equals(IPAddress.Loopback) && e.Port == X11Display.TcpPortBase, candidates.OfType<IPEndPoint>(),
             "本机显示 :0 应当能走 127.0.0.1:6000");
 
         if (!OperatingSystem.IsWindows() && Socket.OSSupportsUnixDomainSockets)
         {
-            Assert.IsTrue(
-                candidates.OfType<UnixDomainSocketEndPoint>().Any(),
+            Assert.IsNotEmpty(
+                candidates.OfType<UnixDomainSocketEndPoint>(),
                 "非 Windows 上应当先试 Unix 套接字");
         }
     }
@@ -107,10 +107,10 @@ public sealed class X11PrimitiveTests
         ];
 
         IReadOnlyList<XAuthorityEntry> entries = XAuthority.Parse(file);
-        Assert.AreEqual(2, entries.Count);
+        Assert.HasCount(2, entries);
 
         byte[]? found = XAuthority.FindCookie(entries, X11Display.Parse(":0")!);
-        CollectionAssert.AreEqual(cookie, found, "应当挑本机主机名那一条");
+        Assert.AreSequenceEqual(cookie, found, "应当挑本机主机名那一条");
     }
 
     [TestMethod]
@@ -145,10 +145,9 @@ public sealed class X11PrimitiveTests
         byte[] file = [.. good, .. good.AsSpan(0, good.Length / 2)];
 
         IReadOnlyList<XAuthorityEntry> entries = XAuthority.Parse(file);
-        Assert.AreEqual(1, entries.Count, "截断处之前的记录要保留");
-        CollectionAssert.AreEqual(
-            new byte[] { 7, 7, 7, 7 },
-            XAuthority.FindCookie(entries, X11Display.Parse(":0")!));
+        Assert.HasCount(1, entries, "截断处之前的记录要保留");
+        Assert.AreSequenceEqual(
+            new byte[] { 7, 7, 7, 7 }, XAuthority.FindCookie(entries, X11Display.Parse(":0")!));
     }
 
     // ------------------------------------------------------------ 连接建立报文
@@ -169,7 +168,7 @@ public sealed class X11PrimitiveTests
 
             Assert.AreEqual(bigEndian, parsed.BigEndian);
             Assert.AreEqual(XAuthority.MitMagicCookie1, parsed.ProtocolName);
-            CollectionAssert.AreEqual(cookie, parsed.ProtocolData);
+            Assert.AreSequenceEqual(cookie, parsed.ProtocolData);
             Assert.AreEqual(message.Length, parsed.TotalLength);
         }
     }
@@ -199,7 +198,7 @@ public sealed class X11PrimitiveTests
         FormatException error = Assert.ThrowsExactly<FormatException>(
             () => X11SetupMessage.TryParse(new ReadOnlySequence<byte>(message), out _));
 
-        StringAssert.Contains(error.Message, "字节序");
+        Assert.Contains("字节序", error.Message);
     }
 
     [TestMethod]
@@ -217,7 +216,7 @@ public sealed class X11PrimitiveTests
 
         // 换出来的报文要能再解一遍，而且里面是**真** cookie。
         Assert.IsTrue(X11SetupMessage.TryParse(new ReadOnlySequence<byte>(rewritten), out X11SetupMessage.Parsed again));
-        CollectionAssert.AreEqual(real, again.ProtocolData, "转给本机 X server 的必须是真 cookie");
+        Assert.AreSequenceEqual(real, again.ProtocolData, "转给本机 X server 的必须是真 cookie");
         Assert.AreEqual(XAuthority.MitMagicCookie1, again.ProtocolName);
         Assert.IsTrue(again.BigEndian);
     }
@@ -256,7 +255,7 @@ public sealed class X11PrimitiveTests
         byte[] a = X11SetupMessage.CreateFakeCookie();
         byte[] b = X11SetupMessage.CreateFakeCookie();
 
-        Assert.AreEqual(16, a.Length);
+        Assert.HasCount(16, a);
         Assert.IsFalse(a.SequenceEqual(b), "两次生成不该相同");
     }
 

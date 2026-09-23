@@ -61,16 +61,15 @@ public sealed class RekeyTests
             ExitCode = 0,
         });
 
-        byte[] sessionIdBefore = host.Connection.SessionId.ToArray();
+        byte[] sessionIdBefore = [.. host.Connection.SessionId];
 
         await host.Channels.RequestRekeyAsync().WaitAsync(host.Token);
 
         // 〔RFC 4253 §7.2〕重协商时交换哈希 H 会变，但 session_id **永不改变**。
         // 混成一个字段的症状是「重协商之后再开新通道做公钥认证会失败」——
         // 一条极罕见的路径，所以这里钉住它。
-        CollectionAssert.AreEqual(
-            sessionIdBefore, host.Connection.SessionId.ToArray(),
-            "session_id 在重协商之后必须保持不变");
+        Assert.AreSequenceEqual(
+            sessionIdBefore, [.. host.Connection.SessionId], "session_id 在重协商之后必须保持不变");
 
         SshCommandOutput output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
         Assert.AreEqual(0, output.ExitCode);
@@ -97,14 +96,13 @@ public sealed class RekeyTests
             "前提：压缩要真的谈成了，不然这条用例什么都没验");
 
         SshCommandOutput before = await host.Connection.RunAsync("压", cancellationToken: host.Token);
-        CollectionAssert.AreEqual(compressible, Encoding.UTF8.GetBytes(before.StandardOutput));
+        Assert.AreSequenceEqual(compressible, Encoding.UTF8.GetBytes(before.StandardOutput));
 
         await host.Channels.RequestRekeyAsync().WaitAsync(host.Token);
 
         SshCommandOutput after = await host.Connection.RunAsync("压", cancellationToken: host.Token);
-        CollectionAssert.AreEqual(
-            compressible, Encoding.UTF8.GetBytes(after.StandardOutput),
-            "重协商之后压缩流要能继续对上 —— 两边的压缩上下文都重置了才行");
+        Assert.AreSequenceEqual(
+            compressible, Encoding.UTF8.GetBytes(after.StandardOutput), "重协商之后压缩流要能继续对上 —— 两边的压缩上下文都重置了才行");
 
         Assert.AreEqual(1, host.Connection.RekeyCount);
     }
@@ -264,15 +262,15 @@ public sealed class RekeyTests
         }
 
         Assert.AreEqual(bulk.Length, received, "重协商发生在传输中途也不能弄丢数据");
-        Assert.IsTrue(
-            host.Connection.PacketsReceived > SshRekeyPolicy.MinimumPackets,
+        Assert.IsGreaterThan(
+            SshRekeyPolicy.MinimumPackets, host.Connection.PacketsReceived,
             $"前提：报文数要真的越过阈值，实际收了 {host.Connection.PacketsReceived} 个");
 
         await WaitForRekeyAsync(host, expected: 1);
 
         Assert.IsNotNull(host.Connection.LastRekeyReason, "主动发起时要说清是哪条阈值触发的");
-        StringAssert.Contains(
-            host.Connection.LastRekeyReason!, "报文数",
+        Assert.Contains(
+"报文数",             host.Connection.LastRekeyReason!,
             $"应当是报文数那条触发的，实际：{host.Connection.LastRekeyReason}");
 
         // 换完密钥连接还要能用。

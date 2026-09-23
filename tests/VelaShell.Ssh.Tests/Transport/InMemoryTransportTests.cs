@@ -38,7 +38,7 @@ public sealed class InMemoryTransportTests
         await using (b)
         {
             await a.WriteAsync("hello"u8.ToArray());
-            CollectionAssert.AreEqual("hello"u8.ToArray(), await ReadExactlyAsync(b, 5));
+            Assert.AreSequenceEqual("hello"u8.ToArray(), await ReadExactlyAsync(b, 5));
         }
     }
 
@@ -53,8 +53,8 @@ public sealed class InMemoryTransportTests
             await a.WriteAsync("a->b"u8.ToArray());
             await b.WriteAsync("b->a"u8.ToArray());
 
-            CollectionAssert.AreEqual("a->b"u8.ToArray(), await ReadExactlyAsync(b, 4));
-            CollectionAssert.AreEqual("b->a"u8.ToArray(), await ReadExactlyAsync(a, 4));
+            Assert.AreSequenceEqual("a->b"u8.ToArray(), await ReadExactlyAsync(b, 4));
+            Assert.AreSequenceEqual("b->a"u8.ToArray(), await ReadExactlyAsync(a, 4));
         }
     }
 
@@ -106,7 +106,7 @@ public sealed class InMemoryTransportTests
             await a.WriteAsync("bye"u8.ToArray());
             a.CompleteWrites();
 
-            CollectionAssert.AreEqual("bye"u8.ToArray(), await ReadExactlyAsync(b, 3));
+            Assert.AreSequenceEqual("bye"u8.ToArray(), await ReadExactlyAsync(b, 3));
             Assert.AreEqual(0, await b.ReadAsync(new byte[16]), "读完已发出的数据后应当是干净的 EOF");
         }
     }
@@ -128,7 +128,7 @@ public sealed class InMemoryTransportTests
             Assert.IsTrue(b.CanWrite);
             Assert.IsTrue(a.CanRead);
             await b.WriteAsync("response"u8.ToArray());
-            CollectionAssert.AreEqual("response"u8.ToArray(), await ReadExactlyAsync(a, 8));
+            Assert.AreSequenceEqual("response"u8.ToArray(), await ReadExactlyAsync(a, 8));
         }
     }
 
@@ -295,7 +295,7 @@ public sealed class InMemoryTransportTests
         await using (serverSide)
         {
             await client.WriteAsync("SSH-2.0-Test\r\n"u8.ToArray());
-            CollectionAssert.AreEqual("SSH-2.0-Test\r\n"u8.ToArray(), await ReadExactlyAsync(serverSide, 14));
+            Assert.AreSequenceEqual("SSH-2.0-Test\r\n"u8.ToArray(), await ReadExactlyAsync(serverSide, 14));
         }
     }
 

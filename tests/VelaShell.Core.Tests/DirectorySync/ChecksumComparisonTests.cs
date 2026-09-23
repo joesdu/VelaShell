@@ -68,7 +68,7 @@ public sealed class ChecksumComparisonTests
 
         Assert.AreSequenceEqual(
             ["edited.txt"],
-            SyncPlanner.Plan(comparisons, options).Select(a => a.RelativePath).ToArray());
+            [.. SyncPlanner.Plan(comparisons, options).Select(a => a.RelativePath)]);
     }
 
     [TestMethod]

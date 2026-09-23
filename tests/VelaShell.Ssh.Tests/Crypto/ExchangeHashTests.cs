@@ -58,7 +58,7 @@ public sealed class ExchangeHashTests
         w.String([0x33, 0x44]);
         w.Mpint([0x55, 0x66]);           // 共享密钥按 mpint
 
-        CollectionAssert.AreEqual(SHA256.HashData(expected.WrittenSpan).ToArray(), actual);
+        Assert.AreSequenceEqual([.. SHA256.HashData(expected.WrittenSpan)], actual);
     }
 
     [TestMethod]
@@ -212,7 +212,7 @@ public sealed class ExchangeHashTests
             keys[letter] = Convert.ToHexString(key);
         }
 
-        Assert.AreEqual(6, keys.Values.Distinct().Count(), "六把密钥必须两两不同");
+        Assert.HasCount(6, keys.Values.Distinct(), "六把密钥必须两两不同");
     }
 
     [TestMethod]
@@ -242,7 +242,7 @@ public sealed class ExchangeHashTests
         byte[] actual = SshExchangeHash.DeriveKey(
             HashAlgorithmName.SHA256, k, SshKexValueEncoding.Mpint, h, sid, 'C', 32);
 
-        CollectionAssert.AreEqual(SHA256.HashData(expected.WrittenSpan).ToArray(), actual);
+        Assert.AreSequenceEqual([.. SHA256.HashData(expected.WrittenSpan)], actual);
     }
 
     [TestMethod]
@@ -259,9 +259,9 @@ public sealed class ExchangeHashTests
         byte[] short32 = SshExchangeHash.DeriveKey(
             HashAlgorithmName.SHA256, k, SshKexValueEncoding.Mpint, h, sid, 'C', 32);
 
-        Assert.AreEqual(64, long64.Length);
+        Assert.HasCount(64, long64);
         // 前 32 字节必须与只要 32 字节时相同 —— 扩展是**追加**，不是重算。
-        CollectionAssert.AreEqual(short32, long64[..32]);
+        Assert.AreSequenceEqual(short32, long64[..32]);
 
         // 第二段就是 HASH(K ‖ H ‖ K1)
         ArrayBufferWriter<byte> second = new();
@@ -269,7 +269,7 @@ public sealed class ExchangeHashTests
         w.Mpint(k);
         w.Raw(h);
         w.Raw(short32);
-        CollectionAssert.AreEqual(SHA256.HashData(second.WrittenSpan).ToArray(), long64[32..]);
+        Assert.AreSequenceEqual([.. SHA256.HashData(second.WrittenSpan)], long64[32..]);
     }
 
     [TestMethod]
@@ -291,7 +291,7 @@ public sealed class ExchangeHashTests
     {
         byte[] key = SshExchangeHash.DeriveKey(
             HashAlgorithmName.SHA256, [1], SshKexValueEncoding.Mpint, [2], [3], 'A', 0);
-        Assert.AreEqual(0, key.Length);
+        Assert.IsEmpty(key);
     }
 
     [TestMethod]
@@ -315,7 +315,7 @@ public sealed class ExchangeHashTests
                  })
         {
             byte[] hash = SshExchangeHash.Compute(name, Sample());
-            Assert.AreEqual(size, hash.Length, $"{name.Name} 的输出长度");
+            Assert.HasCount(size, hash, $"{name.Name} 的输出长度");
         }
     }
 

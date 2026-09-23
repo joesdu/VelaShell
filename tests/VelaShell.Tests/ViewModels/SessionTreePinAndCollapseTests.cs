@@ -129,7 +129,7 @@ public class SessionTreePinAndCollapseTests
         Assert.IsTrue(vm.Rows[0].IsPinned);
 
         // 节点在树里的位置没被动过:分组归属、拖放落点那些规则都还按原样成立。
-        Assert.IsTrue(vm.Nodes.Any(node => node.Id == vm.Rows[0].Id));
+        Assert.Contains(node => node.Id == vm.Rows[0].Id, vm.Nodes);
     }
 
     /// <summary>这条是整个设计的理由:分组折上了,置顶的连接照样在最前面看得见。</summary>

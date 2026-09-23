@@ -195,7 +195,7 @@ public sealed class SessionFailureTests
 
         SshGlobalRequestReply reply = await real.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.IsTrue(reply.Success, "真请求的应答被安到了某个保活头上");
-        CollectionAssert.AreEqual(new byte[] { 0xAB }, reply.Payload.ToArray());
+        Assert.AreSequenceEqual(new byte[] { 0xAB }, reply.Payload.ToArray());
     }
 
     // ------------------------------------------------------------ 协议违规与断开
@@ -213,7 +213,7 @@ public sealed class SessionFailureTests
         SshDataReader reader = new(new ReadOnlySequence<byte>(disconnect));
         reader.ReadMessageNumber(SshMessageNumber.Disconnect);
         Assert.AreEqual((uint)SshDisconnectReason.ProtocolError, reader.ReadUInt32());
-        StringAssert.Contains(reader.ReadUtf8String(1024), "FIFO");
+        Assert.Contains("FIFO", reader.ReadUtf8String(1024));
 
         await WaitForDisconnectAsync(peer.Connection);
         Assert.IsFalse(peer.Connection.IsAlive);
@@ -341,7 +341,7 @@ public sealed class SessionFailureTests
         SshChannelEvent channelEvent = await channel.ReadEventAsync(peer.Token);
         SshChannelEvent.PeerRequest request = (SshChannelEvent.PeerRequest)channelEvent;
         Assert.AreEqual("custom@example.com", request.RequestType);
-        CollectionAssert.AreEqual(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, request.Payload.ToArray());
+        Assert.AreSequenceEqual(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, request.Payload.ToArray());
     }
 
     // ------------------------------------------------------------ 服务端发起的通道
@@ -487,7 +487,7 @@ public sealed class SessionFailureTests
             }
         }
 
-        CollectionAssert.AreEqual(payload, received.ToArray());
+        Assert.AreSequenceEqual(payload, received.ToArray());
         Assert.IsTrue(host.Connection.IsAlive);
     }
 

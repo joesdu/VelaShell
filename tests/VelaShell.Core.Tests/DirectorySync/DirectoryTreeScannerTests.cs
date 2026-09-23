@@ -43,7 +43,7 @@ public class DirectoryTreeScannerTests
         SyncTree tree = await DirectoryTreeScanner.ScanLocalAsync(_root, mask);
 
         Assert.AreSequenceEqual(
-            ["src", "src/deep", "src/deep/a.txt", "top.log"], tree.Items.Select(i => i.RelativePath).ToArray(), SequenceOrder.InAnyOrder);
+            ["src", "src/deep", "src/deep/a.txt", "top.log"], [.. tree.Items.Select(i => i.RelativePath)], SequenceOrder.InAnyOrder);
         SyncItem file = tree.Items.Single(i => i.RelativePath == "src/deep/a.txt");
         Assert.AreEqual(3, file.Size);
         Assert.AreEqual(DateTimeKind.Utc, file.LastWriteTimeUtc.Kind);
@@ -60,7 +60,7 @@ public class DirectoryTreeScannerTests
             Path.Combine(_root, "child"), SyncFileMask.Empty, recursive: false, relativePrefix: "child");
 
         Assert.AreSequenceEqual(
-            ["child/f.txt", "child/grandchild"], tree.Items.Select(i => i.RelativePath).ToArray(), SequenceOrder.InAnyOrder);
+            ["child/f.txt", "child/grandchild"], [.. tree.Items.Select(i => i.RelativePath)], SequenceOrder.InAnyOrder);
     }
 
     [TestMethod]
@@ -91,7 +91,7 @@ public class DirectoryTreeScannerTests
 
         Assert.AreEqual(1, tree.SkippedLinks, "指向目录的链接不进入");
         Assert.AreSequenceEqual(
-            ["app", "app/x.log", "latest.log", "old.tar"], tree.Items.Select(i => i.RelativePath).ToArray(), SequenceOrder.InAnyOrder);
+            ["app", "app/x.log", "latest.log", "old.tar"], [.. tree.Items.Select(i => i.RelativePath)], SequenceOrder.InAnyOrder);
         Assert.AreEqual(SyncTimePrecision.Minute, tree.Items.Single(i => i.RelativePath == "latest.log").Precision);
         Assert.AreEqual(SyncTimePrecision.Day, tree.Items.Single(i => i.RelativePath == "old.tar").Precision);
         Assert.AreEqual(SyncTimePrecision.Second, tree.Items.Single(i => i.RelativePath == "app/x.log").Precision);

@@ -154,7 +154,7 @@ public sealed class ChannelTests
         Assert.AreEqual("", stderr);
         Assert.AreEqual(0, result.ExitCode);
         Assert.IsTrue(result.IsSuccess);
-        CollectionAssert.AreEqual(new[] { "echo hello" }, harness.ChannelServer.Observation.Commands);
+        Assert.AreSequenceEqual(new[] { "echo hello" }, harness.ChannelServer.Observation.Commands);
     }
 
     [TestMethod]
@@ -239,7 +239,7 @@ public sealed class ChannelTests
             async () => await harness.Connection.ExecuteAsync("任何命令", cancellationToken: harness.Token));
 
         // 不等应答就发数据的库，在这里会表现成「命令没输出也没报错」。
-        StringAssert.Contains(error.Message, "ForceCommand");
+        Assert.Contains("ForceCommand", error.Message);
     }
 
     // ------------------------------------------------------------ 标准输入与 EOF
@@ -264,9 +264,8 @@ public sealed class ChannelTests
 
         Assert.AreEqual("收到了", stdout);
         Assert.AreEqual(0, result.ExitCode);
-        CollectionAssert.AreEqual(
-            Text("喂给远端的内容"),
-            harness.ChannelServer.Observation.StandardInput.ToArray());
+        Assert.AreSequenceEqual(
+            Text("喂给远端的内容"), [.. harness.ChannelServer.Observation.StandardInput]);
     }
 
     [TestMethod]
@@ -348,9 +347,9 @@ public sealed class ChannelTests
         byte[] received = await ReadAllBytesAsync(command.StandardOutput, harness.Token);
         SshCommandResult result = await command.WaitAsync(harness.Token);
 
-        CollectionAssert.AreEqual(payload, received, "数据必须一字节不差地过来");
+        Assert.AreSequenceEqual(payload, received, "数据必须一字节不差地过来");
         Assert.AreEqual(0, result.ExitCode);
-        Assert.IsTrue(harness.ChannelServer.Observation.WindowAdjustCount > 0,
+        Assert.IsGreaterThan(0, harness.ChannelServer.Observation.WindowAdjustCount,
             "跨窗口的数据必须触发 WINDOW_ADJUST，否则对端第一个窗口用完就停了");
     }
 
@@ -412,13 +411,12 @@ public sealed class ChannelTests
         await reader.CompleteAsync();
         SshCommandResult result = await command.WaitAsync(harness.Token);
 
-        CollectionAssert.AreEqual(payload, received.WrittenSpan.ToArray(),
-            "逐小块消费也必须一字节不差地收完 —— 收不完就说明窗口漏掉了");
+        Assert.AreSequenceEqual(payload, received.WrittenSpan.ToArray(), "逐小块消费也必须一字节不差地收完 —— 收不完就说明窗口漏掉了");
         Assert.AreEqual(0, result.ExitCode);
 
         // 回补的总量应当覆盖「超出第一个窗口的那部分」，否则对端根本发不完。
-        Assert.IsTrue(
-            harness.ChannelServer.Observation.WindowAdjustBytes >= payload.Length - window,
+        Assert.IsGreaterThanOrEqualTo(
+            payload.Length - window, harness.ChannelServer.Observation.WindowAdjustBytes,
             $"回补总量 {harness.ChannelServer.Observation.WindowAdjustBytes} 不足以让对端发完 {payload.Length} 字节");
     }
 
@@ -452,13 +450,13 @@ public sealed class ChannelTests
 
         // 对端最多只能发一个窗口那么多 —— 背压是结构性的，
         // 不需要额外的限流器，也不会出现「内部队列无限涨」。
-        Assert.IsTrue(
-            harness.ChannelServer.Observation.WindowAdjustBytes <= window,
+        Assert.IsLessThanOrEqualTo(
+            window, harness.ChannelServer.Observation.WindowAdjustBytes,
             $"没人消费时不该回补窗口，实际补了 {harness.ChannelServer.Observation.WindowAdjustBytes} 字节");
 
         // 开始读之后应当能全部收完 —— 证明刚才只是停住，不是坏了。
         byte[] received = await ReadAllBytesAsync(command.StandardOutput, harness.Token);
-        Assert.AreEqual(payload.Length, received.Length);
+        Assert.HasCount(payload.Length, received);
     }
 
     [TestMethod]
@@ -536,7 +534,7 @@ public sealed class ChannelTests
         await using SshShell shell = await harness.Connection.OpenShellAsync(options, harness.Token);
 
         TestChannelObservation observed = harness.ChannelServer.Observation;
-        Assert.AreEqual(1, observed.PtyRequests.Count);
+        Assert.HasCount(1, observed.PtyRequests);
 
         (string term, TerminalSize size, byte[] modes) = observed.PtyRequests[0];
         Assert.AreEqual("xterm-256color", term);
@@ -549,11 +547,10 @@ public sealed class ChannelTests
 
         // 模式表**必须**以 TTY_OP_END(0) 结尾 —— 漏掉它 OpenSSH 会拒绝整个 pty-req。
         Assert.AreEqual(0, modes[^1], "终端模式表必须以 TTY_OP_END 结尾");
-        Assert.AreEqual(1 + 4 + 1 + 4 + 1, modes.Length, "两个模式各 5 字节，外加一个结束字节");
+        Assert.HasCount(1 + 4 + 1 + 4 + 1, modes, "两个模式各 5 字节，外加一个结束字节");
 
-        CollectionAssert.AreEqual(
-            new[] { SshAlgorithmNames.RequestPty, SshAlgorithmNames.RequestShell },
-            observed.Requests.Where(r => r is SshAlgorithmNames.RequestPty or SshAlgorithmNames.RequestShell).ToArray());
+        Assert.AreSequenceEqual(
+            new[] { SshAlgorithmNames.RequestPty, SshAlgorithmNames.RequestShell }, [.. observed.Requests.Where(r => r is SshAlgorithmNames.RequestPty or SshAlgorithmNames.RequestShell)]);
     }
 
     [TestMethod]
@@ -629,7 +626,7 @@ public sealed class ChannelTests
         SshChannelException error = await Assert.ThrowsExactlyAsync<SshChannelException>(
             async () => await harness.Connection.OpenShellAsync(SshShellOptions.Default, harness.Token));
 
-        StringAssert.Contains(error.Message, "PermitTTY");
+        Assert.Contains("PermitTTY", error.Message);
     }
 
     [TestMethod]
@@ -647,13 +644,13 @@ public sealed class ChannelTests
         await command.SendSignalAsync("TERM", harness.Token);
         await WaitUntilAsync(() => harness.ChannelServer.Observation.Signals.Count > 0, harness.Token);
 
-        CollectionAssert.AreEqual(new[] { "TERM" }, harness.ChannelServer.Observation.Signals);
+        Assert.AreSequenceEqual(new[] { "TERM" }, harness.ChannelServer.Observation.Signals);
 
         // 传 "SIGTERM" 要在本地就被挡住 —— 发过去服务端只会静默忽略，
         // 而 signal 请求的 want_reply 必为假，调用方永远收不到任何反馈。
         ArgumentException wrong = await Assert.ThrowsExactlyAsync<ArgumentException>(
             async () => await command.SendSignalAsync("SIGTERM", harness.Token));
-        StringAssert.Contains(wrong.Message, "\"TERM\"");
+        Assert.Contains("\"TERM\"", wrong.Message);
     }
 
     // ------------------------------------------------------------ 环境变量与子系统
@@ -794,7 +791,7 @@ public sealed class ChannelTests
             await harness.Connection.OpenSubsystemAsync("sftp", cancellationToken: harness.Token);
 
         Assert.AreEqual(SshChannelState.Open, channel.State);
-        CollectionAssert.AreEqual(new[] { "sftp" }, harness.ChannelServer.Observation.Subsystems);
+        Assert.AreSequenceEqual(new[] { "sftp" }, harness.ChannelServer.Observation.Subsystems);
     }
 
     [TestMethod]
@@ -805,7 +802,7 @@ public sealed class ChannelTests
         SshChannelException error = await Assert.ThrowsExactlyAsync<SshChannelException>(
             async () => await harness.Connection.OpenSubsystemAsync("sftp", cancellationToken: harness.Token));
 
-        StringAssert.Contains(error.Message, "Subsystem sftp");
+        Assert.Contains("Subsystem sftp", error.Message);
     }
 
     // ------------------------------------------------------------ 通道打开失败
@@ -824,7 +821,7 @@ public sealed class ChannelTests
 
         // 「服务端禁止了端口转发（AllowTcpForwarding no）」比「通道打开失败」有用得多：
         // 前者告诉用户去改哪个配置，后者只告诉他事情没成。
-        StringAssert.Contains(error.Message, "AllowTcpForwarding");
+        Assert.Contains("AllowTcpForwarding", error.Message);
         Assert.AreEqual(SshChannelOpenFailureReason.AdministrativelyProhibited, error.OpenFailureReason);
     }
 
@@ -839,7 +836,7 @@ public sealed class ChannelTests
         SshChannelException error = await Assert.ThrowsExactlyAsync<SshChannelException>(
             async () => await harness.Connection.OpenSessionChannelAsync(null, harness.Token));
 
-        StringAssert.Contains(error.Message, "MaxSessions");
+        Assert.Contains("MaxSessions", error.Message);
     }
 
     [TestMethod]
@@ -874,7 +871,7 @@ public sealed class ChannelTests
         SshChannelException error = await Assert.ThrowsExactlyAsync<SshChannelException>(
             async () => await harness.Connection.OpenSessionChannelAsync(null, harness.Token));
 
-        StringAssert.Contains(error.Message, "上限 2");
+        Assert.Contains("上限 2", error.Message);
         Assert.IsTrue(harness.Connection.IsAlive, "限额是本端的事，不该连累会话");
 
         await first.DisposeAsync();
@@ -899,7 +896,7 @@ public sealed class ChannelTests
         SshChannelException error = await Assert.ThrowsExactlyAsync<SshChannelException>(
             async () => await harness.Connection.OpenSessionChannelAsync(options, harness.Token));
 
-        StringAssert.Contains(error.Message, "总预算");
+        Assert.Contains("总预算", error.Message);
         Assert.IsTrue(harness.Connection.IsAlive);
 
         await first.DisposeAsync();
@@ -932,7 +929,7 @@ public sealed class ChannelTests
             Assert.AreEqual(0, result.ExitCode);
         }
 
-        Assert.AreEqual(4, harness.ChannelServer.Observation.Commands.Count);
+        Assert.HasCount(4, harness.ChannelServer.Observation.Commands);
     }
 
     // ------------------------------------------------------------ 全局请求
@@ -947,8 +944,8 @@ public sealed class ChannelTests
         bool alive = await harness.Connection.SendKeepAliveAsync(harness.Token);
 
         Assert.IsTrue(alive);
-        CollectionAssert.Contains(
-            harness.ChannelServer.Observation.GlobalRequests, SshAlgorithmNames.KeepAliveOpenSsh);
+        Assert.Contains(
+SshAlgorithmNames.KeepAliveOpenSsh, harness.ChannelServer.Observation.GlobalRequests);
     }
 
     [TestMethod]
@@ -965,7 +962,7 @@ public sealed class ChannelTests
 
         Assert.IsFalse(first, "服务端不认识它，回 FAILURE");
         Assert.IsFalse(second);
-        Assert.AreEqual(2, harness.ChannelServer.Observation.GlobalRequests.Count,
+        Assert.HasCount(2, harness.ChannelServer.Observation.GlobalRequests,
             "两个请求都得有各自的应答，顺序不能错位");
     }
 
@@ -1004,8 +1001,8 @@ public sealed class ChannelTests
             }
         }
 
-        Assert.IsTrue(events.OfType<SshChannelEvent.Eof>().Any(), "应当读到 Eof");
-        Assert.IsTrue(events.OfType<SshChannelEvent.ExitStatus>().Any(), "应当读到 ExitStatus");
+        Assert.IsNotEmpty(events.OfType<SshChannelEvent.Eof>(), "应当读到 Eof");
+        Assert.IsNotEmpty(events.OfType<SshChannelEvent.ExitStatus>(), "应当读到 ExitStatus");
         Assert.IsInstanceOfType<SshChannelEvent.Closed>(events[^1], "Closed 必须是最后一件事");
         Assert.AreEqual(SshChannelState.Closed, command.Channel.State);
     }

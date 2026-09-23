@@ -32,7 +32,7 @@ public sealed class KeyExchangeTests
     {
         using Curve25519KeyExchange client = new();
         byte[] clientPublic = client.CreateClientPublicValue();
-        Assert.AreEqual(32, clientPublic.Length);
+        Assert.HasCount(32, clientPublic);
 
         // 服务端那一侧
         X25519PrivateKeyParameters serverPrivate = new(new SecureRandom());
@@ -44,7 +44,7 @@ public sealed class KeyExchangeTests
         agreement.CalculateAgreement(new X25519PublicKeyParameters(clientPublic), serverSecret, 0);
 
         byte[] clientSecret = client.ComputeSharedSecret(serverPublic);
-        CollectionAssert.AreEqual(serverSecret, clientSecret);
+        Assert.AreSequenceEqual(serverSecret, clientSecret);
     }
 
     [TestMethod]
@@ -85,7 +85,7 @@ public sealed class KeyExchangeTests
             using EcdhKeyExchange client = new(name);
             byte[] clientPublic = client.CreateClientPublicValue();
 
-            Assert.AreEqual(1 + (coord * 2), clientPublic.Length, $"{name}：未压缩点长度");
+            Assert.HasCount(1 + (coord * 2), clientPublic, $"{name}：未压缩点长度");
             Assert.AreEqual(0x04, clientPublic[0], $"{name}：必须是未压缩点编码");
 
             using ECDiffieHellman server = ECDiffieHellman.Create(curve);
@@ -109,7 +109,7 @@ public sealed class KeyExchangeTests
             byte[] serverSecret = server.DeriveRawSecretAgreement(clientPeer.PublicKey);
             byte[] clientSecret = client.ComputeSharedSecret(serverPublic);
 
-            CollectionAssert.AreEqual(serverSecret, clientSecret, $"{name}：共享密钥不一致");
+            Assert.AreSequenceEqual(serverSecret, clientSecret, $"{name}：共享密钥不一致");
         }
     }
 
@@ -170,7 +170,7 @@ public sealed class KeyExchangeTests
                 .ToByteArrayUnsigned();
 
             byte[] clientSecret = client.ComputeSharedSecret(serverPublic);
-            CollectionAssert.AreEqual(serverSecret, clientSecret, $"{name}：共享密钥不一致");
+            Assert.AreSequenceEqual(serverSecret, clientSecret, $"{name}：共享密钥不一致");
         }
     }
 
@@ -198,7 +198,7 @@ public sealed class KeyExchangeTests
         byte[] clientPublic = client.CreateClientPublicValue();
 
         // ML-KEM-768 公钥 1184 字节 + X25519 公钥 32 字节
-        Assert.AreEqual(1184 + 32, clientPublic.Length);
+        Assert.HasCount(1184 + 32, clientPublic);
 
         // 服务端：对 KEM 公钥做封装，再做一次 X25519。
         MLKemEncapsulator encapsulator = new(MLKemParameters.ml_kem_768);
@@ -206,7 +206,7 @@ public sealed class KeyExchangeTests
         byte[] ciphertext = new byte[encapsulator.EncapsulationLength];
         byte[] kemSecret = new byte[encapsulator.SecretLength];
         encapsulator.Encapsulate(ciphertext, 0, ciphertext.Length, kemSecret, 0, kemSecret.Length);
-        Assert.AreEqual(1088, ciphertext.Length, "ML-KEM-768 密文长度");
+        Assert.HasCount(1088, ciphertext, "ML-KEM-768 密文长度");
 
         X25519PrivateKeyParameters serverX25519 = new(new SecureRandom());
         byte[] serverX25519Public = serverX25519.GeneratePublicKey().GetEncoded();
@@ -220,8 +220,8 @@ public sealed class KeyExchangeTests
 
         // K = SHA-256(K_kem ‖ K_x25519)
         byte[] expected = SHA256.HashData([.. kemSecret, .. classicalSecret]);
-        CollectionAssert.AreEqual(expected, clientSecret);
-        Assert.AreEqual(32, clientSecret.Length, "SHA-256 输出");
+        Assert.AreSequenceEqual(expected, clientSecret);
+        Assert.HasCount(32, clientSecret, "SHA-256 输出");
     }
 
     [TestMethod]
@@ -229,14 +229,14 @@ public sealed class KeyExchangeTests
     {
         using HybridKeyExchange client = new(SshAlgorithmNames.SNtruP761X25519Sha512);
         byte[] clientPublic = client.CreateClientPublicValue();
-        Assert.AreEqual(1158 + 32, clientPublic.Length, "sntrup761 公钥 1158 + X25519 32");
+        Assert.HasCount(1158 + 32, clientPublic, "sntrup761 公钥 1158 + X25519 32");
 
         SNtruPrimeKemGenerator generator = new(new SecureRandom());
         ISecretWithEncapsulation encapsulated = generator.GenerateEncapsulated(
             new SNtruPrimePublicKeyParameters(SNtruPrimeParameters.sntrup761, clientPublic[..1158]));
         byte[] ciphertext = encapsulated.GetEncapsulation();
         byte[] kemSecret = encapsulated.GetSecret();
-        Assert.AreEqual(1039, ciphertext.Length, "sntrup761 密文长度");
+        Assert.HasCount(1039, ciphertext, "sntrup761 密文长度");
 
         X25519PrivateKeyParameters serverX25519 = new(new SecureRandom());
         byte[] serverX25519Public = serverX25519.GeneratePublicKey().GetEncoded();
@@ -248,8 +248,8 @@ public sealed class KeyExchangeTests
         byte[] clientSecret = client.ComputeSharedSecret([.. ciphertext, .. serverX25519Public]);
 
         byte[] expected = SHA512.HashData([.. kemSecret, .. classicalSecret]);
-        CollectionAssert.AreEqual(expected, clientSecret);
-        Assert.AreEqual(64, clientSecret.Length, "SHA-512 输出");
+        Assert.AreSequenceEqual(expected, clientSecret);
+        Assert.HasCount(64, clientSecret, "SHA-512 输出");
     }
 
     [TestMethod]

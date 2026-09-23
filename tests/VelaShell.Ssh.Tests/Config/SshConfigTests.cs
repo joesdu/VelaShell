@@ -106,10 +106,8 @@ public sealed class SshConfigTests
             """,
             "x");
 
-        CollectionAssert.AreEqual(
-            new[] { "~/.ssh/id_ed25519", "~/.ssh/id_rsa" },
-            config.IdentityFiles.ToArray(),
-            "顺序就是尝试顺序，不能重排");
+        Assert.AreSequenceEqual(
+            new[] { "~/.ssh/id_ed25519", "~/.ssh/id_rsa" }, [.. config.IdentityFiles], "顺序就是尝试顺序，不能重排");
     }
 
     [TestMethod]
@@ -133,7 +131,7 @@ public sealed class SshConfigTests
             "x");
 
         Assert.AreEqual("10.0.0.1", config.HostName);
-        CollectionAssert.AreEqual(new[] { @"C:\带 空格\id_ed25519" }, config.IdentityFiles.ToArray());
+        Assert.AreSequenceEqual(new[] { @"C:\带 空格\id_ed25519" }, [.. config.IdentityFiles]);
     }
 
     [TestMethod]
@@ -216,7 +214,7 @@ public sealed class SshConfigTests
             });
 
         Assert.AreEqual("特殊用户", config.User);
-        Assert.AreEqual(1, asked.Count, "求值器应当被问过一次");
+        Assert.HasCount(1, asked, "求值器应当被问过一次");
     }
 
     [TestMethod]
@@ -449,6 +447,6 @@ public sealed class SshConfigTests
             Path.Combine(Path.GetTempPath(), $"不存在的-{Guid.NewGuid():N}"));
 
         // 第一次用的机器上它本来就不存在。那不是错误。
-        Assert.AreEqual(0, blocks.Count);
+        Assert.IsEmpty(blocks);
     }
 }

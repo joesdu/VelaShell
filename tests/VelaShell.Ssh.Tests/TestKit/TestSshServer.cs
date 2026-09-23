@@ -253,7 +253,7 @@ public sealed class TestSshServer : IAsyncDisposable
 
         // ④ 算交换哈希并签名。
         using VelaShell.Ssh.Crypto.Kex.ISshKeyExchange shape =
-            VelaShell.Ssh.Crypto.Kex.SshKeyExchangeFactory.Create(negotiated.KeyExchange);
+            Ssh.Crypto.Kex.SshKeyExchangeFactory.Create(negotiated.KeyExchange);
 
         byte[] hostKeyBlob = _hostKey.PublicKeyBlob;
         byte[] exchangeHash = SshExchangeHash.Compute(shape.HashAlgorithm, new SshExchangeHashInput
@@ -280,7 +280,7 @@ public sealed class TestSshServer : IAsyncDisposable
         SshDataWriter replyWriter = new(reply);
         replyWriter.WriteByte(31);
         replyWriter.WriteString(hostKeyBlob);
-        if (shape.PublicValueEncoding == VelaShell.Ssh.Crypto.Kex.SshKexValueEncoding.Mpint)
+        if (shape.PublicValueEncoding == Ssh.Crypto.Kex.SshKexValueEncoding.Mpint)
         {
             replyWriter.WriteMpint(response.ServerPublicValue);
         }

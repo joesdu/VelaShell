@@ -116,7 +116,7 @@ public sealed class CipherSuiteConformanceTests
                     byte[] frame = Seal(sender, payload, seq);
                     byte[] recovered = Open(receiver, frame, seq, out long consumed);
 
-                    CollectionAssert.AreEqual(payload, recovered, $"{name}：{length} 字节载荷往返失真");
+                    Assert.AreSequenceEqual(payload, recovered, $"{name}：{length} 字节载荷往返失真");
                     Assert.AreEqual(frame.Length, consumed, $"{name}：consumed 与帧长不符");
                     seq++;
                 }
@@ -161,7 +161,7 @@ public sealed class CipherSuiteConformanceTests
             {
                 byte[] frame = Seal(sender, [], 0);
                 byte[] recovered = Open(receiver, frame, 0, out _);
-                Assert.AreEqual(0, recovered.Length, name);
+                Assert.IsEmpty(recovered, name);
             }
         }
     }
@@ -197,7 +197,7 @@ public sealed class CipherSuiteConformanceTests
 
                 // 喂满之后必须能正常取出 —— 前面几百次重试没有污染状态。
                 byte[] recovered = Open(receiver, frame, 0, out _);
-                CollectionAssert.AreEqual(payload, recovered, $"{name}：重试之后状态被污染了");
+                Assert.AreSequenceEqual(payload, recovered, $"{name}：重试之后状态被污染了");
             }
         }
     }
@@ -226,7 +226,7 @@ public sealed class CipherSuiteConformanceTests
                     ArrayBufferWriter<byte> writer = new();
                     SshOpenStatus status = receiver.TryOpen(remaining, i, MaxPacket, writer, out long consumed);
                     Assert.AreEqual(SshOpenStatus.Opened, status, $"{name}：第 {i} 帧");
-                    CollectionAssert.AreEqual(payloads[(int)i], writer.WrittenSpan.ToArray(), $"{name}：第 {i} 帧内容");
+                    Assert.AreSequenceEqual(payloads[(int)i], writer.WrittenSpan.ToArray(), $"{name}：第 {i} 帧内容");
                     remaining = remaining.Slice(consumed);
                 }
 
@@ -353,10 +353,10 @@ public sealed class CipherSuiteConformanceTests
             using (receiver)
             {
                 CipherSuiteShape shape = sender.Shape;
-                Assert.IsTrue(shape.BlockBytes >= 8, $"{name}：块大小至少为 8（RFC 4253 §6）");
-                Assert.IsTrue(shape.TagBytes >= 0, name);
-                Assert.IsTrue(shape.AadBytes >= 0, name);
-                Assert.IsTrue(shape.LengthProbeBytes >= SshPacketFormat.LengthFieldBytes,
+                Assert.IsGreaterThanOrEqualTo(8, shape.BlockBytes, $"{name}：块大小至少为 8（RFC 4253 §6）");
+                Assert.IsGreaterThanOrEqualTo(0, shape.TagBytes, name);
+                Assert.IsGreaterThanOrEqualTo(0, shape.AadBytes, name);
+                Assert.IsGreaterThanOrEqualTo(SshPacketFormat.LengthFieldBytes, shape.LengthProbeBytes,
                     $"{name}：至少要读到 4 字节才谈得上解析长度");
                 Assert.AreEqual(shape.Shape(), receiver.Shape.Shape(), $"{name}：收发两侧形状必须一致");
             }

@@ -58,9 +58,8 @@ public sealed class EncryptedOpenSshKeyTests
     {
         ISshSigner signer = await SshPrivateKeyFile.LoadAsync(FixturePath(name), Passphrase, TestContext.CancellationToken);
 
-        CollectionAssert.AreEqual(
-            ReadPublicBlob(name), signer.PublicKey.Blob.ToArray(),
-            $"{name}：解出来的公钥与 ssh-keygen 写的 .pub 不一致。");
+        Assert.AreSequenceEqual(
+            ReadPublicBlob(name), signer.PublicKey.Blob.ToArray(), $"{name}：解出来的公钥与 ssh-keygen 写的 .pub 不一致。");
     }
 
     /// <summary>不加密的那一路不能被这次改动带坏。</summary>
@@ -70,7 +69,7 @@ public sealed class EncryptedOpenSshKeyTests
         ISshSigner signer = await SshPrivateKeyFile.LoadAsync(
             FixturePath("ed25519-plain"), passphrase: null, TestContext.CancellationToken);
 
-        CollectionAssert.AreEqual(ReadPublicBlob("ed25519-plain"), signer.PublicKey.Blob.ToArray());
+        Assert.AreSequenceEqual(ReadPublicBlob("ed25519-plain"), signer.PublicKey.Blob.ToArray());
     }
 
     /// <summary>
@@ -94,7 +93,7 @@ public sealed class EncryptedOpenSshKeyTests
                 FixturePath(name), "wrong passphrase", TestContext.CancellationToken));
 
         Assert.IsTrue(ex.NeedsPassphrase, $"{name}：口令错了却没把 NeedsPassphrase 置上。");
-        StringAssert.Contains(ex.Message, "口令", StringComparison.Ordinal);
+        Assert.Contains("口令", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>没给口令时也走同一条结论，而不是先崩在别处。</summary>
@@ -158,7 +157,7 @@ public sealed class BlowfishTableTests
     {
         ReadOnlySpan<uint> tables = BcryptPbkdf.InitialTables;
 
-        Assert.AreEqual(18 + (4 * 256), tables.Length, "P 数组 18 个字 + 4 个各 256 项的 S 盒。");
+        Assert.HasCount(18 + (4 * 256), tables, "P 数组 18 个字 + 4 个各 256 项的 S 盒。");
 
         // π = 3.243F6A88 85A308D3 13198A2E 03707344 …
         Assert.AreEqual(0x243F6A88u, tables[0], "P[0]");

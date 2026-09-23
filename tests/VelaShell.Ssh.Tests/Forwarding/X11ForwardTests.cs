@@ -51,7 +51,7 @@ public sealed class X11ForwardTests
 
         // 而且它确实是个合法的十六进制 cookie（不是原始字节被当成文本）。
         byte[] sent = Convert.FromHexString(request.AuthCookieHex);
-        Assert.AreEqual(16, sent.Length);
+        Assert.HasCount(16, sent);
         CollectionAssert.AreNotEqual(_realCookie, sent);
     }
 
@@ -64,7 +64,7 @@ public sealed class X11ForwardTests
             async () => await X11Forwarder.RequestAsync(
                 fixture.Harness.Connection, fixture.Session, fixture.Options, fixture.Harness.Token));
 
-        StringAssert.Contains(error.Message, "X11Forwarding");
+        Assert.Contains("X11Forwarding", error.Message);
 
         // 处理器要摘干净 —— 不然服务端之后开的 x11 通道会被一个
         // 半挂的转发器接走。
@@ -102,9 +102,8 @@ public sealed class X11ForwardTests
             X11SetupMessage.TryParse(new ReadOnlySequence<byte>(arrived), out X11SetupMessage.Parsed parsed),
             "落到 X server 上的应当是一个完整的建立报文");
 
-        CollectionAssert.AreEqual(
-            _realCookie, parsed.ProtocolData,
-            "转给本机 X server 的必须是**真** cookie —— 假的那个 X server 不认");
+        Assert.AreSequenceEqual(
+            _realCookie, parsed.ProtocolData, "转给本机 X server 的必须是**真** cookie —— 假的那个 X server 不认");
 
         Assert.AreEqual(1, forwarder.AcceptedChannels);
         Assert.AreEqual(0, forwarder.RejectedChannels);
@@ -305,7 +304,7 @@ public sealed class X11ForwardTests
 
         string[] order = [.. fixture.Harness.Channels.Observation.Requests
             .Where(static r => r is "pty-req" or "x11-req" or "env" or "shell")];
-        CollectionAssert.AreEqual(new[] { "pty-req", "x11-req", "env", "shell" }, order);
+        Assert.AreSequenceEqual(new[] { "pty-req", "x11-req", "env", "shell" }, order);
     }
 
     [TestMethod]
@@ -317,9 +316,8 @@ public sealed class X11ForwardTests
         // ⚠️ 少了 -f，受限 cookie 会覆盖使用者 .Xauthority 里的完全授权 cookie。
         Assert.AreEqual("-f", arguments[0]);
         Assert.AreEqual("/tmp/velashell-x11-abc/xauthfile", arguments[1]);
-        CollectionAssert.AreEqual(
-            new[] { "generate", ":3", XAuthority.MitMagicCookie1, "untrusted", "timeout", "1200" },
-            arguments.Skip(2).ToArray());
+        Assert.AreSequenceEqual(
+            new[] { "generate", ":3", XAuthority.MitMagicCookie1, "untrusted", "timeout", "1200" }, [.. arguments.Skip(2)]);
     }
 
     [TestMethod]

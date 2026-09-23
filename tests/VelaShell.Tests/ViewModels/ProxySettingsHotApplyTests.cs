@@ -77,9 +77,8 @@ public sealed class ProxySettingsHotApplyTests
         tab.ConnectionStatus = SessionStatus.Connecting;
         tab.MarkConnectionFailed("Connection timed out (via http 127.0.0.1:7897 → example.com:22)");
 
-        CollectionAssert.AreEquivalent(
-            (TerminalTabViewModel[])[tab],
-            MainWindowViewModel.FailedSshTabsAfterProxyChange([tab]));
+        Assert.AreSequenceEqual(
+            (TerminalTabViewModel[])[tab], MainWindowViewModel.FailedSshTabsAfterProxyChange([tab]), SequenceOrder.InAnyOrder);
     }
 
     /// <summary>连着的、干净断开的、本地终端、非 SSH 协议,一律不碰。</summary>
