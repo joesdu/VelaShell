@@ -189,7 +189,7 @@ public sealed class AuthenticationTests
     [TestMethod]
     public async Task 公钥认证成功且服务端验签通过()
     {
-        using InMemorySshSigner signer = InMemorySshSigner.GenerateEd25519();
+        using var signer = InMemorySshSigner.GenerateEd25519();
 
         AuthRun run = await RunAsync(
             [new PublicKeyCredential(signer)],
@@ -209,7 +209,7 @@ public sealed class AuthenticationTests
     [TestMethod]
     public async Task 本地私钥走一段式不做多余的探测往返()
     {
-        using InMemorySshSigner signer = InMemorySshSigner.GenerateEd25519();
+        using var signer = InMemorySshSigner.GenerateEd25519();
 
         AuthRun run = await RunAsync(
             [new PublicKeyCredential(signer)],
@@ -227,7 +227,7 @@ public sealed class AuthenticationTests
     [TestMethod]
     public async Task 外部签名器先探测再签名()
     {
-        using InMemorySshSigner inner = InMemorySshSigner.GenerateEd25519();
+        using var inner = InMemorySshSigner.GenerateEd25519();
         ExpensiveSigner signer = new(inner);
 
         AuthRun run = await RunAsync(
@@ -247,7 +247,7 @@ public sealed class AuthenticationTests
     [TestMethod]
     public async Task 外部签名器在服务端不认这把钥时一次都不签()
     {
-        using InMemorySshSigner inner = InMemorySshSigner.GenerateEd25519();
+        using var inner = InMemorySshSigner.GenerateEd25519();
         ExpensiveSigner signer = new(inner);
 
         AuthRun run = await RunAsync(
@@ -267,7 +267,7 @@ public sealed class AuthenticationTests
     [TestMethod]
     public async Task 服务端不认这把公钥时如实记录而不是说密码错()
     {
-        using InMemorySshSigner signer = InMemorySshSigner.GenerateEd25519();
+        using var signer = InMemorySshSigner.GenerateEd25519();
 
         AuthRun run = await RunAsync(
             [new PublicKeyCredential(signer, "~/.ssh/id_ed25519")],
@@ -287,7 +287,7 @@ public sealed class AuthenticationTests
     [TestMethod]
     public async Task 凭据取不到材料时记成跳过并继续试下一条()
     {
-        using InMemorySshSigner good = InMemorySshSigner.GenerateEd25519();
+        using var good = InMemorySshSigner.GenerateEd25519();
 
         AuthRun run = await RunAsync(
             [
@@ -311,8 +311,8 @@ public sealed class AuthenticationTests
     [TestMethod]
     public async Task 服务端宣告的server_sig_algs决定RSA用哪种签名算法()
     {
-        using System.Security.Cryptography.RSA rsa = System.Security.Cryptography.RSA.Create(2048);
-        using InMemorySshSigner signer = InMemorySshSigner.FromRsa(rsa);
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        using var signer = InMemorySshSigner.FromRsa(rsa);
 
         AuthRun run = await RunAsync(
             [new PublicKeyCredential(signer)],
@@ -334,8 +334,8 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
     [TestMethod]
     public async Task 没有server_sig_algs时用我们自己的第一偏好()
     {
-        using System.Security.Cryptography.RSA rsa = System.Security.Cryptography.RSA.Create(2048);
-        using InMemorySshSigner signer = InMemorySshSigner.FromRsa(rsa);
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        using var signer = InMemorySshSigner.FromRsa(rsa);
 
         AuthRun run = await RunAsync(
             [new PublicKeyCredential(signer)],
@@ -354,8 +354,8 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
     [TestMethod]
     public async Task 默认不会降级到SHA1的ssh_rsa()
     {
-        using System.Security.Cryptography.RSA rsa = System.Security.Cryptography.RSA.Create(2048);
-        using InMemorySshSigner signer = InMemorySshSigner.FromRsa(rsa);
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        using var signer = InMemorySshSigner.FromRsa(rsa);
 
         AuthRun run = await RunAsync(
             [new PublicKeyCredential(signer)],
@@ -376,8 +376,8 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
     [TestMethod]
     public async Task 显式打开之后才会使用SHA1的ssh_rsa()
     {
-        using System.Security.Cryptography.RSA rsa = System.Security.Cryptography.RSA.Create(2048);
-        using InMemorySshSigner signer = InMemorySshSigner.FromRsa(rsa);
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        using var signer = InMemorySshSigner.FromRsa(rsa);
 
         AuthRun run = await RunAsync(
             [new PublicKeyCredential(signer)],
@@ -577,7 +577,7 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
     [TestMethod]
     public async Task 公钥加动态码的两步认证能走通()
     {
-        using InMemorySshSigner signer = InMemorySshSigner.GenerateEd25519();
+        using var signer = InMemorySshSigner.GenerateEd25519();
         List<SshKeyboardChallenge> seen = [];
 
         AuthRun run = await RunAsync(
@@ -625,7 +625,7 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
     [TestMethod]
     public async Task 第一步过了但第二步没配凭据时说得出卡在哪()
     {
-        using InMemorySshSigner signer = InMemorySshSigner.GenerateEd25519();
+        using var signer = InMemorySshSigner.GenerateEd25519();
 
         AuthRun run = await RunAsync(
             [new PublicKeyCredential(signer)],   // 只配了公钥，没配动态码
@@ -650,7 +650,7 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
     [TestMethod]
     public async Task 服务端不接受的方法被跳过并记录原因()
     {
-        using InMemorySshSigner signer = InMemorySshSigner.GenerateEd25519();
+        using var signer = InMemorySshSigner.GenerateEd25519();
 
         AuthRun run = await RunAsync(
             [
@@ -676,8 +676,8 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
     [TestMethod]
     public async Task 按使用者给出的顺序依次尝试()
     {
-        using InMemorySshSigner first = InMemorySshSigner.GenerateEd25519();
-        using InMemorySshSigner second = InMemorySshSigner.GenerateEd25519();
+        using var first = InMemorySshSigner.GenerateEd25519();
+        using var second = InMemorySshSigner.GenerateEd25519();
 
         AuthRun run = await RunAsync(
             [

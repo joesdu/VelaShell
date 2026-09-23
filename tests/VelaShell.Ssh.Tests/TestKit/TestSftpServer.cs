@@ -312,7 +312,7 @@ public sealed class TestSftpServer
     {
         SshDataReader reader = new(rest);
         string path = reader.ReadUtf8String(SftpProtocol.MaxPathLength);
-        SftpOpenMode mode = (SftpOpenMode)reader.ReadUInt32();
+        var mode = (SftpOpenMode)reader.ReadUInt32();
         SftpFileAttributes attributes = ReadAttributes(ref reader);
 
         bool exists = _nodes.TryGetValue(path, out TestSftpNode? node);
@@ -767,7 +767,7 @@ public sealed class TestSftpServer
     private static SftpFileAttributes ReadAttributes(scoped ref SshDataReader reader)
     {
         // 与库内 SftpFileAttributes.Read 同样的结构，但那个是 internal。
-        SftpAttributeFields flags = (SftpAttributeFields)reader.ReadUInt32();
+        var flags = (SftpAttributeFields)reader.ReadUInt32();
 
         ulong size = 0;
         uint permissions = 0;

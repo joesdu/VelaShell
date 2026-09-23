@@ -414,7 +414,7 @@ public static class SshPrivateKeyFile
                 InverseQ = ToFixedLength(ToPositive(iqmp), TrimLeadingZero(p).Length),
             };
 
-            RSA rsa = RSA.Create();
+            var rsa = RSA.Create();
             rsa.ImportParameters(parameters);
             return InMemorySshSigner.FromRsa(rsa);
         }
@@ -460,7 +460,7 @@ public static class SshPrivateKeyFile
                 D = ToFixedLength(ToPositive(d), coordinateBytes),
             };
 
-            ECDsa ecdsa = ECDsa.Create();
+            var ecdsa = ECDsa.Create();
             ecdsa.ImportParameters(parameters);
             return InMemorySshSigner.FromEcdsa(ecdsa);
         }
@@ -520,7 +520,7 @@ public static class SshPrivateKeyFile
 
     private static InMemorySshSigner LoadRsaFromPem(string pem, string? passphrase, bool encrypted)
     {
-        RSA rsa = RSA.Create();
+        var rsa = RSA.Create();
         if (encrypted)
         {
             rsa.ImportFromEncryptedPem(pem, passphrase);
@@ -534,7 +534,7 @@ public static class SshPrivateKeyFile
 
     private static InMemorySshSigner LoadEcdsaFromPem(string pem, string? passphrase, bool encrypted)
     {
-        ECDsa ecdsa = ECDsa.Create();
+        var ecdsa = ECDsa.Create();
         if (encrypted)
         {
             ecdsa.ImportFromEncryptedPem(pem, passphrase);

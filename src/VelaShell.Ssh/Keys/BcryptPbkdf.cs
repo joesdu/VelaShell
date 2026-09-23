@@ -132,7 +132,7 @@ internal static class BcryptPbkdf
                 // 盐每块不同:sha512(salt ‖ be32(count))。没有这个计数器,
                 // 所有块会算出同一个值,长输出就成了同一段的重复。
                 System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(counter, count);
-                using (IncrementalHash incremental = IncrementalHash.CreateHash(HashAlgorithmName.SHA512))
+                using (var incremental = IncrementalHash.CreateHash(HashAlgorithmName.SHA512))
                 {
                     incremental.AppendData(salt);
                     incremental.AppendData(counter);

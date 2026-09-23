@@ -421,7 +421,7 @@ public sealed class AesCtrHmacCipherSuite : ISshCipherSuite
         Span<byte> seq = stackalloc byte[4];
         BinaryPrimitives.WriteUInt32BigEndian(seq, sequenceNumber);
 
-        using IncrementalHash hmac = IncrementalHash.CreateHMAC(_macName, _macKey);
+        using var hmac = IncrementalHash.CreateHMAC(_macName, _macKey);
         hmac.AppendData(seq);
         hmac.AppendData(data);
         hmac.GetHashAndReset(mac);

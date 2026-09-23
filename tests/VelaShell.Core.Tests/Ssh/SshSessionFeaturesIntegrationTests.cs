@@ -142,7 +142,7 @@ public class SshSessionFeaturesIntegrationTests
     {
         RequireContainer();
         RequireWindowsPipes();
-        await using FakeAgent agent = FakeAgent.Start(signer: null);
+        await using var agent = FakeAgent.Start(signer: null);
         using EnvironmentScope scope = new("SSH_AUTH_SOCK", agent.Endpoint);
 
         await using VelaSshClientWrapper ssh = await ConnectAsync(new SshSessionOptions { AgentForwarding = true });
@@ -165,7 +165,7 @@ public class SshSessionFeaturesIntegrationTests
         RequireContainer();
         RequireWindowsPipes();
 
-        using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         ISshSigner signer = SshPrivateKeyFile.Parse(ecdsa.ExportPkcs8PrivateKeyPem());
         string publicLine =
             $"{signer.PublicKey.KeyType} {Convert.ToBase64String(signer.PublicKey.Blob.Span)} vela-agent-test";
@@ -179,7 +179,7 @@ public class SshSessionFeaturesIntegrationTests
 
         try
         {
-            await using FakeAgent agent = FakeAgent.Start(signer);
+            await using var agent = FakeAgent.Start(signer);
             using EnvironmentScope scope = new("SSH_AUTH_SOCK", agent.Endpoint);
 
             SshConnectionAssembler.Assembled assembled = SshConnectionAssembler.Create(

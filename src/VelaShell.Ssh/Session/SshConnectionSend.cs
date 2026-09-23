@@ -157,7 +157,7 @@ public sealed partial class SshConnection
             Interlocked.Add(ref _pendingSendBytes, accounted);
         }
 
-        SendCompletion completion = SendCompletion.Rent();
+        var completion = SendCompletion.Rent();
         ValueTask done = completion.AsValueTask();
 
         bool enqueued;
@@ -219,7 +219,7 @@ public sealed partial class SshConnection
         ThrowIfFaulted();
         cancellationToken.ThrowIfCancellationRequested();
 
-        SendCompletion completion = SendCompletion.Rent();
+        var completion = SendCompletion.Rent();
         ValueTask done = completion.AsValueTask();
 
         if (!_outbound.Writer.TryWrite(
@@ -333,7 +333,7 @@ public sealed partial class SshConnection
         {
             case OutboundKind.Frame:
                 {
-                    SshMessageNumber number = (SshMessageNumber)item.Packet.Span[0];
+                    var number = (SshMessageNumber)item.Packet.Span[0];
 
                     // 暂存时登记的是「计入背压的字节数」，排空时照原数归还。
                     switch (_sendGate.Admit(item.Packet, number, item.AccountedBytes))

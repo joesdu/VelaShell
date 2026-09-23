@@ -85,7 +85,7 @@ public sealed class ChannelInterleavingTests
             _ = shell.Input.WriteAsync(Encoding.ASCII.GetBytes(marker), host.Token).AsTask();
 
             string echoed = "";
-            System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
             while (clock.Elapsed < TimeSpan.FromSeconds(5))
             {
                 if (shell.Output.TryRead(out ReadResult read))

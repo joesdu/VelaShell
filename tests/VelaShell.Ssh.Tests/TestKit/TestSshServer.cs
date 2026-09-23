@@ -229,7 +229,7 @@ public sealed class TestSshServer : IAsyncDisposable
         // 重协商时客户端的 KEXINIT 已经被收包循环读掉了 —— 不能再等一个。
         byte[] clientKexInitPayload = peerKexInitAlreadyRead
             ?? (await ExpectAsync(read, SshMessageNumber.KexInit, cancellationToken)).Payload.ToArray();
-        SshKexInitMessage clientKexInit = SshKexInitMessage.Decode(clientKexInitPayload);
+        var clientKexInit = SshKexInitMessage.Decode(clientKexInitPayload);
 
         // 服务端视角的协商：规则相同，但**以客户端的顺序为准**（RFC 4253 §7.1），
         // 所以这里要拿客户端的列表当「我们的偏好」。

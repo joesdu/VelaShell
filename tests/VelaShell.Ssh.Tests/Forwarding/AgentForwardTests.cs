@@ -164,7 +164,7 @@ public sealed class AgentForwardTests
     {
         await using Harness harness = await Harness.StartAsync();
 
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         harness.Agent.Add(key, "~/.ssh/id_ed25519");
 
         (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);
@@ -188,7 +188,7 @@ public sealed class AgentForwardTests
     {
         await using Harness harness = await Harness.StartAsync();
 
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         harness.Agent.Add(key, "id_ed25519");
 
         (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);
@@ -216,8 +216,8 @@ public sealed class AgentForwardTests
     {
         await using Harness harness = await Harness.StartAsync();
 
-        using System.Security.Cryptography.RSA rsa = System.Security.Cryptography.RSA.Create(2048);
-        using InMemorySshSigner key = InMemorySshSigner.FromRsa(rsa);
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        using var key = InMemorySshSigner.FromRsa(rsa);
         harness.Agent.Add(key, "id_rsa");
 
         (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);
@@ -246,8 +246,8 @@ public sealed class AgentForwardTests
     {
         await using Harness harness = await Harness.StartAsync();
 
-        using InMemorySshSigner allowed = InMemorySshSigner.GenerateEd25519();
-        using InMemorySshSigner secret = InMemorySshSigner.GenerateEd25519();
+        using var allowed = InMemorySshSigner.GenerateEd25519();
+        using var secret = InMemorySshSigner.GenerateEd25519();
         harness.Agent.Add(allowed, "给跳板机用的");
         harness.Agent.Add(secret, "生产环境的钥匙");
 
@@ -283,7 +283,7 @@ public sealed class AgentForwardTests
     {
         await using Harness harness = await Harness.StartAsync();
 
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         harness.Agent.Add(key, "~/.ssh/id_ed25519");
 
         List<AgentSignatureRequest> asked = [];
@@ -330,7 +330,7 @@ public sealed class AgentForwardTests
     {
         await using Harness harness = await Harness.StartAsync();
 
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         harness.Agent.Add(key, "k");
 
         (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);
@@ -399,7 +399,7 @@ public sealed class AgentForwardTests
     {
         await using Harness harness = await Harness.StartAsync();
 
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         harness.Agent.Add(key, "k");
 
         (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);

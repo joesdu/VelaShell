@@ -213,7 +213,7 @@ public sealed class HandshakeTests
 
         Assert.HasCount(2, versions.PreAuthBanner);
         Assert.AreEqual("Authorized use only.", versions.PreAuthBanner[0]);
-        StringAssert.StartsWith(versions.ServerVersion, "SSH-2.0-");
+        Assert.StartsWith("SSH-2.0-", versions.ServerVersion);
 
         SshKeyExchangeRunner runner = new(clientTransport, SshAlgorithmSet.Default, new DangerousAcceptAnyHostKeyPolicy());
         _ = await runner.RunAsync(versions, "test.invalid", 22, cancellationToken: cts.Token);
@@ -231,7 +231,7 @@ public sealed class HandshakeTests
         Assert.DoesNotContain(" ", id, "不发注释");
         Assert.DoesNotContain("NET", id, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Windows", id, StringComparison.OrdinalIgnoreCase);
-        StringAssert.StartsWith(id, "SSH-2.0-");
+        Assert.StartsWith("SSH-2.0-", id);
     }
 
     // ------------------------------------------------------------ 失败路径
@@ -326,7 +326,7 @@ public sealed class HandshakeTests
         Assert.AreEqual(SshNegotiationCategory.EncryptionClientToServer, ex.Category);
         Assert.IsNotEmpty(ex.OfferedByPeer);
         Assert.AreSequenceEqual(new[] { "cipher-that-does-not-exist" }, [.. ex.OfferedByUs]);
-        StringAssert.StartsWith(ex.PeerVersion, "SSH-2.0-");
+        Assert.StartsWith("SSH-2.0-", ex.PeerVersion);
     }
 
     [TestMethod]

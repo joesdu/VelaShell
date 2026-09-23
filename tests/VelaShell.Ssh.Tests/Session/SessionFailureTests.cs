@@ -132,11 +132,11 @@ public sealed class SessionFailureTests
     [TestMethod]
     public async Task 对端沉默时保活在有限时间内判死()
     {
-        await using RawPeer peer = RawPeer.Start(new KeepAlivePolicy(TimeSpan.FromMilliseconds(100), MaxMissed: 2));
+        await using var peer = RawPeer.Start(new KeepAlivePolicy(TimeSpan.FromMilliseconds(100), MaxMissed: 2));
 
         // 对端只读、一句不回。
         int probes = 0;
-        Task reading = Task.Run(async () =>
+        var reading = Task.Run(async () =>
         {
             while (await peer.ReadAsync() is { } payload)
             {
@@ -161,7 +161,7 @@ public sealed class SessionFailureTests
     [TestMethod]
     public async Task 迟到的保活应答不会让后续全局请求错位()
     {
-        await using RawPeer peer = RawPeer.Start(new KeepAlivePolicy(TimeSpan.FromMilliseconds(150), MaxMissed: 10));
+        await using var peer = RawPeer.Start(new KeepAlivePolicy(TimeSpan.FromMilliseconds(150), MaxMissed: 10));
 
         // 对端先憋着第一个保活不回。
         byte[] firstProbe = await peer.ReadUntilAsync(SshMessageNumber.GlobalRequest);
@@ -204,7 +204,7 @@ public sealed class SessionFailureTests
     [TestMethod]
     public async Task 协议违规时先发出DISCONNECT再断开()
     {
-        await using RawPeer peer = RawPeer.Start();
+        await using var peer = RawPeer.Start();
 
         // 一个没人要的 REQUEST_SUCCESS：全局请求的 FIFO 失步。
         await peer.SendAsync(SshMessageNumber.RequestSuccess);
@@ -222,7 +222,7 @@ public sealed class SessionFailureTests
     [TestMethod]
     public async Task 对端的DISCONNECT带着原因码与原话交出去()
     {
-        await using RawPeer peer = RawPeer.Start();
+        await using var peer = RawPeer.Start();
 
         ArrayBufferWriter<byte> buffer = new();
         SshDataWriter writer = new(buffer);
@@ -245,7 +245,7 @@ public sealed class SessionFailureTests
     [TestMethod]
     public async Task 会话判死之后通道的读者读到结尾()
     {
-        await using RawPeer peer = RawPeer.Start();
+        await using var peer = RawPeer.Start();
 
         Task<SshChannel> opening = peer.Connection.OpenSessionChannelAsync(cancellationToken: peer.Token).AsTask();
         await peer.AcceptChannelOpenAsync();
@@ -269,7 +269,7 @@ public sealed class SessionFailureTests
     [TestMethod]
     public async Task 未知报文的UNIMPLEMENTED带着它的序号()
     {
-        await using RawPeer peer = RawPeer.Start();
+        await using var peer = RawPeer.Start();
 
         // 对端的第 0、1 个报文是 IGNORE，第 2 个是没人认识的 200。
         await peer.SendAsync((byte)SshMessageNumber.Ignore, 0, 0, 0, 0);
@@ -283,7 +283,7 @@ public sealed class SessionFailureTests
     [TestMethod]
     public async Task 对端的UNIMPLEMENTED不会被回声()
     {
-        await using RawPeer peer = RawPeer.Start();
+        await using var peer = RawPeer.Start();
 
         await peer.SendAsync((byte)SshMessageNumber.Unimplemented, 0, 0, 0, 9);
         await peer.SendAsync(200);
@@ -305,7 +305,7 @@ public sealed class SessionFailureTests
     [TestMethod]
     public async Task 通道请求事件的载荷不会被后续报文覆盖()
     {
-        await using RawPeer peer = RawPeer.Start();
+        await using var peer = RawPeer.Start();
 
         Task<SshChannel> opening = peer.Connection.OpenSessionChannelAsync(cancellationToken: peer.Token).AsTask();
         await peer.AcceptChannelOpenAsync();
@@ -339,7 +339,7 @@ public sealed class SessionFailureTests
         _ = await peer.ReadUntilAsync(SshMessageNumber.RequestFailure);
 
         SshChannelEvent channelEvent = await channel.ReadEventAsync(peer.Token);
-        SshChannelEvent.PeerRequest request = (SshChannelEvent.PeerRequest)channelEvent;
+        var request = (SshChannelEvent.PeerRequest)channelEvent;
         Assert.AreEqual("custom@example.com", request.RequestType);
         Assert.AreSequenceEqual(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, request.Payload.ToArray());
     }
@@ -393,7 +393,7 @@ public sealed class SessionFailureTests
     [TestMethod]
     public async Task 同一类型的多个处理器各自认领自己的通道()
     {
-        await using RawPeer peer = RawPeer.Start();
+        await using var peer = RawPeer.Start();
         TaggedHandler first = new(1);
         TaggedHandler second = new(2);
         peer.Connection.AddIncomingChannelHandler("x-test@example.com", first);
@@ -430,7 +430,7 @@ public sealed class SessionFailureTests
     [TestMethod]
     public async Task 本端限额拒绝时处理器收到OnOpenAborted()
     {
-        await using RawPeer peer = RawPeer.Start(limits: new SshConnectionLimits { MaxChannels = 1 });
+        await using var peer = RawPeer.Start(limits: new SshConnectionLimits { MaxChannels = 1 });
         TaggedHandler handler = new(1);
         peer.Connection.AddIncomingChannelHandler("x-test@example.com", handler);
 
@@ -494,7 +494,7 @@ public sealed class SessionFailureTests
     [TestMethod]
     public async Task 通道宣告的包上限超过传输层上限时当场拒绝()
     {
-        await using RawPeer peer = RawPeer.Start();
+        await using var peer = RawPeer.Start();
 
         SshChannelOptions options = SshChannelOptions.Default with { ReceiveMaxPacketBytes = 64 * 1024 };
         await Assert.ThrowsExactlyAsync<ArgumentException>(
@@ -510,7 +510,7 @@ public sealed class SessionFailureTests
     [TestMethod]
     public async Task 消费者提前收尾时剩下的字节照样回补窗口()
     {
-        await using RawPeer peer = RawPeer.Start();
+        await using var peer = RawPeer.Start();
 
         const int Window = SshWindowPolicy.AbsoluteMinimumBytes;
         SshChannelOptions options = SshChannelOptions.Default with { WindowPolicy = SshWindowPolicy.Fixed(Window) };

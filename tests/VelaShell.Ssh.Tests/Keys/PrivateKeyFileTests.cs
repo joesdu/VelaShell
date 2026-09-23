@@ -172,7 +172,7 @@ public sealed class PrivateKeyFileTests
     [TestMethod]
     public async Task 读出RSA私钥并且能签能验()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         RSAParameters p = rsa.ExportParameters(includePrivateParameters: true);
 
         ArrayBufferWriter<byte> blobBuffer = new();
@@ -220,7 +220,7 @@ public sealed class PrivateKeyFileTests
                 (SshAlgorithmNames.EcdsaSha2Nistp521, "nistp521", 66, ECCurve.NamedCurves.nistP521),
             })
         {
-            using ECDsa ecdsa = ECDsa.Create(curve);
+            using var ecdsa = ECDsa.Create(curve);
             ECParameters p = ecdsa.ExportParameters(includePrivateParameters: true);
 
             byte[] point = new byte[1 + (coordinate * 2)];
@@ -330,7 +330,7 @@ public sealed class PrivateKeyFileTests
     [TestMethod]
     public async Task 读出PKCS8的RSA私钥()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         string pem = rsa.ExportPkcs8PrivateKeyPem();
 
         ISshSigner signer = SshPrivateKeyFile.Parse(pem);
@@ -343,7 +343,7 @@ public sealed class PrivateKeyFileTests
     [TestMethod]
     public async Task 读出PKCS8的ECDSA私钥()
     {
-        using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         string pem = ecdsa.ExportPkcs8PrivateKeyPem();
 
         ISshSigner signer = SshPrivateKeyFile.Parse(pem);
@@ -357,7 +357,7 @@ public sealed class PrivateKeyFileTests
     [TestMethod]
     public async Task 读出带口令的PKCS8私钥()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         PbeParameters pbe = new(PbeEncryptionAlgorithm.Aes256Cbc, HashAlgorithmName.SHA256, 10_000);
         string pem = rsa.ExportEncryptedPkcs8PrivateKeyPem("正确的口令", pbe);
 
@@ -371,7 +371,7 @@ public sealed class PrivateKeyFileTests
     [TestMethod]
     public void 带口令的私钥没给口令时说清楚()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         PbeParameters pbe = new(PbeEncryptionAlgorithm.Aes256Cbc, HashAlgorithmName.SHA256, 10_000);
         string pem = rsa.ExportEncryptedPkcs8PrivateKeyPem("口令", pbe);
 
@@ -387,7 +387,7 @@ public sealed class PrivateKeyFileTests
     [TestMethod]
     public void 口令不对时说得出是口令不对()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         PbeParameters pbe = new(PbeEncryptionAlgorithm.Aes256Cbc, HashAlgorithmName.SHA256, 10_000);
         string pem = rsa.ExportEncryptedPkcs8PrivateKeyPem("正确的", pbe);
 
@@ -401,7 +401,7 @@ public sealed class PrivateKeyFileTests
     [TestMethod]
     public async Task 从文件读()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         string path = Path.Combine(Path.GetTempPath(), $"velashell-key-{Guid.NewGuid():N}.pem");
 
         try

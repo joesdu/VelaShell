@@ -56,7 +56,7 @@ public class SshCredentialSetupTests
         IReadOnlyList<SshCredential> credentials =
             await SshConnectionAssembler.BuildCredentialsAsync(Password(), TestContext.CancellationToken);
 
-        PasswordCredential credential = (PasswordCredential)credentials[0];
+        var credential = (PasswordCredential)credentials[0];
         Assert.IsTrue(credential.AlsoAnswerKeyboardInteractive);
     }
 

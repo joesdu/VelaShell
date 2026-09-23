@@ -100,7 +100,7 @@ public static class SshConnectionFactory
 
             // ③ 认证又是一把（默认两分钟）。
             phase = SshPhase.Authenticating;
-            using CancellationTokenSource auth = CancellationTokenSource
+            using var auth = CancellationTokenSource
                 .CreateLinkedTokenSource(cancellationToken);
 
             if (options.AuthenticationTimeout != Timeout.InfiniteTimeSpan)

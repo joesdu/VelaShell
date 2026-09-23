@@ -138,8 +138,8 @@ public sealed class KnownHostsTests
     [TestMethod]
     public void 同一台主机可以有多把不同类型的密钥()
     {
-        SshPublicKey ed25519 = SshPublicKey.Parse(TestHostKey.Create("ssh-ed25519").PublicKeyBlob);
-        SshPublicKey rsa = SshPublicKey.Parse(TestHostKey.Create("ssh-rsa").PublicKeyBlob);
+        var ed25519 = SshPublicKey.Parse(TestHostKey.Create("ssh-ed25519").PublicKeyBlob);
+        var rsa = SshPublicKey.Parse(TestHostKey.Create("ssh-rsa").PublicKeyBlob);
 
         IReadOnlyList<KnownHostEntry> entries = KnownHostsFile.Parse(
             Line("example.com", ed25519) + "\n" + Line("example.com", rsa) + "\n");

@@ -171,7 +171,7 @@ public sealed class PuttyKeyTests
 
     private static byte[] Encrypt(byte[] plaintext, byte[] key, byte[] iv)
     {
-        using Aes aes = Aes.Create();
+        using var aes = Aes.Create();
         aes.Key = key;
         aes.IV = iv;
         aes.Mode = CipherMode.CBC;
@@ -307,7 +307,7 @@ public sealed class PuttyKeyTests
     [TestMethod]
     public async Task 读RSA()
     {
-        using RSA rsa = RSA.Create(2048);
+        using var rsa = RSA.Create(2048);
         RSAParameters p = rsa.ExportParameters(includePrivateParameters: true);
 
         ArrayBufferWriter<byte> pub = new();
@@ -336,7 +336,7 @@ public sealed class PuttyKeyTests
     [TestMethod]
     public async Task 读ECDSA()
     {
-        using ECDsa ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         ECParameters p = ecdsa.ExportParameters(includePrivateParameters: true);
 
         byte[] point = new byte[65];

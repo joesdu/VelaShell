@@ -232,7 +232,7 @@ public sealed class SftpWireTests
     [TestMethod]
     public void 访问时间与修改时间共用一个标志位()
     {
-        SftpFileAttributes attributes =
+        var attributes =
             SftpFileAttributes.WithTimes(
                 DateTimeOffset.FromUnixTimeSeconds(111),
                 DateTimeOffset.FromUnixTimeSeconds(222));

@@ -354,7 +354,7 @@ public static class SftpWire
     public static (SftpStatusCode Code, string Message) ReadStatus(ReadOnlySequence<byte> payloadAfterRequestId)
     {
         SshDataReader reader = new(payloadAfterRequestId);
-        SftpStatusCode code = (SftpStatusCode)reader.ReadUInt32();
+        var code = (SftpStatusCode)reader.ReadUInt32();
 
         // 有些老服务端在 STATUS 里只给码，不给文本。那不是协议违规，别因此抛异常。
         string message = reader.IsEmpty ? "" : reader.ReadUtf8String(SftpProtocol.MaxPathLength);
@@ -409,7 +409,7 @@ public static class SftpWire
 
             string fileName = reader.ReadUtf8String(SftpProtocol.MaxPathLength);
             string longName = reader.ReadUtf8String(SftpProtocol.MaxPathLength);
-            SftpFileAttributes attributes = SftpFileAttributes.Read(ref reader);
+            var attributes = SftpFileAttributes.Read(ref reader);
             entries.Add(new SftpNameEntry(fileName, longName, attributes));
         }
 

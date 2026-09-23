@@ -92,7 +92,7 @@ public sealed class SshCertificateSigner : ISshSigner
                 "证书要与**签发时用的那把**私钥一起用。");
         }
 
-        SshPublicKey presented = SshPublicKey.ForCertificate(
+        var presented = SshPublicKey.ForCertificate(
             certificate.Key, certificate.Algorithm, certificate.Blob.ToArray());
 
         return new SshCertificateSigner(signer, certificate, presented);

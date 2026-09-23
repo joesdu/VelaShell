@@ -77,7 +77,7 @@ public static class TestKexResponder
 
     private static TestKexResponse RespondEcdh(ReadOnlySpan<byte> clientPublic, ECCurve curve, int coordinate)
     {
-        using ECDiffieHellman server = ECDiffieHellman.Create(curve);
+        using var server = ECDiffieHellman.Create(curve);
         ECParameters p = server.ExportParameters(false);
 
         byte[] serverPublic = new byte[1 + (coordinate * 2)];
@@ -85,7 +85,7 @@ public static class TestKexResponder
         p.Q.X!.CopyTo(serverPublic.AsSpan(1 + coordinate - p.Q.X!.Length));
         p.Q.Y!.CopyTo(serverPublic.AsSpan(1 + (coordinate * 2) - p.Q.Y!.Length));
 
-        using ECDiffieHellman peer = ECDiffieHellman.Create(new ECParameters
+        using var peer = ECDiffieHellman.Create(new ECParameters
         {
             Curve = curve,
             Q = new ECPoint

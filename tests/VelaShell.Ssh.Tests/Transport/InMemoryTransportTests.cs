@@ -283,7 +283,7 @@ public sealed class InMemoryTransportTests
 
         Assert.AreEqual(SshDialKind.InMemory, dialer.Kind);
 
-        SshDialTarget target = SshDialTarget.Direct("example.com", 22);
+        var target = SshDialTarget.Direct("example.com", 22);
         await using Stream client = await dialer.DialAsync(target);
 
         Assert.IsNotNull(seen);

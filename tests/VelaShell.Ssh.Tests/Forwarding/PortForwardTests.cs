@@ -150,12 +150,12 @@ public sealed class PortForwardTests
             TunnelHandler = UppercaseEchoAsync,
         });
 
-        await using PortForwarder forwarder = PortForwarder.StartLocal(
+        await using var forwarder = PortForwarder.StartLocal(
             harness.Connection, "10.0.0.9", 80,
             new PortForwardOptions { BindPort = 0 });
 
         // 端口给 0 → 由系统分配，结果在 BoundEndPoint 里。
-        IPEndPoint bound = (IPEndPoint)forwarder.BoundEndPoint!;
+        var bound = (IPEndPoint)forwarder.BoundEndPoint!;
         Assert.IsGreaterThan(0, bound.Port);
         Assert.AreEqual(IPAddress.Loopback, bound.Address, "默认绑环回，不是 0.0.0.0");
 
@@ -179,7 +179,7 @@ public sealed class PortForwardTests
             TunnelHandler = UppercaseEchoAsync,
         });
 
-        await using PortForwarder forwarder = PortForwarder.StartLocal(
+        await using var forwarder = PortForwarder.StartLocal(
             harness.Connection, "target", 1234);
 
         List<ForwardConnectionEventArgs> closed = [];
@@ -212,7 +212,7 @@ public sealed class PortForwardTests
             RejectTunnelWith = SshChannelOpenFailureReason.AdministrativelyProhibited,
         });
 
-        await using PortForwarder forwarder = PortForwarder.StartLocal(
+        await using var forwarder = PortForwarder.StartLocal(
             harness.Connection, "blocked", 80);
 
         List<ForwardErrorEventArgs> errors = [];
@@ -244,7 +244,7 @@ public sealed class PortForwardTests
     {
         await using Harness harness = await Harness.StartAsync(new TestChannelScript());
 
-        await using PortForwarder first = PortForwarder.StartLocal(
+        await using var first = PortForwarder.StartLocal(
             harness.Connection, "t", 1, new PortForwardOptions { BindPort = 0 });
 
         int taken = ((IPEndPoint)first.BoundEndPoint!).Port;
@@ -266,7 +266,7 @@ public sealed class PortForwardTests
             TunnelHandler = UppercaseEchoAsync,
         });
 
-        await using PortForwarder forwarder = PortForwarder.StartDynamic(harness.Connection);
+        await using var forwarder = PortForwarder.StartDynamic(harness.Connection);
         Assert.AreEqual(ForwardKind.Dynamic, forwarder.Kind);
 
         using Socket client = new(SocketType.Stream, ProtocolType.Tcp);
@@ -306,7 +306,7 @@ public sealed class PortForwardTests
             RejectTunnelWith = SshChannelOpenFailureReason.ConnectFailed,
         });
 
-        await using PortForwarder forwarder = PortForwarder.StartDynamic(harness.Connection);
+        await using var forwarder = PortForwarder.StartDynamic(harness.Connection);
 
         using Socket client = new(SocketType.Stream, ProtocolType.Tcp);
         await client.ConnectAsync(forwarder.BoundEndPoint!, harness.Token);

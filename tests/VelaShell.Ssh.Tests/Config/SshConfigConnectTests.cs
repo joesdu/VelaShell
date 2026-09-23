@@ -62,11 +62,11 @@ public sealed class SshConfigConnectTests
             blocks, "target", new SshConfigConnectSettings { DefaultUserName = "me" });
 
         // 目标经 inner；inner 经 bastion；bastion 直连。
-        SshJumpDialer last = (SshJumpDialer)options.Dialer;
+        var last = (SshJumpDialer)options.Dialer;
         Assert.AreEqual("10.1.0.1", last.JumpHost.Host);
         Assert.AreEqual("jumper", last.JumpHost.UserName);
 
-        SshJumpDialer first = (SshJumpDialer)last.JumpHost.Dialer;
+        var first = (SshJumpDialer)last.JumpHost.Dialer;
         Assert.AreEqual("bastion.example.com", first.JumpHost.Host);
         Assert.AreEqual(2200, first.JumpHost.Port);
         Assert.AreEqual("ops", first.JumpHost.UserName);
@@ -88,7 +88,7 @@ public sealed class SshConfigConnectTests
 
         SshConnectionOptions options = await SshConfigFile.CreateConnectionOptionsAsync(blocks, "target");
 
-        SshJumpDialer jump = (SshJumpDialer)options.Dialer;
+        var jump = (SshJumpDialer)options.Dialer;
         Assert.AreEqual("alice", jump.JumpHost.UserName);
         Assert.AreEqual(2022, jump.JumpHost.Port);
     }
@@ -123,7 +123,7 @@ public sealed class SshConfigConnectTests
             """);
 
         SshConnectionOptions viaCommand = await SshConfigFile.CreateConnectionOptionsAsync(blocks, "viacmd");
-        ProxyCommandDialer command = (ProxyCommandDialer)viaCommand.Dialer;
+        var command = (ProxyCommandDialer)viaCommand.Dialer;
         Assert.AreEqual("nc -x proxy:1080 %h %p", command.CommandTemplate);
         Assert.AreEqual("joe", command.UserName);
 

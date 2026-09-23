@@ -80,7 +80,7 @@ public sealed class X11ForwardTests
         // 端到端：起一个假的 X server，让服务端开一条 x11 通道，
         // 用假 cookie 走完 X11 建立握手，检查落到 X server 上的是**真** cookie。
         await using Fixture fixture = await Fixture.StartAsync();
-        using FakeXServer xserver = FakeXServer.Start();
+        using var xserver = FakeXServer.Start();
 
         await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
             fixture.Harness.Connection, fixture.Session,
@@ -114,7 +114,7 @@ public sealed class X11ForwardTests
     {
         // ⚠️ 放过去就等于把本机显示交给任何知道端口的人。
         await using Fixture fixture = await Fixture.StartAsync();
-        using FakeXServer xserver = FakeXServer.Start();
+        using var xserver = FakeXServer.Start();
 
         await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
             fixture.Harness.Connection, fixture.Session,
@@ -141,7 +141,7 @@ public sealed class X11ForwardTests
     public async Task 非MIT_MAGIC_COOKIE_1的授权协议会被拒绝()
     {
         await using Fixture fixture = await Fixture.StartAsync();
-        using FakeXServer xserver = FakeXServer.Start();
+        using var xserver = FakeXServer.Start();
 
         await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
             fixture.Harness.Connection, fixture.Session,
@@ -177,7 +177,7 @@ public sealed class X11ForwardTests
     public async Task 过期之后不再接受新的x11通道()
     {
         await using Fixture fixture = await Fixture.StartAsync();
-        using FakeXServer xserver = FakeXServer.Start();
+        using var xserver = FakeXServer.Start();
 
         await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
             fixture.Harness.Connection, fixture.Session,
@@ -211,7 +211,7 @@ public sealed class X11ForwardTests
     public async Task 同一连接上两个会话的X11转发各自可用()
     {
         await using Fixture fixture = await Fixture.StartAsync();
-        using FakeXServer xserver = FakeXServer.Start();
+        using var xserver = FakeXServer.Start();
         X11ForwardOptions options = fixture.Options with { Display = xserver.Display };
 
         await using X11Forwarder first = await X11Forwarder.RequestAsync(
@@ -260,7 +260,7 @@ public sealed class X11ForwardTests
     public async Task 单连接模式在本端强制()
     {
         await using Fixture fixture = await Fixture.StartAsync();
-        using FakeXServer xserver = FakeXServer.Start();
+        using var xserver = FakeXServer.Start();
 
         await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
             fixture.Harness.Connection, fixture.Session,

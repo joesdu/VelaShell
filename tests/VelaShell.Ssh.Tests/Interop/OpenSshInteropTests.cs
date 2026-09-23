@@ -269,7 +269,7 @@ public sealed class OpenSshInteropTests
 
         ISshSigner key = await SshPrivateKeyFile.LoadAsync(KeyPath);
         OpenSshCertificate certificate = await OpenSshCertificate.LoadAsync(certPath);
-        SshCertificateSigner signer = SshCertificateSigner.Create(certificate, key);
+        var signer = SshCertificateSigner.Create(certificate, key);
 
         Assert.AreEqual(SshCertificateType.User, certificate.CertificateType);
         Assert.IsTrue(
@@ -499,15 +499,15 @@ public sealed class OpenSshInteropTests
         // 隧道的目标是从服务端视角解析的。两者只在默认端口下恰好相等；
         // 换一个映射端口（比如 2222 被占用时 -Port 2224）就会得到「Connection refused」，
         // 看上去像转发坏了。
-        const int SshdPortInsideContainer = 2222;
-        await using SshChannel tunnel = await connection.OpenTcpTunnelAsync("127.0.0.1", SshdPortInsideContainer);
+        const int sshdPortInsideContainer = 2222;
+        await using SshChannel tunnel = await connection.OpenTcpTunnelAsync("127.0.0.1", sshdPortInsideContainer);
 
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(20));
         System.IO.Pipelines.ReadResult read = await tunnel.StandardOutput.ReadAsync(timeout.Token);
         string banner = Encoding.ASCII.GetString(read.Buffer.FirstSpan);
         tunnel.StandardOutput.AdvanceTo(read.Buffer.End);
 
-        StringAssert.StartsWith(banner, "SSH-2.0-", "隧道对面应当是那台 sshd");
+        Assert.StartsWith("SSH-2.0-", banner, "隧道对面应当是那台 sshd");
     }
 
     /// <summary>
@@ -550,7 +550,6 @@ public sealed class OpenSshInteropTests
         Assert.IsTrue(connection.IsAlive);
         Console.WriteLine($"保活应答：{alive}");
     }
-
 
     // ------------------------------------------------------------ X11 转发
 
@@ -600,9 +599,7 @@ public sealed class OpenSshInteropTests
         Assert.Contains(XAuthority.MitMagicCookie1, output);
 
         // 远端 xauth 里存的那个 cookie，必须**正好是我们发出去的假 cookie**。
-        Assert.Contains(
-expected,             output,
-            $"远端 xauth 存的应当是我们发的假 cookie（{expected}）—— 对不上就是十六进制编码写错了");
+        Assert.Contains(expected, output, $"远端 xauth 存的应当是我们发的假 cookie（{expected}）—— 对不上就是十六进制编码写错了");
     }
 
     [TestMethod]
@@ -612,7 +609,7 @@ expected,             output,
         // 通道回来；我们核对假 cookie、换成真 cookie，转给本机一个假的 X server。
         RequireX11Server();
 
-        using FakeXServer xserver = FakeXServer.Start();
+        using var xserver = FakeXServer.Start();
         string xauthority = WriteXAuthority(out byte[] realCookie);
 
         try

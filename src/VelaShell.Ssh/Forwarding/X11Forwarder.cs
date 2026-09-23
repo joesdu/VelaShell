@@ -455,7 +455,7 @@ public sealed class X11Forwarder : IAsyncDisposable
             Task<string> stdout = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
             Task<string> stderr = process.StandardError.ReadToEndAsync(CancellationToken.None);
 
-            using CancellationTokenSource limit =
+            using var limit =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             limit.CancelAfter(XAuthTimeout);
 

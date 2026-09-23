@@ -51,7 +51,7 @@ public sealed class X11PrimitiveTests
     {
         // launchd 会把 DISPLAY 设成一个套接字路径。按 host:N 去切会得到
         // 一个荒谬的「主机名」，然后连不上。
-        X11Display? display = X11Display.Parse(
+        var display = X11Display.Parse(
             "/private/tmp/com.apple.launchd.AbC/org.xquartz:0");
 
         Assert.IsNotNull(display);
@@ -87,7 +87,7 @@ public sealed class X11PrimitiveTests
         Assert.IsFalse(display.IsLocal);
         IReadOnlyList<EndPoint> candidates = display.GetCandidateEndPoints();
 
-        DnsEndPoint only = (DnsEndPoint)candidates.Single();
+        var only = (DnsEndPoint)candidates.Single();
         Assert.AreEqual("box.example.com", only.Host);
         Assert.AreEqual(X11Display.TcpPortBase + 7, only.Port);
     }
@@ -271,7 +271,7 @@ public sealed class X11PrimitiveTests
 
     private static void AssertDisplay(string value, string host, int number, int screen)
     {
-        X11Display? display = X11Display.Parse(value);
+        var display = X11Display.Parse(value);
         Assert.IsNotNull(display, $"应当能解析 {value}");
         Assert.AreEqual(host, display.Host, $"{value} 的 host");
         Assert.AreEqual(number, display.Number, $"{value} 的显示号");

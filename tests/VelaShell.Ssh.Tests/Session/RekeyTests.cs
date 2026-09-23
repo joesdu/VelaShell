@@ -270,7 +270,7 @@ public sealed class RekeyTests
 
         Assert.IsNotNull(host.Connection.LastRekeyReason, "主动发起时要说清是哪条阈值触发的");
         Assert.Contains(
-"报文数",             host.Connection.LastRekeyReason!,
+"报文数", host.Connection.LastRekeyReason!,
             $"应当是报文数那条触发的，实际：{host.Connection.LastRekeyReason}");
 
         // 换完密钥连接还要能用。

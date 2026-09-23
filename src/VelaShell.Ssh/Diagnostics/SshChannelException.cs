@@ -45,7 +45,7 @@ public sealed class SshChannelException : SshException
     internal static SshChannelException FromOpenFailure(
         string channelType, uint reasonCode, string description)
     {
-        SshChannelOpenFailureReason reason = (SshChannelOpenFailureReason)reasonCode;
+        var reason = (SshChannelOpenFailureReason)reasonCode;
 
         string advice = reason switch
         {

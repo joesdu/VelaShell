@@ -66,7 +66,7 @@ public static class PuttyPrivateKeyFile
         ArgumentNullException.ThrowIfNull(text);
         string where = origin is null ? "" : $"（{origin}）";
 
-        PuttyFile file = PuttyFile.Parse(text, where);
+        var file = PuttyFile.Parse(text, where);
 
         if (file.Encryption == "none")
         {
@@ -322,7 +322,7 @@ public static class PuttyPrivateKeyFile
                 $".ppk 的私钥区长度不是 16 的倍数{where}，文件多半损坏了。");
         }
 
-        using Aes aes = Aes.Create();
+        using var aes = Aes.Create();
         aes.Key = key;
         aes.IV = iv;
         aes.Mode = CipherMode.CBC;
@@ -502,7 +502,7 @@ public static class PuttyPrivateKeyFile
                 InverseQ = Fixed(new BigInteger(iqmp, isUnsigned: true, isBigEndian: true), Trim(p).Length),
             };
 
-            RSA rsa = RSA.Create();
+            var rsa = RSA.Create();
             rsa.ImportParameters(parameters);
             return InMemorySshSigner.FromRsa(rsa);
         }
@@ -548,7 +548,7 @@ public static class PuttyPrivateKeyFile
                 D = Fixed(new BigInteger(d, isUnsigned: true, isBigEndian: true), coordinate),
             };
 
-            ECDsa ecdsa = ECDsa.Create();
+            var ecdsa = ECDsa.Create();
             ecdsa.ImportParameters(parameters);
             return InMemorySshSigner.FromEcdsa(ecdsa);
         }

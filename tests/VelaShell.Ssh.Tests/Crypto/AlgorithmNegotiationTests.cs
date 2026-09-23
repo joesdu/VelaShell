@@ -49,7 +49,7 @@ public sealed class AlgorithmNegotiationTests
         ArrayBufferWriter<byte> writer = new();
         SshKexInitMessage.Encode(SshAlgorithmSet.Default, includeIndicators: true, writer);
 
-        SshKexInitMessage decoded = SshKexInitMessage.Decode(writer.WrittenMemory);
+        var decoded = SshKexInitMessage.Decode(writer.WrittenMemory);
 
         Assert.AreSequenceEqual(
             [.. SshAlgorithmSet.Default.HostKey], [.. decoded.ServerHostKeyAlgorithms]);
@@ -66,7 +66,7 @@ public sealed class AlgorithmNegotiationTests
         SshKexInitMessage.Encode(SshAlgorithmSet.Default, includeIndicators: true, writer);
         byte[] original = writer.WrittenSpan.ToArray();
 
-        SshKexInitMessage decoded = SshKexInitMessage.Decode(original);
+        var decoded = SshKexInitMessage.Decode(original);
         Assert.AreSequenceEqual(original, decoded.Payload.ToArray());
     }
 
@@ -91,13 +91,13 @@ public sealed class AlgorithmNegotiationTests
         // 重协商时再发是协议违规，某些服务端会直接断连。
         ArrayBufferWriter<byte> first = new();
         SshKexInitMessage.Encode(SshAlgorithmSet.Default, includeIndicators: true, first);
-        SshKexInitMessage firstMsg = SshKexInitMessage.Decode(first.WrittenMemory);
+        var firstMsg = SshKexInitMessage.Decode(first.WrittenMemory);
         Assert.Contains(SshAlgorithmNames.ExtInfoClient, [.. firstMsg.KeyExchangeAlgorithms]);
         Assert.Contains(SshAlgorithmNames.StrictKexClient, [.. firstMsg.KeyExchangeAlgorithms]);
 
         ArrayBufferWriter<byte> rekey = new();
         SshKexInitMessage.Encode(SshAlgorithmSet.Default, includeIndicators: false, rekey);
-        SshKexInitMessage rekeyMsg = SshKexInitMessage.Decode(rekey.WrittenMemory);
+        var rekeyMsg = SshKexInitMessage.Decode(rekey.WrittenMemory);
         Assert.DoesNotContain(SshAlgorithmNames.ExtInfoClient, [.. rekeyMsg.KeyExchangeAlgorithms]);
         Assert.DoesNotContain(SshAlgorithmNames.StrictKexClient, [.. rekeyMsg.KeyExchangeAlgorithms]);
     }
@@ -152,7 +152,7 @@ public sealed class AlgorithmNegotiationTests
         // 不发会让只支持非 AEAD 的对端无法与我们协商（velashell-docs/zh/ssh/spec/03 §2.2）。
         ArrayBufferWriter<byte> writer = new();
         SshKexInitMessage.Encode(SshAlgorithmSet.Default, true, writer);
-        SshKexInitMessage decoded = SshKexInitMessage.Decode(writer.WrittenMemory);
+        var decoded = SshKexInitMessage.Decode(writer.WrittenMemory);
 
         Assert.IsNotEmpty(decoded.MacClientToServer);
         Assert.IsNotEmpty(decoded.MacServerToClient);

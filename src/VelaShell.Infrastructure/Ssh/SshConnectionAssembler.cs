@@ -181,7 +181,7 @@ internal static class SshConnectionAssembler
 
     private static async ValueTask<SshAgentClient> ConnectAgentAsync(CancellationToken cancellationToken)
     {
-        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(AgentConnectTimeout);
         try
         {

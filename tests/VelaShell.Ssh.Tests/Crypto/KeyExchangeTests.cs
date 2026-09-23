@@ -88,7 +88,7 @@ public sealed class KeyExchangeTests
             Assert.HasCount(1 + (coord * 2), clientPublic, $"{name}：未压缩点长度");
             Assert.AreEqual(0x04, clientPublic[0], $"{name}：必须是未压缩点编码");
 
-            using ECDiffieHellman server = ECDiffieHellman.Create(curve);
+            using var server = ECDiffieHellman.Create(curve);
             ECParameters serverParams = server.ExportParameters(false);
 
             byte[] serverPublic = new byte[1 + (coord * 2)];
@@ -96,7 +96,7 @@ public sealed class KeyExchangeTests
             CopyRightAligned(serverParams.Q.X!, serverPublic.AsSpan(1, coord));
             CopyRightAligned(serverParams.Q.Y!, serverPublic.AsSpan(1 + coord, coord));
 
-            using ECDiffieHellman clientPeer = ECDiffieHellman.Create(new ECParameters
+            using var clientPeer = ECDiffieHellman.Create(new ECParameters
             {
                 Curve = curve,
                 Q = new ECPoint
