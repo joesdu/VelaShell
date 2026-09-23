@@ -26,10 +26,10 @@ public sealed class ClipboardTests
         return id;
     }
 
-    private static Task ChangePropertyAsync(XTestClient c, uint window, uint property, uint type, byte[] data) =>
+    private static Task<ushort> ChangePropertyAsync(XTestClient c, uint window, uint property, uint type, byte[] data) =>
         c.SendAsync(18, 0, b => b.U32(window).U32(property).U32(type).U8(8).U8(0).U8(0).U8(0).U32((uint)data.Length).Bytes(data).Pad());
 
-    private static Task SendSelectionNotifyAsync(XTestClient c, XMessage request, uint property) =>
+    private static Task<ushort> SendSelectionNotifyAsync(XTestClient c, XMessage request, uint property) =>
         c.SendAsync(25, 0, b => b.U32(request.U32(12)).U32(0)
             .U8(SelectionNotify).U8(0).U16(0).U32(request.U32(4)).U32(request.U32(12)).U32(request.U32(16))
             .U32(request.U32(20)).U32(property).U32(0).U32(0));
