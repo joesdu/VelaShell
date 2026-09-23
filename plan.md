@@ -6109,3 +6109,45 @@ X 服务端库(X11.Net 是客户端绑定;yserver 只跑 Linux DRM;node-x11 的�
 **没做的**(记在 `feature-plan.md`):M2 的 RENDER / XKB / SHAPE / XFIXES / RANDR / XInput2(GTK3 / Qt5 需要)与剪贴板互通,
 M3 的宿主接入(Avalonia 原生窗口、HiDPI、替换 VcXsrv 路径)。
 文档:velashell-docs 新增 `zh|en/xserver/`(README 与 `design/architecture.md`)。
+
+## ✅ 102. 2026-09-23 VelaShell.XServer M2:现代工具包要的扩展(用户需求)
+
+M1(§101)只有核心协议,GTK3 / Qt5 程序要么起不来、要么只能靠客户端自己把整窗画好再 PutImage。
+M2 补上它们实际会用到的扩展,验收是 `zenity`、`gedit`、一个 Qt5 程序画得对且零协议错误。宿主仍未接入(M3)。
+
+### 一、做了什么
+
+| 扩展 / 能力 | 主操作码 · 事件 · 错误 | 内容 |
+| --- | --- | --- |
+| **SHAPE** 1.1 | 130 · 64 · — | 边界 / 裁剪 / 输入三种形状,Set / Union / Intersect / Subtract / Invert,矩形与位图两种来源、Combine、Offset;形状参与可见区域、绘图裁剪与命中测试;`XTopLevelWindow.Shape` 把顶层的非矩形轮廓交给宿主;ShapeNotify |
+| **XFIXES** 5.0 | 131 · 65–66 · 128 | 区域对象全套运算(含 `SetGCClipRegion`、`SetWindowShapeRegion` 接到 SHAPE);选区属主追踪(SetSelectionOwner / 窗口销毁 / 客户端断开三种 SelectionNotify);CursorNotify;`HideCursor` / `ShowCursor`(宿主收到光标字形 −2);指针屏障只登记不生效 |
+| **RANDR** 1.5(只读) | 132 · 67–68 · 129–132 | 一台覆盖整个根窗口的虚拟显示器(一个 CRTC、一个输出、一个模式),尺寸与毫米数取自 `XServerOptions`;伽马报 256 级线性斜坡;改配置的请求回 Failed 或 BadAccess |
+| **RENDER** 0.11 | 133 · — · 133–137 | 七种 Direct 格式;全部 Porter-Duff / Disjoint / Conjoint 运算与 15 种 PDF 混合模式,预乘 alpha;分量 alpha 遮罩;repeat 四种、投影变换 + 最近邻 / 双线性;梯形 / 三角形 / 条带 / 扇形 / AddTraps 按 16 条子扫描线、水平解析的覆盖率光栅化;字形集与 CompositeGlyphs8/16/32;纯色与线性 / 径向 / 锥形渐变 |
+| 剪贴板互通 | — | 宿主 → X:`X11Server.SetClipboardText`,服务端占有 CLIPBOARD,按 ICCCM 回应 TARGETS / TIMESTAMP / UTF8_STRING / STRING / TEXT。X → 宿主:X 客户端占有选区时服务端以隐藏的 InputOnly 窗口为请求方取回(UTF8_STRING → STRING 退路,支持 INCR),交给新增的 `IXServerHost.ClipboardChanged`;宿主把同一段文本写回来时不抢选区(防回声)。`XServerOptions.SyncClipboard`(默认开)/ `SyncPrimary`(默认关) |
+| XSETTINGS 管理器 | — | 服务端占有 `_XSETTINGS_S0`,发布 `Xft/DPI`(取 `XServerOptions.Dpi`)与抗锯齿 / 微调几项。真实桌面总有一个设置守护进程,GTK / Qt 启动时会去找;没有时它们各踩一次 BadWindow / BadAtom |
+| 诊断 | — | `XServerOptions.Log` 打印协议错误时附上该客户端最近 8 条请求的操作码 —— 上面那两个 XSETTINGS 错误就是靠它一眼看出来的 |
+
+规范依据照 `src/VelaShell.XServer/AGENTS.md` 纪律 1,各文件头写明章节;允许的规范清单补上 XSETTINGS 与 RENDER 引用的 PDF 混合模式公式。
+
+### 二、几处取舍
+
+- **XKB 与 XInput2 没做**(原计划在 M2)。实测 Qt5 没有 XKB 时退回核心协议的键位表(只打一行警告),GTK3 没有 XInput2 时用核心指针事件,
+  输入都正常。两者**不能只做一半**:扩展一出现在 `QueryExtension` 里客户端就改走它的路径,XKB 的任何一个回复不对,xkbcommon-x11 建键位表失败,
+  键盘反而更糟。拆成 `feature-plan.md` 的一条 💡 P3。
+- **RENDER 用浮点逐像素算**,加两条快路径(纯色 Src / 不透明 Over 整块填;Over / Add 下全透明的源像素直接跳过)。正确性优先,
+  实测 gedit 的整窗重绘不卡;真成瓶颈时再按格式特化。
+- 源 picture 的裁剪、alpha-map、poly-edge / poly-mode / dither 接受但不生效(文件头写明);渲染结果不受影响的客户端占绝大多数。
+- 服务端占有的非剪贴板选区(`_XSETTINGS_S0`)不回应剪贴板内容,免得宿主剪贴板从别的选区名泄出去。
+
+### 三、验证
+
+- 单元测试 73 条(M1 的 40 条 + 新增 33 条):SHAPE 4、XFIXES 5、RANDR 4、剪贴板 5(含 INCR、回声、XSETTINGS)、RENDER 协议 7 + 像素 8。
+- **真实客户端**(`VELASHELL_XSERVER_INTEROP=1`):interop 用例从 5 条加到 8 条 —— 新增 `xclock -render`、`xeyes -render`、
+  `xterm -fa Monospace`(Xft 字形走 RENDER),全部零协议错误。
+- 手动(`scripts/xserver/interop/run-server.cs`,靶场镜像加了 `xclip`,runner 加了 `clip` 命令):
+  `zenity`(GTK3)、`qt5ct`(Qt5)、`gedit` 画得对且**零协议错误**,往 gedit 里注入按键打出 `Hello gedit on VelaShell.XServer`;
+  `xclip` 双向互通(含 12 MB 文本);`xrandr --verbose` / `--listmonitors` 读得到配置,`xrandr --output … --mode …` 如期失败;真实 xeyes 的圆窗形状 200 个矩形。
+- 调试中修掉的:GetCrtcGammaSize 起初报 0,xrandr 抱怨 `Failed to get size of gamma`,改成 256 级线性斜坡。
+
+**没做的**(记在 `feature-plan.md`):XKB 与 XInput2(💡 P3),M3 的宿主接入。
+文档:velashell-docs `zh|en/xserver/design/architecture.md` 同步扩展清单、宿主接口的新增项与决策记录。
