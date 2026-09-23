@@ -34,6 +34,8 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
     private readonly IAsyncDisposable? _dialerLifetime;
     private readonly SshSessionOptions? _features;
     private readonly ILocalXServer? _localXServer;
+    private readonly IAgentSignPrompt? _agentPrompt;
+    private readonly string _target;
     private SshConnection? _connection;
     private bool _disposed;
 
@@ -54,17 +56,23 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
     /// VelaShell 管理的本机 X Server;开 X11 转发而配置里没写显示地址时,用它的显示(必要时先启动它)。
     /// <see langword="null" /> = 不接管,按 <c>DISPLAY</c> 与默认值走。
     /// </param>
+    /// <param name="agentPrompt">agent 转发开了「逐次确认」时用来问用户;<see langword="null" /> 时一律拒签。</param>
+    /// <param name="target">确认框里给用户看的「哪条会话」,<c>用户@主机:端口</c>。</param>
     public VelaSshClientWrapper(
         Func<CancellationToken, ValueTask<SshConnection>> connect,
         TimeSpan connectTimeout,
         IAsyncDisposable? dialerLifetime = null,
         SshSessionOptions? features = null,
-        ILocalXServer? localXServer = null)
+        ILocalXServer? localXServer = null,
+        IAgentSignPrompt? agentPrompt = null,
+        string target = "")
     {
         _connect = connect ?? throw new ArgumentNullException(nameof(connect));
         _dialerLifetime = dialerLifetime;
         _features = features;
         _localXServer = localXServer;
+        _agentPrompt = agentPrompt;
+        _target = target;
         ConnectionTimeout = connectTimeout;
     }
 
@@ -157,7 +165,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
             List<ShellStreamNotice> notices = [];
             string? localServerDisplay = await ResolveLocalXServerAsync(notices, cancellationToken).ConfigureAwait(false);
             X11ForwardOptions? x11 = SshForwardingOptions.X11(_features, notices, localServerDisplay);
-            AgentForwardPolicy? agent = SshForwardingOptions.Agent(_features);
+            AgentForwardPolicy? agent = SshForwardingOptions.Agent(_features, notices, _agentPrompt, _target);
 
             SshShell shell = await OpenShellWithFallbackAsync(
                 connection, options, x11, agent, notices, cancellationToken).ConfigureAwait(false);
@@ -170,9 +178,9 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
             {
                 notices.Add(new(Strings.Format("Ssh_X11ForwardOn", SshForwardingOptions.Describe(forwarder.Display)), false));
             }
-            if (shell.Agent is not null)
+            if (shell.Agent is not null && agent is not null)
             {
-                notices.Add(new(Strings.Get("Ssh_AgentForwardOn"), false));
+                notices.Add(new(SshForwardingOptions.DescribeAgent(_features, agent), false));
             }
             return new ShellStreamWrapper(shell, notices);
         }

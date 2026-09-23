@@ -4984,6 +4984,78 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="DiagSvc_SuggestAgentKeys" xml:space="preserve">
     <value>Check that ssh-agent is running and holds the key this server accepts: ssh-add -l lists the loaded keys.</value>
   </data>
+  <data name="Ssh_AgentForwardNoKeys" xml:space="preserve">
+    <value>none of the keys selected for this connection could be read</value>
+  </data>
+  <data name="Ssh_AgentForwardOnlyKeys" xml:space="preserve">
+    <value> · only {0} key(s)</value>
+  </data>
+  <data name="Ssh_AgentForwardConfirmEach" xml:space="preserve">
+    <value> · every signature needs your approval</value>
+  </data>
+  <data name="AgentSign_Title" xml:space="preserve">
+    <value>Agent signature request</value>
+  </data>
+  <data name="AgentSign_Warning" xml:space="preserve">
+    <value>A remote session wants to sign with a key in your local ssh-agent</value>
+  </data>
+  <data name="AgentSign_Advice" xml:space="preserve">
+    <value>This is usually you running ssh or git on that server to reach the next machine. If you did not just do that, deny it: someone on that server may be using your identity.</value>
+  </data>
+  <data name="AgentSign_Session" xml:space="preserve">
+    <value>Session</value>
+  </data>
+  <data name="AgentSign_KeyType" xml:space="preserve">
+    <value>Key type</value>
+  </data>
+  <data name="AgentSign_Fingerprint" xml:space="preserve">
+    <value>Fingerprint</value>
+  </data>
+  <data name="AgentSign_Comment" xml:space="preserve">
+    <value>Key</value>
+  </data>
+  <data name="AgentSign_TimeoutHint" xml:space="preserve">
+    <value>If you do not answer within {0} seconds, the request is denied.</value>
+  </data>
+  <data name="AgentSign_Deny" xml:space="preserve">
+    <value>Deny</value>
+  </data>
+  <data name="AgentSign_AllowOnce" xml:space="preserve">
+    <value>Allow once</value>
+  </data>
+  <data name="AgentSign_AllowForSession" xml:space="preserve">
+    <value>Allow for this session</value>
+  </data>
+  <data name="AgentSign_AllowForSessionTip" xml:space="preserve">
+    <value>Stop asking about this key until this session is closed</value>
+  </data>
+  <data name="Profile_SshAgentForwardRestrict" xml:space="preserve">
+    <value>Only forward the selected keys</value>
+  </data>
+  <data name="Profile_SshAgentForwardRestrictHint" xml:space="preserve">
+    <value>A jump host usually needs just the key for the next hop. Keys that are not selected stay invisible to the server.</value>
+  </data>
+  <data name="Profile_SshAgentForwardNoKeyChoices" xml:space="preserve">
+    <value>No keys found. Start ssh-agent and run ssh-add, or put the public key (.pub) under ~/.ssh.</value>
+  </data>
+  <data name="Profile_SshAgentForwardConfirm" xml:space="preserve">
+    <value>Ask before every signature</value>
+  </data>
+  <data name="Profile_SshAgentForwardConfirmHint" xml:space="preserve">
+    <value>Each time the server uses your agent to sign, a dialog shows which session and which key. Unanswered requests are denied after 60 seconds.</value>
+  </data>
+  <data name="Profile_SshAgentForwardKeysEmpty" xml:space="preserve">
+    <value>"Only forward the selected keys" is on, but no key is selected. Select at least one key, or turn the option off.</value>
+  </data>
+  <data name="Profile_SshAgentKeySourceSaved" xml:space="preserve">
+    <value>saved in this connection</value>
+  </data>
+  <data name="Profile_SshAgentKeySourceAgent" xml:space="preserve">
+    <value>in agent</value>
+  </data>
+  <data name="Profile_SshAgentKeySourceFile" xml:space="preserve">
+    <value>~/.ssh</value>
+  </data>
   <data name="SetVm_SectionXServer" xml:space="preserve">
     <value>X Server</value>
   </data>

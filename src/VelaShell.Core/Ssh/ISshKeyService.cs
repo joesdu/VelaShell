@@ -62,4 +62,13 @@ public interface ISshKeyService
 
     /// <summary>删除指定名称的密钥对(私钥及同名 .pub)。</summary>
     Task DeleteKeyAsync(string name, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 列出本机 ssh-agent 里的密钥(连接配置里「只转发指定密钥」的候选)。
+    /// </summary>
+    /// <remarks>
+    /// <see cref="SshKeyInfo.Name" /> 是 agent 给的注释,<see cref="SshKeyInfo.PrivateKeyPath" /> 为空串。
+    /// agent 没在运行、连不上时返回空列表而不是抛出 —— 候选里还有 ~/.ssh 下的钥可选。
+    /// </remarks>
+    Task<List<SshKeyInfo>> ListAgentKeysAsync(CancellationToken cancellationToken = default);
 }

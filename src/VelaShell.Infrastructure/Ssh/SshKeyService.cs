@@ -4,6 +4,7 @@ using System.Text;
 using Org.BouncyCastle.Crypto.Parameters;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
+using VelaShell.Ssh.Keys;
 
 namespace VelaShell.Infrastructure.Ssh;
 
@@ -11,8 +12,15 @@ namespace VelaShell.Infrastructure.Ssh;
 /// 基于 ~/.ssh 目录的密钥管理:以 *.pub 公钥文件枚举密钥对,
 /// 类型与 SHA256 指纹从公钥 blob 解析(与 OpenSSH `ssh-keygen -lf` 口径一致)。
 /// </summary>
-public sealed class SshKeyService(string? sshDirectory = null) : ISshKeyService
+/// <param name="sshDirectory">密钥目录;<see langword="null" /> 为 ~/.ssh。</param>
+/// <param name="connectAgent">连本机 agent;<see langword="null" /> 走与「SSH Agent」认证相同的端点与 3 秒上限。</param>
+public sealed class SshKeyService(
+    string? sshDirectory = null,
+    Func<CancellationToken, ValueTask<SshAgentClient>>? connectAgent = null) : ISshKeyService
 {
+    private readonly Func<CancellationToken, ValueTask<SshAgentClient>> _connectAgent =
+        connectAgent ?? SshConnectionAssembler.ConnectLocalAgentAsync;
+
     private readonly string _sshDirectory = sshDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh");
 
     /// <summary>枚举 ~/.ssh 目录下的密钥对,按公钥文件解析类型与指纹后返回。</summary>
@@ -301,6 +309,41 @@ public sealed class SshKeyService(string? sshDirectory = null) : ISshKeyService
                 File.Delete(publicPath);
             }
         }, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// 公钥行按 <c>类型 base64 注释</c> 拼出来,与 <c>ssh-add -L</c> 的输出同一格式 ——
+    /// 连接配置里「只转发指定密钥」存的就是它。
+    /// </remarks>
+    public async Task<List<SshKeyInfo>> ListAgentKeysAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await using SshAgentClient agent = await _connectAgent(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<SshAgentIdentity> identities =
+                await agent.ListIdentitiesAsync(cancellationToken).ConfigureAwait(false);
+
+            List<SshKeyInfo> keys = [];
+            foreach (SshAgentIdentity identity in identities)
+            {
+                byte[] blob = identity.PublicKey.Blob.ToArray();
+                string algorithm = identity.PublicKey.KeyType;
+                string line = $"{algorithm} {Convert.ToBase64String(blob)}";
+                if (identity.Comment.Length > 0)
+                {
+                    line += " " + identity.Comment;
+                }
+                keys.Add(new SshKeyInfo(identity.Comment, DescribeType(algorithm, blob), Fingerprint(blob), "", line));
+            }
+            return keys;
+        }
+        catch (Exception ex) when (ex is SshAgentException or IOException
+                                       || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            // agent 没在跑(Windows 上服务默认是停着的)是常态,不是错误。
+            return [];
+        }
     }
 
     private static SshKeyInfo? TryParsePublicKey(string name, string privatePath, string pubFile)
