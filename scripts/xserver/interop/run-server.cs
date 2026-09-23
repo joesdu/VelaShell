@@ -46,23 +46,36 @@ Console.Out.Flush();
 //   click <x> <y>   左键点击(窗口内坐标)
 //   resize <w> <h>  像用户拖边框一样改尺寸
 //   close           点关闭按钮
+//   clip <文字>     宿主剪贴板有了新文本(SetClipboardText;不需要目标窗口)
 string cmdFile = Path.Combine(outDir, "cmd.txt");
 DateTime deadline = seconds > 0 ? DateTime.UtcNow.AddSeconds(seconds) : DateTime.MaxValue;
 while (DateTime.UtcNow < deadline)
 {
     await Task.Delay(200);
-    if (!File.Exists(cmdFile) || host.Target is not { } target)
+    if (!File.Exists(cmdFile))
     {
         continue;
     }
+    uint target = host.Target ?? 0;
     string[] lines = File.ReadAllLines(cmdFile);
     File.Delete(cmdFile);
-    server.FocusTopLevel(target);
+    if (target != 0)
+    {
+        server.FocusTopLevel(target);
+    }
     foreach (string line in lines)
     {
         string[] parts = line.Split(' ', 2);
+        if (target == 0 && parts[0] != "clip")
+        {
+            Console.WriteLine($"[cmd] {line} -> 没有目标窗口,跳过");
+            continue;
+        }
         switch (parts[0])
         {
+            case "clip":
+                server.SetClipboardText(parts.Length > 1 ? parts[1] : "");
+                break;
             case "type":
                 foreach ((byte code, bool shift) in Keys.For(parts[1].Replace("\\n", "\n", StringComparison.Ordinal)))
                 {
@@ -143,6 +156,7 @@ sealed class ShotHost(string outDir) : IXServerHost
     public void TopLevelChanged(XTopLevelWindow w) => Console.WriteLine($"[host] changed 0x{w.Id:x} {w.Width}x{w.Height}+{w.X}+{w.Y} '{w.Title}' class='{w.ClassName}' shape={(w.Shape is null ? "none" : w.Shape.Count + " rects")}");
     public void CursorChanged(XTopLevelWindow? w, int glyph) { }
     public void Bell(int percent) => Console.WriteLine("[host] bell");
+    public void ClipboardChanged(string text) => Console.WriteLine($"[host] clipboard {text.Length} chars '{text[..Math.Min(text.Length, 40)]}'");
 
     public void TopLevelDamaged(XTopLevelWindow w, IReadOnlyList<XRect> damage)
     {

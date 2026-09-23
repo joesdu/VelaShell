@@ -153,6 +153,10 @@ public sealed partial class X11Server
                 NotifySelectionChange(atom, 2, 0, owner.Time);
             }
         }
+        if (_fetch is { } fetch && !_selections.ContainsKey(fetch.Selection))
+        {
+            _fetch = null;   // 正在取的选区,属主走了
+        }
         if (ReferenceEquals(_pointerGrab?.Client, client))
         {
             _pointerGrab = null;

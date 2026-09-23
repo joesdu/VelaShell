@@ -42,6 +42,15 @@ internal sealed class RecordingHost : IXServerHost, IDisposable
 
     public void Bell(int percent) => Note($"bell {percent}");
 
+    /// <summary>最近一次 <see cref="ClipboardChanged" /> 收到的文本。</summary>
+    public string? Clipboard { get; private set; }
+
+    public void ClipboardChanged(string text)
+    {
+        Clipboard = text;
+        Note($"clipboard {text.Length}");
+    }
+
     /// <summary>等到条件成立(每次有新通知时重新检查)。</summary>
     public async Task WaitForAsync(Func<bool> condition, int timeoutMs = 5000)
     {

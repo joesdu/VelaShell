@@ -295,5 +295,9 @@ public sealed partial class X11Server : IAsyncDisposable
         public void Bell(int percent)
         {
         }
+
+        public void ClipboardChanged(string text)
+        {
+        }
     }
 }

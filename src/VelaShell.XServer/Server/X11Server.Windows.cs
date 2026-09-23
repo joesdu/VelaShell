@@ -230,7 +230,7 @@ public sealed partial class X11Server
 
     internal void DestroyWindow(XWindow window)
     {
-        if (window.IsRoot || !_resources.ContainsKey(window.Id))
+        if (window.IsRoot || window.Id == SelectionWindowId || !_resources.ContainsKey(window.Id))
         {
             return;
         }
