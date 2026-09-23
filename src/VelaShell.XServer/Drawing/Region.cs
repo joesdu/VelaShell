@@ -111,6 +111,20 @@ internal sealed class Region
         {
             return this;
         }
+        // 快路径:一个都不相交就原样不动(可见区域计算里绝大多数兄弟窗口与之不相交),不分配。
+        int first = -1;
+        for (int k = 0; k < _rects.Count; k++)
+        {
+            if (!_rects[k].Intersect(cut).IsEmpty)
+            {
+                first = k;
+                break;
+            }
+        }
+        if (first < 0)
+        {
+            return this;
+        }
         List<XRect> result = new(_rects.Count + 4);
         foreach (XRect r in _rects)
         {
@@ -197,6 +211,13 @@ internal sealed class Region
         if (add.IsEmpty)
         {
             return this;
+        }
+        foreach (XRect r in _rects)
+        {
+            if (r.X <= add.X && r.Y <= add.Y && r.Right >= add.Right && r.Bottom >= add.Bottom)
+            {
+                return this;   // 已经整个盖住了
+            }
         }
         Region piece = new(add);
         foreach (XRect r in _rects)

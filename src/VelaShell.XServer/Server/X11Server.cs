@@ -49,7 +49,7 @@ public sealed partial class X11Server : IAsyncDisposable
     private readonly Dictionary<int, XClient> _clients = [];
     private readonly FontCatalog _fonts = new();
     private readonly Keymap _keymap = new();
-    private readonly Dictionary<XWindow, Region> _damage = [];
+    private readonly Dictionary<XWindow, List<XRect>> _damage = [];
     private readonly Dictionary<XWindow, XTopLevelWindow> _topLevelHandles = [];
     private readonly List<WorkItem> _deferred = [];
 

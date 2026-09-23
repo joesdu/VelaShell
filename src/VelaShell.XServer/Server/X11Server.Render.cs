@@ -358,7 +358,7 @@ public sealed partial class X11Server
     }
 
     /// <summary>目标:可写区域 = 可绘对象范围 ∩ 窗口可见部分 ∩ picture 的裁剪。画不了(未映射等)时为 null。</summary>
-    private static (RenderTarget Target, XWindow? TopLevel)? TargetOf(XPicture p)
+    private (RenderTarget Target, XWindow? TopLevel)? TargetOf(XPicture p)
     {
         if (p.Drawable is null || p.Format is null)
         {
@@ -377,7 +377,7 @@ public sealed partial class X11Server
             case XWindow w when !w.IsRoot && w.IsViewable && w.TopLevel is { Buffer: { } b } t:
                 buffer = b;
                 (ox, oy) = w.OffsetInTopLevel();
-                region = (p.SubwindowMode == 1 ? VisibleInner(w) : ClipByChildren(w)).Clone();
+                region = CachedClip(w, includeInferiors: p.SubwindowMode == 1).Clone();
                 top = t;
                 break;
             default:

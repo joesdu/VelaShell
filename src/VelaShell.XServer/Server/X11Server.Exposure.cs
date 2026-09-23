@@ -18,9 +18,36 @@ namespace VelaShell.XServer.Server;
 
 public sealed partial class X11Server
 {
-    /// <summary>窗口树结构变了(映射、配置、堆叠、销毁)。可见区域目前按需现算,这里留作以后加缓存的挂点。</summary>
-    private static void InvalidateVisibility()
+    /// <summary>可见性代号:窗口树结构或形状一变就加一,窗口上缓存的可见区域随之作废。</summary>
+    private int _visibilityGeneration;
+
+    /// <summary>窗口树结构变了(映射、配置、堆叠、销毁、形状):作废所有缓存的可见区域。</summary>
+    private void InvalidateVisibility() => _visibilityGeneration++;
+
+    /// <summary>
+    /// 带缓存的 ClipByChildren / VisibleInner:同一代号、同样的顶层缓冲尺寸下直接复用。
+    /// 返回的区域是共享的,<b>只读</b> —— 要改就先 Clone。绘图请求每条都要它,算一次要走遍祖先与兄弟。
+    /// </summary>
+    private Region CachedClip(XWindow w, bool includeInferiors)
     {
+        PixelBuffer? buffer = w.TopLevel?.Buffer;
+        int bw = buffer?.Width ?? 0, bh = buffer?.Height ?? 0;
+        var cache = w.VisibilityCache;
+        if (cache.Generation != _visibilityGeneration || cache.BufferWidth != bw || cache.BufferHeight != bh)
+        {
+            cache = (_visibilityGeneration, bw, bh, null, null);
+        }
+        Region region;
+        if (includeInferiors)
+        {
+            region = cache.VisibleInner ??= VisibleInner(w);
+        }
+        else
+        {
+            region = cache.ClipByChildren ??= ClipByChildren(w);
+        }
+        w.VisibilityCache = cache;
+        return region;
     }
 
     // ------------------------------------------------------------------ 几何(顶层缓冲坐标)
@@ -151,7 +178,7 @@ public sealed partial class X11Server
                     return null;
                 }
                 (int ox, int oy) = window.OffsetInTopLevel();
-                Region clip = gc?.SubwindowMode == 1 ? VisibleInner(window) : ClipByChildren(window);
+                Region clip = CachedClip(window, includeInferiors: gc?.SubwindowMode == 1);
                 return (buffer, ox, oy, clip, top);
             default:
                 throw new XProtocolError(XErrorCode.Drawable, drawable);
@@ -286,19 +313,64 @@ public sealed partial class X11Server
     internal void MarkDamage(XWindow top, Region region)
     {
         NoteWindowDrawn(top, region);
-        if (!_damage.TryGetValue(top, out Region? pending))
+        foreach (XRect rect in region.Rects)
         {
-            _damage[top] = region.Clone();
-            return;
+            AddDamage(top, rect);
         }
-        pending.Union(region);
     }
 
     internal void MarkDamage(XWindow top, XRect rect)
     {
-        if (!rect.IsEmpty)
+        if (rect.IsEmpty)
         {
-            MarkDamage(top, new Region(rect));
+            return;
+        }
+        if (_damageObjects.Count != 0)
+        {
+            NoteWindowDrawn(top, new Region(rect));
+        }
+        AddDamage(top, rect);
+    }
+
+    /// <summary>每个顶层这一批最多记这么多块损伤;再多就合成外接矩形 —— 宿主反正是按矩形重画,矩形多了反而慢。</summary>
+    private const int MaxDamageRects = 8;
+
+    /// <summary>
+    /// 把一块损伤并进这个顶层这一批的损伤里:已被盖住的丢掉,盖住别人的替掉别人,数量超限就合成外接矩形。
+    /// 每次绘图都走这里,所以不用 Region 的精确并集(那是 O(n²),一批几百次绘图会退化成几千块矩形)。
+    /// </summary>
+    private void AddDamage(XWindow top, XRect rect)
+    {
+        if (!_damage.TryGetValue(top, out List<XRect>? rects))
+        {
+            _damage[top] = [rect];
+            return;
+        }
+        for (int i = rects.Count - 1; i >= 0; i--)
+        {
+            XRect r = rects[i];
+            if (r.X <= rect.X && r.Y <= rect.Y && r.Right >= rect.Right && r.Bottom >= rect.Bottom)
+            {
+                return;
+            }
+            if (rect.X <= r.X && rect.Y <= r.Y && rect.Right >= r.Right && rect.Bottom >= r.Bottom)
+            {
+                rects.RemoveAt(i);
+            }
+        }
+        rects.Add(rect);
+        if (rects.Count > MaxDamageRects)
+        {
+            int x1 = int.MaxValue, y1 = int.MaxValue, x2 = int.MinValue, y2 = int.MinValue;
+            foreach (XRect r in rects)
+            {
+                x1 = Math.Min(x1, r.X);
+                y1 = Math.Min(y1, r.Y);
+                x2 = Math.Max(x2, r.Right);
+                y2 = Math.Max(y2, r.Bottom);
+            }
+            rects.Clear();
+            rects.Add(new XRect(x1, y1, x2 - x1, y2 - y1));
         }
     }
 
@@ -309,13 +381,13 @@ public sealed partial class X11Server
         {
             return;
         }
-        KeyValuePair<XWindow, Region>[] batch = [.. _damage];
+        KeyValuePair<XWindow, List<XRect>>[] batch = [.. _damage];
         _damage.Clear();
-        foreach ((XWindow top, Region region) in batch)
+        foreach ((XWindow top, List<XRect> rects) in batch)
         {
             if (top.Mapped && _topLevelHandles.TryGetValue(top, out XTopLevelWindow? handle))
             {
-                _host.TopLevelDamaged(handle, [.. region.Rects]);
+                _host.TopLevelDamaged(handle, rects);
             }
         }
     }

@@ -184,6 +184,7 @@ public sealed partial class X11Server
             case ShapeInput: window.InputShape = shape; break;
             default: throw new XProtocolError(XErrorCode.Value, kind);
         }
+        InvalidateVisibility();
 
         if (window.IsViewable && window.TopLevel is { Buffer: { } buffer } top)
         {

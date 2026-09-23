@@ -91,6 +91,9 @@ internal sealed class XWindow : XResource
     /// <summary>各客户端在这个窗口上选择的事件。</summary>
     public Dictionary<XClient, uint> EventSelections { get; } = [];
 
+    /// <summary>可见区域缓存(ClipByChildren / VisibleInner),按服务端的可见性代号与顶层缓冲尺寸失效。只读共享,用的人自己 Clone。</summary>
+    internal (int Generation, int BufferWidth, int BufferHeight, Drawing.Region? ClipByChildren, Drawing.Region? VisibleInner) VisibilityCache { get; set; }
+
     /// <summary>XInput2 的事件选择:客户端 → 按 evtype 的位掩码(选主设备的、选从设备的分开记)。</summary>
     public Dictionary<XClient, (ulong Master, ulong Slave)> Xi2Selections { get; } = [];
 
