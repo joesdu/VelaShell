@@ -34,7 +34,7 @@ public interface IXServerHost
 
     /// <summary>
     /// 指针所在位置该显示的光标变了。<paramref name="cursorGlyph" /> 是 cursor 字体的字形号
-    /// (68 = left_ptr、152 = xterm、…);−1 表示默认箭头或位图光标。
+    /// (68 = left_ptr、152 = xterm、…);−1 表示默认箭头或位图光标,−2 表示隐藏光标(XFIXES HideCursor)。
     /// </summary>
     void CursorChanged(XTopLevelWindow? window, int cursorGlyph);
 

@@ -301,6 +301,7 @@ public sealed partial class X11Server
         {
             _selections[selection] = (owner, c, time);
         }
+        NotifySelectionChange(selection, 0, ownerId, time);
     }
 
     private void GetSelectionOwner(XClient c, XRequestReader r)

@@ -38,6 +38,7 @@ public sealed partial class X11Server
         Register(new Extension("BIG-REQUESTS", 128, BigRequests));
         Register(new Extension("XC-MISC", 129, XcMisc));
         Register(new Extension("SHAPE", ShapeMajor, Shape) { FirstEvent = ShapeEventBase });
+        Register(new Extension("XFIXES", XFixesMajor, XFixes) { FirstEvent = XFixesEventBase, FirstError = XFixesErrorBase });
     }
 
     private void Register(Extension extension)
@@ -148,6 +149,7 @@ public sealed partial class X11Server
             if (ReferenceEquals(owner.Client, client))
             {
                 _selections.Remove(atom);
+                NotifySelectionChange(atom, 2, 0, owner.Time);
             }
         }
         if (ReferenceEquals(_pointerGrab?.Client, client))
@@ -185,6 +187,8 @@ public sealed partial class X11Server
             window.KeyGrabs.RemoveAll(g => ReferenceEquals(g.Client, client));
             window.ShapeSelections.Remove(client);
         }
+        CleanupXFixes(client, null);
         UpdatePointerWindow();
+        UpdateCursor();
     }
 }

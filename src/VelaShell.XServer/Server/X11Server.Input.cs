@@ -444,12 +444,13 @@ public sealed partial class X11Server
         {
             cursor = w.Cursor;
         }
-        int glyph = cursor?.Glyph ?? -1;
+        int glyph = CursorHiddenAt(_pointerWindow) ? -2 : cursor?.Glyph ?? -1;
         if (glyph == _cursorGlyph)
         {
             return;
         }
         _cursorGlyph = glyph;
+        NotifyCursorChange();
         XTopLevelWindow? handle = _pointerWindow.TopLevel is { } top && _topLevelHandles.TryGetValue(top, out XTopLevelWindow? h) ? h : null;
         _host.CursorChanged(handle, glyph);
     }
