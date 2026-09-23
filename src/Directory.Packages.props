@@ -22,13 +22,12 @@
          我们配的是 DB-IP Lite City(CC BY 4.0),同一格式。 -->
     <PackageVersion Include="MaxMind.Db" Version="5.2.0" />
     <PackageVersion Include="SonnetDB.Core" Version="3.1.0" />
-    <!-- Ed25519 密钥生成(MIT 改写版许可,与商业授权不冲突)。**这个版本号必须跟着 VelaShell.Ssh 走** ——
-         它本来就是 VelaShell.Ssh 的依赖,已经在输出目录里躺着了,这里只是把传递依赖抬成显式依赖,
-         体积零增量。抬上来的原因是编译期用到了它:.NET 11 的 BCL 仍然没有独立的 Ed25519
-         (只有 CompositeMLDsa 里那个复合算法标识符),靠传递依赖能编过但没有任何约束,
-         哪天 VelaShell.Ssh 换掉它,编译就在一个跟密钥毫不相干的地方碎掉。
-         SSH 库在隔壁仓库、有它自己的 Directory.Packages.props:两边不一致时 NuGet 取高的那个,
-         于是"能编过"依然不等于"钉住了"。升库时用 `dotnet list package` 的传递依赖清单对一眼。 -->
+    <!-- BouncyCastle(MIT 改写版许可,与商业授权不冲突)。两个使用者共用这一条版本:
+           · VelaShell.Ssh —— BCL 缺失的密码学原语(raw ChaCha20、Poly1305、Ed25519、X25519、
+             sntrup761、Argon2id…),是那个库唯一的运行时依赖;
+           · VelaShell.Infrastructure —— Ed25519 密钥生成(SshKeyService):.NET 11 的 BCL
+             仍然没有独立的 Ed25519(只有 CompositeMLDsa 里那个复合算法标识符)。
+         SSH 库 2026-09-23 并入本仓库之后两边读的是同一条 PackageVersion,不会再漂。 -->
     <PackageVersion Include="BouncyCastle.Cryptography" Version="2.7.0" />
     <!-- FTP / FTPS 客户端(MIT,零依赖)。截至 54.2.0 最高只出到 net9.0 资产,
          本仓库 net11.0 会解析到那一份 —— 纯托管 DLL,且发布不裁剪、非单文件,无打包风险。

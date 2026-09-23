@@ -1,0 +1,31 @@
+{
+  "$comment": [
+    "相似度门禁的比对语料。这些仓库只在 CI 的临时目录里出现,**绝不进本仓库**",
+    "(.gitignore 已排除 .corpus/) —— 把别人的源码放进来,恰好是 src/VelaShell.Ssh/AGENTS.md §2 纪律 2 要防的那件事。",
+    "",
+    "只列 .NET 的 SSH 实现:门禁做的是 token 级 C# 比对,别的语言比了也没意义。",
+    "新增条目时请在 note 里写清为什么要比对它。"
+  ],
+  "sources": [
+    {
+      "name": "tmds-ssh",
+      "repo": "https://github.com/tmds/Tmds.Ssh.git",
+      "subdir": "src/Tmds.Ssh",
+      "license": "MIT",
+      "note": ".NET 上 async-first SSH 客户端的先行者,也是 VelaShell 当前在用的库 —— 最需要证明独立性的对象。"
+    },
+    {
+      "name": "ssh-net",
+      "repo": "https://github.com/sshnet/SSH.NET.git",
+      "subdir": "src/Renci.SshNet",
+      "license": "MIT",
+      "note": ".NET 上最广为人知的 SSH 库,VelaShell 的前任。"
+    },
+    {
+      "name": "fsharp-ssh-skip",
+      "repo": "",
+      "license": "",
+      "note": "占位:将来若出现新的 .NET SSH 实现,加在这里。repo 为空的条目会被 --fetch 跳过。"
+    }
+  ]
+}

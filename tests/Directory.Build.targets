@@ -8,6 +8,7 @@
 		     这样 `dotnet test` 无需在命令行显式指定 settings 也生效,IDE 与 CI 行为一致。
 		     注意必须放在 .targets 而不是 .props:后者早于 SDK 默认属性求值,在那里设会把测试 targets
 		     提前引进来,TargetFramework 解析为空、restore 直接失败(NETSDK1013)。 -->
-		<RunSettingsFilePath>$(MSBuildThisFileDirectory)velashell.runsettings</RunSettingsFilePath>
+		<!-- 项目自己给了就不覆盖:VelaShell.Ssh.Tests 带着自己更严的那份(30s + 方法级并行)。 -->
+		<RunSettingsFilePath Condition="'$(RunSettingsFilePath)' == ''">$(MSBuildThisFileDirectory)velashell.runsettings</RunSettingsFilePath>
 	</PropertyGroup>
 </Project>

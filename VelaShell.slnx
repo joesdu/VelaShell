@@ -29,13 +29,28 @@
     <Project Path="src/VelaShell.Infrastructure/VelaShell.Infrastructure.csproj" />
     <Project Path="src/VelaShell.PluginHost/VelaShell.PluginHost.csproj" />
     <Project Path="src/VelaShell.Presentation/VelaShell.Presentation.csproj" />
+    <Project Path="src/VelaShell.Ssh/VelaShell.Ssh.csproj" />
     <Project Path="src/VelaShell.Terminal/VelaShell.Terminal.csproj" />
     <Project Path="src/VelaShell/VelaShell.csproj" />
   </Folder>
-  <!-- 过渡:VelaShell.Ssh 还没发 NuGet,跨仓库工程引用必须登记在解决方案里,
-       否则 VS 的 NuGet 还原拿不到它的项目信息。换回 PackageReference 后删掉这个文件夹。 -->
-  <Folder Name="/external/">
-    <Project Path="../velashell-ssh/src/VelaShell.Ssh/VelaShell.Ssh.csproj" />
+  <Folder Name="/src/VelaShell.Ssh/">
+    <File Path="src/VelaShell.Ssh/AGENTS.md" />
+    <File Path="src/VelaShell.Ssh/LICENSE" />
+    <File Path="src/VelaShell.Ssh/NOTICE.md" />
+    <File Path="src/VelaShell.Ssh/README.md" />
+  </Folder>
+  <Folder Name="/scripts/ssh/">
+    <File Path="scripts/ssh/Update-PublicApi.ps1" />
+    <File Path="scripts/ssh/benchmarks/benchmarks.cs" />
+    <File Path="scripts/ssh/compression/verify-strict-validation.cs" />
+    <File Path="scripts/ssh/interop/Dockerfile" />
+    <File Path="scripts/ssh/interop/Start-TestServer.ps1" />
+    <File Path="scripts/ssh/interop/Stop-TestServer.ps1" />
+    <File Path="scripts/ssh/similarity-gate/README.md" />
+    <File Path="scripts/ssh/similarity-gate/similarity-gate.cs" />
+    <File Path="scripts/ssh/similarity-gate/sources.json" />
+    <File Path="scripts/ssh/similarity-gate/allowlist.txt" />
+    <File Path="scripts/ssh/similarity-gate/boilerplate.cs.txt" />
   </Folder>
   <Folder Name="/plugins/">
     <File Path="plugins/Directory.Build.props" />
@@ -56,6 +71,7 @@
     <Project Path="tests/VelaShell.Plugin.Ai.Tests/VelaShell.Plugin.Ai.Tests.csproj" />
     <Project Path="tests/VelaShell.Presentation.Tests/VelaShell.Presentation.Tests.csproj" />
     <Project Path="tests/VelaShell.ShellIntegration.Tests/VelaShell.ShellIntegration.Tests.csproj" />
+    <Project Path="tests/VelaShell.Ssh.Tests/VelaShell.Ssh.Tests.csproj" />
     <Project Path="tests/VelaShell.Terminal.RenderTests/VelaShell.Terminal.RenderTests.csproj" />
     <Project Path="tests/VelaShell.Terminal.Tests/VelaShell.Terminal.Tests.csproj" />
     <Project Path="tests/VelaShell.Tests/VelaShell.Tests.csproj" />

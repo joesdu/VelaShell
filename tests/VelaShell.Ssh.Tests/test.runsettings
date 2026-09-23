@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+
+  <!--
+    全局测试超时。
+
+    **挂死是协议库最该防的失败模式**：它不是「一条用例红了」，而是 CI 一直转到被
+    整体杀掉、日志里连是哪条用例都看不出来。一个全局超时把它变成一条普通的失败，
+    并且指名道姓。
+
+    30 秒：本套件的用例全部走内存传输，正常应当是毫秒级；30 秒还没完就一定是挂了，
+    不会是「这台机器慢」。
+  -->
+  <MSTest>
+    <TestTimeout>30000</TestTimeout>
+    <!-- 同一个程序集内并行跑。用例之间不共享状态（没有静态可变状态，
+         内存传输每次新建），并行是安全的，而且能把整套压到一秒以内。 -->
+    <Parallelize>
+      <Workers>0</Workers>
+      <Scope>MethodLevel</Scope>
+    </Parallelize>
+  </MSTest>
+
+</RunSettings>

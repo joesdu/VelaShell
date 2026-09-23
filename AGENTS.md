@@ -19,6 +19,7 @@ VelaShell 生态的**全部文档**集中在一个仓库:
 | [`zh/sdk/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/sdk)             | 插件契约 SDK 参考、SDK 仓库的发版流程                                                                                                                       |
 | [`zh/cli/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/cli)             | `vela-plugin` 命令行手册、CLI 仓库的发版流程                                                                                                               |
 | [`zh/templates/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/templates) | 插件开发指南、打包与发布、模板仓库的发版流程                                                                                                                        |
+| [`zh/ssh/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/ssh)             | 自研 SSH 库 `src/VelaShell.Ssh` 的架构与原理(含净室论证)、行为规格 00–09、上手                                                                                      |
 
 
 英文镜像在 [`en/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/en),与 `zh/` 同构。
@@ -60,6 +61,7 @@ dotnet test  VelaShell.slnx
 | [`feature-plan.md`](feature-plan.md)                                             | **还没发生的事**:待办、候选特性、确认不做的清单(附理由)。⚠️ 两者分工是硬的 —— 做完了就从 `feature-plan.md` 划掉、在 `plan.md` 补一节;**不要在 `plan.md` 里留 TODO** |
 | `README.md` / `README.en.md` / `CONTRIBUTING*.md` / `SECURITY.md` / `PRIVACY.md` | GitHub 仓库门面与流程约定                                                                                                   |
 | `src/**/README.md`、`tests/**/README.md`                                          | 各工程自己的目录职责说明,跟着代码走                                                                                                 |
+| `src/VelaShell.Ssh/AGENTS.md` / `LICENSE` / `NOTICE.md`                           | SSH 库专属的开发约定(净室规程)、它自己的 MIT 授权与独立性声明 —— 服务的是「改这个库」,且许可证必须跟着代码走                                                              |
 
 
 改 UI 相关代码前先读 `DESIGN.md`:**XAML 与 C# 里不许出现颜色字面量**,一律用
@@ -79,6 +81,11 @@ Docker 与 `docker-compose.test.yml`,`CrossPlatformPublishTests` 需 `VELASHELL_
 - **headless UI 测试要用带返回值的重载**:`Dispatch(async () => { …; return true; })`。
 `HeadlessUnitTestSession` 没有 `Func<Task>` 重载,写成无返回值会拿到一个从未被等待的
 `Task<Task>`,测试跑到第一个 `await` 就"通过",断言失败全部丢失。
+- **改 `src/VelaShell.Ssh/` 之前先读 [`src/VelaShell.Ssh/AGENTS.md`](src/VelaShell.Ssh/AGENTS.md)**。
+那是自研的 SSH 库(2026-09-23 从 velashell-ssh 仓库并入,不单独发 NuGet),有一条宿主其余部分没有的
+**净室规程**:写实现时不许打开任何其它 SSH 实现的源码,实现依据只能是 RFC 与 velashell-docs 的
+`zh/ssh/spec/`;CI 的相似度门禁(`ssh-checks` 作业)会把关。该目录按 **MIT** 授权,
+别把宿主其余部分的代码挪进去。它的测试一律用 Debug 跑(Release 签名会省掉 `InternalsVisibleTo`)。
 - **插件 SDK 一律走 NuGet 包**,不做工程引用。版本在 `src/Directory.Packages.props`。
 - **不要自己决定 SDK 版本号,也不要造本地包**。宿主的改动需要 SDK 的新契约时,正确做法是:
 在 velashell-plugin-sdk 里把契约写好(那边**同样**不动版本号),然后**明确交代**

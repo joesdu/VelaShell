@@ -56,7 +56,7 @@ VelaShell 是用 **.NET 11 + Avalonia** 写的桌面终端应用，Windows / Lin
   不依赖任何已停维护的第三方终端控件。选区支持行 / 块两种模式、`Shift+左键` 扩展，
   以及 `Ctrl+Shift+拖拽` 追加的多段不连续选区（可一次复制第 1 行 + 第 3 行）。
 
-- **SSH 栈** —— 基于自研的 [VelaShell.Ssh](https://github.com/VelaShellLabs/velashell-ssh)（全托管、async-first，MIT）。
+- **SSH 栈** —— 基于自研的 [VelaShell.Ssh](src/VelaShell.Ssh/)（全托管、async-first，MIT，源码就在本仓库 `src/VelaShell.Ssh`）。
   跳板机以嵌套连接 + `direct-tcpip` 逐跳建链，指纹按各跳逻辑主机分别校验。
   首次连接默认 TOFU 记录指纹，可切换为人工确认；指纹变化立即拒绝连接。
 

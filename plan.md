@@ -5746,3 +5746,66 @@ SSH PTY 像素尺寸贯通(原本等 `tmds/Tmds.Ssh#519`)、SSH Agent 转发、S
 **库侧的三条**(已交给 velashell-ssh 那边,不在本仓库改):主机密钥弹窗的等待被计入了
 连接超时(用户 10 秒内没点就连接失败,「永久信任」也可能没存上);`SftpFileStream.Dispose(bool)`
 仍是同步等异步;`SshChannel.DisposeAsync` 的关闭报文没有时间上限。
+
+## ✅ 92. 2026-09-23 把 VelaShell.Ssh 并进本仓库,不再单独发 NuGet(用户需求)
+
+§91 换库时 VelaShell.Ssh 还在独立仓库 `VelaShellLabs/velashell-ssh`,宿主走跨仓库的工程引用
+(`..\..\..\velashell-ssh\…`)—— 明知 CI 会红、Release 会因引用未签名程序集报 CS8002,
+原计划是等那边发一版 NuGet 再换回 `PackageReference`。用户拍板:**不单独发了,直接并进来**。
+这个库只有宿主一个使用者,为它单独维护一条发版流水线、每次改库先发包再抬版本号,得不偿失。
+
+### 一、搬到哪
+
+| 原位置(velashell-ssh) | 现位置 | 说明 |
+| --- | --- | --- |
+| `src/VelaShell.Ssh/` | `src/VelaShell.Ssh/` | 库本体。**该目录仍按 MIT 授权**:`LICENSE` / `NOTICE.md` 随目录一起搬来,与本仓库其余部分的双授权不同 |
+| `AGENTS.md` | `src/VelaShell.Ssh/AGENTS.md` | 改写成库专属约定:净室规程、依赖纪律、BcryptPbkdf 那一处例外;通用约定指回根 AGENTS.md |
+| `tests/VelaShell.Ssh.Tests/` | `tests/VelaShell.Ssh.Tests/` | 568 条(549 通过 + 19 条 Interop 在无靶机时 Inconclusive) |
+| `eng/` | `scripts/ssh/` | 相似度门禁、互操作靶机脚本、压缩严格校验、基准、公开面清单生成 |
+| `docs/` | velashell-docs 仓库 `zh/ssh/` + `en/ssh/` | 按本仓库「文档一律去 velashell-docs」的规矩;英文镜像是这次新译的 |
+
+**没保留 git 历史**(用户选择直接拷贝):velashell-ssh 只有 5 个提交,追溯时去那个仓库看。
+
+### 二、构建上要对齐的几处
+
+- **严格规则收进 csproj**。库原来的 `Directory.Build.props` 给了 `TreatWarningsAsErrors`、
+  `AnalysisLevel=latest-recommended`、`EnforceCodeStyleInBuild` 与一组 AOT/裁剪分析器;宿主的 props 没有这些,
+  也不该为了一个库把全仓收紧 —— 所以挪进 `VelaShell.Ssh.csproj`,只作用于本工程。打包相关的属性删了。
+  两边 `.editorconfig` 逐字相同,并进来 0 警告。
+- **签名**。作为本仓工程,它随 Release 一起强名签名,CS8002 的问题自然消失;`InternalsVisibleTo` 照
+  `VelaShell.Terminal` 的老规矩只在非签名构建里给。用临时密钥做过一次 Release 构建验证。
+- **测试运行器**。库原来跑 Microsoft.Testing.Platform(`global.json` 的 `test.runner`、测试工程是 Exe),
+  宿主是 VSTest —— `dotnet test` 一个解决方案里不允许混用,改成与宿主其余测试工程一样的
+  `Microsoft.NET.Test.Sdk` + `MSTest.TestAdapter/Framework` + coverlet。
+  它自带的 `test.runsettings`(30s 超时 + 方法级并行)更严,保留;`tests/Directory.Build.targets`
+  改成「工程自己没给 `RunSettingsFilePath` 时才套全仓那份」。
+- **BouncyCastle 只剩一条版本**。以前库与宿主各有一份 `Directory.Packages.props`,两边不一致时 NuGet 取高的,
+  注释里专门提醒"升库时对一眼";现在都读 `src/Directory.Packages.props` 那一条。
+- **C# 单文件脚本撞上根目录的 `CheckTargetFramework`**。那个 target 要 XmlPeek 工程文件,
+  而 `dotnet run xxx.cs` 的工程是内存里虚拟的,磁盘上没有 → MSB3733。加了 `Exists(...)` 条件。
+  根 props 全仓打开的 `GenerateDocumentationFile` 会让脚本里的 `///` 刷 CS1587/CS1591,脚本里各自关掉。
+  基准脚本原来吃库仓库的中央包版本(BenchmarkDotNet 0.14.0),现在就地写死 `@0.14.0` ——
+  tests/ 那边的 0.16 预览版改了 `InProcessNoEmitToolchain` 的 API。
+  Release 意味着签名,所以基准的命令行改成 `dotnet run -c Release -p:SignAssembly=false …`。
+
+### 三、CI
+
+`ci.yml` 加两个作业、改一处过滤:
+
+- `ssh-checks`:压缩严格校验 + 相似度门禁(先拉语料、再拿语料比对它自己做**必须报警**的自检、最后比对
+  `src/VelaShell.Ssh`)。本机实测覆盖率 0.23%(阈值 1%)。
+- `ssh-interop`:两版 OpenSSH 容器的互操作矩阵,只在推 main 与手动触发时跑;为此 `on:` 加了
+  `workflow_dispatch`。用 Debug —— Release 签名会省掉友元声明,测试工程编不过。
+- 主测试作业的过滤加上 `TestCategory!=Interop`(没有靶机时它们本来也只是 Inconclusive,跑一遍白花时间)。
+
+### 四、顺手改的引用
+
+关于页的 SSH 库链接(`SshBackend.ProjectUrl` / `LicenseUrl`)与 README 里的仓库链接改指本仓库
+`src/VelaShell.Ssh`;代码注释里的 `docs/…` 一律改成 `velashell-docs/zh/ssh/…`,`eng/…` 改成 `scripts/ssh/…`。
+§91 末尾记的「库侧的三条」(主机密钥弹窗计入连接超时、`SftpFileStream.Dispose(bool)` 同步等异步、
+`SshChannel.DisposeAsync` 无上限)在 velashell-ssh 最后一个提交里已经修掉,随代码一起进来了
+(`SshConnectDeadline` 停表、`CloseInBackgroundAsync`、`DisposeTimeout`)。
+
+velashell-docs 那边的配套改动:新增 `zh/ssh/` 与 `en/ssh/`(architecture、spec 00–09、getting-started 与索引页),
+挂进仓库首页、`zh|en/README.md` 与 AGENTS.md 的目录表。原文 architecture.md 首行标题与一处被折断的
+`chacha20-poly1305@openssh.com` 在搬运时顺手修了。

@@ -1,6 +1,8 @@
 <Project>
 	<!-- 自定义任务来检查 TargetFramework 和 TargetFrameworks -->
-	<Target Name="CheckTargetFramework" BeforeTargets="BeforeBuild" Condition="'$(UseWPF)' != 'true' and '$(UseWindowsForms)' != 'true' and '$(IsRoslynComponent)' != 'true'">
+	<!-- Exists:C# 单文件脚本(dotnet run xxx.cs,如 scripts/ssh/ 下那几个)的工程是内存里虚拟出来的,
+	     磁盘上没有 .csproj 可 XmlPeek;它们的 TargetFramework 本来也不写在任何文件里。 -->
+	<Target Name="CheckTargetFramework" BeforeTargets="BeforeBuild" Condition="'$(UseWPF)' != 'true' and '$(UseWindowsForms)' != 'true' and '$(IsRoslynComponent)' != 'true' and Exists('$(MSBuildProjectFullPath)')">
 		<XmlPeek XmlInputPath="$(MSBuildProjectFullPath)" Query="//*[local-name()='TargetFramework' or local-name()='TargetFrameworks']">
 			<Output TaskParameter="Result" ItemName="ExplicitTargetFramework" />
 		</XmlPeek>

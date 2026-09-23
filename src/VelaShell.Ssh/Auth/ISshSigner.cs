@@ -1,0 +1,293 @@
+// SPDX-License-Identifier: MIT
+// Copyright 2026 VelaShell Labs
+//
+// 规范依据(AGENTS.md §2 纪律 1):
+//   RFC 4252 §7   publickey 的两段式与签名输入
+//   RFC 8332 §3   rsa-sha2-256 / rsa-sha2-512 的选择
+//   行为规格:     velashell-docs/zh/ssh/spec/04-authentication.md §4;velashell-docs/zh/ssh/design/architecture.md §8 第 5 项
+
+using System.Buffers;
+using System.Security.Cryptography;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Signers;
+using Org.BouncyCastle.Security;
+using VelaShell.Ssh.HostKeys;
+using VelaShell.Ssh.Protocol;
+
+namespace VelaShell.Ssh.Auth;
+
+/// <summary>
+/// 一把能签名的私钥。<b>私钥从哪来由实现决定，可以从不进程内。</b>
+/// </summary>
+/// <remarks>
+/// 这是架构 §8 第 5 项的扩展点：文件私钥、ssh-agent、PKCS#11、HSM、
+/// 云密钥服务都是它的实现。
+/// </remarks>
+public interface ISshSigner
+{
+    /// <summary>对应的公钥。</summary>
+    SshPublicKey PublicKey { get; }
+
+    /// <summary>这把密钥能用的签名算法名，按偏好排序。</summary>
+    IReadOnlyList<string> SignatureAlgorithms { get; }
+
+    /// <summary>
+    /// 签名是否**在本地且代价低廉**。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 这个属性决定公钥认证走一段式还是两段式（velashell-docs/zh/ssh/spec/04 §4.1）：
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><b>本地私钥</b>（<see langword="true"/>）：直接签，省一个 RTT。
+    ///   服务端不认这把钥时白签一次，而本地签名很便宜。</item>
+    ///   <item><b>外部签名</b>（<see langword="false"/>）：先问「你认这把公钥吗」，
+    ///   认了再签。为一把服务端根本不认的密钥去让用户按硬件键、输 PIN，
+    ///   或者发一次网络请求，是不可接受的。</item>
+    /// </list>
+    /// </remarks>
+    bool IsLocalAndCheap => true;
+
+    /// <summary>对数据签名，产出 SSH 格式的签名 blob。</summary>
+    /// <param name="data">被签名的数据。</param>
+    /// <param name="algorithm">签名算法名，取自 <see cref="SignatureAlgorithms"/>。</param>
+    /// <param name="cancellationToken">取消令牌（外部签名可能要等用户操作）。</param>
+    ValueTask<byte[]> SignAsync(
+        ReadOnlyMemory<byte> data, string algorithm, CancellationToken cancellationToken = default);
+}
+
+/// <summary>在进程内内存里持有私钥的签名器。</summary>
+/// <remarks>
+/// ⚠️ 私钥就在托管堆上，可能被交换到磁盘、被内存转储带走。
+/// 对高价值密钥应当用 <see cref="ISshSigner"/> 的其它实现
+/// （ssh-agent / PKCS#11 / HSM），让私钥从不进入本进程。
+/// </remarks>
+public sealed class InMemorySshSigner : ISshSigner, IDisposable
+{
+    private readonly Ed25519PrivateKeyParameters? _ed25519;
+    private readonly ECDsa? _ecdsa;
+    private readonly RSA? _rsa;
+    private readonly int _coordinateBytes;
+    private bool _disposed;
+
+    private InMemorySshSigner(
+        SshPublicKey publicKey,
+        IReadOnlyList<string> algorithms,
+        Ed25519PrivateKeyParameters? ed25519,
+        ECDsa? ecdsa,
+        RSA? rsa,
+        int coordinateBytes)
+    {
+        PublicKey = publicKey;
+        SignatureAlgorithms = algorithms;
+        _ed25519 = ed25519;
+        _ecdsa = ecdsa;
+        _rsa = rsa;
+        _coordinateBytes = coordinateBytes;
+    }
+
+    /// <inheritdoc />
+    public SshPublicKey PublicKey { get; }
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> SignatureAlgorithms { get; }
+
+    /// <inheritdoc />
+    public bool IsLocalAndCheap => true;
+
+    /// <summary>用一把 Ed25519 私钥构造。</summary>
+    public static InMemorySshSigner FromEd25519(ReadOnlySpan<byte> privateKeySeed)
+    {
+        if (privateKeySeed.Length != 32)
+        {
+            throw new ArgumentException("Ed25519 私钥种子必须是 32 字节。", nameof(privateKeySeed));
+        }
+
+        Ed25519PrivateKeyParameters key = new(privateKeySeed.ToArray());
+        byte[] blob = BuildBlob(w =>
+        {
+            w.WriteUtf8String(SshAlgorithmNames.SshEd25519);
+            w.WriteString(key.GeneratePublicKey().GetEncoded());
+        });
+
+        return new InMemorySshSigner(
+            SshPublicKey.Parse(blob), [SshAlgorithmNames.SshEd25519], key, null, null, 0);
+    }
+
+    /// <summary>生成一把新的 Ed25519 密钥并构造签名器（测试与临时密钥用）。</summary>
+    public static InMemorySshSigner GenerateEd25519()
+    {
+        Ed25519PrivateKeyParameters key = new(new SecureRandom());
+        return FromEd25519(key.GetEncoded());
+    }
+
+    /// <summary>用一把 RSA 私钥构造。</summary>
+    public static InMemorySshSigner FromRsa(RSA rsa)
+    {
+        ArgumentNullException.ThrowIfNull(rsa);
+        RSAParameters p = rsa.ExportParameters(false);
+
+        byte[] blob = BuildBlob(w =>
+        {
+            // blob 里的类型串**永远是 ssh-rsa**，与签名算法无关（RFC 8332 的不对称）。
+            w.WriteUtf8String(SshAlgorithmNames.SshRsa);
+            w.WriteMpint(p.Exponent!);
+            w.WriteMpint(p.Modulus!);
+        });
+
+        // 三个都列出来,按偏好排序。SHA-1 的 ssh-rsa 排在最后,并且
+        // **默认会被认证器过滤掉** —— 只有显式打开 AllowSha1RsaSignatures 才会用到它
+        // (velashell-docs/zh/ssh/spec/04 §4.4)。在这里就删掉它的话,那个开关就永远没有效果了。
+        return new InMemorySshSigner(
+            SshPublicKey.Parse(blob),
+            [SshAlgorithmNames.RsaSha512, SshAlgorithmNames.RsaSha256, SshAlgorithmNames.SshRsa],
+            null, null, rsa, 0);
+    }
+
+    /// <summary>用一把 ECDSA 私钥构造。</summary>
+    public static InMemorySshSigner FromEcdsa(ECDsa ecdsa)
+    {
+        ArgumentNullException.ThrowIfNull(ecdsa);
+        ECParameters p = ecdsa.ExportParameters(false);
+
+        (string name, string curveName, int coordinate) = ecdsa.KeySize switch
+        {
+            256 => (SshAlgorithmNames.EcdsaSha2Nistp256, "nistp256", 32),
+            384 => (SshAlgorithmNames.EcdsaSha2Nistp384, "nistp384", 48),
+            521 => (SshAlgorithmNames.EcdsaSha2Nistp521, "nistp521", 66),
+            _ => throw new ArgumentException($"SSH 不支持 {ecdsa.KeySize} 位的 ECDSA 曲线。", nameof(ecdsa)),
+        };
+
+        byte[] point = new byte[1 + (coordinate * 2)];
+        point[0] = 0x04;
+        p.Q.X!.CopyTo(point.AsSpan(1 + coordinate - p.Q.X!.Length));
+        p.Q.Y!.CopyTo(point.AsSpan(1 + (coordinate * 2) - p.Q.Y!.Length));
+
+        byte[] blob = BuildBlob(w =>
+        {
+            w.WriteUtf8String(name);
+            w.WriteUtf8String(curveName);
+            w.WriteString(point);
+        });
+
+        return new InMemorySshSigner(SshPublicKey.Parse(blob), [name], null, ecdsa, null, coordinate);
+    }
+
+    /// <inheritdoc />
+    public ValueTask<byte[]> SignAsync(
+        ReadOnlyMemory<byte> data, string algorithm, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (!SignatureAlgorithms.Contains(algorithm, StringComparer.Ordinal))
+        {
+            throw new ArgumentException(
+                $"这把 {PublicKey.KeyType} 密钥不支持签名算法 {algorithm}。", nameof(algorithm));
+        }
+
+        byte[] signature = algorithm switch
+        {
+            SshAlgorithmNames.SshEd25519 => SignEd25519(data.Span),
+            SshAlgorithmNames.EcdsaSha2Nistp256 => SignEcdsa(data.Span, HashAlgorithmName.SHA256, algorithm),
+            SshAlgorithmNames.EcdsaSha2Nistp384 => SignEcdsa(data.Span, HashAlgorithmName.SHA384, algorithm),
+            SshAlgorithmNames.EcdsaSha2Nistp521 => SignEcdsa(data.Span, HashAlgorithmName.SHA512, algorithm),
+            SshAlgorithmNames.RsaSha512 => SignRsa(data.Span, HashAlgorithmName.SHA512, algorithm),
+            SshAlgorithmNames.RsaSha256 => SignRsa(data.Span, HashAlgorithmName.SHA256, algorithm),
+            // SHA-1。只有使用者显式打开 SshAuthenticator.AllowSha1RsaSignatures 时
+            // 才会走到这里 —— 为的是还能连上那些停在 OpenSSH 7.x 的老机器。
+#pragma warning disable CA5350 // ssh-rsa 的签名摘要由 RFC 4253 规定就是 SHA-1,换不得
+            SshAlgorithmNames.SshRsa => SignRsa(data.Span, HashAlgorithmName.SHA1, algorithm),
+#pragma warning restore CA5350
+            _ => throw new ArgumentException($"尚未实现的签名算法：{algorithm}", nameof(algorithm)),
+        };
+
+        return ValueTask.FromResult(signature);
+    }
+
+    private byte[] SignEd25519(ReadOnlySpan<byte> data)
+    {
+        Ed25519Signer signer = new();
+        signer.Init(forSigning: true, _ed25519!);
+        signer.BlockUpdate(data);
+        byte[] raw = signer.GenerateSignature();
+
+        return BuildBlob(w =>
+        {
+            w.WriteUtf8String(SshAlgorithmNames.SshEd25519);
+            w.WriteString(raw);
+        });
+    }
+
+    private byte[] SignEcdsa(ReadOnlySpan<byte> data, HashAlgorithmName hash, string algorithm)
+    {
+        byte[] ieee = _ecdsa!.SignData(data, hash);   // r ‖ s，各 _coordinateBytes 字节
+
+        // SSH 的 ECDSA 签名是**双层嵌套**：外层 string 装「mpint r ‖ mpint s」
+        // （velashell-docs/zh/ssh/spec/03 §5.2）。直接用 IEEE P1363 的 r‖s 或 DER 都是错的。
+        byte[] inner = BuildBlob(w =>
+        {
+            w.WriteMpint(ieee.AsSpan(0, _coordinateBytes));
+            w.WriteMpint(ieee.AsSpan(_coordinateBytes, _coordinateBytes));
+        });
+
+        return BuildBlob(w =>
+        {
+            w.WriteUtf8String(algorithm);
+            w.WriteString(inner);
+        });
+    }
+
+    private byte[] SignRsa(ReadOnlySpan<byte> data, HashAlgorithmName hash, string algorithm)
+    {
+        // PKCS#1 v1.5，不是 PSS（RFC 8332 §3）。
+        byte[] raw = _rsa!.SignData(data, hash, RSASignaturePadding.Pkcs1);
+
+        return BuildBlob(w =>
+        {
+            // 签名 blob 里是**签名算法**名，不是密钥类型名。
+            w.WriteUtf8String(algorithm);
+            w.WriteString(raw);
+        });
+    }
+
+    private static byte[] BuildBlob(Action<SshDataWriterBox> write)
+    {
+        ArrayBufferWriter<byte> buffer = new();
+        write(new SshDataWriterBox(buffer));
+        return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>把 ref struct 的写入器包一层，好在 lambda 里用。</summary>
+    private sealed class SshDataWriterBox(ArrayBufferWriter<byte> output)
+    {
+        public void WriteUtf8String(string value)
+        {
+            SshDataWriter w = new(output);
+            w.WriteUtf8String(value);
+        }
+
+        public void WriteString(ReadOnlySpan<byte> value)
+        {
+            SshDataWriter w = new(output);
+            w.WriteString(value);
+        }
+
+        public void WriteMpint(ReadOnlySpan<byte> magnitude)
+        {
+            SshDataWriter w = new(output);
+            w.WriteMpint(magnitude);
+        }
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+        _disposed = true;
+        _ecdsa?.Dispose();
+        _rsa?.Dispose();
+    }
+}

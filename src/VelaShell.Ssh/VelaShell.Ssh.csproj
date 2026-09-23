@@ -1,0 +1,93 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    **一个包，一件事。** 协议核心与面向使用者的 API 在同一个程序集里，靠文件夹分层：
+
+      Protocol/     报文编号、wire 编解码、算法名常量
+      Transport/    L1 拨号、L2 帧层
+      Crypto/       L3 密码套件、KEX、签名
+      Session/      L4 会话状态机、发送闸门、收发泵
+      Channels/     L5 通道、流控窗口
+      Threading/    L6 请求账本
+      Auth/         L7 认证方法、签名器
+      HostKeys/     主机密钥策略、known_hosts
+      Sftp/         L7 SFTP wire / 管线 / 文件系统
+      Forwarding/   L8 转发与隧道
+      Diagnostics/  L9 失败分类、度量、报文旁路
+      Client/       面向使用者的 SshConnection / SshCommand / SshShell / …
+      Config/       ssh_config、私钥格式、Agent 客户端
+
+    不拆成 Core + 主包，是因为拆了以后使用者第一件要纠结的事就是「我该引哪个」——
+    而答案永远是「引主包」。真正需要只引协议核心的场景至今一个都没有。
+    扩展点靠接口开放（见 velashell-docs/zh/ssh/design/architecture.md §8），不靠拆程序集。
+
+    2026-09-23 起本库并入宿主仓库，不再单独发 NuGet（原 VelaShellLabs/velashell-ssh）。
+    本目录仍按 MIT 授权（见同目录 LICENSE / NOTICE.md），与仓库其余部分的授权不同；
+    开发纪律（净室规程、依赖纪律）见同目录 AGENTS.md。
+  -->
+
+  <PropertyGroup>
+    <Description>Modern async-first SSH client for .NET — remote commands, interactive shells, SFTP, port forwarding and tunnels. Independent implementation; see NOTICE.md.</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- 这几条是库在独立仓库时由它自己的 Directory.Build.props 给的,宿主的 props 没有,
+         并进来以后挪到这里,只作用于本工程 —— 不外溢到宿主的其余工程。
+
+         警告即错误。这条在一个协议库里不是洁癖:编译器能指出来的
+         (未处理的 switch 分支、可空性违背、未使用的 out)恰好是协议代码最容易错的地方。
+         公开成员必须有 XML 文档:CS1591 由这里的 TreatWarningsAsErrors 提成错误,
+         文档文件由根 Directory.Build.props 的 GenerateDocumentationFile 生成。 -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- 零反射。加任何反射之前先想清楚:这个库要能被 NativeAOT 裁剪进单文件发布。 -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <!-- 并入宿主后不再单独打包发布。 -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      唯一的运行时依赖。**只用来做 BCL 缺失的密码学原语**,不用它的任何协议层。
+      版本登记在 src/Directory.Packages.props,与宿主 SshKeyService 用的是同一条。
+
+      为什么不自己写(架构原则 6):手写的密码学原语对一个要被审计、要被别人信任的库
+      是实打实的负债。「我们自己实现了 ChaCha20」在安全审计里是个红旗,
+      而且进位错误、边界错误这类问题不会报错,只会在特定输入上静默产出错误结果。
+
+      BCL 缺的、我们要用 BC 的地方:
+        · ChaCha20 的 raw 块函数    —— BCL 只有完整的 RFC 8439 AEAD,
+                                        而 chacha20-poly1305@openssh.com 是另一种组合
+        · Poly1305 独立 MAC         —— 同上
+        · Ed25519 曲线标量乘法      —— BCL 至今没有独立的 Ed25519
+        · Argon2id                  —— PuTTY .ppk v3 的 KDF
+        · sntrup761                 —— 后量子 KEM(M5)
+
+      BCL 有的一律走 BCL:AES-GCM(有 AES-NI 硬件加速)、SHA-2、ECDH、ECDSA、RSA、ML-KEM。
+
+      **BC 也没有的只有一样:bcrypt_pbkdf**(加密的 OpenSSH 私钥的 KDF)。
+      它要 Blowfish 的密钥编排内部,而 BC 的 BlowfishEngine 只给 Init + ProcessBlock。
+      那一处是全库唯一自己实现的密码学代码(Keys/BcryptPbkdf.cs),
+      范围钉死、理由见 velashell-docs/zh/ssh/design/architecture.md §11.2.18。
+
+      Microsoft.Extensions.Logging.Abstractions 在 net11.0 随共享框架自带,
+      显式 PackageReference 会触发 NU1510,因此不在这里出现。
+    -->
+    <PackageReference Include="BouncyCastle.Cryptography" />
+  </ItemGroup>
+
+  <!-- 测试要能看到内部类型:协议核心的绝大部分是 internal,
+       把它们为了测试改成 public 是本末倒置 —— 公开面应当由 API 设计决定,不由测试决定。
+       与宿主其余工程同一条规矩(见 VelaShell.Terminal.csproj):强名签名(仅 Release)时
+       友元必须带公钥,而测试程序集不签名,所以签名构建省略友元声明。 -->
+  <ItemGroup Condition="'$(SignAssembly)' != 'true'">
+    <InternalsVisibleTo Include="VelaShell.Ssh.Tests" />
+  </ItemGroup>
+
+</Project>
