@@ -6,10 +6,10 @@
     <!-- Avalonia UI。plugins/ 下的插件只在编译期引用 Avalonia / Avalonia.AvaloniaEdit
          (运行时回落到宿主这份),那两个版本号必须与这里逐字一致 —— 改这里就得同步改
          plugins/VelaShell.Plugin.Ai/VelaShell.Plugin.Ai.csproj。 -->
-    <PackageVersion Include="Avalonia" Version="12.1.2" />
-    <PackageVersion Include="Avalonia.Desktop" Version="12.1.2" />
-    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.2" />
-    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.2" />
+    <PackageVersion Include="Avalonia" Version="12.1.3" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.3" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.3" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.3" />
     <PackageVersion Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
     <!--<PackageVersion Include="Avalonia.Wayland" Version="12.1.2" />-->
     <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
