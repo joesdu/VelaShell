@@ -21,7 +21,7 @@ public sealed class XInputTests
         return q.Bytes[9];
     }
 
-    private static Task SelectAsync(XTestClient c, byte xi, uint window, ushort device, uint mask) =>
+    private static Task<ushort> SelectAsync(XTestClient c, byte xi, uint window, ushort device, uint mask) =>
         c.SendAsync(xi, 46, b => b.U32(window).U16(1).U16(0).U16(device).U16(1)
             .U8((byte)mask).U8((byte)(mask >> 8)).U8((byte)(mask >> 16)).U8((byte)(mask >> 24)));
 

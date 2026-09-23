@@ -35,7 +35,7 @@ public sealed class SyncCompositeTests
         return gc;
     }
 
-    private static Task FillAsync(XTestClient c, uint drawable, uint gc, short x, short y, ushort w, ushort h) =>
+    private static Task<ushort> FillAsync(XTestClient c, uint drawable, uint gc, short x, short y, ushort w, ushort h) =>
         c.SendAsync(70, 0, b => b.U32(drawable).U32(gc).I16(x).I16(y).U16(w).U16(h));
 
     [TestMethod]

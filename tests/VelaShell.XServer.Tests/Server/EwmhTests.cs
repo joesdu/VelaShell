@@ -24,7 +24,7 @@ public sealed class EwmhTests
         return id;
     }
 
-    private static Task SetCard32Async(XTestClient c, uint window, uint property, uint type, params uint[] values) =>
+    private static Task<ushort> SetCard32Async(XTestClient c, uint window, uint property, uint type, params uint[] values) =>
         c.SendAsync(18, 0, b =>
         {
             b.U32(window).U32(property).U32(type).U8(32).U8(0).U8(0).U8(0).U32((uint)values.Length);
@@ -34,7 +34,7 @@ public sealed class EwmhTests
             }
         });
 
-    private static Task RootClientMessageAsync(XTestClient c, uint window, uint type, params uint[] data) =>
+    private static Task<ushort> RootClientMessageAsync(XTestClient c, uint window, uint type, params uint[] data) =>
         c.SendAsync(25, 0, b =>
         {
             b.U32(c.RootWindow).U32(0x180000)   // SubstructureNotify | SubstructureRedirect

@@ -113,8 +113,7 @@ public sealed class EdgeCaseTests
         await c.SendAsync(55, 0, b => b.U32(gc).U32(top).U32(0x4).U32(0xFF0000));
         // 以前:65535 行 × 二十万条边,一个请求就能把执行线程占住几十秒。
         await c.SendAsync(71, 0, b => b.U32(top).U32(gc).I16(-32000).I16(-32000).U16(65535).U16(65535).I16(0).I16(360 * 64));
-        Task sync = c.SyncAsync();
-        Assert.AreSame(sync, await Task.WhenAny(sync, Task.Delay(TimeSpan.FromSeconds(3))), "三秒内完成");
+        await c.SyncAsync().WaitAsync(TimeSpan.FromSeconds(3));   // 三秒内完成(超时抛 TimeoutException)
         (uint[] pixels, int width, _) = RecordingHost.Snapshot(host.Mapped[top]);
         Assert.AreEqual(0xFF0000u, pixels[(20 * width) + 30] & 0xFFFFFF, "整个窗口都在圆里");
     }
