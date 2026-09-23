@@ -125,7 +125,11 @@ public sealed partial class X11Server
         uint plainUtf8 = Intern("text/plain;charset=utf-8");
 
         XProperty? value = null;
-        if (target == targets)
+        if (selection != Intern("CLIPBOARD") && selection != XAtom.Primary)
+        {
+            // 服务端占有的其它选区(_XSETTINGS_S0 这类管理器选区)没有可转换的内容。
+        }
+        else if (target == targets)
         {
             uint[] atoms = [targets, timestamp, utf8, plainUtf8, XAtom.String, text];
             byte[] data = new byte[atoms.Length * 4];

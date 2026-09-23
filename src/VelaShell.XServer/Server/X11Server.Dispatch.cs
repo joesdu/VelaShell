@@ -25,13 +25,22 @@ public sealed partial class X11Server
         }
         XRequestReader r = new(request, client.BigEndian);
         ushort minor = r.Opcode >= XOpcode.FirstExtension ? r.Data : (ushort)0;
+        if (_options.Log is not null)
+        {
+            if (client.RecentRequests.Count == 8)
+            {
+                client.RecentRequests.Dequeue();
+            }
+            client.RecentRequests.Enqueue($"{r.Opcode}.{minor}");
+        }
         try
         {
             Dispatch(client, r);
         }
         catch (XProtocolError error)
         {
-            _options.Log?.Invoke($"{client} #{client.Sequence} opcode {r.Opcode}.{minor}: Bad{error.Code} 0x{error.BadValue:x}");
+            _options.Log?.Invoke($"{client} #{client.Sequence} opcode {r.Opcode}.{minor}: Bad{error.Code} 0x{error.BadValue:x}"
+                + $"(之前:{string.Join(' ', client.RecentRequests)})");
             client.Error(error.Code, error.BadValue, minor, r.Opcode);
         }
         catch (Exception ex)

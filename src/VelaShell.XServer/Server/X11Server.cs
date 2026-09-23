@@ -69,6 +69,7 @@ public sealed partial class X11Server : IAsyncDisposable
         _resources[DefaultColormapId] = new XColormap(DefaultColormapId, null, RootVisualId);
         InitAtoms();
         InitExtensions();
+        InitXSettings();
         _pointerWindow = Root;
         _loopTask = Task.Run(RunLoopAsync);
     }

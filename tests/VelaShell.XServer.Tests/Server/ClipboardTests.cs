@@ -127,6 +127,34 @@ public sealed class ClipboardTests
     }
 
     [TestMethod]
+    public async Task 服务端当XSETTINGS管理器发布DPI_且管理器选区转换不出剪贴板内容()
+    {
+        await using X11Server server = new(new XServerOptions { Dpi = 144 });
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        uint selection = await InternAsync(c, "_XSETTINGS_S0");
+        uint settings = await InternAsync(c, "_XSETTINGS_SETTINGS");
+        XMessage owner = await c.RequestAsync(23, 0, b => b.U32(selection));
+        uint manager = owner.U32(8);
+        Assert.AreNotEqual(0u, manager);
+
+        XMessage prop = await c.RequestAsync(20, 0, b => b.U32(manager).U32(settings).U32(0).U32(0).U32(1000));
+        Assert.AreEqual(settings, prop.U32(8), "类型也是 _XSETTINGS_SETTINGS");
+        byte[] data = prop.Bytes[32..(32 + (int)prop.U32(16))];
+        string text = Encoding.ASCII.GetString(data);
+        int at = text.IndexOf("Xft/DPI", StringComparison.Ordinal);
+        Assert.IsTrue(at > 0);
+        // 名字(7 字节补到 8)之后是 last-change-serial,再之后才是值。
+        Assert.AreEqual(144 * 1024, BitConverter.ToInt32(data, at + 8 + 4));
+
+        server.SetClipboardText("secret");
+        uint window = await CreateWindowAsync(c);
+        uint utf8 = await InternAsync(c, "UTF8_STRING");
+        await c.SendAsync(24, 0, b => b.U32(window).U32(selection).U32(utf8).U32(utf8).U32(0));
+        XMessage notify = await c.NextEventAsync(SelectionNotify);
+        Assert.AreEqual(0u, notify.U32(20), "管理器选区不给剪贴板内容");
+    }
+
+    [TestMethod]
     public async Task 关掉互通后不取也不占()
     {
         using RecordingHost host = new();
