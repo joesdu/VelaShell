@@ -4981,4 +4981,523 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="DiagSvc_SuggestAgentKeys" xml:space="preserve">
     <value>ssh-agent が起動していて、このサーバーが受け付ける鍵が読み込まれているか確認してください(ssh-add -l で一覧表示できます)。</value>
   </data>
+  <data name="SetVm_SectionXServer" xml:space="preserve">
+    <value>X Server</value>
+  </data>
+  <data name="SetXServer_Title" xml:space="preserve">
+    <value>X Server</value>
+  </data>
+  <data name="SetXServer_Subtitle" xml:space="preserve">
+    <value>SSH の X11 転送でリモートの GUI プログラムをローカルに表示するための X サーバー(VcXsrv)。変更は次回 X Server を起動したときに反映されます。</value>
+  </data>
+  <data name="SetXServer_Unsupported" xml:space="preserve">
+    <value>ローカル X Server は現在 Windows でのみ利用できます。Linux では X11 転送は DISPLAY 経由でデスクトップの X サーバー(または XWayland)を使います。macOS では XQuartz をインストールすれば同様に DISPLAY 経由で使われます。</value>
+  </data>
+  <data name="SetXServer_SectionProgram" xml:space="preserve">
+    <value>プログラム</value>
+  </data>
+  <data name="SetXServer_Executable" xml:space="preserve">
+    <value>VcXsrv の実行ファイル</value>
+  </data>
+  <data name="SetXServer_ExecutableAuto" xml:space="preserve">
+    <value>自動検出</value>
+  </data>
+  <data name="SetXServer_Detected" xml:space="preserve">
+    <value>使用するファイル: {0}</value>
+  </data>
+  <data name="SetXServer_NotDetected" xml:space="preserve">
+    <value>一般的なインストール先と PATH のどちらにも VcXsrv が見つかりません。</value>
+  </data>
+  <data name="SetXServer_InstallHint" xml:space="preserve">
+    <value>VelaShell は X サーバーを同梱しておらず、インストール済みの VcXsrv を起動します。次のコマンドでインストールできます:</value>
+  </data>
+  <data name="SetXServer_InstallHintManual" xml:space="preserve">
+    <value>VcXsrv プロジェクト(SourceForge / GitHub)からインストーラーをダウンロードすることもできます。別の場所にある場合は上でパスを指定してください。</value>
+  </data>
+  <data name="SetXServer_SelectExecutableTitle" xml:space="preserve">
+    <value>vcxsrv.exe を選択</value>
+  </data>
+  <data name="SetXServer_SectionDisplay" xml:space="preserve">
+    <value>ディスプレイ</value>
+  </data>
+  <data name="SetXServer_DisplayNumber" xml:space="preserve">
+    <value>ディスプレイ番号</value>
+  </data>
+  <data name="SetXServer_DisplayNumberDesc" xml:space="preserve">
+    <value>DISPLAY=localhost:N の N(TCP ポート 6000+N)。自動にすると、実行中の X サーバーが使っている番号を避けて最初の空き番号を選びます。</value>
+  </data>
+  <data name="SetXServer_DisplayAuto" xml:space="preserve">
+    <value>自動</value>
+  </data>
+  <data name="SetXServer_WindowMode" xml:space="preserve">
+    <value>ウィンドウモード</value>
+  </data>
+  <data name="SetXServer_WindowModeDesc" xml:space="preserve">
+    <value>マルチウィンドウでは各リモートプログラムが個別の Windows ウィンドウになります。ほかのモードは X 画面全体を 1 つのウィンドウに表示します。</value>
+  </data>
+  <data name="SetXServer_ModeMultiWindow" xml:space="preserve">
+    <value>マルチウィンドウ</value>
+  </data>
+  <data name="SetXServer_ModeWindowed" xml:space="preserve">
+    <value>1 つの大きなウィンドウ</value>
+  </data>
+  <data name="SetXServer_ModeNoDecoration" xml:space="preserve">
+    <value>タイトルバーなしの 1 ウィンドウ</value>
+  </data>
+  <data name="SetXServer_ModeFullscreen" xml:space="preserve">
+    <value>全画面</value>
+  </data>
+  <data name="SetXServer_ModeRootless" xml:space="preserve">
+    <value>ルートレス(リモートのウィンドウマネージャー)</value>
+  </data>
+  <data name="SetXServer_SectionClipboard" xml:space="preserve">
+    <value>クリップボード</value>
+  </data>
+  <data name="SetXServer_Clipboard" xml:space="preserve">
+    <value>クリップボードを有効にする</value>
+  </data>
+  <data name="SetXServer_ClipboardDesc" xml:space="preserve">
+    <value>X の CLIPBOARD 選択を Windows のクリップボードと共有します(-clipboard)。</value>
+  </data>
+  <data name="SetXServer_CopyOnSelection" xml:space="preserve">
+    <value>選択時にコピー</value>
+  </data>
+  <data name="SetXServer_CopyOnSelectionDesc" xml:space="preserve">
+    <value>PRIMARY 選択も対応付け、X プログラムで選択した文字列をそのまま Windows のクリップボードにコピーします(-primary)。</value>
+  </data>
+  <data name="SetXServer_SectionKeyboard" xml:space="preserve">
+    <value>キーボード</value>
+  </data>
+  <data name="SetXServer_KeyboardLayout" xml:space="preserve">
+    <value>キーボードレイアウト</value>
+  </data>
+  <data name="SetXServer_KeyboardLayoutDesc" xml:space="preserve">
+    <value>X プログラムが使う XKB レイアウト(-xkblayout)。自動は現在の Windows のレイアウトに従います。</value>
+  </data>
+  <data name="SetXServer_LayoutAuto" xml:space="preserve">
+    <value>自動 - Windows の現在のレイアウト</value>
+  </data>
+  <data name="SetXServer_KeyboardModel" xml:space="preserve">
+    <value>キーボードモデル</value>
+  </data>
+  <data name="SetXServer_KeyboardModelDesc" xml:space="preserve">
+    <value>XKB モデル(-xkbmodel)。ほとんどのキーボードは pc105 で問題ありません。日本語 / 韓国語キーボードは jp106 / kr106 を選びます。</value>
+  </data>
+  <data name="SetXServer_KeyHook" xml:space="preserve">
+    <value>Windows の特殊キーを取り込む</value>
+  </data>
+  <data name="SetXServer_KeyHookDesc" xml:space="preserve">
+    <value>Alt+Tab や Win / メニューキーなどを Windows ではなく X プログラムに渡します(-keyhook)。</value>
+  </data>
+  <data name="SetXServer_SectionExtensions" xml:space="preserve">
+    <value>拡張機能</value>
+  </data>
+  <data name="SetXServer_NativeOpenGl" xml:space="preserve">
+    <value>ネイティブ OpenGL(WGL)</value>
+  </data>
+  <data name="SetXServer_NativeOpenGlDesc" xml:space="preserve">
+    <value>Windows の WGL インターフェイスでハードウェアアクセラレーションされた OpenGL を使います(-wgl)。3D プログラムの表示がおかしい場合はオフにしてみてください。</value>
+  </data>
+  <data name="SetXServer_DisableAccessControl" xml:space="preserve">
+    <value>アクセス制御を無効にする</value>
+  </data>
+  <data name="SetXServer_DisableAccessControlDesc" xml:space="preserve">
+    <value>ポートに到達できるどのホストでもウィンドウを開き、キー入力を読み取れるようになります(-ac)。SSH の X11 転送には不要です。信頼できるネットワークでのみオンにしてください。</value>
+  </data>
+  <data name="SetXServer_SectionAdvanced" xml:space="preserve">
+    <value>詳細設定</value>
+  </data>
+  <data name="SetXServer_ExtraArguments" xml:space="preserve">
+    <value>VcXsrv の追加引数</value>
+  </data>
+  <data name="SetXServer_ExtraArgumentsDesc" xml:space="preserve">
+    <value>上の各項目から生成された引数の後に追加されます。同じスイッチは後に書いたものが優先されます。空白を含む値はダブルクォートで囲みます。</value>
+  </data>
+  <data name="SetXServer_Help" xml:space="preserve">
+    <value>ヘルプ</value>
+  </data>
+  <data name="SetXServer_CommandPreview" xml:space="preserve">
+    <value>次回起動時のコマンドライン:</value>
+  </data>
+  <data name="SetXServer_SectionStartup" xml:space="preserve">
+    <value>起動</value>
+  </data>
+  <data name="SetXServer_StartOnLaunch" xml:space="preserve">
+    <value>VelaShell の起動時に開始</value>
+  </data>
+  <data name="SetXServer_StartOnLaunchDesc" xml:space="preserve">
+    <value>メインウィンドウが開いた直後にバックグラウンドで X Server を起動します。</value>
+  </data>
+  <data name="SetXServer_AutoStartForX11" xml:space="preserve">
+    <value>X11 転送時に自動で起動</value>
+  </data>
+  <data name="SetXServer_AutoStartForX11Desc" xml:space="preserve">
+    <value>X11 転送を有効にした SSH セッションが接続し、プロファイルにディスプレイが指定されていない場合、先に X Server を起動します。localhost:0 で別の X サーバーが待ち受けている場合は何もしません。</value>
+  </data>
+  <data name="SetXServer_ShowTrayIcon" xml:space="preserve">
+    <value>トレイアイコンを表示</value>
+  </data>
+  <data name="SetXServer_ShowTrayIconDesc" xml:space="preserve">
+    <value>通知領域に VcXsrv 自身のアイコンを表示します(-trayicon)。</value>
+  </data>
+  <data name="XServer_ErrUnsupported" xml:space="preserve">
+    <value>ローカル X Server は Windows でのみ利用できます。</value>
+  </data>
+  <data name="XServer_ErrNotFound" xml:space="preserve">
+    <value>VcXsrv が見つかりません。インストールする(winget install marha.VcXsrv)か、設定 → X Server でパスを指定してください。</value>
+  </data>
+  <data name="XServer_ErrConfiguredNotFound" xml:space="preserve">
+    <value>指定された VcXsrv のパスが存在しません: {0}</value>
+  </data>
+  <data name="XServer_ErrDisplayInUse" xml:space="preserve">
+    <value>ディスプレイ :{0} は別の X サーバーが使用中です。別の番号を選ぶか「自動」にしてください。</value>
+  </data>
+  <data name="XServer_ErrNoFreeDisplay" xml:space="preserve">
+    <value>ディスプレイ :0 から :{0} はすべて使用中です。</value>
+  </data>
+  <data name="XServer_ErrLaunch" xml:space="preserve">
+    <value>VcXsrv を起動できませんでした: {0}</value>
+  </data>
+  <data name="XServer_ErrExited" xml:space="preserve">
+    <value>VcXsrv が起動中に終了しました(終了コード {0})。ログ: {1}</value>
+  </data>
+  <data name="XServer_ErrTimeout" xml:space="preserve">
+    <value>VcXsrv が {0} 秒以内に待ち受けを開始しませんでした。ログ: {1}</value>
+  </data>
+  <data name="XServer_AutoStartFailed" xml:space="preserve">
+    <value>ローカル X Server を自動で起動できませんでした: {0}</value>
+  </data>
+  <data name="XServer_Started" xml:space="preserve">
+    <value>X Server を起動しました: {0}</value>
+  </data>
+  <data name="XServer_StartFailed" xml:space="preserve">
+    <value>X Server を起動できませんでした: {0}</value>
+  </data>
+  <data name="XServer_OpenSettings" xml:space="preserve">
+    <value>設定を開く</value>
+  </data>
+  <data name="XServer_TipStart" xml:space="preserve">
+    <value>X Server を起動</value>
+  </data>
+  <data name="XServer_TipStarting" xml:space="preserve">
+    <value>X Server を起動しています…</value>
+  </data>
+  <data name="XServer_TipStop" xml:space="preserve">
+    <value>X Server 実行中({0})— クリックで停止</value>
+  </data>
+  <data name="Cmd_ToggleXServer" xml:space="preserve">
+    <value>X Server を起動 / 停止</value>
+  </data>
+  <data name="XHelp_Title" xml:space="preserve">
+    <value>VcXsrv の引数</value>
+  </data>
+  <data name="XHelp_Intro" xml:space="preserve">
+    <value>VcXsrv のコマンドラインで使えるすべての引数です(vcxsrv -help より)。「VcXsrv の追加引数」に入力した内容は、設定ページから生成された引数の後に追加されます。引数は大文字と小文字を区別します。</value>
+  </data>
+  <data name="XHelp_FilterPlaceholder" xml:space="preserve">
+    <value>引数または説明で絞り込み</value>
+  </data>
+  <data name="XHelp_ExtensionsNote" xml:space="preserve">
+    <value>実行時に有効 / 無効を切り替えられるのは次の拡張機能だけです:</value>
+  </data>
+  <data name="XHelp_NoMatch" xml:space="preserve">
+    <value>一致する引数はありません。</value>
+  </data>
+  <data name="XHelp_Source" xml:space="preserve">
+    <value>出典: VcXsrv -help</value>
+  </data>
+  <data name="XHelpGroup_General" xml:space="preserve">
+    <value>X サーバー共通の引数</value>
+  </data>
+  <data name="XHelpGroup_Extensions" xml:space="preserve">
+    <value>拡張機能</value>
+  </data>
+  <data name="XHelpGroup_Xdmcp" xml:space="preserve">
+    <value>XDMCP(リモートログイン)</value>
+  </data>
+  <data name="XHelpGroup_VcXsrv" xml:space="preserve">
+    <value>VcXsrv 固有の引数</value>
+  </data>
+  <data name="XHelp_SilentDupError" xml:space="preserve">
+    <value>ディスプレイ番号が使用中のときに致命的エラーのメッセージボックスを表示しません。</value>
+  </data>
+  <data name="XHelp_A" xml:space="preserve">
+    <value>ポインターの既定の加速倍率。</value>
+  </data>
+  <data name="XHelp_Ac" xml:space="preserve">
+    <value>アクセス制御の制限を無効にします。どのホストからでも接続できます。</value>
+  </data>
+  <data name="XHelp_Audit" xml:space="preserve">
+    <value>監査証跡のレベルを設定します。</value>
+  </data>
+  <data name="XHelp_Auth" xml:space="preserve">
+    <value>指定した認証ファイルを使います。</value>
+  </data>
+  <data name="XHelp_Br" xml:space="preserve">
+    <value>ルートウィンドウの背景を黒にします。</value>
+  </data>
+  <data name="XHelp_BsOn" xml:space="preserve">
+    <value>バッキングストアを有効にします。</value>
+  </data>
+  <data name="XHelp_BsOff" xml:space="preserve">
+    <value>バッキングストアを無効にします。</value>
+  </data>
+  <data name="XHelp_Cc" xml:space="preserve">
+    <value>既定のカラービジュアルクラス。</value>
+  </data>
+  <data name="XHelp_NoCursor" xml:space="preserve">
+    <value>カーソルを表示しません。</value>
+  </data>
+  <data name="XHelp_Core" xml:space="preserve">
+    <value>致命的エラー時にコアダンプを生成します。</value>
+  </data>
+  <data name="XHelp_DisplayFd" xml:space="preserve">
+    <value>接続を受け付けられるようになったとき、ディスプレイ番号をこのファイル記述子に書き込みます。</value>
+  </data>
+  <data name="XHelp_Dpi" xml:space="preserve">
+    <value>画面の解像度。auto でネイティブの DPI、または数値を指定します。</value>
+  </data>
+  <data name="XHelp_Dpms" xml:space="preserve">
+    <value>VESA DPMS によるモニター制御を無効にします。</value>
+  </data>
+  <data name="XHelp_DeferGlyphs" xml:space="preserve">
+    <value>グリフの読み込みを遅延します: none(しない)、all(すべて)、16(16 ビットのみ)。</value>
+  </data>
+  <data name="XHelp_F" xml:space="preserve">
+    <value>ベルの基本音量(0–100)。</value>
+  </data>
+  <data name="XHelp_FakeScreenFps" xml:space="preserve">
+    <value>仮想画面の既定フレームレート(1–600)。</value>
+  </data>
+  <data name="XHelp_Fp" xml:space="preserve">
+    <value>既定のフォントパス。</value>
+  </data>
+  <data name="XHelp_Help" xml:space="preserve">
+    <value>引数の一覧を表示します。</value>
+  </data>
+  <data name="XHelp_IglxOn" xml:space="preserve">
+    <value>間接 GLX コンテキストの作成を許可します(既定)。</value>
+  </data>
+  <data name="XHelp_IglxOff" xml:space="preserve">
+    <value>間接 GLX コンテキストの作成を禁止します。</value>
+  </data>
+  <data name="XHelp_IgnoreRest" xml:space="preserve">
+    <value>以降の引数をすべて無視します。</value>
+  </data>
+  <data name="XHelp_MaxClients" xml:space="preserve">
+    <value>クライアント数の上限(2 のべき乗)。</value>
+  </data>
+  <data name="XHelp_NoListen" xml:space="preserve">
+    <value>指定したプロトコル(tcp など)で待ち受けません。</value>
+  </data>
+  <data name="XHelp_Listen" xml:space="preserve">
+    <value>指定したプロトコル(tcp など)で待ち受けます。</value>
+  </data>
+  <data name="XHelp_NoReset" xml:space="preserve">
+    <value>最後のクライアントが終了してもリセットしません。</value>
+  </data>
+  <data name="XHelp_Background" xml:space="preserve">
+    <value>ルートウィンドウを背景なしで作成します。</value>
+  </data>
+  <data name="XHelp_Reset" xml:space="preserve">
+    <value>最後のクライアントが終了したらリセットします。</value>
+  </data>
+  <data name="XHelp_Pn" xml:space="preserve">
+    <value>一部のポートで待ち受けに失敗しても続行します。</value>
+  </data>
+  <data name="XHelp_NoPn" xml:space="preserve">
+    <value>いずれかのポートで待ち受けに失敗したらエラーにします。</value>
+  </data>
+  <data name="XHelp_RepeatOff" xml:space="preserve">
+    <value>キーの自動リピートをオフにします。</value>
+  </data>
+  <data name="XHelp_RepeatOn" xml:space="preserve">
+    <value>キーの自動リピートをオンにします。</value>
+  </data>
+  <data name="XHelp_Render" xml:space="preserve">
+    <value>RENDER の色割り当てポリシー: default、mono、gray、color。</value>
+  </data>
+  <data name="XHelp_Retro" xml:space="preserve">
+    <value>昔ながらの点描パターンのルートウィンドウで起動します。</value>
+  </data>
+  <data name="XHelp_Seat" xml:space="preserve">
+    <value>実行する seat。</value>
+  </data>
+  <data name="XHelp_T" xml:space="preserve">
+    <value>ポインター加速のしきい値(ピクセル)。</value>
+  </data>
+  <data name="XHelp_Terminate" xml:space="preserve">
+    <value>サーバーのリセット時に終了します。秒数で遅延も指定できます。</value>
+  </data>
+  <data name="XHelp_Tst" xml:space="preserve">
+    <value>テスト用の拡張機能を無効にします。</value>
+  </data>
+  <data name="XHelp_Wr" xml:space="preserve">
+    <value>ルートウィンドウの背景を白にします。</value>
+  </data>
+  <data name="XHelp_XineramaOn" xml:space="preserve">
+    <value>XINERAMA 拡張を有効にします。</value>
+  </data>
+  <data name="XHelp_XineramaOff" xml:space="preserve">
+    <value>XINERAMA 拡張を無効にします。</value>
+  </data>
+  <data name="XHelp_DumbSched" xml:space="preserve">
+    <value>スマートスケジューリングとスレッド化された入力を無効にし、旧来の動作にします。</value>
+  </data>
+  <data name="XHelp_SchedInterval" xml:space="preserve">
+    <value>スケジューラーの間隔(ミリ秒)。</value>
+  </data>
+  <data name="XHelp_AccessX" xml:space="preserve">
+    <value>AccessX(アクセシビリティ)のキーシーケンスを有効(+)/ 無効(-)にします。タイムアウトとマスクも指定できます。</value>
+  </data>
+  <data name="XHelp_VmId" xml:space="preserve">
+    <value>VSock 接続を受け付ける Hyper-V 仮想マシンの GUID。</value>
+  </data>
+  <data name="XHelp_VsockPort" xml:space="preserve">
+    <value>VSock 接続を待ち受けるポート番号(既定 106000)。</value>
+  </data>
+  <data name="XHelp_ExtensionOn" xml:space="preserve">
+    <value>指定した拡張機能を有効にします。</value>
+  </data>
+  <data name="XHelp_ExtensionOff" xml:space="preserve">
+    <value>指定した拡張機能を無効にします。</value>
+  </data>
+  <data name="XHelp_Query" xml:space="preserve">
+    <value>指定したホストに XDMCP で接続します(リモートデスクトップのログイン)。</value>
+  </data>
+  <data name="XHelp_Broadcast" xml:space="preserve">
+    <value>XDMCP をブロードキャストで探します。</value>
+  </data>
+  <data name="XHelp_Multicast" xml:space="preserve">
+    <value>IPv6 マルチキャストで XDMCP を探します。アドレスとホップ数を指定できます。</value>
+  </data>
+  <data name="XHelp_Indirect" xml:space="preserve">
+    <value>指定したホストに間接 XDMCP で接続します。</value>
+  </data>
+  <data name="XHelp_Port" xml:space="preserve">
+    <value>XDMCP メッセージの送信先 UDP ポート。</value>
+  </data>
+  <data name="XHelp_From" xml:space="preserve">
+    <value>接続元のローカルアドレス。</value>
+  </data>
+  <data name="XHelp_Once" xml:space="preserve">
+    <value>1 セッション終了後にサーバーを終了します。</value>
+  </data>
+  <data name="XHelp_Class" xml:space="preserve">
+    <value>Manage 要求で送るディスプレイクラス。</value>
+  </data>
+  <data name="XHelp_Cookie" xml:space="preserve">
+    <value>XDMCP 用のマジッククッキー(XDM-AUTHORIZATION)。</value>
+  </data>
+  <data name="XHelp_DisplayId" xml:space="preserve">
+    <value>要求で送るメーカーのディスプレイ ID。</value>
+  </data>
+  <data name="XHelp_Clipboard" xml:space="preserve">
+    <value>Windows クリップボードとの連携を有効 [無効] にします。既定は有効。</value>
+  </data>
+  <data name="XHelp_Primary" xml:space="preserve">
+    <value>クリップボード連携が有効なとき、X11 の PRIMARY 選択を Windows のクリップボードに対応付けます [付けません]。CLIPBOARD 選択は常に対応付けられます。既定は対応付けあり。</value>
+  </data>
+  <data name="XHelp_ClipUpdates" xml:space="preserve">
+    <value>更新領域の矩形数がこの値以上になったら、クリッピング領域でシャドウ更新の転送を変更部分に限定します。現在の Windows は GDI 操作をまとめて処理するため効果は小さめです。</value>
+  </data>
+  <data name="XHelp_CompositeWm" xml:space="preserve">
+    <value>マルチウィンドウモードで Composite 拡張を有効 [無効] にします(既定は有効)。各トップレベル X ウィンドウのビットマップを保持し、隠れたウィンドウもタスクバーやタスク切り替えのプレビューに正しく表示されます。</value>
+  </data>
+  <data name="XHelp_CompositeAlpha" xml:space="preserve">
+    <value>ピクセル単位のアルファを持つ X ウィンドウを Windows デスクトップに合成します [しません]。</value>
+  </data>
+  <data name="XHelp_Depth" xml:space="preserve">
+    <value>全画面モードで DirectDraw エンジンを使うときの色深度。</value>
+  </data>
+  <data name="XHelp_Emulate3Buttons" xml:space="preserve">
+    <value>3 ボタンマウスをエミュレートします [しません]。タイムアウト(ミリ秒)も指定できます。</value>
+  </data>
+  <data name="XHelp_Engine" xml:space="preserve">
+    <value>自動選択された描画エンジンを上書きします:
+1 - Shadow GDI
+4 - Shadow DirectDraw4 Non-Locking</value>
+  </data>
+  <data name="XHelp_Fullscreen" xml:space="preserve">
+    <value>全画面モードで実行します。</value>
+  </data>
+  <data name="XHelp_HostInTitle" xml:space="preserve">
+    <value>マルチウィンドウモードで、ウィンドウタイトルにリモートホスト名を付けます [付けません]。</value>
+  </data>
+  <data name="XHelp_Icon" xml:space="preserve">
+    <value>ウィンドウモードで画面ウィンドウのアイコンを設定します。</value>
+  </data>
+  <data name="XHelp_IgnoreInput" xml:space="preserve">
+    <value>キーボードとマウスの入力を無視します。</value>
+  </data>
+  <data name="XHelp_KeyHook" xml:space="preserve">
+    <value>Alt+Tab やメニューキーなど Windows の特殊キーを取り込みます [取り込みません]。</value>
+  </data>
+  <data name="XHelp_LessPointer" xml:space="preserve">
+    <value>VcXsrv のウィンドウ上では Windows のマウスポインターを隠し、X のカーソルと二重に表示されないようにします。</value>
+  </data>
+  <data name="XHelp_LogFile" xml:space="preserve">
+    <value>ログを指定したファイルに書き込みます。</value>
+  </data>
+  <data name="XHelp_LogVerbose" xml:space="preserve">
+    <value>ログの詳細度(現時点では一部のメッセージのみ対応):
+0 - 致命的エラーのみ
+1 - 設定情報も出力
+2 - 実行時情報も出力(既定)
+3 - デバッグとトレースも出力</value>
+  </data>
+  <data name="XHelp_MultiMonitors" xml:space="preserve">
+    <value>複数のモニターがあるとき、仮想画面全体を使います [使いません]。</value>
+  </data>
+  <data name="XHelp_MultiWindow" xml:space="preserve">
+    <value>マルチウィンドウモードで実行します。各 X ウィンドウがネイティブウィンドウになります。-rootless や -fullscreen と併用できません。</value>
+  </data>
+  <data name="XHelp_NoDecoration" xml:space="preserve">
+    <value>ウィンドウの枠とタイトルバーを描画しません。ウィンドウモード専用で、-fullscreen と併用すると無視されます。</value>
+  </data>
+  <data name="XHelp_Refresh" xml:space="preserve">
+    <value>全画面モードで DirectDraw エンジンを使うときのリフレッシュレート(Hz)。</value>
+  </data>
+  <data name="XHelp_Resize" xml:space="preserve">
+    <value>ウィンドウモードでサイズ変更を許すかどうか: none は不可、scrollbars は必要に応じてスクロールバーを表示、randr は RANDR で X 画面のサイズを変更(既定)。</value>
+  </data>
+  <data name="XHelp_Rootless" xml:space="preserve">
+    <value>透明なルートウィンドウを使い、外部のウィンドウマネージャー(openbox など)と組み合わせます。-multiwindow や -fullscreen と併用できません。</value>
+  </data>
+  <data name="XHelp_Screen" xml:space="preserve">
+    <value>スクリーン scr_num を有効にし、サイズと位置も指定できます。モニター番号(@m)を付けると座標はそのモニター基準になります。例は順に、2 台目のモニターのオフセット 100,100 に 800x600、3 台目のモニターに 1024x768、1 台目のモニターの全解像度(既定)です。</value>
+  </data>
+  <data name="XHelp_SwCursor" xml:space="preserve">
+    <value>Windows のカーソルを使わず、X11 のソフトウェアカーソルを使います。</value>
+  </data>
+  <data name="XHelp_TrayIcon" xml:space="preserve">
+    <value>通知領域のアイコンを作成します [しません](既定はスクリーンごとに 1 つ)。-notrayicon で全体を無効にし、特定のスクリーンだけ -trayicon で有効にできます。</value>
+  </data>
+  <data name="XHelp_UnixKill" xml:space="preserve">
+    <value>Ctrl+Alt+Backspace で X サーバーを終了します [しません]。既定は無効。</value>
+  </data>
+  <data name="XHelp_Wgl" xml:space="preserve">
+    <value>Windows ネイティブの WGL インターフェイス経由の GLX を有効 [無効] にし、ハードウェアアクセラレーションされた OpenGL を使います。</value>
+  </data>
+  <data name="XHelp_SwrastWgl" xml:space="preserve">
+    <value>swrast(ソフトウェアラスタライザー)ベースの Windows WGL インターフェイス経由で GLX を有効にします。</value>
+  </data>
+  <data name="XHelp_WinKill" xml:space="preserve">
+    <value>Alt+F4 で X サーバーを終了します [しません]。</value>
+  </data>
+  <data name="XHelp_XkbLayout" xml:space="preserve">
+    <value>XKB のレイアウト。既定は現在の Windows レイアウトに対応するもので、見つからなければ us です。</value>
+  </data>
+  <data name="XHelp_XkbModel" xml:space="preserve">
+    <value>XKB モデル。既定は pc105。</value>
+  </data>
+  <data name="XHelp_XkbOptions" xml:space="preserve">
+    <value>XKB オプション。既定では未設定。</value>
+  </data>
+  <data name="XHelp_XkbRules" xml:space="preserve">
+    <value>XKB ルール。既定は xorg。</value>
+  </data>
+  <data name="XHelp_XkbVariant" xml:space="preserve">
+    <value>XKB バリアント。既定では未設定。</value>
+  </data>
 </root>

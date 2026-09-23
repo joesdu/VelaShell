@@ -4984,4 +4984,523 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="DiagSvc_SuggestAgentKeys" xml:space="preserve">
     <value>Check that ssh-agent is running and holds the key this server accepts: ssh-add -l lists the loaded keys.</value>
   </data>
+  <data name="SetVm_SectionXServer" xml:space="preserve">
+    <value>X Server</value>
+  </data>
+  <data name="SetXServer_Title" xml:space="preserve">
+    <value>X Server</value>
+  </data>
+  <data name="SetXServer_Subtitle" xml:space="preserve">
+    <value>Local X server (VcXsrv) that shows GUI programs from remote hosts via SSH X11 forwarding. Changes take effect the next time the X server starts.</value>
+  </data>
+  <data name="SetXServer_Unsupported" xml:space="preserve">
+    <value>The built-in X server launcher is only available on Windows. On Linux, X11 forwarding uses your desktop's own X server (or XWayland) through DISPLAY; on macOS, install XQuartz and it will be used the same way.</value>
+  </data>
+  <data name="SetXServer_SectionProgram" xml:space="preserve">
+    <value>Program</value>
+  </data>
+  <data name="SetXServer_Executable" xml:space="preserve">
+    <value>VcXsrv executable</value>
+  </data>
+  <data name="SetXServer_ExecutableAuto" xml:space="preserve">
+    <value>Auto-detect</value>
+  </data>
+  <data name="SetXServer_Detected" xml:space="preserve">
+    <value>Using: {0}</value>
+  </data>
+  <data name="SetXServer_NotDetected" xml:space="preserve">
+    <value>VcXsrv was not found in the usual install locations or on PATH.</value>
+  </data>
+  <data name="SetXServer_InstallHint" xml:space="preserve">
+    <value>VelaShell does not bundle an X server; it starts the VcXsrv you have installed. Install it with:</value>
+  </data>
+  <data name="SetXServer_InstallHintManual" xml:space="preserve">
+    <value>Or download the installer from the VcXsrv project on SourceForge / GitHub. If it lives somewhere else, set its path above.</value>
+  </data>
+  <data name="SetXServer_SelectExecutableTitle" xml:space="preserve">
+    <value>Select vcxsrv.exe</value>
+  </data>
+  <data name="SetXServer_SectionDisplay" xml:space="preserve">
+    <value>Display</value>
+  </data>
+  <data name="SetXServer_DisplayNumber" xml:space="preserve">
+    <value>Display number</value>
+  </data>
+  <data name="SetXServer_DisplayNumberDesc" xml:space="preserve">
+    <value>The N in DISPLAY=localhost:N (TCP port 6000+N). Auto picks the first free one, skipping X servers already running.</value>
+  </data>
+  <data name="SetXServer_DisplayAuto" xml:space="preserve">
+    <value>Auto</value>
+  </data>
+  <data name="SetXServer_WindowMode" xml:space="preserve">
+    <value>Window mode</value>
+  </data>
+  <data name="SetXServer_WindowModeDesc" xml:space="preserve">
+    <value>Multiple windows shows each remote program as its own Windows window; the other modes put the whole X screen in one window.</value>
+  </data>
+  <data name="SetXServer_ModeMultiWindow" xml:space="preserve">
+    <value>Multiple windows</value>
+  </data>
+  <data name="SetXServer_ModeWindowed" xml:space="preserve">
+    <value>One large window</value>
+  </data>
+  <data name="SetXServer_ModeNoDecoration" xml:space="preserve">
+    <value>One window without title bar</value>
+  </data>
+  <data name="SetXServer_ModeFullscreen" xml:space="preserve">
+    <value>Fullscreen</value>
+  </data>
+  <data name="SetXServer_ModeRootless" xml:space="preserve">
+    <value>Rootless (remote window manager)</value>
+  </data>
+  <data name="SetXServer_SectionClipboard" xml:space="preserve">
+    <value>Clipboard</value>
+  </data>
+  <data name="SetXServer_Clipboard" xml:space="preserve">
+    <value>Enable clipboard</value>
+  </data>
+  <data name="SetXServer_ClipboardDesc" xml:space="preserve">
+    <value>Share the X CLIPBOARD selection with the Windows clipboard (-clipboard).</value>
+  </data>
+  <data name="SetXServer_CopyOnSelection" xml:space="preserve">
+    <value>Copy on selection</value>
+  </data>
+  <data name="SetXServer_CopyOnSelectionDesc" xml:space="preserve">
+    <value>Also map the PRIMARY selection, so text selected in an X program is copied to the Windows clipboard right away (-primary).</value>
+  </data>
+  <data name="SetXServer_SectionKeyboard" xml:space="preserve">
+    <value>Keyboard</value>
+  </data>
+  <data name="SetXServer_KeyboardLayout" xml:space="preserve">
+    <value>Keyboard layout</value>
+  </data>
+  <data name="SetXServer_KeyboardLayoutDesc" xml:space="preserve">
+    <value>XKB layout used by X programs (-xkblayout). Auto follows the current Windows layout.</value>
+  </data>
+  <data name="SetXServer_LayoutAuto" xml:space="preserve">
+    <value>auto - Current layout from Windows</value>
+  </data>
+  <data name="SetXServer_KeyboardModel" xml:space="preserve">
+    <value>Keyboard model</value>
+  </data>
+  <data name="SetXServer_KeyboardModelDesc" xml:space="preserve">
+    <value>XKB model (-xkbmodel). pc105 suits most keyboards; use jp106 / kr106 for Japanese / Korean keyboards.</value>
+  </data>
+  <data name="SetXServer_KeyHook" xml:space="preserve">
+    <value>Capture special Windows keys</value>
+  </data>
+  <data name="SetXServer_KeyHookDesc" xml:space="preserve">
+    <value>Send keys such as Alt+Tab and the Win / Menu keys to X programs instead of Windows (-keyhook).</value>
+  </data>
+  <data name="SetXServer_SectionExtensions" xml:space="preserve">
+    <value>Extensions</value>
+  </data>
+  <data name="SetXServer_NativeOpenGl" xml:space="preserve">
+    <value>Native OpenGL (WGL)</value>
+  </data>
+  <data name="SetXServer_NativeOpenGlDesc" xml:space="preserve">
+    <value>Hardware-accelerated OpenGL through the Windows WGL interface (-wgl). Turn it off if 3D programs draw incorrectly.</value>
+  </data>
+  <data name="SetXServer_DisableAccessControl" xml:space="preserve">
+    <value>Disable access control</value>
+  </data>
+  <data name="SetXServer_DisableAccessControlDesc" xml:space="preserve">
+    <value>Let any host that can reach the port open windows and read keystrokes (-ac). Not needed for SSH X11 forwarding; only turn it on for trusted networks.</value>
+  </data>
+  <data name="SetXServer_SectionAdvanced" xml:space="preserve">
+    <value>Advanced</value>
+  </data>
+  <data name="SetXServer_ExtraArguments" xml:space="preserve">
+    <value>Additional VcXsrv arguments</value>
+  </data>
+  <data name="SetXServer_ExtraArgumentsDesc" xml:space="preserve">
+    <value>Appended after the options above; for the same switch the later one wins. Use double quotes for values with spaces.</value>
+  </data>
+  <data name="SetXServer_Help" xml:space="preserve">
+    <value>Help</value>
+  </data>
+  <data name="SetXServer_CommandPreview" xml:space="preserve">
+    <value>Command line used on next start:</value>
+  </data>
+  <data name="SetXServer_SectionStartup" xml:space="preserve">
+    <value>Startup</value>
+  </data>
+  <data name="SetXServer_StartOnLaunch" xml:space="preserve">
+    <value>Start when VelaShell starts</value>
+  </data>
+  <data name="SetXServer_StartOnLaunchDesc" xml:space="preserve">
+    <value>Starts the X server in the background right after the main window opens.</value>
+  </data>
+  <data name="SetXServer_AutoStartForX11" xml:space="preserve">
+    <value>Start automatically for X11 forwarding</value>
+  </data>
+  <data name="SetXServer_AutoStartForX11Desc" xml:space="preserve">
+    <value>When an SSH session with X11 forwarding connects and no display is set in its profile, start the X server first. Skipped if another X server already listens on localhost:0.</value>
+  </data>
+  <data name="SetXServer_ShowTrayIcon" xml:space="preserve">
+    <value>Show tray icon</value>
+  </data>
+  <data name="SetXServer_ShowTrayIconDesc" xml:space="preserve">
+    <value>Show VcXsrv's own icon in the notification area (-trayicon).</value>
+  </data>
+  <data name="XServer_ErrUnsupported" xml:space="preserve">
+    <value>The local X server is only available on Windows.</value>
+  </data>
+  <data name="XServer_ErrNotFound" xml:space="preserve">
+    <value>VcXsrv is not installed (winget install marha.VcXsrv), or set its path in Settings → X Server.</value>
+  </data>
+  <data name="XServer_ErrConfiguredNotFound" xml:space="preserve">
+    <value>The configured VcXsrv path does not exist: {0}</value>
+  </data>
+  <data name="XServer_ErrDisplayInUse" xml:space="preserve">
+    <value>Display :{0} is already in use by another X server. Pick another display number, or set it to Auto.</value>
+  </data>
+  <data name="XServer_ErrNoFreeDisplay" xml:space="preserve">
+    <value>Displays :0 to :{0} are all in use.</value>
+  </data>
+  <data name="XServer_ErrLaunch" xml:space="preserve">
+    <value>Could not start VcXsrv: {0}</value>
+  </data>
+  <data name="XServer_ErrExited" xml:space="preserve">
+    <value>VcXsrv exited during startup (exit code {0}). See the log: {1}</value>
+  </data>
+  <data name="XServer_ErrTimeout" xml:space="preserve">
+    <value>VcXsrv did not start listening within {0} seconds. See the log: {1}</value>
+  </data>
+  <data name="XServer_AutoStartFailed" xml:space="preserve">
+    <value>Could not start the local X server automatically: {0}</value>
+  </data>
+  <data name="XServer_Started" xml:space="preserve">
+    <value>X Server started on {0}</value>
+  </data>
+  <data name="XServer_StartFailed" xml:space="preserve">
+    <value>X Server failed to start: {0}</value>
+  </data>
+  <data name="XServer_OpenSettings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="XServer_TipStart" xml:space="preserve">
+    <value>Start X Server</value>
+  </data>
+  <data name="XServer_TipStarting" xml:space="preserve">
+    <value>X Server is starting…</value>
+  </data>
+  <data name="XServer_TipStop" xml:space="preserve">
+    <value>X Server running on {0} — click to stop</value>
+  </data>
+  <data name="Cmd_ToggleXServer" xml:space="preserve">
+    <value>Start / Stop X Server</value>
+  </data>
+  <data name="XHelp_Title" xml:space="preserve">
+    <value>VcXsrv Arguments</value>
+  </data>
+  <data name="XHelp_Intro" xml:space="preserve">
+    <value>Everything VcXsrv accepts on its command line (from vcxsrv -help). Anything typed into "Additional VcXsrv arguments" is appended after the options generated from the settings page. Arguments are case-sensitive.</value>
+  </data>
+  <data name="XHelp_FilterPlaceholder" xml:space="preserve">
+    <value>Filter by argument or description</value>
+  </data>
+  <data name="XHelp_ExtensionsNote" xml:space="preserve">
+    <value>Only the following extensions can be enabled or disabled at run time:</value>
+  </data>
+  <data name="XHelp_NoMatch" xml:space="preserve">
+    <value>No matching arguments.</value>
+  </data>
+  <data name="XHelp_Source" xml:space="preserve">
+    <value>Source: VcXsrv -help</value>
+  </data>
+  <data name="XHelpGroup_General" xml:space="preserve">
+    <value>General X server options</value>
+  </data>
+  <data name="XHelpGroup_Extensions" xml:space="preserve">
+    <value>Extensions</value>
+  </data>
+  <data name="XHelpGroup_Xdmcp" xml:space="preserve">
+    <value>XDMCP (remote login)</value>
+  </data>
+  <data name="XHelpGroup_VcXsrv" xml:space="preserve">
+    <value>VcXsrv-specific options</value>
+  </data>
+  <data name="XHelp_SilentDupError" xml:space="preserve">
+    <value>Do not show the fatal-error message box when the display number is already in use.</value>
+  </data>
+  <data name="XHelp_A" xml:space="preserve">
+    <value>Default pointer acceleration (factor).</value>
+  </data>
+  <data name="XHelp_Ac" xml:space="preserve">
+    <value>Disable access control restrictions: any host may connect.</value>
+  </data>
+  <data name="XHelp_Audit" xml:space="preserve">
+    <value>Set the audit trail level.</value>
+  </data>
+  <data name="XHelp_Auth" xml:space="preserve">
+    <value>Use the given authorization file.</value>
+  </data>
+  <data name="XHelp_Br" xml:space="preserve">
+    <value>Create the root window with a black background.</value>
+  </data>
+  <data name="XHelp_BsOn" xml:space="preserve">
+    <value>Enable backing store support.</value>
+  </data>
+  <data name="XHelp_BsOff" xml:space="preserve">
+    <value>Disable backing store support.</value>
+  </data>
+  <data name="XHelp_Cc" xml:space="preserve">
+    <value>Default color visual class.</value>
+  </data>
+  <data name="XHelp_NoCursor" xml:space="preserve">
+    <value>Disable the cursor.</value>
+  </data>
+  <data name="XHelp_Core" xml:space="preserve">
+    <value>Generate a core dump on fatal error.</value>
+  </data>
+  <data name="XHelp_DisplayFd" xml:space="preserve">
+    <value>File descriptor to write the display number to once the server is ready for connections.</value>
+  </data>
+  <data name="XHelp_Dpi" xml:space="preserve">
+    <value>Screen resolution: auto uses the native DPI, or give a number.</value>
+  </data>
+  <data name="XHelp_Dpms" xml:space="preserve">
+    <value>Disable VESA DPMS monitor control.</value>
+  </data>
+  <data name="XHelp_DeferGlyphs" xml:space="preserve">
+    <value>Defer loading of glyphs: none, all, or only 16-bit ones.</value>
+  </data>
+  <data name="XHelp_F" xml:space="preserve">
+    <value>Bell base volume (0–100).</value>
+  </data>
+  <data name="XHelp_FakeScreenFps" xml:space="preserve">
+    <value>Fake screen default frame rate (1–600).</value>
+  </data>
+  <data name="XHelp_Fp" xml:space="preserve">
+    <value>Default font path.</value>
+  </data>
+  <data name="XHelp_Help" xml:space="preserve">
+    <value>Print the list of options.</value>
+  </data>
+  <data name="XHelp_IglxOn" xml:space="preserve">
+    <value>Allow creating indirect GLX contexts (default).</value>
+  </data>
+  <data name="XHelp_IglxOff" xml:space="preserve">
+    <value>Prohibit creating indirect GLX contexts.</value>
+  </data>
+  <data name="XHelp_IgnoreRest" xml:space="preserve">
+    <value>Ignore all remaining arguments.</value>
+  </data>
+  <data name="XHelp_MaxClients" xml:space="preserve">
+    <value>Maximum number of clients (a power of two).</value>
+  </data>
+  <data name="XHelp_NoListen" xml:space="preserve">
+    <value>Don't listen on the given protocol (e.g. tcp).</value>
+  </data>
+  <data name="XHelp_Listen" xml:space="preserve">
+    <value>Listen on the given protocol (e.g. tcp).</value>
+  </data>
+  <data name="XHelp_NoReset" xml:space="preserve">
+    <value>Don't reset after the last client exits.</value>
+  </data>
+  <data name="XHelp_Background" xml:space="preserve">
+    <value>Create the root window with no background.</value>
+  </data>
+  <data name="XHelp_Reset" xml:space="preserve">
+    <value>Reset after the last client exits.</value>
+  </data>
+  <data name="XHelp_Pn" xml:space="preserve">
+    <value>Accept failure to listen on all ports.</value>
+  </data>
+  <data name="XHelp_NoPn" xml:space="preserve">
+    <value>Reject failure to listen on all ports.</value>
+  </data>
+  <data name="XHelp_RepeatOff" xml:space="preserve">
+    <value>Turn off keyboard auto-repeat.</value>
+  </data>
+  <data name="XHelp_RepeatOn" xml:space="preserve">
+    <value>Turn on keyboard auto-repeat.</value>
+  </data>
+  <data name="XHelp_Render" xml:space="preserve">
+    <value>RENDER color allocation policy: default, mono, gray or color.</value>
+  </data>
+  <data name="XHelp_Retro" xml:space="preserve">
+    <value>Start with the classic stippled root window.</value>
+  </data>
+  <data name="XHelp_Seat" xml:space="preserve">
+    <value>Seat to run on.</value>
+  </data>
+  <data name="XHelp_T" xml:space="preserve">
+    <value>Default pointer acceleration threshold (pixels).</value>
+  </data>
+  <data name="XHelp_Terminate" xml:space="preserve">
+    <value>Terminate at server reset, optionally after a delay in seconds.</value>
+  </data>
+  <data name="XHelp_Tst" xml:space="preserve">
+    <value>Disable testing extensions.</value>
+  </data>
+  <data name="XHelp_Wr" xml:space="preserve">
+    <value>Create the root window with a white background.</value>
+  </data>
+  <data name="XHelp_XineramaOn" xml:space="preserve">
+    <value>Enable the XINERAMA extension.</value>
+  </data>
+  <data name="XHelp_XineramaOff" xml:space="preserve">
+    <value>Disable the XINERAMA extension.</value>
+  </data>
+  <data name="XHelp_DumbSched" xml:space="preserve">
+    <value>Disable smart scheduling and threaded input; use the old behavior.</value>
+  </data>
+  <data name="XHelp_SchedInterval" xml:space="preserve">
+    <value>Scheduler interval in milliseconds.</value>
+  </data>
+  <data name="XHelp_AccessX" xml:space="preserve">
+    <value>Enable (+) or disable (-) AccessX key sequences, with optional timeouts and masks.</value>
+  </data>
+  <data name="XHelp_VmId" xml:space="preserve">
+    <value>Hyper-V VM GUID to accept VSock connections from.</value>
+  </data>
+  <data name="XHelp_VsockPort" xml:space="preserve">
+    <value>Port number to listen on for VSock connections (default 106000).</value>
+  </data>
+  <data name="XHelp_ExtensionOn" xml:space="preserve">
+    <value>Enable the named extension.</value>
+  </data>
+  <data name="XHelp_ExtensionOff" xml:space="preserve">
+    <value>Disable the named extension.</value>
+  </data>
+  <data name="XHelp_Query" xml:space="preserve">
+    <value>Contact the named host for XDMCP (remote desktop login).</value>
+  </data>
+  <data name="XHelp_Broadcast" xml:space="preserve">
+    <value>Broadcast for XDMCP.</value>
+  </data>
+  <data name="XHelp_Multicast" xml:space="preserve">
+    <value>IPv6 multicast for XDMCP, with optional address and hop count.</value>
+  </data>
+  <data name="XHelp_Indirect" xml:space="preserve">
+    <value>Contact the named host for indirect XDMCP.</value>
+  </data>
+  <data name="XHelp_Port" xml:space="preserve">
+    <value>UDP port number to send XDMCP messages to.</value>
+  </data>
+  <data name="XHelp_From" xml:space="preserve">
+    <value>Local address to connect from.</value>
+  </data>
+  <data name="XHelp_Once" xml:space="preserve">
+    <value>Terminate the server after one session.</value>
+  </data>
+  <data name="XHelp_Class" xml:space="preserve">
+    <value>Display class to send in the Manage request.</value>
+  </data>
+  <data name="XHelp_Cookie" xml:space="preserve">
+    <value>Magic cookie for XDMCP (XDM-AUTHORIZATION bits).</value>
+  </data>
+  <data name="XHelp_DisplayId" xml:space="preserve">
+    <value>Manufacturer display ID to send in the request.</value>
+  </data>
+  <data name="XHelp_Clipboard" xml:space="preserve">
+    <value>Enable [disable] clipboard integration with Windows. Enabled by default.</value>
+  </data>
+  <data name="XHelp_Primary" xml:space="preserve">
+    <value>With clipboard integration on, map [don't map] the X11 PRIMARY selection to the Windows clipboard. The CLIPBOARD selection is always mapped. Mapped by default.</value>
+  </data>
+  <data name="XHelp_ClipUpdates" xml:space="preserve">
+    <value>Use a clipping region to limit shadow update blits to the changed area once it has this many boxes or more. Has little effect on current Windows, which already batches GDI operations.</value>
+  </data>
+  <data name="XHelp_CompositeWm" xml:space="preserve">
+    <value>Enable [disable] the Composite extension in multiwindow mode (enabled by default). Keeps a bitmap of each top-level X window, so hidden windows still show correctly in taskbar and task switcher previews.</value>
+  </data>
+  <data name="XHelp_CompositeAlpha" xml:space="preserve">
+    <value>Composite X windows with per-pixel alpha into the Windows desktop [or not].</value>
+  </data>
+  <data name="XHelp_Depth" xml:space="preserve">
+    <value>Bit depth to use in fullscreen mode with a DirectDraw engine.</value>
+  </data>
+  <data name="XHelp_Emulate3Buttons" xml:space="preserve">
+    <value>Emulate [don't emulate] a 3-button mouse, with an optional timeout in milliseconds.</value>
+  </data>
+  <data name="XHelp_Engine" xml:space="preserve">
+    <value>Override the automatically selected drawing engine:
+1 - Shadow GDI
+4 - Shadow DirectDraw4 Non-Locking</value>
+  </data>
+  <data name="XHelp_Fullscreen" xml:space="preserve">
+    <value>Run the server in fullscreen mode.</value>
+  </data>
+  <data name="XHelp_HostInTitle" xml:space="preserve">
+    <value>In multiwindow mode, add [don't add] the remote host name to window titles.</value>
+  </data>
+  <data name="XHelp_Icon" xml:space="preserve">
+    <value>Set the screen window icon in windowed mode.</value>
+  </data>
+  <data name="XHelp_IgnoreInput" xml:space="preserve">
+    <value>Ignore keyboard and mouse input.</value>
+  </data>
+  <data name="XHelp_KeyHook" xml:space="preserve">
+    <value>Grab [don't grab] special Windows key presses such as Alt+Tab or the Menu key.</value>
+  </data>
+  <data name="XHelp_LessPointer" xml:space="preserve">
+    <value>Hide the Windows mouse pointer over VcXsrv windows, so it isn't drawn on top of the X cursor (no ghost cursors).</value>
+  </data>
+  <data name="XHelp_LogFile" xml:space="preserve">
+    <value>Write log messages to the given file.</value>
+  </data>
+  <data name="XHelp_LogVerbose" xml:space="preserve">
+    <value>Log verbosity (only some messages honor it yet):
+0 - fatal errors only
+1 - plus configuration information
+2 - plus runtime information (default)
+3 - plus debugging and tracing</value>
+  </data>
+  <data name="XHelp_MultiMonitors" xml:space="preserve">
+    <value>Use [don't use] the entire virtual screen when several monitors are connected.</value>
+  </data>
+  <data name="XHelp_MultiWindow" xml:space="preserve">
+    <value>Run in multiwindow mode: each X window becomes a native window. Not to be combined with -rootless or -fullscreen.</value>
+  </data>
+  <data name="XHelp_NoDecoration" xml:space="preserve">
+    <value>Don't draw a window border or title bar. Windowed mode only; ignored with -fullscreen.</value>
+  </data>
+  <data name="XHelp_Refresh" xml:space="preserve">
+    <value>Refresh rate in Hz to use in fullscreen mode with a DirectDraw engine.</value>
+  </data>
+  <data name="XHelp_Resize" xml:space="preserve">
+    <value>In windowed mode, whether the window can be resized: none disallows it, scrollbars adds scrollbars as needed, randr resizes the X screen via RANDR (default).</value>
+  </data>
+  <data name="XHelp_Rootless" xml:space="preserve">
+    <value>Use a transparent root window with an external window manager (such as openbox). Not to be combined with -multiwindow or -fullscreen.</value>
+  </data>
+  <data name="XHelp_Screen" xml:space="preserve">
+    <value>Enable screen scr_num, optionally with its size and position. A monitor number (@m) makes the coordinates relative to that monitor. Examples: 800x600 at offset 100,100 on the 2nd monitor; 1024x768 on the 3rd monitor; full resolution of the 1st monitor (default).</value>
+  </data>
+  <data name="XHelp_SwCursor" xml:space="preserve">
+    <value>Don't use the Windows cursor; use the X11 software cursor instead.</value>
+  </data>
+  <data name="XHelp_TrayIcon" xml:space="preserve">
+    <value>Create [don't create] a notification area icon (one per screen by default). Use -notrayicon globally, then -trayicon for specific screens.</value>
+  </data>
+  <data name="XHelp_UnixKill" xml:space="preserve">
+    <value>Ctrl+Alt+Backspace exits [doesn't exit] the X server. Disabled by default.</value>
+  </data>
+  <data name="XHelp_Wgl" xml:space="preserve">
+    <value>Enable [disable] GLX through the native Windows WGL interface for hardware-accelerated OpenGL.</value>
+  </data>
+  <data name="XHelp_SwrastWgl" xml:space="preserve">
+    <value>Enable GLX through the native Windows WGL interface based on swrast (software rasterizer).</value>
+  </data>
+  <data name="XHelp_WinKill" xml:space="preserve">
+    <value>Alt+F4 exits [doesn't exit] the X server.</value>
+  </data>
+  <data name="XHelp_XkbLayout" xml:space="preserve">
+    <value>XKB layout. Defaults to the layout matching your current Windows layout, or us if none matches.</value>
+  </data>
+  <data name="XHelp_XkbModel" xml:space="preserve">
+    <value>XKB model. Defaults to pc105.</value>
+  </data>
+  <data name="XHelp_XkbOptions" xml:space="preserve">
+    <value>XKB options. Not set by default.</value>
+  </data>
+  <data name="XHelp_XkbRules" xml:space="preserve">
+    <value>XKB rules. Defaults to xorg.</value>
+  </data>
+  <data name="XHelp_XkbVariant" xml:space="preserve">
+    <value>XKB variant. Not set by default.</value>
+  </data>
 </root>

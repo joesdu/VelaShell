@@ -242,6 +242,13 @@ public class App : Application
             // 提前收下请求却无处可放,只会把它丢掉。
             WireExternalLaunch(mainWindow, viewModel);
 
+            // 设置 → X Server「在启动时自动打开」:拉起 VcXsrv 要等它开始监听(首次可能好几秒),
+            // 放到后台,不占启动路径;失败由按钮视图模型发一条带「去设置」的错误提示。
+            if (_startupSettings?.XServer.StartOnLaunch == true && viewModel.XServer.IsSupported)
+            {
+                FireAndForget.Run(viewModel.XServer.StartAsync);
+            }
+
             // 过期会话/传输日志清理(设置 → 常规/文件传输 → 日志保留天数),后台执行。
             // 真的放到后台:目录枚举+删除是磁盘 IO,日志多时同步跑会拖慢首帧。
             int logRetentionDays = _startupSettings?.General.LogRetentionDays ?? 30;

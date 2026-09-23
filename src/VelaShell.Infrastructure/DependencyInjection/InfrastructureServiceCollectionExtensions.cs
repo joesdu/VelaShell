@@ -15,6 +15,7 @@ using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;
 using VelaShell.Core.Sync;
 using VelaShell.Core.Tunnels;
+using VelaShell.Core.XServer;
 using VelaShell.Infrastructure.Diagnostics;
 using VelaShell.Infrastructure.Ftp;
 using VelaShell.Infrastructure.Import;
@@ -25,6 +26,7 @@ using VelaShell.Infrastructure.Plugins.Protocols;
 using VelaShell.Infrastructure.Sftp;
 using VelaShell.Infrastructure.Ssh;
 using VelaShell.Infrastructure.Tunnels;
+using VelaShell.Infrastructure.XServer;
 using VelaShell.Ssh.Session;
 using VelaShell.Ssh.Sftp;
 using VelaConnectionInfo = VelaShell.Core.Models.ConnectionInfo;
@@ -118,6 +120,10 @@ public static class InfrastructureServiceCollectionExtensions
                 HttpAnnouncementFeed.DescribeAudience);
         });
 
+        // 本机 X Server(标题栏按钮 / 设置 → X Server):拉起用户装好的 VcXsrv。SSH 的 X11 转发也经它取显示。
+        // 它持有子进程,退出时随容器释放而被关掉。
+        services.AddSingleton<ILocalXServer>(sp => new VcXsrvLocalXServer(sp.GetRequiredService<ISettingsService>()));
+
         // SSH connection service
         services.AddSingleton<ISshConnectionService>(sp =>
         {
@@ -126,8 +132,9 @@ public static class InfrastructureServiceCollectionExtensions
             IHostKeyPrompt? prompt = sp.GetService<IHostKeyPrompt>();
             ISecurityAlertService? alerts = sp.GetService<ISecurityAlertService>();
             IProxyResolver proxyResolver = sp.GetRequiredService<IProxyResolver>();
+            ILocalXServer? xServer = sp.GetService<ILocalXServer>();
             return new SshConnectionService(ci =>
-                CreateSshClientWrapper(ci, hostKey, settings, prompt, alerts, proxyResolver));
+                CreateSshClientWrapper(ci, hostKey, settings, prompt, alerts, proxyResolver, xServer));
         });
 
         // SFTP service
@@ -244,12 +251,13 @@ public static class InfrastructureServiceCollectionExtensions
     /// </remarks>
     private static VelaSshClientWrapper CreateSshClientWrapper(
         VelaConnectionInfo ci, IHostKeyService? hostKey, ISettingsService? settings,
-        IHostKeyPrompt? prompt, ISecurityAlertService? alerts, IProxyResolver? proxyResolver = null)
+        IHostKeyPrompt? prompt, ISecurityAlertService? alerts, IProxyResolver? proxyResolver = null,
+        ILocalXServer? xServer = null)
     {
         SshConnectionAssembler.Assembled assembled =
             SshConnectionAssembler.Create(ci, hostKey, settings, prompt, alerts, proxyResolver);
 
         return new VelaSshClientWrapper(
-            assembled.Connect, assembled.ConnectTimeout, assembled.DialerLifetime, ci.Ssh);
+            assembled.Connect, assembled.ConnectTimeout, assembled.DialerLifetime, ci.Ssh, xServer);
     }
 }

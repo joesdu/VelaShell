@@ -1,0 +1,227 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:VelaShell.ViewModels"
+             xmlns:loc="using:VelaShell.Localization"
+             x:Class="VelaShell.Views.Settings.XServerSettingsPage"
+             x:DataType="vm:SettingsViewModel">
+
+  <!-- X Server 页:本机 VcXsrv 的启动参数。分组参照 WindTerm 的「X Server」设置
+       (显示 / 剪贴板 / 键盘 / 扩展 / 高级 / 启动),前面多一节「程序」—— 我们不捆绑 VcXsrv,
+       装在哪、找没找到必须摆在最前面,否则后面几节都配了也起不来。
+       改动在下一次启动 X Server 时生效(副标题里说清)。 -->
+
+  <UserControl.Styles>
+    <!-- 命令行预览与安装命令:等宽、可选中复制。 -->
+    <Style Selector="SelectableTextBlock.code">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="Border.note">
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="12,10" />
+    </Style>
+  </UserControl.Styles>
+
+  <StackPanel Spacing="14">
+    <StackPanel Spacing="2">
+      <TextBlock Classes="page-title" Text="{loc:Localize SetXServer_Title}" />
+      <TextBlock Classes="page-subtitle" Text="{loc:Localize SetXServer_Subtitle}" />
+    </StackPanel>
+
+    <!-- 非 Windows:整页只剩这段说明。 -->
+    <Border Classes="note" IsVisible="{Binding !XServerSupported}">
+      <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_Unsupported}" />
+    </Border>
+
+    <StackPanel Spacing="14" IsVisible="{Binding XServerSupported}">
+
+      <!-- 程序 -->
+      <TextBlock Classes="section-title" Text="{loc:Localize SetXServer_SectionProgram}" />
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_Executable}" />
+          <TextBlock Classes="row-desc" x:Name="DetectionText" Text="{Binding XServerDetectionText}" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <TextBox x:Name="ExecutableBox" Width="220"
+                   Text="{Binding XServer.ExecutablePath}"
+                   PlaceholderText="{loc:Localize SetXServer_ExecutableAuto}" />
+          <Button Classes="dlg-outline" Content="{loc:Localize SetTransfer_Browse}" Click="BrowseExecutable_Click" />
+        </StackPanel>
+      </Grid>
+      <!-- 没找到:给安装办法。命令可选中复制。 -->
+      <Border Classes="note" IsVisible="{Binding !XServerExecutableFound}">
+        <StackPanel Spacing="6">
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_InstallHint}" />
+          <SelectableTextBlock Classes="code" Foreground="{DynamicResource VelaAccent}"
+                               Text="winget install marha.VcXsrv" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_InstallHintManual}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="sep" />
+
+      <!-- 显示 -->
+      <TextBlock Classes="section-title" Text="{loc:Localize SetXServer_SectionDisplay}" />
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_DisplayNumber}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_DisplayNumberDesc}" />
+        </StackPanel>
+        <ComboBox Grid.Column="1" Width="220" x:Name="DisplayNumberCombo"
+                  ItemsSource="{Binding XServerDisplayNumbers}"
+                  SelectedIndex="{Binding XServerDisplayNumberIndex}" VerticalAlignment="Center" />
+      </Grid>
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_WindowMode}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_WindowModeDesc}" />
+        </StackPanel>
+        <!-- 条目顺序与 XServerWindowModes.All 一一对应。 -->
+        <ComboBox Grid.Column="1" Width="220" x:Name="WindowModeCombo"
+                  SelectedIndex="{Binding XServerWindowModeIndex}" VerticalAlignment="Center">
+          <ComboBoxItem Content="{loc:Localize SetXServer_ModeMultiWindow}" />
+          <ComboBoxItem Content="{loc:Localize SetXServer_ModeWindowed}" />
+          <ComboBoxItem Content="{loc:Localize SetXServer_ModeNoDecoration}" />
+          <ComboBoxItem Content="{loc:Localize SetXServer_ModeFullscreen}" />
+          <ComboBoxItem Content="{loc:Localize SetXServer_ModeRootless}" />
+        </ComboBox>
+      </Grid>
+
+      <Border Classes="sep" />
+
+      <!-- 剪贴板 -->
+      <TextBlock Classes="section-title" Text="{loc:Localize SetXServer_SectionClipboard}" />
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_Clipboard}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_ClipboardDesc}" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" x:Name="ClipboardToggle"
+                      IsChecked="{Binding XServer.Clipboard}" VerticalAlignment="Center" />
+      </Grid>
+      <!-- PRIMARY 只在开了剪贴板时有意义,关着就置灰(命令行里也不写它)。 -->
+      <Grid ColumnDefinitions="*,Auto" IsEnabled="{Binding XServer.Clipboard}">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_CopyOnSelection}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_CopyOnSelectionDesc}" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" IsChecked="{Binding XServer.CopyOnSelection}" VerticalAlignment="Center" />
+      </Grid>
+
+      <Border Classes="sep" />
+
+      <!-- 键盘 -->
+      <TextBlock Classes="section-title" Text="{loc:Localize SetXServer_SectionKeyboard}" />
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_KeyboardLayout}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_KeyboardLayoutDesc}" />
+        </StackPanel>
+        <ComboBox Grid.Column="1" Width="260" x:Name="KeyboardLayoutCombo"
+                  ItemsSource="{Binding XServerKeyboardLayouts}"
+                  SelectedIndex="{Binding XServerKeyboardLayoutIndex}" VerticalAlignment="Center">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:XServerChoice">
+              <TextBlock Text="{Binding Label}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+      </Grid>
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_KeyboardModel}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_KeyboardModelDesc}" />
+        </StackPanel>
+        <ComboBox Grid.Column="1" Width="260" x:Name="KeyboardModelCombo"
+                  ItemsSource="{Binding XServerKeyboardModels}"
+                  SelectedIndex="{Binding XServerKeyboardModelIndex}" VerticalAlignment="Center">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:XServerChoice">
+              <TextBlock Text="{Binding Label}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+      </Grid>
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_KeyHook}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_KeyHookDesc}" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" IsChecked="{Binding XServer.KeyHook}" VerticalAlignment="Center" />
+      </Grid>
+
+      <Border Classes="sep" />
+
+      <!-- 扩展 -->
+      <TextBlock Classes="section-title" Text="{loc:Localize SetXServer_SectionExtensions}" />
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_NativeOpenGl}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_NativeOpenGlDesc}" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" IsChecked="{Binding XServer.NativeOpenGl}" VerticalAlignment="Center" />
+      </Grid>
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_DisableAccessControl}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_DisableAccessControlDesc}" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" IsChecked="{Binding XServer.DisableAccessControl}" VerticalAlignment="Center" />
+      </Grid>
+
+      <Border Classes="sep" />
+
+      <!-- 高级:附加参数 + 帮助(VcXsrv 全部参数的说明) -->
+      <TextBlock Classes="section-title" Text="{loc:Localize SetXServer_SectionAdvanced}" />
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_ExtraArguments}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_ExtraArgumentsDesc}" />
+      </StackPanel>
+      <Grid ColumnDefinitions="*,8,Auto">
+        <TextBox x:Name="ExtraArgumentsBox"
+                 Text="{Binding XServer.ExtraArguments}"
+                 PlaceholderText="-dpi auto -nounixkill" />
+        <Button Grid.Column="2" x:Name="HelpButton" Classes="dlg-outline"
+                Content="{loc:Localize SetXServer_Help}" Click="Help_Click" />
+      </Grid>
+      <StackPanel Spacing="4">
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_CommandPreview}" />
+        <Border Classes="note">
+          <SelectableTextBlock Classes="code" x:Name="CommandPreviewText" Text="{Binding XServerCommandPreview}" />
+        </Border>
+      </StackPanel>
+
+      <Border Classes="sep" />
+
+      <!-- 启动 -->
+      <TextBlock Classes="section-title" Text="{loc:Localize SetXServer_SectionStartup}" />
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_StartOnLaunch}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_StartOnLaunchDesc}" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" IsChecked="{Binding XServer.StartOnLaunch}" VerticalAlignment="Center" />
+      </Grid>
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_AutoStartForX11}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_AutoStartForX11Desc}" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" IsChecked="{Binding XServer.AutoStartForX11Forwarding}" VerticalAlignment="Center" />
+      </Grid>
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_ShowTrayIcon}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_ShowTrayIconDesc}" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" IsChecked="{Binding XServer.ShowTrayIcon}" VerticalAlignment="Center" />
+      </Grid>
+    </StackPanel>
+  </StackPanel>
+</UserControl>

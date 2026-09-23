@@ -140,6 +140,8 @@ pie showData
 | ⏳ | 🟡 P2 | **非 bash 的 shell 干脆别注入目录上报钩子** | 钩子由 `test -n "${BASH_VERSION:-}"` 守卫，在 zsh / dash 上是个**空操作** —— 却照样占掉一个提示符周期，还在用户历史里留下一整行（`plan.md` §66 的摘历史只对 bash 有效：zsh 没有 `history -d`） | `RemoteShellProbe` 目前只回答「是不是 POSIX」，让它顺带报出 shell 家族（探针命令加一段 `${BASH_VERSION:+-bash}` / `${ZSH_VERSION:+-zsh}`，标记向后兼容），**确认是 zsh 时跳过注入**。⚠️ 只在**正面认出**非 bash 时才跳 —— 认不出来照旧注入，免得误伤「登录 shell 是 /bin/sh、交互 shell 是 bash」那种机器 |
 | ⏳ | 🟢 P3 | **SSH PTY 像素尺寸贯通** | `window-change` 的像素字段恒为 `0`：`IShellStreamWrapper.Resize(int, int)` 只有字符行列，终端控件的 `PtySizeChanged` 也只报列/行，`ShellStreamWrapper.ResizeCoreAsync` 于是只能 `new TerminalSize(columns, rows)` | ✅ **上游那道坎没有了**：2026-09-22 换成 VelaShell.Ssh（`plan.md` §91），`pty-req` 与 `window-change` 两条路都原生带像素 —— `TerminalSize(columns, rows, pixelWidth, pixelHeight)`，建流那一步（`CreateShellStreamAsync(…, width, height, …)`）**已经把像素传下去了**。剩下的全是宿主侧的活：让终端控件报出物理像素、让 `Resize` 带着它走。实施细节见下文「SSH PTY 像素尺寸贯通 —— 实施细节」 |
 | 💡 | 🟢 P3 | **终端内搜索的增强** | 基础搜索已实现（`MainWindowViewModel.TerminalSearchRequested:1616`） | 正则、大小写、全部高亮、上一个/下一个的循环计数 —— 按用户反馈再定 |
+| ⏳ | 🟡 P2 | **VelaShell.XServer M2:现代工具包要的扩展** | M1 已完成(`plan.md` §101):核心协议全量 + BIG-REQUESTS / XC-MISC,xterm / xeyes / xclock / xlogo 零错误。GTK3 / Qt5 程序还起不来 | 按依赖顺序:**XFIXES**(游标、区域)→ **SHAPE**(xeyes 的圆窗、不规则弹层)→ **RENDER**(Xft 画字、合成,GTK / Qt 的硬前提)→ **最小 XKB**(Qt5/6 必需)→ **RANDR 只读**(GTK 查屏幕)→ **XInput2**(GTK3 的指针);剪贴板与宿主互通(CLIPBOARD / PRIMARY ↔ 系统剪贴板)。验收:`zenity`、`gedit`、一个 Qt5 程序经 interop 用例画出内容且零协议错误 |
+| ⏳ | 🟡 P2 | **VelaShell.XServer M3:接入宿主** | 库已可用,宿主的 X Server 按钮仍然拉起外部 VcXsrv(`plan.md` §100) | Avalonia 实现 `IXServerHost`(每个顶层一个原生窗口、override-redirect 画成无装饰弹层、HiDPI 缩放、光标字形 → 系统光标、物理键 → `XKeycodes`);`ILocalXServer` 加一个内置实现,默认用它、VcXsrv 退成可选;SSH 的 x11 通道经 `ServeAsync` 直接喂进去,不走本机端口;设置页收敛(VcXsrv 专属的参数只在选了 VcXsrv 时出现) |
 | 📄 | 🟠 P1 | **设计稿的两处残留** | Logo 有一个 `enabled:false` 残留图标；文件列表「修改时间」列无固定宽度 | 小到可以顺手做掉，记在这里免得忘 |
 
 ### SSH PTY 像素尺寸贯通 —— 实施细节
@@ -543,7 +545,7 @@ var options = new ExecuteOptions
 | AI 助手 / Agent | ✅ **含 IM 桥接 + MCP** | — | — | 插件 | — | ✅ 有限 |
 | 云同步 | ✅ 自己的 Gist | — | ✅ | ✅ | ✅ | ✅ 自营 |
 | **SSH Agent 转发** | ✅ 含 Agent 认证 | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **X11 转发** | ✅ 需自备 X 服务端 | ✅ | ✅ 自带 X 服务端 | — | ✅ | — |
+| **X11 转发** | ✅ 可拉起已装的 VcXsrv(不捆绑) | ✅ | ✅ 自带 X 服务端 | — | ✅ | — |
 | **OSC 8 超链接** | ✅ | — | — | ✅ | — | — |
 | **命令块 / 提示符语义（OSC 133）** | ✅ | — | — | — | — | — |
 | **键盘复制模式** | ❌ 不做 | — | — | — | ✅ | — |
@@ -682,7 +684,7 @@ var options = new ExecuteOptions
 | --- | --- |
 | **多窗口（新开独立主窗口）** | 与现架构三处硬冲突：①应用为**单实例**（`Program.cs` 命名 Mutex，自更新重启依赖锁交接）；②主窗口是唯一组合根（单个 `MainWindowViewModel` 持有会话 / 布局 / 状态栏全部状态，无多窗口状态分片）；③VelaDock **产品决策不做浮动窗口**，多主窗意味着跨窗口拖拽与布局持久化整套推翻重做。**多屏需求由五区拖放分屏承担** |
 | **Mosh** | 全部远程通道抽象建立在 SSH 流式通道之上（`ISshClientWrapper` / `IShellStreamWrapper`）。Mosh 是独立的 UDP + 状态同步（SSP）协议栈，.NET 无可用实现，接入等于并行维护第二套传输与终端预测引擎，收益不成比例。**弱网由自动重连 + keepalive 缓解** |
-| **内置 X 服务端** | X11 **转发**已于 2026-09-22 落地(`plan.md` §92),用户自备 VcXsrv / Xming / X410 即可。**不做**的是另一头 —— 像 MobaXterm 那样捆一个 X 服务端:安装包与维护面整个变一个量级,与本项目「解压即跑」的分发模型直接冲突。远程图形界面的重度需求由 RDP / VNC 插件承接(`Protocols` + `Workspaces` 能力面正是为此存在) |
+| **捆绑 X 服务端** | X11 **转发**已于 2026-09-22 落地(`plan.md` §92);2026-09-23 起还能在 Windows 上**拉起用户装好的 VcXsrv**(标题栏 X Server 按钮 + 设置页,`plan.md` §100),Xming / X410 照旧自备。「零安装」的路线是**纯托管的 X 服务端库** `VelaShell.XServer`(`plan.md` §101,随程序本身分发,不增加外部二进制)。**不做**的是把第三方 X 服务端的二进制打进安装包 —— 像 MobaXterm 那样捆一个:安装包与维护面整个变一个量级,与本项目「解压即跑」的分发模型直接冲突。远程图形界面的重度需求由 RDP / VNC 插件承接(`Protocols` + `Workspaces` 能力面正是为此存在) |
 | **键盘复制模式（vi-like）** | 产品决策（2026-09-09）：**没见过这种用法**，为它付的代价却不小。技术上不难（选区模型三种形态 `TerminalSelectionMath` 已经全在），但它要新起一个**模式态**，而模式态要同时穿过两层输入路径：`TerminalKeyRouter` 与抢在它前面的 `TerminalTabView.OnPreviewKeyDown`（`Ctrl+F` 搜索栏、`Esc`、补全弹层的 `↑↓/Tab/Esc` 都在那一层被截走）。此外还要处理三件事：进模式必须关 IME（否则中文输入法下 `j` 到手是 `ImeProcessed`，原始键拿不回来，模式看着像死了）、`Ctrl+C` 的三重身份要重新定义、以及一个不可省的模式指示器。而**它的主场景已被别的功能吃掉**：选中整条命令输出走 OSC 133 的命令块，找文本走 `Ctrl+F`，抢鼠标的程序里走 `Shift+拖拽` —— 剩下的净增量只有「选任意一段」。⚠️ 与「自定义键位」那条决策也冲突：键位定死了就改不了，Dvorak / Colemak 上 `hjkl` 的位置是错的 |
 | **SFTP 面板内拖拽移动文件** | 维护者既有决策（#474 回复）：**做过，因为太容易误触发而关掉了** —— 文件列表上一次不经意的拖动就把文件挪走，用户事后往往不知道东西去了哪，「文件乱飞」。现有的 `DragDrop` 装配（`FileBrowserView.axaml.cs`）只认**本地路径落入**与**跨面板传输**，`DragEffects` 只给 `Copy`；远端内部的移动请用右键「重命名」或双栏。再提之前先想清楚怎么防误触发，光把开关打开等于把老问题原样搬回来 |
 | **连字（Ligatures）** | 自绘渲染器按**单元格**排版，无法跨字符连字。这是自绘换来渲染控制权的固有代价 |
