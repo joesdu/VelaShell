@@ -5874,3 +5874,18 @@ velashell-docs 那边的配套改动:新增 `zh/ssh/` 与 `en/ssh/`(architecture
 泵从没起来(通道没开成)时才由它代为完成 reader。
 
 同一段输出里的 `OperationCanceledException` / `TaskCanceledException` 是断开时取消在途读写的正常首次机会异常，不需要改。
+
+## ✅ 95. 2026-09-23 宿主接上 SSH 库的 X11 尽力而为(`BestEffort`)(用户需求)
+
+SSH 库给 `X11ForwardOptions` 加了 `BestEffort`:设置失败时不抛、shell 照常开，原因放在 `SshShell.X11SetupFailure`。
+宿主配置里的 X11 开关本来就是连接级的、失败要降级(§92),于是接上:
+
+- `SshForwardingOptions.X11` 产出的选项一律 `BestEffort = true`。
+- `VelaSshClientWrapper.OpenShellWithFallbackAsync` 删掉「挨个去掉转发来定位是哪项被拒」的多轮重试:
+  X11 不会再抛，能接到的 `SshForwardException` 只会来自 agent —— 去掉 agent、保留 X11 重开一次即可。
+  以前 X11 被拒时要多开一次 shell(两项都开时最多开四次),现在 X11 被拒不产生任何额外往返。
+- `shell.X11SetupFailure` 非空时写一行黄字(`Ssh_X11ForwardFailed`),与以前的提示同一条文案。
+- ssh-shells 靶机给 `vela-dash` 单独关了 `X11Forwarding`(`Match User`),新增端到端用例
+  `X11_RefusedByServer_KeepsAgentForwardingAndWarnsOnce`:服务端拒绝 X11 时 shell 开成、agent 转发照常、只有一条黄字。
+
+velashell-docs:`zh/host/交互与界面规格.md` 与 `en/host/interaction-and-ui-specs.md`「被拒不连累会话」一段同步改写。

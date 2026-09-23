@@ -153,6 +153,10 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
             SshShell shell = await OpenShellWithFallbackAsync(
                 connection, options, x11, agent, notices, cancellationToken).ConfigureAwait(false);
 
+            if (shell.X11SetupFailure is { } x11Failure)
+            {
+                notices.Add(ForwardFailed("Ssh_X11ForwardFailed", x11Failure));
+            }
             if (shell.X11 is { } forwarder)
             {
                 notices.Add(new(Strings.Format("Ssh_X11ForwardOn", SshForwardingOptions.Describe(forwarder.Display)), false));
@@ -192,7 +196,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
     }
 
     /// <summary>
-    /// 开 shell;请求的转发被拒时去掉那一项再开,原因记进 <paramref name="notices" />。
+    /// 开 shell;agent 转发被拒时去掉它再开,原因记进 <paramref name="notices" />。
     /// </summary>
     /// <remarks>
     /// <para>
@@ -200,10 +204,10 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
     /// 都很常见,为它们让整条会话连不上是本末倒置。
     /// </para>
     /// <para>
-    /// 库的 <see cref="SshForwardException" /> 不区分是哪一项被拒,所以两项都请求时靠
-    /// <b>重试来定位</b>:先去掉 X11 再开(它被拒的概率远高于 agent);还不行说明 agent 也有问题,
-    /// 换成只要 X11;再不行两个都不要。多出来的往返只发生在失败路径上 —— 换来的是提示里
-    /// 说的一定是真正被拒的那一项,而不是「转发失败」这种让人两边都去查的话。
+    /// X11 是尽力而为的(见 <see cref="SshForwardingOptions.X11" />):它失败时库不抛,
+    /// 原因在 <see cref="SshShell.X11SetupFailure" /> 上,由调用方转成提示。所以这里能接到的
+    /// <see cref="SshForwardException" /> 只可能来自 agent —— 去掉 agent、保留 X11 重开一次就够了,
+    /// 不再需要「挨个去掉来定位是哪一项被拒」的多轮重试。
     /// </para>
     /// </remarks>
     private static async Task<SshShell> OpenShellWithFallbackAsync(
@@ -214,39 +218,17 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
         List<ShellStreamNotice> notices,
         CancellationToken cancellationToken)
     {
-        ValueTask<SshShell> Open(X11ForwardOptions? withX11, AgentForwardPolicy? withAgent) =>
-            connection.OpenShellAsync(options with { X11 = withX11, AgentForwarding = withAgent }, cancellationToken);
+        ValueTask<SshShell> Open(AgentForwardPolicy? withAgent) =>
+            connection.OpenShellAsync(options with { X11 = x11, AgentForwarding = withAgent }, cancellationToken);
 
         try
         {
-            return await Open(x11, agent).ConfigureAwait(false);
+            return await Open(agent).ConfigureAwait(false);
         }
-        catch (SshForwardException first) when (x11 is not null && agent is not null)
+        catch (SshForwardException agentFailure) when (agent is not null)
         {
-            try
-            {
-                SshShell shell = await Open(null, agent).ConfigureAwait(false);
-                notices.Add(ForwardFailed("Ssh_X11ForwardFailed", first));
-                return shell;
-            }
-            catch (SshForwardException agentFailure)
-            {
-                notices.Add(ForwardFailed("Ssh_AgentForwardFailed", agentFailure));
-                try
-                {
-                    return await Open(x11, null).ConfigureAwait(false);
-                }
-                catch (SshForwardException)
-                {
-                    notices.Add(ForwardFailed("Ssh_X11ForwardFailed", first));
-                    return await Open(null, null).ConfigureAwait(false);
-                }
-            }
-        }
-        catch (SshForwardException only) when (x11 is not null || agent is not null)
-        {
-            notices.Add(ForwardFailed(x11 is not null ? "Ssh_X11ForwardFailed" : "Ssh_AgentForwardFailed", only));
-            return await Open(null, null).ConfigureAwait(false);
+            notices.Add(ForwardFailed("Ssh_AgentForwardFailed", agentFailure));
+            return await Open(null).ConfigureAwait(false);
         }
     }
 

@@ -29,6 +29,12 @@ internal static class SshForwardingOptions
     /// 那是给脚本里一次性的 <c>ssh -X</c> 用的;交互式会话里「开了半小时之后 xclock 打不开了」
     /// 只会让人以为转发坏了。PuTTY / MobaXterm 也都是整条会话有效。
     /// </para>
+    /// <para>
+    /// <b>尽力而为</b>(<see cref="X11ForwardOptions.BestEffort" />)。配置里的开关是连接级的,
+    /// 本机没开 X 服务器、没装 xauth、服务端 <c>X11Forwarding no</c> 都很常见,为它们让会话开不起来是本末倒置。
+    /// 设置失败时库不抛、shell 照常启动,原因在 <see cref="VelaShell.Ssh.Channels.SshShell.X11SetupFailure" /> 上,
+    /// 由 <see cref="VelaSshClientWrapper" /> 转成终端里的提示 —— 不必为了 X11 重开一次 shell。
+    /// </para>
     /// </remarks>
     public static X11ForwardOptions? X11(SshSessionOptions? features, List<ShellStreamNotice> notices)
     {
@@ -54,6 +60,7 @@ internal static class SshForwardingOptions
             Display = display,
             Trusted = features.X11Trusted,
             Timeout = TimeSpan.Zero,
+            BestEffort = true,
         };
     }
 

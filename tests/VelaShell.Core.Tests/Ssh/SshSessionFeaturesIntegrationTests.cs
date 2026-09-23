@@ -7,6 +7,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Ssh;
 using VelaShell.Ssh.Auth;
@@ -134,6 +135,34 @@ public class SshSessionFeaturesIntegrationTests
     }
 
     /// <summary>
+    /// 服务端拒绝 X11(<c>vela-dash</c> 在靶机上单独关了 <c>X11Forwarding</c>)时:X11 是尽力而为的,
+    /// shell 一次就开成,同时请求的 agent 转发不受连累,终端里只留一条 X11 的黄字提示。
+    /// </summary>
+    [TestMethod]
+    [Timeout(60_000)]
+    public async Task X11_RefusedByServer_KeepsAgentForwardingAndWarnsOnce()
+    {
+        RequireContainer();
+        RequireWindowsPipes();
+        await using var agent = FakeAgent.Start(signer: null);
+        using EnvironmentScope scope = new("SSH_AUTH_SOCK", agent.Endpoint);
+
+        await using VelaSshClientWrapper ssh = await ConnectAsync(
+            new SshSessionOptions { X11Forwarding = true, X11Display = "127.0.0.1:0.0", AgentForwarding = true },
+            user: "vela-dash");
+        await using IShellStreamWrapper shell = await OpenShellAsync(ssh);
+
+        string notices = string.Join(" | ", shell.Notices.Select(n => (n.IsWarning ? "!" : "") + n.Text));
+        Assert.AreEqual(1, shell.Notices.Count(n => n.IsWarning), notices);
+        Assert.Contains(n => !n.IsWarning && n.Text == Strings.Get("Ssh_AgentForwardOn"), shell.Notices, notices);
+
+        string output = await RunInShellAsync(
+            shell, "echo \"D=[$DISPLAY]\"; ssh-add -l; echo DASH-$((1+1))DONE", "DASH-2DONE");
+        Assert.Contains("D=[]", output, $"X11 没开成,远端不该有 DISPLAY。远端输出:\n{output}");
+        Assert.IsGreaterThan(0, agent.Requests, "agent 转发被 X11 的失败连累了。");
+    }
+
+    /// <summary>
     /// agent 转发一路通到本机:远端 <c>ssh-add -l</c> 问到的是本机那个(假)agent。
     /// </summary>
     [TestMethod]
@@ -206,13 +235,13 @@ public class SshSessionFeaturesIntegrationTests
 
     // ------------------------------------------------------------ 连接与 shell
 
-    private async Task<VelaSshClientWrapper> ConnectAsync(SshSessionOptions? features)
+    private async Task<VelaSshClientWrapper> ConnectAsync(SshSessionOptions? features, string user = TestUser)
     {
         ConnectionInfo info = new()
         {
             Host = TestHost,
             Port = TestPort,
-            Username = TestUser,
+            Username = user,
             AuthMethod = AuthMethod.Password,
             Password = TestPassword,
             Ssh = features,

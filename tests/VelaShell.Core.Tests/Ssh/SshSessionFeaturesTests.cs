@@ -94,6 +94,22 @@ public class SshSessionFeaturesTests
     }
 
     /// <summary>
+    /// 配置里的 X11 开关是连接级的,必须尽力而为:本机没 X 服务器、服务端 <c>X11Forwarding no</c>
+    /// 时 shell 照开,原因走 <c>SshShell.X11SetupFailure</c> —— 否则开 shell 会被它整个拦下。
+    /// </summary>
+    [TestMethod]
+    public void X11_IsBestEffort()
+    {
+        List<ShellStreamNotice> notices = [];
+
+        X11ForwardOptions? options = SshForwardingOptions.X11(
+            new SshSessionOptions { X11Forwarding = true, X11Display = "127.0.0.1:1.0" }, notices);
+
+        Assert.IsNotNull(options);
+        Assert.IsTrue(options.BestEffort);
+    }
+
+    /// <summary>
     /// 写错的显示地址不能让 shell 开不起来:跳过 X11,并留一条提示说清楚是哪个值认不出来。
     /// </summary>
     [TestMethod]

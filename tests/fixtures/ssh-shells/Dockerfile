@@ -7,6 +7,7 @@
 #
 # 每个用户的登录 shell 不同,口令一律 velapass:
 #   vela-bash / vela-zsh / vela-fish / vela-dash / vela-ash
+# vela-dash 单独关了 X11Forwarding(文件里 sshd_config 末尾的 Match):验「服务端拒绝 X11 时 shell 照开」。
 # 另有两个"用户自己已经动过手脚"的账号,用来验注入与用户配置互不打扰:
 #   vela-pyenv  —— PROMPT_COMMAND 结尾自带分号(pyenv-virtualenv 的真实形状,曾拼出 `;;` 语法错误)
 #   vela-starship —— rc 里每次都重写 PS1(starship / p10k 那一类的最小复现)
@@ -34,6 +35,8 @@ RUN printf '%s\n' \
     'MaxStartups 100' \
     'X11Forwarding yes' \
     'AllowAgentForwarding yes' \
+    'Match User vela-dash' \
+    '    X11Forwarding no' \
     > /etc/ssh/sshd_config
 
 RUN set -eu; \
