@@ -228,7 +228,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         IConnectivityMonitor? connectivityMonitor = null
     )
     {
-        // 注册表可注入(DI 里与插件命令桥共享同一单例);无 UI 单测传 null 时自建。
+        // 注册表可注入(DI 里与插件命令桥共享同一单例);无 UI 单测传 null 时自己创建一个。
         Commands = commandRegistry ?? new CommandRegistry();
         _remoteProcessService = remoteProcessService;
         TraceRouteService = traceRouteService;
@@ -559,7 +559,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
 
     /// <summary>
     /// 插件协议端点的证书未通过校验时的信任提示;返回 true 表示用户同意信任该指纹。
-    /// 自建 MinIO / Ceph 的自签证书是常态,没有这条路径这类端点根本连不上。
+    /// 自行部署的 MinIO / Ceph 用自签证书是常态,没有这条路径这类端点根本连不上。
     /// </summary>
     public Func<SessionProfile, PluginProtocolCertificateException, Task<bool>>? PluginCertificateTrustPrompt { get; set; }
 
@@ -728,7 +728,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <summary>当前是否存在活动的终端标签。</summary>
     public bool HasActiveTerminalTab => ActiveTerminalTab is not null;
 
-    /// <summary>自研 VelaDock 工作区:承载终端文档(标签可拖拽重排、拆分分屏)。</summary>
+    /// <summary>VelaDock 工作区:承载终端文档(标签可拖拽重排、拆分分屏)。</summary>
     public DockWorkspace Layout { get; }
 
     /// <summary>当前会话的 SFTP 文件浏览面板(按会话缓存,随活动标签切换重绑)。</summary>
@@ -1589,7 +1589,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
 
     /// <summary>
     /// 打开隧道面板(可选预选某台服务器)。面板以服务器为中心、生命周期与终端
-    /// 会话无关:无需先打开终端标签,创建隧道时由面板后台自建 SSH 连接。
+    /// 会话无关:无需先打开终端标签,创建隧道时由面板在后台自己建 SSH 连接。
     /// </summary>
     public void OpenTunnelPanel(SessionProfile? preselect = null)
     {

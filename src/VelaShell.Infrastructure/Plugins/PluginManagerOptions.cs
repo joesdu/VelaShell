@@ -138,7 +138,7 @@ public sealed class PluginManagerOptions
     public Func<string, IPluginLogger, ICommandsApi>? CommandsFactory { get; init; }
 
     /// <summary>
-    /// 每插件界面能力工厂(由 UI 层提供,呈现插件自建的 Avalonia 控件);实例若实现
+    /// 每插件界面能力工厂(由 UI 层提供,呈现插件自己创建的 Avalonia 控件);实例若实现
     /// <see cref="IDisposable" />,停用插件时被释放(关闭其全部面板)。
     /// </summary>
     public Func<string, IPluginLogger, IUiApi>? UiFactory { get; init; }

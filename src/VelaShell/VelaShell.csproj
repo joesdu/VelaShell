@@ -180,7 +180,7 @@
     ======================== 第一方插件从哪里来 ========================
     两个来源,发行包的 plugins/ 是它们的并集:
 
-    ① 本仓库自建(plugins/ 下的工程,当前是 AI 插件 velashell.ai)
+    ① 本仓库(plugins/ 下的工程,当前是 AI 插件 velashell.ai)
        上面那条 ProjectReference 建立构建顺序,plugins/Directory.Build.targets 把产物镜像进
        本项目 bin/ 的 plugins/;发布期由下面的 AddVelaPluginsToPublish 调各插件的
        GetVelaPluginPayload 登记进包(是否进包看各插件的 <VelaPluginShip>)。
@@ -208,10 +208,10 @@
     <VelaPluginsStageDir Condition="'$(VelaPluginsStageDir)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\plugins</VelaPluginsStageDir>
   </PropertyGroup>
 
-  <!-- 开发内环:把暂存目录镜像进本项目输出的 plugins/,F5 即可装载(自建插件走的是
+  <!-- 开发内环:把暂存目录镜像进本项目输出的 plugins/,F5 即可装载(plugins/ 下的插件走的是
        plugins/Directory.Build.targets 的 CopyVelaPluginToAppOutput,不经过这里)。
        暂存目录不存在就静默跳过 —— 没取过插件的干净克隆照样能构建、能跑,
-       只是启动后只有自建的那几个插件。发布路径不接受一个插件都没有,见 AddVelaPluginsToPublish。
+       只是启动后只有 plugins/ 下的那几个插件。发布路径不接受一个插件都没有,见 AddVelaPluginsToPublish。
 
        挂 CopyFilesToOutputDirectory 而不是 Build,是为了赶在 IncrementalClean 之前 ——
        下面把复制出去的文件登记进 FileWrites,于是:
@@ -219,7 +219,7 @@
            表现是"clean 完插件还在",很难往构建产物残留上想);
          · 从暂存目录里删掉一个插件后,下次构建 IncrementalClean 会按上一轮的台账
            把它从输出里剪掉 —— 此前只增不减,删了源头输出里那份能一直留到手动删为止。
-       只登记本目标复制的文件:自建插件(velashell-ai)由插件工程自己铺进同一个 plugins/,
+       只登记本目标复制的文件:本仓库的插件(velashell-ai)由插件工程自己铺进同一个 plugins/,
        不在这份台账里,因此绝不会被误剪。 -->
   <Target Name="CopyVelaPluginsToOutput" AfterTargets="CopyFilesToOutputDirectory" Condition="Exists('$(VelaPluginsStageDir)')">
     <ItemGroup>
@@ -255,10 +255,10 @@
     (ALC 要按 deps.json 解析装载),万一哪天有人重新打开单文件,这行能挡住它们被卷进 bundle。
 
     两个来源在这里汇合(见上面"第一方插件从哪里来"):
-      · 自建插件 —— 调各插件工程的 GetVelaPluginPayload,由它按 <VelaPluginShip> 决定进不进包;
+      · 本仓库的插件 —— 调各插件工程的 GetVelaPluginPayload,由它按 <VelaPluginShip> 决定进不进包;
       · 取回的分发包 —— 暂存目录里有什么就装什么(那一头由工具链仓库各插件的
         <VelaPluginShip> 把关,示例插件 velashell.hello-world 设了 false,不进包)。
-    两边的 plugins/<目录名> 不会重名:取件脚本会把与自建插件同名的目录丢掉。
+    两边的 plugins/<目录名> 不会重名:取件脚本会把与本仓库插件同名的目录丢掉。
 
     **必须 AfterTargets 而非 BeforeTargets**(#181,1.2.2 全平台发行包踩过):
     ComputeResolvedFilesToPublishList 的正文里会跑 ResolveOverlappingItemGroupConflicts,
@@ -273,7 +273,7 @@
     VerifyVelaAppPublishAssetsIntact 是这条顺序约束的看门狗。
   -->
   <Target Name="AddVelaPluginsToPublish" AfterTargets="ComputeResolvedFilesToPublishList">
-    <!-- ① 本仓库自建的插件:问每个插件工程要它的发行载荷。
+    <!-- ① 本仓库的插件:问每个插件工程要它的发行载荷。
          RemoveProperties 与上面 ProjectReference 的 UndefineProperties 同理 ——
          别让 -r / SelfContained / PublishDir 顺着 MSBuild 任务流进插件工程。 -->
     <ItemGroup>
@@ -290,8 +290,8 @@
     </ItemGroup>
 
     <!-- 一个插件都没有会悄无声息地发出"插件系统看着在、实则没插件"的包,宁可在这里断掉发布。
-         正常路径靠①兜底:②不进发行包之后,这条只会在自建插件也全军覆没时才响。 -->
-    <Error Condition="'@(_VelaLocalPluginPayload)' == '' and '@(_VelaStagedPluginPayload)' == ''" Text="发布产物里没有任何插件:plugins/ 下没有 &lt;VelaPluginShip&gt;true&lt;/VelaPluginShip&gt; 的插件工程,插件暂存目录 '$(VelaPluginsStageDir)' 也是空的或不存在。发行包里的插件本该来自 plugins/ 下的自建工程 —— 先查那边为什么没产出;确实想把插件仓库侧的插件一并打进去,把它们铺进暂存目录再发布。" />
+         正常路径靠①兜底:②不进发行包之后,这条只会在本仓库的插件也全军覆没时才响。 -->
+    <Error Condition="'@(_VelaLocalPluginPayload)' == '' and '@(_VelaStagedPluginPayload)' == ''" Text="发布产物里没有任何插件:plugins/ 下没有 &lt;VelaPluginShip&gt;true&lt;/VelaPluginShip&gt; 的插件工程,插件暂存目录 '$(VelaPluginsStageDir)' 也是空的或不存在。发行包里的插件本该来自 plugins/ 下的插件工程 —— 先查那边为什么没产出;确实想把插件仓库侧的插件一并打进去,把它们铺进暂存目录再发布。" />
 
     <ItemGroup>
       <ResolvedFileToPublish Include="@(_VelaLocalPluginPayload)">

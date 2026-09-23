@@ -25,7 +25,7 @@
 
 	     注意这里**不写 artifacts/plugins/**:那个目录是本机手动铺放
 	     插件仓库侧插件(Redis / S3 / Telnet)的暂存目录
-	     (见 src/VelaShell/VelaShell.csproj 的 VelaPluginsStageDir)。本仓库自建的插件走 ProjectReference 构建顺序
+	     (见 src/VelaShell/VelaShell.csproj 的 VelaPluginsStageDir)。本仓库的插件走 ProjectReference 构建顺序
 	     进宿主输出、走 GetVelaPluginPayload 进发行包,与那个暂存目录互不相干。 -->
 	<Target Name="CopyVelaPluginToAppOutput" AfterTargets="Build" Condition="'$(VelaPluginId)' != ''">
 		<PropertyGroup>

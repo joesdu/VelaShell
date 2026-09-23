@@ -45,7 +45,7 @@ public partial class PackageVersionsTests
     /// 按包名查得到「本程序集并不直接引用」的包 —— 守的是「不必为取版本号破坏分层」。
     /// </summary>
     /// <remarks>
-    /// 原先这里举的例子是 SSH 库。它现在是自研库、走工程引用,压根没有包版本可查,
+    /// 原先这里举的例子是 SSH 库。它现在是本仓库的工程(src/VelaShell.Ssh),压根没有包版本可查,
     /// 版本改由 <c>SshBackend</c> 从程序集元数据交出来
     /// (见 <see cref="AboutSshLibrary_ShowsTheBackendVersion" />)。
     /// 换一个同样不被直接引用的包来守同一条性质。
@@ -72,7 +72,7 @@ public partial class PackageVersionsTests
     public void AboutFramework_ShowsTheReferencedAvaloniaVersion() => Assert.AreEqual($"Avalonia UI {PackageVersions.Of("Avalonia")}", SettingsViewModel.AboutFramework);
 
     /// <summary>
-    /// 关于页显示的 SSH 后端 —— 现在是自研库,版本由 <c>SshBackend</c> 从程序集元数据读出来。
+    /// 关于页显示的 SSH 后端 —— 现在是本仓库的工程,版本由 <c>SshBackend</c> 从程序集元数据读出来。
     /// </summary>
     /// <remarks>
     /// 断言「带得出一个版本号」而不是比对某个写死的数字:版本由 CI 的 tag 覆盖,

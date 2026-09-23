@@ -44,7 +44,7 @@
 
 - **单引擎持久化**：一个 SonnetDB 实例同时承载文档模型（连接/分组/设置）与时序模型（连接历史/审计/录制），避免多存储引擎的复杂度。接口在 Core、实现在此。
 - **安全默认值**：凭据静态加密（AES-256-GCM + 本地密钥文件，Windows 再叠加 DPAPI）；主机指纹 TOFU 校验防中间人。
-- **传输可替换**：`VelaShell.Ssh` 的类型只出现在本项目 `Ssh/` 下的包装类中，异常也在 `SshInterop` 一处翻译为 Core 的 `VelaSsh*Exception`；一旦更换传输库，改动被约束在这一层。（本项目先后基于 SSH.NET、Tmds.Ssh，现已整体迁到自研的 VelaShell.Ssh —— 每次迁移都只动了 `Ssh/` 与 DI 装配。）
+- **传输可替换**：`VelaShell.Ssh` 的类型只出现在本项目 `Ssh/` 下的包装类中，异常也在 `SshInterop` 一处翻译为 Core 的 `VelaSsh*Exception`；一旦更换传输库，改动被约束在这一层。（本项目先后基于 SSH.NET、Tmds.Ssh，现已整体迁到 VelaShell.Ssh —— 每次迁移都只动了 `Ssh/` 与 DI 装配。）
 - **协议可扩展**：远程文件能力对上只有 `ISftpService` 一个面孔，FTP 是经 `RoutingRemoteFileService` 按会话分派进来的第二个后端 —— 文件浏览器、传输、限速、拖放都不知道有第二种协议存在。
 - **插件故障隔离**：插件运行时也落在这一层。进程内插件各用一个可收集 ALC、异常只影响自身；声明 `isolated` 的插件整体外移到独立进程，但两种模式共用同一套能力实现，权限与纪律只有一处。
 - **平台守卫**：`System.Security.Cryptography.ProtectedData`（DPAPI）仅 Windows 可用，非 Windows 平台已在代码中守卫降级。
@@ -52,7 +52,7 @@
 ## 🔗 依赖关系
 
 - **引用**：`VelaShell.Core`（实现其契约）、`VelaShell.PluginSdk`（插件能力接口）。
-- **包**：`SonnetDB.Core`、`FluentFTP`、`MaxMind.Db`、`BouncyCastle.Cryptography`、`System.Security.Cryptography.ProtectedData`。SSH 后端 `VelaShell.Ssh` 是**工程引用**（同 labs 目录下的自研库），不是 NuGet 包。
+- **包**：`SonnetDB.Core`、`FluentFTP`、`MaxMind.Db`、`BouncyCastle.Cryptography`、`System.Security.Cryptography.ProtectedData`。SSH 后端 `VelaShell.Ssh` 是**工程引用**（本仓库 `src/VelaShell.Ssh`），不是 NuGet 包。
 - **被引用**：`VelaShell`（App，仅在组合根装配，不被 Presentation/Controls 直接引用）。
 
 > 需 `AllowUnsafeBlocks`（ConPTY / 加密互操作）。测试见 [`tests/VelaShell.Infrastructure.Tests`](../../tests/VelaShell.Infrastructure.Tests)；此外 `InternalsVisibleTo` 暴露给 [`tests/VelaShell.Core.Tests`](../../tests/VelaShell.Core.Tests)，SSH 包装类与异常翻译的白盒测试放在那里（`Ssh/VelaSshClientWrapperTests`、`SshInteropTests`）。

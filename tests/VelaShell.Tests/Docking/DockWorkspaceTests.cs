@@ -3,7 +3,7 @@ using VelaShell.Docking.Model;
 namespace VelaShell.Tests.Docking;
 
 /// <summary>
-/// VelaDock 模型层(自研 Dock.Avalonia 替换,docs/dock-replacement-plan.md)的结构操作测试:
+/// VelaDock 模型层(Dock.Avalonia 的替代,docs/dock-replacement-plan.md)的结构操作测试:
 /// 增删/激活/关闭语义、拆分、停靠、空组折叠与单子分栏提升。
 /// </summary>
 [TestClass]

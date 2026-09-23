@@ -6,7 +6,7 @@
 
 <p align="center"><img src="mascot/chibi.png" alt="VelaShell mascot" width="720"></p>
 
-VelaShell is a desktop terminal application built with .NET 11 and Avalonia, running on Windows, Linux and macOS. It ships its own VT terminal engine, SSH/SFTP/FTP connectivity, local shell tabs, jump hosts (ProxyJump) and network proxies (HTTP / SOCKS5 / follow-system), two-step authentication with host fingerprint verification, port-forwarding tunnels, grouped session management, the in-house VelaDock split/dock workspace, remote resource monitoring and traceroute, a command palette and a twelve-page settings centre; it can also be launched externally by bastion hosts and SSO portals using Xshell's calling convention. On top of that sits a **dual-mode plugin system** (in-process / isolated process) and a first-party **AI assistant plugin**. Everything is persisted, encrypted, into an embedded SonnetDB database. The goal is a **keyboard-first, information-dense, snappy** experience for heavy remote work.
+VelaShell is a desktop terminal application built with .NET 11 and Avalonia, running on Windows, Linux and macOS. It ships its own VT terminal engine, SSH/SFTP/FTP connectivity, local shell tabs, jump hosts (ProxyJump) and network proxies (HTTP / SOCKS5 / follow-system), two-step authentication with host fingerprint verification, port-forwarding tunnels, grouped session management, the VelaDock split/dock workspace, remote resource monitoring and traceroute, a command palette and a twelve-page settings centre; it can also be launched externally by bastion hosts and SSO portals using Xshell's calling convention. On top of that sits a **dual-mode plugin system** (in-process / isolated process) and a first-party **AI assistant plugin**. Everything is persisted, encrypted, into an embedded SonnetDB database. The goal is a **keyboard-first, information-dense, snappy** experience for heavy remote work.
 
 ---
 
@@ -40,11 +40,11 @@ Together, VelaShell means **"a terminal as your sail, riding the signal winds to
 
 ### Terminal and connectivity
 
-- **In-house VT terminal engine**  
+- **VT terminal engine**  
   A full DEC ANSI / VT / Xterm state machine: 256 colours, true colour, DEC line-drawing glyphs, primary/alternate screens, scroll regions, application cursor keys, mouse protocols, CJK double-width characters and on-the-fly encoding switching. Ten terminal profiles are built in (vt52/100/102/220/320/340/420/520/xterm/xterm-256color), defaulting to xterm-256color. The terminal is a custom-drawn Avalonia control — glyphs, selection and scrolling are all rendered by us. Selection supports linear and block modes, `Shift+click` to extend, and **disjoint multi-span selection** via `Ctrl+Shift+drag` (copy line 1 and line 3 in one go). **OSC 8 hyperlinks** emitted by modern CLIs (`ls --hyperlink`, `gh`, `delta`, cargo/gcc diagnostics) are underlined and open on `Ctrl+click`, even when the anchor text looks nothing like a URL; schemes are allow-listed because terminal output is untrusted input. **OSC 133 command blocks** turn a screenful of output into structured `[prompt][command][output][exit code]` blocks: a per-command marker in the gutter that reddens on failure, `Ctrl+Shift+Up/Down` to walk between prompts, click a marker to select that command's output, and folding that snaps to block boundaries. Nothing is injected into your shell — the settings page hands you a snippet to paste into your own rc file.
 
 - **SSH, SFTP and local shells**  
-  Shell sessions, SFTP transfers and port forwarding are powered by [VelaShell.Ssh](https://github.com/VelaShellLabs/velashell-ssh), our own fully managed, async-first .NET SSH library (MIT). Password and private-key auth are supported; when credentials are missing the app walks a two-step authentication flow (username → auth method) and lets you retry in place after a failure. **Local terminal tabs** auto-detect pwsh / PowerShell / CMD / WSL / Git Bash — implemented on ConPTY, so they are **Windows-only for now**.
+  Shell sessions, SFTP transfers and port forwarding are powered by [VelaShell.Ssh](src/VelaShell.Ssh/) (in this repository), our own fully managed, async-first .NET SSH library (MIT). Password and private-key auth are supported; when credentials are missing the app walks a two-step authentication flow (username → auth method) and lets you retry in place after a failure. **Local terminal tabs** auto-detect pwsh / PowerShell / CMD / WSL / Git Bash — implemented on ConPTY, so they are **Windows-only for now**.
 
 - **Jump hosts (ProxyJump)**  
   A session can reference another saved profile as its jump host, chained up to 5 hops with cycle detection. Chains are built hop by hop as nested connections carrying a `direct-tcpip` tunnel, and fingerprints are verified per logical host at every hop.
@@ -69,7 +69,7 @@ Together, VelaShell means **"a terminal as your sail, riding the signal winds to
 
 ### Workspace and operations tooling
 
-- **VelaDock — in-house draggable split view**  
+- **VelaDock — draggable split view**  
   A dock framework written from scratch with zero third-party dependencies (it replaced Dock.Avalonia): tabs, five-zone edge splitting, merging across groups and tab reordering, so multiple terminals can run side by side.
 
 - **Session management and import**  
@@ -210,7 +210,7 @@ docker compose -f docker-compose.test.yml up -d
 pwsh scripts/publish-all.ps1
 ```
 
-Artifacts cover Windows x64/arm64 (portable zip) plus macOS and Linux x64/arm64 (tar.gz), all self-contained — unpack anywhere and run, no .NET required. Each package carries the isolated-plugin host process `VelaShell.PluginHost` plus a `plugins/` directory holding only the in-house AI plugin (Redis / S3 / Telnet have not been preinstalled since 2026-08-22 — users install them from the marketplace on demand). The macOS `.dmg` drag-install image is produced only on CI's macOS runner (`hdiutil`/`iconutil`/`codesign` are macOS-only tools); Beyond the tar.gz, Linux ships three more: a single-file `.AppImage` (`chmod +x` and double-click — see `build/appimage/README.md`) plus native `.deb` / `.rpm` packages (installed into `/opt/velashell`, registering a menu entry and `/usr/bin/velashell` — see `build/linux-packages/README.md`), one of each per architecture, all cross-built on the same x64 runner. **The updater always consumes the tar.gz**; the dmg, AppImage, deb and rpm exist purely for manual download and installation — once installed their application directory is not writable, so the About page degrades to "download it manually".
+Artifacts cover Windows x64/arm64 (portable zip) plus macOS and Linux x64/arm64 (tar.gz), all self-contained — unpack anywhere and run, no .NET required. Each package carries the isolated-plugin host process `VelaShell.PluginHost` plus a `plugins/` directory holding only the AI plugin built in this repository (Redis / S3 / Telnet have not been preinstalled since 2026-08-22 — users install them from the marketplace on demand). The macOS `.dmg` drag-install image is produced only on CI's macOS runner (`hdiutil`/`iconutil`/`codesign` are macOS-only tools); Beyond the tar.gz, Linux ships three more: a single-file `.AppImage` (`chmod +x` and double-click — see `build/appimage/README.md`) plus native `.deb` / `.rpm` packages (installed into `/opt/velashell`, registering a menu entry and `/usr/bin/velashell` — see `build/linux-packages/README.md`), one of each per architecture, all cross-built on the same x64 runner. **The updater always consumes the tar.gz**; the dmg, AppImage, deb and rpm exist purely for manual download and installation — once installed their application directory is not writable, so the About page degrades to "download it manually".
 
 > Microsoft Store (MSIX) installs are updated by the Store, so in-app update actions are hidden there. The Store build lives under the read-only `WindowsApps` directory and its data folder is redirected to a package-private location, so **its settings, sessions and keys are separate from the portable build's**.
 
@@ -228,7 +228,7 @@ Artifacts cover Windows x64/arm64 (portable zip) plus macOS and Linux x64/arm64 
 VelaShell/
 ├── src/
 │   ├── VelaShell/                  # Desktop entry point, DI composition root, XAML views, VelaDock, global styles
-│   ├── VelaShell.Terminal/         # In-house VT engine and the Avalonia rendering control
+│   ├── VelaShell.Terminal/         # VT engine and the Avalonia rendering control
 │   ├── VelaShell.Presentation/     # Cross-cutting view models, workflows and the Presentation DI module
 │   ├── VelaShell.Controls/         # Reusable control library and theme tokens
 │   ├── VelaShell.Core/             # Domain models, service contracts, persistence abstractions, localisation (UI-free)
@@ -255,7 +255,7 @@ repository, one job each:
 
 | Repository | Owns | How it reaches this repo |
 | --- | --- | --- |
-| **joesdu/VelaShell** (this one) | The app + the host-side plugin runtime + the in-house AI plugin | — |
+| **joesdu/VelaShell** (this one) | The app + the host-side plugin runtime + the AI plugin | — |
 | **[VelaShellLabs/velashell-plugin-sdk](https://github.com/VelaShellLabs/velashell-plugin-sdk)** | The plugin contract SDK | `VelaShell.PluginSdk` / `.Testing` **NuGet packages** |
 | **[VelaShellLabs/velashell-plugin-cli](https://github.com/VelaShellLabs/velashell-plugin-cli)** | The `vela-plugin` CLI and `VelaShell.PluginSdk.Build` | **NuGet packages** (for plugin authors; not referenced here) |
 | **[VelaShellLabs/velashell-plugin-templates](https://github.com/VelaShellLabs/velashell-plugin-templates)** | The `dotnet new velaplugin` templates | **NuGet package** (for plugin authors; not referenced here) |
@@ -307,7 +307,7 @@ the plugin architecture blueprint lives in
 - **Interfaces first**: services are injected through interfaces, which keeps mocking and unit testing straightforward.
 - **Single composition root**: all DI registration is centralised in [`src/VelaShell/App.axaml.cs`](src/VelaShell/App.axaml.cs), with each layer contributing via `*ServiceCollectionExtensions`.
 - **Custom rendering**: the terminal draws glyphs, selection and scrolling directly in a custom Avalonia control instead of depending on abandoned third-party terminal controls.
-- **In-house docking**: VelaDock separates its model layer (plain INPC, unit-testable) from its controls; dragging, splitting and tab reordering are all ours, with zero third-party dock dependencies.
+- **Docking**: VelaDock separates its model layer (plain INPC, unit-testable) from its controls; dragging, splitting and tab reordering are implemented here, with zero third-party dock dependencies.
 - **Plugin isolation**: each in-process plugin gets a collectible `AssemblyLoadContext` and resolves its dependencies from its own `deps.json`; only the SDK contract and `Avalonia*` framework assemblies fall back to the host, which keeps types identical across the boundary. Plugins that need stronger isolation run in a separate process over custom named-pipe RPC.
 - **Tokenised design**: colours, fonts and spacing all live in resource dictionaries, enabling theming and rebranding.
 - **One persistence engine**: a single embedded SonnetDB instance serves both document (configuration/business data) and time-series (history/audit/recordings/plugin data) models — interfaces in Core, implementation in Infrastructure, flushed on exit; legacy JSON configuration migrates automatically on first run.
@@ -378,15 +378,15 @@ Three documents stay here, because what they serve is writing code *in this repo
 - **.NET 11** — target runtime (`net11.0`, preview features and `runtime-async` enabled)
 - **Avalonia 12.1** — cross-platform XAML UI framework
 - **ReactiveUI** — reactive MVVM
-- **VelaDock (in-house)** — draggable split/dock layout with zero third-party dependencies
-- **VelaShell.Ssh (in-house)** — SSH / SFTP / port forwarding / SOCKS5 / ProxyJump (fully managed, async-first)
+- **VelaDock** — draggable split/dock layout with zero third-party dependencies
+- **VelaShell.Ssh** (`src/VelaShell.Ssh`) — SSH / SFTP / port forwarding / SOCKS5 / ProxyJump (fully managed, async-first)
 - **FluentFTP** — FTP / FTPS client
 - **AvaloniaEdit** — remote file editor and the AI composer (syntax highlighting, inline reference chips)
 - **SonnetDB** — embedded multi-model database (document + time series), the only persistence engine
-- **Plugin runtime (in-house)** — collectible ALCs, a separate host process, named-pipe RPC and `.vpx` packaging
+- **Plugin runtime** — collectible ALCs, a separate host process, named-pipe RPC and `.vpx` packaging
 - **Microsoft.Extensions.AI / ModelContextProtocol** — unified model abstraction, agent tool loop and MCP client for the AI plugin
 - **LiveMarkdown.Avalonia** — incremental Markdown rendering for AI chat (with Mermaid / LaTeX / SVG extensions)
-- **In-house portable self-update** — `latest.json` manifest from GitHub Releases + SHA-256 verification + an external process that swaps and relaunches after exit (auto rollback on failure), location-independent and never touching the user data directory (`src/VelaShell/Services/Update/`)
+- **Portable self-update** — `latest.json` manifest from GitHub Releases + SHA-256 verification + an external process that swaps and relaunches after exit (auto rollback on failure), location-independent and never touching the user data directory (`src/VelaShell/Services/Update/`)
 - **MSTest** — unit testing framework
 - **Central package management** — NuGet versions unified in `Directory.Packages.props`
 

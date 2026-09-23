@@ -8,7 +8,7 @@ namespace VelaShell.Views;
 
 /// <summary>
 /// 插件面板的独立窗口。窗体规格与资源监视/任务管理器一致
-/// (透明窗口 + 自绘圆角卡片 + 自绘缩放抓取区),内容为插件自建的 Avalonia 控件。
+/// (透明窗口 + 自绘圆角卡片 + 自绘缩放抓取区),内容为插件自己创建的 Avalonia 控件。
 /// </summary>
 public partial class PluginPanelWindow : Window
 {
@@ -28,7 +28,7 @@ public partial class PluginPanelWindow : Window
         }
     }
 
-    /// <summary>设置面板内容(插件自建的控件)。</summary>
+    /// <summary>设置面板内容(插件自己创建的控件)。</summary>
     public void SetContent(Control content) => PanelContent.Content = content;
 
     /// <summary>设置标题栏文本:面板标题 + 所属插件 id。</summary>

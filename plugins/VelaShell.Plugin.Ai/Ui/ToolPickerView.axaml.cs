@@ -74,7 +74,7 @@ public sealed class ToolPickerView : UserControl
         {
             Source = new Uri("avares://VelaShell.Plugin.Ai/Ui/DialogStyles.axaml")
         });
-        // 勾选框要用插件自建的那套(15×15 + 强调色):Fluent 默认那个是高饱和蓝方块,
+        // 勾选框要用插件自己写的那套(15×15 + 强调色):Fluent 默认那个是高饱和蓝方块,
         // 跟本程序的强调色不是一回事,一屏十几个尤其扎眼。
         Resources.MergedDictionaries.Add(new ResourceInclude(new Uri("avares://VelaShell.Plugin.Ai/"))
         {

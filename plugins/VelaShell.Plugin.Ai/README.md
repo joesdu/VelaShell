@@ -48,7 +48,7 @@
 
 | 数据源 | 它知道什么 | 它不知道什么 |
 | --- | --- | --- |
-| **端点自己的 `/models`**(`Configuration/EndpointModelCatalog.cs`) | 这个地址**实际供应哪些型号** —— 中转站只转发其中一部分,自建 Ollama 装了哪几个权重 | 上下文窗口、单价,一概没有 |
+| **端点自己的 `/models`**(`Configuration/EndpointModelCatalog.cs`) | 这个地址**实际供应哪些型号** —— 中转站只转发其中一部分,自行部署的 Ollama 装了哪几个权重 | 上下文窗口、单价,一概没有 |
 | **models.dev**(`github.com/sst/models.dev`,`Configuration/ModelsDevCatalog.cs`) | 每个型号的窗口、三档单价、能力位 | 你接的这家到底转发了哪几个 |
 
 所以顺序是:**先问端点拿真实清单,再按 id 去 models.dev 配规格**。端点没有这条接口
@@ -167,7 +167,7 @@ GitHub Copilot 这三条走的是这一路 —— 因为**没有第二条路**:�
   不必再往管道里塞一层"401 就重试");若换回来的是一把长期 API Key(OpenRouter 那类),
   就与手填的 Key 走**同一条路**,不需要刷新。
 
-> 要接目录里没有的(包括自建网关),用「自定义(OAuth 登录)」把端点填进去即可 ——
+> 要接目录里没有的(包括自行部署的网关),用「自定义(OAuth 登录)」把端点填进去即可 ——
 > 加一家 = 加一条数据,不改任何逻辑。
 
 ### 端点怪癖:订阅型后端只是标准协议的一个子集
@@ -504,7 +504,7 @@ ControlTheme 的芯片开关(`Ui/AiTheme.axaml`,隔离进程下仅令牌也能�
 
 回复以 **Markdown 渲染**,用 [LiveMarkdown.Avalonia](https://github.com/DearVa/LiveMarkdown.Avalonia)
 (Apache-2.0;内部仍是 Markdig 解析,但解析放后台线程,并按 `SourceSpan` 脏检查
-只更新受影响的节点 —— 流式追加不再重建整段可视树,故本插件不再自建节流)。
+只更新受影响的节点 —— 流式追加不再重建整段可视树,故本插件不再自己做节流)。
 覆盖 Markdig `UseAdvancedExtensions()` 全集:标题/强调/行内代码/链接/围栏代码块
 (TextMate 语法高亮 + 语言标签 + 复制/换行按钮)/嵌套列表/任务列表/引用/分隔线/
 表格,并支持**跨块文本选择**。
@@ -656,7 +656,7 @@ Win32 的 DWM 调用才不掉圆角、不留启动残影 —— 那是宿主的�
 以前这些规则由插件自己的对话框外壳下发,窗体换成宿主的卡片之后就没了着落。
 那一套是**照抄宿主设置页**(`src/VelaShell/Views/SettingsView.axaml`)的:分节标题、
 `ListBox.nav` 左侧导航、分隔线,连选中态都压成 `VelaBgActive` + 强调色文字 ——
-Fluent 默认给的是一整块高饱和蓝,在这套暗色令牌里跳得厉害。勾选框用插件自建的
+Fluent 默认给的是一整块高饱和蓝,在这套暗色令牌里跳得厉害。勾选框用插件自己写的
 `AiCheckBoxTheme`,同理。
 
 **内容自己带内边距**(设置页右栏 24/20,另两个窗口 20/16)。宿主的 `PanelContent`

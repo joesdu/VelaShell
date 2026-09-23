@@ -28,9 +28,9 @@
 | :---: | :---: | --- |
 | [1](#-1-技术栈现状) | 📖 | 技术栈现状 —— 运行时、UI 框架、SSH 栈、持久化、打包、测试框架的当前版本 |
 | [2](#-2-解决方案分层) | 📖 | 解决方案分层 —— 六个 src 项目 + 插件 + 测试的职责与依赖方向 |
-| [3](#-3-自研终端引擎核心替换了坏掉的-avaloniaterminal) | ✅ | 自研 VT 终端引擎 —— 解析器、屏幕模型、仿真器、十种 profile、自绘渲染 |
+| [3](#-3-终端引擎核心替换了坏掉的-avaloniaterminal) | ✅ | VT 终端引擎 —— 解析器、屏幕模型、仿真器、十种 profile、自绘渲染 |
 | [4](#-4-ssh--pty) | ✅ | SSH / PTY —— 桥接循环、实时改窗、失败不崩、连接持久化 |
-| [5](#-5-停靠--分屏自研-veladock已替换-dockavalonia) | ✅ | 自研 VelaDock —— 模型层 / 控件层 / 拖拽分屏 |
+| [5](#-5-停靠--分屏veladock已替换-dockavalonia) | ✅ | VelaDock —— 模型层 / 控件层 / 拖拽分屏 |
 | [6](#-6-ui--视图与设置) | ✅ | UI / 视图与设置 —— 自绘窗口壳、命令面板、十二页设置中心 |
 | [7](#-7-测试已全量迁移到-mstest) | 📖 | 测试 —— 项目构成、规模、MSTest 迁移约定与断言风格 |
 | [8](#-8-关键约定--已知坑) | 📖 | ⚠️ 关键约定 / 已知坑 —— SonnetDB、Avalonia 12、构建的几处必读 |
@@ -47,9 +47,9 @@
 | [14](#-14-多语言2026-07-12-全量补齐c-09-一并完成) | ✅ | 07-12 | 五语言全量补齐 + 实时切换的两处根因修复 |
 | [15](#-15-版本与发布2026-07-12) | ✅ | 07-12 | 版本号单一来源、一键发布脚本、CI/CD |
 | [16](#-16-2026-07-13--07-14-批次veladock-合并原生窗口壳终端侧栏安装包工程化) | ✅ | 07-13~14 | VelaDock 落地、自绘标题栏 + Snap Layouts、终端侧栏、集中式包管理 |
-| [17](#-17-2026-07-批次ssh-传输层迁移zmodemsftp-双栏) | ✅ | 2026-07 | SSH.NET → Tmds.Ssh、自研 ZMODEM、SFTP 双栏、net10 → net11 |
+| [17](#-17-2026-07-批次ssh-传输层迁移zmodemsftp-双栏) | ✅ | 2026-07 | SSH.NET → Tmds.Ssh、ZMODEM、SFTP 双栏、net10 → net11 |
 | [18](#-18-2026-07-24--08-14-批次盘点2026-08-14-补记此前均已落地但未入本文件) | ✅ | 07-24~08-14 | 插件系统 v1 + AI 插件、资源监视、路由追踪、连接诊断、会话导入、FTP、全局代理 |
-| [19](#-19-2026-08-30-隧道功能完善计量转发--流量统计--断线自动恢复--端口冲突预检) | ✅ | 08-30 | 隧道：自研计量数据面、流量统计、断线自愈、端口冲突预检 |
+| [19](#-19-2026-08-30-隧道功能完善计量转发--流量统计--断线自动恢复--端口冲突预检) | ✅ | 08-30 | 隧道：宿主接管计量数据面、流量统计、断线自愈、端口冲突预检 |
 | [20](#-20-2026-08-30-消息中心侧边栏铃铛) | ✅ | 08-30 | 消息中心 —— 边界、资讯源契约、快捷跳转、一个死开关 |
 | [21](#-21-2026-08-31-补全弹层关不掉315) | ✅ | 08-31 | 命令补全弹层关不掉（#315） |
 | [22](#-22-2026-08-31-资讯源默认订阅官方源) | ✅ | 08-31 | 资讯源默认订阅官方源（含 PRIVACY 的如实修订） |
@@ -94,8 +94,8 @@
 timeline
     title VelaShell 主线演进
     2026-07 上旬 : SonnetDB 存储层 : 两步身份验证 : 设置中心成型
-    2026-07 中旬 : 自研 VelaDock 替换 Dock.Avalonia : 自绘窗口壳 + Snap Layouts : 五语言全量补齐 : 版本与发布流水线
-    2026-07 下旬 : SSH.NET → Tmds.Ssh : 自研 ZMODEM : SFTP 双栏与断点续传 : net10 → net11
+    2026-07 中旬 : VelaDock 替换 Dock.Avalonia : 自绘窗口壳 + Snap Layouts : 五语言全量补齐 : 版本与发布流水线
+    2026-07 下旬 : SSH.NET → Tmds.Ssh : ZMODEM : SFTP 双栏与断点续传 : net10 → net11
     2026-08 上旬 : 资源监视 / 路由追踪 / 连接诊断 : 会话一键迁移 : FTP / FTPS
     2026-08 中旬 : 插件系统 v1 双宿主模式 : AI 助手插件 : 全局网络代理 : MSIX 商店版
     2026-08 下旬 : 隧道计量与自愈 : 消息中心与资讯源 : 具名主题 12 套
@@ -122,14 +122,14 @@ timeline
 | .NET     | **net11.0**(2026-07 由 net10.0 切入;`global.json` 锁 `11.0.100-preview.7.26381.103` + `rollForward: latestFeature` + `allowPrerelease`。`Directory.Build.props` 对 net11 开启 `EnablePreviewFeatures` + `Features=runtime-async=on`,并 `NoWarn` 掉 CA2252/SYSLIB5007;`LangVersion=preview`) |
 | UI 框架  | **Avalonia 12.1.2**(11.x → 12.0.5 → 12.1.0 → 12.1.2)                                                                                                 |
 | MVVM     | ReactiveUI 24.2.0 / ReactiveUI.Avalonia 12.1.1                                                                                                       |
-| 停靠框架 | **自研 VelaDock**(`src/VelaShell/Docking/`,零第三方依赖;已替换 Dock.Avalonia,见 `velashell-docs zh/host/dock-replacement-plan.md`)                                     |
+| 停靠框架 | **VelaDock**(`src/VelaShell/Docking/`,零第三方依赖;已替换 Dock.Avalonia,见 `velashell-docs zh/host/dock-replacement-plan.md`)                                     |
 | SSH/SFTP | **Tmds.Ssh 0.24.0**(全托管 async-first;2026-07 由 SSH.NET 迁入,库类型只在 `Infrastructure/Ssh/` 出现,异常经 `TmdsSshInterop` 翻译为 `VelaSsh*Exception`) |
 | FTP      | **FluentFTP 54.2.0**(MIT、零依赖;⚠️ **不要**引 FluentFTP.GnuTLS —— LGPL-2.1-only,与商业授权冲突) |
 | 持久化   | **SonnetDB.Core 3.1.0 嵌入式多模型数据库**(`~/.velashell/sonnetdb`;文档集合 + 时序 measurement;旧 JSON 首次运行一次性导入;LiteDB 已移除) |
 | IP 归属地 | MaxMind.Db 5.1.0(**只是 mmdb 格式读取库**,数据用的是 DB-IP Lite City / CC BY 4.0) |
 | 插件契约 | **VelaShell.PluginSdk 2.0.2**(nuget.org 正式包,**不做工程引用**;版本 pin 在 `src/` 与 `tests/` 两份 `Directory.Packages.props`) |
-| 打包     | 便携压缩包(zip / tar.gz,6 RID)+ `.AppImage` / `.deb` / `.rpm` / `.dmg` / MSIX;自研应用内自更新(GitHub Releases `latest.json`;Velopack 已移除 2026-07-17,WiX MSI 已于 `241c2a2` 移除)            |
-| 依赖管理 | **集中式**:`src/Directory.Packages.props` 统一 NuGet 版本(`ManagePackageVersionsCentrally`);SourceLink.GitHub 构建期启用。⚠️ `plugins/` 下的自建插件**不走**中央包管理,版本写在各自 csproj |
+| 打包     | 便携压缩包(zip / tar.gz,6 RID)+ `.AppImage` / `.deb` / `.rpm` / `.dmg` / MSIX;应用内自更新(GitHub Releases `latest.json`;Velopack 已移除 2026-07-17,WiX MSI 已于 `241c2a2` 移除)            |
+| 依赖管理 | **集中式**:`src/Directory.Packages.props` 统一 NuGet 版本(`ManagePackageVersionsCentrally`);SourceLink.GitHub 构建期启用。⚠️ `plugins/` 下的插件**不走**中央包管理,版本写在各自 csproj |
 | 测试     | **MSTest 4.4.0**(已从 xUnit 全量迁移;FluentAssertions 已移除)+ BenchmarkDotNet 0.16.0-preview.1                                                     |
 | AI 栈    | Microsoft.Extensions.AI 10.9.0 · ModelContextProtocol.Core 2.2.0 · LiveMarkdown.Avalonia 2.4.0(含 Mermaid / Math / Svg 扩展)—— 均只在 AI 插件里 |
 
@@ -140,7 +140,7 @@ src/
 ├── VelaShell/                桌面入口、DI 组合根、视图(axaml)、App 层 ViewModel、停靠、行为
 ├── VelaShell.Presentation/   跨层 ViewModel、连接/隧道工作流服务
 ├── VelaShell.Controls/       自定义控件(LucideIcon)、设计 token、内置 Cascadia Mono 字体
-├── VelaShell.Terminal/       ★ 自研 VT 终端引擎 + 自绘渲染控件
+├── VelaShell.Terminal/       ★ VT 终端引擎 + 自绘渲染控件
 ├── VelaShell.Core/           领域模型、抽象契约、数据存储、SSH/SFTP/FTP 封装接口、协议引擎、本地化
 ├── VelaShell.Infrastructure/ Tmds.Ssh/SFTP/FTP/隧道实现、SonnetDB 持久化、插件管理与能力实现、DI 扩展
 └── VelaShell.PluginHost/     隔离插件的宿主进程(命名管道 RPC,只依赖 SDK 契约)
@@ -182,7 +182,7 @@ graph RL
 > 箭头指向被依赖方。`PluginHost` 与 `Plugin.Ai` **只**认 SDK 契约,不依赖宿主任何内部程序集 ——
 > 这正是插件能跨进程、跨 ALC 而类型仍然同一的前提。
 
-## ✅ 3. 自研终端引擎(核心,替换了坏掉的 AvaloniaTerminal)
+## ✅ 3. 终端引擎(核心,替换了坏掉的 AvaloniaTerminal)
 
 彻底移除第三方 `AvaloniaTerminal 1.0.0-alpha.7`,改为手写 VT 引擎。位于 `src/VelaShell.Terminal/Emulation/` 与 `Rendering/`:
 
@@ -201,11 +201,11 @@ graph RL
 - **连接持久化**:`ConnectionWorkflowService.SaveProfileAsync`→`SonnetDbSessionRepository`(SonnetDB `session_profiles` 集合,密码 AES-256 加密);`MainWindowViewModel.InitializeAsync` 启动时加载侧栏"最近连接"(SonnetDB `conn_history` 时序)与会话树;侧栏最近项**双击重连**;命令面板也可连。
 - **新建连接密码框仅限 ASCII**:`Behaviors/AsciiOnlyInput.cs` 拦截 IME/中文 TextInput + VM setter 剥离粘贴的非 ASCII。
 
-## ✅ 5. 停靠 / 分屏(自研 VelaDock,已替换 Dock.Avalonia)
+## ✅ 5. 停靠 / 分屏(VelaDock,已替换 Dock.Avalonia)
 
 - **模型层** `Docking/Model/`(纯 INPC,可单测):`DockWorkspace`(结构操作 + `DocumentClosed`/`ActiveDocumentChanged` 事件)、`DockGroup`(标签组)、`DockSplit`(分栏树)、`DockDocument`;空组自动折叠(主组先把兜底身份交给邻居再退场,**只有根留着**,见 §64)、单子分栏自动提升;`MaximizedGroup` 只影响渲染、不动树。方案与集成面分析见 `velashell-docs zh/host/dock-replacement-plan.md`。
 - **控件层** `Docking/Controls/`:`DockWorkspaceControl`(按树渲染 Grid+GridSplitter,star ↔ Proportion 回写;**按文档缓存视图**,切标签复用同一 `TerminalTabView`,取代原 ControlRecycling)、`DockGroupControl`(标签条 + 溢出三连钮 + 标签列表下拉)、`DockTabItem`(标签视觉 + 右键菜单:关闭系列/水平垂直拆分/标签位置)、`DockDragController` + `DockDropOverlay`(拖拽重排插入线、跨组并入、五区拖放分屏,Esc 取消;浮动窗口按产品决策不存在)。
-- `Docking/TerminalDocument.cs` 包装 `TerminalTabViewModel`,实现 `IDockViewProvider` 自建视图。
+- `Docking/TerminalDocument.cs` 包装 `TerminalTabViewModel`,实现 `IDockViewProvider` 自己创建视图。
 - `MainWindow.axaml` 用 `<dockc:DockWorkspaceControl Workspace="{Binding Layout}" />` 承载;`TabBar`(Ctrl+Tab/W 逻辑集合)与工作区激活态**双向同步**(原 Dock 集成缺 TabBar→文档区半边)。
 - `Controls/ReparentingHost.cs` — 沿用:内容宿主挂缓存视图前先从旧父级摘除,保证共享终端控件任一时刻只有一个父级。
 - `Themes/DockStyles.axaml` 保留全局通用样式(ToolTip/ContextMenu/MenuFlyout/tab-nav 等);标签视觉内联在 `DockTabItem.axaml`。
@@ -457,9 +457,9 @@ RemoteInitialPath `"/home/user"` → `""`（空 = 家目录）。
 | # | 状态 | 项 | 落点 |
 | :---: | :---: | --- | --- |
 | 7 | ✅ | **多会话同步输入** | `Services/SyncInputCoordinator.cs` 对等频道模型（标签右键 A/B/C/D 频道菜单）。挂钩 `TypedInput`（**仅用户产生的输入**，不含协议自动应答），直写同频道其他标签的 PTY —— 走桥的 `SendRaw`，不经接收端输入事件，因此既不回环也不驱动接收端的补全弹层 |
-| 8 | ✅ | **ZMODEM（rz/sz）** | **自研协议引擎**（未走 trzsz）：`Core/ZModem/` 传输无关引擎 + `Terminal/ZModem/` 自动接管路由。后续补齐 XMODEM / YMODEM（`Core/XYModem/`）。**2026-09-14 加上配置面**（`modem-plan.md`）：三种协议各自可启停（全局 `TransferOptions` + 每条连接 `TransferOverrides`，null = 跟随全局，合成入口唯一 —— `SessionTransferSettings.Resolve`），并新增「默认传输方式」`Sftp/ZModem/YModem/XModem`，由命令面板的「发送 / 接收文件」一对命令消费；SSH 默认走 SFTP，没有 SFTP 通道的连接按启用情况退回终端内协议。关掉 ZMODEM = 路由器**不再嗅探输出流**。⚠️ **测试教训**：互操作期望值必须按 lrzsz `zm.c`/`zmodem.h` **手工构造**（见 `LrzszInteropTests`）—— 用自家编码器生成期望值时，编解码同时错也照样全绿，CRC 双重增广的 bug 当初正是这么溜进来的 |
+| 8 | ✅ | **ZMODEM（rz/sz）** | **协议引擎在本仓库实现**（未走 trzsz）：`Core/ZModem/` 传输无关引擎 + `Terminal/ZModem/` 自动接管路由。后续补齐 XMODEM / YMODEM（`Core/XYModem/`）。**2026-09-14 加上配置面**（`modem-plan.md`）：三种协议各自可启停（全局 `TransferOptions` + 每条连接 `TransferOverrides`，null = 跟随全局，合成入口唯一 —— `SessionTransferSettings.Resolve`），并新增「默认传输方式」`Sftp/ZModem/YModem/XModem`，由命令面板的「发送 / 接收文件」一对命令消费；SSH 默认走 SFTP，没有 SFTP 通道的连接按启用情况退回终端内协议。关掉 ZMODEM = 路由器**不再嗅探输出流**。⚠️ **测试教训**：互操作期望值必须按 lrzsz `zm.c`/`zmodem.h` **手工构造**（见 `LrzszInteropTests`）—— 用自家编码器生成期望值时，编解码同时错也照样全绿，CRC 双重增广的 bug 当初正是这么溜进来的 |
 | 9 | ✅ | **SSH config 导入** | 2026-09-09 落地（§58）：`Infrastructure/Import/SshConfigParser.cs` 按 OpenSSH 语义解析 `~/.ssh/config`（块结构 + `Include` 就地展开 + 「先出现者胜」取值 + 通配/取反匹配），`SshConfigImportService` 作为第三个来源接进同一扇导入对话框。`IdentityFile` → 私钥认证，`ProxyJump` → 跳板引用（取离目标最近的最后一跳，批内解析、成环即断） |
-| 10 | ✅ | **连接代理** | 2026-08-14 落地为**应用级全局代理**（非按会话）。统一抽象 `Core/Net/IProxyResolver`（唯一代理出口，新功能接网络一律消费它）+ `Infrastructure/Net/`（自研 HTTP CONNECT / SOCKS5 握手、环回中继、进程级 `HttpClient.DefaultProxy`）。三条通道：SSH 走环回中继、FTP 走 FluentFTP 代理子类（代理下强制被动模式）、全部 HttpClient 由 `VelaWebProxy.Install` 接管。**代理配置不完整时抛错拒连，绝不静默直连**。ICMP 与连接诊断的裸 TCP **有意不走代理** |
+| 10 | ✅ | **连接代理** | 2026-08-14 落地为**应用级全局代理**（非按会话）。统一抽象 `Core/Net/IProxyResolver`（唯一代理出口，新功能接网络一律消费它）+ `Infrastructure/Net/`（HTTP CONNECT / SOCKS5 握手、环回中继、进程级 `HttpClient.DefaultProxy`）。三条通道：SSH 走环回中继、FTP 走 FluentFTP 代理子类（代理下强制被动模式）、全部 HttpClient 由 `VelaWebProxy.Install` 接管。**代理配置不完整时抛错拒连，绝不静默直连**。ICMP 与连接诊断的裸 TCP **有意不走代理** |
 | 11 | ⏳ | 防空闲断开（Anti-idle） | 见 [`feature-plan.md`](feature-plan.md#-终端与协议) |
 | 12 | ✅ | **known_hosts 管理界面** | 设置 → 安全审计 → 已信任主机（列出 / 删除 / 截图防泄露地址脱敏）。⏳ 导出未做 |
 | 13 | ✅ | **会话标签自定义颜色** | `b9ae31f`(2026-09-06)落地:`TerminalOverrides.TabColor` → `ConnectionAccent.cs:66` 优先读它,连接对话框可填;留空才回退到按 `profileId` 哈希取色。⚠️ 本节 2026-09-05 那次「复核订正」写的是「用户不可选」,**次日就被这次提交推翻了** —— 复核结论也会过期,写现状要给证据(文件行号),再新的证据出现就得改。⏳ 图标仍未做 |
@@ -522,13 +522,13 @@ BellMode/VisualBell 合并(旧配置经 `AppSettings.Normalize()` 迁移)、自�
 - **版本号单一来源**:`Directory.Build.props` 的 `<Version>`(当前 `0.0.1-dev`;`AssemblyVersion`/`FileVersion` 另给不带后缀的 `0.0.1`,并关掉 `IncludeSourceRevisionInInformationalVersion` 以免 `+sha` 后缀);关于页版本运行时读程序集 InformationalVersion,不再硬编码;发版由 Release 标签经 `-p:Version` 覆盖。
 - **本地发布**:`pwsh scripts/publish-all.ps1` → `publish/` 产出 6 个包(2026-07-17 起,`-noruntime` 变体已裁撤):Windows x64/arm64 便携 zip,macOS 与 Linux x64/arm64 tar.gz(全部含运行时;2026-08-12 起摊开发布,不再单文件 —— 隔离插件的 `VelaShell.PluginHost` 需要磁盘上的真实可执行体,换版随之从"移动"改为"复制"),外加自更新清单 `latest.json` 与 `SHA256SUMS.txt`。
 - **CI/CD**:`.github/workflows/release.yml` —— GitHub 页面发布 Release(publish)即触发:windows/macos/ubuntu 三原生 runner 并行构建同一套 6 产物(版本号取 Release 标签,`-p:Version` 覆盖,发版无需改代码),汇总生成 `SHA256SUMS.txt` 与 `latest.json`(应用内自更新清单:版本/标签/各 RID 产物名+sha256+大小),经 `gh release upload` 全部附加到该 Release。macOS 产物未签名/未公证(需 Apple 证书后续补);Linux 为便携 tar.gz(.deb/AppImage 为后续扩展点)。
-- **Windows 安装包(2026-07-13;2026-07-17 调整)**:Velopack `Setup.exe` 链路已整体移除——其默认安装目录曾与当时的 `%LocalAppData%\VelaShell` 应用数据根冲突,卸载会清空用户数据,且自打的便携 zip 无法经 Velopack 更新。现行数据根已改为 `~/.velashell`;分发方案为便携 zip + 自研应用内自更新(任意目录原地换版)。WiX v4 MSI 定义(`installer/VelaShell.wxs`,x64/arm64,`WixUI_InstallDir` 中文向导支持自定义安装目录,静默安装 `msiexec /i VelaShell.msi /qn INSTALLFOLDER="D:\Tools\VelaShell"`;`ProductVersion` 须为纯数字 x.y.z,`UpgradeCode` 固定走 MajorUpgrade)保留可手动构建,不再随 CI 发布;MSI 装进 Program Files 后应用内更新按"目录不可写"如实提示手动下载。
+- **Windows 安装包(2026-07-13;2026-07-17 调整)**:Velopack `Setup.exe` 链路已整体移除——其默认安装目录曾与当时的 `%LocalAppData%\VelaShell` 应用数据根冲突,卸载会清空用户数据,且自打的便携 zip 无法经 Velopack 更新。现行数据根已改为 `~/.velashell`;分发方案为便携 zip + 应用内自更新(任意目录原地换版)。WiX v4 MSI 定义(`installer/VelaShell.wxs`,x64/arm64,`WixUI_InstallDir` 中文向导支持自定义安装目录,静默安装 `msiexec /i VelaShell.msi /qn INSTALLFOLDER="D:\Tools\VelaShell"`;`ProductVersion` 须为纯数字 x.y.z,`UpgradeCode` 固定走 MajorUpgrade)保留可手动构建,不再随 CI 发布;MSI 装进 Program Files 后应用内更新按"目录不可写"如实提示手动下载。
 
 ## ✅ 16. 2026-07-13 ~ 07-14 批次(VelaDock 合并、原生窗口壳、终端侧栏、安装包、工程化)
 
 > 本批以数个独立 PR 合入 `dev`/`main`(#3 replacedock、#5、#6)。多为架构/工程化收尾与使用体验修正。
 
-**A. 自研 VelaDock 正式落地(PR #3)**:详见 §5 与 `velashell-docs zh/host/dock-replacement-plan.md`(已补「已完成」横幅)。模型/控件/拖拽全套自研替换 `Dock.Avalonia`,零第三方停靠依赖;拆分对所有标签组一致生效(单标签次级组也可水平/垂直拆分);点击窗格内容区即激活该组文档(SFTP 面板与状态栏随焦点窗格切换)。关于页开源许可列表已删 Dock.Avalonia 条目。
+**A. VelaDock 正式落地(PR #3)**:详见 §5 与 `velashell-docs zh/host/dock-replacement-plan.md`(已补「已完成」横幅)。模型/控件/拖拽全套自己实现、替换 `Dock.Avalonia`,零第三方停靠依赖;拆分对所有标签组一致生效(单标签次级组也可水平/垂直拆分);点击窗格内容区即激活该组文档(SFTP 面板与状态栏随焦点窗格切换)。关于页开源许可列表已删 Dock.Avalonia 条目。
 
 **B. 主窗自绘无边框标题栏 + 原生行为补齐(体验优化)**:详见 §6。主窗保持 `WindowDecorations="None"` 全自绘(`TitleBarView` 含 logo/名称 + 功能图标组 + 自绘 min/max/close),**未走原生 chrome**(extend/角色重定向在 Win32 不可用);改以 `BeginMoveDrag` 原生移动循环 + **WndProc 钩子处理 `HTMAXBUTTON` 实现 Win11 Snap Layouts**(`ce71b32`);并修 `c12a8ff`(Avalonia 12 `VisualRoot` 非 `Window`,取窗口须走逻辑树 `FindLogicalAncestorOfType<Window>`)。中途 `7580052` 试过原生 chrome 集成,因保真问题走回自绘+WndProc 方案。对话框同为自绘无边框。
 
@@ -555,7 +555,7 @@ Core 的中立抽象证明有效——**迁移一行 Core 代码都没改**,改�
   **为什么没被测出来(重要)**:`InteractiveAuthFlowTests` 与 `MainWindowSshFeatureTests` 各自定义了一个**私有的假异常 `SshAuthenticationException`**,注释明写"Named to match SSH.NET's ... so the VM's type-name mapping applies" —— 测试专门迎合了实现的怪癖,于是生产路径从未被覆盖、测试长期全绿。根子在 `VelaSshClientException.cs` 的注释:它声称这些类型的简单名与 SSH.NET 一致(实际带 `Vela` 前缀,从来对不上),代码照着错注释写。两个假异常已删除、改抛真类型,该注释也已改写。
   **约定**:跨层识别异常一律 `ex is VelaSshXxxException` 类型匹配,**绝不用 `GetType().Name` 字符串** —— 换库或改名时字符串匹配不会产生任何编译错误。
 
-**B. 自研 ZMODEM(rz/sz)**:见 §12-8。
+**B. ZMODEM(rz/sz)**:见 §12-8。
 
 **C. 独立 SFTP 标签 + 本地/远程双栏 + 断点续传**:见 §12-14 与 §10.A;差距清单见 `velashell-docs zh/host/SFTP双栏与WinSCP差距分析.md`。
 
@@ -574,13 +574,13 @@ Core 的中立抽象证明有效——**迁移一行 Core 代码都没改**,改�
 ## ✅ 18. 2026-07-24 ~ 08-14 批次盘点(2026-08-14 补记;此前均已落地但未入本文件)
 
 **A. 插件系统 v1 + AI 助手插件(08-10 ~ 08-13,本批最大特性)**
-- **双宿主模式**:manifest `hostMode` 选进程内(可收集 ALC + dock 标签页)或**隔离进程**(`src/VelaShell.PluginHost/`,命名管道自研轻量 RPC、令牌握手、心跳自愈、空闲回收、独立卡片窗口);插件源码两模式零改动。关键路径 `Infrastructure/Plugins/`(`PluginManager`/`PluginContext`/`Capabilities/`/`Isolated/`/`PluginPermissionGate`)。
+- **双宿主模式**:manifest `hostMode` 选进程内(可收集 ALC + dock 标签页)或**隔离进程**(`src/VelaShell.PluginHost/`,命名管道上的轻量 RPC、令牌握手、心跳自愈、空闲回收、独立卡片窗口);插件源码两模式零改动。关键路径 `Infrastructure/Plugins/`(`PluginManager`/`PluginContext`/`Capabilities/`/`Isolated/`/`PluginPermissionGate`)。
 - **SDK**:`plugin-sdk/VelaShell.PluginSdk`(能力域 sessions/remoteFs/remoteExec/commands/events/storage/secrets/clipboard/terminal/timeSeries)+ `PluginSdk.Testing` 测试替身;管理页 `PluginManagerWindow` + 权限对话框。
 - **分发**:目录即插件 + `.vpx` 包(zip,含 zip-slip 防护)一键装卸;**无商店/签名 —— 用户决策不做/推迟**(见 `velashell-docs zh/plugins/STATUS.md`,权威进度页);发布形态因此改**摊开发布**(隔离插件需磁盘上真实 PluginHost 可执行,§15 已记)。
 - **AI 助手插件**(`plugins/VelaShell.Plugin.Ai`):多提供商流式对话(OpenAI Responses / Chat Completions 兼容 / Anthropic Messages,自填 Base URL+Key 走 Secrets 加密);**Agent 模式**(M.E.AI 工具循环,桥接 sessions/terminal/remoteExec/remoteFs,危险操作面板内逐条审批);**自定义 MCP 服务器**(`McpManager` 把用户自配 MCP 工具并入工具箱,非只读工具走同一审批闸);会话持久化到插件私有时序库(历史列表/切换/删除、↑↓ 调取、`@` 远端文件引用)。示例插件 HelloWorld。
 - 文档:`velashell-docs zh/plugins/` 16 篇蓝图 + `STATUS.md` + `dev-guide.md`;英文镜像 `docs-en/`(08-14,31 个文件)。
 
-**B. 系统资源监控窗口(08-01,08-29 修正)**:`ResourceMonitorWindow`(+状态栏内嵌弹层 `ResourceMonitorView`),六页 总览/CPU/GPU/内存/磁盘/网络;CPU 页热力图/迷你折线/列表三态,GPU 无卡自动隐藏;自研图表控件 `TimeSeriesChart`/`UsageHeatGrid`/`MeterBar`(`VelaShell.Controls`)。采集为**单条复合 shell 探针**分段解析(`Core/Services/SessionMetrics.cs`,`MetricsScope` 按页按需取 Basic/Detail/Gpu/Processes):CPU 含 user/sys/iowait/steal 与逐核、内存 htop 口径、磁盘逐分区 df + diskstats IO 速率、网络逐网卡 + `ss -ti` 逐连接速率、GPU nvidia-smi、进程 Top。入口:状态栏按钮。状态栏每秒轮询一次(`SessionMetricsService`),但只对 POSIX 远端发命令:`RemoteShellProbe` 判否即返回"无数据"。此前不拦,Windows 远端上每秒起一个 cmd.exe,而 cmd 把 `echo __P__; nproc; …` 整行原样回显,`Parse`(只在输出为空时返回 null)据此解出一份全 0 的假指标,状态栏一本正经地显示 CPU 0.00%。
+**B. 系统资源监控窗口(08-01,08-29 修正)**:`ResourceMonitorWindow`(+状态栏内嵌弹层 `ResourceMonitorView`),六页 总览/CPU/GPU/内存/磁盘/网络;CPU 页热力图/迷你折线/列表三态,GPU 无卡自动隐藏;图表控件 `TimeSeriesChart`/`UsageHeatGrid`/`MeterBar`(`VelaShell.Controls`)。采集为**单条复合 shell 探针**分段解析(`Core/Services/SessionMetrics.cs`,`MetricsScope` 按页按需取 Basic/Detail/Gpu/Processes):CPU 含 user/sys/iowait/steal 与逐核、内存 htop 口径、磁盘逐分区 df + diskstats IO 速率、网络逐网卡 + `ss -ti` 逐连接速率、GPU nvidia-smi、进程 Top。入口:状态栏按钮。状态栏每秒轮询一次(`SessionMetricsService`),但只对 POSIX 远端发命令:`RemoteShellProbe` 判否即返回"无数据"。此前不拦,Windows 远端上每秒起一个 cmd.exe,而 cmd 把 `echo __P__; nproc; …` 整行原样回显,`Parse`(只在输出为空时返回 null)据此解出一份全 0 的假指标,状态栏一本正经地显示 CPU 0.00%。
 
 **C. 连接诊断中心(07-25 前后)**:`Presentation/Services/ConnectionDiagnosticsService` 四步诊断 **DNS 解析 → TCP 建链 → SSH 握手(读 banner)→ 用户认证**,输出问题标题/描述/修复建议(`DiagnosticReport`);跳板会话前三步针对第一跳、认证走完整链。UI `ConnectionDiagnosticsView` 独立窗口,入口:会话树右键"诊断"。(诊断的裸 TCP/DNS **有意不走全局代理** —— 诊断语义即测直连链路,§12-10。)
 
@@ -626,11 +626,11 @@ Core 的中立抽象证明有效——**迁移一行 Core 代码都没改**,改�
 隧道规划文档 [`velashell-docs zh/host/隧道功能规划.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/host/隧道功能规划.md)
 里挂了很久的三条迭代项一次做完。逐项的实现细节以那份文档为准,这里只记会绊到人的几点。
 
-**A. 转发的数据面从库换成自研(`Infrastructure/Ssh/MeteredPortForwardHandle`)**:
+**A. 转发的数据面从库内搬到宿主自己接管(`Infrastructure/Ssh/MeteredPortForwardHandle`)**:
 Tmds.Ssh 把 LocalForward / SocksForward 的搬运整个做在内部,**不暴露任何连接数或字节计数**
 ——`TunnelInfo.BytesTransferred` 一直恒为 0 就是这个原因。要出统计只能自己接管:本地转发 =
-自建 `TcpListener` + `SshClient.OpenTcpConnectionAsync`(direct-tcpip,与库内部同构,无额外跳数);
-动态转发 = 自建监听 + 自研 SOCKS5 服务端握手(`Socks5Negotiation`,RFC 1928,仅 CONNECT + 无认证);
+自己开 `TcpListener` + `SshClient.OpenTcpConnectionAsync`(direct-tcpip,与库内部同构,无额外跳数);
+动态转发 = 自己监听 + 自己实现的 SOCKS5 服务端握手(`Socks5Negotiation`,RFC 1928,仅 CONNECT + 无认证);
 远程转发的监听端只有库能开,于是让它转发到本机一个临时计量监听,再由宿主接力到真实目标
 (多一次环回拷贝换来同样的统计)。搬运保留**半关闭语义**(SSH 侧 `SshDataStream.WriteEof`,
 套接字侧 `Shutdown(Send)`)—— 做成整条拆链的话,"发完请求就 shutdown 再等响应"的协议全部读不到东西,
@@ -1432,17 +1432,17 @@ Telegram `t.me/<bot>?startgroup=true`),手机扫一下直接跳过去,省掉在�
 新引 `QRCoder`(MIT、netstandard2.0、无传递依赖),走 `PngByteQRCode` 出字节流交给
 Avalonia 的 `Bitmap` —— 不碰 `System.Drawing`,Linux/macOS 上不需要 libgdiplus。
 
-自己写 QR 编码器要 Reed-Solomon 与掩码评分,几百行且没有额外价值:与自研 VT/ZMODEM 不同,
+自己写 QR 编码器要 Reed-Solomon 与掩码评分,几百行且没有额外价值:与自己实现的 VT/ZMODEM 不同,
 这里没有需要拿捏的协议细节。
 
-> **1.4.8 后记:上面这段判断是错的,已改为自研(`Ui/QrCode.cs`)。**
+> **1.4.8 后记:上面这段判断是错的,已改为在插件内实现二维码编码器、替换 QRCoder(`Ui/QrCode.cs`)。**
 > "无传递依赖"没核实:QRCoder 1.8.0 的 netstandard2.0 目标依赖 `System.Drawing.Common 6.0.0`
 > (再带 `Microsoft.Win32.SystemEvents`)—— 正是那个 6.0 之后只支持 Windows 的库,
 > 绕开 `PngByteQRCode` 也没能真的绕开它。而且它带进来的 `runtimes/{win,unix}/lib/net6.0/`
 > 目录名里有点号,被 macOS 的 `codesign --deep` 当成嵌套 bundle,把 1.4.8 的 dmg 打包整个炸掉。
 > 代价也比预想的小:只做字节模式(编的全是带小写的 URL,数字/字母数字模式一次也用不上),
 > 连注释三百多行,正确性由与独立实现逐格比对出来的黄金用例把关。
-> **教训是"新引一个包之前先看清它的传递依赖",不是"能自研就自研"。**
+> **教训是"新引一个包之前先看清它的传递依赖",不是"能自己写就自己写"。**
 
 ### 六、顺手修的一处 UX
 
@@ -4236,7 +4236,7 @@ AI 插件把聊天标签、协作窗口、模型配置/MCP 那一组对话框统
   逐条列出与 §2/§3 的出入:没有静态签名索引(改按 id 批量问)、不做后台定时检查、
   默认不吃预发布、自动更新与降级仍然不做、升级不再清数据。
 - `cli/cli.md` —— `update` 一节点明宿主管理页用的是**同一套选版规则**;
-  「自建商店」那段补上第四个必须提供的只读接口。
+  「自行部署的商店」那段补上第四个必须提供的只读接口。
 
 市场仓库的 `docs/` 尚未并入 velashell-docs(那边 `AGENTS.md` 写明是唯一例外),
 新端点记在它自己的 `docs/api.md` 公开接口表里。
@@ -5576,7 +5576,7 @@ disabled / 焦点框全得自己来,还要新增一个 `Icon.check` 进共用图
 ## ✅ 91. 2026-09-22 Tmds.Ssh → VelaShell.Ssh:换掉底层 SSH 库,并把「释放」全面异步化(用户需求)
 
 分支 `feat/velashell-ssh`。底层 SSH 从 [Tmds.Ssh](https://github.com/tmds/Tmds.Ssh) 0.24.0 换成
-自研的 [VelaShell.Ssh](https://github.com/VelaShellLabs/velashell-ssh)(MIT,net11.0),
+[VelaShell.Ssh](https://github.com/VelaShellLabs/velashell-ssh)(MIT,net11.0),
 走**工程引用**(`..\..\..\velashell-ssh\src\VelaShell.Ssh\VelaShell.Ssh.csproj`)——
 两个仓库还在并排开发,先用相对路径把两边钉在一起,CI 因此会红,这是明知的代价。
 
@@ -5613,7 +5613,7 @@ tag 在那个 string 的**外面**,不带长度前缀。改成 `reader.ReadRemai
 
 | 删掉的 | 行数 | 它当初在绕什么 |
 | --- | ---: | --- |
-| `MeteredPortForwardHandle` | 376 | 上一版库把转发的搬运整个做在内部,**不暴露任何计数**。隧道面板要显示字节数与连接数,只能自建 `TcpListener` + `direct-tcpip` 把数据面整个接管过来。新库的 `PortForwarder` / `RemoteForwarder` 自带 `BytesTransferred` / `TotalConnections` / `ActiveConnections`,于是只剩一层薄适配(`LibraryPortForwardHandle`) |
+| `MeteredPortForwardHandle` | 376 | 上一版库把转发的搬运整个做在内部,**不暴露任何计数**。隧道面板要显示字节数与连接数,只能自己开 `TcpListener` + `direct-tcpip` 把数据面整个接管过来。新库的 `PortForwarder` / `RemoteForwarder` 自带 `BytesTransferred` / `TotalConnections` / `ActiveConnections`,于是只剩一层薄适配(`LibraryPortForwardHandle`) |
 | `SshAlgorithmProbe` + `SshAlgorithmDiagnostics` | 304 | 协商失败时上一版库只给一句话,两边到底各有什么算法拿不到。于是**再连一次**、逐类缩小候选集去倒推。新库直接抛 `SshNegotiationException`,两边清单都在异常上 |
 | `LoopbackProxyRelay` | 107 | 上一版库的代理接入只认「地址」,不认「一条已经建好的流」。于是本机起一个监听端口、把代理连接接力过去。新库有 `ISshTransportDialer`,`ProxyTransportDialer` 把现成的 `ProxyStreamConnector` 直接交给它,**本机不再开监听端口** |
 | `TmdsSshInterop` | 106 | 库的 `ConnectFailedException` 是 `internal`,只能**按消息前缀做字符串解析**再分派 —— §A 那节早就标过它是已知脆弱点。`SshInterop` 按异常类型分派,**没有一处字符串解析** |
@@ -5714,7 +5714,7 @@ tag 在那个 string 的**外面**,不带长度前缀。改成 `reader.ReadRemai
 
 `feature-plan.md` 这边有四项因为换库**不再卡上游**,已就地改掉结论:
 SSH PTY 像素尺寸贯通(原本等 `tmds/Tmds.Ssh#519`)、SSH Agent 转发、SSH 压缩开关
-(原本等我们自己提的 `#513` 合并发版)、算法协商可配。四项的底层能力现在都在自研库里,
+(原本等我们自己提的 `#513` 合并发版)、算法协商可配。四项的底层能力现在都在 VelaShell.Ssh 里,
 剩下的全是宿主侧接线。
 
 **未推送**:分支与改动都留在本地,等用户先跑一轮看效果。
@@ -5746,3 +5746,68 @@ SSH PTY 像素尺寸贯通(原本等 `tmds/Tmds.Ssh#519`)、SSH Agent 转发、S
 **库侧的三条**(已交给 velashell-ssh 那边,不在本仓库改):主机密钥弹窗的等待被计入了
 连接超时(用户 10 秒内没点就连接失败,「永久信任」也可能没存上);`SftpFileStream.Dispose(bool)`
 仍是同步等异步;`SshChannel.DisposeAsync` 的关闭报文没有时间上限。
+
+## ✅ 92. 2026-09-23 把 VelaShell.Ssh 并进本仓库,不再单独发 NuGet(用户需求)
+
+§91 换库时 VelaShell.Ssh 还在独立仓库 `VelaShellLabs/velashell-ssh`,宿主走跨仓库的工程引用
+(`..\..\..\velashell-ssh\…`)—— 明知 CI 会红、Release 会因引用未签名程序集报 CS8002,
+原计划是等那边发一版 NuGet 再换回 `PackageReference`。用户拍板:**不单独发了,直接并进来**。
+这个库只有宿主一个使用者,为它单独维护一条发版流水线、每次改库先发包再抬版本号,得不偿失。
+
+### 一、搬到哪
+
+| 原位置(velashell-ssh) | 现位置 | 说明 |
+| --- | --- | --- |
+| `src/VelaShell.Ssh/` | `src/VelaShell.Ssh/` | 库本体。**该目录仍按 MIT 授权**:`LICENSE` / `NOTICE.md` 随目录一起搬来,与本仓库其余部分的双授权不同 |
+| `AGENTS.md` | `src/VelaShell.Ssh/AGENTS.md` | 改写成库专属约定:净室规程、依赖纪律、BcryptPbkdf 那一处例外;通用约定指回根 AGENTS.md |
+| `tests/VelaShell.Ssh.Tests/` | `tests/VelaShell.Ssh.Tests/` | 568 条(549 通过 + 19 条 Interop 在无靶机时 Inconclusive) |
+| `eng/` | `scripts/ssh/` | 互操作靶机脚本、压缩严格校验、基准、公开面清单生成(原来的相似度门禁没有搬,见下文「三、CI」) |
+| `docs/` | velashell-docs 仓库 `zh/ssh/` + `en/ssh/` | 按本仓库「文档一律去 velashell-docs」的规矩;英文镜像是这次新译的 |
+
+**没保留 git 历史**(用户选择直接拷贝):velashell-ssh 只有 5 个提交,追溯时去那个仓库看。
+
+### 二、构建上要对齐的几处
+
+- **严格规则收进 csproj**。库原来的 `Directory.Build.props` 给了 `TreatWarningsAsErrors`、
+  `AnalysisLevel=latest-recommended`、`EnforceCodeStyleInBuild` 与一组 AOT/裁剪分析器;宿主的 props 没有这些,
+  也不该为了一个库把全仓收紧 —— 所以挪进 `VelaShell.Ssh.csproj`,只作用于本工程。打包相关的属性删了。
+  两边 `.editorconfig` 逐字相同,并进来 0 警告。
+- **签名**。作为本仓工程,它随 Release 一起强名签名,CS8002 的问题自然消失;`InternalsVisibleTo` 照
+  `VelaShell.Terminal` 的老规矩只在非签名构建里给。用临时密钥做过一次 Release 构建验证。
+- **测试运行器**。库原来跑 Microsoft.Testing.Platform(`global.json` 的 `test.runner`、测试工程是 Exe),
+  宿主是 VSTest —— `dotnet test` 一个解决方案里不允许混用,改成与宿主其余测试工程一样的
+  `Microsoft.NET.Test.Sdk` + `MSTest.TestAdapter/Framework` + coverlet。
+  它自带的 `test.runsettings`(30s 超时 + 方法级并行)更严,保留;`tests/Directory.Build.targets`
+  改成「工程自己没给 `RunSettingsFilePath` 时才套全仓那份」。
+- **BouncyCastle 只剩一条版本**。以前库与宿主各有一份 `Directory.Packages.props`,两边不一致时 NuGet 取高的,
+  注释里专门提醒"升库时对一眼";现在都读 `src/Directory.Packages.props` 那一条。
+- **C# 单文件脚本撞上根目录的 `CheckTargetFramework`**。那个 target 要 XmlPeek 工程文件,
+  而 `dotnet run xxx.cs` 的工程是内存里虚拟的,磁盘上没有 → MSB3733。加了 `Exists(...)` 条件。
+  根 props 全仓打开的 `GenerateDocumentationFile` 会让脚本里的 `///` 刷 CS1587/CS1591,脚本里各自关掉。
+  基准脚本原来吃库仓库的中央包版本(BenchmarkDotNet 0.14.0),现在就地写死 `@0.14.0` ——
+  tests/ 那边的 0.16 预览版改了 `InProcessNoEmitToolchain` 的 API。
+  Release 意味着签名,所以基准的命令行改成 `dotnet run -c Release -p:SignAssembly=false …`。
+
+### 三、CI
+
+`ci.yml` 加两个作业、改一处过滤:
+
+- `ssh-checks`:压缩严格校验(单独一个进程跑,理由见 `ci.yml` 注释)。
+  库原仓库还有一道「相似度门禁」(拉 Tmds.Ssh / SSH.NET 源码做 token 级指纹比对,证明是独立实现),
+  并入时先接进了 CI,随后按用户决定**整体移除**:脚本目录、CI 步骤、`.gitignore` 条目、
+  AGENTS.md 净室规程里的那一条、NOTICE.md 的实测数据与代码注释里的白名单说明一并删掉。
+- `ssh-interop`:两版 OpenSSH 容器的互操作矩阵,只在推 main 与手动触发时跑;为此 `on:` 加了
+  `workflow_dispatch`。用 Debug —— Release 签名会省掉友元声明,测试工程编不过。
+- 主测试作业的过滤加上 `TestCategory!=Interop`(没有靶机时它们本来也只是 Inconclusive,跑一遍白花时间)。
+
+### 四、顺手改的引用
+
+关于页的 SSH 库链接(`SshBackend.ProjectUrl` / `LicenseUrl`)与 README 里的仓库链接改指本仓库
+`src/VelaShell.Ssh`;代码注释里的 `docs/…` 一律改成 `velashell-docs/zh/ssh/…`,`eng/…` 改成 `scripts/ssh/…`。
+§91 末尾记的「库侧的三条」(主机密钥弹窗计入连接超时、`SftpFileStream.Dispose(bool)` 同步等异步、
+`SshChannel.DisposeAsync` 无上限)在 velashell-ssh 最后一个提交里已经修掉,随代码一起进来了
+(`SshConnectDeadline` 停表、`CloseInBackgroundAsync`、`DisposeTimeout`)。
+
+velashell-docs 那边的配套改动:新增 `zh/ssh/` 与 `en/ssh/`(architecture、spec 00–09、getting-started 与索引页),
+挂进仓库首页、`zh|en/README.md` 与 AGENTS.md 的目录表。原文 architecture.md 首行标题与一处被折断的
+`chacha20-poly1305@openssh.com` 在搬运时顺手修了。

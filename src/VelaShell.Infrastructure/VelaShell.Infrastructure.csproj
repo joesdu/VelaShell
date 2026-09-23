@@ -7,21 +7,12 @@
   <ItemGroup>
     <ProjectReference Include="..\VelaShell.Core\VelaShell.Core.csproj" />
     <!--
-      ⚠️ **跨仓库的工程引用,是过渡形态,不能这样合进 main。**
-
-      VelaShell.Ssh 是自研的 SSH 库(VelaShellLabs/velashell-ssh),用来替换 Tmds.Ssh。
-      它还没发 NuGet,所以这里先按「两个仓库是平级目录」直接引工程 ——
-      本机改库、改宿主可以一起编、一起跑,不必每次重打包。
-
-      代价有两条,合之前必须先解掉:
-        · CI 上 velashell-ssh 没有 checkout,这一行会让编译直接失败;
-        · Release 会签名(src/Directory.Build.props),而被引工程没签,会报 CS8002。
-
-      正路是等 velashell-ssh 发一版 NuGet,把这里换回 PackageReference
-      (与插件 SDK 同一条规矩:AGENTS.md「插件 SDK 一律走 NuGet 包」)。
-      在那之前这条分支只在本机跑。
+      VelaShell.Ssh 是宿主的 SSH 库(替换了 Tmds.Ssh)。它原本在独立仓库
+      VelaShellLabs/velashell-ssh,2026-09-23 并入本仓库 src/VelaShell.Ssh,不再单独发 NuGet ——
+      它只有宿主一个使用者,为它维护一条发版流水线得不偿失;同仓以后改库、改宿主一个 PR 就够。
+      作为本仓工程它随 Release 一起强名签名,不存在引未签名程序集的 CS8002 问题。
     -->
-    <ProjectReference Include="..\..\..\velashell-ssh\src\VelaShell.Ssh\VelaShell.Ssh.csproj" />
+    <ProjectReference Include="..\VelaShell.Ssh\VelaShell.Ssh.csproj" />
     <!-- 插件契约程序集。取 nuget.org 上的正式包,版本 = 根 Directory.Build.props 的
          VelaSdkVersion(由 joesdu/velashell-plugin-toolchain 发布)。 -->
     <PackageReference Include="VelaShell.PluginSdk" />

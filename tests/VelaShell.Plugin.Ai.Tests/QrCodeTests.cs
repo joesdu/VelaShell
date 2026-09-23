@@ -4,7 +4,7 @@ using VelaShell.Plugin.Ai.Ui;
 namespace VelaShell.Plugin.Ai.Tests;
 
 /// <summary>
-/// 自研二维码编码器(<see cref="QrCode" />)的守门测试。
+/// 插件内二维码编码器(<see cref="QrCode" />,替换了 QRCoder)的守门测试。
 /// </summary>
 /// <remarks>
 /// <para>

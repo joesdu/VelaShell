@@ -65,7 +65,7 @@ public sealed record ProviderCatalogEntry(
     AuthMethod Auth,
     Func<AiProvider> Create)
 {
-    /// <summary>要用户自己填地址才用得起来(自建 / 自定义 / 按资源分配地址的云服务)。</summary>
+    /// <summary>要用户自己填地址才用得起来(自行部署 / 自定义 / 按资源分配地址的云服务)。</summary>
     public bool NeedsBaseUrl { get; init; }
 
     /// <summary>要用户自己填 OAuth 参数(客户端 id、端点)才登得上。</summary>

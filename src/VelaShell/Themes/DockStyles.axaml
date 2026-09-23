@@ -6,7 +6,7 @@
         xmlns:conv="using:VelaShell.Converters"
         xmlns:pc="using:VelaShell.Controls.Controls">
 
-    <!-- 终端工作区(自研 VelaDock)底色 + 全局通用样式。标签本身的视觉
+    <!-- 终端工作区(VelaDock)底色 + 全局通用样式。标签本身的视觉
          (36px 条 / 32px 标签 / 状态点 / accent 顶线 / 关闭钮)内联在
          Docking/Controls/DockTabItem.axaml,与设计 nunbT 逐像素一致。 -->
 

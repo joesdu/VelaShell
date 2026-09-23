@@ -651,7 +651,7 @@ public class SettingsViewModel : ReactiveObject
     /// 关于页显示的 SSH 库版本。
     /// </summary>
     /// <remarks>
-    /// 这一条不走 <see cref="PackageVersions" />:SSH 后端现在是自研库、走工程引用,
+    /// 这一条不走 <see cref="PackageVersions" />:SSH 后端现在是本仓库的工程(src/VelaShell.Ssh),
     /// 没有包版本可查。改由持有它的那一层交出来(见 <c>SshBackend</c>)。
     /// </remarks>
     public static string AboutSshLibrary =>

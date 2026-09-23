@@ -185,7 +185,7 @@ public sealed class WebToolsTests
     }
 
     /// <summary>
-    /// 引擎全挂和"这词确实搜不到"必须分开报。实测(2026-08-24)自建实例上
+    /// 引擎全挂和"这词确实搜不到"必须分开报。实测(2026-08-24)自行部署的实例上
     /// <c>unresponsive_engines</c> 常年非空(VPS 出口 IP 会被 startpage 之类要求验证码),
     /// 全挂时若还报"没搜到",模型只会换着关键词空转好几轮。
     /// </summary>
@@ -205,7 +205,7 @@ public sealed class WebToolsTests
         Assert.Contains("startpage: CAPTCHA", note, StringComparison.Ordinal);
     }
 
-    /// <summary>有结果时就别拿掉线的引擎去打扰模型 —— 自建实例上那一项基本常年非空。</summary>
+    /// <summary>有结果时就别拿掉线的引擎去打扰模型 —— 自行部署的实例上那一项基本常年非空。</summary>
     [TestMethod]
     public async Task Searxng_SomeEnginesDown_ButResultsCameBack_SaysNothingExtra()
     {
@@ -311,7 +311,7 @@ public sealed class WebToolsTests
 
     /// <summary>
     /// 用户配的 SearXNG 实例自动过闸,不用再往白名单里抄一遍。
-    /// 自建实例十有八九就在 127.0.0.1,而私网默认是拦的 —— 两个设置得彼此对上才能用,
+    /// 自行部署的实例十有八九就在 127.0.0.1,而私网默认是拦的 —— 两个设置得彼此对上才能用,
     /// 是个一定会有人踩的坑,而且报错落在"检索失败"上,看不出是闸拦的。
     /// </summary>
     [TestMethod]

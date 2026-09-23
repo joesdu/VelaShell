@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    全部测试在一个项目里，靠文件夹分层，与被测项目一一对应：
+
+      TestKit/      内存传输的另一端、最小 SSH 服务端桩、报文脚本、向量加载
+      Protocol/     wire 编解码（纯函数，可用报文样本逐字节断言）
+      Transport/    分帧、密码套件形状
+      Session/      状态机、发送闸门、重协商
+      Channels/     窗口回补时机与背压
+      Auth/         认证方法链、部分成功、2FA
+      Sftp/         SftpWire 纯函数 + 管线脚本
+      Client/       生命周期、选项校验、异常翻译
+      Config/       ssh_config、known_hosts、私钥格式
+
+    **这个项目里不许出现网络调用。** 需要对端时用 TestKit 的内存传输与服务端桩 ——
+    见 velashell-docs/zh/ssh/design/architecture.md §10.2。真要连真服务器的用例走
+    [TestCategory("Interop")]，由 CI 单独的 job 跑，不进每次提交的门禁。
+  -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- 库在独立仓库时的分析级别与代码风格门禁,随库一起带过来(见 VelaShell.Ssh.csproj)。
+         宿主 CI 用 -warnaserror 构建,这里不必再单独打开 TreatWarningsAsErrors。 -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- CA1707(成员名里不许有下划线)对**中文用例名**是反作用的:
+         这里的下划线不是命名风格,而是协议标识符本身 ——
+         `原子覆盖式重命名走posix_rename`、`终端尺寸变化发出window_change`、
+         `真实服务端接受x11_req并把假cookie存进xauth`。
+         把它们改成驼峰只会让用例名与规范里的名字对不上,
+         而用例名的唯一作用就是「红了的时候一眼看出是哪条规矩破了」。
+         CA1707 保护的是**给使用者看的公开 API**,测试方法不是。 -->
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
+    <!-- 本套件自己的运行设置(30s 超时 + 方法级并行),比全仓那份更严,理由见该文件注释。
+         tests/Directory.Build.targets 只在这里没给时才套用全仓的 velashell.runsettings。 -->
+    <RunSettingsFilePath>$(MSBuildProjectDirectory)/test.runsettings</RunSettingsFilePath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="MSTest.TestAdapter" />
+    <PackageReference Include="MSTest.TestFramework" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\VelaShell.Ssh\VelaShell.Ssh.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 加密私钥的样本是真 ssh-keygen 生成的（见 Keys/Fixtures/README.md），
+         要随测试一起进输出目录才读得到。 -->
+    <None Include="Keys/Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

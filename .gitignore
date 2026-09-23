@@ -375,3 +375,7 @@ FodyWeavers.xsd
 # MSIX 打包中间产物与产出(build/msix/Build-Msix.ps1)
 dist/
 out/
+
+# VelaShell.Ssh 互操作测试的本地私密配置(靶机地址与凭据)
+tests/**/interop.local.json
+*.local.env
