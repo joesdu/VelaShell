@@ -44,6 +44,15 @@ public sealed class X11PrimitiveTests
         Assert.IsNull(X11Display.Parse(":abc"));
         Assert.IsNull(X11Display.Parse(":-1"));
         Assert.IsNull(X11Display.Parse(":0.abc"));
+
+        // 只认纯十进制数字：符号、空白都不行。
+        Assert.IsNull(X11Display.Parse(":+1"));
+        Assert.IsNull(X11Display.Parse(": 1"));
+        Assert.IsNull(X11Display.Parse(":0.+1"));
+
+        // 6000+N 超出端口范围的显示号 —— 否则造 IPEndPoint 时会抛。
+        Assert.IsNull(X11Display.Parse(":60000"));
+        Assert.IsNotNull(X11Display.Parse($":{IPEndPoint.MaxPort - X11Display.TcpPortBase}"));
     }
 
     [TestMethod]
@@ -103,7 +112,7 @@ public sealed class X11PrimitiveTests
         byte[] file =
         [
             .. Entry(XAuthority.FamilyLocal, "别的机器", "0", XAuthority.MitMagicCookie1, other),
-            .. Entry(XAuthority.FamilyLocal, Environment.MachineName, "0", XAuthority.MitMagicCookie1, cookie),
+            .. Entry(XAuthority.FamilyLocal, Dns.GetHostName(), "0", XAuthority.MitMagicCookie1, cookie),
         ];
 
         IReadOnlyList<XAuthorityEntry> entries = XAuthority.Parse(file);
@@ -111,6 +120,59 @@ public sealed class X11PrimitiveTests
 
         byte[]? found = XAuthority.FindCookie(entries, X11Display.Parse(":0")!);
         Assert.AreSequenceEqual(cookie, found, "应当挑本机主机名那一条");
+    }
+
+    [TestMethod]
+    public void 本机主机名带域名也能匹配()
+    {
+        // .Xauthority 里存的是 gethostname() 的完整值；Environment.MachineName 在类 Unix 上会截到第一个点。
+        byte[] cookie = [1, 2, 3, 4];
+        byte[] file = Entry(XAuthority.FamilyLocal, "myhost.example.com", "0", XAuthority.MitMagicCookie1, cookie);
+
+        Assert.AreSequenceEqual(
+            cookie, XAuthority.FindCookie(XAuthority.Parse(file), X11Display.Parse(":0")!, hostName: "myhost.example.com"));
+        Assert.IsNull(XAuthority.FindCookie(XAuthority.Parse(file), X11Display.Parse(":0")!, hostName: "myhost"));
+    }
+
+    [TestMethod]
+    public void 远程显示不拿本机的cookie()
+    {
+        // ⚠️ DISPLAY=otherhost:0 时拿本机 :0 那条，等于把本机显示的钥匙送给 otherhost。
+        byte[] file = Entry(XAuthority.FamilyLocal, "myhost", "0", XAuthority.MitMagicCookie1, [1, 2, 3, 4]);
+
+        Assert.IsNull(XAuthority.FindCookie(
+            XAuthority.Parse(file), X11Display.Parse("otherhost:0")!, hostName: "myhost", hostAddresses: [IPAddress.Parse("10.0.0.2")]));
+    }
+
+    [TestMethod]
+    public void 回环地址与本机主机名的显示按本机主机名匹配()
+    {
+        byte[] cookie = [1, 2, 3, 4];
+        byte[] file = Entry(XAuthority.FamilyLocal, "myhost", "0", XAuthority.MitMagicCookie1, cookie);
+
+        Assert.AreSequenceEqual(
+            cookie, XAuthority.FindCookie(XAuthority.Parse(file), X11Display.Parse("127.0.0.1:0")!, hostName: "myhost"));
+        Assert.AreSequenceEqual(
+            cookie, XAuthority.FindCookie(XAuthority.Parse(file), X11Display.Parse("MyHost:0")!, hostName: "myhost", hostAddresses: []));
+    }
+
+    [TestMethod]
+    public void 网络族必须地址相等()
+    {
+        byte[] other = [9, 9, 9, 9];
+        byte[] cookie = [1, 2, 3, 4];
+        byte[] file =
+        [
+            .. Entry(XAuthority.FamilyInternet, [10, 0, 0, 1], "0", XAuthority.MitMagicCookie1, other),
+            .. Entry(XAuthority.FamilyInternet, [10, 0, 0, 2], "0", XAuthority.MitMagicCookie1, cookie),
+        ];
+        IReadOnlyList<XAuthorityEntry> entries = XAuthority.Parse(file);
+
+        Assert.AreSequenceEqual(cookie, XAuthority.FindCookie(entries, X11Display.Parse("10.0.0.2:0")!));
+        Assert.AreSequenceEqual(
+            cookie, XAuthority.FindCookie(entries, X11Display.Parse("box:0")!, hostAddresses: [IPAddress.Parse("10.0.0.2").MapToIPv6()]));
+        Assert.IsNull(XAuthority.FindCookie(entries, X11Display.Parse("10.0.0.3:0")!), "别的主机的 cookie 不能拿来用");
+        Assert.IsNull(XAuthority.FindCookie(entries, X11Display.Parse("box:0")!), "域名没解析出地址时不匹配网络族");
     }
 
     [TestMethod]
@@ -301,7 +363,10 @@ public sealed class X11PrimitiveTests
     }
 
     /// <summary>拼一条 <c>.Xauthority</c> 记录。</summary>
-    private static byte[] Entry(int family, string address, string number, string name, byte[] data)
+    private static byte[] Entry(int family, string address, string number, string name, byte[] data) =>
+        Entry(family, Encoding.ASCII.GetBytes(address), number, name, data);
+
+    private static byte[] Entry(int family, byte[] address, string number, string name, byte[] data)
     {
         ArrayBufferWriter<byte> buffer = new();
 
@@ -309,7 +374,7 @@ public sealed class X11PrimitiveTests
         BinaryPrimitives.WriteUInt16BigEndian(two, (ushort)family);
         buffer.Write(two);
 
-        WriteBlock(buffer, Encoding.ASCII.GetBytes(address));
+        WriteBlock(buffer, address);
         WriteBlock(buffer, Encoding.ASCII.GetBytes(number));
         WriteBlock(buffer, Encoding.ASCII.GetBytes(name));
         WriteBlock(buffer, data);
