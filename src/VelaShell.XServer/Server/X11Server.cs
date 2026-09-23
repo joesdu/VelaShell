@@ -72,6 +72,7 @@ public sealed partial class X11Server : IAsyncDisposable
         InitAtoms();
         InitExtensions();
         InitXSettings();
+        InitSyncCounters();
         _pointerWindow = Root;
         _loopTask = Task.Run(RunLoopAsync);
     }
@@ -182,6 +183,11 @@ public sealed partial class X11Server : IAsyncDisposable
 
     private void RunItem(WorkItem item)
     {
+        // SYNC 的 Await 期间,这个客户端之后的请求暂存,条件成立时放回。
+        if (_syncWaits.Count != 0 && DeferIfWaiting(item))
+        {
+            return;
+        }
         // GrabServer 期间,别人的请求原样暂存,Ungrab 后按原顺序放回(协议「GrabServer」)。
         if (_serverGrabber is { } grabber && item.Client is { } client && !ReferenceEquals(client, grabber) && !client.Closed)
         {

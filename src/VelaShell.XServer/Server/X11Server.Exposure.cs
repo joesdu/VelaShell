@@ -285,6 +285,7 @@ public sealed partial class X11Server
 
     internal void MarkDamage(XWindow top, Region region)
     {
+        NoteWindowDrawn(top, region);
         if (!_damage.TryGetValue(top, out Region? pending))
         {
             _damage[top] = region.Clone();

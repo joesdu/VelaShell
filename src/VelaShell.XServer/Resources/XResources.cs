@@ -25,9 +25,17 @@ internal abstract class XResource(uint id, XClient? owner)
 }
 
 /// <summary>像素图:一块离屏帧缓冲。</summary>
-internal sealed class XPixmap(uint id, XClient? owner, int width, int height, byte depth) : XResource(id, owner)
+/// <remarks>
+/// 通常自己新建一块缓冲;Composite 的 NameWindowPixmap 与 DOUBLE-BUFFER 的后缓冲则包住一块已有的缓冲。
+/// </remarks>
+internal sealed class XPixmap(uint id, XClient? owner, PixelBuffer buffer) : XResource(id, owner)
 {
-    public PixelBuffer Buffer { get; } = new(width, height, depth);
+    public XPixmap(uint id, XClient? owner, int width, int height, byte depth)
+        : this(id, owner, new PixelBuffer(width, height, depth))
+    {
+    }
+
+    public PixelBuffer Buffer { get; } = buffer;
 
     public byte Depth => Buffer.Depth;
 

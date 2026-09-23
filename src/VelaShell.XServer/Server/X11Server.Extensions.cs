@@ -47,6 +47,11 @@ public sealed partial class X11Server
         Register(new Extension("MIT-SCREEN-SAVER", ScreenSaverMajor, ScreenSaverExtension) { FirstEvent = ScreenSaverEventBase });
         Register(new Extension("DPMS", DpmsMajor, Dpms));
         Register(new Extension("X-Resource", XResMajor, XRes));
+        Register(new Extension("DAMAGE", DamageMajor, DamageExtension) { FirstEvent = DamageEventBase, FirstError = DamageErrorBase });
+        Register(new Extension("Composite", CompositeMajor, CompositeExtension));
+        Register(new Extension("DOUBLE-BUFFER", DbeMajor, Dbe) { FirstError = DbeErrorBase });
+        Register(new Extension("SYNC", SyncMajor, Sync) { FirstEvent = SyncEventBase, FirstError = SyncErrorBase });
+        Register(new Extension("Present", PresentMajor, Present));
     }
 
     private void Register(Extension extension)
@@ -201,6 +206,10 @@ public sealed partial class X11Server
         }
         CleanupXFixes(client, null);
         _saverSelections.Remove(client);
+        CleanupDamage(client, null);
+        CleanupCompositeDbe(client, null);
+        CleanupSync(client);
+        CleanupPresent(client, null);
         foreach (var key in _randrSelections.Keys.Where(k => ReferenceEquals(k.Client, client)).ToArray())
         {
             _randrSelections.Remove(key);

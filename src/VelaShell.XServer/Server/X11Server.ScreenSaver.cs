@@ -35,7 +35,11 @@ public sealed partial class X11Server
     private ushort _dpmsLevel;
 
     /// <summary>用户有了输入(宿主注入或 XTEST):空闲计时归零。</summary>
-    private void NoteUserActivity() => _lastActivity = Now;
+    private void NoteUserActivity()
+    {
+        _lastActivity = Now;
+        EvaluateSync();   // IDLETIME 归零:等它负向跨越的报警器此刻触发
+    }
 
     private uint IdleMilliseconds => unchecked(Now - _lastActivity);
 

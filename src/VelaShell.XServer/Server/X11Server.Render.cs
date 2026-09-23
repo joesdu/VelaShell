@@ -403,6 +403,10 @@ public sealed partial class X11Server
         {
             MarkDamage(top, dirty);
         }
+        else if (dst.Drawable is XPixmap pixmap)
+        {
+            NotePixmapDrawn(pixmap, dirty);
+        }
     }
 
     // ------------------------------------------------------------------ Composite / FillRectangles

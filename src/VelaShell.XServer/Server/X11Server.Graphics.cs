@@ -57,9 +57,10 @@ public sealed partial class X11Server
     private void FreePixmap(XRequestReader r)
     {
         uint id = r.U32();
-        _ = Lookup<XPixmap>(id) ?? throw new XProtocolError(XErrorCode.Pixmap, id);
+        XPixmap pixmap = Lookup<XPixmap>(id) ?? throw new XProtocolError(XErrorCode.Pixmap, id);
         // 像素图被窗口背景或 GC 引用时仍然可用(协议:释放 ID,数据活到最后一个引用消失)—— 引用持有对象本身,这里只删 ID。
         RemoveResource(id);
+        CleanupDamage(null, pixmap);
     }
 
     // ------------------------------------------------------------------ GC
@@ -255,6 +256,10 @@ public sealed partial class X11Server
         if (target.TopLevel is { } top)
         {
             MarkDamage(top, raster.DirtyBounds);
+        }
+        else if (_damageObjects.Count != 0 && Lookup<XPixmap>(drawable) is { } pixmap)
+        {
+            NotePixmapDrawn(pixmap, raster.DirtyBounds);
         }
     }
 
