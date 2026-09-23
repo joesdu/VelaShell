@@ -227,6 +227,7 @@ public sealed class ConnectionWorkflowService(
                 CertificatePath = profile.CertificatePath,
                 // 会话级保活覆盖(F-06);null = 跟随全局。跳板链上每一跳各带各的。
                 KeepAliveSeconds = profile.Terminal?.KeepAliveSeconds,
+                Ssh = profile.Ssh?.Clone(),
                 JumpHost = jump
             };
         }
@@ -251,6 +252,7 @@ public sealed class ConnectionWorkflowService(
             PrivateKeyPassphrase = profile.PrivateKeyPassphrase,
             CertificatePath = profile.CertificatePath,
             KeepAliveSeconds = profile.Terminal?.KeepAliveSeconds,
+            Ssh = profile.Ssh?.Clone(),
             JumpHost = jump
         };
     }

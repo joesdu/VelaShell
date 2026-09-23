@@ -91,6 +91,93 @@ public sealed class ConnectionProfileViewModelTests
         Assert.IsNull(off.Terminal?.AntiIdleSeconds, "关掉之后不该在配置里留下一段「设过,设的是关」。");
     }
 
+    /// <summary>
+    /// SSH 可选能力(压缩 / agent 转发 / X11 转发)打开编辑对话框要回显,保存要原样带回;
+    /// 全部关掉要存回 null,不给配置留一段全 false 的对象。
+    /// </summary>
+    [TestMethod]
+    public async Task SshFeatures_RoundTripThroughTheEditDialog()
+    {
+        var existing = new SessionProfile
+        {
+            Name = "far-away",
+            Host = "10.0.0.2",
+            Username = "ops",
+            Ssh = new()
+            {
+                Compression = true,
+                AgentForwarding = true,
+                X11Forwarding = true,
+                X11Display = "localhost:1.0",
+                X11Trusted = false,
+            },
+        };
+
+        var vm = new ConnectionProfileViewModel(existing);
+        Assert.IsTrue(vm.SshCompression);
+        Assert.IsTrue(vm.SshAgentForwarding);
+        Assert.IsTrue(vm.SshX11Forwarding);
+        Assert.AreEqual("localhost:1.0", vm.SshX11Display);
+        Assert.IsFalse(vm.SshX11Trusted);
+
+        SessionProfile? saved = await vm.SaveCommand.Execute().FirstAsync();
+        Assert.IsNotNull(saved?.Ssh);
+        Assert.IsTrue(saved.Ssh.Compression);
+        Assert.IsTrue(saved.Ssh.AgentForwarding);
+        Assert.IsTrue(saved.Ssh.X11Forwarding);
+        Assert.AreEqual("localhost:1.0", saved.Ssh.X11Display);
+        Assert.IsFalse(saved.Ssh.X11Trusted);
+
+        vm.SshCompression = false;
+        vm.SshAgentForwarding = false;
+        vm.SshX11Forwarding = false;
+        SessionProfile? off = await vm.SaveCommand.Execute().FirstAsync();
+        Assert.IsNotNull(off);
+        Assert.IsNull(off.Ssh, "三项都关了就不该留下一个全 false 的对象。");
+    }
+
+    /// <summary>
+    /// SFTP 配置没有交互式 shell:两个转发存下来永远不生效,切回 SSH 时却会突然起作用 ——
+    /// 所以只留压缩。
+    /// </summary>
+    [TestMethod]
+    public async Task SshFeatures_SftpKeepsCompressionButDropsForwarding()
+    {
+        var vm = new ConnectionProfileViewModel
+        {
+            Host = "files.example.com",
+            Username = "root",
+            Password = SecureStringConvert.FromPlaintext("secret"),
+            SshCompression = true,
+            SshAgentForwarding = true,
+            SshX11Forwarding = true,
+        };
+        vm.SelectConnectionTypeCommand.Execute(ConnectionType.SFTP).Subscribe();
+
+        SessionProfile? profile = await vm.SaveCommand.Execute().FirstAsync();
+
+        Assert.IsNotNull(profile?.Ssh);
+        Assert.IsTrue(profile.Ssh.Compression);
+        Assert.IsFalse(profile.Ssh.AgentForwarding);
+        Assert.IsFalse(profile.Ssh.X11Forwarding);
+    }
+
+    /// <summary>SSH Agent 认证排在下拉末尾(枚举值即下标),选中后密码与私钥字段都不再出现。</summary>
+    [TestMethod]
+    public async Task AgentAuth_IsTheLastDropdownItem_AndNeedsNoCredentialFields()
+    {
+        var vm = new ConnectionProfileViewModel { Host = "h", Username = "u", AuthMethodIndex = 3 };
+
+        Assert.AreEqual(AuthMethod.Agent, vm.AuthMethod);
+        Assert.IsTrue(vm.IsAgentAuth);
+        Assert.IsFalse(vm.ShowPasswordField);
+        Assert.IsFalse(vm.ShowsPrivateKeyFields);
+        Assert.IsNull(vm.PrivateKeyPathError);
+
+        SessionProfile? saved = await vm.SaveCommand.Execute().FirstAsync();
+        Assert.AreEqual(AuthMethod.Agent, saved?.AuthMethod);
+    }
+
     [TestMethod]
     public void AntiIdle_IsClampedToTheSupportedRange()
     {

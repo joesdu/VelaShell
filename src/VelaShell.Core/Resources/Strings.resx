@@ -4912,4 +4912,67 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="SshErr_Disconnected" xml:space="preserve">
     <value>The server ended the session.</value>
   </data>
+  <data name="Profile_AgentAuth" xml:space="preserve">
+    <value>SSH Agent</value>
+  </data>
+  <data name="Profile_AgentAuthHint" xml:space="preserve">
+    <value>Signs with the keys held by your local ssh-agent; nothing is stored in this profile. On Windows that is the &quot;OpenSSH Authentication Agent&quot; service (start it, then load keys with ssh-add); elsewhere the agent named by SSH_AUTH_SOCK.</value>
+  </data>
+  <data name="Profile_SshFeatures" xml:space="preserve">
+    <value>SSH options</value>
+  </data>
+  <data name="Profile_SshCompression" xml:space="preserve">
+    <value>Enable compression (for high-latency or low-bandwidth links)</value>
+  </data>
+  <data name="Profile_SshCompressionHint" xml:space="preserve">
+    <value>Turn it on when latency is high (cross-border or intercontinental links, round trips above ~100 ms) or bandwidth is scarce: terminal output and text files shrink a lot. Leave it off on a LAN or when you mostly move already-compressed data (images, archives) — it would only cost CPU. Falls back to no compression if the server does not support it.</value>
+  </data>
+  <data name="Profile_SshAgentForwarding" xml:space="preserve">
+    <value>Forward ssh-agent (-A)</value>
+  </data>
+  <data name="Profile_SshAgentForwardingHint" xml:space="preserve">
+    <value>Lets you ssh onward from this server with the keys in your local agent, without copying private keys to it. While the session is open, root on this server can use your agent to sign — only enable it for servers you trust.</value>
+  </data>
+  <data name="Profile_SshX11Forwarding" xml:space="preserve">
+    <value>Forward X11 (show remote GUI windows locally)</value>
+  </data>
+  <data name="Profile_SshX11ForwardingHint" xml:space="preserve">
+    <value>Needs an X server running on this computer — on Windows e.g. VcXsrv, Xming or X410 (with access control disabled or a matching .Xauthority) — and X11Forwarding yes plus xauth on the server. If the server refuses, the session still opens and the terminal tells you why.</value>
+  </data>
+  <data name="Profile_SshX11Display" xml:space="preserve">
+    <value>Local X display</value>
+  </data>
+  <data name="Profile_SshX11Trusted" xml:space="preserve">
+    <value>Trusted (-Y)</value>
+  </data>
+  <data name="Profile_SshX11TrustedHint" xml:space="preserve">
+    <value>Trusted forwarding gives remote X clients full access to your local display. X servers on Windows usually support only this mode; untrusted mode needs xauth installed locally.</value>
+  </data>
+  <data name="Ssh_X11ForwardOn" xml:space="preserve">
+    <value>X11 forwarding on → local display {0}</value>
+  </data>
+  <data name="Ssh_AgentForwardOn" xml:space="preserve">
+    <value>ssh-agent forwarding on</value>
+  </data>
+  <data name="Ssh_X11ForwardFailed" xml:space="preserve">
+    <value>X11 forwarding not enabled: {0}</value>
+  </data>
+  <data name="Ssh_AgentForwardFailed" xml:space="preserve">
+    <value>ssh-agent forwarding not enabled: {0}</value>
+  </data>
+  <data name="Ssh_X11BadDisplay" xml:space="preserve">
+    <value>unrecognized display &quot;{0}&quot; (expected something like localhost:0.0)</value>
+  </data>
+  <data name="SshErr_AgentUnavailable" xml:space="preserve">
+    <value>Cannot reach the local ssh-agent: {0}</value>
+  </data>
+  <data name="SshErr_AgentNotRunning" xml:space="preserve">
+    <value>it is not running. On Windows, start the &quot;OpenSSH Authentication Agent&quot; service (Get-Service ssh-agent / Start-Service ssh-agent).</value>
+  </data>
+  <data name="SshErr_AgentNoKeys" xml:space="preserve">
+    <value>The local ssh-agent holds no keys. Load one first, e.g. ssh-add ~/.ssh/id_ed25519.</value>
+  </data>
+  <data name="DiagSvc_SuggestAgentKeys" xml:space="preserve">
+    <value>Check that ssh-agent is running and holds the key this server accepts: ssh-add -l lists the loaded keys.</value>
+  </data>
 </root>

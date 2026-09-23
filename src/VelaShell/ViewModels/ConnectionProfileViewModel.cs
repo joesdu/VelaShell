@@ -79,6 +79,13 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     private int _overrideKeepAliveSeconds = -1;
     private int _antiIdleSeconds;
 
+    // ---- SSH 协议层可选能力(压缩 / agent 转发 / X11 转发);默认全关 ----
+    private bool _sshCompression;
+    private bool _sshAgentForwarding;
+    private bool _sshX11Forwarding;
+    private string? _sshX11Display;
+    private bool _sshX11Trusted = new SshSessionOptions().X11Trusted;
+
     // ---- 插件协议 ----
     private readonly PluginProtocolRegistry? _protocolRegistry;
     private string? _pluginProtocolId;
@@ -173,6 +180,14 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
                 _overrideKeepAliveSeconds = overrides.KeepAliveSeconds ?? -1;
                 _antiIdleSeconds = overrides.AntiIdleSeconds ?? 0;
             }
+            if (existing.Ssh is { } ssh)
+            {
+                _sshCompression = ssh.Compression;
+                _sshAgentForwarding = ssh.AgentForwarding;
+                _sshX11Forwarding = ssh.X11Forwarding;
+                _sshX11Display = ssh.X11Display;
+                _sshX11Trusted = ssh.X11Trusted;
+            }
         }
         else
         {
@@ -185,6 +200,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
                 IsKeyAuth = method == AuthMethod.PrivateKey;
                 IsCertAuth = method == AuthMethod.Certificate;
                 this.RaisePropertyChanged(nameof(ShowsPrivateKeyFields));
+                this.RaisePropertyChanged(nameof(IsAgentAuth));
             });
 
         // Skip(1):WhenAnyValue 订阅时会立即用当前值(默认“未分组”/“直连”)触发一次,
@@ -873,6 +889,55 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     /// </summary>
     public bool SupportsPostAuthCommand => ConnectionType == ConnectionType.SSH;
 
+    // ---- SSH 协议层可选能力 ----
+    //
+    // 压缩对 SSH 与 SFTP 都有意义(两者走同一条 SSH 连接),显示条件跟 RequiresSshAuth;
+    // 两个转发只挂在交互式 shell 上,SFTP 配置没有 shell,显示条件跟 SupportsPostAuthCommand。
+
+    /// <summary>当前是否选了 SSH Agent 认证;控制那一行说明的可见性。</summary>
+    public bool IsAgentAuth => AuthMethod == AuthMethod.Agent;
+
+    /// <summary>启用压缩(高延迟 / 低带宽链路)。</summary>
+    public bool SshCompression
+    {
+        get => _sshCompression;
+        set => this.RaiseAndSetIfChanged(ref _sshCompression, value);
+    }
+
+    /// <summary>把本机 ssh-agent 转发给远端。</summary>
+    public bool SshAgentForwarding
+    {
+        get => _sshAgentForwarding;
+        set => this.RaiseAndSetIfChanged(ref _sshAgentForwarding, value);
+    }
+
+    /// <summary>X11 转发;关着时显示地址与受信任两项收起。</summary>
+    public bool SshX11Forwarding
+    {
+        get => _sshX11Forwarding;
+        set => this.RaiseAndSetIfChanged(ref _sshX11Forwarding, value);
+    }
+
+    /// <summary>本机 X 显示;留空 = <c>DISPLAY</c> 环境变量,再没有就是 <c>localhost:0.0</c>。</summary>
+    public string? SshX11Display
+    {
+        get => _sshX11Display;
+        set => this.RaiseAndSetIfChanged(ref _sshX11Display, value);
+    }
+
+    /// <summary>受信任的 X11 转发(<c>ssh -Y</c>)。</summary>
+    public bool SshX11Trusted
+    {
+        get => _sshX11Trusted;
+        set => this.RaiseAndSetIfChanged(ref _sshX11Trusted, value);
+    }
+
+    /// <summary>X11 显示地址输入框的占位:没配 <c>DISPLAY</c> 时实际会用的那个值。</summary>
+    public string SshX11DisplayPlaceholder =>
+        Environment.GetEnvironmentVariable("DISPLAY") is { Length: > 0 } display
+            ? display
+            : SshSessionOptions.DefaultX11Display;
+
     // ---- 会话级终端覆盖项(F-06) ----
 
     /// <summary>
@@ -1299,8 +1364,35 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
             PluginSecrets = ConnectionType == ConnectionType.Plugin ? CollectPluginValues(secrets: true) : null,
             // 会话级终端覆盖(F-06)。一项都没设时整个对象存 null,而不是一个全空对象:
             // 后者会让"有没有覆盖"这件事有了两种表示,也给每条老配置的 JSON 平白多一段。
-            Terminal = BuildTerminalOverrides()
+            Terminal = BuildTerminalOverrides(),
+            Ssh = BuildSshOptions()
         };
+    }
+
+    /// <summary>把界面上的 SSH 可选能力收成一个对象;一项都没开(或不是 SSH 系协议)时返回 null。</summary>
+    /// <remarks>
+    /// 两个转发只在 SSH 上存:SFTP 配置没有交互式 shell,存下来的开关永远不生效,
+    /// 切回 SSH 时却会突然起作用 —— 与「认证后执行命令」同一个理由。
+    /// X11 关着时显示地址也不存,免得留下一个看不见、却会在下次打开 X11 时悄悄生效的旧值。
+    /// </remarks>
+    private SshSessionOptions? BuildSshOptions()
+    {
+        if (!RequiresSshAuth)
+        {
+            return null;
+        }
+        bool shell = SupportsPostAuthCommand;
+        SshSessionOptions options = new()
+        {
+            Compression = _sshCompression,
+            AgentForwarding = shell && _sshAgentForwarding,
+            X11Forwarding = shell && _sshX11Forwarding,
+            X11Display = shell && _sshX11Forwarding && !string.IsNullOrWhiteSpace(_sshX11Display)
+                ? _sshX11Display.Trim()
+                : null,
+            X11Trusted = _sshX11Trusted
+        };
+        return options.IsEmpty ? null : options;
     }
 
     /// <summary>把界面上的六个会话级终端项收成一个对象;一项都没设时返回 null。</summary>

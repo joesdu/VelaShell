@@ -28,5 +28,15 @@ public enum AuthMethod
     /// <c>PrivateKeyPath</c> / <c>PrivateKeyPassphrase</c>,只额外多一个证书文件路径。
     /// 服务器认的是 CA 的签名而非某把具体公钥,因此换机器不必再往 authorized_keys 里加东西。
     /// </remarks>
-    Certificate
+    Certificate,
+
+    /// <summary>
+    /// 用本机 ssh-agent 里的密钥认证(Windows 的 OpenSSH Authentication Agent 服务,
+    /// 或 <c>SSH_AUTH_SOCK</c> 指向的 agent)。
+    /// </summary>
+    /// <remarks>
+    /// 私钥从不进入本进程,配置里也不存任何凭据 —— 签名由 agent 代做。
+    /// agent 里有几把钥就逐把试,直到服务端接受。
+    /// </remarks>
+    Agent
 }

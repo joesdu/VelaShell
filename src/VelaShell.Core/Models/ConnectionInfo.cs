@@ -61,4 +61,13 @@ public class ConnectionInfo
     /// 都可以有自己的设置 —— 客户端工厂那一层手里只有一个 <see cref="ConnectionInfo" />。
     /// </remarks>
     public int? KeepAliveSeconds { get; init; }
+
+    /// <summary>
+    /// 这一跳的 SSH 可选能力(压缩、agent 转发、X11 转发);null = 全关。
+    /// </summary>
+    /// <remarks>
+    /// 压缩是逐跳协商的,跳板链上每一跳各带各的。两个转发只对<b>终点</b>那一跳的交互式
+    /// shell 生效 —— 跳板只负责开隧道,不开 shell,也就没有请求转发的通道。
+    /// </remarks>
+    public SshSessionOptions? Ssh { get; init; }
 }

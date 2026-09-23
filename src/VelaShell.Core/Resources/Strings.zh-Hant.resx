@@ -5358,4 +5358,67 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SshErr_Disconnected" xml:space="preserve">
     <value>伺服器結束了工作階段。</value>
   </data>
+  <data name="Profile_AgentAuth" xml:space="preserve">
+    <value>SSH Agent</value>
+  </data>
+  <data name="Profile_AgentAuthHint" xml:space="preserve">
+    <value>用本機 ssh-agent 裡的金鑰簽章,設定中不儲存任何憑據。Windows 上是「OpenSSH Authentication Agent」服務(先啟動它,再用 ssh-add 載入金鑰);其他系統使用 SSH_AUTH_SOCK 指向的 agent。</value>
+  </data>
+  <data name="Profile_SshFeatures" xml:space="preserve">
+    <value>SSH 連線選項</value>
+  </data>
+  <data name="Profile_SshCompression" xml:space="preserve">
+    <value>啟用壓縮(適合高延遲 / 低頻寬連線)</value>
+  </data>
+  <data name="Profile_SshCompressionHint" xml:space="preserve">
+    <value>延遲較高(跨境、跨洋,往返 100 ms 以上)或頻寬吃緊時建議開啟:終端輸出與文字檔能省下大量流量。區域網路、或主要傳輸圖片 / 壓縮檔這類已壓縮資料時不建議開啟 —— 只會白白多佔 CPU。伺服器不支援時自動退回不壓縮。</value>
+  </data>
+  <data name="Profile_SshAgentForwarding" xml:space="preserve">
+    <value>轉送 ssh-agent(-A)</value>
+  </data>
+  <data name="Profile_SshAgentForwardingHint" xml:space="preserve">
+    <value>在這台伺服器上繼續 ssh 到下一跳時,使用本機 agent 裡的金鑰,私鑰不必複製到伺服器上。工作階段期間,這台伺服器上的 root 也能借用你的 agent 簽章 —— 只對信任的機器開啟。</value>
+  </data>
+  <data name="Profile_SshX11Forwarding" xml:space="preserve">
+    <value>X11 轉送(在本機顯示遠端圖形介面)</value>
+  </data>
+  <data name="Profile_SshX11ForwardingHint" xml:space="preserve">
+    <value>需要本機執行一個 X 伺服器 —— Windows 上如 VcXsrv、Xming、X410(關閉存取控制,或設定好對應的 .Xauthority)—— 伺服器端也要開啟 X11Forwarding 並安裝 xauth。伺服器拒絕時工作階段照常開啟,終端會提示原因。</value>
+  </data>
+  <data name="Profile_SshX11Display" xml:space="preserve">
+    <value>本機 X 顯示</value>
+  </data>
+  <data name="Profile_SshX11Trusted" xml:space="preserve">
+    <value>受信任(-Y)</value>
+  </data>
+  <data name="Profile_SshX11TrustedHint" xml:space="preserve">
+    <value>受信任轉送讓遠端 X 程式對本機顯示擁有完整存取權。Windows 上的 X 伺服器通常只支援這種模式;非受信任模式需要本機安裝 xauth。</value>
+  </data>
+  <data name="Ssh_X11ForwardOn" xml:space="preserve">
+    <value>X11 轉送已開啟 → 本機顯示 {0}</value>
+  </data>
+  <data name="Ssh_AgentForwardOn" xml:space="preserve">
+    <value>ssh-agent 轉送已開啟</value>
+  </data>
+  <data name="Ssh_X11ForwardFailed" xml:space="preserve">
+    <value>X11 轉送未能啟用:{0}</value>
+  </data>
+  <data name="Ssh_AgentForwardFailed" xml:space="preserve">
+    <value>ssh-agent 轉送未能啟用:{0}</value>
+  </data>
+  <data name="Ssh_X11BadDisplay" xml:space="preserve">
+    <value>無法辨識顯示位址「{0}」(應形如 localhost:0.0)</value>
+  </data>
+  <data name="SshErr_AgentUnavailable" xml:space="preserve">
+    <value>無法連線到本機 ssh-agent:{0}</value>
+  </data>
+  <data name="SshErr_AgentNotRunning" xml:space="preserve">
+    <value>它沒有在執行。Windows 上請啟動「OpenSSH Authentication Agent」服務(Get-Service ssh-agent / Start-Service ssh-agent)。</value>
+  </data>
+  <data name="SshErr_AgentNoKeys" xml:space="preserve">
+    <value>本機 ssh-agent 裡一把金鑰都沒有。請先載入,例如 ssh-add ~/.ssh/id_ed25519。</value>
+  </data>
+  <data name="DiagSvc_SuggestAgentKeys" xml:space="preserve">
+    <value>確認 ssh-agent 正在執行,並已載入這台伺服器認可的金鑰:ssh-add -l 可列出已載入的金鑰。</value>
+  </data>
 </root>

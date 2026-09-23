@@ -2326,6 +2326,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         terminalTab.Start();
         terminalTab.ConnectionStatus = SessionStatus.Connected;
         await FeedJumpChainNoticeAsync(terminalTab, profile);
+        FeedShellStreamNotices(terminalTab, shellStream);
         StartSessionLogging(terminalTab, settings);
         // 探针结论先落到标签上:SendSilentCommand 靠它决定注入行要不要接摘历史前缀
         // (那段在 fish 里会让整行解析失败,见 ShellHistoryScrub.SupportedBy)。
@@ -2442,6 +2443,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             tab.Start();
             tab.ConnectionStatus = SessionStatus.Connected;
             await FeedJumpChainNoticeAsync(tab, tab.Profile);
+            FeedShellStreamNotices(tab, shellStream);
             tab.ResetReconnectAttempts();
             StartSessionLogging(tab, settings);
             tab.RemoteShellKind = shellKind; // 同 RunHandshakeAsync:注入前先落结论
@@ -2479,6 +2481,23 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         finally
         {
             EndTabConnect(tab);
+        }
+    }
+
+    /// <summary>
+    /// 把打开 shell 时附带的提示(X11 / agent 转发开没开成)写进终端顶部,与跳板链那行同一格式。
+    /// </summary>
+    /// <remarks>
+    /// 开成了用灰字,只是告诉用户「这条会话上有这个能力」;没开成用黄字,并带上原因 ——
+    /// shell 照样开着,不说一声的话用户只会对着远端一句 <c>cannot open display</c> 摸不着头脑。
+    /// </remarks>
+    private static void FeedShellStreamNotices(TerminalTabViewModel tab, IShellStreamWrapper shellStream)
+    {
+        foreach (ShellStreamNotice notice in shellStream.Notices)
+        {
+            string line = (notice.IsWarning ? "\e[33m▲ " : "\e[90m● ") + notice.Text + "\e[0m\r\n";
+            // 同跳板链那行:字节按会话字符集编码,写死 UTF-8 在 GBK 会话上就是乱码。
+            tab.TerminalEmulator.Feed(tab.TerminalEmulator.SessionEncoding.GetBytes(line));
         }
     }
 
