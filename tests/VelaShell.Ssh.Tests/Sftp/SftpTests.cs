@@ -211,10 +211,9 @@ public sealed class SftpTests
     {
         byte[] payload = new byte[20_000];
         Random.Shared.NextBytes(payload);
-
+        // 服务端每次只回 100 字节 —— 协议允许，这不是错误
         await using Harness harness = await Harness.StartAsync(
             server => server.AddFile("/home/joe/big.bin", payload),
-            // **服务端每次只回 100 字节** —— 协议允许，这不是错误。
             new TestSftpOptions { ShortReadLimit = 100 });
 
         byte[] content = await harness.Sftp.ReadAllBytesAsync("/home/joe/big.bin", harness.Token);
@@ -293,8 +292,7 @@ public sealed class SftpTests
                 {
                     server.AddFile($"/home/joe/f{i}.txt", new byte[i * 10]);
                 }
-            },
-            // **服务端故意把应答倒着发。**
+            }, // 服务端故意把应答倒着发
             new TestSftpOptions { ShuffleResponses = true });
 
         // 一口气发出去，不逐个等 —— 这才有多个在途请求可供打乱。
@@ -345,8 +343,7 @@ public sealed class SftpTests
         Random.Shared.NextBytes(payload);
 
         await using Harness harness = await Harness.StartAsync(
-            // 前 3 个 WRITE 正常应答，之后干脆不回 —— 模拟中途断开。
-            sftpOptions: new TestSftpOptions { FailWritesAfter = 3 },
+            sftpOptions: new TestSftpOptions { FailWritesAfter = 3 }, // 前 3 个 WRITE 正常应答，之后干脆不回 —— 模拟中途断开。
             clientOptions: SftpOptions.Default with { BlockSize = 4096, MaxInFlight = 4 });
 
         SftpFileStream stream = await harness.Sftp.OpenWriteAsync(
