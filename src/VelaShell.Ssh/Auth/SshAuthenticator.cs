@@ -276,10 +276,10 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
         _transport.WritePacket(request.WrittenSpan);
         await _transport.FlushAsync(cancellationToken).ConfigureAwait(false);
 
+        // SSH_MSG_USERAUTH_PASSWD_CHANGEREQ：服务端要求先改密码。
+        // 〔决策 velashell-docs/zh/ssh/spec/04 §5.1〕我们不实现改密码流程，但**要把原因说清楚** ——
+        // 「客户端直接断开且不说为什么」是用户最难自救的一种失败。
         return await ReadAuthOutcomeAsync(
-            // SSH_MSG_USERAUTH_PASSWD_CHANGEREQ：服务端要求先改密码。
-            // 〔决策 velashell-docs/zh/ssh/spec/04 §5.1〕我们不实现改密码流程，但**要把原因说清楚** ——
-            // 「客户端直接断开且不说为什么」是用户最难自救的一种失败。
             onMethodSpecific: (number, payload) => number == 60
                 ? new AuthStepResult(SshAuthOutcome.Failure, "服务端要求先修改密码（本库尚未实现改密码流程）。")
                 : null,
