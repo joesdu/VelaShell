@@ -521,13 +521,13 @@ public sealed partial class X11Server
     private void XkbGetNames(XClient c, uint which)
     {
         which &= 0x3FFF;   // 键别名(第 10 位)与无线电组(第 13 位)计数为 0,照样回显
-        uint keycodes = Intern("evdev"), geometry = Intern("pc(pc105)"), symbols = Intern("pc+us"), types = Intern("complete"),
+        uint keycodes = Intern("evdev"), geometry = Intern("pc(pc105)"), symbols = Intern($"pc+{KeyboardLayout}"), types = Intern("complete"),
             compat = Intern("complete");
         uint[] typeNames = [.. XkbTypes.Select(t => Intern(t.Name))];
         uint[] levelNames = [.. XkbTypes.SelectMany(t => t.LevelNames).Select(Intern)];
         uint[] indicatorNames = [.. XkbIndicatorNames.Select(Intern)];
         uint[] vmodNames = [.. XkbVirtualMods.Select(v => Intern(v.Name))];
-        uint groupName = Intern("English (US)");
+        uint groupName = Intern(KeyboardLayout == "us" ? "English (US)" : KeyboardLayout);
         const byte keyCount = Keymap.MaxKeycode - Keymap.MinKeycode + 1;
 
         c.Reply(XkbDeviceId, w =>
@@ -717,11 +717,16 @@ public sealed partial class X11Server
     }
 
     /// <summary>根窗口的 _XKB_RULES_NAMES:setxkbmap 等工具从这里读当前的 rules / model / layout / variant / options。</summary>
+    private string? _keyboardLayout;
+
+    private string KeyboardLayout => _keyboardLayout ?? _options.KeyboardLayout;
+
     private void InitXkbRulesNames()
     {
         uint property = Intern("_XKB_RULES_NAMES");
-        byte[] value = "evdev\0pc105\0us\0\0\0"u8.ToArray();
+        byte[] value = XWire.Latin1.GetBytes($"evdev\0pc105\0{KeyboardLayout}\0\0\0");
         Root.Properties[property] = new XProperty(XAtom.String, 8, value);
+        SendPropertyNotify(Root, property, deleted: false);
     }
 
     private void CleanupXkb(XClient client)

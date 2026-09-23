@@ -14,6 +14,15 @@ public sealed record XServerOptions
     /// <summary>监听地址。<b>默认只听本机</b>:SSH X11 转发过来的连接在本机看来就是 127.0.0.1。</summary>
     public IPAddress ListenAddress { get; init; } = IPAddress.Loopback;
 
+    /// <summary><see cref="Server.X11Server.StartAsync" /> 是否监听 TCP 6000 + N。只用 Unix 套接字或 <c>ServeAsync</c> 喂流的宿主可以关掉。</summary>
+    public bool ListenTcp { get; init; } = true;
+
+    /// <summary>
+    /// Unix 套接字路径:null = Windows 以外默认 <c>/tmp/.X11-unix/X{DisplayNumber}</c>(Linux 另在抽象命名空间里监听同名套接字);
+    /// 空字符串 = 不监听。本机客户端用 <c>DISPLAY=:N</c> 连它。
+    /// </summary>
+    public string? UnixSocketPath { get; init; }
+
     /// <summary>根窗口(虚拟桌面)宽,像素。宿主应当设成所有显示器合起来的范围。</summary>
     public int ScreenWidth { get; init; } = 3840;
 
@@ -26,8 +35,14 @@ public sealed record XServerOptions
     /// </summary>
     public IReadOnlyList<XMonitor>? Monitors { get; init; }
 
-    /// <summary>每英寸像素数,用来换算屏幕的毫米尺寸(客户端据此选字号)。</summary>
+    /// <summary>每英寸像素数,用来换算屏幕的毫米尺寸(客户端据此选字号);经 XSETTINGS 与 RESOURCE_MANAGER 的 Xft.dpi 发布。</summary>
     public int Dpi { get; init; } = 96;
+
+    /// <summary>整数缩放倍数(HiDPI):经 XSETTINGS 的 Gdk/WindowScalingFactor 告诉 GTK。运行中改用 <see cref="Server.X11Server.SetDisplayScale" />。</summary>
+    public int ScaleFactor { get; init; } = 1;
+
+    /// <summary>键盘布局名(XKB 的 layout,如 <c>us</c>、<c>de</c>);键位表本身由 <see cref="Server.X11Server.SetKeyboardMapping" /> 给出。</summary>
+    public string KeyboardLayout { get; init; } = "us";
 
     /// <summary>
     /// <c>MIT-MAGIC-COOKIE-1</c> 授权 cookie;null = 不要求授权、只接受来自本机的连接(与 X.Org 的主机访问控制行为一致)。

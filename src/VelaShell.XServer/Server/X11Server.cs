@@ -96,15 +96,23 @@ public sealed partial class X11Server : IAsyncDisposable
     /// <summary>服务端时间(毫秒,32 位回绕)—— 事件里的 time 字段。</summary>
     internal uint Now => unchecked((uint)_clock.ElapsedMilliseconds);
 
-    /// <summary>开始在 TCP 6000+N 上监听。端口被占用时抛 <see cref="SocketException" />。</summary>
+    /// <summary>
+    /// 开始监听:TCP 6000+N(<see cref="XServerOptions.ListenTcp" />)与 Unix 套接字(<see cref="XServerOptions.UnixSocketPath" />)。
+    /// TCP 端口被占用时抛 <see cref="SocketException" />;Unix 套接字建不起来只记日志。
+    /// </summary>
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        TcpListener listener = new(_options.ListenAddress, 6000 + _options.DisplayNumber);
-        listener.Start();
-        _listener = listener;
-        Port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        _acceptTask = AcceptLoopAsync(listener, _lifetime.Token);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_options.ListenTcp)
+        {
+            TcpListener listener = new(_options.ListenAddress, 6000 + _options.DisplayNumber);
+            listener.Start();
+            _listener = listener;
+            Port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            _acceptTask = AcceptLoopAsync(listener, _lifetime.Token);
+        }
+        StartUnixListeners(_lifetime.Token);
         return Task.CompletedTask;
     }
 
@@ -254,6 +262,7 @@ public sealed partial class X11Server : IAsyncDisposable
             return;
         }
         _listener?.Stop();
+        StopUnixListeners();
         await _lifetime.CancelAsync().ConfigureAwait(false);
         _work.Writer.TryComplete();
         foreach (Task? task in (Task?[])[_acceptTask, _loopTask])

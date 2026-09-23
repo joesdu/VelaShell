@@ -83,6 +83,37 @@ public sealed partial class X11Server
         KeyEvent(keycode, pressed);
     });
 
+    /// <summary>
+    /// 换键位表(宿主的键盘布局不是 US 时):从 <paramref name="firstKeycode" /> 起,每个键码 <paramref name="keysymsPerKeycode" /> 个键值
+    /// (第 1 列无修饰、第 2 列 Shift,与核心协议 ChangeKeyboardMapping 相同)。XKB 描述随之重新推出,
+    /// 客户端收到 MappingNotify 与 XKB 的 MapNotify。<paramref name="layout" /> 是布局名(如 <c>de</c>),给 setxkbmap 之类看。
+    /// </summary>
+    public void SetKeyboardMapping(byte firstKeycode, int keysymsPerKeycode, ReadOnlySpan<uint> keysyms, string? layout = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(firstKeycode, Keymap.MinKeycode);
+        ArgumentOutOfRangeException.ThrowIfLessThan(keysymsPerKeycode, 1);
+        if (keysyms.Length % keysymsPerKeycode != 0 || firstKeycode + (keysyms.Length / keysymsPerKeycode) - 1 > Keymap.MaxKeycode)
+        {
+            throw new ArgumentException("键值个数必须是每键码键值数的整数倍,且不超过键码 255。", nameof(keysyms));
+        }
+        uint[] copy = keysyms.ToArray();
+        Post(null, () =>
+        {
+            _keymap.Change(firstKeycode, keysymsPerKeycode, copy);
+            if (layout is not null)
+            {
+                _keyboardLayout = layout;
+                InitXkbRulesNames();
+            }
+            byte count = (byte)(copy.Length / keysymsPerKeycode);
+            foreach (XClient client in _clients.Values)
+            {
+                client.Event(XEventCode.MappingNotify, 0, w => w.U8(1).U8(firstKeycode).U8(count));
+            }
+            NotifyXkbMapChanged();
+        });
+    }
+
     /// <summary>宿主让某个顶层窗口得到键盘焦点(用户点了它);0 = 所有顶层都失去焦点。</summary>
     public void FocusTopLevel(uint topLevel) => Post(null, () =>
     {
