@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:VelaShell.Docking.Controls"
              xmlns:docking="using:VelaShell.Docking"
+             xmlns:services="using:VelaShell.Services"
              xmlns:conv="using:VelaShell.Converters"
              xmlns:pc="using:VelaShell.Controls.Controls"
              xmlns:loc="using:VelaShell.Localization"
@@ -86,12 +87,15 @@
               Background="{Binding ConnectionAccentBrush}" />
       <!-- 协议图标随连接类型走:SFTP / FTP 是 hard-drive,插件的文件协议(S3…)是通用插头。
            原先这里写死 folder-open —— 那画的是"文件夹"这个动作,而标签要答的是"哪一种连接"。 -->
+      <!-- DataContext 收窄到 TabIcon:TabIcon 为 null 时绑 TabIcon.Geometry 会在调试输出里刷 "Value is null"(见 DockTabItem)。 -->
       <pc:LucideIcon Width="13" Height="13"
-                     Data="{Binding TabIcon.Geometry}"
-                     ViewBoxSize="{Binding TabIcon.ViewBoxSize}"
-                     Fill="{Binding TabIcon.Fill}"
-                     IsVisible="{Binding TabIcon, Converter={x:Static ObjectConverters.IsNotNull}}"
-                     Foreground="{Binding ConnectionAccentBrush}" />
+                     DataContext="{Binding TabIcon}"
+                     x:DataType="services:TabIcon"
+                     Data="{Binding Geometry}"
+                     ViewBoxSize="{Binding ViewBoxSize}"
+                     Fill="{Binding Fill}"
+                     IsVisible="{Binding $self.DataContext, Converter={x:Static ObjectConverters.IsNotNull}}"
+                     Foreground="{Binding $parent[local:SftpDockTabItem].((docking:SftpDocument)DataContext).ConnectionAccentBrush}" />
       <TextBlock Text="{Binding Title}" VerticalAlignment="Center" ToolTip.ShowDelay="250"
                  ToolTip.Placement="Pointer" ToolTip.Tip="{Binding ConnectionTooltip}" />
       <Button Background="Transparent" Padding="0" Width="14" Height="14" BorderThickness="0"

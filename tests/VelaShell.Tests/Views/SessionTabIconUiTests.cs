@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Logging;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -160,6 +161,38 @@ public sealed class SessionTabIconUiTests
     }
 
     [TestMethod]
+    public void ALocalTerminalTabBindsWithoutErrors()
+    {
+        // 本地终端的 TabIcon 是 null。图标的几何 / 视框 / 填充要是直接绑 Terminal.TabIcon.Xxx,
+        // 路径走到 null 就断,每开一个本地终端调试输出里刷三条 "Value is null" ——
+        // 刷多了谁也不会再去读这段日志,真错误就淹在里面了。
+        OnUi(() =>
+        {
+            var sink = new BindingErrorSink();
+            ILogSink? previous = Logger.Sink;
+            Logger.Sink = sink;
+            try
+            {
+                WithTab(TabFor(null), _ => { });
+
+                // 有图标的标签也要绑干净,而且前景色(走 $parent 回到标签的数据上下文)真的取到了连接标识色。
+                TerminalDocument ssh = TabFor(new() { ConnectionType = ConnectionType.SSH, Host = "10.0.0.1" });
+                WithTab(ssh, tab =>
+                {
+                    LucideIcon glyph = VisibleIcons(tab).Single(i => ReferenceEquals(i.Data, ssh.Terminal.TabIcon!.Geometry));
+                    Assert.AreSame(ssh.Terminal.ConnectionAccentBrush, glyph.Foreground, "协议图标没拿到连接标识色。");
+                });
+            }
+            finally
+            {
+                Logger.Sink = previous;
+            }
+
+            Assert.IsEmpty(sink.Errors, string.Join(Environment.NewLine, sink.Errors));
+        });
+    }
+
+    [TestMethod]
     public void APanelTabShowsThePluginsOwnFilledGlyphNotThePlug()
     {
         // AI 助手的聊天页走的是**面板**这条路(PanelOptions.Icon),不是描述符那条。
@@ -225,4 +258,25 @@ public sealed class SessionTabIconUiTests
             body();
             return Task.CompletedTask;
         }, CancellationToken.None).GetAwaiter().GetResult();
+
+    /// <summary>只收图标那几个属性上的绑定告警/错误 —— 标签模板里别处的绑定不归这条用例管。</summary>
+    private sealed class BindingErrorSink : ILogSink
+    {
+        public List<string> Errors { get; } = [];
+
+        public bool IsEnabled(LogEventLevel level, string area) =>
+            level >= LogEventLevel.Warning && area == LogArea.Binding;
+
+        public void Log(LogEventLevel level, string area, object? source, string messageTemplate) =>
+            Log(level, area, source, messageTemplate, []);
+
+        public void Log(LogEventLevel level, string area, object? source, string messageTemplate,
+            params object?[] propertyValues)
+        {
+            if (IsEnabled(level, area) && source is LucideIcon)
+            {
+                Errors.Add(messageTemplate + " | " + string.Join(", ", propertyValues));
+            }
+        }
+    }
 }

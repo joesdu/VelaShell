@@ -5889,3 +5889,14 @@ SSH 库给 `X11ForwardOptions` 加了 `BestEffort`:设置失败时不抛、shell
   `X11_RefusedByServer_KeepsAgentForwardingAndWarnsOnce`:服务端拒绝 X11 时 shell 开成、agent 转发照常、只有一条黄字。
 
 velashell-docs:`zh/host/交互与界面规格.md` 与 `en/host/interaction-and-ui-specs.md`「被拒不连累会话」一段同步改写。
+
+## ✅ 96. 2026-09-23 标签页协议图标的绑定错误(用户反馈)
+
+每开一个本地终端，调试输出里刷三条 `[Binding] ... binding 'Data' to 'Terminal.TabIcon.Geometry' at 'TabIcon': 'Value is null.'`
+(外加 `ViewBoxSize` / `Fill`)。本地终端没有配置,`TabIcon` 是 null,而图标的三个属性直接绑 `Terminal.TabIcon.Xxx`,
+路径走到 null 就断。图标本来就靠 `IsVisible` 收掉了，功能没问题，但刷多了会把真错误淹掉。
+
+四个标签模板(`DockTabItem` / `SftpDockTabItem` / `WorkspaceDockTabItem` / `PluginDockTabItem`)统一改成
+把图标的 `DataContext` 收窄到 `TabIcon`(`x:DataType="services:TabIcon"`),子属性绑 `Geometry` / `ViewBoxSize` / `Fill`;
+DataContext 为 null 时绑定静默不取值。可见性改绑 `$self.DataContext`,前景色经 `$parent[...]` 回到标签的数据上下文。
+回归用例 `SessionTabIconUiTests.ALocalTerminalTabBindsWithoutErrors`:本地终端标签零绑定错误，SSH 标签零错误且图标拿到连接标识色。

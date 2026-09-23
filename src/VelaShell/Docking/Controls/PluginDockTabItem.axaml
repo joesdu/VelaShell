@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:VelaShell.Docking.Controls"
              xmlns:docking="using:VelaShell.Docking"
+             xmlns:services="using:VelaShell.Services"
              xmlns:pc="using:VelaShell.Controls.Controls"
              xmlns:loc="using:VelaShell.Localization"
              x:Class="VelaShell.Docking.Controls.PluginDockTabItem"
@@ -61,11 +62,14 @@
       <!-- 面板图标:插件在 PanelOptions.Icon 里自报的那个,没给才是通用插头(在 TabIcon 里兜底)。
            实心的品牌 logo 要连视框与填充一起绑 —— 只绑几何的话,一个 1024 视框的 logo
            会被按 24 缩放,放大四十多倍,屏幕上什么也看不见。 -->
+      <!-- DataContext 收窄到 TabIcon:TabIcon 为 null 时绑 TabIcon.Geometry 会在调试输出里刷 "Value is null"(见 DockTabItem)。 -->
       <pc:LucideIcon Width="13" Height="13"
-                     Data="{Binding TabIcon.Geometry}"
-                     ViewBoxSize="{Binding TabIcon.ViewBoxSize}"
-                     Fill="{Binding TabIcon.Fill}"
-                     IsVisible="{Binding TabIcon, Converter={x:Static ObjectConverters.IsNotNull}}"
+                     DataContext="{Binding TabIcon}"
+                     x:DataType="services:TabIcon"
+                     Data="{Binding Geometry}"
+                     ViewBoxSize="{Binding ViewBoxSize}"
+                     Fill="{Binding Fill}"
+                     IsVisible="{Binding $self.DataContext, Converter={x:Static ObjectConverters.IsNotNull}}"
                      Foreground="{DynamicResource VelaAccent}" />
       <TextBlock Text="{Binding Title}" VerticalAlignment="Center" ToolTip.ShowDelay="250"
                  ToolTip.Placement="Pointer" ToolTip.Tip="{Binding Tooltip}" />
