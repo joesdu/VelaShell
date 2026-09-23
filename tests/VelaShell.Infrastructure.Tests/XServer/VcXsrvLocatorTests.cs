@@ -57,12 +57,13 @@ public class VcXsrvLocatorTests
     [TestMethod]
     public void PathVariable_IsSearchedLast()
     {
-        string onPath = Path.Combine("E:", "bin", "vcxsrv.exe");
+        // 目录名里不能带冒号:类 Unix 上 PATH 的分隔符就是冒号(E: 这种盘符会把 PATH 切碎)。
+        string onPath = Path.Combine("tools", "bin", "vcxsrv.exe");
 
         string? found = VcXsrvLocator.Find(
             null,
             path => path == onPath,
-            Env(new() { ["PATH"] = string.Join(Path.PathSeparator, Path.Combine("E:", "other"), Path.Combine("E:", "bin")) }));
+            Env(new() { ["PATH"] = string.Join(Path.PathSeparator, Path.Combine("tools", "other"), Path.Combine("tools", "bin")) }));
 
         Assert.AreEqual(onPath, found);
     }
