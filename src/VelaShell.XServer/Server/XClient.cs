@@ -164,6 +164,12 @@ internal sealed class XClient : IDisposable
     /// <summary>这个客户端经 Generic Event Extension 声明过的版本;没声明过的客户端不该收到 GenericEvent。</summary>
     public bool GenericEventsEnabled { get; set; }
 
+    /// <summary>
+    /// 选了 PointerMotionHint 时已经发过提示的那个事件窗口,和发的时候的提示轮次(<c>X11Server</c> 在
+    /// 按键 / 按钮变化、指针换窗口时推进轮次;QueryPointer / GetMotionEvents 清掉这一项)。
+    /// </summary>
+    public (object? Window, uint Epoch) MotionHint { get; set; }
+
     /// <summary>发一条错误。</summary>
     public void Error(XErrorCode code, uint badValue, ushort minorOpcode, byte majorOpcode)
     {

@@ -90,6 +90,15 @@ public sealed partial class X11Server
 
     private CancellationTokenSource? _syncTimer;
 
+    /// <summary>当前计时器到点的时刻(<see cref="Now" /> 的刻度);没有计时器时为 long.MaxValue。</summary>
+    private long _syncDeadline = long.MaxValue;
+
+    /// <summary>求值进行中(EndWait 会就地执行暂存的请求,那些请求可能再次改计数器)。</summary>
+    private bool _evaluatingSync;
+
+    /// <summary>求值进行中又有东西变了:当前这一轮结束后再来一轮。</summary>
+    private bool _syncDirty;
+
     private sealed class SyncWait
     {
         public List<(XSyncTrigger Trigger, long Threshold)> Conditions { get; } = [];
@@ -387,21 +396,22 @@ public sealed partial class X11Server
     private void DestroyCounter(XSyncCounter counter)
     {
         RemoveResource(counter.Id);
-        // 等它的 Await 以 destroyed = True 的 CounterNotify 结束;挂着它的报警器进入 Inactive(规范 DestroyCounter)。
-        foreach ((XClient client, SyncWait wait) in _syncWaits.ToArray())
-        {
-            if (wait.Conditions.Any(cond => ReferenceEquals(cond.Trigger.Counter, counter)))
-            {
-                SendCounterNotify(client, wait, counter, destroyed: true);
-                EndWait(client);
-            }
-        }
+        // 挂着它的报警器进入 Inactive;等它的 Await 以 destroyed = True 的 CounterNotify 结束(规范 DestroyCounter)。
+        // 报警器先改:结束等待会就地执行那个客户端暂存的请求,那些请求可能增删报警器。
         foreach (XSyncAlarm alarm in _alarms)
         {
             if (ReferenceEquals(alarm.Trigger.Counter, counter))
             {
                 alarm.Trigger.Counter = null;
                 alarm.State = XSyncAlarm.Inactive;
+            }
+        }
+        foreach ((XClient client, SyncWait wait) in _syncWaits.ToArray())
+        {
+            if (_syncWaits.ContainsKey(client) && wait.Conditions.Any(cond => ReferenceEquals(cond.Trigger.Counter, counter)))
+            {
+                SendCounterNotify(client, wait, counter, destroyed: true);
+                EndWait(client);
             }
         }
     }
@@ -469,6 +479,39 @@ public sealed partial class X11Server
 
     // ------------------------------------------------------------------ 求值
 
+    /// <summary>
+    /// 用户有了输入、IDLETIME 即将归零:把挂在它上面的触发器的「上一次的值」记成归零前的空闲时长,
+    /// 负向跨越才看得出「从上面掉下来」。返回是否有触发器挂在 IDLETIME 上。
+    /// </summary>
+    private bool NoteIdleReset(uint idleBefore)
+    {
+        if (_idleTimeCounter is not { } idle || (_syncWaits.Count == 0 && _alarms.Count == 0))
+        {
+            return false;
+        }
+        bool any = false;
+        foreach (SyncWait wait in _syncWaits.Values)
+        {
+            foreach ((XSyncTrigger trigger, _) in wait.Conditions)
+            {
+                if (ReferenceEquals(trigger.Counter, idle))
+                {
+                    trigger.LastValue = idleBefore;
+                    any = true;
+                }
+            }
+        }
+        foreach (XSyncAlarm alarm in _alarms)
+        {
+            if (alarm.State == XSyncAlarm.Active && ReferenceEquals(alarm.Trigger.Counter, idle))
+            {
+                alarm.Trigger.LastValue = idleBefore;
+                any = true;
+            }
+        }
+        return any;
+    }
+
     /// <summary>计数器变了(或者时间到了、用户有了输入):检查所有 Await 与报警器。</summary>
     private void EvaluateSync()
     {
@@ -476,8 +519,37 @@ public sealed partial class X11Server
         {
             return;
         }
+        if (_evaluatingSync)
+        {
+            _syncDirty = true;   // 暂存的请求在求值途中又改了计数器:外层这一轮结束后再来一轮
+            return;
+        }
+        _evaluatingSync = true;
+        try
+        {
+            int rounds = 0;
+            do
+            {
+                _syncDirty = false;
+                EvaluateSyncOnce();
+            }
+            while (_syncDirty && ++rounds < 64);
+        }
+        finally
+        {
+            _evaluatingSync = false;
+        }
+        ScheduleSyncTimer();
+    }
+
+    private void EvaluateSyncOnce()
+    {
         foreach ((XClient client, SyncWait wait) in _syncWaits.ToArray())
         {
+            if (!_syncWaits.ContainsKey(client))
+            {
+                continue;   // 前面某个客户端的暂存请求把它的等待结束了(比如销毁了它等的计数器)
+            }
             if (WaitSatisfied(wait, out XSyncCounter? firing))
             {
                 if (firing is not null)
@@ -499,7 +571,7 @@ public sealed partial class X11Server
         }
         foreach (XSyncAlarm alarm in _alarms.ToArray())
         {
-            if (alarm.State != XSyncAlarm.Active || alarm.Trigger.Counter is not { } counter)
+            if (alarm.State != XSyncAlarm.Active || alarm.Trigger.Counter is not { } counter || !_alarms.Contains(alarm))
             {
                 continue;
             }
@@ -534,7 +606,6 @@ public sealed partial class X11Server
             }
             t.LastValue = value;
         }
-        ScheduleSyncTimer();
     }
 
     /// <summary>
@@ -567,24 +638,45 @@ public sealed partial class X11Server
             }
         }
 
+        if (soonest == long.MaxValue)
+        {
+            CancelSyncTimer();
+            return;
+        }
+        long deadline = Now + soonest;
+        if (_syncTimer is not null && _syncDeadline <= deadline)
+        {
+            return;   // 现有的计时器不晚于需要的时刻:它到点求值时会再排下一个,不必每次取消重建
+        }
+        CancelSyncTimer();
+        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _syncTimer = cts;
+        _syncDeadline = deadline;
+        _ = FireSyncTimerAsync(TimeSpan.FromMilliseconds(Math.Min(soonest, int.MaxValue)), cts);
+    }
+
+    private void CancelSyncTimer()
+    {
         _syncTimer?.Cancel();
         _syncTimer?.Dispose();
         _syncTimer = null;
-        if (soonest == long.MaxValue)
-        {
-            return;
-        }
-        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-        _syncTimer = cts;
-        _ = FireSyncTimerAsync(TimeSpan.FromMilliseconds(Math.Min(soonest, int.MaxValue)), cts.Token);
+        _syncDeadline = long.MaxValue;
     }
 
-    private async Task FireSyncTimerAsync(TimeSpan delay, CancellationToken ct)
+    private async Task FireSyncTimerAsync(TimeSpan delay, CancellationTokenSource cts)
     {
+        CancellationToken ct = cts.Token;
         try
         {
             await Task.Delay(delay, ct).ConfigureAwait(false);
-            Post(null, EvaluateSync);
+            Post(null, () =>
+            {
+                if (ReferenceEquals(_syncTimer, cts))
+                {
+                    CancelSyncTimer();   // 到点了:让下一次 ScheduleSyncTimer 重新排
+                }
+                EvaluateSync();
+            });
         }
         catch (OperationCanceledException)
         {

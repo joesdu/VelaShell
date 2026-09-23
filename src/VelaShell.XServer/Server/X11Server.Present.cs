@@ -63,8 +63,8 @@ public sealed partial class X11Server
                     }
                     else
                     {
-                        uint delayMs = (uint)Math.Min(uint.MaxValue, (when - now) * 1000 / 60);
-                        _ = DelayThenPostAsync(Math.Max(1, delayMs), () => SendPresentComplete(window, serial, kind: 1, CurrentMsc));
+                        uint delayMs = (uint)Math.Min((when - now) * 1000.0 / 60, uint.MaxValue);   // 按 double 算:目标 MSC 很大时整数乘法会回绕
+                        _ = DelayThenPostAsync(c, Math.Max(1, delayMs), () => SendPresentComplete(window, serial, kind: 1, CurrentMsc));
                     }
                     break;
                 }

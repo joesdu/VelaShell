@@ -7,6 +7,7 @@
 //   「Expose」事件(矩形列表、count 递减到 0)、「CreateGC」的 subwindow-mode
 //   架构:velashell-docs/zh/xserver/design/architecture.md §6(每个顶层一块缓冲)
 
+using System.Runtime.InteropServices;
 using System.Text;
 using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Host;
@@ -197,11 +198,16 @@ public sealed partial class X11Server
         {
             return;
         }
-        ExposeRecursive(top, region);
+        ExposeRecursive(top, region, region.Bounds, 0, 0);
         MarkDamage(top, region);
     }
 
-    private static void ExposeRecursive(XWindow w, Region region)
+    /// <param name="w">要重画的窗口。</param>
+    /// <param name="region">要重画的范围(缓冲坐标)。</param>
+    /// <param name="bounds"><paramref name="region" /> 的外接矩形。</param>
+    /// <param name="ix">窗口内区原点在缓冲里的 x(往下走时逐层累加)。</param>
+    /// <param name="iy">同上,y。</param>
+    private static void ExposeRecursive(XWindow w, Region region, XRect bounds, int ix, int iy)
     {
         if (!w.Mapped && !w.IsTopLevel)
         {
@@ -223,7 +229,13 @@ public sealed partial class X11Server
         }
         foreach (XWindow child in w.Children)
         {
-            ExposeRecursive(child, region);
+            // 子窗口(连同它的整棵子树,都被裁在它的外框之内)与重画范围不相交:整棵跳过,不算它们的可见区域。
+            int cx = ix + child.X, cy = iy + child.Y, bw = child.BorderWidth;
+            if (new XRect(cx, cy, child.Width + (2 * bw), child.Height + (2 * bw)).Intersect(bounds).IsEmpty)
+            {
+                continue;
+            }
+            ExposeRecursive(child, region, bounds, cx + bw, cy + bw);
         }
     }
 
@@ -415,8 +427,7 @@ public sealed partial class X11Server
             ? [.. shape.Clone().Intersect(new XRect(0, 0, top.Width, top.Height)).Rects]
             : null;
 
-        uint netWmName = Intern("_NET_WM_NAME");
-        if (top.Properties.TryGetValue(netWmName, out XProperty? utf8) && utf8.Format == 8)
+        if (top.Properties.TryGetValue(_netWmNameAtom, out XProperty? utf8) && utf8.Format == 8)
         {
             handle.Title = Encoding.UTF8.GetString(utf8.Data);
         }
@@ -437,10 +448,8 @@ public sealed partial class X11Server
             ? BitConverter.ToUInt32(transient.Data, 0)
             : 0;
 
-        uint protocols = Intern("WM_PROTOCOLS");
-        uint delete = Intern("WM_DELETE_WINDOW");
-        handle.SupportsDeleteWindow = top.Properties.TryGetValue(protocols, out XProperty? p) && p.Format == 32
-                                      && Enumerable.Range(0, p.Data.Length / 4).Any(i => BitConverter.ToUInt32(p.Data, i * 4) == delete);
+        handle.SupportsDeleteWindow = top.Properties.TryGetValue(_wmProtocolsAtom, out XProperty? p) && p.Format == 32
+                                      && MemoryMarshal.Cast<byte, uint>(p.Data.AsSpan(0, p.Data.Length & ~3)).Contains(_wmDeleteWindowAtom);
         RefreshWindowManagerHints(top, handle);
     }
 

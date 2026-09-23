@@ -37,8 +37,13 @@ public sealed partial class X11Server
     /// <summary>用户有了输入(宿主注入或 XTEST):空闲计时归零。</summary>
     private void NoteUserActivity()
     {
+        // 指针每动一下都会走到这里:只有真有触发器挂在 IDLETIME 上时才求值(否则什么都不会因此成立)。
+        bool watched = NoteIdleReset(IdleMilliseconds);
         _lastActivity = Now;
-        EvaluateSync();   // IDLETIME 归零:等它负向跨越的报警器此刻触发
+        if (watched)
+        {
+            EvaluateSync();   // IDLETIME 归零:等它负向跨越的报警器此刻触发
+        }
     }
 
     private uint IdleMilliseconds => unchecked(Now - _lastActivity);

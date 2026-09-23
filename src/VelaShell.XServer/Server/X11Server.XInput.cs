@@ -741,7 +741,7 @@ public sealed partial class X11Server
     }
 
     /// <summary>XI2 的 Enter / Leave / FocusIn / FocusOut(只发给在该窗口上选了它的客户端,不传播)。</summary>
-    private void SendXi2Crossing(int evtype, XWindow window, byte detail, byte mode = 0)
+    private void SendXi2Crossing(int evtype, XWindow window, byte detail, byte mode = 0, uint child = 0)
     {
         if (!window.AnyXi2Selects(evtype))
         {
@@ -762,7 +762,7 @@ public sealed partial class X11Server
             }
             client.GenericEvent(XInputMajor, (ushort)evtype, w =>
             {
-                w.U16(device).U32(time).U16(sourceId).U8(mode).U8(detail).U32(Root.Id).U32(window.Id).U32(0)
+                w.U16(device).U32(time).U16(sourceId).U8(mode).U8(detail).U32(Root.Id).U32(window.Id).U32(child)
                     .I32(Fp1616(px)).I32(Fp1616(py)).I32(Fp1616(px - ex)).I32(Fp1616(py - ey))
                     .Bool(true).Bool(focus).U16(1);
                 WriteXiModifiers(w);

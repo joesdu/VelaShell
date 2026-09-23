@@ -94,7 +94,7 @@ public sealed partial class X11Server
             case XOpcode.GrabServer: _serverGrabber = c; break;
             case XOpcode.UngrabServer: if (ReferenceEquals(_serverGrabber, c)) { ReleaseServerGrab(); } break;
             case XOpcode.QueryPointer: QueryPointer(c, r); break;
-            case XOpcode.GetMotionEvents: c.Reply(0, w => w.U32(0).Zero(20)); break;
+            case XOpcode.GetMotionEvents: c.MotionHint = default; c.Reply(0, w => w.U32(0).Zero(20)); break;
             case XOpcode.TranslateCoordinates: TranslateCoordinates(c, r); break;
             case XOpcode.WarpPointer: WarpPointer(r); break;
             case XOpcode.SetInputFocus: SetInputFocusRequest(r); break;

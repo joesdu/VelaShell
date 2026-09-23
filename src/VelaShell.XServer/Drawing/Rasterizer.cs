@@ -54,7 +54,12 @@ internal sealed class Rasterizer
             effective.Intersect(gcClip);
         }
         _clip = [.. effective.Rects];
+        XRect bounds = effective.Bounds;
+        (_clipTop, _clipBottom) = bounds.IsEmpty ? (0, 0) : (bounds.Y - originY, bounds.Bottom - originY);
     }
+
+    /// <summary>可画区域的行范围(可绘对象坐标,[top, bottom)):扫描线填充只扫这几行。</summary>
+    private readonly int _clipTop, _clipBottom;
 
     private int _dirtyX1 = int.MaxValue, _dirtyY1 = int.MaxValue, _dirtyX2 = int.MinValue, _dirtyY2 = int.MinValue;
 
@@ -480,48 +485,77 @@ internal sealed class Rasterizer
     /// <param name="winding">真 = 非零环绕规则;假 = 奇偶规则。</param>
     public void FillPolygons(IReadOnlyList<IReadOnlyList<(double X, double Y)>> polygons, bool winding)
     {
-        double minY = double.MaxValue, maxY = double.MinValue;
-        foreach (IReadOnlyList<(double X, double Y)> poly in polygons)
+        if (_clipBottom <= _clipTop)
         {
-            foreach ((double _, double y) in poly)
+            return;
+        }
+        // 活动边表:每个多边形的边按上端排序,逐行只看跨过这一行的边 —— O(边数 × log + 行数 × 活动边数),
+        // 而不是每行把所有边扫一遍;行只扫可画区域之内的(一个 65535 大小的弧不会扫六万多行)。
+        List<Edge>[] edgeLists = new List<Edge>[polygons.Count];
+        double minY = double.MaxValue, maxY = double.MinValue;
+        for (int pi = 0; pi < polygons.Count; pi++)
+        {
+            IReadOnlyList<(double X, double Y)> poly = polygons[pi];
+            List<Edge> edges = new(poly.Count);
+            for (int i = 0; i < poly.Count; i++)
             {
-                minY = Math.Min(minY, y);
-                maxY = Math.Max(maxY, y);
+                (double ax, double ay) = poly[i];
+                (double bx, double by) = poly[(i + 1) % poly.Count];
+                if (ay == by || double.IsNaN(ax) || double.IsNaN(bx))
+                {
+                    continue;
+                }
+                bool downward = ay < by;
+                edges.Add(downward
+                    ? new Edge(ay, by, ax, (bx - ax) / (by - ay), 1)
+                    : new Edge(by, ay, bx, (ax - bx) / (ay - by), -1));
+                minY = Math.Min(minY, Math.Min(ay, by));
+                maxY = Math.Max(maxY, Math.Max(ay, by));
             }
+            edges.Sort(static (a, b) => a.Top.CompareTo(b.Top));
+            edgeLists[pi] = edges;
         }
         if (minY > maxY)
+        {
+            return;
+        }
+        int firstRow = (int)Math.Max(Math.Floor(minY), _clipTop);
+        int lastRow = (int)Math.Min(Math.Ceiling(maxY), _clipBottom - 1);
+        if (lastRow < firstRow)
         {
             return;
         }
 
         List<(double X, int Dir)> crossings = [];
         List<(int Start, int End)> spans = [];
-        for (int row = (int)Math.Floor(minY); row <= (int)Math.Ceiling(maxY); row++)
+        int[] next = new int[polygons.Count];            // 每个多边形下一条还没进活动表的边
+        List<Edge>[] active = new List<Edge>[polygons.Count];
+        for (int pi = 0; pi < active.Length; pi++)
+        {
+            active[pi] = [];
+        }
+        for (int row = firstRow; row <= lastRow; row++)
         {
             // 按像素中心采样:第 row 行的中心在 row + 0.5。
             double sampleY = row + 0.5;
             spans.Clear();
-            foreach (IReadOnlyList<(double X, double Y)> poly in polygons)
+            for (int pi = 0; pi < polygons.Count; pi++)
             {
-                crossings.Clear();
-                for (int i = 0; i < poly.Count; i++)
+                List<Edge> edges = edgeLists[pi], live = active[pi];
+                while (next[pi] < edges.Count && edges[next[pi]].Top <= sampleY)
                 {
-                    (double ax, double ay) = poly[i];
-                    (double bx, double by) = poly[(i + 1) % poly.Count];
-                    if (ay == by)
-                    {
-                        continue;
-                    }
-                    bool downward = ay < by;
-                    double top = downward ? ay : by, bottom = downward ? by : ay;
-                    if (sampleY < top || sampleY >= bottom)
-                    {
-                        continue;
-                    }
-                    double x = ax + ((sampleY - ay) * (bx - ax) / (by - ay));
-                    crossings.Add((x, downward ? 1 : -1));
+                    live.Add(edges[next[pi]++]);
                 }
-                crossings.Sort((a, b) => a.X.CompareTo(b.X));
+                live.RemoveAll(e => e.Bottom <= sampleY);
+                crossings.Clear();
+                foreach (Edge e in live)
+                {
+                    if (sampleY >= e.Top)
+                    {
+                        crossings.Add((e.X + ((sampleY - e.Top) * e.Slope), e.Dir));
+                    }
+                }
+                crossings.Sort(static (a, b) => a.X.CompareTo(b.X));
                 int wind = 0;
                 for (int i = 0; i < crossings.Count - 1; i++)
                 {
@@ -546,6 +580,9 @@ internal sealed class Rasterizer
             }
         }
     }
+
+    /// <summary>多边形的一条边,从上端(Top,X)到下端(Bottom);Dir = 1 表示原本朝下走。</summary>
+    private readonly record struct Edge(double Top, double Bottom, double X, double Slope, int Dir);
 
     private static List<(int Start, int End)> MergeSpans(List<(int Start, int End)> spans)
     {
@@ -671,7 +708,8 @@ internal sealed class Rasterizer
         double cx = x + (w / 2.0), cy = y + (h / 2.0), rx = w / 2.0, ry = h / 2.0;
         double start = angle1 / 64.0 * Math.PI / 180.0;
         double extent = Math.Clamp(angle2, -360 * 64, 360 * 64) / 64.0 * Math.PI / 180.0;
-        int n = Math.Max(4, (int)(Math.Abs(extent) * Math.Max(rx, ry)));
+        // 约一像素一段;上限 4096 段 —— 半径三万多的整圆,4096 段的弦高也只有百分之一像素,再多只是白算。
+        int n = Math.Clamp((int)(Math.Abs(extent) * Math.Max(rx, ry)), 4, 4096);
         List<(double, double)> points = new(n + 1);
         for (int i = 0; i <= n; i++)
         {

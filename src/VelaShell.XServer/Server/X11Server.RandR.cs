@@ -262,6 +262,30 @@ public sealed partial class X11Server
         }
     }
 
+    /// <summary>客户端断开或窗口销毁:摘掉对应的 RRSelectInput 登记(否则销毁的窗口会一直收到、也一直被引用着)。</summary>
+    private void CleanupRandR(XClient? client, XWindow? window)
+    {
+        if (_randrSelections.Count == 0)
+        {
+            return;
+        }
+        List<(XClient, XWindow)>? gone = null;
+        foreach ((XClient c, XWindow w) key in _randrSelections.Keys)
+        {
+            if (ReferenceEquals(key.c, client) || ReferenceEquals(key.w, window))
+            {
+                (gone ??= []).Add(key);
+            }
+        }
+        if (gone is not null)
+        {
+            foreach ((XClient, XWindow) key in gone)
+            {
+                _randrSelections.Remove(key);
+            }
+        }
+    }
+
     /// <summary>布局变了:按各客户端 SelectInput 的掩码发 ScreenChangeNotify、CrtcChange、OutputChange。</summary>
     private void NotifyRandRChange()
     {

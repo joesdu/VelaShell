@@ -24,6 +24,9 @@ namespace VelaShell.XServer.Server;
 public sealed partial class X11Server
 {
     private XWindow _pointerWindow;
+
+    /// <summary>PointerMotionHint 的轮次:按键 / 按钮变化、指针换窗口时推进(见 <see cref="XClient.MotionHint" />)。</summary>
+    private uint _motionHintEpoch;
     private int _pointerX;
     private int _pointerY;
     private ushort _buttons;
@@ -190,9 +193,9 @@ public sealed partial class X11Server
     private XWindow WindowAt(int rootX, int rootY)
     {
         XWindow current = Root;
+        (int ix, int iy) = Root.AbsoluteInner();   // 往下走时逐层累加,不每层从头回溯到根
         while (true)
         {
-            (int ix, int iy) = current.AbsoluteInner();
             XWindow? hit = null;
             for (int i = current.Children.Count - 1; i >= 0; i--)
             {
@@ -215,6 +218,8 @@ public sealed partial class X11Server
             {
                 return current;
             }
+            ix += hit.X + hit.BorderWidth;
+            iy += hit.Y + hit.BorderWidth;
             current = hit;
         }
     }
@@ -255,6 +260,7 @@ public sealed partial class X11Server
         {
             XWindow old = _pointerWindow;
             _pointerWindow = now;
+            _motionHintEpoch++;
             GenerateCrossing(old, now);
         }
         UpdateCursor();
@@ -262,6 +268,7 @@ public sealed partial class X11Server
 
     private void ButtonEvent(int button, bool pressed)
     {
+        _motionHintEpoch++;   // 按钮状态变了:PointerMotionHint 的客户端可以再收一条提示
         // 只有按钮 1–5 在 state 里有位(协议 SETofKEYBUTMASK);6 以上(水平滚轮等)照样投递,但不进 state。
         ushort bit = button <= 5 ? (ushort)(0x100 << (button - 1)) : (ushort)0;
         if (pressed)
@@ -439,6 +446,13 @@ public sealed partial class X11Server
         }
         if (code == XEventCode.MotionNotify && (clientMask & (uint)XEventMask.PointerMotionHint) != 0)
         {
+            // 协议「MotionNotify」:选了 PointerMotionHint 的客户端,在按键 / 按钮状态变化、指针离开事件窗口、
+            // 或者它发 QueryPointer / GetMotionEvents 之前,同一个事件窗口只收一条(detail = Hint)。
+            if (ReferenceEquals(client.MotionHint.Window, eventWindow) && client.MotionHint.Epoch == _motionHintEpoch)
+            {
+                return;
+            }
+            client.MotionHint = (eventWindow, _motionHintEpoch);
             detail = 1;   // Hint
         }
         uint time = Now;
@@ -455,38 +469,52 @@ public sealed partial class X11Server
     private void GenerateCrossing(XWindow from, XWindow to)
     {
         const byte ancestor = 0, @virtual = 1, inferior = 2, nonlinear = 3, nonlinearVirtual = 4;
+        // Leave 的 child 指向指针原先所在的那一支,Enter 的指向指针现在所在的那一支(协议「EnterNotify / LeaveNotify」)。
         if (to.IsDescendantOf(from))
         {
-            Crossing(XEventCode.LeaveNotify, from, inferior);
+            Crossing(XEventCode.LeaveNotify, from, inferior, to);
             foreach (XWindow w in PathBetween(to, from))
             {
-                Crossing(XEventCode.EnterNotify, w, @virtual);
+                Crossing(XEventCode.EnterNotify, w, @virtual, to);
             }
-            Crossing(XEventCode.EnterNotify, to, ancestor);
+            Crossing(XEventCode.EnterNotify, to, ancestor, to);
         }
         else if (from.IsDescendantOf(to))
         {
-            Crossing(XEventCode.LeaveNotify, from, ancestor);
+            Crossing(XEventCode.LeaveNotify, from, ancestor, from);
             foreach (XWindow w in Enumerable.Reverse(PathBetween(from, to)))
             {
-                Crossing(XEventCode.LeaveNotify, w, @virtual);
+                Crossing(XEventCode.LeaveNotify, w, @virtual, from);
             }
-            Crossing(XEventCode.EnterNotify, to, inferior);
+            Crossing(XEventCode.EnterNotify, to, inferior, from);
         }
         else
         {
             XWindow common = CommonAncestor(from, to);
-            Crossing(XEventCode.LeaveNotify, from, nonlinear);
+            Crossing(XEventCode.LeaveNotify, from, nonlinear, from);
             foreach (XWindow w in Enumerable.Reverse(PathBetween(from, common)))
             {
-                Crossing(XEventCode.LeaveNotify, w, nonlinearVirtual);
+                Crossing(XEventCode.LeaveNotify, w, nonlinearVirtual, from);
             }
             foreach (XWindow w in PathBetween(to, common))
             {
-                Crossing(XEventCode.EnterNotify, w, nonlinearVirtual);
+                Crossing(XEventCode.EnterNotify, w, nonlinearVirtual, to);
             }
-            Crossing(XEventCode.EnterNotify, to, nonlinear);
+            Crossing(XEventCode.EnterNotify, to, nonlinear, to);
         }
+    }
+
+    /// <summary><paramref name="window" /> 的哪个子窗口包含 <paramref name="pointerWindow" />(自己或后代);都不是时为 0(None)。</summary>
+    private static uint ChildToward(XWindow window, XWindow pointerWindow)
+    {
+        for (XWindow? w = pointerWindow; w?.Parent is { } parent; w = parent)
+        {
+            if (ReferenceEquals(parent, window))
+            {
+                return w.Id;
+            }
+        }
+        return 0;
     }
 
     /// <summary><paramref name="descendant" /> 与 <paramref name="ancestor" /> 之间的窗口(都不含),从上到下。</summary>
@@ -518,10 +546,19 @@ public sealed partial class X11Server
         return a;
     }
 
-    private void Crossing(byte code, XWindow window, byte detail)
+    private void Crossing(byte code, XWindow window, byte detail, XWindow pointerWindow)
     {
         XEventMask mask = code == XEventCode.EnterNotify ? XEventMask.EnterWindow : XEventMask.LeaveWindow;
-        SendXi2Crossing(code == XEventCode.EnterNotify ? XiEnter : XiLeave, window, detail);
+        bool xi2 = window.AnyXi2Selects(code == XEventCode.EnterNotify ? XiEnter : XiLeave);
+        if (!xi2 && !window.AnySelects(mask))
+        {
+            return;
+        }
+        uint child = ChildToward(window, pointerWindow);
+        if (xi2)
+        {
+            SendXi2Crossing(code == XEventCode.EnterNotify ? XiEnter : XiLeave, window, detail, child: child);
+        }
         if (!window.AnySelects(mask))
         {
             return;
@@ -532,7 +569,7 @@ public sealed partial class X11Server
         int px = _pointerX, py = _pointerY;
         bool focus = _focus is { } f && (ReferenceEquals(f, window) || window.IsDescendantOf(f));
         DeliverToSelectors(window, mask, c => c.Event(code, detail, w => w
-            .U32(time).U32(Root.Id).U32(window.Id).U32(0)
+            .U32(time).U32(Root.Id).U32(window.Id).U32(child)
             .I16(px).I16(py).I16(px - ex).I16(py - ey).U16(state)
             .U8(0)                                          // mode:Normal
             .U8((byte)(0x02 | (focus ? 0x01 : 0)))));       // same-screen | focus
@@ -557,6 +594,7 @@ public sealed partial class X11Server
 
     private void KeyEvent(byte keycode, bool pressed)
     {
+        _motionHintEpoch++;   // 按键状态变了:同上
         if (keycode < Keymap.MinKeycode)
         {
             return;
@@ -660,15 +698,16 @@ public sealed partial class X11Server
     /// <summary>被动抓取:从根往下到源窗口,第一个匹配的生效(协议「GrabButton」「GrabKey」)。</summary>
     private (XWindow Window, PassiveGrab Grab)? FindPassiveGrab(XWindow source, bool isButton, int detail)
     {
-        List<XWindow> chain = [];
-        for (XWindow? w = source; w is not null; w = w.Parent)
-        {
-            chain.Add(w);
-        }
-        chain.Reverse();
+        // 从根往下找(协议:离根最近的那个被动抓取生效);递归回溯父链,不为每次按键分配链表。
         ushort mods = (ushort)(_modifiers & 0xFF);
-        foreach (XWindow w in chain)
+        return Find(source);
+
+        (XWindow Window, PassiveGrab Grab)? Find(XWindow w)
         {
+            if (w.Parent is { } parent && Find(parent) is { } outer)
+            {
+                return outer;
+            }
             foreach (PassiveGrab grab in isButton ? w.ButtonGrabs : w.KeyGrabs)
             {
                 if (grab.Matches(detail, mods) && !grab.Client.Closed)
@@ -676,8 +715,8 @@ public sealed partial class X11Server
                     return (w, grab);
                 }
             }
+            return null;
         }
-        return null;
     }
 
     // ================================================================== 焦点
@@ -914,6 +953,7 @@ public sealed partial class X11Server
     private void QueryPointer(XClient c, XRequestReader r)
     {
         XWindow window = Window(r.U32());
+        c.MotionHint = default;   // 客户端来问了位置:下一次移动再给它一条提示
         (int wx, int wy) = window.AbsoluteInner();
         uint child = 0;
         for (XWindow? w = _pointerWindow; w is not null; w = w.Parent)

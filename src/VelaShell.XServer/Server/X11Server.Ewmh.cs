@@ -68,6 +68,10 @@ public sealed partial class X11Server
     private uint[] _typeAtoms = [];
     private uint _netWmStateAtom, _netWmTypeAtom, _wmStateAtom;
 
+    // 刷新窗口快照时要读的属性的原子,初始化时算好。
+    private uint _netWmNameAtom, _wmProtocolsAtom, _wmDeleteWindowAtom, _motifHintsAtom, _netWmOpacityAtom,
+        _gtkFrameExtentsAtom, _netWmPidAtom, _wmClientMachineAtom, _wmRoleAtom, _netWmIconAtom;
+
     /// <summary>宿主给每个顶层设的外框尺寸(_NET_FRAME_EXTENTS):左、右、上、下。</summary>
     private readonly Dictionary<XWindow, (int Left, int Right, int Top, int Bottom)> _frameExtents = [];
 
@@ -79,6 +83,16 @@ public sealed partial class X11Server
         _netWmStateAtom = Intern("_NET_WM_STATE");
         _netWmTypeAtom = Intern("_NET_WM_WINDOW_TYPE");
         _wmStateAtom = Intern("WM_STATE");
+        _netWmNameAtom = Intern("_NET_WM_NAME");
+        _wmProtocolsAtom = Intern("WM_PROTOCOLS");
+        _wmDeleteWindowAtom = Intern("WM_DELETE_WINDOW");
+        _motifHintsAtom = Intern("_MOTIF_WM_HINTS");
+        _netWmOpacityAtom = Intern("_NET_WM_WINDOW_OPACITY");
+        _gtkFrameExtentsAtom = Intern("_GTK_FRAME_EXTENTS");
+        _netWmPidAtom = Intern("_NET_WM_PID");
+        _wmClientMachineAtom = Intern("WM_CLIENT_MACHINE");
+        _wmRoleAtom = Intern("WM_WINDOW_ROLE");
+        _netWmIconAtom = Intern("_NET_WM_ICON");
         XWindow check = SelectionWindow;   // 服务端自己的隐藏窗口兼作 _NET_SUPPORTING_WM_CHECK 窗口
         List<string> supported =
         [
@@ -393,7 +407,7 @@ public sealed partial class X11Server
             }
         }
 
-        uint[] motif = ReadCard32s(props.GetValueOrDefault(Intern("_MOTIF_WM_HINTS")));
+        uint[] motif = ReadCard32s(props.GetValueOrDefault(_motifHintsAtom));
         handle.Decorated = motif.Length < 3 || (motif[0] & 2) == 0 || motif[2] != 0;
 
         uint[] size = ReadCard32s(props.GetValueOrDefault(XAtom.WmNormalHints));
@@ -409,18 +423,24 @@ public sealed partial class X11Server
         handle.AcceptsFocus = hints.Length < 2 || (hints[0] & 1) == 0 || hints[1] != 0;
         handle.Urgent = (hints.Length >= 1 && (hints[0] & 256) != 0) || (handle.States & XWindowStates.DemandsAttention) != 0;
 
-        uint[] opacity = ReadCard32s(props.GetValueOrDefault(Intern("_NET_WM_WINDOW_OPACITY")));
+        uint[] opacity = ReadCard32s(props.GetValueOrDefault(_netWmOpacityAtom));
         handle.Opacity = opacity.Length >= 1 ? opacity[0] / (double)uint.MaxValue : 1;
 
-        uint[] extents = ReadCard32s(props.GetValueOrDefault(Intern("_GTK_FRAME_EXTENTS")));
+        uint[] extents = ReadCard32s(props.GetValueOrDefault(_gtkFrameExtentsAtom));
         handle.ClientFrameExtents = extents.Length >= 4 ? ((int)extents[0], (int)extents[1], (int)extents[2], (int)extents[3]) : default;
 
-        uint[] pid = ReadCard32s(props.GetValueOrDefault(Intern("_NET_WM_PID")));
+        uint[] pid = ReadCard32s(props.GetValueOrDefault(_netWmPidAtom));
         handle.ProcessId = pid.Length >= 1 ? (int)pid[0] : 0;
-        handle.ClientMachine = props.GetValueOrDefault(Intern("WM_CLIENT_MACHINE")) is { Format: 8 } machine ? XWire.Latin1.GetString(machine.Data) : "";
-        handle.Role = props.GetValueOrDefault(Intern("WM_WINDOW_ROLE")) is { Format: 8 } role ? XWire.Latin1.GetString(role.Data) : "";
+        handle.ClientMachine = props.GetValueOrDefault(_wmClientMachineAtom) is { Format: 8 } machine ? XWire.Latin1.GetString(machine.Data) : "";
+        handle.Role = props.GetValueOrDefault(_wmRoleAtom) is { Format: 8 } role ? XWire.Latin1.GetString(role.Data) : "";
 
-        handle.Icons = ParseIcons(ReadCard32s(props.GetValueOrDefault(Intern("_NET_WM_ICON"))));
+        XProperty? icon = props.GetValueOrDefault(_netWmIconAtom);
+        if (!ReferenceEquals(icon, handle.IconSource))
+        {
+            // 图标动辄几百 KB:只在属性真的换了时重新解析,改标题之类的刷新不重复这份工作。
+            handle.Icons = ParseIcons(ReadCard32s(icon));
+            handle.IconSource = icon;
+        }
     }
 
     /// <summary>_NET_WM_ICON:若干组(宽, 高, 宽 × 高 个 ARGB)。尺寸不合理的组丢弃,后面的不再解析。</summary>

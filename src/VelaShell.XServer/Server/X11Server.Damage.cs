@@ -170,13 +170,29 @@ public sealed partial class X11Server
         {
             return;
         }
-        foreach (XResource key in _damageObjects.Keys.ToArray())
+        // AccumulateDamage 只改损伤对象、发事件,不增删字典:直接遍历,不拷键。
+        foreach (XResource key in _damageObjects.Keys)
         {
-            if (key is not XWindow window || !ReferenceEquals(window.TopLevel ?? window, top) || !window.IsViewable)
+            if (key is not XWindow { IsViewable: true } window)
             {
                 continue;
             }
-            (int ox, int oy) = window.OffsetInTopLevel();
+            int ox, oy;
+            if (window.IsRoot)
+            {
+                // 根窗口的内容就是所有顶层窗口拼起来的样子(合成管理器正是在根上建 Damage):
+                // 顶层缓冲的坐标换到根坐标,缓冲原点 = 顶层内部左上角,即 -(顶层在根里的位置)。
+                (int ax, int ay) = top.AbsoluteInner();
+                (ox, oy) = (-ax, -ay);
+            }
+            else if (ReferenceEquals(window.TopLevel ?? window, top))
+            {
+                (ox, oy) = window.OffsetInTopLevel();
+            }
+            else
+            {
+                continue;
+            }
             Region local = bufferRegion.Clone().Intersect(new XRect(ox, oy, window.Width, window.Height)).Translate(-ox, -oy);
             if (!local.IsEmpty)
             {

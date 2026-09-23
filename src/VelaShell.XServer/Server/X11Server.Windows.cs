@@ -257,6 +257,7 @@ public sealed partial class X11Server
         CleanupDamage(null, window);
         CleanupCompositeDbe(null, window);
         CleanupPresent(null, window);
+        CleanupRandR(null, window);
         CleanupEwmh(window);
         foreach (var (atom, owner) in _selections.ToArray())
         {

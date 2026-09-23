@@ -39,7 +39,7 @@ public sealed partial class X11Server
                     break;
                 }
             case 2:   // FakeInput
-                FakeInput(r);
+                FakeInput(c, r);
                 break;
             case 3:   // GrabControl:我们不会因为别人的 GrabServer 挡住 XTEST 客户端以外的东西,接受即可
                 break;
@@ -48,7 +48,7 @@ public sealed partial class X11Server
         }
     }
 
-    private void FakeInput(XRequestReader r)
+    private void FakeInput(XClient c, XRequestReader r)
     {
         byte type = r.U8();
         byte detail = r.U8();
@@ -87,17 +87,26 @@ public sealed partial class X11Server
         }
         else
         {
-            // 延迟以毫秒计;到点后回到执行线程执行,不阻塞后面的请求。
-            _ = DelayThenPostAsync(delay, Run);
+            // 延迟以毫秒计;到点后回到执行线程执行,不阻塞后面的请求。发请求的客户端先断开了就不再注入。
+            _ = DelayThenPostAsync(c, delay, Run);
         }
     }
 
-    private async Task DelayThenPostAsync(uint milliseconds, Action action)
+    /// <summary>延迟上限约 24 天(Task.Delay 的上限);协议允许的更大值没有实际意义。</summary>
+    private const uint MaxFakeInputDelay = int.MaxValue;
+
+    private async Task DelayThenPostAsync(XClient client, uint milliseconds, Action action)
     {
         try
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(milliseconds), _lifetime.Token).ConfigureAwait(false);
-            Post(null, action);
+            await Task.Delay(TimeSpan.FromMilliseconds(Math.Min(milliseconds, MaxFakeInputDelay)), _lifetime.Token).ConfigureAwait(false);
+            Post(null, () =>
+            {
+                if (!client.Closed)
+                {
+                    action();
+                }
+            });
         }
         catch (OperationCanceledException)
         {

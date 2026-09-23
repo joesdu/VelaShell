@@ -174,6 +174,39 @@ public sealed class SyncCompositeTests
     }
 
     [TestMethod]
+    public async Task IDLETIME上的负向跨越报警器在用户输入时触发()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        (byte sync, byte syncEvent, _) = await ExtAsync(c, "SYNC");
+        uint top = await MapTopAsync(c, host);
+
+        // ListSystemCounters:每项 = counter、resolution(8 字节)、名字长度、名字,整项按 4 字节补齐。
+        XMessage list = await c.RequestAsync(sync, 1);
+        uint idle = 0;
+        for (int i = 0, offset = 32; i < (int)list.U32(8); i++)
+        {
+            int length = list.U16(offset + 12);
+            if (Encoding.Latin1.GetString(list.Bytes, offset + 14, length) == "IDLETIME")
+            {
+                idle = list.U32(offset);
+            }
+            offset += (14 + length + 3) & ~3;
+        }
+        Assert.AreNotEqual(0u, idle, "有 IDLETIME 计数器");
+
+        // 空闲超过 50 毫秒之后又有了输入:IDLETIME 从 50 以上掉回 0,NegativeTransition(1)成立。
+        uint alarm = c.NewId();
+        await c.SendAsync(sync, 9, b => b.U32(alarm).U32(1 | 2 | 4 | 8).U32(idle).U32(0).I32(0).U32(50).U32(1));
+        await c.SyncAsync();
+        await Task.Delay(150);
+        server.PointerMotion(top, 3, 3);
+        XMessage fired = await c.NextEventAsync((byte)(syncEvent + 1));
+        Assert.AreEqual(alarm, fired.U32(4));
+    }
+
+    [TestMethod]
     public async Task SYNC报警器触发后按delta推进_栅栏可查询()
     {
         await using X11Server server = new();

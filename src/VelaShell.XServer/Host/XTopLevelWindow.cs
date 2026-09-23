@@ -90,6 +90,9 @@ public sealed class XTopLevelWindow
     /// <summary>图标(<c>_NET_WM_ICON</c>,可能有多种尺寸);没有为空列表。</summary>
     public IReadOnlyList<XWindowIcon> Icons { get; internal set; } = [];
 
+    /// <summary>解析出 <see cref="Icons" /> 的那份属性值(属性不可变、改动总是整份换掉:同一个引用就不必重新解析)。</summary>
+    internal object? IconSource { get; set; }
+
     /// <summary>要求引起注意(<c>WM_HINTS</c> 的 urgency 或 <c>_NET_WM_STATE_DEMANDS_ATTENTION</c>)。</summary>
     public bool Urgent { get; internal set; }
 
