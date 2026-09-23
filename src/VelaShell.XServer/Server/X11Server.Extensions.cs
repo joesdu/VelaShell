@@ -39,6 +39,7 @@ public sealed partial class X11Server
         Register(new Extension("XC-MISC", 129, XcMisc));
         Register(new Extension("SHAPE", ShapeMajor, Shape) { FirstEvent = ShapeEventBase });
         Register(new Extension("XFIXES", XFixesMajor, XFixes) { FirstEvent = XFixesEventBase, FirstError = XFixesErrorBase });
+        Register(new Extension("RANDR", RandRMajor, RandR) { FirstEvent = RandREventBase, FirstError = RandRErrorBase });
     }
 
     private void Register(Extension extension)
