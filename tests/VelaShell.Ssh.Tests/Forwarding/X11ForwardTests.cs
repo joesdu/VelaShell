@@ -307,6 +307,84 @@ public sealed class X11ForwardTests
         Assert.AreSequenceEqual(new[] { "pty-req", "x11-req", "env", "shell" }, order);
     }
 
+    /// <summary>§7.5.8：连接级开关打开的 X11，服务端拒绝时记下原因、shell 照常启动。</summary>
+    [TestMethod]
+    public async Task 尽力而为的X11被服务端拒绝时shell照常启动()
+    {
+        await using Fixture fixture = await Fixture.StartAsync(grantX11: false);
+
+        await using SshShell shell = await fixture.Harness.Connection.OpenShellAsync(
+            new SshShellOptions { X11 = fixture.Options with { BestEffort = true } },
+            fixture.Harness.Token);
+
+        Assert.IsNull(shell.X11, "没开成就不该有转发器");
+        Assert.IsNotNull(shell.X11SetupFailure, "没开成的原因要交给调用方");
+        Assert.Contains("X11Forwarding", shell.X11SetupFailure.Message);
+
+        string[] order = [.. fixture.Harness.Channels.Observation.Requests
+            .Where(static r => r is "pty-req" or "x11-req" or "shell")];
+        Assert.AreSequenceEqual(new[] { "pty-req", "x11-req", "shell" }, order);
+
+        // 吞掉的失败不能在连接上留下半挂的转发 —— 否则服务端之后开的 x11 通道会被接走。
+        Stream? channel = await fixture.Harness.Channels.OpenChannelToClientAsync(
+            SshAlgorithmNames.ChannelX11, X11Origin(), fixture.Harness.Token);
+        Assert.IsNull(channel, "X11 没开成，这条连接不该接受 x11 通道");
+    }
+
+    /// <summary>§7.5.8：调用方显式要求的 X11（默认就是显式的），失败照样抛，shell 不启动。</summary>
+    [TestMethod]
+    public async Task 显式要求的X11被服务端拒绝时照样抛()
+    {
+        await using Fixture fixture = await Fixture.StartAsync(grantX11: false);
+
+        Assert.IsFalse(fixture.Options.BestEffort, "默认必须是严格的");
+
+        SshForwardException error = await Assert.ThrowsExactlyAsync<SshForwardException>(
+            async () => await fixture.Harness.Connection.OpenShellAsync(
+                new SshShellOptions { X11 = fixture.Options }, fixture.Harness.Token));
+
+        Assert.Contains("X11Forwarding", error.Message);
+        Assert.DoesNotContain("shell", fixture.Harness.Channels.Observation.Requests);
+    }
+
+    /// <summary>§7.5.8：本机这一侧就失败（xauth 跑不起来）时，尽力而为的命令照常执行、x11-req 根本不发。</summary>
+    [TestMethod]
+    public async Task 尽力而为的X11在本机拿不到cookie时命令照常执行()
+    {
+        await using Fixture fixture = await Fixture.StartAsync();
+
+        await using SshCommand command = await fixture.Harness.Connection.ExecuteAsync(
+            "xclock",
+            new SshExecutionOptions { X11 = UnrunnableXAuth(fixture.Options) with { BestEffort = true } },
+            fixture.Harness.Token);
+
+        Assert.IsNull(command.X11);
+        Assert.IsNotNull(command.X11SetupFailure);
+        Assert.IsEmpty(fixture.Harness.Channels.Observation.X11Requests, "本机就失败了，不该再发 x11-req");
+        Assert.Contains("xclock", fixture.Harness.Channels.Observation.Commands);
+    }
+
+    [TestMethod]
+    public async Task 显式要求的X11在本机拿不到cookie时照样抛()
+    {
+        await using Fixture fixture = await Fixture.StartAsync();
+
+        await Assert.ThrowsExactlyAsync<SshForwardException>(
+            async () => await fixture.Harness.Connection.ExecuteAsync(
+                "xclock",
+                new SshExecutionOptions { X11 = UnrunnableXAuth(fixture.Options) },
+                fixture.Harness.Token));
+
+        Assert.IsEmpty(fixture.Harness.Channels.Observation.Commands, "显式要求失败时命令不该被执行");
+    }
+
+    /// <summary>非受信模式 + 一个不存在的 <c>xauth</c>：在本机这一侧就失败。</summary>
+    private static X11ForwardOptions UnrunnableXAuth(X11ForwardOptions options) => options with
+    {
+        Trusted = false,
+        XAuthLocation = Path.Combine(Path.GetTempPath(), $"velashell-no-xauth-{Guid.NewGuid():N}", "xauth"),
+    };
+
     [TestMethod]
     public void 非受信模式的xauth一定写进临时文件()
     {

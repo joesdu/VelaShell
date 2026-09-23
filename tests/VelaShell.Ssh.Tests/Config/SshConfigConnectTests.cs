@@ -6,6 +6,7 @@
 using VelaShell.Ssh.Config;
 using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Diagnostics;
+using VelaShell.Ssh.Forwarding;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Protocol;
 using VelaShell.Ssh.Session;
@@ -191,6 +192,25 @@ public sealed class SshConfigConnectTests
         Assert.IsNotNull(shell.AgentForwarding);
         Assert.IsNotNull(shell.X11);
         Assert.IsTrue(shell.X11.Trusted);
+
+        // §7.5.8：连接级开关打开的 X11 是尽力而为的 —— 失败不该让 shell 起不来。
+        Assert.IsTrue(shell.X11.BestEffort);
+    }
+
+    [TestMethod]
+    public void 模板里调用方给的X11选项保持严格()
+    {
+        IReadOnlyList<SshConfigBlock> blocks = SshConfigFile.Parse("""
+            Host gui
+                ForwardX11 yes
+            """);
+
+        X11ForwardOptions explicitX11 = new() { Trusted = true };
+        SshShellOptions shell = SshConfigFile.Resolve(blocks, "gui")
+            .ApplyToShell(new SshShellOptions { X11 = explicitX11 });
+
+        Assert.AreSame(explicitX11, shell.X11, "模板里显式设了的不会被覆盖");
+        Assert.IsFalse(shell.X11!.BestEffort);
     }
 
     [TestMethod]

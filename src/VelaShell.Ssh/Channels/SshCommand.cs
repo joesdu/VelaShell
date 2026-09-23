@@ -73,7 +73,10 @@ public sealed record SshExecutionOptions
     /// </para>
     /// <para>
     /// 〔<c>velashell-docs/zh/ssh/spec/07</c> §7.5.8〕在这里显式要求的，<b>失败就抛</b> ——
-    /// 调用方明确要 X11，静默降级等于骗他。
+    /// 调用方明确要 X11，静默降级等于骗他。例外是
+    /// <see cref="Forwarding.X11ForwardOptions.BestEffort"/> 为 <see langword="true"/> 的选项
+    /// （连接级开关打开的，比如 <c>ssh_config</c> 的 <c>ForwardX11 yes</c>）：失败时不开 X11、
+    /// 命令照常执行，原因放在 <see cref="SshCommand.X11SetupFailure"/> 上。
     /// </para>
     /// <para>
     /// 请求的时序是 <c>pty-req</c> → <c>x11-req</c> → <c>env</c> → <c>exec</c>，
@@ -116,22 +119,33 @@ public sealed record SshExecutionOptions
 public sealed class SshCommand : IAsyncDisposable
 {
     internal SshCommand(
-        SshChannel channel, Forwarding.X11Forwarder? x11 = null, Forwarding.AgentForwarder? agent = null)
+        SshChannel channel,
+        Forwarding.X11Forwarder? x11 = null,
+        Forwarding.AgentForwarder? agent = null,
+        Diagnostics.SshForwardException? x11SetupFailure = null)
     {
         Channel = channel;
         X11 = x11;
         Agent = agent;
+        X11SetupFailure = x11SetupFailure;
     }
 
     /// <summary>这条命令的 agent 转发；没请求过就是 <see langword="null"/>。</summary>
     public Forwarding.AgentForwarder? Agent { get; }
 
-    /// <summary>这条命令的 X11 转发；没请求过就是 <see langword="null"/>。</summary>
+    /// <summary>这条命令的 X11 转发；没请求过、或尽力而为的请求没成时是 <see langword="null"/>。</summary>
     /// <remarks>
     /// 交出来是为了能看计数（接受了几条、拒绝了几条）——
     /// <c>RejectedChannels</c> 非零意味着有人拿着错的 cookie 在敲门。
     /// </remarks>
     public Forwarding.X11Forwarder? X11 { get; }
+
+    /// <summary>
+    /// 尽力而为的 X11 请求（<see cref="Forwarding.X11ForwardOptions.BestEffort"/>）没成时的原因；
+    /// 其余情况都是 <see langword="null"/>。
+    /// </summary>
+    /// <remarks>语义见 <see cref="SshShell.X11SetupFailure"/>。</remarks>
+    public Diagnostics.SshForwardException? X11SetupFailure { get; }
 
     /// <summary>底层通道。</summary>
     public SshChannel Channel { get; }

@@ -136,6 +136,28 @@ public sealed class X11PrimitiveTests
     }
 
     [TestMethod]
+    public void 显示号按数值比而不是按文本比()
+    {
+        // 前导零只是写法不同：数值上就是 5。
+        byte[] padded = Entry(XAuthority.FamilyWild, "", "05", XAuthority.MitMagicCookie1, [1, 2, 3, 4]);
+        Assert.IsNotNull(XAuthority.FindCookie(XAuthority.Parse(padded), X11Display.Parse(":5")!));
+        Assert.IsNull(XAuthority.FindCookie(XAuthority.Parse(padded), X11Display.Parse(":0")!));
+
+        // 空串仍是通配。
+        byte[] wild = Entry(XAuthority.FamilyWild, "", "", XAuthority.MitMagicCookie1, [1, 2, 3, 4]);
+        Assert.IsNotNull(XAuthority.FindCookie(XAuthority.Parse(wild), X11Display.Parse(":9")!));
+
+        // 非空而解析不了的（符号、空白、非数字、溢出）不匹配任何显示 —— 更不当通配。
+        foreach (string bad in (string[])["+5", "-5", " 5", "5 ", "5x", "x", "99999999999"])
+        {
+            byte[] file = Entry(XAuthority.FamilyWild, "", bad, XAuthority.MitMagicCookie1, [1, 2, 3, 4]);
+            Assert.IsNull(
+                XAuthority.FindCookie(XAuthority.Parse(file), X11Display.Parse(":5")!),
+                $"显示号 \"{bad}\" 不该匹配");
+        }
+    }
+
+    [TestMethod]
     public void 截断的Xauthority不抛异常且前面的记录仍然可用()
     {
         // 文件可能正被别的程序写入。一个半截的文件不该让整条连接失败。

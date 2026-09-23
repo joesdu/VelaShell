@@ -41,7 +41,9 @@ public sealed record SshShellOptions
 
     /// <summary>为这个 shell 请求 X11 转发（<c>ssh -X</c> / <c>-Y</c>）；<see langword="null"/> 表示不请求。</summary>
     /// <remarks>
-    /// 语义与 <see cref="SshExecutionOptions.X11"/> 相同：默认不请求，显式要求而失败就抛。
+    /// 语义与 <see cref="SshExecutionOptions.X11"/> 相同：默认不请求，显式要求而失败就抛；
+    /// <see cref="Forwarding.X11ForwardOptions.BestEffort"/> 的选项失败时不开 X11、shell 照常启动，
+    /// 原因放在 <see cref="SshShell.X11SetupFailure"/> 上。
     /// </remarks>
     public Forwarding.X11ForwardOptions? X11 { get; init; }
 
@@ -84,19 +86,32 @@ public sealed class SshShell : IAsyncDisposable
         SshChannel channel,
         TerminalSize size,
         Forwarding.X11Forwarder? x11 = null,
-        Forwarding.AgentForwarder? agent = null)
+        Forwarding.AgentForwarder? agent = null,
+        Diagnostics.SshForwardException? x11SetupFailure = null)
     {
         Channel = channel;
         Size = size;
         X11 = x11;
         Agent = agent;
+        X11SetupFailure = x11SetupFailure;
     }
 
     /// <summary>底层通道。</summary>
     public SshChannel Channel { get; }
 
-    /// <summary>这个 shell 的 X11 转发；没请求过就是 <see langword="null"/>。</summary>
+    /// <summary>这个 shell 的 X11 转发；没请求过、或尽力而为的请求没成时是 <see langword="null"/>。</summary>
     public Forwarding.X11Forwarder? X11 { get; }
+
+    /// <summary>
+    /// 尽力而为的 X11 请求（<see cref="Forwarding.X11ForwardOptions.BestEffort"/>）没成时的原因；
+    /// 其余情况（成了、没请求、或者请求是严格的 —— 严格的失败直接抛）都是 <see langword="null"/>。
+    /// </summary>
+    /// <remarks>
+    /// 〔<c>velashell-docs/zh/ssh/spec/07</c> §7.5.8〕连接级开关打开的 X11 失败时「记日志，照常启动」。
+    /// 本库不带日志器，所以原因以结构化形式交给调用方（同时计入
+    /// <see cref="Forwarding.ForwardMetrics.Errors"/>），由调用方决定记到哪里、要不要提示使用者。
+    /// </remarks>
+    public Diagnostics.SshForwardException? X11SetupFailure { get; }
 
     /// <summary>这个 shell 的 agent 转发；没请求过就是 <see langword="null"/>。</summary>
     public Forwarding.AgentForwarder? Agent { get; }

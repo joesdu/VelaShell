@@ -82,6 +82,29 @@ public sealed record X11ForwardOptions
     /// <summary>同时允许的 X11 通道数上限。</summary>
     public int MaxConcurrentChannels { get; init; } = 16;
 
+    /// <summary>
+    /// 尽力而为：开会话时 X11 设置失败就不开 X11、会话照常启动，而不是抛异常。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>默认 <see langword="false"/>（严格）。</b>〔<c>velashell-docs/zh/ssh/spec/07</c> §7.5.8〕
+    /// 调用方在这一次执行上显式要求的 X11，失败就抛 —— 他明确要 X11，静默降级等于骗他。
+    /// </para>
+    /// <para>
+    /// 只有 X11 是由<b>连接级开关</b>打开的时候（比如 <c>ssh_config</c> 里的 <c>ForwardX11 yes</c>，
+    /// 见 <see cref="Config.SshHostConfig.ApplyToShell"/>）才设成 <see langword="true"/>：
+    /// 否则一份存量配置会让这台主机上的所有会话都起不来。
+    /// </para>
+    /// <para>
+    /// 只在 <see cref="Session.SshConnectionSessions.OpenShellAsync"/> /
+    /// <see cref="Session.SshConnectionSessions.ExecuteAsync"/> 里起作用：失败的原因放在
+    /// <see cref="Channels.SshShell.X11SetupFailure"/> / <see cref="Channels.SshCommand.X11SetupFailure"/> 上，
+    /// 并计入 <see cref="ForwardMetrics.Errors"/>。取消照常抛出。
+    /// 直接调 <see cref="X11Forwarder.RequestAsync"/> 的话这一项不起作用 —— 那本身就是显式请求。
+    /// </para>
+    /// </remarks>
+    public bool BestEffort { get; init; }
+
     /// <summary>默认选项。</summary>
     public static X11ForwardOptions Default { get; } = new();
 }
