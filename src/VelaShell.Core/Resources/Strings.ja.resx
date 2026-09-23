@@ -2175,6 +2175,12 @@
   <data name="SetGeneral_UiLanguageDesc" xml:space="preserve">
     <value>// アプリケーションの表示言語</value>
   </data>
+  <data name="SetKeys_AddKeysToAgent" xml:space="preserve">
+    <value>鍵を自動的に Agent に追加</value>
+  </data>
+  <data name="SetKeys_AddKeysToAgentDesc" xml:space="preserve">
+    <value>// 秘密鍵ファイルでのログインに成功した後、その鍵をローカルの ssh-agent に追加します(OpenSSH の AddKeysToAgent と同じ)。agent 転送や他のツールから利用できます。鍵は ssh-add -d で削除するまで agent に残り、Windows の agent では再起動後も保持されます</value>
+  </data>
   <data name="SetKeys_AlgoEcdsa256" xml:space="preserve">
     <value>ECDSA 256</value>
   </data>
@@ -2216,6 +2222,9 @@
   </data>
   <data name="SetKeys_ImportDialogTitle" xml:space="preserve">
     <value>SSH 秘密鍵をインポート</value>
+  </data>
+  <data name="SetKeys_SectionAgent" xml:space="preserve">
+    <value>SSH Agent</value>
   </data>
   <data name="SetKeys_SearchPlaceholder" xml:space="preserve">
     <value>鍵を検索...</value>

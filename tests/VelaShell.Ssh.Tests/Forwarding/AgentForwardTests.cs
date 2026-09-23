@@ -350,6 +350,7 @@ public sealed class AgentForwardTests
 
         Assert.AreEqual(0, harness.Agent.SignRequests);
         Assert.AreEqual(0, harness.Agent.ListRequests, "这些请求根本不该到达本机 agent");
+        Assert.AreEqual(0, harness.Agent.AddRequests, "加钥请求尤其不该到达本机 agent");
 
         await forwarder.DisposeAsync();
     }

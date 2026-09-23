@@ -286,6 +286,47 @@ public sealed class X11ForwardTests
         Assert.AreEqual(1, xserver.AcceptedConnections);
     }
 
+    /// <summary>单连接模式下两条 x11 通道同时到达：只能放行一条。</summary>
+    /// <remarks>
+    /// 以前是「看接纳计数是否 &gt; 0」再放行，而计数要等建立报文发给本机显示之后才加一 ——
+    /// 挨着到达的第二条看到的还是 0，两条都被放行（Linux CI 上上面那条用例因此偶发失败）。
+    /// 名额现在是原子认领的。
+    /// </remarks>
+    [TestMethod]
+    public async Task 单连接模式下同时到达的两条通道只放行一条()
+    {
+        await using Fixture fixture = await Fixture.StartAsync();
+        using var xserver = FakeXServer.Start();
+
+        await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
+            fixture.Harness.Connection, fixture.Session,
+            fixture.Options with { Display = xserver.Display, SingleConnection = true },
+            fixture.Harness.Token);
+
+        byte[] cookie = Convert.FromHexString(
+            fixture.Harness.Channels.Observation.X11Requests.Single().AuthCookieHex);
+        byte[] setup = BuildSetup(true, XAuthority.MitMagicCookie1, cookie);
+
+        await using Stream first = await OpenX11Async(fixture);
+        await using Stream second = await OpenX11Async(fixture);
+
+        // 两条一起写，尽量让它们在转发器里挨着到达。
+        await Task.WhenAll(
+            WriteSetupAsync(first, setup, fixture.Harness.Token),
+            WriteSetupAsync(second, setup, fixture.Harness.Token));
+
+        await WaitForAsync(
+            () => forwarder.AcceptedChannels + forwarder.RejectedChannels == 2, fixture.Harness.Token);
+        Assert.AreEqual(1, forwarder.AcceptedChannels, "单连接模式只许放行一条");
+        Assert.AreEqual(1, forwarder.RejectedChannels);
+
+        static async Task WriteSetupAsync(Stream stream, byte[] setup, CancellationToken cancellationToken)
+        {
+            await stream.WriteAsync(setup, cancellationToken);
+            await stream.FlushAsync(cancellationToken);
+        }
+    }
+
     /// <summary>交互 shell 也能开 X11 转发（<c>ssh -X</c> 最常见的用法），时序 pty → x11 → env → shell。</summary>
     [TestMethod]
     public async Task 交互shell请求X11转发且时序正确()

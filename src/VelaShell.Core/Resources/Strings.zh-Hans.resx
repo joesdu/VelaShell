@@ -2425,6 +2425,12 @@
   <data name="SetGeneral_UiLanguageDesc" xml:space="preserve">
     <value>// 应用程序显示语言</value>
   </data>
+  <data name="SetKeys_AddKeysToAgent" xml:space="preserve">
+    <value>自动将密钥加入 Agent</value>
+  </data>
+  <data name="SetKeys_AddKeysToAgentDesc" xml:space="preserve">
+    <value>// 用私钥文件登录成功后,把这把密钥加入本机 ssh-agent(同 OpenSSH 的 AddKeysToAgent),供 agent 转发与其它工具使用。密钥会一直留在 agent 里,直到用 ssh-add -d 删除;Windows 的 agent 重启后仍保留</value>
+  </data>
   <data name="SetKeys_AlgoEcdsa256" xml:space="preserve">
     <value>ECDSA 256</value>
   </data>
@@ -2466,6 +2472,9 @@
   </data>
   <data name="SetKeys_ImportDialogTitle" xml:space="preserve">
     <value>导入 SSH 私钥</value>
+  </data>
+  <data name="SetKeys_SectionAgent" xml:space="preserve">
+    <value>SSH Agent</value>
   </data>
   <data name="SetKeys_SearchPlaceholder" xml:space="preserve">
     <value>搜索密钥...</value>

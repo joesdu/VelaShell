@@ -2175,6 +2175,12 @@
   <data name="SetGeneral_UiLanguageDesc" xml:space="preserve">
     <value>// 애플리케이션 표시 언어</value>
   </data>
+  <data name="SetKeys_AddKeysToAgent" xml:space="preserve">
+    <value>키를 Agent에 자동으로 추가</value>
+  </data>
+  <data name="SetKeys_AddKeysToAgentDesc" xml:space="preserve">
+    <value>// 개인 키 파일로 로그인에 성공하면 해당 키를 로컬 ssh-agent에 추가합니다(OpenSSH의 AddKeysToAgent와 동일). agent 전달 및 다른 도구에서 사용할 수 있습니다. 키는 ssh-add -d로 제거할 때까지 agent에 남으며, Windows agent는 재부팅 후에도 유지됩니다</value>
+  </data>
   <data name="SetKeys_AlgoEcdsa256" xml:space="preserve">
     <value>ECDSA 256</value>
   </data>
@@ -2216,6 +2222,9 @@
   </data>
   <data name="SetKeys_ImportDialogTitle" xml:space="preserve">
     <value>SSH 개인 키 가져오기</value>
+  </data>
+  <data name="SetKeys_SectionAgent" xml:space="preserve">
+    <value>SSH Agent</value>
   </data>
   <data name="SetKeys_SearchPlaceholder" xml:space="preserve">
     <value>키 검색...</value>

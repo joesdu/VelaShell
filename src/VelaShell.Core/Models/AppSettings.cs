@@ -1171,8 +1171,20 @@ public class KeyOptions : ObservableOptions
         set => Set(ref field, value ?? "");
     } = "";
 
-    /// <summary>规划中(ssh-agent 集成):仅持久化,当前无运行时消费者,不出现在设置界面(设置审计 R-06)。</summary>
-    public bool AutoLoadToAgent { get; set; } = true;
+    /// <summary>
+    /// 用私钥文件认证成功后,把这把私钥加进本机 ssh-agent(OpenSSH 的 <c>AddKeysToAgent yes</c>)。
+    /// 默认关:往系统 agent 里放私钥是用户自己的决定,而 Windows 的 agent 会把它存进注册表、重启仍在。
+    /// </summary>
+    /// <remarks>
+    /// 取代了旧字段 <c>AutoLoadToAgent</c>。旧字段默认 <see langword="true" /> 却从未有消费者,
+    /// 存量配置里的那个 <c>true</c> 从来不是用户的选择 —— 换名字就是为了不把它当成同意。
+    /// 旧键留在配置文件里会被反序列化忽略。
+    /// </remarks>
+    public bool AddKeysToAgent
+    {
+        get;
+        set => Set(ref field, value);
+    }
 }
 
 /// <summary>

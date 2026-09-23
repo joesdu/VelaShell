@@ -343,6 +343,12 @@ public sealed class TestChannelServer : IDisposable
         }
     }
 
+    /// <summary>
+    /// 服务端发起重协商时，KEXINIT 发出之后再等这么久才让发送返回。
+    /// 只给回归用例撑大竞态窗口用（见 <see cref="RequestRekeyAsync"/>）。
+    /// </summary>
+    public TimeSpan DelayAfterRekeyKexInitSent { get; set; }
+
     /// <summary>把服务端交给这个循环，之后才能发起重协商。</summary>
     public void AttachServer(TestSshServer server) => _server = server;
 
@@ -369,7 +375,25 @@ public sealed class TestChannelServer : IDisposable
         //
         // 发出去之后客户端会回它自己的 KEXINIT，那个报文把循环唤醒，
         // 循环再走 OnClientKexInitAsync 把剩下的做完。
-        _pendingRekeyKexInit = await _server.BeginRekeyAsync(SendForKexAsync, cancellationToken);
+        //
+        // ⚠️ **先登记、再上线**（与 plan.md §97 请求账本那次是同一类竞态）：
+        // 以前是 `_pendingRekeyKexInit = await BeginRekeyAsync(...)`，赋值要等发送返回之后才发生。
+        // 客户端的 KEXINIT 可能在那之前就到了，收包循环在另一个线程上读到 null，
+        // 把这次当成「客户端发起」再发一份 KEXINIT —— 两边从此对不上，用例挂在 25 秒超时上。
+        // 泵线程能立刻抢到核的 Linux CI 上才偶发。
+        await _server.BeginRekeyAsync(
+            async (packet, ct) =>
+            {
+                Volatile.Write(ref _pendingRekeyKexInit, packet.ToArray());
+                await SendForKexAsync(packet, ct);
+
+                // 回归用例用它把「KEXINIT 已上线、发送还没返回」这段窗口撑大。
+                if (DelayAfterRekeyKexInitSent > TimeSpan.Zero)
+                {
+                    await Task.Delay(DelayAfterRekeyKexInitSent, ct);
+                }
+            },
+            cancellationToken);
 
         return await request.Task;
     }
@@ -377,11 +401,9 @@ public sealed class TestChannelServer : IDisposable
     /// <summary>收到客户端的 KEXINIT —— 把重协商收尾。</summary>
     private async Task OnClientKexInitAsync(byte[] payload, CancellationToken cancellationToken)
     {
-        byte[]? ours = _pendingRekeyKexInit;
+        byte[]? ours = Interlocked.Exchange(ref _pendingRekeyKexInit, null);
         TaskCompletionSource<TestSshServerHandshake>? request =
             Interlocked.Exchange(ref _rekeyRequest, null);
-
-        _pendingRekeyKexInit = null;
 
         try
         {

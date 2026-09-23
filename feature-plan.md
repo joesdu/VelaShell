@@ -79,7 +79,7 @@ pie showData
 | 状态 | 项 | 字段 | 现状 | 闭合要做什么 |
 | :---: | --- | --- | --- | --- |
 | ⏳ | **主密码保护** | `AppSettings.MasterPasswordProtection`（`AppSettings.cs:342`） | 字段存在，运行时零消费者；UI 已撤下并留注释 R-04 | 主密码派生密钥替换 `AesSecretProtector` 的本机密钥文件 + 启动解锁弹窗 + 存量密文迁移。**安全敏感，需单独设计后再动手** |
-| ⏳ | **自动加载密钥到 Agent** | `AppSettings.AutoLoadToAgent`（`AppSettings.cs:1058`，默认 `true`） | 字段存在且默认开，零消费者（R-06） | ~~集成 Windows OpenSSH ssh-agent（命名管道协议）~~ —— **连 agent 这一半已经有了**（2026-09-22，`plan.md` §92）：「SSH Agent」认证方式与 agent 转发都走 `VelaShell.Ssh` 的 `SshAgentClient`（Windows 命名管道 / `SSH_AUTH_SOCK`）。§17-A 那条顾虑也随之解除：agent 只在用户**显式选了**「SSH Agent」认证时才会被连，别的认证方式不碰它。剩下的是这条本身 —— **往** agent 里加钥（`SSH_AGENTC_ADD_IDENTITY`），库的 agent 客户端目前只会列身份与签名，要先在 velashell-ssh 补这条请求。Pageant 仍未支持 |
+| ✅ | ~~**自动加载密钥到 Agent**~~ | `KeyOptions.AddKeysToAgent`（取代 `AutoLoadToAgent`，默认**关**） | **已完成**（2026-09-23，`plan.md` §98） | SSH 库补了 `SshAgentClient.AddIdentityAsync`（`SSH_AGENTC_ADD_IDENTITY` / 带约束的 `ADD_ID_CONSTRAINED`）；宿主在私钥文件认证成功后于后台加钥，agent 里已有就跳过，agent 不在 / 拒绝只记诊断日志、不连累连接；设置 → 密钥管理重新露出开关。旧字段默认 `true` 却从没消费者，存量配置里那个 `true` 不算用户同意，所以**换了字段名、默认关**。证书认证暂不加（库还不支持「证书 + 私钥」的加钥格式）。Pageant 仍未支持 |
 | ⏳ | **自动下载更新** | `AppSettings.AutoDownloadUpdates`（`AppSettings.cs:231`） | 字段存在，零消费者、零 UI | 下载调度 + SHA-256 完整性校验 + 静默换版流程。注：**启动时自动检查**（`CheckUpdatesOnStartup`）已实现并接进消息中心，别和这条混淆 |
 | ⏳ | **传输失败重试** | `AppSettings.TransferMaxRetries` | 字段存在，零消费者 | 需要传输队列持久化才有意义（重试要知道「重试什么」）。同组的 `AutoResume` 已降级为遗留兼容字段，实际开关是 `ResumeEnabled`，**不要**再给它接线 |
 | ⏳ | **标签栏位置（顶部/底部）** | `AppearanceOptions.TabBarPosition` + `SettingsViewModel.TabBarPositionIndex:1219` | 字段与索引映射都在，Docking 层零消费；VelaDock 替换后 UI 已从外观页撤下 | 有了 VelaDock 的 `DockGroupControl` 之后技术上已可做（改标签条停靠边）。**低成本**，按需排期 |
@@ -591,7 +591,8 @@ var options = new ExecuteOptions
 
 | 状态 | 优先级 | 项 | 对标 | 架构落点 |
 | :---: | :---: | --- | --- | --- |
-| ⏳ | 🟠 P1 | **SSH Agent 转发** | Xshell / MobaXterm / Tabby / WindTerm / Termius | 六家全有，我们没有 —— **对标矩阵里最扎眼的一格**。跳板场景下没有它，用户只能把私钥拷到跳板机上，那是实打实的安全倒退。✅ **能力这一关过了**：2026-09-22 换成 VelaShell.Ssh（`plan.md` §91），`Forwarding/AgentForwarder` 已实现 `auth-agent-req@openssh.com` / `auth-agent@openssh.com`，还带 Windows 命名管道那一路的 agent 客户端。剩下的是宿主侧接线（会话上加开关 → 建流时挂上转发器），**不再有"等上游"这一说**。与 [Agent 自动加载](#-p0--存了但不生效的开关)是同一条线上的两件事 |
+| ✅ | — | ~~**SSH Agent 转发**~~ | Xshell / MobaXterm / Tabby / WindTerm / Termius | **已完成**：宿主接线 2026-09-23 落地（`plan.md` §92：连接配置「高级选项」里的「转发 ssh-agent(-A)」，连同「SSH Agent」认证方式）；同一条线上的 [Agent 自动加载](#-p0--存了但不生效的开关)也已于同日补齐（`plan.md` §98）—— 私钥文件登录的会话现在也能在跳板机上用本机的钥 |
+| 💡 | 🟡 P2 | **agent 转发的「只转发指定密钥 / 逐次确认」界面** | ssh-add -c / Termius | 库已支持（`AgentForwardPolicy.AllowedKeys` / `ConfirmEachSignature`，spec/07 §7.2），宿主现在一律用 `AgentForwardPolicy.Default`（整个 agent 都转发、不确认）。要做的是连接配置里选钥的列表 + 远端每次请求签名时弹的确认框（带来源主机与钥指纹）。⚠️ 确认框会在后台会话里弹出，先想清楚「没人看着时是拒还是等」 |
 | ⏳ | 🟡 P2 | **算法协商可配（cipher / kex / hostkey / MAC）** | Xshell / SecureCRT / PuTTY | 连老设备（网络设备、老 RHEL）时是刚需。**一半已经有了**：协商失败时底层直接抛 `SshNegotiationException`（**带着两边各自的算法清单**，不必再像换库前那样靠探测重连去倒推），`Infrastructure/Ssh/SshInterop` 把它翻成一条说清「缺哪类算法、两边各有什么」的消息 —— 从「诊断得出来」到「让用户配得上」，只差把清单落到 `SessionProfile` 并接进 `SshConnectionOptions.Algorithms`（`SshAlgorithmSet`） |
 | 🚧 | 🟢 P3 | **SSH 压缩开关** | 各家都有 | 弱网 / 高延迟链路上有意义。~~「上游没有 zlib 实现，要么等要么提 PR」（2026-09-08）~~ → ~~「已提 PR [tmds/Tmds.Ssh#513](https://github.com/tmds/Tmds.Ssh/pull/513)，卡上游合并 + 发版」（2026-09-10）~~ —— **两条都作废了**：2026-09-22 换成 VelaShell.Ssh（`plan.md` §91），`Crypto/SshCompressor` 已实现 `zlib` 与 `zlib@openssh.com`（后者认证后才开始压缩，每次 kex 重置压缩上下文），用的是 BCL 自带的原生 zlib。默认仍不开启（与 OpenSSH 一致）。我们这边只剩接线：`SessionProfile` 加压缩字段 → `SshConnectionAssembler` 里 `Algorithms = SshAlgorithmSet.Default.WithCompression()` —— 与上一行「算法协商可配」是同一处落点，**该一并做**。⚠️ 纪律不变：**没接线之前不要先加这个开关**，否则就是 [P0 那张表](#-p0--存了但不生效的开关)里的新一条 |
 | 💡 | 🟢 P3 | **SecureCRT 风格的斜杠命令行** | SecureCRT | 外部拉起目前只认 Xshell 的调用约定（`-url` / `-newtab` / `-f` / `-l` / `-p` / `-pw` / `-i`，见 `plan.md` §84–85）。SecureCRT 那套 `/SSH2 /L root /PASSWORD pw host` 现在一个都不认，被整条忽略。**要接之前先确认有没有真实调用方** —— 这条兼容层的存在理由是「堡垒机客户端已经在发」，不是「补齐一张对标表格」；没有人发的写法接进来只是多一条攻击面。⚠️ `/` 开头的 token 与 Unix 路径、Avalonia 自己的参数会撞，得先想清楚怎么区分 |
@@ -669,6 +670,7 @@ var options = new ExecuteOptions
 | ⏳ | `plan.md` §82 | #474 的四条改动要同步文档：**已在 velashell-docs 的 `docs/474-explorer-sftp` 分支上改好（中英各 3 个文件），待开 PR 与宿主 PR 互相引用后一起合**。内容：`{zh,en}/host/交互与界面规格.md` 资源管理器一节补**置顶**（右键入口、提到整棵树最前、`GroupId` 不变、与折叠配套的理由、分组计数仍按成员数）与 SFTP 路径栏的**复制当前路径**按钮；`{zh,en}/host/设置项审计.md` 补两条新设置（`General.CollapseGroupsByDefault`、`Transfer.UseRecursiveDeleteCommand`）；`Transfer` 那条要写明**只对有 exec 通道的 SSH 会话生效、失败自动回退、没有逐条进度**三句口径 |
 | ⏳ | `plan.md` §86 / §87 | **密钥生成默认给 Ed25519，并新增算法下拉**：`{zh,en}/host/交互与界面规格.md` 密钥管理页一节改口径 —— 工具栏在「导入」左边多了一个算法下拉（**Ed25519（默认）/ ECDSA 256·384·521 / RSA 4096**，位数刻意不给选），「生成密钥」按下拉选中的那一档产出，不再恒为 RSA 4096；自动命名随算法走（`velashell_ed25519` / `velashell_ecdsa256|384|521` / `velashell_rsa`，重名自动加 `_2`），老用户 `~/.ssh` 下那把 `velashell_rsa` 不受影响。`{zh,en}/host/架构设计.md` 若有「只能生成 RSA」一类的口径也要一并改 |
 | ⏳ | `plan.md` §61 | 回滚行数（`设置 → 终端`）的行为补一句：**调小当场生效**，超出上限的历史立刻裁掉、不可恢复；以及它作用于主屏，全屏程序（vim / htop / less）的备用屏恒无回滚，与这个值无关 |
+| ⏳ | `plan.md` §98 | **自动加载密钥到 Agent**：已开 [velashell-docs#53](https://github.com/VelaShellLabs/velashell-docs/pull/53)，**待与宿主 PR 一起合入**。`{zh,en}/ssh/spec/07-forwarding.md` 新增 §7.3（加钥报文、私钥布局、约束、五条决策）；`{zh,en}/ssh/getting-started.md` 补示例；`{zh,en}/host/settings-audit.md` R-06 改为已实现；交互规格密钥管理一行、架构设计未实现清单同步。合入后把这一行改成 ✅ |
 
 ---
 

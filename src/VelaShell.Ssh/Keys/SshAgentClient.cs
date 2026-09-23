@@ -4,12 +4,13 @@
 // 规范依据(AGENTS.md §2 纪律 1):
 //   draft-miller-ssh-agent  SSH Agent Protocol
 //   OpenSSH PROTOCOL.agent  实现口径
-//   行为规格:               velashell-docs/zh/ssh/design/architecture.md §8 第 5 项;velashell-docs/zh/ssh/spec/07-forwarding.md §七
+//   行为规格:               velashell-docs/zh/ssh/design/architecture.md §8 第 5 项;velashell-docs/zh/ssh/spec/07-forwarding.md §七(加钥见 §7.3)
 
 using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Pipes;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using VelaShell.Ssh.Auth;
 using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.HostKeys;
@@ -26,6 +27,30 @@ internal static class SshAgentMessage
     public const byte IdentitiesAnswer = 12;
     public const byte SignRequest = 13;
     public const byte SignResponse = 14;
+    public const byte AddIdentity = 17;
+    public const byte AddIdentityConstrained = 25;
+
+    /// <summary>约束：到期自动删除，参数 uint32 秒。</summary>
+    public const byte ConstrainLifetime = 1;
+
+    /// <summary>约束：每次签名都要使用者确认，无参数。</summary>
+    public const byte ConstrainConfirm = 2;
+}
+
+/// <summary>往 agent 里加钥时附带的约束（<c>ssh-add -t</c> / <c>ssh-add -c</c>）。</summary>
+/// <remarks>
+/// 并非每个 agent 都支持约束 —— 不支持的会整条请求拒绝，而不是忽略约束。
+/// </remarks>
+public sealed record SshAgentKeyConstraints
+{
+    /// <summary>多久之后由 agent 自己删掉这把钥；<see langword="null"/> 表示不限。</summary>
+    /// <remarks>按整秒发送，至少 1 秒。</remarks>
+    public TimeSpan? Lifetime { get; init; }
+
+    /// <summary>每次用这把钥签名时，由 agent 向使用者确认。</summary>
+    public bool ConfirmEachUse { get; init; }
+
+    internal bool IsEmpty => Lifetime is null && !ConfirmEachUse;
 }
 
 /// <summary>签名请求的标志位（OpenSSH PROTOCOL.agent）。</summary>
@@ -249,6 +274,84 @@ public sealed class SshAgentClient : IAsyncDisposable
         return reader.ReadStringAsArray(MaxMessageLength);
     }
 
+    /// <summary>把一把进程内私钥加进 agent（<c>ssh-add</c>）。</summary>
+    /// <param name="key">要加的私钥。只接受进程内私钥 —— 背后是 agent / 硬件的签名器手里根本没有私钥。</param>
+    /// <param name="comment">注释，<c>ssh-add -l</c> 显示的那一列，通常写私钥文件路径。</param>
+    /// <param name="constraints">约束；<see langword="null"/> 或全空表示不带约束。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <exception cref="SshAgentException">agent 拒绝了，或者通信失败。</exception>
+    /// <remarks>
+    /// <para>
+    /// 〔决策 velashell-docs/zh/ssh/spec/07 §7.3〕<b>库从不自动调用它。</b>
+    /// 往使用者的 agent 里放东西是使用者的决定。
+    /// </para>
+    /// <para>
+    /// 不查重：同一把钥加两次由 agent 处理（OpenSSH 会更新注释与约束）。
+    /// 加进去的钥活多久由 agent 决定 —— Windows 的 OpenSSH agent 会把它存进注册表，重启后仍在。
+    /// </para>
+    /// </remarks>
+    public async ValueTask AddIdentityAsync(
+        InMemorySshSigner key,
+        string comment,
+        SshAgentKeyConstraints? constraints = null,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(comment);
+
+        bool constrained = constraints is { IsEmpty: false };
+
+        // 报文里是明文私钥。按上限一次性预留，免得扩容在堆上留下没清零的旧副本；
+        // 用完整块清零（spec/07 §7.3 决策 3）。
+        byte[] buffer = new byte[MaxMessageLength];
+        try
+        {
+            FixedBufferWriter output = new(buffer);
+            SshDataWriter writer = new(output);
+
+            // 没有约束就发 17：有的 agent 认 17 却不认 25（决策 2）。
+            writer.WriteByte(constrained ? SshAgentMessage.AddIdentityConstrained : SshAgentMessage.AddIdentity);
+            key.WriteAgentPrivateKey(output);
+            writer.WriteUtf8String(comment);
+
+            if (constrained)
+            {
+                if (constraints!.Lifetime is { } lifetime)
+                {
+                    writer.WriteByte(SshAgentMessage.ConstrainLifetime);
+                    writer.WriteUInt32((uint)Math.Clamp(Math.Ceiling(lifetime.TotalSeconds), 1, uint.MaxValue));
+                }
+                if (constraints.ConfirmEachUse)
+                {
+                    writer.WriteByte(SshAgentMessage.ConstrainConfirm);
+                }
+            }
+
+            byte[] response = await ExchangeAsync(
+                buffer.AsMemory(0, output.WrittenCount), cancellationToken).ConfigureAwait(false);
+
+            if (response[0] == SshAgentMessage.Success)
+            {
+                return;
+            }
+
+            if (response[0] == SshAgentMessage.Failure)
+            {
+                // agent 不说原因 —— 点出最常见的三种。
+                throw new SshAgentException(
+                    "ssh-agent 拒绝加入这把密钥。常见原因：agent 不支持约束（有效期 / 逐次确认）、" +
+                    "agent 已被锁定（ssh-add -x），或者 agent 不支持这种密钥类型。");
+            }
+
+            throw new SshAgentException($"agent 回了 {response[0]} 而不是成功 / 失败。");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(buffer);
+        }
+    }
+
     /// <summary>把 agent 里的一把密钥包成签名器。</summary>
     public ISshSigner CreateSigner(SshAgentIdentity identity)
     {
@@ -334,6 +437,31 @@ public sealed class SshAgentClient : IAsyncDisposable
         public ValueTask<byte[]> SignAsync(
             ReadOnlyMemory<byte> data, string algorithm, CancellationToken cancellationToken = default) =>
             client.SignAsync(identity.PublicKey.Blob, data, algorithm, cancellationToken);
+    }
+
+    /// <summary>写进一块固定缓冲、写满即抛的写入器。</summary>
+    /// <remarks>
+    /// 加钥报文装的是明文私钥：<see cref="ArrayBufferWriter{T}"/> 扩容时会把旧数组
+    /// 原样丢给 GC，那里面的私钥没人清零。这里宁可报错也不扩容。
+    /// </remarks>
+    private sealed class FixedBufferWriter(byte[] buffer) : IBufferWriter<byte>
+    {
+        public int WrittenCount { get; private set; }
+
+        public void Advance(int count) => WrittenCount += count;
+
+        public Memory<byte> GetMemory(int sizeHint = 0) => buffer.AsMemory(Reserve(sizeHint));
+
+        public Span<byte> GetSpan(int sizeHint = 0) => buffer.AsSpan(Reserve(sizeHint));
+
+        private int Reserve(int sizeHint)
+        {
+            if (buffer.Length - WrittenCount < Math.Max(sizeHint, 1))
+            {
+                throw new SshAgentException("要加入 agent 的密钥太大，超出了 agent 报文的长度上限。");
+            }
+            return WrittenCount;
+        }
     }
 
     /// <inheritdoc />

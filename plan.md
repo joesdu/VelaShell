@@ -5916,3 +5916,106 @@ SSH 库并入之后,CI 的 Linux / macOS 作业几乎每次都有几条 `VelaShe
 改成先登记、再入队(仍在同一把锁里，登记顺序与上线顺序照样一致)。全局请求与通道请求都走这一处，一并修好。
 回归用例 `ChannelTests.请求账本的登记先于报文上线`:在登记回调里睡 300ms 把窗口撑大，断言回调结束前服务端没看到这一帧 ——
 修复前在 Windows 上也稳定失败，修复后通过。
+
+## ✅ 98. 2026-09-23 自动加载密钥到 Agent(设置审计 R-06,`feature-plan.md` 🔴 P0 项)
+
+§92 把「SSH Agent」认证与 agent 转发接上之后,同一条线上还剩一件:用私钥文件登录的会话,
+开了「转发 ssh-agent」也没用 —— 那把钥不在本机 agent 里,跳板机上 `ssh` 下一跳时 agent 拿不出东西。
+`KeyOptions.AutoLoadToAgent` 这个开关早就存着,但库的 agent 客户端只会列身份与签名,不会**往里加**。
+
+### 一、SSH 库:`SshAgentClient.AddIdentityAsync`
+
+- 先写规格:velashell-docs `zh|en/ssh/spec/07-forwarding.md` 新增 §7.3(报文字段表、三种密钥的私钥内容布局、
+  两种约束、五条决策),再照规格实现(`src/VelaShell.Ssh/AGENTS.md` 净室规程)。
+- `AddIdentityAsync(InMemorySshSigner, comment, SshAgentKeyConstraints?, ct)`:无约束发 `17`
+  `SSH_AGENTC_ADD_IDENTITY`,带有效期 / 逐次确认时发 `25` `SSH_AGENTC_ADD_ID_CONSTRAINED`
+  (不发约束为空的 `25`,有的 agent 不认)。私钥内容由 `InMemorySshSigner.WriteAgentPrivateKey`(internal)
+  按 draft-miller-ssh-agent 写出:ed25519 是「公钥 + 种子‖公钥」,RSA 是 **n 在前** 的 n/e/d/iqmp/p/q,
+  ECDSA 是曲线名 + 公钥点 + d。
+- 报文里是明文私钥:写进一块按报文上限一次性预留的缓冲(写满即抛,不扩容),发完整块清零;
+  导出的 RSA / ECDSA 私钥参数、ed25519 种子用完也清零。
+- 只接受进程内私钥;证书签名器要「证书 + 私钥」的组合格式,暂不做。库**从不自动**加钥。
+- 测试:`AgentAddIdentityTests` —— 五种密钥(ed25519 / RSA 2048 / ECDSA 三条曲线)各走一遍
+  「加钥 → 列出 → 让 agent 签 → 用原公钥验」。私钥字段写错位置时 agent 照样回 SUCCESS,
+  只有验签能抓出来。另测 17/25 的选择、有效期向上取整、拒绝时抛 `SshAgentException`、重复加钥不查重。
+  `TestAgent` 学会了解析加钥报文;`AgentForwardTests.改动agent状态的请求一律不转发` 多断言一条「加钥请求没到本机 agent」。
+
+### 二、宿主:私钥认证成功后在后台加钥
+
+- `SshConnectionAssembler.ConnectAsync`:连接建好(认证已成功)之后,开关开着、认证方式是「私钥」时,
+  把 `SshAgentKeyLoader.AddAsync` 丢到后台。**认证成功之后才加**,配错的钥不会进 agent;
+  **丢到后台**,agent 没在跑时那 3 秒连接上限不落在连接路径上。跳板链上每一跳各自判断。
+- `SshAgentKeyLoader`:先 `REQUEST_IDENTITIES`,agent 里已有同一把钥就不再加(OpenSSH 对重复加钥只是更新注释,
+  但每连一次就往 agent 里写一次私钥没有必要);agent 不在、被锁、拒绝、超时一律只记一行 `Trace`,不抛。
+  注释写私钥文件路径,与 `ssh-add` 一致。连 agent 复用「SSH Agent」认证那一路的端点选择与 3 秒上限
+  (抽出 `ConnectLocalAgentAsync`)。
+- 证书认证与「SSH Agent」认证不触发(前者库暂不支持,后者钥本来就在 agent 里)。
+
+### 三、为什么换了字段名、默认改成关
+
+旧字段 `AutoLoadToAgent` 默认 `true`,而且设置是**整份**序列化的 —— 存量用户的配置里几乎都写着 `"autoLoadToAgent": true`。
+那个 `true` 从来不是用户选的(开关一直藏着),把它当成「同意往系统 agent 里放私钥」说不过去:
+Windows 的 OpenSSH agent 会把加进去的钥存进注册表,**重启后仍在**,这是一个会留下痕迹的动作。
+所以新字段叫 `AddKeysToAgent`(对齐 OpenSSH 的同名选项)、默认关,旧键留在配置里被反序列化忽略。
+回归用例 `SonnetDbPersistenceTests.Settings_LegacyAutoLoadToAgentDoesNotTurnOnAddKeysToAgent`。
+
+### 四、界面
+
+设置 → 密钥管理,「默认密钥」下面新增「SSH Agent」一节:「自动将密钥加入 Agent」开关 + 一行说明
+(同 OpenSSH AddKeysToAgent、留到 `ssh-add -d` 删除为止、Windows 的 agent 跨重启保留)。五份 resx 齐。
+云同步照常同步这个开关(它是偏好,不是本机路径)。
+
+### 五、验证
+
+- 单测:`AgentAddIdentityTests` 9 条(五种密钥各一条 + 四条行为)、`SshAgentKeyLoaderTests` 5 条、
+  `SonnetDbPersistenceTests.Settings_LegacyAutoLoadToAgentDoesNotTurnOnAddKeysToAgent`。
+- **互操作**(`OpenSshInteropTests.往真实的OpenSSH_agent里加钥`,`Interop` 分类,需 `VELASHELL_SSH_INTEROP=1`):
+  在 ssh-shells 靶机(OpenSSH,端口 2223)上起一个一次性的 `ssh-agent -a`,经 `direct-streamlocal` 把本地客户端接过去,
+  五种密钥逐把加进去(最后一把带有效期、走 `25`)→ agent 签名能用原公钥验过 → 远端 `ssh-add -l` 列出的指纹全对得上。通过。
+  ⚠️ `docker-compose.test.yml` 的 `ssh-test`(2222)是 `AllowTcpForwarding no`,那上面开不了 streamlocal 通道,要用 ssh-shells
+  或 `scripts/ssh/interop/Start-TestServer.ps1` 起的靶机。
+- 全量 `dotnet test VelaShell.slnx` 0 失败。注意 DockerIntegration / Interop 用例是按环境早退的,全量跑时它们没有真跑 —— 上面那条互操作是单独带环境变量跑的。
+- 未做真机验证:本机 Windows 的 ssh-agent 服务处于禁用状态,没有为此去改系统服务;命名管道那一路与「SSH Agent」认证共用同一段连接代码。
+
+**没做的**:证书加钥、Pageant、agent 转发的「只转发指定密钥 / 逐次确认」界面 —— 后者登记在 `feature-plan.md` D 组。
+文档:velashell-docs `zh|en/ssh/spec/07-forwarding.md` §7.3、`zh|en/ssh/getting-started.md`、
+`zh|en/host/settings-audit.md` R-06、`zh|en/host/交互与界面规格.md` 密钥管理一节、`zh|en/host/架构设计.md` 未实现清单。
+
+## ✅ 99. 2026-09-23 CI 随机红的三处:重协商测试桩、X11 单连接放行两条、AI 插话用例赌调度(CI 反馈)
+
+### 一、重协商测试桩「发出之后才登记」
+
+PR #493 的 ubuntu 作业挂了一条 `RekeyTests.服务端发起的重协商能接住并且连接继续可用`,25 秒超时;Windows / macOS 通过。
+与本 PR 的改动无关,是 `TestChannelServer` 自己的竞态,和 §97 请求账本那次同一类。
+
+`RequestRekeyAsync` 写的是 `_pendingRekeyKexInit = await _server.BeginRekeyAsync(...)`:KEXINIT 在 `BeginRekeyAsync` **里面**
+就发出去了,赋值却要等发送返回。客户端回 KEXINIT 够快时,另一个线程上的收包循环进 `OnClientKexInitAsync` 读到 null,
+把这次当成「客户端发起」、走 `RespondToRekeyAsync` 再发一份 KEXINIT —— 两边从此对不上,等重协商完成的任务永远不结束。
+
+改成在发送回调里、字节上线**之前**把 KEXINIT 记下(`Volatile.Write`),收包侧用 `Interlocked.Exchange` 取走。
+SSH 库本身没有改动。
+
+回归用例 `RekeyTests.客户端的KEXINIT赶在服务端发送返回之前到达也能完成重协商`:测试桩新增 `DelayAfterRekeyKexInitSent`,
+把「KEXINIT 已上线、发送未返回」的窗口撑到 300ms。把赋值挪回发送之后时它稳定挂在 25 秒超时上,修复后通过;
+`VelaShell.Ssh.Tests` 全量连跑三遍均 0 失败。
+
+### 二、X11 单连接模式会放行两条(库的缺陷,不只是用例不稳)
+
+推上去之后 ubuntu 又挂了 `X11ForwardTests.单连接模式在本端强制`。根因在 `X11Forwarder.RelayAsync`:
+单连接判断是「看 `_acceptedChannels` 是否 > 0」,而计数要等建立报文**发给本机 X server 之后**才加一。
+用例在 X server 读到第一条的建立报文后立刻开第二条,第二条看到的仍是 0,于是也被放行。
+脱开用例看,「先看再加」本身不是原子的:两条 x11 通道挨着到达时两条都会被转发,违背 spec/07 §7.5.3「第一条之后一律拒绝」。
+
+- 名额改成 `Interlocked.Exchange` 原子认领;本机显示没连上(或连的时候出错)时在 `finally` 里退回 ——
+  什么都没转发出去,不该占掉唯一的名额,与原先「只有接纳才计数」的口径一致。
+- `_acceptedChannels` 挪到**建立报文上线之前**加一,X server 收到报文时计数已经可读
+  (`同一连接上两个会话的cookie互不相通` 里 `ReadSetupAsync` 之后立刻断言计数,同样受益)。
+- 回归用例 `单连接模式下同时到达的两条通道只放行一条`:两条通道同时写建立报文。旧代码在 Windows 上 6/6 稳定失败
+  (两条都被放行),修复后 X11 这组连跑 6 遍全过。规格本来就是这么写的,velashell-docs 无需改。
+
+### 三、AI 插件插话用例:回车按在第一次请求发出之前
+
+macOS 挂了 `ChatPanelViewUiTests.ClickingAQueuedChip_TakesTheMessageBack`:等不到排队芯片。停止键亮起只说明这一轮开跑了,
+不代表请求已发到 stub;而 `SteeringChatClient` 每次发请求前都会把队列 `DrainAll()` —— 回车若赶在那之前,
+那句话就被并进第一次请求,芯片根本不出现。同文件 `StoppingTheTurn_…` 早就按「先等 `stub.Requests.Count >= 1` 再按回车」修过,
+这次把 `ClickingAQueuedChip_…` 与写法相同的 `EnterWhileBusy_…` 一并改成同样的顺序。产品代码无改动。
