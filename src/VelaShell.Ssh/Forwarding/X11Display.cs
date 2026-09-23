@@ -5,6 +5,7 @@
 //   X11 核心协议  DISPLAY 的形态与 6000+N 的端口约定
 //   行为规格:     velashell-docs/zh/ssh/spec/07-forwarding.md §7.5.6
 
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 
@@ -86,12 +87,14 @@ public sealed record X11Display(string Host, int Number, int Screen, string? Uni
         string numberPart = dot >= 0 ? tail[..dot] : tail;
         string screenPart = dot >= 0 ? tail[(dot + 1)..] : "0";
 
-        if (!int.TryParse(numberPart, out int number) || number < 0)
+        // 只认纯十进制数字：不带符号、不带空白、与区域设置无关。
+        // 显示号还要让 6000+N 是个合法端口 —— 否则 GetCandidateEndPoints 造 IPEndPoint 时会抛。
+        if (!TryParseNumber(numberPart, out int number) || number > IPEndPoint.MaxPort - TcpPortBase)
         {
             return null;
         }
 
-        if (!int.TryParse(screenPart, out int screen) || screen < 0)
+        if (!TryParseNumber(screenPart, out int screen))
         {
             return null;
         }
@@ -110,6 +113,9 @@ public sealed record X11Display(string Host, int Number, int Screen, string? Uni
 
         return new X11Display(host, number, screen);
     }
+
+    private static bool TryParseNumber(string text, out int value) =>
+        int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out value);
 
     /// <summary>从环境变量读。</summary>
     public static X11Display? FromEnvironment() =>
