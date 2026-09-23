@@ -40,8 +40,10 @@ public sealed partial class X11Server
     public async Task ServeAsync(Stream stream, bool isLocal = true, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(stream);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         CancellationToken ct = linked.Token;
+        CancellationTokenSource? connection = null;
 
         XClient? client = null;
         Task? writer = null;
@@ -74,7 +76,10 @@ public sealed partial class X11Server
                 return;
             }
 
-            client = await InvokeAsync(() => RegisterClient(bigEndian)).ConfigureAwait(false);
+            client = await InvokeAsync(() => RegisterClient(bigEndian)).WaitAsync(ct).ConfigureAwait(false);
+            // 连接的读写还要跟着「服务端主动断开这个客户端」一起停。
+            connection = CancellationTokenSource.CreateLinkedTokenSource(ct, client.Aborted);
+            ct = connection.Token;
             writer = PumpOutputAsync(client, stream, ct);
             // 读端单独套一层缓冲:X 请求又小又密(常见 8–40 字节),不缓冲就是每条请求两次系统调用。
             // ⚠️ 只经它读、从不经它写 —— BufferedStream 读写共用一块缓冲,在不可寻址的流上混用会抛异常;
@@ -97,6 +102,8 @@ public sealed partial class X11Server
             }
             if (writer is not null)
             {
+                // 对端已经不读了:别再等积压的输出写完(对端半关闭时那会永远等下去)。
+                connection?.Cancel();
                 try
                 {
                     await writer.ConfigureAwait(false);
@@ -106,6 +113,8 @@ public sealed partial class X11Server
                     // 写出端跟着收工。
                 }
             }
+            connection?.Dispose();
+            client?.Dispose();
         }
     }
 
@@ -246,7 +255,9 @@ public sealed partial class X11Server
             byte[] request = new byte[4 + (int)(units * 4) - headerSize];
             header.CopyTo(request, 0);
             await stream.ReadExactlyAsync(request.AsMemory(4), ct).ConfigureAwait(false);
-            Post(client, () => ExecuteRequest(client, request));
+            // 背压:已读进来、还没执行的请求到了上限就等执行线程消化(同步完成的快路径不分配)。
+            await client.PendingRequests.WaitAsync(ct).ConfigureAwait(false);
+            PostRequest(client, request);
         }
     }
 
@@ -263,8 +274,10 @@ public sealed partial class X11Server
             while (await reader.WaitToReadAsync(ct).ConfigureAwait(false))
             {
                 int used = 0;
+                long written = 0;
                 while (reader.TryRead(out byte[]? message))
                 {
+                    written += message.Length;
                     if (used + message.Length > batch.Length)
                     {
                         if (used > 0)
@@ -286,6 +299,7 @@ public sealed partial class X11Server
                     await stream.WriteAsync(batch.AsMemory(0, used), ct).ConfigureAwait(false);
                 }
                 await stream.FlushAsync(ct).ConfigureAwait(false);
+                client.NoteWritten(written);
             }
         }
         finally

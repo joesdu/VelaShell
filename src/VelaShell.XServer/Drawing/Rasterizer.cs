@@ -189,7 +189,13 @@ internal sealed class Rasterizer
     /// 把一块源像素(宽 <paramref name="width" />,行优先)贴到可绘坐标 (<paramref name="dx" />, <paramref name="dy" />)。
     /// 走光栅操作与平面掩码,不走填充样式(CopyArea / PutImage 的语义)。GXcopy + 全平面时整行拷贝。
     /// </summary>
-    public void Blit(uint[] pixels, int width, int height, int dx, int dy)
+    /// <param name="pixels">源像素,行优先(可以比 宽 × 高 长:池化的数组)。</param>
+    /// <param name="width">源宽。</param>
+    /// <param name="height">源高。</param>
+    /// <param name="dx">贴到的可绘坐标 x。</param>
+    /// <param name="dy">贴到的可绘坐标 y。</param>
+    /// <param name="preMasked">源像素已经在深度掩码之内(从同深度的缓冲读来的,CopyArea):整行直接拷,不再逐个与掩码。</param>
+    public void Blit(uint[] pixels, int width, int height, int dx, int dy, bool preMasked = false)
     {
         XRect dest = new(dx + _ox, dy + _oy, width, height);
         bool fast = _gc.Function == 3 && _gc.ClipPixmap is null && (_gc.PlaneMask & _depthMask) == _depthMask;
@@ -205,11 +211,15 @@ internal sealed class Rasterizer
                 int srcRow = (by - dest.Y) * width;
                 if (fast)
                 {
-                    int srcIndex = srcRow + (r.X - dest.X);
-                    int dstIndex = (by * _buffer.Width) + r.X;
-                    for (int i = 0; i < r.Width; i++)
+                    ReadOnlySpan<uint> from = pixels.AsSpan(srcRow + (r.X - dest.X), r.Width);
+                    Span<uint> to = _buffer.Pixels.AsSpan((by * _buffer.Width) + r.X, r.Width);
+                    if (preMasked || _depthMask == uint.MaxValue)
                     {
-                        _buffer.Pixels[dstIndex + i] = pixels[srcIndex + i] & _depthMask;
+                        from.CopyTo(to);
+                    }
+                    else
+                    {
+                        CopyMasked(from, to, _depthMask);
                     }
                     Touch(r.X, by, r.Width);
                     continue;
@@ -219,6 +229,98 @@ internal sealed class Rasterizer
                     if (ClipMaskAllows(bx - _ox, by - _oy))
                     {
                         Store(bx, by, pixels[srcRow + (bx - dest.X)], _gc.Function, _gc.PlaneMask);
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>整段拷贝并与掩码(按向量宽度一次处理多个像素)。</summary>
+    private static void CopyMasked(ReadOnlySpan<uint> from, Span<uint> to, uint mask)
+    {
+        int i = 0;
+        if (System.Numerics.Vector.IsHardwareAccelerated)
+        {
+            System.Numerics.Vector<uint> m = new(mask);
+            int step = System.Numerics.Vector<uint>.Count;
+            for (; i <= from.Length - step; i += step)
+            {
+                (new System.Numerics.Vector<uint>(from[i..]) & m).CopyTo(to[i..]);
+            }
+        }
+        for (; i < from.Length; i++)
+        {
+            to[i] = from[i] & mask;
+        }
+    }
+
+    /// <summary>用给定颜色画一行 [x1, x2)(可绘坐标),光栅操作固定为 GXcopy(ImageText 的语义),走平面掩码与裁剪。</summary>
+    private void FillSpanCopy(int dy, int x1, int x2, uint color)
+    {
+        if (x2 <= x1)
+        {
+            return;
+        }
+        int by = dy + _oy;
+        int bx1 = x1 + _ox, bx2 = x2 + _ox;
+        bool fast = _gc.ClipPixmap is null && (_gc.PlaneMask & _depthMask) == _depthMask;
+        foreach (XRect r in _clip)
+        {
+            if (by < r.Y || by >= r.Bottom)
+            {
+                continue;
+            }
+            int s = Math.Max(bx1, r.X), e = Math.Min(bx2, r.Right);
+            if (e <= s)
+            {
+                continue;
+            }
+            if (fast)
+            {
+                Array.Fill(_buffer.Pixels, color & _depthMask, (by * _buffer.Width) + s, e - s);
+                Touch(s, by, e - s);
+                continue;
+            }
+            for (int bx = s; bx < e; bx++)
+            {
+                if (ClipMaskAllows(bx - _ox, dy))
+                {
+                    Store(bx, by, color, 3, _gc.PlaneMask);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 按段画一个字形:每行里连续置位的像素合成一段,<paramref name="copy" /> 时用 GXcopy 画 <paramref name="color" />(ImageText),
+    /// 否则按 GC 的填充样式画(PolyText)—— 与逐点画的结果相同,但走整段的快路径。
+    /// </summary>
+    private void DrawGlyphRuns(XGlyph glyph, int left, int top, bool copy, uint color)
+    {
+        int w = glyph.BitmapWidth;
+        for (int gy = 0; gy < glyph.BitmapHeight; gy++)
+        {
+            int gx = 0;
+            while (gx < w)
+            {
+                while (gx < w && !glyph.IsSet(gx, gy))
+                {
+                    gx++;
+                }
+                int start = gx;
+                while (gx < w && glyph.IsSet(gx, gy))
+                {
+                    gx++;
+                }
+                if (gx > start)
+                {
+                    if (copy)
+                    {
+                        FillSpanCopy(top + gy, left + start, left + gx, color);
+                    }
+                    else
+                    {
+                        FillSpan(top + gy, left + start, left + gx);
                     }
                 }
             }
@@ -633,18 +735,7 @@ internal sealed class Rasterizer
     /// <summary>PolyText:字形当作点画,按填充样式画前景。返回前进宽度。</summary>
     public int DrawGlyph(XGlyph glyph, int originX, int baselineY)
     {
-        int w = glyph.BitmapWidth, h = glyph.BitmapHeight;
-        int left = originX + glyph.Info.LeftBearing, top = baselineY - glyph.Info.Ascent;
-        for (int gy = 0; gy < h; gy++)
-        {
-            for (int gx = 0; gx < w; gx++)
-            {
-                if (glyph.IsSet(gx, gy))
-                {
-                    PlotPixel(left + gx, top + gy);
-                }
-            }
-        }
+        DrawGlyphRuns(glyph, originX + glyph.Info.LeftBearing, baselineY - glyph.Info.Ascent, copy: false, 0);
         return glyph.Info.Width;
     }
 
@@ -653,12 +744,10 @@ internal sealed class Rasterizer
     {
         (int width, _, _, _, _) = font.Measure(codes);
         int top = baselineY - font.Ascent, height = font.Ascent + font.Descent;
+        uint background = _gc.Background, foreground = _gc.Foreground;
         for (int yy = top; yy < top + height; yy++)
         {
-            for (int xx = x; xx < x + width; xx++)
-            {
-                PutPixelCopy(xx, yy, _gc.Background);
-            }
+            FillSpanCopy(yy, x, x + width, background);
         }
         int pen = x;
         foreach (int code in codes)
@@ -667,17 +756,7 @@ internal sealed class Rasterizer
             {
                 continue;
             }
-            int left = pen + glyph.Info.LeftBearing, gTop = baselineY - glyph.Info.Ascent;
-            for (int gy = 0; gy < glyph.BitmapHeight; gy++)
-            {
-                for (int gx = 0; gx < glyph.BitmapWidth; gx++)
-                {
-                    if (glyph.IsSet(gx, gy))
-                    {
-                        PutPixelCopy(left + gx, gTop + gy, _gc.Foreground);
-                    }
-                }
-            }
+            DrawGlyphRuns(glyph, pen + glyph.Info.LeftBearing, baselineY - glyph.Info.Ascent, copy: true, foreground);
             pen += glyph.Info.Width;
         }
     }

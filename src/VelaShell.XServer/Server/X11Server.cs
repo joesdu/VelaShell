@@ -41,7 +41,12 @@ public sealed partial class X11Server : IAsyncDisposable
     internal const uint ArgbVisualId = 0x00000022;
 
     private readonly XServerOptions _options;
+    /// <summary>对宿主的回调都经它排队,执行线程放锁之后再调(见 RunLoopAsync)。</summary>
     private readonly IXServerHost _host;
+    private readonly DeferredHost _deferredHost;
+
+    /// <summary>经 TCP / Unix 套接字接进来的连接(收工时等它们结束)。</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Task, byte> _connections = new();
     private readonly Channel<WorkItem> _work = Channel.CreateUnbounded<WorkItem>(new UnboundedChannelOptions { SingleReader = true });
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Stopwatch _clock = Stopwatch.StartNew();
@@ -63,7 +68,8 @@ public sealed partial class X11Server : IAsyncDisposable
     public X11Server(XServerOptions? options = null, IXServerHost? host = null)
     {
         _options = options ?? new XServerOptions();
-        _host = host ?? NullHost.Instance;
+        _deferredHost = new DeferredHost(host ?? NullHost.Instance);
+        _host = _deferredHost;
         Root = CreateRootWindow();
         _resources[Root.Id] = Root;
         InitMonitors();
@@ -131,7 +137,7 @@ public sealed partial class X11Server : IAsyncDisposable
             }
             tcp.NoDelay = true;
             bool local = tcp.Client.RemoteEndPoint is IPEndPoint { Address: var address } && IPAddress.IsLoopback(address);
-            _ = ServeAndDisposeAsync(tcp, local, cancellationToken);
+            TrackConnection(ServeAndDisposeAsync(tcp, local, cancellationToken));
         }
     }
 
@@ -139,32 +145,58 @@ public sealed partial class X11Server : IAsyncDisposable
     {
         using (tcp)
         {
-            await ServeAsync(tcp.GetStream(), local, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await ServeAsync(tcp.GetStream(), local, cancellationToken).ConfigureAwait(false);
+            }
+            catch (ObjectDisposedException)
+            {
+                // 服务端正在收工。
+            }
         }
+    }
+
+    /// <summary>登记一个接进来的连接任务,结束时自动摘掉。</summary>
+    private void TrackConnection(Task connection)
+    {
+        _connections.TryAdd(connection, 0);
+        _ = connection.ContinueWith(t => _connections.TryRemove(t, out _), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
     // ------------------------------------------------------------------ 执行循环
 
-    private readonly record struct WorkItem(XClient? Client, Action Action);
+    /// <summary>一项工作:客户端的一条请求(<see cref="Request" />),或者一段要在执行线程上跑的代码。</summary>
+    private readonly record struct WorkItem(XClient? Client, Action? Action, byte[]? Request = null);
 
     /// <summary>把一件事排进执行线程。可以在任意线程上调。</summary>
     internal void Post(XClient? client, Action action) => _work.Writer.TryWrite(new WorkItem(client, action));
+
+    /// <summary>把客户端的一条请求排进执行线程(不为每条请求分配闭包)。</summary>
+    private void PostRequest(XClient client, byte[] request) => _work.Writer.TryWrite(new WorkItem(client, null, request));
+
+    /// <summary>执行线程一次持锁最多跑这么久,然后放锁让宿主读像素(宿主的 UI 线程在 CopyPixels 里等这把锁)。</summary>
+    private static readonly long LockBudgetTicks = Stopwatch.Frequency / 250;   // 4 毫秒
 
     /// <summary>排进执行线程并等它做完(连接建立等少数需要结果的地方用)。</summary>
     internal Task<T> InvokeAsync<T>(Func<T> func)
     {
         TaskCompletionSource<T> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Post(null, () =>
+        bool queued = _work.Writer.TryWrite(new WorkItem(null, () =>
         {
             try
             {
-                tcs.SetResult(func());
+                tcs.TrySetResult(func());
             }
             catch (Exception ex)
             {
-                tcs.SetException(ex);
+                tcs.TrySetException(ex);
             }
-        });
+        }));
+        if (!queued)
+        {
+            tcs.TrySetCanceled();   // 执行循环已经收工
+        }
         return tcs.Task;
     }
 
@@ -177,13 +209,19 @@ public sealed partial class X11Server : IAsyncDisposable
             {
                 lock (PixelLock)
                 {
-                    int budget = 256;   // 一批最多这么多项,然后放锁让宿主读像素
-                    while (budget-- > 0 && reader.TryRead(out WorkItem item))
+                    long deadline = Stopwatch.GetTimestamp() + LockBudgetTicks;
+                    while (reader.TryRead(out WorkItem item))
                     {
                         RunItem(item);
+                        if (Stopwatch.GetTimestamp() >= deadline)
+                        {
+                            break;
+                        }
                     }
                 }
+                // 宿主回调一律在放锁之后调:回调里同步等 UI 线程、而 UI 线程正在 CopyPixels 里等这把锁,就是死锁。
                 FlushDamage();
+                _deferredHost.Flush();
             }
         }
         catch (OperationCanceledException)
@@ -207,7 +245,14 @@ public sealed partial class X11Server : IAsyncDisposable
         }
         try
         {
-            item.Action();
+            if (item.Request is { } request)
+            {
+                ExecuteRequest(item.Client!, request);
+            }
+            else
+            {
+                item.Action!();
+            }
         }
         catch (Exception ex)
         {
@@ -282,8 +327,16 @@ public sealed partial class X11Server : IAsyncDisposable
         }
         foreach (XClient client in _clients.Values)
         {
-            client.Closed = true;
-            client.Output.Writer.TryComplete();
+            client.Abort();
+        }
+        try
+        {
+            // 接进来的连接随 _lifetime 取消而收工;给它们一点时间关掉套接字。
+            await Task.WhenAll(_connections.Keys).WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is TimeoutException or OperationCanceledException or IOException or ObjectDisposedException)
+        {
+            // 收工阶段的异常不关心。
         }
         _lifetime.Dispose();
     }

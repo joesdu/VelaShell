@@ -181,8 +181,7 @@ public sealed partial class X11Server
             owner.Event(XEventCode.ClientMessage, 32, w => w.U32(top.Id).U32(protocols).U32(delete).U32(time).Zero(12), sent: true);
             return;
         }
-        owner.Closed = true;
-        owner.Output.Writer.TryComplete();
+        owner.Abort();
         DisconnectClient(owner);
     });
 

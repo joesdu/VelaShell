@@ -17,10 +17,19 @@ namespace VelaShell.XServer.Server;
 /// 除 <see cref="Output" /> 之外的状态只在执行线程上读写。发给客户端的字节进 <see cref="Output" />,
 /// 由连接的写出任务写到套接字 —— 执行线程从不在套接字上阻塞。
 /// </remarks>
-internal sealed class XClient
+internal sealed class XClient : IDisposable
 {
     /// <summary>每个客户端可用的资源 ID 位(21 位,约 200 万个)。</summary>
     public const uint ResourceMask = 0x001FFFFF;
+
+    /// <summary>排队等写出的字节上限:客户端不读了(卡死、被挂起),超过就断开它,免得服务端内存无限增长。</summary>
+    public const long MaxQueuedOutputBytes = 64L * 1024 * 1024;
+
+    /// <summary>已读进来、还没执行的请求上限:读端到了上限就等执行线程消化,给发得太快的客户端施加背压。</summary>
+    public const int MaxPendingRequests = 1024;
+
+    private readonly CancellationTokenSource _abort = new();
+    private long _queuedBytes;
 
     public XClient(int index, bool bigEndian)
     {
@@ -52,6 +61,40 @@ internal sealed class XClient
 
     public Channel<byte[]> Output { get; } = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true });
 
+    /// <summary>读端每读进一条请求取一个名额,执行完还回来(见 <see cref="MaxPendingRequests" />)。</summary>
+    public SemaphoreSlim PendingRequests { get; } = new(MaxPendingRequests);
+
+    /// <summary>这个连接被服务端主动断开(KillClient、关窗、输出积压)时触发;连接的读写任务以它收工。</summary>
+    public CancellationToken Aborted => _abort.Token;
+
+    /// <summary>
+    /// 立即断开:标记关闭、结束写出、取消连接上挂着的读写 —— 只 <c>TryComplete</c> 写出端的话,
+    /// 读端还阻塞在套接字上,空闲的客户端永远不知道自己被断开了。
+    /// </summary>
+    public void Abort()
+    {
+        Closed = true;
+        Output.Writer.TryComplete();
+        try
+        {
+            _abort.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 连接已经收完工。
+        }
+    }
+
+    /// <summary>写出端写掉了这么多字节。</summary>
+    public void NoteWritten(long count) => Interlocked.Add(ref _queuedBytes, -count);
+
+    /// <summary>连接结束时释放(断开的信号源与请求名额)。之后再 <see cref="Abort" /> 是空操作。</summary>
+    /// <remarks>
+    /// <see cref="PendingRequests" /> 故意不释放:连接收工后,已排进执行线程的请求还会执行、还会还名额;
+    /// SemaphoreSlim 不用等待句柄时没有非托管资源,不释放没有代价。
+    /// </remarks>
+    public void Dispose() => _abort.Dispose();
+
     /// <summary>这个 ID 是不是在本客户端的资源范围内。</summary>
     public bool OwnsId(uint id) => (id & ~ResourceMask) == ResourceBase;
 
@@ -59,10 +102,16 @@ internal sealed class XClient
 
     public void Send(byte[] bytes)
     {
-        if (!Closed)
+        if (Closed)
         {
-            Output.Writer.TryWrite(bytes);
+            return;
         }
+        if (Interlocked.Add(ref _queuedBytes, bytes.Length) > MaxQueuedOutputBytes)
+        {
+            Abort();   // 客户端不读了:与其让内存涨到进程崩溃,不如断开它(X.Org 同样会断开写不出去的客户端)
+            return;
+        }
+        Output.Writer.TryWrite(bytes);
     }
 
     /// <summary>发一条回复:头(1、data、序号、长度)+ 由 <paramref name="body" /> 写的内容,补齐到至少 32 字节。</summary>

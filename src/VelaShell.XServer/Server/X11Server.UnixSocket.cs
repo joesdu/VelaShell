@@ -92,14 +92,21 @@ public sealed partial class X11Server
             {
                 return;
             }
-            _ = ServeUnixAsync(connection, cancellationToken);
+            TrackConnection(ServeUnixAsync(connection, cancellationToken));
         }
     }
 
     private async Task ServeUnixAsync(Socket connection, CancellationToken cancellationToken)
     {
         await using NetworkStream stream = new(connection, ownsSocket: true);
-        await ServeAsync(stream, isLocal: true, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await ServeAsync(stream, isLocal: true, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // 服务端正在收工。
+        }
     }
 
     private void StopUnixListeners()

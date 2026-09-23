@@ -73,6 +73,9 @@ internal sealed class XTestClient : IAsyncDisposable
     private readonly Channel<XMessage> _incoming = Channel.CreateUnbounded<XMessage>();
     private readonly List<XMessage> _backlog = [];
     private readonly Task _serverTask;
+
+    /// <summary>服务端为这个连接跑的 <c>ServeAsync</c>:服务端主动断开时它结束。</summary>
+    public Task ServerTask => _serverTask;
     private readonly Task _readTask;
     private ushort _sequence;
 

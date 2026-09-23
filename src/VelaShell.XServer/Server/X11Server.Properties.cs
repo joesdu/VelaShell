@@ -528,8 +528,7 @@ public sealed partial class X11Server
         {
             throw new XProtocolError(XErrorCode.Value, id);
         }
-        owner.Closed = true;
-        owner.Output.Writer.TryComplete();
+        owner.Abort();
         DisconnectClient(owner);
     }
 }

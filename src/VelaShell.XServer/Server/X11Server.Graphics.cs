@@ -8,6 +8,8 @@
 //   「PolyFillRectangle」「PolyFillArc」「PutImage」「GetImage」;
 //   第 8 节「Connection Setup」里的 image-byte-order / bitmap-format-bit-order / scanline-pad(本服务端声明 LSBFirst、32 位对齐)
 
+using System.Buffers;
+using System.Runtime.InteropServices;
 using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
@@ -443,7 +445,10 @@ public sealed partial class X11Server
         MarkDamage(top, area);
     }
 
-    /// <summary>读一块源像素;超出源可绘对象范围的部分返回为「不可得」(调用方据此发 GraphicsExposure)。</summary>
+    /// <summary>
+    /// 读一块源像素:只含与源可绘对象相交的部分(<c>Available</c>,可绘对象坐标),按它的宽度行优先排列。
+    /// 数组来自 <see cref="ArrayPool{T}" />,调用方用完要还。拿不到的部分由调用方发 GraphicsExposure。
+    /// </summary>
     private (uint[] Pixels, XRect Available)? ReadSource(uint drawable, int x, int y, int width, int height, out byte depth)
     {
         PixelBuffer? buffer;
@@ -474,14 +479,13 @@ public sealed partial class X11Server
                 throw new XProtocolError(XErrorCode.Drawable, drawable);
         }
 
+        // 只拷与源相交的那一块(按请求尺寸分配的话,65535×65535 的请求会溢出或耗尽内存),整行 Array.Copy。
         XRect available = new XRect(x, y, width, height).Intersect(bounds);
-        uint[] pixels = new uint[Math.Max(0, width * height)];
-        for (int row = available.Y; row < available.Bottom; row++)
+        uint[] pixels = ArrayPool<uint>.Shared.Rent(Math.Max(1, available.Width * available.Height));
+        for (int row = 0; row < available.Height; row++)
         {
-            for (int col = available.X; col < available.Right; col++)
-            {
-                pixels[((row - y) * width) + (col - x)] = buffer.Get(col + ox, row + oy);
-            }
+            Array.Copy(buffer.Pixels, ((available.Y + row + oy) * buffer.Width) + available.X + ox,
+                pixels, row * available.Width, available.Width);
         }
         return (pixels, available);
     }
@@ -502,26 +506,27 @@ public sealed partial class X11Server
             throw new XProtocolError(XErrorCode.Match);
         }
         XRect avail = source.Available;
-        Draw(dst, gcId, raster =>
+        try
         {
             // 只贴源里拿得到的那一块;拿不到的部分由 GraphicsExposure 请客户端自己补画。
-            if (avail.IsEmpty)
+            if (!avail.IsEmpty)
             {
-                return;
+                Draw(dst, gcId, raster => raster.Blit(source.Pixels, avail.Width, avail.Height,
+                    dx + (avail.X - sx), dy + (avail.Y - sy), preMasked: true));
             }
-            uint[] block = new uint[avail.Width * avail.Height];
-            for (int row = 0; row < avail.Height; row++)
-            {
-                Array.Copy(source.Pixels, ((avail.Y - sy + row) * width) + (avail.X - sx), block, row * avail.Width, avail.Width);
-            }
-            raster.Blit(block, avail.Width, avail.Height, dx + (avail.X - sx), dy + (avail.Y - sy));
-        });
+        }
+        finally
+        {
+            ArrayPool<uint>.Shared.Return(source.Pixels);
+        }
 
         if (!gc.GraphicsExposures)
         {
             return;
         }
-        Region missing = new Region(new XRect(dx, dy, width, height)).Subtract(avail.Offset(dx - sx, dy - sy));
+        // 需要补画的:目标矩形里对应源拿不到的部分,且只算目标可绘对象范围内的(坐标不会是负数)。
+        Region missing = new Region(new XRect(dx, dy, width, height)).Subtract(avail.Offset(dx - sx, dy - sy))
+            .Intersect(DrawableRect(dst));
         if (missing.IsEmpty)
         {
             SendNoExposure(c, gc, dst, XOpcode.CopyArea);
@@ -545,6 +550,14 @@ public sealed partial class X11Server
             c.Event(XEventCode.NoExposure, 0, w => w.U32(drawable).U16(0).U8(major));
         }
     }
+
+    /// <summary>可绘对象自己的矩形(原点、宽、高)。</summary>
+    private XRect DrawableRect(uint drawable) => Lookup<XResource>(drawable) switch
+    {
+        XPixmap p => new XRect(0, 0, p.Width, p.Height),
+        XWindow w => new XRect(0, 0, w.Width, w.Height),
+        _ => default,
+    };
 
     private byte DrawableDepth(uint drawable) => Lookup<XResource>(drawable) switch
     {
@@ -570,17 +583,24 @@ public sealed partial class X11Server
             return;
         }
         XRect avail = source.Available;
-        Draw(dst, gcId, raster =>
+        try
         {
-            for (int row = avail.Y; row < avail.Bottom; row++)
+            Draw(dst, gcId, raster =>
             {
-                for (int col = avail.X; col < avail.Right; col++)
+                for (int row = avail.Y; row < avail.Bottom; row++)
                 {
-                    uint bit = source.Pixels[((row - sy) * width) + (col - sx)] & plane;
-                    raster.PutPixel(dx + (col - sx), dy + (row - sy), bit != 0 ? gc.Foreground : gc.Background);
+                    for (int col = avail.X; col < avail.Right; col++)
+                    {
+                        uint bit = source.Pixels[((row - avail.Y) * avail.Width) + (col - avail.X)] & plane;
+                        raster.PutPixel(dx + (col - sx), dy + (row - sy), bit != 0 ? gc.Foreground : gc.Background);
+                    }
                 }
-            }
-        });
+            });
+        }
+        finally
+        {
+            ArrayPool<uint>.Shared.Return(source.Pixels);
+        }
         SendNoExposure(c, gc, dst, XOpcode.CopyPlane);
     }
 
@@ -599,7 +619,38 @@ public sealed partial class X11Server
         XGc gc = Gc(gcId);
         byte targetDepth = DrawableDepth(drawable);
 
-        uint[] pixels = new uint[width * height];
+        // 先按格式核对数据够不够,再分配 —— 客户端报的宽高可以是 65535×65535,数据却只有几个字节。
+        long need = format switch
+        {
+            0 => (long)BitmapStride(width + leftPad) * height,
+            1 => (long)BitmapStride(width + leftPad) * height * depth,
+            2 => depth == 1 ? (long)BitmapStride(width) * height : (long)BitmapStride(width * BitsPerPixel(depth)) * height,
+            _ => throw new XProtocolError(XErrorCode.Value, format),
+        };
+        if (need > data.Length)
+        {
+            throw new XProtocolError(XErrorCode.Length);
+        }
+        if (width == 0 || height == 0)
+        {
+            return;
+        }
+
+        uint[] pixels = ArrayPool<uint>.Shared.Rent(width * height);
+        try
+        {
+            DecodeImage(format, depth, targetDepth, leftPad, data, width, height, gc, pixels);
+            Draw(drawable, gcId, raster => raster.Blit(pixels, width, height, dx, dy, preMasked: false));
+        }
+        finally
+        {
+            ArrayPool<uint>.Shared.Return(pixels);
+        }
+    }
+
+    private static void DecodeImage(byte format, byte depth, byte targetDepth, byte leftPad, ReadOnlySpan<byte> data,
+        int width, int height, XGc gc, uint[] pixels)
+    {
         switch (format)
         {
             case 0:   // Bitmap:深度必须为 1,1 → 前景,0 → 背景
@@ -614,22 +665,23 @@ public sealed partial class X11Server
                 {
                     throw new XProtocolError(XErrorCode.Match);
                 }
-                int planeBytes = BitmapStride(width + leftPad) * height;
+                int stride = BitmapStride(width + leftPad);
+                int planeBytes = stride * height;
+                Array.Clear(pixels, 0, width * height);
                 for (int plane = 0; plane < depth; plane++)
                 {
                     uint bit = 1u << (depth - 1 - plane);
-                    if (data.Length < (plane + 1) * planeBytes)
-                    {
-                        throw new XProtocolError(XErrorCode.Length);
-                    }
                     ReadOnlySpan<byte> planeData = data.Slice(plane * planeBytes, planeBytes);
-                    uint[] one = new uint[width * height];
-                    DecodeBitmap(planeData, width, height, leftPad, one, 1, 0);
-                    for (int i = 0; i < one.Length; i++)
+                    for (int yy = 0; yy < height; yy++)
                     {
-                        if (one[i] != 0)
+                        ReadOnlySpan<byte> row = planeData.Slice(yy * stride, stride);
+                        for (int xx = 0; xx < width; xx++)
                         {
-                            pixels[i] |= bit;
+                            int b = xx + leftPad;
+                            if ((row[b >> 3] & (1 << (b & 7))) != 0)
+                            {
+                                pixels[(yy * width) + xx] |= bit;
+                            }
                         }
                     }
                 }
@@ -649,7 +701,6 @@ public sealed partial class X11Server
             default:
                 throw new XProtocolError(XErrorCode.Value, format);
         }
-        Draw(drawable, gcId, raster => raster.Blit(pixels, width, height, dx, dy));
     }
 
     /// <summary>ZPixmap(8 / 16 / 32 位每像素,LSBFirst,每行补齐到 32 位)。</summary>
@@ -660,6 +711,12 @@ public sealed partial class X11Server
         if (data.Length < stride * height)
         {
             throw new XProtocolError(XErrorCode.Length);
+        }
+        if (bpp == 32 && BitConverter.IsLittleEndian)
+        {
+            // 32 位 ZPixmap 每行恰好 width × 4 字节、LSBFirst:整块就是本机的 uint 数组。
+            MemoryMarshal.Cast<byte, uint>(data[..(stride * height)]).CopyTo(pixels);
+            return;
         }
         for (int y = 0; y < height; y++)
         {
@@ -684,6 +741,10 @@ public sealed partial class X11Server
     {
         int bytesPer = bpp / 8;
         int stride = BitmapStride(width * bpp);
+        if (bpp == 32 && planeMask == uint.MaxValue && BitConverter.IsLittleEndian)
+        {
+            return MemoryMarshal.AsBytes(pixels.AsSpan(0, width * height)).ToArray();
+        }
         byte[] data = new byte[stride * height];
         for (int y = 0; y < height; y++)
         {
@@ -756,7 +817,14 @@ public sealed partial class X11Server
             throw new XProtocolError(XErrorCode.Match);
         }
 
-        uint[] pixels = ReadSource(drawable, x, y, width, height, out byte depth)?.Pixels ?? new uint[width * height];
+        // 矩形已核对在可绘对象之内:拿得到的就是整块,按请求宽度排列(池化,编完码就还)。
+        uint[]? pooled = ReadSource(drawable, x, y, width, height, out byte depth)?.Pixels;
+        uint[] pixels = pooled ?? new uint[Math.Max(1, width * height)];
+        uint depthMask = PixelBuffer.DepthMaskOf(depth);
+        if ((planeMask & depthMask) == depthMask)
+        {
+            planeMask = uint.MaxValue;   // 缓冲里的像素本来就在深度掩码之内:平面掩码盖住全部有效位时等于不掩
+        }
         byte[] data;
         if (format == 2 && depth != 1)
         {
@@ -792,6 +860,10 @@ public sealed partial class X11Server
                 }
             }
             data = [.. planes];
+        }
+        if (pooled is not null)
+        {
+            ArrayPool<uint>.Shared.Return(pooled);
         }
         c.Reply(depth, w => w.U32(visual).Zero(20).Bytes(data).Pad4());
     }
