@@ -536,6 +536,81 @@ public sealed class OpenSshInteropTests
         Assert.Contains("经跳板", result.StandardOutput);
     }
 
+    /// <summary>
+    /// 往一个<b>真实的 OpenSSH agent</b> 里加钥（velashell-docs/zh/ssh/spec/07 §7.3）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 单元测试里的 <c>TestAgent</c> 与实现出自对规格的同一份理解 —— 两边一起错时照样全绿。
+    /// 这里让真的 <c>ssh-agent</c> 来收：在服务端起一个只为这条用例服务的 agent，
+    /// 经 <c>direct-streamlocal</c> 把本地客户端接到它的套接字上。
+    /// </para>
+    /// <para>
+    /// 三重核对：agent 回 SUCCESS；远端 <c>ssh-add -l</c> 列出的指纹与我们的公钥一致；
+    /// agent 用它签出来的东西能用原公钥验过（私钥字段错位时前两条照样成立）。
+    /// </para>
+    /// </remarks>
+    [TestMethod]
+    public async Task 往真实的OpenSSH_agent里加钥()
+    {
+        RequireServer();
+
+        await using SshConnection connection = await Options().ConnectAsync();
+
+        string socket = $"/tmp/vela-agent-{Guid.NewGuid():N}.sock";
+        SshCommandOutput started = await connection.RunAsync($"ssh-agent -s -a {socket}");
+        Assert.AreEqual(0, started.ExitCode, started.StandardError);
+
+        // 输出形如「SSH_AGENT_PID=123; export SSH_AGENT_PID;」。
+        string pid = started.StandardOutput.Split("SSH_AGENT_PID=")[1].Split(';')[0];
+
+        try
+        {
+            SshChannel tunnel = await connection.OpenUnixSocketTunnelAsync(socket);
+            await using SshAgentClient agent = SshAgentClient.FromStream(tunnel.AsStream(), socket);
+
+            using RSA rsa = RSA.Create(3072);
+            using ECDsa p256 = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            using ECDsa p384 = ECDsa.Create(ECCurve.NamedCurves.nistP384);
+            using ECDsa p521 = ECDsa.Create(ECCurve.NamedCurves.nistP521);
+            InMemorySshSigner[] keys =
+            [
+                InMemorySshSigner.GenerateEd25519(),
+                InMemorySshSigner.FromRsa(rsa),
+                InMemorySshSigner.FromEcdsa(p256),
+                InMemorySshSigner.FromEcdsa(p384),
+                InMemorySshSigner.FromEcdsa(p521),
+            ];
+
+            byte[] data = Encoding.UTF8.GetBytes("真实 agent 签的数据");
+            for (int i = 0; i < keys.Length; i++)
+            {
+                // 最后一把带有效期约束，走 25。
+                SshAgentKeyConstraints? constraints =
+                    i == keys.Length - 1 ? new SshAgentKeyConstraints { Lifetime = TimeSpan.FromMinutes(5) } : null;
+                await agent.AddIdentityAsync(keys[i], "vela-" + keys[i].PublicKey.KeyType, constraints);
+
+                string algorithm = keys[i].SignatureAlgorithms[0];
+                byte[] signature = await agent.SignAsync(keys[i].PublicKey.Blob, data, algorithm);
+                Assert.IsTrue(
+                    keys[i].PublicKey.VerifySignature(signature, data, algorithm),
+                    $"{keys[i].PublicKey.KeyType}：agent 手里的私钥与我们的不是同一把");
+            }
+
+            SshCommandOutput listed = await connection.RunAsync($"SSH_AUTH_SOCK={socket} ssh-add -l");
+            Assert.AreEqual(0, listed.ExitCode, listed.StandardError);
+            foreach (InMemorySshSigner key in keys)
+            {
+                Assert.Contains(key.PublicKey.Sha256Fingerprint, listed.StandardOutput);
+                key.Dispose();
+            }
+        }
+        finally
+        {
+            await connection.RunAsync($"kill {pid}; rm -f {socket}");
+        }
+    }
+
     [TestMethod]
     public async Task 保活探测能被真实服务端应答()
     {

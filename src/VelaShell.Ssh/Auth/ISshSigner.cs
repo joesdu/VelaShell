@@ -4,7 +4,8 @@
 // 规范依据(AGENTS.md §2 纪律 1):
 //   RFC 4252 §7   publickey 的两段式与签名输入
 //   RFC 8332 §3   rsa-sha2-256 / rsa-sha2-512 的选择
-//   行为规格:     velashell-docs/zh/ssh/spec/04-authentication.md §4;velashell-docs/zh/ssh/design/architecture.md §8 第 5 项
+//   draft-miller-ssh-agent  加钥报文的私钥格式（WriteAgentPrivateKey）
+//   行为规格:     velashell-docs/zh/ssh/spec/04-authentication.md §4;velashell-docs/zh/ssh/design/architecture.md §8 第 5 项;velashell-docs/zh/ssh/spec/07-forwarding.md §7.3
 
 using System.Buffers;
 using System.Security.Cryptography;
@@ -202,6 +203,95 @@ public sealed class InMemorySshSigner : ISshSigner, IDisposable
         };
 
         return ValueTask.FromResult(signature);
+    }
+
+    /// <summary>
+    /// 按 agent 加钥报文的格式写出「密钥类型 + 私钥内容」（velashell-docs/zh/ssh/spec/07 §7.3）。
+    /// </summary>
+    /// <remarks>
+    /// 写进 <paramref name="output"/> 的是明文私钥 —— 用完由调用方清零。
+    /// </remarks>
+    internal void WriteAgentPrivateKey(IBufferWriter<byte> output)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        SshDataWriter writer = new(output);
+
+        if (_ed25519 is not null)
+        {
+            byte[] seed = _ed25519.GetEncoded();
+            byte[] publicKey = _ed25519.GeneratePublicKey().GetEncoded();
+            byte[] secret = new byte[seed.Length + publicKey.Length];
+            try
+            {
+                // 种子在前、公钥在后，共 64 字节。
+                seed.CopyTo(secret, 0);
+                publicKey.CopyTo(secret, seed.Length);
+
+                writer.WriteUtf8String(SshAlgorithmNames.SshEd25519);
+                writer.WriteString(publicKey);
+                writer.WriteString(secret);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(seed);
+                CryptographicOperations.ZeroMemory(secret);
+            }
+            return;
+        }
+
+        if (_rsa is not null)
+        {
+            RSAParameters p = _rsa.ExportParameters(true);
+            try
+            {
+                // ⚠️ n 在前、e 在后 —— 与公钥 blob 的顺序相反。
+                writer.WriteUtf8String(SshAlgorithmNames.SshRsa);
+                writer.WriteMpint(p.Modulus!);
+                writer.WriteMpint(p.Exponent!);
+                writer.WriteMpint(p.D!);
+                writer.WriteMpint(p.InverseQ!);   // q⁻¹ mod p
+                writer.WriteMpint(p.P!);
+                writer.WriteMpint(p.Q!);
+            }
+            finally
+            {
+                ClearRsa(p);
+            }
+            return;
+        }
+
+        ECParameters e = _ecdsa!.ExportParameters(true);
+        try
+        {
+            // 类型串、曲线名、公钥点三样与公钥 blob 完全相同，直接照搬。
+            SshDataReader blob = new(new ReadOnlySequence<byte>(PublicKey.Blob));
+            string keyType = blob.ReadUtf8String(64);
+            string curveName = blob.ReadUtf8String(64);
+            byte[] point = blob.ReadStringAsArray(1 + (_coordinateBytes * 2));
+
+            writer.WriteUtf8String(keyType);
+            writer.WriteUtf8String(curveName);
+            writer.WriteString(point);
+            writer.WriteMpint(e.D!);
+        }
+        finally
+        {
+            if (e.D is not null)
+            {
+                CryptographicOperations.ZeroMemory(e.D);
+            }
+        }
+    }
+
+    private static void ClearRsa(RSAParameters p)
+    {
+        foreach (byte[]? secret in new[] { p.D, p.P, p.Q, p.DP, p.DQ, p.InverseQ })
+        {
+            if (secret is not null)
+            {
+                CryptographicOperations.ZeroMemory(secret);
+            }
+        }
     }
 
     private byte[] SignEd25519(ReadOnlySpan<byte> data)

@@ -7,6 +7,8 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Numerics;
+using System.Security.Cryptography;
 using VelaShell.Ssh.Auth;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Protocol;
@@ -25,6 +27,25 @@ public sealed class TestAgent
 
     /// <summary>收到的列身份请求次数。</summary>
     public int ListRequests { get; private set; }
+
+    /// <summary>收到的加钥请求次数（17 与 25 合计）。</summary>
+    public int AddRequests { get; private set; }
+
+    /// <summary>为 <see langword="true"/> 时加钥一律回 FAILURE（模拟被锁定或不支持的 agent）。</summary>
+    public bool RejectAdditions { get; set; }
+
+    /// <summary>最近一次成功加钥用的报文号。</summary>
+    public byte? LastAddMessageType { get; private set; }
+
+    /// <summary>最近一次成功加钥带的约束编号，按报文里的顺序。</summary>
+    public IReadOnlyList<byte> LastConstraints { get; private set; } = [];
+
+    /// <summary>最近一次带的有效期约束（秒）。</summary>
+    public uint? LastLifetimeSeconds { get; private set; }
+
+    /// <summary>agent 里现有的密钥与注释。</summary>
+    public IReadOnlyList<(SshPublicKey Key, string Comment)> Keys =>
+        [.. _keys.Select(k => (k.Signer.PublicKey, k.Comment))];
 
     /// <summary>加一把密钥。</summary>
     public SshPublicKey Add(InMemorySshSigner signer, string comment)
@@ -137,8 +158,126 @@ public sealed class TestAgent
             return [5];   // 没有这把钥
         }
 
-        // 增删密钥之类的一律拒绝。
+        if (request[0] is 17 or 25)   // ADD_IDENTITY / ADD_ID_CONSTRAINED
+        {
+            AddRequests++;
+            if (RejectAdditions)
+            {
+                return [5];
+            }
+
+            SshDataReader reader = new(new ReadOnlySequence<byte>(request));
+            reader.ReadByte();
+            InMemorySshSigner added = ReadPrivateKey(ref reader);
+            string comment = reader.ReadUtf8String(MaxMessage);
+
+            List<byte> constraints = [];
+            while (!reader.IsEmpty)
+            {
+                byte constraint = reader.ReadByte();
+                constraints.Add(constraint);
+                if (constraint == 1)
+                {
+                    LastLifetimeSeconds = reader.ReadUInt32();
+                }
+                else if (constraint != 2)
+                {
+                    return [5];   // 不认识的约束：整条拒绝
+                }
+            }
+
+            LastAddMessageType = request[0];
+            LastConstraints = constraints;
+
+            // 同一把钥再加一次：更新注释，不重复登记。
+            _keys.RemoveAll(k => k.Signer.PublicKey.Blob.Span.SequenceEqual(added.PublicKey.Blob.Span));
+            _keys.Add((added, comment));
+            return [6];   // SUCCESS
+        }
+
+        // 删钥、锁定之类的一律拒绝。
         return [5];
+    }
+
+    /// <summary>按 spec/07 §7.3 的「私钥内容」表把一把私钥读回来。</summary>
+    private static InMemorySshSigner ReadPrivateKey(ref SshDataReader reader)
+    {
+        string type = reader.ReadUtf8String(MaxMessage);
+
+        if (type == SshAlgorithmNames.SshEd25519)
+        {
+            byte[] publicKey = reader.ReadStringAsArray(MaxMessage);
+            byte[] secret = reader.ReadStringAsArray(MaxMessage);
+            if (publicKey.Length != 32 || secret.Length != 64 || !secret.AsSpan(32).SequenceEqual(publicKey))
+            {
+                throw new InvalidDataException("ed25519 私钥内容的布局不对。");
+            }
+            return InMemorySshSigner.FromEd25519(secret.AsSpan(0, 32));
+        }
+
+        if (type == SshAlgorithmNames.SshRsa)
+        {
+            byte[] n = reader.ReadMpint(MaxMessage).ToArray();
+            byte[] e = reader.ReadMpint(MaxMessage).ToArray();
+            byte[] d = reader.ReadMpint(MaxMessage).ToArray();
+            byte[] iqmp = reader.ReadMpint(MaxMessage).ToArray();
+            byte[] p = reader.ReadMpint(MaxMessage).ToArray();
+            byte[] q = reader.ReadMpint(MaxMessage).ToArray();
+
+            BigInteger dValue = new(d, isUnsigned: true, isBigEndian: true);
+            BigInteger pValue = new(p, isUnsigned: true, isBigEndian: true);
+            BigInteger qValue = new(q, isUnsigned: true, isBigEndian: true);
+            int half = (n.Length + 1) / 2;
+
+            RSA rsa = RSA.Create();
+            rsa.ImportParameters(new RSAParameters
+            {
+                Modulus = n,
+                Exponent = e,
+                D = Pad(d, n.Length),
+                P = Pad(p, half),
+                Q = Pad(q, half),
+                DP = Pad((dValue % (pValue - 1)).ToByteArray(isUnsigned: true, isBigEndian: true), half),
+                DQ = Pad((dValue % (qValue - 1)).ToByteArray(isUnsigned: true, isBigEndian: true), half),
+                InverseQ = Pad(iqmp, half),
+            });
+            return InMemorySshSigner.FromRsa(rsa);
+        }
+
+        string curveName = reader.ReadUtf8String(MaxMessage);
+        byte[] point = reader.ReadStringAsArray(MaxMessage);
+        byte[] scalar = reader.ReadMpint(MaxMessage).ToArray();
+        (ECCurve curve, int size) = curveName switch
+        {
+            "nistp256" => (ECCurve.NamedCurves.nistP256, 32),
+            "nistp384" => (ECCurve.NamedCurves.nistP384, 48),
+            "nistp521" => (ECCurve.NamedCurves.nistP521, 66),
+            _ => throw new InvalidDataException($"不认识的曲线 {curveName}。"),
+        };
+        if (type != "ecdsa-sha2-" + curveName)
+        {
+            throw new InvalidDataException($"密钥类型 {type} 与曲线 {curveName} 对不上。");
+        }
+
+        ECDsa ecdsa = ECDsa.Create();
+        ecdsa.ImportParameters(new ECParameters
+        {
+            Curve = curve,
+            Q = new ECPoint { X = point[1..(1 + size)], Y = point[(1 + size)..] },
+            D = Pad(scalar, size),
+        });
+        return InMemorySshSigner.FromEcdsa(ecdsa);
+    }
+
+    private static byte[] Pad(byte[] value, int length)
+    {
+        if (value.Length >= length)
+        {
+            return value;
+        }
+        byte[] padded = new byte[length];
+        value.CopyTo(padded, length - value.Length);
+        return padded;
     }
 }
 

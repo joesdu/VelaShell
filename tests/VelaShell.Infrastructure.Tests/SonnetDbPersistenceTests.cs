@@ -235,6 +235,21 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         Assert.HasCount(8, reloaded.Appearance.AnsiNormal);
     }
 
+    /// <summary>
+    /// 旧字段 <c>autoLoadToAgent</c> 默认 <see langword="true" /> 却从没有消费者,存量配置里几乎都存着那个 <c>true</c>。
+    /// 它不是用户的选择,不能被当成「同意往 agent 里放私钥」—— 新开关必须保持关闭。
+    /// </summary>
+    [TestMethod]
+    public void Settings_LegacyAutoLoadToAgentDoesNotTurnOnAddKeysToAgent()
+    {
+        AppSettings? settings = SonnetDbJson.Deserialize<AppSettings>(
+            """{ "keys": { "defaultKeyName": "id_rsa", "autoLoadToAgent": true } }""");
+
+        Assert.IsNotNull(settings);
+        Assert.AreEqual("id_rsa", settings.Keys.DefaultKeyName);
+        Assert.IsFalse(settings.Keys.AddKeysToAgent);
+    }
+
     [TestMethod]
     public async Task HostKeyService_TrustAndVerify_Works()
     {

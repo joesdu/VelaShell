@@ -129,7 +129,17 @@ internal static class SshConnectionAssembler
                 Algorithms = Algorithms(info),
             };
 
-            return await options.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            SshConnection connection = await options.ConnectAsync(cancellationToken).ConfigureAwait(false);
+
+            // 「自动加载密钥到 Agent」:认证成功之后才加(配错的钥不该进 agent),而且丢到后台 ——
+            // agent 没在跑时要等满三秒才知道,那段等待不该落在连接路径上。
+            if (AddKeysToAgent(settings)
+                && SshAgentKeyLoader.TryGetKeyToAdd(info, credentials, out InMemorySshSigner key, out string comment))
+            {
+                _ = Task.Run(() => SshAgentKeyLoader.AddAsync(key, comment, ConnectLocalAgentAsync), CancellationToken.None);
+            }
+
+            return connection;
         }
         finally
         {
@@ -179,13 +189,19 @@ internal static class SshConnectionAssembler
     /// </remarks>
     private static readonly TimeSpan AgentConnectTimeout = TimeSpan.FromSeconds(3);
 
-    private static async ValueTask<SshAgentClient> ConnectAgentAsync(CancellationToken cancellationToken)
+    /// <summary>连本机 agent,带 <see cref="AgentConnectTimeout" /> 上限;超时以 <see cref="OperationCanceledException" /> 报出。</summary>
+    private static async ValueTask<SshAgentClient> ConnectLocalAgentAsync(CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(AgentConnectTimeout);
+        return await SshAgentClient.ConnectAsync(AgentEndpoint(), timeout.Token).ConfigureAwait(false);
+    }
+
+    private static async ValueTask<SshAgentClient> ConnectAgentAsync(CancellationToken cancellationToken)
+    {
         try
         {
-            return await SshAgentClient.ConnectAsync(AgentEndpoint(), timeout.Token).ConfigureAwait(false);
+            return await ConnectLocalAgentAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (SshAgentException ex)
         {
@@ -288,6 +304,19 @@ internal static class SshConnectionAssembler
         string path, string? passphrase, CancellationToken cancellationToken) =>
         SshPrivateKeyFile.LoadAsync(
             path, string.IsNullOrWhiteSpace(passphrase) ? null : passphrase, cancellationToken);
+
+    /// <summary>设置 → 密钥管理 →「自动加载密钥到 Agent」。读不到设置时按默认值(关)。</summary>
+    private static bool AddKeysToAgent(ISettingsService? settings)
+    {
+        try
+        {
+            return settings?.GetSnapshotBlocking().Keys.AddKeysToAgent ?? false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     private static TimeSpan ConnectTimeout(ISettingsService? settings)
     {

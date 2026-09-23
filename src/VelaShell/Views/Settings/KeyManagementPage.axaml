@@ -126,7 +126,18 @@
                 SelectedItem="{Binding Keys.DefaultKeyName}"
                 VerticalAlignment="Center" />
     </Grid>
-    <!-- 自动加载密钥到 Agent:Windows OpenSSH Agent/Pageant 集成未实现,暂不展示
-         (设置审计 R-06);当前连接时直接读取密钥文件。字段仍持久化,实现后恢复展示。 -->
+
+    <Border Classes="sep" />
+
+    <!-- 自动加载密钥到 Agent(设置审计 R-06):私钥文件认证成功后把钥加进本机 ssh-agent。
+         默认关 —— 往系统 agent 里放私钥是用户的决定,Windows 的 agent 还会跨重启保留。 -->
+    <TextBlock Classes="section-title" Text="{loc:Localize SetKeys_SectionAgent}" />
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetKeys_AddKeysToAgent}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetKeys_AddKeysToAgentDesc}" TextWrapping="Wrap" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding Keys.AddKeysToAgent}" VerticalAlignment="Center" />
+    </Grid>
   </StackPanel>
 </UserControl>
