@@ -34,12 +34,18 @@ public interface IXServerHost
 
     /// <summary>
     /// 指针所在位置该显示的光标变了。<paramref name="cursorGlyph" /> 是 cursor 字体的字形号
-    /// (68 = left_ptr、152 = xterm、…);−1 表示默认箭头或位图光标。
+    /// (68 = left_ptr、152 = xterm、…);−1 表示默认箭头或位图光标,−2 表示隐藏光标(XFIXES HideCursor)。
     /// </summary>
     void CursorChanged(XTopLevelWindow? window, int cursorGlyph);
 
     /// <summary>响铃。</summary>
     void Bell(int percent);
+
+    /// <summary>
+    /// X 客户端复制了文本(占有了 CLIPBOARD;<see cref="XServerOptions.SyncPrimary" /> 时也包括 PRIMARY),
+    /// 服务端已把内容取了过来。宿主把它写进系统剪贴板;反方向用 <see cref="Server.X11Server.SetClipboardText" />。
+    /// </summary>
+    void ClipboardChanged(string text);
 }
 
 /// <summary>一个顶层窗口在宿主眼里的样子。属性值由服务端线程更新,宿主只读。</summary>
@@ -89,6 +95,12 @@ public sealed class XTopLevelWindow
     public bool IsMapped { get; internal set; }
 
     /// <summary>
+    /// 窗口形状(SHAPE 扩展的边界形状与内区的交集,内区坐标);null = 普通矩形窗口。
+    /// 宿主应当让形状以外的部分透明、且不接收鼠标(xeyes 的两只眼睛、不规则弹层)。
+    /// </summary>
+    public IReadOnlyList<XRect>? Shape { get; internal set; }
+
+    /// <summary>
     /// 拷贝当前像素(<c>0x00RRGGBB</c>,行优先,宽 × 高)。<paramref name="destination" /> 不够大时只拷能放下的部分。
     /// </summary>
     /// <returns>实际拷贝时的 (宽, 高);窗口已没有缓冲时为 (0, 0)。</returns>
@@ -132,6 +144,13 @@ public sealed record XServerOptions
 
     /// <summary>厂商字符串(连接建立回复里的 vendor)。</summary>
     public string Vendor { get; init; } = "VelaShell";
+
+    /// <summary>与宿主的剪贴板互通(CLIPBOARD 选区)。关掉后 <see cref="IXServerHost.ClipboardChanged" /> 不再调用,
+    /// <see cref="Server.X11Server.SetClipboardText" /> 也不起作用。</summary>
+    public bool SyncClipboard { get; init; } = true;
+
+    /// <summary>PRIMARY 选区(X 里「选中即复制」)也参与互通。默认关:选中文字就改写系统剪贴板往往出人意料。</summary>
+    public bool SyncPrimary { get; init; }
 
     /// <summary>
     /// 诊断日志:连接进出、每条发给客户端的协议错误(带操作码)、未实现的请求。null = 不记。

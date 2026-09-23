@@ -230,7 +230,7 @@ public sealed partial class X11Server
 
     internal void DestroyWindow(XWindow window)
     {
-        if (window.IsRoot || !_resources.ContainsKey(window.Id))
+        if (window.IsRoot || window.Id == SelectionWindowId || !_resources.ContainsKey(window.Id))
         {
             return;
         }
@@ -253,11 +253,13 @@ public sealed partial class X11Server
         }
         DeliverStructure(window, XEventCode.DestroyNotify, 0, w => w.U32(window.Id));
         _resources.Remove(window.Id);
+        CleanupXFixes(null, window);
         foreach (var (atom, owner) in _selections.ToArray())
         {
             if (ReferenceEquals(owner.Window, window))
             {
                 _selections.Remove(atom);
+                NotifySelectionChange(atom, 1, 0, owner.Time);
             }
         }
         if (ReferenceEquals(_focus, window))

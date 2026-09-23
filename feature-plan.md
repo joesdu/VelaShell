@@ -38,12 +38,12 @@
 
 ```mermaid
 pie showData
-    title 欠账 —— 现状与代码对不上的部分（23 项）
+    title 欠账 —— 现状与代码对不上的部分（24 项）
     "P0 存了但不生效" : 5
     "安全与凭据" : 4
     "会话与工作区" : 3
     "数据与可观测" : 3
-    "终端与协议" : 4
+    "终端与协议" : 5
     "文件传输" : 2
     "插件生态" : 2
 ```
@@ -65,6 +65,7 @@ pie showData
 > 「安全与凭据」从 6 降到 4：SSH 证书认证已在 `bbfa1877` 落地，ed25519 密钥生成已在 `plan.md` §86 落地（均见该节）。
 > 「插件生态」现为 2：插件自报图标当天闭合，但新增了一条 🔴 P0「11 条怎么改都绿的 UI 用例」（见该节）。
 > 「终端与协议」从 3 加到 4：新增「SSH PTY 像素尺寸贯通」（2026-09-22 换成 SSH 库 VelaShell.Ssh 后**不再卡上游**，见该节）。
+> 「终端与协议」现为 5：VelaShell.XServer 的 M2 已闭合，留下 M3（接入宿主）与拆出来的「XKB 与 XInput2」两条（见该节）。
 
 ---
 
@@ -140,8 +141,9 @@ pie showData
 | ⏳ | 🟡 P2 | **非 bash 的 shell 干脆别注入目录上报钩子** | 钩子由 `test -n "${BASH_VERSION:-}"` 守卫，在 zsh / dash 上是个**空操作** —— 却照样占掉一个提示符周期，还在用户历史里留下一整行（`plan.md` §66 的摘历史只对 bash 有效：zsh 没有 `history -d`） | `RemoteShellProbe` 目前只回答「是不是 POSIX」，让它顺带报出 shell 家族（探针命令加一段 `${BASH_VERSION:+-bash}` / `${ZSH_VERSION:+-zsh}`，标记向后兼容），**确认是 zsh 时跳过注入**。⚠️ 只在**正面认出**非 bash 时才跳 —— 认不出来照旧注入，免得误伤「登录 shell 是 /bin/sh、交互 shell 是 bash」那种机器 |
 | ⏳ | 🟢 P3 | **SSH PTY 像素尺寸贯通** | `window-change` 的像素字段恒为 `0`：`IShellStreamWrapper.Resize(int, int)` 只有字符行列，终端控件的 `PtySizeChanged` 也只报列/行，`ShellStreamWrapper.ResizeCoreAsync` 于是只能 `new TerminalSize(columns, rows)` | ✅ **上游那道坎没有了**：2026-09-22 换成 VelaShell.Ssh（`plan.md` §91），`pty-req` 与 `window-change` 两条路都原生带像素 —— `TerminalSize(columns, rows, pixelWidth, pixelHeight)`，建流那一步（`CreateShellStreamAsync(…, width, height, …)`）**已经把像素传下去了**。剩下的全是宿主侧的活：让终端控件报出物理像素、让 `Resize` 带着它走。实施细节见下文「SSH PTY 像素尺寸贯通 —— 实施细节」 |
 | 💡 | 🟢 P3 | **终端内搜索的增强** | 基础搜索已实现（`MainWindowViewModel.TerminalSearchRequested:1616`） | 正则、大小写、全部高亮、上一个/下一个的循环计数 —— 按用户反馈再定 |
-| ⏳ | 🟡 P2 | **VelaShell.XServer M2:现代工具包要的扩展** | M1 已完成(`plan.md` §101):核心协议全量 + BIG-REQUESTS / XC-MISC,xterm / xeyes / xclock / xlogo 零错误。GTK3 / Qt5 程序还起不来 | 按依赖顺序:**XFIXES**(游标、区域)→ **SHAPE**(xeyes 的圆窗、不规则弹层)→ **RENDER**(Xft 画字、合成,GTK / Qt 的硬前提)→ **最小 XKB**(Qt5/6 必需)→ **RANDR 只读**(GTK 查屏幕)→ **XInput2**(GTK3 的指针);剪贴板与宿主互通(CLIPBOARD / PRIMARY ↔ 系统剪贴板)。验收:`zenity`、`gedit`、一个 Qt5 程序经 interop 用例画出内容且零协议错误 |
-| ⏳ | 🟡 P2 | **VelaShell.XServer M3:接入宿主** | 库已可用,宿主的 X Server 按钮仍然拉起外部 VcXsrv(`plan.md` §100) | Avalonia 实现 `IXServerHost`(每个顶层一个原生窗口、override-redirect 画成无装饰弹层、HiDPI 缩放、光标字形 → 系统光标、物理键 → `XKeycodes`);`ILocalXServer` 加一个内置实现,默认用它、VcXsrv 退成可选;SSH 的 x11 通道经 `ServeAsync` 直接喂进去,不走本机端口;设置页收敛(VcXsrv 专属的参数只在选了 VcXsrv 时出现) |
+| ✅ | — | ~~**VelaShell.XServer M2:现代工具包要的扩展**~~ | **已完成**(2026-09-23,`plan.md` §103):SHAPE、XFIXES、RANDR(只读)、RENDER、剪贴板与宿主互通、XSETTINGS 管理器;`zenity`、`gedit`、`qt5ct`、Xft 的 `xterm` 画得对、零协议错误 | 原计划里的**最小 XKB 与 XInput2 没做**,拆成下一行 —— 实测 GTK3 / Qt5 没有它们照样工作 |
+| 💡 | 🟢 P3 | **VelaShell.XServer:XKB 与 XInput2** | M2 实测:Qt5 没有 XKB 时退回核心协议的键位表(只打一行 `XKeyboard extension not present` 警告),GTK3 没有 XInput2 时用核心指针事件,键盘输入与点击都正常(`plan.md` §103)。Qt6 按其源码同样保留了核心键位表的退路,但**还没实测** | 等出现「非它不可」的客户端再做。⚠️ 两者都**不能只做一半**:扩展一旦出现在 `QueryExtension` 里,客户端就改走它的代码路径 —— XKB 的 `GetMap` / `GetNames` / `GetCompatMap` 等任何一个回复不对,xkbcommon-x11 建键位表失败,键盘比现在还糟。要做就一次做到 `xkb_x11_keymap_new_from_device` 能成功 |
+| ⏳ | 🟡 P2 | **VelaShell.XServer M3:接入宿主** | 库已可用(M2 起 GTK3 / Qt5 也能跑),宿主的 X Server 按钮仍然拉起外部 VcXsrv(`plan.md` §100) | Avalonia 实现 `IXServerHost`(每个顶层一个原生窗口、override-redirect 画成无装饰弹层、`XTopLevelWindow.Shape` 做非矩形窗口、HiDPI 缩放 —— XSETTINGS 顺带发 `Gdk/WindowScalingFactor`、光标字形 → 系统光标(−2 是隐藏)、物理键 → `XKeycodes`、`ClipboardChanged` / `SetClipboardText` 接系统剪贴板);`ILocalXServer` 加一个内置实现,默认用它、VcXsrv 退成可选;SSH 的 x11 通道经 `ServeAsync` 直接喂进去,不走本机端口;设置页收敛(VcXsrv 专属的参数只在选了 VcXsrv 时出现,剪贴板两个开关映射到 `SyncClipboard` / `SyncPrimary`) |
 | 📄 | 🟠 P1 | **设计稿的两处残留** | Logo 有一个 `enabled:false` 残留图标；文件列表「修改时间」列无固定宽度 | 小到可以顺手做掉，记在这里免得忘 |
 
 ### SSH PTY 像素尺寸贯通 —— 实施细节

@@ -102,6 +102,24 @@ internal sealed class XWindow : XResource
     /// <summary>被动按键抓取(GrabKey)。</summary>
     public List<Input.PassiveGrab> KeyGrabs { get; } = [];
 
+    /// <summary>SHAPE 扩展的边界形状(窗口坐标,原点是内区左上角,可以为负以覆盖边框);null = 默认矩形。</summary>
+    public Region? BoundingShape { get; set; }
+
+    /// <summary>SHAPE 的裁剪形状(窗口坐标);null = 默认(内区矩形)。</summary>
+    public Region? ClipShape { get; set; }
+
+    /// <summary>SHAPE 的输入形状(窗口坐标);null = 默认(与边界形状相同)。</summary>
+    public Region? InputShape { get; set; }
+
+    /// <summary>选了 ShapeNotify 的客户端。</summary>
+    public HashSet<XClient> ShapeSelections { get; } = [];
+
+    /// <summary>边界形状的默认值:含边框的外框。</summary>
+    public XRect DefaultBounding => new(-BorderWidth, -BorderWidth, Width + (2 * BorderWidth), Height + (2 * BorderWidth));
+
+    /// <summary>裁剪形状的默认值:内区。</summary>
+    public XRect DefaultClip => new(0, 0, Width, Height);
+
     public bool IsRoot => Parent is null;
 
     public bool IsTopLevel => Parent is { IsRoot: true };

@@ -159,6 +159,7 @@ internal sealed class XTestClient : IAsyncDisposable
         public Body U8(byte v) { _bytes.Add(v); return this; }
         public Body U16(ushort v) { _bytes.AddRange(U16Bytes(v, bigEndian)); return this; }
         public Body I16(short v) => U16(unchecked((ushort)v));
+        public Body I32(int v) => U32(unchecked((uint)v));
         public Body U32(uint v)
         {
             byte[] b = new byte[4];

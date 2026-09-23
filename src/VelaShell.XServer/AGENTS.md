@@ -10,7 +10,7 @@
 
 `VelaShell.XServer` —— 一个**可嵌入、无原生依赖、跨平台**的 X11 服务端库(rootless,软件绘图)。
 宿主要在本机显示经 SSH X11 转发过来的远端图形程序,又不想让用户另装 VcXsrv / XQuartz。
-2026-09-23 立项,目前在 **M1(核心协议)**;宿主尚未接入(接入是 M3)。
+2026-09-23 立项,M1(核心协议)与 M2(SHAPE / XFIXES / RANDR / RENDER / 剪贴板 / XSETTINGS)已完成;宿主尚未接入(接入是 M3)。
 
 - **本目录按 MIT 授权**([`LICENSE`](LICENSE) / [`NOTICE.md`](NOTICE.md)),与宿主其余部分的授权不同。
 - **架构与原理、里程碑、决策记录**:velashell-docs
@@ -21,7 +21,7 @@
 | --- | --- |
 | `src/VelaShell.XServer/` | 库本体(分层见 `VelaShell.XServer.csproj` 的注释) |
 | `tests/VelaShell.XServer.Tests/` | 单元测试(内存双工流 + 逐字节的测试客户端)与 `[TestCategory("Interop")]` 真实客户端用例 |
-| `scripts/xserver/interop/` | 互操作靶场:`Dockerfile`(x11-apps / xterm / xdpyinfo)、`run-server.cs`(起服务端、存 PNG、注入输入)、`Run-Client.ps1` |
+| `scripts/xserver/interop/` | 互操作靶场:`Dockerfile`(x11-apps / xterm / xdpyinfo / xclip)、`run-server.cs`(起服务端、存 PNG、注入输入)、`Run-Client.ps1` |
 
 ---
 
@@ -29,7 +29,7 @@
 
 | # | 纪律 | 具体要求 |
 | :-: | --- | --- |
-| 1 | **规范优先** | 实现依据只能是 X.Org 发布的 *X Window System Protocol, X Version 11*(含附录 B 编码)、各扩展的协议规范、ICCCM、EWMH、BDF 规范。**每个协议实现文件头写明它实现的是哪份规范的哪一节** |
+| 1 | **规范优先** | 实现依据只能是 X.Org 发布的 *X Window System Protocol, X Version 11*(含附录 B 编码)、各扩展的协议规范、ICCCM、EWMH、XSETTINGS、BDF 规范,以及 RENDER 规范引用的 PDF Reference 混合模式公式。**每个协议实现文件头写明它实现的是哪份规范的哪一节** |
 | 2 | **不看别人的服务端** | 写实现时不打开任何其它 X 服务端的源码(X.Org / XLibre / yserver / node-x11 / WeirdX / VcXsrv / XQuartz) |
 | 3 | **常量照抄规范** | 操作码、事件码、错误码、掩码位、预定义原子、线上布局都是协议事实,不许为了「看起来不一样」去改 |
 | 4 | **数据不是代码** | 内置字体是 X.Org `font-misc-misc` 的 BDF(公有领域),以数据文件随库分发,来源写在 `Fonts/Data/README.md` 与 `NOTICE.md`。要更多字形时从上游重新裁剪,不手改 |

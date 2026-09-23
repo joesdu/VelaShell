@@ -47,6 +47,9 @@ internal sealed class XClient
 
     public HashSet<uint> SaveSet { get; } = [];
 
+    /// <summary>最近几条请求的「主.次」操作码(只在开了诊断日志时记),出错时一并打印,便于看出错前客户端在干什么。</summary>
+    public Queue<string> RecentRequests { get; } = new();
+
     public Channel<byte[]> Output { get; } = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true });
 
     /// <summary>这个 ID 是不是在本客户端的资源范围内。</summary>

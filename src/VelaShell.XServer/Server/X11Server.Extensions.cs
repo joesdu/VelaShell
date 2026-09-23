@@ -37,6 +37,10 @@ public sealed partial class X11Server
     {
         Register(new Extension("BIG-REQUESTS", 128, BigRequests));
         Register(new Extension("XC-MISC", 129, XcMisc));
+        Register(new Extension("SHAPE", ShapeMajor, Shape) { FirstEvent = ShapeEventBase });
+        Register(new Extension("XFIXES", XFixesMajor, XFixes) { FirstEvent = XFixesEventBase, FirstError = XFixesErrorBase });
+        Register(new Extension("RANDR", RandRMajor, RandR) { FirstEvent = RandREventBase, FirstError = RandRErrorBase });
+        Register(new Extension("RENDER", RenderMajor, Render) { FirstError = RenderErrorBase });
     }
 
     private void Register(Extension extension)
@@ -147,7 +151,12 @@ public sealed partial class X11Server
             if (ReferenceEquals(owner.Client, client))
             {
                 _selections.Remove(atom);
+                NotifySelectionChange(atom, 2, 0, owner.Time);
             }
+        }
+        if (_fetch is { } fetch && !_selections.ContainsKey(fetch.Selection))
+        {
+            _fetch = null;   // 正在取的选区,属主走了
         }
         if (ReferenceEquals(_pointerGrab?.Client, client))
         {
@@ -182,7 +191,10 @@ public sealed partial class X11Server
             window.EventSelections.Remove(client);
             window.ButtonGrabs.RemoveAll(g => ReferenceEquals(g.Client, client));
             window.KeyGrabs.RemoveAll(g => ReferenceEquals(g.Client, client));
+            window.ShapeSelections.Remove(client);
         }
+        CleanupXFixes(client, null);
         UpdatePointerWindow();
+        UpdateCursor();
     }
 }

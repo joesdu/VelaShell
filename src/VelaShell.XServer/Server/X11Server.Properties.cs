@@ -19,7 +19,7 @@ public sealed partial class X11Server
 {
     private readonly Dictionary<string, uint> _atomsByName = new(StringComparer.Ordinal);
     private readonly List<string> _atomNames = [];
-    private readonly Dictionary<uint, (XWindow Window, XClient Client, uint Time)> _selections = [];
+    private readonly Dictionary<uint, (XWindow Window, XClient? Client, uint Time)> _selections = [];
 
     private void InitAtoms()
     {
@@ -264,6 +264,10 @@ public sealed partial class X11Server
         uint time = Now;
         DeliverToSelectors(window, XEventMask.PropertyChange, c =>
             c.Event(XEventCode.PropertyNotify, 0, w => w.U32(window.Id).U32(atom).U32(time).U8(deleted ? (byte)1 : (byte)0)));
+        if (ReferenceEquals(window, _selectionWindow))
+        {
+            OnSelectionWindowProperty(atom, deleted);
+        }
     }
 
     // ------------------------------------------------------------------ 选区
@@ -290,7 +294,7 @@ public sealed partial class X11Server
             if (!ReferenceEquals(current.Client, c) || owner is null)
             {
                 XWindow old = current.Window;
-                current.Client.Event(XEventCode.SelectionClear, 0, w => w.U32(time).U32(old.Id).U32(selection));
+                current.Client?.Event(XEventCode.SelectionClear, 0, w => w.U32(time).U32(old.Id).U32(selection));
             }
         }
         if (owner is null)
@@ -300,6 +304,11 @@ public sealed partial class X11Server
         else
         {
             _selections[selection] = (owner, c, time);
+        }
+        NotifySelectionChange(selection, 0, ownerId, time);
+        if (owner is not null)
+        {
+            OnClientTookSelection(c, owner, selection, time);
         }
     }
 
@@ -322,6 +331,12 @@ public sealed partial class X11Server
         CheckAtom(target);
         if (_selections.TryGetValue(selection, out var owner))
         {
+            if (owner.Client is null)
+            {
+                // 属主是服务端自己(宿主的剪贴板)。
+                ServeSelection(c, requestor, selection, target, property, time, owner.Time);
+                return;
+            }
             owner.Client.Event(XEventCode.SelectionRequest, 0, w => w
                 .U32(time).U32(owner.Window.Id).U32(requestor.Id).U32(selection).U32(target).U32(property));
             return;
@@ -353,6 +368,12 @@ public sealed partial class X11Server
         };
         if (target is null)
         {
+            return;
+        }
+        if (ReferenceEquals(target, _selectionWindow))
+        {
+            // 发给服务端自己的请求窗口:这是选区属主回的 SelectionNotify。
+            OnSelectionWindowEvent(raw, c.BigEndian);
             return;
         }
 

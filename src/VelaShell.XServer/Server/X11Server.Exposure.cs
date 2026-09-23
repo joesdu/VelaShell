@@ -49,25 +49,66 @@ public sealed partial class X11Server
         {
             return new Region();
         }
-        Region region = new(OuterRect(w));
+        Region region = ShapedOuter(w);
         for (XWindow cur = w; !cur.IsTopLevel; cur = cur.Parent!)
         {
             XWindow parent = cur.Parent!;
+            // 父窗口的内区、裁剪形状与边界形状都裁它的全部后代(SHAPE 规范 §2)。
             region.Intersect(InnerRect(parent));
+            ApplyShapes(region, parent);
             int index = parent.Children.IndexOf(cur);
             for (int i = index + 1; i < parent.Children.Count; i++)
             {
                 XWindow sibling = parent.Children[i];
                 if (sibling.Mapped && !sibling.IsInputOnly)
                 {
-                    region.Subtract(OuterRect(sibling));
+                    region.Subtract(ShapedOuter(sibling));
                 }
             }
         }
         return region.Intersect(buffer.Bounds);
     }
 
-    internal static Region VisibleInner(XWindow w) => VisibleOuter(w).Intersect(InnerRect(w));
+    /// <summary>外框矩形再与边界形状求交(没有形状就是外框本身),顶层缓冲坐标。</summary>
+    private static Region ShapedOuter(XWindow w)
+    {
+        Region region = new(OuterRect(w));
+        if (w.BoundingShape is { } bounding)
+        {
+            (int x, int y) = w.OffsetInTopLevel();
+            region.Intersect(bounding.Clone().Translate(x, y));
+        }
+        return region;
+    }
+
+    /// <summary>用窗口的边界与裁剪形状(若有)裁一块区域(顶层缓冲坐标)。</summary>
+    private static void ApplyShapes(Region region, XWindow w)
+    {
+        if (w.BoundingShape is null && w.ClipShape is null)
+        {
+            return;
+        }
+        (int x, int y) = w.OffsetInTopLevel();
+        if (w.BoundingShape is { } bounding)
+        {
+            region.Intersect(bounding.Clone().Translate(x, y));
+        }
+        if (w.ClipShape is { } clip)
+        {
+            region.Intersect(clip.Clone().Translate(x, y));
+        }
+    }
+
+    internal static Region VisibleInner(XWindow w)
+    {
+        Region region = VisibleOuter(w).Intersect(InnerRect(w));
+        if (w.ClipShape is { } clip)
+        {
+            (int x, int y) = w.OffsetInTopLevel();
+            region.Intersect(clip.Clone().Translate(x, y));
+        }
+        return region;
+    }
 
     /// <summary>ClipByChildren:可见内区再挖掉已映射子窗口(InputOnly 子窗口不挡画)。</summary>
     internal static Region ClipByChildren(XWindow w)
@@ -77,7 +118,7 @@ public sealed partial class X11Server
         {
             if (child.Mapped && !child.IsInputOnly)
             {
-                region.Subtract(OuterRect(child));
+                region.Subtract(ShapedOuter(child));
             }
         }
         return region;
@@ -297,6 +338,9 @@ public sealed partial class X11Server
         handle.Width = top.Width;
         handle.Height = top.Height;
         handle.OverrideRedirect = top.OverrideRedirect;
+        handle.Shape = top.BoundingShape is { } shape
+            ? [.. shape.Clone().Intersect(new XRect(0, 0, top.Width, top.Height)).Rects]
+            : null;
 
         uint netWmName = Intern("_NET_WM_NAME");
         if (top.Properties.TryGetValue(netWmName, out XProperty? utf8) && utf8.Format == 8)

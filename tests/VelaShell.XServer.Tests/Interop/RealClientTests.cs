@@ -111,6 +111,9 @@ public sealed class RealClientTests
     [DataRow("xeyes")]
     [DataRow("xclock -update 1")]
     [DataRow("xlogo")]
+    [DataRow("xclock -render -update 1")]   // RENDER:抗锯齿的表盘与指针
+    [DataRow("xeyes -render")]              // RENDER + SHAPE
+    [DataRow("xterm -fa Monospace -fs 11 -geometry 40x6 -e sh -c 'echo hello; sleep 3'")]   // Xft 字形走 RENDER
     [Timeout(120_000, CooperativeCancellation = true)]
     public async Task 图形程序映射窗口画出内容且没有协议错误(string program)
     {

@@ -159,7 +159,9 @@ public sealed partial class X11Server
                 }
                 int x = ix + child.X, y = iy + child.Y;
                 int w = child.Width + (2 * child.BorderWidth), h = child.Height + (2 * child.BorderWidth);
-                if (rootX >= x && rootY >= y && rootX < x + w && rootY < y + h)
+                if (rootX >= x && rootY >= y && rootX < x + w && rootY < y + h
+                    && (child.InputShape ?? child.BoundingShape) is var shape
+                    && (shape is null || shape.Contains(rootX - x - child.BorderWidth, rootY - y - child.BorderWidth)))
                 {
                     hit = child;
                     break;
@@ -442,12 +444,13 @@ public sealed partial class X11Server
         {
             cursor = w.Cursor;
         }
-        int glyph = cursor?.Glyph ?? -1;
+        int glyph = CursorHiddenAt(_pointerWindow) ? -2 : cursor?.Glyph ?? -1;
         if (glyph == _cursorGlyph)
         {
             return;
         }
         _cursorGlyph = glyph;
+        NotifyCursorChange();
         XTopLevelWindow? handle = _pointerWindow.TopLevel is { } top && _topLevelHandles.TryGetValue(top, out XTopLevelWindow? h) ? h : null;
         _host.CursorChanged(handle, glyph);
     }
