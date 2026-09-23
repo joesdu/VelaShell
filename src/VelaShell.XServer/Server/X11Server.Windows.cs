@@ -254,6 +254,11 @@ public sealed partial class X11Server
         DeliverStructure(window, XEventCode.DestroyNotify, 0, w => w.U32(window.Id));
         _resources.Remove(window.Id);
         CleanupXFixes(null, window);
+        CleanupDamage(null, window);
+        CleanupCompositeDbe(null, window);
+        CleanupPresent(null, window);
+        CleanupRandR(null, window);
+        CleanupEwmh(window);
         foreach (var (atom, owner) in _selections.ToArray())
         {
             if (ReferenceEquals(owner.Window, window))
@@ -338,6 +343,7 @@ public sealed partial class X11Server
             handle.IsMapped = true;
             ExposeWindowTree(window, new Drawing.Region(window.Buffer.Bounds));
             _host.TopLevelMapped(handle);
+            OnTopLevelMappedEwmh(window);
         }
         else if (window.TopLevel is { } top)
         {
@@ -375,6 +381,7 @@ public sealed partial class X11Server
             {
                 handle.IsMapped = false;
                 _host.TopLevelUnmapped(handle);
+                OnTopLevelUnmappedEwmh(window);
             }
         }
         else if (wasViewable && window.TopLevel is { } top)
@@ -467,9 +474,21 @@ public sealed partial class X11Server
         window.Width = width;
         window.Height = height;
         window.BorderWidth = border;
+        if (resized)
+        {
+            ResizeBackBuffer(window);
+        }
+        if ((resized || moved) && _presentContexts.Count != 0)
+        {
+            NotifyPresentConfigure(window);
+        }
         if (stackMode >= 0 && window.Parent is { } parent)
         {
             Restack(parent, window, sibling, stackMode);
+            if (window.IsTopLevel && window.Mapped)
+            {
+                UpdateClientLists();
+            }
         }
         InvalidateVisibility();
 

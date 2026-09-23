@@ -41,7 +41,7 @@ internal sealed class PictFormat
 
     public static IReadOnlyList<PictFormat> All { get; } = [A8R8G8B8, X8R8G8B8, R5G6B5, X1R5G5B5, A8, A4, A1];
 
-    public static PictFormat? ById(uint id) => All.FirstOrDefault(f => f.Id == id);
+    public static PictFormat? ById(uint id) => id - A8R8G8B8.Id < (uint)All.Count ? All[(int)(id - A8R8G8B8.Id)] : null;   // ID 连续
 
     public uint Id { get; }
 

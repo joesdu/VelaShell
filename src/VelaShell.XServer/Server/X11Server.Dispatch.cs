@@ -15,6 +15,7 @@ public sealed partial class X11Server
     /// <summary>执行一条请求。只在执行线程上调用。</summary>
     private void ExecuteRequest(XClient client, byte[] request)
     {
+        client.PendingRequests.Release();   // 这条请求已从队列里取出:读端可以再读一条
         if (client.Closed)
         {
             return;
@@ -93,7 +94,7 @@ public sealed partial class X11Server
             case XOpcode.GrabServer: _serverGrabber = c; break;
             case XOpcode.UngrabServer: if (ReferenceEquals(_serverGrabber, c)) { ReleaseServerGrab(); } break;
             case XOpcode.QueryPointer: QueryPointer(c, r); break;
-            case XOpcode.GetMotionEvents: c.Reply(0, w => w.U32(0).Zero(20)); break;
+            case XOpcode.GetMotionEvents: c.MotionHint = default; c.Reply(0, w => w.U32(0).Zero(20)); break;
             case XOpcode.TranslateCoordinates: TranslateCoordinates(c, r); break;
             case XOpcode.WarpPointer: WarpPointer(r); break;
             case XOpcode.SetInputFocus: SetInputFocusRequest(r); break;
@@ -161,15 +162,15 @@ public sealed partial class X11Server
             case XOpcode.Bell: _host.Bell((sbyte)r.Data); break;
             case XOpcode.ChangePointerControl: break;
             case XOpcode.GetPointerControl: c.Reply(0, w => w.U16(2).U16(1).U16(4).Zero(18)); break;
-            case XOpcode.SetScreenSaver: break;
-            case XOpcode.GetScreenSaver: c.Reply(0, w => w.U16(0).U16(0).U8(0).U8(0).Zero(18)); break;
+            case XOpcode.SetScreenSaver: SetScreenSaver(r); break;
+            case XOpcode.GetScreenSaver: GetScreenSaver(c); break;
             case XOpcode.ChangeHosts: break;
             case XOpcode.ListHosts: c.Reply(0, w => w.U16(0).Zero(22)); break;
             case XOpcode.SetAccessControl: break;
             case XOpcode.SetCloseDownMode: c.CloseDownMode = r.Data; break;
             case XOpcode.KillClient: KillClient(r); break;
             case XOpcode.RotateProperties: RotateProperties(r); break;
-            case XOpcode.ForceScreenSaver: break;
+            case XOpcode.ForceScreenSaver: ForceScreenSaver(r); break;
             case XOpcode.SetPointerMapping: c.Reply(0, w => w.Zero(24)); break;
             case XOpcode.GetPointerMapping: GetPointerMapping(c); break;
             case XOpcode.SetModifierMapping: SetModifierMapping(c, r); break;

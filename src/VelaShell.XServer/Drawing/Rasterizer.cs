@@ -54,7 +54,12 @@ internal sealed class Rasterizer
             effective.Intersect(gcClip);
         }
         _clip = [.. effective.Rects];
+        XRect bounds = effective.Bounds;
+        (_clipTop, _clipBottom) = bounds.IsEmpty ? (0, 0) : (bounds.Y - originY, bounds.Bottom - originY);
     }
+
+    /// <summary>可画区域的行范围(可绘对象坐标,[top, bottom)):扫描线填充只扫这几行。</summary>
+    private readonly int _clipTop, _clipBottom;
 
     private int _dirtyX1 = int.MaxValue, _dirtyY1 = int.MaxValue, _dirtyX2 = int.MinValue, _dirtyY2 = int.MinValue;
 
@@ -189,7 +194,13 @@ internal sealed class Rasterizer
     /// 把一块源像素(宽 <paramref name="width" />,行优先)贴到可绘坐标 (<paramref name="dx" />, <paramref name="dy" />)。
     /// 走光栅操作与平面掩码,不走填充样式(CopyArea / PutImage 的语义)。GXcopy + 全平面时整行拷贝。
     /// </summary>
-    public void Blit(uint[] pixels, int width, int height, int dx, int dy)
+    /// <param name="pixels">源像素,行优先(可以比 宽 × 高 长:池化的数组)。</param>
+    /// <param name="width">源宽。</param>
+    /// <param name="height">源高。</param>
+    /// <param name="dx">贴到的可绘坐标 x。</param>
+    /// <param name="dy">贴到的可绘坐标 y。</param>
+    /// <param name="preMasked">源像素已经在深度掩码之内(从同深度的缓冲读来的,CopyArea):整行直接拷,不再逐个与掩码。</param>
+    public void Blit(uint[] pixels, int width, int height, int dx, int dy, bool preMasked = false)
     {
         XRect dest = new(dx + _ox, dy + _oy, width, height);
         bool fast = _gc.Function == 3 && _gc.ClipPixmap is null && (_gc.PlaneMask & _depthMask) == _depthMask;
@@ -205,11 +216,15 @@ internal sealed class Rasterizer
                 int srcRow = (by - dest.Y) * width;
                 if (fast)
                 {
-                    int srcIndex = srcRow + (r.X - dest.X);
-                    int dstIndex = (by * _buffer.Width) + r.X;
-                    for (int i = 0; i < r.Width; i++)
+                    ReadOnlySpan<uint> from = pixels.AsSpan(srcRow + (r.X - dest.X), r.Width);
+                    Span<uint> to = _buffer.Pixels.AsSpan((by * _buffer.Width) + r.X, r.Width);
+                    if (preMasked || _depthMask == uint.MaxValue)
                     {
-                        _buffer.Pixels[dstIndex + i] = pixels[srcIndex + i] & _depthMask;
+                        from.CopyTo(to);
+                    }
+                    else
+                    {
+                        CopyMasked(from, to, _depthMask);
                     }
                     Touch(r.X, by, r.Width);
                     continue;
@@ -219,6 +234,98 @@ internal sealed class Rasterizer
                     if (ClipMaskAllows(bx - _ox, by - _oy))
                     {
                         Store(bx, by, pixels[srcRow + (bx - dest.X)], _gc.Function, _gc.PlaneMask);
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>整段拷贝并与掩码(按向量宽度一次处理多个像素)。</summary>
+    private static void CopyMasked(ReadOnlySpan<uint> from, Span<uint> to, uint mask)
+    {
+        int i = 0;
+        if (System.Numerics.Vector.IsHardwareAccelerated)
+        {
+            System.Numerics.Vector<uint> m = new(mask);
+            int step = System.Numerics.Vector<uint>.Count;
+            for (; i <= from.Length - step; i += step)
+            {
+                (new System.Numerics.Vector<uint>(from[i..]) & m).CopyTo(to[i..]);
+            }
+        }
+        for (; i < from.Length; i++)
+        {
+            to[i] = from[i] & mask;
+        }
+    }
+
+    /// <summary>用给定颜色画一行 [x1, x2)(可绘坐标),光栅操作固定为 GXcopy(ImageText 的语义),走平面掩码与裁剪。</summary>
+    private void FillSpanCopy(int dy, int x1, int x2, uint color)
+    {
+        if (x2 <= x1)
+        {
+            return;
+        }
+        int by = dy + _oy;
+        int bx1 = x1 + _ox, bx2 = x2 + _ox;
+        bool fast = _gc.ClipPixmap is null && (_gc.PlaneMask & _depthMask) == _depthMask;
+        foreach (XRect r in _clip)
+        {
+            if (by < r.Y || by >= r.Bottom)
+            {
+                continue;
+            }
+            int s = Math.Max(bx1, r.X), e = Math.Min(bx2, r.Right);
+            if (e <= s)
+            {
+                continue;
+            }
+            if (fast)
+            {
+                Array.Fill(_buffer.Pixels, color & _depthMask, (by * _buffer.Width) + s, e - s);
+                Touch(s, by, e - s);
+                continue;
+            }
+            for (int bx = s; bx < e; bx++)
+            {
+                if (ClipMaskAllows(bx - _ox, dy))
+                {
+                    Store(bx, by, color, 3, _gc.PlaneMask);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 按段画一个字形:每行里连续置位的像素合成一段,<paramref name="copy" /> 时用 GXcopy 画 <paramref name="color" />(ImageText),
+    /// 否则按 GC 的填充样式画(PolyText)—— 与逐点画的结果相同,但走整段的快路径。
+    /// </summary>
+    private void DrawGlyphRuns(XGlyph glyph, int left, int top, bool copy, uint color)
+    {
+        int w = glyph.BitmapWidth;
+        for (int gy = 0; gy < glyph.BitmapHeight; gy++)
+        {
+            int gx = 0;
+            while (gx < w)
+            {
+                while (gx < w && !glyph.IsSet(gx, gy))
+                {
+                    gx++;
+                }
+                int start = gx;
+                while (gx < w && glyph.IsSet(gx, gy))
+                {
+                    gx++;
+                }
+                if (gx > start)
+                {
+                    if (copy)
+                    {
+                        FillSpanCopy(top + gy, left + start, left + gx, color);
+                    }
+                    else
+                    {
+                        FillSpan(top + gy, left + start, left + gx);
                     }
                 }
             }
@@ -378,48 +485,77 @@ internal sealed class Rasterizer
     /// <param name="winding">真 = 非零环绕规则;假 = 奇偶规则。</param>
     public void FillPolygons(IReadOnlyList<IReadOnlyList<(double X, double Y)>> polygons, bool winding)
     {
-        double minY = double.MaxValue, maxY = double.MinValue;
-        foreach (IReadOnlyList<(double X, double Y)> poly in polygons)
+        if (_clipBottom <= _clipTop)
         {
-            foreach ((double _, double y) in poly)
+            return;
+        }
+        // 活动边表:每个多边形的边按上端排序,逐行只看跨过这一行的边 —— O(边数 × log + 行数 × 活动边数),
+        // 而不是每行把所有边扫一遍;行只扫可画区域之内的(一个 65535 大小的弧不会扫六万多行)。
+        List<Edge>[] edgeLists = new List<Edge>[polygons.Count];
+        double minY = double.MaxValue, maxY = double.MinValue;
+        for (int pi = 0; pi < polygons.Count; pi++)
+        {
+            IReadOnlyList<(double X, double Y)> poly = polygons[pi];
+            List<Edge> edges = new(poly.Count);
+            for (int i = 0; i < poly.Count; i++)
             {
-                minY = Math.Min(minY, y);
-                maxY = Math.Max(maxY, y);
+                (double ax, double ay) = poly[i];
+                (double bx, double by) = poly[(i + 1) % poly.Count];
+                if (ay == by || double.IsNaN(ax) || double.IsNaN(bx))
+                {
+                    continue;
+                }
+                bool downward = ay < by;
+                edges.Add(downward
+                    ? new Edge(ay, by, ax, (bx - ax) / (by - ay), 1)
+                    : new Edge(by, ay, bx, (ax - bx) / (ay - by), -1));
+                minY = Math.Min(minY, Math.Min(ay, by));
+                maxY = Math.Max(maxY, Math.Max(ay, by));
             }
+            edges.Sort(static (a, b) => a.Top.CompareTo(b.Top));
+            edgeLists[pi] = edges;
         }
         if (minY > maxY)
+        {
+            return;
+        }
+        int firstRow = (int)Math.Max(Math.Floor(minY), _clipTop);
+        int lastRow = (int)Math.Min(Math.Ceiling(maxY), _clipBottom - 1);
+        if (lastRow < firstRow)
         {
             return;
         }
 
         List<(double X, int Dir)> crossings = [];
         List<(int Start, int End)> spans = [];
-        for (int row = (int)Math.Floor(minY); row <= (int)Math.Ceiling(maxY); row++)
+        int[] next = new int[polygons.Count];            // 每个多边形下一条还没进活动表的边
+        List<Edge>[] active = new List<Edge>[polygons.Count];
+        for (int pi = 0; pi < active.Length; pi++)
+        {
+            active[pi] = [];
+        }
+        for (int row = firstRow; row <= lastRow; row++)
         {
             // 按像素中心采样:第 row 行的中心在 row + 0.5。
             double sampleY = row + 0.5;
             spans.Clear();
-            foreach (IReadOnlyList<(double X, double Y)> poly in polygons)
+            for (int pi = 0; pi < polygons.Count; pi++)
             {
-                crossings.Clear();
-                for (int i = 0; i < poly.Count; i++)
+                List<Edge> edges = edgeLists[pi], live = active[pi];
+                while (next[pi] < edges.Count && edges[next[pi]].Top <= sampleY)
                 {
-                    (double ax, double ay) = poly[i];
-                    (double bx, double by) = poly[(i + 1) % poly.Count];
-                    if (ay == by)
-                    {
-                        continue;
-                    }
-                    bool downward = ay < by;
-                    double top = downward ? ay : by, bottom = downward ? by : ay;
-                    if (sampleY < top || sampleY >= bottom)
-                    {
-                        continue;
-                    }
-                    double x = ax + ((sampleY - ay) * (bx - ax) / (by - ay));
-                    crossings.Add((x, downward ? 1 : -1));
+                    live.Add(edges[next[pi]++]);
                 }
-                crossings.Sort((a, b) => a.X.CompareTo(b.X));
+                live.RemoveAll(e => e.Bottom <= sampleY);
+                crossings.Clear();
+                foreach (Edge e in live)
+                {
+                    if (sampleY >= e.Top)
+                    {
+                        crossings.Add((e.X + ((sampleY - e.Top) * e.Slope), e.Dir));
+                    }
+                }
+                crossings.Sort(static (a, b) => a.X.CompareTo(b.X));
                 int wind = 0;
                 for (int i = 0; i < crossings.Count - 1; i++)
                 {
@@ -444,6 +580,9 @@ internal sealed class Rasterizer
             }
         }
     }
+
+    /// <summary>多边形的一条边,从上端(Top,X)到下端(Bottom);Dir = 1 表示原本朝下走。</summary>
+    private readonly record struct Edge(double Top, double Bottom, double X, double Slope, int Dir);
 
     private static List<(int Start, int End)> MergeSpans(List<(int Start, int End)> spans)
     {
@@ -569,7 +708,8 @@ internal sealed class Rasterizer
         double cx = x + (w / 2.0), cy = y + (h / 2.0), rx = w / 2.0, ry = h / 2.0;
         double start = angle1 / 64.0 * Math.PI / 180.0;
         double extent = Math.Clamp(angle2, -360 * 64, 360 * 64) / 64.0 * Math.PI / 180.0;
-        int n = Math.Max(4, (int)(Math.Abs(extent) * Math.Max(rx, ry)));
+        // 约一像素一段;上限 4096 段 —— 半径三万多的整圆,4096 段的弦高也只有百分之一像素,再多只是白算。
+        int n = Math.Clamp((int)(Math.Abs(extent) * Math.Max(rx, ry)), 4, 4096);
         List<(double, double)> points = new(n + 1);
         for (int i = 0; i <= n; i++)
         {
@@ -633,18 +773,7 @@ internal sealed class Rasterizer
     /// <summary>PolyText:字形当作点画,按填充样式画前景。返回前进宽度。</summary>
     public int DrawGlyph(XGlyph glyph, int originX, int baselineY)
     {
-        int w = glyph.BitmapWidth, h = glyph.BitmapHeight;
-        int left = originX + glyph.Info.LeftBearing, top = baselineY - glyph.Info.Ascent;
-        for (int gy = 0; gy < h; gy++)
-        {
-            for (int gx = 0; gx < w; gx++)
-            {
-                if (glyph.IsSet(gx, gy))
-                {
-                    PlotPixel(left + gx, top + gy);
-                }
-            }
-        }
+        DrawGlyphRuns(glyph, originX + glyph.Info.LeftBearing, baselineY - glyph.Info.Ascent, copy: false, 0);
         return glyph.Info.Width;
     }
 
@@ -653,12 +782,10 @@ internal sealed class Rasterizer
     {
         (int width, _, _, _, _) = font.Measure(codes);
         int top = baselineY - font.Ascent, height = font.Ascent + font.Descent;
+        uint background = _gc.Background, foreground = _gc.Foreground;
         for (int yy = top; yy < top + height; yy++)
         {
-            for (int xx = x; xx < x + width; xx++)
-            {
-                PutPixelCopy(xx, yy, _gc.Background);
-            }
+            FillSpanCopy(yy, x, x + width, background);
         }
         int pen = x;
         foreach (int code in codes)
@@ -667,17 +794,7 @@ internal sealed class Rasterizer
             {
                 continue;
             }
-            int left = pen + glyph.Info.LeftBearing, gTop = baselineY - glyph.Info.Ascent;
-            for (int gy = 0; gy < glyph.BitmapHeight; gy++)
-            {
-                for (int gx = 0; gx < glyph.BitmapWidth; gx++)
-                {
-                    if (glyph.IsSet(gx, gy))
-                    {
-                        PutPixelCopy(left + gx, gTop + gy, _gc.Foreground);
-                    }
-                }
-            }
+            DrawGlyphRuns(glyph, pen + glyph.Info.LeftBearing, baselineY - glyph.Info.Ascent, copy: true, foreground);
             pen += glyph.Info.Width;
         }
     }

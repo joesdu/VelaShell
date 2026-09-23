@@ -24,11 +24,21 @@ namespace VelaShell.XServer.Server;
 public sealed partial class X11Server
 {
     private XWindow _pointerWindow;
+
+    /// <summary>PointerMotionHint 的轮次:按键 / 按钮变化、指针换窗口时推进(见 <see cref="XClient.MotionHint" />)。</summary>
+    private uint _motionHintEpoch;
     private int _pointerX;
     private int _pointerY;
     private ushort _buttons;
+    /// <summary>生效的修饰键 = 按着的(base)| 锁存的(latched)| 锁定的(locked)。</summary>
     private ushort _modifiers;
+    private byte _baseMods;
+    private byte _latchedMods;
+    private byte _lockedMods;
     private readonly byte[] _keysDown = new byte[32];
+
+    /// <summary>按着的按钮(1–255;XI2 的 buttons 掩码要全部按钮,核心 state 只有 1–5)。</summary>
+    private readonly byte[] _buttonsDown = new byte[32];
 
     /// <summary>键盘焦点:null = None;<see cref="Root" /> = PointerRoot;其余为具体窗口。</summary>
     private XWindow? _focus;
@@ -44,6 +54,7 @@ public sealed partial class X11Server
     /// <summary>指针在顶层窗口里移动(内区坐标)。</summary>
     public void PointerMotion(uint topLevel, int x, int y) => Post(null, () =>
     {
+        NoteUserActivity();
         if (Lookup<XWindow>(topLevel) is { IsTopLevel: true } top)
         {
             MovePointer(top.X + top.BorderWidth + x, top.Y + top.BorderWidth + y);
@@ -51,11 +62,13 @@ public sealed partial class X11Server
     });
 
     /// <summary>
-    /// 按钮按下 / 松开。1 左、2 中、3 右;滚轮向上 4、向下 5(宿主应当为每格滚动注入一次按下 + 松开)。
+    /// 按钮按下 / 松开。1 左、2 中、3 右;滚轮向上 4、向下 5、向左 6、向右 7(宿主应当为每格滚动注入一次按下 + 松开);
+    /// 8、9 是后退 / 前进侧键。
     /// </summary>
     public void PointerButton(uint topLevel, int x, int y, int button, bool pressed) => Post(null, () =>
     {
-        if (Lookup<XWindow>(topLevel) is not { IsTopLevel: true } top || button is < 1 or > 5)
+        NoteUserActivity();
+        if (Lookup<XWindow>(topLevel) is not { IsTopLevel: true } top || button is < 1 or > 255)
         {
             return;
         }
@@ -67,7 +80,42 @@ public sealed partial class X11Server
     public void PointerLeft() => Post(null, () => MovePointer(-1, -1));
 
     /// <summary>按键按下 / 松开(X 键码,见 <see cref="XKeycodes" />)。</summary>
-    public void Key(byte keycode, bool pressed) => Post(null, () => KeyEvent(keycode, pressed));
+    public void Key(byte keycode, bool pressed) => Post(null, () =>
+    {
+        NoteUserActivity();
+        KeyEvent(keycode, pressed);
+    });
+
+    /// <summary>
+    /// 换键位表(宿主的键盘布局不是 US 时):从 <paramref name="firstKeycode" /> 起,每个键码 <paramref name="keysymsPerKeycode" /> 个键值
+    /// (第 1 列无修饰、第 2 列 Shift,与核心协议 ChangeKeyboardMapping 相同)。XKB 描述随之重新推出,
+    /// 客户端收到 MappingNotify 与 XKB 的 MapNotify。<paramref name="layout" /> 是布局名(如 <c>de</c>),给 setxkbmap 之类看。
+    /// </summary>
+    public void SetKeyboardMapping(byte firstKeycode, int keysymsPerKeycode, ReadOnlySpan<uint> keysyms, string? layout = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(firstKeycode, Keymap.MinKeycode);
+        ArgumentOutOfRangeException.ThrowIfLessThan(keysymsPerKeycode, 1);
+        if (keysyms.Length % keysymsPerKeycode != 0 || firstKeycode + (keysyms.Length / keysymsPerKeycode) - 1 > Keymap.MaxKeycode)
+        {
+            throw new ArgumentException("键值个数必须是每键码键值数的整数倍,且不超过键码 255。", nameof(keysyms));
+        }
+        uint[] copy = keysyms.ToArray();
+        Post(null, () =>
+        {
+            _keymap.Change(firstKeycode, keysymsPerKeycode, copy);
+            if (layout is not null)
+            {
+                _keyboardLayout = layout;
+                InitXkbRulesNames();
+            }
+            byte count = (byte)(copy.Length / keysymsPerKeycode);
+            foreach (XClient client in _clients.Values)
+            {
+                client.Event(XEventCode.MappingNotify, 0, w => w.U8(1).U8(firstKeycode).U8(count));
+            }
+            NotifyXkbMapChanged();
+        });
+    }
 
     /// <summary>宿主让某个顶层窗口得到键盘焦点(用户点了它);0 = 所有顶层都失去焦点。</summary>
     public void FocusTopLevel(uint topLevel) => Post(null, () =>
@@ -136,8 +184,7 @@ public sealed partial class X11Server
             owner.Event(XEventCode.ClientMessage, 32, w => w.U32(top.Id).U32(protocols).U32(delete).U32(time).Zero(12), sent: true);
             return;
         }
-        owner.Closed = true;
-        owner.Output.Writer.TryComplete();
+        owner.Abort();
         DisconnectClient(owner);
     });
 
@@ -146,9 +193,9 @@ public sealed partial class X11Server
     private XWindow WindowAt(int rootX, int rootY)
     {
         XWindow current = Root;
+        (int ix, int iy) = Root.AbsoluteInner();   // 往下走时逐层累加,不每层从头回溯到根
         while (true)
         {
-            (int ix, int iy) = current.AbsoluteInner();
             XWindow? hit = null;
             for (int i = current.Children.Count - 1; i >= 0; i--)
             {
@@ -171,6 +218,8 @@ public sealed partial class X11Server
             {
                 return current;
             }
+            ix += hit.X + hit.BorderWidth;
+            iy += hit.Y + hit.BorderWidth;
             current = hit;
         }
     }
@@ -178,6 +227,10 @@ public sealed partial class X11Server
     private void MovePointer(int rootX, int rootY)
     {
         bool moved = rootX != _pointerX || rootY != _pointerY;
+        if (moved && rootX >= 0 && _pointerX >= 0)
+        {
+            SendRawEvent(XiRawMotion, 0, rootX - _pointerX, rootY - _pointerY);
+        }
         _pointerX = rootX;
         _pointerY = rootY;
         UpdatePointerWindow();
@@ -207,6 +260,7 @@ public sealed partial class X11Server
         {
             XWindow old = _pointerWindow;
             _pointerWindow = now;
+            _motionHintEpoch++;
             GenerateCrossing(old, now);
         }
         UpdateCursor();
@@ -214,7 +268,9 @@ public sealed partial class X11Server
 
     private void ButtonEvent(int button, bool pressed)
     {
-        ushort bit = (ushort)(0x100 << (button - 1));
+        _motionHintEpoch++;   // 按钮状态变了:PointerMotionHint 的客户端可以再收一条提示
+        // 只有按钮 1–5 在 state 里有位(协议 SETofKEYBUTMASK);6 以上(水平滚轮等)照样投递,但不进 state。
+        ushort bit = button <= 5 ? (ushort)(0x100 << (button - 1)) : (ushort)0;
         if (pressed)
         {
             if (_pointerGrab is null && FindPassiveGrab(_pointerWindow, isButton: true, button) is { } passive)
@@ -227,13 +283,16 @@ public sealed partial class X11Server
                     EventMask = passive.Grab.EventMask,
                     Cursor = passive.Grab.Cursor,
                     ReleaseWhenButtonsUp = true,
+                    Xi2 = passive.Grab.Xi2,
+                    Xi2Mask = passive.Grab.Xi2Mask,
                 };
             }
-            (XWindow Window, XClient Client, uint Mask)? delivered = DeliverDeviceEvent(
-                XEventCode.ButtonPress, (byte)button, XEventMask.ButtonPress, _pointerWindow);
+            _buttonsDown[button >> 3] |= (byte)(1 << (button & 7));
+            SendRawEvent(XiRawButtonPress, (uint)button, 0, 0);
+            Delivery? delivered = DeliverDeviceEvent(XEventCode.ButtonPress, (byte)button, XEventMask.ButtonPress, _pointerWindow);
             if (_pointerGrab is null && delivered is { } d)
             {
-                // 自动抓取:按下的那个窗口在所有按钮松开之前独占指针事件(协议「ButtonPress」)。
+                // 自动抓取:按下的那个窗口在所有按钮松开之前独占指针事件(协议「ButtonPress」;XI2 同理,格式跟着收到的那种走)。
                 _pointerGrab = new ActiveGrab
                 {
                     Client = d.Client,
@@ -241,13 +300,17 @@ public sealed partial class X11Server
                     OwnerEvents = (d.Mask & (uint)XEventMask.OwnerGrabButton) != 0,
                     EventMask = d.Mask,
                     ReleaseWhenButtonsUp = true,
+                    Xi2 = d.Xi2,
+                    Xi2Mask = d.Xi2Mask,
                 };
             }
             _buttons |= bit;
         }
         else
         {
+            SendRawEvent(XiRawButtonRelease, (uint)button, 0, 0);
             DeliverDeviceEvent(XEventCode.ButtonRelease, (byte)button, XEventMask.ButtonRelease, _pointerWindow);
+            _buttonsDown[button >> 3] &= (byte)~(1 << (button & 7));
             _buttons &= (ushort)~bit;
             if (_buttons == 0 && _pointerGrab is { ReleaseWhenButtonsUp: true })
             {
@@ -257,11 +320,15 @@ public sealed partial class X11Server
         }
     }
 
+    /// <summary>一次投递的落点:收到事件的窗口、客户端、核心掩码;经 XI2 收到时 <see cref="Xi2" /> 为真。</summary>
+    private readonly record struct Delivery(XWindow Window, XClient Client, uint Mask, bool Xi2, ulong Xi2Mask, bool Xi2Slave);
+
     /// <summary>
-    /// 投递一个设备事件:有主动抓取按抓取规则走,否则从源窗口向上传播到第一个有人选了它的窗口。
-    /// 返回实际收到事件的(窗口, 客户端, 该客户端在那个窗口上的掩码),没人收时为 null。
+    /// 投递一个设备事件:有主动抓取按抓取规则走,否则从源窗口向上传播到第一个有人选了它的窗口
+    /// (核心事件掩码或 XI2 事件掩码都算)。在那个窗口上,选了核心事件的收核心事件,选了 XI2 的收 XI2 事件。
+    /// XI2 的 evtype 与核心事件码相同(KeyPress 2 … Motion 6)。返回第一个收到事件的落点,没人收时为 null。
     /// </summary>
-    private (XWindow Window, XClient Client, uint Mask)? DeliverDeviceEvent(byte code, byte detail, XEventMask mask, XWindow source)
+    private Delivery? DeliverDeviceEvent(byte code, byte detail, XEventMask mask, XWindow source)
     {
         bool isKey = code is XEventCode.KeyPress or XEventCode.KeyRelease;
         ActiveGrab? grab = isKey ? _keyboardGrab : _pointerGrab;
@@ -273,38 +340,72 @@ public sealed partial class X11Server
 
         if (grab is not null)
         {
-            if (grab.OwnerEvents && Propagate(source, mask, grab.Client, stopAt) is { } own)
+            if (grab.OwnerEvents && Propagate(source, mask, code, grab.Client, stopAt) is { } own)
             {
-                SendDeviceEvent(own.Client, code, detail, own.Window, source, own.Mask);
+                Send(own);
                 return own;
+            }
+            if (grab.Xi2)
+            {
+                if ((grab.Xi2Mask & (1UL << code)) == 0)
+                {
+                    return null;
+                }
+                Delivery xi = new(grab.Window, grab.Client, 0, true, grab.Xi2Mask, false);
+                Send(xi);
+                return xi;
             }
             if (isKey || (grab.EventMask & (uint)mask) != 0)
             {
                 SendDeviceEvent(grab.Client, code, detail, grab.Window, source, grab.EventMask);
-                return (grab.Window, grab.Client, grab.EventMask);
+                return new Delivery(grab.Window, grab.Client, grab.EventMask, false, 0, false);
             }
             return null;
         }
 
-        return Propagate(source, mask, null, stopAt) is { } hit ? SendToAll(hit.Window) : null;
+        return Propagate(source, mask, code, null, stopAt) is { } hit ? SendToAll(hit.Window) : null;
 
-        (XWindow, XClient, uint)? SendToAll(XWindow window)
+        void Send(Delivery d)
         {
-            (XWindow, XClient, uint)? first = null;
+            if (d.Xi2)
+            {
+                SendXi2DeviceEvent(d.Client, code, detail, d.Window, source, d.Xi2Slave);
+            }
+            else
+            {
+                SendDeviceEvent(d.Client, code, detail, d.Window, source, d.Mask);
+            }
+        }
+
+        Delivery? SendToAll(XWindow window)
+        {
+            Delivery? first = null;
             foreach ((XClient client, uint selected) in window.EventSelections)
             {
                 if ((selected & (uint)mask) != 0 && !client.Closed)
                 {
                     SendDeviceEvent(client, code, detail, window, source, selected);
-                    first ??= (window, client, selected);
+                    first ??= new Delivery(window, client, selected, false, 0, false);
+                }
+            }
+            foreach ((XClient client, (ulong master, ulong slave)) in window.Xi2Selections)
+            {
+                if (((master | slave) & (1UL << code)) != 0 && !client.Closed)
+                {
+                    bool slaveOnly = (master & (1UL << code)) == 0;
+                    SendXi2DeviceEvent(client, code, detail, window, source, slaveOnly);
+                    first ??= new Delivery(window, client, 0, true, master | slave, slaveOnly);
                 }
             }
             return first;
         }
     }
 
-    /// <summary>从源窗口向上找第一个(指定客户端)选了这类事件的窗口;碰上 do-not-propagate 或 <paramref name="stopAt" /> 就停。</summary>
-    private static (XWindow Window, XClient Client, uint Mask)? Propagate(XWindow source, XEventMask mask, XClient? only, XWindow? stopAt)
+    /// <summary>
+    /// 从源窗口向上找第一个(指定客户端)选了这类事件的窗口 —— 核心掩码或 XI2 的 <paramref name="evtype" /> 都算;
+    /// 碰上 do-not-propagate 或 <paramref name="stopAt" /> 就停。
+    /// </summary>
+    private static Delivery? Propagate(XWindow source, XEventMask mask, int evtype, XClient? only, XWindow? stopAt)
     {
         for (XWindow? w = source; w is not null; w = w.Parent)
         {
@@ -312,7 +413,14 @@ public sealed partial class X11Server
             {
                 if ((selected & (uint)mask) != 0 && !client.Closed && (only is null || ReferenceEquals(client, only)))
                 {
-                    return (w, client, selected);
+                    return new Delivery(w, client, selected, false, 0, false);
+                }
+            }
+            foreach ((XClient client, (ulong master, ulong slave)) in w.Xi2Selections)
+            {
+                if (((master | slave) & (1UL << evtype)) != 0 && !client.Closed && (only is null || ReferenceEquals(client, only)))
+                {
+                    return new Delivery(w, client, 0, true, master | slave, (master & (1UL << evtype)) == 0);
                 }
             }
             if ((w.DoNotPropagateMask & (uint)mask) != 0 || ReferenceEquals(w, stopAt))
@@ -338,6 +446,13 @@ public sealed partial class X11Server
         }
         if (code == XEventCode.MotionNotify && (clientMask & (uint)XEventMask.PointerMotionHint) != 0)
         {
+            // 协议「MotionNotify」:选了 PointerMotionHint 的客户端,在按键 / 按钮状态变化、指针离开事件窗口、
+            // 或者它发 QueryPointer / GetMotionEvents 之前,同一个事件窗口只收一条(detail = Hint)。
+            if (ReferenceEquals(client.MotionHint.Window, eventWindow) && client.MotionHint.Epoch == _motionHintEpoch)
+            {
+                return;
+            }
+            client.MotionHint = (eventWindow, _motionHintEpoch);
             detail = 1;   // Hint
         }
         uint time = Now;
@@ -354,38 +469,52 @@ public sealed partial class X11Server
     private void GenerateCrossing(XWindow from, XWindow to)
     {
         const byte ancestor = 0, @virtual = 1, inferior = 2, nonlinear = 3, nonlinearVirtual = 4;
+        // Leave 的 child 指向指针原先所在的那一支,Enter 的指向指针现在所在的那一支(协议「EnterNotify / LeaveNotify」)。
         if (to.IsDescendantOf(from))
         {
-            Crossing(XEventCode.LeaveNotify, from, inferior);
+            Crossing(XEventCode.LeaveNotify, from, inferior, to);
             foreach (XWindow w in PathBetween(to, from))
             {
-                Crossing(XEventCode.EnterNotify, w, @virtual);
+                Crossing(XEventCode.EnterNotify, w, @virtual, to);
             }
-            Crossing(XEventCode.EnterNotify, to, ancestor);
+            Crossing(XEventCode.EnterNotify, to, ancestor, to);
         }
         else if (from.IsDescendantOf(to))
         {
-            Crossing(XEventCode.LeaveNotify, from, ancestor);
+            Crossing(XEventCode.LeaveNotify, from, ancestor, from);
             foreach (XWindow w in Enumerable.Reverse(PathBetween(from, to)))
             {
-                Crossing(XEventCode.LeaveNotify, w, @virtual);
+                Crossing(XEventCode.LeaveNotify, w, @virtual, from);
             }
-            Crossing(XEventCode.EnterNotify, to, inferior);
+            Crossing(XEventCode.EnterNotify, to, inferior, from);
         }
         else
         {
             XWindow common = CommonAncestor(from, to);
-            Crossing(XEventCode.LeaveNotify, from, nonlinear);
+            Crossing(XEventCode.LeaveNotify, from, nonlinear, from);
             foreach (XWindow w in Enumerable.Reverse(PathBetween(from, common)))
             {
-                Crossing(XEventCode.LeaveNotify, w, nonlinearVirtual);
+                Crossing(XEventCode.LeaveNotify, w, nonlinearVirtual, from);
             }
             foreach (XWindow w in PathBetween(to, common))
             {
-                Crossing(XEventCode.EnterNotify, w, nonlinearVirtual);
+                Crossing(XEventCode.EnterNotify, w, nonlinearVirtual, to);
             }
-            Crossing(XEventCode.EnterNotify, to, nonlinear);
+            Crossing(XEventCode.EnterNotify, to, nonlinear, to);
         }
+    }
+
+    /// <summary><paramref name="window" /> 的哪个子窗口包含 <paramref name="pointerWindow" />(自己或后代);都不是时为 0(None)。</summary>
+    private static uint ChildToward(XWindow window, XWindow pointerWindow)
+    {
+        for (XWindow? w = pointerWindow; w?.Parent is { } parent; w = parent)
+        {
+            if (ReferenceEquals(parent, window))
+            {
+                return w.Id;
+            }
+        }
+        return 0;
     }
 
     /// <summary><paramref name="descendant" /> 与 <paramref name="ancestor" /> 之间的窗口(都不含),从上到下。</summary>
@@ -417,9 +546,19 @@ public sealed partial class X11Server
         return a;
     }
 
-    private void Crossing(byte code, XWindow window, byte detail)
+    private void Crossing(byte code, XWindow window, byte detail, XWindow pointerWindow)
     {
         XEventMask mask = code == XEventCode.EnterNotify ? XEventMask.EnterWindow : XEventMask.LeaveWindow;
+        bool xi2 = window.AnyXi2Selects(code == XEventCode.EnterNotify ? XiEnter : XiLeave);
+        if (!xi2 && !window.AnySelects(mask))
+        {
+            return;
+        }
+        uint child = ChildToward(window, pointerWindow);
+        if (xi2)
+        {
+            SendXi2Crossing(code == XEventCode.EnterNotify ? XiEnter : XiLeave, window, detail, child: child);
+        }
         if (!window.AnySelects(mask))
         {
             return;
@@ -430,7 +569,7 @@ public sealed partial class X11Server
         int px = _pointerX, py = _pointerY;
         bool focus = _focus is { } f && (ReferenceEquals(f, window) || window.IsDescendantOf(f));
         DeliverToSelectors(window, mask, c => c.Event(code, detail, w => w
-            .U32(time).U32(Root.Id).U32(window.Id).U32(0)
+            .U32(time).U32(Root.Id).U32(window.Id).U32(child)
             .I16(px).I16(py).I16(px - ex).I16(py - ey).U16(state)
             .U8(0)                                          // mode:Normal
             .U8((byte)(0x02 | (focus ? 0x01 : 0)))));       // same-screen | focus
@@ -439,11 +578,7 @@ public sealed partial class X11Server
     /// <summary>光标:抓取的光标优先,否则从指针所在窗口向上找第一个设了光标的窗口。</summary>
     private void UpdateCursor()
     {
-        XCursor? cursor = _pointerGrab?.Cursor;
-        for (XWindow? w = _pointerWindow; cursor is null && w is not null; w = w.Parent)
-        {
-            cursor = w.Cursor;
-        }
+        XCursor? cursor = CurrentCursor();
         int glyph = CursorHiddenAt(_pointerWindow) ? -2 : cursor?.Glyph ?? -1;
         if (glyph == _cursorGlyph)
         {
@@ -459,6 +594,7 @@ public sealed partial class X11Server
 
     private void KeyEvent(byte keycode, bool pressed)
     {
+        _motionHintEpoch++;   // 按键状态变了:同上
         if (keycode < Keymap.MinKeycode)
         {
             return;
@@ -483,10 +619,13 @@ public sealed partial class X11Server
                 Window = passive.Window,
                 OwnerEvents = passive.Grab.OwnerEvents,
                 ReleaseWhenButtonsUp = true,   // 对键盘:这个键松开时解除
+                Xi2 = passive.Grab.Xi2,
+                Xi2Mask = passive.Grab.Xi2Mask,
             };
             _passiveKeyGrabKey = keycode;
         }
 
+        SendRawEvent(pressed ? XiRawKeyPress : XiRawKeyRelease, keycode, 0, 0);
         // 事件里的 state 是事件发生前的:修饰键状态在投递之后才更新。
         if (source is not null)
         {
@@ -494,25 +633,16 @@ public sealed partial class X11Server
                 pressed ? XEventMask.KeyPress : XEventMask.KeyRelease, source);
         }
 
-        // 更新修饰键状态(Lock 类按下翻转;其余按住生效)。
+        // 更新修饰键状态:Lock 类(Caps_Lock、Num_Lock)按下翻转锁定位;其余由「当前按着的键」重新算出,
+        // 两个 Shift 同时按着、松开一个时 Shift 仍然生效。
         ushort modBit = _keymap.ModifierBitOf(keycode);
         if (modBit != 0)
         {
-            if (_keymap.IsLockingKey(keycode))
+            if (_keymap.IsLockingKey(keycode) && pressed && !wasDown)
             {
-                if (pressed && !wasDown)
-                {
-                    _modifiers ^= modBit;
-                }
+                _lockedMods ^= (byte)modBit;
             }
-            else if (pressed)
-            {
-                _modifiers |= modBit;
-            }
-            else
-            {
-                _modifiers &= (ushort)~modBit;
-            }
+            UpdateModifierState(keycode, pressed ? XEventCode.KeyPress : XEventCode.KeyRelease);
         }
 
         if (!pressed && _keyboardGrab is { ReleaseWhenButtonsUp: true } && _passiveKeyGrabKey == keycode)
@@ -523,6 +653,32 @@ public sealed partial class X11Server
     }
 
     private byte _passiveKeyGrabKey;
+
+    /// <summary>从按着的修饰键重新算 base,合成生效状态;变了就通知(XKB 的 StateNotify)。</summary>
+    private void UpdateModifierState(byte keycode, byte eventType, byte requestMajor = 0, byte requestMinor = 0)
+    {
+        byte oldBase = _baseMods, oldLatched = _latchedMods, oldLocked = _lockedMods;
+        ushort oldEffective = _modifiers;
+        byte held = 0;
+        for (int code = Keymap.MinKeycode; code <= Keymap.MaxKeycode; code++)
+        {
+            if ((_keysDown[code >> 3] & (1 << (code & 7))) != 0 && !_keymap.IsLockingKey((byte)code))
+            {
+                held |= (byte)_keymap.ModifierBitOf((byte)code);
+            }
+        }
+        _baseMods = held;
+        _modifiers = (ushort)(_baseMods | _latchedMods | _lockedMods);
+        ushort changed = 0;
+        changed |= (ushort)(_modifiers != oldEffective ? 1 : 0);
+        changed |= (ushort)(_baseMods != oldBase ? 2 : 0);
+        changed |= (ushort)(_latchedMods != oldLatched ? 4 : 0);
+        changed |= (ushort)(_lockedMods != oldLocked ? 8 : 0);
+        if (changed != 0)
+        {
+            NotifyXkbState(changed, keycode, eventType, requestMajor, requestMinor);
+        }
+    }
 
     /// <summary>按键事件的源窗口:焦点是 PointerRoot 时是指针所在窗口;指针在焦点窗口里面时是指针所在窗口;否则是焦点窗口。</summary>
     private XWindow? KeyboardSource()
@@ -542,15 +698,16 @@ public sealed partial class X11Server
     /// <summary>被动抓取:从根往下到源窗口,第一个匹配的生效(协议「GrabButton」「GrabKey」)。</summary>
     private (XWindow Window, PassiveGrab Grab)? FindPassiveGrab(XWindow source, bool isButton, int detail)
     {
-        List<XWindow> chain = [];
-        for (XWindow? w = source; w is not null; w = w.Parent)
-        {
-            chain.Add(w);
-        }
-        chain.Reverse();
+        // 从根往下找(协议:离根最近的那个被动抓取生效);递归回溯父链,不为每次按键分配链表。
         ushort mods = (ushort)(_modifiers & 0xFF);
-        foreach (XWindow w in chain)
+        return Find(source);
+
+        (XWindow Window, PassiveGrab Grab)? Find(XWindow w)
         {
+            if (w.Parent is { } parent && Find(parent) is { } outer)
+            {
+                return outer;
+            }
             foreach (PassiveGrab grab in isButton ? w.ButtonGrabs : w.KeyGrabs)
             {
                 if (grab.Matches(detail, mods) && !grab.Client.Closed)
@@ -558,8 +715,8 @@ public sealed partial class X11Server
                     return (w, grab);
                 }
             }
+            return null;
         }
-        return null;
     }
 
     // ================================================================== 焦点
@@ -573,14 +730,17 @@ public sealed partial class X11Server
             return;
         }
         _focus = focus;
+        UpdateActiveWindow(old, focus);
         const byte nonlinear = 3;
         if (old is { IsRoot: false })
         {
             DeliverToSelectors(old, XEventMask.FocusChange, c => c.Event(XEventCode.FocusOut, nonlinear, w => w.U32(old.Id).U8(0)));
+            SendXi2Crossing(XiFocusOut, old, nonlinear);
         }
         if (focus is { IsRoot: false })
         {
             DeliverToSelectors(focus, XEventMask.FocusChange, c => c.Event(XEventCode.FocusIn, nonlinear, w => w.U32(focus.Id).U8(0)));
+            SendXi2Crossing(XiFocusIn, focus, nonlinear);
         }
     }
 
@@ -793,6 +953,7 @@ public sealed partial class X11Server
     private void QueryPointer(XClient c, XRequestReader r)
     {
         XWindow window = Window(r.U32());
+        c.MotionHint = default;   // 客户端来问了位置:下一次移动再给它一条提示
         (int wx, int wy) = window.AbsoluteInner();
         uint child = 0;
         for (XWindow? w = _pointerWindow; w is not null; w = w.Parent)
@@ -865,6 +1026,7 @@ public sealed partial class X11Server
             keysyms[i] = r.U32();
         }
         _keymap.Change(first, per, keysyms);
+        NotifyXkbMapChanged();
         _ = c;
         foreach (XClient client in _clients.Values)
         {
@@ -883,6 +1045,7 @@ public sealed partial class X11Server
         int per = r.Data;
         byte[] map = r.Bytes(per * 8);
         _keymap.SetModifierMap(map);
+        NotifyXkbMapChanged();
         c.Reply(0, w => w.Zero(24));
         foreach (XClient client in _clients.Values)
         {

@@ -8,6 +8,7 @@
 //   XC-MISC Extension(XCMiscGetVersion 0、XCMiscGetXIDRange 1、XCMiscGetXIDList 2)
 
 using VelaShell.XServer.Protocol;
+using VelaShell.XServer.Resources;
 using VelaShell.XServer.Windowing;
 
 namespace VelaShell.XServer.Server;
@@ -41,6 +42,19 @@ public sealed partial class X11Server
         Register(new Extension("XFIXES", XFixesMajor, XFixes) { FirstEvent = XFixesEventBase, FirstError = XFixesErrorBase });
         Register(new Extension("RANDR", RandRMajor, RandR) { FirstEvent = RandREventBase, FirstError = RandRErrorBase });
         Register(new Extension("RENDER", RenderMajor, Render) { FirstError = RenderErrorBase });
+        Register(new Extension("Generic Event Extension", GenericEventMajor, GenericEventExtension));
+        Register(new Extension("XTEST", XTestMajor, XTest));
+        Register(new Extension("XINERAMA", XineramaMajor, Xinerama));
+        Register(new Extension("MIT-SCREEN-SAVER", ScreenSaverMajor, ScreenSaverExtension) { FirstEvent = ScreenSaverEventBase });
+        Register(new Extension("DPMS", DpmsMajor, Dpms));
+        Register(new Extension("X-Resource", XResMajor, XRes));
+        Register(new Extension("DAMAGE", DamageMajor, DamageExtension) { FirstEvent = DamageEventBase, FirstError = DamageErrorBase });
+        Register(new Extension("Composite", CompositeMajor, CompositeExtension));
+        Register(new Extension("DOUBLE-BUFFER", DbeMajor, Dbe) { FirstError = DbeErrorBase });
+        Register(new Extension("SYNC", SyncMajor, Sync) { FirstEvent = SyncEventBase, FirstError = SyncErrorBase });
+        Register(new Extension("Present", PresentMajor, Present));
+        Register(new Extension("XKEYBOARD", XkbMajor, Xkb) { FirstEvent = XkbEventBase, FirstError = XkbErrorBase });
+        Register(new Extension("XInputExtension", XInputMajor, XInput) { FirstEvent = XInputEventBase, FirstError = XInputErrorBase });
     }
 
     private void Register(Extension extension)
@@ -167,8 +181,24 @@ public sealed partial class X11Server
             _keyboardGrab = null;
         }
 
-        // 先销毁这个客户端的顶层窗口(连同其子窗口),再清其余资源。
-        List<XWindow> windows = [.. _resources.Values.OfType<XWindow>().Where(w => ReferenceEquals(w.Owner, client))];
+        // 资源表只扫一遍:分出它的窗口与其余资源。先销毁「挂在别人窗口下」的那些(连同子窗口),再清其余资源。
+        List<XWindow> windows = [];
+        List<XResource> others = [];
+        foreach (XResource resource in _resources.Values)
+        {
+            if (!ReferenceEquals(resource.Owner, client))
+            {
+                continue;
+            }
+            if (resource is XWindow window)
+            {
+                windows.Add(window);
+            }
+            else
+            {
+                others.Add(resource);
+            }
+        }
         foreach (XWindow window in windows)
         {
             if (_resources.ContainsKey(window.Id) && window.Parent is { } parent && !ReferenceEquals(parent.Owner, client))
@@ -178,22 +208,37 @@ public sealed partial class X11Server
         }
         foreach (XWindow window in windows)
         {
-            DestroyWindow(window);
+            DestroyWindow(window);   // 已随上级销毁的会在里面直接返回
         }
-        foreach (uint id in _resources.Where(kv => ReferenceEquals(kv.Value.Owner, client)).Select(kv => kv.Key).ToArray())
+        foreach (XResource resource in others)
         {
-            _resources.Remove(id);
+            _resources.Remove(resource.Id);
+            if (resource is XPixmap pixmap)
+            {
+                CleanupDamage(null, pixmap);   // 别的客户端建在这张像素图上的 Damage 随它一起销毁(同 FreePixmap)
+            }
         }
 
         // 它在别人窗口上选的事件、登记的被动抓取一并摘掉。
-        foreach (XWindow window in _resources.Values.OfType<XWindow>())
+        foreach (XResource resource in _resources.Values)
         {
-            window.EventSelections.Remove(client);
-            window.ButtonGrabs.RemoveAll(g => ReferenceEquals(g.Client, client));
-            window.KeyGrabs.RemoveAll(g => ReferenceEquals(g.Client, client));
-            window.ShapeSelections.Remove(client);
+            if (resource is XWindow window)
+            {
+                window.EventSelections.Remove(client);
+                window.ButtonGrabs.RemoveAll(g => ReferenceEquals(g.Client, client));
+                window.KeyGrabs.RemoveAll(g => ReferenceEquals(g.Client, client));
+                window.ShapeSelections.Remove(client);
+            }
         }
         CleanupXFixes(client, null);
+        _saverSelections.Remove(client);
+        CleanupDamage(client, null);
+        CleanupCompositeDbe(client, null);
+        CleanupSync(client);
+        CleanupPresent(client, null);
+        CleanupXkb(client);
+        CleanupXInput(client);
+        CleanupRandR(client, null);
         UpdatePointerWindow();
         UpdateCursor();
     }

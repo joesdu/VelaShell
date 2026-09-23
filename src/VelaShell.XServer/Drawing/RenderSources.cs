@@ -158,6 +158,73 @@ internal sealed class ArraySource(Argb[] pixels, int x0, int y0, int width, int 
     protected override Argb Sample(double x, double y) => Texel((int)Math.Floor(x), (int)Math.Floor(y));
 }
 
+/// <summary>
+/// 只有 alpha 的遮罩(字形、梯形覆盖率),每像素一个字节,放在遮罩坐标系里的一块矩形上;之外全透明。
+/// 合成器认得它,走整数快路径;通用路径经 <see cref="RenderSource.FetchRow" /> 取。
+/// </summary>
+internal sealed class ByteMaskSource(byte[] alpha, int x0, int y0, int width, int height) : RenderSource
+{
+    private static readonly float[] ToFloat = BuildTable();
+
+    public byte[] Alpha { get; } = alpha;
+
+    public int X0 { get; } = x0;
+
+    public int Y0 { get; } = y0;
+
+    public int Width { get; } = width;
+
+    public int Height { get; } = height;
+
+    private static float[] BuildTable()
+    {
+        float[] table = new float[256];
+        for (int i = 0; i < 256; i++)
+        {
+            table[i] = i / 255f;
+        }
+        return table;
+    }
+
+    public byte At(int x, int y)
+    {
+        x -= X0;
+        y -= Y0;
+        return (uint)x < (uint)Width && (uint)y < (uint)Height ? Alpha[(y * Width) + x] : (byte)0;
+    }
+
+    protected override void FetchIntegerRow(int x, int y, Span<Argb> row)
+    {
+        for (int i = 0; i < row.Length; i++)
+        {
+            row[i] = Argb.Gray(ToFloat[At(x + i, y)]);
+        }
+    }
+
+    protected override Argb Sample(double x, double y) => Argb.Gray(ToFloat[At((int)Math.Floor(x), (int)Math.Floor(y))]);
+}
+
+/// <summary>带颜色的遮罩(次像素字形,分量 alpha):每像素一个预乘的 0xAARRGGBB。</summary>
+internal sealed class ColorMaskSource(uint[] pixels, int x0, int y0, int width, int height) : RenderSource
+{
+    private Argb Texel(int x, int y)
+    {
+        x -= x0;
+        y -= y0;
+        return (uint)x < (uint)width && (uint)y < (uint)height ? PictFormat.A8R8G8B8.Decode(pixels[(y * width) + x]) : default;
+    }
+
+    protected override void FetchIntegerRow(int x, int y, Span<Argb> row)
+    {
+        for (int i = 0; i < row.Length; i++)
+        {
+            row[i] = Texel(x + i, y);
+        }
+    }
+
+    protected override Argb Sample(double x, double y) => Texel((int)Math.Floor(x), (int)Math.Floor(y));
+}
+
 /// <summary>渐变:色标位置 0–1,颜色非预乘;取样时算出参数 t,按 repeat 折回后插值。</summary>
 internal abstract class GradientSource(double[] stops, Argb[] colors) : RenderSource
 {

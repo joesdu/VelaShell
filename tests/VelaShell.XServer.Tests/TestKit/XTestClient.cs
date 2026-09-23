@@ -73,6 +73,9 @@ internal sealed class XTestClient : IAsyncDisposable
     private readonly Channel<XMessage> _incoming = Channel.CreateUnbounded<XMessage>();
     private readonly List<XMessage> _backlog = [];
     private readonly Task _serverTask;
+
+    /// <summary>服务端为这个连接跑的 <c>ServeAsync</c>:服务端主动断开时它结束。</summary>
+    public Task ServerTask => _serverTask;
     private readonly Task _readTask;
     private ushort _sequence;
 
@@ -240,7 +243,8 @@ internal sealed class XTestClient : IAsyncDisposable
             {
                 byte[] head = new byte[32];
                 await _stream.ReadExactlyAsync(head);
-                if (head[0] == 1)
+                // 回复与 GenericEvent(35)在 32 字节之后还有「长度 × 4」字节。
+                if (head[0] == 1 || (head[0] & 0x7F) == 35)
                 {
                     uint extra = BigEndian ? BinaryPrimitives.ReadUInt32BigEndian(head.AsSpan(4)) : BinaryPrimitives.ReadUInt32LittleEndian(head.AsSpan(4));
                     byte[] full = new byte[32 + (extra * 4)];

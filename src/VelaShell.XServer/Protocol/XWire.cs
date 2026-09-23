@@ -84,6 +84,10 @@ internal sealed class XRequestReader
 
     public int I32() => (int)U32();
 
+    /// <summary>CARD64(Present 等扩展):8 字节,按客户端字节序。</summary>
+    public ulong U64() =>
+        _bigEndian ? BinaryPrimitives.ReadUInt64BigEndian(Take(8)) : BinaryPrimitives.ReadUInt64LittleEndian(Take(8));
+
     public void Skip(int count) => Take(count);
 
     /// <summary>读 <paramref name="count" /> 字节,再跳过补齐到 4 字节边界的部分。</summary>
@@ -171,6 +175,19 @@ internal sealed class XWriter
 
     public XWriter I32(int value) => U32(unchecked((uint)value));
 
+    public XWriter U64(ulong value)
+    {
+        if (_bigEndian)
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(Grow(8), value);
+        }
+        else
+        {
+            BinaryPrimitives.WriteUInt64LittleEndian(Grow(8), value);
+        }
+        return this;
+    }
+
     public XWriter Zero(int count)
     {
         Grow(count).Clear();
@@ -204,7 +221,8 @@ internal sealed class XWriter
         }
     }
 
-    public byte[] ToArray() => _buffer.AsSpan(0, Length).ToArray();
+    /// <summary>取出写好的字节。恰好写满缓冲时直接交出缓冲本身(事件正好 32 字节,省一次拷贝);之后不许再写。</summary>
+    public byte[] ToArray() => Length == _buffer.Length ? _buffer : _buffer.AsSpan(0, Length).ToArray();
 }
 
 /// <summary>编码上的小工具。</summary>

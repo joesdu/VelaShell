@@ -35,6 +35,7 @@ await using X11Server server = new(new XServerOptions
     ScreenHeight = 1080,
     Log = line => Console.WriteLine($"[x] {line}"),
 }, host);
+host.Server = server;
 await server.StartAsync();
 Console.WriteLine($"DISPLAY=host.docker.internal:{display}");
 Console.WriteLine($"COOKIE={Convert.ToHexStringLower(cookie)}");
@@ -144,16 +145,35 @@ sealed class ShotHost(string outDir) : IXServerHost
     /// <summary>最近映射的普通(非 override-redirect)顶层窗口 —— 注入命令的目标。</summary>
     public uint? Target { get; private set; }
 
+    public X11Server? Server { get; set; }
+
     public void TopLevelMapped(XTopLevelWindow w)
     {
         if (!w.OverrideRedirect)
         {
             Target = w.Id;
+            Server?.FocusTopLevel(w.Id);   // 像窗口管理器那样把焦点给新映射的顶层(xdotool type 之类发到焦点)
         }
         Console.WriteLine($"[host] mapped 0x{w.Id:x} {w.Width}x{w.Height}+{w.X}+{w.Y} '{w.Title}' override={w.OverrideRedirect}");
     }
     public void TopLevelUnmapped(XTopLevelWindow w) => Console.WriteLine($"[host] unmapped 0x{w.Id:x}");
-    public void TopLevelChanged(XTopLevelWindow w) => Console.WriteLine($"[host] changed 0x{w.Id:x} {w.Width}x{w.Height}+{w.X}+{w.Y} '{w.Title}' class='{w.ClassName}' shape={(w.Shape is null ? "none" : w.Shape.Count + " rects")}");
+    public void TopLevelChanged(XTopLevelWindow w) => Console.WriteLine($"[host] changed 0x{w.Id:x} {w.Width}x{w.Height}+{w.X}+{w.Y} '{w.Title}' class='{w.ClassName}' shape={(w.Shape is null ? "none" : w.Shape.Count + " rects")} type={w.WindowType} decorated={w.Decorated} states={w.States} min={w.MinWidth}x{w.MinHeight} icons={w.Icons.Count}");
+
+    // 像一个听话的窗口管理器:状态请求照办(最大化时铺满 1920×1080),其余只记下来。
+    public void WindowManagerRequest(XWindowManagerRequest request)
+    {
+        Console.WriteLine($"[wm] {request}");
+        if (request is XStateChangeRequest change && Server is { } server)
+        {
+            XWindowStates states = (change.Window.States | change.Add) & ~change.Remove;
+            server.SetTopLevelStates(change.Window.Id, states);
+            if ((change.Add & XWindowStates.Maximized) != 0)
+            {
+                server.MoveTopLevel(change.Window.Id, 0, 0);
+                server.ResizeTopLevel(change.Window.Id, 1920, 1080);
+            }
+        }
+    }
     public void CursorChanged(XTopLevelWindow? w, int glyph) { }
     public void Bell(int percent) => Console.WriteLine("[host] bell");
     public void ClipboardChanged(string text) => Console.WriteLine($"[host] clipboard {text.Length} chars '{text[..Math.Min(text.Length, 40)]}'");

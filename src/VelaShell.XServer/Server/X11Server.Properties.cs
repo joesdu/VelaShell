@@ -212,6 +212,7 @@ public sealed partial class X11Server
         {
             window.Properties.Remove(property);
             SendPropertyNotify(window, property, deleted: true);
+            OnTopLevelPropertyChanged(window, property);   // 与 DeleteProperty 一样:宿主那边的标题 / 提示跟着变
         }
     }
 
@@ -239,7 +240,8 @@ public sealed partial class X11Server
         {
             atoms[i] = r.U32();
             CheckAtom(atoms[i]);
-            if (!window.Properties.ContainsKey(atoms[i]))
+            // 属性不存在,或者同一个名字在列表里出现不止一次:Match(协议「RotateProperties」)。
+            if (!window.Properties.ContainsKey(atoms[i]) || Array.IndexOf(atoms, atoms[i], 0, i) >= 0)
             {
                 throw new XProtocolError(XErrorCode.Match, atoms[i]);
             }
@@ -248,7 +250,11 @@ public sealed partial class X11Server
         {
             return;
         }
-        XProperty[] values = [.. atoms.Select(a => window.Properties[a])];
+        XProperty[] values = new XProperty[count];
+        for (int i = 0; i < count; i++)
+        {
+            values[i] = window.Properties[atoms[i]];
+        }
         for (int i = 0; i < count; i++)
         {
             window.Properties[atoms[(((i + delta) % count) + count) % count]] = values[i];
@@ -256,6 +262,7 @@ public sealed partial class X11Server
         foreach (uint a in atoms)
         {
             SendPropertyNotify(window, a, deleted: false);
+            OnTopLevelPropertyChanged(window, a);
         }
     }
 
@@ -369,6 +376,10 @@ public sealed partial class X11Server
         if (target is null)
         {
             return;
+        }
+        if (ReferenceEquals(target, Root) && code == XEventCode.ClientMessage)
+        {
+            OnRootClientMessage(c, raw);   // 发给窗口管理器的请求;之后照常投递(没有别的客户端会重定向根窗口)
         }
         if (ReferenceEquals(target, _selectionWindow))
         {
@@ -524,8 +535,7 @@ public sealed partial class X11Server
         {
             throw new XProtocolError(XErrorCode.Value, id);
         }
-        owner.Closed = true;
-        owner.Output.Writer.TryComplete();
+        owner.Abort();
         DisconnectClient(owner);
     }
 }

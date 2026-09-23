@@ -3,16 +3,18 @@
 //
 // 规范依据(AGENTS.md §2 纪律 1):
 //   The X Resize and Rotate Extension (RandR), Version 1.5 —— §4「Protocol Types」(MODEINFO、MONITORINFO)、
-//   §5「Extension Initialization」(QueryVersion)、§7.1「Protocol Requests added with version 1.0」
-//   (GetScreenInfo、SelectInput)、§7.2「…version 1.2」(GetScreenSizeRange、GetScreenResources、GetOutputInfo、
-//   输出属性、GetCrtcInfo、Gamma)、§7.3「…version 1.3」(GetScreenResourcesCurrent、GetCrtcTransform、
-//   GetPanning、GetOutputPrimary)、§7.4「…version 1.4」(GetProviders)、§7.5「…version 1.5」(GetMonitors)、
-//   附录「Protocol Encoding」(次操作码、错误 BadOutput / BadCrtc / BadMode / BadProvider)
+//   §5「Extension Initialization」(QueryVersion)、§6「Events」(RRScreenChangeNotify、RRNotify)、
+//   §7.1「Protocol Requests added with version 1.0」(GetScreenInfo、SelectInput)、§7.2「…version 1.2」
+//   (GetScreenSizeRange、GetScreenResources、GetOutputInfo、输出属性、GetCrtcInfo、Gamma)、§7.3「…version 1.3」
+//   (GetScreenResourcesCurrent、GetCrtcTransform、GetPanning、GetOutputPrimary)、§7.4「…version 1.4」
+//   (GetProviders)、§7.5「…version 1.5」(GetMonitors)、附录「Protocol Encoding」
 //
-//   只读:一台虚拟显示器(一个 CRTC、一个输出、一个模式)覆盖整个根窗口。rootless 模式下窗口
-//   摆在哪由宿主决定,客户端问显示器只是为了取尺寸与 DPI;改配置的请求一律回 Failed 或 BadAccess。
+//   只读:每台显示器(见 X11Server.Monitors)一个 CRTC、一个输出、一个模式。布局由宿主经 SetScreenLayout 决定,
+//   客户端改配置的请求一律回 Failed 或 BadAccess;布局变化时按 SelectInput 的掩码发事件。
 
+using VelaShell.XServer.Host;
 using VelaShell.XServer.Protocol;
+using VelaShell.XServer.Windowing;
 
 namespace VelaShell.XServer.Server;
 
@@ -22,23 +24,52 @@ public sealed partial class X11Server
     private const byte RandREventBase = 67;   // ScreenChangeNotify = +0,Notify = +1
     private const byte RandRErrorBase = 129;  // BadOutput = +0,BadCrtc = +1,BadMode = +2,BadProvider = +3
 
-    // 服务端自己的资源 ID,落在任何客户端的 resource-base 之外(同根窗口、默认颜色表)。
-    private const uint RandRCrtcId = 0x40, RandROutputId = 0x41, RandRModeId = 0x42;
+    // 服务端自己的资源 ID,落在任何客户端的 resource-base 之外(同根窗口、默认颜色表)。每类 16 个。
+    private const uint RandRCrtcBase = 0x60, RandROutputBase = 0x80, RandRModeBase = 0xA0;
 
     private const byte RandRStatusSuccess = 0, RandRStatusFailed = 3;
     private const ushort RandRRotate0 = 1;
-    private const ushort RandRRefreshRate = 60;
     private const ushort RandRGammaSize = 256;
 
-    private static readonly byte[] RandROutputName = "default"u8.ToArray();
+    /// <summary>SelectInput 的登记:(客户端, 窗口) → 掩码(1 ScreenChange、2 CrtcChange、4 OutputChange,其余接受但不发)。</summary>
+    private readonly Dictionary<(XClient Client, XWindow Window), ushort> _randrSelections = [];
 
-    private (int Width, int Height) ScreenMillimeters() =>
-        ((int)Math.Round(_options.ScreenWidth * 25.4 / _options.Dpi), (int)Math.Round(_options.ScreenHeight * 25.4 / _options.Dpi));
+    /// <summary>去重后的模式表:下标 k 的模式 ID 是 RandRModeBase + k。</summary>
+    private readonly List<(int Width, int Height, int Refresh)> _randrModes = [];
+
+    private void RebuildRandRModes()
+    {
+        _randrModes.Clear();
+        foreach (XMonitor m in _monitors)
+        {
+            (int, int, int) mode = (m.Width, m.Height, m.RefreshRate);
+            if (!_randrModes.Contains(mode))
+            {
+                _randrModes.Add(mode);
+            }
+        }
+    }
+
+    private uint ModeIdOf(XMonitor m) => RandRModeBase + (uint)_randrModes.IndexOf((m.Width, m.Height, m.RefreshRate));
+
+    private static uint CrtcIdOf(int monitor) => RandRCrtcBase + (uint)monitor;
+
+    private static uint OutputIdOf(int monitor) => RandROutputBase + (uint)monitor;
+
+    /// <summary>CRTC / 输出 ID → 显示器下标;不存在时抛对应的 RANDR 错误(BadOutput = +0,BadCrtc = +1)。</summary>
+    private int MonitorOf(uint id, uint idBase, int errorOffset)
+    {
+        long index = (long)id - idBase;
+        return index >= 0 && index < _monitors.Count
+            ? (int)index
+            : throw new XProtocolError((XErrorCode)(RandRErrorBase + errorOffset), id);
+    }
 
     private void RandR(XClient c, XRequestReader r)
     {
-        int width = _options.ScreenWidth, height = _options.ScreenHeight;
+        int width = Root.Width, height = Root.Height;
         (int mmW, int mmH) = ScreenMillimeters();
+        uint time = _layoutTime;
         switch (r.Data)
         {
             case 0:   // QueryVersion
@@ -49,22 +80,31 @@ public sealed partial class X11Server
                     break;
                 }
             case 2:   // SetScreenConfig:只读,回 Failed
+                c.Reply(RandRStatusFailed, w => w.U32(time).U32(time).U32(RootWindowId).U16(0).Zero(10));
+                break;
+            case 4:   // SelectInput
                 {
-                    uint now = Now;
-                    c.Reply(RandRStatusFailed, w => w.U32(now).U32(0).U32(RootWindowId).U16(0).Zero(10));
+                    XWindow window = Window(r.U32());
+                    ushort mask = r.U16();
+                    if (mask == 0)
+                    {
+                        _randrSelections.Remove((c, window));
+                    }
+                    else
+                    {
+                        _randrSelections[(c, window)] = mask;
+                    }
                     break;
                 }
-            case 4:   // SelectInput:配置从不变,记不记都不会有事件;只校验窗口
-                _ = Window(r.U32());
-                break;
-            case 5:   // GetScreenInfo(1.0):一个尺寸、一个刷新率
+            case 5:   // GetScreenInfo(1.0):一个尺寸(当前)、一个刷新率(主显示器的)
                 {
                     _ = Window(r.U32());
+                    ushort rate = (ushort)_monitors[PrimaryMonitorIndex()].RefreshRate;
                     c.Reply((byte)RandRRotate0, w => w
-                        .U32(RootWindowId).U32(0).U32(0)
-                        .U16(1).U16(0).U16(RandRRotate0).U16(RandRRefreshRate).U16(2).Zero(2)
+                        .U32(RootWindowId).U32(time).U32(time)
+                        .U16(1).U16(0).U16(RandRRotate0).U16(rate).U16(2).Zero(2)
                         .U16((ushort)width).U16((ushort)height).U16((ushort)mmW).U16((ushort)mmH)
-                        .U16(1).U16(RandRRefreshRate));
+                        .U16(1).U16(rate));
                     break;
                 }
             case 6:   // GetScreenSizeRange:只有当前尺寸
@@ -75,76 +115,95 @@ public sealed partial class X11Server
             case 25:  // GetScreenResourcesCurrent
                 {
                     _ = Window(r.U32());
-                    byte[] modeName = XWire.Latin1.GetBytes($"{width}x{height}");
+                    byte[][] names = [.. _randrModes.Select(m => XWire.Latin1.GetBytes($"{m.Width}x{m.Height}"))];
+                    int nameBytes = names.Sum(n => n.Length);
+                    int count = _monitors.Count;
                     c.Reply(0, w =>
                     {
-                        w.U32(0).U32(0).U16(1).U16(1).U16(1).U16((ushort)modeName.Length).Zero(8)
-                            .U32(RandRCrtcId).U32(RandROutputId);
-                        WriteModeInfo(w, width, height, modeName.Length);
-                        w.Bytes(modeName).Pad4();
+                        w.U32(time).U32(time).U16((ushort)count).U16((ushort)count).U16((ushort)_randrModes.Count).U16((ushort)nameBytes).Zero(8);
+                        for (int i = 0; i < count; i++)
+                        {
+                            w.U32(CrtcIdOf(i));
+                        }
+                        for (int i = 0; i < count; i++)
+                        {
+                            w.U32(OutputIdOf(i));
+                        }
+                        for (int k = 0; k < _randrModes.Count; k++)
+                        {
+                            WriteModeInfo(w, RandRModeBase + (uint)k, _randrModes[k], names[k].Length);
+                        }
+                        foreach (byte[] name in names)
+                        {
+                            w.Bytes(name);
+                        }
+                        w.Pad4();
                     });
                     break;
                 }
             case 9:   // GetOutputInfo
                 {
-                    CheckRandRId(r.U32(), RandROutputId, 0);
+                    int i = MonitorOf(r.U32(), RandROutputBase, 0);
+                    XMonitor m = _monitors[i];
+                    (int ow, int oh) = MonitorMillimeters(m);
+                    byte[] name = XWire.Latin1.GetBytes(m.Name);
+                    uint mode = ModeIdOf(m);
                     c.Reply(RandRStatusSuccess, w => w
-                        .U32(0).U32(RandRCrtcId).U32((uint)mmW).U32((uint)mmH)
+                        .U32(time).U32(CrtcIdOf(i)).U32((uint)ow).U32((uint)oh)
                         .U8(0).U8(0)                                  // Connected、SubPixelUnknown
-                        .U16(1).U16(1).U16(1).U16(0).U16((ushort)RandROutputName.Length)
-                        .U32(RandRCrtcId).U32(RandRModeId).Bytes(RandROutputName).Pad4());
+                        .U16(1).U16(1).U16(1).U16(0).U16((ushort)name.Length)
+                        .U32(CrtcIdOf(i)).U32(mode).Bytes(name).Pad4());
                     break;
                 }
             case 10:  // ListOutputProperties:没有输出属性
-                CheckRandRId(r.U32(), RandROutputId, 0);
+                MonitorOf(r.U32(), RandROutputBase, 0);
                 c.Reply(0, w => w.U16(0).Zero(22));
                 break;
             case 11:  // QueryOutputProperty
                 {
-                    CheckRandRId(r.U32(), RandROutputId, 0);
-                    uint property = r.U32();
-                    throw new XProtocolError(XErrorCode.Name, property);
+                    MonitorOf(r.U32(), RandROutputBase, 0);
+                    throw new XProtocolError(XErrorCode.Name, r.U32());
                 }
             case 15:  // GetOutputProperty:属性不存在 → type None、format 0
-                CheckRandRId(r.U32(), RandROutputId, 0);
+                MonitorOf(r.U32(), RandROutputBase, 0);
                 c.Reply(0, w => w.U32(0).U32(0).U32(0).Zero(12));
                 break;
             case 20:  // GetCrtcInfo
                 {
-                    CheckRandRId(r.U32(), RandRCrtcId, 1);
+                    int i = MonitorOf(r.U32(), RandRCrtcBase, 1);
+                    XMonitor m = _monitors[i];
+                    uint mode = ModeIdOf(m);
                     c.Reply(RandRStatusSuccess, w => w
-                        .U32(0).I16(0).I16(0).U16((ushort)width).U16((ushort)height)
-                        .U32(RandRModeId).U16(RandRRotate0).U16(RandRRotate0).U16(1).U16(1)
-                        .U32(RandROutputId).U32(RandROutputId));
+                        .U32(time).I16(m.X).I16(m.Y).U16((ushort)m.Width).U16((ushort)m.Height)
+                        .U32(mode).U16(RandRRotate0).U16(RandRRotate0).U16(1).U16(1)
+                        .U32(OutputIdOf(i)).U32(OutputIdOf(i)));
                     break;
                 }
             case 21:  // SetCrtcConfig:只读,回 Failed
-                {
-                    uint now = Now;
-                    c.Reply(RandRStatusFailed, w => w.U32(now).Zero(20));
-                    break;
-                }
+            case 29:  // SetPanning
+                c.Reply(RandRStatusFailed, w => w.U32(time).Zero(20));
+                break;
             case 22:  // GetCrtcGammaSize:报 256 级(不能改,见 SetCrtcGamma)
-                CheckRandRId(r.U32(), RandRCrtcId, 1);
+                MonitorOf(r.U32(), RandRCrtcBase, 1);
                 c.Reply(0, w => w.U16(RandRGammaSize).Zero(22));
                 break;
             case 23:  // GetCrtcGamma:线性斜坡,红绿蓝相同
-                CheckRandRId(r.U32(), RandRCrtcId, 1);
+                MonitorOf(r.U32(), RandRCrtcBase, 1);
                 c.Reply(0, w =>
                 {
                     w.U16(RandRGammaSize).Zero(22);
                     for (int channel = 0; channel < 3; channel++)
                     {
-                        for (int i = 0; i < RandRGammaSize; i++)
+                        for (int k = 0; k < RandRGammaSize; k++)
                         {
-                            w.U16((ushort)(i * 0x101));
+                            w.U16((ushort)(k * 0x101));
                         }
                     }
                     w.Pad4();
                 });
                 break;
             case 27:  // GetCrtcTransform:单位变换,无滤镜
-                CheckRandRId(r.U32(), RandRCrtcId, 1);
+                MonitorOf(r.U32(), RandRCrtcBase, 1);
                 c.Reply(0, w =>
                 {
                     WriteIdentityTransform(w);
@@ -154,32 +213,34 @@ public sealed partial class X11Server
                 });
                 break;
             case 28:  // GetPanning:不平移
-                CheckRandRId(r.U32(), RandRCrtcId, 1);
-                c.Reply(RandRStatusSuccess, w => w.U32(0).Zero(24));
+                MonitorOf(r.U32(), RandRCrtcBase, 1);
+                c.Reply(RandRStatusSuccess, w => w.U32(time).Zero(24));
                 break;
-            case 29:  // SetPanning:只读,回 Failed
-                {
-                    uint now = Now;
-                    c.Reply(RandRStatusFailed, w => w.U32(now).Zero(20));
-                    break;
-                }
             case 31:  // GetOutputPrimary
                 _ = Window(r.U32());
-                c.Reply(0, w => w.U32(RandROutputId).Zero(20));
+                c.Reply(0, w => w.U32(OutputIdOf(PrimaryMonitorIndex())).Zero(20));
                 break;
             case 32:  // GetProviders:没有 provider
                 _ = Window(r.U32());
-                c.Reply(0, w => w.U32(0).U16(0).Zero(18));
+                c.Reply(0, w => w.U32(time).U16(0).Zero(18));
                 break;
             case 42:  // GetMonitors
                 {
                     _ = Window(r.U32());
-                    uint name = Intern("default");
-                    c.Reply(0, w => w
-                        .U32(0).U32(1).U32(1).Zero(12)
-                        .U32(name).Bool(true).Bool(true).U16(1)
-                        .I16(0).I16(0).U16((ushort)width).U16((ushort)height).U32((uint)mmW).U32((uint)mmH)
-                        .U32(RandROutputId));
+                    uint[] names = [.. _monitors.Select(m => Intern(m.Name))];
+                    int count = _monitors.Count;
+                    c.Reply(0, w =>
+                    {
+                        w.U32(time).U32((uint)count).U32((uint)count).Zero(12);
+                        for (int i = 0; i < count; i++)
+                        {
+                            XMonitor m = _monitors[i];
+                            (int mw, int mh) = MonitorMillimeters(m);
+                            w.U32(names[i]).Bool(m.Primary).Bool(true).U16(1)
+                                .I16(m.X).I16(m.Y).U16((ushort)m.Width).U16((ushort)m.Height).U32((uint)mw).U32((uint)mh)
+                                .U32(OutputIdOf(i));
+                        }
+                    });
                     break;
                 }
             case 7:   // SetScreenSize
@@ -201,21 +262,81 @@ public sealed partial class X11Server
         }
     }
 
-    /// <summary>RANDR 的 CRTC / 输出 ID 只有一个;对不上就是对应的 RANDR 错误(BadOutput = +0,BadCrtc = +1)。</summary>
-    private static void CheckRandRId(uint id, uint expected, int errorOffset)
+    /// <summary>客户端断开或窗口销毁:摘掉对应的 RRSelectInput 登记(否则销毁的窗口会一直收到、也一直被引用着)。</summary>
+    private void CleanupRandR(XClient? client, XWindow? window)
     {
-        if (id != expected)
+        if (_randrSelections.Count == 0)
         {
-            throw new XProtocolError((XErrorCode)(RandRErrorBase + errorOffset), id);
+            return;
+        }
+        List<(XClient, XWindow)>? gone = null;
+        foreach ((XClient c, XWindow w) key in _randrSelections.Keys)
+        {
+            if (ReferenceEquals(key.c, client) || ReferenceEquals(key.w, window))
+            {
+                (gone ??= []).Add(key);
+            }
+        }
+        if (gone is not null)
+        {
+            foreach ((XClient, XWindow) key in gone)
+            {
+                _randrSelections.Remove(key);
+            }
         }
     }
 
-    /// <summary>MODEINFO:行总长 = 宽、帧总行数 = 高,点时钟按 60 Hz 反推(刷新率 = 点时钟 / (htotal × vtotal))。</summary>
-    private static void WriteModeInfo(XWriter w, int width, int height, int nameLength) => w
-        .U32(RandRModeId).U16((ushort)width).U16((ushort)height).U32((uint)(width * height * RandRRefreshRate))
-        .U16((ushort)width).U16((ushort)width).U16((ushort)width).U16(0)
-        .U16((ushort)height).U16((ushort)height).U16((ushort)height)
-        .U16((ushort)nameLength).U32(0);
+    /// <summary>布局变了:按各客户端 SelectInput 的掩码发 ScreenChangeNotify、CrtcChange、OutputChange。</summary>
+    private void NotifyRandRChange()
+    {
+        if (_randrSelections.Count == 0)
+        {
+            return;
+        }
+        (int mmW, int mmH) = ScreenMillimeters();
+        int width = Root.Width, height = Root.Height;
+        uint time = _layoutTime;
+        foreach (((XClient client, XWindow window), ushort mask) in _randrSelections)
+        {
+            if (client.Closed)
+            {
+                continue;
+            }
+            if ((mask & 1) != 0)
+            {
+                client.Event(RandREventBase, (byte)RandRRotate0, w => w
+                    .U32(time).U32(time).U32(RootWindowId).U32(window.Id).U16(0).U16(0)
+                    .U16((ushort)width).U16((ushort)height).U16((ushort)mmW).U16((ushort)mmH));
+            }
+            for (int i = 0; i < _monitors.Count; i++)
+            {
+                XMonitor m = _monitors[i];
+                uint crtc = CrtcIdOf(i), output = OutputIdOf(i), mode = ModeIdOf(m);
+                if ((mask & 2) != 0)
+                {
+                    client.Event(RandREventBase + 1, 0, w => w   // CrtcChange
+                        .U32(time).U32(window.Id).U32(crtc).U32(mode).U16(RandRRotate0).Zero(2)
+                        .I16(m.X).I16(m.Y).U16((ushort)m.Width).U16((ushort)m.Height));
+                }
+                if ((mask & 4) != 0)
+                {
+                    client.Event(RandREventBase + 1, 1, w => w   // OutputChange
+                        .U32(time).U32(time).U32(window.Id).U32(output).U32(crtc).U32(mode)
+                        .U16(RandRRotate0).U8(0).U8(0));
+                }
+            }
+        }
+    }
+
+    /// <summary>MODEINFO:行总长 = 宽、帧总行数 = 高,点时钟按刷新率反推(刷新率 = 点时钟 / (htotal × vtotal))。</summary>
+    private static void WriteModeInfo(XWriter w, uint id, (int Width, int Height, int Refresh) mode, int nameLength)
+    {
+        (int width, int height, int refresh) = mode;
+        w.U32(id).U16((ushort)width).U16((ushort)height).U32((uint)((long)width * height * refresh))
+            .U16((ushort)width).U16((ushort)width).U16((ushort)width).U16(0)
+            .U16((ushort)height).U16((ushort)height).U16((ushort)height)
+            .U16((ushort)nameLength).U32(0);
+    }
 
     /// <summary>3×3 的 16.16 定点单位矩阵。</summary>
     private static void WriteIdentityTransform(XWriter w)

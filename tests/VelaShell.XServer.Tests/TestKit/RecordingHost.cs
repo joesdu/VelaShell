@@ -42,6 +42,15 @@ internal sealed class RecordingHost : IXServerHost, IDisposable
 
     public void Bell(int percent) => Note($"bell {percent}");
 
+    /// <summary>收到的窗口管理器请求(按顺序)。</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<XWindowManagerRequest> Requests { get; } = new();
+
+    public void WindowManagerRequest(XWindowManagerRequest request)
+    {
+        Requests.Enqueue(request);
+        Note($"wm {request.GetType().Name}");
+    }
+
     /// <summary>最近一次 <see cref="ClipboardChanged" /> 收到的文本。</summary>
     public string? Clipboard { get; private set; }
 

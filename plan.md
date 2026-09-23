@@ -6200,3 +6200,77 @@ M2 补上它们实际会用到的扩展,验收是 `zenity`、`gedit`、一个 Qt
 
 **没做的**(记在 `feature-plan.md`):XKB 与 XInput2(💡 P3),M3 的宿主接入。
 文档:velashell-docs `zh|en/xserver/design/architecture.md` 同步扩展清单、宿主接口的新增项与决策记录。
+
+## ✅ 104. 2026-09-23 VelaShell.XServer:功能完备一轮与全库性能复查(用户需求)
+
+用户要的是「功能完备、以后可能作为开源库给别人用」的 X 服务端库,并在补完功能之后整体复查一遍:高效、性能好、异步优先。
+先对照 X.Org 规范与 GTK3 / Qt5 / 常见工具实际会碰的扩展列了缺口,再逐项补上,最后按热路径做全库复查。宿主仍未接入(M3)。
+
+### 一、补了什么
+
+| 扩展 / 能力 | 主操作码 · 事件 · 错误 | 内容 |
+| --- | --- | --- |
+| **Generic Event Extension** | 134 · — · — | XI2 与 Present 的事件经它发出;没声明过版本的客户端收不到 GenericEvent |
+| **XTEST** 2.2 | 135 · — · — | FakeInput(按键 / 按钮 / 移动,带延迟)、CompareCursor;xdotool 靠它打字 |
+| **XINERAMA** 1.1 | 136 · — · — | 每台显示器一个屏幕区域(线格式依据 panoramiXproto) |
+| **MIT-SCREEN-SAVER** 1.1 · **DPMS** 1.2 | 137 · 69 · — / 138 | 真实的空闲时长(xprintidle 读得到);核心 SetScreenSaver / GetScreenSaver / ForceScreenSaver 如实存取 |
+| **X-Resource** 1.2 | 139 · — · — | 客户端、资源计数、像素图字节数、ClientIds(xrestop 读得到) |
+| **SYNC** 3.1 | 140 · 70–71 · 138–140 | 计数器、报警器、栅栏;Await 让该客户端后续请求暂存到条件成立;系统计数器 SERVERTIME / IDLETIME |
+| **DAMAGE** 1.1 | 141 · 72 · 141 | 四种报告级别;核心绘图、RENDER、窗口重画三条路径都挂钩子;根窗口上的 Damage 收到所有顶层的内容 |
+| **Composite** 0.4 | 142 · — · — | 重定向登记、NameWindowPixmap(共享像素)、叠加窗口 |
+| **DOUBLE-BUFFER** 1.0 | 143 · — · 142 | 后缓冲、四种 swap-action、随窗口缩放 |
+| **Present** 1.2 | 144 · GE · — | 软件拷贝;CompleteNotify / IdleNotify / ConfigureNotify;NotifyMSC 按 60 Hz |
+| **XInputExtension** 2.2 | 145 · 74+ · 144–148 | 主 / 从设备各两个;XI2 设备事件、Enter / Leave / Focus、原始事件;主动 / 被动 / 隐式抓取;XI 1.x 查询 |
+| **XKEYBOARD** 1.0 | 146 · 73 · 143 | 由核心键位表推出完整 XKB 描述与 base / latched / locked 状态;xkbcomp 导出 436 行自洽的键位表 |
+| 窗口管理器角色 | — | EWMH / ICCCM 该由 WM 维护的根属性与顶层属性;客户端提示解析进 `XTopLevelWindow`(类型、状态、装饰、尺寸约束、图标、透明度……);根窗口 ClientMessage 翻成 `XWindowManagerRequest` 交给宿主(`IXServerHost` 的默认实现方法,不破坏已有宿主) |
+| 连接与运行时 | — | Unix 套接字(`/tmp/.X11-unix/X{N}`,Linux 另有抽象命名空间);运行中换显示器布局(`SetScreenLayout`,RANDR 改为每台显示器一个 CRTC / 输出并发变更事件)、DPI 与缩放(`SetDisplayScale`,XSETTINGS 与 RESOURCE_MANAGER)、键盘布局(`SetKeyboardMapping`) |
+
+规范依据照 `src/VelaShell.XServer/AGENTS.md` 纪律 1,各文件头写明章节;允许的规范清单补上上表各扩展。
+
+### 二、全库复查:性能与异步
+
+| 问题 | 改法 |
+| --- | --- |
+| 每次绘图对损伤做 Region 精确并集,一批请求退化成 O(n²) | 每个顶层一批最多 8 块矩形,超限合成外接矩形 |
+| 可见区域每次重算(`InvalidateVisibility` 是空桩) | 按(代号, 缓冲尺寸)缓存在窗口上,绘图与 RENDER 目标复用 |
+| RENDER 逐像素浮点解码 / 合成 / 编码 | 纯色 + 单字节遮罩 + Over、8888 图像 Src / Over 走整数内核;只有 alpha 的字形按每像素一字节存;每请求只算一次目标、只记一次损伤 |
+| 宿主回调在 `PixelLock` 里同步调,UI 线程在 `CopyPixels` 里等锁即死锁 | `DeferredHost` 攒起来,放锁后按原顺序调;宿主抛异常不拖垮执行线程 |
+| 客户端不读输出 / 狂发请求没有上限;KillClient 只结束写出端,读端一直挂着 | 输出积压 64 MB 断开、未执行请求每客户端 1024 条(SemaphoreSlim);`XClient.Abort` 取消连接上挂着的读写 |
+| 执行线程每 256 项放一次锁,一项大 PutImage 就能拖很久 | 按 4 毫秒时间预算放锁 |
+| 大尺寸请求先分配再校验;一个 65535 大小的弧扫六万多行 × 二十万条边 | 先校验再分配、只处理与目标相交的部分;多边形改活动边表、只扫可画区域的行,弧的分段数封顶 4096 |
+| 指针每动一下都重排 SYNC 计时器(取消 + 新建 CTS + Task.Delay) | 只有触发器挂在 IDLETIME 上时才求值;计时器按到点时刻比较,只在需要更早醒来时重排 |
+| 其余热路径上的分配与重复计算 | 请求入队不分配闭包;读端 64 KB 缓冲、写出端池化拼批;WindowAt 逐层累加偏移;被动抓取查找不分配;ExposeWindowTree 跳过不相交的子树;图标只在属性真的换了时重新解析 |
+
+吞吐基准(`scripts/xserver/bench/bench.cs`,进程内经内存管道,本机):
+
+| 场景 | 复查前 | 复查后 |
+| --- | ---: | ---: |
+| PolyFillRectangle 50×50 | 2,748 次/秒 | 205,000 |
+| PutImage 200×100 32 bpp | 671 | 7,800 |
+| CompositeGlyphs8 ×10(Xft 文字) | 865 | 45,000 |
+| Composite ARGB 100×100 Over | 591 | 26,000 |
+| 指针移动注入 | 51 万 | 103 万 |
+| 往返 GetInputFocus | 3.4 万 | 8.7 万 |
+
+⚠️ 复查后的数字是**预热过**的(基准每个场景先不计时跑一遍,量长期运行的稳态);「复查前」那一列是冷启动测的,
+同一份代码冷热相差约 1.4 倍(字形一项实测),其余的差距来自上表的改动。
+
+### 三、顺手修掉的协议细节
+
+- SYNC:用户输入时先把 IDLETIME 触发器的「上一次的值」记成归零前的空闲时长,负向跨越的报警器才会触发;
+  求值加重入保护(Await 结束时就地执行的暂存请求可能再改计数器),DestroyCounter 先改报警器再结束等待。
+- PointerMotionHint 真正节流:同一事件窗口每轮一条,按键 / 按钮变化、换窗口、QueryPointer / GetMotionEvents 开新一轮。
+- EnterNotify / LeaveNotify(核心与 XI2)填 child;RotateProperties 名字重复回 BadMatch;GetProperty(delete)刷新宿主快照。
+- 客户端断开时销毁别人建在它像素图上的 Damage;窗口销毁时摘掉 RRSelectInput 登记;XTEST 的延迟在客户端断开后不再注入。
+- 真实客户端暴露的:GetGeometry(found = False)多回了数据(xkbcomp 报 Extra reply data)、缺 SymInterpret、缺 `_XKB_RULES_NAMES`、
+  初始焦点应为 PointerRoot(xdotool 打不进字)。
+
+### 四、验证
+
+- 单元测试 121 条(M2 的 73 条 + 新增 48 条),覆盖上表各扩展、窗口管理器请求、宿主 API、连接层健壮性与本节第三部分的边界情形。
+- **真实客户端**(`VELASHELL_XSERVER_INTEROP=1`):interop 8 条零协议错误;靶场镜像加了 `xdotool` 与 `x11-xkb-utils`。
+  手动:`xdpyinfo -ext all`、xdotool 往 xterm 打字、xprintidle、xrestop、xkbcomp、`xinput list / list-props / query-state / test-xi2`;
+  gedit(GTK3,XI2 + EWMH)打字、点开菜单、双击 HeaderBar 发出最大化请求并照办;qt5ct(Qt5,XI2)点标签页。
+
+**没做的**(记在 `feature-plan.md`):M3 的宿主接入;XIChangeHierarchy、XI 1.x 设备事件、XKB 改表请求。
+文档:velashell-docs `zh|en/xserver/design/architecture.md` 同步扩展清单、宿主接口的新增项、执行模型与决策记录。

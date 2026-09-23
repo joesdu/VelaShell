@@ -3,5 +3,5 @@
 # 用法见同目录 Run-Client.ps1。
 FROM debian:bookworm-slim
 RUN apt-get update \
- && apt-get install -y --no-install-recommends x11-apps x11-utils x11-xserver-utils xterm xauth xclip \
+ && apt-get install -y --no-install-recommends x11-apps x11-utils x11-xserver-utils xterm xauth xclip xdotool x11-xkb-utils \
  && rm -rf /var/lib/apt/lists/*
