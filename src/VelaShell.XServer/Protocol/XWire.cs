@@ -204,7 +204,8 @@ internal sealed class XWriter
         }
     }
 
-    public byte[] ToArray() => _buffer.AsSpan(0, Length).ToArray();
+    /// <summary>取出写好的字节。恰好写满缓冲时直接交出缓冲本身(事件正好 32 字节,省一次拷贝);之后不许再写。</summary>
+    public byte[] ToArray() => Length == _buffer.Length ? _buffer : _buffer.AsSpan(0, Length).ToArray();
 }
 
 /// <summary>编码上的小工具。</summary>

@@ -6,9 +6,11 @@
 //   (客户端开场 12 字节 + 授权名 / 数据;成功回复的定长部分、FORMAT、SCREEN、DEPTH、VISUALTYPE 的布局;失败回复)
 //   BIG-REQUESTS Extension(请求长度字段为 0 时后跟 4 字节的扩展长度)
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Security.Cryptography;
+using System.Threading.Channels;
 using VelaShell.XServer.Protocol;
 
 namespace VelaShell.XServer.Server;
@@ -20,6 +22,12 @@ public sealed partial class X11Server
 
     /// <summary>BIG-REQUESTS 打开后的最大请求长度(以 4 字节计,16 MB)。</summary>
     internal const uint MaxBigRequestLength = 4 * 1024 * 1024;
+
+    /// <summary>读端缓冲。一批典型的绘图请求(几十到几百条)一次读进来。</summary>
+    private const int InputBufferSize = 64 * 1024;
+
+    /// <summary>写出端拼包缓冲。</summary>
+    private const int OutputBufferSize = 64 * 1024;
 
     private int _nextClientIndex = 1;
 
@@ -68,7 +76,11 @@ public sealed partial class X11Server
 
             client = await InvokeAsync(() => RegisterClient(bigEndian)).ConfigureAwait(false);
             writer = PumpOutputAsync(client, stream, ct);
-            await ReadRequestsAsync(client, stream, ct).ConfigureAwait(false);
+            // 读端单独套一层缓冲:X 请求又小又密(常见 8–40 字节),不缓冲就是每条请求两次系统调用。
+            // ⚠️ 只经它读、从不经它写 —— BufferedStream 读写共用一块缓冲,在不可寻址的流上混用会抛异常;
+            // 写出端直接写底层流。
+            BufferedStream input = new(stream, InputBufferSize);
+            await ReadRequestsAsync(client, input, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or EndOfStreamException or InvalidDataException
                                        or OperationCanceledException or ObjectDisposedException)
@@ -143,7 +155,7 @@ public sealed partial class X11Server
         w.U8(1).U8(0).U16(11).U16(0).U16(0);        // success、主版本 11、次版本 0、长度(回填)
         w.U32(12101000);                             // release-number
         w.U32(client.ResourceBase).U32(XClient.ResourceMask);
-        w.U32(256);                                  // motion-buffer-size
+        w.U32(0);                                    // motion-buffer-size:不保存移动历史(GetMotionEvents 回空)
         w.U16((ushort)vendor.Length).U16(MaxRequestLength);
         w.U8(1);                                     // 屏幕数
         w.U8(7);                                     // FORMAT 数
@@ -161,11 +173,10 @@ public sealed partial class X11Server
         }
 
         // SCREEN
-        int mmW = (int)Math.Round(_options.ScreenWidth * 25.4 / _options.Dpi);
-        int mmH = (int)Math.Round(_options.ScreenHeight * 25.4 / _options.Dpi);
+        (int mmW, int mmH) = ScreenMillimeters();
         w.U32(Root.Id).U32(DefaultColormapId).U32(0xFFFFFF).U32(0x000000);
         w.U32(Root.AllEventMasks);
-        w.U16((ushort)_options.ScreenWidth).U16((ushort)_options.ScreenHeight).U16((ushort)mmW).U16((ushort)mmH);
+        w.U16((ushort)Root.Width).U16((ushort)Root.Height).U16((ushort)mmW).U16((ushort)mmH);
         w.U16(1).U16(1);                             // min / max installed maps
         w.U32(RootVisualId);
         w.U8(0);                                     // backing-stores:Never(我们另有顶层缓冲,不对客户端承诺)
@@ -239,17 +250,47 @@ public sealed partial class X11Server
         }
     }
 
+    /// <summary>
+    /// 写出端:把已经排队的回复 / 事件 / 错误拼进一块缓冲再一次写出 —— 事件动辄几十条一批,
+    /// 每条单独写就是每条一次系统调用(TCP 上还可能每条一个包)。单条超过缓冲的(GetImage 的大回复)直接写。
+    /// </summary>
     private static async Task PumpOutputAsync(XClient client, Stream stream, CancellationToken ct)
     {
-        await foreach (byte[] bytes in client.Output.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+        ChannelReader<byte[]> reader = client.Output.Reader;
+        byte[] batch = ArrayPool<byte>.Shared.Rent(OutputBufferSize);
+        try
         {
-            await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
-            // 同一批里后续已经排队的消息一起写,再冲一次。
-            while (client.Output.Reader.TryRead(out byte[]? more))
+            while (await reader.WaitToReadAsync(ct).ConfigureAwait(false))
             {
-                await stream.WriteAsync(more, ct).ConfigureAwait(false);
+                int used = 0;
+                while (reader.TryRead(out byte[]? message))
+                {
+                    if (used + message.Length > batch.Length)
+                    {
+                        if (used > 0)
+                        {
+                            await stream.WriteAsync(batch.AsMemory(0, used), ct).ConfigureAwait(false);
+                            used = 0;
+                        }
+                        if (message.Length > batch.Length)
+                        {
+                            await stream.WriteAsync(message, ct).ConfigureAwait(false);
+                            continue;
+                        }
+                    }
+                    message.CopyTo(batch, used);
+                    used += message.Length;
+                }
+                if (used > 0)
+                {
+                    await stream.WriteAsync(batch.AsMemory(0, used), ct).ConfigureAwait(false);
+                }
+                await stream.FlushAsync(ct).ConfigureAwait(false);
             }
-            await stream.FlushAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(batch);
         }
     }
 

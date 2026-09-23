@@ -41,6 +41,12 @@ public sealed partial class X11Server
         Register(new Extension("XFIXES", XFixesMajor, XFixes) { FirstEvent = XFixesEventBase, FirstError = XFixesErrorBase });
         Register(new Extension("RANDR", RandRMajor, RandR) { FirstEvent = RandREventBase, FirstError = RandRErrorBase });
         Register(new Extension("RENDER", RenderMajor, Render) { FirstError = RenderErrorBase });
+        Register(new Extension("Generic Event Extension", GenericEventMajor, GenericEventExtension));
+        Register(new Extension("XTEST", XTestMajor, XTest));
+        Register(new Extension("XINERAMA", XineramaMajor, Xinerama));
+        Register(new Extension("MIT-SCREEN-SAVER", ScreenSaverMajor, ScreenSaverExtension) { FirstEvent = ScreenSaverEventBase });
+        Register(new Extension("DPMS", DpmsMajor, Dpms));
+        Register(new Extension("X-Resource", XResMajor, XRes));
     }
 
     private void Register(Extension extension)
@@ -194,6 +200,11 @@ public sealed partial class X11Server
             window.ShapeSelections.Remove(client);
         }
         CleanupXFixes(client, null);
+        _saverSelections.Remove(client);
+        foreach (var key in _randrSelections.Keys.Where(k => ReferenceEquals(k.Client, client)).ToArray())
+        {
+            _randrSelections.Remove(key);
+        }
         UpdatePointerWindow();
         UpdateCursor();
     }

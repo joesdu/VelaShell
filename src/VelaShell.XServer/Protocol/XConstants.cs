@@ -211,6 +211,9 @@ internal static class XEventCode
     public const byte ClientMessage = 33;
     public const byte MappingNotify = 34;
 
+    /// <summary>Generic Event Extension 的事件(XI2、Present 等用它发超过 32 字节的事件)。</summary>
+    public const byte GenericEvent = 35;
+
     /// <summary>SendEvent 发出的事件在事件码上置这一位。</summary>
     public const byte SentFlag = 0x80;
 }

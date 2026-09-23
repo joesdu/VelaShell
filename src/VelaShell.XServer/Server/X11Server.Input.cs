@@ -44,6 +44,7 @@ public sealed partial class X11Server
     /// <summary>指针在顶层窗口里移动(内区坐标)。</summary>
     public void PointerMotion(uint topLevel, int x, int y) => Post(null, () =>
     {
+        NoteUserActivity();
         if (Lookup<XWindow>(topLevel) is { IsTopLevel: true } top)
         {
             MovePointer(top.X + top.BorderWidth + x, top.Y + top.BorderWidth + y);
@@ -51,11 +52,13 @@ public sealed partial class X11Server
     });
 
     /// <summary>
-    /// 按钮按下 / 松开。1 左、2 中、3 右;滚轮向上 4、向下 5(宿主应当为每格滚动注入一次按下 + 松开)。
+    /// 按钮按下 / 松开。1 左、2 中、3 右;滚轮向上 4、向下 5、向左 6、向右 7(宿主应当为每格滚动注入一次按下 + 松开);
+    /// 8、9 是后退 / 前进侧键。
     /// </summary>
     public void PointerButton(uint topLevel, int x, int y, int button, bool pressed) => Post(null, () =>
     {
-        if (Lookup<XWindow>(topLevel) is not { IsTopLevel: true } top || button is < 1 or > 5)
+        NoteUserActivity();
+        if (Lookup<XWindow>(topLevel) is not { IsTopLevel: true } top || button is < 1 or > 255)
         {
             return;
         }
@@ -67,7 +70,11 @@ public sealed partial class X11Server
     public void PointerLeft() => Post(null, () => MovePointer(-1, -1));
 
     /// <summary>按键按下 / 松开(X 键码,见 <see cref="XKeycodes" />)。</summary>
-    public void Key(byte keycode, bool pressed) => Post(null, () => KeyEvent(keycode, pressed));
+    public void Key(byte keycode, bool pressed) => Post(null, () =>
+    {
+        NoteUserActivity();
+        KeyEvent(keycode, pressed);
+    });
 
     /// <summary>宿主让某个顶层窗口得到键盘焦点(用户点了它);0 = 所有顶层都失去焦点。</summary>
     public void FocusTopLevel(uint topLevel) => Post(null, () =>
@@ -214,7 +221,8 @@ public sealed partial class X11Server
 
     private void ButtonEvent(int button, bool pressed)
     {
-        ushort bit = (ushort)(0x100 << (button - 1));
+        // 只有按钮 1–5 在 state 里有位(协议 SETofKEYBUTMASK);6 以上(水平滚轮等)照样投递,但不进 state。
+        ushort bit = button <= 5 ? (ushort)(0x100 << (button - 1)) : (ushort)0;
         if (pressed)
         {
             if (_pointerGrab is null && FindPassiveGrab(_pointerWindow, isButton: true, button) is { } passive)
@@ -439,11 +447,7 @@ public sealed partial class X11Server
     /// <summary>光标:抓取的光标优先,否则从指针所在窗口向上找第一个设了光标的窗口。</summary>
     private void UpdateCursor()
     {
-        XCursor? cursor = _pointerGrab?.Cursor;
-        for (XWindow? w = _pointerWindow; cursor is null && w is not null; w = w.Parent)
-        {
-            cursor = w.Cursor;
-        }
+        XCursor? cursor = CurrentCursor();
         int glyph = CursorHiddenAt(_pointerWindow) ? -2 : cursor?.Glyph ?? -1;
         if (glyph == _cursorGlyph)
         {

@@ -94,6 +94,27 @@ internal sealed class XClient
         Send(bytes.Length == 32 ? bytes : bytes[..32]);
     }
 
+    /// <summary>
+    /// 发一个 GenericEvent(Generic Event Extension):32 字节头 —— 35、扩展主操作码、序号、额外长度、evtype ——
+    /// 之后可以跟任意多的 4 字节单位。<paramref name="body" /> 从第 10 字节(evtype 之后)写起。
+    /// </summary>
+    public void GenericEvent(byte extension, ushort evtype, Action<XWriter> body)
+    {
+        XWriter w = Writer(64);
+        w.U8(XEventCode.GenericEvent).U8(extension).U16(Sequence).U32(0).U16(evtype);
+        body(w);
+        if (w.Length < 32)
+        {
+            w.Zero(32 - w.Length);
+        }
+        w.Pad4();
+        w.PatchU32(4, (uint)((w.Length - 32) / 4));
+        Send(w.ToArray());
+    }
+
+    /// <summary>这个客户端经 Generic Event Extension 声明过的版本;没声明过的客户端不该收到 GenericEvent。</summary>
+    public bool GenericEventsEnabled { get; set; }
+
     /// <summary>发一条错误。</summary>
     public void Error(XErrorCode code, uint badValue, ushort minorOpcode, byte majorOpcode)
     {

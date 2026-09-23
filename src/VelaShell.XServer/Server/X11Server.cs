@@ -66,6 +66,8 @@ public sealed partial class X11Server : IAsyncDisposable
         _host = host ?? NullHost.Instance;
         Root = CreateRootWindow();
         _resources[Root.Id] = Root;
+        InitMonitors();
+        RebuildRandRModes();
         _resources[DefaultColormapId] = new XColormap(DefaultColormapId, null, RootVisualId);
         InitAtoms();
         InitExtensions();
