@@ -22,6 +22,10 @@ internal static class RenderCompositor
     public static XRect Composite(byte op, RenderSource src, RenderSource? mask, bool componentAlpha, RenderTarget dst,
         int srcX, int srcY, int maskX, int maskY, int dstX, int dstY, int width, int height)
     {
+        if (TryFastPath(op, src, mask, componentAlpha, dst, srcX, srcY, maskX, maskY, dstX, dstY, width, height, out XRect fastDirty))
+        {
+            return fastDirty;
+        }
         XRect area = new(dstX + dst.OriginX, dstY + dst.OriginY, width, height);
         PixelBuffer buffer = dst.Buffer;
         uint depthMask = buffer.DepthMask;
@@ -87,8 +91,9 @@ internal static class RenderCompositor
                             sa = Argb.Gray(sc.A);
                         }
 
-                        // Over / Add 下完全透明的源不改变目标 —— 字形与覆盖率遮罩的大部分像素走这里。
-                        if (op is RenderOps.Over or RenderOps.Add && sa.R <= 0 && sa.G <= 0 && sa.B <= 0 && sc.A <= 0)
+                        // Over 下完全透明的源不改变目标 —— 字形与覆盖率遮罩的大部分像素走这里。
+                        // (Add 不能跳:预乘规则之外 alpha 为 0、颜色不为 0 的源照样要加上去。)
+                        if (op == RenderOps.Over && sa.R <= 0 && sa.G <= 0 && sa.B <= 0 && sc.A <= 0)
                         {
                             continue;
                         }
@@ -103,6 +108,169 @@ internal static class RenderCompositor
         {
             ArrayPool<Argb>.Shared.Return(srcRow);
             ArrayPool<Argb>.Shared.Return(maskRow);
+        }
+        return x2 < x1 ? default : new XRect(x1, y1, x2 - x1, y2 - y1);
+    }
+
+    // ================================================================== 整数快路径
+
+    /// <summary>x / 255 取整(x ≤ 255 × 255):乘法的结果换回 8 位,误差与浮点四舍五入一致。</summary>
+    private static uint Div255(uint x)
+    {
+        x += 128;
+        return (x + (x >> 8)) >> 8;
+    }
+
+    private static uint ToByte(float v) => (uint)Math.Clamp((int)((v * 255) + 0.5f), 0, 255);
+
+    private static bool Is8888(PictFormat f) => ReferenceEquals(f, PictFormat.A8R8G8B8) || ReferenceEquals(f, PictFormat.X8R8G8B8);
+
+    /// <summary>
+    /// 两种占绝大多数的情形用整数算,不走逐像素的浮点解码 / 合成 / 编码:
+    /// <list type="number">
+    /// <item>纯色源 + 单字节遮罩(字形、梯形覆盖率)+ Over → 8888 目标(Xft 画字、cairo 画抗锯齿图形);</item>
+    /// <item>8888 图像源(无变换、取样范围在图像之内)+ 无遮罩 + Src / Over → 8888 目标(cairo 贴图、窗口间拷贝)。</item>
+    /// </list>
+    /// 条件不满足时返回 false,由通用路径处理。
+    /// </summary>
+    private static bool TryFastPath(byte op, RenderSource src, RenderSource? mask, bool componentAlpha, RenderTarget dst,
+        int srcX, int srcY, int maskX, int maskY, int dstX, int dstY, int width, int height, out XRect dirty)
+    {
+        dirty = default;
+        if (!Is8888(dst.Format) || src.Transform is not null)
+        {
+            return false;
+        }
+        if (op == RenderOps.Over && mask is ByteMaskSource bytes && !componentAlpha && src is SolidSource solid)
+        {
+            dirty = OverSolidMask(solid.Color, bytes, dst, maskX - dstX, maskY - dstY, dstX, dstY, width, height);
+            return true;
+        }
+        if (mask is null && op is RenderOps.Src or RenderOps.Over && src is ImageSource image && Is8888(image.Format)
+            && srcX >= 0 && srcY >= 0 && srcX + width <= image.Width && srcY + height <= image.Height)
+        {
+            dirty = BlitImage(op, image, dst, srcX - dstX, srcY - dstY, dstX, dstY, width, height);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>纯色 IN 遮罩 OVER 目标。遮罩坐标 = 目标可绘坐标 + (maskDx, maskDy)。</summary>
+    private static XRect OverSolidMask(Argb color, ByteMaskSource mask, RenderTarget dst, int maskDx, int maskDy,
+        int dstX, int dstY, int width, int height)
+    {
+        uint sa = ToByte(color.A), sr = ToByte(color.R), sg = ToByte(color.G), sb = ToByte(color.B);
+        bool dstAlpha = dst.Format.HasAlpha;
+        uint opaque = (dstAlpha ? 0xFF000000u : 0) | (sr << 16) | (sg << 8) | sb;
+        uint[] px = dst.Buffer.Pixels;
+        int stride = dst.Buffer.Width;
+        XRect area = new(dstX + dst.OriginX, dstY + dst.OriginY, width, height);
+        int x1 = int.MaxValue, y1 = int.MaxValue, x2 = int.MinValue, y2 = int.MinValue;
+        foreach (XRect clip in dst.Clip)
+        {
+            // 再与遮罩自己的矩形求交:遮罩之外全透明,不用碰。
+            XRect maskRect = new(mask.X0 - maskDx + dst.OriginX, mask.Y0 - maskDy + dst.OriginY, mask.Width, mask.Height);
+            XRect r = clip.Intersect(area).Intersect(maskRect);
+            if (r.IsEmpty)
+            {
+                continue;
+            }
+            (x1, y1) = (Math.Min(x1, r.X), Math.Min(y1, r.Y));
+            (x2, y2) = (Math.Max(x2, r.Right), Math.Max(y2, r.Bottom));
+            for (int by = r.Y; by < r.Bottom; by++)
+            {
+                int my = by - dst.OriginY + maskDy - mask.Y0;
+                int mRow = (my * mask.Width) + (r.X - dst.OriginX + maskDx - mask.X0);
+                int dRow = (by * stride) + r.X;
+                for (int i = 0; i < r.Width; i++)
+                {
+                    uint m = mask.Alpha[mRow + i];
+                    if (m == 0)
+                    {
+                        continue;
+                    }
+                    if (m == 255 && sa == 255)
+                    {
+                        px[dRow + i] = opaque;
+                        continue;
+                    }
+                    uint a = Div255(sa * m), inv = 255 - a;
+                    uint d = px[dRow + i];
+                    uint oa = dstAlpha ? a + Div255((d >> 24) * inv) : 0;
+                    uint or = Div255(sr * m) + Div255(((d >> 16) & 0xFF) * inv);
+                    uint og = Div255(sg * m) + Div255(((d >> 8) & 0xFF) * inv);
+                    uint ob = Div255(sb * m) + Div255((d & 0xFF) * inv);
+                    // 各通道的两次取整最多凑出 256:夹到 255,免得进位到相邻通道。
+                    px[dRow + i] = (Math.Min(oa, 255) << 24) | (Math.Min(or, 255) << 16) | (Math.Min(og, 255) << 8) | Math.Min(ob, 255);
+                }
+            }
+        }
+        return x2 < x1 ? default : new XRect(x1, y1, x2 - x1, y2 - y1);
+    }
+
+    /// <summary>8888 图像 Src / Over 到 8888 目标。源坐标 = 目标可绘坐标 + (srcDx, srcDy)(源 picture 坐标)。</summary>
+    private static XRect BlitImage(byte op, ImageSource image, RenderTarget dst, int srcDx, int srcDy,
+        int dstX, int dstY, int width, int height)
+    {
+        bool srcAlpha = image.Format.HasAlpha, dstAlpha = dst.Format.HasAlpha;
+        bool copy = op == RenderOps.Src || !srcAlpha;   // 不透明的源 Over 就是 Src
+        uint[] sp = image.Buffer.Pixels, dp = dst.Buffer.Pixels;
+        int sStride = image.Buffer.Width, dStride = dst.Buffer.Width;
+        XRect area = new(dstX + dst.OriginX, dstY + dst.OriginY, width, height);
+        int x1 = int.MaxValue, y1 = int.MaxValue, x2 = int.MinValue, y2 = int.MinValue;
+        foreach (XRect clip in dst.Clip)
+        {
+            XRect r = clip.Intersect(area);
+            if (r.IsEmpty)
+            {
+                continue;
+            }
+            (x1, y1) = (Math.Min(x1, r.X), Math.Min(y1, r.Y));
+            (x2, y2) = (Math.Max(x2, r.Right), Math.Max(y2, r.Bottom));
+            for (int by = r.Y; by < r.Bottom; by++)
+            {
+                int sy = by - dst.OriginY + srcDy + image.OriginY;
+                int sRow = (sy * sStride) + (r.X - dst.OriginX + srcDx + image.OriginX);
+                int dRow = (by * dStride) + r.X;
+                Span<uint> to = dp.AsSpan(dRow, r.Width);
+                ReadOnlySpan<uint> from = sp.AsSpan(sRow, r.Width);
+                if (copy)
+                {
+                    if (srcAlpha == dstAlpha)
+                    {
+                        from.CopyTo(to);   // 同格式:整行 memmove(源、目标是同一块缓冲时也安全)
+                    }
+                    else
+                    {
+                        uint or = dstAlpha ? 0xFF000000u : 0, and = dstAlpha ? 0xFFFFFFFFu : 0x00FFFFFFu;
+                        for (int i = 0; i < to.Length; i++)
+                        {
+                            to[i] = (from[i] & and) | or;   // xRGB → ARGB 补不透明;ARGB → xRGB 丢掉 alpha(颜色已预乘)
+                        }
+                    }
+                    continue;
+                }
+                for (int i = 0; i < to.Length; i++)
+                {
+                    uint s = from[i];
+                    uint sa = s >> 24;
+                    if (sa == 0)
+                    {
+                        continue;
+                    }
+                    if (sa == 255)
+                    {
+                        to[i] = dstAlpha ? s : s & 0x00FFFFFF;
+                        continue;
+                    }
+                    uint inv = 255 - sa, d = to[i];
+                    uint oa = dstAlpha ? sa + Div255((d >> 24) * inv) : 0;
+                    uint or = ((s >> 16) & 0xFF) + Div255(((d >> 16) & 0xFF) * inv);
+                    uint og = ((s >> 8) & 0xFF) + Div255(((d >> 8) & 0xFF) * inv);
+                    uint ob = (s & 0xFF) + Div255((d & 0xFF) * inv);
+                    to[i] = (oa << 24) | (Math.Min(or, 255) << 16) | (Math.Min(og, 255) << 8) | Math.Min(ob, 255);
+                }
+            }
         }
         return x2 < x1 ? default : new XRect(x1, y1, x2 - x1, y2 - y1);
     }
@@ -194,19 +362,21 @@ internal sealed class CoverageMask
         }
     }
 
-    /// <summary>转成遮罩源(alpha 封顶 1;<paramref name="oneBit" /> 时按 0.5 二值化,对应 a1 遮罩格式)。</summary>
-    public ArraySource ToSource(bool oneBit)
+    /// <summary>转成单字节遮罩(合成器走整数快路径),按遮罩格式的位数量化:1 位二值、4 位 16 级、8 位原样。</summary>
+    public ByteMaskSource ToByteSource(byte depth)
     {
-        Argb[] pixels = new Argb[Alpha.Length];
+        byte[] bytes = new byte[Alpha.Length];
         for (int i = 0; i < Alpha.Length; i++)
         {
             float a = Math.Min(1f, Alpha[i]);
-            if (oneBit)
+            bytes[i] = depth switch
             {
-                a = a >= 0.5f ? 1f : 0f;
-            }
-            pixels[i] = Argb.Gray(a);
+                1 => a >= 0.5f ? (byte)255 : (byte)0,
+                4 => (byte)((int)((a * 15) + 0.5f) * 17),
+                _ => (byte)((a * 255) + 0.5f),
+            };
         }
-        return new ArraySource(pixels, Bounds.X, Bounds.Y, Bounds.Width, Bounds.Height);
+        return new ByteMaskSource(bytes, Bounds.X, Bounds.Y, Bounds.Width, Bounds.Height);
     }
+
 }

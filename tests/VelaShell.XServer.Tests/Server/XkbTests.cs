@@ -1,5 +1,4 @@
 using System.Text;
-using VelaShell.XServer.Host;
 using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
@@ -49,8 +48,8 @@ public sealed class XkbTests
         }
         Assert.AreEqual(2, map.Bytes[o], "a 的类型是 ALPHABETIC");
         Assert.AreEqual(2, map.Bytes[o + 5], "宽度 2");
-        Assert.AreEqual((uint)'a', map.U32(o + 8));
-        Assert.AreEqual((uint)'A', map.U32(o + 12));
+        Assert.AreEqual('a', map.U32(o + 8));
+        Assert.AreEqual('A', map.U32(o + 12));
     }
 
     [TestMethod]
@@ -121,6 +120,6 @@ public sealed class XkbTests
         await c.SendAsync(100, 1, b => b.U8(38).U8(2).U16(0).U32('x').U32('X'));
         XMessage map = await c.RequestAsync(xkb, 8, b => b.U16(UseCoreKbd).U16(0).U16(0x2).U8(0).U8(0).U8(38).U8(1).Bytes(new byte[14]));
         Assert.AreEqual(38, map.Bytes[17], "firstKeySym");
-        Assert.AreEqual((uint)'x', map.U32(40 + 8));
+        Assert.AreEqual('x', map.U32(40 + 8));
     }
 }

@@ -42,8 +42,11 @@ internal sealed class XPicture(uint id, XClient? owner) : XResource(id, owner)
     public bool Bilinear { get; set; }
 }
 
-/// <summary>一个字形:位图(已转成预乘颜色)与度量。</summary>
-internal sealed record XRenderGlyph(int Width, int Height, int X, int Y, int XOff, int YOff, Argb[] Pixels);
+/// <summary>
+/// 一个字形:度量与位图。只有 alpha 的字形集(a8 / a4 / a1,Xft 的常态)存 <paramref name="Alpha" />,每像素一个字节;
+/// 带颜色的(次像素渲染)存 <paramref name="Color" />,每像素一个预乘的 0xAARRGGBB。
+/// </summary>
+internal sealed record XRenderGlyph(int Width, int Height, int X, int Y, int XOff, int YOff, byte[]? Alpha, uint[]? Color);
 
 /// <summary>字形集的内容;ReferenceGlyphSet 让多个 ID 共用同一份。</summary>
 internal sealed class GlyphTable(PictFormat format)

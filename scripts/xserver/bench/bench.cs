@@ -2,7 +2,7 @@
 #:property TreatWarningsAsErrors=false
 
 // VelaShell.XServer 的吞吐基准:服务端与一个手写的 X 客户端在同一进程里,经内存管道通信,
-// 按典型负载各发一批请求,最后一个往返(GetInputFocus)确认全部执行完,记总耗时。
+// 按典型负载各发一批请求(先预热一遍),最后一个往返(GetInputFocus)确认全部执行完,记总耗时。
 //
 //   dotnet run -c Release -p:SignAssembly=false scripts/xserver/bench/bench.cs   (仓库里没有签名密钥,Release 需关掉签名)
 //
@@ -62,6 +62,9 @@ await RunAsync("PolyFillRectangle 50×50", 20_000, i =>
     c.Request(70, 0, b => b.U32(window).U32(gc).I16((short)(i % 700)).I16((short)(i % 500)).U16(50).U16(50)));
 await RunAsync("PutImage 200×100 32 bpp", 2_000, i =>
     c.Request(72, 2, b => b.U32(window).U32(gc).U16(200).U16(100).I16((short)(i % 500)).I16((short)(i % 400)).U8(0).U8(24).U16(0).Bytes(image)));
+await RunAsync("CompositeGlyphs8 ×1", 20_000, i =>
+    c.Request(render, 23, b => b.U8(3).U8(0).U8(0).U8(0).U32(solid).U32(picture).U32(0).U32(glyphs).I16(0).I16(0)
+        .U8(1).U8(0).U8(0).U8(0).I16((short)(i % 600)).I16((short)(20 + (i % 500))).Bytes("g"u8.ToArray()).U8(0).U8(0).U8(0)));
 await RunAsync("CompositeGlyphs8 ×10(Xft 文字)", 20_000, i =>
     c.Request(render, 23, b => b.U8(3).U8(0).U8(0).U8(0).U32(solid).U32(picture).U32(0).U32(glyphs).I16(0).I16(0)
         .U8(10).U8(0).U8(0).U8(0).I16((short)(i % 600)).I16((short)(20 + (i % 500))).Bytes("gggggggggg"u8.ToArray()).U8(0).U8(0)));
@@ -81,8 +84,17 @@ Console.WriteLine($"{"往返 GetInputFocus(串行)",-34}{roundTrips,8}{rt.Elapse
 
 async Task RunAsync(string name, int count, Action<int> send)
 {
-    await c.SyncAsync();
+    // 先不计时跑一遍:让分层 JIT 把热路径升到优化代码,量的是长期运行的服务端的稳态,不是冷启动。
+    await SendBatchAsync(count, send);
     Stopwatch sw = Stopwatch.StartNew();
+    await SendBatchAsync(count, send);
+    sw.Stop();
+    Console.WriteLine($"{name,-34}{count,8}{sw.Elapsed.TotalMilliseconds,10:F0}{count / sw.Elapsed.TotalSeconds,14:F0}");
+}
+
+async Task SendBatchAsync(int count, Action<int> send)
+{
+    await c.SyncAsync();
     for (int i = 0; i < count; i++)
     {
         send(i);
@@ -92,8 +104,6 @@ async Task RunAsync(string name, int count, Action<int> send)
         }
     }
     await c.SyncAsync();
-    sw.Stop();
-    Console.WriteLine($"{name,-34}{count,8}{sw.Elapsed.TotalMilliseconds,10:F0}{count / sw.Elapsed.TotalSeconds,14:F0}");
 }
 
 /// <summary>一个最小的 X 客户端:小端、自己拼请求、只认得回复的序号。</summary>

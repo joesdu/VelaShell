@@ -60,7 +60,7 @@ public sealed class HostApiTests
         Assert.AreEqual(29, mapping.Bytes[5]);
 
         XMessage keys = await c.RequestAsync(101, 0, b => b.U8(29).U8(1).U16(0));   // GetKeyboardMapping
-        Assert.AreEqual((uint)'z', keys.U32(32));
+        Assert.AreEqual('z', keys.U32(32));
         StringAssert.Contains(await RootStringAsync(c, "_XKB_RULES_NAMES"), "\0de\0");
     }
 }

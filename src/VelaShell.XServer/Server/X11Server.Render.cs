@@ -15,6 +15,7 @@
 //   不做的:alpha-map(接受但忽略)、源 picture 的裁剪(只裁目标)、索引色格式(没有)、
 //   poly-edge / poly-mode / dither(接受但忽略,多边形一律平滑边)。
 
+using System.Buffers;
 using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
@@ -399,7 +400,17 @@ public sealed partial class X11Server
         }
         XRect dirty = RenderCompositor.Composite(op, src, mask, componentAlpha, target.Target,
             srcX, srcY, maskX, maskY, dstX, dstY, width, height);
-        if (target.TopLevel is { } top && !dirty.IsEmpty)
+        NoteRendered(dst, target.TopLevel, dirty);
+    }
+
+    /// <summary>合成写过的范围(缓冲坐标)记成损伤:窗口记到顶层上,像素图交给 DAMAGE。</summary>
+    private void NoteRendered(XPicture dst, XWindow? top, XRect dirty)
+    {
+        if (dirty.IsEmpty)
+        {
+            return;
+        }
+        if (top is not null)
         {
             MarkDamage(top, dirty);
         }
@@ -460,8 +471,14 @@ public sealed partial class X11Server
         {
             return;
         }
+        if (TargetOf(dst) is not { } target)
+        {
+            return;
+        }
         RenderSource source = SourceOf(src);
-        XRect limit = DrawableBounds(dst);
+        // 覆盖率只算目标上真正可写的那一块:一个铺满大窗口的图形不会分配整窗大小的遮罩再大半丢掉。
+        XRect limit = BoundsOf(target.Target.Clip).Offset(-target.Target.OriginX, -target.Target.OriginY).Intersect(DrawableBounds(dst));
+        XRect dirty = default;
         void Emit(XRect bounds, IEnumerable<Action<CoverageMask>> draws)
         {
             bounds = bounds.Intersect(limit);
@@ -474,9 +491,10 @@ public sealed partial class X11Server
             {
                 draw(coverage);
             }
-            ArraySource mask = coverage.ToSource(maskFormat?.Depth == 1);
-            CompositeTo(dst, op, source, mask, false,
+            ByteMaskSource mask = coverage.ToByteSource(maskFormat?.Depth ?? 8);
+            XRect written = RenderCompositor.Composite(op, source, mask, false, target.Target,
                 srcX + bounds.X - anchor.X, srcY + bounds.Y - anchor.Y, bounds.X, bounds.Y, bounds.X, bounds.Y, bounds.Width, bounds.Height);
+            dirty = dirty.IsEmpty ? written : written.IsEmpty ? dirty : Union(dirty, written);
         }
 
         if (maskFormat is not null)
@@ -495,6 +513,21 @@ public sealed partial class X11Server
                 Emit(b, [draw]);
             }
         }
+        NoteRendered(dst, target.TopLevel, dirty);
+    }
+
+    private static XRect BoundsOf(IReadOnlyList<XRect> rects)
+    {
+        if (rects.Count == 0)
+        {
+            return default;
+        }
+        XRect all = rects[0];
+        for (int i = 1; i < rects.Count; i++)
+        {
+            all = Union(all, rects[i]);
+        }
+        return all;
     }
 
     private static XRect Union(XRect a, XRect b)
@@ -535,14 +568,17 @@ public sealed partial class X11Server
         short srcX = r.I16(), srcY = r.I16();
         List<(XRect, Action<CoverageMask>)> shapes = [];
         (int X, int Y) anchor = (0, 0);
+        bool first = true;
         while (r.Remaining >= 40)
         {
             double top = ReadFixed(r), bottom = ReadFixed(r);
             CoverageMask.Line left = new(ReadFixed(r), ReadFixed(r), ReadFixed(r), ReadFixed(r));
             CoverageMask.Line right = new(ReadFixed(r), ReadFixed(r), ReadFixed(r), ReadFixed(r));
-            if (shapes.Count == 0)
+            if (first)
             {
+                // 源与「第一个」梯形的左上顶点对齐 —— 哪怕它是退化的、不画(规范 §10)。
                 anchor = ((int)Math.Floor(left.X1), (int)Math.Floor(left.Y1));
+                first = false;
             }
             if (bottom <= top)
             {
@@ -679,25 +715,61 @@ public sealed partial class X11Server
                 throw new XProtocolError(XErrorCode.Length);
             }
             byte[] data = r.Bytes(size);
-            uint[] raw = new uint[w * h];
-            if (w > 0 && h > 0)
-            {
-                if (bpp == 1)
-                {
-                    DecodeBitmap(data, w, h, 0, raw, 1, 0);
-                }
-                else
-                {
-                    DecodeZPixmap(data, w, h, bpp, raw);
-                }
-            }
-            Argb[] pixels = new Argb[raw.Length];
-            for (int k = 0; k < raw.Length; k++)
-            {
-                pixels[k] = format.Decode(raw[k] & PixelBuffer.DepthMaskOf(format.Depth));
-            }
-            table.Glyphs[ids[i]] = new XRenderGlyph(w, h, x, y, xOff, yOff, pixels);
+            table.Glyphs[ids[i]] = format.HasColor
+                ? new XRenderGlyph(w, h, x, y, xOff, yOff, null, DecodeColorGlyph(data, w, h, bpp, format))
+                : new XRenderGlyph(w, h, x, y, xOff, yOff, DecodeAlphaGlyph(data, w, h, bpp, format), null);
         }
+    }
+
+    /// <summary>只有 alpha 的字形:每像素一个字节(a8 直接拷,a4 放大到 0–255,a1 是 0 / 255)。</summary>
+    private static byte[] DecodeAlphaGlyph(ReadOnlySpan<byte> data, int w, int h, int bpp, PictFormat format)
+    {
+        byte[] alpha = new byte[w * h];
+        int stride = BitmapStride(w * bpp);
+        for (int yy = 0; yy < h; yy++)
+        {
+            ReadOnlySpan<byte> row = data.Slice(yy * stride, stride);
+            Span<byte> to = alpha.AsSpan(yy * w, w);
+            if (bpp == 1)
+            {
+                for (int xx = 0; xx < w; xx++)
+                {
+                    to[xx] = (row[xx >> 3] & (1 << (xx & 7))) != 0 ? (byte)255 : (byte)0;
+                }
+            }
+            else if (format.Depth == 8)
+            {
+                row[..w].CopyTo(to);
+            }
+            else
+            {
+                for (int xx = 0; xx < w; xx++)
+                {
+                    to[xx] = (byte)((row[xx] & 0x0F) * 17);   // a4 存在 8 位像素的低 4 位
+                }
+            }
+        }
+        return alpha;
+    }
+
+    /// <summary>带颜色的字形:转成预乘的 0xAARRGGBB(a8r8g8b8 本来就是,其它格式经浮点换一次)。</summary>
+    private static uint[] DecodeColorGlyph(ReadOnlySpan<byte> data, int w, int h, int bpp, PictFormat format)
+    {
+        uint[] pixels = new uint[w * h];
+        if (w == 0 || h == 0)
+        {
+            return pixels;
+        }
+        DecodeZPixmap(data, w, h, bpp, pixels);
+        if (!ReferenceEquals(format, PictFormat.A8R8G8B8))
+        {
+            uint mask = PixelBuffer.DepthMaskOf(format.Depth);
+            for (int k = 0; k < pixels.Length; k++)
+            {
+                pixels[k] = PictFormat.A8R8G8B8.Encode(format.Decode(pixels[k] & mask));
+            }
+        }
+        return pixels;
     }
 
     private void FreeGlyphs(XRequestReader r)
@@ -766,23 +838,30 @@ public sealed partial class X11Server
             }
             r.Skip(XWire.Pad(bytes) - bytes);
         }
-        if (placed.Count == 0 || dst.Drawable is null)
+        if (placed.Count == 0 || dst.Drawable is null || TargetOf(dst) is not { } target)
         {
             return;
         }
 
         RenderSource source = SourceOf(src);
+        XRect dirty = default;
+        void Accumulate(XRect written) => dirty = dirty.IsEmpty ? written : written.IsEmpty ? dirty : Union(dirty, written);
         if (maskFormat is null)
         {
+            // 每个字形单独当遮罩合成(规范 §12);目标只算一次、损伤最后记一次。
             foreach ((int x, int y, XRenderGlyph glyph, bool color) in placed)
             {
                 if (glyph.Width == 0 || glyph.Height == 0)
                 {
                     continue;
                 }
-                ArraySource mask = new(glyph.Pixels, x, y, glyph.Width, glyph.Height);
-                CompositeTo(dst, op, source, mask, color, srcX + x - anchor.X, srcY + y - anchor.Y, x, y, x, y, glyph.Width, glyph.Height);
+                RenderSource mask = glyph.Alpha is { } alpha
+                    ? new ByteMaskSource(alpha, x, y, glyph.Width, glyph.Height)
+                    : new ColorMaskSource(glyph.Color!, x, y, glyph.Width, glyph.Height);
+                Accumulate(RenderCompositor.Composite(op, source, mask, color, target.Target,
+                    srcX + x - anchor.X, srcY + y - anchor.Y, x, y, x, y, glyph.Width, glyph.Height));
             }
+            NoteRendered(dst, target.TopLevel, dirty);
             return;
         }
 
@@ -804,6 +883,30 @@ public sealed partial class X11Server
         {
             return;
         }
+        if (!maskFormat.HasColor && placed.All(p => p.Glyph.Alpha is not null))
+        {
+            // 常态(Xft):只有 alpha 的字形累加进只有 alpha 的遮罩 —— 字节饱和加,池化,整数快路径合成。
+            int size = bounds.Width * bounds.Height;
+            byte[] alphaMask = ArrayPool<byte>.Shared.Rent(size);
+            try
+            {
+                Array.Clear(alphaMask, 0, size);
+                foreach ((int x, int y, XRenderGlyph glyph, _) in placed)
+                {
+                    AddGlyphAlpha(alphaMask, bounds, x, y, glyph);
+                }
+                QuantizeMask(alphaMask.AsSpan(0, size), maskFormat.Depth);
+                ByteMaskSource combined = new(alphaMask, bounds.X, bounds.Y, bounds.Width, bounds.Height);
+                Accumulate(RenderCompositor.Composite(op, source, combined, false, target.Target,
+                    srcX + bounds.X - anchor.X, srcY + bounds.Y - anchor.Y, bounds.X, bounds.Y, bounds.X, bounds.Y, bounds.Width, bounds.Height));
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(alphaMask);
+            }
+            NoteRendered(dst, target.TopLevel, dirty);
+            return;
+        }
         Argb[] accum = new Argb[bounds.Width * bounds.Height];
         foreach ((int x, int y, XRenderGlyph glyph, _) in placed)
         {
@@ -821,7 +924,11 @@ public sealed partial class X11Server
                     {
                         continue;
                     }
-                    Argb p = glyph.Pixels[(gy * glyph.Width) + gx];
+                    int gi = (gy * glyph.Width) + gx;
+                    // 只有 alpha 的字形进带颜色的遮罩:alpha 复制到三个颜色通道,否则分量 alpha 全是 0、字形画不出来。
+                    Argb p = glyph.Alpha is { } alphaBytes
+                        ? Argb.Gray(alphaBytes[gi] / 255f)
+                        : PictFormat.A8R8G8B8.Decode(glyph.Color![gi]);
                     ref Argb m = ref accum[(my * bounds.Width) + mx];
                     m.A = Math.Min(1, m.A + p.A);
                     if (maskFormat.HasColor)
@@ -838,9 +945,42 @@ public sealed partial class X11Server
         {
             accum[i] = maskFormat.Decode(maskFormat.Encode(accum[i]));
         }
-        ArraySource combined = new(accum, bounds.X, bounds.Y, bounds.Width, bounds.Height);
-        CompositeTo(dst, op, source, combined, maskFormat.HasColor,
-            srcX + bounds.X - anchor.X, srcY + bounds.Y - anchor.Y, bounds.X, bounds.Y, bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        ArraySource colorMask = new(accum, bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        Accumulate(RenderCompositor.Composite(op, source, colorMask, maskFormat.HasColor, target.Target,
+            srcX + bounds.X - anchor.X, srcY + bounds.Y - anchor.Y, bounds.X, bounds.Y, bounds.X, bounds.Y, bounds.Width, bounds.Height));
+        NoteRendered(dst, target.TopLevel, dirty);
+    }
+
+    /// <summary>把一个 alpha 字形饱和加进遮罩(遮罩覆盖 <paramref name="bounds" />,目标坐标)。</summary>
+    private static void AddGlyphAlpha(byte[] mask, XRect bounds, int x, int y, XRenderGlyph glyph)
+    {
+        XRect g = new XRect(x, y, glyph.Width, glyph.Height).Intersect(bounds);
+        byte[] alpha = glyph.Alpha!;
+        for (int yy = g.Y; yy < g.Bottom; yy++)
+        {
+            int gRow = ((yy - y) * glyph.Width) + (g.X - x);
+            int mRow = ((yy - bounds.Y) * bounds.Width) + (g.X - bounds.X);
+            for (int i = 0; i < g.Width; i++)
+            {
+                int sum = mask[mRow + i] + alpha[gRow + i];
+                mask[mRow + i] = (byte)(sum > 255 ? 255 : sum);
+            }
+        }
+    }
+
+    /// <summary>按遮罩格式的位数量化(a1 二值、a4 16 级),与真的画进那种格式的像素图一致;a8 不动。</summary>
+    private static void QuantizeMask(Span<byte> mask, byte depth)
+    {
+        if (depth >= 8)
+        {
+            return;
+        }
+        for (int i = 0; i < mask.Length; i++)
+        {
+            mask[i] = depth == 1
+                ? (mask[i] >= 128 ? (byte)255 : (byte)0)
+                : (byte)(((mask[i] * 15) + 127) / 255 * 17);
+        }
     }
 
     // ------------------------------------------------------------------ 光标
