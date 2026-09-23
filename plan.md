@@ -5900,3 +5900,19 @@ velashell-docs:`zh/host/交互与界面规格.md` 与 `en/host/interaction-and-u
 把图标的 `DataContext` 收窄到 `TabIcon`(`x:DataType="services:TabIcon"`),子属性绑 `Geometry` / `ViewBoxSize` / `Fill`;
 DataContext 为 null 时绑定静默不取值。可见性改绑 `$self.DataContext`,前景色经 `$parent[...]` 回到标签的数据上下文。
 回归用例 `SessionTabIconUiTests.ALocalTerminalTabBindsWithoutErrors`:本地终端标签零绑定错误，SSH 标签零错误且图标拿到连接标识色。
+
+## ✅ 97. 2026-09-23 CI 在 Linux / macOS 上随机红:请求账本「入队后才登记」的竞态(#492)
+
+SSH 库并入之后,CI 的 Linux / macOS 作业几乎每次都有几条 `VelaShell.Ssh.Tests` 随机失败,Windows 从来不挂;
+每次挂的用例都不一样,症状却高度一致:「服务端拒绝执行这条命令 / 分配伪终端 / X11 转发」、`IsAlive` 为 false、等状态超时。
+测试桩只在脚本要求时才拒绝，所以这些「拒绝」是客户端自己造出来的。
+
+根因在 `SshConnectionSend.EnqueueAsync`:带登记回调的发送是「`TryWrite` 入队 → 回调登记账本」。
+`_enqueueLock` 只让入队者之间互斥，挡不住另一个线程上的发送泵 —— 入队那一刻泵就可能把帧发出去，
+内存传输上的测试服务端立刻应答，接收循环看到「没有对应请求的应答」,按 FIFO 失步把整条连接判死;
+随后所有通道收尾，挂着的请求被 `Close(false)` 一律结算成「拒绝」。泵线程能立刻抢到核的 Linux / macOS 上才频繁撞上。
+`FifoRequestLedger` 自己的注释早就写着「登记必须在发送之前」,是实现没兑现。
+
+改成先登记、再入队(仍在同一把锁里，登记顺序与上线顺序照样一致)。全局请求与通道请求都走这一处，一并修好。
+回归用例 `ChannelTests.请求账本的登记先于报文上线`:在登记回调里睡 300ms 把窗口撑大，断言回调结束前服务端没看到这一帧 ——
+修复前在 Windows 上也稳定失败，修复后通过。

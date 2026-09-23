@@ -157,6 +157,47 @@ public sealed class ChannelTests
         Assert.AreSequenceEqual(new[] { "echo hello" }, harness.ChannelServer.Observation.Commands);
     }
 
+    /// <summary>
+    /// 请求账本的登记必须先于报文上线（velashell-docs/zh/ssh/spec/05-connection.md §5.1）。
+    /// </summary>
+    /// <remarks>
+    /// 回归：原先是「入队，再登记」—— 发送泵在另一个线程上，入队那一刻就可能把帧发出去，
+    /// 应答赶在登记之前到达，接收循环按 FIFO 失步把整条连接判死，挂着的请求一律结算成
+    /// 「服务端拒绝」。窗口很窄，只在泵线程能立刻抢到核的 Linux / macOS CI 上随机冒出来。
+    /// 这里在登记回调里睡一会儿把窗口撑大：回调结束之前，服务端不许已经看到这个请求。
+    /// </remarks>
+    [TestMethod]
+    public async Task 请求账本的登记先于报文上线()
+    {
+        await using Harness harness = await Harness.StartAsync();
+        const string probe = "order-probe@velashell.test";
+
+        ArrayBufferWriter<byte> packet = new();
+        SshDataWriter writer = new(packet);
+        writer.WriteMessageNumber(SshMessageNumber.GlobalRequest);
+        writer.WriteUtf8String(probe);
+        writer.WriteBoolean(false);   // 不要应答：这里只看上线时机
+
+        bool seenBeforeRegistered = true;
+        await ((ISshChannelHost)harness.Connection).SendAsync(
+            packet.WrittenMemory,
+            () =>
+            {
+                Thread.Sleep(300);
+                seenBeforeRegistered = harness.ChannelServer.Observation.GlobalRequests.Contains(probe);
+            },
+            harness.Token);
+
+        Assert.IsFalse(seenBeforeRegistered, "登记还没做完，报文已经到了对端 —— 快的应答会撞上空账本。");
+
+        // 登记完之后这一帧照常上线，连接也还活着。
+        while (!harness.ChannelServer.Observation.GlobalRequests.Contains(probe))
+        {
+            await Task.Delay(10, harness.Token);
+        }
+        Assert.IsTrue(harness.Connection.IsAlive);
+    }
+
     [TestMethod]
     public async Task 标准输出与标准错误是两条独立的流()
     {

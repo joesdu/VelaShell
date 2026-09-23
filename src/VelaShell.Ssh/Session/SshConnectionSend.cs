@@ -168,14 +168,19 @@ public sealed partial class SshConnection
         }
         else
         {
+            // ⚠️ **先登记，再入队。**这把锁只让入队者之间互斥，挡不住另一个线程上的发送泵：
+            //    入队的那一刻泵就可能把这一帧取走发出去，对端的应答随即到达接收循环 ——
+            //    要是这时账本还没登记，接收循环看到的就是「没有对应请求的应答」，
+            //    按 FIFO 失步把整条连接判死（症状是一串「服务端拒绝…」与连接无故断开，
+            //    泵线程能立刻抢到核的 Linux / macOS 上尤其常见）。
+            //    登记与入队仍在同一把锁里，所以登记顺序与上线顺序照样一致。
+            //    入队失败只发生在连接已经收尾时：调用方拿到的是下面的关闭异常，
+            //    不会去等那个登记项，而账本随连接一起被结算。
             lock (_enqueueLock)
             {
+                onEnqueued();
                 enqueued = _outbound.Writer.TryWrite(
                     new OutboundItem(OutboundKind.Frame, packet, accounted, completion));
-                if (enqueued)
-                {
-                    onEnqueued();
-                }
             }
         }
 
