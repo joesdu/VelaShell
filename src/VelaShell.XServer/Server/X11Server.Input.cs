@@ -159,7 +159,9 @@ public sealed partial class X11Server
                 }
                 int x = ix + child.X, y = iy + child.Y;
                 int w = child.Width + (2 * child.BorderWidth), h = child.Height + (2 * child.BorderWidth);
-                if (rootX >= x && rootY >= y && rootX < x + w && rootY < y + h)
+                if (rootX >= x && rootY >= y && rootX < x + w && rootY < y + h
+                    && (child.InputShape ?? child.BoundingShape) is var shape
+                    && (shape is null || shape.Contains(rootX - x - child.BorderWidth, rootY - y - child.BorderWidth)))
                 {
                     hit = child;
                     break;

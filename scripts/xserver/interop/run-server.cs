@@ -140,7 +140,7 @@ sealed class ShotHost(string outDir) : IXServerHost
         Console.WriteLine($"[host] mapped 0x{w.Id:x} {w.Width}x{w.Height}+{w.X}+{w.Y} '{w.Title}' override={w.OverrideRedirect}");
     }
     public void TopLevelUnmapped(XTopLevelWindow w) => Console.WriteLine($"[host] unmapped 0x{w.Id:x}");
-    public void TopLevelChanged(XTopLevelWindow w) => Console.WriteLine($"[host] changed 0x{w.Id:x} {w.Width}x{w.Height}+{w.X}+{w.Y} '{w.Title}' class='{w.ClassName}'");
+    public void TopLevelChanged(XTopLevelWindow w) => Console.WriteLine($"[host] changed 0x{w.Id:x} {w.Width}x{w.Height}+{w.X}+{w.Y} '{w.Title}' class='{w.ClassName}' shape={(w.Shape is null ? "none" : w.Shape.Count + " rects")}");
     public void CursorChanged(XTopLevelWindow? w, int glyph) { }
     public void Bell(int percent) => Console.WriteLine("[host] bell");
 

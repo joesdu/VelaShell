@@ -89,6 +89,12 @@ public sealed class XTopLevelWindow
     public bool IsMapped { get; internal set; }
 
     /// <summary>
+    /// 窗口形状(SHAPE 扩展的边界形状与内区的交集,内区坐标);null = 普通矩形窗口。
+    /// 宿主应当让形状以外的部分透明、且不接收鼠标(xeyes 的两只眼睛、不规则弹层)。
+    /// </summary>
+    public IReadOnlyList<XRect>? Shape { get; internal set; }
+
+    /// <summary>
     /// 拷贝当前像素(<c>0x00RRGGBB</c>,行优先,宽 × 高)。<paramref name="destination" /> 不够大时只拷能放下的部分。
     /// </summary>
     /// <returns>实际拷贝时的 (宽, 高);窗口已没有缓冲时为 (0, 0)。</returns>
