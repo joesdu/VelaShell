@@ -190,7 +190,7 @@ internal static class SshConnectionAssembler
     private static readonly TimeSpan AgentConnectTimeout = TimeSpan.FromSeconds(3);
 
     /// <summary>连本机 agent,带 <see cref="AgentConnectTimeout" /> 上限;超时以 <see cref="OperationCanceledException" /> 报出。</summary>
-    private static async ValueTask<SshAgentClient> ConnectLocalAgentAsync(CancellationToken cancellationToken)
+    internal static async ValueTask<SshAgentClient> ConnectLocalAgentAsync(CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(AgentConnectTimeout);

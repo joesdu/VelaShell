@@ -5430,4 +5430,76 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="DiagSvc_SuggestAgentKeys" xml:space="preserve">
     <value>确认 ssh-agent 正在运行,并且加载了这台服务器认可的那把密钥:ssh-add -l 可列出已加载的密钥。</value>
   </data>
+  <data name="Ssh_AgentForwardNoKeys" xml:space="preserve">
+    <value>这条连接限定的密钥一把都读不出来</value>
+  </data>
+  <data name="Ssh_AgentForwardOnlyKeys" xml:space="preserve">
+    <value> · 仅转发 {0} 把密钥</value>
+  </data>
+  <data name="Ssh_AgentForwardConfirmEach" xml:space="preserve">
+    <value> · 每次签名都要确认</value>
+  </data>
+  <data name="AgentSign_Title" xml:space="preserve">
+    <value>agent 签名请求</value>
+  </data>
+  <data name="AgentSign_Warning" xml:space="preserve">
+    <value>远端会话请求用你本机 ssh-agent 里的密钥签名</value>
+  </data>
+  <data name="AgentSign_Advice" xml:space="preserve">
+    <value>通常是你在那台服务器上执行 ssh 或 git,正在连下一台机器。如果你刚才没做这些操作,请拒绝 —— 那台服务器上可能有人在借用你的身份。</value>
+  </data>
+  <data name="AgentSign_Session" xml:space="preserve">
+    <value>会话</value>
+  </data>
+  <data name="AgentSign_KeyType" xml:space="preserve">
+    <value>密钥类型</value>
+  </data>
+  <data name="AgentSign_Fingerprint" xml:space="preserve">
+    <value>指纹</value>
+  </data>
+  <data name="AgentSign_Comment" xml:space="preserve">
+    <value>密钥</value>
+  </data>
+  <data name="AgentSign_TimeoutHint" xml:space="preserve">
+    <value>{0} 秒内不作答将自动拒绝。</value>
+  </data>
+  <data name="AgentSign_Deny" xml:space="preserve">
+    <value>拒绝</value>
+  </data>
+  <data name="AgentSign_AllowOnce" xml:space="preserve">
+    <value>允许一次</value>
+  </data>
+  <data name="AgentSign_AllowForSession" xml:space="preserve">
+    <value>本次会话内允许</value>
+  </data>
+  <data name="AgentSign_AllowForSessionTip" xml:space="preserve">
+    <value>这条会话关闭之前,这把密钥不再询问</value>
+  </data>
+  <data name="Profile_SshAgentForwardRestrict" xml:space="preserve">
+    <value>只转发选中的密钥</value>
+  </data>
+  <data name="Profile_SshAgentForwardRestrictHint" xml:space="preserve">
+    <value>一台跳板机通常只需要下一跳那一把钥。没选中的密钥,服务器上根本看不见。</value>
+  </data>
+  <data name="Profile_SshAgentForwardNoKeyChoices" xml:space="preserve">
+    <value>没有找到可选的密钥:先启动 ssh-agent 并 ssh-add,或者把公钥(.pub)放进 ~/.ssh。</value>
+  </data>
+  <data name="Profile_SshAgentForwardConfirm" xml:space="preserve">
+    <value>每次签名前询问</value>
+  </data>
+  <data name="Profile_SshAgentForwardConfirmHint" xml:space="preserve">
+    <value>服务器每次借你的 agent 签名时都会弹窗,写明是哪条会话、哪把密钥。60 秒无人应答按拒绝处理。</value>
+  </data>
+  <data name="Profile_SshAgentForwardKeysEmpty" xml:space="preserve">
+    <value>已勾选「只转发选中的密钥」,但一把密钥都没选。请至少选一把,或者取消这一项。</value>
+  </data>
+  <data name="Profile_SshAgentKeySourceSaved" xml:space="preserve">
+    <value>已存于此连接</value>
+  </data>
+  <data name="Profile_SshAgentKeySourceAgent" xml:space="preserve">
+    <value>agent 中</value>
+  </data>
+  <data name="Profile_SshAgentKeySourceFile" xml:space="preserve">
+    <value>~/.ssh</value>
+  </data>
 </root>

@@ -592,7 +592,7 @@ var options = new ExecuteOptions
 | 状态 | 优先级 | 项 | 对标 | 架构落点 |
 | :---: | :---: | --- | --- | --- |
 | ✅ | — | ~~**SSH Agent 转发**~~ | Xshell / MobaXterm / Tabby / WindTerm / Termius | **已完成**：宿主接线 2026-09-23 落地（`plan.md` §92：连接配置「高级选项」里的「转发 ssh-agent(-A)」，连同「SSH Agent」认证方式）；同一条线上的 [Agent 自动加载](#-p0--存了但不生效的开关)也已于同日补齐（`plan.md` §98）—— 私钥文件登录的会话现在也能在跳板机上用本机的钥 |
-| 💡 | 🟡 P2 | **agent 转发的「只转发指定密钥 / 逐次确认」界面** | ssh-add -c / Termius | 库已支持（`AgentForwardPolicy.AllowedKeys` / `ConfirmEachSignature`，spec/07 §7.2），宿主现在一律用 `AgentForwardPolicy.Default`（整个 agent 都转发、不确认）。要做的是连接配置里选钥的列表 + 远端每次请求签名时弹的确认框（带来源主机与钥指纹）。⚠️ 确认框会在后台会话里弹出，先想清楚「没人看着时是拒还是等」 |
+| ✅ | — | ~~**agent 转发的「只转发指定密钥 / 逐次确认」界面**~~ | ssh-add -c / Termius | **已完成**(2026-09-23,`plan.md` §100):连接配置里 agent 转发下多出「只转发选中的密钥」(候选 = agent + ~/.ssh + 已存,按指纹去重)与「每次签名前询问」;确认框三选项(拒绝 / 本次会话内允许 / 允许一次),「拒绝」是默认键与取消键。原来那个问题的答案:**没人看着时拒** —— 60 秒无人应答按拒绝,多条会话的请求排队逐个弹。限定的钥一把都解析不出来时不转发,绝不退回「整个 agent」 |
 | ⏳ | 🟡 P2 | **算法协商可配（cipher / kex / hostkey / MAC）** | Xshell / SecureCRT / PuTTY | 连老设备（网络设备、老 RHEL）时是刚需。**一半已经有了**：协商失败时底层直接抛 `SshNegotiationException`（**带着两边各自的算法清单**，不必再像换库前那样靠探测重连去倒推），`Infrastructure/Ssh/SshInterop` 把它翻成一条说清「缺哪类算法、两边各有什么」的消息 —— 从「诊断得出来」到「让用户配得上」，只差把清单落到 `SessionProfile` 并接进 `SshConnectionOptions.Algorithms`（`SshAlgorithmSet`） |
 | 🚧 | 🟢 P3 | **SSH 压缩开关** | 各家都有 | 弱网 / 高延迟链路上有意义。~~「上游没有 zlib 实现，要么等要么提 PR」（2026-09-08）~~ → ~~「已提 PR [tmds/Tmds.Ssh#513](https://github.com/tmds/Tmds.Ssh/pull/513)，卡上游合并 + 发版」（2026-09-10）~~ —— **两条都作废了**：2026-09-22 换成 VelaShell.Ssh（`plan.md` §91），`Crypto/SshCompressor` 已实现 `zlib` 与 `zlib@openssh.com`（后者认证后才开始压缩，每次 kex 重置压缩上下文），用的是 BCL 自带的原生 zlib。默认仍不开启（与 OpenSSH 一致）。我们这边只剩接线：`SessionProfile` 加压缩字段 → `SshConnectionAssembler` 里 `Algorithms = SshAlgorithmSet.Default.WithCompression()` —— 与上一行「算法协商可配」是同一处落点，**该一并做**。⚠️ 纪律不变：**没接线之前不要先加这个开关**，否则就是 [P0 那张表](#-p0--存了但不生效的开关)里的新一条 |
 | 💡 | 🟢 P3 | **SecureCRT 风格的斜杠命令行** | SecureCRT | 外部拉起目前只认 Xshell 的调用约定（`-url` / `-newtab` / `-f` / `-l` / `-p` / `-pw` / `-i`，见 `plan.md` §84–85）。SecureCRT 那套 `/SSH2 /L root /PASSWORD pw host` 现在一个都不认，被整条忽略。**要接之前先确认有没有真实调用方** —— 这条兼容层的存在理由是「堡垒机客户端已经在发」，不是「补齐一张对标表格」；没有人发的写法接进来只是多一条攻击面。⚠️ `/` 开头的 token 与 Unix 路径、Avalonia 自己的参数会撞，得先想清楚怎么区分 |
@@ -671,6 +671,7 @@ var options = new ExecuteOptions
 | ⏳ | `plan.md` §86 / §87 | **密钥生成默认给 Ed25519，并新增算法下拉**：`{zh,en}/host/交互与界面规格.md` 密钥管理页一节改口径 —— 工具栏在「导入」左边多了一个算法下拉（**Ed25519（默认）/ ECDSA 256·384·521 / RSA 4096**，位数刻意不给选），「生成密钥」按下拉选中的那一档产出，不再恒为 RSA 4096；自动命名随算法走（`velashell_ed25519` / `velashell_ecdsa256|384|521` / `velashell_rsa`，重名自动加 `_2`），老用户 `~/.ssh` 下那把 `velashell_rsa` 不受影响。`{zh,en}/host/架构设计.md` 若有「只能生成 RSA」一类的口径也要一并改 |
 | ⏳ | `plan.md` §61 | 回滚行数（`设置 → 终端`）的行为补一句：**调小当场生效**，超出上限的历史立刻裁掉、不可恢复；以及它作用于主屏，全屏程序（vim / htop / less）的备用屏恒无回滚，与这个值无关 |
 | ✅ | `plan.md` §98 | ~~**自动加载密钥到 Agent**~~ —— **2026-09-23 已同步**（[velashell-docs#53](https://github.com/VelaShellLabs/velashell-docs/pull/53) 已与宿主 #493 一起合入）。原登记内容：`{zh,en}/ssh/spec/07-forwarding.md` 新增 §7.3（加钥报文、私钥布局、约束、五条决策）；`{zh,en}/ssh/getting-started.md` 补示例；`{zh,en}/host/settings-audit.md` R-06 改为已实现；交互规格密钥管理一行、架构设计未实现清单同步。|
+| ⏳ | `plan.md` §100 | **agent 转发的只转发选中密钥与逐次确认**：已开 [velashell-docs#56](https://github.com/VelaShellLabs/velashell-docs/pull/56)，**待与宿主 PR 一起合入**。`{zh,en}/host/交互与界面规格.md` SSH 连接选项一节补两项与 agent 签名确认框（三按钮、拒绝为默认键与取消键、60 秒无人应答拒绝、多会话排队）。合入后把这一行改成 ✅ |
 
 ---
 

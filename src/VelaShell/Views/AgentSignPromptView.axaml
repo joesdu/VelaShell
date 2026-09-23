@@ -1,0 +1,161 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:VelaShell.ViewModels"
+        xmlns:pc="using:VelaShell.Controls.Controls"
+        xmlns:loc="using:VelaShell.Localization"
+        mc:Ignorable="d" d:DesignWidth="492" d:DesignHeight="360"
+        x:Class="VelaShell.Views.AgentSignPromptView"
+        x:DataType="vm:AgentSignPromptViewModel"
+        Title="{loc:Localize AgentSign_Title}"
+        Width="492"
+        SizeToContent="Height"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowDecorations="None"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
+        WindowStartupLocation="CenterOwner">
+
+  <!-- agent 转发的逐次确认。外壳与主机密钥弹窗同一规格(bg-surface 卡片、圆角 8、48px 标题栏 + 52px 按钮栏);
+       动作按钮按 DESIGN.md §5.1 走两套共享主题。
+       ⚠️ 这个窗口会在用户正往终端里打字时弹出来:「拒绝」同时是默认键与取消键,
+       一个顺手的回车只会落在拒绝上,绝不会替用户批准一次签名。 -->
+
+  <Window.Styles>
+    <Style Selector="TextBlock.mono">
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccentText}" />
+    </Style>
+    <Style Selector="TextBlock.info-label">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="Margin" Value="0,0,12,0" />
+    </Style>
+    <Style Selector="TextBlock.info-value">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+  </Window.Styles>
+
+  <Border CornerRadius="8"
+          Background="{DynamicResource VelaBgSurface}"
+          BorderBrush="{DynamicResource VelaBorderSecondary}"
+          BorderThickness="1"
+          BoxShadow="{DynamicResource VelaShadowWindow}"
+          Margin="16"
+          ClipToBounds="True">
+    <Grid RowDefinitions="48,Auto,52">
+
+      <!-- 标题栏(可拖动) -->
+      <Border Grid.Row="0" Padding="20,0"
+              Background="Transparent"
+              PointerPressed="Header_PointerPressed"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
+              BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <pc:LucideIcon Width="15" Height="15"
+                         Data="{DynamicResource Icon.shield}"
+                         Foreground="{DynamicResource VelaWarning}"
+                         VerticalAlignment="Center" Margin="0,0,10,0" />
+          <TextBlock Grid.Column="1"
+                     Text="{loc:Localize AgentSign_Title}"
+                     Foreground="{DynamicResource VelaTextPrimary}"
+                     FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold"
+                     VerticalAlignment="Center" />
+          <Button Grid.Column="2" Width="24" Height="24"
+                  Background="Transparent" Padding="0" CornerRadius="3"
+                  Cursor="Hand" Command="{Binding DenyCommand}"
+                  VerticalAlignment="Center">
+            <pc:LucideIcon Width="13" Height="13"
+                           Data="{DynamicResource Icon.x}"
+                           Foreground="{DynamicResource VelaTextTertiary}" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <!-- 内容区 -->
+      <StackPanel Grid.Row="1" Margin="20,16" Spacing="14">
+
+        <Border Background="{DynamicResource VelaBgActive}" CornerRadius="6" Padding="16,12">
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <pc:LucideIcon Width="16" Height="16"
+                           VerticalAlignment="Top"
+                           Data="{DynamicResource Icon.triangle-alert}"
+                           Foreground="{DynamicResource VelaWarning}" />
+            <!-- 只说「有人要签名」用户判断不了;说明里点名最常见的正当来源(自己在远端 ssh / git)
+                 与该拒绝的情形(自己什么都没做)。 -->
+            <StackPanel Spacing="6" MaxWidth="360" VerticalAlignment="Center">
+              <TextBlock Text="{loc:Localize AgentSign_Warning}"
+                         Foreground="{DynamicResource VelaWarning}"
+                         FontSize="{DynamicResource VelaFontSize12}"
+                         FontWeight="SemiBold"
+                         TextWrapping="Wrap" />
+              <TextBlock Text="{loc:Localize AgentSign_Advice}"
+                         Foreground="{DynamicResource VelaTextSecondary}"
+                         FontSize="{DynamicResource VelaFontSize11}"
+                         TextWrapping="Wrap" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <Border Background="{DynamicResource VelaBgInput}"
+                BorderBrush="{DynamicResource VelaBorderPrimary}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="16,12">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="100,*">
+              <TextBlock Grid.Column="0" Classes="info-label" Text="{loc:Localize AgentSign_Session}" />
+              <TextBlock Grid.Column="1" Classes="info-value" Text="{Binding Target}" />
+            </Grid>
+            <Grid ColumnDefinitions="100,*">
+              <TextBlock Grid.Column="0" Classes="info-label" Text="{loc:Localize AgentSign_KeyType}" />
+              <TextBlock Grid.Column="1" Classes="info-value" Text="{Binding KeyType}" />
+            </Grid>
+            <Grid ColumnDefinitions="100,*">
+              <TextBlock Grid.Column="0" Classes="info-label" Text="{loc:Localize AgentSign_Fingerprint}" />
+              <TextBlock Grid.Column="1" Classes="mono" Text="{Binding Fingerprint}" TextWrapping="Wrap" />
+            </Grid>
+            <Grid ColumnDefinitions="100,*" IsVisible="{Binding HasComment}">
+              <TextBlock Grid.Column="0" Classes="info-label" Text="{loc:Localize AgentSign_Comment}" />
+              <TextBlock Grid.Column="1" Classes="info-value" Text="{Binding Comment}" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Text="{Binding TimeoutText}"
+                   Foreground="{DynamicResource VelaTextMuted}"
+                   FontSize="{DynamicResource VelaFontSize11}"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+
+      <!-- 按钮栏:拒绝 / 本次会话内允许 / 允许一次 -->
+      <Border Grid.Row="2" Padding="20,0"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
+              BorderThickness="0,1,0,0">
+        <StackPanel Orientation="Horizontal" Spacing="8"
+                    HorizontalAlignment="Right" VerticalAlignment="Center">
+          <Button x:Name="DenyButton"
+                  Theme="{DynamicResource VelaOutlineButtonTheme}"
+                  IsDefault="True" IsCancel="True"
+                  Content="{loc:Localize AgentSign_Deny}"
+                  Command="{Binding DenyCommand}" />
+          <Button x:Name="AllowForSessionButton"
+                  Theme="{DynamicResource VelaOutlineButtonTheme}"
+                  Content="{loc:Localize AgentSign_AllowForSession}"
+                  ToolTip.Tip="{loc:Localize AgentSign_AllowForSessionTip}"
+                  Command="{Binding AllowForSessionCommand}" />
+          <Button x:Name="AllowOnceButton"
+                  Theme="{DynamicResource VelaAccentPillButtonTheme}"
+                  Height="28"
+                  Content="{loc:Localize AgentSign_AllowOnce}"
+                  Command="{Binding AllowOnceCommand}" />
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Border>
+</Window>

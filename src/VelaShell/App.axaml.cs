@@ -134,6 +134,8 @@ public class App : Application
             .AddSingleton<IThemeService>(_ => new ThemeService("system"))
             .AddSingleton<ISettingsPreviewService, SettingsPreviewService>()
             .AddSingleton<IHostKeyPrompt, HostKeyPromptDialogService>()
+            // agent 转发「逐次确认」的弹窗:连接配置里勾了才会被调到,没勾的会话永远碰不到它。
+            .AddSingleton<IAgentSignPrompt, AgentSignPromptDialogService>()
             .AddSingleton<ILocalizationService, LocalizationService>()
             .AddSingleton<IKeyboardShortcutService, KeyboardShortcutService>()
             // 应用内自动更新:更新源 = 本仓库 GitHub Releases 的 latest.json 清单(无需自己架服务器),
