@@ -24,6 +24,7 @@ using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;
 using VelaShell.Core.Sync;
 using VelaShell.Core.Tunnels;
+using VelaShell.Core.XServer;
 using VelaShell.Docking;
 using VelaShell.Docking.Model;
 using VelaShell.Infrastructure.Diagnostics;
@@ -225,7 +226,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         IAnnouncementFeed? announcementFeed = null,
         IUpdateService? updateService = null,
         IThemeService? themeService = null,
-        IConnectivityMonitor? connectivityMonitor = null
+        IConnectivityMonitor? connectivityMonitor = null,
+        ILocalXServer? localXServer = null
     )
     {
         // 注册表可注入(DI 里与插件命令桥共享同一单例);无 UI 单测传 null 时自己创建一个。
@@ -432,6 +434,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         OpenSettingsCommand = ReactiveCommand.Create(() =>
             SettingsRequested?.Invoke(this, EventArgs.Empty)
         );
+        XServer = new(localXServer, Toasts,
+            () => SettingsSectionRequested?.Invoke(this, SettingsSectionKey.XServer));
         // 最近使用记录:让常用命令/会话在同分时排到前面。载入是异步的,先建后载 ——
         // 载入完成前只是没有加权,不影响面板可用。
         _paletteRecency = new(appDataStore);
@@ -760,6 +764,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <summary>打开链路追踪窗口;启用条件与 SFTP 资源管理器一致。</summary>
     public ReactiveCommand<RxVoid, RxVoid> OpenTraceRouteCommand { get; }
 
+    /// <summary>标题栏的本机 X Server 开关(Windows 上拉起 VcXsrv,显示远端 X11 转发过来的图形程序)。</summary>
+    public XServerToggleViewModel XServer { get; }
+
     /// <summary>
     /// 请求为某个会话打开任务管理器窗口。参数依次为会话标识与窗口标题用的会话名称;
     /// 由 MainWindow 承接(视图层才建得了窗口)。
@@ -942,6 +949,21 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 Icon: "Icon.activity"
             )
         );
+        // 本机 X Server:与标题栏按钮同一个开关。只在支持的平台(Windows)上登记,
+        // 别的平台上命令面板里出现一个永远点不动的条目只会让人困惑。
+        if (XServer.IsSupported)
+        {
+            Commands.Register(
+                new(
+                    "tools.xserver",
+                    Strings.Get("Cmd_ToggleXServer"),
+                    Strings.Get("CmdCat_Tools"),
+                    () => XServer.ToggleCommand.Execute().Subscribe(),
+                    () => !XServer.IsStarting,
+                    Icon: "Icon.app-window"
+                )
+            );
+        }
         Commands.Register(
             new(
                 "tools.diagnostics",

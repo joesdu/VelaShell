@@ -59,6 +59,7 @@ internal sealed class SettingsPageHost(Panel host)
         SettingsSectionKey.Transfer => new TransferSettingsPage(),
         SettingsSectionKey.Security => new SecurityAuditPage(),
         SettingsSectionKey.Proxy => new ProxySettingsPage(),
+        SettingsSectionKey.XServer => new XServerSettingsPage(),
         SettingsSectionKey.Snippets => new SnippetsPage(),
         SettingsSectionKey.Sync => new SyncPage(),
         SettingsSectionKey.About => new AboutPage(),

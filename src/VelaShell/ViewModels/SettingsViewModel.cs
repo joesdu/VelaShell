@@ -13,6 +13,7 @@ using VelaShell.Core.Resources;
 using VelaShell.Core.Services;
 using VelaShell.Core.Ssh;
 using VelaShell.Core.Sync;
+using VelaShell.Core.XServer;
 using VelaShell.Infrastructure.Diagnostics;
 using VelaShell.Infrastructure.Persistence;
 using VelaShell.Infrastructure.Ssh;
@@ -75,6 +76,9 @@ public enum SettingsSectionKey
     /// <summary>网络代理。</summary>
     Proxy,
 
+    /// <summary>本机 X Server(VcXsrv)。</summary>
+    XServer,
+
     /// <summary>代码片段。</summary>
     Snippets,
 
@@ -92,7 +96,7 @@ public enum SettingsSectionKey
 public sealed record DependencyInfo(string Name, string License, string Url, string LicenseUrl);
 
 /// <summary>设置窗口的视图模型:承载全部偏好项的绑定、分组页导航、外观即时预览与加载/保存流程。</summary>
-public class SettingsViewModel : ReactiveObject
+public partial class SettingsViewModel : ReactiveObject
 {
     private readonly IHostKeyService? _hostKeyService;
     private readonly ILocalizationService? _localizationService;
@@ -102,6 +106,7 @@ public class SettingsViewModel : ReactiveObject
     private readonly ISettingsService _settingsService;
     private readonly IThemeService _themeService;
     private readonly IUpdateService? _updateService;
+    private readonly ILocalXServer? _localXServer;
     private readonly JsonSerializerOptions _jsonOption = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -139,7 +144,8 @@ public class SettingsViewModel : ReactiveObject
         IGistSyncService? gistSyncService = null,
         IUpdateService? updateService = null,
         QuickCommandsViewModel? snippets = null,
-        IQuickCommandRepository? quickCommandRepository = null
+        IQuickCommandRepository? quickCommandRepository = null,
+        ILocalXServer? localXServer = null
     )
     {
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
@@ -149,6 +155,7 @@ public class SettingsViewModel : ReactiveObject
         _previewService = previewService;
         _hostKeyService = hostKeyService;
         _updateService = updateService;
+        _localXServer = localXServer;
 
         // 换语言时重建构造期求值的标签列表(左侧导航、快捷键参考页):本 VM 是单例,
         // 这些数组在启动语言下冻结,不重建就停留在旧语言(例如切英文保存后
@@ -172,6 +179,7 @@ public class SettingsViewModel : ReactiveObject
             this.RaisePropertyChanged(nameof(Sections));
             this.RaisePropertyChanged(nameof(ShortcutGroups));
             this.RaisePropertyChanged(nameof(ShortcutMacNote));
+            RebuildXServerChoices();
             // 分组重建后过滤结果指向旧数组,必须跟着重算,否则快捷键页停在旧语言。
             RefreshShortcutView();
             SelectedSectionIndex = selectedSection;
@@ -209,6 +217,7 @@ public class SettingsViewModel : ReactiveObject
                 _hookedProxy = proxy;
                 proxy?.PropertyChanged += OnProxyItemChanged;
             });
+        this.WhenAnyValue(x => x.XServer).Subscribe(HookXServer);
         SshKeys = new(sshKeyService);
         Snippets =
             snippets
@@ -428,6 +437,13 @@ public class SettingsViewModel : ReactiveObject
         private set => this.RaiseAndSetIfChanged(ref field, value);
     } = new();
 
+    /// <summary>X Server 页选项(POCO,直接 TwoWay 绑定);改动在下次启动 X Server 时生效。</summary>
+    public XServerOptions XServer
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    } = new();
+
     /// <summary>密钥管理页。</summary>
     public SshKeyManagerViewModel SshKeys { get; }
 
@@ -526,6 +542,10 @@ public class SettingsViewModel : ReactiveObject
             new(
                 Strings.Get("SetVm_SectionProxy"),
                 "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"
+            ),
+            new(
+                Strings.Get("SetVm_SectionXServer"),
+                "M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7v2H8v2h8v-2h-2v-2h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H3V4h18v12z"
             ),
             new(
                 Strings.Get("SetVm_SectionSnippets"),
@@ -1467,7 +1487,9 @@ public class SettingsViewModel : ReactiveObject
         Keys = settings.Keys;
         Proxy = settings.Proxy;
         Notifications = settings.Notifications;
+        XServer = settings.XServer;
         RefreshTrustedLaunchTargets();
+        RefreshXServerDetection();
 
         // 配色方案下拉:重算“(默认)”标注与选中项(出厂值折射到当前主题默认方案;
         // 显式方案反向匹配;改过单色显示“未选择”)。
@@ -1486,6 +1508,10 @@ public class SettingsViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(WindowStateIndex));
         this.RaisePropertyChanged(nameof(ProxyTypeIndex));
         this.RaisePropertyChanged(nameof(IsProxyEditable));
+        this.RaisePropertyChanged(nameof(XServerDisplayNumberIndex));
+        this.RaisePropertyChanged(nameof(XServerWindowModeIndex));
+        this.RaisePropertyChanged(nameof(XServerKeyboardLayoutIndex));
+        this.RaisePropertyChanged(nameof(XServerKeyboardModelIndex));
         _suppressPreview = false;
     }
 
@@ -1686,6 +1712,7 @@ public class SettingsViewModel : ReactiveObject
         _loaded.Keys = Keys;
         _loaded.Proxy = Proxy;
         _loaded.Notifications = Notifications;
+        _loaded.XServer = XServer;
         await _settingsService.SaveSettingsAsync(_loaded);
 
         // 即时生效 —— 主题、强调色与语言均无需重启即可应用(#2/#3/#4)。

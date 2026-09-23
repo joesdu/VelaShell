@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using VelaShell.Core.XServer;
 
 namespace VelaShell.Core.Models;
 
@@ -69,6 +70,9 @@ public class AppSettings
     /// <summary>消息中心(侧边栏铃铛)的分组选项。</summary>
     public NotificationOptions Notifications { get; set; } = new();
 
+    /// <summary>「X Server」页的分组选项(本机 X 服务端的启动参数)。</summary>
+    public XServerOptions XServer { get; set; } = new();
+
     /// <summary>
     /// 载入后的规整(由设置服务在反序列化后调用):把旧字段迁移到唯一权威字段,
     /// 保证每个行为只有一个数据来源(设置审计 C-01/M-01)。
@@ -129,6 +133,14 @@ public class AppSettings
             Transfer.DoubleClickAction = "system";
         }
 
+        // 同理:窗口模式认不出来就回落到多窗口,而不是拼出一条 VcXsrv 不认识的命令行。
+        // 老配置里没有 XServer 这一节时反序列化给的是 null(JSON 里显式写了 null 也一样)。
+        XServer ??= new();
+        if (!XServerWindowModes.All.Contains(XServer.WindowMode))
+        {
+            XServer.WindowMode = XServerWindowModes.MultiWindow;
+        }
+
         ClampNumbers();
     }
 
@@ -158,6 +170,8 @@ public class AppSettings
         General.ReconnectIntervalSeconds = Math.Clamp(General.ReconnectIntervalSeconds, 1, 300);
         General.StatusMetricsIntervalSeconds = Math.Clamp(General.StatusMetricsIntervalSeconds, 1, 60);
         Transfer.MaxConcurrentTransfers = Math.Clamp(Transfer.MaxConcurrentTransfers, 1, 16);
+        XServer.DisplayNumber = Math.Clamp(
+            XServer.DisplayNumber, XServerOptions.AutoDisplayNumber, XServerOptions.MaxDisplayNumber);
     }
 }
 
@@ -1315,6 +1329,137 @@ public class NotificationOptions : ObservableOptions
 
     /// <summary>是否接收运营/推广类消息(资讯源里 kind = promotion 的条目)。</summary>
     public bool AllowPromotions
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+}
+
+/// <summary>
+/// 设置 - X Server:本机 X 服务端(Windows 上是用户自己装的 VcXsrv)的启动参数。
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>不捆绑 X 服务端</b>(见 <c>feature-plan.md</c>「确认不做」):这里配的是**怎么拉起**一个已经装好的
+/// VcXsrv,由 <c>Core/XServer/XServerCommandLine</c> 翻成命令行。改动在下一次启动 X Server 时生效。
+/// </para>
+/// <para>
+/// 字符串枚举(<see cref="WindowMode" />)磁盘上的内容拦不住,认不出来的值由
+/// <see cref="AppSettings.Normalize" /> 回落到默认。
+/// </para>
+/// </remarks>
+public class XServerOptions : ObservableOptions
+{
+    /// <summary>「自动」显示号:从 0 起挑第一个没人占用的。</summary>
+    public const int AutoDisplayNumber = -1;
+
+    /// <summary>显示号的上限(含)。设置页下拉给的是「自动 + 0..15」,自动模式也只在这个范围里找 —— 两处同一口径。</summary>
+    public const int MaxDisplayNumber = 15;
+
+    /// <summary>VcXsrv 可执行文件的路径;留空 = 自动查找常见安装位置与 PATH。</summary>
+    public string ExecutablePath
+    {
+        get;
+        set => Set(ref field, value ?? "");
+    } = "";
+
+    /// <summary>显示号(<c>:N</c> 里的 N);<see cref="AutoDisplayNumber" /> = 自动。</summary>
+    public int DisplayNumber
+    {
+        get;
+        set => Set(ref field, value);
+    } = AutoDisplayNumber;
+
+    /// <summary>
+    /// 窗口模式:multiwindow(每个 X 窗口一个原生窗口,默认)/ windowed(一个大窗口)/
+    /// nodecoration(一个无标题栏的大窗口)/ fullscreen / rootless(透明根窗口,需外部窗口管理器)。
+    /// </summary>
+    public string WindowMode
+    {
+        get;
+        set => Set(ref field, value ?? "multiwindow");
+    } = "multiwindow";
+
+    /// <summary>剪贴板与 Windows 剪贴板互通(<c>-clipboard</c>)。</summary>
+    public bool Clipboard
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
+    /// <summary>选中即复制:把 PRIMARY 选区也映射到 Windows 剪贴板(<c>-primary</c>);只在开了剪贴板时起作用。</summary>
+    public bool CopyOnSelection
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
+    /// <summary>XKB 键盘布局(<c>-xkblayout</c>);留空 = 跟随 Windows 当前布局。</summary>
+    public string KeyboardLayout
+    {
+        get;
+        set => Set(ref field, value ?? "");
+    } = "";
+
+    /// <summary>XKB 键盘型号(<c>-xkbmodel</c>);留空 = VcXsrv 默认(pc105)。</summary>
+    public string KeyboardModel
+    {
+        get;
+        set => Set(ref field, value ?? "");
+    } = "pc105";
+
+    /// <summary>捕获 Alt+Tab、Win 等 Windows 特殊按键并交给 X 程序(<c>-keyhook</c>)。</summary>
+    public bool KeyHook
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
+    /// <summary>用 Windows 原生 WGL 做硬件加速 OpenGL(<c>-wgl</c>)。</summary>
+    public bool NativeOpenGl
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
+    /// <summary>
+    /// 关闭访问控制(<c>-ac</c>):任何能连到端口的主机都能在屏幕上开窗口、读键盘。
+    /// </summary>
+    /// <remarks>
+    /// <b>默认关。</b>经 SSH X11 转发过来的连接在本机看来是 127.0.0.1,不需要它;
+    /// 只有让局域网里的机器直连本机 X 服务端时才要打开。
+    /// </remarks>
+    public bool DisableAccessControl
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
+    /// <summary>附加给 VcXsrv 的原始参数,排在本页生成的参数之后(同一开关后写的覆盖先写的)。</summary>
+    public string ExtraArguments
+    {
+        get;
+        set => Set(ref field, value ?? "");
+    } = "";
+
+    /// <summary>VelaShell 启动时自动打开 X Server。</summary>
+    public bool StartOnLaunch
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
+    /// <summary>显示 VcXsrv 自己的通知区域(托盘)图标(<c>-trayicon</c>)。</summary>
+    public bool ShowTrayIcon
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
+    /// <summary>
+    /// 开了 X11 转发的 SSH 会话连上时,X Server 没开就自动打开(本机 6000 端口已有别的 X 服务端时不插手)。
+    /// </summary>
+    public bool AutoStartForX11Forwarding
     {
         get;
         set => Set(ref field, value);

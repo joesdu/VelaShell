@@ -4,6 +4,7 @@ using System.Text;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
+using VelaShell.Core.XServer;
 using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Forwarding;
@@ -32,6 +33,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
     private readonly Func<CancellationToken, ValueTask<SshConnection>> _connect;
     private readonly IAsyncDisposable? _dialerLifetime;
     private readonly SshSessionOptions? _features;
+    private readonly ILocalXServer? _localXServer;
     private SshConnection? _connection;
     private bool _disposed;
 
@@ -48,15 +50,21 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
     /// 交互式 shell 上要请求的转发(X11 / agent);<see langword="null" /> = 都不请求。
     /// 压缩不在这里 —— 它是建链时协商的,已经装进 <paramref name="connect" /> 了。
     /// </param>
+    /// <param name="localXServer">
+    /// VelaShell 管理的本机 X Server;开 X11 转发而配置里没写显示地址时,用它的显示(必要时先启动它)。
+    /// <see langword="null" /> = 不接管,按 <c>DISPLAY</c> 与默认值走。
+    /// </param>
     public VelaSshClientWrapper(
         Func<CancellationToken, ValueTask<SshConnection>> connect,
         TimeSpan connectTimeout,
         IAsyncDisposable? dialerLifetime = null,
-        SshSessionOptions? features = null)
+        SshSessionOptions? features = null,
+        ILocalXServer? localXServer = null)
     {
         _connect = connect ?? throw new ArgumentNullException(nameof(connect));
         _dialerLifetime = dialerLifetime;
         _features = features;
+        _localXServer = localXServer;
         ConnectionTimeout = connectTimeout;
     }
 
@@ -147,7 +155,8 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
             };
 
             List<ShellStreamNotice> notices = [];
-            X11ForwardOptions? x11 = SshForwardingOptions.X11(_features, notices);
+            string? localServerDisplay = await ResolveLocalXServerAsync(notices, cancellationToken).ConfigureAwait(false);
+            X11ForwardOptions? x11 = SshForwardingOptions.X11(_features, notices, localServerDisplay);
             AgentForwardPolicy? agent = SshForwardingOptions.Agent(_features);
 
             SshShell shell = await OpenShellWithFallbackAsync(
@@ -171,6 +180,32 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
         {
             throw translated;
         }
+    }
+
+    /// <summary>
+    /// 要开 X11 转发、配置里又没写显示地址时,问一下 VelaShell 管理的本机 X Server:
+    /// 在运行就用它的显示,没运行且设置允许就先把它拉起来。
+    /// </summary>
+    /// <remarks>
+    /// 自动启动失败只记一行黄字,不拦 shell —— 与 X11 本身的尽力而为是同一个口径。
+    /// 配置里写了显示地址时完全不碰它:那是用户明确指定的 X 服务端。
+    /// </remarks>
+    private async Task<string?> ResolveLocalXServerAsync(List<ShellStreamNotice> notices, CancellationToken cancellationToken)
+    {
+        if (_localXServer is not { IsSupported: true }
+            || _features is not { X11Forwarding: true }
+            || !string.IsNullOrWhiteSpace(_features.X11Display))
+        {
+            return null;
+        }
+
+        XServerDisplayResolution resolution =
+            await _localXServer.ResolveForwardingDisplayAsync(cancellationToken).ConfigureAwait(false);
+        if (resolution.Error is { } error)
+        {
+            notices.Add(new(Strings.Format("XServer_AutoStartFailed", error), true));
+        }
+        return resolution.Display;
     }
 
     /// <summary>

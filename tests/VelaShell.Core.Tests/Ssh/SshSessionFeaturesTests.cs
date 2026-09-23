@@ -126,6 +126,36 @@ public class SshSessionFeaturesTests
         Assert.Contains("not-a-display", notices[0].Text);
     }
 
+    /// <summary>
+    /// 配置里没写显示地址时,VelaShell 管理的本机 X Server 的显示优先于 <c>DISPLAY</c> 与默认值 ——
+    /// 它在运行就说明用户此刻要的是它,而它的显示号不一定是 0。
+    /// </summary>
+    [TestMethod]
+    public void X11_LocalServerDisplay_WinsWhenProfileLeavesItBlank()
+    {
+        List<ShellStreamNotice> notices = [];
+
+        X11ForwardOptions? options = SshForwardingOptions.X11(
+            new SshSessionOptions { X11Forwarding = true }, notices, localServerDisplay: "localhost:3.0");
+
+        Assert.IsNotNull(options);
+        Assert.AreEqual(3, options.Display!.Number);
+        Assert.IsEmpty(notices);
+    }
+
+    /// <summary>配置里明确写了显示地址:那是用户指定的 X 服务端,本机 X Server 不插手。</summary>
+    [TestMethod]
+    public void X11_ConfiguredDisplay_BeatsLocalServer()
+    {
+        List<ShellStreamNotice> notices = [];
+
+        X11ForwardOptions? options = SshForwardingOptions.X11(
+            new SshSessionOptions { X11Forwarding = true, X11Display = "127.0.0.1:1.0" },
+            notices, localServerDisplay: "localhost:3.0");
+
+        Assert.AreEqual(1, options!.Display!.Number);
+    }
+
     [TestMethod]
     public void X11_Describe_FormatsLikeDisplayVariable()
     {

@@ -1,0 +1,209 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:pc="using:VelaShell.Controls.Controls"
+        xmlns:views="using:VelaShell.Views"
+        xmlns:sys="using:System"
+        xmlns:loc="using:VelaShell.Localization"
+        mc:Ignorable="d" d:DesignWidth="820" d:DesignHeight="700"
+        x:Class="VelaShell.Views.XServerHelpDialog"
+        Title="{loc:Localize XHelp_Title}"
+        Width="836" Height="716"
+        MinWidth="560" MinHeight="400"
+        CanResize="True"
+        WindowDecorations="None"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+  <!-- VcXsrv 参数帮助(设置 → X Server →「附加参数」旁的「帮助」)。外观同 TunnelHelpDialog 的无边框圆角弹窗;
+       内容来自 Core/XServer/XServerHelpCatalog:按「通用 / 扩展 / XDMCP / VcXsrv 专有」分组,
+       每条一行 —— 左列是原样照抄的参数写法(可选中复制),右列是说明,有示例的再附一段等宽示例。
+       九十多条参数,顶上给一个过滤框:按参数写法与说明文字同时匹配。 -->
+
+  <Window.Styles>
+    <Style Selector="TextBlock.group-title">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize13}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Margin" Value="0,14,0,6" />
+    </Style>
+    <Style Selector="TextBlock.help-body">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="LineHeight" Value="17" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="SelectableTextBlock.syntax">
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="SelectableTextBlock.example">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize10}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="Border.chip">
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Padding" Value="6,2" />
+      <Setter Property="Margin" Value="0,0,6,6" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.dlg-outline">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Height" Value="30" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+    </Style>
+  </Window.Styles>
+
+  <Border x:Name="RootBorder"
+          CornerRadius="8"
+          Background="{DynamicResource VelaBgSurface}"
+          BorderBrush="{DynamicResource VelaBorderSecondary}"
+          BorderThickness="1"
+          BoxShadow="{DynamicResource VelaShadowWindow}"
+          Margin="16"
+          ClipToBounds="True">
+    <Grid RowDefinitions="48,Auto,*,52">
+
+      <!-- 标题栏(可拖动) -->
+      <Border Grid.Row="0" Padding="20,0"
+              Background="Transparent"
+              PointerPressed="Header_PointerPressed"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
+              BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <pc:LucideIcon Width="15" Height="15"
+                         Data="{StaticResource Icon.circle-help}"
+                         Foreground="{DynamicResource VelaAccent}"
+                         VerticalAlignment="Center" Margin="0,0,10,0" />
+          <TextBlock Grid.Column="1" Text="{loc:Localize XHelp_Title}"
+                     Foreground="{DynamicResource VelaTextPrimary}"
+                     FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" />
+          <Button Grid.Column="2" Width="24" Height="24"
+                  Background="Transparent" Padding="0" CornerRadius="3"
+                  Cursor="Hand" Click="Close_Click"
+                  VerticalAlignment="Center">
+            <pc:LucideIcon Width="13" Height="13"
+                           Data="{DynamicResource Icon.x}"
+                           Foreground="{DynamicResource VelaTextTertiary}" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <!-- 说明 + 过滤框 -->
+      <StackPanel Grid.Row="1" Margin="20,12,20,4" Spacing="10">
+        <TextBlock Classes="help-body" Text="{loc:Localize XHelp_Intro}" />
+        <TextBox x:Name="FilterBox"
+                 PlaceholderText="{loc:Localize XHelp_FilterPlaceholder}"
+                 TextChanged="FilterBox_TextChanged">
+          <TextBox.InnerLeftContent>
+            <pc:LucideIcon Width="12" Height="12" Margin="10,0,2,0"
+                           Data="{StaticResource Icon.search}"
+                           Foreground="{DynamicResource VelaTextMuted}" />
+          </TextBox.InnerLeftContent>
+        </TextBox>
+      </StackPanel>
+
+      <!-- 内容区 -->
+      <ScrollViewer Grid.Row="2" Margin="20,0,8,8" Padding="0,0,12,0">
+        <StackPanel>
+          <ItemsControl x:Name="GroupsList">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="views:XServerHelpSection">
+                <StackPanel>
+                  <TextBlock Classes="group-title" Text="{Binding Title}" />
+                  <!-- 可运行时开关的扩展名单(只有「扩展」一组有)。 -->
+                  <StackPanel IsVisible="{Binding HasExtensions}" Spacing="6" Margin="0,0,0,8">
+                    <TextBlock Classes="help-body" Text="{loc:Localize XHelp_ExtensionsNote}" />
+                    <ItemsControl ItemsSource="{Binding Extensions}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <WrapPanel />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="sys:String">
+                          <Border Classes="chip">
+                            <TextBlock Text="{Binding}"
+                                       FontFamily="{DynamicResource VelaUiMonoFont}"
+                                       FontSize="{DynamicResource VelaFontSize10}"
+                                       Foreground="{DynamicResource VelaTextSecondary}" />
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                  <Border
+                          BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="1"
+                          CornerRadius="6" ClipToBounds="True">
+                    <ItemsControl ItemsSource="{Binding Rows}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="views:XServerHelpRow">
+                          <Border Padding="12,8"
+                                  BorderBrush="{DynamicResource VelaBorderPrimary}"
+                                  BorderThickness="{Binding Separator}">
+                            <Grid ColumnDefinitions="230,*">
+                              <SelectableTextBlock Classes="syntax" Text="{Binding Syntax}" />
+                              <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="4">
+                                <TextBlock Classes="help-body" Text="{Binding Description}" />
+                                <SelectableTextBlock Classes="example" Text="{Binding Example}"
+                                                     IsVisible="{Binding HasExample}" />
+                              </StackPanel>
+                            </Grid>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </Border>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock x:Name="NoMatchText" Classes="help-body" Margin="0,16,0,0"
+                     HorizontalAlignment="Center"
+                     IsVisible="False"
+                     Text="{loc:Localize XHelp_NoMatch}" />
+        </StackPanel>
+      </ScrollViewer>
+
+      <!-- 按钮栏 -->
+      <Border Grid.Row="3" Padding="20,0"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
+              BorderThickness="0,1,0,0">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Classes="help-body" VerticalAlignment="Center"
+                     Foreground="{DynamicResource VelaTextMuted}"
+                     Text="{loc:Localize XHelp_Source}" />
+          <Button Grid.Column="1" Classes="dlg-outline" Click="Close_Click"
+                  Content="{loc:Localize Close}" VerticalAlignment="Center" />
+        </Grid>
+      </Border>
+
+    </Grid>
+  </Border>
+</Window>
