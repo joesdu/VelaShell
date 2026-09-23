@@ -385,10 +385,12 @@ public sealed class X11Forwarder : IAsyncDisposable
             // 少跑一个外部程序就少一条攻击面。
             IReadOnlyList<XAuthorityEntry> entries =
                 await XAuthority.LoadAsync(options.XAuthorityPath, cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<IPAddress> addresses =
+                await XAuthority.ResolveHostAddressesAsync(display, cancellationToken).ConfigureAwait(false);
 
             // 找不到就用随机数据（与 OpenSSH 一致）：让 X server 去拒绝，
             // 比我们在这里猜一个「大概对」的 cookie 好。
-            return XAuthority.FindCookie(entries, display) ?? X11SetupMessage.CreateFakeCookie();
+            return XAuthority.FindCookie(entries, display, hostAddresses: addresses) ?? X11SetupMessage.CreateFakeCookie();
         }
 
         return await GenerateUntrustedCookieAsync(display, options, cancellationToken)

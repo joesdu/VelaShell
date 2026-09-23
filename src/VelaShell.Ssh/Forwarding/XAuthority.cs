@@ -6,6 +6,8 @@
 //   行为规格:   velashell-docs/zh/ssh/spec/07-forwarding.md §7.5.7
 
 using System.Buffers.Binary;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 
 namespace VelaShell.Ssh.Forwarding;
@@ -139,22 +141,48 @@ public static class XAuthority
     /// <summary>找出某个显示的 <c>MIT-MAGIC-COOKIE-1</c>。</summary>
     /// <param name="entries">记录。</param>
     /// <param name="display">要找的显示。</param>
-    /// <param name="hostName">本机主机名；<see langword="null"/> 取当前机器名。</param>
+    /// <param name="hostName">本机主机名；<see langword="null"/> 取 <see cref="Dns.GetHostName"/>。</param>
+    /// <param name="hostAddresses">
+    /// 显示主机解析出来的地址；<see langword="null"/> 时只认主机本身就是 IP 字面量的情况。
+    /// 主机是域名时由调用方先解析好（见 <see cref="ResolveHostAddressesAsync"/>）。
+    /// </param>
     /// <returns>找到返回 cookie，否则 <see langword="null"/>。</returns>
     /// <remarks>
+    /// <para>
     /// 匹配规则：协议名必须是 <c>MIT-MAGIC-COOKIE-1</c>；显示号要对上
     /// （按十进制<b>数值</b>比，<c>"05"</c> 与显示 5 算对上；记录里的显示号是空串时当通配；
     /// 带符号、空白或其它字符而解析不了的不匹配）；地址族是
-    /// <see cref="FamilyWild"/> 时不看地址，是 <see cref="FamilyLocal"/>
-    /// 时按主机名比（<b>不区分大小写</b> —— 主机名本来就不区分）。
+    /// <see cref="FamilyWild"/> 时不看地址。
+    /// </para>
+    /// <para>
+    /// <see cref="FamilyLocal"/> 按主机名比（<b>不区分大小写</b>），但<b>只在显示指向本机时</b>
+    /// （本机显示、回环地址、或主机名就是本机名 —— 与 Xlib 一致）。
+    /// 网络族（<see cref="FamilyInternet"/> / <see cref="FamilyInternet6"/>）<b>必须地址逐字节相等</b>。
+    /// </para>
+    /// <para>
+    /// ⚠️ 两条都是为了<b>不把一台 X server 的 cookie 交给另一台</b>：真 cookie 会被写进
+    /// 发往 <paramref name="display"/> 的建立报文里。<c>DISPLAY=otherhost:0</c> 时要是拿了
+    /// 本机 <c>:0</c> 的那条，等于把本机显示的钥匙送给了 otherhost。
+    /// </para>
     /// </remarks>
     public static byte[]? FindCookie(
-        IReadOnlyList<XAuthorityEntry> entries, X11Display display, string? hostName = null)
+        IReadOnlyList<XAuthorityEntry> entries,
+        X11Display display,
+        string? hostName = null,
+        IReadOnlyList<IPAddress>? hostAddresses = null)
     {
         ArgumentNullException.ThrowIfNull(entries);
         ArgumentNullException.ThrowIfNull(display);
 
         string host = hostName ?? SafeHostName();
+        IReadOnlyList<IPAddress> addresses = hostAddresses
+            ?? (IPAddress.TryParse(display.Host, out IPAddress? literal) ? [literal] : []);
+
+        // Xlib 连本机（包括走回环 TCP）时用本机主机名找授权。
+        bool refersToLocalHost =
+            display.IsLocal
+            || addresses.Any(IPAddress.IsLoopback)
+            || (host.Length != 0 && string.Equals(display.Host, host, StringComparison.OrdinalIgnoreCase));
 
         foreach (XAuthorityEntry entry in entries)
         {
@@ -173,12 +201,11 @@ public static class XAuthority
             bool addressMatches = entry.Family switch
             {
                 FamilyWild => true,
-                FamilyLocal => string.Equals(
+                FamilyLocal => refersToLocalHost && string.Equals(
                     Encoding.ASCII.GetString(entry.Address), host, StringComparison.OrdinalIgnoreCase),
-
-                // 网络族：本机显示时不该拿它来开本机的门，但远程显示时它就是对的。
-                // 这里只在显示本身是远程时才比。
-                _ => !display.IsLocal,
+                FamilyInternet => AddressMatches(entry.Address, addresses, AddressFamily.InterNetwork),
+                FamilyInternet6 => AddressMatches(entry.Address, addresses, AddressFamily.InterNetworkV6),
+                _ => false,
             };
 
             if (addressMatches)
@@ -212,11 +239,58 @@ public static class XAuthority
             && number == wanted;
     }
 
+    /// <summary>解析显示主机的地址，给 <see cref="FindCookie"/> 比网络族用。</summary>
+    /// <remarks>本机显示与 IP 字面量不查 DNS；解析失败返回空 —— 于是只剩通配条目能匹配。</remarks>
+    public static async ValueTask<IReadOnlyList<IPAddress>> ResolveHostAddressesAsync(
+        X11Display display, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(display);
+
+        if (IPAddress.TryParse(display.Host, out IPAddress? literal))
+        {
+            return [literal];
+        }
+
+        if (display.IsLocal)
+        {
+            return [];
+        }
+
+        try
+        {
+            return await Dns.GetHostAddressesAsync(display.Host, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SocketException)
+        {
+            return [];
+        }
+    }
+
+    private static bool AddressMatches(byte[] entryAddress, IReadOnlyList<IPAddress> addresses, AddressFamily family)
+    {
+        foreach (IPAddress candidate in addresses)
+        {
+            IPAddress address = candidate.IsIPv4MappedToIPv6 ? candidate.MapToIPv4() : candidate;
+            if (address.AddressFamily == family && address.GetAddressBytes().AsSpan().SequenceEqual(entryAddress))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>本机主机名。</summary>
+    /// <remarks>
+    /// ⚠️ 用 <see cref="Dns.GetHostName"/> 而不是 <see cref="Environment.MachineName"/>：
+    /// 后者在类 Unix 上会在第一个 <c>.</c> 处截断，而 <c>.Xauthority</c> 里存的是
+    /// <c>gethostname()</c> 的完整值 —— 主机名带域名的机器上就永远对不上。
+    /// </remarks>
     private static string SafeHostName()
     {
         try
         {
-            return Environment.MachineName;
+            return Dns.GetHostName();
         }
         catch (Exception)
         {
