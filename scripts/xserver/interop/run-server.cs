@@ -35,6 +35,7 @@ await using X11Server server = new(new XServerOptions
     ScreenHeight = 1080,
     Log = line => Console.WriteLine($"[x] {line}"),
 }, host);
+host.Server = server;
 await server.StartAsync();
 Console.WriteLine($"DISPLAY=host.docker.internal:{display}");
 Console.WriteLine($"COOKIE={Convert.ToHexStringLower(cookie)}");
@@ -144,11 +145,14 @@ sealed class ShotHost(string outDir) : IXServerHost
     /// <summary>最近映射的普通(非 override-redirect)顶层窗口 —— 注入命令的目标。</summary>
     public uint? Target { get; private set; }
 
+    public X11Server? Server { get; set; }
+
     public void TopLevelMapped(XTopLevelWindow w)
     {
         if (!w.OverrideRedirect)
         {
             Target = w.Id;
+            Server?.FocusTopLevel(w.Id);   // 像窗口管理器那样把焦点给新映射的顶层(xdotool type 之类发到焦点)
         }
         Console.WriteLine($"[host] mapped 0x{w.Id:x} {w.Width}x{w.Height}+{w.X}+{w.Y} '{w.Title}' override={w.OverrideRedirect}");
     }

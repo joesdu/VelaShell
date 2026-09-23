@@ -52,6 +52,7 @@ public sealed partial class X11Server
         Register(new Extension("DOUBLE-BUFFER", DbeMajor, Dbe) { FirstError = DbeErrorBase });
         Register(new Extension("SYNC", SyncMajor, Sync) { FirstEvent = SyncEventBase, FirstError = SyncErrorBase });
         Register(new Extension("Present", PresentMajor, Present));
+        Register(new Extension("XKEYBOARD", XkbMajor, Xkb) { FirstEvent = XkbEventBase, FirstError = XkbErrorBase });
     }
 
     private void Register(Extension extension)
@@ -210,6 +211,7 @@ public sealed partial class X11Server
         CleanupCompositeDbe(client, null);
         CleanupSync(client);
         CleanupPresent(client, null);
+        CleanupXkb(client);
         foreach (var key in _randrSelections.Keys.Where(k => ReferenceEquals(k.Client, client)).ToArray())
         {
             _randrSelections.Remove(key);

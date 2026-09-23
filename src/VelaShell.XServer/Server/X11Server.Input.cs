@@ -27,7 +27,11 @@ public sealed partial class X11Server
     private int _pointerX;
     private int _pointerY;
     private ushort _buttons;
+    /// <summary>生效的修饰键 = 按着的(base)| 锁存的(latched)| 锁定的(locked)。</summary>
     private ushort _modifiers;
+    private byte _baseMods;
+    private byte _latchedMods;
+    private byte _lockedMods;
     private readonly byte[] _keysDown = new byte[32];
 
     /// <summary>键盘焦点:null = None;<see cref="Root" /> = PointerRoot;其余为具体窗口。</summary>
@@ -498,25 +502,16 @@ public sealed partial class X11Server
                 pressed ? XEventMask.KeyPress : XEventMask.KeyRelease, source);
         }
 
-        // 更新修饰键状态(Lock 类按下翻转;其余按住生效)。
+        // 更新修饰键状态:Lock 类(Caps_Lock、Num_Lock)按下翻转锁定位;其余由「当前按着的键」重新算出,
+        // 两个 Shift 同时按着、松开一个时 Shift 仍然生效。
         ushort modBit = _keymap.ModifierBitOf(keycode);
         if (modBit != 0)
         {
-            if (_keymap.IsLockingKey(keycode))
+            if (_keymap.IsLockingKey(keycode) && pressed && !wasDown)
             {
-                if (pressed && !wasDown)
-                {
-                    _modifiers ^= modBit;
-                }
+                _lockedMods ^= (byte)modBit;
             }
-            else if (pressed)
-            {
-                _modifiers |= modBit;
-            }
-            else
-            {
-                _modifiers &= (ushort)~modBit;
-            }
+            UpdateModifierState(keycode, pressed ? XEventCode.KeyPress : XEventCode.KeyRelease);
         }
 
         if (!pressed && _keyboardGrab is { ReleaseWhenButtonsUp: true } && _passiveKeyGrabKey == keycode)
@@ -527,6 +522,32 @@ public sealed partial class X11Server
     }
 
     private byte _passiveKeyGrabKey;
+
+    /// <summary>从按着的修饰键重新算 base,合成生效状态;变了就通知(XKB 的 StateNotify)。</summary>
+    private void UpdateModifierState(byte keycode, byte eventType, byte requestMajor = 0, byte requestMinor = 0)
+    {
+        byte oldBase = _baseMods, oldLatched = _latchedMods, oldLocked = _lockedMods;
+        ushort oldEffective = _modifiers;
+        byte held = 0;
+        for (int code = Keymap.MinKeycode; code <= Keymap.MaxKeycode; code++)
+        {
+            if ((_keysDown[code >> 3] & (1 << (code & 7))) != 0 && !_keymap.IsLockingKey((byte)code))
+            {
+                held |= (byte)_keymap.ModifierBitOf((byte)code);
+            }
+        }
+        _baseMods = held;
+        _modifiers = (ushort)(_baseMods | _latchedMods | _lockedMods);
+        ushort changed = 0;
+        changed |= (ushort)(_modifiers != oldEffective ? 1 : 0);
+        changed |= (ushort)(_baseMods != oldBase ? 2 : 0);
+        changed |= (ushort)(_latchedMods != oldLatched ? 4 : 0);
+        changed |= (ushort)(_lockedMods != oldLocked ? 8 : 0);
+        if (changed != 0)
+        {
+            NotifyXkbState(changed, keycode, eventType, requestMajor, requestMinor);
+        }
+    }
 
     /// <summary>按键事件的源窗口:焦点是 PointerRoot 时是指针所在窗口;指针在焦点窗口里面时是指针所在窗口;否则是焦点窗口。</summary>
     private XWindow? KeyboardSource()
@@ -869,6 +890,7 @@ public sealed partial class X11Server
             keysyms[i] = r.U32();
         }
         _keymap.Change(first, per, keysyms);
+        NotifyXkbMapChanged();
         _ = c;
         foreach (XClient client in _clients.Values)
         {
@@ -887,6 +909,7 @@ public sealed partial class X11Server
         int per = r.Data;
         byte[] map = r.Bytes(per * 8);
         _keymap.SetModifierMap(map);
+        NotifyXkbMapChanged();
         c.Reply(0, w => w.Zero(24));
         foreach (XClient client in _clients.Values)
         {
