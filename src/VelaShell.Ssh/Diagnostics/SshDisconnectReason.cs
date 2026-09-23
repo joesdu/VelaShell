@@ -5,11 +5,9 @@
 //   RFC 4250 §4.2.2  Disconnection Messages Reason Codes —— 本表全部取值
 //
 // 说明:这张表是协议规定的事实,任何正确的实现都必然给出同样的名字与数值 ——
-// 它落在 NOTICE.md 所说的「表达方式唯一、不受版权保护」那一类里,
-// 相似度门禁对本文件设白名单(见 scripts/ssh/similarity-gate/allowlist.txt)。
+// 它落在 NOTICE.md 所说的「表达方式唯一、不受版权保护」那一类里。
 //
-// 它从 SshExceptions.cs 里拆出来,正是为了让那个文件**不必**整体进白名单 ——
-// 那里还有真正有表达性的异常层级,不该一起失去监视。
+// 它从 SshExceptions.cs 里拆出来:那里是真正有表达性的异常层级,这里只是协议码表。
 
 namespace VelaShell.Ssh.Diagnostics;
 /// <summary><c>SSH_MSG_DISCONNECT</c> 的原因码（RFC 4250 §4.2.2）。</summary>

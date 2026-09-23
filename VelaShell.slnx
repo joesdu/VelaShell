@@ -46,11 +46,6 @@
     <File Path="scripts/ssh/interop/Dockerfile" />
     <File Path="scripts/ssh/interop/Start-TestServer.ps1" />
     <File Path="scripts/ssh/interop/Stop-TestServer.ps1" />
-    <File Path="scripts/ssh/similarity-gate/README.md" />
-    <File Path="scripts/ssh/similarity-gate/similarity-gate.cs" />
-    <File Path="scripts/ssh/similarity-gate/sources.json" />
-    <File Path="scripts/ssh/similarity-gate/allowlist.txt" />
-    <File Path="scripts/ssh/similarity-gate/boilerplate.cs.txt" />
   </Folder>
   <Folder Name="/plugins/">
     <File Path="plugins/Directory.Build.props" />

@@ -84,7 +84,7 @@ Docker 与 `docker-compose.test.yml`,`CrossPlatformPublishTests` 需 `VELASHELL_
 - **改 `src/VelaShell.Ssh/` 之前先读 [`src/VelaShell.Ssh/AGENTS.md`](src/VelaShell.Ssh/AGENTS.md)**。
 那是宿主的 SSH 库(2026-09-23 从 velashell-ssh 仓库并入,不单独发 NuGet),有一条宿主其余部分没有的
 **净室规程**:写实现时不许打开任何其它 SSH 实现的源码,实现依据只能是 RFC 与 velashell-docs 的
-`zh/ssh/spec/`;CI 的相似度门禁(`ssh-checks` 作业)会把关。该目录按 **MIT** 授权,
+`zh/ssh/spec/`。该目录按 **MIT** 授权,
 别把宿主其余部分的代码挪进去。它的测试一律用 Debug 跑(Release 签名会省掉 `InternalsVisibleTo`)。
 - **插件 SDK 一律走 NuGet 包**,不做工程引用。版本在 `src/Directory.Packages.props`。
 - **不要自己决定 SDK 版本号,也不要造本地包**。宿主的改动需要 SDK 的新契约时,正确做法是:

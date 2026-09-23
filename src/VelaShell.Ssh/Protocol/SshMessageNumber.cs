@@ -9,8 +9,7 @@
 //   RFC 8308 §2.3    "ext-info" 的 SSH_MSG_EXT_INFO = 7
 //
 // 说明:本文件里的数值是协议规定的事实,任何正确的 SSH 实现都必然相同 ——
-// 它们落在 NOTICE.md 所说的「表达方式唯一、不受版权保护」那一类里,
-// 相似度门禁对本文件设白名单(见 scripts/ssh/similarity-gate/allowlist.txt)。
+// 它们落在 NOTICE.md 所说的「表达方式唯一、不受版权保护」那一类里。
 
 namespace VelaShell.Ssh.Protocol;
 

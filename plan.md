@@ -5761,7 +5761,7 @@ SSH PTY 像素尺寸贯通(原本等 `tmds/Tmds.Ssh#519`)、SSH Agent 转发、S
 | `src/VelaShell.Ssh/` | `src/VelaShell.Ssh/` | 库本体。**该目录仍按 MIT 授权**:`LICENSE` / `NOTICE.md` 随目录一起搬来,与本仓库其余部分的双授权不同 |
 | `AGENTS.md` | `src/VelaShell.Ssh/AGENTS.md` | 改写成库专属约定:净室规程、依赖纪律、BcryptPbkdf 那一处例外;通用约定指回根 AGENTS.md |
 | `tests/VelaShell.Ssh.Tests/` | `tests/VelaShell.Ssh.Tests/` | 568 条(549 通过 + 19 条 Interop 在无靶机时 Inconclusive) |
-| `eng/` | `scripts/ssh/` | 相似度门禁、互操作靶机脚本、压缩严格校验、基准、公开面清单生成 |
+| `eng/` | `scripts/ssh/` | 互操作靶机脚本、压缩严格校验、基准、公开面清单生成(原来的相似度门禁没有搬,见下文「三、CI」) |
 | `docs/` | velashell-docs 仓库 `zh/ssh/` + `en/ssh/` | 按本仓库「文档一律去 velashell-docs」的规矩;英文镜像是这次新译的 |
 
 **没保留 git 历史**(用户选择直接拷贝):velashell-ssh 只有 5 个提交,追溯时去那个仓库看。
@@ -5792,8 +5792,10 @@ SSH PTY 像素尺寸贯通(原本等 `tmds/Tmds.Ssh#519`)、SSH Agent 转发、S
 
 `ci.yml` 加两个作业、改一处过滤:
 
-- `ssh-checks`:压缩严格校验 + 相似度门禁(先拉语料、再拿语料比对它自己做**必须报警**的自检、最后比对
-  `src/VelaShell.Ssh`)。本机实测覆盖率 0.23%(阈值 1%)。
+- `ssh-checks`:压缩严格校验(单独一个进程跑,理由见 `ci.yml` 注释)。
+  库原仓库还有一道「相似度门禁」(拉 Tmds.Ssh / SSH.NET 源码做 token 级指纹比对,证明是独立实现),
+  并入时先接进了 CI,随后按用户决定**整体移除**:脚本目录、CI 步骤、`.gitignore` 条目、
+  AGENTS.md 净室规程里的那一条、NOTICE.md 的实测数据与代码注释里的白名单说明一并删掉。
 - `ssh-interop`:两版 OpenSSH 容器的互操作矩阵,只在推 main 与手动触发时跑;为此 `on:` 加了
   `workflow_dispatch`。用 Debug —— Release 签名会省掉友元声明,测试工程编不过。
 - 主测试作业的过滤加上 `TestCategory!=Interop`(没有靶机时它们本来也只是 Inconclusive,跑一遍白花时间)。

@@ -26,7 +26,7 @@
 | --- | --- |
 | `src/VelaShell.Ssh/` | 库本体 |
 | `tests/VelaShell.Ssh.Tests/` | 单元测试（全部走内存传输）与 `[TestCategory("Interop")]` 互操作用例 |
-| `scripts/ssh/` | 相似度门禁、互操作靶机脚本、压缩严格校验检查、性能基准、公开面清单生成 |
+| `scripts/ssh/` | 互操作靶机脚本、压缩严格校验检查、性能基准、公开面清单生成 |
 
 ---
 
@@ -42,8 +42,7 @@
 | 3 | **标识符体系整体另起** | 不复用其它库的类名 / 方法名 / 字段名 / 枚举成员名的**组合**。对照表见 architecture.md §6.1 |
 | 4 | **架构真的不同** | Pipelines 替手写缓冲、状态机 + 发送闸门替信号量握手、统一 `RequestLedger` 替多套 pending、`IDuplexPipe` 替双 buffer 读。**这一条是前三条的地基** |
 | 5 | **测试向量只取公开来源** | RFC 向量、NIST CAVP、OpenSSH regress 的**思路**。不复制任何他人的测试文件 |
-| 6 | **相似度门禁** | [`scripts/ssh/similarity-gate/`](../../scripts/ssh/similarity-gate/) 每次 CI 跑（`ci.yml` 的 `ssh-checks` 作业）。**别等最后再补**。本机跑之前**先 `--fetch`** —— 没有语料时它会输出一个毫无意义的 `0.00%`，看输出第一行的「语料: N 个文件」确认 N 不是 0 |
-| 7 | **NOTICE 如实写** | 致谢是诚实，不是风险。见 `NOTICE.md` |
+| 6 | **NOTICE 如实写** | 致谢是诚实，不是风险。见 `NOTICE.md` |
 
 > **例外（不必紧张的部分）**：协议常量必然相同，且不受版权保护 ——
 > 消息号（`SSH_MSG_KEXINIT = 20`）、算法名字符串（`"curve25519-sha256"`）、

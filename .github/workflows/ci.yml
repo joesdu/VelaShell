@@ -136,16 +136,11 @@ jobs:
           if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
-  # VelaShell.Ssh 的专项门禁(库 2026-09-23 从 VelaShellLabs/velashell-ssh 并入,
-  # 两条门禁随库一起搬过来)。库本身的构建与单元测试已经在上面的 test 作业里。
-  #
-  # 相似度门禁 —— src/VelaShell.Ssh/AGENTS.md §2 纪律 6。
-  # 这是那个库的立身之本:任何人质疑「这是不是某个库的改名版」时,
-  # 回答是「每次提交都自动比对,阈值在这,历史记录在这」。
-  # **不要为了让 CI 过而放宽阈值。** 红了就去重写那一段。
+  # VelaShell.Ssh 的专项检查(库 2026-09-23 从 VelaShellLabs/velashell-ssh 并入)。
+  # 库本身的构建与单元测试已经在上面的 test 作业里。
   # ---------------------------------------------------------------------------
   ssh-checks:
-    name: VelaShell.Ssh · 相似度门禁与严格校验
+    name: VelaShell.Ssh · 压缩严格校验
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -159,40 +154,6 @@ jobs:
       # 而同进程并行的用例没法各设各的。所以单跑一个进程。
       - name: 压缩 · 严格校验开关
         run: dotnet run scripts/ssh/compression/verify-strict-validation.cs
-
-      # 语料只活在 runner 的临时目录里,绝不进仓库。
-      - name: 拉取比对语料
-        run: dotnet run scripts/ssh/similarity-gate/similarity-gate.cs -- --fetch
-
-      - name: 自检 —— 检测器对照抄必须报警
-        # 拿语料当「我们的代码」比对它自己:如果这一步**通过**了,
-        # 说明检测器坏了,后面那次真正的比对也就毫无意义。
-        run: |
-          set +e
-          dotnet run scripts/ssh/similarity-gate/similarity-gate.cs -- \
-            --ours scripts/ssh/similarity-gate/.corpus/tmds-ssh \
-            --corpus scripts/ssh/similarity-gate/.corpus/tmds-ssh
-          rc=$?
-          set -e
-          # 必须恰好是 1(「相似度超限」)。
-          # 0 = 检测器对完全相同的源码没报警,门禁已失效。
-          # 2 = 语料是空的 —— 那这一步根本没比对任何东西。
-          if [ $rc -ne 1 ]; then
-            echo "::error::自检失败(退出码 $rc,期望 1)。门禁不可信,拒绝继续。"
-            exit 1
-          fi
-          echo "自检通过(检测器对照抄报警,退出码 1)。"
-
-      - name: 比对 src/VelaShell.Ssh
-        run: dotnet run scripts/ssh/similarity-gate/similarity-gate.cs
-
-      - name: 上传报告
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ssh-similarity-report
-          path: scripts/ssh/similarity-gate/.reports/
-          if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
   # VelaShell.Ssh 互操作矩阵(velashell-docs 仓库 zh/ssh/design/architecture.md §10.3)。

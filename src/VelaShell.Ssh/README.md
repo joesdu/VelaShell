@@ -85,13 +85,6 @@ dotnet test tests/VelaShell.Ssh.Tests/VelaShell.Ssh.Tests.csproj --filter "TestC
 pwsh scripts/ssh/interop/Stop-TestServer.ps1
 ```
 
-**相似度门禁**（CI 每次跑；本机跑之前先 `--fetch`）：
-
-```bash
-dotnet run scripts/ssh/similarity-gate/similarity-gate.cs -- --fetch
-dotnet run scripts/ssh/similarity-gate/similarity-gate.cs
-```
-
 **性能基准**（BenchmarkDotNet，单文件应用，不进 CI 门禁）。Release 在本仓库意味着强名签名，
 本机没有 `VelaShell.snk`，所以关掉签名：
 

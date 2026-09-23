@@ -376,11 +376,6 @@ FodyWeavers.xsd
 dist/
 out/
 
-# VelaShell.Ssh 相似度门禁在 CI 的临时目录里拉取对比源码 —— 绝不进仓库。
-# 这不只是体积问题:把别人的源码放进本仓库,恰好是 src/VelaShell.Ssh/AGENTS.md §2 纪律 2 要防的那件事。
-scripts/ssh/similarity-gate/.corpus/
-scripts/ssh/similarity-gate/.reports/
-
 # VelaShell.Ssh 互操作测试的本地私密配置(靶机地址与凭据)
 tests/**/interop.local.json
 *.local.env
