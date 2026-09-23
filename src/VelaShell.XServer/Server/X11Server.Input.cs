@@ -34,6 +34,9 @@ public sealed partial class X11Server
     private byte _lockedMods;
     private readonly byte[] _keysDown = new byte[32];
 
+    /// <summary>按着的按钮(1–255;XI2 的 buttons 掩码要全部按钮,核心 state 只有 1–5)。</summary>
+    private readonly byte[] _buttonsDown = new byte[32];
+
     /// <summary>键盘焦点:null = None;<see cref="Root" /> = PointerRoot;其余为具体窗口。</summary>
     private XWindow? _focus;
     private byte _focusRevertTo;
@@ -189,6 +192,10 @@ public sealed partial class X11Server
     private void MovePointer(int rootX, int rootY)
     {
         bool moved = rootX != _pointerX || rootY != _pointerY;
+        if (moved && rootX >= 0 && _pointerX >= 0)
+        {
+            SendRawEvent(XiRawMotion, 0, rootX - _pointerX, rootY - _pointerY);
+        }
         _pointerX = rootX;
         _pointerY = rootY;
         UpdatePointerWindow();
@@ -239,13 +246,16 @@ public sealed partial class X11Server
                     EventMask = passive.Grab.EventMask,
                     Cursor = passive.Grab.Cursor,
                     ReleaseWhenButtonsUp = true,
+                    Xi2 = passive.Grab.Xi2,
+                    Xi2Mask = passive.Grab.Xi2Mask,
                 };
             }
-            (XWindow Window, XClient Client, uint Mask)? delivered = DeliverDeviceEvent(
-                XEventCode.ButtonPress, (byte)button, XEventMask.ButtonPress, _pointerWindow);
+            _buttonsDown[button >> 3] |= (byte)(1 << (button & 7));
+            SendRawEvent(XiRawButtonPress, (uint)button, 0, 0);
+            Delivery? delivered = DeliverDeviceEvent(XEventCode.ButtonPress, (byte)button, XEventMask.ButtonPress, _pointerWindow);
             if (_pointerGrab is null && delivered is { } d)
             {
-                // 自动抓取:按下的那个窗口在所有按钮松开之前独占指针事件(协议「ButtonPress」)。
+                // 自动抓取:按下的那个窗口在所有按钮松开之前独占指针事件(协议「ButtonPress」;XI2 同理,格式跟着收到的那种走)。
                 _pointerGrab = new ActiveGrab
                 {
                     Client = d.Client,
@@ -253,13 +263,17 @@ public sealed partial class X11Server
                     OwnerEvents = (d.Mask & (uint)XEventMask.OwnerGrabButton) != 0,
                     EventMask = d.Mask,
                     ReleaseWhenButtonsUp = true,
+                    Xi2 = d.Xi2,
+                    Xi2Mask = d.Xi2Mask,
                 };
             }
             _buttons |= bit;
         }
         else
         {
+            SendRawEvent(XiRawButtonRelease, (uint)button, 0, 0);
             DeliverDeviceEvent(XEventCode.ButtonRelease, (byte)button, XEventMask.ButtonRelease, _pointerWindow);
+            _buttonsDown[button >> 3] &= (byte)~(1 << (button & 7));
             _buttons &= (ushort)~bit;
             if (_buttons == 0 && _pointerGrab is { ReleaseWhenButtonsUp: true })
             {
@@ -269,11 +283,15 @@ public sealed partial class X11Server
         }
     }
 
+    /// <summary>一次投递的落点:收到事件的窗口、客户端、核心掩码;经 XI2 收到时 <see cref="Xi2" /> 为真。</summary>
+    private readonly record struct Delivery(XWindow Window, XClient Client, uint Mask, bool Xi2, ulong Xi2Mask, bool Xi2Slave);
+
     /// <summary>
-    /// 投递一个设备事件:有主动抓取按抓取规则走,否则从源窗口向上传播到第一个有人选了它的窗口。
-    /// 返回实际收到事件的(窗口, 客户端, 该客户端在那个窗口上的掩码),没人收时为 null。
+    /// 投递一个设备事件:有主动抓取按抓取规则走,否则从源窗口向上传播到第一个有人选了它的窗口
+    /// (核心事件掩码或 XI2 事件掩码都算)。在那个窗口上,选了核心事件的收核心事件,选了 XI2 的收 XI2 事件。
+    /// XI2 的 evtype 与核心事件码相同(KeyPress 2 … Motion 6)。返回第一个收到事件的落点,没人收时为 null。
     /// </summary>
-    private (XWindow Window, XClient Client, uint Mask)? DeliverDeviceEvent(byte code, byte detail, XEventMask mask, XWindow source)
+    private Delivery? DeliverDeviceEvent(byte code, byte detail, XEventMask mask, XWindow source)
     {
         bool isKey = code is XEventCode.KeyPress or XEventCode.KeyRelease;
         ActiveGrab? grab = isKey ? _keyboardGrab : _pointerGrab;
@@ -285,38 +303,72 @@ public sealed partial class X11Server
 
         if (grab is not null)
         {
-            if (grab.OwnerEvents && Propagate(source, mask, grab.Client, stopAt) is { } own)
+            if (grab.OwnerEvents && Propagate(source, mask, code, grab.Client, stopAt) is { } own)
             {
-                SendDeviceEvent(own.Client, code, detail, own.Window, source, own.Mask);
+                Send(own);
                 return own;
+            }
+            if (grab.Xi2)
+            {
+                if ((grab.Xi2Mask & (1UL << code)) == 0)
+                {
+                    return null;
+                }
+                Delivery xi = new(grab.Window, grab.Client, 0, true, grab.Xi2Mask, false);
+                Send(xi);
+                return xi;
             }
             if (isKey || (grab.EventMask & (uint)mask) != 0)
             {
                 SendDeviceEvent(grab.Client, code, detail, grab.Window, source, grab.EventMask);
-                return (grab.Window, grab.Client, grab.EventMask);
+                return new Delivery(grab.Window, grab.Client, grab.EventMask, false, 0, false);
             }
             return null;
         }
 
-        return Propagate(source, mask, null, stopAt) is { } hit ? SendToAll(hit.Window) : null;
+        return Propagate(source, mask, code, null, stopAt) is { } hit ? SendToAll(hit.Window) : null;
 
-        (XWindow, XClient, uint)? SendToAll(XWindow window)
+        void Send(Delivery d)
         {
-            (XWindow, XClient, uint)? first = null;
+            if (d.Xi2)
+            {
+                SendXi2DeviceEvent(d.Client, code, detail, d.Window, source, d.Xi2Slave);
+            }
+            else
+            {
+                SendDeviceEvent(d.Client, code, detail, d.Window, source, d.Mask);
+            }
+        }
+
+        Delivery? SendToAll(XWindow window)
+        {
+            Delivery? first = null;
             foreach ((XClient client, uint selected) in window.EventSelections)
             {
                 if ((selected & (uint)mask) != 0 && !client.Closed)
                 {
                     SendDeviceEvent(client, code, detail, window, source, selected);
-                    first ??= (window, client, selected);
+                    first ??= new Delivery(window, client, selected, false, 0, false);
+                }
+            }
+            foreach ((XClient client, (ulong master, ulong slave)) in window.Xi2Selections)
+            {
+                if (((master | slave) & (1UL << code)) != 0 && !client.Closed)
+                {
+                    bool slaveOnly = (master & (1UL << code)) == 0;
+                    SendXi2DeviceEvent(client, code, detail, window, source, slaveOnly);
+                    first ??= new Delivery(window, client, 0, true, master | slave, slaveOnly);
                 }
             }
             return first;
         }
     }
 
-    /// <summary>从源窗口向上找第一个(指定客户端)选了这类事件的窗口;碰上 do-not-propagate 或 <paramref name="stopAt" /> 就停。</summary>
-    private static (XWindow Window, XClient Client, uint Mask)? Propagate(XWindow source, XEventMask mask, XClient? only, XWindow? stopAt)
+    /// <summary>
+    /// 从源窗口向上找第一个(指定客户端)选了这类事件的窗口 —— 核心掩码或 XI2 的 <paramref name="evtype" /> 都算;
+    /// 碰上 do-not-propagate 或 <paramref name="stopAt" /> 就停。
+    /// </summary>
+    private static Delivery? Propagate(XWindow source, XEventMask mask, int evtype, XClient? only, XWindow? stopAt)
     {
         for (XWindow? w = source; w is not null; w = w.Parent)
         {
@@ -324,7 +376,14 @@ public sealed partial class X11Server
             {
                 if ((selected & (uint)mask) != 0 && !client.Closed && (only is null || ReferenceEquals(client, only)))
                 {
-                    return (w, client, selected);
+                    return new Delivery(w, client, selected, false, 0, false);
+                }
+            }
+            foreach ((XClient client, (ulong master, ulong slave)) in w.Xi2Selections)
+            {
+                if (((master | slave) & (1UL << evtype)) != 0 && !client.Closed && (only is null || ReferenceEquals(client, only)))
+                {
+                    return new Delivery(w, client, 0, true, master | slave, (master & (1UL << evtype)) == 0);
                 }
             }
             if ((w.DoNotPropagateMask & (uint)mask) != 0 || ReferenceEquals(w, stopAt))
@@ -432,6 +491,7 @@ public sealed partial class X11Server
     private void Crossing(byte code, XWindow window, byte detail)
     {
         XEventMask mask = code == XEventCode.EnterNotify ? XEventMask.EnterWindow : XEventMask.LeaveWindow;
+        SendXi2Crossing(code == XEventCode.EnterNotify ? XiEnter : XiLeave, window, detail);
         if (!window.AnySelects(mask))
         {
             return;
@@ -491,10 +551,13 @@ public sealed partial class X11Server
                 Window = passive.Window,
                 OwnerEvents = passive.Grab.OwnerEvents,
                 ReleaseWhenButtonsUp = true,   // 对键盘:这个键松开时解除
+                Xi2 = passive.Grab.Xi2,
+                Xi2Mask = passive.Grab.Xi2Mask,
             };
             _passiveKeyGrabKey = keycode;
         }
 
+        SendRawEvent(pressed ? XiRawKeyPress : XiRawKeyRelease, keycode, 0, 0);
         // 事件里的 state 是事件发生前的:修饰键状态在投递之后才更新。
         if (source is not null)
         {
@@ -602,10 +665,12 @@ public sealed partial class X11Server
         if (old is { IsRoot: false })
         {
             DeliverToSelectors(old, XEventMask.FocusChange, c => c.Event(XEventCode.FocusOut, nonlinear, w => w.U32(old.Id).U8(0)));
+            SendXi2Crossing(XiFocusOut, old, nonlinear);
         }
         if (focus is { IsRoot: false })
         {
             DeliverToSelectors(focus, XEventMask.FocusChange, c => c.Event(XEventCode.FocusIn, nonlinear, w => w.U32(focus.Id).U8(0)));
+            SendXi2Crossing(XiFocusIn, focus, nonlinear);
         }
     }
 

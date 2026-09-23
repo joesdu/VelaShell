@@ -53,6 +53,7 @@ public sealed partial class X11Server
         Register(new Extension("SYNC", SyncMajor, Sync) { FirstEvent = SyncEventBase, FirstError = SyncErrorBase });
         Register(new Extension("Present", PresentMajor, Present));
         Register(new Extension("XKEYBOARD", XkbMajor, Xkb) { FirstEvent = XkbEventBase, FirstError = XkbErrorBase });
+        Register(new Extension("XInputExtension", XInputMajor, XInput) { FirstEvent = XInputEventBase, FirstError = XInputErrorBase });
     }
 
     private void Register(Extension extension)
@@ -212,6 +213,7 @@ public sealed partial class X11Server
         CleanupSync(client);
         CleanupPresent(client, null);
         CleanupXkb(client);
+        CleanupXInput(client);
         foreach (var key in _randrSelections.Keys.Where(k => ReferenceEquals(k.Client, client)).ToArray())
         {
             _randrSelections.Remove(key);
