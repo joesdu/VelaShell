@@ -149,18 +149,19 @@
                          Foreground="{DynamicResource VelaTextMuted}" />
         </Button>
         <!-- 本机 X Server(VcXsrv):点一下开、再点一下关;运行中转强调色(与资源管理器同一套写法)。
-             只在支持的平台(Windows)上出现。启动中命令不可用,按钮随之变灰,免得连点拉起两个。 -->
+             只在支持的平台(Windows)上出现。启动中命令不可用,按钮随之变灰,免得连点拉起两个。
+             Icon.xorg 是实心字形,着色走 Fill 而不是 Foreground(后者会只描出轮廓)。 -->
         <Button x:Name="XServerButton"
                 Theme="{StaticResource VelaTitleActionButton}"
                 IsVisible="{Binding XServer.IsSupported}"
                 ToolTip.Tip="{Binding XServer.ToolTip}"
                 Command="{Binding XServer.ToggleCommand}">
           <Panel>
-            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.app-window}"
-                           Foreground="{DynamicResource VelaTextMuted}"
+            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.xorg}"
+                           Fill="{DynamicResource VelaTextMuted}"
                            IsVisible="{Binding !XServer.IsRunning}" />
-            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.app-window}"
-                           Foreground="{DynamicResource VelaAccent}"
+            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.xorg}"
+                           Fill="{DynamicResource VelaAccent}"
                            IsVisible="{Binding XServer.IsRunning}" />
           </Panel>
         </Button>
