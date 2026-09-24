@@ -131,7 +131,7 @@ public sealed class XkbTests
         (byte xkb, _) = await XkbAsync(c);
 
         // 德语布局的 Q 键:q Q | 组 2 抄组 1 | AltGr → @。右 Alt 改成 ISO_Level3_Shift,从 Mod1 挪到 Mod5。
-        server.SetKeyboardMapping(24, 6, [(uint)'q', 'Q', 'q', 'Q', '@', '@']);
+        server.SetKeyboardMapping(24, 6, ['q', 'Q', 'q', 'Q', '@', '@']);
         server.SetKeyboardMapping(108, 6, [0xfe03, 0xfe03, 0, 0, 0, 0]);
         server.SetModifierMapping([50, 62, 66, 0, 37, 105, 64, 0, 77, 0, 0, 0, 133, 134, 108, 0]);
         await c.SyncAsync();
@@ -139,7 +139,7 @@ public sealed class XkbTests
         XMessage key = await c.RequestAsync(xkb, 8, b => b.U16(UseCoreKbd).U16(0).U16(0x2).U8(0).U8(0).U8(24).U8(1).Bytes(new byte[14]));
         Assert.AreEqual(5, key.Bytes[40], "FOUR_LEVEL_ALPHABETIC");
         Assert.AreEqual(4, key.Bytes[45], "宽度 4");
-        Assert.AreEqual((uint)'@', key.U32(48 + 8), "第三级 = AltGr");
+        Assert.AreEqual('@', key.U32(48 + 8), "第三级 = AltGr");
 
         XMessage types = await c.RequestAsync(xkb, 8, b => b.U16(UseCoreKbd).U16(0x1).U16(0).Bytes(new byte[18]));
         Assert.AreEqual(6, types.Bytes[16], "nTypes:四个规范类型 + 两个四级类型");
