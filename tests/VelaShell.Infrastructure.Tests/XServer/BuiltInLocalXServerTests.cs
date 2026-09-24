@@ -54,6 +54,20 @@ public class BuiltInLocalXServerTests
         CollectionAssert.AreEqual(new[] { XServerState.Starting, XServerState.Running, XServerState.Stopped }, states);
     }
 
+    /// <summary>设置里选的键盘布局在附着之前交给宿主(空串 = 跟随系统)。</summary>
+    [TestMethod]
+    [DataRow("de")]
+    [DataRow("")]
+    public async Task Start_HandsTheChosenKeyboardLayoutToTheHostBeforeAttaching(string layout)
+    {
+        RecordingHost host = new();
+        await using BuiltInLocalXServer server = Create(new XServerOptions { KeyboardLayout = layout }, host);
+
+        Assert.IsTrue((await server.StartAsync()).Success);
+
+        Assert.AreEqual(layout, host.LayoutAtAttach);
+    }
+
     [TestMethod]
     public async Task Start_WithoutHost_FailsWithoutListening()
     {
@@ -142,8 +156,16 @@ public class BuiltInLocalXServerTests
         public Task AttachAsync(X11Server server, CancellationToken cancellationToken)
         {
             Attached = server;
+            LayoutAtAttach = KeyboardLayout;
             return Task.CompletedTask;
         }
+
+        public string? KeyboardLayout { get; private set; }
+
+        /// <summary>附着那一刻宿主手里的键盘布局(要在附着之前就交给宿主)。</summary>
+        public string? LayoutAtAttach { get; private set; }
+
+        public void UseKeyboardLayout(string layout) => KeyboardLayout = layout;
 
         public void Detach() => Detaches++;
 

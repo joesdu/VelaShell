@@ -5611,10 +5611,10 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>鍵盤配置</value>
   </data>
   <data name="SetXServer_KeyboardLayoutDesc" xml:space="preserve">
-    <value>X 程式使用的 XKB 配置(-xkblayout)。自動 = 跟隨 Windows 目前的配置。</value>
+    <value>X 程式使用的鍵盤配置。自動 = 跟隨系統目前的配置;選了具體配置就照它來(VcXsrv 以 -xkblayout 傳入)。</value>
   </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
-    <value>自動 - 跟隨 Windows 目前配置</value>
+    <value>自動 - 跟隨系統目前配置</value>
   </data>
   <data name="SetXServer_KeyboardModel" xml:space="preserve">
     <value>鍵盤型號</value>

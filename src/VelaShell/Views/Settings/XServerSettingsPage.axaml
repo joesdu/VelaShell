@@ -6,7 +6,7 @@
              x:DataType="vm:SettingsViewModel">
 
   <!-- X Server 页。最前面一节选引擎:内置的 X 服务端(默认,各平台可用)或 Windows 上用户自己装的 VcXsrv。
-       两者共用显示号、剪贴板、启动;其余各节(程序、窗口模式、键盘、扩展、高级、托盘图标)只对 VcXsrv 起作用,
+       两者共用显示号、剪贴板、键盘布局、启动;其余各节(程序、窗口模式、键盘型号、扩展、高级、托盘图标)只对 VcXsrv 起作用,
        选了 VcXsrv 才出现。VcXsrv 那几节的分组参照 WindTerm 的「X Server」设置,「程序」摆最前 ——
        我们不捆绑 VcXsrv,装在哪、找没找到必须先看见。改动在下一次启动 X Server 时生效(副标题里说清)。 -->
 
@@ -134,25 +134,29 @@
 
       <Border Classes="sep" />
 
-      <!-- 键盘、扩展、高级(VcXsrv) -->
+      <!-- 键盘:布局两种引擎共用(内置引擎选「自动」时跟随系统当前的布局,选了具体布局用随程序带的键位表);
+           型号与捕获特殊按键只对 VcXsrv 起作用。 -->
+      <TextBlock Classes="section-title" Text="{loc:Localize SetXServer_SectionKeyboard}" />
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_KeyboardLayout}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_KeyboardLayoutDesc}" />
+        </StackPanel>
+        <ComboBox Grid.Column="1" Width="260" x:Name="KeyboardLayoutCombo"
+                  ItemsSource="{Binding XServerKeyboardLayouts}"
+                  SelectedIndex="{Binding XServerKeyboardLayoutIndex}" VerticalAlignment="Center">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:XServerChoice">
+              <TextBlock Text="{Binding Label}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+      </Grid>
+      <!-- 内置引擎下面直接是「启动」;VcXsrv 那一大块自己以分隔线收尾。 -->
+      <Border Classes="sep" IsVisible="{Binding !XServerUsesVcXsrv}" />
+
+      <!-- 键盘的其余两项、扩展、高级(VcXsrv) -->
       <StackPanel Spacing="14" IsVisible="{Binding XServerUsesVcXsrv}">
-        <!-- 键盘 -->
-        <TextBlock Classes="section-title" Text="{loc:Localize SetXServer_SectionKeyboard}" />
-        <Grid ColumnDefinitions="*,Auto">
-          <StackPanel Spacing="2" Margin="0,0,16,0">
-            <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_KeyboardLayout}" />
-            <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_KeyboardLayoutDesc}" />
-          </StackPanel>
-          <ComboBox Grid.Column="1" Width="260" x:Name="KeyboardLayoutCombo"
-                    ItemsSource="{Binding XServerKeyboardLayouts}"
-                    SelectedIndex="{Binding XServerKeyboardLayoutIndex}" VerticalAlignment="Center">
-            <ComboBox.ItemTemplate>
-              <DataTemplate x:DataType="vm:XServerChoice">
-                <TextBlock Text="{Binding Label}" />
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-        </Grid>
         <Grid ColumnDefinitions="*,Auto">
           <StackPanel Spacing="2" Margin="0,0,16,0">
             <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_KeyboardModel}" />

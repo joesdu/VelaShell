@@ -21,6 +21,15 @@ public interface IEmbeddedXServerHost : IXServerHost
     /// <param name="cancellationToken">取消令牌。</param>
     Task AttachAsync(X11Server server, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// 设置里选的键盘布局(XKB 布局名,如 <c>de</c>);空串 = 跟随系统当前的布局。在 <see cref="AttachAsync" /> 之前调用。
+    /// 默认实现什么也不做(不关心键盘布局的宿主不必实现)。
+    /// </summary>
+    /// <param name="layout">XKB 布局名;空串表示跟随系统。</param>
+    void UseKeyboardLayout(string layout)
+    {
+    }
+
     /// <summary>服务端要停了:关掉它所有顶层窗口对应的原生窗口,不再往它注入输入。可在任意线程上调用。</summary>
     void Detach();
 }

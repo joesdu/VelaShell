@@ -5165,10 +5165,10 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
     <value>Keyboard layout</value>
   </data>
   <data name="SetXServer_KeyboardLayoutDesc" xml:space="preserve">
-    <value>XKB layout used by X programs (-xkblayout). Auto follows the current Windows layout.</value>
+    <value>Keyboard layout used by X programs. Auto follows the system's current layout; a chosen layout is used as is (VcXsrv receives it as -xkblayout).</value>
   </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
-    <value>auto - Current layout from Windows</value>
+    <value>auto - Follow the system layout</value>
   </data>
   <data name="SetXServer_KeyboardModel" xml:space="preserve">
     <value>Keyboard model</value>

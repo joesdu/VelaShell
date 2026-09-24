@@ -295,6 +295,7 @@ public sealed class TestChannelServer : IDisposable
     /// </remarks>
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
+        _running.TrySetResult();
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -1280,8 +1281,18 @@ public sealed class TestChannelServer : IDisposable
 
     private readonly SemaphoreSlim _sendLock = new(1, 1);
 
+    /// <summary>收包循环已经开跑 —— 认证那一段对传输的最后一次写（USERAUTH_SUCCESS 的刷出）已经返回。</summary>
+    /// <remarks>
+    /// ⚠️ 认证服务端写 USERAUTH_SUCCESS 时不走 <see cref="_sendLock"/>。那份字节在 <c>FlushAsync</c> 返回之前就能到客户端，
+    /// 客户端的 ConnectAsync 随即返回，用例立刻 <see cref="RequestRekeyAsync"/> —— 这时 KEXINIT 写进的是一个
+    /// 还在刷的 PipeWriter，刷完清段时连它一起丢掉。客户端收不到 KEXINIT，用例挂在 25 秒超时上（macOS CI 上偶发）。
+    /// 所以收包循环之外的发送一律等它开跑再写：<see cref="RunAsync"/> 只在认证返回之后才被调用。
+    /// </remarks>
+    private readonly TaskCompletionSource _running = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     private async Task SendAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
     {
+        await _running.Task.WaitAsync(cancellationToken);
         await _sendLock.WaitAsync(cancellationToken);
         try
         {

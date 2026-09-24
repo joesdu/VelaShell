@@ -45,34 +45,139 @@ public sealed class AvaloniaXServerHostUiTests
     }
 
     [TestMethod]
-    public void WindowsKeymap_MapsCharactersAndDeadKeysToKeysyms()
+    public void HostKeymap_MapsCharactersAndDeadKeysToKeysyms()
     {
-        Assert.AreEqual('a', WindowsKeymap.Keysym('a'));
-        Assert.AreEqual(0xe4u, WindowsKeymap.Keysym('ä'), "Latin-1 字符就是它自己");
-        Assert.AreEqual(0x0100_20ACu, WindowsKeymap.Keysym('€'), "其余用 Unicode 键值");
-        Assert.AreEqual(0xfe52u, WindowsKeymap.DeadKeysym('^'), "dead_circumflex");
-        Assert.AreEqual(0xfe51u, WindowsKeymap.DeadKeysym('´'), "dead_acute");
-        Assert.AreEqual('@', WindowsKeymap.DeadKeysym('@'), "不认识的死键按普通字符给");
+        Assert.AreEqual('a', HostKeymap.Keysym('a'));
+        Assert.AreEqual(0xe4u, HostKeymap.Keysym('ä'), "Latin-1 字符就是它自己");
+        Assert.AreEqual(0x0100_20ACu, HostKeymap.Keysym('€'), "其余用 Unicode 键值");
+        Assert.AreEqual(0u, HostKeymap.Keysym('\u0001'), "控制字符按「打不出字符」算");
+        Assert.AreEqual(0xfe52u, HostKeymap.DeadKeysym('^'), "dead_circumflex");
+        Assert.AreEqual(0xfe52u, HostKeymap.DeadKeysym('ˆ'), "macOS 的死键给 U+02C6");
+        Assert.AreEqual(0xfe53u, HostKeymap.DeadKeysym('˜'), "macOS 的死键给 U+02DC");
+        Assert.AreEqual(0xfe51u, HostKeymap.DeadKeysym('´'), "dead_acute");
+        Assert.AreEqual('@', HostKeymap.DeadKeysym('@'), "不认识的死键按普通字符给");
     }
 
-    /// <summary>按当前布局算键位表:不打字符的键(退格、Tab、回车、Ctrl、Shift)与布局无关,永远是标准键值。</summary>
+    /// <summary>四层排成核心列:没有第三、四层时每键两列;有时六列(XKB §17:组 1 第 1、2 级,组 2 照抄,组 1 第 3、4 级),缺的层照抄。</summary>
     [TestMethod]
-    public void WindowsKeymap_KeepsNonCharacterKeysFixed()
+    public void HostKeymap_AssemblesCoreColumns()
     {
-        if (!OperatingSystem.IsWindows())
+        byte[] keycodes = [.. HostKeymap.Keycodes()];
+        Assert.HasCount(HostKeymap.LastKeycode - HostKeymap.FirstKeycode + 2, keycodes);
+        Assert.AreEqual(XKeycodes.IntlBackslash, keycodes[^1]);
+
+        (uint, uint, uint, uint)[] plain = [.. keycodes.Select(k => k == XKeycodes.Q ? ('q', 'Q', 0u, 0u) : (1u, 0u, 0u, 0u))];
+        HostKeymapResult two = HostKeymap.Assemble(plain);
+        Assert.AreEqual(2, two.PerKeycode);
+        Assert.IsFalse(two.HasAltGr);
+        Assert.AreEqual('Q', two.Main[((XKeycodes.Q - HostKeymap.FirstKeycode) * 2) + 1]);
+        Assert.AreEqual(1u, two.Main[1], "第二层缺的照抄第一层");
+
+        plain[XKeycodes.Q - HostKeymap.FirstKeycode] = ('q', 'Q', '@', 0u);
+        HostKeymapResult six = HostKeymap.Assemble(plain);
+        Assert.IsTrue(six.HasAltGr);
+        CollectionAssert.AreEqual(new uint[] { 'q', 'Q', 'q', 'Q', '@', '@' },
+            six.Main.AsSpan((XKeycodes.Q - HostKeymap.FirstKeycode) * 6, 6).ToArray(), "第四层缺的照抄第三层");
+        Assert.IsTrue(six.SameAs(HostKeymap.Assemble(plain)));
+        Assert.IsFalse(six.SameAs(two));
+    }
+
+    /// <summary>设置里手选的布局用随程序带的表:德语 y / z 互换、AltGr 层(Q 上的 @、E 上的 €);美式没有 AltGr 层;表外的名字给 null。</summary>
+    [TestMethod]
+    public void HostKeymap_BuildsChosenLayoutsFromTheBundledTable()
+    {
+        HostKeymapResult de = HostKeymap.FromBundled("de")!;
+        Assert.IsTrue(de.HasAltGr);
+        static uint At(HostKeymapResult k, byte keycode, int column) => k.Main[((keycode - HostKeymap.FirstKeycode) * k.PerKeycode) + column];
+        Assert.AreEqual('z', At(de, XKeycodes.Y, 0), "德语 QWERTZ:Y 的位置打 z");
+        Assert.AreEqual('y', At(de, XKeycodes.Z, 0));
+        Assert.AreEqual('@', At(de, XKeycodes.Q, 4), "AltGr+Q");
+        Assert.AreEqual(0x20acu, At(de, XKeycodes.E, 4), "AltGr+E = EuroSign");
+        Assert.AreEqual(0xff08u, At(de, XKeycodes.BackSpace, 0), "固定键不取表里的值");
+
+        HostKeymapResult us = HostKeymap.FromBundled("us")!;
+        Assert.IsFalse(us.HasAltGr, "美式布局没有 Level3 键");
+        Assert.AreEqual('!', At(us, XKeycodes.D1, 1));
+
+        Assert.IsNull(HostKeymap.FromBundled("xx"));
+    }
+
+    /// <summary>设置页下拉里的每个布局(「自动」除外)在随程序带的表里都有 —— 选了却没有数据就会退回系统布局,用户看不出来。</summary>
+    [TestMethod]
+    public void BundledKeymaps_CoverEveryLayoutOfferedInSettings()
+    {
+        string[] offered = [.. VelaShell.ViewModels.SettingsViewModel.BuildKeyboardLayouts().Select(c => c.Value).Where(v => v.Length != 0)];
+        Assert.IsNotEmpty(offered);
+        string[] missing = [.. offered.Where(v => !BundledKeymaps.Layouts.ContainsKey(v))];
+        Assert.IsEmpty(missing, string.Join(", ", missing));
+        Assert.IsTrue(BundledKeymaps.Layouts.Values.All(t => t.Length == HostKeymap.Keycodes().Count() * 4));
+    }
+
+    /// <summary>macOS 的虚拟键码表:要推导的键里,除了与布局无关的那几个,每个都有且互不相同。</summary>
+    [TestMethod]
+    public void MacKeymap_VirtualKeyTableCoversEveryCharacterKey()
+    {
+        int[] codes = [.. HostKeymap.Keycodes().Where(k => HostKeymap.Fixed(k) is null).Select(MacKeymap.VirtualKeyFor)];
+        Assert.IsTrue(codes.All(c => c >= 0), "每个打字符的键都有 kVK_* 对应");
+        Assert.HasCount(codes.Length, codes.Distinct());
+        Assert.AreEqual(0x00, MacKeymap.VirtualKeyFor(XKeycodes.A), "kVK_ANSI_A");
+        Assert.AreEqual(0x0A, MacKeymap.VirtualKeyFor(XKeycodes.IntlBackslash), "kVK_ISO_Section");
+    }
+
+    [TestMethod]
+    public void LinuxKeymap_ParsesDisplayNumber()
+    {
+        Assert.AreEqual(0, LinuxKeymap.DisplayNumber(":0"));
+        Assert.AreEqual(12, LinuxKeymap.DisplayNumber("localhost:12.0"));
+        Assert.AreEqual(1, LinuxKeymap.DisplayNumber("unix:1"));
+        Assert.AreEqual(-1, LinuxKeymap.DisplayNumber("wayland-0"));
+        Assert.AreEqual(-1, LinuxKeymap.DisplayNumber(":x"));
+    }
+
+    /// <summary>
+    /// 按当前系统的布局真的算一次(Windows / 有 X 显示的 Linux):不打字符的键(退格、Tab、回车、Ctrl、Shift)
+    /// 与布局无关,永远是标准键值;字母键在任何布局下都打得出字符。macOS 的 TIS 接口只能在主线程上调
+    /// (macOS 14 起在别的线程上调会断言失败、整个进程退出),测试线程不是主线程,所以 macOS 上不在这里真取。
+    /// </summary>
+    [TestMethod]
+    public void HostKeymap_BuildsFromTheCurrentSystemLayout()
+    {
+        if (OperatingSystem.IsMacOS())
         {
-            Assert.Inconclusive("只在 Windows 上按系统布局推键位表");
+            Assert.Inconclusive("macOS 的 TIS 接口只能在主线程上调,宿主在 UI 线程上调用");
             return;
         }
-        (int per, uint[] main, uint[] intl) = WindowsKeymap.Build(WindowsKeymap.CurrentLayout());
+        HostKeymapResult? keymap = OperatingSystem.IsWindows() ? WindowsKeymap.Build(WindowsKeymap.CurrentLayout())
+            : OperatingSystem.IsLinux() ? LinuxKeymap.Build(ownDisplay: -1)
+            : null;
+        if (keymap is null)
+        {
+            Assert.IsTrue(OperatingSystem.IsLinux(), "Windows 上总能按当前布局算出键位表");
+            if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
+            {
+                Assert.Inconclusive("没有 $DISPLAY:沿用服务端的 US 键位表");
+                return;
+            }
+            // 桌面标配的库在最小化的容器 / CI 镜像里可能没有:那是环境不全,不是实现的错。库都在还取不到才是真失败。
+            string[] missing = [.. new[] { "libxcb.so.1", "libxkbcommon.so.0", "libxkbcommon-x11.so.0" }
+                .Where(name => !NativeLibrary.TryLoad(name, out _))];
+            if (missing.Length > 0)
+            {
+                Assert.Inconclusive($"缺少 {string.Join("、", missing)}:沿用服务端的 US 键位表");
+                return;
+            }
+            Assert.Fail("有 $DISPLAY、库也都在,却没按桌面布局算出键位表");
+        }
+        int per = keymap.PerKeycode;
         Assert.IsTrue(per is 2 or 6, "无 AltGr 两列;有 AltGr 按 XKB §17 的核心列序六列");
-        uint At(byte keycode, int column) => main[((keycode - WindowsKeymap.FirstKeycode) * per) + column];
+        uint At(byte keycode, int column) => keymap.Main[((keycode - HostKeymap.FirstKeycode) * per) + column];
         Assert.AreEqual(0xff08u, At(XKeycodes.BackSpace, 0));
         Assert.AreEqual(0xfe20u, At(XKeycodes.Tab, 1), "Shift+Tab = ISO_Left_Tab");
         Assert.AreEqual(0xff0du, At(XKeycodes.Return, 0));
         Assert.AreEqual(0xffe1u, At(XKeycodes.ShiftLeft, 0));
         Assert.AreNotEqual(0u, At(XKeycodes.A, 0), "字母键在任何布局下都打得出字符");
-        Assert.HasCount(per, intl);
+        Assert.AreNotEqual(0u, At(XKeycodes.D1, 1), "数字行的 Shift 层也有字符");
+        Assert.HasCount(per, keymap.IntlBackslash);
         if (per == 6)
         {
             Assert.AreEqual(At(XKeycodes.A, 0), At(XKeycodes.A, 2), "组 2 照抄组 1");

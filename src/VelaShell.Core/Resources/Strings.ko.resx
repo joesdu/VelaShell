@@ -5162,10 +5162,10 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
     <value>키보드 레이아웃</value>
   </data>
   <data name="SetXServer_KeyboardLayoutDesc" xml:space="preserve">
-    <value>X 프로그램이 사용하는 XKB 레이아웃(-xkblayout)입니다. 자동은 현재 Windows 레이아웃을 따릅니다.</value>
+    <value>X 프로그램이 사용하는 키보드 레이아웃입니다. 자동은 시스템의 현재 레이아웃을 따르고, 레이아웃을 고르면 그것을 사용합니다(VcXsrv에는 -xkblayout으로 전달).</value>
   </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
-    <value>자동 - 현재 Windows 레이아웃</value>
+    <value>자동 - 시스템의 현재 레이아웃</value>
   </data>
   <data name="SetXServer_KeyboardModel" xml:space="preserve">
     <value>키보드 모델</value>
