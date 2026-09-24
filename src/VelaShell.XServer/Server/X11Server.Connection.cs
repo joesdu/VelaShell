@@ -37,7 +37,15 @@ public sealed partial class X11Server
     /// <param name="stream">双工流(TCP、Unix 套接字、SSH 的 x11 通道……)。</param>
     /// <param name="isLocal">对端是不是本机;没配置 cookie 时只接受本机连接。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    public async Task ServeAsync(Stream stream, bool isLocal = true, CancellationToken cancellationToken = default)
+    public Task ServeAsync(Stream stream, bool isLocal = true, CancellationToken cancellationToken = default) =>
+        ServeCoreAsync(stream, isLocal, sameHost: false, peerUid: null, cancellationToken);
+
+    /// <param name="stream">连接。</param>
+    /// <param name="isLocal">对端是不是本机(没配置 cookie 时只接受本机连接)。</param>
+    /// <param name="sameHost">经 Unix 套接字连进来的:MIT-SHM 对它可见。</param>
+    /// <param name="peerUid">对端的 uid(SO_PEERCRED);取不到为 null。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    private async Task ServeCoreAsync(Stream stream, bool isLocal, bool sameHost, uint? peerUid, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(stream);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -77,6 +85,8 @@ public sealed partial class X11Server
             }
 
             client = await InvokeAsync(() => RegisterClient(bigEndian)).WaitAsync(ct).ConfigureAwait(false);
+            client.SameHost = sameHost;
+            client.PeerUid = peerUid;
             // 连接的读写还要跟着「服务端主动断开这个客户端」一起停。
             connection = CancellationTokenSource.CreateLinkedTokenSource(ct, client.Aborted);
             ct = connection.Token;

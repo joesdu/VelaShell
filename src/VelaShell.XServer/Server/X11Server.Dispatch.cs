@@ -177,7 +177,7 @@ public sealed partial class X11Server
             case XOpcode.GetModifierMapping: GetModifierMapping(c); break;
             case XOpcode.NoOperation: break;
             default:
-                if (r.Opcode >= XOpcode.FirstExtension && _extensionsByOpcode.TryGetValue(r.Opcode, out Extension? ext))
+                if (r.Opcode >= XOpcode.FirstExtension && _extensionsByOpcode.TryGetValue(r.Opcode, out Extension? ext) && ext.IsVisibleTo(c))
                 {
                     ext.Handle(c, r);
                     break;

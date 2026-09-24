@@ -468,7 +468,11 @@ public sealed partial class X11Server
                     throw new XProtocolError(XErrorCode.Match);
                 }
                 depth = w.IsRoot ? (byte)24 : w.Depth;
-                if (w.IsRoot || !w.IsViewable || w.TopLevel is not { Buffer: { } b })
+                if (w.IsRoot)
+                {
+                    return ReadRoot(x, y, width, height);
+                }
+                if (!w.IsViewable || w.TopLevel is not { Buffer: { } b })
                 {
                     return null;
                 }
@@ -487,6 +491,32 @@ public sealed partial class X11Server
         {
             Array.Copy(buffer.Pixels, ((available.Y + row + oy) * buffer.Width) + available.X + ox,
                 pixels, row * available.Width, available.Width);
+        }
+        return (pixels, available);
+    }
+
+    /// <summary>
+    /// 根窗口的内容:rootless 下根窗口本身不画,屏幕上看得到的就是各顶层窗口 —— 按堆叠次序从下往上把映射着的
+    /// 顶层拼起来,其余地方是黑的(xwd -root、截图工具、xmag 读根窗口时拿到的就是这个)。
+    /// </summary>
+    private (uint[] Pixels, XRect Available) ReadRoot(int x, int y, int width, int height)
+    {
+        XRect available = new XRect(x, y, width, height).Intersect(new XRect(0, 0, Root.Width, Root.Height));
+        uint[] pixels = ArrayPool<uint>.Shared.Rent(Math.Max(1, available.Width * available.Height));
+        Array.Clear(pixels, 0, Math.Max(1, available.Width * available.Height));
+        foreach (XWindow top in Root.Children)
+        {
+            if (!top.Mapped || top.Buffer is not { } buffer)
+            {
+                continue;
+            }
+            int left = top.X + top.BorderWidth, upper = top.Y + top.BorderWidth;
+            XRect part = new XRect(left, upper, buffer.Width, buffer.Height).Intersect(available);
+            for (int row = 0; row < part.Height; row++)
+            {
+                Array.Copy(buffer.Pixels, ((part.Y - upper + row) * buffer.Width) + part.X - left,
+                    pixels, ((part.Y - available.Y + row) * available.Width) + part.X - available.X, part.Width);
+            }
         }
         return (pixels, available);
     }
@@ -621,13 +651,7 @@ public sealed partial class X11Server
         byte targetDepth = DrawableDepth(drawable);
 
         // 先按格式核对数据够不够,再分配 —— 客户端报的宽高可以是 65535×65535,数据却只有几个字节。
-        long need = format switch
-        {
-            0 => (long)BitmapStride(width + leftPad) * height,
-            1 => (long)BitmapStride(width + leftPad) * height * depth,
-            2 => depth == 1 ? (long)BitmapStride(width) * height : (long)BitmapStride(width * BitsPerPixel(depth)) * height,
-            _ => throw new XProtocolError(XErrorCode.Value, format),
-        };
+        long need = ImageDataLength(format, depth, width, height, leftPad);
         if (need > data.Length)
         {
             throw new XProtocolError(XErrorCode.Length);
@@ -648,6 +672,15 @@ public sealed partial class X11Server
             ArrayPool<uint>.Shared.Return(pixels);
         }
     }
+
+    /// <summary>一幅图像按格式要多少字节(PutImage 与 MIT-SHM 的 PutImage 共用)。</summary>
+    private static long ImageDataLength(byte format, byte depth, int width, int height, int leftPad) => format switch
+    {
+        0 => (long)BitmapStride(width + leftPad) * height,
+        1 => (long)BitmapStride(width + leftPad) * height * depth,
+        2 => depth == 1 ? (long)BitmapStride(width) * height : (long)BitmapStride(width * BitsPerPixel(depth)) * height,
+        _ => throw new XProtocolError(XErrorCode.Value, format),
+    };
 
     private static void DecodeImage(byte format, byte depth, byte targetDepth, byte leftPad, ReadOnlySpan<byte> data,
         int width, int height, XGc gc, uint[] pixels)
@@ -791,6 +824,13 @@ public sealed partial class X11Server
         short x = r.I16(), y = r.I16();
         ushort width = r.U16(), height = r.U16();
         uint planeMask = r.U32();
+        (byte depth, uint visual, byte[] data) = CaptureImage(format, drawable, x, y, width, height, planeMask);
+        c.Reply(depth, w => w.U32(visual).Zero(20).Bytes(data).Pad4());
+    }
+
+    /// <summary>GetImage 与 MIT-SHM 的 GetImage 共用:核对矩形,按格式编好像素。</summary>
+    private (byte Depth, uint Visual, byte[] Data) CaptureImage(byte format, uint drawable, short x, short y, ushort width, ushort height, uint planeMask)
+    {
         if (format is not (1 or 2))
         {
             throw new XProtocolError(XErrorCode.Value, format);
@@ -804,7 +844,7 @@ public sealed partial class X11Server
             case XPixmap p:
                 (boundsW, boundsH) = (p.Width, p.Height);
                 break;
-            case XWindow w when w.IsViewable && !w.IsRoot:
+            case XWindow w when w.IsViewable:
                 (boundsW, boundsH) = (w.Width, w.Height);
                 visual = w.Visual;
                 break;
@@ -866,6 +906,6 @@ public sealed partial class X11Server
         {
             ArrayPool<uint>.Shared.Return(pooled);
         }
-        c.Reply(depth, w => w.U32(visual).Zero(20).Bytes(data).Pad4());
+        return (depth, visual, data);
     }
 }

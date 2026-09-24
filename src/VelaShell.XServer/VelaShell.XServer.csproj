@@ -29,6 +29,8 @@
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
     <IsPackable>false</IsPackable>
+    <!-- MIT-SHM 在 Linux 上经 LibraryImport 调 libc 的 shmat / shmdt(系统调用,不是第三方原生库);源生成的封送代码要求开启。 -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
