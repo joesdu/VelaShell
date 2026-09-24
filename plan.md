@@ -6274,3 +6274,53 @@ M2 补上它们实际会用到的扩展,验收是 `zenity`、`gedit`、一个 Qt
 
 **没做的**(记在 `feature-plan.md`):M3 的宿主接入;XIChangeHierarchy、XI 1.x 设备事件、XKB 改表请求。
 文档:velashell-docs `zh|en/xserver/design/architecture.md` 同步扩展清单、宿主接口的新增项、执行模型与决策记录。
+
+## ✅ 105. 2026-09-24 VelaShell.XServer M3:接入宿主(用户需求)
+
+「X Server」按钮不再依赖外部程序:默认启动内置的 X 服务端(`VelaShell.XServer`),每个 X 顶层窗口一个 Avalonia 原生窗口,
+SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
+
+### 一、结构
+
+| 层 | 新增 / 改动 |
+| --- | --- |
+| Core | `XServerOptions.Engine`(`builtin` 默认 / `vcxsrv`,`XServerEngines`,`Normalize` 兜底);`XServerDisplayResolution.Connector` |
+| Infrastructure | `BuiltInLocalXServer`(挑空闲显示号、起 `X11Server`、宿主先附着再开门、连接器 = 一对内存双工流交给 `ServeAsync`);`LocalXServerSelector`(按引擎转发,**正在运行的那个优先**);`IEmbeddedXServerHost`(宿主契约:`AttachAsync` / `Detach`);`XDisplayProbe`(TCP 与 `/tmp/.X11-unix/XN` 两处都看);SSH 包装器把连接器交给 X11 选项 |
+| App | `Services/XServer/AvaloniaXServerHost`(回调全部 Post 到 UI 线程;根窗口 = 所有显示器的外接矩形,每台一个 RANDR 输出,DPI 取主显示器;没给位置的窗口像窗口管理器那样摆;剪贴板双向;窗口管理器请求照办);`Views/XServer/XNativeWindow`(位图与 X 像素一一对应、不插值;形状与 ARGB 窗口透明底;指针、滚轮、物理键、焦点、移动、缩放、关闭交回服务端;`_NET_FRAME_EXTENTS` 报系统边框);`XInputMap`(物理键 → X 键码、按钮、cursor 字形 → 系统光标);`WindowsKeymap`(按 Windows 当前布局推主键区两层键值) |
+| SSH 库 | `X11ForwardOptions.LocalConnector` / `LocalCookie`(velashell-docs `spec/07` §7.5.9):假 cookie 照旧核对,核对过了把建立报文写进连接器给的流;只支持受信模式 |
+| 设置页 | 最前面一节「引擎」(只在 Windows 上);VcXsrv 专属的几节只在选了它时出现;原先「非 Windows 整页一段说明」取消 —— 内置引擎各平台可用,标题栏按钮与命令面板命令也在各平台出现 |
+
+### 二、几处取舍
+
+- **SSH 走连接器,本机端口照样开**:x11 通道不绕本机 TCP,少一个端口依赖;服务端仍监听环回 TCP 与 Unix 套接字,
+  本机别的 X 程序(WSL 里的除外 —— 那边看来不是本机连接)可以 `DISPLAY=localhost:N` 连进来。非受信模式要 `xauth` 连显示,仍走 TCP。
+- **自动启动的「不插手」**:Windows 上 `localhost:0` 有人在听,其它平台设了 `DISPLAY` —— Linux 桌面自己有 X,不抢。
+- **键盘**:宿主注入物理键,Windows 上用 `ToUnicodeEx` 按当前布局算出无修饰与 Shift 两层,换进服务端的键位表(布局切换后下次激活 X 窗口时重算)。
+  AltGr 层要服务端 XKB 加四层键类型,拆成 `feature-plan.md` 的一条 💡 P3;输入法(XIM)不做,中日韩输入走远端的输入法框架。
+- **宿主类公开**:`AvaloniaXServerHost` / `XNativeWindow` 设为 public,`scripts/xserver/host-demo/demo.cs` 才能不经主程序、不碰用户设置地起真的原生窗口。
+
+### 三、真实窗口验证中修掉的
+
+| 问题 | 根因 | 改法 |
+| --- | --- | --- |
+| xeyes 在 X 端改尺寸后退出 | `FreePixmap` 连带销毁建在像素图上的 Damage;xeyes 用 Present 换帧时随后 `DamageDestroy` 回 BadDamage | Damage 随 `DamageDestroy` 或客户端断开释放(库) |
+| 可能删掉桌面 Xorg 的套接字 | Unix 监听遇到已存在的 `/tmp/.X11-unix/XN` 先删再建;Xorg 常关 TCP,TCP 侧的占用检查看不出 | 先试着连,有人应答就不碰(库) |
+| X 端改尺寸,原生窗口不跟 | 显示之后设 `ClientSize` 只改属性值 | 设 `Width` / `Height` |
+| X 端改尺寸被改回旧值 | 我们自己改尺寸引起的 `Resized` 晚一拍到,被当成用户拖动回报 | 只回报用户拖动与窗口状态变化 |
+| 渲染中途异常 | 在 `Render` 里设插值模式会让视觉在渲染中途失效 | 放到构造函数 |
+| 标题栏拖动光标闪 | 直接调 `BeginMoveDrag`(`WindowMoveDragUsageTests` 拦下) | 走 `BeginWindowMoveDrag` |
+
+### 四、验证
+
+- 单元测试:SSH 库 +3(连接器对搬与 cookie 替换、连接器不可用、与非受信同设)、XServer +2(Unix 套接字不抢、FreePixmap 后 DamageDestroy)、
+  Infrastructure +11(内置引擎生命周期 / 连接器 / 不插手条件、选择器)、Core +1(连接器只给受信且显示取自本机 X Server)、
+  VelaShell.Tests +4(无头:映射 → 原生窗口尺寸 / 标题 / 像素、关闭 → 客户端断开 → 窗口收掉;输入映射;Windows 键位表两条),设置页「非 Windows 不支持」那条改写为引擎切换。
+- XServer interop 8/8 零协议错误。
+- `scripts/xserver/host-demo/demo.cs` 起真的原生窗口,容器里的 xterm、xeyes、gedit(GTK3,自绘标题栏无系统边框、菜单弹层)、qt5ct(Qt5)
+  画对且几何一致(内容区与 X 坐标对齐,系统边框经 `_NET_FRAME_EXTENTS` 报出);X 端移动 / 缩放、原生窗口关闭(WM_DELETE_WINDOW)、
+  往原生窗口发的按键到达 xterm(打出 `hi`)都已实测。X → 宿主剪贴板走到了系统剪贴板的写入调用,但验证时机器在锁屏,系统剪贴板拒绝访问,
+  最后一步没能看到。
+
+**没做的**(记在 `feature-plan.md`):AltGr 层;输入法(XIM);macOS / Linux 的键盘布局跟随。
+文档:velashell-docs `zh|en/host/交互与界面规格.md`(§4A.2、X11 转发、§14 X Server 页)、`settings-audit.md` 第七批、
+`xserver/design/architecture.md`(M3 与决策记录)、`ssh/spec/07-forwarding.md` §7.5.9、`ssh/design/architecture.md` §11.2.14 补记。

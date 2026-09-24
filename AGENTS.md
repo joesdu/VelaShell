@@ -88,7 +88,7 @@ Docker 与 `docker-compose.test.yml`,`CrossPlatformPublishTests` 需 `VELASHELL_
 `zh/ssh/spec/`。该目录按 **MIT** 授权,
 别把宿主其余部分的代码挪进去。它的测试一律用 Debug 跑(Release 签名会省掉 `InternalsVisibleTo`)。
 - **改 `src/VelaShell.XServer/` 之前先读 [`src/VelaShell.XServer/AGENTS.md`](src/VelaShell.XServer/AGENTS.md)**。
-那是可嵌入的 X11 服务端库(2026-09-23 立项,MIT,尚未接入宿主),与 SSH 库同一套净室规程:
+那是可嵌入的 X11 服务端库(2026-09-23 立项,MIT;宿主的「X Server」默认用它,Avalonia 宿主在 `src/VelaShell/Services/XServer/`),与 SSH 库同一套净室规程:
 实现依据只能是 X.Org 的协议规范、ICCCM 与 EWMH,不许打开任何其它 X 服务端的源码。
 真实客户端用例需 Docker 镜像 `velashell-xclients` 与 `VELASHELL_XSERVER_INTEROP=1`,不满足时同样早退记为通过。
 - **插件 SDK 一律走 NuGet 包**,不做工程引用。版本在 `src/Directory.Packages.props`。
