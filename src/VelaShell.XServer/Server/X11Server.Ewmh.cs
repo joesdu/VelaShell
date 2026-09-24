@@ -379,9 +379,9 @@ public sealed partial class X11Server
             Array.Clear(_buttonsDown);
             _buttons = 0;
         }
-        if (_pointerGrab is { ReleaseWhenButtonsUp: true } && _buttons == 0)
+        if (PointerGrab is { ReleaseWhenButtonsUp: true } && _buttons == 0)
         {
-            _pointerGrab = null;
+            PointerGrab = null;
             UpdateCursor();
         }
     }

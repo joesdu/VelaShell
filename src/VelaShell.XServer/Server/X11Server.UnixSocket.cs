@@ -120,14 +120,36 @@ public sealed partial class X11Server
 
     private async Task ServeUnixAsync(Socket connection, CancellationToken cancellationToken)
     {
+        uint? peerUid = PeerUidOf(connection);
         await using NetworkStream stream = new(connection, ownsSocket: true);
         try
         {
-            await ServeAsync(stream, isLocal: true, cancellationToken).ConfigureAwait(false);
+            await ServeCoreAsync(stream, isLocal: true, sameHost: true, peerUid, cancellationToken).ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {
             // 服务端正在收工。
+        }
+    }
+
+    /// <summary>
+    /// Linux 上经 SO_PEERCRED 取连接对端的 uid(struct ucred:pid、uid、gid 各 4 字节);别的平台或取不到时为 null。
+    /// </summary>
+    private static uint? PeerUidOf(Socket connection)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return null;
+        }
+        Span<byte> credentials = stackalloc byte[12];
+        try
+        {
+            int length = connection.GetRawSocketOption(1, 17, credentials);   // SOL_SOCKET、SO_PEERCRED
+            return length >= 8 ? BitConverter.ToUInt32(credentials[4..]) : null;
+        }
+        catch (SocketException)
+        {
+            return null;
         }
     }
 

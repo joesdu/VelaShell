@@ -6376,3 +6376,54 @@ SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
 - `dotnet test tests/VelaShell.Ssh.Tests -c Debug`:574 通过,20 个 Interop 用例因无 OpenSSH 靶机早退跳过(其中「压缩能与 OpenSSH 协商上」走的就是 `zlib@openssh.com`)。
 
 文档:velashell-docs `zh|en/ssh/spec/00-overview.md` §6.5(裸 `zlib` 标为不实现并写明理由)、`zh|en/ssh/spec/01-transport-framing.md` §六。
+
+## ✅ 108. 2026-09-24 VelaShell.XServer M4:同步抓取、设备拓扑、XKB 改表、MIT-SHM、GLX
+
+架构文档 §8 里 M4 剩下的五项一轮做完。
+
+### 一、做了什么
+
+| 项 | 内容 |
+| --- | --- |
+| 同步抓取 | GrabPointer / GrabKeyboard / GrabButton / GrabKey 与 XI2 的抓取读 pointer-mode / keyboard-mode;Synchronous 冻结对应设备,冻结期间宿主注入与 XTEST 的输入排进每设备的队列。AllowEvents 0–7(Async / Sync / Replay 各设备、AsyncBoth / SyncBoth)与 XIAllowEvents 放行、单步、重放;重放时跳过抓取窗口及其上级的被动抓取。抓取结束(包括客户端断开)时解冻 |
+| XIChangeHierarchy | 设备表改成动态:AddMaster(成对新建「名字 pointer」「名字 keyboard」)、RemoveMaster(Float 或 AttachToMaster,返回设备为 0 时挂回虚拟核心设备 —— `xinput remove-master` 默认这么发)、AttachSlave、DetachSlave,发 HierarchyChanged。浮动的物理从设备只报从设备的 XI2 事件、不产生核心事件 |
+| XKB SetMap | 各段按规范读完;键值按 §17 的列序(组 1 第 1、2 级,组 2 第 1、2 级,组 1 第 3、4 级)换成核心列写回键位表,修饰键映射并进核心表,照常重新推出 XKB 描述并发 MappingNotify / XkbMapNotify。`setxkbmap -print -layout de \| xkbcomp - $DISPLAY` 之后 y / z 互换、AltGr 层就位 |
+| MIT-SHM 1.1 | QueryVersion(shared-pixmaps = False)、Attach、Detach、PutImage(Completion 事件)、GetImage;只在 Linux 上注册,且只对经 Unix 套接字连进来的客户端可见(扩展可按客户端决定可见性)。段的大小与属主取自 `/proc/sysvipc/shm`,对端 uid 经 SO_PEERCRED 取得,不是属主 / 创建者且权限没对其他人开放就 BadAccess。客户端断开与服务端收工时 shmdt |
+| GLX 1.4 | 新扩展(主操作码 148、事件 92、错误 150–162):版本、服务端串、四个 FBConfig(两个 TrueColor 视觉 × 单 / 双缓冲,8/8/8(ARGB 视觉再加 8 位 alpha)、深度 24、模板 8)、GLX 1.2 视觉配置、上下文、GLXWindow / GLXPixmap / GLXPbuffer、MakeCurrent / MakeContextCurrent 与上下文标签、SwapBuffers、CopyContext、UseXFont。**直接上下文**只登记:Mesa 在客户端用 llvmpipe 渲染、经 PutImage 送像素(远端 SSH 转发来的也行)。**间接上下文**(`LIBGL_ALWAYS_INDIRECT=1`)由新目录 `Gl/` 的软件 GL 执行 |
+| 软件 GL(`Gl/`) | glXRender / RenderLarge 的渲染命令解码(操作码对照 Khronos `gl.xml`)、显示列表(COMPILE / COMPILE_AND_EXECUTE、CallLists、嵌套 64 层)、矩阵栈、光照(8 盏灯、双面、ColorMaterial、分离镜面)、用户裁剪面与视体裁剪、平直 / 平滑着色、正反面与剔除、PolygonMode、深度偏移、1D / 2D 纹理(TexImage / TexSubImage / CopyTex*、完整性、REPLACE / MODULATE / DECAL / BLEND / ADD、TexGen)、雾、剪裁 / alpha / 模板 / 深度测试、混合与逻辑运算、DrawPixels / Bitmap / CopyPixels / ReadPixels、PushAttrib、Get*v / GetString 等非渲染命令。版本如实报 1.1 |
+| 根窗口 GetImage | rootless 下根窗口不画;GetImage / CopyArea 读根窗口时按堆叠次序把映射着的顶层拼起来,其余为黑(`xwd -root` 以前回 BadMatch) |
+
+### 二、几处取舍
+
+- **GLX 两条路都给**:现在的 Mesa 在没有 DRI3 / DRI2 时默认走 drisw —— 客户端 llvmpipe 渲染(GL 4.5)再 PutImage,
+  服务端只要把 GLX 的配置、上下文、可绘对象登记好;性能与兼容性都远好于间接渲染。间接渲染是给强制
+  `LIBGL_ALWAYS_INDIRECT`、或客户端没有软件渲染器的场合,只做固定功能 GL 的子集。
+- **GL 版本报 1.1**:3D 纹理没做,报 1.2 就不诚实;GL 1.2 里真正实现了的部分(BGRA、紧缩像素、CLAMP_TO_EDGE、
+  分离镜面、RESCALE_NORMAL、BlendColor / BlendEquation)经扩展串报出来。
+- **没做的(间接渲染)**:求值器、累积缓冲(配置里 0 位,Accum 报 INVALID_OPERATION)、选择 / 反馈(RenderMode 切过去不画、回 0 条)、
+  mipmap 的 LOD(总取第 0 级,过滤用放大过滤器)、点画、像素传输的缩放 / 偏置 / 查表、ARB_imaging 查询。认识但没实现的渲染命令照规范当合法命令吃掉。
+- **两处防护**:一个 GLX 表面最多 4096 × 4096 像素(前后颜色、深度、模板一共 13 字节 / 像素),超了 BadAlloc;
+  一个请求里显示列表展开执行的命令数上限 400 万 —— 列表可以互相调用,嵌套 64 层、每层调两次就是 2^64 条,超出记 OUT_OF_MEMORY。
+- **MIT-SHM 只给本机**:远端经 SSH 来的客户端给的 shmid 在这台机器上毫无意义,QueryExtension / ListExtensions 对它们看不见;
+  1.2 的 AttachFd / CreateSegment 要经套接字传文件描述符,没做。
+- **多指针只到拓扑**:主设备可以增删、从设备可以挂来挂去,但指针位置、焦点与抓取仍是一份,不是完整的 MPX。
+
+### 三、真实客户端验证中修掉的
+
+| 问题 | 根因 | 改法 |
+| --- | --- | --- |
+| `xinput remove-master` 回 BadMatch | AttachToMaster 模式下返回设备给 0 被当成非法设备 | 0 表示挂回虚拟核心指针 / 键盘 |
+| `xwd -root` 回 BadMatch | rootless 下根窗口没有缓冲,GetImage 直接拒绝 | 按堆叠次序拼出顶层内容 |
+
+### 四、验证
+
+- 单元测试:XServer +17(同步抓取 4、设备拓扑 3、SetMap 1、MIT-SHM 1(只在 Linux 上跑,别处 Inconclusive)、根窗口 GetImage 1、
+  GLX 7 —— 配置与版本、直接上下文、清除与三角形、深度与显示列表、经 RenderLarge 上传的纹理、GL 查询与 ReadPixels、显示列表执行预算),
+  真实客户端用例 +3(`glxinfo` 两条路径、`glxgears` 直接 / 间接)。靶场 Dockerfile 加 `xinput mesa-utils`。
+- 真实客户端(容器):`xinput create-master / reattach / float / remove-master`;`setxkbmap -print -layout de | xkbcomp - $DISPLAY`;
+  Linux 容器里 `xdpyinfo` 列出 MIT-SHM、`x11perf -shmput10` 跑通;`glxinfo -B` 直接渲染报 llvmpipe(GL 4.5),
+  `LIBGL_ALWAYS_INDIRECT=1 glxinfo -B` 报 VelaShell 的软件 GL(1.1)、`glxinfo -l` 各项上限;`glxgears` 两条路径画出的齿轮一致
+  (光照、平直着色、深度都对),`glxheads` 间接渲染正常;全程零协议错误。
+
+**没做的**(记在 `feature-plan.md`):见第二部分;架构文档 §7 补了「不是完整 MPX」。
+文档:velashell-docs `zh|en/xserver/design/architecture.md`(M4 里程碑、决策记录、扩展清单与规范清单)。

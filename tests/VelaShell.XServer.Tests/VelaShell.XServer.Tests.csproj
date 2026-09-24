@@ -10,6 +10,8 @@
   -->
 
   <PropertyGroup>
+    <!-- MIT-SHM 用例经 LibraryImport 调 libc 的 shmget / shmat 建共享内存段。 -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsPackable>false</IsPackable>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest-recommended</AnalysisLevel>

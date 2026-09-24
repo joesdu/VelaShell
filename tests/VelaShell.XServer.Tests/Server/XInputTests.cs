@@ -135,4 +135,77 @@ public sealed class XInputTests
         Assert.AreEqual(3, (int)raw.U32(36), "dx 的整数部分");
         Assert.AreEqual(5, (int)raw.U32(44), "dy 的整数部分");
     }
+
+    /// <summary>XIChangeHierarchy 的 AddMaster:一条 HIERARCHYCHANGE。</summary>
+    private static Task<ushort> AddMasterAsync(XTestClient c, byte xi, string name)
+    {
+        byte[] bytes = Encoding.Latin1.GetBytes(name);
+        int padded = (bytes.Length + 3) & ~3;
+        return c.SendAsync(xi, 43, b => b.U8(1).U8(0).U8(0).U8(0)
+            .U16(1).U16((ushort)((8 + padded) / 4)).U16((ushort)bytes.Length).U8(1).U8(1).Bytes(bytes).Pad());
+    }
+
+    [TestMethod]
+    public async Task AddMaster新建一对主设备_发HierarchyChanged_QueryDevice列得出()
+    {
+        await using X11Server server = new();
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        byte xi = await XiAsync(c);
+        await SelectAsync(c, xi, c.RootWindow, 0, 1u << 11);   // XIAllDevices:HierarchyChanged
+        await AddMasterAsync(c, xi, "second");
+
+        XMessage changed = await NextXiAsync(c, xi, 11);
+        Assert.AreEqual(1u, changed.U32(16) & 1, "flags 含 MasterAdded");
+        Assert.AreEqual(6, changed.U16(20), "num_info:原来四个 + 新的一对");
+
+        XMessage all = await c.RequestAsync(xi, 48, b => b.U16(0).U16(0));
+        Assert.AreEqual(6, all.U16(8));
+        string names = Encoding.Latin1.GetString(all.Bytes);
+        StringAssert.Contains(names, "second pointer");
+        StringAssert.Contains(names, "second keyboard");
+    }
+
+    [TestMethod]
+    public async Task AttachSlave之后事件以新主设备报_DetachSlave之后只报从设备且没有核心事件()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        byte xi = await XiAsync(c);
+        uint top = await MapTopAsync(c, host);
+        await AddMasterAsync(c, xi, "second");   // 主指针 6、主键盘 7
+        await c.SendAsync(xi, 43, b => b.U8(1).U8(0).U8(0).U8(0).U16(3).U16(2).U16(4).U16(6));   // AttachSlave 4 → 6
+        await SelectAsync(c, xi, top, 0, 1u << 6);                                                 // XIAllDevices:Motion
+        await c.SyncAsync();
+
+        server.PointerMotion(top, 3, 3);
+        XMessage attached = await NextXiAsync(c, xi, 6);
+        Assert.AreEqual(6, attached.U16(10), "deviceid = 新的主指针");
+
+        await c.SendAsync(xi, 43, b => b.U8(1).U8(0).U8(0).U8(0).U16(4).U16(2).U16(4).U16(0));    // DetachSlave 4
+        await c.SendAsync(2, 0, b => b.U32(top).U32(0x800).U32(0x40));                             // 同时选核心 PointerMotion
+        await c.SyncAsync();
+        server.PointerMotion(top, 5, 5);
+        XMessage floating = await NextXiAsync(c, xi, 6);
+        Assert.AreEqual(4, floating.U16(10), "浮动:deviceid = 从设备本身");
+        await c.SyncAsync();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => c.NextEventAsync(6, timeoutMs: 150), "浮动的从设备不产生核心事件");
+    }
+
+    [TestMethod]
+    public async Task RemoveMaster让从设备浮动_虚拟核心设备不能删除()
+    {
+        await using X11Server server = new();
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        byte xi = await XiAsync(c);
+        await AddMasterAsync(c, xi, "second");
+        await c.SendAsync(xi, 43, b => b.U8(1).U8(0).U8(0).U8(0).U16(3).U16(2).U16(5).U16(7));    // 从键盘挂到 7
+        await c.SendAsync(xi, 43, b => b.U8(1).U8(0).U8(0).U8(0).U16(2).U16(3).U16(6).U8(1).U8(0).U16(0).U16(0));   // RemoveMaster 6,Float
+        XMessage keyboard = await c.RequestAsync(xi, 48, b => b.U16(5).U16(0));
+        Assert.AreEqual(5, keyboard.U16(34), "use = FloatingSlave");
+        Assert.AreEqual(0, keyboard.U16(36), "attachment = 0");
+
+        XMessage error = await c.RequestAsync(xi, 43, b => b.U8(1).U8(0).U8(0).U8(0).U16(2).U16(3).U16(2).U8(1).U8(0).U16(0).U16(0));
+        Assert.IsTrue(error.IsError, "删虚拟核心指针:BadDevice");
+    }
 }

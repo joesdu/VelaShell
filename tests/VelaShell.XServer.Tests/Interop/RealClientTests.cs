@@ -107,6 +107,28 @@ public sealed class RealClientTests
     }
 
     [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
+    public async Task glxinfo的直接与间接两条路径()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartServer();
+        await using (server)
+        {
+            await server.StartAsync();
+            (int exit, string output) = await RunClientAsync(cookie, "glxinfo -B && echo ==== && LIBGL_ALWAYS_INDIRECT=1 glxinfo -B");
+            TestContext.WriteLine(output);
+            Assert.AreEqual(0, exit, output);
+            StringAssert.Contains(output, "direct rendering: Yes");
+            StringAssert.Contains(output, "OpenGL renderer string: VelaShell.XServer software rasterizer");
+            StringAssert.Contains(output, "OpenGL version string: 1.1");
+            Assert.IsEmpty(errors, string.Join('\n', errors));
+        }
+    }
+
+    [TestMethod]
     [DataRow("xterm -geometry 40x6 -e sh -c 'echo hello; sleep 3'")]
     [DataRow("xeyes")]
     [DataRow("xclock -update 1")]
@@ -114,6 +136,8 @@ public sealed class RealClientTests
     [DataRow("xclock -render -update 1")]   // RENDER:抗锯齿的表盘与指针
     [DataRow("xeyes -render")]              // RENDER + SHAPE
     [DataRow("xterm -fa Monospace -fs 11 -geometry 40x6 -e sh -c 'echo hello; sleep 3'")]   // Xft 字形走 RENDER
+    [DataRow("glxgears")]                                   // GLX 直接渲染:Mesa 在客户端软件渲染,经 PutImage 送像素
+    [DataRow("env LIBGL_ALWAYS_INDIRECT=1 glxgears")]       // GLX 间接渲染:服务端的软件 GL
     [Timeout(120_000, CooperativeCancellation = true)]
     public async Task 图形程序映射窗口画出内容且没有协议错误(string program)
     {

@@ -164,6 +164,12 @@ internal sealed class XClient : IDisposable
     /// <summary>这个客户端经 Generic Event Extension 声明过的版本;没声明过的客户端不该收到 GenericEvent。</summary>
     public bool GenericEventsEnabled { get; set; }
 
+    /// <summary>经 Unix 套接字连进来的(与服务端在同一台机器上):MIT-SHM 只对这样的客户端可见。</summary>
+    public bool SameHost { get; set; }
+
+    /// <summary>连接对端的 uid(Linux 上经 SO_PEERCRED 取得);取不到时为 null。MIT-SHM 按它核对段的访问权限。</summary>
+    public uint? PeerUid { get; set; }
+
     /// <summary>
     /// 选了 PointerMotionHint 时已经发过提示的那个事件窗口,和发的时候的提示轮次(<c>X11Server</c> 在
     /// 按键 / 按钮变化、指针换窗口时推进轮次;QueryPointer / GetMotionEvents 清掉这一项)。

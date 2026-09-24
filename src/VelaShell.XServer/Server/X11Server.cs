@@ -329,6 +329,7 @@ public sealed partial class X11Server : IAsyncDisposable
         {
             client.Abort();
         }
+        DetachShmSegments(_resources.Values);
         try
         {
             // 接进来的连接随 _lifetime 取消而收工;给它们一点时间关掉套接字。

@@ -163,4 +163,33 @@ public sealed class XkbTests
         Assert.AreEqual(0xfe03u, alt.U32(32));
         Assert.AreEqual(0u, alt.U32(36), "请求没给的列清成 NoSymbol");
     }
+
+    [TestMethod]
+    public async Task SetMap上传的键值与修饰键映射写回核心键位表()
+    {
+        await using X11Server server = new();
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        (byte xkb, _) = await XkbAsync(c);
+
+        // present = KeySyms | ModifierMap:键码 29(US 的 y)改成 z / Z(德语布局),键码 37 只进 Control。
+        await c.SendAsync(xkb, 9, b => b.U16(UseCoreKbd).U16(0x2 | 0x4).U16(0).U8(8).U8(255)
+            .U8(0).U8(0)                     // firstType、nTypes
+            .U8(29).U8(1).U16(2)             // firstKeySym、nKeySyms、totalSyms
+            .U8(0).U8(0).U16(0)              // 动作
+            .U8(0).U8(0).U8(0)               // 行为
+            .U8(0).U8(0).U8(0)               // 显式成分
+            .U8(37).U8(1).U8(1)              // firstModMapKey、nModMapKeys、totalModMapKeys
+            .U8(0).U8(0).U8(0)               // 虚拟修饰映射
+            .U16(0)                          // virtualMods
+            .U8(1).U8(0).U8(0).U8(0).U8(1).U8(2).U16(2).U32('z').U32('Z')   // KEYSYMMAP
+            .U8(37).U8(0x04).U16(0));                                      // KEYMODMAP(补齐)
+        XMessage map = await c.RequestAsync(101, 0, b => b.U8(29).U8(1).U16(0));
+        Assert.AreEqual('z', map.U32(32));
+        Assert.AreEqual('Z', map.U32(36));
+
+        XMessage modifiers = await c.RequestAsync(119, 0);
+        int per = modifiers.Bytes[1];
+        byte[] control = modifiers.Bytes.AsSpan(32 + (2 * per), per).ToArray();
+        CollectionAssert.Contains(control, (byte)37, "键码 37 在 Control 行");
+    }
 }

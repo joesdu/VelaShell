@@ -14,6 +14,7 @@
 //   DeviceBell 32、ListDeviceProperties 36、GetDeviceProperty 39;错误 BadDevice / BadEvent / BadMode / DeviceBusy / BadClass
 //
 //   设备:主指针 2、主键盘 3,各挂一个从设备(4、5)。宿主注入的输入都来自这两个从设备。
+//   XIChangeHierarchy 可以加减主设备、挂上 / 摘下从设备(X11Server.XiHierarchy.cs)。
 //   XI2 事件与核心事件走同一条传播路径(同一个窗口上,选了核心的收核心、选了 XI2 的收 XI2);抓取也可以是 XI2 的。
 //   XI 1.x 的设备事件(DeviceKeyPress 之类)不产生 —— 现代客户端都走 XI2;XI 1.x 的请求只回答查询。
 
@@ -44,9 +45,6 @@ public sealed partial class X11Server
     /// <summary>设备属性(XIGetProperty / GetDeviceProperty):设备 → 原子 → 值。</summary>
     private readonly Dictionary<ushort, Dictionary<uint, XProperty>> _deviceProperties = [];
 
-    private static bool IsPointerDevice(ushort id) => id is XiMasterPointer or XiSlavePointer;
-
-    private static bool IsKnownDevice(ushort id) => id is >= XiMasterPointer and <= XiSlaveKeyboard;
 
     private static XProtocolError BadDevice(uint id) => new((XErrorCode)XInputErrorBase, id);
 
@@ -67,7 +65,7 @@ public sealed partial class X11Server
             case 3:   // OpenDevice:返回设备有哪些类,以及各类的事件基数
                 {
                     byte id = r.U8();
-                    if (id is not ((byte)XiSlavePointer or (byte)XiSlaveKeyboard))
+                    if (!IsKnownDevice(id) || id is (byte)XiMasterPointer or (byte)XiMasterKeyboard)
                     {
                         throw BadDevice(id);   // 核心设备不能经 XI 1.x 打开(规范 OpenDevice)
                     }
@@ -243,13 +241,26 @@ public sealed partial class X11Server
                     UpdateCursor();
                     break;
                 }
-            case 43:  // XIChangeHierarchy:设备拓扑固定(一对主设备),不支持增删主设备
-                throw new XProtocolError(XErrorCode.Implementation);
-            case 44:  // XISetClientPointer:只有一个主指针
+            case 43:  // XIChangeHierarchy
+                XiChangeHierarchy(r);
                 break;
-            case 45:  // XIGetClientPointer
-                c.Reply(minor, w => w.Bool(true).Zero(1).U16(XiMasterPointer).Zero(20));
-                break;
+            case 44:  // XISetClientPointer:指针位置只有一份,接受即可(设备须是主设备)
+                {
+                    r.Skip(4);
+                    ushort id = r.U16();
+                    if (!IsMasterDevice(id))
+                    {
+                        throw BadDevice(id);
+                    }
+                    break;
+                }
+            case 45:  // XIGetClientPointer:物理指针挂着的那个主指针(浮动时退回虚拟核心指针)
+                {
+                    ushort attached = MasterOf(pointer: true);
+                    ushort clientPointer = attached != 0 ? attached : XiMasterPointer;
+                    c.Reply(minor, w => w.Bool(true).Zero(1).U16(clientPointer).Zero(20));
+                    break;
+                }
             case 46:  // XISelectEvents
                 XiSelectEvents(c, r);
                 break;
@@ -265,8 +276,8 @@ public sealed partial class X11Server
                     ushort id = r.U16();
                     ushort[] devices = id switch
                     {
-                        0 => [XiMasterPointer, XiMasterKeyboard, XiSlavePointer, XiSlaveKeyboard],
-                        1 => [XiMasterPointer, XiMasterKeyboard],
+                        0 => [.. _xiDevices.Keys],
+                        1 => [.. _xiDevices.Values.Where(d => d.Master).Select(d => d.Id)],
                         _ when IsKnownDevice(id) => [id],
                         _ => throw BadDevice(id),
                     };
@@ -301,19 +312,35 @@ public sealed partial class X11Server
                     ushort id = r.U16();
                     if (IsPointerDevice(id))
                     {
-                        if (ReferenceEquals(_pointerGrab?.Client, c))
+                        if (ReferenceEquals(PointerGrab?.Client, c))
                         {
-                            _pointerGrab = null;
+                            PointerGrab = null;
                             UpdateCursor();
                         }
                     }
-                    else if (ReferenceEquals(_keyboardGrab?.Client, c))
+                    else if (ReferenceEquals(KeyboardGrab?.Client, c))
                     {
-                        _keyboardGrab = null;
+                        KeyboardGrab = null;
                     }
                     break;
                 }
-            case 53:  // XIAllowEvents:只实现异步抓取(同核心 AllowEvents)
+            case 53:  // XIAllowEvents:换成核心 AllowEvents 的模式(按设备是指针还是键盘)
+                {
+                    r.Skip(4);   // time
+                    ushort id = r.U16();
+                    byte mode = r.U8();
+                    if (!IsKnownDevice(id))
+                    {
+                        throw BadDevice(id);
+                    }
+                    byte core = CoreAllowMode(mode, IsPointerDevice(id));
+                    if (core == byte.MaxValue)
+                    {
+                        break;   // AcceptTouch / RejectTouch:没有触摸设备
+                    }
+                    AllowEvents(c, core);
+                    break;
+                }
             case 61:  // XIBarrierReleasePointer:指针屏障不生效(XFIXES)
                 break;
             case 54:  // XIPassiveGrabDevice
@@ -407,18 +434,12 @@ public sealed partial class X11Server
 
     private void WriteXiDeviceInfo(XWriter w, ushort id)
     {
-        (ushort use, ushort attachment, string name) = id switch
-        {
-            XiMasterPointer => ((ushort)1, XiMasterKeyboard, "Virtual core pointer"),
-            XiMasterKeyboard => ((ushort)2, XiMasterPointer, "Virtual core keyboard"),
-            XiSlavePointer => ((ushort)3, XiMasterPointer, "VelaShell pointer"),
-            _ => ((ushort)4, XiMasterKeyboard, "VelaShell keyboard"),
-        };
-        byte[] nameBytes = XWire.Latin1.GetBytes(name);
-        bool pointer = IsPointerDevice(id);
+        XiDevice device = _xiDevices[id];
+        byte[] nameBytes = XWire.Latin1.GetBytes(device.Name);
+        bool pointer = device.Pointer;
         ushort source = pointer ? XiSlavePointer : XiSlaveKeyboard;
-        w.U16(id).U16(use).U16(attachment).U16(pointer ? (ushort)3 : (ushort)1).U16((ushort)nameBytes.Length).Bool(true).Zero(1)
-            .Bytes(nameBytes).Pad4();
+        w.U16(id).U16(device.Use).U16(device.Attachment).U16(pointer ? (ushort)3 : (ushort)1).U16((ushort)nameBytes.Length)
+            .Bool(device.Enabled).Zero(1).Bytes(nameBytes).Pad4();
         if (pointer)
         {
             // ButtonClass:type 1、len、sourceid、num_buttons、state(1 个 32 位)、labels
@@ -453,12 +474,12 @@ public sealed partial class X11Server
     private void XiListInputDevices(XClient c)
     {
         // XI 1.x 的视角:核心指针(use 0)、核心键盘(use 1),再加两个从设备作为扩展设备。
+        // XI 1.x 的 use:IsXPointer 0、IsXKeyboard 1、IsXExtensionKeyboard 3、IsXExtensionPointer 4。
         (byte Id, byte Use, string Name, bool Pointer)[] devices =
         [
-            ((byte)XiMasterPointer, 0, "Virtual core pointer", true),
-            ((byte)XiMasterKeyboard, 1, "Virtual core keyboard", false),
-            ((byte)XiSlavePointer, 4, "VelaShell pointer", true),
-            ((byte)XiSlaveKeyboard, 3, "VelaShell keyboard", false),
+            .. _xiDevices.Values.Select(d => ((byte)d.Id,
+                d.Id == XiMasterPointer ? (byte)0 : d.Id == XiMasterKeyboard ? (byte)1 : d.Pointer ? (byte)4 : (byte)3,
+                d.Name, d.Pointer)),
         ];
         uint mouse = Intern("MOUSE"), keyboard = Intern("KEYBOARD");
         c.Reply(2, w =>
@@ -564,12 +585,12 @@ public sealed partial class X11Server
                     slave = mask;
                     break;
                 case 1:   // XIAllMasterDevices
-                case XiMasterPointer:
-                case XiMasterKeyboard:
                     master = mask;
                     break;
-                case XiSlavePointer:
-                case XiSlaveKeyboard:
+                case var id when IsMasterDevice(id):
+                    master = mask;
+                    break;
+                case var id when IsKnownDevice(id):
                     slave = mask;
                     break;
                 default:
@@ -592,7 +613,7 @@ public sealed partial class X11Server
         r.Skip(4);   // time
         uint cursorId = r.U32();
         ushort id = r.U16();
-        r.Skip(2);   // grab_mode、paired_device_mode:只有异步
+        byte grabMode = r.U8(), pairedMode = r.U8();   // XIGrabModeSync 0、XIGrabModeAsync 1
         bool ownerEvents = r.Bool();
         r.Skip(1);
         ushort units = r.U16();
@@ -602,7 +623,7 @@ public sealed partial class X11Server
             throw BadDevice(id);
         }
         bool pointer = IsPointerDevice(id);
-        ActiveGrab? existing = pointer ? _pointerGrab : _keyboardGrab;
+        ActiveGrab? existing = pointer ? PointerGrab : KeyboardGrab;
         byte status = existing is not null && !ReferenceEquals(existing.Client, c) ? (byte)1   // AlreadyGrabbed
             : !window.IsViewable ? (byte)3                                                      // GrabNotViewable
             : (byte)0;
@@ -619,13 +640,16 @@ public sealed partial class X11Server
             };
             if (pointer)
             {
-                _pointerGrab = grab;
+                PointerGrab = grab;
                 UpdateCursor();
             }
             else
             {
-                _keyboardGrab = grab;
+                KeyboardGrab = grab;
             }
+            // grab_mode 管被抓的这个设备,paired_device_mode 管与它配对的另一个。
+            bool deviceSync = grabMode == 0, pairedSync = pairedMode == 0;
+            ApplyGrabModes(grab, pointer ? deviceSync : pairedSync, pointer ? pairedSync : deviceSync);
         }
         c.Reply(51, w => w.U8(status).Zero(23));
     }
@@ -645,7 +669,7 @@ public sealed partial class X11Server
         byte grabType = r.U8();   // 0 Button、1 Keycode、2 Enter、3 FocusIn、4 TouchBegin
         if (grab)
         {
-            r.Skip(2);            // grab_mode、paired_device_mode
+            byte grabMode = r.U8(), pairedMode = r.U8();   // Sync 0、Async 1
             bool ownerEvents = r.Bool();
             r.Skip(2);
             ulong mask = ReadXiMask(r, units);
@@ -661,8 +685,11 @@ public sealed partial class X11Server
                 {
                     ushort core = mods == 0x80000000 ? (ushort)0x8000 : (ushort)(mods & 0xFF);   // XIAnyModifier
                     list.RemoveAll(g => ReferenceEquals(g.Client, c) && g.Detail == (int)detail && g.Modifiers == core);
+                    // 按钮抓取:grab_mode 管指针、paired 管键盘;按键抓取反过来。
+                    bool deviceSync = grabMode == 0, pairedSync = pairedMode == 0;
                     list.Add(new PassiveGrab(c, (int)detail, core, ownerEvents, 0, null,
-                        cursorId == 0 ? null : Lookup<XCursor>(cursorId), Xi2: true, Xi2Mask: mask));
+                        cursorId == 0 ? null : Lookup<XCursor>(cursorId), Xi2: true, Xi2Mask: mask,
+                        PointerSync: grabType == 0 ? deviceSync : pairedSync, KeyboardSync: grabType == 0 ? pairedSync : deviceSync));
                 }
             }
             // Enter / FocusIn / Touch 类被动抓取不支持;规范允许以「全部修饰组合都失败」回应 —— 这里回空列表,表示没有冲突。
@@ -719,8 +746,8 @@ public sealed partial class X11Server
     private void SendXi2DeviceEvent(XClient client, int evtype, byte detail, XWindow eventWindow, XWindow source, bool slave)
     {
         bool key = evtype is XEventCode.KeyPress or XEventCode.KeyRelease;
-        ushort device = slave ? (key ? XiSlaveKeyboard : XiSlavePointer) : (key ? XiMasterKeyboard : XiMasterPointer);
         ushort sourceId = key ? XiSlaveKeyboard : XiSlavePointer;
+        ushort device = slave || IsFloating(!key) ? sourceId : MasterOf(!key);
         (int ex, int ey) = eventWindow.AbsoluteInner();
         uint child = ChildOnPath(eventWindow, source);
         int px = Math.Max(0, _pointerX), py = Math.Max(0, _pointerY);
@@ -748,8 +775,9 @@ public sealed partial class X11Server
             return;
         }
         bool focusEvent = evtype is XiFocusIn or XiFocusOut;
-        ushort device = focusEvent ? XiMasterKeyboard : XiMasterPointer;
         ushort sourceId = focusEvent ? XiSlaveKeyboard : XiSlavePointer;
+        ushort attached = MasterOf(!focusEvent);
+        ushort device = attached != 0 ? attached : sourceId;
         (int ex, int ey) = window.AbsoluteInner();
         int px = Math.Max(0, _pointerX), py = Math.Max(0, _pointerY);
         bool focus = _focus is { } f && (ReferenceEquals(f, window) || window.IsDescendantOf(f));
@@ -788,7 +816,7 @@ public sealed partial class X11Server
             {
                 continue;
             }
-            ushort device = (master & (1UL << evtype)) != 0 ? (key ? XiMasterKeyboard : XiMasterPointer) : sourceId;
+            ushort device = (master & (1UL << evtype)) != 0 && !IsFloating(!key) ? MasterOf(!key) : sourceId;
             client.GenericEvent(XInputMajor, (ushort)evtype, w =>
             {
                 w.U16(device).U32(time).U32(detail).U16(sourceId).U16(motion ? (ushort)1 : (ushort)0).U32(0).Zero(4);

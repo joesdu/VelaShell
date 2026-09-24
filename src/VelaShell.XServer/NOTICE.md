@@ -17,6 +17,10 @@ Licensed under the MIT License — see [`LICENSE`](LICENSE).
 头部都注明了它所实现的规范与章节;架构与决策记录在
 [`velashell-docs/zh/xserver/design/architecture.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/xserver/design/architecture.md)。
 
+GLX 与间接渲染用的软件 GL(`Gl/`)同样是独立实现,不包含来自任何 OpenGL / GLX 实现(Mesa 等)的代码:
+依据是 Khronos 发布的 *OpenGL Graphics with the X Window System* 1.4、*GLX Extensions for OpenGL Protocol
+Specification* 1.3、*The OpenGL Graphics System* 1.5,操作码与枚举值取自 Khronos 注册表的 `gl.xml` / `glx.xml`。
+
 协议常量(操作码、事件码、错误码、掩码位、预定义原子、线上布局)在所有正确的实现里**必然相同** ——
 它们是协议规定的事实,表达方式唯一。
 

@@ -11,7 +11,7 @@
 //   「GetKeyboardMapping」「ChangeKeyboardMapping」「GetModifierMapping」「SetModifierMapping」
 //   「GetKeyboardControl」「GetPointerMapping」;ICCCM §4.2.8(WM_DELETE_WINDOW)与 §4.1.5(合成 ConfigureNotify)
 //
-//   只实现异步抓取模式:SyncPointer / SyncKeyboard 与 AllowEvents 的冻结 / 放行按异步处理(架构 §10 记录)。
+//   同步抓取(pointer-mode / keyboard-mode = Synchronous)与 AllowEvents 的冻结、放行、重放见 X11Server.SyncGrabs.cs。
 
 using VelaShell.XServer.Host;
 using VelaShell.XServer.Input;
@@ -43,8 +43,6 @@ public sealed partial class X11Server
     /// <summary>键盘焦点:null = None;<see cref="Root" /> = PointerRoot;其余为具体窗口。</summary>
     private XWindow? _focus;
     private byte _focusRevertTo;
-    private ActiveGrab? _pointerGrab;
-    private ActiveGrab? _keyboardGrab;
     private int _cursorGlyph = int.MinValue;
 
     private ushort State => (ushort)(_modifiers | _buttons);
@@ -57,7 +55,9 @@ public sealed partial class X11Server
         NoteUserActivity();
         if (Lookup<XWindow>(topLevel) is { IsTopLevel: true } top)
         {
-            MovePointer(top.X + top.BorderWidth + x, top.Y + top.BorderWidth + y);
+            // 根坐标在注入的那一刻算好:指针冻着时事件排队,之后窗口可能挪了。
+            int rootX = top.X + top.BorderWidth + x, rootY = top.Y + top.BorderWidth + y;
+            ProcessPointerInput(() => MovePointer(rootX, rootY));
         }
     });
 
@@ -72,18 +72,22 @@ public sealed partial class X11Server
         {
             return;
         }
-        MovePointer(top.X + top.BorderWidth + x, top.Y + top.BorderWidth + y);
-        ButtonEvent(button, pressed);
+        int rootX = top.X + top.BorderWidth + x, rootY = top.Y + top.BorderWidth + y;
+        ProcessPointerInput(() =>
+        {
+            MovePointer(rootX, rootY);
+            ButtonEvent(button, pressed);
+        });
     });
 
     /// <summary>指针离开了所有顶层窗口(移到了宿主的其他窗口或桌面上)。</summary>
-    public void PointerLeft() => Post(null, () => MovePointer(-1, -1));
+    public void PointerLeft() => Post(null, () => ProcessPointerInput(() => MovePointer(-1, -1)));
 
     /// <summary>按键按下 / 松开(X 键码,见 <see cref="XKeycodes" />)。</summary>
     public void Key(byte keycode, bool pressed) => Post(null, () =>
     {
         NoteUserActivity();
-        KeyEvent(keycode, pressed);
+        ProcessKeyboardInput(() => KeyEvent(keycode, pressed));
     });
 
     /// <summary>
@@ -275,6 +279,63 @@ public sealed partial class X11Server
         }
     }
 
+    /// <summary>
+    /// 按钮按下的投递:被动抓取的激活(<paramref name="ignoreGrabsThrough" /> 及其以上的不看 —— ReplayPointer 用)、投递、
+    /// 自动抓取、同步模式的冻结。<paramref name="replay" /> 时是重放:按钮状态与原始事件已经在第一次处理时记过了。
+    /// </summary>
+    private void PressButton(int button, XWindow? ignoreGrabsThrough, bool replay)
+    {
+        PassiveGrab? activated = null;
+        if (PointerGrab is null && FindPassiveGrab(_pointerWindow, isButton: true, button, ignoreGrabsThrough) is { } passive)
+        {
+            activated = passive.Grab;
+            PointerGrab = new ActiveGrab
+            {
+                Client = passive.Grab.Client,
+                Window = passive.Window,
+                OwnerEvents = passive.Grab.OwnerEvents,
+                EventMask = passive.Grab.EventMask,
+                Cursor = passive.Grab.Cursor,
+                ReleaseWhenButtonsUp = true,
+                Xi2 = passive.Grab.Xi2,
+                Xi2Mask = passive.Grab.Xi2Mask,
+            };
+        }
+        if (!replay)
+        {
+            _buttonsDown[button >> 3] |= (byte)(1 << (button & 7));
+            SendRawEvent(XiRawButtonPress, (uint)button, 0, 0);
+        }
+        Delivery? delivered = DeliverDeviceEvent(XEventCode.ButtonPress, (byte)button, XEventMask.ButtonPress, _pointerWindow);
+        if (PointerGrab is null && delivered is { } d)
+        {
+            // 自动抓取:按下的那个窗口在所有按钮松开之前独占指针事件(协议「ButtonPress」;XI2 同理,格式跟着收到的那种走)。
+            PointerGrab = new ActiveGrab
+            {
+                Client = d.Client,
+                Window = d.Window,
+                OwnerEvents = (d.Mask & (uint)XEventMask.OwnerGrabButton) != 0,
+                EventMask = d.Mask,
+                ReleaseWhenButtonsUp = true,
+                Xi2 = d.Xi2,
+                Xi2Mask = d.Xi2Mask,
+            };
+        }
+        if (activated is not null && PointerGrab is { } grab)
+        {
+            // 被动抓取以同步模式激活:事件已经交出去,设备此刻冻结;这一次按下可被 ReplayPointer 重放。
+            ApplyGrabModes(grab, activated.PointerSync, activated.KeyboardSync);
+            if (activated.PointerSync)
+            {
+                _pointerReplay = (button, grab.Window);
+            }
+        }
+        else if (delivered is not null && PointerGrab is not null)
+        {
+            NotePointerEventReported(button, pressed: true);
+        }
+    }
+
     /// <summary>重新算指针所在窗口;变了就发 Enter / Leave、更新光标。窗口树变化后也调它。</summary>
     internal void UpdatePointerWindow()
     {
@@ -296,48 +357,22 @@ public sealed partial class X11Server
         ushort bit = button <= 5 ? (ushort)(0x100 << (button - 1)) : (ushort)0;
         if (pressed)
         {
-            if (_pointerGrab is null && FindPassiveGrab(_pointerWindow, isButton: true, button) is { } passive)
-            {
-                _pointerGrab = new ActiveGrab
-                {
-                    Client = passive.Grab.Client,
-                    Window = passive.Window,
-                    OwnerEvents = passive.Grab.OwnerEvents,
-                    EventMask = passive.Grab.EventMask,
-                    Cursor = passive.Grab.Cursor,
-                    ReleaseWhenButtonsUp = true,
-                    Xi2 = passive.Grab.Xi2,
-                    Xi2Mask = passive.Grab.Xi2Mask,
-                };
-            }
-            _buttonsDown[button >> 3] |= (byte)(1 << (button & 7));
-            SendRawEvent(XiRawButtonPress, (uint)button, 0, 0);
-            Delivery? delivered = DeliverDeviceEvent(XEventCode.ButtonPress, (byte)button, XEventMask.ButtonPress, _pointerWindow);
-            if (_pointerGrab is null && delivered is { } d)
-            {
-                // 自动抓取:按下的那个窗口在所有按钮松开之前独占指针事件(协议「ButtonPress」;XI2 同理,格式跟着收到的那种走)。
-                _pointerGrab = new ActiveGrab
-                {
-                    Client = d.Client,
-                    Window = d.Window,
-                    OwnerEvents = (d.Mask & (uint)XEventMask.OwnerGrabButton) != 0,
-                    EventMask = d.Mask,
-                    ReleaseWhenButtonsUp = true,
-                    Xi2 = d.Xi2,
-                    Xi2Mask = d.Xi2Mask,
-                };
-            }
+            PressButton(button, ignoreGrabsThrough: null, replay: false);
             _buttons |= bit;
         }
         else
         {
             SendRawEvent(XiRawButtonRelease, (uint)button, 0, 0);
-            DeliverDeviceEvent(XEventCode.ButtonRelease, (byte)button, XEventMask.ButtonRelease, _pointerWindow);
+            Delivery? released = DeliverDeviceEvent(XEventCode.ButtonRelease, (byte)button, XEventMask.ButtonRelease, _pointerWindow);
+            if (released is not null && PointerGrab is not null)
+            {
+                NotePointerEventReported(button, pressed: false);
+            }
             _buttonsDown[button >> 3] &= (byte)~(1 << (button & 7));
             _buttons &= (ushort)~bit;
-            if (_buttons == 0 && _pointerGrab is { ReleaseWhenButtonsUp: true })
+            if (_buttons == 0 && PointerGrab is { ReleaseWhenButtonsUp: true })
             {
-                _pointerGrab = null;
+                PointerGrab = null;
                 UpdateCursor();
             }
         }
@@ -354,7 +389,11 @@ public sealed partial class X11Server
     private Delivery? DeliverDeviceEvent(byte code, byte detail, XEventMask mask, XWindow source)
     {
         bool isKey = code is XEventCode.KeyPress or XEventCode.KeyRelease;
-        ActiveGrab? grab = isKey ? _keyboardGrab : _pointerGrab;
+        if (IsFloating(!isKey))
+        {
+            return DeliverFloating(code, detail, source);
+        }
+        ActiveGrab? grab = isKey ? KeyboardGrab : PointerGrab;
         XWindow? stopAt = null;
         if (isKey && grab is null && _focus is { } focus && !ReferenceEquals(focus, Root))
         {
@@ -422,6 +461,31 @@ public sealed partial class X11Server
             }
             return first;
         }
+    }
+
+    /// <summary>
+    /// 物理从设备浮动了(XIChangeHierarchy DetachSlave):不产生核心事件、不受主设备的抓取影响,
+    /// 只以从设备的身份报 XI2 事件 —— 从源窗口向上找第一个为从设备(或 XIAllDevices)选了它的窗口。
+    /// </summary>
+    private Delivery? DeliverFloating(byte code, byte detail, XWindow source)
+    {
+        for (XWindow? w = source; w is not null; w = w.Parent)
+        {
+            Delivery? first = null;
+            foreach ((XClient client, (_, ulong slave)) in w.Xi2Selections)
+            {
+                if ((slave & (1UL << code)) != 0 && !client.Closed)
+                {
+                    SendXi2DeviceEvent(client, code, detail, w, source, slave: true);
+                    first ??= new Delivery(w, client, 0, true, slave, true);
+                }
+            }
+            if (first is not null)
+            {
+                return first;
+            }
+        }
+        return null;
     }
 
     /// <summary>
@@ -633,27 +697,19 @@ public sealed partial class X11Server
             _keysDown[keycode >> 3] &= (byte)~(1 << (keycode & 7));
         }
 
-        XWindow? source = KeyboardSource();
-        if (pressed && _keyboardGrab is null && source is not null && FindPassiveGrab(source, isButton: false, keycode) is { } passive)
-        {
-            _keyboardGrab = new ActiveGrab
-            {
-                Client = passive.Grab.Client,
-                Window = passive.Window,
-                OwnerEvents = passive.Grab.OwnerEvents,
-                ReleaseWhenButtonsUp = true,   // 对键盘:这个键松开时解除
-                Xi2 = passive.Grab.Xi2,
-                Xi2Mask = passive.Grab.Xi2Mask,
-            };
-            _passiveKeyGrabKey = keycode;
-        }
-
         SendRawEvent(pressed ? XiRawKeyPress : XiRawKeyRelease, keycode, 0, 0);
         // 事件里的 state 是事件发生前的:修饰键状态在投递之后才更新。
-        if (source is not null)
+        if (pressed)
         {
-            DeliverDeviceEvent(pressed ? XEventCode.KeyPress : XEventCode.KeyRelease, keycode,
-                pressed ? XEventMask.KeyPress : XEventMask.KeyRelease, source);
+            PressKey(keycode, ignoreGrabsThrough: null, replay: false);
+        }
+        else if (KeyboardSource() is { } source)
+        {
+            Delivery? released = DeliverDeviceEvent(XEventCode.KeyRelease, keycode, XEventMask.KeyRelease, source);
+            if (released is not null && KeyboardGrab is not null)
+            {
+                NoteKeyboardEventReported(keycode, pressed: false);
+            }
         }
 
         // 更新修饰键状态:Lock 类(Caps_Lock、Num_Lock)按下翻转锁定位;其余由「当前按着的键」重新算出,
@@ -668,14 +724,52 @@ public sealed partial class X11Server
             UpdateModifierState(keycode, pressed ? XEventCode.KeyPress : XEventCode.KeyRelease);
         }
 
-        if (!pressed && _keyboardGrab is { ReleaseWhenButtonsUp: true } && _passiveKeyGrabKey == keycode)
+        if (!pressed && KeyboardGrab is { ReleaseWhenButtonsUp: true } && _passiveKeyGrabKey == keycode)
         {
-            _keyboardGrab = null;
+            KeyboardGrab = null;
             _passiveKeyGrabKey = 0;
         }
     }
 
     private byte _passiveKeyGrabKey;
+
+    /// <summary>按键按下的投递:被动抓取的激活(<paramref name="ignoreGrabsThrough" /> 及其以上的不看)、投递、同步模式的冻结。</summary>
+    private void PressKey(byte keycode, XWindow? ignoreGrabsThrough, bool replay)
+    {
+        XWindow? source = KeyboardSource();
+        if (source is null)
+        {
+            return;
+        }
+        PassiveGrab? activated = null;
+        if (KeyboardGrab is null && FindPassiveGrab(source, isButton: false, keycode, ignoreGrabsThrough) is { } passive)
+        {
+            activated = passive.Grab;
+            KeyboardGrab = new ActiveGrab
+            {
+                Client = passive.Grab.Client,
+                Window = passive.Window,
+                OwnerEvents = passive.Grab.OwnerEvents,
+                ReleaseWhenButtonsUp = true,   // 对键盘:这个键松开时解除
+                Xi2 = passive.Grab.Xi2,
+                Xi2Mask = passive.Grab.Xi2Mask,
+            };
+            _passiveKeyGrabKey = keycode;
+        }
+        Delivery? delivered = DeliverDeviceEvent(XEventCode.KeyPress, keycode, XEventMask.KeyPress, source);
+        if (activated is not null && KeyboardGrab is { } grab)
+        {
+            ApplyGrabModes(grab, activated.PointerSync, activated.KeyboardSync);
+            if (activated.KeyboardSync)
+            {
+                _keyboardReplay = (keycode, grab.Window);
+            }
+        }
+        else if (!replay && delivered is not null && KeyboardGrab is not null)
+        {
+            NoteKeyboardEventReported(keycode, pressed: true);
+        }
+    }
 
     /// <summary>从按着的修饰键重新算 base,合成生效状态;变了就通知(XKB 的 StateNotify)。</summary>
     private void UpdateModifierState(byte keycode, byte eventType, byte requestMajor = 0, byte requestMinor = 0)
@@ -706,9 +800,9 @@ public sealed partial class X11Server
     /// <summary>按键事件的源窗口:焦点是 PointerRoot 时是指针所在窗口;指针在焦点窗口里面时是指针所在窗口;否则是焦点窗口。</summary>
     private XWindow? KeyboardSource()
     {
-        if (_keyboardGrab is not null)
+        if (KeyboardGrab is not null)
         {
-            return _pointerWindow.IsViewable ? _pointerWindow : _keyboardGrab.Window;
+            return _pointerWindow.IsViewable ? _pointerWindow : KeyboardGrab.Window;
         }
         return _focus switch
         {
@@ -719,9 +813,10 @@ public sealed partial class X11Server
     }
 
     /// <summary>被动抓取:从根往下到源窗口,第一个匹配的生效(协议「GrabButton」「GrabKey」)。</summary>
-    private (XWindow Window, PassiveGrab Grab)? FindPassiveGrab(XWindow source, bool isButton, int detail)
+    private (XWindow Window, PassiveGrab Grab)? FindPassiveGrab(XWindow source, bool isButton, int detail, XWindow? ignoreThrough = null)
     {
         // 从根往下找(协议:离根最近的那个被动抓取生效);递归回溯父链,不为每次按键分配链表。
+        // ignoreThrough:它及其祖先上的被动抓取不看(Replay 重放时「不看抓取窗口及其以上」)。
         ushort mods = (ushort)(_modifiers & 0xFF);
         return Find(source);
 
@@ -730,6 +825,10 @@ public sealed partial class X11Server
             if (w.Parent is { } parent && Find(parent) is { } outer)
             {
                 return outer;
+            }
+            if (ignoreThrough is not null && (ReferenceEquals(w, ignoreThrough) || ignoreThrough.IsDescendantOf(w)))
+            {
+                return null;
             }
             foreach (PassiveGrab grab in isButton ? w.ButtonGrabs : w.KeyGrabs)
             {
@@ -824,13 +923,12 @@ public sealed partial class X11Server
         bool ownerEvents = r.Data != 0;
         XWindow window = Window(r.U32());
         ushort mask = r.U16();
-        r.U8();
-        r.U8();
+        (bool pointerSync, bool keyboardSync) = ReadGrabModes(r);
         uint confine = r.U32();
         uint cursorId = r.U32();
         r.U32();
         byte status;
-        if (_pointerGrab is { } existing && !ReferenceEquals(existing.Client, c))
+        if (PointerGrab is { } existing && !ReferenceEquals(existing.Client, c))
         {
             status = 1;   // AlreadyGrabbed
         }
@@ -840,7 +938,7 @@ public sealed partial class X11Server
         }
         else
         {
-            _pointerGrab = new ActiveGrab
+            PointerGrab = new ActiveGrab
             {
                 Client = c,
                 Window = window,
@@ -849,6 +947,7 @@ public sealed partial class X11Server
                 Cursor = cursorId == 0 ? null : Lookup<XCursor>(cursorId),
             };
             _ = confine;
+            ApplyGrabModes(PointerGrab, pointerSync, keyboardSync);
             status = 0;
             UpdateCursor();
         }
@@ -857,9 +956,9 @@ public sealed partial class X11Server
 
     private void UngrabPointer(XClient c)
     {
-        if (_pointerGrab is { } grab && ReferenceEquals(grab.Client, c))
+        if (PointerGrab is { } grab && ReferenceEquals(grab.Client, c))
         {
-            _pointerGrab = null;
+            PointerGrab = null;
             UpdateCursor();
         }
     }
@@ -869,7 +968,7 @@ public sealed partial class X11Server
         uint cursorId = r.U32();
         r.U32();
         ushort mask = r.U16();
-        if (_pointerGrab is { } grab && ReferenceEquals(grab.Client, c))
+        if (PointerGrab is { } grab && ReferenceEquals(grab.Client, c))
         {
             grab.EventMask = mask;
             grab.Cursor = cursorId == 0 ? null : Lookup<XCursor>(cursorId);
@@ -882,8 +981,7 @@ public sealed partial class X11Server
         bool ownerEvents = r.Data != 0;
         XWindow window = Window(r.U32());
         ushort mask = r.U16();
-        r.U8();
-        r.U8();
+        (bool pointerSync, bool keyboardSync) = ReadGrabModes(r);
         uint confine = r.U32();
         uint cursorId = r.U32();
         byte button = r.U8();
@@ -898,7 +996,8 @@ public sealed partial class X11Server
         }
         window.ButtonGrabs.RemoveAll(g => ReferenceEquals(g.Client, c) && g.Detail == button && g.Modifiers == modifiers);
         window.ButtonGrabs.Add(new PassiveGrab(c, button, modifiers, ownerEvents, mask,
-            confine == 0 ? null : Lookup<XWindow>(confine), cursorId == 0 ? null : Lookup<XCursor>(cursorId)));
+            confine == 0 ? null : Lookup<XWindow>(confine), cursorId == 0 ? null : Lookup<XCursor>(cursorId),
+            PointerSync: pointerSync, KeyboardSync: keyboardSync));
     }
 
     private void UngrabButton(XClient c, XRequestReader r)
@@ -915,8 +1014,10 @@ public sealed partial class X11Server
     {
         bool ownerEvents = r.Data != 0;
         XWindow window = Window(r.U32());
+        r.U32();   // time
+        (bool pointerSync, bool keyboardSync) = ReadGrabModes(r);
         byte status;
-        if (_keyboardGrab is { } existing && !ReferenceEquals(existing.Client, c))
+        if (KeyboardGrab is { } existing && !ReferenceEquals(existing.Client, c))
         {
             status = 1;
         }
@@ -926,7 +1027,8 @@ public sealed partial class X11Server
         }
         else
         {
-            _keyboardGrab = new ActiveGrab { Client = c, Window = window, OwnerEvents = ownerEvents };
+            KeyboardGrab = new ActiveGrab { Client = c, Window = window, OwnerEvents = ownerEvents };
+            ApplyGrabModes(KeyboardGrab, pointerSync, keyboardSync);
             status = 0;
         }
         c.Reply(status, w => w.Zero(24));
@@ -934,9 +1036,9 @@ public sealed partial class X11Server
 
     private void UngrabKeyboard(XClient c)
     {
-        if (_keyboardGrab is { } grab && ReferenceEquals(grab.Client, c))
+        if (KeyboardGrab is { } grab && ReferenceEquals(grab.Client, c))
         {
-            _keyboardGrab = null;
+            KeyboardGrab = null;
         }
     }
 
@@ -946,6 +1048,7 @@ public sealed partial class X11Server
         XWindow window = Window(r.U32());
         ushort modifiers = r.U16();
         byte key = r.U8();
+        (bool pointerSync, bool keyboardSync) = ReadGrabModes(r);
         if (key != 0 && (key < Keymap.MinKeycode))
         {
             throw new XProtocolError(XErrorCode.Value, key);
@@ -958,7 +1061,8 @@ public sealed partial class X11Server
             }
         }
         window.KeyGrabs.RemoveAll(g => ReferenceEquals(g.Client, c) && g.Detail == key && g.Modifiers == modifiers);
-        window.KeyGrabs.Add(new PassiveGrab(c, key, modifiers, ownerEvents, 0, null, null));
+        window.KeyGrabs.Add(new PassiveGrab(c, key, modifiers, ownerEvents, 0, null, null,
+            PointerSync: pointerSync, KeyboardSync: keyboardSync));
     }
 
     private void UngrabKey(XClient c, XRequestReader r)
@@ -969,6 +1073,21 @@ public sealed partial class X11Server
         window.KeyGrabs.RemoveAll(g => ReferenceEquals(g.Client, c)
                                        && (key == 0 || g.Detail == key)
                                        && (modifiers == 0x8000 || g.Modifiers == modifiers));
+    }
+
+    /// <summary>pointer-mode、keyboard-mode 两个字节:Synchronous 0、Asynchronous 1,别的值 BadValue。</summary>
+    private static (bool PointerSync, bool KeyboardSync) ReadGrabModes(XRequestReader r)
+    {
+        byte pointerMode = r.U8(), keyboardMode = r.U8();
+        if (pointerMode > 1)
+        {
+            throw new XProtocolError(XErrorCode.Value, pointerMode);
+        }
+        if (keyboardMode > 1)
+        {
+            throw new XProtocolError(XErrorCode.Value, keyboardMode);
+        }
+        return (pointerMode == 0, keyboardMode == 0);
     }
 
     // ================================================================== 查询

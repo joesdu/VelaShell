@@ -90,7 +90,7 @@ public sealed partial class X11Server
             case XOpcode.UngrabKeyboard: UngrabKeyboard(c); break;
             case XOpcode.GrabKey: GrabKey(c, r); break;
             case XOpcode.UngrabKey: UngrabKey(c, r); break;
-            case XOpcode.AllowEvents: break;   // 只实现异步模式,冻结 / 放行无从谈起
+            case XOpcode.AllowEvents: AllowEvents(c, r.Data); break;
             case XOpcode.GrabServer: _serverGrabber = c; break;
             case XOpcode.UngrabServer: if (ReferenceEquals(_serverGrabber, c)) { ReleaseServerGrab(); } break;
             case XOpcode.QueryPointer: QueryPointer(c, r); break;
@@ -177,7 +177,7 @@ public sealed partial class X11Server
             case XOpcode.GetModifierMapping: GetModifierMapping(c); break;
             case XOpcode.NoOperation: break;
             default:
-                if (r.Opcode >= XOpcode.FirstExtension && _extensionsByOpcode.TryGetValue(r.Opcode, out Extension? ext))
+                if (r.Opcode >= XOpcode.FirstExtension && _extensionsByOpcode.TryGetValue(r.Opcode, out Extension? ext) && ext.IsVisibleTo(c))
                 {
                     ext.Handle(c, r);
                     break;

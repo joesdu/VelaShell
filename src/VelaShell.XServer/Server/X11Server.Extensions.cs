@@ -26,6 +26,11 @@ internal sealed class Extension(string name, byte majorOpcode, Action<XClient, X
     /// <summary>这个扩展的第一个错误码;没有自己的错误时为 0。</summary>
     public byte FirstError { get; init; }
 
+    /// <summary>只对部分客户端可见(比如 MIT-SHM 只给同一台机器上的);null = 对谁都可见。</summary>
+    public Func<XClient, bool>? VisibleTo { get; init; }
+
+    public bool IsVisibleTo(XClient client) => VisibleTo?.Invoke(client) ?? true;
+
     public void Handle(XClient client, XRequestReader request) => handle(client, request);
 }
 
@@ -55,6 +60,16 @@ public sealed partial class X11Server
         Register(new Extension("Present", PresentMajor, Present));
         Register(new Extension("XKEYBOARD", XkbMajor, Xkb) { FirstEvent = XkbEventBase, FirstError = XkbErrorBase });
         Register(new Extension("XInputExtension", XInputMajor, XInput) { FirstEvent = XInputEventBase, FirstError = XInputErrorBase });
+        Register(new Extension("GLX", GlxMajor, Glx) { FirstEvent = GlxEventBase, FirstError = GlxErrorBase });
+        if (ShmSupported)
+        {
+            Register(new Extension("MIT-SHM", ShmMajor, Shm)
+            {
+                FirstEvent = ShmEventBase,
+                FirstError = ShmErrorBase,
+                VisibleTo = static client => client.SameHost,
+            });
+        }
     }
 
     private void Register(Extension extension)
@@ -68,7 +83,7 @@ public sealed partial class X11Server
         int length = r.U16();
         r.Skip(2);
         string name = r.String8(length);
-        if (_extensions.TryGetValue(name, out Extension? ext))
+        if (_extensions.TryGetValue(name, out Extension? ext) && ext.IsVisibleTo(c))
         {
             c.Reply(0, w => w.Bool(true).U8(ext.MajorOpcode).U8(ext.FirstEvent).U8(ext.FirstError).Zero(20));
         }
@@ -80,7 +95,7 @@ public sealed partial class X11Server
 
     private void ListExtensions(XClient c)
     {
-        string[] names = [.. _extensions.Keys.Order(StringComparer.Ordinal)];
+        string[] names = [.. _extensions.Values.Where(e => e.IsVisibleTo(c)).Select(e => e.Name).Order(StringComparer.Ordinal)];
         c.Reply((byte)names.Length, w =>
         {
             w.Zero(24);
@@ -172,13 +187,13 @@ public sealed partial class X11Server
         {
             _fetch = null;   // 正在取的选区,属主走了
         }
-        if (ReferenceEquals(_pointerGrab?.Client, client))
+        if (ReferenceEquals(PointerGrab?.Client, client))
         {
-            _pointerGrab = null;
+            PointerGrab = null;
         }
-        if (ReferenceEquals(_keyboardGrab?.Client, client))
+        if (ReferenceEquals(KeyboardGrab?.Client, client))
         {
-            _keyboardGrab = null;
+            KeyboardGrab = null;
         }
 
         // 资源表只扫一遍:分出它的窗口与其余资源。先销毁「挂在别人窗口下」的那些(连同子窗口),再清其余资源。
@@ -210,6 +225,7 @@ public sealed partial class X11Server
         {
             DestroyWindow(window);   // 已随上级销毁的会在里面直接返回
         }
+        DetachShmSegments(others);
         foreach (XResource resource in others)
         {
             _resources.Remove(resource.Id);
@@ -239,6 +255,7 @@ public sealed partial class X11Server
         CleanupXkb(client);
         CleanupXInput(client);
         CleanupRandR(client, null);
+        CleanupGlx(client);
         UpdatePointerWindow();
         UpdateCursor();
     }

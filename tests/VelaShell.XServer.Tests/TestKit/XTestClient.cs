@@ -121,7 +121,20 @@ internal sealed class XTestClient : IAsyncDisposable
     {
         (Stream serverSide, Stream clientSide) = DuplexPair.Create();
         Task serverTask = server.ServeAsync(serverSide, isLocal);
+        return await HandshakeAsync(clientSide, serverTask, bigEndian, authName, authData);
+    }
 
+    /// <summary>经 Unix 套接字连服务端(服务端当它是同一台机器上的客户端 —— MIT-SHM 之类只对这样的客户端可见)。</summary>
+    public static async Task<XTestClient> ConnectUnixAsync(string path)
+    {
+        System.Net.Sockets.Socket socket = new(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream,
+            System.Net.Sockets.ProtocolType.Unspecified);
+        await socket.ConnectAsync(new System.Net.Sockets.UnixDomainSocketEndPoint(path));
+        return await HandshakeAsync(new System.Net.Sockets.NetworkStream(socket, ownsSocket: true), Task.CompletedTask, false, "", null);
+    }
+
+    private static async Task<XTestClient> HandshakeAsync(Stream clientSide, Task serverTask, bool bigEndian, string authName, byte[]? authData)
+    {
         byte[] name = Encoding.ASCII.GetBytes(authName);
         authData ??= [];
         List<byte> hello = [bigEndian ? (byte)'B' : (byte)'l', 0];

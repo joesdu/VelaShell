@@ -89,7 +89,7 @@ Docker 与 `docker-compose.test.yml`,`CrossPlatformPublishTests` 需 `VELASHELL_
 别把宿主其余部分的代码挪进去。它的测试一律用 Debug 跑(Release 签名会省掉 `InternalsVisibleTo`)。
 - **改 `src/VelaShell.XServer/` 之前先读 [`src/VelaShell.XServer/AGENTS.md`](src/VelaShell.XServer/AGENTS.md)**。
 那是可嵌入的 X11 服务端库(2026-09-23 立项,MIT;宿主的「X Server」默认用它,Avalonia 宿主在 `src/VelaShell/Services/XServer/`),与 SSH 库同一套净室规程:
-实现依据只能是 X.Org 的协议规范、ICCCM 与 EWMH,不许打开任何其它 X 服务端的源码。
+实现依据只能是 X.Org 的协议规范、ICCCM、EWMH 与 Khronos 的 GLX / OpenGL 规范,不许打开任何其它 X 服务端或 OpenGL 实现(Mesa 等)的源码。
 真实客户端用例需 Docker 镜像 `velashell-xclients` 与 `VELASHELL_XSERVER_INTEROP=1`,不满足时同样早退记为通过。
 - **插件 SDK 一律走 NuGet 包**,不做工程引用。版本在 `src/Directory.Packages.props`。
 - **不要自己决定 SDK 版本号,也不要造本地包**。宿主的改动需要 SDK 的新契约时,正确做法是:

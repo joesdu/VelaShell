@@ -130,4 +130,23 @@ public sealed class EdgeCaseTests
         Assert.IsTrue(error.IsError);
         Assert.AreEqual(8, error.Bytes[1], "BadMatch");
     }
+
+    [TestMethod]
+    public async Task GetImage读根窗口拿到拼起来的顶层内容()
+    {
+        // rootless 下根窗口不画:xwd -root、截图工具读到的是按堆叠次序拼起来的顶层,其余是黑的(以前回 BadMatch)。
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        uint top = await MapTopAsync(c, host, 10, 20, 0);
+        uint gc = c.NewId();
+        await c.SendAsync(55, 0, b => b.U32(gc).U32(top).U32(0x4).U32(0x123456));
+        await c.SendAsync(70, 0, b => b.U32(top).U32(gc).I16(0).I16(0).U16(60).U16(40));
+
+        XMessage inside = await c.RequestAsync(73, 2, b => b.U32(c.RootWindow).I16(15).I16(25).U16(1).U16(1).U32(0xFFFFFFFF));
+        Assert.IsFalse(inside.IsError);
+        Assert.AreEqual(0x123456u, inside.U32(32) & 0xFFFFFF, "顶层窗口里的像素");
+        XMessage outside = await c.RequestAsync(73, 2, b => b.U32(c.RootWindow).I16(0).I16(0).U16(1).U16(1).U32(0xFFFFFFFF));
+        Assert.AreEqual(0u, outside.U32(32) & 0xFFFFFF, "顶层之外是黑的");
+    }
 }
