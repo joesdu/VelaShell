@@ -77,6 +77,8 @@ jobs:
           path: velashell-docs
 
       # runner 镜像通常已带这些,列全是为了镜像换代时不至于悄悄少一个。
+      # libxcb / libxkbcommon / libxkbcommon-x11 是 LinuxKeymap 从 $DISPLAY 读桌面布局用的,xvfb 不会带上后两个;
+      # 缺了 HostKeymap_BuildsFromTheCurrentSystemLayout 只能记为跳过,Linux 上的布局跟随就没人验。
       #
       # 一个都不缺时**连 apt 都不碰**。镜像里还配着 Chrome 等第三方源,它们的索引偶尔会
       # Hash Sum mismatch,而 `apt-get update` 只要有一个源没取下来就整体退 100 ——
@@ -87,7 +89,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          packages=(xvfb libx11-6 libice6 libsm6 libfontconfig1)
+          packages=(xvfb libx11-6 libice6 libsm6 libfontconfig1 libxcb1 libxkbcommon0 libxkbcommon-x11-0)
           missing=()
           for package in "${packages[@]}"; do
             dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q 'ok installed' || missing+=("$package")

@@ -152,10 +152,21 @@ public sealed class AvaloniaXServerHostUiTests
             : null;
         if (keymap is null)
         {
-            Assert.IsTrue(OperatingSystem.IsLinux() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")),
-                "只有没有桌面 X 显示的 Linux 取不到布局");
-            Assert.Inconclusive("没有 $DISPLAY:沿用服务端的 US 键位表");
-            return;
+            Assert.IsTrue(OperatingSystem.IsLinux(), "Windows 上总能按当前布局算出键位表");
+            if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
+            {
+                Assert.Inconclusive("没有 $DISPLAY:沿用服务端的 US 键位表");
+                return;
+            }
+            // 桌面标配的库在最小化的容器 / CI 镜像里可能没有:那是环境不全,不是实现的错。库都在还取不到才是真失败。
+            string[] missing = [.. new[] { "libxcb.so.1", "libxkbcommon.so.0", "libxkbcommon-x11.so.0" }
+                .Where(name => !NativeLibrary.TryLoad(name, out _))];
+            if (missing.Length > 0)
+            {
+                Assert.Inconclusive($"缺少 {string.Join("、", missing)}:沿用服务端的 US 键位表");
+                return;
+            }
+            Assert.Fail("有 $DISPLAY、库也都在,却没按桌面布局算出键位表");
         }
         int per = keymap.PerKeycode;
         Assert.IsTrue(per is 2 or 6, "无 AltGr 两列;有 AltGr 按 XKB §17 的核心列序六列");
