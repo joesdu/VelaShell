@@ -49,24 +49,34 @@ internal sealed class Keymap
     public uint Keysym(byte keycode, int column) =>
         keycode < MinKeycode || column >= KeysymsPerKeycode ? 0 : _keysyms[((keycode - MinKeycode) * KeysymsPerKeycode) + column];
 
-    /// <summary>ChangeKeyboardMapping:改写一段键码的键值(列数可以变 —— 那时整张表按新列数重排)。</summary>
+    /// <summary>
+    /// ChangeKeyboardMapping:改写一段键码的键值。表的列数取原列数与请求列数中大的那个 —— 请求更宽时整张表按新列数重排,
+    /// 更窄时别的键不受影响;请求里的这几个键,超出请求列数的列清成 NoSymbol。
+    /// </summary>
+    /// <remarks>
+    /// 只放宽不收窄:<c>xmodmap -e "keycode 108 = ISO_Level3_Shift"</c> 发的是每键码 1 列,要是整张表随之收成 1 列,
+    /// 所有键的 Shift 列都没了。
+    /// </remarks>
     public void Change(byte firstKeycode, int keysymsPerKeycode, ReadOnlySpan<uint> keysyms)
     {
-        if (keysymsPerKeycode != KeysymsPerKeycode)
+        if (keysymsPerKeycode > KeysymsPerKeycode)
         {
             uint[] next = new uint[(MaxKeycode - MinKeycode + 1) * keysymsPerKeycode];
-            int copy = Math.Min(KeysymsPerKeycode, keysymsPerKeycode);
             for (int k = 0; k <= MaxKeycode - MinKeycode; k++)
             {
-                for (int c = 0; c < copy; c++)
-                {
-                    next[(k * keysymsPerKeycode) + c] = _keysyms[(k * KeysymsPerKeycode) + c];
-                }
+                _keysyms.AsSpan(k * KeysymsPerKeycode, KeysymsPerKeycode).CopyTo(next.AsSpan(k * keysymsPerKeycode));
             }
             _keysyms = next;
             KeysymsPerKeycode = keysymsPerKeycode;
         }
-        keysyms.CopyTo(_keysyms.AsSpan((firstKeycode - MinKeycode) * keysymsPerKeycode));
+        int per = KeysymsPerKeycode;
+        int count = keysyms.Length / keysymsPerKeycode;
+        for (int k = 0; k < count; k++)
+        {
+            Span<uint> row = _keysyms.AsSpan((firstKeycode - MinKeycode + k) * per, per);
+            row.Clear();
+            keysyms.Slice(k * keysymsPerKeycode, keysymsPerKeycode).CopyTo(row);
+        }
     }
 
     public void SetModifierMap(byte[] map) => ModifierMap = map;
