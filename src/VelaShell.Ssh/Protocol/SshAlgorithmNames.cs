@@ -179,11 +179,12 @@ public static class SshAlgorithmNames
     /// <summary>不压缩。</summary>
     public const string None = "none";
 
-    /// <summary>zlib，认证**之后**才开始压缩。</summary>
+    /// <summary>zlib，认证**之后**才开始压缩。本库唯一支持的压缩算法。</summary>
+    /// <remarks>
+    /// RFC 4253 的裸 <c>zlib</c> 不实现：它从首次 NEWKEYS 起就压，认证报文也在压缩流里，
+    /// 口令的可压缩性会从密文长度漏出去（见 <see cref="Crypto.SshCompressorFactory.IsDelayed"/>）。
+    /// </remarks>
     public const string ZlibOpenSsh = "zlib@openssh.com";
-
-    /// <summary>zlib，版本交换后立即生效。RFC 4253。</summary>
-    public const string Zlib = "zlib";
 
     // ------------------------------------------------------------------ 服务
 

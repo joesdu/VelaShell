@@ -191,11 +191,6 @@ public static class SshConnectionFactory
     /// 两个方向<b>各自独立协商</b> —— 一边压一边不压是合法的，
     /// 而且在「上传大量数据、下载很少」这类场景里是合理的。
     /// </para>
-    /// <para>
-    /// 只管延迟的那种：普通的 <c>zlib</c> 从首次 <c>NEWKEYS</c> 起就已经在压了
-    /// （RFC 4253 §6.2），那是密钥交换当场装上的，这里再装一遍会把一条
-    /// 正在使用的 zlib 流换成一条新的 —— 两端的字典当场错位。
-    /// </para>
     /// </remarks>
     private static void ActivateDelayedCompression(
         SshPacketTransport transport, SshNegotiatedAlgorithms algorithms)
