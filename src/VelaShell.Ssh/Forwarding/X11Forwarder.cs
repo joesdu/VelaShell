@@ -105,6 +105,34 @@ public sealed record X11ForwardOptions
     /// </remarks>
     public bool BestEffort { get; init; }
 
+    /// <summary>
+    /// 本机显示的连接器:设了它,<c>x11</c> 通道不再去连 <see cref="Display" /> 的套接字,而是调它拿一条双工流
+    /// (比如直接接进进程内嵌的 X server)。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 〔<c>velashell-docs/zh/ssh/spec/07</c> §7.5.9〕假 cookie 的核对照旧 —— 那一层防的是远端,与本机这一端怎么接无关。
+    /// 核对通过之后,建立报文里的 cookie 换成 <see cref="LocalCookie" />(没给就是空的),再写进这条流。
+    /// 连接器那一端自己负责访问控制:给出的流就等于一条已被信任的本机连接。
+    /// </para>
+    /// <para>
+    /// 只支持受信模式:非受信模式要 <c>xauth</c> 连上本机显示签一个受限 cookie,而连接器后面未必有可供 <c>xauth</c>
+    /// 去连的显示 —— 两者同时设时 <see cref="X11Forwarder.RequestAsync" /> 抛 <see cref="SshForwardException" />。
+    /// <see cref="Display" /> 仍然要给(或取 <c>DISPLAY</c>):屏幕号与诊断信息用它。
+    /// </para>
+    /// <para>
+    /// 连接器返回的流归转发所有,用完释放;它抛出 <see cref="IOException" /> 或
+    /// <see cref="InvalidOperationException" />(比如 X server 已经停了)时,这条通道按「本机显示连不上」处理。
+    /// </para>
+    /// </remarks>
+    public Func<CancellationToken, ValueTask<Stream>>? LocalConnector { get; init; }
+
+    /// <summary>
+    /// 经 <see cref="LocalConnector" /> 连本机显示时建立报文里带的 cookie;<see langword="null" /> = 空(连接器那一端不查 cookie)。
+    /// 不设 <see cref="LocalConnector" /> 时不起作用 —— 那时真 cookie 取自 <c>.Xauthority</c> 或 <c>xauth</c>。
+    /// </summary>
+    public byte[]? LocalCookie { get; init; }
+
     /// <summary>默认选项。</summary>
     public static X11ForwardOptions Default { get; } = new();
 }
@@ -206,8 +234,15 @@ public sealed class X11Forwarder : IAsyncDisposable
                 "拿不到本机的 X 显示：DISPLAY 没设或者格式不认识。" +
                 "可以在 X11ForwardOptions.Display 里显式指定。");
 
-        byte[] realCookie = await ResolveRealCookieAsync(display, effective, cancellationToken)
-            .ConfigureAwait(false);
+        if (effective.LocalConnector is not null && !effective.Trusted)
+        {
+            throw new SshForwardException(
+                "本机显示经连接器接入时只支持受信模式:非受信模式要 xauth 连上本机显示签受限 cookie,连接器后面没有可供它去连的显示。");
+        }
+
+        byte[] realCookie = effective.LocalConnector is not null
+            ? effective.LocalCookie ?? []
+            : await ResolveRealCookieAsync(display, effective, cancellationToken).ConfigureAwait(false);
 
         // ⚠️ **发给服务端的永远是假 cookie。** 真 cookie 一步都不能离开本机。
         byte[] fakeCookie = X11SetupMessage.CreateFakeCookie();
@@ -297,11 +332,26 @@ public sealed class X11Forwarder : IAsyncDisposable
         }
 
         Socket? local = null;
+        Stream? stream = null;
         bool accepted = false;
         try
         {
-            local = await ConnectDisplayAsync(cancellationToken).ConfigureAwait(false);
-            if (local is null)
+            Action? shutdownSend = null;
+            if (_options.LocalConnector is { } connector)
+            {
+                stream = await ConnectViaConnectorAsync(connector, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                local = await ConnectDisplayAsync(cancellationToken).ConfigureAwait(false);
+                if (local is not null)
+                {
+                    stream = new NetworkStream(local, ownsSocket: false);
+                    Socket socket = local;
+                    shutdownSend = () => SafeShutdownSend(socket);
+                }
+            }
+            if (stream is null)
             {
                 return;   // 本机显示连不上 —— 通道随后由会话关掉；名额在 finally 里退回
             }
@@ -311,15 +361,14 @@ public sealed class X11Forwarder : IAsyncDisposable
             Interlocked.Increment(ref _acceptedChannels);
             accepted = true;
 
-            NetworkStream stream = new(local, ownsSocket: false);
-
             // 先把换好的建立报文发过去，再进入对搬。
             await stream.WriteAsync(rewrittenSetup, cancellationToken).ConfigureAwait(false);
             await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
 
-            Socket socket = local;
-            await using StreamRelayEndpoint localEnd = new(
-                stream, () => SafeShutdownSend(socket), ownsStream: true);
+            // 流交给端点,由它释放;这里不再重复释放。
+            Stream owned = stream;
+            stream = null;
+            await using StreamRelayEndpoint localEnd = new(owned, shutdownSend, ownsStream: true);
             ChannelRelayEndpoint remoteEnd = new(channel);
 
             await DuplexRelay.RunAsync(
@@ -334,6 +383,10 @@ public sealed class X11Forwarder : IAsyncDisposable
         }
         finally
         {
+            if (stream is not null)
+            {
+                await stream.DisposeAsync().ConfigureAwait(false);
+            }
             local?.Dispose();
             _slots.Release();
 
@@ -342,6 +395,20 @@ public sealed class X11Forwarder : IAsyncDisposable
             {
                 ReleaseSingle(claimedSingle);
             }
+        }
+    }
+
+    /// <summary>经连接器拿本机显示的流;连接器那一端不可用(已停、已释放)时返回 <see langword="null" />。</summary>
+    private static async ValueTask<Stream?> ConnectViaConnectorAsync(
+        Func<CancellationToken, ValueTask<Stream>> connector, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await connector(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException)
+        {
+            return null;
         }
     }
 

@@ -31,7 +31,12 @@ public sealed record XServerStartResult(bool Success, string? Error = null)
 /// 按老规矩取 <c>DISPLAY</c> 与默认值。
 /// </param>
 /// <param name="Error">自动启动失败的原因(已本地化);没有尝试启动或启动成功时为 <see langword="null" />。</param>
-public sealed record XServerDisplayResolution(string? Display, string? Error = null)
+/// <param name="Connector">
+/// 内置 X 服务端给的本机连接器:调一次得到一条直接接进服务端的双工流,SSH 的 x11 通道不必再去连本机端口。
+/// <see langword="null" /> = 按 <paramref name="Display" /> 走套接字(VcXsrv 等外部 X 服务端)。
+/// </param>
+public sealed record XServerDisplayResolution(
+    string? Display, string? Error = null, Func<CancellationToken, ValueTask<Stream>>? Connector = null)
 {
     /// <summary>不接管。</summary>
     public static XServerDisplayResolution None { get; } = new(Display: null);
@@ -42,9 +47,9 @@ public sealed record XServerDisplayResolution(string? Display, string? Error = n
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>不是 X 服务端的实现</b>,是一个已安装的 X 服务端(Windows 上是 VcXsrv)的<b>进程管理者</b>:
-/// 找到可执行文件、挑一个空闲的显示号、按设置拼命令行拉起来、等它开始监听,退出时把它关掉。
-/// 只管自己拉起的那一个进程 —— 用户在外面另开的 X 服务端不碰。
+/// 两种实现,由设置里的引擎决定:内置的 X 服务端(进程内,<c>VelaShell.XServer</c>),或 Windows 上用户装好的
+/// VcXsrv 的<b>进程管理者</b>(找到可执行文件、挑一个空闲的显示号、按设置拼命令行拉起来、等它开始监听,
+/// 退出时把它关掉)。都只管自己启动的那一个 —— 用户在外面另开的 X 服务端不碰。
 /// </para>
 /// <para>
 /// <see cref="StateChanged" /> 可能在任意线程上触发,界面侧自己切回 UI 线程。
@@ -52,7 +57,7 @@ public sealed record XServerDisplayResolution(string? Display, string? Error = n
 /// </remarks>
 public interface ILocalXServer
 {
-    /// <summary>当前平台是否支持(目前只有 Windows;Linux 桌面自带 X / XWayland,macOS 用 XQuartz)。</summary>
+    /// <summary>当前平台是否支持(内置引擎各平台都支持;VcXsrv 只在 Windows 上)。</summary>
     bool IsSupported { get; }
 
     /// <summary>当前状态。</summary>
@@ -83,10 +88,11 @@ public interface ILocalXServer
     /// 没在运行且设置允许自动启动时先启动。
     /// </summary>
     /// <remarks>
-    /// 本机 6000 端口上已经有别的 X 服务端(X410、用户手开的 VcXsrv)时不自动启动,
-    /// 返回 <see cref="XServerDisplayResolution.None" /> —— 用户已经有一个在用的显示,
-    /// 再开一个只会让窗口出现在意料之外的地方。找不到可执行文件时同样静默不接管:
-    /// 没装 VcXsrv 的人不该在每次连接时收到一条提示。
+    /// 本机已经有别的 X 服务端在用(Windows 上 6000 端口有人在听 —— X410、用户手开的 VcXsrv;其它平台上设了
+    /// <c>DISPLAY</c>)时不自动启动,返回 <see cref="XServerDisplayResolution.None" /> —— 用户已经有一个在用的显示,
+    /// 再开一个只会让窗口出现在意料之外的地方。VcXsrv 引擎找不到可执行文件时同样静默不接管:
+    /// 没装 VcXsrv 的人不该在每次连接时收到一条提示。内置引擎在运行时一并给出
+    /// <see cref="XServerDisplayResolution.Connector" />。
     /// </remarks>
     Task<XServerDisplayResolution> ResolveForwardingDisplayAsync(CancellationToken cancellationToken = default);
 }

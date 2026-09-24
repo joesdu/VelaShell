@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -5509,10 +5509,28 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>X Server</value>
   </data>
   <data name="SetXServer_Subtitle" xml:space="preserve">
-    <value>本机 X 服务端(VcXsrv),用于经 SSH X11 转发在本机显示远端的图形程序。改动在下次启动 X Server 时生效。</value>
+    <value>本机 X 服务端,用于经 SSH X11 转发在本机显示远端的图形程序:内置的,或 Windows 上的 VcXsrv。改动在下次启动 X Server 时生效。</value>
   </data>
-  <data name="SetXServer_Unsupported" xml:space="preserve">
-    <value>本机 X Server 目前只在 Windows 上提供。Linux 上 X11 转发直接经 DISPLAY 使用桌面自带的 X 服务端(或 XWayland);macOS 上装好 XQuartz 后同样经 DISPLAY 使用。</value>
+  <data name="SetXServer_BuiltInNote" xml:space="preserve">
+    <value>每个 X 窗口都是一个独立的原生窗口。SSH 的 X11 转发直接接进内置服务端,不经本机端口;本机其它 X 程序照样可以用 DISPLAY=localhost:N 连它。</value>
+  </data>
+  <data name="SetXServer_Engine" xml:space="preserve">
+    <value>X 服务端</value>
+  </data>
+  <data name="SetXServer_EngineBuiltIn" xml:space="preserve">
+    <value>内置(推荐)</value>
+  </data>
+  <data name="SetXServer_EngineDesc" xml:space="preserve">
+    <value>内置的 X 服务端随 VelaShell 分发,无需安装;VcXsrv 需要自行安装。</value>
+  </data>
+  <data name="SetXServer_EngineVcXsrv" xml:space="preserve">
+    <value>VcXsrv(需自行安装)</value>
+  </data>
+  <data name="SetXServer_SectionEngine" xml:space="preserve">
+    <value>引擎</value>
+  </data>
+  <data name="XServer_ErrNoHost" xml:space="preserve">
+    <value>内置 X 服务端缺少窗口宿主,无法启动。</value>
   </data>
   <data name="SetXServer_SectionProgram" xml:space="preserve">
     <value>程序</value>
@@ -5578,13 +5596,13 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>启用剪贴板</value>
   </data>
   <data name="SetXServer_ClipboardDesc" xml:space="preserve">
-    <value>让 X 的 CLIPBOARD 选区与 Windows 剪贴板互通(-clipboard)。</value>
+    <value>让 X 的 CLIPBOARD 选区与系统剪贴板互通(VcXsrv:-clipboard)。</value>
   </data>
   <data name="SetXServer_CopyOnSelection" xml:space="preserve">
     <value>选中即复制</value>
   </data>
   <data name="SetXServer_CopyOnSelectionDesc" xml:space="preserve">
-    <value>把 PRIMARY 选区也映射过去:在 X 程序里选中文字就直接进入 Windows 剪贴板(-primary)。</value>
+    <value>把 PRIMARY 选区也映射过去:在 X 程序里选中文字就直接进入系统剪贴板(VcXsrv:-primary)。</value>
   </data>
   <data name="SetXServer_SectionKeyboard" xml:space="preserve">
     <value>键盘</value>
@@ -5653,7 +5671,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>X11 转发时自动启动</value>
   </data>
   <data name="SetXServer_AutoStartForX11Desc" xml:space="preserve">
-    <value>开了 X11 转发的 SSH 会话连上、而配置里没写显示地址时,先启动 X Server。本机 localhost:0 上已有别的 X 服务端时不插手。</value>
+    <value>开了 X11 转发的 SSH 会话连上、而配置里没写显示地址时,先启动 X Server。本机已有别的 X 服务端在用时不插手(Windows 上是 localhost:0 有人在听,其它平台是设了 DISPLAY)。</value>
   </data>
   <data name="SetXServer_ShowTrayIcon" xml:space="preserve">
     <value>显示托盘图标</value>

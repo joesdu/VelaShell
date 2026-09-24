@@ -65,7 +65,7 @@ pie showData
 > 「安全与凭据」从 6 降到 4：SSH 证书认证已在 `bbfa1877` 落地，ed25519 密钥生成已在 `plan.md` §86 落地（均见该节）。
 > 「插件生态」现为 2：插件自报图标当天闭合，但新增了一条 🔴 P0「11 条怎么改都绿的 UI 用例」（见该节）。
 > 「终端与协议」从 3 加到 4：新增「SSH PTY 像素尺寸贯通」（2026-09-22 换成 SSH 库 VelaShell.Ssh 后**不再卡上游**，见该节）。
-> 「终端与协议」从 5 降到 4：VelaShell.XServer 的「XKB 与 XInput2」已随完备性一轮落地（`plan.md` §104），只留 M3（接入宿主）。
+> 「终端与协议」仍为 4：VelaShell.XServer 的 M3（接入宿主）已落地（`plan.md` §105），拆出一条「内置 X 服务端：AltGr 层」（见该节）。
 
 ---
 
@@ -143,7 +143,8 @@ pie showData
 | 💡 | 🟢 P3 | **终端内搜索的增强** | 基础搜索已实现（`MainWindowViewModel.TerminalSearchRequested:1616`） | 正则、大小写、全部高亮、上一个/下一个的循环计数 —— 按用户反馈再定 |
 | ✅ | — | ~~**VelaShell.XServer M2:现代工具包要的扩展**~~ | **已完成**(2026-09-23,`plan.md` §103):SHAPE、XFIXES、RANDR(只读)、RENDER、剪贴板与宿主互通、XSETTINGS 管理器;`zenity`、`gedit`、`qt5ct`、Xft 的 `xterm` 画得对、零协议错误 | 原计划里的**最小 XKB 与 XInput2 没做**,拆成下一行 —— 实测 GTK3 / Qt5 没有它们照样工作 |
 | ✅ | — | ~~**VelaShell.XServer:XKB 与 XInput2**~~ | **已完成**(2026-09-23,`plan.md` §104):XKEYBOARD 由核心键位表推出完整描述(类型、动作、SymInterpret、指示灯、evdev 键名),xkbcommon-x11 建表成功、`xkbcomp` 导出自洽;XInputExtension 到 XI 2.2(设备事件、Enter / Leave / Focus、原始事件、主动与被动抓取)加 XI 1.x 查询。同一轮还补了 XTEST、XINERAMA、SYNC、DAMAGE、Composite、DOUBLE-BUFFER、Present、MIT-SCREEN-SAVER、DPMS、X-Resource、GE,以及窗口管理器角色(EWMH / ICCCM) | 没做的:XIChangeHierarchy(设备拓扑固定)、XI 1.x 的设备事件、XKB 的 SetMap / SetCompatMap 等改表请求(键位表跟着核心表与宿主的 `SetKeyboardMapping` 走) |
-| ⏳ | 🟡 P2 | **VelaShell.XServer M3:接入宿主** | 库已功能完备(`plan.md` §104:GTK3 / Qt5 走 XKB 与 XI2、服务端兼任窗口管理器),宿主的 X Server 按钮仍然拉起外部 VcXsrv(`plan.md` §100) | Avalonia 实现 `IXServerHost`(每个顶层一个原生窗口、override-redirect 画成无装饰弹层、`XTopLevelWindow.Shape` 做非矩形窗口、`Decorated = false` 的自绘标题栏窗口不加系统边框、`WindowManagerRequest` 里的移动 / 缩放 / 最大化 / 关闭照办并回 `SetTopLevelStates` / `SetFrameExtents`、光标字形 → 系统光标(−2 是隐藏)、物理键 → `XKeycodes`、`ClipboardChanged` / `SetClipboardText` 接系统剪贴板);显示器与 DPI 变化走 `SetScreenLayout` / `SetDisplayScale`,系统键盘布局走 `SetKeyboardMapping`;`ILocalXServer` 加一个内置实现,默认用它、VcXsrv 退成可选;SSH 的 x11 通道经 `ServeAsync` 直接喂进去,不走本机端口;设置页收敛(VcXsrv 专属的参数只在选了 VcXsrv 时出现,剪贴板两个开关映射到 `SyncClipboard` / `SyncPrimary`) |
+| ✅ | — | ~~**VelaShell.XServer M3:接入宿主**~~ | **已完成**(2026-09-24,`plan.md` §105):「X Server」按钮默认启动内置服务端,每个 X 顶层一个 Avalonia 原生窗口(override-redirect 画成无装饰弹层、`Decorated = false` 的自绘标题栏窗口不加系统边框、非矩形与 ARGB 窗口透明底),窗口管理器请求照办并写回 `_NET_WM_STATE` / `_NET_FRAME_EXTENTS`;光标、剪贴板双向、多显示器布局与 DPI、Windows 键盘布局(两层)都接上;SSH 的 x11 通道经 `X11ForwardOptions.LocalConnector` 直接接进服务端;VcXsrv 退成 Windows 上的可选引擎,设置页只在选了它时出现它的参数 | 输入法(XIM)不做 —— 中日韩输入走远端的输入法框架;AltGr 层拆成下一行 |
+| 💡 | 🟢 P3 | **内置 X 服务端:AltGr 层** | 宿主在 Windows 上按系统布局推键位表,只推无修饰与 Shift 两层(`plan.md` §105):德语的 `@` / `€`、法语的 `#` / `{` 这类 AltGr 字符打不出来。其它平台按 US | 服务端的 XKB 描述加四层键类型(FOUR_LEVEL / FOUR_LEVEL_ALPHABETIC,LevelThree 虚修饰映射到 Mod5,右 Alt 给 `ISO_Level3_Shift`),宿主用 `ToUnicodeEx` 按 Ctrl+Alt 状态取第三、四层;macOS 用 `UCKeyTranslate` 同理。⚠️ 核心协议的第 3、4 列是「组 2」语义,只给 XKB 客户端(GTK / Qt / xkbcommon)时要确认 Xlib 的 `XLookupString` 走的也是 XKB |
 | 📄 | 🟠 P1 | **设计稿的两处残留** | Logo 有一个 `enabled:false` 残留图标；文件列表「修改时间」列无固定宽度 | 小到可以顺手做掉，记在这里免得忘 |
 
 ### SSH PTY 像素尺寸贯通 —— 实施细节
@@ -687,7 +688,7 @@ var options = new ExecuteOptions
 | --- | --- |
 | **多窗口（新开独立主窗口）** | 与现架构三处硬冲突：①应用为**单实例**（`Program.cs` 命名 Mutex，自更新重启依赖锁交接）；②主窗口是唯一组合根（单个 `MainWindowViewModel` 持有会话 / 布局 / 状态栏全部状态，无多窗口状态分片）；③VelaDock **产品决策不做浮动窗口**，多主窗意味着跨窗口拖拽与布局持久化整套推翻重做。**多屏需求由五区拖放分屏承担** |
 | **Mosh** | 全部远程通道抽象建立在 SSH 流式通道之上（`ISshClientWrapper` / `IShellStreamWrapper`）。Mosh 是独立的 UDP + 状态同步（SSP）协议栈，.NET 无可用实现，接入等于并行维护第二套传输与终端预测引擎，收益不成比例。**弱网由自动重连 + keepalive 缓解** |
-| **捆绑 X 服务端** | X11 **转发**已于 2026-09-22 落地(`plan.md` §92);2026-09-23 起还能在 Windows 上**拉起用户装好的 VcXsrv**(标题栏 X Server 按钮 + 设置页,`plan.md` §100),Xming / X410 照旧自备。「零安装」的路线是**纯托管的 X 服务端库** `VelaShell.XServer`(`plan.md` §101,随程序本身分发,不增加外部二进制)。**不做**的是把第三方 X 服务端的二进制打进安装包 —— 像 MobaXterm 那样捆一个:安装包与维护面整个变一个量级,与本项目「解压即跑」的分发模型直接冲突。远程图形界面的重度需求由 RDP / VNC 插件承接(`Protocols` + `Workspaces` 能力面正是为此存在) |
+| **捆绑 X 服务端** | X11 **转发**已于 2026-09-22 落地(`plan.md` §92);2026-09-24 起标题栏 X Server 按钮默认启动**内置的 X 服务端**(纯托管库 `VelaShell.XServer`,随程序本身分发,不增加外部二进制,各平台可用;`plan.md` §101、§105),「零安装」已经做到;Windows 上仍可在设置页改成拉起用户装好的 VcXsrv(`plan.md` §100),Xming / X410 照旧自备。**不做**的是把第三方 X 服务端的二进制打进安装包 —— 像 MobaXterm 那样捆一个:安装包与维护面整个变一个量级,与本项目「解压即跑」的分发模型直接冲突。远程图形界面的重度需求由 RDP / VNC 插件承接(`Protocols` + `Workspaces` 能力面正是为此存在) |
 | **键盘复制模式（vi-like）** | 产品决策（2026-09-09）：**没见过这种用法**，为它付的代价却不小。技术上不难（选区模型三种形态 `TerminalSelectionMath` 已经全在），但它要新起一个**模式态**，而模式态要同时穿过两层输入路径：`TerminalKeyRouter` 与抢在它前面的 `TerminalTabView.OnPreviewKeyDown`（`Ctrl+F` 搜索栏、`Esc`、补全弹层的 `↑↓/Tab/Esc` 都在那一层被截走）。此外还要处理三件事：进模式必须关 IME（否则中文输入法下 `j` 到手是 `ImeProcessed`，原始键拿不回来，模式看着像死了）、`Ctrl+C` 的三重身份要重新定义、以及一个不可省的模式指示器。而**它的主场景已被别的功能吃掉**：选中整条命令输出走 OSC 133 的命令块，找文本走 `Ctrl+F`，抢鼠标的程序里走 `Shift+拖拽` —— 剩下的净增量只有「选任意一段」。⚠️ 与「自定义键位」那条决策也冲突：键位定死了就改不了，Dvorak / Colemak 上 `hjkl` 的位置是错的 |
 | **SFTP 面板内拖拽移动文件** | 维护者既有决策（#474 回复）：**做过，因为太容易误触发而关掉了** —— 文件列表上一次不经意的拖动就把文件挪走，用户事后往往不知道东西去了哪，「文件乱飞」。现有的 `DragDrop` 装配（`FileBrowserView.axaml.cs`）只认**本地路径落入**与**跨面板传输**，`DragEffects` 只给 `Copy`；远端内部的移动请用右键「重命名」或双栏。再提之前先想清楚怎么防误触发，光把开关打开等于把老问题原样搬回来 |
 | **连字（Ligatures）** | 自绘渲染器按**单元格**排版，无法跨字符连字。这是自绘换来渲染控制权的固有代价 |

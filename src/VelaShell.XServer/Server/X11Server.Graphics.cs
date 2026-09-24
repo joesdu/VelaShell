@@ -61,8 +61,9 @@ public sealed partial class X11Server
         uint id = r.U32();
         XPixmap pixmap = Lookup<XPixmap>(id) ?? throw new XProtocolError(XErrorCode.Pixmap, id);
         // 像素图被窗口背景或 GC 引用时仍然可用(协议:释放 ID,数据活到最后一个引用消失)—— 引用持有对象本身,这里只删 ID。
+        // 建在它上面的 Damage 对象也不跟着销毁:客户端释放像素图之后照样会 DamageDestroy(xeyes 用 Present 换帧时就是这个顺序),
+        // 提前销毁会让那一条回 BadDamage、客户端直接退出。Damage 随 DamageDestroy 或客户端断开而释放。
         RemoveResource(id);
-        CleanupDamage(null, pixmap);
     }
 
     // ------------------------------------------------------------------ GC

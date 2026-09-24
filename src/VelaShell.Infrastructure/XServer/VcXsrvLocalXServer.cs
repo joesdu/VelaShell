@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Net;
-using System.Net.Sockets;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
@@ -31,9 +29,6 @@ public sealed class VcXsrvLocalXServer : ILocalXServer, IDisposable
     /// <summary>等 VcXsrv 开始监听的上限。首次运行要建字体缓存,给宽一点。</summary>
     private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(20);
 
-    /// <summary>探测一个端口有没有人听的上限。环回上连不上是立刻被拒,这个数只防意外。</summary>
-    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromMilliseconds(300);
-
     private readonly ISettingsService _settings;
     private readonly Func<int, CancellationToken, Task<bool>> _isDisplayInUse;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -46,7 +41,7 @@ public sealed class VcXsrvLocalXServer : ILocalXServer, IDisposable
 
     /// <summary>用设置服务构造。</summary>
     public VcXsrvLocalXServer(ISettingsService settings)
-        : this(settings, IsDisplayListeningAsync)
+        : this(settings, XDisplayProbe.IsTcpListeningAsync)
     {
     }
 
@@ -294,27 +289,6 @@ public sealed class VcXsrvLocalXServer : ILocalXServer, IDisposable
         return null;
     }
 
-    /// <summary>环回上 <c>6000+N</c> 有没有人在听。</summary>
-    private static async Task<bool> IsDisplayListeningAsync(int display, CancellationToken cancellationToken)
-    {
-        using Socket socket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        using CancellationTokenSource limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        limit.CancelAfter(ProbeTimeout);
-        try
-        {
-            await socket.ConnectAsync(new IPEndPoint(IPAddress.Loopback, XServerCommandLine.TcpPort(display)), limit.Token)
-                .ConfigureAwait(false);
-            return true;
-        }
-        catch (SocketException)
-        {
-            return false;
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return false;
-        }
-    }
 
     private void OnProcessExited(object? sender, EventArgs e)
     {

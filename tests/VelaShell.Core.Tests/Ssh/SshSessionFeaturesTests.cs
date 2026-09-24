@@ -112,6 +112,29 @@ public class SshSessionFeaturesTests
     }
 
     /// <summary>
+    /// 内置 X 服务端给了连接器:受信模式、且显示正是取自它时,x11 通道经连接器直接接进服务端;
+    /// 配置里自己写了显示地址、或非受信模式(要 xauth 连显示)时照旧走套接字。
+    /// </summary>
+    [TestMethod]
+    public void X11_LocalServerConnector_OnlyForItsOwnDisplayInTrustedMode()
+    {
+        List<ShellStreamNotice> notices = [];
+        Func<CancellationToken, ValueTask<Stream>> connector = _ => ValueTask.FromResult<Stream>(new MemoryStream());
+
+        X11ForwardOptions? trusted = SshForwardingOptions.X11(
+            new SshSessionOptions { X11Forwarding = true, X11Trusted = true }, notices, "localhost:10.0", connector);
+        X11ForwardOptions? untrusted = SshForwardingOptions.X11(
+            new SshSessionOptions { X11Forwarding = true, X11Trusted = false }, notices, "localhost:10.0", connector);
+        X11ForwardOptions? explicitDisplay = SshForwardingOptions.X11(
+            new SshSessionOptions { X11Forwarding = true, X11Trusted = true, X11Display = "localhost:3" }, notices, "localhost:10.0", connector);
+
+        Assert.AreSame(connector, trusted?.LocalConnector);
+        Assert.IsNull(untrusted?.LocalConnector);
+        Assert.IsNull(explicitDisplay?.LocalConnector, "用户指定的显示与本机 X Server 无关");
+        Assert.AreEqual(3, explicitDisplay?.Display?.Number);
+    }
+
+    /// <summary>
     /// 写错的显示地址不能让 shell 开不起来:跳过 X11,并留一条提示说清楚是哪个值认不出来。
     /// </summary>
     [TestMethod]

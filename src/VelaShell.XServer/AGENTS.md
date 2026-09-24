@@ -11,7 +11,7 @@
 `VelaShell.XServer` —— 一个**可嵌入、无原生依赖、跨平台**的 X11 服务端库(rootless,软件绘图)。
 宿主要在本机显示经 SSH X11 转发过来的远端图形程序,又不想让用户另装 VcXsrv / XQuartz。
 2026-09-23 立项,M1(核心协议)、M2(SHAPE / XFIXES / RANDR / RENDER / 剪贴板 / XSETTINGS)与功能完备一轮
-(XKB、XInput2、XTEST、SYNC、DAMAGE、Composite、DBE、Present 等十余个扩展与窗口管理器角色)已完成;宿主尚未接入(接入是 M3)。
+(XKB、XInput2、XTEST、SYNC、DAMAGE、Composite、DBE、Present 等十余个扩展与窗口管理器角色)与 M3(接入宿主:「X Server」按钮默认用本库,Avalonia 宿主在 `src/VelaShell/Services/XServer/`,SSH 的 x11 通道经连接器直接接进来)已完成。
 
 - **本目录按 MIT 授权**([`LICENSE`](LICENSE) / [`NOTICE.md`](NOTICE.md)),与宿主其余部分的授权不同。
 - **架构与原理、里程碑、决策记录**:velashell-docs
@@ -24,6 +24,7 @@
 | `tests/VelaShell.XServer.Tests/` | 单元测试(内存双工流 + 逐字节的测试客户端)与 `[TestCategory("Interop")]` 真实客户端用例 |
 | `scripts/xserver/interop/` | 互操作靶场:`Dockerfile`(x11-apps / xterm / xdpyinfo / xclip / xdotool / x11-xkb-utils)、`run-server.cs`(起服务端、存 PNG、注入输入)、`Run-Client.ps1` |
 | `scripts/xserver/bench/` | 吞吐基准 `bench.cs`(进程内经内存管道;改热路径前后各跑一次) |
+| `scripts/xserver/host-demo/` | `demo.cs`:内置服务端 + 宿主的 Avalonia 窗口(不经主程序、不碰用户设置),外加一个把容器连接转成本机连接的转发 —— 手动看原生窗口的行为 |
 
 ---
 

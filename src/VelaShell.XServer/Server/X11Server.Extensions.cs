@@ -215,7 +215,7 @@ public sealed partial class X11Server
             _resources.Remove(resource.Id);
             if (resource is XPixmap pixmap)
             {
-                CleanupDamage(null, pixmap);   // 别的客户端建在这张像素图上的 Damage 随它一起销毁(同 FreePixmap)
+                CleanupDamage(null, pixmap);   // 客户端走了,它的像素图随之销毁:别的客户端建在上面的 Damage 一并销毁
             }
         }
 

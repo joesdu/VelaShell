@@ -5063,10 +5063,28 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
     <value>X Server</value>
   </data>
   <data name="SetXServer_Subtitle" xml:space="preserve">
-    <value>Local X server (VcXsrv) that shows GUI programs from remote hosts via SSH X11 forwarding. Changes take effect the next time the X server starts.</value>
+    <value>Local X server that shows GUI programs from remote hosts via SSH X11 forwarding: the built-in one, or VcXsrv on Windows. Changes take effect the next time the X server starts.</value>
   </data>
-  <data name="SetXServer_Unsupported" xml:space="preserve">
-    <value>The built-in X server launcher is only available on Windows. On Linux, X11 forwarding uses your desktop's own X server (or XWayland) through DISPLAY; on macOS, install XQuartz and it will be used the same way.</value>
+  <data name="SetXServer_BuiltInNote" xml:space="preserve">
+    <value>Each X window opens as its own native window. SSH X11 forwarding connects straight into the built-in server without going through a local port; other local X programs can still use DISPLAY=localhost:N.</value>
+  </data>
+  <data name="SetXServer_Engine" xml:space="preserve">
+    <value>X server</value>
+  </data>
+  <data name="SetXServer_EngineBuiltIn" xml:space="preserve">
+    <value>Built-in (recommended)</value>
+  </data>
+  <data name="SetXServer_EngineDesc" xml:space="preserve">
+    <value>The built-in X server ships with VelaShell and needs no installation; VcXsrv has to be installed by you.</value>
+  </data>
+  <data name="SetXServer_EngineVcXsrv" xml:space="preserve">
+    <value>VcXsrv (install it yourself)</value>
+  </data>
+  <data name="SetXServer_SectionEngine" xml:space="preserve">
+    <value>Engine</value>
+  </data>
+  <data name="XServer_ErrNoHost" xml:space="preserve">
+    <value>The built-in X server has no window host and cannot start.</value>
   </data>
   <data name="SetXServer_SectionProgram" xml:space="preserve">
     <value>Program</value>
@@ -5132,13 +5150,13 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
     <value>Enable clipboard</value>
   </data>
   <data name="SetXServer_ClipboardDesc" xml:space="preserve">
-    <value>Share the X CLIPBOARD selection with the Windows clipboard (-clipboard).</value>
+    <value>Share the X CLIPBOARD selection with the system clipboard (VcXsrv: -clipboard).</value>
   </data>
   <data name="SetXServer_CopyOnSelection" xml:space="preserve">
     <value>Copy on selection</value>
   </data>
   <data name="SetXServer_CopyOnSelectionDesc" xml:space="preserve">
-    <value>Also map the PRIMARY selection, so text selected in an X program is copied to the Windows clipboard right away (-primary).</value>
+    <value>Also map the PRIMARY selection, so text selected in an X program is copied to the system clipboard right away (VcXsrv: -primary).</value>
   </data>
   <data name="SetXServer_SectionKeyboard" xml:space="preserve">
     <value>Keyboard</value>
@@ -5207,7 +5225,7 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
     <value>Start automatically for X11 forwarding</value>
   </data>
   <data name="SetXServer_AutoStartForX11Desc" xml:space="preserve">
-    <value>When an SSH session with X11 forwarding connects and no display is set in its profile, start the X server first. Skipped if another X server already listens on localhost:0.</value>
+    <value>When an SSH session with X11 forwarding connects and no display is set in its profile, start the X server first. Skipped if another X server is already in use (on Windows: something listens on localhost:0; elsewhere: DISPLAY is set).</value>
   </data>
   <data name="SetXServer_ShowTrayIcon" xml:space="preserve">
     <value>Show tray icon</value>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -5509,10 +5509,28 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>X Server</value>
   </data>
   <data name="SetXServer_Subtitle" xml:space="preserve">
-    <value>本機 X 伺服器(VcXsrv),用於經 SSH X11 轉送在本機顯示遠端的圖形程式。變更在下次啟動 X Server 時生效。</value>
+    <value>本機 X 伺服器,用於經 SSH X11 轉送在本機顯示遠端的圖形程式:內建的,或 Windows 上的 VcXsrv。變更在下次啟動 X Server 時生效。</value>
   </data>
-  <data name="SetXServer_Unsupported" xml:space="preserve">
-    <value>本機 X Server 目前只在 Windows 上提供。Linux 上 X11 轉送直接經 DISPLAY 使用桌面內建的 X 伺服器(或 XWayland);macOS 上安裝 XQuartz 後同樣經 DISPLAY 使用。</value>
+  <data name="SetXServer_BuiltInNote" xml:space="preserve">
+    <value>每個 X 視窗都是一個獨立的原生視窗。SSH 的 X11 轉送直接接進內建伺服器,不經本機連接埠;本機其他 X 程式照樣可以用 DISPLAY=localhost:N 連線。</value>
+  </data>
+  <data name="SetXServer_Engine" xml:space="preserve">
+    <value>X 伺服器</value>
+  </data>
+  <data name="SetXServer_EngineBuiltIn" xml:space="preserve">
+    <value>內建(建議)</value>
+  </data>
+  <data name="SetXServer_EngineDesc" xml:space="preserve">
+    <value>內建的 X 伺服器隨 VelaShell 發佈,無需安裝;VcXsrv 需要自行安裝。</value>
+  </data>
+  <data name="SetXServer_EngineVcXsrv" xml:space="preserve">
+    <value>VcXsrv(需自行安裝)</value>
+  </data>
+  <data name="SetXServer_SectionEngine" xml:space="preserve">
+    <value>引擎</value>
+  </data>
+  <data name="XServer_ErrNoHost" xml:space="preserve">
+    <value>內建 X 伺服器缺少視窗宿主,無法啟動。</value>
   </data>
   <data name="SetXServer_SectionProgram" xml:space="preserve">
     <value>程式</value>
@@ -5578,13 +5596,13 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>啟用剪貼簿</value>
   </data>
   <data name="SetXServer_ClipboardDesc" xml:space="preserve">
-    <value>讓 X 的 CLIPBOARD 選取區與 Windows 剪貼簿互通(-clipboard)。</value>
+    <value>讓 X 的 CLIPBOARD 選取區與系統剪貼簿互通(VcXsrv:-clipboard)。</value>
   </data>
   <data name="SetXServer_CopyOnSelection" xml:space="preserve">
     <value>選取即複製</value>
   </data>
   <data name="SetXServer_CopyOnSelectionDesc" xml:space="preserve">
-    <value>把 PRIMARY 選取區也對應過去:在 X 程式裡選取文字就直接進入 Windows 剪貼簿(-primary)。</value>
+    <value>把 PRIMARY 選取區也對應過去:在 X 程式裡選取文字就直接進入系統剪貼簿(VcXsrv:-primary)。</value>
   </data>
   <data name="SetXServer_SectionKeyboard" xml:space="preserve">
     <value>鍵盤</value>
@@ -5653,7 +5671,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>X11 轉送時自動啟動</value>
   </data>
   <data name="SetXServer_AutoStartForX11Desc" xml:space="preserve">
-    <value>開了 X11 轉送的 SSH 工作階段連上、而設定檔裡沒寫顯示位址時,先啟動 X Server。本機 localhost:0 上已有其他 X 伺服器時不介入。</value>
+    <value>開啟 X11 轉送的 SSH 工作階段連線、而設定裡沒寫顯示位址時,先啟動 X Server。本機已有別的 X 伺服器在用時不介入(Windows 上是 localhost:0 有人在聽,其他平台是設了 DISPLAY)。</value>
   </data>
   <data name="SetXServer_ShowTrayIcon" xml:space="preserve">
     <value>顯示系統匣圖示</value>

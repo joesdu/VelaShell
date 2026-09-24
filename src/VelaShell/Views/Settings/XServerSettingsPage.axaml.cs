@@ -6,7 +6,7 @@ using FireAndForget = VelaShell.Services.FireAndForget;
 
 namespace VelaShell.Views.Settings;
 
-/// <summary>X Server 设置页:本机 VcXsrv 的位置与启动参数。</summary>
+/// <summary>X Server 设置页:引擎(内置 / VcXsrv),以及 VcXsrv 的位置与启动参数。</summary>
 public partial class XServerSettingsPage : UserControl
 {
     /// <summary>初始化 X Server 设置页并加载 XAML 组件。</summary>

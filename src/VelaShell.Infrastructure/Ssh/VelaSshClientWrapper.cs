@@ -163,8 +163,8 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
             };
 
             List<ShellStreamNotice> notices = [];
-            string? localServerDisplay = await ResolveLocalXServerAsync(notices, cancellationToken).ConfigureAwait(false);
-            X11ForwardOptions? x11 = SshForwardingOptions.X11(_features, notices, localServerDisplay);
+            XServerDisplayResolution? localServer = await ResolveLocalXServerAsync(notices, cancellationToken).ConfigureAwait(false);
+            X11ForwardOptions? x11 = SshForwardingOptions.X11(_features, notices, localServer?.Display, localServer?.Connector);
             AgentForwardPolicy? agent = SshForwardingOptions.Agent(_features, notices, _agentPrompt, _target);
 
             SshShell shell = await OpenShellWithFallbackAsync(
@@ -198,7 +198,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
     /// 自动启动失败只记一行黄字,不拦 shell —— 与 X11 本身的尽力而为是同一个口径。
     /// 配置里写了显示地址时完全不碰它:那是用户明确指定的 X 服务端。
     /// </remarks>
-    private async Task<string?> ResolveLocalXServerAsync(List<ShellStreamNotice> notices, CancellationToken cancellationToken)
+    private async Task<XServerDisplayResolution?> ResolveLocalXServerAsync(List<ShellStreamNotice> notices, CancellationToken cancellationToken)
     {
         if (_localXServer is not { IsSupported: true }
             || _features is not { X11Forwarding: true }
@@ -213,7 +213,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
         {
             notices.Add(new(Strings.Format("XServer_AutoStartFailed", error), true));
         }
-        return resolution.Display;
+        return resolution;
     }
 
     /// <summary>

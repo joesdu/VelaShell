@@ -86,7 +86,6 @@ public class SettingsXServerTests
             call.Arg<string?>() == @"D:\x\vcxsrv.exe" ? @"D:\x\vcxsrv.exe" : null);
         SettingsViewModel vm = CreateViewModel(server);
 
-        Assert.IsTrue(vm.XServerSupported);
         vm.XServer.ExecutablePath = @"D:\x\vcxsrv.exe";
         Assert.IsTrue(vm.XServerExecutableFound);
         StringAssert.Contains(vm.XServerDetectionText, @"D:\x\vcxsrv.exe");
@@ -96,9 +95,26 @@ public class SettingsXServerTests
         StringAssert.Contains(vm.XServerDetectionText, @"D:\nope.exe");
     }
 
-    /// <summary>没有服务(非 Windows 或测试环境):页面只显示说明。</summary>
+    /// <summary>引擎默认内置;选了 VcXsrv 之后 VcXsrv 专属的几节才出现(只在 Windows 上能选)。</summary>
     [TestMethod]
-    public void WithoutServer_IsUnsupported() => Assert.IsFalse(CreateViewModel().XServerSupported);
+    public void Engine_DefaultsToBuiltIn_AndSwitchesSections()
+    {
+        SettingsViewModel vm = CreateViewModel();
+        Assert.AreEqual(0, vm.XServerEngineIndex);
+        Assert.IsTrue(vm.XServerUsesBuiltIn);
+        Assert.IsFalse(vm.XServerUsesVcXsrv);
+
+        List<string?> raised = [];
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+        vm.XServerEngineIndex = 1;
+        Assert.AreEqual(XServerEngines.VcXsrv, vm.XServer.Engine);
+        Assert.AreEqual(OperatingSystem.IsWindows(), vm.XServerUsesVcXsrv, "VcXsrv 只在 Windows 上生效");
+        CollectionAssert.Contains(raised, nameof(SettingsViewModel.XServerUsesVcXsrv));
+
+        vm.XServerEngineIndex = 0;
+        Assert.AreEqual(XServerEngines.BuiltIn, vm.XServer.Engine);
+        Assert.IsTrue(vm.XServerUsesBuiltIn);
+    }
 
     /// <summary>命令行预览随每一项实时更新;自动显示号写成「:自动」而不是一个猜出来的数。</summary>
     [TestMethod]

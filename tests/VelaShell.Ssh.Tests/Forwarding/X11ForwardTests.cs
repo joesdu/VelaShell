@@ -18,6 +18,7 @@ using VelaShell.Ssh.Forwarding;
 using VelaShell.Ssh.Protocol;
 using VelaShell.Ssh.Session;
 using VelaShell.Ssh.Tests.TestKit;
+using VelaShell.Ssh.Transport;
 
 namespace VelaShell.Ssh.Tests.Forwarding;
 
@@ -107,6 +108,89 @@ public sealed class X11ForwardTests
 
         Assert.AreEqual(1, forwarder.AcceptedChannels);
         Assert.AreEqual(0, forwarder.RejectedChannels);
+    }
+
+    [TestMethod]
+    public async Task 经连接器接入时建立报文换成LocalCookie写进连接器给的流_数据双向对搬()
+    {
+        // 〔spec 07 §7.5.9〕本机显示是进程内嵌的 X server:不走套接字,调连接器拿流。
+        await using Fixture fixture = await Fixture.StartAsync();
+        byte[] localCookie = [1, 2, 3, 4];
+        (InMemoryDuplexStream near, InMemoryDuplexStream far) = InMemoryTransport.CreatePair();
+        int connects = 0;
+
+        await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
+            fixture.Harness.Connection, fixture.Session,
+            fixture.Options with
+            {
+                LocalConnector = _ => { Interlocked.Increment(ref connects); return ValueTask.FromResult<Stream>(near); },
+                LocalCookie = localCookie,
+            },
+            fixture.Harness.Token);
+
+        byte[] fakeCookie = Convert.FromHexString(
+            fixture.Harness.Channels.Observation.X11Requests.Single().AuthCookieHex);
+        await using Stream remote = await OpenX11Async(fixture);
+        await remote.WriteAsync(BuildSetup(bigEndian: false, XAuthority.MitMagicCookie1, fakeCookie), fixture.Harness.Token);
+        await remote.FlushAsync(fixture.Harness.Token);
+
+        // 连接器那一端收到的建立报文:cookie 是 LocalCookie,不是假的那个,也不是 .Xauthority 里的真 cookie。
+        byte[] head = new byte[12];
+        await far.ReadExactlyAsync(head, fixture.Harness.Token);
+        int nameLength = BinaryPrimitives.ReadUInt16LittleEndian(head.AsSpan(6));
+        int dataLength = BinaryPrimitives.ReadUInt16LittleEndian(head.AsSpan(8));
+        byte[] rest = new byte[((nameLength + 3) & ~3) + ((dataLength + 3) & ~3)];
+        await far.ReadExactlyAsync(rest, fixture.Harness.Token);
+        Assert.AreSequenceEqual(localCookie, rest.AsSpan((nameLength + 3) & ~3, dataLength).ToArray());
+        Assert.AreEqual(1, Volatile.Read(ref connects));
+
+        // X server → 远端客户端:原样对搬。
+        await far.WriteAsync("hello"u8.ToArray(), fixture.Harness.Token);
+        await far.FlushAsync(fixture.Harness.Token);
+        byte[] echoed = new byte[5];
+        await remote.ReadExactlyAsync(echoed, fixture.Harness.Token);
+        Assert.AreEqual("hello", Encoding.ASCII.GetString(echoed));
+        Assert.AreEqual(1, forwarder.AcceptedChannels);
+    }
+
+    [TestMethod]
+    public async Task 连接器那一端不可用时按显示连不上处理_不算接纳()
+    {
+        await using Fixture fixture = await Fixture.StartAsync();
+        int attempts = 0;
+        await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
+            fixture.Harness.Connection, fixture.Session,
+            fixture.Options with
+            {
+                LocalConnector = _ =>
+                {
+                    Interlocked.Increment(ref attempts);
+                    throw new InvalidOperationException("X server 已停");
+                },
+            },
+            fixture.Harness.Token);
+
+        byte[] fakeCookie = Convert.FromHexString(
+            fixture.Harness.Channels.Observation.X11Requests.Single().AuthCookieHex);
+        await using Stream remote = await OpenX11Async(fixture);
+        await remote.WriteAsync(BuildSetup(bigEndian: true, XAuthority.MitMagicCookie1, fakeCookie), fixture.Harness.Token);
+        await remote.FlushAsync(fixture.Harness.Token);
+
+        // 连接器抛的是「不可用」一类的异常:不向外传播,这条通道不算接纳(随后由会话关掉)。
+        await WaitForAsync(() => Volatile.Read(ref attempts) == 1, fixture.Harness.Token);
+        await Task.Delay(100, fixture.Harness.Token);
+        Assert.AreEqual(0, forwarder.AcceptedChannels);
+    }
+
+    [TestMethod]
+    public async Task 连接器与非受信模式同时设时请求直接抛()
+    {
+        await using Fixture fixture = await Fixture.StartAsync();
+        await Assert.ThrowsAsync<SshForwardException>(async () => await X11Forwarder.RequestAsync(
+            fixture.Harness.Connection, fixture.Session,
+            fixture.Options with { Trusted = false, LocalConnector = _ => ValueTask.FromResult<Stream>(new MemoryStream()) },
+            fixture.Harness.Token));
+        Assert.IsEmpty(fixture.Harness.Channels.Observation.X11Requests, "没有发 x11-req");
     }
 
     [TestMethod]

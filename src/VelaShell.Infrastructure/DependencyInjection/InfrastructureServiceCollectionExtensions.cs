@@ -120,9 +120,16 @@ public static class InfrastructureServiceCollectionExtensions
                 HttpAnnouncementFeed.DescribeAudience);
         });
 
-        // 本机 X Server(标题栏按钮 / 设置 → X Server):拉起用户装好的 VcXsrv。SSH 的 X11 转发也经它取显示。
-        // 它持有子进程,退出时随容器释放而被关掉。
-        services.AddSingleton<ILocalXServer>(sp => new VcXsrvLocalXServer(sp.GetRequiredService<ISettingsService>()));
+        // 本机 X Server(标题栏按钮 / 设置 → X Server):内置的 X 服务端(默认),或拉起用户装好的 VcXsrv。
+        // SSH 的 X11 转发也经它取显示。两者都随容器释放而停下(内置的关掉窗口,VcXsrv 的杀掉子进程)。
+        // 内置引擎的窗口由界面层画:它注册 IEmbeddedXServerHost,这里在启动时才取,容器里没有时启动报错。
+        services.AddSingleton(sp => new BuiltInLocalXServer(
+            sp.GetRequiredService<ISettingsService>(), () => sp.GetService<IEmbeddedXServerHost>()));
+        services.AddSingleton(sp => new VcXsrvLocalXServer(sp.GetRequiredService<ISettingsService>()));
+        services.AddSingleton<ILocalXServer>(sp => new LocalXServerSelector(
+            sp.GetRequiredService<ISettingsService>(),
+            sp.GetRequiredService<BuiltInLocalXServer>(),
+            sp.GetRequiredService<VcXsrvLocalXServer>()));
 
         // SSH connection service
         services.AddSingleton<ISshConnectionService>(sp =>

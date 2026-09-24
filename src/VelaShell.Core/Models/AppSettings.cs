@@ -136,6 +136,10 @@ public class AppSettings
         // 同理:窗口模式认不出来就回落到多窗口,而不是拼出一条 VcXsrv 不认识的命令行。
         // 老配置里没有 XServer 这一节时反序列化给的是 null(JSON 里显式写了 null 也一样)。
         XServer ??= new();
+        if (!XServerEngines.All.Contains(XServer.Engine))
+        {
+            XServer.Engine = XServerEngines.BuiltIn;
+        }
         if (!XServerWindowModes.All.Contains(XServer.WindowMode))
         {
             XServer.WindowMode = XServerWindowModes.MultiWindow;
@@ -1340,8 +1344,9 @@ public class NotificationOptions : ObservableOptions
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>不捆绑 X 服务端</b>(见 <c>feature-plan.md</c>「确认不做」):这里配的是**怎么拉起**一个已经装好的
-/// VcXsrv,由 <c>Core/XServer/XServerCommandLine</c> 翻成命令行。改动在下一次启动 X Server 时生效。
+/// 两种引擎(<see cref="Engine" />):内置的 X 服务端(<c>VelaShell.XServer</c>,默认,各平台可用),
+/// 或者 Windows 上用户自己装的 VcXsrv —— 后者的参数由 <c>Core/XServer/XServerCommandLine</c> 翻成命令行。
+/// 两者共用显示号、剪贴板与启动这几项;其余各项只对 VcXsrv 起作用。改动在下一次启动 X Server 时生效。
 /// </para>
 /// <para>
 /// 字符串枚举(<see cref="WindowMode" />)磁盘上的内容拦不住,认不出来的值由
@@ -1355,6 +1360,13 @@ public class XServerOptions : ObservableOptions
 
     /// <summary>显示号的上限(含)。设置页下拉给的是「自动 + 0..15」,自动模式也只在这个范围里找 —— 两处同一口径。</summary>
     public const int MaxDisplayNumber = 15;
+
+    /// <summary>用哪个 X 服务端(<see cref="XServerEngines" />);默认内置。</summary>
+    public string Engine
+    {
+        get;
+        set => Set(ref field, value ?? XServerEngines.BuiltIn);
+    } = XServerEngines.BuiltIn;
 
     /// <summary>VcXsrv 可执行文件的路径;留空 = 自动查找常见安装位置与 PATH。</summary>
     public string ExecutablePath
