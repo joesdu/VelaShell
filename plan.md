@@ -6453,6 +6453,11 @@ SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
   (内置服务端,用 `setxkbmap -print -layout de|fr | xkbcomp - $DISPLAY` 换布局):美式每键两列、无 AltGr;德语 y / z 互换、AltGr+Q = @、
   AltGr+E = €、`^` 键是 dead_circumflex;法语 AZERTY;没有 `$DISPLAY` 时返回 null。(Debian 的 Xvfb 里换布局读回来一直是美式,没法在 Xvfb 上做。)
 - **macOS「自动」没有在真 Mac 上跑过**:只经 CI 的 macOS 构建与平台无关的单测;手选布局这条路与平台无关,三个平台一样。
+- CI 的 Linux 作业补装 libxcb1 / libxkbcommon0 / libxkbcommon-x11-0:xvfb 不带后两个,缺了「按当前系统布局真算一次」在 Xvfb 下拿到 null
+  (PR #503 首轮 CI 红在这里)。用例改为缺库时如实记为跳过,库齐、有 `$DISPLAY` 还拿不到才算失败;补装后在 ubuntu 容器 + Xvfb 里实跑通过。
+- 同一轮 CI 的 macOS 作业偶发挂在 `RekeyTests`「客户端的KEXINIT赶在服务端发送返回之前到达…」的 25 秒超时:SSH 测试桩的认证服务端写
+  USERAUTH_SUCCESS 不走通道层的发送锁,客户端连上后用例立刻请求重协商,KEXINIT 写进一个还在刷的 PipeWriter、刷完清段时被一起丢掉。
+  `TestChannelServer` 的发送改为等收包循环开跑(它只在认证返回之后才被调用)再写。只动测试桩,库本身不变。
 
 **没做的**:Linux 上没有桌面 X 显示(纯 Wayland、没有 XWayland)时「自动」仍按 US(可以手选);下拉之外的布局没有随程序带的表。
 文档:velashell-docs `zh|en/host/交互与界面规格.md` §14、`zh|en/host/settings-audit.md`、`zh|en/xserver/design/architecture.md` 决策记录。
