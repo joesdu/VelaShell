@@ -16,7 +16,9 @@
 //   附录 C 事件编码(StateNotify、MapNotify、IndicatorStateNotify —— 所有 XKB 事件共用一个事件码,第 2 字节是子类型)
 //
 //   XKB 键位表始终由核心键位表推出(每个键一组、按键值挑规范类型),所以 xmodmap 之类改核心表的做法与 XKB 客户端看到的
-//   永远一致;改键位表的 XKB 请求(SetMap、GetKbdByName 装载新键盘)不支持 —— 前者接受但不生效,后者回「没装载」。
+//   永远一致;SetMap 上传的键值与修饰键映射换成核心键位表写回(X11Server.XkbSetMap.cs),类型、动作等由服务端照旧推出;
+//   GetKbdByName 要服务端自己按规则编译键位表(需要 xkeyboard-config 的数据),回「没装载」—— 客户端改用
+//   setxkbmap -print | xkbcomp - $DISPLAY,在客户端编译好再经 SetMap 上传。
 //   Xlib 的 XLookupString、xkbcommon-x11(Qt、GTK4、xdotool 的 libxdo)都从这里取键位表,
 //   所以回复里各段的计数、宽度、类型下标必须彼此自洽。
 
@@ -239,8 +241,10 @@ public sealed partial class X11Server
                         .U32(devType).U16((ushort)name.Length).Bytes(name).Pad4());
                     break;
                 }
+            case 9:   // SetMap:上传的键值与修饰键映射写回核心键位表(X11Server.XkbSetMap.cs)
+                XkbSetMap(r);
+                break;
             case 7:   // SetControls
-            case 9:   // SetMap
             case 11:  // SetCompatMap
             case 14:  // SetIndicatorMap
             case 16:  // SetNamedIndicator

@@ -121,6 +121,9 @@ public sealed partial class X11Server
                         byte returnMode = b.U8();
                         b.Skip(1);
                         ushort returnPointer = b.U16(), returnKeyboard = b.U16();
+                        // AttachToMaster 而没指定挂到哪(0):挂回虚拟核心设备 —— xinput remove-master 默认就这么发。
+                        returnPointer = returnPointer == 0 ? XiMasterPointer : returnPointer;
+                        returnKeyboard = returnKeyboard == 0 ? XiMasterKeyboard : returnKeyboard;
                         if (!_xiDevices.TryGetValue(id, out XiDevice? master) || !master.Master)
                         {
                             throw BadDevice(id);
