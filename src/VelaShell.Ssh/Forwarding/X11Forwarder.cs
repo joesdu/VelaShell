@@ -14,6 +14,7 @@ using System.Net.Sockets;
 using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Protocol;
+using VelaShell.Ssh.Transport;
 
 namespace VelaShell.Ssh.Forwarding;
 
@@ -340,6 +341,15 @@ public sealed class X11Forwarder : IAsyncDisposable
             if (_options.LocalConnector is { } connector)
             {
                 stream = await ConnectViaConnectorAsync(connector, cancellationToken).ConfigureAwait(false);
+
+                // 〔velashell-docs/zh/ssh/spec/07 §7.5.9〕远端的 EOF 也要让 X server 读到:能单向关写端就关写端,
+                // 不能就关整条流。不做的话远端程序退出后连接与窗口一直挂到 SSH 会话结束。
+                shutdownSend = stream switch
+                {
+                    InMemoryDuplexStream duplex => duplex.CompleteWrites,
+                    { } other => other.Dispose,
+                    null => null,
+                };
             }
             else
             {

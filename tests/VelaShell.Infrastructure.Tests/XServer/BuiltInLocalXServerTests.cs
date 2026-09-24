@@ -110,6 +110,29 @@ public class BuiltInLocalXServerTests
         Assert.AreEqual(1, head[0], "Success —— 经连接器来的连接按本机连接放行");
     }
 
+    /// <summary>
+    /// 回归:SSH 会话比服务端活得久。标题栏上停掉再开之后,会话早先拿到的连接器要接进新的服务端 ——
+    /// 以前它记住的是旧实例,每条 x11 通道都接进已释放的服务端,远端只看到 Failed to open display。
+    /// </summary>
+    [TestMethod]
+    public async Task Connector_AfterRestart_ReachesTheNewServer_AndWhileStopped_Throws()
+    {
+        await using BuiltInLocalXServer server = Create(new XServerOptions(), new RecordingHost());
+        XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+        Assert.IsNotNull(resolution.Connector);
+
+        await server.StopAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await resolution.Connector(CancellationToken.None));
+
+        Assert.IsTrue((await server.StartAsync()).Success);
+        await using Stream stream = await resolution.Connector(CancellationToken.None);
+        await stream.WriteAsync(new byte[] { (byte)'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        await stream.FlushAsync();
+        byte[] head = new byte[8];
+        await stream.ReadExactlyAsync(head).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.AreEqual(1, head[0], "重启之后旧连接器接进的是新服务端");
+    }
+
     [TestMethod]
     public async Task ResolveForwarding_AutoStartOff_DoesNotTakeOver()
     {

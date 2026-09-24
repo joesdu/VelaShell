@@ -245,13 +245,29 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         }
         return server is null || display is null
             ? null
-            : new(XServerCommandLine.DisplayAddress(display.Value), Connector: ct => ConnectAsync(server, ct));
+            : new(XServerCommandLine.DisplayAddress(display.Value), Connector: ConnectAsync);
     }
 
     /// <summary>一条直接接进服务端的双工流:一端交给服务端的 <see cref="X11Server.ServeAsync" />,另一端交给 SSH。</summary>
-    private static ValueTask<Stream> ConnectAsync(X11Server server, CancellationToken cancellationToken)
+    /// <remarks>
+    /// 每条 x11 通道来时才取<b>此刻</b>在运行的服务端,不记住解析显示时的那一个:SSH 会话比服务端活得久,
+    /// 用户在标题栏把 X Server 停掉再开之后,已经连着的会话要接到新的那个上 —— 记住旧实例的话,
+    /// 每条通道都接进一个已释放的服务端,远端只看到 <c>Failed to open display</c>。
+    /// 此刻没在运行就抛 <see cref="InvalidOperationException" />,转发层按「本机显示连不上」处理。
+    /// </remarks>
+    private ValueTask<Stream> ConnectAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        X11Server? server;
+        lock (_stateLock)
+        {
+            server = _state == XServerState.Running ? _server : null;
+        }
+        if (server is null)
+        {
+            Trace.WriteLine("[XServer] x11 channel refused: the built-in server is not running");
+            throw new InvalidOperationException("The built-in X server is not running.");
+        }
         (InMemoryDuplexStream serverSide, InMemoryDuplexStream clientSide) = InMemoryTransport.CreatePair();
         _ = ServeAsync(server, serverSide);
         return ValueTask.FromResult<Stream>(clientSide);
