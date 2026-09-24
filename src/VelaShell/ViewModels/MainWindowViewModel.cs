@@ -960,7 +960,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     Strings.Get("CmdCat_Tools"),
                     () => XServer.ToggleCommand.Execute().Subscribe(),
                     () => !XServer.IsStarting,
-                    Icon: "Icon.app-window"
+                    Icon: "Icon.xorg"
                 )
             );
         }
