@@ -48,6 +48,17 @@ internal sealed class XRequestReader
     /// <summary>主操作码。</summary>
     public byte Opcode => _data[0];
 
+    /// <summary>
+    /// 接下来 <paramref name="length" /> 字节单独成一个读取器(同一字节序),本读取器跳过它们 ——
+    /// 请求里自带长度的子结构(比如 XIChangeHierarchy 的每一项)按它读,读多读少都不会越界到下一项。
+    /// </summary>
+    public XRequestReader Slice(int length)
+    {
+        byte[] copy = new byte[4 + length];
+        Take(length).CopyTo(copy.AsSpan(4));
+        return new XRequestReader(copy, _bigEndian);
+    }
+
     /// <summary>头里的数据字节(不同请求含义不同)。</summary>
     public byte Data => _data[1];
 

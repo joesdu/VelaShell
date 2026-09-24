@@ -389,6 +389,10 @@ public sealed partial class X11Server
     private Delivery? DeliverDeviceEvent(byte code, byte detail, XEventMask mask, XWindow source)
     {
         bool isKey = code is XEventCode.KeyPress or XEventCode.KeyRelease;
+        if (IsFloating(!isKey))
+        {
+            return DeliverFloating(code, detail, source);
+        }
         ActiveGrab? grab = isKey ? KeyboardGrab : PointerGrab;
         XWindow? stopAt = null;
         if (isKey && grab is null && _focus is { } focus && !ReferenceEquals(focus, Root))
@@ -457,6 +461,31 @@ public sealed partial class X11Server
             }
             return first;
         }
+    }
+
+    /// <summary>
+    /// 物理从设备浮动了(XIChangeHierarchy DetachSlave):不产生核心事件、不受主设备的抓取影响,
+    /// 只以从设备的身份报 XI2 事件 —— 从源窗口向上找第一个为从设备(或 XIAllDevices)选了它的窗口。
+    /// </summary>
+    private Delivery? DeliverFloating(byte code, byte detail, XWindow source)
+    {
+        for (XWindow? w = source; w is not null; w = w.Parent)
+        {
+            Delivery? first = null;
+            foreach ((XClient client, (_, ulong slave)) in w.Xi2Selections)
+            {
+                if ((slave & (1UL << code)) != 0 && !client.Closed)
+                {
+                    SendXi2DeviceEvent(client, code, detail, w, source, slave: true);
+                    first ??= new Delivery(w, client, 0, true, slave, true);
+                }
+            }
+            if (first is not null)
+            {
+                return first;
+            }
+        }
+        return null;
     }
 
     /// <summary>
