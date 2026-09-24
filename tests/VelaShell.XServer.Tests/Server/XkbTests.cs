@@ -31,7 +31,7 @@ public sealed class XkbTests
         Assert.IsTrue(map.IsReply);
         Assert.AreEqual(8, map.Bytes[10], "minKeyCode");
         int nTypes = map.Bytes[15];
-        Assert.AreEqual(4, nTypes, "四个规范类型");
+        Assert.AreEqual(6, nTypes, "四个规范类型 + 两个四级类型(AltGr 层)");
         int nKeys = map.Bytes[20];
         Assert.AreEqual(248, nKeys);
 
@@ -121,5 +121,46 @@ public sealed class XkbTests
         XMessage map = await c.RequestAsync(xkb, 8, b => b.U16(UseCoreKbd).U16(0).U16(0x2).U8(0).U8(0).U8(38).U8(1).Bytes(new byte[14]));
         Assert.AreEqual(38, map.Bytes[17], "firstKeySym");
         Assert.AreEqual('x', map.U32(40 + 8));
+    }
+
+    [TestMethod]
+    public async Task AltGr层_核心第五六列推出四级键类型_右Alt进Mod5()
+    {
+        await using X11Server server = new();
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        (byte xkb, _) = await XkbAsync(c);
+
+        // 德语布局的 Q 键:q Q | 组 2 抄组 1 | AltGr → @。右 Alt 改成 ISO_Level3_Shift,从 Mod1 挪到 Mod5。
+        server.SetKeyboardMapping(24, 6, ['q', 'Q', 'q', 'Q', '@', '@']);
+        server.SetKeyboardMapping(108, 6, [0xfe03, 0xfe03, 0, 0, 0, 0]);
+        server.SetModifierMapping([50, 62, 66, 0, 37, 105, 64, 0, 77, 0, 0, 0, 133, 134, 108, 0]);
+        await c.SyncAsync();
+
+        XMessage key = await c.RequestAsync(xkb, 8, b => b.U16(UseCoreKbd).U16(0).U16(0x2).U8(0).U8(0).U8(24).U8(1).Bytes(new byte[14]));
+        Assert.AreEqual(5, key.Bytes[40], "FOUR_LEVEL_ALPHABETIC");
+        Assert.AreEqual(4, key.Bytes[45], "宽度 4");
+        Assert.AreEqual('@', key.U32(48 + 8), "第三级 = AltGr");
+
+        XMessage types = await c.RequestAsync(xkb, 8, b => b.U16(UseCoreKbd).U16(0x1).U16(0).Bytes(new byte[18]));
+        Assert.AreEqual(6, types.Bytes[16], "nTypes:四个规范类型 + 两个四级类型");
+
+        XMessage modifiers = await c.RequestAsync(119, 0);   // GetModifierMapping
+        Assert.AreEqual(108, modifiers.Bytes[32 + 14], "Mod5 的第一个键码是右 Alt");
+    }
+
+    [TestMethod]
+    public async Task 更窄的ChangeKeyboardMapping不收窄整张表()
+    {
+        // xmodmap -e "keycode 108 = ISO_Level3_Shift" 发的是每键码 1 列:别的键的 Shift 列不能跟着没了。
+        await using X11Server server = new();
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        await c.SendAsync(100, 1, b => b.U8(108).U8(1).U16(0).U32(0xfe03));
+        XMessage map = await c.RequestAsync(101, 0, b => b.U8(25).U8(1).U16(0));   // GetKeyboardMapping:w
+        Assert.AreEqual(2, map.Bytes[1], "每键码仍是 2 列");
+        Assert.AreEqual('w', map.U32(32));
+        Assert.AreEqual('W', map.U32(36));
+        XMessage alt = await c.RequestAsync(101, 0, b => b.U8(108).U8(1).U16(0));
+        Assert.AreEqual(0xfe03u, alt.U32(32));
+        Assert.AreEqual(0u, alt.U32(36), "请求没给的列清成 NoSymbol");
     }
 }

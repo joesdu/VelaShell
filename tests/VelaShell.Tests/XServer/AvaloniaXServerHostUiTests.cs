@@ -64,14 +64,19 @@ public sealed class AvaloniaXServerHostUiTests
             Assert.Inconclusive("只在 Windows 上按系统布局推键位表");
             return;
         }
-        (uint[] main, uint[] intl) = WindowsKeymap.Build(WindowsKeymap.CurrentLayout());
-        uint At(byte keycode, int column) => main[((keycode - WindowsKeymap.FirstKeycode) * 2) + column];
+        (int per, uint[] main, uint[] intl) = WindowsKeymap.Build(WindowsKeymap.CurrentLayout());
+        Assert.IsTrue(per is 2 or 6, "无 AltGr 两列;有 AltGr 按 XKB §17 的核心列序六列");
+        uint At(byte keycode, int column) => main[((keycode - WindowsKeymap.FirstKeycode) * per) + column];
         Assert.AreEqual(0xff08u, At(XKeycodes.BackSpace, 0));
         Assert.AreEqual(0xfe20u, At(XKeycodes.Tab, 1), "Shift+Tab = ISO_Left_Tab");
         Assert.AreEqual(0xff0du, At(XKeycodes.Return, 0));
         Assert.AreEqual(0xffe1u, At(XKeycodes.ShiftLeft, 0));
         Assert.AreNotEqual(0u, At(XKeycodes.A, 0), "字母键在任何布局下都打得出字符");
-        Assert.HasCount(2, intl);
+        Assert.HasCount(per, intl);
+        if (per == 6)
+        {
+            Assert.AreEqual(At(XKeycodes.A, 0), At(XKeycodes.A, 2), "组 2 照抄组 1");
+        }
     }
 
     [TestMethod]

@@ -117,6 +117,29 @@ public sealed partial class X11Server
         });
     }
 
+    /// <summary>
+    /// 换修饰键表(与核心协议 SetModifierMapping 相同的布局:8 个修饰位,每位 <c>map.Length / 8</c> 个键码,0 为空位)。
+    /// 宿主的键盘布局有 AltGr 层时用它把右 Alt(<see cref="Host.XKeycodes.AltRight" />,键值 ISO_Level3_Shift)从 Mod1 挪到 Mod5。
+    /// 客户端收到 MappingNotify(Modifier)与 XKB 的 MapNotify。
+    /// </summary>
+    public void SetModifierMapping(ReadOnlySpan<byte> map)
+    {
+        if (map.Length == 0 || map.Length % 8 != 0 || map.Length > 8 * 255)
+        {
+            throw new ArgumentException("修饰键表是 8 个修饰位 × 每位若干键码。", nameof(map));
+        }
+        byte[] copy = map.ToArray();
+        Post(null, () =>
+        {
+            _keymap.SetModifierMap(copy);
+            NotifyXkbMapChanged();
+            foreach (XClient client in _clients.Values)
+            {
+                client.Event(XEventCode.MappingNotify, 0, w => w.U8(0).U8(0).U8(0));
+            }
+        });
+    }
+
     /// <summary>宿主让某个顶层窗口得到键盘焦点(用户点了它);0 = 所有顶层都失去焦点。</summary>
     public void FocusTopLevel(uint topLevel) => Post(null, () =>
     {

@@ -139,10 +139,28 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
             return;
         }
         _keyboardLayout = layout;
-        (uint[] main, uint[] intl) = WindowsKeymap.Build(layout);
-        server.SetKeyboardMapping(WindowsKeymap.FirstKeycode, 2, main);
-        server.SetKeyboardMapping(XKeycodes.IntlBackslash, 2, intl);
+        (int per, uint[] main, uint[] intl) = WindowsKeymap.Build(layout);
+        server.SetKeyboardMapping(WindowsKeymap.FirstKeycode, per, main);
+        server.SetKeyboardMapping(XKeycodes.IntlBackslash, per, intl);
+        // 有 AltGr 层:右 Alt 当 ISO_Level3_Shift,从 Mod1 挪到 Mod5(服务端的四级键类型按 Mod5 选第三、四级);
+        // 没有时换回 Alt_R —— 布局可能刚从德语切回英语。
+        HasAltGr = per > 2;
+        server.SetKeyboardMapping(XKeycodes.AltRight, 1, [HasAltGr ? 0xfe03u : 0xffeau]);
+        server.SetModifierMapping(HasAltGr ? AltGrModifiers : DefaultModifiers);
     }
+
+    /// <summary>修饰键表(8 个修饰位 × 每位 2 个键码):Shift、Lock、Control、Mod1(Alt)、Mod2(Num Lock)、Mod3、Mod4(Super)、Mod5。</summary>
+    private static readonly byte[] DefaultModifiers =
+        [50, 62, 66, 0, 37, 105, 64, 108, 77, 0, 0, 0, 133, 134, 0, 0];
+
+    /// <summary>同上,右 Alt 在 Mod5(AltGr)。</summary>
+    private static readonly byte[] AltGrModifiers =
+        [50, 62, 66, 0, 37, 105, 64, 0, 77, 0, 0, 0, 133, 134, 108, 0];
+
+    /// <summary>
+    /// 当前布局有 AltGr 层(Windows)。这时按 AltGr 系统会先补一个假的左 Ctrl 按下,窗口要把它从 X 那边撤掉(见 <see cref="XNativeWindow" />)。
+    /// </summary>
+    public bool HasAltGr { get; private set; }
 
     private static Window? MainWindow() =>
         Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main } ? main : null;

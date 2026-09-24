@@ -40,6 +40,7 @@ public sealed class XNativeWindow : Window
     private XWindowStates _reportedStates;
     private (int X, int Y)? _placed;
     private WindowState _resizeState = WindowState.Normal;
+    private long _controlLeftDownAt;
 
     internal XNativeWindow(AvaloniaXServerHost host, XTopLevelWindow handle)
     {
@@ -409,9 +410,40 @@ public sealed class XNativeWindow : Window
         {
             return;   // Alt+F4 留给系统:它走关闭按钮那条路
         }
+        if (IsSyntheticAltGrControl(e.PhysicalKey))
+        {
+            e.Handled = true;
+            return;
+        }
         _heldKeys.Add(keycode);
         Server?.Key(keycode, pressed: true);
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// Windows 上有 AltGr 的布局,按 AltGr 时系统先补一个假的左 Ctrl 按下(按住时连同自动重复一起补)。
+    /// X 那边要是也看见 Ctrl,AltGr+Q 就成了 Ctrl+@ 一类的快捷键。认出来的就不转发:
+    /// 左 Ctrl 按下之后几十毫秒内来了右 Alt —— 在 X 那边把刚才的左 Ctrl 松开;右 Alt 按着时再来的左 Ctrl 直接丢掉。
+    /// 它们各自的弹起因为不在「按着的键」里,也不会转发。
+    /// </summary>
+    private bool IsSyntheticAltGrControl(PhysicalKey key)
+    {
+        if (!_host.HasAltGr)
+        {
+            return false;
+        }
+        if (key == PhysicalKey.ControlLeft)
+        {
+            _controlLeftDownAt = Environment.TickCount64;
+            return _heldKeys.Contains(XKeycodes.AltRight);
+        }
+        if (key == PhysicalKey.AltRight && _heldKeys.Contains(XKeycodes.ControlLeft)
+            && Environment.TickCount64 - _controlLeftDownAt < 50)
+        {
+            _heldKeys.Remove(XKeycodes.ControlLeft);
+            Server?.Key(XKeycodes.ControlLeft, pressed: false);
+        }
+        return false;
     }
 
     /// <inheritdoc />

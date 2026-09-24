@@ -4,7 +4,8 @@
 // 规范依据(AGENTS.md §2 纪律 1):
 //   The X Keyboard Extension: Protocol Specification, Version 1.0 ——
 //   §2「Keyboard State」(base / latched / locked 修饰与组、有效状态、兼容状态);
-//   §7「Key Types」(四个规范类型 ONE_LEVEL、TWO_LEVEL、ALPHABETIC、KEYPAD 占下标 0–3,KTMAPENTRY);
+//   §7「Key Types」(四个规范类型 ONE_LEVEL、TWO_LEVEL、ALPHABETIC、KEYPAD 占下标 0–3,KTMAPENTRY;
+//   再加两个四级类型 FOUR_LEVEL、FOUR_LEVEL_ALPHABETIC 放 AltGr 层,第三级由 Mod5(ISO_Level3_Shift 所在的修饰位)选);
 //   §8「Key Symbol Map」(KEYSYMMAP:每组的类型下标、组数、宽度、键值)、§9「Key Actions」(SetMods / LockMods);
 //   §12「Symbolic Names」、§13「Indicators」、§10「Keyboard Controls」;
 //   §17「Interactions Between XKB and the Core Protocol」(由核心键位表推出 XKB 键位表的规则);
@@ -35,14 +36,19 @@ public sealed partial class X11Server
 
     private const byte XkbMapNotify = 1, XkbStateNotify = 2, XkbIndicatorStateNotify = 4;
 
-    // 四个规范类型:(名字, 修饰掩码, 级数, 映射表 (修饰, 级), 级名)
+    // 四个规范类型 + 两个四级类型:(名字, 修饰掩码, 级数, 映射表 (修饰, 级), 级名)。
+    // 四级类型的第三 / 四级由 Mod5 选 —— 宿主把 AltGr(右 Alt)设成 ISO_Level3_Shift 并放进 Mod5(见 SetModifierMapping)。
     private static readonly (string Name, byte Mask, byte Levels, (byte Mods, byte Level)[] Map, string[] LevelNames)[] XkbTypes =
     [
         ("ONE_LEVEL", 0, 1, [], ["Any"]),
         ("TWO_LEVEL", 0x01, 2, [(0x01, 1)], ["Base", "Shift"]),
         ("ALPHABETIC", 0x03, 2, [(0x01, 1), (0x02, 1)], ["Base", "Caps"]),
         ("KEYPAD", 0x11, 2, [(0x01, 1), (0x10, 1)], ["Base", "Number"]),
+        ("FOUR_LEVEL", 0x81, 4, [(0x01, 1), (0x80, 2), (0x81, 3)], ["Base", "Shift", "Alt Base", "Shift Alt"]),
+        ("FOUR_LEVEL_ALPHABETIC", 0x83, 4, [(0x01, 1), (0x02, 1), (0x80, 2), (0x81, 3), (0x82, 3)], ["Base", "Caps", "Alt Base", "Shift Alt"]),
     ];
+
+    private const byte XkbFourLevel = 4, XkbFourLevelAlphabetic = 5;
 
     // 虚拟修饰:(名字, 绑到的真修饰)
     private static readonly (string Name, byte RealMods)[] XkbVirtualMods =
@@ -262,9 +268,21 @@ public sealed partial class X11Server
     // ------------------------------------------------------------------ 由核心键位表推出的描述
 
     /// <summary>一个键的 XKB 形态:类型下标、宽度(级数)、键值(没有键值时宽度为 0)。</summary>
+    /// <remarks>
+    /// 核心键位表的列与 XKB 的对应(XKB 规范 §17「Interactions Between XKB and the Core Protocol」):
+    /// 第 1、2 列是组 1 的第 1、2 级,第 3、4 列是组 2 的第 1、2 级,第 5、6 列是组 1 的第 3、4 级。
+    /// 只有一组,所以第 3、4 列不看;第 5、6 列有键值时这个键是四级的(AltGr 层)。
+    /// </remarks>
     private (byte Type, byte Width, uint[] Syms) XkbKey(byte keycode)
     {
         uint s0 = _keymap.Keysym(keycode, 0), s1 = _keymap.KeysymsPerKeycode > 1 ? _keymap.Keysym(keycode, 1) : 0;
+        uint s4 = _keymap.Keysym(keycode, 4), s5 = _keymap.Keysym(keycode, 5);
+        if (s4 != 0 || s5 != 0)
+        {
+            uint l1 = s0, l2 = s1 == 0 ? s0 : s1, l3 = s4 == 0 ? s5 : s4, l4 = s5 == 0 ? l3 : s5;
+            bool alphabetic = IsLowerLetter(l1) && l2 == UpperOf(l1);
+            return (alphabetic ? XkbFourLevelAlphabetic : XkbFourLevel, 4, [l1, l2, l3, l4]);
+        }
         if (s0 == 0 && s1 == 0)
         {
             return (0, 0, []);
