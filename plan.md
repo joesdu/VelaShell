@@ -6324,3 +6324,33 @@ SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
 **没做的**(记在 `feature-plan.md`):AltGr 层;输入法(XIM);macOS / Linux 的键盘布局跟随。
 文档:velashell-docs `zh|en/host/交互与界面规格.md`(§4A.2、X11 转发、§14 X Server 页)、`settings-audit.md` 第七批、
 `xserver/design/architecture.md`(M3 与决策记录)、`ssh/spec/07-forwarding.md` §7.5.9、`ssh/design/architecture.md` §11.2.14 补记。
+
+## ✅ 106. 2026-09-24 内置 X 服务端:AltGr 层(§105 的后续)
+
+§105 之后宿主在 Windows 上只推无修饰与 Shift 两层:德语的 `@` / `€`、法语的 `#` / `{` 这类 AltGr 字符打不出来。
+
+### 一、做了什么
+
+| 层 | 内容 |
+| --- | --- |
+| 库(XKB) | 新增 FOUR_LEVEL、FOUR_LEVEL_ALPHABETIC 两个键类型(类型表从 4 个变 6 个);核心键位表第 5、6 列有键值的键推成四级 —— 列序按 XKB 规范 §17 的核心兼容约定:组 1 第 1、2 级,组 2 第 1、2 级,组 1 第 3、4 级;第三、四级由 Mod5 选 |
+| 库(宿主 API) | `X11Server.SetModifierMapping`:与核心 SetModifierMapping 同布局,发 MappingNotify(Modifier)与 XKB MapNotify |
+| 宿主 | `WindowsKeymap` 用 `ToUnicodeEx` 按 Ctrl+Alt(Windows 的 AltGr)取第三、四级;布局有 AltGr 字符时出 6 列(组 2 照抄组 1),右 Alt 设成 `ISO_Level3_Shift` 挪进 Mod5;没有时换回 `Alt_R` / Mod1(布局可能刚从德语切回英语) |
+| 宿主(输入) | Windows 按 AltGr 时先补一个假的左 Ctrl 按下(按住时连自动重复一起补)。`XNativeWindow` 认出来不转发:左 Ctrl 之后 50 毫秒内来了右 Alt,在 X 那边撤掉那个左 Ctrl;右 Alt 按着时再来的左 Ctrl 直接丢掉 —— 否则 X 程序看到 Ctrl+AltGr+Q,当成快捷键 |
+
+### 二、顺手修掉的
+
+- **更窄的 ChangeKeyboardMapping 把整张键位表收窄了**:`xmodmap -e "keycode 108 = ISO_Level3_Shift"` 发的是每键码 1 列,
+  原先整张表随之收成 1 列,所有键的 Shift 列都没了(xkbcomp 导出 `key <AD02> { [ w ] }`)。现在列数只放宽不收窄,
+  请求里的键超出请求列数的列清成 NoSymbol。
+
+### 三、验证
+
+- 单元测试:XServer +2(四级键类型 / 右 Alt 进 Mod5;窄请求不收窄整张表),Windows 键位表用例改为认 2 / 6 列两种形态。
+- 真实客户端(`run-server.cs` + 靶场镜像):`xmodmap` 把 Q 设成 `q Q q Q at at`、右 Alt 设成 `ISO_Level3_Shift` 进 Mod5 之后,
+  `xkbcomp` 导出 `key <AD01> { [ q, Q, at, at ] }` 且其余键保持两级;xterm 里 `xdotool keydown ISO_Level3_Shift key q` 打出 `@`。
+- 宿主那一侧的 Windows 取字(`ToUnicodeEx` 的 Ctrl+Alt 状态)没法在这台机器上对德语布局实测:系统只装了中文(美式键位)输入,
+  而为了测试去加载别的布局会改动用户的输入语言列表 —— 没有做。
+
+**没做的**(记在 `feature-plan.md`):macOS / Linux 的键盘布局跟随。
+文档:velashell-docs `zh|en/xserver/design/architecture.md`(决策记录、M4 去掉 AltGr)、`zh|en/host/交互与界面规格.md` §14。
