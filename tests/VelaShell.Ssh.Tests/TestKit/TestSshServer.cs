@@ -305,8 +305,8 @@ public sealed class TestSshServer : IAsyncDisposable
 
         // 重协商时压缩上下文也要跟着换 —— 与客户端对称。
         // 少换一边的症状是对端解压失败（velashell-docs/zh/ssh/spec/01 §六）。
-        // 普通 zlib（不延迟）在首次 NEWKEYS 就要装上（RFC 4253 §6.2）。
-        if (!isInitial || IsImmediate(negotiated.CompressionServerToClient))
+        // 首次 NEWKEYS 不装：zlib@openssh.com 在认证成功之后才装（TestSshServerHost）。
+        if (!isInitial)
         {
             Transport.SetSendCompressor(
                 SshCompressorFactory.Create(negotiated.CompressionServerToClient));
@@ -315,7 +315,7 @@ public sealed class TestSshServer : IAsyncDisposable
         _ = await ExpectAsync(read, SshMessageNumber.NewKeys, cancellationToken);
         Transport.SetReceiveCipherSuite(clientToServer, negotiated.StrictKeyExchange);
 
-        if (!isInitial || IsImmediate(negotiated.CompressionClientToServer))
+        if (!isInitial)
         {
             Transport.SetReceiveCompressor(
                 SshCompressorFactory.Create(negotiated.CompressionClientToServer));
@@ -323,9 +323,6 @@ public sealed class TestSshServer : IAsyncDisposable
 
         return new TestSshServerHandshake(negotiated, exchangeHash, hostKeyBlob);
     }
-
-    private static bool IsImmediate(string algorithm) =>
-        SshCompressorFactory.IsCompression(algorithm) && !SshCompressorFactory.IsDelayed(algorithm);
 
     private byte[] BuildServerKexInit(SshAlgorithmSet algorithms, bool includeIndicators = true)
     {

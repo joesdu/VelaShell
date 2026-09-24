@@ -176,6 +176,8 @@ public sealed class SshKeyExchangeRunner
         // ② 协商。任一类没有交集就抛 SshNegotiationException（带双方名单）。
         SshNegotiatedAlgorithms negotiated =
             SshAlgorithmNegotiator.Negotiate(_algorithms, serverKexInit, versions.ServerVersion);
+        SshCompressorFactory.EnsureSupported(negotiated.CompressionClientToServer);
+        SshCompressorFactory.EnsureSupported(negotiated.CompressionServerToClient);
 
         // ③ 交换公开值。
         using ISshKeyExchange kex = SshKeyExchangeFactory.Create(negotiated.KeyExchange);
@@ -391,10 +393,13 @@ public sealed class SshKeyExchangeRunner
         // 〔velashell-docs/zh/ssh/spec/01 §六〕**每次密钥重协商后压缩上下文必须重置。**
         // 不重置的症状是「重协商之后对端解压失败」—— 而那时早已看不出是压缩的问题。
         //
-        // 首次交换时只装**不延迟**的那种（普通 zlib，RFC 4253 §6.2：从 NEWKEYS 起就压）；
-        // zlib@openssh.com 要等认证成功之后才启用，由连接工厂在那时装上。
-        ISshCompressor? sendCompressor = CompressorFor(negotiated.CompressionClientToServer, resetCompression);
-        ISshCompressor? receiveCompressor = CompressorFor(negotiated.CompressionServerToClient, resetCompression);
+        // 首次交换时不装：唯一支持的 zlib@openssh.com 要等认证成功之后才启用，由连接工厂在那时装上。
+        ISshCompressor? sendCompressor = resetCompression
+            ? SshCompressorFactory.Create(negotiated.CompressionClientToServer)
+            : null;
+        ISshCompressor? receiveCompressor = resetCompression
+            ? SshCompressorFactory.Create(negotiated.CompressionServerToClient)
+            : null;
 
         bool installed = false;
         try
@@ -423,20 +428,6 @@ public sealed class SshKeyExchangeRunner
         }
     }
 
-    /// <summary>这一轮交换要在 NEWKEYS 处装上的压缩器；<see langword="null"/> 表示不动压缩。</summary>
-    /// <param name="algorithm">协商出的压缩算法。</param>
-    /// <param name="rekey">是不是重协商（重协商时一律重置）。</param>
-    private static ISshCompressor? CompressorFor(string algorithm, bool rekey)
-    {
-        if (rekey)
-        {
-            return SshCompressorFactory.Create(algorithm);
-        }
-
-        return SshCompressorFactory.IsCompression(algorithm) && !SshCompressorFactory.IsDelayed(algorithm)
-            ? SshCompressorFactory.Create(algorithm)
-            : null;
-    }
 
     /// <summary>读下一个报文并断言它的消息编号。</summary>
     private async ValueTask<SshInboundPacket> ReadKexPacketAsync(

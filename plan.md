@@ -6354,3 +6354,25 @@ SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
 
 **没做的**(记在 `feature-plan.md`):macOS / Linux 的键盘布局跟随。
 文档:velashell-docs `zh|en/xserver/design/architecture.md`(决策记录、M4 去掉 AltGr)、`zh|en/host/交互与界面规格.md` §14。
+
+## ✅ 107. 2026-09-23 VelaShell.Ssh:压缩只保留 zlib@openssh.com(用户需求)
+
+原先两种压缩都实现:`zlib@openssh.com`(认证后才压)与 RFC 4253 的裸 `zlib`(首次 NEWKEYS 起就压)。
+裸 `zlib` 让认证报文(口令、公钥签名)也进压缩流,密文长度会泄漏明文的可压缩性,未认证的连接方就能做 CRIME 类的压缩旁路。
+默认清单(`WithCompression()`)本来就只报 `zlib@openssh.com`,裸 `zlib` 只在使用者手动塞进清单时才会谈成 —— 这条路整个去掉。
+
+### 一、做了什么
+
+| 位置 | 内容 |
+| --- | --- |
+| `SshAlgorithmNames` | 删掉 `Zlib` 常量 |
+| `SshCompressorFactory` | 删掉 `IsCompression`;新增 `EnsureSupported`:只认 `none` / `zlib@openssh.com`,别的名字抛 `SshKeyExchangeException`;`Create` 也先过它 |
+| `SshKeyExchangeRunner` | 协商完当场 `EnsureSupported` 两个方向 —— 谈成本库不实现的压缩算法时在协商处失败,而不是悄悄按不压缩处理、到第一个认证报文才解压错位;首次 NEWKEYS 不再装任何压缩器,删掉 `CompressorFor` |
+| `SshConnectionOpen` | 去掉「普通 zlib 已在 NEWKEYS 装上」的说明 |
+| 测试 | `TestSshServer` 去掉首次 NEWKEYS 装压缩器的分支;「普通 zlib 从首次 NEWKEYS 起就压」换成「谈成裸 zlib 时在协商当场失败」;算法名分类用例改为断言 `Create("zlib")` 抛出 |
+
+### 二、验证
+
+- `dotnet test tests/VelaShell.Ssh.Tests -c Debug`:574 通过,20 个 Interop 用例因无 OpenSSH 靶机早退跳过(其中「压缩能与 OpenSSH 协商上」走的就是 `zlib@openssh.com`)。
+
+文档:velashell-docs `zh|en/ssh/spec/00-overview.md` §6.5(裸 `zlib` 标为不实现并写明理由)、`zh|en/ssh/spec/01-transport-framing.md` §六。
