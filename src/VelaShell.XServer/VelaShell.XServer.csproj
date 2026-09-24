@@ -12,6 +12,7 @@
       Resources/    原子、属性、颜色表、光标、GC、像素图
       Windowing/    窗口树、可见区域、Expose、事件投递
       Drawing/      软件帧缓冲与光栅化
+      Gl/           GLX 间接渲染用的软件 GL(固定功能管线的一个子集)
       Fonts/        BDF、内置 misc-fixed 字体、XLFD 匹配
       Input/        键码表、焦点、抓取
       Extensions/   扩展注册表

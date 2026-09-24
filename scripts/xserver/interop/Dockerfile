@@ -4,4 +4,5 @@
 FROM debian:bookworm-slim
 RUN apt-get update \
  && apt-get install -y --no-install-recommends x11-apps x11-utils x11-xserver-utils xterm xauth xclip xdotool x11-xkb-utils \
+    xinput mesa-utils \
  && rm -rf /var/lib/apt/lists/*

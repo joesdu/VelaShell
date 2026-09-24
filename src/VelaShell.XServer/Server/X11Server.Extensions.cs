@@ -60,6 +60,7 @@ public sealed partial class X11Server
         Register(new Extension("Present", PresentMajor, Present));
         Register(new Extension("XKEYBOARD", XkbMajor, Xkb) { FirstEvent = XkbEventBase, FirstError = XkbErrorBase });
         Register(new Extension("XInputExtension", XInputMajor, XInput) { FirstEvent = XInputEventBase, FirstError = XInputErrorBase });
+        Register(new Extension("GLX", GlxMajor, Glx) { FirstEvent = GlxEventBase, FirstError = GlxErrorBase });
         if (ShmSupported)
         {
             Register(new Extension("MIT-SHM", ShmMajor, Shm)
@@ -254,6 +255,7 @@ public sealed partial class X11Server
         CleanupXkb(client);
         CleanupXInput(client);
         CleanupRandR(client, null);
+        CleanupGlx(client);
         UpdatePointerWindow();
         UpdateCursor();
     }
