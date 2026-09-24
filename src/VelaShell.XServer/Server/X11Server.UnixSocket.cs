@@ -50,7 +50,14 @@ public sealed partial class X11Server
             }
             if (File.Exists(path))
             {
-                File.Delete(path);   // 上次没收拾干净的套接字文件(端口占用的检查由 TCP 那一侧完成)
+                // 有人在听(桌面自己的 Xorg 通常不开 TCP,TCP 那一侧的占用检查看不出它):不碰,这条传输不开。
+                // 没人应答才是上次没收拾干净的残留,删掉重建。
+                if (IsUnixSocketLive(path))
+                {
+                    _options.Log?.Invoke($"Unix socket {path} is in use by another X server; not listening on it");
+                    return;
+                }
+                File.Delete(path);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -59,6 +66,21 @@ public sealed partial class X11Server
             return;
         }
         TryListen(path, path, cancellationToken);
+    }
+
+    /// <summary>这个 Unix 套接字文件后面有没有进程在听。</summary>
+    internal static bool IsUnixSocketLive(string path)
+    {
+        using Socket probe = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        try
+        {
+            probe.Connect(new UnixDomainSocketEndPoint(path));
+            return true;
+        }
+        catch (SocketException)
+        {
+            return false;
+        }
     }
 
     private void TryListen(string endpoint, string? file, CancellationToken cancellationToken)

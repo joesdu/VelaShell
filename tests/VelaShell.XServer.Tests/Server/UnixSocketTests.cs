@@ -33,4 +33,34 @@ public sealed class UnixSocketTests
         await server.DisposeAsync();
         Assert.IsFalse(File.Exists(path), "收工时删掉套接字文件");
     }
+
+    [TestMethod]
+    public async Task 套接字文件后面有别的服务端在听时不删不抢()
+    {
+        if (!Socket.OSSupportsUnixDomainSockets)
+        {
+            Assert.Inconclusive("这个系统不支持 Unix 套接字");
+        }
+        // 桌面自己的 Xorg 通常不开 TCP:只看 TCP 端口会以为 :0 空着,把它的套接字文件删了 —— 整个桌面的新程序都连不上。
+        string path = Path.Combine(Path.GetTempPath(), $"vx-{Guid.NewGuid():N}.sock");
+        using Socket other = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        other.Bind(new UnixDomainSocketEndPoint(path));
+        other.Listen(1);
+        try
+        {
+            await using (X11Server server = new(new XServerOptions { ListenTcp = false, UnixSocketPath = path }))
+            {
+                await server.StartAsync();
+            }
+            Assert.IsTrue(File.Exists(path), "别人的套接字文件还在");
+            using Socket client = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            await client.ConnectAsync(new UnixDomainSocketEndPoint(path));
+            using Socket accepted = await other.AcceptAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.IsNotNull(accepted, "连过去的还是原来那个服务端");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

@@ -39,6 +39,24 @@ public sealed class SyncCompositeTests
         c.SendAsync(70, 0, b => b.U32(drawable).U32(gc).I16(x).I16(y).U16(w).U16(h));
 
     [TestMethod]
+    public async Task FreePixmap之后DamageDestroy照常成功()
+    {
+        // xeyes 用 Present 换帧:先 FreePixmap,再 DamageDestroy。提前销毁 Damage 会让后一条回 BadDamage、客户端退出。
+        await using X11Server server = new();
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        (byte damage, _, _) = await ExtAsync(c, "DAMAGE");
+        await c.RequestAsync(damage, 0, b => b.U32(1).U32(1));
+        uint pixmap = c.NewId();
+        await c.SendAsync(53, 24, b => b.U32(pixmap).U32(c.RootWindow).U16(8).U16(8));
+        uint id = c.NewId();
+        await c.SendAsync(damage, 1, b => b.U32(id).U32(pixmap).U8(3).U8(0).U8(0).U8(0));
+        await c.SendAsync(54, 0, b => b.U32(pixmap));        // FreePixmap
+        await c.SendAsync(damage, 2, b => b.U32(id));         // DamageDestroy
+        await c.SyncAsync();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => c.NextAsync(m => m.IsError, timeoutMs: 150), "不该有 BadDamage");
+    }
+
+    [TestMethod]
     public async Task DAMAGE的NonEmpty只报一次_Subtract后再报()
     {
         await using X11Server server = new();
