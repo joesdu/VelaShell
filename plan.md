@@ -6461,3 +6461,44 @@ SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
 
 **没做的**:Linux 上没有桌面 X 显示(纯 Wayland、没有 XWayland)时「自动」仍按 US(可以手选);下拉之外的布局没有随程序带的表。
 文档:velashell-docs `zh|en/host/交互与界面规格.md` §14、`zh|en/host/settings-audit.md`、`zh|en/xserver/design/architecture.md` 决策记录。
+
+## ✅ 110. 2026-09-24 内置 X 服务端:SSH 转发的两处缺陷,与 GTK4 程序经 SSH 慢 / 卡的排查(用户反馈)
+
+用户在局域网的 Ubuntu 桌面版上经 SSH 转发 `gnome-calculator`(GTK4 + libadwaita):先是不出窗口,在标题栏停掉再开 X Server 后
+远端报 `Failed to open display`;能出窗口之后又要等将近一分钟,操作也掉帧。
+
+### 一、宿主的两处缺陷(已修,提交 ccd6c90f)
+
+| 缺陷 | 根因 | 修法 |
+| --- | --- | --- |
+| X Server 停掉再开之后,老 SSH 会话的每个 X 程序都 `Failed to open display`,本机日志一字不记 | `BuiltInLocalXServer` 交给 SSH 的连接器捕获的是解析显示时的那个 `X11Server` 实例;SSH 会话比服务端活得久,重启后每条 x11 通道都接进已释放的服务端,`ObjectDisposedException` 又被吞掉 | 连接器改为每来一条通道才取**此刻**在运行的服务端;没在运行就抛 `InvalidOperationException`(转发层按「本机显示连不上」处理)并记一行 `x11 channel refused` |
+| 远端程序退出后,本机窗口一直不关、日志里没有 `disconnected`,直到整条 SSH 会话结束 | `X11Forwarder` 走连接器时 `shutdownSend` 为空 —— 只有连本机套接字那条分支会设。远端的 `CHANNEL_EOF` 只把 PipeWriter 标成完成,X 服务端读不到 EOF | 连接器给的流是 `InMemoryDuplexStream` 就 `CompleteWrites()`(单向关写端),其它流关整条(X 协议没有「发完了还等回复」,全关不丢东西)。规格先行:velashell-docs spec 07 §7.5.9 补了这条决策 |
+
+### 二、慢与卡:远端环境,不是 X 服务端
+
+端到端测过每一段:容器里的 gnome-calculator → TCP → 服务端;VelaShell.Ssh 的 X11 转发(受信 + 连接器,与宿主同一条路)→ 服务端;
+容器 → `scripts/xserver/host-demo` 的真 Avalonia 宿主(确认建出了可见的原生窗口)。首帧都在 1 秒左右;sshd 容器上 `tc netem` 加 2 ms 延迟,
+映射时间只从 1.1 s 变到 1.4 s。所以要到用户那边取证:
+
+- **启动慢**:`G_MESSAGES_DEBUG=all` 的时间戳显示两处各停 25 秒 —— GTK 的「禁止休眠」门户、libadwaita 读配色的 Settings 门户,
+  都是对 `org.freedesktop.portal.Desktop` 的 `StartServiceByName` 超时。`journalctl --user -u xdg-desktop-portal` 给出根因:
+  门户的 GTK 后端要一个显示,只经 SSH 登录、没有桌面会话时 systemd 用户会话里没有 `DISPLAY`。`GDK_DEBUG=no-portals` + `ADW_DISABLE_PORTAL=1`
+  只绕开一半(用户那版 GTK 在「禁止休眠」那处不看 `no-portals`,53 s → 28 s);`systemctl --user import-environment DISPLAY` 后 **约 3 s**。
+  VcXsrv / MobaXterm 一样会中招。
+- **操作卡**:GTK4 默认 GL,经 SSH 时 Mesa 退到 llvmpipe,每帧整窗 PutImage。模拟鼠标在按钮上移动 3 秒:GL 约 114 MB(约 39 MB/s,每帧约 745 KB),
+  `GSK_RENDERER=cairo` 约 2.9 MB(约 1 MB/s)。服务端没法替客户端选渲染器。
+- `libEGL warning: DRI3 error` 无害:DRI3 要同机传文件描述符,经转发不可能;Mesa 随即退到软件渲染。
+
+给用户的远端 `~/.bashrc` 片段(只在 SSH 登录且没有图形会话时导入 `DISPLAY`、停掉旧门户、设 cairo)写进了 velashell-docs 的排障文档。
+
+### 三、验证
+
+- 单元测试:VelaShell.Ssh.Tests +2(`远端EOF之后连接器那一端的X_server读到EOF`,进程内双工流 / 普通流两组数据);
+  Infrastructure +1(`Connector_AfterRestart_ReachesTheNewServer_AndWhileStopped_Throws`)。三条都先在撤掉修复时确认失败,再恢复修复确认通过。
+- 端到端:远端程序在第 6 秒退出,修复前服务端到 12.3 s(整条 SSH 命令结束)才断开,修复后 6.3 s 断开、窗口随即撤掉。
+- 用户实机:按排障文档配好远端后,`time gnome-calculator`(出窗口即关)约 3.2 s。「重启 X Server 后老会话照常转发」只经单测与端到端脚本,
+  没在用户实机上专门走过。
+
+**没做的**:宿主在开了 X11 转发的会话里检测「远端有 systemd 用户会话、没有桌面会话」并替用户配置 —— 那要改远端的文件或会话环境,
+属于越界,没有做;是否做成「提示 + 用户确认」由用户决定。
+文档:velashell-docs `zh|en/ssh/spec/07-forwarding.md` §7.5.9、`zh|en/xserver/design/architecture.md` 决策记录、新增 `zh|en/xserver/troubleshooting.md`。
