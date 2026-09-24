@@ -5611,10 +5611,10 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>键盘布局</value>
   </data>
   <data name="SetXServer_KeyboardLayoutDesc" xml:space="preserve">
-    <value>X 程序使用的 XKB 布局(-xkblayout)。自动 = 跟随 Windows 当前的布局。</value>
+    <value>X 程序使用的键盘布局。自动 = 跟随系统当前的布局;选了具体布局就按它来(VcXsrv 以 -xkblayout 传入)。</value>
   </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
-    <value>自动 - 跟随 Windows 当前布局</value>
+    <value>自动 - 跟随系统当前布局</value>
   </data>
   <data name="SetXServer_KeyboardModel" xml:space="preserve">
     <value>键盘型号</value>

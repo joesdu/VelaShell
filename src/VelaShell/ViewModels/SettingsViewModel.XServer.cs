@@ -44,7 +44,7 @@ public partial class SettingsViewModel
     /// </remarks>
     public XServerChoice[] XServerKeyboardLayouts { get; private set; } = BuildKeyboardLayouts();
 
-    private static XServerChoice[] BuildKeyboardLayouts() =>
+    internal static XServerChoice[] BuildKeyboardLayouts() =>
     [
         new("", Strings.Get("SetXServer_LayoutAuto")),
         new("us", "us - English (US)"),

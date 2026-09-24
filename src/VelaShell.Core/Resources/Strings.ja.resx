@@ -5162,10 +5162,10 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>キーボードレイアウト</value>
   </data>
   <data name="SetXServer_KeyboardLayoutDesc" xml:space="preserve">
-    <value>X プログラムが使う XKB レイアウト(-xkblayout)。自動は現在の Windows のレイアウトに従います。</value>
+    <value>X プログラムが使うキーボードレイアウト。自動はシステムの現在のレイアウトに従い、レイアウトを選ぶとそれを使います(VcXsrv には -xkblayout で渡します)。</value>
   </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
-    <value>自動 - Windows の現在のレイアウト</value>
+    <value>自動 - システムの現在のレイアウト</value>
   </data>
   <data name="SetXServer_KeyboardModel" xml:space="preserve">
     <value>キーボードモデル</value>

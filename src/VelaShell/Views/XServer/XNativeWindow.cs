@@ -428,7 +428,7 @@ public sealed class XNativeWindow : Window
     /// </summary>
     private bool IsSyntheticAltGrControl(PhysicalKey key)
     {
-        if (!_host.HasAltGr)
+        if (!OperatingSystem.IsWindows() || !_host.HasAltGr)   // 补假左 Ctrl 的只有 Windows
         {
             return false;
         }

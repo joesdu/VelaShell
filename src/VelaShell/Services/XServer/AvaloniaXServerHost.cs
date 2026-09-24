@@ -36,6 +36,8 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     private string? _lastClipboard;
     private (object? Source, WindowIcon? Icon) _iconCache;
     private nint _keyboardLayout;
+    private HostKeymapResult? _appliedKeymap;
+    private volatile string _chosenLayout = "";
 
     /// <summary>当前附着的服务端;没在运行时为 <see langword="null" />。窗口的注入经它走。</summary>
     public X11Server? Server => _server;
@@ -55,6 +57,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             _keyboardLayout = 0;
+            _appliedKeymap = null;   // 新起的服务端是 US 键位表:按当前布局重推一次
             ApplyKeyboardLayout(server);
             if (MainWindow() is { } main)
             {
@@ -124,29 +127,65 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     }
 
     /// <summary>
-    /// Windows 上按当前键盘布局换服务端的键位表(见 <see cref="WindowsKeymap" />);布局没变时什么也不做。
-    /// 其它平台沿用服务端内置的 US 键位表。
+    /// 按键盘布局换服务端的键位表:设置里手选了布局时用随程序带的表(<see cref="BundledKeymaps" />);否则跟随系统当前的布局 ——
+    /// Windows 见 <see cref="WindowsKeymap" />,macOS 见 <see cref="MacKeymap" />,Linux 见 <see cref="LinuxKeymap" />。
+    /// 算出来的与上次推给服务端的一样时什么也不做;取不到布局时沿用服务端内置的 US 键位表。
     /// </summary>
     private void ApplyKeyboardLayout(X11Server server)
     {
-        if (!OperatingSystem.IsWindows())
+        HostKeymapResult? keymap;
+        try
+        {
+            keymap = BuildHostKeymap(server);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return;   // 系统库缺了哪一个:沿用现在的键位表
+        }
+        if (keymap is null || keymap.SameAs(_appliedKeymap))
         {
             return;
         }
-        nint layout = WindowsKeymap.CurrentLayout();
-        if (layout == 0 || layout == _keyboardLayout)
-        {
-            return;
-        }
-        _keyboardLayout = layout;
-        (int per, uint[] main, uint[] intl) = WindowsKeymap.Build(layout);
-        server.SetKeyboardMapping(WindowsKeymap.FirstKeycode, per, main);
-        server.SetKeyboardMapping(XKeycodes.IntlBackslash, per, intl);
-        // 有 AltGr 层:右 Alt 当 ISO_Level3_Shift,从 Mod1 挪到 Mod5(服务端的四级键类型按 Mod5 选第三、四级);
+        _appliedKeymap = keymap;
+        server.SetKeyboardMapping(HostKeymap.FirstKeycode, keymap.PerKeycode, keymap.Main);
+        server.SetKeyboardMapping(XKeycodes.IntlBackslash, keymap.PerKeycode, keymap.IntlBackslash);
+        // 有 AltGr 层:右 Alt(macOS 的右 Option)当 ISO_Level3_Shift,从 Mod1 挪到 Mod5(服务端的四级键类型按 Mod5 选第三、四级);
         // 没有时换回 Alt_R —— 布局可能刚从德语切回英语。
-        HasAltGr = per > 2;
+        HasAltGr = keymap.HasAltGr;
         server.SetKeyboardMapping(XKeycodes.AltRight, 1, [HasAltGr ? 0xfe03u : 0xffeau]);
         server.SetModifierMapping(HasAltGr ? AltGrModifiers : DefaultModifiers);
+    }
+
+    /// <inheritdoc />
+    public void UseKeyboardLayout(string layout) => _chosenLayout = layout ?? "";
+
+    private HostKeymapResult? BuildHostKeymap(X11Server server)
+    {
+        // 设置里手选了布局:用随程序带的键位表,不再跟随系统。
+        if (_chosenLayout.Length != 0 && HostKeymap.FromBundled(_chosenLayout) is { } chosen)
+        {
+            return chosen;
+        }
+        if (OperatingSystem.IsWindows())
+        {
+            // Windows 上布局句柄没变就不必重算(句柄是逐线程的,取一次很便宜)。
+            nint layout = WindowsKeymap.CurrentLayout();
+            if (layout == 0 || layout == _keyboardLayout)
+            {
+                return null;
+            }
+            _keyboardLayout = layout;
+            return WindowsKeymap.Build(layout);
+        }
+        if (OperatingSystem.IsMacOS())
+        {
+            return MacKeymap.Build();
+        }
+        if (OperatingSystem.IsLinux())
+        {
+            return LinuxKeymap.Build(LinuxKeymap.DisplayNumber(server.Display));
+        }
+        return null;
     }
 
     /// <summary>修饰键表(8 个修饰位 × 每位 2 个键码):Shift、Lock、Control、Mod1(Alt)、Mod2(Num Lock)、Mod3、Mod4(Super)、Mod5。</summary>
@@ -158,7 +197,8 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         [50, 62, 66, 0, 37, 105, 64, 0, 77, 0, 0, 0, 133, 134, 108, 0];
 
     /// <summary>
-    /// 当前布局有 AltGr 层(Windows)。这时按 AltGr 系统会先补一个假的左 Ctrl 按下,窗口要把它从 X 那边撤掉(见 <see cref="XNativeWindow" />)。
+    /// 当前布局有 AltGr 层(macOS 上是 Option 层)。Windows 上这时按 AltGr 系统会先补一个假的左 Ctrl 按下,
+    /// 窗口要把它从 X 那边撤掉(见 <see cref="XNativeWindow" />)。
     /// </summary>
     public bool HasAltGr { get; private set; }
 
