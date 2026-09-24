@@ -154,6 +154,41 @@ public sealed class X11ForwardTests
     }
 
     [TestMethod]
+    [DataRow(false, DisplayName = "进程内双工流:单向关写端")]
+    [DataRow(true, DisplayName = "普通流:关整条流")]
+    public async Task 远端EOF之后连接器那一端的X_server读到EOF(bool plainStream)
+    {
+        // 〔spec 07 §7.5.9〕远端 X 客户端退出、sshd 发来 CHANNEL_EOF:X server 要读到 EOF 才会断开这条连接、撤掉它的窗口。
+        // 回归:连接器给的流拿不到 shutdown(SEND),以前什么都不做,窗口一直挂到整条 SSH 会话结束。
+        await using Fixture fixture = await Fixture.StartAsync();
+        (InMemoryDuplexStream near, InMemoryDuplexStream far) = InMemoryTransport.CreatePair();
+        Stream handed = plainStream ? new BufferedStream(near) : near;
+
+        await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
+            fixture.Harness.Connection, fixture.Session,
+            fixture.Options with { LocalConnector = _ => ValueTask.FromResult(handed) },
+            fixture.Harness.Token);
+
+        byte[] fakeCookie = Convert.FromHexString(
+            fixture.Harness.Channels.Observation.X11Requests.Single().AuthCookieHex);
+        Stream remote = await OpenX11Async(fixture);
+        await remote.WriteAsync(BuildSetup(bigEndian: false, XAuthority.MitMagicCookie1, fakeCookie), fixture.Harness.Token);
+        await remote.FlushAsync(fixture.Harness.Token);
+
+        byte[] head = new byte[12];
+        await far.ReadExactlyAsync(head, fixture.Harness.Token);
+        int nameLength = BinaryPrimitives.ReadUInt16LittleEndian(head.AsSpan(6));
+        int dataLength = BinaryPrimitives.ReadUInt16LittleEndian(head.AsSpan(8));
+        await far.ReadExactlyAsync(new byte[((nameLength + 3) & ~3) + ((dataLength + 3) & ~3)], fixture.Harness.Token);
+
+        await remote.DisposeAsync();   // 远端客户端退出:CHANNEL_EOF + CHANNEL_CLOSE
+
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(fixture.Harness.Token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        Assert.AreEqual(0, await far.ReadAsync(new byte[16], timeout.Token), "X server 那一端应当读到 EOF");
+    }
+
+    [TestMethod]
     public async Task 连接器那一端不可用时按显示连不上处理_不算接纳()
     {
         await using Fixture fixture = await Fixture.StartAsync();
