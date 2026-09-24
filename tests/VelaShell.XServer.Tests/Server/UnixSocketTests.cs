@@ -45,7 +45,7 @@ public sealed class UnixSocketTests
         string path = Path.Combine(Path.GetTempPath(), $"vx-{Guid.NewGuid():N}.sock");
         using Socket other = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         other.Bind(new UnixDomainSocketEndPoint(path));
-        other.Listen(1);
+        other.Listen(8);   // 服务端探测时连进来的那一条不会被 accept;backlog 给小了,macOS 上后面的连接会被拒
         try
         {
             await using (X11Server server = new(new XServerOptions { ListenTcp = false, UnixSocketPath = path }))
