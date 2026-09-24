@@ -155,18 +155,17 @@ public sealed class CompressionTests
     [TestMethod]
     public void 算法名的分类()
     {
-        Assert.IsTrue(SshCompressorFactory.IsCompression(SshAlgorithmNames.Zlib));
-        Assert.IsTrue(SshCompressorFactory.IsCompression(SshAlgorithmNames.ZlibOpenSsh));
-        Assert.IsFalse(SshCompressorFactory.IsCompression(SshAlgorithmNames.None));
-
-        // zlib@openssh.com 推迟到认证之后；裸 zlib 立即生效。
         Assert.IsTrue(SshCompressorFactory.IsDelayed(SshAlgorithmNames.ZlibOpenSsh));
-        Assert.IsFalse(SshCompressorFactory.IsDelayed(SshAlgorithmNames.Zlib));
+        Assert.IsFalse(SshCompressorFactory.IsDelayed(SshAlgorithmNames.None));
 
         Assert.IsInstanceOfType<ZlibCompressor>(
             SshCompressorFactory.Create(SshAlgorithmNames.ZlibOpenSsh));
         Assert.IsInstanceOfType<NoCompression>(
             SshCompressorFactory.Create(SshAlgorithmNames.None));
+
+        // 裸 zlib 不实现（认证报文会进压缩流）—— 要响亮地失败，不能悄悄当成不压缩。
+        _ = Assert.ThrowsExactly<Ssh.Crypto.Kex.SshKeyExchangeException>(
+            () => SshCompressorFactory.Create("zlib"));
     }
 
     [TestMethod]
@@ -314,33 +313,28 @@ SshAlgorithmNames.None, [.. withCompression.CompressionClientToServer], "none �
     }
 
     /// <summary>
-    /// 普通 <c>zlib</c>（不延迟）从首次 <c>NEWKEYS</c> 起就压 —— 认证报文也在压缩流里。
+    /// 使用者手动把裸 <c>zlib</c> 塞进清单、且对端也谈成它时，要在协商当场失败。
     /// </summary>
     /// <remarks>
-    /// 以前两种一律在认证之后才装：谈成普通 zlib 时，服务端从 NEWKEYS 起就在压，
-    /// 我们却按明文发认证请求，两端在第一个认证报文上就错位了。
+    /// 裸 zlib 从首次 NEWKEYS 起就压，我们不实现它。若悄悄按不压缩处理，
+    /// 对端从 NEWKEYS 起在压、我们按明文发认证请求，两端在第一个认证报文上就错位 ——
+    /// 报出来的是一个看不出缘由的解压错误。
     /// </remarks>
     [TestMethod]
-    public async Task 普通zlib从首次NEWKEYS起就压()
+    public async Task 谈成裸zlib时在协商当场失败()
     {
-        byte[] payload = Encoding.UTF8.GetBytes(
-            string.Concat(Enumerable.Repeat("普通 zlib\n", 100)));
-
         SshAlgorithmSet plainZlib = SshAlgorithmSet.Default with
         {
-            CompressionClientToServer = [SshAlgorithmNames.Zlib],
-            CompressionServerToClient = [SshAlgorithmNames.Zlib],
+            CompressionClientToServer = ["zlib"],
+            CompressionServerToClient = ["zlib"],
         };
 
-        await using TestKit.TestSshServerHost host = await TestKit.TestSshServerHost.StartAsync(
-            new TestKit.TestChannelScript { StandardOutput = payload, ExitCode = 0 },
-            plainZlib);
+        Exception ex = await Assert.ThrowsAsync<Exception>(async () =>
+        {
+            await using TestKit.TestSshServerHost host = await TestKit.TestSshServerHost.StartAsync(
+                new TestKit.TestChannelScript { ExitCode = 0 }, plainZlib);
+        });
 
-        Assert.AreEqual(SshAlgorithmNames.Zlib, host.Connection.Algorithms!.Value.CompressionClientToServer);
-
-        VelaShell.Ssh.Session.SshCommandOutput output =
-            await Ssh.Session.SshConnectionExtensions.RunAsync(host.Connection, "压", cancellationToken: host.Token);
-
-        Assert.AreSequenceEqual(payload, Encoding.UTF8.GetBytes(output.StandardOutput));
+        Assert.Contains("zlib", ex.Message);
     }
 }
