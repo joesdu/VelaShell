@@ -271,13 +271,13 @@ public sealed partial class X11Server
         {
             RevertFocus(window);
         }
-        if (ReferenceEquals(_pointerGrab?.Window, window))
+        if (ReferenceEquals(PointerGrab?.Window, window))
         {
-            _pointerGrab = null;
+            PointerGrab = null;
         }
-        if (ReferenceEquals(_keyboardGrab?.Window, window))
+        if (ReferenceEquals(KeyboardGrab?.Window, window))
         {
-            _keyboardGrab = null;
+            KeyboardGrab = null;
         }
         if (_topLevelHandles.Remove(window, out Host.XTopLevelWindow? handle))
         {

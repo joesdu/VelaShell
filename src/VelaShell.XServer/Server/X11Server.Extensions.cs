@@ -172,13 +172,13 @@ public sealed partial class X11Server
         {
             _fetch = null;   // 正在取的选区,属主走了
         }
-        if (ReferenceEquals(_pointerGrab?.Client, client))
+        if (ReferenceEquals(PointerGrab?.Client, client))
         {
-            _pointerGrab = null;
+            PointerGrab = null;
         }
-        if (ReferenceEquals(_keyboardGrab?.Client, client))
+        if (ReferenceEquals(KeyboardGrab?.Client, client))
         {
-            _keyboardGrab = null;
+            KeyboardGrab = null;
         }
 
         // 资源表只扫一遍:分出它的窗口与其余资源。先销毁「挂在别人窗口下」的那些(连同子窗口),再清其余资源。

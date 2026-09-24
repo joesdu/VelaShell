@@ -301,19 +301,35 @@ public sealed partial class X11Server
                     ushort id = r.U16();
                     if (IsPointerDevice(id))
                     {
-                        if (ReferenceEquals(_pointerGrab?.Client, c))
+                        if (ReferenceEquals(PointerGrab?.Client, c))
                         {
-                            _pointerGrab = null;
+                            PointerGrab = null;
                             UpdateCursor();
                         }
                     }
-                    else if (ReferenceEquals(_keyboardGrab?.Client, c))
+                    else if (ReferenceEquals(KeyboardGrab?.Client, c))
                     {
-                        _keyboardGrab = null;
+                        KeyboardGrab = null;
                     }
                     break;
                 }
-            case 53:  // XIAllowEvents:只实现异步抓取(同核心 AllowEvents)
+            case 53:  // XIAllowEvents:换成核心 AllowEvents 的模式(按设备是指针还是键盘)
+                {
+                    r.Skip(4);   // time
+                    ushort id = r.U16();
+                    byte mode = r.U8();
+                    if (!IsKnownDevice(id))
+                    {
+                        throw BadDevice(id);
+                    }
+                    byte core = CoreAllowMode(mode, IsPointerDevice(id));
+                    if (core == byte.MaxValue)
+                    {
+                        break;   // AcceptTouch / RejectTouch:没有触摸设备
+                    }
+                    AllowEvents(c, core);
+                    break;
+                }
             case 61:  // XIBarrierReleasePointer:指针屏障不生效(XFIXES)
                 break;
             case 54:  // XIPassiveGrabDevice
@@ -592,7 +608,7 @@ public sealed partial class X11Server
         r.Skip(4);   // time
         uint cursorId = r.U32();
         ushort id = r.U16();
-        r.Skip(2);   // grab_mode、paired_device_mode:只有异步
+        byte grabMode = r.U8(), pairedMode = r.U8();   // XIGrabModeSync 0、XIGrabModeAsync 1
         bool ownerEvents = r.Bool();
         r.Skip(1);
         ushort units = r.U16();
@@ -602,7 +618,7 @@ public sealed partial class X11Server
             throw BadDevice(id);
         }
         bool pointer = IsPointerDevice(id);
-        ActiveGrab? existing = pointer ? _pointerGrab : _keyboardGrab;
+        ActiveGrab? existing = pointer ? PointerGrab : KeyboardGrab;
         byte status = existing is not null && !ReferenceEquals(existing.Client, c) ? (byte)1   // AlreadyGrabbed
             : !window.IsViewable ? (byte)3                                                      // GrabNotViewable
             : (byte)0;
@@ -619,13 +635,16 @@ public sealed partial class X11Server
             };
             if (pointer)
             {
-                _pointerGrab = grab;
+                PointerGrab = grab;
                 UpdateCursor();
             }
             else
             {
-                _keyboardGrab = grab;
+                KeyboardGrab = grab;
             }
+            // grab_mode 管被抓的这个设备,paired_device_mode 管与它配对的另一个。
+            bool deviceSync = grabMode == 0, pairedSync = pairedMode == 0;
+            ApplyGrabModes(grab, pointer ? deviceSync : pairedSync, pointer ? pairedSync : deviceSync);
         }
         c.Reply(51, w => w.U8(status).Zero(23));
     }
@@ -645,7 +664,7 @@ public sealed partial class X11Server
         byte grabType = r.U8();   // 0 Button、1 Keycode、2 Enter、3 FocusIn、4 TouchBegin
         if (grab)
         {
-            r.Skip(2);            // grab_mode、paired_device_mode
+            byte grabMode = r.U8(), pairedMode = r.U8();   // Sync 0、Async 1
             bool ownerEvents = r.Bool();
             r.Skip(2);
             ulong mask = ReadXiMask(r, units);
@@ -661,8 +680,11 @@ public sealed partial class X11Server
                 {
                     ushort core = mods == 0x80000000 ? (ushort)0x8000 : (ushort)(mods & 0xFF);   // XIAnyModifier
                     list.RemoveAll(g => ReferenceEquals(g.Client, c) && g.Detail == (int)detail && g.Modifiers == core);
+                    // 按钮抓取:grab_mode 管指针、paired 管键盘;按键抓取反过来。
+                    bool deviceSync = grabMode == 0, pairedSync = pairedMode == 0;
                     list.Add(new PassiveGrab(c, (int)detail, core, ownerEvents, 0, null,
-                        cursorId == 0 ? null : Lookup<XCursor>(cursorId), Xi2: true, Xi2Mask: mask));
+                        cursorId == 0 ? null : Lookup<XCursor>(cursorId), Xi2: true, Xi2Mask: mask,
+                        PointerSync: grabType == 0 ? deviceSync : pairedSync, KeyboardSync: grabType == 0 ? pairedSync : deviceSync));
                 }
             }
             // Enter / FocusIn / Touch 类被动抓取不支持;规范允许以「全部修饰组合都失败」回应 —— 这里回空列表,表示没有冲突。

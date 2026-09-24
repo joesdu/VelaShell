@@ -75,10 +75,19 @@ public sealed partial class X11Server
             _ => throw new XProtocolError(XErrorCode.Value, detail),
         };
 
+        bool keyboard = type is XEventCode.KeyPress or XEventCode.KeyRelease;
+
         void Run()
         {
             NoteUserActivity();
-            inject();
+            if (keyboard)
+            {
+                ProcessKeyboardInput(inject);
+            }
+            else
+            {
+                ProcessPointerInput(inject);
+            }
         }
 
         if (delay == 0)
@@ -117,7 +126,7 @@ public sealed partial class X11Server
     /// <summary>指针当前处该显示的光标(抓取的光标优先,否则从指针所在窗口向上找)。</summary>
     private XCursor? CurrentCursor()
     {
-        XCursor? cursor = _pointerGrab?.Cursor;
+        XCursor? cursor = PointerGrab?.Cursor;
         for (XWindow? w = _pointerWindow; cursor is null && w is not null; w = w.Parent)
         {
             cursor = w.Cursor;

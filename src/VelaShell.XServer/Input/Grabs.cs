@@ -3,7 +3,7 @@
 //
 // 规范依据(AGENTS.md §2 纪律 1):
 //   X Window System Protocol, X Version 11 —— 「GrabPointer」「GrabButton」「GrabKeyboard」「GrabKey」各节
-//   (主动抓取、被动抓取的激活条件、owner-events 的含义、按钮全部松开时解除)
+//   (主动抓取、被动抓取的激活条件、owner-events 的含义、按钮全部松开时解除、pointer-mode / keyboard-mode)
 
 using VelaShell.XServer.Resources;
 using VelaShell.XServer.Server;
@@ -21,9 +21,11 @@ namespace VelaShell.XServer.Input;
 /// <param name="Cursor">抓取期间的光标。</param>
 /// <param name="Xi2">XInput2 的被动抓取(XIPassiveGrabDevice):激活后事件以 XI2 格式投递。</param>
 /// <param name="Xi2Mask">XI2 抓取的事件掩码(按 evtype)。</param>
+/// <param name="PointerSync">pointer-mode 是 Synchronous:激活之后指针冻结,等 AllowEvents。</param>
+/// <param name="KeyboardSync">keyboard-mode 是 Synchronous:激活之后键盘冻结。</param>
 internal sealed record PassiveGrab(
     XClient Client, int Detail, ushort Modifiers, bool OwnerEvents, uint EventMask, XWindow? ConfineTo, XCursor? Cursor,
-    bool Xi2 = false, ulong Xi2Mask = 0)
+    bool Xi2 = false, ulong Xi2Mask = 0, bool PointerSync = false, bool KeyboardSync = false)
 {
     public bool Matches(int detail, ushort modifiers) =>
         (Detail == 0 || Detail == detail) && (Modifiers == 0x8000 || Modifiers == (modifiers & 0xFF));
