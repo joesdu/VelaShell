@@ -11,7 +11,7 @@
 `VelaShell.XServer` —— 一个**可嵌入、无原生依赖、跨平台**的 X11 服务端库(rootless,软件绘图)。
 宿主要在本机显示经 SSH X11 转发过来的远端图形程序,又不想让用户另装 VcXsrv / XQuartz。
 2026-09-23 立项,M1(核心协议)、M2(SHAPE / XFIXES / RANDR / RENDER / 剪贴板 / XSETTINGS)与功能完备一轮
-(XKB、XInput2、XTEST、SYNC、DAMAGE、Composite、DBE、Present 等十余个扩展与窗口管理器角色)与 M3(接入宿主:「X Server」按钮默认用本库,Avalonia 宿主在 `src/VelaShell/Services/XServer/`,SSH 的 x11 通道经连接器直接接进来)已完成。
+(XKB、XInput2、XTEST、SYNC、DAMAGE、Composite、DBE、Present 等十余个扩展与窗口管理器角色)与 M3(接入宿主:「X Server」按钮默认用本库,Avalonia 宿主在 `src/VelaShell/Services/XServer/`,SSH 的 x11 通道经连接器直接接进来)与 M4(同步抓取、XIChangeHierarchy、XKB SetMap、MIT-SHM、GLX)已完成。
 
 - **本目录按 MIT 授权**([`LICENSE`](LICENSE) / [`NOTICE.md`](NOTICE.md)),与宿主其余部分的授权不同。
 - **架构与原理、里程碑、决策记录**:velashell-docs
@@ -22,7 +22,7 @@
 | --- | --- |
 | `src/VelaShell.XServer/` | 库本体(分层见 `VelaShell.XServer.csproj` 的注释) |
 | `tests/VelaShell.XServer.Tests/` | 单元测试(内存双工流 + 逐字节的测试客户端)与 `[TestCategory("Interop")]` 真实客户端用例 |
-| `scripts/xserver/interop/` | 互操作靶场:`Dockerfile`(x11-apps / xterm / xdpyinfo / xclip / xdotool / x11-xkb-utils)、`run-server.cs`(起服务端、存 PNG、注入输入)、`Run-Client.ps1` |
+| `scripts/xserver/interop/` | 互操作靶场:`Dockerfile`(x11-apps / xterm / xdpyinfo / xclip / xdotool / x11-xkb-utils / xinput / mesa-utils)、`run-server.cs`(起服务端、存 PNG、注入输入)、`Run-Client.ps1` |
 | `scripts/xserver/bench/` | 吞吐基准 `bench.cs`(进程内经内存管道;改热路径前后各跑一次) |
 | `scripts/xserver/host-demo/` | `demo.cs`:内置服务端 + 宿主的 Avalonia 窗口(不经主程序、不碰用户设置),外加一个把容器连接转成本机连接的转发 —— 手动看原生窗口的行为 |
 
@@ -32,8 +32,8 @@
 
 | # | 纪律 | 具体要求 |
 | :-: | --- | --- |
-| 1 | **规范优先** | 实现依据只能是 X.Org 发布的 *X Window System Protocol, X Version 11*(含附录 B 编码)、各扩展的协议规范(BIG-REQUESTS、XC-MISC、SHAPE、XFIXES、RANDR、RENDER、Generic Event、XTEST、XINERAMA —— 线格式依据 panoramiXproto 的协议定义、MIT-SCREEN-SAVER、DPMS、X-Resource、SYNC、DAMAGE、Composite、DOUBLE-BUFFER、Present、XKB、XInput 1.5 / 2.2)、ICCCM、EWMH、XSETTINGS、BDF 规范,以及 RENDER 规范引用的 PDF Reference 混合模式公式。**每个协议实现文件头写明它实现的是哪份规范的哪一节** |
-| 2 | **不看别人的服务端** | 写实现时不打开任何其它 X 服务端的源码(X.Org / XLibre / yserver / node-x11 / WeirdX / VcXsrv / XQuartz) |
+| 1 | **规范优先** | 实现依据只能是 X.Org 发布的 *X Window System Protocol, X Version 11*(含附录 B 编码)、各扩展的协议规范(BIG-REQUESTS、XC-MISC、SHAPE、XFIXES、RANDR、RENDER、Generic Event、XTEST、XINERAMA —— 线格式依据 panoramiXproto 的协议定义、MIT-SCREEN-SAVER、DPMS、X-Resource、SYNC、DAMAGE、Composite、DOUBLE-BUFFER、Present、XKB、XInput 1.5 / 2.2、MIT-SHM 1.1、GLX —— *OpenGL Graphics with the X Window System* 1.4 与 *GLX Extensions for OpenGL Protocol Specification* 1.3 的编码)、*The OpenGL Graphics System* 1.5(间接渲染的 GL 语义)、Khronos 的 `gl.xml` / `glx.xml`(渲染命令操作码与枚举值)、ICCCM、EWMH、XSETTINGS、BDF 规范,以及 RENDER 规范引用的 PDF Reference 混合模式公式。**每个协议实现文件头写明它实现的是哪份规范的哪一节** |
+| 2 | **不看别人的服务端** | 写实现时不打开任何其它 X 服务端的源码(X.Org / XLibre / yserver / node-x11 / WeirdX / VcXsrv / XQuartz),也不打开任何 OpenGL / GLX 实现(Mesa 等)的源码 |
 | 3 | **常量照抄规范** | 操作码、事件码、错误码、掩码位、预定义原子、线上布局都是协议事实,不许为了「看起来不一样」去改 |
 | 4 | **数据不是代码** | 内置字体是 X.Org `font-misc-misc` 的 BDF(公有领域),以数据文件随库分发,来源写在 `Fonts/Data/README.md` 与 `NOTICE.md`。要更多字形时从上游重新裁剪,不手改 |
 
