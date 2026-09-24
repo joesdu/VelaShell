@@ -6427,3 +6427,32 @@ SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
 
 **没做的**(记在 `feature-plan.md`):见第二部分;架构文档 §7 补了「不是完整 MPX」。
 文档:velashell-docs `zh|en/xserver/design/architecture.md`(M4 里程碑、决策记录、扩展清单与规范清单)。
+
+## ✅ 109. 2026-09-24 内置 X 服务端:键盘布局可在设置里选,「自动」在三个平台都跟随系统(§105、§106 的后续)
+
+§105 / §106 之后宿主只在 Windows 上按系统布局推键位表;macOS 与 Linux 上内置服务端按 US,
+德语、法语等布局的用户在 X 程序里打出的字符与键帽不符,也没有办法手动指定。
+
+### 一、做了什么
+
+| 层 | 内容 |
+| --- | --- |
+| 设置 | X Server 页的「键盘布局」原先只对 VcXsrv 起作用,现在两种引擎共用(型号、捕获特殊按键仍只对 VcXsrv):「自动」= 跟随系统当前的布局,选了具体布局就按它来。文案去掉「Windows」,五份 resx 同步。改动照例在下次启动 X Server 时生效 |
+| 随程序带的键位表 | `BundledKeymaps.cs` 由 `scripts/xserver/keymaps/generate.cs` 生成:在 Linux 上经 libxkbcommon 按 rules=evdev、model=pc105 编译 xkeyboard-config 的布局(本次是 Debian xkb-data 2.35.1),导出设置下拉里 27 个布局主键区各键第 1–4 级的键值;右 Alt 不是 Level3 键的布局(us、ru、jp、kr、cn)不带第三、四层。单测保证下拉里的每个布局在表里都有 |
+| 共用出口 `HostKeymap` | 从 `WindowsKeymap` 抽出:要推导的键码(数字行到斜杠、102 键)、与布局无关的固定键、字符 / 死键换 X 键值(macOS 的死键给 U+02C6 ˆ、U+02DC ˜,一并认)、四层按 XKB §17 排成核心列、`FromBundled`;结果带 `SameAs`,算出来与上次推给服务端的一样就不重推 |
+| macOS「自动」 | `MacKeymap`:`TISCopyCurrentKeyboardLayoutInputSource`(当前是拼音这类输入法时给出它底下的键盘布局)取 `uchr` 数据,对每个物理键(X 键码 → Carbon `kVK_*` 固定表)用 `UCKeyTranslate` 按无修饰 / Shift / Option / Shift+Option 翻译,死键再按一次空格取附加符号。Option 层对应 AltGr:右 Option 成为 ISO_Level3_Shift,左 Option 仍是 Alt |
+| Linux「自动」 | `LinuxKeymap`:经 libxkbcommon-x11 读桌面 `$DISPLAY`(Wayland 上是 XWayland)的键位表与当前布局组,各键第 1–4 级原样拿来(两边都是 evdev + 8 的键码)。只有桌面的右 Alt 是 Level3 键时才保留第三、四层 —— 内置服务端只把右 Alt 当 AltGr,而 xkeyboard-config 的键位表里总有一个虚拟的 `<LVL3>` 键,扫全表会把美式也判成有 AltGr。库按名字运行时加载;没有库、没有 `$DISPLAY`、`$DISPLAY` 指向内置服务端自己时沿用 US |
+| 宿主 | `IEmbeddedXServerHost.UseKeyboardLayout`(默认实现为空):`BuiltInLocalXServer` 附着之前把设置里的布局交给宿主。`ApplyKeyboardLayout` 先看手选的布局,再按平台跟随系统。「撤掉系统为 AltGr 补的假左 Ctrl」只在 Windows 上做 —— 别的平台没有这回事,不限定的话右 Alt 按着时左 Ctrl 会被吞掉 |
+
+### 二、验证
+
+- 单元测试:VelaShell.Tests +5、改写 2(字符 / 死键换键值、核心列拼装与 `SameAs`、随程序带的表 —— 德语 y / z 互换与 AltGr 层、美式无 AltGr、
+  下拉里的布局全都有表、macOS 虚拟键码表、`$DISPLAY` 解析;「按当前系统布局真算一次」在 Windows 与有 X 显示的 Linux 上跑,macOS 上跳过 ——
+  TIS 接口只能在主线程上调,macOS 14 起在别的线程上调会断言失败、整个进程退出);Infrastructure +1(两组数据:启动时附着之前把手选 / 自动的布局交给宿主)。
+- Linux「自动」实测:把 `HostKeymap.cs` / `LinuxKeymap.cs` 原样编进一个 linux-x64 小程序,在容器里经 libxkbcommon-x11 读一个 X 显示
+  (内置服务端,用 `setxkbmap -print -layout de|fr | xkbcomp - $DISPLAY` 换布局):美式每键两列、无 AltGr;德语 y / z 互换、AltGr+Q = @、
+  AltGr+E = €、`^` 键是 dead_circumflex;法语 AZERTY;没有 `$DISPLAY` 时返回 null。(Debian 的 Xvfb 里换布局读回来一直是美式,没法在 Xvfb 上做。)
+- **macOS「自动」没有在真 Mac 上跑过**:只经 CI 的 macOS 构建与平台无关的单测;手选布局这条路与平台无关,三个平台一样。
+
+**没做的**:Linux 上没有桌面 X 显示(纯 Wayland、没有 XWayland)时「自动」仍按 US(可以手选);下拉之外的布局没有随程序带的表。
+文档:velashell-docs `zh|en/host/交互与界面规格.md` §14、`zh|en/host/settings-audit.md`、`zh|en/xserver/design/architecture.md` 决策记录。
