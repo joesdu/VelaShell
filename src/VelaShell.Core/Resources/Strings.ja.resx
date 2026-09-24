@@ -5060,10 +5060,28 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>X Server</value>
   </data>
   <data name="SetXServer_Subtitle" xml:space="preserve">
-    <value>SSH の X11 転送でリモートの GUI プログラムをローカルに表示するための X サーバー(VcXsrv)。変更は次回 X Server を起動したときに反映されます。</value>
+    <value>SSH X11 転送でリモートの GUI プログラムをこの PC に表示するローカル X サーバー:内蔵のもの、または Windows 上の VcXsrv。変更は次回 X Server を起動したときに反映されます。</value>
   </data>
-  <data name="SetXServer_Unsupported" xml:space="preserve">
-    <value>ローカル X Server は現在 Windows でのみ利用できます。Linux では X11 転送は DISPLAY 経由でデスクトップの X サーバー(または XWayland)を使います。macOS では XQuartz をインストールすれば同様に DISPLAY 経由で使われます。</value>
+  <data name="SetXServer_BuiltInNote" xml:space="preserve">
+    <value>X のウィンドウはそれぞれ独立したネイティブウィンドウになります。SSH の X11 転送はローカルのポートを経由せず内蔵サーバーに直接つながります。ほかのローカルの X プログラムも DISPLAY=localhost:N で接続できます。</value>
+  </data>
+  <data name="SetXServer_Engine" xml:space="preserve">
+    <value>X サーバー</value>
+  </data>
+  <data name="SetXServer_EngineBuiltIn" xml:space="preserve">
+    <value>内蔵(推奨)</value>
+  </data>
+  <data name="SetXServer_EngineDesc" xml:space="preserve">
+    <value>内蔵の X サーバーは VelaShell に同梱され、インストール不要です。VcXsrv はご自身でインストールする必要があります。</value>
+  </data>
+  <data name="SetXServer_EngineVcXsrv" xml:space="preserve">
+    <value>VcXsrv(要インストール)</value>
+  </data>
+  <data name="SetXServer_SectionEngine" xml:space="preserve">
+    <value>エンジン</value>
+  </data>
+  <data name="XServer_ErrNoHost" xml:space="preserve">
+    <value>内蔵 X サーバーにウィンドウのホストがないため起動できません。</value>
   </data>
   <data name="SetXServer_SectionProgram" xml:space="preserve">
     <value>プログラム</value>
@@ -5129,13 +5147,13 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>クリップボードを有効にする</value>
   </data>
   <data name="SetXServer_ClipboardDesc" xml:space="preserve">
-    <value>X の CLIPBOARD 選択を Windows のクリップボードと共有します(-clipboard)。</value>
+    <value>X の CLIPBOARD 選択をシステムのクリップボードと共有します(VcXsrv:-clipboard)。</value>
   </data>
   <data name="SetXServer_CopyOnSelection" xml:space="preserve">
     <value>選択時にコピー</value>
   </data>
   <data name="SetXServer_CopyOnSelectionDesc" xml:space="preserve">
-    <value>PRIMARY 選択も対応付け、X プログラムで選択した文字列をそのまま Windows のクリップボードにコピーします(-primary)。</value>
+    <value>PRIMARY 選択も対応付け、X プログラムで選択したテキストをすぐシステムのクリップボードへ入れます(VcXsrv:-primary)。</value>
   </data>
   <data name="SetXServer_SectionKeyboard" xml:space="preserve">
     <value>キーボード</value>
@@ -5204,7 +5222,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>X11 転送時に自動で起動</value>
   </data>
   <data name="SetXServer_AutoStartForX11Desc" xml:space="preserve">
-    <value>X11 転送を有効にした SSH セッションが接続し、プロファイルにディスプレイが指定されていない場合、先に X Server を起動します。localhost:0 で別の X サーバーが待ち受けている場合は何もしません。</value>
+    <value>X11 転送を有効にした SSH セッションが接続し、プロファイルに表示先がないとき、先に X Server を起動します。別の X サーバーがすでに使われている場合(Windows では localhost:0 で待ち受け中、ほかの OS では DISPLAY が設定済み)は何もしません。</value>
   </data>
   <data name="SetXServer_ShowTrayIcon" xml:space="preserve">
     <value>トレイアイコンを表示</value>

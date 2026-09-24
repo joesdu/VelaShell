@@ -12,11 +12,11 @@ namespace VelaShell.ViewModels;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 服务的 <see cref="ILocalXServer.StateChanged" /> 可能在线程池上响(VcXsrv 自己退出时),
-/// 这里统一切回 UI 线程再改绑定属性。
+/// 服务的 <see cref="ILocalXServer.StateChanged" /> 可能在线程池上响(VcXsrv 自己退出时、内置服务端在后台启停时),
+/// 这里统一切回 UI 线程再改绑定属性。内置引擎各平台都有,所以按钮在各平台都出现。
 /// </para>
 /// <para>
-/// 失败走错误提示;找不到 VcXsrv 这一种附一个「去设置」按钮,直接落到 X Server 页 —— 那里有安装办法与路径栏。
+/// 失败走错误提示,附一个「去设置」按钮,直接落到 X Server 页 —— 显示号被占、找不到 VcXsrv 一类的问题在那里改。
 /// </para>
 /// </remarks>
 public sealed class XServerToggleViewModel : ReactiveObject

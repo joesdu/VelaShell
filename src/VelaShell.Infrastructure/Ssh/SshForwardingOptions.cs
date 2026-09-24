@@ -38,15 +38,24 @@ internal static class SshForwardingOptions
     /// 设置失败时库不抛、shell 照常启动,原因在 <see cref="VelaShell.Ssh.Channels.SshShell.X11SetupFailure" /> 上,
     /// 由 <see cref="VelaSshClientWrapper" /> 转成终端里的提示 —— 不必为了 X11 重开一次 shell。
     /// </para>
+    /// <para>
+    /// 显示取自本机 X Server、而它是内置引擎(给了 <paramref name="localServerConnector" />)且为受信模式时,
+    /// x11 通道经连接器直接接进服务端,不去连本机端口。非受信模式要 <c>xauth</c> 连本机显示签受限 cookie,
+    /// 仍按显示地址走套接字。
+    /// </para>
     /// </remarks>
     public static X11ForwardOptions? X11(
-        SshSessionOptions? features, List<ShellStreamNotice> notices, string? localServerDisplay = null)
+        SshSessionOptions? features,
+        List<ShellStreamNotice> notices,
+        string? localServerDisplay = null,
+        Func<CancellationToken, ValueTask<Stream>>? localServerConnector = null)
     {
         if (features is not { X11Forwarding: true })
         {
             return null;
         }
 
+        bool fromLocalServer = string.IsNullOrWhiteSpace(features.X11Display) && !string.IsNullOrWhiteSpace(localServerDisplay);
         string text = !string.IsNullOrWhiteSpace(features.X11Display)
             ? features.X11Display.Trim()
             : !string.IsNullOrWhiteSpace(localServerDisplay)
@@ -67,6 +76,7 @@ internal static class SshForwardingOptions
             Trusted = features.X11Trusted,
             Timeout = TimeSpan.Zero,
             BestEffort = true,
+            LocalConnector = fromLocalServer && features.X11Trusted ? localServerConnector : null,
         };
     }
 

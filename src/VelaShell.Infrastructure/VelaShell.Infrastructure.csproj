@@ -13,6 +13,8 @@
       作为本仓工程它随 Release 一起强名签名,不存在引未签名程序集的 CS8002 问题。
     -->
     <ProjectReference Include="..\VelaShell.Ssh\VelaShell.Ssh.csproj" />
+    <!-- 内置的 X 服务端库(src/VelaShell.XServer,MIT):设置 → X Server 的「内置」引擎由它提供。 -->
+    <ProjectReference Include="..\VelaShell.XServer\VelaShell.XServer.csproj" />
     <!-- 插件契约程序集。取 nuget.org 上的正式包,版本 = 根 Directory.Build.props 的
          VelaSdkVersion(由 joesdu/velashell-plugin-toolchain 发布)。 -->
     <PackageReference Include="VelaShell.PluginSdk" />

@@ -11,9 +11,29 @@ namespace VelaShell.ViewModels;
 /// <param name="Label">下拉里显示的文字。</param>
 public sealed record XServerChoice(string Value, string Label);
 
-/// <summary>设置 → X Server 页(本机 VcXsrv 的启动参数)。</summary>
+/// <summary>设置 → X Server 页:引擎(内置 / VcXsrv),以及两者共用的显示号、剪贴板、启动与 VcXsrv 专属的参数。</summary>
 public partial class SettingsViewModel
 {
+    /// <summary>引擎下拉的选中项,与 <see cref="XServerEngines.All" /> 同序(0 内置、1 VcXsrv)。</summary>
+    public int XServerEngineIndex
+    {
+        get => Math.Max(0, IndexOf(XServerEngines.All, XServer.Engine));
+        set
+        {
+            XServer.Engine = value >= 0 && value < XServerEngines.All.Count ? XServerEngines.All[value] : XServerEngines.BuiltIn;
+            this.RaisePropertyChanged();
+        }
+    }
+
+    /// <summary>引擎能不能选:VcXsrv 只在 Windows 上,其它平台只有内置,引擎那一节不出现。</summary>
+    public bool XServerEngineSelectable { get; } = OperatingSystem.IsWindows();
+
+    /// <summary>当前选的是 VcXsrv(VcXsrv 专属的几节只在这时出现)。</summary>
+    public bool XServerUsesVcXsrv => XServerEngineSelectable && XServer.Engine == XServerEngines.VcXsrv;
+
+    /// <summary>当前选的是内置引擎。</summary>
+    public bool XServerUsesBuiltIn => !XServerUsesVcXsrv;
+
     /// <summary>
     /// 键盘布局下拉:首项「自动」(不传 <c>-xkblayout</c>,VcXsrv 跟随 Windows 当前布局),其后是常用 XKB 布局。
     /// </summary>
@@ -134,9 +154,6 @@ public partial class SettingsViewModel
         }
     }
 
-    /// <summary>当前平台能不能用本机 X Server(目前只有 Windows);不能用时整页只剩一段说明。</summary>
-    public bool XServerSupported => _localXServer?.IsSupported ?? false;
-
     /// <summary>找到的 VcXsrv 路径;没找到为 <see langword="null" />。</summary>
     public string? XServerDetectedExecutable
     {
@@ -202,6 +219,9 @@ public partial class SettingsViewModel
         _hookedXServer = options;
         options?.PropertyChanged += OnXServerItemChanged;
         this.RaisePropertyChanged(nameof(XServerCommandPreview));
+        this.RaisePropertyChanged(nameof(XServerEngineIndex));
+        this.RaisePropertyChanged(nameof(XServerUsesVcXsrv));
+        this.RaisePropertyChanged(nameof(XServerUsesBuiltIn));
     }
 
     private void OnXServerItemChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -209,6 +229,12 @@ public partial class SettingsViewModel
         if (e.PropertyName == nameof(XServerOptions.ExecutablePath))
         {
             RefreshXServerDetection();
+        }
+        if (e.PropertyName == nameof(XServerOptions.Engine))
+        {
+            this.RaisePropertyChanged(nameof(XServerEngineIndex));
+            this.RaisePropertyChanged(nameof(XServerUsesVcXsrv));
+            this.RaisePropertyChanged(nameof(XServerUsesBuiltIn));
         }
         this.RaisePropertyChanged(nameof(XServerCommandPreview));
     }

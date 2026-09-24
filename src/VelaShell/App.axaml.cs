@@ -136,6 +136,8 @@ public class App : Application
             .AddSingleton<IHostKeyPrompt, HostKeyPromptDialogService>()
             // agent 转发「逐次确认」的弹窗:连接配置里勾了才会被调到,没勾的会话永远碰不到它。
             .AddSingleton<IAgentSignPrompt, AgentSignPromptDialogService>()
+            // 内置 X 服务端的顶层窗口画成原生窗口(设置 → X Server 的「内置」引擎)。
+            .AddSingleton<Infrastructure.XServer.IEmbeddedXServerHost, Services.XServer.AvaloniaXServerHost>()
             .AddSingleton<ILocalizationService, LocalizationService>()
             .AddSingleton<IKeyboardShortcutService, KeyboardShortcutService>()
             // 应用内自动更新:更新源 = 本仓库 GitHub Releases 的 latest.json 清单(无需自己架服务器),
