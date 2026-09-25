@@ -256,7 +256,7 @@ public sealed partial class X11Server
                     ? BinaryPrimitives.ReadUInt32BigEndian(extended)
                     : BinaryPrimitives.ReadUInt32LittleEndian(extended);
                 headerSize = 8;
-                if (units < 2 || units > MaxBigRequestLength)
+                if (units is < 2 or > MaxBigRequestLength)
                 {
                     throw new InvalidDataException("BIG-REQUESTS 长度越界。");
                 }

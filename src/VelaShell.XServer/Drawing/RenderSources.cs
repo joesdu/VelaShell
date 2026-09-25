@@ -237,7 +237,7 @@ internal abstract class GradientSource(double[] stops, Argb[] colors) : RenderSo
         switch (Repeat)
         {
             case RepeatNone:
-                if (t < 0 || t > 1)
+                if (t is < 0 or > 1)
                 {
                     return default;
                 }

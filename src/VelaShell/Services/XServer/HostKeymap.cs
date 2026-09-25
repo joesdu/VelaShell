@@ -91,7 +91,7 @@ internal static class HostKeymap
 
     /// <summary>字符 → X 键值:Latin-1 可打印字符就是它本身,其余用 Unicode 键值(0x01000000 + 码位);控制字符为 0。</summary>
     public static uint Keysym(char c) =>
-        c < ' ' || c == (char)0x7f ? 0
+        c is < ' ' or ((char)0x7f) ? 0
         : c is <= (char)0x7e or >= (char)0xa0 and <= (char)0xff ? c : 0x01000000u | c;
 
     /// <summary>死键打出的附加符号 → X 的 dead_* 键值;不认识的死键按普通字符给(至少能打出那个符号)。</summary>
