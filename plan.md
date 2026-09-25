@@ -6825,3 +6825,49 @@ SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
 **没做的**:审查的其余发现(见第三节与 `feature-plan.md`)。
 
 文档:velashell-docs `zh|en/xserver/design/architecture.md` —— §5(像素锁让行)、§6(宿主读像素改用 `ReadPixels`)、§10 决策记录新增「渲染路径复查」。
+
+## ✅ 115. 2026-09-25 VelaShell.Ssh：对照 Tmds.Ssh 维护者对 X11 转发的改动，加固四处（用户需求）
+
+### 一、怎么做的：不破坏净室规程
+
+本库的净室规程（`src/VelaShell.Ssh/AGENTS.md` 第二节）不许实现会话打开任何其它 SSH 实现的源码。所以按两阶段隔离来做：
+
+1. 起一个**不带本库任何上下文**的独立分析代理，去读对方 PR 的改动与讨论，只交回行为层面的自然语言描述 ——
+   零代码、零对方标识符，只用协议层面的名字；
+2. 实现这一侧只拿那份描述，对照 RFC 4254 §6.3、X11 核心协议、X.Org 的 SECURITY 扩展规格与 `xauth(1)`，
+   **先改规格**（`spec/07` §7.5.5、§7.5.7、§7.5.8，`spec/09` §7），再照规格实现。对方的源码没有进入实现会话。
+
+过程记在 velashell-docs `ssh/design/architecture.md` §11.2.23。
+
+### 二、对照结论
+
+大部分行为本库已经有，或者更稳妥，不跟：
+
+- 一条连接上可以有多个转发，各持自己的假 cookie（对方每条连接只有受信、非受信两个位置）；
+- 尽力而为时只吞 X11 本身的失败，连接断了照常抛（对方改后连连接级错误也吞掉，后续请求照样在死通道上失败，原因反而丢了）；
+- 严格模式抛带具体原因的 `SshForwardException`（对方改成笼统的「设置失败」，原因只在内层异常里）；
+- `localhost:N` 按 TCP 显示原样交给 `xauth`（对方改写成 `unix:N`；嵌套 `ssh -X` 时只有 TCP 显示，改写后 `xauth` 连不上）；
+- Xauthority 里显示号为空当通配、IPv4 映射地址先还原成 IPv4 再比 —— 本来就这样做了。
+
+### 三、做了的四处
+
+| 问题 | 修法（位置） |
+| --- | --- |
+| X11 建立报文的两段授权字段各允许 64 KiB：对端只发一个声称很长的头，我们就在核对 cookie 之前一直等到 30 秒的建立时限 | 各不超过 256 字节，读到 12 字节的头就判、当场拒绝（`X11SetupMessage.MaxFieldLength`）。能通过核对的只有 18 字节的 `MIT-MAGIC-COOKIE-1` 加 16 字节的假 cookie |
+| `xauth generate ... timeout` 与我们的有效期相等：X server 从生成授权时起算、我们从请求转发时起算，临界时刻我们刚接下的通道会被 X server 拒；有效期设成 0（不过期）时却给了 X server 20 分钟，之后的 X 程序一律被拒 | 有效期再加 60 秒；有效期为 0 时传 0 —— X.Org 的 SECURITY 扩展规格写明 0 即永不过期（`X11Forwarder.XAuthTimeoutSeconds`） |
+| 给 `xauth` 建临时目录失败时原样抛 `IOException`：`ForwardX11 yes`（尽力而为）的会话整个起不来 | 报成 `SshForwardException`，算「X11 没开成」，会话照常启动 |
+| `ssh_config` 的 `ForwardX11Timeout` 不认 | 按 ssh_config 的时间格式解析（`s/m/h/d/w`，不带单位为秒，几段相加），`0` 为整条连接期间有效，写不对就用默认 20 分钟（`SshHostConfig.ForwardX11Timeout`，经 `ApplyToShell` 落到 `X11ForwardOptions.Timeout`） |
+
+保留一处与 OpenSSH 的有意差异：有效期对受信模式同样生效（OpenSSH 的 `ForwardX11Timeout` 只管非受信）—— 受信模式危险得多，它反而没有期限说不通。
+
+另外改正了规格 `spec/07` §7.5.7 的一处旧说法：它写「非受信模式有有效期」，而代码一直是两种模式都管。
+
+### 四、验证
+
+- `VelaShell.Ssh.Tests` 780 条全绿，含 22 条对真实 OpenSSH 的互操作用例，连续 3 轮；新增 19 条（含参数化的时间格式用例）。
+- 字段上限与 `xauth` 的 timeout 两项先撤掉修复，确认对应用例失败，再恢复确认通过。
+  `ForwardX11Timeout` 是新增的能力，没有旧行为可撤；临时目录那一处在并行跑的用例里没有安全的办法让它失败，没有专门的用例。
+- 解决方案构建 0 警告 0 错误；`VelaShell.Infrastructure.Tests` 536 通过（4 条按环境早退跳过）。
+
+文档：velashell-docs 的 `ssh/spec/07-forwarding.md` §7.5.5、§7.5.7、§7.5.8，`ssh/spec/09-dialing.md` §7，
+`ssh/design/architecture.md` 新增 §11.2.23，`zh` 与 `en` 两边都已同步。

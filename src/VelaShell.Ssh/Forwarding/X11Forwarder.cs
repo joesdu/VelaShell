@@ -54,9 +54,9 @@ public sealed record X11ForwardOptions
     /// 却反而没有期限，说不通。
     /// </para>
     /// <para>
-    /// 长会话要一直用的话，显式设成 <see cref="TimeSpan.Zero"/>。
-    /// 非受信模式下这个值也会传给 <c>xauth generate ... timeout</c>；
-    /// 设成 Zero 时那里退回 20 分钟（<c>xauth</c> 需要一个具体的数）。
+    /// 长会话要一直用的话，显式设成 <see cref="TimeSpan.Zero"/>（对应 <c>ForwardX11Timeout 0</c>：整条连接期间都有效）。
+    /// 非受信模式下它还决定 <c>xauth generate ... timeout</c>：有效期再加 60 秒，Zero 时传 0（永不过期）——
+    /// 见 <see cref="X11Forwarder.XAuthTimeoutSeconds"/>。
     /// </para>
     /// </remarks>
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMinutes(20);
@@ -493,13 +493,21 @@ public sealed class X11Forwarder : IAsyncDisposable
     {
         string xauth = options.XAuthLocation ?? "xauth";
 
-        // xauth 要一个具体的秒数；调用方把有效期关掉时退回 20 分钟。
-        int timeoutSeconds = options.Timeout <= TimeSpan.Zero
-            ? (int)TimeSpan.FromMinutes(20).TotalSeconds
-            : Math.Max(60, (int)options.Timeout.TotalSeconds);
+        int timeoutSeconds = XAuthTimeoutSeconds(options.Timeout);
 
         // CreateTempSubdirectory 在类 Unix 上建的是 0700 目录。
-        DirectoryInfo scratch = Directory.CreateTempSubdirectory("velashell-x11-");
+        // 建不了（临时目录满了、没有权限）也是「本机这一侧准备失败」：报成 SshForwardException，
+        // 尽力而为时会话才会照常启动（spec/07 §7.5.8）；原样抛 IOException 的话，整个会话都起不来。
+        DirectoryInfo scratch;
+        try
+        {
+            scratch = Directory.CreateTempSubdirectory("velashell-x11-");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new SshForwardException($"建不了给 {xauth} 用的临时目录：{ex.Message}", ex);
+        }
+
         string scratchFile = Path.Combine(scratch.FullName, "xauthfile");
 
         try
@@ -546,6 +554,34 @@ public sealed class X11Forwarder : IAsyncDisposable
                 // 删不掉只是留下一个只有本用户能读的临时目录；不值得为它让转发失败。
             }
         }
+    }
+
+    /// <summary>交给 <c>xauth generate ... timeout</c> 的秒数。</summary>
+    /// <remarks>
+    /// <para>
+    /// 〔<c>velashell-docs/zh/ssh/spec/07</c> §7.5.7〕X 的 SECURITY 扩展：受限授权在「没有任何连接在用它」的状态
+    /// 持续这么多秒之后被 X server 清掉，0 表示永不过期（不写时默认 60 秒）。
+    /// </para>
+    /// <para>
+    /// <b>有效期再加 60 秒。</b>两边各自计时 —— X server 从生成那一刻算起，我们从请求转发时算起；
+    /// 两者相等时，我们刚接下一条 <c>x11</c> 通道、X server 恰好已经清掉授权，那条连接就被拒了。
+    /// 曾经传的就是有效期本身。
+    /// </para>
+    /// <para>
+    /// <b>有效期为 0（不过期）时传 0。</b>曾经退回 20 分钟：X server 空闲 20 分钟就清掉授权，
+    /// 我们却还在接受新的 <c>x11</c> 通道，之后的 X 程序一律被 X server 拒绝。
+    /// </para>
+    /// </remarks>
+    internal static int XAuthTimeoutSeconds(TimeSpan validity)
+    {
+        if (validity <= TimeSpan.Zero)
+        {
+            return 0;
+        }
+
+        const int margin = 60;
+        double seconds = Math.Ceiling(validity.TotalSeconds) + margin;
+        return seconds >= int.MaxValue ? int.MaxValue : (int)seconds;
     }
 
     /// <summary><c>xauth generate</c> 的参数。</summary>

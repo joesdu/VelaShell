@@ -428,7 +428,7 @@ public static partial class SshConfigFile
 public sealed partial class SshHostConfig
 {
     /// <summary>
-    /// 把配置里的<b>会话</b>项（<c>ForwardAgent</c>、<c>ForwardX11</c>、<c>ForwardX11Trusted</c>）套到 shell 参数上。
+    /// 把配置里的<b>会话</b>项（<c>ForwardAgent</c>、<c>ForwardX11</c>、<c>ForwardX11Trusted</c>、<c>ForwardX11Timeout</c>）套到 shell 参数上。
     /// </summary>
     /// <param name="template">起点；<see langword="null"/> 用默认 shell 参数。</param>
     /// <remarks>
@@ -456,7 +456,12 @@ public sealed partial class SshHostConfig
         {
             options = options with
             {
-                X11 = new X11ForwardOptions { Trusted = ForwardX11Trusted, BestEffort = true },
+                X11 = new X11ForwardOptions
+                {
+                    Trusted = ForwardX11Trusted,
+                    BestEffort = true,
+                    Timeout = ForwardX11Timeout ?? X11ForwardOptions.Default.Timeout,
+                },
             };
         }
 
