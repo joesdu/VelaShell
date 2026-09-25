@@ -34,7 +34,7 @@
 
 ## 📊 待办分布
 
-**欠账**（⏳ + 🚧 + 💡，共 23 项）与**路线图**（共 27 项）分开计：
+**欠账**（⏳ + 🚧 + 💡，共 23 项）与**路线图**（共 29 项）分开计：
 
 ```mermaid
 pie showData
@@ -50,10 +50,10 @@ pie showData
 
 ```mermaid
 pie showData
-    title 路线图 —— 对标六家后的空档（27 项）
+    title 路线图 —— 对标六家后的空档（29 项）
     "B 会话与工作区" : 5
     "C 文件与传输" : 3
-    "E 安全与合规" : 5
+    "E 安全与合规" : 7
     "D 连接与协议" : 4
     "F 性能与稳定" : 4
     "G 生态与分发" : 4
@@ -66,6 +66,7 @@ pie showData
 > 「插件生态」现为 2：插件自报图标当天闭合，但新增了一条 🔴 P0「11 条怎么改都绿的 UI 用例」（见该节）。
 > 「终端与协议」从 3 加到 4：新增「SSH PTY 像素尺寸贯通」（2026-09-22 换成 SSH 库 VelaShell.Ssh 后**不再卡上游**，见该节）。
 > 「终端与协议」仍为 4：VelaShell.XServer 的 M3（接入宿主）已落地（`plan.md` §105），拆出一条「内置 X 服务端：AltGr 层」（见该节）。
+> 「E 安全与合规」从 5 加到 7：SSH 库补上主机证书之后，新增「主机证书（宿主侧）」与「gssapi-with-mic 认证」两条（`plan.md` §113，见该节）。
 
 ---
 
@@ -91,7 +92,7 @@ pie showData
 
 | 状态 | 优先级 | 项 | 现状 | 要做什么 |
 | :---: | :---: | --- | --- | --- |
-| ✅ | — | ~~SSH 证书（certificate）认证~~ | **已完成**（2026-09-10，`plan.md` §63，`bbfa1877` + `31922005`）：`AuthMethod.Certificate`（只能追加在枚举末尾，序号由 `AuthMethod_OrdinalValues_MustStayStable` 钉住）→ 凭据装配出「证书 + 匹配私钥」两件套（当时是 Tmds.Ssh 的 `CertificateCredential`；2026-09-22 换库后改由 `SshConnectionAssembler` 装 `VelaShell.Ssh` 的证书签名器，PEM→OpenSSH 那段兼容转换连同它一起删了——新库原生认三种格式）。连接配置页与登录弹窗的「证书」项都已启用，选完证书按 `<key>-cert.pub` 约定自动补上私钥（`Core/Ssh/OpenSshCertificate`）。`tests/cert-lab/` 一台**堵死全部回退路径**的靶机做端到端验证（阳性 + 阴性对照） | ⏳ 三处**当时刻意留在范围外**：①**主机证书**（CA 签的 host key 替代逐台指纹）是相反方向的另一件事，接得上现有的 `AddHostAuthentication`；②会话导入（PuTTY / Xshell / `ssh://`）与外部启动不产出证书字段，要支持得先扩解析器；③📄 velashell-docs 还没跟上（见下面的[文档待同步](#-文档待同步velashell-docs)） |
+| ✅ | — | ~~SSH 证书（certificate）认证~~ | **已完成**（2026-09-10，`plan.md` §63，`bbfa1877` + `31922005`）：`AuthMethod.Certificate`（只能追加在枚举末尾，序号由 `AuthMethod_OrdinalValues_MustStayStable` 钉住）→ 凭据装配出「证书 + 匹配私钥」两件套（当时是 Tmds.Ssh 的 `CertificateCredential`；2026-09-22 换库后改由 `SshConnectionAssembler` 装 `VelaShell.Ssh` 的证书签名器，PEM→OpenSSH 那段兼容转换连同它一起删了——新库原生认三种格式）。连接配置页与登录弹窗的「证书」项都已启用，选完证书按 `<key>-cert.pub` 约定自动补上私钥（`Core/Ssh/OpenSshCertificate`）。`tests/cert-lab/` 一台**堵死全部回退路径**的靶机做端到端验证（阳性 + 阴性对照） | ⏳ 三处**当时刻意留在范围外**：①**主机证书**（CA 签的 host key 替代逐台指纹）是相反方向的另一件事 —— **SSH 库这一侧已于 2026-09-25 落地**（`plan.md` §113），宿主侧接线见 [E 组](#e-安全与合规)「主机证书（宿主侧）」；②会话导入（PuTTY / Xshell / `ssh://`）与外部启动不产出证书字段，要支持得先扩解析器；③📄 velashell-docs 还没跟上（见下面的[文档待同步](#-文档待同步velashell-docs)） |
 | ⏳ | 🟠 P1 | **审计日志查看界面** | `audit_log` 一直在写（connect / connect-failed），但 `SonnetDbAuditLogService.QueryAsync` 在 UI 层**零调用** —— 写了没人看得见 | 安全审计页加一个可筛选的列表（时间 / 会话 / 结果）。数据侧现成，纯 UI 工作 |
 | ⏳ | 🟠 P1 | **`audit_log` / `conn_history` 保留策略** | 无 retention，长期运行只增不减 | 复用会话录制那套「保留天数 + drop 回写压缩」的兜底路径（`plan.md` §13-F） |
 | ✅ | — | ~~**ed25519 / ecdsa 密钥生成**~~ | **已完成**（2026-09-20，`plan.md` §86 + §87）：`GenerateRsaKeyAsync` 换成 `GenerateKeyAsync(name, algorithm = Ed25519, bits)` + 新枚举 `SshKeyAlgorithm { Ed25519, Ecdsa, Rsa }`（`bits` 给 0 表示按算法取默认值：RSA 4096、ECDSA 256）。密钥管理页工具栏加了算法下拉：**Ed25519（默认）/ ECDSA 256·384·521 / RSA 4096**；位数不给选 —— 4096 能用的地方 2048 一定能用，反过来不成立，列出来只是个坑。当初记的两个顾虑都不成立：BouncyCastle **本就是 SSH 库的依赖**、早在输出目录里，抬成显式依赖体积增量为零；许可证是 MIT 改写版，不与双许可冲突。OpenSSH 的私钥封装格式本来就自己实现着（`OpenSshPrivateKey`），ed25519 只加了一个 `SerializeEd25519`，ecdsa 的 `SerializeEcdsa` 早就在（导入转换那条路上用着）；真正借外力的只有 ed25519「由种子导出公钥」那步曲线标量乘法 —— .NET 11 的 BCL 至今没有独立 Ed25519。五把（含 ECDSA 三条曲线）都用系统自带 `ssh-keygen -y` 反推公钥交叉验证过，与我们写出的 `.pub` 逐字节相同 | ⏳ 两处留在范围外：①**下拉档位表与 axaml 靠 `SelectedIndex` 对齐**，错位不会报错 —— 已由 `SshKeyChoiceCatalogTests` 读 axaml 逐项比对钉死，增删档位要先改 `SshKeyManagerViewModel.AlgorithmChoices`；②📄 velashell-docs 还没跟上（见下面的[文档待同步](#-文档待同步velashell-docs)） |
@@ -613,6 +614,8 @@ var options = new ExecuteOptions
 | ⏳ | 🟠 P1 | **录制与日志的输出脱敏** | — | ⚠️ **这是一个现实风险，不是洁癖。**「输入脱敏不做」的结论是对的（只录输出、密码无回显），但**输出里照样会出现密钥**：`cat .env`、`kubectl get secret -o yaml`、`env | grep TOKEN`。会话日志与录制存的是**原始字节**，等于把 token 落了盘。落点：`SshTerminalBridge.DataReceived` 这条旁路本来就是记录专用的（见它的注释），在那里过一遍可配的脱敏规则最合适，**不影响显示路径**。规则表可与[自定义高亮规则](#-数据与可观测)共用 |
 | ⏳ | 🟡 P2 | **凭据管理器集成** | Termius（自营保险库） | **设计已定稿**（2026-09-15，[velashell-docs `zh/host/凭据管理器集成设计.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/host/凭据管理器集成设计.md)）：连接配置存**引用**，连接时由宿主内置的 `ICredentialProvider` 解析，1Password / Bitwarden / KeePassXC 三家 CLI 一起交付，解锁口令内存 TTL 缓存，解析失败退回登录弹窗 + 提示条，引用与已存密码不并存。⚠️ 原先「`ISecretProtector` 就是那层抽象」的判断**不成立**：它管加密不管来源，改造它会让每次加载配置都起 CLI 进程，解析失败时还会把引用串当密码发给服务器（设计文档 §1）。私钥走 SSH Agent（等上游 PR 合并）；系统密钥链 provider 等[系统密钥链调研](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/host/系统密钥链与sudo凭据填充可行性调研.md)里 `IMasterKeyStore` 的 P/Invoke 层，两者并行推进。⚠️ 设计文档 §3 记录了梳理中顺带发现的**四处既有缺陷**（其一：「记住密码」未勾时，登录弹窗手输的密码经「拖动分组 / 复制配置 / 证书信任」仍会落盘），建议作为阶段 0a 先修；§16 另有 11 项新增待确认决策 |
 | ⏳ | 🟡 P2 | **known_hosts 与 OpenSSH 互通** | 各家都有 | 现在只能在设置里看和删。导入 / 导出 `~/.ssh/known_hosts` 之后，与命令行 ssh 共用一份信任基线 —— 对同时用两者的人是实打实的省事 |
+| ⏳ | 🟡 P2 | **主机证书（宿主侧）** | OpenSSH `@cert-authority` | **SSH 库已支持**（`plan.md` §113，velashell-docs `ssh/spec/03-key-exchange.md` §5.5）：握手认证书算法，`KnownHostsPolicy` 按 `@cert-authority` 验证书（类型、CA 签名、有效期、主体、关键选项）。**宿主还用不上**：`VelaHostKeyPolicy` 走自己的信任库（`IHostKeyService`），没有「受信 CA」这个概念；证书目前按证书里那把钥当普通主机密钥处理（指纹就是那把钥的，重签不会误报「变了」），而默认算法清单里证书排在后面，宿主连接实际上谈不成证书。要接：①信任库里能存受信的主机 CA（手动添加，或随上一行从 `~/.ssh/known_hosts` 读 `@cert-authority`）；②`VelaHostKeyPolicy` 实现 `IHostKeyTypePreference`，有对上的 CA 时把证书算法排前；③裁决时先用 `OpenSshCertificate.CheckHostCertificate` 验证书，CA 管的主机出示没有担保的钥**不退回 TOFU**（规格 §5.5 第 4 条的理由）；④弹窗与设置页文案，五份 resx |
+| ⏳ | 🟢 P3 | **gssapi-with-mic（Kerberos）认证** | OpenSSH / PuTTY / SecureCRT | **SSH 库还没有实现**（2026-09-25 评估，`plan.md` §113）。协议面不大：RFC 4462 §3 的几种报文（`USERAUTH_GSSAPI_RESPONSE` 60、`TOKEN` 61、`EXCHANGE_COMPLETE` 63、`ERRTOK` 64、`ERROR` 65、`MIC` 66），MIC 覆盖 `session_id` 与认证请求头。GSS-API 本身不自己写，打算走 BCL 的 `NegotiateAuthentication`（Windows 上是 SSPI，Linux / macOS 上是系统的 GSSAPI 库），动手前要先确认三件事：①选 Kerberos 包时产出的是不是 RFC 4462 要的裸 krb5 机制令牌（不是 SPNEGO 包装），目标名 `host@主机名` 在两个平台上怎么写；②它有没有可用的 MIC 接口（`ComputeIntegrityCheck` 一类）；③凭据委派（`gssapi-delegate-credentials`）能不能经 `TokenImpersonationLevel.Delegation` 拿到。**卡点在验证**：要一套 KDC、一台配了 keytab 的 sshd、一个拿得到票据的客户端（Windows 域或 `kinit`），本机都没有 —— 一条认证路径不能不对着真实的 Kerberos 验过就交付。建议先用 Docker 起 MIT krb5 KDC + sshd，客户端跑在同一个 compose 的 Linux 容器里；Windows 域环境另找一台验。`gssapi-keyex`（GSS 密钥交换）不在这一条的范围内 |
 | 💡 | 🟡 P2 | **团队共享配置（只读策略分发）** | Termius / Xshell 企业版 | 「运维组长发一份机器清单，组员只读订阅」。云同步（Gist）的载荷格式与版本回溯已经现成，差的是**方向**：现在是「我的多设备漫游」，团队要的是「一处发布、多处只读」。⚠️ 这条会把产品推向企业形态，**先想清楚商业授权边界再动手** |
 
 ### F. 性能与稳定

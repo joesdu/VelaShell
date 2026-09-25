@@ -73,9 +73,13 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
     private bool _partialSuccessAchieved;
 
     /// <summary>
-    /// 同一个方法连续失败多少次之后不再重试。
+    /// 同一个方法在这次认证里累计失败多少次之后不再重试（不随部分成功清零）。
     /// </summary>
-    /// <remarks>服务端通常也有自己的计数，撞满会被临时封禁。</remarks>
+    /// <remarks>
+    /// 服务端通常也有自己的计数，撞满会被临时封禁。
+    /// <b>只管 password 与 keyboard-interactive</b>：publickey 的每一把钥是不同的凭据，
+    /// 每把只试一次，总数由服务端的 <c>MaxAuthTries</c> 决定。
+    /// </remarks>
     public int MaxFailuresPerMethod { get; init; } = 3;
 
     /// <summary>
@@ -99,6 +103,28 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
     {
         ArgumentNullException.ThrowIfNull(credentials);
 
+        try
+        {
+            return await AuthenticateCoreAsync(credentials, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SshWireFormatException ex)
+        {
+            // 服务端的认证报文读不通。内部的格式异常不该漏给使用者 —— 它说的是「对端违反协议」。
+            throw new SshProtocolException(
+                SshPhase.Authenticating, $"服务端的认证报文格式非法：{ex.Message}", ex);
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        {
+            // 与版本交换那一步同一个理由：这是**连接断了**，不是一个 IO 细节。
+            throw new SshConnectionClosedException(
+                SshFailureReason.ClosedByPeer, SshPhase.Authenticating,
+                $"认证期间连接中断：{ex.Message}", ex);
+        }
+    }
+
+    private async ValueTask<SshAuthenticationResult> AuthenticateCoreAsync(
+        IReadOnlyList<SshCredential> credentials, CancellationToken cancellationToken)
+    {
         await RequestUserAuthServiceAsync(cancellationToken).ConfigureAwait(false);
 
         // ① 先发 none 探一次。它几乎总会失败，但 FAILURE 里带回服务端接受的方法列表 ——
@@ -109,57 +135,77 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
         }
 
         // ② 按**使用者给出的顺序**逐个试。
-        foreach (SshCredential credential in credentials)
+        //
+        //    ⚠️ **部分成功之后从头再扫一遍。**多因素（AuthenticationMethods publickey,password）时，
+        //    服务端一开始只报 publickey，排在前面的口令凭据于是被「不接受」跳过；公钥那一步成功之后
+        //    服务端才开放 password —— 可循环已经走过去了，认证以「凭据试完了」失败。
+        //    重扫只重试**当时因方法不被接受而跳过**的凭据：试过的（成功一步、失败、材料有问题）不再试 ——
+        //    同一把钥换个时机也不会变成对的，白白耗掉服务端的尝试次数。
+        HashSet<SshCredential> tried = new(ReferenceEqualityComparer.Instance);
+        bool rescan = true;
+        while (rescan)
         {
-            if (credential is NoneCredential)
-            {
-                continue;   // 已经试过了
-            }
+            rescan = false;
 
-            SshCredential effective = credential;
-
-            if (!_serverOffered.Contains(effective.MethodName, StringComparer.Ordinal))
+            foreach (SshCredential credential in credentials)
             {
-                // 服务端不接受 password 但接受 keyboard-interactive 时，改走后者
-                // （velashell-docs/zh/ssh/spec/04 §6.5）。这不是取巧 —— 大量服务器只开
-                // keyboard-interactive，而它唯一的提示就是「Password:」，
-                // OpenSSH 客户端也是这么做的。
-                KeyboardInteractiveCredential? bridged = TryBridgeToKeyboardInteractive(effective);
-                if (bridged is null)
+                if (credential is NoneCredential || tried.Contains(credential))
                 {
+                    continue;   // none 已经试过了；别的试过一次就够
+                }
+
+                SshCredential effective = credential;
+
+                if (!_serverOffered.Contains(effective.MethodName, StringComparer.Ordinal))
+                {
+                    // 服务端不接受 password 但接受 keyboard-interactive 时，改走后者
+                    // （velashell-docs/zh/ssh/spec/04 §6.5）。这不是取巧 —— 大量服务器只开
+                    // keyboard-interactive，而它唯一的提示就是「Password:」，
+                    // OpenSSH 客户端也是这么做的。
+                    KeyboardInteractiveCredential? bridged = TryBridgeToKeyboardInteractive(effective);
+                    if (bridged is null)
+                    {
+                        Record(effective, SshAuthOutcome.SkippedNotOffered,
+                            $"服务端只接受：{string.Join(", ", _serverOffered)}");
+                        continue;
+                    }
+                    effective = bridged;
+                }
+
+                // 失败上限只管 password 与 keyboard-interactive：那是对**同一个秘密**的重试，
+                // 连错几次会被服务端封一阵。publickey 的每一把钥是不同的凭据 —— agent 里有五把钥、
+                // 对的是第四把时，第三把之后就不试了，那就永远登不上；它们的总数由服务端的
+                // MaxAuthTries 管。
+                if (effective.MethodName != SshAlgorithmNames.AuthPublicKey
+                    && _failureCounts.GetValueOrDefault(effective.MethodName) >= MaxFailuresPerMethod)
+                {
+                    // 计数是整次认证累计的，不随部分成功清零 —— 所以不说「连续」。
                     Record(effective, SshAuthOutcome.SkippedNotOffered,
-                        $"服务端只接受：{string.Join(", ", _serverOffered)}");
+                        $"{effective.MethodName} 在这次认证里已经失败 {MaxFailuresPerMethod} 次，不再重试。");
                     continue;
                 }
-                effective = bridged;
-            }
 
-            if (_failureCounts.GetValueOrDefault(effective.MethodName) >= MaxFailuresPerMethod)
-            {
-                Record(effective, SshAuthOutcome.SkippedNotOffered,
-                    $"{effective.MethodName} 已连续失败 {MaxFailuresPerMethod} 次，不再重试。");
-                continue;
-            }
+                tried.Add(credential);
+                AuthStepResult step = await TryCredentialAsync(effective, cancellationToken).ConfigureAwait(false);
 
-            AuthStepResult step = await TryCredentialAsync(effective, cancellationToken).ConfigureAwait(false);
-
-            switch (step.Outcome)
-            {
-                case SshAuthOutcome.Success:
+                if (step.Outcome == SshAuthOutcome.Success)
+                {
                     return BuildResult(effective.MethodName);
+                }
 
-                case SshAuthOutcome.PartialSuccess:
-                    // **这一步成功了。**不计失败、不标记凭据失效，继续外层循环用新列表挑下一个。
+                if (step.Outcome == SshAuthOutcome.PartialSuccess)
+                {
+                    // **这一步成功了。**不计失败；服务端的方法列表变了，从头按新列表再挑。
                     _partialSuccessAchieved = true;
-                    continue;
+                    rescan = true;
+                    break;
+                }
 
-                case SshAuthOutcome.Failure:
+                if (step.Outcome == SshAuthOutcome.Failure)
+                {
                     _failureCounts[effective.MethodName] =
                         _failureCounts.GetValueOrDefault(effective.MethodName) + 1;
-                    continue;
-
-                default:
-                    continue;
+                }
             }
         }
 
@@ -247,14 +293,21 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
                 PasswordCredential password => await TryPasswordAsync(password, cancellationToken).ConfigureAwait(false),
                 PublicKeyCredential publicKey => await TryPublicKeyAsync(publicKey, cancellationToken).ConfigureAwait(false),
                 KeyboardInteractiveCredential kbd => await TryKeyboardInteractiveAsync(kbd, cancellationToken).ConfigureAwait(false),
-                _ => throw new NotSupportedException($"尚未实现的认证方法：{credential.MethodName}"),
+                _ => throw new CredentialMaterialException(
+                    new NotSupportedException($"尚未实现的认证方法：{credential.MethodName}")),
             };
         }
-        catch (Exception ex) when (ex is not (OperationCanceledException or SshException))
+        catch (CredentialMaterialException ex)
         {
-            // 凭据自己出问题（私钥读不出来、外部签名器不可用）不该打断整条链 ——
+            // 凭据自己出问题（私钥读不出来、agent 拒签、外部签名器不可用）不该打断整条链 ——
             // 后面还有别的凭据可以试。但**必须如实记下来**：
             // 「私钥文件读不出来」与「服务端不认这把钥」是两件事。
+            //
+            // ⚠️ **只接凭据自己抛的**（见 CredentialMaterialException）。曾经这里按异常类型筛：
+            //    「非 SshException 一律当成凭据问题」—— 结果两头都错：agent 拒签抛的
+            //    SshAgentException 是 SshException，整条链被它打断；而断网的 IOException、
+            //    横幅回调抛的异常反倒被当成「跳过」，此时请求已经发出、应答还没读，
+            //    下一条凭据读到的是上一条的应答。
             step = new AuthStepResult(SshAuthOutcome.SkippedNoMaterial, ex.Message);
         }
 
@@ -262,10 +315,31 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
         return step;
     }
 
+    /// <summary>凭据自己出的问题：取口令、签名、回答挑战的回调抛出来的异常。</summary>
+    /// <remarks>
+    /// 只在**还没有请求在途**的地方包它（发请求之前、或读完上一个应答之后），
+    /// 所以跳过这条凭据、接着发下一条请求不会让应答错位。
+    /// </remarks>
+    private sealed class CredentialMaterialException(Exception inner) : Exception(inner.Message, inner);
+
+    /// <summary>调用凭据的回调或签名器；它抛的异常（取消除外）一律算凭据自己的问题。</summary>
+    private static async ValueTask<T> FromCredentialAsync<T>(Func<ValueTask<T>> call)
+    {
+        try
+        {
+            return await call().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new CredentialMaterialException(ex);
+        }
+    }
+
     private async ValueTask<AuthStepResult> TryPasswordAsync(
         PasswordCredential credential, CancellationToken cancellationToken)
     {
-        string password = await credential.GetPasswordAsync(cancellationToken).ConfigureAwait(false);
+        string password = await FromCredentialAsync(() => credential.GetPasswordAsync(cancellationToken))
+            .ConfigureAwait(false);
 
         ArrayBufferWriter<byte> request = new();
         SshDataWriter writer = new(request);
@@ -289,7 +363,17 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
     private async ValueTask<AuthStepResult> TryPublicKeyAsync(
         PublicKeyCredential credential, CancellationToken cancellationToken)
     {
-        string algorithm = ChooseSignatureAlgorithm(credential.Signer);
+        // 挑不出算法（只剩被禁用的 SHA-1 ssh-rsa）或外部签名器连算法列表都给不出 ——
+        // 都是这把钥自己的问题，此时还什么都没发。
+        string algorithm;
+        try
+        {
+            algorithm = ChooseSignatureAlgorithm(credential.Signer);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new CredentialMaterialException(ex);
+        }
 
         // 〔决策 velashell-docs/zh/ssh/spec/04 §4.1〕本地私钥直接签，省一个 RTT；
         // 外部签名（agent / PKCS#11 / HSM）先问「你认这把钥吗」——
@@ -320,8 +404,10 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
         signedWriter.WriteString(_sessionId);
         signedWriter.WriteRaw(request.WrittenSpan);
 
-        byte[] signature = await credential.Signer
-            .SignAsync(signedData.WrittenMemory, algorithm, cancellationToken).ConfigureAwait(false);
+        // 探测的应答（PK_OK）已经读完，这里没有请求在途 —— 签名失败可以放心地换下一条凭据。
+        byte[] signature = await FromCredentialAsync(
+                () => credential.Signer.SignAsync(signedData.WrittenMemory, algorithm, cancellationToken))
+            .ConfigureAwait(false);
 
         // 签名追加在请求末尾。
         ArrayBufferWriter<byte> full = new();
@@ -407,9 +493,13 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
             }
             // 纯展示轮：不该弹窗要输入，但**仍然把 instruction 交给回调** ——
             // 否则用户对着一个没反应的界面干等，而服务端正等他去按硬件令牌。
-            IReadOnlyList<string> responses = challenge.IsInformationalOnly
-                ? await NotifyInformationalAsync(credential, challenge, cancellationToken).ConfigureAwait(false)
-                : await credential.RespondAsync(challenge, cancellationToken).ConfigureAwait(false);
+            //
+            // 回调抛异常时服务端正等着 INFO_RESPONSE，没有应答在途；换下一条凭据时发出的新
+            // USERAUTH_REQUEST 会让服务端放弃这一轮（RFC 4252 §5）。
+            IReadOnlyList<string> responses = await FromCredentialAsync(() => challenge.IsInformationalOnly
+                    ? NotifyInformationalAsync(credential, challenge, cancellationToken)
+                    : credential.RespondAsync(challenge, cancellationToken))
+                .ConfigureAwait(false);
 
             if (responses.Count != challenge.Prompts.Count)
             {
@@ -547,6 +637,12 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
             {
                 packet = await _transport.ReadPacketAsync(cancellationToken).ConfigureAwait(false);
             }
+            catch (Crypto.SshFrameFormatException ex) when (ex.PeerClosedMidPacket)
+            {
+                // 报文中途断开是连接断了，不是协议错误（同 SshKeyExchangeRunner 与 SshConnection.NormalizeFault）。
+                throw new SshConnectionClosedException(
+                    SshFailureReason.ClosedByPeer, SshPhase.Authenticating, "对端在认证期间关闭了连接（一个报文只收到一半）。", ex);
+            }
             catch (Crypto.SshFrameFormatException ex)
             {
                 throw new SshProtocolException(SshPhase.Authenticating, ex.Message, ex);
@@ -643,7 +739,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
         return new SshConnectionClosedException(
             SshFailureReason.Disconnected, SshPhase.Authenticating,
             $"服务端在认证期间断开：{reason?.ToString() ?? "未知原因"}" +
-            (string.IsNullOrEmpty(description) ? "" : $" —— {description}"))
+            (string.IsNullOrEmpty(description) ? "" : $" —— {PeerText.Sanitize(description)}"))
         {
             DisconnectReason = reason,
             PeerDescription = description,
@@ -671,7 +767,10 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
 
         if (!AllowSha1RsaSignatures)
         {
-            candidates = candidates.Where(static a => a != SshAlgorithmNames.SshRsa);
+            // 按去掉证书后缀的名字比：RSA 证书的 SHA-1 算法叫 ssh-rsa-cert-v01@openssh.com，
+            // 只比 ssh-rsa 的话，拿证书登录时 SHA-1 照样被挑出来用。
+            candidates = candidates.Where(
+                static a => HostKeys.SshPublicKey.StripCertificateSuffix(a) != SshAlgorithmNames.SshRsa);
         }
 
         string[] usable = [.. candidates];

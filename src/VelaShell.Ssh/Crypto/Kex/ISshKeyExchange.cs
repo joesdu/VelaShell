@@ -80,15 +80,23 @@ public interface ISshKeyExchange : IDisposable
 }
 
 /// <summary>密钥交换失败。</summary>
-public sealed class SshKeyExchangeException : Exception
+/// <remarks>
+/// 是 <see cref="Diagnostics.SshException"/>：曾经直接继承 <see cref="Exception"/>，按 <c>catch (SshException)</c>
+/// 兜库的错误时漏掉它，建连时它原样漏给调用方。原因记成 <see cref="Diagnostics.SshFailureReason.ProtocolError"/>：
+/// 它最常见于对端给的公开值不合法（长度不对、不在曲线上、弱值）；「算法名没实现」那一类在连接前的
+/// <c>SshAlgorithmSet.Validate()</c> 就挡住了。
+/// </remarks>
+public sealed class SshKeyExchangeException : Diagnostics.SshException
 {
     /// <summary>用给定消息创建异常。</summary>
-    public SshKeyExchangeException(string message) : base(message)
+    public SshKeyExchangeException(string message)
+        : base(Diagnostics.SshFailureReason.ProtocolError, Diagnostics.SshPhase.KeyExchange, message)
     {
     }
 
     /// <summary>用给定消息与内部异常创建异常。</summary>
-    public SshKeyExchangeException(string message, Exception innerException) : base(message, innerException)
+    public SshKeyExchangeException(string message, Exception innerException)
+        : base(Diagnostics.SshFailureReason.ProtocolError, Diagnostics.SshPhase.KeyExchange, message, innerException)
     {
     }
 }

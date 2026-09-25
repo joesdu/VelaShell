@@ -150,7 +150,9 @@ public sealed record HttpConnectDialer(SshEndPoint Proxy) : ISshTransportDialer
             string? challenge = lines
                 .Skip(1)
                 .FirstOrDefault(static l => l.StartsWith("Proxy-Authenticate:", StringComparison.OrdinalIgnoreCase));
-            string scheme = challenge is null ? "" : $"（代理要求：{challenge["Proxy-Authenticate:".Length..].Trim()}）";
+            string scheme = challenge is null
+                ? ""
+                : $"（代理要求：{Truncate(challenge["Proxy-Authenticate:".Length..].Trim())}）";
 
             throw ProxyDialing.AuthRequired(Credentials is null
                 ? $"HTTP 代理 {Proxy} 要求认证，但没有配置代理凭据{scheme}。"
@@ -165,7 +167,8 @@ public sealed record HttpConnectDialer(SshEndPoint Proxy) : ISshTransportDialer
         throw ProxyDialing.Refused($"HTTP 代理 {Proxy} 拒绝连接 {target}：{Truncate(statusLine)}。{hint}");
     }
 
-    private static string Truncate(string text) => text.Length <= 200 ? text : text[..200] + "…";
+    /// <summary>代理的应答进消息之前：截短，并清掉控制字符（见 <see cref="Diagnostics.PeerText"/>）。</summary>
+    private static string Truncate(string text) => Diagnostics.PeerText.Sanitize(text, 200);
 }
 
 /// <summary>先吐出一段已经读到的字节，再接着读底层流。</summary>

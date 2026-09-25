@@ -160,8 +160,18 @@ public sealed class SshAgentClient : IAsyncDisposable
                 NamedPipeClientStream pipe = new(
                     ".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
 
-                await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
-                return new SshAgentClient(pipe, actual);
+                try
+                {
+                    await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
+                    EnsureTrustedPipeServer(pipe, actual);
+                    return new SshAgentClient(pipe, actual);
+                }
+                catch (Exception)
+                {
+                    // 连不上、超时（宿主只等三秒）或属主不对：句柄当场关掉，不留给终结器。
+                    await pipe.DisposeAsync().ConfigureAwait(false);
+                    throw;
+                }
             }
 
             // Unix 套接字。
@@ -179,6 +189,57 @@ public sealed class SshAgentClient : IAsyncDisposable
             throw new SshAgentException($"连不上 ssh-agent（{actual}）：{ex.Message}", ex);
         }
     }
+
+    /// <summary>确认命名管道的另一头是可信的 agent，而不是抢先占了这个管道名的别的用户。</summary>
+    /// <remarks>
+    /// <para>
+    /// Windows 上 OpenSSH agent 的管道名是固定的（<c>openssh-ssh-agent</c>）。服务没在跑的时候，
+    /// 本机任何一个用户都能先把这个名字建出来 —— 之后我们发过去的就是签名请求，
+    /// 开了「自动加载密钥到 Agent」的话，还有**明文私钥**。
+    /// </para>
+    /// <para>
+    /// 判据是管道对象的属主：抢先建管道的人只能把属主设成自己（或自己所在、可以当属主的组）。
+    /// 可信的只有三种 —— 当前用户（1Password、Pageant、KeePassXC 之类以当前用户身份跑的 agent）、
+    /// SYSTEM 与 Administrators（OpenSSH 的 agent 服务；提权的进程建的管道属主也是 Administrators）。
+    /// </para>
+    /// <para>
+    /// 不靠降低模拟级别（<c>TokenImpersonationLevel.Identification</c>）来防：OpenSSH 的 agent 服务
+    /// 要以连进来的用户身份保存密钥，降级会把正常的 agent 一起弄坏。
+    /// </para>
+    /// </remarks>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void EnsureTrustedPipeServer(NamedPipeClientStream pipe, string endpoint)
+    {
+        System.Security.Principal.SecurityIdentifier? owner;
+        try
+        {
+            owner = pipe.GetAccessControl().GetOwner(typeof(System.Security.Principal.SecurityIdentifier))
+                as System.Security.Principal.SecurityIdentifier;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or InvalidOperationException
+                                       or System.Security.Principal.IdentityNotMappedException)
+        {
+            throw new SshAgentException(
+                $"读不到 ssh-agent 命名管道（{endpoint}）的属主，不能确认另一头是可信的 agent：{ex.Message}", ex);
+        }
+
+        using System.Security.Principal.WindowsIdentity current = System.Security.Principal.WindowsIdentity.GetCurrent();
+        if (!IsTrustedPipeOwner(owner, current.User))
+        {
+            throw new SshAgentException(
+                $"ssh-agent 命名管道（{endpoint}）的属主是 {owner?.Value ?? "（空）"}，" +
+                "既不是当前用户也不是系统 —— 可能是别的用户抢先占了这个管道名。已拒绝连接。");
+        }
+    }
+
+    /// <summary>管道属主可信吗（见 <see cref="EnsureTrustedPipeServer"/>）。</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    internal static bool IsTrustedPipeOwner(
+        System.Security.Principal.SecurityIdentifier? owner, System.Security.Principal.SecurityIdentifier? currentUser) =>
+        owner is not null
+        && (owner == currentUser
+            || owner.IsWellKnown(System.Security.Principal.WellKnownSidType.LocalSystemSid)
+            || owner.IsWellKnown(System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid));
 
     /// <summary>列出 agent 里的密钥。</summary>
     public async ValueTask<IReadOnlyList<SshAgentIdentity>> ListIdentitiesAsync(
@@ -209,14 +270,15 @@ public sealed class SshAgentClient : IAsyncDisposable
             {
                 identities.Add(new SshAgentIdentity(SshPublicKey.Parse(blob), comment));
             }
-            catch (SshWireFormatException)
+            catch (SshPublicKeyException)
             {
-                // agent 里可能有我们不认识类型的密钥（证书、FIDO、厂商私有）。
+                // agent 里可能有我们不认识类型的密钥（FIDO、DSA、厂商私有，或者本库不支持的证书类型）。
                 // **跳过它就好** —— 为其中一把报错等于让整个 agent 用不了。
-            }
-            catch (NotSupportedException)
-            {
-                // 同上。
+                //
+                // ⚠️ 要接的是 SshPublicKeyException：Parse 把「不支持的类型」与
+                //    「blob 格式非法」都包成它抛出来，不会让 SshWireFormatException 漏到这里。
+                //    曾经只接了后者，结果 agent 里只要有一张证书，整个列表就抛异常 ——
+                //    agent 认证、agent 转发、自动加钥一起用不了。
             }
         }
 
@@ -237,7 +299,8 @@ public sealed class SshAgentClient : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        SshAgentSignFlags flags = algorithm switch
+        // 证书的算法名带 -cert-v01 后缀，标志位按去掉后缀的名字定 —— 否则 RSA 证书会被签成 SHA-1。
+        SshAgentSignFlags flags = SshPublicKey.StripCertificateSuffix(algorithm) switch
         {
             SshAlgorithmNames.RsaSha512 => SshAgentSignFlags.RsaSha2_512,
             SshAlgorithmNames.RsaSha256 => SshAgentSignFlags.RsaSha2_256,

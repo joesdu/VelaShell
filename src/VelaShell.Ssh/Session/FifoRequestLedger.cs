@@ -29,7 +29,7 @@ namespace VelaShell.Ssh.Session;
 /// </remarks>
 internal sealed class FifoRequestLedger<TResult>
 {
-    private readonly Queue<TaskCompletionSource<TResult>> _pending = new();
+    private readonly Queue<(TaskCompletionSource<TResult> Completion, Action<TResult>? OnResult)> _pending = new();
     private readonly Lock _lock = new();
     private bool _closed;
     private TResult _closedResult = default!;
@@ -47,19 +47,25 @@ internal sealed class FifoRequestLedger<TResult>
     }
 
     /// <summary>登记一个即将发出的请求。</summary>
+    /// <param name="onResult">
+    /// 应答（或关账的结果）到达时，在完成任务<b>之前</b>、在交付应答的那个线程上同步调用。
+    /// 给「紧跟在应答后面的报文要用到应答内容」的请求用 —— 任务的续体跑在线程池上，
+    /// 接收循环那时可能已经在处理后面的报文了。必须又短又不阻塞。
+    /// </param>
     /// <returns>应答到达（或账本关闭）时完成的任务。</returns>
-    public Task<TResult> Register()
+    public Task<TResult> Register(Action<TResult>? onResult = null)
     {
         lock (_lock)
         {
             if (_closed)
             {
+                onResult?.Invoke(_closedResult);
                 return Task.FromResult(_closedResult);
             }
 
             TaskCompletionSource<TResult> completion =
                 new(TaskCreationOptions.RunContinuationsAsynchronously);
-            _pending.Enqueue(completion);
+            _pending.Enqueue((completion, onResult));
             return completion.Task;
         }
     }
@@ -68,17 +74,32 @@ internal sealed class FifoRequestLedger<TResult>
     /// <returns>账本里没有人在等时返回 <see langword="false"/> —— 那是 FIFO 失步。</returns>
     public bool TryComplete(TResult result)
     {
-        TaskCompletionSource<TResult>? completion;
+        (TaskCompletionSource<TResult> Completion, Action<TResult>? OnResult) entry;
         lock (_lock)
         {
-            if (!_pending.TryDequeue(out completion))
+            if (!_pending.TryDequeue(out entry))
             {
                 return false;
             }
         }
 
-        completion.TrySetResult(result);
+        Deliver(entry, result);
         return true;
+    }
+
+    private static void Deliver(
+        (TaskCompletionSource<TResult> Completion, Action<TResult>? OnResult) entry, TResult result)
+    {
+        try
+        {
+            entry.OnResult?.Invoke(result);
+        }
+        catch (Exception)
+        {
+            // 回调是登记方自己的小动作；它出错不该连累接收循环，也不该让等应答的人永远挂着。
+        }
+
+        entry.Completion.TrySetResult(result);
     }
 
     /// <summary>关账：在途的与之后登记的请求一律以 <paramref name="result"/> 收尾。</summary>
@@ -88,7 +109,7 @@ internal sealed class FifoRequestLedger<TResult>
     /// </remarks>
     public void Close(TResult result)
     {
-        List<TaskCompletionSource<TResult>> pending;
+        List<(TaskCompletionSource<TResult> Completion, Action<TResult>? OnResult)> pending;
         lock (_lock)
         {
             if (_closed)
@@ -101,9 +122,9 @@ internal sealed class FifoRequestLedger<TResult>
             _pending.Clear();
         }
 
-        foreach (TaskCompletionSource<TResult> completion in pending)
+        foreach ((TaskCompletionSource<TResult> Completion, Action<TResult>? OnResult) entry in pending)
         {
-            completion.TrySetResult(result);
+            Deliver(entry, result);
         }
     }
 }

@@ -195,16 +195,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             }
         }
 
-        BlockSize = _options.BlockSize > 0
-            ? _options.BlockSize
-            : (int)Math.Min(
-                Math.Max(Capabilities.Limits.MaxWriteLength, 1),
-                Math.Max(SftpProtocol.DefaultBlockSize, Capabilities.Limits.MaxReadLength));
-
-        if (BlockSize <= 0)
-        {
-            BlockSize = SftpProtocol.DefaultBlockSize;
-        }
+        BlockSize = ChooseBlockSize(_options.BlockSize, Capabilities.Limits);
 
         // 〔决策 velashell-docs/zh/ssh/spec/06 §4.6〕连上就对 "." 做一次 REALPATH。
         // 这是唯一可靠的「用户家目录在哪」的答案 —— 比拼 /home/{user} 靠谱得多。
@@ -219,6 +210,44 @@ public sealed class SftpFileSystem : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// 块大小 = min(想要的, 服务端的读写上限, 服务端的报文上限减去请求头, 本端肯收的最大数据块)。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>服务端给 0 是「没说」，不是「一个字节」。</b>曾经按字面取，块大小就成了 1 ——
+    /// 一个 1 MB 的文件要一百万个请求。
+    /// </para>
+    /// <para>
+    /// 读上限也要算进来：比它长的 <c>READ</c> 会被截短，而顺序读把短读当成「中间有洞」，
+    /// 每一块都从头再来，预读永远建不起来。使用者指定的块大小同样要服从这些上限 ——
+    /// 超长的 <c>WRITE</c> 会被拒，OpenSSH 甚至直接断开 SFTP 会话。
+    /// </para>
+    /// </remarks>
+    internal static int ChooseBlockSize(int requested, SftpLimits limits)
+    {
+        long serverCap = long.MaxValue;
+        if (limits.MaxWriteLength > 0)
+        {
+            serverCap = Math.Min(serverCap, (long)Math.Min(limits.MaxWriteLength, int.MaxValue));
+        }
+        if (limits.MaxReadLength > 0)
+        {
+            serverCap = Math.Min(serverCap, (long)Math.Min(limits.MaxReadLength, int.MaxValue));
+        }
+        if (limits.MaxPacketLength > SftpProtocol.RequestHeaderAllowance)
+        {
+            serverCap = Math.Min(
+                serverCap, (long)Math.Min(limits.MaxPacketLength, int.MaxValue) - SftpProtocol.RequestHeaderAllowance);
+        }
+
+        long size = requested > 0
+            ? requested
+            : serverCap == long.MaxValue ? SftpProtocol.DefaultBlockSize : serverCap;
+
+        return (int)Math.Clamp(Math.Min(size, serverCap), 1, SftpProtocol.MaxBlockSize);
+    }
+
     private async ValueTask<SftpLimits> QueryLimitsAsync(CancellationToken cancellationToken)
     {
         using SftpResponse response = await _pipeline.SendAsync(
@@ -226,10 +255,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
         response.ThrowIfError(operation: "查询 limits", treatEndOfFileAsError: true);
-
-        SshDataReader reader = new(response.Payload);
-        return new SftpLimits(
-            reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64());
+        return SftpWire.ReadLimits(response.Payload);
     }
 
     // ------------------------------------------------------------ 路径
@@ -510,6 +536,10 @@ public sealed class SftpFileSystem : IAsyncDisposable
             entry.LongName);
     }
 
+    // 下面两个「悄悄」版本吞的是<b>这一条应答</b>的问题：服务端拒了（SftpException），
+    // 或者这一条应答长得不对（SshProtocolException，比如 READLINK 回了两项）——
+    // 一个怪链接不该让整个目录列不出来。流水线本身坏了就不吞：那不是这一项的事。
+
     private async Task<string?> ReadLinkQuietlyAsync(string path, CancellationToken cancellationToken)
     {
         try
@@ -517,6 +547,10 @@ public sealed class SftpFileSystem : IAsyncDisposable
             return await ReadSymbolicLinkAsync(path, cancellationToken).ConfigureAwait(false);
         }
         catch (SftpException)
+        {
+            return null;
+        }
+        catch (SshProtocolException) when (!_pipeline.IsFaulted)
         {
             return null;
         }
@@ -529,6 +563,10 @@ public sealed class SftpFileSystem : IAsyncDisposable
             return await GetAttributesAsync(path, cancellationToken).ConfigureAwait(false);
         }
         catch (SftpException)
+        {
+            return null;
+        }
+        catch (SshProtocolException) when (!_pipeline.IsFaulted)
         {
             return null;
         }
@@ -554,9 +592,16 @@ public sealed class SftpFileSystem : IAsyncDisposable
 
     /// <summary>打开一个文件用于续写（从给定偏移继续）。</summary>
     /// <remarks>
+    /// <para>
     /// 配合 <see cref="SftpFileStream.DurableLength"/> 或
     /// <see cref="SftpTransferInterruptedException.DurableLength"/> 用，
     /// 就是精确的断点续传。
+    /// </para>
+    /// <para>
+    /// 返回的流把 <c>[0, offset)</c> 算作已确认（服务端的文件比 <paramref name="offset"/> 短时只算到文件末尾）——
+    /// 那一段是上一次传输确认过的。不这样算的话，续传途中再断一次，
+    /// <see cref="SftpFileStream.DurableLength"/> 报的是 0，下一次续传就从头来过。
+    /// </para>
     /// </remarks>
     public async ValueTask<SftpFileStream> OpenAppendAsync(
         string path,
@@ -564,6 +609,9 @@ public sealed class SftpFileSystem : IAsyncDisposable
         uint permissions = SftpProtocol.DefaultFilePermissions,
         CancellationToken cancellationToken = default)
     {
+        // 先查参数再开：开了之后才发现偏移不对，那个句柄就没人关了。
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+
         SftpFileStream stream = await OpenAsync(
             path,
             SftpOpenMode.Write | SftpOpenMode.Create,
@@ -571,6 +619,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             canRead: false, canWrite: true, SftpWriteMode.Pipelined, cancellationToken).ConfigureAwait(false);
 
         stream.Position = offset;
+        stream.AssumeDurablePrefix(stream.LengthKnown ? Math.Min(offset, stream.Length) : offset);
         return stream;
     }
 
@@ -596,8 +645,11 @@ public sealed class SftpFileSystem : IAsyncDisposable
             handle = SftpWire.ReadHandle(response.Payload);
         }
 
+        // 截断打开的，长度就是 0；别的（读、续写、不截断的写）要问一次 ——
+        // 曾经只有读才问，续写打开的流 Length 一直报 0，Seek(0, End) 回到了文件开头。
         long length = 0;
-        if (canRead)
+        bool lengthKnown = (mode & SftpOpenMode.Truncate) != 0;
+        if (!lengthKnown)
         {
             try
             {
@@ -607,16 +659,31 @@ public sealed class SftpFileSystem : IAsyncDisposable
 
                 stat.ThrowIfError(path, "取属性", treatEndOfFileAsError: true);
                 SftpFileAttributes current = SftpWire.ReadAttrs(stat.Payload);
-                length = current.HasSize ? (long)current.Size : 0;
+                if (current.HasSize)
+                {
+                    length = (long)current.Size;
+                    lengthKnown = true;
+                }
             }
             catch (SftpException)
             {
-                // 拿不到长度不影响读 —— 只是 Seek(SeekOrigin.End) 会不准。
+                // 拿不到长度不影响读写 —— 只是 Length 与 Seek(SeekOrigin.End) 会不准。
+            }
+            catch (Exception)
+            {
+                // ⚠️ 取消、流水线断了、应答不合格式：句柄已经开在服务端了，
+                //    还没交给流，这里不关就没人关 —— 每失败一次漏一个，直到 max-open-handles 用光。
+                await CloseHandleQuietlyAsync(handle).ConfigureAwait(false);
+                throw;
             }
         }
 
         return new SftpFileStream(
-            _pipeline, handle, path, canRead, canWrite, length, BlockSize, writeMode, _options.MaxInFlight);
+            _pipeline, handle, path, canRead, canWrite, length, BlockSize, writeMode,
+            maxInFlightWrites: _options.MaxInFlight, maxReadAhead: _options.MaxInFlight)
+        {
+            LengthKnown = lengthKnown,
+        };
     }
 
     /// <summary>把整个文件读成字节。</summary>
@@ -624,15 +691,18 @@ public sealed class SftpFileSystem : IAsyncDisposable
     {
         await using SftpFileStream stream = await OpenReadAsync(path, cancellationToken).ConfigureAwait(false);
 
-        ArrayBufferWriter<byte> output = new(Math.Max((int)Math.Min(stream.Length, int.MaxValue), 1));
+        // 初始容量按服务端报的长度估，但**封顶** —— 那是对端给的数：一个谎报 2 GiB 的小文件
+        // 不该让我们先分配 2 GiB。真实数据多了，缓冲自己会长。
+        const int maxInitialCapacity = 1024 * 1024;
+        ArrayBufferWriter<byte> output = new((int)Math.Clamp(stream.Length, 1, maxInitialCapacity));
         byte[] buffer = ArrayPool<byte>.Shared.Rent(BlockSize);
 
         try
         {
-            long offset = 0;
+            // 走顺序读：它带预读（spec/06 §5.5）。
             while (true)
             {
-                int read = await stream.ReadAtAsync(offset, buffer.AsMemory(0, BlockSize), cancellationToken)
+                int read = await stream.ReadAsync(buffer.AsMemory(0, BlockSize), cancellationToken)
                     .ConfigureAwait(false);
 
                 if (read == 0)
@@ -641,7 +711,6 @@ public sealed class SftpFileSystem : IAsyncDisposable
                 }
 
                 output.Write(buffer.AsSpan(0, read));
-                offset += read;
             }
         }
         finally

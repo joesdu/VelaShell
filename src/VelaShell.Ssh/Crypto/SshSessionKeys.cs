@@ -62,6 +62,20 @@ public static class SshSessionKeys
         }
     }
 
+    /// <summary>该加密算法本库是否实现了（<see cref="Derive"/> 造得出它的套件）。</summary>
+    /// <param name="encryption">算法名。</param>
+    public static bool IsSupportedEncryption(string encryption) => encryption is
+        SshAlgorithmNames.ChaCha20Poly1305 or
+        SshAlgorithmNames.Aes128Gcm or SshAlgorithmNames.Aes256Gcm or
+        SshAlgorithmNames.Aes128Ctr or SshAlgorithmNames.Aes192Ctr or SshAlgorithmNames.Aes256Ctr;
+
+    /// <summary>该 MAC 算法本库是否实现了。</summary>
+    /// <param name="mac">算法名。</param>
+    public static bool IsSupportedMac(string mac) => mac is
+        SshAlgorithmNames.HmacSha256Etm or SshAlgorithmNames.HmacSha512Etm or
+        SshAlgorithmNames.HmacSha256 or SshAlgorithmNames.HmacSha512 or
+        SshAlgorithmNames.HmacSha1Etm or SshAlgorithmNames.HmacSha1;
+
     private static ISshCipherSuite Build(
         string encryption,
         string? mac,

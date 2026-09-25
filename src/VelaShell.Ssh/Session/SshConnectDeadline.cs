@@ -28,6 +28,7 @@ namespace VelaShell.Ssh.Session;
 internal sealed class SshConnectDeadline : IDisposable
 {
     private readonly CancellationTokenSource _cts;
+    private readonly CancellationToken _callerToken;
     private readonly SshConnectDeadline? _outer;
     private readonly Lock _lock = new();
     private readonly bool _infinite;
@@ -43,6 +44,7 @@ internal sealed class SshConnectDeadline : IDisposable
     public SshConnectDeadline(TimeSpan budget, CancellationToken cancellationToken, SshConnectDeadline? outer = null)
     {
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _callerToken = cancellationToken;
         _outer = outer;
         _infinite = budget == Timeout.InfiniteTimeSpan;
         _remaining = budget;
@@ -56,6 +58,13 @@ internal sealed class SshConnectDeadline : IDisposable
 
     /// <summary>计时器到点或调用方取消时被取消的令牌。</summary>
     public CancellationToken Token => _cts.Token;
+
+    /// <summary>是计时器到点了（而不是调用方取消的）。</summary>
+    /// <remarks>
+    /// 经跳板时，里面那一跳只拿得到外层的令牌：它被取消了，得靠这个分清是「超时」还是「用户不要了」——
+    /// 前者要说清楚卡在哪一跳，后者原样当取消往外传。
+    /// </remarks>
+    public bool IsExpired => _cts.IsCancellationRequested && !_callerToken.IsCancellationRequested;
 
     /// <summary>停表。可以嵌套；每次 <see cref="Pause"/> 都要配一次 <see cref="Resume"/>。</summary>
     public void Pause()

@@ -255,13 +255,6 @@ public sealed class SshPacketTransport : IAsyncDisposable
                         // 序号在**成功取出一帧之后**才推进，与密码套件的约定一致。
                         ReceiveSequenceNumber = unchecked(ReceiveSequenceNumber + 1);
                         PacketsReceived++;
-
-                        // 解密在前，解压在后 —— 顺序反了什么都对不上
-                        // （发送侧是先压后加密）。
-                        return new SshInboundPacket(
-                            _receiveCompressor.IsActive
-                                ? DecompressPayload(_payloadBuffer.WrittenMemory)
-                                : _payloadBuffer.WrittenMemory);
                     }
                 }
                 catch
@@ -269,6 +262,19 @@ public sealed class SshPacketTransport : IAsyncDisposable
                     // 解析失败时也要把 reader 交还，否则 Dispose 会挂住。
                     _reader.AdvanceTo(buffer.Start, buffer.End);
                     throw;
+                }
+
+                if (status == SshOpenStatus.Opened)
+                {
+                    // 解密在前，解压在后 —— 顺序反了什么都对不上（发送侧是先压后加密）。
+                    //
+                    // ⚠️ 解压放在上面那个 try **外面**：reader 在那里已经 AdvanceTo 过了。
+                    //    曾经放在里面，解压一失败（压缩炸弹、坏的 zlib 流），catch 就再 AdvanceTo 一次，
+                    //    真正的原因被「PipeReader 已经越过这个位置」的 InvalidOperationException 盖掉。
+                    return new SshInboundPacket(
+                        _receiveCompressor.IsActive
+                            ? DecompressPayload(_payloadBuffer.WrittenMemory)
+                            : _payloadBuffer.WrittenMemory);
                 }
             }
 
@@ -279,7 +285,7 @@ public sealed class SshPacketTransport : IAsyncDisposable
                 {
                     return SshInboundPacket.EndOfStream;   // 帧边界上的干净关闭
                 }
-                throw new SshFrameFormatException("对端在报文中途关闭了连接。");
+                throw new SshFrameFormatException("对端在报文中途关闭了连接。") { PeerClosedMidPacket = true };
             }
 
             // 数据不足：consumed = start（什么都没消费）、examined = end（已经看到这里）。
@@ -446,7 +452,11 @@ public sealed class SshPacketTransport : IAsyncDisposable
 
         try
         {
-            await _writer.CompleteAsync().ConfigureAwait(false);
+            // ⚠️ **带着异常完成，不再往流上写。**不带异常的 CompleteAsync 会把缓冲里剩下的字节刷出去 ——
+            //    而剩下的只可能是一次被取消的 flush 丢下的（正常路径上每一帧都显式 flush 过）。
+            //    那次 flush 被取消，多半正是因为对端不读了（TCP 零窗口、半开的链路）：
+            //    这里再去写，就是在释放路径上等一个永远不来的对端，直到 TCP 自己放弃（十几分钟）。
+            await _writer.CompleteAsync(new ObjectDisposedException(nameof(SshPacketTransport))).ConfigureAwait(false);
         }
         catch (Exception)
         {

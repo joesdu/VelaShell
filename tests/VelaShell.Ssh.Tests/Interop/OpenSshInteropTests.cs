@@ -176,6 +176,61 @@ public sealed class OpenSshInteropTests
     }
 
     [TestMethod]
+    public async Task 重协商之后每一种加密算法照常收发()
+    {
+        // 加密套件的状态在会话里复用（chacha20-poly1305 的两个 ChaCha 引擎与 Poly1305、
+        // CTR 的计数器与 HMAC、GCM 的 nonce）。换钥之后新的一组必须从新钥重新起步：
+        // 残留一点旧状态，第一个新钥报文就解不开 —— 而那只有对着另一份实现才看得出来，
+        // 自己加密自己解密时两边错得一模一样。
+        // 这里让一次重协商落在大块输出的**中途**：换钥前后的报文都在同一条通道里。
+        RequireServer();
+
+        List<string> failed = [];
+
+        foreach (string cipher in SshAlgorithmSet.Default.EncryptionClientToServer)
+        {
+            SshAlgorithmSet only = SshAlgorithmSet.Default with
+            {
+                EncryptionClientToServer = [cipher],
+                EncryptionServerToClient = [cipher],
+            };
+
+            try
+            {
+                await using SshConnection connection = await Options(only).ConnectAsync();
+
+                Task<SshCommandOutput> bulk = connection.RunAsync(
+                    "head -c 8388608 /dev/zero | tr '\\0' 'a'").AsTask();
+                await connection.StartRekeyAsync();
+
+                using CancellationTokenSource rekeyTimeout = new(TimeSpan.FromSeconds(30));
+                while (connection.RekeyCount == 0)
+                {
+                    await Task.Delay(20, rekeyTimeout.Token);
+                }
+
+                SshCommandOutput output = await bulk;
+                Assert.AreEqual(8 * 1024 * 1024, output.StandardOutput.Length, cipher);
+                Assert.IsTrue(output.StandardOutput.All(c => c == 'a'), cipher);
+
+                // 换钥之后两个方向都要再走一遍：上面那条命令的大部分报文可能在换钥之前就到了。
+                await using SshCommand echo = await connection.ExecuteAsync("cat");
+                await echo.StandardInput.WriteAsync(Encoding.UTF8.GetBytes("换钥之后"));
+                await echo.CompleteStandardInputAsync();
+                (_, string echoed, _) = await echo.ReadToEndAsync();
+                Assert.AreEqual("换钥之后", echoed, cipher);
+            }
+            catch (SshException ex)
+            {
+                failed.Add($"{cipher}：{ex.Message}");
+            }
+        }
+
+        Assert.IsEmpty(failed,
+            "这些加密算法在重协商之后收发失败：" + Environment.NewLine + string.Join(Environment.NewLine, failed));
+    }
+
+    [TestMethod]
     public async Task 公钥认证能与OpenSSH对上()
     {
         RequireServer();
@@ -282,6 +337,65 @@ public sealed class OpenSshInteropTests
         SshCommandOutput result = await connection.RunAsync("id -un");
         Assert.AreEqual(0, result.ExitCode, result.StandardError);
         Assert.Contains(User, result.StandardOutput);
+    }
+
+    [TestMethod]
+    public async Task 主机证书能按known_hosts的CA验过()
+    {
+        // 主机证书由真 ssh-keygen 签（Start-TestServer.ps1），sshd 用 HostCertificate 出示它。
+        // 自己签自己验只能证明两边一致；验签范围、字段边界错了，只有对着别人签的证书才看得出来。
+        RequireServer();
+
+        string? hostCa = Environment.GetEnvironmentVariable("VELASHELL_SSH_INTEROP_HOST_CA");
+        if (string.IsNullOrEmpty(hostCa) || !File.Exists(hostCa))
+        {
+            Assert.Inconclusive("没有配 VELASHELL_SSH_INTEROP_HOST_CA（Start-TestServer.ps1 会生成）。");
+        }
+
+        string pattern = Port == 22 ? Host : $"[{Host}]:{Port}";
+        string knownHosts = Path.Combine(Path.GetTempPath(), $"vela-interop-kh-{Guid.NewGuid():N}");
+        SshConnectionOptions WithKnownHosts() => Options() with
+        {
+            // 没有 CA 担保就拒绝 —— 这条用例要的是「真的按证书验过」，不是 TOFU。
+            HostKeyPolicy = new KnownHostsPolicy(knownHosts) { UnknownHost = UnknownHostBehavior.Reject },
+        };
+
+        try
+        {
+            await File.WriteAllTextAsync(knownHosts, $"@cert-authority {pattern} {(await File.ReadAllTextAsync(hostCa)).Trim()}\n");
+
+            await using (SshConnection connection = await WithKnownHosts().ConnectAsync())
+            {
+                Assert.IsTrue(connection.HostKey?.IsCertificate, $"应当谈成主机证书，实际 {connection.HostKey?.KeyType}");
+                Assert.AreEqual("velashell-interop-host", connection.HostKey?.Certificate?.KeyId);
+                Assert.AreEqual(0, (await connection.RunAsync("true")).ExitCode);
+
+                // 重协商钉住的是整张证书：只能再谈成证书算法，谈成普通算法就会被当成换了主机密钥。
+                await connection.StartRekeyAsync();
+                using CancellationTokenSource rekeyTimeout = new(TimeSpan.FromSeconds(30));
+                while (connection.RekeyCount == 0)
+                {
+                    await Task.Delay(20, rekeyTimeout.Token);
+                }
+                Assert.AreEqual(0, (await connection.RunAsync("true")).ExitCode, "证书主机重协商之后照常可用");
+            }
+
+            // 换成一把不相干的 CA：这台主机由 CA 管，出示的证书却没人担保 —— 拒绝，不去问、不去记。
+            using InMemorySshSigner stranger = InMemorySshSigner.GenerateEd25519();
+            await File.WriteAllTextAsync(
+                knownHosts,
+                $"@cert-authority {pattern} {stranger.PublicKey.KeyType} {Convert.ToBase64String(stranger.PublicKey.Blob.Span)}\n");
+
+            SshException ex = await Assert.ThrowsAsync<SshException>(async () =>
+            {
+                await using SshConnection connection = await WithKnownHosts().ConnectAsync();
+            });
+            Assert.AreEqual(SshFailureReason.HostKeyRejected, ex.Reason, ex.Message);
+        }
+        finally
+        {
+            File.Delete(knownHosts);
+        }
     }
 
     // ------------------------------------------------------------ 各层

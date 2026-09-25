@@ -36,6 +36,15 @@ public static class SftpProtocol
     /// <summary>没有 <c>limits@openssh.com</c> 时的保守块大小。</summary>
     public const int DefaultBlockSize = 32 * 1024;
 
+    /// <summary>块大小的上限：一块 <c>DATA</c> 应答连同协议头要装得进 <see cref="MaxMessageLength"/>。</summary>
+    public const int MaxBlockSize = 256 * 1024;
+
+    /// <summary>
+    /// 从服务端的 <c>max-packet-length</c> 里给请求头留的余量（长度、类型、编号、句柄、偏移…）。
+    /// </summary>
+    /// <remarks>与 <see cref="MaxMessageLength"/> 的余量取法一致；句柄最长 256 字节，1 KiB 绰绰有余。</remarks>
+    public const int RequestHeaderAllowance = 1024;
+
     /// <summary>创建文件的默认权限。</summary>
     /// <remarks>
     /// 〔决策 velashell-docs/zh/ssh/spec/06 §4.1〕**传明确的值**。不传 ATTRS 会让服务端用它自己的

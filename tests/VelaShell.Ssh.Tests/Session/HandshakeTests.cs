@@ -350,6 +350,29 @@ public sealed class HandshakeTests
     }
 
     [TestMethod]
+    public async Task 对端在密钥交换的报文中途断开时也报连接已断()
+    {
+        // 与上一条的区别：断开时一个报文只收到一半。那是连接断了，不是报文写错了 ——
+        // 会话期间早就这么归类（SshConnection.NormalizeFault），握手期间曾经报成协议错误，调用方就不会重连。
+        (InMemoryDuplexStream clientStream, InMemoryDuplexStream serverStream) = InMemoryTransport.CreatePair();
+        await using SshPacketTransport clientTransport = new(clientStream);
+        await using SshPacketTransport serverTransport = new(serverStream);
+
+        await serverTransport.WriteLineAsync("SSH-2.0-HalfPacketServer");
+        SshVersionExchangeResult versions = await SshVersionExchange.ExchangeAsync(clientTransport);
+
+        // 声称 252 字节（加上长度字段正好是块大小 8 的倍数，过得了对齐检查），只给 1 字节。
+        await serverStream.WriteAsync(new byte[] { 0, 0, 0, 252, 5 });
+        serverStream.CompleteWrites();
+
+        SshKeyExchangeRunner runner = new(clientTransport, SshAlgorithmSet.Default, new DangerousAcceptAnyHostKeyPolicy());
+
+        SshConnectionClosedException ex = await Assert.ThrowsExactlyAsync<SshConnectionClosedException>(
+            async () => await runner.RunAsync(versions, "test.invalid", 22));
+        Assert.AreEqual(SshFailureReason.ClosedByPeer, ex.Reason);
+    }
+
+    [TestMethod]
     public async Task 端口上没有SSH服务时给出能照着办的错误()
     {
         (InMemoryDuplexStream clientStream, InMemoryDuplexStream serverStream) = InMemoryTransport.CreatePair();

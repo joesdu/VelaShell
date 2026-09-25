@@ -8,6 +8,7 @@
 
 using System.Buffers;
 using VelaShell.Ssh.Crypto;
+using VelaShell.Ssh.Diagnostics;
 
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Protocol;
@@ -52,6 +53,13 @@ public sealed partial class SshConnection
     /// <summary>阈值多久看一眼。见 <c>SshConnectionOptions.RekeyCheckInterval</c>。</summary>
     internal TimeSpan RekeyCheckInterval { get; init; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>一次重协商最多等多久：我们的 <c>KEXINIT</c> 等不到回应，或者交换卡在半路。</summary>
+    /// <remarks>
+    /// 重协商期间闸门关着，通道数据一律暂存 —— 对端永远不完成的话，发送就永远停着，
+    /// 保活探测也被暂存、根本发不出去（velashell-docs/zh/ssh/spec/03 §9 的「KEX 超时」）。
+    /// </remarks>
+    internal TimeSpan RekeyTimeout { get; init; } = TimeSpan.FromMinutes(2);
+
     /// <summary>已经完成过几次重协商（诊断与测试用）。</summary>
     public int RekeyCount => Volatile.Read(ref _rekeyCount);
 
@@ -76,6 +84,23 @@ public sealed partial class SshConnection
     /// </para>
     /// </remarks>
     public string? LastRekeyReason => Volatile.Read(ref _lastRekeyReason);
+
+    /// <summary>重协商时只留下与钉住的主机密钥同类型的主机密钥算法；一个都不剩就原样返回。</summary>
+    /// <remarks>
+    /// 谈出另一种类型，服务端出示的必然是另一把钥，只会被当成「换了主机密钥」断开（见 <c>PinnedHostKey</c>）。
+    /// 证书与否也要一致：<see cref="SshPublicKey.SupportsSignatureAlgorithm"/> 比的是去掉证书后缀的名字，
+    /// 只看它的话，钉住的是证书时普通算法也会留下；谈成普通算法，服务端出示的是那把钥而不是证书，同样被当成换了钥。
+    /// </remarks>
+    internal static SshAlgorithmSet RestrictToPinnedHostKey(SshAlgorithmSet algorithms, SshPublicKey pinned)
+    {
+        string[] sameType =
+        [
+            .. algorithms.HostKey.Where(a => pinned.SupportsSignatureAlgorithm(a)
+                && a.EndsWith(SshAlgorithmNames.CertificateSuffix, StringComparison.Ordinal) == pinned.IsCertificate),
+        ];
+
+        return sameType.Length > 0 ? algorithms with { HostKey = sameType } : algorithms;
+    }
 
     /// <summary>主动发起一次密钥重协商。</summary>
     /// <param name="cancellationToken">取消令牌。</param>
@@ -104,26 +129,70 @@ public sealed partial class SshConnection
                 "这条连接不是由 SshConnectionFactory 建的，拿不到重协商需要的算法清单与主机密钥策略。");
         }
 
-        byte[] ourKexInit;
+        // 取消只在「发起」之前生效：状态一旦记下，KEXINIT 就必须真的入队 ——
+        // 曾经是先记状态、再在入队时被取消，闸门已经关上而 KEXINIT 没发，
+        // 这条连接的发送从此永远暂存，对端下一次发起的重协商还会拿一份没发过的 KEXINIT 去算交换哈希。
+        cancellationToken.ThrowIfCancellationRequested();
+
+        ValueTask sent;
         lock (_stateLock)
         {
-            if (_ourPendingKexInit is not null)
+            // 已经发过 KEXINIT、或者一次交换正在跑：都是「已经在谈了」。
+            // 曾经只看前者 —— 交换一开始它就被清掉，而阈值要等交换完成才归零，
+            // 于是监视循环在交换进行中又发了一个 KEXINIT（协议违规，对端断连）。
+            if (_ourPendingKexInit is not null || _kexInProgress)
             {
-                return;   // 已经在谈了
+                return;
             }
 
             ArrayBufferWriter<byte> buffer = new();
             SshKexInitMessage.Encode(
                 RekeyContext.Algorithms, includeIndicators: false, buffer);
-            ourKexInit = buffer.WrittenSpan.ToArray();
+            byte[] ourKexInit = buffer.WrittenSpan.ToArray();
             _ourPendingKexInit = ourKexInit;
+
+            // 关闸要在发 KEXINIT **之前** —— 反过来的话，两者之间发出去的
+            // 通道数据就违反了 RFC 4253 §7.1。两者都走发送泵的队列，先后就是入队的先后。
+            //
+            // **两者都在锁里入队**（入队是同步的，等的只是刷出）：放到锁外的话，
+            // 对端同时发起的那一次交换可能已经在接收循环上把它的第一帧排进队列，
+            // 我们的 KEXINIT 反倒落在它后面。
+            PostControl(OutboundKind.CloseGate);
+            sent = SendControlAsync(ourKexInit, CancellationToken.None);
+            _ = WatchUnansweredKexInitAsync(ourKexInit);
         }
 
-        // 关闸要在发 KEXINIT **之前** —— 反过来的话，两者之间发出去的
-        // 通道数据就违反了 RFC 4253 §7.1。
-        // 两者都走发送泵的队列，先后就是入队的先后。
-        PostControl(OutboundKind.CloseGate);
-        await SendControlAsync(ourKexInit, cancellationToken).ConfigureAwait(false);
+        await sent.ConfigureAwait(false);
+    }
+
+    /// <summary>我们发出的 <c>KEXINIT</c> 超时还没被对端回应，就把连接判死。</summary>
+    /// <remarks>
+    /// 对端回了之后的那一段由 <see cref="OnPeerKexInitAsync"/> 自己计时；这里只管「一直没回」——
+    /// 那时接收循环上什么都没发生，没有别人会发现闸门一直关着。
+    /// </remarks>
+    private async Task WatchUnansweredKexInitAsync(byte[] ourKexInit)
+    {
+        try
+        {
+            await Task.Delay(RekeyTimeout, _lifetime.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            return;   // 连接先收工了
+        }
+
+        bool unanswered;
+        lock (_stateLock)
+        {
+            unanswered = ReferenceEquals(_ourPendingKexInit, ourKexInit);
+        }
+
+        if (unanswered)
+        {
+            Fault(new SshConnectionClosedException(
+                SshFailureReason.Timeout, SshPhase.Rekeying,
+                $"发起密钥重协商之后 {RekeyTimeout.TotalSeconds:0} 秒，对端都没有回 KEXINIT。"));
+        }
     }
 
     /// <summary>监视阈值，到点就主动发起重协商。</summary>
@@ -262,6 +331,9 @@ public sealed partial class SshConnection
         {
             ourKexInit = _ourPendingKexInit;
             _ourPendingKexInit = null;
+
+            // 从这里到开闸都算「在谈」—— StartRekeyAsync 看到它就不会再发一个 KEXINIT。
+            _kexInProgress = true;
         }
 
         // 关闸：从现在到 NEWKEYS，只许发传输层消息（RFC 4253 §7.1）。
@@ -274,24 +346,50 @@ public sealed partial class SshConnection
 
         try
         {
+            SshAlgorithmSet algorithms = HostKey is { } pinned
+                ? RestrictToPinnedHostKey(context.Algorithms, pinned)
+                : context.Algorithms;
+
             SshKeyExchangeRunner runner = new(
                 new RekeyKexTransport(this),
-                context.Algorithms,
+                algorithms,
                 context.HostKeyPolicy,
                 context.MinimumRsaKeyBits)
             {
                 HostKeyDecisionTimeout = context.HostKeyDecisionTimeout,
+
+                // 首次交换定下的；每次重协商的结果都把它原样带回来，所以 _negotiated 里一直是它。
+                InitialStrictKeyExchange = Algorithms?.StrictKeyExchange ?? false,
+
+                // 钉住首次交换的主机密钥，不再走策略（spec/03 §8.4）。
+                // 只有直接 new 出来、没经过工厂的连接才没有它 —— 那种连接本来也不支持重协商。
+                PinnedHostKey = HostKey,
             };
 
-            SshKeyExchangeResult result = await runner.RunAsync(
-                context.Versions,
-                context.Host,
-                context.Port,
-                sessionId: SessionId,
-                peerKexInit: peerKexInit,
-                ourKexInitAlreadySent: ourKexInit,
-                resetCompression: true,
-                cancellationToken).ConfigureAwait(false);
+            // 交换卡在半路（对端不发 31、不发 NEWKEYS）的话，闸门一直关着、发送一直暂存 ——
+            // 给它一个期限，到点就把连接判死，而不是无声地停住。
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(RekeyTimeout);
+
+            SshKeyExchangeResult result;
+            try
+            {
+                result = await runner.RunAsync(
+                    context.Versions,
+                    context.Host,
+                    context.Port,
+                    sessionId: SessionId,
+                    peerKexInit: peerKexInit,
+                    ourKexInitAlreadySent: ourKexInit,
+                    resetCompression: true,
+                    deadline.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new SshConnectionClosedException(
+                    SshFailureReason.Timeout, SshPhase.Rekeying,
+                    $"密钥重协商在 {RekeyTimeout.TotalSeconds:0} 秒内没有完成。");
+            }
 
             lock (_stateLock)
             {
@@ -306,6 +404,12 @@ public sealed partial class SshConnection
             // **开闸一定要跑到。** 密钥交换失败时连接已经废了，
             // 但暂存区里可能还压着别人在等的帧 —— 不开闸它们就永远等下去。
             PostControl(OutboundKind.OpenGate);
+
+            // 开闸之后才允许下一次发起：它的关闸排在这个开闸后面。
+            lock (_stateLock)
+            {
+                _kexInProgress = false;
+            }
         }
     }
 

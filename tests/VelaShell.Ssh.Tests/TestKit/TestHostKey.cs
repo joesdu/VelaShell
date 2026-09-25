@@ -46,6 +46,29 @@ public abstract class TestHostKey : IDisposable
         _ => throw new ArgumentException($"测试桩不支持的主机密钥类型：{keyTypeOrAlgorithm}", nameof(keyTypeOrAlgorithm)),
     };
 
+    /// <summary>拿库里的签名器当主机密钥，出示给定的 <c>K_S</c>（比如一张 ssh-keygen 签的主机证书）。</summary>
+    /// <param name="signer">持有私钥的签名器。</param>
+    /// <param name="presentedBlob">出示的 <c>K_S</c>。出示证书时签名仍由证书里那把钥来做。</param>
+    /// <param name="algorithms">宣告的主机密钥算法名。</param>
+    public static TestHostKey FromSigner(
+        VelaShell.Ssh.Auth.ISshSigner signer, byte[] presentedBlob, IReadOnlyList<string> algorithms) =>
+        new SignerHostKey(signer, presentedBlob, algorithms);
+
+    private sealed class SignerHostKey(
+        VelaShell.Ssh.Auth.ISshSigner signer, byte[] blob, IReadOnlyList<string> algorithms) : TestHostKey
+    {
+        public override string KeyType => signer.PublicKey.KeyType;
+
+        public override IReadOnlyList<string> SignatureAlgorithms => algorithms;
+
+        public override byte[] PublicKeyBlob => blob;
+
+        // 证书的签名 blob 里写的是普通算法名（OpenSSH PROTOCOL.certkeys）。
+        public override byte[] Sign(ReadOnlySpan<byte> data, string algorithm) =>
+            signer.SignAsync(data.ToArray(), VelaShell.Ssh.HostKeys.SshPublicKey.StripCertificateSuffix(algorithm))
+                .AsTask().GetAwaiter().GetResult();
+    }
+
     private protected static byte[] Build(Action<SshDataWriterHelper> write)
     {
         ArrayBufferWriter<byte> buffer = new();

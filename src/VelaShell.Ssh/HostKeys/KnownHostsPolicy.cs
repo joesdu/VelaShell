@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright 2026 VelaShell Labs
 //
-// 行为规格: velashell-docs/zh/ssh/spec/03-key-exchange.md §5.3、§5.4
+// 行为规格: velashell-docs/zh/ssh/spec/03-key-exchange.md §5.3、§5.4、§5.5
 
 namespace VelaShell.Ssh.HostKeys;
 
@@ -38,7 +38,7 @@ public enum UnknownHostBehavior
 /// 停下来想一想的地方。异常消息里会指出是文件的第几行。
 /// </para>
 /// </remarks>
-public sealed class KnownHostsPolicy : IHostKeyPolicy
+public sealed class KnownHostsPolicy : IHostKeyPolicy, IHostKeyTypePreference
 {
     private readonly string _path;
     private readonly Func<SshHostKeyContext, CancellationToken, ValueTask<bool>>? _askUser;
@@ -56,6 +56,19 @@ public sealed class KnownHostsPolicy : IHostKeyPolicy
         _path = path ?? KnownHostsFile.DefaultPath;
         _askUser = askUser;
     }
+
+    /// <summary>不读也不写任何文件：每台主机都当成没见过，接受了也不记（<c>UserKnownHostsFile none</c> / <c>/dev/null</c>）。</summary>
+    /// <param name="askUser">没见过这台主机时问使用者。</param>
+    /// <param name="unknownHost">没见过这台主机时的行为（见 <see cref="UnknownHost"/>）。</param>
+    public static KnownHostsPolicy WithoutFile(
+        Func<SshHostKeyContext, CancellationToken, ValueTask<bool>>? askUser = null,
+        UnknownHostBehavior unknownHost = UnknownHostBehavior.Ask) =>
+        new(NoFileMarker, askUser) { UnknownHost = unknownHost, _withoutFile = true, _cache = [] };
+
+    /// <summary>不用文件时 <see cref="_path"/> 的取值，只出现在错误消息里。</summary>
+    private const string NoFileMarker = "（不使用 known_hosts）";
+
+    private bool _withoutFile;
 
     /// <summary>没见过这台主机时的行为。</summary>
     public UnknownHostBehavior UnknownHost { get; init; } = UnknownHostBehavior.Ask;
@@ -100,9 +113,50 @@ public sealed class KnownHostsPolicy : IHostKeyPolicy
                     ? SshHostKeyVerdict.Accept
                     : SshHostKeyVerdict.Reject(BuildChangedMessage(context, lookup));
 
+            case KnownHostStatus.CertificateInvalid:
+                return SshHostKeyVerdict.Reject(
+                    $"⚠️ {context.Target} 出示了主机证书，签发它的 CA 在 {_path} 里对上了这台主机" +
+                    $"（第 {lookup.MatchedEntry?.LineNumber} 行），但证书不合格：{lookup.CertificateProblem}" + Environment.NewLine +
+                    "这台主机由 CA 管理，证书不合格说明配置出了错，或者路上有人 —— 不会退回去按新主机询问。" +
+                    "请联系管理员重新签发主机证书。");
+
+            case KnownHostStatus.OtherKeyTypesKnown:
+                // 与「变了」同样处理：连接时已经把记着的类型排在最前，正常的服务端会谈成它；
+                // 还落到这里，要么服务端不再有那把钥，要么路上有人。**不能**当成「没见过」去问、去记。
+                return DangerouslyAcceptChangedKeys
+                    ? SshHostKeyVerdict.Accept
+                    : SshHostKeyVerdict.Reject(BuildOtherTypeMessage(context, lookup));
+
             default:
                 return await HandleUnknownAsync(context, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<IReadOnlyList<string>> GetKnownKeyTypesAsync(
+        string host, int port, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<KnownHostEntry> entries =
+            _cache ??= await KnownHostsFile.LoadAsync(_path, cancellationToken).ConfigureAwait(false);
+        return KnownHostsFile.KnownKeyTypes(entries, host, port);
+    }
+
+    private string BuildOtherTypeMessage(SshHostKeyContext context, KnownHostLookup lookup)
+    {
+        string known = string.Join(
+            "、", lookup.ConflictingEntries.Select(e => e.IsCertificateAuthority
+                ? $"@cert-authority {e.KeyType}（第 {e.LineNumber} 行）"
+                : $"{e.KeyType}（第 {e.LineNumber} 行）"));
+
+        bool managedByCa = lookup.ConflictingEntries.Any(static e => e.IsCertificateAuthority);
+        return
+            $"⚠️ {context.Target} 这次出示的是 {context.Key.KeyType} 密钥 {context.Key.Sha256Fingerprint}，" + Environment.NewLine +
+            $"而 {_path} 里记着的是别的类型：{known}。" + Environment.NewLine +
+            (managedByCa
+                ? "这台主机由 CA 管理，应当出示那个 CA 签发的主机证书；出示一把没有 CA 担保的钥，可能是路上有人 —— 所以不能把它当成新主机。" + Environment.NewLine +
+                  $"如果确认这台主机确实没有证书，核对指纹之后把它的公钥单独加进 {_path}。"
+                : "换一种没记过的密钥类型，是绕过「主机密钥变了」检查的一种办法 —— 所以不能把它当成新主机。" + Environment.NewLine +
+                  $"如果确认服务端不再有原来那把钥，把 {_path} 里上面那几行删掉再连。");
     }
 
     private string BuildChangedMessage(SshHostKeyContext context, KnownHostLookup lookup)
@@ -153,6 +207,11 @@ public sealed class KnownHostsPolicy : IHostKeyPolicy
     public async ValueTask PersistAsync(SshHostKeyContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
+
+        if (_withoutFile)
+        {
+            return;   // 配置说了不用 known_hosts：记到哪里去都不对
+        }
 
         await KnownHostsFile.AppendAsync(
             context.Host, context.Port, context.Key, _path, HashHostNames, cancellationToken)

@@ -30,7 +30,8 @@ public sealed class PuttyKeyTests
         byte[] publicBlob,
         byte[] privateBlob,
         string comment = "测试密钥",
-        string? passphrase = null)
+        string? passphrase = null,
+        string argon2Variant = "Argon2id")
     {
         string encryption = passphrase is null ? "none" : "aes256-cbc";
         byte[] storedPrivate = privateBlob;
@@ -51,7 +52,7 @@ public sealed class PuttyKeyTests
             const int passes = 3;
             const int parallelism = 1;
 
-            byte[] material = Argon2(passphrase, salt, memory, passes, parallelism);
+            byte[] material = Argon2(passphrase, salt, memory, passes, parallelism, argon2Variant);
             byte[] key = material[..32];
             byte[] iv = material[32..48];
             macKey = material[48..80];
@@ -60,7 +61,7 @@ public sealed class PuttyKeyTests
 
             kdfHeaders =
             [
-                "Key-Derivation: Argon2id",
+                $"Key-Derivation: {argon2Variant}",
                 $"Argon2-Memory: {memory}",
                 $"Argon2-Passes: {passes}",
                 $"Argon2-Parallelism: {parallelism}",
@@ -142,9 +143,16 @@ public sealed class PuttyKeyTests
     private static byte[] HmacSha1(byte[] key, byte[] data) => HMACSHA1.HashData(key, data);
 #pragma warning restore CA5350
 
-    private static byte[] Argon2(string passphrase, byte[] salt, int memory, int passes, int parallelism)
+    private static byte[] Argon2(
+        string passphrase, byte[] salt, int memory, int passes, int parallelism, string variant = "Argon2id")
     {
-        Argon2Parameters parameters = new Argon2Parameters.Builder(Argon2Parameters.Argon2id)
+        int type = variant switch
+        {
+            "Argon2i" => Argon2Parameters.Argon2i,
+            "Argon2d" => Argon2Parameters.Argon2d,
+            _ => Argon2Parameters.Argon2id,
+        };
+        Argon2Parameters parameters = new Argon2Parameters.Builder(type)
             .WithVersion(Argon2Parameters.Version13)
             .WithSalt(salt)
             .WithMemoryAsKB(memory)
@@ -381,6 +389,41 @@ public sealed class PuttyKeyTests
 
             Assert.IsTrue(error.NeedsPassphrase);
             Assert.Contains("需要口令", error.Message);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("Argon2i")]
+    [DataRow("Argon2d")]
+    public void Argon2i与Argon2d的ppk也能读(string variant)
+    {
+        // 格式文档允许三种变体。一律按 Argon2id 算的话，这两种永远过不了 MAC，被报成「口令不对」。
+        (byte[] pub, byte[] priv, InMemorySshSigner expected) = MakeEd25519();
+        using (expected)
+        {
+            string ppk = BuildPpk(3, SshAlgorithmNames.SshEd25519, pub, priv, passphrase: "口令", argon2Variant: variant);
+            ISshSigner signer = SshPrivateKeyFile.Parse(ppk, "口令");
+            Assert.AreSequenceEqual(expected.PublicKey.Blob.ToArray(), signer.PublicKey.Blob.ToArray());
+        }
+    }
+
+    [TestMethod]
+    [DataRow("Argon2-Memory: 8192", "Argon2-Memory: 4194304", DisplayName = "内存 4 GiB")]
+    [DataRow("Argon2-Passes: 3", "Argon2-Passes: 2000000000", DisplayName = "二十亿遍")]
+    [DataRow("Argon2-Parallelism: 1", "Argon2-Parallelism: 0", DisplayName = "并行度 0")]
+    public void Argon2参数超限时当场拒绝而不是先算(string original, string tampered)
+    {
+        // 这些参数在验 MAC 之前就要用上（MAC 密钥就是 Argon2 的输出）。不设上限的话，
+        // 一个被改过的文件要么先让我们分配 4 GiB，要么让「读一把私钥」永远算不完。
+        (byte[] pub, byte[] priv, InMemorySshSigner expected) = MakeEd25519();
+        using (expected)
+        {
+            string ppk = BuildPpk(3, SshAlgorithmNames.SshEd25519, pub, priv, passphrase: "口令");
+            Assert.Contains(original, ppk, "前提：改的是真实存在的那一行");
+
+            SshPrivateKeyException error = Assert.ThrowsExactly<SshPrivateKeyException>(
+                () => SshPrivateKeyFile.Parse(ppk.Replace(original, tampered, StringComparison.Ordinal), "口令"));
+            Assert.Contains("Argon2 参数不合理", error.Message);
         }
     }
 

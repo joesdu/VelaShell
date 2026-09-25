@@ -113,6 +113,21 @@ public sealed class SshKeyExchangeRunner
     /// </remarks>
     internal CancellationToken? DecisionCancellationToken { get; init; }
 
+    /// <summary>
+    /// 重协商时：首次交换验明、并经策略裁决过的主机密钥。设了就<b>钉住它</b>，不再走主机密钥策略。
+    /// </summary>
+    /// <remarks>
+    /// velashell-docs/zh/ssh/spec/03 §8.4：重协商照样验签，但 <c>K_S</c> 必须与首次相同，
+    /// 不同就以 <c>HostKeyChanged</c> 断开 —— 连接中途换主机密钥没有任何正当场景。
+    /// 曾经每次重协商都把整套策略再跑一遍：交互式策略会在会话中途弹窗（而那时接收循环正停着等它，
+    /// 所有通道一起卡住），宽松的策略则会让一把换过的密钥悄悄通过。
+    /// </remarks>
+    internal SshPublicKey? PinnedHostKey { get; init; }
+
+    /// <summary>重协商时：这条连接的<b>首次</b>交换有没有启用严格 KEX。首次交换不看它。</summary>
+    /// <remarks>严格 KEX 是整条连接的属性，不由重协商时的 KEXINIT 决定 —— 见 <see cref="RunAsync"/> 里的说明。</remarks>
+    internal bool InitialStrictKeyExchange { get; init; }
+
     /// <summary>执行一次密钥交换。</summary>
     /// <param name="versions">版本交换的结果（交换哈希的前两个输入）。</param>
     /// <param name="host">被连的逻辑主机名（交给主机密钥策略）。</param>
@@ -179,6 +194,22 @@ public sealed class SshKeyExchangeRunner
         SshCompressorFactory.EnsureSupported(negotiated.CompressionClientToServer);
         SshCompressorFactory.EnsureSupported(negotiated.CompressionServerToClient);
 
+        // 严格 KEX 是**整条连接**的属性（OpenSSH PROTOCOL 的 kex-strict 一节）：标记只在首个 KEXINIT 里有效，
+        // 之后的 KEXINIT 里出现与否一律不看；而「每次 NEWKEYS 之后序号归零」持续整条连接。
+        //
+        // ⚠️ 曾经每次都按对端这一次的 KEXINIT 重算。对端重协商时不再带标记（本端也不带）的话，
+        //    这边就不再归零、对端照旧归零 —— 序号对不上，chacha20-poly1305（nonce 就是序号）
+        //    与 HMAC 套件（MAC 覆盖序号）在重协商后的第一个报文上校验失败，长连接当场断掉。
+        //    AES-GCM 的 nonce 不看序号，把这件事掩盖了 —— 有 AES-NI 的机器默认正是 GCM。
+        if (!isInitial)
+        {
+            negotiated = negotiated with { StrictKeyExchange = InitialStrictKeyExchange };
+        }
+
+        // 规则 (a)「密钥交换期间出现 IGNORE / DEBUG / UNIMPLEMENTED 即断开」只管首次交换；
+        // 重协商期间它们是合法的普通报文。
+        bool strictReads = isInitial && negotiated.StrictKeyExchange;
+
         // ③ 交换公开值。
         using ISshKeyExchange kex = SshKeyExchangeFactory.Create(negotiated.KeyExchange);
         byte[] clientPublic = kex.CreateClientPublicValue();
@@ -193,11 +224,11 @@ public sealed class SshKeyExchangeRunner
         // 它会先发一个要被丢弃的报文（RFC 4253 §7.1）。
         if (serverKexInit.FirstKexPacketFollows && !GuessedCorrectly(serverKexInit, negotiated))
         {
-            _ = await ReadAnyKexPacketAsync(negotiated.StrictKeyExchange, cancellationToken).ConfigureAwait(false);
+            _ = await ReadAnyKexPacketAsync(strictReads, cancellationToken).ConfigureAwait(false);
         }
 
         SshInboundPacket reply = await ReadKexPacketAsync(
-            (SshMessageNumber)31, negotiated.StrictKeyExchange, cancellationToken).ConfigureAwait(false);
+            (SshMessageNumber)31, strictReads, cancellationToken).ConfigureAwait(false);
 
         (byte[] hostKeyBlob, byte[] serverPublic, byte[] signature) = ParseReply(reply.Payload, kex);
 
@@ -226,14 +257,28 @@ public sealed class SshKeyExchangeRunner
             SshPublicKey hostKey = VerifyHostKey(
                 hostKeyBlob, signature, exchangeHash, negotiated.HostKey, versions.ServerVersion);
 
-            await ApplyHostKeyPolicyAsync(hostKey, negotiated, host, port, versions, cancellationToken)
-                .ConfigureAwait(false);
+            if (PinnedHostKey is { } pinned)
+            {
+                if (!pinned.Blob.Span.SequenceEqual(hostKey.Blob.Span))
+                {
+                    throw new SshConnectionClosedException(
+                        SshFailureReason.HostKeyChanged, SshPhase.Rekeying,
+                        $"{host}:{port} 在密钥重协商时换了主机密钥" +
+                        $"（首次 {pinned.KeyType} {pinned.Sha256Fingerprint}，" +
+                        $"这次 {hostKey.KeyType} {hostKey.Sha256Fingerprint}）。连接中途换主机密钥没有正当场景，已断开。");
+                }
+            }
+            else
+            {
+                await ApplyHostKeyPolicyAsync(hostKey, negotiated, host, port, versions, cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
             // ⑥ 双向 NEWKEYS。
             byte[] effectiveSessionId = sessionId ?? exchangeHash;
             await ExchangeNewKeysAsync(
                 negotiated, kex, sharedSecret, exchangeHash, effectiveSessionId,
-                resetCompression, cancellationToken)
+                resetCompression, strictReads, cancellationToken)
                 .ConfigureAwait(false);
 
             return new SshKeyExchangeResult(
@@ -290,7 +335,10 @@ public sealed class SshKeyExchangeRunner
 
         // 协商出的算法必须是这把密钥能用的。RSA 的三个签名算法名对应同一个密钥类型 ——
         // 直接拿算法名比对 blob 里的类型串会失败（RFC 8332 的那处不对称）。
-        if (!hostKey.SupportsSignatureAlgorithm(negotiatedAlgorithm))
+        // 证书与否也要一致：SupportsSignatureAlgorithm 比的是去掉证书后缀之后的名字，
+        // 不另外查的话，谈成证书算法却出示一把普通钥（或反过来）也能过（velashell-docs/zh/ssh/spec/03 §5.5）。
+        bool certificateNegotiated = negotiatedAlgorithm.EndsWith(SshAlgorithmNames.CertificateSuffix, StringComparison.Ordinal);
+        if (!hostKey.SupportsSignatureAlgorithm(negotiatedAlgorithm) || hostKey.IsCertificate != certificateNegotiated)
         {
             throw new SshConnectException(
                 SshFailureReason.HostKeyRejected, SshPhase.KeyExchange,
@@ -298,7 +346,8 @@ public sealed class SshKeyExchangeRunner
         }
 
         // RSA 长度检查放在**验签之前**：不给弱密钥任何计算资源。
-        if (hostKey.KeyType == SshAlgorithmNames.SshRsa && hostKey.KeyBits < _minimumRsaKeyBits)
+        // 看的是 PlainKeyType：RSA 证书的类型串是 ssh-rsa-cert-v01@openssh.com，按 KeyType 比会让检查落空。
+        if (hostKey.PlainKeyType == SshAlgorithmNames.SshRsa && hostKey.KeyBits < _minimumRsaKeyBits)
         {
             throw new SshConnectException(
                 SshFailureReason.HostKeyRejected, SshPhase.KeyExchange,
@@ -309,7 +358,7 @@ public sealed class SshKeyExchangeRunner
         {
             throw new SshConnectException(
                 SshFailureReason.HostKeyRejected, SshPhase.KeyExchange,
-                $"服务端对交换哈希的签名验证失败（{negotiatedAlgorithm}，对端 {peerVersion}）。" +
+                $"服务端对交换哈希的签名验证失败（{negotiatedAlgorithm}，对端 {PeerText.Sanitize(peerVersion, 128)}）。" +
                 "这意味着对端没有它所声称的那把主机私钥 —— 可能有中间人。");
         }
 
@@ -385,6 +434,7 @@ public sealed class SshKeyExchangeRunner
         byte[] exchangeHash,
         byte[] sessionId,
         bool resetCompression,
+        bool strictReads,
         CancellationToken cancellationToken)
     {
         (ISshCipherSuite send, ISshCipherSuite receive) = SshSessionKeys.Derive(
@@ -411,7 +461,7 @@ public sealed class SshKeyExchangeRunner
                 .ConfigureAwait(false);
 
             // 收的方向要等对端的 NEWKEYS 到达 —— 两个方向互不等待（RFC 4253 §7.3）。
-            _ = await ReadKexPacketAsync(SshMessageNumber.NewKeys, negotiated.StrictKeyExchange, cancellationToken)
+            _ = await ReadKexPacketAsync(SshMessageNumber.NewKeys, strictReads, cancellationToken)
                 .ConfigureAwait(false);
             _transport.SwitchReceive(receive, receiveCompressor, negotiated.StrictKeyExchange);
             installed = true;
@@ -453,6 +503,13 @@ public sealed class SshKeyExchangeRunner
             try
             {
                 packet = await _transport.ReadPacketAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (SshFrameFormatException ex) when (ex.PeerClosedMidPacket)
+            {
+                // 对端在一个报文中途断开：那是连接断了，不是报文写错了（与会话期间的归类一致，
+                // 见 SshConnection.NormalizeFault）—— 报成协议错误会让调用方以为不值得重连。
+                throw new SshConnectionClosedException(
+                    SshFailureReason.ClosedByPeer, SshPhase.KeyExchange, "对端在密钥交换期间关闭了连接（一个报文只收到一半）。", ex);
             }
             catch (SshFrameFormatException ex)
             {
@@ -513,7 +570,7 @@ public sealed class SshKeyExchangeRunner
         return new SshConnectionClosedException(
             SshFailureReason.Disconnected, SshPhase.KeyExchange,
             $"服务端主动断开：{reason?.ToString() ?? "未知原因"}" +
-            (string.IsNullOrEmpty(description) ? "" : $" —— {description}"))
+            (string.IsNullOrEmpty(description) ? "" : $" —— {PeerText.Sanitize(description)}"))
         {
             DisconnectReason = reason,
             PeerDescription = description,

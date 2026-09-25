@@ -200,7 +200,10 @@ public static class SocksHandshake
         }
 
         byte[]? name = await ReadExactlyAsync(input, lengthByte[0], cancellationToken).ConfigureAwait(false);
-        if (name is null)
+
+        // 空名字不是一个目标：放过去的话，开隧道那一步因为参数不合法而抛，客户端一句应答也收不到，
+        // 只能干等到超时。当成不支持的地址回掉。
+        if (name is null || name.Length == 0)
         {
             return null;
         }

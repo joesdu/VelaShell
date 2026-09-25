@@ -53,7 +53,7 @@ public sealed class AdaptiveWindowTests
         public CancellationToken Token => _cts.Token;
 
         public static async Task<Harness> StartAsync(
-            LinkCharacteristics link, TestChannelScript script)
+            LinkCharacteristics link, TestChannelScript script, SshConnectionLimits? limits = null)
         {
             (InMemoryDuplexStream rawClient, InMemoryDuplexStream rawServer) =
                 InMemoryTransport.CreatePair(new InMemoryTransportOptions
@@ -92,7 +92,7 @@ public sealed class AdaptiveWindowTests
             TestChannelServer channelServer = new(server.Transport, script);
             Task serverChannels = channelServer.RunAsync(cts.Token);
 
-            SshConnection connection = new(clientTransport, kex.SessionId);
+            SshConnection connection = new(clientTransport, kex.SessionId, limits);
             connection.Start();
 
             return new Harness(server, channelServer, serverChannels, connection, cts);
@@ -126,16 +126,23 @@ public sealed class AdaptiveWindowTests
     private readonly record struct Measurement(long Bytes, int FinalWindow, int WindowAdjusts);
 
     private static async Task<Measurement> MeasureAsync(
-        LinkCharacteristics link, SshWindowPolicy policy, int payloadSize)
+        LinkCharacteristics link,
+        SshWindowPolicy policy,
+        int payloadSize,
+        SshConnectionLimits? limits = null,
+        TimeSpan consumePause = default)
     {
         byte[] payload = new byte[payloadSize];
 
-        await using Harness harness = await Harness.StartAsync(link, new TestChannelScript
-        {
-            StandardOutput = payload,
-            ExitCode = 0,
-            MaxPacket = 32 * 1024,
-        });
+        await using Harness harness = await Harness.StartAsync(
+            link,
+            new TestChannelScript
+            {
+                StandardOutput = payload,
+                ExitCode = 0,
+                MaxPacket = 32 * 1024,
+            },
+            limits);
 
         SshExecutionOptions options = new()
         {
@@ -178,6 +185,11 @@ public sealed class AdaptiveWindowTests
             if (total >= payloadSize)
             {
                 break;
+            }
+
+            if (consumePause > TimeSpan.Zero)
+            {
+                await Task.Delay(consumePause, harness.Token);
             }
         }
 
@@ -225,14 +237,69 @@ public sealed class AdaptiveWindowTests
         (InMemoryDuplexStream a, InMemoryDuplexStream b) = InMemoryTransport.CreatePair();
         await using DelayedStream delayed = new(a, new LinkCharacteristics(TimeSpan.FromMilliseconds(50)));
 
+        // 时延是「另一端多久之后看见」，不是「写要等多久」—— 写入方早就返回了。
         long start = Stopwatch.GetTimestamp();
         await delayed.WriteAsync(new byte[16]);
+        await ReadExactlyAsync(b, 16);
         TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
 
         Assert.IsGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(40), elapsed,
-            $"单向时延 50 ms 的链路上一次写至少要 ~50 ms，实际 {elapsed.TotalMilliseconds:0} ms");
+            $"单向时延 50 ms 的链路上，数据至少 ~50 ms 之后才到另一端，实际 {elapsed.TotalMilliseconds:0} ms");
 
         await b.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task 时延是流水线式的不按写串起来()
+    {
+        // 回归用例。曾经每次写都在写锁里整段睡掉单向时延：20 次写要 20 × 100 ms = 2 s 才全部到达，
+        // 链路上任一时刻只有一次写在飞 —— 吞吐被压在「单次写的大小 / 时延」，
+        // 窗口与管线深度的测试量到的一部分其实是这个模拟器自己造的瓶颈。
+        // 流水线之下它们前后脚发出、前后脚到达：总共约一个单向时延。
+        (InMemoryDuplexStream a, InMemoryDuplexStream b) = InMemoryTransport.CreatePair();
+        await using DelayedStream delayed = new(a, new LinkCharacteristics(TimeSpan.FromMilliseconds(100)));
+
+        const int writes = 20;
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < writes; i++)
+        {
+            await delayed.WriteAsync(new byte[16]);
+        }
+        await ReadExactlyAsync(b, writes * 16);
+        TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
+
+        // 上界留了 10 倍于期望值（~100 ms）的余量，串行模型（2 s）仍然过不了它。
+        Assert.IsLessThan(TimeSpan.FromMilliseconds(1000), elapsed,
+            $"{writes} 次写应当一起在途、约 100 ms 后全部到达，实际 {elapsed.TotalMilliseconds:0} ms");
+
+        await b.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task 关流前已写出的数据照常送达()
+    {
+        // 写返回就意味着「已发出」。关流时把在途的丢掉，另一端就收不到最后那几条消息（比如 DISCONNECT）。
+        (InMemoryDuplexStream a, InMemoryDuplexStream b) = InMemoryTransport.CreatePair();
+        DelayedStream delayed = new(a, new LinkCharacteristics(TimeSpan.FromMilliseconds(50)));
+
+        await delayed.WriteAsync(new byte[] { 1, 2, 3 });
+        await delayed.DisposeAsync();
+
+        byte[] received = await ReadExactlyAsync(b, 3);
+        CollectionAssert.AreEqual(new byte[] { 1, 2, 3 }, received);
+
+        byte[] tail = new byte[1];
+        Assert.AreEqual(0, await b.ReadAsync(tail), "送达之后另一端应当看到流结束");
+
+        await b.DisposeAsync();
+    }
+
+    private static async Task<byte[]> ReadExactlyAsync(Stream stream, int count)
+    {
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        byte[] buffer = new byte[count];
+        await stream.ReadExactlyAsync(buffer, timeout.Token);
+        return buffer;
     }
 
     [TestMethod]
@@ -318,6 +385,29 @@ public sealed class AdaptiveWindowTests
     }
 
     [TestMethod]
+    public async Task 读得慢时窗口不跟着长()
+    {
+        // 数据堆在管道里没人读，回补不发，窗口一样见底 —— 但那时瓶颈是读的一方，不是窗口。
+        // 扩窗换不来吞吐，只会让这条通道多缓着几十 MiB 没读的数据。
+        LinkCharacteristics link = new(TimeSpan.FromMilliseconds(1));
+
+        const int window = SshWindowPolicy.AbsoluteMinimumBytes;   // 32 KiB
+        const int payload = window * 8;
+
+        // 读的一方要**明显**比链路慢：每 8 KiB 停 20 ms，读空一个窗口要 ~80 ms。
+        // 曾经只停 5 ms（~20 ms 读空一窗）—— 满跑时机器一忙，发送方被调度得比这还慢，
+        // 读的一方真的读空了、真的在等数据，那一刻窗口确实是瓶颈，扩窗是对的；用例的前提被负载打破，偶发失败。
+        Measurement m = await MeasureAsync(
+            link,
+            SshWindowPolicy.Adaptive(minimumBytes: window, maximumBytes: window * 16),
+            payload,
+            consumePause: TimeSpan.FromMilliseconds(20));
+
+        Assert.AreEqual(payload, m.Bytes, "数据要一字节不差地收完");
+        Assert.AreEqual(window, m.FinalWindow, "读的一方跟不上时，窗口不该往上翻");
+    }
+
+    [TestMethod]
     public async Task 固定窗口不会变()
     {
         LinkCharacteristics link = new(TimeSpan.FromMilliseconds(20));
@@ -396,6 +486,27 @@ public sealed class AdaptiveWindowTests
             fixedWindow.WindowAdjusts, adaptive.WindowAdjusts,
             $"自适应应当用更少的往返：实际 {adaptive.WindowAdjusts} 次 vs " +
             $"固定窗口 {fixedWindow.WindowAdjusts} 次");
+    }
+
+    [TestMethod]
+    public async Task 扩窗计入会话窗口总预算_预算不够就不扩()
+    {
+        // 与「高时延链路上窗口会自己长大」同一条链路、同一个策略 —— 那里窗口会一路翻倍上去。
+        // 这里会话总预算只留出一次翻倍的余量：扩窗必须先向预算申请，申请不到就停在那里。
+        // 曾经扩窗从不计预算，256 MiB 的会话总上限只管得住「开通道那一刻」。
+        LinkCharacteristics link = new(TimeSpan.FromMilliseconds(20));
+
+        const int window = SshWindowPolicy.AbsoluteMinimumBytes;   // 32 KiB
+        const int budget = window * 2;
+
+        Measurement m = await MeasureAsync(
+            link,
+            SshWindowPolicy.Adaptive(minimumBytes: window, maximumBytes: window * 16),
+            window * 24,
+            new SshConnectionLimits { SessionWindowBudgetBytes = budget });
+
+        Assert.AreEqual(window * 24, m.Bytes, "预算封住的是窗口，不是数据");
+        Assert.IsLessThanOrEqualTo(budget, m.FinalWindow, $"窗口 {m.FinalWindow} 超过了会话预算 {budget}");
     }
 
     [TestMethod]

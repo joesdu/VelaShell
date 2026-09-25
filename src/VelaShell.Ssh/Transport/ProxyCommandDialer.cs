@@ -56,10 +56,10 @@ public sealed record ProxyCommandDialer(string CommandTemplate) : ISshTransportD
             char token = CommandTemplate[++i];
             switch (token)
             {
-                case 'h': result.Append(target.Host); break;
+                case 'h': result.Append(Checked(target.Host, "主机名", allowAt: false)); break;
                 case 'p': result.Append(target.Port.ToString(CultureInfo.InvariantCulture)); break;
-                case 'r': result.Append(UserName ?? ""); break;
-                case 'n': result.Append(OriginalHost ?? target.Host); break;
+                case 'r': result.Append(Checked(UserName ?? "", "用户名", allowAt: true)); break;
+                case 'n': result.Append(Checked(OriginalHost ?? target.Host, "主机名", allowAt: false)); break;
                 case '%': result.Append('%'); break;
                 default:
                     throw new SshConnectException(
@@ -69,6 +69,35 @@ public sealed record ProxyCommandDialer(string CommandTemplate) : ISshTransportD
         }
 
         return result.ToString();
+    }
+
+    /// <summary>代入命令行之前确认它不含 shell 元字符。</summary>
+    /// <remarks>
+    /// <para>
+    /// 命令交给 <c>/bin/sh -c</c> 或 <c>cmd.exe /c</c> 解释，而主机名、用户名常常不是写配置的人给的 ——
+    /// 一条 <c>ssh://</c> 链接、一个导入的会话、快速连接框里粘进来的一串。
+    /// 配置里写着 <c>ProxyCommand nc %h %p</c> 的话，主机名 <c>x;touch /tmp/pwn</c>（或 Windows 上的
+    /// <c>x&amp;calc</c>、<c>%VAR%</c>）就是一条被执行的命令（CVE-2023-51385 那一类）。
+    /// </para>
+    /// <para>
+    /// 不做转义而是直接拒绝：两种 shell 的引用规则不一样，<c>cmd</c> 的尤其难以写对；
+    /// 而合法的主机名与用户名本来就只用得到这几种字符。
+    /// </para>
+    /// </remarks>
+    private static string Checked(string value, string what, bool allowAt)
+    {
+        foreach (char c in value)
+        {
+            bool safe = char.IsLetterOrDigit(c) || c is '.' or '-' or '_' || (c == ':' && !allowAt) || (c == '@' && allowAt);
+            if (!safe)
+            {
+                throw new SshConnectException(
+                    SshFailureReason.ProxyRefused, SshPhase.Dialing,
+                    $"{what}里有不能交给 shell 的字符 U+{(int)c:X4}，不能代入 ProxyCommand。" +
+                    "合法的主机名与用户名只由字母、数字与 . - _ 组成（主机名还可以有 IPv6 的冒号）。");
+            }
+        }
+        return value;
     }
 
     /// <inheritdoc />
@@ -241,7 +270,8 @@ internal sealed class ProcessDuplexStream : Stream
         string stderr;
         lock (_stderr)
         {
-            stderr = _stderr.ToString().Trim();
+            // stderr 里常常转述着对端的话（nc、connect-proxy 打出来的应答），进消息之前同样先清一遍。
+            stderr = Diagnostics.PeerText.Sanitize(_stderr.ToString().Trim(), MaxStderrChars);
         }
 
         throw new IOException(

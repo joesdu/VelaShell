@@ -309,6 +309,49 @@ public sealed class AuthenticationTests
     }
 
     [TestMethod]
+    public async Task agent拒签时记成跳过并继续试下一条()
+    {
+        using var good = InMemorySshSigner.GenerateEd25519();
+
+        AuthRun run = await RunAsync(
+            [
+                new PublicKeyCredential(new RefusingAgentSigner(good.PublicKey), "agent: id_ed25519"),
+                new PublicKeyCredential(good, "~/.ssh/id_ed25519"),
+            ],
+            new TestAuthPolicy
+            {
+                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                AcceptedPublicKeys = [good.PublicKey.Blob.ToArray()],
+            });
+
+        // SshAgentException 是 SshException —— 曾经它会直接打断整条凭据链。
+        Assert.AreEqual(SshAlgorithmNames.AuthPublicKey, run.Succeeded.Method);
+        Assert.Contains(
+            a => a.CredentialLabel == "agent: id_ed25519" && a.Outcome == SshAuthOutcome.SkippedNoMaterial,
+            run.Succeeded.Attempts);
+        Assert.AreEqual(1, run.Observation.PublicKeyProbeCount, "拒签发生在探测通过之后");
+    }
+
+    [TestMethod]
+    public async Task 请求在途时回调抛出的异常照实抛出而不是当成跳过()
+    {
+        // 横幅回调在「密码请求已发出、SUCCESS 还没读」时抛异常。当成「跳过这条凭据」的话，
+        // 客户端会报「所有方法都失败」—— 而服务端其实已经认证通过了。
+        InvalidOperationException error = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => RunAsync(
+                [new PasswordCredential("hunter2")],
+                new TestAuthPolicy { AcceptPassword = "hunter2", BannersBeforeSuccess = ["维护通知"] },
+                authenticatorFactory: static (transport, user, sessionId) => new SshAuthenticator(transport, user, sessionId)
+                {
+                    BannerHandler = static (text, _) => text == "维护通知"
+                        ? throw new InvalidOperationException("界面已经关了")
+                        : ValueTask.CompletedTask,
+                }));
+
+        Assert.AreEqual("界面已经关了", error.Message);
+    }
+
+    [TestMethod]
     public async Task 服务端宣告的server_sig_algs决定RSA用哪种签名算法()
     {
         using var rsa = System.Security.Cryptography.RSA.Create(2048);
@@ -623,6 +666,60 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
     }
 
     [TestMethod]
+    public async Task 部分成功之后回头再试当时因方法不被接受而跳过的凭据()
+    {
+        // AuthenticationMethods publickey,password：服务端一开始只报 publickey，
+        // 排在前面的口令凭据于是被跳过；公钥那一步过了之后服务端才开放 password ——
+        // 不回头再扫一遍的话，认证以「凭据试完了」失败。
+        using var signer = InMemorySshSigner.GenerateEd25519();
+
+        AuthRun run = await RunAsync(
+            [
+                new PasswordCredential("hunter2") { AlsoAnswerKeyboardInteractive = false },
+                new PublicKeyCredential(signer),
+            ],
+            new TestAuthPolicy
+            {
+                OfferedMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshAlgorithmNames.AuthPublicKey, SshAlgorithmNames.AuthPassword],
+                AcceptedPublicKeys = [signer.PublicKey.Blob.ToArray()],
+                AcceptPassword = "hunter2",
+            });
+
+        Assert.AreEqual(SshAlgorithmNames.AuthPassword, run.Succeeded.Method);
+        Assert.AreSequenceEqual(
+            new[] { SshAlgorithmNames.AuthPublicKey, SshAlgorithmNames.AuthPassword }, run.Observation.PassedMethods);
+    }
+
+    [TestMethod]
+    public async Task 第四把钥才对时也能登上()
+    {
+        // 每把钥是不同的凭据，不是对同一个秘密的重试 —— 不能套「同一方法失败三次就不再试」。
+        // agent 里有五把钥、对的是第四把，是很常见的情形。
+        InMemorySshSigner[] keys = [.. Enumerable.Range(0, 5).Select(_ => InMemorySshSigner.GenerateEd25519())];
+        try
+        {
+            AuthRun run = await RunAsync(
+                [.. keys.Select(static k => new PublicKeyCredential(k))],
+                new TestAuthPolicy
+                {
+                    RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                    AcceptedPublicKeys = [keys[3].PublicKey.Blob.ToArray()],
+                });
+
+            Assert.AreEqual(SshAlgorithmNames.AuthPublicKey, run.Succeeded.Method);
+            Assert.AreEqual(4, run.Observation.PublicKeySignedCount, "前三把各试一次，第四把成功，第五把不必试");
+        }
+        finally
+        {
+            foreach (InMemorySshSigner key in keys)
+            {
+                key.Dispose();
+            }
+        }
+    }
+
+    [TestMethod]
     public async Task 第一步过了但第二步没配凭据时说得出卡在哪()
     {
         using var signer = InMemorySshSigner.GenerateEd25519();
@@ -826,6 +923,27 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
         Assert.Contains(expectedAlgorithm, run.Observation.PublicKeySignatureAlgorithms);
     }
 
+    [TestMethod]
+    public async Task RSA证书默认也不用SHA1的签名算法()
+    {
+        // 禁用 SHA-1 的过滤曾经只比 ssh-rsa，RSA 证书那个 SHA-1 算法叫 ssh-rsa-cert-v01@openssh.com，
+        // 于是拿证书登录时，服务端一说「只认它」，SHA-1 照样被挑出来用。
+        SshCertificateSigner signer = await LoadCertificateSignerAsync("cert-rsa");
+
+        AuthRun run = await RunAsync(
+            [new PublicKeyCredential(signer)],
+            new TestAuthPolicy
+            {
+                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                AcceptedPublicKeys = [signer.Certificate.Blob.ToArray()],
+                ServerSignatureAlgorithms = ["ssh-rsa-cert-v01@openssh.com"],
+            });
+
+        CollectionAssert.DoesNotContain(
+            run.Observation.PublicKeySignatureAlgorithms, "ssh-rsa-cert-v01@openssh.com",
+            "默认不用 SHA-1 —— 证书也一样");
+    }
+
     /// <summary>证书走的仍然是 publickey，没有第三种认证方法。</summary>
     [TestMethod]
     public async Task 证书认证用的仍是publickey方法()
@@ -854,5 +972,19 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
         public ValueTask<byte[]> SignAsync(
             ReadOnlyMemory<byte> data, string algorithm, CancellationToken cancellationToken = default) =>
             throw new IOException("私钥文件读不出来：拒绝访问。");
+    }
+
+    /// <summary>像 agent 那样先探测、签名时却被拒（用户在 ssh-add -c 的确认框里点了拒绝）。</summary>
+    private sealed class RefusingAgentSigner(SshPublicKey publicKey) : ISshSigner
+    {
+        public SshPublicKey PublicKey => publicKey;
+
+        public IReadOnlyList<string> SignatureAlgorithms => [SshAlgorithmNames.SshEd25519];
+
+        public bool IsLocalAndCheap => false;
+
+        public ValueTask<byte[]> SignAsync(
+            ReadOnlyMemory<byte> data, string algorithm, CancellationToken cancellationToken = default) =>
+            throw new SshAgentException("agent 拒绝签名。");
     }
 }

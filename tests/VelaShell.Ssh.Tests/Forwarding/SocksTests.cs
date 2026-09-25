@@ -154,6 +154,24 @@ public sealed class SocksTests
     }
 
     [TestMethod]
+    public async Task 空域名当成不支持的地址回掉()
+    {
+        // 放过去的话，开隧道那一步因为参数不合法而抛，客户端一句应答也收不到，只能干等到超时。
+        byte[] request =
+        [
+            .. Greeting(),
+            0x05, 0x01, 0x00, 0x03,     // CONNECT，ATYP = 域名
+            0x00,                       // 长度 0
+            0x00, 0x50,
+        ];
+
+        (SocksTarget? target, byte[] reply) = await RunAsync(request);
+
+        Assert.IsNull(target);
+        Assert.AreEqual((byte)SocksReply.AddressTypeNotSupported, reply[2 + 1]);
+    }
+
+    [TestMethod]
     public async Task 握手中途断开不抛异常()
     {
         // 只发了半个问候。对面随时可能走，这不是异常路径。

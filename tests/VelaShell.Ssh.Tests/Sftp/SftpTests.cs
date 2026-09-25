@@ -222,6 +222,112 @@ public sealed class SftpTests
         Assert.AreSequenceEqual(payload, content, "READ 返回的数据可以少于请求的长度，必须循环读");
     }
 
+    // ------------------------------------------------------------ 顺序读的预读（spec/06 §5.5）
+
+    [TestMethod]
+    public async Task 顺序读时同时有多个READ在途()
+    {
+        // 第三块的应答被服务端扣住，直到它收到更靠后的 READ。一次只发一个 READ 的实现
+        // 永远等不到那个「更靠后」的请求 —— 吞吐被钉死在「块大小 ÷ RTT」，下载在高延迟链路上只有几百 KB/s。
+        byte[] payload = new byte[8 * 32 * 1024];
+        Random.Shared.NextBytes(payload);
+        await using Harness harness = await Harness.StartAsync(
+            server => server.AddFile("/home/joe/big.bin", payload),
+            new TestSftpOptions { HoldReadReplyAtOffset = 2 * 32 * 1024 },
+            new SftpOptions { BlockSize = 32 * 1024 });
+
+        byte[] content = await harness.Sftp.ReadAllBytesAsync("/home/joe/big.bin", harness.Token)
+            .AsTask().WaitAsync(TimeSpan.FromSeconds(10), harness.Token);
+
+        Assert.AreSequenceEqual(payload, content);
+        Assert.IsTrue(harness.SftpServer.PipelinedReadObserved, "扣住的应答应当被预读的后续请求放出来");
+    }
+
+    [TestMethod]
+    public async Task 预读下小缓冲逐段读_中途Seek_读到的都与文件一致()
+    {
+        byte[] payload = new byte[1024 * 1024 + 123];
+        Random.Shared.NextBytes(payload);
+        await using Harness harness = await Harness.StartAsync(
+            server => server.AddFile("/home/joe/big.bin", payload),
+            clientOptions: new SftpOptions { BlockSize = 32 * 1024 });
+
+        await using SftpFileStream stream = await harness.Sftp.OpenReadAsync("/home/joe/big.bin", harness.Token);
+
+        // 调用方的缓冲比块小、而且不整除：一块要分几次交出去。
+        byte[] head = await ReadExactlyAsync(stream, 100_000, bufferSize: 7_000, harness.Token);
+        Assert.AreSequenceEqual(payload[..100_000], head);
+
+        // 跳到别处：队伍里的偏移都对不上了，必须从新位置重来。
+        stream.Seek(700_000, SeekOrigin.Begin);
+        byte[] tail = await ReadExactlyAsync(stream, payload.Length - 700_000, bufferSize: 50_000, harness.Token);
+        Assert.AreSequenceEqual(payload[700_000..], tail);
+
+        Assert.AreEqual(0, await stream.ReadAsync(new byte[10], harness.Token), "读完之后返回 0");
+
+        // 往回跳也一样。
+        stream.Position = 10;
+        byte[] again = await ReadExactlyAsync(stream, 1_000, bufferSize: 1_000, harness.Token);
+        Assert.AreSequenceEqual(payload[10..1_010], again);
+    }
+
+    [TestMethod]
+    public async Task 预读下短读与乱序应答都不丢数据()
+    {
+        byte[] payload = new byte[300_000];
+        Random.Shared.NextBytes(payload);
+
+        foreach (TestSftpOptions serverOptions in new[]
+                 {
+                     new TestSftpOptions { ShortReadLimit = 10_000 },
+                     new TestSftpOptions { ShuffleResponses = true },
+                 })
+        {
+            await using Harness harness = await Harness.StartAsync(
+                server => server.AddFile("/home/joe/big.bin", payload),
+                serverOptions,
+                new SftpOptions { BlockSize = 32 * 1024 });
+
+            byte[] content = await harness.Sftp.ReadAllBytesAsync("/home/joe/big.bin", harness.Token);
+            Assert.AreSequenceEqual(payload, content);
+        }
+    }
+
+    [TestMethod]
+    public async Task 预读的流读一半就关_句柄与在途应答都收拾干净()
+    {
+        byte[] payload = new byte[1024 * 1024];
+        await using Harness harness = await Harness.StartAsync(
+            server => server.AddFile("/home/joe/big.bin", payload),
+            clientOptions: new SftpOptions { BlockSize = 32 * 1024 });
+
+        await using (SftpFileStream stream = await harness.Sftp.OpenReadAsync("/home/joe/big.bin", harness.Token))
+        {
+            _ = await ReadExactlyAsync(stream, 200_000, bufferSize: 32 * 1024, harness.Token);
+        }
+
+        // 后面的操作照常可用 —— 作废的预读没有占着在途额度不还。
+        byte[] content = await harness.Sftp.ReadAllBytesAsync("/home/joe/big.bin", harness.Token);
+        Assert.HasCount(payload.Length, content);
+        Assert.AreEqual(0, harness.SftpServer.OpenHandleCount);
+    }
+
+    private static async Task<byte[]> ReadExactlyAsync(
+        SftpFileStream stream, int count, int bufferSize, CancellationToken cancellationToken)
+    {
+        byte[] result = new byte[count];
+        byte[] buffer = new byte[bufferSize];
+        int filled = 0;
+        while (filled < count)
+        {
+            int read = await stream.ReadAsync(buffer.AsMemory(0, Math.Min(bufferSize, count - filled)), cancellationToken);
+            Assert.IsGreaterThan(0, read, "文件还没读完就返回了 0");
+            buffer.AsSpan(0, read).CopyTo(result.AsSpan(filled));
+            filled += read;
+        }
+        return result;
+    }
+
     [TestMethod]
     public async Task 读空文件返回零字节而不是异常()
     {
@@ -813,5 +919,230 @@ public sealed class SftpTests
             async () => await harness.Sftp.GetAttributesAsync("/home/joe/a\0b.txt", harness.Token));
 
         Assert.IsFalse(harness.SftpServer.Nodes.ContainsKey("/home/joe/a\0b.txt"));
+    }
+
+    // ------------------------------------------------------------ 句柄与边界
+
+    [TestMethod]
+    public async Task 可写的流关闭失败要报出来()
+    {
+        // 有的服务端（NFS、配额）直到关闭时才报出写入失败 —— 吞掉它，调用方就以为文件写好了。
+        await using Harness harness = await Harness.StartAsync(
+            server => server.AddFile("/home/joe/in.txt", Text("x")),
+            sftpOptions: new TestSftpOptions { FailCloseWith = SftpStatusCode.Failure });
+
+        SftpFileStream stream = await harness.Sftp.OpenWriteAsync("/home/joe/out.txt", cancellationToken: harness.Token);
+        await stream.WriteAsync(Text("data"), harness.Token);
+
+        SftpException error = await Assert.ThrowsExactlyAsync<SftpException>(async () => await stream.DisposeAsync());
+        Assert.Contains("配额", error.Message);
+
+        // 只读的流关不上无关紧要，不报。
+        SftpFileStream reader = await harness.Sftp.OpenReadAsync("/home/joe/in.txt", harness.Token);
+        await reader.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task 句柄关掉之后流上的操作一律报已释放()
+    {
+        // OpenSSH 的句柄是表里的下标，关掉之后会分给下一个打开的文件 ——
+        // 拿旧句柄再写一次，写进去的是别人的文件。
+        await using Harness harness = await Harness.StartAsync(
+            server => server.AddFile("/home/joe/a.txt", Text("hello")));
+
+        SftpFileStream stream = await harness.Sftp.OpenAsync(
+            "/home/joe/a.txt", SftpOpenMode.Read | SftpOpenMode.Write, SftpFileAttributes.Empty,
+            canRead: true, canWrite: true, cancellationToken: harness.Token);
+        await stream.DisposeAsync();
+
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(
+            async () => await stream.WriteAtAsync(0, Text("X"), harness.Token));
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(
+            async () => await stream.ReadAtAsync(0, new byte[4], harness.Token));
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(
+            async () => await stream.SetLengthAsync(0, harness.Token));
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(
+            async () => await stream.GetAttributesAsync(harness.Token));
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(
+            async () => await stream.FsyncAsync(harness.Token));
+        Assert.ThrowsExactly<ObjectDisposedException>(() => stream.Seek(0, SeekOrigin.Begin));
+
+        // Stream 的约定：关闭之后 CanRead / CanWrite 为假 —— 包装流靠它们判断还能不能用。
+        Assert.IsFalse(stream.CanRead);
+        Assert.IsFalse(stream.CanWrite);
+
+        Assert.AreEqual("hello", Encoding.UTF8.GetString([.. harness.SftpServer.Nodes["/home/joe/a.txt"].Content]));
+    }
+
+    [TestMethod]
+    public async Task 数组版本的读写也走异步()
+    {
+        // Stream 的数组版本默认绕到同步读写上，而本类的同步读写直接抛 ——
+        // 调用方写的明明是 await ReadAsync(buffer, 0, n)。
+        await using Harness harness = await Harness.StartAsync();
+
+        byte[] content = Text("array overloads");
+
+        // 这条用例测的就是数组版本本身，分析器建议的 Memory 版本恰恰绕开了它。
+#pragma warning disable CA1835
+        await using (SftpFileStream writer = await harness.Sftp.OpenWriteAsync(
+            "/home/joe/arr.txt", cancellationToken: harness.Token))
+        {
+            await writer.WriteAsync(content, 0, content.Length, harness.Token);
+        }
+
+        await using SftpFileStream reader = await harness.Sftp.OpenReadAsync("/home/joe/arr.txt", harness.Token);
+        byte[] buffer = new byte[64];
+        int read = await reader.ReadAsync(buffer, 0, buffer.Length, harness.Token);
+#pragma warning restore CA1835
+
+        Assert.AreEqual("array overloads", Encoding.UTF8.GetString(buffer, 0, read));
+    }
+
+    [TestMethod]
+    public async Task 老式的Begin和End也走异步()
+    {
+        // 基类的 BeginRead / BeginWrite 绕到同步读写上，而本类的同步读写直接抛。
+        await using Harness harness = await Harness.StartAsync();
+
+        byte[] content = Text("begin end");
+        await using (SftpFileStream writer = await harness.Sftp.OpenWriteAsync(
+            "/home/joe/apm.txt", cancellationToken: harness.Token))
+        {
+            await Task.Factory.FromAsync(writer.BeginWrite, writer.EndWrite, content, 0, content.Length, null);
+        }
+
+        await using SftpFileStream reader = await harness.Sftp.OpenReadAsync("/home/joe/apm.txt", harness.Token);
+        byte[] buffer = new byte[64];
+        int read = await Task.Factory.FromAsync(reader.BeginRead, reader.EndRead, buffer, 0, buffer.Length, null);
+
+        Assert.AreEqual("begin end", Encoding.UTF8.GetString(buffer, 0, read));
+    }
+
+    [TestMethod]
+    public async Task 按偏移读写一次不超过一块()
+    {
+        // 比服务端 max-write-length 还长的 WRITE 会被拒 —— OpenSSH 直接断开 SFTP 会话。
+        await using Harness harness = await Harness.StartAsync(
+            clientOptions: new SftpOptions { BlockSize = 32 * 1024 });
+
+        byte[] big = new byte[100_000];
+        Random.Shared.NextBytes(big);
+
+        await using (SftpFileStream writer = await harness.Sftp.OpenWriteAsync(
+            "/home/joe/big.bin", cancellationToken: harness.Token))
+        {
+            await writer.WriteAtAsync(0, big, harness.Token);
+            await writer.FlushAsync(harness.Token);
+        }
+
+        Assert.IsLessThanOrEqualTo(32 * 1024, harness.SftpServer.LargestWrite);
+        Assert.AreSequenceEqual(big, [.. harness.SftpServer.Nodes["/home/joe/big.bin"].Content]);
+
+        await using SftpFileStream reader = await harness.Sftp.OpenReadAsync("/home/joe/big.bin", harness.Token);
+        int read = await reader.ReadAtAsync(0, new byte[100_000], harness.Token);
+
+        Assert.AreEqual(32 * 1024, read, "一次至多一块；调用方本来就要循环读");
+        Assert.IsLessThanOrEqualTo(32 * 1024, harness.SftpServer.LargestReadRequest);
+    }
+
+    [TestMethod]
+    public async Task 服务端limits报0时块大小取保守默认而不是1()
+    {
+        // 0 是「没说」。按字面取，块大小就成了 1 —— 一个 1 MB 的文件要一百万个请求。
+        await using Harness harness = await Harness.StartAsync(
+            sftpOptions: new TestSftpOptions { Limits = new SftpLimits(0, 0, 0, 0) });
+
+        Assert.AreEqual(SftpProtocol.DefaultBlockSize, harness.Sftp.BlockSize);
+    }
+
+    [TestMethod]
+    public void 块大小服从服务端与本端的上限()
+    {
+        // OpenSSH 的典型宣告。
+        Assert.AreEqual(261_120, SftpFileSystem.ChooseBlockSize(0, new SftpLimits(262_144, 261_120, 261_120, 0)));
+
+        // 使用者要的更大：服从服务端，超长的 WRITE 会被拒。
+        Assert.AreEqual(65_536, SftpFileSystem.ChooseBlockSize(1024 * 1024, new SftpLimits(70_000, 65_536, 65_536, 0)));
+
+        // 服务端没说上限：仍不超过本端肯收的报文里装得下的一块。
+        Assert.AreEqual(SftpProtocol.MaxBlockSize, SftpFileSystem.ChooseBlockSize(1024 * 1024, new SftpLimits(0, 0, 0, 0)));
+
+        // 读上限也算数：比它长的 READ 会被截短，顺序读就把每一块都当成「中间有洞」。
+        Assert.AreEqual(16_384, SftpFileSystem.ChooseBlockSize(0, new SftpLimits(0, 16_384, 0, 0)));
+
+        // 报文上限要扣掉请求头。
+        Assert.AreEqual(8_192, SftpFileSystem.ChooseBlockSize(0, new SftpLimits(8_192 + SftpProtocol.RequestHeaderAllowance, 0, 0, 0)));
+    }
+
+    [TestMethod]
+    public async Task 续写的流把偏移之前算作已确认()
+    {
+        // 续传途中再断一次，DurableLength 要报「到哪了」，而不是 0 —— 否则下一次续传从头来过。
+        await using Harness harness = await Harness.StartAsync(
+            server => server.AddFile("/home/joe/part.bin", new byte[1000]));
+
+        await using (SftpFileStream stream = await harness.Sftp.OpenAppendAsync(
+            "/home/joe/part.bin", 600, cancellationToken: harness.Token))
+        {
+            Assert.AreEqual(600, stream.DurableLength);
+            Assert.AreEqual(1000, stream.Length, "续写打开的流也要知道文件有多长");
+            Assert.AreEqual(600, stream.Position);
+
+            await stream.WriteAsync(new byte[100], harness.Token);
+            await stream.FlushAsync(harness.Token);
+            Assert.AreEqual(700, stream.DurableLength);
+        }
+
+        // 偏移比文件还长：只算到文件末尾 —— 中间那段是洞，不是确认过的数据。
+        await using (SftpFileStream beyond = await harness.Sftp.OpenAppendAsync(
+            "/home/joe/part.bin", 5000, cancellationToken: harness.Token))
+        {
+            Assert.AreEqual(1000, beyond.DurableLength);
+        }
+
+        // 偏移不合法：开之前就拒，不留一个没人关的句柄。
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(
+            async () => await harness.Sftp.OpenAppendAsync("/home/joe/part.bin", -1, cancellationToken: harness.Token));
+        Assert.AreEqual(0, harness.SftpServer.OpenHandleCount);
+    }
+
+    [TestMethod]
+    public async Task 打开时属性应答不合格式_报协议错误且句柄被关掉()
+    {
+        await using Harness harness = await Harness.StartAsync(
+            server => server.AddFile("/home/joe/a.txt", Text("hello")),
+            sftpOptions: new TestSftpOptions { MalformedFStat = true });
+
+        // 公开的协议错误，而不是一个使用者按类型 catch 不到的内部解析异常。
+        SshProtocolException error = await Assert.ThrowsExactlyAsync<SshProtocolException>(
+            async () => await harness.Sftp.OpenReadAsync("/home/joe/a.txt", harness.Token));
+        Assert.Contains("ATTRS", error.Message);
+
+        Assert.AreEqual(0, harness.SftpServer.OpenHandleCount, "句柄已经开在服务端了，不关就漏");
+    }
+
+    [TestMethod]
+    public async Task 一个链接的应答不合格式不影响整个目录()
+    {
+        await using Harness harness = await Harness.StartAsync(
+            server =>
+            {
+                server.AddFile("/home/joe/f.txt", Text("f"));
+                server.AddSymbolicLink("/home/joe/l", "/home/joe/f.txt");
+            },
+            sftpOptions: new TestSftpOptions { MalformedReadLink = true });
+
+        List<SftpDirectoryEntry> entries = [];
+        await foreach (SftpDirectoryEntry entry in
+            harness.Sftp.EnumerateDirectoryAsync("/home/joe", harness.Token))
+        {
+            entries.Add(entry);
+        }
+
+        SftpDirectoryEntry link = entries.Single(e => e.Name == "l");
+        Assert.IsTrue(link.IsSymbolicLink);
+        Assert.IsNull(link.LinkTarget, "目标读不出来就是没有，不是整个列表失败");
+        Assert.IsTrue(entries.Any(e => e.Name == "f.txt"));
     }
 }

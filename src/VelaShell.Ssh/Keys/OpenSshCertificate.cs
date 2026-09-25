@@ -6,6 +6,7 @@
 //                                证书类型(1 用户 / 2 主机)、有效期与扩展
 //   RFC 4251 §5               —— string / uint64 / name-list 的 wire 表示
 //   行为规格: velashell-docs/zh/ssh/design/architecture.md §8 第 5 项
+//             velashell-docs/zh/ssh/spec/03-key-exchange.md §5.5（主机证书的验证）
 
 using System.Buffers;
 using VelaShell.Ssh.Diagnostics;
@@ -43,11 +44,15 @@ public sealed class SshCertificateException : SshException
 /// 让服务端不必逐个记住用户的公钥 —— <c>TrustedUserCAKeys</c> 里放一把 CA 公钥即可。
 /// </para>
 /// <para>
-/// <b>本库只解析与出示证书,不验证 CA 签名。</b>验证是**服务端**的事:
+/// <b>用户证书只解析与出示,不在客户端验 CA 签名。</b>验证是**服务端**的事:
 /// 客户端验了也不改变任何结果 —— 服务端照样要自己验一遍,
 /// 而客户端这边根本没有「哪些 CA 可信」这份名单。
 /// 我们把 <see cref="SignatureKey" /> 与 <see cref="ValidBefore" /> 这些事实交出去,
 /// 让使用者能在界面上显示、能在证书过期时给出一句人话。
+/// </para>
+/// <para>
+/// <b>主机证书反过来由客户端验</b>(<c>known_hosts</c> 的 <c>@cert-authority</c>):
+/// 见 <see cref="CheckHostCertificate" />。
 /// </para>
 /// </remarks>
 public sealed class OpenSshCertificate
@@ -59,13 +64,22 @@ public sealed class OpenSshCertificate
 
     private readonly byte[] _blob;
 
+    /// <summary>CA 签名覆盖的前缀长度:从类型串到签发 CA 公钥(含)。</summary>
+    private readonly int _signedLength;
+
+    /// <summary>CA 的签名 blob(<c>string 算法名 ‖ string 签名</c>)。</summary>
+    private readonly byte[] _caSignature;
+
     private OpenSshCertificate(
         string algorithm, byte[] blob, SshPublicKey key, ulong serial, SshCertificateType certificateType,
         string keyId, IReadOnlyList<string> validPrincipals, ulong validAfter, ulong validBefore,
-        IReadOnlyList<string> criticalOptions, IReadOnlyList<string> extensions, SshPublicKey? signatureKey)
+        IReadOnlyList<string> criticalOptions, IReadOnlyList<string> extensions, SshPublicKey? signatureKey,
+        int signedLength, byte[] caSignature)
     {
         Algorithm = algorithm;
         _blob = blob;
+        _signedLength = signedLength;
+        _caSignature = caSignature;
         Key = key;
         Serial = serial;
         CertificateType = certificateType;
@@ -261,11 +275,15 @@ public sealed class OpenSshCertificate
             _ = reader.ReadString(MaxFieldBytes);                    // reserved:规范要求为空,不做他用
 
             SshPublicKey? signatureKey = TryReadKey(ref reader);
-            _ = reader.ReadString(MaxFieldBytes);                    // CA 的签名 —— 由服务端验,见类型说明
+
+            // 签名覆盖的是它前面的全部字段(PROTOCOL.certkeys):记下这个位置,验主机证书时要用。
+            int signedLength = copy.Length - (int)reader.Remaining;
+            byte[] caSignature = reader.ReadStringAsArray(MaxFieldBytes);
+            reader.ExpectEnd("证书 blob");
 
             return new OpenSshCertificate(
                 algorithm, copy, key, serial, (SshCertificateType)type, keyId, principals,
-                validAfter, validBefore, criticalOptions, extensions, signatureKey);
+                validAfter, validBefore, criticalOptions, extensions, signatureKey, signedLength, caSignature);
         }
         catch (SshWireFormatException ex)
         {
@@ -321,13 +339,126 @@ public sealed class OpenSshCertificate
         }
     }
 
-    /// <summary>CA 公钥解不出来不该让整张证书读不了 —— 它只用于显示。</summary>
+    /// <summary>主机证书的 CA 签名允许的算法。</summary>
+    /// <remarks>
+    /// 〔决策〕不含 SHA-1 的 <c>ssh-rsa</c>:它签出的证书今天不该再被当成凭据
+    /// (velashell-docs/zh/ssh/spec/03 §5.5)。
+    /// </remarks>
+    private static readonly string[] HostCaSignatureAlgorithms =
+    [
+        SshAlgorithmNames.SshEd25519,
+        SshAlgorithmNames.EcdsaSha2Nistp256,
+        SshAlgorithmNames.EcdsaSha2Nistp384,
+        SshAlgorithmNames.EcdsaSha2Nistp521,
+        SshAlgorithmNames.RsaSha512,
+        SshAlgorithmNames.RsaSha256,
+    ];
+
+    /// <summary>RSA 的 CA 至少要多少位。</summary>
+    private const int MinimumRsaCaBits = 2048;
+
+    /// <summary>
+    /// 把这张证书当作某台主机的主机证书来验:类型、CA 签名、有效期、主体、关键选项。
+    /// </summary>
+    /// <param name="host">被连的主机名,必须出现在 <see cref="ValidPrincipals" /> 里。</param>
+    /// <param name="now">当前时刻。</param>
+    /// <returns>合格时为 <see langword="null" />;否则是一句说明哪里不合格的人话。</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>不判断 CA 是否可信</b> —— 那是调用方拿 <see cref="SignatureKey" /> 去比
+    /// <c>@cert-authority</c> 的事;这里只回答「这张证书是不是那个 CA 为这台主机、在此刻签的有效主机证书」。
+    /// </para>
+    /// <para>
+    /// 〔决策〕<see cref="ValidPrincipals" /> 为空的主机证书不认。规范把空列表定义为「对任何主体有效」;
+    /// 对主机证书那意味着 CA 签出的一张证书能冒充 <c>@cert-authority</c> 那一行范围里的任何一台主机。
+    /// </para>
+    /// </remarks>
+    public string? CheckHostCertificate(string host, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+
+        if (CertificateType != SshCertificateType.Host)
+        {
+            return $"这是一张用户证书(Key ID「{KeyId}」),不能用来证明主机身份。";
+        }
+
+        if (CheckCaSignature() is { } signatureProblem)
+        {
+            return signatureProblem;
+        }
+
+        if (!IsTimeValid(now))
+        {
+            return ValidBeforeTime is { } before && now >= before
+                ? $"主机证书(Key ID「{KeyId}」)已于 {before:u} 过期。"
+                : $"主机证书(Key ID「{KeyId}」)要到 {ValidAfterTime:u} 才生效。";
+        }
+
+        if (ValidPrincipals.Count == 0)
+        {
+            return $"主机证书(Key ID「{KeyId}」)没有列出任何主机名 —— 那等于对所有主机有效,不予接受。";
+        }
+
+        if (!ValidPrincipals.Contains(host, StringComparer.OrdinalIgnoreCase))
+        {
+            return $"主机证书(Key ID「{KeyId}」)签给的是 {string.Join("、", ValidPrincipals)},不含 {host}。";
+        }
+
+        if (CriticalOptions.Count > 0)
+        {
+            // 主机证书没有定义任何关键选项;不认识的关键选项按规范必须拒绝。
+            return $"主机证书(Key ID「{KeyId}」)带着不认识的关键选项:{string.Join("、", CriticalOptions)}。";
+        }
+
+        return null;
+    }
+
+    /// <summary>验 CA 对证书的签名;通过时为 <see langword="null" />。</summary>
+    private string? CheckCaSignature()
+    {
+        if (SignatureKey is not { } ca)
+        {
+            return $"证书(Key ID「{KeyId}」)的签发 CA 公钥读不出来(类型不支持,或者它自己也是一张证书)。";
+        }
+
+        if (ca.PlainKeyType == SshAlgorithmNames.SshRsa && ca.KeyBits < MinimumRsaCaBits)
+        {
+            return $"签发证书的 RSA CA 只有 {ca.KeyBits} 位,低于 {MinimumRsaCaBits} 位。";
+        }
+
+        string algorithm;
+        try
+        {
+            SshDataReader reader = new(new ReadOnlySequence<byte>(_caSignature));
+            algorithm = reader.ReadUtf8String(MaxFieldBytes, strict: true);
+        }
+        catch (SshWireFormatException)
+        {
+            return $"证书(Key ID「{KeyId}」)的 CA 签名格式非法。";
+        }
+
+        if (!HostCaSignatureAlgorithms.Contains(algorithm, StringComparer.Ordinal))
+        {
+            return $"证书(Key ID「{KeyId}」)的 CA 签名用的是 {algorithm},不接受(SHA-1 的 ssh-rsa 签名已经不安全)。";
+        }
+
+        if (!ca.SupportsSignatureAlgorithm(algorithm)
+            || !ca.VerifySignature(_caSignature, _blob.AsSpan(0, _signedLength), algorithm))
+        {
+            return $"证书(Key ID「{KeyId}」)的 CA 签名验不过 —— 证书被改过,或者不是这个 CA 签的。";
+        }
+
+        return null;
+    }
+
+    /// <summary>CA 公钥解不出来不该让整张证书读不了 —— 它只用于显示与验签。</summary>
     private static SshPublicKey? TryReadKey(scoped ref SshDataReader reader)
     {
         byte[] raw = reader.ReadStringAsArray(MaxFieldBytes);
         try
         {
-            return raw.Length == 0 ? null : SshPublicKey.Parse(raw);
+            // CA 公钥本身是证书的不认:那会让证书一层套一层地解析下去,而规范没有这种链。
+            return raw.Length == 0 ? null : SshPublicKey.ParsePlain(raw);
         }
         catch (SshPublicKeyException)
         {

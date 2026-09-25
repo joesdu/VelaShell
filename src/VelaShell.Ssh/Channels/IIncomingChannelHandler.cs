@@ -52,7 +52,9 @@ public interface IIncomingChannelHandler
     /// 不还的话每拒一次漏一个，漏满之后这一类通道就再也开不出来。
     /// </para>
     /// <para>
-    /// 同步、必须很快、不许抛：它在接收循环上跑。
+    /// 同步、必须很快、不许抛：它跑在处理这次开通道请求的后台任务上（不在接收循环上 ——
+    /// 决定已经挪到后台，velashell-docs/zh/ssh/spec/05 §8.1），而同一时刻可能有好几个开通道请求各自在跑，
+    /// 实现要经得起并发调用。
     /// </para>
     /// </remarks>
     void OnOpenAborted(string channelType, ReadOnlyMemory<byte> typeSpecificPayload)

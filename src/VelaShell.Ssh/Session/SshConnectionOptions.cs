@@ -101,14 +101,14 @@ public readonly record struct SshRekeyPolicy(
     /// <exception cref="ArgumentOutOfRangeException">某条阈值低于下限。</exception>
     public void Validate()
     {
-        if (MaxBytes > 0 && MaxBytes < MinimumBytes)
+        if (MaxBytes is > 0 and < MinimumBytes)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(MaxBytes), MaxBytes,
                 $"重协商的字节阈值不能低于 {MinimumBytes} —— 太频繁的重协商本身就是一个拒绝服务面。");
         }
 
-        if (MaxPackets > 0 && MaxPackets < MinimumPackets)
+        if (MaxPackets is > 0 and < MinimumPackets)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(MaxPackets), MaxPackets,
@@ -229,6 +229,10 @@ public sealed record SshConnectionOptions
     /// 否则一条验阈值的用例要干等 5 秒。
     /// </remarks>
     internal TimeSpan RekeyCheckInterval { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>一次重协商最多等多久（见 <c>SshConnection.RekeyTimeout</c>）。</summary>
+    /// <remarks>internal：同上，只有用例需要把它调小。</remarks>
+    internal TimeSpan RekeyTimeout { get; init; } = TimeSpan.FromMinutes(2);
 
     /// <summary>服务端横幅的回调。<b>文本来自未认证的对端，是注入面。</b></summary>
     public Func<string, CancellationToken, ValueTask>? BannerHandler { get; init; }

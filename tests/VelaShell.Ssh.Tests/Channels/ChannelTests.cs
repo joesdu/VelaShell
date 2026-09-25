@@ -64,7 +64,8 @@ public sealed class ChannelTests
         public static async Task<Harness> StartAsync(
             TestChannelScript? script = null,
             SshConnectionLimits? limits = null,
-            Func<Stream, Stream>? wrapClient = null)
+            Func<Stream, Stream>? wrapClient = null,
+            KeepAlivePolicy keepAlive = default)
         {
             (InMemoryDuplexStream clientStream, InMemoryDuplexStream serverStream) = InMemoryTransport.CreatePair();
 
@@ -94,7 +95,7 @@ public sealed class ChannelTests
             TestChannelServer channelServer = new(server.Transport, script);
             Task serverChannels = channelServer.RunAsync(cts.Token);
 
-            SshConnection connection = new(clientTransport, kex.SessionId, limits);
+            SshConnection connection = new(clientTransport, kex.SessionId, limits) { KeepAlive = keepAlive };
             connection.Start();
 
             return new Harness(server, clientTransport, connection, channelServer, serverChannels, cts);
@@ -307,6 +308,87 @@ public sealed class ChannelTests
         Assert.AreEqual(0, result.ExitCode);
         Assert.AreSequenceEqual(
             Text("喂给远端的内容"), [.. harness.ChannelServer.Observation.StandardInput]);
+    }
+
+    [TestMethod]
+    public async Task stdin积压时远端退出_挂起的写入会返回而不是永远等下去()
+    {
+        // 远端不读 stdin（窗口不回补），收到第一个包就退出。此时本端 stdin 管道里还压着
+        // 一大截，写入方的 FlushAsync 正卡在背压上 —— 通道关了，它必须被放出来。
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript
+        {
+            InitialWindow = 32 * 1024,
+            WithholdWindowAdjust = true,
+            CloseAfterStandardInputBytes = 1,
+            CloseAfterScript = false,
+        });
+
+        await using SshCommand command =
+            await harness.Connection.ExecuteAsync("head -c 1", cancellationToken: harness.Token);
+
+        // **不带令牌**：使用者常这么写，此时唯一能放出写入方的就是通道自己的收尾。
+        ValueTask<FlushResult> write = command.StandardInput.WriteAsync(new byte[512 * 1024]);
+
+        FlushResult flushed = await write.AsTask().WaitAsync(TimeSpan.FromSeconds(10), harness.Token);
+        Assert.IsTrue(flushed.IsCompleted, "通道关了，写入方应当看到「对端不再收」");
+    }
+
+    [TestMethod]
+    public async Task 通道流写完就释放_最后一段照样送到并带上EOF()
+    {
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript
+        {
+            CloseAfterScript = false,
+            ExitCode = null,
+        });
+
+        // 远大于对端窗口（64 KiB），而且**逐块写**：小块写入在管道里低于恢复水位就返回，
+        // 最后一次写返回时，末尾那一截还压在本地 stdin 管道里等窗口。
+        byte[] payload = new byte[300 * 1024];
+        Random.Shared.NextBytes(payload);
+
+        SshChannel channel = await harness.Connection.OpenSessionChannelAsync(null, harness.Token);
+        SshChannelStream stream = new(channel);
+        for (int offset = 0; offset < payload.Length; offset += 1024)
+        {
+            await stream.WriteAsync(payload.AsMemory(offset, 1024), harness.Token);
+        }
+        await stream.DisposeAsync();
+
+        await WaitUntilAsync(() => harness.ChannelServer.Observation.ReceivedClose, harness.Token);
+        Assert.IsTrue(harness.ChannelServer.Observation.ReceivedEof, "释放流应当先发 EOF 再关通道");
+        Assert.AreSequenceEqual(payload, [.. harness.ChannelServer.Observation.StandardInput],
+            "「写完就关」是跳板与隧道上最常见的用法，最后一段不能丢");
+    }
+
+    [TestMethod]
+    public async Task 通道流的FlushAsync等到数据交给会话才返回_通道先关则报错()
+    {
+        // 窗口 32 KiB、不回补：写 48 KiB，后 16 KiB 只能压在本地 stdin 管道里。
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript
+        {
+            InitialWindow = 32 * 1024,
+            WithholdWindowAdjust = true,
+            CloseAfterScript = false,
+            ExitCode = null,
+        });
+
+        SshChannel channel = await harness.Connection.OpenSessionChannelAsync(null, harness.Token);
+        await using SshChannelStream stream = new(channel, ownsChannel: false);
+        for (int i = 0; i < 48; i++)
+        {
+            await stream.WriteAsync(new byte[1024], harness.Token);
+        }
+
+        Task flush = stream.FlushAsync(harness.Token);
+        await Task.Delay(200, harness.Token);
+        Assert.IsFalse(flush.IsCompleted, "还有 16 KiB 在本地管道里等窗口 —— 冲刷不能先返回");
+
+        // 通道关了，那 16 KiB 再也发不出去：冲刷要如实报错，而不是假装成功。
+        await channel.CloseAsync(harness.Token);
+        await Assert.ThrowsExactlyAsync<IOException>(() => flush.WaitAsync(TimeSpan.FromSeconds(10), harness.Token));
+
+        await channel.DisposeAsync();
     }
 
     [TestMethod]
@@ -878,6 +960,330 @@ public sealed class ChannelTests
             async () => await harness.Connection.OpenSessionChannelAsync(null, harness.Token));
 
         Assert.Contains("MaxSessions", error.Message);
+    }
+
+    [TestMethod]
+    public async Task 取消开通道之后迟到的确认会被关掉而不是泄漏在服务端()
+    {
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript
+        {
+            HoldOpenConfirmationUntil = release.Task,
+            CloseAfterScript = false,
+        });
+
+        using CancellationTokenSource cancel = new();
+        Task<SshChannel> opening = harness.Connection.OpenSessionChannelAsync(null, cancel.Token).AsTask();
+
+        // 等 CHANNEL_OPEN 真的到了服务端，再取消 —— 这才是「请求已上线、调用方不等了」。
+        await WaitUntilAsync(() => harness.ChannelServer.Observation.ClientAnnounced != default, harness.Token);
+        await cancel.CancelAsync();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => opening);
+
+        release.SetResult();   // 服务端这时才回确认
+
+        // 迟到的那条通道必须被关掉，否则它在服务端占着一个 MaxSessions 名额，直到连接断开。
+        await WaitUntilAsync(() => harness.ChannelServer.Observation.ReceivedClose, harness.Token);
+        await WaitUntilAsync(() => harness.Connection.ChannelCount == 0, harness.Token);
+        Assert.IsTrue(harness.Connection.IsAlive);
+    }
+
+    [TestMethod]
+    public async Task 开通道途中释放连接_等待方拿到异常而不是永远挂着()
+    {
+        TaskCompletionSource never = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript
+        {
+            HoldOpenConfirmationUntil = never.Task,
+        });
+
+        // 不带令牌：关标签页时正在开的 SFTP / 隧道就是这样等着的。
+        Task<SshChannel> opening = harness.Connection.OpenSessionChannelAsync(null, CancellationToken.None).AsTask();
+        await WaitUntilAsync(() => harness.ChannelServer.Observation.ClientAnnounced != default, harness.Token);
+
+        await harness.Connection.DisposeAsync();
+
+        SshConnectionClosedException error = await Assert.ThrowsExactlyAsync<SshConnectionClosedException>(
+            () => opening.WaitAsync(TimeSpan.FromSeconds(10), harness.Token));
+        Assert.AreEqual(SshFailureReason.Aborted, error.Reason);
+    }
+
+    [TestMethod]
+    public async Task 释放通道之后号要等对端的CLOSE到了才回收()
+    {
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript
+        {
+            CloseAfterScript = false,
+            ExitCode = null,
+            HoldCloseReplyUntil = release.Task,
+        });
+
+        SshChannel channel = await harness.Connection.OpenSessionChannelAsync(null, harness.Token);
+        await channel.DisposeAsync();
+        await WaitUntilAsync(() => harness.ChannelServer.Observation.ReceivedClose, harness.Token);
+
+        // 本端已经收尾，但对端那条通道还开着 —— 它迟到的 DATA / exit-status / CLOSE 还会发往这个号。
+        // 此时把号还回去，过了回收延迟就会落到复用它的新通道上。
+        Assert.AreEqual(SshChannelState.Closed, channel.State);
+        Assert.AreEqual(1, harness.Connection.ChannelCount, "对端的 CLOSE 还没到，号必须扣着");
+
+        release.SetResult();
+        await WaitUntilAsync(() => harness.Connection.ChannelCount == 0, harness.Token);
+    }
+
+    [TestMethod]
+    public async Task 发出CLOSE之后通道上不再有任何报文()
+    {
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript
+        {
+            CloseAfterScript = false,
+            ExitCode = null,
+            HoldCloseReplyUntil = release.Task,
+        });
+
+        SshChannel channel = await harness.Connection.OpenSessionChannelAsync(null, harness.Token);
+        await channel.CloseAsync(harness.Token);
+
+        // 远端 shell 退出后界面才发来的一次改窗：不许上线（RFC 4254 §5.3）。
+        bool sent = await channel.SendRequestAsync(
+            "window-change", new byte[16], wantReply: false, harness.Token);
+        bool accepted = await channel.SendRequestAsync("x@velashell.test", default, wantReply: true, harness.Token);
+        await channel.SendEofAsync(harness.Token);
+
+        Assert.IsFalse(sent);
+        Assert.IsFalse(accepted);
+
+        release.SetResult();
+
+        // 服务端按顺序处理：保活的应答回来时，排在它前面的报文都已经处理过了。
+        Assert.IsTrue(await harness.Connection.SendKeepAliveAsync(harness.Token));
+        CollectionAssert.DoesNotContain(harness.ChannelServer.Observation.Requests, "window-change");
+        CollectionAssert.DoesNotContain(harness.ChannelServer.Observation.Requests, "x@velashell.test");
+        Assert.IsFalse(harness.ChannelServer.Observation.ReceivedEof);
+
+        await channel.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task 对端灌未知通道请求时事件积压有上限()
+    {
+        // 大多数使用者只读 stdout、不读事件流。没有上限的话，对端每发一条不认识的请求
+        // 就白占一份内存（载荷最长 256 KiB）—— 它绕过了窗口流控。
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript
+        {
+            UnknownRequestsBeforeExit = 500,
+            ExitCode = 7,
+        });
+
+        await using SshCommand command = await harness.Connection.ExecuteAsync("灌", cancellationToken: harness.Token);
+        await WaitUntilAsync(() => command.Channel.State == SshChannelState.Closed, harness.Token);
+
+        int peerRequests = 0;
+        bool sawExitStatus = false;
+        bool sawClosed = false;
+        try
+        {
+            while (true)
+            {
+                SshChannelEvent channelEvent = await command.Channel.ReadEventAsync(harness.Token);
+                peerRequests += channelEvent is SshChannelEvent.PeerRequest ? 1 : 0;
+                sawExitStatus |= channelEvent is SshChannelEvent.ExitStatus { Code: 7 };
+                sawClosed |= channelEvent is SshChannelEvent.Closed;
+            }
+        }
+        catch (System.Threading.Channels.ChannelClosedException)
+        {
+            // 读完了。
+        }
+
+        Assert.IsLessThanOrEqualTo(SshChannel.MaxQueuedEvents, peerRequests, "未知请求的积压必须有上限");
+        Assert.IsTrue(sawExitStatus, "退出状态不受上限影响");
+        Assert.IsTrue(sawClosed, "Closed 不受上限影响");
+    }
+
+    [TestMethod]
+    public async Task 对端只发不收时应答积压超限就断开()
+    {
+        // 客户端写出去的东西对端一概不读（这里用「写被卡住」模拟），同时对端不停地发要应答的全局请求。
+        // 接收循环不能在背压上等，应答只能排队 —— 没有上限就是一条无本的内存放大。
+        TaskCompletionSource writesBlocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        GatedWriteStream? gate = null;
+
+        await using Harness harness = await Harness.StartAsync(
+            new TestChannelScript { CloseAfterScript = false, ExitCode = null },
+            new SshConnectionLimits { MaxQueuedReplyBytes = 2048 },
+            wrapClient: inner => gate = new GatedWriteStream(inner));
+
+        gate!.Block();
+
+        // 先让客户端往外写一次：发送泵卡在这次写上，之后的应答只能排在队列里。
+        _ = harness.Connection.SendKeepAliveAsync(harness.Token).AsTask();
+        await WaitUntilAsync(() => gate.WritesWaiting > 0, harness.Token);
+
+        ArrayBufferWriter<byte> request = new();
+        SshDataWriter writer = new(request);
+        writer.WriteMessageNumber(SshMessageNumber.GlobalRequest);
+        writer.WriteUtf8String("flood@velashell.test");
+        writer.WriteBoolean(true);   // 要应答
+
+        // ⚠️ 灌请求放到后台，不等它：客户端判死之后就不再读了，而服务端这时可能正卡在一次
+        //    「管道满了等对端读」的写上 —— 在这里 await 它就永远等不到（满跑并行、客户端读得慢时约 1/35 撞上）。
+        //    收尾时用例令牌取消，那次写随之放出来。
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                for (int i = 0; i < 4096 && harness.Connection.IsAlive; i++)
+                {
+                    await harness.ChannelServer.SendRawAsync(request.WrittenMemory, harness.Token);
+                }
+            }
+            catch (Exception)
+            {
+                // 同上：收尾时被取消是预期的。
+            }
+        });
+
+        await WaitUntilAsync(() => !harness.Connection.IsAlive, harness.Token);
+        SshProtocolException error = await Assert.ThrowsExactlyAsync<SshProtocolException>(
+            async () => await harness.Connection.OpenSessionChannelAsync(null, harness.Token));
+        Assert.Contains("积压", error.Message);
+
+        gate.Unblock();   // 放开，免得收尾时卡在那次写上
+    }
+
+    [TestMethod]
+    public async Task 发送泵卡在写上时保活照样能判死()
+    {
+        // 死链的典型样子：对端不再读，我们的写卡在发送缓冲上，入站一片安静。
+        // 探测若要等自己刷上线才开始计时，它就跟着卡住，永远判不了死。
+        GatedWriteStream? gate = null;
+
+        await using Harness harness = await Harness.StartAsync(
+            new TestChannelScript { CloseAfterScript = false, ExitCode = null },
+            wrapClient: inner => gate = new GatedWriteStream(inner),
+            keepAlive: new KeepAlivePolicy(TimeSpan.FromMilliseconds(200), MaxMissed: 2));
+
+        gate!.Block();
+
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(harness.Token);
+        deadline.CancelAfter(TimeSpan.FromSeconds(10));
+        await WaitUntilAsync(() => !harness.Connection.IsAlive, deadline.Token);
+
+        SshConnectionClosedException error = await Assert.ThrowsExactlyAsync<SshConnectionClosedException>(
+            async () => await harness.Connection.OpenSessionChannelAsync(null, harness.Token));
+        Assert.AreEqual(SshFailureReason.KeepAliveTimeout, error.Reason);
+        Assert.IsGreaterThan(0, gate.WritesWaiting, "探测确实卡在了写上");
+
+        gate.Unblock();
+    }
+
+    /// <summary>写可以被卡住的流：用来模拟「对端不读我们发的东西」。</summary>
+    private sealed class GatedWriteStream(Stream inner) : Stream
+    {
+        private volatile TaskCompletionSource? _gate;
+        private int _waiting;
+
+        public int WritesWaiting => Volatile.Read(ref _waiting);
+
+        public void Block() => _gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Unblock() => Interlocked.Exchange(ref _gate, null)?.TrySetResult();
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (_gate is { } gate)
+            {
+                Interlocked.Increment(ref _waiting);
+                await gate.Task.WaitAsync(cancellationToken);
+            }
+            await inner.WriteAsync(buffer, cancellationToken);
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            inner.ReadAsync(buffer, cancellationToken);
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            inner.ReadAsync(buffer, offset, count, cancellationToken);
+
+        public override Task FlushAsync(CancellationToken cancellationToken) => inner.FlushAsync(cancellationToken);
+
+        public override bool CanRead => true;
+
+        public override bool CanWrite => true;
+
+        public override bool CanSeek => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() => inner.Flush();
+
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+
+        public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            Unblock();
+            if (disposing)
+            {
+                inner.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+
+        public override async ValueTask DisposeAsync()
+        {
+            Unblock();
+            await inner.DisposeAsync();
+            await base.DisposeAsync();
+        }
+    }
+
+    [TestMethod]
+    public async Task 通道被拒之后窗口预算原数退回而不是多退()
+    {
+        // 预算只够同时开一条通道。被拒一次若退两次，预算就「越拒越多」，上限形同虚设 ——
+        // 端口转发里目标连不上是家常便饭，每一次都在给预算「充值」。
+        await using Harness harness = await Harness.StartAsync(
+            new TestChannelScript { CloseAfterScript = false, ExitCode = null },
+            new SshConnectionLimits { SessionWindowBudgetBytes = 300 * 1024 });
+
+        SshChannelOptions options = SshChannelOptions.Default with
+        {
+            WindowPolicy = SshWindowPolicy.Fixed(256 * 1024),
+        };
+
+        // 测试服务端没配隧道处理器：direct-tcpip 一律被拒。
+        for (int i = 0; i < 3; i++)
+        {
+            await Assert.ThrowsExactlyAsync<SshChannelException>(
+                async () => await harness.Connection.OpenChannelAsync(
+                    SshAlgorithmNames.ChannelDirectTcpIp, default, options, harness.Token));
+        }
+
+        SshChannel first = await harness.Connection.OpenSessionChannelAsync(options, harness.Token);
+
+        SshChannelException error = await Assert.ThrowsExactlyAsync<SshChannelException>(
+            async () => await harness.Connection.OpenSessionChannelAsync(options, harness.Token));
+        Assert.Contains("总预算", error.Message);
+
+        await first.DisposeAsync();
     }
 
     [TestMethod]

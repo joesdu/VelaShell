@@ -6,6 +6,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using VelaShell.Ssh.Crypto;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Tests.TestKit;
 using VelaShell.Ssh.Transport;
@@ -367,5 +368,95 @@ public sealed class KnownHostsTests
         string path = Path.Combine(Path.GetTempPath(), $"kh-{Guid.NewGuid():N}");
         await File.WriteAllTextAsync(path, content + "\n");
         return path;
+    }
+
+    // ------------------------------------------------------------ 换一种类型
+
+    [TestMethod]
+    public void 只记着别的类型时不是没见过()
+    {
+        var ed25519 = SshPublicKey.Parse(TestHostKey.Create("ssh-ed25519").PublicKeyBlob);
+        var ecdsa = SshPublicKey.Parse(TestHostKey.Create("ecdsa-sha2-nistp256").PublicKeyBlob);
+        IReadOnlyList<KnownHostEntry> entries = KnownHostsFile.Parse(Line("example.com", ed25519));
+
+        KnownHostLookup lookup = KnownHostsFile.Lookup(entries, "example.com", 22, ecdsa);
+
+        // 中间人只要出示一种没记过的类型：当成「没见过」的话，「变了」的检查就被绕过去了。
+        Assert.AreEqual(KnownHostStatus.OtherKeyTypesKnown, lookup.Status);
+        Assert.HasCount(1, lookup.ConflictingEntries);
+        CollectionAssert.AreEqual(
+            new[] { "ssh-ed25519" }, KnownHostsFile.KnownKeyTypes(entries, "example.com", 22).ToArray());
+    }
+
+    [TestMethod]
+    public async Task 只记着别的类型时连接受新主机的策略也拒绝且不写入()
+    {
+        var ed25519 = SshPublicKey.Parse(TestHostKey.Create("ssh-ed25519").PublicKeyBlob);
+        var ecdsa = SshPublicKey.Parse(TestHostKey.Create("ecdsa-sha2-nistp256").PublicKeyBlob);
+        string path = await WriteTempAsync(Line("example.com", ed25519));
+
+        try
+        {
+            // accept-new：没见过的主机悄悄记下来 —— 正是这个模式最怕被换类型绕过去。
+            KnownHostsPolicy policy = new(path) { UnknownHost = UnknownHostBehavior.AcceptAndPersist };
+            SshHostKeyVerdict verdict = await policy.EvaluateAsync(Context("example.com", 22, ecdsa));
+
+            Assert.AreEqual(SshHostKeyDecision.Reject, verdict.Decision);
+            Assert.Contains("ssh-ed25519", verdict.Reason!);
+            Assert.HasCount(1, KnownHostsFile.Parse(await File.ReadAllTextAsync(path)), "不该写进任何东西");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void 已记下的类型排到主机密钥算法的最前面()
+    {
+        SshAlgorithmSet preferred = SshAlgorithmSet.Default.PreferHostKeyTypes(["ssh-rsa"]);
+
+        // 协商以客户端顺序为准：已知类型排在前面，正常的服务端就谈成它。
+        CollectionAssert.AreEquivalent(
+            new[] { VelaShell.Ssh.Protocol.SshAlgorithmNames.RsaSha512, VelaShell.Ssh.Protocol.SshAlgorithmNames.RsaSha256 },
+            preferred.HostKey.Take(2).ToArray());
+        CollectionAssert.AreEquivalent(SshAlgorithmSet.Default.HostKey.ToArray(), preferred.HostKey.ToArray(), "只调顺序，不增删");
+    }
+
+    // ------------------------------------------------------------ 取反与追加
+
+    [TestMethod]
+    public void 取反模式对上时整行都不算这台主机()
+    {
+        SshPublicKey key = MakeKey();
+        IReadOnlyList<KnownHostEntry> entries = KnownHostsFile.Parse(Line("*.corp,!untrusted.corp", key));
+
+        Assert.AreEqual(KnownHostStatus.Known, KnownHostsFile.Lookup(entries, "a.corp", 22, key).Status);
+        Assert.AreEqual(
+            KnownHostStatus.Unknown, KnownHostsFile.Lookup(entries, "untrusted.corp", 22, key).Status,
+            "写配置的人明确排除了它 —— 不能再经 *.corp 把密钥信给它");
+    }
+
+    [TestMethod]
+    public async Task 文件末尾没有换行时追加不会把两条记录粘在一起()
+    {
+        SshPublicKey first = MakeKey();
+        SshPublicKey second = MakeKey();
+        string path = Path.Combine(Path.GetTempPath(), $"kh-{Guid.NewGuid():N}");
+
+        try
+        {
+            // 手工编辑过的文件常常最后一行没有换行。
+            await File.WriteAllTextAsync(path, Line("a.example.com", first));
+            await KnownHostsFile.AppendAsync("b.example.com", 22, second, path);
+
+            IReadOnlyList<KnownHostEntry> entries = KnownHostsFile.Parse(await File.ReadAllTextAsync(path));
+            Assert.AreEqual(KnownHostStatus.Known, KnownHostsFile.Lookup(entries, "a.example.com", 22, first).Status);
+            Assert.AreEqual(KnownHostStatus.Known, KnownHostsFile.Lookup(entries, "b.example.com", 22, second).Status);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 }

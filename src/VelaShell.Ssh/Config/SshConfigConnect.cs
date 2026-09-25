@@ -47,6 +47,13 @@ public sealed record SshConfigConnectSettings
 
     /// <summary>最后再改一遍 —— 对<b>每一跳</b>（含跳板）的连接参数都会调用。</summary>
     public Func<SshConnectionOptions, SshConnectionOptions>? Configure { get; init; }
+
+    /// <summary>某个 <c>IdentityFile</c> 读不出来、被跳过时通知一声（参数：路径、原因）。</summary>
+    /// <remarks>
+    /// 一把钥读不出来（格式不认识、口令不对、没权限读）只跳过它自己，连接照常用别的凭据去试 ——
+    /// 曾经是整个连接直接失败。跳过总得让人知道，否则最后的「认证失败」就无从查起。
+    /// </remarks>
+    public Action<string, Exception>? IdentityFileSkipped { get; init; }
 }
 
 public static partial class SshConfigFile
@@ -82,8 +89,17 @@ public static partial class SshConfigFile
 
         return CreateCoreAsync(
             blocks, host, settings ?? new SshConfigConnectSettings(), [], userOverride: null, portOverride: null,
-            cancellationToken);
+            isTarget: true, new IdentityCache(), cancellationToken);
     }
+
+    /// <summary>一次解析里已经读过的 <c>IdentityFile</c>（按完整路径）；<see langword="null"/> 表示读不出来、已跳过。</summary>
+    /// <remarks>
+    /// 跳板与目标常常用同一把钥。曾经每一跳各读一遍：加密的钥每一跳都要重跑一遍 KDF
+    /// （默认参数下约 0.3 秒），口令也每一跳问一次。只在这一次解析里共用，不跨调用缓存 ——
+    /// 解密后的私钥本来就要在连接期间留在内存里，这里不多留一分钟。
+    /// </remarks>
+    private sealed class IdentityCache()
+        : Dictionary<string, ISshSigner?>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
     private static async ValueTask<SshConnectionOptions> CreateCoreAsync(
         IReadOnlyList<SshConfigBlock> blocks,
@@ -92,6 +108,8 @@ public static partial class SshConfigFile
         IReadOnlyList<string> chain,
         string? userOverride,
         int? portOverride,
+        bool isTarget,
+        IdentityCache identities,
         CancellationToken cancellationToken)
     {
         SshHostConfig config = Resolve(blocks, host);
@@ -103,8 +121,8 @@ public static partial class SshConfigFile
         {
             Credentials =
             [
-                .. await LoadIdentityFilesAsync(config, user, settings, cancellationToken).ConfigureAwait(false),
-                .. settings.Credentials,
+                .. await LoadIdentityFilesAsync(config, user, settings, identities, cancellationToken).ConfigureAwait(false),
+                .. CallerCredentialsFor(settings, isTarget),
             ],
             HostKeyPolicy = MapHostKeyPolicy(config, settings),
         };
@@ -133,7 +151,7 @@ public static partial class SshConfigFile
         {
             options = options with
             {
-                Dialer = await BuildJumpChainAsync(blocks, host, config.ProxyJump!, settings, chain, cancellationToken)
+                Dialer = await BuildJumpChainAsync(blocks, host, config.ProxyJump!, settings, chain, identities, cancellationToken)
                     .ConfigureAwait(false),
             };
         }
@@ -158,6 +176,7 @@ public static partial class SshConfigFile
         string proxyJump,
         SshConfigConnectSettings settings,
         IReadOnlyList<string> chain,
+        IdentityCache identities,
         CancellationToken cancellationToken)
     {
         List<string> visiting = [.. chain, host];
@@ -183,7 +202,8 @@ public static partial class SshConfigFile
             }
 
             SshConnectionOptions resolved = await CreateCoreAsync(
-                blocks, jumpHost, settings, visiting, jumpUser, jumpPort, cancellationToken).ConfigureAwait(false);
+                blocks, jumpHost, settings, visiting, jumpUser, jumpPort, isTarget: false, identities, cancellationToken)
+                .ConfigureAwait(false);
 
             // 第一个跳板用它自己的拨号器；其后每一个都经前一个到达。
             if (i > 0)
@@ -244,6 +264,16 @@ public static partial class SshConfigFile
         return (user, spec, port);
     }
 
+    /// <summary>调用方给的凭据里，哪些可以交给这一跳。</summary>
+    /// <remarks>
+    /// ⚠️ <b>口令与键盘交互只给最终目标。</b>调用方给的口令是为目标主机准备的；曾经每一跳都拿到同一份凭据，
+    /// 目标的口令就这样发给了跳板 —— 跳板的管理员（或者攻下了跳板的人）就此拿到它。
+    /// 公钥凭据（agent 里的钥、内存里的钥）照常给跳板：出示公钥不泄露秘密，
+    /// 而经 agent 登跳板正是最常见的用法。跳板自己的 <c>IdentityFile</c> 照常从配置读。
+    /// </remarks>
+    private static IEnumerable<SshCredential> CallerCredentialsFor(SshConfigConnectSettings settings, bool isTarget) =>
+        isTarget ? settings.Credentials : settings.Credentials.OfType<PublicKeyCredential>();
+
     private static bool IsSet(string? value) =>
         !string.IsNullOrWhiteSpace(value) && !string.Equals(value, "none", StringComparison.OrdinalIgnoreCase);
 
@@ -254,10 +284,17 @@ public static partial class SshConfigFile
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .FirstOrDefault();
 
+        // ask 与缺省是「交互式」的那一种 —— 调用方给了自己的策略（带着它自己的信任库与询问界面）就用它，
+        // 曾经只要配置里写了 UserKnownHostsFile 就另起一个策略，把调用方的那一个丢掉。
+        // yes / no / accept-new 是配置明确要求的行为，照配置来。
+        if (strict is null or "ask" && settings.HostKeyPolicy is { } callerPolicy)
+        {
+            return callerPolicy;
+        }
+
         if (strict is null && knownHosts is null)
         {
-            return settings.HostKeyPolicy
-                ?? new KnownHostsPolicy { UnknownHost = UnknownHostBehavior.Reject };
+            return new KnownHostsPolicy { UnknownHost = UnknownHostBehavior.Reject };
         }
 
         // 〔velashell-docs/zh/ssh/spec/09 §7〕yes → 没见过就拒；accept-new / no → 接受并记下；ask / 缺省 → 问。
@@ -270,6 +307,15 @@ public static partial class SshConfigFile
             _ => settings.AskUnknownHost is null ? UnknownHostBehavior.Reject : UnknownHostBehavior.Ask,
         };
 
+        // UserKnownHostsFile none / /dev/null：明确不用 known_hosts —— 每台主机都是没见过的，接受了也不记。
+        // 曾经把它们当成路径：Windows 上去找当前目录里一个叫 none 的文件。
+        if (knownHosts is not null
+            && (string.Equals(knownHosts, "none", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(knownHosts, "/dev/null", StringComparison.Ordinal)))
+        {
+            return KnownHostsPolicy.WithoutFile(settings.AskUnknownHost, unknown);
+        }
+
         return new KnownHostsPolicy(ExpandPath(knownHosts, null, null), settings.AskUnknownHost)
         {
             UnknownHost = unknown,
@@ -277,7 +323,8 @@ public static partial class SshConfigFile
     }
 
     private static async ValueTask<IReadOnlyList<SshCredential>> LoadIdentityFilesAsync(
-        SshHostConfig config, string user, SshConfigConnectSettings settings, CancellationToken cancellationToken)
+        SshHostConfig config, string user, SshConfigConnectSettings settings, IdentityCache identities,
+        CancellationToken cancellationToken)
     {
         List<SshCredential> credentials = [];
 
@@ -289,7 +336,24 @@ public static partial class SshConfigFile
                 continue;   // ssh 同样静默跳过不存在的 IdentityFile（默认列表里的大多数都不存在）
             }
 
-            ISshSigner? signer = await TryLoadKeyAsync(path, settings, cancellationToken).ConfigureAwait(false);
+            // 这次解析里读过（或跳过过）就不再读、不再问口令、不再报跳过（见 IdentityCache）。
+            string fullPath = Path.GetFullPath(path);
+            if (!identities.TryGetValue(fullPath, out ISshSigner? signer))
+            {
+                try
+                {
+                    signer = await TryLoadKeyAsync(path, settings, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is SshPrivateKeyException or IOException or UnauthorizedAccessException)
+                {
+                    // 这一把读不出来只跳过它自己 —— 别的钥、别的凭据照常去试（见 IdentityFileSkipped）。
+                    settings.IdentityFileSkipped?.Invoke(path, ex);
+                    signer = null;
+                }
+
+                identities[fullPath] = signer;
+            }
+
             if (signer is not null)
             {
                 credentials.Add(new PublicKeyCredential(signer, $"publickey ({Path.GetFileName(path)})"));

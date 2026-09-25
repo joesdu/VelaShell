@@ -44,6 +44,32 @@ public sealed class RelayTests
         /// <summary>这一端不再有数据了。</summary>
         public void FeedComplete() => _inbound.Writer.Complete();
 
+        /// <summary>从这一端读出错（连接被重置、会话断了）。</summary>
+        public void FeedFail(Exception error) => _inbound.Writer.Complete(error);
+
+        private readonly CancellationTokenSource _closed = new();
+
+        /// <summary>这一端整个结束了（通道收到 CLOSE）。</summary>
+        public void CloseEntirely() => _closed.Cancel();
+
+        /// <inheritdoc />
+        public CancellationToken Closed => _closed.Token;
+
+        /// <summary>被中止过几次。</summary>
+        public int AbortCount => Volatile.Read(ref _aborts);
+
+        private int _aborts;
+
+        /// <inheritdoc />
+        public ValueTask AbortAsync()
+        {
+            Interlocked.Increment(ref _aborts);
+
+            // 像真的套接字被重置那样：这一端上悬着的读随之失败。
+            _inbound.Writer.Complete(new IOException("连接被中止"));
+            return ValueTask.CompletedTask;
+        }
+
         /// <inheritdoc />
         public ValueTask CompleteSendAsync(CancellationToken cancellationToken)
         {
@@ -203,5 +229,74 @@ public sealed class RelayTests
         await relay;
 
         Assert.AreSequenceEqual(payload, atRight);
+    }
+
+    // ------------------------------------------------------------ 出错收尾
+
+    [TestMethod]
+    public async Task 一个方向出错时两端都被中止而不是收到EOF()
+    {
+        // 出错时照正常结束去关（发 EOF / FIN），对面会把截断的数据当成完整的 ——
+        // 下载到一半的文件看起来就是下完了。
+        FakeEndpoint left = new();
+        FakeEndpoint right = new();
+
+        Task<RelayResult> relay = DuplexRelay.RunAsync(left, right);
+
+        // 右 → 左那个方向读出错（右端是 SSH 通道时就是会话断了）；左 → 右那个方向还挂在读上。
+        await right.FeedAsync(Text("前一半"));
+        right.FeedFail(new IOException("会话断了"));
+
+        RelayResult result = await relay.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.AreEqual(0, left.SendCompletedCount, "出错的方向不能给对面一个干净的 EOF");
+        Assert.AreEqual(0, right.SendCompletedCount, "另一个方向是被中止的，也不是正常读完");
+        Assert.AreEqual(1, left.AbortCount);
+        Assert.AreEqual(1, right.AbortCount);
+
+        // 原因要是真正出错的那一边，而不是被牵连取消的那一边。
+        Assert.IsInstanceOfType<IOException>(result.Error);
+        Assert.AreEqual("会话断了", result.Error.Message);
+    }
+
+    [TestMethod]
+    public async Task 目的端整个关闭时停下往它写的方向()
+    {
+        // 右端（SSH 通道）收到 CLOSE：往它写已经没有意义。左端（本机程序）在等响应，不会先关 ——
+        // 不停下左 → 右的那个方向，socket 与转发名额就一直占着。
+        FakeEndpoint left = new();
+        FakeEndpoint right = new();
+
+        Task<RelayResult> relay = DuplexRelay.RunAsync(left, right);
+
+        await right.FeedAsync(Text("响应"));
+        right.FeedComplete();
+        right.CloseEntirely();
+
+        RelayResult result = await relay.WaitAsync(TimeSpan.FromSeconds(10));
+        byte[] atLeft = await left.ReadAllReceivedAsync();
+
+        Assert.AreEqual("响应", Encoding.UTF8.GetString(atLeft), "已经收到的数据照常排空");
+        Assert.IsNull(result.Error, "对端关通道是正常结束，不是出错");
+        Assert.AreEqual(0, left.AbortCount);
+        Assert.AreEqual(0, right.AbortCount);
+    }
+
+    [TestMethod]
+    public async Task 调用方取消时两端都被中止()
+    {
+        FakeEndpoint left = new();
+        FakeEndpoint right = new();
+        using CancellationTokenSource cts = new();
+
+        Task<RelayResult> relay = DuplexRelay.RunAsync(left, right, cancellationToken: cts.Token);
+        await cts.CancelAsync();
+
+        RelayResult result = await relay.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.IsInstanceOfType<OperationCanceledException>(result.Error);
+        Assert.AreEqual(1, left.AbortCount);
+        Assert.AreEqual(1, right.AbortCount);
+        Assert.AreEqual(0, left.SendCompletedCount + right.SendCompletedCount);
     }
 }

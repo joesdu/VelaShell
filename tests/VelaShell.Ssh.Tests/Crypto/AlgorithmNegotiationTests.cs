@@ -8,6 +8,8 @@ using System.Buffers;
 using VelaShell.Ssh.Crypto;
 using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Protocol;
+using VelaShell.Ssh.Session;
+using VelaShell.Ssh.Transport;
 
 namespace VelaShell.Ssh.Tests.Crypto;
 
@@ -189,7 +191,7 @@ public sealed class AlgorithmNegotiationTests
     {
         // 这是本库相对现有实现最直接的一处改进：
         // 用户拿到的不是「No common encryption algorithm.」，
-        // 而是「对端只给了 aes128-cbc，我们默认不启用它」。
+        // 而是「对端只给了 aes128-cbc，而我们的清单里没有它」。
         SshKexInitMessage peer = PeerOffering(encryption: [SshAlgorithmNames.Aes128Cbc]);
 
         SshNegotiationException ex = Assert.ThrowsExactly<SshNegotiationException>(
@@ -250,14 +252,76 @@ public sealed class AlgorithmNegotiationTests
             PeerOffering(
                 kex: [SshAlgorithmNames.DiffieHellmanGroup14Sha1],
                 hostKey: [SshAlgorithmNames.SshRsa],
-                encryption: [SshAlgorithmNames.Aes128Cbc],
+                encryption: [SshAlgorithmNames.Aes128Ctr],
                 mac: [SshAlgorithmNames.HmacSha1]),
             "SSH-2.0-Cisco-1.25");
 
         Assert.AreEqual(SshAlgorithmNames.DiffieHellmanGroup14Sha1, result.KeyExchange);
         Assert.AreEqual(SshAlgorithmNames.SshRsa, result.HostKey);
-        Assert.AreEqual(SshAlgorithmNames.Aes128Cbc, result.EncryptionClientToServer);
+        Assert.AreEqual(SshAlgorithmNames.Aes128Ctr, result.EncryptionClientToServer);
         Assert.AreEqual(SshAlgorithmNames.HmacSha1, result.MacClientToServer);
+    }
+
+    [TestMethod]
+    public void 放开老算法也不报本库没实现的CBC()
+    {
+        // 报了就会在只剩 CBC 的设备上「谈成」它，然后在派生密钥时才失败。
+        SshAlgorithmSet legacy = SshAlgorithmSet.Default.WithLegacyInterop();
+
+        Assert.DoesNotContain(SshAlgorithmNames.Aes128Cbc, [.. legacy.EncryptionClientToServer]);
+        Assert.DoesNotContain(SshAlgorithmNames.Aes256Cbc, [.. legacy.EncryptionServerToClient]);
+        legacy.Validate();
+
+        SshNegotiationException ex = Assert.ThrowsExactly<SshNegotiationException>(() =>
+            SshAlgorithmNegotiator.Negotiate(
+                legacy, PeerOffering(encryption: [SshAlgorithmNames.Aes128Cbc]), "SSH-2.0-Cisco-1.25"));
+        Assert.AreEqual(SshNegotiationCategory.EncryptionClientToServer, ex.Category);
+    }
+
+    [TestMethod]
+    [DataRow("enc")]
+    [DataRow("mac")]
+    [DataRow("kex")]
+    [DataRow("comp")]
+    public void 清单里有没实现的算法在连接前就报(string category)
+    {
+        SshAlgorithmSet d = SshAlgorithmSet.Default;
+        SshAlgorithmSet bad = category switch
+        {
+            "enc" => d with { EncryptionServerToClient = [.. d.EncryptionServerToClient, SshAlgorithmNames.Aes128Cbc] },
+            "mac" => d with { MacClientToServer = [.. d.MacClientToServer, "hmac-md5"] },
+            "kex" => d with { KeyExchange = [.. d.KeyExchange, "diffie-hellman-group1-sha1"] },
+            _ => d with { CompressionServerToClient = ["zlib"] },
+        };
+
+        ArgumentException ex = Assert.ThrowsExactly<ArgumentException>(bad.Validate);
+        StringAssert.Contains(ex.Message, "未实现");
+        d.WithLegacyInterop().WithCompression().Validate();
+    }
+
+    [TestMethod]
+    public async Task 连接用了坏清单不会先去拨号()
+    {
+        bool dialed = false;
+        SshConnectionOptions options = new("u", "example.invalid")
+        {
+            Algorithms = SshAlgorithmSet.Default with { EncryptionClientToServer = [SshAlgorithmNames.Aes256Cbc] },
+            Dialer = new RecordingDialer(() => dialed = true),
+        };
+
+        await Assert.ThrowsExactlyAsync<ArgumentException>(async () => await options.ConnectAsync());
+        Assert.IsFalse(dialed);
+    }
+
+    private sealed class RecordingDialer(Action onDial) : ISshTransportDialer
+    {
+        public SshDialKind Kind => SshDialKind.Tcp;
+
+        public ValueTask<Stream> DialAsync(SshDialTarget target, CancellationToken cancellationToken = default)
+        {
+            onDial();
+            throw new IOException("不该走到这里。");
+        }
     }
 
     [TestMethod]

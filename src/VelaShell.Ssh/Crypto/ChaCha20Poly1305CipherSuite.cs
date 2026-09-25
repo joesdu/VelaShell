@@ -49,8 +49,13 @@ public sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
     private const int ChaChaBlockBytes = 64;
     private const int Rounds = 20;
 
-    private readonly byte[] _payloadKey = new byte[32];  // K_2：载荷 + Poly1305 密钥
-    private readonly byte[] _lengthKey = new byte[32];   // K_1：只加密长度字段
+    // 两个引擎与一个 Poly1305 常驻，每个报文只换 nonce（ParametersWithIV 的密钥给 null = 沿用已装的密钥）。
+    // 曾经每个报文新建三个引擎、每次都把密钥重新克隆装入 —— 一个 32 KiB 的报文约 1.4 KB 的分配。
+    // 一个套件只服务一个方向、只在一个线程上用，所以复用是安全的。
+    private readonly ChaChaEngine _payloadEngine = new(Rounds);   // K_2：载荷 + Poly1305 密钥
+    private readonly ChaChaEngine _lengthEngine = new(Rounds);    // K_1：只加密长度字段
+    private readonly Poly1305 _poly = new();
+    private readonly byte[] _nonce = new byte[8];
     private bool _disposed;
 
     /// <summary>用 64 字节密钥材料构造。</summary>
@@ -66,8 +71,18 @@ public sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
                 $"chacha20-poly1305 需要 {KeyMaterialBytes} 字节密钥材料。", nameof(keyMaterial));
         }
 
-        keyMaterial[..32].CopyTo(_payloadKey);
-        keyMaterial[32..].CopyTo(_lengthKey);
+        byte[] payloadKey = keyMaterial[..32].ToArray();
+        byte[] lengthKey = keyMaterial[32..].ToArray();
+        try
+        {
+            _payloadEngine.Init(forEncryption: true, new ParametersWithIV(new KeyParameter(payloadKey), _nonce));
+            _lengthEngine.Init(forEncryption: true, new ParametersWithIV(new KeyParameter(lengthKey), _nonce));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(payloadKey);
+            CryptographicOperations.ZeroMemory(lengthKey);
+        }
     }
 
     /// <inheritdoc />
@@ -104,7 +119,7 @@ public sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
         EncryptLengthField(lengthField, sequenceNumber);
 
         // ② 载荷区：先取 Poly1305 密钥（K_2 counter 0），引擎随即停在 counter 1。
-        ChaChaEngine engine = CreateEngine(_payloadKey, sequenceNumber);
+        ChaChaEngine engine = Rewind(_payloadEngine, sequenceNumber);
         Span<byte> polyKey = stackalloc byte[PolyKeyBytes];
         try
         {
@@ -181,7 +196,7 @@ public sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
 
         byte[] rented = ArrayPool<byte>.Shared.Rent((int)total);
         Span<byte> polyKey = stackalloc byte[PolyKeyBytes];
-        ChaChaEngine engine = CreateEngine(_payloadKey, sequenceNumber);
+        ChaChaEngine engine = Rewind(_payloadEngine, sequenceNumber);
         try
         {
             Span<byte> frame = rented.AsSpan(0, (int)total);
@@ -228,19 +243,16 @@ public sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
     }
 
     /// <summary>
-    /// 建一个停在 counter 0 的 ChaCha20 引擎。nonce 是 8 字节大端的报文序号。
+    /// 把引擎拨回 counter 0、换上这个报文的 nonce（8 字节大端的报文序号），密钥不动。
     /// </summary>
     /// <remarks>
-    /// 序号是 32 位，但 nonce 字段是 64 位 —— 高 32 位恒为零。
-    /// 这是 OpenSSH 的做法（<c>POKE_U64(seqbuf, seqnr)</c>）。
+    /// 序号是 32 位，但 nonce 字段是 64 位 —— 高 32 位恒为零
+    /// （OpenSSH PROTOCOL.chacha20poly1305：nonce 就是 64 位的报文序号）。
     /// </remarks>
-    private static ChaChaEngine CreateEngine(byte[] key, uint sequenceNumber)
+    private ChaChaEngine Rewind(ChaChaEngine engine, uint sequenceNumber)
     {
-        byte[] nonce = new byte[8];
-        BinaryPrimitives.WriteUInt64BigEndian(nonce, sequenceNumber);
-
-        ChaChaEngine engine = new(Rounds);
-        engine.Init(forEncryption: true, new ParametersWithIV(new KeyParameter(key), nonce));
+        BinaryPrimitives.WriteUInt64BigEndian(_nonce, sequenceNumber);
+        engine.Init(forEncryption: true, new ParametersWithIV(null, _nonce));
         return engine;
     }
 
@@ -263,22 +275,19 @@ public sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
 
     private void EncryptLengthField(Span<byte> lengthField, uint sequenceNumber)
     {
-        ChaChaEngine engine = CreateEngine(_lengthKey, sequenceNumber);
-        engine.ProcessBytes(lengthField, lengthField);
+        Rewind(_lengthEngine, sequenceNumber).ProcessBytes(lengthField, lengthField);
     }
 
     private void DecryptLengthField(ReadOnlySpan<byte> encrypted, uint sequenceNumber, Span<byte> plain)
     {
-        ChaChaEngine engine = CreateEngine(_lengthKey, sequenceNumber);
-        engine.ProcessBytes(encrypted, plain);
+        Rewind(_lengthEngine, sequenceNumber).ProcessBytes(encrypted, plain);
     }
 
-    private static void ComputeTag(ReadOnlySpan<byte> polyKey, ReadOnlySpan<byte> data, Span<byte> tag)
+    private void ComputeTag(ReadOnlySpan<byte> polyKey, ReadOnlySpan<byte> data, Span<byte> tag)
     {
-        Poly1305 mac = new();
-        mac.Init(new KeyParameter(polyKey));
-        mac.BlockUpdate(data);
-        mac.DoFinal(tag);
+        _poly.Init(new KeyParameter(polyKey));
+        _poly.BlockUpdate(data);
+        _poly.DoFinal(tag);
     }
 
     /// <inheritdoc />
@@ -289,7 +298,10 @@ public sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
             return;
         }
         _disposed = true;
-        CryptographicOperations.ZeroMemory(_payloadKey);
-        CryptographicOperations.ZeroMemory(_lengthKey);
+
+        // 引擎里留着密钥展开后的状态：装一把全零的钥把它覆盖掉。
+        byte[] zeroKey = new byte[32];
+        _payloadEngine.Init(forEncryption: true, new ParametersWithIV(new KeyParameter(zeroKey), _nonce));
+        _lengthEngine.Init(forEncryption: true, new ParametersWithIV(new KeyParameter(zeroKey), _nonce));
     }
 }

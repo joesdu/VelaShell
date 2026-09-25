@@ -249,6 +249,67 @@ public sealed class SshPublicKeyTests
     }
 
     [TestMethod]
+    public void Rsa签名省掉了开头的零字节也验得过()
+    {
+        // RSA 签名按定义与模数等长，但有的实现把开头的零字节省掉。
+        // 不补回去的话，这类签名每二百来次就有一次莫名验不过 —— 连接偶发地失败在主机密钥验签上。
+        using var rsa = RSA.Create(2048);
+        RSAParameters p = rsa.ExportParameters(false);
+        byte[] blob = Blob(w =>
+        {
+            WriteString(w, SshAlgorithmNames.SshRsa);
+            WriteMpint(w, p.Exponent!);
+            WriteMpint(w, p.Modulus!);
+        });
+        var key = SshPublicKey.Parse(blob);
+
+        // 找一段数据，让它的签名恰好以 0x00 开头（期望 256 次左右）。
+        byte[] data;
+        byte[] signature;
+        do
+        {
+            data = RandomNumberGenerator.GetBytes(32);
+            signature = rsa.SignData(data, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        }
+        while (signature[0] != 0);
+
+        byte[] shortened = signature[1..];
+        byte[] signatureBlob = Blob(w =>
+        {
+            WriteString(w, SshAlgorithmNames.RsaSha256);
+            WriteString(w, shortened);
+        });
+
+        Assert.IsTrue(key.VerifySignature(signatureBlob, data, SshAlgorithmNames.RsaSha256));
+
+        // 比模数还长的不作数。
+        byte[] tooLong = [0, 0, .. signature];
+        byte[] tooLongBlob = Blob(w =>
+        {
+            WriteString(w, SshAlgorithmNames.RsaSha256);
+            WriteString(w, tooLong);
+        });
+        Assert.IsFalse(key.VerifySignature(tooLongBlob, data, SshAlgorithmNames.RsaSha256));
+    }
+
+    [TestMethod]
+    public void Rsa的位数按模数的真实位数算()
+    {
+        // 2047 位的模数也占 256 字节 —— 按「字节数 × 8」算就是 2048，混过「至少 2048 位」的检查。
+        byte[] modulus = RandomNumberGenerator.GetBytes(256);
+        modulus[0] = 0x40;   // 最高位是第 2047 位
+        modulus[^1] |= 1;    // 奇数，像个模数
+        byte[] blob = Blob(w =>
+        {
+            WriteString(w, SshAlgorithmNames.SshRsa);
+            WriteMpint(w, [1, 0, 1]);
+            WriteMpint(w, modulus);
+        });
+
+        Assert.AreEqual(2047, SshPublicKey.Parse(blob).KeyBits);
+    }
+
+    [TestMethod]
     public void 签名算法名与协商结果不符时拒绝()
     {
         // 放过它 = 允许对端把 rsa-sha2-512 降级成 ssh-rsa（SHA-1）。

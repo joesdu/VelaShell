@@ -65,6 +65,9 @@ $keyPath = Join-Path $keyDir 'id_ed25519'
 $encKeyPath = Join-Path $keyDir 'id_ed25519_enc'
 $caPath = Join-Path $keyDir 'ca'
 $certPath = "$keyPath-cert.pub"
+$hostCaPath = Join-Path $keyDir 'host_ca'
+$hostKeyPub = Join-Path $keyDir 'server_host_ed25519.pub'
+$hostCertPath = Join-Path $keyDir 'server_host_ed25519-cert.pub'
 $encPassphrase = 'interop-passphrase'
 
 # 已经在跑就先收掉 —— 留着一台上一轮的服务端，
@@ -75,7 +78,8 @@ docker rm -f $ContainerName 2>$null | Out-Null
 New-Item -ItemType Directory -Force -Path $keyDir | Out-Null
 
 foreach ($stale in @($keyPath, "$keyPath.pub", $certPath,
-                     $encKeyPath, "$encKeyPath.pub", $caPath, "$caPath.pub")) {
+                     $encKeyPath, "$encKeyPath.pub", $caPath, "$caPath.pub",
+                     $hostCaPath, "$hostCaPath.pub", $hostKeyPub, $hostCertPath)) {
     if (Test-Path $stale) {
         Remove-Item -Force $stale -ErrorAction SilentlyContinue
     }
@@ -267,6 +271,34 @@ if ($LASTEXITCODE -ne 0) {
 }
 Start-Sleep -Milliseconds 500
 
+# 主机证书：给 sshd 正在用的 ed25519 主机密钥签一张，让它出示证书。
+# 客户端这边用 known_hosts 的 @cert-authority 去验 —— 这条路径只有对着真 ssh-keygen 签的证书才验得了。
+Write-Step '给 sshd 的主机密钥签一张主机证书（验 @cert-authority）'
+& ssh-keygen -t ed25519 -f $hostCaPath -N '' -C 'velashell-interop-host-ca' -q
+if ($LASTEXITCODE -ne 0) {
+    throw '生成主机 CA 失败。'
+}
+
+$containerHostKey = '/config/ssh_host_keys/ssh_host_ed25519_key'
+docker cp "${ContainerName}:$containerHostKey.pub" $hostKeyPub | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "从容器里取主机公钥失败（$containerHostKey.pub）。"
+}
+
+# 主体写 127.0.0.1 与 localhost：用例按这两个名字连。
+& ssh-keygen -s $hostCaPath -h -I 'velashell-interop-host' -n '127.0.0.1,localhost' -V '-5m:+52w' $hostKeyPub
+if ($LASTEXITCODE -ne 0) {
+    throw '签发主机证书失败。'
+}
+
+docker cp $hostCertPath "${ContainerName}:$containerHostKey-cert.pub" | Out-Null
+docker cp (Join-Path $PSScriptRoot 'host-cert.sh') "${ContainerName}:/tmp/host-cert.sh" | Out-Null
+docker exec $ContainerName sh /tmp/host-cert.sh "$containerHostKey-cert.pub"
+if ($LASTEXITCODE -ne 0) {
+    throw '配置 HostCertificate 失败 —— 主机证书的互操作用例会连不上。'
+}
+Start-Sleep -Milliseconds 500
+
 Write-Step '写环境变量'
 $envFile = Join-Path $keyDir 'env.ps1'
 @"
@@ -280,6 +312,7 @@ $envFile = Join-Path $keyDir 'env.ps1'
 `$env:VELASHELL_SSH_INTEROP_KEY_ENCRYPTED = '$($encKeyPath -replace '\\', '\\')'
 `$env:VELASHELL_SSH_INTEROP_KEY_PASSPHRASE = '$encPassphrase'
 `$env:VELASHELL_SSH_INTEROP_CERT = '$($certPath -replace '\\', '\\')'
+`$env:VELASHELL_SSH_INTEROP_HOST_CA = '$("$hostCaPath.pub" -replace '\\', '\\')'
 `$env:VELASHELL_SSH_INTEROP_X11 = '$(if ($X11) { '1' } else { '0' })'
 "@ | Set-Content -Path $envFile -Encoding UTF8
 

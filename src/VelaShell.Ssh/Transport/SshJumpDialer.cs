@@ -49,6 +49,12 @@ public sealed record SshJumpDialer(SshConnectionOptions JumpHost) : ISshTranspor
         {
             connection = await SshConnectionFactory.ConnectAsync(options, cancellationToken).ConfigureAwait(false);
         }
+        catch (OperationCanceledException ex) when (target.Deadline is { IsExpired: true })
+        {
+            // 外层的计时器在跳板这一跳建连时到点了。原样当取消往外传的话，外层只知道自己在「拨号」，
+            // 报出来的是「建立 TCP 连接超时」—— 可卡住的是跳板的握手。说清是哪一跳。
+            throw OuterTimeout(jump, $"经跳板 {JumpHost.UserName}@{jump} 建连时超时", startedAt, ex);
+        }
         catch (SshException ex)
         {
             IReadOnlyList<SshHopInfo> hops = ex is SshConnectException { Hops.Count: > 0 } connect
@@ -75,6 +81,16 @@ public sealed record SshJumpDialer(SshConnectionOptions JumpHost) : ISshTranspor
         {
             await connection.DisposeAsync().ConfigureAwait(false);
 
+            if (ex is OperationCanceledException canceled && target.Deadline is { IsExpired: true })
+            {
+                SshConnectException timeout = OuterTimeout(
+                    target.EndPoint, $"跳板 {jump} 转发到 {target.EndPoint} 时超时", tunnelStartedAt, canceled);
+                throw new SshConnectException(timeout.Reason, timeout.Phase, timeout.Message, ex)
+                {
+                    Hops = [reachedJump, .. timeout.Hops],
+                };
+            }
+
             if (ex is not SshException)
             {
                 throw;
@@ -89,4 +105,12 @@ public sealed record SshJumpDialer(SshConnectionOptions JumpHost) : ISshTranspor
             };
         }
     }
+
+    private static SshConnectException OuterTimeout(
+        SshEndPoint where, string message, long startedAt, OperationCanceledException inner) =>
+        new(SshFailureReason.Timeout, SshPhase.Dialing,
+            $"{message}（外层连接的计时器到点了；等人输入的时间不算在内）。", inner)
+        {
+            Hops = [DialHops.Hop(SshDialKind.SshJump, where, succeeded: false, startedAt, "超时")],
+        };
 }
