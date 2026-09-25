@@ -39,6 +39,18 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     private HostKeymapResult? _appliedKeymap;
     private volatile string _chosenLayout = "";
 
+    /// <summary>每个窗口攒着、还没投递到 UI 线程的损伤矩形上限;再多就合成外接矩形。</summary>
+    private const int MaxQueuedDamageRects = 32;
+
+    private readonly Lock _damageGate = new();
+    private readonly Action _deliverDamage;
+    private Dictionary<uint, List<XRect>> _incomingDamage = [];
+    private Dictionary<uint, List<XRect>> _deliveringDamage = [];
+    private bool _damagePosted;
+
+    /// <summary>新建一个宿主;经 <see cref="AttachAsync" /> 接到服务端上。</summary>
+    public AvaloniaXServerHost() => _deliverDamage = DeliverDamage;
+
     /// <summary>当前附着的服务端;没在运行时为 <see langword="null" />。窗口的注入经它走。</summary>
     public X11Server? Server => _server;
 
@@ -229,13 +241,57 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     });
 
     /// <inheritdoc />
-    public void TopLevelDamaged(XTopLevelWindow window, IReadOnlyList<XRect> damage) => Dispatcher.UIThread.Post(() =>
+    /// <remarks>
+    /// 执行线程每放一次锁就可能报一批损伤(负载重时一秒几百批):先按窗口攒在这里,UI 线程上同一时刻最多排着一次投递,
+    /// 不为每批各 Post 一次。像素由窗口在下一帧按攒下的矩形去取。
+    /// </remarks>
+    public void TopLevelDamaged(XTopLevelWindow window, IReadOnlyList<XRect> damage)
     {
-        if (_windows.TryGetValue(window.Id, out XNativeWindow? native))
+        lock (_damageGate)
         {
-            native.Invalidate();
+            if (!_incomingDamage.TryGetValue(window.Id, out List<XRect>? rects))
+            {
+                _incomingDamage[window.Id] = rects = [];
+            }
+            rects.AddRange(damage);
+            if (rects.Count > MaxQueuedDamageRects)
+            {
+                int x1 = int.MaxValue, y1 = int.MaxValue, x2 = int.MinValue, y2 = int.MinValue;
+                foreach (XRect r in rects)
+                {
+                    (x1, y1) = (Math.Min(x1, r.X), Math.Min(y1, r.Y));
+                    (x2, y2) = (Math.Max(x2, r.X + r.Width), Math.Max(y2, r.Y + r.Height));
+                }
+                rects.Clear();
+                rects.Add(new XRect(x1, y1, x2 - x1, y2 - y1));
+            }
+            if (_damagePosted)
+            {
+                return;
+            }
+            _damagePosted = true;
         }
-    }, DispatcherPriority.Render);
+        Dispatcher.UIThread.Post(_deliverDamage, DispatcherPriority.Render);
+    }
+
+    /// <summary>UI 线程:把攒下的损伤交给各自的原生窗口。</summary>
+    private void DeliverDamage()
+    {
+        Dictionary<uint, List<XRect>> batch;
+        lock (_damageGate)
+        {
+            (batch, _incomingDamage, _deliveringDamage) = (_incomingDamage, _deliveringDamage, _incomingDamage);
+            _damagePosted = false;
+        }
+        foreach ((uint id, List<XRect> rects) in batch)
+        {
+            if (_windows.TryGetValue(id, out XNativeWindow? native))
+            {
+                native.AddDamage(rects);
+            }
+        }
+        batch.Clear();
+    }
 
     /// <inheritdoc />
     public void CursorChanged(XTopLevelWindow? window, int cursorGlyph) => Dispatcher.UIThread.Post(() =>

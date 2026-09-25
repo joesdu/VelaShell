@@ -6,16 +6,21 @@
 //
 //   dotnet run -c Release -p:SignAssembly=false scripts/xserver/bench/bench.cs   (仓库里没有签名密钥,Release 需关掉签名)
 //
-// 场景:核心填充、32 位 PutImage、Xft 式字形合成(a8 字形 + 纯色源 + Over)、ARGB 图像 Over 合成、
-// 指针移动注入(窗口选了 PointerMotion)、请求往返延迟。数字只用来比较前后改动,不同机器之间不可比。
+// 场景:核心填充、32 位 PutImage(小块与整窗)、Xft 式字形合成(a8 字形 + 纯色源 + Over)、ARGB 图像 Over 合成、
+// RENDER 多矩形填充、指针移动注入(窗口选了 PointerMotion)、请求往返延迟;
+// 最后量整窗 PutImage 满载时宿主读像素(另一条线程每 16 毫秒读一次整窗)要等多久 —— 宿主 UI 线程卡不卡看的就是它。
+// 数字只用来比较前后改动,不同机器之间不可比。
 
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Text;
+using VelaShell.XServer.Drawing;
+using VelaShell.XServer.Host;
 using VelaShell.XServer.Server;
 
-await using X11Server server = new();
+BenchHost host = new();
+await using X11Server server = new(host: host);
 Pipe toServer = new(), toClient = new();
 Stream serverSide = new Duplex(toServer.Reader, toClient.Writer);
 Stream clientSide = new Duplex(toClient.Reader, toServer.Writer);
@@ -56,8 +61,22 @@ await c.SyncAsync();
 
 byte[] image = new byte[200 * 100 * 4];
 Random.Shared.NextBytes(image);
+byte[] frame = new byte[800 * 600 * 4];
+Random.Shared.NextBytes(frame);
+byte[] frameRequest = Client.Encode(72, 2, b => b.U32(window).U32(gc).U16(800).U16(600).I16(0).I16(0).U8(0).U8(24).U16(0).Bytes(frame), big: true);
+byte bigRequests = await c.QueryExtensionAsync("BIG-REQUESTS");
+await c.RequestAsync(bigRequests, 0);
+// FillRectangles:50 个 10×10 的矩形(cairo / Qt 清背景一个请求里常有几十个)。
+Action<Client.Body> fillRects = b =>
+{
+    b.U8(1).U8(0).U8(0).U8(0).U32(picture).U16(0x8000).U16(0x4000).U16(0x2000).U16(0xFFFF);
+    for (int k = 0; k < 50; k++)
+    {
+        b.I16((short)(k * 15 % 780)).I16((short)(k * 11 % 580)).U16(10).U16(10);
+    }
+};
 
-Console.WriteLine($"{"场景",-34}{"次数",8}{"耗时 ms",10}{"每秒",14}");
+Console.WriteLine($"{"场景",-34}{"次数",8}{"耗时 ms",10}{"每秒",14}{"CPU ms",10}");
 await RunAsync("PolyFillRectangle 50×50", 20_000, i =>
     c.Request(70, 0, b => b.U32(window).U32(gc).I16((short)(i % 700)).I16((short)(i % 500)).U16(50).U16(50)));
 await RunAsync("PutImage 200×100 32 bpp", 2_000, i =>
@@ -71,6 +90,8 @@ await RunAsync("CompositeGlyphs8 ×10(Xft 文字)", 20_000, i =>
 await RunAsync("Composite ARGB 100×100 Over", 5_000, i =>
     c.Request(render, 8, b => b.U8(3).U8(0).U8(0).U8(0).U32(argbPicture).U32(0).U32(picture)
         .I16(0).I16(0).I16(0).I16(0).I16((short)(i % 700)).I16((short)(i % 500)).U16(100).U16(100)));
+await RunAsync("PutImage 800×600 整窗(BIG-REQUESTS)", 1_000, _ => c.Raw(frameRequest));
+await RunAsync("RenderFillRectangles ×50", 5_000, _ => c.Request(render, 26, fillRects));
 await RunAsync("指针移动注入(选了 PointerMotion)", 50_000, i => server.PointerMotion(window, i % 800, (i / 800) % 600));
 
 Stopwatch rt = Stopwatch.StartNew();
@@ -82,14 +103,40 @@ for (int i = 0; i < roundTrips; i++)
 rt.Stop();
 Console.WriteLine($"{"往返 GetInputFocus(串行)",-34}{roundTrips,8}{rt.Elapsed.TotalMilliseconds,10:F0}{roundTrips / rt.Elapsed.TotalSeconds,14:F0}");
 
+// 整窗 PutImage 满载时,宿主每 16 毫秒读一次整窗像素:每次要等多久才拿到锁并读完。
+XTopLevelWindow handle = host.Mapped ?? throw new InvalidOperationException("窗口没映射");
+using CancellationTokenSource stop = new();
+List<double> waits = [];
+Thread reader = new(() =>
+{
+    uint[] copy = new uint[800 * 600];
+    while (!stop.IsCancellationRequested)
+    {
+        long t0 = Stopwatch.GetTimestamp();
+        handle.CopyPixels(copy);
+        waits.Add(Stopwatch.GetElapsedTime(t0).TotalMilliseconds);
+        Thread.Sleep(16);
+    }
+});
+reader.Start();
+await SendBatchAsync(2_000, _ => c.Raw(frameRequest));
+stop.Cancel();
+reader.Join();
+waits.Sort();
+Console.WriteLine($"宿主读整窗像素(整窗 PutImage 满载):{waits.Count} 次,中位 {waits[waits.Count / 2]:F2} ms,"
+    + $"p99 {waits[(int)(waits.Count * 0.99)]:F2} ms,最长 {waits[^1]:F2} ms");
+
 async Task RunAsync(string name, int count, Action<int> send)
 {
     // 先不计时跑一遍:让分层 JIT 把热路径升到优化代码,量的是长期运行的服务端的稳态,不是冷启动。
     await SendBatchAsync(count, send);
+    // CPU 时间(整个进程,含测试客户端;客户端那份前后一样,差出来的是服务端):吞吐被别的环节卡住时,省下的功夫在这一列看得出来。
+    TimeSpan cpu = Process.GetCurrentProcess().TotalProcessorTime;
     Stopwatch sw = Stopwatch.StartNew();
     await SendBatchAsync(count, send);
     sw.Stop();
-    Console.WriteLine($"{name,-34}{count,8}{sw.Elapsed.TotalMilliseconds,10:F0}{count / sw.Elapsed.TotalSeconds,14:F0}");
+    double cpuMs = (Process.GetCurrentProcess().TotalProcessorTime - cpu).TotalMilliseconds;
+    Console.WriteLine($"{name,-34}{count,8}{sw.Elapsed.TotalMilliseconds,10:F0}{count / sw.Elapsed.TotalSeconds,14:F0}{cpuMs,10:F0}");
 }
 
 async Task SendBatchAsync(int count, Action<int> send)
@@ -98,7 +145,7 @@ async Task SendBatchAsync(int count, Action<int> send)
     for (int i = 0; i < count; i++)
     {
         send(i);
-        if ((i & 255) == 255)
+        if ((i & 255) == 255 || c.PendingBytes > (4 << 20))
         {
             await c.FlushAsync();
         }
@@ -116,6 +163,9 @@ sealed class Client(Stream stream)
     private uint _nextId = 1;
 
     public uint Root { get; private set; }
+
+    /// <summary>攒着还没写出去的字节数(整窗大请求攒几条就该写了)。</summary>
+    public long PendingBytes => _pending.Length;
 
     private uint _base;
 
@@ -154,19 +204,42 @@ sealed class Client(Stream stream)
         }
     }
 
-    public ushort Request(byte opcode, byte data, Action<Body>? body = null)
+    public ushort Request(byte opcode, byte data, Action<Body>? body = null, bool big = false)
     {
+        _pending.Write(Encode(opcode, data, body, big));
+        return ++_sequence;
+    }
+
+    /// <summary>发一条事先编好的请求(大请求每次现拼的话,量的就是这个测试客户端而不是服务端)。</summary>
+    public ushort Raw(byte[] request)
+    {
+        _pending.Write(request);
+        return ++_sequence;
+    }
+
+    public static byte[] Encode(byte opcode, byte data, Action<Body>? body = null, bool big = false)
+    {
+        MemoryStream request = new();
         Body b = new();
         body?.Invoke(b);
         byte[] payload = b.ToArray();
-        int units = 1 + (payload.Length / 4);
-        Span<byte> head = stackalloc byte[4];
+        Span<byte> head = stackalloc byte[8];
         head[0] = opcode;
         head[1] = data;
-        BinaryPrimitives.WriteUInt16LittleEndian(head[2..], (ushort)units);
-        _pending.Write(head);
-        _pending.Write(payload);
-        return ++_sequence;
+        if (big)
+        {
+            // BIG-REQUESTS:长度字段写 0,后跟 4 字节的真长度(含这 8 字节头)。
+            BinaryPrimitives.WriteUInt16LittleEndian(head[2..], 0);
+            BinaryPrimitives.WriteUInt32LittleEndian(head[4..], (uint)(2 + (payload.Length / 4)));
+            request.Write(head);
+        }
+        else
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(head[2..], (ushort)(1 + (payload.Length / 4)));
+            request.Write(head[..4]);
+        }
+        request.Write(payload);
+        return request.ToArray();
     }
 
     public async Task FlushAsync()
@@ -273,4 +346,17 @@ sealed class Duplex(PipeReader reader, PipeWriter writer) : Stream
     public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) => _out.WriteAsync(buffer, cancellationToken);
     public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
     public override void SetLength(long value) => throw new NotSupportedException();
+}
+
+/// <summary>只记下映射出来的那个顶层窗口(宿主读像素的场景要用它)。</summary>
+sealed class BenchHost : IXServerHost
+{
+    public XTopLevelWindow? Mapped { get; private set; }
+    public void TopLevelMapped(XTopLevelWindow window) => Mapped = window;
+    public void TopLevelUnmapped(XTopLevelWindow window) { }
+    public void TopLevelChanged(XTopLevelWindow window) { }
+    public void TopLevelDamaged(XTopLevelWindow window, IReadOnlyList<XRect> damage) { }
+    public void CursorChanged(XTopLevelWindow? window, int cursorGlyph) { }
+    public void Bell(int percent) { }
+    public void ClipboardChanged(string text) { }
 }

@@ -446,12 +446,22 @@ public sealed partial class X11Server
         XPicture dst = Picture(r.U32());
         Argb color = ReadColor(r);
         CheckOp(op);
+        // 目标(可见区域 ∩ picture 裁剪)整个请求只算一次:cairo / Qt 清背景时一个请求里常有几十上百个矩形。
+        if (r.Remaining < 8 || TargetOf(dst) is not { } target)
+        {
+            return;
+        }
         SolidSource source = new(color);
         while (r.Remaining >= 8)
         {
             short x = r.I16(), y = r.I16();
             ushort w = r.U16(), h = r.U16();
-            CompositeTo(dst, op, source, null, false, 0, 0, 0, 0, x, y, w, h);
+            if (w == 0 || h == 0)
+            {
+                continue;
+            }
+            XRect dirty = RenderCompositor.Composite(op, source, null, false, target.Target, 0, 0, 0, 0, x, y, w, h);
+            NoteRendered(dst, target.TopLevel, dirty);
         }
     }
 

@@ -262,7 +262,9 @@ public sealed partial class X11Server
                 }
             }
             // 交给执行线程的请求统一是「4 字节头 + 正文」:扩展长度字段剥掉,正文紧接在头后。
-            byte[] request = new byte[4 + (int)(units * 4) - headerSize];
+            // 不必先清零:下面整块都会被读进来的字节盖掉,读不满就整条连接收工、这块数组随之丢弃 ——
+            // 整窗 PutImage 一帧就是几 MB,清零是白白多扫一遍内存。
+            byte[] request = GC.AllocateUninitializedArray<byte>(4 + (int)(units * 4) - headerSize);
             header.CopyTo(request, 0);
             await stream.ReadExactlyAsync(request.AsMemory(4), ct).ConfigureAwait(false);
             // 背压:已读进来、还没执行的请求到了上限就等执行线程消化(同步完成的快路径不分配)。

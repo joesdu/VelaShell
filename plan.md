@@ -6748,3 +6748,80 @@ SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
 - `ssh/spec/08-failures.md` §2（异常树）、新增 §2.1（故障归一）、§3；
 - `ssh/spec/09-dialing.md` §2.4、新增 §2.5（Happy Eyeballs）、§5、§7、新增 §7.1（`Include` 与 `Match`）；
 - `ssh/design/architecture.md` §4、§5.3、§5.5、§5.8、§6.1、§7、§12，新增 §11.2.22。
+
+## ✅ 114. 2026-09-25 VelaShell.XServer:全库审查,并优化渲染路径(用户需求)
+
+用户要求检查内置 X 服务端库还有什么问题(性能、设计、隐藏的漏洞与 bug),并优化渲染性能。
+审查按五个子系统分头通读(连接 / 分派 / 线程、窗口树与窗口类扩展、绘图与 RENDER、输入与 XKB / XI2、GLX 与软件 GL),
+守 `src/VelaShell.XServer/AGENTS.md` 的净室规程:依据只有协议规范与本仓库,不看任何别的 X 服务端或 GL 实现。
+这一轮**只改了渲染路径**(宿主取像素、贴图、PutImage、RENDER 填充);审查发现的其余问题记在 `feature-plan.md`,等用户定批次再修。
+
+### 一、渲染路径:改了什么
+
+从「客户端的一次绘图」到「屏幕上的一帧」整条链路:
+
+| 问题 | 根因 | 改法(位置) |
+| --- | --- | --- |
+| 每批损伤都整窗拷两遍,负载重时一秒几百批 | 宿主收到损伤就 Post 一次,`Refresh` 先把整窗 `CopyPixels` 进中转数组,再逐像素补 alpha 写进一张整窗位图;损伤矩形直接扔掉 | 新增 `XTopLevelWindow.ReadPixels`:在像素锁里把缓冲交给回调。宿主只取攒下的损伤矩形,在锁里直接写进位图 —— 一趟拷贝,补 alpha 按向量宽度做(`XNativeWindow.XSurface`) |
+| 一帧里取好几次像素 | `Dispatcher.Post(Render)` 不跟着显示器的帧走 | 跟着帧取:`TopLevel.RequestAnimationFrame`,一帧最多一次;窗口显示之后才开始按帧取 |
+| 光标闪一下,GPU 也要重传整窗(4K 窗口一帧 33 MB) | 整窗一张位图,改了就整张重传 | 切成 256 × 256 的小块、每块一张位图,只有被改到的块重传 |
+| 执行线程每放一次锁就往 UI 线程 Post 一次 | 损伤不在宿主侧合并 | 宿主按窗口攒损伤(每窗最多 32 块,多了合成外接矩形),UI 线程上同一时刻最多排一次投递(`AvaloniaXServerHost.TopLevelDamaged`) |
+| **崩溃**:客户端恰在宿主取像素时把窗口改大,UI 线程越界抛异常 | `Refresh` 先读 `Width` / `Height` 按旧尺寸租数组,再按拷贝时的新尺寸去读 | `ReadPixels` 的宽高取自此刻的缓冲本身;与位图不符就按新尺寸重建小块、整窗重取 |
+| 负载重时宿主读像素可能被饿住,整个宿主界面跟着卡 | `lock` 不公平:执行线程放锁后几微秒内就再拿 | 新增 `PixelGate`:宿主读像素时先登记「在等」,执行线程每执行完一项看一眼,有人在等就提前放锁、等它读完(最多 20 毫秒)再拿 |
+| 整窗 PutImage(Qt、GTK4 经 llvmpipe、浏览器)多拷一遍 | 先把整幅图解码进中转数组,再贴进缓冲 | 32 位 ZPixmap 从请求数据按行直接贴进缓冲(`Rasterizer.Blit` 加了带行距的 span 重载);其余格式只解码目标上画得到的那一块(`X11Server.PutImageRegion`) |
+| 位图格式的 PutImage 把 16 MB 的请求放大成 512 MB | 按整幅宽高分配像素,一个字节是八个像素 | 同上:只解码画得到的那一块 |
+| ShmPutImage 更新一小块也要扫四遍整幅共享图像;乱写的 depth 先拿去算长度(XYPixmap 可到 2 GB) | 整幅拷出、整幅解码、再拷出源矩形;格式校验在分配之后 | 直接读段里的数据、只处理源矩形里画得到的部分;格式与深度的校验提到算长度之前 |
+| RENDER FillRectangles 每个矩形都克隆一次可见区域 | 每个矩形各走一遍 `CompositeTo → TargetOf` | 整个请求只算一次目标 |
+| 读请求时先把缓冲清零 | `new byte[]` | `GC.AllocateUninitializedArray`:整块马上被读进来的字节盖掉 |
+| 光标每换一次就建一个新的 `Cursor` | — | 同一种系统光标只建一次 |
+
+### 二、基准
+
+`scripts/xserver/bench/bench.cs` 新增三个场景:整窗 800×600 PutImage(BIG-REQUESTS,请求事先编好 —— 现拼的话量的是测试客户端)、
+一个请求 50 个矩形的 RENDER FillRectangles、整窗 PutImage 满载时另一条线程每 16 毫秒读一次整窗像素的等待时间;每个场景多记一列进程 CPU 时间。
+改动前后各在同一台机器上交替跑两轮(改动前的代码取自 `HEAD` 的 git worktree):
+
+| 场景 | 改动前 | 改动后 |
+| --- | ---: | ---: |
+| 整窗 PutImage 吞吐(次/秒) | 1,217 / 1,226 | 1,298 / 1,390 |
+| 整窗 PutImage 1000 次的 CPU 时间 | 1,094 / 1,312 ms | 969 / 969 ms |
+| 满载时宿主读整窗像素 p99 | 0.71 / 0.42 ms | 0.68 / 0.72 ms |
+
+- 进程内基准的瓶颈在测试客户端与管道,服务端省下的主要体现在 CPU 上;其余场景(填充、字形、合成、指针、往返)在噪声范围内(本机两轮之间就差 ±15%)。
+- **像素锁让行在这个基准里看不出差别**:改动前后都没有复现出饿死。它防的是 UI 线程与执行线程抢锁的最坏情况,这里只能说没有变坏。
+- 宿主那一半(只取损伤、按帧取、分块上传)不在这个基准里,没有量化的前后数字。按工作量算:一个 1920×1080 的窗口,
+  每批损伤只是一行字(约 800×20)时,原先每批整窗拷两遍(约 16 MB)、每帧重传整窗;现在每帧拷约 64 KB、只重传被碰到的那几块(每块 256 KB)。
+
+### 三、审查的其余发现
+
+五个子系统一共报了约 70 项,去重后 32 项,都读过完整代码路径;最严重的几项另外亲自对过代码。最要紧的(均未修):
+
+- **卡死执行线程 / 整个进程**:XFIXES 的 DeletePointerBarrier 对任意 ID 调 RemoveResource,一个请求就能把根窗口从资源表里删掉;XIChangeHierarchy AddMaster 没有上限,设备号 `ushort` 回绕后死循环;连满 1000 个客户端后 `RegisterClient` 死循环;
+  窗口可以无限嵌套,`DestroyTree` / `ExposeRecursive` 递归到栈溢出(.NET 里接不住,整个进程退出);`Region.Union` 是 O(n²),
+  一张棋盘格的位图做 SHAPE / 裁剪遮罩就能让执行线程算上几十分钟;GLX 的 CallLists / GenLists / DrawArrays / 线宽 / DrawPixels 等处的上限缺口。
+  执行线程卡住时它握着像素锁,宿主 UI 线程下一次读像素就跟着卡死。
+- **内存**:未执行请求的上限只数条数(1024 × 16 MB = 16 GB);CreatePixmap 不限尺寸(一次 4 GB);XTEST 的延迟输入每条一个 `Task.Delay`、不设上限;
+  GLX 的 pbuffer / 像素图表面在客户端断开后不释放。
+- **访问控制**:内置服务端没配 cookie,本机任何进程(Linux 上包括别的用户,经抽象命名空间的套接字)都能连上读窗口、记键盘、注入输入;
+  MIT-SHM 的段按 XID 就能被别的客户端使用(uid 只在 Attach 时核对);SendEvent 放行 GenericEvent,能让别的客户端的协议流错位。
+- **正确性**:抓取窗口取消映射时不自动解除抓取;焦点事件的 detail 总是 Nonlinear、没有虚拟事件;宿主松开按钮只靠一个 bool,切走窗口后 X 那边的按钮可能一直按着。
+
+完整清单(分 A–E 五组)与建议的修法在 `feature-plan.md`「VelaShell.XServer 全库审查:待修」一行。
+
+### 四、验证
+
+- `dotnet test tests/VelaShell.XServer.Tests`:Windows 上 150 通过、1 条(MIT-SHM,只在 Linux 上跑)跳过;在 `mcr.microsoft.com/dotnet/sdk:11.0-preview`
+  的 Linux 容器里(源码经标准输入送进去,不挂载本机目录)151 条全部通过、0 跳过,警告按错误处理。新增 `ImageTests` 6 条:32 位 ZPixmap、带左补的位图、
+  XYPixmap、16 位 ZPixmap(经 GetImage 读回)在左 / 上 / 右被裁掉时按图像里的正确偏移贴、格式与深度不配在目标看不见时照样报 BadMatch、
+  `ReadPixels` 的宽高跟着缓冲变。**此前 PutImage 除了「超大尺寸回错误」之外没有任何像素用例。**
+- 真实客户端(`VELASHELL_XSERVER_INTEROP=1`,本机新建了靶场镜像):11 条全部真跑(没有 `[SKIP]`),零协议错误 ——
+  其中 `glxgears` 直接渲染(llvmpipe 经 PutImage 送整窗像素)走的正是新的 32 位直贴路径。
+- 宿主无头 UI 用例(`TestCategory=XServerHostUi`)10 条通过,新增 `TiledSurface_CopiesOnlyDamage_AndFollowsResize`:
+  窗口跨四块、之后只改右下角一小块、客户端再把窗口改大(横向变三块),各处像素都与服务端的缓冲一致。
+- `VelaShell.Infrastructure.Tests` 里 XServer 相关 27 条通过(1 条按平台跳过);整个解决方案构建 0 警告 0 错误。
+- **没有验证的**:真的原生窗口在分数缩放(125%、150%)下小块之间有没有接缝 —— 无头渲染是 1:1 缩放;小块在设备像素上是整数对齐的,
+  按道理不会有,但没有实际看过。宿主那一半也没有量化的前后数字(见第二节)。
+
+**没做的**:审查的其余发现(见第三节与 `feature-plan.md`)。
+
+文档:velashell-docs `zh|en/xserver/design/architecture.md` —— §5(像素锁让行)、§6(宿主读像素改用 `ReadPixels`)、§10 决策记录新增「渲染路径复查」。

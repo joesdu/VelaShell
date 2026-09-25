@@ -56,10 +56,14 @@ internal sealed class Rasterizer
         _clip = [.. effective.Rects];
         XRect bounds = effective.Bounds;
         (_clipTop, _clipBottom) = bounds.IsEmpty ? (0, 0) : (bounds.Y - originY, bounds.Bottom - originY);
+        ClipBounds = bounds.IsEmpty ? default : bounds.Offset(-originX, -originY);
     }
 
     /// <summary>可画区域的行范围(可绘对象坐标,[top, bottom)):扫描线填充只扫这几行。</summary>
     private readonly int _clipTop, _clipBottom;
+
+    /// <summary>可画区域的外接矩形(可绘对象坐标;不含 clip-mask 像素图,它只会再缩小):画不到的部分不必准备源像素。</summary>
+    public XRect ClipBounds { get; }
 
     private int _dirtyX1 = int.MaxValue, _dirtyY1 = int.MaxValue, _dirtyX2 = int.MinValue, _dirtyY2 = int.MinValue;
 
@@ -200,7 +204,18 @@ internal sealed class Rasterizer
     /// <param name="dx">贴到的可绘坐标 x。</param>
     /// <param name="dy">贴到的可绘坐标 y。</param>
     /// <param name="preMasked">源像素已经在深度掩码之内(从同深度的缓冲读来的,CopyArea):整行直接拷,不再逐个与掩码。</param>
-    public void Blit(uint[] pixels, int width, int height, int dx, int dy, bool preMasked = false)
+    public void Blit(uint[] pixels, int width, int height, int dx, int dy, bool preMasked = false) =>
+        Blit(pixels, width, width, height, dx, dy, preMasked);
+
+    /// <summary>同上,源像素每行相隔 <paramref name="stride" /> 个 —— 可以直接是一幅更大图像里的一块,不必先拷出来。</summary>
+    /// <param name="pixels">源像素:第 k 行从下标 k × <paramref name="stride" /> 开始。</param>
+    /// <param name="stride">源的行距(像素数,不小于 <paramref name="width" />)。</param>
+    /// <param name="width">源宽。</param>
+    /// <param name="height">源高。</param>
+    /// <param name="dx">贴到的可绘坐标 x。</param>
+    /// <param name="dy">贴到的可绘坐标 y。</param>
+    /// <param name="preMasked">源像素已经在深度掩码之内。</param>
+    public void Blit(ReadOnlySpan<uint> pixels, int stride, int width, int height, int dx, int dy, bool preMasked = false)
     {
         XRect dest = new(dx + _ox, dy + _oy, width, height);
         bool fast = _gc.Function == 3 && _gc.ClipPixmap is null && (_gc.PlaneMask & _depthMask) == _depthMask;
@@ -213,10 +228,10 @@ internal sealed class Rasterizer
             }
             for (int by = r.Y; by < r.Bottom; by++)
             {
-                int srcRow = (by - dest.Y) * width;
+                int srcRow = (by - dest.Y) * stride;
                 if (fast)
                 {
-                    ReadOnlySpan<uint> from = pixels.AsSpan(srcRow + (r.X - dest.X), r.Width);
+                    ReadOnlySpan<uint> from = pixels.Slice(srcRow + (r.X - dest.X), r.Width);
                     Span<uint> to = _buffer.Pixels.AsSpan((by * _buffer.Width) + r.X, r.Width);
                     if (preMasked || _depthMask == uint.MaxValue)
                     {

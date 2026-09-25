@@ -34,16 +34,16 @@
 
 ## 📊 待办分布
 
-**欠账**（⏳ + 🚧 + 💡，共 23 项）与**路线图**（共 29 项）分开计：
+**欠账**（⏳ + 🚧 + 💡，共 24 项）与**路线图**（共 29 项）分开计：
 
 ```mermaid
 pie showData
-    title 欠账 —— 现状与代码对不上的部分（23 项）
+    title 欠账 —— 现状与代码对不上的部分（24 项）
     "P0 存了但不生效" : 5
     "安全与凭据" : 4
     "会话与工作区" : 3
     "数据与可观测" : 3
-    "终端与协议" : 4
+    "终端与协议" : 5
     "文件传输" : 2
     "插件生态" : 2
 ```
@@ -66,6 +66,7 @@ pie showData
 > 「插件生态」现为 2：插件自报图标当天闭合，但新增了一条 🔴 P0「11 条怎么改都绿的 UI 用例」（见该节）。
 > 「终端与协议」从 3 加到 4：新增「SSH PTY 像素尺寸贯通」（2026-09-22 换成 SSH 库 VelaShell.Ssh 后**不再卡上游**，见该节）。
 > 「终端与协议」仍为 4：VelaShell.XServer 的 M3（接入宿主）已落地（`plan.md` §105），拆出一条「内置 X 服务端：AltGr 层」（见该节）。
+> 「终端与协议」从 4 加到 5：新增「VelaShell.XServer 全库审查：待修」（plan.md §114，一行里分 A–E 五组，见该节）。
 > 「E 安全与合规」从 5 加到 7：SSH 库补上主机证书之后，新增「主机证书（宿主侧）」与「gssapi-with-mic 认证」两条（`plan.md` §113，见该节）。
 
 ---
@@ -148,6 +149,7 @@ pie showData
 | ✅ | — | ~~**内置 X 服务端:AltGr 层**~~ | **已完成**(2026-09-24,`plan.md` §106):服务端 XKB 加 FOUR_LEVEL / FOUR_LEVEL_ALPHABETIC(核心第 5、6 列 = 组 1 第 3、4 级,Mod5 选级),宿主 API `SetModifierMapping`;Windows 上宿主用 `ToUnicodeEx`(Ctrl+Alt)取 AltGr 层,右 Alt 设成 `ISO_Level3_Shift` 进 Mod5,系统为 AltGr 补的假左 Ctrl 不转发。xterm 里 AltGr+q 打出 `@` 已实测 | 顺带修掉:更窄的 ChangeKeyboardMapping(`xmodmap -e "keycode 108 = …"`)会把整张键位表收成 1 列 |
 | ✅ | — | ~~**VelaShell.XServer M4:同步抓取、设备拓扑、XKB 改表、MIT-SHM、GLX**~~ | **已完成**(2026-09-24,`plan.md` §108):pointer / keyboard-mode Synchronous 冻结与 AllowEvents(含 XIAllowEvents)的放行、单步、重放;XIChangeHierarchy(增删主设备、挂上 / 摘下从设备,HierarchyChanged);XKB SetMap 写回核心键位表(`setxkbmap … \| xkbcomp - $DISPLAY` 生效);MIT-SHM 1.1(Linux、只给 Unix 套接字上的本机客户端,SO_PEERCRED 核对段权限);GLX 1.4 —— Mesa 的直接渲染(客户端 llvmpipe、经 PutImage 送像素)与服务端软件 GL 的间接渲染两条路,`glxinfo` / `glxgears` 实测 | 间接渲染只是固定功能 GL 的子集(报 1.1):求值器、累积缓冲、选择 / 反馈、mipmap LOD、点画、3D 纹理不实现;MIT-SHM 1.2 的 fd 传递与共享像素图不做;多指针只到设备拓扑,指针位置与焦点仍是一份 |
 | ✅ | — | ~~**内置 X 服务端:macOS / Linux 的键盘布局跟随**~~ | **已完成**(2026-09-24,`plan.md` §109):设置里的「键盘布局」两种引擎共用 ——「自动」跟随系统(macOS 用 `TISCopyCurrentKeyboardLayoutInputSource` + `UCKeyTranslate`,Option 层对应 AltGr;Linux 经 libxkbcommon-x11 读桌面 `$DISPLAY`),选了具体布局就用随程序带的键位表(由 `scripts/xserver/keymaps/generate.cs` 从 xkeyboard-config 生成,27 个布局) | macOS「自动」只经 CI 编译与平台无关的单测,没有在真 Mac 上跑过(TIS 接口只能在主线程上调,单测线程上不取);Linux 没有桌面 X 显示时「自动」仍按 US(可以手选) |
+| ⏳ | 🔴 P0 | **VelaShell.XServer 全库审查:待修**(2026-09-25,`plan.md` §114) | 五个子系统的审查报了约 70 项,去重后 32 项,都读过完整代码路径。渲染路径那几项已在 §114 改掉,下面的都没动。⚠️ 执行线程卡住时它握着像素锁,宿主 UI 线程下一次读像素就跟着卡死 —— 所以 A 组不只是「X 程序不动了」,而是整个 VelaShell 窗口冻住 | 建议分五批,每项配用例、先撤修复确认失败:<br>**A 组(卡死 / 打垮进程,少量请求即可)**:① 窗口无限嵌套,`DestroyTree` / `ExposeRecursive` 递归栈溢出、整个进程退出(客户端断开时的清理也会触发;`Windows.cs:248`、`Exposure.cs:210`)→ 限深度与每客户端窗口数,两处改显式栈;② XFIXES `DeletePointerBarrier` 对任意 ID 调 `RemoveResource`,一个请求就能删掉根窗口 / 默认颜色表 / 别人的窗口(`XFixes.cs:311`)→ 专用类型 + 属主核对;③ XIChangeHierarchy AddMaster 无上限,`NextDeviceId` 的 `ushort` 回绕后死循环(`XiHierarchy.cs:209`);④ 连满 1000 个客户端后 `RegisterClient` 死循环(`Connection.cs:154`)→ 加 MaxClients、回连接失败;⑤ `Region.Union` 是 O(n²),SHAPE / XFIXES 区域(一个请求可到 200 万块)与棋盘格位图遮罩能让执行线程算上很久(`Region.cs:209`)→ 限块数,长远改按 y 分带;⑥ GLX 间接渲染:CallList(s) 不计入 400 万预算、GenLists / DeleteLists 的 range 到 2³¹(GenLists 回绕死循环)、DrawArrays 无数组时空转 count 次、线宽不封顶、DrawPixels / CopyPixels / Bitmap 不裁剪不校验。<br>**B 组(内存)**:⑦ 未执行请求只数条数,1024 × 16 MB = 16 GB / 客户端,SYNC Await 与 GrabServer 挂住的请求一直占着 → 加字节预算;⑧ CreatePixmap 与顶层缓冲不限尺寸(32767² 一次 4 GB,`Width * Height` 还会 int 溢出);⑨ ChangeProperty Append 无上限、InternAtom 无上限;⑩ XTEST 延迟输入与 Present NotifyMSC 每条一个 `Task.Delay`,无上限、断开不取消,XTEST 的按下 / 松开还会乱序导致按键卡住;⑪ GLX:Begin / End 顶点、显示列表、纹理无上限,PrioritizeTextures 按未校验的 n 分配,ReadPixels 回复可达 1 GB,pbuffer / 像素图表面断开后不释放(复用同一 XID 的客户端还能读到上一个的内容);⑫ XC-MISC GetXIDList、X-Resource QueryClientIds 的代价无界。<br>**C 组(访问控制)**:⑬ 内置服务端没配 cookie,本机任何进程(Linux 上包括别的用户,经抽象命名空间的套接字 —— 没有文件权限可言)都能连进来读窗口、记键盘、经 XTEST 注入输入;`PeerUid` 取了没用 → 启动时生成 MIT-MAGIC-COOKIE-1,SSH 连接器走进程内的受信流;⑭ MIT-SHM 的段按 XID 就能被别的客户端用(uid 只在 Attach 时核对);⑮ SendEvent 放行 GenericEvent(35),能让别的客户端的协议流错位;⑯ 每条协议错误在像素锁里同步写日志文件,不限流,日志文件也不封顶。<br>**D 组(正确性)**:⑰ 抓取窗口变得不可见时不自动解除抓取;⑱ 焦点事件的 detail 总是 Nonlinear、没有虚拟事件与 KeymapNotify;⑲ 宿主按钮只靠一个 bool,失去捕获 / 切走窗口后 X 那边一直按着,服务端还丢掉已销毁顶层上的松开;⑳ `FocusTopLevel` 不看 override-redirect / input=False,WM_TAKE_FOCUS 没实现;㉑ 同步抓取的冻结队列无上限、放行时一项里整批回放、指针与键盘的相对顺序会乱;㉒ 抓取期间 Enter / Leave 仍发给所有客户端,没有 Grab / Ungrab 模式的 crossing;㉓ CirculateNotify 的 place 写在第 20 字节(应为 16);㉔ GLX MakeCurrent 先改状态再抛 BadAlloc,上下文卡在一个幽灵 tag 上;㉕ XKB 锁存的修饰键不被下一个键清掉,SetMap 的修饰映射不校验键码,XI2 ButtonPress 的 buttons 含正在按下的那个;㉖ 零碎:抓取时键盘事件按指针窗口而不是焦点取源、CloseDownMode 的 Retain 不生效、CopyArea 深度不配时池化数组没还、RENDER 同一缓冲上下重叠的 Composite 按行顺序会读到已覆盖的行、GL_EXT_abgr 声明了没实现、RenderLarge 不核对声明的长度、TexSubImage 的边界 int 溢出、RenderMode 的回复条件(待对照规范确认)。<br>**E 组(性能与设计)**:㉗ Region 改成按 y 分带(顺带解决 ⑤);㉘ RENDER 通用路径(渐变、带变换的源)逐像素浮点 → 整数内核;㉙ GLX 单缓冲每个 Render 请求整窗拷一次、LINQ 找表面、每片元重复读状态;㉚ 每条请求为诊断日志分配一个字符串(宿主总设了 `Log`)、回复与事件的闭包和数组、请求缓冲池化(要先让 `XRequestReader` 自带长度);㉛ `XTopLevelWindow` 的字段不加同步地被 UI 线程读,可能读到新 X 旧 Y;㉜ 连接建立没有超时。<br>设计层面的提醒(不是缺陷):所有 SSH 会话共享一个受信的显示,一台被攻破的远端机能看到、也能操作别的会话里的 X 程序 —— 值得写进文档 |
 | 📄 | 🟠 P1 | **设计稿的两处残留** | Logo 有一个 `enabled:false` 残留图标；文件列表「修改时间」列无固定宽度 | 小到可以顺手做掉，记在这里免得忘 |
 
 ### SSH PTY 像素尺寸贯通 —— 实施细节

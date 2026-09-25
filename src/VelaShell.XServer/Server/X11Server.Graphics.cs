@@ -9,6 +9,7 @@
 //   第 8 节「Connection Setup」里的 image-byte-order / bitmap-format-bit-order / scanline-pad(本服务端声明 LSBFirst、32 位对齐)
 
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Protocol;
@@ -256,7 +257,13 @@ public sealed partial class X11Server
             return;
         }
         draw(raster);
-        if (target.TopLevel is { } top)
+        NoteDrawn(drawable, target.TopLevel, raster);
+    }
+
+    /// <summary>画完一次:画到窗口上时把实际写过的范围记为损伤,画到像素图上时告诉盯着它的 Damage 对象。</summary>
+    private void NoteDrawn(uint drawable, XWindow? topLevel, Rasterizer raster)
+    {
+        if (topLevel is { } top)
         {
             MarkDamage(top, raster.DirtyBounds);
         }
@@ -650,27 +657,60 @@ public sealed partial class X11Server
         XGc gc = Gc(gcId);
         byte targetDepth = DrawableDepth(drawable);
 
-        // 先按格式核对数据够不够,再分配 —— 客户端报的宽高可以是 65535×65535,数据却只有几个字节。
+        // 先按格式核对数据够不够 —— 客户端报的宽高可以是 65535×65535,数据却只有几个字节。
         long need = ImageDataLength(format, depth, width, height, leftPad);
         if (need > data.Length)
         {
             throw new XProtocolError(XErrorCode.Length);
         }
-        if (width == 0 || height == 0)
+        PutImageRegion(drawable, gc, targetDepth, format, depth, leftPad, data, width, height, new XRect(0, 0, width, height), dx, dy);
+    }
+
+    /// <summary>
+    /// 把一幅图像里 <paramref name="part" />(图像坐标)那一块贴到可绘对象的 (<paramref name="dx" />, <paramref name="dy" />)
+    /// —— PutImage 与 MIT-SHM 的 PutImage 共用。
+    /// </summary>
+    /// <remarks>
+    /// 只解码、只贴目标上画得到的部分(按可画区域的外接矩形裁):位图格式一个字节是八个像素,
+    /// 按整幅图分配像素会把几 MB 的请求放大成几百 MB。32 位 ZPixmap(Qt、GTK4 / llvmpipe、浏览器整窗送像素走的就是它)
+    /// 直接从请求数据按行贴进缓冲,不经中转数组。<c>data</c> 是整幅图像的数据,长度已按 <see cref="ImageDataLength" /> 核对过。
+    /// </remarks>
+    private void PutImageRegion(uint drawable, XGc gc, byte targetDepth, byte format, byte depth, byte leftPad,
+        ReadOnlySpan<byte> data, int imageWidth, int imageHeight, XRect part, int dx, int dy)
+    {
+        ValidateImageFormat(format, depth, targetDepth, leftPad);
+        if (part.IsEmpty || DrawTarget(drawable, gc) is not { } target)
         {
             return;
         }
-
-        uint[] pixels = ArrayPool<uint>.Shared.Rent(width * height);
-        try
+        Rasterizer raster = new(target.Buffer, target.OriginX, target.OriginY, target.Clip, gc);
+        XRect visible = new XRect(dx, dy, part.Width, part.Height).Intersect(raster.ClipBounds);
+        if (visible.IsEmpty)
         {
-            DecodeImage(format, depth, targetDepth, leftPad, data, width, height, gc, pixels);
-            Draw(drawable, gcId, raster => raster.Blit(pixels, width, height, dx, dy, preMasked: false));
+            return;
         }
-        finally
+        // 画得到的那一块在图像里的位置。
+        XRect source = new(part.X + (visible.X - dx), part.Y + (visible.Y - dy), visible.Width, visible.Height);
+        if (format == 2 && depth != 1 && BitsPerPixel(depth) == 32 && BitConverter.IsLittleEndian)
         {
-            ArrayPool<uint>.Shared.Return(pixels);
+            // 32 位 ZPixmap:每行恰好 宽 × 4 字节、LSBFirst(连接建立时声明的 image-byte-order),整幅就是本机的 uint 数组。
+            ReadOnlySpan<uint> all = MemoryMarshal.Cast<byte, uint>(data);
+            raster.Blit(all[((source.Y * imageWidth) + source.X)..], imageWidth, source.Width, source.Height, visible.X, visible.Y);
         }
+        else
+        {
+            uint[] pixels = ArrayPool<uint>.Shared.Rent(source.Width * source.Height);
+            try
+            {
+                DecodeImage(format, depth, leftPad, data, imageWidth, imageHeight, source, gc, pixels);
+                raster.Blit(pixels, source.Width, source.Height, visible.X, visible.Y);
+            }
+            finally
+            {
+                ArrayPool<uint>.Shared.Return(pixels);
+            }
+        }
+        NoteDrawn(drawable, target.TopLevel, raster);
     }
 
     /// <summary>一幅图像按格式要多少字节(PutImage 与 MIT-SHM 的 PutImage 共用)。</summary>
@@ -682,91 +722,109 @@ public sealed partial class X11Server
         _ => throw new XProtocolError(XErrorCode.Value, format),
     };
 
-    private static void DecodeImage(byte format, byte depth, byte targetDepth, byte leftPad, ReadOnlySpan<byte> data,
-        int width, int height, XGc gc, uint[] pixels)
+    /// <summary>格式与深度的搭配(协议「PutImage」):Bitmap 必须深度 1;XYPixmap / ZPixmap 必须与可绘对象同深度,ZPixmap 不许左补。</summary>
+    private static void ValidateImageFormat(byte format, byte depth, byte targetDepth, byte leftPad)
+    {
+        bool ok = format switch
+        {
+            0 => depth == 1,
+            1 => depth == targetDepth,
+            2 => depth == targetDepth && leftPad == 0,
+            _ => throw new XProtocolError(XErrorCode.Value, format),
+        };
+        if (!ok)
+        {
+            throw new XProtocolError(XErrorCode.Match);
+        }
+    }
+
+    /// <summary>把图像里 <paramref name="part" />(图像坐标)那一块解成像素值,行优先、宽 = part.Width 写进 <paramref name="pixels" />。</summary>
+    private static void DecodeImage(byte format, byte depth, byte leftPad, ReadOnlySpan<byte> data, int imageWidth, int imageHeight,
+        XRect part, XGc gc, uint[] pixels)
     {
         switch (format)
         {
-            case 0:   // Bitmap:深度必须为 1,1 → 前景,0 → 背景
-                if (depth != 1)
-                {
-                    throw new XProtocolError(XErrorCode.Match);
-                }
-                DecodeBitmap(data, width, height, leftPad, pixels, gc.Foreground, gc.Background);
+            case 0:   // Bitmap:1 → 前景,0 → 背景
+                DecodeBitmap(data, imageWidth, leftPad, part, pixels, gc.Foreground, gc.Background);
                 break;
             case 1:   // XYPixmap:逐平面的位图,高位平面在前
-                if (depth != targetDepth)
-                {
-                    throw new XProtocolError(XErrorCode.Match);
-                }
-                int stride = BitmapStride(width + leftPad);
-                int planeBytes = stride * height;
-                Array.Clear(pixels, 0, width * height);
+                int stride = BitmapStride(imageWidth + leftPad);
+                int planeBytes = stride * imageHeight;
+                Array.Clear(pixels, 0, part.Width * part.Height);
                 for (int plane = 0; plane < depth; plane++)
                 {
                     uint bit = 1u << (depth - 1 - plane);
                     ReadOnlySpan<byte> planeData = data.Slice(plane * planeBytes, planeBytes);
-                    for (int yy = 0; yy < height; yy++)
+                    for (int yy = 0; yy < part.Height; yy++)
                     {
-                        ReadOnlySpan<byte> row = planeData.Slice(yy * stride, stride);
-                        for (int xx = 0; xx < width; xx++)
+                        ReadOnlySpan<byte> row = planeData.Slice((part.Y + yy) * stride, stride);
+                        int o = yy * part.Width;
+                        for (int xx = 0; xx < part.Width; xx++)
                         {
-                            int b = xx + leftPad;
+                            int b = part.X + xx + leftPad;
                             if ((row[b >> 3] & (1 << (b & 7))) != 0)
                             {
-                                pixels[(yy * width) + xx] |= bit;
+                                pixels[o + xx] |= bit;
                             }
                         }
                     }
                 }
                 break;
-            case 2:   // ZPixmap
-                if (depth != targetDepth || leftPad != 0)
-                {
-                    throw new XProtocolError(XErrorCode.Match);
-                }
+            default:  // ZPixmap
                 if (depth == 1)
                 {
-                    DecodeBitmap(data, width, height, 0, pixels, 1, 0);
+                    DecodeBitmap(data, imageWidth, 0, part, pixels, 1, 0);
                     break;
                 }
-                DecodeZPixmap(data, width, height, BitsPerPixel(depth), pixels);
+                DecodeZPixmap(data, imageWidth, BitsPerPixel(depth), part, pixels);
                 break;
-            default:
-                throw new XProtocolError(XErrorCode.Value, format);
         }
     }
 
-    /// <summary>ZPixmap(8 / 16 / 32 位每像素,LSBFirst,每行补齐到 32 位)。</summary>
+    /// <summary>ZPixmap(8 / 16 / 32 位每像素,LSBFirst,每行补齐到 32 位)整幅解码。</summary>
     private static void DecodeZPixmap(ReadOnlySpan<byte> data, int width, int height, int bpp, uint[] pixels)
     {
-        int bytesPer = bpp / 8;
-        int stride = BitmapStride(width * bpp);
-        if (data.Length < stride * height)
+        if (data.Length < (long)BitmapStride(width * bpp) * height)
         {
             throw new XProtocolError(XErrorCode.Length);
         }
-        if (bpp == 32 && BitConverter.IsLittleEndian)
+        DecodeZPixmap(data, width, bpp, new XRect(0, 0, width, height), pixels);
+    }
+
+    /// <summary>ZPixmap 里 <paramref name="part" /> 那一块(8 / 16 / 32 位每像素,LSBFirst,每行补齐到 32 位)。</summary>
+    private static void DecodeZPixmap(ReadOnlySpan<byte> data, int imageWidth, int bpp, XRect part, uint[] pixels)
+    {
+        int bytesPer = bpp / 8;
+        int stride = BitmapStride(imageWidth * bpp);
+        for (int y = 0; y < part.Height; y++)
         {
-            // 32 位 ZPixmap 每行恰好 width × 4 字节、LSBFirst:整块就是本机的 uint 数组。
-            MemoryMarshal.Cast<byte, uint>(data[..(stride * height)]).CopyTo(pixels);
-            return;
-        }
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
+            ReadOnlySpan<byte> row = data.Slice(((part.Y + y) * stride) + (part.X * bytesPer), part.Width * bytesPer);
+            Span<uint> to = pixels.AsSpan(y * part.Width, part.Width);
+            switch (bytesPer)
             {
-                int o = (y * stride) + (x * bytesPer);
-                uint v = data[o];
-                if (bytesPer > 1)
-                {
-                    v |= (uint)data[o + 1] << 8;
-                }
-                if (bytesPer > 2)
-                {
-                    v |= ((uint)data[o + 2] << 16) | ((uint)data[o + 3] << 24);
-                }
-                pixels[(y * width) + x] = v;
+                case 1:
+                    for (int x = 0; x < to.Length; x++)
+                    {
+                        to[x] = row[x];
+                    }
+                    break;
+                case 2:
+                    for (int x = 0; x < to.Length; x++)
+                    {
+                        to[x] = (uint)(row[2 * x] | (row[(2 * x) + 1] << 8));
+                    }
+                    break;
+                default:
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        MemoryMarshal.Cast<byte, uint>(row).CopyTo(to);
+                        break;
+                    }
+                    for (int x = 0; x < to.Length; x++)
+                    {
+                        to[x] = BinaryPrimitives.ReadUInt32LittleEndian(row[(4 * x)..]);
+                    }
+                    break;
             }
         }
     }
@@ -798,21 +856,18 @@ public sealed partial class X11Server
     /// <summary>位图行宽(字节):scanline-pad 32 位。</summary>
     private static int BitmapStride(int widthInBits) => ((widthInBits + 31) / 32) * 4;
 
-    /// <summary>解一张 LSBFirst 位序、32 位对齐的位图。</summary>
-    private static void DecodeBitmap(ReadOnlySpan<byte> data, int width, int height, int leftPad, uint[] pixels, uint one, uint zero)
+    /// <summary>解一张 LSBFirst 位序、32 位对齐的位图里 <paramref name="part" />(图像坐标)那一块。</summary>
+    private static void DecodeBitmap(ReadOnlySpan<byte> data, int imageWidth, int leftPad, XRect part, uint[] pixels, uint one, uint zero)
     {
-        int stride = BitmapStride(width + leftPad);
-        if (data.Length < stride * height)
+        int stride = BitmapStride(imageWidth + leftPad);
+        for (int y = 0; y < part.Height; y++)
         {
-            throw new XProtocolError(XErrorCode.Length);
-        }
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
+            ReadOnlySpan<byte> row = data.Slice((part.Y + y) * stride, stride);
+            int o = y * part.Width;
+            for (int x = 0; x < part.Width; x++)
             {
-                int bit = x + leftPad;
-                bool set = (data[(y * stride) + (bit >> 3)] & (1 << (bit & 7))) != 0;
-                pixels[(y * width) + x] = set ? one : zero;
+                int bit = part.X + x + leftPad;
+                pixels[o + x] = (row[bit >> 3] & (1 << (bit & 7))) != 0 ? one : zero;
             }
         }
     }

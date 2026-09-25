@@ -221,6 +221,66 @@ public sealed class AvaloniaXServerHostUiTests
         return true;   // 带返回值的重载:无返回值的 async lambda 会变成从未被等待的 Task<Task>(AGENTS.md)
     }, CancellationToken.None);
 
+    /// <summary>
+    /// 原生窗口按 256 × 256 切块、只取损伤矩形:跨块的窗口、后来只改了右下角一小块、客户端改了尺寸(缓冲变大、块数变多)之后,
+    /// 各块的像素都对,没改到的地方保持原样。
+    /// </summary>
+    [TestMethod]
+    public async Task TiledSurface_CopiesOnlyDamage_AndFollowsResize() => await _session.Dispatch(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        await using X11Server server = new(new XServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide);
+
+        (uint idBase, uint root) = await HandshakeAsync(client);
+        uint window = idBase | 1, red = idBase | 2, green = idBase | 3, blue = idBase | 4;
+        // 300×270:横竖各跨两块。背景白,左上角填红。
+        await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(40).I16(40).U16(300).U16(270).U16(0).U16(1).U32(0)
+            .U32(0x2).U32(0xFFFFFF));
+        await SendAsync(client, 8, 0, w => w.U32(window));
+        await SendAsync(client, 55, 0, w => w.U32(red).U32(window).U32(0x4).U32(0xFF0000));
+        await SendAsync(client, 55, 0, w => w.U32(green).U32(window).U32(0x4).U32(0x00FF00));
+        await SendAsync(client, 55, 0, w => w.U32(blue).U32(window).U32(0x4).U32(0x0000FF));
+        await SendAsync(client, 70, 0, w => w.U32(window).U32(red).I16(0).I16(0).U16(10).U16(10));
+
+        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+        await WaitForAsync(() => Pixel(native, 5, 5) == 0xFF0000 ? native : null);
+        Assert.AreEqual(0xFFFFFFu, Pixel(native, 290, 260), "右下那块(第二行第二列)是背景");
+
+        // 只改右下角一小块:它所在的块取到了,左上角的块保持原样。
+        await SendAsync(client, 70, 0, w => w.U32(window).U32(green).I16(280).I16(260).U16(10).U16(10));
+        await WaitForAsync(() => Pixel(native, 285, 265) == 0x00FF00 ? native : null);
+        Assert.AreEqual(0xFF0000u, Pixel(native, 5, 5));
+        Assert.AreEqual(0xFFFFFFu, Pixel(native, 150, 150));
+
+        // 客户端把窗口改到 520×300(横向三块):缓冲变了,整窗重取;新露出来的地方画了蓝色。
+        // (默认 bit-gravity 是 Forget:改尺寸时服务端按背景重画整窗,原来的红、绿都没了 —— 原生窗口要跟服务端的缓冲一致。)
+        await SendAsync(client, 12, 0, w => w.U32(window).U16(0x4 | 0x8).U16(0).U32(520).U32(300));
+        await SendAsync(client, 70, 0, w => w.U32(window).U32(blue).I16(510).I16(290).U16(10).U16(10));
+        await WaitForAsync(() => native.ClientSize == new Size(520, 300) && Pixel(native, 515, 295) == 0x0000FF ? native : null);
+        foreach ((int x, int y) in new[] { (5, 5), (285, 265), (400, 10), (10, 290), (515, 295) })
+        {
+            Assert.AreEqual(ServerPixel(native, x, y), Pixel(native, x, y), $"({x},{y}) 与服务端的缓冲一致");
+        }
+
+        await SendAsync(client, 4, 0, w => w.U32(window));   // DestroyWindow
+        await WaitForAsync(() => host.Windows.Count == 0 ? native : null);
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+        host.Detach();
+        return true;
+    }, CancellationToken.None);
+
+    /// <summary>服务端缓冲里的像素(低 24 位)。</summary>
+    private static uint ServerPixel(XNativeWindow window, int x, int y)
+    {
+        uint[] pixels = new uint[window.Handle.Width * window.Handle.Height];
+        (int w, _) = window.Handle.CopyPixels(pixels);
+        return pixels[(y * w) + x] & 0xFFFFFF;
+    }
+
     private static uint Pixel(XNativeWindow window, int x, int y)
     {
         Dispatcher.UIThread.RunJobs();

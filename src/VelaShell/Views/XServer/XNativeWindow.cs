@@ -1,4 +1,3 @@
-using System.Buffers;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -46,7 +45,7 @@ public sealed class XNativeWindow : Window
     {
         _host = host;
         Handle = handle;
-        _surface = new XSurface(handle);
+        _surface = new XSurface(this, handle);
         Content = _surface;
         Background = Brushes.Transparent;
         SizeToContent = SizeToContent.Manual;
@@ -59,7 +58,7 @@ public sealed class XNativeWindow : Window
         Activated += (_, _) => _host.OnWindowActivated(this);
         Deactivated += (_, _) => OnDeactivated();
         ScalingChanged += (_, _) => ApplyGeometry();
-        Opened += (_, _) => { UpdateFrameExtents(); ApplyGeometry(); };
+        Opened += (_, _) => { UpdateFrameExtents(); ApplyGeometry(); _surface.Start(); };
     }
 
     /// <summary>服务端那边的顶层窗口。</summary>
@@ -76,6 +75,7 @@ public sealed class XNativeWindow : Window
     {
         Title = Handle.Title.Length > 0 ? Handle.Title : Handle.ClassName;
         ApplyStyle();
+        _surface.PropertiesChanged();
         Opacity = Math.Clamp(Handle.Opacity, 0.05, 1);
         double scale = Scale;
         MinWidth = Handle.MinWidth > 0 ? Handle.MinWidth / scale : 0;
@@ -128,11 +128,22 @@ public sealed class XNativeWindow : Window
         }
     }
 
-    /// <summary>有内容画进来了:下一帧重新取像素。</summary>
-    public void Invalidate() => _surface.Invalidate();
+    /// <summary>有内容画进来了(顶层内区坐标的矩形):下一帧取这几块像素。</summary>
+    public void AddDamage(IReadOnlyList<XRect> damage) => _surface.AddDamage(damage);
 
     /// <summary>服务端要求的光标。</summary>
-    public void ApplyCursor(int glyph) => Cursor = new Cursor(XInputMap.Cursor(glyph));
+    public void ApplyCursor(int glyph)
+    {
+        StandardCursorType type = XInputMap.Cursor(glyph);
+        if (!Cursors.TryGetValue(type, out Cursor? cursor))
+        {
+            Cursors[type] = cursor = new Cursor(type);   // 指针每跨一个控件就换一次光标:同一种只建一次
+        }
+        Cursor = cursor;
+    }
+
+    /// <summary>建过的系统光标(UI 线程上用)。</summary>
+    private static readonly Dictionary<StandardCursorType, Cursor> Cursors = [];
 
     /// <summary>宿主要关它(客户端取消映射 / 销毁、服务端停下)。</summary>
     public void CloseByHost()
@@ -462,129 +473,337 @@ public sealed class XNativeWindow : Window
     private (int X, int Y) ToPixels(Point point) =>
         ((int)Math.Floor(point.X * Scale), (int)Math.Floor(point.Y * Scale));
 
-    /// <summary>画顶层像素的控件:一张与窗口像素一一对应的位图,按 1/缩放 的 DIP 尺寸画,不插值。</summary>
+    /// <summary>
+    /// 画顶层像素的控件:位图与窗口像素一一对应,按 1/缩放 的 DIP 尺寸画,不插值。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>切成 256 × 256 的小块,每块一张位图。</b>位图一改,渲染层下一帧就把整张重新传给 GPU:整窗一张位图时,
+    /// 光标闪一下也要传整窗(4K 窗口一帧 33 MB);切块之后只有被改到的块重传。
+    /// </para>
+    /// <para>
+    /// <b>取像素跟着显示器的帧走</b>(<see cref="TopLevel.RequestAnimationFrame" />):一帧之内来多少批损伤都只取一次,
+    /// 只取损伤矩形,在像素锁里直接从服务端的缓冲写进位图 —— 一趟拷贝,不经中转数组。
+    /// </para>
+    /// </remarks>
     private sealed class XSurface : Control
     {
-        private readonly XTopLevelWindow _handle;
-        private WriteableBitmap? _bitmap;
-        private bool _pending;
+        private const int TileSize = 256;
 
-        public XSurface(XTopLevelWindow handle)
+        /// <summary>攒着没取的损伤矩形上限;再多就合成外接矩形(取多了反而慢)。</summary>
+        private const int MaxPendingRects = 32;
+
+        private readonly XNativeWindow _owner;
+        private readonly XTopLevelWindow _handle;
+        private readonly XPixelReader _reader;
+        private readonly Action<TimeSpan> _onFrame;
+        private readonly List<XRect> _damage = [];
+        private readonly List<int> _lockedTiles = [];
+        private WriteableBitmap?[] _tiles = [];
+        private ILockedFramebuffer?[] _locks = [];
+        private int _columns, _rows;
+
+        /// <summary>位图对应的缓冲尺寸(物理像素)。</summary>
+        private int _width, _height;
+
+        private bool _fullDamage = true;
+        private bool _frameRequested;
+        private bool _started;
+        private bool _released;
+
+        /// <summary>上一次拷贝时的形状与透明度:变了就得整窗重拷(形状以外清成透明、不透明窗口补 alpha 都烙在位图里)。</summary>
+        private IReadOnlyList<XRect>? _copiedShape;
+        private bool _copiedAlpha;
+
+        /// <summary>ReadPixels 回调发现缓冲尺寸与位图不符时,记下新尺寸。</summary>
+        private (int Width, int Height)? _resizeTo;
+
+        public XSurface(XNativeWindow owner, XTopLevelWindow handle)
         {
+            _owner = owner;
             _handle = handle;
+            _reader = CopyDamage;
+            _onFrame = _ => OnFrame();
             // 位图与窗口像素一一对应,缩放只来自 DPI:不插值,免得文字发虚。(在 Render 里设会让视觉在渲染中途失效。)
             RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
         }
 
-        public void Invalidate()
+        /// <summary>服务端报来的损伤(顶层内区坐标):下一帧取这些矩形。</summary>
+        public void AddDamage(IReadOnlyList<XRect> rects)
         {
-            if (_pending)
+            if (!_fullDamage)
             {
-                return;
+                _damage.AddRange(rects);
+                if (_damage.Count > MaxPendingRects)
+                {
+                    XRect bounds = _damage[0];
+                    foreach (XRect r in _damage)
+                    {
+                        bounds = Union(bounds, r);
+                    }
+                    _damage.Clear();
+                    _damage.Add(bounds);
+                }
             }
-            _pending = true;
-            Dispatcher.UIThread.Post(Refresh, DispatcherPriority.Render);
+            RequestFrame();
+        }
+
+        /// <summary>原生窗口显示出来了:开始按帧取像素(先整窗取一次)。显示之前攒着的损伤都包含在这一次里。</summary>
+        public void Start()
+        {
+            _started = true;
+            InvalidateAll();
+        }
+
+        /// <summary>下一帧整窗重取(窗口刚显示、形状或透明度变了)。</summary>
+        public void InvalidateAll()
+        {
+            _fullDamage = true;
+            _damage.Clear();
+            RequestFrame();
+        }
+
+        /// <summary>标题、形状、透明度等属性变了:形状或透明度跟上次拷贝时不同就整窗重取。</summary>
+        public void PropertiesChanged()
+        {
+            if (!ReferenceEquals(_handle.Shape, _copiedShape) || _handle.HasAlpha != _copiedAlpha)
+            {
+                InvalidateAll();
+            }
         }
 
         public void Release()
         {
-            _bitmap?.Dispose();
-            _bitmap = null;
+            _released = true;
+            foreach (WriteableBitmap? tile in _tiles)
+            {
+                tile?.Dispose();
+            }
+            _tiles = [];
+            _locks = [];
         }
 
-        private void Refresh()
+        private void RequestFrame()
         {
-            _pending = false;
-            int width = _handle.Width, height = _handle.Height;
-            if (width <= 0 || height <= 0)
+            if (_frameRequested || !_started || _released)
             {
                 return;
             }
-            uint[] pixels = ArrayPool<uint>.Shared.Rent(width * height);
-            try
+            _frameRequested = true;
+            _owner.RequestAnimationFrame(_onFrame);
+        }
+
+        private void OnFrame()
+        {
+            _frameRequested = false;
+            if (_released)
             {
-                (int w, int h) = _handle.CopyPixels(pixels);
-                if (w <= 0 || h <= 0)
-                {
-                    return;
-                }
-                if (_bitmap is null || _bitmap.PixelSize.Width != w || _bitmap.PixelSize.Height != h)
-                {
-                    _bitmap?.Dispose();
-                    _bitmap = new WriteableBitmap(new PixelSize(w, h), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
-                }
-                Blit(pixels, w, h);
+                return;
             }
-            finally
+            // 一般一趟就取完;缓冲尺寸与位图不符时按新尺寸重建位图、整窗再取。尺寸一直在变(拖动缩放中)就留到下一帧。
+            for (int attempt = 0; attempt < 3; attempt++)
             {
-                ArrayPool<uint>.Shared.Return(pixels);
+                if (_fullDamage)
+                {
+                    _damage.Clear();
+                    _damage.Add(new XRect(0, 0, _width, _height));
+                }
+                LockDamagedTiles();
+                bool read;
+                try
+                {
+                    read = _handle.ReadPixels(_reader);
+                }
+                finally
+                {
+                    UnlockTiles();
+                }
+                if (!read)
+                {
+                    return;   // 窗口已经没有缓冲(取消映射 / 销毁):等宿主把原生窗口收掉
+                }
+                if (_resizeTo is { } size)
+                {
+                    _resizeTo = null;
+                    Resize(size.Width, size.Height);
+                    _fullDamage = true;
+                    continue;
+                }
+                _fullDamage = false;
+                _damage.Clear();
+                InvalidateVisual();
+                return;
             }
-            InvalidateVisual();
+            RequestFrame();
+        }
+
+        /// <summary>按新的缓冲尺寸重排小块(位图用到时再建)。</summary>
+        private void Resize(int width, int height)
+        {
+            foreach (WriteableBitmap? tile in _tiles)
+            {
+                tile?.Dispose();
+            }
+            _width = width;
+            _height = height;
+            _columns = (width + TileSize - 1) / TileSize;
+            _rows = (height + TileSize - 1) / TileSize;
+            _tiles = new WriteableBitmap?[_columns * _rows];
+            _locks = new ILockedFramebuffer?[_tiles.Length];
         }
 
         /// <summary>
-        /// 像素是 0xAARRGGBB(小端内存里恰好是 BGRA)。24 位视觉的 alpha 字节没有意义,补成不透明;
-        /// 非矩形窗口在形状之外置成全透明。
+        /// 进像素锁之前先把要写的小块锁好:锁位图可能要等渲染线程画完它,不能让服务端的执行线程陪着等。
         /// </summary>
-        private unsafe void Blit(uint[] pixels, int width, int height)
+        private void LockDamagedTiles()
         {
-            using ILockedFramebuffer frame = _bitmap!.Lock();
-            bool opaque = !_handle.HasAlpha;
-            IReadOnlyList<XRect>? shape = _handle.Shape;
-            for (int y = 0; y < height; y++)
+            foreach (XRect d in _damage)
             {
-                Span<uint> row = new((byte*)frame.Address + ((long)y * frame.RowBytes), width);
-                ReadOnlySpan<uint> source = pixels.AsSpan(y * width, width);
-                if (opaque)
+                XRect r = d.Intersect(new XRect(0, 0, _width, _height));
+                if (r.IsEmpty)
                 {
-                    for (int x = 0; x < width; x++)
+                    continue;
+                }
+                for (int ty = r.Y / TileSize; ty <= (r.Bottom - 1) / TileSize; ty++)
+                {
+                    for (int tx = r.X / TileSize; tx <= (r.Right - 1) / TileSize; tx++)
                     {
-                        row[x] = source[x] | 0xFF000000;
+                        int index = (ty * _columns) + tx;
+                        if (_locks[index] is not null)
+                        {
+                            continue;
+                        }
+                        WriteableBitmap tile = _tiles[index] ??= new WriteableBitmap(
+                            new PixelSize(Math.Min(TileSize, _width - (tx * TileSize)), Math.Min(TileSize, _height - (ty * TileSize))),
+                            new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+                        _locks[index] = tile.Lock();
+                        _lockedTiles.Add(index);
                     }
-                }
-                else
-                {
-                    source.CopyTo(row);
-                }
-                if (shape is not null)
-                {
-                    ApplyShape(row, y, shape);
                 }
             }
         }
 
-        private static void ApplyShape(Span<uint> row, int y, IReadOnlyList<XRect> shape)
+        private void UnlockTiles()
         {
-            // 形状覆盖的段原样留下,其余清成全透明:先把覆盖段拷进一行清零的暂存,再整行拷回。
-            uint[] kept = ArrayPool<uint>.Shared.Rent(row.Length);
-            try
+            foreach (int index in _lockedTiles)
             {
-                Span<uint> scratch = kept.AsSpan(0, row.Length);
-                scratch.Clear();
-                foreach (XRect r in shape)
+                _locks[index]?.Dispose();
+                _locks[index] = null;
+            }
+            _lockedTiles.Clear();
+        }
+
+        /// <summary>
+        /// 在像素锁里(<see cref="XTopLevelWindow.ReadPixels" /> 的回调):把损伤矩形从服务端的缓冲拷进锁好的小块。
+        /// 24 位视觉的 alpha 字节没有意义,补成不透明;非矩形窗口在形状之外置成全透明。
+        /// </summary>
+        private void CopyDamage(ReadOnlySpan<uint> pixels, int width, int height)
+        {
+            if (width != _width || height != _height)
+            {
+                _resizeTo = (width, height);
+                return;
+            }
+            bool opaque = !_handle.HasAlpha;
+            IReadOnlyList<XRect>? shape = _handle.Shape;
+            _copiedAlpha = !opaque;
+            _copiedShape = shape;
+            foreach (XRect d in _damage)
+            {
+                XRect r = d.Intersect(new XRect(0, 0, width, height));
+                if (r.IsEmpty)
                 {
-                    if (y < r.Y || y >= r.Y + r.Height)
+                    continue;
+                }
+                for (int ty = r.Y / TileSize; ty <= (r.Bottom - 1) / TileSize; ty++)
+                {
+                    for (int tx = r.X / TileSize; tx <= (r.Right - 1) / TileSize; tx++)
+                    {
+                        XRect tile = new(tx * TileSize, ty * TileSize, TileSize, TileSize);
+                        if (_locks[(ty * _columns) + tx] is { } frame)
+                        {
+                            CopyPart(pixels, width, r.Intersect(tile), tile, frame, opaque, shape);
+                        }
+                    }
+                }
+            }
+        }
+
+        private static unsafe void CopyPart(ReadOnlySpan<uint> pixels, int width, XRect part, XRect tile, ILockedFramebuffer frame,
+            bool opaque, IReadOnlyList<XRect>? shape)
+        {
+            int rowPixels = frame.RowBytes / 4;
+            uint* origin = (uint*)frame.Address;
+            for (int y = part.Y; y < part.Bottom; y++)
+            {
+                ReadOnlySpan<uint> from = pixels.Slice((y * width) + part.X, part.Width);
+                Span<uint> to = new(origin + ((long)(y - tile.Y) * rowPixels) + (part.X - tile.X), part.Width);
+                if (shape is null)
+                {
+                    CopyRow(from, to, opaque);
+                    continue;
+                }
+                // 形状覆盖的段照拷,其余清成全透明。
+                to.Clear();
+                foreach (XRect s in shape)
+                {
+                    if (y < s.Y || y >= s.Y + s.Height)
                     {
                         continue;
                     }
-                    int start = Math.Max(0, r.X), end = Math.Min(row.Length, r.X + r.Width);
+                    int start = Math.Max(s.X, part.X), end = Math.Min(s.X + s.Width, part.X + part.Width);
                     if (end > start)
                     {
-                        row[start..end].CopyTo(scratch[start..end]);
+                        CopyRow(from[(start - part.X)..(end - part.X)], to[(start - part.X)..(end - part.X)], opaque);
                     }
                 }
-                scratch.CopyTo(row);
-            }
-            finally
-            {
-                ArrayPool<uint>.Shared.Return(kept);
             }
         }
+
+        /// <summary>拷一段;不透明窗口顺手把 alpha 补成 0xFF(按向量宽度一次处理多个像素)。</summary>
+        private static void CopyRow(ReadOnlySpan<uint> from, Span<uint> to, bool opaque)
+        {
+            if (!opaque)
+            {
+                from.CopyTo(to);
+                return;
+            }
+            int i = 0;
+            if (System.Numerics.Vector.IsHardwareAccelerated)
+            {
+                System.Numerics.Vector<uint> alpha = new(0xFF000000);
+                int step = System.Numerics.Vector<uint>.Count;
+                for (; i <= from.Length - step; i += step)
+                {
+                    (new System.Numerics.Vector<uint>(from[i..]) | alpha).CopyTo(to[i..]);
+                }
+            }
+            for (; i < from.Length; i++)
+            {
+                to[i] = from[i] | 0xFF000000;
+            }
+        }
+
+        private static XRect Union(XRect a, XRect b)
+        {
+            int x1 = Math.Min(a.X, b.X), y1 = Math.Min(a.Y, b.Y);
+            int x2 = Math.Max(a.X + a.Width, b.X + b.Width), y2 = Math.Max(a.Y + a.Height, b.Y + b.Height);
+            return new XRect(x1, y1, x2 - x1, y2 - y1);
+        }
+
         public override void Render(DrawingContext context)
         {
-            if (_bitmap is { } bitmap)
+            double scale = _owner.Scale;
+            for (int index = 0; index < _tiles.Length; index++)
             {
-                context.DrawImage(bitmap, new Rect(bitmap.Size), new Rect(Bounds.Size));
+                if (_tiles[index] is not { } tile)
+                {
+                    continue;
+                }
+                PixelSize size = tile.PixelSize;
+                int x = index % _columns * TileSize, y = index / _columns * TileSize;
+                context.DrawImage(tile, new Rect(0, 0, size.Width, size.Height),
+                    new Rect(x / scale, y / scale, size.Width / scale, size.Height / scale));
             }
         }
     }
