@@ -1,5 +1,4 @@
 using System.Text;
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -65,8 +64,8 @@ public sealed class XInputTests
         await SelectAsync(c, xi, top, 1, 1u << 2);                             // XIAllMasterDevices:KeyPress
         await core.SendAsync(2, 0, b => b.U32(top).U32(0x800).U32(0x1));      // 另一个客户端:核心 KeyPress
         await core.SyncAsync();
-        server.FocusTopLevel(top);
-        server.Key(38, true);
+        server.FocusTopLevel(host.Mapped[top]);
+        server.InjectKey(38, true);
 
         XMessage e = await NextXiAsync(c, xi, 2);
         Assert.AreEqual(3, e.U16(10), "deviceid = 主键盘");
@@ -87,12 +86,12 @@ public sealed class XInputTests
         uint top = await MapTopAsync(c, host);
         await SelectAsync(c, xi, top, 1, (1u << 4) | (1u << 5) | (1u << 6));
         await c.SyncAsync();
-        server.PointerButton(top, 5, 5, 1, pressed: true);
+        server.InjectPointerButton(host.Mapped[top], 5, 5, 1, pressed: true);
         XMessage press = await NextXiAsync(c, xi, 4);
         Assert.AreEqual(1u, press.U32(16), "button 1");
         Assert.AreEqual(5 << 16, (int)press.U32(40), "event_x(FP1616)");
 
-        server.PointerMotion(top, 200, 5);   // 出了 60 宽的窗口
+        server.InjectPointerMotion(host.Mapped[top], 200, 5);   // 出了 60 宽的窗口
         XMessage motion = await c.NextAsync(m => m.EventCode == GenericEvent && m.U16(8) == 6 && (int)m.U32(40) == 200 << 16);
         Assert.AreEqual(top, motion.U32(24), "隐式抓取期间事件仍发到按下的窗口");
         Assert.AreEqual(1, motion.Bytes[80] >> 1 & 1, "buttons 掩码里按钮 1 按着");
@@ -109,8 +108,8 @@ public sealed class XInputTests
         XMessage status = await c.RequestAsync(xi, 51, b => b.U32(top).U32(0).U32(0).U16(3).U8(1).U8(1).U8(0).U8(0).U16(1)
             .U8(1 << 2).U8(0).U8(0).U8(0));
         Assert.AreEqual(0, status.Bytes[8], "GrabSuccess");
-        server.FocusTopLevel(0);   // 焦点不在它身上也照样收到
-        server.Key(24, true);
+        server.FocusTopLevel(null);   // 焦点不在它身上也照样收到
+        server.InjectKey(24, true);
         XMessage e = await NextXiAsync(c, xi, 2);
         Assert.AreEqual(top, e.U32(24));
         await c.SendAsync(xi, 52, b => b.U32(0).U16(3).U16(0));
@@ -127,9 +126,9 @@ public sealed class XInputTests
         uint top = await MapTopAsync(c, host);
         await SelectAsync(c, xi, c.RootWindow, 0, 1u << 17);   // XIAllDevices:RawMotion
         await c.SyncAsync();
-        server.PointerMotion(top, 1, 1);
+        server.InjectPointerMotion(host.Mapped[top], 1, 1);
         await NextXiAsync(c, xi, 17);   // 从初始位置移过来的那一下
-        server.PointerMotion(top, 4, 6);
+        server.InjectPointerMotion(host.Mapped[top], 4, 6);
         XMessage raw = await NextXiAsync(c, xi, 17);
         Assert.AreEqual(1, raw.U16(22), "valuators_len");
         Assert.AreEqual(3, (int)raw.U32(36), "dx 的整数部分");
@@ -178,14 +177,14 @@ public sealed class XInputTests
         await SelectAsync(c, xi, top, 0, 1u << 6);                                                 // XIAllDevices:Motion
         await c.SyncAsync();
 
-        server.PointerMotion(top, 3, 3);
+        server.InjectPointerMotion(host.Mapped[top], 3, 3);
         XMessage attached = await NextXiAsync(c, xi, 6);
         Assert.AreEqual(6, attached.U16(10), "deviceid = 新的主指针");
 
         await c.SendAsync(xi, 43, b => b.U8(1).U8(0).U8(0).U8(0).U16(4).U16(2).U16(4).U16(0));    // DetachSlave 4
         await c.SendAsync(2, 0, b => b.U32(top).U32(0x800).U32(0x40));                             // 同时选核心 PointerMotion
         await c.SyncAsync();
-        server.PointerMotion(top, 5, 5);
+        server.InjectPointerMotion(host.Mapped[top], 5, 5);
         XMessage floating = await NextXiAsync(c, xi, 6);
         Assert.AreEqual(4, floating.U16(10), "浮动:deviceid = 从设备本身");
         await c.SyncAsync();

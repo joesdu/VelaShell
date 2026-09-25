@@ -21,8 +21,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Themes.Fluent;
 using VelaShell.Services.XServer;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
+using VelaShell.XServer;
 
 int display = args.Length > 0 && int.TryParse(args[0], out int n) ? n : 20;
 DemoApp.Display = display;
@@ -48,7 +47,7 @@ sealed class DemoApp : Application
     private static async Task StartAsync(Window main)
     {
         AvaloniaXServerHost host = new();
-        X11Server server = new(new XServerOptions { DisplayNumber = Display, Log = line => Console.WriteLine($"[x] {line}") }, host);
+        X11Server server = new(new X11ServerOptions { DisplayNumber = Display, Log = line => Console.WriteLine($"[x] {line}") }, host);
         await host.AttachAsync(server, CancellationToken.None);
         await server.StartAsync();
         _ = RelayAsync(7000 + Display, 6000 + Display);

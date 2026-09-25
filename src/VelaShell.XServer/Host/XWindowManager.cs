@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright 2026 VelaShell Labs
 
-namespace VelaShell.XServer.Host;
+namespace VelaShell.XServer;
 
 /// <summary>窗口类型(EWMH <c>_NET_WM_WINDOW_TYPE</c>)。宿主据此决定装饰、任务栏、置顶与焦点行为。</summary>
 public enum XWindowType
@@ -115,7 +115,7 @@ public abstract record XWindowManagerRequest(XTopLevelWindow Window);
 public sealed record XMoveResizeRequest(XTopLevelWindow Window, XMoveResizeDirection Direction, int Button, int RootX, int RootY)
     : XWindowManagerRequest(Window);
 
-/// <summary>改窗口状态(<c>_NET_WM_STATE</c>):最大化、全屏、置顶……宿主照办后调 <c>SetTopLevelStates</c>。</summary>
+/// <summary>改窗口状态(<c>_NET_WM_STATE</c>):最大化、全屏、置顶……宿主照办后调 <see cref="X11Server.SetTopLevelStates" />。</summary>
 public sealed record XStateChangeRequest(XTopLevelWindow Window, XWindowStates Add, XWindowStates Remove)
     : XWindowManagerRequest(Window);
 

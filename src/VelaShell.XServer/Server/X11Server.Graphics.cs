@@ -14,9 +14,10 @@ using System.Runtime.InteropServices;
 using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
@@ -305,7 +306,7 @@ public sealed partial class X11Server
         });
     }
 
-    private void PolyLineRequest(XRequestReader r)
+    private void PolyLine(XRequestReader r)
     {
         bool relative = r.Data == 1;
         uint drawable = r.U32(), gc = r.U32();

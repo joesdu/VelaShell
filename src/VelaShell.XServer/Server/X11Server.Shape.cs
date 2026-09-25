@@ -10,15 +10,13 @@
 using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
-    private const byte ShapeMajor = 130;
-    private const byte ShapeEventBase = 64;
-
     private const byte ShapeBounding = 0, ShapeClip = 1, ShapeInput = 2;
     private const byte ShapeSet = 0, ShapeUnion = 1, ShapeIntersect = 2, ShapeSubtract = 3, ShapeInvert = 4;
 
@@ -190,10 +188,9 @@ public sealed partial class X11Server
         {
             Region redraw = window.IsTopLevel ? new Region(buffer.Bounds) : before.Union(VisibleOuter(window));
             ExposeWindowTree(top, redraw);
-            if (window.IsTopLevel && _topLevelHandles.TryGetValue(window, out Host.XTopLevelWindow? handle))
+            if (window.IsTopLevel)
             {
-                RefreshHandle(window, handle);
-                _host.TopLevelChanged(handle);
+                RefreshTopLevel(window);
             }
         }
         if (kind == ShapeInput)

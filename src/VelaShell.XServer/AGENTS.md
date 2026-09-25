@@ -43,13 +43,24 @@
 
 - 编译设置与 `VelaShell.Ssh` 一致:`TreatWarningsAsErrors`、`latest-recommended` 分析、`EnforceCodeStyleInBuild`、AOT / 裁剪友好(**零反射**)。
 - **零运行时依赖。** 绘图是自己的软件光栅化(X 的核心绘图是逐像素精确的语义,抗锯齿的 2D 库给不出同样的像素)。
-- **全部可变状态只在执行线程上碰**(`X11Server.Post`)。宿主注入的方法只排工作项;宿主回调经 `DeferredHost` 攒起来,
-  在执行线程**放掉 `PixelLock` 之后**按原顺序调用 —— 新增回调一律走它,不许在持锁时直接调宿主(宿主的 UI 线程会在 `CopyPixels` 里等这把锁)。
-  唯一跨线程的是顶层像素,由 `PixelLock` 保护。
+- **全部可变状态只在执行线程上碰**(`X11Server.Post`)。宿主调用的方法只校验参数、排工作项;宿主回调经 `DeferredHost` 攒起来,
+  在执行线程**放掉像素锁之后**按原顺序调用 —— 新增回调一律走它,不许在持锁时直接调宿主(宿主的 UI 线程会在 `ReadPixels` 里等这把锁)。
+  唯一跨线程的是顶层像素,由像素锁(`PixelGate`,不对外公开)保护;窗口属性给宿主的是不可变快照(`XTopLevelSnapshot`),整份替换。
 - **异步优先,不阻塞执行线程**:需要等的东西(XTEST / Present 的延迟、SYNC 的计时器)用 `Task.Delay` 到点后 `Post` 回来;
   连接层有背压(输出积压上限、每客户端未执行请求上限),大尺寸请求先校验再分配、只处理与目标相交的部分。
-- 请求处理按领域拆成 `Server/X11Server.*.cs` 的 partial 文件;新请求 / 扩展照这个分法放。
-- 协议错误一律 `throw new XProtocolError(...)`,由分派层统一转成错误报文(并经 `XServerOptions.Log` 记下来)。
+- **公开面**:公开类型只放 `Host/`、一律在根命名空间 `VelaShell.XServer`;`X11Server` 的公开成员只放 `Server/X11Server.cs`,
+  其余 partial 文件里没有 `public`。宿主方法的命名:`Inject*` 是合成的用户输入,`*TopLevel` 是宿主作为窗口管理器的动作,
+  `Set*` 是运行中换配置;窗口用 `XTopLevelWindow` 句柄指名,不用 XID;参数不合法当场抛异常,窗口已不在时静默忽略。
+  宿主回调一律用「主语 + 过去分词」(`TopLevelMapped`、`CursorChanged`、`BellRequested`)。
+- **请求处理**按领域 / 扩展拆成 `Server/X11Server.*.cs` 的 partial 文件:不同扩展不混在一个文件里(大的可以拆成几个,如 Xkb / XkbSetMap);
+  只做基础设施的 BIG-REQUESTS、XC-MISC、Generic Event 跟着它们服务的那块代码(连接、资源 ID、扩展注册表)。处理器与协议请求同名
+  (`MapWindow(XClient, XRequestReader)`);同名的内部操作用别的动词(`Map`、`Configure`、`Destroy`),扩展里与核心请求重名的加扩展前缀(`RenderComposite`)。
+  实现 X11Server 的对外动作的私有方法叫 `Apply*`。扩展的资源类型放 `Resources/X{扩展}Resources.cs`。
+- **新增扩展**:在 `X11Server.Extensions.cs` 的编号表里分主操作码 / 事件 / 错误编号,在 `InitExtensions` 里登记
+  (事件数、错误数、`ClientClosed` / `WindowDestroyed` 清理钩子 —— 注册时检查编号不重叠),请求处理放进自己的 partial 文件。
+  不要再去改连接收尾(`CleanupClient`)与窗口销毁(`DestroyTree`)。
+  状态自成一体、只需碰资源表与绘图目标的扩展照 `GlxExtension` 写成独立的类(经 `X11Server` 的少数 internal 成员访问服务端),不再往 `X11Server` 里加字段。
+- 协议错误一律 `throw new XProtocolError(...)`,由分派层统一转成错误报文。诊断只走 `X11ServerOptions.Log`(私有的 `Log(...)`),不用 `Trace`。
 
 ## 四、测试
 

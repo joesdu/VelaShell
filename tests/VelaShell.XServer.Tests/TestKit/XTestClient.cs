@@ -2,7 +2,6 @@ using System.Buffers.Binary;
 using System.IO.Pipelines;
 using System.Text;
 using System.Threading.Channels;
-using VelaShell.XServer.Server;
 
 namespace VelaShell.XServer.Tests.TestKit;
 

@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using VelaShell.XServer.Host;
+using VelaShell.XServer;
 
 namespace VelaShell.Services.XServer;
 

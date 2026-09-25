@@ -13,29 +13,13 @@
 using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
-
-/// <summary>一个 DAMAGE 对象:累计的损伤区域与报告级别。</summary>
-internal sealed class XDamage(uint id, XClient owner, XResource drawable, byte level) : XResource(id, owner)
-{
-    public const byte Raw = 0, Delta = 1, BoundingBox = 2, NonEmpty = 3;
-
-    public XResource Drawable { get; } = drawable;
-
-    public byte Level { get; } = level;
-
-    /// <summary>累计损伤(可绘对象坐标)。</summary>
-    public Region Accumulated { get; set; } = new();
-}
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
-    private const byte DamageMajor = 141;
-    private const byte DamageEventBase = 72;
-    private const byte DamageErrorBase = 141;
-
     /// <summary>可绘对象 → 挂在它上面的损伤对象。空时绘图路径上的检查只是一次字典查找。</summary>
     private readonly Dictionary<XResource, List<XDamage>> _damageObjects = [];
 
@@ -125,37 +109,39 @@ public sealed partial class X11Server
         }
     }
 
-    /// <summary>可绘对象没了(窗口销毁 / 像素图释放)或客户端断开:摘掉相关的损伤对象。</summary>
-    private void CleanupDamage(XClient? client, XResource? drawable)
+    /// <summary>可绘对象没了(窗口销毁 / 像素图释放):建在它上面的损伤对象一并销毁。</summary>
+    private void CleanupDamage(XResource drawable)
     {
-        if (_damageObjects.Count == 0)
-        {
-            return;
-        }
-        if (drawable is not null && _damageObjects.Remove(drawable, out List<XDamage>? gone))
+        if (_damageObjects.Remove(drawable, out List<XDamage>? gone))
         {
             foreach (XDamage d in gone)
             {
                 RemoveResource(d.Id);
             }
         }
-        if (client is not null)
+    }
+
+    /// <summary>客户端断开:摘掉它建的损伤对象(资源本身已随资源表释放)。</summary>
+    private void CleanupDamage(XClient client)
+    {
+        if (_damageObjects.Count == 0)
         {
-            foreach (List<XDamage> list in _damageObjects.Values)
-            {
-                list.RemoveAll(d => ReferenceEquals(d.Owner, client));
-            }
-            foreach (XResource key in _damageObjects.Where(kv => kv.Value.Count == 0).Select(kv => kv.Key).ToArray())
-            {
-                _damageObjects.Remove(key);
-            }
+            return;
+        }
+        foreach (List<XDamage> list in _damageObjects.Values)
+        {
+            list.RemoveAll(d => ReferenceEquals(d.Owner, client));
+        }
+        foreach (XResource key in _damageObjects.Where(kv => kv.Value.Count == 0).Select(kv => kv.Key).ToArray())
+        {
+            _damageObjects.Remove(key);
         }
     }
 
     // ------------------------------------------------------------------ 绘图路径上的钩子
 
     /// <summary>像素图上画过一块(缓冲坐标,即像素图坐标)。</summary>
-    private void NotePixmapDrawn(XPixmap pixmap, XRect rect)
+    internal void NotePixmapDrawn(XPixmap pixmap, XRect rect)
     {
         if (_damageObjects.Count != 0 && !rect.IsEmpty && _damageObjects.ContainsKey(pixmap))
         {

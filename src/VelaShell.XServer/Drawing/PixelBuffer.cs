@@ -38,6 +38,26 @@ internal sealed class PixelBuffer
 
     public uint Get(int x, int y) => (uint)x < (uint)Width && (uint)y < (uint)Height ? Pixels[(y * Width) + x] : 0;
 
+    /// <summary>在两块缓冲之间拷一块矩形(两边都裁到各自范围内)。</summary>
+    public static void CopyRect(PixelBuffer src, int sx, int sy, PixelBuffer dst, int dx, int dy, int width, int height)
+    {
+        XRect srcRect = new XRect(sx, sy, width, height).Intersect(src.Bounds);
+        for (int row = srcRect.Y; row < srcRect.Bottom; row++)
+        {
+            int ty = row - sy + dy;
+            if ((uint)ty >= (uint)dst.Height)
+            {
+                continue;
+            }
+            int x1 = Math.Max(srcRect.X, sx - dx);
+            int x2 = Math.Min(srcRect.Right, sx - dx + dst.Width);
+            if (x2 > x1)
+            {
+                Array.Copy(src.Pixels, (row * src.Width) + x1, dst.Pixels, (ty * dst.Width) + (x1 - sx + dx), x2 - x1);
+            }
+        }
+    }
+
     /// <summary>改尺寸,左上角对齐保留原内容(bit-gravity NorthWest),新露出的部分填 <paramref name="fill" />。</summary>
     public void Resize(int width, int height, uint fill = 0)
     {

@@ -136,7 +136,7 @@ internal static class XOpcode
 }
 
 /// <summary>错误码(协议附录 B「Errors」)。</summary>
-public enum XErrorCode : byte
+internal enum XErrorCode : byte
 {
     /// <summary>操作码不认识。</summary>
     Request = 1,

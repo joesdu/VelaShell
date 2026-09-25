@@ -54,25 +54,22 @@ internal sealed class XColormap(uint id, XClient? owner, uint visual) : XResourc
 
 /// <summary>光标。</summary>
 /// <remarks>
-/// 来自 cursor 字体的光标记下字形号(<see cref="Glyph" />),宿主据此映射成系统光标;
-/// 位图光标(CreateCursor)记下两张位图与热点,宿主可以自己合成。
+/// 来自 cursor 字体的光标记下字形号(<see cref="Glyph" />);位图光标(核心 CreateCursor)与 ARGB 光标(RENDER CreateCursor)
+/// 在创建时把图像烙成 <see cref="Image" />。宿主看到的 <see cref="XCursor" /> 由这些推出,见 X11Server.Cursors.cs。
 /// </remarks>
-internal sealed class XCursor(uint id, XClient? owner) : XResource(id, owner)
+internal sealed class XCursorResource(uint id, XClient? owner) : XResource(id, owner)
 {
-    /// <summary>cursor 字体的字形号(如 68 = left_ptr、152 = xterm);位图光标为 -1。</summary>
+    /// <summary>cursor 字体的字形号(如 68 = left_ptr、152 = xterm);位图 / ARGB 光标为 -1。</summary>
     public int Glyph { get; init; } = -1;
 
-    public XPixmap? Source { get; init; }
+    /// <summary>位图 / ARGB 光标的图像(预乘的 ARGB 与热点);cursor 字体的光标为 null。</summary>
+    public XCursorImage? Image { get; init; }
 
-    public XPixmap? Mask { get; init; }
+    /// <summary>客户端经 XFIXES SetCursorName 起的名字(光标主题里的名字,如 <c>text</c>、<c>pointer</c>);没起为 null。</summary>
+    public string? Name { get; set; }
 
-    public int HotX { get; init; }
-
-    public int HotY { get; init; }
-
-    public uint ForegroundRgb { get; set; }
-
-    public uint BackgroundRgb { get; set; } = 0xFFFFFF;
+    /// <summary>交给宿主的样子(第一次用到时推出,改名后作废)。</summary>
+    public XCursor? Appearance { get; set; }
 }
 
 /// <summary>客户端打开的一个字体(同一份字体数据可以被多次打开)。</summary>

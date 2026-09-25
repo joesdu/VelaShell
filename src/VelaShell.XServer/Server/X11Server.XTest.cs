@@ -10,14 +10,13 @@
 
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
-    private const byte XTestMajor = 135;
-
     private void XTest(XClient c, XRequestReader r)
     {
         switch (r.Data)
@@ -29,11 +28,11 @@ public sealed partial class X11Server
                 {
                     XWindow window = Window(r.U32());
                     uint cursorId = r.U32();
-                    XCursor? cursor = cursorId switch
+                    XCursorResource? cursor = cursorId switch
                     {
                         0 => null,
                         1 => CurrentCursor(),
-                        _ => Lookup<XCursor>(cursorId) ?? throw new XProtocolError(XErrorCode.Cursor, cursorId),
+                        _ => Lookup<XCursorResource>(cursorId) ?? throw new XProtocolError(XErrorCode.Cursor, cursorId),
                     };
                     c.Reply(ReferenceEquals(window.Cursor, cursor) ? (byte)1 : (byte)0, w => w.Zero(24));
                     break;
@@ -121,16 +120,5 @@ public sealed partial class X11Server
         {
             // 服务端收工了。
         }
-    }
-
-    /// <summary>指针当前处该显示的光标(抓取的光标优先,否则从指针所在窗口向上找)。</summary>
-    private XCursor? CurrentCursor()
-    {
-        XCursor? cursor = PointerGrab?.Cursor;
-        for (XWindow? w = _pointerWindow; cursor is null && w is not null; w = w.Parent)
-        {
-            cursor = w.Cursor;
-        }
-        return cursor;
     }
 }

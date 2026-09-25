@@ -13,21 +13,13 @@
 using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
-
-/// <summary>Present 的事件上下文(SelectInput 的 eid)。</summary>
-internal sealed class XPresentEventContext(uint id, XClient owner, XWindow window, uint mask) : XResource(id, owner)
-{
-    public XWindow Window { get; } = window;
-
-    public uint Mask { get; set; } = mask;
-}
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
-    private const byte PresentMajor = 144;
     private const uint PresentConfigureMask = 1, PresentCompleteMask = 2, PresentIdleMask = 4;
 
     /// <summary>窗口 → 挂在它上面的事件上下文(按窗口索引,呈现时不必扫整个资源表)。</summary>
@@ -173,7 +165,7 @@ public sealed partial class X11Server
             Region dest = copy.Clone().Translate(xOff + target.OriginX, yOff + target.OriginY).Intersect(target.Clip);
             foreach (XRect rect in dest.Rects)
             {
-                CopyPixels(pixmap.Buffer, rect.X - xOff - target.OriginX, rect.Y - yOff - target.OriginY,
+                PixelBuffer.CopyRect(pixmap.Buffer, rect.X - xOff - target.OriginX, rect.Y - yOff - target.OriginY,
                     target.Buffer, rect.X, rect.Y, rect.Width, rect.Height);
             }
             if (target.TopLevel is { } top)
@@ -200,29 +192,27 @@ public sealed partial class X11Server
             ? [.. list.Where(ctx => (ctx.Mask & mask) != 0 && ctx.Owner is { Closed: false })]
             : [];
 
-    /// <summary>窗口销毁 / 客户端断开:摘掉相关的事件上下文。</summary>
-    private void CleanupPresent(XClient? client, XWindow? window)
+    /// <summary>窗口销毁:摘掉并释放它上面的事件上下文。</summary>
+    private void CleanupPresent(XWindow window)
     {
-        if (_presentContexts.Count == 0)
-        {
-            return;
-        }
-        if (window is not null && _presentContexts.Remove(window, out List<XPresentEventContext>? gone))
+        if (_presentContexts.Remove(window, out List<XPresentEventContext>? gone))
         {
             foreach (XPresentEventContext ctx in gone)
             {
                 RemoveResource(ctx.Id);
             }
         }
-        if (client is not null)
+    }
+
+    /// <summary>客户端断开:摘掉它的事件上下文。</summary>
+    private void CleanupPresent(XClient client)
+    {
+        foreach ((XWindow w, List<XPresentEventContext> list) in _presentContexts.ToArray())
         {
-            foreach ((XWindow w, List<XPresentEventContext> list) in _presentContexts.ToArray())
+            list.RemoveAll(ctx => ReferenceEquals(ctx.Owner, client));
+            if (list.Count == 0)
             {
-                list.RemoveAll(ctx => ReferenceEquals(ctx.Owner, client));
-                if (list.Count == 0)
-                {
-                    _presentContexts.Remove(w);
-                }
+                _presentContexts.Remove(w);
             }
         }
     }

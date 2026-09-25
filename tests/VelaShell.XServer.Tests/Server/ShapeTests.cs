@@ -1,6 +1,4 @@
 using System.Text;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -73,7 +71,7 @@ public sealed class ShapeTests
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         byte major = await ShapeMajorAsync(c);
         (uint top, XTopLevelWindow handle) = await MapTopAsync(c, host, 0x123456);
-        Assert.IsNull(handle.Shape);
+        Assert.IsNull(handle.Snapshot.Shape);
 
         await c.SendAsync(major, 6, b => b.U32(top).U8(1).U8(0).U8(0).U8(0));   // SelectInput
         await c.SendAsync(major, 1, b => b.U8(0).U8(0).U8(0).U8(0).U32(top).I16(0).I16(0)
@@ -84,12 +82,12 @@ public sealed class ShapeTests
         Assert.AreEqual(60, notify.U16(12), "extents 宽");
         Assert.AreEqual(1, notify.Bytes[20], "shaped");
 
-        await host.WaitForAsync(() => handle.Shape is not null);
-        Assert.AreEqual(1200 + 300, handle.Shape!.Sum(r => r.Width * r.Height));
+        await host.WaitForAsync(() => handle.Snapshot.Shape is not null);
+        Assert.AreEqual(1200 + 300, handle.Snapshot.Shape!.Sum(r => r.Width * r.Height));
 
         // Mask 源为 None:回到默认矩形。
         await c.SendAsync(major, 2, b => b.U8(0).U8(0).U8(0).U8(0).U32(top).I16(0).I16(0).U32(0));
-        await host.WaitForAsync(() => handle.Shape is null);
+        await host.WaitForAsync(() => handle.Snapshot.Shape is null);
     }
 
     [TestMethod]
@@ -109,12 +107,12 @@ public sealed class ShapeTests
         await c.SendAsync(major, 1, b => b.U8(0).U8(2).U8(0).U8(0).U32(child).I16(0).I16(0).I16(0).I16(0).U16(10).U16(10));
         await c.SyncAsync();
 
-        server.PointerButton(top, 5, 5, 1, pressed: true);
-        server.PointerButton(top, 5, 5, 1, pressed: false);
+        server.InjectPointerButton(host.Mapped[top], 5, 5, 1, pressed: true);
+        server.InjectPointerButton(host.Mapped[top], 5, 5, 1, pressed: false);
         XMessage inside = await c.NextEventAsync(4);
         Assert.AreEqual(child, inside.U32(12), "形状里面点到子窗口");
 
-        server.PointerButton(top, 30, 30, 1, pressed: true);
+        server.InjectPointerButton(host.Mapped[top], 30, 30, 1, pressed: true);
         XMessage outside = await c.NextEventAsync(4);
         Assert.AreEqual(top, outside.U32(12), "形状外面穿过子窗口落到父窗口");
     }

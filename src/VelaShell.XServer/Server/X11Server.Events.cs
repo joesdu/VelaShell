@@ -7,9 +7,10 @@
 //   设备事件沿窗口树向上传播,直到有客户端选了它或碰上 do-not-propagate-mask
 
 using VelaShell.XServer.Protocol;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {

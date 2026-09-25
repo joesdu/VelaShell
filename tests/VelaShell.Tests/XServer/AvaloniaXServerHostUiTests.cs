@@ -8,8 +8,7 @@ using Avalonia.Threading;
 using VelaShell.Services.XServer;
 using VelaShell.Ssh.Transport;
 using VelaShell.Views.XServer;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
+using VelaShell.XServer;
 
 namespace VelaShell.Tests.XServer;
 
@@ -39,9 +38,10 @@ public sealed class AvaloniaXServerHostUiTests
         Assert.AreEqual(0, XInputMap.Keycode(PhysicalKey.None));
         Assert.AreEqual(3, XInputMap.Button(MouseButton.Right));
         Assert.AreEqual(8, XInputMap.Button(MouseButton.XButton1));
-        Assert.AreEqual(StandardCursorType.Ibeam, XInputMap.Cursor(152));
-        Assert.AreEqual(StandardCursorType.None, XInputMap.Cursor(-2));
-        Assert.AreEqual(StandardCursorType.Arrow, XInputMap.Cursor(-1));
+        Assert.AreEqual(StandardCursorType.Ibeam, XInputMap.Cursor(XCursorShape.Text));
+        Assert.AreEqual(StandardCursorType.None, XInputMap.Cursor(XCursorShape.Hidden));
+        Assert.AreEqual(StandardCursorType.Arrow, XInputMap.Cursor(XCursorShape.Arrow));
+        Assert.AreEqual(StandardCursorType.BottomRightCorner, XInputMap.Cursor(XCursorShape.ResizeSouthEast));
     }
 
     [TestMethod]
@@ -100,6 +100,28 @@ public sealed class AvaloniaXServerHostUiTests
         Assert.AreEqual('!', At(us, XKeycodes.D1, 1));
 
         Assert.IsNull(HostKeymap.FromBundled("xx"));
+
+        Assert.AreEqual("de", de.Layout, "手选的布局名跟着键位表走");
+        XKeymap keymap = de.ToXKeymap();
+        Assert.AreEqual("de", keymap.Layout);
+        Assert.IsTrue(keymap.AltGr, "有 AltGr 层:右 Alt 当 AltGr");
+        Assert.AreEqual(6, keymap.KeysymsPerKeycode);
+    }
+
+    /// <summary>跟随系统时没有布局名:取随程序带的表里第一、二层最像的那个;认不出来按 us。</summary>
+    [TestMethod]
+    public void HostKeymap_GuessesTheLayoutNameWhenFollowingTheSystem()
+    {
+        byte[] keycodes = [.. HostKeymap.Keycodes()];
+        List<(uint, uint, uint, uint)> Levels(string layout)
+        {
+            uint[] t = BundledKeymaps.Layouts[layout];
+            return [.. keycodes.Select((k, i) => HostKeymap.Fixed(k) is { } f ? (f.Item1, f.Item2, 0u, 0u) : (t[i * 4], t[i * 4 + 1], t[i * 4 + 2], t[i * 4 + 3]))];
+        }
+        Assert.AreEqual("de", HostKeymap.Assemble(Levels("de")).Layout);
+        Assert.AreEqual("fr", HostKeymap.Assemble(Levels("fr")).Layout);
+        Assert.AreEqual("us", HostKeymap.Assemble(Levels("us")).Layout);
+        Assert.AreEqual("us", HostKeymap.Assemble([.. keycodes.Select(_ => ((uint)'a', (uint)'A', 0u, 0u))]).Layout, "认不出来");
     }
 
     /// <summary>设置页下拉里的每个布局(「自动」除外)在随程序带的表里都有 —— 选了却没有数据就会退回系统布局,用户看不出来。</summary>
@@ -188,10 +210,10 @@ public sealed class AvaloniaXServerHostUiTests
     public async Task MappedWindow_BecomesNativeWindow_AndCloseButtonDisconnectsClient() => await _session.Dispatch(async () =>
     {
         AvaloniaXServerHost host = new();
-        await using X11Server server = new(new XServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
         await host.AttachAsync(server, CancellationToken.None);
         (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
-        Task serve = server.ServeAsync(serverSide);
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
 
         (uint idBase, uint root) = await HandshakeAsync(client);
         uint window = idBase | 1, gc = idBase | 2;
@@ -229,10 +251,10 @@ public sealed class AvaloniaXServerHostUiTests
     public async Task TiledSurface_CopiesOnlyDamage_AndFollowsResize() => await _session.Dispatch(async () =>
     {
         AvaloniaXServerHost host = new();
-        await using X11Server server = new(new XServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
         await host.AttachAsync(server, CancellationToken.None);
         (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
-        Task serve = server.ServeAsync(serverSide);
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
 
         (uint idBase, uint root) = await HandshakeAsync(client);
         uint window = idBase | 1, red = idBase | 2, green = idBase | 3, blue = idBase | 4;
@@ -276,7 +298,7 @@ public sealed class AvaloniaXServerHostUiTests
     /// <summary>服务端缓冲里的像素(低 24 位)。</summary>
     private static uint ServerPixel(XNativeWindow window, int x, int y)
     {
-        uint[] pixels = new uint[window.Handle.Width * window.Handle.Height];
+        uint[] pixels = new uint[window.Handle.Snapshot.Width * window.Handle.Snapshot.Height];
         (int w, _) = window.Handle.CopyPixels(pixels);
         return pixels[(y * w) + x] & 0xFFFFFF;
     }

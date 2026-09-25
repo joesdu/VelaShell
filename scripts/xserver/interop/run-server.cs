@@ -15,9 +15,7 @@
 using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
-using VelaShell.XServer.Drawing;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
+using VelaShell.XServer;
 
 int display = args.Length > 0 ? int.Parse(args[0]) : 42;
 string outDir = Path.GetFullPath(args.Length > 1 ? args[1] : "xshots");
@@ -26,7 +24,7 @@ Directory.CreateDirectory(outDir);
 
 byte[] cookie = RandomNumberGenerator.GetBytes(16);
 ShotHost host = new(outDir);
-await using X11Server server = new(new XServerOptions
+await using X11Server server = new(new X11ServerOptions
 {
     DisplayNumber = display,
     ListenAddress = IPAddress.Any,
@@ -57,17 +55,17 @@ while (DateTime.UtcNow < deadline)
     {
         continue;
     }
-    uint target = host.Target ?? 0;
+    XTopLevelWindow? target = host.Target;
     string[] lines = File.ReadAllLines(cmdFile);
     File.Delete(cmdFile);
-    if (target != 0)
+    if (target is not null)
     {
         server.FocusTopLevel(target);
     }
     foreach (string line in lines)
     {
         string[] parts = line.Split(' ', 2);
-        if (target == 0 && parts[0] != "clip")
+        if (target is null && parts[0] != "clip")
         {
             Console.WriteLine($"[cmd] {line} -> 没有目标窗口,跳过");
             continue;
@@ -80,27 +78,27 @@ while (DateTime.UtcNow < deadline)
             case "type":
                 foreach ((byte code, bool shift) in Keys.For(parts[1].Replace("\\n", "\n", StringComparison.Ordinal)))
                 {
-                    if (shift) server.Key(XKeycodes.ShiftLeft, true);
-                    server.Key(code, true);
-                    server.Key(code, false);
-                    if (shift) server.Key(XKeycodes.ShiftLeft, false);
+                    if (shift) server.InjectKey(XKeycodes.ShiftLeft, true);
+                    server.InjectKey(code, true);
+                    server.InjectKey(code, false);
+                    if (shift) server.InjectKey(XKeycodes.ShiftLeft, false);
                 }
                 break;
             case "click":
                 int[] xy = [.. parts[1].Split(' ').Select(int.Parse)];
-                server.PointerMotion(target, xy[0], xy[1]);
-                server.PointerButton(target, xy[0], xy[1], 1, true);
-                server.PointerButton(target, xy[0], xy[1], 1, false);
+                server.InjectPointerMotion(target!, xy[0], xy[1]);
+                server.InjectPointerButton(target!, xy[0], xy[1], 1, true);
+                server.InjectPointerButton(target!, xy[0], xy[1], 1, false);
                 break;
             case "resize":
                 int[] wh = [.. parts[1].Split(' ').Select(int.Parse)];
-                server.ResizeTopLevel(target, wh[0], wh[1]);
+                server.ResizeTopLevel(target!, wh[0], wh[1]);
                 break;
             case "close":
-                server.CloseTopLevel(target);
+                server.CloseTopLevel(target!);
                 break;
         }
-        Console.WriteLine($"[cmd] {line} -> 0x{target:x}");
+        Console.WriteLine($"[cmd] {line} -> 0x{target?.Id:x}");
     }
 }
 
@@ -140,47 +138,53 @@ static class Keys
     }
 }
 
-sealed class ShotHost(string outDir) : IXServerHost
+sealed class ShotHost(string outDir) : IX11ServerHost
 {
     /// <summary>最近映射的普通(非 override-redirect)顶层窗口 —— 注入命令的目标。</summary>
-    public uint? Target { get; private set; }
+    public XTopLevelWindow? Target { get; private set; }
 
     public X11Server? Server { get; set; }
 
     public void TopLevelMapped(XTopLevelWindow w)
     {
-        if (!w.OverrideRedirect)
+        XTopLevelSnapshot s = w.Snapshot;
+        if (!s.OverrideRedirect)
         {
-            Target = w.Id;
-            Server?.FocusTopLevel(w.Id);   // 像窗口管理器那样把焦点给新映射的顶层(xdotool type 之类发到焦点)
+            Target = w;
+            Server?.FocusTopLevel(w);   // 像窗口管理器那样把焦点给新映射的顶层(xdotool type 之类发到焦点)
         }
-        Console.WriteLine($"[host] mapped 0x{w.Id:x} {w.Width}x{w.Height}+{w.X}+{w.Y} '{w.Title}' override={w.OverrideRedirect}");
+        Console.WriteLine($"[host] mapped 0x{w.Id:x} {s.Width}x{s.Height}+{s.X}+{s.Y} '{s.Title}' override={s.OverrideRedirect}");
     }
     public void TopLevelUnmapped(XTopLevelWindow w) => Console.WriteLine($"[host] unmapped 0x{w.Id:x}");
-    public void TopLevelChanged(XTopLevelWindow w) => Console.WriteLine($"[host] changed 0x{w.Id:x} {w.Width}x{w.Height}+{w.X}+{w.Y} '{w.Title}' class='{w.ClassName}' shape={(w.Shape is null ? "none" : w.Shape.Count + " rects")} type={w.WindowType} decorated={w.Decorated} states={w.States} min={w.MinWidth}x{w.MinHeight} icons={w.Icons.Count}");
+    public void TopLevelChanged(XTopLevelWindow w, XTopLevelChanges changes)
+    {
+        XTopLevelSnapshot s = w.Snapshot;
+        Console.WriteLine($"[host] changed 0x{w.Id:x} [{changes}] {s.Width}x{s.Height}+{s.X}+{s.Y} '{s.Title}' class='{s.ClassName}' shape={(s.Shape is null ? "none" : s.Shape.Count + " rects")} type={s.WindowType} decorated={s.Decorated} states={s.States} min={s.MinWidth}x{s.MinHeight} icons={s.Icons.Count}");
+    }
 
     // 像一个听话的窗口管理器:状态请求照办(最大化时铺满 1920×1080),其余只记下来。
-    public void WindowManagerRequest(XWindowManagerRequest request)
+    public void WindowManagerRequested(XWindowManagerRequest request)
     {
         Console.WriteLine($"[wm] {request}");
         if (request is XStateChangeRequest change && Server is { } server)
         {
-            XWindowStates states = (change.Window.States | change.Add) & ~change.Remove;
-            server.SetTopLevelStates(change.Window.Id, states);
+            XWindowStates states = (change.Window.Snapshot.States | change.Add) & ~change.Remove;
+            server.SetTopLevelStates(change.Window, states);
             if ((change.Add & XWindowStates.Maximized) != 0)
             {
-                server.MoveTopLevel(change.Window.Id, 0, 0);
-                server.ResizeTopLevel(change.Window.Id, 1920, 1080);
+                server.MoveTopLevel(change.Window, 0, 0);
+                server.ResizeTopLevel(change.Window, 1920, 1080);
             }
         }
     }
-    public void CursorChanged(XTopLevelWindow? w, int glyph) { }
-    public void Bell(int percent) => Console.WriteLine("[host] bell");
+    public void CursorChanged(XTopLevelWindow? w, XCursor cursor) => Console.WriteLine($"[host] cursor {cursor.Shape}{(cursor.Image is { } i ? $" image {i.Width}x{i.Height}" : "")}");
+    public void BellRequested(int volume) => Console.WriteLine($"[host] bell {volume}");
     public void ClipboardChanged(string text) => Console.WriteLine($"[host] clipboard {text.Length} chars '{text[..Math.Min(text.Length, 40)]}'");
 
     public void TopLevelDamaged(XTopLevelWindow w, IReadOnlyList<XRect> damage)
     {
-        uint[] pixels = new uint[Math.Max(1, w.Width * w.Height)];
+        XTopLevelSnapshot s = w.Snapshot;
+        uint[] pixels = new uint[Math.Max(1, s.Width * s.Height)];
         (int width, int height) = w.CopyPixels(pixels);
         if (width > 0 && height > 0)
         {
