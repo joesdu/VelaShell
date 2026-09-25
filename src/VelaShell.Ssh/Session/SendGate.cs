@@ -99,6 +99,11 @@ internal sealed class SendGate<TFrame>(long maxStashBytes = SendGate<TFrame>.Def
     /// </summary>
     public void Open() => IsOpen = true;
 
+    /// <summary>这个编号的帧现在交给 <see cref="Admit"/> 的话，会不会当场放行（而不是被暂存）。</summary>
+    /// <remarks>与 <see cref="Admit"/> 的判断一致；只有唯一的写者（发送泵）调用，所以查完再放不会变。</remarks>
+    public bool WouldSendNow(SshMessageNumber number) =>
+        (IsOpen && _stash.Count == 0) || (!IsOpen && IsTransportMessage(number));
+
     /// <summary>
     /// 请求放行一帧。
     /// </summary>

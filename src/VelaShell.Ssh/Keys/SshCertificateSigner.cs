@@ -93,7 +93,7 @@ public sealed class SshCertificateSigner : ISshSigner
         }
 
         var presented = SshPublicKey.ForCertificate(
-            certificate.Key, certificate.Algorithm, certificate.Blob.ToArray());
+            certificate.Key, certificate.Algorithm, certificate.Blob.ToArray(), certificate);
 
         return new SshCertificateSigner(signer, certificate, presented);
     }

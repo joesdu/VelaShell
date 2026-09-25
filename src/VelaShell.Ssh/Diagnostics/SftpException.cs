@@ -90,11 +90,14 @@ public sealed class SftpException : SshException
         };
 
         string prefix = operation is null ? what : $"{operation} 失败：{what}";
-        string withPath = path is null ? prefix : $"{prefix}（{path}）";
+
+        // 服务端的原话与路径（可能来自服务端的目录列表）进消息之前先清一遍 —— 见 PeerText。
+        // 原话照样留在 ServerMessage 里。
+        string withPath = path is null ? prefix : $"{prefix}（{PeerText.Sanitize(path)}）";
 
         return string.IsNullOrWhiteSpace(serverMessage)
             ? withPath + "。"
-            : $"{withPath}。服务端说：{serverMessage}";
+            : $"{withPath}。服务端说：{PeerText.Sanitize(serverMessage)}";
     }
 }
 

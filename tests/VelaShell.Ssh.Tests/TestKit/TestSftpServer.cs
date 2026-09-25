@@ -86,6 +86,24 @@ public sealed record TestSftpOptions
 
     /// <summary>从第几个 <c>WRITE</c> 起不再应答（模拟中途断开）。</summary>
     public int FailWritesAfter { get; init; } = int.MaxValue;
+
+    /// <summary>
+    /// 这个偏移上的 <c>READ</c> 先不答，等收到一个偏移更靠后的 <c>READ</c> 才放行。
+    /// </summary>
+    /// <remarks>
+    /// 用来证明顺序读确实在预读：一次只发一个 <c>READ</c> 的客户端会停在这里等，
+    /// 预读的客户端则会先发出后面的请求、把它放出来（<see cref="TestSftpServer.PipelinedReadObserved"/>）。
+    /// </remarks>
+    public long? HoldReadReplyAtOffset { get; init; }
+
+    /// <summary>设了就对每个 <c>CLOSE</c> 回这个失败码（句柄照样关掉）—— 模拟到关闭时才报出来的写入错误。</summary>
+    public SftpStatusCode? FailCloseWith { get; init; }
+
+    /// <summary><c>FSTAT</c> 回一个被截断的 ATTRS：宣告带 size，却没有那 8 个字节。</summary>
+    public bool MalformedFStat { get; init; }
+
+    /// <summary><c>READLINK</c> 回一个被截断的 NAME：宣告 1 项，却只有半个文件名。</summary>
+    public bool MalformedReadLink { get; init; }
 }
 
 /// <summary>在内存里说 SFTP v3 的测试服务端。</summary>
@@ -100,6 +118,16 @@ public sealed class TestSftpServer
     private int _nextHandle = 1;
     private int _receivedRequests;
     private int _sentReplies;
+
+    /// <summary>被扣住的那条 READ 应答（见 <see cref="TestSftpOptions.HoldReadReplyAtOffset"/>）。</summary>
+    private (long Offset, byte[] Reply)? _heldRead;
+    private bool _holdUsed;
+
+    /// <summary>这一批处理里放行的、之前扣住的应答。</summary>
+    private readonly List<byte[]> _released = [];
+
+    /// <summary>扣住的 READ 被一个更靠后的 READ 放了出来 —— 客户端确实在预读。</summary>
+    public bool PipelinedReadObserved { get; private set; }
 
     /// <summary>建一个测试 SFTP 服务端。</summary>
     public TestSftpServer(TestSftpOptions? options = null)
@@ -123,6 +151,12 @@ public sealed class TestSftpServer
 
     /// <summary>收到的 <c>WRITE</c> 次数。</summary>
     public int WriteCount { get; private set; }
+
+    /// <summary>收到过的最长一个 <c>WRITE</c> 的数据长度。</summary>
+    public int LargestWrite { get; private set; }
+
+    /// <summary>收到过的最长一个 <c>READ</c> 请求的长度。</summary>
+    public long LargestReadRequest { get; private set; }
 
     /// <summary>倒着发出去过几批应答（每批至少两条）。</summary>
     public int ReversedBatches { get; private set; }
@@ -167,6 +201,8 @@ public sealed class TestSftpServer
                 while (SftpWire.TryReadFrame(ref buffer, out SftpFrame frame))
                 {
                     byte[]? reply = Handle(frame);
+                    replies.AddRange(_released);
+                    _released.Clear();
                     if (reply is not null)
                     {
                         replies.Add(reply);
@@ -386,8 +422,31 @@ public sealed class TestSftpServer
         return BuildName(id, batch);
     }
 
-    private byte[] HandleRead(uint id, ReadOnlySequence<byte> rest)
+    private byte[]? HandleRead(uint id, ReadOnlySequence<byte> rest)
     {
+        byte[]? reply = BuildReadReply(id, rest, out long offset);
+
+        // 扣住的那一条：收到偏移更靠后的 READ 才放行（见 TestSftpOptions.HoldReadReplyAtOffset）。
+        if (_heldRead is { } held && offset > held.Offset)
+        {
+            _released.Add(held.Reply);
+            _heldRead = null;
+            PipelinedReadObserved = true;
+        }
+
+        if (!_holdUsed && _options.HoldReadReplyAtOffset == offset)
+        {
+            _holdUsed = true;
+            _heldRead = (offset, reply!);
+            return null;
+        }
+
+        return reply;
+    }
+
+    private byte[] BuildReadReply(uint id, ReadOnlySequence<byte> rest, out long requestedOffset)
+    {
+        requestedOffset = -1;
         if (!TryGetHandle(rest, out HandleState? state))
         {
             return BuildStatus(id, SftpStatusCode.Failure, "无效的句柄");
@@ -397,6 +456,8 @@ public sealed class TestSftpServer
         _ = reader.ReadStringAsArray(SftpProtocol.MaxHandleLength);
         ulong offset = reader.ReadUInt64();
         uint length = reader.ReadUInt32();
+        requestedOffset = (long)offset;
+        LargestReadRequest = Math.Max(LargestReadRequest, length);
 
         TestSftpNode node = _nodes[state.Path];
         if (offset >= (ulong)node.Content.Count)
@@ -440,6 +501,7 @@ public sealed class TestSftpServer
         _ = reader.ReadStringAsArray(SftpProtocol.MaxHandleLength);
         ulong offset = reader.ReadUInt64();
         byte[] data = reader.ReadStringAsArray(SftpProtocol.MaxMessageLength);
+        LargestWrite = Math.Max(LargestWrite, data.Length);
 
         TestSftpNode node = _nodes[state.Path];
         int end = (int)offset + data.Length;
@@ -463,13 +525,29 @@ public sealed class TestSftpServer
         SshDataReader reader = new(rest);
         string key = Convert.ToHexString(reader.ReadStringAsArray(SftpProtocol.MaxHandleLength));
         _handles.Remove(key);
-        return BuildStatus(id, SftpStatusCode.Ok, "");
+        return _options.FailCloseWith is { } failure
+            ? BuildStatus(id, failure, "关闭时回写失败：配额已满")
+            : BuildStatus(id, SftpStatusCode.Ok, "");
     }
 
-    private byte[] HandleFStat(uint id, ReadOnlySequence<byte> rest) =>
-        TryGetHandle(rest, out HandleState? state)
-            ? BuildAttrs(id, AttributesOf(_nodes.GetValueOrDefault(state.Path)))
-            : BuildStatus(id, SftpStatusCode.Failure, "无效的句柄");
+    private byte[] HandleFStat(uint id, ReadOnlySequence<byte> rest)
+    {
+        if (!TryGetHandle(rest, out HandleState? state))
+        {
+            return BuildStatus(id, SftpStatusCode.Failure, "无效的句柄");
+        }
+
+        if (_options.MalformedFStat)
+        {
+            ArrayBufferWriter<byte> payload = new();
+            SshDataWriter writer = new(payload);
+            writer.WriteUInt32(id);
+            writer.WriteUInt32((uint)SftpAttributeFields.Size);   // 宣告带 size，后面却什么都没有
+            return Frame(SftpMessageType.Attrs, payload.WrittenSpan);
+        }
+
+        return BuildAttrs(id, AttributesOf(_nodes.GetValueOrDefault(state.Path)));
+    }
 
     private byte[] HandleFSetStat(uint id, ReadOnlySequence<byte> rest)
     {
@@ -571,6 +649,17 @@ public sealed class TestSftpServer
         if (!_nodes.TryGetValue(path, out TestSftpNode? node) || node.LinkTarget is null)
         {
             return BuildStatus(id, SftpStatusCode.NoSuchFile, $"{path} 不是符号链接");
+        }
+
+        if (_options.MalformedReadLink)
+        {
+            ArrayBufferWriter<byte> payload = new();
+            SshDataWriter writer = new(payload);
+            writer.WriteUInt32(id);
+            writer.WriteUInt32(1);
+            writer.WriteUInt32(100);                     // 文件名声称 100 字节
+            writer.WriteRaw("only-a-bit"u8);             // 实际只有这么点
+            return Frame(SftpMessageType.Name, payload.WrittenSpan);
         }
 
         return BuildName(id, [new SftpNameEntry(node.LinkTarget, node.LinkTarget, SftpFileAttributes.Empty)]);

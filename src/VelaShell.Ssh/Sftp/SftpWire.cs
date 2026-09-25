@@ -326,24 +326,54 @@ public static class SftpWire
     }
 
     // ------------------------------------------------------------ 应答
+    //
+    // ⚠️ 每个解应答的入口都把解析层的 SshWireFormatException 包成公开的 SshProtocolException。
+    //    前者是内部类型：漏出去的话，使用者既按类型 catch 不到它，宿主的异常翻译也认不出它 ——
+    //    一条畸形的 ATTRS 就成了一个谁都接不住的异常。这些解析跑在调用方的路径上，
+    //    不经过会话边界那道包装，所以包装得在这里做。
+
+    private static SshProtocolException Malformed(string what, SshWireFormatException inner) =>
+        new(SshPhase.Open, $"服务端的 {what} 应答格式不对：{inner.Message}", inner);
 
     /// <summary>解 <c>SSH_FXP_VERSION</c>。</summary>
     public static (uint Version, IReadOnlyDictionary<string, byte[]> Extensions) ReadVersion(
         ReadOnlySequence<byte> payload)
     {
-        SshDataReader reader = new(payload);
-        uint version = reader.ReadUInt32();
-
-        // string 的默认相等比较器就是序数比较。
-        Dictionary<string, byte[]> extensions = [];
-        while (!reader.IsEmpty)
+        try
         {
-            string name = reader.ReadUtf8String(SftpProtocol.MaxPathLength);
-            byte[] data = reader.ReadStringAsArray(SftpProtocol.MaxPathLength);
-            extensions[name] = data;
-        }
+            SshDataReader reader = new(payload);
+            uint version = reader.ReadUInt32();
 
-        return (version, extensions);
+            // string 的默认相等比较器就是序数比较。
+            Dictionary<string, byte[]> extensions = [];
+            while (!reader.IsEmpty)
+            {
+                string name = reader.ReadUtf8String(SftpProtocol.MaxPathLength);
+                byte[] data = reader.ReadStringAsArray(SftpProtocol.MaxPathLength);
+                extensions[name] = data;
+            }
+
+            return (version, extensions);
+        }
+        catch (SshWireFormatException ex)
+        {
+            throw Malformed("SSH_FXP_VERSION", ex);
+        }
+    }
+
+    /// <summary>解 <c>limits@openssh.com</c> 的应答：四个 <c>uint64</c>。</summary>
+    public static SftpLimits ReadLimits(ReadOnlySequence<byte> payloadAfterRequestId)
+    {
+        try
+        {
+            SshDataReader reader = new(payloadAfterRequestId);
+            return new SftpLimits(
+                reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64(), reader.ReadUInt64());
+        }
+        catch (SshWireFormatException ex)
+        {
+            throw Malformed("limits@openssh.com", ex);
+        }
     }
 
     /// <summary>解 <c>SSH_FXP_STATUS</c>。</summary>
@@ -353,19 +383,34 @@ public static class SftpWire
     /// </remarks>
     public static (SftpStatusCode Code, string Message) ReadStatus(ReadOnlySequence<byte> payloadAfterRequestId)
     {
-        SshDataReader reader = new(payloadAfterRequestId);
-        var code = (SftpStatusCode)reader.ReadUInt32();
+        try
+        {
+            SshDataReader reader = new(payloadAfterRequestId);
+            var code = (SftpStatusCode)reader.ReadUInt32();
 
-        // 有些老服务端在 STATUS 里只给码，不给文本。那不是协议违规，别因此抛异常。
-        string message = reader.IsEmpty ? "" : reader.ReadUtf8String(SftpProtocol.MaxPathLength);
-        return (code, message);
+            // 有些老服务端在 STATUS 里只给码，不给文本。那不是协议违规，别因此抛异常。
+            string message = reader.IsEmpty ? "" : reader.ReadUtf8String(SftpProtocol.MaxPathLength);
+            return (code, message);
+        }
+        catch (SshWireFormatException ex)
+        {
+            throw Malformed("SSH_FXP_STATUS", ex);
+        }
     }
 
     /// <summary>解 <c>SSH_FXP_HANDLE</c>。</summary>
     public static byte[] ReadHandle(ReadOnlySequence<byte> payloadAfterRequestId)
     {
-        SshDataReader reader = new(payloadAfterRequestId);
-        byte[] handle = reader.ReadStringAsArray(SftpProtocol.MaxHandleLength + 1);
+        byte[] handle;
+        try
+        {
+            SshDataReader reader = new(payloadAfterRequestId);
+            handle = reader.ReadStringAsArray(SftpProtocol.MaxHandleLength + 1);
+        }
+        catch (SshWireFormatException ex)
+        {
+            throw Malformed("SSH_FXP_HANDLE", ex);
+        }
 
         if (handle.Length > SftpProtocol.MaxHandleLength)
         {
@@ -381,8 +426,15 @@ public static class SftpWire
     /// <summary>解 <c>SSH_FXP_ATTRS</c>。</summary>
     public static SftpFileAttributes ReadAttrs(ReadOnlySequence<byte> payloadAfterRequestId)
     {
-        SshDataReader reader = new(payloadAfterRequestId);
-        return SftpFileAttributes.Read(ref reader);
+        try
+        {
+            SshDataReader reader = new(payloadAfterRequestId);
+            return SftpFileAttributes.Read(ref reader);
+        }
+        catch (SshWireFormatException ex)
+        {
+            throw Malformed("SSH_FXP_ATTRS", ex);
+        }
     }
 
     /// <summary>解 <c>SSH_FXP_NAME</c>。</summary>
@@ -393,27 +445,34 @@ public static class SftpWire
     /// </remarks>
     public static IReadOnlyList<SftpNameEntry> ReadName(ReadOnlySequence<byte> payloadAfterRequestId)
     {
-        SshDataReader reader = new(payloadAfterRequestId);
-        uint count = reader.ReadUInt32();
-
-        List<SftpNameEntry> entries = [];
-        for (uint i = 0; i < count; i++)
+        try
         {
-            if (reader.IsEmpty)
+            SshDataReader reader = new(payloadAfterRequestId);
+            uint count = reader.ReadUInt32();
+
+            List<SftpNameEntry> entries = [];
+            for (uint i = 0; i < count; i++)
             {
-                // count 与实际项数不符是明确的协议违规 —— 继续读下去只会读出垃圾。
-                throw new SshProtocolException(
-                    SshPhase.Open,
-                    $"SSH_FXP_NAME 声称有 {count} 项，实际只有 {i} 项。");
+                if (reader.IsEmpty)
+                {
+                    // count 与实际项数不符是明确的协议违规 —— 继续读下去只会读出垃圾。
+                    throw new SshProtocolException(
+                        SshPhase.Open,
+                        $"SSH_FXP_NAME 声称有 {count} 项，实际只有 {i} 项。");
+                }
+
+                string fileName = reader.ReadUtf8String(SftpProtocol.MaxPathLength);
+                string longName = reader.ReadUtf8String(SftpProtocol.MaxPathLength);
+                var attributes = SftpFileAttributes.Read(ref reader);
+                entries.Add(new SftpNameEntry(fileName, longName, attributes));
             }
 
-            string fileName = reader.ReadUtf8String(SftpProtocol.MaxPathLength);
-            string longName = reader.ReadUtf8String(SftpProtocol.MaxPathLength);
-            var attributes = SftpFileAttributes.Read(ref reader);
-            entries.Add(new SftpNameEntry(fileName, longName, attributes));
+            return entries;
         }
-
-        return entries;
+        catch (SshWireFormatException ex)
+        {
+            throw Malformed("SSH_FXP_NAME", ex);
+        }
     }
 
     /// <summary>解 <c>SSH_FXP_DATA</c>，直接拷进调用方的缓冲。</summary>
@@ -421,25 +480,49 @@ public static class SftpWire
     /// <exception cref="SshProtocolException">服务端给的数据比请求的还多。</exception>
     public static int ReadDataInto(ReadOnlySequence<byte> payloadAfterRequestId, Span<byte> destination)
     {
-        SshDataReader reader = new(payloadAfterRequestId);
-        ReadOnlySequence<byte> data = reader.ReadString(SftpProtocol.MaxMessageLength);
+        ReadOnlySequence<byte> data = ReadData(payloadAfterRequestId, destination.Length);
+        data.CopyTo(destination);
+        return (int)data.Length;
+    }
 
-        if (data.Length > destination.Length)
+    /// <summary>取出 <c>SSH_FXP_DATA</c> 的数据段（不复制，指向应答载荷）。</summary>
+    /// <param name="payloadAfterRequestId">request-id 之后的载荷。</param>
+    /// <param name="requestedLength">当初 <c>READ</c> 请求的长度；多给了就是协议违规。</param>
+    public static ReadOnlySequence<byte> ReadData(ReadOnlySequence<byte> payloadAfterRequestId, int requestedLength)
+    {
+        ReadOnlySequence<byte> data;
+        try
+        {
+            SshDataReader reader = new(payloadAfterRequestId);
+            data = reader.ReadString(SftpProtocol.MaxMessageLength);
+        }
+        catch (SshWireFormatException ex)
+        {
+            throw Malformed("SSH_FXP_DATA", ex);
+        }
+
+        if (data.Length > requestedLength)
         {
             throw new SshProtocolException(
                 SshPhase.Open,
-                $"SSH_FXP_DATA 给了 {data.Length} 字节，超过我们请求的 {destination.Length} 字节。");
+                $"SSH_FXP_DATA 给了 {data.Length} 字节，超过我们请求的 {requestedLength} 字节。");
         }
 
-        data.CopyTo(destination);
-        return (int)data.Length;
+        return data;
     }
 
     /// <summary>从一个有 request-id 的应答载荷里取出 request-id。</summary>
     public static uint ReadRequestId(ReadOnlySequence<byte> payload)
     {
-        SshDataReader reader = new(payload);
-        return reader.ReadUInt32();
+        try
+        {
+            SshDataReader reader = new(payload);
+            return reader.ReadUInt32();
+        }
+        catch (SshWireFormatException ex)
+        {
+            throw Malformed("request-id", ex);
+        }
     }
 }
 

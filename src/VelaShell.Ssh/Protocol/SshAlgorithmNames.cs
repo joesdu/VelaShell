@@ -72,6 +72,10 @@ public static class SshAlgorithmNames
     public const string DiffieHellmanGroup14Sha1 = "diffie-hellman-group14-sha1";
 
     /// <summary>服务端现给群的 DH + SHA-256。RFC 4419。</summary>
+    /// <remarks>
+    /// ⚠️ <b>本库没有实现</b>，默认清单里也没有它；放进算法清单会被连接前的 <c>SshAlgorithmSet.Validate()</c> 拒绝。
+    /// 名字留着，只为认出对端清单里的这一项。
+    /// </remarks>
     public const string DiffieHellmanGroupExchangeSha256 = "diffie-hellman-group-exchange-sha256";
 
     // ------------------------------------------------- 藏在 kex 列表里的指示符
@@ -128,6 +132,27 @@ public static class SshAlgorithmNames
     /// <summary>OpenSSH 证书算法名的后缀。</summary>
     public const string CertificateSuffix = "-cert-v01@openssh.com";
 
+    /// <summary>Ed25519 主机证书 / 用户证书（OpenSSH PROTOCOL.certkeys）。</summary>
+    public const string SshEd25519CertV01 = SshEd25519 + CertificateSuffix;
+
+    /// <summary>ECDSA P-256 证书。</summary>
+    public const string EcdsaSha2Nistp256CertV01 = EcdsaSha2Nistp256 + CertificateSuffix;
+
+    /// <summary>ECDSA P-384 证书。</summary>
+    public const string EcdsaSha2Nistp384CertV01 = EcdsaSha2Nistp384 + CertificateSuffix;
+
+    /// <summary>ECDSA P-521 证书。</summary>
+    public const string EcdsaSha2Nistp521CertV01 = EcdsaSha2Nistp521 + CertificateSuffix;
+
+    /// <summary>RSA 证书的密钥类型串（blob 里写的就是它）。</summary>
+    public const string SshRsaCertV01 = SshRsa + CertificateSuffix;
+
+    /// <summary>RSA 证书 + SHA-512 签名（RFC 8332 的证书变体）。</summary>
+    public const string RsaSha512CertV01 = RsaSha512 + CertificateSuffix;
+
+    /// <summary>RSA 证书 + SHA-256 签名。</summary>
+    public const string RsaSha256CertV01 = RsaSha256 + CertificateSuffix;
+
     // ------------------------------------------------------------------ 加密
 
     /// <summary>ChaCha20-Poly1305，OpenSSH 的自定义构造（两把密钥，长度字段单独加密）。</summary>
@@ -148,10 +173,10 @@ public static class SshAlgorithmNames
     /// <summary>AES-128-CTR。</summary>
     public const string Aes128Ctr = "aes128-ctr";
 
-    /// <summary>AES-256-CBC。<b>默认关闭</b>，只为老设备保留。</summary>
+    /// <summary>AES-256-CBC。<b>本库未实现</b>：只用来辨认对端清单里的名字，不能放进 <see cref="VelaShell.Ssh.Crypto.SshAlgorithmSet"/>。</summary>
     public const string Aes256Cbc = "aes256-cbc";
 
-    /// <summary>AES-128-CBC。<b>默认关闭</b>，只为老设备保留。</summary>
+    /// <summary>AES-128-CBC。<b>本库未实现</b>：同 <see cref="Aes256Cbc"/>。</summary>
     public const string Aes128Cbc = "aes128-cbc";
 
     // ------------------------------------------------------------------ MAC

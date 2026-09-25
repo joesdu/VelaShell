@@ -20,7 +20,8 @@ namespace VelaShell.Ssh.Channels;
 /// </para>
 /// <para>
 /// <b>只有异步读写</b>（架构原则 1）：同步版本只能靠阻塞线程等网络往返来实现。
-/// 读：stdout；读到 0 表示对端发了 EOF 或通道关了。写：stdin，受对端窗口限制 ——
+/// 读：stdout；读到 0 表示对端发了 EOF 或通道正常关了 —— 连接异常断开时读会抛出连接的故障，
+/// 不会假装成 EOF（velashell-docs/zh/ssh/spec/05 §4.4）。写：stdin，受对端窗口限制 ——
 /// 窗口不够时写会等，不会丢数据。
 /// </para>
 /// </remarks>
@@ -30,6 +31,9 @@ public sealed class SshChannelStream : Stream
     private readonly bool _ownsChannel;
     private readonly IAsyncDisposable? _owner;
     private int _disposed;
+
+    /// <summary>经这条流写进 stdin 的累计字节数（<see cref="FlushAsync(CancellationToken)"/> 等的目标）。</summary>
+    private long _written;
 
     /// <summary>把通道包成流。</summary>
     /// <param name="channel">通道。</param>
@@ -113,6 +117,7 @@ public sealed class SshChannelStream : Stream
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
 
         FlushResult result = await _channel.StandardInput.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
+        Interlocked.Add(ref _written, buffer.Length);
         if (result.IsCompleted)
         {
             throw new IOException($"通道 {_channel.LocalId} 已经关闭，写不进去了。");
@@ -123,10 +128,24 @@ public sealed class SshChannelStream : Stream
     public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
         WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
 
-    /// <summary>写入时已经交给通道了，没有本地缓冲要冲。</summary>
-    public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    /// <summary>等写进来的字节全部交给会话发送（离开本地的 stdin 管道）。</summary>
+    /// <exception cref="IOException">通道先关了，还有字节没发出去。</exception>
+    /// <remarks>
+    /// 写入只是进了 stdin 管道；对端窗口不够时，它们会在管道里一直等。
+    /// 曾经这里是空操作，而管道里压着的那一截在释放时被丢掉 —— 调用方「写完、冲刷、关闭」
+    /// 照着 <see cref="Stream"/> 的约定做了，最后一段数据却没有到对端。
+    /// </remarks>
+    public override Task FlushAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        return _channel.WaitStandardInputSentAsync(Interlocked.Read(ref _written), cancellationToken).AsTask();
+    }
 
-    /// <summary>没有本地缓冲，空操作。</summary>
+    /// <summary>空操作 —— <b>不等</b>数据交出去；要等请用 <see cref="FlushAsync(CancellationToken)"/>。</summary>
+    /// <remarks>
+    /// 冲刷要等对端的窗口，同步地等只能阻塞线程等网络往返（架构原则 1）。
+    /// 不抛异常是因为不少包装器（<c>StreamWriter</c> 的同步释放之类）会无条件调它。
+    /// </remarks>
     public override void Flush()
     {
     }
@@ -163,13 +182,29 @@ public sealed class SshChannelStream : Stream
     {
         if (_ownsChannel)
         {
+            // ⚠️ **先把 stdin 里压着的冲出去、发 EOF，再关通道。**直接关的话，
+            //    通道一进入关闭状态泵就不再发，窗口没轮到的那一截（最多一整个管道）就丢了 ——
+            //    跳板、direct-tcpip 隧道上「写完就关」的最后一段数据到不了对端。
+            //    有时限：半死的链路上等不到窗口，就只能丢。
+            using (CancellationTokenSource deadline = new(SshChannel.DisposeTimeout))
+            {
+                try
+                {
+                    await _channel.SendEofAsync(deadline.Token).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // 释放路径不抛。
+                }
+            }
+
             try
             {
                 await _channel.DisposeAsync().ConfigureAwait(false);
             }
             catch (Exception)
             {
-                // 释放路径不抛。
+                // 同上。
             }
         }
 

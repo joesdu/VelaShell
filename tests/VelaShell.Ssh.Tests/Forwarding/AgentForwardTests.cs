@@ -184,6 +184,61 @@ public sealed class AgentForwardTests
     }
 
     [TestMethod]
+    public async Task 本机agent里有证书时远端照样能列到并用认识的钥()
+    {
+        await using Harness harness = await Harness.StartAsync();
+
+        // 证书排在前面 —— 曾经就是它让整个列表抛异常，通道一声不吭地断掉。
+        harness.Agent.AddOpaque(
+            Keys.AgentListIdentitiesTests.OpaqueBlob("ssh-ed25519-cert-v01@openssh.com"), "id_ed25519-cert.pub");
+        using var key = InMemorySshSigner.GenerateEd25519();
+        harness.Agent.Add(key, "id_ed25519");
+
+        (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);
+        await using (remote)
+        {
+            IReadOnlyList<(SshPublicKey Key, string Comment)> listed =
+                await TestRemoteAgentClient.ListAsync(remote, harness.Token);
+            Assert.HasCount(1, listed);
+            Assert.AreSequenceEqual(key.PublicKey.Blob.ToArray(), listed[0].Key.Blob.ToArray());
+
+            byte[] data = Encoding.UTF8.GetBytes("x");
+            byte[]? signature = await TestRemoteAgentClient.SignAsync(
+                remote, key.PublicKey, data, flags: 0, harness.Token);
+            Assert.IsNotNull(signature);
+        }
+
+        await forwarder.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task 释放转发器之后已经打开的agent通道也断开()
+    {
+        // 关掉开了 agent 转发的 shell，连接却还开着（SFTP、别的会话）。
+        // 远端早先打开的那条 agent 通道不能继续替它签名。
+        await using Harness harness = await Harness.StartAsync();
+
+        using var key = InMemorySshSigner.GenerateEd25519();
+        harness.Agent.Add(key, "id_ed25519");
+
+        (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);
+        await using (remote)
+        {
+            byte[] data = Encoding.UTF8.GetBytes("释放之前");
+            Assert.IsNotNull(await TestRemoteAgentClient.SignAsync(remote, key.PublicKey, data, 0, harness.Token));
+
+            await forwarder.DisposeAsync();
+
+            await Assert.ThrowsExactlyAsync<EndOfStreamException>(
+                () => TestRemoteAgentClient.SignAsync(remote, key.PublicKey, data, 0, harness.Token)
+                    .WaitAsync(TimeSpan.FromSeconds(10), harness.Token));
+        }
+
+        Assert.AreEqual(1, harness.Agent.SignRequests, "释放之后的签名请求不该到达本机 agent");
+        Assert.IsTrue(harness.Connection.IsAlive, "断的是那条 agent 通道，不是整条连接");
+    }
+
+    [TestMethod]
     public async Task 远端能让本机agent签名且签名可验()
     {
         await using Harness harness = await Harness.StartAsync();
@@ -212,6 +267,33 @@ public sealed class AgentForwardTests
     }
 
     [TestMethod]
+    public async Task 比32KiB长的签名请求不会卡住()
+    {
+        // 报文收齐之前转发器一个字节都不消费，而窗口只随消费回补 ——
+        // 窗口比报文小，就是对端等窗口、我们等报文。ssh-keygen -Y sign 签一个文件就是这么长。
+        await using Harness harness = await Harness.StartAsync();
+
+        using var key = InMemorySshSigner.GenerateEd25519();
+        harness.Agent.Add(key, "id_ed25519");
+
+        (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);
+        await using (remote)
+        {
+            byte[] data = new byte[100 * 1024];
+            Random.Shared.NextBytes(data);
+
+            byte[]? signature = await TestRemoteAgentClient
+                .SignAsync(remote, key.PublicKey, data, flags: 0, harness.Token)
+                .WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.IsNotNull(signature);
+            Assert.IsTrue(key.PublicKey.VerifySignature(signature, data, SshAlgorithmNames.SshEd25519));
+        }
+
+        await forwarder.DisposeAsync();
+    }
+
+    [TestMethod]
     public async Task RSA的摘要算法由标志位决定()
     {
         await using Harness harness = await Harness.StartAsync();
@@ -234,6 +316,32 @@ public sealed class AgentForwardTests
                 remote, key.PublicKey, data, flags: 0x02, harness.Token);
             Assert.IsNotNull(sha256);
             Assert.IsTrue(key.PublicKey.VerifySignature(sha256, data, SshAlgorithmNames.RsaSha256));
+        }
+
+        await forwarder.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task RSA证书经转发签名同样按标志位用SHA2()
+    {
+        // 证书的类型串是 ssh-rsa-cert-v01@openssh.com：曾经按 KeyType 判断是不是 RSA，
+        // 远端要的 SHA-2 标志位被忽略，证书被签成 SHA-1。
+        await using Harness harness = await Harness.StartAsync();
+
+        string fixtures = Path.Combine(AppContext.BaseDirectory, "Keys", "Fixtures");
+        ISshSigner rsa = await SshPrivateKeyFile.LoadAsync(Path.Combine(fixtures, "hostcert-rsa"), cancellationToken: harness.Token);
+        byte[] blob = Convert.FromBase64String(File.ReadAllText(Path.Combine(fixtures, "hostcert-rsa-cert.pub")).Split(' ')[1]);
+        harness.Agent.AddCertificate(rsa, blob, "id_rsa-cert.pub");
+        SshPublicKey certificate = SshPublicKey.Parse(blob);
+
+        (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);
+        await using (remote)
+        {
+            byte[] data = Encoding.UTF8.GetBytes("x");
+
+            byte[]? sha512 = await TestRemoteAgentClient.SignAsync(remote, certificate, data, flags: 0x04, harness.Token);
+            Assert.IsNotNull(sha512);
+            Assert.IsTrue(certificate.VerifySignature(sha512, data, SshAlgorithmNames.RsaSha512CertV01));
         }
 
         await forwarder.DisposeAsync();

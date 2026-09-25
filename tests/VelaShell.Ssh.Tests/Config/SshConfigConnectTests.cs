@@ -160,6 +160,136 @@ public sealed class SshConfigConnectTests
     }
 
     [TestMethod]
+    public async Task UserKnownHostsFile为none时不读也不写()
+    {
+        // 曾经把 none、/dev/null 当成路径：在当前目录里读写一个叫 none 的文件。
+        IReadOnlyList<SshConfigBlock> blocks = SshConfigFile.Parse("""
+            Host n
+                StrictHostKeyChecking accept-new
+                UserKnownHostsFile none
+            """);
+
+        SshConnectionOptions options = await SshConfigFile.CreateConnectionOptionsAsync(blocks, "n");
+        var policy = (KnownHostsPolicy)options.HostKeyPolicy;
+
+        using var signer = VelaShell.Ssh.Auth.InMemorySshSigner.GenerateEd25519();
+        SshHostKeyContext context = new()
+        {
+            Host = "n.example.com",
+            Port = 22,
+            Key = signer.PublicKey,
+            NegotiatedAlgorithm = SshAlgorithmNames.SshEd25519,
+        };
+
+        Assert.AreEqual(SshHostKeyVerdict.AcceptAndPersist, await policy.EvaluateAsync(context));
+        string stray = Path.GetFullPath("none");
+        bool existedBefore = File.Exists(stray);
+        await policy.PersistAsync(context);
+        Assert.AreEqual(existedBefore, File.Exists(stray), "不该在当前目录里写出一个叫 none 的文件");
+    }
+
+    [TestMethod]
+    public async Task 询问或缺省时用调用方给的策略()
+    {
+        // ask 与缺省都是「交互式」—— 调用方带着自己的信任库与询问界面，不能因为配置里写了
+        // UserKnownHostsFile 就被另起的一个策略顶替掉。
+        IReadOnlyList<SshConfigBlock> blocks = SshConfigFile.Parse("""
+            Host a
+                StrictHostKeyChecking ask
+                UserKnownHostsFile ~/.ssh/other_known_hosts
+            Host b
+                UserKnownHostsFile ~/.ssh/other_known_hosts
+            """);
+        DangerousAcceptAnyHostKeyPolicy given = new();
+        SshConfigConnectSettings settings = new() { HostKeyPolicy = given };
+
+        Assert.AreSame(given, (await SshConfigFile.CreateConnectionOptionsAsync(blocks, "a", settings)).HostKeyPolicy);
+        Assert.AreSame(given, (await SshConfigFile.CreateConnectionOptionsAsync(blocks, "b", settings)).HostKeyPolicy);
+    }
+
+    [TestMethod]
+    public async Task 跳板拿不到为目标准备的口令()
+    {
+        // 调用方给的口令是为目标准备的。曾经每一跳都拿到同一份凭据 —— 目标的口令就这样交给了跳板。
+        IReadOnlyList<SshConfigBlock> blocks = SshConfigFile.Parse("""
+            Host target
+                ProxyJump jump
+            """);
+
+        using var agentKey = VelaShell.Ssh.Auth.InMemorySshSigner.GenerateEd25519();
+        SshConfigConnectSettings settings = new()
+        {
+            Credentials = [new VelaShell.Ssh.Auth.PasswordCredential("目标的口令"), new VelaShell.Ssh.Auth.PublicKeyCredential(agentKey)],
+        };
+
+        SshConnectionOptions options = await SshConfigFile.CreateConnectionOptionsAsync(blocks, "target", settings);
+        SshConnectionOptions jump = ((SshJumpDialer)options.Dialer).JumpHost;
+
+        Assert.IsTrue(options.Credentials.Any(c => c is VelaShell.Ssh.Auth.PasswordCredential), "目标照常拿到口令");
+        Assert.IsFalse(jump.Credentials.Any(c => c is VelaShell.Ssh.Auth.PasswordCredential), "跳板拿不到目标的口令");
+        Assert.IsTrue(jump.Credentials.Any(c => c is VelaShell.Ssh.Auth.PublicKeyCredential), "公钥凭据照常给跳板");
+    }
+
+    [TestMethod]
+    public async Task 读不出来的IdentityFile只跳过它自己()
+    {
+        string good = Path.Combine(AppContext.BaseDirectory, "Keys", "Fixtures", "ed25519-plain");
+        string bad = Path.Combine(Path.GetTempPath(), $"velashell-badkey-{Guid.NewGuid():N}");
+        await File.WriteAllTextAsync(bad, "-----BEGIN OPENSSH PRIVATE KEY-----\n这不是私钥\n-----END OPENSSH PRIVATE KEY-----\n");
+
+        try
+        {
+            IReadOnlyList<SshConfigBlock> blocks = SshConfigFile.Parse($"""
+                Host k
+                    IdentityFile {bad}
+                    IdentityFile {good}
+                """);
+
+            List<string> skipped = [];
+            SshConnectionOptions options = await SshConfigFile.CreateConnectionOptionsAsync(
+                blocks, "k", new SshConfigConnectSettings { IdentityFileSkipped = (path, _) => skipped.Add(path) });
+
+            Assert.HasCount(1, options.Credentials, "坏的那把跳过，好的那把照常用");
+            Assert.AreSequenceEqual(new[] { bad }, skipped, "跳过要有个说法");
+        }
+        finally
+        {
+            File.Delete(bad);
+        }
+    }
+
+    [TestMethod]
+    public async Task 跳板与目标共用的加密私钥只解一次只问一次口令()
+    {
+        // 曾经每一跳各读一遍：加密的钥每一跳都重跑一遍 KDF，口令也每一跳问一次。
+        string key = Path.Combine(AppContext.BaseDirectory, "Keys", "Fixtures", "ed25519-aes256ctr");
+        IReadOnlyList<SshConfigBlock> blocks = SshConfigFile.Parse($"""
+            Host target
+                ProxyJump jump
+            Host *
+                IdentityFile {key}
+            """);
+
+        int asked = 0;
+        SshConfigConnectSettings settings = new()
+        {
+            PassphraseProvider = (_, _) =>
+            {
+                asked++;
+                return ValueTask.FromResult<string?>("correct horse battery staple");
+            },
+        };
+
+        SshConnectionOptions options = await SshConfigFile.CreateConnectionOptionsAsync(blocks, "target", settings);
+        SshConnectionOptions jump = ((SshJumpDialer)options.Dialer).JumpHost;
+
+        Assert.AreEqual(1, asked, "同一把钥在一次解析里只问一次口令");
+        var targetKey = (VelaShell.Ssh.Auth.PublicKeyCredential)options.Credentials.Single();
+        var jumpKey = (VelaShell.Ssh.Auth.PublicKeyCredential)jump.Credentials.Single();
+        Assert.AreSame(targetKey.Signer, jumpKey.Signer, "跳板与目标用的是同一个解好的签名器");
+    }
+
+    [TestMethod]
     public async Task IdentityFile读成凭据且不存在的文件跳过()
     {
         string key = Path.Combine(AppContext.BaseDirectory, "Keys", "Fixtures", "ed25519-plain");

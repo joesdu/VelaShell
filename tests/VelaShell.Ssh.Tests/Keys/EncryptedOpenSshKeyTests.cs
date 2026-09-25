@@ -96,6 +96,23 @@ public sealed class EncryptedOpenSshKeyTests
         Assert.Contains("口令", ex.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// 过时的传统加密 PEM（口令只经一次 MD5 派生、常配 3DES）不读 —— 但要说清楚是格式的事、给出转换办法。
+    /// 曾经报的是「口令多半不对」，用户会一直怀疑自己的口令。
+    /// </summary>
+    [TestMethod]
+    [DataRow("legacy-rsa-aes128", Passphrase, DisplayName = "ssh-keygen -m PEM · 给了正确口令")]
+    [DataRow("legacy-rsa-des3", Passphrase, DisplayName = "openssl · 3DES · 给了正确口令")]
+    [DataRow("legacy-ecdsa-aes256", null, DisplayName = "openssl · EC · 没给口令")]
+    public async Task 传统加密PEM_说清楚要转换格式而不是说口令不对(string name, string? passphrase)
+    {
+        SshPrivateKeyException ex = await Assert.ThrowsExactlyAsync<SshPrivateKeyException>(
+            async () => await SshPrivateKeyFile.LoadAsync(FixturePath(name), passphrase, TestContext.CancellationToken));
+
+        Assert.Contains("ssh-keygen -p", ex.Message, StringComparison.Ordinal);
+        Assert.IsFalse(ex.NeedsPassphrase, "这不是口令的问题，不该再弹一次口令框");
+    }
+
     /// <summary>没给口令时也走同一条结论，而不是先崩在别处。</summary>
     [TestMethod]
     public async Task 加密私钥没给口令时_要求口令()
@@ -134,6 +151,35 @@ public sealed class EncryptedOpenSshKeyTests
         Assert.IsTrue(
             signer.PublicKey.VerifySignature(signature, data, algorithm),
             $"{name}：解出来的私钥签的名，它自己的公钥验不过。");
+    }
+
+    [TestMethod]
+    public void KDF轮数超过上限时当场拒绝而不是先算()
+    {
+        // 真 ssh-keygen 的样本，只把 kdfoptions 里的轮数改成 5000（上限 4096）。
+        // 曾经的上限是一百万：一轮十几毫秒，改过的文件能让「读一把私钥」同步地算上几个小时。
+        string tampered = WithKdfRounds(File.ReadAllText(FixturePath("ed25519-aes256ctr")), 5000);
+
+        SshPrivateKeyException error = Assert.ThrowsExactly<SshPrivateKeyException>(
+            () => SshPrivateKeyFile.Parse(tampered, Passphrase));
+        Assert.Contains("KDF 参数不合理", error.Message);
+    }
+
+    /// <summary>把 openssh-key-v1 私钥里 kdfoptions 的 rounds 改掉。</summary>
+    private static string WithKdfRounds(string pem, uint rounds)
+    {
+        string[] lines = pem.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        byte[] blob = Convert.FromBase64String(string.Concat(lines[1..^1]));
+
+        // magic ‖ string cipher ‖ string kdfname ‖ string kdfoptions（= string salt ‖ uint32 rounds）
+        int offset = "openssh-key-v1\0".Length;
+        offset += 4 + (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(blob.AsSpan(offset));   // cipher
+        offset += 4 + (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(blob.AsSpan(offset));   // kdfname
+        offset += 4;                                                                                          // kdfoptions 的长度
+        offset += 4 + (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(blob.AsSpan(offset));   // salt
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(blob.AsSpan(offset), rounds);
+
+        return $"{lines[0]}\n{Convert.ToBase64String(blob, Base64FormattingOptions.InsertLineBreaks)}\n{lines[^1]}\n";
     }
 
     /// <summary>MSTest 注入的测试上下文。</summary>

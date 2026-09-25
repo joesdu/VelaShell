@@ -22,6 +22,13 @@ public sealed class TestAgent
 
     private readonly List<(InMemorySshSigner Signer, string Comment)> _keys = [];
 
+    // 只列不签的身份：证书、FIDO、DSA 这类库不认识的 blob。列表里排在可签的钥之前 ——
+    // 模拟真实 agent 里「先加了证书、后加了普通钥」的顺序。
+    private readonly List<(byte[] Blob, string Comment)> _opaque = [];
+
+    // 证书身份：列出的是证书 blob，签名由证书里那把钥来做 —— 与 ssh-add 加进 id_*-cert.pub 之后一样。
+    private readonly List<(ISshSigner Signer, byte[] Blob, string Comment)> _certificates = [];
+
     /// <summary>收到的签名请求次数。</summary>
     public int SignRequests { get; private set; }
 
@@ -53,6 +60,13 @@ public sealed class TestAgent
         _keys.Add((signer, comment));
         return signer.PublicKey;
     }
+
+    /// <summary>加一条只出现在列表里的身份（原样的公钥 blob）。</summary>
+    public void AddOpaque(byte[] blob, string comment) => _opaque.Add((blob, comment));
+
+    /// <summary>加一张证书：列出证书 blob，签名请求拿证书 blob 来时用 <paramref name="signer"/> 签。</summary>
+    public void AddCertificate(ISshSigner signer, byte[] certificateBlob, string comment) =>
+        _certificates.Add((signer, certificateBlob, comment));
 
     /// <summary>在一条流上服务，直到对端关闭。</summary>
     public async Task ServeAsync(Stream stream, CancellationToken cancellationToken)
@@ -110,7 +124,19 @@ public sealed class TestAgent
             ArrayBufferWriter<byte> buffer = new();
             SshDataWriter writer = new(buffer);
             writer.WriteByte(12);   // IDENTITIES_ANSWER
-            writer.WriteUInt32((uint)_keys.Count);
+            writer.WriteUInt32((uint)(_opaque.Count + _certificates.Count + _keys.Count));
+
+            foreach ((byte[] blob, string comment) in _opaque)
+            {
+                writer.WriteString(blob);
+                writer.WriteUtf8String(comment);
+            }
+
+            foreach ((_, byte[] blob, string comment) in _certificates)
+            {
+                writer.WriteString(blob);
+                writer.WriteUtf8String(comment);
+            }
 
             foreach ((InMemorySshSigner signer, string comment) in _keys)
             {
@@ -131,22 +157,26 @@ public sealed class TestAgent
             byte[] data = reader.ReadStringAsArray(MaxMessage);
             uint flags = reader.ReadUInt32();
 
-            foreach ((InMemorySshSigner signer, _) in _keys)
+            // RSA 按标志位选哈希；没有标志位就是 SHA-1 的 ssh-rsa（draft-miller-ssh-agent）。
+            string AlgorithmFor(SshPublicKey key) => key.PlainKeyType == SshAlgorithmNames.SshRsa
+                ? (flags & 0x04) != 0
+                    ? SshAlgorithmNames.RsaSha512
+                    : (flags & 0x02) != 0
+                        ? SshAlgorithmNames.RsaSha256
+                        : SshAlgorithmNames.SshRsa
+                : key.PlainKeyType;
+
+            IEnumerable<(ISshSigner Signer, byte[] Blob)> candidates =
+                [.. _certificates.Select(c => (c.Signer, c.Blob)), .. _keys.Select(k => ((ISshSigner)k.Signer, k.Signer.PublicKey.Blob.ToArray()))];
+
+            foreach ((ISshSigner signer, byte[] blob) in candidates)
             {
-                if (!signer.PublicKey.Blob.Span.SequenceEqual(keyBlob))
+                if (!blob.AsSpan().SequenceEqual(keyBlob))
                 {
                     continue;
                 }
 
-                string algorithm = signer.PublicKey.KeyType == SshAlgorithmNames.SshRsa
-                    ? (flags & 0x04) != 0
-                        ? SshAlgorithmNames.RsaSha512
-                        : (flags & 0x02) != 0
-                            ? SshAlgorithmNames.RsaSha256
-                            : SshAlgorithmNames.SshRsa
-                    : signer.PublicKey.KeyType;
-
-                byte[] signature = await signer.SignAsync(data, algorithm, cancellationToken);
+                byte[] signature = await signer.SignAsync(data, AlgorithmFor(signer.PublicKey), cancellationToken);
 
                 ArrayBufferWriter<byte> buffer = new();
                 SshDataWriter writer = new(buffer);

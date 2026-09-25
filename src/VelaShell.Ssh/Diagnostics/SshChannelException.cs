@@ -58,7 +58,7 @@ public sealed class SshChannelException : SshException
                 "服务端连不上转发的目标地址。",
 
             SshChannelOpenFailureReason.UnknownChannelType =>
-                $"服务端不认识通道类型 {channelType}。",
+                $"服务端不认识通道类型 {PeerText.Sanitize(channelType, 64)}。",
 
             SshChannelOpenFailureReason.ResourceShortage =>
                 "服务端资源不足 —— 常见原因是并发会话数已满（sshd_config 的 MaxSessions）。",
@@ -66,9 +66,11 @@ public sealed class SshChannelException : SshException
             _ => $"服务端拒绝打开通道，原因码 {reasonCode}。",
         };
 
+        // 服务端的原话进消息之前先清一遍（见 PeerText）；原话照样留在 PeerDescription 里。
+        // 通道类型也清：入站的开通道请求里它来自对端。
         string message = string.IsNullOrWhiteSpace(description)
             ? advice
-            : $"{advice} 服务端说：{description}";
+            : $"{advice} 服务端说：{PeerText.Sanitize(description)}";
 
         return new SshChannelException(
             SshFailureReason.ChannelOpenFailed, message, reason, description);

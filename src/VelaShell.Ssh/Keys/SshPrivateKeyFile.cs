@@ -64,11 +64,16 @@ public static class SshPrivateKeyFile
 
     /// <summary>KDF 轮数的上限。</summary>
     /// <remarks>
+    /// <para>
     /// 轮数来自文件本身，也就是来自不可信输入。<c>ssh-keygen</c> 默认写 16，
-    /// <c>-a</c> 调到几百已经算重的了；这个上限是给「文件被改过」准备的，
-    /// 没有它，一个伪造的 rounds 就能让「解一把私钥」挂在那里跑上几天。
+    /// <c>-a</c> 调到几百已经算重的了；这个上限是给「文件被改过」准备的。
+    /// </para>
+    /// <para>
+    /// 曾经是一百万：实测一轮十几毫秒，一百万轮是好几个小时 —— 上限只是把「几天」变成了「几小时」，
+    /// 而这段计算是同步的、中途停不下来。4096 轮是默认值的 256 倍，在最慢的机器上也是一分钟以内。
+    /// </para>
     /// </remarks>
-    private const uint MaxKdfRounds = 1_000_000;
+    internal const uint MaxKdfRounds = 4096;
 
     /// <summary>认一下这段 PEM 是什么格式。</summary>
     public static SshPrivateKeyFormat DetectFormat(string pem)
@@ -284,7 +289,8 @@ public static class SshPrivateKeyFile
             // 这两个值来自文件，也就是来自不可信输入。上限不是洁癖：
             // 一个被改过的 rounds 能让「解一把私钥」挂在那里跑上几天。
             throw new SshPrivateKeyException(
-                $"OpenSSH 私钥的 KDF 参数不合理{where}（盐 {salt.Length} 字节、{rounds} 轮）。");
+                $"OpenSSH 私钥的 KDF 参数不合理{where}（盐 {salt.Length} 字节、{rounds} 轮，上限 {MaxKdfRounds} 轮）。" +
+                "文件可能被改过；确实用 ssh-keygen -a 设过这么多轮的话，请用更少的轮数重新加密这把钥。");
         }
 
         if (section.Length == 0 || section.Length % shape.BlockBytes != 0)
@@ -475,6 +481,17 @@ public static class SshPrivateKeyFile
     private static InMemorySshSigner ParseWithBcl(
         string pem, string? passphrase, SshPrivateKeyFormat format, string where)
     {
+        // 传统加密 PEM（Proc-Type: 4,ENCRYPTED —— OpenSSH 7.8 之前 ssh-keygen 加口令时的默认）：
+        // 口令只过一遍 MD5 就成了密钥，常配 3DES。这种过时格式本库不读，而是**在要口令之前**就说清楚、
+        // 给出转换办法。曾经把它交给 BCL，BCL 不认这种格式，报出来的却是「口令多半不对」——
+        // 用户会一直怀疑自己的口令，问题其实在格式。
+        if (pem.Contains("Proc-Type: 4,ENCRYPTED", StringComparison.Ordinal))
+        {
+            throw new SshPrivateKeyException(
+                $"这把私钥是过时的传统加密 PEM 格式（Proc-Type: 4,ENCRYPTED，口令只经一次 MD5 派生）{where}，本库不读。" +
+                "用 `ssh-keygen -p -f <私钥文件>` 改一次口令（新旧口令可以相同），它会转成 OpenSSH 格式。");
+        }
+
         bool needsPassphrase = format == SshPrivateKeyFormat.Pkcs8Encrypted
             || pem.Contains("DEK-Info", StringComparison.Ordinal);
 

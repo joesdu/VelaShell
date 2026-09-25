@@ -2,12 +2,15 @@
 // Copyright 2026 VelaShell Labs
 //
 // 规范依据(AGENTS.md §2 纪律 1):
-//   OpenSSH sshd(8) 的 AUTHORIZED_KEYS / SSH_KNOWN_HOSTS 章节
-//   行为规格: velashell-docs/zh/ssh/spec/03-key-exchange.md §主机密钥策略
+//   OpenSSH sshd(8) 的 AUTHORIZED_KEYS / SSH_KNOWN_HOSTS 章节（含 @cert-authority / @revoked）
+//   OpenSSH PROTOCOL.certkeys（主机证书）
+//   行为规格: velashell-docs/zh/ssh/spec/03-key-exchange.md §5.4、§5.5
 
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using VelaShell.Ssh.Keys;
+using VelaShell.Ssh.Protocol;
 
 namespace VelaShell.Ssh.HostKeys;
 
@@ -53,6 +56,31 @@ public enum KnownHostStatus
 
     /// <summary>这把密钥被 <c>@revoked</c> 标记过。</summary>
     Revoked,
+
+    /// <summary>
+    /// 见过这台主机，但记着的是<b>别的类型</b>的密钥；这一种类型的一把都没有。
+    /// </summary>
+    /// <remarks>
+    /// <b>不能当成「没见过」</b>：中间人只要出示一种 known_hosts 里没记过的类型，
+    /// 「密钥变了」的检查就被绕过去，接受新主机的策略还会把它悄悄记下来。
+    /// 连接时会把已记录的类型排在主机密钥算法的前面（见 <see cref="IHostKeyTypePreference"/>），
+    /// 正常的服务端因此谈成已知的那一种；还落到这里，就与 <see cref="Changed"/> 同样处理。
+    /// <para>
+    /// 对上这台主机的 <c>@cert-authority</c> 行也算「记着别的」：这台主机由 CA 管，
+    /// 出示一把没有这个 CA 担保的钥（普通钥，或者别的 CA 签的证书）而那把钥又没有单独记着，同样落到这里。
+    /// </para>
+    /// </remarks>
+    OtherKeyTypesKnown,
+
+    /// <summary>
+    /// 出示的是主机证书，签发它的 CA 在 <c>@cert-authority</c> 里对上了这台主机，但证书本身不合格
+    /// （过期、主体不含这台主机、类型不对、签名验不过……）。原因见 <see cref="KnownHostLookup.CertificateProblem"/>。
+    /// </summary>
+    /// <remarks>
+    /// <b>不退回到「没见过」</b>：这台主机配了 CA，证书不合格说明配置出了错或者路上有人
+    /// （velashell-docs/zh/ssh/spec/03 §5.5）。
+    /// </remarks>
+    CertificateInvalid,
 }
 
 /// <summary>查 <c>known_hosts</c> 的结果详情。</summary>
@@ -65,7 +93,11 @@ public enum KnownHostStatus
 public readonly record struct KnownHostLookup(
     KnownHostStatus Status,
     KnownHostEntry? MatchedEntry,
-    IReadOnlyList<KnownHostEntry> ConflictingEntries);
+    IReadOnlyList<KnownHostEntry> ConflictingEntries)
+{
+    /// <summary><see cref="KnownHostStatus.CertificateInvalid"/> 时：证书哪里不合格（一句人话）。</summary>
+    public string? CertificateProblem { get; init; }
+}
 
 /// <summary>读写 <c>known_hosts</c>。</summary>
 /// <remarks>
@@ -174,22 +206,42 @@ public static class KnownHostsFile
             lineNumber);
     }
 
+    /// <summary>查一台主机的一把密钥（主机证书按此刻的时间验有效期）。</summary>
+    /// <param name="entries">已解析的条目。</param>
+    /// <param name="host">主机名或地址。</param>
+    /// <param name="port">端口。<b>非 22 时要按 <c>[host]:port</c> 匹配。</b></param>
+    /// <param name="key">服务端出示的公钥（普通公钥或主机证书）。</param>
+    public static KnownHostLookup Lookup(
+        IReadOnlyList<KnownHostEntry> entries, string host, int port, SshPublicKey key) =>
+        Lookup(entries, host, port, key, DateTimeOffset.UtcNow);
+
     /// <summary>查一台主机的一把密钥。</summary>
     /// <param name="entries">已解析的条目。</param>
     /// <param name="host">主机名或地址。</param>
     /// <param name="port">端口。<b>非 22 时要按 <c>[host]:port</c> 匹配。</b></param>
-    /// <param name="key">服务端出示的公钥。</param>
+    /// <param name="key">服务端出示的公钥（普通公钥或主机证书）。</param>
+    /// <param name="now">验主机证书有效期用的时刻。</param>
+    /// <remarks>
+    /// 主机证书的裁决顺序见 velashell-docs/zh/ssh/spec/03 §5.5：吊销 → 证书里那把钥单独记着 →
+    /// 有对上的 CA 就验证书 → 否则把证书里那把钥当普通钥。<b>比对与记录用的都是证书里那把钥</b>
+    /// （<see cref="SshPublicKey.PlainKey"/>），不是证书 blob —— 证书每次重签 blob 都会变。
+    /// </remarks>
     public static KnownHostLookup Lookup(
-        IReadOnlyList<KnownHostEntry> entries, string host, int port, SshPublicKey key)
+        IReadOnlyList<KnownHostEntry> entries, string host, int port, SshPublicKey key, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(entries);
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(key);
 
-        string plain = port == 22 ? host : $"[{host}]:{port}";
+        string plain = FormatHostPattern(host, port);
+        SshPublicKey presented = key.PlainKey;
+        OpenSshCertificate? certificate = key.Certificate;
+        SshPublicKey? authorityKey = certificate?.SignatureKey;
 
         List<KnownHostEntry> conflicts = [];
+        List<KnownHostEntry> otherTypes = [];
         KnownHostEntry? trusted = null;
+        KnownHostEntry? authority = null;
 
         // ⚠️ **必须把整份表扫完才能下结论。**
         //
@@ -204,11 +256,14 @@ public static class KnownHostsFile
                 continue;
             }
 
-            bool sameKey = entry.KeyBlob.AsSpan().SequenceEqual(key.Blob.Span);
+            bool sameKey = entry.KeyBlob.AsSpan().SequenceEqual(presented.Blob.Span);
 
             if (entry.IsRevoked)
             {
-                if (sameKey)
+                // 吊销的可以是那把钥、整张证书，或者签发它的 CA（吊销一个 CA 就作废它签过的全部证书）。
+                if (sameKey
+                    || (certificate is not null && entry.KeyBlob.AsSpan().SequenceEqual(key.Blob.Span))
+                    || (authorityKey is not null && entry.KeyBlob.AsSpan().SequenceEqual(authorityKey.Blob.Span)))
                 {
                     // 吊销赢，立刻返回 —— 后面再有什么都不重要了。
                     return new KnownHostLookup(KnownHostStatus.Revoked, entry, []);
@@ -218,8 +273,17 @@ public static class KnownHostsFile
 
             if (entry.IsCertificateAuthority)
             {
-                // 证书主机密钥是另一套机制（还没实现）。这里不把它当成普通密钥来比，
-                // 否则会把「我们不认识证书」误报成「密钥变了」。
+                // CA 只为它签的证书担保；不把 CA 公钥当成这台主机的普通密钥来比
+                // （否则会把「出示了一张证书」误报成「密钥变了」）。
+                if (authorityKey is not null && entry.KeyBlob.AsSpan().SequenceEqual(authorityKey.Blob.Span))
+                {
+                    authority ??= entry;
+                }
+                else
+                {
+                    // 这台主机由（别的）CA 管：出示的钥若没有单独记着，不能当成没见过（见 OtherKeyTypesKnown）。
+                    otherTypes.Add(entry);
+                }
                 continue;
             }
 
@@ -232,21 +296,83 @@ public static class KnownHostsFile
             // 主机对上、密钥不对。**先记下来继续找** ——
             // 同一台主机可以有多把不同类型的密钥（ed25519 与 rsa 各一条），
             // 只有当没有任何一条对上时，「变了」才成立。
-            if (entry.KeyType == key.KeyType)
+            if (entry.KeyType == presented.KeyType)
             {
                 conflicts.Add(entry);
             }
+            else
+            {
+                otherTypes.Add(entry);
+            }
         }
 
+        // 明确记下的钥优先：它已经被信任，证书不必再看。
         if (trusted is not null)
         {
             return new KnownHostLookup(KnownHostStatus.Known, trusted, []);
         }
 
-        return conflicts.Count > 0
-            ? new KnownHostLookup(KnownHostStatus.Changed, null, conflicts)
+        if (authority is not null)
+        {
+            string? problem = certificate!.CheckHostCertificate(host, now);
+            return problem is null
+                ? new KnownHostLookup(KnownHostStatus.Known, authority, [])
+                : new KnownHostLookup(KnownHostStatus.CertificateInvalid, authority, []) { CertificateProblem = problem };
+        }
+
+        if (conflicts.Count > 0)
+        {
+            return new KnownHostLookup(KnownHostStatus.Changed, null, conflicts);
+        }
+
+        // 只记着别的类型：**不是「没见过」**（见 OtherKeyTypesKnown）。
+        return otherTypes.Count > 0
+            ? new KnownHostLookup(KnownHostStatus.OtherKeyTypesKnown, null, otherTypes)
             : new KnownHostLookup(KnownHostStatus.Unknown, null, []);
     }
+
+    /// <summary>这台主机在 <c>known_hosts</c> 里记着哪些类型的密钥（不含吊销行）。</summary>
+    /// <remarks>
+    /// 对上这台主机的 <c>@cert-authority</c> 行报出全部证书类型 —— CA 能为任何类型的主机密钥签证书，
+    /// 这样证书算法会被排到前面，服务端才会出示证书（velashell-docs/zh/ssh/spec/03 §5.5）。
+    /// </remarks>
+    public static IReadOnlyList<string> KnownKeyTypes(IReadOnlyList<KnownHostEntry> entries, string host, int port)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        ArgumentNullException.ThrowIfNull(host);
+
+        string plain = FormatHostPattern(host, port);
+        List<string> types = [];
+        foreach (KnownHostEntry entry in entries)
+        {
+            if (entry.IsRevoked || !MatchesHost(entry, host, port, plain))
+            {
+                continue;
+            }
+
+            foreach (string type in entry.IsCertificateAuthority ? CertificateKeyTypes : [entry.KeyType])
+            {
+                if (!types.Contains(type, StringComparer.Ordinal))
+                {
+                    types.Add(type);
+                }
+            }
+        }
+        return types;
+    }
+
+    /// <summary>本库验得了的主机证书类型（blob 里的类型串）。</summary>
+    private static readonly string[] CertificateKeyTypes =
+    [
+        SshAlgorithmNames.SshEd25519CertV01,
+        SshAlgorithmNames.EcdsaSha2Nistp256CertV01,
+        SshAlgorithmNames.EcdsaSha2Nistp384CertV01,
+        SshAlgorithmNames.EcdsaSha2Nistp521CertV01,
+        SshAlgorithmNames.SshRsaCertV01,
+    ];
+
+    /// <summary>非 22 端口要按 <c>[host]:port</c> 匹配。</summary>
+    private static string FormatHostPattern(string host, int port) => port == 22 ? host : $"[{host}]:{port}";
 
     private static bool MatchesHost(KnownHostEntry entry, string host, int port, string plain)
     {
@@ -255,15 +381,26 @@ public static class KnownHostsFile
             return MatchesHashed(entry.Patterns[0], plain);
         }
 
+        // 取反模式（!pattern）对上了，这一整行就不算这台主机 —— 哪怕别的模式也对上了。
+        // 曾经把它当成「这一个模式不匹配」：`*.corp,!untrusted.corp` 那一行照样经 *.corp
+        // 把密钥信给了 untrusted.corp，与写配置的人的本意正好相反。
+        bool matched = false;
         foreach (string pattern in entry.Patterns)
         {
-            if (MatchesPattern(pattern, plain) || (port == 22 && MatchesPattern(pattern, host)))
+            bool negated = pattern.StartsWith('!');
+            string body = negated ? pattern[1..] : pattern;
+
+            if (MatchesPattern(body, plain) || (port == 22 && MatchesPattern(body, host)))
             {
-                return true;
+                if (negated)
+                {
+                    return false;
+                }
+                matched = true;
             }
         }
 
-        return false;
+        return matched;
     }
 
     /// <summary>匹配 <c>|1|salt|hash</c> 形式。</summary>
@@ -297,15 +434,9 @@ public static class KnownHostsFile
         }
     }
 
-    /// <summary>匹配主机模式，支持 <c>*</c> 与 <c>?</c> 通配以及 <c>!</c> 取反。</summary>
+    /// <summary>匹配主机模式，支持 <c>*</c> 与 <c>?</c> 通配（<c>!</c> 取反由调用方处理）。</summary>
     private static bool MatchesPattern(string pattern, string host)
     {
-        if (pattern.StartsWith('!'))
-        {
-            // 取反模式：对上了反而是「明确不匹配」。
-            return false;
-        }
-
         if (!pattern.Contains('*', StringComparison.Ordinal)
             && !pattern.Contains('?', StringComparison.Ordinal))
         {
@@ -358,7 +489,7 @@ public static class KnownHostsFile
     /// <summary>拼一条可以直接追加进 <c>known_hosts</c> 的行。</summary>
     /// <param name="host">主机。</param>
     /// <param name="port">端口。</param>
-    /// <param name="key">公钥。</param>
+    /// <param name="key">公钥。是证书时记下的是<b>证书里那把钥</b>（证书每次重签 blob 都会变）。</param>
     /// <param name="hashHostName">要不要把主机名散列掉（对应 <c>HashKnownHosts yes</c>）。</param>
     public static string FormatEntry(string host, int port, SshPublicKey key, bool hashHostName = false)
     {
@@ -380,9 +511,10 @@ public static class KnownHostsFile
                 $"|1|{Convert.ToBase64String(salt)}|{Convert.ToBase64String(hash)}");
         }
 
+        SshPublicKey recorded = key.PlainKey;
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{name} {key.KeyType} {Convert.ToBase64String(key.Blob.Span)}");
+            $"{name} {recorded.KeyType} {Convert.ToBase64String(recorded.Blob.Span)}");
     }
 
     /// <summary>把一台主机追加进 <c>known_hosts</c>。</summary>
@@ -407,6 +539,34 @@ public static class KnownHostsFile
         }
 
         string line = FormatEntry(host, port, key, hashHostName) + Environment.NewLine;
+
+        // 文件最后一行没有换行（手工编辑过的文件很常见）的话，直接追加会把新记录接在那一行后面，
+        // 两条一起坏掉 —— 那台主机从此每次都按「没见过」处理。先补一个换行。
+        if (!await EndsWithNewlineAsync(actual, cancellationToken).ConfigureAwait(false))
+        {
+            line = Environment.NewLine + line;
+        }
+
         await File.AppendAllTextAsync(actual, line, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>文件不存在、为空，或者最后一个字节是 <c>\n</c>。</summary>
+    private static async ValueTask<bool> EndsWithNewlineAsync(string path, CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path))
+        {
+            return true;
+        }
+
+        await using FileStream stream = new(
+            path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, bufferSize: 1, useAsync: true);
+        if (stream.Length == 0)
+        {
+            return true;
+        }
+
+        stream.Seek(-1, SeekOrigin.End);
+        byte[] last = new byte[1];
+        return await stream.ReadAsync(last, cancellationToken).ConfigureAwait(false) == 1 && last[0] == (byte)'\n';
     }
 }

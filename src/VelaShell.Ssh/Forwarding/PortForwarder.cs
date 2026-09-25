@@ -6,6 +6,7 @@
 //   RFC 1928       SOCKS5（动态转发）
 //   行为规格:      velashell-docs/zh/ssh/spec/07-forwarding.md §二、§三、§五、§六、§八
 
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using VelaShell.Ssh.Channels;
@@ -32,6 +33,14 @@ public sealed record PortForwardOptions
 
     /// <summary>单个转发器的并发连接数上限。</summary>
     public int MaxConnections { get; init; } = 1024;
+
+    /// <summary>动态转发里，SOCKS 握手要在多久之内完成。</summary>
+    /// <remarks>
+    /// 连上来一句不说的客户端每个都占一个并发名额；没有时限的话，
+    /// 占满 <see cref="MaxConnections"/> 之后正经的连接一条也进不来。
+    /// 浏览器与 curl 连上就发握手，30 秒绰绰有余。
+    /// </remarks>
+    public TimeSpan SocksHandshakeTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>每条隧道通道的参数。</summary>
     public SshChannelOptions Channel { get; init; } = SshChannelOptions.Default with
@@ -61,6 +70,12 @@ public sealed class PortForwarder : IAsyncDisposable
 
     private readonly string? _targetHost;
     private readonly int _targetPort;
+
+    /// <summary>还在处理中的连接。释放要等它们收完尾，之后才能放掉槽位信号量。</summary>
+    private readonly ConcurrentDictionary<long, Task> _connections = new();
+
+    /// <summary>连接断开时停下监听（见 <see cref="OnConnectionLost"/>）。</summary>
+    private CancellationTokenRegistration _disconnectedRegistration;
 
     private Task? _acceptLoop;
     private long _nextConnectionId;
@@ -101,6 +116,7 @@ public sealed class PortForwarder : IAsyncDisposable
     public EndPoint? BoundEndPoint { get; }
 
     /// <summary>转发器还在跑吗。</summary>
+    /// <remarks>SSH 连接断了之后是 <see langword="false"/>：那时监听已经关掉，端口也放出来了。</remarks>
     public bool IsActive => !_disposed && !_lifetime.IsCancellationRequested;
 
     /// <summary>当前活跃的连接数。</summary>
@@ -186,18 +202,39 @@ public sealed class PortForwarder : IAsyncDisposable
         }
     }
 
-    private void Start() => _acceptLoop = Task.Run(() => AcceptLoopAsync(_lifetime.Token));
+    private void Start()
+    {
+        _acceptLoop = Task.Run(() => AcceptLoopAsync(_lifetime.Token));
+
+        // 连接断了就不再监听：留着的话端口一直被占，重连之后同一个转发起不来（端口已被占用），
+        // 而这里每接一条都只会换来一次「隧道打不开」。回调在线程池上跑（见 SshConnection.Disconnected）。
+        _disconnectedRegistration = _connection.Disconnected.Register(
+            static state => ((PortForwarder)state!).OnConnectionLost(), this);
+    }
+
+    private void OnConnectionLost()
+    {
+        // 先关监听再标记不在跑：看到 IsActive 为假的人，可以确信端口已经放出来了。
+        _listener.Dispose();
+        Session.Lifecycle.CancelInBackground(_lifetime);
+    }
 
     // ------------------------------------------------------------ 主循环
 
+    /// <summary>接受失败之后最长退避多久。</summary>
+    private static readonly TimeSpan MaxAcceptBackoff = TimeSpan.FromSeconds(1);
+
     private async Task AcceptLoopAsync(CancellationToken cancellationToken)
     {
+        TimeSpan backoff = TimeSpan.Zero;
+
         while (!cancellationToken.IsCancellationRequested)
         {
             Socket inbound;
             try
             {
                 inbound = await _listener.AcceptAsync(cancellationToken).ConfigureAwait(false);
+                backoff = TimeSpan.Zero;
             }
             catch (OperationCanceledException)
             {
@@ -210,6 +247,21 @@ public sealed class PortForwarder : IAsyncDisposable
             catch (SocketException ex)
             {
                 Report("accept", "接受入站连接失败。", ex);
+
+                // ⚠️ **要退避。**文件句柄耗尽（EMFILE）这类失败会立刻、反复地再来一次：
+                //    不等一下就是一个满核空转、每秒上万条错误事件的循环，而它恰恰发生在
+                //    机器已经吃紧的时候。
+                backoff = backoff == TimeSpan.Zero
+                    ? TimeSpan.FromMilliseconds(50)
+                    : TimeSpan.FromTicks(Math.Min(backoff.Ticks * 2, MaxAcceptBackoff.Ticks));
+                try
+                {
+                    await Task.Delay(backoff, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
                 continue;
             }
 
@@ -222,17 +274,25 @@ public sealed class PortForwarder : IAsyncDisposable
                 continue;
             }
 
-            _ = Task.Run(() => HandleConnectionAsync(inbound, cancellationToken), CancellationToken.None);
+            long connectionId = Interlocked.Increment(ref _nextConnectionId);
+            Task handling = Task.Run(
+                () => HandleConnectionAsync(connectionId, inbound, cancellationToken), CancellationToken.None);
+            _connections[connectionId] = handling;
+
+            // 先登记、后挂摘除：任务要是已经跑完了，续体也排在登记之后执行。
+            _ = handling.ContinueWith(
+                (_, state) => ((PortForwarder)state!)._connections.TryRemove(connectionId, out Task? _),
+                this, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }
     }
 
-    private async Task HandleConnectionAsync(Socket inbound, CancellationToken cancellationToken)
+    private async Task HandleConnectionAsync(long connectionId, Socket inbound, CancellationToken cancellationToken)
     {
-        long connectionId = Interlocked.Increment(ref _nextConnectionId);
         EndPoint? source = SafeRemoteEndPoint(inbound);
 
         NetworkStream stream = new(inbound, ownsSocket: true);
-        StreamRelayEndpoint local = new(stream, () => SafeShutdownSend(inbound));
+        StreamRelayEndpoint local = new(
+            stream, () => SafeShutdownSend(inbound), abort: () => StreamRelayEndpoint.Reset(inbound));
 
         SshChannel? channel = null;
         string target = "?";
@@ -245,8 +305,24 @@ public sealed class PortForwarder : IAsyncDisposable
 
             if (Kind == ForwardKind.Dynamic)
             {
-                SocksTarget? socks = await SocksHandshake
-                    .ReadRequestAsync(local.Input, local.Output, cancellationToken).ConfigureAwait(false);
+                // ⚠️ 握手**有时限**：连上来一句不说的客户端，每个都白占一个并发名额，
+                //    占满 MaxConnections 之后正经的连接一条也进不来。
+                SocksTarget? socks;
+                using (CancellationTokenSource handshake =
+                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+                {
+                    handshake.CancelAfter(_options.SocksHandshakeTimeout);
+                    try
+                    {
+                        socks = await SocksHandshake
+                            .ReadRequestAsync(local.Input, local.Output, handshake.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        Report("socks", $"SOCKS 握手在 {_options.SocksHandshakeTimeout.TotalSeconds:0.#} 秒内没有完成，这一条被关掉。", null);
+                        return;
+                    }
+                }
 
                 if (socks is not { } parsed)
                 {
@@ -334,10 +410,10 @@ public sealed class PortForwarder : IAsyncDisposable
         ForwardMetrics.ActiveConnections.Add(1, _tags);
         ForwardMetrics.TotalConnections.Add(1, _tags);
 
-        ConnectionOpened?.Invoke(this, new ForwardConnectionEventArgs(connectionId, source, target));
-
         try
         {
+            ForwardEvents.Raise(ConnectionOpened, this, new ForwardConnectionEventArgs(connectionId, source, target));
+
             ChannelRelayEndpoint remote = new(channel);
 
             RelayResult result = await DuplexRelay.RunAsync(
@@ -354,10 +430,12 @@ public sealed class PortForwarder : IAsyncDisposable
                 },
                 cancellationToken).ConfigureAwait(false);
 
-            ConnectionClosed?.Invoke(this, new ForwardConnectionEventArgs(
+            ForwardEvents.Raise(ConnectionClosed, this, new ForwardConnectionEventArgs(
                 connectionId, source, target, result.BytesFromLeft, result.BytesFromRight, result.Duration));
 
-            if (result.Error is { } error)
+            // 转发器自己在收工（释放、连接断了）时的取消不是这条连接的错。
+            if (result.Error is { } error
+                && !(error is OperationCanceledException && cancellationToken.IsCancellationRequested))
             {
                 Report("relay", $"到 {target} 的搬运中断：{error.Message}", error);
             }
@@ -374,7 +452,7 @@ public sealed class PortForwarder : IAsyncDisposable
     private void Report(string reason, string message, Exception? exception)
     {
         ForwardMetrics.Errors.Add(1, [.. _tags, new("reason", reason)]);
-        Error?.Invoke(this, new ForwardErrorEventArgs(reason, message, exception));
+        ForwardEvents.Raise(Error, this, new ForwardErrorEventArgs(reason, message, exception));
     }
 
     private static EndPoint? SafeRemoteEndPoint(Socket socket)
@@ -409,6 +487,7 @@ public sealed class PortForwarder : IAsyncDisposable
             return;
         }
         _disposed = true;
+        await _disconnectedRegistration.DisposeAsync().ConfigureAwait(false);
 
         try
         {
@@ -431,6 +510,19 @@ public sealed class PortForwarder : IAsyncDisposable
             {
                 // 同上。
             }
+        }
+
+        // ⚠️ 等每条连接收完尾，**之后**才能释放槽位信号量与令牌源：
+        //    曾经是直接释放 —— 还在收尾的连接随后 Release 一个已释放的信号量，
+        //    异常落在没人观察的任务里；释放返回时连接也还开着。
+        //    取消之后搬运会立刻中止，通道释放本身有时限，所以这里等得到头。
+        try
+        {
+            await Task.WhenAll(_connections.Values).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // 同上（HandleConnectionAsync 自己不抛）。
         }
 
         _connectionSlots.Dispose();

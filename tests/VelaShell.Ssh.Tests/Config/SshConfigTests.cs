@@ -330,6 +330,152 @@ public sealed class SshConfigTests
     }
 
     [TestMethod]
+    public async Task Include写在中间时就地展开_之后的设置排在被包含内容后面()
+    {
+        // ssh_config 是「先出现的值赢」，所以被包含的内容排在哪里决定了结果。
+        // 曾经整份文件解完才把被包含的内容接在后面：写在 Include 之后的设置反倒赢了。
+        string root = Path.Combine(Path.GetTempPath(), $"velashell-cfg-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "mid.conf"), """
+                Host target
+                    HostName mid.example.com
+                """);
+            await File.WriteAllTextAsync(Path.Combine(root, "config"), """
+                Host target
+                    User before
+                Include mid.conf
+                Host target
+                    HostName after.example.com
+                """);
+
+            SshHostConfig config = SshConfigFile.Resolve(
+                await SshConfigFile.LoadAsync(Path.Combine(root, "config")), "target");
+
+            Assert.AreEqual("mid.example.com", config.HostName, "被包含的内容排在 Include 那一行的位置上");
+            Assert.AreEqual("before", config.User);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task 同一个文件在两个Host块里各包含一次都生效()
+    {
+        // 带条件的包含：Include 写在 Host 块里，被包含的设置只归这个块。
+        // 同一个文件包含两次是正常写法 —— 环检测只该看当前这条包含链。
+        string root = Path.Combine(Path.GetTempPath(), $"velashell-cfg-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "common.conf"), "Port 2022\n");
+            await File.WriteAllTextAsync(Path.Combine(root, "config"), """
+                Host a
+                    Include common.conf
+                Host b
+                    Include common.conf
+                """);
+
+            IReadOnlyList<SshConfigBlock> blocks = await SshConfigFile.LoadAsync(Path.Combine(root, "config"));
+
+            Assert.AreEqual(2022, SshConfigFile.Resolve(blocks, "a").Port);
+            Assert.AreEqual(2022, SshConfigFile.Resolve(blocks, "b").Port, "第二次包含不能被当成环跳过");
+            Assert.AreEqual(22, SshConfigFile.Resolve(blocks, "c").Port, "块外的主机不受它影响");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task 带条件的包含里新开的块仍受外层条件约束_包含之后回到外层块()
+    {
+        // 被包含的文件自己开了一个 Host 块。曾经：那个块对所有主机无条件生效（外层条件丢了），
+        // 而 Include 之后、本属于 Host work 的设置落进了被包含文件的最后一个块 —— 同样对所有主机生效。
+        string root = Path.Combine(Path.GetTempPath(), $"velashell-cfg-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "work.conf"), """
+                Host *
+                    ProxyJump bastion
+                """);
+            await File.WriteAllTextAsync(Path.Combine(root, "config"), """
+                Host work
+                    Include work.conf
+                    User after-include
+                """);
+
+            IReadOnlyList<SshConfigBlock> blocks = await SshConfigFile.LoadAsync(Path.Combine(root, "config"));
+
+            SshHostConfig work = SshConfigFile.Resolve(blocks, "work");
+            Assert.AreEqual("bastion", work.ProxyJump, "外层条件满足时，被包含文件里的块照常生效");
+            Assert.AreEqual("after-include", work.User, "Include 之后的设置仍归 Include 所在的块");
+
+            SshHostConfig other = SshConfigFile.Resolve(blocks, "other");
+            Assert.IsNull(other.ProxyJump, "外层条件不满足时，被包含文件里的块不生效");
+            Assert.IsNull(other.User, "Include 之后的设置不能落进被包含文件的块里");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void Match取反遇上判不了的条件时整块不生效()
+    {
+        // 判不了（不执行 exec、不做规范化、不知道远端用户）曾经算成「不满足」，
+        // 一个 ! 就把它变成了「满足」—— 写配置的人想排除的情形反而生效了。
+        SshHostConfig config = Resolve(
+            """
+            Match !exec "test -f /etc/special"
+                User 不该生效
+            Match !canonical
+                Port 2222
+            Match !user root
+                IdentityFile ~/.ssh/不该生效
+            Host *
+                User joe
+            """,
+            "x");
+
+        Assert.AreEqual("joe", config.User);
+        Assert.AreEqual(22, config.Port);
+        Assert.IsEmpty(config.IdentityFiles);
+    }
+
+    [TestMethod]
+    public void Match_host比的是HostName改写之后的名字()
+    {
+        // Match host 对的是真正要连的主机名；使用者输入的别名由 originalhost 与 Host 块去比。
+        SshHostConfig config = Resolve(
+            """
+            Host alias
+                HostName real.example.com
+            Match host real.example.com
+                User matched
+            Match originalhost alias
+                Port 2200
+            Match host alias
+                IdentityFile ~/.ssh/不该生效
+            """,
+            "alias");
+
+        Assert.AreEqual("real.example.com", config.HostName);
+        Assert.AreEqual("matched", config.User);
+        Assert.AreEqual(2200, config.Port);
+        Assert.IsEmpty(config.IdentityFiles);
+    }
+
+    [TestMethod]
     public async Task Include互相引用不会死循环()
     {
         // ⚠️ 这一条是**挂死防护**，不是功能。

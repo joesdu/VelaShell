@@ -88,6 +88,63 @@ public sealed class CipherSuiteConformanceTests
         return writer.WrittenSpan.ToArray();
     }
 
+    /// <summary>
+    /// CTR 的密钥流用独立的参照算出来比：128 位计数器用 BigInteger 数，密钥流用 BCL 的 AES-ECB 逐块生成。
+    /// </summary>
+    /// <remarks>
+    /// 往返测试证明不了这个 —— 封与拆用的是同一份计数器代码，错也一起错，照样往返得通，
+    /// 而对端（OpenSSH）会在跨过 64 位边界的那个块上解出乱码。初始计数器的低 64 位设成 FF…FE，
+    /// 第一个报文内部就跨过边界，第二个报文检查报文之间的推进也带了进位。
+    /// </remarks>
+    [TestMethod]
+    public void Ctr计数器跨过64位边界时与参照实现一致()
+    {
+        byte[] key = RandomNumberGenerator.GetBytes(32);
+        byte[] iv = RandomNumberGenerator.GetBytes(16);
+        iv.AsSpan(8).Fill(0xFF);
+        iv[15] = 0xFE;
+
+        using AesCtrHmacCipherSuite suite = new(
+            key, iv, SshMacAlgorithm.HmacSha256, RandomNumberGenerator.GetBytes(32), encryptThenMac: true);
+
+        byte[] first = RandomNumberGenerator.GetBytes(40);
+        byte[] second = RandomNumberGenerator.GetBytes(70);
+        byte[] frame1 = Seal(suite, first, 0);
+        byte[] frame2 = Seal(suite, second, 1);
+
+        using Aes aes = Aes.Create();
+        aes.Key = key;
+        System.Numerics.BigInteger counter = new(iv, isUnsigned: true, isBigEndian: true);
+        System.Numerics.BigInteger modulus = System.Numerics.BigInteger.One << 128;
+
+        Assert.AreSequenceEqual(first, DecryptWithReference(frame1));
+        Assert.AreSequenceEqual(second, DecryptWithReference(frame2));
+
+        byte[] DecryptWithReference(byte[] frame)
+        {
+            // EtM：长度字段是明文，加密区紧跟其后。
+            int packetLength = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(frame);
+            byte[] region = frame[4..(4 + packetLength)];
+
+            for (int offset = 0; offset < region.Length; offset += 16)
+            {
+                byte[] block = new byte[16];
+                byte[] value = counter.ToByteArray(isUnsigned: true, isBigEndian: true);
+                value.CopyTo(block, 16 - value.Length);
+                counter = (counter + 1) % modulus;
+
+                byte[] keyStream = aes.EncryptEcb(block, PaddingMode.None);
+                for (int i = 0; i < 16 && offset + i < region.Length; i++)
+                {
+                    region[offset + i] ^= keyStream[i];
+                }
+            }
+
+            int padding = region[0];
+            return region[1..(packetLength - padding)];
+        }
+    }
+
     private static byte[] Open(ISshCipherSuite suite, byte[] frame, uint seq, out long consumed)
     {
         ArrayBufferWriter<byte> writer = new();

@@ -63,14 +63,26 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
     /// <summary>Unix 套接字变体：本机要连过去的那个套接字路径。</summary>
     private readonly string? _targetSocketPath;
     private readonly SemaphoreSlim _connectionSlots;
-    private readonly KeyValuePair<string, object?>[] _tags;
+
+    /// <summary>这个转发器的一切连接都挂在它上面：释放时取消，搬运随之中止。</summary>
+    /// <remarks>不释放它：回连的处理可能在释放之后才开始读它的令牌，而它没有要还的资源。</remarks>
     private readonly CancellationTokenSource _lifetime = new();
 
+    /// <summary>取消之后、处理器摘掉之前的宽限期（velashell-docs/zh/ssh/spec/07 §4.3）。</summary>
+    internal static readonly TimeSpan DrainGrace = TimeSpan.FromSeconds(2);
+
+    private KeyValuePair<string, object?>[] _tags;
+    private int _boundPort;
     private long _nextConnectionId;
     private long _activeConnections;
     private long _totalConnections;
     private long _bytesUp;
     private long _bytesDown;
+
+    /// <summary>已经开始释放：服务端的监听已请求取消，宽限期里照常接在途的回连。</summary>
+    private int _draining;
+
+    /// <summary>宽限期过了，处理器已摘掉。</summary>
     private bool _disposed;
 
     private RemoteForwarder(
@@ -88,15 +100,28 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
         _targetPort = targetPort;
         RemoteSocketPath = remoteSocketPath;
         _targetSocketPath = targetSocketPath;
-        BoundPort = boundPort;
+        _boundPort = boundPort;
         _connectionSlots = new SemaphoreSlim(options.MaxConnections, options.MaxConnections);
+        _tags = BuildTags(options, boundPort, remoteSocketPath);
+    }
 
-        _tags =
-        [
-            new KeyValuePair<string, object?>("kind", ForwardKind.Remote.ToString()),
-            new KeyValuePair<string, object?>(
-                "bind", remoteSocketPath ?? $"{options.BindAddress}:{boundPort}"),
-        ];
+    private static KeyValuePair<string, object?>[] BuildTags(
+        RemoteForwardOptions options, int boundPort, string? remoteSocketPath) =>
+    [
+        new KeyValuePair<string, object?>("kind", ForwardKind.Remote.ToString()),
+        new KeyValuePair<string, object?>("bind", remoteSocketPath ?? $"{options.BindAddress}:{boundPort}"),
+    ];
+
+    /// <summary><c>tcpip-forward</c> 的应答到了（在接收循环上，见 <see cref="StartAsync"/>）。</summary>
+    private void OnForwardReply(SshGlobalRequestReply reply)
+    {
+        // 端口给 0 时，实际端口在应答载荷里。取不到就留着 0 —— StartAsync 会据此报错。
+        if (reply.Success && _options.BindPort == 0 && reply.Payload.Length >= 4)
+        {
+            int port = (int)BinaryPrimitives.ReadUInt32BigEndian(reply.Payload.Span);
+            _tags = BuildTags(_options, port, null);
+            Volatile.Write(ref _boundPort, port);
+        }
     }
 
     /// <summary>这是不是 Unix 套接字变体。</summary>
@@ -131,13 +156,15 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
     public ForwardKind Kind { get; } = ForwardKind.Remote;
 
     /// <summary>服务端实际绑的端口。<b>请求端口 0 时，实际端口在这里。</b></summary>
-    public int BoundPort { get; }
+    public int BoundPort => Volatile.Read(ref _boundPort);
 
     /// <summary>服务端绑的地址，原样。</summary>
     public string BindAddress => _options.BindAddress;
 
     /// <summary>转发器还在跑吗。</summary>
-    public bool IsActive => !_disposed;
+    /// <remarks>开始释放之后、或者 SSH 连接断了之后是 <see langword="false"/>。</remarks>
+    public bool IsActive =>
+        Volatile.Read(ref _draining) == 0 && !_disposed && !_connection.Disconnected.IsCancellationRequested;
 
     /// <summary>当前活跃的连接数。</summary>
     public int ActiveConnections => (int)Volatile.Read(ref _activeConnections);
@@ -184,10 +211,13 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
         writer.WriteUtf8String(effective.BindAddress);
         writer.WriteUInt32((uint)effective.BindPort);
 
+        // 端口给 0 时，实际端口由 OnForwardReply 在应答到达的当场记下。
+        RemoteForwarder forwarder = new(connection, effective, targetHost, targetPort, effective.BindPort);
+
         // ⚠️ **want_reply 必须为 true。**端口给 0 时，服务端分配的实际端口
         //    就在 REQUEST_SUCCESS 的载荷里 —— 不要应答就永远拿不到它。
-        SshGlobalRequestReply reply = await connection.SendGlobalRequestWithReplyAsync(
-            "tcpip-forward", payload.WrittenMemory, wantReply: true, cancellationToken).ConfigureAwait(false);
+        SshGlobalRequestReply reply = await forwarder
+            .RequestAsync("tcpip-forward", payload.WrittenMemory, cancellationToken).ConfigureAwait(false);
 
         if (!reply.Success)
         {
@@ -199,31 +229,64 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
                 (effective.BindPort is > 0 and < 1024 ? "又或者那是个特权端口。" : "又或者端口已被占用。"));
         }
 
-        int boundPort = effective.BindPort;
-        if (boundPort == 0)
+        if (forwarder.BoundPort == 0)
         {
             // 端口给 0 时**必须**从应答载荷里取实际端口。
             // 取不到就按 (bind_addr, 0) 去路由回连 —— 一条都对不上，
             // 而症状是「转发看起来建好了，但连过来的全被拒」。
-            if (reply.Payload.Length < 4)
-            {
-                throw new SshForwardException(
-                    "请求了动态端口，但服务端的 REQUEST_SUCCESS 里没有带回实际端口号。");
-            }
-
-            boundPort = (int)BinaryPrimitives.ReadUInt32BigEndian(reply.Payload.Span);
+            forwarder.Unregister();
+            throw new SshForwardException(
+                "请求了动态端口，但服务端的 REQUEST_SUCCESS 里没有带回实际端口号。");
         }
 
-        RemoteForwarder forwarder = new(connection, effective, targetHost, targetPort, boundPort);
-
-        // 服务端的回连走 forwarded-tcpip。没有这一步，回连会被明确拒绝。
-        //
-        // 用 Add 而不是 Set：同一条连接上的多个远程转发都要接 forwarded-tcpip，
-        // 各自按「绑定地址 + 端口」认领（不归自己的就在 GetOptionsAsync 里拒，
-        // 连接会去问下一个）。Set 的话后开的会把先开的挤掉。
-        connection.AddIncomingChannelHandler(SshAlgorithmNames.ChannelForwardedTcpIp, forwarder);
         return forwarder;
     }
+
+    /// <summary>这个转发器的回连走哪种通道类型。</summary>
+    private string ChannelType => IsStreamLocal
+        ? SshAlgorithmNames.ChannelForwardedStreamLocal
+        : SshAlgorithmNames.ChannelForwardedTcpIp;
+
+    /// <summary>登记处理器、发出监听请求；服务端拒绝或发送失败时把处理器摘掉。</summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>先登记处理器，再发请求。</b>服务端回完 <c>REQUEST_SUCCESS</c> 立刻就可能开回连
+    /// （有人正等着连那个端口），而那条 <c>CHANNEL_OPEN</c> 由接收循环紧接着处理 ——
+    /// 拿到应答再登记的话，它已经被当成没人认领拒掉了。端口给 0 时的实际端口
+    /// 也在接收循环上当场记下（<see cref="OnForwardReply"/>），理由相同。
+    /// </para>
+    /// <para>
+    /// 用 Add 而不是 Set：同一条连接上的多个远程转发都要接同一种回连，
+    /// 各自按「绑定地址 + 端口」认领（不归自己的就在 GetOptionsAsync 里拒，
+    /// 连接会去问下一个）。Set 的话后开的会把先开的挤掉。
+    /// </para>
+    /// </remarks>
+    private async ValueTask<SshGlobalRequestReply> RequestAsync(
+        string requestType, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
+    {
+        _connection.AddIncomingChannelHandler(ChannelType, this);
+
+        SshGlobalRequestReply reply;
+        try
+        {
+            reply = await _connection
+                .SendGlobalRequestAsync(requestType, payload, OnForwardReply, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            Unregister();
+            throw;
+        }
+
+        if (!reply.Success)
+        {
+            Unregister();
+        }
+        return reply;
+    }
+
+    private void Unregister() => _connection.RemoveIncomingChannelHandler(ChannelType, this);
 
     /// <summary>在服务端开一个 <b>Unix 套接字</b>监听，回连到本机的另一个套接字。</summary>
     /// <param name="connection">会话。</param>
@@ -261,9 +324,13 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
         SshDataWriter writer = new(payload);
         writer.WriteUtf8String(remoteSocketPath);
 
-        SshGlobalRequestReply reply = await connection.SendGlobalRequestWithReplyAsync(
-            SshAlgorithmNames.RequestStreamLocalForward, payload.WrittenMemory,
-            wantReply: true, cancellationToken).ConfigureAwait(false);
+        RemoteForwarder forwarder = new(
+            connection, effective, targetHost: "", targetPort: 0, boundPort: 0,
+            remoteSocketPath: remoteSocketPath, targetSocketPath: targetSocketPath);
+
+        SshGlobalRequestReply reply = await forwarder
+            .RequestAsync(SshAlgorithmNames.RequestStreamLocalForward, payload.WrittenMemory, cancellationToken)
+            .ConfigureAwait(false);
 
         if (!reply.Success)
         {
@@ -274,12 +341,6 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
                 "那个路径已经存在，或者所在目录不可写。");
         }
 
-        RemoteForwarder forwarder = new(
-            connection, effective, targetHost: "", targetPort: 0, boundPort: 0,
-            remoteSocketPath: remoteSocketPath, targetSocketPath: targetSocketPath);
-
-        connection.AddIncomingChannelHandler(
-            SshAlgorithmNames.ChannelForwardedStreamLocal, forwarder);
         return forwarder;
     }
 
@@ -337,6 +398,12 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
         long connectionId = Interlocked.Increment(ref _nextConnectionId);
         string target = TargetName;
 
+        // ⚠️ 连上转发器自己的生命周期，不只是连接的：只看连接的令牌的话，
+        //    释放转发器之后它的连接照样一直搬下去，直到整条 SSH 连接断开。
+        using CancellationTokenSource linked =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        cancellationToken = linked.Token;
+
         Socket? outbound = null;
         try
         {
@@ -366,8 +433,10 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
             }
 
             NetworkStream stream = new(outbound, ownsSocket: false);
+            Socket connected = outbound;
             await using StreamRelayEndpoint local = new(
-                stream, () => SafeShutdownSend(outbound), ownsStream: true);
+                stream, () => SafeShutdownSend(connected), ownsStream: true,
+                abort: () => StreamRelayEndpoint.Reset(connected));
 
             ChannelRelayEndpoint remote = new(channel);
 
@@ -375,10 +444,11 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
             Interlocked.Increment(ref _totalConnections);
             ForwardMetrics.ActiveConnections.Add(1, _tags);
             ForwardMetrics.TotalConnections.Add(1, _tags);
-            ConnectionOpened?.Invoke(this, new ForwardConnectionEventArgs(connectionId, null, target));
 
             try
             {
+                ForwardEvents.Raise(ConnectionOpened, this, new ForwardConnectionEventArgs(connectionId, null, target));
+
                 RelayResult result = await DuplexRelay.RunAsync(
                     remote, local,
                     onBytesFromLeft: bytes =>
@@ -393,11 +463,13 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
                     },
                     cancellationToken).ConfigureAwait(false);
 
-                ConnectionClosed?.Invoke(this, new ForwardConnectionEventArgs(
+                ForwardEvents.Raise(ConnectionClosed, this, new ForwardConnectionEventArgs(
                     connectionId, null, target,
                     result.BytesFromLeft, result.BytesFromRight, result.Duration));
 
-                if (result.Error is { } error)
+                // 转发器自己在收工（释放、连接断了）时的取消不是这条连接的错。
+                if (result.Error is { } error
+                    && !(error is OperationCanceledException && cancellationToken.IsCancellationRequested))
                 {
                     Report("relay", $"到 {target} 的搬运中断：{error.Message}", error);
                 }
@@ -434,7 +506,7 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
     private void Report(string reason, string message, Exception? exception)
     {
         ForwardMetrics.Errors.Add(1, [.. _tags, new("reason", reason)]);
-        Error?.Invoke(this, new ForwardErrorEventArgs(reason, message, exception));
+        ForwardEvents.Raise(Error, this, new ForwardErrorEventArgs(reason, message, exception));
     }
 
     private static void SafeShutdownSend(Socket socket)
@@ -450,13 +522,18 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// 顺序是：请服务端取消监听 → 宽限期里照常接在途的回连 → 摘掉处理器 → 结束这个转发器的全部连接。
+    /// 连接已经断了就不等宽限期 —— 那时不会再有回连。
+    /// </remarks>
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
+        // ⚠️ 这里只设「在释放」，不设 _disposed：GetOptionsAsync 看到 _disposed 就拒，
+        //    曾经一进来就设上，宽限期于是形同虚设 —— 在途的回连照样被莫名拒绝。
+        if (Interlocked.Exchange(ref _draining, 1) != 0)
         {
             return;
         }
-        _disposed = true;
 
         ArrayBufferWriter<byte> payload = new();
         SshDataWriter writer = new(payload);
@@ -474,6 +551,7 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
             ? SshAlgorithmNames.RequestCancelStreamLocalForward
             : "cancel-tcpip-forward";
 
+        bool connectionAlive = true;
         try
         {
             await _connection.SendGlobalRequestAsync(
@@ -482,16 +560,25 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
         catch (Exception)
         {
             // 会话可能已经没了 —— 那样服务端的监听自然也没了。
+            connectionAlive = false;
         }
 
         // 〔决策 velashell-docs/zh/ssh/spec/07 §4.3〕**先不摘处理器。**
         // 取消之后仍会有在途的回连到来，立刻摘掉会让正在建立的连接被莫名拒绝。
-        await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
-        _connection.RemoveIncomingChannelHandler(
-            IsStreamLocal
-                ? SshAlgorithmNames.ChannelForwardedStreamLocal
-                : SshAlgorithmNames.ChannelForwardedTcpIp,
-            this);
+        if (connectionAlive && !_connection.Disconnected.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(DrainGrace, _connection.Disconnected).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // 宽限期里连接断了：不会再有回连，不必再等。
+            }
+        }
+
+        _disposed = true;
+        Unregister();
 
         try
         {
@@ -502,7 +589,7 @@ public sealed class RemoteForwarder : IIncomingChannelHandler, IAsyncDisposable
             // 释放路径不抛。
         }
 
-        // 不 Dispose 槽位信号量：还在跑的回连收尾时要 Release 它（它没有用到等待句柄）。
-        _lifetime.Dispose();
+        // 不 Dispose 槽位信号量与 _lifetime：还在收尾的回连要 Release 前者、读后者的令牌，
+        // 而两者都没有用到需要归还的资源（没有等待句柄、没有定时器）。
     }
 }

@@ -6502,3 +6502,249 @@ SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
 **没做的**:宿主在开了 X11 转发的会话里检测「远端有 systemd 用户会话、没有桌面会话」并替用户配置 —— 那要改远端的文件或会话环境,
 属于越界,没有做;是否做成「提示 + 用户确认」由用户决定。
 文档:velashell-docs `zh|en/ssh/spec/07-forwarding.md` §7.5.9、`zh|en/xserver/design/architecture.md` 决策记录、新增 `zh|en/xserver/troubleshooting.md`。
+
+## ✅ 111. 2026-09-24 VelaShell.Ssh：全库审查，修掉第一批（用户需求）
+
+按八个子系统把 `src/VelaShell.Ssh` 通读了一遍：帧层与密码套件、KEX 与重协商、会话核心、通道、认证与私钥、SFTP、转发、拨号与 `ssh_config`。
+审查同样守净室规程，依据只有 RFC、OpenSSH `PROTOCOL*` 和 velashell-docs 的规格。
+这一轮修两类：一是直接伤到使用者的十项，二是 DoS 上限与会话窗口预算。
+每一项都配了用例，并且先撤掉修复确认它会失败，再确认修复后通过。
+
+### 一、直接伤到使用者的
+
+| 问题 | 根因 | 修法（位置） |
+| --- | --- | --- |
+| agent 里只要有一张证书、一把 FIDO 或 DSA 钥，宿主的「SSH Agent 认证」、agent 转发、自动加钥三条路一起失败 | 列身份时只接了 `SshWireFormatException`，而 `SshPublicKey.Parse` 抛的是 `SshPublicKeyException` | 接对异常，不认识的身份跳过（`SshAgentClient`） |
+| agent 拒签时整条凭据链中断；断网反而被记成「跳过」，下一条凭据读到上一条的应答 | 按异常**类型**判断是不是凭据的问题 | 只有凭据回调与签名器抛出的异常才算「跳过」；连接断开包成 `ClosedByPeer`，报文非法包成 `ProtocolError`（`SshAuthenticator`） |
+| 通道关闭时，正在写 stdin 的调用方永远挂住 | stdin 泵从循环中间 `return`，跳过了完成 reader；完成 writer 放不出挂起的 `FlushAsync` | 泵的每条出口都完成 reader（`SshChannel`） |
+| 释放连接时，正在打开的通道永远挂住 | 只有 `Fault` 会结算 `_pendingOpens`，而释放不走 `Fault` | 释放时一并结算（`SshConnection.DisposeAsync`） |
+| 取消 `OpenChannelAsync` 会在服务端泄漏通道，每次占掉一个 `MaxSessions` 名额 | 取消后迟到的确认被直接丢弃 | 已发出的开通道请求保留在账本里，确认到了就立刻关掉（`SshConnection.OpenChannelAsync`） |
+| CLOSE 可能永远发不出去；通道号在对端 CLOSE 之前就被回收；CLOSE 之后还会发请求、EOF、数据 | 先置「已发」再发送；本端收尾时就还号；发送前不检查状态 | 「已发」在入队锁里、与入队同一刻置上；通道号扣到双向 CLOSE 都走完；CLOSE 之后一律不发。为此新增 `ISshChannelHost.SendIfAsync` / `PostIf` |
+| 释放通道流时丢掉尾部数据、也不发 EOF；`FlushAsync` 是空操作 | 释放时直接关通道 | 先冲刷 stdin、发 EOF，再关通道；`FlushAsync` 等数据全部交给会话（`SshChannelStream`） |
+| 取消几次 SFTP 操作之后，所有 SFTP 操作一起挂住 | 没发出去的请求留在账本里，在途额度永远还不回来；故障或释放时，排队的调用方没人唤醒 | 没上线的请求当场从账本摘掉、还回额度；字节整帧提交，取消只打断背压等待；排队的调用方挂到流水线的生命周期上（`SftpRequestPipeline`） |
+| 开了严格 KEX 时，重协商之后连接断开（chacha20、HMAC 套件；有 AES-NI 时默认选 GCM，所以被掩盖） | 严格 KEX 每次按对端的 KEXINIT 重算，重协商时对端不再带标记，本端就不再归零序号；测试桩错在同一处，所以用例一直是绿的 | 首次交换时定下、整条连接沿用；「交换期间收到 IGNORE 即断开」只管首次交换（`SshKeyExchangeRunner`，测试桩同步修正） |
+| SFTP 下载吞吐被钉死在「块大小 ÷ RTT」 | 顺序读一次只发一个 `READ` | 顺序读加预读：慢启动，不越过已知长度，短读或 Seek 时整队作废（`SftpFileStream`）。`ReadAllBytesAsync` 改走这条路，初始容量封顶 1 MiB |
+
+### 二、DoS 上限与窗口预算
+
+| 问题 | 修法 |
+| --- | --- |
+| 会话窗口总预算（256 MiB）形同虚设：对端拒绝时退款两次、扩窗从不计入、关闭时按扩后的大小退款 | 退款按实际计入的数；扩窗前先向会话申请，缩窗时退还（`ISshChannelHost.TryReserveWindowBudget` / `ReleaseWindowBudget`） |
+| 对端只发不收时，接收循环要回的应答无界排队 | 新增 `SshConnectionLimits.MaxQueuedReplyBytes`（默认 16 MiB），超出即判协议违规；这些应答同时计入背压 |
+| 对端狂发不认识的通道请求时，事件流无界增长（每条最长 256 KiB） | 没读走的未知请求最多保留 64 条 |
+| 拒绝开通道时，原样回显对端给的最长 64 KiB 的类型名 | 描述截到 256 字符 |
+| 重协商没有超时 | 默认 2 分钟：我们的 KEXINIT 一直没有回应，或交换卡在半路，都以 `Timeout / Rekeying` 断开 |
+| 一次交换还在进行，又发起重协商，就会发出第二个 KEXINIT | 「正在协商」一直持续到开闸为止；关闸与 KEXINIT 在同一把锁里入队。这正是「报文数到阈值会自己发起重协商」那条用例满跑时的偶发失败：修改前的基线代码 15 轮挂 4 轮 |
+
+### 三、验证
+
+- `dotnet test tests/VelaShell.Ssh.Tests -c Debug`：626 条，606 通过，20 条互操作用例因为本机没有 sshd 早退跳过。满跑连续 10 轮全绿。
+- 新增用例 30 条。其中 27 条先撤掉对应修复、确认失败，再恢复修复、确认通过。
+  另外 3 条是预读的正确性护栏：小缓冲加 Seek、短读与乱序、读一半就关。它们在旧代码上本来就通过。
+- 整个解决方案构建 0 错误；`VelaShell.Infrastructure.Tests` 536 通过（它是这个库唯一的调用方）。
+- 本轮没有对着真实的 OpenSSH 跑互操作。严格 KEX 那一项在真实服务端上的表现，取决于服务端重协商时 KEXINIT 里还带不带标记。
+  下次起靶机时应补一条「开着 chacha20 跨过重协商」的互操作用例。
+
+**没做的**：审查报告第二节其余的安全项，同一天在 §112 修完了。第三到第五节（正确性、性能、设计）本轮都没有动，
+例如转发 relay 把错误当成 EOF、拨号时忽略 `ConnectTimeout`、热路径上的分配。
+
+文档：velashell-docs 的以下几处，`zh` 与 `en` 两边都已同步：
+
+- `ssh/spec/03-key-exchange.md` §6（严格 KEX 的作用范围）、§8.2（同一时刻只做一次交换、重协商超时）、§9；
+- `ssh/spec/04-authentication.md` §3.4（`SkippedNoMaterial` 的边界）；
+- `ssh/spec/05-connection.md` §1 规则 2 与新增的规则 6、§3.3（预算怎么记）、§8（三条新的上限）；
+- `ssh/spec/06-sftp.md` 新增 §5.5（顺序读的预读）；
+- `ssh/spec/09-dialing.md` §5.1（冲刷与释放）；
+- `ssh/design/architecture.md` 新增 §11.2.20。
+
+## ✅ 112. 2026-09-24 VelaShell.Ssh：全库审查，修掉第二批（用户需求）
+
+接着 §111，把审查报告第二节（安全，中等）剩下的七项修完。做法同上一批：每项都配用例，先撤掉修复确认失败，再确认修复后通过。
+
+### 一、做了什么
+
+| 问题 | 根因 | 修法（位置） |
+| --- | --- | --- |
+| 重协商时重新执行一遍主机密钥策略：交互式策略会在会话中途弹窗，而接收循环正停着等它，所有通道一起卡住；宽松的策略则让一把换过的密钥悄悄通过 | 重协商把首次交换的整套流程原样再跑一遍 | 钉住首次交换的主机密钥，不再问策略；`K_S` 与首次不同，就以 `HostKeyChanged / Rekeying` 断开。重协商时只保留与钉住的那把钥同类型的主机密钥算法（`SshKeyExchangeRunner.PinnedHostKey`，`SshConnectionRekey`）。规格 03 §8.4 本来就是这么写的，这次是实现追上规格 |
+| 释放 `AgentForwarder` 之后，已经打开的 agent 通道还能继续替远端签名，直到整条连接断开 | 转发循环挂在连接的令牌上，释放只摘掉了处理器 | 转发器有了自己的生命周期，连入每条转发循环；释放时取消（`AgentForwarder`） |
+| `DISPLAY=localhost:N` 会先去试 Linux 的抽象套接字，同机的别的用户可以抢先绑定，收到真 cookie | 把 `localhost` 当成了本机套接字显示 | 分成两个判断：「连哪里」和「用哪个 cookie」。`localhost:N` 只走 TCP 6000+N，挑 cookie 时仍按本机显示处理（`X11Display.UsesLocalSocket`）。规格 07 §7.5.6 原本就写错了，一起改掉 |
+| 私钥 KDF 的参数没有上限：PuTTY 文件写一个 4 GiB 的 Argon2 内存参数就先分配 4 GiB；bcrypt 轮数上限一百万，一个改过的文件要同步算好几个小时 | 参数来自文件，却在验 MAC 之前就要用上 | bcrypt 上限改为 4096 轮。Argon2 限制内存 256 MiB、256 遍、并行度 1–16，内存 × 遍数也有上限，超出按 `SshPrivateKeyException` 报。顺带把 `Argon2i` / `Argon2d` 算成对应的变体，原来一律按 Argon2id 算，这两种文件都被误报成「口令不对」 |
+| 连 Windows 命名管道形式的 agent 时不校验服务端身份，别的用户抢注 `openssh-ssh-agent` 就能收到签名请求，自动加钥时还有明文私钥 | 连上就用 | 先校验管道的属主，只接受当前用户、SYSTEM 或 Administrators。**没有**用降低模拟级别的办法：OpenSSH 的 agent 服务要以连进来的用户身份保存密钥，降级会把正常的 agent 弄坏。顺带：连接失败或超时时当场关掉管道句柄（`SshAgentClient`） |
+| 对端文本原样进异常消息（终端转义注入）：版本串、`DISCONNECT` 描述、拒绝开通道的理由、SFTP 状态消息、HTTP 代理的应答、`ProxyCommand` 的 stderr | 各处直接字符串插值 | 新增 `Diagnostics.PeerText.Sanitize`：控制字符、`DEL`、C1 与双向控制符换成 `?`，并截断长度。原话仍保留在 `PeerDescription` / `ServerMessage` 里 |
+| 仅影响库本身：`KnownHostsPolicy` 在对端换一种没登记的密钥类型时判成「未知」（接受新主机的策略会把它悄悄记下）；`!pattern` 取反被忽略；追加记录时不检查文件结尾有没有换行；`ProxyCommand` 的 `%h` / `%r` / `%n` 可被注入 shell 命令 | — | 新增状态 `OtherKeyTypesKnown`，按「已变更」处理；新增接口 `IHostKeyTypePreference`，连接时把已登记的类型排在主机密钥算法最前面，正常的服务端就会谈成已知类型；取反模式一旦匹配，整行都不算这台主机；追加前先补换行；代入命令前检查字符集，含 shell 元字符就以 `ProxyRefused` 失败 |
+
+### 二、顺带发现并修掉的
+
+- 测试服务端收到 CLOSE 时，不会让这条通道的处理器读到结尾（只有收到 EOF 才会）。
+  agent 转发的新用例起初因此「通过」：断言接住的其实是 10 秒的超时异常。
+  修正测试服务端之后，把断言收紧为读到结尾（`EndOfStreamException`）。
+- §111 写的「应答积压超限」用例，满跑并行时约 1/35 的概率挂住。
+  原因在测试本身：客户端判定连接失效后不再读取，而测试服务端正卡在一次等背压的写上。改成在后台灌请求、不等待它。
+
+### 三、验证
+
+- `dotnet test tests/VelaShell.Ssh.Tests -c Debug`：655 条，635 通过，20 条互操作用例早退跳过。改完用例后连续满跑 25 轮全绿。
+- 新增用例 29 条。其中 19 条先撤掉对应修复确认失败，再确认通过。
+  有几项的新类型或新方法被测试直接引用，没法整文件回滚，改用临时关掉那一处判断的方式验证。
+  其余 10 条没有做这一步：
+  - 4 条是新函数的单元测试：`PeerText` 两条、主机密钥算法排序、管道属主判定；
+  - 2 条是回归护栏，在旧代码上本来就该通过：同一用户建的管道照常能连、IPv6 地址照常代入；
+  - 1 条在本机测不出差别：X11 的 `localhost`；
+  - 3 条 PuTTY 参数超限的用例没在旧代码上跑：「4 GiB 内存」「二十亿遍」会真的先分配或算不完。
+- 有两处在本机验证不了：
+  - X11 的 `localhost` 那一条只在 Linux/macOS 上才测得出差别（Windows 本来就没有本机套接字）；
+  - 命名管道的属主检查只测了「同一用户建的管道照常能连」和判定函数，「别的用户抢注」需要第二个账户，没有做集成测试；
+    本机的 ssh-agent 服务是停用状态，属主为 SYSTEM 的真实管道也没有实测过。
+- 整个解决方案构建 0 错误；`VelaShell.Infrastructure.Tests` 536 通过。
+
+**没做的**：审查报告第三到第五节（正确性、性能、设计），本轮都没有动。
+
+文档：velashell-docs 的以下几处，`zh` 与 `en` 两边都已同步：
+
+- `ssh/spec/03-key-exchange.md` §5.4（换类型、`IHostKeyTypePreference`、取反模式、追加时补换行）；
+- `ssh/spec/07-forwarding.md` §7.2（转发器的期限、命名管道属主）、§7.5.6（`localhost` 只走 TCP）；
+- `ssh/spec/08-failures.md` §一（对端文本进消息前先清洗）；
+- `ssh/spec/09-dialing.md` §六（`ProxyCommand` 代入前检查字符集）；
+- `ssh/design/architecture.md` 新增 §11.2.21。
+
+## ✅ 113. 2026-09-25 VelaShell.Ssh：全库审查，修掉第三批，并补上主机证书（用户需求）
+
+接着 §112，把审查报告的第三到第五节（正确性、性能、设计）修完。
+中途用户给了一份要兼容的算法清单，并说「首先兼容上述主要算法即可，太旧的不安全的算法先不考虑」。据此做了三件事：
+旧式加密 PEM 改回明确报错（一度实现了解密，按这句话撤掉）；补上主机证书；gssapi-with-mic 做了评估，列为待办。
+做法同前两批：每项配用例，先撤掉修复确认用例失败，再确认修复后通过。
+
+### 一、正确性（报告第三节）
+
+| 问题 | 修法（位置） |
+| --- | --- |
+| 释放传输层可能永远挂住：在半死的链路上做最后一次 flush | 释放时以异常结束写端，不再 flush（`SshPacketTransport`） |
+| 解压失败时 `AdvanceTo` 被调两次，真正的原因（比如压缩炸弹）被一个内部异常盖掉 | 只推进一次，报出真正的原因（同上） |
+| 对端在报文中途断开被报成协议错误（调用方就不会重连） | 标记为 `PeerClosedMidPacket`，密钥交换、认证、会话三个阶段都归为 `ClosedByPeer` |
+| `WithLegacyInterop()` 声明了 AES-CBC，却没有实现：握手要走到主机密钥都已确认、落盘之后才失败 | 去掉 CBC；连接前调用 `SshAlgorithmSet.Validate()`，算法名没实现就当场报错 |
+| 上行拥塞时保活检测不出死链：探测包也排在发送背压后面 | 探测不等背压（`PostRegistered`） |
+| 连接异常断开时，通道流表现为正常 EOF，隧道对端把截断的数据当成完整数据 | 读端以连接的失败原因结束，正常关闭仍是 EOF（`CloseAllChannels(reason)`）；新增 `SshChannel.Closed` |
+| 转发 relay 把错误当成 EOF | 一侧出错时另一侧**中止**：TCP 发 RST（linger 0），通道发不带 EOF 的 CLOSE；正常结束仍是半关闭。`IRelayEndpoint` 加了 `Closed` 与 `AbortAsync` |
+| 转发的其余几处 | accept 连续失败时退避（EMFILE 曾占满 CPU）；SOCKS 握手有超时，空域名拒绝；连接断开时转发器关掉监听、释放端口；`RemoteForwarder` 释放时的宽限期真正生效，`tcpip-forward` 应答在到达时当场处理（`FifoRequestLedger` 回调），堵住「转发还没登记、通道已经来了」的竞态；agent 通道窗口不小于单条 agent 消息的上限（曾经 32 KiB 对 256 KiB）；事件处理器抛异常不再拖垮转发器 |
+| SFTP 的七处 | 写完后 CLOSE 的状态不再忽略（`DisposeAsync` 报出配额、NFS 延迟写入的错误）；`OpenAsync` 在 FSTAT 出错时关掉句柄；续传的 `DurableLength` 不再恒为 0；块大小按 SFTP 报文上限封顶；格式非法的应答报成公开的 `SshProtocolException`，内部异常类型不再外漏；`ReadAllBytesAsync` 不按服务端报的大小预分配；`Stream` 的数组重载与老式 `BeginRead` / `BeginWrite` 都走异步实现。关闭之后 `CanRead` / `CanWrite` 为假（`Stream` 的约定），要用句柄的操作一律报已释放 |
+| 认证的三处 | 部分成功之后，回头重试先前因方法不允许而跳过的凭据；publickey 不受单一方法的尝试次数上限约束（agent 里超过 3 把钥时后面的曾经永远轮不到）；SHA-1 过滤按去掉证书后缀的算法名比 |
+| 旧式 `Proc-Type: 4,ENCRYPTED` PEM 读不了，却报「口令错误」 | 明确报「不支持这种过时格式」，并给出 `ssh-keygen -p` 的转换办法；`NeedsPassphrase` 为假，调用方不会反复要口令 |
+| 跳板机的认证被外层连接超时一起卡住，出错时又报成「TCP 连接超时」 | 跳板认证期间外层计时器停表；外层超时按实际的那一跳报出；调用方取消与超时分开 |
+| `TcpTransportDialer` 忽略配置的超时，固定 30 秒 | 改成 Happy Eyeballs（RFC 8305）：解析全部地址、交错地址族、按 `AttemptDelay` 错开发起，先连上的赢；拨号器自己的超时默认无限，由连接层的 `ConnectTimeout` 统一约束 |
+
+### 二、性能（报告第四节）
+
+基准在 Release 下测，载荷 32 KiB：
+
+| 项 | 修改前 | 修改后 |
+| --- | --- | --- |
+| AES-CTR + HMAC：每包新建 `IncrementalHash`，CTR 逐字节 XOR、每次租缓冲区 | ~800 MB/s，288 B/包 | ~1100–1200 MB/s，0 B/包（HMAC 复用，XOR 向量化，计数器按块数带进位地加） |
+| ChaCha20-Poly1305：每包新建两个 ChaCha 引擎与一个 Poly1305 | 1.4 KB/包 | 272 B/包，吞吐 ~430–480 MB/s（受 BouncyCastle 本身限制） |
+| AES-GCM | 6.2–6.9 GB/s 加密、~5 GB/s 解密，0 B/包 | 没动 |
+
+- 每个 CHANNEL_DATA 包不再新建 `ArrayBufferWriter`：数据从池里租缓冲区发送，只有在重协商期间要暂存时才拷贝一份。
+- SFTP 请求直接写进通道的管道，不再经过每个请求一个的中间缓冲（255 KiB 的写请求曾经进大对象堆、一块数据拷四次）。
+- WINDOW_ADJUST 插队：单独一条优先通道，不等背压，但字节照样计入。曾经它可能排在 16 MiB 的上传数据后面，两个方向就被绑在一起。
+  保活不进这条通道：全局请求的应答按先后顺序对应，探测插到别的全局请求前面，应答就对错了。
+  它要的只是不在背压上等、期限从入队那一刻算起（见第一节），不需要插队。
+- 自适应窗口改按「读的一方是不是饿着」判断：窗口快见底、而且最近读者已经把数据读空了，才说明瓶颈在窗口，才扩窗。
+  读得慢的应用不再让窗口一路长到上限（曾经 shell 能积压几十 MiB 没读的输出，按了 Ctrl-C 还要刷很久）。
+- 私钥重复解密：一次 `ssh_config` 解析里，同一个 `IdentityFile` 只读一次，跳板与目标共用 —— 加密的钥只跑一次 KDF（默认参数约 0.3 秒）、只问一次口令。
+  不跨调用缓存：解密后的私钥本来就要在连接期间留在内存里，这里不多留。
+
+### 三、设计（报告第五节）
+
+- **接收循环上等待用户代码**：对端开通道时，处理器的决定曾在接收循环上 await，处理器一慢，所有通道和保活一起卡住，违反规格 05 §8。
+  现在接收循环只做解析和查找，决定放到后台去做；同时在途的决定最多 64 个，超出的直接拒绝。
+- **异常体系**：连接的故障统一换成公开的异常类型再交给调用方（`NormalizeFault`）：套接字异常、`IOException`、报文中途断开归为 `ClosedByPeer`，
+  帧与格式错误归为 `SshProtocolException`，其余包成 `SshConnectionClosedException(Unknown)`。`SshPublicKeyException` 改为继承 `SshException`。
+- **stdout 与 stderr 共用一个窗口**：这在 SSH 里改不了（窗口按通道算，不按流算）。规格 05 §4.3 原来写「只读 stdout 不会死锁」是错的，已改正，类型文档也写明了。
+- **`ssh_config`**：`Include` 就地展开，落在 Include 那一行所在的 `Host` / `Match` 块里（曾经接在整个文件之后，文件后面的 `Host *` 会压过被包含文件里针对具体主机的设置），
+  环检测只看当前这条 include 链；`Match` 的条件是三态的，判不了的条件让整块不生效，加了 `!` 也一样（曾经 `Match !exec "…"` 在不执行命令时对所有主机生效）；
+  `Match host` 比的是 `HostName` 改写之后的名字；读不出来的 `IdentityFile` 只跳过它自己，并通知 `IdentityFileSkipped`；
+  调用方给的口令、键盘交互只给最终目标，跳板只拿公钥凭据（曾经目标的口令会发给跳板）；`StrictHostKeyChecking ask` 或缺省时，即使配了 `UserKnownHostsFile` 也用调用方的策略；
+  `UserKnownHostsFile none` / `/dev/null` 不读也不写（曾经被当成文件路径）。
+  **两套解析器并存的问题没有动**：宿主导入用的是 `Infrastructure/Import/SshConfigParser.cs`，与库里的 `SshConfigFile` 是两份实现，建议以后合并成一份。
+- **测试设施**：`DelayedStream` 改成流水线 —— 写入按带宽计时后立刻返回，数据在单向时延之后才到另一端；在途队列有上限，另一端不读时写入方照样会等；
+  关闭时先把在途数据送到再关（FIN 排在已发出的字节后面）。曾经每次写都在锁里整段睡掉时延，任一时刻只有一次写在飞，
+  吞吐被压在「单次写的大小 ÷ 时延」—— 窗口与管线深度的测试量到的一部分其实是模拟器自己造的瓶颈。
+  另外补上了对真实 OpenSSH 的重协商互操作用例：每一种加密算法都在 8 MiB 输出的中途换一次钥，换钥前后两个方向都要通。
+
+### 四、主机证书与算法清单（用户需求）
+
+对照用户给的清单逐项核过：私钥格式（openssh-key-v1 的 none / aes-cbc / aes-ctr / aes-gcm / chacha20-poly1305）、
+密钥交换（mlkem768x25519、sntrup761 的两个名字、curve25519 的两个名字、ecdh-nistp256/384/521）、
+加密（aes256-gcm、aes128-gcm、chacha20-poly1305）、认证（publickey、agent、证书、口令、none）原本都已支持。缺的两项：
+
+- **主机证书**（服务端的 `*-cert-v01@openssh.com` 与 `known_hosts` 的 `@cert-authority`）：本次实现，规则见 velashell-docs `ssh/spec/03-key-exchange.md` §5.5。要点：
+  - 证书算法追加在普通算法之后：没给主机配 CA 时谈成证书得不到额外的保证，排在后面就保证这类连接与以前完全一样；有对上的 `@cert-authority` 时经 `IHostKeyTypePreference` 提到前面。不含 SHA-1 的 `ssh-rsa-cert-v01`。
+  - `KnownHostsPolicy` 的裁决顺序：吊销（钥、整张证书或 CA）→ 证书里那把钥单独记着 → 有 CA 担保就验证书（类型为主机、CA 签名、有效期、主体非空且含这台主机、没有关键选项；SHA-1 的 CA 签名与 2048 位以下的 RSA CA 不认）→ 否则当普通钥。
+  - CA 担保的证书不合格时拒绝，不退回 TOFU；CA 管的主机出示没有担保的钥也拒绝（与 §112 的 `OtherKeyTypesKnown` 同一个理由）。接受新主机时记下的是证书里那把钥，不是证书。
+  - 证书的指纹是证书里那把钥的指纹，与 `ssh-keygen -l` 一致。宿主的 `VelaHostKeyPolicy` 改为按 `PlainKeyType` 记录，证书重签不会被误报成「变了」。
+  - 顺带修掉三处只有证书才会走到的缺陷：RSA 证书绕过了主机密钥长度下限（检查按 `KeyType == "ssh-rsa"` 判断，而证书的类型串是 `ssh-rsa-cert-v01@openssh.com`）；
+    协商出证书算法却出示普通钥（或反过来）也能通过；重协商时按钉住的钥筛算法只比去掉后缀的名字，钉住证书时普通算法也留着，
+    谈成它的话服务端出示的是那把钥，钉住的比对失败，连接被当成换了主机密钥断开（`RestrictToPinnedHostKey`）。
+  - agent 里的证书（`ssh-add` 会顺手把 `id_*-cert.pub` 加进去）现在作为证书身份列出、可以用来登录；RSA 证书的签名请求按去掉后缀的名字带上 SHA-2 标志位，否则 agent 会签成 SHA-1。
+    agent 转发那一侧同理：替远端签名时按 `PlainKeyType` 判断是不是 RSA，远端要的 SHA-2 标志位才不会被忽略。
+  - 样本由真 `ssh-keygen` 签发（`tests/VelaShell.Ssh.Tests/Keys/Fixtures/hostcert-*`，生成方法见同目录 README）；
+    互操作靶机脚本给 sshd 签一张主机证书、用 `HostCertificate` 出示，用例按 `@cert-authority` 连上、确认谈成的是那张证书、再重协商一次，换一个不相干的 CA 则被拒绝。
+  - **宿主还用不上**：`VelaHostKeyPolicy` 走自己的信任库，没有「受信 CA」这个概念。记入 `feature-plan.md` E 组「主机证书（宿主侧）」。
+- **gssapi-with-mic**：没有实现。协议面不大，GSS-API 打算走 BCL 的 `NegotiateAuthentication`，但动手前有三件事要确认，而且要一套真实的 Kerberos 环境（KDC、配了 keytab 的 sshd、拿得到票据的客户端）才验得了，本机没有。评估记入 `feature-plan.md` E 组。
+- **比清单多出来的，用户确认全部保留**：
+  - 默认开启的：密钥交换 `diffie-hellman-group16-sha512` 与 `group14-sha256`；AES-CTR 加上配对的 HMAC-SHA2（含 EtM）；
+    `keyboard-interactive`（包括口令自动改走它）；私钥格式 PuTTY `.ppk` v2/v3、PKCS#8、不加密的 PKCS#1/SEC1。
+  - 要显式开启的：`WithLegacyInterop()`、`AllowSha1RsaSignatures`、`WithCompression()`（`zlib@openssh.com`）。
+  - 以后对照同一份清单时，不必再把它们当成「多出来的」提议删掉。
+
+### 五、同步文档时顺带核出来的
+
+规格与代码逐条对照时，发现了一批早就对不上的地方。规格是「实现的唯一依据」，不能让它继续说代码没做的事：
+
+- 已改正的规格：`diffie-hellman-group-exchange-sha256` 在 00 里写着「默认」，其实从未实现（常量的文档也补上了「未实现」）；
+  01 的解压上限写成 4×，实际是 1×，块对齐写错；05 与架构文档说窗口按 RTT 移动平均与 BDP 估算，代码里没有这种估算；
+  06 的在途请求收尾异常类型、管线深度的算法、状态码映射的名字；07 的几个拒绝码与「开通道超时」；
+  04 与 08 里几个根本不存在的类型名（08 的异常树里就有两个）；架构文档说 ChaCha20 是手写的向量化实现，实际用的是 BouncyCastle。
+  设计上想要、但一直没做的几条标了「未实现」，没有删掉。
+- 核出来并当场修掉的代码问题：握手与认证阶段的报文中途断开仍报协议错误；建连途中（拨通之后）的 `IOException` / `SocketException`
+  原样漏给调用方，改为 `ClosedByPeer`；`SshKeyExchangeException` 不继承 `SshException`（改为继承，原因记 `ProtocolError`）；
+  写在 `Host` 块里的 `Include`，被包含文件自己开的块丢了外层条件、Include 之后的设置又落进被包含文件的最后一个块
+  （改为块带上外层条件 `SshConfigBlock.Enclosing`，展开完回到原来的块）；agent 转发签 RSA 证书时忽略 SHA-2 标志位；
+  `SftpFileStream` 关闭后 `CanRead` / `CanWrite` 仍为真、老式 Begin/End 接口直接抛；认证跳过记录里写「连续失败」而计数其实是累计的；
+  两处过时的代码注释（`IIncomingChannelHandler.OnOpenAborted` 已不在接收循环上跑，`SshChannelStream` 断线时读会抛）。
+- 核出来、决定不改的：
+  - 对端发 `CHANNEL_CLOSE` 而没先发 EOF，本端仍按正常结束处理（本地套接字收到 FIN，不是 RST）。我们自己出错时是这么发的，
+    但反过来按「中止」理解会把一些老实现的正常关闭也变成 RST，本地内核里还没送出的数据就丢了 —— 互操作上的风险大于收益。
+  - 释放 `X11Forwarder` 不会关掉已经开着的 x11 通道：远端程序的窗口照常可用，与 OpenSSH 的表现一致；agent 转发不同，那里关系到签名权限（§112）。
+  - `RemoteForwarder` 释放时中止各条连接但不等它们收尾（`PortForwarder` 会等）：中止本来就是立刻的，没有要等的东西。
+  - SFTP 服务端不支持 `limits@openssh.com` 时，块大小封顶在 32 KiB：那是 SFTP 草案保证能用的大小，更大的值在不说上限的服务端上可能被拒。
+  - 会话故障归一之后的阶段一律记 `Open`，即使发生在重协商途中：只影响诊断信息里的一个标签，要测它得搭一套经工厂建的连接，这次没做。
+
+### 六、验证
+
+- `dotnet test tests/VelaShell.Ssh.Tests -c Debug`：761 条全部通过，0 跳过 —— 这一次起了互操作靶机（`linuxserver/openssh-server`，
+  `Start-TestServer.ps1 -X11 -Port 2224`：本机 2222 被宿主自己的 docker 集成用例占着），22 条互操作用例都对着真实的 OpenSSH 跑过。
+  最终代码连续满跑 5 轮全绿；此前各阶段另跑过 10 轮与 5 轮。
+- 满跑中「读得慢时窗口不跟着长」偶发失败过一次（单独跑 40 轮全过）：「读的一方慢」每 8 KiB 只停 5 ms、约 20 ms 读空一窗，
+  机器一忙，发送方被调度得比这还慢，读的一方真的读空了 —— 那一刻窗口确实是瓶颈，扩窗是对的，是用例的前提被负载打破。
+  改成每 8 KiB 停 20 ms；并确认对旧判据（只看见底就扩）它仍然失败。
+- 本批新增用例 106 条（§112 结束时 655 条）。修复项都先撤掉修复、确认对应用例失败，再恢复确认通过。例外：
+  - Happy Eyeballs 是新写的拨号逻辑，旧代码没有对应物，只有「默认超时」那一条能区分新旧；
+  - 性能项用基准数字验证（见第二节），行为不变的由原有用例兜住；
+  - 规格与类型文档的改正没有用例。
+- 整个解决方案构建 0 警告 0 错误；`VelaShell.Infrastructure.Tests` 536 通过（4 条按环境早退跳过）。
+- 仍然没有在本机验证的：命名管道 agent 的属主检查对真实的 SYSTEM 属主管道（§112）；X11 `localhost` 在 Linux 上的表现（§112）；gssapi-with-mic。
+
+**没做的**：合并两套 `ssh_config` 解析器；宿主侧的主机证书；gssapi-with-mic（后两项见 `feature-plan.md`）。
+
+文档：velashell-docs 的以下几处，`zh` 与 `en` 两边都已同步：
+
+- `ssh/spec/00-overview.md` §6.1–§6.3、§6.5、新增 §6.6（老算法开关与连接前的清单校验）、§7；
+- `ssh/spec/01-transport-framing.md` §1.1、§1.2、§2.1、§3、§4（释放不再 flush）、§5（报文中途断开）、§6（解压上限改为 1×）；
+- `ssh/spec/03-key-exchange.md` §2.2（`Validate()`）、§3.5（GEX 未实现）、§5.4、新增 §5.5（主机证书）、§9；
+- `ssh/spec/04-authentication.md` §2.2（部分成功后重扫、publickey 不受上限）、§3.3、§3.4、§4.4、§4.5（agent 里的证书）、新增 §4.6（私钥文件格式）、§5.1、§9；
+- `ssh/spec/05-connection.md` §3.2（回补插队）、§3.3（自适应窗口）、新增 §4.4（EOF 与断线）、§6.3（保活）、§8、§8.1（开通道的决定移出接收循环）；
+- `ssh/spec/06-sftp.md` §3.3、§4.1、§5.2–§5.4、§6.2、§6.4、新增 §6.5（关闭）与 §6.6（续传）、§8、§9；
+- `ssh/spec/07-forwarding.md` §2、§2.2、新增 §2.4、§3.1、§3.2、新增 §3.3、§4.1–§4.3、新增 §4.5、§5、§6、§7.1、§7.2、新增 §7.5.10、§8；
+- `ssh/spec/08-failures.md` §2（异常树）、新增 §2.1（故障归一）、§3；
+- `ssh/spec/09-dialing.md` §2.4、新增 §2.5（Happy Eyeballs）、§5、§7、新增 §7.1（`Include` 与 `Match`）；
+- `ssh/design/architecture.md` §4、§5.3、§5.5、§5.8、§6.1、§7、§12，新增 §11.2.22。

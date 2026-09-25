@@ -149,7 +149,7 @@ public static class SshVersionExchange
 
         throw new SshConnectException(
             SshFailureReason.VersionMismatch, SshPhase.VersionExchange,
-            $"对端只支持 SSH 协议 {protocolVersion}，本库只实现 SSH-2.0。" +
+            $"对端只支持 SSH 协议 {Describe(protocolVersion)}，本库只实现 SSH-2.0。" +
             (protocolVersion.StartsWith('1')
                 ? " SSH-1 已被废弃且不安全，不会被支持。"
                 : ""));

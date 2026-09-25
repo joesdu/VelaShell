@@ -254,14 +254,9 @@ public static class PuttyPrivateKeyFile
     {
         if (file.Version == 3)
         {
-            if (!file.KeyDerivation.StartsWith("Argon2", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new SshPrivateKeyException(
-                    $"不支持的 .ppk v3 口令派生方式 {file.KeyDerivation}{where}。");
-            }
-
             // v3：Argon2 一次产出 80 字节 —— 32 字节密钥 + 16 字节 IV + 32 字节 MAC 密钥。
-            byte[] material = Argon2(file, passphrase);
+            // 变体与参数的校验都在 Argon2 里。
+            byte[] material = Argon2(file, passphrase, where);
             return (material[..32], material[32..48], material[48..80]);
         }
 
@@ -279,9 +274,49 @@ public static class PuttyPrivateKeyFile
         return (key, new byte[16], DeriveMacKey(file, passphrase));
     }
 
-    private static byte[] Argon2(PuttyFile file, string passphrase)
+    /// <summary>Argon2 的内存参数上限（KiB）。PuTTYgen 默认 8 MiB。</summary>
+    internal const int MaxArgon2MemoryKiB = 256 * 1024;
+
+    /// <summary>Argon2 的遍数上限。PuTTYgen 按「约 100 ms」自动调，通常在十几遍。</summary>
+    internal const int MaxArgon2Passes = 256;
+
+    /// <summary>Argon2 的并行度上限。</summary>
+    internal const int MaxArgon2Parallelism = 16;
+
+    /// <summary>内存 × 遍数的上限（KiB·遍）：两个都顶到各自上限也要不了这么多。</summary>
+    internal const long MaxArgon2Work = 8L * 1024 * 1024;
+
+    private static byte[] Argon2(PuttyFile file, string passphrase, string where)
     {
-        Argon2Parameters parameters = new Argon2Parameters.Builder(Argon2Parameters.Argon2id)
+        // 这三个参数来自文件，也就是来自不可信输入，而且**在验 MAC 之前**就要用上 ——
+        // MAC 密钥本身就是 Argon2 的输出。不设上限的话，Argon2-Memory 写一个 4194304
+        // 就让 BouncyCastle 先分配 4 GiB，Argon2-Passes 写一个二十亿就是永远算不完，
+        // 而这段计算同步进行、中途停不下来。
+        if (file.Argon2Memory < 8 * file.Argon2Parallelism
+            || file.Argon2Memory > MaxArgon2MemoryKiB
+            || file.Argon2Passes is < 1 or > MaxArgon2Passes
+            || file.Argon2Parallelism is < 1 or > MaxArgon2Parallelism
+            || (long)file.Argon2Memory * file.Argon2Passes > MaxArgon2Work
+            || file.Argon2Salt.Length == 0)
+        {
+            throw new SshPrivateKeyException(
+                $".ppk 的 Argon2 参数不合理{where}（内存 {file.Argon2Memory} KiB、{file.Argon2Passes} 遍、" +
+                $"并行度 {file.Argon2Parallelism}、盐 {file.Argon2Salt.Length} 字节）。" +
+                $"上限是内存 {MaxArgon2MemoryKiB} KiB、{MaxArgon2Passes} 遍、并行度 {MaxArgon2Parallelism}。");
+        }
+
+        // 三种变体 PuTTY 都可能写（格式文档允许）。曾经一律按 Argon2id 算，
+        // 另外两种的文件就永远过不了 MAC，被报成「口令不对」。
+        int variant = file.KeyDerivation switch
+        {
+            "Argon2id" => Argon2Parameters.Argon2id,
+            "Argon2i" => Argon2Parameters.Argon2i,
+            "Argon2d" => Argon2Parameters.Argon2d,
+            _ => throw new SshPrivateKeyException(
+                $"不支持的 .ppk v3 口令派生方式 {file.KeyDerivation}{where}。"),
+        };
+
+        Argon2Parameters parameters = new Argon2Parameters.Builder(variant)
             .WithVersion(Argon2Parameters.Version13)
             .WithSalt(file.Argon2Salt)
             .WithMemoryAsKB(file.Argon2Memory)

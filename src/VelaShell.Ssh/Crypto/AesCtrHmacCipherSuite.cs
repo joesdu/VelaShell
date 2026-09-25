@@ -61,9 +61,16 @@ public sealed class AesCtrHmacCipherSuite : ISshCipherSuite
     private readonly Aes _aes;
     private readonly byte[] _counter = new byte[AesBlockBytes];
     private readonly byte[] _macKey;
-    private readonly HashAlgorithmName _macName;
     private readonly int _macBytes;
     private readonly bool _encryptThenMac;
+
+    /// <summary>整个套件共用的一个 HMAC 上下文。</summary>
+    /// <remarks>
+    /// 曾经每个报文新建一个（<c>IncrementalHash.CreateHMAC</c> 背后是一次原生上下文的创建与销毁）。
+    /// 一个套件只服务一个方向、只在一个线程上用（发送泵或接收循环），所以复用是安全的；
+    /// <see cref="IncrementalHash.GetHashAndReset(Span{byte})"/> 之后它就回到只装了密钥的初始状态。
+    /// </remarks>
+    private readonly IncrementalHash _hmac;
     private bool _disposed;
 
     /// <summary>构造一个 AES-CTR + HMAC 套件。</summary>
@@ -88,7 +95,7 @@ public sealed class AesCtrHmacCipherSuite : ISshCipherSuite
             throw new ArgumentException($"CTR 的初始计数器必须是 {AesBlockBytes} 字节。", nameof(iv));
         }
 
-        (_macName, _macBytes) = mac switch
+        (HashAlgorithmName macName, _macBytes) = mac switch
         {
             SshMacAlgorithm.HmacSha1 => (HashAlgorithmName.SHA1, 20),
             SshMacAlgorithm.HmacSha256 => (HashAlgorithmName.SHA256, 32),
@@ -97,6 +104,7 @@ public sealed class AesCtrHmacCipherSuite : ISshCipherSuite
         };
 
         _macKey = macKey.ToArray();
+        _hmac = IncrementalHash.CreateHMAC(macName, _macKey);
         _encryptThenMac = encryptThenMac;
 
         // 只用 AES 的 ECB **单块加密**来产生计数器块 —— 这是 CTR 模式的定义
@@ -369,12 +377,7 @@ public sealed class AesCtrHmacCipherSuite : ISshCipherSuite
             }
 
             _aes.EncryptEcb(counters, keyStream, PaddingMode.None);
-
-            for (int i = 0; i < data.Length; i++)
-            {
-                data[i] ^= keyStream[i];
-            }
-
+            Xor(data, keyStream);
             CryptographicOperations.ZeroMemory(keyStream);
         }
         finally
@@ -383,14 +386,41 @@ public sealed class AesCtrHmacCipherSuite : ISshCipherSuite
         }
     }
 
+    /// <summary><paramref name="data"/> ^= <paramref name="keyStream"/>，按向量宽度一次做一批。</summary>
+    /// <remarks>曾经逐字节做 —— 每个字节一次读、一次异或、一次写，是这个套件里仅次于 AES 本身的开销。</remarks>
+    internal static void Xor(Span<byte> data, ReadOnlySpan<byte> keyStream)
+    {
+        int i = 0;
+        if (System.Numerics.Vector.IsHardwareAccelerated)
+        {
+            int width = System.Numerics.Vector<byte>.Count;
+            for (; i <= data.Length - width; i += width)
+            {
+                var mixed = new System.Numerics.Vector<byte>(data[i..]) ^ new System.Numerics.Vector<byte>(keyStream[i..]);
+                mixed.CopyTo(data[i..]);
+            }
+        }
+
+        for (; i < data.Length; i++)
+        {
+            data[i] ^= keyStream[i];
+        }
+    }
+
     /// <summary>把持久计数器推进 <paramref name="byteCount"/> 字节对应的块数。</summary>
+    /// <remarks>一次加上块数（带进位），而不是逐块加一 —— 一个 32 KiB 的报文曾经要加 2048 次。</remarks>
     private void AdvanceCounter(int byteCount)
     {
-        int blocks = (byteCount + AesBlockBytes - 1) / AesBlockBytes;
-        Span<byte> counter = _counter;
-        for (int i = 0; i < blocks; i++)
+        ulong blocks = (ulong)((byteCount + AesBlockBytes - 1) / AesBlockBytes);
+        Span<byte> low = _counter.AsSpan(8);
+        ulong lowValue = BinaryPrimitives.ReadUInt64BigEndian(low);
+        ulong sum = unchecked(lowValue + blocks);
+        BinaryPrimitives.WriteUInt64BigEndian(low, sum);
+
+        if (sum < lowValue)
         {
-            IncrementCounter(counter);
+            Span<byte> high = _counter.AsSpan(0, 8);
+            BinaryPrimitives.WriteUInt64BigEndian(high, unchecked(BinaryPrimitives.ReadUInt64BigEndian(high) + 1));
         }
     }
 
@@ -421,10 +451,9 @@ public sealed class AesCtrHmacCipherSuite : ISshCipherSuite
         Span<byte> seq = stackalloc byte[4];
         BinaryPrimitives.WriteUInt32BigEndian(seq, sequenceNumber);
 
-        using var hmac = IncrementalHash.CreateHMAC(_macName, _macKey);
-        hmac.AppendData(seq);
-        hmac.AppendData(data);
-        hmac.GetHashAndReset(mac);
+        _hmac.AppendData(seq);
+        _hmac.AppendData(data);
+        _hmac.GetHashAndReset(mac);
     }
 
     /// <inheritdoc />
@@ -437,6 +466,7 @@ public sealed class AesCtrHmacCipherSuite : ISshCipherSuite
         _disposed = true;
         CryptographicOperations.ZeroMemory(_counter);
         CryptographicOperations.ZeroMemory(_macKey);
+        _hmac.Dispose();
         _aes.Dispose();
     }
 }

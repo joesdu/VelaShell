@@ -7,12 +7,13 @@
 //   RFC 8332 §3    rsa-sha2-256 / rsa-sha2-512 —— 签名算法名与**密钥类型名**不是一回事
 //   RFC 8709 §4    ssh-ed25519
 //   OpenSSH PROTOCOL.certkeys  *-cert-v01@openssh.com
-//   行为规格:      velashell-docs/zh/ssh/spec/03-key-exchange.md §5
+//   行为规格:      velashell-docs/zh/ssh/spec/03-key-exchange.md §5、§5.5
 
 using System.Buffers;
 using System.Security.Cryptography;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
+using VelaShell.Ssh.Keys;
 using VelaShell.Ssh.Protocol;
 
 namespace VelaShell.Ssh.HostKeys;
@@ -39,14 +40,17 @@ public sealed class SshPublicKey
     private readonly ECDsa? _ecdsa;
     private readonly byte[]? _ed25519;
 
+    private readonly SshPublicKey? _plain;
+
     private SshPublicKey(string keyType, byte[] blob, RSA? rsa, ECDsa? ecdsa, byte[]? ed25519, int keyBits)
-        : this(keyType, keyType, blob, rsa, ecdsa, ed25519, keyBits)
+        : this(keyType, keyType, blob, rsa, ecdsa, ed25519, keyBits, plain: null, certificate: null)
     {
     }
 
     private SshPublicKey(
         string keyType, string plainKeyType, byte[] blob,
-        RSA? rsa, ECDsa? ecdsa, byte[]? ed25519, int keyBits)
+        RSA? rsa, ECDsa? ecdsa, byte[]? ed25519, int keyBits,
+        SshPublicKey? plain, OpenSshCertificate? certificate)
     {
         KeyType = keyType;
         PlainKeyType = plainKeyType;
@@ -55,6 +59,8 @@ public sealed class SshPublicKey
         _ecdsa = ecdsa;
         _ed25519 = ed25519;
         KeyBits = keyBits;
+        _plain = plain;
+        Certificate = certificate;
     }
 
     /// <summary>
@@ -68,8 +74,22 @@ public sealed class SshPublicKey
     /// <c>ssh-ed25519-cert-v01@openssh.com</c>）。这层不对称就落在这个类型里，
     /// 不扩散到认证器 —— 认证器只管「拿 Signer.PublicKey.Blob 去出示」。
     /// </remarks>
-    internal static SshPublicKey ForCertificate(SshPublicKey key, string algorithm, byte[] certificateBlob) =>
-        new(algorithm, key.PlainKeyType, certificateBlob, key._rsa, key._ecdsa, key._ed25519, key.KeyBits);
+    internal static SshPublicKey ForCertificate(
+        SshPublicKey key, string algorithm, byte[] certificateBlob, OpenSshCertificate? certificate) =>
+        new(algorithm, key.PlainKeyType, certificateBlob, key._rsa, key._ecdsa, key._ed25519, key.KeyBits,
+            key.PlainKey, certificate);
+
+    /// <summary>这把钥是一张证书时,证书的内容(签发 CA、有效期、主体……);不是证书时为 <see langword="null"/>。</summary>
+    public OpenSshCertificate? Certificate { get; }
+
+    /// <summary>
+    /// 去掉证书身份之后的那把普通公钥;不是证书时就是它自己。
+    /// </summary>
+    /// <remarks>
+    /// <c>known_hosts</c> 里比对、记下的都是它:证书每次重签 blob 都会变,而钥不变
+    /// (velashell-docs/zh/ssh/spec/03 §5.5)。
+    /// </remarks>
+    public SshPublicKey PlainKey => _plain ?? this;
 
     /// <summary>
     /// 去掉证书身份之后的密钥类型名 —— 证书用它来选签名算法与验签，
@@ -93,10 +113,17 @@ public sealed class SshPublicKey
     /// OpenSSH 风格的 SHA-256 指纹：<c>SHA256:</c> 前缀 + base64（<b>去掉末尾的 <c>=</c> 填充</b>）。
     /// </summary>
     /// <remarks>
+    /// <para>
     /// 去填充不是风格问题 —— OpenSSH 就是这么显示的，带上 <c>=</c> 会让用户没法把
     /// 我们的指纹与 <c>ssh-keygen -lf</c> 的输出对照，而**对照**恰恰是指纹唯一的用途。
+    /// </para>
+    /// <para>
+    /// 证书的指纹是<b>证书里那把钥</b>的指纹 —— <c>ssh-keygen -lf</c> 对证书文件显示的也是它。
+    /// 按证书 blob 算的话，每次重签指纹都变，而用户拿来对照的永远是那把钥。
+    /// </para>
     /// </remarks>
-    public string Sha256Fingerprint => "SHA256:" + Convert.ToBase64String(SHA256.HashData(_blob)).TrimEnd('=');
+    public string Sha256Fingerprint =>
+        "SHA256:" + Convert.ToBase64String(SHA256.HashData(PlainKey._blob)).TrimEnd('=');
 
     /// <summary>
     /// OpenSSH 风格的 MD5 指纹：<c>MD5:</c> 前缀 + 冒号分隔的十六进制。
@@ -114,16 +141,57 @@ public sealed class SshPublicKey
             // 记的还是 MD5 指纹，用户需要能把两边对上。
             // 任何信任判定都走 Sha256Fingerprint —— 那是代码里唯一被比较的那个。
 #pragma warning disable CA5351 // Do Not Use Broken Cryptographic Algorithms
-            byte[] digest = MD5.HashData(_blob);
+            byte[] digest = MD5.HashData(PlainKey._blob);
 #pragma warning restore CA5351
             return "MD5:" + Convert.ToHexString(digest).ToLowerInvariant()
                 .Chunk(2).Select(static c => new string(c)).Aggregate(static (a, b) => a + ":" + b);
         }
     }
 
-    /// <summary>解析一个公钥 blob。</summary>
+    /// <summary>解析一个公钥 blob（普通公钥或 <c>*-cert-v01@openssh.com</c> 证书）。</summary>
     /// <exception cref="SshPublicKeyException">格式非法或类型不支持。</exception>
     public static SshPublicKey Parse(ReadOnlyMemory<byte> blob)
+    {
+        if (!IsCertificateBlob(blob.Span))
+        {
+            return ParsePlain(blob);
+        }
+
+        OpenSshCertificate certificate;
+        try
+        {
+            certificate = OpenSshCertificate.Parse(blob);
+        }
+        catch (SshCertificateException ex)
+        {
+            throw new SshPublicKeyException($"证书解析失败：{ex.Message}", ex);
+        }
+
+        return ForCertificate(certificate.Key, certificate.Algorithm, certificate.Blob.ToArray(), certificate);
+    }
+
+    /// <summary>blob 的类型串是不是以证书后缀结尾（只看类型串，不解析其余部分）。</summary>
+    private static bool IsCertificateBlob(ReadOnlySpan<byte> blob)
+    {
+        if (blob.Length < 4)
+        {
+            return false;
+        }
+
+        uint length = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(blob);
+        if (length > (uint)(blob.Length - 4) || length > MaxFieldBytes)
+        {
+            return false;   // 交给 ParsePlain 报格式错误
+        }
+
+        return blob.Slice(4, (int)length).EndsWith(CertificateSuffixBytes);
+    }
+
+    private static readonly byte[] CertificateSuffixBytes =
+        System.Text.Encoding.ASCII.GetBytes(SshAlgorithmNames.CertificateSuffix);
+
+    /// <summary>只解析普通公钥；证书按不支持的类型报错。</summary>
+    internal static SshPublicKey ParsePlain(ReadOnlyMemory<byte> blob)
     {
         if (blob.Length is 0 or > MaxBlobBytes)
         {
@@ -325,7 +393,11 @@ public sealed class SshPublicKey
         {
             var rsa = RSA.Create();
             rsa.ImportParameters(new RSAParameters { Modulus = modulus, Exponent = exponent });
-            return new SshPublicKey(keyType, blob, rsa, null, null, modulus.Length * 8);
+
+            // 真实位数，不是「字节数 × 8」：2047 位的模数也占 256 字节，按字节算就成了 2048 位，
+            // 混过「主机密钥至少 2048 位」那道检查；多带一个前导零字节（非规范编码，容忍读入）又会多算 8 位。
+            long bits = new System.Numerics.BigInteger(modulus, isUnsigned: true, isBigEndian: true).GetBitLength();
+            return new SshPublicKey(keyType, blob, rsa, null, null, (int)bits);
         }
         catch (Exception ex) when (ex is not SshPublicKeyException)
         {
@@ -400,7 +472,7 @@ public sealed class SshPublicKey
 
     private bool VerifyRsa(byte[] signature, ReadOnlySpan<byte> data, HashAlgorithmName hash)
     {
-        if (_rsa is null)
+        if (_rsa is null || !TryPadRsaSignature(ref signature))
         {
             return false;
         }
@@ -416,9 +488,31 @@ public sealed class SshPublicKey
         }
     }
 
+    /// <summary>比模数短的 RSA 签名左侧补零；比模数长的不作数。</summary>
+    /// <remarks>
+    /// RSA 签名按定义与模数等长（RFC 8017 §8.2.1），但有的实现把开头的零字节省掉 ——
+    /// 签名值碰巧以 0x00 开头的概率是 1/256。BCL 只认等长的，不补的话这些签名
+    /// 每二百来次就有一次莫名验不过：连接偶发地失败在主机密钥验签上，重连又好了。
+    /// </remarks>
+    private bool TryPadRsaSignature(ref byte[] signature)
+    {
+        int modulusBytes = (KeyBits + 7) / 8;
+        if (signature.Length > modulusBytes)
+        {
+            return false;
+        }
+        if (signature.Length < modulusBytes)
+        {
+            byte[] padded = new byte[modulusBytes];
+            signature.CopyTo(padded, modulusBytes - signature.Length);
+            signature = padded;
+        }
+        return true;
+    }
+
     private bool VerifyRsaSha1(byte[] signature, ReadOnlySpan<byte> data)
     {
-        if (_rsa is null)
+        if (_rsa is null || !TryPadRsaSignature(ref signature))
         {
             return false;
         }
@@ -463,15 +557,23 @@ public sealed class SshPublicKey
 }
 
 /// <summary>公钥解析失败。</summary>
-public sealed class SshPublicKeyException : Exception
+/// <remarks>
+/// 是 <see cref="Diagnostics.SshException"/>：曾经直接继承 <see cref="Exception"/>，
+/// 使用者按 <c>catch (SshException)</c> 兜库的错误时漏掉它，宿主的异常翻译也认不出它。
+/// 原因记成 <see cref="Diagnostics.SshFailureReason.Unsupported"/>（认不出这把钥），
+/// 阶段记成密钥交换 —— 它最常见于解析对端出示的主机密钥；读本地 <c>.pub</c> 时阶段只是个大概。
+/// </remarks>
+public sealed class SshPublicKeyException : Diagnostics.SshException
 {
     /// <summary>用给定消息创建异常。</summary>
-    public SshPublicKeyException(string message) : base(message)
+    public SshPublicKeyException(string message)
+        : base(Diagnostics.SshFailureReason.Unsupported, Diagnostics.SshPhase.KeyExchange, message)
     {
     }
 
     /// <summary>用给定消息与内部异常创建异常。</summary>
-    public SshPublicKeyException(string message, Exception innerException) : base(message, innerException)
+    public SshPublicKeyException(string message, Exception innerException)
+        : base(Diagnostics.SshFailureReason.Unsupported, Diagnostics.SshPhase.KeyExchange, message, innerException)
     {
     }
 }

@@ -15,10 +15,16 @@ namespace VelaShell.Ssh.Config;
 /// <param name="Match">
 /// <c>Match</c> 块的条件；<see langword="null"/> 表示这是普通的 <c>Host</c> 块。
 /// </param>
+/// <param name="Enclosing">
+/// 这个块来自一个写在 <c>Host</c> / <c>Match</c> 块里的 <c>Include</c> 时，Include 所在的那个块
+/// （只用它的条件，不用它的设置）；<see langword="null"/> 表示没有外层条件。
+/// 两边的条件都满足，这个块才生效 —— 那就是「带条件的包含」。
+/// </param>
 public sealed record SshConfigBlock(
     IReadOnlyList<string> Patterns,
     IReadOnlyDictionary<string, List<string>> Settings,
-    SshConfigMatchCriteria? Match = null);
+    SshConfigMatchCriteria? Match = null,
+    SshConfigBlock? Enclosing = null);
 
 /// <summary>把 <c>ssh_config</c> 解完之后，某一台主机最终生效的设置。</summary>
 public sealed partial class SshHostConfig
@@ -167,7 +173,7 @@ public static partial class SshConfigFile
 
         List<SshConfigBlock> blocks = [];
         ParserState state = new();
-        ParseInto(content, blocks, state, includes: null);
+        ParseInto(content, blocks, state);
         state.Flush(blocks);
         return blocks;
     }
@@ -186,6 +192,12 @@ public static partial class SshConfigFile
 
         public SshConfigMatchCriteria? Match { get; set; }
 
+        /// <summary>当前这个块的外层条件（见 <see cref="SshConfigBlock.Enclosing"/>）。</summary>
+        public SshConfigBlock? Enclosing { get; set; }
+
+        /// <summary>正在展开的 Include 所在的块：这期间新开的块都带上它作外层条件。</summary>
+        public SshConfigBlock? IncludeScope { get; set; }
+
         /// <summary>把攒着的那个块收进去，并开一个新的。</summary>
         public void StartBlock(
             List<SshConfigBlock> blocks, List<string> patterns, SshConfigMatchCriteria? match)
@@ -193,6 +205,7 @@ public static partial class SshConfigFile
             Flush(blocks);
             Patterns = patterns;
             Match = match;
+            Enclosing = IncludeScope;
 #pragma warning disable IDE0028
             Current = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 #pragma warning restore IDE0028
@@ -202,23 +215,25 @@ public static partial class SshConfigFile
         {
             if (Current.Count > 0)
             {
-                blocks.Add(new SshConfigBlock(Patterns, Current, Match));
+                blocks.Add(new SshConfigBlock(Patterns, Current, Match, Enclosing));
             }
         }
+
+        /// <summary>当前块的条件（设置留空）；无条件（文件开头那种 <c>*</c>）时为 <see langword="null"/>。</summary>
+        public SshConfigBlock? CurrentCondition() =>
+            Match is null && Enclosing is null && Patterns is ["*"]
+                ? null
+                : new SshConfigBlock(Patterns, EmptySettings, Match, Enclosing);
+
+        private static readonly Dictionary<string, List<string>> EmptySettings = [];
     }
 
     /// <summary>把一份文本解进 <paramref name="blocks"/>。</summary>
     /// <param name="content">文本。</param>
     /// <param name="blocks">解出来的块往这里加。</param>
     /// <param name="state">跨调用带着走的解析状态（Include 会递归进来）。</param>
-    /// <param name="includes">
-    /// 展开 <c>Include</c> 的回调；<see langword="null"/> 表示不展开（纯解析）。
-    /// </param>
-    private static void ParseInto(
-        string content,
-        List<SshConfigBlock> blocks,
-        ParserState state,
-        Action<string, List<SshConfigBlock>, ParserState>? includes)
+    /// <remarks><c>Include</c> 行在这里跳过：展开它要读文件，由 <see cref="LoadAsync"/> 在逐行扫描时就地做。</remarks>
+    private static void ParseInto(string content, List<SshConfigBlock> blocks, ParserState state)
     {
         foreach (string raw in content.Split('\n'))
         {
@@ -255,7 +270,6 @@ public static partial class SshConfigFile
             {
                 // 纯解析时跳过而不是报错 —— 报错会让一份带 Include 的
                 // 正常配置完全不可用。
-                includes?.Invoke(value, blocks, state);
                 continue;
             }
 
@@ -415,50 +429,65 @@ public static partial class SshConfigFile
         // ⚠️ **环检测**：两个文件互相 include 是很容易写出来的
         //    （`config` include `conf.d/*`，而某个 conf.d 里又 include 回 `config`）。
         //    没有这一步就是死循环 —— 而那表现为「读配置的时候整个进程不动了」。
-        if (!visited.Add(full))
+        //    只看**当前这条 include 链**：同一个文件在两个 Host 块里各被 include 一次是正常写法，
+        //    按「读过就不再读」算的话，第二次会被当成环悄悄跳过。
+        if (!File.Exists(full) || !visited.Add(full))
         {
             return;
         }
 
-        if (!File.Exists(full))
+        try
         {
-            return;
-        }
+            string content = await File.ReadAllTextAsync(full, cancellationToken).ConfigureAwait(false);
+            string baseDirectory = Path.GetDirectoryName(full) ?? ".";
 
-        string content = await File.ReadAllTextAsync(full, cancellationToken).ConfigureAwait(false);
-
-        // Include 是**就地展开**的：被包含文件里的设置排在 Include 那一行的位置上。
-        // 这很要紧，因为 ssh_config 是「先出现的值赢」。
-        List<(string Spec, int Index)> pending = [];
-        ParseInto(content, blocks, state, (spec, _, _) => pending.Add((spec, pending.Count)));
-
-        // ParseInto 是同步的，而读文件是异步的 —— 所以先把 Include 收集起来，
-        // 再按顺序展开。代价是：同一个文件里 Include 之后的设置会排在
-        // 被包含内容**之前**。
-        //
-        // 这一点与 OpenSSH 不同，但要做到完全一致就得让整个解析器变成异步的，
-        // 而实际配置里 Include 几乎总在文件开头（`Include ~/.ssh/conf.d/*` 那种写法）。
-        // 〔决策〕先记在这里，等有人真被它咬到再改。
-        if (pending.Count == 0)
-        {
-            return;
-        }
-
-        if (depth >= MaxIncludeDepth)
-        {
-            return;   // 太深了，停下。不报错 —— 配置文件的其余部分仍然可用。
-        }
-
-        string baseDirectory = Path.GetDirectoryName(full) ?? ".";
-
-        foreach ((string spec, _) in pending)
-        {
-            foreach (string included in ExpandIncludePaths(spec, baseDirectory))
+            // Include 是**就地展开**的：被包含文件里的设置排在 Include 那一行的位置上，
+            // 而且落在那一行所在的 Host / Match 块里（带条件的包含）。这很要紧 —— ssh_config 是「先出现的值赢」。
+            // 曾经是先把整个文件解完、再把被包含的内容接在后面：Include 之后的设置就跑到了被包含内容的前面。
+            System.Text.StringBuilder chunk = new();
+            foreach (string raw in content.Split('\n'))
             {
-                await LoadIntoAsync(
-                    included, blocks, state, visited, depth + 1, cancellationToken)
-                    .ConfigureAwait(false);
+                string line = StripComment(raw);
+                (string key, string value) = line.Length == 0 ? ("", "") : SplitKeyValue(line);
+
+                if (!string.Equals(key, "Include", StringComparison.OrdinalIgnoreCase))
+                {
+                    chunk.Append(raw).Append('\n');
+                    continue;
+                }
+
+                ParseInto(chunk.ToString(), blocks, state);
+                chunk.Clear();
+
+                if (depth >= MaxIncludeDepth)
+                {
+                    continue;   // 太深了，不再往下。不报错 —— 配置文件的其余部分仍然可用。
+                }
+
+                // 带条件的包含：被包含文件里新开的 Host / Match 块，也只在 Include 所在的块生效时才生效；
+                // 展开完回到 Include 所在的块，这个文件里 Include 之后的设置仍然归它。
+                // 曾经被包含文件一开新块，外层条件就丢了（那些块对所有主机无条件生效），
+                // 而 Include 之后的设置又落进了被包含文件的最后一个块里。
+                (List<string> patterns, SshConfigMatchCriteria? match, SshConfigBlock? enclosing, SshConfigBlock? scope) =
+                    (state.Patterns, state.Match, state.Enclosing, state.IncludeScope);
+                state.IncludeScope = state.CurrentCondition();
+
+                foreach (string included in ExpandIncludePaths(value, baseDirectory))
+                {
+                    await LoadIntoAsync(included, blocks, state, visited, depth + 1, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                state.IncludeScope = scope;
+                state.StartBlock(blocks, patterns, match);
+                state.Enclosing = enclosing;
             }
+
+            ParseInto(chunk.ToString(), blocks, state);
+        }
+        finally
+        {
+            visited.Remove(full);
         }
     }
 
@@ -541,14 +570,11 @@ public static partial class SshConfigFile
         ArgumentNullException.ThrowIfNull(context);
 
         SshHostConfig config = new(context.Host);
+        string originalHost = context.OriginalHost ?? context.Host;
 
         foreach (SshConfigBlock block in blocks)
         {
-            bool applies = block.Match is { } criteria
-                ? MatchesCriteria(criteria, context)
-                : Matches(block.Patterns, context.Host);
-
-            if (!applies)
+            if (!Applies(block, config, context, originalHost))
             {
                 continue;
             }
@@ -565,7 +591,42 @@ public static partial class SshConfigFile
         return config;
     }
 
+    /// <summary>一个块此刻生效吗：它自己的条件，加上外层（带条件的 Include）的条件，都要满足。</summary>
+    private static bool Applies(
+        SshConfigBlock block, SshHostConfig config, SshConfigMatchContext context, string originalHost)
+    {
+        for (SshConfigBlock? current = block; current is not null; current = current.Enclosing)
+        {
+            // Match host 比的是 HostName 改写之后的主机名（前面的块里若已给出 HostName），
+            // Match originalhost 与 Host 块比的才是使用者输入的那个名字。
+            // 曾经 Match host 一律拿输入的别名去比：为真实主机名写的 Match 块永远对不上。
+            bool applies = current.Match is { } criteria
+                ? MatchesCriteria(criteria, context with
+                {
+                    Host = CurrentHostName(config, originalHost),
+                    OriginalHost = originalHost,
+                })
+                : Matches(current.Patterns, context.Host);
+
+            if (!applies)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>此刻生效的真实主机名：前面的块给了 <c>HostName</c> 就用它（<c>%h</c> 换成输入的名字）。</summary>
+    private static string CurrentHostName(SshHostConfig config, string originalHost) =>
+        config.HostName.Replace("%h", originalHost, StringComparison.Ordinal);
+
     /// <summary><c>Match</c> 块的条件都满足吗（条件之间是与）。</summary>
+    /// <remarks>
+    /// ⚠️ <b>判不了的条件让整块不生效 —— 取反也一样。</b>曾经「判不了」算成「不满足」，
+    /// 前面加个 <c>!</c> 就成了「满足」：<c>Match !exec "…"</c> 在我们不执行命令时对所有主机生效，
+    /// 那正是写配置的人想排除的情形。判不了就是判不了，不因为一个 <c>!</c> 变成真的。
+    /// </remarks>
     private static bool MatchesCriteria(
         SshConfigMatchCriteria criteria, SshConfigMatchContext context)
     {
@@ -576,13 +637,12 @@ public static partial class SshConfigFile
 
         foreach (SshConfigMatchCondition condition in criteria.Conditions)
         {
-            bool satisfied = EvaluateCondition(condition, context);
-            if (condition.Negated)
+            if (EvaluateCondition(condition, context) is not { } result)
             {
-                satisfied = !satisfied;
+                return false;
             }
 
-            if (!satisfied)
+            if (result == condition.Negated)
             {
                 return false;
             }
@@ -591,7 +651,8 @@ public static partial class SshConfigFile
         return true;
     }
 
-    private static bool EvaluateCondition(
+    /// <returns>满足 / 不满足；<see langword="null"/> 表示判不了（信息不足、不支持、不执行）。</returns>
+    private static bool? EvaluateCondition(
         SshConfigMatchCondition condition, SshConfigMatchContext context)
     {
         switch (condition.Keyword)
@@ -599,12 +660,11 @@ public static partial class SshConfigFile
             case "all":
                 return true;
 
-            // 我们不做主机名规范化（CanonicalizeHostname），所以这两个
-            // **永远不匹配**。静默当成 true 会让一份为规范化写的配置
-            // 在我们这里产生完全不同的结果。
+            // 我们不做主机名规范化（CanonicalizeHostname），也没有「最后再解析一遍」这一轮，
+            // 所以这两个判不了。静默当成真或假，都会让一份为规范化写的配置在我们这里产生不同的结果。
             case "canonical":
             case "final":
-                return false;
+                return null;
 
             case "host":
                 return MatchesAny(condition.Patterns, context.Host);
@@ -613,21 +673,20 @@ public static partial class SshConfigFile
                 return MatchesAny(condition.Patterns, context.OriginalHost ?? context.Host);
 
             case "user":
-                return context.User is { } user && MatchesAny(condition.Patterns, user);
+                return context.User is { } user ? MatchesAny(condition.Patterns, user) : null;
 
             case "localuser":
-                return context.LocalUser is { } local && MatchesAny(condition.Patterns, local);
+                return context.LocalUser is { } local ? MatchesAny(condition.Patterns, local) : null;
 
             case "exec":
-                // ⚠️ 默认不执行。没有求值器就**不匹配** —— 见
-                //    SshConfigMatchContext.ExecEvaluator 上的说明。
+                // ⚠️ 默认不执行。没有求值器就判不了 —— 见 SshConfigMatchContext.ExecEvaluator 上的说明。
                 return context.ExecEvaluator is { } evaluator
-                    && evaluator(string.Join(',', condition.Patterns));
+                    ? evaluator(string.Join(',', condition.Patterns))
+                    : null;
 
             default:
-                // 不认识的条件不匹配。认识错了比不认识更糟：
-                // 那会让一个本不该生效的块生效。
-                return false;
+                // 不认识的条件判不了。认识错了比不认识更糟：那会让一个本不该生效的块生效。
+                return null;
         }
     }
 

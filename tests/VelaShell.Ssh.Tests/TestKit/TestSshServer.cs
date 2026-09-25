@@ -31,6 +31,9 @@ public sealed record TestSshServerOptions
     /// <summary>主机密钥类型。</summary>
     public string HostKeyType { get; init; } = SshAlgorithmNames.SshEd25519;
 
+    /// <summary>设了就用这把主机密钥（比如出示主机证书的），不再按 <see cref="HostKeyType"/> 现生成。</summary>
+    public TestHostKey? HostKey { get; init; }
+
     /// <summary>是否宣告支持严格 KEX。</summary>
     public bool AdvertiseStrictKex { get; init; } = true;
 
@@ -44,6 +47,12 @@ public sealed record TestSshServerOptions
 
     /// <summary>把签名故意弄坏，用来验证客户端确实在验签。</summary>
     public bool CorruptSignature { get; init; }
+
+    /// <summary>
+    /// 设了就在重协商时换上一把这种类型的<b>新</b>主机密钥（签名照样是对的）——
+    /// 模拟连接中途被换了主机密钥。
+    /// </summary>
+    public string? RekeyHostKeyType { get; init; }
 }
 
 /// <summary>一次握手之后服务端这一侧的结果。</summary>
@@ -66,6 +75,9 @@ public sealed class TestSshServer : IAsyncDisposable
     /// <summary>客户端的版本串 —— 重协商时算交换哈希还要用它。</summary>
     private string? _clientVersion;
 
+    /// <summary>首次交换定下的严格 KEX；整条连接沿用。</summary>
+    private bool _strictKex;
+
     /// <summary>首次交换定下的 session_id。重协商时 <c>H</c> 变而它不变。</summary>
     private byte[]? _sessionId;
 
@@ -74,8 +86,14 @@ public sealed class TestSshServer : IAsyncDisposable
     {
         _options = options ?? new TestSshServerOptions();
         Transport = new SshPacketTransport(stream);
-        _hostKey = TestHostKey.Create(_options.HostKeyType);
+        _hostKey = _options.HostKey ?? TestHostKey.Create(_options.HostKeyType);
+        _rekeyHostKey = _options.RekeyHostKeyType is { } rekeyType ? TestHostKey.Create(rekeyType) : null;
     }
+
+    private readonly TestHostKey? _rekeyHostKey;
+
+    /// <summary>这一次交换用哪把主机密钥（见 <see cref="TestSshServerOptions.RekeyHostKeyType"/>）。</summary>
+    private TestHostKey KeyFor(bool isInitial) => isInitial ? _hostKey : _rekeyHostKey ?? _hostKey;
 
     /// <summary>底层传输 —— 握手之后用它继续收发（认证、通道…）。</summary>
     public SshPacketTransport Transport { get; }
@@ -141,7 +159,7 @@ public sealed class TestSshServer : IAsyncDisposable
         }
 
         SshAlgorithmSet algorithms = _options.Algorithms ?? SshAlgorithmSet.Default;
-        byte[] serverKexInit = BuildServerKexInit(algorithms, includeIndicators: false);
+        byte[] serverKexInit = BuildServerKexInit(algorithms, KeyFor(isInitial: false), includeIndicators: false);
         await send(serverKexInit, cancellationToken);
         return serverKexInit;
     }
@@ -221,7 +239,7 @@ public sealed class TestSshServer : IAsyncDisposable
 
         // ② 双向 KEXINIT。重协商时这两份都已经在手上了（见 BeginRekeyAsync）。
         SshAlgorithmSet algorithms = _options.Algorithms ?? SshAlgorithmSet.Default;
-        byte[] serverKexInit = ourKexInitAlreadySent ?? BuildServerKexInit(algorithms, isInitial);
+        byte[] serverKexInit = ourKexInitAlreadySent ?? BuildServerKexInit(algorithms, KeyFor(isInitial), isInitial);
         if (ourKexInitAlreadySent is null)
         {
             await send(serverKexInit, cancellationToken);
@@ -234,10 +252,20 @@ public sealed class TestSshServer : IAsyncDisposable
         // 服务端视角的协商：规则相同，但**以客户端的顺序为准**（RFC 4253 §7.1），
         // 所以这里要拿客户端的列表当「我们的偏好」。
         //
-        // ⚠️ 主机密钥那一类必须用**我们实际宣告的那一份**（_hostKey.SignatureAlgorithms），
+        // ⚠️ 主机密钥那一类必须用**我们实际宣告的那一份**（KeyFor(isInitial).SignatureAlgorithms），
         //    不能用 algorithms.HostKey —— 后者是完整的默认清单，而我们手上只有一把密钥。
         //    用错的后果是「宣告 RSA，却按 Ed25519 签名」，客户端只会报一句签名验证失败。
-        SshNegotiatedAlgorithms negotiated = NegotiateAsServer(clientKexInit, algorithms, _hostKey.SignatureAlgorithms);
+        SshNegotiatedAlgorithms negotiated = NegotiateAsServer(clientKexInit, algorithms, KeyFor(isInitial).SignatureAlgorithms);
+
+        // 严格 KEX 是**整条连接**的属性（OpenSSH PROTOCOL）：首次交换时双方都宣告了才算，
+        // 之后每次 NEWKEYS 都归零序号 —— 重协商的 KEXINIT 里不再带标记，也不能因此不归零。
+        // 这里曾经与客户端错在同一处（每次按对端这一次的 KEXINIT 重算），两边错得一致，
+        // 于是重协商用例照样全绿。
+        if (isInitial)
+        {
+            _strictKex = _options.AdvertiseStrictKex && negotiated.StrictKeyExchange;
+        }
+        negotiated = negotiated with { StrictKeyExchange = _strictKex };
 
         if (_options.InjectIgnoreDuringKex)
         {
@@ -255,7 +283,7 @@ public sealed class TestSshServer : IAsyncDisposable
         using VelaShell.Ssh.Crypto.Kex.ISshKeyExchange shape =
             Ssh.Crypto.Kex.SshKeyExchangeFactory.Create(negotiated.KeyExchange);
 
-        byte[] hostKeyBlob = _hostKey.PublicKeyBlob;
+        byte[] hostKeyBlob = KeyFor(isInitial).PublicKeyBlob;
         byte[] exchangeHash = SshExchangeHash.Compute(shape.HashAlgorithm, new SshExchangeHashInput
         {
             ClientVersion = System.Text.Encoding.ASCII.GetBytes(clientVersion),
@@ -270,7 +298,7 @@ public sealed class TestSshServer : IAsyncDisposable
             SharedSecretEncoding = shape.SharedSecretEncoding,
         });
 
-        byte[] signature = _hostKey.Sign(exchangeHash, negotiated.HostKey);
+        byte[] signature = KeyFor(isInitial).Sign(exchangeHash, negotiated.HostKey);
         if (_options.CorruptSignature)
         {
             signature[^1] ^= 0xFF;
@@ -324,7 +352,7 @@ public sealed class TestSshServer : IAsyncDisposable
         return new TestSshServerHandshake(negotiated, exchangeHash, hostKeyBlob);
     }
 
-    private byte[] BuildServerKexInit(SshAlgorithmSet algorithms, bool includeIndicators = true)
+    private byte[] BuildServerKexInit(SshAlgorithmSet algorithms, TestHostKey hostKey, bool includeIndicators = true)
     {
         ArrayBufferWriter<byte> buffer = new();
         SshDataWriter w = new(buffer);
@@ -340,7 +368,7 @@ public sealed class TestSshServer : IAsyncDisposable
             : [.. algorithms.KeyExchange.Where(TestKexResponder.IsSupported)];
 
         w.WriteNameList(kex);
-        w.WriteNameList([.. _hostKey.SignatureAlgorithms]);
+        w.WriteNameList([.. hostKey.SignatureAlgorithms]);
         w.WriteNameList([.. algorithms.EncryptionClientToServer]);
         w.WriteNameList([.. algorithms.EncryptionServerToClient]);
         w.WriteNameList([.. algorithms.MacClientToServer]);
@@ -442,6 +470,7 @@ public sealed class TestSshServer : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _hostKey.Dispose();
+        _rekeyHostKey?.Dispose();
         await Transport.DisposeAsync();
     }
 }

@@ -12,6 +12,7 @@
 using System.Text;
 using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Crypto;
+using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Protocol;
 using VelaShell.Ssh.Session;
 using VelaShell.Ssh.Tests.TestKit;
@@ -76,6 +77,161 @@ public sealed class RekeyTests
         SshCommandOutput output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
         Assert.AreEqual("ok\n", output.StandardOutput);
         Assert.AreEqual(1, host.Connection.RekeyCount, "只该有一次重协商 —— 两份 KEXINIT 说明被当成了两次");
+    }
+
+    /// <summary>
+    /// 严格 KEX 是整条连接的属性：重协商的 KEXINIT 里不再带标记，NEWKEYS 之后照样要归零序号。
+    /// </summary>
+    /// <remarks>
+    /// 只挑 nonce 或 MAC 依赖序号的套件 —— AES-GCM 的 nonce 不看序号，两边序号对不上也照样能解，
+    /// 这个缺陷在默认配置（有 AES-NI 时选 GCM）下正是被它掩盖的。
+    /// </remarks>
+    [TestMethod]
+    [DataRow(SshAlgorithmNames.ChaCha20Poly1305)]
+    [DataRow(SshAlgorithmNames.Aes256Ctr)]
+    public async Task 严格KEX下重协商之后序号照样归零_依赖序号的套件能继续收发(string cipher)
+    {
+        SshAlgorithmSet algorithms = SshAlgorithmSet.Default with
+        {
+            EncryptionClientToServer = [cipher],
+            EncryptionServerToClient = [cipher],
+        };
+
+        await using TestSshServerHost host = await TestSshServerHost.StartAsync(
+            new TestChannelScript { StandardOutput = Encoding.UTF8.GetBytes("ok\n"), ExitCode = 0 },
+            algorithms);
+
+        Assert.IsTrue(host.Connection.Algorithms?.StrictKeyExchange, "首次交换应当谈成严格 KEX");
+        Assert.AreEqual(cipher, host.Connection.Algorithms?.EncryptionServerToClient);
+
+        await host.Channels.RequestRekeyAsync().WaitAsync(host.Token);
+
+        SshCommandOutput output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
+        Assert.AreEqual("ok\n", output.StandardOutput, "重协商之后第一个报文就该解得开");
+        Assert.IsTrue(host.Connection.Algorithms?.StrictKeyExchange, "严格 KEX 不会因为重协商而消失");
+    }
+
+    /// <summary>
+    /// 一次交换正在接收循环上跑的时候，主动发起（使用者调用或阈值监视循环）必须是空操作。
+    /// </summary>
+    /// <remarks>
+    /// 曾经「已经在谈了」只看「我们发过、对端还没回」那一段：交换一开始标记就被清掉，
+    /// 而阈值要等交换完成才归零 —— 监视循环在交换中途又发了一个 KEXINIT，对端当场断连。
+    /// 「报文数到阈值会自己发起重协商」那条用例在满跑并行时约四分之一的概率栽在这里。
+    /// </remarks>
+    [TestMethod]
+    public async Task 交换进行中再发起重协商是空操作()
+    {
+        await using TestSshServerHost host = await TestSshServerHost.StartAsync(new TestChannelScript
+        {
+            StandardOutput = Encoding.UTF8.GetBytes("ok\n"),
+            ExitCode = 0,
+        });
+
+        // 服务端发起；收到客户端的 KEXINIT 之后停住 —— 这时客户端的交换正在接收循环上等应答。
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.Channels.HoldRekeyCompletionUntil = release.Task;
+        Task<TestSshServerHandshake> serverRekey = host.Channels.RequestRekeyAsync();
+        await host.Channels.RekeyHeld.Task.WaitAsync(host.Token);
+
+        await host.Connection.StartRekeyAsync(host.Token);
+
+        release.SetResult();
+        await serverRekey.WaitAsync(host.Token);
+        SshCommandOutput output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
+        Assert.AreEqual("ok\n", output.StandardOutput);
+        Assert.AreEqual(1, host.Connection.RekeyCount, "中途那次发起不该变成第二次交换");
+    }
+
+    /// <summary>
+    /// 重协商期间闸门关着、发送一律暂存 —— 对端永远不完成的话，连接不能无声地停在那里。
+    /// </summary>
+    [TestMethod]
+    [DataRow(true, DisplayName = "我们发起、对端一直不回 KEXINIT")]
+    [DataRow(false, DisplayName = "对端发起、交换卡在半路")]
+    public async Task 重协商超时就断开而不是永远暂存(bool weInitiate)
+    {
+        await using TestSshServerHost host = await TestSshServerHost.StartAsync(
+            new TestChannelScript { StandardOutput = Encoding.UTF8.GetBytes("ok\n"), ExitCode = 0 },
+            rekeyTimeout: TimeSpan.FromMilliseconds(300));
+
+        // 服务端收到客户端的 KEXINIT 之后就停住，再也不往下走。
+        TaskCompletionSource never = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.Channels.HoldRekeyCompletionUntil = never.Task;
+
+        if (weInitiate)
+        {
+            await host.Connection.StartRekeyAsync(host.Token);
+        }
+        else
+        {
+            _ = host.Channels.RequestRekeyAsync();
+        }
+
+        while (host.Connection.IsAlive)
+        {
+            await Task.Delay(20, host.Token);
+        }
+
+        SshConnectionClosedException error = await Assert.ThrowsExactlyAsync<SshConnectionClosedException>(
+            async () => await host.Connection.RunAsync("ok", cancellationToken: host.Token));
+        Assert.AreEqual(SshFailureReason.Timeout, error.Reason);
+        Assert.AreEqual(SshPhase.Rekeying, error.Phase);
+    }
+
+    /// <summary>重协商钉住首次的主机密钥：不再问策略，换了钥就断（spec/03 §8.4）。</summary>
+    [TestMethod]
+    public async Task 重协商不再询问主机密钥策略()
+    {
+        CountingPolicy policy = new();
+        await using TestSshServerHost host = await TestSshServerHost.StartAsync(
+            new TestChannelScript { StandardOutput = Encoding.UTF8.GetBytes("ok\n"), ExitCode = 0 },
+            hostKeyPolicy: policy);
+        Assert.AreEqual(1, policy.Evaluations, "首次交换问一次");
+
+        await host.Channels.RequestRekeyAsync().WaitAsync(host.Token);
+
+        // 交互式策略在这里弹窗的话，接收循环正停着等它 —— 所有通道一起卡住。
+        Assert.AreEqual(1, policy.Evaluations, "重协商不该再问：钉住首次的密钥就够了");
+        SshCommandOutput output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
+        Assert.AreEqual("ok\n", output.StandardOutput);
+    }
+
+    [TestMethod]
+    public async Task 重协商时换了主机密钥就以HostKeyChanged断开()
+    {
+        // 签名是对的 —— 新钥确实持有对应私钥；问题在于它不是首次那一把。
+        // 宽松的策略（全部接受）也挡不住这一条：它根本不该被问到。
+        await using TestSshServerHost host = await TestSshServerHost.StartAsync(
+            new TestChannelScript { StandardOutput = Encoding.UTF8.GetBytes("ok\n"), ExitCode = 0 },
+            rekeyHostKeyType: SshAlgorithmNames.SshEd25519);
+        host.ServerLoopMayFail = true;
+
+        _ = host.Channels.RequestRekeyAsync();
+
+        while (host.Connection.IsAlive)
+        {
+            await Task.Delay(20, host.Token);
+        }
+
+        SshConnectionClosedException error = await Assert.ThrowsExactlyAsync<SshConnectionClosedException>(
+            async () => await host.Connection.RunAsync("ok", cancellationToken: host.Token));
+        Assert.AreEqual(SshFailureReason.HostKeyChanged, error.Reason);
+        Assert.AreEqual(SshPhase.Rekeying, error.Phase);
+    }
+
+    private sealed class CountingPolicy : VelaShell.Ssh.HostKeys.IHostKeyPolicy
+    {
+        private int _evaluations;
+
+        public int Evaluations => Volatile.Read(ref _evaluations);
+
+        public ValueTask<VelaShell.Ssh.HostKeys.SshHostKeyVerdict> EvaluateAsync(
+            VelaShell.Ssh.HostKeys.SshHostKeyContext context, CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _evaluations);
+            return ValueTask.FromResult(VelaShell.Ssh.HostKeys.SshHostKeyVerdict.Accept);
+        }
     }
 
     [TestMethod]
@@ -168,6 +324,52 @@ public sealed class RekeyTests
             "重协商期间写的数据要一字节不差地按原顺序送达");
         Assert.AreEqual(0, result.ExitCode);
         Assert.AreEqual(1, host.Connection.RekeyCount);
+    }
+
+    [TestMethod]
+    public async Task 重协商期间分几次写的数据各自暂存_开闸后逐字节送达()
+    {
+        // 通道数据的缓冲是池里租的，发送方一返回就还回去。暂存时不复制一份的话，
+        // 下一块会租到同一个数组把它盖掉 —— 开闸后发出去的是几份「最后那一块」。
+        await using TestSshServerHost host = await TestSshServerHost.StartAsync(
+            new TestChannelScript
+            {
+                EchoStandardInput = true,
+                WaitForClientEof = true,
+                ExitCode = 0,
+            });
+
+        await using SshCommand command =
+            await host.Connection.ExecuteAsync("回显", cancellationToken: host.Token);
+
+        // 服务端收到客户端的 KEXINIT 之后停住：客户端的闸门这时是关着的，数据只能暂存。
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.Channels.HoldRekeyCompletionUntil = release.Task;
+        Task<TestSshServerHandshake> rekey = host.Channels.RequestRekeyAsync();
+        await host.Channels.RekeyHeld.Task.WaitAsync(host.Token);
+
+        StringBuilder expected = new();
+        long total = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            byte[] chunk = Encoding.UTF8.GetBytes($"第{i}块：{new string((char)('a' + i), 300)}");
+            await command.StandardInput.WriteAsync(chunk, host.Token);
+            await command.StandardInput.FlushAsync(host.Token);
+            total += chunk.Length;
+
+            // 这一块已经交给会话（被暂存了）再写下一块 —— 各自成帧。
+            await command.Channel.WaitStandardInputSentAsync(total, host.Token);
+            expected.Append(Encoding.UTF8.GetString(chunk));
+        }
+
+        release.SetResult();
+        await rekey.WaitAsync(host.Token);
+        await command.CompleteStandardInputAsync(host.Token);
+
+        (SshCommandResult result, string echoed, _) = await command.ReadToEndAsync(host.Token);
+
+        Assert.AreEqual(expected.ToString(), echoed, "暂存的每一块都要是它自己，而不是被后来的块盖掉");
+        Assert.AreEqual(0, result.ExitCode);
     }
 
     [TestMethod]

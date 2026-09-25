@@ -338,6 +338,7 @@ public sealed class X11Forwarder : IAsyncDisposable
         try
         {
             Action? shutdownSend = null;
+            Action? abort = null;
             if (_options.LocalConnector is { } connector)
             {
                 stream = await ConnectViaConnectorAsync(connector, cancellationToken).ConfigureAwait(false);
@@ -359,6 +360,7 @@ public sealed class X11Forwarder : IAsyncDisposable
                     stream = new NetworkStream(local, ownsSocket: false);
                     Socket socket = local;
                     shutdownSend = () => SafeShutdownSend(socket);
+                    abort = () => StreamRelayEndpoint.Reset(socket);
                 }
             }
             if (stream is null)
@@ -378,7 +380,7 @@ public sealed class X11Forwarder : IAsyncDisposable
             // 流交给端点,由它释放;这里不再重复释放。
             Stream owned = stream;
             stream = null;
-            await using StreamRelayEndpoint localEnd = new(owned, shutdownSend, ownsStream: true);
+            await using StreamRelayEndpoint localEnd = new(owned, shutdownSend, ownsStream: true, abort);
             ChannelRelayEndpoint remoteEnd = new(channel);
 
             await DuplexRelay.RunAsync(

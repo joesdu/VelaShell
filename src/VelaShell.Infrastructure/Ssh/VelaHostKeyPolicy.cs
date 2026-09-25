@@ -57,8 +57,10 @@ internal sealed class VelaHostKeyPolicy(
 
         string host = context.Host;
         int port = context.Port;
+        // 主机证书按证书里那把钥记、按那把钥比:证书每次重签 blob 都会变,钥不变
+        // (指纹本身就是那把钥的,见 SshPublicKey.Sha256Fingerprint)。
         string fingerprint = context.Key.Sha256Fingerprint;
-        string keyType = context.Key.KeyType;
+        string keyType = context.Key.PlainKeyType;
         string target = context.Target;
 
         HostKeyVerification verification = await hostKey
@@ -145,7 +147,7 @@ internal sealed class VelaHostKeyPolicy(
         ArgumentNullException.ThrowIfNull(context);
 
         await hostKey.TrustHostKeyAsync(
-            context.Host, context.Port, context.Key.KeyType, context.Key.Sha256Fingerprint, cancellationToken)
+            context.Host, context.Port, context.Key.PlainKeyType, context.Key.Sha256Fingerprint, cancellationToken)
             .ConfigureAwait(false);
     }
 

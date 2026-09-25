@@ -9,6 +9,7 @@
 using VelaShell.Ssh.Auth;
 using VelaShell.Ssh.Crypto;
 using VelaShell.Ssh.Diagnostics;
+using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Transport;
 
 namespace VelaShell.Ssh.Session;
@@ -63,6 +64,7 @@ public static class SshConnectionFactory
         // 是同一句话，而这四件事的下一步完全不同。
         // 阈值不合法就当场报 —— 而不是等连上之后才在监视循环里出问题。
         options.Rekey.Validate();
+        options.Algorithms.Validate();
 
         SshPhase phase = SshPhase.Dialing;
 
@@ -85,7 +87,19 @@ public static class SshConnectionFactory
                 .ConfigureAwait(false);
 
             phase = SshPhase.KeyExchange;
-            SshKeyExchangeRunner runner = new(transport, options.Algorithms, options.HostKeyPolicy)
+
+            // 已经记着这台主机哪些类型的主机密钥，就把那些类型排到前面 —— 正常的服务端因此谈成
+            // 已知的那一种（见 IHostKeyTypePreference）。重协商用的是同一份清单。
+            SshAlgorithmSet algorithms = options.Algorithms;
+            if (options.HostKeyPolicy is IHostKeyTypePreference preference)
+            {
+                IReadOnlyList<string> knownTypes = await preference
+                    .GetKnownKeyTypesAsync(options.Host, options.Port, connect.Token)
+                    .ConfigureAwait(false);
+                algorithms = algorithms.PreferHostKeyTypes([.. knownTypes]);
+            }
+
+            SshKeyExchangeRunner runner = new(transport, algorithms, options.HostKeyPolicy)
             {
                 // ② 裁决用自己的计时器（见方法说明）：连接计时器在裁决期间停表，
                 //    裁决与持久化只认调用方的取消。
@@ -115,7 +129,19 @@ public static class SshConnectionFactory
             };
 
             List<SshCredential> credentials = [.. options.Credentials];
-            await authenticator.AuthenticateAsync(credentials, auth.Token).ConfigureAwait(false);
+
+            // 经跳板时，这条连接的认证跑在外层连接的拨号计时之内 —— 而认证是在等人
+            // （输口令、看手机上的动态码）。那段时间停外层的表，认证用它自己的这把计时器；
+            // 不停的话，用户在跳板上输动态码花了二十秒，外层十五秒的连接超时早就到了。
+            options.OuterDeadline?.Pause();
+            try
+            {
+                await authenticator.AuthenticateAsync(credentials, auth.Token).ConfigureAwait(false);
+            }
+            finally
+            {
+                options.OuterDeadline?.Resume();
+            }
 
             // ④ 压缩要在**认证成功之后**才挂上去（zlib@openssh.com 的语义）。
             //
@@ -140,7 +166,7 @@ public static class SshConnectionFactory
                 // 没有这一份，对端发起重协商时我们只能报错断连 ——
                 // 而 OpenSSH 默认每 1 GiB 或每小时就会发起一次。
                 RekeyContext = new SshRekeyContext(
-                    options.Algorithms,
+                    algorithms,
                     options.HostKeyPolicy,
                     versions,
                     options.Host,
@@ -150,6 +176,7 @@ public static class SshConnectionFactory
                 KeepAlive = options.KeepAlive,
                 RekeyPolicy = options.Rekey,
                 RekeyCheckInterval = options.RekeyCheckInterval,
+                RekeyTimeout = options.RekeyTimeout,
                 Description = $"{options.UserName}@{options.Target}",
             };
 
@@ -177,6 +204,17 @@ public static class SshConnectionFactory
                 reason, phase,
                 $"连 {options.Target} 时在「{what}」这一步超时" +
                 $"（限 {budget.TotalSeconds:0.#} 秒）。");
+        }
+        catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException && phase != SshPhase.Dialing)
+        {
+            await DisposeQuietlyAsync(transport, stream).ConfigureAwait(false);
+
+            // 拨通之后流上的读写出错，就是连接断了（对端重置、链路掉了）。按会话期间的同一套口径报
+            // （见 SshConnection.NormalizeFault），不让原始的 IOException / SocketException 漏给调用方。
+            // 拨号阶段不在这里管：各个拨号器自己把失败翻成了带原因的 SshConnectException。
+            throw new SshConnectionClosedException(
+                SshFailureReason.ClosedByPeer, phase,
+                $"连 {options.Target} 时连接断了（{phase}）：{PeerText.Sanitize(ex.Message, 256)}", ex);
         }
         catch (Exception)
         {

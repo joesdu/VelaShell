@@ -210,6 +210,67 @@ $"Proxy-Authorization: Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes("bob
         Assert.IsFalse(ex.Hops[1].Succeeded);
     }
 
+    [TestMethod]
+    public async Task 在跳板上输口令的时间不算进外层的连接超时()
+    {
+        // 用户在跳板上输动态码花了比外层连接超时还长的时间 —— 那是在等人，不是网络慢。
+        List<string> tunnelTargets = [];
+        await using JumpHost jump = new(tunnelTargets);
+
+        SshJumpDialer dialer = new(jump.Options with
+        {
+            Credentials =
+            [
+                new PasswordCredential(async cancellationToken =>
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1.5), cancellationToken);
+                    return "hunter2";
+                }),
+            ],
+        });
+
+        SshConnectionOptions options = new($"joe@{TargetHost}:22")
+        {
+            Dialer = dialer,
+            HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
+            Credentials = [new PasswordCredential("hunter2")],
+            ConnectTimeout = TimeSpan.FromSeconds(1),
+        };
+
+        await using SshConnection connection = await options.ConnectAsync();
+        Assert.AreEqual("来自目标", (await connection.RunAsync("hello")).StandardOutput);
+    }
+
+    [TestMethod]
+    public async Task 外层计时器在跳板握手时到点_报超时并说清是哪一跳()
+    {
+        // 跳板那头一声不吭（握手卡住）。外层的计时器先到：不能报成「建立 TCP 连接超时」——
+        // 卡住的是跳板的握手。
+        SshConnectionOptions silentJump = new("jumper@jump.example:22")
+        {
+            Dialer = InMemoryTransport.CreateDialer((_, _, _) => ValueTask.CompletedTask),
+            HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
+            Credentials = [new PasswordCredential("hunter2")],
+            ConnectTimeout = TimeSpan.FromSeconds(30),
+        };
+
+        SshConnectionOptions options = new($"joe@{TargetHost}:22")
+        {
+            Dialer = new SshJumpDialer(silentJump),
+            HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
+            Credentials = [new PasswordCredential("hunter2")],
+            ConnectTimeout = TimeSpan.FromMilliseconds(500),
+        };
+
+        SshConnectException ex = await Assert.ThrowsExactlyAsync<SshConnectException>(
+            async () => await options.ConnectAsync());
+
+        Assert.AreEqual(SshFailureReason.Timeout, ex.Reason);
+        Assert.Contains("跳板", ex.Message);
+        Assert.AreEqual(SshDialKind.SshJump, ex.Hops[^1].Kind);
+        Assert.IsFalse(ex.Hops[^1].Succeeded);
+    }
+
     // ------------------------------------------------------------ 代理命令
 
     [TestMethod]
@@ -224,6 +285,31 @@ $"Proxy-Authorization: Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes("bob
         Assert.AreEqual(
             "nc -X connect -x proxy:3128 10.0.0.9 2222 # joe@alias 100%",
             dialer.Expand(new SshEndPoint("10.0.0.9", 2222)));
+    }
+
+    [TestMethod]
+    [DataRow("x;touch /tmp/pwn", null, DisplayName = "sh 的命令分隔")]
+    [DataRow("x&calc", null, DisplayName = "cmd 的命令分隔")]
+    [DataRow("%COMSPEC%", null, DisplayName = "cmd 的环境变量展开")]
+    [DataRow("$(id)", null, DisplayName = "sh 的命令替换")]
+    [DataRow("host.example.com", "$(id)", DisplayName = "用户名里的命令替换")]
+    [DataRow("host\nrm -rf ~", null, DisplayName = "换行")]
+    public void 主机名或用户名里有shell元字符时不代入ProxyCommand(string host, string? user)
+    {
+        // 主机名、用户名常常不是写配置的人给的（ssh:// 链接、导入的会话、快速连接框）。
+        // 原样代入交给 shell 的命令行，就是一条被执行的命令（CVE-2023-51385 那一类）。
+        ProxyCommandDialer dialer = new("nc %h %p # %r") { UserName = user ?? "joe" };
+
+        SshConnectException error = Assert.ThrowsExactly<SshConnectException>(
+            () => dialer.Expand(new SshEndPoint(host, 22)));
+        Assert.AreEqual(SshFailureReason.ProxyRefused, error.Reason);
+    }
+
+    [TestMethod]
+    public void IPv6地址与带域名的用户照常代入()
+    {
+        ProxyCommandDialer dialer = new("nc %h %p # %r") { UserName = "joe@corp.example" };
+        Assert.AreEqual("nc fe80::1 22 # joe@corp.example", dialer.Expand(new SshEndPoint("fe80::1", 22)));
     }
 
     [TestMethod]

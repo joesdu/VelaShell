@@ -25,12 +25,27 @@ public sealed record X11Display(string Host, int Number, int Screen, string? Uni
     /// <summary>X11 的 TCP 端口基数 —— 显示 <c>N</c> 在 <c>6000+N</c>。</summary>
     public const int TcpPortBase = 6000;
 
-    /// <summary>这是不是本机显示。</summary>
+    /// <summary>这是不是本机显示（挑 cookie 用：本机显示认 FamilyLocal 条目）。</summary>
+    /// <remarks>连哪里看的是 <see cref="UsesLocalSocket"/>，不是它。</remarks>
     public bool IsLocal =>
+        UsesLocalSocket
+        || string.Equals(Host, "localhost", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>这个显示走不走本机套接字：空 host、<c>unix</c>，或者直接给了套接字路径。</summary>
+    /// <remarks>
+    /// <para>
+    /// <b><c>localhost:N</c> 不在此列</b> —— 按 X 的约定它就是 TCP <c>6000+N</c>，
+    /// 嵌套 <c>ssh -X</c> 时 sshd 给的正是这种形态。
+    /// </para>
+    /// <para>
+    /// 曾经把它也当成本机套接字、先去试 Linux 的抽象套接字：抽象命名空间不做任何权限检查，
+    /// 同一台机器上的别的用户抢先绑上 <c>@/tmp/.X11-unix/X10</c>，就能收到我们换上的**真** cookie。
+    /// </para>
+    /// </remarks>
+    public bool UsesLocalSocket =>
         UnixSocketPath is not null
         || Host.Length == 0
-        || string.Equals(Host, "unix", StringComparison.Ordinal)
-        || string.Equals(Host, "localhost", StringComparison.OrdinalIgnoreCase);
+        || string.Equals(Host, "unix", StringComparison.Ordinal);
 
     /// <summary>给 <c>xauth</c> 用的显示名。</summary>
     /// <remarks>
@@ -144,7 +159,14 @@ public sealed record X11Display(string Host, int Number, int Screen, string? Uni
             return candidates;
         }
 
-        if (IsLocal)
+        // localhost:N 是 TCP 6000+N，不试任何本机套接字（见 UsesLocalSocket）。
+        if (!UsesLocalSocket && string.Equals(Host, "localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            candidates.Add(new IPEndPoint(IPAddress.Loopback, TcpPortBase + Number));
+            return candidates;
+        }
+
+        if (UsesLocalSocket)
         {
             if (!OperatingSystem.IsWindows() && Socket.OSSupportsUnixDomainSockets)
             {

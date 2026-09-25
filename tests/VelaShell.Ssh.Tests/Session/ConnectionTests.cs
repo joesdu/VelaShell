@@ -509,6 +509,70 @@ public sealed class ConnectionTests
         Assert.IsFalse(connection.IsAlive);
     }
 
+    /// <summary>
+    /// 拨通之后流上读出错（对端重置），建连报出的是库自己的「连接断了」，不是原始的 <see cref="IOException"/>。
+    /// </summary>
+    [TestMethod]
+    public async Task 建连途中链路出错报连接断了而不是原始的IO异常()
+    {
+        SshConnectionOptions options = new("joe@test.invalid")
+        {
+            Dialer = new ResettingDialer(),
+            HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
+            Credentials = [new PasswordCredential("hunter2")],
+        };
+
+        SshConnectionClosedException ex = await Assert.ThrowsExactlyAsync<SshConnectionClosedException>(
+            async () => await options.ConnectAsync());
+
+        Assert.AreEqual(SshFailureReason.ClosedByPeer, ex.Reason);
+        Assert.IsInstanceOfType<IOException>(ex.InnerException);
+    }
+
+    /// <summary>发完版本串之后，再读就当成对端重置了连接。</summary>
+    private sealed class ResettingDialer : ISshTransportDialer
+    {
+        public SshDialKind Kind => SshDialKind.Tcp;
+
+        public ValueTask<Stream> DialAsync(SshDialTarget target, CancellationToken cancellationToken) =>
+            ValueTask.FromResult<Stream>(new ResettingStream());
+
+        private sealed class ResettingStream : Stream
+        {
+            private readonly byte[] _banner = Encoding.ASCII.GetBytes("SSH-2.0-ResetsAfterBanner\r\n");
+            private int _offset;
+
+            public override bool CanRead => true;
+            public override bool CanWrite => true;
+            public override bool CanSeek => false;
+            public override long Length => throw new NotSupportedException();
+            public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+            public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            {
+                if (_offset >= _banner.Length)
+                {
+                    throw new IOException("连接被对端重置。");
+                }
+
+                int count = Math.Min(buffer.Length, _banner.Length - _offset);
+                _banner.AsSpan(_offset, count).CopyTo(buffer.Span);
+                _offset += count;
+                return ValueTask.FromResult(count);
+            }
+
+            public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+                ValueTask.CompletedTask;
+
+            public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+            public override void Flush() { }
+            public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+            public override void Write(byte[] buffer, int offset, int count) { }
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+            public override void SetLength(long value) => throw new NotSupportedException();
+        }
+    }
+
     /// <summary>对端断链时也要放出掉线信号，而不是只有主动释放才放。</summary>
     [TestMethod]
     public async Task 对端断开时放出掉线信号()

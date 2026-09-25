@@ -91,8 +91,41 @@ public sealed record TestChannelScript
     /// <summary>接受 <c>tcpip-forward</c> 全局请求，并回这个端口（<c>0</c> = 拒绝）。</summary>
     public int GrantRemoteForwardPort { get; init; }
 
+    /// <summary>
+    /// 回完 <c>tcpip-forward</c> 的 <c>REQUEST_SUCCESS</c>，<b>紧接着</b>开一条 <c>forwarded-tcpip</c> 回连 ——
+    /// 模拟应答刚发出就有人连上了那个端口。结果在 <see cref="TestChannelObservation.ForwardedOpenAfterGrant"/>。
+    /// </summary>
+    public bool OpenForwardedTcpIpAfterGrant { get; init; }
+
+    /// <summary>
+    /// 同上，但回连排在 <c>REQUEST_SUCCESS</c> <b>前面</b>（一次刷出）。真服务端不这么做 ——
+    /// 用它是因为它把「处理器是不是在请求发出之前就登记好了」变成了确定的问题，不靠调度碰运气。
+    /// </summary>
+    public bool OpenForwardedTcpIpBeforeGrant { get; init; }
+
     /// <summary>拒绝 <c>auth-agent-req@openssh.com</c>。</summary>
     public bool RejectAgentForward { get; init; }
+
+    /// <summary>收到 stdin 也不回补客户端的发送窗口 —— 模拟远端进程不读 stdin。</summary>
+    public bool WithholdWindowAdjust { get; init; }
+
+    /// <summary>一条通道累计收到这么多 stdin 字节时，服务端发 EOF + CLOSE（远端进程退出）。</summary>
+    public int? CloseAfterStandardInputBytes { get; init; }
+
+    /// <summary>
+    /// 设了就等它完成之后才回 <c>OPEN_CONFIRMATION</c> —— 模拟慢吞吞的服务端。
+    /// 等待期间服务端的收包循环停着，客户端后发的报文排在确认之后处理。
+    /// </summary>
+    public Task? HoldOpenConfirmationUntil { get; init; }
+
+    /// <summary>
+    /// 设了就等它完成之后才回客户端的 <c>CHANNEL_CLOSE</c> —— 对端的 CLOSE 迟迟不来。
+    /// 等待期间服务端的收包循环停着，客户端后发的报文排在它之后处理。
+    /// </summary>
+    public Task? HoldCloseReplyUntil { get; init; }
+
+    /// <summary>回放退出状态之前，先发这么多条客户端不认识的通道请求（每条带 1 KiB 载荷）。</summary>
+    public int UnknownRequestsBeforeExit { get; init; }
 }
 
 /// <summary>测试服务端收到的一条 <c>x11-req</c>。</summary>
@@ -201,6 +234,9 @@ public sealed class TestChannelObservation
     /// <summary>收到的全局请求类型。</summary>
     public List<string> GlobalRequests { get; } = [];
 
+    /// <summary><see cref="TestChannelScript.OpenForwardedTcpIpAfterGrant"/> 开出的那条回连；客户端拒了是 null。</summary>
+    public Task<Stream?>? ForwardedOpenAfterGrant { get; set; }
+
     /// <summary>客户端请求在哪些套接字路径上开远程转发。</summary>
     public List<string> StreamLocalForwardBinds { get; } = [];
 
@@ -247,6 +283,9 @@ public sealed class TestChannelServer : IDisposable
     private readonly Lock _sendWindowLock = new();
 
     private readonly Dictionary<uint, TaskCompletionSource> _eofReceived = [];
+
+    /// <summary>每条通道累计收到的 stdin 字节数（<see cref="TestChannelScript.CloseAfterStandardInputBytes"/> 用）。</summary>
+    private readonly Dictionary<uint, int> _stdinBytes = [];
 
     /// <summary>已经发出去的服务端 KEXINIT；非 null 表示一次重协商正在进行。</summary>
     private byte[]? _pendingRekeyKexInit;
@@ -350,6 +389,15 @@ public sealed class TestChannelServer : IDisposable
     /// </summary>
     public TimeSpan DelayAfterRekeyKexInitSent { get; set; }
 
+    /// <summary>
+    /// 设了就在收到客户端的 <c>KEXINIT</c> 之后、把交换做完之前等它 —— 撑出一段「交换进行中」的窗口。
+    /// 开始等时 <see cref="RekeyHeld"/> 完成。
+    /// </summary>
+    public Task? HoldRekeyCompletionUntil { get; set; }
+
+    /// <summary>服务端已经停在 <see cref="HoldRekeyCompletionUntil"/> 上。</summary>
+    public TaskCompletionSource RekeyHeld { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     /// <summary>把服务端交给这个循环，之后才能发起重协商。</summary>
     public void AttachServer(TestSshServer server) => _server = server;
 
@@ -405,6 +453,12 @@ public sealed class TestChannelServer : IDisposable
         byte[]? ours = Interlocked.Exchange(ref _pendingRekeyKexInit, null);
         TaskCompletionSource<TestSshServerHandshake>? request =
             Interlocked.Exchange(ref _rekeyRequest, null);
+
+        if (HoldRekeyCompletionUntil is { } hold)
+        {
+            RekeyHeld.TrySetResult();
+            await hold.WaitAsync(cancellationToken);
+        }
 
         try
         {
@@ -551,6 +605,11 @@ public sealed class TestChannelServer : IDisposable
             return;
         }
 
+        if (_script.HoldOpenConfirmationUntil is { } hold)
+        {
+            await hold.WaitAsync(cancellationToken);
+        }
+
         uint serverChannel = _nextChannelId++;
         _peerIds[serverChannel] = clientChannel;
         lock (_sendWindowLock)
@@ -615,6 +674,17 @@ public sealed class TestChannelServer : IDisposable
     {
         uint serverChannel = ReadRecipient(payload);
         Observation.ReceivedClose = true;
+
+        // 客户端关了通道：处理器那一侧也该读到结尾（CLOSE 蕴含不会再有数据），否则它会一直等。
+        if (_channelInput.TryGetValue(serverChannel, out Pipe? handlerInput))
+        {
+            handlerInput.Writer.Complete();
+        }
+
+        if (_script.HoldCloseReplyUntil is { } hold)
+        {
+            await hold.WaitAsync(cancellationToken);
+        }
 
         if (_peerIds.TryGetValue(serverChannel, out uint clientChannel))
         {
@@ -765,6 +835,28 @@ public sealed class TestChannelServer : IDisposable
             {
                 successWriter.WriteUInt32((uint)_script.GrantRemoteForwardPort);
             }
+
+            if (_script.OpenForwardedTcpIpAfterGrant || _script.OpenForwardedTcpIpBeforeGrant)
+            {
+                // 应答与回连**一次刷出**：客户端的接收循环处理完应答，回连已经在它的缓冲里，
+                // 紧接着就会被分发 —— 这正是要测的那个窗口。
+                // 不能在收包循环里等结果：客户端的确认也要经这个循环才读得到。
+                ArrayBufferWriter<byte> header = new();
+                SshDataWriter headerWriter = new(header);
+                headerWriter.WriteUtf8String(bindAddress);
+                headerWriter.WriteUInt32((uint)_script.GrantRemoteForwardPort);
+                headerWriter.WriteUtf8String("127.0.0.1");
+                headerWriter.WriteUInt32(40000);
+                Observation.ForwardedOpenAfterGrant = _script.OpenForwardedTcpIpAfterGrant
+                    ? await SendChannelOpenToClientAsync(
+                        SshAlgorithmNames.ChannelForwardedTcpIp, header.WrittenMemory, cancellationToken,
+                        precededBy: success.WrittenMemory)
+                    : await SendChannelOpenToClientAsync(
+                        SshAlgorithmNames.ChannelForwardedTcpIp, header.WrittenMemory, cancellationToken,
+                        followedBy: success.WrittenMemory);
+                return;
+            }
+
             await SendAsync(success.WrittenMemory, cancellationToken);
             return;
         }
@@ -919,8 +1011,21 @@ public sealed class TestChannelServer : IDisposable
             await SendDataAsync(serverChannel, data, extended: false, cancellationToken);
         }
 
+        if (_script.CloseAfterStandardInputBytes is { } closeAt
+            && _peerIds.TryGetValue(serverChannel, out uint closing))
+        {
+            int total = _stdinBytes.GetValueOrDefault(serverChannel) + data.Length;
+            _stdinBytes[serverChannel] = total;
+            if (total >= closeAt && total - data.Length < closeAt)
+            {
+                await SendSimpleAsync(SshMessageNumber.ChannelEof, closing, cancellationToken);
+                await SendSimpleAsync(SshMessageNumber.ChannelClose, closing, cancellationToken);
+                return;
+            }
+        }
+
         // 服务端也要回补窗口，不然客户端发大量 stdin 时会停住。
-        if (_peerIds.TryGetValue(serverChannel, out uint clientChannel))
+        if (!_script.WithholdWindowAdjust && _peerIds.TryGetValue(serverChannel, out uint clientChannel))
         {
             ArrayBufferWriter<byte> buffer = new();
             SshDataWriter writer = new(buffer);
@@ -1011,6 +1116,11 @@ public sealed class TestChannelServer : IDisposable
             {
                 await SendExtendedAsync(
                     serverChannel, _script.UnknownExtendedData, dataTypeCode: 7, cancellationToken);
+            }
+
+            for (int i = 0; i < _script.UnknownRequestsBeforeExit; i++)
+            {
+                await SendChannelRequestAsync(serverChannel, "flood@velashell.test", new byte[1024], cancellationToken);
             }
 
             if (_script.ExitSignal is { } signal)
@@ -1166,6 +1276,19 @@ public sealed class TestChannelServer : IDisposable
     public async Task<Stream?> OpenChannelToClientAsync(
         string channelType, ReadOnlyMemory<byte> typeSpecific, CancellationToken cancellationToken)
     {
+        Task<Stream?> result = await SendChannelOpenToClientAsync(channelType, typeSpecific, cancellationToken);
+        return await result;
+    }
+
+    /// <summary>发出 <c>CHANNEL_OPEN</c> 就返回；客户端的答复在返回的任务里。</summary>
+    /// <remarks>收包循环里要开通道时用它：在循环里等答复会等到自己头上。</remarks>
+    private async Task<Task<Stream?>> SendChannelOpenToClientAsync(
+        string channelType,
+        ReadOnlyMemory<byte> typeSpecific,
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> precededBy = default,
+        ReadOnlyMemory<byte> followedBy = default)
+    {
         uint serverChannel = _nextChannelId++;
         TaskCompletionSource<bool> opened = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _pendingServerOpens[serverChannel] = opened;
@@ -1183,15 +1306,31 @@ public sealed class TestChannelServer : IDisposable
         writer.WriteUInt32((uint)_script.InitialWindow);
         writer.WriteUInt32((uint)_script.MaxPacket);
         writer.WriteRaw(typeSpecific.Span);
-        await SendAsync(buffer.WrittenMemory, cancellationToken);
-
-        if (!await opened.Task.WaitAsync(cancellationToken))
+        if (!precededBy.IsEmpty)
         {
-            return null;   // 客户端拒绝了
+            await SendPairAsync(precededBy, buffer.WrittenMemory, cancellationToken);
+        }
+        else if (!followedBy.IsEmpty)
+        {
+            await SendPairAsync(buffer.WrittenMemory, followedBy, cancellationToken);
+        }
+        else
+        {
+            await SendAsync(buffer.WrittenMemory, cancellationToken);
         }
 
-        _ = Task.Run(() => PumpHandlerOutputAsync(serverChannel, cancellationToken), cancellationToken);
-        return new PipeDuplexStream(toHandler.Reader, fromHandler.Writer);
+        return AwaitOpenedAsync();
+
+        async Task<Stream?> AwaitOpenedAsync()
+        {
+            if (!await opened.Task.WaitAsync(cancellationToken))
+            {
+                return null;   // 客户端拒绝了
+            }
+
+            _ = Task.Run(() => PumpHandlerOutputAsync(serverChannel, cancellationToken), cancellationToken);
+            return new PipeDuplexStream(toHandler.Reader, fromHandler.Writer);
+        }
     }
 
     /// <summary>把一对管道当成一条双工流用。</summary>
@@ -1290,6 +1429,10 @@ public sealed class TestChannelServer : IDisposable
     /// </remarks>
     private readonly TaskCompletionSource _running = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    /// <summary>原样发一个报文（用例构造对端的异常行为用：灌请求、发畸形报文）。</summary>
+    public Task SendRawAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken) =>
+        SendAsync(packet, cancellationToken);
+
     private async Task SendAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
     {
         await _running.Task.WaitAsync(cancellationToken);
@@ -1297,6 +1440,24 @@ public sealed class TestChannelServer : IDisposable
         try
         {
             _transport.WritePacket(packet.Span);
+            await _transport.FlushAsync(cancellationToken);
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
+    }
+
+    /// <summary>两个报文一次刷出 —— 客户端读到第一个时，第二个已经在它的缓冲里了。</summary>
+    private async Task SendPairAsync(
+        ReadOnlyMemory<byte> first, ReadOnlyMemory<byte> second, CancellationToken cancellationToken)
+    {
+        await _running.Task.WaitAsync(cancellationToken);
+        await _sendLock.WaitAsync(cancellationToken);
+        try
+        {
+            _transport.WritePacket(first.Span);
+            _transport.WritePacket(second.Span);
             await _transport.FlushAsync(cancellationToken);
         }
         finally

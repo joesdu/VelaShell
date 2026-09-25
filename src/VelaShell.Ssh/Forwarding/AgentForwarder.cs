@@ -84,11 +84,17 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
 {
     private const int MaxAgentMessageLength = 256 * 1024;
 
+    /// <summary>agent 通道的接收窗口：一整条最长报文（4 字节长度 + 内容）。</summary>
+    internal const int AgentChannelWindowBytes = 4 + MaxAgentMessageLength;
+
     private readonly Session.SshConnection _connection;
     private readonly Func<CancellationToken, ValueTask<SshAgentClient>> _connectAgent;
     private readonly AgentForwardPolicy _policy;
     private readonly SemaphoreSlim _slots;
     private bool _disposed;
+
+    /// <summary>转发器自己的生命周期：释放时取消，已经打开的 agent 通道随之断开。</summary>
+    private readonly CancellationTokenSource _lifetime = new();
 
     private AgentForwarder(
         Session.SshConnection connection,
@@ -186,10 +192,14 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
                 $"同时打开的 agent 通道已达上限 {_policy.MaxConcurrentChannels}。");
         }
 
-        // agent 协议的报文很小，窗口给小一点就够 —— 开大只是白占内存。
+        // ⚠️ 窗口至少要装得下**一整条**最长的 agent 报文（长度前缀 + 256 KiB）。
+        //    报文收齐之前读的一方一个字节都不消费（见 ReadAgentMessageAsync），而窗口只随消费回补：
+        //    窗口比报文小，就是对端等窗口、我们等报文，谁也动不了。曾经给的是 32 KiB，
+        //    签一段稍长的数据（ssh-keygen -Y sign、证书）就卡死在那里。
+        //    窗口只是额度，不是预先分配的内存；平常的报文只有几百字节。
         return ValueTask.FromResult(SshChannelOptions.Default with
         {
-            WindowPolicy = SshWindowPolicy.Fixed(SshWindowPolicy.AbsoluteMinimumBytes),
+            WindowPolicy = SshWindowPolicy.Fixed(AgentChannelWindowBytes),
             StderrPolicy = SshStderrPolicy.Discard,
         });
     }
@@ -204,10 +214,17 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
     {
         try
         {
-            await using SshAgentClient agent =
-                await _connectAgent(cancellationToken).ConfigureAwait(false);
+            // ⚠️ 连上转发器自己的生命周期，不只是连接的。传进来的令牌属于整条连接 ——
+            //    只看它的话，释放转发器（比如关掉开了 agent 转发的那个 shell）之后，
+            //    已经打开的 agent 通道照样逐条转发签名，远端主机上的 root 可以一直拿着它用，
+            //    直到整条连接断开（而连接上可能还开着 SFTP 或别的会话）。
+            using CancellationTokenSource linked =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
 
-            await BridgeAsync(channel, agent, cancellationToken).ConfigureAwait(false);
+            await using SshAgentClient agent =
+                await _connectAgent(linked.Token).ConfigureAwait(false);
+
+            await BridgeAsync(channel, agent, linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -242,6 +259,14 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
             if (request is null)
             {
                 return;   // 远端关了
+            }
+
+            // ⚠️ 再看一眼源头。释放是把 _lifetime 放到线程池上取消的：它自己的 IsCancellationRequested
+            //    当场变真，链接出来的 cancellationToken 却要等回调跑完才变 —— 恰好夹在中间到的一条请求
+            //    会被读出来，释放都返回了还替远端签一次名。
+            if (_lifetime.IsCancellationRequested)
+            {
+                return;
             }
 
             byte[] response = await HandleAgentRequestAsync(request, agent, cancellationToken)
@@ -397,11 +422,16 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
         }
     }
 
+    /// <remarks>
+    /// 按 <see cref="SshPublicKey.PlainKeyType"/> 判断：RSA 证书的类型串是 <c>ssh-rsa-cert-v01@openssh.com</c>，
+    /// 按 <c>KeyType</c> 比的话远端要的 SHA-2 标志位被忽略，证书就被签成 SHA-1。
+    /// 返回的是普通签名算法名 —— 签名 blob 里写的本来就是它（OpenSSH PROTOCOL.certkeys）。
+    /// </remarks>
     private static string ChooseAlgorithm(SshPublicKey key, uint flags)
     {
-        if (key.KeyType != SshAlgorithmNames.SshRsa)
+        if (key.PlainKeyType != SshAlgorithmNames.SshRsa)
         {
-            return key.KeyType;
+            return key.PlainKeyType;
         }
 
         return (flags & SshAgentWire.FlagRsaSha512) != 0
@@ -418,9 +448,10 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
             return true;
         }
 
+        // 按证书里那把钥比：证书用的是同一把私钥，放行了钥就等于放行了它的证书（反过来也一样）。
         foreach (SshPublicKey allowed in _policy.AllowedKeys)
         {
-            if (allowed.Blob.Span.SequenceEqual(key.Blob.Span))
+            if (allowed.PlainKey.Blob.Span.SequenceEqual(key.PlainKey.Blob.Span))
             {
                 return true;
             }
@@ -480,6 +511,10 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
         _disposed = true;
 
         _connection.RemoveIncomingChannelHandler(SshAlgorithmNames.ChannelAuthAgent, this);
+
+        // 已经打开的 agent 通道一起断：它们的转发循环挂在 _lifetime 上，退出后连接会关掉通道。
+        // 回调放到线程池上（与会话收尾同一条规矩）。令牌源不释放 —— 还在收尾的循环要读它。
+        Session.Lifecycle.CancelInBackground(_lifetime);
 
         // 不 Dispose 信号量：还在跑的 agent 通道收尾时要 Release 它。
         // 它没有用到等待句柄，不释放也不漏任何非托管资源。

@@ -5,6 +5,7 @@
 //   RFC 4253 §7.1  协商规则:取客户端列表中第一个双方都支持的
 //   行为规格:      velashell-docs/zh/ssh/spec/00-overview.md §6(总表)、§7(优先级);velashell-docs/zh/ssh/spec/03 §2.2
 
+using VelaShell.Ssh.Crypto.Kex;
 using VelaShell.Ssh.Protocol;
 
 namespace VelaShell.Ssh.Crypto;
@@ -126,6 +127,17 @@ public sealed record SshAlgorithmSet
                 SshAlgorithmNames.EcdsaSha2Nistp521,
                 SshAlgorithmNames.RsaSha512,
                 SshAlgorithmNames.RsaSha256,
+
+                // 主机证书排在普通算法之后（velashell-docs/zh/ssh/spec/03 §5.5）：没给这台主机配 CA 时，
+                // 谈成证书得不到任何额外的保证，排在后面就保证这类连接与以前完全一样。
+                // known_hosts 里有对上的 @cert-authority 时，IHostKeyTypePreference 会把它们提到前面。
+                // 不含 ssh-rsa-cert-v01（SHA-1）。
+                SshAlgorithmNames.SshEd25519CertV01,
+                SshAlgorithmNames.EcdsaSha2Nistp256CertV01,
+                SshAlgorithmNames.EcdsaSha2Nistp384CertV01,
+                SshAlgorithmNames.EcdsaSha2Nistp521CertV01,
+                SshAlgorithmNames.RsaSha512CertV01,
+                SshAlgorithmNames.RsaSha256CertV01,
             ],
             EncryptionClientToServer = encryption,
             EncryptionServerToClient = encryption,
@@ -145,17 +157,20 @@ public sealed record SshAlgorithmSet
     /// 追加而不是前置：只有在对端一个现代算法都不支持时才会落到这些上。
     /// </para>
     /// <para>
-    /// ⚠️ 放开的是 <c>diffie-hellman-group14-sha1</c>、<c>hmac-sha1</c> 与 CBC。
+    /// ⚠️ 放开的是 <c>diffie-hellman-group14-sha1</c>、SHA-1 的 <c>ssh-rsa</c> 主机密钥与 <c>hmac-sha1</c>。
     /// 这些算法今天都不该用 —— 但「连不上那台交换机」对运维是一个真实的、
     /// 每天都在发生的问题，而把它做成一个显式开关，好过让人去别处找一个更差的工具。
+    /// </para>
+    /// <para>
+    /// <b>不含 CBC</b>：本库没有实现 CBC 模式。把没实现的名字报给对端，只会在一台
+    /// 只剩 CBC 的设备上「谈成」它，然后在派生密钥时才失败 —— 那比一句
+    /// 「没有共同的加密算法」难懂得多。
     /// </para>
     /// </remarks>
     public SshAlgorithmSet WithLegacyInterop() => this with
     {
         KeyExchange = [.. KeyExchange, SshAlgorithmNames.DiffieHellmanGroup14Sha1],
         HostKey = [.. HostKey, SshAlgorithmNames.SshRsa],
-        EncryptionClientToServer = [.. EncryptionClientToServer, SshAlgorithmNames.Aes256Cbc, SshAlgorithmNames.Aes128Cbc],
-        EncryptionServerToClient = [.. EncryptionServerToClient, SshAlgorithmNames.Aes256Cbc, SshAlgorithmNames.Aes128Cbc],
         MacClientToServer = [.. MacClientToServer, SshAlgorithmNames.HmacSha1Etm, SshAlgorithmNames.HmacSha1],
         MacServerToClient = [.. MacServerToClient, SshAlgorithmNames.HmacSha1Etm, SshAlgorithmNames.HmacSha1],
     };
@@ -165,5 +180,73 @@ public sealed record SshAlgorithmSet
     {
         CompressionClientToServer = [SshAlgorithmNames.ZlibOpenSsh, SshAlgorithmNames.None],
         CompressionServerToClient = [SshAlgorithmNames.ZlibOpenSsh, SshAlgorithmNames.None],
+    };
+
+    /// <summary>把这些密钥类型的主机密钥算法排到前面，其余保持原有的相对顺序。</summary>
+    /// <param name="keyTypes">已经记下的密钥类型（<c>ssh-ed25519</c>、<c>ssh-rsa</c>…）。</param>
+    /// <remarks>
+    /// 协商以客户端的顺序为准，所以这就决定了能谈成已知类型时一定谈成它（见 <c>IHostKeyTypePreference</c>）。
+    /// 只调顺序，不增删 —— 清单里没有的算法不会因此被加进来。
+    /// </remarks>
+    public SshAlgorithmSet PreferHostKeyTypes(IReadOnlyCollection<string> keyTypes)
+    {
+        ArgumentNullException.ThrowIfNull(keyTypes);
+        if (keyTypes.Count == 0)
+        {
+            return this;
+        }
+
+        bool IsKnown(string algorithm) => keyTypes.Contains(KeyTypeOf(algorithm), StringComparer.Ordinal);
+        return this with { HostKey = [.. HostKey.Where(IsKnown), .. HostKey.Where(a => !IsKnown(a))] };
+    }
+
+    /// <summary>校验清单里的密钥交换、加密、MAC 与压缩算法都是本库实现（或注册）了的。</summary>
+    /// <exception cref="ArgumentException">某个类别为空，或含有本库不实现的算法名。</exception>
+    /// <remarks>
+    /// 连接开始前就查：清单里混进一个没实现的名字，只有对端恰好也只剩它时才会被谈成，
+    /// 那时失败在密钥派生里，报出来的是一句看不出缘由的「尚未实现」，
+    /// 而且只在连某一台设备时出现。提前在这里报，错误指向的是配置本身。
+    /// 主机密钥算法不在这里查：它由主机密钥的解析与验签把关，未知类型在那里有明确的错误。
+    /// </remarks>
+    public void Validate()
+    {
+        Check(KeyExchange, nameof(KeyExchange),
+            static n => SshKeyExchangeFactory.IsSupported(n) || SshAlgorithmNegotiator.IsIndicator(n));
+        Check(HostKey, nameof(HostKey), static _ => true);
+        Check(EncryptionClientToServer, nameof(EncryptionClientToServer), SshSessionKeys.IsSupportedEncryption);
+        Check(EncryptionServerToClient, nameof(EncryptionServerToClient), SshSessionKeys.IsSupportedEncryption);
+        Check(MacClientToServer, nameof(MacClientToServer), SshSessionKeys.IsSupportedMac);
+        Check(MacServerToClient, nameof(MacServerToClient), SshSessionKeys.IsSupportedMac);
+        Check(CompressionClientToServer, nameof(CompressionClientToServer), IsSupportedCompression);
+        Check(CompressionServerToClient, nameof(CompressionServerToClient), IsSupportedCompression);
+
+        static bool IsSupportedCompression(string name) =>
+            name is SshAlgorithmNames.None or SshAlgorithmNames.ZlibOpenSsh;
+
+        static void Check(IReadOnlyList<string> names, string category, Func<string, bool> isSupported)
+        {
+            if (names is null || names.Count == 0)
+            {
+                throw new ArgumentException($"算法清单的 {category} 不能为空 —— 空清单与任何对端都谈不成。", category);
+            }
+
+            foreach (string name in names)
+            {
+                if (!isSupported(name))
+                {
+                    throw new ArgumentException($"算法清单的 {category} 含有本库未实现的算法：{name}。", category);
+                }
+            }
+        }
+    }
+
+    /// <summary>主机密钥算法对应的密钥类型：三个 RSA 签名算法都是 <c>ssh-rsa</c>，其余同名。</summary>
+    internal static string KeyTypeOf(string hostKeyAlgorithm) => hostKeyAlgorithm switch
+    {
+        SshAlgorithmNames.RsaSha256 or SshAlgorithmNames.RsaSha512 => SshAlgorithmNames.SshRsa,
+
+        // 证书同理：rsa-sha2-512-cert-v01 的 blob 里写的是 ssh-rsa-cert-v01。
+        SshAlgorithmNames.RsaSha256CertV01 or SshAlgorithmNames.RsaSha512CertV01 => SshAlgorithmNames.SshRsaCertV01,
+        _ => hostKeyAlgorithm,
     };
 }

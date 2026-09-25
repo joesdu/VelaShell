@@ -30,6 +30,9 @@ public sealed class SshFrameFormatException : Exception
     {
     }
 
+    /// <summary>对端在一个报文的中途关闭了连接 —— 那是断线，不是对端乱发（会话层据此归类）。</summary>
+    internal bool PeerClosedMidPacket { get; init; }
+
     /// <summary>完整性校验失败。</summary>
     /// <remarks>
     /// 消息刻意不区分「MAC 不符」与「tag 不符」，也不带任何计算出来的中间值 ——

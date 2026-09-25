@@ -162,6 +162,9 @@ public sealed class SftpRequestPipeline : IAsyncDisposable
     /// <summary>深度会不会自己伸缩。</summary>
     public bool IsAdaptive { get; }
 
+    /// <summary>流水线已经坏了（通道断了、收到了畸形报文）：之后的请求都会失败。</summary>
+    internal bool IsFaulted => Volatile.Read(ref _fault) is not null;
+
     /// <summary>深度被调大过几次（诊断用）。</summary>
     public int DepthIncreases { get; private set; }
 
@@ -212,7 +215,7 @@ public sealed class SftpRequestPipeline : IAsyncDisposable
         if (!_inFlight.Wait(0, CancellationToken.None))
         {
             Interlocked.Increment(ref _saturationHits);
-            await _inFlight.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await WaitOrStopAsync(_inFlight, cancellationToken).ConfigureAwait(false);
         }
 
         MaybeAdjustDepth();
@@ -227,16 +230,24 @@ public sealed class SftpRequestPipeline : IAsyncDisposable
             _pending[requestId] = pending;
         }
 
+        bool sent = false;
         try
         {
-            ArrayBufferWriter<byte> buffer = new();
-            write(buffer, requestId);
+            if (!_sendLock.Wait(0, CancellationToken.None))
+            {
+                await WaitOrStopAsync(_sendLock, cancellationToken).ConfigureAwait(false);
+            }
 
-            await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await _channel.StandardInput.WriteAsync(buffer.WrittenMemory, cancellationToken)
-                    .ConfigureAwait(false);
+                // ⚠️ **直接写进通道的管道，不经中转缓冲。**曾经先拼进一个 ArrayBufferWriter 再整帧复制过去：
+                //    它从 256 字节起翻倍长，一个 256 KiB 的 WRITE 要重新分配十来次、把数据多搬一遍。
+                //    写报文的回调（SftpWire.Write*）要么在碰到管道之前就失败（参数不对），要么整帧写完 ——
+                //    所以回调返回之后才算「发出去了」；它先失败的话这个 id 照常撤回。
+                PipeWriter writer = _channel.StandardInput;
+                write(writer, requestId);
+                sent = true;
+                await FlushFrameAsync(writer, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -245,15 +256,101 @@ public sealed class SftpRequestPipeline : IAsyncDisposable
 
             return await pending.Completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception) when (sent)
         {
-            // 取消或发送失败：**请求仍然留在账本里**。
+            // 已经发出去了，取消或失败：**请求仍然留在账本里**。
             // 摘掉它的话，迟到的应答会被当成「未知 id」丢弃，
             // 而它可能带着一个需要关闭的句柄。
             pending.MarkAbandoned();
             throw;
         }
+        catch (Exception)
+        {
+            // **没发出去**（排队等发送时被取消、拼报文的回调抛了）：这个 id 永远等不到应答。
+            // 留在账本里的话，它占着的在途额度只有应答才还得回来 —— 也就是永远还不回来。
+            // 曾经就是这样：取消一次上传漏掉几十个额度，漏满之后所有 SFTP 操作一起挂住。
+            Withdraw(requestId);
+            throw;
+        }
     }
+
+    /// <summary>把一个没发出去的请求从账本里摘掉，还回它的在途额度。</summary>
+    /// <remarks>已经被 <see cref="Fault"/> 结算过的就不用管了 —— 流水线已经废了。</remarks>
+    private void Withdraw(uint requestId)
+    {
+        bool removed;
+        lock (_stateLock)
+        {
+            removed = _pending.Remove(requestId);
+        }
+
+        if (removed)
+        {
+            _inFlight.Release();
+        }
+    }
+
+    /// <summary>在信号量上等；流水线收工（故障或释放）时立刻放出来，而不是陪着一起挂。</summary>
+    /// <remarks>
+    /// 在途额度只有应答才还得回来，而故障之后不会再有应答 —— 不连上 <see cref="_lifetime"/>，
+    /// 排在额度上的调用方（比如列目录时并发解析的那一批符号链接）就永远等下去。
+    /// </remarks>
+    private async ValueTask WaitOrStopAsync(SemaphoreSlim semaphore, CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource linked =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        try
+        {
+            await semaphore.WaitAsync(linked.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            ThrowIfFaulted();
+            throw new ObjectDisposedException(nameof(SftpRequestPipeline));
+        }
+    }
+
+    /// <summary>把一帧交给通道。<b>字节一定会整帧提交</b>，取消只打断背压等待。</summary>
+    /// <remarks>
+    /// <para>
+    /// 不能把调用方的令牌直接交给 <see cref="PipeWriter.WriteAsync"/>：令牌进门时就已取消的话，
+    /// 它<b>一个字节都不写</b>；等背压时才取消的话，字节<b>已经提交</b>、照样会发出去。
+    /// 抛出来的都是同一个取消异常，调用方分不清这个请求到底上没上线 ——
+    /// 而「上没上线」决定了它的在途额度该不该当场还回去。
+    /// </para>
+    /// <para>
+    /// 所以写的时候不带令牌，取消改用 <see cref="PipeWriter.CancelPendingFlush"/> 打断背压等待：
+    /// 进了这个方法，请求就算发出去了。
+    /// </para>
+    /// </remarks>
+    private async ValueTask WriteFrameAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken)
+    {
+        PipeWriter writer = _channel.StandardInput;
+        writer.Write(frame.Span);
+        await FlushFrameAsync(writer, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>把已经写进 <paramref name="writer"/> 的整帧刷出去（见 <see cref="WriteFrameAsync"/> 的说明）。</summary>
+    private async ValueTask FlushFrameAsync(PipeWriter writer, CancellationToken cancellationToken)
+    {
+        FlushResult result;
+        using (cancellationToken.Register(CancelPendingFlush, writer))
+        using (_lifetime.Token.Register(CancelPendingFlush, writer))
+        {
+            result = await writer.FlushAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+
+        if (result.IsCanceled)
+        {
+            // 调用方取消的，照实抛。流水线收工打断的，接着去等应答 —— Fault 已经把它结算成了故障。
+            // 两者都不是的话，是上一个写者登记的回调在它收尾的边缘触发、取消到了这一次
+            // （没有挂起的 flush 时，CancelPendingFlush 作用于下一次）：字节已经提交，少等一回背压无妨。
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+    }
+
+    private static readonly Action<object?> CancelPendingFlush =
+        static state => ((PipeWriter)state!).CancelPendingFlush();
 
     /// <summary>每攒够一窗请求，看一次要不要调深度。</summary>
     /// <remarks>
@@ -455,10 +552,14 @@ public sealed class SftpRequestPipeline : IAsyncDisposable
     /// <summary>直接发一段已经拼好的报文（握手用，它没有 request-id）。</summary>
     internal async ValueTask SendRawAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
     {
-        await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (!_sendLock.Wait(0, CancellationToken.None))
+        {
+            await WaitOrStopAsync(_sendLock, cancellationToken).ConfigureAwait(false);
+        }
+
         try
         {
-            await _channel.StandardInput.WriteAsync(packet, cancellationToken).ConfigureAwait(false);
+            await WriteFrameAsync(packet, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -520,6 +621,10 @@ public sealed class SftpRequestPipeline : IAsyncDisposable
         {
             _versionCompletion?.TrySetException(exception);
         }
+
+        // 还排在在途额度或发送锁上的调用方也要放出来（见 WaitOrStopAsync）。
+        // 回调放到线程池上：Fault 常常跑在收应答的循环上。
+        Session.Lifecycle.CancelInBackground(_lifetime);
     }
 
     private sealed class PendingRequest(Action<SftpResponse>? onLateResponse)
@@ -566,8 +671,9 @@ public sealed class SftpRequestPipeline : IAsyncDisposable
             }
         }
 
-        _sendLock.Dispose();
-        _inFlight.Dispose();
+        // 两个信号量**不释放**：还在路上的调用方收尾时要 Release 它们（发送锁的 finally、
+        // 没发出去的请求还额度），释放了就是一个盖住真实原因的 ObjectDisposedException。
+        // 它们没有用到等待句柄，不释放也不漏任何非托管资源。
         _lifetime.Dispose();
     }
 }

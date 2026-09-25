@@ -9,6 +9,7 @@
 
 using System.Security.Cryptography;
 using VelaShell.Ssh.Crypto;
+using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Protocol;
 using VelaShell.Ssh.Transport;
 
@@ -355,6 +356,85 @@ public sealed class SshPacketTransportTests
             await a.FlushAsync();
             Assert.AreEqual(SshMessageNumber.ServiceRequest, (await b.ReadPacketAsync()).MessageNumber);
         }
+    }
+
+    [TestMethod]
+    public async Task 解压失败时报出真正的原因()
+    {
+        // 一个压完只有几 KiB 的 1 MiB 零：解压要撞上报文上限（压缩炸弹）。
+        // 曾经解压失败之后 reader 被 AdvanceTo 两次，真正的原因被一个 InvalidOperationException 盖掉。
+        (SshPacketTransport a, SshPacketTransport b) = CreatePair();
+        await using (a)
+        await using (b)
+        {
+            a.SetSendCompressor(new ZlibCompressor());
+            b.SetReceiveCompressor(new ZlibCompressor());
+
+            a.WritePacket(new byte[1024 * 1024]);
+            await a.FlushAsync();
+
+            SshProtocolException error = await Assert.ThrowsExactlyAsync<SshProtocolException>(
+                async () => await b.ReadPacketAsync());
+            Assert.Contains("压缩炸弹", error.Message);
+        }
+    }
+
+    [TestMethod]
+    public async Task 一次flush被取消之后释放不会再去写()
+    {
+        // 对端不读了（TCP 零窗口、半开的链路）：flush 卡住、被调用方的期限取消。
+        // 释放时要是把剩下的字节再刷一遍，就是在释放路径上等一个永远不来的对端。
+        await using SshPacketTransport transport = new(new NeverWritableStream());
+
+        using CancellationTokenSource cancel = new(TimeSpan.FromMilliseconds(100));
+        transport.WritePacket(new byte[] { 2, 1, 2, 3 });
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await transport.FlushAsync(cancel.Token));
+
+        await transport.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    /// <summary>写永远完不成（只有令牌取消时才返回）的流 —— 对端不读的样子。</summary>
+    private sealed class NeverWritableStream : Stream
+    {
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            Task.Delay(Timeout.Infinite, cancellationToken);
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return 0;
+        }
+
+        public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public override bool CanRead => true;
+
+        public override bool CanWrite => true;
+
+        public override bool CanSeek => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
     }
 
     [TestMethod]

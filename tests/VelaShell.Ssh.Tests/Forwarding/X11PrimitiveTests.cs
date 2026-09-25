@@ -89,6 +89,22 @@ public sealed class X11PrimitiveTests
     }
 
     [TestMethod]
+    public void localhost显示只走回环TCP_不试任何本机套接字()
+    {
+        // 嵌套 ssh -X 时 sshd 给的是 DISPLAY=localhost:10 —— 按 X 的约定就是 TCP 6010。
+        // 去试 Linux 抽象套接字的话，同机的别的用户抢先绑上 @/tmp/.X11-unix/X10 就能收到真 cookie。
+        X11Display display = X11Display.Parse("localhost:10")!;
+
+        var only = (IPEndPoint)display.GetCandidateEndPoints().Single();
+        Assert.AreEqual(IPAddress.Loopback, only.Address);
+        Assert.AreEqual(X11Display.TcpPortBase + 10, only.Port);
+
+        // 挑 cookie 时它仍然算本机显示（本机主机名的 FamilyLocal 条目）。
+        Assert.IsTrue(display.IsLocal);
+        Assert.IsFalse(display.UsesLocalSocket);
+    }
+
+    [TestMethod]
     public void 远程显示只走TCP且端口是6000加显示号()
     {
         X11Display display = X11Display.Parse("box.example.com:7")!;

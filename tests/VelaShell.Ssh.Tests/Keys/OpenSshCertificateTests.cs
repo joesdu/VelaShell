@@ -181,14 +181,28 @@ public sealed class OpenSshCertificateTests
         Assert.Contains("-cert-v01@openssh.com", ex.Message);
     }
 
-    /// <summary>反过来：证书 blob 走普通公钥的解析口要被挡住，而不是解出个半成品。</summary>
+    /// <summary>
+    /// 反过来：证书 blob 走公钥的解析口，得到的是一把完整的、带证书身份的钥，而不是解出个半成品。
+    /// </summary>
+    /// <remarks>
+    /// 主机证书要经这个口进来（KEX 应答里的 <c>K_S</c>）。曾经这里是直接拒绝 —— 那时主机证书还没实现。
+    /// 只认普通公钥的那个口（CA 公钥走它）照样拒绝证书。
+    /// </remarks>
     [TestMethod]
-    public async Task 证书blob不能走普通公钥的解析口()
+    public async Task 证书blob走公钥解析口得到带证书身份的钥()
     {
         OpenSshCertificate cert = await OpenSshCertificate.LoadAsync(
             FixturePath("cert-ed25519-cert.pub"), TestContext.CancellationToken);
 
-        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.Parse(cert.Blob));
+        SshPublicKey key = SshPublicKey.Parse(cert.Blob);
+
+        Assert.IsTrue(key.IsCertificate);
+        Assert.AreEqual(cert.Algorithm, key.KeyType);
+        Assert.AreEqual(SshAlgorithmNames.SshEd25519, key.PlainKeyType);
+        Assert.AreSequenceEqual(cert.Blob.ToArray(), key.Blob.ToArray(), "出示的仍是整张证书");
+        Assert.AreSequenceEqual(ReadPublicBlob("cert-ed25519.pub"), key.PlainKey.Blob.ToArray(), "证书里那把钥");
+        Assert.AreEqual(cert.KeyId, key.Certificate?.KeyId);
+        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.ParsePlain(cert.Blob));
     }
 
     private static async Task<SshCertificateSigner> LoadCertificateSignerAsync(string name)

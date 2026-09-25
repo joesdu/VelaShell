@@ -51,6 +51,12 @@ public sealed class TestSshServerHost : IAsyncDisposable
     /// <summary>用例的取消令牌（带整体超时）。</summary>
     public CancellationToken Token => _cts.Token;
 
+    /// <summary>
+    /// 这条用例里客户端会在半路断开（验的就是它断开），服务端收包循环因此失败是预期的 ——
+    /// 收尾时别把它当成服务端的问题抛出来。
+    /// </summary>
+    public bool ServerLoopMayFail { get; set; }
+
     /// <summary>起一条连接。</summary>
     /// <param name="script">通道剧本。</param>
     /// <param name="algorithms">客户端的算法清单；<see langword="null"/> 用默认。</param>
@@ -59,11 +65,17 @@ public sealed class TestSshServerHost : IAsyncDisposable
     /// 大多数用例不该被一个后台循环搅进来。
     /// </param>
     /// <param name="rekeyCheckInterval">阈值的检查间隔；验阈值的用例要把它调小。</param>
+    /// <param name="rekeyTimeout">重协商超时；验超时的用例要把它调小。</param>
+    /// <param name="rekeyHostKeyType">设了就让服务端在重协商时换一把这种类型的新主机密钥。</param>
+    /// <param name="hostKeyPolicy">客户端的主机密钥策略；缺省时全部接受。</param>
     public static async Task<TestSshServerHost> StartAsync(
         TestChannelScript? script = null,
         SshAlgorithmSet? algorithms = null,
         SshRekeyPolicy? rekey = null,
-        TimeSpan? rekeyCheckInterval = null)
+        TimeSpan? rekeyCheckInterval = null,
+        TimeSpan? rekeyTimeout = null,
+        string? rekeyHostKeyType = null,
+        IHostKeyPolicy? hostKeyPolicy = null)
     {
         CancellationTokenSource cts = new(TimeSpan.FromSeconds(25));
 
@@ -80,6 +92,7 @@ public sealed class TestSshServerHost : IAsyncDisposable
         TestSshServer server = new(serverStream, new TestSshServerOptions
         {
             Algorithms = algorithms,
+            RekeyHostKeyType = rekeyHostKeyType,
         });
 
         TestChannelServer channels = new(server.Transport, script);
@@ -122,7 +135,7 @@ public sealed class TestSshServerHost : IAsyncDisposable
         SshConnectionOptions options = new("joe@test.invalid:22")
         {
             Dialer = new FixedStreamDialer(clientStream),
-            HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
+            HostKeyPolicy = hostKeyPolicy ?? new DangerousAcceptAnyHostKeyPolicy(),
             Credentials = [new PasswordCredential("hunter2")],
             Algorithms = algorithms ?? SshAlgorithmSet.Default,
 
@@ -130,6 +143,7 @@ public sealed class TestSshServerHost : IAsyncDisposable
             // 后台监视循环搅进来。要验阈值的用例自己传。
             Rekey = rekey ?? SshRekeyPolicy.Disabled,
             RekeyCheckInterval = rekeyCheckInterval ?? TimeSpan.FromSeconds(5),
+            RekeyTimeout = rekeyTimeout ?? TimeSpan.FromMinutes(2),
         };
 
         SshConnection connection = await options.ConnectAsync(cts.Token);
@@ -160,7 +174,7 @@ public sealed class TestSshServerHost : IAsyncDisposable
         // 服务端如果是在用例跑到一半挂的，把真正的原因抬出来 ——
         // 别让它继续伪装成一个「客户端超时」。
         TestChannelObservation observed = Channels.Observation;
-        if (observed.ServerFault is { } serverFault)
+        if (observed.ServerFault is { } serverFault && !ServerLoopMayFail)
         {
             throw new InvalidOperationException(
                 $"测试服务端的收包循环挂了：{serverFault.Message}", serverFault);

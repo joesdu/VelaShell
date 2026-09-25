@@ -9,6 +9,7 @@ using System.Buffers.Binary;
 using System.IO.Pipelines;
 using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Diagnostics;
+using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Protocol;
 using VelaShell.Ssh.Session;
 using VelaShell.Ssh.Transport;
@@ -30,13 +31,17 @@ public sealed class SessionFailureTests
     {
         private readonly CancellationTokenSource _cts = new(TimeSpan.FromSeconds(20));
 
-        private RawPeer(SshPacketTransport peer, SshConnection connection)
+        private RawPeer(SshPacketTransport peer, InMemoryDuplexStream peerStream, SshConnection connection)
         {
             Transport = peer;
+            PeerStream = peerStream;
             Connection = connection;
         }
 
         public SshPacketTransport Transport { get; }
+
+        /// <summary>对端传输底下的流 —— 用来写传输不肯写的东西（半个报文）。</summary>
+        public InMemoryDuplexStream PeerStream { get; }
 
         public SshConnection Connection { get; }
 
@@ -50,7 +55,7 @@ public sealed class SessionFailureTests
                 KeepAlive = keepAlive ?? KeepAlivePolicy.Disabled,
             };
             connection.Start();
-            return new RawPeer(new SshPacketTransport(server), connection);
+            return new RawPeer(new SshPacketTransport(server), server, connection);
         }
 
         public async Task SendAsync(params byte[] payload)
@@ -118,6 +123,201 @@ public sealed class SessionFailureTests
         TaskCompletionSource signalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using CancellationTokenRegistration _ = connection.Disconnected.Register(() => signalled.TrySetResult());
         await signalled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    // ------------------------------------------------------------ 故障的归类
+
+    [TestMethod]
+    public async Task 对端发来读不通的报文时故障是公开的协议错误()
+    {
+        // 解析失败的内部异常曾经原样成为连接的故障 —— 使用者按类型 catch 不到它，宿主也翻译不了。
+        await using var peer = RawPeer.Start();
+
+        byte[] truncated = [(byte)SshMessageNumber.ChannelWindowAdjust, 0, 0];   // 少了通道号与字节数
+        await peer.SendAsync(truncated);
+        await WaitForDisconnectAsync(peer.Connection);
+
+        SshProtocolException error = await Assert.ThrowsExactlyAsync<SshProtocolException>(
+            async () => await peer.Connection.OpenSessionChannelAsync());
+        Assert.AreEqual(SshFailureReason.ProtocolError, error.Reason);
+    }
+
+    [TestMethod]
+    public async Task 对端在报文中途断开时故障是对端关闭而不是协议错误()
+    {
+        // 这是断线 —— 自动重连该管这一类；算成「对端违反协议」的话重连不会动。
+        await using var peer = RawPeer.Start();
+
+        byte[] half = [0, 0, 0, 100, 4, 1, 2, 3];   // 声称 100 字节，只给了几个
+        await peer.PeerStream.WriteAsync(half, peer.Token);
+        await peer.PeerStream.FlushAsync(peer.Token);
+        await peer.Transport.DisposeAsync();
+        await WaitForDisconnectAsync(peer.Connection);
+
+        SshConnectionClosedException error = await Assert.ThrowsExactlyAsync<SshConnectionClosedException>(
+            async () => await peer.Connection.OpenSessionChannelAsync());
+        Assert.AreEqual(SshFailureReason.ClosedByPeer, error.Reason);
+    }
+
+    [TestMethod]
+    public void 公钥解析失败也是SshException()
+    {
+        SshException error = Assert.ThrowsExactly<SshPublicKeyException>(
+            () => SshPublicKey.Parse(new byte[] { 0, 0, 0, 7, (byte)'s', (byte)'s', (byte)'h' }));
+        Assert.IsInstanceOfType<SshException>(error);
+    }
+
+    // ------------------------------------------------------------ 对端开通道
+
+    /// <summary>决定得很慢的处理器（比如要弹窗问人）。</summary>
+    private sealed class SlowHandler(Task decided) : IIncomingChannelHandler
+    {
+        public async ValueTask<SshChannelOptions> GetOptionsAsync(
+            string channelType, ReadOnlyMemory<byte> typeSpecificPayload, CancellationToken cancellationToken)
+        {
+            await decided.WaitAsync(cancellationToken);
+            return SshChannelOptions.Default;
+        }
+
+        public Task HandleAsync(
+            SshChannel channel, ReadOnlyMemory<byte> typeSpecificPayload, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+    }
+
+    [TestMethod]
+    public async Task 处理器决定得慢时接收循环不被卡住()
+    {
+        // 曾经在接收循环上就地等处理器 —— 它一慢，整条连接上所有通道的收包都停住。
+        await using var peer = RawPeer.Start();
+        TaskCompletionSource decided = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peer.Connection.AddIncomingChannelHandler("slow@velashell.test", new SlowHandler(decided.Task));
+
+        ArrayBufferWriter<byte> open = new();
+        SshDataWriter openWriter = new(open);
+        openWriter.WriteMessageNumber(SshMessageNumber.ChannelOpen);
+        openWriter.WriteUtf8String("slow@velashell.test");
+        openWriter.WriteUInt32(42);
+        openWriter.WriteUInt32(64 * 1024);
+        openWriter.WriteUInt32(32 * 1024);
+        await peer.SendAsync(open.WrittenSpan.ToArray());
+
+        // 处理器还没回话。接收循环要照常收别的报文：一个要应答的全局请求得有应答。
+        ArrayBufferWriter<byte> request = new();
+        SshDataWriter requestWriter = new(request);
+        requestWriter.WriteMessageNumber(SshMessageNumber.GlobalRequest);
+        requestWriter.WriteUtf8String("ping@velashell.test");
+        requestWriter.WriteBoolean(true);
+        await peer.SendAsync(request.WrittenSpan.ToArray());
+
+        byte[] reply = await peer.ReadUntilAsync(SshMessageNumber.RequestFailure).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.AreEqual((byte)SshMessageNumber.RequestFailure, reply[0]);
+
+        // 处理器回话之后，通道照常开出来。
+        decided.SetResult();
+        byte[] confirmation = await peer.ReadUntilAsync(SshMessageNumber.ChannelOpenConfirmation)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.AreEqual(42u, BinaryPrimitives.ReadUInt32BigEndian(confirmation.AsSpan(1)));
+    }
+
+    // ------------------------------------------------------------ 发送队列
+
+    /// <summary>
+    /// 同一条连接上大量上传时，另一条通道的窗口回补要插队 —— 不能排在积压的上传数据后面。
+    /// </summary>
+    /// <remarks>
+    /// 每条通道同一时刻只有一个报文在队里，所以积压来自「很多条通道一起在传」（端口转发里的一堆连接）。
+    /// 回补排在它们后面的话，对端要等这些都发完才拿到窗口：下载被上传拖慢。
+    /// </remarks>
+    [TestMethod]
+    public async Task 大量上传时本端的窗口回补插队_不排在积压的数据后面()
+    {
+        const int uploads = 64;
+        await using var peer = RawPeer.Start();
+
+        List<SshChannel> uploadChannels = [];
+        for (int i = 0; i < uploads; i++)
+        {
+            Task<SshChannel> open = peer.Connection.OpenSessionChannelAsync(cancellationToken: peer.Token).AsTask();
+            await peer.AcceptChannelOpenAsync(ourId: (uint)(100 + i), window: uint.MaxValue);
+            uploadChannels.Add(await open);
+        }
+
+        Task<SshChannel> openDownload = peer.Connection.OpenSessionChannelAsync(cancellationToken: peer.Token).AsTask();
+        await peer.AcceptChannelOpenAsync(ourId: 8);
+        await using SshChannel download = await openDownload;
+
+        // ① 每条上传通道都灌数据，对端先不读：发送泵卡在写上，每条通道一个报文排在队里。
+        byte[] chunk = new byte[64 * 1024];
+        Task[] pumping =
+        [
+            .. uploadChannels.Select(channel => Task.Run(async () =>
+            {
+                for (int i = 0; i < 16; i++)
+                {
+                    await channel.StandardInput.WriteAsync(chunk, peer.Token);
+                }
+            })),
+        ];
+
+        using (CancellationTokenSource full = CancellationTokenSource.CreateLinkedTokenSource(peer.Token))
+        {
+            full.CancelAfter(TimeSpan.FromSeconds(10));
+            while (peer.Connection.PendingSendBytes < (uploads - 4) * 32L * 1024)
+            {
+                await Task.Delay(10, full.Token);
+            }
+        }
+
+        // ② 对端往下载通道发 160 KiB，我们读掉 —— 超过半个窗口（128 KiB），要回补了。
+        for (int i = 0; i < 5; i++)
+        {
+            ArrayBufferWriter<byte> data = new();
+            SshDataWriter writer = new(data);
+            writer.WriteMessageNumber(SshMessageNumber.ChannelData);
+            writer.WriteUInt32(download.LocalId);
+            writer.WriteString(new byte[32 * 1024]);
+            await peer.SendAsync(data.WrittenSpan.ToArray());
+        }
+
+        long received = 0;
+        while (received < 5 * 32 * 1024)
+        {
+            ReadResult read = await download.StandardOutput.ReadAsync(peer.Token);
+            received += read.Buffer.Length;
+            download.StandardOutput.AdvanceTo(read.Buffer.End);
+        }
+        await Task.Delay(100, peer.Token);   // 回补此刻已经交给了会话（插队的话已在队里）
+
+        // ③ 对端开始读：数一数看到下载通道的回补之前，收到了多少上传数据。
+        long uploadBytesBefore = 0;
+        while (true)
+        {
+            byte[] packet = await peer.ReadAsync() ?? throw new AssertFailedException("连接断了");
+            if (packet[0] == (byte)SshMessageNumber.ChannelWindowAdjust
+                && BinaryPrimitives.ReadUInt32BigEndian(packet.AsSpan(1)) == 8)
+            {
+                break;
+            }
+            if (packet[0] == (byte)SshMessageNumber.ChannelData)
+            {
+                uploadBytesBefore += BinaryPrimitives.ReadUInt32BigEndian(packet.AsSpan(5));
+            }
+        }
+
+        // 插队的话，回补之前只会漏出正在刷的那一两批（每批至多 64 KiB）；不插队就是整个积压。
+        Assert.IsLessThan(
+            512L * 1024, uploadBytesBefore,
+            $"回补排在了积压的上传后面：它之前先发出了 {uploadBytesBefore} 字节上传数据");
+
+        await peer.Connection.DisposeAsync();
+        try
+        {
+            await Task.WhenAll(pumping);
+        }
+        catch (Exception)
+        {
+            // 连接关了，上传的写入随之失败 —— 预期之中。
+        }
     }
 
     // ------------------------------------------------------------ 保活
@@ -241,9 +441,9 @@ public sealed class SessionFailureTests
         Assert.AreEqual("Too many sessions", ex.PeerDescription);
     }
 
-    /// <summary>会话判死之后，通道的读者要读到结尾，而不是永远挂着。</summary>
+    /// <summary>会话判死之后，通道的读者拿到判死的原因 —— 不是永远挂着，也不是一个像 EOF 的「读完」。</summary>
     [TestMethod]
-    public async Task 会话判死之后通道的读者读到结尾()
+    public async Task 会话判死之后通道的读者拿到判死的原因()
     {
         await using var peer = RawPeer.Start();
 
@@ -258,9 +458,86 @@ public sealed class SessionFailureTests
         BinaryPrimitives.WriteUInt32BigEndian(adjust.AsSpan(5), uint.MaxValue);
         await peer.SendAsync(adjust);
 
-        ReadResult read = await channel.StandardOutput.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.IsTrue(read.IsCompleted, "会话都判死了，stdout 还没结束");
+        SshProtocolException error = await Assert.ThrowsExactlyAsync<SshProtocolException>(
+            async () => await channel.StandardOutput.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Contains("窗口", error.Message);
         Assert.AreEqual(SshChannelState.Closed, channel.State);
+    }
+
+    /// <summary>
+    /// 连接断在数据中途：读的一方必须知道结果不完整。
+    /// 当成读完的话，下载到一半的文件、跑到一半的命令输出会被当成完整结果交出去，
+    /// 终端也分不清是远端 shell 自己退了还是链路断了（后者才该自动重连）。
+    /// </summary>
+    [TestMethod]
+    public async Task 连接断在数据中途时读者拿到断线的原因()
+    {
+        await using var peer = RawPeer.Start();
+
+        Task<SshChannel> opening = peer.Connection.OpenSessionChannelAsync(cancellationToken: peer.Token).AsTask();
+        uint clientId = await peer.AcceptChannelOpenAsync();
+        await using SshChannel channel = await opening;
+
+        await peer.SendAsync(ChannelData(clientId, "half of it"u8));
+        await peer.Transport.DisposeAsync();
+        await WaitForDisconnectAsync(peer.Connection);
+
+        SshConnectionClosedException error = await Assert.ThrowsExactlyAsync<SshConnectionClosedException>(
+            async () => await channel.StandardOutput.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.AreEqual(SshFailureReason.ClosedByPeer, error.Reason);
+        await Assert.ThrowsExactlyAsync<SshConnectionClosedException>(
+            async () => await channel.StandardError.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
+    }
+
+    /// <summary>对端已经发了 EOF，之后连接才断：数据是完整的，照常干净地读完。</summary>
+    [TestMethod]
+    public async Task 对端先发EOF再断线时照常读完()
+    {
+        await using var peer = RawPeer.Start();
+
+        Task<SshChannel> opening = peer.Connection.OpenSessionChannelAsync(cancellationToken: peer.Token).AsTask();
+        uint clientId = await peer.AcceptChannelOpenAsync();
+        await using SshChannel channel = await opening;
+
+        await peer.SendAsync(ChannelData(clientId, "all of it"u8));
+        byte[] eof = new byte[5];
+        eof[0] = (byte)SshMessageNumber.ChannelEof;
+        BinaryPrimitives.WriteUInt32BigEndian(eof.AsSpan(1), clientId);
+        await peer.SendAsync(eof);
+        await peer.Transport.DisposeAsync();
+        await WaitForDisconnectAsync(peer.Connection);
+
+        ReadResult read = await channel.StandardOutput.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.IsTrue(read.IsCompleted);
+        Assert.AreEqual("all of it", System.Text.Encoding.UTF8.GetString(read.Buffer.ToArray()));
+        channel.StandardOutput.AdvanceTo(read.Buffer.End);
+    }
+
+    /// <summary>本端释放了连接：读者拿到 <see cref="ObjectDisposedException"/>，分得清这是自己拆的。</summary>
+    [TestMethod]
+    public async Task 本端释放连接时读者拿到ObjectDisposedException()
+    {
+        await using var peer = RawPeer.Start();
+
+        Task<SshChannel> opening = peer.Connection.OpenSessionChannelAsync(cancellationToken: peer.Token).AsTask();
+        await peer.AcceptChannelOpenAsync();
+        await using SshChannel channel = await opening;
+
+        Task<ReadResult> pending = channel.StandardOutput.ReadAsync().AsTask();
+        await peer.Connection.DisposeAsync();
+
+        await Assert.ThrowsExactlyAsync<ObjectDisposedException>(
+            async () => await pending.WaitAsync(TimeSpan.FromSeconds(10)));
+    }
+
+    private static byte[] ChannelData(uint recipient, ReadOnlySpan<byte> data)
+    {
+        ArrayBufferWriter<byte> buffer = new();
+        SshDataWriter writer = new(buffer);
+        writer.WriteMessageNumber(SshMessageNumber.ChannelData);
+        writer.WriteUInt32(recipient);
+        writer.WriteString(data);
+        return buffer.WrittenSpan.ToArray();
     }
 
     // ------------------------------------------------------------ 未知报文

@@ -64,6 +64,11 @@ public sealed record TestAuthPolicy
     public IReadOnlyList<string> Banners { get; init; } = [];
 
     /// <summary>
+    /// 紧挨着 <c>USERAUTH_SUCCESS</c> 之前发出的横幅 —— 此时客户端的请求已经发出、正在等应答。
+    /// </summary>
+    public IReadOnlyList<string> BannersBeforeSuccess { get; init; } = [];
+
+    /// <summary>
     /// 通过 <c>EXT_INFO</c> 宣告的 <c>server-sig-algs</c>；
     /// <see langword="null"/> 表示不发 <c>EXT_INFO</c>。
     /// </summary>
@@ -226,6 +231,11 @@ public sealed class TestAuthServer
         {
             await SendFailureAsync(partialSuccess: true, cancellationToken);
             return false;
+        }
+
+        foreach (string banner in _policy.BannersBeforeSuccess)
+        {
+            await SendBannerAsync(banner, cancellationToken);
         }
 
         _transport.WritePacket([(byte)SshMessageNumber.UserAuthSuccess]);
