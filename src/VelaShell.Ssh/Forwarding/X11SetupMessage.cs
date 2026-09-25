@@ -29,8 +29,14 @@ public static class X11SetupMessage
     /// <summary>定长头的长度。</summary>
     public const int HeaderLength = 12;
 
-    /// <summary>两段变长字段各自的上限 —— 防一个恶意报文把内存吃光。</summary>
-    private const int MaxFieldLength = 64 * 1024;
+    /// <summary>两段变长字段各自的上限。</summary>
+    /// <remarks>
+    /// 〔<c>velashell-docs/zh/ssh/spec/07</c> §7.5.5〕长度是远端给的，而这些字节要在核对 cookie 之前攒着。
+    /// 协议允许各到 64 KiB —— 曾经就按那个上限等，等于让一个还没证明身份的对端决定我们攒多少、等多久。
+    /// 能通过核对的只有 18 字节的 <c>MIT-MAGIC-COOKIE-1</c> 加 16 字节的假 cookie，
+    /// 真实的 X11 授权协议名与数据都远小于 256 字节；读到 12 字节的头就能判。
+    /// </remarks>
+    internal const int MaxFieldLength = 256;
 
     /// <summary>解析结果。</summary>
     /// <param name="TotalLength">整个建立报文的字节数（含补齐）。</param>
@@ -47,7 +53,9 @@ public static class X11SetupMessage
     /// <see langword="true"/> 表示解出来了；<see langword="false"/> 表示
     /// <b>还不够，要再收</b>（不是错误）。
     /// </returns>
-    /// <exception cref="FormatException">字节序标记不合法，或字段长度越界。</exception>
+    /// <exception cref="FormatException">
+    /// 字节序标记不合法，或字段长度超过上限（各 256 字节）—— 只要头到了就判，不等后面的数据。
+    /// </exception>
     /// <remarks>
     /// ⚠️ <b>报文可能分几次到达。</b> 先攒够 12 字节的头，再按头里的长度
     /// 攒够两段数据 —— 一上来就假设「第一次读就是完整报文」在小 MTU

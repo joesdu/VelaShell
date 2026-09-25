@@ -257,6 +257,54 @@ public sealed class X11ForwardTests
     }
 
     [TestMethod]
+    public async Task 建立报文声称的字段过长时读到头就拒绝()
+    {
+        // 〔spec 07 §7.5.5〕长度是远端给的，而这些字节要在核对 cookie 之前攒着。
+        // 曾经每段允许 64 KiB：只发一个声称 1000 字节授权名的头，我们就一直等到 30 秒的建立时限才拒。
+        await using Fixture fixture = await Fixture.StartAsync();
+        using var xserver = FakeXServer.Start();
+
+        await using X11Forwarder forwarder = await X11Forwarder.RequestAsync(
+            fixture.Harness.Connection, fixture.Session,
+            fixture.Options with { Display = xserver.Display }, fixture.Harness.Token);
+
+        await using Stream remote = await OpenX11Async(fixture);
+
+        byte[] header = new byte[X11SetupMessage.HeaderLength];
+        header[0] = (byte)'B';
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(header.AsSpan(6), 1000);   // 授权名长度
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(header.AsSpan(8), 16);     // 授权数据长度
+        await remote.WriteAsync(header, fixture.Harness.Token);
+        await remote.FlushAsync(fixture.Harness.Token);
+
+        // 只有头，后面的字节永远不会来 —— 拒绝必须在读到头时就发生，而不是等到建立时限。
+        await WaitForAsync(() => forwarder.RejectedChannels == 1, fixture.Harness.Token);
+        Assert.AreEqual(0, xserver.AcceptedConnections, "被拒的连接不该碰本机 X server");
+    }
+
+    [TestMethod]
+    public void 建立报文的字段在上限之内照常解析()
+    {
+        byte[] setup = BuildSetup(bigEndian: false, new string('A', X11SetupMessage.MaxFieldLength), new byte[X11SetupMessage.MaxFieldLength]);
+
+        Assert.IsTrue(X11SetupMessage.TryParse(new ReadOnlySequence<byte>(setup), out X11SetupMessage.Parsed parsed));
+        Assert.HasCount(X11SetupMessage.MaxFieldLength, parsed.ProtocolData);
+    }
+
+    [TestMethod]
+    public void 交给xauth的timeout比有效期多留余量_不过期时传0()
+    {
+        // 〔spec 07 §7.5.7〕X server 从生成授权时起算、我们从请求转发时起算：两者相等时，
+        // 我们刚接下的 x11 通道可能正赶上 X server 清掉授权。0 在 SECURITY 扩展里是「永不过期」。
+        Assert.AreEqual(20 * 60 + 60, X11Forwarder.XAuthTimeoutSeconds(TimeSpan.FromMinutes(20)));
+        Assert.AreEqual(62, X11Forwarder.XAuthTimeoutSeconds(TimeSpan.FromSeconds(1.2)), "不足一秒的部分向上取整");
+
+        // 曾经退回 20 分钟：X server 空闲 20 分钟就清掉授权，而我们还在接受新的 x11 通道。
+        Assert.AreEqual(0, X11Forwarder.XAuthTimeoutSeconds(TimeSpan.Zero));
+        Assert.AreEqual(0, X11Forwarder.XAuthTimeoutSeconds(TimeSpan.FromSeconds(-5)));
+    }
+
+    [TestMethod]
     public async Task 非MIT_MAGIC_COOKIE_1的授权协议会被拒绝()
     {
         await using Fixture fixture = await Fixture.StartAsync();

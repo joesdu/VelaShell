@@ -358,6 +358,7 @@ internal static partial class Program
     private static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<App>()
                   .UsePlatformDetect()
+                  .UseWaylandWithFallback()
                   .With(new Win32PlatformOptions { RenderingMode = ResolveRenderingMode() })
                   // Avalonia 12.1.2 的原生 Wayland 后端未发送 xdg_toplevel.app_id,
                   // SetIcon 也是空实现,GNOME 因而把窗口显示为「未知」应用。

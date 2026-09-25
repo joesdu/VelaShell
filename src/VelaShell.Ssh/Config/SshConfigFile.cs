@@ -75,6 +75,81 @@ public sealed partial class SshHostConfig
     /// <summary><c>ForwardX11Trusted</c>。</summary>
     public bool ForwardX11Trusted => IsYes(First("ForwardX11Trusted"));
 
+    /// <summary><c>ForwardX11Timeout</c>：X11 转发的有效期；没写或写不对为 <see langword="null"/>（用默认）。</summary>
+    /// <remarks>
+    /// ssh_config 的时间格式：数字后跟 <c>s</c> / <c>m</c> / <c>h</c> / <c>d</c> / <c>w</c>（大小写均可），
+    /// 不带单位为秒，几段相加（<c>1h30m</c>）；<c>0</c> 为不过期（<see cref="TimeSpan.Zero"/>）。
+    /// </remarks>
+    public TimeSpan? ForwardX11Timeout =>
+        TryParseTimeSpec(First("ForwardX11Timeout"), out TimeSpan value) ? value : null;
+
+    /// <summary>解析 ssh_config 的时间格式（见 <see cref="ForwardX11Timeout"/>）。</summary>
+    /// <remarks>写不对（空、带别的字符、单位不认识、溢出）就返回 <see langword="false"/> —— 不猜。</remarks>
+    internal static bool TryParseTimeSpec(string? text, out TimeSpan value)
+    {
+        value = TimeSpan.Zero;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        string spec = text.Trim();
+        long totalSeconds = 0;
+        int i = 0;
+
+        while (i < spec.Length)
+        {
+            int start = i;
+            while (i < spec.Length && spec[i] is >= '0' and <= '9')
+            {
+                i++;
+            }
+
+            if (i == start
+                || !long.TryParse(spec.AsSpan(start, i - start), NumberStyles.None, CultureInfo.InvariantCulture, out long number))
+            {
+                return false;
+            }
+
+            long unit = 1;
+            if (i < spec.Length)
+            {
+                unit = char.ToLowerInvariant(spec[i]) switch
+                {
+                    's' => 1,
+                    'm' => 60,
+                    'h' => 60 * 60,
+                    'd' => 24 * 60 * 60,
+                    'w' => 7 * 24 * 60 * 60,
+                    _ => 0,
+                };
+
+                if (unit == 0)
+                {
+                    return false;
+                }
+                i++;
+            }
+
+            try
+            {
+                totalSeconds = checked(totalSeconds + (number * unit));
+            }
+            catch (OverflowException)
+            {
+                return false;
+            }
+        }
+
+        if (totalSeconds > (long)TimeSpan.MaxValue.TotalSeconds)
+        {
+            return false;
+        }
+
+        value = TimeSpan.FromSeconds(totalSeconds);
+        return true;
+    }
+
     /// <summary><c>StrictHostKeyChecking</c> 的原文（<c>yes</c> / <c>no</c> / <c>ask</c> / <c>accept-new</c>）。</summary>
     public string? StrictHostKeyChecking => First("StrictHostKeyChecking");
 

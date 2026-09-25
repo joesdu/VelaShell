@@ -308,6 +308,60 @@ public sealed class SshConfigConnectTests
     }
 
     [TestMethod]
+    public void ForwardX11Timeout落到X11选项的有效期上()
+    {
+        // ssh_config(5) 的 ForwardX11Timeout：时间格式，0 为整条连接期间都有效。
+        IReadOnlyList<SshConfigBlock> blocks = SshConfigFile.Parse("""
+            Host long
+                ForwardX11 yes
+                ForwardX11Timeout 1h30m
+            Host forever
+                ForwardX11 yes
+                ForwardX11Timeout 0
+            Host typo
+                ForwardX11 yes
+                ForwardX11Timeout 20 minutes
+            Host unset
+                ForwardX11 yes
+            """);
+
+        TimeSpan? Timeout(string host) => SshConfigFile.Resolve(blocks, host).ApplyToShell().X11?.Timeout;
+
+        Assert.AreEqual(TimeSpan.FromMinutes(90), Timeout("long"));
+        Assert.AreEqual(TimeSpan.Zero, Timeout("forever"));
+        Assert.AreEqual(X11ForwardOptions.Default.Timeout, Timeout("typo"), "写不对的值不猜，沿用默认");
+        Assert.AreEqual(X11ForwardOptions.Default.Timeout, Timeout("unset"));
+    }
+
+    [TestMethod]
+    [DataRow("45", 45)]
+    [DataRow("45s", 45)]
+    [DataRow("10m", 600)]
+    [DataRow("2H", 7200)]
+    [DataRow("1d", 86400)]
+    [DataRow("1w", 604800)]
+    [DataRow("1h30m", 5400)]
+    [DataRow("0", 0)]
+    public void ssh_config的时间格式按单位相加(string text, int seconds)
+    {
+        Assert.IsTrue(SshHostConfig.TryParseTimeSpec(text, out TimeSpan value), text);
+        Assert.AreEqual(TimeSpan.FromSeconds(seconds), value, text);
+    }
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("m")]
+    [DataRow("10x")]
+    [DataRow("-5")]
+    [DataRow("1.5h")]
+    [DataRow("20 minutes")]
+    [DataRow("99999999999999999999w")]
+    public void ssh_config的时间格式写不对就不认(string text)
+    {
+        Assert.IsFalse(SshHostConfig.TryParseTimeSpec(text, out _), text);
+    }
+
+    [TestMethod]
     public void 会话项落到shell参数上()
     {
         IReadOnlyList<SshConfigBlock> blocks = SshConfigFile.Parse("""
