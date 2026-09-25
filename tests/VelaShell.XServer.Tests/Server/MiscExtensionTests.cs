@@ -1,6 +1,4 @@
 using System.Text;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -39,7 +37,7 @@ public sealed class MiscExtensionTests
         Assert.AreEqual(2, version.Bytes[1]);
 
         uint top = await MapTopAsync(c, host, 0x1 | 0x40);   // KeyPress | PointerMotion
-        server.FocusTopLevel(top);
+        server.FocusTopLevel(host.Mapped[top]);
         await c.SyncAsync();
 
         // FakeInput(MotionNotify, 绝对, 根坐标 (30, 35)) → 窗口内 (20, 15)。
@@ -58,7 +56,7 @@ public sealed class MiscExtensionTests
     [TestMethod]
     public async Task 运行时换成两台显示器_XINERAMA与RANDR都看得到且发通知()
     {
-        await using X11Server server = new(new XServerOptions { ScreenWidth = 1920, ScreenHeight = 1080 });
+        await using X11Server server = new(new X11ServerOptions { ScreenWidth = 1920, ScreenHeight = 1080 });
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         byte xinerama = await MajorAsync(c, "XINERAMA");
         byte randr = await MajorAsync(c, "RANDR");
@@ -106,8 +104,8 @@ public sealed class MiscExtensionTests
         Assert.AreEqual(0, before.Bytes[1], "state = Off");
         Assert.IsTrue(before.U32(16) >= 100, $"空闲 {before.U32(16)} ms");
 
-        server.Key(38, true);
-        server.Key(38, false);
+        server.InjectKey(38, true);
+        server.InjectKey(38, false);
         XMessage after = await c.RequestAsync(saver, 1, b => b.U32(c.RootWindow));
         Assert.IsTrue(after.U32(16) < 100, $"输入后空闲应归零,实际 {after.U32(16)} ms");
     }

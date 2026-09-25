@@ -17,11 +17,11 @@
 
 using System.Buffers.Binary;
 using System.Text;
-using VelaShell.XServer.Host;
 using VelaShell.XServer.Protocol;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
@@ -73,7 +73,7 @@ public sealed partial class X11Server
         _gtkFrameExtentsAtom, _netWmPidAtom, _wmClientMachineAtom, _wmRoleAtom, _netWmIconAtom;
 
     /// <summary>宿主给每个顶层设的外框尺寸(_NET_FRAME_EXTENTS):左、右、上、下。</summary>
-    private readonly Dictionary<XWindow, (int Left, int Right, int Top, int Bottom)> _frameExtents = [];
+    private readonly Dictionary<XWindow, XFrameExtents> _frameExtents = [];
 
     private void InitEwmh()
     {
@@ -174,7 +174,7 @@ public sealed partial class X11Server
         {
             return;   // 菜单、提示框之类不归窗口管理器管(ICCCM §4.1.10)
         }
-        uint hidden = (ReadHandleStates(top) & XWindowStates.Hidden) != 0 ? 3u : 1u;
+        uint hidden = (ReadNetWmStates(top) & XWindowStates.Hidden) != 0 ? 3u : 1u;
         SetProperty(top, _wmStateAtom, _wmStateAtom, [hidden, 0]);
         SetProperty(top, Intern("_NET_WM_DESKTOP"), XAtom.Cardinal, [0]);
         WriteFrameExtents(top);
@@ -211,15 +211,16 @@ public sealed partial class X11Server
         SetProperty(Root, Intern("_NET_ACTIVE_WINDOW"), XAtom.Window, [newTop?.Id ?? 0]);
         if (oldTop is { Mapped: true })
         {
-            WriteStates(oldTop, ReadHandleStates(oldTop) & ~XWindowStates.Focused);
+            WriteStates(oldTop, ReadNetWmStates(oldTop) & ~XWindowStates.Focused);
         }
         if (newTop is { Mapped: true })
         {
-            WriteStates(newTop, ReadHandleStates(newTop) | XWindowStates.Focused);
+            WriteStates(newTop, ReadNetWmStates(newTop) | XWindowStates.Focused);
         }
     }
 
-    private XWindowStates ReadHandleStates(XWindow top)
+    /// <summary>_NET_WM_STATE 属性解析成状态位。</summary>
+    private XWindowStates ReadNetWmStates(XWindow top)
     {
         XWindowStates states = XWindowStates.None;
         foreach (uint atom in ReadCard32s(top.Properties.GetValueOrDefault(_netWmStateAtom)))
@@ -253,34 +254,9 @@ public sealed partial class X11Server
 
     private void WriteFrameExtents(XWindow top)
     {
-        (int l, int r, int t, int b) = _frameExtents.GetValueOrDefault(top);
-        SetProperty(top, Intern("_NET_FRAME_EXTENTS"), XAtom.Cardinal, [(uint)l, (uint)r, (uint)t, (uint)b]);
+        XFrameExtents e = _frameExtents.GetValueOrDefault(top);
+        SetProperty(top, Intern("_NET_FRAME_EXTENTS"), XAtom.Cardinal, [(uint)e.Left, (uint)e.Right, (uint)e.Top, (uint)e.Bottom]);
     }
-
-    // ------------------------------------------------------------------ 宿主注入(任意线程)
-
-    /// <summary>
-    /// 宿主(窗口管理器)设定了窗口状态 —— 通常是照办了一个 <see cref="XStateChangeRequest" />,或用户点了原生窗口的最大化按钮。
-    /// 服务端写 <c>_NET_WM_STATE</c> 与 <c>WM_STATE</c>,客户端据此更新外观。<see cref="XWindowStates.Focused" /> 由服务端按焦点维护,这里给的会被忽略。
-    /// </summary>
-    public void SetTopLevelStates(uint topLevel, XWindowStates states) => Post(null, () =>
-    {
-        if (Lookup<XWindow>(topLevel) is { IsTopLevel: true } top)
-        {
-            XWindowStates focused = ReadHandleStates(top) & XWindowStates.Focused;
-            WriteStates(top, (states & ~XWindowStates.Focused) | focused);
-        }
-    });
-
-    /// <summary>宿主给窗口加的装饰有多宽(<c>_NET_FRAME_EXTENTS</c>:左、右、上、下,像素)。客户端据此计算外框位置。</summary>
-    public void SetFrameExtents(uint topLevel, int left, int right, int top, int bottom) => Post(null, () =>
-    {
-        if (Lookup<XWindow>(topLevel) is { IsTopLevel: true } window)
-        {
-            _frameExtents[window] = (Math.Max(0, left), Math.Max(0, right), Math.Max(0, top), Math.Max(0, bottom));
-            WriteFrameExtents(window);
-        }
-    });
 
     // ------------------------------------------------------------------ 客户端经根窗口提出的请求
 
@@ -306,7 +282,7 @@ public sealed partial class X11Server
                     {
                         ReleaseButtonForWindowManager((int)data[3]);
                     }
-                    _host.WindowManagerRequest(new XMoveResizeRequest(handle, direction, (int)data[3], (int)data[0], (int)data[1]));
+                    _host.WindowManagerRequested(new XMoveResizeRequest(handle, direction, (int)data[3], (int)data[0], (int)data[1]));
                     break;
                 }
             case "_NET_WM_STATE":
@@ -321,7 +297,7 @@ public sealed partial class X11Server
                         }
                     }
                     changed &= ~XWindowStates.Focused;
-                    XWindowStates current = ReadHandleStates(top);
+                    XWindowStates current = ReadNetWmStates(top);
                     (XWindowStates add, XWindowStates remove) = data[0] switch
                     {
                         0 => (XWindowStates.None, changed),
@@ -330,18 +306,18 @@ public sealed partial class X11Server
                     };
                     if (add != XWindowStates.None || remove != XWindowStates.None)
                     {
-                        _host.WindowManagerRequest(new XStateChangeRequest(handle, add, remove));
+                        _host.WindowManagerRequested(new XStateChangeRequest(handle, add, remove));
                     }
                     break;
                 }
             case "_NET_ACTIVE_WINDOW":
-                _host.WindowManagerRequest(new XActivateRequest(handle));
+                _host.WindowManagerRequested(new XActivateRequest(handle));
                 break;
             case "_NET_CLOSE_WINDOW":
-                _host.WindowManagerRequest(new XCloseRequest(handle));
+                _host.WindowManagerRequested(new XCloseRequest(handle));
                 break;
             case "WM_CHANGE_STATE" when data[0] == 3:   // IconicState
-                _host.WindowManagerRequest(new XMinimizeRequest(handle));
+                _host.WindowManagerRequested(new XMinimizeRequest(handle));
                 break;
             case "_NET_REQUEST_FRAME_EXTENTS":
                 WriteFrameExtents(top);
@@ -354,7 +330,7 @@ public sealed partial class X11Server
                     int y = (flags & (1 << 9)) != 0 ? (int)data[2] : top.Y;
                     int w = (flags & (1 << 10)) != 0 ? Math.Max(1, (int)data[3]) : top.Width;
                     int h = (flags & (1 << 11)) != 0 ? Math.Max(1, (int)data[4]) : top.Height;
-                    ConfigureWindow(top, x, y, w, h, top.BorderWidth, null, -1);
+                    Configure(top, x, y, w, h, top.BorderWidth, null, -1);
                     break;
                 }
         }
@@ -388,59 +364,58 @@ public sealed partial class X11Server
 
     // ------------------------------------------------------------------ 客户端的提示 → 宿主看到的快照
 
-    /// <summary>把 ICCCM / EWMH / Motif 提示解析进窗口快照(RefreshHandle 的一部分)。</summary>
-    private void RefreshWindowManagerHints(XWindow top, XTopLevelWindow handle)
+    /// <summary>把 ICCCM / EWMH / Motif 提示解析进窗口快照(<see cref="BuildSnapshot" /> 的一部分)。</summary>
+    private XTopLevelSnapshot ReadWindowManagerHints(XWindow top, XTopLevelSnapshot snapshot, bool hasTransientFor)
     {
         Dictionary<uint, XProperty> props = top.Properties;
-        handle.HasAlpha = top.Depth == 32;
-        handle.States = ReadHandleStates(top);
+        XWindowStates states = ReadNetWmStates(top);
 
-        uint[] types = ReadCard32s(props.GetValueOrDefault(_netWmTypeAtom));
-        handle.WindowType = handle.TransientFor != 0 ? XWindowType.Dialog : XWindowType.Normal;
-        foreach (uint atom in types)   // 按偏好顺序,第一个认识的为准
+        XWindowType type = hasTransientFor ? XWindowType.Dialog : XWindowType.Normal;
+        foreach (uint atom in ReadCard32s(props.GetValueOrDefault(_netWmTypeAtom)))   // 按偏好顺序,第一个认识的为准
         {
             int index = Array.IndexOf(_typeAtoms, atom);
             if (index >= 0)
             {
-                handle.WindowType = NetWmTypes[index].Type;
+                type = NetWmTypes[index].Type;
                 break;
             }
         }
 
         uint[] motif = ReadCard32s(props.GetValueOrDefault(_motifHintsAtom));
-        handle.Decorated = motif.Length < 3 || (motif[0] & 2) == 0 || motif[2] != 0;
-
         uint[] size = ReadCard32s(props.GetValueOrDefault(XAtom.WmNormalHints));
-        if (size.Length >= 11)
-        {
-            uint flags = size[0];
-            (handle.MinWidth, handle.MinHeight) = (flags & 16) != 0 ? ((int)size[5], (int)size[6]) : (0, 0);
-            (handle.MaxWidth, handle.MaxHeight) = (flags & 32) != 0 ? ((int)size[7], (int)size[8]) : (0, 0);
-            (handle.WidthIncrement, handle.HeightIncrement) = (flags & 64) != 0 ? ((int)size[9], (int)size[10]) : (0, 0);
-        }
-
+        uint sizeFlags = size.Length >= 11 ? size[0] : 0;
         uint[] hints = ReadCard32s(props.GetValueOrDefault(XAtom.WmHints));
-        handle.AcceptsFocus = hints.Length < 2 || (hints[0] & 1) == 0 || hints[1] != 0;
-        handle.Urgent = (hints.Length >= 1 && (hints[0] & 256) != 0) || (handle.States & XWindowStates.DemandsAttention) != 0;
-
         uint[] opacity = ReadCard32s(props.GetValueOrDefault(_netWmOpacityAtom));
-        handle.Opacity = opacity.Length >= 1 ? opacity[0] / (double)uint.MaxValue : 1;
-
         uint[] extents = ReadCard32s(props.GetValueOrDefault(_gtkFrameExtentsAtom));
-        handle.ClientFrameExtents = extents.Length >= 4 ? ((int)extents[0], (int)extents[1], (int)extents[2], (int)extents[3]) : default;
-
         uint[] pid = ReadCard32s(props.GetValueOrDefault(_netWmPidAtom));
-        handle.ProcessId = pid.Length >= 1 ? (int)pid[0] : 0;
-        handle.ClientMachine = props.GetValueOrDefault(_wmClientMachineAtom) is { Format: 8 } machine ? XWire.Latin1.GetString(machine.Data) : "";
-        handle.Role = props.GetValueOrDefault(_wmRoleAtom) is { Format: 8 } role ? XWire.Latin1.GetString(role.Data) : "";
 
         XProperty? icon = props.GetValueOrDefault(_netWmIconAtom);
-        if (!ReferenceEquals(icon, handle.IconSource))
+        if (!ReferenceEquals(icon, top.ParsedIcons.Source))
         {
-            // 图标动辄几百 KB:只在属性真的换了时重新解析,改标题之类的刷新不重复这份工作。
-            handle.Icons = ParseIcons(ReadCard32s(icon));
-            handle.IconSource = icon;
+            // 图标动辄几百 KB:只在属性真的换了时重新解析,改标题之类的刷新不重复这份工作(各份快照共用同一个列表)。
+            top.ParsedIcons = (icon, ParseIcons(ReadCard32s(icon)));
         }
+
+        return snapshot with
+        {
+            States = states,
+            WindowType = type,
+            Decorated = motif.Length < 3 || (motif[0] & 2) == 0 || motif[2] != 0,
+            MinWidth = (sizeFlags & 16) != 0 ? (int)size[5] : 0,
+            MinHeight = (sizeFlags & 16) != 0 ? (int)size[6] : 0,
+            MaxWidth = (sizeFlags & 32) != 0 ? (int)size[7] : 0,
+            MaxHeight = (sizeFlags & 32) != 0 ? (int)size[8] : 0,
+            WidthIncrement = (sizeFlags & 64) != 0 ? (int)size[9] : 0,
+            HeightIncrement = (sizeFlags & 64) != 0 ? (int)size[10] : 0,
+            AcceptsFocus = hints.Length < 2 || (hints[0] & 1) == 0 || hints[1] != 0,
+            Urgent = (hints.Length >= 1 && (hints[0] & 256) != 0) || (states & XWindowStates.DemandsAttention) != 0,
+            Opacity = opacity.Length >= 1 ? opacity[0] / (double)uint.MaxValue : 1,
+            ClientFrameExtents = extents.Length >= 4 ? new XFrameExtents((int)extents[0], (int)extents[1], (int)extents[2], (int)extents[3]) : default,
+            ProcessId = pid.Length >= 1 ? (int)pid[0] : 0,
+            ClientMachine = props.GetValueOrDefault(_wmClientMachineAtom) is { Format: 8 } machine ? XWire.Latin1.GetString(machine.Data) : "",
+            Role = props.GetValueOrDefault(_wmRoleAtom) is { Format: 8 } role ? XWire.Latin1.GetString(role.Data) : "",
+            Icons = top.ParsedIcons.Icons,
+        };
     }
 
     /// <summary>_NET_WM_ICON:若干组(宽, 高, 宽 × 高 个 ARGB)。尺寸不合理的组丢弃,后面的不再解析。</summary>

@@ -4,12 +4,12 @@
 // 规范依据(AGENTS.md §2 纪律 1):
 //   X Window System Protocol, X Version 11 —— 「CreateColormap」「FreeColormap」「CopyColormapAndFree」
 //   「AllocColor」(TrueColor 下返回最接近的可表示颜色)「AllocNamedColor」「QueryColors」「LookupColor」
-//   「CreateCursor」「CreateGlyphCursor」「FreeCursor」「QueryBestSize」
 
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
+using VelaShell.XServer.Server;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
@@ -109,69 +109,5 @@ public sealed partial class X11Server
         (ushort R, ushort G, ushort B) exact = ColorNames.Lookup(name) ?? throw new XProtocolError(XErrorCode.Name);
         (ushort R, ushort G, ushort B) visual = RgbOf(PixelOf(exact.R, exact.G, exact.B));
         c.Reply(0, w => w.U16(exact.R).U16(exact.G).U16(exact.B).U16(visual.R).U16(visual.G).U16(visual.B).Zero(12));
-    }
-
-    // ------------------------------------------------------------------ 光标
-
-    private void CreateCursor(XClient c, XRequestReader r)
-    {
-        uint id = r.U32();
-        uint sourceId = r.U32();
-        uint maskId = r.U32();
-        XPixmap source = Lookup<XPixmap>(sourceId) ?? throw new XProtocolError(XErrorCode.Pixmap, sourceId);
-        XPixmap? mask = maskId == 0 ? null : Lookup<XPixmap>(maskId) ?? throw new XProtocolError(XErrorCode.Pixmap, maskId);
-        if (source.Depth != 1 || mask is { Depth: not 1 })
-        {
-            throw new XProtocolError(XErrorCode.Match);
-        }
-        ushort fr = r.U16(), fg = r.U16(), fb = r.U16(), br = r.U16(), bg = r.U16(), bb = r.U16();
-        short x = r.I16(), y = r.I16();
-        AddResource(c, new XCursor(id, c)
-        {
-            Source = source,
-            Mask = mask,
-            HotX = x,
-            HotY = y,
-            ForegroundRgb = PixelOf(fr, fg, fb),
-            BackgroundRgb = PixelOf(br, bg, bb),
-        });
-    }
-
-    private void CreateGlyphCursor(XClient c, XRequestReader r)
-    {
-        uint id = r.U32();
-        uint sourceFont = r.U32();
-        _ = r.U32();                        // mask-font:形状由宿主的系统光标给出,掩码用不上
-        ushort sourceChar = r.U16();
-        _ = r.U16();
-        ushort fr = r.U16(), fg = r.U16(), fb = r.U16(), br = r.U16(), bg = r.U16(), bb = r.U16();
-        XFontResource font = Lookup<XFontResource>(sourceFont) ?? throw new XProtocolError(XErrorCode.Font, sourceFont);
-        bool isCursorFont = font.Font.Name == "cursor";
-        AddResource(c, new XCursor(id, c)
-        {
-            Glyph = isCursorFont ? sourceChar : -1,
-            ForegroundRgb = PixelOf(fr, fg, fb),
-            BackgroundRgb = PixelOf(br, bg, bb),
-        });
-    }
-
-    private void FreeCursor(XRequestReader r)
-    {
-        uint id = r.U32();
-        _ = Lookup<XCursor>(id) ?? throw new XProtocolError(XErrorCode.Cursor, id);
-        RemoveResource(id);
-    }
-
-    private static void QueryBestSize(XClient c, XRequestReader r)
-    {
-        byte cls = r.Data;
-        r.U32();
-        ushort width = r.U16(), height = r.U16();
-        if (cls == 0)
-        {
-            // Cursor:系统光标一般 32×32,再大宿主也画不出来。
-            (width, height) = (Math.Min(width, (ushort)64), Math.Min(height, (ushort)64));
-        }
-        c.Reply(0, w => w.U16(width).U16(height).Zero(20));
     }
 }

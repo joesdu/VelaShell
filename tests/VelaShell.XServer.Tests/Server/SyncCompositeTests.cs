@@ -1,6 +1,4 @@
 using System.Text;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -219,7 +217,7 @@ public sealed class SyncCompositeTests
         await c.SendAsync(sync, 9, b => b.U32(alarm).U32(1 | 2 | 4 | 8).U32(idle).U32(0).I32(0).U32(50).U32(1));
         await c.SyncAsync();
         await Task.Delay(150);
-        server.PointerMotion(top, 3, 3);
+        server.InjectPointerMotion(host.Mapped[top], 3, 3);
         XMessage fired = await c.NextEventAsync((byte)(syncEvent + 1));
         Assert.AreEqual(alarm, fired.U32(4));
     }
@@ -271,8 +269,8 @@ public sealed class SyncCompositeTests
         }
         Assert.AreNotEqual(0u, idle);
 
-        server.Key(38, true);
-        server.Key(38, false);
+        server.InjectKey(38, true);
+        server.InjectKey(38, false);
         await c.SyncAsync();
         uint alarm = c.NewId();
         // 空闲 ≥ 当前 + 200 ms 时触发(Relative)。

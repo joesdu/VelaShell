@@ -8,9 +8,7 @@ using Avalonia.Platform;
 using Avalonia.Threading;
 using VelaShell.Infrastructure.XServer;
 using VelaShell.Views.XServer;
-using VelaShell.XServer.Drawing;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
+using VelaShell.XServer;
 
 namespace VelaShell.Services.XServer;
 
@@ -159,13 +157,9 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
             return;
         }
         _appliedKeymap = keymap;
-        server.SetKeyboardMapping(HostKeymap.FirstKeycode, keymap.PerKeycode, keymap.Main);
-        server.SetKeyboardMapping(XKeycodes.IntlBackslash, keymap.PerKeycode, keymap.IntlBackslash);
-        // 有 AltGr 层:右 Alt(macOS 的右 Option)当 ISO_Level3_Shift,从 Mod1 挪到 Mod5(服务端的四级键类型按 Mod5 选第三、四级);
-        // 没有时换回 Alt_R —— 布局可能刚从德语切回英语。
+        // 一次交过去:键值、右 Alt 是不是 AltGr(macOS 上是右 Option)、布局名 —— 服务端只通知客户端一轮。
         HasAltGr = keymap.HasAltGr;
-        server.SetKeyboardMapping(XKeycodes.AltRight, 1, [HasAltGr ? 0xfe03u : 0xffeau]);
-        server.SetModifierMapping(HasAltGr ? AltGrModifiers : DefaultModifiers);
+        server.SetKeymap(keymap.ToXKeymap());
     }
 
     /// <inheritdoc />
@@ -195,18 +189,10 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         }
         if (OperatingSystem.IsLinux())
         {
-            return LinuxKeymap.Build(LinuxKeymap.DisplayNumber(server.Display));
+            return LinuxKeymap.Build(server.DisplayNumber);
         }
         return null;
     }
-
-    /// <summary>修饰键表(8 个修饰位 × 每位 2 个键码):Shift、Lock、Control、Mod1(Alt)、Mod2(Num Lock)、Mod3、Mod4(Super)、Mod5。</summary>
-    private static readonly byte[] DefaultModifiers =
-        [50, 62, 66, 0, 37, 105, 64, 108, 77, 0, 0, 0, 133, 134, 0, 0];
-
-    /// <summary>同上,右 Alt 在 Mod5(AltGr)。</summary>
-    private static readonly byte[] AltGrModifiers =
-        [50, 62, 66, 0, 37, 105, 64, 0, 77, 0, 0, 0, 133, 134, 108, 0];
 
     /// <summary>
     /// 当前布局有 AltGr 层(macOS 上是 Option 层)。Windows 上这时按 AltGr 系统会先补一个假的左 Ctrl 按下,
@@ -232,11 +218,11 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     });
 
     /// <inheritdoc />
-    public void TopLevelChanged(XTopLevelWindow window) => Dispatcher.UIThread.Post(() =>
+    public void TopLevelChanged(XTopLevelWindow window, XTopLevelChanges changes) => Dispatcher.UIThread.Post(() =>
     {
         if (_windows.TryGetValue(window.Id, out XNativeWindow? native))
         {
-            native.ApplyProperties();
+            native.ApplyProperties(changes);
         }
     });
 
@@ -294,16 +280,16 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     }
 
     /// <inheritdoc />
-    public void CursorChanged(XTopLevelWindow? window, int cursorGlyph) => Dispatcher.UIThread.Post(() =>
+    public void CursorChanged(XTopLevelWindow? window, XCursor cursor) => Dispatcher.UIThread.Post(() =>
     {
         if (window is not null && _windows.TryGetValue(window.Id, out XNativeWindow? native))
         {
-            native.ApplyCursor(cursorGlyph);
+            native.ApplyCursor(cursor);
         }
     });
 
     /// <inheritdoc />
-    public void Bell(int percent) => Dispatcher.UIThread.Post(SystemSound.Alert);
+    public void BellRequested(int volume) => Dispatcher.UIThread.Post(SystemSound.Alert);   // 系统提示音没有音量可调
 
     /// <inheritdoc />
     public void ClipboardChanged(string text) => Dispatcher.UIThread.Post(() => FireAndForget.Run(async () =>
@@ -323,7 +309,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     }));
 
     /// <inheritdoc />
-    public void WindowManagerRequest(XWindowManagerRequest request) => Dispatcher.UIThread.Post(() =>
+    public void WindowManagerRequested(XWindowManagerRequest request) => Dispatcher.UIThread.Post(() =>
     {
         if (!_windows.TryGetValue(request.Window.Id, out XNativeWindow? native))
         {
@@ -344,7 +330,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
                 native.WindowState = WindowState.Minimized;
                 break;
             case XCloseRequest:
-                _server?.CloseTopLevel(request.Window.Id);
+                _server?.CloseTopLevel(request.Window);
                 break;
         }
     });
@@ -360,12 +346,13 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         XNativeWindow window = new(this, handle);
         _windows[handle.Id] = window;
         PlaceIfUnpositioned(handle, window);
-        window.ApplyProperties();
+        window.ApplyProperties(XTopLevelChanges.All);
 
         // 对话框、瞬态窗口压在父窗口之上;弹出菜单跟着当前活动的 X 窗口走。
-        XNativeWindow? owner = handle.TransientFor != 0 && _windows.TryGetValue(handle.TransientFor, out XNativeWindow? parent)
+        XTopLevelSnapshot snapshot = handle.Snapshot;
+        XNativeWindow? owner = snapshot.TransientFor is { } transientFor && _windows.TryGetValue(transientFor.Id, out XNativeWindow? parent)
             ? parent
-            : handle.OverrideRedirect ? _windows.Values.FirstOrDefault(w => w.IsActive) : null;
+            : snapshot.OverrideRedirect ? _windows.Values.FirstOrDefault(w => w.IsActive) : null;
         if (owner is not null && !ReferenceEquals(owner, window))
         {
             window.Show(owner);
@@ -381,15 +368,17 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     /// </summary>
     private void PlaceIfUnpositioned(XTopLevelWindow handle, XNativeWindow window)
     {
-        if (handle.OverrideRedirect || handle.X != 0 || handle.Y != 0 || _server is not { } server)
+        XTopLevelSnapshot snapshot = handle.Snapshot;
+        if (snapshot.OverrideRedirect || snapshot.X != 0 || snapshot.Y != 0 || _server is not { } server)
         {
             return;
         }
         PixelRect area;
-        if (handle.TransientFor != 0 && _windows.TryGetValue(handle.TransientFor, out XNativeWindow? parent))
+        if (snapshot.TransientFor is { } transientFor && _windows.TryGetValue(transientFor.Id, out XNativeWindow? parent))
         {
             (int ox, int oy) = RootOrigin;
-            area = new PixelRect(parent.Handle.X + ox, parent.Handle.Y + oy, parent.Handle.Width, parent.Handle.Height);
+            XTopLevelSnapshot p = parent.Handle.Snapshot;
+            area = new PixelRect(p.X + ox, p.Y + oy, p.Width, p.Height);
         }
         else if ((MainWindow()?.Screens ?? window.Screens).Primary is { } primary)
         {
@@ -399,10 +388,10 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         {
             return;
         }
-        int x = area.X + Math.Max(0, (area.Width - handle.Width) / 2) - RootOrigin.X;
-        int y = area.Y + Math.Max(0, (area.Height - handle.Height) / 2) - RootOrigin.Y;
+        int x = area.X + Math.Max(0, (area.Width - snapshot.Width) / 2) - RootOrigin.X;
+        int y = area.Y + Math.Max(0, (area.Height - snapshot.Height) / 2) - RootOrigin.Y;
         window.PlaceAt(x, y);
-        server.MoveTopLevel(handle.Id, x, y);
+        server.MoveTopLevel(handle, x, y);
     }
 
     /// <summary>某个 X 窗口成了活动窗口:键盘焦点给它;顺带把系统剪贴板里别的程序复制的新文本交给 X。</summary>
@@ -412,7 +401,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         {
             return;
         }
-        server.FocusTopLevel(window.Handle.Id);
+        server.FocusTopLevel(window.Handle);
         ApplyKeyboardLayout(server);   // 用户可能在别的程序里切了输入法 / 布局
         FireAndForget.Run(() => OfferSystemClipboardAsync(server, window));
     }
@@ -440,7 +429,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     {
         if (_server is { } server && !_windows.Values.Any(w => w.IsActive))
         {
-            server.FocusTopLevel(0);
+            server.FocusTopLevel(null);
         }
     });
 
@@ -454,9 +443,8 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     }
 
     /// <summary>窗口图标:取不超过 256 的最大一幅(<c>_NET_WM_ICON</c> 是非预乘的 ARGB)。同一份图标只转换一次。</summary>
-    public WindowIcon? IconFor(XTopLevelWindow handle)
+    public WindowIcon? IconFor(IReadOnlyList<XWindowIcon> icons)
     {
-        IReadOnlyList<XWindowIcon> icons = handle.Icons;
         if (ReferenceEquals(_iconCache.Source, icons))
         {
             return _iconCache.Icon;

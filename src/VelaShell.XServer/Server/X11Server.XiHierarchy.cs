@@ -14,8 +14,9 @@
 //   指针位置、焦点与抓取仍是一份(不是完整的多指针 X,见架构 §7)。
 
 using VelaShell.XServer.Protocol;
+using VelaShell.XServer.Server;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {

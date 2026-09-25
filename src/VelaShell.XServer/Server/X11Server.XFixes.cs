@@ -13,22 +13,13 @@
 using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
-
-/// <summary>XFIXES 的区域对象。</summary>
-internal sealed class XRegionResource(uint id, XClient? owner, Region region) : XResource(id, owner)
-{
-    public Region Region { get; set; } = region;
-}
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
-    private const byte XFixesMajor = 131;
-    private const byte XFixesEventBase = 65;   // SelectionNotify = +0,CursorNotify = +1
-    private const byte XFixesErrorBase = 128;  // BadRegion = +0
-
     /// <summary>SelectSelectionInput 的登记:(客户端, 窗口, 选区) → 掩码。</summary>
     private readonly Dictionary<(XClient Client, XWindow Window, uint Selection), uint> _selectionInputs = [];
 
@@ -246,15 +237,23 @@ public sealed partial class X11Server
                     SetPictureClipRegion(picture, regionId == 0 ? null : RegionRes(regionId).Region.Clone(), x, y);
                     break;
                 }
-            case 23:  // SetCursorName:名字只用于 GetCursorName 回显
+            case 23:  // SetCursorName:记下名字,宿主据此推出光标形状
+                {
+                    XCursorResource cursor = CursorRes(r.U32());
+                    int length = r.U16();
+                    r.Skip(2);
+                    SetCursorName(cursor, r.String8(length));
+                    break;
+                }
             case 26:  // ChangeCursor
             case 27:  // ChangeCursorByName
                 break;
             case 24:  // GetCursorName
                 {
-                    uint cursor = r.U32();
-                    _ = Lookup<XCursor>(cursor) ?? throw new XProtocolError(XErrorCode.Cursor, cursor);
-                    c.Reply(0, w => w.U32(0).U16(0).Zero(18));
+                    string name = CursorRes(r.U32()).Name ?? "";
+                    uint atom = name.Length == 0 ? 0 : Intern(name);
+                    byte[] bytes = XWire.Latin1.GetBytes(name);
+                    c.Reply(0, w => w.U32(atom).U16((ushort)bytes.Length).Zero(18).Bytes(bytes));
                     break;
                 }
             case 25:  // GetCursorImageAndName
@@ -376,18 +375,25 @@ public sealed partial class X11Server
         }
     }
 
-    /// <summary>客户端断开 / 窗口销毁时清掉 XFIXES 的登记。</summary>
-    private void CleanupXFixes(XClient? client, XWindow? window)
+    private XCursorResource CursorRes(uint id) => Lookup<XCursorResource>(id) ?? throw new XProtocolError(XErrorCode.Cursor, id);
+
+    /// <summary>客户端断开:清掉它的 XFIXES 登记。</summary>
+    private void CleanupXFixes(XClient client) => RemoveXFixesEntries((c, _) => ReferenceEquals(c, client));
+
+    /// <summary>窗口销毁:清掉登记在它上面的 XFIXES 登记。</summary>
+    private void CleanupXFixes(XWindow window) => RemoveXFixesEntries((_, w) => ReferenceEquals(w, window));
+
+    private void RemoveXFixesEntries(Func<XClient, XWindow, bool> match)
     {
-        foreach (var key in _selectionInputs.Keys.Where(k => ReferenceEquals(k.Client, client) || ReferenceEquals(k.Window, window)).ToArray())
+        foreach (var key in _selectionInputs.Keys.Where(k => match(k.Client, k.Window)).ToArray())
         {
             _selectionInputs.Remove(key);
         }
-        foreach (var key in _cursorInputs.Keys.Where(k => ReferenceEquals(k.Client, client) || ReferenceEquals(k.Window, window)).ToArray())
+        foreach (var key in _cursorInputs.Keys.Where(k => match(k.Client, k.Window)).ToArray())
         {
             _cursorInputs.Remove(key);
         }
-        foreach (var key in _hiddenCursors.Keys.Where(k => ReferenceEquals(k.Client, client) || ReferenceEquals(k.Window, window)).ToArray())
+        foreach (var key in _hiddenCursors.Keys.Where(k => match(k.Client, k.Window)).ToArray())
         {
             _hiddenCursors.Remove(key);
         }

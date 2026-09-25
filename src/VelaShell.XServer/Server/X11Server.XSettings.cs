@@ -16,7 +16,7 @@ using System.Text;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
@@ -27,27 +27,17 @@ public sealed partial class X11Server
     private void InitXSettings()
     {
         _dpi = _options.Dpi;
-        _scale = Math.Max(1, _options.ScaleFactor);
+        _scale = _options.ScaleFactor;
         _selections[Intern("_XSETTINGS_S0")] = (SelectionWindow, null, 0);
         PublishDisplaySettings();
     }
 
-    /// <summary>
-    /// 宿主的 DPI / 缩放变了(窗口挪到了另一台显示器、用户改了系统缩放):更新 XSETTINGS(Xft/DPI、Gdk/WindowScalingFactor、
-    /// Gdk/UnscaledDPI)与根窗口的 RESOURCE_MANAGER(Xft.dpi)。GTK 立刻按新值重排;Xlib / Xft 与 Qt 程序在下次启动时生效。
-    /// </summary>
-    /// <param name="dpi">每英寸像素数(实际像素,如 2 倍缩放的 192)。</param>
-    /// <param name="scale">整数缩放倍数(GTK 的窗口缩放)。</param>
-    public void SetDisplayScale(int dpi, int scale = 1)
+    /// <summary>宿主的 DPI / 缩放变了(见 <see cref="SetDisplayScale" />):重新发布 XSETTINGS 与 RESOURCE_MANAGER。</summary>
+    private void ApplyDisplayScale(int dpi, int scale)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(dpi, 1);
-        ArgumentOutOfRangeException.ThrowIfLessThan(scale, 1);
-        Post(null, () =>
-        {
-            _dpi = dpi;
-            _scale = scale;
-            PublishDisplaySettings();
-        });
+        _dpi = dpi;
+        _scale = scale;
+        PublishDisplaySettings();
     }
 
     /// <summary>写 _XSETTINGS_SETTINGS(serial 递增)与 RESOURCE_MANAGER,并发 PropertyNotify。</summary>

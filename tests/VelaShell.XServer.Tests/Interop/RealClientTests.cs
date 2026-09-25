@@ -2,8 +2,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Interop;
@@ -18,7 +16,7 @@ namespace VelaShell.XServer.Tests.Interop;
 /// MSTest 会把早退记为通过,**看 [SKIP] 行才知道跑没跑**(与宿主的 DockerIntegration 同一约定)。
 /// </para>
 /// <para>
-/// 验收标准是「没有协议错误 + 画出了东西」:每条发给客户端的错误都经 <see cref="XServerOptions.Log" /> 收集,
+/// 验收标准是「没有协议错误 + 画出了东西」:每条发给客户端的错误都经 <see cref="X11ServerOptions.Log" /> 收集,
 /// 断言为空;顶层窗口里必须有不同于背景的像素。
 /// </para>
 /// </remarks>
@@ -63,11 +61,11 @@ public sealed class RealClientTests
         return (process.ExitCode, await stdout + await stderr);
     }
 
-    private static (X11Server Server, ConcurrentQueue<string> Errors, byte[] Cookie) StartServer(IXServerHost? host = null)
+    private static (X11Server Server, ConcurrentQueue<string> Errors, byte[] Cookie) StartServer(IX11ServerHost? host = null)
     {
         byte[] cookie = RandomNumberGenerator.GetBytes(16);
         ConcurrentQueue<string> errors = new();
-        X11Server server = new(new XServerOptions
+        X11Server server = new(new X11ServerOptions
         {
             DisplayNumber = DisplayNumber,
             ListenAddress = IPAddress.Any,
@@ -156,7 +154,7 @@ public sealed class RealClientTests
             XTopLevelWindow window = host.Mapped.Values.First();
             (uint[] pixels, _, _) = RecordingHost.Snapshot(window);
             int distinct = pixels.Distinct().Count();
-            TestContext.WriteLine($"{program}: {window.Width}x{window.Height} '{window.Title}',{distinct} 种颜色");
+            TestContext.WriteLine($"{program}: {window.Snapshot.Width}x{window.Snapshot.Height} '{window.Snapshot.Title}',{distinct} 种颜色");
             (_, string output) = await client;
             TestContext.WriteLine(output);
             Assert.IsGreaterThan(1, distinct, "窗口里应当画出了不止背景一种颜色");

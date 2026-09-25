@@ -10,8 +10,9 @@
 using VelaShell.XServer.Fonts;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
+using VelaShell.XServer.Server;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
@@ -29,7 +30,7 @@ public sealed partial class X11Server
         XFont? font = _fonts.Open(name);
         if (font is null)
         {
-            _options.Log?.Invoke($"{c} OpenFont: no font matches '{name}'");
+            Log($"{c} OpenFont: no font matches '{name}'");
             throw new XProtocolError(XErrorCode.Name);
         }
         AddResource(c, new XFontResource(id, c, font));
@@ -221,7 +222,7 @@ public sealed partial class X11Server
             }
         });
     }
-    private void ImageTextRequest(XRequestReader r, bool wide)
+    private void ImageText(XRequestReader r, bool wide)
     {
         int n = r.Data;
         uint drawable = r.U32(), gcId = r.U32();

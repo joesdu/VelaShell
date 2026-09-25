@@ -4,16 +4,22 @@
 // 规范依据(AGENTS.md §2 纪律 1):
 //   X Window System Protocol, X Version 11 —— 第 8 节「Connection Setup」与附录 B「Connection Setup」
 //   (客户端开场 12 字节 + 授权名 / 数据;成功回复的定长部分、FORMAT、SCREEN、DEPTH、VISUALTYPE 的布局;失败回复)
-//   BIG-REQUESTS Extension(请求长度字段为 0 时后跟 4 字节的扩展长度)
+//   BIG-REQUESTS Extension(请求长度字段为 0 时后跟 4 字节的扩展长度;BigReqEnable,次操作码 0:回复 maximum-request-length)
+//   第 10 节「Connection Close」(CloseDownMode = Destroy 时释放该连接的全部资源、选区、抓取)
 
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Diagnostics;
+using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Threading.Channels;
 using VelaShell.XServer.Protocol;
+using VelaShell.XServer.Resources;
+using VelaShell.XServer.Server;
+using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
@@ -31,14 +37,79 @@ public sealed partial class X11Server
 
     private int _nextClientIndex = 1;
 
-    /// <summary>
-    /// 在一条已经建立的双工流上服务一个 X 客户端,直到它断开。
-    /// </summary>
-    /// <param name="stream">双工流(TCP、Unix 套接字、SSH 的 x11 通道……)。</param>
-    /// <param name="isLocal">对端是不是本机;没配置 cookie 时只接受本机连接。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    public Task ServeAsync(Stream stream, bool isLocal = true, CancellationToken cancellationToken = default) =>
-        ServeCoreAsync(stream, isLocal, sameHost: false, peerUid: null, cancellationToken);
+    /// <summary>经 TCP / Unix 套接字接进来的连接(收工时等它们结束)。</summary>
+    private readonly ConcurrentDictionary<Task, byte> _connections = new();
+
+    private TcpListener? _listener;
+    private Task? _acceptTask;
+
+    // ------------------------------------------------------------------ TCP
+
+    private void StartTcpListener()
+    {
+        TcpListener listener = new(_options.ListenAddress, 6000 + _options.DisplayNumber);
+        listener.Start();
+        _listener = listener;
+        Port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        _acceptTask = AcceptLoopAsync(listener, _lifetime.Token);
+    }
+
+    private async Task AcceptLoopAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            TcpClient tcp;
+            try
+            {
+                tcp = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException)
+            {
+                return;
+            }
+            tcp.NoDelay = true;
+            bool local = tcp.Client.RemoteEndPoint is IPEndPoint { Address: var address } && IPAddress.IsLoopback(address);
+            TrackConnection(ServeAndDisposeAsync(tcp, local, cancellationToken));
+        }
+    }
+
+    private async Task ServeAndDisposeAsync(TcpClient tcp, bool local, CancellationToken cancellationToken)
+    {
+        using (tcp)
+        {
+            try
+            {
+                await ServeAsync(tcp.GetStream(), local, cancellationToken).ConfigureAwait(false);
+            }
+            catch (ObjectDisposedException)
+            {
+                // 服务端正在收工。
+            }
+        }
+    }
+
+    /// <summary>登记一个接进来的连接任务,结束时自动摘掉。</summary>
+    private void TrackConnection(Task connection)
+    {
+        _connections.TryAdd(connection, 0);
+        _ = connection.ContinueWith(t => _connections.TryRemove(t, out _), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+    /// <summary>收工时:接进来的连接随 _lifetime 取消而收工,给它们一点时间关掉套接字。</summary>
+    private async Task WaitForConnectionsAsync()
+    {
+        try
+        {
+            await Task.WhenAll(_connections.Keys).WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is TimeoutException or OperationCanceledException or IOException or ObjectDisposedException)
+        {
+            // 收工阶段的异常不关心。
+        }
+    }
+
+    // ------------------------------------------------------------------ 一条连接
 
     /// <param name="stream">连接。</param>
     /// <param name="isLocal">对端是不是本机(没配置 cookie 时只接受本机连接)。</param>
@@ -162,7 +233,7 @@ public sealed partial class X11Server
         XClient client = new(index, bigEndian);
         _clients[index] = client;
         client.Send(BuildSetupReply(client));
-        _options.Log?.Invoke($"{client} connected ({(bigEndian ? "MSB" : "LSB")} first)");
+        Log($"{client} connected ({(bigEndian ? "MSB" : "LSB")} first)");
         return client;
     }
 
@@ -331,18 +402,112 @@ public sealed partial class X11Server
             return;
         }
         client.Closed = true;
-        _options.Log?.Invoke($"{client} disconnected");
+        Log($"{client} disconnected");
         try
         {
             CleanupClient(client);
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"[X11Server] cleanup of {client} failed: {ex}");
+            Log($"cleanup of {client} failed: {ex}");
         }
         if (ReferenceEquals(_serverGrabber, client))
         {
             ReleaseServerGrab();
         }
+    }
+
+    /// <summary>断开的客户端:释放它的资源、选区、抓取与事件选择,再让各扩展清掉自己的那份状态(<see cref="Extension.ClientClosed" />)。</summary>
+    private void CleanupClient(XClient client)
+    {
+        foreach ((uint atom, var owner) in _selections.ToArray())
+        {
+            if (ReferenceEquals(owner.Client, client))
+            {
+                _selections.Remove(atom);
+                NotifySelectionChange(atom, 2, 0, owner.Time);
+            }
+        }
+        if (_fetch is { } fetch && !_selections.ContainsKey(fetch.Selection))
+        {
+            _fetch = null;   // 正在取的选区,属主走了
+        }
+        if (ReferenceEquals(PointerGrab?.Client, client))
+        {
+            PointerGrab = null;
+        }
+        if (ReferenceEquals(KeyboardGrab?.Client, client))
+        {
+            KeyboardGrab = null;
+        }
+
+        // 资源表只扫一遍:分出它的窗口与其余资源。先销毁「挂在别人窗口下」的那些(连同子窗口),再清其余资源。
+        List<XWindow> windows = [];
+        List<XResource> others = [];
+        foreach (XResource resource in _resources.Values)
+        {
+            if (!ReferenceEquals(resource.Owner, client))
+            {
+                continue;
+            }
+            if (resource is XWindow window)
+            {
+                windows.Add(window);
+            }
+            else
+            {
+                others.Add(resource);
+            }
+        }
+        foreach (XWindow window in windows)
+        {
+            if (_resources.ContainsKey(window.Id) && window.Parent is { } parent && !ReferenceEquals(parent.Owner, client))
+            {
+                Destroy(window);
+            }
+        }
+        foreach (XWindow window in windows)
+        {
+            Destroy(window);   // 已随上级销毁的会在里面直接返回
+        }
+        DetachShmSegments(others);
+        foreach (XResource resource in others)
+        {
+            _resources.Remove(resource.Id);
+            if (resource is XPixmap pixmap)
+            {
+                CleanupDamage(pixmap);   // 客户端走了,它的像素图随之销毁:别的客户端建在上面的 Damage 一并销毁
+            }
+        }
+
+        // 它在别人窗口上选的事件、登记的被动抓取一并摘掉。
+        foreach (XResource resource in _resources.Values)
+        {
+            if (resource is XWindow window)
+            {
+                window.EventSelections.Remove(client);
+                window.ButtonGrabs.RemoveAll(g => ReferenceEquals(g.Client, client));
+                window.KeyGrabs.RemoveAll(g => ReferenceEquals(g.Client, client));
+                window.ShapeSelections.Remove(client);
+            }
+        }
+        foreach (Extension extension in _extensionList)
+        {
+            extension.ClientClosed?.Invoke(client);
+        }
+        UpdatePointerWindow();
+        UpdateCursor();
+    }
+
+    // ------------------------------------------------------------------ BIG-REQUESTS
+
+    private static void BigRequests(XClient c, XRequestReader r)
+    {
+        if (r.Data != 0)
+        {
+            throw new XProtocolError(XErrorCode.Request);
+        }
+        c.BigRequestsEnabled = true;
+        c.Reply(0, w => w.U32(MaxBigRequestLength).Zero(20));
     }
 }

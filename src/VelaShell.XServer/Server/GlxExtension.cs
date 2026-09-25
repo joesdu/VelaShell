@@ -24,7 +24,6 @@
 //   GetString / QueryServerString 的串带上结尾的 NUL(STRING8 长度算在内):客户端库按 C 串使用。
 
 using System.Buffers.Binary;
-using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Gl;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
@@ -32,57 +31,22 @@ using VelaShell.XServer.Windowing;
 
 namespace VelaShell.XServer.Server;
 
-/// <summary>GLX 渲染上下文。间接的带一个 <see cref="GlContext" />;直接的只是登记(渲染发生在客户端)。</summary>
-internal sealed class XGlxContext(uint id, XClient owner, X11Server.GlxConfig config, bool direct, GlContext? gl) : XResource(id, owner)
+/// <summary>
+/// GLX 扩展:自己的状态(上下文标签、帧缓冲表面、拼到一半的 RenderLarge)与全部请求处理。自成一体 ——
+/// 只经服务端少数 internal 成员碰资源表、绘图目标与损伤。只在执行线程上用。
+/// </summary>
+internal sealed class GlxExtension(X11Server server)
 {
-    public X11Server.GlxConfig Config { get; } = config;
-
-    public bool Direct { get; } = direct;
-
-    public GlContext? Gl { get; } = gl;
-
-    /// <summary>当前在哪个客户端的哪个标签上;不是当前时为 null。</summary>
-    public (XClient Client, uint Tag)? Current { get; set; }
-}
-
-/// <summary>GLX 可绘对象:GLXWindow / GLXPixmap / GLXPbuffer。</summary>
-internal sealed class XGlxDrawable(uint id, XClient owner, X11Server.GlxDrawableKind kind, uint target, X11Server.GlxConfig config)
-    : XResource(id, owner)
-{
-    public X11Server.GlxDrawableKind Kind { get; } = kind;
-
-    /// <summary>对应的 X 窗口 / 像素图;Pbuffer 为 0。</summary>
-    public uint Target { get; } = target;
-
-    public X11Server.GlxConfig Config { get; } = config;
-
-    public uint EventMask { get; set; }
-
-    public int PbufferWidth { get; init; }
-
-    public int PbufferHeight { get; init; }
-
-    public bool PreservedContents { get; init; }
-
-    public bool LargestPbuffer { get; init; }
-}
-
-public sealed partial class X11Server
-{
-    private const byte GlxMajor = 148;
-    private const byte GlxEventBase = 92;   // PbufferClobber
-    private const byte GlxErrorBase = 150;
-
-    private const byte GlxBadContext = GlxErrorBase + 0;
-    private const byte GlxBadDrawable = GlxErrorBase + 2;
-    private const byte GlxBadPixmap = GlxErrorBase + 3;
-    private const byte GlxBadContextTag = GlxErrorBase + 4;
-    private const byte GlxBadRenderRequest = GlxErrorBase + 6;
-    private const byte GlxBadLargeRequest = GlxErrorBase + 7;
-    private const byte GlxUnsupportedPrivateRequest = GlxErrorBase + 8;
-    private const byte GlxBadFBConfig = GlxErrorBase + 9;
-    private const byte GlxBadPbuffer = GlxErrorBase + 10;
-    private const byte GlxBadWindow = GlxErrorBase + 12;
+    private const byte GlxBadContext = X11Server.GlxErrorBase + 0;
+    private const byte GlxBadDrawable = X11Server.GlxErrorBase + 2;
+    private const byte GlxBadPixmap = X11Server.GlxErrorBase + 3;
+    private const byte GlxBadContextTag = X11Server.GlxErrorBase + 4;
+    private const byte GlxBadRenderRequest = X11Server.GlxErrorBase + 6;
+    private const byte GlxBadLargeRequest = X11Server.GlxErrorBase + 7;
+    private const byte GlxUnsupportedPrivateRequest = X11Server.GlxErrorBase + 8;
+    private const byte GlxBadFBConfig = X11Server.GlxErrorBase + 9;
+    private const byte GlxBadPbuffer = X11Server.GlxErrorBase + 10;
+    private const byte GlxBadWindow = X11Server.GlxErrorBase + 12;
 
     // GLX 枚举(glx.xml)
     private const uint GLX_VENDOR = 1, GLX_VERSION = 2, GLX_EXTENSIONS = 3;
@@ -117,10 +81,10 @@ public sealed partial class X11Server
 
     private static readonly GlxConfig[] GlxConfigs =
     [
-        new(0x101, RootVisualId, 24, DoubleBuffer: true, Alpha: false),
-        new(0x102, RootVisualId, 24, DoubleBuffer: false, Alpha: false),
-        new(0x103, ArgbVisualId, 32, DoubleBuffer: true, Alpha: true),
-        new(0x104, ArgbVisualId, 32, DoubleBuffer: false, Alpha: true),
+        new(0x101, X11Server.RootVisualId, 24, DoubleBuffer: true, Alpha: false),
+        new(0x102, X11Server.RootVisualId, 24, DoubleBuffer: false, Alpha: false),
+        new(0x103, X11Server.ArgbVisualId, 32, DoubleBuffer: true, Alpha: true),
+        new(0x104, X11Server.ArgbVisualId, 32, DoubleBuffer: false, Alpha: true),
     ];
 
     /// <summary>GLX 1.2 的视觉配置:每个视觉一条,取它的双缓冲配置。</summary>
@@ -156,7 +120,8 @@ public sealed partial class X11Server
 
     private static XProtocolError GlxError(byte code, uint value = 0) => new((XErrorCode)code, value);
 
-    private void Glx(XClient c, XRequestReader r)
+    /// <summary>一条 GLX 请求(按次操作码分派)。</summary>
+    public void Handle(XClient c, XRequestReader r)
     {
         byte minor = r.Data;
         switch (minor)
@@ -180,8 +145,8 @@ public sealed partial class X11Server
             case 4:   // DestroyContext
                 {
                     uint id = r.U32();
-                    _ = Lookup<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
-                    RemoveResource(id);   // 还是当前的上下文要等不再是当前时才真正释放:绑定里留着引用
+                    _ = server.Lookup<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
+                    server.RemoveResource(id);   // 还是当前的上下文要等不再是当前时才真正释放:绑定里留着引用
                     break;
                 }
             case 5:   // MakeCurrent
@@ -193,7 +158,7 @@ public sealed partial class X11Server
             case 6:   // IsDirect
                 {
                     uint id = r.U32();
-                    XGlxContext ctx = Lookup<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
+                    XGlxContext ctx = server.Lookup<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
                     c.Reply(0, w => w.Bool(ctx.Direct).Zero(23));
                     break;
                 }
@@ -214,8 +179,8 @@ public sealed partial class X11Server
             case 10:   // CopyContext
                 {
                     uint source = r.U32(), dest = r.U32(), mask = r.U32(), tag = r.U32();
-                    XGlxContext src = Lookup<XGlxContext>(source) ?? throw GlxError(GlxBadContext, source);
-                    XGlxContext dst = Lookup<XGlxContext>(dest) ?? throw GlxError(GlxBadContext, dest);
+                    XGlxContext src = server.Lookup<XGlxContext>(source) ?? throw GlxError(GlxBadContext, source);
+                    XGlxContext dst = server.Lookup<XGlxContext>(dest) ?? throw GlxError(GlxBadContext, dest);
                     if (tag != 0 && !ReferenceEquals(GlxBindingOf(c, tag).Context, src))
                     {
                         throw new XProtocolError(XErrorCode.Match);
@@ -266,11 +231,11 @@ public sealed partial class X11Server
             case 23:   // DestroyPixmap
                 {
                     uint id = r.U32();
-                    if (Lookup<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Pixmap })
+                    if (server.Lookup<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Pixmap })
                     {
                         throw GlxError(GlxBadPixmap, id);
                     }
-                    RemoveResource(id);
+                    server.RemoveResource(id);
                     break;
                 }
             case 16:   // VendorPrivate
@@ -322,7 +287,7 @@ public sealed partial class X11Server
             case 25:   // QueryContext
                 {
                     uint id = r.U32();
-                    XGlxContext ctx = Lookup<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
+                    XGlxContext ctx = server.Lookup<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
                     ReplyAttributes(c, [(GLX_FBCONFIG_ID, ctx.Config.Id), (GLX_RENDER_TYPE, GLX_RGBA_TYPE), (GLX_SCREEN, 0)]);
                     break;
                 }
@@ -338,11 +303,11 @@ public sealed partial class X11Server
             case 28:   // DestroyPbuffer
                 {
                     uint id = r.U32();
-                    if (Lookup<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Pbuffer })
+                    if (server.Lookup<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Pbuffer })
                     {
                         throw GlxError(GlxBadPbuffer, id);
                     }
-                    RemoveResource(id);
+                    server.RemoveResource(id);
                     _glxSurfaces.Remove(id);
                     break;
                 }
@@ -353,7 +318,7 @@ public sealed partial class X11Server
                 {
                     uint id = r.U32();
                     uint count = r.U32();
-                    XGlxDrawable drawable = Lookup<XGlxDrawable>(id) ?? throw GlxError(GlxBadDrawable, id);
+                    XGlxDrawable drawable = server.Lookup<XGlxDrawable>(id) ?? throw GlxError(GlxBadDrawable, id);
                     for (uint i = 0; i < count; i++)
                     {
                         uint attribute = r.U32(), value = r.U32();
@@ -370,26 +335,26 @@ public sealed partial class X11Server
                     uint screen = r.U32(), fbconfig = r.U32(), window = r.U32(), glxWindow = r.U32();
                     CheckGlxScreen(screen);
                     GlxConfig config = FbConfig(fbconfig);
-                    XWindow target = Lookup<XWindow>(window) ?? throw GlxError(GlxBadWindow, window);
+                    XWindow target = server.Lookup<XWindow>(window) ?? throw GlxError(GlxBadWindow, window);
                     if (target.Depth != config.Depth || target.IsInputOnly)
                     {
                         throw new XProtocolError(XErrorCode.Match);
                     }
-                    if (_resources.Values.OfType<XGlxDrawable>().Any(d => d.Kind == GlxDrawableKind.Window && d.Target == window))
+                    if (server.AllResources.OfType<XGlxDrawable>().Any(d => d.Kind == GlxDrawableKind.Window && d.Target == window))
                     {
                         throw new XProtocolError(XErrorCode.Alloc);   // 一个窗口只能有一个 GLXWindow
                     }
-                    AddResource(c, new XGlxDrawable(glxWindow, c, GlxDrawableKind.Window, window, config));
+                    server.AddResource(c, new XGlxDrawable(glxWindow, c, GlxDrawableKind.Window, window, config));
                     break;
                 }
             case 32:   // DestroyWindow
                 {
                     uint id = r.U32();
-                    if (Lookup<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Window })
+                    if (server.Lookup<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Window })
                     {
                         throw GlxError(GlxBadWindow, id);
                     }
-                    RemoveResource(id);
+                    server.RemoveResource(id);
                     break;
                 }
             case >= 101 and <= 159:
@@ -417,24 +382,24 @@ public sealed partial class X11Server
         XGlxContext? share = null;
         if (shareId != 0)
         {
-            share = Lookup<XGlxContext>(shareId) ?? throw GlxError(GlxBadContext, shareId);
+            share = server.Lookup<XGlxContext>(shareId) ?? throw GlxError(GlxBadContext, shareId);
             if (share.Direct != direct)
             {
                 throw new XProtocolError(XErrorCode.Match);   // 直接与间接上下文不在同一个地址空间
             }
         }
         GlContext? gl = direct ? null : new GlContext(config.DoubleBuffer, config.Alpha, share?.Gl?.Shared);
-        AddResource(c, new XGlxContext(id, c, config, direct, gl));
+        server.AddResource(c, new XGlxContext(id, c, config, direct, gl));
     }
 
     private void CreateGlxPixmap(XClient c, uint glxPixmap, uint pixmap, GlxConfig config)
     {
-        XPixmap target = Lookup<XPixmap>(pixmap) ?? throw new XProtocolError(XErrorCode.Pixmap, pixmap);
+        XPixmap target = server.Lookup<XPixmap>(pixmap) ?? throw new XProtocolError(XErrorCode.Pixmap, pixmap);
         if (target.Depth != config.Depth)
         {
             throw new XProtocolError(XErrorCode.Match);
         }
-        AddResource(c, new XGlxDrawable(glxPixmap, c, GlxDrawableKind.Pixmap, pixmap, config));
+        server.AddResource(c, new XGlxDrawable(glxPixmap, c, GlxDrawableKind.Pixmap, pixmap, config));
     }
 
     private void GlxCreatePbuffer(XClient c, XRequestReader r)
@@ -471,7 +436,7 @@ public sealed partial class X11Server
             }
             (width, height) = (Math.Min(width, MaxPbufferSize), Math.Min(height, MaxPbufferSize));
         }
-        AddResource(c, new XGlxDrawable(id, c, GlxDrawableKind.Pbuffer, 0, config)
+        server.AddResource(c, new XGlxDrawable(id, c, GlxDrawableKind.Pbuffer, 0, config)
         {
             PbufferWidth = width,
             PbufferHeight = height,
@@ -488,18 +453,18 @@ public sealed partial class X11Server
     /// </summary>
     private (uint Key, (int Width, int Height) Size, GlxConfig? Config) ResolveGlxDrawable(uint id, GlxConfig? contextConfig)
     {
-        switch (Lookup<XResource>(id))
+        switch (server.Lookup<XResource>(id))
         {
             case XGlxDrawable { Kind: GlxDrawableKind.Pbuffer } pbuffer:
                 return (id, (pbuffer.PbufferWidth, pbuffer.PbufferHeight), pbuffer.Config);
             case XGlxDrawable { Kind: GlxDrawableKind.Window } glxWindow:
                 {
-                    XWindow window = Lookup<XWindow>(glxWindow.Target) ?? throw GlxError(GlxBadWindow, id);
+                    XWindow window = server.Lookup<XWindow>(glxWindow.Target) ?? throw GlxError(GlxBadWindow, id);
                     return (window.Id, (window.Width, window.Height), glxWindow.Config);
                 }
             case XGlxDrawable glxPixmap:
                 {
-                    XPixmap pixmap = Lookup<XPixmap>(glxPixmap.Target) ?? throw GlxError(GlxBadPixmap, id);
+                    XPixmap pixmap = server.Lookup<XPixmap>(glxPixmap.Target) ?? throw GlxError(GlxBadPixmap, id);
                     return (pixmap.Id, (pixmap.Width, pixmap.Height), glxPixmap.Config);
                 }
             case XWindow window:
@@ -568,11 +533,11 @@ public sealed partial class X11Server
     private void PresentSurface(uint key, GlSurface surface)
     {
         surface.FrontDirty = false;
-        switch (Lookup<XResource>(key))
+        switch (server.Lookup<XResource>(key))
         {
             case XWindow window:
                 {
-                    if (DrawTarget(window.Id, null) is not { } target)
+                    if (server.DrawTarget(window.Id, null) is not { } target)
                     {
                         return;
                     }
@@ -593,7 +558,7 @@ public sealed partial class X11Server
                     }
                     if (target.TopLevel is { } top)
                     {
-                        MarkDamage(top, target.Clip);
+                        server.MarkDamage(top, target.Clip);
                     }
                     break;
                 }
@@ -608,10 +573,7 @@ public sealed partial class X11Server
                             pixmap.Buffer.Pixels[(y * pixmap.Width) + x] = surface.Front[(y * surface.Width) + x] & mask;
                         }
                     }
-                    if (_damageObjects.Count != 0)
-                    {
-                        NotePixmapDrawn(pixmap, new XRect(0, 0, w, h));
-                    }
+                    server.NotePixmapDrawn(pixmap, new XRect(0, 0, w, h));
                     break;
                 }
             case XGlxDrawable { Kind: GlxDrawableKind.Pbuffer }:
@@ -645,7 +607,7 @@ public sealed partial class X11Server
             c.Reply(0, w => w.U32(0).Zero(20));
             return;
         }
-        XGlxContext context = Lookup<XGlxContext>(contextId) ?? throw GlxError(GlxBadContext, contextId);
+        XGlxContext context = server.Lookup<XGlxContext>(contextId) ?? throw GlxError(GlxBadContext, contextId);
         if (drawable == 0 || read == 0)
         {
             throw new XProtocolError(XErrorCode.Match);
@@ -696,7 +658,7 @@ public sealed partial class X11Server
     }
 
     /// <summary>客户端断开:它的标签作废,上下文不再是当前;拼到一半的 RenderLarge 丢掉。</summary>
-    private void CleanupGlx(XClient client)
+    public void CleanupClient(XClient client)
     {
         _glxLarge.Remove(client);
         if (_glxTags.Remove(client, out var tags))
@@ -710,7 +672,7 @@ public sealed partial class X11Server
     }
 
     /// <summary>窗口销毁:它的表面随之丢掉。</summary>
-    private void CleanupGlxWindow(XWindow window) => _glxSurfaces.Remove(window.Id);
+    public void CleanupWindow(XWindow window) => _glxSurfaces.Remove(window.Id);
 
     // ------------------------------------------------------------------ 渲染请求
 
@@ -723,7 +685,7 @@ public sealed partial class X11Server
         return (binding, gl);
     }
 
-    private const byte GlxBadContextState = GlxErrorBase + 1;
+    private const byte GlxBadContextState = X11Server.GlxErrorBase + 1;
 
     private void GlxRender(XClient c, XRequestReader r)
     {
@@ -1179,7 +1141,7 @@ public sealed partial class X11Server
     private void ReplyDrawableAttributes(XClient c, uint id)
     {
         List<(uint, uint)> attributes;
-        switch (Lookup<XResource>(id))
+        switch (server.Lookup<XResource>(id))
         {
             case XGlxDrawable { Kind: GlxDrawableKind.Pbuffer } p:
                 attributes =
@@ -1222,7 +1184,7 @@ public sealed partial class X11Server
         {
             throw GlxError(GlxBadContextState, tag);
         }
-        Fonts.XFont font = Lookup<XFontResource>(fontId)?.Font ?? throw new XProtocolError(XErrorCode.Font, fontId);
+        Fonts.XFont font = server.Lookup<XFontResource>(fontId)?.Font ?? throw new XProtocolError(XErrorCode.Font, fontId);
         if (count > 65536)
         {
             throw new XProtocolError(XErrorCode.Value, count);

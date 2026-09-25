@@ -1,9 +1,9 @@
 using Avalonia.Input;
-using VelaShell.XServer.Host;
+using VelaShell.XServer;
 
 namespace VelaShell.Services.XServer;
 
-/// <summary>Avalonia 的输入 → X 的键码、按钮号与光标字形。</summary>
+/// <summary>Avalonia 的输入 → X 的键码与按钮号;X 的光标形状 → 系统光标。</summary>
 /// <remarks>
 /// 按<b>物理键</b>(<see cref="PhysicalKey" />,与键盘布局无关的位置)翻:X 客户端拿到键码后按服务端的键位表自己
 /// 解释成字符,与 X.Org 在 Linux 上的做法一致。换算成哪个字符由服务端的键位表决定,不由宿主决定。
@@ -132,29 +132,30 @@ internal static class XInputMap
         _ => 0,
     };
 
-    /// <summary>
-    /// cursor 字体字形号(协议附录 B「cursor font」里的编号)→ 系统光标。−1 默认箭头,−2 隐藏;认不出来的给箭头。
-    /// </summary>
-    public static StandardCursorType Cursor(int glyph) => glyph switch
+    /// <summary>光标的语义形状(服务端从字形号 / 光标名推出)→ 系统光标。</summary>
+    public static StandardCursorType Cursor(XCursorShape shape) => shape switch
     {
-        -2 => StandardCursorType.None,
-        0 or 24 or 88 => StandardCursorType.No,                  // X_cursor、circle、pirate
-        12 => StandardCursorType.BottomLeftCorner,
-        14 => StandardCursorType.BottomRightCorner,
-        16 => StandardCursorType.BottomSide,
-        30 or 34 or 90 or 130 => StandardCursorType.Cross,        // cross、crosshair、plus、tcross
-        52 or 120 => StandardCursorType.SizeAll,                  // fleur、sizing
-        58 or 60 => StandardCursorType.Hand,                      // hand1、hand2
-        70 => StandardCursorType.LeftSide,
-        92 => StandardCursorType.Help,                            // question_arrow
-        96 => StandardCursorType.RightSide,
-        108 => StandardCursorType.SizeWestEast,                   // sb_h_double_arrow
-        116 => StandardCursorType.SizeNorthSouth,                 // sb_v_double_arrow
-        134 => StandardCursorType.TopLeftCorner,
-        136 => StandardCursorType.TopRightCorner,
-        138 => StandardCursorType.TopSide,
-        150 => StandardCursorType.Wait,                           // watch
-        152 => StandardCursorType.Ibeam,                          // xterm
+        XCursorShape.Hidden => StandardCursorType.None,
+        XCursorShape.Text => StandardCursorType.Ibeam,
+        XCursorShape.Wait => StandardCursorType.Wait,
+        XCursorShape.Progress => StandardCursorType.AppStarting,
+        XCursorShape.Help => StandardCursorType.Help,
+        XCursorShape.Hand => StandardCursorType.Hand,
+        XCursorShape.Crosshair => StandardCursorType.Cross,
+        XCursorShape.Move => StandardCursorType.SizeAll,
+        XCursorShape.NotAllowed => StandardCursorType.No,
+        XCursorShape.ResizeNorth => StandardCursorType.TopSide,
+        XCursorShape.ResizeSouth => StandardCursorType.BottomSide,
+        XCursorShape.ResizeEast => StandardCursorType.RightSide,
+        XCursorShape.ResizeWest => StandardCursorType.LeftSide,
+        XCursorShape.ResizeNorthWest => StandardCursorType.TopLeftCorner,
+        XCursorShape.ResizeNorthEast => StandardCursorType.TopRightCorner,
+        XCursorShape.ResizeSouthWest => StandardCursorType.BottomLeftCorner,
+        XCursorShape.ResizeSouthEast => StandardCursorType.BottomRightCorner,
+        XCursorShape.ResizeNorthSouth => StandardCursorType.SizeNorthSouth,
+        XCursorShape.ResizeEastWest => StandardCursorType.SizeWestEast,
+        XCursorShape.DragCopy => StandardCursorType.DragCopy,
+        XCursorShape.DragLink => StandardCursorType.DragLink,
         _ => StandardCursorType.Arrow,
     };
 }
