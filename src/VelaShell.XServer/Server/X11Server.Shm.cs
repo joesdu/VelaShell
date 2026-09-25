@@ -15,9 +15,9 @@
 //   可以借服务端之手读写别的用户的共享内存。
 //   共享像素图(CreatePixmap)不支持:服务端的像素图是托管的缓冲;QueryVersion 如实回 shared-pixmaps = False。
 
-using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
 
@@ -158,8 +158,10 @@ public sealed partial class X11Server
         }
         if ((long)totalWidth * totalHeight > MaxShmImagePixels)
         {
-            throw new XProtocolError(XErrorCode.Alloc);   // 位图格式一个字节八个像素:段再大也不按它的大小去分配像素
+            throw new XProtocolError(XErrorCode.Alloc);
         }
+        // 先核对格式与深度,再按它们算长度:XYPixmap 的长度随 depth 线性增长,乱写的 depth 不能先拿去算。
+        ValidateImageFormat(format, depth, targetDepth, 0);
         long length = ImageDataLength(format, depth, totalWidth, totalHeight, 0);
         if (offset + length > segment.Size)
         {
@@ -167,25 +169,16 @@ public sealed partial class X11Server
         }
         if (srcWidth > 0 && srcHeight > 0 && totalWidth > 0 && totalHeight > 0)
         {
-            byte[] data = ArrayPool<byte>.Shared.Rent((int)Math.Max(1, length));
-            uint[] whole = ArrayPool<uint>.Shared.Rent(totalWidth * totalHeight);
-            uint[] part = ArrayPool<uint>.Shared.Rent(srcWidth * srcHeight);
-            try
+            // 直接读段里的数据,只解 / 只贴源矩形里画得到的那一块:客户端(Qt、GTK)常常是一整幅共享图像里只更新一小块。
+            // 段只在执行线程上摘下(Detach、客户端断开、收工),这里读的时候它一直映射着;
+            // 客户端可能同时在改内容 —— 那只影响像素本身,不影响任何校验。
+            ReadOnlySpan<byte> data;
+            unsafe
             {
-                Marshal.Copy(segment.Address + (nint)offset, data, 0, (int)length);
-                DecodeImage(format, depth, targetDepth, 0, data.AsSpan(0, (int)length), totalWidth, totalHeight, gc, whole);
-                for (int y = 0; y < srcHeight; y++)
-                {
-                    whole.AsSpan(((srcY + y) * totalWidth) + srcX, srcWidth).CopyTo(part.AsSpan(y * srcWidth));
-                }
-                Draw(drawable, gcId, raster => raster.Blit(part, srcWidth, srcHeight, dstX, dstY, preMasked: false));
+                data = new ReadOnlySpan<byte>((byte*)segment.Address + offset, checked((int)length));
             }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(data);
-                ArrayPool<uint>.Shared.Return(whole);
-                ArrayPool<uint>.Shared.Return(part);
-            }
+            PutImageRegion(drawable, gc, targetDepth, format, depth, 0, data, totalWidth, totalHeight,
+                new XRect(srcX, srcY, srcWidth, srcHeight), dstX, dstY);
         }
         if (sendEvent)
         {

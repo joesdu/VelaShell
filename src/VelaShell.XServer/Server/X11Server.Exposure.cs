@@ -408,7 +408,7 @@ public sealed partial class X11Server
     {
         if (!_topLevelHandles.TryGetValue(top, out XTopLevelWindow? handle))
         {
-            handle = new XTopLevelWindow(top.Id, PixelLock,
+            handle = new XTopLevelWindow(top.Id, _pixelGate,
                 () => top.Buffer is { } b ? (b.Pixels, b.Width, b.Height) : null);
             _topLevelHandles[top] = handle;
         }

@@ -57,6 +57,8 @@ public sealed partial class X11Server : IAsyncDisposable
     private readonly Dictionary<XWindow, List<XRect>> _damage = [];
     private readonly Dictionary<XWindow, XTopLevelWindow> _topLevelHandles = [];
     private readonly List<WorkItem> _deferred = [];
+    /// <summary>像素锁与宿主的让行计数(见 <see cref="PixelGate" />)。</summary>
+    private readonly PixelGate _pixelGate = new();
 
     private readonly Task _loopTask;
     private TcpListener? _listener;
@@ -86,8 +88,8 @@ public sealed partial class X11Server : IAsyncDisposable
         _loopTask = Task.Run(RunLoopAsync);
     }
 
-    /// <summary>执行一批工作项期间持有的锁;宿主读像素时也拿它(<see cref="XTopLevelWindow.CopyPixels" /> 已经拿了)。</summary>
-    public object PixelLock { get; } = new();
+    /// <summary>执行一批工作项期间持有的锁;宿主读像素时也拿它(<see cref="XTopLevelWindow.ReadPixels" /> 已经拿了)。</summary>
+    public object PixelLock => _pixelGate.Lock;
 
     /// <summary>TCP 监听的端口(6000 + 显示号);没监听时为 0。</summary>
     public int Port { get; private set; }
@@ -207,13 +209,15 @@ public sealed partial class X11Server : IAsyncDisposable
         {
             while (await reader.WaitToReadAsync(_lifetime.Token).ConfigureAwait(false))
             {
+                // lock 不公平:刚放锁就再拿,等着读像素的宿主线程可能一直抢不到。宿主在等就先让它读完。
+                _pixelGate.YieldToHost();
                 lock (PixelLock)
                 {
                     long deadline = Stopwatch.GetTimestamp() + LockBudgetTicks;
                     while (reader.TryRead(out WorkItem item))
                     {
                         RunItem(item);
-                        if (Stopwatch.GetTimestamp() >= deadline)
+                        if (Stopwatch.GetTimestamp() >= deadline || _pixelGate.HostWaiting)
                         {
                             break;
                         }
