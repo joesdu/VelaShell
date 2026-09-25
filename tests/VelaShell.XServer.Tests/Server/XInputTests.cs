@@ -64,6 +64,7 @@ public sealed class XInputTests
         await SelectAsync(c, xi, top, 1, 1u << 2);                             // XIAllMasterDevices:KeyPress
         await core.SendAsync(2, 0, b => b.U32(top).U32(0x800).U32(0x1));      // 另一个客户端:核心 KeyPress
         await core.SyncAsync();
+        await c.SyncAsync();                                                   // 两个客户端的请求都执行完了,再注入
         server.FocusTopLevel(host.Mapped[top]);
         server.InjectKey(38, true);
 

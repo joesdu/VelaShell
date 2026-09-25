@@ -176,6 +176,7 @@ public sealed class HostApiTests
         await c.SendAsync(93, 0, b => b.U32(cursor).U32(pixmap).U32(0)              // CreateCursor,没有 mask
             .U16(0xFFFF).U16(0).U16(0).U16(0).U16(0).U16(0xFFFF).U16(3).U16(4));
         await c.SendAsync(2, 0, b => b.U32(top).U32(0x4000).U32(cursor));           // ChangeWindowAttributes:cursor
+        await c.SyncAsync();
         server.InjectPointerMotion(host.Mapped[top], 5, 5);
         await host.WaitForAsync(() => host.Cursor?.Image is not null);
         XCursorImage image = host.Cursor!.Image!;

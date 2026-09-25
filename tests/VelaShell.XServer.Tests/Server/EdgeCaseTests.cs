@@ -71,6 +71,7 @@ public sealed class EdgeCaseTests
         uint child = c.NewId();
         await c.SendAsync(1, 0, b => b.U32(child).U32(top).I16(20).I16(10).U16(20).U16(20).U16(0).U16(1).U32(0).U32(0));
         await c.SendAsync(8, 0, b => b.U32(child));
+        await c.SyncAsync();
         server.InjectPointerMotion(host.Mapped[top], 100, 100);   // 先移到窗口外
         await DrainAsync(c, EnterNotify);      // 映射时指针可能已在窗口里:那条 Enter 不算
 
