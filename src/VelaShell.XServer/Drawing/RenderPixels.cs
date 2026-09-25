@@ -106,7 +106,7 @@ internal static class RenderOps
     public const byte Clear = 0, Src = 1, Dst = 2, Over = 3, Add = 12, Saturate = 13;
 
     public static bool IsValid(byte op) =>
-        op <= 13 || op is >= 0x10 and <= 0x1B || op is >= 0x20 and <= 0x2B || op is >= 0x30 and <= 0x3E;
+        op is <= 13 or >= 0x10 and <= 0x1B or >= 0x20 and <= 0x2B or >= 0x30 and <= 0x3E;
 
     /// <summary>
     /// 合成一个像素。<paramref name="s" /> 是已经乘过遮罩的源颜色(alpha 通道也在里面);

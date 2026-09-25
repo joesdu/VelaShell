@@ -1049,7 +1049,7 @@ public sealed partial class X11Server
         ushort modifiers = r.U16();
         byte key = r.U8();
         (bool pointerSync, bool keyboardSync) = ReadGrabModes(r);
-        if (key != 0 && (key < Keymap.MinKeycode))
+        if (key is not 0 and < Keymap.MinKeycode)
         {
             throw new XProtocolError(XErrorCode.Value, key);
         }

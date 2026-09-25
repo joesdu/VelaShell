@@ -263,7 +263,7 @@ public sealed partial class X11Server
     private static void CheckXkbDevice(XRequestReader r)
     {
         ushort device = r.U16();
-        if (device != XkbUseCoreKbd && device != XkbDeviceId)
+        if (device is not XkbUseCoreKbd and not XkbDeviceId)
         {
             throw new XProtocolError((XErrorCode)XkbErrorBase, device);
         }
