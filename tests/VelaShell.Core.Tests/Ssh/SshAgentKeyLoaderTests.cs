@@ -163,7 +163,10 @@ public sealed class SshAgentKeyLoaderTests
         using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
         ConnectionInfo privateKey = new()
         {
-            Host = "h", Username = "u", AuthMethod = AuthMethod.PrivateKey, PrivateKeyPath = "C:/keys/id_ed25519",
+            Host = "h",
+            Username = "u",
+            AuthMethod = AuthMethod.PrivateKey,
+            PrivateKeyPath = "C:/keys/id_ed25519",
         };
 
         Assert.IsTrue(SshAgentKeyLoader.TryGetKeyToAdd(
