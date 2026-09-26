@@ -7139,3 +7139,41 @@ SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
 顺带把那段注释里「只在 Windows 上出现」的旧说法改掉（默认的内置引擎各平台都能用，按钮在各平台都出现）。
 
 文档：velashell-docs `host/交互与界面规格.md` / `interaction-and-ui-specs.md` §4A.2 的按钮表同步调整了顺序。
+
+## ✅ 121. 2026-09-26 CI：Windows 上反复出现的 IDE0055 —— 工作区一律签出成 LF（用户反馈）
+
+### 一、现象
+
+- PR #516 的 windows-latest 作业在 `dotnet build -warnaserror` 报 4 条 IDE0055「修正格式」：`SshPacketTransport.cs(553,55)(554,54)`、
+  `X11Server.Connection.cs(301,55)(302,88)`；ubuntu-latest 通过。同一次运行里 macOS 也失败，但那是另一条用例
+  （`TunnelPanelUiTests.HelpDialog_UsesOwnedDialogChrome_AndRendersThemesAndLocales`，期望 `WindowDecorations.None`、实际 `BorderOnly`），与格式无关，本节没动它。
+- 本地编译不报；IDE 却经常在看不出任何问题的地方提示「修正格式」。
+
+### 二、原因
+
+- `.gitattributes` 只写了 `* text=auto`，Git for Windows 自带 `core.autocrlf=true`，于是 Windows 上的工作区是 CRLF；`.editorconfig` 却是 `end_of_line = lf`。
+- Roslyn 格式化器平时不碰已有的换行，但在需要重建空白的位置（这 4 处都是 `=>` 与表达式体之间夹了一行注释）会按 `end_of_line` 写换行，
+  CRLF 就被报成 IDE0055。报出的列号正好是这几行的行尾。
+- 本地不报，是因为 IDE 早把这两处「修」成了 LF：两个文件都是「其余 CRLF、只有这两行 LF」的混合行尾，本地工作区这样的混合文件有 73 个 ——
+  IDE 提示的「格式修正」改的就是这些看不见的换行。提交时 `text=auto` 把它们统一成 LF，CI 在 Windows 上重新签出成 CRLF，又报。
+- 复现：新建一个 CRLF 工作树，编译 `VelaShell.Ssh` → 2 条 IDE0055；只把该文件转成 LF → 0 警告 0 错误。
+
+### 三、做法
+
+- `.gitattributes`：`* text=auto eol=lf`（`eol` 属性压过 `core.autocrlf`，各平台工作区都是 LF）。
+  `*.ps1` / `*.psm1` / `*.psd1` 写 `!eol`，仍由 `core.autocrlf` 决定：Windows 上 CRLF（与 `.editorconfig` 一致），别处 LF ——
+  `scripts/ssh/Update-PublicApi.ps1` 带 `#!/usr/bin/env pwsh`，Linux 上换成 CRLF 就执行不了。`*.cmd` / `*.bat` 定为 `text eol=crlf`（仓库里暂时没有，先定下）。
+- 不改代码，也不改 `.editorconfig` 的 `end_of_line`；只改它那段注释（原注释说 CRLF 工作区「不是风格问题」，不成立）。
+- `CONTRIBUTING.md` / `CONTRIBUTING.en.md` 补一句：规则生效前签出的 CRLF 工作区，在干净状态下执行一次
+  `git rm -r --cached -q . && git reset --hard` 重新签出（git 不会主动重新签出内容没变的文件）。
+- `ui-plan.md` §0 里「文件用 CRLF」改成 LF。
+- 索引里的内容不变（本来就全是 LF），这次提交只动上面这几个文件。
+
+### 四、验证
+
+- 临时工作树按新规则重新签出：文本文件 1708 个 LF、`.ps1` 9 个 CRLF、24 个二进制文件不动，`git status` 干净。
+- 在这个 LF 工作树上跑 CI 同款命令：`dotnet build VelaShell.slnx -c Debug -warnaserror` 0 警告 0 错误；
+  `dotnet test`（排除 DockerIntegration / CrossPlatform / Interop）10 个测试程序集共 4640 条，通过 4629、失败 0、跳过 11
+  （都是按环境记为跳过的用例：文档仓库比对、真实 WinSCP / Xshell 数据、zsh / fish 等）。换成 LF 没有让任何依赖换行的用例在 Windows 上变红。
+
+文档：velashell-docs 没有写行尾约定的地方，不需要改；`CONTRIBUTING*.md` 在本仓库（AGENTS.md 例外清单）。

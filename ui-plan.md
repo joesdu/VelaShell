@@ -9,7 +9,7 @@
   - 界面行为或规格变了，要同步 velashell-docs，`zh/` 与 `en/` 一起改（见 §11）。
   - 提交信息与 PR 描述不加任何 AI 工具署名；只有用户要求时才提交、建 PR。
   - 不用 Python；脚本用 PowerShell 或 C# 单文件程序。
-  - 文件用 CRLF、UTF-8 无 BOM；构建开着 `TreatWarningsAsErrors`（含 XML 文档注释与 IDE 分析器）。
+  - 文件用 LF、UTF-8 无 BOM（`.gitattributes` 在 Windows 上也签出成 LF）；构建开着 `TreatWarningsAsErrors`（含 XML 文档注释与 IDE 分析器）。
   - 不许用「自研」「自建」给东西贴标签。
 - 开发机是 Windows，**跑不了 macOS 和 Linux 的界面**。这两个平台只能保证编译与测试通过，外观与交互由用户实机确认（§8 清单）。
 - Avalonia 版本 12.1.3。§4 的每条结论都来自该版本源码（<https://github.com/AvaloniaUI/Avalonia/tree/12.1.3>），动手前可以再对一遍。

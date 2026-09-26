@@ -127,7 +127,9 @@ Write **why** in the PR description. The diff already shows what changed; only y
 
 `.editorconfig` is authoritative and your IDE applies it. A few easy ones to miss:
 
-- **LF** line endings, **UTF-8**, final newline
+- **LF** line endings, **UTF-8**, final newline. `.gitattributes` checks files out as LF on Windows too;
+  if your working tree predates that rule (still CRLF), the IDE keeps raising IDE0055 around comments —
+  run `git rm -r --cached -q . && git reset --hard` once in a clean tree to check everything out again
 - 4 spaces for C#; **2 spaces for XAML / JSON / XML**
 - `Nullable` and `ImplicitUsings` are enabled repo-wide; `LangVersion` is `preview` (latest syntax such as the `field` keyword is available)
 

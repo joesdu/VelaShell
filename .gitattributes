@@ -1,7 +1,16 @@
 ###############################################################################
-# Set default behavior to automatically normalize line endings.
+# Normalize line endings, and check text files out as LF on every platform so
+# the working tree matches .editorconfig's `end_of_line = lf`.
+#
+# Plain `text=auto` is not enough: Git for Windows ships core.autocrlf=true, so
+# a Windows checkout turns into CRLF. Wherever Roslyn's formatter has to rebuild
+# whitespace (e.g. a comment line between `=>` and the expression body) it
+# writes the newline from end_of_line, so those CRLFs get reported as IDE0055
+# "Fix formatting" -- a build error under CI's -warnaserror on windows-latest,
+# and a formatting hint in the IDE that changes nothing visible. An eol
+# attribute overrides core.autocrlf.
 ###############################################################################
-* text=auto
+* text=auto eol=lf
 
 ###############################################################################
 # Set default behavior for command prompt diff.
@@ -72,3 +81,15 @@
 *.spec    text eol=lf
 *.spec.in text eol=lf
 AppRun    text eol=lf
+
+###############################################################################
+# PowerShell: leave eol unspecified so core.autocrlf decides -- CRLF on Windows
+# (as .editorconfig asks), LF elsewhere, where scripts/ssh/Update-PublicApi.ps1
+# is run through its `#!/usr/bin/env pwsh` shebang and a CRLF would break it.
+# Batch files must be CRLF: cmd.exe mis-parses labels in LF batch files.
+###############################################################################
+*.ps1  !eol
+*.psm1 !eol
+*.psd1 !eol
+*.cmd  text eol=crlf
+*.bat  text eol=crlf

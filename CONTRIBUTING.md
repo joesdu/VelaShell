@@ -128,7 +128,9 @@ PR 描述里写清**为什么**这么改。「改了什么」看 diff 就知道,
 
 `.editorconfig` 是唯一权威,IDE 会自动应用。几条容易踩的:
 
-- 行尾 **LF**,编码 **UTF-8**,文件末尾留空行
+- 行尾 **LF**,编码 **UTF-8**,文件末尾留空行。`.gitattributes` 在 Windows 上也按 LF 签出;
+  若你的工作区是在这条规则之前签出的(还是 CRLF),IDE 会在注释附近反复提示 IDE0055,
+  在干净的工作区里执行一次 `git rm -r --cached -q . && git reset --hard` 重新签出即可
 - C# 缩进 4 空格;**XAML / JSON / XML 缩进 2 空格**
 - `Nullable` 全仓 enable,`ImplicitUsings` enable,`LangVersion` 为 `preview`(可以用最新语法,比如 `field` 关键字)
 
