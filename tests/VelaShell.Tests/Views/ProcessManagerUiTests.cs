@@ -42,12 +42,14 @@ public sealed class ProcessManagerUiTests
         {
             using var fixture = Fixture.Show();
 
-            // 无边框窗口没有系统边框可拖:少了这层 Panel,窗口就完全不能缩放。
+            // 无边框窗口没有系统边框可拖:少了这层 Panel,窗口就完全不能缩放。macOS 的系统外框、
+            // Wayland 的装饰层自带边缘缩放,那两处自绘抓取区让位(WindowChrome)。
             Assert.IsTrue(fixture.Window.CanResize);
             Panel grips = fixture.Window.GetVisualDescendants()
                 .OfType<Panel>()
                 .Single(panel => panel.Name == "ResizeGrips");
-            Assert.IsTrue(grips.IsVisible);
+            ChromePlatform platform = WindowChrome.PlatformOf(fixture.Window)!.Value;
+            Assert.AreEqual(platform is ChromePlatform.Windows or ChromePlatform.LinuxX11, grips.IsVisible, platform.ToString());
             Assert.HasCount(8, grips.Children.OfType<Border>().ToList());
         });
     }
@@ -60,18 +62,23 @@ public sealed class ProcessManagerUiTests
             using var fixture = Fixture.Show();
 
             Border card = fixture.Find<Border>("RootCard");
-            if (OperatingSystem.IsMacOS())
+            switch (WindowChrome.PlatformOf(fixture.Window))
             {
-                // macOS 上这个窗口<b>刻意</b>是不透明矩形:透明窗口会让整窗每帧走全表面
-                // alpha 合成,滚动明显掉帧。圆角交给系统画,自绘的那套一并压平。
-                Assert.AreEqual(default, card.CornerRadius, "macOS 上卡片应是压平的矩形。");
-                Assert.AreEqual(default, card.Margin, "压平后不该再给投影留边距。");
-            }
-            else
-            {
-                // 圆角靠自己画:窗口透明,里面是一张 8px 圆角卡片。指望 DWM 给被拥有的
-                // 弹出窗加圆角是不成立的,那正是这个窗口曾经四角发方的原因。
-                Assert.AreEqual(new CornerRadius(8), card.CornerRadius);
+                case ChromePlatform.Windows:
+                    // 圆角靠自己画:窗口透明,里面是一张 8px 圆角卡片。指望 DWM 给被拥有的
+                    // 弹出窗加圆角是不成立的,那正是这个窗口曾经四角发方的原因。
+                    Assert.AreEqual(new CornerRadius(8), card.CornerRadius);
+                    break;
+                case ChromePlatform.LinuxWayland:
+                    // 描边与阴影在装饰层里,卡片只留描边内侧的圆角。
+                    Assert.AreEqual(new CornerRadius(7), card.CornerRadius);
+                    break;
+                default:
+                    // macOS / X11 刻意是不透明矩形:macOS 的圆角交给系统画(透明窗口滚动掉帧),
+                    // X11 的合成器只认整个窗口矩形。自绘的那套一并压平。
+                    Assert.AreEqual(default, card.CornerRadius, "卡片应是压平的矩形。");
+                    Assert.AreEqual(default, card.Margin, "压平后不该再给投影留边距。");
+                    break;
             }
             Assert.IsTrue(card.ClipToBounds, "内容必须裁到圆角内,否则表格会画到圆角外面。");
         });
@@ -85,11 +92,12 @@ public sealed class ProcessManagerUiTests
             using var fixture = Fixture.Show();
 
             Border card = fixture.Find<Border>("RootCard");
-            if (OperatingSystem.IsMacOS())
+            if (WindowChrome.PlatformOf(fixture.Window) != ChromePlatform.Windows)
             {
-                // macOS 走不透明矩形窗口(见 Window_DrawsItsOwnRoundedCard),投影由系统给,
-                // 自绘的那份被刻意清掉 —— 留着只会画在窗口边缘之外被裁掉。
-                Assert.AreEqual(0, card.BoxShadow.Count, "macOS 上不该再自绘投影。");
+                // 只有 Windows 在卡片外边距里自绘投影:macOS 的投影由系统给,Wayland 的由装饰层画,
+                // X11 是不透明矩形(见 Window_DrawsItsOwnRoundedCard)。卡片上那份被刻意清掉 ——
+                // 留着只会画在窗口边缘之外被裁掉。
+                Assert.AreEqual(0, card.BoxShadow.Count, "只有 Windows 的卡片自绘投影。");
                 return;
             }
 

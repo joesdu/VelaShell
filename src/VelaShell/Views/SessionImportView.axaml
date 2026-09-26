@@ -11,9 +11,6 @@
         Width="568" MaxHeight="668"
         SizeToContent="Height"
         CanResize="False"
-        WindowDecorations="None"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
         WindowStartupLocation="CenterOwner">
   <Window.Styles>
     <Style Selector="Button.dlg-outline">
@@ -51,16 +48,13 @@
     </Style>
   </Window.Styles>
 
-  <Border CornerRadius="8"
+  <Border Classes="window-card"
           Background="{DynamicResource VelaBgSurface}"
-          BorderBrush="{DynamicResource VelaBorderSecondary}"
-          BorderThickness="1"
-          BoxShadow="{DynamicResource VelaShadowWindow}"
-          Margin="16">
-    <Grid RowDefinitions="48,Auto,Auto,Auto,*,52">
+          BorderBrush="{DynamicResource VelaBorderSecondary}">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,52">
 
       <!-- Header -->
-      <Border Grid.Row="0" Height="48" Padding="20,0"
+      <Border Grid.Row="0" Classes="window-titlebar" Padding="20,0"
               PointerPressed="Header_PointerPressed"
               Background="Transparent"
               BorderThickness="0,0,0,1"

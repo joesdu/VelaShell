@@ -1,9 +1,7 @@
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
-using Avalonia.Media;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Resources;
 using VelaShell.ViewModels;
@@ -20,20 +18,8 @@ public partial class ProcessManagerView : Window
     public ProcessManagerView()
     {
         InitializeComponent();
-
-        // macOS 上透明窗口会让整窗每帧走全表面 alpha 合成,滚动明显掉帧(与设置窗口同一处
-        // 结论)。那里改用不透明窗口,并把自绘的圆角/外边距/投影一并抹平成干净矩形 ——
-        // macOS 本身会给窗口圆角,观感不吃亏。
-        if (OperatingSystem.IsMacOS())
-        {
-            TransparencyLevelHint = [WindowTransparencyLevel.None];
-            if (this.TryFindResource("VelaBgPage", out object? page) && page is IBrush brush)
-            {
-                Background = brush; // 不透明窗口须有不透明底色,否则未覆盖区域露黑
-            }
-            RootCard.BoxShadow = default;
-            ApplyCardShape(rounded: false);
-        }
+        // 按平台装外框;最大化时卡片铺满、抓取区让位也由它管(见 WindowChrome)。
+        WindowChrome.Apply(this, WindowChromeKind.Tool, ResizeGrips);
         Opened += OnOpened;
         Closed += OnClosed;
         DataContextChanged += OnDataContextChanged;
@@ -105,48 +91,6 @@ public partial class ProcessManagerView : Window
 
     private void ToggleMaximize() =>
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
-
-    /// <inheritdoc />
-    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
-    {
-        base.OnPropertyChanged(change);
-        if (change.Property != WindowStateProperty)
-        {
-            return;
-        }
-        bool normal = WindowState == WindowState.Normal;
-
-        // 最大化时窗口边缘就是屏幕边缘,抓取区留着只会挡住内容并给出错误的缩放光标。
-        ResizeGrips.IsVisible = normal;
-
-        // 圆角与阴影留白只在普通态成立:最大化后卡片必须铺满,否则四周会透出桌面,
-        // 圆角也会在屏幕边缘切出四个缺口。macOS 已经在构造时压平,这里不再翻回来。
-        if (!OperatingSystem.IsMacOS())
-        {
-            ApplyCardShape(normal);
-        }
-    }
-
-    /// <summary>
-    /// 卡片外圆角 8 与 1px 边框;子元素被布局在边框内侧,内侧圆弧半径是 8−1=7。
-    /// 子元素若也用 8,它的圆角背景会盖住外框在圆弧处的描边 —— 表现为四个角"断线"。
-    /// </summary>
-    private const double InnerRadius = 7;
-
-    /// <summary>
-    /// 切换卡片的圆角形态。标题栏与状态栏必须跟着一起改:它们的背景是方角的,
-    /// 盖在外框上会把圆角处的描边遮掉一小段,看起来就是四个角"断线"。
-    /// </summary>
-    /// <param name="rounded">true = 普通态的圆角浮层,false = 铺满的矩形。</param>
-    private void ApplyCardShape(bool rounded)
-    {
-        RootCard.Margin = rounded ? new Thickness(16) : default;
-        RootCard.BorderThickness = rounded ? new Thickness(1) : default;
-        RootCard.CornerRadius = rounded ? new CornerRadius(8) : default;
-        ResizeGripLayout.Apply(ResizeGrips, rounded);
-        TitleBarStrip.CornerRadius = rounded ? new CornerRadius(InnerRadius, InnerRadius, 0, 0) : default;
-        StatusStrip.CornerRadius = rounded ? new CornerRadius(0, 0, InnerRadius, InnerRadius) : default;
-    }
 
     // 推迟关闭:同步 Close 会让本轮点击的后续路由打到已销毁的窗口(见 WindowCloseExtensions)。
     private void Close_Click(object? sender, RoutedEventArgs e) => this.PostClose();

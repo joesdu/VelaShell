@@ -59,7 +59,7 @@ public partial class MainWindow : Window
     private bool _openedInitialized;
 
     /// <summary>
-    /// 自绘缩放抓取区:普通状态按下即进入原生缩放;最大化时整层隐藏(见 OnPropertyChanged)。
+    /// 自绘缩放抓取区:普通状态按下即进入原生缩放;最大化时与 macOS 上整层隐藏(由 <see cref="WindowChrome" /> 管)。
     /// 只认左键:BeginResizeDrag 在 Win32 上是伪造一条 WM_NCLBUTTONDOWN 进系统 sizing 模态
     /// 循环,而该循环只在左键弹起时退出。用右/中键起手会让循环永远等不到那次弹起,
     /// 表现为松开按键后窗口仍一直跟着光标改尺寸(#116)。标题栏拖动同此守卫。
@@ -77,15 +77,11 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>响应窗口属性变化:窗口状态切换时,按是否普通态显隐自绘缩放抓取区。</summary>
+    /// <summary>响应窗口属性变化:最小化时暂停状态栏采样。</summary>
+    /// <remarks>自绘缩放抓取区的显隐(最大化 / 全屏时让位)由 <see cref="WindowChrome" /> 跟着窗口状态管。</remarks>
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        // 最大化/全屏时缩放抓取区必须让位(否则挡住屏幕边缘 5px 的标题栏与状态栏点击)。
-        if (change.Property == WindowStateProperty && this.FindControl<Panel>("ResizeGrips") is { } grips)
-        {
-            grips.IsVisible = WindowState == WindowState.Normal;
-        }
         // 最小化(含隐入托盘)时暂停状态栏的 SSH 探测与周期 ICMP,恢复时重启。
         if (change.Property == WindowStateProperty && DataContext is MainWindowViewModel vm)
         {
@@ -156,6 +152,9 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        // macOS 换成系统外框(红绿灯、圆角与阴影);其余平台保持自绘无边框,外观不变。
+        // 抓取区交给它:最大化 / 全屏时让位,macOS 上由系统提供边缘缩放。
+        WindowChrome.Apply(this, WindowChromeKind.Main, this.FindControl<Panel>("ResizeGrips"));
         if (this.FindControl<SidebarView>("SidebarHost") is { } sidebar)
         {
             sidebar.OpenConnectionProfileRequested += OnOpenConnectionProfileRequested;

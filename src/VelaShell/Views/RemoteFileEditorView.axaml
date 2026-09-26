@@ -11,9 +11,6 @@
         Width="1160" Height="820"
         MinWidth="528" MinHeight="368"
         CanResize="True"
-        WindowDecorations="None"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
         WindowStartupLocation="CenterOwner">
 
   <!-- SFTP「打开」的内置快速文本编辑器(AvaloniaEdit):远程文件已下载到本地临时副本,
@@ -48,53 +45,40 @@
     </Style>
   </Window.Styles>
 
-  <Border CornerRadius="8"
+  <Border Classes="window-card"
           Background="{DynamicResource VelaBgSurface}"
           BorderBrush="{DynamicResource VelaBorderSecondary}"
-          BorderThickness="1"
-          BoxShadow="{DynamicResource VelaShadowWindow}"
-          Margin="16"
           ClipToBounds="True">
-    <Grid RowDefinitions="48,*,32">
+    <Grid RowDefinitions="Auto,Auto,*,32">
 
-      <!-- 标题栏(可拖动) -->
-      <Border Grid.Row="0" Padding="20,0"
+      <!-- 标题栏(28,与全部窗口一致;可拖动,双击最大化/还原):文件名 + 最大化/关闭。
+           远端路径与保存按钮在下面一行。 -->
+      <Border Grid.Row="0" Padding="20,0,12,0"
+              Classes="window-titlebar"
               Background="Transparent"
               PointerPressed="Header_PointerPressed"
-              DoubleTapped="Header_DoubleTapped"
-              BorderBrush="{DynamicResource VelaBorderPrimary}"
-              BorderThickness="0,0,0,1">
+              DoubleTapped="Header_DoubleTapped">
         <Grid ColumnDefinitions="Auto,*,Auto">
-          <pc:LucideIcon Width="15" Height="15"
-                         Data="{DynamicResource Icon.file-text}"
-                         Foreground="{DynamicResource VelaAccent}"
-                         VerticalAlignment="Center" Margin="0,0,10,0" />
-          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-            <TextBlock Name="TitleText"
-                       Foreground="{DynamicResource VelaTextPrimary}"
-                       FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold"
-                       TextTrimming="CharacterEllipsis" />
-            <TextBlock Name="PathText"
-                       Foreground="{DynamicResource VelaTextMuted}"
-                       FontFamily="{DynamicResource VelaUiMonoFont}"
-                       FontSize="{DynamicResource VelaFontSize10}"
-                       TextTrimming="CharacterEllipsis" />
+          <!-- 让位块只在 macOS 上显出来,给系统红绿灯让位(Themes/WindowChrome.axaml)。 -->
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <Panel Classes="traffic-light-spacer" />
+            <pc:LucideIcon Width="15" Height="15"
+                           Data="{DynamicResource Icon.file-text}"
+                           Foreground="{DynamicResource VelaAccent}"
+                           VerticalAlignment="Center" Margin="0,0,10,0" />
           </StackPanel>
+          <TextBlock Grid.Column="1" Name="TitleText"
+                     VerticalAlignment="Center"
+                     Foreground="{DynamicResource VelaTextPrimary}"
+                     FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold"
+                     TextTrimming="CharacterEllipsis" />
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-            <Button Classes="dlg-primary" Click="Save_Click" ToolTip.Tip="Ctrl+S">
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <pc:LucideIcon Width="12" Height="12"
-                               Data="{DynamicResource Icon.save}"
-                               Foreground="{DynamicResource VelaAccentForeground}" />
-                <TextBlock Text="{loc:Localize Save}" VerticalAlignment="Center" />
-              </StackPanel>
-            </Button>
-            <Button Classes="chrome" Click="Maximize_Click" ToolTip.Tip="{loc:Localize Editor_MaximizeTip}">
+            <Button Classes="chrome window-caption" Click="Maximize_Click" ToolTip.Tip="{loc:Localize Editor_MaximizeTip}">
               <pc:LucideIcon Width="13" Height="13"
                              Data="{DynamicResource Icon.maximize}"
                              Foreground="{DynamicResource VelaTextTertiary}" />
             </Button>
-            <Button Classes="chrome" Click="Close_Click">
+            <Button Classes="chrome window-caption" Click="Close_Click">
               <pc:LucideIcon Width="13" Height="13"
                              Data="{DynamicResource Icon.x}"
                              Foreground="{DynamicResource VelaTextTertiary}" />
@@ -103,8 +87,32 @@
         </Grid>
       </Border>
 
+      <!-- 路径行:远端路径 + 保存。同样可拖动。 -->
+      <Border Grid.Row="1" Padding="20,6"
+              Background="Transparent"
+              PointerPressed="Header_PointerPressed"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
+              BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Name="PathText"
+                     VerticalAlignment="Center"
+                     Foreground="{DynamicResource VelaTextMuted}"
+                     FontFamily="{DynamicResource VelaUiMonoFont}"
+                     FontSize="{DynamicResource VelaFontSize10}"
+                     TextTrimming="CharacterEllipsis" />
+          <Button Grid.Column="1" Classes="dlg-primary" Click="Save_Click" ToolTip.Tip="Ctrl+S">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <pc:LucideIcon Width="12" Height="12"
+                             Data="{DynamicResource Icon.save}"
+                             Foreground="{DynamicResource VelaAccentForeground}" />
+              <TextBlock Text="{loc:Localize Save}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </Grid>
+      </Border>
+
       <!-- 编辑器 -->
-      <Border Grid.Row="1" Background="{DynamicResource VelaBgSftpPanel}">
+      <Border Grid.Row="2" Background="{DynamicResource VelaBgSftpPanel}">
         <ae:TextEditor Name="Editor"
                        FontFamily="{DynamicResource VelaUiMonoFont}"
                        FontSize="{DynamicResource VelaFontSize13}"
@@ -118,7 +126,7 @@
       </Border>
 
       <!-- 状态栏 + 右下角缩放角 -->
-      <Border Grid.Row="2" Padding="20,0,6,0"
+      <Border Grid.Row="3" Padding="20,0,6,0"
               BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,1,0,0">
         <Grid ColumnDefinitions="*,Auto">
@@ -128,7 +136,8 @@
                      FontSize="{DynamicResource VelaFontSize10}"
                      VerticalAlignment="Center"
                      TextTrimming="CharacterEllipsis" />
-          <Border Grid.Column="1" Width="18" Height="18"
+          <!-- 右下角缩放手柄;系统自带边缘缩放时(macOS、Wayland)与最大化时由 WindowChrome 隐去。 -->
+          <Border x:Name="ResizeGrip" Grid.Column="1" Width="18" Height="18"
                   Background="Transparent"
                   Cursor="BottomRightCorner"
                   PointerPressed="ResizeGrip_PointerPressed">

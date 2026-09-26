@@ -16,8 +16,12 @@ namespace VelaShell.Views;
 /// </summary>
 public partial class PluginPermissionDialog : Window
 {
-    /// <summary>设计器构造。</summary>
-    public PluginPermissionDialog() => InitializeComponent();
+    /// <summary>设计器构造;带参构造也经由它初始化组件并按平台装上对话框外框。</summary>
+    public PluginPermissionDialog()
+    {
+        InitializeComponent();
+        WindowChrome.Apply(this, WindowChromeKind.Dialog);
+    }
 
     private PluginPermissionDialog(string title, string message, string preview, string iconKey) : this()
     {

@@ -12,9 +12,6 @@
         Width="428"
         SizeToContent="Height"
         CanResize="False"
-        WindowDecorations="None"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
         WindowStartupLocation="CenterOwner">
 
   <Window.Styles>
@@ -74,16 +71,13 @@
     </Style>
   </Window.Styles>
 
-  <Border CornerRadius="8"
+  <Border Classes="window-card"
           Background="{DynamicResource VelaBgSurface}"
-          BorderBrush="{DynamicResource VelaBorderSecondary}"
-          BorderThickness="1"
-          BoxShadow="{DynamicResource VelaShadowWindow}"
-          Margin="16">
+          BorderBrush="{DynamicResource VelaBorderSecondary}">
     <StackPanel>
 
       <!-- Header -->
-      <Border Height="48" Padding="20,0"
+      <Border Classes="window-titlebar" Padding="20,0"
               PointerPressed="Header_PointerPressed"
               Background="Transparent"
               BorderThickness="0,0,0,1"

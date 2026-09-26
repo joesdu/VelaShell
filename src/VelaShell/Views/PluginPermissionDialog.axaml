@@ -6,9 +6,6 @@
         SizeToContent="Height"
         CanResize="False"
         ShowInTaskbar="False"
-        WindowDecorations="None"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
         WindowStartupLocation="CenterOwner">
 
   <!-- 插件敏感能力授权弹窗(终端回写 / 按已保存配置开会话)。
@@ -51,16 +48,13 @@
     </Style>
   </Window.Styles>
 
-  <Border CornerRadius="8"
+  <Border Classes="window-card"
           Background="{DynamicResource VelaBgSurface}"
           BorderBrush="{DynamicResource VelaBorderSecondary}"
-          BorderThickness="1"
-          BoxShadow="{DynamicResource VelaShadowWindow}"
-          Margin="16"
           ClipToBounds="True">
-    <Grid RowDefinitions="48,Auto,Auto">
+    <Grid RowDefinitions="Auto,Auto,Auto">
 
-      <Border Grid.Row="0" Padding="20,0"
+      <Border Grid.Row="0" Classes="window-titlebar" Padding="20,0"
               Background="Transparent"
               PointerPressed="Header_PointerPressed"
               BorderBrush="{DynamicResource VelaBorderPrimary}"

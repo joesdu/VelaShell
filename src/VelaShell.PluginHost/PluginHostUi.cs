@@ -52,15 +52,16 @@ internal sealed class PluginHostUi(string pluginId, IPluginLogger log, RpcConnec
         IPluginPanel panel = await Dispatcher.UIThread.InvokeAsync(() =>
         {
             Control content = RequireControl(contentFactory());
-            // 自绘卡片壳:透明圆角卡片 + 标题栏 + 三连按钮 + 缩放抓取区,配色用宿主下发的
+            // 自绘卡片壳:按平台的卡片外框 + 标题栏 + 三连按钮 + 缩放抓取区,配色用宿主下发的
             // Vela* 令牌 —— 与主程序资源监视/任务管理器窗口统一。
-            var window = new PluginHostShellWindow(options.Title, pluginId, content, options.TitleActions, options.Icon)
-            {
-                Width = Math.Max(options.WindowWidth, 280),
-                Height = Math.Max(options.WindowHeight, 200),
-                MinWidth = 280,
-                MinHeight = 200
-            };
+            var window = new PluginHostShellWindow(options.Title, pluginId, content, options.TitleActions, options.Icon);
+            // 插件声明的尺寸按 Windows 口径(含卡片外 16px 的投影留白);其它平台没有那圈留白,
+            // 减掉才让卡片的可见尺寸在各平台一致(见 PluginHostShellWindow.SizeReduction)。
+            double inset = window.SizeReduction;
+            window.Width = Math.Max(options.WindowWidth, 280) - inset;
+            window.Height = Math.Max(options.WindowHeight, 200) - inset;
+            window.MinWidth = 280 - inset;
+            window.MinHeight = 200 - inset;
             var created = new LocalPanel(window, log, pluginId);
             window.Show();
             return (IPluginPanel)created;

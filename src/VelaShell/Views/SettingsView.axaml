@@ -13,13 +13,11 @@
         Width="948" Height="768"
         MinWidth="760" MinHeight="480"
         CanResize="True"
-        WindowDecorations="None"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
         WindowStartupLocation="CenterOwner">
 
   <!-- 设置页(设计 §14):宽 720px,左侧导航 200(bg-sidebar,右侧 1px 描边) +
-       右侧可滚动内容区;Ctrl+, 打开;改动在保存后立即生效。 -->
+       右侧可滚动内容区;Ctrl+, 打开;改动在保存后立即生效。
+       窗口尺寸按 Windows 写(含卡片外 16px 的透明边距),其它平台由 WindowChrome.Apply 扣掉边距。 -->
 
   <Window.Styles>
     <!-- 分节标题 -->
@@ -189,26 +187,23 @@
     </Style>
   </Window.Styles>
 
-  <Border x:Name="RootBorder"
-          CornerRadius="8"
+  <!-- 卡片的边距、圆角、描边与阴影按平台切换,见 Themes/WindowChrome.axaml。 -->
+  <Border x:Name="RootBorder" Classes="window-card"
           Background="{DynamicResource VelaBgSurface}"
           BorderBrush="{DynamicResource VelaBorderSecondary}"
-          BorderThickness="1"
-          BoxShadow="{DynamicResource VelaShadowWindow}"
-          Margin="16"
           ClipToBounds="True">
     <Grid ColumnDefinitions="200,*">
 
-      <!-- 左侧导航。CornerRadius 跟随外框左侧圆角:方角的 bg-sidebar 背景会盖住外框在
-           圆角处的描边,看起来像边框断开。取【内】半径 7 = 外圆角 8 − 1px 边框:
-           照抄外面的 8 会让子元素的圆弧与描边的圆弧重合,照样把那段描边盖掉。 -->
+      <!-- 左侧导航。圆角跟随外框左侧圆角(window-card-left):方角的 bg-sidebar 背景会盖住外框在
+           圆角处的描边,看起来像边框断开;取内半径 7,卡片是直角时跟着直角。 -->
       <Border x:Name="NavStrip" Grid.Column="0"
               Background="{DynamicResource VelaBgSidebar}"
               BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,1,0"
-              CornerRadius="7,0,0,7">
+              Classes="window-card-left">
         <Grid RowDefinitions="48,*">
-          <!-- 导航头(可拖动) -->
+          <!-- 导航头(可拖动)。它不是标题栏:没有关闭 / 最小化这类窗口按钮,只是左侧导航的抬头兼拖动区,
+               所以不跟全部窗口统一的 28 标题栏(window-titlebar),保持设计稿的 48,与右侧页面标题的节奏对齐。 -->
           <Border Grid.Row="0" Padding="16,0"
                   Background="Transparent"
                   PointerPressed="Header_PointerPressed"

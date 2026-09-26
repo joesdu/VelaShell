@@ -16,6 +16,7 @@ public partial class ConnectionDiagnosticsView : Window
     public ConnectionDiagnosticsView()
     {
         InitializeComponent();
+        WindowChrome.Apply(this, WindowChromeKind.Dialog);
         Opened += OnOpened;
     }
 

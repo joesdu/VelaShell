@@ -8,9 +8,6 @@
         Width="1208" Height="828"
         MinWidth="868" MinHeight="608"
         CanResize="True"
-        WindowDecorations="None"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
         WindowStartupLocation="CenterOwner">
 
   <!-- 会话录制与回放(设计 NceE6):左栏最近录制列表,右栏终端回放 + 时间轴。 -->
@@ -70,34 +67,67 @@
     <Style Selector="ListBox.rec-list ListBoxItem:selected TextBlock.rec-label">
       <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
     </Style>
+    <!-- 这扇窗的卡片圆角是 10(其余卡片是 8)。只在 Windows 的浮起卡片上生效:
+         其它平台与最大化时由 Themes/WindowChrome.axaml 决定(Wayland 的 7 要对上装饰层的描边,直角时是 0)。
+         写成样式而不是属性,是因为本地值会挡住按平台切换的样式。 -->
+    <Style Selector="Window.chrome-windows:not(.window-card-flat) Border.window-card">
+      <Setter Property="CornerRadius" Value="10" />
+    </Style>
   </Window.Styles>
 
-  <Border CornerRadius="10"
+  <Border Classes="window-card"
           Background="{DynamicResource VelaBgSurface}"
           BorderBrush="{DynamicResource VelaBorderSecondary}"
-          BorderThickness="1"
-          BoxShadow="{DynamicResource VelaShadowWindow}"
-          Margin="16"
           ClipToBounds="True">
-    <Grid RowDefinitions="56,*">
+    <Grid RowDefinitions="Auto,Auto,*">
 
-      <!-- 顶栏(可拖动,双击最大化/还原):标题 + 导出/自动录制/刷新/最大化/关闭 -->
-      <Border Grid.Row="0" Padding="20,0"
+      <!-- 标题栏(28,与全部窗口一致;可拖动,双击最大化/还原):标题 + 最大化/关闭。
+           副标题与导出/刷新/清理/自动录制在下面一行。 -->
+      <Border Grid.Row="0" Padding="20,0,12,0"
+              Classes="window-titlebar"
               Background="Transparent"
               PointerPressed="Header_PointerPressed"
-              DoubleTapped="Header_DoubleTapped"
+              DoubleTapped="Header_DoubleTapped">
+        <Grid ColumnDefinitions="*,Auto">
+          <!-- 让位块只在 macOS 上显出来,给系统红绿灯让位(Themes/WindowChrome.axaml)。 -->
+          <DockPanel>
+            <Panel Classes="traffic-light-spacer" DockPanel.Dock="Left" />
+            <TextBlock Text="{loc:Localize Recorder_Title}"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource VelaTextPrimary}"
+                       FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis" />
+          </DockPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <Button Classes="window-caption" Width="26" Height="26" Background="Transparent" Padding="0"
+                    CornerRadius="3" Cursor="Hand" Click="Maximize_Click"
+                    VerticalAlignment="Center" ToolTip.Tip="{loc:Localize Recorder_MaximizeTip}">
+              <TextBlock Text="▢" FontSize="{DynamicResource VelaFontSize12}" HorizontalAlignment="Center"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+            </Button>
+            <Button Classes="window-caption" Width="26" Height="26" Background="Transparent" Padding="0"
+                    CornerRadius="3" Cursor="Hand" Click="Close_Click"
+                    VerticalAlignment="Center">
+              <TextBlock Text="✕" FontSize="{DynamicResource VelaFontSize13}" HorizontalAlignment="Center"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- 副标题行:说明 + 导出/刷新/清理/自动录制。同样可拖动。 -->
+      <Border Grid.Row="1" Padding="20,6"
+              Background="Transparent"
+              PointerPressed="Header_PointerPressed"
               BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,0,1">
         <Grid ColumnDefinitions="*,Auto">
-          <StackPanel Spacing="2" VerticalAlignment="Center">
-            <TextBlock Text="{loc:Localize Recorder_Title}"
-                       Foreground="{DynamicResource VelaTextPrimary}"
-                       FontSize="{DynamicResource VelaFontSize15}" FontWeight="SemiBold" />
-            <TextBlock Text="{loc:Localize Recorder_Subtitle}"
-                       Foreground="{DynamicResource VelaTextMuted}"
-                       FontFamily="{DynamicResource VelaUiMonoFont}"
-                       FontSize="{DynamicResource VelaFontSize10}" />
-          </StackPanel>
+          <TextBlock Text="{loc:Localize Recorder_Subtitle}"
+                     VerticalAlignment="Center"
+                     Foreground="{DynamicResource VelaTextMuted}"
+                     FontFamily="{DynamicResource VelaUiMonoFont}"
+                     FontSize="{DynamicResource VelaFontSize10}"
+                     TextTrimming="CharacterEllipsis" />
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
             <Button Classes="dlg-outline" Content="{loc:Localize Recorder_Export}"
                     IsEnabled="{Binding HasSelection}"
@@ -112,24 +142,12 @@
             <Button Classes="dlg-accent" Content="{Binding AutoRecordText}"
                     Command="{Binding ToggleAutoRecordCommand}"
                     ToolTip.Tip="{loc:Localize Recorder_AutoRecordTip}" />
-            <Button Width="26" Height="26" Background="Transparent" Padding="0"
-                    CornerRadius="3" Cursor="Hand" Click="Maximize_Click"
-                    VerticalAlignment="Center" ToolTip.Tip="{loc:Localize Recorder_MaximizeTip}">
-              <TextBlock Text="▢" FontSize="{DynamicResource VelaFontSize12}" HorizontalAlignment="Center"
-                         Foreground="{DynamicResource VelaTextTertiary}" />
-            </Button>
-            <Button Width="26" Height="26" Background="Transparent" Padding="0"
-                    CornerRadius="3" Cursor="Hand" Click="Close_Click"
-                    VerticalAlignment="Center">
-              <TextBlock Text="✕" FontSize="{DynamicResource VelaFontSize13}" HorizontalAlignment="Center"
-                         Foreground="{DynamicResource VelaTextTertiary}" />
-            </Button>
           </StackPanel>
         </Grid>
       </Border>
 
       <!-- 主体:左列表 + 右回放 -->
-      <Grid Grid.Row="1" ColumnDefinitions="300,16,*" Margin="20,16">
+      <Grid Grid.Row="2" ColumnDefinitions="300,16,*" Margin="20,16">
 
         <!-- 最近录制列表 -->
         <Border Grid.Column="0" CornerRadius="6"
@@ -229,8 +247,9 @@
         </Border>
       </Grid>
 
-      <!-- 右下角缩放手柄:无边框窗口没有系统缩放边缘,拖动此处调整窗口大小。 -->
-      <Border Grid.Row="1" Width="20" Height="20" ZIndex="10"
+      <!-- 右下角缩放手柄:无边框窗口没有系统缩放边缘,拖动此处调整窗口大小。
+           系统自带边缘缩放时(macOS、Wayland)与最大化时由 WindowChrome 隐去。 -->
+      <Border x:Name="ResizeGrip" Grid.Row="2" Width="20" Height="20" ZIndex="10"
               HorizontalAlignment="Right" VerticalAlignment="Bottom"
               Background="Transparent" Cursor="BottomRightCorner"
               PointerPressed="ResizeGrip_PointerPressed"

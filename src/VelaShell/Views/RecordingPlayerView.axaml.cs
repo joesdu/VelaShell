@@ -29,6 +29,8 @@ public partial class RecordingPlayerView : Window
     public RecordingPlayerView()
     {
         InitializeComponent();
+        // 按平台装外框;最大化时卡片铺满、右下角手柄让位也由它管(见 WindowChrome)。
+        WindowChrome.Apply(this, WindowChromeKind.Tool, ResizeGrip);
 
         // 只读回放终端:不接输入,不参与焦点。
         _terminal = new()

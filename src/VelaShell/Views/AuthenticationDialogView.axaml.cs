@@ -19,6 +19,7 @@ public partial class AuthenticationDialogView : Window
     public AuthenticationDialogView()
     {
         InitializeComponent();
+        WindowChrome.Apply(this, WindowChromeKind.Dialog);
         Opened += OnOpened;
     }
 

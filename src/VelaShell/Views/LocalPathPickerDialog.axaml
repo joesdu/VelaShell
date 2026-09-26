@@ -12,9 +12,6 @@
         Title="{loc:Localize Sftp_PickUploadTitle}"
         Width="672" Height="552"
         MinWidth="420" MinHeight="320"
-        WindowDecorations="None"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner">
 
@@ -72,16 +69,12 @@
   </Window.Styles>
 
   <!-- 外边距是投影的画布:此前这里没有外边距,投影整个被窗口边缘裁掉,等于没画(#171)。 -->
-  <Border Background="{DynamicResource VelaBgSurface}"
-          BorderBrush="{DynamicResource VelaBorderSecondary}"
-          BorderThickness="1"
-          CornerRadius="8"
-          Margin="16"
-          BoxShadow="{DynamicResource VelaShadowWindow}">
+  <Border Classes="window-card" Background="{DynamicResource VelaBgSurface}"
+          BorderBrush="{DynamicResource VelaBorderSecondary}">
     <DockPanel>
 
       <!-- 标题栏(可拖动) -->
-      <Border Name="TitleBar" DockPanel.Dock="Top" Height="40" Padding="16,0"
+      <Border Name="TitleBar" DockPanel.Dock="Top" Classes="window-titlebar" Padding="16,0"
               Background="Transparent"
               PointerPressed="OnTitleBarPointerPressed"
               BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">

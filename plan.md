@@ -215,6 +215,7 @@ graph RL
 - **状态栏跟随激活 Tab**:每个 `TerminalTabViewModel` 携带 `ConnectionSummary/TerminalTypeName/EncodingName`;`UpdateStatusBarForActiveTab` 投影连接串/状态/类型/编码/尺寸/延迟;订阅 `ActiveTerminalTab` 变化 + Dock `ActiveDockableChanged`/`FocusedDockableChanged` → 切换标签/窗格实时更新左下角。
 - **窗口壳:自绘无边框标题栏(2026-07-13 定稿)**:主窗 `WindowDecorations="None"`(与全部对话框同款全自绘模式);`Views/TitleBarView` 自绘 36px 标题栏 —— 左 logo+产品名,右 全局功能图标组(搜索/SFTP 文件管理/路由追踪/进程管理器/隧道/命令面板,经命令注册表,**已全部启用**;分屏走命令注册表 `split.horizontal`/`split.vertical`;多会话同步输入已以标签右键 A/B/C/D 频道菜单落地,见 §12-7 —— 2026-08-14 勘误,此前"组同步/广播未实现、禁用半透明"的描述已过时)+ 最小化/最大化/关闭三枚窗口控制按钮(46×35,关闭 hover #E81123)。**并非回退原生 chrome** —— Avalonia 12.x 的 `ExtendClientArea`/`WindowDecorationsElementRole` 托管装饰在 Win32 上会拦截标题栏输入(按钮点不动、窗口拖不动),整套机制不可用故弃用;改以**自绘 + 原生行为补齐**:空白区 `BeginMoveDrag`(原生移动循环,Win11 边缘贴靠有效)、双击切最大化;**Win11 Snap Layouts 经 `MainWindow` 的 WndProc 钩子处理 `HTMAXBUTTON`**(提交 `ce71b32`,`nc-hover` 类由 NC 消息挂/摘);窗口四周 5px + 四角 10px 自绘缩放抓取区(`BeginResizeDrag`,最大化时关闭)。**文字菜单(会话/编辑/…)已整体移除**——与命令面板功能重复(用户决策);随之移除设置里的"显示菜单栏"开关(`ShowMenuBar` 存储字段保留兼容)。
   - **踩坑备忘(自绘壳为何不走 extend/原生 chrome,Avalonia 12.0.5 观察)**:①`VisualRoot as Window` 恒为 null(视觉根是 TopLevelHost),取窗口必须走逻辑树 `FindLogicalAncestorOfType<Window>()`——曾令标题栏按钮/拖动看似"无输入"数小时;②`ExtendClientAreaToDecorationsHint`/`BorderOnly` 的托管装饰(`WindowDrawnDecorations`)会绘制重复标题与含"全屏"的按钮,且 `WindowDecorationsElementRole` 的输入重定向未落地(HT\*BUTTON 点击无动作、User 角色不可点),BorderOnly 还丢 WS_CAPTION(HTCAPTION 拖动与最小/最大化动画失效,issue #21160/#21212)——整套 extend 机制在 12.0.5 不可用,故弃用。
+  - **以上结论只管 Win32(2026-09-26 起)**:macOS 主窗口改用系统外框与原生红绿灯,全部弹窗与独立窗口在 macOS / Linux 上按平台走原生机制,统一入口 `Views/WindowChrome.cs`,见 §116。
 - **命令面板(Ctrl+P / Ctrl+K)**:`ViewModels/CommandPaletteItem.cs`(+Group)、`CommandPaletteViewModel.cs`(模糊子序列搜索、分类分组、上下循环导航、执行/关闭)、`Views/CommandPaletteView.axaml(.cs)`;`MainWindow` 半透明遮罩浮层,条目=最近会话(Enter 连接)+ 全局命令。
 - **终端类型/编码设置项**:`AppSettings.TerminalType`(默认 xterm-256color)/`TerminalEncoding`(默认 UTF-8);`SettingsViewModel`/`SettingsView` 两个下拉;`Program.cs` 注册 `CodePagesEncodingProvider`(GBK/Big5);连接时 `MainWindowViewModel.ConfigureTerminal` 应用到 PTY 的 TERM 与控件。`ISettingsService`/`JsonDataStore` 已入 DI。
 - 快捷命令面板、隧道管理面板此前已有完整 View+VM。
@@ -6871,3 +6872,153 @@ SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
 
 文档：velashell-docs 的 `ssh/spec/07-forwarding.md` §7.5.5、§7.5.7、§7.5.8，`ssh/spec/09-dialing.md` §7，
 `ssh/design/architecture.md` 新增 §11.2.23，`zh` 与 `en` 两边都已同步。
+
+## 🚧 116. 2026-09-26 窗口外框跨平台适配：全部窗口按平台走原生机制（用户需求）
+
+### 一、问题
+
+- Linux 上设置窗口的卡片外面多出一圈磨砂状的「空白」，Windows 上正常。弹窗与独立窗口一律是 `WindowDecorations="None"` + 透明窗口 +
+  卡片 `Margin="16"` + 在这 16px 里画 `VelaShadowWindow`；合成器只知道整个窗口矩形，沿它描边、切圆角、做背景模糊，透明边距就成了那一圈。
+  不支持透明的 X11（WSLg 即是）更直接，把那 16px 画成实色。Windows 正常，是因为 DWM 对无边框透明窗口什么都不加。
+- macOS 上 `None` 没有系统阴影与圆角，这些窗口又为了滚动流畅改成了不透明（`SettingsView.ApplyMacOsOpaqueWindow` 与 6 个独立窗口里的 macOS 分支），
+  结果是没有阴影的直角矩形。
+
+### 二、做法：每个平台用自己的原生机制
+
+|            | Windows | macOS | Linux 原生 Wayland | Linux X11（含从 Wayland 回退） |
+|------------|---------|-------|--------------------|-------------------------------|
+| 主窗口     | 不变 | `Full` + `ExtendClientAreaToDecorationsHint`：原生红绿灯、系统圆角与阴影；自绘的三个窗口按钮与缩放抓取区关闭，logo 左侧给红绿灯让位（全屏时撤掉） | 不变 | 不变 |
+| 模态对话框（12 个） | 不变 | `BorderOnly` + 扩展客户区：系统圆角与阴影、无红绿灯、窗口不透明 | `BorderOnly` + 装饰主题 `VelaWaylandWindowDecorations`：Avalonia 画 16px 阴影与 1px 描边，并经 `xdg_surface.set_window_geometry` 告诉合成器真正的窗口范围 | 不透明直角矩形 |
+| 非模态窗口（8 个 + 隔离插件的窗口） | 不变（最大化态见下） | `Full` + 扩展客户区：原生红绿灯，自绘的窗口按钮隐去、标题栏左侧让位 | 同对话框 | 同对话框 |
+
+最大化 / 全屏时卡片在各平台都铺满成直角；自绘缩放抓取区只在普通态、且系统不提供边缘缩放时出现（macOS 的系统外框、Wayland 的装饰层都自带）。
+
+- **`Views/WindowChrome.cs`（新）**：`WindowChrome.Apply(window, kind[, 缩放抓取区])` 在窗口构造函数里 `InitializeComponent()` 之后调用，
+  `kind` 为 `Main` / `Dialog` / `Tool`。按平台设 `WindowDecorations`、`ExtendClientAreaToDecorationsHint`、`TransparencyLevelHint`、
+  `Background`（不透明时绑 `VelaBgSurface` 令牌）、`WindowDecorationsTheme`（仅 Wayland），并跟着窗口状态给窗口挂样式类：
+  平台类 `chrome-windows` / `chrome-macos` / `chrome-wayland` / `chrome-x11`；`chrome-traffic-lights`（显示系统红绿灯）；
+  `window-card-flat`（卡片直角：macOS / X11 恒是，最大化 / 全屏时各平台都是）；`window-fullscreen`。传进来的缩放抓取区由它决定显隐与厚度
+  （原来各窗口的 `ResizeGripLayout.Apply` 调用收到这里）。另有显式传平台的 `internal` 重载供无头测试覆盖四个分支，同一窗口可重复调用。
+- **平台判断**：`OperatingSystem` 区分 Windows / macOS；Linux 上窗口句柄描述符为 `"XID"` 即 X11（X11 后端在窗口构造时就建好了句柄），
+  否则看 `WAYLAND_DISPLAY` —— 无头测试这类两者都不是的场合归到 X11，那是最保守的外观。
+- **`Themes/WindowChrome.axaml`（新，`App.axaml` 与测试宿主 `VelaHeadlessApp` 都引入）**：卡片挂 `window-card` 类，默认样式就是 Windows 的
+  （边距 16、圆角 8、描边 1、`VelaShadowWindow`）；`chrome-wayland` 下只留描边内侧的圆角 7 并按圆角裁剪；`window-card-flat` 下全部归零。
+  贴着卡片四角的子元素改挂 `window-card-top` / `-bottom` / `-left` / `-right` / `-bottom-left`（圆角时取内半径 7，直角时跟着直角），
+  取代各窗口 `ApplyCardShape` 里对标题栏、状态栏、侧栏的逐个改写。非模态窗口的最小化 / 最大化 / 关闭挂 `window-caption`，
+  标题栏最左边放 `<Panel Classes="traffic-light-spacer" />`；`chrome-traffic-lights` 下前者隐去、后者显出（全屏时不显）。
+  Wayland 装饰主题也在这里，模板照 Fluent 的 `WindowDrawnDecorations.xaml`，去掉标题栏与标题栏按钮。
+- **XAML**：20 个卡片窗口里写死的 `WindowDecorations` / `TransparencyLevelHint` / `Background` 与卡片的 `Margin` / `CornerRadius` /
+  `BorderThickness` / `BoxShadow` 删掉 —— 本地值优先级高于样式，留着的话按平台切换就不生效。这一步用一个 C# 单文件脚本批量改，
+  其余逐个手改。录制回放窗口的卡片圆角原本是 10（其余是 8），保留为只在 Windows 普通态生效的窗口级样式。
+- **代码后置**：删掉 `SettingsView.ApplyMacOsOpaqueWindow`，以及 6 个独立窗口里各自的 macOS 分支、`ApplyCardShape` 与状态切换处理；
+  主窗口的缩放抓取区显隐也交给 `WindowChrome`。
+- **全部窗口的标题栏统一 28（用户需求）**：起因是 macOS 上红绿灯由系统按它自己的标题栏（约 28pt）垂直居中，
+  而主窗口标题栏高 36，红绿灯比标题高约 4pt（用户实机截图）；Avalonia 12.1.3 没有挪红绿灯的接口
+  （`SetExtendTitleBarHeight` 只改标题栏背景材质的高度），拿 Objective-C 运行时硬挪又会被系统在缩放、全屏时排回去。
+  用户顺带觉得 Windows 上 36 也偏大，于是全部窗口（主窗口、独立窗口、对话框）的标题栏统一改成 28：
+  标题栏挂 `window-titlebar` 类，高度只在 `Themes/WindowChrome.axaml` 定一处（与 `WindowChrome.TitleBarHeight` 一致），
+  XAML 里不再写高度、标题行改 `Auto`；窗口按钮是 27×27 的方块（边长 = 标题栏 − 1px 底边;原先 46 / 42 宽的长条在 28 高的标题栏里显得扁,按用户意见改方）。此前主窗口 36、对话框 48、独立窗口 34 / 40 / 48 / 56、
+  连接诊断 60、本地路径选择 40。资源监视、录制回放、远程编辑、连接诊断原先是两行头部，按用户选的「移到标题栏下方」拆开：
+  标题栏只留图标、标题与窗口按钮（标题字号统一到 13），副标题连同放不下的操作按钮（暂停、导出、刷新、清理、自动录制、保存、导出报告、重新检测）
+  挪到标题栏下面一行，同底色、同样可拖动。macOS 上显示红绿灯的窗口由 `WindowChrome` 改成系统标题栏的实际高度
+  （`Window.WindowDecorationMargin.Top`，Full + 扩展客户区时 Avalonia 从 `NSTitlebarContainerView` 量出来，当前也是 28），
+  不写死；全屏时它报 0，保持原高度。隔离插件的窗口同一规则。其它面板里的 36px 头部（文件浏览器、消息中心、隧道面板等）不是窗口标题栏，不动。
+  **设置窗口例外**：它左上角那条是左侧导航的抬头兼拖动区，没有关闭 / 最小化这类窗口按钮，不算标题栏；
+  一度也压成了 28，用户看了实际效果觉得差（与右侧页面标题对不上），恢复为设计稿的 48、不挂 `window-titlebar`。
+  **消息框（提示 / 确认 / 输入）随后同样处理**：用户看了 28 的效果觉得局促、不协调，头部恢复 48、不挂 `window-titlebar`，
+  并去掉右上角的 ×（每种用法按钮栏里至少有一个按钮，Esc 照旧按取消处理，多选模式返回取消下标）。
+- **尺寸**：XAML 仍按 Windows 写（含 16px 边距），`Apply` 在 macOS / X11 上宽高各减 32、Wayland 上各减 34 ——
+  Wayland 未扩展客户区（Avalonia 的「强制模式」）时 `Width` / `Height` 只算内容，1px 描边画在外面。三个平台的可见卡片一样大，
+  `SizeToContent` 的那一边保持 NaN。代码里另有按 Windows 口径写的尺寸时用 `WindowChrome.SizeReductionOf` 减掉：
+  插件声明的面板窗口尺寸（`PluginPanel`）、新建连接窗口的高度上限（`ConnectionProfileView.ApplyScreenBounds`）；
+  设置窗口的 `FitIntoWorkArea` 与新建连接窗口的工作区钳制把 Wayland 画在外面的 34px（`OuterFrameSize`）一起算进去。
+- **隔离插件的窗口**（`VelaShell.PluginHost` 的 `PluginHostShellWindow`）：按依赖纪律不引用主程序，同一套规则用代码另写一份，
+  Wayland 装饰主题也是代码构建的（`IWindowDrawnDecorationsTemplate`）；`PluginHostUi` 按 `SizeReduction` 开窗。
+- **不在范围内**：`Views/XServer/XNativeWindow` 是内置 X 服务端里远端 X 程序的窗口，有没有系统边框由 X 客户端自己决定，不是卡片窗口。
+- 顺带：`Program.cs` 那条「Linux 暂用 X11」的注释已与 `UseWaylandWithFallback()` 不符，改为说明先连 Wayland、连不上回退 X11。
+
+**Windows 上不启用 `ExtendClientArea` / `BorderOnly`**（Win32 上的问题见 §6 的踩坑备忘）。
+
+### 三、依据（Avalonia 12.1.3 源码，逐条对过）
+
+- macOS（`native/Avalonia.Native/src/OSX/WindowImpl.mm`）：`None` → `setHasShadow:NO`、无标题栏样式；`BorderOnly` → `Titled | FullSizeContentView`、有阴影；
+  红绿灯只在 `Full` 时显示（`UpdateAppearance`）。`src/Avalonia.Native/WindowImpl.cs` 的 `ChromeHitTest`：扩展模式下按下左键先对界面做命中测试，
+  只有什么都没命中或命中 `TitleBar` 角色才交给系统拖动；`NeedsManagedDecorations => false`，没有托管装饰层盖在按钮上。
+  `AutoFitContentView.mm` 的标题栏材质与分隔线都在 Avalonia 视图下面，被不透明的标题栏盖住。
+- Wayland（`src/Avalonia.Wayland/WindowImpl.cs`）：非 `Full` 永久切客户端装饰（`_csdSticky`）；`src/Avalonia.Controls/Window.cs` 的 `ComputeDecorationParts`：
+  `BorderOnly` 画阴影、描边、缩放抓取区，不画标题栏，最大化 / 全屏时去掉阴影与描边；`UpdateDrawnDecorationMargins` 把阴影宽度交给 `SetShadowExtents`，
+  强制模式下内容由 `TopLevelHost.DecorationInset` 往里缩，`Show` / `ResizePlatformImpl` / `HandleResized` 都按「`ClientSize` 不含装饰」换算。
+  `WindowImplBase.Handle => null`。合成器要提供 `xdg_wm_base` 3 版以上，WSLg 的 Weston 不满足，那里一律回退 X11（用户 WSL Debian 13 的日志）。
+- X11（`src/Avalonia.X11/X11Window.cs`）：`BorderOnly` 也会画装饰（`NeedsDrawnDecorations`），但没有实现 `SetShadowExtents`、不写 `_GTK_FRAME_EXTENTS`；
+  句柄在构造函数里建好，描述符 `"XID"`。
+- 通用：`WindowDrawnDecorations` 的 `DefaultShadowThickness` / `DefaultFrameThickness` 是 `Thickness`，伪类 `:has-shadow` / `:maximized` 等由启用的部件与窗口状态驱动；
+  `BoxShadows.Parse("none")` 得到空阴影，样式里可以用 `none` 清掉；`Window.StyleKeyOverride` 是 `typeof(Window)`，`Window.xxx` 选择器对所有窗口子类同样生效。
+
+### 四、经过
+
+先只做了试点（设置窗口、消息框、macOS 主窗口的红绿灯）。用户在 WSLg 里测，程序跑在 X11 上且没有透明，设置窗口成了直角、其余窗口还有那一圈，
+当时判断没有效果，整体撤回（两个仓库 `git checkout`）。随后请朋友在 macOS 上测了同一版测试包，表现可以，于是按这套方案重新应用，
+并推广到全部窗口，定为以后的做法。
+
+### 五、验证
+
+- **Windows 零改动**：改动前后用无头渲染（Skia）给全部 21 个窗口各截一帧（暗 / 亮两套主题），8 个独立窗口另截最大化态，共 50 张。
+  普通态全部逐字节相同（本地路径选择器的列表是异步读本机目录的，一次截图没等到列表出来，重截与改动前一致）。
+  只有录制回放与远程编辑两扇窗的最大化态变了：它们以前最大化时不铺满、四周留着透明边距，现在与其它独立窗口一致地铺满成直角。
+- **标题栏统一 28 是有意改变外观**（Windows 上也变），不做像素对照；改完用无头渲染把全部 21 个窗口逐个截图目检：
+  标题栏 28、窗口按钮与标题垂直居中，四个拆开的头部里副标题与操作按钮在第二行、没有挤压或裁切。
+- **新增 `WindowChromeTests` 17 条**：四个平台 × 对话框 / 非模态 / 主窗口的窗口属性、样式类、不透明底色走令牌、重复调用把上一次的设置全部换掉；
+  卡片外观、贴角子元素随平台切换；独立窗口最大化铺满、抓取区随平台让位与变厚度；红绿灯隐去窗口按钮与让位、全屏撤掉让位；
+  主窗口抓取区给系统外框让位；macOS 标题栏跟系统标题栏同高（全屏时不跳）；窗口尺寸换算与复原、`SizeToContent` 保持；Wayland 装饰主题的 16 / 1 与代码常量一致。
+- **新增 `WindowChromeCoverageTests` 3 条**：扫描全部窗体的 XAML 与代码后置，禁止写死外框、卡片属性、内半径 7 的四角写法与按 macOS 单独处理的分支，
+  并要求构造时调 `WindowChrome.Apply`；逐个实例化全部窗口，确认都经过了 `WindowChrome`；逐个显示全部窗口，量出每扇窗恰好一个
+  `window-titlebar`、实际高度都是 28（设置窗口与消息框登记为没有标题栏的例外）。先临时删掉一处 `Apply`、写回一处 `TransparencyLevelHint`，确认扫描会报出来，再还原。
+- `ProcessManagerUiTests` 的三条改为按 `WindowChrome` 实际选定的平台断言（原来按 `OperatingSystem.IsMacOS()`，在 Linux CI 的 X11 分支下会误判）；
+  `CardCornerRadiusTests` 改为同时认 `window-card` 类。
+- 解决方案构建 0 警告 0 错误；`VelaShell.Tests` 1501 通过、0 失败、8 跳过（发布测试等按环境门控的用例）；`VelaShell.Plugin.Ai.Tests` 587 通过。
+- macOS 上主窗口、设置窗口与消息框已由朋友实机验收；非模态窗口的红绿灯、统一 28 后的红绿灯对齐与 Linux 原生 Wayland 桌面待下一轮实机确认，
+  记在 `feature-plan.md`「窗口与外观」。
+
+文档：velashell-docs 的 `host/architecture.md` §5「窗口壳」（⚠️ 那条限定为 Win32，新增「各平台的外框」）、
+`host/交互与界面规格.md` / `interaction-and-ui-specs.md` §2 与「窗口标题栏说明」、`host/design-specs.md` 的实现差异说明
+（含标题栏统一 28，原先的 36px 说法已改），`zh` 与 `en` 两边都已同步；
+本仓库 `DESIGN.md` §4.2（标题栏 28）、§4.5 与 §7.3 各补一句。
+
+## ✅ 117. 2026-09-26 状态栏：一排条目对齐到同一条中线（用户反馈）
+
+### 一、问题
+
+用户截图（100% 缩放）里状态栏的条目高低不齐：纯英文的文字块（`xterm-256color`、`UTF-8`、运行时长）比内容区中线高约 1px，
+带中文的文字块（「延迟: 1ms」「已连接」）与分隔线比中线低半像素，图标又是另一个高度。两个原因叠在一起：
+
+- **文字**：`TextBlock` 垂直居中的是行框，而行框的上下留白取这一行里所有字体的最大值（Avalonia 12.1.3 `TextLineImpl` 逐个文字段取 ascent / descent 的最大值）。
+  Cascadia Mono 里没有中文，中文回退到系统字体（微软雅黑 / 苹方 / Noto CJK），它们的留白更大，于是只要块里混进中文，整行基线就沉下去一截，
+  连同块里的英文数字一起与隔壁对不齐。设 `LineHeight` 也救不回来：基线仍按那组最大留白算。
+- **几何**：去掉 1px 顶边后内容区高 23（奇数），而分隔线高 12、按钮高 20、图标 12 都是偶数，居中后上沿落在半像素上，要么发虚、要么被舍入到一边。
+
+### 二、做法
+
+- 新增 `Controls/CapCenteredTextBlock`（继承 `TextBlock`，样式键沿用 `TextBlock`）：用主字体排一个「H」量出大写字母高度（按字体与字号缓存），
+  把基线放到「布局框中线 + 大写字母高度 / 2」并对齐到物理像素，差值走 `RenderTransform` 平移，不影响布局。英文、数字、中文共用这条基线，
+  与字体回退到了谁无关。状态栏上的文字（左侧四块、后台活动摘要、终端类型、尺寸、编码、选区、反馈）都换成它；后台任务浮层里的列表不动。
+- 尺寸一律取奇数：分隔线 12→11、按钮 20→21、图标与后台活动圆环 12→13；带文字的按钮加 `VerticalContentAlignment="Stretch"`，
+  文字块占满按钮高，再按上面的规则对齐。
+
+### 三、验证
+
+- 真实 Windows 构建（`--data-root` 指向临时目录，100% 缩放）截图后逐列量墨迹：「就绪」、分隔线、`xterm-256color`、`UTF-8` 与资源监视按钮底色的中心
+  全部落在内容区中线上；反馈的虫子图标与「反馈问题」高出半像素，来自字形本身（图标顶上的触角、这几个字的下沿），基线与其它文字是同一条。
+- 新增 `StatusBarAlignmentTests` 2 条（无头渲染，按几何量断言、不数像素，与测试机装了哪些中文字体无关）：状态栏上可见的文字都是 `CapCenteredTextBlock`，
+  基线是同一条且在整像素上，大写字母中线离内容区中线不超过半像素（用例里刻意混入中文块与纯英文块）；分隔线、按钮、图标、圆环的中心都在内容区中线上、
+  上沿在整像素上。把平移量临时置 0，用例会报出来，再还原。
+- 解决方案构建 0 警告 0 错误；`VelaShell.Tests` 1503 通过、0 失败、8 跳过。
+
+文档：velashell-docs 的状态栏规格（`host/交互与界面规格.md` §7）只定了 24px 高与各字段内容，没写到这一层尺寸，不需要改。
+
+## ✅ 118. 2026-09-26 标题栏：X Server 按钮挪到功能按钮组最后（用户需求）
+
+主窗口标题栏右侧的功能按钮组里，X Server 按钮原先排在任务管理器与隧道之间，按用户要求挪到这组最后（命令面板之后、紧挨最小化按钮）：
+搜索 · 文件管理 · 链路追踪 · 任务管理器 · 隧道 · 命令面板 · X Server。只改了 `TitleBarView.axaml` 里的顺序，行为不变；
+顺带把那段注释里「只在 Windows 上出现」的旧说法改掉（默认的内置引擎各平台都能用，按钮在各平台都出现）。
+
+文档：velashell-docs `host/交互与界面规格.md` / `interaction-and-ui-specs.md` §4A.2 的按钮表同步调整了顺序。

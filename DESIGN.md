@@ -9,7 +9,7 @@
 VelaShell is a keyboard-first, high-density SSH/SFTP terminal client for ops and dev engineers. The surface is dark-primary (Dracula), with a light variant (Alucard) available at runtime. The visual tone is **precise, information-dense, and restrained** -- no decorative elements, no gradient fills, no illustrative imagery. Every pixel serves a functional purpose.
 
 - **Platform**: .NET 11 + Avalonia 12.1, cross-platform desktop (Windows/Linux/macOS)
-- **Window**: Self-drawn frameless (`WindowDecorations="None"`), 36px custom title bar via `TitleBarView`
+- **Window**: Self-drawn frameless (`WindowDecorations="None"`), 28px custom title bar via `TitleBarView` (every window's title bar is 28px; see §4.2)
 - **Icon set**: Lucide (stroke weight 2, round caps, 24x24 viewBox scaled to 11-16px)
 - **Fonts**: Cascadia Mono (terminal, data, paths, keys) + Inter (UI chrome, buttons, settings); both interface faces follow Settings → Appearance → UI Font
 - **Theme switching**: Runtime dark/light/system, driven entirely by `DynamicResource` token swaps
@@ -202,7 +202,7 @@ view — a literal does not follow the setting.
 ### 4.1 Window Structure
 
 ```
-TitleBar (36px, bg-sidebar)
+TitleBar (28px, bg-sidebar)
 ├── Sidebar (260px, bg-sidebar)  ‖  RightArea
 │   ├── Toolbar (36px)           │   ├── TabBar (36px, bg-page)
 │   ├── SessionTree (fill)       │   ├── Terminal (fill, bg-terminal)
@@ -215,7 +215,7 @@ StatusBar (24px, bg-sidebar)
 
 | Element | Height | Notes |
 |---|---|---|
-| Title bar | 36px | `bg-sidebar`, bottom 1px `VelaBorderPrimary` |
+| Title bar | 28px | Every window: main window, standalone windows and dialogs (`Border.window-titlebar`, height set once in `Themes/WindowChrome.axaml`). Exceptions (no title bar, header stays 48px): the settings window, whose top-left strip is the navigation header (drag area, no window buttons); and the message dialog (notice / confirm / prompt), which has no close button — it closes from its button bar or Esc. Main window `bg-sidebar`, bottom 1px `VelaBorderPrimary`; window buttons are 27×27 squares (side = bar − 1px border). A subtitle or action buttons that do not fit go in a row below the title bar. On macOS windows with traffic lights take the system title bar height (28pt today) so the lights share its centre line |
 | Tab bar | 36px | `bg-page`, contains 32px tab items |
 | Tab item | 32px | Active: `VelaTabActiveBg` + 2px top accent; inactive: `VelaTabInactiveBg` |
 | Toolbar | 36px | Sidebar toolbar, file browser header |
@@ -263,6 +263,8 @@ Two rules the values are constrained by:
 - **Reach (`offsetY + blur`) must stay ≤ 16**, matching the card margin. A self-drawn transparent
   window can only paint its shadow inside the window rectangle, so anything past the margin is cut
   off by the window edge — which reads as a smeared block, not a shadow. Change one, change both.
+  The Linux Wayland decorations theme (`VelaWaylandWindowDecorations` in `Themes/WindowChrome.axaml`)
+  uses the same 16 as its shadow width, so it is bound by the same rule.
 - **Opacity is per theme.** The same 50%-black under a light card turns into a dirty grey
   rectangle, so the light values are roughly 40% of the dark ones.
 
@@ -509,6 +511,15 @@ Windows Explorer semantics, both orientations, application-wide (ScrollViewer, l
 
 - **Small floats** (context menus, tooltips, tab dropdowns, transfer panel, tunnel panel, message centre): `VelaBgSurface` + `VelaBorderSecondary` + `CornerRadius:6` + `BoxShadow:VelaShadowWindow` (§4.5)
 - **Large dialogs** (settings, new connection, command palette): `VelaBgSurface`/`VelaBgPage` + `CornerRadius:8` + `BoxShadow:VelaShadowWindow` (§4.5) + optional modal overlay
+- **Dialog and standalone windows differ per platform.** The floating card above (transparent
+  window, 16px margin, self-drawn shadow) is the Windows form only. On macOS the system draws the
+  corners, border and shadow around an opaque window; on Linux Wayland Avalonia's decorations layer
+  draws the shadow and border outside the content; on Linux X11 the window is an opaque square; a
+  maximised standalone window is square everywhere. A window's card carries `Classes="window-card"`
+  and leaves margin, corner radius, border thickness and shadow to `Themes/WindowChrome.axaml`;
+  children hugging its corners carry `window-card-top` / `-bottom` / `-left` / `-right` /
+  `-bottom-left` instead of a hard-coded inner radius; the window itself goes through
+  `WindowChrome.Apply` (`Views/WindowChrome.cs`, which also lists the classes it sets).
 - **Rounded corners do not clip on their own.** A card that scrolls or paints content to its own
   edge (a list, a full-height accent bar) needs an inner `Border` with `ClipToBounds:True` and the
   *inner* radius (outer − 1px stroke) wrapping that content; putting `ClipToBounds` on the card

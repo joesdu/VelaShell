@@ -9,14 +9,11 @@
         SizeToContent="Height"
         CanResize="False"
         ShowInTaskbar="False"
-        WindowDecorations="None"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
         WindowStartupLocation="CenterOwner">
 
   <!-- 通用消息/确认/输入弹窗。外观遵循设计的标准弹窗规格(如 oNZIM 密码验证弹窗):
        420px bg-surface 卡片、圆角 8、1px border-secondary 外描边、阴影取 VelaShadowWindow 令牌(随主题深浅);
-       48px 标题栏(可拖动) + 内容区 + 52px 按钮栏,分隔线均为 border-primary。 -->
+       48px 头部(可拖动,无关闭按钮) + 内容区 + 52px 按钮栏,分隔线均为 border-primary。 -->
 
   <Window.Styles>
     <!-- 标题栏语义图标着色:代码侧只挂类名,画刷交给 DynamicResource(带主题变体解析;
@@ -102,22 +99,20 @@
     </Style>
   </Window.Styles>
 
-  <Border CornerRadius="8"
+  <Border Classes="window-card"
           Background="{DynamicResource VelaBgSurface}"
           BorderBrush="{DynamicResource VelaBorderSecondary}"
-          BorderThickness="1"
-          BoxShadow="{DynamicResource VelaShadowWindow}"
-          Margin="16"
           ClipToBounds="True">
     <Grid RowDefinitions="48,Auto,52">
 
-      <!-- 标题栏 -->
+      <!-- 头部(可拖动)。不是标题栏:没有窗口按钮,关闭一律走按钮栏或 Esc,
+           所以不挂 window-titlebar,保持 48 的弹窗头部高度,不跟窗口标题栏的 28。 -->
       <Border Grid.Row="0" Padding="20,0"
               Background="Transparent"
               PointerPressed="Header_PointerPressed"
               BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,0,0,1">
-        <Grid ColumnDefinitions="Auto,*,Auto">
+        <Grid ColumnDefinitions="Auto,*">
           <pc:LucideIcon Name="KindIcon" Width="15" Height="15"
                          VerticalAlignment="Center" Margin="0,0,10,0" />
           <TextBlock Grid.Column="1" Name="TitleText"
@@ -125,14 +120,6 @@
                      FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold"
                      VerticalAlignment="Center"
                      TextTrimming="CharacterEllipsis" />
-          <Button Grid.Column="2" Width="24" Height="24"
-                  Background="Transparent" Padding="0" CornerRadius="3"
-                  Cursor="Hand" Click="Close_Click"
-                  VerticalAlignment="Center">
-            <pc:LucideIcon Width="13" Height="13"
-                           Data="{DynamicResource Icon.x}"
-                           Foreground="{DynamicResource VelaTextTertiary}" />
-          </Button>
         </Grid>
       </Border>
 

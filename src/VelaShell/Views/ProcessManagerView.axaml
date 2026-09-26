@@ -13,10 +13,7 @@
         Title="{loc:Localize Cmd_ProcessManager}"
         Width="1016" Height="656"
         MinWidth="896" MinHeight="436"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
-        WindowStartupLocation="CenterOwner"
-        WindowDecorations="None">
+        WindowStartupLocation="CenterOwner">
 
   <!-- 远端任务管理器:操作语义对齐 Windows 任务管理器的"详细信息"页 ——
        点列头排序、右键结束任务/进程树、更新速度可调、Del 结束任务、F5 立即刷新。
@@ -33,8 +30,8 @@
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="CornerRadius" Value="0" />
-      <Setter Property="Width" Value="42" />
-      <Setter Property="Height" Value="34" />
+      <Setter Property="Width" Value="27" />
+      <Setter Property="Height" Value="27" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -157,15 +154,11 @@
   </Window.Styles>
 
   <Panel>
-  <Border x:Name="RootCard"
-          Margin="16"
-          CornerRadius="8"
+  <Border x:Name="RootCard" Classes="window-card"
           ClipToBounds="True"
           Background="{DynamicResource VelaBgPage}"
-          BorderBrush="{DynamicResource VelaBorderSecondary}"
-          BorderThickness="1"
-          BoxShadow="{DynamicResource VelaShadowWindow}">
-  <Grid RowDefinitions="34,Auto,Auto,*,26">
+          BorderBrush="{DynamicResource VelaBorderSecondary}">
+  <Grid RowDefinitions="Auto,Auto,Auto,*,26">
 
     <!-- 标题栏(自绘):按住可拖动,双击最大化/还原。
          CornerRadius 必须跟随外框的上方圆角 —— 方角的背景会盖住外框在圆角处的描边,
@@ -174,10 +167,11 @@
             Background="{DynamicResource VelaBgSurface}"
             BorderBrush="{DynamicResource VelaBorderSecondary}"
             BorderThickness="0,0,0,1"
-            CornerRadius="7,7,0,0"
+            Classes="window-card-top window-titlebar"
             PointerPressed="Header_PointerPressed">
       <Grid ColumnDefinitions="*,Auto" Margin="12,0,0,0">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Panel Classes="traffic-light-spacer" />
           <pc:LucideIcon Width="14" Height="14"
                          Data="{StaticResource Icon.activity}"
                          Foreground="{DynamicResource VelaAccent}"
@@ -188,15 +182,15 @@
                      VerticalAlignment="Center" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
-          <Button Classes="caption" Click="Minimize_Click">
+          <Button Classes="caption window-caption" Click="Minimize_Click">
             <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.minus}"
                            Foreground="{DynamicResource VelaTextSecondary}" />
           </Button>
-          <Button x:Name="MaximizeButton" Classes="caption" Click="Maximize_Click">
+          <Button x:Name="MaximizeButton" Classes="caption window-caption" Click="Maximize_Click">
             <pc:LucideIcon Width="10" Height="10" Data="{StaticResource Icon.square}"
                            Foreground="{DynamicResource VelaTextSecondary}" />
           </Button>
-          <Button Classes="caption caption-close" Click="Close_Click">
+          <Button Classes="caption caption-close window-caption" Click="Close_Click">
             <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.x}"
                            Foreground="{DynamicResource VelaTextSecondary}" />
           </Button>
@@ -487,7 +481,7 @@
             Background="{DynamicResource VelaBgSurface}"
             BorderBrush="{DynamicResource VelaBorderSecondary}"
             BorderThickness="0,1,0,0"
-            CornerRadius="0,0,7,7"
+            Classes="window-card-bottom"
             Padding="12,0">
       <Grid ColumnDefinitions="Auto,*,Auto">
         <TextBlock Grid.Column="0" Text="{Binding CountSummary}"

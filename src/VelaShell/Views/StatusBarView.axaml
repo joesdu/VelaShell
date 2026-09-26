@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:pvm="using:VelaShell.Presentation.ViewModels"
              xmlns:pc="using:VelaShell.Controls.Controls"
+             xmlns:ctl="using:VelaShell.Controls"
              xmlns:loc="using:VelaShell.Localization"
              mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="24"
              x:Class="VelaShell.Views.StatusBarView"
@@ -11,7 +12,11 @@
 
   <!-- 设计框 gzmsb:高 24px、背景 bg-sidebar、顶部 1px 边框、内边距 [0,12]、两端对齐。
        左侧 (1y2au,间距 14):wifi + "SSH • host:port" + | + 延迟(accent) + | + 运行时长。
-       右侧 (4Cio1,间距 12):终端类型 | 尺寸 | CPU | 内存 | 网速 | 编码。 -->
+       右侧 (4Cio1,间距 12):终端类型 | 尺寸 | CPU | 内存 | 网速 | 编码。
+       对齐:去掉顶边后内容区高 23(奇数),条目一律按它垂直居中。文字用 CapCenteredTextBlock ——
+       普通 TextBlock 居中的是行框,混进中文(回退到系统字体)的那几块基线会沉下去,与纯英文块差出一两个像素;
+       它按大写字母高度的中线对齐,与字体回退到谁无关。分隔线高 11、按钮高 21、图标 13:都取奇数,
+       在 23 高的内容区里才能不偏半个像素地居中。 -->
 
   <UserControl.Styles>
     <Style Selector="TextBlock">
@@ -21,7 +26,7 @@
     </Style>
     <Style Selector="Border.divider">
       <Setter Property="Width" Value="1" />
-      <Setter Property="Height" Value="12" />
+      <Setter Property="Height" Value="11" />
       <Setter Property="Background" Value="{DynamicResource VelaBorderSecondary}" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
@@ -36,27 +41,27 @@
 
       <!-- 左侧分组(间距 14) -->
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="14">
-        <pc:LucideIcon Width="12" Height="12"
+        <pc:LucideIcon Width="13" Height="13"
                        Data="{StaticResource Icon.wifi}"
                        Foreground="{DynamicResource VelaStatusConnected}"
                        VerticalAlignment="Center"
                        IsVisible="{Binding IsConnected}" />
-        <TextBlock Text="{Binding ConnectionInfo}"
-                   Foreground="{DynamicResource VelaTextSecondary}"
-                   IsVisible="{Binding ConnectionInfo, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <ctl:CapCenteredTextBlock Text="{Binding ConnectionInfo}"
+                                  Foreground="{DynamicResource VelaTextSecondary}"
+                                  IsVisible="{Binding ConnectionInfo, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <Border Classes="divider"
                 IsVisible="{Binding Latency, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <!-- 标签本地化(延迟/Latency)且仅数值上主题色。Run 之间不能换行,
              否则 XAML 空白折叠会在冒号前多出一个空格。 -->
-        <TextBlock IsVisible="{Binding Latency, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><Run Text="{loc:Localize Latency}" Foreground="{DynamicResource VelaTextTertiary}" /><Run Text=": " Foreground="{DynamicResource VelaTextTertiary}" /><Run Text="{Binding Latency}" Foreground="{DynamicResource VelaAccent}" /></TextBlock>
+        <ctl:CapCenteredTextBlock IsVisible="{Binding Latency, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><Run Text="{loc:Localize Latency}" Foreground="{DynamicResource VelaTextTertiary}" /><Run Text=": " Foreground="{DynamicResource VelaTextTertiary}" /><Run Text="{Binding Latency}" Foreground="{DynamicResource VelaAccent}" /></ctl:CapCenteredTextBlock>
         <Border Classes="divider"
                 IsVisible="{Binding Uptime, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-        <TextBlock Foreground="{DynamicResource VelaTextTertiary}"
-                   Text="{Binding Uptime, StringFormat='↑ {0}'}"
-                   IsVisible="{Binding Uptime, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-        <TextBlock Foreground="{DynamicResource VelaTextSecondary}"
-                   Text="{Binding StatusText}"
-                   IsVisible="{Binding StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <ctl:CapCenteredTextBlock Foreground="{DynamicResource VelaTextTertiary}"
+                                  Text="{Binding Uptime, StringFormat='↑ {0}'}"
+                                  IsVisible="{Binding Uptime, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <ctl:CapCenteredTextBlock Foreground="{DynamicResource VelaTextSecondary}"
+                                  Text="{Binding StatusText}"
+                                  IsVisible="{Binding StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       </StackPanel>
 
       <!-- 右侧分组(间距 12)。实时指标位于固定宽度的字段(终端类型 / 尺寸 / 编码)左侧,
@@ -65,7 +70,8 @@
         <!-- 后台活动圆环(插件装载/校验/预读等):排在本组最左端,于是它出现与消失时
              右侧那几个定宽字段相对窗口右缘纹丝不动 —— 只有它自己在长出来和缩回去。
              无活动时整块隐藏(含后面那条分隔线),状态栏回到干净状态。 -->
-        <Button Classes="monitor" Padding="4,0" Height="20" VerticalAlignment="Center"
+        <Button Classes="monitor" Padding="4,0" Height="21" VerticalAlignment="Center"
+                VerticalContentAlignment="Stretch"
                 Background="Transparent" BorderThickness="0" CornerRadius="4" Cursor="Hand"
                 IsVisible="{Binding HasBackgroundActivity}"
                 ToolTip.Tip="{Binding BackgroundTooltip}" ToolTip.Placement="Left">
@@ -131,21 +137,21 @@
             </Flyout>
           </Button.Flyout>
           <StackPanel Orientation="Horizontal" Spacing="6">
-            <pc:CircularProgressRing Width="12" Height="12" StrokeThickness="2"
+            <pc:CircularProgressRing Width="13" Height="13" StrokeThickness="2"
                                      VerticalAlignment="Center"
                                      IsIndeterminate="{Binding IsBackgroundIndeterminate}"
                                      Value="{Binding BackgroundProgress}"
                                      TrackBrush="{DynamicResource VelaBorderSecondary}"
                                      ArcBrush="{DynamicResource VelaAccent}" />
-            <TextBlock Text="{Binding BackgroundSummary}"
-                       Foreground="{DynamicResource VelaTextSecondary}" />
+            <ctl:CapCenteredTextBlock Text="{Binding BackgroundSummary}"
+                                      Foreground="{DynamicResource VelaTextSecondary}" />
           </StackPanel>
         </Button>
         <Border Classes="divider" IsVisible="{Binding HasBackgroundActivity}" />
 
         <!-- 实时指标收进资源监视窗口:状态栏只留一个图标按钮,点击开窗;
              悬停仍给出 CPU 逐核心 / 内存含交换 / 磁盘逐挂载点 / 网速逐网卡的完整详情。 -->
-        <Button Classes="monitor" Padding="4,0" Height="20" VerticalAlignment="Center"
+        <Button Classes="monitor" Padding="4,0" Height="21" VerticalAlignment="Center"
                 Background="Transparent" BorderThickness="0" CornerRadius="4" Cursor="Hand"
                 ToolTip.Tip="{Binding MetricsTooltip}" ToolTip.Placement="Left"
                 Command="{Binding OpenResourceMonitorCommand}">
@@ -161,15 +167,16 @@
                          Foreground="{DynamicResource VelaAccent}" VerticalAlignment="Center" />
         </Button>
         <Border Classes="divider" />
-        <TextBlock Text="{Binding TerminalType}"
-                   Foreground="{DynamicResource VelaTextMuted}" />
+        <ctl:CapCenteredTextBlock Text="{Binding TerminalType}"
+                                  Foreground="{DynamicResource VelaTextMuted}" />
         <Border Classes="divider" />
-        <TextBlock Text="{Binding WindowSize}"
-                   Foreground="{DynamicResource VelaTextMuted}" />
+        <ctl:CapCenteredTextBlock Text="{Binding WindowSize}"
+                                  Foreground="{DynamicResource VelaTextMuted}" />
         <Border Classes="divider" />
         <!-- 编码可点:弹出菜单当场切当前会话的编码。远端 locale 与本地不一致时,
              一屏乱码到底是 GBK 还是 UTF-8,试一下比翻设置快得多;只影响本会话,不写回设置。 -->
-        <Button Classes="monitor" Padding="4,0" Height="20" VerticalAlignment="Center"
+        <Button Classes="monitor" Padding="4,0" Height="21" VerticalAlignment="Center"
+                VerticalContentAlignment="Stretch"
                 Background="Transparent" BorderThickness="0" CornerRadius="4" Cursor="Hand"
                 ToolTip.Tip="{loc:Localize Status_ChangeEncoding}">
           <Button.Flyout>
@@ -184,18 +191,19 @@
               </MenuFlyout.ItemContainerTheme>
             </MenuFlyout>
           </Button.Flyout>
-          <TextBlock Text="{Binding Encoding}"
-                     Foreground="{DynamicResource VelaTextMuted}" />
+          <ctl:CapCenteredTextBlock Text="{Binding Encoding}"
+                                    Foreground="{DynamicResource VelaTextMuted}" />
         </Button>
         <!-- 选区字符数:只有真的选中了东西才占位。 -->
         <Border Classes="divider" IsVisible="{Binding HasSelection}" />
-        <TextBlock Text="{Binding SelectionLabel}"
-                   Foreground="{DynamicResource VelaTextSecondary}"
-                   IsVisible="{Binding HasSelection}" />
+        <ctl:CapCenteredTextBlock Text="{Binding SelectionLabel}"
+                                  Foreground="{DynamicResource VelaTextSecondary}"
+                                  IsVisible="{Binding HasSelection}" />
         <Border Classes="divider" />
         <!-- 反馈入口:直达 GitHub Issues(浏览器打开),与 WindTerm 底栏同类入口对齐。
              放最末尾:选区读数出现时它会被向左顶一位,但既有字段相对位置不动。 -->
-        <Button Classes="monitor" Padding="4,0" Height="20" VerticalAlignment="Center"
+        <Button Classes="monitor" Padding="4,0" Height="21" VerticalAlignment="Center"
+                VerticalContentAlignment="Stretch"
                 Background="Transparent" BorderThickness="0" CornerRadius="4" Cursor="Hand"
                 ToolTip.Tip="{loc:Localize StatusBar_IssuesLinkTip}" ToolTip.Placement="Left"
                 Click="Issues_Click">
@@ -207,8 +215,8 @@
           <StackPanel Orientation="Horizontal" Spacing="6">
             <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.bug}"
                            Foreground="{DynamicResource VelaAccent}" VerticalAlignment="Center" />
-            <TextBlock Text="{loc:Localize StatusBar_IssuesLink}"
-                       Foreground="{DynamicResource VelaTextMuted}" />
+            <ctl:CapCenteredTextBlock Text="{loc:Localize StatusBar_IssuesLink}"
+                                      Foreground="{DynamicResource VelaTextMuted}" />
           </StackPanel>
         </Button>
       </StackPanel>

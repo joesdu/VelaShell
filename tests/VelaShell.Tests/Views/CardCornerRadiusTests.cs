@@ -38,7 +38,10 @@ public sealed partial class CardCornerRadiusTests
         foreach (string file in CardWindowFiles())
         {
             string[] lines = File.ReadAllLines(file);
-            int card = Array.FindIndex(lines, line => line.Contains("VelaShadowWindow", StringComparison.Ordinal));
+            // 卡片的认法:自绘窗体的卡片挂 window-card 类(投影在 Themes/WindowChrome.axaml 里);
+            // 浮层卡片仍在 XAML 里直接写 VelaShadowWindow。
+            int card = Array.FindIndex(lines, line => line.Contains("\"window-card\"", StringComparison.Ordinal)
+                || line.Contains("VelaShadowWindow", StringComparison.Ordinal));
             if (card < 0)
             {
                 continue; // 不是自绘卡片窗体

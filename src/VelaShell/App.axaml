@@ -10,6 +10,8 @@
         <StyleInclude Source="avares://VelaShell/Themes/DockStyles.axaml" />
         <!-- antd 风格的前缀/后缀输入框容器(Border.input-affix),供各视图复用 -->
         <StyleInclude Source="avares://VelaShell/Themes/InputStyles.axaml" />
+        <!-- 自绘窗体的外框按平台切换(Views/WindowChrome.cs 挂样式类),含 Wayland 的装饰主题 -->
+        <StyleInclude Source="avares://VelaShell/Themes/WindowChrome.axaml" />
         <!-- 设置 → 外观 → 界面字体/字号:所有窗口(含设置窗口/各弹窗)统一继承;
              显式指定了 FontFamily/FontSize 的元素(终端、JB Mono 等宽文本、设计定字号)
              不受影响。运行时改动经 app.Resources 覆盖这两个令牌即时生效。 -->

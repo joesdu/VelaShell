@@ -1,0 +1,136 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ================================================================
+       自绘窗体的外框,按窗口上的样式类切换(类由 Views/WindowChrome.cs 挂上,各类的含义见那里)。
+
+       用法:
+       · 窗口的根卡片写 Classes="window-card",只留 Background / BorderBrush / ClipToBounds;
+         Margin、CornerRadius、BorderThickness、BoxShadow 一律交给这里 —— 本地值优先级高于样式,
+         写在 XAML 里就切不动了。
+       · 贴着卡片四角、有不透明背景的子元素(标题栏、状态栏、左侧导航……)不写 CornerRadius,
+         改挂 window-card-top / -bottom / -left / -right / -bottom-left:卡片圆角时取内半径 7
+         (外圆角 8 − 1px 描边),卡片直角时跟着直角。
+       · 非模态窗口:自绘的最小化 / 最大化 / 关闭挂 window-caption(macOS 上换成系统红绿灯);
+         标题栏最左边放一个 <Panel Classes="traffic-light-spacer" />,给红绿灯让位。
+
+       · Windows(默认):透明窗口里浮起的卡片,16px 边距里画 VelaShadowWindow。
+       · macOS / X11(window-card-flat):不透明直角矩形。macOS 的圆角、描边、阴影由系统画;
+         X11 的合成器只认整个窗口矩形,画了也只会多出一圈。最大化 / 全屏在各平台上都是 window-card-flat。
+       · Wayland:卡片铺满内容区,描边与阴影由装饰层画在内容外面
+         (VelaWaylandWindowDecorations),卡片只保留描边内侧的圆角 7。
+       ================================================================ -->
+
+  <Styles.Resources>
+    <!-- Wayland 的装饰层(Window.WindowDecorationsTheme,仅 Wayland 分支设到窗口上)。
+         BorderOnly 不画标题栏,只要阴影与描边:阴影宽 16 与 Windows 的卡片边距一致,
+         容得下 VelaShadowWindow 的 0 4 12 0(DESIGN.md §4.5 的 reach ≤ 16);
+         Avalonia 按这个宽度调用 xdg_surface.set_window_geometry,合成器就以描边为窗口边界。
+         16 与 1 必须与 WindowChrome.CardMargin / CardFrame 一致(WindowChromeTests 钉住)。
+         模板结构照 Fluent 的 WindowDrawnDecorations.xaml,去掉标题栏与标题栏按钮。 -->
+    <ControlTheme x:Key="VelaWaylandWindowDecorations" TargetType="WindowDrawnDecorations">
+      <Setter Property="DefaultFrameThickness" Value="1" />
+      <Setter Property="DefaultShadowThickness" Value="16" />
+      <Setter Property="Template">
+        <WindowDrawnDecorationsTemplate>
+          <WindowDrawnDecorationsContent>
+            <WindowDrawnDecorationsContent.Underlay>
+              <Panel x:Name="PART_UnderlayWrapper">
+                <!-- 底色与卡片同色:卡片的圆角 7 与描边内沿的圆弧重合,垫一层同色底,抗锯齿的那一圈不漏缝。 -->
+                <Border x:Name="PART_WindowBorder"
+                        CornerRadius="8"
+                        Background="{DynamicResource VelaBgSurface}"
+                        BorderBrush="{DynamicResource VelaBorderSecondary}"
+                        BorderThickness="{TemplateBinding FrameThickness}"
+                        IsHitTestVisible="False" />
+              </Panel>
+            </WindowDrawnDecorationsContent.Underlay>
+            <WindowDrawnDecorationsContent.Overlay>
+              <Panel x:Name="PART_OverlayWrapper" />
+            </WindowDrawnDecorationsContent.Overlay>
+          </WindowDrawnDecorationsContent>
+        </WindowDrawnDecorationsTemplate>
+      </Setter>
+
+      <Style Selector="^:has-shadow /template/ Panel#PART_UnderlayWrapper">
+        <Setter Property="Margin" Value="{TemplateBinding ShadowThickness}" />
+      </Style>
+      <Style Selector="^:has-shadow /template/ Border#PART_WindowBorder">
+        <Setter Property="BoxShadow" Value="{DynamicResource VelaShadowWindow}" />
+      </Style>
+      <Style Selector="^:has-shadow /template/ Panel#PART_OverlayWrapper">
+        <Setter Property="Margin" Value="{TemplateBinding ShadowThickness}" />
+      </Style>
+      <!-- 最大化 / 全屏时装饰层撤掉阴影与描边,卡片也跟着铺成直角(window-card-flat)。 -->
+      <Style Selector="^:maximized /template/ Border#PART_WindowBorder">
+        <Setter Property="CornerRadius" Value="0" />
+      </Style>
+      <Style Selector="^:fullscreen /template/ Border#PART_WindowBorder">
+        <Setter Property="CornerRadius" Value="0" />
+      </Style>
+    </ControlTheme>
+  </Styles.Resources>
+
+  <!-- 标题栏:全部窗口一个高度(主窗口、独立窗口、对话框)。改这个数要同步 WindowChrome.TitleBarHeight
+       (WindowChromeTests 钉住),以及各窗口按钮的宽高(27×27 的方块,边长 = 标题栏 − 1px 底边)。
+       macOS 上显示红绿灯的窗口由 WindowChrome 改成系统标题栏的实际高度(当前也是 28),红绿灯才与标题同一条中线。 -->
+  <Style Selector="Border.window-titlebar">
+    <Setter Property="Height" Value="28" />
+  </Style>
+
+  <!-- 卡片。默认即 Windows 的样子(与改造前逐像素一致)。 -->
+  <Style Selector="Border.window-card">
+    <Setter Property="Margin" Value="16" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BoxShadow" Value="{DynamicResource VelaShadowWindow}" />
+  </Style>
+  <Style Selector="Window.chrome-wayland Border.window-card">
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="CornerRadius" Value="7" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="BoxShadow" Value="none" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <!-- 放在 Wayland 之后:Wayland 上最大化时也要铺成直角。 -->
+  <Style Selector="Window.window-card-flat Border.window-card">
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="BoxShadow" Value="none" />
+  </Style>
+
+  <!-- 贴着卡片四角的子元素:取内半径 7。照抄外面的 8 会让圆弧与描边的圆弧重合,把那段描边盖掉;
+       方角又会盖住描边在圆角处的那一段 —— 两种都是四个角上的边框「断线」。 -->
+  <Style Selector="Border.window-card-top">
+    <Setter Property="CornerRadius" Value="7,7,0,0" />
+  </Style>
+  <Style Selector="Border.window-card-bottom">
+    <Setter Property="CornerRadius" Value="0,0,7,7" />
+  </Style>
+  <Style Selector="Border.window-card-left">
+    <Setter Property="CornerRadius" Value="7,0,0,7" />
+  </Style>
+  <Style Selector="Border.window-card-right">
+    <Setter Property="CornerRadius" Value="0,7,7,0" />
+  </Style>
+  <Style Selector="Border.window-card-bottom-left">
+    <Setter Property="CornerRadius" Value="0,0,0,7" />
+  </Style>
+  <Style Selector="Window.window-card-flat Border.window-card-top, Window.window-card-flat Border.window-card-bottom, Window.window-card-flat Border.window-card-left, Window.window-card-flat Border.window-card-right, Window.window-card-flat Border.window-card-bottom-left">
+    <Setter Property="CornerRadius" Value="0" />
+  </Style>
+
+  <!-- macOS 的系统红绿灯:自绘的窗口按钮隐去,标题栏左侧让出位置(全屏时红绿灯随系统标题栏收起,让位也撤掉)。
+       宽度按「红绿灯右缘约 70px + 标题栏原有左内边距 12–20px」估的,实机确认后再微调。 -->
+  <Style Selector="Window.chrome-traffic-lights Button.window-caption">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="Panel.traffic-light-spacer">
+    <Setter Property="Width" Value="60" />
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="Window.chrome-traffic-lights:not(.window-fullscreen) Panel.traffic-light-spacer">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+</Styles>

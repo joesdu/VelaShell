@@ -34,17 +34,18 @@
 
 ## 📊 待办分布
 
-**欠账**（⏳ + 🚧 + 💡，共 24 项）与**路线图**（共 29 项）分开计：
+**欠账**（⏳ + 🚧 + 💡，共 25 项）与**路线图**（共 29 项）分开计：
 
 ```mermaid
 pie showData
-    title 欠账 —— 现状与代码对不上的部分（24 项）
+    title 欠账 —— 现状与代码对不上的部分（25 项）
     "P0 存了但不生效" : 5
     "安全与凭据" : 4
     "会话与工作区" : 3
     "数据与可观测" : 3
     "终端与协议" : 5
     "文件传输" : 2
+    "窗口与外观" : 1
     "插件生态" : 2
 ```
 
@@ -68,6 +69,7 @@ pie showData
 > 「终端与协议」仍为 4：VelaShell.XServer 的 M3（接入宿主）已落地（`plan.md` §105），拆出一条「内置 X 服务端：AltGr 层」（见该节）。
 > 「终端与协议」从 4 加到 5：新增「VelaShell.XServer 全库审查：待修」（plan.md §114，一行里分 A–E 五组，见该节）。
 > 「E 安全与合规」从 5 加到 7：SSH 库补上主机证书之后，新增「主机证书（宿主侧）」与「gssapi-with-mic 认证」两条（`plan.md` §113，见该节）。
+> 新增「窗口与外观」1 项：窗口外框跨平台适配已落地，macOS 独立窗口与 Linux 原生 Wayland 的实机验收还欠着（`plan.md` §116，见该节）。
 
 ---
 
@@ -508,6 +510,14 @@ var options = new ExecuteOptions
 
 ---
 
+## 🪟 窗口与外观
+
+| 状态 | 优先级 | 项 | 现状 | 要做什么 |
+| :---: | :---: | --- | --- | --- |
+| 🚧 | 🟠 P1 | **窗口外框跨平台适配:剩下的实机验收** | 全部弹窗与独立窗口已按平台走原生机制(`plan.md` §116,`Views/WindowChrome.cs`)。macOS 上主窗口、设置窗口与消息框已由朋友实机验收;**非模态窗口的红绿灯是这一轮新加的,还没在 Mac 上看过**;Linux 只在 WSLg 里跑过 —— 那里 Wayland 起不来(Weston 缺 `xdg_wm_base` ≥ 3)、X11 又没有透明,测到的只是 X11 分支 | ①macOS:任务管理器 / 资源监视 / 插件管理等独立窗口的红绿灯可用、自绘的窗口按钮不见了、标题栏左侧让位宽度合适(`Themes/WindowChrome.axaml` 的 `traffic-light-spacer` 宽 60,不合适就调);红绿灯与标题同一条中线(全部标题栏已统一 28,并跟随系统标题栏的实际高度);最大化 / 全屏后卡片铺满。②Linux 原生 Wayland 桌面(GNOME / KDE / Hyprland 任一):弹窗外那一圈消失、阴影圆角描边与 Windows 观感一致、拖动与边缘缩放、背景模糊是否只在卡片范围内(取决于合成器,记下即可),以及 `Width` / `Height` 是否确实不含装饰(源码推断如此,不对的话改 `WindowChrome.SizeReduction` / `OuterFrameSize`)。③Linux X11 桌面:不透明矩形、没有外圈、自绘抓取区能缩放。④隔离插件的窗口(`PluginHostShellWindow`)同上各看一眼 |
+
+---
+
 ## 🧩 插件生态
 
 | 状态 | 优先级 | 项 | 现状 | 要做什么 |
@@ -681,6 +691,7 @@ var options = new ExecuteOptions
 | ⏳ | `plan.md` §74 / §75 | **目录比较与同步**：已开 [velashell-docs#35](https://github.com/VelaShellLabs/velashell-docs/pull/35)，**待合入**。`{zh,en}/host/SFTP双栏与WinSCP差距分析.md`（C1 改为已实现、优先级第 10 条划掉、新增第七节：比较目录、同步窗口选项表与执行规则、保持远端最新、比较口径、未做与已知限制）；`{zh,en}/host/交互与界面规格.md` §6 补文档工具条、同步窗口布局与「保持远端最新」。§75 的 SHA-256 优先比较也已写进同两份文档（选项表、7.4 比较口径、7.5 代价与缓存限制）。合入后把这一行改成 ✅ |
 | ⏳ | `plan.md` §82 | #474 的四条改动要同步文档：**已在 velashell-docs 的 `docs/474-explorer-sftp` 分支上改好（中英各 3 个文件），待开 PR 与宿主 PR 互相引用后一起合**。内容：`{zh,en}/host/交互与界面规格.md` 资源管理器一节补**置顶**（右键入口、提到整棵树最前、`GroupId` 不变、与折叠配套的理由、分组计数仍按成员数）与 SFTP 路径栏的**复制当前路径**按钮；`{zh,en}/host/设置项审计.md` 补两条新设置（`General.CollapseGroupsByDefault`、`Transfer.UseRecursiveDeleteCommand`）；`Transfer` 那条要写明**只对有 exec 通道的 SSH 会话生效、失败自动回退、没有逐条进度**三句口径 |
 | ⏳ | `plan.md` §86 / §87 | **密钥生成默认给 Ed25519，并新增算法下拉**：`{zh,en}/host/交互与界面规格.md` 密钥管理页一节改口径 —— 工具栏在「导入」左边多了一个算法下拉（**Ed25519（默认）/ ECDSA 256·384·521 / RSA 4096**，位数刻意不给选），「生成密钥」按下拉选中的那一档产出，不再恒为 RSA 4096；自动命名随算法走（`velashell_ed25519` / `velashell_ecdsa256|384|521` / `velashell_rsa`，重名自动加 `_2`），老用户 `~/.ssh` 下那把 `velashell_rsa` 不受影响。`{zh,en}/host/架构设计.md` 若有「只能生成 RSA」一类的口径也要一并改 |
+| ⏳ | `plan.md` §116 | **窗口外框跨平台适配**:velashell-docs 已在本地改好(中英各 3 个文件),**待开 PR 与宿主 PR 互相引用后一起合**。内容:`{zh,en}/host/architecture.md` §5「窗口壳」的 ⚠️ 限定为 Win32、新增「各平台的外框」(对照表、`WindowChrome` 与 XAML 约定、Avalonia 12.1.3 源码依据、验收状态);`{zh,en}/host/交互与界面规格.md` §2 补 macOS 红绿灯与各平台的弹窗 / 独立窗口外框、「窗口标题栏说明」补 macOS 一句、阴影一条补 Wayland 阴影宽度;`{zh,en}/host/design-specs.md` 实现差异说明补 macOS 红绿灯;全部窗口标题栏统一 28 的口径也已写进这三篇(36px / 48px 的旧说法已改)。实机验收做完后改掉 architecture 里「验收」那一段 |
 | ⏳ | `plan.md` §61 | 回滚行数（`设置 → 终端`）的行为补一句：**调小当场生效**，超出上限的历史立刻裁掉、不可恢复；以及它作用于主屏，全屏程序（vim / htop / less）的备用屏恒无回滚，与这个值无关 |
 | ✅ | `plan.md` §98 | ~~**自动加载密钥到 Agent**~~ —— **2026-09-23 已同步**（[velashell-docs#53](https://github.com/VelaShellLabs/velashell-docs/pull/53) 已与宿主 #493 一起合入）。原登记内容：`{zh,en}/ssh/spec/07-forwarding.md` 新增 §7.3（加钥报文、私钥布局、约束、五条决策）；`{zh,en}/ssh/getting-started.md` 补示例；`{zh,en}/host/settings-audit.md` R-06 改为已实现；交互规格密钥管理一行、架构设计未实现清单同步。|
 | ✅ | `plan.md` §102 | ~~**agent 转发的只转发选中密钥与逐次确认**~~ —— **2026-09-23 已同步**（[velashell-docs#56](https://github.com/VelaShellLabs/velashell-docs/pull/56) 已与宿主 #495 一起合入）。原登记内容：`{zh,en}/host/交互与界面规格.md` SSH 连接选项一节补两项与 agent 签名确认框（三按钮、拒绝为默认键与取消键、60 秒无人应答拒绝、多会话排队）。|
@@ -699,7 +710,7 @@ var options = new ExecuteOptions
 | **键盘复制模式（vi-like）** | 产品决策（2026-09-09）：**没见过这种用法**，为它付的代价却不小。技术上不难（选区模型三种形态 `TerminalSelectionMath` 已经全在），但它要新起一个**模式态**，而模式态要同时穿过两层输入路径：`TerminalKeyRouter` 与抢在它前面的 `TerminalTabView.OnPreviewKeyDown`（`Ctrl+F` 搜索栏、`Esc`、补全弹层的 `↑↓/Tab/Esc` 都在那一层被截走）。此外还要处理三件事：进模式必须关 IME（否则中文输入法下 `j` 到手是 `ImeProcessed`，原始键拿不回来，模式看着像死了）、`Ctrl+C` 的三重身份要重新定义、以及一个不可省的模式指示器。而**它的主场景已被别的功能吃掉**：选中整条命令输出走 OSC 133 的命令块，找文本走 `Ctrl+F`，抢鼠标的程序里走 `Shift+拖拽` —— 剩下的净增量只有「选任意一段」。⚠️ 与「自定义键位」那条决策也冲突：键位定死了就改不了，Dvorak / Colemak 上 `hjkl` 的位置是错的 |
 | **SFTP 面板内拖拽移动文件** | 维护者既有决策（#474 回复）：**做过，因为太容易误触发而关掉了** —— 文件列表上一次不经意的拖动就把文件挪走，用户事后往往不知道东西去了哪，「文件乱飞」。现有的 `DragDrop` 装配（`FileBrowserView.axaml.cs`）只认**本地路径落入**与**跨面板传输**，`DragEffects` 只给 `Copy`；远端内部的移动请用右键「重命名」或双栏。再提之前先想清楚怎么防误触发，光把开关打开等于把老问题原样搬回来 |
 | **连字（Ligatures）** | 自绘渲染器按**单元格**排版，无法跨字符连字。这是自绘换来渲染控制权的固有代价 |
-| **自适应标题栏颜色** | 系统原生标题栏由 OS 托管 —— 而主窗与全部对话框现在都是自绘无边框，这条本身已失去对象 |
+| **自适应标题栏颜色** | 系统原生标题栏由 OS 托管 —— 而主窗与全部对话框的标题栏现在都是自绘的（macOS 上只借用系统红绿灯，标题栏本身仍自绘，见 `plan.md` §116），这条本身已失去对象 |
 | **系统通知 Toast** | 需要 AppUserModelID 与通知框架。替代方案已落地：常规页「声音提示」+ 安全审计页告警通道的「提示音」（`Security.AlertSound`），以及消息中心（`plan.md` §20） |
 | **输入脱敏（会话录制）** | 只录**输出流**，密码本就无回显，没有要脱敏的对象 |
 | **自定义键位** | 产品决策：快捷键页定位为「参考表」，唯一事实来源是 `ShortcutCatalog.cs` |

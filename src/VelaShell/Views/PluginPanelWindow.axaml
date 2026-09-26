@@ -5,12 +5,9 @@
         Icon="/Assets/velashell.ico"
         Width="536" Height="436"
         MinWidth="296" MinHeight="216"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
-        WindowStartupLocation="CenterOwner"
-        WindowDecorations="None">
+        WindowStartupLocation="CenterOwner">
 
-  <!-- 插件独立窗口:与任务管理器/资源监视同规格的透明窗口 + 自绘 8px 圆角卡片 +
+  <!-- 插件独立窗口:与任务管理器/资源监视同规格的卡片窗口(外框按平台,见 WindowChrome)+
        自绘缩放抓取区,标题栏 40px。内容为 PluginPanelHost(主题样式映射在其内)。 -->
 
   <Window.Styles>
@@ -18,8 +15,8 @@
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="CornerRadius" Value="0" />
-      <Setter Property="Width" Value="42" />
-      <Setter Property="Height" Value="34" />
+      <Setter Property="Width" Value="27" />
+      <Setter Property="Height" Value="27" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -33,22 +30,21 @@
   </Window.Styles>
 
   <Panel>
-    <Border x:Name="RootCard"
-            Margin="16" CornerRadius="8" ClipToBounds="True"
+    <Border x:Name="RootCard" Classes="window-card"
+ ClipToBounds="True"
             Background="{DynamicResource VelaBgSurface}"
-            BorderBrush="{DynamicResource VelaBorderSecondary}"
-            BorderThickness="1"
-            BoxShadow="{DynamicResource VelaShadowWindow}">
-      <Grid RowDefinitions="40,*">
+            BorderBrush="{DynamicResource VelaBorderSecondary}">
+      <Grid RowDefinitions="Auto,*">
 
         <Border x:Name="TitleBarStrip" Grid.Row="0"
                 Background="{DynamicResource VelaBgSurface}"
                 BorderBrush="{DynamicResource VelaBorderPrimary}"
                 BorderThickness="0,0,0,1"
-                CornerRadius="7,7,0,0"
+                Classes="window-card-top window-titlebar"
                 PointerPressed="Header_PointerPressed">
           <Grid ColumnDefinitions="*,Auto" Margin="14,0,0,0">
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <Panel Classes="traffic-light-spacer" />
               <!-- 插件自报的图标(PanelOptions.Icon),没给才是通用插头 —— 由 SetIcon 填。
                    写死插头的时候,几个插件的设置窗口并排开着标题栏长得一模一样。 -->
               <pc:LucideIcon x:Name="TitleIcon" Width="13" Height="13"
@@ -67,15 +63,15 @@
             </StackPanel>
             <!-- 插件声明的标题栏动作按钮(PanelOptions.TitleActions)插在最小化键左侧,见 SetTitleActions -->
             <StackPanel x:Name="CaptionButtons" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
-              <Button Classes="caption" Click="Minimize_Click">
+              <Button Classes="caption window-caption" Click="Minimize_Click">
                 <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.minus}"
                                Foreground="{DynamicResource VelaTextSecondary}" />
               </Button>
-              <Button Classes="caption" Click="Maximize_Click">
+              <Button Classes="caption window-caption" Click="Maximize_Click">
                 <pc:LucideIcon Width="10" Height="10" Data="{StaticResource Icon.square}"
                                Foreground="{DynamicResource VelaTextSecondary}" />
               </Button>
-              <Button Classes="caption caption-close" Click="Close_Click">
+              <Button Classes="caption caption-close window-caption" Click="Close_Click">
                 <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.x}"
                                Foreground="{DynamicResource VelaTextSecondary}" />
               </Button>
