@@ -14,7 +14,7 @@ namespace VelaShell.Ssh.Sftp;
 
 /// <summary>一个已经收下来的 SFTP 应答。</summary>
 /// <remarks>用完要 <see cref="Dispose"/> —— 载荷是从池里租的。</remarks>
-public sealed class SftpResponse : IDisposable
+internal sealed class SftpResponse : IDisposable
 {
     private byte[]? _rented;
     private readonly int _length;
@@ -53,31 +53,19 @@ public sealed class SftpResponse : IDisposable
         return true;
     }
 
-    /// <summary>把状态类应答翻成异常；不是错误就什么都不做。</summary>
-    /// <param name="path">出问题的路径，进异常消息。</param>
-    /// <param name="operation">操作名，进异常消息。</param>
-    /// <param name="treatEndOfFileAsError">
-    /// <c>EOF</c> 算不算错误。<b>默认不算</b> —— 读到文件末尾、目录读完都是正常事，
-    /// 把它抛出去会让每一次「读完」都变成一次异常。
-    /// </param>
-    public void ThrowIfError(string? path = null, string? operation = null, bool treatEndOfFileAsError = false)
+    /// <summary>把状态类应答翻成异常；<c>OK</c> 或者不是状态应答时什么都不做。</summary>
+    /// <param name="path">出问题的路径，进异常。</param>
+    /// <param name="operation">出问题的操作，进异常。</param>
+    /// <remarks>
+    /// <c>EOF</c> 在这里也算错误 —— 走到这里的调用都期待一个数据应答或者 <c>OK</c>。
+    /// 「读到末尾」「目录读完」这两处正常的 <c>EOF</c> 由读文件、读目录的代码自己先认出来，不经过这里。
+    /// </remarks>
+    public void ThrowIfError(string? path, SftpOperation operation)
     {
-        if (!TryGetStatus(out SftpStatusCode code, out string message))
+        if (TryGetStatus(out SftpStatusCode code, out string message) && code != SftpStatusCode.Ok)
         {
-            return;
+            throw new SftpException(code, message, path, operation);
         }
-
-        if (code == SftpStatusCode.Ok)
-        {
-            return;
-        }
-
-        if (code == SftpStatusCode.EndOfFile && !treatEndOfFileAsError)
-        {
-            return;
-        }
-
-        throw new SftpException(code, message, path, operation);
     }
 
     /// <inheritdoc />
@@ -103,7 +91,7 @@ public sealed class SftpResponse : IDisposable
 /// 直接封死吞吐：64 × 32 KiB = 2 MiB，200 ms RTT 下同样是 10 MB/s 封顶。
 /// </para>
 /// </remarks>
-public sealed class SftpRequestPipeline : IAsyncDisposable
+internal sealed class SftpRequestPipeline : IAsyncDisposable
 {
     private readonly SshChannel _channel;
     private readonly Lock _stateLock = new();

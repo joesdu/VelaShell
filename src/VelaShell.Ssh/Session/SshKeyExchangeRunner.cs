@@ -27,7 +27,7 @@ namespace VelaShell.Ssh.Session;
 /// <param name="SessionId">会话标识（首次交换的 <c>H</c>，此后不变）。</param>
 /// <param name="HostKey">服务端出示并已通过验证的主机公钥。</param>
 /// <param name="StrictKeyExchange">本次连接是否启用了严格 KEX。</param>
-public sealed record SshKeyExchangeResult(
+internal sealed record SshKeyExchangeResult(
     SshNegotiatedAlgorithms Algorithms,
     byte[] ExchangeHash,
     byte[] SessionId,
@@ -46,9 +46,17 @@ public sealed record SshKeyExchangeResult(
 /// 而收的方向要等对端的 NEWKEYS 到达。
 /// </para>
 /// </remarks>
-public sealed class SshKeyExchangeRunner
+internal sealed class SshKeyExchangeRunner
 {
     private const int MaxFieldBytes = 256 * 1024;
+
+    /// <summary>默认接受的最小 RSA 模数位数（〔决策，velashell-docs/zh/ssh/spec/03 §5.3〕）。</summary>
+    internal const int DefaultMinimumRsaKeyBits = 2048;
+
+    // 30–49 是各密钥交换方法自己的报文编号（RFC 4250 §4.1.2），所以不进 SshMessageNumber。
+    // 本库实现的方法（ECDH、Curve25519、DH 固定群、混合 KEM）都只用前两个：客户端的公开值与服务端的应答。
+    private const byte KexMethodInit = 30;
+    private const byte KexMethodReply = 31;
 
     private readonly ISshKexTransport _transport;
     private readonly SshAlgorithmSet _algorithms;
@@ -66,7 +74,7 @@ public sealed class SshKeyExchangeRunner
         SshPacketTransport transport,
         SshAlgorithmSet algorithms,
         IHostKeyPolicy hostKeyPolicy,
-        int minimumRsaKeyBits = 2048)
+        int minimumRsaKeyBits = DefaultMinimumRsaKeyBits)
     {
         ArgumentNullException.ThrowIfNull(transport);
         _transport = new DirectKexTransport(transport);
@@ -83,7 +91,7 @@ public sealed class SshKeyExchangeRunner
         ISshKexTransport transport,
         SshAlgorithmSet algorithms,
         IHostKeyPolicy hostKeyPolicy,
-        int minimumRsaKeyBits = 2048)
+        int minimumRsaKeyBits = DefaultMinimumRsaKeyBits)
     {
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         _algorithms = algorithms ?? throw new ArgumentNullException(nameof(algorithms));
@@ -216,7 +224,7 @@ public sealed class SshKeyExchangeRunner
 
         ArrayBufferWriter<byte> initMessage = new();
         SshDataWriter initWriter = new(initMessage);
-        initWriter.WriteByte(30);   // KEX 方法专用编号，各方法含义不同
+        initWriter.WriteByte(KexMethodInit);
         WriteKexValue(ref initWriter, clientPublic, kex.PublicValueEncoding);
         await _transport.SendAsync(initMessage.WrittenMemory, cancellationToken).ConfigureAwait(false);
 
@@ -228,7 +236,7 @@ public sealed class SshKeyExchangeRunner
         }
 
         SshInboundPacket reply = await ReadKexPacketAsync(
-            (SshMessageNumber)31, strictReads, cancellationToken).ConfigureAwait(false);
+            (SshMessageNumber)KexMethodReply, strictReads, cancellationToken).ConfigureAwait(false);
 
         (byte[] hostKeyBlob, byte[] serverPublic, byte[] signature) = ParseReply(reply.Payload, kex);
 
@@ -324,7 +332,7 @@ public sealed class SshKeyExchangeRunner
         SshPublicKey hostKey;
         try
         {
-            hostKey = SshPublicKey.Parse(hostKeyBlob);
+            hostKey = SshPublicKey.Decode(hostKeyBlob);
         }
         catch (SshPublicKeyException ex)
         {
@@ -406,19 +414,26 @@ public sealed class SshKeyExchangeRunner
                     $"主机密钥裁决超时（{HostKeyDecisionTimeout}）。");
             }
 
-            if (verdict.Decision == SshHostKeyDecision.Reject)
+            switch (verdict.Decision)
             {
-                // 把策略给出的**人话**原样抛出去。回调只能返回一个裁决，
-                // 原因得由它自己带上 —— 否则用户拿到的只有一句「不受信任的对端」。
-                throw new SshConnectException(
-                    SshFailureReason.HostKeyRejected, SshPhase.KeyExchange,
-                    verdict.Reason ?? $"{context.Target} 的主机密钥被策略拒绝。");
-            }
+                case SshHostKeyDecision.Accept:
+                    break;
 
-            if (verdict.Decision == SshHostKeyDecision.AcceptAndPersist)
-            {
-                // 用调用方的令牌，不用连接计时器的 —— 见 DecisionCancellationToken 的说明。
-                await _hostKeyPolicy.PersistAsync(context, outer).ConfigureAwait(false);
+                case SshHostKeyDecision.AcceptAndPersist:
+                    // 用调用方的令牌，不用连接计时器的 —— 见 DecisionCancellationToken 的说明。
+                    await _hostKeyPolicy.PersistAsync(context, outer).ConfigureAwait(false);
+                    break;
+
+                default:
+                    // 只认两种放行，其余（含 default 裁决）一律拒绝。
+                    // 把策略给出的人话原样抛出去 —— 回调只能返回一个裁决，原因得由它自己带上，
+                    // 否则用户拿到的只有一句「不受信任的对端」。
+                    throw new SshConnectException(
+                        verdict.Reason == SshFailureReason.HostKeyChanged
+                            ? SshFailureReason.HostKeyChanged
+                            : SshFailureReason.HostKeyRejected,
+                        SshPhase.KeyExchange,
+                        verdict.Message ?? $"{context.Target} 的主机密钥被策略拒绝。");
             }
         }
         finally

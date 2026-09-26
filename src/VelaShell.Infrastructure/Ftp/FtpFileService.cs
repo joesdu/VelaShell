@@ -674,7 +674,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         }
         string ftpHost = route.ProxyDns
             ? info.Host
-            : await ProxyStreamConnector.ResolveLocallyAsync(info.Host, cancellationToken).ConfigureAwait(false);
+            : await LocalDnsResolver.ResolveAsync(info.Host, cancellationToken).ConfigureAwait(false);
         var profile = new FtpProxyProfile
         {
             ProxyHost = route.Host,

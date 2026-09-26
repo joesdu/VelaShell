@@ -5,32 +5,6 @@
 
 namespace VelaShell.Ssh.Auth;
 
-/// <summary>一次认证尝试的结果。</summary>
-public enum SshAuthOutcome
-{
-    /// <summary>认证完成。</summary>
-    Success,
-
-    /// <summary>
-    /// **这一步通过了**，但服务端还要求继续下一种方法。
-    /// </summary>
-    /// <remarks>
-    /// 多因素认证（公钥 + OTP、密码 + OTP）在 SSH 里就是这么表达的 ——
-    /// <b>没有单独的「2FA 报文」</b>。把它当成失败处理，是 2FA 支持最常见、
-    /// 也最隐蔽的实现错误（velashell-docs/zh/ssh/spec/04 §3.3）。
-    /// </remarks>
-    PartialSuccess,
-
-    /// <summary>这一步失败。</summary>
-    Failure,
-
-    /// <summary>没试 —— 服务端不接受这种方法。</summary>
-    SkippedNotOffered,
-
-    /// <summary>没试 —— 凭据本身取不到材料（私钥文件读不出来之类）。</summary>
-    SkippedNoMaterial,
-}
-
 /// <summary>认证过程中的一条尝试记录。</summary>
 /// <param name="Method">认证方法名。</param>
 /// <param name="CredentialLabel">凭据的标签。<b>不含任何密钥材料。</b></param>

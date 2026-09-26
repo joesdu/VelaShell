@@ -154,7 +154,7 @@ public sealed class PrivateKeyFileTests
             },
             publicBlob);
 
-        ISshSigner signer = SshPrivateKeyFile.Parse(pem);
+        InMemorySshSigner signer = SshPrivateKeyFile.Parse(pem);
 
         Assert.AreEqual(SshAlgorithmNames.SshEd25519, signer.PublicKey.KeyType);
         Assert.AreSequenceEqual(publicBlob, signer.PublicKey.Blob.ToArray(), "从私钥导出的公钥要与文件里带的那份一致");
@@ -196,7 +196,7 @@ public sealed class PrivateKeyFileTests
             },
             publicBlob);
 
-        ISshSigner signer = SshPrivateKeyFile.Parse(pem);
+        InMemorySshSigner signer = SshPrivateKeyFile.Parse(pem);
 
         Assert.AreEqual(SshAlgorithmNames.SshRsa, signer.PublicKey.KeyType);
 
@@ -245,7 +245,7 @@ public sealed class PrivateKeyFileTests
                 },
                 publicBlob);
 
-            ISshSigner signer = SshPrivateKeyFile.Parse(pem);
+            InMemorySshSigner signer = SshPrivateKeyFile.Parse(pem);
 
             Assert.AreEqual(algorithm, signer.PublicKey.KeyType, curveName);
 
@@ -333,7 +333,7 @@ public sealed class PrivateKeyFileTests
         using var rsa = RSA.Create(2048);
         string pem = rsa.ExportPkcs8PrivateKeyPem();
 
-        ISshSigner signer = SshPrivateKeyFile.Parse(pem);
+        InMemorySshSigner signer = SshPrivateKeyFile.Parse(pem);
 
         byte[] data = Encoding.UTF8.GetBytes("x");
         byte[] signature = await signer.SignAsync(data, SshAlgorithmNames.RsaSha512);
@@ -346,7 +346,7 @@ public sealed class PrivateKeyFileTests
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         string pem = ecdsa.ExportPkcs8PrivateKeyPem();
 
-        ISshSigner signer = SshPrivateKeyFile.Parse(pem);
+        InMemorySshSigner signer = SshPrivateKeyFile.Parse(pem);
 
         byte[] data = Encoding.UTF8.GetBytes("x");
         byte[] signature = await signer.SignAsync(data, SshAlgorithmNames.EcdsaSha2Nistp256);
@@ -361,7 +361,7 @@ public sealed class PrivateKeyFileTests
         PbeParameters pbe = new(PbeEncryptionAlgorithm.Aes256Cbc, HashAlgorithmName.SHA256, 10_000);
         string pem = rsa.ExportEncryptedPkcs8PrivateKeyPem("正确的口令", pbe);
 
-        ISshSigner signer = SshPrivateKeyFile.Parse(pem, "正确的口令");
+        InMemorySshSigner signer = SshPrivateKeyFile.Parse(pem, "正确的口令");
 
         byte[] data = Encoding.UTF8.GetBytes("x");
         byte[] signature = await signer.SignAsync(data, SshAlgorithmNames.RsaSha256);
@@ -407,7 +407,7 @@ public sealed class PrivateKeyFileTests
         try
         {
             await File.WriteAllTextAsync(path, rsa.ExportPkcs8PrivateKeyPem());
-            ISshSigner signer = await SshPrivateKeyFile.LoadAsync(path);
+            InMemorySshSigner signer = await SshPrivateKeyFile.LoadAsync(path);
             Assert.AreEqual(SshAlgorithmNames.SshRsa, signer.PublicKey.KeyType);
         }
         finally

@@ -27,12 +27,12 @@ public sealed class VelaSshClientWrapperTests
     }
 
     private static VelaSshClientWrapper CreateWrapper(int port) => new(
-        ct => new SshConnectionOptions("user", "127.0.0.1", port)
+        ct => SshConnection.ConnectAsync(new SshConnectionOptions("user", "127.0.0.1", port)
         {
             Credentials = [new PasswordCredential("unused")],
             HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
             ConnectTimeout = TimeSpan.FromSeconds(5),
-        }.ConnectAsync(ct),
+        }, ct),
         TimeSpan.FromSeconds(5));
 
     [TestMethod]

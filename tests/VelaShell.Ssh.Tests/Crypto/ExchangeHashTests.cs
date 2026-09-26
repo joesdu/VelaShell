@@ -158,44 +158,6 @@ public sealed class ExchangeHashTests
         }
     }
 
-    [TestMethod]
-    public void 群协商的额外字段会进入哈希()
-    {
-        // RFC 4419 在主机密钥与公开值之间插入 min ‖ n ‖ max ‖ p ‖ g。
-        SshExchangeHashInput withExtra = new()
-        {
-            ClientVersion = Bytes("SSH-2.0-Client"),
-            ServerVersion = Bytes("SSH-2.0-Server"),
-            ClientKexInit = [20],
-            ServerKexInit = [20],
-            HostKeyBlob = [1],
-            GroupExchangeExtra = [0xAA, 0xBB],
-            ClientPublicValue = [2],
-            ServerPublicValue = [3],
-            SharedSecret = [4],
-            PublicValueEncoding = SshKexValueEncoding.Mpint,
-            SharedSecretEncoding = SshKexValueEncoding.Mpint,
-        };
-
-        SshExchangeHashInput without = new()
-        {
-            ClientVersion = Bytes("SSH-2.0-Client"),
-            ServerVersion = Bytes("SSH-2.0-Server"),
-            ClientKexInit = [20],
-            ServerKexInit = [20],
-            HostKeyBlob = [1],
-            ClientPublicValue = [2],
-            ServerPublicValue = [3],
-            SharedSecret = [4],
-            PublicValueEncoding = SshKexValueEncoding.Mpint,
-            SharedSecretEncoding = SshKexValueEncoding.Mpint,
-        };
-
-        CollectionAssert.AreNotEqual(
-            SshExchangeHash.Compute(HashAlgorithmName.SHA256, withExtra),
-            SshExchangeHash.Compute(HashAlgorithmName.SHA256, without));
-    }
-
     // ------------------------------------------------------------ 密钥派生
 
     [TestMethod]

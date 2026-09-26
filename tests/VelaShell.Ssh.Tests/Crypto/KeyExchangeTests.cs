@@ -227,7 +227,7 @@ public sealed class KeyExchangeTests
     [TestMethod]
     public void SNtruPrime混合两端算出同一个共享密钥()
     {
-        using HybridKeyExchange client = new(SshAlgorithmNames.SNtruP761X25519Sha512);
+        using HybridKeyExchange client = new(SshAlgorithmNames.Sntrup761X25519Sha512);
         byte[] clientPublic = client.CreateClientPublicValue();
         Assert.HasCount(1158 + 32, clientPublic, "sntrup761 公钥 1158 + X25519 32");
 
@@ -296,20 +296,27 @@ public sealed class KeyExchangeTests
     [TestMethod]
     public void 未注册的算法名抛出()
     {
-        Assert.ThrowsExactly<SshKeyExchangeException>(
+        Assert.ThrowsExactly<InvalidOperationException>(
             () => SshKeyExchangeFactory.Create("kex-that-does-not-exist"));
     }
 
     [TestMethod]
-    public void 可以注册自定义算法()
+    [DataRow("curve25519")]
+    [DataRow("ecdh")]
+    [DataRow("hybrid")]
+    [DataRow("dh")]
+    public void 每种交换都拒绝不属于自己的算法名(string family)
     {
-        // 架构 §8 第 3 项的扩展点：后量子的下一代方案照此接入，不必改库。
-        const string Name = "test-kex@velashell.invalid";
-        SshKeyExchangeFactory.Register(Name, static _ => new Curve25519KeyExchange(Name));
+        // 挂着别的名字的实例会让协商结果与实际做的交换对不上。
+        Action create = family switch
+        {
+            "curve25519" => () => new Curve25519KeyExchange(SshAlgorithmNames.EcdhSha2Nistp256).Dispose(),
+            "ecdh" => () => new EcdhKeyExchange(SshAlgorithmNames.Curve25519Sha256).Dispose(),
+            "hybrid" => () => new HybridKeyExchange(SshAlgorithmNames.Curve25519Sha256).Dispose(),
+            _ => () => new DiffieHellmanGroupKeyExchange(SshAlgorithmNames.Curve25519Sha256).Dispose(),
+        };
 
-        Assert.IsTrue(SshKeyExchangeFactory.IsSupported(Name));
-        using ISshKeyExchange kex = SshKeyExchangeFactory.Create(Name);
-        Assert.AreEqual(Name, kex.Name);
+        Assert.ThrowsExactly<ArgumentException>(create);
     }
 
     private static void CopyRightAligned(ReadOnlySpan<byte> source, Span<byte> destination)

@@ -23,7 +23,7 @@ namespace VelaShell.Ssh.Auth;
 /// <param name="Attempts">逐条尝试记录。</param>
 /// <param name="Banner">服务端发来的横幅文本（按出现顺序）。</param>
 /// <param name="ServerSignatureAlgorithms">服务端通过 <c>server-sig-algs</c> 宣告的签名算法。</param>
-public sealed record SshAuthenticationResult(
+internal sealed record SshAuthenticationResult(
     string Method,
     IReadOnlyList<SshAuthAttempt> Attempts,
     IReadOnlyList<string> Banner,
@@ -44,11 +44,20 @@ public sealed record SshAuthenticationResult(
 /// <param name="transport">已完成密钥交换的传输。</param>
 /// <param name="userName">用户名。</param>
 /// <param name="sessionId">会话标识（公钥签名的第一个输入）。</param>
-public sealed class SshAuthenticator(SshPacketTransport transport, string userName, byte[] sessionId)
+internal sealed class SshAuthenticator(SshPacketTransport transport, string userName, byte[] sessionId)
 {
     private const int MaxFieldBytes = 64 * 1024;
     private const int MaxBannerBytes = 256 * 1024;
     private const int MaxBannerCount = 1024;
+
+    // 60–79 是各认证方法自己的报文编号（RFC 4250 §4.1.2）：同一个数在不同方法里含义不同，
+    // 所以不进 SshMessageNumber，而是按方法在这里起名。
+    private const byte FirstMethodSpecificNumber = 60;
+    private const byte LastMethodSpecificNumber = 79;
+    private const byte PasswordChangeRequest = 60;   // password：SSH_MSG_USERAUTH_PASSWD_CHANGEREQ（RFC 4252 §8）
+    private const byte PublicKeyOk = 60;             // publickey：SSH_MSG_USERAUTH_PK_OK（RFC 4252 §7）
+    private const byte InfoRequest = 60;             // keyboard-interactive：SSH_MSG_USERAUTH_INFO_REQUEST（RFC 4256 §3.2）
+    private const byte InfoResponse = 61;            // keyboard-interactive：SSH_MSG_USERAUTH_INFO_RESPONSE（RFC 4256 §3.4）
 
     /// <summary>一次 keyboard-interactive 允许的最大轮数。</summary>
     /// <remarks>
@@ -71,6 +80,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
     private string[] _serverOffered = [];
     private string[] _serverSignatureAlgorithms = [];
     private bool _partialSuccessAchieved;
+    private bool _passwordChangeRequested;
 
     /// <summary>
     /// 同一个方法在这次认证里累计失败多少次之后不再重试（不随部分成功清零）。
@@ -131,7 +141,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
         //    那是唯一能问到这份清单的途径。它也**可能成功**（服务端配了无认证）。
         if (await TryNoneAsync(cancellationToken).ConfigureAwait(false))
         {
-            return BuildResult(SshAlgorithmNames.AuthNone);
+            return BuildResult(SshProtocolNames.AuthNone);
         }
 
         // ② 按**使用者给出的顺序**逐个试。
@@ -176,7 +186,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
                 // 连错几次会被服务端封一阵。publickey 的每一把钥是不同的凭据 —— agent 里有五把钥、
                 // 对的是第四把时，第三把之后就不试了，那就永远登不上；它们的总数由服务端的
                 // MaxAuthTries 管。
-                if (effective.MethodName != SshAlgorithmNames.AuthPublicKey
+                if (effective.MethodName != SshProtocolNames.AuthPublicKey
                     && _failureCounts.GetValueOrDefault(effective.MethodName) >= MaxFailuresPerMethod)
                 {
                     // 计数是整次认证累计的，不随部分成功清零 —— 所以不说「连续」。
@@ -219,7 +229,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
     private KeyboardInteractiveCredential? TryBridgeToKeyboardInteractive(SshCredential credential)
     {
         if (credential is not PasswordCredential { AlsoAnswerKeyboardInteractive: true } password
-            || !_serverOffered.Contains(SshAlgorithmNames.AuthKeyboardInteractive, StringComparer.Ordinal))
+            || !_serverOffered.Contains(SshProtocolNames.AuthKeyboardInteractive, StringComparer.Ordinal))
         {
             return null;
         }
@@ -246,7 +256,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
         ArrayBufferWriter<byte> request = new();
         SshDataWriter writer = new(request);
         writer.WriteMessageNumber(SshMessageNumber.ServiceRequest);
-        writer.WriteUtf8String(SshAlgorithmNames.ServiceUserAuth);
+        writer.WriteUtf8String(SshProtocolNames.ServiceUserAuth);
 
         _transport.WritePacket(request.WrittenSpan);
         await _transport.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -268,7 +278,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
 
         ArrayBufferWriter<byte> request = new();
         SshDataWriter writer = new(request);
-        WriteRequestHeader(ref writer, SshAlgorithmNames.AuthNone);
+        WriteRequestHeader(ref writer, SshProtocolNames.AuthNone);
 
         _transport.WritePacket(request.WrittenSpan);
         await _transport.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -343,7 +353,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
 
         ArrayBufferWriter<byte> request = new();
         SshDataWriter writer = new(request);
-        WriteRequestHeader(ref writer, SshAlgorithmNames.AuthPassword);
+        WriteRequestHeader(ref writer, SshProtocolNames.AuthPassword);
         writer.WriteBoolean(false);        // 不是改密码请求
         writer.WriteUtf8String(password);
 
@@ -354,9 +364,17 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
         // 〔决策 velashell-docs/zh/ssh/spec/04 §5.1〕我们不实现改密码流程，但**要把原因说清楚** ——
         // 「客户端直接断开且不说为什么」是用户最难自救的一种失败。
         return await ReadAuthOutcomeAsync(
-            onMethodSpecific: (number, payload) => number == 60
-                ? new AuthStepResult(SshAuthOutcome.Failure, "服务端要求先修改密码（本库尚未实现改密码流程）。")
-                : null,
+            onMethodSpecific: (number, payload) =>
+            {
+                if (number != PasswordChangeRequest)
+                {
+                    return null;
+                }
+
+                // 记下来：方法都试完时据此报 PasswordExpired，而不是笼统的「方法用尽」。
+                _passwordChangeRequested = true;
+                return new AuthStepResult(SshAuthOutcome.Failure, "服务端要求先修改密码（本库尚未实现改密码流程）。");
+            },
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -394,7 +412,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
         //    （velashell-docs/zh/ssh/spec/04 §4.3）。
         ArrayBufferWriter<byte> request = new();
         SshDataWriter writer = new(request);
-        WriteRequestHeader(ref writer, SshAlgorithmNames.AuthPublicKey);
+        WriteRequestHeader(ref writer, SshProtocolNames.AuthPublicKey);
         writer.WriteBoolean(true);                                   // has_signature
         writer.WriteUtf8String(algorithm);
         writer.WriteString(credential.Signer.PublicKey.Blob.Span);
@@ -426,7 +444,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
     {
         ArrayBufferWriter<byte> request = new();
         SshDataWriter writer = new(request);
-        WriteRequestHeader(ref writer, SshAlgorithmNames.AuthPublicKey);
+        WriteRequestHeader(ref writer, SshProtocolNames.AuthPublicKey);
         writer.WriteBoolean(false);                                   // has_signature = false
         writer.WriteUtf8String(algorithm);
         writer.WriteString(credential.Signer.PublicKey.Blob.Span);
@@ -438,7 +456,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
         AuthStepResult outcome = await ReadAuthOutcomeAsync(
             onMethodSpecific: (number, _) =>
             {
-                if (number != 60)
+                if (number != PublicKeyOk)
                 {
                     return null;
                 }
@@ -456,7 +474,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
     {
         ArrayBufferWriter<byte> request = new();
         SshDataWriter writer = new(request);
-        WriteRequestHeader(ref writer, SshAlgorithmNames.AuthKeyboardInteractive);
+        WriteRequestHeader(ref writer, SshProtocolNames.AuthKeyboardInteractive);
         writer.WriteUtf8String("");   // 语言标记：发空，让服务端自己挑
         writer.WriteUtf8String("");   // 子方法提示：同上
 
@@ -477,7 +495,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
             AuthStepResult outcome = await ReadAuthOutcomeAsync(
                 onMethodSpecific: (number, payload) =>
                 {
-                    if (number != 60)
+                    if (number != InfoRequest)
                     {
                         return null;
                     }
@@ -511,7 +529,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
 
             ArrayBufferWriter<byte> response = new();
             SshDataWriter responseWriter = new(response);
-            responseWriter.WriteByte(61);   // SSH_MSG_USERAUTH_INFO_RESPONSE
+            responseWriter.WriteByte(InfoResponse);
             responseWriter.WriteUInt32((uint)responses.Count);
             foreach (string answer in responses)
             {
@@ -535,7 +553,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
     private static SshKeyboardChallenge ParseInfoRequest(ReadOnlyMemory<byte> payload)
     {
         SshDataReader reader = new(new ReadOnlySequence<byte>(payload));
-        reader.ReadByte();   // 60
+        reader.ReadByte();   // InfoRequest
 
         string name = reader.ReadUtf8String(MaxFieldBytes);
         string instruction = reader.ReadUtf8String(MaxFieldBytes);
@@ -594,7 +612,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
                     return new AuthStepResult(HandleFailure(packet.Payload));
 
                 default:
-                    if (number is >= 60 and <= 79 && onMethodSpecific is not null)
+                    if (number is >= FirstMethodSpecificNumber and <= LastMethodSpecificNumber && onMethodSpecific is not null)
                     {
                         AuthStepResult? result = onMethodSpecific(number, packet.Payload);
                         if (result is { } value)
@@ -709,7 +727,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
             string name = reader.ReadUtf8String(1024);
             ReadOnlySequence<byte> value = reader.ReadString(MaxFieldBytes);
 
-            if (name == SshAlgorithmNames.ExtServerSigAlgs)
+            if (name == SshProtocolNames.ExtServerSigAlgs)
             {
                 // 没有它就无法安全地选 RSA 签名算法（velashell-docs/zh/ssh/spec/04 §4.4）。
                 string text = System.Text.Encoding.ASCII.GetString(value.ToArray());
@@ -752,7 +770,7 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
     {
         writer.WriteMessageNumber(SshMessageNumber.UserAuthRequest);
         writer.WriteUtf8String(_userName);
-        writer.WriteUtf8String(SshAlgorithmNames.ServiceConnection);
+        writer.WriteUtf8String(SshProtocolNames.ServiceConnection);
         writer.WriteUtf8String(method);
     }
 
@@ -812,19 +830,26 @@ public sealed class SshAuthenticator(SshPacketTransport transport, string userNa
         // 值得单独一个原因码，好让界面说「这台机器需要动态码」而不是
         // 「用户名或密码不正确」（velashell-docs/zh/ssh/spec/04 §9）。
         bool needsKeyboardInteractive =
-            _serverOffered.Contains(SshAlgorithmNames.AuthKeyboardInteractive, StringComparer.Ordinal)
+            _serverOffered.Contains(SshProtocolNames.AuthKeyboardInteractive, StringComparer.Ordinal)
             && !_attempts.Any(static a =>
-                a.Method == SshAlgorithmNames.AuthKeyboardInteractive
+                a.Method == SshProtocolNames.AuthKeyboardInteractive
                 && a.Outcome is SshAuthOutcome.Failure or SshAuthOutcome.PartialSuccess);
 
-        SshFailureReason reason = needsKeyboardInteractive
-            ? SshFailureReason.TwoFactorRequired
-            : SshFailureReason.AuthenticationMethodExhausted;
-
-        string message = needsKeyboardInteractive
-            ? $"服务端要求键盘交互式认证（动态码 / OTP），但没有配置相应的凭据。" +
-              $"服务端接受：{string.Join(", ", _serverOffered)}。"
-            : $"所有认证方法都已尝试且未成功。服务端接受：{string.Join(", ", _serverOffered)}。";
+        // 「要先改密码」同样是可判定的：用户该去的是改密码的地方，不是反复重输同一个密码。
+        (SshFailureReason reason, string message) = (_passwordChangeRequested, needsKeyboardInteractive) switch
+        {
+            (true, _) => (
+                SshFailureReason.PasswordExpired,
+                "服务端要求先修改密码（密码已过期或被管理员要求更换），本库没有改密码流程。" +
+                "请先用别的客户端登录一次改掉密码。"),
+            (_, true) => (
+                SshFailureReason.TwoFactorRequired,
+                "服务端要求键盘交互式认证（动态码 / OTP），但没有配置相应的凭据。" +
+                $"服务端接受：{string.Join(", ", _serverOffered)}。"),
+            _ => (
+                SshFailureReason.AuthenticationMethodExhausted,
+                $"所有认证方法都已尝试且未成功。服务端接受：{string.Join(", ", _serverOffered)}。"),
+        };
 
         if (_partialSuccessAchieved)
         {

@@ -5,26 +5,6 @@
 
 namespace VelaShell.Ssh.HostKeys;
 
-/// <summary>没见过这台主机时怎么办。</summary>
-public enum UnknownHostBehavior
-{
-    /// <summary>
-    /// 问使用者（TOFU）。
-    /// </summary>
-    /// <remarks>
-    /// 交互式客户端用这个。<b>裁决耗时不计入连接超时</b>，
-    /// 所以弹窗可以一直摆着等用户看指纹。
-    /// </remarks>
-    Ask,
-
-    /// <summary>直接接受并记下来。</summary>
-    /// <remarks>⚠️ 等于 <c>StrictHostKeyChecking no</c> 的第一次，首连是盲信的。</remarks>
-    AcceptAndPersist,
-
-    /// <summary>拒绝。对应 <c>StrictHostKeyChecking yes</c>。</summary>
-    Reject,
-}
-
 /// <summary>按 <c>known_hosts</c> 裁决主机密钥。</summary>
 /// <remarks>
 /// <para>
@@ -41,29 +21,29 @@ public enum UnknownHostBehavior
 public sealed class KnownHostsPolicy : IHostKeyPolicy, IHostKeyTypePreference
 {
     private readonly string _path;
-    private readonly Func<SshHostKeyContext, CancellationToken, ValueTask<bool>>? _askUser;
+    private readonly Func<SshHostKeyContext, CancellationToken, ValueTask<bool>>? _askUnknownHost;
     private IReadOnlyList<KnownHostEntry>? _cache;
 
     /// <summary>用给定的 <c>known_hosts</c> 路径构造。</summary>
     /// <param name="path"><c>known_hosts</c> 路径；<see langword="null"/> 表示用默认路径。</param>
-    /// <param name="askUser">
+    /// <param name="askUnknownHost">
     /// 没见过这台主机时问使用者。返回 <see langword="true"/> 表示信任并记下来。
     /// </param>
     public KnownHostsPolicy(
         string? path = null,
-        Func<SshHostKeyContext, CancellationToken, ValueTask<bool>>? askUser = null)
+        Func<SshHostKeyContext, CancellationToken, ValueTask<bool>>? askUnknownHost = null)
     {
         _path = path ?? KnownHostsFile.DefaultPath;
-        _askUser = askUser;
+        _askUnknownHost = askUnknownHost;
     }
 
     /// <summary>不读也不写任何文件：每台主机都当成没见过，接受了也不记（<c>UserKnownHostsFile none</c> / <c>/dev/null</c>）。</summary>
-    /// <param name="askUser">没见过这台主机时问使用者。</param>
+    /// <param name="askUnknownHost">没见过这台主机时问使用者。</param>
     /// <param name="unknownHost">没见过这台主机时的行为（见 <see cref="UnknownHost"/>）。</param>
     public static KnownHostsPolicy WithoutFile(
-        Func<SshHostKeyContext, CancellationToken, ValueTask<bool>>? askUser = null,
+        Func<SshHostKeyContext, CancellationToken, ValueTask<bool>>? askUnknownHost = null,
         UnknownHostBehavior unknownHost = UnknownHostBehavior.Ask) =>
-        new(NoFileMarker, askUser) { UnknownHost = unknownHost, _withoutFile = true, _cache = [] };
+        new(NoFileMarker, askUnknownHost) { UnknownHost = unknownHost, _withoutFile = true, _cache = [] };
 
     /// <summary>不用文件时 <see cref="_path"/> 的取值，只出现在错误消息里。</summary>
     private const string NoFileMarker = "（不使用 known_hosts）";
@@ -111,11 +91,11 @@ public sealed class KnownHostsPolicy : IHostKeyPolicy, IHostKeyTypePreference
             case KnownHostStatus.Changed:
                 return DangerouslyAcceptChangedKeys
                     ? SshHostKeyVerdict.Accept
-                    : SshHostKeyVerdict.Reject(BuildChangedMessage(context, lookup));
+                    : SshHostKeyVerdict.RejectChanged(BuildChangedMessage(context, lookup));
 
             case KnownHostStatus.CertificateInvalid:
                 return SshHostKeyVerdict.Reject(
-                    $"⚠️ {context.Target} 出示了主机证书，签发它的 CA 在 {_path} 里对上了这台主机" +
+                    $"{context.Target} 出示了主机证书，签发它的 CA 在 {_path} 里对上了这台主机" +
                     $"（第 {lookup.MatchedEntry?.LineNumber} 行），但证书不合格：{lookup.CertificateProblem}" + Environment.NewLine +
                     "这台主机由 CA 管理，证书不合格说明配置出了错，或者路上有人 —— 不会退回去按新主机询问。" +
                     "请联系管理员重新签发主机证书。");
@@ -125,7 +105,7 @@ public sealed class KnownHostsPolicy : IHostKeyPolicy, IHostKeyTypePreference
                 // 还落到这里，要么服务端不再有那把钥，要么路上有人。**不能**当成「没见过」去问、去记。
                 return DangerouslyAcceptChangedKeys
                     ? SshHostKeyVerdict.Accept
-                    : SshHostKeyVerdict.Reject(BuildOtherTypeMessage(context, lookup));
+                    : SshHostKeyVerdict.RejectChanged(BuildOtherTypeMessage(context, lookup));
 
             default:
                 return await HandleUnknownAsync(context, cancellationToken).ConfigureAwait(false);
@@ -150,7 +130,7 @@ public sealed class KnownHostsPolicy : IHostKeyPolicy, IHostKeyTypePreference
 
         bool managedByCa = lookup.ConflictingEntries.Any(static e => e.IsCertificateAuthority);
         return
-            $"⚠️ {context.Target} 这次出示的是 {context.Key.KeyType} 密钥 {context.Key.Sha256Fingerprint}，" + Environment.NewLine +
+            $"{context.Target} 这次出示的是 {context.Key.KeyType} 密钥 {context.Key.Sha256Fingerprint}，" + Environment.NewLine +
             $"而 {_path} 里记着的是别的类型：{known}。" + Environment.NewLine +
             (managedByCa
                 ? "这台主机由 CA 管理，应当出示那个 CA 签发的主机证书；出示一把没有 CA 担保的钥，可能是路上有人 —— 所以不能把它当成新主机。" + Environment.NewLine +
@@ -165,12 +145,12 @@ public sealed class KnownHostsPolicy : IHostKeyPolicy, IHostKeyTypePreference
             "、", lookup.ConflictingEntries.Select(e => $"第 {e.LineNumber} 行"));
 
         return
-            $"⚠️ {context.Target} 的主机密钥**变了**。" + Environment.NewLine +
+            $"{context.Target} 的主机密钥变了。" + Environment.NewLine +
             $"对端现在出示：{context.Key.Sha256Fingerprint}" +
             $"（{context.Key.KeyType}，{context.Key.KeyBits} 位）" + Environment.NewLine +
             $"而 {_path} 里记的是另一把（{lines}）。" + Environment.NewLine +
             "这可能是中间人攻击，也可能只是那台服务器重装了 —— " +
-            "**协议层分不出这两者**，所以得由你来判断。" + Environment.NewLine +
+            "协议层分不出这两者，所以得由你来判断。" + Environment.NewLine +
             $"确认是重装之后，把 {_path} 里上面那一行删掉再连。";
     }
 
@@ -189,14 +169,14 @@ public sealed class KnownHostsPolicy : IHostKeyPolicy, IHostKeyTypePreference
                     $"确认无误后可以手动加进 {_path}。");
 
             default:
-                if (_askUser is null)
+                if (_askUnknownHost is null)
                 {
                     return SshHostKeyVerdict.Reject(
                         $"没见过 {context.Target} 这台主机，而这个策略没有配询问回调。" +
                         $"对端出示：{context.Key.Sha256Fingerprint}（{context.Key.KeyType}）。");
                 }
 
-                bool trusted = await _askUser(context, cancellationToken).ConfigureAwait(false);
+                bool trusted = await _askUnknownHost(context, cancellationToken).ConfigureAwait(false);
                 return trusted
                     ? SshHostKeyVerdict.AcceptAndPersist
                     : SshHostKeyVerdict.Reject($"使用者拒绝信任 {context.Target} 的主机密钥。");

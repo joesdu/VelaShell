@@ -35,7 +35,7 @@ namespace VelaShell.Ssh.Transport;
 /// <b>不是线程安全的。</b>读由收包泵独占，写由发包泵独占，两者可以并发。
 /// </para>
 /// </remarks>
-public sealed class SshPacketTransport : IAsyncDisposable
+internal sealed class SshPacketTransport : IAsyncDisposable
 {
     /// <summary>版本标识串单行的最大字节数（含 CR LF）。RFC 4253 §4.2。</summary>
     public const int MaxIdentificationLineBytes = 255;
@@ -562,7 +562,7 @@ internal sealed class CountingStream(Stream inner) : Stream
 /// <b><see cref="Payload"/> 只在下一次读取之前有效。</b>
 /// 要留着就自己复制 —— 零拷贝的代价就在这里。
 /// </remarks>
-public readonly struct SshInboundPacket
+internal readonly struct SshInboundPacket
 {
     internal SshInboundPacket(ReadOnlyMemory<byte> payload)
     {

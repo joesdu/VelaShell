@@ -96,7 +96,7 @@ public sealed class SftpTests
             });
             Task serverChannels = channelServer.RunAsync(cts.Token);
 
-            SshConnection connection = new(clientTransport, kex.SessionId);
+            SshConnection connection = new(clientTransport, kex);
             connection.Start();
 
             SftpFileSystem sftp = await SftpFileSystem.ConnectAsync(connection, clientOptions, cts.Token);
@@ -951,8 +951,8 @@ public sealed class SftpTests
             server => server.AddFile("/home/joe/a.txt", Text("hello")));
 
         SftpFileStream stream = await harness.Sftp.OpenAsync(
-            "/home/joe/a.txt", SftpOpenMode.Read | SftpOpenMode.Write, SftpFileAttributes.Empty,
-            canRead: true, canWrite: true, cancellationToken: harness.Token);
+            "/home/joe/a.txt", SftpOpenModes.Read | SftpOpenModes.Write,
+            cancellationToken: harness.Token);
         await stream.DisposeAsync();
 
         await Assert.ThrowsExactlyAsync<ObjectDisposedException>(

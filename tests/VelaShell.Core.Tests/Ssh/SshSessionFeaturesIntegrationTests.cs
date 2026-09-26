@@ -52,8 +52,8 @@ public class SshSessionFeaturesIntegrationTests
         RequireContainer();
         await using VelaSshClientWrapper ssh = await ConnectAsync(new SshSessionOptions { Compression = true });
 
-        Assert.AreEqual("zlib@openssh.com", ssh.InnerConnection!.Algorithms!.Value.CompressionClientToServer);
-        Assert.AreEqual("zlib@openssh.com", ssh.InnerConnection.Algorithms.Value.CompressionServerToClient);
+        Assert.AreEqual("zlib@openssh.com", ssh.InnerConnection!.Algorithms.CompressionClientToServer);
+        Assert.AreEqual("zlib@openssh.com", ssh.InnerConnection.Algorithms.CompressionServerToClient);
 
         // 压缩只在认证之后才开始(delayed zlib):这条命令的往返是真正走压缩的那一段。
         string echoed = await ssh.RunCommandAsync("head -c 20000 /dev/zero | tr '\\0' a | wc -c");
@@ -67,7 +67,7 @@ public class SshSessionFeaturesIntegrationTests
         RequireContainer();
         await using VelaSshClientWrapper ssh = await ConnectAsync(null);
 
-        Assert.AreEqual("none", ssh.InnerConnection!.Algorithms!.Value.CompressionClientToServer);
+        Assert.AreEqual("none", ssh.InnerConnection!.Algorithms.CompressionClientToServer);
     }
 
     /// <summary>
@@ -195,7 +195,7 @@ public class SshSessionFeaturesIntegrationTests
         RequireContainer();
         RequireWindowsPipes();
         using ECDsa held = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        ISshSigner signer = SshPrivateKeyFile.Parse(held.ExportPkcs8PrivateKeyPem());
+        using InMemorySshSigner signer = SshPrivateKeyFile.Parse(held.ExportPkcs8PrivateKeyPem());
         using InMemorySshSigner other = InMemorySshSigner.GenerateEd25519();
         await using var agent = FakeAgent.Start(signer);
         using EnvironmentScope scope = new("SSH_AUTH_SOCK", agent.Endpoint);
@@ -231,7 +231,7 @@ public class SshSessionFeaturesIntegrationTests
         RequireWindowsPipes();
 
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        ISshSigner signer = SshPrivateKeyFile.Parse(ecdsa.ExportPkcs8PrivateKeyPem());
+        using InMemorySshSigner signer = SshPrivateKeyFile.Parse(ecdsa.ExportPkcs8PrivateKeyPem());
         string publicLine =
             $"{signer.PublicKey.KeyType} {Convert.ToBase64String(signer.PublicKey.Blob.Span)} vela-agent-test";
 
@@ -256,7 +256,7 @@ public class SshSessionFeaturesIntegrationTests
                     AuthMethod = AuthMethod.Agent,
                 },
                 hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null);
-            await using VelaSshClientWrapper ssh = new(assembled.Connect, assembled.ConnectTimeout, assembled.DialerLifetime);
+            await using VelaSshClientWrapper ssh = new(assembled.Connect, assembled.ConnectTimeout);
             await ssh.ConnectAsync(TestContext.CancellationToken);
 
             Assert.AreEqual(TestUser, (await ssh.RunCommandAsync("whoami")).Trim());
@@ -285,7 +285,7 @@ public class SshSessionFeaturesIntegrationTests
         SshConnectionAssembler.Assembled assembled = SshConnectionAssembler.Create(
             info, hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null);
         VelaSshClientWrapper wrapper = new(
-            assembled.Connect, assembled.ConnectTimeout, assembled.DialerLifetime, info.Ssh);
+            assembled.Connect, assembled.ConnectTimeout, info.Ssh);
         await wrapper.ConnectAsync(TestContext.CancellationToken);
         return wrapper;
     }

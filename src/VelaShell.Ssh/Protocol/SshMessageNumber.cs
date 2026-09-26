@@ -72,7 +72,7 @@ namespace VelaShell.Ssh.Protocol;
 /// 而那正是 SSH 实现里最容易出的一类错。
 /// </para>
 /// </remarks>
-public enum SshMessageNumber : byte
+internal enum SshMessageNumber : byte
 {
     // ---- 传输层：通用（RFC 4253 §12） ----
 

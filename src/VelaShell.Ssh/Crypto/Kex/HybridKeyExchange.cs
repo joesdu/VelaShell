@@ -47,7 +47,7 @@ namespace VelaShell.Ssh.Crypto.Kex;
 /// <c>mpint</c> 的前导零问题（velashell-docs/zh/ssh/spec/03 §3.6）。写错同样表现为概率性签名失败。
 /// </para>
 /// </remarks>
-public sealed class HybridKeyExchange : ISshKeyExchange
+internal sealed class HybridKeyExchange : ISshKeyExchange
 {
     private const int X25519KeyBytes = 32;
 
@@ -64,8 +64,8 @@ public sealed class HybridKeyExchange : ISshKeyExchange
                 _kem = new MlKem768Kem();
                 HashAlgorithm = HashAlgorithmName.SHA256;
                 break;
-            case SshAlgorithmNames.SNtruP761X25519Sha512:
-            case SshAlgorithmNames.SNtruP761X25519Sha512OpenSsh:
+            case SshAlgorithmNames.Sntrup761X25519Sha512:
+            case SshAlgorithmNames.Sntrup761X25519Sha512OpenSsh:
                 _kem = new SNtruPrime761Kem();
                 HashAlgorithm = HashAlgorithmName.SHA512;
                 break;

@@ -7,18 +7,6 @@ using VelaShell.Ssh.Diagnostics;
 
 namespace VelaShell.Ssh.Transport;
 
-/// <summary>代理的用户名与口令。</summary>
-/// <param name="UserName">用户名。</param>
-/// <param name="Password">口令。</param>
-/// <remarks>
-/// 〔安全〕<see cref="ToString"/> 不输出口令 —— 这个对象很容易被顺手写进日志。
-/// </remarks>
-public sealed record SshProxyCredentials(string UserName, string Password)
-{
-    /// <summary>只输出用户名。</summary>
-    public override string ToString() => $"{UserName}:***";
-}
-
 /// <summary>「先到达代理、再在它上面握手」这一类拨号器共用的骨架。</summary>
 /// <remarks>
 /// 失败时的跳信息全在这里拼：到不了代理，保留内层给的跳；

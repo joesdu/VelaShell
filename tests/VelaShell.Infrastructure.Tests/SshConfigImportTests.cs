@@ -149,46 +149,42 @@ public class SshConfigImportTests
     }
 
     /// <summary><c>Include</c> 就地展开,且被包含文件里的值参与同一套「先出现者胜」的取值。</summary>
+    /// <remarks>解析本身由 SSH 库的 <c>SshConfigFile</c> 做(它有自己的用例);这里验的是导入把它接对了。</remarks>
     [TestMethod]
-    public void Parse_ExpandsIncludeInPlace()
+    public async Task Scan_ExpandsIncludeInPlace()
     {
         string directory = NewDirectory();
-        File.WriteAllText(Path.Combine(directory, "extra.conf"),
+        string extra = Path.Combine(directory, "extra.conf");
+        File.WriteAllText(extra,
             """
             Host inc01
                 HostName 172.16.0.1
                 User included
             """);
         string main = Path.Combine(directory, "config");
-        File.WriteAllText(main,
-            """
-            Include extra.conf
+        File.WriteAllText(main, $"Include \"{extra}\"\n\nHost *\n    User fallback\n");
 
-            Host *
-                User fallback
-            """);
+        SessionImportScan scan = await ScanAsync(main);
 
-        IReadOnlyList<SshConfigBlock> blocks = SshConfigParser.ParseFile(main, directory);
-
-        Assert.AreSequenceEqual(["inc01"], [.. SshConfigParser.CollectHostAliases(blocks)]);
-        IReadOnlyDictionary<string, string> options = SshConfigParser.ResolveOptions(blocks, "inc01");
-        Assert.AreEqual("172.16.0.1", options["HostName"]);
-        Assert.AreEqual("included", options["User"]); // 被包含文件先出现,胜过后面的兜底
+        ImportedSession item = scan.Items.Single();
+        Assert.AreEqual("inc01", item.Name);
+        Assert.AreEqual("172.16.0.1", item.Host);
+        Assert.AreEqual("included", item.Username); // 被包含文件先出现,胜过后面的兜底
     }
 
     /// <summary>互相 <c>Include</c> 不得转成死循环。</summary>
     [TestMethod]
-    public void Parse_IncludeCycleTerminates()
+    public async Task Scan_IncludeCycleTerminates()
     {
         string directory = NewDirectory();
         string a = Path.Combine(directory, "a.conf");
         string b = Path.Combine(directory, "b.conf");
-        File.WriteAllText(a, "Include b.conf\nHost fromA\n    HostName 1.1.1.1\n");
-        File.WriteAllText(b, "Include a.conf\nHost fromB\n    HostName 2.2.2.2\n");
+        File.WriteAllText(a, $"Include \"{b}\"\nHost fromA\n    HostName 1.1.1.1\n");
+        File.WriteAllText(b, $"Include \"{a}\"\nHost fromB\n    HostName 2.2.2.2\n");
 
-        IReadOnlyList<SshConfigBlock> blocks = SshConfigParser.ParseFile(a, directory);
+        SessionImportScan scan = await ScanAsync(a);
 
-        Assert.AreSequenceEqual(["fromB", "fromA"], [.. SshConfigParser.CollectHostAliases(blocks)]);
+        Assert.AreSequenceEqual(["fromB", "fromA"], [.. scan.Items.Select(static i => i.Name)]);
     }
 
     /// <summary><c>关键字=值</c> 写法、引号包裹的值与整行注释都要认。</summary>

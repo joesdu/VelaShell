@@ -11,31 +11,8 @@ using VelaShell.Ssh.Protocol;
 
 namespace VelaShell.Ssh.Crypto;
 
-/// <summary>一次协商的结果。</summary>
-/// <param name="KeyExchange">密钥交换算法。</param>
-/// <param name="HostKey">主机密钥算法（同时也是签名算法名）。</param>
-/// <param name="EncryptionClientToServer">加密算法（客户端 → 服务端）。</param>
-/// <param name="EncryptionServerToClient">加密算法（服务端 → 客户端）。</param>
-/// <param name="MacClientToServer">完整性算法（客户端 → 服务端）；AEAD 下为 <see langword="null"/>。</param>
-/// <param name="MacServerToClient">完整性算法（服务端 → 客户端）；AEAD 下为 <see langword="null"/>。</param>
-/// <param name="CompressionClientToServer">压缩算法（客户端 → 服务端）。</param>
-/// <param name="CompressionServerToClient">压缩算法（服务端 → 客户端）。</param>
-/// <param name="StrictKeyExchange">双方是否都宣告支持严格 KEX（Terrapin 缓解）。</param>
-/// <param name="PeerSupportsExtensionInfo">对端是否支持 RFC 8308 扩展协商。</param>
-public readonly record struct SshNegotiatedAlgorithms(
-    string KeyExchange,
-    string HostKey,
-    string EncryptionClientToServer,
-    string EncryptionServerToClient,
-    string? MacClientToServer,
-    string? MacServerToClient,
-    string CompressionClientToServer,
-    string CompressionServerToClient,
-    bool StrictKeyExchange,
-    bool PeerSupportsExtensionInfo);
-
 /// <summary>按 RFC 4253 §7.1 的规则做算法协商。</summary>
-public static class SshAlgorithmNegotiator
+internal static class SshAlgorithmNegotiator
 {
     /// <summary>
     /// 以客户端身份协商全部算法。

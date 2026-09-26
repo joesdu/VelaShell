@@ -75,12 +75,19 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
 
     /// <summary>在一条已完成认证的传输上建立会话。</summary>
     /// <param name="transport">传输。</param>
-    /// <param name="sessionId">会话标识。</param>
+    /// <param name="kex">首次密钥交换的结果：会话标识、协商出的算法、主机公钥。</param>
     /// <param name="limits">通道限额。</param>
-    public SshConnection(SshPacketTransport transport, byte[] sessionId, SshConnectionLimits? limits = null)
+    /// <remarks>
+    /// <c>internal</c>：公开的入口只有 <see cref="ConnectAsync"/>。从外面拿一条裸传输拼出来的连接
+    /// 没有重协商所需的上下文，<see cref="StartRekeyAsync"/> 一调就抛。
+    /// </remarks>
+    internal SshConnection(SshPacketTransport transport, SshKeyExchangeResult kex, SshConnectionLimits? limits = null)
     {
+        ArgumentNullException.ThrowIfNull(kex);
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
-        SessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
+        _sessionId = kex.SessionId;
+        _negotiated = kex.Algorithms;
+        HostKey = kex.HostKey;
         _limits = limits ?? SshConnectionLimits.Default;
         Disconnected = _disconnected.Token;
 
@@ -89,10 +96,15 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
         _sendPump = SendPumpAsync(_lifetime.Token);
     }
 
-    /// <summary>会话标识。</summary>
-    public byte[] SessionId { get; }
+    private readonly byte[] _sessionId;
 
-    /// <summary>这条会话实际协商出来的算法（从工厂建的连接才有）。</summary>
+    /// <summary>会话标识（首次密钥交换的交换哈希 H，RFC 4253 §7.2），整条连接不变。</summary>
+    /// <remarks>
+    /// 只交出只读视图：重协商拿的就是这份字节去算哈希，交出可写的数组等于让调用方能改坏下一次重协商。
+    /// </remarks>
+    public ReadOnlyMemory<byte> SessionId => _sessionId;
+
+    /// <summary>这条会话实际协商出来的算法。</summary>
     /// <remarks>
     /// <para>
     /// <b>协商成功的结果同样要交出去，不只是失败时的名单。</b>
@@ -104,12 +116,12 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
     /// 也是唯一能确认<b>压缩到底有没有谈成</b>的地方：服务端不支持时会
     /// 静默落到 <c>none</c>，<b>不会报错</b>。
     /// </para>
-    /// </remarks>
-    /// <remarks>
+    /// <para>
     /// 重协商会把它整个换掉（算法可以谈出不一样的结果），所以读写都走
     /// <see cref="_stateLock"/> —— 它不是一个装完就不动的值。
+    /// </para>
     /// </remarks>
-    public Crypto.SshNegotiatedAlgorithms? Algorithms
+    public Crypto.SshNegotiatedAlgorithms Algorithms
     {
         get
         {
@@ -118,17 +130,16 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
                 return _negotiated;
             }
         }
-        init => _negotiated = value;
     }
 
-    /// <summary>服务端出示的主机公钥（从工厂建的连接才有）。</summary>
-    public HostKeys.SshPublicKey? HostKey { get; init; }
+    /// <summary>服务端出示的主机公钥。</summary>
+    public HostKeys.SshPublicKey HostKey { get; }
 
     /// <summary>保活策略。</summary>
-    public KeepAlivePolicy KeepAlive { get; init; } = KeepAlivePolicy.Disabled;
+    internal SshKeepAlivePolicy KeepAlive { get; init; } = SshKeepAlivePolicy.Disabled;
 
     /// <summary>给人看的描述（<c>user@host:port</c>），进日志与异常。</summary>
-    public string Description { get; init; } = "";
+    internal string Description { get; init; } = "";
 
     /// <summary>上一次收到任何入站报文的时刻（<c>Environment.TickCount64</c> 口径）。</summary>
     private long _lastInboundTicks = Environment.TickCount64;
@@ -146,7 +157,7 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
     private long _packetsReceivedAtLastKex;
     private long _lastKexTicks = Environment.TickCount64;
     private string? _lastRekeyReason;
-    private Crypto.SshNegotiatedAlgorithms? _negotiated;
+    private Crypto.SshNegotiatedAlgorithms _negotiated;
 
     /// <summary>当前占着通道号的通道数。</summary>
     /// <remarks>
@@ -187,17 +198,17 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
     /// 正常释放同样会取消它 —— 「连接没了」对读循环来说是同一件事，
     /// 区分「是我关的还是掉线」得看调用方自己的状态。
     /// </para>
-    /// </remarks>
-    /// <remarks>
+    /// <para>
     /// 令牌在构造时就取好并留住，而不是每次读 <c>_disconnected.Token</c> ——
     /// 那个属性在源被释放之后会抛 <see cref="ObjectDisposedException"/>，
     /// 而「连接已经释放了」恰恰是最常去读这个令牌的时刻。
+    /// </para>
     /// </remarks>
     public CancellationToken Disconnected { get; }
 
     /// <summary>开始收包。</summary>
     /// <remarks>必须在打开任何通道之前调用一次。</remarks>
-    public void Start()
+    internal void Start()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _receiveLoop ??= Task.Run(() => ReceiveLoopAsync(_lifetime.Token));
@@ -302,7 +313,7 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
     private async ValueTask<bool> ProbeAsync(TimeSpan timeout, CancellationToken cancellationToken)
     {
         ReadOnlyMemory<byte> packet = EncodeGlobalRequest(
-            SshAlgorithmNames.KeepAliveOpenSsh, default, wantReply: true);
+            SshProtocolNames.KeepAliveOpenSsh, default, wantReply: true);
 
         // 登记与入队是同一个动作：应答靠 FIFO 对齐（见 SendAsync 的重载说明）。
         Task<SshGlobalRequestReply>? reply = null;
@@ -327,7 +338,7 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
     /// <summary>打开一条 <c>session</c> 通道。</summary>
     public ValueTask<SshChannel> OpenSessionChannelAsync(
         SshChannelOptions? options = null, CancellationToken cancellationToken = default) =>
-        OpenChannelAsync("session", default, options, cancellationToken);
+        OpenChannelAsync(SshProtocolNames.ChannelSession, default, options, cancellationToken);
 
     /// <summary>打开一条通道。</summary>
     /// <param name="channelType">通道类型。</param>
@@ -458,35 +469,6 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
         }
     }
 
-    /// <summary>把某一类型的处理器<b>整个换成</b>这一个（<see langword="null"/> 表示全部摘掉）。</summary>
-    /// <param name="channelType">通道类型，如 <c>forwarded-tcpip</c>。</param>
-    /// <param name="handler">处理器；传 <see langword="null"/> 取消该类型的全部登记。</param>
-    /// <remarks>
-    /// <para>
-    /// <b>没有登记的类型一律明确拒绝</b>，不沉默 —— 沉默会让对端一直等着。
-    /// </para>
-    /// <para>
-    /// 同一类型要挂多个处理器（多个远程转发、多个会话的 agent 转发）时用
-    /// <see cref="AddIncomingChannelHandler"/> / <see cref="RemoveIncomingChannelHandler"/>：
-    /// 这个方法会把别人登记的一起换掉。
-    /// </para>
-    /// </remarks>
-    public void SetIncomingChannelHandler(string channelType, IIncomingChannelHandler? handler)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(channelType);
-
-        lock (_stateLock)
-        {
-            if (handler is null)
-            {
-                _incomingHandlers.Remove(channelType);
-            }
-            else
-            {
-                _incomingHandlers[channelType] = [handler];
-            }
-        }
-    }
 
     private Forwarding.X11ChannelRouter? _x11Router;
 
@@ -508,7 +490,7 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
     /// 抛异常（「这条不归我」）就问下一个，第一个同意的接走这条通道。
     /// 全都不要才拒绝，拒绝理由取最后一个问到的处理器给的。
     /// </remarks>
-    public void AddIncomingChannelHandler(string channelType, IIncomingChannelHandler handler)
+    internal void AddIncomingChannelHandler(string channelType, IIncomingChannelHandler handler)
     {
         ArgumentException.ThrowIfNullOrEmpty(channelType);
         ArgumentNullException.ThrowIfNull(handler);
@@ -525,7 +507,7 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
     }
 
     /// <summary>摘掉<b>这一个</b>处理器；别人登记的同类型处理器不受影响。</summary>
-    public void RemoveIncomingChannelHandler(string channelType, IIncomingChannelHandler handler)
+    internal void RemoveIncomingChannelHandler(string channelType, IIncomingChannelHandler handler)
     {
         ArgumentException.ThrowIfNullOrEmpty(channelType);
         ArgumentNullException.ThrowIfNull(handler);
@@ -543,26 +525,13 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
 
     // ------------------------------------------------------------ 全局请求
 
-    /// <summary>发一个全局请求，只关心成不成。</summary>
-    /// <returns><paramref name="wantReply"/> 为假时恒为 <see langword="true"/>。</returns>
-    public async ValueTask<bool> SendGlobalRequestAsync(
-        string requestType,
-        ReadOnlyMemory<byte> payload = default,
-        bool wantReply = true,
-        CancellationToken cancellationToken = default)
-    {
-        SshGlobalRequestReply reply = await SendGlobalRequestWithReplyAsync(
-            requestType, payload, wantReply, cancellationToken).ConfigureAwait(false);
-        return reply.Success;
-    }
-
-    /// <summary>发一个全局请求，<b>并把应答载荷带回来</b>。</summary>
+    /// <summary>发一个全局请求，把应答（含载荷）带回来。</summary>
+    /// <returns><paramref name="wantReply"/> 为假时立刻返回一个成功的空应答。</returns>
     /// <remarks>
-    /// <c>tcpip-forward</c> 请求端口 0 时，服务端分配的实际端口就在
-    /// <c>REQUEST_SUCCESS</c> 的载荷里（一个 <c>uint32</c>）——
-    /// 只回成不成的话那个端口号就永远拿不到了。
+    /// 应答载荷要带回来：<c>tcpip-forward</c> 请求端口 0 时，服务端分配的实际端口就在
+    /// <c>REQUEST_SUCCESS</c> 的载荷里（一个 <c>uint32</c>）—— 只回成不成的话那个端口号就永远拿不到了。
     /// </remarks>
-    public async ValueTask<SshGlobalRequestReply> SendGlobalRequestWithReplyAsync(
+    internal async ValueTask<SshGlobalRequestReply> SendGlobalRequestAsync(
         string requestType,
         ReadOnlyMemory<byte> payload = default,
         bool wantReply = true,
@@ -630,12 +599,12 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
     /// <b>应答内容不重要，有应答就说明链路活着</b> —— 服务端回
     /// <c>REQUEST_FAILURE</c> 也算数（它本来就不认识这个请求类型）。
     /// </remarks>
-    public async ValueTask<bool> SendKeepAliveAsync(CancellationToken cancellationToken = default)
+    internal async ValueTask<bool> SendKeepAliveAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             await SendGlobalRequestAsync(
-                SshAlgorithmNames.KeepAliveOpenSsh, default, wantReply: true, cancellationToken)
+                SshProtocolNames.KeepAliveOpenSsh, default, wantReply: true, cancellationToken)
                 .ConfigureAwait(false);
             return true;
         }
@@ -962,7 +931,7 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
 
         TaskCompletionSource<SshChannel>? completion;
         SshChannel? channel;
-        string channelType = "session";
+        string channelType = SshProtocolNames.ChannelSession;
         lock (_stateLock)
         {
             _pendingOpens.Remove(recipient, out completion);

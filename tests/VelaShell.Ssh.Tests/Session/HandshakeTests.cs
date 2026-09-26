@@ -294,6 +294,29 @@ public sealed class HandshakeTests
     }
 
     [TestMethod]
+    public async Task 策略返回未填的裁决时按拒绝处理()
+    {
+        // default(SshHostKeyVerdict) 必须是拒绝：一个忘了填裁决的策略只能让连接失败，不能悄悄放行。
+        SshConnectException ex = await Assert.ThrowsExactlyAsync<SshConnectException>(
+            async () => await HandshakeAsync(policy: new FixedVerdictPolicy(default)));
+
+        Assert.AreEqual(SshFailureReason.HostKeyRejected, ex.Reason);
+        Assert.IsFalse(default(SshHostKeyVerdict).IsAccepted);
+    }
+
+    [TestMethod]
+    public async Task 策略判定密钥变了时以HostKeyChanged拒绝()
+    {
+        const string Message = "指纹变了。";
+
+        SshConnectException ex = await Assert.ThrowsExactlyAsync<SshConnectException>(
+            async () => await HandshakeAsync(policy: new FixedVerdictPolicy(SshHostKeyVerdict.RejectChanged(Message))));
+
+        Assert.AreEqual(SshFailureReason.HostKeyChanged, ex.Reason);
+        Assert.AreEqual(Message, ex.Message);
+    }
+
+    [TestMethod]
     public async Task 指纹固定策略能放行与拦截()
     {
         // 先拿到真实指纹
@@ -397,6 +420,13 @@ public sealed class HandshakeTests
         public ValueTask<SshHostKeyVerdict> EvaluateAsync(
             SshHostKeyContext context, CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(SshHostKeyVerdict.Reject(reason));
+    }
+
+    private sealed class FixedVerdictPolicy(SshHostKeyVerdict verdict) : IHostKeyPolicy
+    {
+        public ValueTask<SshHostKeyVerdict> EvaluateAsync(
+            SshHostKeyContext context, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(verdict);
     }
 
     private sealed class CapturingPolicy(Action<SshPublicKey> capture) : IHostKeyPolicy

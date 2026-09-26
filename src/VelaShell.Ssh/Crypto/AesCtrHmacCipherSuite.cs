@@ -15,7 +15,7 @@ using System.Security.Cryptography;
 namespace VelaShell.Ssh.Crypto;
 
 /// <summary>MAC 算法的选择。</summary>
-public enum SshMacAlgorithm
+internal enum SshMacAlgorithm
 {
     /// <summary>HMAC-SHA-1，20 字节。仅为老设备保留。</summary>
     HmacSha1,
@@ -54,7 +54,7 @@ public enum SshMacAlgorithm
 /// （见 <c>CipherSuiteConformanceTests.数据不足时返回NeedMoreData且不改动状态</c>）。
 /// </para>
 /// </remarks>
-public sealed class AesCtrHmacCipherSuite : ISshCipherSuite
+internal sealed class AesCtrHmacCipherSuite : ISshCipherSuite
 {
     private const int AesBlockBytes = 16;
 

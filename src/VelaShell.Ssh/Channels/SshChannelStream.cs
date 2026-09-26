@@ -35,18 +35,11 @@ public sealed class SshChannelStream : Stream
     /// <summary>经这条流写进 stdin 的累计字节数（<see cref="FlushAsync(CancellationToken)"/> 等的目标）。</summary>
     private long _written;
 
-    /// <summary>把通道包成流。</summary>
-    /// <param name="channel">通道。</param>
-    /// <param name="ownsChannel">释放流时是否一并关掉通道。</param>
-    public SshChannelStream(SshChannel channel, bool ownsChannel = true)
-        : this(channel, ownsChannel, owner: null)
-    {
-    }
-
+    /// <summary>把通道包成流。公开入口是 <see cref="SshChannel.AsStream"/>。</summary>
     /// <param name="channel">通道。</param>
     /// <param name="ownsChannel">释放流时是否一并关掉通道。</param>
     /// <param name="owner">释放流时最后再释放的东西（跳板拨号器用它挂住跳板连接）。</param>
-    internal SshChannelStream(SshChannel channel, bool ownsChannel, IAsyncDisposable? owner)
+    internal SshChannelStream(SshChannel channel, bool ownsChannel = true, IAsyncDisposable? owner = null)
     {
         _channel = channel ?? throw new ArgumentNullException(nameof(channel));
         _ownsChannel = ownsChannel;

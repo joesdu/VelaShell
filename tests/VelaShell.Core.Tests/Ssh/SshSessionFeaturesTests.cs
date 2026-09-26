@@ -205,9 +205,9 @@ public class SshSessionFeaturesTests
     [TestMethod]
     public void Agent_Default_ExposesWholeAgentWithoutConfirmation()
     {
-        AgentForwardPolicy policy = SshForwardingOptions.Agent(new SshSessionOptions { AgentForwarding = true }, [])!;
+        AgentForwardOptions policy = SshForwardingOptions.Agent(new SshSessionOptions { AgentForwarding = true }, [])!;
 
-        Assert.IsEmpty(policy.AllowedKeys);
+        Assert.IsNull(policy.AllowedKeys, "没限定时交 null：整个 agent 可见（空列表在库里表示一把都不给）");
         Assert.IsNull(policy.ConfirmEachSignature);
     }
 
@@ -218,7 +218,7 @@ public class SshSessionFeaturesTests
         using var b = InMemorySshSigner.GenerateEd25519();
         List<ShellStreamNotice> notices = [];
 
-        AgentForwardPolicy policy = SshForwardingOptions.Agent(
+        AgentForwardOptions policy = SshForwardingOptions.Agent(
             new SshSessionOptions
             {
                 AgentForwarding = true,
@@ -228,20 +228,20 @@ public class SshSessionFeaturesTests
 
         CollectionAssert.AreEquivalent(
             new[] { a.PublicKey.Sha256Fingerprint, b.PublicKey.Sha256Fingerprint },
-            policy.AllowedKeys.Select(k => k.Sha256Fingerprint).ToArray());
+            policy.AllowedKeys!.Select(k => k.Sha256Fingerprint).ToArray());
         Assert.IsEmpty(notices);
     }
 
     /// <summary>
     /// 限定了却一把都解析不出来:不转发,并写一行黄字。
-    /// 交给库一个空的 AllowedKeys 会被解释成「整个 agent 都可见」—— 把最严的设置翻成了最宽的那一档。
+    /// 交给库一个空的 AllowedKeys 等于一把都不给 —— 转发开了也没用,不如明说。
     /// </summary>
     [TestMethod]
     public void Agent_RestrictedButNothingUsable_DoesNotForwardAtAll()
     {
         List<ShellStreamNotice> notices = [];
 
-        AgentForwardPolicy? policy = SshForwardingOptions.Agent(
+        AgentForwardOptions? policy = SshForwardingOptions.Agent(
             new SshSessionOptions { AgentForwarding = true, AgentForwardKeys = ["垃圾"] }, notices);
 
         Assert.IsNull(policy);

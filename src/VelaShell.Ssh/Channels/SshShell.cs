@@ -9,59 +9,30 @@
 
 using System.Buffers;
 using System.IO.Pipelines;
+using VelaShell.Ssh.Forwarding;
 using VelaShell.Ssh.Protocol;
 
 namespace VelaShell.Ssh.Channels;
 
 /// <summary>打开交互式 shell 的参数。</summary>
-public sealed record SshShellOptions
+public sealed record SshShellOptions : SshSessionRequestOptions
 {
-    /// <summary>终端类型。</summary>
-    public string TerminalType { get; init; } = "xterm-256color";
-
-    /// <summary>初始尺寸。</summary>
-    public TerminalSize Size { get; init; } = TerminalSize.Default;
-
-    /// <summary>终端模式。</summary>
-    public TerminalModes Modes { get; init; } = TerminalModes.Empty;
-
-    /// <summary>
-    /// 通道参数。
-    /// </summary>
+    /// <summary>建一组默认的 shell 参数。</summary>
     /// <remarks>
     /// 默认把 stderr 设成丢弃：<b>有 pty 时 stderr 会合并进 stdout</b>，
     /// 伪终端只有一条输出流，缓冲一条永远没数据的流毫无意义。
     /// </remarks>
-    public SshChannelOptions Channel { get; init; } =
-        SshChannelOptions.Default with { StderrPolicy = SshStderrPolicy.Discard };
+    public SshShellOptions() =>
+        Channel = SshChannelOptions.Default with { StderrMode = SshStderrMode.Discard };
 
-    /// <summary>环境变量。<c>env</c> 请求不要求回复（见 <see cref="SshExecutionOptions.Environment"/>）。</summary>
-    public IReadOnlyDictionary<string, string> Environment { get; init; } =
-        new Dictionary<string, string>(StringComparer.Ordinal);
+    /// <summary>终端类型。</summary>
+    public string TerminalType { get; init; } = "xterm-256color";
 
-    /// <summary>为这个 shell 请求 X11 转发（<c>ssh -X</c> / <c>-Y</c>）；<see langword="null"/> 表示不请求。</summary>
-    /// <remarks>
-    /// 语义与 <see cref="SshExecutionOptions.X11"/> 相同：默认不请求，显式要求而失败就抛；
-    /// <see cref="Forwarding.X11ForwardOptions.BestEffort"/> 的选项失败时不开 X11、shell 照常启动，
-    /// 原因放在 <see cref="SshShell.X11SetupFailure"/> 上。
-    /// </remarks>
-    public Forwarding.X11ForwardOptions? X11 { get; init; }
+    /// <summary>初始尺寸。</summary>
+    public SshTerminalSize Size { get; init; } = SshTerminalSize.Default;
 
-    /// <summary>为这个 shell 请求 agent 转发（<c>ssh -A</c>）；<see langword="null"/> 表示不请求。</summary>
-    /// <remarks>见 <see cref="SshExecutionOptions.AgentForwarding"/>。</remarks>
-    public Forwarding.AgentForwardPolicy? AgentForwarding { get; init; }
-
-    /// <summary>本机 agent 的位置；<see langword="null"/> 取 <c>SSH_AUTH_SOCK</c> / Windows 的 OpenSSH agent 管道。</summary>
-    public string? AgentEndpoint { get; init; }
-
-    /// <summary>
-    /// 在 <c>shell</c> 请求发出之前、其余请求都发完之后调用 —— 给库没有内置的通道请求留的位置。
-    /// </summary>
-    /// <remarks>
-    /// 时序是 <c>pty-req</c> → <c>x11-req</c> → <c>auth-agent-req</c> → <c>env</c> →
-    /// <b>这里</b> → <c>shell</c>。抛异常等于放弃这个 shell（通道会被关掉）。
-    /// </remarks>
-    public Func<SshChannel, CancellationToken, ValueTask>? BeforeStart { get; init; }
+    /// <summary>终端模式。</summary>
+    public SshTerminalModes Modes { get; init; } = SshTerminalModes.Empty;
 
     /// <summary>默认参数。</summary>
     public static SshShellOptions Default { get; } = new();
@@ -79,15 +50,16 @@ public sealed record SshShellOptions
 ///   免得使用者对着一条永远空的流等待。</item>
 ///   <item>尺寸变化发 <c>window-change</c>。</item>
 /// </list>
+/// 其余成员与 <see cref="SshCommand"/> 同名同义。
 /// </remarks>
 public sealed class SshShell : IAsyncDisposable
 {
     internal SshShell(
         SshChannel channel,
-        TerminalSize size,
-        Forwarding.X11Forwarder? x11 = null,
-        Forwarding.AgentForwarder? agent = null,
-        Diagnostics.SshForwardException? x11SetupFailure = null)
+        SshTerminalSize size,
+        X11Forwarder? x11 = null,
+        AgentForwarder? agent = null,
+        SshForwardException? x11SetupFailure = null)
     {
         Channel = channel;
         Size = size;
@@ -100,30 +72,30 @@ public sealed class SshShell : IAsyncDisposable
     public SshChannel Channel { get; }
 
     /// <summary>这个 shell 的 X11 转发；没请求过、或尽力而为的请求没成时是 <see langword="null"/>。</summary>
-    public Forwarding.X11Forwarder? X11 { get; }
+    public X11Forwarder? X11 { get; }
 
     /// <summary>
-    /// 尽力而为的 X11 请求（<see cref="Forwarding.X11ForwardOptions.BestEffort"/>）没成时的原因；
+    /// 尽力而为的 X11 请求（<see cref="X11ForwardOptions.BestEffort"/>）没成时的原因；
     /// 其余情况（成了、没请求、或者请求是严格的 —— 严格的失败直接抛）都是 <see langword="null"/>。
     /// </summary>
     /// <remarks>
     /// 〔<c>velashell-docs/zh/ssh/spec/07</c> §7.5.8〕连接级开关打开的 X11 失败时「记日志，照常启动」。
-    /// 本库不带日志器，所以原因以结构化形式交给调用方（同时计入
-    /// <see cref="Forwarding.ForwardMetrics.Errors"/>），由调用方决定记到哪里、要不要提示使用者。
+    /// 本库不带日志器，所以原因以结构化形式交给调用方（同时计入转发的错误计数），
+    /// 由调用方决定记到哪里、要不要提示使用者。
     /// </remarks>
-    public Diagnostics.SshForwardException? X11SetupFailure { get; }
+    public SshForwardException? X11SetupFailure { get; }
 
     /// <summary>这个 shell 的 agent 转发；没请求过就是 <see langword="null"/>。</summary>
-    public Forwarding.AgentForwarder? Agent { get; }
+    public AgentForwarder? Agent { get; }
 
     /// <summary>终端输出（<b>stdout 与 stderr 已经由伪终端合并</b>）。</summary>
-    public PipeReader Output => Channel.StandardOutput;
+    public PipeReader StandardOutput => Channel.StandardOutput;
 
     /// <summary>终端输入。</summary>
-    public PipeWriter Input => Channel.StandardInput;
+    public PipeWriter StandardInput => Channel.StandardInput;
 
     /// <summary>当前的终端尺寸。</summary>
-    public TerminalSize Size { get; private set; }
+    public SshTerminalSize Size { get; private set; }
 
     /// <summary>读下一件事（退出状态、关闭…）。</summary>
     public ValueTask<SshChannelEvent> ReadEventAsync(CancellationToken cancellationToken = default) =>
@@ -134,7 +106,7 @@ public sealed class SshShell : IAsyncDisposable
     /// 像素尺寸照样发过去 —— sixel、kitty 图形协议这类东西要靠它排版
     /// （velashell-docs/zh/ssh/spec/05 §5.3）。不知道就给 0，那也是一个有意义的回答。
     /// </remarks>
-    public async ValueTask ResizeAsync(TerminalSize size, CancellationToken cancellationToken = default)
+    public async ValueTask ResizeAsync(SshTerminalSize size, CancellationToken cancellationToken = default)
     {
         ArrayBufferWriter<byte> buffer = new();
         SshDataWriter writer = new(buffer);
@@ -145,7 +117,7 @@ public sealed class SshShell : IAsyncDisposable
 
         // RFC 4254 §6.7 明确要求 want_reply 为假。
         await Channel.SendRequestAsync(
-            SshAlgorithmNames.RequestWindowChange, buffer.WrittenMemory, wantReply: false, cancellationToken)
+            SshProtocolNames.RequestWindowChange, buffer.WrittenMemory, wantReply: false, cancellationToken)
             .ConfigureAwait(false);
 
         Size = size;
@@ -155,18 +127,15 @@ public sealed class SshShell : IAsyncDisposable
     /// <param name="signalName">信号名，<b>不带 <c>SIG</c> 前缀</b>。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     public ValueTask SendSignalAsync(string signalName, CancellationToken cancellationToken = default) =>
-        SshCommand.SendSignalCoreAsync(Channel, signalName, cancellationToken);
+        Channel.SendSignalAsync(signalName, cancellationToken);
 
     /// <summary>告诉远端输入到此为止。</summary>
-    public ValueTask CompleteInputAsync(CancellationToken cancellationToken = default) =>
+    public ValueTask CompleteStandardInputAsync(CancellationToken cancellationToken = default) =>
         Channel.SendEofAsync(cancellationToken);
 
     /// <summary>等 shell 结束。</summary>
-    public async ValueTask<SshCommandResult> WaitAsync(CancellationToken cancellationToken = default)
-    {
-        SshCommand command = new(Channel);
-        return await command.WaitAsync(cancellationToken).ConfigureAwait(false);
-    }
+    public ValueTask<SshExitStatus> WaitAsync(CancellationToken cancellationToken = default) =>
+        Channel.WaitForExitAsync(cancellationToken);
 
     /// <inheritdoc />
     /// <remarks>

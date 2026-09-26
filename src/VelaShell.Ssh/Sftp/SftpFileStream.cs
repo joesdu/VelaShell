@@ -226,7 +226,7 @@ public sealed class SftpFileStream : Stream
                     DiscardReadAhead();
                     return 0;
                 }
-                throw new SftpException(code, message, Path, "读取");
+                throw new SftpException(code, message, Path, SftpOperation.Read);
             }
 
             if (response.Type != SftpMessageType.Data)
@@ -384,7 +384,7 @@ public sealed class SftpFileStream : Stream
             {
                 return 0;
             }
-            throw new SftpException(code, message, Path, "读取");
+            throw new SftpException(code, message, Path, SftpOperation.Read);
         }
 
         if (response.Type != SftpMessageType.Data)
@@ -527,7 +527,7 @@ public sealed class SftpFileStream : Stream
                 (output, id) => SftpWire.WriteWrite(output, id, _handle, (ulong)offset, rented.AsSpan(0, length)),
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            response.ThrowIfError(Path, "写入", treatEndOfFileAsError: true);
+            response.ThrowIfError(Path, SftpOperation.Write);
 
             // 确认了才并入 —— DurableLength 的可信度全靠这一行的位置。
             _acked.Add(offset, length);
@@ -667,7 +667,7 @@ public sealed class SftpFileStream : Stream
                 output, id, _handle, SftpFileAttributes.WithSize((ulong)value)),
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        response.ThrowIfError(Path, "设置文件长度", treatEndOfFileAsError: true);
+        response.ThrowIfError(Path, SftpOperation.SetLength);
         _knownLength = value;
     }
 
@@ -679,7 +679,7 @@ public sealed class SftpFileStream : Stream
             (output, id) => SftpWire.WriteHandleRequest(output, SftpMessageType.FStat, id, _handle),
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        response.ThrowIfError(Path, "取属性", treatEndOfFileAsError: true);
+        response.ThrowIfError(Path, SftpOperation.GetAttributes);
         return SftpWire.ReadAttrs(response.Payload);
     }
 
@@ -699,7 +699,7 @@ public sealed class SftpFileStream : Stream
             },
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        response.ThrowIfError(Path, "fsync", treatEndOfFileAsError: true);
+        response.ThrowIfError(Path, SftpOperation.Fsync);
     }
 
     /// <inheritdoc />
@@ -756,7 +756,7 @@ public sealed class SftpFileStream : Stream
                 && response.TryGetStatus(out SftpStatusCode code, out string message)
                 && code != SftpStatusCode.Ok)
             {
-                failure = new SftpException(code, message, Path, "关闭");
+                failure = new SftpException(code, message, Path, SftpOperation.Close);
             }
         }
         catch (Exception)

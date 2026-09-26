@@ -15,7 +15,7 @@ using VelaShell.Ssh.Protocol;
 namespace VelaShell.Ssh.Tests.TestKit;
 
 /// <summary>测试服务端用的主机密钥。</summary>
-public abstract class TestHostKey : IDisposable
+internal abstract class TestHostKey : IDisposable
 {
     /// <summary>密钥类型名（blob 里那个）。</summary>
     public abstract string KeyType { get; }

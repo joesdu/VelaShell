@@ -77,7 +77,7 @@ public sealed class SshPublicKeyTests
             WriteString(w, pub);
         });
 
-        return (SshPublicKey.Parse(blob), priv);
+        return (SshPublicKey.Decode(blob), priv);
     }
 
     [TestMethod]
@@ -152,7 +152,7 @@ public sealed class SshPublicKeyTests
                 WriteString(w, point);
             });
 
-            var key = SshPublicKey.Parse(blob);
+            var key = SshPublicKey.Decode(blob);
             Assert.AreEqual(name, key.KeyType, name);
 
             byte[] data = RandomNumberGenerator.GetBytes(100);
@@ -199,7 +199,7 @@ public sealed class SshPublicKeyTests
             WriteString(w, point);
         });
 
-        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.Parse(blob));
+        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.Decode(blob));
     }
 
     // ------------------------------------------------------------ RSA
@@ -218,7 +218,7 @@ public sealed class SshPublicKeyTests
             WriteMpint(w, p.Modulus!);
         });
 
-        var key = SshPublicKey.Parse(blob);
+        var key = SshPublicKey.Decode(blob);
         Assert.AreEqual(SshAlgorithmNames.SshRsa, key.KeyType, "密钥类型名恒为 ssh-rsa");
         Assert.AreEqual(2048, key.KeyBits);
 
@@ -261,7 +261,7 @@ public sealed class SshPublicKeyTests
             WriteMpint(w, p.Exponent!);
             WriteMpint(w, p.Modulus!);
         });
-        var key = SshPublicKey.Parse(blob);
+        var key = SshPublicKey.Decode(blob);
 
         // 找一段数据，让它的签名恰好以 0x00 开头（期望 256 次左右）。
         byte[] data;
@@ -306,7 +306,7 @@ public sealed class SshPublicKeyTests
             WriteMpint(w, modulus);
         });
 
-        Assert.AreEqual(2047, SshPublicKey.Parse(blob).KeyBits);
+        Assert.AreEqual(2047, SshPublicKey.Decode(blob).KeyBits);
     }
 
     [TestMethod]
@@ -321,7 +321,7 @@ public sealed class SshPublicKeyTests
             WriteMpint(w, p.Exponent!);
             WriteMpint(w, p.Modulus!);
         });
-        var key = SshPublicKey.Parse(blob);
+        var key = SshPublicKey.Decode(blob);
 
         byte[] data = RandomNumberGenerator.GetBytes(50);
         byte[] signature = rsa.SignData(data, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -357,7 +357,7 @@ public sealed class SshPublicKeyTests
         (SshPublicKey a, _) = CreateEd25519();
         (SshPublicKey b, _) = CreateEd25519();
 
-        Assert.AreEqual(a.Sha256Fingerprint, SshPublicKey.Parse(a.Blob).Sha256Fingerprint);
+        Assert.AreEqual(a.Sha256Fingerprint, SshPublicKey.Decode(a.Blob).Sha256Fingerprint);
         Assert.AreNotEqual(a.Sha256Fingerprint, b.Sha256Fingerprint);
     }
 
@@ -366,8 +366,8 @@ public sealed class SshPublicKeyTests
     [TestMethod]
     public void 拒绝空blob与超长blob()
     {
-        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.Parse(ReadOnlyMemory<byte>.Empty));
-        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.Parse(new byte[70000]));
+        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.Decode(ReadOnlyMemory<byte>.Empty));
+        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.Decode(new byte[70000]));
     }
 
     [TestMethod]
@@ -378,7 +378,7 @@ public sealed class SshPublicKeyTests
             WriteString(w, "ssh-dss");    // 我们刻意不实现它：1024 位定长，已不可接受
             WriteString(w, new byte[32]);
         });
-        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.Parse(blob));
+        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.Decode(blob));
     }
 
     [TestMethod]
@@ -389,7 +389,7 @@ public sealed class SshPublicKeyTests
             WriteString(w, SshAlgorithmNames.SshEd25519);
             WriteString(w, new byte[31]);
         });
-        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.Parse(blob));
+        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.Decode(blob));
     }
 
     [TestMethod]
@@ -398,7 +398,7 @@ public sealed class SshPublicKeyTests
         // 多出来的字节意味着我们对这个 blob 的理解有误。沉默忽略会让真错误跑得更远。
         (SshPublicKey key, _) = CreateEd25519();
         byte[] extended = [.. key.Blob.ToArray(), 0xFF];
-        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.Parse(extended));
+        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.Decode(extended));
     }
 
     [TestMethod]

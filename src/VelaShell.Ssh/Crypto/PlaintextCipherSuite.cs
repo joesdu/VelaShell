@@ -26,7 +26,7 @@ namespace VelaShell.Ssh.Crypto;
 /// 交换哈希的输入之一（对端的 KEXINIT 载荷），可预测的填充没有任何好处。
 /// </para>
 /// </remarks>
-public sealed class PlaintextCipherSuite : ISshCipherSuite
+internal sealed class PlaintextCipherSuite : ISshCipherSuite
 {
     /// <inheritdoc />
     public CipherSuiteShape Shape => CipherSuiteShape.Plaintext;

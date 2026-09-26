@@ -333,7 +333,7 @@ public partial class ConnectionProfileView : Window
             return;
         }
         viewModel.CertificatePath = path;
-        if (string.IsNullOrWhiteSpace(viewModel.PrivateKeyPath) && OpenSshCertificate.InferPrivateKeyPath(path) is { } keyPath)
+        if (string.IsNullOrWhiteSpace(viewModel.PrivateKeyPath) && OpenSshCertificatePaths.InferPrivateKeyPath(path) is { } keyPath)
         {
             viewModel.PrivateKeyPath = keyPath;
         }

@@ -19,7 +19,7 @@ namespace VelaShell.Ssh.Forwarding;
 /// 实现只需要三件事：读、写、以及<b>单向</b>地告诉对面「我不再发了」。
 /// 第三件是半关闭的全部内容，也是最容易被漏掉的那一件。
 /// </remarks>
-public interface IRelayEndpoint : IAsyncDisposable
+internal interface IRelayEndpoint : IAsyncDisposable
 {
     /// <summary>从这一端读进来的数据。</summary>
     PipeReader Input { get; }
@@ -65,7 +65,7 @@ public interface IRelayEndpoint : IAsyncDisposable
 /// <param name="BytesFromRight">右端读到、搬给左端的字节数。</param>
 /// <param name="Duration">持续时间。</param>
 /// <param name="Error">导致收尾的错误（最先出的那个）；正常结束为 <see langword="null"/>。</param>
-public readonly record struct RelayResult(
+internal readonly record struct RelayResult(
     long BytesFromLeft,
     long BytesFromRight,
     TimeSpan Duration,
@@ -76,7 +76,7 @@ public readonly record struct RelayResult(
 /// 三种转发（<c>-L</c> / <c>-D</c> / <c>-R</c>）都收敛到这一个循环，
 /// <b>这是刻意的</b> —— 它们的差别只在「出站怎么建」，搬运本身没有区别。
 /// </remarks>
-public static class DuplexRelay
+internal static class DuplexRelay
 {
     /// <summary>每方向的缓冲大小。</summary>
     /// <remarks>
@@ -272,7 +272,7 @@ public static class DuplexRelay
 }
 
 /// <summary>把一条 <see cref="Stream"/>（通常是 TCP）接进搬运循环。</summary>
-public sealed class StreamRelayEndpoint : IRelayEndpoint
+internal sealed class StreamRelayEndpoint : IRelayEndpoint
 {
     private readonly Stream _stream;
     private readonly Action? _shutdownSend;
@@ -352,6 +352,20 @@ public sealed class StreamRelayEndpoint : IRelayEndpoint
             // 同上。
         }
         socket.Dispose();
+    }
+
+    /// <summary>半关闭一个套接字的发送方向（对端读到 EOF）；对面已经走了就算了。</summary>
+    /// <param name="socket">要半关闭的套接字。</param>
+    public static void ShutdownSend(Socket socket)
+    {
+        try
+        {
+            socket.Shutdown(SocketShutdown.Send);
+        }
+        catch (Exception)
+        {
+            // 对面已经走了。半关闭没能做成不影响别的。
+        }
     }
 
     /// <inheritdoc />

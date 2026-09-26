@@ -22,7 +22,7 @@ namespace VelaShell.Ssh.Tests.TestKit;
 /// 因为「服务端主动发起重协商」这件事要从它的收包循环里发起。
 /// </para>
 /// </remarks>
-public sealed class TestSshServerHost : IAsyncDisposable
+internal sealed class TestSshServerHost : IAsyncDisposable
 {
     private readonly CancellationTokenSource _cts;
     private readonly TestSshServer _server;
@@ -146,7 +146,7 @@ public sealed class TestSshServerHost : IAsyncDisposable
             RekeyTimeout = rekeyTimeout ?? TimeSpan.FromMinutes(2),
         };
 
-        SshConnection connection = await options.ConnectAsync(cts.Token);
+        SshConnection connection = await SshConnection.ConnectAsync(options, cts.Token);
 
         return new TestSshServerHost(cts, server, channels, serverSide, connection);
     }

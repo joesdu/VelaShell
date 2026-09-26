@@ -105,8 +105,10 @@ internal sealed class VelaHostKeyPolicy(
             case HostKeyDecision.Reject:
                 alerts?.RaiseAsync("hostkey-rejected",
                     Strings.Format("KeySvc_AlertFirstRejected", target, fingerprint));
-                return SshHostKeyVerdict.Reject(
-                    DescribeRejection(target, fingerprint, knownFingerprint, verification, askUser));
+                string rejection = DescribeRejection(target, fingerprint, knownFingerprint, verification, askUser);
+                return verification == HostKeyVerification.Changed
+                    ? SshHostKeyVerdict.RejectChanged(rejection)
+                    : SshHostKeyVerdict.Reject(rejection);
 
             case HostKeyDecision.TrustOnce:
                 HostTrustOnceCache.Remember(host, port, fingerprint);

@@ -10,9 +10,11 @@
 //   行为规格:      velashell-docs/zh/ssh/spec/03-key-exchange.md §5、§5.5
 
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
+using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Keys;
 using VelaShell.Ssh.Protocol;
 
@@ -28,7 +30,7 @@ namespace VelaShell.Ssh.HostKeys;
 /// 也是 RSA 互操作最常见的一个坑（velashell-docs/zh/ssh/spec/03 §5.1）。
 /// </para>
 /// </remarks>
-public sealed class SshPublicKey
+public sealed class SshPublicKey : IEquatable<SshPublicKey>
 {
     /// <summary>公钥 blob 的解析上限。一把公钥不该有这么大。</summary>
     private const int MaxBlobBytes = 64 * 1024;
@@ -148,23 +150,110 @@ public sealed class SshPublicKey
         }
     }
 
+    /// <summary>
+    /// 解析一行 OpenSSH 公钥文本 —— <c>.pub</c> 文件、<c>authorized_keys</c> 的一行、<c>ssh-add -L</c> 的输出：
+    /// <c>类型 base64 [注释]</c>。
+    /// </summary>
+    /// <param name="text">一行文本；前后空白忽略，注释丢掉。</param>
+    /// <exception cref="SshPublicKeyException">格式非法、base64 解不开、类型串与 blob 里的对不上，或者类型不支持。</exception>
+    public static SshPublicKey Parse(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        string[] parts = text.Trim().Split((char[]?)null, 3, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+        {
+            throw new SshPublicKeyException(
+                SshFailureReason.KeyFormatInvalid, "公钥文本的格式不对：应当是「类型 base64 [注释]」。");
+        }
+
+        byte[] blob;
+        try
+        {
+            blob = Convert.FromBase64String(parts[1]);
+        }
+        catch (FormatException ex)
+        {
+            throw new SshPublicKeyException(SshFailureReason.KeyFormatInvalid, "公钥的 base64 解不开。", ex);
+        }
+
+        SshPublicKey key = Decode(blob);
+        if (!string.Equals(key.KeyType, parts[0], StringComparison.Ordinal))
+        {
+            throw new SshPublicKeyException(
+                SshFailureReason.KeyFormatInvalid,
+                $"公钥文本里标的类型是 {PeerText.Sanitize(parts[0], 64)}，而 blob 里是 {key.KeyType}。");
+        }
+
+        return key;
+    }
+
+    /// <summary>同 <see cref="Parse(string)"/>，解析不了时返回 <see langword="false"/> 而不是抛。</summary>
+    /// <param name="text">一行文本。</param>
+    /// <param name="key">解析出来的公钥。</param>
+    public static bool TryParse(string? text, [NotNullWhen(true)] out SshPublicKey? key)
+    {
+        key = null;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        try
+        {
+            key = Parse(text);
+            return true;
+        }
+        catch (SshPublicKeyException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>写成一行 OpenSSH 公钥文本：<c>类型 base64 [注释]</c>（与 <c>.pub</c> 文件、<c>ssh-add -L</c> 同格式）。</summary>
+    /// <param name="comment">注释；<see langword="null"/> 或空白时不写。</param>
+    public string ToOpenSshFormat(string? comment = null)
+    {
+        string line = $"{KeyType} {Convert.ToBase64String(_blob)}";
+        return string.IsNullOrWhiteSpace(comment) ? line : $"{line} {comment}";
+    }
+
+    /// <summary>按 blob 比较：同一种类型、同一串字节就是同一把钥（证书与它那把钥不相等）。</summary>
+    /// <param name="other">另一把公钥。</param>
+    public bool Equals(SshPublicKey? other) =>
+        other is not null && _blob.AsSpan().SequenceEqual(other._blob);
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => Equals(obj as SshPublicKey);
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        HashCode hash = default;
+        hash.AddBytes(_blob);
+        return hash.ToHashCode();
+    }
+
+    /// <summary>OpenSSH 公钥文本（不带注释）。</summary>
+    public override string ToString() => ToOpenSshFormat();
+
     /// <summary>解析一个公钥 blob（普通公钥或 <c>*-cert-v01@openssh.com</c> 证书）。</summary>
     /// <exception cref="SshPublicKeyException">格式非法或类型不支持。</exception>
-    public static SshPublicKey Parse(ReadOnlyMemory<byte> blob)
+    public static SshPublicKey Decode(ReadOnlyMemory<byte> blob)
     {
         if (!IsCertificateBlob(blob.Span))
         {
-            return ParsePlain(blob);
+            return DecodePlain(blob);
         }
 
         OpenSshCertificate certificate;
         try
         {
-            certificate = OpenSshCertificate.Parse(blob);
+            certificate = OpenSshCertificate.Decode(blob);
         }
         catch (SshCertificateException ex)
         {
-            throw new SshPublicKeyException($"证书解析失败：{ex.Message}", ex);
+            throw new SshPublicKeyException(SshFailureReason.KeyFormatInvalid, $"证书解析失败：{ex.Message}", ex);
         }
 
         return ForCertificate(certificate.Key, certificate.Algorithm, certificate.Blob.ToArray(), certificate);
@@ -181,7 +270,7 @@ public sealed class SshPublicKey
         uint length = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(blob);
         if (length > (uint)(blob.Length - 4) || length > MaxFieldBytes)
         {
-            return false;   // 交给 ParsePlain 报格式错误
+            return false;   // 交给 DecodePlain 报格式错误
         }
 
         return blob.Slice(4, (int)length).EndsWith(CertificateSuffixBytes);
@@ -191,11 +280,11 @@ public sealed class SshPublicKey
         System.Text.Encoding.ASCII.GetBytes(SshAlgorithmNames.CertificateSuffix);
 
     /// <summary>只解析普通公钥；证书按不支持的类型报错。</summary>
-    internal static SshPublicKey ParsePlain(ReadOnlyMemory<byte> blob)
+    internal static SshPublicKey DecodePlain(ReadOnlyMemory<byte> blob)
     {
         if (blob.Length is 0 or > MaxBlobBytes)
         {
-            throw new SshPublicKeyException($"公钥 blob 长度非法：{blob.Length} 字节。");
+            throw new SshPublicKeyException(SshFailureReason.KeyFormatInvalid, $"公钥 blob 长度非法：{blob.Length} 字节。");
         }
 
         byte[] copy = blob.ToArray();
@@ -208,7 +297,7 @@ public sealed class SshPublicKey
         }
         catch (SshWireFormatException ex)
         {
-            throw new SshPublicKeyException("公钥 blob 的类型串非法。", ex);
+            throw new SshPublicKeyException(SshFailureReason.KeyFormatInvalid, "公钥 blob 的类型串非法。", ex);
         }
 
         try
@@ -220,12 +309,12 @@ public sealed class SshPublicKey
                 SshAlgorithmNames.EcdsaSha2Nistp384 => ParseEcdsa(ref reader, keyType, copy, ECCurve.NamedCurves.nistP384, "nistp384", 384),
                 SshAlgorithmNames.EcdsaSha2Nistp521 => ParseEcdsa(ref reader, keyType, copy, ECCurve.NamedCurves.nistP521, "nistp521", 521),
                 SshAlgorithmNames.SshRsa => ParseRsa(ref reader, keyType, copy),
-                _ => throw new SshPublicKeyException($"不支持的公钥类型：{keyType}。"),
+                _ => throw new SshPublicKeyException(SshFailureReason.Unsupported, $"不支持的公钥类型：{keyType}。"),
             };
         }
         catch (SshWireFormatException ex)
         {
-            throw new SshPublicKeyException($"公钥 blob（{keyType}）格式非法。", ex);
+            throw new SshPublicKeyException(SshFailureReason.KeyFormatInvalid, $"公钥 blob（{keyType}）格式非法。", ex);
         }
     }
 
@@ -330,7 +419,7 @@ public sealed class SshPublicKey
         byte[] key = reader.ReadStringAsArray(MaxFieldBytes);
         if (key.Length != 32)
         {
-            throw new SshPublicKeyException($"ssh-ed25519 公钥必须是 32 字节，收到 {key.Length} 字节。");
+            throw new SshPublicKeyException(SshFailureReason.KeyFormatInvalid, $"ssh-ed25519 公钥必须是 32 字节，收到 {key.Length} 字节。");
         }
         reader.ExpectEnd("ssh-ed25519 公钥");
         return new SshPublicKey(keyType, blob, null, null, key, 256);
@@ -344,7 +433,7 @@ public sealed class SshPublicKey
         string curveName = reader.ReadUtf8String(MaxFieldBytes, strict: true);
         if (!string.Equals(curveName, expectedCurveName, StringComparison.Ordinal))
         {
-            throw new SshPublicKeyException(
+            throw new SshPublicKeyException(SshFailureReason.KeyFormatInvalid,
                 $"{keyType} 的曲线名不符：blob 里是 {curveName}，应为 {expectedCurveName}。");
         }
 
@@ -354,7 +443,7 @@ public sealed class SshPublicKey
         int coordinate = (bits + 7) / 8;
         if (point.Length != 1 + (coordinate * 2) || point[0] != 0x04)
         {
-            throw new SshPublicKeyException(
+            throw new SshPublicKeyException(SshFailureReason.KeyFormatInvalid,
                 $"{keyType} 的公钥点必须是 {1 + (coordinate * 2)} 字节的未压缩点。");
         }
 
@@ -374,7 +463,7 @@ public sealed class SshPublicKey
         catch (Exception ex) when (ex is not SshPublicKeyException)
         {
             // 各平台抛的类型不同（OpenSSL vs CNG），含义都是「这个点用不了」。
-            throw new SshPublicKeyException($"{keyType} 的公钥点不在曲线上。", ex);
+            throw new SshPublicKeyException(SshFailureReason.KeyFormatInvalid, $"{keyType} 的公钥点不在曲线上。", ex);
         }
     }
 
@@ -386,7 +475,7 @@ public sealed class SshPublicKey
 
         if (modulus.Length == 0 || exponent.Length == 0)
         {
-            throw new SshPublicKeyException("ssh-rsa 公钥的模数或指数为空。");
+            throw new SshPublicKeyException(SshFailureReason.KeyFormatInvalid, "ssh-rsa 公钥的模数或指数为空。");
         }
 
         try
@@ -401,7 +490,7 @@ public sealed class SshPublicKey
         }
         catch (Exception ex) when (ex is not SshPublicKeyException)
         {
-            throw new SshPublicKeyException("ssh-rsa 公钥参数非法。", ex);
+            throw new SshPublicKeyException(SshFailureReason.KeyFormatInvalid, "ssh-rsa 公钥参数非法。", ex);
         }
     }
 
@@ -556,24 +645,3 @@ public sealed class SshPublicKey
     }
 }
 
-/// <summary>公钥解析失败。</summary>
-/// <remarks>
-/// 是 <see cref="Diagnostics.SshException"/>：曾经直接继承 <see cref="Exception"/>，
-/// 使用者按 <c>catch (SshException)</c> 兜库的错误时漏掉它，宿主的异常翻译也认不出它。
-/// 原因记成 <see cref="Diagnostics.SshFailureReason.Unsupported"/>（认不出这把钥），
-/// 阶段记成密钥交换 —— 它最常见于解析对端出示的主机密钥；读本地 <c>.pub</c> 时阶段只是个大概。
-/// </remarks>
-public sealed class SshPublicKeyException : Diagnostics.SshException
-{
-    /// <summary>用给定消息创建异常。</summary>
-    public SshPublicKeyException(string message)
-        : base(Diagnostics.SshFailureReason.Unsupported, Diagnostics.SshPhase.KeyExchange, message)
-    {
-    }
-
-    /// <summary>用给定消息与内部异常创建异常。</summary>
-    public SshPublicKeyException(string message, Exception innerException)
-        : base(Diagnostics.SshFailureReason.Unsupported, Diagnostics.SshPhase.KeyExchange, message, innerException)
-    {
-    }
-}

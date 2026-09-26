@@ -137,13 +137,13 @@ public class SftpSymlinkIntegrationTests
     private static async Task<VelaSshClientWrapper> ConnectAsync()
     {
         VelaSshClientWrapper client = new(
-            ct => new SshConnectionOptions(TestUser, TestHost, TestPort)
+            ct => SshConnection.ConnectAsync(new SshConnectionOptions(TestUser, TestHost, TestPort)
             {
                 Credentials = [new PasswordCredential(TestPassword)],
                 // 测试容器的主机键每次重建都变：无条件信任，不写 known_hosts。
                 HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
                 ConnectTimeout = TimeSpan.FromSeconds(10),
-            }.ConnectAsync(ct),
+            }, ct),
             TimeSpan.FromSeconds(10));
 
         await client.ConnectAsync(CancellationToken.None);

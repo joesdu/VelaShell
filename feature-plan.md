@@ -34,16 +34,16 @@
 
 ## 📊 待办分布
 
-**欠账**（⏳ + 🚧 + 💡，共 24 项）与**路线图**（共 29 项）分开计：
+**欠账**（⏳ + 🚧 + 💡，共 26 项）与**路线图**（共 29 项）分开计：
 
 ```mermaid
 pie showData
-    title 欠账 —— 现状与代码对不上的部分（24 项）
+    title 欠账 —— 现状与代码对不上的部分（26 项）
     "P0 存了但不生效" : 5
     "安全与凭据" : 4
     "会话与工作区" : 3
     "数据与可观测" : 3
-    "终端与协议" : 5
+    "终端与协议" : 7
     "文件传输" : 2
     "插件生态" : 2
 ```
@@ -68,6 +68,7 @@ pie showData
 > 「终端与协议」仍为 4：VelaShell.XServer 的 M3（接入宿主）已落地（`plan.md` §105），拆出一条「内置 X 服务端：AltGr 层」（见该节）。
 > 「终端与协议」从 4 加到 5：新增「VelaShell.XServer 全库审查：待修」（plan.md §114，一行里分 A–E 五组，见该节）。
 > 「E 安全与合规」从 5 加到 7：SSH 库补上主机证书之后，新增「主机证书（宿主侧）」与「gssapi-with-mic 认证」两条（`plan.md` §113，见该节）。
+> 「终端与协议」从 5 加到 7：SSH 库 API 审查（`plan.md` §117）留下两条 —— 拆两个上帝类、剩余中文诊断文本的界面本地化（见该节）。
 
 ---
 
@@ -150,6 +151,8 @@ pie showData
 | ✅ | — | ~~**VelaShell.XServer M4:同步抓取、设备拓扑、XKB 改表、MIT-SHM、GLX**~~ | **已完成**(2026-09-24,`plan.md` §108):pointer / keyboard-mode Synchronous 冻结与 AllowEvents(含 XIAllowEvents)的放行、单步、重放;XIChangeHierarchy(增删主设备、挂上 / 摘下从设备,HierarchyChanged);XKB SetMap 写回核心键位表(`setxkbmap … \| xkbcomp - $DISPLAY` 生效);MIT-SHM 1.1(Linux、只给 Unix 套接字上的本机客户端,SO_PEERCRED 核对段权限);GLX 1.4 —— Mesa 的直接渲染(客户端 llvmpipe、经 PutImage 送像素)与服务端软件 GL 的间接渲染两条路,`glxinfo` / `glxgears` 实测 | 间接渲染只是固定功能 GL 的子集(报 1.1):求值器、累积缓冲、选择 / 反馈、mipmap LOD、点画、3D 纹理不实现;MIT-SHM 1.2 的 fd 传递与共享像素图不做;多指针只到设备拓扑,指针位置与焦点仍是一份 |
 | ✅ | — | ~~**内置 X 服务端:macOS / Linux 的键盘布局跟随**~~ | **已完成**(2026-09-24,`plan.md` §109):设置里的「键盘布局」两种引擎共用 ——「自动」跟随系统(macOS 用 `TISCopyCurrentKeyboardLayoutInputSource` + `UCKeyTranslate`,Option 层对应 AltGr;Linux 经 libxkbcommon-x11 读桌面 `$DISPLAY`),选了具体布局就用随程序带的键位表(由 `scripts/xserver/keymaps/generate.cs` 从 xkeyboard-config 生成,27 个布局) | macOS「自动」只经 CI 编译与平台无关的单测,没有在真 Mac 上跑过(TIS 接口只能在主线程上调,单测线程上不取);Linux 没有桌面 X 显示时「自动」仍按 US(可以手选) |
 | ⏳ | 🔴 P0 | **VelaShell.XServer 全库审查:待修**(2026-09-25,`plan.md` §114) | 五个子系统的审查报了约 70 项,去重后 32 项,都读过完整代码路径。渲染路径那几项已在 §114 改掉,下面的都没动。⚠️ 执行线程卡住时它握着像素锁,宿主 UI 线程下一次读像素就跟着卡死 —— 所以 A 组不只是「X 程序不动了」,而是整个 VelaShell 窗口冻住 | 建议分五批,每项配用例、先撤修复确认失败:<br>**A 组(卡死 / 打垮进程,少量请求即可)**:① 窗口无限嵌套,`DestroyTree` / `ExposeRecursive` 递归栈溢出、整个进程退出(客户端断开时的清理也会触发;`Windows.cs:248`、`Exposure.cs:210`)→ 限深度与每客户端窗口数,两处改显式栈;② XFIXES `DeletePointerBarrier` 对任意 ID 调 `RemoveResource`,一个请求就能删掉根窗口 / 默认颜色表 / 别人的窗口(`XFixes.cs:311`)→ 专用类型 + 属主核对;③ XIChangeHierarchy AddMaster 无上限,`NextDeviceId` 的 `ushort` 回绕后死循环(`XiHierarchy.cs:209`);④ 连满 1000 个客户端后 `RegisterClient` 死循环(`Connection.cs:154`)→ 加 MaxClients、回连接失败;⑤ `Region.Union` 是 O(n²),SHAPE / XFIXES 区域(一个请求可到 200 万块)与棋盘格位图遮罩能让执行线程算上很久(`Region.cs:209`)→ 限块数,长远改按 y 分带;⑥ GLX 间接渲染:CallList(s) 不计入 400 万预算、GenLists / DeleteLists 的 range 到 2³¹(GenLists 回绕死循环)、DrawArrays 无数组时空转 count 次、线宽不封顶、DrawPixels / CopyPixels / Bitmap 不裁剪不校验。<br>**B 组(内存)**:⑦ 未执行请求只数条数,1024 × 16 MB = 16 GB / 客户端,SYNC Await 与 GrabServer 挂住的请求一直占着 → 加字节预算;⑧ CreatePixmap 与顶层缓冲不限尺寸(32767² 一次 4 GB,`Width * Height` 还会 int 溢出);⑨ ChangeProperty Append 无上限、InternAtom 无上限;⑩ XTEST 延迟输入与 Present NotifyMSC 每条一个 `Task.Delay`,无上限、断开不取消,XTEST 的按下 / 松开还会乱序导致按键卡住;⑪ GLX:Begin / End 顶点、显示列表、纹理无上限,PrioritizeTextures 按未校验的 n 分配,ReadPixels 回复可达 1 GB,pbuffer / 像素图表面断开后不释放(复用同一 XID 的客户端还能读到上一个的内容);⑫ XC-MISC GetXIDList、X-Resource QueryClientIds 的代价无界。<br>**C 组(访问控制)**:⑬ 内置服务端没配 cookie,本机任何进程(Linux 上包括别的用户,经抽象命名空间的套接字 —— 没有文件权限可言)都能连进来读窗口、记键盘、经 XTEST 注入输入;`PeerUid` 取了没用 → 启动时生成 MIT-MAGIC-COOKIE-1,SSH 连接器走进程内的受信流;⑭ MIT-SHM 的段按 XID 就能被别的客户端用(uid 只在 Attach 时核对);⑮ SendEvent 放行 GenericEvent(35),能让别的客户端的协议流错位;⑯ 每条协议错误在像素锁里同步写日志文件,不限流,日志文件也不封顶。<br>**D 组(正确性)**:⑰ 抓取窗口变得不可见时不自动解除抓取;⑱ 焦点事件的 detail 总是 Nonlinear、没有虚拟事件与 KeymapNotify;⑲ 宿主按钮只靠一个 bool,失去捕获 / 切走窗口后 X 那边一直按着,服务端还丢掉已销毁顶层上的松开;⑳ `FocusTopLevel` 不看 override-redirect / input=False,WM_TAKE_FOCUS 没实现;㉑ 同步抓取的冻结队列无上限、放行时一项里整批回放、指针与键盘的相对顺序会乱;㉒ 抓取期间 Enter / Leave 仍发给所有客户端,没有 Grab / Ungrab 模式的 crossing;㉓ CirculateNotify 的 place 写在第 20 字节(应为 16);㉔ GLX MakeCurrent 先改状态再抛 BadAlloc,上下文卡在一个幽灵 tag 上;㉕ XKB 锁存的修饰键不被下一个键清掉,SetMap 的修饰映射不校验键码,XI2 ButtonPress 的 buttons 含正在按下的那个;㉖ 零碎:抓取时键盘事件按指针窗口而不是焦点取源、CloseDownMode 的 Retain 不生效、CopyArea 深度不配时池化数组没还、RENDER 同一缓冲上下重叠的 Composite 按行顺序会读到已覆盖的行、GL_EXT_abgr 声明了没实现、RenderLarge 不核对声明的长度、TexSubImage 的边界 int 溢出、RenderMode 的回复条件(待对照规范确认)。<br>**E 组(性能与设计)**:㉗ Region 改成按 y 分带(顺带解决 ⑤);㉘ RENDER 通用路径(渐变、带变换的源)逐像素浮点 → 整数内核;㉙ GLX 单缓冲每个 Render 请求整窗拷一次、LINQ 找表面、每片元重复读状态;㉚ 每条请求为诊断日志分配一个字符串(宿主总设了 `Log`)、回复与事件的闭包和数组、请求缓冲池化(要先让 `XRequestReader` 自带长度);㉛ `XTopLevelWindow` 的字段不加同步地被 UI 线程读,可能读到新 X 旧 Y;㉜ 连接建立没有超时。<br>设计层面的提醒(不是缺陷):所有 SSH 会话共享一个受信的显示,一台被攻破的远端机能看到、也能操作别的会话里的 X 程序 —— 值得写进文档 |
+| ⏳ | 🟡 P2 | **拆 SSH 库的两个上帝类**(2026-09-25,`plan.md` §117 留下的) | `SshConnection` 约 2,960 行(四个 partial,`SshConnection.cs` 自己 1,576 行)、`SshChannel` 1,388 行,都远过 `src/VelaShell.Ssh/AGENTS.md` 4.4 的 800 行 | 拆成 internal 协作者而不是更多 partial:`SshChannel` 的收发窗口与 stdin 泵、`SshConnection` 的收包分发与全局请求账本。**纯重构,单独开 PR**,不混行为改动;`VelaShell.Ssh.Tests` 与互操作用例是它的安全网 |
+| ⏳ | 🟡 P2 | **SSH 库剩余中文诊断文本的界面本地化**(2026-09-25,`plan.md` §117 留下的) | 英 / 日 / 韩界面仍会看到库的中文原文:认证的逐条尝试记录(`SshAuthAttempt.ToString` 与 `Detail`)、通道开不成时的建议(`SshChannelException`)、`KnownHostLookup.CertificateProblem`、带路径 / 指纹 / 端口的私钥、证书、配置消息 | **先在库里补结构化的出处**(尝试结果已有 `SshAuthOutcome`,缺的是 `Detail` 的种类;证书问题要一个枚举),宿主 `SshInterop` 再按枚举出五语言文案 —— 不在宿主里解析句子(`AGENTS.md` 4.5) |
 | 📄 | 🟠 P1 | **设计稿的两处残留** | Logo 有一个 `enabled:false` 残留图标；文件列表「修改时间」列无固定宽度 | 小到可以顺手做掉，记在这里免得忘 |
 
 ### SSH PTY 像素尺寸贯通 —— 实施细节
@@ -684,6 +687,7 @@ var options = new ExecuteOptions
 | ⏳ | `plan.md` §61 | 回滚行数（`设置 → 终端`）的行为补一句：**调小当场生效**，超出上限的历史立刻裁掉、不可恢复；以及它作用于主屏，全屏程序（vim / htop / less）的备用屏恒无回滚，与这个值无关 |
 | ✅ | `plan.md` §98 | ~~**自动加载密钥到 Agent**~~ —— **2026-09-23 已同步**（[velashell-docs#53](https://github.com/VelaShellLabs/velashell-docs/pull/53) 已与宿主 #493 一起合入）。原登记内容：`{zh,en}/ssh/spec/07-forwarding.md` 新增 §7.3（加钥报文、私钥布局、约束、五条决策）；`{zh,en}/ssh/getting-started.md` 补示例；`{zh,en}/host/settings-audit.md` R-06 改为已实现；交互规格密钥管理一行、架构设计未实现清单同步。|
 | ✅ | `plan.md` §102 | ~~**agent 转发的只转发选中密钥与逐次确认**~~ —— **2026-09-23 已同步**（[velashell-docs#56](https://github.com/VelaShellLabs/velashell-docs/pull/56) 已与宿主 #495 一起合入）。原登记内容：`{zh,en}/host/交互与界面规格.md` SSH 连接选项一节补两项与 agent 签名确认框（三按钮、拒绝为默认键与取消键、60 秒无人应答拒绝、多会话排队）。|
+| ⏳ | `plan.md` §117 | **SSH 库 API 整改**：`{zh,en}/ssh/getting-started.md` 的示例改用新的公开面（`SshConnection.ConnectAsync(options, ct)`、`RunAsync` → `SshCommandResult`、`SshExitStatus`、`LocalPortForwarder.Start` / `RemotePortForwarder.StartAsync`、`SshTerminalModes`、`AgentForwardOptions`、`InMemorySshSigner`）；`ssh/design/architecture.md` §6（公共 API 形态）与 §8（扩展点：KEX 表不再可注册、拨号器只经 `DialerChain`）对上代码；`ssh/spec/08-failures.md` 补新增的 `SshFailureReason` 值与 `SshHostKeyVerdict.Reason`。改动已在 velashell-docs 的 `fix/ssh-api-cleanup` 分支上备好（本地工作树，未提交），待开 PR 与宿主 PR 互相引用后一起合 |
 
 ---
 

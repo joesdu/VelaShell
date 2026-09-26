@@ -45,18 +45,24 @@ public readonly record struct SftpFileAttributes
     /// <summary>最后修改时间（Unix 秒，有符号）。</summary>
     public int ModifyTime { get; init; }
 
-    /// <summary>厂商扩展属性。</summary>
-    public IReadOnlyList<(string Type, string Data)> Extended { get; init; }
+    private readonly IReadOnlyList<SftpExtendedField>? _extended;
 
-    /// <summary>什么都没带的空属性。</summary>
-    public static SftpFileAttributes Empty => new() { Extended = [] };
+    /// <summary>厂商扩展属性。</summary>
+    /// <remarks><c>default(SftpFileAttributes)</c> 里它也是空列表而不是 <see langword="null"/>。</remarks>
+    public IReadOnlyList<SftpExtendedField> Extended
+    {
+        get => _extended ?? [];
+        init => _extended = value;
+    }
+
+    /// <summary>什么都没带的空属性（与 <c>default</c> 相同）。</summary>
+    public static SftpFileAttributes Empty => default;
 
     /// <summary>只带权限的属性（创建文件/目录时用）。</summary>
     public static SftpFileAttributes WithPermissions(uint permissions) => new()
     {
         Flags = SftpAttributeFields.Permissions,
         Permissions = permissions,
-        Extended = [],
     };
 
     /// <summary>只带长度的属性（截断用）。</summary>
@@ -64,7 +70,6 @@ public readonly record struct SftpFileAttributes
     {
         Flags = SftpAttributeFields.Size,
         Size = size,
-        Extended = [],
     };
 
     /// <summary>带访问与修改时间的属性。</summary>
@@ -77,7 +82,6 @@ public readonly record struct SftpFileAttributes
         Flags = SftpAttributeFields.Times,
         AccessTime = (int)accessTime.ToUnixTimeSeconds(),
         ModifyTime = (int)modifyTime.ToUnixTimeSeconds(),
-        Extended = [],
     };
 
     /// <summary>长度是否有效。</summary>
@@ -143,7 +147,7 @@ public readonly record struct SftpFileAttributes
 
         if ((Flags & SftpAttributeFields.Extended) != 0)
         {
-            IReadOnlyList<(string Type, string Data)> extended = Extended ?? [];
+            IReadOnlyList<SftpExtendedField> extended = Extended;
             writer.WriteUInt32((uint)extended.Count);
             foreach ((string type, string data) in extended)
             {
@@ -164,7 +168,7 @@ public readonly record struct SftpFileAttributes
         uint permissions = 0;
         int accessTime = 0;
         int modifyTime = 0;
-        List<(string, string)> extended = [];
+        List<SftpExtendedField> extended = [];
 
         if ((flags & SftpAttributeFields.Size) != 0)
         {
@@ -197,7 +201,7 @@ public readonly record struct SftpFileAttributes
             // 上限防一个畸形报文让我们空转。
             for (uint i = 0; i < count && i < 1024; i++)
             {
-                extended.Add((
+                extended.Add(new SftpExtendedField(
                     reader.ReadUtf8String(SftpProtocol.MaxPathLength),
                     reader.ReadUtf8String(SftpProtocol.MaxPathLength)));
             }

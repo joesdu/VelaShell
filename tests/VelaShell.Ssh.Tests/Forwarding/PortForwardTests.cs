@@ -14,7 +14,6 @@ using System.Text;
 using VelaShell.Ssh.Auth;
 using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Crypto;
-using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Forwarding;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Protocol;
@@ -88,7 +87,7 @@ public sealed class PortForwardTests
             TestChannelServer channelServer = new(server.Transport, script);
             Task serverChannels = channelServer.RunAsync(cts.Token);
 
-            SshConnection connection = new(clientTransport, kex.SessionId);
+            SshConnection connection = new(clientTransport, kex);
             connection.Start();
 
             return new Harness(server, channelServer, serverChannels, connection, cts);
@@ -153,9 +152,9 @@ public sealed class PortForwardTests
             TunnelHandler = UppercaseEchoAsync,
         });
 
-        await using var forwarder = PortForwarder.StartLocal(
+        await using var forwarder = LocalPortForwarder.Start(
             harness.Connection, "10.0.0.9", 80,
-            new PortForwardOptions { BindPort = 0 });
+            new LocalPortForwardOptions { BindPort = 0 });
 
         // 端口给 0 → 由系统分配，结果在 BoundEndPoint 里。
         var bound = (IPEndPoint)forwarder.BoundEndPoint!;
@@ -182,7 +181,7 @@ public sealed class PortForwardTests
             TunnelHandler = UppercaseEchoAsync,
         });
 
-        await using var forwarder = PortForwarder.StartLocal(
+        await using var forwarder = LocalPortForwarder.Start(
             harness.Connection, "target", 1234);
 
         List<ForwardConnectionEventArgs> closed = [];
@@ -199,11 +198,11 @@ public sealed class PortForwardTests
 
         await WaitUntilAsync(() => closed.Count > 0, harness.Token);
 
-        Assert.AreEqual(500, forwarder.BytesUp, "本机 → 远端");
-        Assert.AreEqual(500, forwarder.BytesDown, "远端 → 本机");
+        Assert.AreEqual(500, forwarder.BytesSent, "本机 → 远端");
+        Assert.AreEqual(500, forwarder.BytesReceived, "远端 → 本机");
         Assert.AreEqual(1, forwarder.TotalConnections);
-        Assert.AreEqual(500, closed[0].BytesUp);
-        Assert.AreEqual(500, closed[0].BytesDown);
+        Assert.AreEqual(500, closed[0].BytesSent);
+        Assert.AreEqual(500, closed[0].BytesReceived);
     }
 
     [TestMethod]
@@ -215,7 +214,7 @@ public sealed class PortForwardTests
             RejectTunnelWith = SshChannelOpenFailureReason.AdministrativelyProhibited,
         });
 
-        await using var forwarder = PortForwarder.StartLocal(
+        await using var forwarder = LocalPortForwarder.Start(
             harness.Connection, "blocked", 80);
 
         List<ForwardErrorEventArgs> errors = [];
@@ -232,7 +231,7 @@ public sealed class PortForwardTests
 
         // **单条连接的失败绝不影响转发器本身。**一条隧道要能跑几天，
         // 期间必然有连不上的目标。把这些当成致命错误，隧道就没法用了。
-        Assert.AreEqual("channel-open", errors[0].Reason);
+        Assert.AreEqual(ForwardErrorReason.ChannelOpen, errors[0].Reason);
         Assert.Contains("AllowTcpForwarding", errors[0].Message);
         Assert.IsTrue(forwarder.IsActive, "转发器必须还活着");
 
@@ -247,14 +246,14 @@ public sealed class PortForwardTests
     {
         await using Harness harness = await Harness.StartAsync(new TestChannelScript());
 
-        await using var first = PortForwarder.StartLocal(
-            harness.Connection, "t", 1, new PortForwardOptions { BindPort = 0 });
+        await using var first = LocalPortForwarder.Start(
+            harness.Connection, "t", 1, new LocalPortForwardOptions { BindPort = 0 });
 
         int taken = ((IPEndPoint)first.BoundEndPoint!).Port;
 
         SshForwardException error = Assert.ThrowsExactly<SshForwardException>(
-            () => PortForwarder.StartLocal(
-                harness.Connection, "t", 1, new PortForwardOptions { BindPort = taken }));
+            () => LocalPortForwarder.Start(
+                harness.Connection, "t", 1, new LocalPortForwardOptions { BindPort = taken }));
 
         Assert.Contains("端口可能已被占用", error.Message);
     }
@@ -269,7 +268,7 @@ public sealed class PortForwardTests
             TunnelHandler = UppercaseEchoAsync,
         });
 
-        await using var forwarder = PortForwarder.StartDynamic(harness.Connection);
+        await using var forwarder = LocalPortForwarder.StartDynamic(harness.Connection);
         Assert.AreEqual(ForwardKind.Dynamic, forwarder.Kind);
 
         using Socket client = new(SocketType.Stream, ProtocolType.Tcp);
@@ -309,7 +308,7 @@ public sealed class PortForwardTests
             RejectTunnelWith = SshChannelOpenFailureReason.ConnectFailed,
         });
 
-        await using var forwarder = PortForwarder.StartDynamic(harness.Connection);
+        await using var forwarder = LocalPortForwarder.StartDynamic(harness.Connection);
 
         using Socket client = new(SocketType.Stream, ProtocolType.Tcp);
         await client.ConnectAsync(forwarder.BoundEndPoint!, harness.Token);
@@ -345,9 +344,9 @@ public sealed class PortForwardTests
         target.Listen(4);
         int targetPort = ((IPEndPoint)target.LocalEndPoint!).Port;
 
-        await using RemoteForwarder forwarder = await RemoteForwarder.StartAsync(
+        await using RemotePortForwarder forwarder = await RemotePortForwarder.StartAsync(
             harness.Connection, "127.0.0.1", targetPort,
-            new RemoteForwardOptions { BindAddress = "localhost", BindPort = 0 },
+            new RemotePortForwardOptions { BindAddress = "localhost", BindPort = 0 },
             harness.Token);
 
         // ⚠️ 这是 §4.2 的第一个「必须」：端口给 0 时实际端口在
@@ -369,9 +368,9 @@ public sealed class PortForwardTests
         });
 
         SshForwardException error = await Assert.ThrowsExactlyAsync<SshForwardException>(
-            async () => await RemoteForwarder.StartAsync(
+            async () => await RemotePortForwarder.StartAsync(
                 harness.Connection, "127.0.0.1", 8080,
-                new RemoteForwardOptions { BindPort = 9999 }, harness.Token));
+                new RemotePortForwardOptions { BindPort = 9999 }, harness.Token));
 
         Assert.Contains("AllowTcpForwarding", error.Message);
         Assert.IsTrue(harness.Connection.IsAlive, "被拒绝不该连累会话");
@@ -432,7 +431,7 @@ public sealed class PortForwardTests
             TunnelHandler = UppercaseEchoAsync,
         });
 
-        await using var forwarder = PortForwarder.StartLocal(harness.Connection, "t", 1);
+        await using var forwarder = LocalPortForwarder.Start(harness.Connection, "t", 1);
 
         using Socket client = new(SocketType.Stream, ProtocolType.Tcp);
         await client.ConnectAsync(forwarder.BoundEndPoint!, harness.Token);
@@ -464,7 +463,7 @@ public sealed class PortForwardTests
                 await output.WriteAsync(Text("bye"), cancellationToken),
         });
 
-        await using var forwarder = PortForwarder.StartLocal(harness.Connection, "t", 1);
+        await using var forwarder = LocalPortForwarder.Start(harness.Connection, "t", 1);
         List<ForwardConnectionEventArgs> closed = [];
         forwarder.ConnectionClosed += (_, e) => closed.Add(e);
 
@@ -485,8 +484,8 @@ public sealed class PortForwardTests
     {
         await using Harness harness = await Harness.StartAsync(new TestChannelScript());
 
-        await using var forwarder = PortForwarder.StartDynamic(
-            harness.Connection, new PortForwardOptions { SocksHandshakeTimeout = TimeSpan.FromMilliseconds(200) });
+        await using var forwarder = LocalPortForwarder.StartDynamic(
+            harness.Connection, new LocalPortForwardOptions { SocksHandshakeTimeout = TimeSpan.FromMilliseconds(200) });
         List<ForwardErrorEventArgs> errors = [];
         forwarder.Error += (_, e) => errors.Add(e);
 
@@ -506,7 +505,7 @@ public sealed class PortForwardTests
         }
 
         await WaitUntilAsync(() => errors.Count > 0, deadline.Token);
-        Assert.AreEqual("socks", errors[0].Reason);
+        Assert.AreEqual(ForwardErrorReason.SocksHandshake, errors[0].Reason);
     }
 
     [TestMethod]
@@ -514,7 +513,7 @@ public sealed class PortForwardTests
     {
         await using Harness harness = await Harness.StartAsync(new TestChannelScript());
 
-        await using var forwarder = PortForwarder.StartLocal(harness.Connection, "t", 1);
+        await using var forwarder = LocalPortForwarder.Start(harness.Connection, "t", 1);
         int port = ((IPEndPoint)forwarder.BoundEndPoint!).Port;
 
         await harness.DropServerAsync();
@@ -536,7 +535,7 @@ public sealed class PortForwardTests
             TunnelHandler = UppercaseEchoAsync,
         });
 
-        await using var forwarder = PortForwarder.StartLocal(harness.Connection, "t", 1);
+        await using var forwarder = LocalPortForwarder.Start(harness.Connection, "t", 1);
         forwarder.ConnectionOpened += (_, _) => throw new InvalidOperationException("订阅者的 bug");
         List<ForwardConnectionEventArgs> closed = [];
         forwarder.ConnectionClosed += (_, e) => closed.Add(e);
@@ -570,9 +569,9 @@ public sealed class PortForwardTests
         target.Listen(4);
         Task<Socket> accepting = target.AcceptAsync(harness.Token).AsTask();
 
-        await using RemoteForwarder forwarder = await RemoteForwarder.StartAsync(
+        await using RemotePortForwarder forwarder = await RemotePortForwarder.StartAsync(
             harness.Connection, "127.0.0.1", ((IPEndPoint)target.LocalEndPoint!).Port,
-            new RemoteForwardOptions { BindAddress = "localhost", BindPort = 0 }, harness.Token);
+            new RemotePortForwardOptions { BindAddress = "localhost", BindPort = 0 }, harness.Token);
 
         await WaitUntilAsync(() => harness.Observed.ForwardedOpenAfterGrant is not null, harness.Token);
         Stream? remote = await harness.Observed.ForwardedOpenAfterGrant!.WaitAsync(harness.Token);
@@ -599,9 +598,9 @@ public sealed class PortForwardTests
         target.Listen(4);
         Task<Socket> accepting = target.AcceptAsync(harness.Token).AsTask();
 
-        await using RemoteForwarder forwarder = await RemoteForwarder.StartAsync(
+        await using RemotePortForwarder forwarder = await RemotePortForwarder.StartAsync(
             harness.Connection, "127.0.0.1", ((IPEndPoint)target.LocalEndPoint!).Port,
-            new RemoteForwardOptions { BindAddress = "localhost", BindPort = 34570 }, harness.Token);
+            new RemotePortForwardOptions { BindAddress = "localhost", BindPort = 34570 }, harness.Token);
 
         await WaitUntilAsync(() => harness.Observed.ForwardedOpenAfterGrant is not null, harness.Token);
         Stream? remote = await harness.Observed.ForwardedOpenAfterGrant!.WaitAsync(harness.Token);
@@ -624,9 +623,9 @@ public sealed class PortForwardTests
         target.Listen(4);
         Task<Socket> accepting = target.AcceptAsync(harness.Token).AsTask();
 
-        RemoteForwarder forwarder = await RemoteForwarder.StartAsync(
+        RemotePortForwarder forwarder = await RemotePortForwarder.StartAsync(
             harness.Connection, "127.0.0.1", ((IPEndPoint)target.LocalEndPoint!).Port,
-            new RemoteForwardOptions { BindAddress = "localhost", BindPort = 34569 }, harness.Token);
+            new RemotePortForwardOptions { BindAddress = "localhost", BindPort = 34569 }, harness.Token);
 
         Task disposing = forwarder.DisposeAsync().AsTask();
         await WaitUntilAsync(() => harness.Observed.GlobalRequests.Contains("cancel-tcpip-forward"), harness.Token);
@@ -640,7 +639,7 @@ public sealed class PortForwardTests
         writer.WriteUtf8String("127.0.0.1");
         writer.WriteUInt32(40001);
         Stream? remote = await harness.ChannelServer.OpenChannelToClientAsync(
-            SshAlgorithmNames.ChannelForwardedTcpIp, header.WrittenMemory, harness.Token);
+            SshProtocolNames.ChannelForwardedTcpIp, header.WrittenMemory, harness.Token);
 
         Assert.IsNotNull(remote, "宽限期里在途的回连要照常接下");
         using Socket accepted = await accepting.WaitAsync(harness.Token);
@@ -720,7 +719,7 @@ public sealed class PortForwardTests
 
         const string remotePath = "/tmp/velashell-remote.sock";
 
-        await using RemoteForwarder forwarder = await RemoteForwarder.StartUnixSocketAsync(
+        await using RemotePortForwarder forwarder = await RemotePortForwarder.StartUnixSocketAsync(
             harness.Connection,
             targetSocketPath: "/tmp/velashell-local.sock",
             remoteSocketPath: remotePath,
@@ -733,7 +732,7 @@ public sealed class PortForwardTests
             "隧道面板要显示「这条转发开在哪」，两种形态得有统一的说法");
 
         Assert.Contains(
-SshAlgorithmNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
+SshProtocolNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
         Assert.AreSequenceEqual(new[] { remotePath }, harness.Observed.StreamLocalForwardBinds);
     }
 
@@ -746,7 +745,7 @@ SshAlgorithmNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
         });
 
         SshForwardException error = await Assert.ThrowsExactlyAsync<SshForwardException>(
-            async () => await RemoteForwarder.StartUnixSocketAsync(
+            async () => await RemotePortForwarder.StartUnixSocketAsync(
                 harness.Connection, "/tmp/a.sock", "/tmp/b.sock",
                 cancellationToken: harness.Token));
 
@@ -794,7 +793,7 @@ SshAlgorithmNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
         try
         {
             const string remotePath = "/tmp/velashell-remote.sock";
-            await using RemoteForwarder forwarder = await RemoteForwarder.StartUnixSocketAsync(
+            await using RemotePortForwarder forwarder = await RemotePortForwarder.StartUnixSocketAsync(
                 harness.Connection, localPath, remotePath, cancellationToken: harness.Token);
 
             // 服务端发起回连。载荷是 socket_path ‖ reserved。
@@ -804,7 +803,7 @@ SshAlgorithmNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
             writer.WriteUtf8String("");
 
             Stream? remote = await harness.ChannelServer.OpenChannelToClientAsync(
-                SshAlgorithmNames.ChannelForwardedStreamLocal,
+                SshProtocolNames.ChannelForwardedStreamLocal,
                 typeSpecific.WrittenMemory, harness.Token);
 
             Assert.IsNotNull(remote, "路径对得上的回连应当被接受");
@@ -836,7 +835,7 @@ SshAlgorithmNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
             GrantStreamLocalForward = true,
         });
 
-        await using RemoteForwarder forwarder = await RemoteForwarder.StartUnixSocketAsync(
+        await using RemotePortForwarder forwarder = await RemotePortForwarder.StartUnixSocketAsync(
             harness.Connection, "/tmp/local.sock", "/tmp/remote.sock",
             cancellationToken: harness.Token);
 
@@ -846,7 +845,7 @@ SshAlgorithmNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
         writer.WriteUtf8String("");
 
         Stream? remote = await harness.ChannelServer.OpenChannelToClientAsync(
-            SshAlgorithmNames.ChannelForwardedStreamLocal,
+            SshProtocolNames.ChannelForwardedStreamLocal,
             typeSpecific.WrittenMemory, harness.Token);
 
         // 路由不上就明确拒绝 —— 沉默地接下来再搬到一个不相干的套接字

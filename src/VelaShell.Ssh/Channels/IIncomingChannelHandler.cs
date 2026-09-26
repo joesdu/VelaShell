@@ -18,8 +18,12 @@ namespace VelaShell.Ssh.Channels;
 /// <b>没有登记处理器的类型一律明确拒绝</b>，不沉默 ——
 /// 沉默会让对端一直等着那个永远不来的应答。
 /// </para>
+/// <para>
+/// <c>internal</c>：它是本库几个转发器与连接之间的约定，不是扩展点 —— 公开的转发器用显式接口实现它，
+/// 调用方看不到 <c>OnOpenAborted</c> 这类内部钩子（AGENTS.md §4.1）。
+/// </para>
 /// </remarks>
-public interface IIncomingChannelHandler
+internal interface IIncomingChannelHandler
 {
     /// <summary>决定用什么参数接这条通道。</summary>
     /// <param name="channelType">通道类型。</param>

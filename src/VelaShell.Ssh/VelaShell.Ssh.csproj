@@ -3,19 +3,18 @@
   <!--
     **一个包，一件事。** 协议核心与面向使用者的 API 在同一个程序集里，靠文件夹分层：
 
-      Protocol/     报文编号、wire 编解码、算法名常量
-      Transport/    L1 拨号、L2 帧层
-      Crypto/       L3 密码套件、KEX、签名
-      Session/      L4 会话状态机、发送闸门、收发泵
-      Channels/     L5 通道、流控窗口
-      Threading/    L6 请求账本
-      Auth/         L7 认证方法、签名器
-      HostKeys/     主机密钥策略、known_hosts
+      Protocol/     报文编号、wire 编解码、算法名与协议字符串常量、主机名模式
+      Transport/    L1 拨号（直连 / 代理 / 跳板 / ProxyCommand）、L2 帧层、内存传输
+      Crypto/       L3 密码套件、KEX、压缩
+      Session/      L4 SshConnection（建链、会话状态机、发送闸门、重协商）、请求账本、便捷扩展
+      Channels/     L5 通道、流控窗口、SshCommand / SshShell、终端参数
+      Auth/         L7 认证方法、凭据、签名器
+      HostKeys/     主机密钥策略、known_hosts、SshPublicKey
+      Keys/         私钥文件（OpenSSH / PEM / PuTTY）、证书、ssh-agent 客户端
       Sftp/         L7 SFTP wire / 管线 / 文件系统
-      Forwarding/   L8 转发与隧道
-      Diagnostics/  L9 失败分类、度量、报文旁路
-      Client/       面向使用者的 SshConnection / SshCommand / SshShell / …
-      Config/       ssh_config、私钥格式、Agent 客户端
+      Forwarding/   L8 端口转发、agent / X11 转发、隧道
+      Diagnostics/  L9 失败分类（SshFailureReason / SshPhase）与基础异常
+      Config/       ssh_config 解析、Match 判定、按配置建链
 
     不拆成 Core + 主包，是因为拆了以后使用者第一件要纠结的事就是「我该引哪个」——
     而答案永远是「引主包」。真正需要只引协议核心的场景至今一个都没有。
@@ -88,6 +87,11 @@
        友元必须带公钥,而测试程序集不签名,所以签名构建省略友元声明。 -->
   <ItemGroup Condition="'$(SignAssembly)' != 'true'">
     <InternalsVisibleTo Include="VelaShell.Ssh.Tests" />
+    <!-- scripts/ssh 下的单文件脚本（程序集名就是文件名）：基准要直接测密码套件与 wire 编解码，
+         严格校验检查要直接喂 zlib 压缩器。为它们把类型公开是本末倒置（AGENTS.md §4.1）；
+         它们本来就以非签名构建跑（基准的 -p:SignAssembly=false 见 README）。 -->
+    <InternalsVisibleTo Include="benchmarks" />
+    <InternalsVisibleTo Include="verify-strict-validation" />
   </ItemGroup>
 
 </Project>

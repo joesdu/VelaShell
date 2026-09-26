@@ -5367,6 +5367,21 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SshErr_Disconnected" xml:space="preserve">
     <value>服务器结束了会话。</value>
   </data>
+  <data name="SshErr_KeyPassphraseRequired" xml:space="preserve">
+    <value>私钥已加密,需要输入口令。</value>
+  </data>
+  <data name="SshErr_KeyPassphraseIncorrect" xml:space="preserve">
+    <value>口令解不开这把私钥。</value>
+  </data>
+  <data name="SshErr_AgentRefused" xml:space="preserve">
+    <value>ssh-agent 拒绝了请求:这把密钥可能已不在 agent 里、确认(ssh-add -c)被拒绝,或者 agent 已被锁定。</value>
+  </data>
+  <data name="SshErr_ChannelRequestRejected" xml:space="preserve">
+    <value>服务器拒绝了通道上的请求。sshd_config 里常见的原因:ForceCommand、PermitTTY no,或者缺少 Subsystem 那一行。</value>
+  </data>
+  <data name="SshErr_ForwardRejected" xml:space="preserve">
+    <value>服务器拒绝了转发请求。检查 sshd_config 里的 AllowAgentForwarding / AllowTcpForwarding / X11Forwarding。</value>
+  </data>
   <data name="Profile_AgentAuth" xml:space="preserve">
     <value>SSH Agent</value>
   </data>

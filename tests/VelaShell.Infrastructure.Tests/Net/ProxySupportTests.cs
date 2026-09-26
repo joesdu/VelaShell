@@ -5,14 +5,16 @@ using NSubstitute;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Net;
+using VelaShell.Core.Resources;
 using VelaShell.Infrastructure.Net;
 using VelaShell.Infrastructure.Ssh;
+using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Transport;
 
 namespace VelaShell.Infrastructure.Tests.Net;
 
 /// <summary>
-/// 统一代理层:HTTP CONNECT 与 SOCKS5 握手对着 RFC 字节序列断言(期望值为地面真值,
+/// 统一代理层:经 SSH 代理拨号器走一遍 HTTP CONNECT 与 SOCKS5 握手,对着 RFC 字节序列断言(期望值为地面真值,
 /// 不用被测代码自证),SSH 拨号器与解析器覆盖直连/环回豁免/配置校验/系统代理折算。
 /// </summary>
 [TestClass]
@@ -21,30 +23,12 @@ public class ProxySupportTests
 {
     private static CancellationTokenSource Deadline() => new(TimeSpan.FromSeconds(15));
 
-    // ———— SOCKS5 请求字节的地面真值(RFC 1928 §4) ————
-
-    /// <summary>域名目标:VER=05 CMD=01 RSV=00 ATYP=03 LEN 域名 PORT(网络序)。</summary>
-    [TestMethod]
-    public void Socks5ConnectRequest_DomainTarget_MatchesRfc1928Bytes()
+    /// <summary>经 SSH 的代理拨号器(宿主真正在跑的那条路径)按 <paramref name="route" /> 连到目标。</summary>
+    private static async Task<Stream> DialThroughAsync(ProxyRoute route, string host, int port, CancellationToken cancellationToken)
     {
-        byte[] request = ProxyStreamConnector.BuildSocks5ConnectRequest("example.com", 22);
-        byte[] expected =
-        [
-            0x05, 0x01, 0x00, 0x03, 0x0B,
-            (byte)'e', (byte)'x', (byte)'a', (byte)'m', (byte)'p', (byte)'l',
-            (byte)'e', (byte)'.', (byte)'c', (byte)'o', (byte)'m',
-            0x00, 0x16,
-        ];
-        Assert.AreSequenceEqual(expected, request);
-    }
-
-    /// <summary>IPv4 目标:ATYP=01 + 4 字节地址。192.0.2.1:8080 = C0 00 02 01 / 1F 90。</summary>
-    [TestMethod]
-    public void Socks5ConnectRequest_IPv4Target_MatchesRfc1928Bytes()
-    {
-        byte[] request = ProxyStreamConnector.BuildSocks5ConnectRequest("192.0.2.1", 8080);
-        byte[] expected = [0x05, 0x01, 0x00, 0x01, 0xC0, 0x00, 0x02, 0x01, 0x1F, 0x90];
-        Assert.AreSequenceEqual(expected, request);
+        IProxyResolver resolver = Substitute.For<IProxyResolver>();
+        resolver.Resolve(host, port).Returns(route);
+        return await new ProxyTransportDialer(resolver).DialAsync(SshDialTarget.Direct(host, port), cancellationToken);
     }
 
     // ———— SOCKS5 完整握手(假代理服务器) ————
@@ -66,7 +50,7 @@ public class ProxySupportTests
         });
 
         var route = new ProxyRoute(ProxyKind.Socks5, "127.0.0.1", server.Port);
-        await using Stream tunnel = await ProxyStreamConnector.ConnectAsync(route, "target.example", 2222, cts.Token);
+        await using Stream tunnel = await DialThroughAsync(route, "target.example", 2222, cts.Token);
 
         byte[] greetingBytes = await greeting.Task;
         Assert.AreSequenceEqual(new byte[] { 0x05, 0x01, 0x00 }, greetingBytes);
@@ -99,7 +83,7 @@ public class ProxySupportTests
         });
 
         var route = new ProxyRoute(ProxyKind.Socks5, "127.0.0.1", server.Port, "us", "secret");
-        await using Stream tunnel = await ProxyStreamConnector.ConnectAsync(route, "target.example", 22, cts.Token);
+        await using Stream tunnel = await DialThroughAsync(route, "target.example", 22, cts.Token);
 
         byte[] greetingBytes = await greeting.Task;
         Assert.AreSequenceEqual(new byte[] { 0x05, 0x02, 0x00, 0x02 }, greetingBytes);
@@ -126,8 +110,12 @@ public class ProxySupportTests
         });
 
         var route = new ProxyRoute(ProxyKind.Socks5, "127.0.0.1", server.Port, "u", "wrong");
-        await Assert.ThrowsExactlyAsync<IOException>(() =>
-            ProxyStreamConnector.ConnectAsync(route, "target.example", 22, cts.Token));
+        SshConnectException error = await Assert.ThrowsExactlyAsync<SshConnectException>(() =>
+            DialThroughAsync(route, "target.example", 22, cts.Token));
+
+        // 配了凭据却被拒:原因码留着 ProxyAuthRequired,文案说的是「凭据不对」而不是「没配凭据」。
+        Assert.AreEqual(SshFailureReason.ProxyAuthRequired, error.Reason);
+        Assert.StartsWith(Strings.Get("Msg_ProxyAuthFailed"), error.Message);
     }
 
     /// <summary>关闭「使用代理执行 DNS 查找」:本地解析后发 IP(localhost → ATYP=01 127.0.0.1)。</summary>
@@ -145,7 +133,7 @@ public class ProxySupportTests
         });
 
         var route = new ProxyRoute(ProxyKind.Socks5, "127.0.0.1", server.Port, ProxyDns: false);
-        await using Stream tunnel = await ProxyStreamConnector.ConnectAsync(route, "localhost", 2222, cts.Token);
+        await using Stream tunnel = await DialThroughAsync(route, "localhost", 2222, cts.Token);
 
         byte[] requestBytes = await request.Task;
         Assert.AreSequenceEqual(
@@ -167,8 +155,10 @@ public class ProxySupportTests
         });
 
         var route = new ProxyRoute(ProxyKind.Socks5, "127.0.0.1", server.Port);
-        await Assert.ThrowsExactlyAsync<IOException>(() =>
-            ProxyStreamConnector.ConnectAsync(route, "target.example", 22, cts.Token));
+        SshConnectException error = await Assert.ThrowsExactlyAsync<SshConnectException>(() =>
+            DialThroughAsync(route, "target.example", 22, cts.Token));
+        Assert.AreEqual(SshFailureReason.ProxyRefused, error.Reason);
+        Assert.Contains($"via socks5 127.0.0.1:{server.Port} → target.example:22", error.Message);
     }
 
     // ———— HTTP CONNECT ————
@@ -191,7 +181,7 @@ public class ProxySupportTests
         });
 
         var route = new ProxyRoute(ProxyKind.Http, "127.0.0.1", server.Port, "user", "pa:ss");
-        await using Stream tunnel = await ProxyStreamConnector.ConnectAsync(route, "target.example", 22, cts.Token);
+        await using Stream tunnel = await DialThroughAsync(route, "target.example", 22, cts.Token);
 
         string head = await request.Task;
         Assert.StartsWith("CONNECT target.example:22 HTTP/1.1\r\n", head);
@@ -213,8 +203,10 @@ public class ProxySupportTests
         });
 
         var route = new ProxyRoute(ProxyKind.Http, "127.0.0.1", server.Port);
-        await Assert.ThrowsExactlyAsync<IOException>(() =>
-            ProxyStreamConnector.ConnectAsync(route, "target.example", 22, cts.Token));
+        SshConnectException error = await Assert.ThrowsExactlyAsync<SshConnectException>(() =>
+            DialThroughAsync(route, "target.example", 22, cts.Token));
+        Assert.AreEqual(SshFailureReason.ProxyRefused, error.Reason);
+        Assert.Contains("switch Proxy to socks5", error.Message, "HTTP 代理拒绝 22 端口时要指路");
     }
 
     // ———— SSH 的代理拨号器 ————

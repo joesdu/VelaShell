@@ -34,7 +34,7 @@ namespace VelaShell.Ssh.Protocol;
 /// 我们不自造无域名后缀的算法名。
 /// </para>
 /// </remarks>
-public static class SshAlgorithmNames
+internal static class SshAlgorithmNames
 {
     // ---------------------------------------------------------------- 密钥交换
 
@@ -42,10 +42,10 @@ public static class SshAlgorithmNames
     public const string MlKem768X25519Sha256 = "mlkem768x25519-sha256";
 
     /// <summary>sntrup761 与 X25519 的混合，SHA-512。后量子。</summary>
-    public const string SNtruP761X25519Sha512 = "sntrup761x25519-sha512";
+    public const string Sntrup761X25519Sha512 = "sntrup761x25519-sha512";
 
-    /// <summary><see cref="SNtruP761X25519Sha512"/> 的旧名，OpenSSH &lt; 9.9 用它。</summary>
-    public const string SNtruP761X25519Sha512OpenSsh = "sntrup761x25519-sha512@openssh.com";
+    /// <summary><see cref="Sntrup761X25519Sha512"/> 的旧名，OpenSSH &lt; 9.9 用它。</summary>
+    public const string Sntrup761X25519Sha512OpenSsh = "sntrup761x25519-sha512@openssh.com";
 
     /// <summary>X25519 + SHA-256。RFC 8731。</summary>
     public const string Curve25519Sha256 = "curve25519-sha256";
@@ -70,13 +70,6 @@ public static class SshAlgorithmNames
 
     /// <summary>MODP 2048 位群 + SHA-1。<b>默认关闭</b>，只为老网络设备保留。</summary>
     public const string DiffieHellmanGroup14Sha1 = "diffie-hellman-group14-sha1";
-
-    /// <summary>服务端现给群的 DH + SHA-256。RFC 4419。</summary>
-    /// <remarks>
-    /// ⚠️ <b>本库没有实现</b>，默认清单里也没有它；放进算法清单会被连接前的 <c>SshAlgorithmSet.Validate()</c> 拒绝。
-    /// 名字留着，只为认出对端清单里的这一项。
-    /// </remarks>
-    public const string DiffieHellmanGroupExchangeSha256 = "diffie-hellman-group-exchange-sha256";
 
     // ------------------------------------------------- 藏在 kex 列表里的指示符
 
@@ -210,104 +203,4 @@ public static class SshAlgorithmNames
     /// 口令的可压缩性会从密文长度漏出去（见 <see cref="Crypto.SshCompressorFactory.IsDelayed"/>）。
     /// </remarks>
     public const string ZlibOpenSsh = "zlib@openssh.com";
-
-    // ------------------------------------------------------------------ 服务
-
-    /// <summary>用户认证服务。</summary>
-    public const string ServiceUserAuth = "ssh-userauth";
-
-    /// <summary>连接协议服务。</summary>
-    public const string ServiceConnection = "ssh-connection";
-
-    // ------------------------------------------------------------------ 认证
-
-    /// <summary>探测用的空认证。</summary>
-    public const string AuthNone = "none";
-
-    /// <summary>密码认证。</summary>
-    public const string AuthPassword = "password";
-
-    /// <summary>公钥认证（含证书）。</summary>
-    public const string AuthPublicKey = "publickey";
-
-    /// <summary>键盘交互认证（2FA / OTP 走这条）。</summary>
-    public const string AuthKeyboardInteractive = "keyboard-interactive";
-
-    /// <summary>GSS-API 认证。</summary>
-    public const string AuthGssApiWithMic = "gssapi-with-mic";
-
-    /// <summary>基于主机的认证。</summary>
-    public const string AuthHostBased = "hostbased";
-
-    // ------------------------------------------------------------------ 扩展
-
-    /// <summary>RFC 8308 §3.1：服务端接受的公钥签名算法。</summary>
-    public const string ExtServerSigAlgs = "server-sig-algs";
-
-    // ------------------------------------------------------------------ 通道
-
-    /// <summary>会话通道（exec / shell / subsystem）。</summary>
-    public const string ChannelSession = "session";
-
-    /// <summary>到远端 TCP 端点的直连通道。</summary>
-    public const string ChannelDirectTcpIp = "direct-tcpip";
-
-    /// <summary>到远端 Unix 套接字的直连通道。</summary>
-    public const string ChannelDirectStreamLocal = "direct-streamlocal@openssh.com";
-
-    /// <summary>服务端因远程转发而发起的通道。</summary>
-    public const string ChannelForwardedTcpIp = "forwarded-tcpip";
-
-    /// <summary>服务端因远程 Unix 套接字转发而发起的通道。</summary>
-    public const string ChannelForwardedStreamLocal = "forwarded-streamlocal@openssh.com";
-
-    /// <summary>远程 Unix 套接字转发的全局请求（OpenSSH PROTOCOL §2.2）。</summary>
-    public const string RequestStreamLocalForward = "streamlocal-forward@openssh.com";
-
-    /// <summary>取消远程 Unix 套接字转发。</summary>
-    public const string RequestCancelStreamLocalForward = "cancel-streamlocal-forward@openssh.com";
-
-    /// <summary>服务端为 X11 转发发起的通道（RFC 4254 §6.3.2）。</summary>
-    public const string ChannelX11 = "x11";
-
-    /// <summary>请求 X11 转发（RFC 4254 §6.3.1）。</summary>
-    public const string RequestX11 = "x11-req";
-
-    /// <summary>服务端为 agent 转发发起的通道。</summary>
-    public const string ChannelAuthAgent = "auth-agent@openssh.com";
-
-    // ------------------------------------------------------------------ 请求
-
-    /// <summary>一次性命令。</summary>
-    public const string RequestExec = "exec";
-
-    /// <summary>交互式 shell。</summary>
-    public const string RequestShell = "shell";
-
-    /// <summary>子系统（如 <c>sftp</c>）。</summary>
-    public const string RequestSubsystem = "subsystem";
-
-    /// <summary>申请伪终端。</summary>
-    public const string RequestPty = "pty-req";
-
-    /// <summary>终端尺寸变化。<b>RFC 要求 want_reply 为假。</b></summary>
-    public const string RequestWindowChange = "window-change";
-
-    /// <summary>设置环境变量。</summary>
-    public const string RequestEnvironment = "env";
-
-    /// <summary>给远端进程发信号。<b>RFC 要求 want_reply 为假。</b></summary>
-    public const string RequestSignal = "signal";
-
-    /// <summary>远端进程的退出码。</summary>
-    public const string RequestExitStatus = "exit-status";
-
-    /// <summary>远端进程被信号杀死。</summary>
-    public const string RequestExitSignal = "exit-signal";
-
-    /// <summary>请求 agent 转发。</summary>
-    public const string RequestAuthAgent = "auth-agent-req@openssh.com";
-
-    /// <summary>保活探测。<b>只关心有没有应答，不关心应答内容。</b></summary>
-    public const string KeepAliveOpenSsh = "keepalive@openssh.com";
 }

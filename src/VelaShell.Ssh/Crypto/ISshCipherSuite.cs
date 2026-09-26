@@ -8,7 +8,7 @@ using System.Buffers;
 namespace VelaShell.Ssh.Crypto;
 
 /// <summary>一次拆帧尝试的结果。</summary>
-public enum SshOpenStatus
+internal enum SshOpenStatus
 {
     /// <summary>成功取出一帧载荷。</summary>
     Opened,
@@ -36,7 +36,7 @@ public enum SshOpenStatus
 /// 它们本质上给对端提供了一个解密预言机 —— 这也是我们把 EtM 排在 MtE 之前的原因。
 /// </para>
 /// </remarks>
-public interface ISshCipherSuite : IDisposable
+internal interface ISshCipherSuite : IDisposable
 {
     /// <summary>这套套件在分帧上的形状。</summary>
     CipherSuiteShape Shape { get; }

@@ -39,7 +39,7 @@ namespace VelaShell.Ssh.Crypto;
 /// <b>收包顺序是安全属性</b>：先验 tag，再解密载荷。反过来等于给对端提供一个解密预言机。
 /// </para>
 /// </remarks>
-public sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
+internal sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
 {
     /// <summary>密钥材料字节数（两把 32 字节的钥）。</summary>
     public const int KeyMaterialBytes = 64;

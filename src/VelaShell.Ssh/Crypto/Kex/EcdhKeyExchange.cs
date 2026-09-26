@@ -20,7 +20,7 @@ namespace VelaShell.Ssh.Crypto.Kex;
 /// 按 64 或 65 字节假设写死的实现会在这条曲线上崩掉 —— 而它恰好是最少被测到的那条。
 /// </para>
 /// </remarks>
-public sealed class EcdhKeyExchange : ISshKeyExchange
+internal sealed class EcdhKeyExchange : ISshKeyExchange
 {
     private const byte UncompressedPointTag = 0x04;
 
