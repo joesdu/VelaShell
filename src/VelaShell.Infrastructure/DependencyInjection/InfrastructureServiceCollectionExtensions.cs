@@ -9,7 +9,6 @@ using VelaShell.Core.Notifications;
 using VelaShell.Core.Processes;
 using VelaShell.Core.Protocols;
 using VelaShell.Core.Recording;
-using VelaShell.Core.Resources;
 using VelaShell.Core.Services;
 using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;

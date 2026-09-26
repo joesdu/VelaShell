@@ -212,11 +212,9 @@ internal sealed class TestChannelObservation
     /// </remarks>
     public bool ClientGone
     {
-        get => Volatile.Read(ref _clientGone);
-        set => Volatile.Write(ref _clientGone, value);
+        get => Volatile.Read(ref field);
+        set => Volatile.Write(ref field, value);
     }
-
-    private bool _clientGone;
 
     /// <summary>回放剧本时抛出的异常（如果有）。</summary>
     /// <remarks>
@@ -307,7 +305,6 @@ internal sealed class TestChannelServer : IDisposable
 
     /// <summary>每条通道的出站字节流（处理器 → 客户端）。</summary>
     private readonly Dictionary<uint, Pipe> _channelOutput = [];
-
 
     /// <summary>在一条已完成认证的传输上建立连接协议服务端。</summary>
     public TestChannelServer(SshPacketTransport transport, TestChannelScript? script = null)
@@ -1375,10 +1372,7 @@ internal sealed class TestChannelServer : IDisposable
         }
 
         public override async ValueTask WriteAsync(
-            ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
-        {
-            await writer.WriteAsync(buffer, cancellationToken);
-        }
+            ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) => await writer.WriteAsync(buffer, cancellationToken);
 
         public override Task<int> ReadAsync(
             byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>

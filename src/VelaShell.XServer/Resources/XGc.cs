@@ -4,7 +4,6 @@
 // 规范依据(AGENTS.md §2 纪律 1):
 //   X Window System Protocol, X Version 11 —— 「CreateGC」一节(各分量的含义与默认值)
 
-
 namespace VelaShell.XServer.Resources;
 
 /// <summary>图形上下文(GC)。默认值逐项照 CreateGC 一节。</summary>

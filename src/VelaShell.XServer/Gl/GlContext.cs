@@ -114,7 +114,6 @@ internal sealed partial class GlContext
     private uint _error;
 
     // 显示列表编译
-    private uint _compilingList;
     private uint _compileMode;
     private List<GlCommand>? _compiling;
     private int _callDepth;
@@ -245,7 +244,7 @@ internal sealed partial class GlContext
             SetError(GlEnum.INVALID_OPERATION);
             return;
         }
-        _compilingList = list;
+        ListIndex = list;
         _compileMode = mode;
         _compiling = [];
     }
@@ -257,14 +256,14 @@ internal sealed partial class GlContext
             SetError(GlEnum.INVALID_OPERATION);
             return;
         }
-        Shared.Lists[_compilingList] = _compiling;
+        Shared.Lists[ListIndex] = _compiling;
         _compiling = null;
-        _compilingList = 0;
+        ListIndex = 0;
     }
 
     public bool IsCompiling => _compiling is not null;
 
-    public uint ListIndex => _compilingList;
+    public uint ListIndex { get; private set; }
 
     public uint ListMode => _compiling is null ? 0 : _compileMode;
 
@@ -495,7 +494,7 @@ internal sealed partial class GlContext
 
     private void PopAttrib()
     {
-        if (!_attribStack.TryPop(out var saved))
+        if (!_attribStack.TryPop(out (GlState State, uint Mask) saved))
         {
             SetError(GlEnum.STACK_UNDERFLOW);
             return;

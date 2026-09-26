@@ -24,7 +24,7 @@ public sealed class RenderPixelTests
     public void Over与Src与Add的基本结果()
     {
         Argb halfRed = new(0.5f, 0.5f, 0, 0);
-        Argb white = Argb.Gray(1);
+        var white = Argb.Gray(1);
         Argb over = Combine(RenderOps.Over, halfRed, white);
         Assert.AreEqual(1f, over.A, 1e-6);
         Assert.AreEqual(1f, over.R, 1e-6);
@@ -67,7 +67,7 @@ public sealed class RenderPixelTests
     public void 线性渐变的中点与Pad和None()
     {
         LinearGradientSource g = new(0, 0, 100, 0, [0, 1], [new Argb(1, 0, 0, 0), new Argb(1, 1, 1, 1)]) { Repeat = RenderSource.RepeatPad };
-        Argb[] row = new Argb[3];
+        var row = new Argb[3];
         g.FetchRow(49, 0, row.AsSpan(0, 2));   // 像素中心 49.5 / 50.5
         Assert.AreEqual(0.495f, row[0].R, 1e-3);
         g.FetchRow(150, 0, row.AsSpan(0, 1));
@@ -109,7 +109,7 @@ public sealed class RenderPixelTests
             Bilinear = true,
             Transform = [1, 0, 0.5, 0, 1, 0, 0, 0, 1],   // 向右平移半个像素
         };
-        Argb[] row = new Argb[1];
+        var row = new Argb[1];
         source.FetchRow(0, 0, row);
         Assert.AreEqual(0.5f, row[0].R, 1e-6);
     }

@@ -145,7 +145,7 @@ public class XServerCommandLineTests
     public void HelpCatalog_EveryKeyIsTranslated(string culture)
     {
         var manager = new System.Resources.ResourceManager("VelaShell.Core.Resources.Strings", typeof(XServerHelpCatalog).Assembly);
-        System.Globalization.CultureInfo info = System.Globalization.CultureInfo.GetCultureInfo(culture);
+        var info = System.Globalization.CultureInfo.GetCultureInfo(culture);
         IEnumerable<string> keys = XServerHelpCatalog.Groups
             .SelectMany(g => g.Entries.Select(e => e.DescriptionKey).Prepend(g.TitleKey));
 

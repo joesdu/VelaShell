@@ -344,12 +344,12 @@ public sealed class HostCertificateTests
         SshAlgorithmSet clientAlgorithms, IHostKeyPolicy? policy = null)
     {
         ISshSigner signer = await SshPrivateKeyFile.LoadAsync(FixturePath(privateKeyFile), cancellationToken: TestContext.CancellationToken);
-        TestHostKey hostKey = TestHostKey.FromSigner(signer, ReadBlob(presentedFile), serverAlgorithms);
+        var hostKey = TestHostKey.FromSigner(signer, ReadBlob(presentedFile), serverAlgorithms);
 
         (InMemoryDuplexStream clientStream, InMemoryDuplexStream serverStream) = InMemoryTransport.CreatePair();
         await using TestSshServer server = new(serverStream, new TestSshServerOptions { HostKey = hostKey });
         await using SshPacketTransport clientTransport = new(clientStream);
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
         cts.CancelAfter(TimeSpan.FromSeconds(30));
 
         Task<TestSshServerHandshake> serverTask = server.HandshakeAsync(cts.Token);

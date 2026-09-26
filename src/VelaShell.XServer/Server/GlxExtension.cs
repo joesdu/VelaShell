@@ -507,12 +507,12 @@ internal sealed class GlxExtension(X11Server server)
         GlSurface? draw = null, read = null;
         if (binding.Draw != 0)
         {
-            (uint key, var size, GlxConfig? config) = ResolveGlxDrawable(binding.Draw, binding.Context.Config);
+            (uint key, (int Width, int Height) size, GlxConfig? config) = ResolveGlxDrawable(binding.Draw, binding.Context.Config);
             draw = SurfaceFor(key, size, config ?? binding.Context.Config);
         }
         if (binding.Read != 0)
         {
-            (uint key, var size, GlxConfig? config) = ResolveGlxDrawable(binding.Read, binding.Context.Config);
+            (uint key, (int Width, int Height) size, GlxConfig? config) = ResolveGlxDrawable(binding.Read, binding.Context.Config);
             read = SurfaceFor(key, size, config ?? binding.Context.Config);
         }
         gl.Bind(draw, read);
@@ -587,7 +587,7 @@ internal sealed class GlxExtension(X11Server server)
     // ------------------------------------------------------------------ 当前上下文
 
     private GlxBinding GlxBindingOf(XClient c, uint tag) =>
-        tag != 0 && _glxTags.TryGetValue(c, out var tags) && tags.TryGetValue(tag, out GlxBinding? binding)
+        tag != 0 && _glxTags.TryGetValue(c, out Dictionary<uint, GlxBinding>? tags) && tags.TryGetValue(tag, out GlxBinding? binding)
             ? binding
             : throw GlxError(GlxBadContextTag, tag);
 
@@ -635,7 +635,7 @@ internal sealed class GlxExtension(X11Server server)
             tag = ++_nextGlxTag;
         }
         GlxBinding binding = new(context, drawable, read);
-        if (!_glxTags.TryGetValue(c, out var tags))
+        if (!_glxTags.TryGetValue(c, out Dictionary<uint, GlxBinding>? tags))
         {
             tags = [];
             _glxTags[c] = tags;
@@ -651,7 +651,7 @@ internal sealed class GlxExtension(X11Server server)
         PresentGlx(binding);
         binding.Context.Gl?.Bind(null, null);
         binding.Context.Current = null;
-        if (_glxTags.TryGetValue(c, out var tags))
+        if (_glxTags.TryGetValue(c, out Dictionary<uint, GlxBinding>? tags))
         {
             tags.Remove(tag);
         }
@@ -661,7 +661,7 @@ internal sealed class GlxExtension(X11Server server)
     public void CleanupClient(XClient client)
     {
         _glxLarge.Remove(client);
-        if (_glxTags.Remove(client, out var tags))
+        if (_glxTags.Remove(client, out Dictionary<uint, GlxBinding>? tags))
         {
             foreach (GlxBinding binding in tags.Values)
             {
@@ -1153,7 +1153,7 @@ internal sealed class GlxExtension(X11Server server)
                 break;
             case XGlxDrawable d:
                 {
-                    (_, var size, _) = ResolveGlxDrawable(id, null);
+                    (_, (int Width, int Height) size, _) = ResolveGlxDrawable(id, null);
                     attributes = [(GLX_WIDTH, (uint)size.Width), (GLX_HEIGHT, (uint)size.Height), (GLX_FBCONFIG_ID, d.Config.Id), (GLX_EVENT_MASK, d.EventMask)];
                     break;
                 }

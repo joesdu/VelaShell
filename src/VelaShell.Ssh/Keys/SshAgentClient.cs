@@ -160,7 +160,7 @@ public sealed class SshAgentClient : IAsyncDisposable
                 $"读不到 ssh-agent 命名管道（{endpoint}）的属主，不能确认另一头是可信的 agent：{ex.Message}", ex);
         }
 
-        using System.Security.Principal.WindowsIdentity current = System.Security.Principal.WindowsIdentity.GetCurrent();
+        using var current = System.Security.Principal.WindowsIdentity.GetCurrent();
         if (!IsTrustedPipeOwner(owner, current.User))
         {
             throw new SshAgentException(SshFailureReason.AgentUnavailable,

@@ -474,7 +474,7 @@ public sealed class PortForwardTests
         int read = await ReadAllAsync(client, buffer, harness.Token);
         Assert.AreEqual("bye", Encoding.UTF8.GetString(buffer, 0, read));
 
-        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(harness.Token);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(harness.Token);
         deadline.CancelAfter(TimeSpan.FromSeconds(10));
         await WaitUntilAsync(() => closed.Count > 0 && forwarder.ActiveConnections == 0, deadline.Token);
     }
@@ -493,7 +493,7 @@ public sealed class PortForwardTests
         using Socket client = new(SocketType.Stream, ProtocolType.Tcp);
         await client.ConnectAsync(forwarder.BoundEndPoint!, harness.Token);
 
-        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(harness.Token);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(harness.Token);
         deadline.CancelAfter(TimeSpan.FromSeconds(10));
         try
         {
@@ -518,7 +518,7 @@ public sealed class PortForwardTests
 
         await harness.DropServerAsync();
 
-        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(harness.Token);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(harness.Token);
         deadline.CancelAfter(TimeSpan.FromSeconds(10));
         await WaitUntilAsync(() => !forwarder.IsActive, deadline.Token);
 
@@ -647,7 +647,7 @@ public sealed class PortForwardTests
         await disposing.WaitAsync(TimeSpan.FromSeconds(10), harness.Token);
 
         // 释放完成，这个转发器的连接随之结束 —— 本机目标这头读到结尾或重置，而不是一直挂着。
-        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(harness.Token);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(harness.Token);
         deadline.CancelAfter(TimeSpan.FromSeconds(5));
         byte[] buffer = new byte[16];
         try

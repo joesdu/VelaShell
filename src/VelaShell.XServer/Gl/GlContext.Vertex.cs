@@ -368,7 +368,7 @@ internal sealed partial class GlContext
 
     private GlVertex Transform(Vector4 obj)
     {
-        Vector4 eye = Vector4.Transform(obj, Modelview);
+        var eye = Vector4.Transform(obj, Modelview);
         GlVertex v = new()
         {
             Eye = eye,
@@ -391,7 +391,7 @@ internal sealed partial class GlContext
 
     private Vector3 EyeNormal()
     {
-        Vector3 n = Vector3.TransformNormal(State.Normal, _normalMatrix);
+        var n = Vector3.TransformNormal(State.Normal, _normalMatrix);
         if (State.Enabled.Contains(GlEnum.NORMALIZE) || State.Enabled.Contains(GlEnum.RESCALE_NORMAL))
         {
             float len = n.Length();
@@ -426,7 +426,7 @@ internal sealed partial class GlContext
                     break;
                 case GlEnum.SPHERE_MAP when i < 2:
                     {
-                        Vector3 u = Vector3.Normalize(new Vector3(eye.X, eye.Y, eye.Z));
+                        var u = Vector3.Normalize(new Vector3(eye.X, eye.Y, eye.Z));
                         Vector3 n = EyeNormal();
                         Vector3 rv = u - (2 * Vector3.Dot(n, u) * n);
                         float m = 2 * MathF.Sqrt((rv.X * rv.X) + (rv.Y * rv.Y) + ((rv.Z + 1) * (rv.Z + 1)));
@@ -500,7 +500,7 @@ internal sealed partial class GlContext
             color += specular;
             specular = Vector3.Zero;
         }
-        Vector3 c = Vector3.Clamp(color, Vector3.Zero, Vector3.One);
+        var c = Vector3.Clamp(color, Vector3.Zero, Vector3.One);
         return (new Vector4(c, Math.Clamp(m.Diffuse.W, 0, 1)), Vector3.Clamp(specular, Vector3.Zero, Vector3.One));
     }
 
@@ -635,7 +635,7 @@ internal sealed partial class GlContext
             return;
         }
         // 正反面:窗口坐标里的有向面积(§3.5.1,式 3.6)。
-        RasterVertex[] w = new RasterVertex[polygon.Count];
+        var w = new RasterVertex[polygon.Count];
         for (int i = 0; i < polygon.Count; i++)
         {
             w[i] = ToWindow(polygon[i].V, front: true);

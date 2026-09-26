@@ -222,7 +222,7 @@ public sealed class SshKeyService(
 
             File.WriteAllText(privatePath, privatePem);
             ApplyPrivateKeyPermissions(privatePath);
-            SshPublicKey publicKey = SshPublicKey.Decode(blob);
+            var publicKey = SshPublicKey.Decode(blob);
             string publicLine = publicKey.ToOpenSshFormat(comment);
             File.WriteAllText(publicPath, publicLine + Environment.NewLine);
             return new SshKeyInfo(name, type, publicKey.Sha256Fingerprint, privatePath, publicLine);

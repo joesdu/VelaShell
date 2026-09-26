@@ -1,5 +1,4 @@
 using VelaShell.Core.Models;
-using VelaShell.Services;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;
@@ -78,7 +77,7 @@ public sealed class ProxySettingsHotApplyTests
         tab.MarkConnectionFailed("Connection timed out (via http 127.0.0.1:7897 → example.com:22)");
 
         Assert.AreSequenceEqual(
-            (TerminalTabViewModel[])[tab], MainWindowViewModel.FailedSshTabsAfterProxyChange([tab]), SequenceOrder.InAnyOrder);
+            [tab], MainWindowViewModel.FailedSshTabsAfterProxyChange([tab]), SequenceOrder.InAnyOrder);
     }
 
     /// <summary>连着的、干净断开的、本地终端、非 SSH 协议,一律不碰。</summary>

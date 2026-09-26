@@ -42,8 +42,6 @@ public sealed class SshPublicKey : IEquatable<SshPublicKey>
     private readonly ECDsa? _ecdsa;
     private readonly byte[]? _ed25519;
 
-    private readonly SshPublicKey? _plain;
-
     private SshPublicKey(string keyType, byte[] blob, RSA? rsa, ECDsa? ecdsa, byte[]? ed25519, int keyBits)
         : this(keyType, keyType, blob, rsa, ecdsa, ed25519, keyBits, plain: null, certificate: null)
     {
@@ -61,7 +59,7 @@ public sealed class SshPublicKey : IEquatable<SshPublicKey>
         _ecdsa = ecdsa;
         _ed25519 = ed25519;
         KeyBits = keyBits;
-        _plain = plain;
+        PlainKey = plain;
         Certificate = certificate;
     }
 
@@ -91,7 +89,8 @@ public sealed class SshPublicKey : IEquatable<SshPublicKey>
     /// <c>known_hosts</c> 里比对、记下的都是它:证书每次重签 blob 都会变,而钥不变
     /// (velashell-docs/zh/ssh/spec/03 §5.5)。
     /// </remarks>
-    public SshPublicKey PlainKey => _plain ?? this;
+    [AllowNull]
+    public SshPublicKey PlainKey => field ?? this;
 
     /// <summary>
     /// 去掉证书身份之后的密钥类型名 —— 证书用它来选签名算法与验签，

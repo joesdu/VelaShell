@@ -118,7 +118,6 @@ public sealed class SshChannel : IAsyncDisposable
     /// <summary>收到过数据了（第一包到来之前读的一方本来就空着，那不算「等」）。</summary>
     private bool _receivedAnyData;
 
-
     private SshChannelState _state = SshChannelState.Opening;
 
     /// <summary><c>CHANNEL_CLOSE</c> 已经<b>入队</b>（不是「打算发」）。之后这条通道上不许再有任何报文。</summary>
@@ -1034,7 +1033,6 @@ public sealed class SshChannel : IAsyncDisposable
             {
                 return 0;   // 见底是读的一方跟不上造成的：扩窗只会多缓一堆没读的数据
             }
-
 
             int grown = (int)Math.Min((long)current * 2, _windowPolicy.MaximumBytes);
             if (grown <= current)

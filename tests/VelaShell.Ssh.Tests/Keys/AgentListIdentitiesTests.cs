@@ -66,7 +66,7 @@ public sealed class AgentListIdentitiesTests
     {
         await using Rig rig = new();
         rig.Agent.AddOpaque(OpaqueBlob(opaqueType), "排在前面的那一把");
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         rig.Agent.Add(key, "id_ed25519");
 
         IReadOnlyList<SshAgentIdentity> identities = await rig.Client.ListIdentitiesAsync(rig.Token);
@@ -101,7 +101,7 @@ public sealed class AgentListIdentitiesTests
     {
         await using Rig rig = new();
         rig.Agent.AddOpaque([0, 0, 0, 11, (byte)'s', (byte)'s', (byte)'h'], "截断的 blob");
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         rig.Agent.Add(key, "id_ed25519");
 
         IReadOnlyList<SshAgentIdentity> identities = await rig.Client.ListIdentitiesAsync(rig.Token);
@@ -114,7 +114,7 @@ public sealed class AgentListIdentitiesTests
     {
         await using Rig rig = new();
         rig.Agent.AddOpaque(OpaqueBlob("ssh-ed25519-cert-v01@openssh.com"), "id_ed25519-cert.pub");
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         rig.Agent.Add(key, "id_ed25519");
 
         IReadOnlyList<SshCredential> credentials = await rig.Client.GetCredentialsAsync(rig.Token);

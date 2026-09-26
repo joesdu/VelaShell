@@ -113,7 +113,7 @@ internal sealed class TcpTransportDialer : ISshTransportDialer
         Queue<IPAddress> preferred = new(addresses.Where(a => a.AddressFamily == first));
         Queue<IPAddress> other = new(addresses.Where(a => a.AddressFamily != first));
 
-        List<IPAddress> ordered = new(addresses.Count);
+        List<IPAddress> ordered = [with(addresses.Count)];
         while (preferred.Count > 0 || other.Count > 0)
         {
             if (preferred.TryDequeue(out IPAddress? a))
@@ -145,13 +145,13 @@ internal sealed class TcpTransportDialer : ISshTransportDialer
         TimeSpan attemptDelay,
         CancellationToken cancellationToken)
     {
-        using CancellationTokenSource race = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var race = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         List<Task<Socket>> running = [];
         Exception? lastError = null;
         int next = 0;
 
         // 地址都发出去之后不再有「到点」—— 只剩等某一条结束，或者调用方取消。只建一个，免得每轮都挂一个取消登记。
-        Task never = Task.Delay(Timeout.InfiniteTimeSpan, race.Token);
+        var never = Task.Delay(Timeout.InfiniteTimeSpan, race.Token);
 
         try
         {
@@ -179,7 +179,7 @@ internal sealed class TcpTransportDialer : ISshTransportDialer
                     continue;   // 到点了（或者调用方取消了 —— 循环顶上会抛）
                 }
 
-                Task<Socket> done = (Task<Socket>)finished;
+                var done = (Task<Socket>)finished;
                 running.Remove(done);
 
                 if (done.IsCompletedSuccessfully)

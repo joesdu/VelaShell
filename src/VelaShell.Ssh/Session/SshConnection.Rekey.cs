@@ -358,7 +358,7 @@ public sealed partial class SshConnection
             {
                 HostKeyDecisionTimeout = context.HostKeyDecisionTimeout,
 
-                // 首次交换定下的；每次重协商的结果都把它原样带回来，所以 _negotiated 里一直是它。
+                // 首次交换定下的；每次重协商的结果都把它原样带回来，所以 Algorithms 里一直是它。
                 InitialStrictKeyExchange = Algorithms.StrictKeyExchange,
 
                 // 钉住首次交换的主机密钥，不再走策略（spec/03 §8.4）。
@@ -367,7 +367,7 @@ public sealed partial class SshConnection
 
             // 交换卡在半路（对端不发 31、不发 NEWKEYS）的话，闸门一直关着、发送一直暂存 ——
             // 给它一个期限，到点就把连接判死，而不是无声地停住。
-            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(RekeyTimeout);
 
             SshKeyExchangeResult result;
@@ -392,7 +392,7 @@ public sealed partial class SshConnection
 
             lock (_stateLock)
             {
-                _negotiated = result.Algorithms;
+                Algorithms = result.Algorithms;
             }
 
             Interlocked.Increment(ref _rekeyCount);

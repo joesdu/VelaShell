@@ -151,7 +151,7 @@ internal sealed class SshAuthenticator(SshPacketTransport transport, string user
         //    服务端才开放 password —— 可循环已经走过去了，认证以「凭据试完了」失败。
         //    重扫只重试**当时因方法不被接受而跳过**的凭据：试过的（成功一步、失败、材料有问题）不再试 ——
         //    同一把钥换个时机也不会变成对的，白白耗掉服务端的尝试次数。
-        HashSet<SshCredential> tried = new(ReferenceEqualityComparer.Instance);
+        HashSet<SshCredential> tried = [with(ReferenceEqualityComparer.Instance)];
         bool rescan = true;
         while (rescan)
         {

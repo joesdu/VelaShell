@@ -62,12 +62,12 @@ public sealed class AgentPipeOwnerTests
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
 
         TestAgent agent = new();
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         agent.Add(key, "id_ed25519");
 
         await using NamedPipeServerStream server = new(
             name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        Task serving = Task.Run(async () =>
+        var serving = Task.Run(async () =>
         {
             await server.WaitForConnectionAsync(cts.Token);
             await agent.ServeAsync(server, cts.Token);

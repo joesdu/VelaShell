@@ -42,7 +42,7 @@ public sealed partial class X11Server
     internal const byte GlxMajor = 148, GlxEventBase = 92, GlxErrorBase = 150;                  // PbufferClobber;BadContext +0 … GLXBadProfileARB +13;internal:GlxExtension 在类外
 
     /// <summary>按名字查(QueryExtension)。</summary>
-    private readonly Dictionary<string, Extension> _extensions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Extension> _extensions = [with(StringComparer.Ordinal)];
 
     /// <summary>按主操作码查(请求分派)。</summary>
     private readonly Dictionary<byte, Extension> _extensionsByOpcode = [];

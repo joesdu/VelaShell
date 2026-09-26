@@ -91,7 +91,7 @@ public sealed partial class X11Server
     private void TakeSelectionForHost(uint selection)
     {
         uint now = Now;
-        if (_selections.TryGetValue(selection, out var current) && current.Client is { } previous)
+        if (_selections.TryGetValue(selection, out (XWindow Window, XClient? Client, uint Time) current) && current.Client is { } previous)
         {
             XWindow old = current.Window;
             previous.Event(XEventCode.SelectionClear, 0, w => w.U32(now).U32(old.Id).U32(selection));
@@ -202,7 +202,7 @@ public sealed partial class X11Server
         if (property == 0)
         {
             // 属主不给这个目标:UTF8_STRING 不行就退回 STRING,再不行就算了。
-            if (fetch.Target != XAtom.String && _selections.TryGetValue(selection, out var owner) && owner.Client is { } client)
+            if (fetch.Target != XAtom.String && _selections.TryGetValue(selection, out (XWindow Window, XClient? Client, uint Time) owner) && owner.Client is { } client)
             {
                 fetch.Target = XAtom.String;
                 RequestFetch(client, owner.Window);

@@ -30,7 +30,7 @@ public sealed partial class X11Server
     {
         PixelBuffer? buffer = w.TopLevel?.Buffer;
         int bw = buffer?.Width ?? 0, bh = buffer?.Height ?? 0;
-        var cache = w.VisibilityCache;
+        (int Generation, int BufferWidth, int BufferHeight, Region? ClipByChildren, Region? VisibleInner) cache = w.VisibilityCache;
         if (cache.Generation != _visibilityGeneration || cache.BufferWidth != bw || cache.BufferHeight != bh)
         {
             cache = (_visibilityGeneration, bw, bh, null, null);

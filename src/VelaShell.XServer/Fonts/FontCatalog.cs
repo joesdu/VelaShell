@@ -42,11 +42,11 @@ internal sealed class FontCatalog
         ["10x20"] = ("10x20", false),
     };
 
-    private readonly Dictionary<string, (string File, bool TwoByte)> _names = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, BdfFont> _parsed = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string File, bool TwoByte)> _names = [with(StringComparer.OrdinalIgnoreCase)];
+    private readonly Dictionary<string, BdfFont> _parsed = [with(StringComparer.Ordinal)];
     private readonly Dictionary<(string File, bool TwoByte), XFont> _fonts = [];
     /// <summary>合成出来的字体(没有 BDF):cursor 与 nil2。</summary>
-    private readonly Dictionary<string, XFont> _synthetic = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, XFont> _synthetic = [with(StringComparer.OrdinalIgnoreCase)];
 
     private static readonly string[] SyntheticNames = ["cursor", "nil2"];
 

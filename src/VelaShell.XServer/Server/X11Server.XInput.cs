@@ -396,7 +396,7 @@ public sealed partial class X11Server
                 {
                     XWindow window = Window(r.U32());
                     List<(ushort Device, ulong Mask)> masks = [];
-                    if (window.Xi2Selections.TryGetValue(c, out var selected))
+                    if (window.Xi2Selections.TryGetValue(c, out (ulong Master, ulong Slave) selected))
                     {
                         if (selected.Master != 0)
                         {

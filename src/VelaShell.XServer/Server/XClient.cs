@@ -9,7 +9,6 @@
 using System.Threading.Channels;
 using VelaShell.XServer.Protocol;
 
-
 namespace VelaShell.XServer.Server;
 
 /// <summary>一个已连上的客户端。</summary>

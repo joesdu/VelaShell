@@ -8,7 +8,6 @@ using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Core.Tunnels;
 using VelaShell.Ssh.Channels;
-using VelaShell.Ssh.Diagnostics;
 
 namespace VelaShell.Infrastructure.Tunnels;
 

@@ -22,7 +22,7 @@ internal static class XDisplayProbe
     public static async Task<bool> IsTcpListeningAsync(int display, CancellationToken cancellationToken)
     {
         using Socket socket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        using CancellationTokenSource limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         limit.CancelAfter(ProbeTimeout);
         try
         {

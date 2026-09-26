@@ -266,7 +266,7 @@ public sealed class SessionFailureTests
             })),
         ];
 
-        using (CancellationTokenSource full = CancellationTokenSource.CreateLinkedTokenSource(peer.Token))
+        using (var full = CancellationTokenSource.CreateLinkedTokenSource(peer.Token))
         {
             full.CancelAfter(TimeSpan.FromSeconds(10));
             while (peer.Connection.PendingSendBytes < (uploads - 4) * 32L * 1024)
@@ -359,7 +359,7 @@ public sealed class SessionFailureTests
         // 探测是后台任务读出来数的：判死那一刻，最后一个探测可能已经发出、还躺在管道里没被读走
         // （整套用例并行跑、机器忙的时候就会这样）。给读的一方一点时间读完再数 —— 真的只发了一个的话，
         // 等多久都还是一个，这条断言照样会失败。
-        Stopwatch drain = Stopwatch.StartNew();
+        var drain = Stopwatch.StartNew();
         while (Volatile.Read(ref probes) < 2 && drain.Elapsed < TimeSpan.FromSeconds(2))
         {
             await Task.Delay(10);

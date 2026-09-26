@@ -77,39 +77,28 @@ public sealed class KnownHostsPolicy : IHostKeyPolicy, IHostKeyTypePreference
 
         KnownHostLookup lookup = KnownHostsFile.Lookup(entries, context.Host, context.Port, context.Key);
 
-        switch (lookup.Status)
+        return lookup.Status switch
         {
-            case KnownHostStatus.Known:
-                return SshHostKeyVerdict.Accept;
-
-            case KnownHostStatus.Revoked:
-                return SshHostKeyVerdict.Reject(
-                    $"{context.Target} 出示的主机密钥在 {_path} 里被标记为 @revoked" +
-                    $"（第 {lookup.MatchedEntry?.LineNumber} 行）。" +
-                    "这把密钥已经作废 —— 不要连。");
-
-            case KnownHostStatus.Changed:
-                return DangerouslyAcceptChangedKeys
-                    ? SshHostKeyVerdict.Accept
-                    : SshHostKeyVerdict.RejectChanged(BuildChangedMessage(context, lookup));
-
-            case KnownHostStatus.CertificateInvalid:
-                return SshHostKeyVerdict.Reject(
-                    $"{context.Target} 出示了主机证书，签发它的 CA 在 {_path} 里对上了这台主机" +
-                    $"（第 {lookup.MatchedEntry?.LineNumber} 行），但证书不合格：{lookup.CertificateProblem}" + Environment.NewLine +
-                    "这台主机由 CA 管理，证书不合格说明配置出了错，或者路上有人 —— 不会退回去按新主机询问。" +
-                    "请联系管理员重新签发主机证书。");
-
-            case KnownHostStatus.OtherKeyTypesKnown:
-                // 与「变了」同样处理：连接时已经把记着的类型排在最前，正常的服务端会谈成它；
-                // 还落到这里，要么服务端不再有那把钥，要么路上有人。**不能**当成「没见过」去问、去记。
-                return DangerouslyAcceptChangedKeys
-                    ? SshHostKeyVerdict.Accept
-                    : SshHostKeyVerdict.RejectChanged(BuildOtherTypeMessage(context, lookup));
-
-            default:
-                return await HandleUnknownAsync(context, cancellationToken).ConfigureAwait(false);
-        }
+            KnownHostStatus.Known => SshHostKeyVerdict.Accept,
+            KnownHostStatus.Revoked => SshHostKeyVerdict.Reject(
+                                $"{context.Target} 出示的主机密钥在 {_path} 里被标记为 @revoked" +
+                                $"（第 {lookup.MatchedEntry?.LineNumber} 行）。" +
+                                "这把密钥已经作废 —— 不要连。"),
+            KnownHostStatus.Changed => DangerouslyAcceptChangedKeys
+                                ? SshHostKeyVerdict.Accept
+                                : SshHostKeyVerdict.RejectChanged(BuildChangedMessage(context, lookup)),
+            KnownHostStatus.CertificateInvalid => SshHostKeyVerdict.Reject(
+                                $"{context.Target} 出示了主机证书，签发它的 CA 在 {_path} 里对上了这台主机" +
+                                $"（第 {lookup.MatchedEntry?.LineNumber} 行），但证书不合格：{lookup.CertificateProblem}" + Environment.NewLine +
+                                "这台主机由 CA 管理，证书不合格说明配置出了错，或者路上有人 —— 不会退回去按新主机询问。" +
+                                "请联系管理员重新签发主机证书。"),
+            // 与「变了」同样处理：连接时已经把记着的类型排在最前，正常的服务端会谈成它；
+            // 还落到这里，要么服务端不再有那把钥，要么路上有人。**不能**当成「没见过」去问、去记。
+            KnownHostStatus.OtherKeyTypesKnown => DangerouslyAcceptChangedKeys
+                                ? SshHostKeyVerdict.Accept
+                                : SshHostKeyVerdict.RejectChanged(BuildOtherTypeMessage(context, lookup)),
+            _ => await HandleUnknownAsync(context, cancellationToken).ConfigureAwait(false),
+        };
     }
 
     /// <inheritdoc />

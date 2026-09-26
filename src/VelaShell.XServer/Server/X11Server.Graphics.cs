@@ -61,7 +61,7 @@ public sealed partial class X11Server
     private void FreePixmap(XRequestReader r)
     {
         uint id = r.U32();
-        XPixmap pixmap = Lookup<XPixmap>(id) ?? throw new XProtocolError(XErrorCode.Pixmap, id);
+        _ = Lookup<XPixmap>(id) ?? throw new XProtocolError(XErrorCode.Pixmap, id);
         // 像素图被窗口背景或 GC 引用时仍然可用(协议:释放 ID,数据活到最后一个引用消失)—— 引用持有对象本身,这里只删 ID。
         // 建在它上面的 Damage 对象也不跟着销毁:客户端释放像素图之后照样会 DamageDestroy(xeyes 用 Present 换帧时就是这个顺序),
         // 提前销毁会让那一条回 BadDamage、客户端直接退出。Damage 随 DamageDestroy 或客户端断开而释放。
@@ -368,7 +368,7 @@ public sealed partial class X11Server
     private void PolyArc(XRequestReader r)
     {
         uint drawable = r.U32(), gc = r.U32();
-        var arcs = ReadArcs(r);
+        List<(int X, int Y, int W, int H, int A1, int A2)> arcs = ReadArcs(r);
         Draw(drawable, gc, raster =>
         {
             foreach ((int x, int y, int w, int h, int a1, int a2) in arcs)
@@ -381,7 +381,7 @@ public sealed partial class X11Server
     private void PolyFillArc(XRequestReader r)
     {
         uint drawable = r.U32(), gc = r.U32();
-        var arcs = ReadArcs(r);
+        List<(int X, int Y, int W, int H, int A1, int A2)> arcs = ReadArcs(r);
         Draw(drawable, gc, raster =>
         {
             foreach ((int x, int y, int w, int h, int a1, int a2) in arcs)

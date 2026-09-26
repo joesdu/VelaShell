@@ -169,7 +169,7 @@ internal static class SshForwardingOptions
         IAgentSignPrompt? prompt, string target, TimeSpan timeout)
     {
         // 「本次会话内允许」记在这里:闭包跟着这一条 shell 的转发器走,会话关了就没了。
-        HashSet<string> allowedForSession = new(StringComparer.Ordinal);
+        HashSet<string> allowedForSession = [with(StringComparer.Ordinal)];
         Lock gate = new();
 
         return async (request, cancellationToken) =>

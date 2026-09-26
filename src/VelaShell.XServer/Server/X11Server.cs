@@ -342,7 +342,7 @@ public sealed partial class X11Server : IAsyncDisposable
     public void SetKeymap(XKeymap keymap)
     {
         ArgumentNullException.ThrowIfNull(keymap);
-        KeymapChange change = KeymapChange.From(keymap);
+        var change = KeymapChange.From(keymap);
         Post(null, () => ApplyKeymap(change));
     }
 

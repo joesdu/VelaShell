@@ -199,7 +199,7 @@ internal sealed partial class GlContext
         int rowBytes = nbytes * groupElements * groups;
         int k = nbytes >= store.Alignment ? rowBytes : store.Alignment * ((rowBytes + store.Alignment - 1) / store.Alignment);
         bool elementBigEndian = store.SwapBytes ? !bigEndian : bigEndian;
-        Vector4[] result = new Vector4[width * height];
+        var result = new Vector4[width * height];
         Span<float> comp = stackalloc float[4];
         for (int j = 0; j < height; j++)
         {
@@ -639,7 +639,7 @@ internal sealed partial class GlContext
         {
             return;   // 深度 / 模板的拷贝不实现
         }
-        Vector4[] pixels = new Vector4[width * height];
+        var pixels = new Vector4[width * height];
         for (int j = 0; j < height; j++)
         {
             for (int i = 0; i < width; i++)

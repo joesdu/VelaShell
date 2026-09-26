@@ -144,7 +144,7 @@ internal sealed class GlState
 
     public GlState Clone()
     {
-        GlState copy = (GlState)MemberwiseClone();
+        var copy = (GlState)MemberwiseClone();
         copy.Enabled = [.. Enabled];
         copy.ColorMask = (bool[])ColorMask.Clone();
         copy.Lights = [.. Lights.Select(l => l.Clone())];

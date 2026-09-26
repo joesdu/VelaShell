@@ -112,7 +112,7 @@ public sealed class CipherSuiteConformanceTests
         byte[] frame1 = Seal(suite, first, 0);
         byte[] frame2 = Seal(suite, second, 1);
 
-        using Aes aes = Aes.Create();
+        using var aes = Aes.Create();
         aes.Key = key;
         System.Numerics.BigInteger counter = new(iv, isUnsigned: true, isBigEndian: true);
         System.Numerics.BigInteger modulus = System.Numerics.BigInteger.One << 128;

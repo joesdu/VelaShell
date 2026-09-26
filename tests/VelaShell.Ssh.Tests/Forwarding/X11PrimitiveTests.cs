@@ -360,12 +360,10 @@ public sealed class X11PrimitiveTests
     }
 
     [TestMethod]
-    public void Cookie按十六进制文本发出去()
-    {
+    public void Cookie按十六进制文本发出去() =>
         // ⚠️ x11-req 的 cookie 字段是**十六进制字符串**，不是原始字节。
         //    发原始字节的症状是远端 xauth 存进去的和我们校验的对不上。
         Assert.AreEqual("00ff10", X11SetupMessage.ToHex([0x00, 0xFF, 0x10]));
-    }
 
     // ------------------------------------------------------------ 辅助
 

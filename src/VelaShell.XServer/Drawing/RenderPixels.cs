@@ -216,7 +216,7 @@ internal static class RenderOps
         float a = s.A;
         (float r, float g, float b) cs = a > 0 ? (s.R / a, s.G / a, s.B / a) : (0, 0, 0);
         (float r, float g, float b) cd = da > 0 ? (d.R / da, d.G / da, d.B / da) : (0, 0, 0);
-        (float r, float g, float b) mixed = op switch
+        (float r, float g, float b) = op switch
         {
             0x3B => SetLum(SetSat(cs, Sat(cd)), Lum(cd)),   // HSLHue
             0x3C => SetLum(SetSat(cd, Sat(cs)), Lum(cd)),   // HSLSaturation
@@ -225,9 +225,9 @@ internal static class RenderOps
         };
         float both = a * da;
         return new Argb(alpha,
-            Clamp01(((1 - a) * d.R) + ((1 - da) * s.R) + (both * mixed.r)),
-            Clamp01(((1 - a) * d.G) + ((1 - da) * s.G) + (both * mixed.g)),
-            Clamp01(((1 - a) * d.B) + ((1 - da) * s.B) + (both * mixed.b)));
+            Clamp01(((1 - a) * d.R) + ((1 - da) * s.R) + (both * r)),
+            Clamp01(((1 - a) * d.G) + ((1 - da) * s.G) + (both * g)),
+            Clamp01(((1 - a) * d.B) + ((1 - da) * s.B) + (both * b)));
     }
 
     private static float Separable(byte op, float sc, float sa, float dc, float da)

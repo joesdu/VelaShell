@@ -285,7 +285,7 @@ internal sealed class SftpRequestPipeline : IAsyncDisposable
     /// </remarks>
     private async ValueTask WaitOrStopAsync(SemaphoreSlim semaphore, CancellationToken cancellationToken)
     {
-        using CancellationTokenSource linked =
+        using var linked =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         try
         {

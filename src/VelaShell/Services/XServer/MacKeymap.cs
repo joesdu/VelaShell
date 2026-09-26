@@ -162,11 +162,11 @@ internal static partial class MacKeymap
     private static partial byte LMGetKbdType();
 
     [LibraryImport(Carbon)]
-    private static unsafe partial int UCKeyTranslate(byte* layout, ushort virtualKeyCode, ushort keyAction, uint modifierKeyState,
+    private static partial int UCKeyTranslate(byte* layout, ushort virtualKeyCode, ushort keyAction, uint modifierKeyState,
         uint keyboardType, uint keyTranslateOptions, uint* deadKeyState, nuint maxStringLength, nuint* actualStringLength, char* unicodeString);
 
     [LibraryImport(CoreFoundation)]
-    private static unsafe partial byte* CFDataGetBytePtr(nint data);
+    private static partial byte* CFDataGetBytePtr(nint data);
 
     [LibraryImport(CoreFoundation)]
     private static partial void CFRelease(nint obj);

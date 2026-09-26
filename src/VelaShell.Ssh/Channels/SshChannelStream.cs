@@ -27,7 +27,6 @@ namespace VelaShell.Ssh.Channels;
 /// </remarks>
 public sealed class SshChannelStream : Stream
 {
-    private readonly SshChannel _channel;
     private readonly bool _ownsChannel;
     private readonly IAsyncDisposable? _owner;
     private int _disposed;
@@ -41,13 +40,13 @@ public sealed class SshChannelStream : Stream
     /// <param name="owner">释放流时最后再释放的东西（跳板拨号器用它挂住跳板连接）。</param>
     internal SshChannelStream(SshChannel channel, bool ownsChannel = true, IAsyncDisposable? owner = null)
     {
-        _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+        Channel = channel ?? throw new ArgumentNullException(nameof(channel));
         _ownsChannel = ownsChannel;
         _owner = owner;
     }
 
     /// <summary>底层通道。</summary>
-    public SshChannel Channel => _channel;
+    public SshChannel Channel { get; }
 
     /// <inheritdoc />
     public override bool CanRead => true;
@@ -77,7 +76,7 @@ public sealed class SshChannelStream : Stream
             return 0;
         }
 
-        PipeReader reader = _channel.StandardOutput;
+        PipeReader reader = Channel.StandardOutput;
         while (true)
         {
             ReadResult result = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
@@ -109,11 +108,11 @@ public sealed class SshChannelStream : Stream
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
 
-        FlushResult result = await _channel.StandardInput.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
+        FlushResult result = await Channel.StandardInput.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
         Interlocked.Add(ref _written, buffer.Length);
         if (result.IsCompleted)
         {
-            throw new IOException($"通道 {_channel.LocalId} 已经关闭，写不进去了。");
+            throw new IOException($"通道 {Channel.LocalId} 已经关闭，写不进去了。");
         }
     }
 
@@ -131,7 +130,7 @@ public sealed class SshChannelStream : Stream
     public override Task FlushAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        return _channel.WaitStandardInputSentAsync(Interlocked.Read(ref _written), cancellationToken).AsTask();
+        return Channel.WaitStandardInputSentAsync(Interlocked.Read(ref _written), cancellationToken).AsTask();
     }
 
     /// <summary>空操作 —— <b>不等</b>数据交出去；要等请用 <see cref="FlushAsync(CancellationToken)"/>。</summary>
@@ -183,7 +182,7 @@ public sealed class SshChannelStream : Stream
             {
                 try
                 {
-                    await _channel.SendEofAsync(deadline.Token).ConfigureAwait(false);
+                    await Channel.SendEofAsync(deadline.Token).ConfigureAwait(false);
                 }
                 catch (Exception)
                 {
@@ -193,7 +192,7 @@ public sealed class SshChannelStream : Stream
 
             try
             {
-                await _channel.DisposeAsync().ConfigureAwait(false);
+                await Channel.DisposeAsync().ConfigureAwait(false);
             }
             catch (Exception)
             {

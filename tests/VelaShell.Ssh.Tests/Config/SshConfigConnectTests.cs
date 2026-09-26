@@ -3,8 +3,8 @@
 //
 // 被测规格: velashell-docs/zh/ssh/spec/09-dialing.md §7 —— ssh_config 要能直接变成连接参数，否则解析只是摆设。
 
-using VelaShell.Ssh.Config;
 using VelaShell.Ssh.Channels;
+using VelaShell.Ssh.Config;
 using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Forwarding;
 using VelaShell.Ssh.HostKeys;
@@ -356,10 +356,7 @@ public sealed class SshConfigConnectTests
     [DataRow("1.5h")]
     [DataRow("20 minutes")]
     [DataRow("99999999999999999999w")]
-    public void ssh_config的时间格式写不对就不认(string text)
-    {
-        Assert.IsFalse(SshHostConfig.TryParseTimeSpec(text, out _), text);
-    }
+    public void ssh_config的时间格式写不对就不认(string text) => Assert.IsFalse(SshHostConfig.TryParseTimeSpec(text, out _), text);
 
     [TestMethod]
     public void 会话项落到shell参数上()

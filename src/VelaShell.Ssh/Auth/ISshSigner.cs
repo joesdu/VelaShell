@@ -9,7 +9,6 @@ using VelaShell.Ssh.HostKeys;
 
 namespace VelaShell.Ssh.Auth;
 
-
 /// <summary>
 /// 一把能签名的私钥。<b>私钥从哪来由实现决定，可以从不进程内。</b>
 /// </summary>

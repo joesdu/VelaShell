@@ -194,7 +194,7 @@ public sealed class OpenSshCertificateTests
         OpenSshCertificate cert = await OpenSshCertificate.LoadAsync(
             FixturePath("cert-ed25519-cert.pub"), TestContext.CancellationToken);
 
-        SshPublicKey key = SshPublicKey.Decode(cert.Blob);
+        var key = SshPublicKey.Decode(cert.Blob);
 
         Assert.IsTrue(key.IsCertificate);
         Assert.AreEqual(cert.Algorithm, key.KeyType);

@@ -40,7 +40,7 @@ public sealed partial class X11Server
                     {
                         throw new XProtocolError(XErrorCode.IDChoice, name);
                     }
-                    if (!_backBuffers.TryGetValue(window, out var back))
+                    if (!_backBuffers.TryGetValue(window, out (XPixmap Buffer, List<uint> Names) back))
                     {
                         back = (new XPixmap(name, c, window.Width, window.Height, window.Depth), []);
                         _backBuffers[window] = back;
@@ -53,7 +53,7 @@ public sealed partial class X11Server
             case 2:   // DeallocateBackBufferName
                 {
                     uint name = r.U32();
-                    (XWindow window, var back) = BackBufferOf(name);
+                    (XWindow window, (XPixmap Buffer, List<uint> Names) back) = BackBufferOf(name);
                     back.Names.Remove(name);
                     _resources.Remove(name);
                     if (back.Names.Count == 0)
@@ -122,7 +122,7 @@ public sealed partial class X11Server
 
     private (XWindow Window, (XPixmap Buffer, List<uint> Names) Back) BackBufferOf(uint name)
     {
-        foreach ((XWindow window, var back) in _backBuffers)
+        foreach ((XWindow window, (XPixmap Buffer, List<uint> Names) back) in _backBuffers)
         {
             if (back.Names.Contains(name))
             {
@@ -168,7 +168,7 @@ public sealed partial class X11Server
     /// <summary>窗口改了尺寸:后缓冲跟着改(左上角对齐保留内容)。</summary>
     private void ResizeBackBuffer(XWindow window)
     {
-        if (_backBuffers.TryGetValue(window, out var back))
+        if (_backBuffers.TryGetValue(window, out (XPixmap Buffer, List<uint> Names) back))
         {
             back.Buffer.Buffer.Resize(window.Width, window.Height);
         }
@@ -177,7 +177,7 @@ public sealed partial class X11Server
     /// <summary>窗口销毁:它的后缓冲连同所有名字一起释放。</summary>
     private void CleanupDbe(XWindow window)
     {
-        if (_backBuffers.Remove(window, out var back))
+        if (_backBuffers.Remove(window, out (XPixmap Buffer, List<uint> Names) back))
         {
             foreach (uint name in back.Names)
             {
@@ -189,7 +189,7 @@ public sealed partial class X11Server
     /// <summary>客户端断开:它分配的后缓冲名字已随它的资源一起释放,从登记里去掉;没名字了就整块丢掉。</summary>
     private void CleanupDbe(XClient client)
     {
-        foreach ((XWindow w, var back) in _backBuffers.ToArray())
+        foreach ((XWindow w, (XPixmap Buffer, List<uint> Names) back) in _backBuffers.ToArray())
         {
             back.Names.RemoveAll(name => !_resources.ContainsKey(name));
             if (back.Names.Count == 0)

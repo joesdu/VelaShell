@@ -550,11 +550,9 @@ internal sealed class CountingStream(Stream inner) : Stream
 
     public override void SetLength(long value) => throw new NotSupportedException();
 
-    protected override void Dispose(bool disposing)
-    {
+    protected override void Dispose(bool disposing) =>
         // **不释放内层流** —— 谁拥有它由 SshPacketTransport 决定。
         base.Dispose(disposing);
-    }
 }
 
 /// <summary>一个收到的报文。</summary>
